@@ -37,8 +37,12 @@ h2 {
 .dash-title {
   font-weight: 600;
 }
-.dash-project {
-  color: var(--vscode-descriptionForeground);
+select.dash-project {
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border, transparent);
+  border-radius: 2px;
+  padding: 1px 4px;
 }
 .dash-generated-at {
   margin-left: auto;
@@ -179,6 +183,122 @@ button:hover:not(:disabled) { background-color: var(--vscode-button-hoverBackgro
 .matrix-dot-pass { background-color: var(--vscode-charts-green, #2f9e63); }
 .matrix-dot-fail { background-color: var(--vscode-charts-red, #f2555a); }
 .matrix-dot-empty { background-color: rgba(127, 127, 127, 0.25); }
+
+.row-clickable {
+  cursor: pointer;
+}
+.row-clickable:hover {
+  background-color: var(--vscode-list-hoverBackground, rgba(127, 127, 127, 0.1));
+}
+
+.scenario-id-clickable {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.scenario-id-clickable:hover {
+  color: var(--vscode-textLink-foreground, var(--vscode-foreground));
+}
+
+.run-group-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 0.82em;
+  font-weight: 600;
+  background-color: rgba(127, 127, 127, 0.2);
+  color: var(--vscode-descriptionForeground);
+  cursor: default;
+}
+
+.anomaly-warn {
+  cursor: default;
+}
+
+.daily-toggle {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin-bottom: 12px;
+}
+.detail-meta-row {
+  display: flex;
+  gap: 6px;
+  font-size: 0.92em;
+}
+.detail-meta-label {
+  color: var(--vscode-descriptionForeground);
+}
+.detail-measurement-warning {
+  padding: 4px 0;
+  text-align: left;
+}
+
+.detail-subsection {
+  margin-bottom: 16px;
+}
+.detail-subsection h3 {
+  font-size: 0.95em;
+  margin: 0 0 6px 0;
+  color: var(--vscode-descriptionForeground);
+}
+.detail-subsection ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.scenario-row-clickable {
+  cursor: pointer;
+}
+.scenario-row-clickable:hover {
+  background-color: var(--vscode-list-hoverBackground, rgba(127, 127, 127, 0.1));
+}
+.step-detail-row td {
+  background-color: rgba(127, 127, 127, 0.06);
+}
+.scenario-detail {
+  padding: 8px 4px;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.error-log {
+  margin: 0;
+  padding: 8px;
+  border-radius: 4px;
+  background-color: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.1));
+  font-size: 0.88em;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.perf-summary-line {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  font-size: 0.92em;
+}
+.perf-summary-note {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.88em;
+  margin-bottom: 8px;
+}
 
 .daily-chart-wrap {
   overflow-x: auto;

@@ -45,6 +45,7 @@ public struct RunMetaRecord: Codable, Sendable {
         case schemaVersion, runID, project, profile, host, machine, trigger, startedAt, finishedAt
         case total, passed, failed, degradedWorkers, freezeRetries, blankRepairs, blankExclusions
         case measurementInvalid, measurementInvalidReasons, workerAnomalies, issuer, runGroup
+        case performanceMode
     }
 
     public init(from decoder: Decoder) throws {
@@ -70,6 +71,7 @@ public struct RunMetaRecord: Codable, Sendable {
         workerAnomalies = try c.decodeIfPresent([WorkerAnomalyRecord].self, forKey: .workerAnomalies)
         issuer = try c.decodeIfPresent(String.self, forKey: .issuer)
         runGroup = try c.decodeIfPresent(String.self, forKey: .runGroup)
+        performanceMode = try c.decodeIfPresent(Bool.self, forKey: .performanceMode)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -94,6 +96,7 @@ public struct RunMetaRecord: Codable, Sendable {
         try c.encodeIfPresent(workerAnomalies, forKey: .workerAnomalies)
         try c.encodeIfPresent(issuer, forKey: .issuer)
         try c.encodeIfPresent(runGroup, forKey: .runGroup)
+        try c.encodeIfPresent(performanceMode, forKey: .performanceMode)
     }
 
     public var schemaVersion: Int
@@ -142,6 +145,10 @@ public struct RunMetaRecord: Codable, Sendable {
     /// 中継は FleetRunner.buildArgs / ApiRunMachineFanout / RemoteRunArgs)。
     /// 単機の run では nil(束ねる相手が居ない)。旧レコードも nil のまま読める
     public var runGroup: String?
+    /// `fleetest run --performance` の run だけ true(false は書かない = 既存レコードと同じ形)。
+    /// **有効な計測 run の抽出条件は performanceMode==true かつ measurementInvalid != true**。
+    /// 旧レコードと既定モードの run は nil
+    public var performanceMode: Bool?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, host: String, trigger: String, startedAt: String,
@@ -151,7 +158,8 @@ public struct RunMetaRecord: Codable, Sendable {
                 blankRepairs: [String]? = nil, blankExclusions: [String]? = nil,
                 measurementInvalid: Bool? = nil, measurementInvalidReasons: [String]? = nil,
                 workerAnomalies: [WorkerAnomalyRecord]? = nil,
-                issuer: String? = nil, runGroup: String? = nil) {
+                issuer: String? = nil, runGroup: String? = nil,
+                performanceMode: Bool? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.project = project
@@ -172,6 +180,7 @@ public struct RunMetaRecord: Codable, Sendable {
         self.workerAnomalies = workerAnomalies
         self.issuer = issuer
         self.runGroup = runGroup
+        self.performanceMode = performanceMode
     }
 }
 

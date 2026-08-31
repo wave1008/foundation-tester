@@ -206,6 +206,42 @@ final class RunResultsStoreTests: XCTestCase {
         XCTAssertTrue(RunResultsStore.scanRuns(resultsDir: resultsDir).isEmpty)
     }
 
+    // MARK: - meta(runDir:)
+
+    func testMetaRoundTrips() {
+        let runID = "20260101-000000Z-mach-0010"
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
+        RunResultsStore.writeMeta(makeMeta(runID: runID, startedAt: "2026-01-01T00:00:00Z"), runDir: runDir)
+
+        let meta = RunResultsStore.meta(runDir: runDir)
+        XCTAssertEqual(meta?.runID, runID)
+        XCTAssertEqual(meta?.startedAt, "2026-01-01T00:00:00Z")
+    }
+
+    func testMetaReturnsNilForCorruptedFile() throws {
+        let runID = "20260101-000000Z-mach-0011"
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
+        try FileManager.default.createDirectory(at: runDir, withIntermediateDirectories: true)
+        try "not json".data(using: .utf8)!.write(to: runDir.appendingPathComponent("run.json"))
+
+        XCTAssertNil(RunResultsStore.meta(runDir: runDir))
+    }
+
+    func testMetaReturnsNilForMissingFile() {
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: "20260101-000000Z-mach-0012")
+        XCTAssertNil(RunResultsStore.meta(runDir: runDir))
+    }
+
+    func testMetaReturnsNilWhenSchemaVersionIsTooNew() {
+        let runID = "20260101-000000Z-mach-0013"
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
+        let futureMeta = makeMeta(
+            runID: runID, startedAt: "2026-01-01T00:00:00Z", schemaVersion: RunRecordSchema.current + 1)
+        RunResultsStore.writeMeta(futureMeta, runDir: runDir)
+
+        XCTAssertNil(RunResultsStore.meta(runDir: runDir))
+    }
+
     // MARK: - since/until プルーニング
 
     func testSinceUntilPruning() {

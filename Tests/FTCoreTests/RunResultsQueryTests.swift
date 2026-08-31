@@ -852,14 +852,432 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertEqual(report.scenarios.first { $0.scenarioID == "Foo.a" }?.title, "New Title")
     }
 
+    // MARK: - triage
+
+    func testTriageGroupsBySectionCommandAndFailureKind() {
+        let records = [
+            makeRecord(
+                scenarioID: "Foo.a", passed: false, startedAt: "2026-01-01T00:00:00Z", durationMs: 100,
+                failedSteps: [FailedStepRecord(
+                    index: 0, section: "action", description: "tap #btn", command: "tap",
+                    failureKind: "assertionFailed")]),
+            makeRecord(
+                scenarioID: "Foo.b", passed: false, startedAt: "2026-01-02T00:00:00Z", durationMs: 100,
+                failedSteps: [FailedStepRecord(
+                    index: 0, section: "action", description: "tap #btn", command: "tap",
+                    failureKind: "assertionFailed")]),
+            makeRecord(
+                scenarioID: "Foo.a", passed: false, startedAt: "2026-01-03T00:00:00Z", durationMs: 100,
+                failedSteps: [FailedStepRecord(
+                    index: 0, section: "action", description: "tap #btn", command: "tap",
+                    failureKind: "assertionFailed")]),
+        ]
+        let report = RunResultsQuery.triage(records)
+        XCTAssertEqual(report.totalFailed, 3)
+        XCTAssertEqual(report.unreachedCount, 0)
+        XCTAssertEqual(report.rows.count, 1)
+        let row = report.rows[0]
+        XCTAssertEqual(row.section, "action")
+        XCTAssertEqual(row.command, "tap")
+        XCTAssertEqual(row.failureKind, "assertionFailed")
+        XCTAssertEqual(row.count, 3)
+        XCTAssertEqual(row.scenarioCount, 2, "distinct scenarioID(Foo.a, Foo.b)")
+    }
+
+    /// failedSteps が nil/空(ステップ未到達)は rows に混ざらず unreachedCount へ分かれる
+    func testTriageCountsUnreachedFailuresSeparatelyFromRows() {
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: false, startedAt: "2026-01-01T00:00:00Z", durationMs: 100,
+                       failedSteps: nil),
+            makeRecord(scenarioID: "Foo.b", passed: false, startedAt: "2026-01-02T00:00:00Z", durationMs: 100,
+                       failedSteps: []),
+        ]
+        let report = RunResultsQuery.triage(records)
+        XCTAssertEqual(report.totalFailed, 2)
+        XCTAssertEqual(report.unreachedCount, 2)
+        XCTAssertTrue(report.rows.isEmpty)
+    }
+
+    /// **丸めない**: nil の欄と値ありの欄は別グループのまま残す(CLAUDE.md「その他に丸めない」)
+    func testTriageKeepsNilFieldsAsASeparateGroupFromValuedOnes() {
+        let records = [
+            makeRecord(
+                scenarioID: "Foo.a", passed: false, startedAt: "2026-01-01T00:00:00Z", durationMs: 100,
+                failedSteps: [FailedStepRecord(index: 0, description: "x")]),
+            makeRecord(
+                scenarioID: "Foo.b", passed: false, startedAt: "2026-01-02T00:00:00Z", durationMs: 100,
+                failedSteps: [FailedStepRecord(
+                    index: 0, section: "action", description: "x", command: "tap",
+                    failureKind: "assertionFailed")]),
+        ]
+        let report = RunResultsQuery.triage(records)
+        XCTAssertEqual(report.rows.count, 2)
+        XCTAssertTrue(report.rows.contains { $0.section == nil && $0.command == nil && $0.failureKind == nil })
+        XCTAssertTrue(report.rows.contains { $0.section == "action" && $0.command == "tap" })
+    }
+
+    func testTriageScenarioIDsAreDistinctSortedAndCappedAtFive() {
+        let ids = ["S6.a", "S1.a", "S4.a", "S2.a", "S5.a", "S3.a"]
+        var records = ids.enumerated().map { index, id in
+            makeRecord(
+                scenarioID: id, passed: false,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100,
+                failedSteps: [FailedStepRecord(
+                    index: 0, section: "action", description: "x", command: "tap",
+                    failureKind: "assertionFailed")])
+        }
+        // 同じ scenarioID(S1.a)の2件目を足す。distinct 数はこれで増えないことを確かめる
+        records.append(makeRecord(
+            scenarioID: "S1.a", passed: false, startedAt: "2026-01-07T00:00:00Z", durationMs: 100,
+            failedSteps: [FailedStepRecord(
+                index: 0, section: "action", description: "x", command: "tap",
+                failureKind: "assertionFailed")]))
+
+        let report = RunResultsQuery.triage(records)
+        XCTAssertEqual(report.rows.count, 1)
+        let row = report.rows[0]
+        XCTAssertEqual(row.count, 7)
+        XCTAssertEqual(row.scenarioCount, 6)
+        XCTAssertEqual(row.scenarioIDs, ["S1.a", "S2.a", "S3.a", "S4.a", "S5.a"])
+    }
+
+    func testTriageNoteCountsAggregatesAndSorts() {
+        let records = [
+            makeRecord(
+                scenarioID: "Foo.a", passed: false, startedAt: "2026-01-01T00:00:00Z", durationMs: 100,
+                failedSteps: [FailedStepRecord(index: 0, description: "x", notes: ["noteB", "noteA"])]),
+            makeRecord(
+                scenarioID: "Foo.b", passed: false, startedAt: "2026-01-02T00:00:00Z", durationMs: 100,
+                failedSteps: [FailedStepRecord(index: 0, description: "x", notes: ["noteA"])]),
+        ]
+        let report = RunResultsQuery.triage(records)
+        XCTAssertEqual(report.noteCounts.count, 2)
+        XCTAssertEqual(report.noteCounts[0].note, "noteA")
+        XCTAssertEqual(report.noteCounts[0].count, 2)
+        XCTAssertEqual(report.noteCounts[1].note, "noteB")
+        XCTAssertEqual(report.noteCounts[1].count, 1)
+    }
+
+    func testTriageIgnoresPassedRecords() {
+        let records = [
+            makeRecord(
+                scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100,
+                failedSteps: [FailedStepRecord(
+                    index: 0, section: "action", description: "x", command: "tap",
+                    failureKind: "assertionFailed", notes: ["someNote"])]),
+        ]
+        let report = RunResultsQuery.triage(records)
+        XCTAssertEqual(report.totalFailed, 0)
+        XCTAssertEqual(report.unreachedCount, 0)
+        XCTAssertTrue(report.rows.isEmpty)
+        XCTAssertTrue(report.noteCounts.isEmpty)
+    }
+
+    // MARK: - fullSuiteDaily
+
+    func testFullSuiteDailyExcludesRunsBelowMinScenarios() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", total: 2),
+            makeMeta(runID: "R2", startedAt: "2026-01-01T00:00:00Z", total: 3),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R1"),
+            makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R2"),
+        ]
+        let rows = RunResultsQuery.fullSuiteDaily(
+            records: records, runs: runs, minScenarios: 3, timeZone: TimeZone(identifier: "UTC")!)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].total, 1, "total=2 の R1 は除外される")
+    }
+
+    func testFullSuiteDailyExcludesUnfinishedRuns() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", total: nil),
+            makeMeta(runID: "R2", startedAt: "2026-01-01T00:00:00Z", total: 3),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R1"),
+            makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R2"),
+        ]
+        let rows = RunResultsQuery.fullSuiteDaily(
+            records: records, runs: runs, minScenarios: 3, timeZone: TimeZone(identifier: "UTC")!)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].total, 1, "total=nil(未完了)の R1 は除外される")
+    }
+
+    func testFullSuiteDailyIncludesRunsAtOrAboveThreshold() {
+        let runs = [makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", total: 3)]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R1"),
+            makeRecord(scenarioID: "Foo.b", passed: false, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R1"),
+        ]
+        let rows = RunResultsQuery.fullSuiteDaily(
+            records: records, runs: runs, minScenarios: 3, timeZone: TimeZone(identifier: "UTC")!)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].total, 2)
+        XCTAssertEqual(rows[0].passed, 1)
+        XCTAssertEqual(rows[0].failed, 1)
+    }
+
+    // MARK: - performance
+
+    func testPerformanceReportExcludesRunsWithoutPerformanceModeAndCountsInvalid() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 1),  // 既定モード run(performanceMode なし)
+            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z",
+                     finishedAt: "2026-01-02T00:01:00Z", total: 1,
+                     performanceMode: true, measurementInvalid: true),  // 計測無効
+            makeMeta(runID: "R3", startedAt: "2026-01-03T00:00:00Z",
+                     finishedAt: "2026-01-03T00:01:00Z", total: 1, performanceMode: true),  // 有効
+        ]
+        let report = RunResultsQuery.performanceReport(records: [], runs: runs)
+        XCTAssertEqual(report.runs.map(\.runID), ["R3"])
+        XCTAssertEqual(report.invalidCount, 1)
+    }
+
+    func testPerformanceReportComputesWallClockMsAndNilsOnMissingFinishedAt() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:30Z", total: 1, performanceMode: true),
+            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z",
+                     finishedAt: nil, total: 1, performanceMode: true),
+        ]
+        let report = RunResultsQuery.performanceReport(records: [], runs: runs)
+        XCTAssertEqual(report.runs.first { $0.runID == "R1" }?.wallClockMs, 90_000)
+        XCTAssertNil(report.runs.first { $0.runID == "R2" }?.wallClockMs)
+    }
+
+    func testPerformanceReportScenarioTotalsExcludeSkippedSynthetic() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 2, performanceMode: true),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 300, runID: "R1"),
+            makeRecord(
+                scenarioID: "Foo.b", passed: false, startedAt: "2026-01-01T00:00:20Z", durationMs: 0,
+                steps: StepCountsRecord(total: 1, skipped: 1), runID: "R1"),
+        ]
+        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
+        let row = report.runs.first
+        XCTAssertEqual(row?.scenarioTotalMs, 300)
+        XCTAssertEqual(row?.scenarioCount, 1)
+    }
+
+    func testPerformanceComparisonOnlyIncludesScenariosPresentInBoth() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 2, performanceMode: true),
+            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z",
+                     finishedAt: "2026-01-02T00:01:00Z", total: 2, performanceMode: true),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 100, runID: "R1"),
+            // R2 に居ない → 比較対象外
+            makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-01T00:00:20Z",
+                       durationMs: 100, runID: "R1"),
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-02T00:00:10Z",
+                       durationMs: 150, runID: "R2"),
+            // R1 に居ない → 比較対象外
+            makeRecord(scenarioID: "Foo.c", passed: true, startedAt: "2026-01-02T00:00:20Z",
+                       durationMs: 100, runID: "R2"),
+        ]
+        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
+        XCTAssertEqual(report.comparedRunID, "R1")
+        XCTAssertEqual(report.comparison.map(\.scenarioID), ["Foo.a"], "両方に居る組だけ比較する")
+        let delta = report.comparison[0]
+        XCTAssertEqual(delta.latestMs, 150)
+        XCTAssertEqual(delta.previousMs, 100)
+        XCTAssertEqual(delta.deltaPct, 50, accuracy: 0.001)
+    }
+
+    /// 失敗レコードの durationMs はタイムアウト等「失敗経路の長さ」であって性能ではない。
+    /// どちらか片側でも失敗していた組は比較に混ぜない(巨大な偽の悪化が先頭に並ぶ)
+    func testPerformanceComparisonExcludesFailedRecords() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 2, performanceMode: true),
+            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z",
+                     finishedAt: "2026-01-02T00:01:00Z", total: 2, performanceMode: true),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 100, runID: "R1"),
+            makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-01T00:00:20Z",
+                       durationMs: 100, runID: "R1"),
+            // 最新側で失敗(タイムアウト相当の長大な所要)→ この組は比較に出ない
+            makeRecord(scenarioID: "Foo.a", passed: false, startedAt: "2026-01-02T00:00:10Z",
+                       durationMs: 90_000, runID: "R2"),
+            makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-02T00:00:20Z",
+                       durationMs: 120, runID: "R2"),
+        ]
+        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
+        XCTAssertEqual(report.comparison.map(\.scenarioID), ["Foo.b"],
+                       "失敗した Foo.a の組は比較から外れる")
+    }
+
+    /// 相手の選定は同じ (profile, host) の run だけを対象にする。別 profile の run を挟んでも
+    /// 飛び越して正しい相手を選ぶこと
+    func testPerformanceComparisonSkipsPastADifferentProfileRunToFindTheSamePair() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", finishedAt: "2026-01-01T00:01:00Z",
+                     total: 1, profile: "p1", host: "m1", performanceMode: true),
+            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z", finishedAt: "2026-01-02T00:01:00Z",
+                     total: 1, profile: "p2", host: "m1", performanceMode: true),
+            makeMeta(runID: "R3", startedAt: "2026-01-03T00:00:00Z", finishedAt: "2026-01-03T00:01:00Z",
+                     total: 1, profile: "p1", host: "m1", performanceMode: true),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 100, runID: "R1"),
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-02T00:00:10Z",
+                       durationMs: 999, runID: "R2"),
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-03T00:00:10Z",
+                       durationMs: 200, runID: "R3"),
+        ]
+        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
+        XCTAssertEqual(report.comparedRunID, "R1", "別 profile の R2 を飛び越えて同じ (profile,host) の R1 を選ぶ")
+        XCTAssertEqual(report.comparison.first?.previousMs, 100)
+        XCTAssertEqual(report.comparison.first?.latestMs, 200)
+    }
+
+    func testPerformanceComparisonEmptyWhenNoPartnerRun() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 1, performanceMode: true),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 100, runID: "R1"),
+        ]
+        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
+        XCTAssertTrue(report.comparison.isEmpty)
+        XCTAssertNil(report.comparedRunID)
+    }
+
+    func testPerformanceComparisonExcludesZeroPreviousDuration() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 1, performanceMode: true),
+            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z",
+                     finishedAt: "2026-01-02T00:01:00Z", total: 1, performanceMode: true),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 0, runID: "R1"),
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-02T00:00:10Z",
+                       durationMs: 100, runID: "R2"),
+        ]
+        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
+        XCTAssertTrue(report.comparison.isEmpty, "previous==0 は比率が発散するため除外")
+        XCTAssertEqual(report.comparedRunID, "R1", "比較相手自体は選ばれる(除外されるのは組だけ)")
+    }
+
+    func testPerformanceReportMaxScenarioTiesBreakByScenarioIDAscending() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 3, performanceMode: true),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Zebra.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 500, runID: "R1"),
+            makeRecord(scenarioID: "Alpha.a", passed: true, startedAt: "2026-01-01T00:00:20Z",
+                       durationMs: 500, runID: "R1"),
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:30Z",
+                       durationMs: 100, runID: "R1"),
+        ]
+        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
+        let row = report.runs.first
+        XCTAssertEqual(row?.maxScenarioMs, 500)
+        XCTAssertEqual(row?.maxScenarioID, "Alpha.a", "同値は scenarioID 昇順")
+    }
+
+    func testPerformanceReportMaxScenarioNilWhenNoRecords() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 0, performanceMode: true),
+        ]
+        let report = RunResultsQuery.performanceReport(records: [], runs: runs)
+        let row = report.runs.first
+        XCTAssertNil(row?.maxScenarioMs)
+        XCTAssertNil(row?.maxScenarioID)
+    }
+
+    func testPerformanceReportLaneCountExcludesNilWorker() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 4, performanceMode: true),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 100, worker: "ios:iPhone 17", runID: "R1"),
+            makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-01T00:00:20Z",
+                       durationMs: 100, worker: "ios:iPhone 17", runID: "R1"),
+            makeRecord(scenarioID: "Foo.c", passed: true, startedAt: "2026-01-01T00:00:30Z",
+                       durationMs: 100, worker: "android:Pixel 9", runID: "R1"),
+            makeRecord(scenarioID: "Foo.d", passed: true, startedAt: "2026-01-01T00:00:40Z",
+                       durationMs: 100, worker: nil, runID: "R1"),
+        ]
+        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
+        XCTAssertEqual(report.runs.first?.laneCount, 2, "distinct worker 2 種(worker nil のレコードは数えない)")
+    }
+
+    func testPerformanceReportAvgLaneUtilisationComputesPercentage() {
+        // wallClockMs = 100_000 / laneCount = 2 / scenarioTotalMs = 150_000 → 150000/(2*100000)*100 = 75%
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:40Z", total: 2, performanceMode: true),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 80_000, worker: "ios:A", runID: "R1"),
+            makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-01T00:00:20Z",
+                       durationMs: 70_000, worker: "ios:B", runID: "R1"),
+        ]
+        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
+        XCTAssertEqual(report.runs.first?.avgLaneUtilisationPct ?? 0, 75, accuracy: 0.001)
+    }
+
+    func testPerformanceReportAvgLaneUtilisationNilWhenWallClockMissing() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", finishedAt: nil,
+                     total: 1, performanceMode: true),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 100, worker: "ios:A", runID: "R1"),
+        ]
+        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
+        XCTAssertNil(report.runs.first?.avgLaneUtilisationPct)
+    }
+
+    func testPerformanceReportAvgLaneUtilisationNilWhenNoLanes() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 1, performanceMode: true),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 100, worker: nil, runID: "R1"),
+        ]
+        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
+        XCTAssertNil(report.runs.first?.avgLaneUtilisationPct, "laneCount==0")
+    }
+
     // MARK: - フィクスチャ
 
     private func makeMeta(
-        runID: String, startedAt: String = "2026-01-01T00:00:00Z", finishedAt: String? = nil, total: Int? = 1
+        runID: String, startedAt: String = "2026-01-01T00:00:00Z", finishedAt: String? = nil, total: Int? = 1,
+        profile: String? = nil, host: String = "testmachine",
+        performanceMode: Bool? = nil, measurementInvalid: Bool? = nil
     ) -> RunMetaRecord {
         RunMetaRecord(
-            runID: runID, project: "SampleApp", profile: nil, host: "testmachine",
-            trigger: "cli", startedAt: startedAt, finishedAt: finishedAt, total: total)
+            runID: runID, project: "SampleApp", profile: profile, host: host,
+            trigger: "cli", startedAt: startedAt, finishedAt: finishedAt, total: total,
+            measurementInvalid: measurementInvalid, performanceMode: performanceMode)
     }
 
     private func makeRecord(

@@ -1,6 +1,7 @@
 // テーブル/ヘッドラインの DOM 組み立て(charts.js の日別チャートを除く表示ロジック一式)。
 // innerHTML は使わず createElement/textContent で組み立てる(値にシナリオID等の外部由来文字列を
-// 含むため)。
+// 含むため)。run 詳細/実行履歴セクション自体の組み立ては runDetail.js/trend.js に分離してある
+// (このファイルが肥大しないように。ここは runs/flaky/summary/triage 等のクリックの起点だけ持つ)。
 
 import {
   formatDeltaPercent,
@@ -13,20 +14,11 @@ import {
   recentResultsMarks,
 } from './format.js';
 import { t } from '../i18n.js';
+import { clearChildren, td } from './domUtil.js';
+import { requestRunDetail } from './runDetail.js';
+import { requestTrend } from './trend.js';
 
 const SEVERITY_ICON = { critical: '🔴', warn: '🟡', info: '🔵' };
-
-function clearChildren(el) {
-  while (el.firstChild) {
-    el.removeChild(el.firstChild);
-  }
-}
-
-function td(text) {
-  const cell = document.createElement('td');
-  cell.textContent = text;
-  return cell;
-}
 
 function runCounts(run) {
   if (typeof run.total === 'number' && typeof run.passed === 'number' && typeof run.failed === 'number') {
@@ -64,22 +56,69 @@ export function renderHeadline(latestRun) {
   el.append(badge, meta);
 }
 
+function anomalyBreakdown(anomalies) {
+  const counts = new Map();
+  for (const a of anomalies) {
+    counts.set(a.kind, (counts.get(a.kind) || 0) + 1);
+  }
+  return [...counts.entries()].map(([kind, n]) => kind + '×' + n).join(', ');
+}
+
+function runIdCell(run, allRuns) {
+  const cell = document.createElement('td');
+  cell.textContent = run.runID;
+  if (run.runGroup) {
+    const badge = document.createElement('span');
+    badge.className = 'run-group-badge';
+    badge.textContent = run.runGroup.slice(0, 6);
+    const siblings = allRuns
+      .filter((r) => r.runGroup === run.runGroup && r.runID !== run.runID)
+      .map((r) => r.runID);
+    badge.title = t('wvDashboard.render.runGroupTitle', { runIDs: siblings.length > 0 ? siblings.join(', ') : '–' });
+    cell.appendChild(badge);
+  }
+  return cell;
+}
+
+function runResultCell(run) {
+  const cell = td(runCounts(run));
+  if (run.workerAnomalies && run.workerAnomalies.length > 0) {
+    const warn = document.createElement('span');
+    warn.className = 'anomaly-warn';
+    warn.textContent = ' ⚠';
+    warn.title = t('wvDashboard.render.anomalyHint', { breakdown: anomalyBreakdown(run.workerAnomalies) });
+    cell.appendChild(warn);
+  }
+  return cell;
+}
+
 export function renderRunsTable(runs) {
   const body = document.getElementById('table-runs-body');
   clearChildren(body);
   // 最大10行(呼び出し側で既に runID 降順)。
   for (const run of runs.slice(0, 10)) {
     const row = document.createElement('tr');
+    row.className = 'row-clickable';
+    row.title = run.runID;
     row.append(
-      td(run.runID),
+      runIdCell(run, runs),
       td(formatLocalDateTime(run.startedAt)),
       td(run.trigger),
       td(run.host),
       td(run.profile || '–'),
-      td(runCounts(run)),
+      runResultCell(run),
     );
+    row.addEventListener('click', () => requestRunDetail(run.runID));
     body.appendChild(row);
   }
+}
+
+function scenarioIdCell(scenarioID) {
+  const cell = document.createElement('td');
+  cell.textContent = scenarioID;
+  cell.className = 'scenario-id-clickable';
+  cell.addEventListener('click', () => requestTrend(scenarioID));
+  return cell;
 }
 
 export function renderFlakyTable(flaky) {
@@ -91,7 +130,7 @@ export function renderFlakyTable(flaky) {
   for (const row of flaky) {
     const tr = document.createElement('tr');
     tr.append(
-      td(row.scenarioID),
+      scenarioIdCell(row.scenarioID),
       td(String(row.runs)),
       td(formatPercent(row.failureRate)),
       td(row.flakinessScore.toFixed(2)),
@@ -107,7 +146,7 @@ export function renderSummaryTable(summary) {
   for (const row of summary) {
     const tr = document.createElement('tr');
     tr.append(
-      td(row.scenarioID),
+      scenarioIdCell(row.scenarioID),
       td(String(row.runs)),
       td(formatPercent(row.successRate)),
       td(formatDurationMs(row.avgDurationMs)),
@@ -160,7 +199,7 @@ export function renderInsights(insights) {
   }
 }
 
-function deltaBadgeCell(deltaPct) {
+export function deltaBadgeCell(deltaPct) {
   const cell = document.createElement('td');
   if (typeof deltaPct !== 'number') {
     cell.textContent = '–';
@@ -249,5 +288,53 @@ export function renderSlowTable(slow) {
       td(slowestSceneText(row.slowestScene, row.slowestSceneAvgMs)),
     );
     body.appendChild(tr);
+  }
+}
+
+export function renderTriageTable(triage) {
+  const section = document.getElementById('section-triage');
+  if (!triage) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+
+  const summaryEl = document.getElementById('triage-summary');
+  clearChildren(summaryEl);
+  const summarySpan = document.createElement('span');
+  summarySpan.textContent = t('wvDashboard.render.triageSummary', {
+    totalFailed: String(triage.totalFailed),
+    unreachedCount: String(triage.unreachedCount),
+  });
+  summaryEl.appendChild(summarySpan);
+
+  const body = document.getElementById('table-triage-body');
+  const table = document.getElementById('table-triage');
+  const notesBody = document.getElementById('table-triage-notes-body');
+  const notesTable = document.getElementById('table-triage-notes');
+  const emptyEl = document.getElementById('triage-empty');
+  clearChildren(body);
+  clearChildren(notesBody);
+
+  const hasRows = triage.rows.length > 0;
+  table.style.display = hasRows ? 'table' : 'none';
+  emptyEl.style.display = hasRows ? 'none' : 'block';
+  for (const row of triage.rows) {
+    const tr = document.createElement('tr');
+    tr.append(
+      td(row.section || '–'),
+      td(row.command || '–'),
+      td(row.failureKind || '–'),
+      td(String(row.count)),
+      td(row.scenarioIDs.join(', ')),
+    );
+    body.appendChild(tr);
+  }
+
+  notesTable.style.display = triage.noteCounts.length === 0 ? 'none' : 'table';
+  for (const row of triage.noteCounts) {
+    const tr = document.createElement('tr');
+    tr.append(td(row.note), td(String(row.count)));
+    notesBody.appendChild(tr);
   }
 }

@@ -15,8 +15,17 @@ const CHART_COLORS = {
 };
 
 let currentDaily = [];
+let currentDailyFullSuite = [];
+let useFullSuite = false;
 let canvas;
 let tooltip;
+let toggleInput;
+let toggleLabel;
+let toggleTextEl;
+
+function activeDaily() {
+  return useFullSuite ? currentDailyFullSuite : currentDaily;
+}
 
 function barColor(rate) {
   const palette = CHART_COLORS[isLightTheme() ? 'light' : 'dark'];
@@ -48,10 +57,11 @@ function shortDate(dateStr) {
 }
 
 function draw() {
-  if (!canvas || currentDaily.length === 0) {
+  const daily = activeDaily();
+  if (!canvas || daily.length === 0) {
     return;
   }
-  const widthCss = currentDaily.length * (BAR_WIDTH + BAR_GAP) + BAR_GAP;
+  const widthCss = daily.length * (BAR_WIDTH + BAR_GAP) + BAR_GAP;
   const ctx = setupCanvas(widthCss);
   ctx.clearRect(0, 0, widthCss, CHART_HEIGHT + AXIS_LABEL_HEIGHT);
 
@@ -59,7 +69,7 @@ function draw() {
   ctx.font = '9px var(--vscode-font-family, sans-serif)';
   ctx.textAlign = 'center';
 
-  currentDaily.forEach((day, i) => {
+  daily.forEach((day, i) => {
     const x = BAR_GAP + i * (BAR_WIDTH + BAR_GAP);
     const rate = successRate(day);
     if (rate === null) {
@@ -77,8 +87,9 @@ function draw() {
 }
 
 function barIndexAt(offsetX) {
+  const daily = activeDaily();
   const index = Math.floor(offsetX / (BAR_WIDTH + BAR_GAP));
-  return index >= 0 && index < currentDaily.length ? index : -1;
+  return index >= 0 && index < daily.length ? index : -1;
 }
 
 function handleMouseMove(event) {
@@ -88,7 +99,7 @@ function handleMouseMove(event) {
     tooltip.style.display = 'none';
     return;
   }
-  const day = currentDaily[index];
+  const day = activeDaily()[index];
   const rate = successRate(day);
   tooltip.textContent = day.date + ': ' + day.passed + '/' + day.total + ' passed' +
     (rate === null ? t('wvDashboard.chart.noRuns') : '(' + rate.toFixed(1) + '%)') +
@@ -112,10 +123,29 @@ export function initDailyChart() {
   canvas.addEventListener('mousemove', handleMouseMove);
   canvas.addEventListener('mouseleave', handleMouseLeave);
 
+  toggleInput = document.getElementById('daily-fullsuite-toggle');
+  toggleLabel = document.querySelector('.daily-toggle');
+  toggleTextEl = document.getElementById('daily-fullsuite-text');
+  toggleInput.addEventListener('change', () => {
+    useFullSuite = toggleInput.checked;
+    draw();
+  });
+
   new MutationObserver(draw).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 }
 
-export function renderDailyChart(daily) {
+// dailyFullSuite/fullSuiteMinScenarios はキー欠落(旧 CLI)を許容する契約(dashboardModel.ts)。
+// 欠落時はトグルごと隠し、フルスイート表示には切り替えない。
+export function renderDailyChart(daily, dailyFullSuite, fullSuiteMinScenarios) {
   currentDaily = daily;
+  currentDailyFullSuite = dailyFullSuite || [];
+  if (typeof fullSuiteMinScenarios !== 'number') {
+    toggleLabel.style.display = 'none';
+    useFullSuite = false;
+    toggleInput.checked = false;
+  } else {
+    toggleLabel.style.display = 'inline-flex';
+    toggleTextEl.textContent = t('wvDashboard.chart.fullSuiteToggle', { n: String(fullSuiteMinScenarios) });
+  }
   draw();
 }

@@ -122,6 +122,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | blankRepairs / blankExclusions | [String]? | run 前の blank 判定で修復した / 除外したワーカー |
 | measurementInvalid | Bool? | `--performance` の run でレーン数が変わり所要時間が計測に使えない |
 | measurementInvalidReasons | [String]? | 同上の理由(英語) |
+| performanceMode | Bool? | `--performance` の run だけ true(false は書かない)。有効な計測 run = これが true かつ measurementInvalid が無い run。2026-09-01 より前の記録には無い |
 | issuer | String? | ディスパッチ発行者の自己申告(認証ではない) |
 | runGroup | String? | **同じ実行から分かれた run を束ねる鍵**。デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run(別 runID・別 machine・リモートは向こうの時計)になるので、`profile` と開始時刻では同じ実行かどうか決められない。ファンアウトの親が1回だけ発行し、手元の子にもリモートの子にも同じ値が入る。**単機の run と 2026-08-26 より前の記録では欠落**(束ねる相手が居ない) |
 

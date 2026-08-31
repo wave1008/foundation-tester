@@ -146,7 +146,8 @@ public final class RunRecorder: @unchecked Sendable {
                        freezeRetries: [String] = [],
                        blankRepairs: [String] = [], blankExclusions: [String] = [],
                        measurementInvalid: Bool = false, measurementInvalidReasons: [String] = [],
-                       workerAnomalies: [WorkerAnomalyRecord] = []) {
+                       workerAnomalies: [WorkerAnomalyRecord] = [],
+                       performanceMode: Bool = false) {
         hostMetrics?.stop()
         let meta = RunMetaRecord(
             runID: runID, project: projectName, profile: profile, host: machine,
@@ -163,7 +164,9 @@ public final class RunRecorder: @unchecked Sendable {
             measurementInvalidReasons: measurementInvalid && !measurementInvalidReasons.isEmpty
                 ? measurementInvalidReasons : nil,
             workerAnomalies: workerAnomalies.isEmpty ? nil : workerAnomalies,
-            issuer: issuer, runGroup: runGroup)
+            issuer: issuer, runGroup: runGroup,
+            // false/nil は書かない(measurementInvalid と同じ流儀)
+            performanceMode: performanceMode ? true : nil)
         RunResultsStore.writeMeta(meta, runDir: runDir)
     }
 

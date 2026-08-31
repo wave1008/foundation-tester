@@ -54,6 +54,15 @@ public enum RunResultsStore {
         return url
     }
 
+    /// 1 run の run.json を読む(scanRuns と同じ規律: 壊れたファイル・新しすぎる schemaVersion は nil)
+    public static func meta(runDir: URL) -> RunMetaRecord? {
+        let metaURL = runDir.appendingPathComponent("run.json")
+        guard let data = try? Data(contentsOf: metaURL),
+              let meta = try? JSONDecoder().decode(RunMetaRecord.self, from: data),
+              meta.schemaVersion <= RunRecordSchema.current else { return nil }
+        return meta
+    }
+
     /// 1 run のシナリオ記録を全て読む(--junit などの run 直後の集計用)。
     /// 壊れたファイル・新しすぎる schemaVersion は黙って飛ばす(scanRecords と同じ規律)。
     /// 順序はファイル名昇順(決定的。表示順は呼び出し側でソートし直してよい)
@@ -105,6 +114,18 @@ public enum RunResultsStore {
                 return true
             }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    /// since/until の窓判定キー。startedAt は RunRecorder が書く ISO8601(UTC "Z" 固定)なので
+    /// **辞書順 = 時系列**(runID の月ディレクトリ剪定と同じ仮定)。境界をこの書式へ1回だけ
+    /// 変換し、レコード側は文字列比較だけにする —— レコードごとの ISO8601 パースは ICU の
+    /// **グローバルロック**(udat_parseCalendar)を取り、並列デコードが直列化して 90 日窓の
+    /// 走査が数十秒になる(2026-09-01 sample 実測)。パース不能な startedAt は辞書順で小さく
+    /// 並ぶため、since 指定時は従来(distantPast 扱い)と同じ除外側に倒れる。
+    /// 境界とレコードで秒の小数部の有無が違う場合は境界の±1秒未満で判定が割れうるが、
+    /// 窓の境界は「now - 90d」等の粗い値なので影響しない
+    private static func windowKey(_ date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
     }
 
     private static func monthKey(from date: Date) -> String {
@@ -194,12 +215,19 @@ public enum RunResultsStore {
                                    countingPlatform: String? = nil,
                                    maxObservationsPerScenario: Int? = nil) -> [ScenarioRunRecord] {
         let decoder = JSONDecoder()
-        let formatter = ISO8601DateFormatter()
+        let sinceKey = since.map(windowKey)
+        let untilKey = until.map(windowKey)
         var results: [ScenarioRunRecord] = []
         var skipped = 0
         var targetRunDirs: [URL] = []
         for monthDir in relevantMonthDirs(resultsDir: resultsDir, since: since, until: until) {
             targetRunDirs += runDirs(in: monthDir)
+        }
+        // キャップ無し(全件走査)はデコードを並列化する。キャップ付き(LPT 等)は
+        // 「新しい順に見て埋まったら止める」逐次の意味を持つので従来経路のまま。
+        // 読む集合・返す内容は逐次と同一(最後のソートで順序も決定的)
+        if maxRuns == nil, countingPlatform == nil, maxObservationsPerScenario == nil {
+            return scanRecordsConcurrently(runDirs: targetRunDirs, since: since, until: until)
         }
         if maxRuns != nil || maxObservationsPerScenario != nil {
             // 新しい順に見て「レコードが取れた run」を数える。実行中の run 自身のディレクトリは
@@ -241,17 +269,17 @@ public enum RunResultsStore {
                     skipped += 1
                     continue
                 }
-                if let since, let started = formatter.date(from: record.startedAt), started < since {
+                if let sinceKey, record.startedAt < sinceKey {
                     continue
                 }
-                if let until, let started = formatter.date(from: record.startedAt), started > until {
+                if let untilKey, record.startedAt > untilKey {
                     continue
                 }
                 if let cap = maxObservationsPerScenario {
-                    let key = "\(record.scenarioID)\u{1}\(record.platform)\u{1}\(record.host)"
-                    let seen = observations[key] ?? 0
+                    let cacheKey = "\(record.scenarioID)\u{1}\(record.platform)\u{1}\(record.host)"
+                    let seen = observations[cacheKey] ?? 0
                     if seen >= cap { continue }
-                    observations[key] = seen + 1
+                    observations[cacheKey] = seen + 1
                 }
                 results.append(record)
             }
@@ -265,5 +293,66 @@ public enum RunResultsStore {
         }
         warnSkipped(skipped, kind: "scenario record")
         return results.sorted { $0.runID == $1.runID ? $0.scenarioID < $1.scenarioID : $0.runID < $1.runID }
+    }
+
+    /// scanRecords のキャップ無し経路。デコードが所要の大半を占める
+    /// (実測: E2E-CMP 90日分の逐次走査で 114s。1 プロジェクト 2万ファイル規模)ため、
+    /// ファイル単位で並列にデコードする。読み飛ばし規律(壊れたファイル・新しすぎる
+    /// schemaVersion・since/until)は逐次経路と同一。順序は最後のソートで決定的
+    private static func scanRecordsConcurrently(runDirs: [URL], since: Date?, until: Date?) -> [ScenarioRunRecord] {
+        var files: [URL] = []
+        for runDir in runDirs {
+            let scenariosDir = runDir.appendingPathComponent("scenarios")
+            guard let entries = try? FileManager.default.contentsOfDirectory(
+                at: scenariosDir, includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]) else {
+                continue
+            }
+            files += entries.filter { $0.pathExtension == "json" }
+        }
+        guard !files.isEmpty else { return [] }
+
+        let sinceKey = since.map(windowKey)
+        let untilKey = until.map(windowKey)
+        let chunkCount = max(1, min(files.count, ProcessInfo.processInfo.activeProcessorCount))
+        let chunkSize = (files.count + chunkCount - 1) / chunkCount
+        var chunkResults = [[ScenarioRunRecord]](repeating: [], count: chunkCount)
+        var chunkSkipped = [Int](repeating: 0, count: chunkCount)
+
+        // 各チャンクは自分のスロットにだけ書く(共有ロック不要)。decoder はチャンクごとに作る
+        chunkResults.withUnsafeMutableBufferPointer { resultsBuffer in
+            chunkSkipped.withUnsafeMutableBufferPointer { skippedBuffer in
+                DispatchQueue.concurrentPerform(iterations: chunkCount) { chunkIndex in
+                    let decoder = JSONDecoder()
+                    var local: [ScenarioRunRecord] = []
+                    var localSkipped = 0
+                    let start = chunkIndex * chunkSize
+                    let end = min(start + chunkSize, files.count)
+                    for file in files[start..<end] {
+                        guard let data = try? Data(contentsOf: file),
+                              let record = try? decoder.decode(ScenarioRunRecord.self, from: data),
+                              record.schemaVersion <= RunRecordSchema.current else {
+                            localSkipped += 1
+                            continue
+                        }
+                        if let sinceKey, record.startedAt < sinceKey {
+                            continue
+                        }
+                        if let untilKey, record.startedAt > untilKey {
+                            continue
+                        }
+                        local.append(record)
+                    }
+                    resultsBuffer[chunkIndex] = local
+                    skippedBuffer[chunkIndex] = localSkipped
+                }
+            }
+        }
+
+        // 逐次経路の skipped の数え方は「読めない・版が新しすぎる」だけで、日付範囲外は数えない。
+        // ここも同じ(壊れたディレクトリ一覧の失敗は逐次と同様 continue で黙って飛ばす)
+        warnSkipped(chunkSkipped.reduce(0, +), kind: "scenario record")
+        return chunkResults.flatMap { $0 }
+            .sorted { $0.runID == $1.runID ? $0.scenarioID < $1.scenarioID : $0.runID < $1.runID }
     }
 }

@@ -208,13 +208,18 @@ public struct RunSummary: Sendable {
     /// degradedWorkers / freezeRetries と**同じ事実の構造化版**(run.json の workerAnomalies)。
     /// 表示は prose 側、機械的な除外はこちら(片方だけ足さない)
     public let workerAnomalies: [WorkerAnomalyRecord]
+    /// `fleetest run --performance` の run か(RunMetaRecord.performanceMode にそのまま焼き込む)。
+    /// orchestrator 自身は performanceMode を知らないため常に false を返す —— measurementInvalid と
+    /// 同じ理由で呼び手が自分で構築した RunSummary へ埋める
+    public let performanceMode: Bool
 
     public init(total: Int, failed: Int, degradedWorkers: [String] = [],
                 freezeRetries: [String] = [],
                 blankRepairs: [String] = [], blankExclusions: [String] = [],
                 measurementInvalid: Bool = false, measurementInvalidReasons: [String] = [],
                 fmUnavailableScenarios: Int = 0,
-                workerAnomalies: [WorkerAnomalyRecord] = []) {
+                workerAnomalies: [WorkerAnomalyRecord] = [],
+                performanceMode: Bool = false) {
         self.total = total
         self.failed = failed
         self.degradedWorkers = degradedWorkers
@@ -225,6 +230,7 @@ public struct RunSummary: Sendable {
         self.measurementInvalidReasons = measurementInvalidReasons
         self.fmUnavailableScenarios = fmUnavailableScenarios
         self.workerAnomalies = workerAnomalies
+        self.performanceMode = performanceMode
     }
 
     /// FM の呼び出しが**全部失敗した**か(呼び出しが1件も無いときは false = 使っていないだけ)

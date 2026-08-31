@@ -1001,7 +1001,8 @@ struct RunScenarios: AsyncParsableCommand {
                             blankExclusions: runSummary.blankExclusions,
                             measurementInvalid: runSummary.measurementInvalid,
                             measurementInvalidReasons: runSummary.measurementInvalidReasons,
-                            workerAnomalies: runSummary.workerAnomalies)
+                            workerAnomalies: runSummary.workerAnomalies,
+                            performanceMode: runSummary.performanceMode)
             PhaseLog.mark("recorder-finish")
             try writeJUnitIfRequested(project: testProject, recorder: recorder)
             let skippedSuffix = notApplicable > 0

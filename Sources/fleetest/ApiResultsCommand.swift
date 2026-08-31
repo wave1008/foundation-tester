@@ -55,7 +55,11 @@ struct ApiResultsCommand: AsyncParsableCommand {
             slow: RunResultsQuery.slowTests(records, limit: 10),
             insights: RunResultsQuery.insights(records: records, runs: runs,
                                                definedClasses: definedScenarioClasses(of: testProject)),
-            matrix: matrixRuns > 0 ? RunResultsQuery.matrix(records: records, runs: runs, limit: matrixRuns) : nil)
+            matrix: matrixRuns > 0 ? RunResultsQuery.matrix(records: records, runs: runs, limit: matrixRuns) : nil,
+            triage: RunResultsQuery.triage(records),
+            dailyFullSuite: RunResultsQuery.fullSuiteDaily(records: records, runs: runs),
+            fullSuiteMinScenarios: RunResultsQuery.fullSuiteMinScenarios,
+            performance: RunResultsQuery.performanceReport(records: records, runs: runs))
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -80,10 +84,14 @@ private struct ApiResultsOutput: Encodable {
     let slow: [RunResultsQuery.SlowTestRow]
     let insights: [RunResultsQuery.InsightRow]
     let matrix: RunResultsQuery.MatrixReport?
+    let triage: RunResultsQuery.TriageReport
+    let dailyFullSuite: [RunResultsQuery.DailyRow]
+    let fullSuiteMinScenarios: Int
+    let performance: RunResultsQuery.PerformanceReport
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, project, generatedAt, since, runs, summary, flaky, devices, daily, trend,
-             slow, insights, matrix
+             slow, insights, matrix, triage, dailyFullSuite, fullSuiteMinScenarios, performance
     }
 
     func encode(to encoder: Encoder) throws {
@@ -105,5 +113,9 @@ private struct ApiResultsOutput: Encodable {
         if let matrix {
             try container.encode(matrix, forKey: .matrix)
         }
+        try container.encode(triage, forKey: .triage)
+        try container.encode(dailyFullSuite, forKey: .dailyFullSuite)
+        try container.encode(fullSuiteMinScenarios, forKey: .fullSuiteMinScenarios)
+        try container.encode(performance, forKey: .performance)
     }
 }

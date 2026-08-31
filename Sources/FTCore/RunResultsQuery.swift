@@ -48,8 +48,20 @@ public enum RunResultsQuery {
 
     private static let isoFormatter = ISO8601DateFormatter()
 
+    /// ISO8601 パース(ICU)は1回あたり数µs〜十µs掛かり、この関数は**ソートの比較器の中**から
+    /// 呼ばれる(= 同じ文字列を n log n 回パースする)。メモ化しないと 90 日窓の集計が
+    /// パースだけで数十秒になる(実測: E2E-CMP 84s → メモ化で解消)。
+    /// キャッシュは (プロセス内の distinct startedAt 数) でしか育たないので上限は設けない
+    private static let dateCacheLock = NSLock()
+    private static var dateCache: [String: Date] = [:]
+
     private static func date(from startedAt: String) -> Date {
-        isoFormatter.date(from: startedAt) ?? .distantPast
+        dateCacheLock.lock()
+        defer { dateCacheLock.unlock() }
+        if let cached = dateCache[startedAt] { return cached }
+        let parsed = isoFormatter.date(from: startedAt) ?? .distantPast
+        dateCache[startedAt] = parsed
+        return parsed
     }
 
     private static func median(_ values: [Int]) -> Double? {
@@ -233,6 +245,22 @@ public enum RunResultsQuery {
                 failed: group.count - passedCount)
         }
         return rows.sorted { $0.date < $1.date }
+    }
+
+    /// フルスイート相当とみなす run の最小シナリオ実行数。
+    /// 根拠(docs/results-json.md の実測): 1〜2本の run(デバッグ実行)は失敗率 18〜27%、
+    /// 30本+ の run は 0.5〜1.1% —— 小さい run の比率が変わるだけで素の失敗率の推移が動く。
+    /// docs/results-json.md のレシピ(-ge 30)と同じ値を保つこと。
+    public static let fullSuiteMinScenarios = 30
+
+    /// (run.total ?? 0) >= minScenarios の run に属するレコードだけで dailyRates を計算する。
+    /// 未完了 run(total=nil)は自然に除外される
+    public static func fullSuiteDaily(records: [ScenarioRunRecord], runs: [RunMetaRecord],
+                                      minScenarios: Int = fullSuiteMinScenarios,
+                                      timeZone: TimeZone = .current) -> [DailyRow] {
+        let fullSuiteRunIDs = Set(runs.filter { ($0.total ?? 0) >= minScenarios }.map(\.runID))
+        let filtered = records.filter { fullSuiteRunIDs.contains($0.runID) }
+        return dailyRates(filtered, timeZone: timeZone)
     }
 
     // MARK: - slow
@@ -430,6 +458,82 @@ public enum RunResultsQuery {
         }
     }
 
+    // MARK: - triage
+
+    public struct TriageRow: Codable, Sendable, Equatable {
+        public let section: String?
+        public let command: String?
+        public let failureKind: String?
+        public let count: Int
+        public let scenarioCount: Int
+        /// distinct・昇順・例示用に最大5件
+        public let scenarioIDs: [String]
+    }
+
+    public struct NoteCountRow: Codable, Sendable, Equatable {
+        public let note: String
+        public let count: Int
+    }
+
+    public struct TriageReport: Codable, Sendable, Equatable {
+        public let totalFailed: Int
+        /// failedSteps が nil/空(ステップ未到達)。rows には含めない
+        public let unreachedCount: Int
+        public let rows: [TriageRow]
+        public let noteCounts: [NoteCountRow]
+    }
+
+    private struct TriageKey: Hashable {
+        let section: String?
+        let command: String?
+        let failureKind: String?
+    }
+
+    /// グループ鍵は failedSteps.first の (section, command, failureKind)。
+    /// nil は「丸めず」別グループのまま保つ(CLAUDE.md「失敗の記録に置くのは事実だけ」)
+    public static func triage(_ records: [ScenarioRunRecord]) -> TriageReport {
+        let failed = records.filter { !$0.passed }
+        var unreachedCount = 0
+        var byKey: [TriageKey: [ScenarioRunRecord]] = [:]
+        var noteCounts: [String: Int] = [:]
+
+        for record in failed {
+            let steps = record.failedSteps ?? []
+            for step in steps {
+                for note in step.notes ?? [] {
+                    noteCounts[note, default: 0] += 1
+                }
+            }
+            guard let first = steps.first else {
+                unreachedCount += 1
+                continue
+            }
+            let key = TriageKey(section: first.section, command: first.command, failureKind: first.failureKind)
+            byKey[key, default: []].append(record)
+        }
+
+        let rows = byKey.map { key, group -> TriageRow in
+            let scenarioIDs = Set(group.map(\.scenarioID)).sorted()
+            return TriageRow(
+                section: key.section, command: key.command, failureKind: key.failureKind,
+                count: group.count, scenarioCount: scenarioIDs.count,
+                scenarioIDs: Array(scenarioIDs.prefix(5)))
+        }.sorted { lhs, rhs in
+            if lhs.count != rhs.count { return lhs.count > rhs.count }
+            if (lhs.section ?? "") != (rhs.section ?? "") { return (lhs.section ?? "") < (rhs.section ?? "") }
+            if (lhs.command ?? "") != (rhs.command ?? "") { return (lhs.command ?? "") < (rhs.command ?? "") }
+            return (lhs.failureKind ?? "") < (rhs.failureKind ?? "")
+        }
+
+        let noteRows = noteCounts.map { NoteCountRow(note: $0.key, count: $0.value) }
+            .sorted { lhs, rhs in
+                lhs.count != rhs.count ? lhs.count > rhs.count : lhs.note < rhs.note
+            }
+
+        return TriageReport(
+            totalFailed: failed.count, unreachedCount: unreachedCount, rows: rows, noteCounts: noteRows)
+    }
+
     // MARK: - matrix
 
     public struct MatrixRunColumn: Codable, Sendable, Equatable {
@@ -525,6 +629,164 @@ public enum RunResultsQuery {
         return MatrixReport(
             runs: runColumns,
             scenarios: sortedByScenarioID(flakyRows) + sortedByScenarioID(allFailRows) + sortedByScenarioID(allPassRows))
+    }
+
+    // MARK: - performance
+
+    public struct PerfRunRow: Codable, Sendable, Equatable {
+        public let runID: String
+        public let startedAt: String
+        public let profile: String?
+        public let host: String
+        /// finishedAt - startedAt(ms)。どちらか欠落・パース不能なら nil
+        public let wallClockMs: Int?
+        /// この run のシナリオ所要合計(ms)。isSkippedSynthetic は除外
+        public let scenarioTotalMs: Int
+        /// 同・レコード数(isSkippedSynthetic 除外)
+        public let scenarioCount: Int
+        public let passed: Int?
+        public let failed: Int?
+        /// test time の下限 = 最長1本(これ以上レーンを増やしても速くならない)。レコード0件なら nil
+        public let maxScenarioMs: Int?
+        public let maxScenarioID: String?
+        /// worker が入っている distinct worker 数(worker nil のレコードは数えない)
+        public let laneCount: Int
+        /// ProfileRunner が run 末尾に出す Lane utilisation の記録版に相当する近似(シナリオ所要ベース)。
+        /// scenarioTotalMs / (laneCount × wallClockMs) × 100。wallClockMs が nil/0 か laneCount==0 なら nil
+        public let avgLaneUtilisationPct: Double?
+    }
+
+    public struct PerfScenarioDelta: Codable, Sendable, Equatable {
+        public let scenarioID: String
+        public let platform: String
+        public let latestMs: Int
+        public let previousMs: Int
+        /// (latest - previous) / previous * 100。previous==0 の組は比較から除外する(発散)
+        public let deltaPct: Double
+    }
+
+    public struct PerformanceReport: Codable, Sendable, Equatable {
+        /// 有効な計測 run(performanceMode==true かつ measurementInvalid != true)。runID 降順(新しい順)
+        public let runs: [PerfRunRow]
+        /// performanceMode==true だが measurementInvalid==true で除外した run 数(事実として出す)
+        public let invalidCount: Int
+        /// 最新の有効 perf run と、**同じ (profile, host)** の直前の有効 perf run の突き合わせ。
+        /// **両方に存在する (scenarioID, platform) だけ**を比べる(集合を揃える規律。
+        /// 同一 run 内に同じ組が複数あるときは startedAt 最新を採る = matrix と同じ規律)。
+        /// deltaPct 降順(悪化が上)、同値は scenarioID 昇順。相手が無ければ空
+        public let comparison: [PerfScenarioDelta]
+        /// comparison の比較相手の runID(無ければ nil)
+        public let comparedRunID: String?
+    }
+
+    private struct PerfScenarioKey: Hashable {
+        let scenarioID: String
+        let platform: String
+    }
+
+    /// performanceMode==true の run だけを対象に、有効な計測(measurementInvalid でない)run の
+    /// 一覧と、直近2件の突き合わせを返す
+    public static func performanceReport(records: [ScenarioRunRecord], runs: [RunMetaRecord]) -> PerformanceReport {
+        let perfRuns = runs.filter { $0.performanceMode == true }
+        let validRuns = perfRuns.filter { $0.measurementInvalid != true }
+            .sorted { $0.runID > $1.runID }
+        let invalidCount = perfRuns.count - validRuns.count
+
+        let runRows = validRuns.map { perfRunRow(run: $0, records: records) }
+        let (comparison, comparedRunID) = perfComparison(validRuns: validRuns, records: records)
+
+        return PerformanceReport(
+            runs: runRows, invalidCount: invalidCount,
+            comparison: comparison, comparedRunID: comparedRunID)
+    }
+
+    private static func perfRunRow(run: RunMetaRecord, records: [ScenarioRunRecord]) -> PerfRunRow {
+        let scoped = records.filter { $0.runID == run.runID && !isSkippedSynthetic($0) }
+        let scenarioTotalMs = scoped.reduce(0) { $0 + $1.durationMs }
+        let wallClock = perfWallClockMs(run)
+        let laneCount = Set(scoped.compactMap(\.worker)).count
+        let longest = perfMaxScenario(scoped)
+        let utilisation: Double? = {
+            guard let wallClock, wallClock > 0, laneCount > 0 else { return nil }
+            return Double(scenarioTotalMs) / (Double(laneCount) * Double(wallClock)) * 100
+        }()
+        return PerfRunRow(
+            runID: run.runID, startedAt: run.startedAt, profile: run.profile, host: run.host,
+            wallClockMs: wallClock, scenarioTotalMs: scenarioTotalMs, scenarioCount: scoped.count,
+            passed: run.passed, failed: run.failed,
+            maxScenarioMs: longest?.ms, maxScenarioID: longest?.id,
+            laneCount: laneCount, avgLaneUtilisationPct: utilisation)
+    }
+
+    private static func perfWallClockMs(_ run: RunMetaRecord) -> Int? {
+        guard let finishedAt = run.finishedAt,
+              let start = isoFormatter.date(from: run.startedAt),
+              let finish = isoFormatter.date(from: finishedAt) else { return nil }
+        return Int((finish.timeIntervalSince(start) * 1000).rounded())
+    }
+
+    /// 最長所要のレコード(同値は scenarioID 昇順で決定的に選ぶ)。走査順に依存しない —— 同値のときは
+    /// 「より小さい scenarioID」のときだけ入れ替えるので、先に見つかった側の scenarioID の大小と無関係に
+    /// 最終的に集合内最小の scenarioID へ収束する
+    private static func perfMaxScenario(_ records: [ScenarioRunRecord]) -> (ms: Int, id: String)? {
+        var best: (ms: Int, id: String)?
+        for record in records {
+            guard let current = best else { best = (record.durationMs, record.scenarioID); continue }
+            if record.durationMs > current.ms
+                || (record.durationMs == current.ms && record.scenarioID < current.id) {
+                best = (record.durationMs, record.scenarioID)
+            }
+        }
+        return best
+    }
+
+    private static func perfComparison(
+        validRuns: [RunMetaRecord], records: [ScenarioRunRecord]
+    ) -> ([PerfScenarioDelta], String?) {
+        guard let latest = validRuns.first,
+              let previous = validRuns.dropFirst().first(where: {
+                  $0.profile == latest.profile && $0.host == latest.host
+              }) else { return ([], nil) }
+
+        let latestDurations = perfLatestDurations(records: records, runID: latest.runID)
+        let previousDurations = perfLatestDurations(records: records, runID: previous.runID)
+
+        var deltas: [PerfScenarioDelta] = []
+        for (key, latestValue) in latestDurations {
+            guard let previousValue = previousDurations[key], previousValue.durationMs != 0 else { continue }
+            let deltaPct = Double(latestValue.durationMs - previousValue.durationMs)
+                / Double(previousValue.durationMs) * 100
+            deltas.append(PerfScenarioDelta(
+                scenarioID: key.scenarioID, platform: key.platform,
+                latestMs: latestValue.durationMs, previousMs: previousValue.durationMs, deltaPct: deltaPct))
+        }
+        let sorted = deltas.sorted { lhs, rhs in
+            if lhs.deltaPct != rhs.deltaPct { return lhs.deltaPct > rhs.deltaPct }
+            if lhs.scenarioID != rhs.scenarioID { return lhs.scenarioID < rhs.scenarioID }
+            return lhs.platform < rhs.platform
+        }
+        return (sorted, previous.runID)
+    }
+
+    /// (scenarioID, platform) ごとの最新レコードの所要(同一 run 内に複数あるときは startedAt 最新。
+    /// matrix の latestByKey と同じ規律)。isSkippedSynthetic は除外(duration 比較の対象外)。
+    /// **passed のレコードだけ** —— 失敗の durationMs はタイムアウト等「失敗経路の長さ」であって
+    /// シナリオの性能ではなく、比較に混ぜると巨大な偽の悪化が先頭に並ぶ
+    private static func perfLatestDurations(
+        records: [ScenarioRunRecord], runID: String
+    ) -> [PerfScenarioKey: (durationMs: Int, startedAt: String)] {
+        var result: [PerfScenarioKey: (durationMs: Int, startedAt: String)] = [:]
+        for record in records where record.runID == runID && record.passed && !isSkippedSynthetic(record) {
+            let key = PerfScenarioKey(scenarioID: record.scenarioID, platform: record.platform)
+            if let existing = result[key] {
+                if date(from: record.startedAt) > date(from: existing.startedAt) {
+                    result[key] = (record.durationMs, record.startedAt)
+                }
+            } else {
+                result[key] = (record.durationMs, record.startedAt)
+            }
+        }
+        return result
     }
 
     private static func severityRank(_ severity: String) -> Int {

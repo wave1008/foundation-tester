@@ -113,6 +113,54 @@ export const exploreHealStrings = {
     ja: "直近の実行",
     en: "Recent Runs",
   },
+  "exploreHeal.dashboard.headingPerformance": {
+    ja: "パフォーマンス(--performance run)",
+    en: "Performance (--performance runs)",
+  },
+  "exploreHeal.dashboard.headingPerfComparison": {
+    ja: "前回計測との比較",
+    en: "Comparison with Previous Measurement",
+  },
+  "exploreHeal.dashboard.colWallClock": {
+    ja: "壁時計",
+    en: "Wall Clock",
+  },
+  "exploreHeal.dashboard.colScenarioTotal": {
+    ja: "シナリオ所要合計",
+    en: "Scenario Total",
+  },
+  "exploreHeal.dashboard.colLaneCount": {
+    ja: "レーン",
+    en: "Lanes",
+  },
+  "exploreHeal.dashboard.colLaneUtilisation": {
+    ja: "稼働率",
+    en: "Utilisation",
+  },
+  "exploreHeal.dashboard.colMaxScenario": {
+    ja: "最長1本",
+    en: "Longest scenario",
+  },
+  "exploreHeal.dashboard.colScenario": {
+    ja: "シナリオ",
+    en: "Scenario",
+  },
+  "exploreHeal.dashboard.colPlatform": {
+    ja: "platform",
+    en: "platform",
+  },
+  "exploreHeal.dashboard.colPrevious": {
+    ja: "前回",
+    en: "Previous",
+  },
+  "exploreHeal.dashboard.colLatest": {
+    ja: "今回",
+    en: "Latest",
+  },
+  "exploreHeal.dashboard.perfEmpty": {
+    ja: "--performance を付けた run がまだありません(記録は次回の --performance 実行から)。",
+    en: "No --performance runs yet (recording starts from the next --performance run).",
+  },
   "exploreHeal.dashboard.headingInsights": {
     ja: "⚠ 注意が必要な現象",
     en: "⚠ Notable Issues",
@@ -208,5 +256,61 @@ export const exploreHealStrings = {
   "exploreHeal.dashboard.colResult": {
     ja: "結果",
     en: "Result",
+  },
+  "exploreHeal.dashboard.closeButton": {
+    ja: "閉じる",
+    en: "Close",
+  },
+  "exploreHeal.dashboard.headingTriage": {
+    ja: "失敗の仕分け",
+    en: "Failure Triage",
+  },
+  "exploreHeal.dashboard.headingTriageNotes": {
+    ja: "注記の内訳",
+    en: "Note Breakdown",
+  },
+  "exploreHeal.dashboard.colSection": {
+    ja: "フェーズ",
+    en: "Section",
+  },
+  "exploreHeal.dashboard.colCommand": {
+    ja: "コマンド",
+    en: "Command",
+  },
+  "exploreHeal.dashboard.colFailureKind": {
+    ja: "経路",
+    en: "Failure Kind",
+  },
+  "exploreHeal.dashboard.colCount": {
+    ja: "件数",
+    en: "Count",
+  },
+  "exploreHeal.dashboard.colScenarioExamples": {
+    ja: "シナリオ例",
+    en: "Example Scenarios",
+  },
+  "exploreHeal.dashboard.colNote": {
+    ja: "注記",
+    en: "Note",
+  },
+  "exploreHeal.dashboard.triageEmpty": {
+    ja: "失敗はありません。",
+    en: "No failures.",
+  },
+  "exploreHeal.dashboard.reportNotFound": {
+    ja: "レポートを開けません。他のマシンで実行された run のレポートは gitignore のため転送されず、開けません。",
+    en: "Can't open the report. Reports from runs on another machine aren't transferred (they're gitignored), so they can't be opened.",
+  },
+  "exploreHeal.dashboard.projectSelectTitle": {
+    ja: "プロジェクトを切り替える(fleetest.project を変更します)",
+    en: "Switch project (changes the fleetest.project setting)",
+  },
+  "exploreHeal.dashboard.runDetailFetchFailed": {
+    ja: "実行詳細の取得に失敗しました。出力パネル「fleetest」を確認してください({detail})",
+    en: "Failed to fetch run detail. Check the “fleetest” output panel ({detail})",
+  },
+  "exploreHeal.dashboard.trendFetchFailed": {
+    ja: "実行履歴の取得に失敗しました。出力パネル「fleetest」を確認してください({detail})",
+    en: "Failed to fetch scenario history. Check the “fleetest” output panel ({detail})",
   },
 } satisfies MessageDict;

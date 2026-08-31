@@ -105,7 +105,7 @@ enum ProfileRunner {
         }
         // 全部が対象外ならデバイスを起こす意味がない(0 失敗で終える = 正しく緑)
         if items.isEmpty {
-            return RunSummary(total: 0, failed: 0)
+            return RunSummary(total: 0, failed: 0, performanceMode: performanceMode)
         }
 
         // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices の宣言参照)。
@@ -468,7 +468,8 @@ enum ProfileRunner {
                           measurementInvalid: validity.invalid,
                           measurementInvalidReasons: validity.reasons,
                           fmUnavailableScenarios: finalSummary.fmUnavailableScenarios,
-                          workerAnomalies: finalSummary.workerAnomalies)
+                          workerAnomalies: finalSummary.workerAnomalies,
+                          performanceMode: performanceMode)
     }
 
     /// heal 有効 run の開始前に FM の実呼び出し可否を確認して警告する。availability は嘘をつく
