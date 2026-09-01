@@ -1,28 +1,28 @@
 /* style.css
- * 結果ダッシュボード webview のスタイル。esbuild が media/dashboard/style.css に
- * バンドルし、dashboardPanel.ts の renderHtml() が <link rel="stylesheet"> で読み込む。
+ * 結果ダッシュボード(モニターパネル「ダッシュボード」タブ)のスタイル。単独 entryPoint ではなく、
+ * src/webview/monitor/style.css の @import '../dashboard/style.css' で media/monitor/style.css へ
+ * 束ねられる(esbuild が相対 @import をバンドルする。モニター側 renderHtml() の
+ * <link rel="stylesheet"> 1本で両方読み込まれる)。#toolbar/.toolbar はデバイスタブの同名 id/class と
+ * 衝突するため .dash-toolbar に改名済み(id 側は monitorHtml.ts の renderDashboardPanel() 側)。
  */
 
 :root {
   color-scheme: light dark;
 }
-* { box-sizing: border-box; }
-html, body {
-  height: 100%;
-}
-body {
-  margin: 0;
+/* モニターの document に @import で同居するので、要素セレクタは #panel-dashboard で必ず囲む
+   (body / h2 / button を素で書くと他タブへ漏れる。2026-09-01 実害: body の padding が全タブへ)。
+   ペイン自身がスクロール領域(.tab-panel は overflow:hidden の flex 列)。 */
+#panel-dashboard {
+  overflow-y: auto;
   padding: 0 16px 24px 16px;
-  font-family: var(--vscode-font-family, sans-serif);
   font-size: var(--vscode-font-size, 13px);
-  color: var(--vscode-foreground);
-  background-color: var(--vscode-editor-background);
 }
-h2 {
+#panel-dashboard * { box-sizing: border-box; }
+#panel-dashboard h2 {
   font-size: 1.05em;
   margin: 0 0 8px 0;
 }
-.toolbar {
+.dash-toolbar {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -49,7 +49,7 @@ select.dash-project {
   color: var(--vscode-descriptionForeground);
   font-size: 0.9em;
 }
-button {
+#panel-dashboard button {
   font-family: inherit;
   font-size: inherit;
   padding: 4px 10px;
@@ -59,7 +59,7 @@ button {
   color: var(--vscode-button-foreground);
   cursor: pointer;
 }
-button:hover:not(:disabled) { background-color: var(--vscode-button-hoverBackground); }
+#panel-dashboard button:hover:not(:disabled) { background-color: var(--vscode-button-hoverBackground); }
 
 .status-message {
   padding: 24px 0;

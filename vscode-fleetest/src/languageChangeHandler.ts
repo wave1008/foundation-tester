@@ -11,8 +11,9 @@ export interface LanguageChangeDeps {
   readonly setLocale: () => void;
   readonly isRunActive: () => boolean;
   readonly rebuildTestTree: () => void;
-  /** 開いている各パネル(Monitor/Live/Dashboard/HealReview)の relocalize()。パネル未生成分は
-   * 各 relocalize() 自身が no-op にする(呼び出し側では判定しない)。 */
+  /** 開いている各パネル(Monitor/Live/HealReview)の relocalize()。パネル未生成分は
+   * 各 relocalize() 自身が no-op にする(呼び出し側では判定しない)。「ダッシュボード」タブは
+   * モニターパネルに統合済みのため Monitor の relocalize() が html 全体の再構築で併せて再描画する。 */
   readonly relocalizePanels: readonly (() => void)[];
 }
 

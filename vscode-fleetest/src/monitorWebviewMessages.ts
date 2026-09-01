@@ -6,6 +6,8 @@
 // にあり、メッセージ型はそれらを組み合わせて定義する。
 
 import type { MonitorDeviceFilter } from "./config";
+import type { DashboardFromWebviewMessage, DashboardToWebviewMessage } from "./dashboardModel";
+import { isDashboardFromWebviewMessage } from "./dashboardModel";
 import type {
   RecordingErrorEntry,
   RecordingScenarioDevice,
@@ -390,7 +392,14 @@ export type MonitorToWebviewMessage =
        *  取り違えないための欄。Sources/FTCore/RecordingIndex.swift の sourcesFailed と同期)。 */
       readonly sourcesFailed?: number | null;
       readonly encoderFallback?: boolean;
-    };
+    }
+  // ---- ダッシュボードタブ -------------------------------------------------------------------
+  // 「結果ダッシュボード」タブ(旧 dashboardPanel.ts)向けの封筒。dashboardModel.ts の
+  // DashboardToWebviewMessage/DashboardFromWebviewMessage 自体はモニターへの統合前と不変
+  // (webview→host の ready/refresh 等がモニター既存の同名メッセージと衝突するため、
+  // "dashboard" 型の封筒に包んで送る。monitorPanel.ts → monitorDashboardController.ts、
+  // webview 側は src/webview/monitor/dashboardTab.js の handleDashboardMessage)。
+  | { readonly type: "dashboard"; readonly message: DashboardToWebviewMessage };
 
 /** 検証済みの MonitorEvent を、webview へそのまま postMessage できる形に変換する。 */
 // monitorHold は webview へ送らない(monitorProcessManager.ts が OUTPUT ログで処理して return する)
@@ -686,7 +695,11 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "streamStall"; readonly scope?: "tile" | "live"; readonly device?: string }
   // ---- 録画タブ ---------------------------------------------------------------------------
   | { readonly type: "recordingsRefresh" }
-  | { readonly type: "recordingsOpen"; readonly project: string; readonly runID: string };
+  | { readonly type: "recordingsOpen"; readonly project: string; readonly runID: string }
+  // ---- ダッシュボードタブ -------------------------------------------------------------------
+  // dashboardModel.ts の DashboardFromWebviewMessage をそのまま運ぶ封筒(上の
+  // MonitorToWebviewMessage の "dashboard" 型と対)。
+  | { readonly type: "dashboard"; readonly message: DashboardFromWebviewMessage };
 
 /**
  * machineDevicesSync の add[] 1件(MachineDeviceAddEntry)の検証。name の空文字は不正。
@@ -1022,6 +1035,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return true;
     case "recordingsOpen":
       return typeof value.project === "string" && value.project !== "" && typeof value.runID === "string" && value.runID !== "";
+    case "dashboard":
+      return isDashboardFromWebviewMessage(value.message);
     default:
       return false;
   }

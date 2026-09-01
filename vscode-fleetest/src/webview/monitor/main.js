@@ -69,6 +69,7 @@ import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab
 import { activateTab, TAB_IDS, switchTab } from './tabs.js';
 import { setTilePaneHeight, setTileAutoFit } from './splitter.js';
 import { adoptTitleHoverTips } from './hoverTip.js';
+import { handleDashboardMessage } from './dashboardTab.js';
 
 window.addEventListener('message', (event) => {
   const message = event.data;
@@ -253,6 +254,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'tileAutoFit':
       setTileAutoFit(message.value);
+      break;
+    case 'dashboard':
+      handleDashboardMessage(message.message);
       break;
     default:
       break;

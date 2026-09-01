@@ -47,12 +47,13 @@ async function buildWebview() {
     // outdir を media/(将来複数パネル分の親)にし、outbase を src/webview/ に固定することで、
     // 各エントリの src/webview/<パネル名>/ 以下の相対パスをそのまま media/<パネル名>/ 配下へ
     // 振り分ける(monitor 用の main.js/style.css は media/monitor/ に出力される)。
+    // src/webview/dashboard/ は単独 entryPoint を持たない(「ダッシュボード」はモニターパネルの
+    // タブへ統合済み。main.js は monitor/dashboardTab.js が import し、style.css は
+    // monitor/style.css が @import で束ねる。dashboard/ 配下のモジュール自体は変更しない)。
     entryPoints: [
       path.join(rootDir, "src/webview/monitor/main.js"),
       path.join(rootDir, "src/webview/monitor/style.css"),
       path.join(rootDir, "src/webview/live/main.js"),
-      path.join(rootDir, "src/webview/dashboard/main.js"),
-      path.join(rootDir, "src/webview/dashboard/style.css"),
     ],
     bundle: true,
     platform: "browser",

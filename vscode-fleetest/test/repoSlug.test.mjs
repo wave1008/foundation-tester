@@ -12,7 +12,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 
@@ -80,6 +80,8 @@ function trackedTextFiles() {
     .filter((rel) => !SKIP_FILES.has(path.basename(rel)))
     .filter((rel) => !SKIP_PREFIXES.some((p) => rel.startsWith(p)))
     .filter((rel) => TEXT_EXT.has(path.extname(rel)))
+    // 削除済みだが未コミットのファイルは ls-files に残る(コミット前のローカルで落ちない)
+    .filter((rel) => existsSync(path.join(ROOT, rel)))
     // シンボリックリンクは実体を別途走査するので読まない
     .filter((rel) => !lstatSync(path.join(ROOT, rel)).isSymbolicLink());
 }

@@ -1,5 +1,6 @@
 // runDetail.js
-// run 詳細セクション(#section-run-detail、dashboardPanel.ts の静的スケルトン参照)の表示ロジック。
+// run 詳細セクション(#section-run-detail、monitorHtml.ts の renderDashboardPanel() が静的
+// スケルトンを持つ)の表示ロジック。
 // runs テーブルの行クリック(render.js)から requestRunDetail(runID) で開始し、host からの
 // {type:'runDetail'|'runDetailError'} 受信時に main.js が showRunDetailData/showRunDetailError を呼ぶ。
 // メッセージ型は src/dashboardModel.ts の DashboardFromWebviewMessage/DashboardToWebviewMessage と同期。

@@ -352,7 +352,7 @@ export function renderMatrixTable(matrix) {
   const headRow = document.getElementById('table-matrix-head');
   const body = document.getElementById('table-matrix-body');
 
-  // 先頭2列(シナリオ名・成功率)は dashboardPanel.ts の静的 HTML(i18n 済み見出し)。
+  // 先頭2列(シナリオ名・成功率)は monitorHtml.ts renderDashboardPanel() の静的 HTML(i18n 済み見出し)。
   // run 列は本数が可変なのでここで都度再構築する(未翻訳の技術的な日時見出しのみ)。
   while (headRow.children.length > 2) {
     headRow.removeChild(headRow.lastChild);

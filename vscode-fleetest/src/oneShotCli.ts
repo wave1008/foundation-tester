@@ -1,6 +1,6 @@
 // oneShotCli.ts
 // FleetestCli の直列キューに乗せず単発 spawn する CLI 呼び出しヘルパー(list-devices 等、
-// ビルドを伴わない読み取り専用コマンド向け)。monitorLiveController.ts/dashboardPanel.ts が共有する。
+// ビルドを伴わない読み取り専用コマンド向け)。monitorLiveController.ts/monitorDashboardController.ts が共有する。
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable } from "node:stream";

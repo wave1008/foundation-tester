@@ -1,5 +1,5 @@
 // バッチH 辞書。namespace: exploreHeal.
-// 対象ソース: healReviewPanel.ts, healModel.ts, dashboardPanel.ts, dashboardModel.ts
+// 対象ソース: healReviewPanel.ts, healModel.ts, monitorDashboardController.ts, dashboardModel.ts
 // キーは "exploreHeal." 始まり。ja は元の日本語と byte-identical(既存テスト互換)。
 import type { MessageDict } from "../core";
 
@@ -80,7 +80,7 @@ export const exploreHealStrings = {
     en: "apply-heal failed: {message}",
   },
 
-  // ---- dashboardPanel.ts ----
+  // ---- ダッシュボードタブ(monitorDashboardController.ts / monitorHtml.ts renderDashboardPanel()) ----
   "exploreHeal.dashboard.panelTitle": {
     ja: "fleetest 結果ダッシュボード",
     en: "fleetest Results Dashboard",

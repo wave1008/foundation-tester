@@ -9,6 +9,11 @@
 // - monitorDeviceStreamController.ts の MonitorDeviceStreamController: デバイスタイルの画面ストリーミング
 //   (iOS/Android共通の StreamPipeline)管理。connected な monitorFrame ポーリングとの間引き調停は
 //   MonitorProcessManager 側。
+// - monitorDashboardController.ts の MonitorDashboardController: 「ダッシュボード」タブ(旧・単独
+//   パネル dashboardPanel.ts)。`fleetest api results`/`results-run` のワンショット spawn と描画データの
+//   配信。webview⇔host は "dashboard" 型の封筒({type:"dashboard", message: ...})で包んで送る
+//   (モニター既存の ready/refresh 等と衝突するため。dashboardModel.ts の
+//   DashboardFromWebviewMessage/DashboardToWebviewMessage 自体は不変)。
 // - monitorHtml.ts: webview の HTML 本文(renderHtml/generateNonce/PANEL_TITLE)
 // - monitorModel.ts / runLaneModel.ts / liveModel.ts: vscode 非依存の純粋関数(検証・変換・状態遷移)
 //
@@ -38,6 +43,7 @@ import {
 } from "./monitorModel";
 import { type MachineLock, occupiedMachines } from "./machineLockModel";
 import { MonitorBridgeWatchdog } from "./monitorBridgeWatchdog";
+import { MonitorDashboardController } from "./monitorDashboardController";
 import { MonitorDeviceOps } from "./monitorDeviceOps";
 import { MonitorDeviceStreamController } from "./monitorDeviceStreamController";
 import { MonitorHealthWatchdog } from "./monitorHealthWatchdog";
@@ -157,6 +163,9 @@ export function registerMonitorPanel(
     statusItem,
     // 引数のタブ名は更新通知(updateCheck.ts)が "settings" を渡す。省略時は現在のタブのまま。
     vscode.commands.registerCommand("fleetest.showDeviceMonitor", (tab?: string) => controller.show(tab)),
+    // 旧・単独パネル "結果ダッシュボード" は撤去済み(モニターのタブへ統合)。このコマンドは
+    // モニターパネルを開いてダッシュボードタブを選択する動きに変える。
+    vscode.commands.registerCommand("fleetest.showResultsDashboard", () => controller.show("dashboard")),
   );
 
   return { relocalize: () => controller.relocalize() };
@@ -175,6 +184,7 @@ export class MonitorPanelController implements vscode.Disposable {
   private readonly deviceStream: MonitorDeviceStreamController;
   private readonly recordings: MonitorRecordingsController;
   private readonly update: MonitorUpdateController;
+  private readonly dashboard: MonitorDashboardController;
 
   /** パネル再作成時にhydrateLaneUi()で流し込むため、実行を跨いで保持する。 */
   private readonly laneState = createRunLaneState();
@@ -269,6 +279,13 @@ export class MonitorPanelController implements vscode.Disposable {
       outputChannel: this.outputChannel,
       post: (message) => this.post(message as never),
     });
+    this.dashboard = new MonitorDashboardController({
+      workspaceRoot: this.workspaceRoot,
+      getConfig: this.getConfig,
+      outputChannel: this.outputChannel,
+      post: (message) => this.post({ type: "dashboard", message }),
+      isPanelActive: () => this.panel !== undefined,
+    });
     // enqueueLifecycleJob 委譲のため deviceOps より後に生成する。
     this.bridgeWatchdog = new MonitorBridgeWatchdog({
       post: (message) => this.post(message),
@@ -308,6 +325,12 @@ export class MonitorPanelController implements vscode.Disposable {
       if (event.affectsConfiguration("fleetest.monitorDeviceFilter")) {
         this.profiles.postProfileInfo();
         this.processManager.repostDevicesWithCurrentFilter();
+      }
+      // Select Project(fleetest.project の設定更新)にダッシュボードタブも追従する。テストビューは
+      // 設定変更で refresh するのにこのタブだけ据え置きだと、切り替えたのにヘッダが旧プロジェクトの
+      // まま、に見える(2026-09-01 実害。旧 dashboardPanel.ts から移設)。
+      if (event.affectsConfiguration("fleetest.project")) {
+        this.dashboard.onProjectSettingChanged();
       }
     });
   }
@@ -378,6 +401,7 @@ export class MonitorPanelController implements vscode.Disposable {
       this.processManager.stopMonitorProcess();
       this.processManager.stopHostMetricsProcess();
       this.deviceStream.dispose();
+      this.dashboard.dispose();
     });
 
     this.pendingInitialTab = initialTab;
@@ -407,6 +431,7 @@ export class MonitorPanelController implements vscode.Disposable {
     this.processManager.stopMonitorProcess();
     this.processManager.stopHostMetricsProcess();
     this.deviceStream.dispose();
+    this.dashboard.dispose();
     const panel = this.panel;
     this.panel = undefined;
     panel?.dispose();
@@ -483,6 +508,7 @@ export class MonitorPanelController implements vscode.Disposable {
       case "runStarted":
         this.laneSectionVisible = true;
         this.post({ type: "laneSectionVisible", visible: true });
+        this.dashboard.noteRunStarted(message.isDryRun);
         break;
       case "event":
         if (message.event.kind === "wipeStatus") {
@@ -505,6 +531,7 @@ export class MonitorPanelController implements vscode.Disposable {
         // がどれも起きず、終わった run が出ないままになる。runEnded は NDJSON プロセス終了後
         // (= recordings/index.json 書き出し済み)なので、ここで取り直せば競合しない。
         void this.recordings.refreshSessions();
+        this.dashboard.noteRunEnded();
         break;
     }
   }
@@ -751,6 +778,9 @@ export class MonitorPanelController implements vscode.Disposable {
         break;
       case "recordingsOpen":
         void this.recordings.openSession(message.project, message.runID);
+        break;
+      case "dashboard":
+        this.dashboard.handleWebviewMessage(message.message);
         break;
     }
   }

@@ -1,6 +1,7 @@
 // performance.js
-// ダッシュボード最上部のパフォーマンスセクション(#section-performance、dashboardPanel.ts の
-// 静的スケルトン参照)。`--performance` run の集計(ApiResultsPayload.performance)を描画する。
+// ダッシュボード最上部のパフォーマンスセクション(#section-performance、monitorHtml.ts の
+// renderDashboardPanel() が静的スケルトンを持つ)。`--performance` run の集計
+// (ApiResultsPayload.performance)を描画する。
 // キー欠落(旧 CLI)は main.js 側で undefined のまま渡ってくるので、performance が undefined なら
 // セクションごと非表示にする(dashboardModel.ts の isApiResultsPayload と同じ契約)。
 

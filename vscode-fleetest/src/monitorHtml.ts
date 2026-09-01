@@ -41,6 +41,8 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 <body>
   ${renderTabBar()}
 
+  ${renderDashboardPanel()}
+
   ${renderDevicesPanel()}
 
   ${renderProfilesPanel()}
@@ -71,6 +73,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 
 function renderTabBar(): string {
   return `<div id="tabbar" role="tablist">
+    <button id="tab-dashboard" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-dashboard">${t("panels.tabs.dashboard")}</button>
     <button id="tab-devices" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="panel-devices">${t("panels.tabs.devices")}</button>
     <button id="tab-profiles" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-profiles">${t("panels.tabs.profiles")}</button>
     <button id="tab-recordings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-recordings">${t("panels.tabs.recordings")}</button>
@@ -79,6 +82,160 @@ function renderTabBar(): string {
     <!-- 更新があるときだけ現れるボタン(タブの並びの直後。タブに関係なく常に見える)。
          押すと設定タブへ切り替える。対向: settingsTab.js -->
     <button id="tabbar-update" class="tabbar-update" type="button" style="display: none;">${t("panels.settings.updateRunButton")}</button>
+  </div>`;
+}
+
+// 「ダッシュボード」タブ。旧・単独パネル(dashboardPanel.ts)の renderHtml() 本文をそのまま移設した
+// もの(セクション構成・id は不変。挙動は monitorDashboardController.ts / src/webview/monitor/
+// dashboardTab.js が持つ)。**#toolbar/.toolbar だけ dash- 接頭辞に改名**(デバイスタブの
+// #toolbar/.toolbar と同一 document 内で衝突するため。他の id/class は monitor 側と衝突しない
+// ことを確認済み)。
+function renderDashboardPanel(): string {
+  return `<div id="panel-dashboard" class="tab-panel" role="tabpanel" aria-labelledby="tab-dashboard" style="display: none;">
+  <div id="dash-toolbar" class="dash-toolbar">
+    <span class="dash-title">${t("exploreHeal.dashboard.title")}</span>
+    <select id="dash-project-select" class="dash-project" title="${t("exploreHeal.dashboard.projectSelectTitle")}"></select>
+    <button id="btn-refresh" type="button">${t("exploreHeal.dashboard.refreshButton")}</button>
+    <span id="dash-generated-at" class="dash-generated-at"></span>
+  </div>
+
+  <div id="status-loading" class="status-message" style="display: none;">${t("exploreHeal.dashboard.loading")}</div>
+  <div id="status-error" class="status-message status-error" style="display: none;"></div>
+  <div id="status-empty" class="status-message" style="display: none;">${t("exploreHeal.dashboard.empty")}</div>
+
+  <div id="content" class="content" style="display: none;">
+    <section id="section-performance" class="dash-section" style="display: none;">
+      <h2>${t("exploreHeal.dashboard.headingPerformance")}</h2>
+      <div id="perf-summary"></div>
+      <table id="table-perf-runs" class="dash-table">
+        <thead>
+          <tr><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>machine</th><th>profile</th><th>${t("exploreHeal.dashboard.colWallClock")}</th><th>${t("exploreHeal.dashboard.colTestTime")}</th><th>${t("exploreHeal.dashboard.colScenarioTotal")}</th><th>${t("exploreHeal.dashboard.colLaneCount")}</th><th>${t("exploreHeal.dashboard.colLaneUtilisation")}</th><th>${t("exploreHeal.dashboard.colMaxScenario")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colResult")}</th></tr>
+        </thead>
+        <tbody id="table-perf-runs-body"></tbody>
+      </table>
+      <h3 id="perf-comparison-heading">${t("exploreHeal.dashboard.headingPerfComparison")}</h3>
+      <table id="table-perf-comparison" class="dash-table">
+        <thead>
+          <tr><th>${t("exploreHeal.dashboard.colScenario")}</th><th>${t("exploreHeal.dashboard.colPlatform")}</th><th>${t("exploreHeal.dashboard.colPrevious")}</th><th>${t("exploreHeal.dashboard.colLatest")}</th><th>Δ%</th></tr>
+        </thead>
+        <tbody id="table-perf-comparison-body"></tbody>
+      </table>
+      <div id="perf-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.perfEmpty")}</div>
+    </section>
+
+    <section id="section-headline" class="dash-section">
+      <h2>${t("exploreHeal.dashboard.headingRecentRuns")}</h2>
+      <div id="headline-latest" class="headline-latest"></div>
+      <table id="table-runs" class="dash-table">
+        <thead>
+          <tr><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>machine</th><th>profile</th><th>${t("exploreHeal.dashboard.colWallClock")}</th><th>${t("exploreHeal.dashboard.colTestTime")}</th><th>${t("exploreHeal.dashboard.colScenarioTotal")}</th><th>${t("exploreHeal.dashboard.colLaneCount")}</th><th>${t("exploreHeal.dashboard.colLaneUtilisation")}</th><th>${t("exploreHeal.dashboard.colMaxScenario")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colResult")}</th></tr>
+        </thead>
+        <tbody id="table-runs-body"></tbody>
+      </table>
+    </section>
+
+    <section id="section-run-detail" class="dash-section" style="display: none;">
+      <h2 id="run-detail-title"></h2>
+      <button id="run-detail-close" type="button">${t("exploreHeal.dashboard.closeButton")}</button>
+      <div id="run-detail-body"></div>
+    </section>
+
+    <section id="section-insights" class="dash-section">
+      <h2 id="insights-heading">${t("exploreHeal.dashboard.headingInsights")}</h2>
+      <ul id="insights-list" class="insights-list"></ul>
+      <div id="insights-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.insightsEmpty")}</div>
+    </section>
+
+    <section id="section-triage" class="dash-section" style="display: none;">
+      <h2>${t("exploreHeal.dashboard.headingTriage")}</h2>
+      <div id="triage-summary"></div>
+      <table id="table-triage" class="dash-table">
+        <thead>
+          <tr><th>${t("exploreHeal.dashboard.colSection")}</th><th>${t("exploreHeal.dashboard.colCommand")}</th><th>${t("exploreHeal.dashboard.colFailureKind")}</th><th>${t("exploreHeal.dashboard.colCount")}</th><th>${t("exploreHeal.dashboard.colScenarioExamples")}</th></tr>
+        </thead>
+        <tbody id="table-triage-body"></tbody>
+      </table>
+      <h3>${t("exploreHeal.dashboard.headingTriageNotes")}</h3>
+      <table id="table-triage-notes" class="dash-table">
+        <thead>
+          <tr><th>${t("exploreHeal.dashboard.colNote")}</th><th>${t("exploreHeal.dashboard.colCount")}</th></tr>
+        </thead>
+        <tbody id="table-triage-notes-body"></tbody>
+      </table>
+      <div id="triage-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.triageEmpty")}</div>
+    </section>
+
+    <section id="section-flaky" class="dash-section">
+      <h2>${t("exploreHeal.dashboard.headingFlaky")}</h2>
+      <table id="table-flaky" class="dash-table">
+        <thead>
+          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colFailureRate")}</th><th>${t("exploreHeal.dashboard.colFlakinessScore")}</th><th>${t("exploreHeal.dashboard.colRecentResults")}</th></tr>
+        </thead>
+        <tbody id="table-flaky-body"></tbody>
+      </table>
+      <div id="flaky-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.flakyEmpty")}</div>
+    </section>
+
+    <section id="section-trend" class="dash-section" style="display: none;">
+      <h2 id="trend-title"></h2>
+      <button id="trend-close" type="button">${t("exploreHeal.dashboard.closeButton")}</button>
+      <div id="trend-body"></div>
+    </section>
+
+    <section id="section-slow" class="dash-section">
+      <h2>${t("exploreHeal.dashboard.headingSlow")}</h2>
+      <table id="table-slow" class="dash-table">
+        <thead>
+          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colAverage")}</th><th>p90</th><th>${t("exploreHeal.dashboard.colRegressionRate")}</th><th>${t("exploreHeal.dashboard.colSlowestScene")}</th></tr>
+        </thead>
+        <tbody id="table-slow-body"></tbody>
+      </table>
+      <div id="slow-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.slowEmpty")}</div>
+    </section>
+
+    <section id="section-matrix" class="dash-section" style="display: none;">
+      <h2>${t("exploreHeal.dashboard.headingMatrix")}</h2>
+      <div class="matrix-wrap">
+        <table id="table-matrix" class="dash-table matrix-table">
+          <thead>
+            <tr id="table-matrix-head"><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th>${t("exploreHeal.dashboard.colSuccessRate")}</th></tr>
+          </thead>
+          <tbody id="table-matrix-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="section-daily" class="dash-section">
+      <h2>${t("exploreHeal.dashboard.headingDaily")}</h2>
+      <label class="daily-toggle">
+        <input type="checkbox" id="daily-fullsuite-toggle">
+        <span id="daily-fullsuite-text"></span>
+      </label>
+      <div class="daily-chart-wrap">
+        <canvas id="daily-chart" class="daily-chart"></canvas>
+      </div>
+    </section>
+
+    <section id="section-summary" class="dash-section">
+      <h2>${t("exploreHeal.dashboard.headingSummary")}</h2>
+      <table id="table-summary" class="dash-table">
+        <thead>
+          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colSuccessRate")}</th><th>${t("exploreHeal.dashboard.colAvgMs")}</th><th>${t("exploreHeal.dashboard.colLastRun")}</th><th>${t("exploreHeal.dashboard.colLastResult")}</th></tr>
+        </thead>
+        <tbody id="table-summary-body"></tbody>
+      </table>
+    </section>
+
+    <section id="section-devices" class="dash-section">
+      <h2>${t("exploreHeal.dashboard.headingDevices")}</h2>
+      <table id="table-devices" class="dash-table">
+        <thead>
+          <tr><th>worker</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colSuccessRate")}</th><th>${t("exploreHeal.dashboard.colAvgMs")}</th></tr>
+        </thead>
+        <tbody id="table-devices-body"></tbody>
+      </table>
+    </section>
+  </div>
   </div>`;
 }
 

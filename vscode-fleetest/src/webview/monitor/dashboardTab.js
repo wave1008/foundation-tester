@@ -1,10 +1,16 @@
-// エントリポイント。dashboardPanel.ts からの postMessage を受けて3状態
-// (loading/error/data。データ0件は data 内で判定)を切り替え、各セクションを描画する。
-// メッセージ型は src/dashboardModel.ts の DashboardToWebviewMessage/DashboardFromWebviewMessage と同期。
+// dashboardTab.js
+// モニターパネルの「ダッシュボード」タブ(旧・独立パネル src/webview/dashboard/main.js)。
+// acquireVsCodeApi はこの document で既に './vscodeApi.js' が1回呼んでいるため、
+// ダッシュボード側の postMessage は '../dashboard/vscodeApi.js' の setDashboardTransport() で
+// 封筒 {type:'dashboard', message} に包んで転送する(webview→host は必ずこの封筒。
+// モニター既存の ready/refresh と型が衝突するため生のまま流さない)。
+// host→webview は monitor/main.js のディスパッチャが {type:'dashboard', message} を受け、
+// この handleDashboardMessage() へ渡す(対向: src/monitorDashboardController.ts)。
 
-import { vscode } from './vscodeApi.js';
-import { initDailyChart, renderDailyChart } from './charts.js';
-import { formatLocalDateTime } from './format.js';
+import { vscode as monitorVscode } from './vscodeApi.js';
+import { vscode, setDashboardTransport } from '../dashboard/vscodeApi.js';
+import { initDailyChart, renderDailyChart } from '../dashboard/charts.js';
+import { formatLocalDateTime } from '../dashboard/format.js';
 import { t } from '../i18n.js';
 import {
   renderDevicesTable,
@@ -17,11 +23,13 @@ import {
   renderSlowTable,
   renderSummaryTable,
   renderTriageTable,
-} from './render.js';
-import { renderPerformance } from './performance.js';
-import { setMachineAliases } from './machineNames.js';
-import { showRunDetailData, showRunDetailError } from './runDetail.js';
-import { showTrendData, showTrendError } from './trend.js';
+} from '../dashboard/render.js';
+import { renderPerformance } from '../dashboard/performance.js';
+import { setMachineAliases } from '../dashboard/machineNames.js';
+import { showRunDetailData, showRunDetailError } from '../dashboard/runDetail.js';
+import { showTrendData, showTrendError } from '../dashboard/trend.js';
+
+setDashboardTransport((message) => monitorVscode.postMessage({ type: 'dashboard', message }));
 
 const statusLoading = document.getElementById('status-loading');
 const statusError = document.getElementById('status-error');
@@ -99,11 +107,8 @@ function applyData(payload) {
   renderDevicesTable(payload.devices.byWorker);
 }
 
-window.addEventListener('message', (event) => {
-  const message = event.data;
-  if (!message || typeof message.type !== 'string') {
-    return;
-  }
+/** monitor/main.js の直下ディスパッチャの case 'dashboard' から呼ぶ(message = 封筒の中身)。 */
+export function handleDashboardMessage(message) {
   switch (message.type) {
     case 'loading':
       showState('loading');
@@ -133,7 +138,7 @@ window.addEventListener('message', (event) => {
     default:
       break;
   }
-});
+}
 
 btnRefresh.addEventListener('click', () => {
   vscode.postMessage({ type: 'refresh' });

@@ -3,7 +3,7 @@
 // コントローラクラス自体はこのテストのためだけに export されている(生成経路は register*Panel の
 // み。各 *Panel.ts 冒頭コメント参照)。
 //
-// Monitor/Live/Dashboard の relocalize() は内部で vscode.Uri.joinPath(...)(renderHtml/
+// Monitor/Live の relocalize() は内部で vscode.Uri.joinPath(...)(renderHtml/
 // renderLiveHtml)や vscode.workspace.createFileSystemWatcher(...)(Monitor の
 // サブコントローラ MonitorProfilesController がコンストラクタで呼ぶ)を実行する。esbuild の
 // vscodeStubPlugin(monitorUpdate.test.mjs 冒頭コメント参照)は `import * as vscode from "vscode"`
@@ -16,13 +16,14 @@
 //   コンストラクタすら実行できない。Monitor は対象外)。
 // - HealReviewController.renderHtml(items) は webview/extensionUri を取らず vscode に触れないため、
 //   パネルが開いている場合も実行できる。
-// Monitor/Live/Dashboard の「開いていれば html を再構築し(ライブ配信を張り直)す」契約は
+// Monitor/Live の「開いていれば html を再構築し(ライブ配信を張り直)す」契約は
 // test/panelRelocalizeSourceContract.test.mjs がソース走査で検証する(同ファイル冒頭コメント参照)。
+// 「結果ダッシュボード」は単独パネルを廃止しモニターパネルのタブへ統合済み(旧 dashboardPanel.ts)。
+// relocalize は Monitor 側の1本にまとまったため、ここに Dashboard 専用のテストは無い。
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { DashboardPanelController } from "../src/dashboardPanel";
 import { FleetestCli } from "../src/cli";
 import { HealReviewController } from "../src/healReviewPanel";
 import { LivePanelController } from "../src/livePanel";
@@ -41,10 +42,6 @@ function newLiveController() {
   return new LivePanelController(context, "/tmp/proj", getConfig, outputChannel, cli, testTree, new RunEventBus());
 }
 
-function newDashboardController() {
-  return new DashboardPanelController("/tmp/proj", getConfig, outputChannel, new RunEventBus(), {});
-}
-
 function newHealReviewController() {
   return new HealReviewController("/tmp/proj", getConfig, outputChannel, {}, new RunEventBus());
 }
@@ -57,11 +54,6 @@ test("LivePanelController.relocalize(): パネル未生成なら何もしない(
   };
   assert.doesNotThrow(() => controller.relocalize());
   assert.equal(restarted, 0);
-});
-
-test("DashboardPanelController.relocalize(): パネル未生成なら何もしない", () => {
-  const controller = newDashboardController();
-  assert.doesNotThrow(() => controller.relocalize());
 });
 
 test("HealReviewController.relocalize(): パネル未生成なら何もしない", () => {

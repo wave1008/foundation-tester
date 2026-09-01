@@ -7,8 +7,9 @@ import { closeDeviceOpMenu } from './deviceTiles.js';
 import { closeMachineDeviceMenu } from './machineProfilesTab.js';
 import { reapplyTilePaneHeight } from './splitter.js';
 
-export const TAB_IDS = ['devices', 'profiles', 'processes', 'recordings', 'settings'];
+export const TAB_IDS = ['dashboard', 'devices', 'profiles', 'processes', 'recordings', 'settings'];
 const tabButtons = {
+  dashboard: document.getElementById('tab-dashboard'),
   devices: document.getElementById('tab-devices'),
   profiles: document.getElementById('tab-profiles'),
   processes: document.getElementById('tab-processes'),
@@ -16,6 +17,7 @@ const tabButtons = {
   settings: document.getElementById('tab-settings'),
 };
 const tabPanels = {
+  dashboard: document.getElementById('panel-dashboard'),
   devices: devicesPanel,
   profiles: document.getElementById('panel-profiles'),
   processes: document.getElementById('panel-processes'),

@@ -1,7 +1,12 @@
 /* style.css
  * デバイスモニター webview のスタイル。esbuild が media/monitor/style.css に
  * バンドルし、renderHtml() が <link rel="stylesheet"> で読み込む。
+ * 「ダッシュボード」タブぶんは src/webview/dashboard/style.css を @import で束ねる
+ * (esbuild が相対 @import をインライン展開する。dashboard/style.css は単独 entryPoint では
+ * ビルドしない。id/class の衝突チェック済み ―― 唯一の衝突 #toolbar/.toolbar は dashboard 側を
+ * .dash-toolbar に改名して回避している)。
  */
+@import '../dashboard/style.css';
 
 :root {
   color-scheme: light dark;

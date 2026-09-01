@@ -4,6 +4,7 @@
 import type { MessageDict } from "../core";
 
 export const panelsStrings = {
+  "panels.tabs.dashboard": { ja: "ダッシュボード", en: "Dashboard" },
   "panels.tabs.devices": { ja: "デバイス", en: "Devices" },
   "panels.tabs.profiles": { ja: "プロファイル", en: "Profiles" },
   "panels.tabs.processes": { ja: "プロセス", en: "Processes" },

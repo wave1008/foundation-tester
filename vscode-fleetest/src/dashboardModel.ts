@@ -1,5 +1,6 @@
 // dashboardModel.ts
-// 結果ダッシュボードパネル(dashboardPanel.ts)の vscode 非依存の型・ペイロード型ガード。
+// 結果ダッシュボード(モニターパネル「ダッシュボード」タブ、旧・単独パネル dashboardPanel.ts)の
+// vscode 非依存の型・ペイロード型ガード。ホスト側の実体は monitorDashboardController.ts。
 //
 // 契約(Sources/fleetest/ApiResultsCommand.swift): `fleetest api results --project <名> --since 90d
 // --min-runs 3` の stdout は下記形状の 1 行 JSON(schemaVersion=1)。Swift 側は Codable の nil
@@ -385,7 +386,7 @@ export interface RunStatsRow {
 }
 
 // ---- webview ⇔ 拡張のメッセージ契約 ----------------------------------------------------
-// 対向: src/webview/dashboard/main.js のメッセージハンドラ(手書き複製ではなくそのまま参照する
+// 対向: src/webview/monitor/dashboardTab.js のメッセージハンドラ(手書き複製ではなくそのまま参照する
 // 契約なので、フィールドを増減したら両方直すこと)。
 
 export type DashboardFromWebviewMessage =

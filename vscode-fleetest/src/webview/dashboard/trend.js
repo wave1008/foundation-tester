@@ -1,5 +1,6 @@
 // trend.js
-// シナリオ履歴セクション(#section-trend、dashboardPanel.ts の静的スケルトン参照)の表示ロジック。
+// シナリオ履歴セクション(#section-trend、monitorHtml.ts の renderDashboardPanel() が静的
+// スケルトンを持つ)の表示ロジック。
 // flaky/summary テーブルの scenarioID セルクリック(render.js)・run 詳細の「実行履歴」ボタン
 // (runDetail.js)から requestTrend(scenarioID) で開始し、host からの {type:'trend'|'trendError'}
 // 受信時に main.js が showTrendData/showTrendError を呼ぶ。メッセージ型は src/dashboardModel.ts の

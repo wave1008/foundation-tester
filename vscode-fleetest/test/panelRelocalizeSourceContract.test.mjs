@@ -1,10 +1,13 @@
 // panelRelocalizeSourceContract.test.mjs
-// Monitor/Live/Dashboard の relocalize() の「開いていれば html を再構築し(ライブ配信を張り直)す」
+// Monitor/Live の relocalize() の「開いていれば html を再構築し(ライブ配信を張り直)す」
 // 契約をソース走査で検証する。実行時に構成して検証できない理由は panelRelocalize.test.mjs 冒頭
 // コメントの通り(renderHtml/renderLiveHtml が vscode.Uri.joinPath(...) を呼び、Monitor は
 // コンストラクタ自体が vscode.workspace.createFileSystemWatcher(...) を呼ぶため、esbuild の
 // vscodeStubPlugin 下ではどちらも実行できない)。.ts をモジュールとして import せず生テキストとして
 // 読むだけなので、esbuild の TS 変換を経由しない(vscode スタブの制約を受けない)。
+// 「結果ダッシュボード」は単独パネルを廃止しモニターパネルのタブへ統合済み(旧 dashboardPanel.ts)。
+// ダッシュボードタブの再描画は Monitor の relocalize()(html 全体の再構築)に含まれるため、
+// 専用の契約テストは無い。
 //
 // この形の走査は jsdomTeardown.test.mjs や argumentHelpLiteral.test.mjs と同じ、
 // 「コンパイル/実行してからでないと踏めない誤りを秒未満で落とす」ためのもの(CLAUDE.md 該当節参照)。
@@ -32,7 +35,6 @@ function extractVoidMethodBody(source, name) {
 
 const monitorSrc = readFileSync(new URL("../src/monitorPanel.ts", import.meta.url), "utf8");
 const liveSrc = readFileSync(new URL("../src/livePanel.ts", import.meta.url), "utf8");
-const dashboardSrc = readFileSync(new URL("../src/dashboardPanel.ts", import.meta.url), "utf8");
 
 test("MonitorPanelController.relocalize(): 未生成ガード → html 再構築 → ライブ配信の張り直しの順", () => {
   const body = extractVoidMethodBody(monitorSrc, "relocalize");
@@ -52,14 +54,4 @@ test("LivePanelController.relocalize(): 未生成ガード → html 再構築 �
   assert.notEqual(renderIdx, -1, "renderLiveHtml での再構築が無い");
   assert.notEqual(restartIdx, -1, "restartStream でのライブ配信の張り直しが無い");
   assert.ok(renderIdx < restartIdx, "restartStream は html 再構築の後に呼ぶこと");
-});
-
-test("DashboardPanelController.relocalize(): 未生成ガード → html 再構築", () => {
-  const body = extractVoidMethodBody(dashboardSrc, "relocalize");
-  assert.match(body, /if\s*\(!this\.panel\)\s*\{\s*return;\s*\}/, "パネル未生成の早期 return が無い");
-  assert.match(
-    body,
-    /renderHtml\(this\.panel\.webview, this\.extensionUri\)/,
-    "renderHtml での再構築が無い",
-  );
 });
