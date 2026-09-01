@@ -367,3 +367,134 @@ test("全停止(パネルを閉じる・掃討)のあとの「モニター再起
     "手元のぶんは復帰する",
   );
 });
+
+// ---- host-metrics の子が「行はあるのに居ない」状態から戻ること(2026-09-01) ----
+// 3機フリートのフル E2E 中、測っている機械そのものが飽和して `remote exec … api host-metrics`
+// が連続で早期終了し、恒久停止に入ったまま run 後も MEM/CPU/GPU の行が空のままだった。
+
+/** 子を「起動直後の異常終了」で1回落とす(close の経過時間で連敗と判定させる)。 */
+function crashImmediately(proc) {
+  proc.exitCode = 1;
+  proc.emit("close", 1, null);
+}
+
+test("諦めたあとも長い間隔で試し直す(恒久停止にしない)", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const calls = [];
+  const procs = [];
+  const spawnFn = (command, args) => {
+    calls.push(args);
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const manager = new MonitorProcessManager(makeDeps(), spawnFn);
+  manager.startAll();
+  feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+  const remoteCalls = () => calls.filter((args) => args[0] === "remote").length;
+  assert.equal(remoteCalls(), 1, "まず1本立つ");
+
+  // 起動直後の異常終了を3回 —— 3回目で短間隔(5秒)をやめる
+  crashImmediately(procs.at(-1));
+  t.mock.timers.tick(5000);
+  assert.equal(remoteCalls(), 2);
+  crashImmediately(procs.at(-1));
+  t.mock.timers.tick(5000);
+  assert.equal(remoteCalls(), 3);
+  crashImmediately(procs.at(-1));
+
+  t.mock.timers.tick(5000);
+  assert.equal(remoteCalls(), 3, "諦めた直後は短間隔で張り直さない(ssh churn を作らない)");
+
+  t.mock.timers.tick(10 * 60 * 1000);
+  assert.equal(remoteCalls(), 4, "長い間隔で1回だけ試し直す");
+
+  // 連敗カウンタが畳まれているので、次に落ちたらまた短間隔から始まる
+  crashImmediately(procs.at(-1));
+  t.mock.timers.tick(5000);
+  assert.equal(remoteCalls(), 5, "試し直しのあとは短間隔の再挑戦が復活する");
+});
+
+test("行は出ているのに子が居ない機械は次の監視サイクルで起こし直す", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const calls = [];
+  const procs = [];
+  const spawnFn = (command, args) => {
+    calls.push(args);
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  let panelActive = true;
+  const manager = new MonitorProcessManager(
+    makeDeps({ isPanelActive: () => panelActive }), spawnFn,
+  );
+  manager.startAll();
+  feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+  const remoteCalls = () => calls.filter((args) => args[0] === "remote").length;
+  assert.equal(remoteCalls(), 1);
+
+  // 子が落ち、再起動タイマーがパネル非表示に当たって空振りする(行はそのまま残る)
+  crashImmediately(procs.at(-1));
+  panelActive = false;
+  t.mock.timers.tick(5000);
+  assert.equal(remoteCalls(), 1, "空振りしたので張り直っていない");
+
+  panelActive = true;
+  feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+  assert.equal(remoteCalls(), 2, "同じ機械の集合でも、子が居なければ起こし直す");
+});
+
+test("生きている子は監視サイクル毎に起こし直さない(生存確認が churn を作らない)", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const calls = [];
+  const procs = [];
+  const spawnFn = (command, args) => {
+    calls.push(args);
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const manager = new MonitorProcessManager(makeDeps(), spawnFn);
+  manager.startAll();
+  for (let i = 0; i < 8; i += 1) {
+    feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+  }
+  assert.equal(calls.filter((args) => args[0] === "remote").length, 1);
+
+  // 待っている最中(再起動タイマーが積まれている)も二重に立てない
+  crashImmediately(procs.at(-1));
+  feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+  assert.equal(calls.filter((args) => args[0] === "remote").length, 1, "タイマー待ちの子は触らない");
+  t.mock.timers.tick(5000);
+  assert.equal(calls.filter((args) => args[0] === "remote").length, 2);
+});
+
+test("spawn が投げても生存確認が撃ち続けない(連敗カウンタが進む)", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const calls = [];
+  const procs = [];
+  let failRemote = false;
+  const spawnFn = (command, args) => {
+    calls.push(args);
+    if (failRemote && args[0] === "remote") {
+      throw new Error("spawn failed");
+    }
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const manager = new MonitorProcessManager(makeDeps(), spawnFn);
+  manager.startAll();
+  const monitorProc = procs[0];
+  failRemote = true;
+  feedMonitorDevices(monitorProc, [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+  const remoteCalls = () => calls.filter((args) => args[0] === "remote").length;
+  assert.equal(remoteCalls(), 1, "1回目の spawn は投げた");
+
+  // 監視サイクルが何度来ても、タイマーが積まれている間は撃たない
+  for (let i = 0; i < 5; i += 1) {
+    feedMonitorDevices(monitorProc, [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+  }
+  assert.equal(remoteCalls(), 1, "サイクル毎に spawn し続けない");
+});

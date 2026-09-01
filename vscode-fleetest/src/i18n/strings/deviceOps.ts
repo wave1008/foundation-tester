@@ -376,6 +376,10 @@ export const deviceOpsStrings = {
     ja: "[host-metrics] プロセスでエラーが発生しました: {error}",
     en: "[host-metrics] An error occurred in the process: {error}",
   },
+  "deviceOps.log.hostMetricsRevived": {
+    ja: "[host-metrics] 行は出ているのに子プロセスが居なかったため起動し直しました。",
+    en: "[host-metrics] The row was showing with no child process running — restarted it.",
+  },
   "deviceOps.log.hostMetricsGaveUp": {
     ja:
       "[host-metrics] 起動直後の異常終了が続いたため自動再起動を停止しました。" +

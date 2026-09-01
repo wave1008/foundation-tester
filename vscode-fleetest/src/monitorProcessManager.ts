@@ -29,10 +29,16 @@ type MonitorProcess = ChildProcessByStdio<Writable, Readable, Readable>;
 
 /**
  * host-metrics 子1本ぶんの寿命管理の状態(機械ごと。手元も同じ形で持つ)。
- * failureStreak/gaveUp は「起動後10秒未満での異常終了」が3回続いたら自動再起動を諦めるための
- * 安全弁(旧バイナリに host-metrics サブコマンドが無い機械で無限に ssh を張らない)。
- * 10秒以上動いてからの終了は正常運転とみなして 0 に戻す。gaveUp は「モニター再起動」ボタンと
- * show() の両方でリセットして再挑戦できる(バイナリ更新後の復帰経路)。
+ * failureStreak/gaveUp は「起動後10秒未満での異常終了」が3回続いたら短間隔の自動再起動を
+ * やめるための安全弁(旧バイナリに host-metrics サブコマンドが無い機械へ 5 秒ごとに ssh を
+ * 張り続けない)。10秒以上動いてからの終了は正常運転とみなして 0 に戻す。
+ *
+ * **諦めたあとも GIVE_UP_RETRY_MS ごとに1回だけ試し直す** —— 短時間で連続して落ちる原因は
+ * 「非対応バイナリ(恒久)」と「その機械が飽和している(一時)」の2つがあり、close の理由からは
+ * 区別できない。恒久停止にすると後者で行が永久に空になる: E2E は測りたい機械そのものを
+ * 十数分間 dispatch lock ごと占有するので、**この安全弁を最も踏みやすいのが最も見たい場面**
+ * になっていた(2026-09-01 に3機フリートの E2E 後、M1Max / M1Ultra の MEM/CPU/GPU が
+ * 出ないまま戻らなかった)。gaveUp は「モニター再起動」ボタンと show() でも即座にリセットする。
  */
 interface HostMetricsChild {
   proc: MonitorProcess | undefined;
@@ -126,6 +132,12 @@ export class MonitorProcessManager {
   /** scheduleRestartAfterClose の安全弁: close をこの秒数待って来なければ強制的に再起動を進める。
    * stopXProcess は SIGTERM 後 2s で SIGKILL するため close は通常 ~2-3s で来る。8s は余裕を持たせた上限。 */
   private static readonly RESTART_CLOSE_TIMEOUT_MS = 8000;
+
+  /** 諦めた host-metrics の子を試し直す間隔(ms)。単位は分オーダーで選ぶ:
+   *  ①非対応バイナリの機械に払う無駄は「10分に ssh 1本」= 実質ゼロ
+   *  ②飽和は run が終われば解けるので、フル E2E(実測 18 分)の途中と直後に必ず1回は当たる。
+   *  尽きない(回数上限を置かない) —— 上限を置くと2回目の長い run でまた恒久停止に戻る。 */
+  private static readonly HOST_METRICS_GIVE_UP_RETRY_MS = 10 * 60 * 1000;
   private restartPending = false;
   /** monitor の予期しない終了後の自動再起動タイマー(5秒後)。dispose/stop 時に必ずクリアする。 */
   private monitorRestartTimer: ReturnType<typeof setTimeout> | undefined;
@@ -534,6 +546,7 @@ export class MonitorProcessManager {
     ].sort();
     const current = this.hostMetricsMachines;
     if (wanted.length === current.length && wanted.every((machine, i) => machine === current[i])) {
+      this.reviveStalledHostMetricsChildren(wanted);
       return;
     }
     this.hostMetricsMachines = wanted;
@@ -550,6 +563,30 @@ export class MonitorProcessManager {
         continue; // 既に子が居る(諦めた機械もそのまま — 再挑戦は「モニター再起動」から)
       }
       const child = this.hostMetricsChild(machine);
+      child.failureStreak = 0;
+      child.gaveUp = false;
+      this.startHostMetricsProcess(machine);
+    }
+  }
+
+  /**
+   * **行は出ているのに子が居ない機械**を拾って起こし直す。集合が変わらない限り
+   * syncHostMetricsMachines は何もしないので、行の集合が同じまま子だけが失われる経路
+   * (再起動タイマーがパネル非表示に当たって空振りした / 外から kill された)では、
+   * 誰も張り直さないまま行が永久に空になっていた。
+   *
+   * **生きている子には触らない** —— proc も再起動タイマーも restartPending も無いときだけ。
+   * これが監視サイクル毎の ssh churn を作らない条件そのもので、spawn が投げる場合も
+   * startHostMetricsProcess の catch が連敗カウンタを進めてタイマーを積むため、
+   * ここが撃ち続けることはない。
+   */
+  private reviveStalledHostMetricsChildren(machines: readonly string[]): void {
+    for (const machine of machines) {
+      const child = this.hostMetricsChildren.get(machine);
+      if (!child || child.proc || child.restartTimer || child.restartPending) {
+        continue;
+      }
+      this.hostMetricsLog(machine, t("deviceOps.log.hostMetricsRevived"));
       child.failureStreak = 0;
       child.gaveUp = false;
       this.startHostMetricsProcess(machine);
@@ -651,6 +688,11 @@ export class MonitorProcessManager {
       );
     } catch (error) {
       this.hostMetricsLog(machine, t("deviceOps.log.hostMetricsStartFailed", { error: String(error) }));
+      // spawn が投げた場合は close が来ない = 連敗カウンタが進まないので、ここで1回分数える。
+      // 数えないと syncHostMetricsMachines の生存確認が監視サイクル毎に spawn を撃ち続ける
+      child.proc = undefined;
+      child.startedAt = Date.now();
+      this.scheduleHostMetricsRestart(machine);
       return;
     }
 
@@ -714,8 +756,9 @@ export class MonitorProcessManager {
   }
 
   /**
-   * host-metrics プロセスの予期しない終了を受けて、再起動するか諦めるかを決める。3回連続で
-   * 諦めたら outputChannel に1回だけログする(カウンタの意味は HostMetricsChild 参照)。
+   * host-metrics プロセスの予期しない終了を受けて、次の再起動をいつ試すかを決める。3回連続の
+   * 早期終了で短間隔(5秒)をやめて長間隔へ落とし、outputChannel に1回だけログする
+   * (カウンタと長間隔の根拠は HostMetricsChild / HOST_METRICS_GIVE_UP_RETRY_MS 参照)。
    */
   private scheduleHostMetricsRestart(machine: string): void {
     const child = this.hostMetricsChild(machine);
@@ -725,17 +768,25 @@ export class MonitorProcessManager {
     } else {
       child.failureStreak = 0;
     }
-    if (child.failureStreak >= 3) {
-      if (!child.gaveUp) {
-        child.gaveUp = true;
-        this.hostMetricsLog(machine, t("deviceOps.log.hostMetricsGaveUp"));
-      }
-      return;
+    // 諦めても「短間隔をやめる」だけ。長い間隔で試し直す(HOST_METRICS_GIVE_UP_RETRY_MS の根拠参照)
+    const delayMs = child.failureStreak >= 3
+      ? MonitorProcessManager.HOST_METRICS_GIVE_UP_RETRY_MS
+      : 5000;
+    if (child.failureStreak >= 3 && !child.gaveUp) {
+      child.gaveUp = true;
+      this.hostMetricsLog(machine, t("deviceOps.log.hostMetricsGaveUp"));
     }
     child.restartTimer = setTimeout(() => {
       child.restartTimer = undefined;
-      // 5秒待つ間にパネルが閉じられていたら何もしない。リモートは、その間にその機械の
-      // デバイスが消えていたら張り直さない(行も既に消えている)
+      // 長い間隔の試行は連敗カウンタを畳んでから入る —— 畳まないと1回落ちただけで
+      // すぐまた「3回連続」に戻り、5秒間隔の再挑戦が一度も走らない
+      if (child.failureStreak >= 3) {
+        child.failureStreak = 0;
+        child.gaveUp = false;
+      }
+      // 待つ間にパネルが閉じられていたら何もしない。リモートは、その間にその機械の
+      // デバイスが消えていたら張り直さない(行も既に消えている)。**どちらの枝でタイマーが
+      // 空振りしても行だけが残ることは無い** —— syncHostMetricsMachines の生存確認が拾う
       if (!this.deps.isPanelActive()) {
         return;
       }
@@ -743,7 +794,7 @@ export class MonitorProcessManager {
         return;
       }
       this.startHostMetricsProcess(machine);
-    }, 5000);
+    }, delayMs);
   }
 
   /**
