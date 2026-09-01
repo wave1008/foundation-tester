@@ -120,6 +120,11 @@ select.dash-project {
   color: var(--vscode-descriptionForeground);
   font-weight: 600;
 }
+/* 数値・割合・所要時間の列は右寄せ(セルは domUtil.js の tdNum、見出しは th.num)。等幅数字で桁を揃える */
+.dash-table th.num, .dash-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 
 .section-empty {
   color: var(--vscode-descriptionForeground);
@@ -285,13 +290,6 @@ select.dash-project {
   word-break: break-word;
 }
 
-.perf-summary-line {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
-  font-size: 0.92em;
-}
 .perf-summary-note {
   color: var(--vscode-descriptionForeground);
   font-size: 0.88em;

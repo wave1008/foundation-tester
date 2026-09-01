@@ -25,15 +25,10 @@ export const webviewDashboardStrings = {
   },
 
   // performance.js
-  "wvDashboard.perf.wallClockLabel": { ja: "壁時計 {value}", en: "Wall clock {value}" },
-  "wvDashboard.perf.testTimeLabel": { ja: "テスト時間 {value}", en: "Test time {value}" },
   "wvDashboard.perf.comparisonHeadingPair": {
     ja: "前回計測との比較: {latest} vs {target}",
     en: "Comparison with the previous measurement: {latest} vs {target}",
   },
-  "wvDashboard.perf.scenarioTotalLabel": { ja: "全シナリオ合計 {value}", en: "All scenarios total {value}" },
-  "wvDashboard.perf.maxScenarioLabel": { ja: "最長1本 {value}", en: "Longest scenario {value}" },
-  "wvDashboard.perf.laneUtilisationLabel": { ja: "稼働率 {value}", en: "Utilisation {value}" },
   "wvDashboard.perf.invalidCountNote": { ja: "計測無効で除外 {count} 件", en: "{count} excluded as invalid measurements" },
   "wvDashboard.perf.comparisonHeadingWith": {
     ja: "前回計測との比較({target})",

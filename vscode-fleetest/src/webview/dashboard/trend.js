@@ -8,7 +8,7 @@
 
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
-import { clearChildren, revealSection, td } from './domUtil.js';
+import { clearChildren, revealSection, td, tdNum } from './domUtil.js';
 import { machineLabel } from './machineNames.js';
 import {
   formatDurationHuman,
@@ -60,7 +60,7 @@ function recordRow(record) {
     td(formatLocalDateTime(record.startedAt)),
     runIdCell,
     td(passFailMark(record.passed)),
-    td(formatDurationHuman(record.durationMs)),
+    tdNum(formatDurationHuman(record.durationMs)),
     td(record.worker || '–'),
     td(machineLabel(record.host)),
   );
@@ -94,11 +94,12 @@ export function showTrendData(scenarioID, records) {
     t('wvDashboard.trend.colWorker'),
     t('wvDashboard.trend.colHost'),
   ];
-  for (const heading of headings) {
+  headings.forEach((heading, index) => {
     const th = document.createElement('th');
     th.textContent = heading;
+    if (index === 3) th.className = 'num'; // 所要(tdNum と対)
     headRow.appendChild(th);
-  }
+  });
   thead.appendChild(headRow);
   const tbody = document.createElement('tbody');
   for (const record of sorted) {

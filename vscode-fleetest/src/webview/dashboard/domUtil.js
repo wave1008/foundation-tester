@@ -28,3 +28,10 @@ export function td(text) {
   cell.textContent = text;
   return cell;
 }
+
+/** 数値・割合・所要時間のセル(右寄せ。見出しは th.num を対で付ける = monitorHtml.ts / 各表の動的見出し) */
+export function tdNum(text) {
+  const cell = td(text);
+  cell.className = 'num';
+  return cell;
+}

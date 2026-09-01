@@ -7,7 +7,7 @@
 
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
-import { clearChildren, revealSection, td } from './domUtil.js';
+import { clearChildren, revealSection, td, tdNum } from './domUtil.js';
 import { machineLabel } from './machineNames.js';
 import { requestTrend } from './trend.js';
 import {
@@ -165,7 +165,7 @@ function failedStepRow(step) {
   const tr = document.createElement('tr');
   const fileLine = step.file ? step.file + (typeof step.line === 'number' ? ':' + step.line : '') : '–';
   tr.append(
-    td(String(step.index)),
+    tdNum(String(step.index)),
     td(step.description),
     td(step.section || '–'),
     td(step.command || '–'),
@@ -196,11 +196,12 @@ function failedStepsTable(steps) {
   table.className = 'dash-table';
   const thead = document.createElement('thead');
   const headRow = document.createElement('tr');
-  for (const heading of failedStepsTableHeadings()) {
+  failedStepsTableHeadings().forEach((heading, index) => {
     const th = document.createElement('th');
     th.textContent = heading;
+    if (index === 0) th.className = 'num'; // ステップ番号(tdNum と対)
     headRow.appendChild(th);
-  }
+  });
   thead.appendChild(headRow);
   const tbody = document.createElement('tbody');
   for (const step of steps) {
@@ -268,7 +269,7 @@ function scenarioRow(scenario, colSpan) {
     td(passFailMark(scenario.passed)),
     td(scenario.scenarioID),
     td(scenario.worker || '–'),
-    td(formatDurationHuman(scenario.durationMs)),
+    tdNum(formatDurationHuman(scenario.durationMs)),
     td(scenario.skipKind || '–'),
   );
   const idCell = tr.children[1];
@@ -312,11 +313,12 @@ function scenariosTable(scenarios) {
   table.className = 'dash-table';
   const thead = document.createElement('thead');
   const headRow = document.createElement('tr');
-  for (const heading of scenariosTableHeadings()) {
+  scenariosTableHeadings().forEach((heading, index) => {
     const th = document.createElement('th');
     th.textContent = heading;
+    if (index === 3) th.className = 'num'; // 所要(tdNum と対)
     headRow.appendChild(th);
-  }
+  });
   thead.appendChild(headRow);
   const tbody = document.createElement('tbody');
   for (const scenario of scenarios) {

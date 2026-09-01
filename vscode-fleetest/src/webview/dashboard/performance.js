@@ -6,7 +6,7 @@
 // セクションごと非表示にする(dashboardModel.ts の isApiResultsPayload と同じ契約)。
 
 import { t } from '../i18n.js';
-import { clearChildren, td } from './domUtil.js';
+import { clearChildren, td, tdNum } from './domUtil.js';
 import { machineLabels } from './machineNames.js';
 import { deltaBadgeCell } from './render.js';
 import {
@@ -36,6 +36,7 @@ function perfRunResultText(row) {
 
 function maxScenarioCell(row) {
   const cell = document.createElement('td');
+  cell.className = 'num';
   if (typeof row.maxScenarioMs !== 'number') {
     cell.textContent = '–';
     return cell;
@@ -61,13 +62,13 @@ function renderRunsTable(runs) {
       td(formatLocalDateTime(row.startedAt)),
       td(rowMachinesText(row)),
       td(row.profile || '–'),
-      td(formatDurationHuman(row.wallClockMs)),
-      td(formatDurationHuman(row.testTimeMs)),
-      td(formatDurationHuman(row.scenarioTotalMs)),
-      td(String(row.laneCount)),
-      td(formatPercent(row.avgLaneUtilisationPct)),
+      tdNum(formatDurationHuman(row.wallClockMs)),
+      tdNum(formatDurationHuman(row.testTimeMs)),
+      tdNum(formatDurationHuman(row.scenarioTotalMs)),
+      tdNum(String(row.laneCount)),
+      tdNum(formatPercent(row.avgLaneUtilisationPct)),
       maxScenarioCell(row),
-      td(String(row.scenarioCount)),
+      tdNum(String(row.scenarioCount)),
       td(perfRunResultText(row)),
     );
     tr.title = row.runIDs && row.runIDs.length > 0 ? row.runIDs.join('\n') : row.runID;
@@ -75,30 +76,10 @@ function renderRunsTable(runs) {
   }
 }
 
-function renderSummary(latest, invalidCount) {
+// 表の上の「最新 run の1行サマリ」は置かない(表の先頭行が最新 = 同じ値の二重表示。ユーザー決定)。
+// 残すのは計測無効 run の注記だけ
+function renderSummary(invalidCount) {
   clearChildren(summaryEl);
-  const line = document.createElement('div');
-  line.className = 'perf-summary-line';
-  const parts = [
-    formatLocalDateTime(latest.startedAt),
-    t('wvDashboard.perf.wallClockLabel', { value: formatDurationHuman(latest.wallClockMs) }),
-    t('wvDashboard.perf.testTimeLabel', { value: formatDurationHuman(latest.testTimeMs) }),
-    t('wvDashboard.perf.scenarioTotalLabel', { value: formatDurationHuman(latest.scenarioTotalMs) }),
-    t('wvDashboard.perf.maxScenarioLabel', {
-      value: typeof latest.maxScenarioMs === 'number' ? formatDurationHuman(latest.maxScenarioMs) : '–',
-    }),
-    t('wvDashboard.perf.laneUtilisationLabel', { value: formatPercent(latest.avgLaneUtilisationPct) }),
-  ];
-  for (const part of parts) {
-    const span = document.createElement('span');
-    span.textContent = part;
-    line.appendChild(span);
-  }
-  if (latest.maxScenarioID) {
-    line.title = latest.maxScenarioID;
-  }
-  summaryEl.appendChild(line);
-
   if (invalidCount > 0) {
     const note = document.createElement('div');
     note.className = 'perf-summary-note';
@@ -136,8 +117,8 @@ function renderComparisonTable(comparison) {
     tr.append(
       td(row.scenarioID),
       td(row.platform),
-      td(formatDurationHuman(row.previousMs)),
-      td(formatDurationHuman(row.latestMs)),
+      tdNum(formatDurationHuman(row.previousMs)),
+      tdNum(formatDurationHuman(row.latestMs)),
       deltaBadgeCell(row.deltaPct),
     );
     comparisonBody.appendChild(tr);
@@ -170,7 +151,7 @@ export function renderPerformance(performance) {
   emptyEl.style.display = 'none';
   runsTable.style.display = 'table';
   renderRunsTable(runs);
-  renderSummary(runs[0], performance.invalidCount);
+  renderSummary(performance.invalidCount);
 
   if (performance.comparison.length === 0) {
     comparisonTable.style.display = 'none';

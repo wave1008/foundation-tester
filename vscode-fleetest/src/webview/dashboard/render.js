@@ -14,7 +14,7 @@ import {
   recentResultsMarks,
 } from './format.js';
 import { t } from '../i18n.js';
-import { clearChildren, td } from './domUtil.js';
+import { clearChildren, td, tdNum } from './domUtil.js';
 import { machineLabels } from './machineNames.js';
 import { requestRunDetail } from './runDetail.js';
 import { requestTrend } from './trend.js';
@@ -192,7 +192,7 @@ export function renderRunsTable(groups, statsByRunID) {
   // 最大10行(呼び出し側で既に新しい順)。
   for (const members of groups.slice(0, 10)) {
     const stats = groupStats(members, statsByRunID);
-    const maxCell = td(formatDurationHuman(stats.maxScenarioMs));
+    const maxCell = tdNum(formatDurationHuman(stats.maxScenarioMs));
     if (stats.maxScenarioID) {
       maxCell.title = stats.maxScenarioID;
     }
@@ -204,13 +204,13 @@ export function renderRunsTable(groups, statsByRunID) {
       groupDateCell(members),
       td(groupMachinesText(members)),
       td(members[0].profile || '–'),
-      td(formatDurationHuman(stats.wallClockMs)),
-      td(formatDurationHuman(stats.testTimeMs)),
-      td(formatDurationHuman(stats.scenarioTotalMs)),
-      td(stats.laneCount === null ? '–' : String(stats.laneCount)),
-      td(formatPercent(stats.utilPct === null ? undefined : stats.utilPct)),
+      tdNum(formatDurationHuman(stats.wallClockMs)),
+      tdNum(formatDurationHuman(stats.testTimeMs)),
+      tdNum(formatDurationHuman(stats.scenarioTotalMs)),
+      tdNum(stats.laneCount === null ? '–' : String(stats.laneCount)),
+      tdNum(formatPercent(stats.utilPct === null ? undefined : stats.utilPct)),
       maxCell,
-      td(stats.scenarioCount === null ? '–' : String(stats.scenarioCount)),
+      tdNum(stats.scenarioCount === null ? '–' : String(stats.scenarioCount)),
       groupResultCell(members),
     );
     row.addEventListener('click', () => requestRunDetail(members[0].runID, members.map((r) => r.runID)));
@@ -236,9 +236,9 @@ export function renderFlakyTable(flaky) {
     const tr = document.createElement('tr');
     tr.append(
       scenarioIdCell(row.scenarioID),
-      td(String(row.runs)),
-      td(formatPercent(row.failureRate)),
-      td(row.flakinessScore.toFixed(2)),
+      tdNum(String(row.runs)),
+      tdNum(formatPercent(row.failureRate)),
+      tdNum(row.flakinessScore.toFixed(2)),
       td(recentResultsMarks(row.recentResults)),
     );
     body.appendChild(tr);
@@ -252,9 +252,9 @@ export function renderSummaryTable(summary) {
     const tr = document.createElement('tr');
     tr.append(
       scenarioIdCell(row.scenarioID),
-      td(String(row.runs)),
-      td(formatPercent(row.successRate)),
-      td(formatDurationMs(row.avgDurationMs)),
+      tdNum(String(row.runs)),
+      tdNum(formatPercent(row.successRate)),
+      tdNum(formatDurationMs(row.avgDurationMs)),
       td(formatLocalDateTime(row.lastRunAt)),
       td(typeof row.lastPassed === 'boolean' ? passFailMark(row.lastPassed) : '–'),
     );
@@ -269,9 +269,9 @@ export function renderDevicesTable(byWorker) {
     const tr = document.createElement('tr');
     tr.append(
       td(row.worker),
-      td(String(row.runs)),
-      td(formatPercent(row.successRate)),
-      td(formatDurationMs(row.avgDurationMs)),
+      tdNum(String(row.runs)),
+      tdNum(formatPercent(row.successRate)),
+      tdNum(formatDurationMs(row.avgDurationMs)),
     );
     body.appendChild(tr);
   }
@@ -306,6 +306,7 @@ export function renderInsights(insights) {
 
 export function deltaBadgeCell(deltaPct) {
   const cell = document.createElement('td');
+  cell.className = 'num';
   if (typeof deltaPct !== 'number') {
     cell.textContent = '–';
     return cell;
@@ -337,7 +338,7 @@ function matrixSuccessRateCell(cells) {
   const nonNull = cells.filter((c) => c !== null);
   const passCount = nonNull.filter((c) => c === 1).length;
   const rate = nonNull.length > 0 ? (passCount / nonNull.length) * 100 : null;
-  return td(formatPercent(rate));
+  return tdNum(formatPercent(rate));
 }
 
 function matrixDotCell(cell) {
@@ -386,9 +387,9 @@ export function renderSlowTable(slow) {
     const tr = document.createElement('tr');
     tr.append(
       td(row.scenarioID),
-      td(String(row.runs)),
-      td(formatDurationHuman(row.avgDurationMs)),
-      td(formatDurationHuman(row.p90DurationMs)),
+      tdNum(String(row.runs)),
+      tdNum(formatDurationHuman(row.avgDurationMs)),
+      tdNum(formatDurationHuman(row.p90DurationMs)),
       deltaBadgeCell(row.deltaPct),
       td(slowestSceneText(row.slowestScene, row.slowestSceneAvgMs)),
     );
@@ -430,7 +431,7 @@ export function renderTriageTable(triage) {
       td(row.section || '–'),
       td(row.command || '–'),
       td(row.failureKind || '–'),
-      td(String(row.count)),
+      tdNum(String(row.count)),
       td(row.scenarioIDs.join(', ')),
     );
     body.appendChild(tr);
@@ -439,7 +440,7 @@ export function renderTriageTable(triage) {
   notesTable.style.display = triage.noteCounts.length === 0 ? 'none' : 'table';
   for (const row of triage.noteCounts) {
     const tr = document.createElement('tr');
-    tr.append(td(row.note), td(String(row.count)));
+    tr.append(td(row.note), tdNum(String(row.count)));
     notesBody.appendChild(tr);
   }
 }

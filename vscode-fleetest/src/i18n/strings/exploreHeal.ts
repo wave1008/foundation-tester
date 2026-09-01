@@ -259,10 +259,8 @@ export const exploreHealStrings = {
     ja: "日時",
     en: "Date/Time",
   },
-  "exploreHeal.dashboard.colResult": {
-    ja: "結果",
-    en: "Result",
-  },
+  // パフォーマンス測定 / 直近の実行の表の結果列。セルは "38 / 2"(件数)なので見出しで単位を示す
+  "exploreHeal.dashboard.colPassedFailed": { ja: "pass/fail", en: "pass/fail" },
   "exploreHeal.dashboard.closeButton": {
     ja: "閉じる",
     en: "Close",

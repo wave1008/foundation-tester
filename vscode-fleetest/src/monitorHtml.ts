@@ -109,14 +109,14 @@ function renderDashboardPanel(): string {
       <div id="perf-summary"></div>
       <table id="table-perf-runs" class="dash-table">
         <thead>
-          <tr><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>machine</th><th>profile</th><th>${t("exploreHeal.dashboard.colWallClock")}</th><th>${t("exploreHeal.dashboard.colTestTime")}</th><th>${t("exploreHeal.dashboard.colScenarioTotal")}</th><th>${t("exploreHeal.dashboard.colLaneCount")}</th><th>${t("exploreHeal.dashboard.colLaneUtilisation")}</th><th>${t("exploreHeal.dashboard.colMaxScenario")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colResult")}</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>machine</th><th>profile</th><th class="num">${t("exploreHeal.dashboard.colWallClock")}</th><th class="num">${t("exploreHeal.dashboard.colTestTime")}</th><th class="num">${t("exploreHeal.dashboard.colScenarioTotal")}</th><th class="num">${t("exploreHeal.dashboard.colLaneCount")}</th><th class="num">${t("exploreHeal.dashboard.colLaneUtilisation")}</th><th class="num">${t("exploreHeal.dashboard.colMaxScenario")}</th><th class="num">${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colPassedFailed")}</th></tr>
         </thead>
         <tbody id="table-perf-runs-body"></tbody>
       </table>
       <h3 id="perf-comparison-heading">${t("exploreHeal.dashboard.headingPerfComparison")}</h3>
       <table id="table-perf-comparison" class="dash-table">
         <thead>
-          <tr><th>${t("exploreHeal.dashboard.colScenario")}</th><th>${t("exploreHeal.dashboard.colPlatform")}</th><th>${t("exploreHeal.dashboard.colPrevious")}</th><th>${t("exploreHeal.dashboard.colLatest")}</th><th>Δ%</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colScenario")}</th><th>${t("exploreHeal.dashboard.colPlatform")}</th><th class="num">${t("exploreHeal.dashboard.colPrevious")}</th><th class="num">${t("exploreHeal.dashboard.colLatest")}</th><th class="num">Δ%</th></tr>
         </thead>
         <tbody id="table-perf-comparison-body"></tbody>
       </table>
@@ -128,7 +128,7 @@ function renderDashboardPanel(): string {
       <div id="headline-latest" class="headline-latest"></div>
       <table id="table-runs" class="dash-table">
         <thead>
-          <tr><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>machine</th><th>profile</th><th>${t("exploreHeal.dashboard.colWallClock")}</th><th>${t("exploreHeal.dashboard.colTestTime")}</th><th>${t("exploreHeal.dashboard.colScenarioTotal")}</th><th>${t("exploreHeal.dashboard.colLaneCount")}</th><th>${t("exploreHeal.dashboard.colLaneUtilisation")}</th><th>${t("exploreHeal.dashboard.colMaxScenario")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colResult")}</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>machine</th><th>profile</th><th class="num">${t("exploreHeal.dashboard.colWallClock")}</th><th class="num">${t("exploreHeal.dashboard.colTestTime")}</th><th class="num">${t("exploreHeal.dashboard.colScenarioTotal")}</th><th class="num">${t("exploreHeal.dashboard.colLaneCount")}</th><th class="num">${t("exploreHeal.dashboard.colLaneUtilisation")}</th><th class="num">${t("exploreHeal.dashboard.colMaxScenario")}</th><th class="num">${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colPassedFailed")}</th></tr>
         </thead>
         <tbody id="table-runs-body"></tbody>
       </table>
@@ -151,14 +151,14 @@ function renderDashboardPanel(): string {
       <div id="triage-summary"></div>
       <table id="table-triage" class="dash-table">
         <thead>
-          <tr><th>${t("exploreHeal.dashboard.colSection")}</th><th>${t("exploreHeal.dashboard.colCommand")}</th><th>${t("exploreHeal.dashboard.colFailureKind")}</th><th>${t("exploreHeal.dashboard.colCount")}</th><th>${t("exploreHeal.dashboard.colScenarioExamples")}</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colSection")}</th><th>${t("exploreHeal.dashboard.colCommand")}</th><th>${t("exploreHeal.dashboard.colFailureKind")}</th><th class="num">${t("exploreHeal.dashboard.colCount")}</th><th>${t("exploreHeal.dashboard.colScenarioExamples")}</th></tr>
         </thead>
         <tbody id="table-triage-body"></tbody>
       </table>
       <h3>${t("exploreHeal.dashboard.headingTriageNotes")}</h3>
       <table id="table-triage-notes" class="dash-table">
         <thead>
-          <tr><th>${t("exploreHeal.dashboard.colNote")}</th><th>${t("exploreHeal.dashboard.colCount")}</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colNote")}</th><th class="num">${t("exploreHeal.dashboard.colCount")}</th></tr>
         </thead>
         <tbody id="table-triage-notes-body"></tbody>
       </table>
@@ -169,7 +169,7 @@ function renderDashboardPanel(): string {
       <h2>${t("exploreHeal.dashboard.headingFlaky")}</h2>
       <table id="table-flaky" class="dash-table">
         <thead>
-          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colFailureRate")}</th><th>${t("exploreHeal.dashboard.colFlakinessScore")}</th><th>${t("exploreHeal.dashboard.colRecentResults")}</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th class="num">${t("exploreHeal.dashboard.colRuns")}</th><th class="num">${t("exploreHeal.dashboard.colFailureRate")}</th><th class="num">${t("exploreHeal.dashboard.colFlakinessScore")}</th><th>${t("exploreHeal.dashboard.colRecentResults")}</th></tr>
         </thead>
         <tbody id="table-flaky-body"></tbody>
       </table>
@@ -186,7 +186,7 @@ function renderDashboardPanel(): string {
       <h2>${t("exploreHeal.dashboard.headingSlow")}</h2>
       <table id="table-slow" class="dash-table">
         <thead>
-          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colAverage")}</th><th>p90</th><th>${t("exploreHeal.dashboard.colRegressionRate")}</th><th>${t("exploreHeal.dashboard.colSlowestScene")}</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th class="num">${t("exploreHeal.dashboard.colRuns")}</th><th class="num">${t("exploreHeal.dashboard.colAverage")}</th><th class="num">p90</th><th class="num">${t("exploreHeal.dashboard.colRegressionRate")}</th><th>${t("exploreHeal.dashboard.colSlowestScene")}</th></tr>
         </thead>
         <tbody id="table-slow-body"></tbody>
       </table>
@@ -198,7 +198,7 @@ function renderDashboardPanel(): string {
       <div class="matrix-wrap">
         <table id="table-matrix" class="dash-table matrix-table">
           <thead>
-            <tr id="table-matrix-head"><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th>${t("exploreHeal.dashboard.colSuccessRate")}</th></tr>
+            <tr id="table-matrix-head"><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th class="num">${t("exploreHeal.dashboard.colSuccessRate")}</th></tr>
           </thead>
           <tbody id="table-matrix-body"></tbody>
         </table>
@@ -223,7 +223,7 @@ function renderDashboardPanel(): string {
       <h2>${t("exploreHeal.dashboard.headingSummary")}</h2>
       <table id="table-summary" class="dash-table">
         <thead>
-          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colSuccessRate")}</th><th>${t("exploreHeal.dashboard.colAvgMs")}</th><th>${t("exploreHeal.dashboard.colLastRun")}</th><th>${t("exploreHeal.dashboard.colLastResult")}</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th class="num">${t("exploreHeal.dashboard.colRuns")}</th><th class="num">${t("exploreHeal.dashboard.colSuccessRate")}</th><th class="num">${t("exploreHeal.dashboard.colAvgMs")}</th><th>${t("exploreHeal.dashboard.colLastRun")}</th><th>${t("exploreHeal.dashboard.colLastResult")}</th></tr>
         </thead>
         <tbody id="table-summary-body"></tbody>
       </table>
@@ -233,7 +233,7 @@ function renderDashboardPanel(): string {
       <h2>${t("exploreHeal.dashboard.headingDevices")}</h2>
       <table id="table-devices" class="dash-table">
         <thead>
-          <tr><th>worker</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colSuccessRate")}</th><th>${t("exploreHeal.dashboard.colAvgMs")}</th></tr>
+          <tr><th>worker</th><th class="num">${t("exploreHeal.dashboard.colRuns")}</th><th class="num">${t("exploreHeal.dashboard.colSuccessRate")}</th><th class="num">${t("exploreHeal.dashboard.colAvgMs")}</th></tr>
         </thead>
         <tbody id="table-devices-body"></tbody>
       </table>
