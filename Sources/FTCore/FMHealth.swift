@@ -122,7 +122,9 @@ public enum FMHealth {
         lock.lock()
         samples[kind, default: []].append(Sample(ms: ms, ok: ok))
         if !ok, firstError == nil, let error {
-            firstError = String(error.prefix(300))
+            // 入れ子を畳んだ連鎖(FMHealth.describe)を切らない長さ。300 だと真因の domain が
+            // 途中で切れて特定できなかった(2026-09-01 の M1Ultra 調査)
+            firstError = String(error.prefix(800))
         }
         lock.unlock()
         // サーキットブレーカへの通知はここに集約する(呼び出し側に増やさない)
