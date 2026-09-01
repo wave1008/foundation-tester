@@ -44,6 +44,7 @@ public enum FMLoadGenerator {
     /// **総数ではなく時間で止める**(締め切りを過ぎたら新しい呼び出しを投げない。投げ済みは待つ)。
     /// progress は呼び出しが1件終わるたびの累計件数(CLI の経過表示用。省略可)
     public static func run(seconds: Double, concurrency: Int, vision: Bool,
+                           imageSize: (width: Int, height: Int)? = nil,
                             progress: (@Sendable (Int) -> Void)? = nil) async -> Summary {
         // 画像入力は macOS 27+(FMVisionSupport 参照)。使えない環境では黙って text へ落とさない ——
         // 落とすと「vision を頼んだのに text の結果が返ってきた」で何を測ったか分からなくなる
@@ -62,7 +63,7 @@ public enum FMLoadGenerator {
                 group.addTask {
                     var mine: [Sample] = []
                     while Date() < deadline {
-                        let sample = await Self.callOnce(vision: vision)
+                        let sample = await Self.callOnce(vision: vision, imageSize: imageSize)
                         mine.append(sample)
                         if let progress {
                             let count = await counter.increment()
@@ -80,7 +81,7 @@ public enum FMLoadGenerator {
         return summarize(samples: samples, elapsedSeconds: Date().timeIntervalSince(started))
     }
 
-    private static func callOnce(vision: Bool) async -> Sample {
+    private static func callOnce(vision: Bool, imageSize: (width: Int, height: Int)?) async -> Sample {
         let startedAt = Date()
         do {
             if vision {
@@ -94,7 +95,7 @@ public enum FMLoadGenerator {
                     options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 16)
                 ) {
                     "Is this image a single solid color?"
-                    Attachment(Self.probeImage)
+                    Attachment(imageSize.map { Self.makeImage(width: $0.width, height: $0.height) } ?? Self.probeImage)
                 }.content
             } else {
                 _ = try await LanguageModelSession().respond(
@@ -115,14 +116,26 @@ public enum FMLoadGenerator {
     private static func elapsedMs(_ from: Date) -> Double { Date().timeIntervalSince(from) * 1000 }
 
     /// 単色 64x64 画像。判定精度は測らないので内容に意味は無い —— 生成コスト(推論の直列化待ち)だけが要る
-    private static let probeImage: CGImage = {
-        let ctx = CGContext(data: nil, width: 64, height: 64, bitsPerComponent: 8,
-                             bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
-                             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    private static let probeImage: CGImage = makeImage(width: 64, height: 64)
+
+    /// 指定寸法の単色画像。**寸法を振れることに意味がある** —— occlusion guard が実際に渡すのは
+    /// スクリーンショットの切り出し(リサイズ無し。最大でスクショ全体 ≈1200x2600px)で、
+    /// 合成の 64x64 とは推論コストが桁で違う。膝を測るときは本番の寸法で振ること
+    static func makeImage(width: Int, height: Int) -> CGImage {
+        let ctx = CGContext(data: nil, width: max(1, width), height: max(1, height),
+                            bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
         ctx.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
-        ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+        ctx.fill(CGRect(x: 0, y: 0, width: CGFloat(max(1, width)), height: CGFloat(max(1, height))))
+        // 単色だと圧縮も推論も極端に軽くなりうるので、格子を描いて情報量を持たせる
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        var y = 0
+        while y < height { ctx.fill(CGRect(x: 0, y: y, width: width, height: 4)); y += 32 }
+        var x = 0
+        while x < width { ctx.fill(CGRect(x: x, y: 0, width: 4, height: height)); x += 32 }
         return ctx.makeImage()!
-    }()
+    }
 
     /// サンプル配列 → 集計の純粋関数(テスト対象)。空配列は calls=0 / p50=0 / max=0
     /// (vision 不可の早期 return と同型だが、firstError はここでは付けない —— 早期 return 側が

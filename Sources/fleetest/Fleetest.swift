@@ -119,11 +119,19 @@ struct Doctor: AsyncParsableCommand {
     @Flag(name: .long, help: "Load-test with image input (occlusion-guard's path) instead of text")
     var fmLoadVision = false
 
+    // occlusion guard は**リサイズせず**スクリーンショットの切り出しを渡す(最大でスクショ全体
+    // ≈1200x2600px)。合成の 64x64 とは推論コストが桁で違うので、本番の寸法で振れるようにする
+    @Option(name: .long, help: ArgumentHelp("Image size for --fm-load-vision as WxH (default 64x64). "
+        + "Production occlusion crops are screenshot cutouts with no downscaling — up to the full "
+        + "screenshot (~1200x2600 on a 3x phone)"))
+    var fmLoadImage: String?
+
     func validate() throws {
         if !fmLoad {
             if fmLoadConcurrency != nil { throw ValidationError("--fm-load-concurrency requires --fm-load") }
             if fmLoadSeconds != nil { throw ValidationError("--fm-load-seconds requires --fm-load") }
             if fmLoadVision { throw ValidationError("--fm-load-vision requires --fm-load") }
+            if fmLoadImage != nil { throw ValidationError("--fm-load-image requires --fm-load") }
         } else {
             if fmOnly { throw ValidationError("--fm-load cannot be combined with --fm-only") }
             if rootsOnly { throw ValidationError("--fm-load cannot be combined with --roots-only") }
@@ -365,10 +373,20 @@ struct Doctor: AsyncParsableCommand {
             throw ExitCode(1)
         }
 
-        print("FM load: \(fmLoadVision ? "vision" : "text"), \(Int(seconds))s x concurrency \(concurrency)")
+        var imageSize: (width: Int, height: Int)?
+        if let raw = fmLoadImage {
+            let parts = raw.lowercased().split(separator: "x")
+            guard parts.count == 2, let w = Int(parts[0]), let h = Int(parts[1]), w > 0, h > 0 else {
+                throw ValidationError("--fm-load-image must be WxH (e.g. 1206x2622)")
+            }
+            guard fmLoadVision else { throw ValidationError("--fm-load-image requires --fm-load-vision") }
+            imageSize = (w, h)
+        }
+        let shape = fmLoadVision ? "vision \(imageSize.map { "\($0.width)x\($0.height)" } ?? "64x64")" : "text"
+        print("FM load: \(shape), \(Int(seconds))s x concurrency \(concurrency)")
         let progressClock = ProgressClock()
         let summary = await FMLoadGenerator.run(
-            seconds: seconds, concurrency: concurrency, vision: fmLoadVision
+            seconds: seconds, concurrency: concurrency, vision: fmLoadVision, imageSize: imageSize
         ) { count in
             // 毎回書くと1行に数百の断片が並ぶ(20秒 × 約8回/秒)。目的は「進んでいる」ことの提示だけ
             guard progressClock.tick(interval: 1) else { return }
