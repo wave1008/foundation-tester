@@ -195,6 +195,28 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 
 ---
 
+## `fleetest api results` の出力キャッシュ
+
+ダッシュボード(VSCode 拡張)が叩く `fleetest api results` は、集計の入力が変わっていなければ
+前回の出力を返す(`<project>/.fleetest/results-cache/api-results.json` と
+`api-results-trend-index.json`。E2E-iOS 90 日分 1,092 run・2 万記録で 4.1s → 0.04s。2026-09-01 実測)。
+定義元は `Sources/FTCore/ResultsOutputCache.swift`(有効判定・合成)と
+`RunResultsStore.scanFingerprint`(入力の指紋)。
+
+- **鍵**: 引数(project / `--since` の文字列 / limit / min-runs / matrix-runs)+ 実行ファイルの
+  mtime・size(建て直せば必ず外れる = 集計や契約を変えたときにキャッシュの版を手で上げる規律に
+  頼らない)+ 入力の指紋(走査する run ごとに `run.json` と `scenarios/` ディレクトリの
+  stat 2回。記録の追加・削除・finish の上書き・rsync 回収はどれもエントリの作成/rename/削除なので
+  必ず動く)。**捕まえないのは rename 無しの in-place 書き換えだけ**(記録の規律の外)
+- **`--since 90d` は呼ぶたびに動く**ので鍵に入れず、「前回含めた最古の記録より手前に境界がある」
+  条件で厳密に判定する(何も窓から落ちていない = 出力は同一)。落ちていれば計算し直す
+- **`--scenario`(trend)は鍵に入れない**。scenarioID → 記録ファイルの索引を別ファイルに持ち、
+  ヒット時はそのシナリオのファイルだけ読む(索引は同じ指紋の間だけ有効)
+- 保存は1組だけ(引数が変わるたびに書き直す)。`fleetest results …`(人向け CLI)は使わない
+- **`--no-cache`** = 読まずに計算する(書き直しは常に行う)。同じ入力で `--no-cache` の出力と
+  一致すること(`generatedAt` 以外)が正しさの確認手段
+- 書けない環境では毎回計算するだけ(失敗にしない)
+
 ## git での扱い
 
 **1 run = 1 ディレクトリ・1 シナリオ実行 = 1 ファイルの追加専用レイアウト**なので、

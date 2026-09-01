@@ -206,6 +206,81 @@ final class RunResultsStoreTests: XCTestCase {
         XCTAssertTrue(RunResultsStore.scanRuns(resultsDir: resultsDir).isEmpty)
     }
 
+    // MARK: - 列挙(opendir/readdir)
+
+    func testDirectoryListingSkipsHiddenEntriesAndSeparatesFilesFromDirectories() throws {
+        let dir = repoRoot.appendingPathComponent("listing")
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("sub"), withIntermediateDirectories: true)
+        try Data().write(to: dir.appendingPathComponent("b.json"))
+        try Data().write(to: dir.appendingPathComponent("a.json"))
+        try Data().write(to: dir.appendingPathComponent("notes.txt"))
+        try Data().write(to: dir.appendingPathComponent(".hidden.json"))
+
+        XCTAssertEqual(RunResultsStore.jsonFiles(in: dir)?.map(\.lastPathComponent), ["a.json", "b.json"])
+        XCTAssertEqual(RunResultsStore.subdirectories(in: dir)?.map(\.lastPathComponent), ["sub"])
+        XCTAssertNil(RunResultsStore.jsonFiles(in: dir.appendingPathComponent("missing")))
+    }
+
+    func testScanRecordEntriesCarryTheSourceFile() {
+        let runID = "20260101-000000Z-mach-0011"
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
+        RunResultsStore.writeMeta(makeMeta(runID: runID, startedAt: "2026-01-01T00:00:00Z"), runDir: runDir)
+        let written = RunResultsStore.writeScenario(makeScenarioRecord(scenarioID: "Foo.bar", runID: runID),
+                                                    runDir: runDir, fileName: "Foo.bar")
+        let entries = RunResultsStore.scanRecordEntries(resultsDir: resultsDir)
+        XCTAssertEqual(entries.map(\.record.scenarioID), ["Foo.bar"])
+        XCTAssertEqual(entries.first?.url.standardizedFileURL, written?.standardizedFileURL)
+    }
+
+    // MARK: - scanFingerprint(ResultsOutputCache の鍵)
+
+    func testFingerprintIsStableUntilTheInputSetChanges() {
+        let runID = "20260201-000000Z-mach-0021"
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
+        RunResultsStore.writeMeta(makeMeta(runID: runID, startedAt: "2026-02-01T00:00:00Z"), runDir: runDir)
+        RunResultsStore.writeScenario(makeScenarioRecord(scenarioID: "Foo.a", runID: runID), runDir: runDir, fileName: "Foo.a")
+        let initial = RunResultsStore.scanFingerprint(resultsDir: resultsDir)
+        XCTAssertEqual(initial, RunResultsStore.scanFingerprint(resultsDir: resultsDir), "no change → same digest")
+
+        // 記録の追加(atomic 書き = rename)で変わる
+        RunResultsStore.writeScenario(makeScenarioRecord(scenarioID: "Foo.b", runID: runID), runDir: runDir, fileName: "Foo.b")
+        let afterAdd = RunResultsStore.scanFingerprint(resultsDir: resultsDir)
+        XCTAssertNotEqual(initial, afterAdd)
+
+        // 記録の削除で変わる
+        RunResultsStore.removeScenario(runDir: runDir, fileName: "Foo.b")
+        let afterRemove = RunResultsStore.scanFingerprint(resultsDir: resultsDir)
+        XCTAssertNotEqual(afterAdd, afterRemove)
+
+        // run.json の書き直し(finish)で変わる
+        RunResultsStore.writeMeta(makeMeta(runID: runID, startedAt: "2026-02-01T00:00:00Z"), runDir: runDir)
+        let afterFinish = RunResultsStore.scanFingerprint(resultsDir: resultsDir)
+        XCTAssertNotEqual(afterRemove, afterFinish)
+
+        // 新しい run ディレクトリで変わる
+        let other = "20260201-010000Z-mach-0022"
+        RunResultsStore.writeMeta(makeMeta(runID: other, startedAt: "2026-02-01T01:00:00Z"),
+                                  runDir: RunResultsStore.runDir(resultsDir: resultsDir, runID: other))
+        XCTAssertNotEqual(afterFinish, RunResultsStore.scanFingerprint(resultsDir: resultsDir))
+    }
+
+    func testFingerprintIgnoresMonthsOutsideTheWindow() throws {
+        let old = "20260101-000000Z-mach-0031"
+        let oldDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: old)
+        RunResultsStore.writeMeta(makeMeta(runID: old, startedAt: "2026-01-01T00:00:00Z"), runDir: oldDir)
+        let recent = "20260301-000000Z-mach-0032"
+        RunResultsStore.writeMeta(makeMeta(runID: recent, startedAt: "2026-03-01T00:00:00Z"),
+                                  runDir: RunResultsStore.runDir(resultsDir: resultsDir, runID: recent))
+        let since = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-02-15T00:00:00Z"))
+
+        let before = RunResultsStore.scanFingerprint(resultsDir: resultsDir, since: since)
+        RunResultsStore.writeScenario(makeScenarioRecord(scenarioID: "Foo.a", runID: old), runDir: oldDir, fileName: "Foo.a")
+        XCTAssertEqual(before, RunResultsStore.scanFingerprint(resultsDir: resultsDir, since: since),
+                       "a month scanRecords would not read must not move the digest")
+        XCTAssertNotEqual(before, RunResultsStore.scanFingerprint(resultsDir: resultsDir),
+                          "without a window the same change is visible")
+    }
+
     // MARK: - meta(runDir:)
 
     func testMetaRoundTrips() {

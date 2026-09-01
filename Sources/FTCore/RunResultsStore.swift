@@ -6,6 +6,7 @@
 // 既存ファイルへの上書きは run.json の finish() 更新のみ。scenarios/ 配下は追加専用
 // (2 回目以降のシナリオは RunRecorder が ~2 サフィックスで別ファイルにする)。
 
+import CryptoKit
 import Foundation
 
 public enum RunResultsStore {
@@ -68,14 +69,11 @@ public enum RunResultsStore {
     /// 順序はファイル名昇順(決定的。表示順は呼び出し側でソートし直してよい)
     public static func records(runDir: URL) -> [ScenarioRunRecord] {
         let dir = runDir.appendingPathComponent("scenarios")
-        guard let files = try? FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else {
+        guard let files = jsonFiles(in: dir) else {
             return []
         }
         let decoder = JSONDecoder()
         return files
-            .filter { $0.pathExtension == "json" }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
             .compactMap { file in
                 guard let data = try? Data(contentsOf: file),
                       let record = try? decoder.decode(ScenarioRunRecord.self, from: data),
@@ -94,26 +92,75 @@ public enum RunResultsStore {
 
     // MARK: - 読み取り(スキャン)
 
+    /// opendir/readdir による列挙(隠しエントリは除く。順序は不定 = 呼び手がソートする)。
+    /// `FileManager.contentsOfDirectory(at:)` は1エントリごとに open + getattrlistbulk を撃って
+    /// CFURL を組み立てるため、run 1,092 個の `scenarios/` を列挙するだけで約 3 秒かかっていた
+    /// (E2E-iOS 2万ファイル: 全体 4.0s のうち sample の 233/296 がここ。2026-09-01 実測)。
+    /// 読めないディレクトリは nil(呼び手は従来どおり黙って飛ばす)
+    static func directoryEntries(_ dir: URL) -> [(name: String, isDirectory: Bool)]? {
+        guard let handle = opendir(dir.path) else { return nil }
+        defer { closedir(handle) }
+        var entries: [(name: String, isDirectory: Bool)] = []
+        while let entry = readdir(handle) {
+            let name = withUnsafePointer(to: &entry.pointee.d_name) { pointer in
+                pointer.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { String(cString: $0) }
+            }
+            if name.hasPrefix(".") { continue }
+            let isDirectory: Bool
+            switch Int32(entry.pointee.d_type) {
+            case DT_DIR:
+                isDirectory = true
+            case DT_UNKNOWN, DT_LNK:
+                // d_type を返さない FS とシンボリックリンクだけ stat で確かめる(リンクは辿る)
+                var status = stat()
+                isDirectory = stat(dir.appendingPathComponent(name).path, &status) == 0
+                    && (status.st_mode & S_IFMT) == S_IFDIR
+            default:
+                isDirectory = false
+            }
+            entries.append((name, isDirectory))
+        }
+        return entries
+    }
+
+    /// `dir` 直下の `*.json`(ファイル名昇順)。URL は文字列連結 + `isDirectory:` 明示で作る
+    /// (`appendingPathComponent` は2万件で約 0.4s。`fileURLWithPath:` だけだと存在確認の stat が走る)
+    static func jsonFiles(in dir: URL) -> [URL]? {
+        guard let entries = directoryEntries(dir) else { return nil }
+        let base = dir.path + "/"
+        return entries
+            .filter { !$0.isDirectory && $0.name.hasSuffix(".json") }
+            .map(\.name)
+            .sorted()
+            .map { URL(fileURLWithPath: base + $0, isDirectory: false) }
+    }
+
+    /// `dir` 直下のサブディレクトリ(名前昇順)
+    static func subdirectories(in dir: URL) -> [URL]? {
+        guard let entries = directoryEntries(dir) else { return nil }
+        let base = dir.path + "/"
+        return entries
+            .filter(\.isDirectory)
+            .map(\.name)
+            .sorted()
+            .map { URL(fileURLWithPath: base + $0, isDirectory: true) }
+    }
+
     /// results/runs/ 配下に実在する月ディレクトリ(YYYY-MM)のうち since/until の範囲に
     /// かかるものだけを返す(文字列比較。YYYY-MM は辞書順=時系列順)。全走査回避が目的。
     private static func relevantMonthDirs(resultsDir: URL, since: Date?, until: Date?) -> [URL] {
         let runsDir = resultsDir.appendingPathComponent("runs")
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: runsDir, includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]) else {
+        guard let entries = subdirectories(in: runsDir) else {
             return []
         }
         let sinceKey = since.map(monthKey)
         let untilKey = until.map(monthKey)
-        return entries
-            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
-            .filter { url in
-                let key = url.lastPathComponent
-                if let sinceKey, key < sinceKey { return false }
-                if let untilKey, key > untilKey { return false }
-                return true
-            }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        return entries.filter { url in
+            let key = url.lastPathComponent
+            if let sinceKey, key < sinceKey { return false }
+            if let untilKey, key > untilKey { return false }
+            return true
+        }
     }
 
     /// since/until の窓判定キー。startedAt は RunRecorder が書く ISO8601(UTC "Z" 固定)なので
@@ -124,7 +171,7 @@ public enum RunResultsStore {
     /// 並ぶため、since 指定時は従来(distantPast 扱い)と同じ除外側に倒れる。
     /// 境界とレコードで秒の小数部の有無が違う場合は境界の±1秒未満で判定が割れうるが、
     /// 窓の境界は「now - 90d」等の粗い値なので影響しない
-    private static func windowKey(_ date: Date) -> String {
+    public static func windowKey(_ date: Date) -> String {
         ISO8601DateFormatter().string(from: date)
     }
 
@@ -136,14 +183,7 @@ public enum RunResultsStore {
     }
 
     private static func runDirs(in monthDir: URL) -> [URL] {
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: monthDir, includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]) else {
-            return []
-        }
-        return entries
-            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        subdirectories(in: monthDir) ?? []
     }
 
     private static func warnSkipped(_ count: Int, kind: String) {
@@ -227,7 +267,7 @@ public enum RunResultsStore {
         // 「新しい順に見て埋まったら止める」逐次の意味を持つので従来経路のまま。
         // 読む集合・返す内容は逐次と同一(最後のソートで順序も決定的)
         if maxRuns == nil, countingPlatform == nil, maxObservationsPerScenario == nil {
-            return scanRecordsConcurrently(runDirs: targetRunDirs, since: since, until: until)
+            return scanRecordsConcurrently(runDirs: targetRunDirs, since: since, until: until).map(\.record)
         }
         if maxRuns != nil || maxObservationsPerScenario != nil {
             // 新しい順に見て「レコードが取れた run」を数える。実行中の run 自身のディレクトリは
@@ -254,12 +294,10 @@ public enum RunResultsStore {
             runDirsInspected += 1
             let before = results.count
             let scenariosDir = runDir.appendingPathComponent("scenarios")
-            guard let files = try? FileManager.default.contentsOfDirectory(
-                at: scenariosDir, includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]) else {
+            guard let files = jsonFiles(in: scenariosDir) else {
                 continue
             }
-            for file in files where file.pathExtension == "json" {
+            for file in files {
                 guard let data = try? Data(contentsOf: file),
                       let record = try? decoder.decode(ScenarioRunRecord.self, from: data) else {
                     skipped += 1
@@ -295,20 +333,34 @@ public enum RunResultsStore {
         return results.sorted { $0.runID == $1.runID ? $0.scenarioID < $1.scenarioID : $0.runID < $1.runID }
     }
 
+    /// scanRecords(キャップ無し)が読んだ1件と、その元ファイル。
+    /// url は ResultsOutputCache の trend 索引(scenarioID → ファイル)に使う
+    public struct ScannedRecord: Sendable {
+        public let url: URL
+        public let record: ScenarioRunRecord
+    }
+
+    /// scanRecords(キャップ無し)と同じ集合を、元ファイルの URL 付きで返す
+    public static func scanRecordEntries(resultsDir: URL, since: Date? = nil, until: Date? = nil) -> [ScannedRecord] {
+        var targetRunDirs: [URL] = []
+        for monthDir in relevantMonthDirs(resultsDir: resultsDir, since: since, until: until) {
+            targetRunDirs += runDirs(in: monthDir)
+        }
+        return scanRecordsConcurrently(runDirs: targetRunDirs, since: since, until: until)
+    }
+
     /// scanRecords のキャップ無し経路。デコードが所要の大半を占める
     /// (実測: E2E-CMP 90日分の逐次走査で 114s。1 プロジェクト 2万ファイル規模)ため、
     /// ファイル単位で並列にデコードする。読み飛ばし規律(壊れたファイル・新しすぎる
     /// schemaVersion・since/until)は逐次経路と同一。順序は最後のソートで決定的
-    private static func scanRecordsConcurrently(runDirs: [URL], since: Date?, until: Date?) -> [ScenarioRunRecord] {
+    private static func scanRecordsConcurrently(runDirs: [URL], since: Date?, until: Date?) -> [ScannedRecord] {
         var files: [URL] = []
         for runDir in runDirs {
             let scenariosDir = runDir.appendingPathComponent("scenarios")
-            guard let entries = try? FileManager.default.contentsOfDirectory(
-                at: scenariosDir, includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]) else {
+            guard let entries = jsonFiles(in: scenariosDir) else {
                 continue
             }
-            files += entries.filter { $0.pathExtension == "json" }
+            files += entries
         }
         guard !files.isEmpty else { return [] }
 
@@ -316,7 +368,7 @@ public enum RunResultsStore {
         let untilKey = until.map(windowKey)
         let chunkCount = max(1, min(files.count, ProcessInfo.processInfo.activeProcessorCount))
         let chunkSize = (files.count + chunkCount - 1) / chunkCount
-        var chunkResults = [[ScenarioRunRecord]](repeating: [], count: chunkCount)
+        var chunkResults = [[ScannedRecord]](repeating: [], count: chunkCount)
         var chunkSkipped = [Int](repeating: 0, count: chunkCount)
 
         // 各チャンクは自分のスロットにだけ書く(共有ロック不要)。decoder はチャンクごとに作る
@@ -324,7 +376,7 @@ public enum RunResultsStore {
             chunkSkipped.withUnsafeMutableBufferPointer { skippedBuffer in
                 DispatchQueue.concurrentPerform(iterations: chunkCount) { chunkIndex in
                     let decoder = JSONDecoder()
-                    var local: [ScenarioRunRecord] = []
+                    var local: [ScannedRecord] = []
                     var localSkipped = 0
                     let start = chunkIndex * chunkSize
                     let end = min(start + chunkSize, files.count)
@@ -341,7 +393,7 @@ public enum RunResultsStore {
                         if let untilKey, record.startedAt > untilKey {
                             continue
                         }
-                        local.append(record)
+                        local.append(ScannedRecord(url: file, record: record))
                     }
                     resultsBuffer[chunkIndex] = local
                     skippedBuffer[chunkIndex] = localSkipped
@@ -353,6 +405,43 @@ public enum RunResultsStore {
         // ここも同じ(壊れたディレクトリ一覧の失敗は逐次と同様 continue で黙って飛ばす)
         warnSkipped(chunkSkipped.reduce(0, +), kind: "scenario record")
         return chunkResults.flatMap { $0 }
-            .sorted { $0.runID == $1.runID ? $0.scenarioID < $1.scenarioID : $0.runID < $1.runID }
+            .sorted {
+                $0.record.runID == $1.record.runID ? $0.record.scenarioID < $1.record.scenarioID
+                                                   : $0.record.runID < $1.record.runID
+            }
+    }
+
+    // MARK: - 指紋(ResultsOutputCache の鍵)
+
+    /// scanRuns / scanRecords(キャップ無し)が読む入力集合の指紋(SHA256 hex)。
+    /// 走査する月・run ディレクトリは scanRecords と同じ relevantMonthDirs / runDirs を通す
+    /// (別に列挙すると「読む集合」と「鍵」がずれる)。run ごとに畳むのは stat 2回だけ:
+    /// - `run.json` の mtime(ns)と size(finish() が上書きする唯一のファイル)
+    /// - `scenarios/` ディレクトリ自身の mtime(ns)。記録の追加(atomic 書き = temp 作成 + rename)・
+    ///   削除(removeScenario)・rsync の回収はどれもエントリの作成/rename/削除なので必ず更新される。
+    ///   **ファイルの中身を rename 無しで in-place 書き換えした場合だけ捕まえない**(記録の規律 =
+    ///   追加専用の外なので許容)
+    /// scenarios/ の中は列挙しない —— readdir だけで 2万エントリに 0.23s、URL 化まで含めて約 1s
+    /// かかり(2026-09-01 実測)、ヒットの意味が無くなる。E2E-iOS 1,092 run で数十 ms。
+    /// **呼ぶ順序は「指紋 → 走査」**: 指紋の後に届いた記録は走査に混ざっても次回の指紋が変わる
+    /// (ミス側に倒れる)。逆順だと走査後に届いた記録が指紋に入り、無い記録の出力を有効と見なす
+    public static func scanFingerprint(resultsDir: URL, since: Date? = nil, until: Date? = nil) -> String {
+        var hasher = SHA256()
+        var lines = ""
+        func stamp(_ path: String) -> String {
+            var status = stat()
+            guard stat(path, &status) == 0 else { return "-" }
+            let mtime = status.st_mtimespec
+            return "\(mtime.tv_sec).\(mtime.tv_nsec) \(status.st_size)"
+        }
+        for monthDir in relevantMonthDirs(resultsDir: resultsDir, since: since, until: until) {
+            lines += "month \(monthDir.lastPathComponent)\n"
+            for runDir in runDirs(in: monthDir) {
+                let base = runDir.path
+                lines += "run \(runDir.lastPathComponent) \(stamp(base + "/run.json")) \(stamp(base + "/scenarios"))\n"
+            }
+        }
+        hasher.update(data: Data(lines.utf8))
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 }
