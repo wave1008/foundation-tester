@@ -42,14 +42,14 @@ private func runInheritedSSH(_ argv: [String]) throws -> Int32 {
     return process.terminationStatus
 }
 
-/// `echo $HOME; stat -f%Su /dev/console; id -un` の到達確認(RemoteRunDispatcher.resolveLayout
+/// `echo $HOME; <RemoteProbe.consoleUserCommand>; id -un` の到達確認(RemoteRunDispatcher.resolveLayout
 /// と同じ規律だが private のため複製する)。session が nil でも home が取れていれば
 /// ログイン判定だけスキップして続行する(古い macOS 等の想定外出力への fallback)。
 /// `Setup` と `Align` が共有する
 private func remoteReach(hostSpec: RemoteHostSpec)
     -> (session: RemoteSessionInfo?, home: String?, error: String?) {
     guard let result = try? Shell.run(
-        setupSSHBase + [hostSpec.sshTarget, "echo $HOME; stat -f%Su /dev/console; id -un"]) else {
+        setupSSHBase + [hostSpec.sshTarget, "echo $HOME; \(RemoteProbe.consoleUserCommand); id -un"]) else {
         return (nil, nil, "ssh failed to run")
     }
     guard result.status == 0 else {

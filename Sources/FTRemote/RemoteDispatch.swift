@@ -716,11 +716,27 @@ public struct RemoteSessionInfo: Equatable, Sendable {
 
 public enum RemoteProbe {
 
-    /// "echo $HOME; stat -f%Su /dev/console; id -un" の3行出力(hardware なし)、または
+    /// セッション行(`parseSessionInfo` の2行目)を採る唯一の定義元。**3つの呼び出し元
+    /// (RemoteStatusProbe.command / RemoteRunDispatcher.resolveLayout / RemoteSetupCommand の
+    /// remoteReach)は必ずこれを使う** —— 片方だけ変えるとホストごとに判定が食い違う。
+    ///
+    /// `stat -f%Su /dev/console` だけでは**画面共有(仮想ディスプレイ)でログインした機械を
+    /// 偽陰性で弾く**: 物理コンソールの所有者は root のまま残るが、ssh ユーザーには
+    /// Aqua セッションがあり simctl も xcodebuild も動く(2026-09-01 に M1Ultra で実測。
+    /// who / scutil ConsoleUser / Dock はどれも wave1008 を指していた)。
+    /// そこで**先に「ssh ユーザー自身の Aqua ドメインが在るか」を直接聞く**。
+    /// `launchctl print gui/<uid>` はログインセッションが作るドメインなので、
+    /// loginwindow で停止中は存在しない(負の対照: gui/0・gui/999 はどちらも失敗する)。
+    /// 無ければ従来の `/dev/console` へ落ちる = 判定が緩むのは実際に GUI セッションが
+    /// 在るときだけ。**出力はどちらの枝もちょうど1行**(行数で形を判定しているため)
+    public static let consoleUserCommand =
+        "if launchctl print gui/$(id -u) >/dev/null 2>&1; then id -un; else stat -f%Su /dev/console; fi"
+
+    /// "echo $HOME; <consoleUserCommand>; id -un" の3行出力(hardware なし)、または
     /// これに "sysctl -n machdep.cpu.brand_string; sysctl -n hw.ncpu" を足した5行出力
     /// (4行目 = CPU モデル・5行目 = コア数)を解析する。末尾の改行1個は許容する。
     /// **先頭3行の妥当性判定は行数によらず同一**(3本ぴったり・いずれも空でない、が前提)。
-    /// 行数が3でも5でもなければ nil(古い macOS 等で `/dev/console` が想定外を返す場合を想定。
+    /// 行数が3でも5でもなければ nil(古い macOS 等でセッション行が想定外を返す場合を想定。
     /// 呼び出し側は nil を「判定不能」として扱い、ログインチェックだけスキップする)。
     /// 5行形では、4行目が空(トリム後)なら processorModel は nil、5行目が Int にパース
     /// できなければ coreCount は nil(hardware だけ判定不能でもセッション情報は活かす)
@@ -780,7 +796,7 @@ public enum RemoteStatusProbe {
     public static func command(layout: RemoteLayout) -> String {
         let sep = "echo '\(separator)'"
         let steps = [
-            "echo $HOME; stat -f%Su /dev/console; id -un",
+            "echo $HOME; \(RemoteProbe.consoleUserCommand); id -un",
             "git -C \(dquote(layout.toolRoot)) rev-parse HEAD 2>/dev/null || echo -",
             "xcodebuild -version",
             "xcrun --sdk iphonesimulator --show-sdk-build-version",

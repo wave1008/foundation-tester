@@ -145,7 +145,7 @@ struct RemoteRunDispatcher {
     // MARK: - 0. レイアウト解決
 
     /// remoteDirRaw を絶対パスへ解決する。到達性プローブ兼用の1往復
-    /// (`echo $HOME; stat -f%Su /dev/console; id -un; sysctl -n machdep.cpu.brand_string 2>/dev/null;
+    /// (`echo $HOME; <RemoteProbe.consoleUserCommand>; id -un; sysctl -n machdep.cpu.brand_string 2>/dev/null;
     /// sysctl -n hw.ncpu 2>/dev/null`)に相乗りさせて、コンソールユーザー(§16.3)と CPU 情報
     /// (RemoteHostFacts の processorModel/coreCount。§8 の事前係数)を同時に取る —— 別の ssh を
     /// 足すと往復が増える。戻り値の session は 3行形(古い macOS 等・parseSessionInfo が判定不能で
@@ -153,7 +153,7 @@ struct RemoteRunDispatcher {
     private func resolveLayout() throws -> (layout: RemoteLayout, session: RemoteSessionInfo?) {
         log("==> checking compatibility with \(host.sshTarget)")
         let result = try Shell.run(
-            sshBase + [host.sshTarget, "echo $HOME; stat -f%Su /dev/console; id -un; "
+            sshBase + [host.sshTarget, "echo $HOME; \(RemoteProbe.consoleUserCommand); id -un; "
                 + "sysctl -n machdep.cpu.brand_string 2>/dev/null; sysctl -n hw.ncpu 2>/dev/null"])
         guard result.status == 0 else {
             throw RemoteDispatchError.remoteSetupFailed(

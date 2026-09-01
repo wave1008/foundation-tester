@@ -1249,7 +1249,8 @@ final class RemoteDispatchTests: XCTestCase {
         let base = "\"/Users/ci/fleetest-runner\""
         XCTAssertEqual(
             RemoteStatusProbe.command(layout: layout),
-            "echo $HOME; stat -f%Su /dev/console; id -un; echo '---FT---'; "
+            "echo $HOME; if launchctl print gui/$(id -u) >/dev/null 2>&1; then id -un;"
+            + " else stat -f%Su /dev/console; fi; id -un; echo '---FT---'; "
             + "git -C \(tool) rev-parse HEAD 2>/dev/null || echo -; echo '---FT---'; "
             + "xcodebuild -version; echo '---FT---'; "
             + "xcrun --sdk iphonesimulator --show-sdk-build-version; echo '---FT---'; "
