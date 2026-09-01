@@ -70,6 +70,21 @@ struct DriverOptions: ParsableArguments {
 
 // MARK: - doctor
 
+/// 進捗表示の間引きに使う箱。コールバックは @Sendable なので可変値を直接掴めない
+private final class ProgressClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var last = Date.distantPast
+
+    /// 前回から interval 秒経っていれば true(そのとき時刻を進める)
+    func tick(interval: TimeInterval) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard Date().timeIntervalSince(last) >= interval else { return false }
+        last = Date()
+        return true
+    }
+}
+
 struct Doctor: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Preflight checks for Foundation Models, Xcode and simulators")
@@ -84,7 +99,42 @@ struct Doctor: AsyncParsableCommand {
     @Flag(name: .long, help: "Only check tool-root / scenario-package root resolution and report it via exit code")
     var rootsOnly = false
 
+    // FMGate を通さず素通しで負荷をかける(FMLoadGenerator.run の doc 参照)。実行中の run と
+    // FM の直列化容量を奪い合うので、他に何も走らせていないときに使う
+    @Flag(name: .long, help: ArgumentHelp("Load-test Foundation Models (no other checks run). "
+        + "FM is a host-wide serialized resource — this competes with any run in progress for it. "
+        + "The calls are recorded like any other FM usage, so they also move the FM row "
+        + "in the monitor / VSCode toolbar"))
+    var fmLoad = false
+
+    // 根拠: 2026-07-22 M2 Ultra 実測でスループットが頭打ちになる最小の並列度
+    // (並列度1→0.83 回/秒、5→1.03 回/秒、10→1.02 回/秒で頭打ち)。天井まで埋めるのに要る最小のコスト
+    @Option(name: .long, help: "Concurrency for --fm-load (default: 5, the smallest concurrency that saturates the serialized FM queue)")
+    var fmLoadConcurrency: Int?
+
+    // 根拠: 実測の天井が約1回/秒なので、中央値が安定する程度の標本(約30件)が取れる最短の秒数
+    @Option(name: .long, help: "Duration in seconds for --fm-load (default: 30, enough calls at the ~1/s ceiling for a stable median)")
+    var fmLoadSeconds: Double?
+
+    @Flag(name: .long, help: "Load-test with image input (occlusion-guard's path) instead of text")
+    var fmLoadVision = false
+
+    func validate() throws {
+        if !fmLoad {
+            if fmLoadConcurrency != nil { throw ValidationError("--fm-load-concurrency requires --fm-load") }
+            if fmLoadSeconds != nil { throw ValidationError("--fm-load-seconds requires --fm-load") }
+            if fmLoadVision { throw ValidationError("--fm-load-vision requires --fm-load") }
+        } else {
+            if fmOnly { throw ValidationError("--fm-load cannot be combined with --fm-only") }
+            if rootsOnly { throw ValidationError("--fm-load cannot be combined with --roots-only") }
+        }
+    }
+
     func run() async throws {
+        if fmLoad {
+            try await runFMLoad()
+            return
+        }
         if rootsOnly {
             // ツール本体が解決できない = ブリッジが起動不能なので非0。シナリオパッケージ側は
             // パッケージ外から実行しても正当なので警告どまり(exit code に反映しない)
@@ -296,6 +346,61 @@ struct Doctor: AsyncParsableCommand {
                 + " (set FT_PACKAGE_ROOT to point at it explicitly)")
         }
         return resolved
+    }
+
+    /// FMLoadGenerator を回し、実測を出す。他のチェックは行わない(fmLoad の validate() 参照)。
+    /// **この負荷は実行中の run と FM の直列化容量を奪い合う**(FMGate を通さないため)ので、
+    /// 単独で回すことが前提
+    private func runFMLoad() async throws {
+        let seconds = fmLoadSeconds ?? 30
+        let concurrency = fmLoadConcurrency ?? 5
+        if seconds <= 0 { throw ValidationError("--fm-load-seconds must be greater than 0") }
+        if concurrency < 1 { throw ValidationError("--fm-load-concurrency must be at least 1") }
+
+        // 安価な availability チェックを先に払う。呼べないと分かっているのに直列化ロックへ
+        // 何十回も並べて投げても、頭打ち実測ではなく可用性の失敗を測るだけになる
+        let base = FMDoctor.check()
+        guard base.available else {
+            print("❌ \(base.detail)")
+            throw ExitCode(1)
+        }
+
+        print("FM load: \(fmLoadVision ? "vision" : "text"), \(Int(seconds))s x concurrency \(concurrency)")
+        let progressClock = ProgressClock()
+        let summary = await FMLoadGenerator.run(
+            seconds: seconds, concurrency: concurrency, vision: fmLoadVision
+        ) { count in
+            // 毎回書くと1行に数百の断片が並ぶ(20秒 × 約8回/秒)。目的は「進んでいる」ことの提示だけ
+            guard progressClock.tick(interval: 1) else { return }
+            FileHandle.standardError.write(Data("\r  ...\(count) calls".utf8))
+        }
+        FileHandle.standardError.write(Data("\r".utf8))
+
+        // calls=0 only happens when vision was requested but FMVisionSupport says no (the run
+        // never dispatched a single call) — report and fail rather than print a fake all-zero summary
+        if summary.calls == 0, let reason = summary.firstError {
+            print("❌ \(reason)")
+            throw ExitCode(1)
+        }
+
+        print(String(format: "  calls         %5d", summary.calls))
+        print(String(format: "  failures      %5d", summary.failures))
+        // **「FM の天井」を断定しない**。この数字は FMGate/FMLock を通していないので FM 単体の能力で、
+        // production の FM 呼び出しは全部あの門で1件ずつに直列化される(= run 中に見えるレートとは別物)。
+        // 天井を文言に焼き付けると、環境が変わったときに数字と矛盾する断定を並べて出すことになる
+        print(String(format: "  throughput    %.2f calls/s", summary.throughputPerSecond))
+        print("  latency       p50 \(summary.p50Ms)ms / max \(summary.maxMs)ms")
+        if summary.failures > 0, let firstError = summary.firstError {
+            print("  first error: \(firstError)")
+        }
+        print("Note: this bypasses FMGate/FMLock, which serialize every FM call a run makes,"
+            + " so it measures FM itself — not the rate a run can reach.")
+        print("This load is visible in the monitor's FM row too "
+            + "(FMHealth.record feeds ~/.fleetest/fm-usage/<pid>.json, which `api host-metrics` reads).")
+
+        if summary.calls > 0, summary.failures == summary.calls {
+            throw ExitCode(1)
+        }
     }
 }
 

@@ -14,9 +14,11 @@
 //
 // FM系列も他と同じ hostMetrics ストリームから来る(host-metrics プロセス自身は FM を叩かない ——
 // FM を呼んだ側のプロセスが `~/.fleetest/fm-usage/<pid>.json` に置いた控えを、host-metrics が
-// 毎 tick 読んで集計する。Sources 側の詳細は関知しない)。FM 呼び出しはホスト全体で直列化する
-// 共有資源(実測: 並列度1〜10で0.83〜1.03回/秒 = 約1回/秒で頭打ち)なので、生の1秒差分だと
-// 0/1の二値になって読めない。表示は直近 HM_FM_RATE_WINDOW_TICKS tick の移動窓平均(回/秒)。
+// 毎 tick 読んで集計する。Sources 側の詳細は関知しない)。run の FM 呼び出しは
+// FTCore の FMGate/FMLock が**ホスト全体で1件ずつに直列化する**ので実測は約1回/秒に張り付き、
+// 生の1秒差分は 0/1 の二値になって読めない。表示は直近 HM_FM_RATE_WINDOW_TICKS tick の
+// 移動窓平均(回/秒)。**この約1回/秒は FM の能力ではなくこちらのロックの上限**で、門を通らない
+// 呼び出し(`doctor --fm-load`)は数倍出る —— だからスパークラインに固定上限を置かない。
 
 import { t } from '../i18n.js';
 import { setHoverTip } from './hoverTip.js';
@@ -30,12 +32,10 @@ const HM_CLOCK_TAKEOVER_MS = 5000;
 // 位相のずれで落とせるのは1 tick まで。これを超えたら観測が途絶えたとみなし欠測(–)にする。
 const HM_STALE_TICKS = 2;
 // FM のレート表示の移動窓(tick 数)。host-metrics --interval は 1 固定(monitorProcessManager.ts
-// startHostMetricsProcess)なので 1 tick = 1 秒とみなせる。生の1秒差分だと天井(下記)近くで
-// 0/1 の二値になり読めないため、10 tick(=10秒)の移動窓平均にして 0.1 刻みで見えるようにする。
+// startHostMetricsProcess)なので 1 tick = 1 秒とみなせる。run の FM は直列化で約1回/秒に
+// 張り付き、生の1秒差分は 0/1 の二値になり読めないため、10 tick(=10秒)の移動窓平均にして
+// 0.1 刻みで見えるようにする。
 const HM_FM_RATE_WINDOW_TICKS = 10;
-// FM 呼び出しの正規化上限(回/秒)。ホスト全体で直列化する共有資源の実測天井 ——
-// 並列度1〜10で0.83〜1.03回/秒(2026-09-01計測)。スパークラインはこれを超えた分をクランプする。
-const HM_FM_RATE_CEILING = 1.0;
 // バリデータ検証済みパレット(ダーク/ライトで系列色を切り替える。グリッド・軸は描かない)。
 const HM_COLORS = {
   dark: { cpu: '#f2555a', gpu: '#b8891f', fm: '#a06be0', mem: '#2f9e63' },
@@ -53,14 +53,17 @@ function hmIsLightTheme() {
     document.body.classList.contains('vscode-high-contrast-light');
 }
 
-function hmMakeEntry(rowEl, metric, colorKey) {
+// countScale=true の系列は samples が「比率」ではなく「件数」。描画時にバッファ内の最大値で
+// 正規化する(FM は上限が定義できないため。固定上限だと実測レンジで潰れて読めない)
+function hmMakeEntry(rowEl, metric, colorKey, countScale = false) {
   const el = rowEl.querySelector(`.host-metric[data-metric="${metric}"]`);
   return {
     el,
     canvas: el.querySelector('.hm-canvas'),
     value: el.querySelector('.hm-value'),
     colorKey,
-    samples: [], // 直近 HM_MAX_SAMPLES 件。0..1 の比率、欠測は null。
+    countScale,
+    samples: [], // 直近 HM_MAX_SAMPLES 件。0..1 の比率(countScale なら件数)、欠測は null。
   };
 }
 
@@ -70,7 +73,7 @@ function hmMakeRow(rowEl, machine) {
   const entries = {
     cpu: hmMakeEntry(rowEl, 'cpu', 'cpu'),
     gpu: hmMakeEntry(rowEl, 'gpu', 'gpu'),
-    fm: hmMakeEntry(rowEl, 'fm', 'fm'),
+    fm: hmMakeEntry(rowEl, 'fm', 'fm', true),
     mem: hmMakeEntry(rowEl, 'mem', 'mem'),
   };
   return {
@@ -300,12 +303,16 @@ function hmDraw(row, entry) {
   const palette = HM_COLORS[hmIsLightTheme() ? 'light' : 'dark'];
   // FM 全滅中はスパークラインも失敗の系列だと分かるよう赤(cpu と同色)で描く
   const color = entry === row.entries.fm && fmIsDead(row) ? palette.cpu : palette[entry.colorKey];
+  // 件数系列(FM)はバッファ内の最大値で正規化する。全部0のときは0で割らない
+  const scale = entry.countScale
+    ? Math.max(1, ...samples.filter((v) => v !== null))
+    : 1;
   const stepX = width / (HM_MAX_SAMPLES - 1);
   // samplesは「直近N件」なので、60件溜まるまでは右詰めで配置する(新サンプルは常に右端)。
   const startIndex = HM_MAX_SAMPLES - samples.length;
   const points = samples.map((ratio, i) => ({
     x: (startIndex + i) * stepX,
-    y: ratio === null ? null : height - ratio * height,
+    y: ratio === null ? null : height - (ratio / scale) * height,
   }));
 
   // null(欠測)のところで線を分割し、区間ごとに個別のパスとして描く。
@@ -416,9 +423,11 @@ function hmRenderRow(row, sample) {
   if (row.fm.window.length > HM_FM_RATE_WINDOW_TICKS) {
     row.fm.window.shift();
   }
-  // スパークラインは各 tick の生レート(1 tick=1秒なので calls がそのまま回/秒)を
-  // HM_FM_RATE_CEILING でクランプして描く。ラベルの移動窓平均とは別に、瞬間の突出も見せるため。
-  hmPushSample(row.entries.fm, fmCalls === null ? null : Math.min(fmCalls, HM_FM_RATE_CEILING));
+  // FM は他の3系列と違い**割合ではなく件数**なので、固定の上限を置かない。
+  // production の run は FMGate/FMLock で1件ずつに直列化されるので実測は約1回/秒に張り付くが、
+  // 門を通らない呼び出し(doctor --fm-load)は数倍出る。固定上限だとどちらかが必ず潰れて読めない。
+  // 描画時にバッファ内の最大値で正規化する(hmDraw の countScale)
+  hmPushSample(row.entries.fm, fmCalls);
   hmPushSample(row.entries.mem, memRatio);
 
   row.entries.cpu.value.textContent = hmFormatPercent(cpu);

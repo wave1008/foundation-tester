@@ -1,10 +1,9 @@
 // FM(Foundation Models)呼び出しの機械グローバルな控え。
 //
-// FM 呼び出しはホスト全体で直列化する(実測: 並列度によらず約1回/秒で頭打ち。FMHealth.swift 参照)
-// ので、本来 CPU/GPU と同じ「ホストの性質」だが、OS に「このホストで今 FM を何回呼んでいるか」を
-// 訊く API は無い。host-metrics 自身が FM を叩いて測ると測定対象を自分で消費してしまうため、
-// FM を実際に呼んでいる各プロセス(FMHealth.record 経由)がここへ書き、host-metrics が毎 tick
-// 読む形にする。NDJSON の fmCalls/fmFailures/fmTotalMs は
+// FM は CPU/GPU と同じ「ホストの性質」(呼び出しは FMGate/FMLock がホスト全体で直列化する)だが、
+// OS に「このホストで今 FM を何回呼んでいるか」を訊く API は無い。host-metrics 自身が FM を
+// 叩いて測ると測定対象を自分で消費してしまうため、FM を実際に呼んでいる各プロセス
+// (FMHealth.record 経由)がここへ書き、host-metrics が毎 tick 読む形にする。NDJSON の fmCalls/fmFailures/fmTotalMs は
 // vscode-fleetest/src/monitorProcessManager.ts の HostMetricsRawEvent と対。
 //
 // 置き場は ~/.fleetest/fm-usage/(FT_FM_USAGE_DIR で差し替え。テスト用)。
