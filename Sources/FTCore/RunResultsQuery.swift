@@ -247,22 +247,6 @@ public enum RunResultsQuery {
         return rows.sorted { $0.date < $1.date }
     }
 
-    /// フルスイート相当とみなす run の最小シナリオ実行数。
-    /// 根拠(docs/results-json.md の実測): 1〜2本の run(デバッグ実行)は失敗率 18〜27%、
-    /// 30本+ の run は 0.5〜1.1% —— 小さい run の比率が変わるだけで素の失敗率の推移が動く。
-    /// docs/results-json.md のレシピ(-ge 30)と同じ値を保つこと。
-    public static let fullSuiteMinScenarios = 30
-
-    /// (run.total ?? 0) >= minScenarios の run に属するレコードだけで dailyRates を計算する。
-    /// 未完了 run(total=nil)は自然に除外される
-    public static func fullSuiteDaily(records: [ScenarioRunRecord], runs: [RunMetaRecord],
-                                      minScenarios: Int = fullSuiteMinScenarios,
-                                      timeZone: TimeZone = .current) -> [DailyRow] {
-        let fullSuiteRunIDs = Set(runs.filter { ($0.total ?? 0) >= minScenarios }.map(\.runID))
-        let filtered = records.filter { fullSuiteRunIDs.contains($0.runID) }
-        return dailyRates(filtered, timeZone: timeZone)
-    }
-
     // MARK: - slow
 
     /// deltaPct を計算する最小実行回数(未満は前半/後半比較が意味を持たないため nil)

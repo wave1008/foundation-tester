@@ -7,8 +7,8 @@ import type { MessageDict } from "../core";
 export const webviewDashboardStrings = {
   // charts.js
   "wvDashboard.chart.noRuns": { ja: "(実行なし)", en: "(No runs)" },
+  "wvDashboard.chart.yAxisTitle": { ja: "成功率 (%)", en: "Success rate (%)" },
   "wvDashboard.chart.failedCount": { ja: " / 失敗 {count}", en: " / failed {count}" },
-  "wvDashboard.chart.fullSuiteToggle": { ja: "フルスイートのみ(≥{n} シナリオ)", en: "Full suite only (≥{n} scenarios)" },
 
   // main.js
   "wvDashboard.main.generatedAt": { ja: "更新: {time}", en: "Updated: {time}" },

@@ -297,9 +297,9 @@ test("isDashboardFromWebviewMessage: selectProject を project が string のと
   assert.equal(isDashboardFromWebviewMessage({ type: "selectProject" }), false);
 });
 
-// ---- triage / dailyFullSuite / fullSuiteMinScenarios(ApiResultsPayload の追加3キー) --------
+// ---- triage(ApiResultsPayload の追加キー) --------
 
-test("isApiResultsPayload: triage/dailyFullSuite/fullSuiteMinScenarios を含む完全な値も true と判定する", () => {
+test("isApiResultsPayload: triage を含む完全な値も true と判定する", () => {
   const payload = validPayload({
     triage: {
       totalFailed: 12,
@@ -318,18 +318,14 @@ test("isApiResultsPayload: triage/dailyFullSuite/fullSuiteMinScenarios を含む
       ],
       noteCounts: [{ note: "interruption-dismissed", count: 4 }],
     },
-    dailyFullSuite: [{ date: "2026-07-16", total: 40, passed: 38, failed: 2 }],
-    fullSuiteMinScenarios: 30,
   });
   assert.equal(isApiResultsPayload(payload), true);
 });
 
-test("isApiResultsPayload: triage/dailyFullSuite/fullSuiteMinScenarios が欠落(旧 CLI 相当)でも true と判定する", () => {
+test("isApiResultsPayload: triage が欠落(旧 CLI 相当)でも true と判定する", () => {
   const payload = validPayload();
   assert.equal(isApiResultsPayload(payload), true);
   assert.equal("triage" in payload, false);
-  assert.equal("dailyFullSuite" in payload, false);
-  assert.equal("fullSuiteMinScenarios" in payload, false);
 });
 
 test("isApiResultsPayload: triage.rows は section/command/failureKind 全欠落でも true(欄の後発追加より前の記録は3欄とも無い。必須にすると実データでペイロード全体が弾かれる)", () => {
@@ -354,14 +350,6 @@ test("isApiResultsPayload: triage.rows の count が数値でなければ false"
     },
   });
   assert.equal(isApiResultsPayload(payload), false);
-});
-
-test("isApiResultsPayload: dailyFullSuite が配列でなければ false", () => {
-  assert.equal(isApiResultsPayload(validPayload({ dailyFullSuite: "not-an-array" })), false);
-});
-
-test("isApiResultsPayload: fullSuiteMinScenarios が数値でなければ false", () => {
-  assert.equal(isApiResultsPayload(validPayload({ fullSuiteMinScenarios: "30" })), false);
 });
 
 test("isApiResultsPayload: machines(host→machine 読み替え表)を含む値・欠落(旧 CLI)の両方を true と判定する", () => {

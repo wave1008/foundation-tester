@@ -218,16 +218,6 @@ select.dash-project {
   cursor: default;
 }
 
-.daily-toggle {
-  display: none;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.9em;
-  cursor: pointer;
-}
-
 .detail-meta {
   display: flex;
   flex-wrap: wrap;
@@ -308,12 +298,86 @@ select.dash-project {
   margin-bottom: 8px;
 }
 
+/* 縦軸は横スクロールする棒の領域の外(左)に固定で置く */
+.daily-chart-row {
+  position: relative; /* ◀▶ の基準 */
+  display: flex;
+  align-items: flex-start;
+}
+.daily-chart-axis {
+  display: block;
+  flex: 0 0 auto;
+}
+/* 横スクロールの合図と手段: バーは VSCode の webview(macOS のオーバーレイ式)では常時表示に
+   できないので、続きがある側の端にフェードを出し(.can-scroll-left / -right は charts.js が
+   scroll/resize/表示時に付ける)、◀▶ ボタンを両端に常時置く(続きが無い側は disabled で薄く)。
+   ボタンは押しっぱなしで連続移動(charts.js)。縦ホイールも横スクロールへ変換する。
+   データ更新時は最新日(右端)を表示するので、通常は左に「過去がある」フェードが見える */
+/* 棒の領域(wrap)の入れ物。右に ▶ 用のガター(ボタン幅 22px + 隙間 4px。幅は charts.js の
+   SCROLL_BUTTON_WIDTH と同じ値)を取り、棒の上にボタンを被せない。◀ は縦軸の列(軸名の下)に
+   置くので左のガターは要らない(列幅は charts.js の drawAxis がボタン幅ぶん確保する) */
+.daily-chart-scroller {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 26px;
+}
+/* #panel-dashboard button(青い共通ボタン)より優先させるため id 付きで書く。色はテーマ変数を
+   使わない半透明の中立グレーだけ(地が明るくても暗くても差が残り、青みが混ざる余地が無い)。
+   位置・寸法(棒の領域の下 1/3・幅)は charts.js が与える(数値を2箇所に持たない) */
+#panel-dashboard .daily-scroll-button {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(128, 128, 128, 0.45);
+  border-radius: 3px;
+  background-color: rgba(128, 128, 128, 0.35);
+  background-image: none;
+  color: var(--vscode-foreground);
+  font-size: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+#panel-dashboard .daily-scroll-button:hover:not(:disabled) {
+  background-color: rgba(128, 128, 128, 0.5);
+}
+#panel-dashboard .daily-scroll-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.daily-scroll-button-left { left: 0; }
+.daily-scroll-button-right { right: 0; }
 .daily-chart-wrap {
+  position: relative;
   overflow-x: auto;
   padding-bottom: 4px;
 }
 .daily-chart {
   display: block;
+}
+.daily-chart-wrap::before,
+.daily-chart-wrap::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 4px; /* .daily-chart-wrap の padding-bottom(スクロールバー分)には掛けない */
+  width: 28px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.daily-chart-wrap::before {
+  left: 0;
+  background: linear-gradient(to right, var(--vscode-editor-background), transparent);
+}
+.daily-chart-wrap::after {
+  right: 0;
+  background: linear-gradient(to left, var(--vscode-editor-background), transparent);
+}
+.daily-chart-wrap.can-scroll-left::before,
+.daily-chart-wrap.can-scroll-right::after {
+  opacity: 1;
 }
 .daily-chart-tooltip {
   position: fixed;

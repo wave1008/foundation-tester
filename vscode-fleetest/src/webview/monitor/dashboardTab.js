@@ -100,9 +100,9 @@ function applyData(payload) {
   } else {
     matrixSection.style.display = 'none';
   }
-  // triage/dailyFullSuite/fullSuiteMinScenarios はキー欠落(古い CLI)を許容する契約(dashboardModel.ts)。
+  // triage はキー欠落(古い CLI)を許容する契約(dashboardModel.ts)。
   renderTriageTable(payload.triage);
-  renderDailyChart(payload.daily, payload.dailyFullSuite, payload.fullSuiteMinScenarios);
+  renderDailyChart(payload.daily);
   renderSummaryTable(payload.summary);
   renderDevicesTable(payload.devices.byWorker);
 }

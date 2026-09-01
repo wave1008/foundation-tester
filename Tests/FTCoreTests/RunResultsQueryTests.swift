@@ -973,52 +973,6 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertTrue(report.noteCounts.isEmpty)
     }
 
-    // MARK: - fullSuiteDaily
-
-    func testFullSuiteDailyExcludesRunsBelowMinScenarios() {
-        let runs = [
-            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", total: 2),
-            makeMeta(runID: "R2", startedAt: "2026-01-01T00:00:00Z", total: 3),
-        ]
-        let records = [
-            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R1"),
-            makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R2"),
-        ]
-        let rows = RunResultsQuery.fullSuiteDaily(
-            records: records, runs: runs, minScenarios: 3, timeZone: TimeZone(identifier: "UTC")!)
-        XCTAssertEqual(rows.count, 1)
-        XCTAssertEqual(rows[0].total, 1, "total=2 の R1 は除外される")
-    }
-
-    func testFullSuiteDailyExcludesUnfinishedRuns() {
-        let runs = [
-            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", total: nil),
-            makeMeta(runID: "R2", startedAt: "2026-01-01T00:00:00Z", total: 3),
-        ]
-        let records = [
-            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R1"),
-            makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R2"),
-        ]
-        let rows = RunResultsQuery.fullSuiteDaily(
-            records: records, runs: runs, minScenarios: 3, timeZone: TimeZone(identifier: "UTC")!)
-        XCTAssertEqual(rows.count, 1)
-        XCTAssertEqual(rows[0].total, 1, "total=nil(未完了)の R1 は除外される")
-    }
-
-    func testFullSuiteDailyIncludesRunsAtOrAboveThreshold() {
-        let runs = [makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", total: 3)]
-        let records = [
-            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R1"),
-            makeRecord(scenarioID: "Foo.b", passed: false, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R1"),
-        ]
-        let rows = RunResultsQuery.fullSuiteDaily(
-            records: records, runs: runs, minScenarios: 3, timeZone: TimeZone(identifier: "UTC")!)
-        XCTAssertEqual(rows.count, 1)
-        XCTAssertEqual(rows[0].total, 2)
-        XCTAssertEqual(rows[0].passed, 1)
-        XCTAssertEqual(rows[0].failed, 1)
-    }
-
     // MARK: - performance
 
     func testPerformanceReportExcludesRunsWithoutPerformanceModeAndCountsInvalid() {

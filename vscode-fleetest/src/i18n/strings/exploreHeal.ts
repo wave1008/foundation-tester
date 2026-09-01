@@ -89,6 +89,8 @@ export const exploreHealStrings = {
     ja: "テストプロジェクト",
     en: "Test Project",
   },
+  "exploreHeal.dashboard.chartScrollOlder": { ja: "過去の日へスクロール", en: "Scroll to older days" },
+  "exploreHeal.dashboard.chartScrollNewer": { ja: "新しい日へスクロール", en: "Scroll to newer days" },
   "exploreHeal.dashboard.refreshButton": {
     ja: "更新",
     en: "Refresh",

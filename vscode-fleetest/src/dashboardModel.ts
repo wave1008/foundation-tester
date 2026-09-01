@@ -350,11 +350,6 @@ export interface ApiResultsPayload {
   readonly matrix?: MatrixReport;
   /** 失敗の仕分け。本フィールド追加前の CLI ではキー欠落。 */
   readonly triage?: TriageReport;
-  /** (run.total >= fullSuiteMinScenarios) の run だけで再計算した日次。date 昇順。
-   * 本フィールド追加前の CLI ではキー欠落。 */
-  readonly dailyFullSuite?: readonly DailyRow[];
-  /** dailyFullSuite の閾値(ラベル表示用。ハードコードしない)。本フィールド追加前の CLI ではキー欠落。 */
-  readonly fullSuiteMinScenarios?: number;
   /** `--performance` run の集計。本フィールド追加前の CLI ではキー欠落。 */
   readonly performance?: PerformanceReport;
   /** 記録の host(ホスト名)→ この Mac の登録名(machine)の読み替え表(facts キャッシュ由来。
@@ -783,17 +778,8 @@ export function isApiResultsPayload(value: unknown): value is ApiResultsPayload 
   if (value.matrix !== undefined && !isMatrixReport(value.matrix)) {
     return false;
   }
-  // triage/dailyFullSuite/fullSuiteMinScenarios はキー欠落(旧 CLI)を許容するため undefined のみ特別扱いする。
+  // triage はキー欠落(旧 CLI)を許容するため undefined のみ特別扱いする。
   if (value.triage !== undefined && !isTriageReport(value.triage)) {
-    return false;
-  }
-  if (
-    value.dailyFullSuite !== undefined &&
-    (!Array.isArray(value.dailyFullSuite) || !value.dailyFullSuite.every(isDailyRow))
-  ) {
-    return false;
-  }
-  if (value.fullSuiteMinScenarios !== undefined && typeof value.fullSuiteMinScenarios !== "number") {
     return false;
   }
   if (

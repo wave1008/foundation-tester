@@ -79,8 +79,6 @@ struct ApiResultsCommand: AsyncParsableCommand {
                                                definedClasses: definedScenarioClasses(of: testProject)),
             matrix: matrixRuns > 0 ? RunResultsQuery.matrix(records: records, runs: runs, limit: matrixRuns) : nil,
             triage: RunResultsQuery.triage(records),
-            dailyFullSuite: RunResultsQuery.fullSuiteDaily(records: records, runs: runs),
-            fullSuiteMinScenarios: RunResultsQuery.fullSuiteMinScenarios,
             performance: RunResultsQuery.performanceReport(records: records, runs: runs),
             machines: RemoteHostFactsStore.aliasPairs(dir: RemoteHostFactsStore.dir(project: testProject))
                 .map { MachineAliasEntry(host: $0.host, machine: $0.machine) },
@@ -191,8 +189,6 @@ private struct ApiResultsBody: Encodable {
     let insights: [RunResultsQuery.InsightRow]
     let matrix: RunResultsQuery.MatrixReport?
     let triage: RunResultsQuery.TriageReport
-    let dailyFullSuite: [RunResultsQuery.DailyRow]
-    let fullSuiteMinScenarios: Int
     let performance: RunResultsQuery.PerformanceReport
     /// 記録の host(ホスト名)→ この Mac の登録名(machine)の読み替え表(facts キャッシュ由来)。
     /// 記録・runID は host のまま —— エイリアスは改名されうるので表示時にだけ引く
@@ -202,8 +198,7 @@ private struct ApiResultsBody: Encodable {
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, project, runs, summary, flaky, devices, daily,
-             slow, insights, matrix, triage, dailyFullSuite, fullSuiteMinScenarios, performance, machines,
-             runStats
+             slow, insights, matrix, triage, performance, machines, runStats
     }
 
     func encode(to encoder: Encoder) throws {
@@ -221,8 +216,6 @@ private struct ApiResultsBody: Encodable {
             try container.encode(matrix, forKey: .matrix)
         }
         try container.encode(triage, forKey: .triage)
-        try container.encode(dailyFullSuite, forKey: .dailyFullSuite)
-        try container.encode(fullSuiteMinScenarios, forKey: .fullSuiteMinScenarios)
         try container.encode(performance, forKey: .performance)
         try container.encode(machines, forKey: .machines)
         try container.encode(runStats, forKey: .runStats)

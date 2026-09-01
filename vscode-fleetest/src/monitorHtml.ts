@@ -207,12 +207,15 @@ function renderDashboardPanel(): string {
 
     <section id="section-daily" class="dash-section">
       <h2>${t("exploreHeal.dashboard.headingDaily")}</h2>
-      <label class="daily-toggle">
-        <input type="checkbox" id="daily-fullsuite-toggle">
-        <span id="daily-fullsuite-text"></span>
-      </label>
-      <div class="daily-chart-wrap">
-        <canvas id="daily-chart" class="daily-chart"></canvas>
+      <div class="daily-chart-row">
+        <canvas id="daily-chart-axis" class="daily-chart-axis"></canvas>
+        <div class="daily-chart-scroller">
+          <div class="daily-chart-wrap">
+            <canvas id="daily-chart" class="daily-chart"></canvas>
+          </div>
+        </div>
+        <button type="button" id="daily-scroll-left" class="daily-scroll-button daily-scroll-button-left" title="${t("exploreHeal.dashboard.chartScrollOlder")}">&#9664;</button>
+        <button type="button" id="daily-scroll-right" class="daily-scroll-button daily-scroll-button-right" title="${t("exploreHeal.dashboard.chartScrollNewer")}">&#9654;</button>
       </div>
     </section>
 
