@@ -163,6 +163,12 @@ export class MonitorProcessManager {
    * §18.2 M2)。**控えが無い機械は「不明」**で、空きとは区別する(machineLockModel.ts)。 */
   private machineLocks: ReadonlyMap<string, MachineLock> = new Map();
   /**
+   * `fleetest monitor pause` の保持中か(供給元は monitorHold イベント)。保持中は観測ごと
+   * 止まり全タイルが「モニタ停止中」になるので、占有の行から「タイルはポーリングで更新」を
+   * 落とすためだけに持つ(applyMachineLock)。
+   */
+  private monitorHoldActive = false;
+  /**
    * 直近の monitorDevices で観測したデバイス一覧(整列済み・表示フィルタ適用前)。
    * fleetest.monitorDeviceFilter が変わったときに次の監視サイクル(最大 interval 秒)を待たず
    * 絞り込み直して再送するためだけに保持する。monitor プロセス起動時にクリアし、旧スコープの
@@ -273,6 +279,9 @@ export class MonitorProcessManager {
     // **デバイス一覧で間引かない**(消えた機械の行を捨てる hostMetricsMachines とは別の寿命):
     // 子は変化したときだけ出すので、一度捨てると run が終わるまで二度と届かない
     this.machineLocks = new Map();
+    // 保持の控えも同じ寿命(新しいプロセスが最初のサイクルで出し直す。lastHoldActive は
+    // false 始まりなので、保持中に建て直せば active=true が改めて届く)
+    this.monitorHoldActive = false;
     this.deps.notifyMachineLocks(this.machineLocks);
     this.monitorStartedAt = Date.now();
     // 再起動(プロファイル切り替え含む)でプロセス側の抑制状態は失われるため、既にストリーミング中の
@@ -292,6 +301,7 @@ export class MonitorProcessManager {
         }
         let value = rawValue;
         if (value.kind === "monitorHold") {
+          this.monitorHoldActive = value.active;
           // webview へは送らない: 配信の停止は hold 中の全タイル state:"unknown" 化で
           // applyDevices の qualifying 判定(state !== "connected")が畳む。ここはログだけ
           this.deps.outputChannel.appendLine(
@@ -641,8 +651,10 @@ export class MonitorProcessManager {
       // 「不明 → 空き」や、観測が途切れただけの遷移で「run が終わりました」と書かない
       // (毎回の monitor 起動で、走ってもいない run の完了行が機械ぶん並ぶ)
       if (isConfirmedHeld(after)) {
-        this.deps.outputChannel.appendLine(t("deviceOps.log.machineLockHeld",
-          { machine: event.machine, issuer: after?.issuer ?? "?" }));
+        this.deps.outputChannel.appendLine(t(this.monitorHoldActive
+          ? "deviceOps.log.machineLockHeldWhilePaused"
+          : "deviceOps.log.machineLockHeld",
+        { machine: event.machine, issuer: after?.issuer ?? "?" }));
       } else if (isConfirmedHeld(before) && after?.observed === true) {
         this.deps.outputChannel.appendLine(
           t("deviceOps.log.machineLockFree", { machine: event.machine }));

@@ -498,3 +498,77 @@ test("spawn が投げても生存確認が撃ち続けない(連敗カウンタ�
   }
   assert.equal(remoteCalls(), 1, "サイクル毎に spawn し続けない");
 });
+
+// ---- 占有(dispatch.lock)の行と `fleetest monitor pause` の同居 ----
+// 実害(2026-09-01 報告): --performance の E2E は e2e.sh が手元のモニターを pause する。保持中は
+// 全タイルが state:"unknown"(「モニタ停止中」)になるのに、占有の行は「タイルはポーリングで
+// 更新」と請け合っていた。行の文言は保持の有無で切り替える(deviceOps.log.machineLockHeld*)。
+
+/** monitor の stdout へ NDJSON を1行流す。 */
+function feedLine(proc, event) {
+  proc.stdout.emit("data", Buffer.from(JSON.stringify(event) + "\n"));
+}
+
+const lockHeld = {
+  kind: "monitorLock", machine: "mac2", observed: true, held: true, issuer: "wave1008", mine: false,
+};
+
+test("占有の行は既定では「タイルはポーリングで更新」と言う", () => {
+  const lines = [];
+  const procs = [];
+  const spawnFn = () => {
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const manager = new MonitorProcessManager(
+    makeDeps({ outputChannel: { appendLine: (line) => lines.push(line) } }), spawnFn);
+  manager.startMonitorProcess();
+
+  feedLine(procs[0], lockHeld);
+
+  const held = lines.filter((line) => line.includes("run が実行中です"));
+  assert.equal(held.length, 1);
+  assert.match(held[0], /タイルはポーリングで更新/);
+});
+
+test("`monitor pause` 保持中の占有の行はポーリング更新を請け合わない", () => {
+  const lines = [];
+  const procs = [];
+  const spawnFn = () => {
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const manager = new MonitorProcessManager(
+    makeDeps({ outputChannel: { appendLine: (line) => lines.push(line) } }), spawnFn);
+  manager.startMonitorProcess();
+
+  feedLine(procs[0], { kind: "monitorHold", active: true });
+  feedLine(procs[0], lockHeld);
+
+  const held = lines.filter((line) => line.includes("run が実行中です"));
+  assert.equal(held.length, 1);
+  assert.doesNotMatch(held[0], /タイルはポーリングで更新/);
+  assert.match(held[0], /モニタ停止中のためタイルも更新されません/);
+});
+
+test("保持が解除された後の占有の行は既定の文言へ戻る", () => {
+  const lines = [];
+  const procs = [];
+  const spawnFn = () => {
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const manager = new MonitorProcessManager(
+    makeDeps({ outputChannel: { appendLine: (line) => lines.push(line) } }), spawnFn);
+  manager.startMonitorProcess();
+
+  feedLine(procs[0], { kind: "monitorHold", active: true });
+  feedLine(procs[0], { kind: "monitorHold", active: false });
+  feedLine(procs[0], lockHeld);
+
+  const held = lines.filter((line) => line.includes("run が実行中です"));
+  assert.match(held.at(-1), /タイルはポーリングで更新/);
+});

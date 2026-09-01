@@ -56,6 +56,12 @@ export const deviceOpsStrings = {
     ja: "[monitor] {machine} で {issuer} の run が実行中です — この機械のライブ配信を停止します(タイルはポーリングで更新)",
     en: "[monitor] A run by {issuer} is in progress on {machine} — stopping live streams there (tiles keep updating by polling)",
   },
+  // `fleetest monitor pause` 保持中の言い換え。保持中は全タイルが state:"unknown"
+  // (「モニタ停止中」)になりポーリングでの更新も止まるので、上の括弧書きは嘘になる
+  "deviceOps.log.machineLockHeldWhilePaused": {
+    ja: "[monitor] {machine} で {issuer} の run が実行中です — この機械のライブ配信を停止します(モニタ停止中のためタイルも更新されません)",
+    en: "[monitor] A run by {issuer} is in progress on {machine} — stopping live streams there (tiles are not updating either: the monitor is paused)",
+  },
   "deviceOps.log.machineLockFree": {
     ja: "[monitor] {machine} の run が終わりました — ライブ配信を再開します",
     en: "[monitor] The run on {machine} finished — resuming live streams",
