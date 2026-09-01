@@ -86,8 +86,8 @@ export const exploreHealStrings = {
     en: "fleetest Results Dashboard",
   },
   "exploreHeal.dashboard.title": {
-    ja: "結果ダッシュボード",
-    en: "Results Dashboard",
+    ja: "テストプロジェクト",
+    en: "Test Project",
   },
   "exploreHeal.dashboard.refreshButton": {
     ja: "更新",

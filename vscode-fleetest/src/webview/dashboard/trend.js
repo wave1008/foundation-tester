@@ -8,7 +8,7 @@
 
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
-import { clearChildren, td } from './domUtil.js';
+import { clearChildren, revealSection, td } from './domUtil.js';
 import { machineLabel } from './machineNames.js';
 import {
   formatDurationHuman,
@@ -37,6 +37,7 @@ export function requestTrend(scenarioID) {
   loading.className = 'status-message';
   loading.textContent = t('wvDashboard.trend.loading');
   bodyEl.appendChild(loading);
+  revealSection(section);
   vscode.postMessage({ type: 'trend', scenarioID });
 }
 

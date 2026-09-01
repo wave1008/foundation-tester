@@ -8,6 +8,21 @@ export function clearChildren(el) {
   }
 }
 
+/** 開いたセクション(run 詳細 / 履歴)をペイン内で見える位置へ出す。どちらも長い表
+ * (直近の実行 50 行・不安定なシナリオ数十行)の直後に置かれているので、出すだけだと画面外に
+ * 開いて「クリックしても何も起きない」に見える(2026-09-01 実害)。スクロール領域は
+ * #panel-dashboard 自身(タブペイン。window ではない)。sticky なツールバーの分は実測の高さで
+ * 避ける(定数を置かない)。 */
+export function revealSection(section) {
+  const pane = document.getElementById('panel-dashboard');
+  const toolbar = document.getElementById('dash-toolbar');
+  if (!pane || !toolbar) {
+    return;
+  }
+  const delta = section.getBoundingClientRect().top - pane.getBoundingClientRect().top - toolbar.offsetHeight;
+  pane.scrollTop += delta;
+}
+
 export function td(text) {
   const cell = document.createElement('td');
   cell.textContent = text;

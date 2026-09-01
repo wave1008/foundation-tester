@@ -1213,10 +1213,13 @@ button.profile-jump-link:hover:not(:disabled) {
   color: var(--vscode-descriptionForeground);
 }
 /* 「録画」セクション。見出し+チェックボックス+サブオプション(record ON の間だけ表示)。 */
-/* セクションの枠と左上のタブ状見出しは**プロファイルタブと設定タブで共通**(片方だけ変えない)。
-   枠 = .run-profile-section-group / .settings-group、見出し = 下の -title 2つ。 */
+/* セクションの枠と左上のタブ状見出しは**プロファイルタブ・設定タブ・ダッシュボードタブで共通**
+   (片方だけ変えない)。枠 = .run-profile-section-group / .settings-group / .dash-section、
+   見出し = 下の -title 2つ + #panel-dashboard h2(ダッシュボードは dashboard/style.css が @import で
+   同居し、ここの定義をそのまま使う。向こうに h2 の font/margin を書き戻すと帯が崩れる)。 */
 .run-profile-section-group,
-.settings-group {
+.settings-group,
+.dash-section {
   padding: 10px 12px 12px;
   /* 1px 枠だけだと境界が読み取りにくいので、面にも中立グレー(テーマ非依存。ライトでは沈み
      ダークでは浮く)を敷いて区切りを二重化する。帯(下の -title)はこれより濃くすること。 */
@@ -1229,7 +1232,8 @@ button.profile-jump-link:hover:not(:disabled) {
 }
 /* uppercase は付けない(「iOS」「Android」等の固有表記が IOS/ANDROID に化ける実害があった)。 */
 .run-profile-section-title,
-.settings-section-title {
+.settings-section-title,
+#panel-dashboard h2 {
   /* 設定タブ側は <label> にも付く(言語セレクタの for)。inline のままだと幅・負マージンが
      効かないので block を明示する。 */
   display: block;

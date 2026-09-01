@@ -7,7 +7,7 @@
 
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
-import { clearChildren, td } from './domUtil.js';
+import { clearChildren, revealSection, td } from './domUtil.js';
 import { machineLabel } from './machineNames.js';
 import { requestTrend } from './trend.js';
 import {
@@ -38,6 +38,7 @@ export function requestRunDetail(runID, runIDs) {
   loading.className = 'status-message';
   loading.textContent = t('wvDashboard.runDetail.loading');
   bodyEl.appendChild(loading);
+  revealSection(section);
   vscode.postMessage({ type: 'runDetail', runID, runIDs: runIDs && runIDs.length > 0 ? runIDs : [runID] });
 }
 
