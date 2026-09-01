@@ -43,6 +43,10 @@ public struct FMUsageRecord: Codable, Sendable {
     public var p50Ms: Int
     public var maxMs: Int
     public var byKind: [String: FMKindUsage]
+    /// 最初の失敗の内容(以降は捨てる。同一原因が連続するため)。**失敗が1件も無ければ nil**。
+    /// これが無いと `failures` の件数しか残らず、**なぜ落ちたかを事後に特定できない**
+    /// (2026-09-01: M1Ultra だけ 12% 失敗する調査で、合成負荷では再現せず理由を追えなかった)
+    public var firstError: String?
     /// FMGate が FMLock.acquire() で実際に待たされた合計/p50/max。呼び出しコスト(totalMs 等)とは別物 ——
     /// 直列化を緩める判断材料(docs/results-json.md)
     public var gateWaitTotalMs: Int
@@ -55,7 +59,7 @@ public struct FMUsageRecord: Codable, Sendable {
     public init(calls: Int, failures: Int, totalMs: Int, p50Ms: Int, maxMs: Int,
                 byKind: [String: FMKindUsage],
                 gateWaitTotalMs: Int = 0, gateWaitP50Ms: Int = 0, gateWaitMaxMs: Int = 0,
-                skipped: Int = 0) {
+                skipped: Int = 0, firstError: String? = nil) {
         self.calls = calls
         self.failures = failures
         self.totalMs = totalMs
@@ -66,6 +70,7 @@ public struct FMUsageRecord: Codable, Sendable {
         self.gateWaitP50Ms = gateWaitP50Ms
         self.gateWaitMaxMs = gateWaitMaxMs
         self.skipped = skipped
+        self.firstError = firstError
     }
 
     // 手書き: 古い結果 JSON(gateWait*/skipped 欄が無い)を読めなくしないため、欠落を 0 で埋める。
@@ -82,6 +87,7 @@ public struct FMUsageRecord: Codable, Sendable {
         gateWaitP50Ms = try container.decodeIfPresent(Int.self, forKey: .gateWaitP50Ms) ?? 0
         gateWaitMaxMs = try container.decodeIfPresent(Int.self, forKey: .gateWaitMaxMs) ?? 0
         skipped = try container.decodeIfPresent(Int.self, forKey: .skipped) ?? 0
+        firstError = try container.decodeIfPresent(String.self, forKey: .firstError)
     }
 }
 
@@ -192,7 +198,7 @@ public enum FMHealth {
             totalMs: Self.totalMs(allMs), p50Ms: Self.percentileMs(allMs, 0.5),
             maxMs: Self.maxMs(allMs), byKind: byKind,
             gateWaitTotalMs: Self.totalMs(gateWaitMs), gateWaitP50Ms: Self.percentileMs(gateWaitMs, 0.5),
-            gateWaitMaxMs: Self.maxMs(gateWaitMs), skipped: skipped)
+            gateWaitMaxMs: Self.maxMs(gateWaitMs), skipped: skipped, firstError: firstError)
     }
 
     public static func reset() {

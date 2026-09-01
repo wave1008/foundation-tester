@@ -1,0 +1,28 @@
+{
+  "machine": "M2Ultra",
+  "app": "ft_e2e",
+  "devices": [
+    {
+      "machine": "M1Ultra",
+      "name": "iPhone 17 Pro(iOS 27.0)-01"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "iPhone 17 Pro(iOS 27.0)-02"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "iPhone 17 Pro(iOS 27.0)-03"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "iPhone 17 Pro(iOS 27.0)-04"
+    }
+  ],
+  "heal": false,
+  "iosInappEngine": true,
+  "reportDir": "reports",
+  "scenarioTimeout": 900,
+  "wipeDataOnBloat": true,
+  "falsePositiveCheck": true
+}
