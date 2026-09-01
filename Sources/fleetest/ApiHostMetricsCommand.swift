@@ -6,6 +6,9 @@
 // フィールドを null にし、stderr ログはサンプラー毎に初回1回だけ)。
 // --log 指定時は各サンプルを NDJSON ファイルへも追記する(16MiB で .1 へ1世代ローテ・行アトミック追記)。
 // 集計は api host-metrics-summary。
+// fmCalls/fmFailures/fmTotalMs はこのプロセス自身の実測ではない —— FM を実際に呼ぶのは
+// 各シナリオランナー(FTFoundationModels)で、このコマンドは FMUsageLedger の控えを毎 tick
+// 読むだけ(Sources/FTCore/FMUsageLedger.swift 参照)。
 
 import ArgumentParser
 import Foundation
@@ -45,6 +48,8 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
         // 初回は差分が取れないサンプラー(CPU)のための捨てサンプル。これにより
         // 最初の interval 経過後に出す1行目から値を出せる
         _ = cpuSampler.sample()
+        // nil = 基準未取得。最初の drain は控えるだけで増分を出さない(FMUsageLedger.drain 参照)
+        var fmPrevious: [Int32: FMUsageLedger.Counters]?
 
         while !stop.isSet {
             await Self.sleepInterruptible(seconds: interval, stop: stop)
@@ -53,11 +58,13 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
             let cpu = cpuSampler.sample()
             let gpu = gpuSampler.sample()
             let mem = memorySampler.sample()
+            let fm = FMUsageLedger.drain(previous: &fmPrevious)
 
             let sample = HostMetricsSample(
                 ts: Date().timeIntervalSince1970,
                 cpu: cpu, gpu: gpu,
-                memUsedBytes: mem?.used, memTotalBytes: mem?.total)
+                memUsedBytes: mem?.used, memTotalBytes: mem?.total,
+                fmCalls: fm?.calls, fmFailures: fm?.failures, fmTotalMs: fm?.totalMs)
             if let line = sample.encodedLine() {
                 print(line)
                 logger?.append(line)

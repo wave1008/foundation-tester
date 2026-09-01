@@ -291,18 +291,28 @@ public struct HostMetricsSample: Encodable {
     public let gpu: Double?
     public let memUsedBytes: Int?
     public let memTotalBytes: Int?
+    /// このサンプリング間隔中に完了した FM 呼び出し数(この機械の全プロセス合計)。
+    /// 供給元は FMUsageLedger(呼ぶプロセスと host-metrics は別プロセス)。3欄とも
+    /// null = 控えを読めなかった(不明)、0 = 呼び出しが無かった。混ぜない(FMUsageLedger 参照)
+    public let fmCalls: Int?
+    public let fmFailures: Int?
+    public let fmTotalMs: Int?
 
     public init(ts: Double, cpu: Double?, gpu: Double?,
-                memUsedBytes: Int?, memTotalBytes: Int?) {
+                memUsedBytes: Int?, memTotalBytes: Int?,
+                fmCalls: Int?, fmFailures: Int?, fmTotalMs: Int?) {
         self.ts = ts
         self.cpu = cpu
         self.gpu = gpu
         self.memUsedBytes = memUsedBytes
         self.memTotalBytes = memTotalBytes
+        self.fmCalls = fmCalls
+        self.fmFailures = fmFailures
+        self.fmTotalMs = fmTotalMs
     }
 
     private enum CodingKeys: String, CodingKey {
-        case kind, ts, cpu, gpu, memUsedBytes, memTotalBytes
+        case kind, ts, cpu, gpu, memUsedBytes, memTotalBytes, fmCalls, fmFailures, fmTotalMs
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -313,6 +323,9 @@ public struct HostMetricsSample: Encodable {
         try container.encode(gpu, forKey: .gpu)
         try container.encode(memUsedBytes, forKey: .memUsedBytes)
         try container.encode(memTotalBytes, forKey: .memTotalBytes)
+        try container.encode(fmCalls, forKey: .fmCalls)
+        try container.encode(fmFailures, forKey: .fmFailures)
+        try container.encode(fmTotalMs, forKey: .fmTotalMs)
     }
 
     /// JSONEncoder([.sortedKeys, .withoutEscapingSlashes]) で1行の NDJSON にする
@@ -371,6 +384,8 @@ public final class HostMetricsRecorder: @unchecked Sendable {
         let memorySampler = MemorySampler(logFailure: logFailure)
         let stopFlag = self.stopFlag
         let exitSemaphore = self.exitSemaphore
+        // nil = 基準未取得。最初の drain は控えるだけで増分を出さない(FMUsageLedger.drain 参照)
+        var fmPrevious: [Int32: FMUsageLedger.Counters]?
 
         let thread = Thread {
             // 初回は差分が取れないサンプラー(CPU)のための捨てサンプル
@@ -388,9 +403,11 @@ public final class HostMetricsRecorder: @unchecked Sendable {
                 let cpu = cpuSampler.sample()
                 let gpu = gpuSampler.sample()
                 let mem = memorySampler.sample()
+                let fm = FMUsageLedger.drain(previous: &fmPrevious)
                 let sample = HostMetricsSample(
                     ts: Date().timeIntervalSince1970, cpu: cpu, gpu: gpu,
-                    memUsedBytes: mem?.used, memTotalBytes: mem?.total)
+                    memUsedBytes: mem?.used, memTotalBytes: mem?.total,
+                    fmCalls: fm?.calls, fmFailures: fm?.failures, fmTotalMs: fm?.totalMs)
                 if let line = sample.encodedLine() {
                     logger.append(line)
                 }

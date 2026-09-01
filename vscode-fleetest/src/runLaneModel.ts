@@ -37,11 +37,6 @@ export type LaneAction =
   | { readonly type: "line"; readonly laneId: string; readonly text: string }
   /** ワーカーの実行中状態の変化(タイルの「実行中」バッジに反映)。 */
   | { readonly type: "workerRunning"; readonly workerId: string; readonly running: boolean }
-  /** シナリオ1本ぶんの FM 呼び出し実測(hostCharts.js の FM グラフが積む)。FM を使った
-   *  シナリオでのみ発生する。FM は**その機械の中で**直列化する共有資源なので実行コストの指標になる。
-   *  machine はそのシナリオを回したレーンの機械(手元は undefined) —— 機械ごとの行へ積むため。 */
-  | { readonly type: "fmUsage"; readonly calls: number; readonly totalMs: number;
-      readonly failures: number; readonly machine: string | undefined }
   /** runFinished。全体の完了表示に使う。totalSeconds はここでクライアント側計算(runStartedAtMs 起点、
    * NDJSON に対応フィールドが無いため)。testSeconds/scenarioTotalSeconds は event からの素通し。 */
   | {
@@ -284,16 +279,6 @@ export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: num
       if (event.worker && state.runningWorkers.has(event.worker)) {
         state.runningWorkers.delete(event.worker);
         actions.push({ type: "workerRunning", workerId: event.worker, running: false });
-      }
-      if (event.fm && event.fm.calls > 0) {
-        actions.push({
-          type: "fmUsage",
-          calls: event.fm.calls,
-          totalMs: event.fm.totalMs,
-          failures: event.fm.failures ?? 0,
-          // workersReady で作られたレーンだけが machine を持つ(逐次実行の全体レーンは undefined)
-          machine: state.lanes.get(laneId)?.info.machine,
-        });
       }
       return actions;
     }

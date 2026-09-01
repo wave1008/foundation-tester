@@ -12,11 +12,11 @@
 // 行の DOM は手元の行(monitorHtml.ts の data-machine="")を複製して作るので、**中の要素は
 // data-metric で引く**(id は手元の行にしか無い)。
 //
-// FM系列だけは供給元が違う: hostMetricsストリーム(host-metricsプロセス)ではなく、
-// シナリオ完了イベント(runEvent の passed/failed に載る fm)を recordFmCalls() で受ける。
-// FM呼び出しは**その機械の中で**直列化する共有資源(実測: 並列度によらず約1回/秒で頭打ち)なので、
-// 台数を増やしても総処理能力は増えない。実行時間への効き方を見るための系列。
-// 他系列と時間軸を揃えるため、値は hostMetrics の tick ごとに「前tickからの増分」を積む。
+// FM系列も他と同じ hostMetrics ストリームから来る(host-metrics プロセス自身は FM を叩かない ——
+// FM を呼んだ側のプロセスが `~/.fleetest/fm-usage/<pid>.json` に置いた控えを、host-metrics が
+// 毎 tick 読んで集計する。Sources 側の詳細は関知しない)。FM 呼び出しはホスト全体で直列化する
+// 共有資源(実測: 並列度1〜10で0.83〜1.03回/秒 = 約1回/秒で頭打ち)なので、生の1秒差分だと
+// 0/1の二値になって読めない。表示は直近 HM_FM_RATE_WINDOW_TICKS tick の移動窓平均(回/秒)。
 
 import { t } from '../i18n.js';
 import { setHoverTip } from './hoverTip.js';
@@ -29,6 +29,13 @@ const HM_CLOCK_TAKEOVER_MS = 5000;
 // 保持したサンプルを何 tick まで使い回してよいか。両側とも --interval 1 なので、生きている機械が
 // 位相のずれで落とせるのは1 tick まで。これを超えたら観測が途絶えたとみなし欠測(–)にする。
 const HM_STALE_TICKS = 2;
+// FM のレート表示の移動窓(tick 数)。host-metrics --interval は 1 固定(monitorProcessManager.ts
+// startHostMetricsProcess)なので 1 tick = 1 秒とみなせる。生の1秒差分だと天井(下記)近くで
+// 0/1 の二値になり読めないため、10 tick(=10秒)の移動窓平均にして 0.1 刻みで見えるようにする。
+const HM_FM_RATE_WINDOW_TICKS = 10;
+// FM 呼び出しの正規化上限(回/秒)。ホスト全体で直列化する共有資源の実測天井 ——
+// 並列度1〜10で0.83〜1.03回/秒(2026-09-01計測)。スパークラインはこれを超えた分をクランプする。
+const HM_FM_RATE_CEILING = 1.0;
 // バリデータ検証済みパレット(ダーク/ライトで系列色を切り替える。グリッド・軸は描かない)。
 const HM_COLORS = {
   dark: { cpu: '#f2555a', gpu: '#b8891f', fm: '#a06be0', mem: '#2f9e63' },
@@ -46,30 +53,24 @@ function hmIsLightTheme() {
     document.body.classList.contains('vscode-high-contrast-light');
 }
 
-// countScale=true の系列は samples が「比率」ではなく「件数」。描画時にバッファ内の最大値で
-// 正規化する(FM は上限が定義できないため。固定上限だと実測レンジで潰れて読めない)。
-function hmMakeEntry(rowEl, metric, colorKey, countScale = false) {
+function hmMakeEntry(rowEl, metric, colorKey) {
   const el = rowEl.querySelector(`.host-metric[data-metric="${metric}"]`);
   return {
     el,
     canvas: el.querySelector('.hm-canvas'),
     value: el.querySelector('.hm-value'),
     colorKey,
-    countScale,
-    samples: [], // 直近 HM_MAX_SAMPLES 件。0..1 の比率(countScale なら件数)、欠測は null。
+    samples: [], // 直近 HM_MAX_SAMPLES 件。0..1 の比率、欠測は null。
   };
 }
 
-// FM は割合ではなく件数。実行開始からの累計と、hostMetrics tick 間の増分を持つ。
-// スパークラインは他系列と同じ 0..1 座標系なので、直近バッファ内の最大増分で正規化する
-// (固定上限だと実測レンジ[0〜数件/秒]で潰れて読めないため)。
 // failures は FM 死活の検知用。FM 失敗は呼び出し側(occlusion-guard/heal/screenLooksLike)が
 // 握りつぶして素通りする契約なので、ここで可視化しないと全滅が正常時と区別できない。
 function hmMakeRow(rowEl, machine) {
   const entries = {
     cpu: hmMakeEntry(rowEl, 'cpu', 'cpu'),
     gpu: hmMakeEntry(rowEl, 'gpu', 'gpu'),
-    fm: hmMakeEntry(rowEl, 'fm', 'fm', true),
+    fm: hmMakeEntry(rowEl, 'fm', 'fm'),
     mem: hmMakeEntry(rowEl, 'mem', 'mem'),
   };
   return {
@@ -77,7 +78,9 @@ function hmMakeRow(rowEl, machine) {
     el: rowEl,
     entries,
     all: [entries.cpu, entries.gpu, entries.fm, entries.mem],
-    fm: { total: 0, totalMs: 0, failures: 0, pendingCalls: 0, lastDelta: 0 },
+    // FM のレート表示・死活判定に使う直近 HM_FM_RATE_WINDOW_TICKS tick ぶんの生値
+    // ({calls,failures,totalMs} | 欠測は calls:null)。古い順に shift する。
+    fm: { window: [] },
     // pending: 受信済みでまだ描いていないサンプル(1 tick の間に複数届いたら最後の1つだけ残る)。
     // latest: 直近に描いたサンプル(pending が無い tick はこれを使い回す)。missed はその回数。
     pending: undefined,
@@ -208,45 +211,27 @@ export function setHostMetricMachines(machines) {
   hmSyncMultiClass();
 }
 
-// FMHealth.Snapshot.allFailed と同じ判定: 1回以上呼ばれ、かつ全て失敗
+/** row.fm.window(直近 HM_FM_RATE_WINDOW_TICKS tick)を集計する。窓内が全て欠測(calls:null)
+ *  なら null を返す(呼び出し側はこれを「不明」= 表示 '–' の合図にする。0件は別に区別できる —
+ *  欠測でない tick は calls が数値、0 も含む)。 */
+function hmFmWindowStats(row) {
+  const known = row.fm.window.filter((tick) => tick.calls !== null);
+  if (known.length === 0) {
+    return null;
+  }
+  const calls = known.reduce((sum, tick) => sum + tick.calls, 0);
+  const failures = known.reduce((sum, tick) => sum + (tick.failures ?? 0), 0);
+  const totalMs = known.reduce((sum, tick) => sum + (tick.totalMs ?? 0), 0);
+  // 分母は**観測できた tick 数**であって窓の長さではない。欠測 tick(サンプルを落とした・
+  // 控えを読めなかった)を分母に入れると、それを「呼び出し0件」として平均に混ぜることになり、
+  // 取りこぼしのたびにレートが静かに小さく出る(不明と0件を混ぜない)。
+  return { calls, failures, totalMs, rate: calls / known.length };
+}
+
+// FMHealth.Snapshot.allFailed と同じ判定: 1回以上呼ばれ、かつ全て失敗(窓内で判定)
 function fmIsDead(row) {
-  return row.fm.failures > 0 && row.fm.failures >= row.fm.total;
-}
-
-/** 新しい実行の開始(runStarted → cleared)で累計を捨てる。これを呼ばないと
- *  パネルを開いている限り実行をまたいで積算され、「今回の実行の回数」に見えない。 */
-export function resetFmUsage() {
-  for (const row of hmRows.values()) {
-    row.fm.total = 0;
-    row.fm.totalMs = 0;
-    row.fm.failures = 0;
-    row.fm.pendingCalls = 0;
-    row.fm.lastDelta = 0;
-    row.entries.fm.samples.length = 0;
-    hmRenderFmLabel(row);
-    hmDraw(row, row.entries.fm);
-  }
-}
-
-/** シナリオ完了イベント(runEvent)から FM 実測を受け取る。tick を待って系列へ積む。
- *  machine はそのシナリオを回したレーンの機械(手元は undefined。runLaneModel.ts の LaneInfo)。 */
-export function recordFmCalls(calls, totalMs, failures, machine) {
-  if (typeof calls !== 'number' || calls <= 0) {
-    return;
-  }
-  const row = hmEnsureRow(typeof machine === 'string' ? machine : '');
-  row.fm.total += calls;
-  row.fm.pendingCalls += calls;
-  if (typeof totalMs === 'number') {
-    row.fm.totalMs += totalMs;
-  }
-  if (typeof failures === 'number' && failures > 0) {
-    row.fm.failures += failures;
-  }
-  // 数値とツールチップはここで即時更新する。スパークラインだけは他系列と時間軸を揃えるため
-  // hostMetrics の tick を待つ。tick 任せにすると host-metrics プロセスが落ちている間
-  // 件数が全く出なくなる(FM の供給元は runEvent で、hostMetrics とは独立)
-  hmRenderFmLabel(row);
+  const stats = hmFmWindowStats(row);
+  return !!stats && stats.failures > 0 && stats.failures >= stats.calls;
 }
 
 /** ツールチップの先頭に付ける機械名(1行だけのときは付けない)。 */
@@ -256,22 +241,28 @@ function hmTitlePrefix(row) {
 
 function hmRenderFmLabel(row) {
   const entry = row.entries.fm;
+  const stats = hmFmWindowStats(row);
   const dead = fmIsDead(row);
-  const partial = !dead && row.fm.failures > 0;
+  const partial = !!stats && !dead && stats.failures > 0;
   entry.el.classList.toggle('hm-fm-dead', dead);
   entry.el.classList.toggle('hm-fm-warn', partial);
-  entry.value.textContent = (dead ? '✕' : partial ? '⚠' : '') + String(row.fm.total);
+  const rateText = stats ? `${stats.rate.toFixed(1)}/s` : '–';
+  entry.value.textContent = (dead ? '✕' : partial ? '⚠' : '') + rateText;
   let title = hmTitlePrefix(row) + t('wvMonitor2.hostCharts.fmTitle', {
-    total: String(row.fm.total),
-    totalSec: (row.fm.totalMs / 1000).toFixed(1),
-    delta: String(row.fm.lastDelta),
+    seconds: String(HM_FM_RATE_WINDOW_TICKS),
+    rate: stats ? stats.rate.toFixed(1) : '–',
+    calls: stats ? String(stats.calls) : '–',
+    failures: stats ? String(stats.failures) : '–',
+    totalSec: stats ? (stats.totalMs / 1000).toFixed(1) : '–',
   });
   if (dead) {
-    title += '\n' + t('wvMonitor2.hostCharts.fmDeadLine', { failures: String(row.fm.failures) });
+    title += '\n' + t('wvMonitor2.hostCharts.fmDeadLine', {
+      seconds: String(HM_FM_RATE_WINDOW_TICKS), failures: String(stats.failures) });
   } else if (partial) {
     title += '\n' + t('wvMonitor2.hostCharts.fmWarnLine', {
-      failures: String(row.fm.failures),
-      successes: String(row.fm.total - row.fm.failures),
+      seconds: String(HM_FM_RATE_WINDOW_TICKS),
+      failures: String(stats.failures),
+      successes: String(stats.calls - stats.failures),
     });
   }
   entry.el.title = title;
@@ -309,16 +300,12 @@ function hmDraw(row, entry) {
   const palette = HM_COLORS[hmIsLightTheme() ? 'light' : 'dark'];
   // FM 全滅中はスパークラインも失敗の系列だと分かるよう赤(cpu と同色)で描く
   const color = entry === row.entries.fm && fmIsDead(row) ? palette.cpu : palette[entry.colorKey];
-  // 件数系列はバッファ内の最大値を上端に取る(全て 0 のときは平坦に描く)
-  const scale = entry.countScale
-    ? Math.max(1, ...samples.filter((v) => v !== null))
-    : 1;
   const stepX = width / (HM_MAX_SAMPLES - 1);
   // samplesは「直近N件」なので、60件溜まるまでは右詰めで配置する(新サンプルは常に右端)。
   const startIndex = HM_MAX_SAMPLES - samples.length;
   const points = samples.map((ratio, i) => ({
     x: (startIndex + i) * stepX,
-    y: ratio === null ? null : height - (ratio / scale) * height,
+    y: ratio === null ? null : height - ratio * height,
   }));
 
   // null(欠測)のところで線を分割し、区間ごとに個別のパスとして描く。
@@ -409,8 +396,8 @@ function hmCommitRow(row) {
   hmRenderRow(row, row.latest);
 }
 
-/** sample が null の tick は欠測(値は '–'、系列は null)。FM だけは供給元が別(runEvent)なので、
- *  host-metrics のサンプルが無くても毎 tick 増分を確定させる。 */
+/** sample が null の tick は行全体が欠測(値は '–'、全系列 null)。FM の欠測はフィールド単位でも
+ *  起こる(その tick だけ控えを読めなかった)ので、sample 自体は非 null でも fmCalls は null になりうる。 */
 function hmRenderRow(row, sample) {
   const cpu = sample && typeof sample.cpu === 'number' ? sample.cpu : null;
   const gpu = sample && typeof sample.gpu === 'number' ? sample.gpu : null;
@@ -419,14 +406,19 @@ function hmRenderRow(row, sample) {
   const memRatio = memUsedBytes !== null && memTotalBytes !== null && memTotalBytes > 0
     ? memUsedBytes / memTotalBytes
     : null;
+  const fmCalls = sample && typeof sample.fmCalls === 'number' ? sample.fmCalls : null;
+  const fmFailures = sample && typeof sample.fmFailures === 'number' ? sample.fmFailures : null;
+  const fmTotalMs = sample && typeof sample.fmTotalMs === 'number' ? sample.fmTotalMs : null;
 
   hmPushSample(row.entries.cpu, cpu);
   hmPushSample(row.entries.gpu, gpu);
-  // FM: この tick ぶんの増分を確定し、バッファ内の最大増分で正規化して積む
-  const fmDelta = row.fm.pendingCalls;
-  row.fm.pendingCalls = 0;
-  row.fm.lastDelta = fmDelta;
-  hmPushSample(row.entries.fm, fmDelta);
+  row.fm.window.push({ calls: fmCalls, failures: fmFailures, totalMs: fmTotalMs });
+  if (row.fm.window.length > HM_FM_RATE_WINDOW_TICKS) {
+    row.fm.window.shift();
+  }
+  // スパークラインは各 tick の生レート(1 tick=1秒なので calls がそのまま回/秒)を
+  // HM_FM_RATE_CEILING でクランプして描く。ラベルの移動窓平均とは別に、瞬間の突出も見せるため。
+  hmPushSample(row.entries.fm, fmCalls === null ? null : Math.min(fmCalls, HM_FM_RATE_CEILING));
   hmPushSample(row.entries.mem, memRatio);
 
   row.entries.cpu.value.textContent = hmFormatPercent(cpu);

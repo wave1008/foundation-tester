@@ -215,8 +215,9 @@ export interface ScenarioFinishedEvent {
   reportPath?: string;
   worker?: string;
   /** このシナリオの FM 呼び出し実測(Sources/FTCore/FMHealth.swift の FMUsageRecord)。
-   *  FM を使わなかったシナリオでは欠落する。FM はホスト全体で直列化する共有資源のため、
-   *  モニターの FM グラフ(hostCharts.js)がこれを積んで実行コストを可視化する。 */
+   *  FM を使わなかったシナリオでは欠落する。**モニターの FM グラフは hostMetrics ストリーム
+   *  (host-metrics プロセスの fmCalls/fmFailures/fmTotalMs)から供給される**ので拡張側はこの欄を
+   *  読まない —— NDJSON の受け手一般のために欄自体は保つ(protocolVersion.ts と同期)。 */
   fm?: { calls: number; failures: number; totalMs: number };
 }
 

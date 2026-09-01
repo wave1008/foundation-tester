@@ -65,22 +65,32 @@ type HostMetricsRawEvent = {
   readonly gpu: number | null;
   readonly memUsedBytes: number | null;
   readonly memTotalBytes: number | null;
+  /** FM(Foundation Models)呼び出しの実測。プロトコル版10で追加 —— 欄が無い行(旧 CLI)も
+   *  受理し undefined を null(不明)と同じに扱う(isHostMetricsEvent 参照)。 */
+  readonly fmCalls?: number | null;
+  readonly fmFailures?: number | null;
+  readonly fmTotalMs?: number | null;
 };
 
-/** value が HostMetricsRawEvent として扱ってよいか判定する(isMonitorEvent と同じ方針)。 */
+/** value が HostMetricsRawEvent として扱ってよいか判定する(isMonitorEvent と同じ方針)。
+ *  fmCalls/fmFailures/fmTotalMs は欄が無い行(旧 CLI)も受理する —— 厳しくすると行ごと落ちる。 */
 function isHostMetricsEvent(value: unknown): value is HostMetricsRawEvent {
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const record = value as Record<string, unknown>;
   const numberOrNull = (field: unknown): boolean => field === null || typeof field === "number";
+  const numberOrNullOrAbsent = (field: unknown): boolean => field === undefined || numberOrNull(field);
   return (
     record.kind === "hostMetrics" &&
     typeof record.ts === "number" &&
     numberOrNull(record.cpu) &&
     numberOrNull(record.gpu) &&
     numberOrNull(record.memUsedBytes) &&
-    numberOrNull(record.memTotalBytes)
+    numberOrNull(record.memTotalBytes) &&
+    numberOrNullOrAbsent(record.fmCalls) &&
+    numberOrNullOrAbsent(record.fmFailures) &&
+    numberOrNullOrAbsent(record.fmTotalMs)
   );
 }
 
@@ -96,6 +106,11 @@ export type HostMetricsToWebviewMessage =
       readonly gpu: number | null;
       readonly memUsedBytes: number | null;
       readonly memTotalBytes: number | null;
+      /** そのサンプリング間隔で完了した FM 呼び出し(その機械の全プロセス合計)。
+       *  null = 控えを読めず不明、0 = 呼び出しが無かった(hostCharts.js はこの2つを区別する)。 */
+      readonly fmCalls: number | null;
+      readonly fmFailures: number | null;
+      readonly fmTotalMs: number | null;
     }
   /** 行の集合(手元 + このリモート機。値より先に配る)。消えた機械の行は webview 側で捨てる。 */
   | { readonly type: "hostMetricsMachines"; readonly machines: readonly string[] }
@@ -735,6 +750,10 @@ export class MonitorProcessManager {
           gpu: value.gpu,
           memUsedBytes: value.memUsedBytes,
           memTotalBytes: value.memTotalBytes,
+          // undefined(旧 CLI の欠落欄)と null(明示的な不明)を webview 側で同じ扱いにする
+          fmCalls: value.fmCalls ?? null,
+          fmFailures: value.fmFailures ?? null,
+          fmTotalMs: value.fmTotalMs ?? null,
         });
       },
       (line) => this.deps.outputChannel.appendLine(`[${label} stdout] ${line}`),

@@ -134,13 +134,17 @@ test("scenarioStarted〜scenarioFinished の間、そのworkerは workerRunning:
   );
 });
 
-test("runStarted は cleared を出す(FM グラフの累計リセットの起点)", () => {
+test("runStarted は cleared を出す", () => {
   const state = createRunLaneState();
   const actions = feed(state, [{ kind: "runStarted" }]);
   assert.deepEqual(actions, [{ type: "cleared" }]);
 });
 
-test("scenarioFinished に fm があれば fmUsage アクションを出す(モニターの FM グラフの供給元)", () => {
+// FM の供給元は hostMetrics ストリーム(host-metrics プロセス)に一本化されており、
+// scenarioFinished の event.fm はレーン側では読まない(NDJSON の欄自体は他の受け手のため残る。
+// model.ts の RunEvent.fm 参照)。ここでは event.fm があっても何も特別なアクションを出さない
+// ことだけ確かめる(クラッシュしない・fmUsage 型のアクションを作らない)。
+test("scenarioFinished の event.fm はレーンのアクションに現れない", () => {
   const state = createRunLaneState();
   const actions = feed(state, [
     { kind: "scenarioStarted", scenario: "S.A", title: "A", worker: "ios:シミュ1" },
@@ -153,51 +157,8 @@ test("scenarioFinished に fm があれば fmUsage アクションを出す(モ�
     },
   ]);
 
-  const fmActions = actions.filter((a) => a.type === "fmUsage");
-  assert.deepEqual(fmActions,
-    [{ type: "fmUsage", calls: 4, totalMs: 9532, failures: 0, machine: undefined }]);
-});
-
-test("FM を使わなかったシナリオでは fmUsage を出さない(誤カウント防止)", () => {
-  const state = createRunLaneState();
-  const actions = feed(state, [
-    { kind: "scenarioStarted", scenario: "S.A", title: "A", worker: "ios:シミュ1" },
-    { kind: "scenarioFinished", scenario: "S.A", passed: true, worker: "ios:シミュ1" },
-  ]);
   assert.equal(actions.filter((a) => a.type === "fmUsage").length, 0);
-});
-
-test("calls が 0 の fm では fmUsage を出さない", () => {
-  const state = createRunLaneState();
-  const actions = feed(state, [
-    { kind: "scenarioStarted", scenario: "S.A", title: "A", worker: "ios:シミュ1" },
-    {
-      kind: "scenarioFinished",
-      scenario: "S.A",
-      passed: true,
-      worker: "ios:シミュ1",
-      fm: { calls: 0, failures: 0, totalMs: 0 },
-    },
-  ]);
-  assert.equal(actions.filter((a) => a.type === "fmUsage").length, 0);
-});
-
-test("失敗シナリオでも fmUsage は出す(FM コストは成否によらず計上する)", () => {
-  const state = createRunLaneState();
-  const actions = feed(state, [
-    { kind: "scenarioStarted", scenario: "S.A", title: "A", worker: "ios:シミュ1" },
-    {
-      kind: "scenarioFinished",
-      scenario: "S.A",
-      passed: false,
-      worker: "ios:シミュ1",
-      fm: { calls: 2, failures: 1, totalMs: 4000 },
-    },
-  ]);
-  assert.deepEqual(
-    actions.filter((a) => a.type === "fmUsage"),
-    [{ type: "fmUsage", calls: 2, totalMs: 4000, failures: 1, machine: undefined }],
-  );
+  assert.deepEqual(new Set(actions.map((a) => a.type)), new Set(["workerRunning", "line"]));
 });
 
 test("scenarioFinished(passed:true) の行には所要時間が付く", () => {

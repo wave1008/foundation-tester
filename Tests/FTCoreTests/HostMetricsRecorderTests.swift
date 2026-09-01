@@ -43,6 +43,22 @@ final class HostMetricsRecorderTests: XCTestCase {
         XCTAssertTrue(sawNonNullCPU, "cpu が値を持つ行が1つも無い(初回捨てサンプル後に値が出るはず)")
     }
 
+    /// 3欄(fmCalls/fmFailures/fmTotalMs)は控えを読めないときも**キーごと省略しない**(null で
+    /// 明示する)。encodeIfPresent の自動合成に戻すとキー自体が消え、「不明」と「0件」の区別が
+    /// 出力から失われる
+    func testFMFieldsAreNullNotOmittedWhenUnavailable() throws {
+        let sample = HostMetricsSample(
+            ts: 0, cpu: nil, gpu: nil, memUsedBytes: nil, memTotalBytes: nil,
+            fmCalls: nil, fmFailures: nil, fmTotalMs: nil)
+        let line = try XCTUnwrap(sample.encodedLine())
+        let obj = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+        for key in ["fmCalls", "fmFailures", "fmTotalMs"] {
+            XCTAssertTrue(obj.keys.contains(key), "\(key) がキーごと省略されている: \(line)")
+            XCTAssertTrue(obj[key] is NSNull, "\(key) が null で符号化されていない: \(line)")
+        }
+    }
+
     /// stop() は冪等(2 回目以降はセマフォを二重待ちせず即返る)
     func testStopIsIdempotent() {
         let out = tmpRoot.appendingPathComponent("idem.ndjson")

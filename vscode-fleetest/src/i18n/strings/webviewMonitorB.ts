@@ -153,16 +153,16 @@ export const webviewMonitorBStrings = {
   "wvMonitor2.hostCharts.cpuTitle": { ja: "CPU負荷 {value}", en: "CPU load {value}" },
   "wvMonitor2.hostCharts.gpuTitle": { ja: "GPU負荷 {value}", en: "GPU load {value}" },
   "wvMonitor2.hostCharts.fmTitle": {
-    ja: "FM 呼び出し {total}回 / 計{totalSec}秒(直近1秒 {delta}回)",
-    en: "FM calls {total} / {totalSec}s total (last 1s: {delta})",
+    ja: "FM {rate}回/秒(直近{seconds}秒: {calls}回 / 失敗{failures}回 / 計{totalSec}秒)",
+    en: "FM {rate}/s (last {seconds}s: {calls} calls / {failures} failed / {totalSec}s total)",
   },
   "wvMonitor2.hostCharts.fmDeadLine": {
-    ja: "✕ FM 全滅: {failures}回すべて失敗(偽陽性検証・自己修復・screenLooksLike はこの実行では無効)",
-    en: "✕ FM dead: all {failures} calls failed (occlusion verify / heal / screenLooksLike are disabled in this run)",
+    ja: "✕ FM 全滅: 直近{seconds}秒で{failures}回すべて失敗(偽陽性検証・自己修復・screenLooksLike はこの実行では無効)",
+    en: "✕ FM dead: all {failures} calls failed in the last {seconds}s (occlusion verify / heal / screenLooksLike are disabled in this run)",
   },
   "wvMonitor2.hostCharts.fmWarnLine": {
-    ja: "⚠ FM 失敗 {failures}回 / 成功 {successes}回(失敗したステップのガードは素通り)",
-    en: "⚠ FM failures {failures} / successes {successes} (guards on failed steps passed through)",
+    ja: "⚠ FM 失敗 {failures}回 / 成功 {successes}回(直近{seconds}秒。失敗したステップのガードは素通り)",
+    en: "⚠ FM failures {failures} / successes {successes} (last {seconds}s; guards on failed steps passed through)",
   },
   "wvMonitor2.hostCharts.memTitle": {
     ja: "メモリ使用量 {used} / {total} GB({percent})",

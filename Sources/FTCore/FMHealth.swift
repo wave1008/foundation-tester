@@ -84,13 +84,15 @@ public enum FMHealth {
     /// FM 呼び出し1件を記録する。kind は "occlusion" / "heal" / "screenLooksLike"
     public static func record(kind: String, ms: Double, ok: Bool, error: String? = nil) {
         lock.lock()
-        defer { lock.unlock() }
         samples[kind, default: []].append(Sample(ms: ms, ok: ok))
         if !ok, firstError == nil, let error {
             firstError = String(error.prefix(300))
         }
+        lock.unlock()
         // サーキットブレーカへの通知はここに集約する(呼び出し側に増やさない)
         if ok { FMBreaker.recordSuccess() } else { FMBreaker.recordFailure() }
+        // ファイル I/O を伴うため必ずロックの外側で呼ぶ(FMUsageLedger.record の doc 参照)
+        FMUsageLedger.record(ok: ok, ms: ms)
     }
 
     /// NSError の入れ子(NSUnderlyingError / NSMultipleUnderlyingErrors)を辿って

@@ -301,6 +301,35 @@ test("リモート機のサンプルには machine が付く(手元のサンプ�
   assert.equal(samples[1].cpu, 0.9);
 });
 
+test("fmCalls/fmFailures/fmTotalMs は欄の無い行(旧CLI)を null(不明)として送り、値があれば素通しする", () => {
+  const procs = [];
+  const spawnFn = () => {
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const posts = [];
+  const manager = new MonitorProcessManager(makeDeps({ post: (m) => posts.push(m) }), spawnFn);
+  manager.startAll();
+
+  const oldFormat = Buffer.from(JSON.stringify({
+    kind: "hostMetrics", ts: 1, cpu: 0.5, gpu: 0.1, memUsedBytes: 2, memTotalBytes: 4,
+  }) + "\n");
+  const newFormat = Buffer.from(JSON.stringify({
+    kind: "hostMetrics", ts: 2, cpu: 0.6, gpu: 0.2, memUsedBytes: 3, memTotalBytes: 4,
+    fmCalls: 2, fmFailures: 1, fmTotalMs: 500,
+  }) + "\n");
+  procs[1].stdout.emit("data", oldFormat);
+  procs[1].stdout.emit("data", newFormat);
+
+  const samples = posts.filter((m) => m.type === "hostMetrics");
+  assert.deepEqual(
+    [samples[0].fmCalls, samples[0].fmFailures, samples[0].fmTotalMs], [null, null, null],
+    "欄が無い行(旧CLI)を落とさず不明として送る",
+  );
+  assert.deepEqual([samples[1].fmCalls, samples[1].fmFailures, samples[1].fmTotalMs], [2, 1, 500]);
+});
+
 test("リモート機のデバイスが消えたらその機械の子を止め、行の集合からも外す", () => {
   const procs = [];
   const spawnFn = () => {
