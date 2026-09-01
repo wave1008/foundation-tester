@@ -729,6 +729,19 @@ final class RemoteDispatchTests: XCTestCase {
             + "'\(binary)' 'run' '--project' 'E2E' '--profile' 'ios-inapp' '--quiet'")
     }
 
+    /// 登録簿に枠が設定されている機械へは `FT_FM_CONCURRENCY` を運ぶ。
+    /// **設定が無ければ1バイトも足さない**(ランナー側の既定に任せる)—— 両方向を固定するのは、
+    /// 「常に出す」変異も「常に出さない」変異も、片方だけのテストでは素通りするため
+    func testRemoteRunCommandCarriesFMConcurrencyOnlyWhenSet() {
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let withSlots = RemoteShell.remoteRunCommand(
+            layout: layout, fleetestArgs: ["run"], fmConcurrency: 1)
+        XCTAssertTrue(withSlots.contains("export FT_FM_CONCURRENCY='1' && "), withSlots)
+
+        let without = RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: ["run"])
+        XCTAssertFalse(without.contains("FT_FM_CONCURRENCY"), without)
+    }
+
     /// 未 setup の発行者(work が無い)は exit 91 の専用ガードで fail fast する(§18.2)。
     /// バイナリ不在(exit 90)より手前に置く —— workspace 自体が無ければバイナリの有無を
     /// 問うても意味が無い

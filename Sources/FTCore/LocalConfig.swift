@@ -27,17 +27,24 @@ public struct LocalConfig: Codable, Sendable, Equatable {
     /// 自己申告の帰属(認証ではない)。run.json/dispatch.lock に「誰が起動したか」を記す。
     /// 空文字列は未設定と同じ扱い(resolveIssuerId が既定値へフォールバックする)
     public var issuerId: String?
+    /// **この機械**の FM 同時実行枠。nil なら `FMLock.defaultConcurrency`。
+    /// リモート機のぶんは `remoteHosts[].fmConcurrency` —— **"local" は登録簿の予約名**
+    /// (RemoteHostRegistry.validateName)なので、手元だけはここに置く。
+    /// 機械によっては FM を2並列以上で呼ぶと壊れる(docs/remote-runner.md §19)
+    public var fmConcurrency: Int?
 
     public init(defaultProject: String? = nil,
                 lastRunProfile: [String: String]? = nil,
                 developmentTeam: String? = nil, bundleIDPrefix: String? = nil,
-                remoteHosts: [RemoteHostEntry]? = nil, issuerId: String? = nil) {
+                remoteHosts: [RemoteHostEntry]? = nil, issuerId: String? = nil,
+                fmConcurrency: Int? = nil) {
         self.defaultProject = defaultProject
         self.lastRunProfile = lastRunProfile
         self.developmentTeam = developmentTeam
         self.bundleIDPrefix = bundleIDPrefix
         self.remoteHosts = remoteHosts
         self.issuerId = issuerId
+        self.fmConcurrency = fmConcurrency
     }
 
     /// 実機署名の設定。優先順位: 環境変数 > 設定ファイル。

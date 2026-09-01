@@ -61,12 +61,25 @@ public enum FMLock {
     /// `resetForTesting()` も呼んでキャッシュを作り直させること
     static var concurrencyForTesting: Int?
 
+    /// 解決順は **環境変数 → 設定ファイル → 既定**。
+    /// 環境変数はリモートのディスパッチが運ぶ値(登録簿 `RemoteHostEntry.fmConcurrency`)で、
+    /// 設定ファイルは**この機械**のぶん(`LocalConfig.fmConcurrency`。"local" は登録簿の予約名なので
+    /// 手元だけ別の置き場になる)。どちらも無ければ既定
     static var concurrency: Int {
         if let concurrencyForTesting { return concurrencyForTesting }
-        if let raw = ProcessInfo.processInfo.environment["FT_FM_CONCURRENCY"],
-           let n = Int(raw), n > 0 {
-            return n
-        }
+        return resolveConcurrency(
+            environment: ProcessInfo.processInfo.environment,
+            configured: LocalConfig.load().fmConcurrency)
+    }
+
+    /// 枠数の解決そのもの。**純粋関数にしてあるのはテストのため** —— `concurrency` は
+    /// `LocalConfig.load()` で**この機械の実ファイル**を読むので、設定ファイル経路(GUI が書く経路)を
+    /// テストから通せない。実際にホストの設定が既定と同じ値だと
+    /// `testInvalidConcurrencyEnvFallsBackToDefault` のような検証が**素通り**する。
+    /// 不正な環境変数は設定ファイルへ落ちる(既定へ直行しない)。
+    static func resolveConcurrency(environment: [String: String], configured: Int?) -> Int {
+        if let raw = environment["FT_FM_CONCURRENCY"], let n = Int(raw), n > 0 { return n }
+        if let n = configured, n > 0 { return n }
         return defaultConcurrency
     }
 

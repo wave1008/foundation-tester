@@ -981,8 +981,12 @@ public enum RemoteShell {
     /// SSH の Background セッションのまま直接実行する(ユーザーの launchd ドメインへ昇格させる
     /// 処理は挟まない)。コンソールにログインしている限りそのままで launchd ドメイン
     /// (CoreSimulator 等)へ到達できる(2026-07-31 実測)
+    /// `fmConcurrency` は登録簿の欄(`RemoteHostEntry`)。**機械によっては FM を 2 並列以上で
+    /// 呼ぶと壊れる**(実測と経緯は docs/remote-runner.md)ので、枠を機械ごとに絞れるようにする。
+    /// nil のときは**1バイトも足さない** —— ランナー側の既定(`FMLock.defaultConcurrency`)に任せる
     public static func remoteRunCommand(layout: RemoteLayout, fleetestArgs: [String],
-                                        issuer: String? = nil) -> String {
+                                        issuer: String? = nil,
+                                        fmConcurrency: Int? = nil) -> String {
         let binary = quote(layout.binary)
         let guardCmd = "test -x \(binary) || { echo \"fleetest binary not found on remote"
             + " — run: swift build --product fleetest\" >&2; exit 90; }"
@@ -997,10 +1001,11 @@ public enum RemoteShell {
         // 発行者はディスパッチ側から運ぶ(LocalConfig.resolveIssuerId が FT_ISSUER を最優先で
         // 読む契約)。ランナー機側で解決させると全員が共有アカウントの同じ値になる
         let issuerCmd = issuer.map { "export FT_ISSUER=\(quote($0)) && " } ?? ""
+        let fmCmd = fmConcurrency.map { "export FT_FM_CONCURRENCY=\(quote(String($0))) && " } ?? ""
         return "cd \(quote(layout.workDir)) 2>/dev/null && test -f Package.swift || "
             + "{ echo \"no runner workspace at \(layout.workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
-            + "\(pathCmd) && \(runnerBaseCmd(layout: layout))\(issuerCmd)\(guardCmd) && \(syncCmd) && \(launch)"
+            + "\(pathCmd) && \(runnerBaseCmd(layout: layout))\(issuerCmd)\(fmCmd)\(guardCmd) && \(syncCmd) && \(launch)"
     }
 
     /// `fleetest remote exec`(docs/remote-runner.md §14「単発コマンドの転送は汎用化する」)。

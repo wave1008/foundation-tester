@@ -785,8 +785,10 @@ function renderSettingsPanel(): string {
            artifacts セレクタは remoteConfig/setRemoteConfig に相乗り(専用メッセージ型は無い)。
            #settings-remote-hosts-error は直前の同期が失敗したときの理由(remoteConfig.error)。
            対向: settingsTab.js の applySettings / setRemoteConfig, monitorPanel.ts。 -->
+      <!-- ログ。**artifacts セレクタは remoteConfig/setRemoteConfig に相乗り**(専用メッセージ型は
+           無い)ので、DOM 上でマシンと別セクションになっても配線は変わらない。 -->
       <div class="settings-group">
-        <div class="settings-section-title">${t("panels.settings.remoteSectionTitle")}</div>
+        <div class="settings-section-title">${t("panels.settings.logSectionTitle")}</div>
         <label class="settings-item settings-item-inline" for="settings-remote-artifacts">
           ${t("panels.settings.remoteArtifactsLabel")}
           <select id="settings-remote-artifacts" class="settings-select">
@@ -794,15 +796,19 @@ function renderSettingsPanel(): string {
             <option value="on-demand">${t("panels.settings.remoteArtifactsOnDemand")}</option>
           </select>
         </label>
+      </div>
+      <div class="settings-group">
+        <div class="settings-section-title">${t("panels.settings.remoteSectionTitle")}</div>
         <div class="settings-remote-hosts-actions">
           <button id="settings-remote-hosts-add" class="secondary" type="button">${t("panels.settings.remoteHostsAdd")}</button>
         </div>
         <table class="settings-remote-hosts-table">
           <thead>
             <tr>
-              <th>${t("panels.settings.remoteHostsColHost")}</th>
-              <th>${t("panels.settings.remoteHostsColMachine")}</th>
-              <th>${t("panels.settings.remoteHostsColDir")}</th>
+              <th class="settings-remote-hosts-host">${t("panels.settings.remoteHostsColHost")}</th>
+              <th class="settings-remote-hosts-machine">${t("panels.settings.remoteHostsColMachine")}</th>
+              <th class="settings-remote-hosts-fm">${t("panels.settings.remoteHostsColFMConcurrency")}</th>
+            <th class="settings-remote-hosts-dir">${t("panels.settings.remoteHostsColDir")}</th>
               <th></th>
             </tr>
           </thead>

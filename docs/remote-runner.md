@@ -1732,6 +1732,47 @@ upstream main を clone して update.sh で追従するので、2人の rev は
   前提に増え、M0 の「発行側で解決して運ぶ」規律(§18.5 の 3)と衝突する。
   **同一信頼グループ前提(§15.3 (a))では帰属は調整のためのもので、認証ではない**
 
+## 19. 機械ごとの FM 並列枠(`fmConcurrency`。実装済み: 2026-09-02)
+
+**機械によっては FM を 2 並列以上で呼ぶと壊れる。** 登録簿(`~/.config/fleetest/config.json` の
+`RemoteHostEntry`)に `fmConcurrency` を置き、ディスパッチが `FT_FM_CONCURRENCY` として運ぶ
+(`RemoteShell.remoteRunCommand`)。**設定が無ければ何も渡さない** —— ランナー側の既定
+(`FMLock.defaultConcurrency` = 5。根拠は docs/performance-tuning.md §3.5)が効く。
+
+```
+fleetest remote hosts add M1Ultra --host user@10.0.0.2 --fm-concurrency 1
+fleetest remote hosts add M1Ultra --host user@10.0.0.2 --clear-fm-concurrency   # 既定へ戻す
+fleetest remote hosts list                                                       # FM 列に出る
+```
+
+**`--fm-concurrency` を省略した add は既存の値を保つ**(upsert なので、指定なしを「消す」に
+すると別件で add を打ち直した瞬間に設定が黙って消える)。消すのは `--clear-fm-concurrency` だけ。
+
+### なぜ機械ごとに要るのか(2026-09-02 実測)
+
+Mac Studio M1 Ultra(Mac13,2 / macOS 26A5425a)で、occlusion guard を有効にした同一8シナリオ
+(E2E-CMP・リモート単独実行)を条件だけ変えて測った:
+
+| 条件 | FM 呼び出し | 失敗 | 平均レイテンシ |
+|---|---|---|---|
+| 4レーン(枠5) | 68 | **18 (26.5%)** | 7.09s |
+| 2レーン(枠5) | 71 | **22 (31.0%)** | 5.17s |
+| 1レーン(枠5) | 76 | 0 | 3.34s |
+| **4レーン + 枠1** | 68 | **0 (0.0%)** | 3.28s |
+
+**レーン数ではなく FM の同時実行数が効く**。2レーンでも 31% 失敗するのに、4レーンのまま枠を1に
+すると 0% になる。**メモリ量でもない** —— この機械はレーンあたり 32GB で、失敗 0 の M2 Ultra
+(24GB/レーン)より潤沢。同じ macOS ビルドで **M2 Ultra は 2,383 回・失敗 0**。
+
+真因は Apple 側の推論サービス `TGOnDeviceInferenceProviderService` が画像エンコーダ
+(`AFMV11ImageEncoderRunner.withEncodedImage` → `V11E2EPipeline.runInternal(imageIn:gridH:gridW:)`)で
+クラッシュすること。**Apple へ報告済み(FB23936145)**。詳細と証拠は
+`reports/apple-feedback-fm-flap/REPORT-followup-20260902.md`。
+
+**代償**: 枠を絞ると `FMLock` の待ちが伸び、timeout(20秒)を超えた回は guard が素通りする。
+上の実測でも skip が 6 件出た(絞る前は 13 件なので改善はしている)。**`fm.skipped` で必ず
+確認すること**(docs/results-json.md)。
+
 ## 関連
 
 - CI 前提・FM の可否表: [ci.md](ci.md)

@@ -268,6 +268,10 @@ M1Max 10コア/16コア ANE が 3.51 で、コア数比にも ANE 比にも対�
 待ちは結果 JSON の `fm.gateWaitTotalMs / gateWaitP50Ms / gateWaitMaxMs` で読む
 (docs/results-json.md)。
 
+**機械によっては枠を絞る必要がある** —— FM を2並列以上で呼ぶと壊れる機械が実在する
+(M1 Ultra で実測。設定は登録簿の `fmConcurrency`・docs/remote-runner.md §19)。既定 5 は
+この機械では使えないが、**機械ごとの設定であって既定を下げる理由にはならない**。
+
 **外すなら多い側に外す**: 枠が少なすぎると待ちが積み上がり、`FMLock` の timeout(20秒)を
 超えた回は `FMGate` が false を返して**occlusion-guard が黙って素通りする**(枠1 の実測で
 最大待ち 19,285ms = timeout まで 0.7 秒)。その回数は `fm.skipped` に出る。多すぎても

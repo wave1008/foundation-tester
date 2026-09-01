@@ -486,9 +486,11 @@ struct RemoteCommand: AsyncParsableCommand {
             }
 
             private static func emitTable(_ entries: [RemoteHostEntry]) {
-                let header = ["NAME", "HOST", "DIR"]
+                let header = ["NAME", "HOST", "DIR", "FM"]
                 var rows = [header]
-                rows.append(contentsOf: entries.map { [$0.machine, $0.host, $0.dir ?? "-"] })
+                rows.append(contentsOf: entries.map {
+                    [$0.machine, $0.host, $0.dir ?? "-", $0.fmConcurrency.map(String.init) ?? "-"]
+                })
                 let widths = (0..<header.count).map { col in rows.map { $0[col].count }.max() ?? 0 }
                 for row in rows {
                     let line = zip(row, widths)
@@ -521,15 +523,34 @@ struct RemoteCommand: AsyncParsableCommand {
                 + "unless --remote-dir is given explicitly on the dispatch command)"))
             var dir: String?
 
+            @Option(help: ArgumentHelp("Cap concurrent FM calls on this machine. "
+                + "Some machines fail FM requests when two or more image inferences overlap "
+                + "(measurements: docs/remote-runner.md). Omit to keep the current setting"))
+            var fmConcurrency: Int?
+
+            @Flag(help: "Drop this machine's FM concurrency setting (fall back to the runner's default)")
+            var clearFmConcurrency = false
+
             func run() async throws {
                 try RemoteHostRegistry.validateName(name)
                 _ = try RemoteHostSpec.parse(host)
                 if let dir { try RemoteLayout.validateBase(dir) }
+                if let fmConcurrency, fmConcurrency < 1 {
+                    throw ValidationError("--fm-concurrency must be at least 1")
+                }
+                if fmConcurrency != nil, clearFmConcurrency {
+                    throw ValidationError("--fm-concurrency and --clear-fm-concurrency cannot be combined")
+                }
                 var config = LocalConfig.load()
-                let entry = RemoteHostEntry(machine: name, host: host, dir: dir)
+                // **省略したら既存の値を保つ**。upsert なので「指定なし = nil で上書き」にすると、
+                // 別件で add を打ち直した瞬間に設定が黙って消える。消すのは --clear-fm-concurrency だけ
+                let existing = (config.remoteHosts ?? []).first { $0.machine == name }?.fmConcurrency
+                let slots = clearFmConcurrency ? nil : (fmConcurrency ?? existing)
+                let entry = RemoteHostEntry(machine: name, host: host, dir: dir, fmConcurrency: slots)
                 config.remoteHosts = RemoteHostRegistry.upsert(entry, into: config.remoteHosts ?? [])
                 try config.save()
-                print("✅ Registered host \"\(name)\" → \(host)")
+                let slotsNote = slots.map { " (FM concurrency \($0))" } ?? ""
+                print("✅ Registered host \"\(name)\" → \(host)\(slotsNote)")
                 for target in RemoteHostRegistry.duplicateTargets(config.remoteHosts ?? []) where target == host {
                     print("⚠️ another entry already points at \(target)"
                         + " (dispatching to both fights over the same devices; docs/remote-runner.md §13)")

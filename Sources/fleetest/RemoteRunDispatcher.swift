@@ -461,11 +461,19 @@ struct RemoteRunDispatcher {
     /// ssh の stdout を StreamLineSplitter で行に割り、リモート絶対パスをローカルパスへ
     /// 書き換えて即 stdout へ中継する(cliRun/apiRun 共通。apiRun は中継行=NDJSON そのものなので
     /// 常に本物の stdout へ出す。進行メッセージは log() 経由で別に stderr へ逃がす)
+    /// 登録簿の `fmConcurrency` を **ssh 宛先で**引く。マシン名ではなく host で引くのは、
+    /// ここまで来た時点でエイリアスは解決済みで、手元にあるのが ssh 実体だから。
+    /// 未登録・未設定なら nil = ランナー側の既定に任せる
+    private var registeredFMConcurrency: Int? {
+        LocalConfig.load().remoteHosts?.first { $0.host == host.sshTarget }?.fmConcurrency
+    }
+
     private func runRemoteAndRelay(fleetestArgs: [String], layout: RemoteLayout,
                                    timeoutSeconds: Int?) throws -> Int32 {
         log("==> running on \(host.sshTarget): fleetest \(fleetestArgs.joined(separator: " "))")
         let command = RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: fleetestArgs,
-                                                   issuer: LocalConfig.resolveIssuerId())
+                                                   issuer: LocalConfig.resolveIssuerId(),
+                                                   fmConcurrency: registeredFMConcurrency)
         let status = try runInheritedWithLineRewrite(
             sshRunBase + [host.sshTarget, command], layout: layout, timeoutSeconds: timeoutSeconds)
         if status == 90 {

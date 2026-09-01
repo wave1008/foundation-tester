@@ -163,3 +163,44 @@ final class FMLockTests: XCTestCase {
         }
     }
 }
+
+/// 枠数の解決(環境変数 → 設定ファイル → 既定)。**GUI が書くのは設定ファイル経路**なので、
+/// ここが通らないと「設定タブで入れた値が効かない」が緑のまま通る。
+/// `FMLock.concurrency` はホストの実ファイルを読むため、純粋関数の側で検証する。
+final class FMLockConcurrencyResolutionTests: XCTestCase {
+    func testEnvironmentWinsOverConfigFile() {
+        XCTAssertEqual(
+            FMLock.resolveConcurrency(environment: ["FT_FM_CONCURRENCY": "2"], configured: 7), 2)
+    }
+
+    func testConfigFileIsUsedWhenNoEnvironment() {
+        XCTAssertEqual(FMLock.resolveConcurrency(environment: [:], configured: 3), 3)
+    }
+
+    /// 既定(5)と違う値で確かめる —— 既定と同じ値で書くと「設定を読んでいない実装」でも通る
+    func testConfigFileValueIsNotTheDefault() {
+        XCTAssertNotEqual(3, FMLock.defaultConcurrency, "既定と同じ値では検証にならない")
+    }
+
+    func testFallsBackToDefaultWithoutAnySource() {
+        XCTAssertEqual(FMLock.resolveConcurrency(environment: [:], configured: nil),
+                       FMLock.defaultConcurrency)
+    }
+
+    /// 0 と負値は「未設定」= 既定へ倒す(GUI は空欄を 0 として送る)
+    func testNonPositiveConfigFallsBackToDefault() {
+        XCTAssertEqual(FMLock.resolveConcurrency(environment: [:], configured: 0),
+                       FMLock.defaultConcurrency)
+        XCTAssertEqual(FMLock.resolveConcurrency(environment: [:], configured: -1),
+                       FMLock.defaultConcurrency)
+    }
+
+    /// **不正な環境変数は設定ファイルへ落ちる**(既定へ直行しない)。リモートのディスパッチが
+    /// 壊れた値を運んでも、ランナー自身の設定が生きる
+    func testInvalidEnvironmentFallsThroughToConfigFile() {
+        XCTAssertEqual(
+            FMLock.resolveConcurrency(environment: ["FT_FM_CONCURRENCY": "abc"], configured: 4), 4)
+        XCTAssertEqual(
+            FMLock.resolveConcurrency(environment: ["FT_FM_CONCURRENCY": "0"], configured: 4), 4)
+    }
+}

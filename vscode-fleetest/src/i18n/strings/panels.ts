@@ -260,7 +260,8 @@ export const panelsStrings = {
   // fleetest.remote.artifacts 設定(config.ts)、このタブはもう1つの操作口。
   // 行内容(削除ボタン)は settingsTab.js が動的生成するため webview 側辞書
   // (i18n/strings/webviewMonitorB.ts の wvMonitor2.remote.*)を使う。ここは静的ラベルのみ。
-  "panels.settings.remoteSectionTitle": { ja: "リモート実行", en: "Remote execution" },
+  "panels.settings.logSectionTitle": { ja: "ログ", en: "Logs" },
+  "panels.settings.remoteSectionTitle": { ja: "マシン", en: "Machines" },
   "panels.settings.remoteArtifactsLabel": { ja: "成果物(録画・ログ)", en: "Artifacts (recordings, logs)" },
   "panels.settings.remoteArtifactsCollect": { ja: "回収する", en: "Collect" },
   "panels.settings.remoteArtifactsOnDemand": { ja: "オンデマンド", en: "On demand" },
@@ -272,7 +273,8 @@ export const panelsStrings = {
   // 見出しに ssh 宛先の書式をそのまま出す(説明文を置かない代わり。ja/en 共通の文字列)
   "panels.settings.remoteHostsColHost": { ja: "user@host", en: "user@host" },
   "panels.settings.remoteHostsColDir": { ja: "作業ベースディレクトリ", en: "Base directory" },
-  "panels.settings.remoteHostsAdd": { ja: "ホストを追加", en: "Add host" },
+  "panels.settings.remoteHostsColFMConcurrency": { ja: "FM 並列枠", en: "FM concurrency" },
+  "panels.settings.remoteHostsAdd": { ja: "リモートホストを追加", en: "Add remote host" },
 
   "panels.deviceMenu.liveControl": { ja: "ライブ操作", en: "Live Control" },
   "panels.deviceMenu.restartWithGpu": { ja: "GPUで再起動", en: "Restart with GPU" },

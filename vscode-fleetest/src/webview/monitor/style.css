@@ -1314,18 +1314,42 @@ input[type="checkbox"]:focus-visible {
 }
 input[type="checkbox"]:disabled { opacity: 0.5; cursor: default; }
 
-/* ---- デバイス追加モーダル ---------------------------------------------------------- */
-input[type="text"] {
+/* ---- 入力欄(全パネル共通。**ここが唯一の定義元**) --------------------------------------
+   **クラス側で色を持たせない** —— `input[type=…]` は属性セレクタぶん `.settings-text` 等の
+   クラスより specificity が高く、クラスに書いた色は黙って負ける(実際に設定タブで
+   `type=number` の2つにしか効かない状態になっていた)。型を足したらこのセレクタに足す。
+   `type=range`(録画のシーク)は含めない。 */
+input[type="text"],
+input[type="number"],
+input[type="search"] {
   font-family: inherit;
   font-size: inherit;
   padding: 2px 6px;
   border-radius: 2px;
-  background-color: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  border: 1px solid var(--ft-control-border);
+  /* **テーマの枠色トークン(--vscode-widget-border / --vscode-input-border)を使わない** ——
+     どちらも既定テーマでは薄すぎて枠がほぼ見えなかった(2026-09-02 に順に試して不合格)。
+     文字色から作れば**明background・暗backgroundのどちらでも必ずコントラストが付く**。
+     背景は白を少しだけ混ぜて面から浮かせる —— 白と混ぜるので暗いテーマでだけ明るくなり、
+     明るいテーマ(既に白)では動かない。
+     各組の1行目は color-mix 非対応時のフォールバック(この順序に意味がある。入れ替えない) */
+  border: 0.5px solid rgba(128, 128, 128, 0.9);
+  border-color: color-mix(in srgb, var(--vscode-foreground) 60%, transparent);
+  background-color: var(--vscode-input-background, #1e1e1e);
+  background-color: color-mix(in srgb, var(--vscode-input-background, #1e1e1e) 95%, #fff 5%);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
 }
-input[type="text"]:disabled { opacity: 0.5; }
-input[type="text"]::placeholder {
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="search"]:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+input[type="text"]:disabled,
+input[type="number"]:disabled,
+input[type="search"]:disabled { opacity: 0.5; }
+input[type="text"]::placeholder,
+input[type="number"]::placeholder,
+input[type="search"]::placeholder {
   /* 淡色だけだと目立たないため、ライト/ダーク両テーマで視認できる vscode-charts-blue を使う。 */
   color: var(--vscode-charts-blue, #3794ff);
   opacity: 0.6;
@@ -2004,7 +2028,6 @@ input[type="text"]::placeholder {
 /* ---- #panel-settings(設定タブ) ------------------------------------------------------- */
 .settings-body {
   padding: 18px 22px;
-  max-width: 720px;
   display: flex;
   flex-direction: column;
   gap: 14px; /* 枠+面色が区切りになるので、枠なし時(22px)より詰める(プロファイルタブと同値) */
@@ -2037,8 +2060,27 @@ input[type="text"]::placeholder {
 .settings-item-inline {
   cursor: default;
 }
+/* 設定タブの入力欄。**素の input はブラウザ既定の白**で、隣の select(--vscode-dropdown-*)
+   だけがテーマ色になり浮いて見える。VSCode の入力欄トークンで塗る(テーマ追従) */
+/* select は input ではないので上のグローバル規則に載らない。**同じ見た目を写す**
+   —— 既定では --vscode-dropdown-background が当たり、隣の入力欄と色が揃わない。
+   各組の1行目は color-mix 非対応時のフォールバック(この順序に意味がある。入れ替えない) */
+.settings-select {
+  border: 0.5px solid rgba(128, 128, 128, 0.9);
+  border-color: color-mix(in srgb, var(--vscode-foreground) 60%, transparent);
+  border-radius: 2px;
+  background-color: var(--vscode-input-background, #1e1e1e);
+  background-color: color-mix(in srgb, var(--vscode-input-background, #1e1e1e) 95%, #fff 5%);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+}
+.settings-select:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+/* **数値入力の幅は1箇所** —— FM 並列枠(1桁)に合わせてある。type=number のスピナー
+   (上下の矢印)が右端を食うので、桁数ぶんより広く要る */
 .settings-number {
-  width: 80px;
+  width: 56px;
   padding: 4px 8px; /* .settings-select と同じ高さに揃える */
 }
 .settings-text {
@@ -2074,6 +2116,47 @@ input[type="text"]::placeholder {
   min-width: 90px;
   box-sizing: border-box;
   padding: 3px 6px;
+}
+/* 固定行(この機械)。host/machine は**読み取り専用の入力欄**にして可変行と左端を揃える
+   (素のテキストにすると input の padding と枠線のぶんだけずれる)。編集できないことが
+   分かるよう枠線を消して淡くする。**削除ボタンを置かない**ので最終列は空 */
+.settings-remote-hosts-input.settings-remote-hosts-fixed {
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+}
+.settings-remote-hosts-input.settings-remote-hosts-fixed:focus {
+  outline: none;
+}
+/* 列幅。**見出しとセルの両方に要る**(片方だけだと効かない)。
+   FM 並列枠(1桁)とマシン名(短いエイリアス)は見出し幅まで縮める —— auto レイアウトの表では
+   width:1% が「中身(=見出し)の最小幅まで縮める」指定として働く。
+   残りを user@host と作業ベースディレクトリが 3:5 で分ける(= 均等分けから host を 25% 減らした比)。
+   両者を明示しないと content 幅で決まってしまい比が保てない */
+.settings-remote-hosts-table th.settings-remote-hosts-fm,
+.settings-remote-hosts-table td.settings-remote-hosts-fm,
+.settings-remote-hosts-table th.settings-remote-hosts-machine,
+.settings-remote-hosts-table td.settings-remote-hosts-machine {
+  width: 1%;
+  white-space: nowrap;
+}
+.settings-remote-hosts-table th.settings-remote-hosts-host,
+.settings-remote-hosts-table td.settings-remote-hosts-host {
+  width: 30%;
+}
+.settings-remote-hosts-table th.settings-remote-hosts-dir,
+.settings-remote-hosts-table td.settings-remote-hosts-dir {
+  width: 50%;
+}
+.settings-remote-hosts-machine .settings-remote-hosts-input {
+  min-width: 0;
+}
+/* FM の入力欄は .settings-number(「直近 N 件までの履歴を使用する」と同じ)。
+   .settings-remote-hosts-input(width:100% / min-width:90px)は当てない —— 当てると
+   幅指定が上書きされて列が広がる。幅そのものは .settings-number が持つ(片方だけ変えない) */
+.settings-remote-hosts-fm-input {
+  box-sizing: border-box;
 }
 .settings-remote-hosts-remove,
 .settings-remote-hosts-confirm {

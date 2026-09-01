@@ -312,6 +312,11 @@ export type MonitorToWebviewMessage =
       readonly type: "remoteConfig";
       readonly hosts: readonly RemoteHostEntry[];
       readonly artifacts: "collect" | "on-demand";
+      /** 未設定時の FM 枠(CLI 側 FMLock.defaultConcurrency)。ウォーターマークに出すだけ。
+       *  **拡張はこの数を持たない** —— 二重管理にすると片方だけ変わったときに嘘を表示する */
+      readonly defaultFMConcurrency?: number;
+      /** この機械の固定行(消せない。FM 枠だけ編集できる)。settingsTab.js が先頭に描く */
+      readonly local?: { readonly machine: "local"; readonly host: string; readonly fmConcurrency: number };
       /** 直前の setRemoteConfig(追加・削除)が CLI 側で失敗したときの理由。settingsTab.js が
        * 画面に出す。成功時・ready 直後の初回配信では undefined。 */
       readonly error?: string;

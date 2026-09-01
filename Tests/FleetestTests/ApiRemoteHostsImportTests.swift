@@ -37,4 +37,41 @@ final class ApiRemoteHostsImportTests: XCTestCase {
     func testHostIsStillRequired() {
         XCTAssertThrowsError(try decode(#"[{"machine":"M1Max"}]"#))
     }
+
+    /// **`fmConcurrency` は import で消えない**。この API のワイヤは machine/host/dir だけなので
+    /// (拡張の設定タブがそれしか持たない)、素通しすると設定タブを触っただけで機械ごとの
+    /// FM 枠が黙って消える。**取り違えると気づけない型**なので等号で固定する
+    func testImportKeepsExistingFMConcurrency() throws {
+        let existing = [RemoteHostEntry(machine: "M1Ultra", host: "user@h", fmConcurrency: 1)]
+        let incoming = try ApiRemoteHostsCommand.decodeImportEntries(
+            #"[{"machine":"M1Ultra","host":"user@h","dir":""}]"#)
+        let raw = try XCTUnwrap(incoming.first)
+        XCTAssertNil(raw.fmConcurrency, "キーを送っていない")
+        // キーを送っていない = 既存値を保つ(設定タブ以外のクライアントが upsert しても消えない)
+        let merged = ApiRemoteHostsCommand.mergingFMConcurrency(raw.entry, sentKey: false, from: existing)
+        XCTAssertEqual(merged.fmConcurrency, 1)
+
+        // 未登録の機械には持ち越すものが無い
+        XCTAssertNil(ApiRemoteHostsCommand.mergingFMConcurrency(raw.entry, sentKey: false, from: [])
+                        .fmConcurrency)
+    }
+
+    /// **設定タブは常にキーを送る**ので、その指定が既存値より優先される。
+    /// 空欄は 0 で届き「解除」になる —— ここが効かないと GUI から外せない
+    func testImportHonoursExplicitFMConcurrency() throws {
+        let existing = [RemoteHostEntry(machine: "M1Ultra", host: "user@h", fmConcurrency: 1)]
+
+        let set = try XCTUnwrap(ApiRemoteHostsCommand.decodeImportEntries(
+            #"[{"machine":"M1Ultra","host":"user@h","dir":"","fmConcurrency":3}]"#).first)
+        XCTAssertEqual(set.fmConcurrency, 3, "キーを送ったことが分かる")
+        XCTAssertEqual(ApiRemoteHostsCommand.mergingFMConcurrency(
+            set.entry, sentKey: set.fmConcurrency != nil, from: existing).fmConcurrency, 3)
+
+        let cleared = try XCTUnwrap(ApiRemoteHostsCommand.decodeImportEntries(
+            #"[{"machine":"M1Ultra","host":"user@h","dir":"","fmConcurrency":0}]"#).first)
+        XCTAssertEqual(cleared.fmConcurrency, 0, "0 もキーとして届く(nil ではない)")
+        XCTAssertNil(ApiRemoteHostsCommand.mergingFMConcurrency(
+            cleared.entry, sentKey: cleared.fmConcurrency != nil, from: existing).fmConcurrency,
+                     "空欄(0)は解除")
+    }
 }

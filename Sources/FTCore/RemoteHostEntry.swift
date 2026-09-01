@@ -16,14 +16,19 @@ public struct RemoteHostEntry: Codable, Equatable, Sendable {
     public let host: String
     /// ベースディレクトリ。nil なら CLI 既定("~/fleetest-runner")
     public let dir: String?
+    /// この機械での FM 呼び出しの同時実行枠。nil ならランナー側の既定(`FMLock.defaultConcurrency`)。
+    /// **機械によっては 2 並列以上で FM が壊れる**(実測と経緯は docs/remote-runner.md)。
+    /// ディスパッチが `FT_FM_CONCURRENCY` として運ぶ(FTRemote/RemoteDispatch.remoteRunCommand)
+    public let fmConcurrency: Int?
 
-    public init(machine: String, host: String, dir: String? = nil) {
+    public init(machine: String, host: String, dir: String? = nil, fmConcurrency: Int? = nil) {
         self.machine = machine
         self.host = host
         self.dir = dir
+        self.fmConcurrency = fmConcurrency
     }
 
-    private enum CodingKeys: String, CodingKey { case machine, name, host, dir }
+    private enum CodingKeys: String, CodingKey { case machine, name, host, dir, fmConcurrency }
 
     /// 読みは machine > 旧 name、書きは machine だけ(改名の互換はこの1箇所)
     public init(from decoder: Decoder) throws {
@@ -35,6 +40,10 @@ public struct RemoteHostEntry: Codable, Equatable, Sendable {
         }
         host = try container.decode(String.self, forKey: .host)
         dir = try container.decodeIfPresent(String.self, forKey: .dir)
+        // 不正値(0 以下)は nil へ倒す。**壊れた設定で run を止めるより既定で動かす**
+        // —— この欄は性能・安定性の調整であって、実行の可否を決める設定ではない
+        let slots = try container.decodeIfPresent(Int.self, forKey: .fmConcurrency)
+        fmConcurrency = (slots ?? 0) > 0 ? slots : nil
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -42,5 +51,6 @@ public struct RemoteHostEntry: Codable, Equatable, Sendable {
         try container.encode(machine, forKey: .machine)
         try container.encode(host, forKey: .host)
         try container.encodeIfPresent(dir, forKey: .dir)
+        try container.encodeIfPresent(fmConcurrency, forKey: .fmConcurrency)
     }
 }

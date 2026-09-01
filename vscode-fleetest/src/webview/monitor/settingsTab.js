@@ -79,19 +79,104 @@ languageSelect.addEventListener('change', () => {
 // 同じ既定を持つが、拡張は差分計算(diffRemoteHosts)を machine で行うため、送る時点で
 // 埋めておく)。入力欄には「これになる」名前をウォーターマークで出す。
 const remoteHostsError = document.getElementById('settings-remote-hosts-error');
-let hostRows = []; // { id, tr, machineInput, hostInput, dirInput, confirmed, confirmButton }
+let hostRows = []; // { id, tr, machineInput, hostInput, dirInput, fmInput, confirmed, confirmButton }
 let nextRowId = 0;
+// 未設定時の FM 枠。**CLI が返す値をそのまま使う**(拡張は定数を持たない —— 二重管理にすると
+// 片方だけ変わったときにウォーターマークが嘘になる)。未受信のうちは空欄のまま
+let defaultFMConcurrency;
+// この機械の固定行。**登録簿の行ではない**("local" は予約名)ので hostRows には入れず、
+// 表の先頭に別途描く。編集できるのは FM 枠だけで、削除もできない
+let localRow;
+
+/** 固定行(この機械)を表の先頭に描く。host/machine は表示専用、FM 枠だけ編集できる。 */
+function renderLocalRow(tbody, local) {
+  const tr = document.createElement('tr');
+  tr.className = 'settings-remote-hosts-row-local';
+  // **読み取り専用の入力欄にする**(素のテキストにしない)。可変行のテキストは td の padding に
+  // 加えて input 自身の padding と枠線のぶん内側から始まるので、同じ箱にしないと左端がずれる
+  // —— 数値で合わせると input の padding を触ったときに黙ってずれる
+  const fixedCell = (text, cellClass) => {
+    const td = document.createElement('td');
+    if (cellClass) {
+      td.className = cellClass;   // 列の幅は CSS 側で決める(可変行と同じクラスを使う)
+    }
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'settings-text settings-remote-hosts-input settings-remote-hosts-fixed';
+    input.value = text;
+    input.readOnly = true;
+    input.tabIndex = -1;
+    td.appendChild(input);
+    tr.appendChild(td);
+  };
+  // **列の並びは可変行と揃える**(user@host → マシン → FM 並列枠 → 作業ベースディレクトリ)
+  fixedCell(local.host, 'settings-remote-hosts-host');
+  fixedCell(local.machine, 'settings-remote-hosts-machine');
+  const fmTd = document.createElement('td');
+  fmTd.className = 'settings-remote-hosts-fm';
+  const input = makeFMConcurrencyInput(local.fmConcurrency);
+  input.addEventListener('change', () => onHostsChanged());
+  fmTd.appendChild(input);
+  tr.appendChild(fmTd);
+  fixedCell('', 'settings-remote-hosts-dir');   // 作業ベースディレクトリ(この機械では使わない)
+  // 削除ボタンは置かない(固定行)。列数を揃えるため空のセルだけ足す
+  tr.appendChild(document.createElement('td'));
+  tbody.appendChild(tr);
+  localRow = { tr, input, host: local.host };
+}
+
+/** FM 並列枠の入力欄。**「直近 N 件までの履歴を使用する」と同じ作り**(`type=number` +
+ *  `.settings-number`)。**行の種類を問わずこの関数を通す** —— 固定行(この機械)と可変行で
+ *  別々に組むと片方だけ制限や見た目が漏れる。
+ *
+ *  値は **1〜9 の1桁**に限る。範囲の根拠は docs/performance-tuning.md §3.5(実測でスループットは
+ *  並列度5で飽和し、8 まで測っても伸びない)。0 と空欄はどちらも「未設定」= 既定へ倒す扱いなので
+ *  0 は打てなくてよい。**`maxLength` は `type=number` では効かない**ので、桁の制限は
+ *  input イベントの絞り込みだけが担っている(消すと2桁が入る)。 */
+function makeFMConcurrencyInput(value) {
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.className = 'settings-number settings-remote-hosts-fm-input';
+  input.min = '1';
+  input.max = '9';
+  input.step = '1';
+  // **未設定(0)のときは既定値を実値として出す** —— 空欄だと「何枠で走るのか」が画面から
+  // 読めない。空欄にすれば未設定へ戻せる(送るのは 0 で、CLI が既定へ倒し、次の描画で
+  // またこの既定が入る)。既定が読めないときだけウォーターマークに落とす
+  input.value = value > 0 ? String(value)
+    : (defaultFMConcurrency === undefined ? '' : String(defaultFMConcurrency));
+  input.placeholder = defaultFMConcurrency === undefined ? '' : String(defaultFMConcurrency);
+  input.addEventListener('input', () => {
+    const kept = input.value.replace(/[^1-9]/g, '').slice(0, 1);
+    if (kept !== input.value) {
+      input.value = kept;
+    }
+  });
+  return input;
+}
 
 function currentHostsPayload() {
+  // 固定行は登録簿ではなく LocalConfig へ入る(CLI 側が machine:"local" を見て振り分ける)
+  const fixed = [];
+  if (localRow) {
+    const n = Number.parseInt(localRow.input.value.trim(), 10);
+    fixed.push({ machine: 'local', host: localRow.host, dir: '',
+                 fmConcurrency: Number.isFinite(n) && n > 0 ? n : 0 });
+  }
   // 未確定行(confirmed:false)はホストが空のことがあるため、確定済み行だけを送る
   // (「確定」ボタン自体は host が埋まるまで押せないが、ここでも二重に落として安全側に倒す)。
-  return hostRows
+  return fixed.concat(hostRows
     .filter((row) => row.confirmed)
     .map((row) => {
       const host = row.hostInput.value.trim();
       const machine = row.machineInput.value.trim();
-      return { machine: machine || defaultMachineForHost(host), host, dir: row.dirInput.value.trim() };
-    });
+      // 空欄・非数値・0 以下は 0 = 解除として送る(CLI 側が 0 を「未設定」に倒す)
+      const fm = Number.parseInt(row.fmInput.value.trim(), 10);
+      return {
+        machine: machine || defaultMachineForHost(host), host, dir: row.dirInput.value.trim(),
+        fmConcurrency: Number.isFinite(fm) && fm > 0 ? fm : 0,
+      };
+    }));
 }
 
 function sendRemoteConfig() {
@@ -151,8 +236,11 @@ function addHostRow(host, confirmed) {
   const tr = document.createElement('tr');
   const row = { id, tr, confirmed };
 
-  const makeTextCell = (value, placeholder) => {
+  const makeTextCell = (value, placeholder, cellClass) => {
     const td = document.createElement('td');
+    if (cellClass) {
+      td.className = cellClass;   // 列ごとの幅は CSS(.settings-remote-hosts-fm)で決める
+    }
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'settings-text settings-remote-hosts-input';
@@ -178,9 +266,17 @@ function addHostRow(host, confirmed) {
 
   // **列の並び = makeTextCell を呼ぶ順**(td を順に append する)。ホスト → マシン → ディレクトリ。
   // 必須の host を先に置き、任意のマシン名をその右に置く(見出しは monitorHtml.ts と対)
-  row.hostInput = makeTextCell(host ? host.host : '', 'user@host');
-  row.machineInput = makeTextCell(host ? host.machine : '');
-  row.dirInput = makeTextCell(host ? host.dir : '', '~/fleetest-runner');
+  row.hostInput = makeTextCell(host ? host.host : '', 'user@host', 'settings-remote-hosts-host');
+  row.machineInput = makeTextCell(host ? host.machine : '', '', 'settings-remote-hosts-machine');
+  // FM 並列枠。**空欄 = 未設定**(ランナー側の既定に任せる)。0 を送ると CLI 側が解除として扱う。
+  // 機械によっては FM を2並列以上で呼ぶと壊れるため機械ごとに絞れる(docs/remote-runner.md §19)
+  const fmTd = document.createElement('td');
+  fmTd.className = 'settings-remote-hosts-fm';
+  row.fmInput = makeFMConcurrencyInput(host ? host.fmConcurrency : 0);
+  row.fmInput.addEventListener('change', () => { if (row.confirmed) { onHostsChanged(); } });
+  fmTd.appendChild(row.fmInput);
+  tr.appendChild(fmTd);
+  row.dirInput = makeTextCell(host ? host.dir : '', '~/fleetest-runner', 'settings-remote-hosts-dir');
   // ホストを打つたびにマシン名のウォーターマークを追従させる(何になるかを先に見せる)
   row.hostInput.addEventListener('input', () => updateMachinePlaceholder(row));
   updateMachinePlaceholder(row);
@@ -227,6 +323,9 @@ remoteArtifactsSelect.addEventListener('change', () => {
 // 未確定行(「追加」を押してまだ確定していない入力中の行)は CLI へ一度も送っていないため
 // message.hosts には含まれない。ここで作り直すと消えてしまうので、DOM ごと退避して後ろへ戻す。
 function applyRemoteConfig(message) {
+  if (typeof message.defaultFMConcurrency === 'number' && message.defaultFMConcurrency > 0) {
+    defaultFMConcurrency = message.defaultFMConcurrency;
+  }
   const pending = hostRows.filter((row) => !row.confirmed);
   for (const row of hostRows) {
     if (row.confirmed) {
@@ -234,6 +333,14 @@ function applyRemoteConfig(message) {
     }
   }
   hostRows = [];
+  if (localRow) {
+    localRow.tr.remove();
+    localRow = undefined;
+  }
+  const tbody = document.getElementById('settings-remote-hosts-body');
+  if (message.local && typeof message.local.host === 'string') {
+    renderLocalRow(tbody, message.local);
+  }
   for (const host of Array.isArray(message.hosts) ? message.hosts : []) {
     addHostRow(host, true);
   }

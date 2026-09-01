@@ -57,8 +57,9 @@ import {
   importRemoteHosts,
   removeRemoteHost,
   type RemoteHostsCliDeps,
+  type RemoteHostsCliOutcome,
 } from "./remoteHostsController";
-import { diffRemoteHostsForSync, type RemoteHostEntry } from "./remoteRunArgs";
+import { diffRemoteHostsForSync, mergeRemoteHostsSideFields, type RemoteHostEntry } from "./remoteRunArgs";
 import { TYPE_ORDER, parseAndroidBridges, parseResidentProcesses, type ResidentProcess } from "./residentProcesses";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
 import { fleetestSpawnEnv } from "./spawnEnv";
@@ -220,6 +221,9 @@ export class MonitorPanelController implements vscode.Disposable {
    * 差分計算(diffRemoteHostsForSync)の基準に使うだけで、これ自体が正ではない
    * (docs/remote-runner.md §13「原則」。正は CLI の LocalConfig)。 */
   private lastKnownRemoteHosts: RemoteHostEntry[] = [];
+  /** 未設定時の FM 枠(CLI が返す既定)。**拡張は値を持たず、読めたものをそのまま配る** */
+  private lastKnownDefaultFMConcurrency: number | undefined;
+  private lastKnownLocalMachine: { machine: "local"; host: string; fmConcurrency: number } | undefined;
 
   constructor(
     private readonly workspaceRoot: string,
@@ -476,6 +480,7 @@ export class MonitorPanelController implements vscode.Disposable {
       } else {
         error = result.error;
       }
+      this.noteRemoteHostsOutcome(result);
     }
     if (upserts.length > 0) {
       const result = await importRemoteHosts(deps, upserts);
@@ -484,13 +489,30 @@ export class MonitorPanelController implements vscode.Disposable {
       } else {
         error = result.error;
       }
+      this.noteRemoteHostsOutcome(result);
     }
     this.lastKnownRemoteHosts = finalHosts;
 
     const remoteConfiguration = vscode.workspace.getConfiguration("fleetest");
     void remoteConfiguration.update("remote.artifacts", artifacts, vscode.ConfigurationTarget.Global);
     // CLI が返した確定形(書き込めなかった行の除外・machine の実値を含む)で webview を必ず作り直す。
-    this.post({ type: "remoteConfig", hosts: finalHosts, artifacts, error });
+    this.post({ type: "remoteConfig", hosts: finalHosts, artifacts, error,
+                defaultFMConcurrency: this.lastKnownDefaultFMConcurrency,
+                local: this.lastKnownLocalMachine });
+  }
+
+  /** CLI 応答のうち **hosts[] 以外の欄**(この機械の固定行・既定の FM 枠)を控え直す。
+   *  **書き込み系(import/remove)の応答からも必ず通す** —— 読み取り時にしか控えないと、
+   *  直後に webview へ送り返す `local` が古いままになり、固定行に打った値が
+   *  「打った瞬間に元へ戻る」= 変更できないという症状になる(実際に踏んだ)。
+   *  応答に欄が無いときは**消さずに据え置く**(失敗応答で行ごと消さない)。 */
+  private noteRemoteHostsOutcome(result: RemoteHostsCliOutcome): void {
+    const merged = mergeRemoteHostsSideFields(
+      { defaultFMConcurrency: this.lastKnownDefaultFMConcurrency, local: this.lastKnownLocalMachine },
+      result,
+    );
+    this.lastKnownDefaultFMConcurrency = merged.defaultFMConcurrency;
+    this.lastKnownLocalMachine = merged.local;
   }
 
   private hydrateLaneUi(): void {
@@ -849,7 +871,10 @@ export class MonitorPanelController implements vscode.Disposable {
         remoteConfiguration.get<string>("remote.artifacts", "collect") === "on-demand" ? "on-demand" : "collect";
       void fetchRemoteHosts(this.remoteHostsDeps()).then((result) => {
         this.lastKnownRemoteHosts = result.hosts ?? [];
-        this.post({ type: "remoteConfig", hosts: this.lastKnownRemoteHosts, artifacts });
+        this.noteRemoteHostsOutcome(result);
+        this.post({ type: "remoteConfig", hosts: this.lastKnownRemoteHosts, artifacts,
+                    defaultFMConcurrency: this.lastKnownDefaultFMConcurrency,
+                local: this.lastKnownLocalMachine });
       });
     }
     if (this.tilePaneHeight !== undefined) {

@@ -22,6 +22,9 @@ export interface RemoteHostEntry {
    * 空なら CLI 既定 "~/fleetest-runner"。そのマシンのローカルインストールと同じパスを
    * 指定してはならない — rsync --delete がユーザー資産を消す・SPM ビルドロックが競合する)。 */
   readonly dir: string;
+  /// FM 並列枠。**0 = 未設定**(dir の "" に相当。CLI 側の契約はファイル冒頭)。
+  /// 機械によっては FM を2並列以上で呼ぶと壊れるため機械ごとに絞る(docs/remote-runner.md §19)
+  readonly fmConcurrency?: number;
 }
 
 /** マシンプロファイルタブ「デバイス候補のマシン」(§13 段2)。machine は登録簿のマシン名
@@ -83,7 +86,11 @@ export function normalizeRemoteHosts(raw: unknown): RemoteHostEntry[] {
       continue;
     }
     const dir = typeof record.dir === "string" ? record.dir.trim() : "";
-    result.push({ machine, host, dir });
+    // **欄を落とさない** —— ここで欠けた欄は diffRemoteHostsForSync の previous 側から消え、
+    // その欄だけの編集が「変更なし」と判定されて CLI へ届かなくなる(打った値が消える)
+    const fm = record.fmConcurrency;
+    const fmConcurrency = typeof fm === "number" && fm > 0 ? fm : 0;
+    result.push({ machine, host, dir, fmConcurrency });
   }
   return result;
 }
@@ -92,6 +99,46 @@ export function normalizeRemoteHosts(raw: unknown): RemoteHostEntry[] {
  * `fleetest api remote-hosts` の stdout(JSON.parse 済み)から hosts[] を取り出し正規化する。
  * 形が違えば undefined(呼び出し側は CLI 呼び出し失敗と同じ扱いにする)。
  */
+/**
+ * `fleetest api remote-hosts` が返す**未設定時の FM 枠**(CLI 側 FMLock.defaultConcurrency)。
+ * 拡張はこの数を GUI のウォーターマークに出すだけで、値そのものは持たない ——
+ * **定数を二重に持つと片方だけ変わったときに嘘を表示する**。読めなければ undefined。
+ */
+/** 設定タブの固定行(この機械)。**登録簿には入らない** —— "local" は予約名で、
+ *  値は CLI 側 LocalConfig.fmConcurrency に置かれる。host/machine は表示専用。 */
+export interface LocalMachineEntry {
+  readonly machine: "local";
+  readonly host: string;
+  readonly fmConcurrency: number;
+}
+
+export function parseLocalMachine(json: unknown): LocalMachineEntry | undefined {
+  if (typeof json !== "object" || json === null) {
+    return undefined;
+  }
+  const local = (json as Record<string, unknown>).local;
+  if (typeof local !== "object" || local === null) {
+    return undefined;
+  }
+  const row = local as Record<string, unknown>;
+  if (typeof row.host !== "string") {
+    return undefined;
+  }
+  return {
+    machine: "local",
+    host: row.host,
+    fmConcurrency: typeof row.fmConcurrency === "number" && row.fmConcurrency > 0 ? row.fmConcurrency : 0,
+  };
+}
+
+export function parseDefaultFMConcurrency(json: unknown): number | undefined {
+  if (typeof json !== "object" || json === null) {
+    return undefined;
+  }
+  const value = (json as Record<string, unknown>).defaultFMConcurrency;
+  return typeof value === "number" && value > 0 ? value : undefined;
+}
+
 export function parseRemoteHostsResponse(json: unknown): RemoteHostEntry[] | undefined {
   if (typeof json !== "object" || json === null) {
     return undefined;
@@ -122,7 +169,37 @@ export function diffRemoteHostsForSync(
   const removedNames = previous.filter((h) => !nextNames.has(h.machine)).map((h) => h.machine);
   const upserts = next.filter((h) => {
     const prev = previousByName.get(h.machine);
-    return !prev || prev.host !== h.host || prev.dir !== h.dir;
+    // **編集できる欄はすべて比較する**。1つでも漏らすと、その欄だけを変えた編集が差分ゼロと
+    // 判定されて CLI へ届かず、直後に届く remoteConfig が入力を古い値へ戻す
+    // (= 打った値が消える)。欄を足したらここも足す
+    return !prev || prev.host !== h.host || prev.dir !== h.dir
+      || (prev.fmConcurrency ?? 0) !== (h.fmConcurrency ?? 0);
   });
   return { removedNames, upserts };
+}
+
+/** `fleetest api remote-hosts` の応答のうち **hosts[] 以外の欄**の控え。
+ *  拡張はこれを保持し、webview へ送り返す `remoteConfig` に載せる。 */
+export interface RemoteHostsSideFields {
+  readonly defaultFMConcurrency?: number;
+  readonly local?: LocalMachineEntry;
+}
+
+/**
+ * 控えを CLI 応答で更新する。**応答に無い欄は据え置く**(消さない)。
+ *
+ * **読み取り(`api remote-hosts`)だけでなく書き込み(`--import` / `--remove`)の応答からも通す。**
+ * 読み取り時にしか控えないと、書き込み直後に webview へ送り返す `local` が古いままになり、
+ * 固定行(この機械)に打った FM 枠が**打った瞬間に元の値へ戻る** = 変更できない、という
+ * 症状になる(2026-09-02 に実際に踏んだ)。`diffRemoteHostsForSync` が hosts[] の欄を
+ * 落として同じ症状を出したのと**同じ型** —— どちらも「往復の片道で欄が落ちる」。
+ */
+export function mergeRemoteHostsSideFields(
+  previous: RemoteHostsSideFields,
+  result: RemoteHostsSideFields,
+): RemoteHostsSideFields {
+  return {
+    defaultFMConcurrency: result.defaultFMConcurrency ?? previous.defaultFMConcurrency,
+    local: result.local ?? previous.local,
+  };
 }
