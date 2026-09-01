@@ -22,10 +22,14 @@ public enum FMGate {
             FMHealth.recordSkip()
             return false
         }
+        // FT_FM_SERIALIZE=0 でも acquire は即 true を返す(FMLock.swift)。特別扱いせずそのまま
+        // 測ることで、直列化あり/なしで待ちが出る/0になるという対照そのものが計測器の陽性対照になる
+        let waitStartedAt = Date()
         guard await FMLock.acquire() else {
             FMHealth.recordSkip()
             return false
         }
+        FMHealth.recordGateWait(ms: Date().timeIntervalSince(waitStartedAt) * 1000)
         return true
     }
 

@@ -167,4 +167,95 @@ final class FMHealthTests: XCTestCase {
         XCTAssertEqual(FMHealth.snapshot().attempted, iterations)
         XCTAssertEqual(FMHealth.usage()?.calls, iterations)
     }
+
+    /// ゲート待ちを1度も記録しなければ 3欄とも 0(呼び出し自体はある = usage は nil ではない)
+    func testGateWaitDefaultsToZeroWhenNeverRecorded() throws {
+        FMHealth.record(kind: "occlusion", ms: 100, ok: true)
+        let usage = try XCTUnwrap(FMHealth.usage())
+        XCTAssertEqual(usage.gateWaitTotalMs, 0)
+        XCTAssertEqual(usage.gateWaitP50Ms, 0)
+        XCTAssertEqual(usage.gateWaitMaxMs, 0)
+    }
+
+    /// 単一サンプルなら total/p50/max が全て同じ値になる
+    func testGateWaitSingleSample() throws {
+        FMHealth.record(kind: "occlusion", ms: 100, ok: true)
+        FMHealth.recordGateWait(ms: 42)
+        let usage = try XCTUnwrap(FMHealth.usage())
+        XCTAssertEqual(usage.gateWaitTotalMs, 42)
+        XCTAssertEqual(usage.gateWaitP50Ms, 42)
+        XCTAssertEqual(usage.gateWaitMaxMs, 42)
+    }
+
+    /// 偶数個: p50 は totalMs/maxMs と別軸で集計されている(呼び出しコストと混ざらない)
+    func testGateWaitEvenCount() throws {
+        FMHealth.record(kind: "occlusion", ms: 100, ok: true)
+        for ms in [10.0, 20.0, 30.0, 40.0] {
+            FMHealth.recordGateWait(ms: ms)
+        }
+        let usage = try XCTUnwrap(FMHealth.usage())
+        XCTAssertEqual(usage.gateWaitTotalMs, 100)
+        // 4件の p50 はソート後 index 2 = 30(FMHealth.percentileMs と同じ単純規則)
+        XCTAssertEqual(usage.gateWaitP50Ms, 30)
+        XCTAssertEqual(usage.gateWaitMaxMs, 40)
+    }
+
+    /// 奇数個: p50 は中央のサンプルを直接返す
+    func testGateWaitOddCount() throws {
+        FMHealth.record(kind: "occlusion", ms: 100, ok: true)
+        for ms in [10.0, 20.0, 30.0] {
+            FMHealth.recordGateWait(ms: ms)
+        }
+        let usage = try XCTUnwrap(FMHealth.usage())
+        XCTAssertEqual(usage.gateWaitTotalMs, 60)
+        XCTAssertEqual(usage.gateWaitP50Ms, 20)
+        XCTAssertEqual(usage.gateWaitMaxMs, 30)
+    }
+
+    /// 古い結果 JSON(gateWait* 欄が無い)をデコードしても失敗せず 0 で埋まる
+    func testDecodingWithoutGateWaitFieldsDefaultsToZero() throws {
+        let legacyJSON = """
+        {"calls":2,"failures":0,"totalMs":1500,"p50Ms":700,"maxMs":800,"byKind":{}}
+        """
+        let decoded = try JSONDecoder().decode(FMUsageRecord.self, from: Data(legacyJSON.utf8))
+        XCTAssertEqual(decoded.calls, 2)
+        XCTAssertEqual(decoded.totalMs, 1500)
+        XCTAssertEqual(decoded.gateWaitTotalMs, 0)
+        XCTAssertEqual(decoded.gateWaitP50Ms, 0)
+        XCTAssertEqual(decoded.gateWaitMaxMs, 0)
+    }
+
+    /// 新しい結果 JSON は gateWait* を含めて往復する
+    func testGateWaitRoundTripsThroughJSON() throws {
+        FMHealth.record(kind: "occlusion", ms: 100, ok: true)
+        FMHealth.recordGateWait(ms: 55)
+        let usage = try XCTUnwrap(FMHealth.usage())
+        let data = try JSONEncoder().encode(usage)
+        let decoded = try JSONDecoder().decode(FMUsageRecord.self, from: data)
+        XCTAssertEqual(decoded.gateWaitTotalMs, 55)
+        XCTAssertEqual(decoded.gateWaitP50Ms, 55)
+        XCTAssertEqual(decoded.gateWaitMaxMs, 55)
+    }
+
+    /// usage() は recordSkip() の件数を Snapshot.skipped と同じ値で載せる
+    func testUsageCarriesSkippedCount() throws {
+        FMHealth.record(kind: "occlusion", ms: 100, ok: true)
+        FMHealth.recordSkip()
+        FMHealth.recordSkip()
+        let usage = try XCTUnwrap(FMHealth.usage())
+        XCTAssertEqual(usage.skipped, 2)
+        XCTAssertEqual(usage.skipped, FMHealth.snapshot().skipped)
+    }
+
+    /// 古い結果 JSON(skipped 欄が無い)をデコードしても失敗せず 0 で埋まる
+    /// (gateWait* と同じ流儀。CLAUDE.md: 「読めない」と「呼び出し 0 件」を混ぜない ——
+    /// ここは skipped という欄自体が無い版の話なので 0 で埋めてよい)
+    func testDecodingWithoutSkippedFieldDefaultsToZero() throws {
+        let legacyJSON = """
+        {"calls":2,"failures":0,"totalMs":1500,"p50Ms":700,"maxMs":800,"byKind":{}}
+        """
+        let decoded = try JSONDecoder().decode(FMUsageRecord.self, from: Data(legacyJSON.utf8))
+        XCTAssertEqual(decoded.calls, 2)
+        XCTAssertEqual(decoded.skipped, 0)
+    }
 }

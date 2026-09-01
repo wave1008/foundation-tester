@@ -57,8 +57,10 @@
   非 Mac クライアントからの実行という要件は存在しない
 - CI は self-hosted Jenkins / EC2 Mac([ci.md](ci.md))。**ジョブ粒度のリモート実行は
   CI が既に担っている**ため、本構想の固有価値は CI を経由しない対話的用途に限られる:
-  1. **Mac フリートへのシナリオ並列分散**(夜間回帰のスループット。FM はホスト全体で
-     直列化 ≈1回/秒 のため、screenLooksLike 多用スイートは台数分の実質短縮になる)
+  1. **Mac フリートへのシナリオ並列分散**(夜間回帰のスループット。FM はホスト単位で
+     許可枠に制限される共有資源(performance-tuning.md §3.5)のため、1台に集約すると枠で
+     頭打ちになる。台数分に分散すれば機械ごとに別の枠が使え、screenLooksLike 多用スイートは
+     台数分の実質短縮になる)
   2. **デバイス/実機ラボの共有**(iOS 実機は元々 LAN/iproxy の2択で相性は悪くない)
 - 着手判断の鍵は**上記需要が実在するか**。Phase 0 で確かめてから実装に進む
 
@@ -951,9 +953,13 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   **③消えた機械の行は捨てる**(観測が止まったまま最後の値を出し続けない = 状態を
   `state:"unknown"` に戻すのと同じ規律)。
   **サンプル自身に機械名は入っていない** —— 子は向こうで自分の値を出すだけなので、
-  spawn した側(`MonitorProcessManager`)が付ける。FM だけは供給元が違い、
-  シナリオ完了イベントの実測を**そのレーンの機械**の行へ積む(FM はその機械の中で直列化する
-  共有資源なので、機械ごとに分けて初めて意味を持つ)。子の死の扱いは監視の子と同じ
+  spawn した側(`MonitorProcessManager`)が付ける。**FM も同じ hostMetrics ストリームで来る**が、
+  host-metrics 自身は FM を叩かない(測る対象を自分で消費してしまう)—— FM を呼んだプロセスが
+  `~/.fleetest/fm-usage/<pid>.json` に置いた控えを毎 tick 読む(`FTCore.FMUsageLedger`)。
+  **run のイベントからは供給しない**(拡張が起こした run しか見えず、CLI 実行や他人の run が
+  0 に見えるため)。FM はその機械の中で許可枠に制限される共有資源
+  (performance-tuning.md §3.5)なので、機械ごとに分けて初めて意味を持つ。
+  子の死の扱いは監視の子と同じ
   (起動直後の死が3回続いたら諦める = 版の古い機械で無限に ssh を張らない)
 
 **版が揃っていないと配信も状態も来ない**(`--device-machine` / `api device-stream` は新しい)。

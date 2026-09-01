@@ -2495,8 +2495,9 @@ Scripts/fm-verify.sh                    # 既定 TestProjects/E2E-CMP・プロ�
 - **並列 run 中に発生しやすい**。modelmanagerd が `unloadIfNeededToMakeRoom` で
   安全モデルを積み降ろしし続けた直後に落ちた(実測: 14 ワーカーが一斉に occlusion-guard を叩いた
   E2E の途中で成功→全滅に転じ、以後プロセスを変えても回復しない)。ホスト RAM の枯渇ではない
-  (192GB 中 57GB 空き)。**FM はホスト全体で直列化される**(performance-tuning §FM)ので、
-  並列に投げてもスループットは増えず、この積み降ろしだけが増える
+  (192GB 中 57GB 空き)。**FM はホスト全体で共有される資源で許可枠に制限される**
+  (performance-tuning.md §3.5)ので、枠を超えて並列に投げてもスループットは伸びず、
+  この積み降ろしだけが増える
 - **回復手段は現時点で「マシン再起動」しか確認できていない**(再起動直後は成功する。
   ただし数分〜十数分の並列実行で再発する)。`GenerativeExperiencesSafetyInferenceProvider` は
   root 権限のため一般ユーザーでは kill できない。ログでの確認:
@@ -2509,19 +2510,31 @@ Scripts/fm-verify.sh                    # 既定 TestProjects/E2E-CMP・プロ�
   (`log` は shell 関数に食われることがあるので**絶対パスで叩く**。自分の述語文字列が
   `log` プロセス自身のログに出て**偽の成功行**に見えるので、プロセス名まで確認すること)
 
-## FM 呼び出しの直列化(FMLock)
+## FM 呼び出しの許可枠(FMLock)
 
-FM は**ホスト全体で直列化される資源**(スループットは並列度によらず約1回/秒)。並列ワーカーから
-同時に投げても速くならず、modelmanagerd のモデル積み降ろし(`unloadIfNeededToMakeRoom`)だけが
-増える。そこで呼び出し側でも待ち行列を作る(`FMLock`。~/Library/Caches/fleetest/fm.lock への flock)。
+FM は**ホスト全体で共有される資源**。2026-07-22 時点の実測ではスループットは並列度によらず
+約1回/秒に見えたが、これは**枠1本(直列化)の上限**であって FM 自体の天井ではなかった
+(2026-09-01 の反証は `Sources/FTCore/FMLock.swift` 冒頭が正 —— `fleetest doctor --fm-load` で
+門を通さず直接叩くと、並列度5で 7.81 回/秒(text)まで伸びる)。並列ワーカーから無制限に同時に
+投げるとやはり modelmanagerd のモデル積み降ろし(`unloadIfNeededToMakeRoom`)が増えるので、
+呼び出し側で**枠(既定5・`FT_FM_CONCURRENCY` で上書き)を作る**(`FMLock`。
+~/Library/Caches/fleetest/fm.lock.<0..<枠数> への flock)。
 
-- **リポジトリ単位ではなくホスト単位**。別リポジトリの fleetest とも直列化する
+- **リポジトリ単位ではなくホスト単位**。別リポジトリの fleetest とも枠を共有する
 - **全ての FM 呼び出しがこのロックを通る**のが不変条件(occlusion / heal / screenLooksLike / triage /
   ScenarioNamer / TestbaseDrafter)。新しい FM 呼び出しを足すときは必ず通すこと。
   監査は `grep -n "LanguageModelSession" Sources/FTFoundationModels/*.swift`(FMDoctor は可用性判定なので対象外)
 - **取れなければ FM をスキップする**(既定 20 秒)。全ワーカーが並ぶと最後尾の待ちが積み上がり
   シナリオの壁時計タイムアウトを超えうるため、この安全弁は外せない。スキップは**失敗とは別に
   数える**(`FMHealth.recordSkip`。失敗率の分母を汚さない)
+- **FM に狙って負荷をかけたいだけなら `fleetest doctor --fm-load`**(既定
+  `--fm-load-seconds 30 --fm-load-concurrency 5`。**この口だけは FMGate/FMLock を通さない**
+  ので実行中の run と容量を奪い合う点に注意)。経路は2つ: 既定はテキスト経路(heal/triage 相当)、
+  `--fm-load-vision` は画像入力経路(occlusion-guard 相当)。**text と vision は独立に死ぬ**ので
+  両方確かめたいときは両方回す。記録は `FMHealth.record(kind: "loadtest")` を通るので監視の
+  FM 行にも出る。E2E ではほぼ FM が焚けない(occlusion-guard は実行プロファイル既定 OFF・heal は
+  失敗時のみ)ため、flake 調査や負荷試験で意図的に FM を鳴らしたいときはこれを使う
+  (詳細と実測は performance-tuning.md §3.5)
 - **A/B 計測の殺しスイッチ**: `FT_FM_SERIALIZE=0` で無効化(acquire が常に true = 素通り)
 
   ```bash
@@ -2559,7 +2572,8 @@ p50 レイテンシ 2416ms → 1675ms(−31%)/ ロック待ちによる skip は
 FM は死んだら**再起動まで回復しない**ので、死んだ後も呼び続けるのは純粋な浪費
 (実測: 全滅した 1554 シナリオで合計 31 分を捨てていた)。**連続 3 回失敗したら以後は呼ばない**。
 
-- **入場は FMGate に一本化**している。`FMGate.enter()` が ①ブレーカ ②直列化ロック を順に見る。
+- **入場は FMGate に一本化**している。`FMGate.enter()` が ①ブレーカ ②許可枠のロック(FMLock)
+  を順に見る。
   **新しい FM 呼び出しを足すときは必ずここを通す**(監査: `grep -c "FMGate.enter" Sources/FTFoundationModels/*.swift`
   と `grep -n "LanguageModelSession" Sources/FTFoundationModels/*.swift` の数を突き合わせる。FMDoctor は
   可用性判定なので対象外)

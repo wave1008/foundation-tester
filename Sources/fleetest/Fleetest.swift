@@ -386,15 +386,16 @@ struct Doctor: AsyncParsableCommand {
         print(String(format: "  calls         %5d", summary.calls))
         print(String(format: "  failures      %5d", summary.failures))
         // **「FM の天井」を断定しない**。この数字は FMGate/FMLock を通していないので FM 単体の能力で、
-        // production の FM 呼び出しは全部あの門で1件ずつに直列化される(= run 中に見えるレートとは別物)。
-        // 天井を文言に焼き付けると、環境が変わったときに数字と矛盾する断定を並べて出すことになる
+        // production の FM 呼び出しは全部あの門で許可枠(既定5・FT_FM_CONCURRENCY で調整)に絞られる
+        // (= run 中に見えるレートとは別物)。天井を文言に焼き付けると、環境が変わったときに
+        // 数字と矛盾する断定を並べて出すことになる
         print(String(format: "  throughput    %.2f calls/s", summary.throughputPerSecond))
         print("  latency       p50 \(summary.p50Ms)ms / max \(summary.maxMs)ms")
         if summary.failures > 0, let firstError = summary.firstError {
             print("  first error: \(firstError)")
         }
-        print("Note: this bypasses FMGate/FMLock, which serialize every FM call a run makes,"
-            + " so it measures FM itself — not the rate a run can reach.")
+        print("Note: this bypasses FMGate/FMLock, which cap every FM call a run makes to a shared"
+            + " concurrency limit, so it measures FM itself — not the rate a run can reach.")
         print("This load is visible in the monitor's FM row too "
             + "(FMHealth.record feeds ~/.fleetest/fm-usage/<pid>.json, which `api host-metrics` reads).")
 

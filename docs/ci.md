@@ -88,7 +88,8 @@ pipeline {
   有効化後にカスタム AMI を焼くか、プロビジョニングに有効化を含める
 - **確認はジョブ先頭に `fleetest doctor --fm-only`(exit code)**。availability フラグは
   「使える」と嘘をつくことがあるため、doctor は実呼び出しで確認する
-- FM はホスト全体で直列化される(約1回/秒)。screenLooksLike を多用するスイートは壁時計が伸びる
+- FM はホスト全体で共有される資源で、許可枠(既定5・詳細と実測は performance-tuning.md §3.5)で
+  制限される。screenLooksLike を多用するスイートは壁時計が伸びる
 - heal を CI で有効にするかはチーム方針: 有効なら UI 変更起因の失敗は減るが、セレクタ陳腐化が
   隠れやすい。延命中のシナリオは `fleetest results insights` が検出する
 
