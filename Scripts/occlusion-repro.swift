@@ -16,7 +16,13 @@
 //         期待テキスト省略時は <png> と同名の .txt を読む。
 //
 // 実装は Sources/FTFoundationModels/OcclusionVerifier.swift と一致させること(instructions / prompt /
-// VisibilityVerdict / sampling)。片方だけ変えると再現性の比較が成立しなくなる。
+// @Generable の欄と @Guide の文言 / sampling)。片方だけ変えると再現性の比較が成立しなくなる
+// (実際に production が英語化された後もこのツールが日本語のままズレていた。2026-09-03 に同期)。
+// **同期は OcclusionReproSyncTests がソース走査で守る**。
+//
+// production は**2段構え**なので、このツールも同じ順で撃つ: 1段目は reason を作らせない選別
+// (3欄・80tok)、1段目が「見えていない」と答えた回だけ2段目(従来の4欄・200tok)。
+// 1段目だけ・2段目だけを見たいときは --stage screening / --stage detail。
 
 import CoreGraphics
 import Foundation
@@ -34,28 +40,42 @@ enum VisibilityState {
 
 @Generable
 struct VisibilityVerdict {
-    @Guide(description: "期待テキストが覆われず・切れず・減光されず明瞭に読めるなら true。少しでも隠れ/欠け/判読困難があれば false")
+    @Guide(description: "true when the expected text is clearly readable — not covered, not cut off, not dimmed. false on any occlusion, clipping or illegibility")
     var visible: Bool
 
-    @Guide(description: "見え方の分類")
+    @Guide(description: "Classification of how it appears")
     var state: VisibilityState
 
-    @Guide(description: "実際に読み取れた文字列。読めなければ空文字")
+    @Guide(description: "The text actually read; empty when unreadable")
     var observedText: String
 
-    @Guide(description: "判定理由(日本語で1文)")
+    @Guide(description: "Reason for the verdict, in one English sentence")
     var reason: String
 }
 
+/// 1段目(選別)。**reason だけを落とした3欄**。observedText を落とすと判定が壊れる
+/// (実データで反転を 106/147 取りこぼす。docs/performance-tuning.md §3.5.1)
+@Generable
+struct VisibilityScreening {
+    @Guide(description: "true when the expected text is clearly readable — not covered, not cut off, not dimmed. false on any occlusion, clipping or illegibility")
+    var visible: Bool
+
+    @Guide(description: "Classification of how it appears")
+    var state: VisibilityState
+
+    @Guide(description: "The text actually read; empty when unreadable")
+    var observedText: String
+}
+
 let instructions = """
-あなたは UI テストの視覚検証者です。渡される画像は、ある UI 要素の周辺だけを切り出したものです。
-目的は「その要素が別の要素・オーバーレイ・ローディング表示・減光レイヤーに覆われて見えないか」
-(occlusion)だけを見抜くことです。次を厳守してください:
-- テキストは末尾が「…」で省略されたり、途中で折り返し(改行)されることがあります。
-  省略・折り返しは正常であり visible=true とします。期待テキストの先頭部分が読めれば十分です。
-- visible=false にするのは次の場合だけ: (a)領域が別の不透明要素/オーバーレイに覆われている、
-  (b)真っ白/真っ黒/単色で文字が全く無い、(c)期待テキストとは無関係の別文字列だけが描かれている。
-- 多少の減光でも判読できるなら visible=true。推測で補完しないこと。
+You visually verify UI tests. The image you receive is a crop around one UI element.
+Your only job is to detect occlusion: whether the element is hidden behind another
+element, an overlay, a loading indicator or a dimming layer. Follow these rules strictly:
+- Text may be truncated with an ellipsis or wrapped onto multiple lines. Truncation and
+  wrapping are normal — return visible=true. Reading the beginning of the expected text is enough.
+- Return visible=false ONLY when: (a) the area is covered by another opaque element/overlay,
+  (b) it is blank/black/solid-colour with no text at all, or (c) only unrelated text is drawn.
+- Slight dimming is visible=true as long as the text is legible. Never fill gaps by guessing.
 """
 
 func stateName(_ s: VisibilityState) -> String {
@@ -75,7 +95,7 @@ func fail(_ message: String) -> Never {
 
 var argv = Array(CommandLine.arguments.dropFirst())
 guard let pngPath = argv.first else {
-    fail("usage: occlusion-repro <png> [--crop x,y,w,h] [回数] [期待テキスト]")
+    fail("usage: occlusion-repro <png> [--crop x,y,w,h] [--stage both|screening|detail] [回数] [期待テキスト]")
 }
 argv.removeFirst()
 
@@ -85,6 +105,16 @@ if argv.first == "--crop" {
     let parts = (argv.first ?? "").split(separator: ",").compactMap { Double($0) }
     guard parts.count == 4 else { fail("--crop は x,y,w,h の4値") }
     cropRect = CGRect(x: parts[0], y: parts[1], width: parts[2], height: parts[3])
+    argv.removeFirst()
+}
+// 既定は production と同じ2段構え。片方だけを繰り返し見たいときに絞る
+var stage = "both"
+if argv.first == "--stage" {
+    argv.removeFirst()
+    guard let s = argv.first, ["both", "screening", "detail"].contains(s) else {
+        fail("--stage は both / screening / detail")
+    }
+    stage = s
     argv.removeFirst()
 }
 let iterations = argv.first.flatMap { Int($0) } ?? 10
@@ -104,31 +134,58 @@ guard let data = FileManager.default.contents(atPath: pngPath),
 }
 let image = cropRect.flatMap { full.cropping(to: $0) } ?? full
 
+// プロンプト本文(OcclusionVerifier.verifyCropped と同文)
+let userPrompt = "Expected text (may be truncated or wrapped at the end): \"\(expectedText)\"\nIs this text (or its beginning) drawn unoccluded and legible?"
+
 print("画像: \(pngPath) (\(image.width)x\(image.height))\(cropRect.map { " crop=\($0)" } ?? "")")
-print("期待テキスト: \"\(expectedText)\" / 試行: \(iterations) 回(sampling: greedy)")
+print("期待テキスト: \"\(expectedText)\" / 試行: \(iterations) 回(sampling: greedy) / 段: \(stage)")
 print("")
 
 var counts: [String: Int] = [:]
 var errors = 0
+var detailCalls = 0
 for i in 1...iterations {
     // fleetest と同じく 1 呼び出し = 1 セッション(会話履歴を持ち回さない)
-    let session = LanguageModelSession(instructions: instructions)
+    var screeningSaidVisible = false
+    if stage != "detail" {
+        do {
+            let s = try await LanguageModelSession(instructions: instructions).respond(
+                generating: VisibilityScreening.self,
+                options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 80)
+            ) {
+                userPrompt
+                Attachment(image)
+            }.content
+            screeningSaidVisible = s.visible
+            let name = stateName(s.state)
+            counts["1段:" + name, default: 0] += 1
+            print("\(s.visible ? "✅" : "❌") \(i) 1段: visible=\(s.visible) state=\(name) observed=\"\(s.observedText)\"")
+        } catch {
+            errors += 1
+            print("⚠️ \(i) 1段: FM 呼び出し失敗: \(error)")
+            continue   // production も1段目が失敗したら nil を返して2段目へ行かない
+        }
+    }
+    // production が2段目を撃つのは「1段目が見えていないと言った回」だけ
+    guard stage != "screening", screeningSaidVisible == false || stage == "detail" else { continue }
+    detailCalls += 1
     do {
-        let verdict = try await session.respond(
+        let verdict = try await LanguageModelSession(instructions: instructions).respond(
             generating: VisibilityVerdict.self,
             options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 200)
         ) {
-            "期待テキスト(末尾は省略や折り返しがあり得る): \"\(expectedText)\"\nこのテキスト(またはその先頭部分)が、覆われず判読できる状態で描画されていますか。"
+            userPrompt
             Attachment(image)
         }.content
         let name = stateName(verdict.state)
-        counts[name, default: 0] += 1
-        print("\(verdict.visible ? "✅" : "❌") \(i): visible=\(verdict.visible) state=\(name) observed=\"\(verdict.observedText)\" reason=\(verdict.reason)")
+        counts["2段:" + name, default: 0] += 1
+        print("\(verdict.visible ? "✅" : "❌") \(i) 2段: visible=\(verdict.visible) state=\(name) observed=\"\(verdict.observedText)\" reason=\(verdict.reason)")
     } catch {
         errors += 1
-        print("⚠️ \(i): FM 呼び出し失敗: \(error)")
+        print("⚠️ \(i) 2段: FM 呼び出し失敗: \(error)")
     }
 }
 
 print("")
-print("集計: \(counts.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " / "))  エラー=\(errors)")
+print("集計: \(counts.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " / "))"
+    + "  2段目に落ちた回=\(detailCalls)  エラー=\(errors)")
