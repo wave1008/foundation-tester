@@ -306,6 +306,24 @@ button.bulk-cancel:hover:not(:disabled) {
    **hm-fm-dead に文字色は与えない**(ユーザー決定 2026-09-03)—— 死はスパークラインをグレーに
    することで表し、ラベルと値の色は動かさない。クラス自体は残す(ツールチップの分岐と
    test/webviewHostMetricsRows.test.mjs が状態の名前として使う) */
+/* FM が死んでいる経路の名指し(行の最後尾)。**空のときは display:none** —— 空の span でも
+   .hm-row の gap 10px は消えないので、visibility では右端に隙間が残る。最後尾なので
+   display を切っても左の列は動かない(錠前が visibility なのは列の途中に居るため)。 */
+.hm-fm-dead-badge {
+  display: none;
+  font-size: 11px;
+  font-weight: 600;
+  /* nowrap ではなく pre —— 経路の区切りの空白2つを畳ませない(既定では1つになる)。
+     折り返さない性質は pre にも含まれる。 */
+  white-space: pre;
+  /* 死は「異常な値」ではなく「機能が無効」なので、系列の色ではなくテーマのエラー色で書く。
+     **FM のラベルと値の色は動かさない**(ユーザー決定 2026-09-03)—— 行の中で色が付くのは
+     この語だけにして、隣の CPU/GPU/MEM と同じ「高い値が出ている」の合図に見えないようにする。 */
+  color: var(--vscode-errorForeground);
+}
+.hm-fm-dead-badge.hm-visible {
+  display: inline-block;
+}
 .host-metric.hm-fm-warn .hm-value {
   color: var(--vscode-editorWarning-foreground, #e6a700);
 }

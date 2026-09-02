@@ -50,6 +50,10 @@ const HM_COLORS = {
 /** 手元の行の表示名(左端のラベル)。CLI 側の DeviceMachineGrouping.localDisplayName と同じ語。 */
 const HM_LOCAL_LABEL = 'local';
 
+/** 死んでいる経路に付ける印。値のセル(hmRenderFmLabel)には付けない —— あちらは '–' で、
+ *  「どの経路が」を言えるのはこのバッジだけ。 */
+const HM_DEAD_MARK = '✕';
+
 const hmContainer = document.getElementById('host-metrics');
 const hmLocalRowEl = hmContainer.querySelector('.hm-row[data-machine=""]');
 
@@ -84,6 +88,8 @@ function hmMakeRow(rowEl, machine) {
   return {
     machine,
     el: rowEl,
+    // 死んだ経路を語で出す枠(行の最後尾。監視の対象は FM だけなので entries には入れない)
+    deadBadge: rowEl.querySelector('.hm-fm-dead-badge'),
     entries,
     all: [entries.cpu, entries.gpu, entries.fm, entries.mem],
     // FM のレート表示・死活判定に使う直近 HM_FM_RATE_WINDOW_TICKS tick ぶんの生値
@@ -192,6 +198,11 @@ function hmEnsureRow(machine) {
   for (const metric of rowEl.querySelectorAll('.host-metric')) {
     metric.classList.remove('hm-fm-dead', 'hm-fm-warn');
   }
+  // 複製元(手元の行)が死んでいると、その語まで一緒に複製される —— 新しい機械の行が
+  // 1度も観測していないうちから死んだ経路を名乗ることになるので、必ず空から始める
+  const clonedBadge = rowEl.querySelector('.hm-fm-dead-badge');
+  clonedBadge.textContent = '';
+  clonedBadge.classList.remove('hm-visible');
   hmContainer.appendChild(rowEl);
   const row = hmMakeRow(rowEl, machine);
   hmRows.set(machine, row);
@@ -290,23 +301,11 @@ function hmRenderFmLabel(row) {
     totalSec: stats ? (stats.totalMs / 1000).toFixed(1) : '–',
   });
   const deadPaths = fmDeadPaths(row);
-  if (deadPaths.length > 0) {
-    // 台帳由来の死は、**どの経路が・なぜ・いつから**まで言う。text と vision は独立に死ぬので、
-    // どちらが死んだかで次の一手が変わる(vision だけなら occlusion-guard と screenLooksLike が
-    // 無効、text だけなら自己修復と triage が無効)
-    title += '\n' + t('wvMonitor2.hostCharts.fmLivenessDeadLine', {
-      paths: deadPaths.join(' + '),
-      disabled: t(deadPaths.length > 1
-        ? 'wvMonitor2.hostCharts.fmDisabledBoth'
-        : deadPaths[0] === 'vision'
-          ? 'wvMonitor2.hostCharts.fmDisabledVision'
-          : 'wvMonitor2.hostCharts.fmDisabledText'),
-      age: hmFormatAge(row.liveness.checkedAt),
-    });
-    if (row.liveness.reason) {
-      title += '\n' + row.liveness.reason;
-    }
-  } else if (dead) {
+  // **台帳由来の死はここでは語らない**(ユーザー決定 2026-09-03)。どの経路が死んだかは右の
+  // バッジが語で出しており、理由と観測時刻はそのバッジのツールチップが持つ。ここで同じことを
+  // 繰り返すと、レート統計を見に来た人が毎回 3 行の説明を読まされる。
+  // 窓内の全滅だけはバッジが経路を名指しできない(台帳が無い)ので、ここに残す
+  if (deadPaths.length === 0 && dead) {
     title += '\n' + t('wvMonitor2.hostCharts.fmDeadLine', {
       seconds: String(HM_FM_RATE_WINDOW_TICKS), failures: String(stats.failures) });
   } else if (partial) {
@@ -317,6 +316,34 @@ function hmRenderFmLabel(row) {
     });
   }
   entry.el.title = title;
+  hmRenderDeadBadge(row, { dead, deadPaths, stats });
+}
+
+/** 死んだ経路を語で出す。**生きている行と不明の行には何も出さない**(ユーザー決定 2026-09-03)
+ *  —— 不明で出すと、プローブの谷間や旧版 CLI の入ったリモート機で点滅し続ける。
+ *  根拠が2つある(台帳 / 窓内の全滅)ので語も分ける: 台帳なら経路を名指しでき、
+ *  窓内の全滅は**どの経路かを言えない**ので事実だけ述べる。 */
+function hmRenderDeadBadge(row, { dead, deadPaths, stats }) {
+  const badge = row.deadBadge;
+  if (!dead) {
+    badge.textContent = '';
+    badge.classList.remove('hm-visible');
+    badge.removeAttribute('title');
+    return;
+  }
+  // **経路ごとに ✕ を1つ**(ユーザー決定 2026-09-03)。語は付けない —— 経路名は
+  // text / vision という識別子そのもので訳す対象が無いため、ここは辞書を通さない。
+  // 区切りの空白2つは CSS の `white-space: pre` が保つ(既定では連続空白が1つに畳まれる)
+  badge.textContent = deadPaths.length > 0
+    ? deadPaths.map((path) => `${HM_DEAD_MARK} ${path}`).join('  ')
+    : t('wvMonitor2.hostCharts.fmDeadBadgeAllFailed');
+  badge.classList.add('hm-visible');
+  // 語だけでは「なぜ・いつから」が分からない。理由はここにも付ける(FM セルのツールチップと
+  // 同じ内容だが、**語の上にカーソルを置いた人が読めない**のは不親切)
+  badge.title = deadPaths.length > 0
+    ? `${row.liveness.reason ?? ''}\n${hmFormatAge(row.liveness.checkedAt)}`.trim()
+    : t('wvMonitor2.hostCharts.fmDeadLine', {
+      seconds: String(HM_FM_RATE_WINDOW_TICKS), failures: String(stats.failures) });
 }
 
 function hmPushSample(entry, ratio) {

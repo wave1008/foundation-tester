@@ -430,7 +430,7 @@ test("窓内に失敗が混ざると warn(⚠)、全て失敗すると dead(値�
 // **この行の穴**だった: 回数の窓だけで死を判定すると、誰も FM を使っていない間(fmCalls:0)は
 // 何も出ない —— 「使われていない」と「死んでいる」が同じ絵になる。台帳(FMLiveness)由来の
 // 死活は呼び出し0件でも出る。
-test("呼び出しが0件でも、台帳が死と言えば dead になり理由が出る", (t) => {
+test("呼び出しが0件でも、台帳が死と言えば dead になる", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
@@ -443,9 +443,12 @@ test("呼び出しが0件でも、台帳が死と言えば dead になり理由�
   const entry = rowFor(document, "mac2").querySelector('.host-metric[data-metric="fm"]');
   assert.ok(entry.classList.contains("hm-fm-dead"), "呼び出し0件でも台帳の死は dead");
   assert.equal(values(rowFor(document, "mac2")).at(-1), "–", "回数(0)は出さない");
+  // **セルのツールチップは死を語らない**(ユーザー決定 2026-09-03)。経路の名指しは右のバッジ、
+  // 理由と観測時刻はそのバッジのツールチップが持つ。ここで繰り返すと、レート統計を見に来た
+  // 人が毎回説明を読まされる
   const title = fmTitle(document, "mac2");
-  assert.match(title, /vision/, "どの経路が死んだかを名指しする");
-  assert.match(title, /ModelManagerError\(1001\)/, "理由を出す");
+  assert.doesNotMatch(title, /ModelManagerError\(1001\)/, "理由はバッジ側だけが持つ");
+  assert.doesNotMatch(title, /死んで|is dead/, "死の説明文はセルには出さない");
 });
 
 test("台帳が生きていると言っているだけの行には印を付けない", (t) => {
@@ -480,6 +483,86 @@ test("行が欠測になったら台帳の死活も落とす", (t) => {
     false,
     "観測が途絶えたら不明へ戻す",
   );
+});
+
+/** FM チャートの右に出る「死んだ経路」の語。出ていなければ null。 */
+function fmDeadBadge(document, machine) {
+  const badge = rowFor(document, machine).querySelector(".hm-fm-dead-badge");
+  return badge.classList.contains("hm-visible") ? badge.textContent : null;
+}
+
+// **語まで出す**のがこのバッジの役目(ユーザー決定 2026-09-03)。グレーの線と '–' だけでは
+// 「FM が何か変」までしか分からず、text と vision のどちらが死んだかで次の一手が変わる
+// (vision だけなら occlusion-guard と screenLooksLike、text だけなら自己修復とトリアージ)。
+test("死んだ経路を FM チャートの右に語で出す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  send(window, hostMetricsSample("mac2", 0.9, {
+    fmCalls: 0, fmTextState: "alive", fmVisionState: "dead",
+    fmDeadReason: "vision: ModelManagerError(1001)",
+  }));
+  send(window, hostMetricsSample(undefined, 0.1));
+
+  assert.equal(fmDeadBadge(document, "mac2"), "✕ vision");
+  assert.match(
+    rowFor(document, "mac2").querySelector(".hm-fm-dead-badge").title,
+    /ModelManagerError\(1001\)/,
+    "語の上にカーソルを置いた人も理由が読める",
+  );
+});
+
+test("両方死んだら両方名指しする", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  send(window, hostMetricsSample("mac2", 0.9, {
+    fmCalls: 0, fmTextState: "dead", fmVisionState: "dead", fmDeadReason: "text: a / vision: b",
+  }));
+  send(window, hostMetricsSample(undefined, 0.1));
+  // 経路ごとに ✕ を1つ。**区切りの空白2つまで固定する** —— CSS の white-space が
+  // 既定(nowrap)へ戻ると1つに畳まれ、2つの経路が1語に見える
+  assert.equal(fmDeadBadge(document, "mac2"), "✕ text  ✕ vision");
+});
+
+// **生きている行と不明の行には何も出さない**。不明で出すと、プローブの谷間や旧版 CLI の
+// 入ったリモート機で語が点滅し続け、読み手が信じなくなる
+test("生きている行と不明の行には語を出さない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, { type: "hostMetricsMachines", machines: ["mac2", "mac3"] });
+  send(window, hostMetricsSample("mac2", 0.9, { fmTextState: "alive", fmVisionState: "alive" }));
+  // mac3 は死活の欄そのものが来ない(旧版 CLI のリモート機)= 不明
+  send(window, hostMetricsSample("mac3", 0.9, {}));
+  send(window, hostMetricsSample(undefined, 0.1));
+
+  assert.equal(fmDeadBadge(document, "mac2"), null, "生きている");
+  assert.equal(fmDeadBadge(document, "mac3"), null, "不明");
+});
+
+// 台帳が無いまま窓の中が全滅した形は**経路を名指しできない**ので、事実だけ述べる
+test("台帳が無い全滅では経路を名乗らず事実だけ出す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  send(window, hostMetricsSample("mac2", 0.9, { fmCalls: 2, fmFailures: 2, fmTotalMs: 200 }));
+  send(window, hostMetricsSample(undefined, 0.1));
+  assert.equal(fmDeadBadge(document, "mac2"), "✕ FM 全呼び出し失敗");
+});
+
+// 複製元(手元の行)が死んでいる最中に新しい機械の行ができると、語まで複製される
+test("新しい機械の行は、手元が死んでいても語を持たずに始まる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  // 手元の行を先に死なせる
+  send(window, hostMetricsSample(undefined, 0.1, {
+    fmTextState: "dead", fmVisionState: "dead", fmDeadReason: "text: x / vision: y",
+  }));
+  assert.equal(fmDeadBadge(document, ""), "✕ text  ✕ vision");
+
+  // ここで初めてリモートの行ができる(手元の行の複製)
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  assert.equal(fmDeadBadge(document, "mac2"), null, "1度も観測していない行が印を持たない");
 });
 
 /** strokeStyle を canvas ごとに記録する 2D(色だけを見るテスト用)。 */

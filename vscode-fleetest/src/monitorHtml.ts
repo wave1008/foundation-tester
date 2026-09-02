@@ -266,6 +266,11 @@ function renderDevicesPanel(): string {
           <span class="host-metric" id="hm-cpu" data-metric="cpu" title="${t("panels.hostMetrics.cpuTitle")}"><span class="hm-label">CPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <span class="host-metric" id="hm-gpu" data-metric="gpu" title="${t("panels.hostMetrics.gpuTitle")}"><span class="hm-label">GPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <span class="host-metric" id="hm-fm" data-metric="fm" title="${t("panels.hostMetrics.fmTitle")}"><span class="hm-label">FM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
+          <!-- FM が死んでいるときだけ、どの経路が死んだかを語で出す(hostCharts.js の
+               hmRenderFmLabel が入れる)。**行の最後尾に置く** —— ここより左に足すと
+               MEM/CPU/… の列が行ごとにずれる(2026-08-31 の実害。錠前と同じ理由)。
+               最後尾なので出し入れは display で切ってよい(右端が伸び縮みするだけ)。 -->
+          <span class="hm-fm-dead-badge"></span>
         </div>
       </div>
       <!-- グラフの右・ツールバー右端の2つ。左が全選択トグル・右が高さの自動調整。
