@@ -117,8 +117,14 @@ public enum FMHealth {
     private static var skipped = 0
     private static var gateWaitMs: [Double] = []
 
-    /// FM 呼び出し1件を記録する。kind は "occlusion" / "heal" / "screenLooksLike"
-    public static func record(kind: String, ms: Double, ok: Bool, error: String? = nil) {
+    /// FM 呼び出し1件を記録する。kind は "occlusion" / "heal" / "screenLooksLike" / "triage"。
+    ///
+    /// `path` に**既定値は置かない** —— 新しい呼び出し元が経路を言い忘れたらコンパイルで止める。
+    /// kind から導出しないのは triage が**同じ kind で画像経路とテキスト経路の両方を撃つ**ため
+    /// (導出にすると、画像だけ死んでいる機械で vision を text の生死で塗り潰す)。
+    /// 経路を分けて持つ理由は FMLiveness.swift 冒頭 ②
+    public static func record(kind: String, path: FMLiveness.Path,
+                              ms: Double, ok: Bool, error: String? = nil) {
         lock.lock()
         samples[kind, default: []].append(Sample(ms: ms, ok: ok))
         if !ok, firstError == nil, let error {
@@ -131,6 +137,36 @@ public enum FMHealth {
         if ok { FMBreaker.recordSuccess() } else { FMBreaker.recordFailure() }
         // ファイル I/O を伴うため必ずロックの外側で呼ぶ(FMUsageLedger.record の doc 参照)
         FMUsageLedger.record(ok: ok, ms: ms)
+        // 機械グローバルな死活台帳(FMLiveness)も実呼び出しから養う。**単発の失敗では死と
+        // 言わない** —— 機械全体へ配る値なので、連続 FMBreaker.threshold 回でようやく死とする
+        // (経路ごとに数える理由は consecutiveFailures の doc)
+        if ok {
+            resetConsecutiveFailures(path)
+            FMLiveness.record(path: path, state: .alive, source: .call, ms: Int(ms.rounded()))
+        } else if bumpConsecutiveFailures(path) >= FMBreaker.threshold {
+            FMLiveness.record(path: path, state: .dead, source: .call, error: error,
+                              ms: Int(ms.rounded()))
+        }
+    }
+
+    /// 経路ごとの連続失敗数。**FMBreaker のカウンタは経路を区別しない**ので流用できない ——
+    /// vision だけが死んで text が通り続ける状態(実測。[[fm-flap-ane-load-failure]])では
+    /// text の成功がブレーカを毎回戻すため、ブレーカは永久に落ちず vision の死を記録できない。
+    /// **閾値は増やさず FMBreaker.threshold を共有する**(「連続何回で死とみなすか」を2つ持たない)
+    private static var consecutiveFailures: [FMLiveness.Path: Int] = [:]
+
+    private static func resetConsecutiveFailures(_ path: FMLiveness.Path) {
+        lock.lock()
+        defer { lock.unlock() }
+        consecutiveFailures[path] = 0
+    }
+
+    private static func bumpConsecutiveFailures(_ path: FMLiveness.Path) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        let next = (consecutiveFailures[path] ?? 0) + 1
+        consecutiveFailures[path] = next
+        return next
     }
 
     /// NSError の入れ子(NSUnderlyingError / NSMultipleUnderlyingErrors)を辿って
@@ -210,6 +246,7 @@ public enum FMHealth {
         firstError = nil
         skipped = 0
         gateWaitMs.removeAll()
+        consecutiveFailures.removeAll()
     }
 
     /// 実行後に出す失敗警告(1行目=要約、2行目=最初のエラー)。失敗が無ければ nil

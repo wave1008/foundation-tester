@@ -103,20 +103,21 @@ public enum FMLoadGenerator {
                     options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 8))
             }
             let ms = Self.elapsedMs(startedAt)
-            FMHealth.record(kind: "loadtest", ms: ms, ok: true)
+            FMHealth.record(kind: "loadtest", path: vision ? .vision : .text, ms: ms, ok: true)
             return Sample(ms: ms, ok: true, error: nil)
         } catch {
             let ms = Self.elapsedMs(startedAt)
             let message = "loadtest: \(FMHealth.describe(error))"
-            FMHealth.record(kind: "loadtest", ms: ms, ok: false, error: message)
+            FMHealth.record(kind: "loadtest", path: vision ? .vision : .text, ms: ms, ok: false, error: message)
             return Sample(ms: ms, ok: false, error: message)
         }
     }
 
     private static func elapsedMs(_ from: Date) -> Double { Date().timeIntervalSince(from) * 1000 }
 
-    /// 単色 64x64 画像。判定精度は測らないので内容に意味は無い —— 生成コスト(推論の直列化待ち)だけが要る
-    private static let probeImage: CGImage = makeImage(width: 64, height: 64)
+    /// 単色 64x64 画像。判定精度は測らないので内容に意味は無い —— 生成コスト(推論の直列化待ち)だけが要る。
+    /// FMLivenessProbe の vision プローブも同じ画像を使う(同じモジュール内)
+    static let probeImage: CGImage = makeImage(width: 64, height: 64)
 
     /// 指定寸法の単色画像。**寸法を振れることに意味がある** —— occlusion guard が実際に渡すのは
     /// スクリーンショットの切り出し(リサイズ無し。最大でスクショ全体 ≈1200x2600px)で、

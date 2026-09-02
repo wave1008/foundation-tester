@@ -155,16 +155,21 @@ struct Doctor: AsyncParsableCommand {
         // doctor は「本当に使えるか」を答える場所なので実呼び出しで確認する
         let fm = await FMDoctor.checkLive()
         print(fm.available ? "✅ \(fm.detail)" : "❌ \(fm.detail)")
+        // **視覚系も実呼び出しで確かめる**。text と vision は独立に死ぬ(実測)ので、text が
+        // 通ったことは occlusion-guard が生きている証拠にならない。ここを能力判定だけに
+        // していた頃は、vision 全滅の機械で `--fm-only` が 0 を返し、その run の緑が
+        // 「守りが効いた緑」だと誤読されていた
+        let vision = await FMDoctor.visionCheckLive()
+        // macOS が対応していないだけ(死ではない)のときは警告どまり、実呼び出しが落ちたら ❌
+        let visionUnsupported = !FMVisionSupport.isSupported
+        print(vision.available ? "✅ \(vision.detail)" : (visionUnsupported ? "⚠️ " : "❌ ") + vision.detail)
         if fmOnly {
-            // 可: 0 / 不可(AI 無効・DL中・対象外): 1。呼び出し側が理由文字列を stdout から読める。
-            if !fm.available { throw ExitCode(1) }
+            // 可: 0 / 不可: 1。呼び出し側が理由文字列を stdout から読める。
+            // **どちらの経路が死んでいても 1**(片方だけ死ぬのが常態で、片方しか見ないゲートは
+            // 「FM は使える」と嘘をつく)。OS 非対応の vision は死に数えない
+            if !fm.available || (!vision.available && !visionUnsupported) { throw ExitCode(1) }
             return
         }
-
-        // 視覚系だけが落ちる環境(macOS 26)を区別して見せる。exit code には反映しない
-        // (テキスト系は動くため、セットアップを止める理由にはならない)
-        let vision = FMDoctor.visionReport
-        print(vision.available ? "✅ \(vision.detail)" : "⚠️ \(vision.detail)")
 
         _ = printRoots()
 
@@ -1070,12 +1075,10 @@ struct RunScenarios: AsyncParsableCommand {
             return
         }
 
-        if FMDoctor.check().available == false {
-            print("⚠️ Foundation Models unavailable: self-healing, screenLooksLike and triage are disabled")
-        } else if !FMVisionSupport.isSupported {
-            print("⚠️ \(FMVisionSupport.requirement): screenLooksLike and occlusion-guard are disabled"
-                  + " (self-healing and triage stay enabled)")
-        }
+        // **availability(FMDoctor.check)では判定しない** —— `.available` のまま実呼び出しが
+        // 全滅する状態が実在する(2026-07-22 実測)。実観測の台帳を使う判定は --profile 経路と
+        // 同じ1箇所に置く。この経路には機能ごとのトグルが無いので FMConfig の既定で見る
+        await ProfileRunner.warnIfFMDegraded(fm: FMConfig(enabled: true, heal: heal)) { print($0) }
 
         PhaseLog.mark("fm-doctor")
         let recorder = RunRecorder.begin(project: testProject, profile: profile, trigger: "cli",
@@ -1140,6 +1143,18 @@ struct RunScenarios: AsyncParsableCommand {
             // **合否は変えず、劣化だけ伝える**。FM が死んでいると occlusion-guard・
             // 自己修復・screenLooksLike が黙って素通りするので、緑は「守りが効いた緑」ではない。
             // 赤のときも、切り分けの出発点として先に知りたい情報(自分の変更か FM か)
+            //
+            // 2つ出すのは根拠が別だから: 台帳(FMLiveness)は**この機械の FM の生死**で、
+            // 呼び出しが0件でも言える。fmUnavailableScenarios は**実際に FM を引いて全滅した
+            // シナリオ数**。前者だけだと「死んでいたが今回の run は FM を引かなかった」が
+            // 同じ文になり、後者だけだと**ブレーカが落ちて1回も呼ばずに素通りした run で沈黙する**
+            let fmReading = FMLiveness.current()
+            if let reason = fmReading.deadSummary() {
+                print("⚠️ FM is dead on this machine (\(fmReading.deadPaths.joined(separator: " + "))):"
+                    + " a green here is not a guarded green — the occlusion-guard, self-healing and"
+                    + " screenLooksLike passed through silently."
+                    + "\n   \(reason)")
+            }
             if runSummary.fmUnavailableScenarios > 0 {
                 print("⚠️ FM unavailable: \(runSummary.fmUnavailableScenarios) scenario(s) ran"
                     + " with occlusion-guard / self-healing / screenLooksLike silently disabled."

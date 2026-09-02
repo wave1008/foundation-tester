@@ -297,10 +297,28 @@ public struct HostMetricsSample: Encodable {
     public let fmCalls: Int?
     public let fmFailures: Int?
     public let fmTotalMs: Int?
+    /// FM の**死活**(FTCore.FMLiveness)。呼び出し回数とは別の軸 —— 上の3欄は「使われたか」しか
+    /// 言えず、**誰も呼んでいない間は死んでいても 0 件と同じ絵になる**。ここは経路ごとの
+    /// 最後の観測で、"alive" / "dead" / **null = 不明**(観測が無い・古い)の3値。混ぜないこと。
+    /// text と vision は独立に死ぬ(FMLiveness.swift 冒頭 ②)。
+    /// 対向: vscode-fleetest/src/monitorProcessManager.ts の HostMetricsRawEvent
+    public let fmTextState: String?
+    public let fmVisionState: String?
+    /// 死んでいる経路の理由(`text: …` / `vision: …`)。**1秒ごとに流れる行なので切り詰める**
+    /// (deadReasonLimit)。全文は結果 JSON の fm.firstError と `fleetest doctor --fm-only`
+    public let fmDeadReason: String?
+    /// 上の死活を観測した時刻(epoch 秒)。新しいほうの経路の時刻。null = 観測が無い
+    public let fmCheckedAt: Double?
+
+    /// 1Hz で流す行に載せる理由の長さ。**原因の特定はここではやらない**(それは
+    /// `fleetest doctor --fm-only` と結果 JSON の仕事)ので、どの種類の失敗かが分かれば足りる。
+    /// FMHealth.firstError の 800 文字を毎秒流すと、モニターの NDJSON がエラー文で埋まる
+    public static let deadReasonLimit = 200
 
     public init(ts: Double, cpu: Double?, gpu: Double?,
                 memUsedBytes: Int?, memTotalBytes: Int?,
-                fmCalls: Int?, fmFailures: Int?, fmTotalMs: Int?) {
+                fmCalls: Int?, fmFailures: Int?, fmTotalMs: Int?,
+                fmLiveness: FMLiveness.Reading = FMLiveness.Reading(text: nil, vision: nil)) {
         self.ts = ts
         self.cpu = cpu
         self.gpu = gpu
@@ -309,10 +327,16 @@ public struct HostMetricsSample: Encodable {
         self.fmCalls = fmCalls
         self.fmFailures = fmFailures
         self.fmTotalMs = fmTotalMs
+        self.fmTextState = fmLiveness.text?.state.rawValue
+        self.fmVisionState = fmLiveness.vision?.state.rawValue
+        self.fmDeadReason = fmLiveness.deadSummary(limit: Self.deadReasonLimit)
+        self.fmCheckedAt = [fmLiveness.text?.checkedAt, fmLiveness.vision?.checkedAt]
+            .compactMap { $0 }.max()
     }
 
     private enum CodingKeys: String, CodingKey {
         case kind, ts, cpu, gpu, memUsedBytes, memTotalBytes, fmCalls, fmFailures, fmTotalMs
+        case fmTextState, fmVisionState, fmDeadReason, fmCheckedAt
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -326,6 +350,10 @@ public struct HostMetricsSample: Encodable {
         try container.encode(fmCalls, forKey: .fmCalls)
         try container.encode(fmFailures, forKey: .fmFailures)
         try container.encode(fmTotalMs, forKey: .fmTotalMs)
+        try container.encode(fmTextState, forKey: .fmTextState)
+        try container.encode(fmVisionState, forKey: .fmVisionState)
+        try container.encode(fmDeadReason, forKey: .fmDeadReason)
+        try container.encode(fmCheckedAt, forKey: .fmCheckedAt)
     }
 
     /// JSONEncoder([.sortedKeys, .withoutEscapingSlashes]) で1行の NDJSON にする
@@ -407,7 +435,10 @@ public final class HostMetricsRecorder: @unchecked Sendable {
                 let sample = HostMetricsSample(
                     ts: Date().timeIntervalSince1970, cpu: cpu, gpu: gpu,
                     memUsedBytes: mem?.used, memTotalBytes: mem?.total,
-                    fmCalls: fm?.calls, fmFailures: fm?.failures, fmTotalMs: fm?.totalMs)
+                    fmCalls: fm?.calls, fmFailures: fm?.failures, fmTotalMs: fm?.totalMs,
+                    // run の記録器は**読むだけ**(プローブは撃たない)。run 中は実呼び出しが
+                    // 台帳を養い続けるので、撃つ必要が無い(FMLivenessProbe.refresh の門①)
+                    fmLiveness: FMLiveness.current())
                 if let line = sample.encodedLine() {
                     logger.append(line)
                 }

@@ -146,7 +146,7 @@ public struct OcclusionVerifier {
                     prompt()
                     Attachment(image)
                 }.content
-                FMHealth.record(kind: "occlusion", ms: Self.elapsedMs(screeningStartedAt), ok: true)
+                FMHealth.record(kind: "occlusion", path: .vision, ms: Self.elapsedMs(screeningStartedAt), ok: true)
                 if screening.visible {
                     // 見えている回は reason を誰も読まない(呼び出し側は visible で return する)
                     return Result(visible: true, state: Self.name(screening.state),
@@ -155,7 +155,7 @@ public struct OcclusionVerifier {
             } catch {
                 // 従来の失敗と同じ扱い(nil = ガード素通り)。ここで2段目へ落とすと、FM が
                 // 死んだホストで1回の判定に2回分の時間を捨てる
-                FMHealth.record(kind: "occlusion", ms: Self.elapsedMs(screeningStartedAt), ok: false,
+                FMHealth.record(kind: "occlusion", path: .vision, ms: Self.elapsedMs(screeningStartedAt), ok: false,
                                 error: "occlusion(screening): \(FMHealth.describe(error))")
                 return nil
             }
@@ -171,7 +171,7 @@ public struct OcclusionVerifier {
                 prompt()
                 Attachment(image)
             }.content
-            FMHealth.record(kind: "occlusion", ms: Self.elapsedMs(startedAt), ok: true)
+            FMHealth.record(kind: "occlusion", path: .vision, ms: Self.elapsedMs(startedAt), ok: true)
             var reason = String(verdict.reason.prefix(200))
             // 反転(不可視判定)したときだけ、**FM が実際に見た crop** を保存する。
             // レポートの失敗時スクショは poll が尽きた後の別撮りで、FM の入力ではない。
@@ -186,7 +186,7 @@ public struct OcclusionVerifier {
         } catch {
             // nil を返すと呼び出し側(StepExecutor.occlusionFlip)はガードを素通りさせる。
             // 記録しないと「FM 全滅で無効」と「疑わしい要素が無く正常」が区別できない
-            FMHealth.record(kind: "occlusion", ms: Self.elapsedMs(startedAt), ok: false,
+            FMHealth.record(kind: "occlusion", path: .vision, ms: Self.elapsedMs(startedAt), ok: false,
                             error: "occlusion: \(FMHealth.describe(error))")
             return nil
         }

@@ -23,7 +23,9 @@ final class FMAccountingAuditTests: XCTestCase {
     /// 記録しなくてよい呼び出し元とその理由。**追加するときは理由を書く**
     /// (実行 run の結果に紐づかない = fm フィールドにもブレーカにも意味を持たない経路だけ)。
     private let exempt: [String: String] = [
-        "FMDoctor.swift": "可用性判定(doctor の実呼び出し)。run の実績ではない",
+        "FMLivenessProbe.swift": "死活プローブ。**実仕事ではない**ので FMHealth/FMUsageLedger には"
+            + "載せない(載せると誰も run を回していないのにモニターの FM レートが動く ="
+            + " 測る対象を自分で消費して見せる)。ブレーカは probeOnce が直接養う",
         "ScenarioNamer.swift": "シナリオ作成時(explore/gen-scenario)。run の結果に紐づかない",
         "TestbaseDrafter.swift": "テストベース作成時。run の結果に紐づかない",
     ]

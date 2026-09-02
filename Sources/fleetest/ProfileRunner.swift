@@ -145,7 +145,7 @@ enum ProfileRunner {
         var fm = resolved.fm
         if healOverride == true { fm.heal = fm.enabled }
         if healOverride == false { fm.heal = false }
-        await Self.warnIfHealDegraded(heal: fm.heal) { print($0) }
+        await Self.warnIfFMDegraded(fm: fm) { print($0) }
         let reportDir = reportDirOverride.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
         if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
         // 既定 ON なので OFF のときだけ注入する(WebViewDelegatingDriver.preActionWarmup 参照)
@@ -472,20 +472,45 @@ enum ProfileRunner {
                           performanceMode: performanceMode)
     }
 
-    /// heal 有効 run の開始前に FM の実呼び出し可否を確認して警告する。availability は嘘をつく
-    /// (available のまま実呼び出しが全滅する実測 2026-07-22)ため checkLive を使う。FM 実呼び出しは
-    /// ~1s かかるので heal 有効時のみ(occlusion-guard の劣化はシナリオ実行中の警告が別途出る)。
+    /// FM を使う run の開始前に、FM が**本当に呼べるか**を確かめて警告する。
+    ///
+    /// **heal の有無で出し分けない** —— occlusion-guard(exist の既定 requireVisible)・
+    /// screenLooksLike・triage は heal を切っていても FM を引くので、heal 限定にすると
+    /// 「FM が死んだまま緑になった run」の大半で開始前に何も言わないことになる(2026-09-03 まで
+    /// そうなっていた)。availability は嘘をつく(available のまま実呼び出しが全滅する実測
+    /// 2026-07-22)ので、台帳(FMLiveness)の実観測を使う。
+    ///
+    /// **台帳が新しければ1回も呼ばない** —— モニターが動いていれば既に埋まっている
+    /// (FMLivenessProbe.refresh の門①)。埋まっていないときだけ 1〜2 秒払う。
+    /// **text と vision を別に見る**: 片方だけ死ぬのが常態で、無効になる機能が違う。
     /// ApiRunCommand と共用。
-    static func warnIfHealDegraded(heal: Bool, log: (String) -> Void) async {
-        guard heal else { return }
-        let fm = await FMDoctor.checkLive()
-        if !fm.available {
-            log("⚠️ heal is enabled but live FM calls are failing, so "
-                + "self-healing, occlusion-guard and screenLooksLike are disabled for this run")
-        } else if !FMVisionSupport.isSupported {
+    static func warnIfFMDegraded(fm: FMConfig, log: (String) -> Void) async {
+        guard fm.enabled else { return }
+        let reading = await FMLivenessProbe.refresh()
+        // 視覚系(occlusion-guard / screenLooksLike)を使う run だけが vision の死に影響を受ける。
+        // triage は失敗時にしか走らないが FM が生きていれば画像経路を試すので、ここでは数えない
+        let usesVision = fm.falsePositiveCheck || fm.screenLooksLike
+        if let text = reading.text, text.state == .dead {
+            log("⚠️ FM is dead on this machine (text path): self-healing and failure triage are"
+                + " disabled for this run — a green result is not a guarded green."
+                + reasonSuffix(text))
+        }
+        if usesVision, !FMVisionSupport.isSupported {
             log("⚠️ \(FMVisionSupport.requirement): occlusion-guard and screenLooksLike are disabled for this run"
                 + " (self-healing and triage stay enabled)")
+        } else if usesVision, let vision = reading.vision, vision.state == .dead {
+            log("⚠️ FM is dead on this machine (vision path): the occlusion-guard"
+                + " (the default requireVisible of exist) and screenLooksLike are disabled for this run"
+                + " — a green result is not a guarded green." + reasonSuffix(vision))
         }
+    }
+
+    /// 死の理由を1行に畳む。**「いつ・何を根拠に」まで出す** —— 台帳は最大
+    /// FMLiveness.freshSeconds ぶん古くなりうるので、断定の強さを読み手が測れるようにする
+    private static func reasonSuffix(_ verdict: FMLiveness.Verdict) -> String {
+        let age = Int(Date().timeIntervalSince1970 - verdict.checkedAt)
+        return "\n   Observed \(age)s ago via \(verdict.source.rawValue)"
+            + (verdict.error.map { ": \($0)" } ?? "")
     }
 
     /// iOS レーンの構築(供給→インストール→凍結 triage→home)。**通常は `lateWorkers` provider

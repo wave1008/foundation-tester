@@ -25,8 +25,8 @@ final class FMHealthTests: XCTestCase {
 
     /// 全て成功なら失敗警告は出ないが、コストは記録される(成功実行こそコスト分析に必要)
     func testSuccessOnlyStillReportsCost() throws {
-        FMHealth.record(kind: "occlusion", ms: 1200, ok: true)
-        FMHealth.record(kind: "occlusion", ms: 800, ok: true)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 1200, ok: true)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 800, ok: true)
         XCTAssertNil(FMHealth.warningText())
 
         let usage = try XCTUnwrap(FMHealth.usage())
@@ -37,8 +37,8 @@ final class FMHealthTests: XCTestCase {
 
     /// 全滅: allFailed が立ち、警告に「無効でした」と最初のエラーが載る
     func testAllFailedProducesWarning() {
-        FMHealth.record(kind: "occlusion", ms: 90, ok: false, error: "ModelManagerError 1001")
-        FMHealth.record(kind: "occlusion", ms: 95, ok: false, error: "後続は捨てられる")
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 90, ok: false, error: "ModelManagerError 1001")
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 95, ok: false, error: "後続は捨てられる")
         let snap = FMHealth.snapshot()
         XCTAssertTrue(snap.allFailed)
         XCTAssertEqual(snap.failures, 2)
@@ -53,17 +53,17 @@ final class FMHealthTests: XCTestCase {
 
     /// 部分失敗は allFailed にしない(全滅と区別する)が、警告は出す
     func testPartialFailureWarnsButIsNotAllFailed() {
-        FMHealth.record(kind: "occlusion", ms: 1000, ok: true)
-        FMHealth.record(kind: "screenLooksLike", ms: 50, ok: false, error: "boom")
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 1000, ok: true)
+        FMHealth.record(kind: "screenLooksLike", path: .vision, ms: 50, ok: false, error: "boom")
         XCTAssertFalse(FMHealth.snapshot().allFailed)
         XCTAssertTrue(FMHealth.warningText()!.contains("Some FM calls failed"))
     }
 
     /// 用途別に内訳が取れる(occlusion が支配的かを実行後に判定するため)
     func testUsageIsBrokenDownByKind() {
-        FMHealth.record(kind: "occlusion", ms: 1000, ok: true)
-        FMHealth.record(kind: "occlusion", ms: 3000, ok: true)
-        FMHealth.record(kind: "heal", ms: 500, ok: true)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 1000, ok: true)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 3000, ok: true)
+        FMHealth.record(kind: "heal", path: .text, ms: 500, ok: true)
 
         let usage = FMHealth.usage()!
         XCTAssertEqual(usage.calls, 3)
@@ -78,7 +78,7 @@ final class FMHealthTests: XCTestCase {
     /// p50 / max がレイテンシ分布を反映する
     func testPercentileAndMax() {
         for ms in [100.0, 200.0, 300.0, 4000.0] {
-            FMHealth.record(kind: "occlusion", ms: ms, ok: true)
+            FMHealth.record(kind: "occlusion", path: .vision, ms: ms, ok: true)
         }
         let usage = FMHealth.usage()!
         XCTAssertEqual(usage.maxMs, 4000)
@@ -89,8 +89,8 @@ final class FMHealthTests: XCTestCase {
 
     /// 結果 JSON へ載るため Codable でラウンドトリップできること
     func testUsageRecordRoundTripsThroughJSON() throws {
-        FMHealth.record(kind: "occlusion", ms: 1200, ok: true)
-        FMHealth.record(kind: "heal", ms: 300, ok: false, error: "e")
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 1200, ok: true)
+        FMHealth.record(kind: "heal", path: .text, ms: 300, ok: false, error: "e")
         let usage = try XCTUnwrap(FMHealth.usage())
 
         let data = try JSONEncoder().encode(usage)
@@ -103,7 +103,7 @@ final class FMHealthTests: XCTestCase {
 
     /// scenarioFinished に載せて NDJSON 経由で往復できること(親プロセスへの伝達経路)
     func testSurvivesScenarioEventNDJSONRoundTrip() throws {
-        FMHealth.record(kind: "occlusion", ms: 9400, ok: true)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 9400, ok: true)
         var event = ScenarioEvent(kind: "scenarioFinished")
         event.fm = FMHealth.usage()
 
@@ -122,7 +122,7 @@ final class FMHealthTests: XCTestCase {
 
     /// runner → 親 → 結果 JSON まで届くこと(集計はこの JSON を舐めて行うため経路が命)
     func testReachesScenarioRunRecordViaBuilder() throws {
-        FMHealth.record(kind: "occlusion", ms: 1200, ok: true)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 1200, ok: true)
         var finished = ScenarioEvent(kind: "scenarioFinished")
         finished.fm = FMHealth.usage()
         finished.reportPath = "/tmp/r.md"
@@ -144,7 +144,7 @@ final class FMHealthTests: XCTestCase {
 
     /// 成功シナリオでも fm は残る(failedSteps 等と違い、コスト分析は成功実行こそ必要)
     func testFMKeptOnPassedScenarioUnlikeFailureFields() throws {
-        FMHealth.record(kind: "occlusion", ms: 900, ok: true)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 900, ok: true)
         var finished = ScenarioEvent(kind: "scenarioFinished")
         finished.fm = FMHealth.usage()
 
@@ -162,6 +162,7 @@ final class FMHealthTests: XCTestCase {
         let iterations = 500
         DispatchQueue.concurrentPerform(iterations: iterations) { i in
             FMHealth.record(kind: i.isMultiple(of: 2) ? "occlusion" : "heal",
+                            path: i.isMultiple(of: 2) ? .vision : .text,
                             ms: 10, ok: i.isMultiple(of: 3), error: "e")
         }
         XCTAssertEqual(FMHealth.snapshot().attempted, iterations)
@@ -170,7 +171,7 @@ final class FMHealthTests: XCTestCase {
 
     /// ゲート待ちを1度も記録しなければ 3欄とも 0(呼び出し自体はある = usage は nil ではない)
     func testGateWaitDefaultsToZeroWhenNeverRecorded() throws {
-        FMHealth.record(kind: "occlusion", ms: 100, ok: true)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 100, ok: true)
         let usage = try XCTUnwrap(FMHealth.usage())
         XCTAssertEqual(usage.gateWaitTotalMs, 0)
         XCTAssertEqual(usage.gateWaitP50Ms, 0)
@@ -179,7 +180,7 @@ final class FMHealthTests: XCTestCase {
 
     /// 単一サンプルなら total/p50/max が全て同じ値になる
     func testGateWaitSingleSample() throws {
-        FMHealth.record(kind: "occlusion", ms: 100, ok: true)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 100, ok: true)
         FMHealth.recordGateWait(ms: 42)
         let usage = try XCTUnwrap(FMHealth.usage())
         XCTAssertEqual(usage.gateWaitTotalMs, 42)
@@ -189,7 +190,7 @@ final class FMHealthTests: XCTestCase {
 
     /// 偶数個: p50 は totalMs/maxMs と別軸で集計されている(呼び出しコストと混ざらない)
     func testGateWaitEvenCount() throws {
-        FMHealth.record(kind: "occlusion", ms: 100, ok: true)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 100, ok: true)
         for ms in [10.0, 20.0, 30.0, 40.0] {
             FMHealth.recordGateWait(ms: ms)
         }
@@ -202,7 +203,7 @@ final class FMHealthTests: XCTestCase {
 
     /// 奇数個: p50 は中央のサンプルを直接返す
     func testGateWaitOddCount() throws {
-        FMHealth.record(kind: "occlusion", ms: 100, ok: true)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 100, ok: true)
         for ms in [10.0, 20.0, 30.0] {
             FMHealth.recordGateWait(ms: ms)
         }
@@ -227,7 +228,7 @@ final class FMHealthTests: XCTestCase {
 
     /// 新しい結果 JSON は gateWait* を含めて往復する
     func testGateWaitRoundTripsThroughJSON() throws {
-        FMHealth.record(kind: "occlusion", ms: 100, ok: true)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 100, ok: true)
         FMHealth.recordGateWait(ms: 55)
         let usage = try XCTUnwrap(FMHealth.usage())
         let data = try JSONEncoder().encode(usage)
@@ -239,7 +240,7 @@ final class FMHealthTests: XCTestCase {
 
     /// usage() は recordSkip() の件数を Snapshot.skipped と同じ値で載せる
     func testUsageCarriesSkippedCount() throws {
-        FMHealth.record(kind: "occlusion", ms: 100, ok: true)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 100, ok: true)
         FMHealth.recordSkip()
         FMHealth.recordSkip()
         let usage = try XCTUnwrap(FMHealth.usage())

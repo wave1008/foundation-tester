@@ -26,23 +26,43 @@ public enum FMDoctor {
     /// モデル資産側の理由で全呼び出しが失敗していても .available を返す(実測 2026-07-22:
     /// availability=available / isAvailable=true のまま ModelManagerError 1001 で全滅した)。
     /// availability を信じて緑を出すと、occlusion-guard が黙って無効なまま「正常」と報告される。
+    ///
+    /// **実呼び出しは FMLivenessProbe に委ねる** —— ここで直接呼ぶと、doctor で確かめた事実が
+    /// 機械グローバルな台帳(FMLiveness)に残らず、モニターも run の開始前警告も同じことを
+    /// もう一度払うことになる(判定と観測の置き場を1つにする)
     public static func checkLive() async -> Report {
         let base = check()
         guard base.available else { return base }
-        do {
-            _ = try await LanguageModelSession().respond(
-                to: "Answer with just OK.",
-                options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 8))
+        let verdict = await FMLivenessProbe.probeOnce(path: .text)
+        guard verdict.state == .dead else {
             return Report(available: true, detail: "On-device model: available (confirmed by a live call)")
-        } catch {
-            return Report(
-                available: false,
-                detail: "On-device model: a live call failed"
-                    + " (availability reports available — check the model assets and the state of Apple Intelligence)"
-                    // 入れ子を畳んでから出す。LanguageModelError の最上位は常に
-                    // `Code=-1 "The operation couldn't be completed."` で、真因は入れ子の中にしかない
-                    + "\n   Error: \(FMHealth.describe(error))")
         }
+        return Report(
+            available: false,
+            detail: "On-device model: a live call failed"
+                + " (availability reports available — check the model assets and the state of Apple Intelligence)"
+                // 入れ子を畳んでから出す。LanguageModelError の最上位は常に
+                // `Code=-1 "The operation couldn't be completed."` で、真因は入れ子の中にしかない
+                + "\n   Error: \(verdict.error ?? "unknown")")
+    }
+
+    /// 画像入力(vision)経路を**実際に1回呼んで**確かめる。`visionReport` は OS の能力しか
+    /// 見ておらず、**text と vision は独立に死ぬ**(実測)ので、能力があることは可否を意味しない。
+    /// 対応 OS でないときは visionReport をそのまま返す(それは死ではなく能力の話)
+    public static func visionCheckLive() async -> Report {
+        guard FMVisionSupport.isSupported else { return visionReport }
+        let verdict = await FMLivenessProbe.probeOnce(path: .vision)
+        guard verdict.state == .dead else {
+            return Report(available: true,
+                          detail: "FM visual verification (image input): available"
+                              + " (confirmed by a live call)")
+        }
+        return Report(
+            available: false,
+            detail: "FM visual verification (image input): a live call failed."
+                + " occlusion-guard (the default requireVisible of exist) and screenLooksLike are"
+                + " disabled — heal and triage keep working (they fall back to text)"
+                + "\n   Error: \(verdict.error ?? "unknown")")
     }
 
     /// 画像入力(Attachment)の可否。FM 本体が使えても macOS 26 では視覚系

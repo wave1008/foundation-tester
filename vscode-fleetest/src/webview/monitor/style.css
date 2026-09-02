@@ -302,12 +302,10 @@ button.bulk-cancel:hover:not(:disabled) {
   text-align: left;
   font-variant-numeric: tabular-nums;
 }
-/* FM 死活(hostCharts.js が hmRenderFmLabel で付け外し)。dead=全呼び出し失敗、warn=一部失敗 */
-.host-metric.hm-fm-dead .hm-label,
-.host-metric.hm-fm-dead .hm-value {
-  color: var(--vscode-errorForeground);
-  font-weight: 600;
-}
+/* FM 死活(hostCharts.js が hmRenderFmLabel で付け外し)。dead=死活台帳か窓内が全滅、warn=一部失敗。
+   **hm-fm-dead に文字色は与えない**(ユーザー決定 2026-09-03)—— 死はスパークラインをグレーに
+   することで表し、ラベルと値の色は動かさない。クラス自体は残す(ツールチップの分岐と
+   test/webviewHostMetricsRows.test.mjs が状態の名前として使う) */
 .host-metric.hm-fm-warn .hm-value {
   color: var(--vscode-editorWarning-foreground, #e6a700);
 }

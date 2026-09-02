@@ -160,6 +160,25 @@ extension MCPServer {
             : " / foreground: no (another app or the home screen is in front — ft_launch to come back)"
     }
 
+    /// FM が死んでいるなら status に出す。**生きているときは黙る** —— 毎回「FM: alive」と
+    /// 言っても次の一手が変わらないのに、行だけが増える(注記は黙る側に倒す)。
+    ///
+    /// 台帳が古ければ実呼び出しで取り直すが、**誰かが FM を使っている間は撃たない**
+    /// (FMLivenessProbe.refresh の門)ので、ft_status が FM の枠を奪って run を遅らせることはない。
+    /// ここで出さないと、エージェントは「occlusion-guard が効いていない画面」を
+    /// **健全な画面と同じ形で受け取る**(FM の失敗は握りつぶして素通りする契約のため)
+    static func fmLivenessNote() async -> String {
+        let reading = await FMLivenessProbe.refresh()
+        guard let reason = reading.deadSummary(limit: 200) else { return "" }
+        let disabled = reading.deadPaths == ["vision"]
+            ? "the occlusion-guard and screenLooksLike are silently disabled"
+            : reading.deadPaths == ["text"]
+                ? "self-healing and failure triage are silently disabled"
+                : "the occlusion-guard, self-healing, screenLooksLike and triage are silently disabled"
+        return "\n⚠️ FM is dead on this machine (\(reading.deadPaths.joined(separator: " + "))):"
+            + " \(disabled). \(reason)"
+    }
+
     /// 接続中の Android 全台の状態。**1台ずつ独立に見る**(1台落ちていても他を隠さない)
     static func androidFleetStatus(_ serials: [String]) async -> String {
         var lines = ["\(serials.count) Android devices are connected."

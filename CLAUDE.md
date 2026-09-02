@@ -225,6 +225,26 @@
   mtime を見ない** / **読めない(不明)は null・呼び出し 0 件は 0** で混ぜない / 初見の pid は
   増分 0)。**run のイベントからは供給しない** —— 拡張が起こした run しか見えず、CLI 実行や
   他人の run が 0 に見えるため
+- **FM の「死活」は回数とは別の軸**(`FTCore.FMLiveness` が唯一の定義元。
+  `~/.fleetest/fm-liveness.json`)。回数は「使われたか」しか言えないので、**誰も呼んでいない間は
+  死んでいても 0 件と同じ絵**になる。守る規律5つ: **①生 / 死 / 不明の3値**(記録が無い・
+  `freshSeconds`(120秒)より古いは不明。死と混ぜない)/ **②経路は text と vision で別に持つ**
+  (**独立に死ぬ・戻る**実測。畳むと text だけ生きた機械で occlusion-guard の全滅を見落とす)/
+  **③availability を書き手にしない**(`.available` のまま全滅する。`unavailable` の向きだけは
+  信じてよい)/ **④単発の失敗で死と言わない**(連続 `FMBreaker.threshold` 回。閾値は増やさず
+  ブレーカのものを共有する。**ただし数えるのは経路ごと** —— ブレーカのカウンタは経路を区別せず、
+  text の成功が毎回戻すので vision の死を記録できない)/ **⑤プローブは `FMHealth` /
+  `FMUsageLedger` に書かない**(書くと誰も run を回していないのに FM のレートが動く =
+  測る対象を自分で消費して見せる)。
+  **`api host-metrics --fm-probe` だけが「host-metrics は FM を叩かない」の例外**
+  (拡張のモニターだけが渡す。既定 OFF)—— 撃つのは**台帳が古く、かつ誰も FM を使っていない**
+  ときだけ(`FMLivenessProbe.refresh` の門①②③。FMLock は 1 秒で諦める = 実仕事を待たせない)。
+  プローブ間隔 60 秒の根拠は `Scripts/fm-flap-monitor.swift` と同じ刻み。
+  読み手は4つ: モニターの FM 行(NDJSON の `fmTextState`/`fmVisionState`/`fmDeadReason`/
+  `fmCheckedAt`)/ run 開始前の警告(`ProfileRunner.warnIfFMDegraded`。**heal の有無で
+  出し分けない** —— occlusion-guard・screenLooksLike・triage は heal を切っていても FM を引く)/
+  run.json の `fmDead`・`fmDeadReason` / `ft_status`・`ft_doctor`・`fleetest doctor --fm-only`
+  (**doctor は text と vision を両方 実呼び出しで確かめ、どちらが死んでも exit 1**)
 - リモート実行(`run --machine` / `--host` の SSH ディスパッチ):
   - **ssh 越しに何かを起動する経路を新設したら非対話 PATH の補正
     (`/opt/homebrew:/usr/local/bin`)を必ず写す**(既存は `RemoteShell.remoteRunCommand`)

@@ -104,13 +104,19 @@ function fmTitle(document, machine) {
   return rowFor(document, machine).querySelector('[data-metric="fm"]').title;
 }
 
-/** fm 省略時は fmCalls:0(既知の0件、欠測ではない)。欠測にしたいテストは { fmCalls: null } を渡す。 */
+/** fm 省略時は fmCalls:0(既知の0件、欠測ではない)。欠測にしたいテストは { fmCalls: null } を渡す。
+ *  死活(fmTextState/fmVisionState/fmDeadReason/fmCheckedAt)は**回数とは別の軸**なので、
+ *  省略時は不明(null)= 旧 CLI の行と同じ形。 */
 function hostMetricsSample(machine, cpu, fm = {}) {
-  const { fmCalls = 0, fmFailures = 0, fmTotalMs = 0 } = fm;
+  const {
+    fmCalls = 0, fmFailures = 0, fmTotalMs = 0,
+    fmTextState = null, fmVisionState = null, fmDeadReason = null,
+    fmCheckedAt = Date.now() / 1000,
+  } = fm;
   return {
     type: "hostMetrics", ...(machine ? { machine } : {}),
     cpu, gpu: 0.25, memUsedBytes: 8 * 1024 * 1024 * 1024, memTotalBytes: 32 * 1024 * 1024 * 1024,
-    fmCalls, fmFailures, fmTotalMs,
+    fmCalls, fmFailures, fmTotalMs, fmTextState, fmVisionState, fmDeadReason, fmCheckedAt,
   };
 }
 
@@ -393,7 +399,7 @@ test("FM は機械ごとの行に正しく振り分けられる", (t) => {
   assert.equal(fmOf(""), "0", "手元も別に集計される");
 });
 
-test("窓内に失敗が混ざると warn(⚠)、全て失敗すると dead(✕)の表示になる", (t) => {
+test("窓内に失敗が混ざると warn(⚠)、全て失敗すると dead(値は '–')の表示になる", (t) => {
   {
     const { window, document } = createWebview();
     t.after(() => window.close());
@@ -416,8 +422,113 @@ test("窓内に失敗が混ざると warn(⚠)、全て失敗すると dead(✕)
 
     const entry = rowFor(document, "mac2").querySelector('.host-metric[data-metric="fm"]');
     assert.ok(entry.classList.contains("hm-fm-dead"), "窓内が全滅なら dead");
-    assert.match(values(rowFor(document, "mac2")).at(-1), /^✕/);
+    // 死んでいる間の回数には意味が無いので出さない(死はグレーの線とツールチップが言う)
+    assert.equal(values(rowFor(document, "mac2")).at(-1), "–");
   }
+});
+
+// **この行の穴**だった: 回数の窓だけで死を判定すると、誰も FM を使っていない間(fmCalls:0)は
+// 何も出ない —— 「使われていない」と「死んでいる」が同じ絵になる。台帳(FMLiveness)由来の
+// 死活は呼び出し0件でも出る。
+test("呼び出しが0件でも、台帳が死と言えば dead になり理由が出る", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  send(window, hostMetricsSample("mac2", 0.9, {
+    fmCalls: 0, fmVisionState: "dead", fmTextState: "alive",
+    fmDeadReason: "vision: ModelManagerError(1001)",
+  }));
+  send(window, hostMetricsSample(undefined, 0.1));
+
+  const entry = rowFor(document, "mac2").querySelector('.host-metric[data-metric="fm"]');
+  assert.ok(entry.classList.contains("hm-fm-dead"), "呼び出し0件でも台帳の死は dead");
+  assert.equal(values(rowFor(document, "mac2")).at(-1), "–", "回数(0)は出さない");
+  const title = fmTitle(document, "mac2");
+  assert.match(title, /vision/, "どの経路が死んだかを名指しする");
+  assert.match(title, /ModelManagerError\(1001\)/, "理由を出す");
+});
+
+test("台帳が生きていると言っているだけの行には印を付けない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  send(window, hostMetricsSample("mac2", 0.9, { fmTextState: "alive", fmVisionState: "alive" }));
+  send(window, hostMetricsSample(undefined, 0.1));
+
+  const entry = rowFor(document, "mac2").querySelector('.host-metric[data-metric="fm"]');
+  assert.equal(entry.classList.contains("hm-fm-dead"), false);
+  assert.equal(entry.classList.contains("hm-fm-warn"), false);
+  assert.equal(values(rowFor(document, "mac2")).at(-1), "0");
+});
+
+// 観測が途絶えた行(欠測)は**不明へ戻す**。古い「死んでいる」を出し続けると、直った後も
+// ✕ が残って読み手が信じなくなる(不明と死を混ぜない、の表示側)
+test("行が欠測になったら台帳の死活も落とす", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  send(window, hostMetricsSample("mac2", 0.9, { fmTextState: "dead", fmDeadReason: "text: boom" }));
+  send(window, hostMetricsSample(undefined, 0.1));
+  assert.ok(rowFor(document, "mac2").querySelector('[data-metric="fm"]').classList.contains("hm-fm-dead"));
+
+  // mac2 のサンプルを止め、手元の tick だけ進める(HM_STALE_TICKS を超えると欠測)
+  for (let i = 0; i < 4; i += 1) {
+    send(window, hostMetricsSample(undefined, 0.1));
+  }
+  assert.equal(
+    rowFor(document, "mac2").querySelector('[data-metric="fm"]').classList.contains("hm-fm-dead"),
+    false,
+    "観測が途絶えたら不明へ戻す",
+  );
+});
+
+/** strokeStyle を canvas ごとに記録する 2D(色だけを見るテスト用)。 */
+function recordStrokeStyles(window) {
+  window.HTMLCanvasElement.prototype.getContext = function getContext() {
+    const canvas = this;
+    canvas.__strokes = [];
+    const noop = () => {};
+    const ctx = {
+      setTransform: noop, clearRect: noop, beginPath: noop, closePath: noop,
+      moveTo: noop, lineTo: noop, fill: noop,
+      stroke: () => canvas.__strokes.push(ctx.strokeStyle),
+      globalAlpha: 1, fillStyle: "", strokeStyle: "", lineWidth: 0, lineJoin: "", lineCap: "",
+    };
+    return ctx;
+  };
+}
+
+/** その行の FM スパークラインに最後に使われた線の色。 */
+function fmStroke(document, machine) {
+  const canvas = rowFor(document, machine).querySelector('[data-metric="fm"] .hm-canvas');
+  return (canvas.__strokes ?? []).at(-1);
+}
+
+// **色相を持たない**のが要件(ユーザー決定 2026-09-03)。赤(cpu と同色)で描いていた頃は
+// 「異常な値が出ている」に見えたが、死んでいる間の回数は 0 で張り付くだけで値に意味が無い。
+// R=G=B ではなく「他系列のどれとも違い、彩度が低い」ことで確かめる —— 具体的な hex を
+// 貼ると、パレットを1段動かしただけでこのテストが落ちて意図が伝わらない
+test("FM が死んでいる間はスパークラインの色相を落とす(生きている間の色とは別)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  recordStrokeStyles(window);
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+
+  // 生きている(台帳 alive・失敗なし)ときの色
+  for (let i = 0; i < 3; i += 1) {
+    send(window, hostMetricsSample("mac2", 0.9, { fmCalls: 2, fmTextState: "alive" }));
+    send(window, hostMetricsSample(undefined, 0.1));
+  }
+  const alive = fmStroke(document, "mac2");
+
+  send(window, hostMetricsSample("mac2", 0.9, { fmCalls: 0, fmTextState: "dead", fmDeadReason: "text: boom" }));
+  send(window, hostMetricsSample(undefined, 0.1));
+  const dead = fmStroke(document, "mac2");
+
+  assert.notEqual(dead, alive, "死んだら色が変わる");
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(dead.slice(i, i + 2), 16));
+  const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+  assert.ok(chroma <= 24, `死の色は彩度を持たない(chroma=${chroma}, ${dead})`);
 });
 
 /** lineTo の Y を canvas ごとに記録する 2D。**縦軸そのものは公開されていない**ので、

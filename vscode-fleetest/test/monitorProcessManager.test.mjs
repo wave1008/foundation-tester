@@ -97,7 +97,9 @@ test("startHostMetricsProcess は `api host-metrics --interval 1` で spawnFn �
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].command, "/usr/local/bin/fleetest");
-  assert.deepEqual(calls[0].args, ["api", "host-metrics", "--interval", "1"]);
+  // --fm-probe: 呼び出しが0件でも FM の死活が分かるようにする(誰も FM を使っていない
+  // ときだけ実呼び出しで取り直す)。**既定 OFF なので渡す側の責任**
+  assert.deepEqual(calls[0].args, ["api", "host-metrics", "--interval", "1", "--fm-probe"]);
   assert.deepEqual(calls[0].options, { cwd: "/tmp/proj", shell: false, stdio: ["pipe", "pipe", "pipe"] });
 });
 
@@ -257,7 +259,7 @@ test("リモート機のデバイスが居ると `remote exec <machine> -- api h
   const posts = [];
   const manager = new MonitorProcessManager(makeDeps({ post: (m) => posts.push(m) }), spawnFn);
   manager.startAll();
-  assert.deepEqual(calls[1], ["api", "host-metrics", "--interval", "1"], "手元のぶんは従来どおり");
+  assert.deepEqual(calls[1], ["api", "host-metrics", "--interval", "1", "--fm-probe"], "手元のぶんは従来どおり");
 
   feedMonitorDevices(procs[0], [
     { id: "ios:local1", name: "local1" },
@@ -268,8 +270,8 @@ test("リモート機のデバイスが居ると `remote exec <machine> -- api h
 
   const remote = calls.filter((args) => args[0] === "remote");
   assert.deepEqual(remote, [
-    ["remote", "exec", "mac2", "--", "api", "host-metrics", "--interval", "1"],
-    ["remote", "exec", "mac3", "--", "api", "host-metrics", "--interval", "1"],
+    ["remote", "exec", "mac2", "--", "api", "host-metrics", "--interval", "1", "--fm-probe"],
+    ["remote", "exec", "mac3", "--", "api", "host-metrics", "--interval", "1", "--fm-probe"],
   ], "機械ごとに1本(同じ機械の台が複数あっても1本)");
 
   const machinesMsg = posts.filter((m) => m.type === "hostMetricsMachines").at(-1);

@@ -45,7 +45,7 @@ public struct RunMetaRecord: Codable, Sendable {
         case schemaVersion, runID, project, profile, host, machine, trigger, startedAt, finishedAt
         case total, passed, failed, degradedWorkers, freezeRetries, blankRepairs, blankExclusions
         case measurementInvalid, measurementInvalidReasons, workerAnomalies, issuer, runGroup
-        case performanceMode
+        case performanceMode, fmDead, fmDeadReason
     }
 
     public init(from decoder: Decoder) throws {
@@ -72,6 +72,8 @@ public struct RunMetaRecord: Codable, Sendable {
         issuer = try c.decodeIfPresent(String.self, forKey: .issuer)
         runGroup = try c.decodeIfPresent(String.self, forKey: .runGroup)
         performanceMode = try c.decodeIfPresent(Bool.self, forKey: .performanceMode)
+        fmDead = try c.decodeIfPresent([String].self, forKey: .fmDead)
+        fmDeadReason = try c.decodeIfPresent(String.self, forKey: .fmDeadReason)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -97,6 +99,8 @@ public struct RunMetaRecord: Codable, Sendable {
         try c.encodeIfPresent(issuer, forKey: .issuer)
         try c.encodeIfPresent(runGroup, forKey: .runGroup)
         try c.encodeIfPresent(performanceMode, forKey: .performanceMode)
+        try c.encodeIfPresent(fmDead, forKey: .fmDead)
+        try c.encodeIfPresent(fmDeadReason, forKey: .fmDeadReason)
     }
 
     public var schemaVersion: Int
@@ -149,6 +153,14 @@ public struct RunMetaRecord: Codable, Sendable {
     /// **有効な計測 run の抽出条件は performanceMode==true かつ measurementInvalid != true**。
     /// 旧レコードと既定モードの run は nil
     public var performanceMode: Bool?
+    /// **run を閉じた時点**でこの機械の FM が死んでいた経路(FTCore.FMLiveness。"text" / "vision")。
+    /// 生きていた・不明なら nil。**run 全体の状態ではない** —— 途中で死んで戻った run はここに
+    /// 出ない(シナリオごとの実測は scenarios/*.json の fm.failures / fm.firstError)。
+    /// **緑の run を後から仕分けるための欄** —— FM が死んだ run の緑は「守りが効いた緑」ではなく、
+    /// occlusion-guard・自己修復・screenLooksLike が素通りしただけかもしれない
+    public var fmDead: [String]?
+    /// fmDead の理由(`text: … / vision: …`)。fmDead が無ければ nil
+    public var fmDeadReason: String?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, host: String, trigger: String, startedAt: String,
@@ -159,7 +171,8 @@ public struct RunMetaRecord: Codable, Sendable {
                 measurementInvalid: Bool? = nil, measurementInvalidReasons: [String]? = nil,
                 workerAnomalies: [WorkerAnomalyRecord]? = nil,
                 issuer: String? = nil, runGroup: String? = nil,
-                performanceMode: Bool? = nil) {
+                performanceMode: Bool? = nil,
+                fmDead: [String]? = nil, fmDeadReason: String? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.project = project
@@ -181,6 +194,8 @@ public struct RunMetaRecord: Codable, Sendable {
         self.issuer = issuer
         self.runGroup = runGroup
         self.performanceMode = performanceMode
+        self.fmDead = fmDead
+        self.fmDeadReason = fmDeadReason
     }
 }
 

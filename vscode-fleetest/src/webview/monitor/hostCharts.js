@@ -39,9 +39,12 @@ const HM_STALE_TICKS = 2;
 // 0.1 刻みで見えるようにする。
 const HM_FM_RATE_WINDOW_TICKS = 10;
 // バリデータ検証済みパレット(ダーク/ライトで系列色を切り替える。グリッド・軸は描かない)。
+// dead は FM が死んでいる間の系列色。**色相を持たない**のが要件 —— 赤にすると「異常な値が
+// 出ている」に見えるが、実際は値そのものに意味が無い(死んでいる間の回数は 0 で張り付く)。
+// 明度は他系列と同じ帯に置く(背景に対して同じ読みやすさ)。
 const HM_COLORS = {
-  dark: { cpu: '#f2555a', gpu: '#b8891f', fm: '#a06be0', mem: '#2f9e63' },
-  light: { cpu: '#e5484d', gpu: '#e6a700', fm: '#8e4ec6', mem: '#30a46c' },
+  dark: { cpu: '#f2555a', gpu: '#b8891f', fm: '#a06be0', mem: '#2f9e63', dead: '#8b9099' },
+  light: { cpu: '#e5484d', gpu: '#e6a700', fm: '#8e4ec6', mem: '#30a46c', dead: '#8b8d98' },
 };
 
 /** 手元の行の表示名(左端のラベル)。CLI 側の DeviceMachineGrouping.localDisplayName と同じ語。 */
@@ -86,6 +89,10 @@ function hmMakeRow(rowEl, machine) {
     // FM のレート表示・死活判定に使う直近 HM_FM_RATE_WINDOW_TICKS tick ぶんの生値
     // ({calls,failures,totalMs} | 欠測は calls:null)。古い順に shift する。
     fm: { window: [] },
+    // FM の死活(FMLiveness の最新の観測)。**窓を持たない** —— これはレートではなく
+    // 「今この機械で FM を呼べるか」という水準で、直近の1サンプルがそのまま答え。
+    // 'alive' / 'dead' / null=不明。呼び出しが0件でも埋まるのが回数系列との違い。
+    liveness: { text: null, vision: null, reason: null, checkedAt: null },
     // pending: 受信済みでまだ描いていないサンプル(1 tick の間に複数届いたら最後の1つだけ残る)。
     // latest: 直近に描いたサンプル(pending が無い tick はこれを使い回す)。missed はその回数。
     pending: undefined,
@@ -233,8 +240,22 @@ function hmFmWindowStats(row) {
   return { calls, failures, totalMs, rate: calls / known.length };
 }
 
-// FMHealth.Snapshot.allFailed と同じ判定: 1回以上呼ばれ、かつ全て失敗(窓内で判定)
+/** 台帳(FMLiveness)が「死」と言っている経路。**呼び出しが0件でも出る**のが窓の判定との違い —
+ *  誰も FM を使っていない間、窓の判定は永久に沈黙する(それがこの行の穴だった)。 */
+function fmDeadPaths(row) {
+  const paths = [];
+  if (row.liveness.text === 'dead') paths.push('text');
+  if (row.liveness.vision === 'dead') paths.push('vision');
+  return paths;
+}
+
+// 死の根拠は2つ: ①台帳(実呼び出し or 死活プローブの観測。呼び出し0件でも効く)
+// ②窓内の全滅(FMHealth.Snapshot.allFailed と同じ判定: 1回以上呼ばれ、かつ全て失敗)。
+// **どちらか一方でも死なら死**。②だけに戻さないこと —— run を回していない間は②が沈黙する
 function fmIsDead(row) {
+  if (fmDeadPaths(row).length > 0) {
+    return true;
+  }
   const stats = hmFmWindowStats(row);
   return !!stats && stats.failures > 0 && stats.failures >= stats.calls;
 }
@@ -257,7 +278,10 @@ function hmRenderFmLabel(row) {
   // 「全部失敗」がすぐ立ってしまい落ち着かないため。
   const latest = row.fm.window.length > 0 ? row.fm.window[row.fm.window.length - 1] : null;
   const callsText = latest && latest.calls !== null ? String(latest.calls) : '–';
-  entry.value.textContent = (dead ? '✕' : partial ? '⚠' : '') + callsText;
+  // **死んでいる間は回数を出さない**(ユーザー決定 2026-09-03)。死んだ FM の「0回」は
+  // 事実ではあるが読み手を誤らせる —— 0 は「使われていない」とも読めるうえ、死んでいる間の
+  // 回数には意味が無い。欠測と同じ '–' に倒し、死であることはグレーの線とツールチップが言う
+  entry.value.textContent = dead ? '–' : (partial ? '⚠' : '') + callsText;
   let title = hmTitlePrefix(row) + t('wvMonitor2.hostCharts.fmTitle', {
     seconds: String(HM_FM_RATE_WINDOW_TICKS),
     rate: stats ? stats.rate.toFixed(1) : '–',
@@ -265,7 +289,24 @@ function hmRenderFmLabel(row) {
     failures: stats ? String(stats.failures) : '–',
     totalSec: stats ? (stats.totalMs / 1000).toFixed(1) : '–',
   });
-  if (dead) {
+  const deadPaths = fmDeadPaths(row);
+  if (deadPaths.length > 0) {
+    // 台帳由来の死は、**どの経路が・なぜ・いつから**まで言う。text と vision は独立に死ぬので、
+    // どちらが死んだかで次の一手が変わる(vision だけなら occlusion-guard と screenLooksLike が
+    // 無効、text だけなら自己修復と triage が無効)
+    title += '\n' + t('wvMonitor2.hostCharts.fmLivenessDeadLine', {
+      paths: deadPaths.join(' + '),
+      disabled: t(deadPaths.length > 1
+        ? 'wvMonitor2.hostCharts.fmDisabledBoth'
+        : deadPaths[0] === 'vision'
+          ? 'wvMonitor2.hostCharts.fmDisabledVision'
+          : 'wvMonitor2.hostCharts.fmDisabledText'),
+      age: hmFormatAge(row.liveness.checkedAt),
+    });
+    if (row.liveness.reason) {
+      title += '\n' + row.liveness.reason;
+    }
+  } else if (dead) {
     title += '\n' + t('wvMonitor2.hostCharts.fmDeadLine', {
       seconds: String(HM_FM_RATE_WINDOW_TICKS), failures: String(stats.failures) });
   } else if (partial) {
@@ -310,8 +351,11 @@ function hmDraw(row, entry, scale) {
     return;
   }
   const palette = HM_COLORS[hmIsLightTheme() ? 'light' : 'dark'];
-  // FM 全滅中はスパークラインも失敗の系列だと分かるよう赤(cpu と同色)で描く
-  const color = entry === row.entries.fm && fmIsDead(row) ? palette.cpu : palette[entry.colorKey];
+  // FM が死んでいる間はスパークラインをグレーにする(ユーザー決定 2026-09-03)。
+  // **文字(FM ラベル・値)の色は変えない** —— 行のどこかが赤くなると、隣の CPU/GPU/MEM と
+  // 同じ「高い値が出ている」の合図に見える。死は値ではなく系列そのものが無効という話なので、
+  // 色を抜くことで表す
+  const color = entry === row.entries.fm && fmIsDead(row) ? palette.dead : palette[entry.colorKey];
   const stepX = width / (HM_MAX_SAMPLES - 1);
   // samplesは「直近N件」なので、60件溜まるまでは右詰めで配置する(新サンプルは常に右端)。
   const startIndex = HM_MAX_SAMPLES - samples.length;
@@ -364,6 +408,19 @@ function hmDraw(row, entry, scale) {
 
 function hmFormatPercent(ratio) {
   return ratio === null || ratio === undefined ? '–' : Math.round(ratio * 100) + '%';
+}
+
+/** 死活を観測した時刻(epoch 秒)→ 「N 秒前 / N 分前」。**いつの観測かを必ず出す** ——
+ *  台帳は最大 FMLiveness.freshSeconds(120秒)ぶん古くなりうるので、「今まさに死んでいる」と
+ *  「2分前にそう見えた」を読み手が区別できるようにする。null は不明。 */
+function hmFormatAge(checkedAt) {
+  if (typeof checkedAt !== 'number') {
+    return '–';
+  }
+  const seconds = Math.max(0, Math.round(Date.now() / 1000 - checkedAt));
+  return seconds < 90
+    ? t('wvMonitor2.hostCharts.fmAgeSeconds', { seconds: String(seconds) })
+    : t('wvMonitor2.hostCharts.fmAgeMinutes', { minutes: String(Math.round(seconds / 60)) });
 }
 
 function hmFormatGb(bytes) {
@@ -436,6 +493,14 @@ function hmRenderRow(row, sample) {
   const fmCalls = sample && typeof sample.fmCalls === 'number' ? sample.fmCalls : null;
   const fmFailures = sample && typeof sample.fmFailures === 'number' ? sample.fmFailures : null;
   const fmTotalMs = sample && typeof sample.fmTotalMs === 'number' ? sample.fmTotalMs : null;
+  // 欠測 tick(sample が null)は死活も**不明へ戻す**。古い「生きている」を出し続けると、
+  // 観測が途絶えたことと FM が健康であることが同じ絵になる(不明と生を混ぜない)
+  row.liveness = {
+    text: sample && typeof sample.fmTextState === 'string' ? sample.fmTextState : null,
+    vision: sample && typeof sample.fmVisionState === 'string' ? sample.fmVisionState : null,
+    reason: sample && typeof sample.fmDeadReason === 'string' ? sample.fmDeadReason : null,
+    checkedAt: sample && typeof sample.fmCheckedAt === 'number' ? sample.fmCheckedAt : null,
+  };
 
   hmPushSample(row.entries.cpu, cpu);
   hmPushSample(row.entries.gpu, gpu);

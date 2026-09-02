@@ -386,7 +386,7 @@ extension MCPServer {
                                                        driver: try await driver(args))
             return text(withPendingWarnings(
                 "ready: \(status.ready) / \(status.device) (\(status.osVersion))\(endpoint)"
-                + " / session: \(session)\(foreground)", args: args))
+                + " / session: \(session)\(foreground)\(await Self.fmLivenessNote())", args: args))
 
         case "ft_list_devices":
             let listProject = args["project"] as? String
@@ -1361,10 +1361,11 @@ extension MCPServer {
 
         case "ft_doctor":
             let fm = await FMDoctor.checkLive()
-            let vision = FMDoctor.visionReport
+            // **視覚系も実呼び出しで確かめる**(能力判定では足りない。text と vision は独立に死ぬ)
+            let vision = await FMDoctor.visionCheckLive()
             return text((fm.available ? "✅ " : "❌ ") + fm.detail
                 + (fm.available ? "" : "\n   " + FMDoctor.unavailableImpact)
-                + "\n" + (vision.available ? "✅ " : "⚠️ ") + vision.detail)
+                + "\n" + (vision.available ? "✅ " : FMVisionSupport.isSupported ? "❌ " : "⚠️ ") + vision.detail)
 
         default:
             throw MCPError("unknown tool: \(tool)")

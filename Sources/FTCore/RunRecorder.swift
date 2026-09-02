@@ -149,6 +149,11 @@ public final class RunRecorder: @unchecked Sendable {
                        workerAnomalies: [WorkerAnomalyRecord] = [],
                        performanceMode: Bool = false) {
         hostMetrics?.stop()
+        // FM の死活は**引数で受け取らない** —— 機械グローバルな事実(FMLiveness)なので、
+        // 呼び出し元が run のたびに集めて渡す形にすると経路ごとに渡し忘れが出る
+        // (`fleetest run` / `api run` は別実装。RunCommandFlagParityTests の教訓)
+        let fmReading = FMLiveness.current()
+        let fmDeadPaths = fmReading.deadPaths
         let meta = RunMetaRecord(
             runID: runID, project: projectName, profile: profile, host: machine,
             trigger: trigger, startedAt: startedAt,
@@ -166,7 +171,11 @@ public final class RunRecorder: @unchecked Sendable {
             workerAnomalies: workerAnomalies.isEmpty ? nil : workerAnomalies,
             issuer: issuer, runGroup: runGroup,
             // false/nil は書かない(measurementInvalid と同じ流儀)
-            performanceMode: performanceMode ? true : nil)
+            performanceMode: performanceMode ? true : nil,
+            // 生・不明は書かない(既存レコードと同じ形)。**不明を「生」と書かない**のが肝で、
+            // 欄が無い = 何も観測できなかった、と読む
+            fmDead: fmDeadPaths.isEmpty ? nil : fmDeadPaths,
+            fmDeadReason: fmReading.deadSummary())
         RunResultsStore.writeMeta(meta, runDir: runDir)
     }
 

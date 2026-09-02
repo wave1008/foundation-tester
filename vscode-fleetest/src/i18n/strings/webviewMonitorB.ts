@@ -160,6 +160,26 @@ export const webviewMonitorBStrings = {
     ja: "✕ FM 全滅: 直近{seconds}秒で{failures}回すべて失敗(偽陽性検証・自己修復・screenLooksLike はこの実行では無効)",
     en: "✕ FM dead: all {failures} calls failed in the last {seconds}s (occlusion verify / heal / screenLooksLike are disabled in this run)",
   },
+  // 台帳(FMLiveness)由来の死。窓の全滅(fmDeadLine)と違い**呼び出し0件でも出る** ——
+  // 誰も FM を使っていない間に死んでいることを知らせるのがこの行の役目
+  "wvMonitor2.hostCharts.fmLivenessDeadLine": {
+    ja: "✕ FM が死んでいます({paths} 経路。{age}の観測)—— {disabled}",
+    en: "✕ FM is dead ({paths} path; observed {age}) — {disabled}",
+  },
+  "wvMonitor2.hostCharts.fmDisabledText": {
+    ja: "自己修復と失敗トリアージが黙って無効になります",
+    en: "self-healing and failure triage are silently disabled",
+  },
+  "wvMonitor2.hostCharts.fmDisabledVision": {
+    ja: "偽陽性検証(exist の既定 requireVisible)と screenLooksLike が黙って無効になります",
+    en: "the occlusion-guard (the default requireVisible of exist) and screenLooksLike are silently disabled",
+  },
+  "wvMonitor2.hostCharts.fmDisabledBoth": {
+    ja: "偽陽性検証・自己修復・screenLooksLike・トリアージが黙って無効になります",
+    en: "the occlusion-guard, self-healing, screenLooksLike and triage are silently disabled",
+  },
+  "wvMonitor2.hostCharts.fmAgeSeconds": { ja: "{seconds}秒前", en: "{seconds}s ago" },
+  "wvMonitor2.hostCharts.fmAgeMinutes": { ja: "{minutes}分前", en: "{minutes} min ago" },
   "wvMonitor2.hostCharts.fmWarnLine": {
     ja: "⚠ FM 失敗 {failures}回 / 成功 {successes}回(直近{seconds}秒。失敗したステップのガードは素通り)",
     en: "⚠ FM failures {failures} / successes {successes} (last {seconds}s; guards on failed steps passed through)",

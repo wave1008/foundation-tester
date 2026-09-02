@@ -715,7 +715,9 @@ struct ApiRunCommand: AsyncParsableCommand {
         var fm = resolved.fm
         if heal { fm.heal = fm.enabled }
         // dry-run は FM を使わないため警告(と実呼び出し ~1s)を抑止する
-        await ProfileRunner.warnIfHealDegraded(heal: fm.heal && !dryRun) { logStderr($0) }
+        var fmForWarning = fm
+        if dryRun { fmForWarning.enabled = false }
+        await ProfileRunner.warnIfFMDegraded(fm: fmForWarning) { logStderr($0) }
         let reportDirPath = (reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir).path
 
         var blankTriage: (repaired: [String], excluded: [String]) = ([], [])
@@ -856,7 +858,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // --heal は master(fm.enabled)が有効な場合のみ heal を ON にする(false は resolved の値を維持)
         var fm = resolved.fm
         if heal { fm.heal = fm.enabled }
-        await ProfileRunner.warnIfHealDegraded(heal: fm.heal) { logStderr($0) }
+        await ProfileRunner.warnIfFMDegraded(fm: fm) { logStderr($0) }
         let reportDirURL = reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
 
         // workersReady はレーン構成の全置換(同一 id のログは維持。複数回出してよい ——

@@ -860,6 +860,21 @@ FM の実呼び出しが全滅していると、**occlusion-guard(`exist` の既
 「**呼び出しが1件以上あり、その全部が失敗**」のときだけ —— FM を使っていないだけの run で出すと、
 警告の意味が薄れて誰も読まなくなる。
 
+**この行だけでは足りない**(2026-09-03)。数えているのは「実際に FM を引いて全滅したシナリオ」なので、
+**ブレーカが落ちて1回も呼ばずに素通りした run では 0 のまま**沈黙する。そこで、機械の死活台帳
+(`FTCore.FMLiveness`)から**もう1行**出す ——「この機械で FM が死んでいる(どの経路が・なぜ)」。
+根拠が別なので両方出す:
+
+```
+⚠️ FM is dead on this machine (text + vision): a green here is not a guarded green — the
+   occlusion-guard, self-healing and screenLooksLike passed through silently.
+   text: … / vision: …
+```
+
+同じ事実は **run 開始前**(`ProfileRunner.warnIfFMDegraded`。**heal の有無で出し分けない**)・
+**run.json の `fmDead`**・**モニターの FM 行**(呼び出し0件でも ✕)・**`ft_status`** にも出る。
+台帳の作り方と規律は CLAUDE.md の該当節。
+
 **この行が出ている run では**: ①緑を「守りが効いた」と読まない ②赤は必ず HEAD 対照を取る
 (同じ負荷条件で。docs/verification.md の flake の節)。
 

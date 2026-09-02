@@ -9,10 +9,20 @@
 // fmCalls/fmFailures/fmTotalMs はこのプロセス自身の実測ではない —— FM を実際に呼ぶのは
 // 各シナリオランナー(FTFoundationModels)で、このコマンドは FMUsageLedger の控えを毎 tick
 // 読むだけ(Sources/FTCore/FMUsageLedger.swift 参照)。
+//
+// **死活(fmTextState/fmVisionState/fmDeadReason)は別の軸**。回数は「使われたか」しか言えず、
+// 誰も呼んでいない間は**死んでいても 0 件と同じ絵**になる。台帳(FTCore.FMLiveness)は毎 tick
+// 読むだけだが、**`--fm-probe` を付けたときだけ**、台帳が古くなったら自分で1回呼んで取り直す。
+// これは「host-metrics は FM を自分では叩かない(測る対象を自分で消費する)」の**唯一の例外**で、
+// 次の2点で成立している: ①プローブは FMUsageLedger に書かないので**回数の実測を汚さない**
+// ②撃つのは誰も FM を使っていないときだけ(FMLivenessProbe.refresh の門①③)= 消費する対象が
+// そもそも無い。既定 OFF なのは、CLI から手で常駐させた host-metrics に FM を消費させないため
+// (拡張のモニターだけが渡す)。
 
 import ArgumentParser
 import Foundation
 import FTCore
+import FTFoundationModels
 import IOKit
 
 struct ApiHostMetricsCommand: AsyncParsableCommand {
@@ -27,6 +37,12 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
 
     @Option(name: .customLong("log"), help: "Path of an NDJSON file to append samples to (when omitted nothing is saved; stdout only)")
     var logPath: String?
+
+    @Flag(name: .customLong("fm-probe"),
+          help: ArgumentHelp("Keep the FM liveness verdict (fmTextState/fmVisionState) fresh by making"
+              + " one real FM call when the machine-wide ledger goes stale and nothing else is using"
+              + " FM. Off by default: without it those fields only reflect what real work observed."))
+    var fmProbe = false
 
     func run() async throws {
         // ストリーミング読み取りが前提のため常に行バッファにする(ApiMonitorCommand.swift と同じ理由)
@@ -50,6 +66,10 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
         _ = cpuSampler.sample()
         // nil = 基準未取得。最初の drain は控えるだけで増分を出さない(FMUsageLedger.drain 参照)
         var fmPrevious: [Int32: FMUsageLedger.Counters]?
+        // プローブは1〜2秒かかる(FM の実呼び出し)ので、サンプリングの刻み(1秒)を止めない
+        // ように切り離して走らせる。**重ねない** —— 前回がまだ返っていないなら撃たない
+        // (FM の枠を掴んだまま次を並べると、死んでいる機械で待ち行列だけが伸びる)
+        let probing = ProbeInFlight()
 
         while !stop.isSet {
             await Self.sleepInterruptible(seconds: interval, stop: stop)
@@ -59,12 +79,19 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
             let gpu = gpuSampler.sample()
             let mem = memorySampler.sample()
             let fm = FMUsageLedger.drain(previous: &fmPrevious)
+            if fmProbe, probing.begin() {
+                Task.detached {
+                    await FMLivenessProbe.refresh()
+                    probing.end()
+                }
+            }
 
             let sample = HostMetricsSample(
                 ts: Date().timeIntervalSince1970,
                 cpu: cpu, gpu: gpu,
                 memUsedBytes: mem?.used, memTotalBytes: mem?.total,
-                fmCalls: fm?.calls, fmFailures: fm?.failures, fmTotalMs: fm?.totalMs)
+                fmCalls: fm?.calls, fmFailures: fm?.failures, fmTotalMs: fm?.totalMs,
+                fmLiveness: FMLiveness.current())
             if let line = sample.encodedLine() {
                 print(line)
                 logger?.append(line)
@@ -113,6 +140,26 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
             }
             source.resume()
             return source
+        }
+    }
+
+    /// プローブの二重起動を止める門。**在庫は1つ**(begin が true を返した回だけ撃つ)
+    private final class ProbeInFlight: @unchecked Sendable {
+        private let lock = NSLock()
+        private var running = false
+
+        func begin() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !running else { return false }
+            running = true
+            return true
+        }
+
+        func end() {
+            lock.lock()
+            running = false
+            lock.unlock()
         }
     }
 

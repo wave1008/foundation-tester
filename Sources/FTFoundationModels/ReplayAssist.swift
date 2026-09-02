@@ -96,7 +96,7 @@ public final class FMReplayDelegate: ReplayDelegate {
                 options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 250)
             ).content
 
-            FMHealth.record(kind: "heal", ms: OcclusionVerifier.elapsedMs(healStartedAt), ok: true)
+            FMHealth.record(kind: "heal", path: .text, ms: OcclusionVerifier.elapsedMs(healStartedAt), ok: true)
             // FM が答えを返した後の写像は `healAttempt` に切り出してある(デバイス/FM 呼び出しが
             // 要らない純粋関数。単体テストは Tests/FTFoundationModelsTests/HealAttemptMappingTests.swift)。
             // ここで直接 nil を返してはいけない —— 2026-09-02 に実際に「黙る経路」へ戻す変異が
@@ -104,7 +104,7 @@ public final class FMReplayDelegate: ReplayDelegate {
             return Self.healAttempt(elementText: suggestion.elementText, confidence: suggestion.confidence,
                                     rationale: suggestion.rationale, in: snapshot)
         } catch {
-            FMHealth.record(kind: "heal", ms: OcclusionVerifier.elapsedMs(healStartedAt), ok: false,
+            FMHealth.record(kind: "heal", path: .text, ms: OcclusionVerifier.elapsedMs(healStartedAt), ok: false,
                             error: "heal: \(FMHealth.describe(error))")
             return nil
         }
@@ -203,10 +203,10 @@ public final class FMReplayDelegate: ReplayDelegate {
                 "Expected screen state: \(expected)\nDecide whether the screenshot below matches this state."
                 Attachment(cgImage)
             }.content
-            FMHealth.record(kind: "screenLooksLike", ms: OcclusionVerifier.elapsedMs(screenStartedAt), ok: true)
+            FMHealth.record(kind: "screenLooksLike", path: .vision, ms: OcclusionVerifier.elapsedMs(screenStartedAt), ok: true)
             return (verdict.pass, String(verdict.reason.prefix(200)))
         } catch {
-            FMHealth.record(kind: "screenLooksLike", ms: OcclusionVerifier.elapsedMs(screenStartedAt),
+            FMHealth.record(kind: "screenLooksLike", path: .vision, ms: OcclusionVerifier.elapsedMs(screenStartedAt),
                             ok: false, error: "screenLooksLike: \(FMHealth.describe(error))")
             return nil
         }
@@ -275,11 +275,11 @@ public final class FMReplayDelegate: ReplayDelegate {
                     "Screenshot at the moment of failure:"
                     Attachment(cgImage)
                 }.content
-                FMHealth.record(kind: "triage", ms: OcclusionVerifier.elapsedMs(imageStartedAt), ok: true)
+                FMHealth.record(kind: "triage", path: .vision, ms: OcclusionVerifier.elapsedMs(imageStartedAt), ok: true)
                 return Self.info(from: suggestion)
             } catch {
                 // ここでは return しない(下のテキストのみ経路で再試行する)
-                FMHealth.record(kind: "triage", ms: OcclusionVerifier.elapsedMs(imageStartedAt),
+                FMHealth.record(kind: "triage", path: .vision, ms: OcclusionVerifier.elapsedMs(imageStartedAt),
                                 ok: false, error: "triage(image): \(FMHealth.describe(error))")
             }
         }
@@ -292,10 +292,10 @@ public final class FMReplayDelegate: ReplayDelegate {
                 generating: TriageSuggestion.self,
                 options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 300)
             ).content
-            FMHealth.record(kind: "triage", ms: OcclusionVerifier.elapsedMs(textStartedAt), ok: true)
+            FMHealth.record(kind: "triage", path: .text, ms: OcclusionVerifier.elapsedMs(textStartedAt), ok: true)
             return Self.info(from: suggestion)
         } catch {
-            FMHealth.record(kind: "triage", ms: OcclusionVerifier.elapsedMs(textStartedAt),
+            FMHealth.record(kind: "triage", path: .text, ms: OcclusionVerifier.elapsedMs(textStartedAt),
                             ok: false, error: "triage: \(FMHealth.describe(error))")
             return nil
         }

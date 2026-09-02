@@ -233,8 +233,10 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETE
 
 ### 2.5 Apple Intelligence 自動判定（人間に聞かない・**不可でも続行**）
 
-**TOOL_ROOT で** `swift run fleetest doctor --fm-only` を実行する。これは `SystemLanguageModel.default.availability`
-（オンデバイス FM／Apple Intelligence の可否）だけを見て **exit code で返す**（可=0／不可=1）。
+**TOOL_ROOT で** `swift run fleetest doctor --fm-only` を実行する。これは**実際に1回ずつ推論して**
+（テキストと画像入力の2経路）**exit code で返す**（両方使える=0／どちらかでも使えない=1）。
+`SystemLanguageModel.default.availability` は `.available` のまま全呼び出しが失敗することがあるので
+見ていない。
 **FM は必須ではない** — 使うのは heal（自己修復）・FM 視覚検証（`screenLooksLike` 等）・シナリオ生成/探索
 （`/fleetest-scenario` の頭脳）だけで、決定的なシナリオ実行・VSCode 拡張・MCP のデバイス操作・dry-run は
 FM 無しで動く。**人間に「有効か」を聞かない**：

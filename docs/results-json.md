@@ -8,7 +8,7 @@ results/runs/<YYYY-MM>/<runID>/
   run.json                   ... この run 全体(RunMetaRecord)
   scenarios/<シナリオID>.json  ... シナリオ 1 回分(ScenarioRunRecord)
   scenarios/<シナリオID>~2.json ... 同一 run 内の再実行(連番)
-  host-metrics.ndjson        ... 実行中のホスト負荷(cpu/gpu/mem)
+  host-metrics.ndjson        ... 実行中のホスト負荷(cpu/gpu/mem)と FM(回数・死活)
 ```
 
 `runID` = `<yyyyMMdd-HHmmss(UTC)>Z-<乱数8hex>`(固定幅なので**辞書順 = 時系列順**)。
@@ -127,7 +127,25 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | measurementInvalidReasons | [String]? | 同上の理由(英語) |
 | performanceMode | Bool? | `--performance` の run だけ true(false は書かない)。有効な計測 run = これが true かつ measurementInvalid が無い run。2026-09-01 より前の記録には無い |
 | issuer | String? | ディスパッチ発行者の自己申告(認証ではない) |
+| fmDead | [String]? | **run を閉じた時点**でこの機械の FM が死んでいた経路(`"text"` / `"vision"`。`FTCore.FMLiveness`)。生きていた・不明なら欄ごと省略 —— **欄が無いことを「生きていた」と読まない**。**run 全体の状態ではない**(途中で死んで戻った run はここに出ない。そちらは `scenarios/*.json` の `fm.failures` / `fm.firstError`)。**緑の run を仕分けるための欄** —— FM が死んだ run の緑は occlusion-guard・自己修復・screenLooksLike が素通りしただけかもしれない。2026-09-03 より前の記録には無い |
+| fmDeadReason | String? | `fmDead` の理由(`text: … / vision: …`)。`fmDead` が無ければ省略 |
 | runGroup | String? | **同じ実行から分かれた run を束ねる鍵**。デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run(別 runID・別 machine・リモートは向こうの時計)になるので、`profile` と開始時刻では同じ実行かどうか決められない。ファンアウトの親が1回だけ発行し、手元の子にもリモートの子にも同じ値が入る。**単機の run と 2026-08-26 より前の記録では欠落**(束ねる相手が居ない) |
+
+### host-metrics.ndjson の FM 欄
+
+1行 = 1サンプル(既定 1Hz)。**回数と死活は別の軸**で、混ぜて読まないこと。
+
+| フィールド | 型 | 意味 |
+|---|---|---|
+| fmCalls / fmFailures / fmTotalMs | Int? | そのサンプリング間隔で完了した FM 呼び出し(この機械の全プロセス合計。供給元は `FMUsageLedger`)。**null = 控えを読めなかった(不明)/ 0 = 呼び出しが無かった**。混ぜない |
+| fmTextState / fmVisionState | String? | `"alive"` / `"dead"` / **null = 不明**(観測が無い・`FMLiveness.freshSeconds` より古い)。**呼び出しが0件でも埋まる**のが回数欄との決定的な違い —— 誰も FM を使っていない間、回数だけでは「使われていない」と「死んでいる」が同じ絵になる |
+| fmDeadReason | String? | 死んでいる経路と理由(`text: … / vision: …`)。**1Hz で流れる行なので 200 文字で切る**(全文は `fleetest doctor --fm-only` と `scenarios/*.json` の `fm.firstError`) |
+| fmCheckedAt | Double? | 上の死活を観測した epoch 秒(新しいほうの経路)。**いつの観測かを必ず見る** —— 最大 120 秒古くなりうる |
+
+死活の供給元は2つ: **①実仕事の FM 呼び出しの成否**(連続 `FMBreaker.threshold` 回の失敗で死。
+経路ごとに数える)と **②死活プローブ**(`api host-metrics --fm-probe`。拡張のモニターだけが渡す。
+**台帳が古く、かつ誰も FM を使っていないときだけ**1回撃つ)。プローブは `FMUsageLedger` に
+書かないので、回数欄は「実仕事」だけを表し続ける。
 
 ### WorkerAnomalyRecord
 

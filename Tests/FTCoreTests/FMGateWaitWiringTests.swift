@@ -43,7 +43,7 @@ final class FMGateWaitWiringTests: XCTestCase {
             FMGate.leave()
 
             // usage() は FM 呼び出しが1件も無ければ nil を返す契約なので、読むために1件入れる
-            FMHealth.record(kind: "test", ms: 1, ok: true)
+            FMHealth.record(kind: "test", path: .text, ms: 1, ok: true)
             let usage = try XCTUnwrap(FMHealth.usage())
             XCTAssertGreaterThan(usage.gateWaitMaxMs, 200,
                                  "保持中に待った 300ms 前後が記録されるはず(0 なら配線が死んでいる)")
@@ -61,7 +61,7 @@ final class FMGateWaitWiringTests: XCTestCase {
             XCTAssertTrue(acquired)
             FMGate.leave()
 
-            FMHealth.record(kind: "test", ms: 1, ok: true)
+            FMHealth.record(kind: "test", path: .text, ms: 1, ok: true)
             let usage = try XCTUnwrap(FMHealth.usage())
             XCTAssertLessThan(usage.gateWaitMaxMs, 100, "競合が無ければ待たない")
         }

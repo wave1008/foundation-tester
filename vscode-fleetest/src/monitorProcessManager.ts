@@ -70,6 +70,13 @@ type HostMetricsRawEvent = {
   readonly fmCalls?: number | null;
   readonly fmFailures?: number | null;
   readonly fmTotalMs?: number | null;
+  /** FM の**死活**(プロトコル版11で追加)。回数とは別の軸 —— 回数は「使われたか」しか言えず、
+   *  誰も呼んでいない間は死んでいても 0 件と同じ絵になる。"alive" / "dead" / null=不明の3値で、
+   *  text と vision は独立に死ぬ(Sources/FTCore/FMLiveness.swift)。混ぜないこと。 */
+  readonly fmTextState?: string | null;
+  readonly fmVisionState?: string | null;
+  readonly fmDeadReason?: string | null;
+  readonly fmCheckedAt?: number | null;
 };
 
 /** value が HostMetricsRawEvent として扱ってよいか判定する(isMonitorEvent と同じ方針)。
@@ -81,6 +88,8 @@ function isHostMetricsEvent(value: unknown): value is HostMetricsRawEvent {
   const record = value as Record<string, unknown>;
   const numberOrNull = (field: unknown): boolean => field === null || typeof field === "number";
   const numberOrNullOrAbsent = (field: unknown): boolean => field === undefined || numberOrNull(field);
+  const stringOrNullOrAbsent = (field: unknown): boolean =>
+    field === undefined || field === null || typeof field === "string";
   return (
     record.kind === "hostMetrics" &&
     typeof record.ts === "number" &&
@@ -90,7 +99,11 @@ function isHostMetricsEvent(value: unknown): value is HostMetricsRawEvent {
     numberOrNull(record.memTotalBytes) &&
     numberOrNullOrAbsent(record.fmCalls) &&
     numberOrNullOrAbsent(record.fmFailures) &&
-    numberOrNullOrAbsent(record.fmTotalMs)
+    numberOrNullOrAbsent(record.fmTotalMs) &&
+    stringOrNullOrAbsent(record.fmTextState) &&
+    stringOrNullOrAbsent(record.fmVisionState) &&
+    stringOrNullOrAbsent(record.fmDeadReason) &&
+    numberOrNullOrAbsent(record.fmCheckedAt)
   );
 }
 
@@ -111,6 +124,13 @@ export type HostMetricsToWebviewMessage =
       readonly fmCalls: number | null;
       readonly fmFailures: number | null;
       readonly fmTotalMs: number | null;
+      /** FM の死活(経路ごと)。"alive" / "dead" / null=不明。**呼び出し回数が 0 でも出る**のが
+       *  肝で、これが無いと「誰も使っていない」と「死んでいる」が同じ絵になる。 */
+      readonly fmTextState: string | null;
+      readonly fmVisionState: string | null;
+      /** 死んでいる経路の理由(`text: …` / `vision: …`。CLI 側で 200 文字に切ってある)。 */
+      readonly fmDeadReason: string | null;
+      readonly fmCheckedAt: number | null;
     }
   /** 行の集合(手元 + このリモート機。値より先に配る)。消えた機械の行は webview 側で捨てる。 */
   | { readonly type: "hostMetricsMachines"; readonly machines: readonly string[] }
@@ -705,7 +725,12 @@ export class MonitorProcessManager {
         config.binaryPath,
         deviceCommandArgs(
           machine ? { kind: "remote", machine } : { kind: "local" },
-          ["api", "host-metrics", "--interval", "1"],
+          // --fm-probe: FM の死活を「誰も FM を使っていないとき」だけ実呼び出しで取り直す。
+          // これが無いと fmTextState/fmVisionState は実仕事が観測した分しか動かず、
+          // **run を回していない間は死んでいても無印**になる(FM 行が消したい絵そのもの)。
+          // CLI から手で常駐させた host-metrics には FM を消費させたくないので既定 OFF ——
+          // 渡すのはモニターだけ(Sources/fleetest/ApiHostMetricsCommand.swift 冒頭)。
+          ["api", "host-metrics", "--interval", "1", "--fm-probe"],
         ),
         {
           cwd: this.deps.workspaceRoot,
@@ -754,6 +779,10 @@ export class MonitorProcessManager {
           fmCalls: value.fmCalls ?? null,
           fmFailures: value.fmFailures ?? null,
           fmTotalMs: value.fmTotalMs ?? null,
+          fmTextState: value.fmTextState ?? null,
+          fmVisionState: value.fmVisionState ?? null,
+          fmDeadReason: value.fmDeadReason ?? null,
+          fmCheckedAt: value.fmCheckedAt ?? null,
         });
       },
       (line) => this.deps.outputChannel.appendLine(`[${label} stdout] ${line}`),
