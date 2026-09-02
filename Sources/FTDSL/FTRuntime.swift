@@ -188,6 +188,9 @@ public final class FTDriveCore {
     let scenarioTitle: String
     let emit: (ScenarioEvent) -> Void
     let healCache: HealCache
+    /// ロケータ指紋(HealCache.swift 冒頭コメント参照。失敗経路でだけ参照する決定的なドリフト解決)。
+    /// **flush() を1度呼ぶまでディスクへは書かない**(LocatorFingerprintCache.swift 参照)
+    let fingerprintCache: LocatorFingerprintCache
     /// 検証コマンド(exist/textIs 等)の既定タイムアウト秒(実行プロファイルで変更可)。
     /// 既定値の定義元は FTCore.DefaultWait(MCP の defaultWaitSeconds と共有)
     public let defaultTimeout: Double
@@ -369,6 +372,7 @@ public final class FTDriveCore {
                 containerInference: Bool = true,
                 dryRun: Bool = false,
                 healCacheURL: URL? = nil,
+                fingerprintCacheURL: URL? = nil,
                 selectorInventoryURL: URL? = nil,
                 defaultTimeout: Double? = nil,
                 fallbackDriver: AppDriver? = nil,
@@ -403,6 +407,8 @@ public final class FTDriveCore {
         self.dryRun = dryRun
         self.healCache = HealCache(
             url: healCacheURL ?? URL(fileURLWithPath: ".fleetest/heal-cache.json"))
+        self.fingerprintCache = LocatorFingerprintCache(
+            url: fingerprintCacheURL ?? URL(fileURLWithPath: ".fleetest/locator-fingerprints.json"))
         // 台帳の照合は dry-run 専用(実行なら解決の成否が答えを出すので、二重に言う意味が無い)
         self.knownIDs = dryRun
             ? selectorInventoryURL.flatMap { SelectorInventory.load(at: $0) }?.ids(platform: platform)
@@ -658,19 +664,23 @@ public final class FTDriveCore {
             return PerformResult(status: .passed, element: heldElement)
         }
 
-        // 解決順: プライマリ → フォールバック → キャッシュ → FM ヒール(StepExecutor 内)
+        // 解決順: プライマリ → フォールバック → キャッシュ → 指紋照合 → FM ヒール(StepExecutor 内)
         var cacheKey: String?
         var cachedEntry: HealCache.Entry?
+        var cachedFingerprint: LocatorFingerprint?
         if let selectorText {
             let key = HealCache.key(scenarioID: scenarioID, file: filePath,
                                     line: Int(line), selector: selectorText)
             cacheKey = key
             cachedEntry = healCache.lookup(key)
+            cachedFingerprint = fingerprintCache.lookup(key)
         }
 
         let executor = self.executor
         let cachedLocators = cachedEntry?.locators ?? []
-        let outcome = FTSync.run { await executor.execute(step, cached: cachedLocators) }
+        let outcome = FTSync.run {
+            await executor.execute(step, cached: cachedLocators, fingerprint: cachedFingerprint)
+        }
         let status = outcome?.status
             ?? .failed("the command timed out (\(Int(FTSync.commandTimeout))s)")
         // outcome が nil = FTSync が打ち切った(StepExecutor は素性を返せていない)
@@ -702,6 +712,17 @@ public final class FTDriveCore {
                 let rationale: String
                 if outcome.healedByCache {
                     rationale = cachedEntry?.rationale ?? "previous self-heal result (cache)"
+                } else if outcome.healedByFingerprint {
+                    // **ヒールキャッシュへは書かない**: 指紋照合は決定的で毎回同じコストで
+                    // 再導出できるので、キャッシュしても「木を1回フィルタする」分の速度しか
+                    // 得られない。一方、一致が実は別要素だった誤りをキャッシュへ書くと
+                    // 次回以降 healedByCache 側の枝に落ちて heal-fingerprint-match の注記が
+                    // 消え、指紋由来だったことが分からなくなる。FM ヒールは confidence=="high"
+                    // の門を通ってからキャッシュに入るが、指紋照合にはその門が無い ——
+                    // 門の無いものを固定化しない(docs/design.md §10)。
+                    // rationale も healed.note の文字列分割に頼らず直接組む(こちらも
+                    // 「FM self-heal」への誤った帰属を作らないため)
+                    rationale = "matched by locator fingerprint (type+label), no FM call"
                 } else {
                     rationale = healed.note?.components(separatedBy: "self-healed: ").last
                         ?? "FM self-heal"
@@ -710,7 +731,14 @@ public final class FTDriveCore {
                                         newSelector: newSelector, rationale: rationale)
                     }
                 }
-                let via = outcome.healedByCache ? "passed via the heal cache" : "passed via FM self-healing"
+                let via: String
+                if outcome.healedByCache {
+                    via = "passed via the heal cache"
+                } else if outcome.healedByFingerprint {
+                    via = "passed via locator fingerprint matching"
+                } else {
+                    via = "passed via FM self-healing"
+                }
                 let resolvedNewSelector = cachedEntry?.newSelector ?? newSelector
                 addSuggestion(FixSuggestion(
                     isStrong: true,
@@ -727,6 +755,19 @@ public final class FTDriveCore {
                     message: "\(filePath):\(line) — \"\(selectorText)\" did not resolve as the primary and "
                         + "passed via the fallback \(locator.summary) (consider updating the selector)"),
                     emitEvent: false, file: filePath, line: Int(line))
+            }
+        }
+
+        // 指紋の記録: **プライマリ/フォールバックで素直に解決できたときだけ**記録する。
+        // 指紋やヒール(キャッシュ・FM)で解決した回を記録すると、誤った解決が指紋として
+        // 固定化され、以後ずっと同じ誤りを再生産する。書き出しはメモリに溜めるだけで、
+        // ディスクへは flushLocatorFingerprints()(シナリオ終了時に1回)まで行わない
+        if let cacheKey, let resolvedElement = outcome?.resolvedElement {
+            switch status {
+            case .passed, .passedViaFallback:
+                fingerprintCache.record(cacheKey, fingerprint: LocatorFingerprint(of: resolvedElement))
+            case .healed, .failed, .skipped, .inconclusive:
+                break
             }
         }
 
@@ -829,6 +870,13 @@ public final class FTDriveCore {
         emit(.log("⚠️ " + message))
         addSuggestion(FixSuggestion(isStrong: true, message: message),
                       emitEvent: false, file: "", line: 0)
+    }
+
+    /// シナリオ終了時に1回だけ呼ぶ(warnAbout* と同じ位置)。LocatorFingerprintCache.record は
+    /// メモリへ溜めるだけなので、ここで初めてディスクへ書く(HealCache.store と違い毎ステップの
+    /// I/O を払わないための設計)
+    public func flushLocatorFingerprints() {
+        fingerprintCache.flush()
     }
 
     /// **台帳(ft_snapshot が貯めた実在 id)に無い `#id`** を dry-run で警告する。

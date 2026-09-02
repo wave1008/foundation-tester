@@ -118,6 +118,15 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// **率が上がったこと自体は異常ではない** —— 率を見るなら「本当に消えている」件数との対比で見る
     case healNoReplacement = "heal-no-replacement"
 
+    /// ロケータが未解決のとき、**前回このロケータが解決できた要素の属性(type+label)**で
+    /// 現在の木を照合し、一致がちょうど1件だけだったので FM を経由せず決定的に解決した
+    /// (`LocatorFingerprint`)。id はドリフトで変わる本人なので照合材料にせず、value は
+    /// 実行ごとに変わるので控えない。**複数件一致したら不採用**(採ると別要素へ静かに解決し、
+    /// 後段の検証が別要素を見て誤った緑・誤った赤を作る)。書けるセレクタが無ければ
+    /// `healUnwritable` も併せて立つ。
+    /// **率を見たい注記**: 増えているなら、その画面は id のリネーム(ドリフト)が起きている
+    case healFingerprintMatch = "heal-fingerprint-match"
+
     /// このステップの途中で**宣言済みの割り込み**(`irregularHandler`)を実際に閉じた。
     /// 失敗の読み解きに要る事実 —— 割り込みは直前に送った操作を吸うことがあるので、
     /// 「閉じたステップが落ちた」と「もともと落ちるステップだった」を読み手が分けられる。
@@ -206,6 +215,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .healNoReplacement:
             return "self-heal looked at the element list and concluded no element plays the same" +
                 " role, so the locator was left unresolved"
+        case .healFingerprintMatch:
+            return "self-heal matched the previously-resolved element by its type and label" +
+                " (locator fingerprint), with no FM call"
         }
     }
 }

@@ -8,6 +8,7 @@ extension StepExecutor {
 
     func executeAction(_ action: String, step: FlowStep,
                                cached: [FlowLocator] = [],
+                               fingerprint: LocatorFingerprint? = nil,
                                phase: inout PhaseAccumulator) async throws -> StepOutcome {
         let clock = ContinuousClock()
         cachedScreenshot = nil   // 画面を変える操作 → occlusion-guard スクショ再利用を無効化
@@ -689,6 +690,7 @@ extension StepExecutor {
         var status: StepResult.Status = .passed
         var healedStep: FlowStep?
         var healedByCache = false
+        var healedByFingerprint = false
         // ロケータのフォールバック(.passedViaFallback)とは別物。ドライバ切替の注記のみで、
         // FTRuntime の修正提案(セレクタ更新)は誘発しない
         var driverFallback: String?
@@ -711,6 +713,33 @@ extension StepExecutor {
             // 分岐させる契約)。自己修復の対象にもしない — 掴めないことが答えになり得るコマンドで
             // 別要素へ誤リダイレクトすると、空のはずが値を持って返る
             return StepOutcome(status: .skipped(Self.selectNotFoundReason))
+        } else if let fingerprint, let found = fingerprint.resolve(in: snapshot.elements) {
+            // ロケータ指紋: 前回このロケータが解決できた要素の type+label が現在の木に
+            // **ちょうど1件**だけ一致したので、FM を呼ばず決定的に解決する。0件・複数件のときは
+            // `resolve(in:)` が nil を返し、下の FM ヒールへそのまま落ちる(採否は二値のみ)
+            element = found
+            var notes: [String] = []
+            note(.healFingerprintMatch, into: &notes)
+            if let graded = SelectorNaming(snapshot).graded(for: found, in: snapshot) {
+                // 書けるセレクタは既存の修正提案・ヒールキャッシュの機構にそのまま乗せる
+                // (FTRuntime.perform の healedByCache==false 枝。durability の注意書きも同じ形)
+                let parsed = FTSelector.parse(graded.selector)
+                var healed = step
+                healed.locator = parsed.primary
+                healed.fallbacks = parsed.fallbacks.isEmpty ? nil : parsed.fallbacks
+                healed.note = (step.note.map { $0 + " / " } ?? "")
+                    + "self-healed: matched by locator fingerprint (type=\(found.type),"
+                    + " label=\(found.label ?? "nil"))" + graded.durability.caution
+                healedStep = healed
+                healedByFingerprint = true
+                status = .healed(parsed.primary)
+            } else {
+                // **操作は続けるが healedStep は立てない**(healUnwritable と同じ規律)。
+                // 掴んだ要素は手元にあるので叩くこと自体は正しく、書き戻せないという理由だけで
+                // 緑の run を赤にしない
+                note(.healUnwritable, into: &notes)
+            }
+            driverFallback = Self.joinNotes(driverFallback, notes.joined(separator: " / "))
         } else if healingEnabled, let delegate,
                   let attempt = await delegate.healLocator(step: step, snapshot: snapshot) {
             switch attempt {
@@ -932,6 +961,7 @@ extension StepExecutor {
                    try await pressViaTypeDriver(td, step: step, phase: &phase) {
                     return StepOutcome(status: .passed, healedStep: healedStep,
                                        healedByCache: healedByCache,
+                                       healedByFingerprint: healedByFingerprint,
                                        driverFallback: Self.joinNotes(driverFallback,
                                                                       "fell back to XCUITest"))
                 }
@@ -1041,6 +1071,7 @@ extension StepExecutor {
             if let td = typeDriver, preferTypeDriver || text.contains("\n"),
                try await typeViaTypeDriver(td, step: step, phase: &phase) {
                 return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache,
+                                   healedByFingerprint: healedByFingerprint,
                                    driverFallback: Self.joinNotes(replaceFallbackNote, existingValueNote,
                                                                   nonInputNote))
             }
@@ -1075,7 +1106,8 @@ extension StepExecutor {
         case "clearInput":
             if let td = typeDriver, preferTypeDriver,
                try await clearViaTypeDriver(td, step: step, phase: &phase) {
-                return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache)
+                return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache,
+                                   healedByFingerprint: healedByFingerprint)
             }
             switch try await performClearInput(element: element, step: step,
                                                actingDriver: actingDriver, phase: &phase) {
@@ -1156,6 +1188,7 @@ extension StepExecutor {
             return StepOutcome(status: .skipped("unknown action: \(action)"))
         }
         return StepOutcome(status: status, healedStep: healedStep, healedByCache: healedByCache,
+                           healedByFingerprint: healedByFingerprint,
                            driverFallback: Self.joinNotes(Self.joinNotes(driverFallback, ghostNote),
                                                           straddleNote))
     }

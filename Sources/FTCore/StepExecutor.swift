@@ -158,6 +158,9 @@ public struct StepOutcome: Sendable {
     public let healedStep: FlowStep?
     /// true = ヒールキャッシュで解決(FM 不使用)。false で healedStep あり = FM 自己修復
     public let healedByCache: Bool
+    /// true = ロケータ指紋(前回解決できた要素の type+label)で決定的に解決(FM 不使用)。
+    /// healedByCache/healedByFingerprint とも false で healedStep あり = FM 自己修復
+    public let healedByFingerprint: Bool
     /// ステップの所要時間内訳。action も assert もない(空)ステップの場合のみ nil
     /// (実行エラー時も catch 節でこの時点までの計測値を積んで返す)
     public let timing: StepTiming?
@@ -190,6 +193,7 @@ public struct StepOutcome: Sendable {
     public let failureKind: StepFailureKind?
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil, healedByCache: Bool = false,
+               healedByFingerprint: Bool = false,
                timing: StepTiming? = nil, driverFallback: String? = nil,
                notes: [StepNote] = [],
                observedChecked: Bool? = nil, resolvedElement: ElementInfo? = nil,
@@ -202,6 +206,7 @@ public struct StepOutcome: Sendable {
         self.status = status
         self.healedStep = healedStep
         self.healedByCache = healedByCache
+        self.healedByFingerprint = healedByFingerprint
         self.timing = timing
         self.driverFallback = driverFallback
         self.notes = notes
@@ -468,9 +473,11 @@ public final class StepExecutor {
         self.screenLooksLikeEnabled = screenLooksLikeEnabled
     }
 
-    /// cached: ヒールキャッシュ由来のロケータ連鎖。解決順は
-    /// プライマリ → フォールバック → キャッシュ → FM ヒール(アクションのみ)
-    public func execute(_ original: FlowStep, cached: [FlowLocator] = []) async -> StepOutcome {
+    /// cached: ヒールキャッシュ由来のロケータ連鎖。fingerprint: 前回このロケータが解決できた
+    /// 要素の指紋(`LocatorFingerprint`)。解決順は
+    /// プライマリ → フォールバック → キャッシュ → 指紋照合 → FM ヒール(アクションのみ)
+    public func execute(_ original: FlowStep, cached: [FlowLocator] = [],
+                        fingerprint: LocatorFingerprint? = nil) async -> StepOutcome {
         // **入口で1回だけ実効値へ畳む**(下流は `step.containerInference` だけを見る)。
         // 優先順位: 環境変数の殺しスイッチ > ステップ指定 > 実行プロファイル既定
         var step = original
@@ -490,11 +497,13 @@ public final class StepExecutor {
         systemAlertAdvisoryThisStep = nil
         do {
             if let action = step.action {
-                let outcome = try await executeAction(action, step: step, cached: cached, phase: &phase)
+                let outcome = try await executeAction(action, step: step, cached: cached,
+                                                      fingerprint: fingerprint, phase: &phase)
                 // 失敗したなら、登録の無いシステムアラートが前面に無いかを1回だけ聞いて文言に添える
                 let status = await annotatedWithSystemAlert(outcome.status, phase: &phase)
                 return StepOutcome(status: status, healedStep: outcome.healedStep,
                                    healedByCache: outcome.healedByCache,
+                                   healedByFingerprint: outcome.healedByFingerprint,
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
                                                       actionMs: phase.actionMs, waitMs: phase.waitMs),

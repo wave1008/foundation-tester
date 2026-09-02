@@ -413,6 +413,9 @@ struct RunScenario: AsyncParsableCommand {
         let healCacheURL = projectDir.map {
             URL(fileURLWithPath: $0).appendingPathComponent(".fleetest/heal-cache.json")
         }
+        let fingerprintCacheURL = projectDir.map {
+            URL(fileURLWithPath: $0).appendingPathComponent(".fleetest/locator-fingerprints.json")
+        }
         // `#id` の実在照合に使う台帳(dry-run 専用。ft_snapshot が貯める。SelectorInventory)
         let selectorInventoryURL = projectDir.map {
             SelectorInventory.url(projectRoot: URL(fileURLWithPath: $0))
@@ -426,6 +429,7 @@ struct RunScenario: AsyncParsableCommand {
                                screenLooksLikeEnabled: !noScreenLooksLike,
                                containerInference: !noContainerInference, dryRun: dryRun,
                                healCacheURL: healCacheURL,
+                               fingerprintCacheURL: fingerprintCacheURL,
                                selectorInventoryURL: selectorInventoryURL,
                                defaultTimeout: defaultTimeout,
                                fallbackDriver: fallbackDriver,
@@ -436,6 +440,12 @@ struct RunScenario: AsyncParsableCommand {
                                physical: physical,
                                uiFramework: uiFrameworkHint,
                                emit: emit)
+        // **defer で構造的に保証する**(手続きの末尾で1回呼ぶ手書きの並びに頼らない): この後
+        // `core` が生きている間のどの経路で `run()` を抜けても(シナリオ失敗の
+        // `throw ExitCode(1)`・将来 core 生成後に足される try 呼び出し等)必ず1回実行される。
+        // 「書き忘れた1経路」のせいで、その run で採れた指紋がまるごと消えて次回使えなくなる
+        // (次回も指紋なしで FM ヒールへ戻るだけなので実害は軽いが、防げるなら防ぐ)
+        defer { core.flushLocatorFingerprints() }
         // --host-install のときの appPath は**バンドルの在処**でしかない(インストールは親が行う)。
         // ここで採るとホストと子の二重インストールになる
         core.appPathOverride = hostInstall ? nil : appPath
@@ -508,6 +518,8 @@ struct RunScenario: AsyncParsableCommand {
         core.warnAboutNeverResolvedIDs()
         core.warnAboutMissingAssertions()
         core.warnAboutUnknownIDs()
+        // flushLocatorFingerprints() はここでは呼ばない —— 上の `defer` が関数を抜けるたび
+        // (この直後の正常継続でも、どこかで throw しても)必ず1回だけ呼ぶ
 
         let record = core.finalRecord
         let reportURL = try? ScenarioReportWriter.write(
