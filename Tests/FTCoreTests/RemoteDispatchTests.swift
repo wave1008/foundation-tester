@@ -1271,7 +1271,11 @@ final class RemoteDispatchTests: XCTestCase {
             + "df -k \(base) | tail -1; echo '---FT---'; "
             + "if [ -d \"/Users/ci/fleetest-runner/.fleetest/dispatch.lock\" ]; then echo held;"
             + " cat \"/Users/ci/fleetest-runner/.fleetest/dispatch.lock/info.json\" 2>/dev/null || true;"
-            + " else echo absent; fi")
+            + " else echo absent; fi; echo '---FT---'; "
+            // FM の死活台帳。**レイアウトの外**(~/.fleetest)を読む —— FM はホストの資源で、
+            // プロジェクトにも発行者にも属さない。**実呼び出しは混ぜない**(status がホストの
+            // FM を消費し、ホスト数ぶん直列化の枠を奪うことになる)
+            + "cat \"$HOME/.fleetest/fm-liveness.json\" 2>/dev/null || true")
     }
 
     /// 占有(誰が使っているか)を **remote status の1往復に相乗りさせる**(§18.1 #1)。

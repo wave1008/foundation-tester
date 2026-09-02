@@ -771,16 +771,24 @@ public struct RemoteHostStatus: Equatable, Sendable {
     /// **「今このフリートを誰が使っているか」を手で ssh しに行かずに済ませる**ための欄で、
     /// 破壊的操作(remote clean)の前にも同じ probe を撃つ
     public let lock: RemoteDispatchLock.Probe?
+    /// そのランナーの FM 死活台帳(`~/.fleetest/fm-liveness.json`)。nil = ブロックが読めない
+    /// (旧ランナー)か台帳が無い = **不明**。**FM を1回も呼ばずに埋まる**のが肝で、
+    /// 「どのランナーで FM が使えるか」を機械ごとに ssh して実呼び出しする必要が無くなる
+    /// (`--fm` は「今この瞬間を実呼び出しで確かめる」ための別口として残る)。
+    /// **鮮度の判定は読み手が行う**(checkedAt は向こうの時計。ここでは生の記録を運ぶだけ)
+    public let fmLiveness: FMLiveness.Record?
 
-    /// lock は既定 nil ―― 既存の5引数呼び出し(と、それを固定しているテスト)を壊さない
+    /// lock / fmLiveness は既定 nil ―― 既存の5引数呼び出し(と、それを固定しているテスト)を壊さない
     public init(session: RemoteSessionInfo?, revision: String?, toolchain: String?,
-                binaryPresent: Bool, freeKB: Int?, lock: RemoteDispatchLock.Probe? = nil) {
+                binaryPresent: Bool, freeKB: Int?, lock: RemoteDispatchLock.Probe? = nil,
+                fmLiveness: FMLiveness.Record? = nil) {
         self.session = session
         self.revision = revision
         self.toolchain = toolchain
         self.binaryPresent = binaryPresent
         self.freeKB = freeKB
         self.lock = lock
+        self.fmLiveness = fmLiveness
     }
 }
 
@@ -808,6 +816,10 @@ public enum RemoteStatusProbe {
             "if [ -d \(dquote(RemoteDispatchLock.lockDirPath(base: layout.base))) ]; then echo held;"
                 + " cat \(dquote(RemoteDispatchLock.infoFilePath(base: layout.base))) 2>/dev/null || true;"
                 + " else echo absent; fi",
+            // FM の死活台帳。**レイアウトの外**(~/.fleetest。FM はホストの資源でプロジェクトにも
+            // 発行者にも属さない)。**実呼び出しはしない** —— ここで doctor を撃つと status が
+            // ホストの FM を消費し、しかもホスト数ぶん直列化の枠を奪う
+            "cat \"$HOME/.fleetest/fm-liveness.json\" 2>/dev/null || true",
         ]
         return steps.joined(separator: "; \(sep); ")
     }
@@ -829,9 +841,21 @@ public enum RemoteStatusProbe {
         let freeKB = block(5).flatMap(parseFreeKB)
         // 旧ランナー(ブロックが6個しか無い)では nil = 判定不能。「ロック無し」に倒さない
         let lock = block(6).flatMap(RemoteDispatchLock.parseProbe)
+        // 旧ランナー(ブロックが7個しか無い)・台帳が無い・壊れている、いずれも nil = 不明。
+        // **「FM は生きている」に倒さない**(不明と生を混ぜない。FMLiveness.swift 冒頭 ①)
+        let fmLiveness = block(7).flatMap(parseFMLiveness)
 
         return RemoteHostStatus(session: session, revision: revision, toolchain: toolchain,
-                                binaryPresent: binaryPresent, freeKB: freeKB, lock: lock)
+                                binaryPresent: binaryPresent, freeKB: freeKB, lock: lock,
+                                fmLiveness: fmLiveness)
+    }
+
+    /// 台帳の JSON。空・壊れているは nil(不明)。**部分的に読めた枝は活かす** ——
+    /// 片方の経路だけ記録がある状態は正常(独立に死ぬので独立に書かれる)
+    public static func parseFMLiveness(_ block: String) -> FMLiveness.Record? {
+        let trimmed = block.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(FMLiveness.Record.self, from: data)
     }
 
     /// 二重引用符クォート。`$` はエスケープしない($HOME を展開させるための唯一の理由でこの

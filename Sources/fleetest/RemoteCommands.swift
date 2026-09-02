@@ -123,13 +123,35 @@ struct RemoteCommand: AsyncParsableCommand {
             } else {
                 login = "-"
             }
-            let fm = r.fmOK.map { $0 ? "ok" : "ng" } ?? "-"
+            let fm = Self.fmCell(live: r.fmOK, ledger: r.status?.fmLiveness)
             let binary = r.status.map { $0.binaryPresent ? "yes" : "no" } ?? "-"
             let free = r.status?.freeKB.map(formatFreeSpace) ?? "-"
             return [r.sshTarget, "yes", login,
                     mark(r, label: "git revision", value: r.status?.revision),
                     mark(r, label: "toolchain", value: r.status?.toolchain),
                     fm, binary, free, Self.lockCell(r.status?.lock)]
+        }
+
+        /// FM の1セル。**「どのランナーで FM が使えるか」を機械ごとに ssh して実呼び出しせずに
+        /// 済ませるための欄**。供給は2つ:
+        ///   - `live`: `--fm` を付けたときの実呼び出しの結果。**新しいので台帳より優先する**
+        ///   - `ledger`: そのランナーの死活台帳(FM 呼び出しゼロで読める)。モニターの fan-out が
+        ///     機械ごとに 60 秒間隔で新しく保つので、監視を開いていればたいてい埋まる
+        ///
+        /// **鮮度は手元の時計で当てる**。checkedAt は向こうの時計なので、時刻がずれた機械では
+        /// 新しい記録も古く見えうる —— そのときは "-"(不明)に落ちるだけで、**生死を誤って
+        /// 断定する方向へは倒れない**。
+        /// 表記: `ok`(観測できた経路がすべて生)/ `ng:<経路>`(死んだ経路を名指し)/ `-`(不明)
+        static func fmCell(live: Bool?, ledger: FMLiveness.Record?, now: Date = Date()) -> String {
+            if let live { return live ? "ok" : "ng" }
+            guard let ledger else { return "-" }
+            let reading = FMLiveness.Reading(
+                text: ledger.text.flatMap { $0.isFresh(now: now) ? $0 : nil },
+                vision: ledger.vision.flatMap { $0.isFresh(now: now) ? $0 : nil })
+            if !reading.deadPaths.isEmpty { return "ng:" + reading.deadPaths.joined(separator: "+") }
+            // 片方だけ観測できている状態も "ok" とは言わない —— 観測できていない経路が
+            // 死んでいる可能性が残る。**両方 生 と確かめられたときだけ ok**
+            return reading.text?.state == .alive && reading.vision?.state == .alive ? "ok" : "-"
         }
 
         /// 占有の1セル。**「誰が使っているか」を毎回 ssh で見に行かせないための欄**(§18.1 #1)。
@@ -162,6 +184,7 @@ struct RemoteCommand: AsyncParsableCommand {
                     toolchainCompatible: r.reachable
                         ? !r.mismatchReasons.contains(where: { $0.hasPrefix("toolchain") }) : nil,
                     fm: r.fmOK,
+                    fmState: Self.fmCell(live: r.fmOK, ledger: r.status?.fmLiveness),
                     binaryPresent: r.status?.binaryPresent,
                     freeKB: r.status?.freeKB,
                     lock: Self.lockCell(r.status?.lock),
@@ -913,7 +936,11 @@ private struct StatusHostJSON: Encodable {
     let revisionCompatible: Bool?
     let toolchain: String?
     let toolchainCompatible: Bool?
+    /// `--fm` の実呼び出しの結果だけ。付けていなければ null(**FM の生死ではない**)
     let fm: Bool?
+    /// 表示と同じ文字列("ok" / "ng" / "ng:vision" / "ng:text+vision" / "-" = 不明)。
+    /// `--fm` を付けなくても、ランナーの死活台帳から FM 呼び出しゼロで埋まる
+    let fmState: String?
     let binaryPresent: Bool?
     let freeKB: Int?
     /// 占有("free" / "held by <issuer>" / "held (holder unknown)" / "-" = 判定不能)。
