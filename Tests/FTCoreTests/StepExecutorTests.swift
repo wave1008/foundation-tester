@@ -251,7 +251,15 @@ final class StepExecutorTests: XCTestCase {
     /// placeholder が値で置き換わって隠れている(=画面に描画されていない)ときは対象外(ガード素通り)。
     /// 2026-09-02 の ios-fm 実行での偽陽性実例: WebView 入力欄の placeholder="WebView 入力" に
     /// "hello123" を type した直後の exist("placeholder=WebView 入力") が誤って覆い扱いされ反転した。
-    /// (a11y 経路: label がそのまま placeholder になる形。web ではない = web: nil)
+    ///
+    /// **この規則を「web 規則があるから冗長」と消さないこと。** 同じ WebView の入力欄でも、
+    /// **エンジンによって発火する規則が違う**(2026-09-02 に xcuitest ブリッジの生 JSON で実測):
+    ///   in-app  = DOM 経路。`web:true` / label は aria-label   → **web 規則**が拾う
+    ///   xcuitest = a11y 経路。`web` は立たず、代わりに placeholder を申告する
+    ///              `{type:"textField", label:"WebView 入力", placeholder:"WebView 入力",
+    ///                value:"hello123"}` → **この規則**だけが拾う
+    /// つまり web 規則を消すと in-app が、この規則を消すと xcuitest が誤反転に戻る。
+    /// 下の引数がその xcuitest の実形そのもの(web: nil はエンジン差を表す)
     func testEligibilityExcludesPlaceholderHiddenByEnteredValue() {
         XCTAssertFalse(OcclusionEligibility.eligible(type: "textField", label: "WebView 入力",
                                                       value: "hello123", placeholder: "WebView 入力",
