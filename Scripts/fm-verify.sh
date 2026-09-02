@@ -91,6 +91,29 @@ for kind in sorted(agg):
 if not agg:
     print("  (1件も呼ばれていない)")
 
+# **FM が「正しい要素」を選べているか**(呼ばれたかどうかとは別の軸)。
+# 90_自己修復 は id が v1→v2 に変わりラベル「修復対象」は不変、という状況を作る。
+# 期待する提案は #btn_heal_v2 の1つだけで、これは木を見れば決まる = 揺れる余地が無い。
+#
+# **このシナリオは赤のままで正常**(提案は confidence が "high" に届かず採用されない。
+# confidence は信号を持たないので閾値では解けない。docs/design.md §10)。ここで見るのは
+# 合否ではなく**提案の中身**で、2026-09-02 以前は壊れたロケータ `btn_heal_v1` を
+# そのままオウム返ししていた。プロンプトで直したが、**モデルの応答が再び壊れたことを
+# 検出できるのはここだけ**(HealPromptTests はプロンプト文字列しか見ない)。
+heal_detail = ""
+for r in runs:
+    for f in glob.glob(os.path.join(r, "scenarios/自己修復*.json")):
+        for st in (json.load(open(f)) or {}).get("failedSteps") or []:
+            if "self-heal" in (st.get("detail") or ""):
+                heal_detail = st["detail"]
+proposal_ok = "#btn_heal_v2" in heal_detail
+if heal_detail and not proposal_ok:
+    print("\n❌ 自己修復の提案が誤っている(#btn_heal_v2 を選んでいない):")
+    print(f"   {heal_detail[:300]}")
+elif not heal_detail:
+    print("\n⚠️ 自己修復の提案を確認できなかった(90_自己修復 が失敗していない、"
+          "または文言が変わった)—— 提案の正しさは未検証")
+
 # heal / screenLooksLike / triage は決定的に発火する。occlusion は疑いが立った時だけなので警告に留める
 required = ["heal", "screenLooksLike", "triage"]
 missing = [k for k in required if k not in agg]
@@ -101,7 +124,7 @@ if missing:
     print(f"\n❌ 呼ばれていない経路: {', '.join(missing)}")
 if failed:
     print(f"\n❌ 失敗した経路: {failed}(FM の状態を doctor で確認する)")
-sys.exit(1 if missing or failed else 0)
+sys.exit(1 if missing or failed or (heal_detail and not proposal_ok) else 0)
 PY
 STATUS=$?
 [ "$STATUS" = 0 ] && echo "✅ FM の実行時経路は生きています"
