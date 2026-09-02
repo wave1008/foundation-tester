@@ -874,9 +874,12 @@ public final class FTDriveCore {
 
     /// シナリオ終了時に1回だけ呼ぶ(warnAbout* と同じ位置)。LocatorFingerprintCache.record は
     /// メモリへ溜めるだけなので、ここで初めてディスクへ書く(HealCache.store と違い毎ステップの
-    /// I/O を払わないための設計)
+    /// I/O を払わないための設計)。「通ったか」は ScenarioRunnerMain の `passed` 判定
+    /// (`record.passed && !stoppedByUser`)と同じ式で決める ── デバッグ停止で中断した run を
+    /// 「通った」として古い鍵を刈らないため
     public func flushLocatorFingerprints() {
-        fingerprintCache.flush()
+        let scenarioPassed = finalRecord.passed && !stoppedByUser
+        fingerprintCache.flush(scenarioID: scenarioID, scenarioPassed: scenarioPassed)
     }
 
     /// **台帳(ft_snapshot が貯めた実在 id)に無い `#id`** を dry-run で警告する。

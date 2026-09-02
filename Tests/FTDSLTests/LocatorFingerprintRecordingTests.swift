@@ -295,4 +295,121 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
         XCTAssertEqual(entries.values.first?.type, "button")
         XCTAssertEqual(entries.values.first?.label, "修復対象")
     }
+
+    /// `#btn_p` と `#btn_q` が在る画面(失効の実配線テスト run1)
+    private final class WiringTwoButtonDriver: AppDriver {
+        func status() async throws -> StatusResponse {
+            StatusResponse(ready: true, device: "stub", osVersion: "-", sessionBundleID: nil)
+        }
+        func install(packagePath: String) async throws {}
+        func uninstall(bundleID: String) async throws {}
+        func isAppForeground(bundleID: String) async throws -> Bool { false }
+        func foregroundAppID() async throws -> String? { nil }
+        func launch(bundleID: String) async throws {}
+        func snapshot() async throws -> SnapshotResponse {
+            SnapshotResponse(
+                sessionBundleID: nil,
+                screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                elements: [
+                    ElementInfo(ref: 1, type: "button", identifier: "btn_p", label: "P",
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 0, y: 0, width: 100, height: 40), depth: 0),
+                    ElementInfo(ref: 2, type: "button", identifier: "btn_q", label: "Q",
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 0, y: 60, width: 100, height: 40), depth: 0),
+                ],
+                truncatedCount: 0)
+        }
+        func tap(ref: Int) async throws {}
+        func tap(x: Double, y: Double) async throws {}
+        func type(ref: Int?, text: String) async throws {}
+        func swipe(_ direction: FTSwipeDirection) async throws {}
+        func press(ref: Int, duration: Double) async throws {}
+        func screenshot() async throws -> Data { Data() }
+        func terminate() async throws {}
+    }
+
+    /// `#btn_p` だけが在る画面(失効の実配線テスト run2。`#btn_q` の行が消えたと想定する)
+    private final class WiringOneButtonDriver: AppDriver {
+        func status() async throws -> StatusResponse {
+            StatusResponse(ready: true, device: "stub", osVersion: "-", sessionBundleID: nil)
+        }
+        func install(packagePath: String) async throws {}
+        func uninstall(bundleID: String) async throws {}
+        func isAppForeground(bundleID: String) async throws -> Bool { false }
+        func foregroundAppID() async throws -> String? { nil }
+        func launch(bundleID: String) async throws {}
+        func snapshot() async throws -> SnapshotResponse {
+            SnapshotResponse(
+                sessionBundleID: nil,
+                screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                elements: [ElementInfo(ref: 1, type: "button", identifier: "btn_p", label: "P",
+                                       value: nil, placeholder: nil, enabled: true,
+                                       frame: FTRect(x: 0, y: 0, width: 100, height: 40), depth: 0)],
+                truncatedCount: 0)
+        }
+        func tap(ref: Int) async throws {}
+        func tap(x: Double, y: Double) async throws {}
+        func type(ref: Int?, text: String) async throws {}
+        func swipe(_ direction: FTSwipeDirection) async throws {}
+        func press(ref: Int, duration: Double) async throws {}
+        func screenshot() async throws -> Data { Data() }
+        func terminate() async throws {}
+    }
+
+    /// `tap("#btn_p")`/`tap("#btn_q")` を固定のソース行に置く共有ヘルパー。両 run が同じ行を
+    /// 呼ぶことで、file:line を含む鍵(`HealCache.key`)が run を跨いで一致する
+    /// (runTapOnIDSeed と同じ理由)
+    private func tapWiringP() { tap("#btn_p") }
+    private func tapWiringQ() { tap("#btn_q") }
+    private func runTapBothWiringButtons() {
+        scenario { scene(1, "s") { action { tapWiringP(); tapWiringQ() } } }
+    }
+    private func runTapWiringButtonPOnly() {
+        scenario { scene(1, "s") { action { tapWiringP() } } }
+    }
+
+    /// **失効規則の実配線確認**: `FTDriveCore.flushLocatorFingerprints()` は
+    /// `LocatorFingerprintCache` の失効規則(scenarioPassed の導出込み)を実際に通す。
+    /// 刈り取り条件そのものの網羅は `LocatorFingerprintExpiryTests` が担い、ここでは
+    /// DSL → FTDriveCore.perform(record) → flushLocatorFingerprints(flush) の一気通貫を1本確かめる
+    func testPassedScenarioPrunesUntouchedKeyThroughFTDriveCore() {
+        let fingerprintURL = tempURL("expiry-wiring")
+
+        // run1: `#btn_p` と `#btn_q` の両方をタップして解決 → 指紋が2件記録される
+        do {
+            let core = FTDriveCore(
+                driver: WiringTwoButtonDriver(), platform: "ios", app: "com.example.app",
+                scenarioID: "Fingerprint.ExpiryWiring", scenarioTitle: "t",
+                delegate: nil, healingEnabled: false, dryRun: false,
+                healCacheURL: tempURL("expiry-wiring-run1-heal"),
+                fingerprintCacheURL: fingerprintURL,
+                emit: { _ in })
+            FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+            defer { FTRuntime.tearDown() }
+            runTapBothWiringButtons()
+            core.flushLocatorFingerprints()
+        }
+        XCTAssertEqual(readEntries(fingerprintURL).count, 2, "前提が崩れている: run1 で2件記録できていない")
+
+        // run2: `#btn_q` の行が消えたと想定し `#btn_p` だけタップする。シナリオは通るので、
+        // 触れなかった `#btn_q` の古い鍵は flushLocatorFingerprints() が刈るはず
+        let core2 = FTDriveCore(
+            driver: WiringOneButtonDriver(), platform: "ios", app: "com.example.app",
+            scenarioID: "Fingerprint.ExpiryWiring", scenarioTitle: "t",
+            delegate: nil, healingEnabled: false, dryRun: false,
+            healCacheURL: tempURL("expiry-wiring-run2-heal"),
+            fingerprintCacheURL: fingerprintURL,
+            emit: { _ in })
+        FTRuntime.bootstrap(core: core2, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+        runTapWiringButtonPOnly()
+
+        XCTAssertTrue(core2.finalRecord.passed, "前提が崩れている: run2 が失敗している")
+        core2.flushLocatorFingerprints()
+
+        let entries = readEntries(fingerprintURL)
+        XCTAssertEqual(entries.count, 1, "実配線でも触れなかった鍵は刈られるはず")
+        XCTAssertEqual(entries.values.first?.label, "P")
+    }
 }
