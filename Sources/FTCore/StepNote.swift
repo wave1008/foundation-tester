@@ -90,6 +90,34 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// **率が上がったら id/ラベルの一意性を疑う**: この状態が続く限り毎回 FM を呼び直す
     case healUnwritable = "heal-unwritable"
 
+    /// 自己修復が提案を返したのに、confidence が `high` に届かず**採用しなかった**
+    /// (採用基準は `StepExecutor+Actions.swift` の healLocator 分岐のものを1バイトも変えない ——
+    /// ここは観測できる形にするためだけの注記)。**黙ると「FM が探して見つからなかった」と
+    /// 「FM は答えを持っていたが使わなかった」が失敗文言の上で見分けられなくなる**
+    /// (2026-09-02 実測: medium の提案が正解の #id を出していたのに `cannot resolve the locator`
+    /// としか出ず、triage を読まない限り気付けなかった)。
+    /// **率が上がったら閾値を疑うのではなく提案の質(木の情報量・instructions)を疑う**
+    case healProposalRejected = "heal-proposal-rejected"
+
+    /// 自己修復は FM を呼べたのに、**その生テキストが木のどの要素にも一致しなかった**
+    /// (`resolveByText` が nil)。`healProposalRejected` とは別の経路 —— あちらは「答えはあったが
+    /// confidence 不足で採用しなかった」、こちらは「答えを要素へそもそも引き戻せなかった」。
+    /// **黙ると原因が推測でしか語れない**(2026-09-02 実測: heal calls=1/failures=0 なのに
+    /// `cannot resolve the locator` としか出ず、モデルが実際に何を返したかが結果 JSON からも
+    /// 失敗文言からも読めなかった)。生の答えは失敗文言側で運ぶ(`unresolvedHealAnswerHint`)。
+    /// **率が上がったら `resolveByText` の正規化(引用符・`#`・言語混在)を疑う**
+    case healAnswerUnresolved = "heal-answer-unresolved"
+
+    /// 自己修復は FM を呼べ、モデルは要素一覧を見たうえで**「妥当な代わりが無い」と判断した**
+    /// (`LocatorRepairSuggestion.elementText` が nil。`resolveByText` にすら回っていない)。
+    /// `healAnswerUnresolved`(モデルは何か名指ししたが木のどの要素にも一致しなかった=答えの質の
+    /// 問題)とは別の経路 —— こちらはモデルが一覧を検討したうえで出した正常な結論で、
+    /// 要素が本当に消えている場合はこれが正解になる(2026-09-02 実測: 存在しない要素をわざと叩く
+    /// 陽性対照シナリオで、`elementText` が非オプショナルだったため選択肢が無く、モデルが無関係な
+    /// 要素を medium confidence で提案していた)。
+    /// **率が上がったこと自体は異常ではない** —— 率を見るなら「本当に消えている」件数との対比で見る
+    case healNoReplacement = "heal-no-replacement"
+
     /// このステップの途中で**宣言済みの割り込み**(`irregularHandler`)を実際に閉じた。
     /// 失敗の読み解きに要る事実 —— 割り込みは直前に送った操作を吸うことがあるので、
     /// 「閉じたステップが落ちた」と「もともと落ちるステップだった」を読み手が分けられる。
@@ -169,6 +197,15 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .healUnwritable:
             return "self-heal found a stand-in element but no selector picks it out uniquely on this"
                 + " screen, so the fix was not written back — give the element a stable id"
+        case .healProposalRejected:
+            return "self-heal proposed a replacement but its confidence was not \"high\", so it was"
+                + " not used and the locator was left unresolved"
+        case .healAnswerUnresolved:
+            return "self-heal got an answer from the model but it did not match any element in the" +
+                " tree, so the locator was left unresolved"
+        case .healNoReplacement:
+            return "self-heal looked at the element list and concluded no element plays the same" +
+                " role, so the locator was left unresolved"
         }
     }
 }

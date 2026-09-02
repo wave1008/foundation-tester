@@ -39,9 +39,9 @@ final class HealSuggestionRecordingTests: XCTestCase {
 
     /// 改名先を必ず提案する delegate(FM の代わり)
     private final class RenamingHealer: ReplayDelegate {
-        func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? {
+        func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? {
             snapshot.elements.first.map {
-                HealProposal(element: $0, confidence: "high", rationale: "id renamed")
+                .proposed(HealProposal(element: $0, confidence: "high", rationale: "id renamed"))
             }
         }
         func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }

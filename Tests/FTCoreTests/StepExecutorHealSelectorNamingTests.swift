@@ -39,9 +39,9 @@ final class StepExecutorHealSelectorNamingTests: XCTestCase {
     private final class FixedHealer: ReplayDelegate {
         let ref: Int
         init(ref: Int) { self.ref = ref }
-        func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? {
+        func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? {
             snapshot.elements.first { $0.ref == ref }
-                .map { HealProposal(element: $0, confidence: "high", rationale: "test heal") }
+                .map { .proposed(HealProposal(element: $0, confidence: "high", rationale: "test heal")) }
         }
         func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
         func triage(goal: String?, stepDescription: String, failureReason: String,

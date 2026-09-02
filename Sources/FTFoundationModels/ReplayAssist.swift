@@ -17,8 +17,8 @@ enum RepairConfidence {
 
 @Generable
 struct LocatorRepairSuggestion {
-    @Guide(description: "The element that should stand in for the broken locator. Copy exactly one label (the quoted string) or id= value from the current element list, verbatim")
-    var elementText: String
+    @Guide(description: "The element that should stand in for the broken locator. Copy exactly one label (the quoted string) or id= value from the current element list, verbatim. If no element in the list plays the same role and meaning as the original, leave this unset instead of naming an unrelated element")
+    var elementText: String?
 
     @Guide(description: "Confidence that the replacement plays the same role as the original")
     var confidence: RepairConfidence
@@ -64,25 +64,23 @@ public final class FMReplayDelegate: ReplayDelegate {
 
     // MARK: Healer
 
-    public func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? {
+    public func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? {
         // FM はホスト全体で直列化される資源(FMLock 参照)
         guard await FMGate.enter() else { return nil }
         defer { FMGate.leave() }
         let rendered = SnapshotRenderer.render(snapshot)
         let session = LanguageModelSession(instructions: """
         You repair locators for UI tests. An element can no longer be found after a UI change;
-        pick its stand-in from the current element list. Choose only an element with the same
+        pick its stand-in from the current element list. That original locator will never
+        appear in the list, so never answer with it. Choose only an element with the same
         role and meaning, and set confidence to low when unsure.
         """)
-        let prompt = """
-        Step whose element is missing: \(step.summary)
-        \(step.note.map { "Intent of this step: \($0)" } ?? "")
-
-        Elements on the current screen:
-        \(rendered)
-
-        Pick the single element that best matches this step's target.
-        """
+        // プロンプト構築自体は純粋関数(healPrompt)へ切り出してある(FM 呼び出し・デバイスが
+        // 要らない。単体テストは Tests/FTFoundationModelsTests/HealPromptTests.swift)。
+        // 2026-09-02 の実測: モデルが壊れたロケータをそのままオウム返ししていた(triage は
+        // 同じ木から正解を出せていたので木の問題ではなくプロンプトの問題)。壊れたロケータの
+        // 文字列を名指しし、それを答えにするなと明示する
+        let prompt = Self.healPrompt(step: step, renderedElements: rendered)
         let healStartedAt = Date()
         do {
             let suggestion = try await session.respond(
@@ -92,22 +90,68 @@ public final class FMReplayDelegate: ReplayDelegate {
             ).content
 
             FMHealth.record(kind: "heal", ms: OcclusionVerifier.elapsedMs(healStartedAt), ok: true)
-            guard let element = Self.resolveByText(suggestion.elementText, in: snapshot) else {
-                return nil
-            }
-            let confidence: String
-            switch suggestion.confidence {
-            case .high: confidence = "high"
-            case .medium: confidence = "medium"
-            case .low: confidence = "low"
-            }
-            return HealProposal(element: element, confidence: confidence,
-                                rationale: Self.sanitizeRationale(suggestion.rationale))
+            // FM が答えを返した後の写像は `healAttempt` に切り出してある(デバイス/FM 呼び出しが
+            // 要らない純粋関数。単体テストは Tests/FTFoundationModelsTests/HealAttemptMappingTests.swift)。
+            // ここで直接 nil を返してはいけない —— 2026-09-02 に実際に「黙る経路」へ戻す変異が
+            // このメソッドの中に書けてしまい、単体テストが1つも落とせなかった実害がある
+            return Self.healAttempt(elementText: suggestion.elementText, confidence: suggestion.confidence,
+                                    rationale: suggestion.rationale, in: snapshot)
         } catch {
             FMHealth.record(kind: "heal", ms: OcclusionVerifier.elapsedMs(healStartedAt), ok: false,
                             error: "heal: \(FMHealth.describe(error))")
             return nil
         }
+    }
+
+    /// heal プロンプト本文の組み立て(**FM 呼び出しもデバイスも要らない純粋関数**。テストは
+    /// `healLocator` からモデル呼び出しを外して直接ここへ入力する)。`step.locatorSummary` で
+    /// 壊れたロケータの生テキスト(`id=btn_x` 等)を名指しし、「それを答えにするな」まで
+    /// 呼び出し固有の事実として prompt 本体に書く(instructions は一般的な役割の説明だけに保つ)
+    static func healPrompt(step: FlowStep, renderedElements: String) -> String {
+        """
+        Step whose element is missing: \(step.summary)
+        The locator \(step.locatorSummary) no longer exists on this screen — do not answer with it.
+        \(step.note.map { "Intent of this step: \($0)" } ?? "")
+
+        Elements on the current screen:
+        \(renderedElements)
+
+        Pick the single element from the list above that best matches this step's target.
+        """
+    }
+
+    /// FM が答えを返した後の写像(**FM 呼び出しもデバイスも要らない純粋関数**。テストは
+    /// `healLocator` からモデル呼び出しを外して直接ここへ入力する)。入力は
+    /// `LocatorRepairSuggestion` の生の値(elementText/confidence/rationale。型そのものではなく
+    /// 素の値を取るのは、@Generable 型はテストから組み立てにくいため)と現在の木。
+    /// **`HealAttempt?` ではなく `HealAttempt`(非オプショナル)を返す** —— FM が答えを返した時点で
+    /// 「答えが無い」は起こり得ず、`nil` を返せる型のままだと「黙って nil」を書ける余地が
+    /// このメソッドの外にも残ってしまう。`nil` を返してよいのは `healLocator` 側
+    /// (FM を呼べなかった/例外)だけに閉じる。
+    /// `elementText` が `nil` = モデルが一覧を見たうえで「妥当な代わりが無い」と判断した回
+    /// (2026-09-02 実測: `elementText` が非オプショナルだったため、存在しない要素をわざと叩く
+    /// シナリオでモデルが無関係な要素を medium confidence で提案していた —— 選択肢が無いことの
+    /// 帰結であってモデルの誤りではない)。**この判断は `.unresolved`(答えを要素へ引き戻せなかった)
+    /// と意味が違うので混ぜない** —— `.noReplacement` へ分ける。
+    /// **判定・一致規則(`resolveByText`)・採用基準(confidence == "high")は一切変えない**
+    static func healAttempt(elementText: String?, confidence: RepairConfidence, rationale: String,
+                            in snapshot: SnapshotResponse) -> HealAttempt {
+        guard let elementText else {
+            return .noReplacement(rationale: Self.sanitizeRationale(rationale))
+        }
+        // 生テキストは整形せずそのまま `.unresolved` へ渡す(切り詰め・正規化は
+        // StepExecutor+Actions.unresolvedHealAnswerHint 側の責務)
+        guard let element = Self.resolveByText(elementText, in: snapshot) else {
+            return .unresolved(rawAnswer: elementText)
+        }
+        let confidenceText: String
+        switch confidence {
+        case .high: confidenceText = "high"
+        case .medium: confidenceText = "medium"
+        case .low: confidenceText = "low"
+        }
+        return .proposed(HealProposal(element: element, confidence: confidenceText,
+                                      rationale: Self.sanitizeRationale(rationale)))
     }
 
     /// rationale(@Guide は「日本語で1文」)は構造化出力から外れて後続を巻き込むことがある。
@@ -270,13 +314,25 @@ public final class FMReplayDelegate: ReplayDelegate {
         return parts.prefix(count).joined(separator: "。") + "。"
     }
 
-    /// elementText→要素解決(テキスト一致で要素を引く簡易版)
+    /// elementText→要素解決(テキスト一致で要素を引く簡易版)。
+    /// モデルはこのリポジトリのセレクタ記法(`#id`)につられて id を `#` 付きで返したり、
+    /// @Guide の「the quoted string」指示につられてラベルを引用符ごと返したりする
+    /// (表記のゆれ。SnapshotRenderer は `id=btn_x` / `"ラベル"` の形でしか描かない)。
+    /// ここで剥がすのは表記のゆれだけ —— あいまい一致(編集距離等)は足さない
     static func resolveByText(_ text: String, in snapshot: SnapshotResponse) -> ElementInfo? {
         var raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
         raw = raw.replacingOccurrences(of: "「", with: "")
                  .replacingOccurrences(of: "」", with: "")
                  .replacingOccurrences(of: "id=", with: "")
                  .trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.count >= 2, let first = raw.first, let last = raw.last,
+           (first == "\"" && last == "\"") || (first == "'" && last == "'") {
+            raw = String(raw.dropFirst().dropLast())
+        }
+        if raw.hasPrefix("#") {
+            raw.removeFirst()
+        }
+        raw = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return nil }
 
         return snapshot.elements.first { $0.identifier == raw }

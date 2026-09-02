@@ -712,37 +712,92 @@ extension StepExecutor {
             // 別要素へ誤リダイレクトすると、空のはずが値を持って返る
             return StepOutcome(status: .skipped(Self.selectNotFoundReason))
         } else if healingEnabled, let delegate,
-                  let proposal = await delegate.healLocator(step: step, snapshot: snapshot),
-                  proposal.confidence == "high" {
-            // 自己修復: 新しいロケータ連鎖に置き換えたステップを返す(永続化は呼び出し側 →
-            // `fleetest api apply-heal` が利用者の .swift ソースへ直接書き込む経路がある)。
-            // **書けるセレクタは `SelectorNaming` にだけ決めさせる**(2026-08-15。旧実装
-            // `FlowLocatorBuilder.chain` は一意性を見ずに id/label をそのまま採っていたため、
-            // 同じ id を複数持つ画面では書いたセレクタが別要素に解決していた)。
-            element = proposal.element
-            // **`graded` が nil = この画面でその要素を一意に指せる書き方が無い**。
-            // **操作は続け、修復だけ成立させない**。掴んだ要素は手元にあるので
-            // 叩くこと自体は正しく、ここで失敗させるとシナリオ全体が中断する = 書き戻せない
-            // という理由だけで緑の run を赤にすることになる。塞ぎたい欠陥は「壊れたセレクタが
-            // 利用者の資産へ書かれる」ことなので、`healedStep` を立てない(= 修正提案も
-            // ヒールキャッシュも作らない)だけで足りる。**黙らない** —— 毎回 FM を呼び直す
-            // 状態が続くので、率が上がったら id/ラベルの一意性を疑う手掛かりとして数える
-            if let graded = SelectorNaming(snapshot).graded(for: proposal.element, in: snapshot) {
-                // 得たセレクタは `FTSelector.parse` で往復させ、綴りと意味の唯一の写像を通す
-                let parsed = FTSelector.parse(graded.selector)
-                var healed = step
-                healed.locator = parsed.primary
-                healed.fallbacks = parsed.fallbacks.isEmpty ? nil : parsed.fallbacks
-                // **indexed(位置依存)は書き込む前に必ず言う**(Durability.caution が文言を持つ)
-                // —— 兄弟の増減で別要素を指すようになるセレクタを、黙って利用者のソースへ書かない
-                healed.note = (step.note.map { $0 + " / " } ?? "") + "self-healed: \(proposal.rationale)"
-                    + graded.durability.caution
-                healedStep = healed
-                status = .healed(parsed.primary)
-            } else {
+                  let attempt = await delegate.healLocator(step: step, snapshot: snapshot) {
+            switch attempt {
+            case .noReplacement(let rationale):
+                // FM は一覧を見たうえで「妥当な代わりが無い」と判断した(elementText が nil)。
+                // `.unresolved`(答えはあったが要素に一致しなかった)とは別の注記にする —— こちらは
+                // モデルが一覧を検討したうえで出した正常な結論で、要素が本当に消えている場合は
+                // これが正解(2026-09-02 実測: 存在しない要素を叩く陽性対照でモデルが選択肢を
+                // 与えられず無関係な要素を提案していた実害の直し)
                 var notes: [String] = []
-                note(.healUnwritable, into: &notes)
+                note(.healNoReplacement, into: &notes)
                 driverFallback = Self.joinNotes(driverFallback, notes.joined(separator: " / "))
+                let hint = Self.candidateHint(for: step, in: snapshot)
+                return StepOutcome(
+                    status: failed(
+                        .notFound,
+                        "cannot resolve the locator: \(step.locatorSummary)" + (hint.map { ". \($0)" } ?? "")
+                            + Self.truncationHint(snapshot)
+                            + Self.webViewPathHint(snapshot)
+                            + Self.noReplacementHint(rationale)),
+                    driverFallback: driverFallback)
+            case .unresolved(let rawAnswer):
+                // FM は呼べて答えも返したが、**その生テキストが木のどの要素にも一致しなかった**
+                // (resolveByText が nil)。confidence 判定より手前の失敗なので healProposalRejected
+                // とは別の注記にする。黙ると原因が推測でしか語れない(2026-09-02 実測)ため、
+                // 生の答えをそのまま失敗文言へ添える
+                var notes: [String] = []
+                note(.healAnswerUnresolved, into: &notes)
+                driverFallback = Self.joinNotes(driverFallback, notes.joined(separator: " / "))
+                let hint = Self.candidateHint(for: step, in: snapshot)
+                return StepOutcome(
+                    status: failed(
+                        .notFound,
+                        "cannot resolve the locator: \(step.locatorSummary)" + (hint.map { ". \($0)" } ?? "")
+                            + Self.truncationHint(snapshot)
+                            + Self.webViewPathHint(snapshot)
+                            + Self.unresolvedHealAnswerHint(rawAnswer)),
+                    driverFallback: driverFallback)
+            case .proposed(let proposal):
+                if proposal.confidence == "high" {
+                    // 自己修復: 新しいロケータ連鎖に置き換えたステップを返す(永続化は呼び出し側 →
+                    // `fleetest api apply-heal` が利用者の .swift ソースへ直接書き込む経路がある)。
+                    // **書けるセレクタは `SelectorNaming` にだけ決めさせる**(2026-08-15。旧実装
+                    // `FlowLocatorBuilder.chain` は一意性を見ずに id/label をそのまま採っていたため、
+                    // 同じ id を複数持つ画面では書いたセレクタが別要素に解決していた)。
+                    element = proposal.element
+                    // **`graded` が nil = この画面でその要素を一意に指せる書き方が無い**。
+                    // **操作は続け、修復だけ成立させない**。掴んだ要素は手元にあるので
+                    // 叩くこと自体は正しく、ここで失敗させるとシナリオ全体が中断する = 書き戻せない
+                    // という理由だけで緑の run を赤にすることになる。塞ぎたい欠陥は「壊れたセレクタが
+                    // 利用者の資産へ書かれる」ことなので、`healedStep` を立てない(= 修正提案も
+                    // ヒールキャッシュも作らない)だけで足りる。**黙らない** —— 毎回 FM を呼び直す
+                    // 状態が続くので、率が上がったら id/ラベルの一意性を疑う手掛かりとして数える
+                    if let graded = SelectorNaming(snapshot).graded(for: proposal.element, in: snapshot) {
+                        // 得たセレクタは `FTSelector.parse` で往復させ、綴りと意味の唯一の写像を通す
+                        let parsed = FTSelector.parse(graded.selector)
+                        var healed = step
+                        healed.locator = parsed.primary
+                        healed.fallbacks = parsed.fallbacks.isEmpty ? nil : parsed.fallbacks
+                        // **indexed(位置依存)は書き込む前に必ず言う**(Durability.caution が文言を持つ)
+                        // —— 兄弟の増減で別要素を指すようになるセレクタを、黙って利用者のソースへ書かない
+                        healed.note = (step.note.map { $0 + " / " } ?? "") + "self-healed: \(proposal.rationale)"
+                            + graded.durability.caution
+                        healedStep = healed
+                        status = .healed(parsed.primary)
+                    } else {
+                        var notes: [String] = []
+                        note(.healUnwritable, into: &notes)
+                        driverFallback = Self.joinNotes(driverFallback, notes.joined(separator: " / "))
+                    }
+                } else {
+                    // FM は答えを返したが**採用基準(confidence == "high")に届かなかった**。
+                    // 採用基準は変えない —— ここは最終 else の「見つからない」と外から見分けが
+                    // 付かなくなる(=FM が黙って捨てた)ことだけを塞ぐ。StepNote.healProposalRejected 参照
+                    var notes: [String] = []
+                    note(.healProposalRejected, into: &notes)
+                    driverFallback = Self.joinNotes(driverFallback, notes.joined(separator: " / "))
+                    let hint = Self.candidateHint(for: step, in: snapshot)
+                    return StepOutcome(
+                        status: failed(
+                            .notFound,
+                            "cannot resolve the locator: \(step.locatorSummary)" + (hint.map { ". \($0)" } ?? "")
+                                + Self.truncationHint(snapshot)
+                                + Self.webViewPathHint(snapshot)
+                                + Self.rejectedProposalHint(proposal)),
+                        driverFallback: driverFallback)
+                }
             }
         } else {
             // 惜しい候補を添える。これが無いと直すために snapshot を取り直す往復が必要になる
@@ -1602,6 +1657,39 @@ extension StepExecutor {
         return "the tree lists this row twice ([\(duplicate.firstRef)] and"
             + " [\(duplicate.secondRef)], \(duplicate.length) elements each);"
             + " one copy is a leftover from horizontal scrolling"
+    }
+
+    /// 却下された自己修復の提案があったことを失敗文言に添える。**この一文が無いと、
+    /// 「FM が探して見つからなかった」と「FM は答えを持っていたが confidence 不足で
+    /// 使わなかった」が読み手から区別できない**(StepNote.healProposalRejected と同じ事実を
+    /// 文言側で運ぶだけで、採用基準そのもの(confidence == "high")はここでは変えない)
+    static func rejectedProposalHint(_ proposal: HealProposal) -> String {
+        var parts = [proposal.element.type]
+        if let id = proposal.element.identifier, !id.isEmpty { parts.append("#\(id)") }
+        if let label = proposal.element.label, !label.isEmpty {
+            parts.append("\"\(SnapshotRenderer.truncate(label, 24))\"")
+        }
+        return " (self-heal proposed \(parts.joined(separator: " ")) but its confidence was"
+            + " \"\(proposal.confidence)\", not \"high\", so it was not used: \(proposal.rationale))"
+    }
+
+    /// FM は答えを返したが、その生テキストが木のどの要素にも一致しなかったとき、**答えをそのまま**
+    /// 失敗文言へ添える。`rejectedProposalHint` と同じ理由 —— 黙ると「探して見つからなかった」と
+    /// 「答えはあったが要素に一致しなかった」が読み手から区別できない。上限は300文字で真因が途中で
+    /// 切れて特定できなかった実例(`FMHealth.record` の `firstError` 参照)に倣い800文字にする
+    /// (切り詰めすぎて原因の手掛かりを潰さないため)
+    static func unresolvedHealAnswerHint(_ rawAnswer: String) -> String {
+        " (self-heal answered \"\(SnapshotRenderer.truncate(rawAnswer, 800))\" but no element in the"
+            + " tree matched that text)"
+    }
+
+    /// FM が一覧を見たうえで「妥当な代わりが無い」と判断したことを失敗文言に添える。
+    /// `rejectedProposalHint` / `unresolvedHealAnswerHint` と同じ理由で分ける —— こちらは
+    /// モデルが候補を検討したうえで出した結論なので、利用者にとっては「要素が本当に無くなっている」
+    /// ことをツールが確認した、という意味で読める文言にする(不在の裏付けであって捜索の失敗ではない)
+    static func noReplacementHint(_ rationale: String) -> String {
+        " (self-heal looked at the element list but found no valid replacement" +
+            " (reason: \(rationale)); the element appears to be genuinely gone)"
     }
 
     /// 注記の合流(どちらか片方だけのことが多いので nil を潰して " / " で繋ぐ)

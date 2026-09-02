@@ -261,7 +261,7 @@ final class FakeVisibilityDelegate: ReplayDelegate {
     let visible: Bool
     private(set) var visibleCalls = 0
     init(visible: Bool) { self.visible = visible }
-    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? { nil }
+    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
     func triage(goal: String?, stepDescription: String, failureReason: String,
                 snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
@@ -277,7 +277,7 @@ final class FakeVisibilityDelegate: ReplayDelegate {
 /// `verifyElementVisible` は nil を返す = 実装(ReplayAssist)が FM 失敗時に返す形そのもの
 final class NoVerdictVisibilityDelegate: ReplayDelegate {
     private(set) var visibleCalls = 0
-    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? { nil }
+    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
     func triage(goal: String?, stepDescription: String, failureReason: String,
                 snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
@@ -295,7 +295,7 @@ final class SequenceVisibilityDelegate: ReplayDelegate {
     private let results: [Bool]
     private(set) var calls = 0
     init(_ results: [Bool]) { self.results = results }
-    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? { nil }
+    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
     func triage(goal: String?, stepDescription: String, failureReason: String,
                 snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
@@ -314,7 +314,7 @@ final class ScriptedScreenDelegate: ReplayDelegate {
     private(set) var verifyScreenCalls = 0
     private let verdicts: [Bool]
     init(_ verdicts: [Bool]) { self.verdicts = verdicts }
-    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? { nil }
+    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? {
         let pass = verdicts[min(verifyScreenCalls, verdicts.count - 1)]
         verifyScreenCalls += 1
@@ -328,7 +328,7 @@ final class ScriptedScreenDelegate: ReplayDelegate {
 /// (screenLooksLikeEnabled=false で呼ばれないことの検証用)
 final class CountingScreenDelegate: ReplayDelegate {
     private(set) var verifyScreenCalls = 0
-    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? { nil }
+    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? {
         verifyScreenCalls += 1
         return (true, "ok")

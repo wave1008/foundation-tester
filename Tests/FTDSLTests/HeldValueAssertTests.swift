@@ -52,7 +52,7 @@ final class HeldValueAssertTests: XCTestCase {
     /// occlusion-guard(falsePositiveCheck)が実際に走る条件を作るための delegate。
     /// 「見えている」と答えるので、ガードは通るが**走ったこと自体**は snapshot 回数に出る
     private final class VisibleDelegate: ReplayDelegate {
-        func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? { nil }
+        func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
         func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
         func triage(goal: String?, stepDescription: String, failureReason: String,
                     snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }

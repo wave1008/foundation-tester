@@ -558,7 +558,7 @@ final class LazyFMDelegate: ReplayDelegate {
         return underlying
     }
 
-    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? {
+    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? {
         await resolve()?.healLocator(step: step, snapshot: snapshot)
     }
 

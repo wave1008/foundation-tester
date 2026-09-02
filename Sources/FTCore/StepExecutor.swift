@@ -44,9 +44,27 @@ public struct HealProposal: Sendable {
     }
 }
 
+/// `healLocator` が実際に FM を呼べた結果。**nil を返してよいのは呼べなかった/エラーだったときだけ**
+/// (資源ゲート待ちタイムアウト・session の例外)。FM が答えを返した回は必ずこの3ケースのどれかで
+/// 運ぶ —— 「要素へ引き戻せなかった」を nil に潰すと、2026-09-02 に実際に踏んだ「黙る経路」
+/// (`cannot resolve the locator` としか出ず、モデルが何を返したか一切見えない)に戻る。
+public enum HealAttempt: Sendable {
+    /// 要素へ引き戻せた(採用するかは confidence 次第。StepExecutor+Actions 側の判定)
+    case proposed(HealProposal)
+    /// FM は答えたが、その生テキストが木のどの要素にも一致しなかった(`resolveByText` が nil)。
+    /// 呼び出し側が失敗文言・注記へ流すため、答えは整形せずそのまま運ぶ
+    case unresolved(rawAnswer: String)
+    /// FM は一覧を見たうえで**「妥当な代わりが無い」と判断した**(`LocatorRepairSuggestion.elementText`
+    /// が nil)。`.unresolved`(モデルは何かを名指ししたが木のどの要素にも一致しなかった=答えの質の
+    /// 問題)とは意味が違う正常な結論 —— 要素が本当に消えている場合はこれが正解(2026-09-02 実測:
+    /// 存在しない要素をわざと叩く陽性対照シナリオで、選択肢を与えない設計のせいでモデルが無関係な
+    /// 要素を medium confidence で提案していた)
+    case noReplacement(rationale: String)
+}
+
 /// FM フック。実装は FTFoundationModels 側(失敗時のみ呼ばれる: 自己修復・画面検証・トリアージ)。
 public protocol ReplayDelegate: AnyObject {
-    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal?
+    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt?
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)?
     func triage(goal: String?, stepDescription: String, failureReason: String,
                 snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo?
