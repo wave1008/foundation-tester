@@ -389,6 +389,9 @@
 - **この漏れは e2e.sh が検出する** —— **回さなかった側**のブリッジ入力集合(`BridgeSourceSet`)の
   digest を、そのエンジンの実行が**全部成功したときだけ** `.fleetest/<engine>-e2e-verified` へ
   記録し、開始時と終了時に食い違いを警告する(`fleetest api bridge-sources --set inapp|xcuitest --digest`)。**落とさず警告だけ**
+  —— **ただし xcuitest の警告は 2026-09-02 時点で鳴りっぱなし**(既知の打鍵中抜け2本で
+  E2E-RN が赤 → 全緑が条件の印が永久に更新されない。**未検証の意味ではない**)。
+  この警告を見たら回す前に docs/verification.md の該当節を読む
   → maintainer-notes §4.5
 
 **e2e の実行範囲はリスクとコストで決める**(上のゲートは「最低限ここまでは回す」の下限で、
