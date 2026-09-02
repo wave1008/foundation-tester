@@ -292,6 +292,57 @@ M1Max 10コア/16コア ANE が 3.51 で、コア数比にも ANE 比にも対�
   `occlusionInkThreshold` を上げる(per-step の逃げ道は `requireVisible: false`)
 - **失敗シナリオを直すと FM コストも自動的に減る**(発生源が偏っているため)
 
+### 3.5.1 FM 1回あたりのレイテンシ(2026-09-03 実測・M1Max / M1Ultra)
+
+**測り方**: 本番と同じ instructions / GenerationOptions / `@Generable` 型で、**対にして交互順**に撃つ
+(台本は scratchpad の `fm-*-bench.swift`)。順序を固定すると**アイドル明けの固定費が1本目に全部
+乗る**ので、片側だけが遅く見える(下の①がまさにそれ)。
+
+**どこを直すと効くか**は実績で決める。2026-09 の実 run(931 シナリオ)で FM 呼び出し 7,167 回・
+総 17,460 秒のうち **occlusion が 6,804 回 / 15,567 秒(89%)**(triage 278 回・平均 6,121ms /
+screenLooksLike 51 回 / heal 34 回)。**occlusion 一択**。
+
+| 施策 | 実測 | 採否 |
+|---|---|---|
+| ① `guardrails: .permissiveContentTransformations` | tiny ±0 / heal −0.4〜−1.9% / vision 有意差なし(答えは 76/76 一致) | **不採用**(速くならない) |
+| ②a occlusion から **reason だけ**落とす(4欄200tok → 3欄80tok) | 反転済み crop 147 枚で **−33%**(1878→1257ms)・陽性 crop 62 枚で −18%。**判定は 209/209 で従来と一致**(visible も state も) | **採用**(2段化) |
+| ②b occlusion から reason と observedText を落とす(2欄40tok) | 合成画像では −30%・判定 30/30 一致。**実データでは反転を 106/147 取りこぼす** | **不採用** |
+| ③ heal の出力欄を減らす(rationale を落とす) | −30%(3550→2479ms・答え一致) | 保留(rationale は失敗レポートに出る) |
+| ④ `session.prewarm()` | heal: リード1000ms −28% / 250ms −12% / 0ms −9%(t=−8.6)。vision: −14% / −8% / **0ms は ±0**(t=+1.5) | **テキスト経路だけ採用** |
+| ⑤ crop を縮めて送る | **効果ゼロ**(16k px と 1024k px で差なし) | 不採用 |
+| ⑥ プロンプト長 | heal の要素一覧 10行 2214ms / 40行 3600ms / 120行 8964ms = **1行あたり 46〜67ms** | 未着手(精度に直結) |
+
+- **①の再検討条件**: OS 更新で安全ガードレールの実装が変わったとき。**`fm-flap.ndjson` の ms を
+  プローブ間で比較して「permissive が2倍速い」と読まないこと** —— あのログは 60 秒アイドル直後に
+  text→vision→permissive の固定順で撃つので、アイドル明けの固定費(実測 +2 秒前後)が text に付く
+- **②a(採用した形)**: 1段目は `reason` を作らせない3欄(`visible` / `state` / `observedText`)。
+  「見えている」と答えた回はそこで終わる —— `reason` と `observedText` は**反転した回しか
+  読まれない**(`StepExecutor+Assert.swift` の `if v.visible { return nil }`)。
+  **反転する回だけ2段目 = 従来と同じ4欄の呼び出し**を撃ち、判定・失敗文言・crop の保存は
+  そちらが行う(= 反転した回の挙動は従来と同じ)。実績で反転は呼び出しの数%なので、
+  2回払うのは稀な側。殺しスイッチは `FT_FM_OCCLUSION_TWO_STAGE=0`
+- **②b が不採用な理由(合成では見えなかった)**: `visible` は**宣言順で最初に生成される**ので
+  「後ろの欄を削っても判定は変わらない」と読めるが、**スキーマ本文はプロンプトに入る**
+  (`includeSchemaInPrompt` 既定 true)ので、欄を削るとプロンプトが変わり判定も変わる。
+  実際に反転した crop **147 枚**(`~/Library/Logs/fleetest/occlusion/` のダンプ = 従来の
+  呼び出しが visible=false と答えた回だけが残る)で突き合わせると、
+  **2欄版は 106/147(72%)で「見えている」と答えた**。目視した例は期待テキスト「WebView 入力」に
+  対し crop に `hello123` が描かれている画面で、規則 (c)「無関係な文字列だけが描かれている」=
+  visible=false が正しい。**`observedText` を作らせるのをやめると、モデルが文字を読んで
+  期待値と突き合わせる工程ごと消える**。**合成30枚では 30/30 一致していた** ——
+  欄を増減したら必ずコーパスで測り直すこと
+- **照合の作り方**(欄を触るときはこれを繰り返す): 陰性は
+  `~/Library/Logs/fleetest/occlusion/*.png`(+ `.txt` = 期待テキスト)を全部当てる。
+  陽性はダンプが残らないので、**生きている端末の木とスクショから作る** ——
+  ブリッジの `/snapshot` と `/screenshot` を取り、ラベルを持つ要素の frame を
+  `OcclusionVerifier.cropRect` と同じ規則(適応余白 min(24, 辺/3))で切り出し、
+  期待テキスト = そのラベルとして撃つ(台本は scratchpad の `fm-positive-check.swift`)
+- **④が効く条件は「重ねられる作業があること」**。vision はリード 0ms では効かないので、
+  画像経路(occlusion / screenLooksLike)には入れていない —— 効かせるには**スクショ往復より前**へ
+  持ち上げる必要があり、それは FTCore 側(`StepExecutor.occlusionFlip`)の配線になる(未実施)
+- **同じ画像を続けて送ると2本目が約1.5秒速い**(内容キャッシュ)。production は毎回別の crop なので
+  効かないが、**ベンチで画像を使い回すと偽の高速化を測る**(この罠に一度落ちた)
+
 ### 3.6 プラットフォーム別レーン稼働の偏り(2026-07-22 実測・M2 Ultra)
 
 SampleApp 76シナリオを `ios-5-android-5`(10台)で実行したときのレーン稼働:

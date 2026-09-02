@@ -39,6 +39,25 @@ struct VisibilityVerdict {
     var reason: String
 }
 
+/// 1段目(選別)の出力。**`reason` だけを落とした VisibilityVerdict**。
+/// reason は一文まるごと生成するので占める時間が大きく、しかも**反転した回しか読まれない**
+/// (StepExecutor+Assert.swift の `if v.visible { return nil }`)。
+/// **`observedText` は残す** —— 落とすとモデルが「文字を読んで期待値と突き合わせる」工程ごと
+/// やめてしまい、判定が壊れる(実データで 106/147 が反転を取りこぼした。
+/// docs/performance-tuning.md §3.5.1)。`visible` が先頭でも**スキーマ本文はプロンプトに入る**
+/// ので、欄の増減は判定に効く = 変えたら必ずコーパスで照合すること。
+@Generable
+struct VisibilityScreening {
+    @Guide(description: "true when the expected text is clearly readable — not covered, not cut off, not dimmed. false on any occlusion, clipping or illegibility")
+    var visible: Bool
+
+    @Guide(description: "Classification of how it appears")
+    var state: VisibilityState
+
+    @Guide(description: "The text actually read; empty when unreadable")
+    var observedText: String
+}
+
 // MARK: - 検証器
 
 public struct OcclusionVerifier {
@@ -56,6 +75,21 @@ public struct OcclusionVerifier {
 
     public init(cropPadding: CGFloat = 24) {
         self.cropPadding = cropPadding
+    }
+
+    /// 1段目(選別)の出力上限トークン。reason(一文)が無いぶん 200 は要らない。
+    /// 2026-09-03 実測(M1Max): 反転済み crop 147 枚で **med 1878→1257ms(−33%)**、
+    /// 生きた画面から採った陽性 crop 62 枚で 2401→1970ms(−18%)。
+    /// **判定は 209/209 で従来と一致**(visible も state も)
+    static let screeningResponseTokens = 80
+
+    /// 2段目(反転の説明)の出力上限トークン。**従来の1回呼び出しと同じ値**を保つ ——
+    /// 反転の判定・文言・crop 保存はこの呼び出しが行うので、変えると反転の挙動が変わる
+    static let detailResponseTokens = 200
+
+    /// 2段化の殺しスイッチ。`FT_FM_OCCLUSION_TWO_STAGE=0` で従来の1回呼び出しへ戻す(A/B 用)
+    static func twoStageEnabled(environment: [String: String]) -> Bool {
+        environment["FT_FM_OCCLUSION_TWO_STAGE"] != "0"
     }
 
     // frame をクロップして判定
@@ -94,12 +128,45 @@ public struct OcclusionVerifier {
         // モデル積み降ろしだけが増えるので、呼び出し側で待ち行列を作る(FMLock 参照)
         guard await FMGate.enter() else { return nil }
         defer { FMGate.leave() }
+        // **2段構え**。1段目は reason を作らせない選別(実測 −33%)。「見えている」と答えた回は
+        // ここで終わる —— reason は反転した回しか読まれないので、95% 以上の回で一文まるごと
+        // 生成していた時間が消える。**反転する回だけ2段目 = 従来と同じ呼び出し**を撃ち、
+        // 判定・文言・crop の保存はそちらが行う(= 反転した回の挙動は変わらない)。
+        // 1段目が反転を取りこぼす危険は実データで測ってある(反転済み crop 147 枚で 0 件・
+        // 陽性 62 枚でも判定は全一致。docs/performance-tuning.md §3.5.1)。
+        // 2回とも**同じ FMGate の取得の中**で回す(間に他ワーカーを割り込ませない。triage と同じ)。
+        if Self.twoStageEnabled(environment: ProcessInfo.processInfo.environment) {
+            let screeningStartedAt = Date()
+            do {
+                let screening = try await LanguageModelSession(instructions: instructions).respond(
+                    generating: VisibilityScreening.self,
+                    options: GenerationOptions(sampling: .greedy,
+                                               maximumResponseTokens: Self.screeningResponseTokens)
+                ) {
+                    prompt()
+                    Attachment(image)
+                }.content
+                FMHealth.record(kind: "occlusion", ms: Self.elapsedMs(screeningStartedAt), ok: true)
+                if screening.visible {
+                    // 見えている回は reason を誰も読まない(呼び出し側は visible で return する)
+                    return Result(visible: true, state: Self.name(screening.state),
+                                  observedText: String(screening.observedText.prefix(120)), reason: "")
+                }
+            } catch {
+                // 従来の失敗と同じ扱い(nil = ガード素通り)。ここで2段目へ落とすと、FM が
+                // 死んだホストで1回の判定に2回分の時間を捨てる
+                FMHealth.record(kind: "occlusion", ms: Self.elapsedMs(screeningStartedAt), ok: false,
+                                error: "occlusion(screening): \(FMHealth.describe(error))")
+                return nil
+            }
+        }
         let session = LanguageModelSession(instructions: instructions)
         let startedAt = Date()
         do {
             let verdict = try await session.respond(
                 generating: VisibilityVerdict.self,
-                options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 200)
+                options: GenerationOptions(sampling: .greedy,
+                                           maximumResponseTokens: Self.detailResponseTokens)
             ) {
                 prompt()
                 Attachment(image)

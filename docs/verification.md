@@ -2561,6 +2561,9 @@ FM は**ホスト全体で共有される資源**。2026-07-22 時点の実測�
   失敗時のみ)ため、flake 調査や負荷試験で意図的に FM を鳴らしたいときはこれを使う
   (詳細と実測は performance-tuning.md §3.5)
 - **A/B 計測の殺しスイッチ**: `FT_FM_SERIALIZE=0` で無効化(acquire が常に true = 素通り)
+- **occlusion の2段化の殺しスイッチ**: `FT_FM_OCCLUSION_TWO_STAGE=0` で従来の1回呼び出しへ戻す
+  (1段目 = `reason` を作らせない選別・2段目 = 反転した回だけ従来と同じ4欄。
+  実測と照合の作り方は docs/performance-tuning.md §3.5.1)
 
   ```bash
   FT_FM_SERIALIZE=0 Scripts/e2e.sh   # 直列化なし

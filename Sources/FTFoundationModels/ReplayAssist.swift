@@ -68,13 +68,20 @@ public final class FMReplayDelegate: ReplayDelegate {
         // FM はホスト全体で直列化される資源(FMLock 参照)
         guard await FMGate.enter() else { return nil }
         defer { FMGate.leave() }
-        let rendered = SnapshotRenderer.render(snapshot)
         let session = LanguageModelSession(instructions: """
         You repair locators for UI tests. An element can no longer be found after a UI change;
         pick its stand-in from the current element list. That original locator will never
         appear in the list, so never answer with it. Choose only an element with the same
         role and meaning, and set confidence to low when unsure.
         """)
+        // **モデルの積み込みを先に始める**。2026-09-03 実測(M1Max・20秒アイドル後の heal):
+        // 何も重ねずに直前で撃つだけで −437ms(−9%・t=−8.6)、1秒重ねられれば −1,440ms(−28%)。
+        // 重ねられるのはこの下の木の描画とプロンプト組み立てだけなので、その前に撃つ。
+        // **画像経路(occlusion / screenLooksLike)には入れていない** —— 同じ実測で
+        // リード 0ms では効果が無く(+91ms・t=+1.5)、効かせるにはスクショ往復より前へ
+        // 持ち上げる必要がある(= StepExecutor 側の配線。未実施)
+        session.prewarm()
+        let rendered = SnapshotRenderer.render(snapshot)
         // プロンプト構築自体は純粋関数(healPrompt)へ切り出してある(FM 呼び出し・デバイスが
         // 要らない。単体テストは Tests/FTFoundationModelsTests/HealPromptTests.swift)。
         // 2026-09-02 の実測: モデルが壊れたロケータをそのままオウム返ししていた(triage は
@@ -276,9 +283,11 @@ public final class FMReplayDelegate: ReplayDelegate {
                                 ok: false, error: "triage(image): \(FMHealth.describe(error))")
             }
         }
+        let textSession = LanguageModelSession(instructions: instructions)
+        textSession.prewarm()   // 効き方は healLocator のコメント参照(テキスト経路だけに入れる)
         let textStartedAt = Date()
         do {
-            let suggestion = try await LanguageModelSession(instructions: instructions).respond(
+            let suggestion = try await textSession.respond(
                 to: text,
                 generating: TriageSuggestion.self,
                 options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 300)
