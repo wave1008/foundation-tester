@@ -305,7 +305,7 @@ screenLooksLike 51 回 / heal 34 回)。**occlusion 一択**。
 | 施策 | 実測 | 採否 |
 |---|---|---|
 | ① `guardrails: .permissiveContentTransformations` | tiny ±0 / heal −0.4〜−1.9% / vision 有意差なし(答えは 76/76 一致) | **不採用**(速くならない) |
-| ②a occlusion から **reason だけ**落とす(4欄200tok → 3欄80tok) | 反転済み crop 147 枚で **−33%**(1878→1257ms)・陽性 crop 62 枚で −18%。**判定は 209/209 で従来と一致**(visible も state も) | **採用**(2段化) |
+| ②a occlusion から **reason だけ**落とす(4欄200tok → 3欄80tok) | 反転済み crop 147 枚で **−33%**(1878→1257ms)・陽性 crop 62 枚で −18%。**判定は 209/209 で従来と一致**(visible も state も)。**実 run でも再現**(下の実測表) | **採用**(2段化) |
 | ②b occlusion から reason と observedText を落とす(2欄40tok) | 合成画像では −30%・判定 30/30 一致。**実データでは反転を 106/147 取りこぼす** | **不採用** |
 | ③ heal の出力欄を減らす(rationale を落とす) | −30%(3550→2479ms・答え一致) | 保留(rationale は失敗レポートに出る) |
 | ④ `session.prewarm()` | heal: リード1000ms −28% / 250ms −12% / 0ms −9%(t=−8.6)。vision: −14% / −8% / **0ms は ±0**(t=+1.5) | **テキスト経路だけ採用** |
@@ -337,6 +337,20 @@ screenLooksLike 51 回 / heal 34 回)。**occlusion 一択**。
   ブリッジの `/snapshot` と `/screenshot` を取り、ラベルを持つ要素の frame を
   `OcclusionVerifier.cropRect` と同じ規則(適応余白 min(24, 辺/3))で切り出し、
   期待テキスト = そのラベルとして撃つ(台本は scratchpad の `fm-positive-check.swift`)
+- **実 run での確認(M1Max・E2E-CMP `スクロールで折り返し下の要素に到達できること`・
+  `falsePositiveCheck: true`・交互に撃つ)**。殺しスイッチで同じ機械・同じシナリオを A/B した:
+
+  | | 1呼び出しあたり(中央値) | run ごとの FM 総時間(中央値) | 対の差 |
+  |---|---|---|---|
+  | 2レーン(7 run ずつ) | 3,518 → 3,126ms | 59,914 → 56,999ms | −264ms(t=−1.40 = 有意でない) |
+  | **1レーン(3 run ずつ)** | **3,767 → 3,293ms(−13%)** | **62,399 → 54,724ms** | **−489ms(t=−6.55)** |
+
+  **節約は decode 側の固定費(約 0.5 秒)**なので、競合の無い1レーンでは素直に出るが、
+  2レーンでは FM の取り合いで分散(run 間 ±20%)に埋もれる。**「実 run で差が出ない」と
+  読む前にレーン数を疑うこと** —— 固定費の節約は、待ち行列の分散より小さくなると見えなくなる。
+  再測の手順: 対象機の台だけを並べた実行プロファイル(`devices[].machine` をその機械にする)を
+  置き、ランナーで `FT_FM_OCCLUSION_TWO_STAGE=0` の有無を交互に回して
+  結果 JSON の `fm.byKind.occlusion` を集計する
 - **④が効く条件は「重ねられる作業があること」**。vision はリード 0ms では効かないので、
   画像経路(occlusion / screenLooksLike)には入れていない —— 効かせるには**スクショ往復より前**へ
   持ち上げる必要があり、それは FTCore 側(`StepExecutor.occlusionFlip`)の配線になる(未実施)
