@@ -218,9 +218,13 @@ enum MachineProfileLoad {
         // `cannot tell which machine profile to use` で即死し、**画面には何も起きない**
         // (実害 2026-08-29)
         guard let profile else {
-            let merged = MachineInventory.mergedProfile(MachineInventory.observableEntries(
-                profiles: MachineInventory.loadAll(project: testProject) { warn("→ \($0)") },
-                registry: registry))
+            let inventory = MachineInventory.merge(
+                sources: MachineInventory.loadAllNamed(project: testProject) { warn("→ \($0)") },
+                registry: registry)
+            // 食い違いを黙って畳むと、実在しないほうの実体で起動しようとして
+            // `no simulator with that UDID` になる(ApiMonitorCommand と同じ規律)
+            for conflict in inventory.conflicts { warn("→ \(conflict.message)") }
+            let merged = MachineInventory.mergedProfile(inventory.entries)
             return keepingDevices(of: deviceMachine, in: merged, foreign: foreign, warn: warn)
         }
         // --profile の machine 明示指定を最優先(ProfileResolver.resolve() と同じ優先順位)

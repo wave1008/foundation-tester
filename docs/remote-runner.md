@@ -16,7 +16,7 @@
 | **host** | **ホスト名 または IP アドレス**(`user@host` の形も含む。ネットワーク上の実体) | ホスト登録簿の `host`、`--host`、ssh 宛先 | **よい**(安定した識別子) |
 | **machine** | その host に対する**ローカルエイリアス**。このマシンの登録簿だけが知っている名前 | ホスト登録簿の `machine`、プロファイルの `machine`、`--machine` | **原則だめ** —— 頻繁に変わりうるので記録の鍵に使わない。**例外はその machine 自身に関する構成**(登録簿・プロファイルのデバイス割り当て) |
 
-守る規律は3つ:
+守る規律は4つ:
 
 1. **エイリアスをリモートへ出さない**。転送するプロファイルは `FTCore.RunnerProfileView` が
    「そのランナーから見た姿」へ畳む(そのランナーの台は `machine: "local"`・他機の台は削除)。
@@ -25,6 +25,18 @@
    「同じ機械の実績を優先」もこれで照合する。`.fleetest/remote-hosts/<ホスト>.json` も同じ
 3. **プロファイルに ssh 実体を書かない**(従来どおり)。プロファイルはプロジェクト資産なので、
    書けるのは `machine`(エイリアス)だけ。`host` はローカル設定(`LocalConfig.remoteHosts`)にだけ置く
+4. **手元の台帳を「ランナーの視点」で書かない** —— `profiles/machines/` に置く台帳は**発行側から
+   見た姿**で書き、他機の台には必ず `machine: "<マシン名>"` を書く。ランナーへ渡す姿(`"local"`)は
+   転送時に `RunnerProfileView` が畳むので、手で `"local"` と書いてはいけない。
+   書くと2つ壊れる: **①ディスパッチが手元へ落ちる**(`fleetest run` は「デバイスが居る機械」で
+   宛先を決めるので、向こうの台を手元で探して `no simulator with that UDID`)/
+   **②実行プロファイル未選択の監視で、実在する手元の台が消える** —— 台帳を畳む
+   `MachineInventory` は (platform, machine, name) の重複を1件にするので、手元に**実在しない**
+   udid のほうが (ios, local, 同名) を先に埋めると、本物の起動中シミュレータが「未登録の
+   起動中デバイス」として合成され **id 衝突で毎周期落ちる**(実害 2026-09-03。症状は
+   `[monitor] Skipped an unregistered simulator due to an id collision: …` が鳴り続け、
+   その台のタイルが offline のまま)。実体(udid/avd/serial)の食い違いは
+   `MachineInventory.merge` が警告し、`MachineInventoryTests` がこのリポジトリの台帳全数に当てる
 
 **JSON キーの改名(2026-08-26)**: プロファイルの `devices[].host` → `machine`、マシンプロファイル
 直下の `host` → `machine`、ホスト登録簿の `name` → `machine`、記録の `machine` → `host`。

@@ -2,7 +2,7 @@
   "ios": {
     "devices": [
       {
-        "machine": "local",
+        "machine": "M1Ultra",
         "name": "iPhone 17 Pro(iOS 27.0)",
         "os": "27.0",
         "simulator": "iPhone 17 Pro",
@@ -13,7 +13,7 @@
   "android": {
     "devices": [
       {
-        "machine": "local",
+        "machine": "M1Ultra",
         "name": "Pixel 3(Android 11)-01",
         "avd": "Pixel_3_Android_11_-01"
       }

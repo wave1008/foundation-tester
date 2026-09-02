@@ -118,10 +118,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             }
         } else {
             let registry = (LocalConfig.load().remoteHosts ?? []).map(\.machine)
-            targets = MachineInventory.observableEntries(
-                profiles: MachineInventory.loadAll(project: testProject) { logStderr("[monitor] \($0)") },
-                registry: registry
-            ).map { MonitorTarget(platform: $0.platform, spec: $0.spec) }
+            let merged = MachineInventory.merge(
+                sources: MachineInventory.loadAllNamed(project: testProject) { logStderr("[monitor] \($0)") },
+                registry: registry)
+            // **食い違いは黙って畳まない** —— 負けた台帳の台が実在するほうだと、起動中の台が
+            // 下の unregisteredStates で「id 衝突」として落ち、画面から消える(実害 2026-09-03)
+            for conflict in merged.conflicts { logStderr("[monitor] \(conflict.message)") }
+            targets = merged.entries.map { MonitorTarget(platform: $0.platform, spec: $0.spec) }
             // **0台でも続ける**(起動中の台が現れたら出す)
             logStderr("[monitor] No run profile is selected — monitoring the devices registered for this"
                 + " machine and for every machine in the remote registry"

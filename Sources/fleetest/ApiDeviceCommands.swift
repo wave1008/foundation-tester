@@ -679,9 +679,13 @@ enum ApiDeviceOperation {
             machineLabel = machine.name
         } else {
             let registry = (LocalConfig.load().remoteHosts ?? []).map(\.machine)
-            machineProfile = MachineInventory.mergedProfile(MachineInventory.observableEntries(
-                profiles: MachineInventory.loadAll(project: testProject) { logStderr("→ \($0)") },
-                registry: registry))
+            let inventory = MachineInventory.merge(
+                sources: MachineInventory.loadAllNamed(project: testProject) { logStderr("→ \($0)") },
+                registry: registry)
+            // 食い違いを黙って畳むと、実在しないほうの実体で起動しようとして
+            // `no simulator with that UDID` になる(ApiMonitorCommand と同じ規律)
+            for conflict in inventory.conflicts { logStderr("→ \(conflict.message)") }
+            machineProfile = MachineInventory.mergedProfile(inventory.entries)
             machineLabel = "machines/"
         }
 
