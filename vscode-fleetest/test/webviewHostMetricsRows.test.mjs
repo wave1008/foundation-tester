@@ -97,6 +97,13 @@ function rowFor(document, machine) {
   return document.querySelector(`#host-metrics .hm-row[data-machine="${machine}"]`);
 }
 
+/** FM のツールチップ。**窓(直近 N tick)の集計はラベルではなくここに出る** ——
+ *  ラベルは直近 1 tick の回数なので、窓の不変条件(欠測を分母に入れない・古い tick を落とす)は
+ *  こちらでしか検証できない。 */
+function fmTitle(document, machine) {
+  return rowFor(document, machine).querySelector('[data-metric="fm"]').title;
+}
+
 /** fm 省略時は fmCalls:0(既知の0件、欠測ではない)。欠測にしたいテストは { fmCalls: null } を渡す。 */
 function hostMetricsSample(machine, cpu, fm = {}) {
   const { fmCalls = 0, fmFailures = 0, fmTotalMs = 0 } = fm;
@@ -193,9 +200,9 @@ test("サンプルは machine の行にだけ積み、描くのは手元の tick
   assert.deepEqual(values(rowFor(document, "")), ["–", "–", "–", "–"], "手元の行も動かない");
 
   send(window, hostMetricsSample(undefined, 0.1));
-  assert.deepEqual(values(rowFor(document, "")), ["25%", "10%", "25%", "0.0/s"], "machine 欄が無ければ手元");
+  assert.deepEqual(values(rowFor(document, "")), ["25%", "10%", "25%", "0"], "machine 欄が無ければ手元");
   assert.deepEqual(
-    values(rowFor(document, "mac2")), ["25%", "90%", "25%", "0.0/s"],
+    values(rowFor(document, "mac2")), ["25%", "90%", "25%", "0"],
     "リモートは手元と同じ tick で、保持していた最新値で描かれる",
   );
 });
@@ -209,7 +216,7 @@ test("同じ tick までに複数届いたら最後の1つだけを使う", (t) 
   send(window, hostMetricsSample("mac2", 0.4));
   send(window, hostMetricsSample(undefined, 0.1));
 
-  assert.deepEqual(values(rowFor(document, "mac2")), ["25%", "40%", "25%", "0.0/s"]);
+  assert.deepEqual(values(rowFor(document, "mac2")), ["25%", "40%", "25%", "0"]);
 });
 
 test("サンプルの無い tick は直近の値を使い回し、途絶えたら欠測にする", (t) => {
@@ -245,10 +252,10 @@ test("手元が黙ったらリモートが刻みを引き取り、手元が戻�
 
   advance(6000);
   send(window, hostMetricsSample("mac2", 0.8));
-  assert.deepEqual(values(rowFor(document, "mac2")), ["25%", "80%", "25%", "0.0/s"], "無音が続けば委譲");
+  assert.deepEqual(values(rowFor(document, "mac2")), ["25%", "80%", "25%", "0"], "無音が続けば委譲");
 
   send(window, hostMetricsSample(undefined, 0.1));
-  assert.deepEqual(values(rowFor(document, "")), ["25%", "10%", "25%", "0.0/s"]);
+  assert.deepEqual(values(rowFor(document, "")), ["25%", "10%", "25%", "0"]);
   send(window, hostMetricsSample("mac2", 0.5));
   assert.equal(
     values(rowFor(document, "mac2"))[1], "80%",
@@ -283,19 +290,28 @@ test("機械が消えたら行も消える(古い値を出し続けない)", (t)
   assert.equal(document.getElementById("host-metrics").classList.contains("hm-multi"), false);
 });
 
-test("hostMetrics の fmCalls から移動窓(直近10 tick)のレートが計算される", (t) => {
+// ラベルは**直近 1 tick の呼び出し回数そのもの**(移動平均ではない)。スパークラインが描くのも
+// tick ごとの回数なので、線と数字の単位が揃う
+test("FM のラベルは直近 tick の呼び出し回数", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
   const fmOf = (machine) => values(rowFor(document, machine)).at(-1);
-  const calls = [1, 0, 0, 0, 1, 0, 0, 1, 0, 1]; // 合計4件
-  for (const c of calls) {
+  for (const c of [1, 0, 0, 0, 1, 0, 0, 1, 0, 3]) {
     send(window, hostMetricsSample("mac2", 0.9, { fmCalls: c }));
     send(window, hostMetricsSample(undefined, 0.1)); // 手元の tick で commit させる
   }
 
-  assert.equal(fmOf("mac2"), "0.4/s", "10 tick 合計4件 → 0.4/s(0.1刻みで見える)");
+  assert.equal(fmOf("mac2"), "3", "最後の tick が3件なら 3(窓の平均 0.6 ではない)");
+
+  send(window, hostMetricsSample("mac2", 0.9, { fmCalls: 0 }));
+  send(window, hostMetricsSample(undefined, 0.1));
+  assert.equal(fmOf("mac2"), "0", "次の tick が0件なら即 0(平均のように尾を引かない)");
+
+  // 窓の集計はツールチップに残る(ラベルが tick 単位になっても捨てない)。
+  // この時点の窓は末尾10 tick = [0,0,0,1,0,0,1,0,3,0] で合計5(先頭の1は窓から出た)
+  assert.match(fmTitle(document, "mac2"), /5回|5 calls/, "直近10 tick の合計はツールチップ");
 });
 
 // 分母は「観測できた tick 数」。欠測を分母に入れると取りこぼしのたびにレートが静かに小さく出る。
@@ -313,7 +329,8 @@ test("欠測 tick は分母に数えない(観測できた tick だけで平均�
     send(window, hostMetricsSample(undefined, 0.1));
   }
 
-  assert.equal(fmOf("mac2"), "1.0/s", "観測できた5 tick で5件 = 1.0/s(欠測は分母に入れない)");
+  assert.match(fmTitle(document, "mac2"), /FM 1\.0回\/秒|FM 1\.0\/s/,
+    "観測できた5 tick で5件 = 1.0/s(欠測は分母に入れない。窓長10で割ると 0.5 になる)");
 });
 
 test("移動窓は古い tick を落とす(実行が終われば下がる)", (t) => {
@@ -330,13 +347,15 @@ test("移動窓は古い tick を落とす(実行が終われば下がる)", (t)
   };
 
   push(1, 10);
-  assert.equal(fmOf("mac2"), "1.0/s");
+  assert.match(fmTitle(document, "mac2"), /FM 1\.0回\/秒|FM 1\.0\/s/);
   // 窓が古い tick を落とさないと 10件/20 tick = 0.5/s に居座り、run が終わっても下がらない
   push(0, 10);
-  assert.equal(fmOf("mac2"), "0.0/s", "窓から出た呼び出しは残らない");
+  assert.match(fmTitle(document, "mac2"), /FM 0\.0回\/秒|FM 0\.0\/s/,
+    "窓から出た呼び出しは残らない");
+  assert.equal(fmOf("mac2"), "0", "ラベルも0件");
 });
 
-test("fmCalls が null 続きは欠測(–)、0 続きは 0.0/s(不明と0件を混ぜない)", (t) => {
+test("fmCalls が null は欠測(–)、0 は 0(不明と0件を混ぜない)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
@@ -347,13 +366,13 @@ test("fmCalls が null 続きは欠測(–)、0 続きは 0.0/s(不明と0件を
     send(window, hostMetricsSample("mac2", 0.9, { fmCalls: null }));
     send(window, hostMetricsSample(undefined, 0.1));
   }
-  assert.equal(fmOf("mac2"), "–", "窓内が全て不明(控えを読めない)なら欠測表示");
+  assert.equal(fmOf("mac2"), "–", "直近 tick が不明(控えを読めない)なら欠測表示");
 
   for (let i = 0; i < 3; i++) {
     send(window, hostMetricsSample("mac2", 0.9, { fmCalls: 0 }));
     send(window, hostMetricsSample(undefined, 0.1));
   }
-  assert.equal(fmOf("mac2"), "0.0/s", "既知の0件(呼び出しが無かった)は欠測と区別する");
+  assert.equal(fmOf("mac2"), "0", "既知の0件(呼び出しが無かった)は欠測と区別する");
 });
 
 test("FM は機械ごとの行に正しく振り分けられる", (t) => {
@@ -369,9 +388,9 @@ test("FM は機械ごとの行に正しく振り分けられる", (t) => {
     send(window, hostMetricsSample(undefined, 0.1, { fmCalls: 0 }));
   }
 
-  assert.equal(fmOf("mac2"), "1.0/s", "mac2 は毎tick1件(5tick中5件)");
-  assert.equal(fmOf("mac3"), "0.0/s", "mac3 は呼んでいない機械の行を混ぜない");
-  assert.equal(fmOf(""), "0.0/s", "手元も別に集計される");
+  assert.equal(fmOf("mac2"), "1", "mac2 は毎tick1件");
+  assert.equal(fmOf("mac3"), "0", "mac3 は呼んでいない機械の行を混ぜない");
+  assert.equal(fmOf(""), "0", "手元も別に集計される");
 });
 
 test("窓内に失敗が混ざると warn(⚠)、全て失敗すると dead(✕)の表示になる", (t) => {
@@ -399,4 +418,48 @@ test("窓内に失敗が混ざると warn(⚠)、全て失敗すると dead(✕)
     assert.ok(entry.classList.contains("hm-fm-dead"), "窓内が全滅なら dead");
     assert.match(values(rowFor(document, "mac2")).at(-1), /^✕/);
   }
+});
+
+/** lineTo の Y を canvas ごとに記録する 2D。**縦軸そのものは公開されていない**ので、
+ *  描かれた高さの比から間接的に読む(高さ = 22 - y)。 */
+function recordCanvas(window) {
+  window.HTMLCanvasElement.prototype.getContext = function getContext() {
+    const canvas = this;
+    canvas.__ys = [];
+    const noop = () => {};
+    return {
+      setTransform: noop, clearRect: noop, beginPath: noop, closePath: noop,
+      stroke: noop, fill: noop,
+      moveTo: (x, y) => canvas.__ys.push(y),
+      lineTo: (x, y) => canvas.__ys.push(y),
+      globalAlpha: 1, fillStyle: "", strokeStyle: "", lineWidth: 0, lineJoin: "", lineCap: "",
+    };
+  };
+}
+
+// FM の縦軸は**全行で1つ**。行ごとに取ると「2回の機械」と「8回の機械」が同じ高さに描かれ、
+// 並べて比べるという FM 行の目的が消える。描かれた高さの比が値の比と一致することで確かめる
+// (行ごとのスケールなら 8/max(5,8)=1.00 と 2/max(5,2)=0.40 で比は 2.5 にしかならない)。
+test("FM の縦軸は全行で共有される(行ごとに伸縮しない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  recordCanvas(window);
+
+  send(window, { type: "hostMetricsMachines", machines: ["mac2", "mac3"] });
+  for (let i = 0; i < 4; i += 1) {
+    send(window, hostMetricsSample("mac2", 0.5, { fmCalls: 8 }));
+    send(window, hostMetricsSample("mac3", 0.5, { fmCalls: 2 }));
+    send(window, hostMetricsSample(undefined, 0.5, { fmCalls: 0 }));
+  }
+
+  const peakHeight = (machine) => {
+    const canvas = rowFor(document, machine).querySelector('[data-metric="fm"] .hm-canvas');
+    return 22 - Math.min(...canvas.__ys);   // y が小さいほど高い
+  };
+
+  const high = peakHeight("mac2");
+  const low = peakHeight("mac3");
+  assert.ok(high > 0 && low > 0, "両方とも描かれていること");
+  assert.ok(Math.abs(high / low - 4) < 0.01,
+    `高さの比は値の比(8:2=4)になるはず。実際 ${(high / low).toFixed(2)}(行ごとなら約2.5)`);
 });

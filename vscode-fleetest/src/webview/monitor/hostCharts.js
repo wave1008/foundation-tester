@@ -15,12 +15,14 @@
 // FM系列も他と同じ hostMetrics ストリームから来る(host-metrics プロセス自身は FM を叩かない ——
 // FM を呼んだ側のプロセスが `~/.fleetest/fm-usage/<pid>.json` に置いた控えを、host-metrics が
 // 毎 tick 読んで集計する。Sources 側の詳細は関知しない)。run の FM 呼び出しは
-// FTCore の FMGate/FMLock が**ホスト全体で1件ずつに直列化する**ので実測は約1回/秒に張り付き、
-// 生の1秒差分は 0/1 の二値になって読めない。表示は直近 HM_FM_RATE_WINDOW_TICKS tick の
-// 移動窓平均(回/秒)。**この約1回/秒は FM の能力ではなくこちらのロックの上限**で、門を通らない
-// 呼び出し(`doctor --fm-load`)は数倍出る —— だからスパークラインに固定上限を置かない。
+// FTCore の FMGate/FMLock が**ホスト全体で枠の数まで**に絞るので、生の1秒差分は小さな整数に
+// なって読めない。表示は直近 HM_FM_RATE_WINDOW_TICKS tick の移動窓平均(回/秒)。
+// **縦軸の上限は HM_FM_MAX_RATE を下限とするオートスケール**。純粋なオートスケールだと
+// 窓の最大値で毎回伸縮し、「1回」と「5回」が同じ高さに描かれて行同士も時刻同士も比べられない。
+// 固定にすると超える負荷が天井で潰れる。両方を避けるのが下限付きスケール(hmCountScale)。
 
 import { t } from '../i18n.js';
+import { hmSharedCountScale } from './hostChartScale.js';
 import { setHoverTip } from './hoverTip.js';
 
 const HM_MAX_SAMPLES = 60;
@@ -249,8 +251,13 @@ function hmRenderFmLabel(row) {
   const partial = !!stats && !dead && stats.failures > 0;
   entry.el.classList.toggle('hm-fm-dead', dead);
   entry.el.classList.toggle('hm-fm-warn', partial);
-  const rateText = stats ? `${stats.rate.toFixed(1)}/s` : '–';
-  entry.value.textContent = (dead ? '✕' : partial ? '⚠' : '') + rateText;
+  // **数字は直近 tick の呼び出し回数そのもの**(窓の移動平均ではない)。スパークラインが
+  // 描いているのも tick ごとの回数なので、線と数字の単位が一致する。
+  // ✕/⚠ と ツールチップは窓(HM_FM_RATE_WINDOW_TICKS tick)で判定する —— 1 tick では
+  // 「全部失敗」がすぐ立ってしまい落ち着かないため。
+  const latest = row.fm.window.length > 0 ? row.fm.window[row.fm.window.length - 1] : null;
+  const callsText = latest && latest.calls !== null ? String(latest.calls) : '–';
+  entry.value.textContent = (dead ? '✕' : partial ? '⚠' : '') + callsText;
   let title = hmTitlePrefix(row) + t('wvMonitor2.hostCharts.fmTitle', {
     seconds: String(HM_FM_RATE_WINDOW_TICKS),
     rate: stats ? stats.rate.toFixed(1) : '–',
@@ -291,7 +298,9 @@ function hmSetupCanvas(canvas) {
   return ctx;
 }
 
-function hmDraw(row, entry) {
+/** scale は**呼び出し側が決める**(既定値を置かない) —— 件数系列は全行で1つの縦軸を共有する
+ *  必要があり、ここで entry 単独から計算できるようにしておくと行ごとのスケールへ静かに戻る。 */
+function hmDraw(row, entry, scale) {
   const width = 72;
   const height = 22;
   const ctx = hmSetupCanvas(entry.canvas);
@@ -303,16 +312,13 @@ function hmDraw(row, entry) {
   const palette = HM_COLORS[hmIsLightTheme() ? 'light' : 'dark'];
   // FM 全滅中はスパークラインも失敗の系列だと分かるよう赤(cpu と同色)で描く
   const color = entry === row.entries.fm && fmIsDead(row) ? palette.cpu : palette[entry.colorKey];
-  // 件数系列(FM)はバッファ内の最大値で正規化する。全部0のときは0で割らない
-  const scale = entry.countScale
-    ? Math.max(1, ...samples.filter((v) => v !== null))
-    : 1;
   const stepX = width / (HM_MAX_SAMPLES - 1);
   // samplesは「直近N件」なので、60件溜まるまでは右詰めで配置する(新サンプルは常に右端)。
   const startIndex = HM_MAX_SAMPLES - samples.length;
   const points = samples.map((ratio, i) => ({
     x: (startIndex + i) * stepX,
-    y: ratio === null ? null : height - (ratio / scale) * height,
+    // 念のため枠外へはみ出させない(件数系列は hmCountScale が上限を含むので通常は効かない)
+    y: ratio === null ? null : height - Math.min(1, ratio / scale) * height,
   }));
 
   // null(欠測)のところで線を分割し、区間ごとに個別のパスとして描く。
@@ -382,11 +388,25 @@ export function applyHostMetrics(message) {
   }
 }
 
-/** 全行を1度に描き直す(値・ツールチップ・スパークライン)。 */
+/** 全行を1度に描き直す(値・ツールチップ・スパークライン)。
+ *  **値の更新を全行終えてから描く** —— 件数系列の縦軸は全行のサンプルから決まるので、
+ *  行ごとに「積んで描く」を繰り返すと先に描いた行だけ古い縦軸になる。 */
 function hmCommitTick() {
   hmLastCommitAt = Date.now();
   for (const row of hmRows.values()) {
     hmCommitRow(row);
+  }
+  hmDrawAllRows();
+}
+
+/** 全行のスパークラインを描く。件数系列(FM)は**全行で1つの縦軸**を共有する。 */
+function hmDrawAllRows() {
+  const fmScale = hmSharedCountScale(
+    [...hmRows.values()].map((row) => row.entries.fm.samples));
+  for (const row of hmRows.values()) {
+    for (const entry of row.all) {
+      hmDraw(row, entry, entry.countScale ? fmScale : 1);
+    }
   }
 }
 
@@ -423,10 +443,8 @@ function hmRenderRow(row, sample) {
   if (row.fm.window.length > HM_FM_RATE_WINDOW_TICKS) {
     row.fm.window.shift();
   }
-  // FM は他の3系列と違い**割合ではなく件数**なので、固定の上限を置かない。
-  // production の run は FMGate/FMLock で1件ずつに直列化されるので実測は約1回/秒に張り付くが、
-  // 門を通らない呼び出し(doctor --fm-load)は数倍出る。固定上限だとどちらかが必ず潰れて読めない。
-  // 描画時にバッファ内の最大値で正規化する(hmDraw の countScale)
+  // FM は他の3系列と違い**割合ではなく件数**。描画時に hmCountScale で正規化する
+  // (hmDraw の countScale)
   hmPushSample(row.entries.fm, fmCalls);
   hmPushSample(row.entries.mem, memRatio);
 
@@ -443,17 +461,9 @@ function hmRenderRow(row, sample) {
     total: hmFormatGb(memTotalBytes),
     percent: hmFormatPercent(memRatio),
   });
-
-  for (const entry of row.all) {
-    hmDraw(row, entry);
-  }
 }
 
 // テーマ切替(body の class に vscode-light 等が付け外しされる)を検知して全グラフを再描画する。
 new MutationObserver(() => {
-  for (const row of hmRows.values()) {
-    for (const entry of row.all) {
-      hmDraw(row, entry);
-    }
-  }
+  hmDrawAllRows();
 }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
