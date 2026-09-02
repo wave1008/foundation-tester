@@ -1321,6 +1321,44 @@ FT_FAKE_FROZEN_KEYS=<UDID> .build/debug/fleetest run --project <p> --profile <r>
 落とすと**観測が丸ごと空になる**(実際に踏んだ)。`sleep N | fleetest api monitor …` にすると
 **stdin EOF が終了指示**になり、自分で片付けて終わるのでバッファが flush される。
 
+### FM の死を注入する(2026-09-03)
+
+FM が死んだ状態でしか通らない経路が4つある —— **run 開始前の警告**
+(`ProfileRunner.warnIfFMDegraded`)・**run.json の `fmDead`**・**まとめの1行**・
+**モニターの FM 行**(グレーの線と `✕ text  ✕ vision`)。どれも**緑の run では1度も
+実行されない**うえ、FM の間欠死は数分〜数時間で勝手に切り替わるので狙って作れない。
+死活台帳(`FTCore.FMLiveness`)がそのまま注入口になる。
+
+**① run の陽性対照**(警告・run.json・まとめを1本で通す):
+
+```bash
+DIR=/tmp/fm-inject && mkdir -p $DIR
+# 鮮度の新しい dead を置く。プローブは「台帳が古いときだけ」撃つので、新しければ実呼び出しは
+# 走らない。vision だけ / text だけ / 両方 で出し分けが変わるので、見たい形を書く
+python3 -c "import json,time,pathlib;now=time.time();pathlib.Path('$DIR/fm-liveness.json').write_text(json.dumps({
+  'text':  {'state':'alive','checkedAt':now,'source':'probe'},
+  'vision':{'state':'dead', 'checkedAt':now,'source':'probe','error':'INJECTED'}}))"
+chmod 500 $DIR   # ★ 読み取り専用にする
+FT_FM_LIVENESS_DIR=$DIR .build/debug/fleetest run --project <p> --profile <r> --scenario <s>
+```
+
+**★ ディレクトリを読み取り専用にする**のが肝。しないと、**run 中の実 FM 成功が台帳を
+`alive` で上書きして注入が消える**(ランナーの子プロセスは `FT_FM_LIVENESS_DIR` を継承する)。
+台帳の書き込み失敗は握りつぶす契約なので、読み取り専用にしても run は壊れない。
+run が `FMLiveness.freshSeconds`(120秒)を超えるなら、**別プロセスで 20 秒ごとに書き直す**
+(書く瞬間だけ `chmod 700` → 書く → `chmod 500`)。
+
+**② モニターの表示を目視する**(本物の VSCode パネルで見る唯一の方法):
+
+```bash
+# 本物の台帳へ新しい dead を書き続ける(20秒ごと)。プローブは古いときだけ撃つので
+# 上書きされない。**止めれば60秒以内にプローブが実状態へ戻すので後片付けは要らない**
+while :; do python3 -c "...上と同じ..." ~/.fleetest/fm-liveness.json; sleep 20; done
+```
+
+**注入した run は合否の判断に使わない**(FM を引くステップの挙動が変わる)。見るのは
+警告・`run.json`・表示という**公表の経路だけ**で、これは `FT_FAKE_FROZEN_KEYS` と同じ規律。
+
 ## めったに撃たない経路は、緑を重ねても検証されない(2026-08-02)
 
 「期限切れ直前だけ」「失敗したときだけ」しか通らない経路は、**フル E2E を何周回しても
