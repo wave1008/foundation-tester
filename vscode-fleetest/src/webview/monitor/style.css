@@ -316,13 +316,22 @@ button.bulk-cancel:hover:not(:disabled) {
   /* nowrap ではなく pre —— 経路の区切りの空白2つを畳ませない(既定では1つになる)。
      折り返さない性質は pre にも含まれる。 */
   white-space: pre;
-  /* 死は「異常な値」ではなく「機能が無効」なので、系列の色ではなくテーマのエラー色で書く。
-     **FM のラベルと値の色は動かさない**(ユーザー決定 2026-09-03)—— 行の中で色が付くのは
-     この語だけにして、隣の CPU/GPU/MEM と同じ「高い値が出ている」の合図に見えないようにする。 */
-  color: var(--vscode-errorForeground);
+  /* グレー(ユーザー決定 2026-09-03)。**行の中に色を持ち込まない** —— 赤にすると隣の
+     CPU/GPU/MEM と同じ「高い値が出ている」の合図に見えるが、死は値の異常ではなく機能の無効。
+     スパークラインを彩度の無い色にしたのと同じ判断で、行全体の色調を揃える。
+     **リテラルのグレーは置かない**(ライト/ダークのどちらかで背景に溶ける)——
+     テーマが決めた「控えめな文字色」を使う(.hm-label と同じトークン)。 */
+  color: var(--vscode-descriptionForeground);
 }
 .hm-fm-dead-badge.hm-visible {
   display: inline-block;
+}
+/* 死んでいる間の FM の値は必ず '–' の1文字なので、数字のための幅(min-width 32px)を
+   予約しない —— 予約したままだと '–' とバッジの間に 28px の空白が空く。
+   **バッジは行の最後尾**なので、ここを畳んでも左の列は動かない。
+   バッジの出る行は必ずこの状態なので、行ごとにバッジの開始位置がずれることもない。 */
+.host-metric.hm-fm-dead .hm-value {
+  min-width: 0;
 }
 .host-metric.hm-fm-warn .hm-value {
   color: var(--vscode-editorWarning-foreground, #e6a700);
