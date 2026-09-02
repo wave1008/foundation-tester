@@ -1662,7 +1662,23 @@ extension StepExecutor {
     /// 却下された自己修復の提案があったことを失敗文言に添える。**この一文が無いと、
     /// 「FM が探して見つからなかった」と「FM は答えを持っていたが confidence 不足で
     /// 使わなかった」が読み手から区別できない**(StepNote.healProposalRejected と同じ事実を
-    /// 文言側で運ぶだけで、採用基準そのもの(confidence == "high")はここでは変えない)
+    /// 文言側で運ぶだけで、採用基準そのもの(confidence == "high")はここでは変えない)。
+    ///
+    /// **具体的な貼れるセレクタ連鎖(`元のロケータ||提案セレクタ`)を組み立てない。
+    /// 機構(フォールバックが書けること)だけを教え、どの要素を使うかは読み手に委ねる。**
+    /// これは書き忘れではなく意図的な設計判断 —— 一度 `SelectorNaming` + `FTSelector.serialize`
+    /// で具体的な連鎖を組み立てて出す版を実装したが、2026-09-02 のデバイス実行
+    /// (`Scripts/fm-verify.sh`)で撤回した。93_triage(**存在しない要素をわざと叩く**陽性対照)で
+    /// FM が無関係な要素を提案し、それがそのまま貼れる形の助言 `"#btn_triage_check_does_not_exist
+    /// ||#nav_input"` として出た実例がある。**confidence は信号を持たない**(正解にも誤答にも
+    /// "low" が付くことが実測で確定済み。docs/design.md §10)ため、提案が正しいか誤りかを
+    /// この関数(ひいてはツール側)は判定できない。判定できない以上、**貼れる形で出すこと自体が
+    /// 危険**になる —— 利用者がそのまま貼ると誤った提案がテストを緑にしたまま別の要素を
+    /// 叩き続ける(検証されずに使われる、誤った緑)。**次にここを読んで「候補は分かっているの
+    /// だから `A||B` の形で出せばいい」と思っても、それが上記の理由で一度撤回された変更である
+    /// ことを踏まえること**。FM が何を提案したかは直前の一文
+    /// (`self-heal proposed <type> #<id> "<label>" ...`)が既に見せているので、
+    /// 読み手はそれを見て自分で判断できる —— 失うのは「貼れる形」だけで、それが危険な部分だった
     static func rejectedProposalHint(_ proposal: HealProposal) -> String {
         var parts = [proposal.element.type]
         if let id = proposal.element.identifier, !id.isEmpty { parts.append("#\(id)") }
@@ -1671,6 +1687,8 @@ extension StepExecutor {
         }
         return " (self-heal proposed \(parts.joined(separator: " ")) but its confidence was"
             + " \"\(proposal.confidence)\", not \"high\", so it was not used: \(proposal.rationale))"
+            + " To survive similar drift, write the locator with a fallback"
+            + " (\"primary||fallback\" tries fallback only if primary fails to resolve)."
     }
 
     /// FM は答えを返したが、その生テキストが木のどの要素にも一致しなかったとき、**答えをそのまま**
