@@ -1076,9 +1076,15 @@ struct RunScenarios: AsyncParsableCommand {
         }
 
         // **availability(FMDoctor.check)では判定しない** —— `.available` のまま実呼び出しが
-        // 全滅する状態が実在する(2026-07-22 実測)。実観測の台帳を使う判定は --profile 経路と
-        // 同じ1箇所に置く。この経路には機能ごとのトグルが無いので FMConfig の既定で見る
-        await ProfileRunner.warnIfFMDegraded(fm: FMConfig(enabled: true, heal: heal)) { print($0) }
+        // 全滅する状態が実在する(2026-07-22 実測)。判定は --profile 経路と同じ1箇所へ委ねる。
+        //
+        // **--profile のときはここで撃たない**(2026-09-03 の実 run で二重に出た)。あちらは
+        // `ProfileRunner.run` が**プロファイルの実効トグル**で撃つので、ここで撃つと同じ警告が
+        // 2行並ぶうえ、機能ごとのトグルを持たないこちらの既定のほうが情報として粗い。
+        // プロファイル無しの run にはその呼び出し元が無いので、ここが唯一の口になる
+        if profile == nil {
+            await ProfileRunner.warnIfFMDegraded(fm: FMConfig(enabled: true, heal: heal)) { print($0) }
+        }
 
         PhaseLog.mark("fm-doctor")
         let recorder = RunRecorder.begin(project: testProject, profile: profile, trigger: "cli",

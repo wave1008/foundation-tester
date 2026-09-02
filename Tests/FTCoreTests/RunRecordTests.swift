@@ -1,7 +1,76 @@
+import FTTestSupport
 import XCTest
 @testable import FTCore
 
 final class RunRecordTests: XCTestCase {
+
+    // MARK: - FM の死活(run.json の fmDead / fmDeadReason)
+
+    /// 台帳(FMLiveness)へ死を注入して run.json を作らせる。**緑の run では1度も通らない経路**
+    /// なので、フルスイートを何度回してもここは守られない(2026-09-03 の実 run で形を確認した)。
+    /// FT_FM_LIVENESS_DIR はプロセス全体の状態なので SharedResource.hostCaches で直列化する。
+    private func recordedMeta(injecting record: FMLiveness.Record?) throws -> RunMetaRecord {
+        let ledgerDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fleetest-fmdead-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: ledgerDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: ledgerDir) }
+        let saved = ProcessInfo.processInfo.environment["FT_FM_LIVENESS_DIR"]
+        setenv("FT_FM_LIVENESS_DIR", ledgerDir.path, 1)
+        defer { if let saved { setenv("FT_FM_LIVENESS_DIR", saved, 1) } else { unsetenv("FT_FM_LIVENESS_DIR") } }
+        if let record {
+            try JSONEncoder().encode(record).write(to: ledgerDir.appendingPathComponent("fm-liveness.json"))
+        }
+
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fleetest-runrecord-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let recorder = RunRecorder.begin(project: TestProject(name: "P", rootURL: root),
+                                         profile: "ios-fpc", trigger: "cli",
+                                         captureHostMetrics: false)
+        recorder.finish(total: 1, passed: 1, failed: 0)
+        return try JSONDecoder().decode(
+            RunMetaRecord.self,
+            from: Data(contentsOf: recorder.runDir.appendingPathComponent("run.json")))
+    }
+
+    private func verdict(_ state: FMLiveness.State, _ error: String?) -> FMLiveness.Verdict {
+        FMLiveness.Verdict(state: state, checkedAt: Date().timeIntervalSince1970,
+                           source: .probe, error: error)
+    }
+
+    /// **緑の run にも印が残る**。合否は変えないが、FM が死んだ run の緑は occlusion-guard・
+    /// 自己修復・screenLooksLike が素通りしただけかもしれない —— 後から仕分けるための欄
+    func testDeadFMIsRecordedOnAPassingRun() throws {
+        try SharedResource.hostCaches.locked {
+            let meta = try recordedMeta(injecting: FMLiveness.Record(
+                text: verdict(.alive, nil), vision: verdict(.dead, "ModelManagerError(1001)")))
+            XCTAssertEqual(meta.passed, 1, "合否は変えない")
+            XCTAssertEqual(meta.fmDead, ["vision"], "死んだ経路だけを名指しする")
+            XCTAssertEqual(meta.fmDeadReason, "vision: ModelManagerError(1001)")
+        }
+    }
+
+    /// 生きている run には欄を書かない(既存レコードと同じ形を保つ)。
+    /// **欄が無い = 生きていた、ではない**ことは docs/results-json.md が持つ契約
+    func testAliveFMLeavesTheFieldsOut() throws {
+        try SharedResource.hostCaches.locked {
+            let meta = try recordedMeta(injecting: FMLiveness.Record(
+                text: verdict(.alive, nil), vision: verdict(.alive, nil)))
+            XCTAssertNil(meta.fmDead)
+            XCTAssertNil(meta.fmDeadReason)
+        }
+    }
+
+    /// **観測が1件も無い(不明)を「死」と書かない**。台帳が無い機械の run すべてに
+    /// 「FM は死んでいた」と印を付けると、仕分けの欄として使えなくなる
+    func testUnknownLivenessIsNotRecordedAsDead() throws {
+        try SharedResource.hostCaches.locked {
+            let meta = try recordedMeta(injecting: nil)
+            XCTAssertNil(meta.fmDead)
+            XCTAssertNil(meta.fmDeadReason)
+        }
+    }
 
     private func stepEvent(index: Int, scene: Int, status: String, description: String = "tap",
                            detail: String? = nil, file: String? = nil, line: Int? = nil,
