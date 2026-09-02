@@ -88,7 +88,10 @@ extension StepExecutor {
         // 足切り: label が verbatim 描画されない要素(アイコン/画像/絵文字/結合セマンティクス)は
         // FM で約50%誤反転する(実機確認)ため対象外=素通り(pass)。textEquals の期待値は結合規則を外す。
         guard OcclusionEligibility.eligible(type: element.type, label: expectedText,
-                                            isUserText: expectedIsUserText).ok else { return nil }
+                                            isUserText: expectedIsUserText,
+                                            value: element.value, placeholder: element.placeholder,
+                                            web: element.web).ok
+        else { return nil }
         // 操作を挟まない連続ガードでは直近スクショを再利用(~125ms 削減)。
         let captured = try await guardScreenshot(phase: &phase)
         var screenshot = captured.data

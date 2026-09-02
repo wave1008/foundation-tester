@@ -234,14 +234,94 @@ final class StepExecutorTests: XCTestCase {
     /// #2 修正: textEquals の期待値(ユーザーリテラル)は結合 `, ` 規則を外す(句読点入りテキストを守る)
     func testEligibilityAllowsCommaInUserText() {
         // 実 label(exist)では `, ` を結合セマンティクスとして除外
-        XCTAssertFalse(OcclusionEligibility.eligible(type: "staticText", label: "A, B").ok)
+        XCTAssertFalse(OcclusionEligibility.eligible(type: "staticText", label: "A, B",
+                                                      value: nil, placeholder: nil, web: nil).ok)
         // ユーザー期待値(textEquals)では除外しない
         XCTAssertTrue(OcclusionEligibility.eligible(type: "staticText", label: "Hello, World",
-                                                    isUserText: true).ok)
+                                                    isUserText: true, value: nil, placeholder: nil,
+                                                    web: nil).ok)
         // 型・絵文字の規則は isUserText でも維持
-        XCTAssertFalse(OcclusionEligibility.eligible(type: "button", label: "x", isUserText: true).ok)
+        XCTAssertFalse(OcclusionEligibility.eligible(type: "button", label: "x", isUserText: true,
+                                                      value: nil, placeholder: nil, web: nil).ok)
         XCTAssertFalse(OcclusionEligibility.eligible(type: "staticText", label: "📱",
-                                                     isUserText: true).ok)
+                                                     isUserText: true, value: nil, placeholder: nil,
+                                                     web: nil).ok)
+    }
+
+    /// placeholder が値で置き換わって隠れている(=画面に描画されていない)ときは対象外(ガード素通り)。
+    /// 2026-09-02 の ios-fm 実行での偽陽性実例: WebView 入力欄の placeholder="WebView 入力" に
+    /// "hello123" を type した直後の exist("placeholder=WebView 入力") が誤って覆い扱いされ反転した。
+    /// (a11y 経路: label がそのまま placeholder になる形。web ではない = web: nil)
+    func testEligibilityExcludesPlaceholderHiddenByEnteredValue() {
+        XCTAssertFalse(OcclusionEligibility.eligible(type: "textField", label: "WebView 入力",
+                                                      value: "hello123", placeholder: "WebView 入力",
+                                                      web: nil).ok)
+    }
+
+    /// 値が空の入力欄では placeholder が現に描画されているので、ガードは効き続ける(ok=true)。
+    /// ここが抜けると「入力型は常に素通り」に退化した実装がテストを通ってしまう。
+    func testEligibilityKeepsEmptyPlaceholderEligible() {
+        XCTAssertTrue(OcclusionEligibility.eligible(type: "textField", label: "WebView 入力",
+                                                     value: "", placeholder: "WebView 入力", web: nil).ok)
+        XCTAssertTrue(OcclusionEligibility.eligible(type: "textField", label: "WebView 入力",
+                                                     value: nil, placeholder: "WebView 入力", web: nil).ok)
+    }
+
+    /// Web(DOM)経路の入力欄は label が常に aria-label(WebViewDOMSnapshot.swift の
+    /// `role === "textField"/"secureTextField"/"textView"` 分岐)で、aria-label は
+    /// 値の有無に関わらず画面に一切描画されない。placeholder と aria-label が別文字列でも
+    /// (= 上の placeholder 規則が発火しない、ごく普通のフォームでも)対象外にする。
+    /// 2026-09-02 コーディネータ指摘: aria-label と placeholder が偶然同一だった SUT でだけ
+    /// 直った状態で残っていた同型の穴。
+    func testEligibilityExcludesWebInputAriaLabelWithValue() {
+        XCTAssertFalse(OcclusionEligibility.eligible(type: "textField", label: "検索",
+                                                      value: "hello123", placeholder: "キーワードを入力",
+                                                      web: true).ok)
+    }
+
+    /// 同じ Web 入力欄で値が空でも、aria-label は値の有無に関わらず描画されないので ok=false のまま。
+    /// **ここを true にする実装は穴が残る**(placeholder 規則の「値が空なら素通り」を
+    /// この型にまで広げてしまう誤り)。
+    func testEligibilityExcludesWebInputAriaLabelEvenWhenEmpty() {
+        XCTAssertFalse(OcclusionEligibility.eligible(type: "textField", label: "検索",
+                                                      value: nil, placeholder: "キーワードを入力",
+                                                      web: true).ok)
+        XCTAssertFalse(OcclusionEligibility.eligible(type: "textField", label: "検索",
+                                                      value: "", placeholder: nil, web: true).ok)
+    }
+
+    /// Web だからといって一律に素通しする退化を落とす最重要の陰性テスト:
+    /// Web の staticText は labelOf() の textContent フォールバックで実際に描画された本文なので、
+    /// 型で絞らず web フラグだけで足切りすると壊れる
+    func testEligibilityKeepsWebStaticTextEligible() {
+        XCTAssertTrue(OcclusionEligibility.eligible(type: "staticText", label: "こんにちは",
+                                                     value: nil, placeholder: nil, web: true).ok)
+    }
+
+    /// 2026-09-02 コーディネータ指摘: aria-label の無条件除外は広すぎた。valueIs/valueContains 経路
+    /// (StepExecutor+Assert.swift ~566行目)は element.value 由来の期待文字列を渡してくるので、
+    /// 期待文字列がその value そのものなら aria-label ではなく**現に描画されている値**を見ている。
+    /// この砦(「入力した値が実際に見えているか」)まで潰すと検証が黙って無効化される。
+    func testEligibilityKeepsWebInputEligibleWhenExpectedEqualsValue() {
+        XCTAssertTrue(OcclusionEligibility.eligible(type: "textField", label: "hello123",
+                                                     value: "hello123", placeholder: "キーワードを入力",
+                                                     web: true).ok)
+    }
+
+    /// valueContains は部分一致で期待文字列を渡すので、等号ではなく包含で判定する必要がある
+    func testEligibilityKeepsWebInputEligibleWhenExpectedIsSubstringOfValue() {
+        XCTAssertTrue(OcclusionEligibility.eligible(type: "textField", label: "hello",
+                                                     value: "hello123", placeholder: "キーワードを入力",
+                                                     web: true).ok)
+    }
+
+    /// 期待文字列が value に含まれない(= aria-label のケース。上の
+    /// testEligibilityExcludesWebInputAriaLabelWithValue と同条件だが、value に部分一致すらしない
+    /// ことを明示的に固定する)ときは従来どおり対象外
+    func testEligibilityExcludesWebInputWhenExpectedNotInValue() {
+        XCTAssertFalse(OcclusionEligibility.eligible(type: "textField", label: "検索",
+                                                      value: "hello123", placeholder: "キーワードを入力",
+                                                      web: true).ok)
     }
 
     /// #1 修正: フォールバックドライバ(システムUI)由来の textEquals 一致は座標系が食い違うためガードしない
