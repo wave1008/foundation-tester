@@ -7,7 +7,7 @@
       "name": "iPhone wave(実機)"
     }
   ],
-  "heal": false,
+  "heal": true,
   "iosInappEngine": false,
   "reportDir": "reports"
 }

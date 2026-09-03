@@ -2,7 +2,7 @@
   "machine": "M2Ultra",
   "app": "ft_e2e_android",
   "devices": [],
-  "heal": false,
+  "heal": true,
   "iosInappEngine": false,
   "reportDir": "reports",
   "wipeDataOnBloat": false

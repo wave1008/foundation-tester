@@ -51,7 +51,7 @@
       "name": "Pixel 9(Android 15)-04"
     }
   ],
-  "heal": false,
+  "heal": true,
   "iosInappEngine": false,
   "reportDir": "reports",
   "scenarioTimeout": 180,

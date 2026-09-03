@@ -8,7 +8,7 @@
     }
   ],
   "falsePositiveCheck": true,
-  "heal": false,
+  "heal": true,
   "iosInappEngine": true,
   "reportDir": "reports",
   "scenarioTimeout": 180,

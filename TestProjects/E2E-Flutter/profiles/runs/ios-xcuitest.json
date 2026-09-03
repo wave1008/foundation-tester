@@ -59,7 +59,7 @@
       "name": "iPhone 17 Pro(iOS 27.0)-04"
     }
   ],
-  "heal": false,
+  "heal": true,
   "iosInappEngine": false,
   "reportDir": "reports",
   "scenarioTimeout": 240,
