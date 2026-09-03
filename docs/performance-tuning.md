@@ -308,7 +308,7 @@ screenLooksLike 51 回 / heal 34 回)。**occlusion 一択**。
 | ②a occlusion から **reason だけ**落とす(4欄200tok → 3欄80tok) | 反転済み crop 147 枚で **−33%**(1878→1257ms)・陽性 crop 62 枚で −18%。**判定は 209/209 で従来と一致**(visible も state も)。**実 run でも再現**(下の実測表) | **採用**(2段化) |
 | ②b occlusion から reason と observedText を落とす(2欄40tok) | 合成画像では −30%・判定 30/30 一致。**実データでは反転を 106/147 取りこぼす** | **不採用** |
 | ③ heal の出力欄を減らす(rationale を落とす) | −30%(3550→2479ms・答え一致) | 保留(rationale は失敗レポートに出る) |
-| ④ `session.prewarm()` | heal: リード1000ms −28% / 250ms −12% / 0ms −9%(t=−8.6)。vision: −14% / −8% / **0ms は ±0**(t=+1.5) | **テキスト経路だけ採用** |
+| ④ `session.prewarm()` | heal: リード1000ms −28% / 250ms −12% / 0ms −9%(t=−8.6)。vision: −14% / −8% / **0ms は ±0**(t=+1.5)。**実 run(occlusion・1レーン)で −13%**(3,398→2,957ms・t=−11.3) | **採用**(テキスト経路 + occlusion) |
 | ⑤ crop を縮めて送る | **効果ゼロ**(16k px と 1024k px で差なし) | 不採用 |
 | ⑥ プロンプト長 | heal の要素一覧 10行 2214ms / 40行 3600ms / 120行 8964ms = **1行あたり 46〜67ms** | 未着手(精度に直結) |
 
@@ -352,8 +352,19 @@ screenLooksLike 51 回 / heal 34 回)。**occlusion 一択**。
   置き、ランナーで `FT_FM_OCCLUSION_TWO_STAGE=0` の有無を交互に回して
   結果 JSON の `fm.byKind.occlusion` を集計する
 - **④が効く条件は「重ねられる作業があること」**。vision はリード 0ms では効かないので、
-  画像経路(occlusion / screenLooksLike)には入れていない —— 効かせるには**スクショ往復より前**へ
-  持ち上げる必要があり、それは FTCore 側(`StepExecutor.occlusionFlip`)の配線になる(未実施)
+  **occlusion では `StepExecutor.occlusionFlip` がスクショを撮る前**に撃つ
+  (`ReplayDelegate.prewarmVisibilityCheck()` → `OcclusionPrewarm`)。重なるのはスクショ往復・
+  stale 判定・インク判定。**実 run(M1Max・1レーン・交互に3回ずつ)で 3,398 → 2,957ms(−13%)・
+  run ごとの FM 総時間 58,381 → 49,592ms**(対の差 −458ms・t=−11.3)。
+  殺しスイッチは `FT_FM_OCCLUSION_PREWARM=0`。
+  **screenLooksLike には入れていない**(呼び出しが少なく、重ねられる作業も無い)。
+  暖機は**生成を伴わないので FMGate を通さない**(枠を消費しない)が、
+  **ブレーカだけは見る**(死んだ FM を暖め続けない)/ **FMHealth に記録しない**
+  (記録すると fm.calls とレートが実態より多く見える)。
+  Tier-1 のインク足切りで FM を省く回は空振りになるが、暖機に生成が無いぶん
+  「効く回に効かせる」を採った
+- **2つ合わせた到達点**(M1Max・1レーン・occlusion 1呼び出しの中央値):
+  **3,767ms(どちらも無し)→ 3,293ms(2段化)→ 2,957ms(2段化 + 暖機)= −21%**
 - **同じ画像を続けて送ると2本目が約1.5秒速い**(内容キャッシュ)。production は毎回別の crop なので
   効かないが、**ベンチで画像を使い回すと偽の高速化を測る**(この罠に一度落ちた)
 
