@@ -1308,6 +1308,14 @@ button.profile-jump-link:hover:not(:disabled) {
 #app-profile-editor .profile-checkbox-row > label {
   flex: 0 1 auto;
 }
+/* **`.modal-row > input[type="checkbox"]` の `margin-right: auto` を打ち消す**。
+   あれは「残り幅を右の余白にする」ための指定だが、余白を入れる先は**チェックと label の間**
+   なので、label が伸びなくなった途端に**ラベルが行の右端まで飛ぶ**(2026-09-03 に実際に踏んだ)。
+   ここでは 0 にして、行の余りは label の後ろ = 当たり判定の外に残す。間隔は .modal-row の gap。 */
+#run-profile-editor .profile-checkbox-row > input[type="checkbox"],
+#app-profile-editor .profile-checkbox-row > input[type="checkbox"] {
+  margin-right: 0;
+}
 /* appearance:none で OS 依存のネイティブ描画を無効化しカスタム描画する(VSCode設定画面風)。
    チェックマークは CSP で外部リソース(フォント/画像)不可のため ::after の回転ボーダーで描く。 */
 input[type="checkbox"] {
