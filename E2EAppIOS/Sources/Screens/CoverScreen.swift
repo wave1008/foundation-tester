@@ -61,22 +61,23 @@ struct CoverScreen: View {
     /// 2026-09-03 に既存の覆い witness 2形で確かめたところ、どちらも FM 呼び出し 0 で緑になった。
     /// ここは面を無地にしてインクを 0 にし、**FM に訊く経路そのもの**を対照にする。
     ///
-    /// **タップは通す**(`allowsHitTesting(false)`)—— この witness が見るのは判定側だけで、
-    /// 操作側の「覆いを外してから撃つ」は `#btn_under_footer` が受け持つ。
+    /// **対象はテキスト**(`OcclusionEligibility` はテキスト型だけを FM に回す。button は
+    /// アイコンのラベルが説明文になりがちで約50%誤反転するため足切りされ、**FM に届かない**
+    /// —— 2026-09-03 に実機で確認した)。
     private var paintedTarget: some View {
         VStack(alignment: .leading, spacing: 8) {
             TaggedButton(tag: Tags.btnTogglePaint,
                          label: painted ? "覆いを外す" : "覆いを塗る") { painted.toggle() }
             ZStack {
-                TaggedButton(tag: Tags.btnPaintTarget, label: "塗りの下のボタン",
-                             fillWidth: true) { result = "paint" }
+                TaggedText(tag: Tags.txtPaintTarget, text: "塗りの下のテキスト")
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 if painted {
                     Rectangle()
                         .fill(Color(.systemIndigo))
                         .allowsHitTesting(false)
                 }
             }
-            .frame(height: 62)
+            .frame(height: 44)
         }
         .padding(.horizontal, 16)
     }

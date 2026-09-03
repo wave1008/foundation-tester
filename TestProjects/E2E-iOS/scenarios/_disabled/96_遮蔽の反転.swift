@@ -8,10 +8,11 @@
 // occlusion 17 回すべてが1段目で「見えている」と終わった。壊しても沈黙する場所なので、
 // 経路を強制的に通す対照がここに要る。
 //
-// **witness は `#btn_paint_target`**(無地の不透明な面で覆われるボタン)。覆いに文字が無いことが
+// **witness は `#txt_paint_target`**(無地の不透明な面で覆われるテキスト)。覆いに文字が無いことが
 // 要点で、文字があると guard は Tier-1(幾何で無罪 かつ インクあり → FM を省く)で素通りする
 // —— 既存の覆い(タブバー・別ウィンドウのモーダル)はどちらもインクがあり、実測で FM 呼び出しは
-// 0 だった(docs/verification.md)。
+// 0 だった(docs/verification.md)。**対象がテキストであることも必須** ——
+// `OcclusionEligibility` はテキスト型だけを FM に回すので、Button だと足切りで素通りする。
 //
 // 回し方: このファイルを scenarios/ 直下へ一時的に出し、`falsePositiveCheck: true` の
 // プロファイルで回す:
@@ -34,13 +35,13 @@ class 遮蔽の反転 {
                 condition {
                     launchApp()
                     tap("#nav_cover", scroll: .down)
-                    exist("#btn_paint_target")
+                    exist("#txt_paint_target")
                 }.action {
                     tap("#btn_toggle_paint")
                 }.expectation {
                     // 木には居り、画面内にも居る。覆いは無地なので Tier-1 のインク足切りを
                     // 通過し、**FM に訊く経路だけ**が反転を出せる
-                    existWithoutScroll("#btn_paint_target")
+                    existWithoutScroll("#txt_paint_target")
                 }
             }
         }
@@ -57,7 +58,7 @@ class 遮蔽の反転 {
                 }.action {
                     tap("#btn_toggle_paint")
                 }.expectation {
-                    existWithoutScroll("#btn_paint_target")
+                    existWithoutScroll("#txt_paint_target")
                 }
             }
         }

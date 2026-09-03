@@ -491,7 +491,7 @@ FM が修復できるかを検証する。
 | `#txt_cover_result` | Text | `cover=<v>` 初期 `cover=none` | v ∈ `none`/`target` |
 | `#btn_under_footer` | Button | `下端のボタン` | スクロール内容の最後。**表示直後はシェルのタブバーの下に潜っている** |
 | `#btn_toggle_paint` | Button | `覆いを塗る` / `覆いを外す` | 押すと下の対象を無地の面で覆う/外す |
-| `#btn_paint_target` | Button | `塗りの下のボタン` | **文字の無い不透明な面**で覆われる。タップは通す(判定側だけの witness) |
+| `#txt_paint_target` | Text | `塗りの下のテキスト` | **文字の無い不透明な面**で覆われる。**テキストであることが必須**(下記) |
 
 **iOS SUT だけが持つ**(キーボードの下に潜った入力欄の witness。ホームの `#nav_keyboard_cover`):
 
@@ -510,12 +510,15 @@ FM が修復できるかを検証する。
 **自前のフッタを重ねても witness にならない**(ZStack で上に重ねても iOS の a11y の木では
 容器より先に出るため、描画順に基づく遮蔽判定が成立しない。2026-08-27 の実測)。
 
-`#btn_paint_target` は**occlusion-guard が FM に訊いて反転する経路**の唯一の witness
+`#txt_paint_target` は**occlusion-guard が FM に訊いて反転する経路**の唯一の witness
 (2026-09-03 に追加)。覆いを**無地(文字ゼロ)**にしてあるのが要点 —— guard は
 「幾何で無罪 かつ 領域にインクがある」なら FM を省く(Tier-1)ので、**文字の載った覆い
 (タブバー・モーダルのカード)では FM まで届かない**(実測: 既存の覆い2形はどちらも
 FM 呼び出し 0 で緑になった)。**この面に文字を足すと witness が死ぬ**。
 描画順の判定は上と同じ理由で成立しないが、インクが 0 なので Tier-1 を通過して FM に届く。
+**対象を Button にしても死ぬ** —— `OcclusionEligibility` はテキスト型(staticText 等)だけを
+FM に回す(button はアイコンのラベルが説明文になりがちで約50%誤反転するため)。
+2026-09-03 に Button 版で実測したところ、guard は 6ms で素通りし FM 呼び出しは 0 だった。
 
 `#btn_request_photos` は「OS のアラートがアプリを覆う」形の唯一の witness。
 **ATT ではなく写真**なのは、ATT が `simctl privacy` に該当サービスを持たず一度答えると
