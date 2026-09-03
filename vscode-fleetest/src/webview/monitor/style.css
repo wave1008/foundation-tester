@@ -1299,10 +1299,14 @@ button.profile-jump-link:hover:not(:disabled) {
   font-size: 0.9em;
 }
 
-/* .profile-checkbox-row 限定で上の 170px 上書きをさらに打ち消す(定義順が後のため有効)。 */
+/* .profile-checkbox-row 限定で上の 170px 上書きをさらに打ち消す(定義順が後のため有効)。
+   **grow は 0 にする**: label は `for` でチェックボックスに結び付いているので、伸ばすと
+   行の右端までが当たり判定になり、**文字の無い余白を押しても切り替わる**(2026-09-03 の指摘)。
+   0 1 auto なら箱は文字ぶんに収まり、反応するのはチェックアイコンとラベルだけになる。
+   shrink は 1 のまま(長いラベルが行からはみ出さないように折り返させる)。 */
 #run-profile-editor .profile-checkbox-row > label,
 #app-profile-editor .profile-checkbox-row > label {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
 }
 /* appearance:none で OS 依存のネイティブ描画を無効化しカスタム描画する(VSCode設定画面風)。
    チェックマークは CSP で外部リソース(フォント/画像)不可のため ::after の回転ボーダーで描く。 */
