@@ -33,6 +33,12 @@ enum Tags {
     static let navCover = "nav_cover"
     static let btnUnderFooter = "btn_under_footer"
     static let txtCoverResult = "txt_cover_result"
+    /// **occlusion-guard の FM 経路(反転)の witness**: ラベルを持つボタンを
+    /// **文字の無い不透明な面**で覆う。文字が無いので領域のインク量が 0 になり、
+    /// Tier-1 の足切り(インクがあれば FM を省く)を通過して**必ず FM に訊く**形になる
+    /// (2026-09-03: 既存の覆い witness はどれもインクがあり、FM を1度も呼べなかった)
+    static let btnPaintTarget = "btn_paint_target"
+    static let btnTogglePaint = "btn_toggle_paint"
     /// キーボードの下に潜る入力欄(打鍵が直前の欄へ流れ込む形の witness)
     static let navKeyboardCover = "nav_keyboard_cover"
     static let fieldAboveKeyboard = "field_above_keyboard"

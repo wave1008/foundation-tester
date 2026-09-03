@@ -13,6 +13,9 @@ import SwiftUI
 /// 対象の下には送る余地(160pt)を残してある —— 余地が無ければ送っても外れない。
 struct CoverScreen: View {
     @State private var result = "none"
+    /// **occlusion-guard の FM 経路の witness**(下の `paintedTarget`)。
+    /// 詳細は Tags.btnPaintTarget のコメント
+    @State private var painted = false
 
     private let rowCount = 14
     /// タブバーの高さぶん内容を潜らせる。**実測に依らない値**にしない ——
@@ -22,6 +25,7 @@ struct CoverScreen: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             TaggedText(tag: Tags.txtCoverResult, text: "cover=\(result)")
+            paintedTarget
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 8) {
@@ -48,5 +52,32 @@ struct CoverScreen: View {
             .accessibilitySortPriority(1)
         }
         .padding(.top, 16)
+    }
+
+    /// ラベルを持つボタンを、**文字を1つも持たない不透明な面**で覆う。
+    ///
+    /// occlusion-guard は「幾何で無罪 かつ 領域にインクがある」なら FM を省く(Tier-1)。
+    /// 文字の載った覆い(タブバー・モーダルのカード)ではインクが残るので**FM まで届かない** ——
+    /// 2026-09-03 に既存の覆い witness 2形で確かめたところ、どちらも FM 呼び出し 0 で緑になった。
+    /// ここは面を無地にしてインクを 0 にし、**FM に訊く経路そのもの**を対照にする。
+    ///
+    /// **タップは通す**(`allowsHitTesting(false)`)—— この witness が見るのは判定側だけで、
+    /// 操作側の「覆いを外してから撃つ」は `#btn_under_footer` が受け持つ。
+    private var paintedTarget: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TaggedButton(tag: Tags.btnTogglePaint,
+                         label: painted ? "覆いを外す" : "覆いを塗る") { painted.toggle() }
+            ZStack {
+                TaggedButton(tag: Tags.btnPaintTarget, label: "塗りの下のボタン",
+                             fillWidth: true) { result = "paint" }
+                if painted {
+                    Rectangle()
+                        .fill(Color(.systemIndigo))
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(height: 62)
+        }
+        .padding(.horizontal, 16)
     }
 }
