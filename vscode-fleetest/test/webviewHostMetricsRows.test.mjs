@@ -465,7 +465,7 @@ test("台帳が生きていると言っているだけの行には印を付け�
 });
 
 // 観測が途絶えた行(欠測)は**不明へ戻す**。古い「死んでいる」を出し続けると、直った後も
-// ✕ が残って読み手が信じなくなる(不明と死を混ぜない、の表示側)
+// ⚠︎ が残って読み手が信じなくなる(不明と死を混ぜない、の表示側)
 test("行が欠測になったら台帳の死活も落とす", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
@@ -504,7 +504,7 @@ test("死んだ経路を FM チャートの右に語で出す", (t) => {
   }));
   send(window, hostMetricsSample(undefined, 0.1));
 
-  assert.equal(fmDeadBadge(document, "mac2"), "✕ vision");
+  assert.equal(fmDeadBadge(document, "mac2"), "⚠︎vision");
   assert.match(
     rowFor(document, "mac2").querySelector(".hm-fm-dead-badge").title,
     /ModelManagerError\(1001\)/,
@@ -520,9 +520,9 @@ test("両方死んだら両方名指しする", (t) => {
     fmCalls: 0, fmTextState: "dead", fmVisionState: "dead", fmDeadReason: "text: a / vision: b",
   }));
   send(window, hostMetricsSample(undefined, 0.1));
-  // 経路ごとに ✕ を1つ。**区切りの空白2つまで固定する** —— CSS の white-space が
+  // 経路ごとに ⚠︎ を1つ。**区切りの空白2つまで固定する** —— CSS の white-space が
   // 既定(nowrap)へ戻ると1つに畳まれ、2つの経路が1語に見える
-  assert.equal(fmDeadBadge(document, "mac2"), "✕ text  ✕ vision");
+  assert.equal(fmDeadBadge(document, "mac2"), "⚠︎text  ⚠︎vision");
 });
 
 // **生きている行と不明の行には何も出さない**。不明で出すと、プローブの谷間や旧版 CLI の
@@ -547,7 +547,7 @@ test("台帳が無い全滅では経路を名乗らず事実だけ出す", (t) =
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
   send(window, hostMetricsSample("mac2", 0.9, { fmCalls: 2, fmFailures: 2, fmTotalMs: 200 }));
   send(window, hostMetricsSample(undefined, 0.1));
-  assert.equal(fmDeadBadge(document, "mac2"), "✕ FM 全呼び出し失敗");
+  assert.equal(fmDeadBadge(document, "mac2"), "⚠︎ FM 全呼び出し失敗");
 });
 
 // 複製元(手元の行)が死んでいる最中に新しい機械の行ができると、語まで複製される
@@ -558,7 +558,7 @@ test("新しい機械の行は、手元が死んでいても語を持たずに�
   send(window, hostMetricsSample(undefined, 0.1, {
     fmTextState: "dead", fmVisionState: "dead", fmDeadReason: "text: x / vision: y",
   }));
-  assert.equal(fmDeadBadge(document, ""), "✕ text  ✕ vision");
+  assert.equal(fmDeadBadge(document, ""), "⚠︎text  ⚠︎vision");
 
   // ここで初めてリモートの行ができる(手元の行の複製)
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });

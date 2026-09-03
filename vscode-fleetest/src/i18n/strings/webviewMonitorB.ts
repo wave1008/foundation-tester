@@ -157,16 +157,16 @@ export const webviewMonitorBStrings = {
     en: "FM {rate}/s (last {seconds}s: {calls} calls / {failures} failed / {totalSec}s total)",
   },
   "wvMonitor2.hostCharts.fmDeadLine": {
-    ja: "✕ FM 全滅: 直近{seconds}秒で{failures}回すべて失敗(偽陽性検証・自己修復・screenLooksLike はこの実行では無効)",
-    en: "✕ FM dead: all {failures} calls failed in the last {seconds}s (occlusion verify / heal / screenLooksLike are disabled in this run)",
+    ja: "⚠︎ FM 全滅: 直近{seconds}秒で{failures}回すべて失敗(偽陽性検証・自己修復・screenLooksLike はこの実行では無効)",
+    en: "⚠︎ FM dead: all {failures} calls failed in the last {seconds}s (occlusion verify / heal / screenLooksLike are disabled in this run)",
   },
   // 台帳(FMLiveness)由来の死。窓の全滅(fmDeadLine)と違い**呼び出し0件でも出る** ——
   // 誰も FM を使っていない間に死んでいることを知らせるのがこの行の役目
   // FM チャートの右のバッジ。**死んでいるときだけ出る** —— 生きている行と不明の行は何も出さない
   // (不明を出すと、プローブの谷間や旧版 CLI のリモート機で点滅し続ける)。
-  // 経路を名指しできる形(`✕ text  ✕ vision`)は訳す語を持たないので hostCharts.js が直に組む。
+  // 経路を名指しできる形(`⚠︎text  ⚠︎vision`)は訳す語を持たないので hostCharts.js が直に組む。
   // 台帳が無く、窓の中の呼び出しが全部失敗した形だけは**経路を名指しできない**ので事実を言う
-  "wvMonitor2.hostCharts.fmDeadBadgeAllFailed": { ja: "✕ FM 全呼び出し失敗", en: "✕ all FM calls failed" },
+  "wvMonitor2.hostCharts.fmDeadBadgeAllFailed": { ja: "⚠︎ FM 全呼び出し失敗", en: "⚠︎ all FM calls failed" },
   "wvMonitor2.hostCharts.fmAgeSeconds": { ja: "{seconds}秒前", en: "{seconds}s ago" },
   "wvMonitor2.hostCharts.fmAgeMinutes": { ja: "{minutes}分前", en: "{minutes} min ago" },
   "wvMonitor2.hostCharts.fmWarnLine": {

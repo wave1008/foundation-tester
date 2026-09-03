@@ -52,7 +52,7 @@ const HM_LOCAL_LABEL = 'local';
 
 /** 死んでいる経路に付ける印。値のセル(hmRenderFmLabel)には付けない —— あちらは '–' で、
  *  「どの経路が」を言えるのはこのバッジだけ。 */
-const HM_DEAD_MARK = '✕';
+const HM_DEAD_MARK = '⚠︎';
 
 const hmContainer = document.getElementById('host-metrics');
 const hmLocalRowEl = hmContainer.querySelector('.hm-row[data-machine=""]');
@@ -285,7 +285,7 @@ function hmRenderFmLabel(row) {
   entry.el.classList.toggle('hm-fm-warn', partial);
   // **数字は直近 tick の呼び出し回数そのもの**(窓の移動平均ではない)。スパークラインが
   // 描いているのも tick ごとの回数なので、線と数字の単位が一致する。
-  // ✕/⚠ と ツールチップは窓(HM_FM_RATE_WINDOW_TICKS tick)で判定する —— 1 tick では
+  // ⚠︎/⚠ と ツールチップは窓(HM_FM_RATE_WINDOW_TICKS tick)で判定する —— 1 tick では
   // 「全部失敗」がすぐ立ってしまい落ち着かないため。
   const latest = row.fm.window.length > 0 ? row.fm.window[row.fm.window.length - 1] : null;
   const callsText = latest && latest.calls !== null ? String(latest.calls) : '–';
@@ -331,11 +331,11 @@ function hmRenderDeadBadge(row, { dead, deadPaths, stats }) {
     badge.removeAttribute('title');
     return;
   }
-  // **経路ごとに ✕ を1つ**(ユーザー決定 2026-09-03)。語は付けない —— 経路名は
+  // **経路ごとに ⚠︎ を1つ**(印と経路名の間に空白は置かない)(ユーザー決定 2026-09-03)。語は付けない —— 経路名は
   // text / vision という識別子そのもので訳す対象が無いため、ここは辞書を通さない。
   // 区切りの空白2つは CSS の `white-space: pre` が保つ(既定では連続空白が1つに畳まれる)
   badge.textContent = deadPaths.length > 0
-    ? deadPaths.map((path) => `${HM_DEAD_MARK} ${path}`).join('  ')
+    ? deadPaths.map((path) => `${HM_DEAD_MARK}${path}`).join('  ')
     : t('wvMonitor2.hostCharts.fmDeadBadgeAllFailed');
   badge.classList.add('hm-visible');
   // 語だけでは「なぜ・いつから」が分からない。理由はここにも付ける(FM セルのツールチップと
