@@ -8,7 +8,11 @@
 // 配ると、occlusion-guard(視覚系)が全滅した機械で誤った緑を量産する。
 //
 // **実仕事の邪魔をしない**ための門が3つ(`refresh`):
-//  ① 台帳が新しければ撃たない(run 中は実呼び出しが台帳を養い続けるので、そもそも撃たない)
+//  ① 台帳が新しければ撃たない。**鮮度は経路を跨いで見る** —— run が vision しか呼ばない
+//     (occlusion-guard だけの run が普通)と text の控えだけが古くなり、経路ごとに見ると
+//     「誰も使っていない」と誤って 60 秒ごとに text を撃っていた(2026-09-04 実測。1回 0.7〜4.7s、
+//     fmConcurrency=1 の機械では FMLock も取る)。**どちらかの経路に新しい実呼び出し(source=call)が
+//     あれば、FM は実仕事に使われている = 撃たない**。その間の他経路は「不明」でよい(不明は死と別)
 //  ② ブレーカが落ちているなら撃たない(死んでいると分かっているものに時間を捨てない)
 //  ③ FMLock を**短い timeout** で取り、取れなければ撃たない —— 死活確認のために
 //     実行中の run を待たせない。probeLockTimeoutSeconds の doc 参照
@@ -41,6 +45,10 @@ public enum FMLivenessProbe {
     @discardableResult
     public static func refresh(maxAge: TimeInterval = probeIntervalSeconds,
                               now: Date = Date()) async -> FMLiveness.Reading {
+        // 実仕事が台帳を養っている間は撃たない(経路を跨いだ使用中判定。ファイル冒頭①)
+        if realWorkIsFeedingTheLedger(FMLiveness.read(), now: now, maxAge: maxAge) {
+            return FMLiveness.current(now: now)
+        }
         var stale: [FMLiveness.Path] = []
         let current = FMLiveness.current(now: now, maxAge: maxAge)
         // ① 新しければ撃たない
@@ -79,6 +87,19 @@ public enum FMLivenessProbe {
             _ = await probeOnce(path: path)
         }
         return FMLiveness.current(now: now)
+    }
+
+    /// **どちらかの経路に `maxAge` より新しい実呼び出し(source = call)があるか**(純粋)。
+    /// プローブ由来(source = probe)は数えない —— プローブが自分の控えを根拠に「使用中」と
+    /// 読むと、誰も走らせていなくても二度と撃たなくなる
+    static func realWorkIsFeedingTheLedger(_ record: FMLiveness.Record?, now: Date,
+                                           maxAge: TimeInterval) -> Bool {
+        guard let record else { return false }
+        for verdict in [record.text, record.vision] {
+            guard let verdict, verdict.source == .call else { continue }
+            if now.timeIntervalSince1970 - verdict.checkedAt < maxAge { return true }
+        }
+        return false
     }
 
     /// 1経路を実際に呼んで台帳へ書く。**門を通らない**(呼び出し側が明示的に死活を知りたい
