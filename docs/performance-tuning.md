@@ -1555,7 +1555,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 - `UiAutomation.setOnAccessibilityEventListener` は**1 枠しかない**。QuietWaiter が
   使用中なので、別用途でリスナが必要になったら QuietWaiter 経由で多重化すること
 - 長時間ベンチ中の画面ロックに注意(GUI E2E 全般の既知問題)
-- **フォールバック検証の偽陽性(緩和済み)**: hybrid でシステム UI を tap するとき、セレクタの
+- **フォールバック検証の誤検知(緩和済み)**: hybrid でシステム UI を tap するとき、セレクタの
   label が in-app の要素 label の**部分文字列**だと primary(in-app)が `contains` で誤解決し得た。
   現在は tap アクション経路で **primary が部分一致(substring)止まりなら fallback を照会し、
   fallback に完全一致(exact)があれば fallback を優先**する(`StepExecutor` の resolveDetailed/

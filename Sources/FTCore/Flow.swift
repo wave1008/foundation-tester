@@ -60,7 +60,7 @@ public struct FlowStep: Codable, Sendable {
     /// 探索時に FM が述べた意図(リプレイでは使わないがレビューの助けになる)
     public var note: String?
     /// [occlusion-guard] true のとき、この検証(exists/textEquals)がツリー一致で pass した直後に
-    /// FM でスクショ視覚照合し、覆われ/切れ/不在なら偽陽性として失敗へ反転する。DSL の visible() が立てる。
+    /// FM でスクショ視覚照合し、覆われ/切れ/不在なら誤った緑として失敗へ反転する。DSL の visible() が立てる。
     /// nil = executor 既定(StepExecutor.occlusionGuard)に従う。
     public var occlusionGuard: Bool?
     /// **容器の推測に依存する補正**をこのステップで行うか(見切れ判定・掴み直し・救済ドラッグ・

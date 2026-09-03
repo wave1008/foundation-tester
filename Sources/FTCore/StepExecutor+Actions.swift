@@ -593,7 +593,7 @@ extension StepExecutor {
         // driver フォールバック(ハイブリッド): primary(in-app)で解決できない、または primary が
         // label 部分一致(substring)でしか解決できていないとき、fallbackDriver(XCUITest=システム UI)
         // の snapshot でも解決を試す。act は解決した driver で行う。
-        // substring 誤解決の偽陽性(in-app の label がシステム UI label の部分文字列で contains 命中し、
+        // substring 誤解決の誤検知(in-app の label がシステム UI label の部分文字列で contains 命中し、
         // 本来当てたいシステム UI 要素へフォールバックされない)を、fallback の exact 一致で上書きする。
         // primary が exact のときは fallback を照会しない(従来どおりコスト増なし)。
         // **select は照会しない**: 掴むだけでデバイス操作が無く、掴めないことが答えになり得る

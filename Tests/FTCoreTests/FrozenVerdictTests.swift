@@ -79,7 +79,7 @@ final class FrozenVerdictTests: XCTestCase {
 
     // MARK: - 観測から判定を組み立てる(run とモニターの共通規則)
 
-    /// **観測窓が偽陽性と本物を分ける**(拍動ではない)。窓は約10秒に延ばしてある
+    /// **観測窓が誤検知と本物を分ける**(拍動ではない)。窓は約10秒に延ばしてある
     func testObservationWindowIsLongEnoughToOutlastFirstPaint() {
         let spanMs = BlankWorkerTriage.intervalMs * (BlankWorkerTriage.samples - 1)
         XCTAssertGreaterThanOrEqual(spanMs, 8_000,

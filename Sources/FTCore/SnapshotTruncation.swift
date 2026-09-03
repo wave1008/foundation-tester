@@ -41,7 +41,7 @@ public enum SnapshotTruncation {
     /// (`InAppBridge.mergeWebViewDOM`)はマージ後の集合で bulk 免除を**やり直す**のに、
     /// 返す `bulkExempt` はマージ前(native 単独)の値のまま —— マージで bulk 群が増えると
     /// 申告が実際より小さくなり、`budgetedCount` が**過大**になる(上げれば取れる要素に
-    /// 「もう天井だ」と言う偽陽性)。②Safari のホスト側 DOM 注入
+    /// 「もう天井だ」と言う誤検知)。②Safari のホスト側 DOM 注入
     /// (`BridgeClient.injectSafariDOMIfApplicable`)は webView 部分木を落として DOM 要素を
     /// 無制限に足すが `bulkExemptCount` を一切更新しない —— 落とした部分木に native の bulk 群が
     /// 含まれていると申告が配列より大きいまま残り、`elements.count - 申告` が負に振れる

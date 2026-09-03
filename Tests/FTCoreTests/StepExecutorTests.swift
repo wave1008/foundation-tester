@@ -108,7 +108,7 @@ final class StepExecutorTests: XCTestCase {
                    focused: focused)
     }
 
-    /// occlusionGuard 付き exists(exist の既定): delegate が「隠れ」を返すと偽陽性として失敗へ反転する
+    /// occlusionGuard 付き exists(exist の既定): delegate が「隠れ」を返すと誤った緑として失敗へ反転する
     func testOcclusionGuardFlipsWhenOccluded() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
@@ -203,7 +203,7 @@ final class StepExecutorTests: XCTestCase {
     }
 
     /// 撮り直してもなお画像がバイト同一(=木は変わったのに絵が固まったまま)なら、
-    /// 古い絵を根拠に偽陽性反転を宣言せず flip しない。FM も呼ばない。
+    /// 古い絵を根拠に誤反転を宣言せず flip しない。FM も呼ばない。
     /// **delegate は visible:true**(false にすると baseline 自体が本物の occlusion で
     /// timeout まで poll してしまい、その間の追加 snapshot/screenshot 呼び出しが
     /// スクリプトした木/画像の対応関係を狂わせる —— stale 判定だけを切り分けるため)
@@ -249,7 +249,7 @@ final class StepExecutorTests: XCTestCase {
     }
 
     /// placeholder が値で置き換わって隠れている(=画面に描画されていない)ときは対象外(ガード素通り)。
-    /// 2026-09-02 の ios-fm 実行での偽陽性実例: WebView 入力欄の placeholder="WebView 入力" に
+    /// 2026-09-02 の ios-fm 実行での誤反転実例: WebView 入力欄の placeholder="WebView 入力" に
     /// "hello123" を type した直後の exist("placeholder=WebView 入力") が誤って覆い扱いされ反転した。
     ///
     /// **この規則を「web 規則があるから冗長」と消さないこと。** 同じ WebView の入力欄でも、
@@ -790,7 +790,7 @@ final class StepExecutorTests: XCTestCase {
     }
 
     /// **覆われている間の緑は取り消す**。木には居るが人手には見えていないので、
-    /// 「見えた」と言うのは別ウィンドウのモーダルと同じ形の偽陽性になる
+    /// 「見えた」と言うのは別ウィンドウのモーダルと同じ形の誤った緑になる
     func testPassingAssertIsRevokedWhileSystemUICoversTheApp() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
@@ -833,7 +833,7 @@ final class StepExecutorTests: XCTestCase {
 
     /// **値検証が覆いの下で赤になったら、閉じて判定し直す**(2026-08-22 レビュー指摘)。
     /// `tap(#request) → textIs(結果)` の自然な並びは、アラートを答えるまで値が更新されない ——
-    /// 成功時の偽陽性取り消しだけでなく、この「誤った不一致」も門が拾う
+    /// 成功時の誤った緑取り消しだけでなく、この「誤った不一致」も門が拾う
     func testFailingValueAssertDismissesAndRejudges() async throws {
         let log = CallLog()
         // primary は**押されるまで none のまま**(覆いの下でいくら読んでも denied にならない)。

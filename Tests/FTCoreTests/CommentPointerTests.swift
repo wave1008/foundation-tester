@@ -26,7 +26,7 @@ final class CommentPointerTests: XCTestCase {
     private static let sourceExtensions: Set<String> = ["swift", "ts", "m", "h", "java", "mjs", "js"]
 
     /// パスとして書かれうる拡張子。**長いものから並べる** —— 交替は左から試されるので
-    /// `m` を先に置くと `design.md` が `design.m` として切り出され、全 docs 参照が偽陽性になる
+    /// `m` を先に置くと `design.md` が `design.m` として切り出され、全 docs 参照が誤検知になる
     private static let pathExtensions = "swift|mjs|json|java|yml|xml|md|ts|js|sh|py|m|h"
 
     // MARK: - 走査(プロセスに1回)

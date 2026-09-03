@@ -66,7 +66,7 @@ final class StaleBridgeStopTests: XCTestCase {
 
     func testDescribeReturnsNilWhenNothingListens() {
         // 使われていないポートを選ぶ: bind して即閉じたポートは直後は空いている公算が高いが、
-        // 厳密には保証できないので 2 つ試して 1 つでも nil なら良しとする(偽陽性を避ける側)
+        // 厳密には保証できないので 2 つ試して 1 つでも nil なら良しとする(誤検知を避ける側)
         let ports = [UInt16(Int.random(in: 50001...60000)), UInt16(Int.random(in: 50001...60000))]
         XCTAssertTrue(ports.contains { PortHolder.describe(port: $0) == nil })
     }

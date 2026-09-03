@@ -1,4 +1,4 @@
-# PoC レポート: FM 視覚照合によるアサーション偽陽性の排除(occlusion-guard)
+# PoC レポート: FM 視覚照合によるアサーションの誤った緑の排除(occlusion-guard)
 
 ブランチ: `poc/fm-occlusion-verify` / 実施日: 2026-07-21 / 実行: メインセッション(Claude Code)
 
@@ -8,7 +8,7 @@
 要素が存在するかだけを見る([StepExecutor.matchDetailed](../Sources/FTCore/StepExecutor+Resolve.swift))。
 可視性フィルタは「hidden・サイズ0・画面外」しか落とさず、**別要素に覆われている(occlusion)/
 減光されている/切れている**要素はツリーに残るため、**視覚的に見えていないのにアサーションが成功する
-偽陽性**が起こり得る。`hittable` は本来この検知に使えるが、①現行 wire DTO(`ElementInfo`)に
+誤った緑**が起こり得る。`hittable` は本来この検知に使えるが、①現行 wire DTO(`ElementInfo`)に
 hittable は無く、②Compose iOS では `isHittable` 自体が壊れている([compose-ios-ax-frame-clamp])ため
 採用できない。
 
@@ -21,7 +21,7 @@ hittable は無く、②Compose iOS では `isHittable` 自体が壊れている
 |---|---|---|
 | `OcclusionVerifier` | [Sources/FTFoundationModels/OcclusionVerifier.swift](../Sources/FTFoundationModels/OcclusionVerifier.swift) | FM 視覚照合器。`@Generable VisibilityVerdict{ visible, state, observedText, reason }` を greedy で生成 |
 | `ReplayDelegate.verifyElementVisible` | [Sources/FTCore/StepExecutor.swift](../Sources/FTCore/StepExecutor.swift) | FM 非依存の delegate フック(既定実装 nil)。FTCore を FM から切り離したまま結線 |
-| `StepExecutor.occlusionGuard` + `occlusionFlip()` | ノブは同上。`occlusionFlip` の現在の実体は [Sources/FTCore/StepExecutor+Assert.swift](../Sources/FTCore/StepExecutor+Assert.swift) | ノブ。exists/textEquals がツリー一致した**一点で1回だけ** FM 照合し、`visible==false` なら `.failed("偽陽性(occlusion)…")` へ反転 |
+| `StepExecutor.occlusionGuard` + `occlusionFlip()` | ノブは同上。`occlusionFlip` の現在の実体は [Sources/FTCore/StepExecutor+Assert.swift](../Sources/FTCore/StepExecutor+Assert.swift) | ノブ。exists/textEquals がツリー一致した**一点で1回だけ** FM 照合し、`visible==false` なら `.failed("false positive (occlusion)…")` へ反転(誤った緑を赤へ) |
 | 計測ハーネス | `fleetest-poc-occlusion`(PoC ブランチ履歴・§8) | 正解ラベル付き合成フィクスチャで正確性・速度を計測 |
 
 検証器は 2 アームを実装して比較した:
@@ -47,7 +47,7 @@ hittable は無く、②Compose iOS では `isHittable` 自体が壊れている
 | absent | 領域に何も描かない(ツリーだけ存在を主張) | 見えない(reject) |
 | mismatch | 別テキストを描画 | 見えない(reject) |
 
-指標: **偽陽性排除の再現率**(隠れ 15 件を reject できた割合=機能の価値)、**有害な誤反転率**
+指標: **誤った緑の排除の再現率**(隠れ 15 件を reject できた割合=機能の価値)、**有害な誤反転率**
 (正しく見えている 3 件を誤って reject=導入の害)、全体正解率、1 回あたりレイテンシ。
 
 ## 4. 結果
@@ -56,13 +56,13 @@ hittable は無く、②Compose iOS では `isHittable` 自体が壊れている
 
 ### 正確性
 
-| アーム | 全体正解率 | 偽陽性排除の再現率 | 有害な誤反転率 |
+| アーム | 全体正解率 | 誤った緑の排除の再現率 | 有害な誤反転率 |
 |---|---|---|---|
 | **cropped** | **18/18(100%)** | **15/15(100%)** | **0/3(0%)** |
 | full | 14/18(78%) | 13/15(87%) | 2/3(67%) |
 
 - **cropped は全カテゴリ完璧**。覆い・部分覆い・減光・不在・文言違いをすべて `visible=false` で弾き、
-  正しく見えている 3 件は `visible=true` を維持。**偽陽性を 100% 排除し、正しい要素を一度も却下しなかった。**
+  正しく見えている 3 件は `visible=true` を維持。**誤った緑を 100% 排除し、正しい要素を一度も却下しなかった。**
 - full は逆に**正しく見えているテキストを "covered" と誤判定して却下**(有害誤反転 67%)。座標を言葉で
   渡す方式は視覚モデルには機能せず、実用不可。
 
@@ -117,12 +117,12 @@ hittable は無く、②Compose iOS では `isHittable` 自体が壊れている
 
 ### ゲート後パイプライン(Tier-1 単独・閾値スイープ)
 
-| 閾値 | FM呼出 | FM削減 | 生存偽陽性 | 有害誤反転 | 総合正解 |
+| 閾値 | FM呼出 | FM削減 | 見逃し | 有害誤反転 | 総合正解 |
 |---|---|---|---|---|---|
 | 12〜25 | 9/18 | **50%** | 6 | **0** | 67% |
 
 - **FM 呼出を半減、有害な誤反転は 0**。全覆い/空/減光は Tier-1 が確実に FM へ回して捕捉。
-- 生存偽陽性 6 = coveredPartial×3 + mismatch×3。**Tier-1 単独の弱点は「部分覆い」と「文言違い」**
+- 見逃し 6 = coveredPartial×3 + mismatch×3。**Tier-1 単独の弱点は「部分覆い」と「文言違い」**
   (残テキストのインクが多く高分散に見える)。
   - mismatch は本来 occlusion ではなく、`textEquals` の完全一致・`exists(id)` の実在で別途弾かれる筋
     (このガードの対象外と見なせる)。
@@ -211,7 +211,7 @@ occlusion 検知能力の裏付けは現状 §4(合成: 覆い/空/減光を 100
 | スナックバー自身「カートに追加しました」 | — | visible | 可視 | 正 |
 
 - **狙いどおりの実証**: 同一要素「¥24,000」が、スナックバー出現で `visible→covered` に正しく反転。
-  「ツリー上に在るが視覚的に覆われて見えない」偽陽性をデバイス上で捕捉できた。
+  「ツリー上に在るが視覚的に覆われて見えない」誤った緑をデバイス上で捕捉できた。
 - **レビュー**は sticky ボトムバーの裏に隠れた要素で、静止画面(追加前)でも安定して covered。
   当初の動機(ツリーに在るが見えない)そのものの実例を、低インクゲート(sd=0)が FM に回して正しく検知。
 
@@ -238,7 +238,7 @@ select("#sw").valueIs("1")                   // 同上(既定ガード)
 ```
 
 - **既定 ON**: exist/textIs/valueIs は、ツリー一致で pass した直後に occlusion-guard を発火
-  (足切り→低インク/幾何→FM→visible)。覆われ/切れ/不在なら偽陽性として失敗に反転。
+  (足切り→低インク/幾何→FM→visible)。覆われ/切れ/不在なら誤った緑として失敗に反転。
 - **`requireVisible: false`**: occlusion 確認を省く(FM を一切呼ばない・ツリー一致のみ)。
 - **配線**: `FlowStep.occlusionGuard: Bool?`([Flow.swift](../Sources/FTCore/Flow.swift))を DSL 引数が true/false で
   立て、[StepExecutor.occlusionFlip](../Sources/FTCore/StepExecutor+Assert.swift) が `step.occlusionGuard ?? executor 既定`
@@ -270,7 +270,7 @@ select("#sw").valueIs("1")                   // 同上(既定ガード)
 
 | 実行 | 結果 | 判定 |
 |---|---|---|
-| `exist("レビュー")`(既定ガード・覆い) | **failed**「偽陽性(occlusion): …[covered] 領域が不透明な要素に覆われている」 | ✓ 実オクルージョンを失敗へ反転 |
+| `exist("レビュー")`(既定ガード・覆い) | **failed**「`false positive (occlusion)`: …[covered] 領域が不透明な要素に覆われている」(当時は日本語文言) | ✓ 実オクルージョンを失敗へ反転 |
 | `exist("レビュー", requireVisible: false)`(ガード無) | passed | ✓ ツリー存在のみで通過 |
 | `exist("在庫あり")`(可視) | passed | ✓ 可視テキストは誤反転せず通過 |
 
@@ -327,7 +327,7 @@ OcclusionVerifier)がデバイス上で機能することを確認**。これで
 
 - **#1 座標系の食い違い(要修正・中)**: textEquals/valueEquals がフォールバックドライバ(SystemUI/springboard)
   由来の要素に一致した場合、その frame/screen は primary と別座標系なのに occlusionFlip へ primary の
-  snapshot/screenshot を渡していた(FM に別アプリのスクショ+システム要素を渡し偽陽性化しうる)。
+  snapshot/screenshot を渡していた(FM に別アプリのスクショ+システム要素を渡し誤反転しうる)。
   → **fsnap 由来一致はガードをスキップ**(exist の fsnap 経路と同契約)。`fromFallbackDriver` で判定。
 - **#2 結合 `, ` 規則の過剰適用(低〜中)**: `select("#x").textIs("Hello, World")` のような正当な句読点入り期待値が
   結合セマンティクス扱いで黙って素通りしていた。→ eligibility に `isUserText` を追加し、**ユーザー期待値
@@ -369,7 +369,7 @@ performance-tuning.md §6)。
 2. **Compose iOS の frame クランプ画面では無力**。クロップ先の frame 自体が嘘([compose-ios-ax-frame-clamp])
    なので、退化 frame は `occlusionFlip` がスキップする実装にした(素通り=従来動作)。この画面群は
    本ガードの対象外と割り切る。
-3. **判定不能時(FM 不可・画像不正)は素通り**。ガードは「積極的に偽陽性を潰す」だけで、可用性は落とさない。
+3. **判定不能時(FM 不可・画像不正)は素通り**。ガードは「積極的に誤った緑を潰す」だけで、可用性は落とさない。
 4. **coveredPartial の閾値は主観**。65% 覆いを「見えない」と定義。どこまでを許容するかは要件次第。
 5. **poll 挙動**。現状は「ツリー一致の一点で1回照合し、不可視なら即失敗」。過渡的オーバーレイ
    (スピナー等)を待ちたいなら「可視になるまで poll、timeout で失敗」に変える余地(FM コール増)。

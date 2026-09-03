@@ -39,7 +39,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     case sheetCollapsed = "sheet-collapsed"
 
     /// occlusion-guard のスクショが凍結フレーム疑い(StaleFrameDetector.judge)で、撮り直しても
-    /// なお木指紋と食い違わなかった。古い絵を根拠に FM の偽陽性反転を宣言しないための素通り
+    /// なお木指紋と食い違わなかった。古い絵を根拠に FM の誤った緑反転を宣言しないための素通り
     /// (StepExecutor+Assert.swift の occlusionFlip)
     case staleScreenshot = "stale-screenshot"
 

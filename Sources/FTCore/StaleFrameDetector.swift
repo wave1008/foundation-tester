@@ -28,7 +28,7 @@ public enum StaleFrameDetector {
     /// 要素木の軽量指紋。要素数 + 各要素の (type, identifier, label, frame の整数丸め) を畳む。
     /// **ref は含めない**: MCP 層が snapshot ごとに ref へオフセットを掛けて世代管理するため、
     /// 同じ木でも取得経路(native のまま/セッション ref に振り直し済み)で番号が変わり得る。
-    /// 含めると同じ木を「別物」と誤検知して鮮度警告が偽陽性になる。
+    /// 含めると同じ木を「別物」と誤検知して鮮度警告が誤検知になる。
     /// **単独では「木が安定したまま絵だけ古い」形を拾えない**(木を比べる方法の限界)。
     /// judge はこれを画像ハッシュとの併用で補う
     public static func treeFingerprint(of elements: [ElementInfo]) -> Int {
@@ -49,7 +49,7 @@ public enum StaleFrameDetector {
     /// 判定+記録更新を1関数に閉じる。isStale = previous があり、画像がバイト同一なのに
     /// 木指紋が変化したとき。**呼び出し側は返った record を必ず保存すること** —— ここで指紋を
     /// 新しい木へ更新するため、同じ凍結フレームへの注記は最初の1回だけになる(意図した設計。
-    /// 記録を更新しない案は、静止画面の連写で木の自然な揺れを拾い偽陽性を積む)
+    /// 記録を更新しない案は、静止画面の連写で木の自然な揺れを拾い誤検知を積む)
     public static func judge(png: Data, elements: [ElementInfo],
                              previous: Record?) -> (record: Record, isStale: Bool) {
         let record = Record(imageHash: hashBytes(png), treeFingerprint: treeFingerprint(of: elements))

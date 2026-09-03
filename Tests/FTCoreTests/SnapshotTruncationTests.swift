@@ -109,7 +109,7 @@ final class SnapshotTruncationTests: XCTestCase {
         XCTAssertEqual(SnapshotTruncation.budgetedCount(tree), 120,
                        "申告(1)でなく配列から数え直した bulk 件数(300)を引くこと")
         XCTAssertFalse(SnapshotTruncation.isAtCeiling(tree),
-                       "予算ぶんは120で天井(400)未満なのに、古い申告を引くと419になり偽陽性になる")
+                       "予算ぶんは120で天井(400)未満なのに、古い申告を引くと419になり誤検知になる")
         XCTAssertEqual(SnapshotTruncation.remedy(for: tree), .raiseLimit(to: 200),
                        "申告を信用すると narrowTheScreen(上げても無駄)という誤った案内になる")
     }

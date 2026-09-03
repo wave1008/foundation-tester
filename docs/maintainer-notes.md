@@ -458,3 +458,43 @@ dry-run との対比で「実機の前に落とす」等と書いていた 20 �
 - **SecureTransport `SSL*` の deprecated ×12**(`PhysicalSafariInspector`): 実機 iOS の lockdown TLS は自前ソケット上で証明書を指定して握手する形で、Network.framework に同じ口が無い(design.md §実機だけの罠)
 - **Sendable 捕捉・非同期文脈の `wait`/`lock`(37 件)は同日に 0 にした**。production 側は子プロセスの stdout 読み切りを `FTRemote.PipeLinePump`(専用スレッドで読み、EOF は AsyncStream で待つ)へ寄せ(FleetRunner / ApiRunMachineFanout)、`FTScenarioDescriptor.run` を `@Sendable` に(マクロ生成のクロージャはクロージャ内で作ったインスタンスしか捕捉しないのでテストクラスの Sendable 化は不要)、AV の切り出し状態は `ClipExtractionState` に束ねた。テスト側は `FTTestSupport.LockedBox`。陽性対照は `PipeLinePumpTests`(変異 2/2 検出)
 - **ゲートの選択肢**: `swiftLanguageMode(.v5)` のまま `.treatWarning(_:as: .error)` で群ごとにエラー化する案は tools-version 6.2 が要る(受け手の最低環境は macOS 26 = Xcode 26 = Swift 6.2 なので可能)が、群の無い診断(冗長 `public`・非同期文脈のロック)は対象外。**`-warnings-as-errors` の `unsafeFlags` は不可**(受け手の外部パッケージが依存として解決できなくなる)
+
+---
+
+## 11. 「陽性/陰性」の極性が2つあった(2026-09-03 に一本化)
+
+occlusion-guard **だけ**が「発火すると赤になる検知」で、他のあらゆる場所では陽性 = 緑。
+そのため**同じ事象——覆われているのに警告が出ない——が、検知として語ると偽陰性、判定として
+語ると偽陽性**になっていた。2026-08-14 のカレンダー(ナビバーの下へ潜ったセルを黙って撃つ)は
+mcp-audit-rounds では「偽陰性」、StepExecutor+Assert 側の同じ現象は「偽陽性」と書かれている。
+
+**新語は作っていない。実勢の追認**(一本化前の件数):
+
+| 語 | Sources | docs | Tests |
+|---|---|---|---|
+| 誤検知 | 51 | 91 | 109 |
+| 真陽性 | 8 | 25 | 73 |
+| **偽陽性** | **26** | **44** | **17** |
+| 誤反転 | 5 | 32 | 3 |
+| 誤った緑 / 誤った成功 | 21 | 10 | 15 |
+
+カレンダーの表は**同じ段落の中で**「+189 件の**誤検知**」「**真陽性**が 30 件失われる」と書いており、
+実務では既に `真陽性 ⇄ 誤検知` で対になっていた。跨いでいたのは `偽陽性` の一語だけなので、
+**その語を捨てるのが最小の手当て**(語を増やす案・接頭辞で修飾する案は、書くたびにどちらか
+判断が要る点が変わらないので採らない)。
+
+**`falsePositiveCheck` は改名しない**。受け手の実行プロファイル JSON に既に書かれている鍵で、
+拡張のフォーム・user-docs・README もこの名前で説明している。**例外を1つに閉じるほうが、
+契約を割って例外をゼロにするより安い** —— 代わりに [RunProfile.swift](../Sources/FTCore/RunProfile.swift)
+の宣言に「= 誤った緑の検査」と定義を1行添えてある。
+
+**受け手向けの面も走査する**。docs/user-docs/ に散文の用例は1件しかなく(Android の WebView が
+スクショに写らない節)、**受け手向けには用語ごと落として平文にした**(「シナリオ自体とは無関係な
+理由で失敗することがあります」/ en: `can fail for reasons that have nothing to do with your
+scenario`)—— 受け手に検知と判定の語彙を教える必要は無く、平文のほうが短い。残りは `falsePositiveCheck`
+のラベルなので例外に載る。**対象外は TestProjects/(ユーザー資産。CLAUDE.md「並列一括作業」)と
+reports/(.gitignore 済みの生成物と Apple へ提出済みの資料)だけ**。
+
+→ 新しい混入は `Tests/FTCoreTests/VocabularyPolarityTests.swift` が落とす。
+**規則を定義している2ファイル(CLAUDE.md・この文書)だけは走査の対象外** —— 禁止語を書けないと
+規則そのものが書けないため。この2ファイルは人間の規律で守る。

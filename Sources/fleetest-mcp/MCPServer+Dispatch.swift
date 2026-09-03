@@ -1304,7 +1304,7 @@ extension MCPServer {
             // 鮮度判定は StaleFrameDetector.judge(FTCore。DSL の occlusion-guard と共有・
             // 契約はそちらのコメント参照)。撮影前の snapshot は取らない
             // (往復は screenshot 1回 + snapshot 1回の計2回)。
-            // **限界**: 木の変化が画素に出ない変化(a11y のみ)は偽陽性になり得るが、指紋は
+            // **限界**: 木の変化が画素に出ない変化(a11y のみ)は誤検知になり得るが、指紋は
             // type/id/label/frame なので実害は薄い
             let png = try await screenshotDriver.screenshot()
             var staleNote: [[String: Any]] = []

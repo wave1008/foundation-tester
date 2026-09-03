@@ -423,7 +423,7 @@ extension StepExecutor {
                     spanScale = max(Self.minSpanScale, spanScale * Self.spanShrinkFactor)
                 }
             }
-            // スクロール探索でも type+index フォールバックは偽陽性のもとなので使わない
+            // スクロール探索でも type+index フォールバックは誤検知のもとなので使わない
             if let (element, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
                 // **見つけただけでは足りない**: 画面の縁で見切れている要素は、フレームワークに
                 // よっては frame がクランプされて**タップが外れる**(Compose iOS の既知の上流制約)。

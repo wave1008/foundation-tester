@@ -281,7 +281,7 @@ public enum TapTargetGeometry {
 
     /// 「行の高さ」を借りてよい兄弟の幅の比(両方向)。同じ列に並ぶ行は幅が揃う(実測: ログアウト
     /// 358=358・Android 設定行 1080=1080)が、幅 22 の「広告」バッジは同じ depth の
-    /// リンク(幅 41〜176)と高さを比べる意味が無い(ios-browser_nationwide で偽陽性になった形)
+    /// リンク(幅 41〜176)と高さを比べる意味が無い(ios-browser_nationwide で誤検知になった形)
     static let sameRowWidthRatio: Double = 0.8
 
     /// **容器の縁で切り詰められたタップ対象**(返すのは容器 = 名指し用)。

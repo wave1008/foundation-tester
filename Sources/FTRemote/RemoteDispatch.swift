@@ -721,7 +721,7 @@ public enum RemoteProbe {
     /// remoteReach)は必ずこれを使う** —— 片方だけ変えるとホストごとに判定が食い違う。
     ///
     /// `stat -f%Su /dev/console` だけでは**画面共有(仮想ディスプレイ)でログインした機械を
-    /// 偽陰性で弾く**: 物理コンソールの所有者は root のまま残るが、ssh ユーザーには
+    /// 見逃して弾く**: 物理コンソールの所有者は root のまま残るが、ssh ユーザーには
     /// Aqua セッションがあり simctl も xcodebuild も動く(2026-09-01 に M1Ultra で実測。
     /// who / scutil ConsoleUser / Dock はどれも wave1008 を指していた)。
     /// そこで**先に「ssh ユーザー自身の Aqua ドメインが在るか」を直接聞く**。

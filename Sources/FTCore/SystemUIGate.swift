@@ -12,7 +12,7 @@
 //
 // **`UIApplication.applicationState` は使えない**(2026-08-21 実測。再提案しない)。
 // 同じ写真の権限アラートで **-01 は inactive・-02 は active** と端末で割れた
-// (0.3 秒刻み 42 サンプルで1つの例外もなく active)。**偽陰性**に倒れるので、
+// (0.3 秒刻み 42 サンプルで1つの例外もなく active)。**見逃し**に倒れるので、
 // 事前フィルタとしても使えない。判定は SpringBoard に直接聞くしかない。
 //
 // 聞く口は XCUITest ランナーの `GET /systemalert`(`SystemAlertProbeResponse`)。

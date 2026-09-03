@@ -72,7 +72,7 @@ public enum BridgeSourceSet: String, CaseIterable, Sendable {
         } catch {
             throw BridgeSourceSetError.directoryUnreadable(directory, error.localizedDescription)
         }
-        // ドットファイルは除く: .DS_Store が紛れ込むと「入力が増えた」として偽陽性で落ちる
+        // ドットファイルは除く: .DS_Store が紛れ込むと「入力が増えた」として誤検知で落ちる
         // (このリポジトリには実際 InAppBridge/.DS_Store・Runner/.DS_Store がある)
         let found = entries
             .filter { !$0.lastPathComponent.hasPrefix(".") }

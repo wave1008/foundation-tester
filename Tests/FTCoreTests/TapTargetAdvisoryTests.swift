@@ -835,7 +835,7 @@ final class TapTargetAdvisoryTests: XCTestCase {
         XCTAssertNil(TapTargetGeometry.clippedAtContainerEdge(alone, in: elements))
     }
 
-    /// 陰性対照(掃討コーパス ios-browser_nationwide で実際に出た偽陽性): 親リンク
+    /// 陰性対照(掃討コーパス ios-browser_nationwide で実際に出た誤検知): 親リンク
     /// (0,677 402x99) の上端に接する「広告」バッジ link (348,678 22x13) は、同じ depth の
     /// リンク(幅 41〜176・高さ 39〜99)より低いが、幅が桁違いなので「行の高さ」を借りる
     /// 相手ではない(`sameRowWidthRatio`)。バッジの自然な高さであって切り詰めではない

@@ -6,7 +6,7 @@ import Foundation
 
 /// キャッシュを捨てた snapshot でもう1周だけ確かめる仕掛け。撃つ場面が**2つ**ある。
 /// Android の a11y ツリーは IME 等が前面のとき数秒古い値を返し続ける
-/// (docs/verification.md「ブリッジの『偽陰性』を疑う手順」)。
+/// (docs/verification.md「ブリッジの『誤った赤』を疑う手順」)。
 /// 対応しないドライバ(iOS 系。鮮度問題を持たない)ではどちらも行わず周回を増やさない。
 ///
 /// - `arm`: **失敗と決める前**(期限切れ)。アプリは正しいのに検証だけが落ちるのを防ぐ。
@@ -60,7 +60,7 @@ extension StepExecutor {
     }
 
     /// [occlusion-guard] ツリー一致した要素が**見えているか**を2段で確かめ、見えていなければ
-    /// 偽陽性として反転する失敗ステータスを返す。反転不要(可視 or 判定不能 or 無効)なら nil。
+    /// 誤った緑として反転する失敗ステータスを返す。反転不要(可視 or 判定不能 or 無効)なら nil。
     ///   Tier-0 幾何(FM 不要・決定的): 収まる軸の中心が画面外なら不可視
     ///     (`TapTargetGeometry.offscreenScrollGateCentre`。スクロール探索の「見つかった」ゲートと
     ///     同じ述語)。iOS の木は画面外の要素も frame ごと残すので、これが無いと通り過ぎた要素への
@@ -98,7 +98,7 @@ extension StepExecutor {
         // [StaleFrameDetector] キャッシュ供給(同一 Data 使い回し)は判定しない —— 供給元が
         // guardScreenshot 自身なので比較すると木のわずかな揺れで必ず偽 stale になる(guardScreenshot 参照)。
         // 新規撮影のときだけ「木は変わったのに絵が前回とバイト同一」を確認し、疑いなら1回だけ撮り直す。
-        // それでも stale なら古い絵を根拠に偽陽性反転を宣言せず素通りする(flip しない)。
+        // それでも stale なら古い絵を根拠に誤った緑反転を宣言せず素通りする(flip しない)。
         if captured.freshlyCaptured {
             // **両方の判定を同じ元の baseline に対して行う**(2回目の判定を1回目の record に対して
             // 行うと、elements はこの呼び出し内で不変なので treeFingerprint が必ず一致し
@@ -328,7 +328,7 @@ extension StepExecutor {
     ///
     /// **OS のシステム UI に覆われていたら、登録があれば閉じて判定し直す**(SystemUIGate)。
     /// 2つの偽りを同時に断つ:
-    ///   - 覆いの下で出した**緑**(見えていないものを「見えた」と言う偽陽性)
+    ///   - 覆いの下で出した**緑**(見えていないものを「見えた」と言う誤った緑)
     ///   - 覆いの下で出した**赤**(アラートを答えていないから値が更新されない = 誤った不一致。
     ///     `tap(#request) → textIs(結果)` の自然な並びがこれ。閉じてから読み直せば通る)
     /// なので成功・失敗どちらの後でも門を通す。**登録が残っていて覆われているときだけ**
@@ -452,7 +452,7 @@ extension StepExecutor {
             }
             lastSnapshot = snapshot
             // アサーションでは type+index のみのフォールバックを使わない。
-            // 別画面の無関係な要素にマッチして偽陽性になる(実測済み)
+            // 別画面の無関係な要素にマッチして誤った緑になる(実測済み)
             if let d = resolvedDetail {
                 if let flip = try await occlusionFlip(
                     element: d.element, expectedText: d.element.label ?? step.locator?.label ?? "",

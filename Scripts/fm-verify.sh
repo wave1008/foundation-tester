@@ -3,7 +3,7 @@
 # FM(Foundation Models)の実行時経路が「実際に呼ばれて成功している」ことを確認する。
 #
 # 全緑の E2E では FM 経路はほぼ検証できない:
-#   - occlusion(偽陽性検証)は実行プロファイル既定 OFF
+#   - occlusion-guard(誤った緑の検査)は実行プロファイル既定 OFF
 #   - heal は失敗しないと呼ばれない上、ヒールキャッシュが命中すると FM なしで解決する
 #   - screenLooksLike は使うシナリオが _disabled(生きた FM は非決定的でフレーク源になるため)
 #   - triage は失敗しないと呼ばれない

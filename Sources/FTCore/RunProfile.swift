@@ -371,6 +371,7 @@ public struct FMConfig: Sendable, Equatable {
     public var enabled: Bool
     public var heal: Bool
     /// 偽陽性検証(occlusion guard)。プロファイル既定 false(FM コストと誤反転リスクのためオプトイン)
+    /// = 誤った緑(木では一致したが実際には見えていない)の検査
     public var falsePositiveCheck: Bool
     public var screenLooksLike: Bool
 
@@ -417,6 +418,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// FM によるロケータ自己修復を許可するか(既定 true)
     public var heal: Bool?
     /// 偽陽性検証(occlusion guard)を有効にするか(既定 false)
+    /// = 誤った緑(木では一致したが実際には見えていない)の検査
     public var falsePositiveCheck: Bool?
     /// screenLooksLike(screenMatches)を有効にするか(既定 true。無効時は該当ステップを skip)
     public var screenLooksLike: Bool?

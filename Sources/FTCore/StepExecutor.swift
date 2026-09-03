@@ -4,7 +4,7 @@
 // - ロケータ解決失敗は指数バックオフ(100→200→400ms、計3回)で再試行してからヒールへ
 //   (UI 遷移直後対策。ヒール発動までの総待機は計700ms)。step.timeout 指定時はアクションも
 //   その秒数を予算にリトライ(0 = リトライなし。省略時=nilは従来の3回固定のまま)
-// - アサーションでは type+index のみのフォールバックを使わない(別画面要素への偽陽性防止)。
+// - アサーションでは type+index のみのフォールバックを使わない(別画面要素への誤った緑防止)。
 //   ただしスコープ付き(`#list >> .Cell[2]`)は容器に錨があるので除外しない(FlowLocator.isWeakForAssert)
 // - **要素未発見で失敗しない唯一のアクションは `select`**(空要素を返す契約。DSL の
 //   `FTElement.isEmpty` が真になる)。自己修復の対象にもしない。他は全て失敗=シナリオ中断
@@ -69,7 +69,7 @@ public protocol ReplayDelegate: AnyObject {
     func triage(goal: String?, stepDescription: String, failureReason: String,
                 snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo?
     /// [PoC occlusion-guard] ツリー上は一致した要素が、実際にスクショ上で覆われず/切れず/
-    /// 明瞭に描画されているかを FM に照合させる。visible=false なら assert を偽陽性として反転する。
+    /// 明瞭に描画されているかを FM に照合させる。visible=false なら assert を誤った緑として反転する。
     /// 戻り nil = 判定不能(FM 不可・画像不正)で、この場合ガードは何もしない(従来どおり pass)。
     /// state は fullyVisible/covered/dimmed/notRendered/textMismatch のいずれか(FTCore は FM 非依存
     /// のため文字列で受ける)。既定実装は nil(ガード無効時・非対応 delegate は素通り)。
@@ -312,7 +312,7 @@ public final class StepExecutor {
     public var screenLooksLikeEnabled: Bool
     /// [PoC occlusion-guard] true のとき、exists/textEquals がツリー一致で pass した直後に
     /// FM で「その要素がスクショ上で実際に見えているか」を1回照合し、覆われ/切れ/減光/不在なら
-    /// 偽陽性として失敗へ反転する。delegate が verifyElementVisible を実装していなければ無効。
+    /// 誤った緑として失敗へ反転する。delegate が verifyElementVisible を実装していなければ無効。
     /// occlusionGuardEnabled(実行プロファイル由来のマスタースイッチ)とは別物: こちらは
     /// exist の requireVisible 既定値由来のステップ既定(step.occlusionGuard が per-step 指定)
     public var occlusionGuard: Bool

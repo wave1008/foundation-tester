@@ -20,7 +20,7 @@ extension StepExecutor {
             .map { ($0.element, $0.usedFallback) }
     }
 
-    /// resolve に label 一致品質(quality)を添えた版。ハイブリッドの偽陽性抑止に使う。
+    /// resolve に label 一致品質(quality)を添えた版。ハイブリッドの誤検知抑止に使う。
     public static func resolveDetailed(step: FlowStep, in snapshot: SnapshotResponse,
                                        strictForAssert: Bool = false)
         -> (element: ElementInfo, usedFallback: FlowLocator?, quality: MatchQuality)? {
@@ -81,7 +81,7 @@ extension StepExecutor {
 
     /// 一致品質。**記法(部分一致かどうか)ではなく掴んだ要素**で判定する
     /// (`*ログイン*` が "ログインに失敗しました" を掴めば substring、"ログイン" を掴めば exact)。
-    /// 読み手はハイブリッドの偽陽性抑止(fallback の exact を primary の substring より優先)だけ
+    /// 読み手はハイブリッドの誤検知抑止(fallback の exact を primary の substring より優先)だけ
     static func quality(of element: ElementInfo, for locator: FlowLocator) -> MatchQuality {
         guard let label = locator.label else { return .exact }
         return element.label == label ? .exact : .substring

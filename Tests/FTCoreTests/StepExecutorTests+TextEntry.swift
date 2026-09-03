@@ -7,10 +7,10 @@ import UniformTypeIdentifiers
 // StepExecutorTests のテキスト入力系(type/pressEnter/hideKeyboard/keyboard判定/clearInput)
 
 extension StepExecutorTests {
-    // MARK: - 施策3: substring 偽陽性の fallback exact 上書き(tap アクション経路)
+    // MARK: - 施策3: substring 誤検知の fallback exact 上書き(tap アクション経路)
 
     /// primary が label 部分一致(substring)でしか解決できないとき、fallback に完全一致(exact)が
-    /// あれば fallback で act する(in-app label がシステム UI label の部分文字列 → 偽陽性の抑止)
+    /// あれば fallback で act する(in-app label がシステム UI label の部分文字列 → 誤検知の抑止)
     func testTapPrefersFallbackExactOverPrimarySubstring() async throws {
         let log = CallLog()
         // primary: "ログイン" を含むが完全一致でない(部分一致のみ)
@@ -33,7 +33,7 @@ extension StepExecutorTests {
         XCTAssertTrue(log.entries.contains("fallback.tap(ref:2)"),
                       "fallback の exact 要素で act すべき: \(log.entries)")
         XCTAssertFalse(log.entries.contains("primary.tap(ref:1)"),
-                       "primary の substring 要素で act してはいけない(偽陽性): \(log.entries)")
+                       "primary の substring 要素で act してはいけない(誤検知): \(log.entries)")
     }
 
     /// **システムダイアログの形**: iOS の権限ダイアログは SpringBoard が別プロセスで
@@ -752,7 +752,7 @@ extension StepExecutorTests {
 
     /// keyboardShown が nil(判定不能: Android の旧ブリッジ・captureKeyboardStateOnNextSnapshot
     /// 未着火の両方であり得る)のとき、非表示への嘘の成功にせず明示的に failed で返すこと
-    /// (nil を false 扱いすると keyboardIsNotShown が偽陽性で通ってしまう)
+    /// (nil を false 扱いすると keyboardIsNotShown が誤った緑で通ってしまう)
     func testKeyboardShownFailsWhenStateUnknown() async throws {
         let log = CallLog()
         // keyboardShownFrames を設定しない → SnapshotResponse.keyboardShown は常に nil

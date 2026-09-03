@@ -920,7 +920,7 @@ struct TriageSuggestion {          // 失敗トリアージ
 | 実装 | 役割 |
 |---|---|
 | `ReplayAssist.swift`(`FMReplayDelegate`) | 再生失敗時のみ呼ばれるフック群: ロケータ自己修復(`LocatorRepairSuggestion`)・スクリーンショットの画面検証(`ScreenVerdict`。**マルチモーダル**)・失敗トリアージ(`TriageSuggestion`) |
-| `OcclusionVerifier.swift` | アサーションがツリー通過した直後の遮蔽偽陽性の排除(マルチモーダル。要素 frame にクロップして渡す) |
+| `OcclusionVerifier.swift` | アサーションがツリー通過した直後の、遮蔽による誤った緑の排除(マルチモーダル。要素 frame にクロップして渡す) |
 | `FMDoctor.swift` | FM 可用性判定。`check()` は同期・可否を保証しない / `checkLive()` は実際に1回推論する(§1.1 の罠) |
 | `ScenarioNamer.swift` | 記録操作(ライブ操作タブ)からのシナリオ名生成 |
 | `TestbaseDrafter.swift` | テスト設計資料 → シナリオ下書き(§17)。FM 不可用時は決定的パーサへ落ちる |
@@ -1003,7 +1003,7 @@ FM がアプリを自律探索してシナリオを生成する explore モー�
   実 API 側は `FTFoundationModels` の `#available(macOS 27, *)` が保険。triage はテキストのみで継続する
 - **screenMatches(視覚検証)は実用レベル**: 「果物の商品名と価格が並ぶリスト」の一致/不一致を
   スクリーンショットから正しく判定し、不一致時は理由(エラーメッセージの存在)も説明できた
-- **アサーションに type+index フォールバックは危険**(実測で偽陽性発生): 別画面の無関係な要素に
+- **アサーションに type+index フォールバックは危険**(実測で誤った緑が発生): 別画面の無関係な要素に
   マッチする。再生器は assert 解決時に id/label を持たないフォールバックを除外する
 - **自己修復は elementText 方式で安定**: 壊れた `id=login_btn` に対し「サインイン」ボタンを
   high confidence で提案・修復できた。修復フローは `dirty: true` + note に修復理由を残す
@@ -1486,7 +1486,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 - **一致品質(exact/substring)は記法ではなく掴んだ要素で決まる**(`StepExecutor.quality`)。
   `*ログイン*` が `"ログインに失敗しました"` を掴めば substring、`"ログイン"` を掴めば exact。
   読み手は**hybrid の tap アクションだけ**で、primary が substring 止まりなら fallback を照会し
-  fallback の exact を優先する(§performance-tuning「フォールバック検証の偽陽性」)
+  fallback の exact を優先する(§performance-tuning「フォールバック検証の誤検知」)
 - **inapp の tap は activate 不発時に「整定待ち→要素取り直し→再 activate」で粘る**(2026-07-27)。
   Compose iOS は**画面遷移直後、要素が AX ツリーに載っていても accessibilityActivate がまだ
   配線されておらず false を返す**ことがあり、その瞬間の合成タッチも無反応(成否検知不能)で
@@ -1899,7 +1899,7 @@ select(.id("txt_result")).textIs("dialog=none")   // 検証はセレクタを取
   `checkIsOFF` の誤用警告が消える)、`screenMatches` / `keyboard*`(要素の値を見ていない)
 - **可視性照合が走る設定では高速経路に入らない**(`visibilityWouldBeChecked`)。条件は
   `occlusionFlip` の入口のうちステップ非依存の部分と同じものを見る。飛ばすと
-  falsePositiveCheck 有効の run で偽陽性検出が**静かに1つ消える**
+  falsePositiveCheck 有効の run で誤った緑の検出が**静かに1つ消える**
 - 記録は通常どおり1ステップだが、説明に `(from the grabbed value)` を付ける
   (レポートで「取り直していない判定」を見分けられるようにするため。durationMs は 0)
 - **残る危険は「古い値が偶然期待に一致して待たずに通る」向き**。`textIs` は本来
@@ -2268,7 +2268,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   **掃討ゲートは件数しか見ない**ので、この種の変更は明細(`FT_SWEEP_BASELINE=1`)で1件ずつ確かめる
 - **occlusion-guard は絵の鮮度を確かめてから FM を呼ぶ**(`StaleFrameDetector`。MCP の
   ft_screenshot と同じ判定を共有)。「木は変わったのに絵が前回とバイト同一 = 凍結した古いフレーム」
-  なら1回だけ撮り直し、なお stale なら**偽陽性反転を宣言せず素通り**する(`StepNote.staleScreenshot`)。
+  なら1回だけ撮り直し、なお stale なら**誤った緑への反転を宣言せず素通り**する(`StepNote.staleScreenshot`)。
   **判定は新規撮影のときだけ**(`guardScreenshot` の 200ms キャッシュ供給は同一 Data を返すため、
   比較すると木の揺れで必ず偽 stale になる)。`FrozenVerdict` には接続しない(凍結判定の定義元は
   あちらのまま。これはスクショ経路のローカルな鮮度確認)
@@ -2468,7 +2468,7 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   書いた後。**逆相関(誤答に高い確信)は消えたが、今度は正解も誤答も low で区別が付かない**。
   なお**モデルは省略の逃げ道を一度も使わなかった**(`heal-no-replacement` の発火 0/5)——
   何かを名指しする傾向はスキーマの制約ではなく**モデルの性質**。
-  ただし誤答の確信が下がったこと自体は偽陽性を減らす方向なので変更は残す。
+  ただし誤答の確信が下がったこと自体は誤検知を減らす方向なので変更は残す。
 
   **閾値の調整では解けない** —— `medium` へ下げると誤答が通り、`low` へ下げると何でも通る。
   自己較正は小さいモデルが最も苦手とする能力で、**現行設計はそこを採否の唯一の門にしている**。
@@ -2507,7 +2507,7 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   **別 UIWindow に載るモーダル**(アプリ内メッセージ SDK 等)が木から見えないと、
   画面を覆っているのにテストは何も失敗しない —— タップは `activate`、スクロールは
   `contentOffset` の直接書き込みで**どちらも hitTest を経由しない**ので**覆いが障害物にならず**、
-  `irregularHandler` も照合対象が無いので発動しない = **偽陽性で緑になる**
+  `irregularHandler` も照合対象が無いので発動しない = **誤った緑になる**
   (受け手報告。自前 SUT の `OverlayWindow` で再現 → `bridgeProtocolVersion` 75 で修正)。
   **`UIAlertController` は自分の窓を key にする**ので以前から載っていた。載らなかったのは
   **key にしない**窓で、そこが SDK 系オーバーレイの形。
@@ -3298,7 +3298,7 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   iOS は testTag が自動で accessibilityIdentifier になるため起きない(Android 固有)
 - **偽陽性検証を有効にした run(実行プロファイル `falsePositiveCheck: true`。既定 OFF)では、
   `exist`/`textIs` は既定 `requireVisible: true` のため、ソフトキーボードに覆われた要素は
-  「偽陽性(occlusion)」で失敗する**。入力を伴う画面では検証対象・操作対象を入力欄より**上**に置く
+  「`false positive (occlusion)`」で失敗する**。入力を伴う画面では検証対象・操作対象を入力欄より**上**に置く
   (TestProjects/E2E-CMP のテキスト入力画面がこの配置。2026-07-22 実測)
 - **inapp ブリッジは注入先アプリのプロセス内常駐**なので、アプリがクラッシュ/終了すると HTTP が
   `DriverError.bridgeConnectionRefused`(「Could not connect」)になる。xcuitest/Android はブリッジが

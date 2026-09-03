@@ -54,7 +54,7 @@ final class MCPTreeFingerprintTests: XCTestCase {
     /// **ref だけ違っても同じ木なら指紋は同じ**(2026-08-10・ref 世代管理)。
     /// MCP 層が snapshot ごとに ref へオフセットを掛けるため、同じ内容でも取得経路(native の
     /// ままか、セッション ref に振り直し済みか)によって ref 番号が変わり得る。
-    /// ref を指紋に含めると同じ木を「別物」と誤検知し、ft_screenshot の鮮度警告が偽陽性になる
+    /// ref を指紋に含めると同じ木を「別物」と誤検知し、ft_screenshot の鮮度警告が誤検知になる
     func testARefOnlyChangeDoesNotChangeTheFingerprint() {
         let a = testSnapshot([testElement(ref: 1)])
         let b = testSnapshot([testElement(ref: 99)])
