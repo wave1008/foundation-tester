@@ -25,6 +25,7 @@ final class FMBreakerTests: XCTestCase {
     override func tearDown() {
         FMBreaker.reset()
         FMBreaker.stateURLForTesting = nil
+        FMBreaker.bootTimeForTesting = nil
         try? FileManager.default.removeItem(at: stateDir)
         super.tearDown()
     }
@@ -93,5 +94,26 @@ final class FMBreakerTests: XCTestCase {
         let entered = await FMGate.enter()
         XCTAssertTrue(entered)
         FMGate.leave()
+    }
+
+    /// トリップの後にマシンが再起動していたら、そのトリップは前回起動セッションの記録なので無効
+    /// (状態ファイルは .cachesDirectory で再起動を生き延びるため)。状態ファイルも消える
+    func testTripDoesNotSurviveReboot() {
+        for _ in 0..<FMBreaker.threshold { FMBreaker.recordFailure() }
+        XCTAssertTrue(FMBreaker.isOpen)
+        let past = Date().addingTimeInterval(-3600)
+        try? FileManager.default.setAttributes(
+            [.modificationDate: past], ofItemAtPath: FMBreaker.stateURLForTesting!.path)
+        FMBreaker.bootTimeForTesting = past.addingTimeInterval(600)
+        XCTAssertFalse(FMBreaker.isOpen, "トリップより後に再起動していれば無効")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: FMBreaker.stateURLForTesting!.path),
+                       "前回起動セッションの状態ファイルは消す")
+    }
+
+    /// 再起動していなければ通常の cooldown 判定のまま(対照)
+    func testTripSurvivesWithoutReboot() {
+        for _ in 0..<FMBreaker.threshold { FMBreaker.recordFailure() }
+        FMBreaker.bootTimeForTesting = Date().addingTimeInterval(-3600)
+        XCTAssertTrue(FMBreaker.isOpen, "再起動していなければトリップは有効なまま")
     }
 }

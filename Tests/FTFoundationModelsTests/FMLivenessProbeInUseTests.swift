@@ -38,6 +38,41 @@ final class FMLivenessProbeInUseTests: XCTestCase {
         XCTAssertFalse(FMLivenessProbe.realWorkIsFeedingTheLedger(nil, now: now, maxAge: 60))
     }
 
+    /// 記録なし(unknown)は撃ち直す対象
+    func testNilVerdictIsStale() {
+        XCTAssertTrue(FMLivenessProbe.isStaleDespiteFreshness(nil, breakerIsOpen: true))
+        XCTAssertTrue(FMLivenessProbe.isStaleDespiteFreshness(nil, breakerIsOpen: false))
+    }
+
+    /// 実観測(source=.call)は breakerIsOpen に関わらず無効化しない
+    func testRealCallVerdictIsNeverStaleDueToBreaker() {
+        let real = FMLiveness.Verdict(state: .alive, checkedAt: now.timeIntervalSince1970,
+                                      source: .call, ms: 10)
+        XCTAssertFalse(FMLivenessProbe.isStaleDespiteFreshness(real, breakerIsOpen: true))
+        XCTAssertFalse(FMLivenessProbe.isStaleDespiteFreshness(real, breakerIsOpen: false))
+    }
+
+    /// ブレーカ由来の dead は、ブレーカがまだ開いている間は代理の値として有効
+    func testBreakerSourcedDeadIsValidWhileBreakerOpen() {
+        let breakerDead = FMLiveness.Verdict(state: .dead, checkedAt: now.timeIntervalSince1970,
+                                             source: .breaker)
+        XCTAssertFalse(FMLivenessProbe.isStaleDespiteFreshness(breakerDead, breakerIsOpen: true))
+    }
+
+    /// ブレーカが閉じた瞬間、直前に書いたブレーカ由来の dead は無効(再確認させる)
+    func testBreakerSourcedDeadIsStaleOnceBreakerCloses() {
+        let breakerDead = FMLiveness.Verdict(state: .dead, checkedAt: now.timeIntervalSince1970,
+                                             source: .breaker)
+        XCTAssertTrue(FMLivenessProbe.isStaleDespiteFreshness(breakerDead, breakerIsOpen: false))
+    }
+
+    /// 実プローブ由来(source=.probe)の dead はブレーカの開閉と無関係に有効なまま
+    func testProbeSourcedDeadIsNeverStaleDueToBreaker() {
+        let probeDead = FMLiveness.Verdict(state: .dead, checkedAt: now.timeIntervalSince1970,
+                                           source: .probe)
+        XCTAssertFalse(FMLivenessProbe.isStaleDespiteFreshness(probeDead, breakerIsOpen: false))
+    }
+
     /// refresh が**最初に**この判定を通ること(消えると経路ごとの鮮度だけで撃つ形へ戻る)
     func testRefreshConsultsTheInUseGateBeforeProbing() throws {
         let root = URL(fileURLWithPath: #filePath)

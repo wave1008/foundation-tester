@@ -17,6 +17,10 @@
 //  ③ FMLock を**短い timeout** で取り、取れなければ撃たない —— 死活確認のために
 //     実行中の run を待たせない。probeLockTimeoutSeconds の doc 参照
 //
+// **ブレーカ由来(source=.breaker)の dead は代理の値**: ブレーカが閉じた瞬間に無効
+// (isStaleDespiteFreshness)。無効にしないと、閉じた直後でも freshSeconds(最大120秒)尽きるまで
+// 「復活したのに死んだまま」表示される。
+//
 // **FMHealth / FMUsageLedger には書かない**。プローブは「仕事」ではないので、書くと
 // モニターの FM レートが誰も走らせていないのに動く(= 測る対象を自分で消費して見せる)。
 // ブレーカだけは養う —— あれは「無駄打ちを止める」ための事実で、プローブの成否も同じ事実。
@@ -51,11 +55,13 @@ public enum FMLivenessProbe {
         }
         var stale: [FMLiveness.Path] = []
         let current = FMLiveness.current(now: now, maxAge: maxAge)
+        let breakerIsOpen = FMBreaker.isOpen
         // ① 新しければ撃たない
-        if current.text == nil { stale.append(.text) }
+        if isStaleDespiteFreshness(current.text, breakerIsOpen: breakerIsOpen) { stale.append(.text) }
         // vision は macOS 27+ でしか存在しない。**非対応は「死」ではない**ので台帳に書かない
         // (能力の話は FMVisionSupport が持つ。混ぜると「OS を上げろ」が「FM が死んだ」に化ける)
-        if FMVisionSupport.isSupported, current.vision == nil { stale.append(.vision) }
+        if FMVisionSupport.isSupported,
+           isStaleDespiteFreshness(current.vision, breakerIsOpen: breakerIsOpen) { stale.append(.vision) }
         guard !stale.isEmpty else { return FMLiveness.current(now: now) }
 
         // availability が unavailable を返す向きだけは信じてよい(ファイル冒頭)。呼ばずに決まる
@@ -87,6 +93,14 @@ public enum FMLivenessProbe {
             _ = await probeOnce(path: path)
         }
         return FMLiveness.current(now: now)
+    }
+
+    /// **純粋関数**。ブレーカ由来の「死」(source=.breaker)は実観測ではなく代理の値なので、
+    /// ブレーカ自体が閉じた瞬間に無効になる —— これが無いと、ブレーカが閉じても直前に書いた
+    /// dead(source=.breaker) が freshSeconds(最大120秒)尽きるまで「復活したのに死んだまま」表示される
+    static func isStaleDespiteFreshness(_ verdict: FMLiveness.Verdict?, breakerIsOpen: Bool) -> Bool {
+        guard let verdict else { return true }
+        return verdict.source == .breaker && !breakerIsOpen
     }
 
     /// **どちらかの経路に `maxAge` より新しい実呼び出し(source = call)があるか**(純粋)。

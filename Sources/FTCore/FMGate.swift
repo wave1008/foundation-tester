@@ -8,6 +8,9 @@
 // 変えても再起動まで回復しない**。直列化しても崩壊は防げなかった(docs/verification.md)。
 // 死んだ後も呼び続けると、1 回あたり 0.2〜4 秒を捨て続ける(実測: 全滅 run の 1554 シナリオで
 // 合計 31 分)。「死んだら止める」が唯一効く対策。
+//
+// **再起動は cooldown より強い回復の根拠**: マシン再起動を跨いだトリップは無効(状態ファイルは
+// .cachesDirectory で再起動を生き延びるため、放っておくと再起動後も cooldown 経過まで死んだまま扱う)。
 
 import Foundation
 
@@ -65,6 +68,9 @@ public enum FMBreaker {
     /// テスト側はプロセスごとの一時パスをここへ入れて隔離する
     static var stateURLForTesting: URL?
 
+    /// **テストだけが使う差し替え口**(production は nil)。マシン再起動の判定に使う起動時刻を固定する
+    static var bootTimeForTesting: Date?
+
     /// 本番の置き場。**ホスト単位で1つ**(ここが共有であること自体が仕様 —— 14 ワーカーが
     /// 別プロセスでも落ちた事実を共有できる)。パスの形はテストが I/O 抜きで表明する
     static var defaultStateURL: URL {
@@ -76,11 +82,29 @@ public enum FMBreaker {
 
     private static var stateURL: URL { stateURLForTesting ?? defaultStateURL }
 
-    /// 落ちているか(= FM を呼ばない)。cooldown を過ぎていれば閉じたとみなして 1 回試させる
+    /// マシンが最後に起動した時刻。kern.boottime は**スリープでは変わらず、実際の再起動でだけ進む**
+    /// (ProcessInfo.systemUptime はスリープ中止まる実装があり、起動時刻の逆算に使うとスリープの
+    /// たびに「再起動した」と誤判定する)。取得できなければ nil(呼び出し側は cooldown へフォールバック)
+    private static var machineBootTime: Date? {
+        if let override = bootTimeForTesting { return override }
+        var mib: [Int32] = [CTL_KERN, KERN_BOOTTIME]
+        var bootTime = timeval()
+        var size = MemoryLayout<timeval>.stride
+        guard sysctl(&mib, 2, &bootTime, &size, nil, 0) == 0 else { return nil }
+        return Date(timeIntervalSince1970: Double(bootTime.tv_sec) + Double(bootTime.tv_usec) / 1_000_000)
+    }
+
+    /// 落ちているか(= FM を呼ばない)。cooldown を過ぎていれば閉じたとみなして 1 回試させる。
+    /// トリップがマシン起動より前(= 前回起動セッションの記録)なら、それ自体が無効
+    /// (再起動は cooldown より強い回復の根拠。ファイル冒頭)なので状態ファイルごと捨てて閉じたとみなす
     public static var isOpen: Bool {
         guard isEnabled else { return false }
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: stateURL.path),
               let trippedAt = attrs[.modificationDate] as? Date else { return false }
+        if let bootTime = machineBootTime, trippedAt < bootTime {
+            try? FileManager.default.removeItem(at: stateURL)
+            return false
+        }
         return Date().timeIntervalSince(trippedAt) < cooldownSeconds
     }
 
