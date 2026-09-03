@@ -81,7 +81,9 @@ public final class FMReplayDelegate: ReplayDelegate {
         // リード 0ms では効果が無く(+91ms・t=+1.5)、効かせるにはスクショ往復より前へ
         // 持ち上げる必要がある(= StepExecutor 側の配線。未実施)
         session.prewarm()
-        let rendered = SnapshotRenderer.render(snapshot)
+        // **溢れると呼び出しごと失敗して黙って nil になる**(文脈長 4,096 トークン)。
+        // 収まる木は1バイトも変えない(FMPromptBudget 冒頭)
+        let rendered = FMPromptBudget.fit(SnapshotRenderer.render(snapshot))
         // プロンプト構築自体は純粋関数(healPrompt)へ切り出してある(FM 呼び出し・デバイスが
         // 要らない。単体テストは Tests/FTFoundationModelsTests/HealPromptTests.swift)。
         // 2026-09-02 の実測: モデルが壊れたロケータをそのままオウム返ししていた(triage は
@@ -236,7 +238,9 @@ public final class FMReplayDelegate: ReplayDelegate {
 
     public func triage(goal: String?, stepDescription: String, failureReason: String,
                        snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? {
-        let rendered = snapshot.map { SnapshotRenderer.render($0) } ?? "(not available)"
+        // heal と同じ理由で上限を掛ける(FMPromptBudget)。実アプリの密な画面では
+        // full tree + スクショ + 300tok が 4,096 トークンを超え、triage が1度も返らない
+        let rendered = snapshot.map { FMPromptBudget.fit(SnapshotRenderer.render($0)) } ?? "(not available)"
         // **出力言語を決めるのは instructions ではなく @Guide の description**(2026-07-30 実測)。
         // instructions を英語にしても @Guide に「日本語で1文」が残っている間は日本語で返り続けた。
         // 出力言語を変えるときは TriageSuggestion / ScreenVerdict / LocatorRepairSuggestion の
