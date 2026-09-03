@@ -2558,9 +2558,14 @@ Scripts/fm-verify.sh                    # 既定 TestProjects/E2E-CMP・プロ�
   カードが不透明に覆っているのはラベルを持たない `#sw_auto_dialog` だけで、足切りに掛かる /
   ② タブバーに潜る `#btn_under_footer` —— 帯にはタブのラベル(インク)があり、
   iOS の木は z を持たないので幾何の疑いも立たない。
-  **要るのは「ラベルのある要素を、文字の無い不透明な面で覆う」画面**(いまどの SUT にも無い)。
-  実データ(`~/Library/Logs/fleetest/occlusion/` のダンプ = 受け手の業務アプリ由来)でしか
-  反転経路を確かめられない、が現状。**2段構えを触るときはコーパスで照合すること**
+  **要るのは「テキストを、文字の無い不透明な面で覆う」画面**で、2026-09-03 に
+  `E2EAppIOS` の覆い画面へ足した(`#btn_toggle_paint` / `#txt_paint_target`)。
+  **対象がテキストであることも必須** —— `OcclusionEligibility` はテキスト型だけを FM に回すので、
+  Button 版では guard が 6ms で素通りし FM 呼び出しは 0 だった(これも実測)。
+  陽性対照は `TestProjects/E2E-iOS/scenarios/_disabled/96_遮蔽の反転.swift`
+  (`falsePositiveCheck: true` のプロファイルで回す。**S0010 は落ちるのが正常**)。
+  実測では失敗文言に reason と crop が付き、`fm.byKind.occlusion.calls` が**2**(選別 + 詳細)
+  になることまで確認した。**2段構えを触るときは、この対照とコーパスの両方で照合すること**
   (docs/performance-tuning.md §3.5.1)
 - **occlusion-guard は長期間 死んだままでも E2E は緑になる**。実績値では
   6066 呼び出し中 5673 失敗(**93.5%**)で、成功を含む run は 582 中 58 だけだった。

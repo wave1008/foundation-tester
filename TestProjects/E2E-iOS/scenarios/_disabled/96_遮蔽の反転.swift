@@ -22,7 +22,13 @@
 //      (**reason が空なら2段目に落ちていない** = 1段目の結果をそのまま返している)
 //   ② 結果 JSON の `fm.byKind.occlusion.calls` が反転1回につき **2** 増える(選別 + 詳細)
 //   ③ `~/Library/Logs/fleetest/occlusion/` に crop が保存される(2段目だけが書く)
-// S0020 は陰性対照(覆いを外せば同じ要素が通る)。
+// S0020 は陰性対照(覆いを外せば同じ要素が通る)。**S0020 では FM は呼ばれない** ——
+// 覆いを外すと文字が戻ってインク量が上がり、Tier-1 の足切りで FM を省くため(それが正しい挙動)。
+//
+// **2026-09-03 の実測**(M1Max・in-app エンジン・`falsePositiveCheck: true`):
+//   S0010 → `false positive (occlusion): present in the tree but not visually visible [covered]
+//            Text is covered by a solid color overlay [crop: …] observed=""`
+//   fm.byKind.occlusion.calls = **2**(選別 + 詳細)/ crop も保存された / S0020 は緑・FM 呼び出し 0。
 import FTDSL
 
 @TestClass(app: "com.ftester.e2e.ios", platform: "ios")
