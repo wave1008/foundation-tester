@@ -168,6 +168,19 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// **率が上がったら登録漏れ**: 文言に出る題名とボタンをそのまま iosAlertHandler に書ける
     case systemAlertPresent = "system-alert-present"
 
+    /// launch 直後の occlusion-guard 失敗が launch storyboard(crop が全画素同一)由来と
+    /// 判定され、このステップの deadline を一度だけ延ばして待ち直した(`StepExecutor.firstFrameGatePending`。
+    /// 一度きりの門なので同じ launch のぶんでは他のステップに重複しない)。
+    /// **率が上がったら**このアプリのスプラッシュ/起動遷移が長い ——
+    /// 待ってもなお赤なら `firstFrameTimeout` を併せて見る
+    case firstFramePending = "first-frame-pending"
+
+    /// `firstFramePending` で一度延ばした deadline でもなお crop が一様色のままで、
+    /// occlusion 失敗として赤になった。**判定は変えない**(延長を使い切っただけ) ——
+    /// 起動が既定 timeout の2倍を超えて掛かっているか、launch storyboard ではなく
+    /// 本物の occlusion(不透明な起動画面が居座っている等)を疑う材料
+    case firstFrameTimeout = "first-frame-timeout"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -200,6 +213,12 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .systemAlertPresent:
             return "a system alert was in front of the app with no iosAlertHandler registered for it,"
                 + " so the app behind it was operated anyway"
+        case .firstFramePending:
+            return "the screen still looked like the launch storyboard (a uniform, undrawn frame),"
+                + " so this waited once more before treating it as occlusion"
+        case .firstFrameTimeout:
+            return "the screen still looked like the launch storyboard after waiting once more,"
+                + " so this failed as occlusion"
         case .visibilityGuardSkipped:
             return "the FM visibility check gave no verdict, so this passed on tree presence and"
                 + " on-screen geometry alone"

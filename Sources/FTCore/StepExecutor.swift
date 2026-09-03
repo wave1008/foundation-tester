@@ -258,14 +258,31 @@ public final class StepExecutor {
     /// このステップで「登録の無いアラートが前面にあった」事実(StepOutcome の注記に合流)
     var systemAlertAdvisoryThisStep: String?
 
+    /// [occlusion-guard] launch 直後だけ開く一度きりの門。launch storyboard(一様色の未描画画面)を
+    /// 誤って occlusion の誤った緑反転と扱わないため。noteAppLaunched() と同じ launch 系サイトで
+    /// arm する。**systemAlertProbePending と相乗りさせない** —— 消費するタイミングが違う
+    /// (あちらは「次の触る操作」、こちらは occlusionFlip で最初に FM の可視性判定が返った瞬間。
+    /// 可視でも消費する = 描画が済んでいれば猶予は要らない。StepExecutor+Assert.swift の occlusionFlip 参照)
+    public var firstFrameGatePending = false
+    /// [occlusion-guard] 直近で firstFrameGatePending を消費した際、crop が全画素同一
+    /// (RegionInk.luminanceStdDev == 0)だったか。execute(_:) の入口で毎ステップ false に戻す
+    /// (前のステップの観測を持ち越さない)。executeAssertExists/executeAssertTextComparison の
+    /// deadline 延長判断に使う
+    var firstFrameBlankObserved = false
+
     /// 次の触る操作で1回だけ SpringBoard に聞く契機を立てる。呼ぶのは FTRuntime の2箇所:
     /// launch 系コマンドの直後(performCustom)と **CAE の各フェーズ(condition / action /
     /// expectation)の先頭**。OS のアラートは起動直後だけでなくオンボーディングの途中
     /// (アプリ内の事前説明を閉じた直後の通知許可・ATT)でも出るので、フェーズ単位で
     /// 1回だけ見る(シーンあたり高々3往復 ≈ 0.2s。毎ステップの往復は登録がある間だけ)
     public func armUnregisteredSystemAlertProbe() { systemAlertProbePending = true }
-    /// launch 系の直後(後方互換の別名)
-    public func noteAppLaunched() { armUnregisteredSystemAlertProbe() }
+    /// launch 系の直後(後方互換の別名)。**firstFrameGatePending もここで arm する**
+    /// (CAE フェーズ先頭の armUnregisteredSystemAlertProbe には乗せない ——
+    /// launch storyboard の猶予は launch 系コマンド直後だけに絞る)
+    public func noteAppLaunched() {
+        armUnregisteredSystemAlertProbe()
+        firstFrameGatePending = true
+    }
 
     /// **登録が無いときだけ**1回 SpringBoard に聞き、前面に出ていれば名指しを返す。
     /// 登録がある間は `waitOutSystemUI` / `SystemUIGate` が担うので nil(二重に聞かない)。
@@ -503,6 +520,7 @@ public final class StepExecutor {
         resolvedElementThisStep = nil
         scrollSwipesThisStep = nil
         noteCodesThisStep = []
+        firstFrameBlankObserved = false
         failureKindThisStep = nil
         elementLimitCeilingLatchedThisStep = false
         systemAlertAdvisoryThisStep = nil

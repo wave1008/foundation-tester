@@ -133,10 +133,13 @@ extension StepExecutor {
                                                looseMatch: looseMatch)
         // Tier-1 事前フィルタ: 幾何的に無罪 かつ 領域に明瞭なインクがあれば FM を省略して素通り(pass)。
         // 疑いのある低インク領域(覆い/空/減光)だけ FM に回すことで FM 呼出を大幅削減する。
-        if !geo, occlusionInkThreshold > 0,
-           let sd = RegionInk.luminanceStdDev(pngData: screenshot, frame: element.frame, screen: screen),
-           sd >= occlusionInkThreshold {
-            return nil
+        // sd は下の launch-storyboard 判定でも再利用する(同じ crop へ二重に払わない)。
+        var sd: Double?
+        if !geo, occlusionInkThreshold > 0 {
+            sd = RegionInk.luminanceStdDev(pngData: screenshot, frame: element.frame, screen: screen)
+            if let value = sd, value >= occlusionInkThreshold {
+                return nil
+            }
         }
         guard let v = await delegate.verifyElementVisible(
             expectedText: expectedText, frame: element.frame, screen: screen, screenshotPNG: screenshot)
@@ -146,6 +149,21 @@ extension StepExecutor {
             // 観測できず、知っているのはここだけ。結果 JSON の notes から run 横断で数えられる
             noteCodesThisStep.insert(.visibilityGuardSkipped)
             return nil
+        }
+        // launch 直後(noteAppLaunched)は launch storyboard(全画素同一 = crop の stdDev が
+        // 厳密に 0)を実 occlusion と見分けられない。門は一度きり —— **可視・不可視の
+        // どちらでもここで消費する**(可視なら描画は済んでいるので猶予は要らない)。
+        // blank だったときだけ StepExecutor 側のフラグを立てる。**flip 自体は今までどおり返す**
+        // (nil にして素通りさせると誤った緑になる。呼び出し側の poll ループが deadline を
+        // 一度だけ延ばす)。sd は Tier-1 を通らなかった経路(幾何が疑い有り / 閾値 0)では
+        // 未計算なので、**門が開いている回だけ**ここで測る(常時は払わない)
+        if firstFrameGatePending {
+            firstFrameGatePending = false
+            if !v.visible,
+               (sd ?? RegionInk.luminanceStdDev(pngData: screenshot,
+                                                frame: element.frame, screen: screen)) == 0 {
+                firstFrameBlankObserved = true
+            }
         }
         if v.visible { return nil }
         // observedText は原因切り分けの鍵: 空なら「FM に画像が渡っていない/白紙を見た」
@@ -428,7 +446,7 @@ extension StepExecutor {
             scrollSearchNote = recordedScrollSearchNote(result)
             guard result.found else { return failed(.notFound, Self.scrollNotFoundMessage(step, result)) }
         }
-        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        var deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var primaryMisses = 0
@@ -439,6 +457,8 @@ extension StepExecutor {
         var lastSnapshot: SnapshotResponse?
         // 一度でも上限に当たったら以後は最初から天井で撮る(notExists と同じ latch)
         var needsCeiling = false
+        // launch storyboard 猶予(firstFrameBlankObserved)の deadline 延長は1ステップにつき1回だけ
+        var firstFrameExtended = false
         // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
         while true {
             var start = clock.now
@@ -503,6 +523,15 @@ extension StepExecutor {
             if Date() >= deadline {   // 初回照会後にここで離脱(timeout==0 も含む)
                 // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
                 if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                // launch storyboard(一様色)を実 occlusion と誤らないよう、このステップの
+                // 予算をもう一度だけ払って待ち直す。延長幅はこの deadline を作った式の再利用
+                // (`step.timeout ?? FlowStep.defaultWaitSeconds`)—— 新しい定数は置かない
+                if !firstFrameExtended, firstFrameBlankObserved, lastOcclusion != nil {
+                    firstFrameExtended = true
+                    deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+                    noteCodesThisStep.insert(.firstFramePending)
+                    continue
+                }
                 break
             }
             start = clock.now
@@ -511,7 +540,10 @@ extension StepExecutor {
             cachedScreenshot = nil   // 待機中に画面が変わり得る → 次周回は取り直す
         }
         // timeout: 覆われ続けた occlusion があればそれを、無ければ未発見を返す
-        if let lastOcclusion { return lastOcclusion }
+        if let lastOcclusion {
+            if firstFrameExtended, firstFrameBlankObserved { noteCodesThisStep.insert(.firstFrameTimeout) }
+            return lastOcclusion
+        }
         return failed(.notFound, "element not found: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? FlowStep.defaultWaitSeconds))s)"
                        + Self.truncationHint(lastSnapshot)
                        + tapDiagnosisHint(lastSnapshot?.elements)
@@ -525,7 +557,7 @@ extension StepExecutor {
         guard let expected = step.expected else {
             return .skipped("expected was not specified")
         }
-        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        var deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         var freshRetry = AssertFreshRetry()
         var lastActual: String?
         var found = false
@@ -540,6 +572,8 @@ extension StepExecutor {
         var lastSnapshot: SnapshotResponse?
         // 一度でも上限に当たったら以後は最初から天井で撮る(exists と同じ latch)
         var needsCeiling = false
+        // launch storyboard 猶予(firstFrameBlankObserved)の deadline 延長は1ステップにつき1回だけ
+        var firstFrameExtended = false
         // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
         while true {
             var start = clock.now
@@ -611,6 +645,15 @@ extension StepExecutor {
             if Date() >= deadline {   // 初回照会後にここで離脱(timeout==0 も含む)
                 // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
                 if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                // launch storyboard(一様色)を実 occlusion と誤らないよう、このステップの
+                // 予算をもう一度だけ払って待ち直す。延長幅はこの deadline を作った式の再利用
+                // (`step.timeout ?? FlowStep.defaultWaitSeconds`)—— 新しい定数は置かない
+                if !firstFrameExtended, firstFrameBlankObserved, lastOcclusion != nil {
+                    firstFrameExtended = true
+                    deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+                    noteCodesThisStep.insert(.firstFramePending)
+                    continue
+                }
                 break
             }
             start = clock.now
@@ -618,7 +661,10 @@ extension StepExecutor {
             phase.waitMs += Self.ms(clock.now - start)
             cachedScreenshot = nil   // 待機中に画面が変わり得る → 次周回は取り直す
         }
-        if let lastOcclusion { return lastOcclusion }   // 覆われ続けた
+        if let lastOcclusion {   // 覆われ続けた
+            if firstFrameExtended, firstFrameBlankObserved { noteCodesThisStep.insert(.firstFrameTimeout) }
+            return lastOcclusion
+        }
         let subject = assert == "idEquals" ? "id"
             : (assert.hasPrefix("value") ? "value" : "text")
         let relation = Self.textMismatchRelation(assert)

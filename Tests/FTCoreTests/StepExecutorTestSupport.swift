@@ -258,7 +258,8 @@ final class FakeAppDriver: AppDriver {
 
 /// occlusion-guard 検証用の最小 delegate。verifyElementVisible だけ意味を持たせる。
 final class FakeVisibilityDelegate: ReplayDelegate {
-    let visible: Bool
+    /// テスト中に切り替えられる(門が可視の判定で消費されることを見るテストが使う)
+    var visible: Bool
     private(set) var visibleCalls = 0
     init(visible: Bool) { self.visible = visible }
     func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }

@@ -44,6 +44,19 @@ Tier-0 幾何 = 収まる軸の中心が画面外なら不可視(`TapTargetGeome
 塞がらなかった**(2026-08-20 受け手報告・横スクロール区画)。幾何の段は FM の有無に依らず
 `falsePositiveCheck` の下で効く(`StepExecutor.visibilityGuardActive` が唯一の入口。FTRuntime の
 保持値の高速経路もこれを見る)。
+**launch 直後の未描画画面は「覆い」と見分けられない**(2026-09-03): `restartApp` / `launchApp` は
+木が引けた時点で戻るので、a11y の木は新インスタンスの要素を返しているのに画面はまだ
+launch storyboard(全画素同一)ということが起きる。負荷の高いランナーでは描画が既定の待ち窓に
+間に合わず、occlusion-guard が**正しく**「見えていない」と言って赤になる(実測: crop 265x100 が
+全画素 (255,255,255))。そこで launch 系コマンドの直後だけ `StepExecutor.firstFrameGatePending` を
+一度きり立て、**最初に FM の可視性判定が返った回**で消費する(可視でも消費 = 描画済みなら猶予は
+要らない)。不可視かつ crop の `RegionInk.luminanceStdDev` が厳密に 0 なら、そのステップの deadline を
+**一度だけ**同じ式(`step.timeout ?? FlowStep.defaultWaitSeconds`)で延ばして待ち直し、
+`first-frame-pending` を立てる。延ばしても一様色のままなら従来どおり赤にして `first-frame-timeout`
+を添える。**通る経路は増やさない**(flip は返し続ける) —— 変えるのは待つ長さだけなので、
+誤った緑は1つも作らない。**stdDev は Tier-1 のインク足切りを通らない経路(幾何が疑い有り・閾値 0)
+では未計算**なので、門が開いている回だけ測り直す(この取りこぼしは実装直後のレビューで見つけた)。
+
 `FMHealth`(Sources/FTCore/FMHealth.swift)が呼び出しの回数・レイテンシ・成否を計上し、
 実行後に stderr へ警告する。結果 JSON の `fm` にも載る(performance-tuning.md §4.2)。
 **これは理論上の話ではない**: 実績値では 6066 呼び出し中 5673 失敗(93.5%)で、

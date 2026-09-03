@@ -22,6 +22,19 @@ final class StepExecutorTests: XCTestCase {
         }
     }
 
+    /// 縦縞(4px 周期・全高)= どの y でも幅16px以上の crop なら必ず濃淡が割れる。
+    /// nonBlankPNG(8px の市松)は crop が上端の細い帯(高さ数px)になる occlusion-guard の
+    /// 用途では、CGContext の座標系(原点が左下)のせいで模様が crop の外(下側)に落ちて
+    /// stddev=0 になることがある(2026-09-03 実測) —— 縦縞は y に依存しないのでその罠が無い
+    static let inkedPNG: Data = makePNG { context in
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+        context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+        for col in stride(from: 0, to: 64, by: 4) where (col / 4).isMultiple(of: 2) {
+            context.fill(CGRect(x: col, y: 0, width: 4, height: 64))
+        }
+    }
+
     private static func makePNG(_ draw: (CGContext) -> Void) -> Data {
         guard let context = CGContext(data: nil, width: 64, height: 64, bitsPerComponent: 8,
                                       bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
@@ -1424,6 +1437,175 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("覆われ続けたら失敗するはず"); return
         }
         XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
+    }
+
+    /// launch 直後(noteAppLaunched)に crop が全画素同一(launch storyboard 相当)なら、
+    /// deadline を一度だけ延ばして待ち直す。timeout:0 でも「初回照会は必ず1回」+
+    /// 「延長は1回だけ」で2周目には赤になる(=すぐ終わる。実時間のスリープは挟まない)
+    func testFirstFrameGateExtendsDeadlineOnceWhenBlankAfterLaunch() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
+                                    screenshots: [Self.blankPNG])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        executor.noteAppLaunched()   // launch 系コマンド直後と同じ arm
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 0, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let msg) = outcome.status else {
+            XCTFail("延長しても覆われ続ければ最終的に失敗するはず: \(outcome.status)"); return
+        }
+        XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
+        XCTAssertEqual(delegate.visibleCalls, 2, "1周目(門を消費)+延長後の2周目で計2回 FM 照合するはず")
+        XCTAssertTrue(outcome.notes.contains(.firstFramePending),
+                      "延長した回に first-frame-pending が付くはず: \(outcome.notes)")
+        XCTAssertTrue(outcome.notes.contains(.firstFrameTimeout),
+                      "延長しても赤になった回に first-frame-timeout が付くはず: \(outcome.notes)")
+    }
+
+    /// Tier-1 のインク足切りを通らない構成(occlusionInkThreshold = 0)でも門は効く。
+    /// **足切り側で測った stdDev を使い回すだけの実装だと、この経路では未計算のまま
+    /// 「一様色ではない」と読まれ、猶予が静かに消える**(幾何が疑い有りの回も同じ経路)
+    func testFirstFrameGateExtendsEvenWhenInkFilterIsDisabled() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
+                                    screenshots: [Self.blankPNG])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate,
+                                    occlusionInkThreshold: 0, isAndroid: false)
+        executor.noteAppLaunched()
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 0, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed = outcome.status else { XCTFail("覆われ続けたら失敗するはず"); return }
+        XCTAssertEqual(delegate.visibleCalls, 2, "足切りを切っていても延長して2周するはず")
+        XCTAssertTrue(outcome.notes.contains(.firstFramePending), "\(outcome.notes)")
+    }
+
+    /// 門は**可視の判定でも消費する**(描画が済んでいるなら猶予は要らない)。launch 直後の
+    /// 最初のアサーションが通ったあと、後段の本物の occlusion で猶予が復活してはいけない
+    func testFirstFrameGateIsConsumedByAVisibleVerdict() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")],
+                                                       [textElement(id: "msg", label: "こんにちは")]],
+                                    screenshots: [Self.blankPNG, Self.blankPNG])
+        let delegate = FakeVisibilityDelegate(visible: true)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        executor.noteAppLaunched()
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 0, occlusionGuard: true)
+
+        _ = await executor.execute(step)   // 可視で通る = ここで門を消費する
+        delegate.visible = false
+        let callsBefore = delegate.visibleCalls
+        let outcome = await executor.execute(step)
+
+        guard case .failed = outcome.status else { XCTFail("2本目は覆われて失敗するはず"); return }
+        XCTAssertEqual(delegate.visibleCalls - callsBefore, 1, "門は消費済みなので延長しないはず")
+        XCTAssertFalse(outcome.notes.contains(.firstFramePending), "\(outcome.notes)")
+    }
+
+    /// 門が armed でなければ(noteAppLaunched を呼んでいない)、crop が全画素同一でも延長しない
+    /// (通常どおり1周で timeout を迎える)
+    func testFirstFrameGateDoesNotExtendWithoutLaunch() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
+                                    screenshots: [Self.blankPNG])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        // executor.noteAppLaunched() は呼ばない = 門は閉じたまま
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 0, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed = outcome.status else { XCTFail("覆われ続けたら失敗するはず"); return }
+        XCTAssertEqual(delegate.visibleCalls, 1, "門が閉じていれば延長せず1周で終わるはず")
+        XCTAssertFalse(outcome.notes.contains(.firstFramePending), "門が閉じていれば延長注記は付かない")
+        XCTAssertFalse(outcome.notes.contains(.firstFrameTimeout), "門が閉じていれば延長注記は付かない")
+    }
+
+    /// 門は armed でも、crop に明瞭なインクがあれば(=launch storyboard ではない)Tier-1 事前
+    /// フィルタで FM 自体を呼ばずに pass する ——「全画素同一」でなければ延長の出番は無い
+    func testFirstFrameGateDoesNotExtendWhenCropHasInk() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
+                                    screenshots: [Self.inkedPNG])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        executor.noteAppLaunched()
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 0, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("明瞭なインクがあれば Tier-1 で素通り pass するはず: \(outcome.status)"); return
+        }
+        XCTAssertEqual(delegate.visibleCalls, 0, "インクが明瞭なら FM を呼ばずに pass するはず")
+        XCTAssertFalse(outcome.notes.contains(.firstFramePending))
+        XCTAssertFalse(outcome.notes.contains(.firstFrameTimeout))
+    }
+
+    /// textEquals 側(executeAssertTextComparison)も exists と同じ猶予を持つ
+    func testFirstFrameGateExtendsDeadlineOnceForTextEqualsToo() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
+                                    screenshots: [Self.blankPNG])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        executor.noteAppLaunched()
+        let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "msg"),
+                            expected: "こんにちは", timeout: 0, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let msg) = outcome.status else {
+            XCTFail("延長しても覆われ続ければ最終的に失敗するはず: \(outcome.status)"); return
+        }
+        XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
+        XCTAssertEqual(delegate.visibleCalls, 2, "1周目(門を消費)+延長後の2周目で計2回 FM 照合するはず")
+        XCTAssertTrue(outcome.notes.contains(.firstFramePending))
+        XCTAssertTrue(outcome.notes.contains(.firstFrameTimeout))
+    }
+
+    /// 門は launch につき一度きり: 1本目のアサーションで消費(+延長)した観測が、
+    /// 門が既に閉じている2本目の無関係なアサーションへ持ち越されないこと
+    /// (`firstFrameBlankObserved` は execute(_:) の入口で毎ステップ false に戻る)
+    func testFirstFrameGateObservationDoesNotLeakAcrossSteps() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは"),
+                                                        textElement(id: "msg2", label: "world")]],
+                                    screenshots: [Self.blankPNG])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        executor.noteAppLaunched()
+        let step1 = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                             timeout: 0, occlusionGuard: true)
+        let step2 = FlowStep(assert: "exists", locator: FlowLocator(id: "msg2"),
+                             timeout: 0, occlusionGuard: true)
+
+        _ = await executor.execute(step1)   // 門を消費し、延長も使い切る
+        let callsBeforeStep2 = delegate.visibleCalls
+        let outcome2 = await executor.execute(step2)
+
+        guard case .failed = outcome2.status else { XCTFail("2本目も覆われ続けるので失敗するはず"); return }
+        XCTAssertEqual(delegate.visibleCalls - callsBeforeStep2, 1,
+                       "門は既に閉じているので2本目は延長せず1周だけ照合するはず")
+        XCTAssertFalse(outcome2.notes.contains(.firstFramePending),
+                       "1本目の観測が2本目へ漏れて延長してはいけない: \(outcome2.notes)")
+        XCTAssertFalse(outcome2.notes.contains(.firstFrameTimeout), "\(outcome2.notes)")
     }
 
     /// exists のフォールバック照会は 2・4・6…回目の primary ミスでのみ発生する(間引き契約。
