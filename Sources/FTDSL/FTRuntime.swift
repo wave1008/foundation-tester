@@ -182,6 +182,9 @@ public final class FTDriveCore {
     /// 実機か。白フレーム=画面凍結の推定はエミュレータ固有の病理(GPU 合成バッファ固着)なので、
     /// 実機では「画面が消灯しているだけ」を凍結と誤断しないためにこれで抑止する
     public let physical: Bool
+    /// 失敗時のトリアージを行うか(実行プロファイルの `triage` / ランナーの `--no-triage`)。
+    /// **合否は変えない助言**なので、切っても検証の強度は落ちない
+    let triageEnabled: Bool
     let appBundleID: String
     let executor: StepExecutor
     let scenarioID: String
@@ -368,6 +371,8 @@ public final class FTDriveCore {
                 scenarioID: String, scenarioTitle: String,
                 delegate: ReplayDelegate?, healingEnabled: Bool,
                 falsePositiveCheckEnabled: Bool = true, screenLooksLikeEnabled: Bool = true,
+                // 失敗時のトリアージ(合否は変えない助言)。切ると FM 呼び出しを1回省く
+                triageEnabled: Bool = true,
                 // 容器の推測に依存する補正の既定(実行プロファイル由来。**FM とは無関係**)
                 containerInference: Bool = true,
                 dryRun: Bool = false,
@@ -390,6 +395,7 @@ public final class FTDriveCore {
         self.driver = driver
         self.platform = platform
         self.physical = physical
+        self.triageEnabled = triageEnabled
         self.appBundleID = app
         self.homeScreenDriverOverride = homeScreenDriver
         self.executor = StepExecutor(driver: driver, fallbackDriver: fallbackDriver,
@@ -1316,11 +1322,16 @@ public final class FTDriveCore {
                     }
                 }
             }
-            let triage = await delegate?.triage(goal: goal,
-                                                stepDescription: stepDescription,
-                                                failureReason: reason,
-                                                snapshot: snapshot,
-                                                screenshotPNG: screenshot)
+            // トリアージは**合否を変えない助言**なので、切られていれば呼ばない
+            // (実行プロファイルの `triage` / ランナーの `--no-triage`。失敗のたびに
+            // 平均 6 秒の FM 呼び出しが走るため、重さを避けたい run では切れるようにしてある)
+            let triage = self.triageEnabled
+                ? await delegate?.triage(goal: goal,
+                                         stepDescription: stepDescription,
+                                         failureReason: reason,
+                                         snapshot: snapshot,
+                                         screenshotPNG: screenshot)
+                : nil
             return (screenshot, triage, evidenceBlank, elementsText)
         }
         if let (screenshot, triage, evidenceBlank, elementsText) = context {

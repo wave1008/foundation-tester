@@ -1046,8 +1046,11 @@ final class ProfileResolverTests: XCTestCase {
             project: project, runName: "all", machineName: "M1 Max(64GB)")
         XCTAssertTrue(resolved.fm.enabled)
         XCTAssertTrue(resolved.fm.heal, "heal 明示 true")
-        XCTAssertFalse(resolved.fm.falsePositiveCheck, "偽陽性検証は既定 false(オプトイン)のはず")
+        // **2026-09-03 にオプトインをやめた**(ユーザー決定)。3箇所(ここ / JSON スキーマ /
+        // 拡張のフォーム)で既定が一致していないと、GUI で作ったプロファイルと CLI の挙動がずれる
+        XCTAssertTrue(resolved.fm.falsePositiveCheck, "偽陽性検証の既定は true")
         XCTAssertTrue(resolved.fm.screenLooksLike, "省略時は既定 true のはず")
+        XCTAssertTrue(resolved.fm.triage, "トリアージの既定は true")
     }
 
     func testHealDefaultsToTrueWhenFullyUnspecified() throws {
@@ -1062,8 +1065,9 @@ final class ProfileResolverTests: XCTestCase {
         let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
         XCTAssertTrue(resolved.fm.enabled)
         XCTAssertTrue(resolved.fm.heal, "heal の既定は true(既定 false→true への変更)")
-        XCTAssertFalse(resolved.fm.falsePositiveCheck, "偽陽性検証の既定は false")
+        XCTAssertTrue(resolved.fm.falsePositiveCheck, "偽陽性検証の既定は true(2026-09-03 に変更)")
         XCTAssertTrue(resolved.fm.screenLooksLike)
+        XCTAssertTrue(resolved.fm.triage, "トリアージの既定は true")
         XCTAssertTrue(resolved.heal, "heal エイリアスも同じ値を返す")
     }
 
@@ -1071,7 +1075,8 @@ final class ProfileResolverTests: XCTestCase {
         try writeStandardFixture()
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
-          "fm": false, "heal": true, "falsePositiveCheck": true, "screenLooksLike": true }
+          "fm": false, "heal": true, "falsePositiveCheck": true, "screenLooksLike": true,
+          "triage": true }
         """, to: project.runsDir, name: "fmoff")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "fmoff", machineName: "M1 Max(64GB)")
@@ -1079,6 +1084,24 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertFalse(resolved.fm.heal, "fm:false は個別の heal:true より優先される")
         XCTAssertFalse(resolved.fm.falsePositiveCheck)
         XCTAssertFalse(resolved.fm.screenLooksLike)
+        XCTAssertFalse(resolved.fm.triage, "fm:false は triage:true より優先される")
+    }
+
+    /// トリアージだけを切れること(**合否は変えない助言**なので、重さを避けたい run で切る)。
+    /// 他の3つは巻き添えにしない
+    func testTriageCanBeDisabledAlone() throws {
+        try writeStandardFixture()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "triage": false }
+        """, to: project.runsDir, name: "notriage")
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "notriage", machineName: "M1 Max(64GB)")
+        XCTAssertFalse(resolved.fm.triage)
+        XCTAssertTrue(resolved.fm.enabled)
+        XCTAssertTrue(resolved.fm.heal)
+        XCTAssertTrue(resolved.fm.falsePositiveCheck)
+        XCTAssertTrue(resolved.fm.screenLooksLike)
+        XCTAssertTrue(resolved.warnings.isEmpty, "triage は既知キー: \(resolved.warnings)")
     }
 
     func testIndividualSubFlagsFollowExplicitValues() throws {

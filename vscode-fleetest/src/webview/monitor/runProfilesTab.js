@@ -25,6 +25,7 @@ const runProfileFm = document.getElementById('run-profile-fm');
 const runProfileFmOptions = document.getElementById('run-profile-fm-options');
 const runProfileHeal = document.getElementById('run-profile-heal');
 const runProfileFalsePositiveCheck = document.getElementById('run-profile-false-positive-check');
+const runProfileTriage = document.getElementById('run-profile-triage');
 const runProfileScreenLooksLike = document.getElementById('run-profile-screen-looks-like');
 const runProfileContainerInference = document.getElementById('run-profile-container-inference');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
@@ -223,6 +224,7 @@ function renderRunProfileEditor(fields) {
   runProfileFm.checked = fields.fm;
   runProfileHeal.checked = fields.heal;
   runProfileFalsePositiveCheck.checked = fields.falsePositiveCheck;
+  runProfileTriage.checked = fields.triage;
   runProfileScreenLooksLike.checked = fields.screenLooksLike;
   updateFmOptionsVisibility();
   updateInappOptionsVisibility();
@@ -408,6 +410,7 @@ runProfileFm.addEventListener('change', () => {
 });
 runProfileHeal.addEventListener('change', onRunProfileFormInput);
 runProfileFalsePositiveCheck.addEventListener('change', onRunProfileFormInput);
+runProfileTriage.addEventListener('change', onRunProfileFormInput);
 runProfileScreenLooksLike.addEventListener('change', onRunProfileFormInput);
 // inapp エンジン ON のときだけ配下のサブオプション(iosPreActionWarmup)を表示する
 // (暖機は hybrid の domInterop 経路にしか無い = xcuitest エンジンでは効果が無いため。
@@ -474,6 +477,7 @@ function runProfileValuesEqual(fields) {
     runProfileFm.checked === fields.fm &&
     runProfileHeal.checked === fields.heal &&
     runProfileFalsePositiveCheck.checked === fields.falsePositiveCheck &&
+    runProfileTriage.checked === fields.triage &&
     runProfileScreenLooksLike.checked === fields.screenLooksLike &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosFastInput.checked === fields.iosFastInput &&
@@ -511,6 +515,7 @@ function setRunProfileControlsEnabled(enabled) {
   runProfileFm.disabled = !enabled;
   runProfileHeal.disabled = !enabled;
   runProfileFalsePositiveCheck.disabled = !enabled;
+  runProfileTriage.disabled = !enabled;
   runProfileScreenLooksLike.disabled = !enabled;
   runProfileIosInappEngine.disabled = !enabled;
   runProfileIosFastInput.disabled = !enabled;
@@ -591,6 +596,7 @@ runProfileConfirm.addEventListener('click', () => {
       fm: runProfileFm.checked,
       heal: runProfileHeal.checked,
       falsePositiveCheck: runProfileFalsePositiveCheck.checked,
+      triage: runProfileTriage.checked,
       screenLooksLike: runProfileScreenLooksLike.checked,
       iosInappEngine: runProfileIosInappEngine.checked,
       iosFastInput: runProfileIosFastInput.checked,

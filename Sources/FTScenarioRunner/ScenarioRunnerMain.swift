@@ -136,6 +136,9 @@ struct RunScenario: AsyncParsableCommand {
     @Flag(name: .customLong("no-screen-looks-like"), help: "Disable screenLooksLike (screenMatches)")
     var noScreenLooksLike = false
 
+    @Flag(name: .customLong("no-triage"), help: "Disable failure triage (classification and suggested fix; advisory only)")
+    var noTriage = false
+
     /// **FM とは無関係**の幾何ヒューリスティック。実行プロファイルの containerInference 由来で、
     /// シナリオ側は `tap(..., containerInference:)` で1コマンド単位に上書きできる
     @Flag(name: .customLong("no-container-inference"),
@@ -427,6 +430,7 @@ struct RunScenario: AsyncParsableCommand {
                                delegate: delegate, healingEnabled: heal && !noFM,
                                falsePositiveCheckEnabled: !noFalsePositiveCheck,
                                screenLooksLikeEnabled: !noScreenLooksLike,
+                               triageEnabled: !noTriage,
                                containerInference: !noContainerInference, dryRun: dryRun,
                                healCacheURL: healCacheURL,
                                fingerprintCacheURL: fingerprintCacheURL,

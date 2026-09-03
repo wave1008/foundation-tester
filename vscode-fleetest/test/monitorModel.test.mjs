@@ -966,8 +966,9 @@ test("buildRunProfileTemplate: apps/devices 候補ありなら先頭のappと全
     devices: [{ name: "シミュ1" }, { name: "エミュ1" }],
     fm: true,
     heal: true,
-    falsePositiveCheck: false,
+    falsePositiveCheck: true,
     screenLooksLike: true,
+    triage: true,
     iosInappEngine: true,
     updateWebView: true,
     wipeDataOnBloat: true,
@@ -984,8 +985,9 @@ test("buildRunProfileTemplate: 候補が無ければ app は空文字、devices 
     devices: [{ name: "" }],
     fm: true,
     heal: true,
-    falsePositiveCheck: false,
+    falsePositiveCheck: true,
     screenLooksLike: true,
+    triage: true,
     iosInappEngine: true,
     updateWebView: true,
     wipeDataOnBloat: true,
@@ -1002,8 +1004,9 @@ test("buildRunProfileTemplate: machine が空文字なら machine キー自体�
     devices: [{ name: "シミュ1" }],
     fm: true,
     heal: true,
-    falsePositiveCheck: false,
+    falsePositiveCheck: true,
     screenLooksLike: true,
+    triage: true,
     iosInappEngine: true,
     updateWebView: true,
     wipeDataOnBloat: true,
@@ -2733,7 +2736,7 @@ test("syncDevicesInMachineProfile: remove のみ(add:[])は source:local でも�
 
 // ---- parseRunProfileForForm ----
 
-test("parseRunProfileForForm: 正常な値は24フィールドをそのまま読み取る", () => {
+test("parseRunProfileForForm: 正常な値は25フィールドをそのまま読み取る", () => {
   const parsed = parseRunProfileForForm({
     machine: "M1 Max",
     app: "sampleapp",
@@ -2742,6 +2745,7 @@ test("parseRunProfileForForm: 正常な値は24フィールドをそのまま読
     heal: true,
     falsePositiveCheck: false,
     screenLooksLike: false,
+    triage: false,
     containerInference: false,
     iosInappEngine: false,
     iosFastInput: true,
@@ -2769,6 +2773,7 @@ test("parseRunProfileForForm: 正常な値は24フィールドをそのまま読
     heal: true,
     falsePositiveCheck: false,
     screenLooksLike: false,
+    triage: false,
     containerInference: false,
     iosInappEngine: false,
     iosFastInput: true,
@@ -2790,7 +2795,7 @@ test("parseRunProfileForForm: 正常な値は24フィールドをそのまま読
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、fm/heal/screenLooksLike/containerInference=true、falsePositiveCheck=false、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionWarmup=true)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、fm/heal/screenLooksLike/falsePositiveCheck/triage/containerInference=true、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionWarmup=true)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     machine: "",
@@ -2798,7 +2803,8 @@ test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/loc
     devices: [],
     fm: true,
     heal: true,
-    falsePositiveCheck: false,
+    falsePositiveCheck: true,
+    triage: true,
     screenLooksLike: true,
     containerInference: true,
     iosInappEngine: true,
@@ -2851,7 +2857,8 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     devices: [],
     fm: true,
     heal: true,
-    falsePositiveCheck: false,
+    falsePositiveCheck: true,
+    triage: true,
     screenLooksLike: true,
     containerInference: true,
     iosInappEngine: true,
@@ -2912,11 +2919,13 @@ test("parseRunProfileForForm: fm/heal/screenLooksLike/containerInference は boo
   }
 });
 
-test("parseRunProfileForForm: falsePositiveCheck は boolean ならそのまま返し、欠落/非 boolean は既定値 false", () => {
+// **既定は 2026-09-03 に false → true(ユーザー決定)**。既定値は Swift 側
+// (RunProfile.swift の `runDoc.falsePositiveCheck ?? true`)と JSON スキーマと3箇所で一致させる
+test("parseRunProfileForForm: falsePositiveCheck は boolean ならそのまま返し、欠落/非 boolean は既定値 true", () => {
   assert.equal(parseRunProfileForForm({ falsePositiveCheck: true }).falsePositiveCheck, true);
   assert.equal(parseRunProfileForForm({ falsePositiveCheck: false }).falsePositiveCheck, false);
-  assert.equal(parseRunProfileForForm({}).falsePositiveCheck, false);
-  assert.equal(parseRunProfileForForm({ falsePositiveCheck: "true" }).falsePositiveCheck, false);
+  assert.equal(parseRunProfileForForm({}).falsePositiveCheck, true);
+  assert.equal(parseRunProfileForForm({ falsePositiveCheck: "true" }).falsePositiveCheck, true);
 });
 
 test("parseRunProfileForForm: homeOnStart は boolean ならそのまま返し、欠落/非 boolean は既定値 true(= 撃つ)", () => {

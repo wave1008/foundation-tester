@@ -370,17 +370,26 @@ public struct FMConfig: Sendable, Equatable {
     /// FM を使用するか(false = heal/偽陽性検証/screenLooksLike/triage を一切呼ばない)
     public var enabled: Bool
     public var heal: Bool
-    /// 偽陽性検証(occlusion guard)。プロファイル既定 false(FM コストと誤反転リスクのためオプトイン)
-    /// = 誤った緑(木では一致したが実際には見えていない)の検査
+    /// 偽陽性検証(occlusion guard)= 誤った緑(木では一致したが実際には見えていない)の検査。
+    /// **実行プロファイルの既定は true**(2026-09-03 ユーザー決定。それ以前はオプトインだった)
     public var falsePositiveCheck: Bool
     public var screenLooksLike: Bool
+    /// 失敗時のトリアージ(分類・要約・次の一手)。**合否は変えない助言**なので、
+    /// 切っても検証の強度は落ちない。実行プロファイルの既定は true
+    public var triage: Bool
 
+    /// **この既定値は実行プロファイルの既定とは別物**。プロファイル由来の値は
+    /// `ResolvedProfile.fm`(RunProfileDocument の `heal ?? true` 等)が組み立てる。
+    /// ここの既定は「プロファイルを通らない呼び出し」(MCP のシナリオ実行・dry-run 等)向けで、
+    /// **FM を積極的に使わない側**に倒してある
     public init(enabled: Bool = true, heal: Bool = false,
-                falsePositiveCheck: Bool = false, screenLooksLike: Bool = true) {
+                falsePositiveCheck: Bool = false, screenLooksLike: Bool = true,
+                triage: Bool = true) {
         self.enabled = enabled
         self.heal = heal
         self.falsePositiveCheck = falsePositiveCheck
         self.screenLooksLike = screenLooksLike
+        self.triage = triage
     }
 }
 
@@ -417,9 +426,12 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var fm: Bool?
     /// FM によるロケータ自己修復を許可するか(既定 true)
     public var heal: Bool?
-    /// 偽陽性検証(occlusion guard)を有効にするか(既定 false)
-    /// = 誤った緑(木では一致したが実際には見えていない)の検査
+    /// 偽陽性検証(occlusion guard)を有効にするか(**既定 true**。2026-09-03 ユーザー決定で
+    /// オプトインをやめた)= 誤った緑(木では一致したが実際には見えていない)の検査
     public var falsePositiveCheck: Bool?
+    /// 失敗時のトリアージ(分類・要約・次の一手)を有効にするか(既定 true)。
+    /// **合否は変えない助言**なので、切っても検証の強度は落ちない(重いのを避けたいときに切る)
+    public var triage: Bool?
     /// screenLooksLike(screenMatches)を有効にするか(既定 true。無効時は該当ステップを skip)
     public var screenLooksLike: Bool?
     /// 旧名 `screenIs` の受け口(コマンドの改名前に書かれた受け手のプロファイルが動き続けるため)。
@@ -511,6 +523,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
 
     public init(app: String? = nil, devices: [RunDeviceRef]? = nil, fm: Bool? = nil,
                 heal: Bool? = nil, falsePositiveCheck: Bool? = nil, screenLooksLike: Bool? = nil,
+                triage: Bool? = nil,
                 screenIs: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
                 machine: String? = nil, iosInappEngine: Bool? = nil,
@@ -527,6 +540,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.fm = fm
         self.heal = heal
         self.falsePositiveCheck = falsePositiveCheck
+        self.triage = triage
         self.screenLooksLike = screenLooksLike
         self.screenIs = screenIs
         self.reportDir = reportDir
@@ -555,7 +569,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var effectiveScreenLooksLike: Bool { screenLooksLike ?? screenIs ?? true }
 
     static let knownKeys: Set<String> = [
-        "app", "devices", "fm", "heal", "falsePositiveCheck", "screenLooksLike",
+        "app", "devices", "fm", "heal", "falsePositiveCheck", "screenLooksLike", "triage",
         "screenIs",  // 旧名。effectiveScreenLooksLike が拾う(未知キー警告を出さないため残す)
         "reportDir", "defaultTimeout", "scenarioTimeout",
         "machine", "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
@@ -1315,8 +1329,9 @@ public enum ProfileResolver {
         let fm = FMConfig(
             enabled: fmEnabled,
             heal: fmEnabled && (runDoc.heal ?? true),
-            falsePositiveCheck: fmEnabled && (runDoc.falsePositiveCheck ?? false),
-            screenLooksLike: fmEnabled && runDoc.effectiveScreenLooksLike)
+            falsePositiveCheck: fmEnabled && (runDoc.falsePositiveCheck ?? true),
+            screenLooksLike: fmEnabled && runDoc.effectiveScreenLooksLike,
+            triage: fmEnabled && (runDoc.triage ?? true))
 
         return ResolvedProfile(
             project: project,

@@ -20,7 +20,8 @@ selects one.
 | `devices` | array | — | Device names to run on (from the resolved machine profile; iOS/Android can mix in the same list) |
 | `fm` | bool | `true` | Master switch for all FM (Foundation Models) features. FM is experimental and English-only during 2026 — see [environments.md](../overview/environments.md). `false` disables self-healing, `falsePositiveCheck`, `screenLooksLike` and failure triage entirely, regardless of the individual toggles below |
 | `heal` | bool | `true` | Allow FM-based locator self-healing (see [self_healing.md](../running/self_healing.md)) |
-| `falsePositiveCheck` | bool | `false` | Occlusion-guard verification on `exist`/`textIs` etc. (opt-in: FM cost and a false-flip risk) |
+| `falsePositiveCheck` | bool | `true` | Occlusion-guard verification on `exist`/`textIs` etc. — catches a "false green" that matched in the tree but is not actually visible |
+| `triage` | bool | `true` | Failure triage (classification, summary, suggested fix). **Advisory only — it never changes pass/fail**, so turning it off costs no verification strength (set `false` to avoid a few seconds of FM per failure) |
 | `screenLooksLike` | bool | `true` | Enable `screenLooksLike` (FM visual verification). When `false`, those steps are skipped rather than failing |
 | `reportDir` | string | `"reports"` | Where to write Markdown reports (relative to the project root) |
 | `defaultTimeout` | number (seconds) | DSL's own default | Default timeout for DSL commands that take `timeout:` |
@@ -45,8 +46,9 @@ selects one.
 
 ## FM toggle hierarchy
 
-`fm` is the parent switch; `heal` and `screenLooksLike` default to `true`, `falsePositiveCheck`
-defaults to `false`. If `fm` is `false`, the individual toggles have no effect. Whether
+`fm` is the parent switch; `heal`, `falsePositiveCheck`, `screenLooksLike` and `triage` all
+default to `true` (`falsePositiveCheck` changed from opt-in on 2026-09-03). If `fm` is `false`,
+the individual toggles have no effect. Whether
 self-healing is on by default also depends on how you invoke the run: **a `--profile` run
 defaults `heal` to ON**, while a plain `fleetest run` (no profile) defaults it to OFF. `--heal`
 and `--no-heal` on the command line override either default (they cannot be combined).

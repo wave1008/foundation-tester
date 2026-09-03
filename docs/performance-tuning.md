@@ -288,7 +288,7 @@ M1Max 10コア/16コア ANE が 3.51 で、コア数比にも ANE 比にも対�
 (heal は失敗時のみ走るため)。
 
 - 偽陽性検証(occlusion-guard)は 2026-07-28 から**実行プロファイル既定 OFF**
-  (`falsePositiveCheck: true` でオプトイン)。有効化した run で発火が増えて律速になったら:
+  だったが、**2026-09-03 に既定 ON へ変更**(ユーザー決定)。発火が増えて律速になったら:
   `occlusionInkThreshold` を上げる(per-step の逃げ道は `requireVisible: false`)
 - **失敗シナリオを直すと FM コストも自動的に減る**(発生源が偏っているため)
 

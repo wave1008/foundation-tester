@@ -3296,7 +3296,7 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   ルートの子孫ではないため効かず、**ダイアログ内だけ `#id` が全滅する**(ラベルは引ける)。
   アプリ側でダイアログにも `Modifier.semantics { testTagsAsResourceId = true }` を再適用させる。
   iOS は testTag が自動で accessibilityIdentifier になるため起きない(Android 固有)
-- **偽陽性検証を有効にした run(実行プロファイル `falsePositiveCheck: true`。既定 OFF)では、
+- **偽陽性検証の run(実行プロファイル `falsePositiveCheck`。**既定 true**。2026-09-03 にオプトインをやめた)では、
   `exist`/`textIs` は既定 `requireVisible: true` のため、ソフトキーボードに覆われた要素は
   「`false positive (occlusion)`」で失敗する**。入力を伴う画面では検証対象・操作対象を入力欄より**上**に置く
   (TestProjects/E2E-CMP のテキスト入力画面がこの配置。2026-07-22 実測)
@@ -3461,10 +3461,14 @@ machines/ が1つのときだけ自動採用)。
 
 `fm`(既定 true)は FM(Foundation Models)機能の親スイッチ。false にすると自己修復(heal)・
 偽陽性検証(exist 等の FM 視覚照合)・`screenLooksLike`・失敗時トリアージを含む FM 呼び出しを一切行わない
-(子ランナーへは `--no-fm` 等で伝搬し、delegate 自体を作らない)。個別トグルは `heal` / `screenLooksLike`
-(既定 true)と `falsePositiveCheck`(偽陽性検証。**既定 false** — FM コストと誤反転リスクのため
-オプトイン)。親が false なら個別指定に関わらず全て無効。screenLooksLike を無効にした run では該当ステップは
-skip(素通り)になり、FM 利用不可時と同じ扱い。UI はデバイスタブの実行プロファイル設定
+(子ランナーへは `--no-fm` 等で伝搬し、delegate 自体を作らない)。個別トグルは
+**`heal` / `falsePositiveCheck` / `screenLooksLike` / `triage` の4つで、いずれも既定 true**
+(`falsePositiveCheck` は 2026-09-03 にオプトインをやめた。`triage` は同日に追加)。
+親が false なら個別指定に関わらず全て無効。screenLooksLike を無効にした run では該当ステップは
+skip(素通り)になり、FM 利用不可時と同じ扱い。**`triage` は合否を変えない助言**なので、
+切っても検証の強度は落ちない(失敗のたびに平均6秒の FM 呼び出しが走るのを避けたいときに切る)。
+子への伝搬は `ScenarioHost` が `--no-triage` 等を渡す形で、3段(プロファイル → 子 → 実行時)が
+つながっていることは `FMToggleWiringTests` が固定する。UI はデバイスタブの実行プロファイル設定
 「FM(Foundation Model)」セクション(親チェックボックス ON のときだけ個別トグルを表示)。
 
 `wipeDataOnBloat`(既定 true)は実行開始時に Android AVD の wipe 対象

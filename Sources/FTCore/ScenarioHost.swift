@@ -307,6 +307,7 @@ public enum ScenarioHost {
         if !fm.enabled { args.append("--no-fm") }
         if !fm.falsePositiveCheck { args.append("--no-false-positive-check") }
         if !fm.screenLooksLike { args.append("--no-screen-looks-like") }
+        if !fm.triage { args.append("--no-triage") }
         if dryRun { args.append("--dry-run") }
         if let port = connection.port { args += ["--port", String(port)] }
         if let serial = connection.serial { args += ["--serial", serial] }

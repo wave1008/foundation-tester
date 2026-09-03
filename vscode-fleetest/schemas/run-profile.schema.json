@@ -50,8 +50,13 @@
     },
     "falsePositiveCheck": {
       "type": "boolean",
-      "description": "FM による偽陽性検証(occlusion guard)を有効にするか(既定 false)。",
-      "default": false
+      "description": "FM による偽陽性検証(occlusion guard)を有効にするか(既定 true)。",
+      "default": true
+    },
+    "triage": {
+      "type": "boolean",
+      "description": "失敗時のトリアージ(分類・要約・次の一手)を有効にするか(既定 true)。合否は変えない助言なので、切っても検証の強度は落ちない。",
+      "default": true
     },
     "screenLooksLike": {
       "type": "boolean",
