@@ -4312,6 +4312,18 @@ DOM から読む」)。一度は「a11y で読めるなら +147ms を払う理�
 DOM 由来が1件も無ければ `browserA11yFallbackNote` が「a11y から来ている」と言う
 (2026-08-14 の監査 ⒝。**粒度と命名を揃えたので中身では見分けられない**)。
 
+**Android の自作アプリで DOM が読めなかったときは黙らない**(2026-09-03): `route` が `.appWebView`
+なのに `AndroidWebViewDOM.read` が nil のとき、`WebViewDOMFallback` が serial ごとに1回だけ stderr へ
+理由を言う(`warnBlankCaptureOnce` と同じ once + 「理由の引き直しは once の内側で adb 1往復」)。
+実測の起点: E2E-RN の `placeholder=` 検査が **local(userdebug・`ro.debuggable=1`)では緑・
+ランナー(user イメージ・`ro.debuggable=0`)では決定的に赤**で、APK も WebView 版も同一だった。
+SUT は release ビルド(非 debuggable)なので Chromium は `webview_devtools_remote_<pid>` を開かず、
+DOM 読みが黙って a11y へ落ちていた。**判定は「システム非 debuggable かつアプリ非 debuggable」の
+2つが確認できたときだけ「構造的に開かない」と言い、それ以外は観測した事実だけを書く**。
+文言では**アプリ自身の `setWebContentsDebuggingEnabled(true)` という3つ目の口**に必ず触れる ——
+「2つのフラグだけで決まる」と断定すると、その呼び出しを持つ受け手に誤った直し方を指す
+(`WebViewDOMFallbackTests` が断定文言を否定で固定)。**挙動は変えない**(警告だけ)。
+
 ## ブラウザの中身は DOM から読む(2026-08-13)
 
 殺しスイッチは `FT_BROWSER_DOM=off`(自作アプリ側の `FT_WEBVIEW_DOM=off` とは別の口)。

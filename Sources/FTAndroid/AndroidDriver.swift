@@ -405,28 +405,34 @@ public final class AndroidDriver: AppDriver {
                 a11yLooksSufficient: WebViewDOM.browserA11yLooksSufficient(elements: snapshot.elements),
                 browserDOMEnabled: AndroidWebViewDOM.isBrowserDOMEnabled,
                 appWebViewDOMEnabled: AndroidWebViewDOM.isAppWebViewDOMEnabled)
-            if route != .a11y, let frame,
-               let payload = await AndroidWebViewDOM.read(
-                serial: serial ?? "", packageID: package, route: route, webViewLabel: webView?.label,
-                urlBarValue: AndroidWebViewDOM.urlBarValue(in: snapshot.elements),
-                adb: { try self.adb($0).output }) {
-                // nextRef は差し込み前の全要素から採る(落とす内側の要素も含めて衝突を避ける)
-                let nextRef = (snapshot.elements.map(\.ref).max() ?? 0) + 1
-                let added = WebViewDOM.elements(payload: payload, webViewFrame: frame,
-                                                density: displayDensity(), startingRef: nextRef)
-                var kept = snapshot.elements
-                if let webView {
-                    // **自作アプリだけ、注入用の ref 対応表を作る**(理由は bridgeRefMap。
-                    // ブリッジは自分の ref しか受けないので、無いと type/clearInput が 404)。
-                    // **ブラウザ経路は今日の挙動のまま**にする(今回の変更の対象外)
-                    if route == .appWebView {
-                        domBridgeRefs = AndroidWebViewDOM.bridgeRefMap(
-                            dom: added,
-                            droppedA11y: StepExecutor.descendants(of: webView, in: snapshot.elements))
+            if route != .a11y, let frame {
+                if let payload = await AndroidWebViewDOM.read(
+                    serial: serial ?? "", packageID: package, route: route, webViewLabel: webView?.label,
+                    urlBarValue: AndroidWebViewDOM.urlBarValue(in: snapshot.elements),
+                    adb: { try self.adb($0).output }) {
+                    // nextRef は差し込み前の全要素から採る(落とす内側の要素も含めて衝突を避ける)
+                    let nextRef = (snapshot.elements.map(\.ref).max() ?? 0) + 1
+                    let added = WebViewDOM.elements(payload: payload, webViewFrame: frame,
+                                                    density: displayDensity(), startingRef: nextRef)
+                    var kept = snapshot.elements
+                    if let webView {
+                        // **自作アプリだけ、注入用の ref 対応表を作る**(理由は bridgeRefMap。
+                        // ブリッジは自分の ref しか受けないので、無いと type/clearInput が 404)。
+                        // **ブラウザ経路は今日の挙動のまま**にする(今回の変更の対象外)
+                        if route == .appWebView {
+                            domBridgeRefs = AndroidWebViewDOM.bridgeRefMap(
+                                dom: added,
+                                droppedA11y: StepExecutor.descendants(of: webView, in: snapshot.elements))
+                        }
+                        kept = WebViewDOM.droppingWebViewSubtree(snapshot.elements, webView: webView)
                     }
-                    kept = WebViewDOM.droppingWebViewSubtree(snapshot.elements, webView: webView)
+                    snapshot.elements = kept + added
+                } else if route == .appWebView {
+                    // DOM が読めず a11y のまま進む(挙動は変えない)。**黙らせない** ——
+                    // 理由の名指しは warnWebViewDOMFallbackOnce。ブラウザ経路は対象外
+                    // (今回観測したのはアプリ内 WebView の release/debuggable の組み合わせだけ)
+                    warnWebViewDOMFallbackOnce(package: package)
                 }
-                snapshot.elements = kept + added
             }
         }
         syncLocalState(from: snapshot)
@@ -882,6 +888,21 @@ public final class AndroidDriver: AppDriver {
         }
         let text = WebViewShotComposite.blankCaptureWarning(
             serial: serial, hasWebViewNode: hasWebViewNode, reason: reason)
+        FileHandle.standardError.write(Data((text + "\n").utf8))
+    }
+
+    /// DOM 読みが取れず a11y へ黙って落ちていたのを、serial ごとにプロセスで1回だけ知らせる
+    /// (毎 snapshot 出すと騒がしい)。判定・文言は WebViewDOMFallback、once の置き場が
+    /// static である理由は WebViewShotComposite.shouldWarnBlankCapture と同じ
+    private func warnWebViewDOMFallbackOnce(package: String) {
+        let serial = serial ?? "default"
+        guard WebViewDOMFallback.shouldWarn(serial: serial) else { return }
+        // 理由の引き直しは once の内側 = serial ごとに adb 1往復だけ
+        guard let command = WebViewDOMFallback.probeCommand(packageID: package),
+              let output = try? adb(command).output else { return }
+        let (system, app) = WebViewDOMFallback.parseProbe(output)
+        let reason = WebViewDOMFallback.reason(systemDebuggable: system, appDebuggable: app)
+        let text = WebViewDOMFallback.warning(serial: serial, packageID: package, reason: reason)
         FileHandle.standardError.write(Data((text + "\n").utf8))
     }
 
