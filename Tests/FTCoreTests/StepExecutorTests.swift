@@ -35,6 +35,19 @@ final class StepExecutorTests: XCTestCase {
         }
     }
 
+    /// ほぼ白 = 白ベタに 8-bit 輝度で 1〜2 段階だけ暗い画素が散る画像(実測した launch storyboard の
+    /// crop: min=253 / max=255。ディザや圧縮の揺らぎだけで構造が無い)。stdDev は 0 ではないが 1 未満
+    static let nearBlankPNG: Data = makePNG { context in
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+        context.setFillColor(CGColor(red: 253.0 / 255, green: 253.0 / 255, blue: 253.0 / 255, alpha: 1))
+        for row in stride(from: 0, to: 64, by: 16) {
+            for col in stride(from: 0, to: 64, by: 16) {
+                context.fill(CGRect(x: col, y: row, width: 1, height: 1))
+            }
+        }
+    }
+
     private static func makePNG(_ draw: (CGContext) -> Void) -> Data {
         guard let context = CGContext(data: nil, width: 64, height: 64, bitsPerComponent: 8,
                                       bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
@@ -1464,6 +1477,32 @@ final class StepExecutorTests: XCTestCase {
                       "延長した回に first-frame-pending が付くはず: \(outcome.notes)")
         XCTAssertTrue(outcome.notes.contains(.firstFrameTimeout),
                       "延長しても赤になった回に first-frame-timeout が付くはず: \(outcome.notes)")
+    }
+
+    /// launch storyboard は厳密な一様色ではない(実測 min=253 / max=255)。量子化1段階未満の揺らぎは
+    /// 「何も描かれていない」と読む —— 厳密 0 を要求すると本番の crop で猶予が一度も効かない
+    func testFirstFrameGateTreatsSubLevelNoiseAsBlank() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
+                                    screenshots: [Self.nearBlankPNG])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate,
+                                    occlusionInkThreshold: 0, isAndroid: false)
+        executor.noteAppLaunched()
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 0, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed = outcome.status else { XCTFail("覆われ続けたら失敗するはず"); return }
+        XCTAssertEqual(delegate.visibleCalls, 2, "ほぼ白でも延長して2周するはず")
+        XCTAssertTrue(outcome.notes.contains(.firstFramePending), "\(outcome.notes)")
+    }
+
+    /// 上限はリテラルで固定する(他のテストが差し替え口で値を明示すると既定を1度も通らない)
+    func testFirstFrameBlankCeilingIsOneLuminanceLevel() {
+        XCTAssertEqual(StepExecutor.firstFrameBlankStdDevCeiling, 1.0)
     }
 
     /// Tier-1 のインク足切りを通らない構成(occlusionInkThreshold = 0)でも門は効く。

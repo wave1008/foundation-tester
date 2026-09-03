@@ -69,6 +69,13 @@ extension StepExecutor {
     ///   Tier-1〜 FM: 覆われ/減光/不在(従来)。判定が返らなければ `visibilityGuardSkipped` を立てて素通り
     /// 呼び出し側(exists/textEquals)は不可視を即失敗にせず timeout まで可視化を待つ(poll-until-visible)。
     /// コストは足切り+低インクゲートで抑制(可視な高インク領域は FM を呼ばず nil で即通過)。
+    /// launch storyboard を「何も描かれていない」と読む crop の輝度 stdDev の上限。
+    /// 単位は 8-bit 輝度(0〜255)の段階。**1.0 = 量子化1段階未満** —— ディザや圧縮の揺らぎしか
+    /// 無く、画素に構造が無いことの定義であって調整値ではない(実測: M1Max の launch storyboard は
+    /// min=253 / max=255 で stdDev ≈ 0.1、厳密 0 ではなかった)。これ以上は「何か描かれている」
+    /// (本物の覆い・減光)として従来どおり扱う = 猶予を与えない
+    static let firstFrameBlankStdDevCeiling: Double = 1.0
+
     func occlusionFlip(element: ElementInfo, expectedText: String, elements: [ElementInfo],
                               screen: FTRect, looseMatch: Bool, perStepGuard: Bool?,
                               expectedIsUserText: Bool = false,
@@ -160,8 +167,9 @@ extension StepExecutor {
         if firstFrameGatePending {
             firstFrameGatePending = false
             if !v.visible,
-               (sd ?? RegionInk.luminanceStdDev(pngData: screenshot,
-                                                frame: element.frame, screen: screen)) == 0 {
+               let blank = sd ?? RegionInk.luminanceStdDev(pngData: screenshot,
+                                                            frame: element.frame, screen: screen),
+               blank < Self.firstFrameBlankStdDevCeiling {
                 firstFrameBlankObserved = true
             }
         }

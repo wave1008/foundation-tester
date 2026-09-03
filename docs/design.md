@@ -50,11 +50,15 @@ launch storyboard(全画素同一)ということが起きる。負荷の高い�
 間に合わず、occlusion-guard が**正しく**「見えていない」と言って赤になる(実測: crop 265x100 が
 全画素 (255,255,255))。そこで launch 系コマンドの直後だけ `StepExecutor.firstFrameGatePending` を
 一度きり立て、**最初に FM の可視性判定が返った回**で消費する(可視でも消費 = 描画済みなら猶予は
-要らない)。不可視かつ crop の `RegionInk.luminanceStdDev` が厳密に 0 なら、そのステップの deadline を
+要らない)。不可視かつ crop の `RegionInk.luminanceStdDev` が **`StepExecutor.firstFrameBlankStdDevCeiling`
+(= 1.0。8-bit 輝度の量子化1段階未満 = ディザ・圧縮の揺らぎしか無く構造が無い、の定義であって
+調整値ではない)未満**なら、そのステップの deadline を
 **一度だけ**同じ式(`step.timeout ?? FlowStep.defaultWaitSeconds`)で延ばして待ち直し、
 `first-frame-pending` を立てる。延ばしても一様色のままなら従来どおり赤にして `first-frame-timeout`
 を添える。**通る経路は増やさない**(flip は返し続ける) —— 変えるのは待つ長さだけなので、
-誤った緑は1つも作らない。**stdDev は Tier-1 のインク足切りを通らない経路(幾何が疑い有り・閾値 0)
+誤った緑は1つも作らない。**厳密 0 では本番の crop に効かなかった**(2026-09-04 のフル E2E で
+M1Max の launch storyboard は min=253 / max=255 = stdDev ≈ 0.1 で猶予が一度も付かず赤。
+`nearBlankPNG` の対照と、上限をリテラルで固定するテストで縛る)。**stdDev は Tier-1 のインク足切りを通らない経路(幾何が疑い有り・閾値 0)
 では未計算**なので、門が開いている回だけ測り直す(この取りこぼしは実装直後のレビューで見つけた)。
 
 `FMHealth`(Sources/FTCore/FMHealth.swift)が呼び出しの回数・レイテンシ・成否を計上し、
