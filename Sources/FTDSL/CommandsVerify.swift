@@ -12,7 +12,7 @@ import FTCore
 /// 存在検証。既定で可視性も確認(= 実際に見えていることも確認): ツリー存在に加え、
 /// ①幾何(収まる軸の中心が画面外なら不可視。FM 不要)②FM(覆われ/減光/不在)の2段で
 /// 確認する(見えなければ失敗)。ツリー存在だけ見たい(高速・アイコン等)場合は requireVisible: false。
-/// 実行プロファイルの falsePositiveCheck が無効(既定)の run では guard は素通り(存在のみと同じ)。
+/// 実行プロファイルの falsePositiveCheck を切った run では guard は素通り(存在のみと同じ)。
 /// FM が判定を返さなかったステップは①だけで通り `visibility-guard-skipped` の注記が残る
 /// (判定は StepExecutor.occlusionFlip)。
 /// scroll: 指定すると検証前に**その方向へスクロールしながら要素を探す**

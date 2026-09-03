@@ -884,8 +884,8 @@ FM の実呼び出しが全滅していると、**occlusion-guard(`exist` の既
 **幾何の段(中心が画面外なら不可視)は FM が死んでいても効いている**ので、この注記が付いた緑は
 「木に居て画面内」までは確かめた緑。
 幾何の段の**陽性対照は `TestProjects/E2E-iOS/scenarios/_disabled/95_可視性の幾何.swift`**
-(プロファイル `ios-fpc`。S0010 が `false positive (offscreen)` で落ちるのが正常。既定スイートは
-falsePositiveCheck を切った run では1度も実行されない)。
+(プロファイル `ios-fpc`。S0010 が `false positive (offscreen)` で落ちるのが正常。`_disabled/` に
+あるので既定スイートでは1度も実行されない)。
 
 ## 覆い(別ウィンドウのモーダル)の witness は E2EAppIOS にある(2026-08-20)
 
@@ -2498,9 +2498,7 @@ run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 
 - **切り分けの起点は `fleetest doctor`**。availability は「端末が対応しているか」しか見ておらず、
   資産側の理由で全滅していても `available` を返すので、**実呼び出し(checkLive)の結果で判断する**
 - **FM 依存の変更は「FM を呼ぶシナリオ」で検証する**。まず前提として、偽陽性検証
-  (occlusion-guard)は**実行プロファイル既定 ON**(2026-09-03 にオプトインをやめた。切るなら `falsePositiveCheck: false`。
-  2026-07-28 変更)なので、**E2E の既定プロファイルでは occlusion-guard は一切発火しない** —
-  検証時は profile に `falsePositiveCheck: true` を立てること。有効化しても
+  (occlusion-guard)は**実行プロファイル既定 ON**(切るなら `falsePositiveCheck: false`)だが、
   `OcclusionSuspicion` が疑いを立てたときだけ発火するので、シナリオを選ばないと `fm: null` で
   **空振りする**(実害: セレクタ画面・テキスト入力のシナリオで2回続けて空振りし、検証したつもりになった)。
   実測で FM 呼び出しが最も多いのは `ジェスチャが正しく検出されること`。

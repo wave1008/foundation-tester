@@ -234,8 +234,8 @@ TestProjects/SampleApp/
 
 ```jsonc
 // profiles/runs/all.json
-// FM 機能のトグル: fm(親スイッチ)/ heal / screenLooksLike は既定 true、
-// falsePositiveCheck(偽陽性検証)だけ既定 false(詳細は docs/design.md §11.2)
+// FM 機能のトグル: fm(親スイッチ)/ heal / falsePositiveCheck(偽陽性検証)/
+// screenLooksLike / triage はいずれも既定 true(詳細は docs/design.md §11.2)
 { "app": "sampleapp",
   "devices": [ { "name": "simulator1" }, { "name": "simulator2" }, { "name": "emulator1" } ],
   "fm": true, "heal": true, "reportDir": "reports", "defaultTimeout": 5 }
