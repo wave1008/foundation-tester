@@ -260,6 +260,8 @@ final class FakeAppDriver: AppDriver {
 final class FakeVisibilityDelegate: ReplayDelegate {
     /// テスト中に切り替えられる(門が可視の判定で消費されることを見るテストが使う)
     var visible: Bool
+    /// true の間は「答え無し」(nil)を返す。控えに nil が入らないことを見るテストが使う
+    var answersNothing = false
     private(set) var visibleCalls = 0
     init(visible: Bool) { self.visible = visible }
     func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
@@ -270,6 +272,7 @@ final class FakeVisibilityDelegate: ReplayDelegate {
                               screenshotPNG: Data) async
         -> (visible: Bool, state: String, reason: String, observedText: String)? {
         visibleCalls += 1
+        if answersNothing { return nil }
         return (visible, visible ? "fullyVisible" : "covered", "test", "")
     }
 }

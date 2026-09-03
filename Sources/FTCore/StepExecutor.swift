@@ -360,6 +360,9 @@ public final class StepExecutor {
     /// 同じくエンジン1本につき1系列(StepExecutor はエンジンごとに1インスタンス)。
     /// **cache 供給(同一 Data 使い回し)のときは更新しない** —— guardScreenshot 参照
     var lastGuardFrameRecord: StaleFrameDetector.Record?
+    /// [occlusion-guard] FM 判定の控え(鍵は FM への入力そのもの。宣言は VisibilityVerdictMemo)。
+    /// select→textIs のように同じ要素を続けて確かめる書き方で FM を2度呼ばないため
+    var visibilityVerdictMemo = VisibilityVerdictMemo()
     /// 白フレーム確定時に呼ぶ。FTDriveCore が凍結中断+deviceFrozen emit を行う
     public var onDeviceFrozen: (@Sendable () -> Void)?
     /// システム許可アラートを自動で押したときに呼ぶ(FTDriveCore が run ログへ流す)。

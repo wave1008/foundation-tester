@@ -148,14 +148,26 @@ extension StepExecutor {
                 return nil
             }
         }
-        guard let v = await delegate.verifyElementVisible(
-            expectedText: expectedText, frame: element.frame, screen: screen, screenshotPNG: screenshot)
-        else {
-            // **訊いたのに答えが無い**(FM の失敗・ブレーカ開・直列化待ちの期限切れ・画像不正)。
-            // 素通りは従来どおりだが、**黙らない** —— シナリオ側からは「判定能力が欠けている」ことを
-            // 観測できず、知っているのはここだけ。結果 JSON の notes から run 横断で数えられる
-            noteCodesThisStep.insert(.visibilityGuardSkipped)
-            return nil
+        // 同じスクショ(バイト同一)・同じ frame・同じ期待文字列なら FM に訊き直さない
+        // (VisibilityVerdictMemo。答えは同じで、払うのは FM の数秒だけ)
+        let memoKey = VisibilityVerdictMemo.key(frame: element.frame, screen: screen, expectedText: expectedText)
+        let memoImageHash = StaleFrameDetector.hashBytes(screenshot)
+        let v: VisibilityVerdictMemo.Verdict
+        if let cached = visibilityVerdictMemo.lookup(imageHash: memoImageHash, key: memoKey) {
+            v = cached
+        } else {
+            guard let fresh = await delegate.verifyElementVisible(
+                expectedText: expectedText, frame: element.frame, screen: screen, screenshotPNG: screenshot)
+            else {
+                // **訊いたのに答えが無い**(FM の失敗・ブレーカ開・直列化待ちの期限切れ・画像不正)。
+                // 素通りは従来どおりだが、**黙らない** —— シナリオ側からは「判定能力が欠けている」ことを
+                // 観測できず、知っているのはここだけ。結果 JSON の notes から run 横断で数えられる。
+                // **控えない**(次は必ず訊き直す)
+                noteCodesThisStep.insert(.visibilityGuardSkipped)
+                return nil
+            }
+            visibilityVerdictMemo.store(imageHash: memoImageHash, key: memoKey, verdict: fresh)
+            v = fresh
         }
         // launch 直後(noteAppLaunched)は launch storyboard(全画素同一 = crop の stdDev が
         // 厳密に 0)を実 occlusion と見分けられない。門は一度きり —— **可視・不可視の

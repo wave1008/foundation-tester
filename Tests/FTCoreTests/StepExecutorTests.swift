@@ -1424,8 +1424,11 @@ final class StepExecutorTests: XCTestCase {
     /// timeout まで待って pass する
     func testOcclusionGuardWaitsOutTransientOverlay() async throws {
         let log = CallLog()
+        // 覆いが消えれば**絵が変わる**ので、周回ごとに別のバイト列を返す(同じ絵なら控えが
+        // 同じ答えを返すのが正しい = VisibilityVerdictMemo)
         let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
+                                    screenshots: [Self.blankPNG, Self.nearBlankPNG])
         let delegate = SequenceVisibilityDelegate([false, true])   // 覆い → 可視
         let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
@@ -1472,7 +1475,7 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("延長しても覆われ続ければ最終的に失敗するはず: \(outcome.status)"); return
         }
         XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
-        XCTAssertEqual(delegate.visibleCalls, 2, "1周目(門を消費)+延長後の2周目で計2回 FM 照合するはず")
+        XCTAssertEqual(delegate.visibleCalls, 1, "同じ絵(バイト同一)の2周目は控えで済むはず(VisibilityVerdictMemo)")
         XCTAssertTrue(outcome.notes.contains(.firstFramePending),
                       "延長した回に first-frame-pending が付くはず: \(outcome.notes)")
         XCTAssertTrue(outcome.notes.contains(.firstFrameTimeout),
@@ -1496,13 +1499,93 @@ final class StepExecutorTests: XCTestCase {
         let outcome = await executor.execute(step)
 
         guard case .failed = outcome.status else { XCTFail("覆われ続けたら失敗するはず"); return }
-        XCTAssertEqual(delegate.visibleCalls, 2, "ほぼ白でも延長して2周するはず")
+        XCTAssertEqual(delegate.visibleCalls, 1, "同じ絵の2周目は控えで済むはず")
         XCTAssertTrue(outcome.notes.contains(.firstFramePending), "\(outcome.notes)")
     }
 
     /// 上限はリテラルで固定する(他のテストが差し替え口で値を明示すると既定を1度も通らない)
     func testFirstFrameBlankCeilingIsOneLuminanceLevel() {
         XCTAssertEqual(StepExecutor.firstFrameBlankStdDevCeiling, 1.0)
+    }
+
+    // MARK: - FM 判定の控え(VisibilityVerdictMemo)
+
+    /// select→textIs の形: 同じスクショ・同じ要素・同じ期待文字列なら FM は1回
+    func testVisibilityVerdictIsMemoizedForAnIdenticalScreenshot() async throws {
+        let log = CallLog()
+        let element = textElement(id: "msg", label: "こんにちは")
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element], [element]],
+                                    screenshots: [Self.blankPNG])   // 以後も同じバイト列
+        let delegate = FakeVisibilityDelegate(visible: true)
+        let executor = StepExecutor(driver: primary, delegate: delegate,
+                                    occlusionInkThreshold: 0, isAndroid: false)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 0, occlusionGuard: true)
+
+        _ = await executor.execute(step)
+        _ = await executor.execute(step)
+
+        XCTAssertEqual(delegate.visibleCalls, 1, "同じ入力に FM を2度訊いている")
+        XCTAssertEqual(executor.visibilityVerdictMemo.count, 1)
+    }
+
+    /// 画面がバイト単位で変われば控えは捨てられ、FM に訊き直す
+    func testVisibilityVerdictMemoIsDroppedWhenTheScreenshotChanges() async throws {
+        let log = CallLog()
+        let element = textElement(id: "msg", label: "こんにちは")
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element], [element]],
+                                    screenshots: [Self.blankPNG, Self.nearBlankPNG])
+        let delegate = FakeVisibilityDelegate(visible: true)
+        let executor = StepExecutor(driver: primary, delegate: delegate,
+                                    occlusionInkThreshold: 0, isAndroid: false)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 0, occlusionGuard: true)
+
+        _ = await executor.execute(step)
+        executor.invalidateScreenshotCache()   // 次のステップで撮り直させる(200ms のキャッシュを跨がない)
+        _ = await executor.execute(step)
+
+        XCTAssertEqual(delegate.visibleCalls, 2, "画面が変わったのに控えを返している")
+    }
+
+    /// 期待文字列が違えば別の鍵(同じ要素でも textIs の期待値ごとに訊く)
+    func testVisibilityVerdictMemoIsKeyedByExpectedText() {
+        var memo = VisibilityVerdictMemo()
+        let frame = FTRect(x: 1, y: 2, width: 30, height: 10), screen = FTRect(x: 0, y: 0, width: 100, height: 200)
+        memo.store(imageHash: 7, key: VisibilityVerdictMemo.key(frame: frame, screen: screen, expectedText: "a"),
+                   verdict: (true, "fullyVisible", "t", "a"))
+        XCTAssertNotNil(memo.lookup(imageHash: 7, key: VisibilityVerdictMemo.key(frame: frame, screen: screen, expectedText: "a")))
+        XCTAssertNil(memo.lookup(imageHash: 7, key: VisibilityVerdictMemo.key(frame: frame, screen: screen, expectedText: "b")))
+        XCTAssertNil(memo.lookup(imageHash: 8, key: VisibilityVerdictMemo.key(frame: frame, screen: screen, expectedText: "a")),
+                     "別のスクショに控えを返している")
+        memo.store(imageHash: 8, key: VisibilityVerdictMemo.key(frame: frame, screen: screen, expectedText: "b"),
+                   verdict: (false, "covered", "t", ""))
+        XCTAssertEqual(memo.count, 1, "スクショが変わったのに古い控えが残っている")
+    }
+
+    /// 答え無し(nil)は控えない —— 次のステップは必ず訊き直す
+    func testVisibilityVerdictNilIsNotMemoized() async throws {
+        let log = CallLog()
+        let element = textElement(id: "msg", label: "こんにちは")
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element], [element]],
+                                    screenshots: [Self.blankPNG])
+        let delegate = FakeVisibilityDelegate(visible: true)
+        delegate.answersNothing = true
+        let executor = StepExecutor(driver: primary, delegate: delegate,
+                                    occlusionInkThreshold: 0, isAndroid: false)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 0, occlusionGuard: true)
+
+        let first = await executor.execute(step)
+        delegate.answersNothing = false
+        let second = await executor.execute(step)
+
+        XCTAssertTrue(first.notes.contains(.visibilityGuardSkipped))
+        XCTAssertEqual(delegate.visibleCalls, 2, "nil を控えて訊き直していない")
+        XCTAssertFalse(second.notes.contains(.visibilityGuardSkipped))
     }
 
     /// Tier-1 のインク足切りを通らない構成(occlusionInkThreshold = 0)でも門は効く。
@@ -1523,7 +1606,7 @@ final class StepExecutorTests: XCTestCase {
         let outcome = await executor.execute(step)
 
         guard case .failed = outcome.status else { XCTFail("覆われ続けたら失敗するはず"); return }
-        XCTAssertEqual(delegate.visibleCalls, 2, "足切りを切っていても延長して2周するはず")
+        XCTAssertEqual(delegate.visibleCalls, 1, "同じ絵の2周目は控えで済むはず")
         XCTAssertTrue(outcome.notes.contains(.firstFramePending), "\(outcome.notes)")
     }
 
@@ -1531,10 +1614,11 @@ final class StepExecutorTests: XCTestCase {
     /// 最初のアサーションが通ったあと、後段の本物の occlusion で猶予が復活してはいけない
     func testFirstFrameGateIsConsumedByAVisibleVerdict() async throws {
         let log = CallLog()
+        // 2本目は**別の絵**(同じ絵なら控えが同じ答えを返すのが正しい = VisibilityVerdictMemo)
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")],
                                                        [textElement(id: "msg", label: "こんにちは")]],
-                                    screenshots: [Self.blankPNG, Self.blankPNG])
+                                    screenshots: [Self.blankPNG, Self.nearBlankPNG])
         let delegate = FakeVisibilityDelegate(visible: true)
         let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
         executor.noteAppLaunched()
@@ -1542,6 +1626,7 @@ final class StepExecutorTests: XCTestCase {
                             timeout: 0, occlusionGuard: true)
 
         _ = await executor.execute(step)   // 可視で通る = ここで門を消費する
+        executor.invalidateScreenshotCache()
         delegate.visible = false
         let callsBefore = delegate.visibleCalls
         let outcome = await executor.execute(step)
@@ -1613,7 +1698,7 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("延長しても覆われ続ければ最終的に失敗するはず: \(outcome.status)"); return
         }
         XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
-        XCTAssertEqual(delegate.visibleCalls, 2, "1周目(門を消費)+延長後の2周目で計2回 FM 照合するはず")
+        XCTAssertEqual(delegate.visibleCalls, 1, "同じ絵(バイト同一)の2周目は控えで済むはず(VisibilityVerdictMemo)")
         XCTAssertTrue(outcome.notes.contains(.firstFramePending))
         XCTAssertTrue(outcome.notes.contains(.firstFrameTimeout))
     }
