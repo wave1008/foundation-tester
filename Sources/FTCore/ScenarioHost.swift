@@ -424,7 +424,10 @@ public enum ScenarioHost {
         }
 
         let errLines = await stderrTask.value
-        for line in errLines where !line.isEmpty { emit(.log("⚠️ \(line)")) }
+        // 子が自分で ⚠️ を付けた行(ドライバの警告)には重ねない
+        for line in errLines where !line.isEmpty {
+            emit(.log(line.hasPrefix("⚠️") ? line : "⚠️ \(line)"))
+        }
 
         // タイムアウト時は子がレポートも scenarioFinished も出さずに死ぬ。失敗可視化の契約:
         // 合成 scenarioFinished(passed:false) を emit で流し、通常失敗と同じ経路で集計・

@@ -24,7 +24,10 @@ clone からビルドまではエージェントが進めるので、手で行�
 インストールをスムーズに進めるため、テストに使うデバイスを先に用意しておいてください。
 
 - **iOS をテストするなら**: Xcode をインストールし、使いたいシミュレータを作成して起動しておく
-- **Android をテストするなら**: Android Studio をインストールし、使いたい AVD を作成して起動しておく
+- **Android をテストするなら**: Android Studio をインストールし、使いたい AVD を作成して起動しておく。
+  システムイメージは Play Store ではなく **Google APIs** を選ぶ —— Play Store イメージは `user`
+  ビルドで、アプリの release ビルドはその上で WebView の中身を出せない(詳細は
+  [selector/webview_ja.md](selector/webview_ja.md))
 
 ## 3. Fleetest のインストール
 

@@ -59,5 +59,38 @@ Android では、端末のスクリーンショットが WebView の層をまる
 必要もあります(通常は debug ビルドのみ)。詳細は
 [docs/commands.md](../../commands.md)を参照してください。
 
+## Android: `user` システムイメージ(Play Store イメージ)では DOM 経路が閉じる
+
+Android では、fleetest はアプリの WebView の中身を Chromium の devtools ソケット
+(`webview_devtools_remote_<pid>`)経由で読みます。Chromium がこのソケットを開くのは、
+次の**どれか1つ**が成り立つときだけです: システムイメージが debuggable である
+(`ro.debuggable=1` —— **Google APIs** イメージの `userdebug` ビルド)、アプリが debuggable
+ビルドである、アプリ自身が `WebView.setWebContentsDebuggingEnabled(true)` を呼んでいる。
+
+**Play Store イメージ(`google_apis_playstore`)は `user` ビルド(`ro.debuggable=0`)です。**
+そこでアプリの release ビルドを回すと3つのどれも成り立たず、ソケットは開かないまま
+fleetest は黙って a11y ツリーへ落ちます。症状は、DOM にしか無い属性 —— とくに
+`placeholder` —— が一致しなくなることで、同じシナリオが Google APIs イメージでは緑に
+なります。他はどこも異常に見えません: APK も WebView の版も同一で、違うのは AVD の
+システムイメージだけです。
+
+これが起きると fleetest はデバイスごとに1回、原因を stderr へ名指しします:
+
+```
+⚠️ [emulator-5556] could not read com.example.app's WebView content over CDP — falling back to
+   the accessibility tree. … the system is not debuggable (ro.debuggable=0) and the app under
+   test is not a debuggable build either …
+```
+
+直し方は3つのどれか1つで足ります:
+
+- **AVD を Google APIs イメージ(`google_apis`。`google_apis_playstore` ではなく)から作る**
+  —— release ビルドをそのまま回せるので、テスト用フリートにはこれを勧めます
+- アプリの **debuggable ビルド**をテストする
+- アプリ側で **`WebView.setWebContentsDebuggingEnabled(true)`** を呼ぶ
+
+どの状況かは `adb -s <serial> shell getprop ro.debuggable` で確かめられます(`1` なら
+アプリのビルドに関わらずソケットは開けます)。
+
 ### Link
 - [index](../index_ja.md)

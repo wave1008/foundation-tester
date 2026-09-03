@@ -891,17 +891,28 @@ public final class AndroidDriver: AppDriver {
         FileHandle.standardError.write(Data((text + "\n").utf8))
     }
 
-    /// DOM 読みが取れず a11y へ黙って落ちていたのを、serial ごとにプロセスで1回だけ知らせる
-    /// (毎 snapshot 出すと騒がしい)。判定・文言は WebViewDOMFallback、once の置き場が
-    /// static である理由は WebViewShotComposite.shouldWarnBlankCapture と同じ
+    /// DOM 読みが取れず a11y へ黙って落ちていたのを、**端末の事実で決まる理由に限って**
+    /// (serial, package) ごとにプロセスで高々1回知らせる。過渡(WebView 未生成・タブ未選択)では
+    /// 黙る。判定・文言・メモは WebViewDOMFallback。メモが static である理由は
+    /// WebViewShotComposite.shouldWarnBlankCapture と同じ
     private func warnWebViewDOMFallbackOnce(package: String) {
         let serial = serial ?? "default"
-        guard WebViewDOMFallback.shouldWarn(serial: serial) else { return }
-        // 理由の引き直しは once の内側 = serial ごとに adb 1往復だけ
-        guard let command = WebViewDOMFallback.probeCommand(packageID: package),
-              let output = try? adb(command).output else { return }
-        let (system, app) = WebViewDOMFallback.parseProbe(output)
-        let reason = WebViewDOMFallback.reason(systemDebuggable: system, appDebuggable: app)
+        guard WebViewDOMFallback.needsDiagnosis(serial: serial, package: package) else { return }
+        // 診断は結論が出るまで miss ごとに adb 1往復(結論が出たらメモして以後払わない)
+        let resolution = AndroidWebViewDOM.appSocketResolution(
+            packageID: package, adb: { try self.adb($0).output })
+        guard WebViewDOMFallback.isConclusive(resolution) else { return }
+        WebViewDOMFallback.markDiagnosed(serial: serial, package: package)
+        // debuggable の事実はソケットが無いときだけ要る(ここだけ、もう1往復)
+        var system: Bool? = nil
+        var app: Bool? = nil
+        if case .noWebView = resolution,
+           let command = WebViewDOMFallback.probeCommand(packageID: package),
+           let output = try? adb(command).output {
+            (system, app) = WebViewDOMFallback.parseProbe(output)
+        }
+        guard let reason = WebViewDOMFallback.reason(
+            resolution: resolution, systemDebuggable: system, appDebuggable: app) else { return }
         let text = WebViewDOMFallback.warning(serial: serial, packageID: package, reason: reason)
         FileHandle.standardError.write(Data((text + "\n").utf8))
     }

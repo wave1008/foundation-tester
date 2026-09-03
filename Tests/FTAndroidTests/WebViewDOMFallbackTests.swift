@@ -7,35 +7,57 @@ import XCTest
 
 final class WebViewDOMFallbackTests: XCTestCase {
 
-    // MARK: - 理由の判定(観測した2つの事実 → Reason)
-
-    /// **両方が確実に非 debuggable のときだけ**構造的に閉じていると言う
-    /// (2026-09-03 の実測: M1Max/M1Ultra が ro.debuggable=0 かつ release ビルドで決定的に赤)
-    func testBothNonDebuggableIsStructurallyClosed() {
-        XCTAssertEqual(WebViewDOMFallback.reason(systemDebuggable: false, appDebuggable: false),
-                       .structurallyClosed(systemDebuggable: false, appDebuggable: false))
+    override func setUp() {
+        super.setUp()
+        WebViewDOMFallback.resetDiagnosisMemoForTesting()
     }
 
-    /// システム・アプリのどちらかが debuggable ならソケットは開くはずなので、
-    /// 読めなかった理由は「それ以外」(断定しない)
-    func testEitherDebuggableIsOther() {
-        XCTAssertEqual(WebViewDOMFallback.reason(systemDebuggable: true, appDebuggable: false),
-                       .other(systemDebuggable: true, appDebuggable: false))
-        XCTAssertEqual(WebViewDOMFallback.reason(systemDebuggable: false, appDebuggable: true),
-                       .other(systemDebuggable: false, appDebuggable: true))
-        XCTAssertEqual(WebViewDOMFallback.reason(systemDebuggable: true, appDebuggable: true),
-                       .other(systemDebuggable: true, appDebuggable: true))
+    // MARK: - 判定(端末の事実で決まるときだけ言う。過渡では黙る)
+
+    func testNoSocketWithBothNonDebuggableIsStructurallyClosed() {
+        XCTAssertEqual(WebViewDOMFallback.reason(resolution: .noWebView,
+                                                 systemDebuggable: false, appDebuggable: false),
+                       .structurallyClosed)
     }
 
-    /// 判定できなかった側(nil)は false と混ぜない —— 「開くはず」の可能性を残したまま
-    /// 「構造的に閉じている」と言い切らない
-    func testUnknownFactsAreNotTreatedAsFalse() {
-        XCTAssertEqual(WebViewDOMFallback.reason(systemDebuggable: nil, appDebuggable: false),
-                       .other(systemDebuggable: nil, appDebuggable: false))
-        XCTAssertEqual(WebViewDOMFallback.reason(systemDebuggable: false, appDebuggable: nil),
-                       .other(systemDebuggable: false, appDebuggable: nil))
-        XCTAssertEqual(WebViewDOMFallback.reason(systemDebuggable: nil, appDebuggable: nil),
-                       .other(systemDebuggable: nil, appDebuggable: nil))
+    /// 片方でも debuggable なら「WebView がまだ生成されていない」が普通 = 過渡なので黙る
+    func testNoSocketWithEitherDebuggableIsSilent() {
+        XCTAssertNil(WebViewDOMFallback.reason(resolution: .noWebView, systemDebuggable: true, appDebuggable: false))
+        XCTAssertNil(WebViewDOMFallback.reason(resolution: .noWebView, systemDebuggable: false, appDebuggable: true))
+        XCTAssertNil(WebViewDOMFallback.reason(resolution: .noWebView, systemDebuggable: true, appDebuggable: true))
+    }
+
+    /// 不明(読めなかった)を false と混ぜない —— 構造的に閉じていると断定できるのは両方が確実に false のときだけ
+    func testNoSocketWithUnknownFactsIsSilent() {
+        XCTAssertNil(WebViewDOMFallback.reason(resolution: .noWebView, systemDebuggable: nil, appDebuggable: false))
+        XCTAssertNil(WebViewDOMFallback.reason(resolution: .noWebView, systemDebuggable: false, appDebuggable: nil))
+        XCTAssertNil(WebViewDOMFallback.reason(resolution: .noWebView, systemDebuggable: nil, appDebuggable: nil))
+    }
+
+    /// ソケットがあるのに読めなかった = タブ未選択等の過渡。事実が非 debuggable でも構造的とは言わない
+    func testSocketPresentIsSilentEvenWhenBothNonDebuggable() {
+        XCTAssertNil(WebViewDOMFallback.reason(resolution: .socket("webview_devtools_remote_1"),
+                                               systemDebuggable: false, appDebuggable: false))
+    }
+
+    func testAppNotRunningAndUnavailableAreSilent() {
+        XCTAssertNil(WebViewDOMFallback.reason(resolution: .appNotRunning, systemDebuggable: false, appDebuggable: false))
+        XCTAssertNil(WebViewDOMFallback.reason(resolution: .unavailable, systemDebuggable: false, appDebuggable: false))
+    }
+
+    func testAmbiguousSocketsAreReportedAsAFact() {
+        XCTAssertEqual(WebViewDOMFallback.reason(resolution: .ambiguous(["a", "b"]),
+                                                 systemDebuggable: true, appDebuggable: nil),
+                       .ambiguousSockets(["a", "b"]))
+    }
+
+    /// 結論(メモしてよい)はソケットの有無と曖昧だけ。未起動・adb 不能は次の miss で引き直す
+    func testOnlyDeviceFactsAreConclusive() {
+        XCTAssertTrue(WebViewDOMFallback.isConclusive(.socket("s")))
+        XCTAssertTrue(WebViewDOMFallback.isConclusive(.noWebView))
+        XCTAssertTrue(WebViewDOMFallback.isConclusive(.ambiguous(["a", "b"])))
+        XCTAssertFalse(WebViewDOMFallback.isConclusive(.appNotRunning))
+        XCTAssertFalse(WebViewDOMFallback.isConclusive(.unavailable))
     }
 
     // MARK: - 端末への問い合わせ(素のシェル文字列に埋めるので綴りを検める)
@@ -119,14 +141,14 @@ final class WebViewDOMFallbackTests: XCTestCase {
 
     func testStructurallyClosedWarningExplainsWhyAndHowToFix() {
         let text = WebViewDOMFallback.warning(
-            serial: "emulator-5554", packageID: "com.ftester.e2e",
-            reason: .structurallyClosed(systemDebuggable: false, appDebuggable: false))
+            serial: "emulator-5554", packageID: "com.ftester.e2e", reason: .structurallyClosed)
         XCTAssertTrue(text.contains("[emulator-5554]"), "どの台か分からない: \(text)")
         XCTAssertTrue(text.contains("com.ftester.e2e"), "どのアプリか分からない: \(text)")
         XCTAssertTrue(text.contains("accessibility tree"), "何にフォールバックしたか無い: \(text)")
         XCTAssertTrue(text.contains("ro.debuggable=0"), "観測した事実が無い: \(text)")
         XCTAssertTrue(text.contains("FLAG_DEBUGGABLE"), "アプリ側の事実が無い: \(text)")
         XCTAssertTrue(text.contains("userdebug"), "直し方が無い: \(text)")
+        XCTAssertTrue(text.contains("Play Store"), "受け手が選ぶ言葉(Play Store イメージ)で言っていない: \(text)")
         // **「この2つが false なら必ず開かない」と断定しない** —— アプリ自身が
         // setWebContentsDebuggingEnabled(true) を呼べばフラグに関わらず開く。3つ目の口を
         // 落とすと、その呼び出しがあるアプリの受け手に誤った直し方を指す
@@ -138,25 +160,28 @@ final class WebViewDOMFallbackTests: XCTestCase {
                       "確かめ方に実 serial が無い: \(text)")
     }
 
-    /// `.other` は断定しない —— 「構造的に閉じている」の言い回しを流用しない
-    func testOtherWarningDoesNotClaimStructurallyClosed() {
+    func testAmbiguousWarningNamesTheSocketsAndRefusesToGuess() {
         let text = WebViewDOMFallback.warning(
-            serial: "x", packageID: "com.foo", reason: .other(systemDebuggable: true, appDebuggable: nil))
-        XCTAssertFalse(text.contains("is not open here"), "断定していないはずなのに断定文言が出ている: \(text)")
-        XCTAssertFalse(text.contains("FLAG_DEBUGGABLE"), "観測していない事実を断定している: \(text)")
-        XCTAssertTrue(text.contains("Could not determine why"), text)
-        XCTAssertTrue(text.contains("ro.debuggable=1"), "観測できた事実が反映されていない: \(text)")
-        XCTAssertTrue(text.contains("app debuggable flag=unknown"), "不明を隠している: \(text)")
+            serial: "x", packageID: "com.foo",
+            reason: .ambiguousSockets(["webview_devtools_remote_10", "webview_devtools_remote_11"]))
+        XCTAssertTrue(text.contains("webview_devtools_remote_10, webview_devtools_remote_11"), text)
+        XCTAssertTrue(text.contains("refuses to guess"), "推測しないことを言っていない: \(text)")
+        XCTAssertFalse(text.contains("ro.debuggable=0"), "曖昧の回に構造的な理由を流用している: \(text)")
     }
 
-    // MARK: - once ゲート
+    // MARK: - 診断メモ(出力回数の上限 = (serial, package) ごとに1回)
 
-    func testShouldWarnFiresOncePerSerialAcrossCalls() {
-        let a = "test-serial-\(UUID().uuidString)"
-        let b = "test-serial-\(UUID().uuidString)"
-        XCTAssertTrue(WebViewDOMFallback.shouldWarn(serial: a))
-        XCTAssertFalse(WebViewDOMFallback.shouldWarn(serial: a))
-        XCTAssertFalse(WebViewDOMFallback.shouldWarn(serial: a))
-        XCTAssertTrue(WebViewDOMFallback.shouldWarn(serial: b), "別の台は別に1回言う")
+    func testDiagnosisIsNeededOnlyUntilMarked() {
+        XCTAssertTrue(WebViewDOMFallback.needsDiagnosis(serial: "s1", package: "p"))
+        WebViewDOMFallback.markDiagnosed(serial: "s1", package: "p")
+        XCTAssertFalse(WebViewDOMFallback.needsDiagnosis(serial: "s1", package: "p"),
+                       "結論が出たあとも問い合わせ・警告を繰り返す")
+    }
+
+    /// 台が違えば別に診断する(同じ台で package が違っても別)
+    func testDiagnosisMemoIsKeyedBySerialAndPackage() {
+        WebViewDOMFallback.markDiagnosed(serial: "s1", package: "p")
+        XCTAssertTrue(WebViewDOMFallback.needsDiagnosis(serial: "s2", package: "p"))
+        XCTAssertTrue(WebViewDOMFallback.needsDiagnosis(serial: "s1", package: "q"))
     }
 }

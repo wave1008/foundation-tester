@@ -29,16 +29,33 @@ final class WebViewDOMFallbackWiringTests: XCTestCase {
                       "DOM が読めなかった経路が警告を呼んでいない")
     }
 
-    /// 警告関数自身が once ゲートと、判定・文言を WebViewDOMFallback へ委ねていること
-    /// (毎 snapshot ごとに adb を叩かない・文言をここに二重に持たない)
-    func testWarnFunctionGoesThroughTheOnceGateAndDelegatesJudgement() throws {
+    /// 子プロセスの stderr を中継する ScenarioHost が、ドライバ自身が ⚠️ を付けた行に
+    /// もう1つ ⚠️ を重ねないこと(`fleetest run` の出力で `⚠️ ⚠️` になっていた)
+    func testChildStderrRelayDoesNotDoubleTheWarningEmoji() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let code = try String(contentsOf: root.appendingPathComponent(
+            "Sources/FTCore/ScenarioHost.swift"), encoding: .utf8)
+        XCTAssertTrue(code.contains("emit(.log(line.hasPrefix(\"⚠️\") ? line : \"⚠️ \\(line)\"))"),
+                      "中継が ⚠️ を無条件に前置している")
+    }
+
+    /// 警告関数自身が診断メモ(出力回数の上限)と、ソケット解決・判定・文言を委ねていること
+    /// (毎 snapshot ごとに adb を叩かない・文言をここに二重に持たない・過渡で鳴らない)
+    func testWarnFunctionGoesThroughTheDiagnosisMemoAndDelegatesJudgement() throws {
         let code = try androidDriverSource()
-        XCTAssertTrue(code.contains("WebViewDOMFallback.shouldWarn(serial: serial)"),
-                      "once ゲートを通っていない(毎 snapshot 出す危険)")
-        XCTAssertTrue(code.contains("WebViewDOMFallback.probeCommand(packageID: package)"),
-                      "端末への問い合わせが1往復に畳まれていない")
-        XCTAssertTrue(code.contains("WebViewDOMFallback.parseProbe(output)"))
-        XCTAssertTrue(code.contains("WebViewDOMFallback.reason(systemDebuggable: system, appDebuggable: app)"))
+        XCTAssertTrue(code.contains("WebViewDOMFallback.needsDiagnosis(serial: serial, package: package)"),
+                      "診断メモを通っていない(毎 snapshot 出す危険)")
+        XCTAssertTrue(code.contains("AndroidWebViewDOM.appSocketResolution("),
+                      "ソケット解決(過渡かどうか)を見ずに警告している")
+        XCTAssertTrue(code.contains("WebViewDOMFallback.isConclusive(resolution)"),
+                      "結論でないもの(未起動・adb 不能)までメモしてしまう")
+        XCTAssertTrue(code.contains("WebViewDOMFallback.markDiagnosed(serial: serial, package: package)"),
+                      "結論をメモしていない(同じ台で何度も問い合わせる)")
+        XCTAssertTrue(code.contains("if case .noWebView = resolution,"),
+                      "debuggable の問い合わせがソケット無しの回に限られていない")
+        XCTAssertTrue(code.contains("resolution: resolution, systemDebuggable: system, appDebuggable: app)"),
+                      "判定を WebViewDOMFallback.reason に委ねていない")
         XCTAssertTrue(code.contains("WebViewDOMFallback.warning(serial: serial, packageID: package, reason: reason)"),
                       "文言をここで組み立てている(WebViewDOMFallback に無い二重管理)")
     }

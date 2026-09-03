@@ -2,14 +2,18 @@
 // **黙って a11y へ落ちて**いた(AndroidWebViewDOM.read が nil を返すだけで理由が消える)。
 //
 // **実測(2026-09-03、E2E-RN S0010 の DOM 経路検査)**: local(userdebug 系, ro.debuggable=1)は
-// 緑、M1Max/M1Ultra(user 系, ro.debuggable=0)は決定的に赤。SUT は3機とも同じ release ビルド
-// (アプリの ApplicationInfo.FLAG_DEBUGGABLE も 0)。release ビルドの WebView は、システムか
-// アプリの**どちらかが debuggable なときだけ**devtools ソケットを開くので、**両方が
-// 非 debuggable な組み合わせだけが構造的に読めない**(直しようが2つ: AVD を userdebug/eng に
-// するか、アプリを debuggable ビルドにするか)。それ以外の「ソケットは開くはずなのに読めない」は
-// 原因を断定しない。
+// 緑、M1Max/M1Ultra(user 系 = Play Store イメージ, ro.debuggable=0)は決定的に赤。SUT は3機とも
+// 同じ release ビルド(ApplicationInfo.FLAG_DEBUGGABLE も 0)。Chromium が devtools ソケットを
+// 開くのは、システムかアプリが debuggable か、アプリ自身が setWebContentsDebuggingEnabled(true) を
+// 呼ぶときだけなので、**両方が非 debuggable な組み合わせだけが構造的に読めない**。
 //
-// 形は WebViewShotComposite に揃える: 判定・文言は純粋関数、once ゲートは serial ごと static
+// **読めない理由の大半は正常な過渡**(WebView 未生成・タブ未選択・遷移直後)なので、nil のたびに
+// 言うと健全な構成でも鳴る。言うのは**端末の事実から決まる2つだけ**: 構造的に閉じている /
+// 同名プロセスが複数でソケットを選べない。**回数は (serial, package) ごとに診断1回**で縛る ——
+// 診断が結論を持ったら(過渡でなく事実で決まったら)二度と問い合わせない。
+// アプリ未起動・adb 不能は結論ではないので次の miss で引き直す。
+//
+// 形は WebViewShotComposite に揃える: 判定・文言は純粋関数、メモは static
 // (AndroidDriver のインスタンス変数にしない理由も同じ —— モニターは1枚撮るごとに
 // AndroidDriver を作り直すので、インスタンスに閉じた once は毎フレーム鳴る)。
 
@@ -17,22 +21,40 @@ import Foundation
 
 enum WebViewDOMFallback {
 
-    /// なぜ `.appWebView` の DOM 読みが得られなかったか。**観測できた事実**(取れなければ nil)を
-    /// 両ケースに持たせる —— `.other` でも「何を確かめて分からなかったか」を言えるようにするため
+    /// 言う価値のある理由。**nil = 黙る**(正常な過渡・言えない事実)
     enum Reason: Equatable {
         /// システムもアプリも非 debuggable = devtools ソケットは構造的に開かない
-        case structurallyClosed(systemDebuggable: Bool, appDebuggable: Bool)
-        /// それ以外(ソケットは開くはずなのに読めなかった、または判定できなかった)。断定しない
-        case other(systemDebuggable: Bool?, appDebuggable: Bool?)
+        case structurallyClosed
+        /// 同名プロセスが複数でソケットを1つに選べない(推測で選ぶと別プロセスの DOM を木へ差し込む)
+        case ambiguousSockets([String])
     }
 
-    /// 観測した2つの事実 → 理由(純粋)。**両方が確実に false のときだけ構造的に閉じていると言う**
-    /// (片方でも debuggable ならソケットは開くはずなので、それ以外は「開くはずなのに読めない」)
-    static func reason(systemDebuggable: Bool?, appDebuggable: Bool?) -> Reason {
-        guard systemDebuggable == false, appDebuggable == false else {
-            return .other(systemDebuggable: systemDebuggable, appDebuggable: appDebuggable)
+    /// ソケット解決の結果 + 端末の事実 → 理由(純粋)。
+    /// - `.socket`: ソケットはある = 読めなかったのは過渡(タブ未選択等)。黙る
+    /// - `.noWebView`: **両方が確実に false のときだけ**構造的に閉じていると言う。片方でも
+    ///   debuggable(または不明)なら「WebView がまだ生成されていない」が普通なので黙る
+    /// - `.ambiguous`: 事実として言う(直し方が利用者側にある)
+    /// - `.appNotRunning` / `.unavailable`: 他の経路が別に落とす。黙る
+    static func reason(resolution: AndroidWebViewDOM.AppSocketResolution,
+                       systemDebuggable: Bool?, appDebuggable: Bool?) -> Reason? {
+        switch resolution {
+        case .socket, .appNotRunning, .unavailable:
+            return nil
+        case .ambiguous(let names):
+            return .ambiguousSockets(names)
+        case .noWebView:
+            guard systemDebuggable == false, appDebuggable == false else { return nil }
+            return .structurallyClosed
         }
-        return .structurallyClosed(systemDebuggable: false, appDebuggable: false)
+    }
+
+    /// その解決結果は**端末の事実として結論か**(= メモしてよいか)。アプリ未起動・adb 不能は
+    /// 一時的なので結論にしない(次の miss で引き直す)
+    static func isConclusive(_ resolution: AndroidWebViewDOM.AppSocketResolution) -> Bool {
+        switch resolution {
+        case .socket, .noWebView, .ambiguous: return true
+        case .appNotRunning, .unavailable: return false
+        }
     }
 
     // MARK: - 端末への問い合わせ(1往復に畳む。純粋部分と分離)
@@ -84,8 +106,8 @@ enum WebViewDOMFallback {
     // MARK: - 文言
 
     /// 黙って a11y へ落ちたことを知らせる。**何が起きているか・なぜか・何が変わるか・どうすれば
-    /// 直るか**の4つを持つ(`.structurallyClosed` のときだけ「なぜ」「どうすれば」まで言える。
-    /// `.other` は観測できた事実だけを書き、原因は断定しない)
+    /// 直るか**の4つを持つ。断定するのは端末の事実で決まった理由だけ(`reason` が nil を返す過渡は
+    /// そもそもここへ来ない)
     static func warning(serial: String, packageID: String, reason: Reason) -> String {
         let head = "⚠️ [\(serial)] could not read \(packageID)'s WebView content over CDP —"
             + " falling back to the accessibility tree. Attributes that only exist in the DOM"
@@ -98,30 +120,42 @@ enum WebViewDOMFallback {
                 + " system or the app is debuggable, or when the app itself calls"
                 + " WebView.setWebContentsDebuggingEnabled(true) — with neither flag set, the socket"
                 + " never opens unless the app makes that call. Fix by running on a userdebug/eng"
-                + " system image, with a debuggable build of the app under test, or by calling"
-                + " setWebContentsDebuggingEnabled(true) in the app."
+                + " system image (a Google APIs image, not a Play Store one), with a debuggable build"
+                + " of the app under test, or by calling setWebContentsDebuggingEnabled(true) in the app."
                 + " Check with: adb -s \(serial) shell getprop ro.debuggable"
-        case .other(let systemDebuggable, let appDebuggable):
-            return head + "Could not determine why (observed ro.debuggable=\(describe(systemDebuggable)),"
-                + " app debuggable flag=\(describe(appDebuggable))). Check with:"
-                + " adb -s \(serial) shell cat /proc/net/unix | grep devtools_remote"
+        case .ambiguousSockets(let names):
+            return head + "Several processes of this package expose a devtools socket"
+                + " (\(names.joined(separator: ", "))) and fleetest refuses to guess which one is the"
+                + " screen — picking the wrong one would splice another process's DOM into the tree."
+                + " Close the extra processes (or restart the app) so only one remains."
         }
     }
 
-    private static func describe(_ value: Bool?) -> String {
-        guard let value else { return "unknown" }
-        return value ? "1" : "0"
-    }
+    // MARK: - 診断メモ(出力回数の上限)
 
-    // MARK: - once ゲート
-
-    /// **プロセス全体で serial ごとに1回だけ**知らせる門。AndroidDriver のインスタンス変数に
-    /// してはいけない理由は WebViewShotComposite.shouldWarnBlankCapture と同じ
-    static func shouldWarn(serial: String) -> Bool {
+    /// (serial, package) ごとに**診断は1回**。まだ診断していないときだけ true
+    static func needsDiagnosis(serial: String, package: String) -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        return warnedSerials.insert(serial).inserted
+        return !diagnosed.contains(Key(serial: serial, package: package))
     }
+
+    /// 結論が出た(`isConclusive`)ときだけ呼ぶ。以後この (serial, package) では問い合わせも
+    /// 警告もしない = 警告は高々1回
+    static func markDiagnosed(serial: String, package: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        diagnosed.insert(Key(serial: serial, package: package))
+    }
+
+    /// テスト専用: プロセス内メモを空にする
+    static func resetDiagnosisMemoForTesting() {
+        lock.lock()
+        defer { lock.unlock() }
+        diagnosed.removeAll()
+    }
+
+    private struct Key: Hashable { let serial: String; let package: String }
     private static let lock = NSLock()
-    private static var warnedSerials = Set<String>()
+    private static var diagnosed = Set<Key>()
 }

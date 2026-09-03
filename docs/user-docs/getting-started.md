@@ -24,7 +24,10 @@ requires macOS 27+. Details in [Requirements](overview/environments.md).
 To keep the installation smooth, have the devices you will test on ready beforehand.
 
 - **If you test iOS**: install Xcode, then create and boot the simulator you want to use
-- **If you test Android**: install Android Studio, then create and boot the AVD you want to use
+- **If you test Android**: install Android Studio, then create and boot the AVD you want to use.
+  Prefer a **Google APIs** system image over a Play Store one — Play Store images are `user`
+  builds, and a release build of your app cannot expose its WebView content on them (see
+  [selector/webview.md](selector/webview.md))
 
 ## 3. Installing Fleetest
 

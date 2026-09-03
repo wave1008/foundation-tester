@@ -4313,16 +4313,25 @@ DOM 由来が1件も無ければ `browserA11yFallbackNote` が「a11y から来�
 (2026-08-14 の監査 ⒝。**粒度と命名を揃えたので中身では見分けられない**)。
 
 **Android の自作アプリで DOM が読めなかったときは黙らない**(2026-09-03): `route` が `.appWebView`
-なのに `AndroidWebViewDOM.read` が nil のとき、`WebViewDOMFallback` が serial ごとに1回だけ stderr へ
-理由を言う(`warnBlankCaptureOnce` と同じ once + 「理由の引き直しは once の内側で adb 1往復」)。
-実測の起点: E2E-RN の `placeholder=` 検査が **local(userdebug・`ro.debuggable=1`)では緑・
-ランナー(user イメージ・`ro.debuggable=0`)では決定的に赤**で、APK も WebView 版も同一だった。
-SUT は release ビルド(非 debuggable)なので Chromium は `webview_devtools_remote_<pid>` を開かず、
-DOM 読みが黙って a11y へ落ちていた。**判定は「システム非 debuggable かつアプリ非 debuggable」の
-2つが確認できたときだけ「構造的に開かない」と言い、それ以外は観測した事実だけを書く**。
-文言では**アプリ自身の `setWebContentsDebuggingEnabled(true)` という3つ目の口**に必ず触れる ——
-「2つのフラグだけで決まる」と断定すると、その呼び出しを持つ受け手に誤った直し方を指す
-(`WebViewDOMFallbackTests` が断定文言を否定で固定)。**挙動は変えない**(警告だけ)。
+なのに `AndroidWebViewDOM.read` が nil のとき、`WebViewDOMFallback` が stderr へ理由を言う
+(`warnBlankCaptureOnce` と同じく判定・文言は純粋関数、メモは static)。
+実測の起点: E2E-RN の `placeholder=` 検査が **local(`android-35/google_apis` = userdebug・
+`ro.debuggable=1`)では緑・ランナー(`google_apis_playstore` = user・`ro.debuggable=0`)では決定的に
+赤**で、APK も WebView 版も同一だった。SUT は release ビルド(非 debuggable)なので Chromium は
+`webview_devtools_remote_<pid>` を開かず、DOM 読みが黙って a11y へ落ちていた。
+**言うのは端末の事実で決まる2つだけ**: ①ソケットが無く、かつシステムもアプリも非 debuggable と
+確認できた(構造的に開かない)/ ②同名プロセスが複数でソケットを1つに選べない。
+**nil の大半は正常な過渡**(WebView 未生成・タブ未選択・遷移直後)なので、ソケットがある回・
+debuggable なのにソケットがまだ無い回・事実が読めなかった回は**黙る**(鳴らすと健全な構成でも
+毎回鳴る)。**回数は (serial, package) ごとに診断1回**: ソケット解決が結論(有り / 無し / 曖昧)を
+返した時点でメモし、以後は問い合わせも警告もしない。未起動・adb 不能は結論ではないので次の
+miss で引き直す。追加コストは miss 経路の adb 1往復(構造的の回だけ debuggable の問い合わせが
+もう1往復)で、結論後は 0。文言では**アプリ自身の `setWebContentsDebuggingEnabled(true)` という
+3つ目の口**に必ず触れる —— 「2つのフラグだけで決まる」と断定すると、その呼び出しを持つ受け手に
+誤った直し方を指す(`WebViewDOMFallbackTests` が断定文言を否定で固定)。**挙動は変えない**
+(警告だけ)。子の stderr を中継する `ScenarioHost` は、ドライバが自分で `⚠️` を付けた行に
+重ねない(`fleetest run` で `⚠️ ⚠️` になっていた)。受け手向けの説明は
+docs/user-docs/selector/webview(.md/_ja.md)。
 
 ## ブラウザの中身は DOM から読む(2026-08-13)
 

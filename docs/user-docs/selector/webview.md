@@ -62,5 +62,38 @@ do with your scenario. Seeing the WebView content in a screenshot also requires 
 debugging to be enabled in the app (typically only in debug builds); see
 [docs/commands.md](../../commands.md) for detail.
 
+## Android: `user` system images (Play Store images) close the DOM path
+
+On Android, fleetest reads an app's WebView content over Chromium's devtools socket
+(`webview_devtools_remote_<pid>`). Chromium only opens that socket when **at least one** of
+these holds: the system image is debuggable (`ro.debuggable=1` — the `userdebug` builds
+behind **Google APIs** images), the app is a debuggable build, or the app itself calls
+`WebView.setWebContentsDebuggingEnabled(true)`.
+
+**Play Store images (`google_apis_playstore`) are `user` builds (`ro.debuggable=0`).** Run a
+release build of your app on one and none of the three holds, so the socket never opens and
+fleetest silently falls back to the accessibility tree. The symptom is that attributes that
+only exist in the DOM — `placeholder` above all — stop matching, while the same scenario is
+green on a Google APIs image. Nothing else looks wrong: the APK and the WebView version are
+identical, only the AVD's system image differs.
+
+fleetest names the cause once per device on stderr when this happens:
+
+```
+⚠️ [emulator-5556] could not read com.example.app's WebView content over CDP — falling back to
+   the accessibility tree. … the system is not debuggable (ro.debuggable=0) and the app under
+   test is not a debuggable build either …
+```
+
+Fix any one of the three:
+
+- **Create the AVD from a Google APIs image** (`google_apis`, not `google_apis_playstore`) —
+  the recommended choice for a test fleet, since it works for release builds unchanged
+- Test a **debuggable build** of the app
+- Have the app call **`WebView.setWebContentsDebuggingEnabled(true)`**
+
+Check which case you are in with `adb -s <serial> shell getprop ro.debuggable` (`1` = the
+socket can open regardless of the app's build).
+
 ### Link
 - [index](../index.md)
