@@ -366,16 +366,16 @@ function renderRunProfileSection(): string {
                 <label for="run-profile-heal">${t("panels.runProfile.healLabel")}</label>
               </div>
               <div class="modal-row profile-checkbox-row">
-                <input type="checkbox" id="run-profile-screen-looks-like">
-                <label for="run-profile-screen-looks-like">${t("panels.runProfile.screenLooksLikeLabel")}</label>
-              </div>
-              <div class="modal-row profile-checkbox-row">
                 <input type="checkbox" id="run-profile-false-positive-check">
                 <label for="run-profile-false-positive-check">${t("panels.runProfile.falsePositiveCheckLabel")}</label>
               </div>
               <div class="modal-row profile-checkbox-row">
                 <input type="checkbox" id="run-profile-triage">
                 <label for="run-profile-triage">${t("panels.runProfile.triageLabel")}</label>
+              </div>
+              <div class="modal-row profile-checkbox-row">
+                <input type="checkbox" id="run-profile-screen-looks-like">
+                <label for="run-profile-screen-looks-like">${t("panels.runProfile.screenLooksLikeLabel")}</label>
               </div>
             </div>
           </div>
