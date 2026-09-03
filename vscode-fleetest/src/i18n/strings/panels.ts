@@ -76,7 +76,12 @@ export const panelsStrings = {
   "panels.runProfile.fmSectionTitle": { ja: "FM(Foundation Model)", en: "FM (Foundation Model)" },
   "panels.runProfile.fmLabel": { ja: "FMの機能を使用する", en: "Use FM features" },
   "panels.runProfile.healLabel": { ja: "自己修復(heal)を有効にする", en: "Enable self-heal" },
-  "panels.runProfile.falsePositiveCheckLabel": { ja: "偽陽性検証を有効にする", en: "Enable false-positive verification" },
+  // 鍵 `falsePositiveCheck` を指すラベルなので「偽陽性検証」は据え置き(CLAUDE.md §用語)。
+  // 何をするのかが名前から読めないので、括弧で平たく言い添える
+  "panels.runProfile.falsePositiveCheckLabel": {
+    ja: "偽陽性検証を有効にする(誤ってOKとなっていないかを視覚的にチェックする)",
+    en: "Enable false-positive verification (visually check that nothing passed by mistake)",
+  },
   "panels.runProfile.triageLabel": { ja: "失敗時のトリアージを有効にする", en: "Enable failure triage" },
   "panels.runProfile.screenLooksLikeLabel": { ja: "screenLooksLikeを有効にする", en: "Enable screenLooksLike" },
   "panels.runProfile.iosSectionTitle": { ja: "iOS", en: "iOS" },
