@@ -77,6 +77,15 @@ public protocol ReplayDelegate: AnyObject {
     func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
                               screenshotPNG: Data) async
         -> (visible: Bool, state: String, reason: String, observedText: String)?
+
+    /// この後 `verifyElementVisible` を呼ぶと決まった時点で、モデルの積み込みだけ先に始める。
+    /// **呼ぶ場所はスクショ往復より前**(効くのは重ねられる作業の長さぶんだけ。実測:
+    /// リード 1000ms で −14% / 250ms で −8% / 直前(0ms)では ±0。performance-tuning.md §3.5.1)。
+    /// **同期・非 async**にしてあるのは、ここで中断点を作ると「重ねる」目的自体が消えるため。
+    /// 既定実装は何もしない。**プロトコル要件として宣言する**のが必須 —— extension だけに置くと
+    /// 存在型越しの呼び出しが静的ディスパッチで既定実装に落ち、実装が呼ばれないまま黙って
+    /// 素通りする(AppDriver で実際に踏んだ型。AppDriverDefaultDispatchTests 参照)
+    func prewarmVisibilityCheck()
 }
 
 public extension ReplayDelegate {
@@ -85,6 +94,8 @@ public extension ReplayDelegate {
         -> (visible: Bool, state: String, reason: String, observedText: String)? {
         nil
     }
+
+    func prewarmVisibilityCheck() {}
 }
 
 public struct StepResult: Sendable {

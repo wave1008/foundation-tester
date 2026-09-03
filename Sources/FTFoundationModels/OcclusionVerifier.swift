@@ -92,6 +92,24 @@ public struct OcclusionVerifier {
         environment["FT_FM_OCCLUSION_TWO_STAGE"] != "0"
     }
 
+    /// 暖機(`prewarmVisibilityCheck`)の殺しスイッチ。`FT_FM_OCCLUSION_PREWARM=0` で撃たない
+    static func prewarmEnabled(environment: [String: String]) -> Bool {
+        environment["FT_FM_OCCLUSION_PREWARM"] != "0"
+    }
+
+    /// occlusion 判定の instructions。**暖機したセッションと本番の呼び出しで同一の文字列**で
+    /// なければ意味がない(instructions が違えば prefill も別物)ので、ここ1箇所に置く
+    static let instructions = """
+    You visually verify UI tests. The image you receive is a crop around one UI element.
+    Your only job is to detect occlusion: whether the element is hidden behind another
+    element, an overlay, a loading indicator or a dimming layer. Follow these rules strictly:
+    - Text may be truncated with an ellipsis or wrapped onto multiple lines. Truncation and
+      wrapping are normal — return visible=true. Reading the beginning of the expected text is enough.
+    - Return visible=false ONLY when: (a) the area is covered by another opaque element/overlay,
+      (b) it is blank/black/solid-colour with no text at all, or (c) only unrelated text is drawn.
+    - Slight dimming is visible=true as long as the text is legible. Never fill gaps by guessing.
+    """
+
     // frame をクロップして判定
 
     public func verifyCropped(expectedText: String, frame: FTRect, screen: FTRect,
@@ -102,17 +120,7 @@ public struct OcclusionVerifier {
                                           cropPadding: cropPadding),
               let crop = full.cropping(to: clamped) else { return nil }
 
-        let instructions = """
-        You visually verify UI tests. The image you receive is a crop around one UI element.
-        Your only job is to detect occlusion: whether the element is hidden behind another
-        element, an overlay, a loading indicator or a dimming layer. Follow these rules strictly:
-        - Text may be truncated with an ellipsis or wrapped onto multiple lines. Truncation and
-          wrapping are normal — return visible=true. Reading the beginning of the expected text is enough.
-        - Return visible=false ONLY when: (a) the area is covered by another opaque element/overlay,
-          (b) it is blank/black/solid-colour with no text at all, or (c) only unrelated text is drawn.
-        - Slight dimming is visible=true as long as the text is legible. Never fill gaps by guessing.
-        """
-        return await respond(instructions: instructions, image: crop, expectedText: expectedText) {
+        return await respond(instructions: Self.instructions, image: crop, expectedText: expectedText) {
             "Expected text (may be truncated or wrapped at the end): \"\(expectedText)\"\nIs this text (or its beginning) drawn unoccluded and legible?"
         }
     }
@@ -138,7 +146,11 @@ public struct OcclusionVerifier {
         if Self.twoStageEnabled(environment: ProcessInfo.processInfo.environment) {
             let screeningStartedAt = Date()
             do {
-                let screening = try await LanguageModelSession(instructions: instructions).respond(
+                // 暖機済みがあれば使う(無ければその場で作る = 従来と同じ)。
+                // **取り出したら捨てる** —— respond を通したセッションは会話履歴を持つので使い回せない
+                let screeningSession = OcclusionPrewarm.take(matching: instructions)
+                    ?? LanguageModelSession(instructions: instructions)
+                let screening = try await screeningSession.respond(
                     generating: VisibilityScreening.self,
                     options: GenerationOptions(sampling: .greedy,
                                                maximumResponseTokens: Self.screeningResponseTokens)

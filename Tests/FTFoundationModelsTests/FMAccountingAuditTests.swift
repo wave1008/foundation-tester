@@ -28,6 +28,8 @@ final class FMAccountingAuditTests: XCTestCase {
             + " 測る対象を自分で消費して見せる)。ブレーカは probeOnce が直接養う",
         "ScenarioNamer.swift": "シナリオ作成時(explore/gen-scenario)。run の結果に紐づかない",
         "TestbaseDrafter.swift": "テストベース作成時。run の結果に紐づかない",
+        "OcclusionPrewarm.swift": "暖機(prewarm)だけで生成を伴わない。記録すると fm.calls と "
+            + "レートが実態より多く見え、ブレーカも「呼べている」と誤認する(FMLivenessProbe と同じ理由)",
     ]
 
     func testEveryRuntimeFMCallSiteRecordsToFMHealth() throws {
