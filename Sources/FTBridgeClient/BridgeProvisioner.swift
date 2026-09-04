@@ -382,12 +382,19 @@ public struct BridgeProvisioner {
         // 「凍結機はレーンから外して残りで走る」(BlankWorkerTriage)と同じ思想へ揃える。
         //
         // **全滅のときだけ throw する**(呼び出し側が run 全体の失敗として扱えるように)。
-        let resolved = try Self.resolveOutcomes(plans.compactMap { plan in
+        let collected = plans.compactMap { plan in
             outcomes[plan.index].map { (name: plan.name, result: $0) }
-        })
-        for failure in resolved.failures {
-            safeLog("❌ \(failure.name): \(failure.error.localizedDescription)")
         }
+        // **理由は resolve より前に、1台ずつ全部出す**。`FleetOutcome.resolve` は全滅のとき
+        // **最初の1件だけを throw** するので、ここで出しておかないと残りの理由が消える ——
+        // 2026-09-04 の調査で、8台が同時に落ちた回の記録が1ポートぶんしか無く、
+        // 「全機が同じ理由で死んだのか、別々の理由なのか」を後から言えなかった
+        for outcome in collected {
+            if case .failure(let error) = outcome.result {
+                safeLog("❌ \(outcome.name): \(error.localizedDescription)")
+            }
+        }
+        let resolved = try Self.resolveOutcomes(collected)
         if !resolved.failures.isEmpty {
             // 何台落ちたかを1行で残す(個々の理由は上で出ている)。台数が減ったことは
             // レーン稼働率にも出るので、run の遅さを供給失敗と取り違えないための手掛かり
