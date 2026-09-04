@@ -295,7 +295,15 @@ public enum BridgeAPI {
     /// on screen (measured 15/15 on iPhone SE3 / iOS 26.6 while `requireForegroundApp()` let the
     /// same reads through). A stale runner keeps answering `foreground: false`, so every
     /// `ft_snapshot` warns that correct refs are stale and `appIs` reads the same lie → bump.
-    public static let bridgeProtocolVersion = 87
+    ///
+    /// 88: the keep-awake pulse verifies itself instead of assuming `press(.home)` is invisible.
+    /// That assumption was measured on iOS 26.5.2; on **26.6 the same device's home press reaches
+    /// SpringBoard**, so every step that goes 25s without HID input had the app under test sent to
+    /// the home screen mid-scenario (measured 2026-09-05: foreground at 25s, background at 30s,
+    /// and foreground throughout with FT_KEEP_AWAKE=0). The runner now checks the first home pulse
+    /// against the session app and falls back to the volume pulse, bringing the app back. A stale
+    /// runner keeps backgrounding the app on such an OS → bump.
+    public static let bridgeProtocolVersion = 88
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///

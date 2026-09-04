@@ -30,8 +30,15 @@ enum KeepAwake {
     /// idle timer 申告の貼り直し間隔(秒)。前面/背面の遷移で落ちうるので1回では終わらせない
     private static let reassertIntervalSeconds: TimeInterval = 10
 
-    /// 撃つ玉。home = 不可視(この機種では press(.home) が「ok を返すが何も起きない」)/
-    /// volume = 確実な入力だが音量 HUD が出る。**どちらが起こせるかは実機でしか分からない**
+    /// 撃つ玉。home = 機種によっては不可視(press(.home) が「ok を返すが何も起きない」)/
+    /// volume = 確実な入力だが音量 HUD が出る。**どちらが無害かは実機でしか分からない**。
+    ///
+    /// **`home` が不可視という前提は版で腐る**: 2026-08-27 に iPhone SE3 / iOS 26.5.2 で
+    /// 「SpringBoard に届かない=副作用ゼロ」と実測したが、**同じ端末の iOS 26.6 では届き、
+    /// 対象アプリが背面へ落ちた**(2026-09-05 実測。無操作 25 秒で前面 → 30 秒で背面。
+    /// FT_KEEP_AWAKE=0 では 50 秒とも前面のまま = 陰性対照)。25 秒入力の無いステップ
+    /// (長い wait・遅いアサーション・FM 呼び出し)が実行中に背面へ落とされる。
+    /// **OS の版で分岐しない** —— 版を書くと次の版でまた腐る。`verifyPulseOnce` で**観測して決める**
     enum Pulse: String {
         case home
         case volume
@@ -41,9 +48,17 @@ enum KeepAwake {
     private static let pulse = Pulse(
         rawValue: ProcessInfo.processInfo.environment["FT_KEEP_AWAKE_PULSE"] ?? "") ?? .home
 
+    /// セッションのアプリを見る/戻すための口(BridgeRouter が差し込む)。
+    /// **玉が無害かを確かめるためだけ**に使う。nil = まだセッションが無い(判定は次回へ持ち越す)
+    nonisolated(unsafe) static var sessionApp: (() -> XCUIApplication?)?
+
     private static let lock = NSLock()
     private static var lastInput = Date()
     private static var lastAssert: Date?
+    /// 実際に撃つ玉。`pulse` を初期値に、無害でないと分かったら volume へ倒す
+    private static var effectivePulse: Pulse = pulse
+    /// 玉の無害さを確かめ終えたか(1ランナーにつき1回)
+    private static var pulseChecked = false
 
     /// **メインスレッドから呼ぶこと**(UIApplication)。ブリッジのテストメソッドは main で回る
     static func start() {
@@ -98,6 +113,16 @@ enum KeepAwake {
         #if targetEnvironment(simulator)
         return
         #else
+        // **撃つ前の前面/背面を控える**: もともと背面だった(シナリオが home を送った等)回を
+        // 「玉のせいで落ちた」と読むと、無害な home を誤って volume へ倒す
+        let wasForeground = sessionApp?()?.state == .runningForeground
+        fire(effectivePulse)
+        verifyPulseOnce(wasForeground: wasForeground)
+        #endif
+    }
+
+    private static func fire(_ pulse: Pulse) {
+        #if !targetEnvironment(simulator)
         switch pulse {
         case .home:
             XCUIDevice.shared.press(.home)
@@ -106,6 +131,25 @@ enum KeepAwake {
             XCUIDevice.shared.press(.volumeUp)
             XCUIDevice.shared.press(.volumeDown)
         }
+        #endif
+    }
+
+    /// **最初の home パルスの結果だけ確かめる**。届かない機種ではこのまま不可視の玉を使い続け、
+    /// 届く機種では volume へ倒して**自分で落とした分を戻す**。
+    /// セッションが無い間は判定を持ち越す(確かめようがない回で結論を出さない)
+    private static func verifyPulseOnce(wasForeground: Bool) {
+        #if !targetEnvironment(simulator)
+        guard effectivePulse == .home, !pulseChecked, wasForeground,
+              let app = sessionApp?() else { return }
+        // 遷移のアニメーションを跨ぐ。tick は main の RunLoop から呼ばれるので、
+        // ここで回すのは同じループ。**1ランナーにつき1回だけ**払う
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
+        pulseChecked = true
+        guard app.state != .runningForeground else { return }
+        effectivePulse = .volume
+        app.activate()
+        NSLog("[fleetest] keep-awake: press(.home) sent the app under test to the background on"
+              + " this device — switching the pulse to volume and bringing the app back")
         #endif
     }
 }

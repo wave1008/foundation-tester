@@ -19,6 +19,12 @@ struct BridgeError: Error {
 
 final class BridgeRouter {
 
+    init() {
+        // keep-awake が「撃った玉が対象アプリを背面へ落としていないか」を確かめるための口。
+        // ここでしか渡せない(KeepAwake は常駐ループ側で、セッションはこちらが持つ)
+        KeepAwake.sessionApp = { [weak self] in self?.app }
+    }
+
     // 現在のセッション状態。直近スナップショットの ref→frame 対応表を保持し、
     // tap/press は座標タップとして解決する(要素クエリ再構築より頑健)。
     private var app: XCUIApplication?
