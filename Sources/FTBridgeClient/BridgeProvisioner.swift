@@ -644,6 +644,27 @@ public struct BridgeProvisioner {
             log("→ \(name): taking over the starting \(engine) bridge (port \(port), \(sim.name))...")
             let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
                                           physical: sim.physical)
+            // 起動した側(前回の executeBridge、あるいは別プロセス)は自分の budget を待ち切った
+            // 時点で諦めている。budget 以上生きているのに announce していないランナーは、これ以上
+            // 待っても announce しない孤児なので、待たずに止めて建て直す
+            func stopAndRelaunch() async throws -> UInt16 {
+                try? await launcher.stopAndWait()
+                return try await executeBridge(
+                    engine: engine,
+                    plan: .launch(port: port, needsInstall: false,
+                                  stopStalePort: nil, reclaimInApp: false),
+                    name: name, sim: sim, bundleID: bundleID,
+                    preinstallAppPath: preinstallAppPath, claimed: claimed, log: log)
+            }
+            let elapsed = launcher.runnerElapsed()
+            // .restart は elapsed != nil のときしか返らない(decide 参照)ので force unwrap は安全
+            if StartingRunnerVerdict.decide(elapsed: elapsed, budget: BridgeLauncher.startupTimeoutSeconds) == .restart {
+                log("⚠️ \(name): the starting bridge on port \(port) has been alive for \(Int(elapsed!))s "
+                    + "without answering — longer than the startup budget "
+                    + "(\(Int(BridgeLauncher.startupTimeoutSeconds))s), so the process that launched it has "
+                    + "already given up; stopping and restarting it")
+                return try await stopAndRelaunch()
+            }
             do {
                 try await launcher.waitUntilReady(host: BridgeEndpoint(port: port).host,
                                                   log: { log("\(name): \($0)") })
@@ -653,13 +674,7 @@ public struct BridgeProvisioner {
                 // 親を失ったゾンビ(再起動・kill で announce しないまま残ったランナー)。
                 // 放置すると同じデバイスで何度でも待たされるので、止めてから同じポートで立て直す
                 log("⚠️ \(name): the starting bridge (port \(port)) is not responding — stopping and restarting it")
-                try? await launcher.stopAndWait()
-                return try await executeBridge(
-                    engine: engine,
-                    plan: .launch(port: port, needsInstall: false,
-                                  stopStalePort: nil, reclaimInApp: false),
-                    name: name, sim: sim, bundleID: bundleID,
-                    preinstallAppPath: preinstallAppPath, claimed: claimed, log: log)
+                return try await stopAndRelaunch()
             }
         case .launch(let port, let needsInstall, let stopStalePort, let reclaimInApp):
             let stateDir = repoRoot.appendingPathComponent(".fleetest")

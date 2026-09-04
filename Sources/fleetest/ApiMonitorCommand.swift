@@ -1153,13 +1153,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             guard let port = state.iosPort else {
                 // ブリッジを持たないシミュレータ(呼び出し側が simctlCapturePick で1台だけ選ぶ)
                 guard let udid = state.iosUdid, !state.target.spec.isPhysical else {
-                    throw MonitorError.noConnection
+                    throw MonitorError.noEndpoint
                 }
                 return try Self.simctlScreenshot(udid: udid)
             }
             return try await BridgeClient(port: port, timeoutSeconds: 5).screenshot()
         }
-        guard let serial = state.androidSerial else { throw MonitorError.noConnection }
+        guard let serial = state.androidSerial else { throw MonitorError.noEndpoint }
         return try await AndroidDriver(serial: serial).screenshot()
     }
 
@@ -1171,7 +1171,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         defer { try? FileManager.default.removeItem(atPath: path) }
         guard let result = try? Shell.run(["xcrun", "simctl", "io", udid, "screenshot", path],
                                           timeout: 15), result.status == 0 else {
-            throw MonitorError.noConnection
+            throw MonitorError.simctlScreenshotFailed(udid: udid)
         }
         return try Data(contentsOf: URL(fileURLWithPath: path))
     }
@@ -1505,10 +1505,20 @@ private final class MonitorControl: @unchecked Sendable {
 }
 
 private enum MonitorError: Error, LocalizedError {
-    case noConnection
+    /// ブリッジのポートも撮れる udid/serial も無い(ブリッジ無しの実機・serial 未解決)
+    case noEndpoint
+    /// `simctl io screenshot` が失敗した、または 15 秒で切った(run に使われて混んでいる形が典型)
+    case simctlScreenshotFailed(udid: String)
 
     var errorDescription: String? {
-        "no connection info (internal error)"
+        switch self {
+        case .noEndpoint:
+            return "no bridge port and no capturable device id"
+                + " (a physical device without a bridge, or an unresolved Android serial)"
+        case .simctlScreenshotFailed(let udid):
+            return "`simctl io screenshot` failed or did not return within 15 s (\(udid))."
+                + " The simulator is busy — a test run is probably driving it"
+        }
     }
 }
 

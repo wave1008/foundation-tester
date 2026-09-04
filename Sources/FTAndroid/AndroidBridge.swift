@@ -182,6 +182,15 @@ extension AndroidDriver {
             return client
         }
 
+        // sys.boot_completed は起動直後でも既に 1 なのでゲートに使えない(ProfileWorkerFactory の
+        // waitForDurableBridge を参照)。代わりに animations 段がどのみち打つ get を1本先出しし、
+        // guest の system_server がまだ無い印(スタックトレース)が乗っていれば早期に名指しする
+        if let probe = try? adb(["shell", "settings", "get", "global", "window_animation_scale"]),
+           let marker = AndroidGuestReadiness.systemServerStartingMarker(in: probe.output) {
+            throw DriverError.bridgeUnreachable(
+                AndroidGuestReadiness.stillStartingMessage(marker: marker, serial: serial ?? "?"))
+        }
+
         noticePersistentSettingsOnPhysicalDevice()
         disableAnimations()
         disableStylusHandwriting()
@@ -430,6 +439,12 @@ extension AndroidDriver {
                                                     expected: Self.expectedBridgeVersionCode,
                                                     serial: serial) {
                 throw DriverError.badResponse(status: Int(result.status), body: refusal)
+            }
+            // probe と install の間に system_server が落ちたレース(まれ)。同じ印なら
+            // 30行のスタックトレースでなく理由を名指しする
+            if let marker = AndroidGuestReadiness.systemServerStartingMarker(in: result.output) {
+                throw DriverError.bridgeUnreachable(
+                    AndroidGuestReadiness.stillStartingMessage(marker: marker, serial: serial ?? "?"))
             }
             throw DriverError.badResponse(status: Int(result.status),
                 body: "failed to install the bridge APK: \(result.tail)")

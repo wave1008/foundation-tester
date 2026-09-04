@@ -462,6 +462,17 @@ public struct BridgeLauncher {
         try? FileManager.default.removeItem(at: pidPath)
     }
 
+    /// pid ファイルが指すプロセスの経過時間(秒)。pid ファイルが無い/プロセスが既に居ない/
+    /// ps が読めないときは nil(unknown。呼び手は「待つ」側に倒す)。単一 pid の照会なので
+    /// portsMatching の「ps は1回だけ」規律(複数 pid をまとめて引く)は適用されない
+    public func runnerElapsed() -> TimeInterval? {
+        guard let pidString = try? String(contentsOf: pidPath, encoding: .utf8),
+              let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let ps = try? Shell.run(["ps", "-p", String(pid), "-o", "etime="]),
+              ps.status == 0 else { return nil }
+        return PSElapsedTime.parse(ps.output)
+    }
+
     /// 指定 UDID を対象にするブリッジのポート一覧(停止しない読み取り専用)。
     /// **実機のブリッジ帰属判定はこれで行う**: /status の device 名は実機だと機種名("iPhone")で
     /// マシンプロファイルのデバイス名と一致しないため、名前照合では永久に紐付かない。
