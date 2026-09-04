@@ -26,13 +26,42 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 HEAD_SHA="$(git rev-parse HEAD)"
-echo "==> push (HEAD=${HEAD_SHA:0:9})"
-git push origin HEAD
 
 MACHINES=$("$FLEETEST" api remote-hosts | python3 -c '
 import json,sys
 print("\n".join(h["machine"] for h in json.load(sys.stdin).get("hosts", []) if h.get("machine")))')
 [ -n "$MACHINES" ] || { echo "❌ 登録簿にリモート機が無い(fleetest remote setup)" >&2; exit 1; }
+
+HOST_ARGS=""
+for m in $MACHINES; do HOST_ARGS="$HOST_ARGS --host $m"; done
+
+# **押し込む前に、向こうが空いているかを見る**(dispatch.lock)。`remote align` 自身も
+# ロックを取るので run を壊すことは無いが、**握られていれば align 段で1機ずつ ❌ になる**だけで、
+# 「向こうで誰かの run が走っている」という肝心の事実が失敗文の中に埋もれる。
+# **押す前に、理由を名指しして何もせずに落ちる**(2026-09-04 ユーザー指摘)
+echo "==> preflight (ロック・到達性)"
+PRE=$("$FLEETEST" remote status $HOST_ARGS --json 2>/dev/null | grep '^{' || true)
+BUSY=$(python3 - "$PRE" <<'PYEOF'
+import json, sys
+raw = sys.argv[1]
+if not raw:
+    sys.exit(0)          # 読めないときは止めない(align 自身のロックが最後の砦)
+for h in json.loads(raw).get("hosts", []):
+    if not h.get("reachable", True):
+        print(f"{h.get('host')}: 到達できない")
+    elif h.get("lock", "free") != "free":
+        print(f"{h.get('host')}: dispatch.lock が握られている({h.get('lock')})")
+PYEOF
+)
+if [ -n "$BUSY" ]; then
+  echo "❌ 揃えられない機がある。push もしていない:" >&2
+  echo "$BUSY" | sed 's/^/   /' >&2
+  echo "   (走っている run が終わるのを待つ。自分の死んだロックなら fleetest remote unlock)" >&2
+  exit 1
+fi
+
+echo "==> push (HEAD=${HEAD_SHA:0:9})"
+git push origin HEAD
 
 LOGDIR="$(mktemp -d)"
 trap 'rm -rf "$LOGDIR"' EXIT
@@ -56,8 +85,6 @@ for m in $MACHINES; do
 done
 
 # **align の成功報告だけで終わらせない**: 版が揃ったことは REV で確かめる
-HOST_ARGS=""
-for m in $MACHINES; do HOST_ARGS="$HOST_ARGS --host $m"; done
 echo "==> verify"
 STATUS=$("$FLEETEST" remote status $HOST_ARGS 2>&1)
 echo "$STATUS"
