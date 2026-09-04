@@ -282,11 +282,6 @@ public struct BridgeLauncher {
             if ProcessInfo.processInfo.environment["FT_BRIDGE_TIMING"] == "1" {
                 env["FT_BRIDGE_TIMING"] = "1"
             }
-            // 実機の自動ロック抑止の殺しスイッチ(既定 on)。同期相手:
-            // Runner/FleetestRunnerUITests/KeepAwake.swift
-            for key in KeepAwakePolicy.forwardedEnvKeys {
-                if let value = ProcessInfo.processInfo.environment[key] { env[key] = value }
-            }
             target["EnvironmentVariables"] = env
         }
 

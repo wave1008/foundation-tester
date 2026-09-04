@@ -294,9 +294,6 @@ export type MonitorToWebviewMessage =
   // setPollingMode 受信直後(monitorPanel.ts)の両方で送る。webview 側は settingsTab.js の
   // applySettings へそのまま渡す(setPollingMode と対の契約)。
   | { readonly type: "pollingMode"; readonly value: boolean }
-  // 実機の自動ロック抑止(設定タブ「実機」)。sendInitialState と setKeepPhysicalDevicesAwake
-  // 受信直後の両方で送る(setKeepPhysicalDevicesAwake と対の契約)。
-  | { readonly type: "keepPhysicalDevicesAwake"; readonly value: boolean }
   // 設定タブのスケジューリング section。fleetest.lptScheduling の現在値(拡張→webview)
   | { readonly type: "lptScheduling"; readonly value: boolean }
   // LPT の実績走査 run 数。default は設定タブの初期値・空欄時の戻り先に使う
@@ -646,9 +643,6 @@ export type MonitorFromWebviewMessage =
   // workspaceState へ永続化し、対の "pollingMode" メッセージで即時反映する(livePanel.ts は
   // workspaceState を直接読むため、この即時反映の対象はデバイスタイルのみ)。
   | { readonly type: "setPollingMode"; readonly value: boolean }
-  // fleetest.suppressPhysicalDeviceAutoLock 設定を更新する。効くのは**次に起動する
-  // fleetest プロセスから**(spawnEnv.ts が FT_KEEP_AWAKE=0 を渡す)。
-  | { readonly type: "setKeepPhysicalDevicesAwake"; readonly value: boolean }
   // 設定タブの表示言語セレクタ変更(settingsTab.js)。monitorPanel.ts が fleetest.language 設定(Global)を
   // 更新する。反映は extension.ts の onDidChangeConfiguration ハンドラ(ツリー再翻訳 + 再読み込み案内)。
   | { readonly type: "setLanguage"; readonly value: "auto" | "ja" | "en" }

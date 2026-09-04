@@ -19,12 +19,6 @@ struct BridgeError: Error {
 
 final class BridgeRouter {
 
-    init() {
-        // keep-awake が「撃った玉が対象アプリを背面へ落としていないか」を確かめるための口。
-        // ここでしか渡せない(KeepAwake は常駐ループ側で、セッションはこちらが持つ)
-        KeepAwake.sessionApp = { [weak self] in self?.app }
-    }
-
     // 現在のセッション状態。直近スナップショットの ref→frame 対応表を保持し、
     // tap/press は座標タップとして解決する(要素クエリ再構築より頑健)。
     private var app: XCUIApplication?
@@ -70,23 +64,6 @@ final class BridgeRouter {
     // 収まらないことがあり、ホストの performGesture が末尾で必ず整定を待つ(二重に待たない)。
     private static let mutatingPaths: Set<String> = ["/session", "/systemui/tap", "/tap", "/type", "/clear", "/pressEnter", "/hidekeyboard", "/press", "/appswitcher", "/home"]
 
-    /// **HID を伴う**(= 端末の自動ロックのタイマーを戻す)エンドポイント。KeepAwake の
-    /// 「最後の入力からの経過」の基準で、木の読み・状態問い合わせは入れない(ポーリング中も
-    /// 端末は寝るため、入れると起こす玉が一生撃たれない)。
-    /// **操作エンドポイントを足したらここにも足す**(KeepAwakeInputPathsTests が
-    /// POST ルートの取りこぼしを検出する)。入力ではない POST は nonInputPaths に載せる
-    private static let inputPaths: Set<String> = ["/tap", "/systemui/tap", "/type",
-        "/clear", "/pressEnter", "/swipe", "/drag", "/systemui/drag",
-        "/systemui/swipe", "/doubletap", "/pinch", "/press", "/appswitcher", "/home"]
-
-    /// 入力を伴わない POST。inputPaths との和が POST ルートの全部になる。
-    /// **タッチを合成しないものはここへ倒す**(`/session`=launch/activate・`/rotate`=向きの代入・
-    /// `/hidekeyboard`=iOS では 501・問い合わせ・終了)。入力でないものを input に数えると、
-    /// **端末側の 30 秒タイマーは進んだままこちらの 25 秒だけ延びる**ので余白を失う。
-    /// 逆向きの誤りは無害(余分に1発撃つだけ=不可視の press(.home))
-    private static let nonInputPaths: Set<String> = ["/session", "/rotate", "/hidekeyboard",
-                                                     "/terminate", "/appstate"]
-
     /// 所要内訳ログの on/off(既定 off)。ホストの FT_BRIDGE_TIMING=1 を BridgeLauncher が
     /// xctestrun の環境変数へ注入する(同期相手: Sources/FTBridgeClient/BridgeLauncher.swift)
     private static let timingEnabled =
@@ -96,10 +73,6 @@ final class BridgeRouter {
     private static let timingAlwaysLogMs: Double = 1500
 
     func handle(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
-        // 端末を起こし続けるための計時(KeepAwake)。**defer に頼らない** ——
-        // NSException で巻き戻ると走らない(dispatchToMain の FTCatchObjCException が握る)
-        let isInput = Self.inputPaths.contains(request.path)
-        if isInput { KeepAwake.noteUserInput() }
         do {
             let response: BridgeHTTPServer.Response
             switch (request.method, request.path) {

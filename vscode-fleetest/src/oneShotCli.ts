@@ -6,7 +6,6 @@ import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import type * as vscode from "vscode";
 import { t } from "./i18n";
-import { fleetestSpawnEnv } from "./spawnEnv";
 
 /** stdin=ignore, stdout/stderr=pipe で spawn したプロセスの型(cli.ts/monitorPanel.ts と同じ形。
  * list-devices のワンショット spawn 専用)。 */
@@ -34,7 +33,7 @@ export function runOneShot(
     let proc: PipeProcess;
     try {
       proc = spawn(binaryPath, args, {
-        cwd, shell: false, env: fleetestSpawnEnv(),
+        cwd, shell: false,
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {

@@ -33,7 +33,6 @@ import {
 } from "./runReducer";
 import { DELETED_TAG, DRAFT_TAG, type FleetestTestTree } from "./testTree";
 import type { ScenarioFileWatcher } from "./watcher";
-import { fleetestSpawnEnv } from "./spawnEnv";
 
 // lastResultsSync.ts の isGuiRunActive が参照する(GUI 実行中はツリーへの反映を譲る)。
 let activeRunCount = 0;
@@ -398,7 +397,6 @@ function runRemoteAlign(
       proc = spawn(binaryPath, ["remote", "align", hostName], {
         cwd: workspaceRoot,
         shell: false,
-        env: fleetestSpawnEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {

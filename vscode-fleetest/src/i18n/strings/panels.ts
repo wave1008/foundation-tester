@@ -238,20 +238,6 @@ export const panelsStrings = {
     ja: "デバイス画面のストリーミングが不安定なときの回避用です。",
     en: "A workaround for when device screen streaming is unstable.",
   },
-  // 実機セクション。実体は fleetest.suppressPhysicalDeviceAutoLock 設定(config.ts)で、
-  // off のときだけ拡張が起動する fleetest へ FT_KEEP_AWAKE=0 を渡す(spawnEnv.ts)。
-  // 効かせ方の定義元は Sources/FTCore/KeepAwakePolicy.swift
-  "panels.settings.physicalSectionTitle": { ja: "実機", en: "Physical devices" },
-  "panels.settings.keepAwakeLabel": {
-    ja: "実機画面の自動ロックを抑制する",
-    en: "Keep physical device screens from auto-locking",
-  },
-  // 詳細(効き方・切ったときの影響)は設定エディタ側の説明(package.nls*.json)に置く。
-  // ここはタブ内の1行ヒント
-  "panels.settings.keepAwakeHint": {
-    ja: "テスト中に実機が寝ないようにします。",
-    en: "Keeps physical devices awake during a run.",
-  },
   // 設定タブ「更新」セクション(静的ラベル)。動的な状態表示は webviewMonitorB.ts の wvMonitor2.update.*
   "panels.settings.updateLabel": { ja: "更新", en: "Updates" },
   "panels.settings.updateChecking": { ja: "確認しています…", en: "Checking..." },

@@ -244,16 +244,19 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   provision の reclaim 側)。自主終了はホスト側の pid ファイルを消せないため、provision が
   採番前に死んだランナーの pid ファイルを回収する(`BridgeLauncher.sweepStalePidFiles`。
   残すと `assignPort` が使用中とみなし採番がドリフトする)。
-- **実機を起こし続ける(2026-08-27)**: 実機は run の待ちの最中に自動ロックされ、以後の launch が
-  `denied by SBMainWorkspace ... reason: Locked` で拒否されて run ごと死ぬ。ホストから端末の
-  自動ロック設定を書き換える手段は無い(`devicectl device settings` は appearance/audio/
-  biometrics/voiceover だけ)ため、**ランナー自身が最後の HID 要求から 25 秒で
-  `XCUIDevice.press(.home)` を 1 発撃つ**(`KeepAwake.swift`。自動ロックの最短が 30 秒)。
-  実機の `press(.home)` は SpringBoard に届かない = 入力としてだけ数えられる副作用の無い玉で、
-  シミュレータでは撃たない(自動ロックが無い)。**`isIdleTimerDisabled` では止まらない**
-  (背面のランナーの申告は効かない。実測は docs/verification.md)。数える基準は
-  **入力(`BridgeRouter.inputPaths`)からの経過**であってブリッジのアイドル時間ではない
-  —— 待ちの最中もホストは木を読み続けるので、アイドルで計ると一生撃たれない。
+- **実機の自動ロックは端末側で切る(2026-09-05 ユーザー決定)**。実機は run の待ちの最中に
+  自動ロックされ、以後の launch が `denied by SBMainWorkspace ... reason: Locked` で拒否されて
+  run ごと死ぬ。**ツールは起こさない** —— **設定 → 画面表示と明るさ → 自動ロック → なし**に
+  しておくのが実機を使う前提。
+  **かつてはランナーが 25 秒ごとに `press(.home)` を撃っていた(版 81〜88)が、廃止した**:
+  合成した入力は実機では本物の HID で、無害だという前提が OS の版で反転する
+  (iOS 26.5.2 では SpringBoard に届かず、26.6 では届いて**対象アプリが run の途中で
+  ホーム画面へ落ちた**)。端末の画面設定は端末の持ち主が決めるものなので、ツールが
+  入力を合成して覆すのをやめた。
+  ホストから自動ロック設定を書き換える手段は無い(`devicectl device settings` は
+  appearance/audio/biometrics/voiceover だけ)ので、**設定するのは人**。
+  ロックされたまま起動しようとした場合は `IOSPhysicalDeviceLock` と
+  `IOSDeviceTransport.blockingCondition` が名指しで止める。
   処理中(`inFlight > 0`)は撃たない(accept スレッドと XCUITest を同時に叩かないため)
 - **容器推定は scrollable 申告の祖先を優先する(2026-08-23)**: `StepExecutor.clippingContainer` は
   「同じ深さの子を2つ以上持つ直近の祖先」を容器とみなす規則(Compose iOS は xcuitest で scrollable を

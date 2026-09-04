@@ -62,7 +62,6 @@ import {
 import { diffRemoteHostsForSync, mergeRemoteHostsSideFields, type RemoteHostEntry } from "./remoteRunArgs";
 import { TYPE_ORDER, parseAndroidBridges, parseResidentProcesses, type ResidentProcess } from "./residentProcesses";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
-import { fleetestSpawnEnv } from "./spawnEnv";
 import {
   createRunLaneState,
   forceEndRunLaneState,
@@ -731,14 +730,6 @@ export class MonitorPanelController implements vscode.Disposable {
         // (livePanel.ts)は独立プロセスのため、こちらは次のデバイス選択/表示状態変化で追いつく。
         this.deviceStream.reapply();
         break;
-      case "setKeepPhysicalDevicesAwake":
-        // 効くのは**次に起動する fleetest プロセスから**(spawnEnv.ts が FT_KEEP_AWAKE=0 を渡す)。
-        // 実行中の run と、既に立っているブリッジはそのまま —— iOS は常駐ランナーが起動時に
-        // 環境変数を読むため、建て直すまで変わらない
-        void vscode.workspace
-          .getConfiguration("fleetest")
-          .update("suppressPhysicalDeviceAutoLock", message.value, vscode.ConfigurationTarget.Global);
-        return;
       case "setLptHistoryRuns":
         // null = 入力欄が空・不正値 → 設定を消して既定へ戻す(webview 側は入力欄に既定値を入れ直す)
         void vscode.workspace
@@ -841,12 +832,6 @@ export class MonitorPanelController implements vscode.Disposable {
     // webview 再読込でホストグラフの行(手元 + リモート機)が消えるので配り直す
     this.processManager.postHostMetricsMachines();
     this.post({ type: "pollingMode", value: this.pollingMode });
-    this.post({
-      type: "keepPhysicalDevicesAwake",
-      value: vscode.workspace
-        .getConfiguration("fleetest")
-        .get<boolean>("suppressPhysicalDeviceAutoLock", true),
-    });
     this.post({
       type: "lptScheduling",
       value: vscode.workspace.getConfiguration("fleetest").get<boolean>("lptScheduling", true),
@@ -1040,7 +1025,6 @@ export class MonitorPanelController implements vscode.Disposable {
         proc = spawn(this.getConfig().binaryPath, args, {
           cwd: this.workspaceRoot,
           shell: false,
-          env: fleetestSpawnEnv(),
           stdio: ["ignore", "pipe", "pipe"],
         });
       } catch (e) {

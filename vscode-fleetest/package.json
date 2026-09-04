@@ -2,7 +2,7 @@
   "name": "vscode-fleetest",
   "displayName": "fleetest mobile",
   "description": "%fleetest.extension.description%",
-  "version": "0.0.788",
+  "version": "0.0.789",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -142,11 +142,6 @@
           "type": "boolean",
           "default": true,
           "description": "%fleetest.config.liveControlOnRun.description%"
-        },
-        "fleetest.suppressPhysicalDeviceAutoLock": {
-          "type": "boolean",
-          "default": true,
-          "description": "%fleetest.config.suppressPhysicalDeviceAutoLock.description%"
         },
         "fleetest.autoRepairBridge": {
           "type": "boolean",

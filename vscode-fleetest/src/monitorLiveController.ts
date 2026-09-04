@@ -73,7 +73,6 @@ import type { LiveRunTarget } from "./liveRunTarget";
 import type { StepEvent } from "./model";
 import { NdjsonParser } from "./ndjson";
 import { type OneShotResult, type PipeProcess, runOneShot } from "./oneShotCli";
-import { fleetestSpawnEnv } from "./spawnEnv";
 
 /**
  * serve プロセス用: stdin もパイプで保持する(monitorProcessManager.ts の MonitorProcess/host-metrics
@@ -699,7 +698,6 @@ export class MonitorLiveController implements vscode.Disposable {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
-        env: fleetestSpawnEnv(),
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (error) {

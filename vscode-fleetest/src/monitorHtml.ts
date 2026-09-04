@@ -778,14 +778,6 @@ function renderSettingsPanel(): string {
         <label class="settings-item"><input type="checkbox" id="settings-polling-mode"> ${t("panels.settings.pollingModeLabel")}</label>
         <div class="settings-hint">${t("panels.settings.pollingModeHint")}</div>
       </div>
-      <!-- 実機だけに効く設定。対向: settingsTab.js の applySettings / setKeepPhysicalDevicesAwake、
-           拡張側は monitorPanel.ts(fleetest.suppressPhysicalDeviceAutoLock 設定を更新する)。
-           シミュレータ・エミュレータには効かない(自動ロックが無い/エミュレータは対象外)。 -->
-      <div class="settings-group">
-        <div class="settings-section-title">${t("panels.settings.physicalSectionTitle")}</div>
-        <label class="settings-item"><input type="checkbox" id="settings-keep-awake"> ${t("panels.settings.keepAwakeLabel")}</label>
-        <div class="settings-hint">${t("panels.settings.keepAwakeHint")}</div>
-      </div>
       <!-- 実体は CLI のホスト登録簿("fleetest api remote-hosts")+ fleetest.remote.artifacts 設定
            (config.ts)。ここはもう1つの操作口(docs/remote-runner.md §12)。ホスト一覧
            (#settings-remote-hosts-body)は行数が可変のため settingsTab.js が動的に組み立てる。

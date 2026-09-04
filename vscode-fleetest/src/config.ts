@@ -35,9 +35,6 @@ export interface FleetestConfig {
    * 手で押し直す運用になる(docs/remote-runner.md §18.2 M2)。`fleetest api run --wait-lock` へ渡す。
    * **奪う口(--force-lock)は GUI に出さない** —— 走っている他人の run を殺せる導線を作らない。 */
   remoteWaitLock: number;
-  /** 実機の自動ロックを run 中だけ抑えるか(既定 true)。false のとき拡張が起動する fleetest に
-   * `FT_KEEP_AWAKE=0` を渡す(spawnEnv.ts)。効かせ方は Sources/FTCore/KeepAwakePolicy.swift。 */
-  suppressPhysicalDeviceAutoLock: boolean;
   /** デバイスモニターの更新間隔(秒)。0.5 未満は 0.5 に切り上げる(`fleetest api monitor --interval`)。 */
   monitorInterval: number;
   /** モニターのフレーム画像の長辺px(240〜1600にクランプ。`fleetest api monitor --max-width`)。 */
@@ -117,7 +114,6 @@ export function readConfig(workspaceRoot: string): FleetestConfig {
     lptScheduling: configuration.get<boolean>("lptScheduling", true),
     lptHistoryRuns: Math.max(1, Math.floor(configuration.get<number>("lptHistoryRuns", 5))),
     remoteWaitLock: Math.max(0, Math.floor(configuration.get<number>("remoteWaitLock", 0))),
-    suppressPhysicalDeviceAutoLock: configuration.get<boolean>("suppressPhysicalDeviceAutoLock", true),
     monitorInterval: Math.max(0.5, configuration.get<number>("monitorInterval", 2)),
     monitorMaxWidth: Math.min(1600, Math.max(240, configuration.get<number>("monitorMaxWidth", 960))),
     monitorDeviceFilter: configuration.get<string>("monitorDeviceFilter", "all") === "running" ? "running" : "all",

@@ -303,7 +303,14 @@ public enum BridgeAPI {
     /// and foreground throughout with FT_KEEP_AWAKE=0). The runner now checks the first home pulse
     /// against the session app and falls back to the volume pulse, bringing the app back. A stale
     /// runner keeps backgrounding the app on such an OS → bump.
-    public static let bridgeProtocolVersion = 88
+    ///
+    /// 89: keep-awake is **gone** (user decision 2026-09-05). The runner no longer fires a pulse,
+    /// no longer classifies routes as input vs non-input, and no longer reads FT_KEEP_AWAKE\*.
+    /// Keeping a physical device awake is the device owner's setting (Settings → Display &
+    /// Brightness → Auto-Lock → Never), not something the tool synthesises input for: every pulse
+    /// was a real HID event on a real device, and getting it wrong put the app under test on the
+    /// home screen mid-scenario (see 88). A stale runner keeps pulsing → bump.
+    public static let bridgeProtocolVersion = 89
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///

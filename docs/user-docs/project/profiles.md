@@ -55,6 +55,12 @@ this machine can use, under `ios` and `android`:
                               "serial": "14141JEC204922" } ] } }
 ```
 
+- **Turn auto-lock off on physical devices.** On iOS: Settings → Display & Brightness →
+  Auto-Lock → **Never**. On Android: Settings → Display → Screen timeout, set it long enough.
+  **The tool does not keep the screen awake** — if the screen sleeps during a step that waits,
+  the OS refuses every later app launch and the run stops. Starting against a locked device is
+  refused by name (unlocking it automatically is impossible: the only thing that can send input
+  to the device is the runner on that device, and it is not running yet).
 - A device's `host` can name a registered remote machine, so the run is dispatched to it over
   SSH instead of running locally (see [remote_runners.md](../in_action/remote_runners.md)).
   Leaving `host` unset means "this machine".
