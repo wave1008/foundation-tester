@@ -35,6 +35,14 @@ final class TreeCoverageTests: XCTestCase {
     /// 同上。`NoteCoverageTests` の missingPageContentNote の baseline と一致
     private let expectedMissingContentFixtures: Set<String> = ["and-browser_jma_notree"]
 
+    /// **モーダルが木を置き換えた形**(ネイティブも含む)。2026-09-04 に3枚とも中身を検分した:
+    /// `and-dialog_confirm` は「強制停止しますか?」の6要素だけ(背後の設定画面が無い)、
+    /// `and-overflow` は地図のメニュー項目だけ、`and-browser_jma_notree` はブラウザ chrome だけ。
+    /// **どれも真陽性**
+    private let expectedCollapsedFixtures: Set<String> = [
+        "and-browser_jma_notree", "and-overflow", "and-dialog_confirm",
+    ]
+
     func testGapFiresOnExactlyTheKnownBrowserScreens() throws {
         let fired = Set(try corpus().filter { TreeCoverage.gap(in: $0.snapshot) != nil }.map(\.name))
         XCTAssertEqual(fired, expectedGapFixtures,
@@ -52,18 +60,39 @@ final class TreeCoverageTests: XCTestCase {
     /// **接頭辞はブラウザなら何でもよい**(2026-08-15 に `ios-browser_j1_standings` が加わり、
     /// `and-browser` 限定では真陽性まで弾いてしまうようになった)——見ているのは「ネイティブ画面が
     /// 疑われないこと」であって「Android の Chrome だけが疑われること」ではない
-    func testNoNativeScreenIsSuspected() throws {
-        let suspected = try corpus()
+    func testOnlyTheKnownScreensAreSuspected() throws {
+        let suspected = Set(try corpus()
             .filter { TreeCoverage.underreports($0.snapshot) }
-            .map(\.name)
-        XCTAssertTrue(suspected.allSatisfy { $0.contains("browser") },
-                      "ブラウザ以外の画面が疑われた: \(suspected)")
+            .map(\.name))
+        XCTAssertEqual(suspected,
+                       expectedGapFixtures.union(expectedMissingContentFixtures)
+                           .union(expectedCollapsedFixtures),
+                       "疑われる画面の集合が変わった。増分を1件ずつ検分すること")
     }
 
-    /// 2つの原因の**和**であること(片方だけ配線した変異を殺す)
-    func testUnderreportsIsTheUnionOfBothCauses() throws {
+    /// **モーダル形の発火集合を等号で固定する**(ネイティブを含む)
+    func testCollapsedTreeFiresOnExactlyTheKnownScreens() throws {
+        let fired = Set(try corpus().filter { TreeCoverage.collapsedTree(in: $0.snapshot) }.map(\.name))
+        XCTAssertEqual(fired, expectedCollapsedFixtures)
+    }
+
+    /// **陰性対照(閾値の要)**: ソフトキーボードで空いた帯を「木が落ちている」と読まない。
+    /// `and-form_keyboard` は素の未代表率 0.364 で閾値 0.35 を超えるが、空き帯の正体は
+    /// キーボードなので、除いて測れば圏外に落ちる。ここが破れると入力中の画面が全部疑われる
+    func testAKeyboardBandIsNotCountedAsAMissingTree() throws {
+        let form = try XCTUnwrap(try corpus().first { $0.name == "and-form_keyboard" }?.snapshot)
+        XCTAssertGreaterThan(TreeCoverage.unrepresentedScreenFraction(form), 0.35,
+                             "前提: 素で測ると閾値を超える画面であること")
+        XCTAssertLessThan(TreeCoverage.unrepresentedFractionExcludingKeyboard(form), 0.35)
+        XCTAssertFalse(TreeCoverage.collapsedTree(in: form))
+        XCTAssertFalse(TreeCoverage.underreports(form))
+    }
+
+    /// 3つの原因の**和**であること(どれか1つだけ配線した変異を殺す)
+    func testUnderreportsIsTheUnionOfAllCauses() throws {
         let fired = Set(try corpus().filter { TreeCoverage.underreports($0.snapshot) }.map(\.name))
-        XCTAssertEqual(fired, expectedGapFixtures.union(expectedMissingContentFixtures))
+        XCTAssertEqual(fired, expectedGapFixtures.union(expectedMissingContentFixtures)
+            .union(expectedCollapsedFixtures))
     }
 
     // MARK: - 閾値(合成木で境界を撃つ)
@@ -308,12 +337,16 @@ final class TreeCoverageTests: XCTestCase {
         XCTAssertTrue(TreeCoverage.underreports(tree))
     }
 
-    /// **陰性対照①**: 同じ形でもブラウザでなければ黙る(空白率だけで判定する変異を殺す)。
-    /// ネイティブアプリのモーダルは正当に疎な画面と区別できないので、ここは見逃す側に倒してある
-    func testTheSameShapeInANativeAppIsNotSuspected() {
+    /// **ネイティブアプリのモーダルも同じ形として拾う**(2026-09-04 に広げた)。
+    /// ブラウザ専用の `missingPageContent` は黙るが、`collapsedTree` が拾う ——
+    /// 固定コーパスで同じ形が2枚(設定の確認ダイアログ・地図のメニュー)見つかり、
+    /// どちらも背後の画面が木から消えている真陽性だった
+    func testTheSameShapeInANativeAppIsAlsoSuspected() {
         let native = modalCollapsedBrowserTree(session: "com.sutec.mobile")
-        XCTAssertFalse(TreeCoverage.missingPageContent(in: native))
-        XCTAssertFalse(TreeCoverage.underreports(native))
+        XCTAssertFalse(TreeCoverage.missingPageContent(in: native),
+                       "ブラウザ専用の判定は黙ること(こちらの根拠はブラウザではない)")
+        XCTAssertTrue(TreeCoverage.collapsedTree(in: native))
+        XCTAssertTrue(TreeCoverage.underreports(native))
     }
 
     /// **陰性対照②**: ブラウザでも本文が木に在れば黙る(常に真を返す変異を殺す)

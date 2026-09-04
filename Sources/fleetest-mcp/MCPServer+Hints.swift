@@ -830,8 +830,22 @@ extension MCPServer {
     ///
     /// **判定は `FTCore.TreeCoverage.missingPageContent` が唯一の定義元**(閾値・ブラウザに
     /// 絞る理由・witness の実測はそちら)。ここが持つのは文言だけ
+    ///
+    /// **ネイティブのモーダルにも同じ鍵で答える**(2026-09-04): 木がモーダルの部分木だけに
+    /// なる形はブラウザ固有ではない —— 固定コーパスの `and-dialog_confirm`(設定の確認
+    /// ダイアログ。木は6要素で背後の設定画面は消えている)と `and-overflow`(地図のメニュー)が
+    /// 同じ形。**注記の鍵は増やさない**(`NoteBudgetTests` が本数と鍵の集合を等号で固定して
+    /// おり、増やすには台帳と手数の計測が要る)ので、判定で分岐して文言だけ切り替える
     static func missingPageContentNote(_ snapshot: SnapshotResponse) -> String {
-        guard TreeCoverage.missingPageContent(in: snapshot) else { return "" }
+        if !TreeCoverage.missingPageContent(in: snapshot) {
+            guard TreeCoverage.collapsedTree(in: snapshot) else { return "" }
+            let percent = Int((TreeCoverage.unrepresentedFractionExcludingKeyboard(snapshot) * 100).rounded())
+            return "note: \(percent)% of the screen has no element in the tree at all — a modal,"
+                + " sheet or menu may have replaced it, in which case everything behind it is gone"
+                + " from the tree (it cannot be waited for, scrolled to, or tapped by selector, and"
+                + " an assertion that something is absent would pass for the wrong reason)."
+                + " Check with ft_screenshot.\n"
+        }
         // **次の一手まで書く**(2026-08-14 に原因が判った)。Chromium は a11y を要求する
         // サービスが繋がってから木を作り、**出来上がるまで数秒かかる**。その窓で撮ると
         // chrome だけが返る(実測: ブリッジ起動直後 19 要素 → 5 秒後 135 要素で安定)。

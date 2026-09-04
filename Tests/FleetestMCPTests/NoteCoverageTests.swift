@@ -159,7 +159,12 @@ final class NoteCoverageTests: XCTestCase {
         // 木に無い**形の witness(and-browser_jma_notree。unrepresentedScreenFraction 0.886)。
         // 陰性対照は and-browser_urlmenu(URL バーはあるが webView も無い画面。0.059)と
         // and-overflow(0.564 まで達するが URL バーが無いので黙る=browser 限定の理由)
-        "missingPageContentNote": Coverage(fixtures: ["and-browser_jma_notree"], bytes: 458),
+        // 2026-09-04 にネイティブのモーダルへ広げた(`TreeCoverage.collapsedTree`)。増えた2枚は
+        // 中身を検分済みの真陽性 —— `and-dialog_confirm` は「強制停止しますか?」の6要素だけで
+        // 背後の設定画面が無く、`and-overflow` は地図のメニュー項目だけ。**1アプリへの過適合ではない**
+        // (設定 / 地図 / ブラウザの3アプリに跨る)
+        "missingPageContentNote": Coverage(
+            fixtures: ["and-browser_jma_notree", "and-dialog_confirm", "and-overflow"], bytes: 1114),
 
         // 2026-08-23: ブラウザ3画面が抜けた(7→4)。容器推定が scrollable 申告の祖先を優先するように
         // なり、旧規則が小さな link / staticText を容器と取り違えて立てていた ghost が消えたため

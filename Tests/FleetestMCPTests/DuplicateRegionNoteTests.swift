@@ -134,15 +134,21 @@ final class DuplicateRegionNoteTests: XCTestCase {
 
     // MARK: - missingPageContentNote: 発火しない形
 
-    /// webView 要素が1つでもあれば黙る(webViewGapNote の管轄になる)
-    func testStaysSilentWhenAWebViewElementIsPresent() {
+    /// webView 要素が1つでもあれば**ブラウザ専用の文言は使わない**(webViewGapNote の管轄)。
+    /// ただし画面の 89% が空という事実は変わらないので、2026-09-04 以降は一般形の文言が出る
+    /// (鍵は同じ。`TreeCoverage.collapsedTree`)
+    func testDoesNotUseTheBrowserWordingWhenAWebViewElementIsPresent() {
         var elements = chromeOnlyElements()
         elements.append(element(3, "webView", label: "page", x: 0, y: 100, width: 10, height: 10))
-        XCTAssertEqual(MCPServer.missingPageContentNote(tree(elements)), "")
+        let note = MCPServer.missingPageContentNote(tree(elements))
+        XCTAssertFalse(note.contains("no page content"), note)
+        XCTAssertTrue(note.contains("no element in the tree at all"), note)
     }
 
-    /// **アドレス欄が無ければブラウザとは判定しない**(and-overflow の witness: 空白率だけなら
-    /// 0.564 まで達するネイティブ画面がある。ブラウザに絞らないとそこまで拾ってしまう)
+    /// **アドレス欄が無ければブラウザとは判定しない**(ブラウザ専用の文言は使わない)。
+    /// 一般形(`collapsedTree`)も、要素1件では「置き換わった木」と言えないので黙る ——
+    /// 2026-09-04 に and-overflow を検分したところ、あれは**木がメニュー項目だけになった
+    /// 真陽性**だった(ネイティブを一律に除外する根拠にはならない)
     func testStaysSilentWithoutAnAddressBar() {
         let elements = [element(1, "button", label: "何か", x: 0, y: 0, width: 100, height: 100)]
         XCTAssertEqual(MCPServer.missingPageContentNote(tree(elements)), "")

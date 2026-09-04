@@ -249,9 +249,8 @@ public enum TreeCoverage {
     /// アドレス欄も持つ / `and-overflow` はブラウザでないまま / ブラウザの健全な画面は
     /// webView 要素を持つか空白率が 0.06 以下)。
     ///
-    /// **拾えない形**: ネイティブアプリのモーダル(同じくメニューだけの木になる)。
-    /// ブラウザという根拠が無く、正当に疎な画面と区別できない —— 誤った緑の witness が
-    /// 取れてから広げること
+    /// **ネイティブアプリのモーダルは `collapsedTree` が拾う**(2026-09-04 に広げた)。
+    /// こちらはブラウザ固有の文言(webView 容器すら無い)を持つ判定として残す
     public static func missingPageContent(in snapshot: SnapshotResponse) -> Bool {
         // **打ち切られた木からは結論しない**(2026-08-15 の witness)。この判定の材料は3つとも
         // 「要素が無いこと」なので、**上限で落とされただけの木でも同じように真になる** ——
@@ -273,6 +272,53 @@ public enum TreeCoverage {
             && unrepresentedScreenFraction(snapshot) >= missingPageContentFractionThreshold
     }
 
+    // MARK: - 木がモーダルの部分木だけになった形
+
+    /// **木が画面のごく一部しか覆っていない**形。モーダル・シート・メニューが木を丸ごと
+    /// 置き換えると、背後の画面は1要素も残らない —— `missingPageContent` のネイティブ版で、
+    /// ブラウザという根拠が無くても言える。
+    ///
+    /// **測るのはキーボードを除いた viewport**(`ScrollGeometry.viewport(_:excludingKeyboard:)`)。
+    /// これが無いと**入力中の画面が丸ごと誤検知になる**: 実測(固定コーパス)で
+    /// `and-form_keyboard` は素の未代表率 0.364 だが、空いている帯の正体はソフトキーボードで、
+    /// 木は健全。除くと圏外へ落ちる。
+    ///
+    /// 閾値の根拠(2026-09-04・固定コーパス40枚をキーボード除外で測り直した分布):
+    /// **健全な最大は 0.151**(`sutec-detail`)、**真陽性の最小は 0.411**(`and-dialog_confirm` ——
+    /// 木は「強制停止しますか?」ダイアログの6要素だけで、背後の設定画面は消えている)。
+    /// 0.35 はその間で、健全側へ 2.3 倍の余裕を取った値。真陽性は他に
+    /// `and-overflow` 0.564(地図のメニュー項目だけ)/ `and-browser_jma_notree` 0.886。
+    /// **尽きたとき**(健全な疎い画面が 0.35 に届く)は数字を上げる前に、その画面を
+    /// コーパスへ足して `TreeCoverageTests` の発火集合で差分を見ること
+    public static let collapsedTreeFractionThreshold = 0.35
+
+    /// キーボードの帯を除いた viewport に対する未代表率
+    public static func unrepresentedFractionExcludingKeyboard(_ snapshot: SnapshotResponse) -> Double {
+        let keyboard = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame,
+                                                 in: snapshot.elements).frame
+        let viewport = ScrollGeometry.viewport(snapshot.screen, excludingKeyboard: keyboard)
+        guard viewport.height > 0 else { return 0 }
+        var clipped = snapshot
+        clipped.screen = viewport
+        return unrepresentedScreenFraction(clipped)
+    }
+
+    /// 「置き換わった木」と言うための最小要素数。**形の性質であって調整値ではない** ——
+    /// 木を置き換えたモーダルは**自分の中身を連れてくる**(見出し/本文 + 操作)ので、
+    /// 実測した真陽性はいずれもこれ以上ある(`and-dialog_confirm` 6 / `and-overflow` 18 /
+    /// `and-browser_jma_notree` 19 / 実機の iOS アラート 5)。
+    /// 1〜2要素の木は「置き換わった」証拠にならず、**本当に何も無い画面と区別できない**
+    /// (完全に空なら `emptyTreeNote` の担当)。**見逃す側に倒す**: 見出しの無い2択シートは拾えない
+    public static let collapsedTreeMinimumElements = 3
+
+    /// モーダルが木を置き換えた疑い。**打ち切られた木からは結論しない**(`missingPageContent`
+    /// と同じ理由 —— 材料が「要素が無いこと」なので、上限で落とされただけの木でも真になる)
+    public static func collapsedTree(in snapshot: SnapshotResponse) -> Bool {
+        guard snapshot.truncatedCount == 0,
+              snapshot.elements.count >= collapsedTreeMinimumElements else { return false }
+        return unrepresentedFractionExcludingKeyboard(snapshot) >= collapsedTreeFractionThreshold
+    }
+
     // MARK: - まとめ(否定判定の裏取り)
 
     /// この木は画面を代表していない疑いがあるか。**否定アサーションが「無い」を結論する前**に
@@ -280,6 +326,6 @@ public enum TreeCoverage {
     /// 幾何からの疑いであって申告された事実ではないので、断定すると空のページに対する
     /// 正当な `notExist` が書けなくなる
     public static func underreports(_ snapshot: SnapshotResponse) -> Bool {
-        gap(in: snapshot) != nil || missingPageContent(in: snapshot)
+        gap(in: snapshot) != nil || missingPageContent(in: snapshot) || collapsedTree(in: snapshot)
     }
 }
