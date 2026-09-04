@@ -103,9 +103,12 @@ class ジェスチャが正しく検出されること {
                     tap("#tab_home")
                 }.action {
                     tap("#nav_gesture")
+                    // y=500 は **いちばん背の低い対応端末でも #pad_swipe の内側かつ下端のボタン帯より上**
+                    // (iPhone SE3 375x667 では #nav_map / #btn_gesture_reset が y=531..593 に来るので、
+                    // 以前の y=550 は #nav_map の内側で撃っており 1pt も動かなかった)。
                     // x=200 は中央列(#pad_swipe の幅の約半分)。ui-contract の配置制約により
                     // 操作要素は幅45%以内・中央行(y=0.5h)を避けて置かれるため、この列は空いている保証がある。
-                    swipePointToPoint(startX: 200, startY: 550, endX: 200, endY: 250, durationSeconds: 0.3)
+                    swipePointToPoint(startX: 200, startY: 500, endX: 200, endY: 250, durationSeconds: 0.3)
                 }.expectation {
                     select("#txt_swipe_dir").textIs("swipe=up")
                 }

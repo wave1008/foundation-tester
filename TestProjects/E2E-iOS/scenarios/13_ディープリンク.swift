@@ -24,7 +24,7 @@ class ディープリンクで意図した画面に遷移すること {
                 }.expectation {
                     exist("#txt_home_marker")
                 }.action {
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.expectation {
                     select("#txt_last_deeplink").textIs("deeplink=fte2eios://screen/selector")
                 }
@@ -60,7 +60,7 @@ class ディープリンクで意図した画面に遷移すること {
                 condition {
                     launchApp()
                 }.action {
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.expectation {
                     exist("#txt_last_deeplink")
                 }
