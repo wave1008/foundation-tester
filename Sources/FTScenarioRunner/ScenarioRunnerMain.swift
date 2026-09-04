@@ -457,6 +457,8 @@ struct RunScenario: AsyncParsableCommand {
         // --host-install のときの appPath は**バンドルの在処**でしかない(インストールは親が行う)。
         // ここで採るとホストと子の二重インストールになる
         core.appPathOverride = hostInstall ? nil : appPath
+        // 入れ直し(実機の clearAppData)専用。**host-install でも落とさない**理由は宣言の doc
+        core.appPackagePath = appPath
         core.appDisplayName = appName
 
         // 失敗時に「アプリより手前の別 window」を添える(Android のみ。adb を叩くのでここで注入する)

@@ -49,17 +49,58 @@ public func restartApp(_ bundleID: String? = nil,
     }
 }
 
-/// アプリは残したままデータだけ消す(再インストールは伴わない)。初回起動・オンボーディング・
-/// 権限ダイアログを何度でも再現するために使う。**iOS はシミュレータ専用**(実機は 501)。
-/// Android は `pm clear` 相当
+/// データだけ消す。初回起動・オンボーディング・権限ダイアログを何度でも再現するために使う。
+/// Android は `pm clear` 相当。
+///
+/// **iOS の実機だけは「入れ直し」で代替する**(`ReinstallSource`)—— devicectl に同等手段が無く
+/// ブリッジが 501 を返すため。MCP の `ft_clear_app_data` は 2026-08-31 からそうしており、
+/// DSL に受け皿が無いせいで**同じ端末・同じ意図の操作が経路によって割れていた**。
+/// 意味の差は2つ: **権限の付与も消える**(次の起動で OS のアラートが出る)/ install のぶん遅い。
+/// どちらも注記 `reinstalled-to-clear-data` で報告に残す。
+/// **消す前に入れ直せることを確かめる** —— 確かめずに uninstall すると端末からアプリだけ消える
 public func clearAppData(_ bundleID: String? = nil,
                          file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "clearAppData")
     let bundle = bundleID ?? core.appBundleID
     let driver = core.driver
-    core.performCustom(description: "clearAppData \(bundle)", command: "clearAppData", file: file, line: line) {
-        try await driver.clearAppData(bundleID: bundle)
+    // 実行プロファイルが解決した配布物。実機の run では `appPathPhysical` が入っている
+    // (RunOrchestrator / ApiRunCommand が `packagePath(physical:)` で決め、`--app-path` で届く)
+    let profilePackage = core.appPackagePath
+    let outcome = ClearAppDataOutcome()
+    core.performCustom(description: "clearAppData \(bundle)", command: "clearAppData",
+                       file: file, line: line,
+                       note: { outcome.viaReinstall ? .reinstalledToClearData : nil }) {
+        do {
+            try await driver.clearAppData(bundleID: bundle)
+        } catch let error where ReinstallSource.isClearAppDataUnsupported(error) {
+            switch ReinstallSource.resolve(
+                explicit: nil, remembered: profilePackage,
+                exists: { FileManager.default.fileExists(atPath: $0) }
+            ) {
+            case .usable(let path):
+                try await driver.uninstall(bundleID: bundle)
+                try await driver.install(packagePath: path)
+                outcome.viaReinstall = true
+            case .unknown:
+                throw FTCommandError.message(
+                    "clearAppData: a physical iOS device has no clearAppData, so the data is wiped"
+                    + " by reinstalling the app — but no package path is known. Set"
+                    + " \"appPathPhysical\" in the app profile to a device build, and run with"
+                    + " --profile so it reaches the scenario.")
+            case .missing(let path):
+                throw FTCommandError.message(
+                    "clearAppData: the app was NOT uninstalled. The reinstall source \(path) does"
+                    + " not exist (a rebuild or clearing DerivedData can move or remove it) —"
+                    + " rebuild the device package or fix \"appPathPhysical\" in the app profile.")
+            }
+        }
     }
+}
+
+/// `clearAppData` が実機で入れ直しに化けたかを、注記の評価まで運ぶだけの箱。
+/// `performCustom` の body と note は別クロージャなので、可変ローカルでは渡せない
+private final class ClearAppDataOutcome: @unchecked Sendable {
+    var viaReinstall = false
 }
 
 public func terminateApp(file: StaticString = #filePath, line: UInt = #line) {

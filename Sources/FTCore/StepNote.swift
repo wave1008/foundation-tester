@@ -181,6 +181,11 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 本物の occlusion(不透明な起動画面が居座っている等)を疑う材料
     case firstFrameTimeout = "first-frame-timeout"
 
+    /// 実機の `clearAppData` を uninstall + install で代替した。**シミュレータとは意味が違う**
+    /// (権限の付与も消え、次の起動で OS の権限アラートが出る)ので、所要と挙動の差が
+    /// 報告から説明できるように残す。判定は `ReinstallSource`
+    case reinstalledToClearData = "reinstalled-to-clear-data"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -219,6 +224,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .firstFrameTimeout:
             return "the screen still looked like the launch storyboard after waiting once more,"
                 + " so this failed as occlusion"
+        case .reinstalledToClearData:
+            return "a physical device has no clearAppData, so the app was reinstalled instead —"
+                + " permission grants are reset too, so the next launch can show system alerts"
         case .visibilityGuardSkipped:
             return "the FM visibility check gave no verdict, so this passed on tree presence and"
                 + " on-screen geometry alone"

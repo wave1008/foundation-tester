@@ -1059,8 +1059,7 @@ extension MCPServer {
             let clearAppDataKey = Self.engineKey(args)
             do {
                 try await clearAppDataDriver.clearAppData(bundleID: bundleID)
-            } catch DriverError.badResponse(let status, let body)
-                where status == 501 && body.contains("simulator-only") {
+            } catch let clearError where ReinstallSource.isClearAppDataUnsupported(clearError) {
                 // **実機に devicectl の同等手段が無い**(BridgeClient.clearAppData の 501)。
                 // 代わりに uninstall→install で再現する —— 権限も含めて全部消える点は同じ。
                 // **先に消す前に入れ直せることを確かめる**(reinstallSource) —— 記憶したパスは
@@ -1470,18 +1469,22 @@ extension MCPServer {
     /// テストが実ファイルを要らずに両分岐を確かめるため
     static func reinstallSource(explicit: String?, remembered: String?,
                                 exists: (String) -> Bool) -> Result<String, MCPError> {
-        guard let path = explicit ?? remembered else {
+        // **判定は FTCore.ReinstallSource の1箇所**(DSL の clearAppData と共有)。
+        // ここが持つのは MCP の読み手向けの文言だけ —— あちらは `packagePath:` を渡せるが、
+        // DSL の読み手が渡せるのは実行プロファイルの `appPathPhysical` で、同じ文では言えない
+        switch ReinstallSource.resolve(explicit: explicit, remembered: remembered, exists: exists) {
+        case .usable(let path):
+            return .success(path)
+        case .unknown:
             return .failure(MCPError("On a physical device there is no clearAppData equivalent —"
                 + " data is wiped by reinstalling the app instead. Pass packagePath:"
                 + " <path to the .app/.ipa>, or run ft_install first so this can reuse"
                 + " that path."))
-        }
-        guard exists(path) else {
+        case .missing(let path):
             return .failure(MCPError("The app was NOT uninstalled. The reinstall source \(path)"
                 + " no longer exists (a rebuild or clearing DerivedData can move or remove it) —"
                 + " pass packagePath: <path to the current .app/.ipa>, or run ft_install first."))
         }
-        return .success(path)
     }
 
     /// 操作した要素を**シナリオで再現するためのセレクタ**(E)。

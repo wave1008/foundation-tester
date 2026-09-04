@@ -342,6 +342,13 @@ public final class FTDriveCore {
     /// --app-path で親が解決して渡した実行プロファイルの appPath。installControl が nil のとき
     /// (ホスト無しの単独実行)の installApp() 引数省略時のフォールバックに使う
     public var appPathOverride: String?
+    /// --app-path で親が解決して渡した配布物の**在処**。`appPathOverride` と違い
+    /// **`--host-install` でも落とさない** —— あちらは「`installApp()` が自分で入れてよいか」の
+    /// 許可で、二重インストールを防ぐために nil にする。こちらは実機の `clearAppData` が
+    /// uninstall + install で代替するときの入れ直し元で、**その run では親も同じ物を入れている**
+    /// ので二重にはならない(親の InstalledAppCheck の控えも同じパスのまま有効)。
+    /// 分けずに `appPathOverride` を使い回すと、許可を戻した瞬間に二重インストールが復活する
+    public var appPackagePath: String?
     /// --app-name で親が解決して渡したアプリの表示名(プロファイルの appName)。
     /// tapAppIcon() 引数省略時の既定(Shirates の appIconName 既定=プロファイル、に相当)
     public var appDisplayName: String?
