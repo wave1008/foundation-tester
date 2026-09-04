@@ -15,6 +15,16 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
+# `--force` は **preflight を飛ばさない**。飛ばしても `remote align` 自身が同じロックで止まるので
+# 素通しにはならず、素通しにできてしまうと**走っている他人の run を殺す**(向こうで
+# `git checkout` + `swift build` をするので、実行中のバイナリが差し替わって SIGKILL される。
+# maintainer-notes §4.1 と同じ事故がリモートで起きる)。
+# 代わりに **`remote unlock` を試みてから測り直す** —— あれは「**自分の**死んだディスパッチの
+# ロックだけ」を外すので、生きている run と他人のロックは残り、そのときは従来どおり落ちる
+FORCE=0
+if [ "${1:-}" = "--force" ]; then FORCE=1; shift; fi
+[ $# -eq 0 ] || { echo "usage: Scripts/align.sh [--force]" >&2; exit 2; }
+
 FLEETEST="${FLEETEST:-.build/debug/fleetest}"
 [ -x "$FLEETEST" ] || { echo "❌ $FLEETEST が無い(swift build を先に)" >&2; exit 1; }
 
@@ -39,9 +49,10 @@ for m in $MACHINES; do HOST_ARGS="$HOST_ARGS --host $m"; done
 # ロックを取るので run を壊すことは無いが、**握られていれば align 段で1機ずつ ❌ になる**だけで、
 # 「向こうで誰かの run が走っている」という肝心の事実が失敗文の中に埋もれる。
 # **押す前に、理由を名指しして何もせずに落ちる**(2026-09-04 ユーザー指摘)
-echo "==> preflight (ロック・到達性)"
-PRE=$("$FLEETEST" remote status $HOST_ARGS --json 2>/dev/null | grep '^{' || true)
-BUSY=$(python3 - "$PRE" <<'PYEOF'
+busy_hosts() {
+  local raw
+  raw=$("$FLEETEST" remote status $HOST_ARGS --json 2>/dev/null | grep '^{' || true)
+  python3 - "$raw" <<'PYEOF'
 import json, sys
 raw = sys.argv[1]
 if not raw:
@@ -52,11 +63,24 @@ for h in json.loads(raw).get("hosts", []):
     elif h.get("lock", "free") != "free":
         print(f"{h.get('host')}: dispatch.lock が握られている({h.get('lock')})")
 PYEOF
-)
+}
+
+echo "==> preflight (ロック・到達性)"
+BUSY=$(busy_hosts)
+if [ -n "$BUSY" ] && [ "$FORCE" = 1 ]; then
+  echo "$BUSY" | sed 's/^/   /'
+  echo "==> --force: 自分の死んだロックだけ外して測り直す(生きている run は殺さない)"
+  "$FLEETEST" remote unlock $HOST_ARGS 2>&1 | sed 's/^/   /' || true
+  BUSY=$(busy_hosts)
+fi
 if [ -n "$BUSY" ]; then
   echo "❌ 揃えられない機がある。push もしていない:" >&2
   echo "$BUSY" | sed 's/^/   /' >&2
-  echo "   (走っている run が終わるのを待つ。自分の死んだロックなら fleetest remote unlock)" >&2
+  if [ "$FORCE" = 1 ]; then
+    echo "   --force でも外れなかった = 走っている run か、他人のロック。**待つ**のが正解" >&2
+  else
+    echo "   (走っている run が終わるのを待つ。自分の死んだロックなら --force か fleetest remote unlock)" >&2
+  fi
   exit 1
 fi
 
