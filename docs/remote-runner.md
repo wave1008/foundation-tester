@@ -282,6 +282,13 @@ Android は `no running emulator for AVD ...` で失敗する)。`fleetest devic
   設定 `fleetest.remoteCompatCheck`)。ズレの解消(揃えるだけ)は `fleetest remote align <host>` —
   `remote setup` の align ステップだけを単独で実行する軽量版(preflight/install は通さない)
 
+  **手元を更新したあと全機を揃えるときは `Scripts/align.sh`**(push → 登録簿の全機へ
+  `remote align` を**並列で**投げる → `remote status` の REV が手元の HEAD と一致するまで確かめる)。
+  `remote align` は1機ずつしか受け取らないので、素で使うと**人の手では必ず直列になる**
+  (2026-09-03/04 に計3回、前の機の出力を読んでから次を送った。うち1回は「並列で」と
+  明示された直後)。台数ぶん待ちが伸びるだけの誤りなので、判断の余地を機械へ移してある。
+  **汚れた作業ツリーでは何もせずに落ちる** —— ランナーは push 済みのコミットを取りに行く
+
 ## 8. マルチマシン分散(**実装済み: 2026-08-16**。`run --fleet --split`)
 
 - ~~`RunOrchestrator` の worker 抽象をマシン跨ぎへ拡張~~ → **拡張せずに済んだ**。
