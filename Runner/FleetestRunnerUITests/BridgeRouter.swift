@@ -1146,7 +1146,16 @@ final class BridgeRouter {
     /// — このルートはセッション対象アプリに依存しない読み取りで、任意の bundleID を照会できる
     private func handleAppState(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(AppStateRequest.self, body)
-        let target = XCUIApplication(bundleIdentifier: req.bundleID)
+        // **セッションのアプリなら、保持しているインスタンスに聞く**。同じアプリでも
+        // その場で作った proxy の `.state` は実機で `.runningForeground` を返さないことがある
+        // (2026-09-05 実測・iPhone SE3 / iOS 26.6: 画面には出ているのに 15/15 で false。
+        // 同時刻に `requireForegroundApp()` の `app.state` は通っていた = 保持側が正しい)。
+        // 嘘の側を配ると `ft_snapshot` が毎回「前面に居ない・木は古い」と警告し、
+        // **正しい ref を信じるなと言い続ける**(DSL の `appIs` も同じ嘘を受け取る)。
+        // セッション外の bundleID は従来どおり新規 proxy —— この口の「任意のアプリを
+        // 照会できる」性質(requireApp() を使わない理由)を壊さない
+        let target = (req.bundleID == sessionBundleID ? app : nil)
+            ?? XCUIApplication(bundleIdentifier: req.bundleID)
         return .json(AppStateResponse(foreground: target.state == .runningForeground))
     }
 

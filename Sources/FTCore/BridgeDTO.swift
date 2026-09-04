@@ -288,7 +288,14 @@ public enum BridgeAPI {
     /// window's bottom edge. With the ratio alone the finger started **inside** a tab bar
     /// (measured 292.5pt vs a bar starting at 290pt on a 390pt-tall window) and nothing moved
     /// at all. A stale runner keeps starting on the bar → bump.
-    public static let bridgeProtocolVersion = 86
+    ///
+    /// 87: POST /appstate answers from the **session's own** `XCUIApplication` when the queried
+    /// bundle ID is the session's, instead of a freshly constructed proxy. On a physical device
+    /// a fresh proxy's `.state` can stay below `.runningForeground` for an app that is plainly
+    /// on screen (measured 15/15 on iPhone SE3 / iOS 26.6 while `requireForegroundApp()` let the
+    /// same reads through). A stale runner keeps answering `foreground: false`, so every
+    /// `ft_snapshot` warns that correct refs are stale and `appIs` reads the same lie → bump.
+    public static let bridgeProtocolVersion = 87
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
