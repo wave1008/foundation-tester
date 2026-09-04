@@ -561,11 +561,31 @@ struct Bridge: AsyncParsableCommand {
                 }
                 return
             }
-            let status = try await driverOptions.makeDriver().status()
-            print("ready: \(status.ready)")
-            print("device: \(status.device) (\(status.osVersion))")
-            print("session: \(status.sessionBundleID ?? "none")")
+            // **1本だけ見て「何も無い」と言わない**(2026-09-04 の実害): 既定ポートへ問い合わせて
+            // 落ちるだけの実装では、**8本動いている状態で**「nothing listening / アプリが
+            // 落ちたのだろう」と報告していた(既定の 8123 が空いていただけ)。Android 側は
+            // 元から接続中の全 serial を列挙しており、非対称でもあった。**動いているものを全部出す**
+            let found = await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
+            print(BridgeStatusReport.render(found, requested: driverOptions.port))
         }
+    }
+}
+
+/// `fleetest bridge status`(iOS)の表示。**純関数にしてあるのはテストのため** ——
+/// 走査そのものはブリッジが要るのでテストから通せない
+enum BridgeStatusReport {
+    static func render(_ found: [BridgeDiscovery.Found], requested: UInt16) -> String {
+        guard !found.isEmpty else {
+            return "no bridge is running on this machine"
+                + " (ports \(BridgeDiscovery.portRange.lowerBound)-\(BridgeDiscovery.portRange.upperBound - 1) were scanned)."
+                + " Start one with: fleetest bridge up"
+        }
+        // **要求されたポートに印を付ける**(--port を渡した人が自分の1本を見失わないため)
+        return found.sorted { $0.port < $1.port }.map { entry in
+            let mark = entry.port == requested ? "→ " : "  "
+            let udid = entry.udid.map { " udid \($0)" } ?? ""
+            return "\(mark)port \(entry.port): \(entry.device) (\(entry.engine))\(udid)"
+        }.joined(separator: "\n")
     }
 }
 
