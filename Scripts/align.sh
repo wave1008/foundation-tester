@@ -61,8 +61,14 @@ for m in $MACHINES; do HOST_ARGS="$HOST_ARGS --host $m"; done
 echo "==> verify"
 STATUS=$("$FLEETEST" remote status $HOST_ARGS 2>&1)
 echo "$STATUS"
-for m in $MACHINES; do
-  echo "$STATUS" | grep -q "$HEAD_SHA" || { echo "❌ REV が手元の HEAD と一致しない機がある" >&2; FAILED=1; break; }
-done
+# **機械ごとに数える**(全体に1個あるかではない)。`echo | grep -q` は使わない ——
+# grep が先に閉じて echo が SIGPIPE を受け、`set -o pipefail` でパイプライン全体が
+# 非ゼロになる(揃っているのに「揃っていない」と報告した。2026-09-04 に実際に踏んだ)
+MATCHED=$(grep -c "$HEAD_SHA" <<< "$STATUS" || true)
+EXPECTED=$(wc -l <<< "$MACHINES" | tr -d ' ')
+if [ "$MATCHED" != "$EXPECTED" ]; then
+  echo "❌ REV が手元の HEAD と一致した機は $MATCHED/$EXPECTED" >&2
+  FAILED=1
+fi
 [ "$FAILED" = 0 ] && echo "✅ 全機 ${HEAD_SHA:0:9} に揃った"
 exit "$FAILED"
