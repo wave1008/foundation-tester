@@ -135,6 +135,14 @@ extension StepExecutor {
             cursor -= 1
             let candidate = elements[cursor]
             guard candidate.depth < depth else { continue }
+            // **入力欄は容器候補にしない**(`depth` も下げない = 本物の容器まで遡り続ける)。
+            // 2026-09-01・実機 iPhone 13 の検索結果で実測: 上に貼り付いた
+            // `textView #field_search` (56,55 326x57) は、平坦な木では後続の全要素を「子孫」に
+            // 持つため「同じ depth の行を2件以上含む候補」を満たして採用され、画面の下半分に
+            // ある**正しく描かれたカードのハート4件**まで「容器の外」= ⚠️scroll-leftover に
+            // なった(本当に潜っている2件は別経路なので無印のまま)。行を2件供給していたのは
+            // その欄の下に潜り込んだクランプ残骸そのもので、**誤りが強いほど条件を満たす**形
+            if TypeReadback.isTextInput(candidate) { continue }
             depth = candidate.depth
             guard candidate.frame.width > 0, candidate.frame.height > 0 else { continue }
             let siblings = descendants(of: candidate, in: elements).filter { $0.depth == element.depth }

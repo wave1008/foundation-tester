@@ -103,10 +103,22 @@ final class MCPGuidanceTests: XCTestCase {
 
     /// home した直後に「この後 snapshot は読めない」と先に言う(踏んでから調べさせない)
     func testNavigateHomeAnnouncesTheReadPath() {
-        let note = MCPServer.homeScreenReadNote(target: "home", engine: "xcuitest")
+        let note = MCPServer.backgroundingNavigationNote(target: "home", engine: "xcuitest")
         XCTAssertTrue(note.contains("com.apple.springboard"), note)
-        XCTAssertEqual(MCPServer.homeScreenReadNote(target: "back", engine: "xcuitest"), "")
-        XCTAssertEqual(MCPServer.homeScreenReadNote(target: "home", engine: "inapp"), "")
+        XCTAssertEqual(MCPServer.backgroundingNavigationNote(target: "back", engine: "xcuitest"), "")
+        XCTAssertEqual(MCPServer.backgroundingNavigationNote(target: "home", engine: "inapp"), "")
+    }
+
+    /// **appSwitcher の後は木が前のアプリのままなのに、これまで注記がゼロだった**(実機 iPhone 13
+    /// の探索で発見)。home と同じ穴なので同じ関数で塞ぐ —— セッションはアプリを指したままで、
+    /// ft_snapshot も ft_tap もそのアプリの木で応答してしまう
+    func testNavigateAppSwitcherAnnouncesTheStaleTree() {
+        let note = MCPServer.backgroundingNavigationNote(target: "appSwitcher", engine: "xcuitest")
+        XCTAssertTrue(note.contains("ft_screenshot"), note)
+        XCTAssertTrue(note.contains("ft_launch"), note)
+        XCTAssertEqual(MCPServer.backgroundingNavigationNote(target: "appSwitcher", engine: "inapp"), "",
+                       "in-app は注入先アプリしか見えず、この注記は xcuitest/engine 不明限定")
+        XCTAssertEqual(MCPServer.backgroundingNavigationNote(target: "back", engine: "xcuitest"), "")
     }
 
     // MARK: - 未インストール(#3)

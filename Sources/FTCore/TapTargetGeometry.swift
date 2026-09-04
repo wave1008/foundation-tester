@@ -426,9 +426,14 @@ public enum TapTargetGeometry {
     /// `drawnAbove` が権威なので、黙っているのが正しい判断であり、そもそも聞く先も無い。
     /// 実測でも Android だけで32件鳴っていた(`and-place_expanded` 17・`and-results` 15)。
     ///
-    /// **条件は4つ**(コーパス全数で 197/820=24% → 52/820=6.3% → iOS だけで 14 件まで絞った):
-    /// ⑴ 木が z を持たない ⑵ 現状の遮蔽判定が黙っている ⑶ victim がスクロール容器の中
-    /// ⑷ 中心を覆う非系譜の要素が**その容器の外**にいる(= 上に載る chrome の形)
+    /// **条件は5つ**: ⑴ 木が z を持たない ⑵ 現状の遮蔽判定が黙っている
+    /// ⑶ victim がスクロール容器の中 ⑷ 中心を覆う相手が居て、自分の子孫でも
+    /// 自分を丸ごと収める相手でもなく、**木の順序ではそれが下**にある(= 木では前後を
+    /// 決められない当のケース)⑸ その相手が**画面の縁の帯に居る**(= chrome)。
+    ///
+    /// **費用は固定コーパスで測る**(発火した要素をタップしたときだけ 72〜146ms の照会を払う):
+    /// 3094 要素中 82 件 = 2.7%(2026-09-01)。⑷ を「容器の外」にしていた頃は 14 件だったが、
+    /// その条件は sticky ヘッダの形を**構造的に**取りこぼしていた(doc の実測)
     public static func suspectedHiddenUnderChrome(_ element: ElementInfo,
                                                   in elements: [ElementInfo],
                                                   screen: FTRect) -> Bool {
@@ -437,22 +442,57 @@ public enum TapTargetGeometry {
         // ⑵ 既に遮蔽として名指しできているなら、この経路は要らない
         guard OcclusionGeometry.overlayCovering(element, in: elements, screen: screen) == nil
         else { return false }
-        // ⑶ victim を包むスクロール容器
-        guard let container = ancestors(of: element, in: elements).first(where: {
-            $0.scrollable == true
-        }) else { return false }
-        let inside = Set(StepExecutor.descendants(of: container, in: elements).map(\.ref))
-            .union([container.ref])
+        // ⑶ victim がスクロール容器の中(= スクロールで潜り得る位置に居る)
+        guard ancestors(of: element, in: elements).contains(where: { $0.scrollable == true })
+        else { return false }
         let cx = element.frame.x + element.frame.width / 2
         let cy = element.frame.y + element.frame.height / 2
-        let lineage = lineage(of: element, in: elements)
-        // ⑷ 容器の外から中心を覆っている相手(クランプ残骸は「描かれていない」ので数えない)
+        let inner = Set(StepExecutor.descendants(of: element, in: elements).map(\.ref))
+        // ⑷ 中心を覆う相手が居て、**木の順序ではそれが下**にあること(クランプ残骸は
+        //    「描かれていない」ので数えない)。子孫と、**自分を丸ごと収める相手**は
+        //    普通の入れ子なので除く。
+        //
+        //    **「容器の外に居る相手」では拾えない**(2026-09-01・実機 iPhone 13 で実測):
+        //    sticky ヘッダは victim と**同じ root scrollView の中**に居る(ヘッダ depth 10 /
+        //    victim depth 12 / scrollView depth 7)。検索結果を送ると `#btn_wishlist_…` が
+        //    (332,85) と報告されるがヘッダの下に潜っており、ref タップは警告ゼロで
+        //    「クリア」ボタンに当たって検索語を消した。SwiftUI/Compose の sticky ヘッダは
+        //    容器の内側に居るのが普通なので、外という条件ではこの形が丸ごと落ちる。
+        //    **系譜で除いてもいけない**: 平坦な木では depth からの祖先復元がこの欄を
+        //    victim の「親」にしてしまう(実際には収めていない)。収めているかは幾何で見る。
+        //
+        //    代わりに `PaintOrder.drawnAbove` が false であることを条件にする ——
+        //    ⑵ を通ってここへ来た時点で「木の順序では下にある相手が中心を覆っている」形しか
+        //    残っておらず、それは**木では手前/奥を決められない**当のケース。断定はしない
         return elements.contains { other in
-            !inside.contains(other.ref) && !lineage.contains(other.ref)
+            other.ref != element.ref && !inner.contains(other.ref)
+                && !contains(other.frame, element.frame)
+                && pinnedNearScreenEdge(other, screen: screen)
                 && other.frame.x <= cx && cx <= other.frame.x + other.frame.width
                 && other.frame.y <= cy && cy <= other.frame.y + other.frame.height
+                && !PaintOrder.drawnAbove(other, element)
                 && !OcclusionGeometry.isOriginClamped(other, in: elements)
         }
+    }
+
+    /// 画面の縁に貼り付いた帯(= chrome)とみなす幅。画面高に対する比。
+    ///
+    /// 根拠: iOS のステータス+ナビゲーションバーは最大 106pt(844pt 画面の 12.6%)、
+    /// 下部のタブバー+セーフエリアは実測 100pt(11.8%)。0.2 はその 1.7 倍の余裕を見た値。
+    /// **尽きたとき**(画面のもっと内側に貼り付くヘッダで見逃す)は、数字を上げる前に
+    /// 「貼り付いているか」を木から言える材料(スクロールしても動かない、等)を探すこと ——
+    /// 上げるほど、ただ重なっているだけの兄弟にヒットテストを払い始める
+    static let chromeBandRatio: Double = 0.2
+
+    /// 覆っている相手が**画面の縁の帯に居る**か。chrome(バー・sticky ヘッダ)は画面に固定される
+    /// ので、この条件が「ただ重なっている兄弟」と分ける。**これが無いと、商品写真の上に重ねた
+    /// お気に入りボタンのような普通の重なりまで毎回ヒットテストを払う**(2026-09-01 実測の木で
+    /// カード内のハート4件が該当した)
+    static func pinnedNearScreenEdge(_ element: ElementInfo, screen: FTRect) -> Bool {
+        guard screen.height > 0 else { return false }
+        let band = screen.height * chromeBandRatio
+        return element.frame.y <= screen.y + band
+            || element.frame.y + element.frame.height >= screen.y + screen.height - band
     }
 
     // MARK: - type の宛先

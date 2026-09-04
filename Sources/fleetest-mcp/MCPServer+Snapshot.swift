@@ -305,7 +305,12 @@ extension MCPServer {
         // 実測(2026-08-05・シミュレータで確定。症状の初出は iPhone 実機):
         // ステータスバーの「◀ 元のアプリへ」を踏んだタップで前面が別アプリに替わったのに、
         // snapshot は元アプリの画面を返し、エージェントからは「タップが効かない」に見えた
-        let backgroundNote = await Self.backgroundedSessionNote(snapshot, driver: driver)
+        var backgroundNote = await Self.backgroundedSessionNote(snapshot, driver: driver)
+        // **照会が前面と答えても、こちらが送った事実は消えない**(実機で実際にそうなった。
+        // `backgroundedByNavigate` の doc)。照会が既に言えているときは重ねない
+        if backgroundNote.isEmpty, backgroundedByNavigate.contains(Self.engineKey(args)) {
+            backgroundNote = Self.sentToBackgroundNote(snapshot.sessionBundleID)
+        }
         // **すり替わりを先頭に置く**: これが起きているとき、以下の一覧は丸ごと別アプリのもので、
         // ghost 注記も scrollFrame 候補も読む意味が無い
         let switchedNote = Self.switchedAppNote(

@@ -456,13 +456,26 @@ extension MCPServer {
 
         case "ft_logs":
             let logBundleID = args["bundleId"] as? String ?? lastLaunchedBundleID(args)
+            // **ブリッジには一切問い合わせない**(CrashLogs の存在理由はまさにブリッジごと
+            // 落ちた直後に使うこと)。唯一のブリッジ非依存な実機の手掛かりは
+            // `.fleetest/bridge-<port>.device`(BridgeDeviceRecord。実機のときだけ書かれる)で、
+            // port は明示引数かこのセッションが覚えている宛先(connectedPorts。driver() を経由した
+            // 呼び出しで埋まる)から取る。**どちらも取れなければ nil = 実機でない証拠にはならない
+            // ので従来どおり待つ**(best-effort)
+            let logsPort = (args["port"] as? Int).map(UInt16.init) ?? connectedPorts[Self.engineKey(args)]
+            let logsPhysicalUDID = Self.platformName(args) == "ios"
+                ? logsPort.flatMap { port in
+                    (try? RepoRoot.find()).flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }
+                }
+                : nil
             return text(await CrashLogs.text(
                 platform: Self.platformName(args),
                 bundleID: logBundleID,
                 serial: args["serial"] as? String,
                 withinSeconds: args["sinceSeconds"] as? Int ?? 300,
                 maxLines: args["lines"] as? Int ?? 100,
-                crashOnly: (args["all"] as? Bool) != true))
+                crashOnly: (args["all"] as? Bool) != true,
+                physicalUDID: logsPhysicalUDID))
 
         case "ft_install":
             guard let packagePath = args["packagePath"] as? String else {
@@ -501,6 +514,7 @@ extension MCPServer {
             }
             // 以後の snapshot は「これの木か」を突き合わせられる(switchedAppNote)
             launchedBundleIDs[launchKey] = bundleID
+            backgroundedByNavigate.remove(launchKey)
             // 次の ft_snapshot で一度だけ system alert を確かめる(systemAlertProbePending 参照)。
             // **springboard 自身への attach では立てない** —— そちらはアラートを読みに行く
             // 正規の経路そのものなので、覆いとして扱ってはいけない
@@ -982,6 +996,11 @@ extension MCPServer {
             default: throw MCPError("target must be one of back/home/appSwitcher")
             }
             recordInteraction(action: target, resolvedRef: nil, args: args)
+            // **背面へ送ったのはツール自身**という事実だけを覚える(照会に頼らない理由は
+            // `backgroundedByNavigate` の doc)。back は画面内で戻るだけのことがあるので数えない
+            if target == "home" || target == "appSwitcher" {
+                backgroundedByNavigate.insert(Self.engineKey(args))
+            }
             // **snapshotAfter を渡されたら木はそちらが撮る**。ここで撮り直すと同じ木を2回
             // 取りに行くだけになるので、**先に本文を組み立ててから**その結果で無効を判定する
             // (`snapshotAfterBody` は adoptSnapshot 経由で `lastSnapshots` を更新するので、
@@ -1031,7 +1050,7 @@ extension MCPServer {
                 + Self.backNoOpNote(target: target, engine: engines[Self.engineKey(args)])
                 + backIneffectiveNote
                 + Self.backgroundedAppNote(target: target, engine: engines[Self.engineKey(args)])
-                + Self.homeScreenReadNote(target: target, engine: engines[Self.engineKey(args)])
+                + Self.backgroundingNavigationNote(target: target, engine: engines[Self.engineKey(args)])
                 + waitForWithoutSnapshotAfterNote(args) + afterBody)
 
         case "ft_clear_app_data":
@@ -1043,13 +1062,16 @@ extension MCPServer {
             } catch DriverError.badResponse(let status, let body)
                 where status == 501 && body.contains("simulator-only") {
                 // **実機に devicectl の同等手段が無い**(BridgeClient.clearAppData の 501)。
-                // 代わりに uninstall→install で再現する —— 権限も含めて全部消える点は同じ
-                guard let path = args["packagePath"] as? String
-                    ?? installedPackagePaths[clearAppDataKey] else {
-                    throw MCPError("On a physical device there is no clearAppData equivalent —"
-                        + " data is wiped by reinstalling the app instead. Pass packagePath:"
-                        + " <path to the .app/.ipa>, or run ft_install first so this can reuse"
-                        + " that path.")
+                // 代わりに uninstall→install で再現する —— 権限も含めて全部消える点は同じ。
+                // **先に消す前に入れ直せることを確かめる**(reinstallSource) —— 記憶したパスは
+                // 再ビルドや DerivedData の掃除で消えており、確かめずに uninstall すると
+                // 端末からアプリだけ消えて戻せなくなる
+                let path: String
+                switch Self.reinstallSource(explicit: args["packagePath"] as? String,
+                                            remembered: installedPackagePaths[clearAppDataKey],
+                                            exists: { FileManager.default.fileExists(atPath: $0) }) {
+                case .success(let resolved): path = resolved
+                case .failure(let error): throw error
                 }
                 try await clearAppDataDriver.uninstall(bundleID: bundleID)
                 try await clearAppDataDriver.install(packagePath: path)
@@ -1440,6 +1462,26 @@ extension MCPServer {
                             otherwise message: String = " The screen may have changed —"
                                 + " take a fresh ft_snapshot") -> String {
         args["snapshotAfter"] as? Bool == true ? "" : message
+    }
+
+    /// ft_clear_app_data が実機で uninstall→install に化けるときの再インストール元。
+    /// **純粋関数へ切り出したのは、uninstall を撃つ前に判定を終わらせるため** —— 呼び出し側は
+    /// `.failure` を投げてから uninstall/install のどちらも呼ばない。`exists` を注入するのは
+    /// テストが実ファイルを要らずに両分岐を確かめるため
+    static func reinstallSource(explicit: String?, remembered: String?,
+                                exists: (String) -> Bool) -> Result<String, MCPError> {
+        guard let path = explicit ?? remembered else {
+            return .failure(MCPError("On a physical device there is no clearAppData equivalent —"
+                + " data is wiped by reinstalling the app instead. Pass packagePath:"
+                + " <path to the .app/.ipa>, or run ft_install first so this can reuse"
+                + " that path."))
+        }
+        guard exists(path) else {
+            return .failure(MCPError("The app was NOT uninstalled. The reinstall source \(path)"
+                + " no longer exists (a rebuild or clearing DerivedData can move or remove it) —"
+                + " pass packagePath: <path to the current .app/.ipa>, or run ft_install first."))
+        }
+        return .success(path)
     }
 
     /// 操作した要素を**シナリオで再現するためのセレクタ**(E)。

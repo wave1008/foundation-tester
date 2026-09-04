@@ -784,10 +784,23 @@ extension MCPServer {
             + " operate it by ref there, then ft_launch your app again."
     }
 
-    /// home 直後の XCUITest は「セッションはアプリのまま・画面はホーム」になり、次の
-    /// ft_snapshot がアプリの古い木か 500 を返す。**先に言う**(踏んでから調べさせない)
-    static func homeScreenReadNote(target: String, engine: String?) -> String {
-        guard target == "home", engine == nil || engine == "xcuitest" else { return "" }
+    /// home/appSwitcher 直後の XCUITest は「セッションはアプリのまま・画面は別」になり、次の
+    /// ft_snapshot がアプリの古い木か 500 を返す。**撃つ前に言うしかない**(先に言う。
+    /// 踏んでから調べさせない)。
+    ///
+    /// **同名の `backgroundedSessionNote(_:driver:)` とは別物**: あちらは木を撮ったあとに
+    /// `/appstate` へ聞いて「今 前面か」を言う(実機の iPhone 13 では**その照会が
+    /// 前面と答えて黙った**実測がある)。こちらは照会に頼らず「ツール自身が背面化させた」
+    /// という事実だけで言うので、プラットフォームの答えが当てにならない機械でも必ず出る
+    static func backgroundingNavigationNote(target: String, engine: String?) -> String {
+        guard target == "home" || target == "appSwitcher",
+              engine == nil || engine == "xcuitest" else { return "" }
+        if target == "appSwitcher" {
+            return ". The App Switcher opened, but the session still points at the app, so"
+                + " ft_snapshot may keep returning the app's tree, and a tap by ref there could"
+                + " land on whatever the switcher is drawing instead. Check ft_screenshot to see"
+                + " what is actually on screen, then ft_launch your app again to bring it back"
+        }
         return ". The session still points at the app, so ft_snapshot cannot read the home screen"
             + " — ft_launch bundleId: com.apple.springboard first (non-destructive)"
     }
@@ -920,6 +933,18 @@ extension MCPServer {
         return "\(bundleID) is NOT in the foreground: this tree is its last state, not what is on"
             + " screen now (another app or a system screen is in front)."
             + " Bring it back with ft_launch before trusting these refs\n"
+    }
+
+    /// **このセッションが home / appSwitcher を送ったあと、まだ ft_launch で戻していない**
+    /// ときの注記。`/appstate` の照会と違い**プラットフォームに聞かない**ので、答えが
+    /// 当てにならない機械(実機 iPhone 13 で前面と答えた実測)でも必ず出る。
+    /// 木は背面のアプリのままなので、ref を撃つと画面に描かれている別のものに当たる
+    static func sentToBackgroundNote(_ sessionBundleID: String?) -> String {
+        let app = sessionBundleID ?? "the app"
+        return "⚠️ This session sent home/appSwitcher and has not brought \(app) back:"
+            + " the tree below is its last state, not what is on screen now, and tapping a ref"
+            + " from it lands on whatever is drawn there. Check with ft_screenshot,"
+            + " and ft_launch to return.\n"
     }
 
     /// システムダイアログのパッケージ/バンドル ID。これらへの切り替わりは「別アプリに迷い込んだ」

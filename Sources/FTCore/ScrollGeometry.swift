@@ -58,6 +58,26 @@ public enum ScrollGeometry {
         return path.distance >= minUsableDistance ? path : nil
     }
 
+    /// **下部 chrome の上で指を置かないよう始点マージンを底上げする**(純粋)。
+    /// 返すのは新しい `startMarginRatio` で、`path` に渡すこと(あちらの `clampMargin` が
+    /// 上限 `maxMarginRatio` を掛け、動かせる幅が残らなければ `path` が nil を返す)。
+    ///
+    /// **効くのは下端から始める向き(`.down` = 指は上へ)だけ**。上端側(ナビゲーションバー)にも
+    /// 同じ理屈は立つが、実測した witness が無いので広げない。
+    /// **基準は容器ではなく viewport の下端**: バーは画面に固定されるので、画面下端から
+    /// 遠い容器の中で余白を取っても意味が無い(travel を削るだけ)。
+    ///
+    /// 始点の式は `path` の `.down` と対。**片方だけ変えない**
+    public static func startMarginClearingBottomChrome(start: Double, area: FTRect,
+                                                       viewportBottom: Double,
+                                                       direction: FTScrollDirection) -> Double {
+        guard direction == .down, area.height > 0 else { return start }
+        let startY = area.y + area.height * (1 - start)
+        let limit = viewportBottom - BridgeAPI.bottomChromeClearance
+        guard startY > limit else { return start }
+        return max(start, (area.y + area.height - limit) / area.height)
+    }
+
     /// **斜めを含む任意方向のドラッグ**(DSL の swipeBy。マップのパン用)。
     /// 比率は**指の移動量 ÷ 領域の幅・高さ**で、符号は指の向き(dxRatio > 0 = 指を右へ =
     /// コンテンツは左へ動く。`swipe` の向き規約と同じ)。

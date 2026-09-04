@@ -226,6 +226,14 @@ extension StepExecutor {
             margins = ScrollGeometry.marginsForKeyboardClippedViewport(
                 start: scaled.start, end: scaled.end, direction: direction,
                 keyboardBelow: keyboardBelow)
+        } else if let area = ScrollGeometry.intersection(container, viewport) {
+            // **キーボードで削られていないときだけ**下部 chrome の床を掛ける(削られているなら
+            // 下端はキーボードの上端で、そこはタブバーではない = 上の分岐が担当する)。
+            // 比だけの始点は窓が低いほど下端へ寄り、横向きではタブバーの上に落ちる
+            // (`BridgeAPI.bottomChromeClearance` の実測)
+            margins.start = ScrollGeometry.startMarginClearingBottomChrome(
+                start: margins.start, area: area,
+                viewportBottom: viewport.y + viewport.height, direction: direction)
         }
         let path = ScrollGeometry.path(
             container: container,

@@ -416,4 +416,42 @@ final class ScrollGeometryTests: XCTestCase {
         XCTAssertGreaterThan(tightenedPath?.distance ?? 0, defaultPath?.distance ?? 0)
         XCTAssertLessThan(tightenedPath?.fromY ?? .infinity, 509)
     }
+
+    // MARK: - 下部 chrome の床(2026-09-01・実機 iPhone 13 横向きの実測)
+
+    /// 横向き 844x390。比だけの始点 0.75×390=292.5pt はタブバー(上端 290pt)の内側に落ちて
+    /// 1pt も動かなかった。床を掛けると下端から 120pt = y=270 まで引き上がる
+    func testTheStartIsPulledOffAShortWindowsBottomEdge() {
+        let landscape = FTRect(x: 0, y: 0, width: 844, height: 390)
+        let start = ScrollGeometry.startMarginClearingBottomChrome(
+            start: 0.25, area: landscape, viewportBottom: 390, direction: .down)
+        let path = ScrollGeometry.path(container: landscape, viewport: landscape, direction: .down,
+                                       startMarginRatio: start, endMarginRatio: 0.25)
+        XCTAssertEqual(path?.fromY ?? 0, 270, accuracy: 0.001,
+                       "始点がタブバーの帯(下端から 100pt)を外れていない")
+        XCTAssertEqual(path?.toY ?? 0, 97.5, accuracy: 0.001, "終点は動かさない")
+    }
+
+    /// **縦向きは1バイトも変わらない**(常に床を掛ける変異を殺す)。
+    /// 844pt の窓の始点 633pt は下端から 211pt あり、もともとバーを外している
+    func testATallWindowIsUnchanged() {
+        let portrait = FTRect(x: 0, y: 0, width: 390, height: 844)
+        XCTAssertEqual(ScrollGeometry.startMarginClearingBottomChrome(
+            start: 0.25, area: portrait, viewportBottom: 844, direction: .down), 0.25)
+    }
+
+    /// **画面下端から遠い容器では効かない**(バーは画面に固定されるので、容器の中で
+    /// 余白を取っても travel を削るだけ)。容器の下端は画面下端の 400pt 上
+    func testAContainerFarFromTheScreenBottomIsUnchanged() {
+        let list = FTRect(x: 0, y: 40, width: 390, height: 404)
+        XCTAssertEqual(ScrollGeometry.startMarginClearingBottomChrome(
+            start: 0.25, area: list, viewportBottom: 844, direction: .down), 0.25)
+    }
+
+    /// **上端から始める向きには掛けない**(witness が無いので広げていない)
+    func testTheUpwardDirectionIsUnchanged() {
+        let landscape = FTRect(x: 0, y: 0, width: 844, height: 390)
+        XCTAssertEqual(ScrollGeometry.startMarginClearingBottomChrome(
+            start: 0.25, area: landscape, viewportBottom: 390, direction: .up), 0.25)
+    }
 }

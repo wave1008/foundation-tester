@@ -166,7 +166,8 @@ final class CrashLogsTests: XCTestCase {
 
     func testUnknownPlatformIsRejectedWithoutThrowing() async {
         let text = await CrashLogs.text(platform: "windows", bundleID: nil, serial: nil,
-                                        withinSeconds: 60, maxLines: 100, crashOnly: true)
+                                        withinSeconds: 60, maxLines: 100, crashOnly: true,
+                                        physicalUDID: nil)
         XCTAssertTrue(text.localizedCaseInsensitiveContains("unknown"), text)
     }
 
@@ -174,7 +175,49 @@ final class CrashLogsTests: XCTestCase {
     /// テスト用に差し替えられないため、bundleID 欠落のガード文言だけで委譲を確認する)
     func testTextDelegatesToIOSPathForIOSPlatform() async {
         let text = await CrashLogs.text(platform: "ios", bundleID: nil, serial: nil,
-                                        withinSeconds: 60, maxLines: 100, crashOnly: true)
+                                        withinSeconds: 60, maxLines: 100, crashOnly: true,
+                                        physicalUDID: nil)
+        XCTAssertTrue(text.contains("bundleID"), text)
+    }
+
+    // MARK: - 実機宛て(件3: 待っても永遠に見つからない)
+
+    /// **実機だと分かっているときは iOS の待ち(reportPollAttempts × reportPollIntervalNanos ≒
+    /// 4.2 秒)を一切払わない**。待ったかどうかは "Waited" の有無で判定できる(iosText の
+    /// waitedSeconds 注記と同じ語)—— 待っていれば必ず付き、実機経路では絶対に付かない
+    func testPhysicalDeviceSkipsTheSimulatorPollingWait() async {
+        let text = await CrashLogs.text(platform: "ios", bundleID: "com.example.app", serial: nil,
+                                        withinSeconds: 60, maxLines: 100, crashOnly: true,
+                                        physicalUDID: "00008130-001819863E60001C")
+        XCTAssertFalse(text.contains("Waited"), text)
+    }
+
+    /// 実機宛ての本文は udid を名指しし、取り出し方(Xcode の Devices and Simulators / devicectl)
+    /// まで言う。黙ると「ではどうやって取るのか」で行き止まる
+    func testPhysicalDeviceTextNamesTheUDIDAndTheRetrievalPath() {
+        let text = CrashLogs.physicalDeviceText(bundleID: "com.example.app",
+                                                udid: "00008130-001819863E60001C")
+        XCTAssertTrue(text.contains("00008130-001819863E60001C"), text)
+        XCTAssertTrue(text.contains("com.example.app"), text)
+        XCTAssertTrue(text.contains("Devices and Simulators"), text)
+        XCTAssertTrue(text.contains("devicectl"), text)
+        // iOS/Android 非対称は実機経路でも言う(iosText と同じ一文を共有)
+        XCTAssertTrue(text.contains("Android"), text)
+    }
+
+    /// bundleID 省略でも(scope が無いだけで)落ちない
+    func testPhysicalDeviceTextToleratesMissingBundleID() {
+        let text = CrashLogs.physicalDeviceText(bundleID: nil, udid: "00008130-001819863E60001C")
+        XCTAssertTrue(text.contains("00008130-001819863E60001C"), text)
+    }
+
+    /// physicalUDID が nil なら**従来どおりシミュレータの経路**(常に実機扱いへ倒れていないことの
+    /// 回帰ガード)。bundleID も省いて即 return させ、4.2 秒のポーリング待ちを払わずに確認する
+    func testNilPhysicalUDIDStaysOnTheSimulatorPath() async {
+        let text = await CrashLogs.text(platform: "ios", bundleID: nil, serial: nil,
+                                        withinSeconds: 60, maxLines: 100, crashOnly: true,
+                                        physicalUDID: nil)
+        XCTAssertFalse(text.contains("Devices and Simulators"), text)
         XCTAssertTrue(text.contains("bundleID"), text)
     }
 }

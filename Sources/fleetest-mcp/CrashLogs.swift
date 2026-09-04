@@ -17,12 +17,17 @@ enum CrashLogs {
     static let hardMaxLines = 400
 
     /// ft_logs の本文。**throw しない** — 失敗も文章で返す(MCP ツールとして「診断できない」を
-    /// 例外で終わらせると、まさに診断したい落ちた直後の状況で使い物にならない)
+    /// 例外で終わらせると、まさに診断したい落ちた直後の状況で使い物にならない)。
+    /// `physicalUDID`: 宛先が実機だと分かっているときだけ非 nil(**既定値は付けない** —
+    /// 呼び出し忘れをコンパイルで止める)。**記録が無い(nil)ことは実機でない証拠にはならない**
+    /// (best-effort。手掛かりが取れなければ従来どおりシミュレータの待ちへ落ちる)
     static func text(platform: String, bundleID: String?, serial: String?,
-                     withinSeconds: Int, maxLines: Int, crashOnly: Bool) async -> String {
+                     withinSeconds: Int, maxLines: Int, crashOnly: Bool,
+                     physicalUDID: String?) async -> String {
         switch platform {
         case "ios":
-            return await iosTextWaitingForReport(bundleID: bundleID, withinSeconds: withinSeconds)
+            return await iosTextWaitingForReport(bundleID: bundleID, withinSeconds: withinSeconds,
+                                                 physicalUDID: physicalUDID)
         case "android":
             return androidText(serial: serial, bundleID: bundleID, withinSeconds: withinSeconds,
                                maxLines: maxLines, crashOnly: crashOnly)
@@ -40,7 +45,20 @@ enum CrashLogs {
     static let reportPollAttempts = 6
     static let reportPollIntervalNanos: UInt64 = 700_000_000
 
-    static func iosTextWaitingForReport(bundleID: String?, withinSeconds: Int) async -> String {
+    /// iOS/Android 非対称の一文。`iosText` と `physicalDeviceText` の両方が使うので、
+    /// ここ1箇所に置いて食い違いを起こさない
+    static let asymmetryNote = "Unlike Android, iOS has no runtime log tail here (only crash"
+        + " reports are readable this way) — if the app has not crashed, this tool has nothing"
+        + " to show."
+
+    static func iosTextWaitingForReport(bundleID: String?, withinSeconds: Int,
+                                        physicalUDID: String?) async -> String {
+        // **実機は待つだけ無駄**(件3): DiagnosticReports には端末のクラッシュが絶対に来ないので、
+        // reportPollAttempts × reportPollIntervalNanos ≒ 4.2 秒はシミュレータのときにしか
+        // 意味を持たない
+        if let physicalUDID {
+            return physicalDeviceText(bundleID: bundleID, udid: physicalUDID)
+        }
         guard let bundleID, !bundleID.isEmpty else {
             return iosText(bundleID: bundleID, withinSeconds: withinSeconds)
         }
@@ -54,6 +72,17 @@ enum CrashLogs {
         return iosText(bundleID: bundleID, withinSeconds: withinSeconds, waitedSeconds: waited)
     }
 
+    /// 宛先が実機だと分かっているときの本文。取り出し方まで言う(黙ると「ではどうやって
+    /// 取るのか」で行き止まる) —— Xcode の Devices and Simulators ウィンドウ、または devicectl
+    static func physicalDeviceText(bundleID: String?, udid: String) -> String {
+        let scope = bundleID.map { " for \($0)" } ?? ""
+        return "This destination is a physical device (\(udid))\(scope) — crash reports stay on"
+            + " the device and never reach the Mac's DiagnosticReports, so this tool cannot read"
+            + " them here. Pull them with Xcode's Window > Devices and Simulators (select the"
+            + " device, \"View Device Logs\"), or `xcrun devicectl device copy from --device"
+            + " \(udid) <container path> <destination>`. \(asymmetryNote)"
+    }
+
     /// dir/now を差し替え可能にした internal 版(テストは実ホームディレクトリを汚さず
     /// 一時ディレクトリで検証する)
     static func iosText(bundleID: String?, withinSeconds: Int,
@@ -64,8 +93,6 @@ enum CrashLogs {
         guard let bundleID, !bundleID.isEmpty else {
             return "iOS crash lookup requires bundleID."
         }
-        let asymmetryNote = "Unlike Android, iOS has no runtime log tail here (only crash reports" +
-            " are readable this way) — if the app has not crashed, this tool has nothing to show."
         guard let found = SimulatorCrashReport.findRecent(bundleID: bundleID,
                                                            within: TimeInterval(withinSeconds),
                                                            dir: dir, now: now) else {

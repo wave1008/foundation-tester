@@ -895,8 +895,12 @@ final class BridgeRouter {
     /// (`coordinate(_:_:)` が app frame 原点からのオフセットとして加算するため minX/minY は足さない)。
     /// 縦向きは対象外で nil を返し `swipeUp()` 系のまま —— 全画面を暗黙に座標化する案は
     /// 2度撤回済み(docs/performance-tuning.md §3.19)。
-    /// マージンは `BridgeAPI.defaultSwipeMarginRatio`(0.25)。**それでもバーに乗れば動かない**——
-    /// そのときは host 側の「何も動いていない」判定がそのまま報告する
+    /// マージンは `BridgeAPI.defaultSwipeMarginRatio`(0.25)だが、**下端からは
+    /// `BridgeAPI.bottomChromeClearance` を必ず空ける** —— 比だけだと窓の低い横向きで
+    /// 始点がタブバーの内側に落ち、1pt も動かない(定数の doc に実測)。
+    /// ランナーは木を持たないので保証できるのは標準的なバーを外すところまでで、
+    /// **それより高いバーに乗れば動かない**——そのときは host 側の
+    /// 「何も動いていない」判定がそのまま報告する
     private static func landscapeDefaultSwipe(_ direction: FTSwipeDirection, frame: CGRect)
         -> (CGPoint, CGPoint)? {
         guard frame.width > frame.height else { return nil }
@@ -905,8 +909,13 @@ final class BridgeRouter {
         let midY = frame.height / 2
         switch direction {
         case .up:
-            return (CGPoint(x: midX, y: frame.height * (1 - margin)),
-                    CGPoint(x: midX, y: frame.height * margin))
+            // 床が終点より上へ来る(窓がクリアランス+スパンより低い)ときは比のまま ——
+            // 始点と終点が入れ替わって逆向きに振るほうが害が大きい
+            let end = frame.height * margin
+            let ratioStart = frame.height * (1 - margin)
+            let cleared = frame.height - BridgeAPI.bottomChromeClearance
+            return (CGPoint(x: midX, y: cleared > end ? min(ratioStart, cleared) : ratioStart),
+                    CGPoint(x: midX, y: end))
         case .down:
             return (CGPoint(x: midX, y: frame.height * margin),
                     CGPoint(x: midX, y: frame.height * (1 - margin)))

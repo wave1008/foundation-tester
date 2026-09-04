@@ -83,6 +83,14 @@ final class MCPServer {
     /// (そちらは意図してアラートを読みに行く経路なので、覆いではなく本来の画面)。
     /// snapshotBody が読んで消費(先に消してから probe)し、forgetDeviceState / ft_terminate で捨てる
     var systemAlertProbePending: Set<String> = []
+    /// **このセッションが `ft_navigate home` / `appSwitcher` でアプリを背面へ送ったまま**か
+    /// (engineKey ごと)。次の ft_launch で消す。
+    ///
+    /// なぜ「聞く」だけでは足りないか: `backgroundedSessionNote(_:driver:)` は `/appstate` へ
+    /// 聞くが、**実機 iPhone 13 の実測でその照会が前面と答えた**(ホーム画面が出ていて、
+    /// スクリーンショットでも確認済み)。木も session もアプリのままなので、ツールが送った
+    /// 事実だけが唯一の確かな材料になる。**プラットフォームの答えに上書きさせない**
+    var backgroundedByNavigate: Set<String> = []
     /// ft_screenshot の鮮度判定用(engineKey ごと)。**静止画面の2連続 ft_screenshot は PNG が
     /// バイト単位で同一**(2026-08-10 実測: Android 83,028B×2 / iOS 95,076B×2)—— これが成り立つから
     /// 「木は変わったのに絵が前回と同一 = 古いフレームを返し続けている」と言える(treeFingerprint の

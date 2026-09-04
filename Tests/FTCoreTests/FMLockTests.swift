@@ -71,10 +71,11 @@ final class FMLockTests: XCTestCase {
     /// **変えるときはこの数字と根拠を両方更新すること**
     func testDefaultConcurrencyIsPinned() throws {
         XCTAssertEqual(FMLock.defaultConcurrency, 5)
-        FMLock.concurrencyForTesting = nil
-        XCTAssertNil(ProcessInfo.processInfo.environment["FT_FM_CONCURRENCY"],
-                     "この検証は環境変数が無いことが前提")
-        XCTAssertEqual(FMLock.concurrency, 5, "上書きが無ければ既定が効く")
+        // **`FMLock.concurrency` では確かめない**: あれは**この機械の設定ファイル**を読むので、
+        // ホストが `fmConcurrency` を入れているだけで落ちる(実際に 1 を入れた機械で落ちた)。
+        // 上書きが無いときに既定が効くことは、解決そのものの純関数で見る
+        XCTAssertEqual(FMLock.resolveConcurrency(environment: [:], configured: nil), 5,
+                       "上書きが無ければ既定が効く")
     }
 
     /// **返した枠が再利用される**。N 本取る → 1本返す → もう1本取れる、を繰り返しても枯れない
@@ -153,10 +154,13 @@ final class FMLockTests: XCTestCase {
             defer {
                 if let saved { setenv("FT_FM_CONCURRENCY", saved, 1) } else { unsetenv("FT_FM_CONCURRENCY") }
             }
+            // **不正値の行き先は純関数で見る**: `FMLock.concurrency` の落とし先は設定ファイル →
+            // 既定の順で、設定を入れている機械では既定に届かない(それは仕様どおりの挙動)
             for invalid in ["0", "-1", "not-a-number", ""] {
-                setenv("FT_FM_CONCURRENCY", invalid, 1)
-                XCTAssertEqual(FMLock.concurrency, FMLock.defaultConcurrency,
-                              "FT_FM_CONCURRENCY=\(invalid) は既定(\(FMLock.defaultConcurrency))へ倒れるはず")
+                XCTAssertEqual(
+                    FMLock.resolveConcurrency(environment: ["FT_FM_CONCURRENCY": invalid],
+                                              configured: nil), 5,
+                    "FT_FM_CONCURRENCY=\(invalid) は既定(5)へ倒れるはず")
             }
             setenv("FT_FM_CONCURRENCY", "7", 1)
             XCTAssertEqual(FMLock.concurrency, 7, "正の整数は素通しするはず")

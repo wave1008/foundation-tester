@@ -295,6 +295,38 @@ final class TreeCoverageTests: XCTestCase {
                                          depth: 1))
         XCTAssertFalse(TreeCoverage.missingPageContent(in: tree))
     }
+
+    // MARK: - モーダルがアドレス欄ごと木を置き換える形(2026-09-01・実機 iPhone 13)
+
+    func testAModalThatRemovedTheAddressBarIsStillSuspected() {
+        let tree = modalCollapsedBrowserTree()
+        XCTAssertNil(TreeCoverage.addressBarCandidate(in: tree),
+                     "前提: モーダルがアドレス欄ごと消した木であること")
+        XCTAssertGreaterThan(TreeCoverage.unrepresentedScreenFraction(tree), 0.5)
+        XCTAssertTrue(TreeCoverage.missingPageContent(in: tree),
+                      "画面に見えているページが木から消えているのに疑われなかった")
+        XCTAssertTrue(TreeCoverage.underreports(tree))
+    }
+
+    /// **陰性対照①**: 同じ形でもブラウザでなければ黙る(空白率だけで判定する変異を殺す)。
+    /// ネイティブアプリのモーダルは正当に疎な画面と区別できないので、ここは見逃す側に倒してある
+    func testTheSameShapeInANativeAppIsNotSuspected() {
+        let native = modalCollapsedBrowserTree(session: "com.sutec.mobile")
+        XCTAssertFalse(TreeCoverage.missingPageContent(in: native))
+        XCTAssertFalse(TreeCoverage.underreports(native))
+    }
+
+    /// **陰性対照②**: ブラウザでも本文が木に在れば黙る(常に真を返す変異を殺す)
+    func testABrowserTreeThatPublishesItsPageIsNotSuspected() {
+        var filled = modalCollapsedBrowserTree()
+        filled.elements.append(ElementInfo(ref: 7, type: "staticText", identifier: nil,
+                                           label: "Example Domain", value: "Example Domain",
+                                           placeholder: nil, enabled: true,
+                                           frame: FTRect(x: 78, y: 0, width: 187, height: 441),
+                                           depth: 8))
+        XCTAssertLessThan(TreeCoverage.unrepresentedScreenFraction(filled), 0.5)
+        XCTAssertFalse(TreeCoverage.missingPageContent(in: filled))
+    }
 }
 
 /// 与えた木をそのまま返すドライバ(DSL 配線の確認用)
@@ -389,4 +421,43 @@ final class TreeCoverageStepNoteTests: XCTestCase {
         XCTAssertFalse(outcome.notes.contains(.treeUnderreported),
                        "通った肯定形に付いた: \(outcome.notes)")
     }
+
+    /// モーダルで消えた本文への不在も注記まで届くこと(判定は TreeCoverageTests 側)
+    func testTheModalTreeMakesAPassingAbsenceCarryTheNote() async {
+        let step = FlowStep(assert: "notExists", locator: FlowLocator(label: "Example Domain"),
+                            timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: FixedTreeDriver(modalCollapsedBrowserTree()),
+                                         isAndroid: false).execute(step)
+        XCTAssertTrue(StepExecutor.isSuccess(outcome.status), "\(outcome.status)")
+        XCTAssertTrue(outcome.notes.contains(.treeUnderreported),
+                      "モーダルで消えた本文への notExists が黙って通った: \(outcome.notes)")
+    }
+}
+
+
+/// 実測の転記: Safari で example.com を**表示したまま**「さらに表示」メニューを開くと、
+/// 木はメニューの部分木 22 要素だけになり、ページ本文・アドレス欄・ツールバーが消える
+/// (画面 390x844 / 上から 441pt = 52.3% に要素が1つも無い)。ここでは形が同じ骨だけを置く。
+/// **アドレス欄が無いのが要点** —— 悪い形ほど検知が外れていた
+func modalCollapsedBrowserTree(session: String? = "com.apple.mobilesafari") -> SnapshotResponse {
+    func button(_ ref: Int, _ identifier: String?, _ label: String,
+                _ frame: FTRect, depth: Int) -> ElementInfo {
+        ElementInfo(ref: ref, type: "button", identifier: identifier, label: label, value: nil,
+                    placeholder: nil, enabled: true, frame: frame, depth: depth)
+    }
+    let menu = ElementInfo(ref: 1, type: "collectionView", identifier: nil, label: nil,
+                           value: nil, placeholder: nil, enabled: true,
+                           frame: FTRect(x: 106, y: 441, width: 250, height: 844), depth: 7,
+                           scrollable: true)
+    return SnapshotResponse(
+        sessionBundleID: session, screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+        elements: [
+            menu,
+            button(2, "ShareButton", "共有", FTRect(x: 106, y: 451, width: 250, height: 42), depth: 9),
+            button(3, nil, "ブックマークに追加", FTRect(x: 106, y: 493, width: 250, height: 42), depth: 9),
+            button(4, "NewTabButton", "新規タブ", FTRect(x: 106, y: 618, width: 250, height: 42), depth: 9),
+            button(5, "SidebarButton", "ブックマーク", FTRect(x: 114, y: 733, width: 117, height: 77), depth: 9),
+            button(6, "TabOverviewButton", "すべてのタブ", FTRect(x: 231, y: 733, width: 117, height: 77), depth: 9),
+        ],
+        truncatedCount: 0)
 }

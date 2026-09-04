@@ -204,8 +204,9 @@ public enum TreeCoverage {
     public static let addressBarIdentifiers: Set<String> = ["url_bar", "TabBarItemTitle", "URL"]
 
     /// アドレス欄になり得る要素の生の探索(**webView の有無を問わない**)。
-    /// 2つの呼び手が逆の前提で使う: MCP の `addressBarNote` は webView が居るときだけ通す /
-    /// `missingPageContent` は逆に webView が**居ない**ことを条件にする
+    /// 呼び手は MCP の `addressBarNote`(webView が居るときだけ通す)と `holdsWebContent`
+    /// (アプリ内 WebView を拾う補助の1つ)。**`missingPageContent` は直接は使わない** ——
+    /// モーダルはアドレス欄ごと消すので、これを必須条件にすると悪い形ほど外れる
     public static func addressBarCandidate(in snapshot: SnapshotResponse) -> ElementInfo? {
         snapshot.elements.first {
             addressBarIdentifiers.contains($0.identifier ?? "") && !($0.value ?? "").isEmpty
@@ -232,11 +233,25 @@ public enum TreeCoverage {
             || addressBarCandidate(in: snapshot) != nil
     }
 
-    /// **アドレス欄はあるのに webView 要素そのものが1つも無い**形。
+    /// **ブラウザなのに webView 要素そのものが1つも無い**形。
     ///
-    /// **ブラウザにだけ絞る**(アドレス欄の存在が要る理由): 空白の割合だけで判定すると
-    /// ネイティブ画面まで拾う —— 地図の `and-overflow` は空白率 0.564 まで達するが、
-    /// アドレス欄が無い = ブラウザではないので黙るべき
+    /// **ブラウザにだけ絞る**: 空白の割合だけで判定するとネイティブ画面まで拾う ——
+    /// 地図の `and-overflow` は空白率 0.564 まで達するが、ブラウザではないので黙るべき。
+    ///
+    /// **絞り込みにアドレス欄の存在を使わない**(`holdsWebContent` に委ねる): モーダルは
+    /// アドレス欄ごと木から消すので、**悪い形ほど検知が外れる**。実測(2026-09-01・実機
+    /// iPhone 13 / Safari で example.com を表示中に「さらに表示」メニューを開いた木):
+    /// 22 要素すべてがメニューの部分木で、ページ本文もアドレス欄もツールバーも消え、
+    /// `unrepresentedScreenFraction` は 0.523(閾値超え)なのにアドレス欄ゲートで false に
+    /// なっていた。**ページは画面にそのまま見えている**ので、DSL の notExists は
+    /// 注記なしで誤って成功する。
+    /// 固定コーパス40枚では発火集合は変わらない(真陽性 `and-browser_jma_notree` は
+    /// アドレス欄も持つ / `and-overflow` はブラウザでないまま / ブラウザの健全な画面は
+    /// webView 要素を持つか空白率が 0.06 以下)。
+    ///
+    /// **拾えない形**: ネイティブアプリのモーダル(同じくメニューだけの木になる)。
+    /// ブラウザという根拠が無く、正当に疎な画面と区別できない —— 誤った緑の witness が
+    /// 取れてから広げること
     public static func missingPageContent(in snapshot: SnapshotResponse) -> Bool {
         // **打ち切られた木からは結論しない**(2026-08-15 の witness)。この判定の材料は3つとも
         // 「要素が無いこと」なので、**上限で落とされただけの木でも同じように真になる** ——
@@ -254,7 +269,7 @@ public enum TreeCoverage {
         // いずれも打ち切り0)
         guard snapshot.truncatedCount == 0 else { return false }
         return !snapshot.elements.contains { $0.type == "webView" }
-            && addressBarCandidate(in: snapshot) != nil
+            && holdsWebContent(in: snapshot)
             && unrepresentedScreenFraction(snapshot) >= missingPageContentFractionThreshold
     }
 

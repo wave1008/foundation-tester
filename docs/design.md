@@ -2689,7 +2689,7 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     セッションはアプリに閉じているので、未起動での `ft_snapshot` は 409、`ft_navigate home` 後は
     背面アプリ照会の 500(kAXErrorServerNotFound)になる。`BridgeRouter.handleLaunch` は
     springboard を**起動せず参照だけ張る**特別扱いを持つので、これで木が読める
-    (`MCPServer.springboardHint` / `homeScreenReadNote` が両方の行き止まりで案内する)
+    (`MCPServer.springboardHint` / `backgroundingNavigationNote` が両方の行き止まりで案内する)
   - **MCP の snapshot は必ずキャッシュを捨てて撮る**(`MCPServer.freshSnapshot`。2026-08-06)。
     Android の a11y ノードはキャッシュ供給で、**Compose のスクロール後は木が古いまま固まる** ——
     実測(E2E-CMP / Pixel 9・Android 15)では `ft_swipe` 後の画面が行08〜16 なのに木は行01〜10 のままで、

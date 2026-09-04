@@ -283,7 +283,12 @@ public enum BridgeAPI {
     /// remaining text reads nil at entry — whitespace-only content is invisible to accessibility,
     /// so a field holding only spaces looked already-clear and the next `/type` appended after
     /// it. A stale runner keeps both silently wrong → bump.
-    public static let bridgeProtocolVersion = 85
+    ///
+    /// 86: the landscape default swipe now keeps `BridgeAPI.bottomChromeClearance` clear of the
+    /// window's bottom edge. With the ratio alone the finger started **inside** a tab bar
+    /// (measured 292.5pt vs a bar starting at 290pt on a 390pt-tall window) and nothing moved
+    /// at all. A stale runner keeps starting on the bar → bump.
+    public static let bridgeProtocolVersion = 86
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -313,6 +318,24 @@ public enum BridgeAPI {
     /// 動かなかった実測が残る)。それでもバーに乗れば動かない——そのときは
     /// host 側の「何も動いていない」判定がそのまま報告する
     public static let defaultSwipeMarginRatio = 0.25
+
+    /// **下部 chrome(タブバー・ツールバー)の上に指を置かないための、画面下端からの最小距離**
+    /// (pt/dp)。比だけで決めると窓が低いほど始点が下端へ寄るので、**絶対距離の床**を併せる。
+    /// ランナーの `landscapeDefaultSwipe` と host の `ScrollGeometry` が共有する
+    /// (ScrollGeometry.swift はランナーの入力集合に無いため定数はここに置く)。
+    ///
+    /// 根拠: iOS のタブバー 49pt + home indicator のセーフエリア 34pt = 83pt が標準だが、
+    /// **アイコン+ラベルのタブバーは実測 80pt** で、下端 20pt のインセットと合わせて
+    /// **下端から 100pt** を占める(2026-09-01・実機 iPhone 13 横向き 844x390 の実測。
+    /// `defaultSwipeMarginRatio` の始点 0.75×390=292.5pt はバーの上端 290pt の内側に落ち、
+    /// scrollTo / swipe / scrollFrame 指定のすべてが「nothing moved」で終わった。
+    /// 座標ドラッグを 250→60 に変えると同じ画面が 137pt 動く)。
+    /// 120 はその 100pt を超える最小の切りのよい値。
+    ///
+    /// **尽きたとき**(これより高い下部 chrome を持つ画面で動かない)は数字を上げるのではなく、
+    /// 木を持っている host 側で実際のバーを測って `scrollFrame` を絞ること —— ランナーは
+    /// 木を持たないので、ここは「標準的なバーを外す」以上の約束をしない
+    public static let bottomChromeClearance: Double = 120
 
     /// **SpringBoard の面がアプリを覆っていることの目印**(`GET /systemui/covering`)。
     ///
