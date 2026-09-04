@@ -529,6 +529,13 @@ public enum ProfileWorkerFactory {
             // provision に 60s の期限を切る: ウェッジしたブリッジは接続を受けたまま応答せず、
             // BridgeClient の既定 120s/リクエストに任せると復帰ポーリング1回が数分止まる
             // (呼び出し側 reviveWorker の Date 期限は await 中は効かない)。キャンセルで確実に抜ける。
+            // **実機は 60s に収まらない**: ランナーの起動→LAN 宣言(最大 startupTimeoutSeconds)→
+            // /status(同じく最大 startupTimeoutSeconds)を直列に払う(build-for-testing は共有済み)。
+            // 60s で切ると復帰が構造的に成立せず、切られた供給は続行して孤児ランナーを残していた
+            // (2026-09-04 iPhone 13: 18 本中 17 本が「no usable workers」)。数字は launcher の
+            // 2 段の締切から導く(独立した定数を置かない)
+            let budgetSeconds: TimeInterval = device.spec.isPhysical
+                ? 2 * BridgeLauncher.startupTimeoutSeconds : 60
             let provisioned = await withTaskGroup(of: [ProvisionedIOSDevice]?.self) { group in
                 group.addTask {
                     try? await provisioner.provision(
@@ -538,7 +545,7 @@ public enum ProfileWorkerFactory {
                         log: log)
                 }
                 group.addTask {
-                    try? await Task.sleep(nanoseconds: 60_000_000_000)
+                    try? await Task.sleep(nanoseconds: UInt64(budgetSeconds * 1_000_000_000))
                     return nil
                 }
                 let first = await group.next() ?? nil

@@ -1300,8 +1300,10 @@ public enum ProfileResolver {
                 healthCheckURL: section.healthCheckURL)
             // **iOS の実機にシミュレータ用ビルドは入らない**(未署名 = 0xe8008014)。
             // インストールの失敗は run の途中(ブリッジ供給の後)に出るので、
-            // ここで先に言う。止めはしない —— appPath を実機用にしている構成もありうる
+            // ここで先に言う。止めはしない。**appPath 自体が実機用ビルドなら鳴らさない**
+            // (Info.plist の CFBundleSupportedPlatforms で判る。読めなければ従来どおり鳴らす)
             if platform == "ios", section.appPathPhysical == nil, section.appPath != nil,
+               AppBundleInspector.declaresDevicePlatform(appPath: sourcePath) != true,
                devices.contains(where: { $0.platform == "ios" && $0.spec.isPhysical }) {
                 warnings.append(
                     "the run includes a physical iOS device but apps/\(appRef).json has no"

@@ -28,8 +28,11 @@ public final class SystemUIDriver: AppDriver {
     /// (記憶 fm-alive-costs-notexist-4s の「生死を揃える」を踏んだ)。
     private let sharesPrimarySession: Bool
 
-    public init(port: UInt16, sharesPrimarySession: Bool = false) {
-        self.client = BridgeClient(port: port)
+    /// host: **主ドライバと同じ宛先**(実機は LAN IP か iproxy のループバック)。既定を置かない ——
+    /// 落とすと 127.0.0.1 へ行き、LAN 経由の実機では不在確認・遅延 exist・アラート操作だけが
+    /// 「接続拒否」で落ちる(2026-09-04 iPhone 13 で 18/34 赤。USB トンネルでは隠れる)
+    public init(port: UInt16, host: String, sharesPrimarySession: Bool = false) {
+        self.client = BridgeClient(port: port, host: host)
         self.sharesPrimarySession = sharesPrimarySession
     }
 

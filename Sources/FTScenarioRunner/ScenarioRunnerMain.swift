@@ -304,8 +304,10 @@ struct RunScenario: AsyncParsableCommand {
                         let repoRoot = try RepoRoot.find()
                         let inapp = InAppDriver(repoRoot: repoRoot, udid: udid ?? "booted", port: port)
                         if engine == "hybrid", let xcuiPort {
-                            fallbackDriver = SystemUIDriver(port: xcuiPort)
-                            let attach = AppAttachDriver(port: xcuiPort, bundleID: appBundleID)
+                            let xcuiHost = bridgeHost ?? BridgeEndpoint.loopbackHost
+                            fallbackDriver = SystemUIDriver(port: xcuiPort, host: xcuiHost)
+                            let attach = AppAttachDriver(port: xcuiPort, host: xcuiHost,
+                                                         bundleID: appBundleID)
                             typeDriver = attach
                             // WebView 画面だけドライバごと XCUITest へ委譲する(in-app は WKWebView の
                             // 中身を原理的に採れない)。attach は typeDriver と**同じインスタンス**を
@@ -360,7 +362,9 @@ struct RunScenario: AsyncParsableCommand {
                     // 版 79 の `/systemui/*`(セッションと ref を触らない)を使うため。
                     // これが無いと SpringBoard の権限アラートはアプリの木に載らないまま
                     // 「操作が効かない」だけが見える(2026-08-25 に E2E-iOS で踏んだ)
-                    let systemUI = SystemUIDriver(port: port, sharesPrimarySession: true)
+                    let systemUI = SystemUIDriver(port: port,
+                                                  host: bridgeHost ?? BridgeEndpoint.loopbackHost,
+                                                  sharesPrimarySession: true)
                     homeScreenDriver = systemUI
                     fallbackDriver = systemUI
                     // xcuitest はブリッジの自己申告が無いため、バンドルのマーカーで判定する。

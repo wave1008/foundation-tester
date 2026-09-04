@@ -114,7 +114,8 @@ final class SystemUIDriverScopedRoutingTests: XCTestCase {
         var responses = ["GET /systemui/snapshot": (200, Self.scopedSnapshotBody)]
         for (k, v) in extra { responses[k] = v }
         let stub = try RoutingStubServer(responses: responses)
-        return (stub, SystemUIDriver(port: stub.port, sharesPrimarySession: true))
+        return (stub, SystemUIDriver(port: stub.port, host: BridgeEndpoint.loopbackHost,
+                              sharesPrimarySession: true))
     }
 
     /// **知らない ref の 404 を「旧ランナー」と読み替えない**。読み替えると同じ番号が
@@ -196,7 +197,8 @@ final class SystemUIDriverScopedRoutingTests: XCTestCase {
     func testHybridKeepsTheLegacySessionPath() async throws {
         let stub = try RoutingStubServer()
         defer { stub.stop() }
-        let driver = SystemUIDriver(port: stub.port, sharesPrimarySession: false)
+        let driver = SystemUIDriver(port: stub.port, host: BridgeEndpoint.loopbackHost,
+                                    sharesPrimarySession: false)
 
         _ = try? await driver.snapshot()
         try await driver.tap(ref: 1)

@@ -238,6 +238,24 @@ test("offline は streak をリセットするが failed/attemptCount は connec
   assert.equal(h.posts.at(-1).phase, "failed");
 });
 
+test("実機(kind: physical)は connected→booted を繰り返しても修復 up を積まない(実機のブリッジ起動は run とタイルのメニューだけ)", () => {
+  const h = createHarness();
+  const physical = { ...device("iPhone 13(実機)", "connected"), kind: "physical" };
+  h.watchdog.observe([physical]);
+  for (let i = 0; i < 10; i += 1) {
+    h.watchdog.observe([{ ...physical, state: "booted" }]);
+  }
+  assert.deepEqual(h.jobs, []);
+  assert.deepEqual(h.posts, []);
+  // 同じ観測列でも仮想デバイスなら修復が積まれる(検査が生きている対照)
+  const virtual = { ...device("Sim1", "connected"), kind: "virtual" };
+  h.watchdog.observe([virtual]);
+  for (let i = 0; i < 10; i += 1) {
+    h.watchdog.observe([{ ...virtual, state: "booted" }]);
+  }
+  assert.deepEqual(h.jobs, [{ kind: "device", name: "Sim1", op: "up" }]);
+});
+
 test("複数デバイスは独立して状態管理される", () => {
   const h = createHarness({ autoRepairEnabled: true, runActive: false });
   h.watchdog.observe([device("Sim1", "connected"), device("Sim2", "connected")]);

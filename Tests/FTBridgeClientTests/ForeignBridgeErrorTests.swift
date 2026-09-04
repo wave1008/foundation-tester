@@ -34,8 +34,11 @@ final class ForeignBridgeErrorTests: XCTestCase {
 
     func testNotRunningKeepsItsOwnMessage() {
         // 本当に誰も応答していないケースは従来どおり(退行防止)
-        let message = try! XCTUnwrap(LauncherError.notRunning.errorDescription)
+        let message = try! XCTUnwrap(LauncherError.notRunning(port: 8123).errorDescription)
         XCTAssertTrue(message.contains("is not running"))
+        // **実在するファイル名を言う**: 素の "bridge.pid" はどのポートでも存在せず、
+        // その名前で grep した読み手は何も見つけられない(2026-09-04 に実際に迷った)
+        XCTAssertTrue(message.contains("bridge-8123.pid"), message)
     }
 
     /// stop() の配線そのもの: **応答があれば notRunning ではなく notOwnedByThisRepo を投げる**。

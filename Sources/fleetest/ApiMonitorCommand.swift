@@ -418,7 +418,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
                 let png: Data
                 do {
-                    png = try await Self.fetchScreenshot(state: state)
+                    png = try await Self.fetchScreenshot(state: state, repoRoot: monitorRepoRoot)
                 } catch {
                     // 過渡的競合として扱う: monitorError は出さず stderr ログのみ(同一デバイスで
                     // 連続する間は再ログしない)、フレームは skip(前回フレームが Webview に残る)
@@ -1148,7 +1148,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     }
 
     /// state==connected のデバイスのスクリーンショットを取得する(PNG。JPEG 変換は呼び出し側)
-    private static func fetchScreenshot(state: DeviceRuntimeState) async throws -> Data {
+    private static func fetchScreenshot(state: DeviceRuntimeState,
+                                        repoRoot: URL?) async throws -> Data {
         if state.target.platform == "ios" {
             guard let port = state.iosPort else {
                 // ブリッジを持たないシミュレータ(呼び出し側が simctlCapturePick で1台だけ選ぶ)
@@ -1157,7 +1158,10 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 }
                 return try Self.simctlScreenshot(udid: udid)
             }
-            return try await BridgeClient(port: port, timeoutSeconds: 5).screenshot()
+            // LAN 経由の実機は 127.0.0.1 に居ない(scanBridgeStatuses と同じ宛先の引き方)
+            let host = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0).host }
+                ?? BridgeEndpoint.loopbackHost
+            return try await BridgeClient(port: port, timeoutSeconds: 5, host: host).screenshot()
         }
         guard let serial = state.androidSerial else { throw MonitorError.noEndpoint }
         return try await AndroidDriver(serial: serial).screenshot()

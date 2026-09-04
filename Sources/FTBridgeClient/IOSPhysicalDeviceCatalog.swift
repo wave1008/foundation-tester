@@ -28,6 +28,14 @@ public struct IOSPhysicalDeviceInfo: Sendable, Hashable, Identifiable {
     public let model: String
     public var id: String { udid }
 
+    /// 実問い合わせで到達を確かめた個体を「接続中」として作り直す。
+    /// 一覧の申告だけを信じた `connected` を、確かめた事実で上書きするための唯一の口
+    public func markingConnected() -> IOSPhysicalDeviceInfo {
+        IOSPhysicalDeviceInfo(udid: udid, name: name, os: os, connected: true,
+                              transport: transport, deviceCtlIdentifier: deviceCtlIdentifier,
+                              model: model)
+    }
+
     public init(udid: String, name: String, os: String, connected: Bool, transport: String,
                 deviceCtlIdentifier: String? = nil, model: String = "") {
         self.udid = udid
@@ -43,7 +51,11 @@ public struct IOSPhysicalDeviceInfo: Sendable, Hashable, Identifiable {
 public enum IOSPhysicalDeviceCatalogError: Error, LocalizedError {
     case devicectlFailed(String)
     case notFound(udid: String, available: [IOSPhysicalDeviceInfo])
-    case notConnected(udid: String, name: String)
+    /// transport: devicectl の transportType 生値。**助言をこれで選ぶ** —— 両方を並べると
+    /// 読み手は自分に当たらない側も試す(2026-09-04: USB に挿さった端末に「同じネットワークか
+    /// 確かめろ」と言っていた)。wired は usbmuxd から見えていてもトンネルが張れないことがあり、
+    /// その正体はほぼロック/未信頼なので、ケーブルより先にそちらを言う
+    case notConnected(udid: String, name: String, transport: String)
 
     public var errorDescription: String? {
         switch self {
@@ -54,9 +66,27 @@ public enum IOSPhysicalDeviceCatalogError: Error, LocalizedError {
                 : available.map { "\($0.name)(\($0.udid))" }.joined(separator: ", ")
             return "no physical iOS device with that UDID: \(udid) (recognised devices: \(list)). "
                 + "Check the USB connection, \"Trust This Computer\" and Developer Mode"
-        case .notConnected(let udid, let name):
-            return "the physical iOS device \(name) (\(udid)) is registered but not currently connected"
-                + " (re-plug the USB cable, or for WiFi make sure it is on the same network)"
+        case .notConnected(let udid, let name, let transport):
+            // **一覧の申告だけでは言わない**(reachability の doc 参照)。ここに来たのは
+            // 実際に問い合わせても届かなかったときだけなので、断定してよい
+            return "the physical iOS device \(name) (\(udid)) is not reachable"
+                + " (the device list says disconnected and a direct devicectl query did not reach it"
+                + " either): \(Self.reconnectAdvice(transport: transport))"
+        }
+    }
+
+    /// 直前に見えていたトランスポートから、当たる助言だけを返す純粋関数。
+    /// 不明なときだけ両方を並べる(推測で片方に倒さない)
+    public static func reconnectAdvice(transport: String) -> String {
+        switch transport {
+        case "wired":
+            return "it was last seen on USB, so the cable is probably fine — unlock the device and"
+                + " tap Trust, then check Settings → Privacy & Security → Developer Mode"
+        case "localNetwork":
+            return "it was last seen over WiFi — make sure the device and this Mac are on the same"
+                + " network and the device is awake, or connect it by USB"
+        default:
+            return "re-plug the USB cable, or for WiFi make sure it is on the same network"
         }
     }
 }
@@ -137,10 +167,35 @@ public enum IOSPhysicalDeviceCatalog {
             model: (hardware["marketingName"] as? String) ?? "")
     }
 
-    /// マシンプロファイルの udid → 実機。未接続はエラー(この先の xcodebuild が必ず失敗するため、
-    /// 分かりやすい段階で止める)
+    /// **一覧の「未接続」を鵜呑みにしない**ための実問い合わせ。exit 0 = 到達できた。
+    ///
+    /// `list devices` の `connection.state` は「**今**つながっているか」であって
+    /// 「到達できるか」ではない —— 有線で待機中の端末は CoreDevice がトンネルを畳むので
+    /// `disconnected` と出るが、名指しで問い合わせれば繋がる(2026-09-04 実測: USB の
+    /// iPhone SE3 が list では disconnected、`device info details` は成功)。
+    /// **そこに無い端末と同じ値になる**ので、一覧だけで「無い」と結論すると、
+    /// 実在して使える端末を、既に済ませた対処(Trust・Developer Mode)を促して拒否する。
+    /// 通るのは refuse する直前だけなので、費用は稀にしか払わない
+    public static func probeReachable(udid: String, timeout: Double = 20) -> Bool {
+        guard let result = try? Shell.run(
+            ["xcrun", "devicectl", "device", "info", "details",
+             "--device", udid, "--json-output", "-", "-q"], timeout: timeout) else { return false }
+        return result.status == 0
+    }
+
+    /// 到達性の判定はここ1箇所(`resolve` と `api device-up --udid` の両方が通る)。
+    /// 一覧が接続中と言えばそれを信じ、言わなければ**訊いてから**結論する
+    public static func confirmedConnected(_ device: IOSPhysicalDeviceInfo,
+                                          probe: (String) -> Bool) -> Bool {
+        device.connected || probe(device.udid)
+    }
+
+    /// マシンプロファイルの udid → 実機。到達できない端末はエラー(この先の xcodebuild が必ず
+    /// 失敗するため、分かりやすい段階で止める)。
+    /// probe を渡さなければ実際の devicectl 問い合わせ(probeReachable)を使う
     public static func resolve(spec: DeviceSpec,
-                               in devices: [IOSPhysicalDeviceInfo]) throws -> IOSPhysicalDeviceInfo {
+                               in devices: [IOSPhysicalDeviceInfo],
+                               probe: ((String) -> Bool)? = nil) throws -> IOSPhysicalDeviceInfo {
         let udid = spec.udid ?? ""
         // ユーザーが devicectl の Identifier 列(別 UUID)を書いていても解決する
         guard let device = devices.first(where: {
@@ -148,9 +203,11 @@ public enum IOSPhysicalDeviceCatalog {
         }) else {
             throw IOSPhysicalDeviceCatalogError.notFound(udid: udid, available: devices)
         }
-        guard device.connected else {
-            throw IOSPhysicalDeviceCatalogError.notConnected(udid: udid, name: device.name)
+        guard confirmedConnected(device, probe: probe ?? { probeReachable(udid: $0) }) else {
+            throw IOSPhysicalDeviceCatalogError.notConnected(udid: udid, name: device.name,
+                                                             transport: device.transport)
         }
-        return device
+        // 一覧が未接続と言っていたが問い合わせで届いた個体は、以降 接続中として扱う
+        return device.connected ? device : device.markingConnected()
     }
 }

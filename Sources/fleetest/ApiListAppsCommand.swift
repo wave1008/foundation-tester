@@ -37,7 +37,9 @@ struct ApiListApps: AsyncParsableCommand {
     }
 
     private static func iosApps(port: UInt16) async throws -> [ApiAppEntry] {
-        let status = try await BridgeClient(port: port, timeoutSeconds: 10).status()
+        let host = (try? RepoRoot.find()).map { BridgeEndpoint.load(port: port, repoRoot: $0).host }
+            ?? BridgeEndpoint.loopbackHost
+        let status = try await BridgeClient(port: port, timeoutSeconds: 10, host: host).status()
         let udid: String
         let apps: [SimulatorAppCatalog.App]
         do {

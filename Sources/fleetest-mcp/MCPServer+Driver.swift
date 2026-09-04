@@ -670,11 +670,12 @@ extension MCPServer {
         }
         // attach は**同じインスタンス**を委譲とフォールバックの両方に使う(実行側と同じ理由:
         // activate/attached 状態を1本にしないと余計な activate が挟まる)
-        let attach = AppAttachDriver(port: xcuiPort, bundleID: bundleID)
+        let attach = AppAttachDriver(port: xcuiPort, host: provisioned.host, bundleID: bundleID)
         // hybrid の主は in-app(provisioned.port)。同一性はそちらへ問う
         return (HybridFallbackDriver(primary: WebViewDelegatingDriver(primary: inapp, delegated: attach),
                                      fallback: attach, primaryBundleID: bundleID,
-                                     foreignApp: SessionRecoveryDriver(base: BridgeClient(port: xcuiPort))),
+                                     foreignApp: SessionRecoveryDriver(base: BridgeClient(
+                                         port: xcuiPort, host: provisioned.host))),
                 provisioned.port)
     }
 

@@ -27,6 +27,24 @@ public enum AppBundleInspector {
                 atPath: bundle.appendingPathComponent("Frameworks/Flutter.framework")))
     }
 
+    /// Info.plist の `CFBundleSupportedPlatforms` から「実機用ビルドか」を返す純粋関数。
+    /// iphoneos SDK は ["iPhoneOS"]、シミュレータ SDK は ["iPhoneSimulator"](Xcode 27 で実測)。
+    /// 空・欠落は nil(= 判らない。呼び手は「鳴らす」側へ倒す)
+    public static func isDeviceBuild(supportedPlatforms: [String]?) -> Bool? {
+        guard let supportedPlatforms, !supportedPlatforms.isEmpty else { return nil }
+        return supportedPlatforms.contains { $0.caseInsensitiveCompare("iPhoneOS") == .orderedSame }
+    }
+
+    /// ビルド済み .app の Info.plist を読んで isDeviceBuild を当てる(パス未指定・読めない = nil)
+    public static func declaresDevicePlatform(appPath: String?) -> Bool? {
+        guard let appPath else { return nil }
+        let plist = (appPath as NSString).appendingPathComponent("Info.plist")
+        guard let data = FileManager.default.contents(atPath: plist),
+              let object = try? PropertyListSerialization.propertyList(from: data, format: nil),
+              let dict = object as? [String: Any] else { return nil }
+        return isDeviceBuild(supportedPlatforms: dict["CFBundleSupportedPlatforms"] as? [String])
+    }
+
     /// バンドルから判定できる手段を**安い順に**当てる(--app-path → simctl)。
     ///
     /// **ブリッジの自己申告が取れなかったときの受け皿**として使うこと。

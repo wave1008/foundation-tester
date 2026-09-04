@@ -78,7 +78,8 @@ final class AppAttachDriverAttachTests: XCTestCase {
     func testFirstSwipeAttachesSessionFirst() async throws {
         let stub = try RecordingStubServer()
         defer { stub.stop() }
-        let driver = AppAttachDriver(port: stub.port, bundleID: "com.example.target")
+        let driver = AppAttachDriver(port: stub.port, host: BridgeEndpoint.loopbackHost,
+                                      bundleID: "com.example.target")
 
         try await driver.swipe(.up)
 
@@ -91,7 +92,8 @@ final class AppAttachDriverAttachTests: XCTestCase {
     func testAttachHappensOnlyOncePerInstance() async throws {
         let stub = try RecordingStubServer()
         defer { stub.stop() }
-        let driver = AppAttachDriver(port: stub.port, bundleID: "com.example.target")
+        let driver = AppAttachDriver(port: stub.port, host: BridgeEndpoint.loopbackHost,
+                                      bundleID: "com.example.target")
 
         try await driver.swipe(.up)
         try await driver.swipe(.down)
@@ -106,7 +108,8 @@ final class AppAttachDriverAttachTests: XCTestCase {
     func testSnapshotCountsAsAttach() async throws {
         let stub = try RecordingStubServer()
         defer { stub.stop() }
-        let driver = AppAttachDriver(port: stub.port, bundleID: "com.example.target")
+        let driver = AppAttachDriver(port: stub.port, host: BridgeEndpoint.loopbackHost,
+                                      bundleID: "com.example.target")
 
         _ = try? await driver.snapshot()
         try await driver.swipe(.up)

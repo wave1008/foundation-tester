@@ -91,6 +91,12 @@ export class MonitorBridgeWatchdog {
       if (device.machine !== undefined) {
         continue;
       }
+      // **実機も見ない** —— 実機のブリッジ起動は `fleetest run` とタイルのメニューだけが担う
+      // (一括操作と同じ理由: 供給に数分かかり同時起動枠を専有する。WiFi の実機は待ち受けが
+      // 省電力で閉じるので「無応答 → 再供給」を繰り返すだけになる。2026-09-04 実測)
+      if (device.kind === "physical") {
+        continue;
+      }
       this.observeOne(device.name, device.state);
     }
   }

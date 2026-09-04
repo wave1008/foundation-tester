@@ -123,6 +123,12 @@ public enum IOSDeviceTransport {
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         var blocker: String?
         while Date() < deadline {
+            // **キャンセルで抜ける**: 呼び手(ProfileWorkerFactory.buildWorker)は期限付きの
+            // TaskGroup で包んで cancelAll するが、`try? Task.sleep` は取り消しを握りつぶすので、
+            // 見ないと締切まで空回りし、その間に呼び手が次の試行で同じポートへ2本目を起動する
+            // (孤児ランナーが残る形。2026-09-04 iPhone 13 で実測)。投げれば provision 側の
+            // catch が launcher.stop() で今回のランナーを止める
+            try Task.checkCancellation()
             if let host = announcedHost(inLogAt: logURL, port: port) { return host }
             let text = (try? String(contentsOf: logURL, encoding: .utf8)) ?? ""
             // ランナーが死んでいたら待つだけ無駄。理由(端末側の証明書未信頼など)ごと即返す

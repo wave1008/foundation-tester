@@ -22,8 +22,9 @@ public final class AppAttachDriver: AppDriver {
     /// **1インスタンス1回だけ**(= 1シナリオ1回。以降は snapshot() の activate が維持する)
     private var attached = false
 
-    public init(port: UInt16, bundleID: String) {
-        self.client = BridgeClient(port: port)
+    /// host: 主ドライバと同じ宛先(SystemUIDriver.init と同じ理由で既定を置かない)
+    public init(port: UInt16, host: String, bundleID: String) {
+        self.client = BridgeClient(port: port, host: host)
         self.bundleID = bundleID
     }
 

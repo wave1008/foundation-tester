@@ -1,0 +1,14 @@
+{
+  "machine": "M2Ultra",
+  "app": "ft_e2e_ios_device",
+  "devices": [
+    {
+      "machine": "local",
+      "name": "iPhone 13(実機)"
+    }
+  ],
+  "heal": false,
+  "iosInappEngine": false,
+  "reportDir": "reports",
+  "scenarioTimeout": 180
+}

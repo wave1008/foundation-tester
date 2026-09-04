@@ -1,0 +1,14 @@
+{
+  "machine": "M2Ultra",
+  "app": "ft_e2e_ios",
+  "devices": [
+    {
+      "machine": "local",
+      "name": "iPhone 17 Pro(iOS 27.0)-01"
+    }
+  ],
+  "heal": false,
+  "iosInappEngine": false,
+  "reportDir": "reports",
+  "scenarioTimeout": 180
+}

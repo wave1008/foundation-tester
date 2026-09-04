@@ -1374,6 +1374,15 @@ struct RunScenarios: AsyncParsableCommand {
         return filtered
     }
 
+    /// `--port` 直指定の宛先。LAN 経由の実機は 127.0.0.1 に居ないので、establish が残した
+    /// 宛先(`.fleetest/bridge-<port>.endpoint`)を使う(無ければループバック = シミュレータ・
+    /// USB トンネル)。**シナリオの子プロセスへも同じ宛先を渡す**(DriverConnection.host →
+    /// `--bridge-host`)。片方だけだと親は繋がるのに子だけ接続拒否になる
+    private static func bridgeHost(port: UInt16) -> String {
+        (try? RepoRoot.find()).map { BridgeEndpoint.load(port: port, repoRoot: $0).host }
+            ?? BridgeEndpoint.loopbackHost
+    }
+
     /// ブリッジの /status(デバイス名)→ 起動中シミュレータの一意な同名から UDID を解決する。
     /// launch 事前検査(LaunchPreflightDriver)と FastLaunch 用。
     /// **プロファイル経路は provision の udid を渡すのでここを通らない** —— これは
@@ -1384,7 +1393,8 @@ struct RunScenarios: AsyncParsableCommand {
     /// (LaunchPreflightDriver のコメント)がそのまま開く。Xcode はランタイムごとに同名の
     /// シミュレータを作るので、同名2台は受け手環境で普通に起きる(2026-08-06 に実例)
     private static func resolveUdid(port: UInt16) async -> String? {
-        guard let status = try? await BridgeClient(port: port, timeoutSeconds: 5).status(),
+        guard let status = try? await BridgeClient(port: port, timeoutSeconds: 5,
+                                                   host: Self.bridgeHost(port: port)).status(),
               let catalog = try? SimulatorCatalog.devices() else { return nil }
         let matches = catalog.filter { $0.booted && $0.name == status.device }
         if matches.count == 1 { return matches[0].udid }
@@ -1458,8 +1468,10 @@ struct RunScenarios: AsyncParsableCommand {
                 driver = try AndroidDriver(serial: driverOptions.serial)
                 connection = DriverConnection(platform: "android", serial: driverOptions.serial)
             } else {
-                driver = BridgeClient(port: port)
-                connection = DriverConnection(platform: "ios", port: port, udid: iosUdid)
+                let host = Self.bridgeHost(port: port)
+                driver = BridgeClient(port: port, host: host)
+                connection = DriverConnection(platform: "ios", port: port, udid: iosUdid,
+                                              host: host)
             }
             _ = try await driver.status()
             let worker = RunWorker(label: platform, platform: platform,
@@ -1508,10 +1520,11 @@ struct RunScenarios: AsyncParsableCommand {
         var workers: [RunWorker] = []
         for port in iosPorts {
             let udid = await Self.resolveUdid(port: port)
+            let host = Self.bridgeHost(port: port)
             workers.append(RunWorker(label: "ios:\(port)", platform: "ios",
-                                     driver: BridgeClient(port: port),
+                                     driver: BridgeClient(port: port, host: host),
                                      connection: DriverConnection(platform: "ios", port: port,
-                                                                  udid: udid)))
+                                                                  udid: udid, host: host)))
         }
         if !androidItems.isEmpty {
             if let driver = try? AndroidDriver(serial: driverOptions.serial) {

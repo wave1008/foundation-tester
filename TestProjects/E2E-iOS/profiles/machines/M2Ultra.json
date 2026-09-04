@@ -127,6 +127,22 @@
         "os": "27.0",
         "simulator": "iPhone 17 Pro(iOS 27.0)-04",
         "udid": "95212B76-43ED-4F10-9421-93485C5FBF7A"
+      },
+      {
+        "machine": "local",
+        "name": "iPhone 13(実機)",
+        "kind": "physical",
+        "model": "iPhone 13",
+        "os": "26.6.1",
+        "udid": "00008110-001460910E0A201E"
+      },
+      {
+        "machine": "local",
+        "name": "iPhone SE3(実機)",
+        "kind": "physical",
+        "model": "iPhone SE (3rd generation)",
+        "os": "26.6",
+        "udid": "00008110-000260242EEB801E"
       }
     ]
   },

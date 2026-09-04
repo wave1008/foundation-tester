@@ -101,14 +101,18 @@ struct ApiDeviceUp: AsyncParsableCommand {
 /// `device-up --udid` の spec 合成。**接続中の実機だけ**を受ける —— 繋がっていない端末で
 /// ブリッジを起こそうとすると xcodebuild が数分かけて失敗するので、その手前で落とす。
 /// engine は xcuitest 固定(`fleetest bridge up --physical` と同じ。実機に in-app 注入は無い)。
-/// I/O を持たない pure 関数(ユニットテスト対象のため private にしない)
+/// 到達性の判定は `IOSPhysicalDeviceCatalog.confirmedConnected` に委ねる(判定は1箇所)。
+/// probe を渡さなければ実際の devicectl 問い合わせを使う —— それ以外に I/O は持たない
 enum ApiDeviceUpDirectSpec {
-    static func physicalIOSSpec(udid: String, devices: [IOSPhysicalDeviceInfo]) throws -> DeviceSpec {
+    static func physicalIOSSpec(udid: String, devices: [IOSPhysicalDeviceInfo],
+                                probe: ((String) -> Bool)? = nil) throws -> DeviceSpec {
         guard let device = devices.first(where: { $0.udid == udid || $0.deviceCtlIdentifier == udid }) else {
             throw IOSPhysicalDeviceCatalogError.notFound(udid: udid, available: devices)
         }
-        guard device.connected else {
-            throw IOSPhysicalDeviceCatalogError.notConnected(udid: device.udid, name: device.name)
+        guard IOSPhysicalDeviceCatalog.confirmedConnected(
+            device, probe: probe ?? { IOSPhysicalDeviceCatalog.probeReachable(udid: $0) }) else {
+            throw IOSPhysicalDeviceCatalogError.notConnected(udid: device.udid, name: device.name,
+                                                             transport: device.transport)
         }
         return DeviceSpec(name: device.name, kind: .physical, os: device.os, udid: device.udid,
                           engine: "xcuitest")

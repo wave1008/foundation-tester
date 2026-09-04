@@ -67,7 +67,9 @@ actor LiveBridgeAutoStarter {
     /// serve 起動時に呼ぶ。旧ビルドのブリッジ(/status の protocolVersion が現行値と不一致)を
     /// 検知したら再起動する。接続不可(不在含む)は何もしない(不在は既存の接続拒否経路が担当)
     func checkAndRestartIfStale() async {
-        let client = BridgeClient(port: port, timeoutSeconds: 3)
+        // LAN 経由の実機は 127.0.0.1 に居ない。establish が残した宛先で問う(無ければループバック)
+        let client = BridgeClient(port: port, timeoutSeconds: 3,
+                                  host: BridgeEndpoint.load(port: port, repoRoot: repoRoot).host)
         guard let status = try? await client.status() else { return }
         if status.ready && status.protocolVersion == BridgeAPI.bridgeProtocolVersion { return }
         guard case .idle = state else { return }

@@ -366,7 +366,7 @@ public struct BridgeLauncher {
                     throw LauncherError.notOwnedByThisRepo(
                         port: port, device: status.device, protocolVersion: status.protocolVersion)
                 }
-                throw LauncherError.notRunning
+                throw LauncherError.notRunning(port: port)
             }
             InAppBridgeState.terminateAndRemove(at: inappPath)
             return
@@ -446,7 +446,7 @@ public struct BridgeLauncher {
     public func stopAndWait(timeout: TimeInterval = 10) async throws {
         guard let pidString = try? String(contentsOf: pidPath, encoding: .utf8),
               let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            throw LauncherError.notRunning
+            throw LauncherError.notRunning(port: port)
         }
         kill(pid, SIGTERM)
         let deadline = Date().addingTimeInterval(timeout)
@@ -712,6 +712,8 @@ public struct BridgeLauncher {
             return IOSDeviceTransport.blockingCondition(inLog: text)
         }
         while Date() < deadline {
+            // キャンセルで抜ける(IOSDeviceTransport.waitForAnnouncedAddress と同じ理由)
+            try Task.checkCancellation()
             do {
                 let status = try await client.status()
                 if status.ready {
@@ -848,7 +850,9 @@ public struct BridgeLauncher {
 public enum LauncherError: Error, LocalizedError {
     case commandFailed(String, String)
     case xctestrunNotFound(String)
-    case notRunning
+    /// port: どの pid ファイルを探して無かったか。**素の "bridge.pid" と言わない** ——
+    /// 実在するのは常に `bridge-<port>.pid` で、その名前で grep しても何も出ない(2026-09-04)
+    case notRunning(port: UInt16?)
     /// ポートでブリッジが応答しているのに、このリポジトリの状態ファイル(.fleetest/)に記録が無い。
     /// 別クローン・別ワークスペースが起動したブリッジを掴んでいる状態。
     case notOwnedByThisRepo(port: UInt16, device: String?, protocolVersion: Int?)
@@ -868,8 +872,9 @@ public enum LauncherError: Error, LocalizedError {
             return "\(cmd) failed:\n\(tail)"
         case .xctestrunNotFound(let path):
             return "xctestrun not found (build-for-testing must run first): \(path)"
-        case .notRunning:
-            return "the bridge is not running (no .fleetest/bridge.pid)"
+        case .notRunning(let port):
+            let file = port.map { ".fleetest/bridge-\($0).pid" } ?? ".fleetest/bridge-<port>.pid"
+            return "the bridge is not running (no \(file))"
         case .notOwnedByThisRepo(let port, let device, let version):
             // 「起動していません」と言うと事実と食い違う(実際は応答している)。実害: 別クローンの
             // 旧版ブリッジがポートとシミュレータを 7 時間握り、原因の切り分けに時間を要した
