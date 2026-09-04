@@ -8,6 +8,10 @@ import UIKit
 /// (Compose)で起きたのは**容器の中だが覆われている**形で、そこでは既存の復帰は働かない。
 /// witness にはその形が要るため、縮まない容器をここで用意する。
 struct KeyboardCoverScroll: UIViewRepresentable {
+    /// 下の欄の下端を容器の下端からどれだけ上に置くか。**キーボードの内側に必ず入る値**
+    /// (実測の最小キーボードは 375x667 で 233pt なので、40pt は十分内側)
+    static let underFieldBottomInset: CGFloat = 40
+
     @Binding var above: String
     @Binding var under: String
     let rowCount: Int
@@ -30,6 +34,13 @@ struct KeyboardCoverScroll: UIViewRepresentable {
             label.heightAnchor.constraint(equalToConstant: 44).isActive = true
             stack.addArrangedSubview(label)
         }
+        // **下の欄は容器の下端から測って置く**(行数で決めない)。行数で決めると、画面の高さが
+        // 変わったときに「キーボードより上」へ出たり容器からはみ出したりして、覆われている
+        // という witness の前提そのものが崩れる(2026-09-05: 375x667 で上の欄が消えた回の同型)。
+        // 下端から 40pt = どの端末でもキーボードの内側(最小のキーボードでも 233pt ある)
+        let filler = UIView()
+        stack.addArrangedSubview(filler)
+
         stack.addArrangedSubview(context.coordinator.makeField(
             tag: Tags.fieldUnderKeyboard, placeholder: "下の欄", isAbove: false))
         // 送る余地(これが無ければ送っても外れない)
@@ -40,11 +51,21 @@ struct KeyboardCoverScroll: UIViewRepresentable {
         stack.addArrangedSubview(spacer)
 
         scroll.addSubview(stack)
+        // **frameLayoutGuide を参照する制約は階層へ入れたあとで張る**。先に活性化すると
+        // 共通の祖先がまだ無く `NSLayoutConstraint` が例外を投げてアプリごと落ちる
+        // (2026-09-05 に実際に落とした。SIGABRT / CoreAutoLayout _setActive)
+        let fillerHeight = filler.heightAnchor.constraint(
+            equalTo: scroll.frameLayoutGuide.heightAnchor,
+            constant: -(Self.underFieldBottomInset + 104 + 52 * CGFloat(rowCount)))
+        fillerHeight.priority = .defaultHigh
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
             stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
             stack.leadingAnchor.constraint(equalTo: scroll.frameLayoutGuide.leadingAnchor, constant: 16),
             stack.trailingAnchor.constraint(equalTo: scroll.frameLayoutGuide.trailingAnchor, constant: -16),
+            fillerHeight,
+            // 容器が極端に低いときでも潰れるだけで壊れない
+            filler.heightAnchor.constraint(greaterThanOrEqualToConstant: 0),
         ])
         return scroll
     }

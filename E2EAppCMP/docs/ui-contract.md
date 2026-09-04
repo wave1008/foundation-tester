@@ -12,6 +12,13 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
   **罠**: ダイアログ(`AlertDialog` 等)は**別ウィンドウ**に描画されるためルートの
   `exposeTestTagsAsResourceId()` が届かない。ダイアログにも `modifier = Modifier.exposeTestTagsAsResourceId()`
   を**必ず再適用する**。忘れると Android だけダイアログ内の `#id` が全滅する(ラベルは引ける)。
+- **最小サポート画面(375x667 = iPhone SE 第3世代)で成立すること**。**対にして検証する要素**
+  (上端の結果表示と下端のボタン等)は、その画面で**同時にツリーへ載る**ように配置する。
+  載らないと「小さい実機でだけ落ちる」形になり、**シナリオ側の小細工では witness が弱くなる**
+  —— 送ってから読み返す形にすると `:above()` / `:below()` の相手が**クランプされた残骸**になり、
+  方向セレクタの検証そのものが成立しない(2026-09-05 実機で実測)。
+  縦に詰めたいときは `TaggedButton(compact:)` のような**その画面だけの寸法**を使い、
+  共通ウィジェットの既定は変えない(縁の帯・折り返しの witness が今の寸法で成立しているため)。
 - **型名は先頭小文字**(`.button` / `.staticText`)。ホスト側で正規化しており、スナップショット表示・
   セレクタ記法・生成コードで綴りが一致する(先頭大文字で書くと構文エラー)。
 - **OS を跨いで保証される型は `button` / `staticText` / `switch` の3つ**
@@ -195,6 +202,10 @@ Android は intent に package を明示するので影響しないが、**契�
 - `#btn_alias_new` は `#btn_alias_old||#btn_alias_new` のフォールバック連鎖検証に使う
   (`btn_alias_old` は**存在しない**)。
 - `#txt_offscreen` は `#btn_selector_reset` の下に十分な余白(600dp 以上)を挟んで配置する。
+- **`#txt_selector_result` と `#btn_selector_reset` は最小サポート画面で同時に見えること**
+  (全体規約参照)。この画面は要素が縦に11個並ぶので、**ボタンを詰めないと 375x667 に入らない**。
+  入らないと 02/06 の「押して結果を読む」対と `#btn_selector_reset:above(.button&&項目)` が
+  どちらも小さい実機でだけ落ちる。
 
 ## テキスト入力画面(タイトル `テキスト入力`)
 
@@ -500,6 +511,13 @@ FM が修復できるかを検証する。
 | `#nav_keyboard_cover` | Button | `キーボードの覆い` | ホームからキーボードの覆い画面を開く |
 | `#field_above_keyboard` | TextField | ph `上の欄` | ここで焦点を取るとキーボードが立つ |
 | `#field_under_keyboard` | TextField | ph `下の欄` | キーボードの下に潜る。**潜ったまま打つと打鍵が上の欄へ流れ込む** |
+
+- **容器の高さを固定しない**。固定値が最小サポート画面に入らないと、キーボードが立った瞬間に
+  **容器の枠ごとずれて上の欄がツリーから消える**(2026-09-05 実測: 固定 700pt が 375x667 で
+  枠 y=9 → -107)。埋める形にして溢れさせない。
+- **下の欄の位置は行数ではなく容器の下端から決める**(`KeyboardCoverScroll.underFieldBottomInset`)。
+  行数で決めると、画面の高さが変わったときに下の欄が**キーボードより上**へ出たり容器から
+  はみ出したりして、「覆われている」という witness の前提そのものが崩れる。
 
 容器は **UIKit の素の UIScrollView**(`KeyboardCoverScroll`)。SwiftUI の ScrollView は
 キーボードぶん縮むため対象が「容器の外」になり、既存の復帰が働いて witness にならない。

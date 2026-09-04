@@ -84,9 +84,13 @@ class スクロールで折り返し下の要素に到達できること {
                     tap("#tab_home")
                 }.action {
                     tap("#nav_scroll")
-                    // #row_06 は scrollTo なしでも初期画面内に見えている行(これより下へ変えない。
-                    // 画面下部に横カルーセルを置いたぶんリストが短く、#row_08 は見切れる)
-                    swipeElementToElement("#row_06", "#row_02", durationSeconds: 0.5)
+                    // **始点は最小サポート画面(375x667)でも中心が窓の中に居る行**にする。
+                    // #row_06 はあちらではリストの外(264pt = 4.7 行)へクランプされており、
+                    // 残骸の座標から払うので list に当たらない(2026-09-05 実機で実測)。
+                    // **1回で送る**のも条件 —— `notExist` が成立するには #row_01 が
+                    // UITableView の再利用窓から出るまで動かす必要があり、慣性の乗る1回
+                    // (4行ぶん)でないと届かない(3行を2回では両画面とも残る)
+                    swipeElementToElement("#row_05", "#row_01", durationSeconds: 0.5)
                 }.expectation {
                     notExist("#row_01", timeout: 5)
                 }
