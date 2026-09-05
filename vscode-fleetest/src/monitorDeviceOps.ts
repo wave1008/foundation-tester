@@ -6,6 +6,7 @@
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import * as vscode from "vscode";
+import { childEnv } from "./childEnv";
 import { resolveProjectName } from "./config";
 import { t, type MessageKey } from "./i18n";
 import {
@@ -560,6 +561,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: childEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -739,6 +741,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: childEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -955,6 +958,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: childEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -1071,6 +1075,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: childEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -1167,6 +1172,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, ["api", cmd], {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: childEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -1246,6 +1252,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: childEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -1580,6 +1587,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: childEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -1790,6 +1798,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: childEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {

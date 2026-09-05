@@ -13,6 +13,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
+import { childEnv } from "./childEnv";
 import { type FleetestCli } from "./cli";
 import { type FleetestConfig, resolveProjectName } from "./config";
 import { resolveEntryAtCursor, truncateForStatusBar, type TreeItemEntry } from "./copyTestName";
@@ -397,6 +398,7 @@ function runRemoteAlign(
       proc = spawn(binaryPath, ["remote", "align", hostName], {
         cwd: workspaceRoot,
         shell: false,
+        env: childEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {

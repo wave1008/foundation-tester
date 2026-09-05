@@ -24,6 +24,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { Readable, Writable } from "node:stream";
 import * as vscode from "vscode";
+import { childEnv } from "./childEnv";
 import type { FleetestCli } from "./cli";
 import {
   type FleetestConfig,
@@ -698,6 +699,7 @@ export class MonitorLiveController implements vscode.Disposable {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: childEnv(),
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (error) {

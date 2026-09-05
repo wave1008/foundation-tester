@@ -4,6 +4,7 @@
 // (test/orphanSweep.test.mjs から素の node:test で検証するため)。
 
 import { execFile } from "node:child_process";
+import { childEnv } from "./childEnv";
 import { t } from "./i18n";
 
 const ORPHAN_PPID = 1;
@@ -66,7 +67,7 @@ export async function sweepOrphans(log: (message: string) => void): Promise<void
       // 超えると ERR_CHILD_PROCESS_STDIO_MAXBUFFER で**掃除が黙って無効化される**
       // (2026-08-17 の実害: 20台構成で毎回失敗していた)。監視対象が多い環境ほど
       // 掃除が要るのに、多いほど効かなくなる向きだった。monitorPanel.ts の ps も同じ 8MB
-      execFile("ps", ["-axo", "pid=,ppid=,command="], { maxBuffer: 8 * 1024 * 1024 }, (error, stdout) => {
+      execFile("ps", ["-axo", "pid=,ppid=,command="], { maxBuffer: 8 * 1024 * 1024, env: childEnv() }, (error, stdout) => {
         if (error) {
           reject(error);
           return;

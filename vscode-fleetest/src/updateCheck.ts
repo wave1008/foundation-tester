@@ -18,6 +18,7 @@ import * as fs from "node:fs";
 import { spawn } from "node:child_process";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { childEnv } from "./childEnv";
 import { t } from "./i18n";
 import type { PipeProcess } from "./oneShotCli";
 import { resolveToolRoot } from "./toolRootResolve";
@@ -266,6 +267,7 @@ function runScript(
       proc = spawn("bash", [script, "--tool-root", toolRoot], {
         cwd,
         shell: false,
+        env: childEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {

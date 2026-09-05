@@ -30,6 +30,7 @@ import {
   Variable,
 } from "@vscode/debugadapter";
 import type { DebugProtocol } from "@vscode/debugprotocol";
+import { childEnv } from "./childEnv";
 import { t } from "./i18n";
 import { isRunEvent, type RunStepSection } from "./model";
 import { NdjsonParser } from "./ndjson";
@@ -393,6 +394,7 @@ export class FleetestDebugSession extends DebugSession {
       child = spawn(this.binaryPath, cliArgs, {
         cwd: this.cwd,
         shell: false,
+        env: childEnv(),
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (error) {

@@ -36,6 +36,7 @@
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import type { OutputChannel } from "vscode";
+import { childEnv } from "./childEnv";
 import { t } from "./i18n";
 
 /** stdin/stdout/stderr すべてパイプの helper プロセス(stdin の EOF が helper への終了指示)。 */
@@ -190,7 +191,11 @@ export class StreamPipeline implements LiveStreamPipeline {
     this.startedAt = Date.now();
     let proc: StreamProcess;
     try {
-      proc = spawn(this.options.command, this.options.args, { shell: false, stdio: ["pipe", "pipe", "pipe"] });
+      proc = spawn(this.options.command, this.options.args, {
+        shell: false,
+        env: childEnv(),
+        stdio: ["pipe", "pipe", "pipe"],
+      });
     } catch (error) {
       // spawn 失敗も「起動直後の異常終了」として連続失敗にカウントする(3連続で諦める)。
       this.handleUnexpectedExit(t("live.stream.spawnFailed", { error: errorMessage(error) }));

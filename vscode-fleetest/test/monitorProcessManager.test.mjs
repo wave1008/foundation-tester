@@ -58,7 +58,9 @@ test("startMonitorProcess は `api monitor --project <p> --interval <i> --max-wi
   assert.equal(calls.length, 1);
   assert.equal(calls[0].command, "/usr/local/bin/fleetest");
   assert.deepEqual(calls[0].args, ["api", "monitor", "--project", "P", "--interval", "2", "--max-width", "960"]);
-  assert.deepEqual(calls[0].options, { cwd: "/tmp/proj", shell: false, stdio: ["pipe", "pipe", "pipe"] });
+  const { env, ...rest } = calls[0].options;
+  assert.deepEqual(rest, { cwd: "/tmp/proj", shell: false, stdio: ["pipe", "pipe", "pipe"] });
+  assert.equal(env.FT_PARENT_PID, String(process.pid));
 });
 
 test("profile 設定時は --profile が args に追加される", () => {
@@ -100,7 +102,9 @@ test("startHostMetricsProcess は `api host-metrics --interval 1` で spawnFn �
   // --fm-probe: 呼び出しが0件でも FM の死活が分かるようにする(誰も FM を使っていない
   // ときだけ実呼び出しで取り直す)。**既定 OFF なので渡す側の責任**
   assert.deepEqual(calls[0].args, ["api", "host-metrics", "--interval", "1", "--fm-probe"]);
-  assert.deepEqual(calls[0].options, { cwd: "/tmp/proj", shell: false, stdio: ["pipe", "pipe", "pipe"] });
+  const { env, ...rest } = calls[0].options;
+  assert.deepEqual(rest, { cwd: "/tmp/proj", shell: false, stdio: ["pipe", "pipe", "pipe"] });
+  assert.equal(env.FT_PARENT_PID, String(process.pid));
 });
 
 // モニターが死んだときのバナー。**CLI が言っている理由を捨てない** ——

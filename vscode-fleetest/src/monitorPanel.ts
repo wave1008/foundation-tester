@@ -33,6 +33,7 @@ import * as path from "node:path";
 import type { Readable } from "node:stream";
 import * as vscode from "vscode";
 import { repairDisplay, repairWifi } from "./adbWifiRepair";
+import { childEnv } from "./childEnv";
 import { type FleetestConfig, resolveAdb, resolveProjectName } from "./config";
 import { currentLocale, t } from "./i18n";
 import {
@@ -914,7 +915,7 @@ export class MonitorPanelController implements vscode.Disposable {
 
   private execAdb(adb: string, args: string[]): Promise<string> {
     return new Promise((resolve) => {
-      execFile(adb, args, { timeout: 4000 }, (err, out) => {
+      execFile(adb, args, { timeout: 4000, env: childEnv() }, (err, out) => {
         resolve(err || !out ? "" : out);
       });
     });
@@ -950,7 +951,7 @@ export class MonitorPanelController implements vscode.Disposable {
   private async listResidentProcesses(simulatorNames: Record<string, string> = {}): Promise<ResidentProcess[]> {
     const [stdout, inappBridges, androidBridges] = await Promise.all([
       new Promise<string>((resolve) => {
-        execFile("ps", ["-axo", "pid=,ppid=,state=,command="], { maxBuffer: 8 * 1024 * 1024 }, (err, out) => {
+        execFile("ps", ["-axo", "pid=,ppid=,state=,command="], { maxBuffer: 8 * 1024 * 1024, env: childEnv() }, (err, out) => {
           resolve(err ? "" : out);
         });
       }),
@@ -986,7 +987,7 @@ export class MonitorPanelController implements vscode.Disposable {
       execFile(
         "xcrun",
         ["simctl", "list", "devices", "-j"],
-        { maxBuffer: 8 * 1024 * 1024, timeout: 8000 },
+        { maxBuffer: 8 * 1024 * 1024, timeout: 8000, env: childEnv() },
         (err, out) => resolve(err ? "" : out),
       );
     });
@@ -1025,6 +1026,7 @@ export class MonitorPanelController implements vscode.Disposable {
         proc = spawn(this.getConfig().binaryPath, args, {
           cwd: this.workspaceRoot,
           shell: false,
+          env: childEnv(),
           stdio: ["ignore", "pipe", "pipe"],
         });
       } catch (e) {

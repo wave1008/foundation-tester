@@ -14,6 +14,7 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { childEnv } from "./childEnv";
 import { t } from "./i18n";
 import { parseKeyValues } from "./updateCheck";
 import { resolveToolRoot } from "./toolRootResolve";
@@ -186,6 +187,7 @@ export class MonitorUpdateController {
         proc = spawn(command, args, {
           cwd: this.deps.workspaceRoot,
           shell: false,
+          env: childEnv(),
           stdio: ["ignore", "pipe", "pipe"],
         });
       } catch (error) {

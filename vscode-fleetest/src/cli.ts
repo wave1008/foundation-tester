@@ -12,6 +12,7 @@
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import type * as vscode from "vscode";
+import { childEnv } from "./childEnv";
 import { t } from "./i18n";
 import { NdjsonParser } from "./ndjson";
 
@@ -151,11 +152,11 @@ export class FleetestCli {
         proc =
           invocation.stdin !== undefined
             ? spawn(binaryPath, invocation.args, {
-                cwd, shell: false,
+                cwd, shell: false, env: childEnv(),
                 stdio: ["pipe", "pipe", "pipe"],
               })
             : spawn(binaryPath, invocation.args, {
-                cwd, shell: false,
+                cwd, shell: false, env: childEnv(),
                 stdio: ["ignore", "pipe", "pipe"],
               });
       } catch (error) {

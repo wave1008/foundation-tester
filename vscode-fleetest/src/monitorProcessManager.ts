@@ -5,6 +5,7 @@
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
+import { childEnv } from "./childEnv";
 import { resolveProjectName } from "./config";
 import { deviceCommandArgs } from "./remoteRunArgs";
 import { t } from "./i18n";
@@ -291,6 +292,7 @@ export class MonitorProcessManager {
       proc = this.spawnFn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: childEnv(),
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (error) {
@@ -735,6 +737,7 @@ export class MonitorProcessManager {
         {
           cwd: this.deps.workspaceRoot,
           shell: false,
+          env: childEnv(),
           stdio: ["pipe", "pipe", "pipe"],
         },
       );

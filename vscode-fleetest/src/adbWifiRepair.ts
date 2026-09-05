@@ -5,6 +5,7 @@
 // 拡張はここで判定ロジックを持たない(対向: Sources/fleetest/ApiRepairDisplayCommand.swift)。
 
 import { execFile } from "node:child_process";
+import { childEnv } from "./childEnv";
 
 /** adb がデバイス無応答時にハングしうるための上限(ミリ秒)。 */
 const TIMEOUT_MS = 10 * 1000;
@@ -15,7 +16,7 @@ const REPAIR_TIMEOUT_MS = 60 * 1000;
 
 function adb(adbPath: string, args: string[]): Promise<boolean> {
   return new Promise((resolve) => {
-    execFile(adbPath, args, { timeout: TIMEOUT_MS }, (error) => {
+    execFile(adbPath, args, { timeout: TIMEOUT_MS, env: childEnv() }, (error) => {
       resolve(!error);
     });
   });
@@ -40,7 +41,7 @@ export function repairDisplay(
     execFile(
       binaryPath,
       ["api", "repair-display", "--serial", serial],
-      { cwd, timeout: REPAIR_TIMEOUT_MS },
+      { cwd, timeout: REPAIR_TIMEOUT_MS, env: childEnv() },
       (error, stdout) => {
         if (error) {
           resolve(false);

@@ -5,6 +5,7 @@
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import type * as vscode from "vscode";
+import { childEnv } from "./childEnv";
 import { t } from "./i18n";
 
 /** stdin=ignore, stdout/stderr=pipe で spawn したプロセスの型(cli.ts/monitorPanel.ts と同じ形。
@@ -33,7 +34,7 @@ export function runOneShot(
     let proc: PipeProcess;
     try {
       proc = spawn(binaryPath, args, {
-        cwd, shell: false,
+        cwd, shell: false, env: childEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
