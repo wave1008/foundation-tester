@@ -297,6 +297,23 @@ test("他の発行者が配信中の台は起こさない", async () => {
   }
 });
 
+// 手元でも同じ: 同じ Mac の別ウィンドウ(別の拡張ホスト)が同じ台のヘルパーを持っていれば、監視が
+// FTCore.LocalStreamHolder(`ps -E` のプロセスの実体)で streamedByOther を配り、こちらは起こさない
+test("同じ Mac の別ウィンドウが配信中の手元の台は起こさない", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir(["fleetest-simstream"]);
+  const { deps } = makeDeps(binaryPath);
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([{ ...iosDevice, streamedByOther: true }]);
+    assert.equal(await waitForArgv(dir, "fleetest-simstream", 300), undefined, "二重に張らない");
+    controller.applyDevices([{ ...iosDevice, streamedByOther: false }]);
+    assert.ok(await waitForArgv(dir, "fleetest-simstream"), "相手のウィンドウが畳んだら張る");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("リモートのデバイスは remote exec 経由の device-stream で配信する", async () => {
   // fleetest 本体を mock にする(リモート経路はこれを spawn する)
   const { dir, binaryPath } = makeMockBinaryDir(["fleetest-simstream", "fleetest"]);

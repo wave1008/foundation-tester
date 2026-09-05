@@ -324,6 +324,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 }
             }
 
+            // 手元の二重配信の判定に使う 1 周期ぶんのプロセス一覧(FTCore.LocalStreamHolder)。
+            // 台ごとに ps を撃たない
+            let processRows = states.isEmpty ? [] : LocalStreamHolder.snapshot()
             let observedInfos = states.map { state -> ApiMonitorDeviceInfo in
                 let confirmedIssues = state.androidSerial.map { healthDebounce.confirmed(serial: $0) } ?? []
                 let leaseKey = state.iosUdid ?? state.androidSerial
@@ -342,14 +345,19 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 let frozenVerdict = Self.frozenVerdict(
                     id: state.target.id, key: leaseKey,
                     debounce: frozenDebounce, stateDir: leaseStateDir, inRun: inRun)
-                // 他の発行者がこの台を配信中か(共有ランナーのみ。手元では runnerBase が nil で
-                // 常に nil = 拡張の判定に一切効かない)
-                let streamedByOther = runnerBase.map { base in
+                // 他の発行者がこの台を配信中か(共有ランナー。手元では runnerBase が nil)
+                let leasedByOther = runnerBase.map { base in
                     StreamLease.heldByOther(
                         info: StreamLease.read(base: base, platform: state.target.platform,
                                                name: state.target.name),
                         myIssuer: myIssuer, pidAlive: ProcessLiveness.isAlive)
                 }
+                // 同じ Mac の別のウィンドウ(別の FT_PARENT_PID)がこの台のヘルパーを持っているか
+                let heldLocally = Self.streamIdentity(state).map { identity in
+                    LocalStreamHolder.heldByOther(identity: identity, rows: processRows,
+                                                  myOwner: LocalStreamHolder.myOwner())
+                } ?? false
+                let streamedByOther: Bool? = (leasedByOther ?? false) || heldLocally ? true : leasedByOther
                 return state.info(health: confirmedIssues.isEmpty ? nil : confirmedIssues,
                                    renderMode: state.androidSerial.flatMap { renderModeCache[$0] },
                                    inRun: inRun, recording: recording, host: bridgeHost,
@@ -931,6 +939,16 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// ②を見るのが要点 —— 2026-08-11 に run は9台の凍結を見つけて回復まで走っていたのに、
     /// モニターは自前の観測しか持たず `Frozen: 0` を出し続けた。純粋関数にしてあるのは、
     /// この「run が知っていることをモニターが知る」経路を陽性対照で毎回通すため
+    /// 配信ヘルパーが台を名指しする綴り(LocalStreamHolder.DeviceIdentity)。ヘルパーが張れない
+    /// 状態(ブリッジ無し・未接続)は nil = 二重の判定をしない
+    static func streamIdentity(_ state: DeviceRuntimeState) -> LocalStreamHolder.DeviceIdentity? {
+        if state.target.platform == "ios" {
+            if state.target.spec.isPhysical { return state.iosPort.map { .iosPhysical(port: $0) } }
+            return state.iosUdid.map { .iosSimulator(udid: $0) }
+        }
+        return state.androidSerial.map { .android(serial: $0) }
+    }
+
     static func frozenVerdict(id: String, key: String?,
                               debounce: MonitorFrozenDebounce,
                               stateDir: URL?,
@@ -1640,9 +1658,10 @@ struct ApiMonitorDeviceInfo: Codable {
     /// mergedDevices が WiFi 越しの分身の抑制に使う(拡張は読まない)。
     /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
     let wired: Bool?
-    /// **他の発行者がこの台の画面配信を張っている**(共有ランナーのみ。FTCore.StreamLease)。
+    /// **他の発行者・他のウィンドウがこの台の画面配信を張っている**(共有ランナーは
+    /// FTCore.StreamLease、同じ Mac の別ウィンドウは FTCore.LocalStreamHolder)。
     /// 拡張はこの台の配信を起こさずポーリングのままにする —— 同じ台を人数ぶん捕捉すると
-    /// ランナーが痛む(docs/remote-runner.md §18.2)。手元・単独利用では常に nil。
+    /// ランナーが痛む(docs/remote-runner.md §18.2)。誰も張っていない手元では nil。
     /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
     /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.streamedByOther)
     let streamedByOther: Bool?
