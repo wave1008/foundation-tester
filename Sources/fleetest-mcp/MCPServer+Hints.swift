@@ -1520,7 +1520,11 @@ extension MCPServer {
     /// 実測(2026-08-08・iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった。
     /// **見出しに出す座標は広げた実効矩形のまま**(申告のまま出すと判定と表示が食い違い、
     /// 読み手が検算できない)。**列挙は chrome 自身とその部分木を除く**(地球儀キー・変換候補
-    /// バー等は覆っている側であり、覆われているとは言えない)
+    /// バー等は覆っている側であり、覆われているとは言えない)。
+    /// **Android adjustResize では覆われた要素が木から消える**(実測 2026-09-05・Pixel 4a:
+    /// パスワード欄フォーカスで窓 2340→1267px・送信/クリアが木から脱落)ため、
+    /// `covered.isEmpty` を「下に何も無い」と読むと誤った安心になる ——
+    /// `windowResizedAboveKeyboard` で分岐する
     static func keyboardCoverageNote(_ snapshot: SnapshotResponse) -> String {
         let occlusion = KeyboardOcclusion.resolve(
             reported: snapshot.keyboardFrame, in: snapshot.elements)
@@ -1530,7 +1534,15 @@ extension MCPServer {
         let covered = snapshot.elements.filter {
             RefGuard.interactiveTypes.contains($0.type) && occlusion.covers($0)
         }
-        guard !covered.isEmpty else { return "note: \(header); nothing tappable is beneath it\n" }
+        guard !covered.isEmpty else {
+            if occlusion.windowResizedAboveKeyboard {
+                return "note: \(header); the window has shrunk to fit above it, so whatever sat"
+                    + " below the keyboard is gone from this tree rather than listed beneath it —"
+                    + " close the keyboard (ft_navigate back on Android) or scroll inside the"
+                    + " container to reach it\n"
+            }
+            return "note: \(header); nothing tappable is beneath it\n"
+        }
         let listed = covered.prefix(8).map { "[\($0.ref)] \(RefGuard.describe($0))" }
             .joined(separator: " ")
         let more = covered.count > 8 ? " (+\(covered.count - 8) more)" : ""

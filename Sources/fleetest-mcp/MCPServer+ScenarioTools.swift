@@ -61,7 +61,8 @@ extension MCPServer {
         let all = try ScenarioHost.list(project: project)
         guard let info = all.first(where: { $0.id == id })
             ?? all.first(where: { $0.id.hasPrefix(id + ".") }) else {
-            throw MCPError("scenario not found: \(id) (available: \(all.map(\.id).joined(separator: ", ")))")
+            throw MCPError(ScenarioFolders.notFoundMessage(
+                id: id, available: all.map(\.id), scenariosDir: project.scenariosDir))
         }
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("fleetest-mcp-dryrun-\(UUID().uuidString)", isDirectory: true)
@@ -97,7 +98,8 @@ extension MCPServer {
         let all = try ScenarioHost.list(project: project)
         guard let info = all.first(where: { $0.id == id })
             ?? all.first(where: { $0.id.hasPrefix(id + ".") }) else {
-            throw MCPError("scenario not found: \(id) (available: \(all.map(\.id).joined(separator: ", ")))")
+            throw MCPError(ScenarioFolders.notFoundMessage(
+                id: id, available: all.map(\.id), scenariosDir: project.scenariosDir))
         }
 
         var fm = FMConfig(heal: args["heal"] as? Bool ?? false)

@@ -59,6 +59,10 @@ public struct SceneRecordData: Sendable {
     /// これが空でないなら「操作がそこに吸われて ✅ のまま何も起きなかった」を第一に疑う
     /// (アプリの a11y ツリーには他プロセスの window が出ないため、要素一覧では気付けない)
     public var failureForegroundWindows: [String] = []
+    /// 失敗時にアプリの process が既に無かった(Android のみ。クラッシュの疑い)ことの表示行。
+    /// 空 = 言うことなし。中身は appProcessEvidence のクロージャが決める(FTDSL は FTAndroid に
+    /// 依存しないため、行の組み立ては FTScenarioRunner 側)
+    public var failureAppProcess: [String] = []
 
     public var passed: Bool {
         steps.allSatisfy {
@@ -369,6 +373,9 @@ public final class FTDriveCore {
     /// 失敗時に「アプリより手前にある別プロセスの window」を問い合わせる(Android のみ設定される)。
     /// adb を叩くので FTAndroid を見られる FTScenarioRunner が注入する(FTDSL は FTAndroid に依存しない)
     public var foregroundOverlays: (@Sendable () -> [String])?
+    /// 失敗時に「アプリの process が生きているか」を問い合わせる(Android のみ設定される。
+    /// foregroundOverlays と同じ注入元・同じ理由)。戻り値は表示行(空 = 言うことなし)
+    public var appProcessEvidence: (@Sendable () -> [String])?
     /// stop コマンドで中断した場合 true。expectation 未到達なので成功扱いにしない
     public private(set) var stoppedByUser = false
     /// スクショ時に画面凍結を検知して中断した場合 true。別デバイス再実行対象
@@ -1350,6 +1357,20 @@ public final class FTDriveCore {
                 record.scenes[record.scenes.count - 1].failureElements = elementsText
             }
             if evidenceBlank { markDeviceFrozen() }
+        }
+        // **process が無いことは window の覆いより優先度が高い容疑**なので先に確かめる
+        // (プロセスが落ちていれば別プロセスの window どうこうは無意味な情報になる)
+        let processEvidence = appProcessEvidence?() ?? []
+        if !processEvidence.isEmpty {
+            let recordedProcess = withState { () -> Bool in
+                guard !record.scenes.isEmpty else { return false }
+                record.scenes[record.scenes.count - 1].failureAppProcess = processEvidence
+                return true
+            }
+            if recordedProcess {
+                emit(.log("⚠️ The app process is not running — it may have crashed: "
+                          + processEvidence.joined(separator: " / ")))
+            }
         }
         // アプリが別プロセスの window に覆われていたなら、それが第一の容疑
         // (要素一覧・スクショだけでは「なぜ操作が効かなかったのか」に辿り着けない)

@@ -872,11 +872,16 @@ public final class AndroidDriver: AppDriver {
     }
 
     /// 補えなかったことを serial ごとにプロセスで1回だけ知らせる(毎枚出すと騒がしい)。
+    /// **木に webView ノードが無く devtools ソケットも無いときは案内しない**
+    /// (`WebViewShotComposite.warrantsBlankCaptureWarning`) —— WebView が居る証拠がどこにも
+    /// 無い形は遷移中の一様フレームか素の画面で、案内しても読み手は選べない。**このとき印は
+    /// 付けない**(`markBlankCaptureWarned` を呼ばない)ので、後で本物の WebView 画面が
+    /// 同じ serial で失敗すればそちらは案内できる。
     /// 文言と切り分け方は WebViewShotComposite.blankCaptureWarning、
-    /// once の置き場が static である理由は shouldWarnBlankCapture
+    /// once の置き場が static である理由は hasWarnedBlankCapture
     private func warnBlankCaptureOnce(package: String, hasWebViewNode: Bool) {
         let serial = serial ?? "default"
-        guard WebViewShotComposite.shouldWarnBlankCapture(serial: serial) else { return }
+        guard !WebViewShotComposite.hasWarnedBlankCapture(serial: serial) else { return }
         // 理由の引き直しは once の内側 = serial ごとに adb 1往復だけ
         let reason: WebViewShotComposite.BlankCaptureReason
         switch AndroidWebViewDOM.appSocketResolution(packageID: package, adb: { try self.adb($0).output }) {
@@ -886,6 +891,9 @@ public final class AndroidDriver: AppDriver {
         case .ambiguous(let names): reason = .undetermined("several candidate sockets: \(names.joined(separator: ", "))")
         case .unavailable: reason = .undetermined("adb could not list the sockets")
         }
+        guard WebViewShotComposite.warrantsBlankCaptureWarning(
+                hasWebViewNode: hasWebViewNode, reason: reason) else { return }
+        WebViewShotComposite.markBlankCaptureWarned(serial: serial)
         let text = WebViewShotComposite.blankCaptureWarning(
             serial: serial, hasWebViewNode: hasWebViewNode, reason: reason)
         FileHandle.standardError.write(Data((text + "\n").utf8))
@@ -894,7 +902,7 @@ public final class AndroidDriver: AppDriver {
     /// DOM 読みが取れず a11y へ黙って落ちていたのを、**端末の事実で決まる理由に限って**
     /// (serial, package) ごとにプロセスで高々1回知らせる。過渡(WebView 未生成・タブ未選択)では
     /// 黙る。判定・文言・メモは WebViewDOMFallback。メモが static である理由は
-    /// WebViewShotComposite.shouldWarnBlankCapture と同じ
+    /// WebViewShotComposite.hasWarnedBlankCapture と同じ
     private func warnWebViewDOMFallbackOnce(package: String) {
         let serial = serial ?? "default"
         guard WebViewDOMFallback.needsDiagnosis(serial: serial, package: package) else { return }

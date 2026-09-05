@@ -71,4 +71,22 @@ final class MCPRotateSettleTests: XCTestCase {
         // cap 0本 = 初回の1回しか読まない(眠らない・回らない)
         XCTAssertEqual(driver.calls.filter { $0 == "snapshot" }.count, 1, "\(driver.calls)")
     }
+
+    /// **portrait へ戻したときだけ auto-rotate を復元する**(2026-09-05・実機 Pixel 4a の実測:
+    /// MCP 経由で回すと自動回転 OFF が端末に残っていた)。settled == .portrait が合図
+    func testRestoresAutoRotateOnlyWhenSettledToPortrait() async throws {
+        server.rotationSettleDeadlineSeconds = 0
+
+        let landscapeResult = try await server.call(tool: "ft_rotate", args: ["orientation": "landscape"])
+        XCTAssertFalse(driver.calls.contains("restoreOrientationIfNeeded"),
+                       "横向きのままなのに戻してしまった: \(driver.calls)")
+        XCTAssertFalse(Self.text(landscapeResult).contains("Auto-rotate was restored"),
+                       Self.text(landscapeResult))
+
+        let portraitResult = try await server.call(tool: "ft_rotate", args: ["orientation": "portrait"])
+        XCTAssertTrue(driver.calls.contains("restoreOrientationIfNeeded"),
+                      "portrait へ戻ったのに復元しなかった: \(driver.calls)")
+        XCTAssertTrue(Self.text(portraitResult).contains("Auto-rotate was restored"),
+                      Self.text(portraitResult))
+    }
 }

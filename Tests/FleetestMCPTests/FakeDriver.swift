@@ -204,6 +204,12 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         return orientation
     }
 
+    /// **既定実装(AppDriver extension)は no-op で記録しない**ので、上書きしないと
+    /// 「portrait へ戻したときだけ呼ばれる」ことをテストできない
+    func restoreOrientationIfNeeded() async throws {
+        try record("restoreOrientationIfNeeded", "restoreOrientationIfNeeded")
+    }
+
     func back() async throws { try record("back", "back") }
     func home() async throws { try record("home", "home") }
     func openAppSwitcher() async throws { try record("appSwitcher", "appSwitcher") }

@@ -58,6 +58,12 @@ public enum ScenarioReportWriter {
                 md += "- Suggested fix: \(triage.suggestedFix)\n"
             }
 
+            if !scene.failureAppProcess.isEmpty {
+                // window の覆いより前に置く: プロセスが無いなら、その先の容疑は無意味な情報になる
+                md += "\n> ⚠️ **The app process is not running** (it may have crashed): "
+                md += scene.failureAppProcess.joined(separator: " / ")
+                md += "\n"
+            }
             if !scene.failureForegroundWindows.isEmpty {
                 // 要素一覧より前に置く: アプリが覆われていたなら、要素の中身を読む前にこれが答え
                 md += "\n> ⚠️ **Another window is in front of the app**: "

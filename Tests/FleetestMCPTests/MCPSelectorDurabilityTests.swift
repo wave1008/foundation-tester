@@ -249,7 +249,10 @@ final class MCPSelectorDurabilityTests: XCTestCase {
         // 一意な id を持つ祖先が要るが、この木は**その `#WebView` すら要素上限で落ちている**。
         // 切り詰めが「web だと分かる手掛かり」だけでなく「索引形の足場」まで奪う、という
         // 同じ自己言及の帰結(fixture のコメント参照)
-        XCTAssertLessThanOrEqual(indexed, 710, "索引セレクタが増えている(実測 703)")
+        // 2026-09-05: and-e2e_input_keyboard_resized(自前 SUT・実機)を足して 703 → 712(+2)。
+        // 増分は `#field_wrapped` の中の無 id `textField` / `clickable`(容器で包んだ入力欄の形
+        // そのもの。iOS 版の sut-* にも同じ形がある)で、この1枚に閉じている
+        XCTAssertLessThanOrEqual(indexed, 712, "索引セレクタが増えている(実測 712)")
         // **割合は千分率で見る**(2026-08-12 のレビュー指摘)。百分率の整数除算だと
         // 「4%以下」が実際には 4.99% まで通り、宣言した上限より1ポイント緩い砦になる
         // (実測 4.75% が「4」に切り捨てられて素通りしていた)

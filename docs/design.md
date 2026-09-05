@@ -1817,6 +1817,12 @@ frame を申告しないが shown は言える)ため統合しない。
 `hideKeyboard` が副作用を持つコマンドになるため採らない(ユーザー決定)。
 iOS で閉じたいときは `pressEnter()`(単一行の欄なら閉じる)。**再提案しない**。
 
+**Android の adjustResize は「覆う」ではなく「消す」**(2026-09-05・実測 Pixel 4a): 窓がキーボード
+上端まで縮み、覆われていた要素が木から脱落する(iOS は窓が縮まないため要素は木に残ったまま覆われる)。
+判定は `TapTargetGeometry.KeyboardOcclusion.windowResizedAboveKeyboard` の1箇所——MCP の
+`keyboardCoverageNote` と DSL の `StepExecutor.keyboardResizedHint`(「見つからない」失敗にだけ添える)
+がここを写す。witness は `and-e2e_input_keyboard_resized` / `and-form_keyboard`。
+
 ### 型付きセレクタ(Sel。2026-07-27)
 
 セレクタ式は文字列1本なので、綴り誤りをコンパイラが捕まえられない(実行前の `validationError` が

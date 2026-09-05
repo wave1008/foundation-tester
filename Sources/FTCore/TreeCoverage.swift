@@ -31,6 +31,16 @@ public enum TreeCoverage {
     /// 8% はその間に置いた。**尽きたとき**(実アプリで誤検知が出る)は閾値を動かす前に
     /// `Tests/Fixtures/RealAppSnapshots/` へその画面を足し、SweepHarnessTests で件数を見る
     public static let gapBandContainerFraction = 0.08
+
+    /// **画面の長辺に対する比**(`gap(in:)` は `max(screen.width, screen.height)` に掛ける)。
+    /// 短辺(高さ)に対する比だと回転で分母が変わり、同じページの同じ行間が向きで発火/沈黙する。
+    ///
+    /// 実測(2026-09-05・実機 Pixel 4a 1080x2340・同一ページの `wv_text`/`wv_link` 間の
+    /// 行間 57px。スクリーンショットで何も落ちていないことを確認済み): 縦向きは画面比
+    /// 57/2340 = 2.4%・容器比 57/1808 = 3.2% で沈黙、横向きは容器が 607px に薄くなり
+    /// 画面比 57/1080 = 5.3%・容器比 9.4% の**両方**が旧閾値を超えて誤検知した。
+    /// 長辺(2340)に対しては向きによらず 2.4% で沈黙する。真陽性(2424px 画面・
+    /// 302/192/345/268px の取りこぼし)は長辺の 5% = 121px を全部超えるので影響なし
     public static let gapBandScreenFraction = 0.05
 
     /// 空白帯の走査に使う分割数。**位置の候補を決めるだけ**で高さの量子化には使わない
@@ -67,10 +77,11 @@ public enum TreeCoverage {
                 - max(container.frame.y, screen.y)
             guard visible > 0 else { continue }
             guard pageExtendsBeyondViewport(container, of: snapshot) else { continue }
+            let screenLongEdge = max(screen.width, screen.height)
             let bands = emptyBands(inside: container, of: snapshot)
                 .filter {
                     $0.height >= visible * gapBandContainerFraction
-                        && $0.height >= screen.height * gapBandScreenFraction
+                        && $0.height >= screenLongEdge * gapBandScreenFraction
                 }
             guard !bands.isEmpty else { continue }
             return Gap(container: container, bands: bands)

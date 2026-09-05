@@ -139,13 +139,36 @@ final class WebViewShotCompositeTests: XCTestCase {
     }
 
     /// 警告の once は serial ごと・プロセス全体(ドライバのインスタンスを跨ぐ)。
-    /// serial は同一プロセスの他テストと衝突しないよう一意にする
+    /// serial は同一プロセスの他テストと衝突しないよう一意にする。
+    /// read(`hasWarnedBlankCapture`)と挿入(`markBlankCaptureWarned`)を分けたのは、
+    /// `warrantsBlankCaptureWarning` が false のときに印を付けずに帰るため
+    /// (`AndroidDriver.warnBlankCaptureOnce` 参照。ここでは分かれた素通しの once だけを固定する)
     func testBlankCaptureWarningFiresOncePerSerialAcrossCalls() {
         let a = "test-serial-\(UUID().uuidString)"
         let b = "test-serial-\(UUID().uuidString)"
-        XCTAssertTrue(WebViewShotComposite.shouldWarnBlankCapture(serial: a))
-        XCTAssertFalse(WebViewShotComposite.shouldWarnBlankCapture(serial: a))
-        XCTAssertFalse(WebViewShotComposite.shouldWarnBlankCapture(serial: a))
-        XCTAssertTrue(WebViewShotComposite.shouldWarnBlankCapture(serial: b), "別の台は別に1回言う")
+        XCTAssertFalse(WebViewShotComposite.hasWarnedBlankCapture(serial: a))
+        WebViewShotComposite.markBlankCaptureWarned(serial: a)
+        XCTAssertTrue(WebViewShotComposite.hasWarnedBlankCapture(serial: a))
+        XCTAssertTrue(WebViewShotComposite.hasWarnedBlankCapture(serial: a))
+        XCTAssertFalse(WebViewShotComposite.hasWarnedBlankCapture(serial: b), "別の台は別に1回言う")
+    }
+
+    /// **4象限**: 案内する価値があるのは「木にノードがある」か「devtools 以外の理由」のどちらか。
+    /// 木も devtools ソケットも無い(= WebView が居る証拠がどこにも無い)ときだけ黙る
+    /// (実測 2026-09-05・実機 Pixel 4a: 23 シナリオ run で 13 回、全部 WebView の無い画面で
+    /// この形が誤って案内していた)
+    func testWarrantsBlankCaptureWarningFourQuadrants() {
+        XCTAssertFalse(WebViewShotComposite.warrantsBlankCaptureWarning(
+            hasWebViewNode: false, reason: .noDevtoolsSocket),
+            "証拠が無いのに案内した(WebView の無い画面への誤案内)")
+        XCTAssertTrue(WebViewShotComposite.warrantsBlankCaptureWarning(
+            hasWebViewNode: false, reason: .captureFailed),
+            "ソケットはあった(=WebView は居た)のに黙った")
+        XCTAssertTrue(WebViewShotComposite.warrantsBlankCaptureWarning(
+            hasWebViewNode: true, reason: .noDevtoolsSocket),
+            "木にノードがある(=WebView は居ると分かっている)のに黙った")
+        XCTAssertTrue(WebViewShotComposite.warrantsBlankCaptureWarning(
+            hasWebViewNode: false, reason: .appNotRunning),
+            "アプリが起きていない形は devtools 以外の理由なので案内するはず")
     }
 }

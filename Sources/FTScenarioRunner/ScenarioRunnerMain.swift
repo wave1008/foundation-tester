@@ -467,6 +467,14 @@ struct RunScenario: AsyncParsableCommand {
             core.foregroundOverlays = {
                 AndroidForegroundWindows.query(package: package, serial: serial)
             }
+            // 失敗時に「アプリの process がまだ在るか」も添える(pidof が空 = クラッシュの疑い。
+            // 2026-09-05・実機 Pixel 4a で実測: #btn_crash_confirm を落としても通常文言は
+            // 「別 window が手前」としか言わなかった)
+            core.appProcessEvidence = {
+                guard let evidence = AndroidAppProcessEvidenceQuery.query(package: package, serial: serial),
+                      !evidence.running else { return [] }
+                return ["process not running"] + evidence.crashSummary
+            }
         }
 
         var debugControl: ScenarioDebugControl?

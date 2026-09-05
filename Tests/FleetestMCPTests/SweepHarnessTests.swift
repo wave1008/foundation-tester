@@ -468,6 +468,14 @@ final class SweepHarnessTests: XCTestCase {
         "and-sutec_home": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 1, disabled: 0,
                                   offscreen: 0, warnedTappable: 0, keyboard: 0, sliver: 3,
                                   nested: 0, scrolledOut: 0, clippedByContainer: 3),
+        // 2026-09-05 の実機監査(Pixel 4a・E2E-Android の入力画面でパスワード欄にフォーカス)。
+        // adjustResize で窓が 2340→1267px に縮み、送信/クリアが木から**消えている**形の witness
+        // (`KeyboardOcclusion.windowResizedAboveKeyboard`)。keyboard=0 が要点 —— 覆われた要素は
+        // 木に無いので「キーボードの下」として数えられるものが1つも無い(消えたものは数えられない)。
+        // 他の検知も全部 0 = 木そのものは健全(自前 SUT の View/XML)
+        "and-e2e_input_keyboard_resized": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 0, disabled: 0,
+                                                  offscreen: 0, warnedTappable: 0, keyboard: 0, sliver: 0,
+                                                  nested: 0, scrolledOut: 0, clippedByContainer: 0),
     ]
 
     static func counts(_ snap: SnapshotResponse) -> Counts {

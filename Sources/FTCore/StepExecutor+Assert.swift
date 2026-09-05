@@ -242,6 +242,21 @@ extension StepExecutor {
             + " elements compete for the limit)"
     }
 
+    /// キーボードで窓が縮んで要素が木から消えている疑い(判定は
+    /// `KeyboardOcclusion.windowResizedAboveKeyboard`)。**「見つからない」失敗にだけ添える**
+    /// —— 覆われているだけなら要素は木にあり resolve が拾うので、この文言の出番はここには来ない
+    static func keyboardResizedHint(_ snapshot: SnapshotResponse?) -> String {
+        guard let snapshot else { return "" }
+        let occlusion = KeyboardOcclusion.resolve(
+            reported: snapshot.keyboardFrame, in: snapshot.elements)
+        guard occlusion.windowResizedAboveKeyboard, let kb = occlusion.frame else { return "" }
+        return " (the soft keyboard is up at (\(Int(kb.x)),\(Int(kb.y))"
+            + " \(Int(kb.width))x\(Int(kb.height))) and the window has shrunk to fit above it,"
+            + " so elements that sat below the keyboard are gone from the tree, not just covered."
+            + " Close it first (hideKeyboard() on Android, pressEnter() on iOS) or scroll inside"
+            + " the container, then retry.)"
+    }
+
     /// **切り詰められた木で「不在」を結論にしない**ための撮り直し。
     ///
     /// 要素数の上限(`BridgeAPI.maxSnapshotElements`)は **LLM の読み手が読み切れる量**として
@@ -566,6 +581,7 @@ extension StepExecutor {
         }
         return failed(.notFound, "element not found: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? FlowStep.defaultWaitSeconds))s)"
                        + Self.truncationHint(lastSnapshot)
+                       + Self.keyboardResizedHint(lastSnapshot)
                        + tapDiagnosisHint(lastSnapshot?.elements)
                        + Self.webViewPathHint(lastSnapshot))
     }
@@ -700,6 +716,7 @@ extension StepExecutor {
                       + Self.webViewPathHint(lastSnapshot))
             : failed(.notFound, "element not found: \(step.locatorSummary)"
                       + Self.truncationHint(lastSnapshot)
+                      + Self.keyboardResizedHint(lastSnapshot)
                       + tapDiagnosisHint(lastSnapshot?.elements)
                       + Self.webViewPathHint(lastSnapshot))
     }
@@ -915,6 +932,7 @@ extension StepExecutor {
         guard found else {
             return failed(.notFound, "element not found: \(step.locatorSummary)"
                            + Self.truncationHint(lastSnapshot)
+                           + Self.keyboardResizedHint(lastSnapshot)
                            + tapDiagnosisHint(lastSeenElements))
         }
         let hint = Self.coveringHint(element: lastElement, elements: lastElements,
@@ -995,7 +1013,8 @@ extension StepExecutor {
         }
         return found
             ? .failed("the element is \(wantEnabled ? "disabled" : "enabled"): \(step.locatorSummary)")
-            : failed(.notFound, "element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot))
+            : failed(.notFound, "element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot)
+                      + Self.keyboardResizedHint(lastSnapshot))
     }
 
     /// キーボード開閉はアニメーションを伴うため単発チェックはフレークする → notExists と同じ
@@ -1100,7 +1119,8 @@ extension StepExecutor {
         }
         return found
             ? .failed("the element is \(wantChecked ? "off" : "on"): \(step.locatorSummary)")
-            : failed(.notFound, "element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot))
+            : failed(.notFound, "element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot)
+                      + Self.keyboardResizedHint(lastSnapshot))
     }
 
     private func executeAssertCount(step: FlowStep,

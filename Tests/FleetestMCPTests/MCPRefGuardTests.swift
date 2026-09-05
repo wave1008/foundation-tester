@@ -1246,6 +1246,31 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertFalse(note.contains("[3]"), "chrome の子(地球儀キー相当)は列挙しないこと: \(note)")
     }
 
+    /// Android adjustResize で窓がキーボード上端まで縮んだ形(実測 2026-09-05・Pixel 4a)。
+    /// 木の最下端がキーボード上端に一致し、下へはみ出す要素も無い(ボタンが木から消えている)ので
+    /// `covered` は空だが「nothing tappable」と断言せず、脱落を疑う文言にすること
+    func testKeyboardCoverageNoteWarnsWhenTheWindowHasShrunkAboveTheKeyboard() {
+        var withKeyboard = screen([
+            element(ref: 1, type: "button", id: "btn_save", label: "保存", x: 0, y: 1135, w: 360, h: 132),
+        ])
+        withKeyboard.keyboardFrame = FTRect(x: 0, y: 1267, width: 1080, height: 1073)
+        let note = MCPServer.keyboardCoverageNote(withKeyboard)
+        XCTAssertTrue(note.contains("the window has shrunk"), "脱落を疑う文言であること: \(note)")
+        XCTAssertFalse(note.contains("nothing tappable"), "従来文言に後退していないこと: \(note)")
+    }
+
+    /// 窓が縮んでいない(木の最下端がキーボード上端を越えて残っている)ときは、`covered` が空でも
+    /// 従来どおりの文言を保つこと(はみ出した要素は非操作型なので covered には現れない)
+    func testKeyboardCoverageNoteKeepsTheClassicMessageWhenElementsStillSpillPastTheKeyboard() {
+        var withKeyboard = screen([
+            element(ref: 1, type: "other", id: "deco", x: 0, y: 1300, w: 100, h: 50),
+        ])
+        withKeyboard.keyboardFrame = FTRect(x: 0, y: 1267, width: 1080, height: 1073)
+        let note = MCPServer.keyboardCoverageNote(withKeyboard)
+        XCTAssertTrue(note.contains("nothing tappable is beneath it"), "従来文言のままであること: \(note)")
+        XCTAssertFalse(note.contains("the window has shrunk"), "誤って脱落と言わないこと: \(note)")
+    }
+
     private static func text(_ content: [[String: Any]]) -> String {
         content.compactMap { $0["text"] as? String }.joined(separator: "\n")
     }

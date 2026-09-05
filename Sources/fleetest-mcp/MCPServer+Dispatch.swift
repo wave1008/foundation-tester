@@ -967,6 +967,16 @@ extension MCPServer {
                 if fits, unchanged { settledFrames = true; break }
             }
             recordSnapshot(rotated, Self.platformName(args), args)
+            // **portrait へ戻したときだけ auto-rotate を復元する**(Android は rotate(to:) の
+            // 初回呼び出しで user_rotation / accelerometer_rotation を控え、restoreOrientationIfNeeded
+            // が戻す。landscape のままなら控えを保つ = 次に portrait へ戻すまで端末の設定はそのまま)。
+            // driver は `drivers[key]` にキャッシュされ同じインスタンスを使い続けるので控えは生きる ——
+            // 接続が切れて再生成されたときだけ戻せない(その場合は次に立ち上げた側の責任)
+            var autoRotateCaveat = ""
+            if settled == .portrait {
+                try await rotateDriver.restoreOrientationIfNeeded()
+                autoRotateCaveat = " Auto-rotate was restored to the device's own setting."
+            }
             // **未settleを「もう終わった」と嘘をつかない** —— waitForChange の
             // still-changing 注記と同じ立て付け(MCPServer+Snapshot.swift)
             let relayoutCaveat = settledFrames ? ""
@@ -974,7 +984,7 @@ extension MCPServer {
                     + " mid-relayout; take another ft_snapshot before relying on these frames."
             return text("Rotated to \(settled.rawValue). The frames below are in the new"
                 + " coordinate system — refs taken before the rotation are gone."
-                + relayoutCaveat + "\n\n"
+                + relayoutCaveat + autoRotateCaveat + "\n\n"
                 + (await snapshotBody(rotated, driver: rotateDriver, args: args)))
 
         case "ft_navigate":

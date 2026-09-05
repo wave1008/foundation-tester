@@ -133,6 +133,12 @@ final class NoteCoverageTests: XCTestCase {
         // scroll 容器の子に再配線する形(StepExecutor.isChromePinnedOutside の witness)。
         // 既存の sutec-home(iOS/hybrid 採取)とは別プラットフォームの捕獲なので独立の鍵にする
         "and-sutec_home": "ec",
+        // 2026-09-05 の実機監査(Pixel 4a・E2E-Android の入力画面)で足した1枚。パスワード欄に
+        // フォーカスして Gboard が 1073px に伸び、adjustResize で窓が 2340→1267px に縮んだ木。
+        // **送信/クリアが木から消えている**のに `keyboardFrame` の下に要素が1つも無い形 ——
+        // `KeyboardOcclusion.windowResizedAboveKeyboard` の witness(and-form_keyboard と同型を
+        // 自前 SUT で固定したもの。根 #action_bar_root の下端 1267 = keyboardFrame.y)
+        "and-e2e_input_keyboard_resized": "form",
     ]
 
     static func family(_ fixture: String) -> String { archetypes[fixture] ?? "?" }
@@ -229,7 +235,11 @@ final class NoteCoverageTests: XCTestCase {
         // 再び「nothing tappable」へ(その2件は chrome 自身の部分木だった)。
         // ios-maps_suggest_keyboard は列挙数が 30→20 に減るが、先頭8件(バイト数を左右する側)は
         // 変わらないので画面単体のバイト数は不変(SweepHarnessTests の baselines コメント参照)
-        "keyboardCoverageNote": Coverage(fixtures: ["and-browser_urlmenu", "and-form_keyboard", "and-maps_suggest_ime", "ios-browser_startpage", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard"], bytes: 1170),
+        // bytes 1170→1636(2026-09-05・「窓が縮んで要素が消えた」分岐): and-form_keyboard が
+        // 「nothing tappable」から縮小の文言へ替わった分(+約230)と、同じ形の自前 SUT の1枚
+        // and-e2e_input_keyboard_resized を足した分(+約236)。発火する画面の条件は不変
+        // (keyboardFrame の申告があれば必ず出る)
+        "keyboardCoverageNote": Coverage(fixtures: ["and-browser_urlmenu", "and-e2e_input_keyboard_resized", "and-form_keyboard", "and-maps_suggest_ime", "ios-browser_startpage", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard"], bytes: 1636),
         "truncatedLabelNote": Coverage(fixtures: ["and-browser_urlmenu", "and-browser_weather", "and-browser_weather_weekly", "and-place_expanded", "ios-browser_weektable", "ios-maps_transit_steps", "ios-maps_transit_steps_expanded", "ios-news_feed", "ios-photos_grid", "ios-place_guides_scrolled", "ios-safari_article", "ios-settings_root", "sutec-detail", "sutec-home"], bytes: 4315),
         // 2026-08-15 に J1順位表(Android)を足して初めて発火(それまで knownSilent)。
         // クラブ名「清水エスパルス」が下端で高さ6pxに切られた行 = SweepHarnessTests.baselines の

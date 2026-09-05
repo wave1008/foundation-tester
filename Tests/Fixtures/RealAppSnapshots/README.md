@@ -133,6 +133,12 @@
 |---|---|---|---|
 | `and-sutec_home` | ec | sut-ec-mobile(Android 実機・Jetpack Compose) | **Compose Scaffold の bottomBar が無ラベルで間引かれ、preorder+depth の復元が下部タブをスクロール容器の子に再配線する**形。Android ブリッジは identifier も label も無い `NavigationBar` コンテナを `SnapshotBuilder.shouldInclude` で落とすが、depth の振り直しはしない。結果、木は「タブ5本が `#screen_home`(scrollView)の子として、容器の下端(y=2054)にちょうど接する非交差の行」に見える —— `StepExecutor.isOutsideContainer` と `TapTargetGeometry.outsideDeclaredScroller` の両方がこれを ghost/scrolledOut と誤判定し、DSL の `tap` が無意味な再解決スワイプを繰り返し、`ft_snapshot` が5本とも ⚠️scroll-leftover を出していた(結果 DB で 715 件中 45 件が this)。`StepExecutor.isChromePinnedOutside` の witness で、既存の `sutec-*`(iOS in-app)には無い形 —— あちらは容器の外に単独で浮く行はあっても、**画面の縁に固定された複数要素のバー**という形を持たない |
 
+**2026-09-05 の実機監査(Android のキーボードで窓が縮む形)で足した1枚**:
+
+| ファイル | アーキタイプ | 由来 | 何を代表するか |
+|---|---|---|---|
+| `and-e2e_input_keyboard_resized` | form | E2E-Android(Pixel 4a 実機・View/XML)の入力画面でパスワード欄にフォーカス | **adjustResize でアプリ窓がキーボード上端まで縮み、覆われた要素が木から消える**形。Gboard が 1073px に伸びて窓は 2340→1267px、送信/クリア(`#btn_input_submit` / `#btn_input_clear`)が木に無い。根 `#action_bar_root` の下端 1267 = `keyboardFrame.y` で、キーボード矩形の下には要素が1つも無い —— iOS は覆われた要素が木に残る(`ios-browser_startpage` 55件)ので、「木の要素 ∩ キーボード矩形」で数える注記は Android のこの形で「下に何も無い」と誤って断言していた。`KeyboardOcclusion.windowResizedAboveKeyboard` の witness(`and-form_keyboard` と同型を自前 SUT で固定) |
+
 **採り直すとき**は基準値も一緒に更新する(`SweepHarnessTests.baselines`)。件数が増えたら
 まず誤検知を疑い、真陽性だと確かめてから基準値を上げること —— 黙って上げると、
 この砦は「現状を追認するだけ」になる。

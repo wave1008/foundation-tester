@@ -1037,7 +1037,7 @@ struct RunScenarios: AsyncParsableCommand {
             throw ValidationError(
                 "no scenarios (add a @TestClass under TestProjects/\(testProject.name)/scenarios/)")
         }
-        var selected = try Self.resolve(scenarios, from: all)
+        var selected = try Self.resolve(scenarios, from: all, scenariosDir: testProject.scenariosDir)
         if scenarios.isEmpty {
             let deletedCount = all.filter(\.deleted).count
             if deletedCount > 0 {
@@ -1326,8 +1326,11 @@ struct RunScenarios: AsyncParsableCommand {
     }
 
     /// @Deleted(論理削除)/ @Draft(実装中)は全件実行・クラス名展開から除外
-    /// (完全一致の明示指定のみ実行可。実装しながら個別に回す運用のため)
-    static func resolve(_ ids: [String], from all: [ScenarioInfo]) throws -> [ScenarioInfo] {
+    /// (完全一致の明示指定のみ実行可。実装しながら個別に回す運用のため)。
+    /// `scenariosDir` は「見つからない」を `_disabled`(コンパイル対象外)在住と見分けるための
+    /// 追加情報 —— 省略した呼び出し元(profile/fleet 経由)は従来文のまま
+    static func resolve(_ ids: [String], from all: [ScenarioInfo],
+                        scenariosDir: URL? = nil) throws -> [ScenarioInfo] {
         guard !ids.isEmpty else { return all.filter { !$0.deleted && !$0.draft } }
         var result: [ScenarioInfo] = []
         for id in ids {
@@ -1345,6 +1348,10 @@ struct RunScenarios: AsyncParsableCommand {
                     throw ValidationError(
                         "every scenario of \(id) \(reason)"
                         + " (an exact Class.method reference still runs it)")
+                }
+                if let scenariosDir {
+                    throw ValidationError(ScenarioFolders.notFoundMessage(
+                        id: id, available: all.map(\.id), scenariosDir: scenariosDir))
                 }
                 throw ValidationError(
                     "scenario not found: \(id) (available: \(all.map(\.id).joined(separator: ", ")))")

@@ -837,15 +837,28 @@ public struct KeyboardOcclusion: Sendable {
     public let frame: FTRect?
     /// chrome 自身と部分木の ref。この集合には「隠れている」と言わない
     private let excluded: Set<Int>
+    /// Android の adjustResize で窓がキーボード上端まで縮み、覆われた要素が木から
+    /// **消えている**(遮蔽ではなく脱落)形。根拠は非 excluded 要素の最下端(maxBottom)が
+    /// 実効矩形の上端に一致し(差 ≤ 1pt/dp。`TapTargetGeometry.contains` と同じ丸め許容)、
+    /// かつ実効矩形の上端より下へはみ出す要素が1つも無いこと。iOS は窓が縮まないため
+    /// 常に false(はみ出す要素が残る。実測: Pixel 4a 実機 1267=1267 / 固定コーパス
+    /// `and-form_keyboard` 1541=1541 が true・iOS 6画面と `and-maps_suggest_ime`・
+    /// `and-browser_urlmenu` は要素がはみ出すため false)。
+    /// **「隠れているものは数えられない」ので true だからといって「下に何も無い」とは言えない**
+    public let windowResizedAboveKeyboard: Bool
 
-    public static let none = KeyboardOcclusion(frame: nil, excluded: [])
+    public static let none = KeyboardOcclusion(frame: nil, excluded: [], windowResizedAboveKeyboard: false)
 
     /// chrome が木に無ければ申告どおり・除外なし(旧ブリッジ・空葉除外で消えた場合の
     /// 後退防止。`ios-browser_startpage` と Android 全機種がこのケース)
     public static func resolve(reported: FTRect?, in elements: [ElementInfo]) -> KeyboardOcclusion {
         guard let reported else { return .none }
         let seeds = chromeElements(intersecting: reported, in: elements)
-        guard !seeds.isEmpty else { return KeyboardOcclusion(frame: reported, excluded: []) }
+        guard !seeds.isEmpty else {
+            return KeyboardOcclusion(frame: reported, excluded: [],
+                                      windowResizedAboveKeyboard: resizedAboveKeyboard(
+                                        frame: reported, excluded: [], in: elements))
+        }
         let minX = seeds.reduce(reported.x) { min($0, $1.frame.x) }
         let minY = seeds.reduce(reported.y) { min($0, $1.frame.y) }
         let maxX = seeds.reduce(reported.x + reported.width) { max($0, $1.frame.x + $1.frame.width) }
@@ -861,7 +874,20 @@ public struct KeyboardOcclusion: Sendable {
             excluded.insert(c.ref)
             excluded.formUnion(StepExecutor.descendants(of: c, in: elements).map(\.ref))
         }
-        return KeyboardOcclusion(frame: expanded, excluded: excluded)
+        return KeyboardOcclusion(frame: expanded, excluded: excluded,
+                                  windowResizedAboveKeyboard: resizedAboveKeyboard(
+                                    frame: expanded, excluded: excluded, in: elements))
+    }
+
+    private static func resizedAboveKeyboard(frame: FTRect, excluded: Set<Int>,
+                                             in elements: [ElementInfo]) -> Bool {
+        let candidates = elements.filter { !excluded.contains($0.ref) }
+        guard !candidates.isEmpty else { return false }
+        let maxBottom = candidates.reduce(-Double.greatestFiniteMagnitude) {
+            max($0, $1.frame.y + $1.frame.height)
+        }
+        guard abs(maxBottom - frame.y) <= 1 else { return false }
+        return !candidates.contains { $0.frame.y + $0.frame.height > frame.y + 1 }
     }
 
     private static func chromeElements(intersecting rect: FTRect,

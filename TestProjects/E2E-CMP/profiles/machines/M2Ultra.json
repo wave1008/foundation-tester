@@ -203,6 +203,14 @@
         "avd": "Pixel_9_Android_15_-10"
       },
       {
+        "machine": "local",
+        "name": "Pixel 4a",
+        "kind": "physical",
+        "os": "13",
+        "serial": "14141JEC204922",
+        "model": "Pixel 4a"
+      },
+      {
         "machine": "M1Max",
         "name": "Pixel 9(Android 15)-01",
         "avd": "Pixel_9_Android_15_-01"

@@ -6,6 +6,7 @@
 // 文言が痩せると同じ迷子が再発するので、要点の語だけ固定する。
 
 import XCTest
+import FTAndroid
 import FTBridgeClient
 import FTCore
 @testable import fleetest_mcp
@@ -280,6 +281,43 @@ final class MCPGuidanceTests: XCTestCase {
             snapshot: SnapshotResponse(sessionBundleID: nil,
                                        screen: FTRect(x: 0, y: 0, width: 390, height: 844),
                                        elements: [], truncatedCount: 0)), "")
+    }
+
+    /// **実測(2026-09-05・実機 Pixel 4a)**: #btn_crash_confirm でプロセスを落とすと、通常文言は
+    /// launcher へ迷い込んだとしか言わず、実際に落ちたことを伝えられない。processEvidence が
+    /// running: false を言っているときは、原因をクラッシュへ差し替える
+    func testSwitchedAppNoteReportsCrashWhenProcessIsNotRunning() {
+        let snapshot = SnapshotResponse(sessionBundleID: "com.google.android.apps.nexuslauncher",
+                                        screen: FTRect(x: 0, y: 0, width: 1080, height: 2424),
+                                        elements: [], truncatedCount: 0)
+        let evidence = AndroidAppProcessEvidence(
+            running: false,
+            crashSummary: ["FATAL EXCEPTION: main",
+                          "Process: com.ftester.e2e.android, PID: 13561",
+                          "java.lang.RuntimeException: FT_E2E intentional crash"])
+        let note = MCPServer.switchedAppNote(launched: "com.ftester.e2e.android", snapshot: snapshot,
+                                             processEvidence: evidence)
+        XCTAssertTrue(note.contains("may have crashed"), note)
+        XCTAssertTrue(note.contains("FT_E2E intentional crash"), note)
+        XCTAssertTrue(note.contains("ft_logs"), note)
+        XCTAssertFalse(note.contains("Leaving the app"), "通常文言に落ちないこと: \(note)")
+    }
+
+    /// running: true(またはプロセスが分からない = nil)のときは従来文のまま
+    /// (誤ってクラッシュを疑わせない)
+    func testSwitchedAppNoteKeepsUsualWordingWhenProcessIsRunning() {
+        let snapshot = SnapshotResponse(sessionBundleID: "com.google.android.apps.nexuslauncher",
+                                        screen: FTRect(x: 0, y: 0, width: 1080, height: 2424),
+                                        elements: [], truncatedCount: 0)
+        let evidence = AndroidAppProcessEvidence(running: true, crashSummary: [])
+        let note = MCPServer.switchedAppNote(launched: "com.ftester.e2e.android", snapshot: snapshot,
+                                             processEvidence: evidence)
+        XCTAssertTrue(note.contains("Leaving the app"), note)
+        XCTAssertFalse(note.contains("may have crashed"), note)
+
+        let noteWithoutEvidence = MCPServer.switchedAppNote(
+            launched: "com.ftester.e2e.android", snapshot: snapshot)
+        XCTAssertTrue(noteWithoutEvidence.contains("Leaving the app"), noteWithoutEvidence)
     }
 
     // MARK: - back は空振りし得る / in-app への切替はアプリを起動し直す

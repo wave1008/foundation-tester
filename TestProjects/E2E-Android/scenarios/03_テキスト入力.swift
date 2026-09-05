@@ -50,6 +50,10 @@ class テキスト入力が正しくechoされること {
             }
             scene(4, "送信で submitted に反映される") {
                 action {
+                    // パスワード欄のキーボードは背の低い実機(Pixel 4a 851dp)で窓を 2340→1267px に
+                    // 縮め、送信/クリアが木から消える(Pixel 9 の 923dp では消えない)。
+                    // 容器はスクロールしないので scroll: では届かず、閉じてから撃つ
+                    hideKeyboard()
                     tap("#btn_input_submit")
                 }.expectation {
                     select("#txt_input_submitted").textIs("submitted=hello123")

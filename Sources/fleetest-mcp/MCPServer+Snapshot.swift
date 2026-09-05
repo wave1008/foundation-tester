@@ -313,8 +313,11 @@ extension MCPServer {
         }
         // **すり替わりを先頭に置く**: これが起きているとき、以下の一覧は丸ごと別アプリのもので、
         // ghost 注記も scrollFrame 候補も読む意味が無い
+        let switchedLaunched = launchedBundleIDs[Self.engineKey(args)]
         let switchedNote = Self.switchedAppNote(
-            launched: launchedBundleIDs[Self.engineKey(args)], snapshot: snapshot)
+            launched: switchedLaunched, snapshot: snapshot,
+            processEvidence: androidProcessEvidenceForSwitch(
+                launched: switchedLaunched, snapshot: snapshot, driver: driver, args: args))
         // **launch 系ツールの直後だけ・一度だけ** system alert を確かめる
         // (systemAlertProbePending 参照。DSL の noteAppLaunched と同じ設計)。
         // **先に鍵を消してから probe する** —— この呼び出し自体が非同期で待つため、
@@ -1394,8 +1397,11 @@ extension MCPServer {
         // **木を返す口はすべて名指しする**(2026-08-06 の掃討で漏れを見つけた)。上の再確認は
         // 「セレクタが居るか」しか見ないので、**別アプリに同じ id がある**と素通しする ——
         // E2E の 4 SUT は id・ラベルが共通契約なので、これは現に起こり得る形
+        let scrollToLaunched = launchedBundleIDs[Self.engineKey(args)]
         let switched = Self.switchedAppNote(
-            launched: launchedBundleIDs[Self.engineKey(args)], snapshot: after)
+            launched: scrollToLaunched, snapshot: after,
+            processEvidence: androidProcessEvidenceForSwitch(
+                launched: scrollToLaunched, snapshot: after, driver: scrollDriver, args: args))
         // scrollFrame を渡すべき当人なので、複数領域の注記もここに出す(欠陥⑪)
         let scrollAreaNote = args["scrollFrame"] == nil ? (ScrollFrameCandidates.note(after) ?? "")
             : Self.lineNote(Self.scrollAreaHint(beforeScroll ?? after, args: args))

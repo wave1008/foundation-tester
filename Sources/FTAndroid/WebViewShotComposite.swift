@@ -132,14 +132,34 @@ enum WebViewShotComposite {
         }
     }
 
-    /// 補えなかった警告を**プロセス全体で serial ごとに1回だけ**通す門。
+    /// **補えなかったことを言う価値があるか**(純粋)。木に webView ノードが無く、devtools
+    /// ソケットも無いなら、WebView が居る証拠がどこにも無い = 遷移中の一様フレームか素の画面
+    /// (実測 2026-09-05: 実機 Pixel 4a の 23 シナリオ run で 13 回、全部 WebView の無い画面
+    /// ——ホーム/About 等—— で `largestUniformBand` の門(45%)だけが通っていた)。
+    /// **黙る側に倒す** —— 「デバッグが OFF で a11y ノードも出ない」形は取りこぼすが、
+    /// 13/23 の誤案内より軽い
+    static func warrantsBlankCaptureWarning(hasWebViewNode: Bool, reason: BlankCaptureReason) -> Bool {
+        hasWebViewNode || reason != .noDevtoolsSocket
+    }
+
+    /// 補えなかった警告を**プロセス全体で serial ごとに1回だけ**通す門の**読み取りだけ**
+    /// (挿入は `markBlankCaptureWarned` に分けてある —— 呼び手が `warrantsBlankCaptureWarning`
+    /// で不要と判定したときは印を付けずに帰り、その後に本物の WebView 画面で失敗したときに
+    /// まだ警告できるようにする)。
     /// AndroidDriver のインスタンス変数にしてはいけない —— モニターは1枚撮るごとに
     /// `AndroidDriver(serial:)` を作り直すので、インスタンスに閉じた once は毎フレーム鳴る
     /// (2026-08-31 に手元と M1Max の両方で毎秒出続けた)。NSLock は並列の撮影が同時に来るため
-    static func shouldWarnBlankCapture(serial: String) -> Bool {
+    static func hasWarnedBlankCapture(serial: String) -> Bool {
         blankCaptureWarnLock.lock()
         defer { blankCaptureWarnLock.unlock() }
-        return blankCaptureWarnedSerials.insert(serial).inserted
+        return blankCaptureWarnedSerials.contains(serial)
+    }
+
+    /// 警告を出したと印を付ける(以後 `hasWarnedBlankCapture` が true を返す)
+    static func markBlankCaptureWarned(serial: String) {
+        blankCaptureWarnLock.lock()
+        defer { blankCaptureWarnLock.unlock() }
+        blankCaptureWarnedSerials.insert(serial)
     }
     private static let blankCaptureWarnLock = NSLock()
     private static var blankCaptureWarnedSerials = Set<String>()

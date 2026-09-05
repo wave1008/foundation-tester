@@ -965,7 +965,13 @@ extension MCPServer {
     /// ここは「起動したもの」対「木が名乗るもの」を比べるので、session が追従しても捕まる。
     ///
     /// **判定材料が無いときは黙る**(嘘を足さない): ft_launch していない・木が名乗らない。
-    static func switchedAppNote(launched: String?, snapshot: SnapshotResponse) -> String {
+    ///
+    /// `processEvidence`(Android のみ・呼び出し側が adb で引く)が `running == false` を
+    /// 言っているときは、原因を「操作でアプリを離れた」から「プロセスが無い(クラッシュの疑い)」
+    /// へ差し替える —— 2026-09-05・実機 Pixel 4a で実測: #btn_crash_confirm でプロセスを落とすと、
+    /// 通常文言は launcher へ迷い込んだとしか言わず、実際に落ちたことを伝えられない
+    static func switchedAppNote(launched: String?, snapshot: SnapshotResponse,
+                                processEvidence: AndroidAppProcessEvidence? = nil) -> String {
         guard let launched, let session = snapshot.sessionBundleID, session != launched else {
             return ""
         }
@@ -983,9 +989,33 @@ extension MCPServer {
                 + " (tap its buttons, or back) to get back to \(launched) — ft_launch restarts"
                 + " the app and leaves the dialog on screen, so you would loop without progress.\n"
         }
+        if let processEvidence, !processEvidence.running {
+            var note = "⚠️ This tree belongs to \(session), NOT the app you launched (\(launched))"
+                + " — and \(launched) has no process any more: it may have crashed."
+            if !processEvidence.crashSummary.isEmpty {
+                note += " Last crash in logcat -b crash: "
+                    + processEvidence.crashSummary.joined(separator: " / ") + "."
+                    + " ft_logs crashOnly: true shows the full trace."
+            }
+            return note + " ft_launch \(launched) to start it again.\n"
+        }
         return "⚠️ This tree belongs to \(session), NOT the app you launched (\(launched))."
             + " Leaving the app (back from its first screen, home, an app switch) hands the"
             + " tools to whatever is in front now — and sibling test apps can look identical."
             + " ft_launch \(launched) before trusting these refs\n"
+    }
+
+    /// `switchedAppNote` の `processEvidence` 引数を埋める(Android のみ・adb 2往復)。
+    /// **すり替わっていない通常の呼び出しでは adb を払わない**(session == launched ならここで
+    /// 抜ける)。serial は明示引数か、このセッションが覚えている宛先(connectedAndroidSerials。
+    /// resolveAndroidSerial と違い**曖昧でも例外にしない** —— これは付加情報で、
+    /// 取れなければ nil のまま adb の既定(単一接続時のみ解決)に委ねる
+    func androidProcessEvidenceForSwitch(launched: String?, snapshot: SnapshotResponse,
+                                         driver: AppDriver, args: [String: Any])
+        -> AndroidAppProcessEvidence? {
+        guard driver is AndroidDriver, let launched, let session = snapshot.sessionBundleID,
+              session != launched else { return nil }
+        let serial = (args["serial"] as? String) ?? connectedAndroidSerials[Self.engineKey(args)]
+        return AndroidAppProcessEvidenceQuery.query(package: launched, serial: serial)
     }
 }

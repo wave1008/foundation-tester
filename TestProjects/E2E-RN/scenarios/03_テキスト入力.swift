@@ -98,6 +98,10 @@ class テキスト入力が正しくechoされること {
             }
             scene(5, "送信で submitted に反映される") {
                 action {
+                    // Android: パスワード欄のキーボードは背の低い実機(Pixel 4a 851dp)で窓を縮め、
+                    // 送信が下部タブの下へ押し込まれて tap が #tab_home に当たる(Pixel 9 の 923dp
+                    // では起きない)。閉じてから撃つ
+                    android { hideKeyboard() }
                     tap("#btn_input_submit")
                 }.expectation {
                     select("#txt_input_submitted").textIs("submitted=hello123")

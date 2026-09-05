@@ -758,6 +758,7 @@ extension StepExecutor {
                         .notFound,
                         "cannot resolve the locator: \(step.locatorSummary)" + (hint.map { ". \($0)" } ?? "")
                             + Self.truncationHint(snapshot)
+                            + Self.keyboardResizedHint(snapshot)
                             + Self.webViewPathHint(snapshot)
                             + Self.noReplacementHint(rationale)),
                     driverFallback: driverFallback)
@@ -775,6 +776,7 @@ extension StepExecutor {
                         .notFound,
                         "cannot resolve the locator: \(step.locatorSummary)" + (hint.map { ". \($0)" } ?? "")
                             + Self.truncationHint(snapshot)
+                            + Self.keyboardResizedHint(snapshot)
                             + Self.webViewPathHint(snapshot)
                             + Self.unresolvedHealAnswerHint(rawAnswer)),
                     driverFallback: driverFallback)
@@ -823,6 +825,7 @@ extension StepExecutor {
                             .notFound,
                             "cannot resolve the locator: \(step.locatorSummary)" + (hint.map { ". \($0)" } ?? "")
                                 + Self.truncationHint(snapshot)
+                                + Self.keyboardResizedHint(snapshot)
                                 + Self.webViewPathHint(snapshot)
                                 + Self.rejectedProposalHint(proposal)),
                         driverFallback: driverFallback)
@@ -836,6 +839,7 @@ extension StepExecutor {
                 .notFound,
                 "cannot resolve the locator: \(step.locatorSummary)" + (hint.map { ". \($0)" } ?? "")
                     + Self.truncationHint(snapshot)
+                    + Self.keyboardResizedHint(snapshot)
                     + Self.webViewPathHint(snapshot)))
         }
         resolvedElementThisStep = element
@@ -1165,7 +1169,8 @@ extension StepExecutor {
                 return StepOutcome(status: .failed(
                     "cannot resolve the end locator: \(endStep.locatorSummary)"
                         + (hint.map { ". \($0)" } ?? "")
-                        + Self.truncationHint(snapshot)))
+                        + Self.truncationHint(snapshot)
+                        + Self.keyboardResizedHint(snapshot)))
             }
             let swipeDuration = step.duration ?? FlowStep.defaultSwipeDurationSeconds
             do {

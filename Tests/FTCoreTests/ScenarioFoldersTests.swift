@@ -184,4 +184,39 @@ final class ScenarioFoldersTests: XCTestCase {
         try ScenarioFolders.delete("リグレッション", scenariosDir: scenariosDir)
         XCTAssertEqual(ScenarioFolders.list(scenariosDir: scenariosDir), [])
     }
+
+    // MARK: - quarantinedFile / notFoundMessage
+
+    func testQuarantinedFileFindsClassInDisabled() throws {
+        try write("_disabled/91_クラッシュ検知.swift", "class クラッシュ検知 {}")
+        let found = ScenarioFolders.quarantinedFile(forClass: "クラッシュ検知", scenariosDir: scenariosDir)
+        XCTAssertEqual(found?.lastPathComponent, "91_クラッシュ検知.swift")
+    }
+
+    /// 直下(scenarios/ 本体)のファイルは対象外 —— _disabled だけを見る
+    func testQuarantinedFileIgnoresFilesOutsideDisabled() throws {
+        try write("A.swift", "class Alpha {}")
+        XCTAssertNil(ScenarioFolders.quarantinedFile(forClass: "Alpha", scenariosDir: scenariosDir))
+    }
+
+    func testQuarantinedFileReturnsNilWhenClassIsNowhere() throws {
+        try write("_disabled/C.swift", "class 退避クラス {}")
+        XCTAssertNil(ScenarioFolders.quarantinedFile(forClass: "存在しない", scenariosDir: scenariosDir))
+    }
+
+    func testNotFoundMessageNamesTheQuarantineFileWhenPresent() throws {
+        try write("_disabled/91_クラッシュ検知.swift", "class クラッシュ検知 {}")
+        let message = ScenarioFolders.notFoundMessage(
+            id: "クラッシュ検知.S0010", available: ["ログインテスト.S0010"], scenariosDir: scenariosDir)
+        XCTAssertTrue(message.contains("scenarios/_disabled/91_クラッシュ検知.swift"), message)
+        XCTAssertTrue(message.contains("excluded from compilation"), message)
+        XCTAssertFalse(message.contains("available:"), "在処が分かるので一覧は不要: \(message)")
+    }
+
+    func testNotFoundMessageFallsBackToAvailableListWhenNotQuarantined() throws {
+        let message = ScenarioFolders.notFoundMessage(
+            id: "知らないやつ", available: ["ログインテスト.S0010"], scenariosDir: scenariosDir)
+        XCTAssertTrue(message.contains("scenario not found: 知らないやつ"), message)
+        XCTAssertTrue(message.contains("ログインテスト.S0010"), message)
+    }
 }

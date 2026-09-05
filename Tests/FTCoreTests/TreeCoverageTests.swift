@@ -197,6 +197,67 @@ final class TreeCoverageTests: XCTestCase {
                      "画面の 4% の穴で騒いではいけない(小さな容器の中の小さな穴)")
     }
 
+    /// **画面比の床は長辺で取る**(実測 2026-09-05・実機 Pixel 4a)。同じページの同じ行間
+    /// (57px)が、横向きでは容器 607px・短辺 1080 に対して 9.4%/5.3% の両方が旧閾値(短辺基準)
+    /// を超えて誤検知したが、行間そのものは回転で変わらない。長辺(2340)に対しては 2.4% で
+    /// 沈黙するので、縦横どちらでも同じ判定になるはずが正しい
+    func testGapScreenFractionFloorUsesTheLongEdgeSoRotationDoesNotFlipTheVerdict() {
+        func leaf(_ ref: Int, _ label: String, y: Double, height: Double) -> ElementInfo {
+            ElementInfo(ref: ref, type: "staticText", identifier: nil, label: label, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 0, y: y, width: 1000, height: height), depth: 2)
+        }
+        // wv_text (493..560) と wv_link (618..) の間の行間。frame の値は実機の生値
+        let leaves: [ElementInfo] = [
+            leaf(2, "wv_heading", y: 359, height: 87),
+            leaf(3, "wv_text", y: 493, height: 67),
+            leaf(4, "wv_link", y: 618, height: 54),
+            leaf(5, "wv_footer", y: 720, height: 121),
+        ]
+        let landscapeContainer = ElementInfo(ref: 1, type: "webView", identifier: "page", label: nil,
+                                             value: nil, placeholder: nil, enabled: true,
+                                             frame: FTRect(x: 136, y: 275, width: 2204, height: 607),
+                                             depth: 1, scrollable: true)
+        let landscape = SnapshotResponse(sessionBundleID: nil,
+                                         screen: FTRect(x: 0, y: 0, width: 2340, height: 1080),
+                                         elements: [landscapeContainer] + leaves, truncatedCount: 0)
+        XCTAssertNil(TreeCoverage.gap(in: landscape),
+                     "横向きの薄い webView 容器で、ただの行間が誤検知した")
+
+        let portraitContainer = ElementInfo(ref: 1, type: "webView", identifier: "page", label: nil,
+                                            value: nil, placeholder: nil, enabled: true,
+                                            frame: FTRect(x: 0, y: 334, width: 1080, height: 1808),
+                                            depth: 1, scrollable: true)
+        let portrait = SnapshotResponse(sessionBundleID: nil,
+                                        screen: FTRect(x: 0, y: 0, width: 1080, height: 2340),
+                                        elements: [portraitContainer] + leaves, truncatedCount: 0)
+        XCTAssertNil(TreeCoverage.gap(in: portrait),
+                     "前提: 同じ行間は縦向きでは容器比 3.2% で元から沈黙する側であること")
+    }
+
+    /// **真陽性は長辺に倒しても生きている**(2026-08-12 の実測値そのもの: 容器 2216px に対し
+    /// 302px の取りこぼし)。縦向きは長辺 = 高さなので、床を長辺に変えても効きは変わらない
+    func testGapStillFiresOnTheOriginalVerticalTruePositive() {
+        let containerTop = 100.0, containerHeight = 2219.0, band = 302.0
+        let container = ElementInfo(ref: 1, type: "webView", identifier: "page", label: nil,
+                                   value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: containerTop, width: 1080,
+                                                 height: containerHeight), depth: 1,
+                                   scrollable: true)
+        let top = ElementInfo(ref: 2, type: "staticText", identifier: nil, label: "top", value: nil,
+                              placeholder: nil, enabled: true,
+                              frame: FTRect(x: 0, y: containerTop, width: 1080, height: 500), depth: 2)
+        let bottom = ElementInfo(ref: 3, type: "staticText", identifier: nil, label: "bottom",
+                                 value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 0, y: containerTop + 500 + band, width: 1080,
+                                               height: containerHeight - 500 - band), depth: 2)
+        let tree = SnapshotResponse(sessionBundleID: nil,
+                                    screen: FTRect(x: 0, y: 0, width: 1080, height: 2424),
+                                    elements: [container, top, bottom], truncatedCount: 0)
+        XCTAssertNotNil(TreeCoverage.gap(in: tree),
+                        "実測の取りこぼし(302px)が長辺基準の床でも発火しなくなった")
+    }
+
     /// **上端に接する帯は数えない**(容器の余白はどのページにもある)。
     /// 上の葉を外すと同じ大きさの空白が上端に接する形になり、黙るのが正しい
     func testABandTouchingTheTopEdgeIsNotCounted() {

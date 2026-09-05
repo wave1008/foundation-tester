@@ -1,6 +1,6 @@
 {
   "machine": "M2Ultra",
-  "app": "ft_e2e_android",
+  "app": "ft_e2e",
   "devices": [
     {
       "machine": "local",

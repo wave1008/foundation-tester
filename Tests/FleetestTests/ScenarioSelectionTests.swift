@@ -56,6 +56,27 @@ final class ScenarioSelectionTests: XCTestCase {
         }
     }
 
+    /// **打ち間違いと誤解させない**: `_disabled`(コンパイル対象外)に同名クラスがあれば、
+    /// 「無い」ではなくその在処を名指しする(2026-09-05・実測で「無い」と誤解された)
+    func testUnknownIDNamesTheQuarantineFileWhenPresent() throws {
+        let dir = try makeScenariosDir(["_disabled": ["クラッシュ検知"]])
+        XCTAssertThrowsError(
+            try RunScenarios.resolve(["クラッシュ検知.S0010"], from: all, scenariosDir: dir)
+        ) { error in
+            let message = "\(error)"
+            XCTAssertTrue(message.contains("scenarios/_disabled/クラッシュ検知.swift"), message)
+            XCTAssertTrue(message.contains("excluded from compilation"), message)
+        }
+    }
+
+    /// scenariosDir を渡さない呼び出し元(profile/fleet 経由)は従来文のまま
+    func testUnknownIDWithoutScenariosDirKeepsTheTraditionalMessage() {
+        XCTAssertThrowsError(try RunScenarios.resolve(["知らないやつ"], from: all)) { error in
+            let message = "\(error)"
+            XCTAssertTrue(message.contains("available:"), message)
+        }
+    }
+
     func testClassWhoseScenariosAreAllDeletedThrowsDistinctMessage() {
         // 「見つからない」ではなく「全て削除済み」と言い分ける(原因が違うため)
         let onlyDeleted = [info("下書き.S0010", deleted: true)]

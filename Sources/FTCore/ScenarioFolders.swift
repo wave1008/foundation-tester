@@ -84,6 +84,42 @@ public enum ScenarioFolders {
         }
     }
 
+    /// `_disabled`(退避場所)配下を再帰走査し、className を定義する最初のファイルを返す。
+    /// `swiftFiles(under:)` は `_disabled` を丸ごとスキップするので使えない —— 別の走査。
+    /// 見つからなければ nil(そもそも実在しない名前と区別しない = 呼び出し側が「見つからない」を言う)
+    public static func quarantinedFile(forClass className: String, scenariosDir: URL) -> URL? {
+        let quarantineDir = scenariosDir.appendingPathComponent("_disabled", isDirectory: true)
+        guard let enumerator = FileManager.default.enumerator(
+            at: quarantineDir, includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]) else { return nil }
+        for case let url as URL in enumerator {
+            guard url.pathExtension == "swift",
+                  let source = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            if classNames(inSource: source).contains(className) {
+                return url.standardizedFileURL
+            }
+        }
+        return nil
+    }
+
+    /// `scenario not found` の文言(fleetest CLI と fleetest-mcp が共有する唯一の定義元 ——
+    /// 別々に文字列を組み立てると片方だけ直す事故になる)。指定した ID のクラス名部分が
+    /// `_disabled` に居れば、打ち間違いではなく退避場所にあることを名指しする
+    public static func notFoundMessage(id: String, available: [String], scenariosDir: URL) -> String {
+        let className = String(id.split(separator: ".", maxSplits: 1,
+                                        omittingEmptySubsequences: false).first ?? Substring(id))
+        if let file = quarantinedFile(forClass: className, scenariosDir: scenariosDir) {
+            let base = scenariosDir.standardizedFileURL.path
+            let path = file.standardizedFileURL.path
+            let relative = path.hasPrefix(base + "/") ? String(path.dropFirst(base.count + 1))
+                : file.lastPathComponent
+            return "scenario not found: \(id) — it is in scenarios/\(relative) which is excluded"
+                + " from compilation (the quarantine area). Move the file to scenarios/"
+                + " (or a folder under it) to run it"
+        }
+        return "scenario not found: \(id) (available: \(available.joined(separator: ", ")))"
+    }
+
     /// フォルダ名の検証。戻り値: エラーメッセージ(nil = 有効)
     public static func validateName(_ name: String) -> String? {
         if name.isEmpty {
