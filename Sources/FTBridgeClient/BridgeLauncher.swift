@@ -334,7 +334,7 @@ public struct BridgeLauncher {
         var remaining = Set(pids)
         let deadline = Date().addingTimeInterval(5)
         while Date() < deadline, !remaining.isEmpty {
-            remaining = remaining.filter { kill($0, 0) == 0 }
+            remaining = remaining.filter { ProcessLiveness.isAlive($0) }
             if remaining.isEmpty { break }
             Thread.sleep(forTimeInterval: 0.2)
         }
@@ -408,7 +408,7 @@ public struct BridgeLauncher {
     static func confirmDeathThenRemovePidFile(pid: Int32, pidPath: URL, timeout: TimeInterval) {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if kill(pid, 0) != 0 {  // プロセス不在=死亡
+            if !ProcessLiveness.isAlive(pid) {
                 try? FileManager.default.removeItem(at: pidPath)
                 return
             }
@@ -425,11 +425,11 @@ public struct BridgeLauncher {
     /// 再ブートさせる。再ブートで起き上がった SpringBoard は表示サービス不在の assert
     /// (FBSDisplayMonitor)でクラッシュループし、macOS のクラッシュダイアログが連発する(実害あり)。
     static func confirmDeaths(pids: [Int32], timeout: TimeInterval) {
-        var remaining = Set(pids.filter { kill($0, 0) == 0 })
+        var remaining = Set(pids.filter { ProcessLiveness.isAlive($0) })
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline, !remaining.isEmpty {
             Thread.sleep(forTimeInterval: 0.2)
-            remaining = remaining.filter { kill($0, 0) == 0 }
+            remaining = remaining.filter { ProcessLiveness.isAlive($0) }
         }
         guard !remaining.isEmpty else { return }
         for pid in remaining { kill(pid, SIGKILL) }
@@ -446,7 +446,7 @@ public struct BridgeLauncher {
         kill(pid, SIGTERM)
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if kill(pid, 0) != 0 {
+            if !ProcessLiveness.isAlive(pid) {
                 try? FileManager.default.removeItem(at: pidPath)
                 return
             }

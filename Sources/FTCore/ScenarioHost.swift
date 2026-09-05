@@ -132,6 +132,7 @@ public enum ScenarioHost {
         if env["DEVELOPER_DIR"] == nil, let dir = resolvedDeveloperDir {
             env["DEVELOPER_DIR"] = dir
         }
+        env[ParentDeathWatch.environmentKey] = String(getpid())
         return env
     }
 

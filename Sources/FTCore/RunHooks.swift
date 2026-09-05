@@ -180,31 +180,14 @@ public enum RunHookLease {
         return !isAlive(info.pid)
     }
 
-    /// 既定の生存判定。**`kill(pid, 0)` では足りない** —— ゾンビ(終了済みだが親がまだ回収して
-    /// いないプロセス)にもシグナル0は成功するので、「生きている」と誤判定して**永久に回収され
-    /// なくなる**。ssh 越しに殺された run はまさにこの形で残る(2026-08-18 にリモートで実際に
-    /// 踏んだ: 中断した run の pid がゾンビのまま残り、その lease が回収されなかった)。
-    /// プロセスの状態まで見て SZOMB を死んだものとして扱う
+    /// 既定の生存判定。定義元は `ProcessLiveness`(判定は1箇所に置く)。ここは呼び手の綴りを
+    /// 変えないための転送
     public static func processIsAlive(_ pid: Int32) -> Bool {
-        guard pid > 0 else { return false }
-        var info = kinfo_proc()
-        var size = MemoryLayout<kinfo_proc>.stride
-        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
-        // 居ないプロセスは「失敗」または「成功だが size 0」で返る(どちらも死んだ扱い)
-        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return false }
-        return isAliveState(Int32(info.kp_proc.p_stat), flags: info.kp_proc.p_flag)
+        ProcessLiveness.isAlive(pid)
     }
 
-    /// `<sys/proc.h>` の `P_WEXIT`(Swift へは import されないので値を写す)。
-    /// **exit 処理に入ったプロセスはもう戻ってこない** —— ssh 越しに殺された run は
-    /// ゾンビになりきらず「終了の途中で刺さったまま」残ることがあり(2026-08-18 にリモートで
-    /// 実測: `ps` の STAT が `?Es` のまま数十分)、生存扱いにすると lease が永久に回収されない
-    private static let processExitingFlag: Int32 = 0x0000_2000
-
-    /// プロセス状態(`kinfo_proc.kp_proc.p_stat` / `p_flag`)の判定だけを切り出した純粋関数
-    /// (syscall 抜きでテストするため)
+    /// 転送(doc は `ProcessLiveness.isAliveState` 参照)
     public static func isAliveState(_ pStat: Int32, flags: Int32 = 0) -> Bool {
-        guard pStat != SZOMB else { return false }
-        return flags & processExitingFlag == 0
+        ProcessLiveness.isAliveState(pStat, flags: flags)
     }
 }

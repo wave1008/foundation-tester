@@ -147,7 +147,7 @@ extension MCPServer {
                   encoding: .utf8),
               let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines))
         else { return nil }
-        return kill(pid, 0) == 0
+        return ProcessLiveness.isAlive(pid)
     }
 
     /// bound(誰かが listen している)なポートへ「exited」と言わないための正直な文言。

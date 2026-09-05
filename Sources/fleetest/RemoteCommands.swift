@@ -245,7 +245,7 @@ struct RemoteCommand: AsyncParsableCommand {
             }
             let decision = RemoteDispatchUnlock.decide(
                 probe: probe, myIssuer: LocalConfig.resolveIssuerId(),
-                myHost: ProcessInfo.processInfo.hostName, pidAlive: { kill($0, 0) == 0 })
+                myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive)
             switch decision {
             case .nothingToDo:
                 print("→ no dispatch lock on \(target); nothing to do")
@@ -288,7 +288,7 @@ struct RemoteCommand: AsyncParsableCommand {
                           let probe = RemoteDispatchLock.parseProbe(probeResult.output) else { continue }
                     guard case .release(let reason) = RemoteDispatchUnlock.decideAutomaticSweep(
                         probe: probe, myIssuer: LocalConfig.resolveIssuerId(),
-                        myHost: ProcessInfo.processInfo.hostName, pidAlive: { kill($0, 0) == 0 })
+                        myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive)
                     else { continue }
                     let release = try Shell.run(
                         remoteSSHBase + [target, RemoteDispatchLock.releaseCommand(base: layout.base)])

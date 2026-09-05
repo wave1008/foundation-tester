@@ -115,6 +115,19 @@ public enum XCUIBridgeResolver {
             return giveUp("cannot start the XCUITest bridge"
                 + " (device \"\(device)\" is ambiguous: \(booted.count) booted)")
         }
+        // 空きポート選択 → 起動(pid ファイルが書かれるまで)は provision() と同じ
+        // ProvisionLock で直列化する。取れなければ(他プロセスが未解放等)ロック無しで
+        // 進む = 既存挙動のまま(採番衝突より起動できないことのほうが害が大きい)
+        let provisionLock = try? ProvisionLock(stateDir: repoRoot.appendingPathComponent(".fleetest"))
+        await provisionLock?.acquire()
+        var lockReleased = false
+        func releaseLockOnce() {
+            guard !lockReleased else { return }
+            lockReleased = true
+            provisionLock?.release()
+        }
+        defer { releaseLockOnce() }
+
         guard let port = freePort(repoRoot: repoRoot, occupied: occupied) else {
             return giveUp("cannot start the XCUITest bridge (no free port)")
         }
@@ -131,8 +144,12 @@ public enum XCUIBridgeResolver {
                 try launcher.buildForTesting()
                 try launcher.startDetached()
             }
+            // ポート確保(pid ファイル書き込み)はここで完了。ready 待ちはロックの外へ出す
+            // (provision() の PortClaimBarrier と同じ理屈 —— 待つのは自分だけなので早期解放で足りる)
+            releaseLockOnce()
             try await launcher.waitUntilReady()
         } catch {
+            releaseLockOnce()
             // 起動途中のプロセス・pid ファイルを残さない(以後のポート採番を汚すため。
             // LiveBridgeAutoStarter.launchBridge と同じ後始末)
             try? launcher.stop()

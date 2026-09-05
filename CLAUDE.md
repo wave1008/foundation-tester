@@ -669,6 +669,20 @@
 - **システムアラートの判定は2段**: 登録がある間は `SystemUIGate` が毎ステップ止める / 登録が
   無いときは **launch 直後の最初の触る操作と失敗時だけ1回聞いて** `system-alert-present` の注記と
   題名を残す(止めない・閉じない)。常時監視へ広げない
+- **プロセスの生存管理は3つの定義元に寄せる**(2026-09-05 の掃討): ①**生死の判定は
+  `FTCore.ProcessLiveness.isAlive`**(sysctl で `SZOMB`・`P_WEXIT` を「死」と見る。`kill(pid, 0)` は
+  ゾンビにも成功するので台帳が永久に回収されない —— `ProcessLivenessSourceScanTests` が素の
+  `kill(x, 0)` を落とす。例外は自分の子を SIGKILL する直前の確認だけ)②**子は親の死で自ら終わる**
+  (`FTCore.ParentDeathWatch`。spawn 側が `FT_PARENT_PID` を渡した子だけが kqueue で親の EXIT を待ち、
+  SIGTERM → 2 秒で `_exit`。**opt-in** = 端末のシェルから `fleetest run &` した親が閉じても run を
+  巻き込まない。`Process()` で `fleetest` / `fleetest-scenarios` を起こす経路を足したら
+  `ParentDeathWatch.childEnvironment()` を渡す —— `ParentDeathWatchWiringTests` が集合を等号で固定)
+  ③**台帳(`.fleetest/bridge-<port>.pid/.inapp/.endpoint/.device`)はプロセスの実体で掃除する**
+  (`StaleLedgerSweep` = provision の入口。`.inapp` は LISTEN 実体の有無、`.endpoint/.device` は
+  対の `.pid` の生死。**`/status` 応答で生死を決めない**)。採番は `ProvisionLock` の内側でだけ行う
+  (`provision` / `XCUIBridgeResolver` / `LiveBridgeAutoStarter` の3経路。
+  `ProvisionLockStartupPathsSyncTests`)。拡張の孤児掃除(`orphanSweep.ts`)は配信
+  (`api device-stream`・`fleetest-*stream` / `devicepoll`)も対象(PPID=1 のみ)
 - **ブリッジを起動する前に「そのポートを今 LISTEN している実体」を確かめる**。`/status` 応答だけで
   数えると、背面に回った in-app ブリッジ(TCP 受付・HTTP 無応答)が掴んだポートを「空き」と
   採番して新しい注入が衝突する(全シミュレータは loopback を共有 = ポートは台を跨いで一意)。

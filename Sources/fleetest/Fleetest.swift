@@ -38,6 +38,15 @@ struct Fleetest: AsyncParsableCommand {
             MonitorCommand.self,
         ]
     )
+
+    /// AsyncParsableCommand の既定 main() を隠し、パース前に武装だけ差し込む
+    /// (`FT_PARENT_PID` が無ければ armIfRequested は no-op = 挙動は変わらない)。
+    /// `self.main(nil)` は AsyncParsableCommand 拡張の `main(_ arguments:)` を呼ぶ ——
+    /// asyncParseAsRoot → run() → catch { exit(withError:) } の既定挙動をそのまま保つ
+    static func main() async {
+        ParentDeathWatch.armIfRequested()
+        await self.main(nil)
+    }
 }
 
 struct DriverOptions: ParsableArguments {

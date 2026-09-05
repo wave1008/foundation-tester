@@ -122,11 +122,22 @@ actor LiveBridgeAutoStarter {
     }
 
     /// actor の外で実行する起動処理本体。失敗時は起動途中のプロセス・pid ファイルを後始末する
-    /// (BridgeProvisioner.provision と同じ理由: 残すと以後のポート採番を汚す)
+    /// (BridgeProvisioner.provision と同じ理由: 残すと以後のポート採番を汚す)。
+    /// **起動(pid ファイルが書かれるまで)は ProvisionLock で直列化する** ——
+    /// port は呼び出し元(実行プロファイル)が固定するため自前の採番は無いが、まだ pid ファイルが
+    /// 無い間に BridgeProvisioner.provision() が同じポートを空きと採番する競合があり得るため
     private static func launchBridge(
         repoRoot: URL, udid: String, port: UInt16, physical: Bool, stopFirst: Bool = false
     ) async -> Result<Void, Error> {
         let launcher = BridgeLauncher(repoRoot: repoRoot, device: udid, port: port, physical: physical)
+        let provisionLock = try? ProvisionLock(stateDir: repoRoot.appendingPathComponent(".fleetest"))
+        await provisionLock?.acquire()
+        var lockReleased = false
+        func releaseLockOnce() {
+            guard !lockReleased else { return }
+            lockReleased = true
+            provisionLock?.release()
+        }
         do {
             if stopFirst {
                 do {
@@ -134,6 +145,7 @@ actor LiveBridgeAutoStarter {
                 } catch LauncherError.notRunning {
                     // pid ファイル無し = このリポジトリ管理外のプロセスがポートを握っている。
                     // ここで startDetached に進むとポート衝突で旧 /status を拾い偽成功になる
+                    releaseLockOnce()
                     return .failure(AutoStarterError.staleStopFailed(port: port))
                 }
             }
@@ -145,9 +157,12 @@ actor LiveBridgeAutoStarter {
                 try launcher.buildForTesting()
                 try launcher.startDetached()
             }
+            // ポート確保(pid ファイル書き込み)完了。ready 待ちはロックの外へ
+            releaseLockOnce()
             try await launcher.waitUntilReady()
             return .success(())
         } catch {
+            releaseLockOnce()
             try? launcher.stop()
             return .failure(error)
         }

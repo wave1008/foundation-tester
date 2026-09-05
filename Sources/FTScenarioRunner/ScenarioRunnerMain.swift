@@ -14,6 +14,8 @@ import FTDSL
 
 public enum ScenarioRunnerMain {
     public static func main() async {
+        // ScenarioHost.run が `FT_PARENT_PID` を渡したときだけ武装(親 kill -9 で孤児化しない)
+        ParentDeathWatch.armIfRequested()
         await Root.main()
     }
 }

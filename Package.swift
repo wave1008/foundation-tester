@@ -79,6 +79,7 @@ let package = Package(
         .target(
             name: "FTEmulatorGrpc",
             dependencies: [
+                "FTCore",
                 .product(name: "GRPCCore", package: "grpc-swift-2"),
                 .product(name: "GRPCNIOTransportHTTP2", package: "grpc-swift-nio-transport"),
                 .product(name: "GRPCProtobuf", package: "grpc-swift-protobuf"),

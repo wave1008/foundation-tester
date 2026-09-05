@@ -348,7 +348,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     StreamLease.heldByOther(
                         info: StreamLease.read(base: base, platform: state.target.platform,
                                                name: state.target.name),
-                        myIssuer: myIssuer, pidAlive: { kill($0, 0) == 0 })
+                        myIssuer: myIssuer, pidAlive: ProcessLiveness.isAlive)
                 }
                 return state.info(health: confirmedIssues.isEmpty ? nil : confirmedIssues,
                                    renderMode: state.androidSerial.flatMap { renderModeCache[$0] },

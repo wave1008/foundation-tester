@@ -190,13 +190,9 @@ public enum FMUsageLedger {
     static func reapDead(in dir: URL) {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return }
         for name in names where name.hasSuffix(".json") {
-            guard let pid = Int32(name.dropLast(".json".count)), pid > 0, !isAlive(pid) else { continue }
+            guard let pid = Int32(name.dropLast(".json".count)), pid > 0,
+                  !ProcessLiveness.isAlive(pid) else { continue }
             try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
         }
-    }
-
-    private static func isAlive(_ pid: Int32) -> Bool {
-        if kill(pid, 0) == 0 { return true }
-        return errno == EPERM
     }
 }

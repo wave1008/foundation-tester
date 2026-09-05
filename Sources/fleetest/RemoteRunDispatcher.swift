@@ -17,6 +17,11 @@ enum RemoteDispatchMode {
 }
 
 struct RemoteRunDispatcher {
+    /// `sshCapture` の timeout(秒)。ここを通るのは git/mkdir/xcodebuild -version 等の短い
+    /// 照会だけで実測は数秒 —— timeout 無しだと向こうが刺さったとき手元の run が永久に待つ。
+    /// 尽きたら `ShellError.timedOut` が上がって落ちる(待ち続けるより良い)
+    static let sshCaptureTimeoutSeconds: Double = 120
+
     let host: RemoteHostSpec
     /// `--remote-dir` の生値(既定 "~/fleetest-runner"。チルダ展開前)。resolveLayout が
     /// リモートの $HOME を取得してから RemoteLayout.resolveBase で絶対パスへ解決する
@@ -738,7 +743,8 @@ struct RemoteRunDispatcher {
     private var sshRunBase: [String] { sshBase + ["-tt"] }
 
     private func sshCapture(_ command: String) throws -> String {
-        let result = try Shell.run(sshBase + [host.sshTarget, command])
+        let result = try Shell.run(sshBase + [host.sshTarget, command],
+                                    timeout: Self.sshCaptureTimeoutSeconds)
         guard result.status == 0 else {
             throw RemoteDispatchError.remoteSetupFailed(
                 "ssh command failed (status \(result.status)): \(command)\n\(result.tail)")

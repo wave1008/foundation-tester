@@ -265,13 +265,13 @@ public enum IOSDeviceTransport {
                    atomically: true, encoding: .utf8)
     }
 
-    /// pid ファイルの pid が**今も iproxy か**を見る。kill(pid,0) だけだと PID 再利用で
+    /// pid ファイルの pid が**今も iproxy か**を見る。ProcessLiveness.isAlive だけだと PID 再利用で
     /// 無関係プロセスを「トンネル生存」と誤認し、転送されていないポートへ繋ぎに行ってしまう
     static func isIproxyRunning(hostPort: UInt16, repoRoot: URL) -> Bool {
         guard let text = try? String(contentsOf: pidURL(hostPort: hostPort, repoRoot: repoRoot),
                                      encoding: .utf8),
               let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)),
-              kill(pid, 0) == 0,
+              ProcessLiveness.isAlive(pid),
               let ps = try? Shell.run(["ps", "-p", String(pid), "-o", "command="]), ps.status == 0
         else {
             return false

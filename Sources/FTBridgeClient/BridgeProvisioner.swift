@@ -121,6 +121,51 @@ public final class ProvisionLock {
     }
 }
 
+/// 台帳(.pid/.inapp/.endpoint/.device)1ポートぶんの掃除判定(純粋関数。実 FS/lsof は呼び手が渡す)。
+/// **実測 2026-09-05**: 誰も LISTEN していない .inapp と、対になる .pid が無い .endpoint/.device が
+/// 手元に残っていた。前者は assignPort に「使用中」と誤認されてポートが飛ばされ、後者は
+/// DriverOptions.makeDriver(Sources/fleetest/Fleetest.swift)が古い宛先へ接続しに行く原因になる。
+enum StaleLedgerSweep {
+    enum Ledger: Hashable, Sendable { case pid, inapp, endpoint, device }
+
+    struct Inputs {
+        let hasPid: Bool
+        /// hasPid が true のときだけ意味を持つ
+        let pidAlive: Bool
+        let hasInApp: Bool
+        /// hasInApp が true のときだけ意味を持つ。**`/status` 応答の有無で判定しない** ——
+        /// 背面に回った in-app ブリッジは TCP は受けるが HTTP に無応答なので、応答の有無は
+        /// 生死の根拠にならない(CLAUDE.md「ブリッジを起動する前に…」の規律)。呼び手は
+        /// PortHolder の LISTEN 実体確認(lsof)を渡すこと
+        let inappListening: Bool
+        let hasEndpoint: Bool
+        let hasDevice: Bool
+    }
+
+    /// - .pid: 生きていれば .pid/.endpoint/.device すべて残す。死んでいれば
+    ///   .pid と .endpoint/.device(実機ランナーの到達先記録)を削除する
+    /// - .inapp: .pid の有無と独立に判定する(in-app ブリッジは pid ファイルを持たない)。
+    ///   LISTEN していなければ削除、していれば残す
+    /// - .endpoint/.device: .pid が無い(対になる実機ランナーが存在しない)ときは削除する
+    static func decide(_ inputs: Inputs) -> Set<Ledger> {
+        var stale: Set<Ledger> = []
+        if inputs.hasPid {
+            if !inputs.pidAlive {
+                stale.insert(.pid)
+                if inputs.hasEndpoint { stale.insert(.endpoint) }
+                if inputs.hasDevice { stale.insert(.device) }
+            }
+        } else {
+            if inputs.hasEndpoint { stale.insert(.endpoint) }
+            if inputs.hasDevice { stale.insert(.device) }
+        }
+        if inputs.hasInApp, !inputs.inappListening {
+            stale.insert(.inapp)
+        }
+        return stale
+    }
+}
+
 /// **ポート確保(pid ファイル/記録の書き込み)まで**を数える関門。全ブリッジが「確保済み or 失敗」に
 /// なった時点で ProvisionLock を解く —— ready 待ち(実測 7〜28 秒)をロックの外へ出すため。
 /// これが無いと、ワーカーが 2 つあっても供給は常に 1 台ずつになる(2026-08-30 の実測: iOS 5 本の
@@ -237,9 +282,10 @@ public struct BridgeProvisioner {
         await provisionLock.acquire()
         defer { provisionLock.release() }
 
-        // TTL 自主終了などで残った死んだランナーの pid ファイルを採番前に回収する
-        // (assignPort は pid ファイルの有無だけで使用中とみなすため、放置すると採番がドリフトする)
-        BridgeLauncher.sweepStalePidFiles(repoRoot: repoRoot)
+        // TTL 自主終了などで残った死んだランナーの pid ファイル、および対応する実体が消えた
+        // .inapp/.endpoint/.device を採番前に回収する(assignPort は .pid/.inapp の有無だけで
+        // 使用中とみなすため、放置すると採番がドリフトする)
+        Self.sweepStaleLedgers(repoRoot: repoRoot)
 
         let catalog = try SimulatorCatalog.devices()
 
@@ -410,6 +456,47 @@ public struct BridgeProvisioner {
         _ outcomes: [(name: String, result: Result<T, Error>)]
     ) throws -> (devices: [T], failures: [(name: String, error: Error)]) {
         try FleetOutcome.resolve(outcomes)
+    }
+
+    /// .pid はこれまでどおり BridgeLauncher.sweepStalePidFiles(TTL 自主終了の ps 照合)に委ねる。
+    /// ここではそれに加えて、対応する実体が消えた .inapp(LISTEN 実体なし)・.endpoint/.device
+    /// (対になる .pid が無い = 実機ランナー不在)を掃除する。.pid の掃除を先に済ませてから
+    /// 残った台帳を見るので、StaleLedgerSweep.decide への pidAlive は「.pid が今も存在するか」で
+    /// 代用できる(死んだ分は直前の sweepStalePidFiles で既に消えている)
+    static func sweepStaleLedgers(repoRoot: URL) {
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
+        BridgeLauncher.sweepStalePidFiles(repoRoot: repoRoot)
+
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: stateDir, includingPropertiesForKeys: nil) else { return }
+        var ports: Set<UInt16> = []
+        for entry in entries where entry.lastPathComponent.hasPrefix("bridge-") {
+            guard ["pid", "inapp", "endpoint", "device"].contains(entry.pathExtension) else { continue }
+            let portStr = entry.deletingPathExtension().lastPathComponent
+                .replacingOccurrences(of: "bridge-", with: "")
+            if let port = UInt16(portStr) { ports.insert(port) }
+        }
+        for port in ports {
+            let pidPath = stateDir.appendingPathComponent("bridge-\(port).pid")
+            let inappPath = InAppBridgeState.url(stateDir: stateDir, port: port)
+            let endpointPath = stateDir.appendingPathComponent("bridge-\(port).endpoint")
+            let devicePath = stateDir.appendingPathComponent("bridge-\(port).device")
+            let hasPid = FileManager.default.fileExists(atPath: pidPath.path)
+            let hasInApp = FileManager.default.fileExists(atPath: inappPath.path)
+            let hasEndpoint = FileManager.default.fileExists(atPath: endpointPath.path)
+            let hasDevice = FileManager.default.fileExists(atPath: devicePath.path)
+            // .pid だけのポートは sweepStalePidFiles が既に判定済み(何もすることが無い)
+            guard hasInApp || hasEndpoint || hasDevice else { continue }
+
+            let stale = StaleLedgerSweep.decide(.init(
+                hasPid: hasPid, pidAlive: hasPid,
+                hasInApp: hasInApp, inappListening: hasInApp && PortHolder.describe(port: port) != nil,
+                hasEndpoint: hasEndpoint, hasDevice: hasDevice))
+            if stale.contains(.pid) { try? FileManager.default.removeItem(at: pidPath) }
+            if stale.contains(.inapp) { try? FileManager.default.removeItem(at: inappPath) }
+            if stale.contains(.endpoint) { try? FileManager.default.removeItem(at: endpointPath) }
+            if stale.contains(.device) { try? FileManager.default.removeItem(at: devicePath) }
+        }
     }
 
     /// autoInstall 付き inapp/hybrid の「インストール済みアプリが最新か」を並列評価(UDID → 最新か)。

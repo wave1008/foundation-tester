@@ -8,16 +8,27 @@ import { t } from "./i18n";
 
 const ORPHAN_PPID = 1;
 
-// `fleetest api <live serve|host-metrics|monitor|run>` を、パスの前置(相対/絶対)を問わず
-// サブコマンド位置で判定する。`api run` は非常駐だが、孤児化するとプロファイル全デバイスの
-// ブリッジを占有し続け(親死亡で結果も届かない)、新セッションのモニター表示・実行を阻害する
-// ため対象に含める。`api gen-scenario` 等その他の非常駐コマンドや、引数中に "monitor" 等の語が
-// 偶然出るだけの無関係コマンドは対象外。
-const ORPHAN_COMMAND_RE = /(^|\/)fleetest(?:\s|$).*\bapi\s+(?:live\s+serve|host-metrics|monitor|run)(?:\s|$)/;
+// `fleetest api <live serve|host-metrics|monitor|run|device-stream>` を、パスの前置(相対/絶対)を
+// 問わずサブコマンド位置で判定する(`remote exec <machine> -- api device-stream …` もこの形で
+// 拾える — "api" の前に任意の前置句が入るだけ)。`api run` は非常駐だが、孤児化するとプロファイル
+// 全デバイスのブリッジを占有し続け(親死亡で結果も届かない)、新セッションのモニター表示・実行を
+// 阻害するため対象に含める。`api gen-scenario` 等その他の非常駐コマンドや、引数中に "monitor" 等の
+// 語が偶然出るだけの無関係コマンドは対象外。
+//
+// 配信ヘルパー(fleetest-simstream / fleetest-androidstream / fleetest-devicepoll)も別枝で拾う ——
+// stdin EOF で自ら終わる設計だが、拡張ホストが瞬断されて EOF が届かない形では launchd に
+// reparent されて残る(実害 2026-09-01: 孤児の配信が VSCode 再起動でも死なず、リモート Android の
+// E2E を接続断で赤にした。Android の孤児 screenrecord は実際に E2E を落とす)。
+// "fleetest" の直後が "-" なので上のサブコマンド判定(`fleetest(?:\s|$)`)には一致せず、専用の
+// 枝が要る(residentProcesses.ts の stream 判定と同じ理由)。
+const ORPHAN_COMMAND_RE =
+  /(^|\/)fleetest(?:\s|$).*\bapi\s+(?:live\s+serve|host-metrics|monitor|run|device-stream)(?:\s|$)|(^|\/)fleetest-(?:simstream|androidstream|devicepoll)(?:\s|$)/;
 
 /** ps 出力(`ps -axo pid=,ppid=,command=`)から、孤児化した fleetest 常駐プロセスの PID を抽出する。
  * 対象: PPID が 1(親死亡で launchd に reparent 済み=誰の管理下にも無い)かつ、コマンドが
- * fleetest の常駐 api サブコマンド(live serve / host-metrics / monitor)であるもの。
+ * fleetest の常駐 api サブコマンド(live serve / host-metrics / monitor / run / device-stream。
+ * `remote exec` 越しの device-stream も含む)、または配信ヘルパー(fleetest-simstream /
+ * fleetest-androidstream / fleetest-devicepoll)であるもの。
  * PPID=1 以外(生きている拡張ホストの子)は絶対に対象にしない(複数ウィンドウ環境の安全条件)。 */
 export function parseOrphanPids(psOutput: string): number[] {
   const pids: number[] = [];

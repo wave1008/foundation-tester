@@ -55,7 +55,7 @@ public enum DeviceFrozenStore {
     public static func current(stateDir: URL, key: String, now: Date = Date()) -> FrozenVerdict? {
         guard let data = try? Data(contentsOf: entryURL(stateDir: stateDir, key: key)),
               let entry = try? JSONDecoder().decode(Entry.self, from: data) else { return nil }
-        guard entry.pid > 0, kill(entry.pid, 0) == 0 else { return nil }
+        guard entry.pid > 0, ProcessLiveness.isAlive(entry.pid) else { return nil }
         guard now.timeIntervalSince1970 - entry.at <= stalenessSeconds else { return nil }
         return entry.verdict
     }

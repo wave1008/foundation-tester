@@ -508,6 +508,7 @@ enum FleetRunner {
     static func runEntry(binary: String, args: [String], hostLabel: String) async -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
+        process.environment = ParentDeathWatch.childEnvironment()
         process.arguments = args
         process.standardInput = FileHandle.nullDevice
         let pipe = Pipe()

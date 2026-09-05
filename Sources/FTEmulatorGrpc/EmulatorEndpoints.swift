@@ -2,8 +2,9 @@
 // emulator は起動毎に ~/Library/Caches/TemporaryItems/avd/running/pid_<pid>.ini へ
 // grpc.port / grpc.token / avd.id / port.serial を書く(トークンはブート毎に変わる)。
 // 認証は `authorization: Bearer <grpc.token>` メタデータのみで通る(emulator 36.5.10 実測。
-// JWT/JWK は不要)。ファイルが残っていてもプロセス死亡なら無効(kill(pid,0) で生存確認)。
+// JWT/JWK は不要)。ファイルが残っていてもプロセス死亡なら無効(ProcessLiveness.isAlive で生存確認)。
 
+import FTCore
 import Foundation
 
 public struct EmulatorEndpoint: Sendable, Equatable {
@@ -43,7 +44,7 @@ public enum EmulatorEndpoints {
         return names.compactMap { name -> EmulatorEndpoint? in
             guard name.hasPrefix("pid_"), name.hasSuffix(".ini"),
                   let pid = Int32(name.dropFirst(4).dropLast(4)),
-                  kill(pid, 0) == 0,
+                  ProcessLiveness.isAlive(pid),
                   let text = try? String(contentsOf: dir.appendingPathComponent(name), encoding: .utf8)
             else { return nil }
             return parse(text: text, pid: pid)

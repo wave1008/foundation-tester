@@ -181,6 +181,7 @@ enum RemoteDeviceFanout {
                                  relay: @escaping @Sendable (String) -> Void) async {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: RemoteProjectSync.selfBinaryPath())
+        process.environment = ParentDeathWatch.childEnvironment()
         process.arguments = args
         let pipe = Pipe()
         process.standardOutput = pipe

@@ -2,6 +2,7 @@
 // 書き手: RunOrchestrator(FTCore、closure 注入経由)。読み手: ApiMonitorCommand(watchdog の
 // inRun 判定)。RecordingLease.swift の姉妹型(同じ pid+mtime 鮮度の lease。示す事象が違うだけ)。
 
+import FTCore
 import Foundation
 
 public enum RunLease {
@@ -27,7 +28,7 @@ public enum RunLease {
         let url = leaseURL(stateDir: stateDir, key: key)
         guard let pidString = try? String(contentsOf: url, encoding: .utf8),
               let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)),
-              pid > 0, kill(pid, 0) == 0 else { return false }
+              pid > 0, ProcessLiveness.isAlive(pid) else { return false }
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let mtime = attrs[.modificationDate] as? Date else { return false }
         return now.timeIntervalSince(mtime) <= stalenessSeconds

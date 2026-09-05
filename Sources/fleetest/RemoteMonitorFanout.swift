@@ -150,6 +150,7 @@ final class RemoteMonitorFanout: @unchecked Sendable {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: RemoteProjectSync.selfBinaryPath())
+        process.environment = ParentDeathWatch.childEnvironment()
         process.arguments = args
         let stdout = Pipe()
         let stderr = Pipe()

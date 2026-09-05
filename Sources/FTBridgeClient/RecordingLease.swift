@@ -3,6 +3,7 @@
 // 書き手: RunOrchestrator(FTCore、closure 注入経由。VideoRecordingCoordinator の録画開始/停止に
 // 合わせて write/remove する)。読み手: ApiMonitorCommand(デバイスタイルの「録画中」表示)。
 
+import FTCore
 import Foundation
 
 public enum RecordingLease {
@@ -28,7 +29,7 @@ public enum RecordingLease {
         let url = leaseURL(stateDir: stateDir, key: key)
         guard let pidString = try? String(contentsOf: url, encoding: .utf8),
               let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)),
-              pid > 0, kill(pid, 0) == 0 else { return false }
+              pid > 0, ProcessLiveness.isAlive(pid) else { return false }
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let mtime = attrs[.modificationDate] as? Date else { return false }
         return now.timeIntervalSince(mtime) <= stalenessSeconds
