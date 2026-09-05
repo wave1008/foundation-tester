@@ -1084,6 +1084,13 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 - 落とし穴: (1) UiAutomation は `am instrument -w` 必須(UiAutomationConnection が am
   プロセス側に住む)→ デバイス内で `&` バックグラウンド化して常駐 (2) a11y 接続は実質1本
   → ブリッジ稼働中は他の a11y クライアント(uiautomator dump 等)が Killed される
+  (3) **adbd の再起動(`adb tcpip` / `adb usb`)で UiAutomationConnection(shell・screenshot・
+  入力注入の口)だけが死ぬ** —— a11y は生きたままなので `getRootInActiveWindow()` は取れ、
+  `executeShellCommand` は RemoteException を握って空のパイプを返す(例外にならない)。
+  実測 2026-09-05・Pixel 4a: `DeadObjectException` ×47 のまま `/status` が `ready:true` を返し続け、
+  launch/screenshot が全部 500。版 63 から `/status` が `echo ft-alive` の往復で口の死活を見て
+  `ready:false` + `reason:"uiautomation-dead"` を返し、**自ら exit する**(ホストは connection refused
+  → `ensureBridge` の再セットアップへ倒れる。長寿命プロセスの `.active` キャッシュもこれで消える)
 
 ### Android のテキスト注入の規律(2026-07-31)
 

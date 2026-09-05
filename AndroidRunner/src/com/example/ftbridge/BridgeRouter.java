@@ -105,6 +105,29 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         }
     }
 
+    /** UiAutomationConnection が生きているか(handleStatus の doc)。echo が戻れば生きている */
+    private boolean uiAutomationConnectionAlive() {
+        try {
+            return shell("echo ft-alive").contains("ft-alive");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 応答を書き切ってから終了する(即時 exit だと ready:false の応答自体が届かない) */
+    private static void scheduleExit() {
+        // ラムダにしない: build.sh は android.jar を bootclasspath に -source 8 で javac するので
+        // LambdaMetafactory が解決できずビルドが落ちる
+        Thread t = new Thread(new Runnable() {
+            @Override public void run() {
+                SystemClock.sleep(500);
+                System.exit(0);
+            }
+        });
+        t.setDaemon(true);
+        t.start();
+    }
+
     private UiAutomation ua() {
         UiAutomation ua = instrumentation.getUiAutomation();
         if (ua == null) {
@@ -155,8 +178,20 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         } catch (Exception e) {
             ready = false;
         }
+        // UiAutomationConnection(shell / screenshot / 入力注入の口)の死活。adbd の再起動
+        // (adb tcpip / adb usb)でこの binder だけ死に、a11y は生きたまま = 上の root は取れる。
+        // executeShellCommand は RemoteException を握って空のパイプを返す(例外にならない)ので、
+        // エコーが戻るかで見る。実測 2026-09-05・Pixel 4a: DeadObjectException ×47 のまま
+        // /status が ready:true を返し続け、launch/screenshot が全部 500 になった
+        boolean connectionAlive = uiAutomationConnectionAlive();
         JSONObject o = new JSONObject();
-        o.put("ready", ready);
+        o.put("ready", ready && connectionAlive);
+        if (!connectionAlive) {
+            o.put("reason", "uiautomation-dead");
+            // 死んだ口は戻らない。自ら終了してホストに connection refused を返し、
+            // AndroidBridge.ensureBridge の再セットアップ(force-stop + am instrument)へ倒す
+            scheduleExit();
+        }
         o.put("device", Build.MODEL);
         o.put("osVersion", "Android " + Build.VERSION.RELEASE);
         // 稼働中プロセスの版をホストが照合できるように申告(AndroidBridge.swift probeBridge が
