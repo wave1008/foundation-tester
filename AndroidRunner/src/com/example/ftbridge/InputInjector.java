@@ -192,7 +192,11 @@ final class InputInjector {
     }
 
     private static void injectKey(UiAutomation ua, KeyEvent e) {
-        ua.injectInputEvent(e, true);
+        if (!ua.injectInputEvent(e, true)) {
+            // 口が死んでいれば 503 + exit(BridgeRouter.assertConnectionAlive)。生きていて拒否なら 500
+            BridgeRouter.assertConnectionAlive(ua);
+            throw new BridgeRouter.BridgeException(500, "injectInputEvent (key) was refused");
+        }
     }
 
     /**
@@ -560,6 +564,8 @@ final class InputInjector {
     private static void inject(UiAutomation ua, MotionEvent e) {
         try {
             if (!ua.injectInputEvent(e, true)) {
+                // 口が死んでいれば 503 + exit(BridgeRouter.assertConnectionAlive)。生きていて拒否なら 500
+                BridgeRouter.assertConnectionAlive(ua);
                 throw new BridgeRouter.BridgeException(500, "injectInputEvent was refused");
             }
         } finally {

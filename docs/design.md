@@ -1090,7 +1090,11 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   実測 2026-09-05・Pixel 4a: `DeadObjectException` ×47 のまま `/status` が `ready:true` を返し続け、
   launch/screenshot が全部 500。版 63 から `/status` が `echo ft-alive` の往復で口の死活を見て
   `ready:false` + `reason:"uiautomation-dead"` を返し、**自ら exit する**(ホストは connection refused
-  → `ensureBridge` の再セットアップへ倒れる。長寿命プロセスの `.active` キャッシュもこれで消える)
+  → `ensureBridge` の再セットアップへ倒れる。長寿命プロセスの `.active` キャッシュもこれで消える)。
+  版 64 から**操作系も同じ門を通る**(`BridgeRouter.assertConnectionAlive`): shell の出力が空・
+  `takeScreenshot` が null・`injectInputEvent` が false のときに死活を確かめ、死んでいれば
+  503 で落として exit する —— `/status` を誰も呼ばない長寿命プロセス(MCP・モニター)でも、
+  死んだ口に tap が黙って通ることが無い
 
 ### Android のテキスト注入の規律(2026-07-31)
 

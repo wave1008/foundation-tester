@@ -106,9 +106,9 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     }
 
     /** UiAutomationConnection が生きているか(handleStatus の doc)。echo が戻れば生きている */
-    private boolean uiAutomationConnectionAlive() {
+    static boolean uiAutomationConnectionAlive(UiAutomation ua) {
         try {
-            return shell("echo ft-alive").contains("ft-alive");
+            return rawShell(ua, "echo ft-alive").contains("ft-alive");
         } catch (Exception e) {
             return false;
         }
@@ -183,7 +183,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         // executeShellCommand は RemoteException を握って空のパイプを返す(例外にならない)ので、
         // エコーが戻るかで見る。実測 2026-09-05・Pixel 4a: DeadObjectException ×47 のまま
         // /status が ready:true を返し続け、launch/screenshot が全部 500 になった
-        boolean connectionAlive = uiAutomationConnectionAlive();
+        boolean connectionAlive = uiAutomationConnectionAlive(ua());
         JSONObject o = new JSONObject();
         o.put("ready", ready && connectionAlive);
         if (!connectionAlive) {
@@ -411,6 +411,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     private BridgeHttpServer.Response handleScreenshot() {
         Bitmap bitmap = ua().takeScreenshot();
         if (bitmap == null) {
+            assertConnectionAlive(ua());
             throw new BridgeException(500, "cannot take a screenshot");
         }
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -627,9 +628,17 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         return center;
     }
 
+    /** 出力が空なら口の死活を確かめてから返す(死んでいれば 503 + exit。handleStatus の doc) */
     private String shell(String command) {
+        String out = rawShell(ua(), command);
+        if (out.isEmpty()) assertConnectionAlive(ua());
+        return out;
+    }
+
+    /** 死活を見ない素の shell。alive の判定自身が使う(shell() 経由だと再帰する) */
+    static String rawShell(UiAutomation ua, String command) {
         try {
-            ParcelFileDescriptor pfd = ua().executeShellCommand(command);
+            ParcelFileDescriptor pfd = ua.executeShellCommand(command);
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             try (InputStream in = new ParcelFileDescriptor.AutoCloseInputStream(pfd)) {
                 byte[] buf = new byte[8192];
@@ -640,6 +649,19 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         } catch (Exception e) {
             throw new BridgeException(500, "the shell command failed: " + command + " (" + e + ")");
         }
+    }
+
+    /**
+     * 口が死んでいれば 503 を投げて自ら exit する。**操作系(shell・screenshot・入力注入)が
+     * 黙って通らないための共通の門** —— 死んだ口では executeShellCommand は空・takeScreenshot は
+     * null・injectInputEvent は false を返すだけで例外にならない(handleStatus の doc)
+     */
+    static void assertConnectionAlive(UiAutomation ua) {
+        if (uiAutomationConnectionAlive(ua)) return;
+        scheduleExit();
+        throw new BridgeException(503,
+                "the UiAutomation connection is dead (adbd restarted?): the bridge is exiting"
+                + " so the host can rebuild it — retry the step");
     }
 
     private static BridgeHttpServer.Response ok() {
