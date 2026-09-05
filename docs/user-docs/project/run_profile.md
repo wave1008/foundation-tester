@@ -38,6 +38,7 @@ selects one.
 | `containerInference` | bool | `true` | Enable geometry-based corrections that infer scroll containers (edge clamping, off-screen tap correction, etc.). Unrelated to FM |
 | `enableAnimations` | bool | `false` | Keep the app's animations instead of disabling them for the run |
 | `homeOnStart` | bool | `true` | Press Home once on every device at run start (works around devices staying black after a mass launch) |
+| `playProtectBypass` | bool | `true` | Skips the Play Protect prompt ("Send app for a security check?") on Android `adb install` by turning "Verify apps over USB" off for the install and restoring it afterwards (the app is never sent to Google). `false` is the kill switch: the tool leaves the device setting alone, and a release-signed APK stays blocked on the device's own dialog (the tool never answers it) |
 | `record` | bool | `false` | Record each worker's screen for the whole run and cut it into a per-scenario clip |
 | `recordFailuresOnly` | bool | `false` | With `record: true`, keep only clips for failed (including frozen) scenarios |
 | `recordBitrateKbps` | int | `1500` | Re-encoding bitrate for saved clips |

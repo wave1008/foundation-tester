@@ -34,6 +34,11 @@ removeApp()
   first-run cannot be reproduced this way.
 - **Removing the app under test breaks the rest of the run** — call `removeApp()` on your own
   test target only when you mean to end the scenario there.
+- **On Android (physical devices and emulators alike), `adb install` verification (Play
+  Protect's "Send app for a security check?") is turned off for the duration of the install and
+  the device setting is restored afterwards.** The app under test is never sent to Google (with
+  verification on, a release-signed APK leaves `adb install` blocked on that dialog — on an
+  emulator with Google Play just the same).
 
 ### Link
 - [index](../index.md)

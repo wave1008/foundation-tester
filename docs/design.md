@@ -3565,6 +3565,21 @@ Android 実機はグローバル設定が**永続的に**書き換わるので�
 そのときだけ1行知らせる(エミュレータ/シミュレータは無条件・無言)。iOS 実機はホストから
 アクセシビリティ設定を変更できないため対象外(端末側で手動設定する)。
 
+**`adb install` の検証(Play Protect)は install の間だけ切る**(`AdbInstallVerifier`。**実機・
+エミュレータを問わず全 Android**に効く —— Google Play 入りの像は Play Protect を持つ。
+**ユーザー決定 2026-09-05: テストツールはアプリを Google へ送らない・確認も取らない**)。
+実機 Pixel 4a(Android 13)で release 署名の APK を入れると Play Protect が
+「Send app for a security check?」を出して `adb install` が無期限に止まった(9.5 分・ログ 0 バイト。
+同じ APK でも毎回)。`verifier_verify_adb_installs`(開発者オプション「USB 経由でアプリを確認」)を
+0 にすると 4 秒で入り、戻すと再び止まる。元の値(未設定なら `delete`)へ必ず戻す。ダイアログを
+押す方式は採らない(ボタンは id 無し・ロケール依存のラベルだけで、送信の選択肢が画面に出る)。
+**門は `AndroidDriver.adb` が引数(`install` / `install-multiple` / `shell pm install` 等)で掛ける**
+ので、入れる経路を足しても呼び忘れは起きない。例外(bundletool・`AndroidWebViewUpdate`)だけ明示で、
+素の `Shell.run` による adb install は `AdbInstallVerifierTests` のソース走査が落とす。
+**キルスイッチは実行プロファイルの `playProtectBypass`(既定 true)**: false のときはツールが端末の
+設定に1バイトも触らず(`FT_PLAY_PROTECT_BYPASS=0` → `AdbInstallVerifier.bypassEnabled`)、release
+署名の APK は端末側のダイアログで止まったままになる —— **それでもツールはダイアログに答えない**。
+
 `homeOnStart`(**既定 true**)は run 開始時に各デバイスへ `home()` を1回撃つ
 (`ProfileWorkerFactory.pressHomeOnStart`)。一斉に launch した直後の端末は「描画要求が無いだけ」で
 画面が黒いまま止まることがあり、そのままだと凍結と見分けが付かない(2026-08-11 実測: 黒かった5台の

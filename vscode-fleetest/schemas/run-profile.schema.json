@@ -124,6 +124,11 @@
       "description": "run 開始時に各デバイスへ home() を1回撃つ(既定 true = 撃つ)。一斉に launch した直後の端末は「描画要求が無いだけ」で画面が黒いまま止まることがあり、そのままだと凍結と見分けが付かない。入力を1回入れておくと描画が動き出すので予防になる。デバイスあたり1回だけなので実行時間への影響はほぼ無い。",
       "default": true
     },
+    "playProtectBypass": {
+      "type": "boolean",
+      "description": "Android の adb install が Play Protect の照会(「Send app for a security check?」)で無期限に止まるのを防ぐため、install の間だけ verifier_verify_adb_installs を 0 にして元へ戻す(既定 true)。false にするとこのバイパスをせず端末の設定に触らない(release 署名の APK は端末側のダイアログで install が止まったままになり、ツールはそのダイアログに答えない)。",
+      "default": true
+    },
     "enableAnimations": {
       "type": "boolean",
       "description": "テスト対象アプリのアニメーションを残す(既定 false = 実行開始時にデバイス側のアニメーションを無効化する)。true にすると整定待ちが伸び、Android ではスクリーンショットが遷移途中の絵を掴むことがある。設定は run 開始時に毎回デバイスへ同期される(Android 実機はグローバル設定が永続的に書き換わる)。",

@@ -71,7 +71,7 @@ final class BuildAndroidWorkersPartialFailureTests: XCTestCase {
             iosPreActionWarmup: true,
             containerInference: true,
             enableAnimations: false,
-            homeOnStart: true,
+            homeOnStart: true, playProtectBypass: true,
             record: false,
             recordFailuresOnly: false,
             recordBitrateKbps: 1500,

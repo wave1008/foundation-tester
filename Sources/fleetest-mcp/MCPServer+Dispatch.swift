@@ -148,6 +148,9 @@ extension MCPServer {
         let resolved = try ProfileResolver.resolve(
             project: project, runName: profileName, machineName: machine.name)
         prologue.append(contentsOf: resolved.warnings.map { "⚠️ \($0)" })
+        // プロファイル経由の ft_install / clearAppData の入れ直しにも Play Protect のキルスイッチを効かせる
+        // (既定 ON なので OFF のときだけ注入。ProfileRunner と同じ)
+        setenv(AdbInstallVerifier.environmentKey, resolved.playProtectBypass ? "1" : "0", 1)
         let platform = platformArg ?? resolved.devices.first?.platform ?? "ios"
         guard let device = resolved.devices.first(where: { $0.platform == platform }) else {
             throw MCPError("profile \(profileName) has no \(platform) device")

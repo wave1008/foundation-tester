@@ -115,7 +115,15 @@ public final class AndroidDriver: AppDriver {
         return dpi / 160.0
     }
 
+    /// **install 系は必ず Play Protect の門を通る**(AdbInstallVerifier の冒頭。引数で判定するので
+    /// 呼び手が門を呼び忘れることは無い)
     func adb(_ args: [String]) throws -> Shell.Result {
+        guard AdbInstallVerifier.isInstallCommand(args) else { return try rawAdb(args) }
+        return try AdbInstallVerifier.withVerificationOff(adb: rawAdb) { try rawAdb(args) }
+    }
+
+    /// 門を通さない素の adb。`adb(_:)` と `installSplitBundle` の門の内側からだけ呼ぶ
+    private func rawAdb(_ args: [String]) throws -> Shell.Result {
         var full = [adbPath]
         if let serial { full += ["-s", serial] }
         return try Shell.run(full + args)
@@ -204,6 +212,7 @@ public final class AndroidDriver: AppDriver {
             try installSplitBundle(apksPath: packagePath)
             return
         }
+        // Play Protect の門は adb(_:) が引数で掛ける(AdbInstallVerifier)
         let result = try adb(["install", "-r", packagePath])
         guard result.output.contains("Success") else {
             throw DriverError.badResponse(status: Int(result.status),
@@ -218,8 +227,11 @@ public final class AndroidDriver: AppDriver {
             throw DriverError.badResponse(status: 127,
                 body: ApksBundle.missingBundletoolMessage(apksPath: apksPath))
         }
-        let result = try Shell.run(ApksBundle.installArgs(
-            bundletool: bundletool, apksPath: apksPath, serial: serial, adb: adbPath))
+        // bundletool は adb を自分で spawn する(= adb(_:) の門を通らない)ので、ここで明示的に掛ける
+        let result = try AdbInstallVerifier.withVerificationOff(adb: rawAdb) {
+            try Shell.run(ApksBundle.installArgs(
+                bundletool: bundletool, apksPath: apksPath, serial: serial, adb: adbPath))
+        }
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "failed to install the split bundle (.apks): \(result.tail)")

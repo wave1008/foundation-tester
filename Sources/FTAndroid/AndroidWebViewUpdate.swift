@@ -159,7 +159,12 @@ public extension AndroidWebViewUpdate {
             }
         }
         for target in plan.targets {
-            let result = adb(["-s", target, "install", "-r", local.path]) ?? ""
+            // adb 閉包を外から受けるので AndroidDriver.adb の門を通らない。ここで明示的に掛ける
+            // (Google 署名の WebView なので照会は出ない想定だが、入れる経路は例外なく門の内側に置く)
+            let result = AdbInstallVerifier.withVerificationOff(run: { args in
+                let out = adb(["-s", target] + args)
+                return (out == nil ? 1 : 0, out ?? "")
+            }) { adb(["-s", target, "install", "-r", local.path]) ?? "" }
             if result.contains("Success") { log("✅ \(target): WebView \(plan.sourceVersion)") }
             else { log("⚠️ \(target): WebView を更新できませんでした(揃えずに続行します)") }
         }

@@ -33,6 +33,7 @@ const runProfileIosFastInput = document.getElementById('run-profile-ios-fast-inp
 const runProfileIosPreActionWarmup = document.getElementById('run-profile-ios-pre-action-warmup');
 const runProfileInappOptions = document.getElementById('run-profile-inapp-options');
 const runProfileHomeOnStart = document.getElementById('run-profile-home-on-start');
+const runProfilePlayProtectBypass = document.getElementById('run-profile-play-protect-bypass');
 const runProfileEnableAnimations = document.getElementById('run-profile-enable-animations');
 const runProfileUpdateWebView = document.getElementById('run-profile-update-webview');
 const runProfileWipeDataOnBloat = document.getElementById('run-profile-wipe-data-on-bloat');
@@ -232,6 +233,7 @@ function renderRunProfileEditor(fields) {
   runProfileIosFastInput.checked = fields.iosFastInput;
   runProfileIosPreActionWarmup.checked = fields.iosPreActionWarmup;
   runProfileHomeOnStart.checked = fields.homeOnStart;
+  runProfilePlayProtectBypass.checked = fields.playProtectBypass;
   runProfileEnableAnimations.checked = fields.enableAnimations;
   runProfileContainerInference.checked = fields.containerInference;
   runProfileUpdateWebView.checked = fields.updateWebView;
@@ -483,6 +485,7 @@ function runProfileValuesEqual(fields) {
     runProfileIosFastInput.checked === fields.iosFastInput &&
     runProfileIosPreActionWarmup.checked === fields.iosPreActionWarmup &&
     runProfileHomeOnStart.checked === fields.homeOnStart &&
+    runProfilePlayProtectBypass.checked === fields.playProtectBypass &&
     runProfileEnableAnimations.checked === fields.enableAnimations &&
     runProfileContainerInference.checked === fields.containerInference &&
     runProfileUpdateWebView.checked === fields.updateWebView &&
@@ -602,6 +605,7 @@ runProfileConfirm.addEventListener('click', () => {
       iosFastInput: runProfileIosFastInput.checked,
       iosPreActionWarmup: runProfileIosPreActionWarmup.checked,
       homeOnStart: runProfileHomeOnStart.checked,
+      playProtectBypass: runProfilePlayProtectBypass.checked,
       enableAnimations: runProfileEnableAnimations.checked,
       containerInference: runProfileContainerInference.checked,
       updateWebView: runProfileUpdateWebView.checked,

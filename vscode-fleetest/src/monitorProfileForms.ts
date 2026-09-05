@@ -134,6 +134,8 @@ export interface RunProfileFormFields {
   readonly iosPreActionWarmup: boolean;
   /// **既定 true**。一斉 launch 直後の黒画面(描画要求が無いだけ)を避ける予防措置
   readonly homeOnStart: boolean;
+  /// **既定 true**。Android install 中だけ Play Protect の照会をバイパスするキルスイッチ
+  readonly playProtectBypass: boolean;
   readonly enableAnimations: boolean;
   readonly reportDir: string;
   readonly defaultTimeout: string;
@@ -158,7 +160,8 @@ export interface RunProfileFormFields {
  * defaultTimeout/wipeDataThresholdGB/recordBitrateKbps は number ならそのまま String() 化する
  * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。record/recordFailuresOnly/
  * recordFullResolution/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
- * fm/heal/screenLooksLike/falsePositiveCheck/triage/containerInference/homeOnStart はスキーマ既定と合わせ既定 true
+ * fm/heal/screenLooksLike/falsePositiveCheck/triage/containerInference/homeOnStart/playProtectBypass は
+ * スキーマ既定と合わせ既定 true
  * (falsePositiveCheck は 2026-09-03 に false から変更)。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {
@@ -185,6 +188,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const iosFastInput = typeof source.iosFastInput === "boolean" ? source.iosFastInput : false;
   const iosPreActionWarmup = typeof source.iosPreActionWarmup === "boolean" ? source.iosPreActionWarmup : true;
   const homeOnStart = typeof source.homeOnStart === "boolean" ? source.homeOnStart : true;
+  const playProtectBypass = typeof source.playProtectBypass === "boolean" ? source.playProtectBypass : true;
   const enableAnimations = typeof source.enableAnimations === "boolean" ? source.enableAnimations : false;
   const updateWebView = typeof source.updateWebView === "boolean" ? source.updateWebView : true;
   const wipeDataOnBloat = typeof source.wipeDataOnBloat === "boolean" ? source.wipeDataOnBloat : true;
@@ -235,6 +239,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     iosFastInput,
     iosPreActionWarmup,
     homeOnStart,
+    playProtectBypass,
     enableAnimations,
     reportDir,
     defaultTimeout,
@@ -300,6 +305,7 @@ export function updateRunProfileInObject(
   // 既定 true 側なので containerInference と同じく常に書く(false を落とすと既定へ戻ってしまう)
   result.homeOnStart = fields.homeOnStart;
   result.iosPreActionWarmup = fields.iosPreActionWarmup;  // 同上(既定 true 側)
+  result.playProtectBypass = fields.playProtectBypass;  // 同上(既定 true 側)
   for (const key of [
     "record", "recordFailuresOnly", "recordFullResolution", "iosFastInput", "recoverCpuFallbackToGpu",
     "enableAnimations",

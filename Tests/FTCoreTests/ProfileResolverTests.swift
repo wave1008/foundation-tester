@@ -90,6 +90,22 @@ final class ProfileResolverTests: XCTestCase {
 
     /// defaultTimeout が小数(秒未満)でも解決できること(Int→Double 化の回帰ガード)。
     /// 整数 JSON との後方互換は testResolveMixedPlatforms(8)で別途固定済み
+    /// `playProtectBypass` は**既定 true**(リテラルで固定: 未指定でも Play Protect の照会を通さない =
+    /// アプリを Google へ送らない側)。false を書いたときだけキルスイッチが効く
+    func testPlayProtectBypassDefaultsToTrueAndFalseIsHonoured() throws {
+        try writeStandardFixture()
+        let byDefault = try ProfileResolver.resolve(
+            project: project, runName: "all", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(byDefault.playProtectBypass)
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "playProtectBypass": false }
+        """, to: project.runsDir, name: "killswitch")
+        let killed = try ProfileResolver.resolve(
+            project: project, runName: "killswitch", machineName: "M1 Max(64GB)")
+        XCTAssertFalse(killed.playProtectBypass)
+        XCTAssertTrue(killed.warnings.isEmpty, "既知のキーなので unknown-key 警告を出さない: \(killed.warnings)")
+    }
+
     func testResolveAcceptsFractionalDefaultTimeout() throws {
         try writeStandardFixture()
         try write("""

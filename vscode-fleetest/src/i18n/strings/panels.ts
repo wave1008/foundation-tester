@@ -118,6 +118,10 @@ export const panelsStrings = {
     ja: "テスト開始時にhome()を実行する(デバイス凍結対策)",
     en: "Run home() when the test starts (guards against a frozen screen)",
   },
+  "panels.runProfile.playProtectBypassLabel": {
+    ja: "Play Protect の照会をバイパスする(アプリを Google へ送らない)",
+    en: "Bypass the Play Protect prompt (the app is never sent to Google)",
+  },
   "panels.runProfile.enableAnimationsLabel": {
     ja: "アニメーションを有効にする(既定は無効。有効にすると整定待ちが伸び、テストが不安定になることがあります)",
     en: "Keep app animations (off by default; keeping them lengthens settling waits and can make tests unstable)",

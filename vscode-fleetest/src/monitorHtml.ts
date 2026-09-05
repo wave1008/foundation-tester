@@ -428,6 +428,10 @@ function renderRunProfileSection(): string {
               <label for="run-profile-update-webview">${t("panels.runProfile.updateWebViewLabel")}</label>
             </div>
             <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-play-protect-bypass">
+              <label for="run-profile-play-protect-bypass">${t("panels.runProfile.playProtectBypassLabel")}</label>
+            </div>
+            <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-wipe-data-on-bloat">
               <label for="run-profile-wipe-data-on-bloat">${t("panels.runProfile.wipeOnBloatLabel")}</label>
             </div>

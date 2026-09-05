@@ -636,6 +636,16 @@
 
 ### 個別の規律
 
+- **テストツールはアプリを Google へ送らない・確認も取らない**(ユーザー決定 2026-09-05)。
+  Android の `adb install` は Play Protect の照会(「Send app for a security check?」)で無期限に
+  止まるので、`AdbInstallVerifier` が install の間だけ `verifier_verify_adb_installs` を 0 にして
+  必ず戻す(実機・エミュレータとも)。**門は `AndroidDriver.adb` が引数で掛ける**ので、
+  アプリを入れる新しい経路は何もしなくても通る。例外は adb を自分で spawn する bundletool と
+  adb 閉包を外から受ける `AndroidWebViewUpdate` だけで、そこは `withVerificationOff` を明示。
+  **素の `Shell.run` で adb install を打つコードは `AdbInstallVerifierTests` が落とす**。
+  **ダイアログを押す方式にしない**(id 無し・ロケール依存・送信の選択肢が画面に出る)。
+  キルスイッチは実行プロファイルの `playProtectBypass: false`(ユーザー決定: 設定タブではなく
+  プロファイル)—— OFF でもツールは端末のダイアログに答えない(止まるだけ)
 - **木は a11y が既定。ブラウザで足りないときだけ DOM で補う**(**どの組み合わせでどこから木が
   来るかの一覧は docs/design.md §木はどこから来るか**)。**口は3つ・その上の層は1つ**
   (Android Chrome=CDP / iOS Safari シミュレータ=unix ソケット / iOS Safari 実機=usbmuxd →

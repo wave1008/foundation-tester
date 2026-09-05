@@ -505,6 +505,13 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// 予防として1回だけ入力を入れる。**デバイスあたり1回**なので実行時間への影響はほぼゼロ。
     /// 同期相手: vscode-fleetest/schemas/run-profile.schema.json と RunProfileFormFields
     public var homeOnStart: Bool?
+    /// Android の `adb install` で Play Protect の照会を通さないか(**既定 true**)。true で
+    /// install の間だけ `verifier_verify_adb_installs` を 0 にして元へ戻す(AdbInstallVerifier。
+    /// テスト対象アプリを Google へ送らない = ユーザー決定 2026-09-05)。**false はキルスイッチ**:
+    /// ツールは端末の設定に触らず、release 署名の APK は端末側のダイアログで install が止まったまま
+    /// になる(ツールはそのダイアログに答えない)。FT_PLAY_PROTECT_BYPASS で実行環境へ注入する。
+    /// 同期相手: vscode-fleetest/schemas/run-profile.schema.json と RunProfileFormFields
+    public var playProtectBypass: Bool?
     /// 並列実行の各ワーカー(デバイス)ごとに run 全体を録画し、テスト関数(シナリオ)ごとに
     /// 1本の mp4 へ切り出すか(既定 false)。実体は RunOrchestrator への VideoRecordingConfig 注入
     /// (VideoRecordingCoordinator.swift)。録画失敗は run を失敗させない(警告ログのみ)
@@ -532,7 +539,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 recoverCpuFallbackToGpu: Bool? = nil,
                 locale: String? = nil, iosFastInput: Bool? = nil, iosPreActionWarmup: Bool? = nil,
                 containerInference: Bool? = nil,
-                enableAnimations: Bool? = nil, homeOnStart: Bool? = nil, record: Bool? = nil,
+                enableAnimations: Bool? = nil, homeOnStart: Bool? = nil,
+                playProtectBypass: Bool? = nil, record: Bool? = nil,
                 recordFailuresOnly: Bool? = nil, recordBitrateKbps: Int? = nil,
                 recordFullResolution: Bool? = nil, remoteControl: RemoteControlSection? = nil) {
         self.app = app
@@ -558,6 +566,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.containerInference = containerInference
         self.enableAnimations = enableAnimations
         self.homeOnStart = homeOnStart
+        self.playProtectBypass = playProtectBypass
         self.record = record
         self.recordFailuresOnly = recordFailuresOnly
         self.recordBitrateKbps = recordBitrateKbps
@@ -577,6 +586,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         // iosSystemAlertButtons はもう読まない(→ シナリオの iosAlertHandler)。
         // knownKeys に残すのは、一般の unknown-key 警告ではなく resolve の専用警告で案内するため
         "iosFastInput", "iosPreActionWarmup", "iosSystemAlertButtons", "enableAnimations", "homeOnStart",
+        "playProtectBypass",
         "containerInference",
         "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution", "remoteControl",
     ]
@@ -709,6 +719,8 @@ public struct ResolvedProfile: Sendable {
     public let enableAnimations: Bool
     /// run 開始時に各デバイスへ home() を撃つか(RunProfileDocument.homeOnStart。**既定 true**)
     public let homeOnStart: Bool
+    /// Play Protect の照会をバイパスするか(RunProfileDocument.playProtectBypass。**既定 true**)
+    public let playProtectBypass: Bool
     /// 各ワーカーを run 全体で録画し、シナリオごとに切り出すか(RunProfileDocument.record。既定 false)
     public let record: Bool
     /// 成功したシナリオのクリップを保存しないか(RunProfileDocument.recordFailuresOnly。既定 false)
@@ -1357,6 +1369,7 @@ public enum ProfileResolver {
             containerInference: runDoc.containerInference ?? true,
             enableAnimations: runDoc.enableAnimations ?? false,
             homeOnStart: runDoc.homeOnStart ?? true,
+            playProtectBypass: runDoc.playProtectBypass ?? true,
             record: runDoc.record ?? false,
             recordFailuresOnly: runDoc.recordFailuresOnly ?? false,
             // 0 以下は無意味な指定なので既定にフォールバック(run を止めるほどの問題ではない)

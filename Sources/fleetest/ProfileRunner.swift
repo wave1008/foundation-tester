@@ -154,6 +154,8 @@ enum ProfileRunner {
         // 既に ON なら尊重する(`fleetest run --enable-animations` と手動 export の上書き)
         let animations = resolved.enableAnimations || AnimationPolicy.animationsEnabled()
         setenv(AnimationPolicy.environmentKey, animations ? "1" : "0", 1)
+        // キルスイッチは既定 ON なので OFF のときだけ注入する(AdbInstallVerifier.bypassEnabled 参照)
+        if !resolved.playProtectBypass { setenv(AdbInstallVerifier.environmentKey, "0", 1) }
         let deviceList = resolved.devices
             .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
         print("🧩 Profile \(profileName): \(resolved.appName) @ \(resolved.machineName)")
