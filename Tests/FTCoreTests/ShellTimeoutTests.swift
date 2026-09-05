@@ -116,6 +116,28 @@ final class ShellTimeoutTests: XCTestCase {
         XCTAssertEqual(String(data: stdoutOnly.data, encoding: .utf8), "out\n")
     }
 
+    /// `stdin:` は子へ届いて閉じられる(cat は EOF で終わる = 閉じ忘れると 30 秒側へ落ちる)
+    func testStdinIsDeliveredAndClosed() throws {
+        let result = try Shell.run(["cat"], timeout: 5, stdin: Data("answer\n".utf8))
+        XCTAssertEqual(result.status, 0)
+        XCTAssertEqual(result.output, "answer\n")
+    }
+
+    /// stdin を渡す経路でも timeout は効く(avdmanager の未知のプロンプトで止まる形の回帰)
+    func testTimeoutStillAppliesWhenStdinIsGiven() {
+        let start = Date()
+        XCTAssertThrowsError(try Shell.run(["sh", "-c", "cat >/dev/null; sleep 30"],
+                                           timeout: 0.5, stdin: Data("x\n".utf8)))
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5.0)
+    }
+
+    /// 子が先に終わっていても stdin の書き込みで落ちない(EPIPE は Swift のエラーとして握る)
+    func testStdinWriteToAnExitedChildDoesNotCrash() throws {
+        let result = try Shell.run(["sh", "-c", "exit 0"], timeout: 5,
+                                   stdin: Data(repeating: 0x61, count: 1024))
+        XCTAssertEqual(result.status, 0)
+    }
+
     /// timeout=nil(既存経路)は従来どおり動作する。
     func testNoTimeoutPathUnchanged() throws {
         let result = try Shell.run(["echo", "no-timeout"])

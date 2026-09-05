@@ -73,18 +73,15 @@ func captureIOS(_ o: Options) -> Data? {
     return box.data
 }
 
-/// Android: adb exec-out screencap -p(PNG)
+/// Android: adb exec-out screencap -p(PNG)。iOS 側と同じく fps 間隔より長く待たない ——
+/// adb が刺さる(端末の抜き差し・スリープ)と EOF が来ないので、期限で子孫ごと止めて
+/// そのフレームを落とす(連続失敗は主ループが数えて exit(4))
 func captureAndroid(_ o: Options) -> Data? {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: o.adb)
-    process.arguments = ["-s", o.serial, "exec-out", "screencap", "-p"]
-    let pipe = Pipe()
-    process.standardOutput = pipe
-    process.standardError = Pipe()
-    do { try process.run() } catch { return nil }
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    process.waitUntilExit()
-    return data.isEmpty ? nil : data
+    let timeout = max(2.0, 2.0 / max(o.fps, 0.1))
+    guard let result = try? Shell.runData([o.adb, "-s", o.serial, "exec-out", "screencap", "-p"],
+                                          timeout: timeout),
+          result.status == 0, !result.data.isEmpty else { return nil }
+    return result.data
 }
 
 // MARK: - 変換・出力

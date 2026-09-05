@@ -316,31 +316,29 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         return (deviceEntry, resultEntry)
     }
 
+    /// avdmanager create avd の上限(秒)。AVD の作成は手元のファイル操作だけ(実測 数秒)。
+    /// **尽きたとき** = 答えていない対話プロンプト(「カスタムハードウェアプロファイルを作成しますか?」
+    /// 以外の未知の問い)で止まっている形なので、待ち続けず子孫ごと止めてエラーにする
+    static let avdManagerCreateTimeoutSeconds: Double = 60
+
     /// avdmanager create avd を実行する。「カスタムハードウェアプロファイルを作成しますか? [no]」
-    /// という stdin 待ちの対話プロンプトが出るため、Shell.run(stdin 制御が無い)は使わず
-    /// Process を直接使って stdin に "no\n" を書き込む
+    /// という stdin 待ちの対話プロンプトが出るので stdin に "no\n" を渡す(`Shell.run(stdin:)`。
+    /// 素の Process + `readDataToEndOfFile` は未知のプロンプトで EOF が来ず永久に返らなかった)
     private static func runAVDManagerCreate(
         avdmanagerPath: String, avdID: String, package: String, deviceID: String
     ) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: avdmanagerPath)
-        process.arguments = ["create", "avd", "-n", avdID, "-k", package, "-d", deviceID]
-        let stdinPipe = Pipe()
-        let outputPipe = Pipe()
-        process.standardInput = stdinPipe
-        process.standardOutput = outputPipe
-        process.standardError = outputPipe
-        let waitForExit = ProcessExitWait.prepareBlocking(process)
-        try process.run()
-        // プロンプトへの回答は数バイトなのでパイプバッファに収まり、書き込みはブロックしない。
-        // 書き込み後すぐ閉じてから出力を読み切る(avdmanager 側は追加の入力を待たないため安全)
-        stdinPipe.fileHandleForWriting.write(Data("no\n".utf8))
-        try? stdinPipe.fileHandleForWriting.close()
-        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        waitForExit()
-        guard process.terminationStatus == 0 else {
-            let output = String(data: outputData, encoding: .utf8) ?? ""
-            throw CreateDeviceError("avdmanager create avd failed: \(output)")
+        let result: Shell.Result
+        do {
+            result = try Shell.run(
+                [avdmanagerPath, "create", "avd", "-n", avdID, "-k", package, "-d", deviceID],
+                timeout: avdManagerCreateTimeoutSeconds, stdin: Data("no\n".utf8))
+        } catch let error as ShellError {
+            throw CreateDeviceError(
+                "avdmanager create avd did not finish within \(Int(avdManagerCreateTimeoutSeconds))s "
+                + "(an unanswered prompt?): \(error)")
+        }
+        guard result.status == 0 else {
+            throw CreateDeviceError("avdmanager create avd failed: \(result.output)")
         }
     }
 

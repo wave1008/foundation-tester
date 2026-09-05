@@ -685,7 +685,8 @@
   `kill(pid,…)` だけだと `trap '' TERM` を継いだ孫がパイプを握り続けて 30 秒返らなかった。
   出力の回収は子の reap 後 `Shell.outputDrainGraceSeconds`(1 秒)で打ち切る(EOF が遅れるのは
   孫が書込端を継承したまま残る形だけ。`(sleep 3) &` の孫で 3 秒待っていた)。
-  **`readDataToEndOfFile` を子プロセスのパイプに使わない**(EOF まで戻らない = 期限が置けない)。
+  **`readDataToEndOfFile` を子プロセスのパイプに使わない**(EOF まで戻らない = 期限が置けない。
+  `ShellSourceScanTests` が Sources 全体で落とす。対話プロンプトへ答える子は `Shell.run(stdin:)`)。
   **グループの残存は直接の子の終了と独立に見る**(Codex 指摘 2026-09-06: 子が SIGTERM で素直に
   終わっても `trap '' TERM` の孫は残る。猶予が尽きたら `killpg(pgid, 0)` で残りを確かめ SIGKILL)。
   witness は `ShellTimeoutTests` の孫3本

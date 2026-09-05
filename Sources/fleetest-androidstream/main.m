@@ -280,6 +280,29 @@ static void processChunk(NSData *chunk) {
 
 #pragma mark - adb path resolution
 
+/// 子の出力を期限付きで読み切る(Swift 側 FTCore.Shell.run と同じ規律: EOF を待ち切らない・子孫ごと止める)。
+/// 期限で killpg(NSTask の子はプロセスグループのリーダー)し、EOF の到着を 1 秒だけ待ってから返す。
+/// **`readDataToEndOfFile` を使わない** —— 刺さった adb(抜き差し・オフライン)で永久に返らない
+/// (ShellSourceScanTests が Sources 全体で落とす)
+static NSData *ftReadOutputWithTimeout(NSTask *task, NSPipe *pipe, NSTimeInterval seconds) {
+    NSFileHandle *reader = pipe.fileHandleForReading;
+    NSMutableData *buffer = [NSMutableData data];
+    dispatch_semaphore_t done = dispatch_semaphore_create(0);
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NSData *chunk;
+        while ((chunk = reader.availableData).length > 0) {
+            @synchronized (buffer) { [buffer appendData:chunk]; }
+        }
+        dispatch_semaphore_signal(done);
+    });
+    if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(seconds * NSEC_PER_SEC))) != 0) {
+        killpg(task.processIdentifier, SIGKILL);
+        dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)));
+    }
+    [task waitUntilExit];
+    @synchronized (buffer) { return [buffer copy]; }
+}
+
 /// screenrecord の --time-limit を端末の API レベルで決める。
 /// **--time-limit 0(無制限)は API 34 未満で使えない**: Android 13(API 33)実機では即座に
 /// 終了して 47 バイトしか出ない(2026-07-25 実測。エミュレータは API 35 で問題なく、
@@ -294,8 +317,8 @@ static NSString *ftScreenRecordTimeLimit(NSString *adbPath, NSString *serial) {
     probe.standardError = [NSPipe pipe];
     NSError *err = nil;
     if (![probe launchAndReturnError:&err]) return @"180";
-    NSData *data = [pipe.fileHandleForReading readDataToEndOfFile];
-    [probe waitUntilExit];
+    // getprop は通常 100ms 未満。尽きたとき = adb が刺さっている → 古い端末側の上限(180)へ倒す
+    NSData *data = ftReadOutputWithTimeout(probe, pipe, 10.0);
     NSString *text = [[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]
                       stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     // 取得不能は安全側(全端末で通る 180)に倒す
@@ -335,13 +358,9 @@ static NSString *ftLetterboxFreeSize(NSString *adbPath, NSString *serial) {
     probe.standardError = pipe;
     NSError *err = nil;
     if (![probe launchAndReturnError:&err]) return nil;
-    // ハングした端末で起動を止めないための保険(プローブ自体は通常 1〜2 秒)
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)),
-                   dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        if (probe.isRunning) [probe terminate];
-    });
-    NSData *data = [pipe.fileHandleForReading readDataToEndOfFile];
-    [probe waitUntilExit];
+    // ハングした端末で起動を止めないための保険(プローブ自体は通常 1〜2 秒)。以前の
+    // `terminate`(SIGTERM を adb だけへ)+ readDataToEndOfFile は、adb が孫を残すと EOF が来ず返らなかった
+    NSData *data = ftReadOutputWithTimeout(probe, pipe, 10.0);
     NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
     return text.length > 0 ? ftContentSizeFromVerbose(text) : nil;
 }

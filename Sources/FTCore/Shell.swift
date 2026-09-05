@@ -97,9 +97,13 @@ public enum Shell {
 
     /// timeout(秒)を渡すと、期限超過時に子を SIGTERM→(2s猶予後)SIGKILL して
     /// `ShellError.timedOut` を投げる。wedge した adb/simctl が締切ポーリングを無効化するのを防ぐ。
+    /// `stdin` は子へ渡して閉じる入力(対話プロンプトへの答え等の**小さな**もの。パイプの
+    /// バッファ 64KB を超えると子が読むまで呼び手が待つ)。nil = 継承しない(/dev/null 相当ではなく
+    /// Foundation の既定 = 親の stdin)
     @discardableResult
-    public static func run(_ args: [String], cwd: URL? = nil, timeout: Double? = nil) throws -> Result {
-        let (status, data) = try runRaw(args, cwd: cwd, timeout: timeout)
+    public static func run(_ args: [String], cwd: URL? = nil, timeout: Double? = nil,
+                           stdin: Data? = nil) throws -> Result {
+        let (status, data) = try runRaw(args, cwd: cwd, timeout: timeout, stdin: stdin)
         return Result(status: status, output: String(data: data, encoding: .utf8) ?? "")
     }
 
@@ -120,11 +124,18 @@ public enum Shell {
     static let killGraceSeconds: Double = 2.0
 
     static func runRaw(_ args: [String], cwd: URL? = nil,
-                       mergeStderr: Bool = true, timeout: Double? = nil) throws -> (Int32, Data) {
+                       mergeStderr: Bool = true, timeout: Double? = nil,
+                       stdin: Data? = nil) throws -> (Int32, Data) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = args
         if let cwd { process.currentDirectoryURL = cwd }
+        var stdinPipe: Pipe?
+        if stdin != nil {
+            let pipe = Pipe()
+            process.standardInput = pipe
+            stdinPipe = pipe
+        }
         let pipe = Pipe()
         process.standardOutput = pipe
         if mergeStderr {
@@ -140,6 +151,16 @@ public enum Shell {
         try process.run()
         drain.start()
         let pid = process.processIdentifier
+        if let stdin, let stdinPipe {
+            // 子が先に死んでいると読み手の無いパイプへの write は SIGPIPE でこのプロセスごと落ちる
+            // (実測: signal 13)。fd 単位で SIGPIPE を止めて EPIPE を Swift のエラーで受ける
+            // (`signal(SIGPIPE, SIG_IGN)` はプロセス全体の副作用なので使わない)。
+            // 書いたら閉じる = 子は EOF で「答えはこれで全部」と分かる
+            let writer = stdinPipe.fileHandleForWriting
+            _ = fcntl(writer.fileDescriptor, F_SETNOSIGPIPE, 1)
+            try? writer.write(contentsOf: stdin)
+            try? writer.close()
+        }
 
         // 子孫ごと止める。Foundation.Process は子を新しいプロセスグループのリーダーにする
         // (実測 2026-09-05: pgid == 子の pid)ので `killpg` で孫まで届く。`kill(pid,…)` だけだと

@@ -85,16 +85,9 @@ final class AndroidBridgeVersionSyncTests: XCTestCase {
     // APK は zip なので /usr/bin/unzip で manifest だけ取り出し、AXML の文字列プールを直接読む。
 
     private func binaryAndroidManifest(inAPK apk: URL) throws -> Data {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        process.arguments = ["-p", apk.path, "AndroidManifest.xml"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0, !data.isEmpty else {
+        let result = try Shell.runData(["/usr/bin/unzip", "-p", apk.path, "AndroidManifest.xml"], timeout: 30)
+        let data = result.data
+        guard result.status == 0, !data.isEmpty else {
             throw XCTSkip("APK から AndroidManifest.xml を取り出せません(unzip 失敗)")
         }
         return data

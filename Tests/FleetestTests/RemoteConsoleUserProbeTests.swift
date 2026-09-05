@@ -1,5 +1,6 @@
 import XCTest
 import FTRemote
+import FTCore
 
 /// セッション行(`RemoteProbe.parseSessionInfo` の2行目)を採るシェル片は
 /// `RemoteProbe.consoleUserCommand` の1箇所だけに置く。3つの呼び出し元
@@ -78,16 +79,9 @@ final class RemoteConsoleUserProbeTests: XCTestCase {
     }
 
     private func runShell(_ command: String) throws -> [String] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", command]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return String(data: data, encoding: .utf8)?
+        let output = String(data: try Shell.runData(["/bin/sh", "-c", command], timeout: 30).data,
+                            encoding: .utf8)
+        return output?
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
             .filter { !$0.isEmpty } ?? []
