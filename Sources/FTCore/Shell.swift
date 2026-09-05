@@ -148,6 +148,21 @@ public enum Shell {
         func signalGroup(_ sig: Int32) {
             if killpg(pid, sig) != 0 { _ = kill(pid, sig) }
         }
+        /// グループにまだプロセスが居るか(`killpg(pgid, 0)` はメンバーが1つでも居れば 0)。
+        /// pgid = 子の pid はグループが空になるまで再利用されないので、子の reap 後に呼んでも
+        /// 無関係なプロセスには当たらない。ゾンビは launchd の reap まで数えうるので待ちは必ず期限付き
+        func groupHasMembers() -> Bool { killpg(pid, 0) == 0 }
+        /// **グループの残存は直接の子の終了と独立に処理する**(Codex 指摘 2026-09-06):
+        /// 子が SIGTERM で素直に終わっても、`trap '' TERM` を継いだ孫は残る
+        /// (`trap 'exit 0' TERM; sh -c 'trap "" TERM; exec sleep 30' & wait`)。
+        /// 猶予(killAt)まで待ち、まだ居れば SIGKILL。その後は reap(launchd 任せ)を短く待つだけ
+        func drainGroup(until killAt: DispatchTime) {
+            while groupHasMembers(), DispatchTime.now() < killAt { usleep(50_000) }
+            guard groupHasMembers() else { return }
+            signalGroup(SIGKILL)
+            let reaped: DispatchTime = .now() + outputDrainGraceSeconds
+            while groupHasMembers(), DispatchTime.now() < reaped { usleep(50_000) }
+        }
         func collect() -> Data {
             if drain.done.wait(timeout: .now() + outputDrainGraceSeconds) == .timedOut {
                 // 読み手が抜けてから閉じる(開いたまま閉じると fd 番号が再利用され、読み手が無関係な
@@ -162,11 +177,13 @@ public enum Shell {
         let deadline: DispatchTime = timeout.map { .now() + $0 } ?? .distantFuture
         if waitExit(deadline) == .timedOut, let timeout {
             signalGroup(SIGTERM)
-            if waitExit(.now() + killGraceSeconds) == .timedOut {
+            let killAt: DispatchTime = .now() + killGraceSeconds
+            if waitExit(killAt) == .timedOut {
                 signalGroup(SIGKILL)
                 // SIGKILL は無視できないので reap は必ず来る(D 状態で遅れることはある)
                 _ = waitExit(.distantFuture)
             }
+            drainGroup(until: killAt)
             _ = collect()
             throw ShellError.timedOut(args: args, seconds: timeout)
         }

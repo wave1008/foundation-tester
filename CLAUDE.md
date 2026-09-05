@@ -686,7 +686,9 @@
   出力の回収は子の reap 後 `Shell.outputDrainGraceSeconds`(1 秒)で打ち切る(EOF が遅れるのは
   孫が書込端を継承したまま残る形だけ。`(sleep 3) &` の孫で 3 秒待っていた)。
   **`readDataToEndOfFile` を子プロセスのパイプに使わない**(EOF まで戻らない = 期限が置けない)。
-  witness は `ShellTimeoutTests` の孫2本
+  **グループの残存は直接の子の終了と独立に見る**(Codex 指摘 2026-09-06: 子が SIGTERM で素直に
+  終わっても `trap '' TERM` の孫は残る。猶予が尽きたら `killpg(pgid, 0)` で残りを確かめ SIGKILL)。
+  witness は `ShellTimeoutTests` の孫3本
 - **プロセスの生存管理は3つの定義元に寄せる**(2026-09-05 の掃討): ①**生死の判定は
   `FTCore.ProcessLiveness.isAlive`**(sysctl で `SZOMB`・`P_WEXIT` を「死」と見る。`kill(pid, 0)` は
   ゾンビにも成功するので台帳が永久に回収されない —— `ProcessLivenessSourceScanTests` が素の

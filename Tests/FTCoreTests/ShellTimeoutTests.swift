@@ -48,10 +48,35 @@ final class ShellTimeoutTests: XCTestCase {
         let grandchild = Int32((try String(contentsOf: pidFile, encoding: .utf8))
             .trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
         XCTAssertGreaterThan(grandchild, 0, "孫の pid が取れない")
+        assertDies(grandchild, "孫(pid \(grandchild))が生き残っている")
+    }
+
+    /// **子は SIGTERM で終わるが、孫は SIGTERM を無視する**形でも timeout から返り、孫も終わる
+    /// (Codex 指摘 2026-09-06)。以前は「直接の子が猶予内に終わらなかったときだけ」グループへ
+    /// SIGKILL していたので、`trap 'exit 0' TERM` の子が素直に終わると `trap '' TERM` を継いだ孫
+    /// (`exec sleep 30`)が残った(実測: 約 1.6 秒で timedOut を投げた後も孫が生きていた)。
+    /// グループの残存は子の終了と独立に処理する
+    func testTimeoutKillsAGrandchildThatIgnoresSigtermEvenWhenTheChildExitsFirst() throws {
+        let pidFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ft-shell-grandchild-early-exit-\(getpid()).pid")
+        defer { try? FileManager.default.removeItem(at: pidFile) }
+        let script = "trap 'exit 0' TERM; "
+            + "sh -c 'trap \"\" TERM; echo $$ > \"\(pidFile.path)\"; exec sleep 30' & wait"
+        let start = Date()
+        XCTAssertThrowsError(try Shell.run(["sh", "-c", script], timeout: 0.5))
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5.0, "timeout 後も返らない")
+        let grandchild = Int32((try String(contentsOf: pidFile, encoding: .utf8))
+            .trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        XCTAssertGreaterThan(grandchild, 0, "孫の pid が取れない")
+        assertDies(grandchild, "子が先に終わったので孫(pid \(grandchild))が生き残っている")
+    }
+
+    /// 孫が(reap の遅れを見込んで 2 秒以内に)死んでいることを確かめ、残っていれば後始末する
+    private func assertDies(_ pid: Int32, _ message: String) {
         let deadline = Date().addingTimeInterval(2)
-        while Date() < deadline, kill(grandchild, 0) == 0 { usleep(50_000) }
-        XCTAssertNotEqual(kill(grandchild, 0), 0, "孫(pid \(grandchild))が生き残っている")
-        _ = kill(grandchild, SIGKILL)  // 後始末(テストの失敗時に sleep を残さない)
+        while Date() < deadline, ProcessLiveness.isAlive(pid) { usleep(50_000) }
+        XCTAssertFalse(ProcessLiveness.isAlive(pid), message)
+        _ = kill(pid, SIGKILL)  // 後始末(テストの失敗時に sleep を残さない)
     }
 
     /// **子が先に終わっても、孫がパイプを握っていれば EOF を待ち続けない**(timeout 無しの経路)。
