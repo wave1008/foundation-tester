@@ -401,8 +401,9 @@ final class InputInjector {
         while (true) {
             try {
                 AccessibilityNodeInfo root = SnapshotBuilder.waitForRoot(ua, 500);
-                AccessibilityNodeInfo focus = root == null ? null
-                        : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+                // 入れ物へ倒れた findFocus から combined を作ると空読み + 拒否で 2 秒待って 500
+                // (focusedEditable の doc)
+                AccessibilityNodeInfo focus = root == null ? null : focusedEditable(root);
                 if (focus != null) {
                     // 読む前に取り直す(理由は setTextAppendingAt の同じ位置のコメント)
                     focus.refresh();
@@ -438,23 +439,68 @@ final class InputInjector {
     }
 
     /**
+     * 入力フォーカスを持つ**編集可能な**ノード(ref なしの clear / IME Enter の対象)。
+     * `findFocus(FOCUS_INPUT)` は Flutter で半分の確率でフォーカス中の欄ではなく FlutterView の
+     * 入れ物(FrameLayout・editable=false・text=null・子 1 つ)を返す(実機 Pixel 4a・2026-09-06 の
+     * logcat プローブ。Flutter の a11y ブリッジが入力フォーカスのセマンティクスノードを持って
+     * いない瞬間は、フレームワークがフォーカスを持つ View 自体へ倒す)。入れ物を「空」と読めば
+     * 黙って成功、SET_TEXT を撃てば拒否(409)になる —— 10 周中 5 周がこれだった。
+     * 編集可能でなければ木から `isFocused && isEditable` を探し、無ければ null
+     * (呼び手が期限まで引き直す)。
+     */
+    private static AccessibilityNodeInfo focusedEditable(AccessibilityNodeInfo root) {
+        AccessibilityNodeInfo focus = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+        if (focus != null && focus.isEditable()) return focus;
+        return findFocusedEditable(root);
+    }
+
+    private static AccessibilityNodeInfo findFocusedEditable(AccessibilityNodeInfo node) {
+        if (node == null) return null;
+        if (node.isEditable() && node.isFocused()) return node;
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo hit = findFocusedEditable(node.getChild(i));
+            if (hit != null) return hit;
+        }
+        return null;
+    }
+
+    /**
      * フォーカス中の入力欄を空文字へ全置換する(/clear の ref なし経路)。
-     * 対象なし/SET_TEXT 拒否は 409(setTextAppending の 500 とは意図的に異なる。
+     * **ref あり(clearTextAt)と同じ再試行の規律**: フォーカスは毎回引き直し、読む前に refresh、
+     * 空を読めたら成功(ACTION_SET_TEXT の true は受理であって反映ではない)、期限まで撃ち直す。
+     * 1 発の performAction の false をそのまま 409 にしていた版は、Flutter のパスワード欄で
+     * 2 回に 1 回落ちた(実機 Pixel 4a・2026-09-05。直前の type は通っているので入力欄は生きて
+     * いる = 一瞬の拒否を確定失敗にしていた)。
+     * 対象なし/期限切れは 409(setTextAppending の 500 とは意図的に異なる。
      * BridgeDTO.ClearRequest の記載どおりホストの typeDriver フォールバックの合図とする)。
      */
-    static void clearFocused(UiAutomation ua) {
-        AccessibilityNodeInfo root = SnapshotBuilder.waitForRoot(ua, 2000);
-        AccessibilityNodeInfo focus = root == null ? null
-                : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
-        if (focus == null) {
-            throw new BridgeRouter.BridgeException(409,
-                    "no-input-focus: nothing has input focus (tap the field by ref first)");
-        }
-        Bundle args = new Bundle();
-        args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
-        if (!focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
-            throw new BridgeRouter.BridgeException(409,
-                    "this field does not accept ACTION_SET_TEXT (a WebView, for example)");
+    static void clearFocused(UiAutomation ua, long timeoutMs) {
+        long deadline = SystemClock.uptimeMillis() + timeoutMs;
+        String lastState = "no-input-focus: nothing has input focus (tap the field by ref first)";
+        while (true) {
+            try {
+                AccessibilityNodeInfo root = ua.getRootInActiveWindow();
+                AccessibilityNodeInfo focus = root == null ? null : focusedEditable(root);
+                if (focus != null) {
+                    focus.refresh();   // 読む前に取り直す(clearTextAt と同じ理由)
+                    CharSequence remaining = focus.isShowingHintText() ? "" : focus.getText();
+                    if (remaining == null || remaining.length() == 0) {
+                        return;
+                    }
+                    Bundle args = new Bundle();
+                    args.putCharSequence(
+                            AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
+                    lastState = focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                            ? "ACTION_SET_TEXT was accepted but the value is still there"
+                            : "this field does not accept ACTION_SET_TEXT (a WebView, for example)";
+                }
+            } catch (RuntimeException e) {
+                lastState = "the node became stale (" + e.getClass().getSimpleName() + ")";
+            }
+            if (SystemClock.uptimeMillis() >= deadline) {
+                throw new BridgeRouter.BridgeException(409, lastState + " (" + timeoutMs + "ms waited)");
+            }
+            SystemClock.sleep(20);
         }
     }
 
@@ -467,8 +513,8 @@ final class InputInjector {
      */
     static void pressImeEnter(UiAutomation ua) {
         AccessibilityNodeInfo root = SnapshotBuilder.waitForRoot(ua, 2000);
-        AccessibilityNodeInfo focus = root == null ? null
-                : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+        // 入れ物へ倒れた findFocus に ACTION_IME_ENTER を撃つと必ず失敗する(focusedEditable の doc)
+        AccessibilityNodeInfo focus = root == null ? null : focusedEditable(root);
         if (focus == null) {
             throw new BridgeRouter.BridgeException(409,
                     "no-input-focus: nothing has input focus (tap the field by ref first)");

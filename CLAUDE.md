@@ -723,7 +723,10 @@
   おり、作り直すと伏せ字を書き込む・二重追記する)」「フォーカスが立つまで撃たない」
   「追跡は座標でなく resource-id」「**読む前に `refresh()` する**(a11y ノードはキャッシュ供給で、
   とくに WebView は DOM 変更を数秒遅れて出す。取り直さないと**入っているのに古い値を
-  読み続けて**期限切れで 500 になる)」 — と不採用案(`ACTION_FOCUS`・ホスト側のキーボード回避)は
+  読み続けて**期限切れで 500 になる)」「**`findFocus(FOCUS_INPUT)` を信じない**(Flutter では
+  半分の確率で欄でなく FlutterView の入れ物を返す。ref なしの clear / IME Enter は
+  `focusedEditable` = 編集可能でなければ木から `isFocused && isEditable` を探す。実機 10 周中 5 周)」
+  — と不採用案(`ACTION_FOCUS`・ホスト側のキーボード回避)は
   docs/design.md §Android のテキスト注入の規律
 
 ## 受け手フローの設計方針(スキル・スクリプト・CLI の分担)

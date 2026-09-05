@@ -290,7 +290,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             InputInjector.tap(ua(), center[0], center[1]);
             InputInjector.clearTextAt(ua(), center[0], center[1], refIds.get(ref), 4000);
         } else {
-            InputInjector.clearFocused(ua());
+            InputInjector.clearFocused(ua(), 4000);
         }
         settle();
         return ok();

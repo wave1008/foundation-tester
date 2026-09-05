@@ -1098,9 +1098,22 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 
 ### Android のテキスト注入の規律(2026-07-31)
 
-`InputInjector` の3経路(`setTextAppendingAt` / `clearTextAt` / `setTextAppending`)が守る規律。
+`InputInjector` の4経路(`setTextAppendingAt` / `clearTextAt` / `setTextAppending` /
+`clearFocused` = ref なしの `clearInput()`)が守る規律。
 **破ると「入ったのに値が壊れる」「成功を返すのに入っていない」が高負荷でだけ出る**
 (8台並列で約40%再現・単独実行では8回中0回。解決後は10周×37シナリオで0件)。
+**ref なしの `clearFocused` だけが1発の `performAction` で 409 を返していた**(2026-09-06 に
+揃えた。ブリッジ版 65): Flutter のパスワード欄で実機 Pixel 4a の 10 周中 5 周が
+「does not accept ACTION_SET_TEXT」で赤。logcat プローブで確定した原因は
+**`findFocus(FOCUS_INPUT)` が半分の確率で欄ではなく FlutterView の入れ物
+(`android.widget.FrameLayout`・editable=false・text=null・子 1 つ)を返す**こと —— Flutter の
+a11y ブリッジが入力フォーカスのセマンティクスノードを持っていない瞬間は、フレームワークが
+フォーカスを持つ View 自体へ倒す。入れ物に SET_TEXT を撃てば拒否(旧 409)、「空」と読めば
+黙って成功(再試行だけ足した中間版では「reported success but the value remained」で 5/10)。
+直し方は **`focusedEditable`**: findFocus の結果が編集可能でなければ木から `isFocused && isEditable`
+を探し、無ければ期限(4 秒)まで引き直す。読む前に refresh・空を読めたら成功・受理だけでは
+成功にしない、は他の3経路と同じ。`pressImeEnter` も同じ選び方(入れ物への ACTION_IME_ENTER は
+必ず失敗し keyevent へ落ちていた)。修正後 10 周 0 件(うち 1 周は木から見つけて成功)
 
 - **`performAction(ACTION_SET_TEXT)` の `true` は「受理された」であって「入った」ではない**。
   タップがキーボードに吸われてフォーカスが立っていない Compose の TextField は、受理しても
