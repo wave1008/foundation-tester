@@ -669,6 +669,13 @@
 - **システムアラートの判定は2段**: 登録がある間は `SystemUIGate` が毎ステップ止める / 登録が
   無いときは **launch 直後の最初の触る操作と失敗時だけ1回聞いて** `system-alert-present` の注記と
   題名を残す(止めない・閉じない)。常時監視へ広げない
+- **`Shell.run` は子孫ごと止め、出力の EOF を待ち切らない**(Codex 指摘 2026-09-05): timeout の
+  SIGTERM/SIGKILL は `killpg`(Foundation.Process の子はグループリーダー)で孫まで届かせる ——
+  `kill(pid,…)` だけだと `trap '' TERM` を継いだ孫がパイプを握り続けて 30 秒返らなかった。
+  出力の回収は子の reap 後 `Shell.outputDrainGraceSeconds`(1 秒)で打ち切る(EOF が遅れるのは
+  孫が書込端を継承したまま残る形だけ。`(sleep 3) &` の孫で 3 秒待っていた)。
+  **`readDataToEndOfFile` を子プロセスのパイプに使わない**(EOF まで戻らない = 期限が置けない)。
+  witness は `ShellTimeoutTests` の孫2本
 - **プロセスの生存管理は3つの定義元に寄せる**(2026-09-05 の掃討): ①**生死の判定は
   `FTCore.ProcessLiveness.isAlive`**(sysctl で `SZOMB`・`P_WEXIT` を「死」と見る。`kill(pid, 0)` は
   ゾンビにも成功するので台帳が永久に回収されない —— `ProcessLivenessSourceScanTests` が素の
