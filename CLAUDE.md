@@ -669,6 +669,14 @@
 - **システムアラートの判定は2段**: 登録がある間は `SystemUIGate` が毎ステップ止める / 登録が
   無いときは **launch 直後の最初の触る操作と失敗時だけ1回聞いて** `system-alert-present` の注記と
   題名を残す(止めない・閉じない)。常時監視へ広げない
+- **終了猶予の方針は1つ**(Codex 指摘 2026-09-06): **自前の後始末を持つ fleetest のプロセス**
+  (`api run` / `run --machine` の子 / `fleetest-scenarios` = 終了スクリプト・dispatch.lock の解放・
+  向きの復元)には**時限の SIGKILL を送らない** —— SIGTERM を送って待ち、刺さったら人が強制終了する
+  (`InterruptRelay` の fleetest の子 = `escalateAfter: nil` / `ParentDeathWatch` = SIGTERM のみ /
+  拡張の `api run` キャンセル = SIGTERM のみ + 2 秒経っても生きていれば「強制終了」ボタンを出す)。
+  **時限 SIGKILL(2 秒)を送ってよいのは後始末を持たない外部・ヘルパーだけ**(ssh・`Shell.run` の
+  外部コマンド・配信ヘルパー・`api monitor` / `host-metrics` / `api live serve` = stdin EOF で即終わる)。
+  後始末が刺さって残った fleetest は `FT_PARENT_PID` の印付き孤児として次回 activate の掃除が落とす
 - **`Shell.run` は子孫ごと止め、出力の EOF を待ち切らない**(Codex 指摘 2026-09-05): timeout の
   SIGTERM/SIGKILL は `killpg`(Foundation.Process の子はグループリーダー)で孫まで届かせる ——
   `kill(pid,…)` だけだと `trap '' TERM` を継いだ孫がパイプを握り続けて 30 秒返らなかった。

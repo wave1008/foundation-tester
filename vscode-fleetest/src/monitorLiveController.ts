@@ -266,7 +266,10 @@ export class MonitorLiveController implements vscode.Disposable {
 
   dispose(): void {
     if (this.generating) {
-      this.cli.cancelCurrent();
+      // `api gen-scenario` は `api run` と違って dispatch.lock 解放や終了スクリプトを持たない
+      // 一回限りのコード生成なので、後始末を持たないヘルパー扱いで時限 SIGKILL してよい
+      // (cli.ts の cancelCurrent の既定はここでは使わない。既定にすると dispose が確定しない)。
+      this.cli.cancelCurrent({ escalateAfterMs: 2000 });
     }
     this.stopProcesses();
   }

@@ -64,6 +64,11 @@ export const runStrings = {
   },
 
   "run.cancelled": { ja: "実行がキャンセルされました。", en: "The run was cancelled." },
+  "run.cancel.stillRunningMessage": {
+    ja: "実行の後始末(終了スクリプト・ロック解放)を待っています。応答しない場合は強制終了できます。",
+    en: "Waiting for the run to finish cleaning up (teardown script, lock release). You can force kill it if it's unresponsive.",
+  },
+  "run.cancel.forceKillButton": { ja: "強制終了", en: "Force kill" },
   "run.process.stderrTailHeader": { ja: "stderr 末尾", en: "stderr tail" },
   "run.process.abnormalExit": {
     ja: "fleetest プロセスが異常終了しました(exit code: {exitCode})。出力パネル「fleetest」を確認してください。{tail}",

@@ -831,7 +831,19 @@ async function executeRun(
   };
 
   const cancelListener = token.onCancellationRequested(() => {
-    cli.cancelCurrent();
+    // fleetest 自身の子(`api run`)は自前の後始末(dispatch.lock 解放・終了スクリプト)を持つため
+    // 時限 SIGKILL しない(cli.ts のコメント参照)。後始末が長引いているときだけ通知し、
+    // 利用者が選んだときだけ強制終了する。
+    cli.cancelCurrent({
+      onStillRunning: (forceKill) => {
+        const forceKillItem = t("run.cancel.forceKillButton");
+        void vscode.window.showWarningMessage(t("run.cancel.stillRunningMessage"), forceKillItem).then((picked) => {
+          if (picked === forceKillItem) {
+            forceKill();
+          }
+        });
+      },
+    });
   });
 
   // liveFollow: livePanel.ts が単一クラス実行のときだけ自動追従する判定(runHandler が liveTarget を用意したか)。

@@ -13,11 +13,6 @@ import Foundation
 public enum ParentDeathWatch {
     public static let environmentKey = "FT_PARENT_PID"
 
-    /// SIGTERM で死ななかったときに SIGKILL するまでの猶予(秒)。
-    /// 根拠: Sources/fleetest/InterruptRelay.swift の ssh エスカレート(片付けるものが無い外部
-    /// プロセス)と同じ 2 秒
-    private static let killGrace: TimeInterval = 2
-
     /// 子へ渡す環境。既存の環境(base 省略時は現在の環境)に `FT_PARENT_PID` = 自分の pid を足す
     public static func childEnvironment(base: [String: String]? = nil) -> [String: String] {
         var env = base ?? ProcessInfo.processInfo.environment
@@ -25,15 +20,21 @@ public enum ParentDeathWatch {
         return env
     }
 
-    /// `FT_PARENT_PID` があれば武装する。無ければ何もしない(既存挙動を変えない)
+    /// `FT_PARENT_PID` があれば武装する。無ければ何もしない(既存挙動を変えない)。
+    ///
+    /// 親が死んだら**自分に SIGTERM を送るだけ**で、時限の `_exit` はしない —— 自前の後始末
+    /// (終了スクリプト・dispatch.lock の解放・向きの復元)を持つ fleetest のプロセスは、
+    /// `InterruptRelay` の fleetest の子と同じく「待つ側」に倒す(所要は利用者のスクリプト次第で
+    /// 上限を置けない。2 秒で `_exit` していた版は外側から後始末を打ち切っていた = Codex 指摘
+    /// 2026-09-06)。SIGTERM の既定動作は終了なので、ハンドラの無いプロセスは即座に終わる。
+    /// 後始末が刺さって残ったものは `FT_PARENT_PID` の印を持つ孤児として拡張の掃除
+    /// (`orphanSweep.ts`)が次回 activate で落とす
     public static func armIfRequested(environment: [String: String] = ProcessInfo.processInfo.environment) {
         guard let raw = environment[environmentKey], let parentPID = pid_t(raw) else { return }
         arm(parentPID: parentPID) {
             FileHandle.standardError.write(
                 Data("⚠️ parent process \(parentPID) exited — stopping (FT_PARENT_PID)\n".utf8))
             kill(getpid(), SIGTERM)
-            Thread.sleep(forTimeInterval: killGrace)
-            _exit(1)
         }
     }
 

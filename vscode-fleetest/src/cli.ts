@@ -7,7 +7,12 @@
 // - key を指定した呼び出しは「未着手の pending は1件だけ」に畳む。連打(例: ファイル監視の
 //   立て続けの refresh 要求)で同じ種類のリクエストがキューに複数積まれるのを防ぐ。
 //   実行中のタスクはキャンセルしない(次の要求は実行中タスクの後に1件だけ積まれる)。
-// - キャンセルは SIGTERM を送り、2秒後もプロセスが残っていれば SIGKILL する。
+// - キャンセル(cancelCurrent)は既定で SIGTERM のみを送り、SIGKILL しない。fleetest 自身の子
+//   (`api run` 等)は自前の後始末(dispatch.lock 解放・終了スクリプト)を持ち、その所要時間は
+//   利用者のスクリプト次第で上限を決められないため待つ側に倒す
+//   (Sources/fleetest/InterruptRelay.swift と同じ方針。刺さったら人が kill -9)。
+//   時限 SIGKILL は後始末を持たない外部・ヘルパー(配信ヘルパー・`api monitor`/`host-metrics`/
+//   `api live serve` = stdin EOF で即終わる)だけに使い、呼び手が `escalateAfterMs` を明示する。
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
@@ -68,6 +73,28 @@ export class CliSupersededError extends Error {
   }
 }
 
+export interface CancelOptions {
+  /**
+   * 指定すると、SIGTERM 送信後この時間(ms)経ってもプロセスが生きていれば SIGKILL する
+   * (従来挙動)。**後始末を持たない外部・ヘルパー専用**(例: `api live serve` = stdin EOF で
+   * 即終わる)。fleetest 自身の子には使わない —— 自前の終了スクリプトを打ち切ってしまう。
+   */
+  escalateAfterMs?: number;
+  /**
+   * escalateAfterMs 省略時のみ有効。SIGTERM から stillRunningNoticeMs 経ってもまだ生きていれば
+   * 1回だけ呼ばれる(後始末中か、刺さっているかを呼び手に知らせるための通知。殺しはしない)。
+   * 渡された forceKill() を呼んだときだけ SIGKILL する。
+   */
+  onStillRunning?: (forceKill: () => void) => void;
+}
+
+/**
+ * SIGTERM から onStillRunning を呼ぶまでの猶予(ms)。根拠: 「後始末を持たない外部プロセスなら
+ * SIGKILL していた時間」と同じ 2000ms を、ここでは殺す時間ではなく
+ * 「後始末中か刺さっているかを利用者に知らせる」閾値として流用する。
+ */
+const STILL_RUNNING_NOTICE_MS = 2000;
+
 interface QueuedTask {
   key: string | undefined;
   run: () => Promise<CliResult>;
@@ -83,20 +110,36 @@ export class FleetestCli {
   constructor(private readonly outputChannel: vscode.OutputChannel) {}
 
   /**
-   * 実行中の CLI プロセスがあれば SIGTERM を送り、2秒後もまだ生きていれば SIGKILL する。
-   * 実行中のプロセスが無ければ何もしない。
+   * 実行中の CLI プロセスがあれば SIGTERM を送る。実行中のプロセスが無ければ何もしない。
+   * 既定では SIGKILL しない(fleetest 自身の子は自前の後始末を持つため待つ側に倒す)。
+   * `options.escalateAfterMs` を渡したときだけ従来どおり時限 SIGKILL する
+   * (後始末を持たない外部・ヘルパー専用)。`options.onStillRunning` を渡すと、
+   * SIGTERM から STILL_RUNNING_NOTICE_MS 後もまだ生きていれば1回だけ通知する。
    */
-  cancelCurrent(): void {
+  cancelCurrent(options?: CancelOptions): void {
     const proc = this.currentProcess;
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
       return;
     }
     proc.kill("SIGTERM");
+    if (options?.escalateAfterMs !== undefined) {
+      const escalateAfterMs = options.escalateAfterMs;
+      setTimeout(() => {
+        if (proc.exitCode === null && proc.signalCode === null) {
+          proc.kill("SIGKILL");
+        }
+      }, escalateAfterMs);
+      return;
+    }
+    const onStillRunning = options?.onStillRunning;
+    if (onStillRunning === undefined) {
+      return;
+    }
     setTimeout(() => {
       if (proc.exitCode === null && proc.signalCode === null) {
-        proc.kill("SIGKILL");
+        onStillRunning(() => proc.kill("SIGKILL"));
       }
-    }, 2000);
+    }, STILL_RUNNING_NOTICE_MS);
   }
 
   /**

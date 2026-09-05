@@ -44,4 +44,19 @@ final class ParentDeathWatchTests: XCTestCase {
         let env = ParentDeathWatch.childEnvironment(base: [:])
         XCTAssertEqual(env[ParentDeathWatch.environmentKey], String(getpid()))
     }
+
+    /// **方針の固定**: 親の死に対する既定の反応は SIGTERM だけで、時限の `_exit` / SIGKILL を持たない
+    /// (自前の後始末を持つ fleetest のプロセスを外側から打ち切らない = InterruptRelay の
+    /// fleetest の子と同じ規則。CLAUDE.md「終了猶予の方針は1つ」)
+    func testDefaultReactionIsSigtermOnlyWithoutTimedForcedExit() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/FTCore/ParentDeathWatch.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+            .split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+        XCTAssertTrue(source.contains("kill(getpid(), SIGTERM)"), "親の死で自分へ SIGTERM を送ること")
+        XCTAssertFalse(source.contains("_exit("), "時限の _exit を持たない(後始末を外側から打ち切らない)")
+        XCTAssertFalse(source.contains("SIGKILL"), "自分を SIGKILL しない(同上)")
+    }
 }

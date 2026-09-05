@@ -21,7 +21,9 @@
 // - monitor プロセス、および devicesUp/devicesDown・device-catalog 等の短命 CLI 呼び出しは
 //   cli.ts の FleetestCli(直列キュー)を使わず直接 spawn する。monitor は接続中ずっと動くプロセスなので、
 //   キューに載せると以後の CLI 呼び出しが永久にブロックされるため。
-// - 子プロセス終了は SIGTERM→2秒後もまだ生きていれば SIGKILL(cli.ts の cancelCurrent() と同じ方針)。
+// - 子プロセス終了は SIGTERM→2秒後もまだ生きていれば SIGKILL。monitor/host-metrics は
+//   後始末(dispatch.lock 解放・終了スクリプト)を持たないヘルパーなのでこれでよい ——
+//   `api run` 等の後始末を持つ子は既定で SIGKILL しない(cli.ts の cancelCurrent() 参照)。
 // - ログレーン用の RunEventBus は runHandler.ts の実行と同一インスタンス(extension.ts から注入)。
 //   デバイスタイルとログレーンは device id / worker id が同一規則のため突合できる。
 // - host-metrics プロセスはプロファイル/プロジェクトに依存しないため、監視対象切り替え
