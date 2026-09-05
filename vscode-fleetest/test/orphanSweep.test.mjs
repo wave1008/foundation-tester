@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseOrphanPids } from "../src/orphanSweep";
+import { parseOrphanPids, isSpawnedByFleetest, sweepOrphans } from "../src/orphanSweep";
 
 test("parseOrphanPids: PPID=1 の live serve / host-metrics / monitor を抽出する", () => {
   const psOutput = [
@@ -100,4 +100,34 @@ test("parseOrphanPids: 不正行(数値でない PID/PPID・ヘッダ行)はス�
     "  444     1 .build/debug/fleetest api live serve --platform ios",
   ].join("\n");
   assert.deepEqual(parseOrphanPids(psOutput), [444]);
+});
+
+test("isSpawnedByFleetest: FT_PARENT_PID=<pid> の印がある環境だけ true(似た名前・部分一致は false)", () => {
+  assert.equal(isSpawnedByFleetest("fleetest api monitor --project X PATH=/usr/bin FT_PARENT_PID=4242 HOME=/Users/x"), true);
+  assert.equal(isSpawnedByFleetest("fleetest api monitor --project X PATH=/usr/bin HOME=/Users/x"), false);
+  assert.equal(isSpawnedByFleetest("fleetest api monitor FT_PARENT_PID_X=1 XFT_PARENT_PID=2"), false);
+  assert.equal(isSpawnedByFleetest(""), false);
+});
+
+test("sweepOrphans: 印のある孤児だけ SIGKILL し、印の無い同名プロセス(手で起こした検証用 monitor 等)は見送って報告する", async () => {
+  const psOutput = [
+    "111 1 /x/.build/debug/fleetest api monitor --project A",
+    "222 1 /x/.build/debug/fleetest api monitor --project B",
+    "333 1 /x/.build/debug/fleetest-androidstream --serial emulator-5554",
+  ].join("\n");
+  const envs = {
+    111: "fleetest api monitor --project A FT_PARENT_PID=9999 HOME=/Users/x",
+    222: "fleetest api monitor --project B HOME=/Users/x",
+    333: "",
+  };
+  const killed = [];
+  const logs = [];
+  await sweepOrphans((m) => logs.push(m), {
+    listProcesses: async () => psOutput,
+    readEnvironment: async (pid) => envs[pid] ?? "",
+    kill: (pid) => { killed.push(pid); },
+  });
+  assert.deepEqual(killed, [111]);
+  assert.equal(logs.some((m) => m.includes("111")), true, logs.join("\n"));
+  assert.equal(logs.some((m) => m.includes("2")), true, "見送った 2 件を報告する: " + logs.join("\n"));
 });

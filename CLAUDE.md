@@ -689,7 +689,9 @@
   対の `.pid` の生死。**`/status` 応答で生死を決めない**)。採番は `ProvisionLock` の内側でだけ行う
   (`provision` / `XCUIBridgeResolver` / `LiveBridgeAutoStarter` の3経路。
   `ProvisionLockStartupPathsSyncTests`)。拡張の孤児掃除(`orphanSweep.ts`)は配信
-  (`api device-stream`・`fleetest-*stream` / `devicepoll`)も対象(PPID=1 のみ)
+  (`api device-stream`・`fleetest-*stream` / `devicepoll`)も対象。**殺すのは PPID=1 かつ環境に
+  `FT_PARENT_PID` を持つもの(= 拡張 / fleetest が起こしたもの)だけ** —— 手で `nohup` した同名の
+  プロセスはコマンド文字列では区別できないので、所有の印で絞る(Codex 指摘 2026-09-05)
 - **ブリッジを起動する前に「そのポートを今 LISTEN している実体」を確かめる**。`/status` 応答だけで
   数えると、背面に回った in-app ブリッジ(TCP 受付・HTTP 無応答)が掴んだポートを「空き」と
   採番して新しい注入が衝突する(全シミュレータは loopback を共有 = ポートは台を跨いで一意)。

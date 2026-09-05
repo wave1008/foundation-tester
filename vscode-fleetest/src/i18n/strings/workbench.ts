@@ -225,6 +225,10 @@ export const workbenchStrings = {
     ja: "[fleetest] 孤児化した常駐プロセスを掃除しました: PID {pids}",
     en: "[fleetest] Cleaned up orphaned resident processes: PID {pids}",
   },
+  "workbench.orphanSweep.skippedUnownedLog": {
+    ja: "[fleetest] 同名の孤児プロセス {count} 件は拡張が起こしたものではないので触りませんでした(FT_PARENT_PID なし)",
+    en: "[fleetest] Left {count} same-name orphan process(es) alone: not spawned by the extension (no FT_PARENT_PID)",
+  },
 
   "workbench.lastResults.cliFailedNoReport": {
     ja: "CLI 実行で失敗(詳細はレポート参照)",
