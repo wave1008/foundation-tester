@@ -677,6 +677,9 @@
   **時限 SIGKILL(2 秒)を送ってよいのは後始末を持たない外部・ヘルパーだけ**(ssh・`Shell.run` の
   外部コマンド・配信ヘルパー・`api monitor` / `host-metrics` / `api live serve` = stdin EOF で即終わる)。
   後始末が刺さって残った fleetest は `FT_PARENT_PID` の印付き孤児として次回 activate の掃除が落とす
+  **階層をまたぐ保証(起こした側 → `api run` → シナリオ実行バイナリ)は `CrossLayerTerminationTests` が
+  実バイナリで固定する**(`--dry-run --debug --pause-on-start --skip-build` = デバイスも入れ子の swift build も
+  要らない長生きの孫。親の SIGKILL と子への SIGTERM の両方)
 - **`Shell.run` は子孫ごと止め、出力の EOF を待ち切らない**(Codex 指摘 2026-09-05): timeout の
   SIGTERM/SIGKILL は `killpg`(Foundation.Process の子はグループリーダー)で孫まで届かせる ——
   `kill(pid,…)` だけだと `trap '' TERM` を継いだ孫がパイプを握り続けて 30 秒返らなかった。
