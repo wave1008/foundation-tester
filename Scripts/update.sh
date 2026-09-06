@@ -20,6 +20,7 @@ TOOL_ROOT_ARG=""
 PASS_THROUGH=()
 DO_PLUGIN=1
 ALLOW_PULL=1
+KEEP_LOCAL=0
 FORCE=0
 DO_DOCTOR=0
 
@@ -54,7 +55,7 @@ while [ $# -gt 0 ]; do
     --no-pull) ALLOW_PULL=0; PASS_THROUGH+=(--no-pull); shift ;;
     --force) FORCE=1; shift ;;
     --doctor) DO_DOCTOR=1; shift ;;
-    --keep-local) PASS_THROUGH+=(--keep-local); shift ;;
+    --keep-local) KEEP_LOCAL=1; PASS_THROUGH+=(--keep-local); shift ;;
     --verbose) PASS_THROUGH+=(--verbose); shift ;;
     --skip-extension) PASS_THROUGH+=(--skip-extension); shift ;;
     --skip-plugin) DO_PLUGIN=0; shift ;;
@@ -102,6 +103,33 @@ if [ "${FT_UPDATE_REEXEC:-0}" != "1" ] \
       echo "   If the last run failed midway, or to redo the install, re-run with --force."
       exit 0 ;;
   esac
+fi
+
+# ---- 0.6: 分岐したクローンの復旧(委譲より前。**起動順の問題なのでここにしか置けない**) ----
+# 下の委譲先は **クローン側の** install.sh で、クローンが古いほどその install.sh も古い。
+# 「クローンが更新できない」の修正をクローンの中だけに置くと、**修正が要る受け手にだけ
+# 届かない**(2026-09-07 実測: 405 遅れ / 109 進みの受け手で、新しい update.sh を取得して
+# 走らせても古い install.sh が warn を出して旧コードを建て直した)。update.sh は毎回
+# 新鮮に取得されるので、ここで先に上流へ寄せてから委譲する。
+# 判定の正典は install.sh の pull 分岐(clone_is_disposable / behind・ahead の仕分け)で、
+# ここはそこへ到達させるための最小の露払い。**片方だけ変えない**
+if [ "$ALLOW_PULL" = "1" ] && [ "$WORK_DIR" != "$TOOL_ROOT" ] && [ "$KEEP_LOCAL" = "0" ] \
+   && branch="$(git -C "$TOOL_ROOT" symbolic-ref --short -q HEAD)"; then
+  if git -C "$TOOL_ROOT" fetch origin "$branch" >/dev/null 2>&1; then
+    behind="$(git -C "$TOOL_ROOT" rev-list --count "HEAD..origin/$branch" 2>/dev/null || echo 0)"
+    ahead="$(git -C "$TOOL_ROOT" rev-list --count "origin/$branch..HEAD" 2>/dev/null || echo 0)"
+    # **遅れと進みの両方があるときだけ**。進みのみ(保守者が手元にコミットを持つ)は触らない
+    if [ "$behind" != "0" ] && [ "$ahead" != "0" ]; then
+      echo "⚠️ The clone has diverged from origin/$branch ($behind behind / $ahead ahead)."
+      echo "   Realigning it to origin/$branch — a diverged clone never fast-forwards again,"
+      echo "   so every later update would be skipped with only a warning. (--keep-local opts out.)"
+      git -C "$TOOL_ROOT" reset --hard "origin/$branch" >/dev/null 2>&1 \
+        || { echo "❌ Update aborted: could not realign $TOOL_ROOT to origin/$branch" >&2; exit 1; }
+      # 未追跡も落とす(install.sh の settle_local_changes と同じ理由・同じく -x は付けない)
+      git -C "$TOOL_ROOT" clean -fd >/dev/null 2>&1 || true
+      echo "✅ Realigned the clone to $(git -C "$TOOL_ROOT" rev-parse --short HEAD)"
+    fi
+  fi
 fi
 
 # ---- 1〜2・5・5.5: install.sh に委譲(pull・build・拡張・.mcp.json・検証ゲート・ログ) -------

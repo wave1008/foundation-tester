@@ -293,6 +293,13 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
   # マージコミットを勝手に作らないため ff-only。版固定(detached)は意図的とみなして触らない。
   # ローカル変更の始末(外部構成は自動破棄・それ以外は人に確認)。**REF 経路と pull 経路の
   # 両方から呼ぶ** —— どちらも checkout / pull の前にツリーを綺麗にする必要がある
+  # クローンの中身を捨てて上流へ合わせてよいか。外部構成では TOOL_ROOT に受け手の資産が
+  # 無い(TestProjects/・プロファイル・.mcp.json はすべて WORK_DIR 側)ので捨ててよい。
+  # **ローカル変更の自動破棄と履歴の分岐からの復旧が同じ条件を使う**(片方だけ緩めない)
+  clone_is_disposable() {
+    [ "$WORK_DIR" != "$TOOL_ROOT" ] && [ "$KEEP_LOCAL" = "0" ]
+  }
+
   settle_local_changes() {
   # 前回の更新が残した npm の版差分を先に片付ける(これを残すと下の dirty ガードで止まる)
   restore_lock_version_churn
@@ -301,8 +308,7 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
   # ―― 聞くと更新1回あたりの承認が3手増える(ダイアログ + reset + 再実行。受け手実測)。
   # 捨てた内容は画面とログに残す(追跡分は reset、未追跡は clean。どちらも下の行を参照)。
   # clone 構成(保守者・資産が同居)と --keep-local は従来どおり人に確認する
-  if [ "$WORK_DIR" != "$TOOL_ROOT" ] && [ "$KEEP_LOCAL" = "0" ] \
-     && [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
+  if clone_is_disposable && [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
     echo "⚠️ Discarding local changes in the clone before updating (external layout; use --keep-local to keep them):"
     git -C "$TOOL_ROOT" status --short
     git -C "$TOOL_ROOT" reset --hard >/dev/null \
@@ -384,8 +390,32 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
     HEAD_BEFORE_PULL="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
     if git -C "$TOOL_ROOT" pull --ff-only >>"$RAW_SINK" 2>&1; then
       record "clone" ok "updated the existing clone: $TOOL_ROOT ($branch $(git -C "$TOOL_ROOT" rev-parse --short HEAD), $(elapsed_since $step_started))"
+    elif ! git -C "$TOOL_ROOT" fetch origin "$branch" >>"$RAW_SINK" 2>&1; then
+      # 上流に届かない。**オフライン運用を壊さないので warn のまま**(手元のクローンで作業は続く)
+      soft_fail "clone" "git fetch failed (offline?) — continuing with the existing clone $(git -C "$TOOL_ROOT" rev-parse --short HEAD)" 0.5
     else
-      soft_fail "clone" "git pull failed (continuing with the existing clone; check the network or a diverged history)" 0.5
+      # fetch は通ったのに ff できない。**先行しているだけ**(保守者が手元にコミットを持つ)と
+      # **分岐**(上流が force-push された・クローンの中でコミットした)を分ける ——
+      # 前者で落とすと保守者の運用を壊し、後者を通すと旧コードを建て直して
+      # 「更新成功」に見える(2026-09-07 に受け手の外部構成で実測。405 遅れ/109 進みで
+      # ブリッジ版が古いまま ✅ 8 件・exit 2 になった)
+      behind="$(git -C "$TOOL_ROOT" rev-list --count "HEAD..origin/$branch" 2>/dev/null || echo 0)"
+      ahead="$(git -C "$TOOL_ROOT" rev-list --count "origin/$branch..HEAD" 2>/dev/null || echo 0)"
+      if [ "$behind" = "0" ]; then
+        record "clone" skip "the clone is $ahead commit(s) ahead of origin/$branch — nothing to take from upstream"
+      elif clone_is_disposable; then
+        # **分岐したクローンは自力で治らない**(以後すべての更新が永久に届かない)。
+        # 外部構成なので捨てるのはツールの checkout だけ = 上流へ寄せて復旧させる
+        if git -C "$TOOL_ROOT" reset --hard "origin/$branch" >>"$RAW_SINK" 2>&1; then
+          record "clone" ok "the clone had diverged from origin/$branch ($behind behind / $ahead ahead) — reset it to $(git -C "$TOOL_ROOT" rev-parse --short HEAD) ($(elapsed_since $step_started))"
+        else
+          die "clone" "the clone has diverged from origin/$branch and could not be reset: $TOOL_ROOT" 0.5
+        fi
+      else
+        # clone 構成・--keep-local では勝手に捨てない。**続行もしない** ——
+        # 黙って旧コードを建て直すのがこの穴の実害だった
+        die "clone" "the clone has diverged from origin/$branch ($behind behind / $ahead ahead) and nothing was updated. Recover with: git -C $TOOL_ROOT fetch origin $branch && git -C $TOOL_ROOT reset --hard origin/$branch" 0.5
+      fi
     fi
   fi
 else

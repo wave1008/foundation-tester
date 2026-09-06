@@ -113,6 +113,19 @@ vsce)は画面に出ず `<WORK_DIR>/.fleetest/install-*.log` にだけ入り、*
 TOOL_ROOT で `git pull`。衝突が出たら停止して報告する(clone 構成では受け手の `TestProjects/` が
 git 管理下にあると衝突しやすい。その場合は TestProjects/ を git 管理外か別リポジトリにするよう案内する)。
 
+**pull が失敗したら「届いていない」を必ず伝える**(0.7 の更新スクリプトは自動で処理する。
+ここは手動で進めたときの判断)。原因で扱いが変わる:
+
+- **上流に届かない(オフライン)** … 手元のクローンのまま作業は続けてよい。警告だけ
+- **遅れ かつ 進みの両方がある(分岐)** … `git rev-list --count HEAD..origin/<branch>` と
+  `origin/<branch>..HEAD` を見て判定する。**分岐したクローンは二度と fast-forward せず、
+  以後すべての更新が届かない**。外部構成(TOOL_ROOT ≠ WORK_DIR)なら受け手の資産は
+  WORK_DIR 側にあるので `git fetch origin <branch>` のうえ `git reset --hard origin/<branch>`
+  で上流へ寄せる。clone 構成では勝手に捨てず、**中止して人に判断を仰ぐ**
+- **進みだけ** … 保守者が手元にコミットを持つ通常の状態。取り込むものが無いだけで失敗ではない
+
+**古いクローンのまま「更新できた」と報告しない** —— 旧コードを建て直しても表面上は成功に見える。
+
 ### 2. 再ビルド（TOOL_ROOT）
 
 TOOL_ROOT で `swift build`。CLI 本体・拡張ランタイム・FTScenarioRunner ソースが更新される。
