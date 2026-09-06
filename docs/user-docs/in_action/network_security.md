@@ -74,7 +74,14 @@ git config --global url."https://<internal-mirror>/".insteadOf "https://github.c
 ```
 
 That single setting routes **both fleetest itself and all 20+ Swift dependencies** through the
-mirror. Three things remain:
+mirror.
+
+**SwiftPM has been confirmed to honour this setting** (measured 2026-09-07). A local bare clone
+was used as a stand-in mirror and given **a tag that does not exist upstream**; resolution
+succeeded with `insteadOf` in place and failed with `no versions match` without it. Dependency
+fetching therefore really does go to the mirror, and never reaches `github.com`.
+
+Three things remain:
 
 - **Bootstrap scripts**: `insteadOf` applies to git only, not to `curl`. Clone first, then run
   `bash <TOOL_ROOT>/Scripts/install.sh` directly (the curl form will not work). Updates use

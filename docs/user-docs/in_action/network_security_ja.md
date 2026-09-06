@@ -68,7 +68,14 @@ git の `insteadOf` で GitHub 宛てを**丸ごと**差し替えます。`Packa
 git config --global url."https://<社内ミラー>/".insteadOf "https://github.com/"
 ```
 
-これだけで **fleetest 本体と Swift の依存 20 本超が同時に**ミラー経由になります。残るのは3つ:
+これだけで **fleetest 本体と Swift の依存 20 本超が同時に**ミラー経由になります。
+
+**SwiftPM がこの設定を尊重することは実測で確認済みです**(2026-09-07)。ローカルのベアクローンを
+ミラーに見立て、**上流には存在しないタグ**を付けて `insteadOf` 有り / 無しで解決させたところ、
+有りでは解決でき、無しでは `no versions match` で失敗しました。つまり依存の取得は確かに
+ミラーへ向いており、`github.com` へは出ていません。
+
+残るのは3つ:
 
 - **導入スクリプト**: `insteadOf` は git にしか効かず `curl` には効きません。**先にクローンして
   `bash <TOOL_ROOT>/Scripts/install.sh` を直接実行**してください(curl 形は使えません)。
