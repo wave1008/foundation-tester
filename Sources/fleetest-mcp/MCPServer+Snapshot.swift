@@ -309,7 +309,8 @@ extension MCPServer {
         // **照会が前面と答えても、こちらが送った事実は消えない**(実機で実際にそうなった。
         // `backgroundedByNavigate` の doc)。照会が既に言えているときは重ねない
         if backgroundNote.isEmpty, backgroundedByNavigate.contains(Self.engineKey(args)) {
-            backgroundNote = Self.sentToBackgroundNote(snapshot.sessionBundleID)
+            backgroundNote = Self.sentToBackgroundNote(
+                launchedBundleIDs[Self.engineKey(args)] ?? snapshot.sessionBundleID)
         }
         // **すり替わりを先頭に置く**: これが起きているとき、以下の一覧は丸ごと別アプリのもので、
         // ghost 注記も scrollFrame 候補も読む意味が無い

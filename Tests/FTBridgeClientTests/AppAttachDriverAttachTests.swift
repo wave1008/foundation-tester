@@ -8,7 +8,9 @@ import XCTest
 import FTCore
 
 /// 受けたリクエストのパスを順に記録し、すべて 200 `{}` を返す最小 HTTP スタブ。
-private final class RecordingStubServer {
+/// **private ではなく internal**: HybridFallbackDriverTests.swift(同じ FTBridgeClientTests
+/// ターゲット)が実物の AppAttachDriver 経由の統合テストで再利用する
+final class RecordingStubServer {
     private var serverFD: Int32 = -1
     let port: UInt16
     private let lock = NSLock()
@@ -116,5 +118,21 @@ final class AppAttachDriverAttachTests: XCTestCase {
 
         XCTAssertEqual(stub.paths.filter { $0 == "POST /session" }.count, 1,
                        "snapshot の activate 後に再 attach しないこと: \(stub.paths)")
+    }
+
+    /// **`snapshotWithoutReactivating` は activate を打たない**
+    /// (HybridFallbackDriver が home()/openAppSwitcher() 後にこれを使う。通常の
+    /// `snapshot(bypassingCache:)` は毎回 activate するため、素通しすると背面化した対象を
+    /// 読むだけで前面へ戻してしまっていた。2026-09-06 修正)
+    func testSnapshotWithoutReactivatingSkipsActivate() async throws {
+        let stub = try RecordingStubServer()
+        defer { stub.stop() }
+        let driver = AppAttachDriver(port: stub.port, host: BridgeEndpoint.loopbackHost,
+                                      bundleID: "com.example.target")
+
+        _ = try? await driver.snapshotWithoutReactivating(bypassingCache: false)
+
+        XCTAssertEqual(stub.paths, ["GET /snapshot"],
+                       "activate を打たず、素の /snapshot だけを撃つこと: \(stub.paths)")
     }
 }

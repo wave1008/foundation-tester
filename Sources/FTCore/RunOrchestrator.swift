@@ -928,15 +928,15 @@ public final class RunOrchestrator {
     /// requeue できたら true、上限到達で false。reason は表示・記録用の理由(例:「画面凍結」)。
     /// discardRecord=false は「シナリオ未実行のまま振り直す」プレフライト用(まだ記録が無いので
     /// discardLast を呼ばない)。post-failure は true(失敗した記録を取り消す)。
+    /// **上限到達では何も書かない** —— 失敗した記録(failedSteps / errorLogs / timeline)がそのまま
+    /// 一次情報として残り、呼び手が failed に数える。合成の skipped 記録で置き換えない
+    /// (置き換えると最後の失敗の証拠が消え、durationMs:0 の埋め合わせだけが残る)
     private func discardAndRequeue(_ item: ScenarioRunItem, worker: RunWorker,
                                    queue: ScenarioQueue, reason: String,
                                    discardRecord: Bool = true) async -> Bool {
-        if discardRecord {
-            // **worker を名指しして消す** —— broadcast では同じ ID を別の台が同時に書いている
-            recorder?.discardLast(scenarioID: item.info.id,
-                                  worker: ScenarioRunner.recordingWorker(worker))
-        }
-        if let attempt = await queue.requeue(item) {
+        if let attempt = await Self.requeueDiscardingRecord(
+            item, queue: queue, recorder: recorder,
+            worker: ScenarioRunner.recordingWorker(worker), discardRecord: discardRecord) {
             await retries.add("\(item.info.id): \(reason) (requeued from \(worker.label), \(attempt)/\(MAX_FREEZE_RETRIES))")
             await anomalies.add(WorkerAnomalyRecord(
                 kind: "requeued", worker: Self.workerID(worker), label: worker.label,
@@ -947,16 +947,31 @@ public final class RunOrchestrator {
                                              limit: MAX_FREEZE_RETRIES))
             return true
         }
-        await retries.add("\(item.info.id): \(reason) (\(worker.label); retry limit reached, recorded as failed)")
+        let message = "\(reason); retry limit reached (\(MAX_FREEZE_RETRIES)), the failed result stands"
+        await retries.add("\(item.info.id): \(message) (\(worker.label))")
         await anomalies.add(WorkerAnomalyRecord(
             kind: "retryLimit", worker: Self.workerID(worker), label: worker.label,
-            scenarioID: item.info.id, reason: "\(reason); retry limit reached, recorded as failed"))
-        recorder?.recordSkipped(scenarioID: item.info.id, title: item.info.title,
-            platform: worker.platform, worker: worker.label,
-            reason: "\(reason) did not clear and the retry limit was reached")
-        continuation.yield(.flowSkipped(flowURL: item.url,
-            reason: "\(reason) did not clear and the retry limit was reached"))
+            scenarioID: item.info.id, reason: message))
+        // flowSkipped は出さない —— runOne が flowStarted〜flowFinished(passed:false) を既に流して
+        // おり、重ねると NDJSON 側(ApiRunCommand)が同じシナリオの scenarioStarted/Finished を
+        // もう1組合成する
+        continuation.yield(.workerLog(worker: worker.label,
+                                      message: "⛔ \(item.info.id): \(message)"))
         return false
+    }
+
+    /// requeue の可否を先に決め、**成立したときだけ**直前の記録を消す(戻り値は何回目の再実行か。
+    /// 上限なら nil で記録は触らない)。順序を逆にすると、上限到達の回で失敗記録を消した後に
+    /// 戻せなくなる。worker は記録の `worker` と同じ文字列(`ScenarioRunner.recordingWorker`)——
+    /// broadcast では同じ ID を別の台が同時に書いているので名指しで消す
+    static func requeueDiscardingRecord(_ item: ScenarioRunItem, queue: ScenarioQueue,
+                                        recorder: RunRecorder?, worker: String?,
+                                        discardRecord: Bool) async -> Int? {
+        guard let attempt = await queue.requeue(item) else { return nil }
+        if discardRecord {
+            recorder?.discardLast(scenarioID: item.info.id, worker: worker)
+        }
+        return attempt
     }
 
     /// retired ワーカーを reviveWorker で復帰させ、同じ queue の消化を継続する。

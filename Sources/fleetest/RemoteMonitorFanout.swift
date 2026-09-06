@@ -17,7 +17,12 @@
 //
 // 子が落ちたら、そのマシンのデバイスは**「状態を取得できない」に戻す**(古い状態を出し続けない ——
 // 向こうが落ちているのに connected と言い続けるのが最悪)。再接続は指数的に間隔を空けて試み、
-// 短時間での失敗が続いたら諦める(旧バイナリに `--device-machine` が無い機械で無限に ssh を張らない)。
+// 短時間での失敗が続いたら**短間隔をやめる**(旧バイナリに `--device-machine` が無い機械で無限に
+// ssh を張らない)。**恒久停止にはしない** —— 短時間で落ち続ける原因は「非対応バイナリ(恒久)」と
+// 「ランナーが寝ている / 再起動中(一時)」の2つで区別できず、恒久停止にすると後者が戻っても
+// 台が `state:"unknown"`・占有が `observed:false` のまま = 配信も畳まれたままになる
+// (拡張の host-metrics と同型。monitorProcessManager.ts HOST_METRICS_GIVE_UP_RETRY_MS)。
+// 諦めている間も中継は「未観測」のまま(状態を偽らない)。
 
 import FTCore
 import Foundation
@@ -27,10 +32,40 @@ final class RemoteMonitorFanout: @unchecked Sendable {
     /// 起動直後の失敗が何秒未満なら「すぐ死んだ」とみなすか(ssh の接続確立 + fleetest の起動で
     /// 数秒はかかるので、それを超えて生きていたなら設定は通っていたと判断する)
     private static let quickFailureSeconds: TimeInterval = 15
-    /// すぐ死ぬのが何回続いたら諦めるか(旧バイナリ・未セットアップの機械で無限に張り直さない)
+    /// すぐ死ぬのが何回続いたら短間隔の再接続をやめるか(旧バイナリ・未セットアップの機械で
+    /// 無限に張り直さない)
     private static let quickFailureLimit = 3
     /// 再接続の待ち(秒)。回数に応じて伸ばす
     private static let retryDelaysSeconds: [UInt32] = [2, 5, 15]
+    /// 諦めたあと(および rsync 失敗のあと)に試し直す間隔(秒)。根拠:
+    ///   - 速い段は ssh ConnectTimeout 10 秒 × quickFailureLimit 3 回 + 待ち 5+15 秒 ≈ 50 秒で尽きる。
+    ///     ランナーの再起動は 2 分前後かかるので、速い段だけでは必ず取りこぼす
+    ///   - 60 秒なら、死んだホストに払うのは「1 分に ssh 1 本(ConnectTimeout で 10 秒以内に返る)」
+    ///     で churn にならず、戻ったランナーは 1 分以内に拾える。拡張の host-metrics(10 分)より
+    ///     短いのは、こちらの停滞は「台が不明・配信が畳まれたまま」で実害が桁違いに大きいため
+    ///   - 尽きない(回数上限を置かない)。上限を置くと 2 回目の長い停止でまた恒久停止に戻る。
+    ///     ログは 1 周期に 1 行だけ(諦めたときの 1 行)= 何日寝ていても spam にならない
+    private static let slowRetrySeconds: UInt32 = 60
+
+    /// 子が死んだあとの次の一手(純粋関数。superviseMachine が使う)
+    struct RetryPlan: Equatable {
+        /// 更新後の連続クイック失敗回数(諦めたら 0 に戻す = 次は速い段からやり直す)
+        let quickFailures: Int
+        let delaySeconds: UInt32
+        /// true なら速い段を使い切った(ログは「諦める」形にする)
+        let gaveUp: Bool
+    }
+
+    /// `elapsed` = 子が生きていた秒数。quickFailureSeconds 未満なら連続回数を増やし、
+    /// quickFailureLimit に達したら slowRetrySeconds へ落として回数を 0 に戻す
+    static func retryPlan(quickFailures: Int, elapsed: TimeInterval) -> RetryPlan {
+        let failures = elapsed < quickFailureSeconds ? quickFailures + 1 : 0
+        if failures >= quickFailureLimit {
+            return RetryPlan(quickFailures: 0, delaySeconds: slowRetrySeconds, gaveUp: true)
+        }
+        let delay = retryDelaysSeconds[min(failures, retryDelaysSeconds.count - 1)]
+        return RetryPlan(quickFailures: failures, delaySeconds: delay, gaveUp: false)
+    }
 
     private let machines: [String]
     private let project: String
@@ -39,6 +74,10 @@ final class RemoteMonitorFanout: @unchecked Sendable {
     private let maxWidth: Int
     private let log: @Sendable (String) -> Void
     private let relayLine: @Sendable (String) -> Void
+    /// テストの差し替え口(nil なら実物: RemoteProjectSync.run / runChild(machine:) / sleep(1))
+    private let projectSyncOverride: (@Sendable (String) -> String?)?
+    private let childRunnerOverride: (@Sendable (String) -> Void)?
+    private let sleepSlice: @Sendable () -> Void
 
     private let lock = NSLock()
     /// マシンごとの最新の devices(id → 1台分)。子が落ちたら**そのマシンのぶんを捨てる**
@@ -48,7 +87,10 @@ final class RemoteMonitorFanout: @unchecked Sendable {
 
     init(machines: [String], project: String, profile: String?, interval: Double, maxWidth: Int,
          log: @escaping @Sendable (String) -> Void,
-         relayLine: @escaping @Sendable (String) -> Void) {
+         relayLine: @escaping @Sendable (String) -> Void,
+         projectSync: (@Sendable (String) -> String?)? = nil,
+         childRunner: (@Sendable (String) -> Void)? = nil,
+         sleepSlice: @escaping @Sendable () -> Void = { sleep(1) }) {
         self.machines = machines
         self.project = project
         self.profile = profile
@@ -56,6 +98,9 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         self.maxWidth = maxWidth
         self.log = log
         self.relayLine = relayLine
+        self.projectSyncOverride = projectSync
+        self.childRunnerOverride = childRunner
+        self.sleepSlice = sleepSlice
     }
 
     /// マシンごとに1本ずつ、監視スレッドを立てる(スレッドの中で rsync → spawn → 再接続まで回す)
@@ -103,38 +148,53 @@ final class RemoteMonitorFanout: @unchecked Sendable {
 
     // MARK: - 1マシン分の監督
 
-    private func superviseMachine(_ machine: String) {
-        if let failure = RemoteProjectSync.run(project: project, machine: machine) {
-            log("[monitor] ❌ \(failure) — devices on \(machine) stay unobserved")
-            relayUnobservedLock(machine)
-            return
-        }
-        var quickFailures = 0
+    /// internal: RemoteMonitorFanoutRetryTests が差し替え口経由で回す
+    func superviseMachine(_ machine: String) {
+        let projectSync = projectSyncOverride ?? { RemoteProjectSync.run(project: self.project, machine: $0) }
         while !isStopping() {
-            let startedAt = Date()
-            runChild(machine: machine)
-            // 子が落ちた: そのマシンの状態は**もう根拠が無い**ので捨てる。占有(dispatch.lock)も
-            // 同じ —— 古い「他人の run が実行中」を出し続けない(拡張は控えを消して不明に戻す)
-            lock.lock()
-            devicesByMachine.removeValue(forKey: machine)
-            children.removeValue(forKey: machine)
-            lock.unlock()
-            relayUnobservedLock(machine)
+            if let failure = projectSync(machine) {
+                log("[monitor] ❌ \(failure) — devices on \(machine) stay unobserved for now;"
+                    + " retrying every \(Self.slowRetrySeconds)s")
+                relayUnobservedLock(machine)
+                sleepUnlessStopping(Self.slowRetrySeconds)
+                continue
+            }
+            var quickFailures = 0
+            while !isStopping() {
+                let startedAt = Date()
+                if let childRunnerOverride { childRunnerOverride(machine) } else { runChild(machine: machine) }
+                // 子が落ちた: そのマシンの状態は**もう根拠が無い**ので捨てる。占有(dispatch.lock)も
+                // 同じ —— 古い「他人の run が実行中」を出し続けない(拡張は控えを消して不明に戻す)
+                lock.lock()
+                devicesByMachine.removeValue(forKey: machine)
+                children.removeValue(forKey: machine)
+                lock.unlock()
+                relayUnobservedLock(machine)
+                if isStopping() { return }
+                let plan = Self.retryPlan(quickFailures: quickFailures,
+                                          elapsed: Date().timeIntervalSince(startedAt))
+                quickFailures = plan.quickFailures
+                if plan.gaveUp {
+                    log("[monitor] Giving up on \(machine) for now: the remote monitor died"
+                        + " \(Self.quickFailureLimit) times right after starting (asleep / rebooting,"
+                        + " or is its fleetest up to date? `fleetest remote setup \(machine)`)."
+                        + " Its devices stay unobserved; retrying every \(plan.delaySeconds)s")
+                    sleepUnlessStopping(plan.delaySeconds)
+                    // 速い段からやり直す(rsync も撃ち直す = 再起動で作業木が消えていても拾える)
+                    break
+                }
+                log("[monitor] Reconnecting to \(machine) in \(plan.delaySeconds)s")
+                sleepUnlessStopping(plan.delaySeconds)
+            }
+        }
+    }
+
+    /// 1 秒刻みで眠り、stop() が来たら残りを捨てる(`api monitor` は stdin EOF で即終わる契約。
+    /// 60 秒の一枚岩の sleep だと終了が最長 60 秒遅れる)。internal: テストが即時終了を固定する
+    func sleepUnlessStopping(_ seconds: UInt32) {
+        for _ in 0..<seconds {
             if isStopping() { return }
-            if Date().timeIntervalSince(startedAt) < Self.quickFailureSeconds {
-                quickFailures += 1
-            } else {
-                quickFailures = 0
-            }
-            guard quickFailures < Self.quickFailureLimit else {
-                log("[monitor] Giving up on \(machine): the remote monitor died \(quickFailures) times right"
-                    + " after starting (is its fleetest up to date? `fleetest remote setup \(machine)`)."
-                    + " Its devices stay unobserved until the monitor is restarted")
-                return
-            }
-            let delay = Self.retryDelaysSeconds[min(quickFailures, Self.retryDelaysSeconds.count - 1)]
-            log("[monitor] Reconnecting to \(machine) in \(delay)s")
-            sleep(delay)
+            sleepSlice()
         }
     }
 

@@ -27,6 +27,10 @@ private final class RecordingDriver: AppDriver, @unchecked Sendable {
 
     final class Log: @unchecked Sendable { var entries: [String] = [] }
 
+    /// `launch(bundleID:)` に渡された値(委譲先が正しい相手かを確かめるため。ログの呼び出し名
+    /// 自体は既存テストの期待値と合わせて "launch" のまま変えない)
+    var lastLaunchedBundleID: String?
+
     init(name: String, log: Log) {
         self.name = name
         self.log = log
@@ -44,7 +48,10 @@ private final class RecordingDriver: AppDriver, @unchecked Sendable {
     func uninstall(bundleID: String) async throws {}
     func isAppForeground(bundleID: String) async throws -> Bool { false }
     func foregroundAppID() async throws -> String? { nil }
-    func launch(bundleID: String) async throws { try record("launch") }
+    func launch(bundleID: String) async throws {
+        lastLaunchedBundleID = bundleID
+        try record("launch")
+    }
     func snapshot() async throws -> SnapshotResponse {
         try record("snapshot")
         return snapshotResponse
@@ -206,5 +213,69 @@ final class HybridFallbackDriverTests: XCTestCase {
         _ = try await driver.snapshot()
 
         XCTAssertEqual(log.entries, ["inapp.snapshot"])
+    }
+
+    // MARK: - Bug 1: press(ref:) は delegatedApp(別アプリへの委譲)中も active(foreignApp)へ
+
+    /// **別アプリ(springboard 等)への明示委譲中は press(ref:) も foreignApp へ**。
+    /// 元は `appBackgrounded` だけを見ており、`delegatedApp`(launch(bundleID:) が別 bundle
+    /// を開いて委譲した状態。appBackgrounded は false のまま)を見落として primary
+    /// (委譲先とは無関係な自分の木の ref)へ投げていた —— ref は委譲先の snapshot が振った
+    /// 番号なので、primary で解決すると無関係な要素を長押しするか、backgrounded な primary への
+    /// 応答待ちでタイムアウトする
+    func testPressByRefGoesToForeignAppWhenDelegatedToAnotherApp() async throws {
+        let foreign = RecordingDriver(name: "foreign", log: log)
+        driver = HybridFallbackDriver(primary: primary, fallback: fallback,
+                                      primaryBundleID: "com.example.app", foreignApp: foreign)
+
+        try await driver.launch(bundleID: "com.apple.springboard")
+        log.entries.removeAll()
+
+        try await driver.press(ref: 3, duration: 1)
+
+        XCTAssertEqual(log.entries, ["foreign.press(ref:3)"],
+                       "別アプリへ委譲中は press(ref:) も foreignApp だけに届くこと"
+                       + "(primary/fallback を撃ってはいけない): \(log.entries)")
+    }
+
+    // MARK: - Bug 2: home()/openAppSwitcher() の後の snapshot は再前面化しない
+
+    /// **foreignApp があれば springboard 参照へ張り替えて読む**。attach(fallback)側の
+    /// snapshot は毎回 activate する契約なので、そちらへ回すと「読むだけで背面化していた
+    /// アプリを前面へ戻す」事故になる —— foreignApp があるときはそれを避け、
+    /// fallback(attach)には一切触れずに読めること
+    func testSnapshotAfterHomeReadsSpringboardThroughForeignAppWithoutTouchingAttach() async throws {
+        let foreign = RecordingDriver(name: "foreign", log: log)
+        driver = HybridFallbackDriver(primary: primary, fallback: fallback, foreignApp: foreign)
+        primary.errors["home"] = Self.notCapable
+
+        try await driver.home()
+        log.entries.removeAll()
+
+        _ = try await driver.snapshot()
+
+        XCTAssertEqual(log.entries, ["foreign.launch", "foreign.snapshot"],
+                       "home() の後の snapshot は foreignApp を springboard 参照で読み、"
+                       + "attach(fallback)を再前面化のために撃ってはいけない: \(log.entries)")
+        XCTAssertEqual(foreign.lastLaunchedBundleID, "com.apple.springboard")
+    }
+
+    /// **実物の AppAttachDriver + スタブ HTTP サーバで固定する**: foreignApp が無いとき、
+    /// home() の後の snapshot は `POST /session`(activate)を一切打たず `GET /snapshot` だけを
+    /// 撃つこと。RecordingDriver によるフェイクだけでは、AppAttachDriver.snapshot(bypassingCache:)
+    /// が実際に activate を打つかまでは検証できない(フェイクは activate という概念を持たない)
+    func testSnapshotAfterHomeDoesNotReactivateTheRealAttachDriver() async throws {
+        let stub = try RecordingStubServer()
+        defer { stub.stop() }
+        let realAttach = AppAttachDriver(port: stub.port, host: BridgeEndpoint.loopbackHost,
+                                         bundleID: "com.example.target")
+        primary.errors["home"] = Self.notCapable
+        driver = HybridFallbackDriver(primary: primary, fallback: realAttach)
+
+        try await driver.home()
+        _ = try? await driver.snapshot()
+
+        XCTAssertEqual(stub.paths, ["POST /home", "GET /snapshot"],
+                       "home() 後の snapshot は activate(POST /session)を打たないこと: \(stub.paths)")
     }
 }

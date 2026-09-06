@@ -64,6 +64,19 @@ public final class AppAttachDriver: AppDriver {
         response.elements = SnapshotDedupe.wrapperScrollMerge(response.elements)
         return response
     }
+
+    /// **`snapshot(bypassingCache:)` の非 activate 版**(HybridFallbackDriver 専用)。
+    /// 通常経路は毎回 activate する契約(上のメソッド参照)だが、それは
+    /// home()/openAppSwitcher() で背面化した対象を**読むだけで前面へ戻してしまう**
+    /// (2026-09-06 発覚: MCP の snapshot が「最後の状態」の案内に反して、読むたびに
+    /// 前面へ戻された「今の」アプリの木を返していた)。activate を挟まないので、
+    /// セッションのアプリが前面に無ければランナー側 `requireForegroundApp()` が 422 で断る ——
+    /// **ここで activate へフォールバックしない**(呼び手には「アプリが背面にある」とそのまま伝わる)
+    func snapshotWithoutReactivating(bypassingCache: Bool) async throws -> SnapshotResponse {
+        var response = try await client.snapshot(bypassingCache: bypassingCache)
+        response.elements = SnapshotDedupe.wrapperScrollMerge(response.elements)
+        return response
+    }
     /// **転送必須**(既定実装に任せると最内のブリッジ接続へ届かず、上げたつもりで 120 のまま)
     public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
         client.raiseElementLimitOnNextSnapshot(max)

@@ -101,6 +101,21 @@ final class BridgeClientTimeoutTests: XCTestCase {
         }
     }
 
+    /// **press/drag/pinch は求められた継続時間ぶん予算を足す**こと(`timeout(forDuration:)`)。
+    /// `duration` 無しの固定 20s だけだと、`holdSeconds: 25` のような長い指定がランナーの
+    /// 応答より先にホスト側でタイムアウトし、まだ押している最中に bridgeUnreachable を
+    /// 誤って報告する(DSL に上限が無いため実際に起こり得る)。床は interactionTimeout のまま
+    func testTimeoutForDurationAddsTheRequestedDurationOnTopOfTheFloor() {
+        let client = BridgeClient(port: 1, timeoutSeconds: 120,
+                                  interactionTimeout: 20, sessionTimeout: 45)
+        XCTAssertGreaterThanOrEqual(client.timeout(forDuration: 25), 45,
+                                    "20s の床 + 25s の duration で最低 45s になるはず")
+        XCTAssertEqual(client.timeout(forDuration: 0), 20,
+                       "duration 0 は床(interactionTimeout)のままのはず")
+        XCTAssertEqual(client.timeout(forDuration: -5), 20,
+                       "負の duration は床を割ってはいけない")
+    }
+
     func testSessionEndpointUsesSessionBudget() async throws {
         let listener = try UnresponsiveTCPListener()
         defer { listener.stop() }

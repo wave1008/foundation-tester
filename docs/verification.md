@@ -2155,7 +2155,7 @@ Android エミュレータの表示凍結([[emulator-display-freeze-wedge]])と*
 **印を広げてはいけない**: 対象は「ドライバが返した基盤側のエラー」だけで、アサーション失敗の
 文言(`element not found` 等)を足すと**本物の失敗が振り直され、最終的に skipped として
 記録される**(赤が消える = 最悪の壊れ方)。`EnvironmentFaultTests` がこの境界を守る。
-**振り直しても消えなければ従来どおり赤**(上限到達で `recorded as failed`)。
+**振り直しても消えなければ従来どおり赤**(上限到達は `workerAnomalies` の `retryLimit` に残り、最後の失敗記録はそのまま残る。合成の skipped 記録には置き換えない)。
 
 **配線の確認は陽性対照で**: 印に一時的に `element not found` を足し、確実に落ちるシナリオ
 (`FT_CONTAINER_INFERENCE=off` + 飛び越し witness)で「振り直し → 上限到達 → 赤」を1回通してから

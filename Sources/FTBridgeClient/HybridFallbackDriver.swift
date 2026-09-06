@@ -153,9 +153,14 @@ public final class HybridFallbackDriver: AppDriver {
     }
 
     /// **ref を渡さずに回す**: in-app は長押しを持たない(501)ので、primary の snapshot で
-    /// 中心座標へ畳んでから XCUITest の座標長押しへ送る。ref をそのまま渡すと別要素を押す
+    /// 中心座標へ畳んでから XCUITest の座標長押しへ送る。ref をそのまま渡すと別要素を押す。
+    /// **delegating(背面化 or 別アプリ委譲)中は active へ**(tap(ref:)/type(ref:)/clearInput(ref:) と
+    /// 同じ理由): 元は `appBackgrounded` だけを見ており、`delegatedApp`(foreignApp へ委譲中)を
+    /// 見落として primary(自分の木を持たない別アプリの ref)へ投げていた
+    /// (2026-09-06 発覚: springboard 委譲中の press(ref:) が無関係な要素を長押しするか、
+    /// suspend されたアプリへの応答待ちでタイムアウトしていた)
     public func press(ref: Int, duration: Double) async throws {
-        if appBackgrounded { return try await fallback.press(ref: ref, duration: duration) }
+        if delegating { return try await active.press(ref: ref, duration: duration) }
         do {
             try await primary.press(ref: ref, duration: duration)
             fallbackNote = nil
@@ -174,15 +179,47 @@ public final class HybridFallbackDriver: AppDriver {
     // MARK: - primary 限定(ref の名前空間・注入・エンジン identity を跨がせない)
 
     public func tap(ref: Int) async throws { try await active.tap(ref: ref) }
-    public func snapshot() async throws -> SnapshotResponse { try await active.snapshot() }
+    public func snapshot() async throws -> SnapshotResponse { try await snapshot(bypassingCache: false) }
     /// **転送必須**(既定実装 nil に落ちると、ラッパー越しでは常に「答えられない」になる。
     /// AppDriver.hittable の doc と AppDriverDefaultDispatchTests 参照)
     public func hitTest(ref: Int) async throws -> HitTestAnswer {
         try await active.hitTest(ref: ref)
     }
 
+    /// **home()/openAppSwitcher() の直後(delegatedApp ではない背面化)だけ特別扱い**する。
+    /// それ以外(通常時・foreignApp への明示委譲中)は従来どおり `active` を読む
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
-        try await active.snapshot(bypassingCache: bypassingCache)
+        if appBackgrounded, !delegatedApp {
+            return try await backgroundSnapshot(bypassingCache: bypassingCache)
+        }
+        return try await active.snapshot(bypassingCache: bypassingCache)
+    }
+
+    /// **再前面化せずに読む**: `fallback`(AppAttachDriver)の `snapshot(bypassingCache:)` は
+    /// 呼ぶたび `client.activate(bundleID:)` するため、素通しすると「読むだけで背面化していた
+    /// アプリを前面へ戻す」事故になる(MCPServer+Driver.swift の `sentToBackgroundNote` が
+    /// 「最後の状態、今の画面ではない」と案内しているのに、実際には読むたびに前面へ戻された
+    /// **今の**アプリの木を返していた。2026-09-06 発覚)。
+    ///
+    /// **foreignApp があれば springboard 参照へ張り替えて読む**
+    /// (`SystemUIDriver` の旧ランナーフォールバックと同じ形。`launch(bundleID:)` はブリッジ側で
+    /// springboard を「起動せず参照のみ」に特別扱いするので、対象アプリは背面のまま起こさない)。
+    /// home() はホーム画面、openAppSwitcher() はマルチタスク画面を出すが、**どちらも SpringBoard
+    /// プロセスの木**なので同じ bundle ID で読める。
+    ///
+    /// **foreignApp が無ければ** attach を activate なしで読む
+    /// (`AppAttachDriver.snapshotWithoutReactivating`)。ランナー側の `requireForegroundApp()` が
+    /// セッションのアプリが前面に無いと判定すれば 422 を返すので、それをそのまま呼び手へ伝える ——
+    /// **黙って activate はしない**(呼び手には「アプリが背面にある」とそのまま伝わる)
+    private func backgroundSnapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
+        if let foreignApp {
+            try await foreignApp.launch(bundleID: "com.apple.springboard")
+            return try await foreignApp.snapshot(bypassingCache: bypassingCache)
+        }
+        guard let attach = fallback as? AppAttachDriver else {
+            return try await fallback.snapshot(bypassingCache: bypassingCache)
+        }
+        return try await attach.snapshotWithoutReactivating(bypassingCache: bypassingCache)
     }
     /// **転送必須**(既定実装に任せると最内のブリッジ接続へ届かず、上げたつもりで 120 のまま)
     public func raiseElementLimitOnNextSnapshot(_ max: Int?) {

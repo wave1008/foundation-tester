@@ -827,8 +827,8 @@ extension MCPServer {
     static func backgroundedAppNote(target: String, engine: String?) -> String {
         guard target != "back", engine == "inapp" || engine == "hybrid" else { return "" }
         return ". The app is in the background now, so the tools run through the XCUITest bridge"
-            + " (slower reads, and the snapshot still describes the app itself)"
-            + " until you bring it back with ft_launch"
+            + " (slower reads; ft_snapshot shows whatever is on screen now — the home screen /"
+            + " app switcher — not the app) until you bring it back with ft_launch"
     }
 
     /// 待ちの既定(秒)。定義元は FTCore.DefaultWait(DSL の FTRuntime.defaultTimeout と共有)
@@ -939,13 +939,17 @@ extension MCPServer {
     /// **このセッションが home / appSwitcher を送ったあと、まだ ft_launch で戻していない**
     /// ときの注記。`/appstate` の照会と違い**プラットフォームに聞かない**ので、答えが
     /// 当てにならない機械(実機 iPhone 13 で前面と答えた実測)でも必ず出る。
-    /// 木は背面のアプリのままなので、ref を撃つと画面に描かれている別のものに当たる
+    /// **文言は `HybridFallbackDriver.backgroundSnapshot` と合わせてある**(2026-09-06): 背面化中は
+    /// 再前面化せず今の画面(SpringBoard 等)をそのまま読むので、対象アプリの「最後の状態」ではなく
+    /// 「今そこに実際にあるもの」だと案内する
+    /// **名指しは対象アプリ**: 背面化中の読みは SpringBoard を参照するので snapshot の
+    /// sessionBundleID は com.apple.springboard になっている。呼び手は launch したアプリの ID を渡し、
+    /// それが無いときも springboard を「戻すべきアプリ」と言わない
     static func sentToBackgroundNote(_ sessionBundleID: String?) -> String {
-        let app = sessionBundleID ?? "the app"
+        let app = sessionBundleID.flatMap { $0 == "com.apple.springboard" ? nil : $0 } ?? "the app"
         return "⚠️ This session sent home/appSwitcher and has not brought \(app) back:"
-            + " the tree below is its last state, not what is on screen now, and tapping a ref"
-            + " from it lands on whatever is drawn there. Check with ft_screenshot,"
-            + " and ft_launch to return.\n"
+            + " the tree below is whatever is actually on screen now (home screen / app switcher /"
+            + " a system screen), not \(app)'s. Check with ft_screenshot, and ft_launch to return.\n"
     }
 
     /// システムダイアログのパッケージ/バンドル ID。これらへの切り替わりは「別アプリに迷い込んだ」

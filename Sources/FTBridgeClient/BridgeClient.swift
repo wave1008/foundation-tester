@@ -50,6 +50,16 @@ public final class BridgeClient: AppDriver {
         static let session: TimeInterval = 45      // launch/activate/screenshot/status/terminate/snapshot/appswitcher/home
     }
 
+    /// press/drag/pinch の1リクエスト予算。**根拠**: これらは `duration`/`durationSeconds` を
+    /// 渡すぶんだけランナー側がジェスチャの実行に時間を使う(XCUITest の press/pinch は
+    /// 指を動かし切るまで応答を返さない)。DSL 側の `holdSeconds`/`durationSeconds` に上限は無いため、
+    /// 固定の `interactionTimeout`(既定 20s)だけでは長い指定(例: 25s)がランナーの応答より
+    /// 先にホスト側でタイムアウトし、**まだ押している最中に** bridgeUnreachable を誤って報告する。
+    /// 床は `interactionTimeout`(duration 0 以下・duration を持たない操作はこれまでどおり)
+    func timeout(forDuration duration: TimeInterval) -> TimeInterval {
+        interactionTimeout + max(duration, 0)
+    }
+
     /// timeoutSeconds: 既定 120 秒(launch や snapshot は数秒かかることがある)。
     /// ポート範囲のスキャン(生存確認)には短い値を渡す。
     /// per-endpoint 既定(interaction/session)は URLRequest.timeoutInterval として config 側を
@@ -801,7 +811,7 @@ public final class BridgeClient: AppDriver {
         let _: OKResponse = try await post("/drag", body: DragRequest(
             fromX: fromX, fromY: fromY, toX: toX, toY: toY,
             press: pressSeconds, duration: durationSeconds),
-            timeout: interactionTimeout)
+            timeout: timeout(forDuration: pressSeconds + durationSeconds))
     }
 
     public func doubleTap(x: Double, y: Double) async throws {
@@ -815,7 +825,7 @@ public final class BridgeClient: AppDriver {
                       durationSeconds: Double) async throws {
         let _: OKResponse = try await post("/pinch", body: PinchRequest(
             scale: scale, durationSeconds: durationSeconds,
-            frame: frame, identifier: identifier), timeout: interactionTimeout)
+            frame: frame, identifier: identifier), timeout: timeout(forDuration: durationSeconds))
     }
 
     /// Captured only on this client's first `rotate(to:)` call in the current scenario (nil = not
@@ -843,13 +853,13 @@ public final class BridgeClient: AppDriver {
     public func press(ref: Int, duration: Double) async throws {
         let _: OKResponse = try await post("/press", body: PressRequest(ref: ref, duration: duration,
                                                                         fast: fastFlag),
-                                           timeout: interactionTimeout)
+                                           timeout: timeout(forDuration: duration))
     }
 
     public func press(x: Double, y: Double, duration: Double) async throws {
         let _: OKResponse = try await post("/press", body: PressRequest(x: x, y: y, duration: duration,
                                                                         fast: fastFlag),
-                                           timeout: interactionTimeout)
+                                           timeout: timeout(forDuration: duration))
     }
 
     public func screenshot() async throws -> Data {
