@@ -13,12 +13,14 @@ final class JUnitReportWriterTests: XCTestCase {
                         timedOut: Bool? = nil,
                         reportPath: String? = nil,
                         worker: String? = nil,
-                        timeline: [TimelineStepRecord]? = nil) -> ScenarioRunRecord {
+                        timeline: [TimelineStepRecord]? = nil,
+                        skipKind: ScenarioSkipKind? = nil) -> ScenarioRunRecord {
         ScenarioRunRecord(runID: "r1", scenarioID: id, platform: "ios", worker: worker,
                           passed: passed, timedOut: timedOut,
                           startedAt: "2026-07-30T00:00:00Z", durationMs: durationMs,
                           steps: steps, reportPath: reportPath,
-                          failedSteps: failedSteps, errorLogs: errorLogs, timeline: timeline)
+                          failedSteps: failedSteps, errorLogs: errorLogs, timeline: timeline,
+                          skipKind: skipKind)
     }
 
     func testAggregatesCountsAndGroupsByClass() {
@@ -57,7 +59,30 @@ final class JUnitReportWriterTests: XCTestCase {
         XCTAssertTrue(xml.contains("worker: ios:iPhone 17"), xml)
     }
 
-    /// recordSkipped の形(全ステップ skipped・failed 0)は failure ではなく skipped
+    /// **ワーカー不在の事故(`skipKind: .noWorker`)は `<skipped>` ではなく `<failure>`** ——
+    /// failures=0 のままだと JUnit しか見ない CI が「1 本も走っていない」run を緑に読む
+    func testNoWorkerRecordBecomesFailureNotSkipped() {
+        let xml = JUnitReportWriter.xml(project: "E2E", records: [
+            record(id: "A.s", passed: false, durationMs: 0,
+                   steps: StepCountsRecord(total: 1, skipped: 1),
+                   failedSteps: [FailedStepRecord(index: 0, description: "no worker available")],
+                   skipKind: .noWorker),
+        ])
+        XCTAssertTrue(xml.contains(#"failures="1""#), xml)
+        XCTAssertTrue(xml.contains("<failure"), xml)
+        XCTAssertFalse(xml.contains("<skipped"), xml)
+        // 意図された未実行(platform 対象外)は従来どおり skipped
+        let intended = JUnitReportWriter.xml(project: "E2E", records: [
+            record(id: "A.s", passed: false, durationMs: 0,
+                   steps: StepCountsRecord(total: 1, skipped: 1),
+                   failedSteps: [FailedStepRecord(index: 0, description: "not applicable to android")],
+                   skipKind: .notApplicable),
+        ])
+        XCTAssertTrue(intended.contains("<skipped"), intended)
+        XCTAssertFalse(intended.contains("<failure"), intended)
+    }
+
+    /// recordSkipped の形(全ステップ skipped・failed 0・skipKind なし = 旧形式)は failure ではなく skipped
     func testSkippedRecordBecomesSkippedNotFailure() {
         let xml = JUnitReportWriter.xml(project: "E2E", records: [
             record(id: "A.s", passed: false, durationMs: 0,

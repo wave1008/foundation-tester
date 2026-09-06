@@ -51,9 +51,13 @@ public enum JUnitReportWriter {
     }
 
     /// recordSkipped が書く形(全ステップ skipped・failed 0・不合格)= 実行に至らなかったシナリオ。
-    /// 途中まで走って中断したシナリオは skipped>0 でも failed>0 なので failure 扱いになる
+    /// 途中まで走って中断したシナリオは skipped>0 でも failed>0 なので failure 扱いになる。
+    /// **`skipKind == .noWorker`(ワーカー不在・全滅などの事故)は `<failure>` に出す** —— 意図された
+    /// 未実行(`notApplicable`)と同じ顔にすると、JUnit の failures だけを見る CI が「緑で 1 本も
+    /// 走っていない」run を通す(exit code は 1 でも Jenkins の JUnit 集計は failures を見る)
     static func isSkipped(_ record: ScenarioRunRecord) -> Bool {
-        !record.passed && record.steps.failed == 0
+        record.skipKind != .noWorker
+            && !record.passed && record.steps.failed == 0
             && record.steps.total > 0 && record.steps.skipped == record.steps.total
     }
 
