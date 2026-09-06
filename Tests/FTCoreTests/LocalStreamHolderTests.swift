@@ -8,9 +8,11 @@ final class LocalStreamHolderTests: XCTestCase {
 
     private typealias Row = LocalStreamHolder.ProcessRow
 
-    private func row(_ pid: Int32, elapsed: Int, _ command: String, owner: Int32? = nil) -> Row {
+    private func row(_ pid: Int32, elapsed: Int, _ command: String, owner: Int32? = nil,
+                     streamOwner: String? = nil) -> Row {
         var tokens = command.split(separator: " ").map(String.init)
         if let owner { tokens += ["HOME=/Users/x", "FT_PARENT_PID=\(owner)", "LANG=C"] }
+        if let streamOwner { tokens += ["FT_STREAM_OWNER=\(streamOwner)"] }
         return Row(pid: pid, elapsedSeconds: elapsed, tokens: tokens)
     }
 
@@ -58,18 +60,26 @@ final class LocalStreamHolderTests: XCTestCase {
     func testHeldByOtherComparesTheHolderOwnerWithMine() {
         let mine = [row(10, elapsed: 20, simstream, owner: 42), row(11, elapsed: 5, simstream, owner: 99)]
         // 保持者(pid 10)は自分のもの → 後から来た別ウィンドウのヘルパーが居ても false
-        XCTAssertFalse(LocalStreamHolder.heldByOther(identity: sim, rows: mine, myOwner: 42))
+        XCTAssertFalse(LocalStreamHolder.heldByOther(identity: sim, rows: mine, myOwner: "42"))
         // 相手から見ると保持者は別人 → true(こちらが畳む側)
-        XCTAssertTrue(LocalStreamHolder.heldByOther(identity: sim, rows: mine, myOwner: 99))
+        XCTAssertTrue(LocalStreamHolder.heldByOther(identity: sim, rows: mine, myOwner: "99"))
         // 誰も張っていない
-        XCTAssertFalse(LocalStreamHolder.heldByOther(identity: sim, rows: [], myOwner: 42))
+        XCTAssertFalse(LocalStreamHolder.heldByOther(identity: sim, rows: [], myOwner: "42"))
+    }
+
+    /// 拡張ホストの印(FT_STREAM_OWNER)は親 pid より優先 —— fan-out の子は FT_PARENT_PID を
+    /// 起こした側の pid で上書きされるので、親 pid だけ見ると同じウィンドウの配信を別人と読む
+    func testStreamOwnerMarkWinsOverTheParentPid() {
+        let rows = [row(10, elapsed: 20, simstream, owner: 555, streamOwner: "mac:42")]
+        XCTAssertFalse(LocalStreamHolder.heldByOther(identity: sim, rows: rows, myOwner: "mac:42"))
+        XCTAssertTrue(LocalStreamHolder.heldByOther(identity: sim, rows: rows, myOwner: "555"))
     }
 
     /// 所有の印がどちらかに無ければ別人(手で nohup したヘルパーの台に拡張は重ねない /
     /// CLI の監視から見たヘルパーは全部他人)
     func testMissingOwnerOnEitherSideCountsAsSomeoneElse() {
         let manual = [row(10, elapsed: 20, simstream)]
-        XCTAssertTrue(LocalStreamHolder.heldByOther(identity: sim, rows: manual, myOwner: 42))
+        XCTAssertTrue(LocalStreamHolder.heldByOther(identity: sim, rows: manual, myOwner: "42"))
         let extensionOwned = [row(10, elapsed: 20, simstream, owner: 42)]
         XCTAssertTrue(LocalStreamHolder.heldByOther(identity: sim, rows: extensionOwned, myOwner: nil))
     }
@@ -85,11 +95,11 @@ final class LocalStreamHolderTests: XCTestCase {
         let rows = LocalStreamHolder.parse(psOutput: output)
         XCTAssertEqual(rows.map(\.pid), [11380, 346])
         XCTAssertEqual(rows[0].elapsedSeconds, 9 * 60 + 51)
-        XCTAssertEqual(rows[0].owner, 59440)
+        XCTAssertEqual(rows[0].owner, "59440")
         XCTAssertEqual(rows[1].elapsedSeconds, ((1 * 24 + 10) * 60 + 42) * 60 + 20)
         XCTAssertNil(rows[1].owner)
-        XCTAssertTrue(LocalStreamHolder.heldByOther(identity: sim, rows: rows, myOwner: 1))
-        XCTAssertFalse(LocalStreamHolder.heldByOther(identity: sim, rows: rows, myOwner: 59440))
+        XCTAssertTrue(LocalStreamHolder.heldByOther(identity: sim, rows: rows, myOwner: "1"))
+        XCTAssertFalse(LocalStreamHolder.heldByOther(identity: sim, rows: rows, myOwner: "59440"))
     }
 
     func testElapsedSecondsCoversEveryEtimeShape() {
@@ -101,9 +111,11 @@ final class LocalStreamHolderTests: XCTestCase {
     }
 
     func testMyOwnerReadsTheParentPidMark() {
-        XCTAssertEqual(LocalStreamHolder.myOwner(environment: ["FT_PARENT_PID": "77"]), 77)
+        XCTAssertEqual(LocalStreamHolder.myOwner(environment: ["FT_PARENT_PID": "77"]), "77")
         XCTAssertNil(LocalStreamHolder.myOwner(environment: [:]))
-        XCTAssertNil(LocalStreamHolder.myOwner(environment: ["FT_PARENT_PID": "x"]))
+        XCTAssertEqual(LocalStreamHolder.myOwner(environment: ["FT_PARENT_PID": "x"]), "x")
+        XCTAssertEqual(LocalStreamHolder.myOwner(environment: ["FT_PARENT_PID": "7", "FT_STREAM_OWNER": "mac:1"]), "mac:1",
+                       "拡張ホストの印(FT_STREAM_OWNER)が親 pid より優先")
     }
 
     /// 実プロセスで1回: 本物のヘルパー(fleetest-devicepoll。自前のバイナリなので `ps -E` に env が載る。
@@ -121,7 +133,7 @@ final class LocalStreamHolderTests: XCTestCase {
         let process = Process()
         process.executableURL = binary
         process.arguments = ["--platform", "ios", "--host", "127.0.0.1", "--port", "1", "--fps", "0.1"]
-        process.environment = ["FT_PARENT_PID": "424242", "PATH": "/usr/bin:/bin"]
+        process.environment = ["FT_PARENT_PID": "424242", "FT_STREAM_OWNER": "mac:424242", "PATH": "/usr/bin:/bin"]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         let stdin = Pipe()  // 開いたまま = 終了指示を出さない
@@ -139,9 +151,9 @@ final class LocalStreamHolderTests: XCTestCase {
         }
         let holder = try XCTUnwrap(LocalStreamHolder.holder(for: identity, in: rows), "起こしたヘルパーが ps に見えない")
         XCTAssertEqual(holder.pid, process.processIdentifier)
-        XCTAssertEqual(holder.owner, 424242, "env の FT_PARENT_PID が読めていない(自前バイナリなら ps -E に載る)")
-        XCTAssertTrue(LocalStreamHolder.heldByOther(identity: identity, rows: rows, myOwner: 1))
-        XCTAssertFalse(LocalStreamHolder.heldByOther(identity: identity, rows: rows, myOwner: 424242))
+        XCTAssertEqual(holder.owner, "mac:424242", "env の FT_STREAM_OWNER が読めていない(自前バイナリなら ps -E に載る)")
+        XCTAssertTrue(LocalStreamHolder.heldByOther(identity: identity, rows: rows, myOwner: "1"))
+        XCTAssertFalse(LocalStreamHolder.heldByOther(identity: identity, rows: rows, myOwner: "mac:424242"))
     }
 
     // MARK: - 配線

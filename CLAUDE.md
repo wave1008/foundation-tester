@@ -278,7 +278,9 @@
   **③二重配信は拒否でなく事実で止める**(`FTCore.StreamLease` の控えを監視が読んで
   `streamedByOther` を配り、拡張が起こさない。**起こしてから断る形にすると ssh の再試行ループ**
   になる。**同じ Mac の別ウィンドウは台帳でなくプロセスの実体で判定する** = `FTCore.LocalStreamHolder`
-  が `ps -E` で同じ台のヘルパーを探し、最も早く起動した1本の `FT_PARENT_PID` が自分と違えば
+  が `ps -E` で同じ台のヘルパーを探し、最も早く起動した1本の所有者の印(`FTCore.StreamOwner` =
+  拡張ホストが立てる `FT_STREAM_OWNER`。`RemoteShell` が ssh 越しに運ぶので**ランナー機の上でも
+  同じ判定が走り、同じ利用者の2ウィンドウも止まる**。`FT_PARENT_PID` は運ばない)が自分と違えば
   `streamedByOther`。保持者は両方のウィンドウが同じ答えを出す規則で1本に決める)/ **④他人の run を殺す操作はロックを読む**(`remote clean` は中止・
   `--ignore-lock` で押し切る。**読めないときは通す** = 掃除が永久にできなくなるほうが害が大きい)。
   **奪う口(`--force-lock`)を GUI に出さない**。

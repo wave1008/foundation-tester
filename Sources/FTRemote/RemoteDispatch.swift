@@ -1010,7 +1010,8 @@ public enum RemoteShell {
     /// nil のときは**1バイトも足さない** —— ランナー側の既定(`FMLock.defaultConcurrency`)に任せる
     public static func remoteRunCommand(layout: RemoteLayout, fleetestArgs: [String],
                                         issuer: String? = nil,
-                                        fmConcurrency: Int? = nil) -> String {
+                                        fmConcurrency: Int? = nil,
+                                        streamOwner: String? = StreamOwner.current()) -> String {
         let binary = quote(layout.binary)
         let guardCmd = "test -x \(binary) || { echo \"fleetest binary not found on remote"
             + " — run: swift build --product fleetest\" >&2; exit 90; }"
@@ -1029,13 +1030,15 @@ public enum RemoteShell {
         return "cd \(quote(layout.workDir)) 2>/dev/null && test -f Package.swift || "
             + "{ echo \"no runner workspace at \(layout.workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
-            + "\(pathCmd) && \(runnerBaseCmd(layout: layout))\(issuerCmd)\(fmCmd)\(guardCmd) && \(syncCmd) && \(launch)"
+            + "\(pathCmd) && \(runnerBaseCmd(layout: layout))\(issuerCmd)\(streamOwnerCmd(streamOwner))"
+            + "\(fmCmd)\(guardCmd) && \(syncCmd) && \(launch)"
     }
 
     /// `fleetest remote exec`(docs/remote-runner.md §14「単発コマンドの転送は汎用化する」)。
     /// remoteRunCommand と同じ PATH 補正・バイナリ不在 exit 90・workspace 不在 exit 91 の規律を
     /// 踏襲するが、**project sync は撃たない** — 照会・単発操作が目的で、同期は run 専用の前処理だから
-    public static func remoteExecCommand(layout: RemoteLayout, args: [String]) -> String {
+    public static func remoteExecCommand(layout: RemoteLayout, args: [String],
+                                         streamOwner: String? = StreamOwner.current()) -> String {
         let binary = quote(layout.binary)
         let guardCmd = "test -x \(binary) || { echo \"fleetest binary not found on remote"
             + " — run: swift build --product fleetest\" >&2; exit 90; }"
@@ -1049,7 +1052,17 @@ public enum RemoteShell {
         return "cd \(quote(layout.workDir)) 2>/dev/null && test -f Package.swift || "
             + "{ echo \"no runner workspace at \(layout.workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
-            + "\(pathCmd) && \(runnerBaseCmd(layout: layout))\(issuerCmd)\(guardCmd) && \(launch)"
+            + "\(pathCmd) && \(runnerBaseCmd(layout: layout))\(issuerCmd)\(streamOwnerCmd(streamOwner))"
+            + "\(guardCmd) && \(launch)"
+    }
+
+    /// 配信の所有者の印(FTCore.StreamOwner)を ssh 越しへ運ぶ。**`FT_PARENT_PID` は運ばない**
+    /// (向こうで実在しない pid の死を即座に検知して子が終わる)。run / exec の両方に置く ——
+    /// 片方だけだと、その経路の子(`api monitor` か `api device-stream`)だけ印を持たず、
+    /// 自分の配信を「別人のもの」と読んで畳む。**既定値は呼び手の環境から**(引数の渡し忘れで
+    /// 経路ごとに結論が割れないよう、構造で揃える)
+    private static func streamOwnerCmd(_ owner: String?) -> String {
+        owner.map { "export \(StreamOwner.environmentKey)=\(quote($0)) && " } ?? ""
     }
 
     /// ランナー機の base を子へ渡す(FTCore.RunnerBase)。**手元実行では存在しない値**なので、

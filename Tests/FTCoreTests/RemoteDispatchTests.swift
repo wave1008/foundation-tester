@@ -790,6 +790,30 @@ final class RemoteDispatchTests: XCTestCase {
         }
     }
 
+    /// 配信の所有者の印(FTCore.StreamOwner)は run / exec の**両方**が ssh 越しへ運ぶ。片方だけだと
+    /// その経路の子(`api monitor` か `api device-stream`)だけ印を持たず、自分の配信を別人と読んで畳む。
+    /// **`FT_PARENT_PID` は運ばない**(向こうで実在しない pid の死を検知して子が終わる)
+    func testBothRemoteCommandsExportTheStreamOwnerButNeverTheParentPid() {
+        let layout = RemoteLayout(base: "/b", issuer: "alice")
+        for command in [RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: ["run"], streamOwner: "mac:42"),
+                        RemoteShell.remoteExecCommand(layout: layout, args: ["api", "monitor"], streamOwner: "mac:42")] {
+            XCTAssertTrue(command.contains("export FT_STREAM_OWNER='mac:42' && "), command)
+            XCTAssertFalse(command.contains("FT_PARENT_PID"), command)
+            guard let ownerRange = command.range(of: "FT_STREAM_OWNER"),
+                  let guardRange = command.range(of: "test -x") else {
+                return XCTFail("expected markers missing: \(command)")
+            }
+            XCTAssertTrue(ownerRange.lowerBound < guardRange.lowerBound, command)
+        }
+        // 印が無ければ 1 バイトも足さない
+        XCTAssertFalse(RemoteShell.remoteExecCommand(layout: layout, args: ["api"], streamOwner: nil)
+            .contains("FT_STREAM_OWNER"))
+        // 既定値は呼び手の環境(StreamOwner.current)
+        XCTAssertEqual(StreamOwner.current(environment: ["FT_STREAM_OWNER": "m:1", "FT_PARENT_PID": "9"]), "m:1")
+        XCTAssertEqual(StreamOwner.current(environment: ["FT_PARENT_PID": "9"]), "9")
+        XCTAssertNil(StreamOwner.current(environment: ["FT_STREAM_OWNER": ""]))
+    }
+
     /// `remote exec` の子も発行者を知る必要がある(ロックの保持者が自分かを判定する = HostOccupancy)。
     /// exec が入るのは `users/<issuer>/work` なので、そのネームスペースの持ち主を渡す
     func testRemoteExecCommandExportsTheNamespaceIssuer() {

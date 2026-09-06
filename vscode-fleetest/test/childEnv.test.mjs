@@ -4,7 +4,13 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { PARENT_PID_ENV, childEnv } from "../src/childEnv";
+import { hostname } from "node:os";
+import { PARENT_PID_ENV, STREAM_OWNER_ENV, childEnv } from "../src/childEnv";
+
+test("childEnv: FT_STREAM_OWNER は <hostname>:<pid>(extra で上書きできない)", () => {
+  const env = childEnv({ [STREAM_OWNER_ENV]: "bogus" });
+  assert.equal(env[STREAM_OWNER_ENV], `${hostname()}:${process.pid}`);
+});
 
 test("childEnv: FT_PARENT_PID は process.pid の文字列", () => {
   const env = childEnv();
