@@ -33,17 +33,40 @@ final class RunHookRunnerStallTests: XCTestCase {
         XCTAssertTrue(warnings[0].contains(url.path), warnings[0])
     }
 
-    /// 出力があれば数え直す: `echo` → 0.7 秒無音 → `echo` で、警告は 1 回だけ
+    /// 出力があれば数え直す: `echo` → 1.0 秒無音 → `echo` → 1.0 秒無音 → `echo`。
+    ///
+    /// **証拠は回数ではなく「報告された無音秒数」**。数え直していれば各区間は独立に測られるので
+    /// どの警告も 1 秒前後までしか言わないが、数え直さなければ最後の警告は経過時間の合計を名乗る。
+    /// 実測(2026-09-07): `lastOutputAt` の更新を落とす変異を殺すのは**秒数の表明のほうで、
+    /// 回数の表明は素通しする**。回数を厳密一致で見ていた版は、機械が混んでいるだけで落ちる
+    /// 一方この性質を守れていなかった。回数の範囲は姉妹テスト
+    /// (testSilentScriptGetsRepeatedWarningsButIsNotKilled)と同じ規律。
     func testOutputResetsTheSilenceClock() throws {
-        let url = try script("echo a; sleep 0.7; echo b")
+        let url = try script("echo a; sleep 1.0; echo b; sleep 1.0; echo c")
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         var lines: [String] = []
         let status = RunHookRunner.execute(
             script: url, kind: .teardown, workingDirectory: url.deletingLastPathComponent(),
             environment: [:], stallThreshold: 0.4) { lines.append($0) }
         XCTAssertEqual(status, 0)
-        XCTAssertEqual(lines.filter { $0.contains("has produced no output") }.count, 1, lines.description)
-        XCTAssertTrue(lines.contains { $0.hasSuffix("│ a") } && lines.contains { $0.hasSuffix("│ b") }, lines.description)
+
+        let warnings = lines.filter { $0.contains("has produced no output") }
+        XCTAssertGreaterThanOrEqual(warnings.count, 2, lines.description)
+        XCTAssertLessThanOrEqual(warnings.count, 8, "閾値ごとに 1 行を超えて鳴っている: " + lines.description)
+
+        // "…has produced no output for <N>s and is…" の N。累積していないことを見る
+        let reported = warnings.compactMap { line -> Int? in
+            guard let r = line.range(of: "no output for "),
+                  let end = line[r.upperBound...].firstIndex(of: "s") else { return nil }
+            return Int(line[r.upperBound..<end])
+        }
+        XCTAssertEqual(reported.count, warnings.count, "無音秒数を読み取れない警告がある: " + lines.description)
+        XCTAssertLessThanOrEqual(reported.max() ?? 0, 1,
+                                 "無音が累積している(出力で数え直していない): " + lines.description)
+
+        for marker in ["│ a", "│ b", "│ c"] {
+            XCTAssertTrue(lines.contains { $0.hasSuffix(marker) }, marker + " が無い: " + lines.description)
+        }
     }
 
     /// 閾値の手前で終わるスクリプトは警告 0
