@@ -30,7 +30,7 @@ public enum XCUIBridgeResolver {
     ///     そのまま出すと自分の説明と矛盾する)。起動の進捗は false でも出す(分単位ブロックし得る)
     public static func resolve(preferred: UInt16, repoRoot: URL?, autoStart: Bool = true,
                                logsReroute: Bool = true,
-                               logger: @Sendable (String) -> Void = { _ in }) async -> Resolution {
+                               logger: @escaping @Sendable (String) -> Void = { _ in }) async -> Resolution {
         let preferredEndpoint = endpoint(port: preferred, repoRoot: repoRoot)
         // status(timeout:) を明示する(引数なしは sessionTimeout=45s に上書きされ、
         // 無応答の孤児ブリッジ1本で待たされる。BridgeProvisioner.scanRunningBridges と同じ理由)
@@ -102,7 +102,7 @@ public enum XCUIBridgeResolver {
     /// 起動中なら特定できないので起動しない = 誤ったデバイスを掴むより指定ポートのまま返す)
     private static func start(forDevice device: String, repoRoot: URL?, occupied: Set<UInt16>,
                               fallback: BridgeEndpoint,
-                              logger: @Sendable (String) -> Void) async -> Resolution {
+                              logger: @escaping @Sendable (String) -> Void) async -> Resolution {
         func giveUp(_ reason: String) -> Resolution {
             logger(reason)
             return Resolution(endpoint: fallback, note: reason)
@@ -128,13 +128,46 @@ public enum XCUIBridgeResolver {
         }
         defer { releaseLockOnce() }
 
-        guard let port = freePort(repoRoot: repoRoot, occupied: occupied) else {
+        // freePort は .pid ファイルと稼働中(応答あり)ポートしか見ない。**背面へ回った
+        // in-app ブリッジ**(TCP は受け付けるが HTTP に答えない・.pid も持たない・
+        // scanBridges の応答走査にも live 一覧にも映らない)は空きに見えるため、そのまま
+        // startDetached すると bindFailed(48) → giveUp になる。実際に LISTEN している実体を
+        // PortHolder で確かめてから使う(BridgeProvisioner.executeBridge と同じ判定・
+        // 二つ目の実装を書かず PortHolder/StaleBridgeStop を再利用する)
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
+        var occupied = occupied
+        var foreignHolders: [String] = []
+        var port: UInt16?
+        while port == nil {
+            guard let candidate = freePort(repoRoot: repoRoot, occupied: occupied) else {
+                let detail = foreignHolders.isEmpty ? "" : " (held by \(foreignHolders.joined(separator: ", ")))"
+                return giveUp("cannot start the XCUITest bridge (no free port\(detail))")
+            }
+            switch PortHolder.stopIfOwnedBridge(
+                port: candidate, stateDir: stateDir,
+                derivedDataPath: stateDir.appendingPathComponent("DerivedData")) {
+            case .stopped(let holder):
+                logger("port \(candidate) was held by a leftover bridge (\(holder)) — stopped it")
+                port = candidate
+            case .notFound:
+                port = candidate
+            case .foreign(let holder):
+                // 無関係プロセスの占有は撃たない —— 次の空きポートを試す(占有者を名指しした
+                // まま黙って諦めず、全滅したら giveUp で理由を出す。「起動を試みて bindFailed で
+                // 気づく」という無情報な失敗にしない)
+                logger("port \(candidate) is held by an unrelated process (\(holder)) — trying the next port")
+                foreignHolders.append("port \(candidate): \(holder)")
+                occupied.insert(candidate)
+            }
+        }
+        guard let port else {
             return giveUp("cannot start the XCUITest bridge (no free port)")
         }
         logger("Only an in-app bridge is present — starting an XCUITest bridge"
             + " (port \(port), \(device); the first build-for-testing takes several minutes)")
-        let launcher = BridgeLauncher(repoRoot: repoRoot, device: booted[0].udid, port: port,
-                                      physical: booted[0].physical)
+        let device0 = booted[0]
+        let launcher = BridgeLauncher(repoRoot: repoRoot, device: device0.udid, port: port,
+                                      physical: device0.physical)
         do {
             try launcher.generateProjectIfNeeded()
             try launcher.rebuildIfStale()
@@ -147,11 +180,28 @@ public enum XCUIBridgeResolver {
             // ポート確保(pid ファイル書き込み)はここで完了。ready 待ちはロックの外へ出す
             // (provision() の PortClaimBarrier と同じ理屈 —— 待つのは自分だけなので早期解放で足りる)
             releaseLockOnce()
-            try await launcher.waitUntilReady()
+            // 実機はデバイス内ループバックにホストから届かない。/status を叩く前に到達手段
+            // (LAN の宛先解決 or iproxy の USB トンネル)を確立する(BridgeProvisioner.executeBridge
+            // と同じ手順)。これを飛ばすと waitUntilReady がループバックへ待ち続け、
+            // 実機では必ず 180 秒後に failed になる
+            var host = BridgeEndpoint.loopbackHost
+            if device0.physical {
+                do {
+                    let endpoint = try await IOSDeviceTransport.establish(
+                        port: port, deviceUDID: device0.udid, repoRoot: repoRoot,
+                        wired: device0.wired, log: logger)
+                    host = endpoint.host
+                } catch {
+                    try? launcher.stop()
+                    return giveUp("failed to start the XCUITest bridge: \(error.localizedDescription)")
+                }
+            }
+            try await launcher.waitUntilReady(host: host, log: logger)
         } catch {
             releaseLockOnce()
             // 起動途中のプロセス・pid ファイルを残さない(以後のポート採番を汚すため。
-            // LiveBridgeAutoStarter.launchBridge と同じ後始末)
+            // LiveBridgeAutoStarter.launchBridge と同じ後始末。launcher.stop() が実機の
+            // 到達手段(iproxy/endpoint 記録)の teardown も内包する)
             try? launcher.stop()
             return giveUp("failed to start the XCUITest bridge: \(error.localizedDescription)")
         }

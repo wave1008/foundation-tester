@@ -236,6 +236,10 @@ export const monitorStrings = {
     ja: "booted が{count}回連続したためブリッジ無応答とみなします。",
     en: "Treating the bridge as unresponsive after {count} consecutive booted observations.",
   },
+  "monitor.bridgeWatch.repairDeferredInRun": {
+    ja: "実行中のためブリッジの修復を保留します。",
+    en: "Deferring bridge repair because a run is in progress.",
+  },
 
   // ---- monitorDeviceStreamController.ts ----
   "monitor.deviceStream.fallbackToPolling": {

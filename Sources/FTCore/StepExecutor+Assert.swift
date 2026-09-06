@@ -636,6 +636,11 @@ extension StepExecutor {
                 phase.snapshotMs += Self.ms(clock.now - start)
                 candidate = Self.resolve(step: step, in: fsnap, strictForAssert: true)
                 fromFallbackDriver = candidate != nil
+                // **SpringBoard 側で解決した** = この検証はアラート自身が対象(exists と同じ)。
+                // 立てないと executeAssert の門が「覆われている」と読んで、いま検証した
+                // アラートを閉じてから判定し直し `element not found` になる。
+                // 不一致で落ちる回も同じ(閉じてしまうと理由が「不一致」から「不在」に化ける)
+                if fromFallbackDriver { resolvedViaSystemUIThisStep = true }
             }
             if let (element, fallback) = candidate {
                 found = true
@@ -829,6 +834,9 @@ extension StepExecutor {
                     let fsnap = try await fb.snapshot()
                     phase.snapshotMs += Self.ms(clock.now - fbStart)
                     if Self.resolve(step: step, in: fsnap, strictForAssert: true) != nil {
+                        // アラート自身の不在を検証している = 門に閉じさせない(exists と同じ規律。
+                        // 閉じると「まだ在る」が正しい赤を、閉じた後の再判定で緑にすり替える)
+                        resolvedViaSystemUIThisStep = true
                         if Date() >= deadline {
                             return .failed("element still exists (system UI): \(step.locatorSummary)")
                         }

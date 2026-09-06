@@ -118,7 +118,9 @@ final class AuthoringGuardTests: XCTestCase {
     /// (E2E に実在する形。ifElse 側も対称に扱う)
     func testUnexecutedConditionalBlockSuppressesTheWarning() {
         for label in ["platform", "ifElse"] {
-            let core = makeCore()   // platform: "ios"
+            // ifElse 側はデバイス実行で見る(dry-run は両側を列挙するので「未実行」が起きない。
+            // IfElseDryRunTests が dry-run 側の規則を持つ)
+            let core = makeCore(dryRun: label == "platform")   // platform: "ios"
             FTRuntime.bootstrap(core: core, dslThread: Thread.current)
             scenario {
                 scene(1, label) {

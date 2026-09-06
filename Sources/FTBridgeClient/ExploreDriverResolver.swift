@@ -56,7 +56,7 @@ public enum ExploreDriverResolver {
     /// 稼働中ブリッジを見て組み立てる。XCUITest ブリッジが要るケースでは
     /// XCUIBridgeResolver に探索/起動を任せる(起動を伴うと分単位ブロックし得る)
     public static func resolve(preferred: UInt16, repoRoot: URL?,
-                               logger: @Sendable (String) -> Void = { _ in }) async -> Resolved {
+                               logger: @escaping @Sendable (String) -> Void = { _ in }) async -> Resolved {
         let endpoint = repoRoot.map { BridgeEndpoint.load(port: preferred, repoRoot: $0) }
             ?? BridgeEndpoint(port: preferred)
         // timeout を明示する(引数なしは sessionTimeout=45s に上書きされる。XCUIBridgeResolver と同じ)

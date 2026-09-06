@@ -203,6 +203,15 @@ public final class FTDriveCore {
     public let defaultTimeout: Double
 
     private(set) var record: ScenarioRecordData
+    /// **いま記録している scene** の `record.scenes` 上の添字(runScene が入口で push・出口で pop)。
+    /// 空 = scene の外(末尾の scene、無ければ暗黙 scene 0 へ書く = 従来どおり)。
+    /// `scenes.last` で決めると入れ子の内側を出た後のステップが内側へ落ちる。stateLock の内側で触る
+    private var sceneIndexStack: [Int] = []
+    /// stateLock の内側から呼ぶ(record と同じ規律)
+    private var currentSceneIndex: Int? {
+        sceneIndexStack.last ?? (record.scenes.isEmpty ? nil : record.scenes.count - 1)
+    }
+    private var currentScene: SceneRecordData? { currentSceneIndex.map { record.scenes[$0] } }
 
     /// **`record`(シナリオ結果)と `scenarioAborted` / `deviceFrozen` の全アクセスを直列化する**。
     /// DSL スレッド以外からも触られる: ①誤って別スレッドから呼ばれた DSL コマンド
@@ -362,11 +371,14 @@ public final class FTDriveCore {
         executor.systemAlertWatchlist.register(rule)
     }
 
-    /// DSL の `irregularHandler` が宣言した割り込み(アプリ内メッセージ)を実行器へ渡す
-    func addInterruptHandler(detect: FlowLocator, dismiss: FlowLocator,
+    /// DSL の `irregularHandler` が宣言した割り込み(アプリ内メッセージ)を実行器へ渡す。
+    /// **`||` / `(a|b)` の代替(fallbacks)も渡す** —— primary だけ渡すと日本語版の文言だけ閉じない
+    func addInterruptHandler(detect: FTSelector, dismiss: FTSelector,
                              maxDismissals: Int = StepExecutor.maxInterruptDismissalsPerStep) {
         executor.interruptHandlers.append(
-            StepExecutor.InterruptHandler(detect: detect, dismiss: dismiss,
+            StepExecutor.InterruptHandler(detect: detect.primary, dismiss: dismiss.primary,
+                                          detectFallbacks: detect.fallbacks,
+                                          dismissFallbacks: dismiss.fallbacks,
                                           maxDismissals: maxDismissals))
     }
 
@@ -467,7 +479,11 @@ public final class FTDriveCore {
                 message: "scene \(number) is duplicated (\"\(title)\"). Renumber the scenes"),
                 emitEvent: false, file: "", line: 0)
         }
-        withState { record.scenes.append(SceneRecordData(number: number, title: title)) }
+        let sceneIndex = withState { () -> Int in
+            record.scenes.append(SceneRecordData(number: number, title: title))
+            sceneIndexStack.append(record.scenes.count - 1)
+            return record.scenes.count - 1
+        }
 
         var event = ScenarioEvent(kind: "sceneStarted")
         event.scenario = scenarioID
@@ -483,7 +499,11 @@ public final class FTDriveCore {
         }
 
         currentSection = nil
-        let passed = withState { record.scenes.last?.passed ?? false }
+        // 合否は**この scene**のもの(入れ子の内側で `scenes.last` を読むと外側の結果が内側になる)
+        let passed = withState { () -> Bool in
+            sceneIndexStack.removeLast()
+            return record.scenes[sceneIndex].passed
+        }
         var finished = ScenarioEvent(kind: "sceneFinished")
         finished.scenario = scenarioID
         finished.scene = number
@@ -516,7 +536,7 @@ public final class FTDriveCore {
     }
 
     private func warnSectionWithoutAssertions() {
-        let scene = withState { record.scenes.last }
+        let scene = withState { currentScene }
         let title = (scene?.title).map { $0.isEmpty ? "" : " (\"\($0)\")" } ?? ""
         let location = scene.map { "scene \($0.number)\(title)" } ?? "a scene"
         let message = "the expectation block of \(location) contains no assertions "
@@ -965,7 +985,7 @@ public final class FTDriveCore {
         guard emitEvent else { return }
         var event = ScenarioEvent(kind: "fixSuggestion")
         event.scenario = scenarioID
-        event.scene = withState { record.scenes.last?.number }
+        event.scene = withState { currentScene?.number }
         // 対象コマンドの description(例: tap "旧セレクタ")。修復候補の説明生成に使う
         event.description = description
         event.detail = suggestion.message
@@ -1104,7 +1124,7 @@ public final class FTDriveCore {
         let result = debug.checkpoint(file: file, line: line) {
             var event = ScenarioEvent(kind: "paused")
             event.scenario = scenarioID
-            event.scene = withState { record.scenes.last?.number }
+            event.scene = withState { currentScene?.number }
             event.section = currentSection
             event.index = stepCounter + 1
             event.description = description
@@ -1135,7 +1155,8 @@ public final class FTDriveCore {
     }
 
     func canSelect(_ selector: FTSelector, waitSeconds: Double) -> CanSelectOutcome {
-        if dryRun { return CanSelectOutcome(found: true, dismissed: nil) }  // dry-run では分岐内側も記録する
+        // dry-run では成立側を列挙する(`.ifElse` 側は FTBranch が dry-run のときだけ併せて列挙する)
+        if dryRun { return CanSelectOutcome(found: true, dismissed: nil) }
         if scenarioAborted { return CanSelectOutcome(found: false, dismissed: nil) }
         let step = FlowStep(locator: selector.primary,
                             fallbacks: selector.fallbacks.isEmpty ? nil : selector.fallbacks)
@@ -1252,7 +1273,7 @@ public final class FTDriveCore {
 
         var event = ScenarioEvent(kind: "step")
         event.scenario = scenarioID
-        event.scene = self.record.scenes.last?.number
+        event.scene = currentScene?.number
         event.section = currentSection
         event.index = record.index
         event.description = displayed
@@ -1278,7 +1299,7 @@ public final class FTDriveCore {
             // scene { } の外でコマンドが呼ばれた場合の受け皿(暗黙 scene 0)
             record.scenes.append(SceneRecordData(number: 0, title: ""))
         }
-        record.scenes[record.scenes.count - 1].steps.append(step)
+        record.scenes[currentSceneIndex ?? record.scenes.count - 1].steps.append(step)
     }
 
     /// executor のコールバック(FTSync の detached Task 上)からも呼ばれるので状態は withState 経由
@@ -1350,11 +1371,11 @@ public final class FTDriveCore {
         }
         if let (screenshot, triage, evidenceBlank, elementsText) = context {
             withState {
-                guard !record.scenes.isEmpty else { return }
-                record.scenes[record.scenes.count - 1].failureScreenshot = screenshot
-                record.scenes[record.scenes.count - 1].triage = triage
-                record.scenes[record.scenes.count - 1].evidenceBlank = evidenceBlank
-                record.scenes[record.scenes.count - 1].failureElements = elementsText
+                guard let index = currentSceneIndex else { return }
+                record.scenes[index].failureScreenshot = screenshot
+                record.scenes[index].triage = triage
+                record.scenes[index].evidenceBlank = evidenceBlank
+                record.scenes[index].failureElements = elementsText
             }
             if evidenceBlank { markDeviceFrozen() }
         }
@@ -1363,8 +1384,8 @@ public final class FTDriveCore {
         let processEvidence = appProcessEvidence?() ?? []
         if !processEvidence.isEmpty {
             let recordedProcess = withState { () -> Bool in
-                guard !record.scenes.isEmpty else { return false }
-                record.scenes[record.scenes.count - 1].failureAppProcess = processEvidence
+                guard let index = currentSceneIndex else { return false }
+                record.scenes[index].failureAppProcess = processEvidence
                 return true
             }
             if recordedProcess {
@@ -1377,8 +1398,8 @@ public final class FTDriveCore {
         let overlays = foregroundOverlays?() ?? []
         guard !overlays.isEmpty else { return }
         let recorded = withState { () -> Bool in
-            guard !record.scenes.isEmpty else { return false }
-            record.scenes[record.scenes.count - 1].failureForegroundWindows = overlays
+            guard let index = currentSceneIndex else { return false }
+            record.scenes[index].failureForegroundWindows = overlays
             return true
         }
         if recorded {

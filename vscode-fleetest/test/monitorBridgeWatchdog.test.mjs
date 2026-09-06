@@ -297,3 +297,54 @@ test("リモートのデバイスだけでは修復ジョブを積まない(別�
   }
   assert.deepEqual(h.jobs, [], "手元の同名の台を巻き添えに再起動してしまう");
 });
+
+// **run の最中の台は修復しない**。inRun は RunLease 由来なので、CLI や別の機械から起こした
+// run も含む(isAnyRunActive は拡張自身のレーンしか見ない)。run が自分でブリッジを供給し直す
+// 間の booted に device-up を重ねると、run のブリッジを横から入れ替えることになる
+// (monitorHealthWatchdog の inRun 保留と同じ規律)。
+test("inRun の間は booted が連続しても unresponsive にも修復にもならず、解けたら通常どおり数え直す", () => {
+  const h = createHarness({ autoRepairEnabled: true, runActive: false });
+  h.watchdog.observe([device("Sim1", "connected")]);
+  for (let i = 0; i < 5; i += 1) {
+    h.watchdog.observe([{ ...device("Sim1", "booted"), inRun: true }]);
+  }
+  assert.deepEqual(h.jobs, [], "run の最中に device-up を積まない");
+  assert.deepEqual(h.posts, [], "run 自身の供給中の booted を無応答と言わない");
+
+  // inRun が解けた直後は 0 から数え直す(4回では閾値に届かない)
+  for (let i = 0; i < 4; i += 1) {
+    h.watchdog.observe([{ ...device("Sim1", "booted"), inRun: false }]);
+  }
+  assert.deepEqual(h.jobs, []);
+  assert.deepEqual(h.posts, []);
+  h.watchdog.observe([device("Sim1", "booted")]);
+  assert.deepEqual(h.posts, [
+    { type: "bridgeWatch", name: "Sim1", phase: "unresponsive" },
+    { type: "bridgeWatch", name: "Sim1", phase: "repairing" },
+  ]);
+  assert.deepEqual(h.jobs, [{ kind: "device", name: "Sim1", op: "up" }]);
+});
+
+test("無応答検知の後に run が始まったら修復を保留し(ログは保留に入った1回だけ)、run が終わってから撃つ", () => {
+  const h = createHarness({ autoRepairEnabled: true, runActive: false });
+  h.watchdog.observe([device("Sim1", "connected")]);
+  for (let i = 0; i < 5; i += 1) {
+    h.watchdog.observe([device("Sim1", "booted")]);
+  }
+  assert.equal(h.jobs.length, 1);
+  h.advance(COOLDOWN_MS);
+  const logsBefore = h.logs.length;
+  for (let i = 0; i < 3; i += 1) {
+    h.watchdog.observe([{ ...device("Sim1", "booted"), inRun: true }]);
+  }
+  assert.equal(h.jobs.length, 1, "run の最中はクールダウン明けでも2回目を積まない");
+  assert.equal(h.logs.length - logsBefore, 1, "保留のログは毎サイクルではなく1回");
+  assert.equal(h.posts.at(-1).phase, "repairing", "failed にも倒さない(attemptCount を動かさない)");
+
+  // run が終わって booted が続けば2回目の修復(attemptCount は据え置きなので failed にはならない)
+  for (let i = 0; i < 5; i += 1) {
+    h.watchdog.observe([device("Sim1", "booted")]);
+  }
+  assert.equal(h.jobs.length, 2);
+  assert.equal(h.posts.at(-1).phase, "repairing");
+});

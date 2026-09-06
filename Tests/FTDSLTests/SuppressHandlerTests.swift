@@ -20,6 +20,9 @@ final class SuppressHandlerTests: XCTestCase {
     private final class ModalDriver: AppDriver, @unchecked Sendable {
         private(set) var tappedRefs: [Int] = []
         var modalShown = true
+        /// モーダル・閉じるボタンの `#id`。**第2の言い回し**(`||` の右側)だけを出す形を作るために差し替える
+        var modalID = "promo_modal"
+        var closeID = "btn_promo_close"
 
         func status() async throws -> StatusResponse {
             StatusResponse(ready: true, device: "-", osVersion: "-", sessionBundleID: nil)
@@ -37,8 +40,8 @@ final class SuppressHandlerTests: XCTestCase {
             }
             var elements = [element(1, "target", 0)]
             if modalShown {
-                elements.append(element(2, "promo_modal", 100))
-                elements.append(element(3, "btn_promo_close", 200))
+                elements.append(element(2, modalID, 100))
+                elements.append(element(3, closeID, 200))
             }
             return SnapshotResponse(sessionBundleID: nil,
                                     screen: FTRect(x: 0, y: 0, width: 400, height: 800),
@@ -180,6 +183,90 @@ final class SuppressHandlerTests: XCTestCase {
         guard let step = failed.first else { return XCTFail("失敗ステップが無い") }
         XCTAssertFalse((step.description ?? "").contains("suppressed"),
                        "抑止区間の外なのに『抑止中だった』と言っている: \(step.description ?? "")")
+    }
+
+    // MARK: - `||` の代替(検出・閉じるの両方で効く)
+
+    /// **本命**: 画面には `||` の右側(日本語版)しか居ない。primary だけを渡す実装だと
+    /// 検出できずモーダルが残り、`tap("#target")` が閉じずに通る
+    func test検出セレクタの第2の言い回しでも閉じる() {
+        let driver = ModalDriver()
+        driver.modalID = "promo_modal_ja"
+        FTRuntime.bootstrap(core: makeCore(driver), dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action {
+                    irregularHandler("#promo_modal||#promo_modal_ja", dismiss: "#btn_promo_close")
+                    tap("#target")
+                }
+            }
+        }
+
+        XCTAssertEqual(driver.tappedRefs, [3, 1], "第2の言い回しで検出して閉じてから target を叩く")
+        XCTAssertFalse(driver.modalShown)
+    }
+
+    /// dismiss 側も自分の `||` を持つ(検出はできても閉じるボタンの id が版で違う形)
+    func test閉じるセレクタの第2の言い回しでも閉じる() {
+        let driver = ModalDriver()
+        driver.closeID = "btn_close_ja"
+        FTRuntime.bootstrap(core: makeCore(driver), dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action {
+                    irregularHandler("#promo_modal", dismiss: "#btn_promo_close||#btn_close_ja")
+                    tap("#target")
+                }
+            }
+        }
+
+        XCTAssertEqual(driver.tappedRefs, [3, 1], "dismiss の第2の言い回しで閉じてから target を叩く")
+        XCTAssertFalse(driver.modalShown)
+    }
+
+    /// `(a|b)` のグループ形も同じ(`||` と同じ和集合に展開される)
+    func testグループ記法でも閉じる() {
+        let driver = ModalDriver()
+        driver.modalID = "promo_modal_ja"
+        driver.closeID = "btn_close_ja"
+        FTRuntime.bootstrap(core: makeCore(driver), dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action {
+                    irregularHandler("#(promo_modal|promo_modal_ja)", dismiss: "#(btn_promo_close|btn_close_ja)")
+                    tap("#target")
+                }
+            }
+        }
+
+        XCTAssertEqual(driver.tappedRefs, [3, 1])
+        XCTAssertFalse(driver.modalShown)
+    }
+
+    /// 陰性対照: どの言い回しも居なければ閉じない(代替を足したことで誤検出しない)
+    func testどの言い回しも無ければ閉じない() {
+        let driver = ModalDriver()
+        driver.modalID = "something_else"
+        FTRuntime.bootstrap(core: makeCore(driver), dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action {
+                    irregularHandler("#promo_modal||#promo_modal_ja", dismiss: "#btn_promo_close")
+                    tap("#target")
+                }
+            }
+        }
+
+        XCTAssertEqual(driver.tappedRefs, [1])
+        XCTAssertTrue(driver.modalShown)
     }
 
     // MARK: - CAE を跨ぐ制御(disableHandler / enableHandler)

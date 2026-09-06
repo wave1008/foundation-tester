@@ -231,12 +231,36 @@ final class IOSPhysicalDeviceTests: XCTestCase {
         // 自プロセス(= iproxy ではない)の pid を書く。生存はするがコマンド名が違う
         try String(ProcessInfo.processInfo.processIdentifier)
             .write(to: pidURL, atomically: true, encoding: .utf8)
-        XCTAssertFalse(IOSDeviceTransport.isIproxyRunning(hostPort: 8123, repoRoot: root),
-                       "生存確認だけでなくコマンド名まで見ること")
+        XCTAssertFalse(
+            IOSDeviceTransport.isIproxyRunning(hostPort: 8123, deviceUDID: "U1", repoRoot: root),
+            "生存確認だけでなくコマンド名まで見ること")
 
         // 存在しない pid
         try "999999".write(to: pidURL, atomically: true, encoding: .utf8)
-        XCTAssertFalse(IOSDeviceTransport.isIproxyRunning(hostPort: 8123, repoRoot: root))
+        XCTAssertFalse(
+            IOSDeviceTransport.isIproxyRunning(hostPort: 8123, deviceUDID: "U1", repoRoot: root))
+    }
+
+    /// 別 UDID 向けの iproxy トンネルが同じ host port に残っていても「生存」と扱わないこと
+    /// (前回このポートで供給した iPhone A のトンネルを、今回の iPhone B が誤って再利用しない)
+    func testIproxyMatchesRejectsDifferentUDID() {
+        let command = "/opt/homebrew/bin/iproxy 8123 8123 -u 00008130-AAAA"
+        XCTAssertTrue(IOSDeviceTransport.iproxyMatches(command: command, deviceUDID: "00008130-AAAA"))
+        XCTAssertFalse(IOSDeviceTransport.iproxyMatches(command: command, deviceUDID: "00008130-BBBB"),
+                       "別 UDID 向けのトンネルを自分のものと誤認しないこと")
+    }
+
+    func testIproxyMatchesRejectsNonIproxyCommand() {
+        XCTAssertFalse(IOSDeviceTransport.iproxyMatches(
+            command: "/usr/bin/some-other-tool -u 00008130-AAAA", deviceUDID: "00008130-AAAA"),
+            "iproxy でないコマンドは UDID が一致しても弾くこと")
+    }
+
+    // MARK: - PID 再利用ガード(kill する前に自分たちのプロセスか確認する)
+
+    func testIsIproxyPureDecision() {
+        XCTAssertTrue(IOSDeviceTransport.isIproxy(command: "/opt/homebrew/bin/iproxy 8123 8123 -u X"))
+        XCTAssertFalse(IOSDeviceTransport.isIproxy(command: "/usr/bin/some-other-tool"))
     }
 
     /// 未インストール環境では usb を選ばない(選ぶと iproxyMissing で必ず失敗する)

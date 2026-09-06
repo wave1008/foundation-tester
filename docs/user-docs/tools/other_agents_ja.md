@@ -87,6 +87,8 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 `git pull` では更新されないので、更新は `Scripts/update.sh` に任せます(正典から写し直し、
 `✅ Skills: refreshed N copied SKILL.md` と報告します)。写した後は**エージェントを再起動**
 してください。
+`install-skill.sh` は置き場に印 `.fleetest-copied` を残し、`update.sh` は**この印があるときだけ**
+新しく増えたスキルも置きます(印が無い = プラグイン経由の受け手には写しを増やしません)。
 
 ## Codex を使う場合(サンドボックス)
 

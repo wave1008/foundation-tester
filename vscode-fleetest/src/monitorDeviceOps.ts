@@ -61,6 +61,10 @@ type CreateDeviceOutcomeHandler = (outcome: CreateDeviceOutcome) => void;
  * **identifier が主**(iOS = UDID / Android = AVD id)で、name は確認・ログ・タイル表示用。 */
 type WipeTargetDevice = Extract<MonitorFromWebviewMessage, { type: "machineDeviceWipe" }>["devices"][number];
 
+/** 「GPU で再起動」の1台ぶん(deviceRestartGpu / devicesRestartGpu の要素と同じ形)。
+ * machine 省略 = 手元。 */
+type GpuRestartTarget = Extract<MonitorFromWebviewMessage, { type: "devicesRestartGpu" }>["devices"][number];
+
 /** webview からの "devicePickDeviceDelete" メッセージの形(runDeleteDevice で使う)。 */
 export type DevicePickDeviceDeleteMessage = Extract<MonitorFromWebviewMessage, { type: "devicePickDeviceDelete" }>;
 
@@ -283,6 +287,11 @@ export class MonitorDeviceOps {
       if (device.platform !== "android" || device.state !== "connected") {
         continue;
       }
+      // 名簿は手元の watchdog のもの(name 単位)。リモートの同名の台が GPU で connected でも
+      // 手元の記憶を落とさない
+      if (device.machine !== undefined) {
+        continue;
+      }
       if (device.renderMode === undefined || device.renderMode === "cpu") {
         continue;
       }
@@ -293,9 +302,9 @@ export class MonitorDeviceOps {
     }
   }
 
-  /** 「GPUで再起動」(手動・右クリックメニュー): 単発もバッチジョブ(1件)として実行する。 */
-  restartWithGpu(name: string): void {
-    this.restartWithGpuBatch([name]);
+  /** 「GPUで再起動」(手動・右クリックメニュー): 単発もバッチ(1件)として実行する。 */
+  restartWithGpu(name: string, machine?: string): void {
+    this.restartWithGpuBatch([{ name, machine }]);
   }
 
   /** 「デバイスを全て起動」: 未起動機のブートと CPU バッジ機の GPU 再起動を1ジョブ
@@ -335,19 +344,36 @@ export class MonitorDeviceOps {
     }
   }
 
-  /** CPU 描画フォールバックの記憶を解除し、devices-restart(2台ずつ並行の down→up)1ジョブで
-   * まとめて再起動する。次回起動は --gpu が付かず host(GPU)。以後また画面凍結して watchdog の
-   * 自動フォールバックが走れば CPU に戻る(既知のトレードオフ。docs/design.md §12.4)。
+  /** CPU 描画フォールバックの記憶を解除し、手元の台は devices-restart(2台ずつ並行の down→up)
+   * 1ジョブでまとめて再起動する。次回起動は --gpu が付かず host(GPU)。以後また画面凍結して
+   * watchdog の自動フォールバックが走れば CPU に戻る(既知のトレードオフ。docs/design.md §12.4)。
+   * **別の機械の台はその機械で down→up する**(タイルの起動/停止と同じ device ジョブ =
+   * `remote exec <machine> -- api device-down/up … --device-machine local`)。
+   * `devices-restart` は手元専用(ApiDevicesRestart の foreign: .notHandled)で、名前だけで
+   * 積むとリモートのタイルの「GPU で再起動」が**手元の同名の台**を再起動する。
    * 直列キューに既に載っているデバイスは除外(連打防止の既存方針)。 */
-  restartWithGpuBatch(names: readonly string[]): void {
-    const targets = names.filter((n) => !hasDeviceLifecycleJobFor(this.lifecycleQueue, n));
-    if (targets.length === 0) {
-      return;
+  restartWithGpuBatch(targets: readonly GpuRestartTarget[]): void {
+    const localNames: string[] = [];
+    const remote: GpuRestartTarget[] = [];
+    for (const target of targets) {
+      if (hasDeviceLifecycleJobFor(this.lifecycleQueue, target.name, target.machine)) {
+        continue;
+      }
+      if (target.machine === undefined) {
+        this.cpuRenderNames.delete(target.name);
+        localNames.push(target.name);
+      } else {
+        remote.push(target);
+      }
     }
-    for (const n of targets) {
-      this.cpuRenderNames.delete(n);
+    if (localNames.length > 0) {
+      this.pushLifecycleJob({ kind: "restartBatch", names: localNames });
     }
-    this.pushLifecycleJob({ kind: "restartBatch", names: targets });
+    for (const { name, machine } of remote) {
+      // down→up の逐次性は promoteDeviceLifecycleJobs が (machine, name) で守る(enqueueRestart と同型)
+      this.pushLifecycleJob({ kind: "device", name, op: "down", machine });
+      this.pushLifecycleJob({ kind: "device", name, op: "up", machine });
+    }
   }
 
   /** enqueueLifecycleJob/enqueueRestart 共通のキュー投入処理(重複排除は呼び出し側の責務)。
@@ -908,7 +934,9 @@ export class MonitorDeviceOps {
       // 手元でも渡す = 同名のリモート機の台を引かないための絞り込み
       args.push("--device-machine", "local");
     }
-    if (op === "up" && this.cpuRenderNames.has(name)) {
+    // 名簿は手元の watchdog のもの(name 単位)。別の機械の同名の台に付けると、向こうを
+    // 理由なく CPU 描画で起こす(= リモートの「GPU で再起動」が GPU で上がらない)
+    if (op === "up" && machine === undefined && this.cpuRenderNames.has(name)) {
       args.push("--gpu", "swiftshader_indirect");
     }
 

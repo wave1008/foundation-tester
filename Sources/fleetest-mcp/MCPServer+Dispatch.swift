@@ -112,7 +112,30 @@ extension MCPServer {
         // 述語は明示ターゲットの唯一の定義元(argsGaveIOSTarget/argsGaveAndroidTarget)
         if argsGaveAndroidTarget(args) { return "android" }
         if argsGaveIOSTarget(args) { return "ios" }
+        // **profile だけの呼び出しはプロファイルの台で決める**: driver() は resolveProfileTarget で
+        // Android の台に解決するのに、ここが既定の iOS を返すと ft_list_apps が simctl へ落ち、
+        // ft_rotate / ft_logs / verifiedRef が iOS 側の記録・言い回しになる。読めなければ既定へ
+        // (driver() 側が改めて明確なエラーを出す)。**ドライバが手元にある呼び手は
+        // `driver is AndroidDriver` を優先する**(ft_snapshot と同じ。ファイルを読み直さない)
+        if let profile = args["profile"] as? String,
+           let platform = profilePlatform(profile: profile, project: args["project"] as? String) {
+            return platform
+        }
         return ProcessInfo.processInfo.environment["FLEETEST_PLATFORM"] ?? "ios"
+    }
+
+    /// 実行プロファイルの**最初の台**の platform。resolveProfileTarget が使う
+    /// `resolved.devices.first?.platform` と同じ順序(ProfileResolver.runDeviceMachines は resolve()
+    /// と同じ ref 順で解決し、無い台を同じく飛ばす)を、アプリ解決・provision 抜きで読む。
+    /// プロジェクト/プロファイル/マシンが読めなければ nil
+    static func profilePlatform(profile: String, project projectName: String?) -> String? {
+        guard let project = try? ScenarioHost.project(named: projectName),
+              let machine = try? ProfileResolver.determineMachine(
+                  project: project, runProfileName: profile),
+              let devices = try? ProfileResolver.runDeviceMachines(
+                  project: project, runProfileName: profile, machineName: machine.name)
+        else { return nil }
+        return devices.first?.platform
     }
 
     /// ft_logs の bundleId 既定。ログはブリッジを通らないので engineKey が launch 時と
@@ -414,10 +437,7 @@ extension MCPServer {
             // 「入っていない」という誤った空振りになる(2026-08-09 に実測して adb へ落ちた)。
             // 明示の includeSystem: false は尊重する
             let includeSystem = args["includeSystem"] as? Bool ?? (appsFilter != nil)
-            if Self.platformName(args) == "android" {
-                guard let android = appsDriver as? AndroidDriver else {
-                    throw MCPError("this Android connection cannot list packages")
-                }
+            if let android = appsDriver as? AndroidDriver {
                 return text(DeviceInventory.appsText(
                     packages: try android.listPackages(includeSystem: includeSystem),
                     includeSystem: includeSystem, filter: appsFilter))
@@ -532,7 +552,7 @@ extension MCPServer {
             // 実際には状態を保ったまま activate しただけの手順が「新規起動」に化けて嘘になる
             interactions.record(InteractionLog.Entry(
                 step: nil, unresolved: nil, isLaunch: !resumes, bundleID: bundleID,
-                platform: Self.platformName(args),
+                platform: launchDriver is AndroidDriver ? "android" : "ios",
                 summary: resumes ? "activate \(bundleID) (resumed, not relaunched)"
                                   : "launch \(bundleID)"))
             return text(resumes ? "Activated: \(bundleID) (resumed without relaunching)"
@@ -969,7 +989,7 @@ extension MCPServer {
                 rotated = reread
                 if fits, unchanged { settledFrames = true; break }
             }
-            recordSnapshot(rotated, Self.platformName(args), args)
+            recordSnapshot(rotated, rotateDriver is AndroidDriver ? "android" : "ios", args)
             // **portrait へ戻したときだけ auto-rotate を復元する**(Android は rotate(to:) の
             // 初回呼び出しで user_rotation / accelerometer_rotation を控え、restoreOrientationIfNeeded
             // が戻す。landscape のままなら控えを保つ = 次に portrait へ戻すまで端末の設定はそのまま)。
@@ -1161,7 +1181,7 @@ extension MCPServer {
                     + RefGuard.overlapWarning(found: element, in: doubleTapSnapshot?
                         .elements ?? [], screen: doubleTapSnapshot?.screen
                         ?? FTRect(x: 0, y: 0, width: 0, height: 0),
-                        isAndroid: Self.platformName(args) == "android") + labelNote
+                        isAndroid: doubleTapDriver is AndroidDriver) + labelNote
                 doubleTapSelector = reproductionNote(resolvedRef: element.ref, args: args)
             } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 doubleTapPoint = (x, y)

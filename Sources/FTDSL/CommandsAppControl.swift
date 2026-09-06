@@ -430,7 +430,7 @@ private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Double,
                     command: "ifCanSelect")
     core.noteBranchOutcome(selector: selector.text, met: found)
     if found { body() } else { core.noteUnexecutedBlock() }
-    return FTBranch(taken: found)
+    return FTBranch(taken: found, enumeratesBothBranches: core.isDryRun)
 }
 
 /// **宣言済みの割り込みを自動で閉じない区間**(Shirates 準拠の名前)。
@@ -502,12 +502,23 @@ private func interruptSuffix(_ outcome: FTDriveCore.CanSelectOutcome) -> String 
 
 public struct FTBranch {
     let taken: Bool
+    /// dry-run(デバイス無しの列挙)。**成立側に加えて `.ifElse` 側も列挙する** ——
+    /// dry-run の `canSelect` は常に成立なので、ここを実行しないと else 側のセレクタ構文誤り・
+    /// 台帳に無い `#id` がデバイス実行まで出てこない(3段検証「誤りは早い段の言葉で返す」に反する)。
+    /// デバイス実行では従来どおり(成立側が走ったら else は未実行)
+    let enumeratesBothBranches: Bool
+
+    init(taken: Bool, enumeratesBothBranches: Bool = false) {
+        self.taken = taken
+        self.enumeratesBothBranches = enumeratesBothBranches
+    }
 
     /// 直前の分岐が不成立だった場合にブロックを実行する。
     /// **成立していた場合はこちらが未実行**なので記録する(ifCanSelect 側と対称。理由は
-    /// FTDriveCore.sectionUnexecutedBlocks)
+    /// FTDriveCore.sectionUnexecutedBlocks)。dry-run では両側を列挙するので未実行の記録はしない
+    /// (アサーションは両側から数えられる)
     public func ifElse(_ body: () -> Void) {
-        if taken {
+        if taken, !enumeratesBothBranches {
             FTRuntime.requireCore(command: "ifElse").noteUnexecutedBlock()
         } else {
             body()

@@ -34,6 +34,9 @@ SKILLS="fleetest-setup fleetest-update fleetest-profiles fleetest-scenario fleet
 # 置き先(既定は Claude Code の規約位置 = AgentIntegration.skillsDirectory)。
 # 他のエージェントは自分のスキル置き場を --dir で渡す
 DEST=".claude/skills"
+# コピー配置の印。**update.sh はこれがある置き場にだけ増えたスキルを新しく置く**
+# (無い置き場は既存の写しを写し直すだけ)。名前は update.sh の COPIED_SKILLS_MARKER と 1:1
+COPIED_SKILLS_MARKER=".fleetest-copied"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -78,6 +81,8 @@ for name in ${SKILLS}; do
   cp "${WORK}/${name}.md" "${dir}/SKILL.md"
   echo "    → ${dir}/SKILL.md"
 done
+# 写したスキル名を1行1つ(update.sh が「コピー配置の受け手」と判定する根拠)
+printf '%s\n' ${SKILLS} > "${DEST}/${COPIED_SKILLS_MARKER}"
 
 echo "✅ fleetest のスキル6本を ${DEST} に導入しました。"
 cat <<'EOF'

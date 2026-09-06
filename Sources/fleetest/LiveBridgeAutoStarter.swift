@@ -149,6 +149,25 @@ actor LiveBridgeAutoStarter {
                     return .failure(AutoStarterError.staleStopFailed(port: port))
                 }
             }
+            // このポートは実行プロファイルが固定するため freePort のような採番替えは無い。
+            // それでも「今 LISTEN している実体」は確かめる —— 背面へ回った in-app ブリッジは
+            // .pid を持たず /status にも答えないため、確認しないまま startDetached すると
+            // bindFailed(48) で気づく(BridgeProvisioner.executeBridge と同じ判定を再利用する。
+            // 二つ目の実装を書かない)
+            let stateDir = repoRoot.appendingPathComponent(".fleetest")
+            switch PortHolder.stopIfOwnedBridge(
+                port: port, stateDir: stateDir,
+                derivedDataPath: stateDir.appendingPathComponent("DerivedData")) {
+            case .stopped:
+                break
+            case .notFound:
+                break
+            case .foreign(let holder):
+                // ポートは固定なので次のポートへは逃がせない。占有者を名指しして諦める
+                // (原因不明の bindFailed 待ちより先に理由を返す)
+                releaseLockOnce()
+                return .failure(AutoStarterError.portHeldByForeignProcess(port: port, holder: holder))
+            }
             try launcher.generateProjectIfNeeded()
             try launcher.rebuildIfStale()
             do {
@@ -159,7 +178,27 @@ actor LiveBridgeAutoStarter {
             }
             // ポート確保(pid ファイル書き込み)完了。ready 待ちはロックの外へ
             releaseLockOnce()
-            try await launcher.waitUntilReady()
+            // 実機はデバイス内ループバックにホストから届かない。establish で到達手段
+            // (LAN の宛先解決 or iproxy の USB トンネル)を確立してから待つ
+            // (BridgeProvisioner.executeBridge と同じ手順。飛ばすとループバックを待ち続け、
+            // 実機のライブ復帰が必ず 180 秒後に failed になる)
+            var host = BridgeEndpoint.loopbackHost
+            if physical {
+                do {
+                    let endpoint = try await IOSDeviceTransport.establish(
+                        port: port, deviceUDID: udid, repoRoot: repoRoot,
+                        log: { message in
+                            FileHandle.standardError.write(Data("[live serve] \(message)\n".utf8))
+                        })
+                    host = endpoint.host
+                } catch {
+                    // launcher.stop() が establish の到達手段(iproxy/endpoint 記録)の
+                    // teardown も内包する(IOSDeviceTransport.teardown を直接呼ぶのと同じ)
+                    try? launcher.stop()
+                    return .failure(error)
+                }
+            }
+            try await launcher.waitUntilReady(host: host)
             return .success(())
         } catch {
             releaseLockOnce()
@@ -175,12 +214,18 @@ actor LiveBridgeAutoStarter {
 
 private enum AutoStarterError: Error, LocalizedError {
     case staleStopFailed(port: UInt16)
+    /// port は実行プロファイルが固定するため、freePort のような採番替えができない
+    /// (XCUIBridgeResolver.start と違い、次の空きポートへは逃がせない)
+    case portHeldByForeignProcess(port: UInt16, holder: String)
 
     var errorDescription: String? {
         switch self {
         case .staleStopFailed(let port):
             return "cannot stop the stale bridge (no pid file). " +
                 "Run `fleetest bridge down --port \(port)`"
+        case .portHeldByForeignProcess(let port, let holder):
+            return "port \(port) is held by an unrelated process (\(holder)). " +
+                "Run `fleetest bridge down --port \(port)` or stop it manually"
         }
     }
 }

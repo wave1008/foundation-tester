@@ -88,6 +88,8 @@ Without `--dir` they go to the Claude Code location, `.claude/skills/`. Copied s
 updated by `git pull`, so leave updates to `Scripts/update.sh` — it re-copies them from the clone
 and reports `✅ Skills: refreshed N copied SKILL.md`. **Restart the agent** afterwards, or it keeps
 reading the old runbooks.
+`install-skill.sh` leaves a marker `.fleetest-copied` in that directory; `update.sh` adds newly
+introduced skills **only when the marker exists** (no marker = a plugin-based receiver, which gets no copies).
 
 ## Using Codex (the sandbox)
 

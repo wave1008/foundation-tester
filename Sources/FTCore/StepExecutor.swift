@@ -377,16 +377,42 @@ public final class StepExecutor {
     public struct InterruptHandler: Sendable {
         public let detect: FlowLocator
         public let dismiss: FlowLocator
+        /// セレクタの `||` / `(a|b)` の残り(先頭は detect / dismiss)。**照合は先に書いたほうが勝つ**
+        /// (他のコマンドの `||` と同じ規則)。ここを落とすと日本語版の文言だけ閉じない
+        public let detectFallbacks: [FlowLocator]
+        public let dismissFallbacks: [FlowLocator]
         /// **1ステップで閉じる上限**(既定 `maxInterruptDismissalsPerStep`)。
         /// 宣言ごとに変えられる —— 湧く頻度は配信側の設定次第で、こちらからは決められない。
         /// 上限そのものを外せないのは、**閉じても消えない相手に無限に付き合わない**ため
         public let maxDismissals: Int
         public init(detect: FlowLocator, dismiss: FlowLocator,
+                    detectFallbacks: [FlowLocator] = [], dismissFallbacks: [FlowLocator] = [],
                     maxDismissals: Int = StepExecutor.maxInterruptDismissalsPerStep) {
             self.detect = detect
             self.dismiss = dismiss
+            self.detectFallbacks = detectFallbacks
+            self.dismissFallbacks = dismissFallbacks
             self.maxDismissals = max(1, maxDismissals)
         }
+        public var detectChain: [FlowLocator] { [detect] + detectFallbacks }
+        public var dismissChain: [FlowLocator] { [dismiss] + dismissFallbacks }
+        /// 注記・回数の鍵。代替が無ければ従来どおり `detect.summary` と同じ文字列
+        public var key: String { detectChain.map(\.summary).joined(separator: "||") }
+        /// 先に書いたほうが勝つ(`||` と同じ)
+        public func matchDetect(in snapshot: SnapshotResponse) -> ElementInfo? {
+            StepExecutor.matchFirst(detectChain, in: snapshot)
+        }
+        public func matchDismiss(in snapshot: SnapshotResponse) -> ElementInfo? {
+            StepExecutor.matchFirst(dismissChain, in: snapshot)
+        }
+    }
+
+    /// ロケータ列を順に照合し、最初に当たった要素を返す(`||` の規則)
+    public static func matchFirst(_ locators: [FlowLocator], in snapshot: SnapshotResponse) -> ElementInfo? {
+        for locator in locators {
+            if let element = match(locator, in: snapshot) { return element }
+        }
+        return nil
     }
 
     /// 宣言順に評価する。1ステップにつき**1回だけ**発火する(閉じても消えない相手で無限に回らないため)
@@ -964,17 +990,17 @@ public final class StepExecutor {
         guard !interruptHandlers.isEmpty else { return }
         // 抑止中は閉じない。ただし**出ていた事実は覚える**(失敗したときだけ注記に出す)
         guard !handlersSuppressed else {
-            if interruptHandlers.contains(where: { Self.match($0.detect, in: snapshot) != nil }) {
+            if interruptHandlers.contains(where: { $0.matchDetect(in: snapshot) != nil }) {
                 suppressedInterruptionSeenThisStep = true
             }
             return
         }
         let clock = ContinuousClock()
         for handler in interruptHandlers {
-            let key = handler.detect.summary
+            let key = handler.key
             guard (interruptDismissals[key] ?? 0) < handler.maxDismissals else { continue }
-            guard Self.match(handler.detect, in: snapshot) != nil,
-                  let target = Self.match(handler.dismiss, in: snapshot) else { continue }
+            guard handler.matchDetect(in: snapshot) != nil,
+                  let target = handler.matchDismiss(in: snapshot) else { continue }
             let start = clock.now
             try await driver.tap(ref: target.ref)
             phase.actionMs += Self.ms(clock.now - start)
@@ -992,7 +1018,7 @@ public final class StepExecutor {
             // **閉じた直後にまだ居る = 閉じられていない**。同じ相手に上限まで付き合わず、
             // その場で打ち切って注記に残す(dismiss セレクタが効いていない疑い)。
             // **1回目では切らない** —— 閉じるアニメーションの最中に撮った木で早合点しないため
-            if Self.match(handler.detect, in: snapshot) != nil, lastDismissedInterrupt == key {
+            if handler.matchDetect(in: snapshot) != nil, lastDismissedInterrupt == key {
                 interruptStuck = true
                 interruptDismissals[key] = handler.maxDismissals
             }

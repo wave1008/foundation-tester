@@ -443,6 +443,15 @@ extension StepExecutor {
                     .flatMap { ScrollGeometry.intersection($0, snapshot.screen) } ?? snapshot.screen
                 if attempt < maxSwipes,
                    Self.isClippedByViewport(element, screen: viewport) {
+                    // **寄せる前にも fail-fast を通す**(未検出側と同じ判定)。ここを飛ばすと
+                    // 解決できない明示 scrollFrame のまま viewport が画面全体へ落ち、寄せの1本が
+                    // 文書化した「1本も振らない」を素通りして全画面スワイプになる
+                    if Self.scrollFrameUnresolved(step, in: snapshot) {
+                        return ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
+                                                  hintJumps: hintJumps, swipes: swipes,
+                                                  scrollFrameMissing: true,
+                                                  maxTruncatedDuringSearch: truncatedDuringSearch)
+                    }
                     // **行き過ぎた側なら逆へ送る**(recoveryDirection 参照)。探索方向のまま
                     // 送り続けると、既に通り過ぎた要素は遠ざかるだけで永久に可視域へ戻らない
                     var recovery = step
@@ -466,11 +475,18 @@ extension StepExecutor {
                                       container: ScrollGeometry.viewport(viewport,
                                                                          excludingKeyboard: effectiveKeyboard),
                                       vertical: back == .up || back == .down, phase: &phase) {
+                        // 寄せの1本も**撃った数と比較材料に載せる**(未検出側と同じ)。載せないと
+                        // swipes が 0 のまま報告され、「2周不変で打ち切り」と弾切れ後の逆走査が
+                        // 寄せの周回では一切効かない
+                        swipes += 1
+                        previousSnapshot = snapshot
                         continue
                     }
                     let finger = FTSwipeDirection(rawValue: recovery.direction ?? "") ?? direction
                     if try await swipeWithFallback(finger, intent: .search, path: path,
                                                    phase: &phase) { viaXCUITest = true }
+                    swipes += 1
+                    previousSnapshot = snapshot
                     continue
                 }
                 // **木に居ること ≠ 画面に居ること**: 中心が**画面**の外なら「見つかった」に

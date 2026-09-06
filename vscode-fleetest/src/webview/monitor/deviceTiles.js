@@ -938,12 +938,15 @@ deviceOpMenuItemBtn.addEventListener('click', (event) => {
 });
 
 // CPU 描画フォールバックを解除して host GPU で再起動(受け手は monitorPanel.ts の deviceRestartGpu)。
+// **machine も載せる**(deviceOp と同じ理由) —— 名前だけだとリモートのタイルの「GPU で再起動」が
+// 手元の同名の台を再起動する
 deviceOpMenuGpuBtn.addEventListener('click', (event) => {
   event.stopPropagation();
   if (!deviceOpMenuEntry) {
     return;
   }
-  vscode.postMessage({ type: 'deviceRestartGpu', name: deviceOpMenuEntry.device.name });
+  const device = deviceOpMenuEntry.device;
+  vscode.postMessage({ type: 'deviceRestartGpu', name: device.name, machine: device.machine });
   closeDeviceOpMenu();
 });
 

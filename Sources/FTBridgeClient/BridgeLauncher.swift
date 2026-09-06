@@ -366,10 +366,49 @@ public struct BridgeLauncher {
             InAppBridgeState.terminateAndRemove(at: inappPath)
             return
         }
+        // **PID 再利用ガード**: TTL 自主終了後に pid ファイルが残ったまま、その pid を
+        // 無関係プロセスが拾っていることがある。撃たずに stale ファイルだけ片付ける
+        // (isOurRunner のコメント参照)
+        guard Self.isOurRunner(pid: pid, port: port) else {
+            Self.logStalePidReuse(pid: pid, pidPath: pidPath, kind: "runner")
+            return
+        }
         kill(pid, SIGTERM)
         // 死亡確認してから pid ファイルを消す。即削除すると assignPort がそのポートを空きと誤認し、
         // まだ生きているプロセスとの同ポート再起動で bindFailed(48) を招く(stopAndWait と同じ理由)。
         Self.confirmDeathThenRemovePidFile(pid: pid, pidPath: pidPath, timeout: 5)
+    }
+
+    /// pid が今も「このポート専用の」FleetestRunner ランナーかを ps で確認する
+    /// (stopAll/stopMatching/killOrphanRunners と同じ照合: このポート専用の xctestrun
+    /// ファイル名をコマンドラインに含むか)。stop()/stopAndWait() の PID 再利用ガードに使う。
+    /// **TTL 自主終了(design.md §4.1)は pid ファイルを消せない** —— 放置された pid ファイルが
+    /// 指す番号は、数日後には無関係な新しいプロセスに再利用され得る。生存確認だけでは
+    /// (`ProcessLiveness.isAlive`)区別できないので、コマンドラインまで見る。
+    /// 判定本体は pure な isOurRunner(command:port:) に切り出し、ps 抜きでテストする
+    static func isOurRunner(pid: Int32, port: UInt16) -> Bool {
+        guard let ps = try? Shell.run(["ps", "-ww", "-p", String(pid), "-o", "command="]),
+              ps.status == 0 else { return false }
+        return isOurRunner(command: ps.output, port: port)
+    }
+
+    static func isOurRunner(command: String, port: UInt16) -> Bool {
+        command.contains("FleetestRunner-\(port).xctestrun")
+    }
+
+    /// PID 再利用を検知したときの後始末を1箇所に集約する。**撃たない** —— 無関係プロセスへ
+    /// SIGTERM/SIGKILL を送らず、stale な pid ファイルだけ片付けて1行だけ知らせる。
+    /// pid が既に死んでいる(TTL 自主終了そのもの)ときは黙って片付ける(再利用ではないので発話しない)
+    static func logStalePidReuse(pid: Int32, pidPath: URL, kind: String) {
+        if ProcessLiveness.isAlive(pid) {
+            let ps = try? Shell.run(["ps", "-ww", "-p", String(pid), "-o", "command="])
+            let command = (ps?.status == 0 ? ps?.output : nil)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            FileHandle.standardError.write(Data(
+                ("pid \(pid) is no longer the \(kind) (reused by \(command ?? "a different process"));"
+                 + " removed the stale pid file\n").utf8))
+        }
+        try? FileManager.default.removeItem(at: pidPath)
     }
 
     /// ポートで応答しているブリッジの /status を同期で1回だけ引く(このリポジトリの管理外か判定用)。
@@ -441,6 +480,12 @@ public struct BridgeLauncher {
     public func stopAndWait(timeout: TimeInterval = 10) async throws {
         guard let pidString = try? String(contentsOf: pidPath, encoding: .utf8),
               let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            throw LauncherError.notRunning(port: port)
+        }
+        // PID 再利用ガード(stop() と同じ理由・同じ判定)。無関係プロセスを撃たず、呼び出し元には
+        // 「(このポートの)ランナーは動いていない」として返す(pid ファイル無しの扱いと揃える)
+        guard Self.isOurRunner(pid: pid, port: port) else {
+            Self.logStalePidReuse(pid: pid, pidPath: pidPath, kind: "runner")
             throw LauncherError.notRunning(port: port)
         }
         kill(pid, SIGTERM)

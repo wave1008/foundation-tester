@@ -3,6 +3,7 @@
 // (userdata-qemu.img[.qcow2] / cache.img[.qcow2] / snapshots/。sdcard.img は消さない)。
 // 稼働中エミュレータの下では削除しない: kill→serial 消失確認が取れた場合のみ削除する。
 
+import FTEmulatorGrpc
 import Foundation
 import FTCore
 
@@ -11,6 +12,9 @@ public enum AndroidDataWiperError: Error, LocalizedError, Equatable {
     /// 停止を確認できないまま締切に達した(**1バイトも消していない**)。稼働中のエミュレータの
     /// 下からイメージを抜くと qemu がクラッシュして AVD が壊れるので、確認が取れないなら中止する
     case stopNotConfirmed(device: String, serial: String, seconds: Int)
+    /// 走っているかどうかを決められない(**1バイトも消していない**)。qemu のプロセスは居るのに
+    /// adb が serial を出さない・ps が読めず offline の台がある等、止める宛先を引けない形
+    case runningStateUnknown(device: String, avd: String, reason: String)
 
     public var errorDescription: String? {
         switch self {
@@ -18,6 +22,9 @@ public enum AndroidDataWiperError: Error, LocalizedError, Equatable {
             return "AVD directory not found for \(avd) (\(path))"
         case .stopNotConfirmed(let device, let serial, let seconds):
             return "\(device): could not confirm the emulator stopped within \(seconds)s (\(serial))"
+                + " — nothing was wiped. Stop it and try again"
+        case .runningStateUnknown(let device, let avd, let reason):
+            return "\(device): cannot tell whether \(avd) is running (\(reason)); not deleting"
                 + " — nothing was wiped. Stop it and try again"
         }
     }
@@ -178,9 +185,24 @@ public enum AndroidDataWiper {
     private static func stopIfRunning(
         avdID: String, deviceName: String, log: @escaping (String) -> Void
     ) async throws -> RunningState {
-        guard let serial = try? AndroidDeviceCatalog.runningAVDs()
-            .first(where: { $0.value == avdID })?.key else {
+        // adb が失敗したら「空」として扱い、判定は発見ファイル・ps に委ねる(adb 死 = 走っていない、
+        // ではない)。発見ファイルは pid 生存確認済み(EmulatorEndpoints.all)= adb を通さない
+        // serial→AVD の写像で、offline の台や adb が見失った台もここで引ける
+        let running = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
+        let all = (try? AndroidDeviceCatalog.allEmulatorSerials()) ?? []
+        var discovered: [String: String] = [:]
+        for endpoint in EmulatorEndpoints.all() { discovered[endpoint.serial] = endpoint.avdID }
+        let ps = (try? Shell.run(["/bin/ps", "-eo", "command"], timeout: 10))?.output
+        let serial: String
+        switch runningVerdict(avdID: avdID, runningAVDs: running, allEmulatorSerials: all,
+                              discoveredAVDs: discovered, psOutput: ps) {
+        case .notRunning:
             return .wasNotRunning
+        case .running(let found):
+            serial = found
+        case .unknown(let reason):
+            throw AndroidDataWiperError.runningStateUnknown(
+                device: deviceName, avd: avdID, reason: reason)
         }
         // gRPC SHUTDOWN 優先(adb 経路死亡でも届く)・不可なら従来の emu kill
         if await !EmulatorControl.shutdown(serial: serial) {
@@ -190,8 +212,11 @@ public enum AndroidDataWiper {
 
         let deadline = Date().addingTimeInterval(TimeInterval(stopConfirmSeconds))
         while Date() < deadline {
-            let connected = (try? AndroidDeviceCatalog.connectedSerials()) ?? []
-            if !connected.contains(serial) { return .wasRunning }
+            // ①は **offline を含む一覧**で見る(state=device だけだと、offline の台は最初から
+            // 「消えている」= 生きた qemu の下で削除へ進む。停止中の台も device→offline→消失と
+            // 遷移するので、offline の段で消えたと見ない)。adb が読めなければ「まだ居る」に倒す
+            let present = (try? AndroidDeviceCatalog.allEmulatorSerials()) ?? [serial]
+            if !present.contains(serial) { return .wasRunning }
             if !emulatorProcessRunning(avdID: avdID) {
                 log("→ \(deviceName): the emulator process is gone (adb still lists \(serial))")
                 return .wasRunning
@@ -202,6 +227,45 @@ public enum AndroidDataWiper {
             device: deviceName, serial: serial, seconds: stopConfirmSeconds)
     }
 
+    enum RunningVerdict: Equatable {
+        case notRunning
+        /// この serial へ停止を撃つ(state=device でも offline でもよい)
+        case running(serial: String)
+        /// 走っているかもしれないが止める宛先が引けない。**消してはいけない**
+        case unknown(reason: String)
+    }
+
+    /// 「その AVD は今走っているか」。I/O を持たない pure 関数(テスト用に internal)。
+    /// **offline も走っている** —— ブート中・adbd が詰まったゲストは `adb devices` に offline で
+    /// 載る(runningAVDs は state=device だけなので、それだけ見ると生きた qemu の下から
+    /// イメージを抜く)。優先順: state=device の照合 → 発見ファイル(serial→AVD。offline や
+    /// adb が見失った台もここで引ける)→ qemu プロセスの有無(居るのに serial が無い = unknown)
+    /// → ps が読めず未解決の offline がある = unknown → notRunning
+    static func runningVerdict(
+        avdID: String, runningAVDs: [String: String], allEmulatorSerials: [String],
+        discoveredAVDs: [String: String], psOutput: String?
+    ) -> RunningVerdict {
+        if let serial = runningAVDs.first(where: { $0.value == avdID })?.key {
+            return .running(serial: serial)
+        }
+        if let serial = discoveredAVDs.first(where: { $0.value == avdID })?.key {
+            return .running(serial: serial)
+        }
+        let unresolvedOffline = allEmulatorSerials
+            .filter { runningAVDs[$0] == nil && discoveredAVDs[$0] == nil }
+        guard let psOutput else {
+            return unresolvedOffline.isEmpty
+                ? .notRunning
+                : .unknown(reason: "ps is unreadable and adb lists offline emulators it cannot name: "
+                           + unresolvedOffline.joined(separator: ", "))
+        }
+        if avdProcessPresent(psOutput: psOutput, avdID: avdID) {
+            return .unknown(reason: "its emulator process is running but neither adb nor the"
+                            + " emulator discovery file gives a serial for it")
+        }
+        return .notRunning
+    }
+
     /// その AVD の qemu プロセスが生きているか(`ps` の1回分を走査)。読み取りだけ
     private static func emulatorProcessRunning(avdID: String) -> Bool {
         guard let result = try? Shell.run(["/bin/ps", "-eo", "command"], timeout: 10) else {
@@ -210,14 +274,18 @@ public enum AndroidDataWiper {
         return avdProcessPresent(psOutput: result.output, avdID: avdID)
     }
 
-    /// `ps` の出力に `-avd <id>` が**そのままの語**で現れるか。I/O を持たない pure 関数
-    /// (テスト用に internal)。**前方一致では判定しない** —— `Pixel_9_-01` と `Pixel_9_-010` の
-    /// ように、片方がもう片方の接頭辞になる AVD 名は普通にある
+    /// `ps` の出力に `-avd <id>` または `@<id>`(emulator の短縮形)が**そのままの語**で現れるか。
+    /// I/O を持たない pure 関数(テスト用に internal)。**前方一致では判定しない** ——
+    /// `Pixel_9_-01` と `Pixel_9_-010` のように、片方がもう片方の接頭辞になる AVD 名は普通にある
     static func avdProcessPresent(psOutput: String, avdID: String) -> Bool {
+        let shortForm = Substring("@" + avdID)
         for line in psOutput.split(separator: "\n") {
             let tokens = line.split(whereSeparator: { $0 == " " || $0 == "\t" })
-            for (index, token) in tokens.enumerated() where token == "-avd" {
-                if index + 1 < tokens.count, tokens[index + 1] == Substring(avdID) { return true }
+            for (index, token) in tokens.enumerated() {
+                if token == shortForm { return true }
+                if token == "-avd", index + 1 < tokens.count, tokens[index + 1] == Substring(avdID) {
+                    return true
+                }
             }
         }
         return false

@@ -3898,13 +3898,25 @@ test("restartBatch: bulkLifecycleOp に影響しない", () => {
   assert.equal(bulkLifecycleOp(queue), null);
 });
 
-test("isMonitorFromWebviewMessage: devicesRestartGpu は非空 names 配列のみ受理する", () => {
-  assert.equal(isMonitorFromWebviewMessage({ type: "devicesRestartGpu", names: ["A"] }), true);
-  assert.equal(isMonitorFromWebviewMessage({ type: "devicesRestartGpu", names: ["A", "B"] }), true);
-  assert.equal(isMonitorFromWebviewMessage({ type: "devicesRestartGpu", names: [] }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "devicesRestartGpu", names: ["A", ""] }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "devicesRestartGpu", names: [1] }), false);
+test("isMonitorFromWebviewMessage: devicesRestartGpu は非空 devices 配列({name, machine?})のみ受理する", () => {
+  assert.equal(isMonitorFromWebviewMessage({ type: "devicesRestartGpu", devices: [{ name: "A" }] }), true);
+  assert.equal(isMonitorFromWebviewMessage(
+    { type: "devicesRestartGpu", devices: [{ name: "A" }, { name: "B", machine: "M1Max" }] }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "devicesRestartGpu", devices: [] }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "devicesRestartGpu", devices: [{ name: "A" }, { name: "" }] }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "devicesRestartGpu", devices: [{ name: "A", machine: "" }] }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "devicesRestartGpu", devices: ["A"] }), false);
+  // 旧形(names)は読まない(同時配布なので両対応にしない)
+  assert.equal(isMonitorFromWebviewMessage({ type: "devicesRestartGpu", names: ["A"] }), false);
   assert.equal(isMonitorFromWebviewMessage({ type: "devicesRestartGpu" }), false);
+});
+
+test("isMonitorFromWebviewMessage: deviceRestartGpu は machine を運ぶ(省略 = 手元、空文字は拒否)", () => {
+  assert.equal(isMonitorFromWebviewMessage({ type: "deviceRestartGpu", name: "A" }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "deviceRestartGpu", name: "A", machine: "M1Max" }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "deviceRestartGpu", name: "A", machine: "" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "deviceRestartGpu", name: "A", machine: 1 }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "deviceRestartGpu", name: "" }), false);
 });
 
 test("isDevicesRestartEvent: 各 kind の受理と不正の拒否", () => {

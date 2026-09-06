@@ -51,6 +51,106 @@ final class AndroidDataWiperTests: XCTestCase {
         XCTAssertFalse(AndroidDataWiper.avdProcessPresent(psOutput: Self.psSample, avdID: "Pixel_9"))
     }
 
+    /// `emulator @<id>` の短縮形でも居ると判定する(`-avd` だけだと、短縮形で起動した台の
+    /// 停止確認②が「プロセスは消えた」と誤り、生きた qemu の下で削除へ進む)
+    func testAVDProcessPresentAcceptsTheAtShortForm() {
+        let ps = """
+        /Users/x/Library/Android/sdk/emulator/emulator @Pixel_9_Android_15_-01 -no-window
+        /Users/x/Library/Android/sdk/emulator/emulator @Pixel_9_Android_15_-010 -no-window
+        """
+        XCTAssertTrue(AndroidDataWiper.avdProcessPresent(psOutput: ps, avdID: "Pixel_9_Android_15_-01"))
+        XCTAssertTrue(AndroidDataWiper.avdProcessPresent(psOutput: ps, avdID: "Pixel_9_Android_15_-010"))
+        XCTAssertFalse(AndroidDataWiper.avdProcessPresent(psOutput: ps, avdID: "Pixel_9_Android_15_-0"),
+                       "短縮形でも前方一致はしない")
+        XCTAssertFalse(AndroidDataWiper.avdProcessPresent(psOutput: ps, avdID: "Pixel_9_Android_15_-02"))
+    }
+
+    // MARK: - 走っているかの判定(runningVerdict)
+    // **offline も走っている**。state=device だけを見ると、ブート中/adbd が詰まった台が
+    // 「走っていない」に倒れ、生きた qemu の下からイメージを抜く(ファイル冒頭の禁則そのもの)
+
+    private let avd = "Pixel_9_Android_15_-01"
+
+    func testOnlineEmulatorIsRunningViaItsSerial() {
+        let verdict = AndroidDataWiper.runningVerdict(
+            avdID: avd, runningAVDs: ["emulator-5554": avd], allEmulatorSerials: ["emulator-5554"],
+            discoveredAVDs: [:], psOutput: "")
+        XCTAssertEqual(verdict, .running(serial: "emulator-5554"))
+    }
+
+    /// 本丸: adb が offline としか言わない台でも、発見ファイルが AVD を名指しすれば「走っている」
+    /// (通常の停止経路へ進む。削除へは進まない)
+    func testOfflineEmulatorNamedByTheDiscoveryFileIsRunning() {
+        let verdict = AndroidDataWiper.runningVerdict(
+            avdID: avd, runningAVDs: [:], allEmulatorSerials: ["emulator-5556"],
+            discoveredAVDs: ["emulator-5556": avd], psOutput: "")
+        XCTAssertEqual(verdict, .running(serial: "emulator-5556"))
+    }
+
+    /// adb が台を見失っていても(allEmulatorSerials に無い)、発見ファイルに居れば走っている
+    func testEmulatorUnknownToAdbButDiscoveredIsRunning() {
+        let verdict = AndroidDataWiper.runningVerdict(
+            avdID: avd, runningAVDs: [:], allEmulatorSerials: [],
+            discoveredAVDs: ["emulator-5558": avd], psOutput: "")
+        XCTAssertEqual(verdict, .running(serial: "emulator-5558"))
+    }
+
+    /// qemu のプロセスは居るのに serial を引けない = **不明**(消さない)。「走っていない」に倒さない
+    func testProcessPresentWithoutASerialIsUnknownNotNotRunning() {
+        let ps = "/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd \(avd) -no-window\n"
+        let verdict = AndroidDataWiper.runningVerdict(
+            avdID: avd, runningAVDs: [:], allEmulatorSerials: ["emulator-5556"],
+            discoveredAVDs: [:], psOutput: ps)
+        guard case .unknown = verdict else { return XCTFail("\(verdict)") }
+        XCTAssertNotEqual(verdict, .notRunning)
+    }
+
+    /// 短縮形 `@<id>` のプロセスも同じく不明へ倒す
+    func testProcessPresentInShortFormIsUnknown() {
+        let verdict = AndroidDataWiper.runningVerdict(
+            avdID: avd, runningAVDs: [:], allEmulatorSerials: [],
+            discoveredAVDs: [:], psOutput: "/sdk/emulator/emulator @\(avd)\n")
+        guard case .unknown = verdict else { return XCTFail("\(verdict)") }
+    }
+
+    /// ps が読めず、名指しできない offline の台がある = 不明(消さない)
+    func testUnreadablePsWithUnnamedOfflineEmulatorIsUnknown() {
+        let verdict = AndroidDataWiper.runningVerdict(
+            avdID: avd, runningAVDs: [:], allEmulatorSerials: ["emulator-5556"],
+            discoveredAVDs: [:], psOutput: nil)
+        guard case .unknown(let reason) = verdict else { return XCTFail("\(verdict)") }
+        XCTAssertTrue(reason.contains("emulator-5556"), reason)
+    }
+
+    /// 他の AVD しか居ない(serial も発見ファイルもプロセスも別物)なら走っていない
+    func testOnlyOtherEmulatorsMeansNotRunning() {
+        let other = "Pixel_10_Android_16_-07"
+        let ps = "/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd \(other) -no-window\n"
+        let verdict = AndroidDataWiper.runningVerdict(
+            avdID: avd, runningAVDs: ["emulator-5554": other], allEmulatorSerials: ["emulator-5554", "emulator-5556"],
+            discoveredAVDs: ["emulator-5554": other, "emulator-5556": "Something_Else"], psOutput: ps)
+        XCTAssertEqual(verdict, .notRunning)
+    }
+
+    func testNothingAnywhereMeansNotRunning() {
+        XCTAssertEqual(AndroidDataWiper.runningVerdict(
+            avdID: avd, runningAVDs: [:], allEmulatorSerials: [], discoveredAVDs: [:], psOutput: ""),
+            .notRunning)
+        XCTAssertEqual(AndroidDataWiper.runningVerdict(
+            avdID: avd, runningAVDs: [:], allEmulatorSerials: [], discoveredAVDs: [:], psOutput: nil),
+            .notRunning, "ps が読めなくても、adb にも発見ファイルにも何も無ければ走っていない")
+    }
+
+    /// 不明のときの文言も**「何も消していない」ことを言う**
+    func testRunningStateUnknownSaysNothingWasWiped() {
+        let error = AndroidDataWiperError.runningStateUnknown(
+            device: "エミュ1", avd: avd, reason: "offline emulator")
+        let message = error.errorDescription ?? ""
+        XCTAssertTrue(message.contains("nothing was wiped"), message)
+        XCTAssertTrue(message.contains("cannot tell whether \(avd) is running"), message)
+        XCTAssertTrue(message.contains("not deleting"), message)
+    }
+
     /// 停止を確認できなかったときの文言は**「何も消していない」ことを言う**(利用者はここだけ見て
     /// 「消えたのか残ったのか」を判断する)
     func testStopNotConfirmedSaysNothingWasWiped() {

@@ -273,6 +273,17 @@ test("device-down は udid/serial 無指定なら従来どおり --name/--projec
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("syncCpuRenderNames: リモートの同名の台が GPU で connected でも手元の記憶を落とさない(名簿は手元のもの)", async () => {
+  const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+
+  deviceOps.markCpuRender("Pixel1");
+  deviceOps.syncCpuRenderNames([{ ...androidDevice("Pixel1", "gpu"), machine: "M1Max" }]);
+  assert.match(await runBulkUpAndReadArgs(deviceOps, argsLog), /--cpu-render Pixel1/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("syncCpuRenderNames: ライフサイクルジョブ進行中の個体は落とさない(フォールバック直後の競合対策)", async () => {
   const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
   const { deps } = makeDeps(binaryPath);
@@ -735,6 +746,75 @@ test("stderr が何も無ければ exit code だけでもバナーへ出す(黙�
     const failed = posts.filter((m) => m.type === "deviceOpFailed").at(-1);
     assert.ok(failed, "deviceOpFailed が送られる");
     assert.match(failed.message, /3/, "exit code が読める");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// 「GPU で再起動」の宛先。`api devices-restart` は手元専用(ApiDevicesRestart の
+// foreign: .notHandled)なので、リモートのタイルから名前だけで積むと**手元の同名の台**を
+// 再起動していた(実害: リモート機の CPU バッジ機に「GPU で再起動」→ この Mac のエミュレータが落ちる)。
+// リモートはタイルの起動/停止と同じ device ジョブ(remote exec + --device-machine local)へ回す。
+test("リモートのタイルの「GPU で再起動」はその機械で down→up し、手元の devices-restart を撃たない", async () => {
+  const { dir, binaryPath } = makeMockBinary();
+  const { deps, stopDeviceStreamsCalls } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    // 手元の同名の台が CPU フォールバック中でも、向こうの up に --gpu を付けない
+    deviceOps.markCpuRender("エミュ1");
+    deviceOps.restartWithGpu("エミュ1", "M1Max");
+    await waitUntilIdle(deviceOps);
+    const lines = argvLines(dir);
+    assert.equal(lines.length, 2, "down と up の2本");
+    assert.match(lines[0], /^remote exec M1Max -- api device-down --name エミュ1 /);
+    assert.match(lines[1], /^remote exec M1Max -- api device-up --name エミュ1 /);
+    for (const line of lines) {
+      assert.match(line, /--device-machine local/);
+      assert.doesNotMatch(line, /devices-restart/, "手元の同名の台を再起動してはいけない");
+      assert.doesNotMatch(line, /--gpu/, "手元の名簿(cpuRenderNames)を別の機械の台に適用しない");
+    }
+    // down の前に配信を畳む(タイルの停止と同じ経路を通っている証拠)
+    assert.deepEqual(stopDeviceStreamsCalls, ["エミュ1"]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("手元のタイルの「GPU で再起動」は従来どおり devices-restart 1本(machine 省略)", async () => {
+  const { dir, binaryPath } = makeMockBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.restartWithGpu("エミュ1");
+    await waitUntilIdle(deviceOps);
+    const lines = argvLines(dir);
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /^api devices-restart --name エミュ1 /);
+    assert.doesNotMatch(lines[0], /remote exec/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("バッチの「GPU で再起動」は手元を devices-restart 1本にまとめ、リモートは機械ごとの device ジョブに分ける", async () => {
+  const { dir, binaryPath } = makeMockBinary();
+  const { deps, posts } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.restartWithGpuBatch([
+      { name: "エミュ1" }, { name: "エミュ2" }, { name: "エミュ1", machine: "M1Max" },
+    ]);
+    await waitUntilIdle(deviceOps);
+    const lines = argvLines(dir);
+    const local = lines.filter((line) => line.startsWith("api devices-restart"));
+    const remote = lines.filter((line) => line.startsWith("remote exec M1Max -- api device-"));
+    assert.equal(local.length, 1);
+    assert.match(local[0], /--name エミュ1 --name エミュ2 /, "手元は1ジョブにまとめる(2台ずつ並行は CLI 側)");
+    assert.equal(remote.length, 2, "リモートは down と up");
+    assert.equal(lines.length, 3);
+    // キュー状態(deviceOpBusy)はリモートのぶんだけ machine を持つ(宛先のタイルを間違えない)
+    const remoteBusy = posts.filter((m) => m.type === "deviceOpBusy" && m.machine === "M1Max");
+    assert.ok(remoteBusy.length > 0);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

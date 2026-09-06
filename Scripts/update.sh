@@ -204,11 +204,22 @@ fi
 # 走るので一覧を手で持つしかないが、こちらは TOOL_ROOT があるので導出できる)。
 # **fleetest-setup だけは除く** —— 受け手のパッケージのそれは `fleetest init` が生成した
 # 受け手専用の別内容で、正典で上書きすると受け手のセットアップ手順が消える
+#
+# **「コピー配置の受け手か」は `.claude/skills/` の存在では決められない** —— `fleetest init` が
+# 全受け手に `.claude/skills/fleetest-setup` を作るので、プラグイン経由の受け手でも必ず存在する。
+# 存在で判定していた頃は、プラグインの受け手の初回 update で正典5本が隣に写され
+# (`fleetest-update` と `fleetest:fleetest-update` の二重掲載)、以後スキルが変わるたび
+# 「エージェントを再起動」を迫っていた。判定は **install-skill.sh が置く印**
+# `<skills_dir>/.fleetest-copied`(写したスキル名を1行1つ。契約は install-skill.sh と 1:1)で行う:
+#   ・既にある写し(シンボリックリンクでない SKILL.md)は印の有無を問わず写し直す
+#   ・**増えたスキルを新しく置くのは印があるときだけ**(置いたら印にも名前を足す)
+COPIED_SKILLS_MARKER=".fleetest-copied"
 COPIED_SKILLS="$(ls "$TOOL_ROOT/.claude/skills" 2>/dev/null | grep -v '^fleetest-setup$' | tr '\n' ' ')"
 SKILLS_REFRESHED=0
 refresh_copied_skills() {
   skills_dir="$1"
   [ -d "$skills_dir" ] || return 0
+  marker="$skills_dir/$COPIED_SKILLS_MARKER"
   for name in $COPIED_SKILLS; do
     dest="$skills_dir/$name/SKILL.md"
     src="$TOOL_ROOT/.claude/skills/$name/SKILL.md"
@@ -216,12 +227,11 @@ refresh_copied_skills() {
     # `A && continue` を素の文として置くと、A が偽のとき**関数の戻り値が 1 になり**、
     # set -e の呼び出し元で更新全体が止まる。if で書く
     if [ -L "$skills_dir/$name" ] || [ -L "$dest" ]; then continue; fi
-    # **既にある物を写すだけでなく、増えた物も置く**。`[ -f "$dest" ] || continue` だけだと
-    # 新しいスキルがコピー配置の受け手へ永久に届かない(プラグイン経由なら自動で増えるのに、
-    # コピーの受け手だけ取り残される)
     if [ ! -f "$dest" ]; then
+      [ -f "$marker" ] || continue
       mkdir -p "$skills_dir/$name"
       cp "$src" "$dest"
+      grep -qx "$name" "$marker" 2>/dev/null || printf '%s\n' "$name" >> "$marker"
       SKILLS_REFRESHED=$((SKILLS_REFRESHED + 1))
       continue
     fi

@@ -234,10 +234,14 @@ public enum IOSDeviceTransport {
         repoRoot.appendingPathComponent(".fleetest/iproxy-\(hostPort).pid")
     }
 
-    /// 既存トンネルが生きていれば再利用、無ければ起動して pid を残す
+    /// 既存トンネルが生きていれば再利用、無ければ起動して pid を残す。
+    /// 既存トンネルが**別 UDID**向けなら(前回この host port を使ったデバイスの残骸)、
+    /// 再利用せず止めてから張り直す(そうしないと iPhone B の供給が iPhone A 宛のトンネルを
+    /// 掴んだまま進む)
     static func startIproxy(hostPort: UInt16, devicePort: UInt16,
                             deviceUDID: String, repoRoot: URL) throws {
-        if isIproxyRunning(hostPort: hostPort, repoRoot: repoRoot) { return }
+        if isIproxyRunning(hostPort: hostPort, deviceUDID: deviceUDID, repoRoot: repoRoot) { return }
+        stopIproxy(hostPort: hostPort, repoRoot: repoRoot)
         guard let iproxy = iproxyPath() else { throw IOSDeviceTransportError.iproxyMissing }
         let stateDir = repoRoot.appendingPathComponent(".fleetest")
         try? FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
@@ -265,9 +269,13 @@ public enum IOSDeviceTransport {
                    atomically: true, encoding: .utf8)
     }
 
-    /// pid ファイルの pid が**今も iproxy か**を見る。ProcessLiveness.isAlive だけだと PID 再利用で
-    /// 無関係プロセスを「トンネル生存」と誤認し、転送されていないポートへ繋ぎに行ってしまう
-    static func isIproxyRunning(hostPort: UInt16, repoRoot: URL) -> Bool {
+    /// pid ファイルの pid が**今も、この UDID 向けの iproxy か**を見る。
+    /// ProcessLiveness.isAlive だけだと PID 再利用で無関係プロセスを「トンネル生存」と誤認し、
+    /// 転送されていないポートへ繋ぎに行ってしまう。**UDID まで見る**のは、host port だけの一致では
+    /// 「前回このポートを使った別デバイス向けのトンネル」を今回のデバイスのものと誤認するため
+    /// (iPhone A の後に iPhone B を同ポートで供給すると、A 宛のトンネルへ繋いだまま気づかない)。
+    /// 判定本体は pure な iproxyMatches(command:deviceUDID:) に切り出してテストする
+    static func isIproxyRunning(hostPort: UInt16, deviceUDID: String, repoRoot: URL) -> Bool {
         guard let text = try? String(contentsOf: pidURL(hostPort: hostPort, repoRoot: repoRoot),
                                      encoding: .utf8),
               let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)),
@@ -276,14 +284,40 @@ public enum IOSDeviceTransport {
         else {
             return false
         }
-        return ps.output.contains("iproxy")
+        return iproxyMatches(command: ps.output, deviceUDID: deviceUDID)
     }
 
+    /// iproxy はプロセス引数を `<hostPort> <devicePort> -u <UDID>` の形で持つ(startIproxy 参照)
+    static func iproxyMatches(command: String, deviceUDID: String) -> Bool {
+        command.contains("iproxy") && command.contains("-u \(deviceUDID)")
+    }
+
+    /// ps のコマンドラインが iproxy かだけを見る(UDID を問わない)。**PID 再利用ガード専用** ——
+    /// stopIproxy は「今その pid を握っているのが本当に自分たちの iproxy か」だけ確認できればよく、
+    /// どの UDID 向けかは無関係(別 UDID 向けでも自分たちの資産なので安全に止められる)
+    static func isIproxy(pid: Int32) -> Bool {
+        guard let ps = try? Shell.run(["ps", "-p", String(pid), "-o", "command="]),
+              ps.status == 0 else { return false }
+        return isIproxy(command: ps.output)
+    }
+
+    static func isIproxy(command: String) -> Bool {
+        command.contains("iproxy")
+    }
+
+    /// PID 再利用ガード付きの停止。pid が生きていても iproxy でなければ撃たず、stale な
+    /// pid ファイルだけ片付けて1行だけ知らせる(BridgeLauncher.logStalePidReuse と同じ方針)
     static func stopIproxy(hostPort: UInt16, repoRoot: URL) {
         let url = pidURL(hostPort: hostPort, repoRoot: repoRoot)
         if let text = try? String(contentsOf: url, encoding: .utf8),
            let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
-            kill(pid, SIGTERM)
+            if isIproxy(pid: pid) {
+                kill(pid, SIGTERM)
+            } else if ProcessLiveness.isAlive(pid) {
+                FileHandle.standardError.write(Data(
+                    ("pid \(pid) is no longer the iproxy tunnel (reused by a different process);"
+                     + " removed the stale pid file\n").utf8))
+            }
         }
         try? FileManager.default.removeItem(at: url)
     }

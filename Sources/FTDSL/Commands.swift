@@ -83,15 +83,16 @@ public func irregularHandler(_ detect: String, dismiss: String? = nil,
     let core = FTRuntime.requireCore(command: "irregularHandler")
     let detectSelector = FTSelector.parse(detect)
     let dismissSelector = dismiss.map { FTSelector.parse($0) } ?? detectSelector
-    core.addInterruptHandler(detect: detectSelector.primary, dismiss: dismissSelector.primary,
+    // **セレクタ丸ごと渡す**(`||` / `(a|b)` の代替も)。primary だけだと日本語版の文言が閉じない
+    core.addInterruptHandler(detect: detectSelector, dismiss: dismissSelector,
                              maxDismissals: maxDismissals)
 }
 
 public func irregularHandler(_ detect: Sel, dismiss: Sel? = nil,
                              maxDismissals: Int = StepExecutor.maxInterruptDismissalsPerStep) {
     let core = FTRuntime.requireCore(command: "irregularHandler")
-    core.addInterruptHandler(detect: detect.ftSelector.primary,
-                             dismiss: (dismiss ?? detect).ftSelector.primary,
+    core.addInterruptHandler(detect: detect.ftSelector,
+                             dismiss: (dismiss ?? detect).ftSelector,
                              maxDismissals: maxDismissals)
 }
 

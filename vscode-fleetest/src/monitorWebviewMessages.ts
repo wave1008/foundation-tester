@@ -464,9 +464,15 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "openLiveForDevice"; readonly id: string }
   // 「GPUで再起動」: CPU 描画フォールバックを解除して host GPU で再起動する手動操作。
   // webview 側は CPU バッジ(renderMode==='cpu')の Android タイルでのみメニューに出す。
-  | { readonly type: "deviceRestartGpu"; readonly name: string }
-  // deviceRestartGpu の複数選択版(バッチ再起動)。names はタイル複数選択の対象デバイス名。
-  | { readonly type: "devicesRestartGpu"; readonly names: readonly string[] }
+  // machine: そのデバイスが居る機械(手元は省略)。**名前だけで受けない** —— リモートの
+  // タイルから撃つと手元の同名の台を再起動する(deviceOp と同じ規律。monitorDeviceOps.ts が
+  // machine 付きはその機械の down→up へ回す)
+  | { readonly type: "deviceRestartGpu"; readonly name: string; readonly machine?: string }
+  // deviceRestartGpu の複数選択版(バッチ再起動)。devices はタイル複数選択の対象(machine 付き)。
+  | {
+      readonly type: "devicesRestartGpu";
+      readonly devices: readonly { readonly name: string; readonly machine?: string }[];
+    }
   | { readonly type: "selectProfile"; readonly profile: string }
   // 実行プロファイルの追加/コピー/名前変更/削除(マシンプロファイルの追加/コピー/削除/名前変更と
   // 同じ構成)。コピー/名前変更/削除の対象 profile の空文字は「対象なし」として検証で弾く。
@@ -767,6 +773,18 @@ function isAppProfileIOSFieldsLike(value: unknown): value is AppProfileIOSFields
   return isRecord(value) && isAppProfilePlatformFieldsLike(value) && typeof value.appPathPhysical === "string";
 }
 
+/** deviceRestartGpu / devicesRestartGpu の1台ぶん(name 必須・machine は省略か非空文字列)。 */
+function isGpuRestartTarget(value: unknown): value is { name: string; machine?: string } {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.name === "string" && record.name !== "" &&
+    (record.machine === undefined || (typeof record.machine === "string" && record.machine !== ""))
+  );
+}
+
 /** webview からの postMessage 値を MonitorFromWebviewMessage として扱ってよいか判定する。 */
 export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFromWebviewMessage {
   if (!isRecord(value) || typeof value.type !== "string") {
@@ -799,12 +817,12 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "copyText":
       return typeof value.text === "string" && value.text !== "";
     case "deviceRestartGpu":
-      return typeof value.name === "string" && value.name !== "";
+      return isGpuRestartTarget(value);
     case "devicesRestartGpu":
       return (
-        Array.isArray(value.names) &&
-        value.names.length > 0 &&
-        value.names.every((n) => typeof n === "string" && n !== "")
+        Array.isArray(value.devices) &&
+        value.devices.length > 0 &&
+        value.devices.every((d) => isGpuRestartTarget(d))
       );
     case "selectProfile":
       return typeof value.profile === "string";

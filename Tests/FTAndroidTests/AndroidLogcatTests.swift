@@ -97,25 +97,68 @@ final class AndroidLogcatTests: XCTestCase {
 
     /// -t の書式固定("MM-dd HH:mm:ss.SSS")。書式が崩れると adb logcat -t が解釈できず
     /// エラーで落ちる(サイレントに全件フォールバックにはならない)ため、書式そのものを固定する
-    func testLogcatTimeArgumentFormat() {
-        var components = DateComponents()
-        components.year = 2026; components.month = 8; components.day = 9
-        components.hour = 12; components.minute = 34; components.second = 56
+    /// 2026-08-09 12:34:56 UTC(ホストの時間帯に依存しない固定の瞬間)
+    private var fixedNow: Date {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
-        let now = calendar.date(from: components)!
+        return calendar.date(from: DateComponents(year: 2026, month: 8, day: 9,
+                                                   hour: 12, minute: 34, second: 56))!
+    }
 
-        let arg = AndroidLogcat.logcatTimeArgument(secondsAgo: 0, now: now)
+    func testLogcatTimeArgumentFormat() {
+        let arg = AndroidLogcat.logcatTimeArgument(secondsAgo: 0, now: fixedNow, deviceUTCOffsetSeconds: 0)
         XCTAssertEqual(arg.count, "MM-dd HH:mm:ss.SSS".count)
-        XCTAssertTrue(arg.contains(":"))
+        XCTAssertEqual(arg, "08-09 12:34:56.000")
     }
 
     /// secondsAgo だけ過去に戻ること(丸めや符号の反転が無いこと)
     func testLogcatTimeArgumentSubtractsSecondsAgo() {
-        let calendar = Calendar(identifier: .gregorian)
-        let now = calendar.date(from: DateComponents(year: 2026, month: 8, day: 9,
-                                                      hour: 12, minute: 0, second: 30))!
-        let arg = AndroidLogcat.logcatTimeArgument(secondsAgo: 30, now: now)
-        XCTAssertTrue(arg.contains("12:00:00"), arg)
+        let arg = AndroidLogcat.logcatTimeArgument(secondsAgo: 56, now: fixedNow, deviceUTCOffsetSeconds: 0)
+        XCTAssertEqual(arg, "08-09 12:34:00.000")
+    }
+
+    /// **端末の時間帯で組む**(logcat は `-t` を端末のローカル時刻で解釈する)。+0900 の端末では
+    /// 同じ瞬間が 9 時間進んだ表記になる。ホストの時間帯で組むと、端末との時間帯差ぶんを
+    /// 黙って取りこぼす/余分に含む
+    func testLogcatTimeArgumentUsesTheDeviceUTCOffset() {
+        let utc = AndroidLogcat.logcatTimeArgument(secondsAgo: 0, now: fixedNow, deviceUTCOffsetSeconds: 0)
+        let jst = AndroidLogcat.logcatTimeArgument(secondsAgo: 0, now: fixedNow, deviceUTCOffsetSeconds: 32400)
+        XCTAssertEqual(utc, "08-09 12:34:56.000")
+        XCTAssertEqual(jst, "08-09 21:34:56.000")
+        XCTAssertNotEqual(utc, jst)
+    }
+
+    /// 負のオフセットも日付を跨いで正しく組む(−0500 の端末では 2026-08-09 01:00 UTC は前日)
+    func testLogcatTimeArgumentNegativeOffsetCrossesTheDate() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 8, day: 9, hour: 1))!
+        let arg = AndroidLogcat.logcatTimeArgument(secondsAgo: 0, now: now, deviceUTCOffsetSeconds: -18000)
+        XCTAssertEqual(arg, "08-08 20:00:00.000")
+    }
+
+    // MARK: - `date +%z` の読み取り
+
+    func testUTCOffsetParsesPositiveAndNegativeZones() {
+        XCTAssertEqual(AndroidLogcat.utcOffsetSeconds(fromDateZ: "+0900\n"), 32400)
+        XCTAssertEqual(AndroidLogcat.utcOffsetSeconds(fromDateZ: "-0500\r\n"), -18000)
+        XCTAssertEqual(AndroidLogcat.utcOffsetSeconds(fromDateZ: "+0000"), 0)
+        XCTAssertEqual(AndroidLogcat.utcOffsetSeconds(fromDateZ: "+0530"), 19800)
+        XCTAssertEqual(AndroidLogcat.utcOffsetSeconds(fromDateZ: "-0330"), -12600)
+    }
+
+    /// 書式外は nil(呼び出し側がホストの時間帯へ落とし注記する。黙って 0 にしない)
+    func testUTCOffsetRejectsGarbage() {
+        XCTAssertNil(AndroidLogcat.utcOffsetSeconds(fromDateZ: ""))
+        XCTAssertNil(AndroidLogcat.utcOffsetSeconds(fromDateZ: "JST"))
+        XCTAssertNil(AndroidLogcat.utcOffsetSeconds(fromDateZ: "0900"))
+        XCTAssertNil(AndroidLogcat.utcOffsetSeconds(fromDateZ: "+9"))
+        XCTAssertNil(AndroidLogcat.utcOffsetSeconds(fromDateZ: "+2560"))
+        XCTAssertNil(AndroidLogcat.utcOffsetSeconds(fromDateZ: "error: no devices/emulators found"))
+    }
+
+    /// Output の注記欄の既定は nil(注記を持たない既存の呼び出しがそのまま組める)
+    func testOutputCutoffNoteDefaultsToNil() {
+        XCTAssertNil(AndroidLogcat.Output(lines: [], scopedToPackage: true).cutoffNote)
     }
 }

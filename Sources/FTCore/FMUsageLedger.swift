@@ -154,8 +154,13 @@ public enum FMUsageLedger {
 
             let counters = Counters(calls: entry.calls, failures: entry.failures, totalMs: entry.totalMs)
             if !baseline {
-                // 新出の pid は prior が無い = 全量が増分(控えは監視開始後に作られている)
-                let prior = previous?[pid] ?? Counters(calls: 0, failures: 0, totalMs: 0)
+                // 新出の pid は prior が無い = 全量が増分(控えは監視開始後に作られている)。
+                // **累計が減った pid は別のプロセス**(pid 再利用)。累計は1プロセスの中で単調増加
+                // (write は lastWrittenCalls より大きいときしか着地させない)なので、減少は
+                // 「古い控えの pid を新しいプロセスが引き継いだ」以外に起きない。prior のまま引くと
+                // max(0,…) で新プロセスの最初の tick ぶんが丸ごと落ちる
+                var prior = previous?[pid] ?? Counters(calls: 0, failures: 0, totalMs: 0)
+                if counters.calls < prior.calls { prior = Counters(calls: 0, failures: 0, totalMs: 0) }
                 deltaCalls += max(0, counters.calls - prior.calls)
                 deltaFailures += max(0, counters.failures - prior.failures)
                 deltaTotalMs += max(0, counters.totalMs - prior.totalMs)
@@ -176,13 +181,18 @@ public enum FMUsageLedger {
     /// 読みから外してあるのは読み手が複数居るため(drain の doc 参照)。掃除する者が居なくても
     /// 集計は壊れない —— 残った控えは各読み手の基準に入って増分 0 になるだけ。
     /// pid 再利用で自分の番号の古い控えが残っていると、こちらの累計のほうが小さく見えて
-    /// その増分が落ちるので、**自分が書き始める前に**掃除する
+    /// その増分が落ちるので、**自分が書き始める前に**掃除する。**自分の pid の控えは生死を
+    /// 見ずに消す**(reapDead は生きている pid を残す = 自分は生きているので、前任者が残した
+    /// `<自分の pid>.json` はあちらでは決して消えない。自分の pid を書くのは自分だけなので、
+    /// 最初の書き込みの前に在るものは前任者の残骸に限る)
     private static func reapOnce() {
         reapLock.lock()
         defer { reapLock.unlock() }
         guard !reaped else { return }
         reaped = true
-        reapDead(in: directory)
+        let dir = directory
+        reapStaleOwnEntry(in: dir, pid: ProcessInfo.processInfo.processIdentifier)
+        reapDead(in: dir)
     }
 
     /// 一度きりの門(`reaped`)と分けてあるのはテストのため —— 門は プロセス全体の状態なので、
@@ -194,5 +204,24 @@ public enum FMUsageLedger {
                   !ProcessLiveness.isAlive(pid) else { continue }
             try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
         }
+    }
+
+    /// 自分の pid の控えを無条件に消す(reapOnce の doc 参照。テスト用に internal)
+    static func reapStaleOwnEntry(in dir: URL, pid: Int32) {
+        try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(pid).json"))
+    }
+
+    /// プロセス全体の状態(累計・書き込み済み累計・掃除の門)を初期化する。**テスト専用** ——
+    /// 門を戻さないと「最初の record」の経路を2度と通せない
+    static func resetForTesting() {
+        lock.lock()
+        calls = 0; failures = 0; totalMs = 0
+        lock.unlock()
+        writeLock.lock()
+        lastWrittenCalls = 0
+        writeLock.unlock()
+        reapLock.lock()
+        reaped = false
+        reapLock.unlock()
     }
 }

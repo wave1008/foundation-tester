@@ -174,6 +174,68 @@ final class FMUsageLedgerTests: XCTestCase {
         }
     }
 
+    // MARK: - pid 再利用(前任者が残した自分の pid の控え)
+
+    /// **自分の pid の控えは生きていても消す**。reapDead は生きている pid を残す規律なので、
+    /// 前任者(同じ pid で死んだプロセス)の残骸はあちらでは永久に消えない
+    func testReapStaleOwnEntryRemovesTheFileForOurOwnLivePid() throws {
+        try SharedResource.hostCaches.locked {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let selfPID = ProcessInfo.processInfo.processIdentifier
+            try writeRawEntry(pid: selfPID, calls: 50, failures: 0, totalMs: 5000)
+            let url = dir.appendingPathComponent("\(selfPID).json")
+
+            FMUsageLedger.reapDead(in: dir)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: url.path),
+                          "対照: reapDead は生きている自分の pid を消さない(だから別の掃除が要る)")
+
+            FMUsageLedger.reapStaleOwnEntry(in: dir, pid: selfPID)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: url.path), "自分の pid の残骸は消す")
+        }
+    }
+
+    /// 前任者の控え(calls: 50)が在る状態で最初の record を撃つと、控えは自分の累計(1)になる
+    /// —— 残骸の 50 に足し込まれない・残骸が残らない
+    func testFirstRecordStartsFromOurOwnCountNotTheStaleFile() throws {
+        try SharedResource.hostCaches.locked {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let selfPID = ProcessInfo.processInfo.processIdentifier
+            try writeRawEntry(pid: selfPID, calls: 50, failures: 7, totalMs: 5000)
+
+            FMUsageLedger.resetForTesting()
+            FMUsageLedger.record(ok: true, ms: 10)
+
+            let data = try Data(contentsOf: dir.appendingPathComponent("\(selfPID).json"))
+            let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+            XCTAssertEqual(json["calls"] as? Int, 1)
+            XCTAssertEqual(json["failures"] as? Int, 0)
+            XCTAssertEqual(json["totalMs"] as? Int, 10)
+        }
+    }
+
+    /// **累計が減った pid は別のプロセス**: 残骸の 50 を基準に持つ読み手が、新プロセスの 1 を
+    /// max(0, 1−50)=0 で落とさず、全量 1 として数える(累計は1プロセス内で単調増加なので、
+    /// 減少は pid 再利用以外に起きない)
+    func testReaderTreatsADecreasedCounterAsANewProcess() throws {
+        try SharedResource.hostCaches.locked {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let selfPID = ProcessInfo.processInfo.processIdentifier
+            try writeRawEntry(pid: selfPID, calls: 50, failures: 7, totalMs: 5000)
+            var previous: [Int32: FMUsageLedger.Counters]? = nil
+            XCTAssertEqual(FMUsageLedger.drain(previous: &previous)?.calls, 0, "基準取り(残骸を控える)")
+            XCTAssertEqual(previous?[selfPID]?.calls, 50)
+
+            FMUsageLedger.resetForTesting()
+            FMUsageLedger.record(ok: false, ms: 10)
+
+            let delta = FMUsageLedger.drain(previous: &previous)
+            XCTAssertEqual(delta?.calls, 1, "0 ではなく 1(新プロセスの最初の呼び出しを落とさない)")
+            XCTAssertEqual(delta?.failures, 1)
+            XCTAssertEqual(delta?.totalMs, 10)
+            XCTAssertEqual(FMUsageLedger.drain(previous: &previous)?.calls, 0, "次の tick で二重に数えない")
+        }
+    }
+
     private func writeRawEntry(pid: Int32, calls: Int, failures: Int, totalMs: Int) throws {
         let json = """
         {"pid":\(pid),"calls":\(calls),"failures":\(failures),"totalMs":\(totalMs),"updatedAt":0}

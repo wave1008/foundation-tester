@@ -55,10 +55,14 @@ interface DeviceWatchEntry {
   /** unresponsive を一度でも post したか。post の重複防止、および connected 復帰時に
    * "ok" を post すべきか(=一度でも劣化したか)の判定を兼ねる。 */
   degraded: boolean;
+  /** inRun で保留中(保留に入った1回だけログするための印。inRun が解けたら下ろす)。 */
+  heldInRun: boolean;
 }
 
 function freshEntry(): DeviceWatchEntry {
-  return { bootedStreak: 0, attemptCount: 0, cooldownUntil: 0, failed: false, degraded: false };
+  return {
+    bootedStreak: 0, attemptCount: 0, cooldownUntil: 0, failed: false, degraded: false, heldInRun: false,
+  };
 }
 
 /**
@@ -97,11 +101,11 @@ export class MonitorBridgeWatchdog {
       if (device.kind === "physical") {
         continue;
       }
-      this.observeOne(device.name, device.state);
+      this.observeOne(device.name, device.state, device.inRun);
     }
   }
 
-  private observeOne(name: string, state: MonitorDeviceState): void {
+  private observeOne(name: string, state: MonitorDeviceState, inRun: boolean | undefined): void {
     const entry = this.entries.get(name);
 
     if (state === "connected") {
@@ -130,6 +134,21 @@ export class MonitorBridgeWatchdog {
       entry.bootedStreak = 0;
       return;
     }
+
+    if (inRun) {
+      // **run の最中は数えない・撃たない**(monitorHealthWatchdog と同じ)。inRun は RunLease
+      // 由来なので CLI や別の機械から起こした run も含む —— isAnyRunActive(拡張のレーンだけ)
+      // では見えず、run が自分でブリッジを供給し直している booted に device-up を重ねていた。
+      // streak は 0 に戻す(offline と同じ「連続性が途切れる」扱い)。failed/attemptCount/
+      // cooldown は据え置く
+      if (entry.degraded && !entry.heldInRun) {
+        this.deps.log(`[bridge-watch] ${name}: ${t("monitor.bridgeWatch.repairDeferredInRun")}`);
+      }
+      entry.heldInRun = true;
+      entry.bootedStreak = 0;
+      return;
+    }
+    entry.heldInRun = false;
 
     if (entry.failed) {
       return;

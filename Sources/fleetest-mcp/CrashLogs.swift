@@ -156,6 +156,8 @@ enum CrashLogs {
             header += ". \(bundleID) is not running, so these lines could not be scoped to it"
                 + " — other apps may appear below"
         }
+        // 端末の時間帯が引けず、ホストの時間帯で -t を組んだ回はその旨を出す(窓が数時間ずれ得る)
+        if let note = output.cutoffNote { header += ". \(note)" }
         return header + ":\n" + shown.joined(separator: "\n")
     }
 

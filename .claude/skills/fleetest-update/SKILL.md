@@ -96,7 +96,10 @@ vsce)は画面に出ず `<WORK_DIR>/.fleetest/install-*.log` にだけ入り、*
 - プラグインが `⚠️ HEAD と不一致` のときは `claude plugin marketplace update` →
   `claude plugin update` を手で実行する(**順序が重要**。marketplace を先に更新しないと古い定義を見る)。
 - **コピー配置(`install-skill.sh` で入れた `.claude/skills/`)は
-  update.sh が正典から写し直す**(増えたスキルも置く)(`✅ Skills: refreshed N ...`)。写した後は**エージェントを
+  update.sh が正典から写し直す**(`✅ Skills: refreshed N ...`)。**増えたスキルを新しく置くのは
+  `install-skill.sh` が残す印 `.claude/skills/.fleetest-copied` があるときだけ**(プラグイン経由の
+  受け手にも `fleetest init` が `.claude/skills/fleetest-setup` を作るので、ディレクトリの存在では
+  コピー配置と区別できない。印の無い置き場は既存の写しを写し直すだけ)。写した後は**エージェントを
   再起動する**まで古い手順書が読まれ続ける。**`fleetest-setup` だけは写さない** ——
   受け手のパッケージのそれは `fleetest init` が生成した受け手専用の別内容なので、
   正典で上書きすると受け手のセットアップ手順が消える。
