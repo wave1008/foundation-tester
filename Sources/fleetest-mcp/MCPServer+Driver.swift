@@ -311,7 +311,7 @@ extension MCPServer {
     /// デバイスと別の機を操作したことに最後まで気付けない。
     /// どちらも無ければ nil(従来どおり resolveIOSPort が既定ポート → 探索の順で決める)
     static func portForIOS(_ args: [String: Any]) async throws -> UInt16? {
-        let port = (args["port"] as? Int).map(UInt16.init)
+        let port = try Self.portArgument(args)
         guard let udid = (args["udid"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) else {
             return port
         }

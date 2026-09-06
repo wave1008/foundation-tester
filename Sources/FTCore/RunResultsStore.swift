@@ -353,6 +353,16 @@ public enum RunResultsStore {
     /// (実測: E2E-CMP 90日分の逐次走査で 114s。1 プロジェクト 2万ファイル規模)ため、
     /// ファイル単位で並列にデコードする。読み飛ばし規律(壊れたファイル・新しすぎる
     /// schemaVersion・since/until)は逐次経路と同一。順序は最後のソートで決定的
+    /// n 件を chunkCount 以下の連続範囲に割る(**空の範囲は作らない**)。
+    /// `ceil(n/chunks)` 幅で `chunkIndex * size` を始点にすると、末尾のチャンクが `start > end` になり
+    /// Range 生成で trap する(24 コアで記録 25〜45 件 = 受け手の新しいプロジェクトが最初に踏む形)
+    static func chunkRanges(count: Int, chunkCount: Int) -> [Range<Int>] {
+        guard count > 0 else { return [] }
+        let chunks = max(1, min(count, chunkCount))
+        let size = (count + chunks - 1) / chunks
+        return stride(from: 0, to: count, by: size).map { $0..<min($0 + size, count) }
+    }
+
     private static func scanRecordsConcurrently(runDirs: [URL], since: Date?, until: Date?) -> [ScannedRecord] {
         var files: [URL] = []
         for runDir in runDirs {
@@ -366,8 +376,9 @@ public enum RunResultsStore {
 
         let sinceKey = since.map(windowKey)
         let untilKey = until.map(windowKey)
-        let chunkCount = max(1, min(files.count, ProcessInfo.processInfo.activeProcessorCount))
-        let chunkSize = (files.count + chunkCount - 1) / chunkCount
+        let ranges = chunkRanges(count: files.count,
+                                 chunkCount: ProcessInfo.processInfo.activeProcessorCount)
+        let chunkCount = ranges.count
         var chunkResults = [[ScannedRecord]](repeating: [], count: chunkCount)
         var chunkSkipped = [Int](repeating: 0, count: chunkCount)
 
@@ -378,9 +389,7 @@ public enum RunResultsStore {
                     let decoder = JSONDecoder()
                     var local: [ScannedRecord] = []
                     var localSkipped = 0
-                    let start = chunkIndex * chunkSize
-                    let end = min(start + chunkSize, files.count)
-                    for file in files[start..<end] {
+                    for file in files[ranges[chunkIndex]] {
                         guard let data = try? Data(contentsOf: file),
                               let record = try? decoder.decode(ScenarioRunRecord.self, from: data),
                               record.schemaVersion <= RunRecordSchema.current else {

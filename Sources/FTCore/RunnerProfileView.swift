@@ -12,6 +12,12 @@
 //   - プロファイル直下の既定 machine も落とす(全台が local になったので意味を持たない)
 // これで転送物・引数のどちらにもエイリアスが出ない。子は従来どおり `--host local` で走る。
 //
+// **どの台にも machine が無い(`profile setup` の素の出力)なら全台を alias の台とみなす** ——
+// FTRemote.RemoteDispatchDeviceScope の `.wholeProfile`(全台 machine 未指定 = 丸ごと送り、
+// 受け側が自分の台として解釈する)と同じ定義。ここだけ「nil ≠ alias」で落とすと、向こうで
+// 「none of the devices referenced by run profile … exist in machine profile」になる。
+// 1台でも注記があれば従来どおり(注記の無い台は「どこの台か不明」= 落とす)。
+//
 // 未知キーは温存する(利用者が手で足したキーを消さない。MachineProfileEditor と同じ規律)。
 
 import Foundation
@@ -35,12 +41,17 @@ public enum RunnerProfileView {
 
     /// マシンプロファイルを alias のランナーから見た姿へ畳む。
     /// 返り値の devices は **alias の台だけ**で、その machine は "local"。
+    /// **全台が machine 未指定なら全台を alias の台として残す**(ファイル冒頭。プラットフォームを
+    /// 跨いで判定する = RemoteDispatchDeviceScope が全台で見るのと同じ)
     public static func localizeMachineProfile(_ object: [String: Any], alias: String) -> [String: Any] {
         var result = object
         let rawDefault = (object["machine"] ?? object["host"]) as? String
         let profileDefault = rawDefault
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .flatMap { $0.isEmpty || $0 == localName ? nil : $0 }
+        let wholeProfile = platformKeys
+            .flatMap { ((object[$0] as? [String: Any])?["devices"] as? [[String: Any]]) ?? [] }
+            .allSatisfy { effectiveMachine(device: $0, profileDefault: profileDefault) == nil }
         // 直下の既定は畳んだ後には意味を持たない(全台が local)
         result["machine"] = nil
         result["host"] = nil
@@ -48,7 +59,8 @@ public enum RunnerProfileView {
             guard var section = result[key] as? [String: Any],
                   let devices = section["devices"] as? [[String: Any]] else { continue }
             section["devices"] = devices.compactMap { device -> [String: Any]? in
-                guard effectiveMachine(device: device, profileDefault: profileDefault) == alias else {
+                guard wholeProfile
+                        || effectiveMachine(device: device, profileDefault: profileDefault) == alias else {
                     return nil
                 }
                 var localized = device
@@ -65,17 +77,20 @@ public enum RunnerProfileView {
     /// 触らない** —— あれは機械の別名ではなくプロファイルのファイル名で、向こうでも同じものを引く。
     /// 畳むのは devices[] の参照だけ(alias のものを "local" に、他機のものを落とす)。
     /// **マシン指定の無い参照は残す** —— 名前だけの参照は、畳んだ後のマシンプロファイルに
-    /// 残った1台へ解決する(元から曖昧な参照は向こうで同じように曖昧だと報告される)
+    /// 残った1台へ解決する(元から曖昧な参照は向こうで同じように曖昧だと報告される)。
+    /// **全参照が machine 未指定("local" 含む)なら全部残す**(ファイル冒頭の `.wholeProfile` と
+    /// 同じ定義。"local" と書かれた参照は向こうでも手元なので "local" のまま)
     public static func localizeRunProfile(_ object: [String: Any], alias: String) -> [String: Any] {
         var result = object
         guard let devices = result["devices"] as? [[String: Any]] else { return result }
+        let wholeProfile = devices.allSatisfy { effectiveMachine(device: $0, profileDefault: nil) == nil }
         result["devices"] = devices.compactMap { ref -> [String: Any]? in
             let raw = (ref["machine"] ?? ref["host"]) as? String
             let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
             var localized = ref
             localized["host"] = nil
             guard let trimmed, !trimmed.isEmpty else { return localized }  // 名前だけの参照は残す
-            if trimmed == alias {
+            if trimmed == alias || wholeProfile {
                 localized["machine"] = localName
                 return localized
             }

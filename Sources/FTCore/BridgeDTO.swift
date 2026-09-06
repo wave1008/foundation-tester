@@ -7,6 +7,12 @@ import Foundation
 
 public enum BridgeAPI {
     public static let defaultPort: UInt16 = 8123
+    /// in-app ブリッジが**メインスレッドの実行を待つ上限**(ms)。尽きたら 504(未実行の 200 を
+    /// 返さない)。根拠: ホストの操作系 HTTP 上限 `BridgeClient.Timeout.interaction`(20 秒)より
+    /// 短く、往復と応答の組み立てに 5 秒残す。「整定の cap + 余裕」のような小さい見積りにすると、
+    /// 8 台並列で main が遅いだけの回(操作は実際に完了する)を 504 にしてしまう
+    /// (2026-09-06 E2E-CMP で 4,000ms が実際に尽きた)。`BridgeMainThreadBudgetTests` が上限の順序を守る
+    public static let inAppMainThreadWaitMs = 15_000
     /// 1回のスナップショットで返す要素数の上限(4Kトークン対策の第一段)
     public static let maxSnapshotElements = 120
 
@@ -310,7 +316,16 @@ public enum BridgeAPI {
     /// Brightness → Auto-Lock → Never), not something the tool synthesises input for: every pulse
     /// was a real HID event on a real device, and getting it wrong put the app under test on the
     /// home screen mid-scenario (see 88). A stale runner keeps pulsing → bump.
-    public static let bridgeProtocolVersion = 89
+    ///
+    /// 90: two in-app bridge response-code fixes. (a) A main-thread wait that timed out used to
+    /// report success anyway (the delayed action could then run later and even mark an unrelated,
+    /// later request's response as settle-capped); it now returns **504** and never reports an
+    /// unexecuted action as done. (b) POST /type with a trailing "\n" used to fold a failed Return
+    /// keypress into the text-insertion result and return 200 even when Enter never fired; it now
+    /// returns **422** (text already inserted, Return not fired) so the host does not re-type the
+    /// whole string via XCUITest (that would double-insert — 422 is chosen over 409 for exactly
+    /// this reason). A stale runner keeps reporting both as silent success → bump.
+    public static let bridgeProtocolVersion = 90
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///

@@ -130,6 +130,8 @@ Android の入力欄は**容器**(Material の `TextInputLayout`)と**中身**(`
 **確定アクションを撃つ意図なら `pressEnter()` を使う**(意図が読み手に伝わる。
 `type("腕時計\n")` は「改行を入れたいのか送信したいのか」がコードから読めない)。
 エンジン(in-app / XCUITest)によって結果が変わることはない(docs/design.md)。
+**Return キーを撃てなかったときは失敗する**(文字は入っている。Flutter で returnKey が
+action を持たない欄など)—— 黙って「全部入った」にはしない。その場合は `pressEnter()` を分けて書く。
 
 **マップ・キャンバス系の画面**(地図・画像ビューア・図面)は、この4つで操作する:
 `swipeBy` でパン(斜め含む)・`pinchOut`/`pinchIn` でズーム・`doubleTap` でズームイン。
@@ -362,7 +364,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(直前に掴んだ要�
 | `textContains` / `valueContains` | `textContainsNot` / `valueContainsNot` | 部分一致 |
 | `textStartsWith` / `valueStartsWith` | `textStartsWithNot` / `valueStartsWithNot` | 前方一致 |
 | `textEndsWith` / `valueEndsWith` | `textEndsWithNot` / `valueEndsWithNot` | 後方一致 |
-| `textMatches` / `valueMatches` | `textMatchesNot` / `valueMatchesNot` | 正規表現(**部分一致**。全体一致は `^…$`) |
+| `textMatches` / `valueMatches` | `textMatchesNot` / `valueMatchesNot` | 正規表現(**部分一致**。全体一致は `^…$`)。**不正なパターン(括弧の閉じ忘れ等)は実行前に失敗する**(否定形が「一致しない = 成立」で永久に緑になるのを防ぐ。セレクタの `textMatches=` と `thisMatches` も同じ) |
 | `textMatchesDateFormat` / `valueMatchesDateFormat` | — | 日付書式(`"yyyy/MM/dd"` 等・DateFormatter の記法) |
 | `textIsNotEmpty` / `valueIsNotEmpty` | `textIsEmpty` / `valueIsEmpty` | 空でない / 空 |
 

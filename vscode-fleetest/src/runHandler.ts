@@ -32,7 +32,7 @@ import {
   type RunAction,
   type RunLocation,
 } from "./runReducer";
-import { DELETED_TAG, DRAFT_TAG, type FleetestTestTree } from "./testTree";
+import { DELETED_TAG_ID, DRAFT_TAG_ID, type FleetestTestTree, isContainerNodeId } from "./testTree";
 import type { ScenarioFileWatcher } from "./watcher";
 
 // lastResultsSync.ts の isGuiRunActive が参照する(GUI 実行中はツリーへの反映を譲る)。
@@ -174,14 +174,14 @@ export function registerRunHandler(
     vscode.commands.registerCommand(
       "fleetest.openScenarioReport",
       // item が string: lastResultsSync.ts の markdown リンク(command:fleetest.openScenarioReport)
-      // からのシナリオID直渡し。leaf TestItem: children.size===0(resolveTargets と同じ leaf 規則)。
+      // からのシナリオID直渡し。leaf TestItem: isScenarioLeaf(resolveTargets と同じ leaf 規則)。
       // それ以外(class/folder の TestItem、または未指定=ルート右クリック)は配下 leaf を全展開する。
       async (item?: unknown, ..._args: unknown[]) => {
         if (typeof item === "string") {
           await openLatestReportForScenario(workspaceRoot, getConfig, item);
           return;
         }
-        if (isTestItem(item) && item.children.size === 0) {
+        if (isTestItem(item) && isScenarioLeaf(item)) {
           await openLatestReportForScenario(workspaceRoot, getConfig, item.id);
           return;
         }
@@ -221,7 +221,7 @@ async function openReport(reportPath: string): Promise<void> {
 
 function collectLeafScenarioIds(items: vscode.TestItemCollection, out: string[]): void {
   items.forEach((item) => {
-    if (item.children.size === 0) {
+    if (isScenarioLeaf(item)) {
       out.push(item.id);
     } else {
       collectLeafScenarioIds(item.children, out);
@@ -275,22 +275,30 @@ async function openReportForScenarios(
   }
 }
 
+/** シナリオ leaf か(folder/class ノードでない)。空クラスは子の無い class ノードなので
+ * children.size では判定できない(testTree.ts の isContainerNodeId)。 */
+function isScenarioLeaf(item: vscode.TestItem): boolean {
+  return !isContainerNodeId(item.id);
+}
+
 /**
  * request.include/exclude を対象シナリオ leaf(TestItem、id=シナリオID)の Map<id, TestItem> に解決する。
  * include 未指定なら全 leaf(@Deleted/@Draft 除外)。folder/class の include は配下 leaf に展開
  * (@Deleted/@Draft 除外、CLI の「クラス名指定では削除済み/作業中を実行しない」規則と一致)。
  * leaf 自体が明示 include されたときは @Deleted/@Draft でも対象にする(CLI の「完全一致指定のときだけ
  * 削除済み/作業中を実行する」規則と一致)。exclude は leaf 単位で除去(folder/class の exclude は
- * 配下 leaf を丸ごと除外)。
+ * 配下 leaf を丸ごと除外)。空クラス(子の無い class ノード)は明示 include でも対象 0 件
+ * (呼び出し側は targets が空なら `api run` を起こさず run を閉じる)。
+ * export はテスト用(runHandler.test.mjs)。
  */
-function resolveTargets(
-  controller: vscode.TestController,
-  request: vscode.TestRunRequest,
+export function resolveTargets(
+  controller: Pick<vscode.TestController, "items">,
+  request: Pick<vscode.TestRunRequest, "include" | "exclude">,
 ): Map<string, vscode.TestItem> {
   const result = new Map<string, vscode.TestItem>();
 
   const addSubtree = (item: vscode.TestItem, explicit: boolean): void => {
-    if (item.children.size === 0) {
+    if (isScenarioLeaf(item)) {
       // explicit(この item 自体が include 指定)のときのみ @Deleted/@Draft でも対象にする。
       if (explicit || !isExcludedFromBulk(item)) {
         result.set(item.id, item);
@@ -309,7 +317,7 @@ function resolveTargets(
   }
 
   const removeSubtree = (item: vscode.TestItem): void => {
-    if (item.children.size === 0) {
+    if (isScenarioLeaf(item)) {
       result.delete(item.id);
       return;
     }
@@ -324,7 +332,7 @@ function resolveTargets(
 
 /** 一括実行(非明示 include)から除外する対象か(@Deleted または @Draft)。 */
 function isExcludedFromBulk(item: vscode.TestItem): boolean {
-  return item.tags.some((tag) => tag.id === DELETED_TAG.id || tag.id === DRAFT_TAG.id);
+  return item.tags.some((tag) => tag.id === DELETED_TAG_ID || tag.id === DRAFT_TAG_ID);
 }
 
 /** targets の先頭1件のファイルから @TestClass(...) の platform を読み取る(fleetest.liveControlOnRun

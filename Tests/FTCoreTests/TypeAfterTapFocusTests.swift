@@ -18,6 +18,12 @@ final class TypeAfterTapFocusTests: XCTestCase {
         var elements: [ElementInfo]
         private(set) var typedRefs: [Int?] = []
         private(set) var snapshotCount = 0
+        /// **既定 true**(既存テストは読み返しを問題にしない救済経路だけを確かめる)。
+        /// false にすると救済した type も StepExecutor+Actions の読み返し検証を通る
+        var verifiesTypedText = true
+        /// true の間だけ type() が要素の value を書き換える(「反映される」を表現する)。
+        /// false のまま(既定)なら value は変わらない = 読み返しが永久に一致しない形を作れる
+        var reflectsTypedText = false
         init(elements: [ElementInfo]) { self.elements = elements }
 
         func status() async throws -> StatusResponse {
@@ -36,7 +42,12 @@ final class TypeAfterTapFocusTests: XCTestCase {
         }
         func tap(ref: Int) async throws {}
         func tap(x: Double, y: Double) async throws {}
-        func type(ref: Int?, text: String) async throws { typedRefs.append(ref) }
+        func type(ref: Int?, text: String) async throws {
+            typedRefs.append(ref)
+            guard reflectsTypedText, let ref,
+                  let index = elements.firstIndex(where: { $0.ref == ref }) else { return }
+            elements[index].value = (elements[index].value ?? "") + text
+        }
         func swipe(_ direction: FTSwipeDirection) async throws {}
         func press(ref: Int, duration: Double) async throws {}
         func screenshot() async throws -> Data { Data() }
@@ -73,6 +84,43 @@ final class TypeAfterTapFocusTests: XCTestCase {
         XCTAssertTrue(outcome.notes.contains(.typeFocusRecovered), "救済は注記に残す")
         XCTAssertTrue((outcome.driverFallback ?? "").contains("#textInputEditText"),
                       "どこへ入れたか名指しすること: \(outcome.driverFallback ?? "")")
+    }
+
+    /// **救済した type も読み返しを見る**(verifiesTypedText == false のときだけ)。
+    /// ロケータ有り type(StepExecutor+Actions の case "type")と同じ規律 —— in-app は
+    /// 「200 が返った = 入った」を保証しない。反映されないまま緑にしていた(修正前のバグ)
+    func testFocusRecoveredTypeFailsWhenReadbackNeverReflectsIt() async throws {
+        let driver = RecordingDriver(elements: [container(ref: 8, id: "txtMailAddress"),
+                                                field(ref: 9)])
+        driver.verifiesTypedText = false
+        let executor = StepExecutor(driver: driver, isAndroid: false)
+        _ = await executor.execute(FlowStep(action: "tap",
+                                            locator: FlowLocator(id: "txtMailAddress"), timeout: 1))
+
+        let outcome = await executor.execute(FlowStep(action: "type", text: "hello"))
+
+        guard case .failed = outcome.status else {
+            return XCTFail("反映されない読み返しは failed を期待したが \(outcome.status) だった")
+        }
+    }
+
+    /// 反映されれば読み返しを通って passed のまま、救済の注記も残ること
+    func testFocusRecoveredTypeVerifiesReadbackWhenItReflects() async throws {
+        let driver = RecordingDriver(elements: [container(ref: 8, id: "txtMailAddress"),
+                                                field(ref: 9)])
+        driver.verifiesTypedText = false
+        driver.reflectsTypedText = true
+        let executor = StepExecutor(driver: driver, isAndroid: false)
+        _ = await executor.execute(FlowStep(action: "tap",
+                                            locator: FlowLocator(id: "txtMailAddress"), timeout: 1))
+
+        let outcome = await executor.execute(FlowStep(action: "type", text: "hello"))
+
+        guard case .passed = outcome.status else {
+            return XCTFail("反映された読み返しは passed を期待したが \(outcome.status) だった")
+        }
+        XCTAssertTrue(outcome.notes.contains(.typeFocusRecovered),
+                      "読み返しを通しても救済の注記は残ること")
     }
 
     /// 焦点があるときは**従来どおり**フォーカス中要素へ送る(木を読み足さない)

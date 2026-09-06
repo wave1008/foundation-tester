@@ -349,9 +349,12 @@ public struct FTSelector {
     }
 
     /// トークン内の `(a|b)` を展開する。グループでない括弧(`保存(推奨)` のような
-    /// ラベルの一部)は `|` を含まないので触らない。`=` エスケープ済みトークンも触らない
+    /// ラベルの一部)は `|` を含まないので触らない。`=` エスケープ済みトークンも触らない。
+    /// **正規表現フィルタ(`textMatches=` 等)も触らない** —— パターン中の `(a|b)` は
+    /// PCRE の選言であって、展開すると `textMatches=^(?:foo|bar)$` が壊れた代替候補に化ける
     static func expandGroups(_ token: String) -> [String] {
-        guard !token.hasPrefix("="), let group = firstGroup(in: token) else { return [token] }
+        guard !token.hasPrefix("="), !isRegexNamedFilterToken(token),
+              let group = firstGroup(in: token) else { return [token] }
         let prefix = String(token[token.startIndex..<group.open])
         let suffix = String(token[token.index(after: group.close)...])
         let inner = String(token[token.index(after: group.open)..<group.close])
@@ -362,6 +365,20 @@ public struct FTSelector {
             if result.count >= maxExpansion { break }
         }
         return result
+    }
+
+    /// トークンが `name=…`/`name!=…`/`!name=…` の形で、name が正規表現系のフィルタ名か。
+    /// 短縮否定 `!name=…` も同じ判定を受ける(先頭の `!` を1つだけ剥がしてから見る。
+    /// `!=` 自体で始まるトークンは完全形否定であって短縮形ではないので剥がさない)
+    static func isRegexNamedFilterToken(_ token: String) -> Bool {
+        var body = Substring(token)
+        if body.hasPrefix("!"), body.count > 1, !body.hasPrefix("!=") { body = body.dropFirst() }
+        guard let eqIndex = body.firstIndex(of: "=") else { return false }
+        var nameEnd = eqIndex
+        if nameEnd > body.startIndex, body[body.index(before: nameEnd)] == "!" {
+            nameEnd = body.index(before: nameEnd)
+        }
+        return isRegexFilterName(String(body[body.startIndex..<nameEnd]))
     }
 
     /// トークン内で最初に現れる「`|` を含む括弧」= OR グループ
@@ -438,7 +455,7 @@ public struct FTSelector {
             // 生ラベルのエスケープ(# や . で始まるラベルを text として扱う)
             return FlowLocator(label: String(token.dropFirst()))
         }
-        if token.hasPrefix("#") { return idLocator(String(token.dropFirst())) }
+        if token.hasPrefix("#") { return idOrdinalLocator(String(token.dropFirst())) }
         if token.hasPrefix("."), token.count > 1 { return parseTypeFilter(String(token.dropFirst())) }
         if token.hasPrefix("["), token.hasSuffix("]"),
            let ordinal = Int(token.dropFirst().dropLast()), ordinal >= 1 {
@@ -471,9 +488,10 @@ public struct FTSelector {
     static func parseTypeFilter(_ body: String) -> FlowLocator {
         if let hashIndex = body.firstIndex(of: "#") {
             let type = String(body[body.startIndex..<hashIndex])
-            // `#` 以降は単独の `#` 短縮形と同じ `*` 展開(挙動を割ると `.button#foo*` が
-            // 黙って literal 完全一致 = never-match になる)
-            var locator = idLocator(String(body[body.index(after: hashIndex)...]))
+            // `#` 以降は単独の `#` 短縮形と同じ `*` 展開・`[n]` 序数の両方を通す
+            // (挙動を割ると `.button#foo*` が literal 完全一致 = never-match、
+            // `.button#x[2]` が id "x[2]" の literal 完全一致になり never-match になる)
+            var locator = idOrdinalLocator(String(body[body.index(after: hashIndex)...]))
             locator.type = type.isEmpty ? nil : type
             return locator
         }
@@ -529,6 +547,13 @@ public struct FTSelector {
 
     static func isFilterName(_ name: String) -> Bool {
         textFilters[name] != nil || idFilters[name] != nil || otherFilters.contains(name)
+    }
+
+    /// フィルタ名が正規表現系(`textMatches` 等)か。**3箇所が共有する判定**:
+    /// ① expandGroups(パターン中の `(a|b)` は PCRE の選言であってフィルタ内 OR ではないので
+    /// 展開してはいけない) ② namedFilterError ③ negatedFilterError(不正な正規表現を実行前に落とす)
+    static func isRegexFilterName(_ name: String) -> Bool {
+        textFilters[name]?.mode == .matches || idFilters[name] == .matches
     }
 
     /// エラーメッセージ用の既知フィルタ名一覧(五十音・アルファベット順ではなく列挙順)
@@ -588,6 +613,19 @@ public struct FTSelector {
     static func idLocator(_ raw: String) -> FlowLocator {
         let parsed = partialMatch(raw)
         return FlowLocator(id: parsed.text, idMatch: parsed.mode == .exact ? nil : parsed.mode)
+    }
+
+    /// `#id[n]`(id + 順番。`.型[n]` と同じ変換)。末尾の `[n]` だけを序数として切り出し、
+    /// 残りは通常の id(partialMatch の `*` 展開込み)として解釈する。
+    /// `[abc]`/`[0]` は `.型[n]` と同じく通してしまう(拒否は validationError の ordinalError 側)
+    static func idOrdinalLocator(_ body: String) -> FlowLocator {
+        if body.hasSuffix("]"), let bracketIndex = body.firstIndex(of: "["),
+           let ordinal = Int(body[body.index(after: bracketIndex)..<body.index(before: body.endIndex)]) {
+            var locator = idLocator(String(body[body.startIndex..<bracketIndex]))
+            locator.index = max(0, ordinal - 1)
+            return locator
+        }
+        return idLocator(body)
     }
 
     /// public: システムアラートの照合(SystemAlertDismissal)が同じ `*` 解釈を使う
@@ -722,6 +760,13 @@ public struct FTSelector {
         var tokens: [String] = []
         let negations = serializeNot(locator.not ?? [])
         let single = tokenCount(locator) == 1 && negations.isEmpty
+        // id + 順番だけの節は `#id[n]` へ畳む(`.型[n]` と同じ短縮形)。`id=` 完全形では
+        // `[n]` が値の一部として読まれてしまうので、`#` 短縮形が使えるときだけ畳む
+        if locator.type == nil, locator.id != nil, let index = locator.index, index > 0,
+           tokenCount(locator) == 2, negations.isEmpty {
+            let token = idToken(locator)
+            if token.hasPrefix("#") { return "\(token)[\(index + 1)]" }
+        }
         if let type = locator.type {
             // 型 + もう1条件だけなら短縮形にする(除外条件があるときは後ろに続くので畳まない)。
             // idToken が `#` 形を返すときだけ畳める(`id=` 形は `.型` と合成できないため)
@@ -817,7 +862,7 @@ public struct FTSelector {
         if label.isEmpty { return true }
         if label.hasPrefix("#") || label.hasPrefix(".") || label.hasPrefix("=")
             || label.hasPrefix("[") || label.hasPrefix("*") || label.hasSuffix("*")
-            || label.hasPrefix("<") { return true }
+            || label.hasPrefix("<") || label.hasPrefix("!") { return true }
         if label.contains(">>") || label.contains("||") || label.contains("&&") { return true }
         if firstRelativeMarker(in: label) != nil { return true }
         if unknownMarker(in: label) != nil { return true }
@@ -1076,6 +1121,7 @@ public struct FTSelector {
         if name == "checked" || name == "enabled", boolValue(value) == nil {
             return "\(name) must be true or false: \"\(token)\""
         }
+        if isRegexFilterName(name), let error = RegexValidation.error(for: value) { return error }
         return nil
     }
 
@@ -1107,6 +1153,7 @@ public struct FTSelector {
                 return "\(name) must be true or false: \"\(token)\""
             }
             if name == "pos" { return ordinalError(token, inner: value) }
+            if isRegexFilterName(name), let error = RegexValidation.error(for: value) { return error }
             return nil
         }
         // 既知名と紛らわしくない `名前=値` は素の文字列(SUT の状態表示 `notify=off` 等)として通す
@@ -1133,10 +1180,10 @@ public struct FTSelector {
         return "type names start with a lowercase letter: \"\(token)\" → \".\(corrected)\""
     }
 
-    /// `.型[n]` の n が 1 以上の整数か。`[abc]` や `[0]` は型名の一部として黙って解釈され、
-    /// 決して一致しないロケータになるためここで落とす
+    /// `.型[n]` / `#id[n]` の n が 1 以上の整数か。`[abc]` や `[0]` は型名・id の一部として
+    /// 黙って解釈され、決して一致しないロケータになるためここで落とす
     private static func ordinalError(_ token: String) -> String? {
-        guard token.hasPrefix("."), token.hasSuffix("]"),
+        guard token.hasPrefix(".") || token.hasPrefix("#"), token.hasSuffix("]"),
               let bracket = token.firstIndex(of: "[") else { return nil }
         return ordinalError(token,
                             inner: String(token[token.index(after: bracket)..<token.index(before: token.endIndex)]))

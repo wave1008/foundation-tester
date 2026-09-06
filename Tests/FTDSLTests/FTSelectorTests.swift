@@ -300,7 +300,8 @@ final class FTSelectorTests: XCTestCase {
                      "<通知>:rightSwitch", "#row >> <数量>:rightButton",
                      "=#raw", "=A >> B",
                      "#foo*", "#*foo*", "#*foo", "idStartsWith=foo", "idMatches=^p_\\d+$",
-                     ".button&&idContains=save", ".button&&idContains!=save", ".button&&!#foo*"] {
+                     ".button&&idContains=save", ".button&&idContains!=save", ".button&&!#foo*",
+                     "#x[2]", ".button#x[2]"] {
             let parsed = FTSelector.parse(text)
             let serialized = FTSelector.serialize(primary: parsed.primary,
                                                   fallbacks: parsed.fallbacks)
@@ -332,6 +333,32 @@ final class FTSelectorTests: XCTestCase {
         XCTAssertEqual(FTSelector.serialize(FlowLocator(id: "foo*")), "id=foo*")
         XCTAssertEqual(FTSelector.parse(FTSelector.serialize(FlowLocator(id: "foo*"))).primary,
                        FlowLocator(id: "foo*"))
+        // id + 順番は `.型[n]` と同じ短縮形 `#id[n]` へ畳む
+        XCTAssertEqual(FTSelector.serialize(FlowLocator(id: "x", index: 1)), "#x[2]")
+    }
+
+    // MARK: - id の順番 `#id[n]`(`.型[n]` と同じ変換)
+
+    func testIdOrdinalShorthand() {
+        XCTAssertEqual(FTSelector.parse("#x[2]").primary, FlowLocator(id: "x", index: 1))
+        XCTAssertEqual(FTSelector.parse(".button#x[2]").primary,
+                       FlowLocator(id: "x", type: "button", index: 1))
+        // 単独・ワイルドカード・途中に `[` を含む id は従来どおり
+        XCTAssertEqual(FTSelector.parse("#x").primary, FlowLocator(id: "x"))
+        XCTAssertNil(FTSelector.parse("#x").primary.index)
+        XCTAssertEqual(FTSelector.parse("#x*").primary, FlowLocator(id: "x", idMatch: .startsWith))
+        XCTAssertEqual(FTSelector.parse("#*x*").primary, FlowLocator(id: "x", idMatch: .contains))
+        XCTAssertEqual(FTSelector.parse("#a[b]c").primary, FlowLocator(id: "a[b]c"))
+        XCTAssertEqual(FTSelector.parse(FTSelector.serialize(FlowLocator(id: "x", index: 1))).primary,
+                       FlowLocator(id: "x", index: 1))
+    }
+
+    func testIdOrdinalValidation() {
+        XCTAssertNotNil(FTSelector.validationError("#x[0]"))
+        XCTAssertNotNil(FTSelector.validationError("#x[abc]"))
+        XCTAssertNotNil(FTSelector.validationError(".button#x[0]"))
+        XCTAssertNil(FTSelector.validationError("#x[2]"))
+        XCTAssertNil(FTSelector.validationError(".button#x[2]"))
     }
 
     func testSerializeEscapesLabelsContainingSyntax() {
@@ -340,7 +367,7 @@ final class FTSelectorTests: XCTestCase {
         XCTAssertEqual(FTSelector.parse(FTSelector.serialize(locator)).primary, locator)
         // 検証が拒否するパターン(未知マーカー・方向名の書き損じ)もエスケープする
         // (しないと serialize の出力=ヒール提案・生成コードがそのまま構文エラーで落ちる)
-        for text in ["a:rigth(b)", "予定:AM(補足)", "高さ:righ", "x:near(y)"] {
+        for text in ["a:rigth(b)", "予定:AM(補足)", "高さ:righ", "x:near(y)", "!重要"] {
             let escaped = FTSelector.serialize(FlowLocator(label: text))
             XCTAssertEqual(escaped, "=\(text)", text)
             XCTAssertEqual(FTSelector.parse(escaped).primary, FlowLocator(label: text), text)
@@ -581,5 +608,32 @@ final class FTSelectorTests: XCTestCase {
         XCTAssertNotNil(FTSelector.validationError(".button&&!textContans=x"))
         // `=` エスケープで「!」始まりのラベルはそのまま書ける
         XCTAssertEqual(FTSelector.parse("=!注意").primary, FlowLocator(label: "!注意"))
+    }
+
+    // MARK: - 正規表現フィルタは `(a|b)` を展開しない(PCRE の選言であってフィルタ内 OR ではない)
+
+    func testRegexNamedFilterDoesNotExpandGroups() {
+        let selector = FTSelector.parse("textMatches=^(?:foo|bar)$")
+        XCTAssertTrue(selector.fallbacks.isEmpty)
+        XCTAssertEqual(selector.primary.label, "^(?:foo|bar)$")
+        XCTAssertEqual(selector.primary.labelMatch, .matches)
+    }
+
+    /// 量指定子付きの選言(展開すればどのみち壊れる形)も、フィルタ内 OR に化けずに
+    /// そのまま正規表現として通常の一致経路を通る
+    func testRegexGroupWithQuantifierMatchesNormally() {
+        let selector = FTSelector.parse("textMatches=^(a|b){2}$")
+        XCTAssertTrue(selector.fallbacks.isEmpty)
+        let mode = selector.primary.labelMatch ?? .exact
+        XCTAssertTrue(mode.matches("ab", selector.primary.label ?? ""))
+    }
+
+    // MARK: - 正規表現の事前検証(不正なパターンは実行前に落とす。永久に緑になる notExist を防ぐ)
+
+    func testValidationRejectsInvalidRegex() {
+        XCTAssertNotNil(FTSelector.validationError("textMatches=(x"))
+        XCTAssertNotNil(FTSelector.validationError("idMatches=["))
+        XCTAssertNotNil(FTSelector.validationError(".button&&idMatches!=["))
+        XCTAssertNil(FTSelector.validationError("textMatches=^ok$"))
     }
 }

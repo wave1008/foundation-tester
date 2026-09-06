@@ -12,11 +12,13 @@ import { t } from "./i18n";
 import { lastResultsDir, lookupKey, readFailedScenarioIds } from "./lastResults";
 import type { ListScenariosResult, ScenarioInfo } from "./model";
 
-/** @Deleted シナリオに付与する TestTag(runHandler.ts の対象解決でも参照する)。 */
-export const DELETED_TAG = new vscode.TestTag("deleted");
-/** @Draft シナリオに付与する TestTag(runHandler.ts の対象解決でも参照する)。一括実行からの除外は
+/** @Deleted シナリオに付与する TestTag の id(runHandler.ts の対象解決でも参照する)。 */
+export const DELETED_TAG_ID = "deleted";
+/** @Draft シナリオに付与する TestTag の id(runHandler.ts の対象解決でも参照する)。一括実行からの除外は
  * @Deleted と同じだが、ツリーでは通常どおり表示する(隠さない)。 */
-export const DRAFT_TAG = new vscode.TestTag("draft");
+export const DRAFT_TAG_ID = "draft";
+// TestTag の実体はモジュール読み込み時に作らない(esbuild の vscodeStubPlugin 下で `new` が落ち、
+// runHandler.ts ごとテストから import できなくなる)。TestTag は id で同一視されるので都度作ってよい。
 
 /** VSCode 本体の「Hide Test」の実質無効化。メニュー項目は拡張から除去できないため、非表示状態を
  * 常時解除する(activate 時の初回 refresh とツリー再構築のたび。extension.ts の結果反映時も呼ぶ)。 */
@@ -26,12 +28,21 @@ export function unhideAllTests(): void {
   });
 }
 
-/** folder ノード id / class ノード id の衝突回避用プレフィックス。 */
-function folderId(folderName: string): string {
-  return `folder:${folderName}`;
+/** folder ノード id / class ノード id の衝突回避用プレフィックス。leaf(シナリオ)の id は
+ * `<Class>.<method>` でこの接頭辞を持たない。 */
+const FOLDER_ID_PREFIX = "folder:";
+const CLASS_ID_PREFIX = "class:";
+export function folderId(folderName: string): string {
+  return `${FOLDER_ID_PREFIX}${folderName}`;
 }
-function classId(folderName: string | null, className: string): string {
-  return `class:${folderName ?? ""}/${className}`;
+export function classId(folderName: string | null, className: string): string {
+  return `${CLASS_ID_PREFIX}${folderName ?? ""}/${className}`;
+}
+/** folder / class ノードか。**children.size === 0 を leaf の根拠にしない** —— 空クラス(@Test なし。
+ * emptyClasses)は子の無い class ノードとして出すので、構造で判定すると `class:…` をシナリオ ID
+ * として CLI に渡し run 全体が「scenario not found」で落ちる(runHandler.ts の resolveTargets)。 */
+export function isContainerNodeId(id: string): boolean {
+  return id.startsWith(FOLDER_ID_PREFIX) || id.startsWith(CLASS_ID_PREFIX);
 }
 
 export class FleetestTestTree implements vscode.Disposable {
@@ -234,10 +245,10 @@ export class FleetestTestTree implements vscode.Disposable {
       }
       if (scenario.deleted) {
         leaf.description = t("workbench.testTree.deletedDescription");
-        leaf.tags = [DELETED_TAG];
+        leaf.tags = [new vscode.TestTag(DELETED_TAG_ID)];
       } else if (scenario.draft) {
         leaf.description = t("workbench.testTree.draftDescription");
-        leaf.tags = [DRAFT_TAG];
+        leaf.tags = [new vscode.TestTag(DRAFT_TAG_ID)];
       }
       classNode.children.add(leaf);
     }

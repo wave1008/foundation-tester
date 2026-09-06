@@ -43,6 +43,39 @@ final class RunResultsStoreTests: XCTestCase {
 
     // MARK: - 書き込み→読み取りの往復
 
+    /// 並列走査のチャンク分割は**空・逆転した Range を作らない**(`ceil(n/chunks)` 幅で
+    /// `chunkIndex * size` を始点にすると末尾が `start > end` になり Range 生成で trap した。
+    /// 24 コアで記録 25〜45 件 = 受け手の新しいプロジェクトが最初に踏む形)
+    func testChunkRangesNeverProduceAnEmptyOrInvertedRange() {
+        for count in 0...300 {
+            for chunkCount in 1...64 {
+                let ranges = RunResultsStore.chunkRanges(count: count, chunkCount: chunkCount)
+                XCTAssertLessThanOrEqual(ranges.count, max(1, chunkCount), "n=\(count) c=\(chunkCount)")
+                var next = 0
+                for range in ranges {
+                    XCTAssertEqual(range.lowerBound, next, "n=\(count) c=\(chunkCount)")
+                    XCTAssertFalse(range.isEmpty, "n=\(count) c=\(chunkCount)")
+                    next = range.upperBound
+                }
+                XCTAssertEqual(next, count, "n=\(count) c=\(chunkCount)")
+            }
+        }
+        XCTAssertEqual(RunResultsStore.chunkRanges(count: 30, chunkCount: 24),
+                       stride(from: 0, to: 30, by: 2).map { $0..<$0 + 2 })
+    }
+
+    /// 24 コア機で実際に落ちていた件数(30)を、キャップ無しの並列経路で読む
+    func testScanRecordsHandlesRecordCountsBetweenCoresAndCoresSquared() {
+        let runID = "20260101-000000Z-mach-0001"
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
+        RunResultsStore.writeMeta(makeMeta(runID: runID, startedAt: "2026-01-01T00:00:00Z"), runDir: runDir)
+        for i in 0..<30 {
+            _ = RunResultsStore.writeScenario(makeScenarioRecord(scenarioID: "Foo.s\(i)", runID: runID),
+                                              runDir: runDir, fileName: "Foo.s\(i)")
+        }
+        XCTAssertEqual(RunResultsStore.scanRecords(resultsDir: resultsDir).count, 30)
+    }
+
     func testWriteAndScanRoundTrip() {
         let runID = "20260101-000000Z-mach-0001"
         let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)

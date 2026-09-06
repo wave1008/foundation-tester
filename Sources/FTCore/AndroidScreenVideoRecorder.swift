@@ -15,6 +15,9 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
     /// 先日の実害(録画プロセスが途中死してワーカーの録画が丸ごと欠けた)を受け、無限リトライで
     /// ログを埋め尽くす/デバイスに adb を叩き続けるのを防ぎつつ、それまでに撮れた分は活かす
     private static let crashLoopMaxConsecutive = 5
+    /// デバイス側セグメントの置き場。**この接頭辞が「自分の screenrecord」の印**
+    /// (killOwnScreenrecordCommand が /proc/<pid>/cmdline でこれを探す)
+    static let remoteOutputPrefix = "/sdcard/ftrec-"
 
     private let serial: String
     private let adbPath: String
@@ -56,7 +59,8 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
         if currentProcess != nil {
             // ホスト側 adb クライアントを kill してもデバイス上の screenrecord は止まらず
             // ファイルが壊れる。デバイス側プロセスへ直接 kill -2 を送る
-            _ = try? Shell.run([adbPath, "-s", serial, "shell", "kill", "-2", "$(pidof screenrecord)"])
+            _ = try? Shell.run([adbPath, "-s", serial, "shell",
+                                Self.killOwnScreenrecordCommand(outputPathPrefix: Self.ownOutputPrefix(fileStem: fileStem))])
             if let watchTask {
                 _ = await raceWithDeadline(seconds: 20, onTimeout: ()) { await watchTask.value }
             }
@@ -86,7 +90,7 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
     private func spawnNextSegment() async -> Bool {
         guard !stopRequested, !gaveUp else { return false }
         segmentIndex += 1
-        let remotePath = "/sdcard/ftrec-\(fileStem)-\(segmentIndex).mp4"
+        let remotePath = Self.remoteSegmentPath(fileStem: fileStem, index: segmentIndex)
         var args = ["-s", serial, "shell", "screenrecord", "--bit-rate", String(bitrateKbps * 1000)]
         if let size { args += ["--size", size] }
         args += ["--time-limit", String(Self.segmentTimeLimitSeconds), remotePath]
@@ -149,9 +153,32 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
         return true
     }
 
-    /// 起動前に stale な screenrecord を best-effort で止める
+    /// 起動前に stale な screenrecord(前の run が残した ftrec-* のもの)を best-effort で止める
     private func killStaleScreenrecord() {
-        _ = try? Shell.run([adbPath, "-s", serial, "shell", "kill", "-2", "$(pidof screenrecord)"])
+        _ = try? Shell.run([adbPath, "-s", serial, "shell",
+                            Self.killOwnScreenrecordCommand(outputPathPrefix: Self.remoteOutputPrefix)])
+    }
+
+    /// この録画セッションのセグメントだけに共通する接頭辞(stop はこれで自分のぶんだけ止める)
+    static func ownOutputPrefix(fileStem: String) -> String {
+        "\(remoteOutputPrefix)\(fileStem)-"
+    }
+
+    static func remoteSegmentPath(fileStem: String, index: Int) -> String {
+        "\(ownOutputPrefix(fileStem: fileStem))\(index).mp4"
+    }
+
+    /// `adb shell` に渡す、**自分の screenrecord だけ**へ SIGINT を送るデバイス側シェル。
+    /// pidof の結果を無差別に kill すると、モニターのライブ配信(fleetest-androidstream の
+    /// `screenrecord --output-format=h264`)まで落ち、録画の開始/停止のたびに映像が切れる。
+    /// 選別は /proc/<pid>/cmdline(NUL 区切りなので tr で空白へ)に outputPathPrefix を含むか
+    /// (screenrecord は adb shell と同じ shell uid なので hidepid=2 でも読める)。
+    /// pidof / tr / grep -F は toybox(API 26+ = ブリッジの minSdk)に居る。該当が無ければ何もしない
+    static func killOwnScreenrecordCommand(outputPathPrefix: String) -> String {
+        let quoted = "'" + outputPathPrefix.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        return "pidof screenrecord | tr ' ' '\\n' | while read p; do "
+            + "tr '\\000' ' ' < /proc/$p/cmdline | grep -qF -- \(quoted) && kill -2 $p; "
+            + "done"
     }
 
     /// adb shell wm size の "Physical size: WxH" を半分(偶数丸め)にする。取得失敗時は nil(--size 省略)

@@ -24,6 +24,10 @@
 // **FMHealth / FMUsageLedger には書かない**。プローブは「仕事」ではないので、書くと
 // モニターの FM レートが誰も走らせていないのに動く(= 測る対象を自分で消費して見せる)。
 // ブレーカだけは養う —— あれは「無駄打ちを止める」ための事実で、プローブの成否も同じ事実。
+//
+// **単発の失敗で死と書かない**(FMLiveness ④)。台帳は機械全体へ配る値なので、FMHealth と同じく
+// 経路ごとに連続 FMBreaker.threshold 回でようやく死とする(`ledgerState`)。閾値未満の失敗は
+// 台帳を**触らない** —— 古いままなら次の refresh がその経路をまた撃つので、連続失敗を数え切れる。
 
 import Foundation
 import FoundationModels
@@ -116,8 +120,9 @@ public enum FMLivenessProbe {
         return false
     }
 
-    /// 1経路を実際に呼んで台帳へ書く。**門を通らない**(呼び出し側が明示的に死活を知りたい
-    /// ときの入口。`fleetest doctor` / `ft_doctor` はこちら)。返り値は書いた判定
+    /// 1経路を実際に呼んで台帳へ写す。**門を通らない**(呼び出し側が明示的に死活を知りたい
+    /// ときの入口。`fleetest doctor` / `ft_doctor` はこちら)。返り値は**この回の観測**で、
+    /// 台帳に書いたかどうかとは別(閾値未満の失敗は返り値では dead・台帳は据え置き。`settle` の doc)
     @discardableResult
     public static func probeOnce(path: FMLiveness.Path, now: Date = Date()) async -> FMLiveness.Verdict {
         let startedAt = Date()
@@ -146,16 +151,53 @@ public enum FMLivenessProbe {
             }
             let ms = Int(Date().timeIntervalSince(startedAt) * 1000)
             FMBreaker.recordSuccess()
-            FMLiveness.record(path: path, state: .alive, source: .probe, ms: ms)
-            return FMLiveness.Verdict(state: .alive, checkedAt: Date().timeIntervalSince1970,
-                                      source: .probe, ms: ms)
+            return settle(path: path, error: nil, ms: ms)
         } catch {
             let ms = Int(Date().timeIntervalSince(startedAt) * 1000)
-            let message = FMHealth.describe(error)
             FMBreaker.recordFailure()
-            FMLiveness.record(path: path, state: .dead, source: .probe, error: message, ms: ms)
-            return FMLiveness.Verdict(state: .dead, checkedAt: Date().timeIntervalSince1970,
-                                      source: .probe, error: message, ms: ms)
+            return settle(path: path, error: FMHealth.describe(error), ms: ms)
         }
+    }
+
+    /// この回の観測を台帳へ写す(`error == nil` が成功)。書くのは `ledgerState` が状態を返した回だけ
+    /// —— 閾値未満の失敗では台帳に**何も書かない**(ファイル冒頭)。返すのは常にこの回の観測:
+    /// doctor は「この1回の実呼び出しが落ちた」を exit 1 にする(それは台帳の死活とは別の事実)
+    @discardableResult
+    static func settle(path: FMLiveness.Path, error: String?, ms: Int,
+                       now: Date = Date()) -> FMLiveness.Verdict {
+        if let state = ledgerState(afterProbe: path, failed: error != nil) {
+            FMLiveness.record(path: path, state: state, source: .probe, error: error, ms: ms, now: now)
+        }
+        return FMLiveness.Verdict(state: error == nil ? .alive : .dead,
+                                  checkedAt: now.timeIntervalSince1970,
+                                  source: .probe, error: error, ms: ms)
+    }
+
+    /// 経路ごとの連続失敗を数え、台帳へ書くべき状態を返す。**nil = 書かない**(閾値未満の失敗)。
+    /// 成功は数え直して `.alive`。**FMBreaker のカウンタは経路を区別しない**ので流用しない
+    /// (text の成功が毎回戻すので vision の死を数えられない。FMHealth.consecutiveFailures と同じ理由)。
+    /// **閾値は FMBreaker.threshold を共有する**(「連続何回で死か」を2つ持たない)。
+    /// プロセス内カウンタでよい —— 撃つのは長生きの `api host-metrics --fm-probe` か doctor(1回)
+    static func ledgerState(afterProbe path: FMLiveness.Path, failed: Bool,
+                            threshold: Int = FMBreaker.threshold) -> FMLiveness.State? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard failed else {
+            consecutiveFailures[path] = 0
+            return .alive
+        }
+        let next = (consecutiveFailures[path] ?? 0) + 1
+        consecutiveFailures[path] = next
+        return next >= threshold ? .dead : nil
+    }
+
+    private static let lock = NSLock()
+    private static var consecutiveFailures: [FMLiveness.Path: Int] = [:]
+
+    /// テスト用。経路ごとの連続失敗の記憶を捨てる
+    static func resetConsecutiveFailuresForTesting() {
+        lock.lock()
+        consecutiveFailures.removeAll()
+        lock.unlock()
     }
 }

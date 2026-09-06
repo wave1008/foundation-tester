@@ -1409,9 +1409,9 @@ final class RemoteDispatchTests: XCTestCase {
     func testCleanPlanDryRunUsesPrint() {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
-        XCTAssertEqual(commands.count, 7)
+        XCTAssertEqual(commands.count, 2)
         for command in commands {
-            XCTAssertTrue(command.hasSuffix("-print"), command)
+            XCTAssertTrue(command.contains("-print"), command)
             XCTAssertFalse(command.contains("-exec"), command)
         }
     }
@@ -1420,7 +1420,8 @@ final class RemoteDispatchTests: XCTestCase {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: false)
         for command in commands {
-            XCTAssertTrue(command.hasSuffix("-exec rm -rf {} +"), command)
+            XCTAssertTrue(command.contains("-exec rm -rf {} +"), command)
+            XCTAssertFalse(command.contains("-print"), command)
         }
     }
 
@@ -1429,24 +1430,44 @@ final class RemoteDispatchTests: XCTestCase {
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 30, dryRun: true)
         for command in commands {
             XCTAssertTrue(command.contains("-mtime +30"), command)
+            XCTAssertFalse(command.contains("-mtime +7"), command)
         }
     }
 
-    /// 全発行者(`users/*/work`)+ 旧レイアウト(`work`)を横断する(§18.2)。ディスクはホスト共有
-    /// 資源なので保持ポリシーは全員分に掛ける
-    func testCleanPlanCoversAllIssuersAndTheLegacyLayout() {
+    /// 全発行者(`users/<issuer>/work`)+ 旧レイアウト(`work`)を横断する(§18.2)。ディスクはホスト共有
+    /// 資源なので保持ポリシーは全員分に掛ける。**一覧はグロブでなく find で作る**(相手は zsh。
+    /// マッチしないグロブはそのコマンドごと落ち、旧 work の無い普通のランナーで毎回警告が出ていた)
+    func testCleanPlanCoversAllIssuersAndTheLegacyLayoutWithoutGlobs() {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
         let base = "'/Users/ci/fleetest-runner'"
         // 配信の控えはホスト共有の1箇所(発行者ネームスペースの外)。**死んだ pid の控えが
         // 溜まると、pid が一巡したときにその台の配信が誰にも張れなくなる**ので上限を作る
-        XCTAssertTrue(commands[0].contains("\(base)/.fleetest/streams"), commands[0])
-        XCTAssertTrue(commands[1].contains("\(base)/users/*/work/.fleetest/dispatch"), commands[1])
-        XCTAssertTrue(commands[2].contains("\(base)/users/*/work/TestProjects/*/reports"), commands[2])
-        XCTAssertTrue(commands[3].contains("\(base)/users/*/work/TestProjects/*/results"), commands[3])
-        XCTAssertTrue(commands[4].contains("\(base)/work/.fleetest/dispatch"), commands[4])
-        XCTAssertTrue(commands[5].contains("\(base)/work/TestProjects/*/reports"), commands[5])
-        XCTAssertTrue(commands[6].contains("\(base)/work/TestProjects/*/results"), commands[6])
+        XCTAssertTrue(commands[0].contains("\(base)/.fleetest/streams -mindepth 1 -maxdepth 1"), commands[0])
+        let perWork = commands[1]
+        XCTAssertTrue(perWork.contains("find '/Users/ci/fleetest-runner/users' -mindepth 2 -maxdepth 2 -type d -name work"),
+                      perWork)
+        XCTAssertTrue(perWork.contains("'/Users/ci/fleetest-runner/work'"), perWork)
+        XCTAssertTrue(perWork.contains("\"$w/.fleetest/dispatch\" -mindepth 1 -maxdepth 1"), perWork)
+        XCTAssertTrue(perWork.contains("find \"$w/TestProjects\" -mindepth 1 -maxdepth 1 -type d"), perWork)
+        XCTAssertTrue(perWork.contains("\"$p/reports\" -mindepth 1 -maxdepth 1"), perWork)
+        for command in commands {
+            XCTAssertFalse(command.contains("*/"), "glob in ssh command: \(command)")
+        }
+    }
+
+    /// **results は `runs/<YYYY-MM>/<runID>` の深さで判定する**(RunResultsStore.runDir)。
+    /// `results` 直下を見ると `runs/` ディレクトリ自身が対象になり、その mtime は月ディレクトリを
+    /// 作った時にしか動かないので、月初 + keepDays 日で当月ぶんを含む全 run 記録が消えていた
+    func testCleanPlanJudgesResultsAtTheRunDirectoryDepth() {
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: false)
+        let perWork = commands[1]
+        XCTAssertTrue(perWork.contains("\"$p/results/runs\" -mindepth 2 -maxdepth 2 -mtime +7"), perWork)
+        XCTAssertFalse(perWork.contains("results\" -mindepth 1"), perWork)
+        XCTAssertFalse(perWork.contains("results -mindepth 1"), perWork)
+        // 無いディレクトリは飛ばす(find のエラーを「cleanup command exited with status 1」にしない)
+        XCTAssertTrue(perWork.contains("if [ -d \"$p/results/runs\" ]; then find"), perWork)
     }
 
     /// `--dry-run` は**何も変えない**。`devices down` は走っている run を巻き添えにする破壊的操作
@@ -1461,10 +1482,11 @@ final class RemoteDispatchTests: XCTestCase {
         let layout = RemoteLayout(base: "/Users/ci/fleetest runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
         // 添字ではなく「どのコマンドか」で選ぶ(先頭に別のターゲットが増えても意味が変わらない)
-        guard let usersCommand = commands.first(where: { $0.contains("/users/") }) else {
+        guard let usersCommand = commands.first(where: { $0.contains("/users'") }) else {
             return XCTFail("expected a per-issuer target: \(commands)")
         }
-        XCTAssertTrue(usersCommand.contains("'/Users/ci/fleetest runner'/users/*/work"), usersCommand)
+        XCTAssertTrue(usersCommand.contains("find '/Users/ci/fleetest runner/users' -mindepth 2"), usersCommand)
+        XCTAssertTrue(usersCommand.contains("'/Users/ci/fleetest runner/work'"), usersCommand)
     }
 
     // MARK: - RemoteLayout.validateBase(コマンド置換の入口ガード)

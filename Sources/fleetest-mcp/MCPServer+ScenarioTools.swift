@@ -133,7 +133,7 @@ extension MCPServer {
             connection = DriverConnection(
                 platform: platform,
                 port: platform == "ios"
-                    ? try await Self.resolveIOSPort(explicit: (args["port"] as? Int).map(UInt16.init))
+                    ? try await Self.resolveIOSPort(explicit: try Self.portArgument(args))
                     : nil,
                 serial: platform == "android"
                     ? try Self.resolveAndroidSerial(explicit: args["serial"] as? String)

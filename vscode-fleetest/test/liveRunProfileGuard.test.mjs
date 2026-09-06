@@ -6,8 +6,8 @@
 //   - scenarioTimeout / record / defaultTimeout などプロファイルの設定が一切効かない
 //   - 複数デバイスの並列実行が単一デバイスに潰れる
 // args 分岐のコメントは元からこの条件を前提に書かれていたのに、**ガードの実装だけが抜けていた**。
-// runHandler.ts は import できない(testTree.ts のトップレベル new vscode.TestTag がスタブで落ちる)
-// ので、ここでは条件が式として残っていることを走査で守る。
+// executeRun は vscode.TestRun/TestItem の実装が要りスタブでは呼べないので、ここでは条件が式として
+// 残っていることを走査で守る(runHandler.ts 自体は import できる。runHandler.test.mjs の resolveTargets)。
 
 import assert from "node:assert/strict";
 import fs from "node:fs";

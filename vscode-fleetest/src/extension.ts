@@ -127,7 +127,17 @@ export function activate(context: vscode.ExtensionContext): void {
     outputChannel,
     onResultsApplied: onResultsChanged,
   });
-  context.subscriptions.push(lastResultsSync);
+  context.subscriptions.push(
+    lastResultsSync,
+    // 対象プロジェクト切替で last-results の監視先も張り替える(登録時の project で固定なので、
+    // 呼ばないと新プロジェクトでの CLI 実行がツリーへ届かない。registerCommands 側の同イベント
+    // ハンドラはツリー再構築を担当する)。
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("fleetest.project")) {
+        lastResultsSync.reconfigure();
+      }
+    }),
+  );
   // registerRunHandler の Run Test 前ライブパネル連携(prepareForRun)と registerMonitorPanel の
   // openLiveForDevice(デバイスタイル右クリック連携)の両方に使うため先に生成する。
   const livePanel = registerLivePanel(context, workspaceRoot, getConfig, outputChannel, cli, testTree, runEventBus);

@@ -306,9 +306,17 @@ export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: num
       return actions;
     }
 
-    case "scenarioRequeued":
-      return pushLine(state, laneIdOf(event),
+    case "scenarioRequeued": {
+      const actions = pushLine(state, laneIdOf(event),
         tLane("lane.requeued", { reason: event.reason, attempt: event.attempt, limit: event.limit }));
+      // 振り直されたワーカーは run を離脱している(この worker の scenarioFinished は来ない)。
+      // 消さないとタイルの「実行中」バッジが runFinished まで残る。
+      if (event.worker && state.runningWorkers.has(event.worker)) {
+        state.runningWorkers.delete(event.worker);
+        actions.push({ type: "workerRunning", workerId: event.worker, running: false });
+      }
+      return actions;
+    }
 
     case "wipeStatus":
       // デバイスタイルのバッジ表示(monitorPanel.ts の handleBusMessage)専用。ログレーンには出さない。

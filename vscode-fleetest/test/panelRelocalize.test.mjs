@@ -34,8 +34,8 @@ const getConfig = () => ({ binaryPath: "/usr/local/bin/fleetest", project: "P", 
 
 function newLiveController() {
   const cli = new FleetestCli(outputChannel);
-  // FleetestTestTree(../src/testTree)はモジュール読み込み時に vscode.TestTag(...) を呼ぶため、
-  // esbuild の vscodeStubPlugin 下では import した時点で落ちる。LivePanelController は
+  // FleetestTestTree(../src/testTree)は生成時に vscode.tests.createTestController を呼ぶため、
+  // esbuild の vscodeStubPlugin 下では作れない。LivePanelController は
   // testTree.refresh() しか呼ばないので、その形だけを備えた fake で足りる。
   const testTree = { refresh: async () => {} };
   const context = { workspaceState: { get: () => false }, extensionUri: {} };

@@ -48,8 +48,10 @@ public extension Optional where Wrapped == Any {
                 file: StaticString = #filePath, line: UInt = #line) {
         let actual = stringValue
         let expectedText = Self.text(expected)
-        let matched = FlowMatchMode.exact.matches(actual, expectedText,
-                                                  normalization: strict ? .strict : .text)
+        // **nil 同士は一致**(表示は "nil" だが文字列比較には掛けない = "nil" というラベルと混ぜない)
+        let matched = (actual == nil && expected == nil)
+            || FlowMatchMode.exact.matches(actual, expectedText,
+                                           normalization: strict ? .strict : .text)
         record("thisIs", "\"\(actual ?? "nil")\" == \"\(expectedText)\""
                + (matched ? "" : StepExecutor.normalizationVerdict(
                    actual: actual, expected: expectedText, assert: "textEquals")),
@@ -60,8 +62,9 @@ public extension Optional where Wrapped == Any {
                    file: StaticString = #filePath, line: UInt = #line) {
         let actual = stringValue
         let expectedText = Self.text(expected)
-        let matched = FlowMatchMode.exact.matches(actual, expectedText,
-                                                  normalization: strict ? .strict : .text)
+        let matched = (actual == nil && expected == nil)
+            || FlowMatchMode.exact.matches(actual, expectedText,
+                                           normalization: strict ? .strict : .text)
         record("thisIsNot", "\"\(actual ?? "nil")\" != \"\(expectedText)\"",
                !matched, file: file, line: line)
     }
@@ -127,15 +130,22 @@ public extension Optional where Wrapped == Any {
                !(stringValue ?? "").hasSuffix(expected), file: file, line: line)
     }
 
+    // `String.range(of:options:.regularExpression)` は不正なパターンで throw せず nil を返すだけ
+    // なので、`isValid` を先に畳んで否定形と AND する —— これが無いと `thisMatchesNot` は
+    // 閉じ忘れの括弧1つで**永久に緑**になる(RegexValidation 参照)。不正なら常に不成立にする
+    // (肯定形も否定形も、値がたまたま一致/不一致に見えることを理由に通してはいけない)
+
     func thisMatches(_ pattern: String, file: StaticString = #filePath, line: UInt = #line) {
+        let isValid = RegexValidation.error(for: pattern) == nil
         record("thisMatches", "\"\(stringValue ?? "nil")\" ~ \"\(pattern)\"",
-               (stringValue ?? "").range(of: pattern, options: .regularExpression) != nil,
+               isValid && (stringValue ?? "").range(of: pattern, options: .regularExpression) != nil,
                file: file, line: line)
     }
 
     func thisMatchesNot(_ pattern: String, file: StaticString = #filePath, line: UInt = #line) {
+        let isValid = RegexValidation.error(for: pattern) == nil
         record("thisMatchesNot", "\"\(stringValue ?? "nil")\" !~ \"\(pattern)\"",
-               (stringValue ?? "").range(of: pattern, options: .regularExpression) == nil,
+               isValid && (stringValue ?? "").range(of: pattern, options: .regularExpression) == nil,
                file: file, line: line)
     }
 
@@ -189,7 +199,15 @@ public extension Optional where Wrapped == Any {
 /// Optional の拡張が生えない**(`"abc".thisIs(...)` が型解決できない)。利用者に
 /// `let v: Any? = …` を書かせないため、素の値はこのプロトコル経由で同じ API を持つ。
 /// 実装は上の `Optional where Wrapped == Any` にだけ置き、ここは転送のみ
-public protocol FTValue {}
+public protocol FTValue {
+    /// `Any?` へ畳んだ値。**Optional は自分で畳む**(既定の `self` を Optional に当てると
+    /// ジェネリック経由で `Optional<Any>.some(.none)` に包まれ、nil が文字列 "nil" として
+    /// 判定される = `String?` の nil に `thisIsNotEmpty()` が緑になる)
+    var ftAnyValue: Any? { get }
+}
+public extension FTValue {
+    var ftAnyValue: Any? { self }
+}
 
 extension String: FTValue {}
 extension Substring: FTValue {}
@@ -197,11 +215,12 @@ extension Int: FTValue {}
 extension Double: FTValue {}
 extension Bool: FTValue {}
 /// `String?` / `Int?` 等。`Any?` は Any が準拠できないので上の拡張が直接受ける
-extension Optional: FTValue where Wrapped: FTValue {}
+extension Optional: FTValue where Wrapped: FTValue {
+    public var ftAnyValue: Any? { self?.ftAnyValue }
+}
 
 public extension FTValue {
-    /// nil の Optional は `Optional<Any>.some(Optional<T>.none)` になり、表示は "nil" になる
-    private var anyValue: Any? { self }
+    private var anyValue: Any? { ftAnyValue }
 
     func thisIs(_ expected: Any?, file: StaticString = #filePath, line: UInt = #line) {
         anyValue.thisIs(expected, file: file, line: line)

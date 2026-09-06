@@ -85,6 +85,7 @@ final class InputInjector {
         long firstFireAt = 0;         // 最初に SET_TEXT を受理させた時刻(未反映の張り直し判定用)
         String lastState = "target node not found";
         String combined = null;       // 最初の確定読みから1回だけ作る(上記の規律)
+        String before = null;         // combined を作ったときの読み(applied の「変わったか」の基準)
         boolean masked = false;
         boolean blindFired = false;   // 猶予後の未フォーカス発火は1回だけ
         Rect bounds = new Rect();
@@ -104,7 +105,8 @@ final class InputInjector {
                     target.refresh();
                     CharSequence existing = target.isShowingHintText() ? "" : target.getText();
                     String current = existing == null ? "" : existing.toString();
-                    if (combined != null && applied(current, combined, masked)) {
+                    if (combined != null && applied(current, combined, masked, before)) {
+                        logReformatted(current, combined, masked);
                         return;
                     }
                     boolean focused = target.isFocused();
@@ -124,6 +126,7 @@ final class InputInjector {
                         if (combined == null) {
                             masked = target.isPassword();
                             rejectMaskedAppend(masked, current);
+                            before = current;
                             combined = current + text;
                         }
                         Bundle args = new Bundle();
@@ -218,10 +221,26 @@ final class InputInjector {
                 + "as real text). Call clearInput first if you meant to replace it");
     }
 
-    /** 適用確認。マスク欄(パスワード)は読みが伏せ字になるため長さ一致で見る */
-    private static boolean applied(String current, String combined, boolean masked) {
+    /**
+     * 適用確認。マスク欄(パスワード)は読みが伏せ字になるため長さ一致で見る。
+     * 読み返しの目的は「受理されたが反映されていない」の検出なので、**before(SET_TEXT 前の読み)から
+     * 値が変わっていれば反映の証拠**として通す —— 電話番号の整形・AllCaps・maxLength・桁区切りの
+     * ように書いた文字列をそのまま返さない欄は、完全一致だけだと入っているのに 4 秒待って 500 になる
+     * (その間の reconnectInput が IME 越しに BACK まで撃つ)。空の読み返しは整形ではなく
+     * アプリが欄を消した形なので通さない。
+     */
+    private static boolean applied(String current, String combined, boolean masked, String before) {
         if (combined.equals(current)) return true;
-        return masked && current.length() == combined.length();
+        if (masked) return current.length() == combined.length();
+        return !current.isEmpty() && !current.equals(before);
+    }
+
+    /** 「変わったが完全一致ではない」で通したことを logcat に残す(/type の応答は {"ok":true} のみ) */
+    private static void logReformatted(String current, String combined, boolean masked) {
+        if (masked || combined.equals(current)) return;
+        android.util.Log.i(BridgeInstrumentation.TAG,
+                "type: the field reformatted the text: read back \"" + current + "\""
+                + " (wrote \"" + combined + "\")");
     }
 
     /**
@@ -397,6 +416,7 @@ final class InputInjector {
         long deadline = SystemClock.uptimeMillis() + 2000;
         String lastState = "no-input-focus: nothing has input focus (tap the field by ref first)";
         String combined = null;
+        String before = null;
         boolean masked = false;
         while (true) {
             try {
@@ -409,12 +429,14 @@ final class InputInjector {
                     focus.refresh();
                     CharSequence existing = focus.isShowingHintText() ? "" : focus.getText();
                     String current = existing == null ? "" : existing.toString();
-                    if (combined != null && applied(current, combined, masked)) {
+                    if (combined != null && applied(current, combined, masked, before)) {
+                        logReformatted(current, combined, masked);
                         return;
                     }
                     if (combined == null) {
                         masked = focus.isPassword();
                         rejectMaskedAppend(masked, current);
+                        before = current;
                         combined = current + text;
                     }
                     Bundle args = new Bundle();

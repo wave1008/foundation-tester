@@ -12,6 +12,7 @@ import { type FleetestConfig, resolveProjectName } from "./config";
 import { t } from "./i18n";
 import { lastResultsDir, lookupKey, readAllResults, type ResultState } from "./lastResults";
 import { findLatestReport, reportsDir } from "./scenarioReports";
+import { isContainerNodeId } from "./testTree";
 
 const DEBOUNCE_MS = 1000;
 const DIR_RETRY_MS = 10000;
@@ -32,6 +33,11 @@ export interface LastResultsSync extends vscode.Disposable {
   /** GUI 実行終了時に実行対象シナリオIDを渡す。その分だけスナップショットを現ストア値へ進め、
    * 次 tick の差分(=合成 run)から除外する。ID は lookupKey で正規化して照合する。 */
   absorb(executedScenarioIds: readonly string[]): void;
+  /** 対象プロジェクト(fleetest.project)が変わったときに extension.ts が呼ぶ。監視先ディレクトリは
+   * 登録時に解決した project で固定なので、呼ばないと新プロジェクトでの CLI 実行がツリーへ届かない。
+   * 旧 watch を閉じてから張り直し、スナップショットも捨てて(5 SUT はシナリオ ID を共有するので
+   * 旧プロジェクトの値と差分を取ると誤る)初回反映をやり直す。 */
+  reconfigure(): void;
 }
 
 /** snapshot の scenarioIds 分のエントリを current の値へ揃える(in-place)。
@@ -107,14 +113,15 @@ function buildFailedMessage(
   return message;
 }
 
-/** leaf の定義は runHandler.ts の resolveTargets/addSubtree と同じ(children.size === 0)。 */
+/** leaf の定義は runHandler.ts の resolveTargets と同じ(testTree.ts の isContainerNodeId。
+ * 空クラスは子の無い class ノードなので children.size では leaf と区別できない)。 */
 function hasAnyLeaf(items: vscode.TestItemCollection): boolean {
   let has = false;
   items.forEach((item) => {
     if (has) {
       return;
     }
-    has = item.children.size === 0 || hasAnyLeaf(item.children);
+    has = !isContainerNodeId(item.id) || hasAnyLeaf(item.children);
   });
   return has;
 }
@@ -193,26 +200,45 @@ export function registerLastResultsSync(deps: LastResultsSyncDeps): LastResultsS
       // ディレクトリ未作成。dirRetryTimer が次回リトライする。
     }
   };
-  tryStartWatching();
-  if (!fsWatcher) {
-    dirRetryTimer = setInterval(tryStartWatching, DIR_RETRY_MS);
-  }
-
-  // Reload Window 直後、appliedSnapshot は空だが fs.watch は変化検知のみでトリガーせず
-  // 登録時点の既存結果を拾わない(ファイルが変化しない限り黙って古いアイコンのまま)。
-  // testTree.refresh() は非同期でツリーが未構築なことがあるため、leaf が現れるまで待って
-  // (最大 ~30秒)から一度だけ反映する。
-  let attempts = 0;
-  initialReflectTimer = setInterval(() => {
-    attempts += 1;
-    if (hasAnyLeaf(controller.items) || attempts >= INITIAL_REFLECT_MAX_ATTEMPTS) {
-      if (initialReflectTimer) {
-        clearInterval(initialReflectTimer);
-        initialReflectTimer = undefined;
-      }
-      applyTick();
+  const stopWatching = (): void => {
+    fsWatcher?.close();
+    fsWatcher = undefined;
+    if (dirRetryTimer) {
+      clearInterval(dirRetryTimer);
+      dirRetryTimer = undefined;
     }
-  }, INITIAL_REFLECT_POLL_MS);
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = undefined;
+    }
+    if (initialReflectTimer) {
+      clearInterval(initialReflectTimer);
+      initialReflectTimer = undefined;
+    }
+  };
+  const startWatching = (): void => {
+    tryStartWatching();
+    if (!fsWatcher) {
+      dirRetryTimer = setInterval(tryStartWatching, DIR_RETRY_MS);
+    }
+
+    // Reload Window 直後、appliedSnapshot は空だが fs.watch は変化検知のみでトリガーせず
+    // 登録時点の既存結果を拾わない(ファイルが変化しない限り黙って古いアイコンのまま)。
+    // testTree.refresh() は非同期でツリーが未構築なことがあるため、leaf が現れるまで待って
+    // (最大 ~30秒)から一度だけ反映する。
+    let attempts = 0;
+    initialReflectTimer = setInterval(() => {
+      attempts += 1;
+      if (hasAnyLeaf(controller.items) || attempts >= INITIAL_REFLECT_MAX_ATTEMPTS) {
+        if (initialReflectTimer) {
+          clearInterval(initialReflectTimer);
+          initialReflectTimer = undefined;
+        }
+        applyTick();
+      }
+    }, INITIAL_REFLECT_POLL_MS);
+  };
+  startWatching();
 
   return {
     absorb(executedScenarioIds: readonly string[]): void {
@@ -223,17 +249,13 @@ export function registerLastResultsSync(deps: LastResultsSyncDeps): LastResultsS
       const current = readAllResults(lastResultsDir(workspaceRoot, resolution.project));
       absorbIntoSnapshot(appliedSnapshot, current, executedScenarioIds);
     },
+    reconfigure(): void {
+      stopWatching();
+      appliedSnapshot = new Map();
+      startWatching();
+    },
     dispose(): void {
-      fsWatcher?.close();
-      if (dirRetryTimer) {
-        clearInterval(dirRetryTimer);
-      }
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-      }
-      if (initialReflectTimer) {
-        clearInterval(initialReflectTimer);
-      }
+      stopWatching();
     },
   };
 }

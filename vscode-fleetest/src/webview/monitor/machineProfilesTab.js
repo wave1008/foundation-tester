@@ -142,7 +142,7 @@ export function applyMachineProfileSelected(message) {
     return;
   }
   selectedMachine = message.name;
-  validateSelectedDeviceName();
+  validateSelectedDeviceKeys();
   renderMachineSelect();
   renderMachineProfileBody(null);
 }
@@ -168,7 +168,7 @@ function renderMachineSelect() {
 
 machineSelect.addEventListener('change', () => {
   selectedMachine = machineSelect.value;
-  validateSelectedDeviceName();
+  validateSelectedDeviceKeys();
   renderMachineProfileBody(machineProfileHasError ? machineProfileError.textContent : null);
   // マシン切替は明示操作なので、編集途中の値を破棄してフォームを作り直す。
   rebuildEditorForSelection();

@@ -69,6 +69,14 @@ final class FTInAppBridge {
     /// handle の冒頭で必ず落とし、ok(_:) が note に載せる。**黙って返さない**ための1本道
     private var lastSettleCapped = false
 
+    /// リクエストごとに handle() の冒頭で1つ進める世代印。tapByRef/performSettlingIfMoved の
+    /// メイン待ちが **タイムアウトで 504 を返した後に main が空いて実際に実行された**とき、
+    /// その遅延コールバックが `lastSettleCapped` を書くのを、既に別のリクエストが処理中/処理済みの
+    /// 場合だけ止める(捕まえた世代と一致するときだけ書く)。ディスパッチした main.async ブロックは
+    /// 取り消せない(=処理自体は後で本当に走り得る)ため、この印は「どのレスポンスの note に
+    /// 乗せるか」だけを正しくする
+    private var requestGeneration = 0
+
     /// 応答を作る。整定が打ち切られていたら note に足す(ホストは driverFallback として記録する)。
     /// 打ち切りは失敗ではないので status は 200 のまま
     private func ok(_ note: String? = nil, atEdge: Bool? = nil) -> InAppHTTPServer.Response {
@@ -78,6 +86,7 @@ final class FTInAppBridge {
     }
 
     private func handle(_ req: InAppHTTPServer.Request) -> InAppHTTPServer.Response {
+        requestGeneration &+= 1
         lastSettleCapped = false
         do {
             switch (req.method, req.path) {
@@ -417,7 +426,7 @@ final class FTInAppBridge {
             let note = try tapByRef(ref, req: req)
             return ok(note)
         }
-        try performWithSettle { window in
+        try performWithSettle(operation: "the tap") { window in
             let p = try self.resolvePoint(ref: nil, x: req.x, y: req.y)
             // 座標指定は直近 snapshot で point を含む最小要素を activate(SwiftUI の活性化要素は
             // 合成 AX ノードで hitTest の view 階層には無いため、snapshot 要素から解決する)。
@@ -446,10 +455,13 @@ final class FTInAppBridge {
         // (stored frame はコールドラウンチ直後のレイアウト確定を跨ぐと古く、RN で1要素ぶん
         // 上のナビを叩いた実害。2026-08-08)
         var freshTapPoint: CGPoint?
+        // この tap リクエストの世代。下で sem.wait が timeout してもメインの処理は取り消せず
+        // 後で実際に走るので、その遅延コールバックが別リクエストの note を汚さないよう比較する
+        let myGeneration = requestGeneration
 
         func finish(_ window: UIWindow) {
             InAppSettle.waitOnMain { converged in
-                if !converged { self.lastSettleCapped = true }
+                if !converged, self.requestGeneration == myGeneration { self.lastSettleCapped = true }
                 sem.signal()
             }
         }
@@ -521,7 +533,21 @@ final class FTInAppBridge {
             }
         }
         // 最悪ケース: 整定 800ms + 再試行2回(+250ms) + アクション後整定 2500ms
-        _ = sem.wait(timeout: .now() + .seconds(8))
+        // 最悪ケース(整定 800ms + 再試行2回 + アクション後整定 2500ms ≈ 8s)より、ホストの HTTP 上限から
+        // 逆算した天井(BridgeAPI.inAppMainThreadWaitMs)のほうが大きい。見積りで切ると並列負荷で
+        // main が遅いだけの回を 504 にする
+        let tapBudgetMs = BridgeAPI.inAppMainThreadWaitMs
+        let waitResult = sem.wait(timeout: .now() + .milliseconds(tapBudgetMs))
+        if waitResult == .timedOut {
+            // メインが埋まっていて8秒たっても動かせなかった。上で dispatch した
+            // DispatchQueue.main.async は取り消せないので、メインが空けば**後で実際に tap が
+            // 起こる**——504 はそれを本文で伝える(既存の呼び出し規約に無い符号なので、
+            // ホストにとっては「何が起きたか分からない失敗」ではなく明示的にこの意味だけを持つ)。
+            throw InAppError(504, "the app's main thread did not run the tap within \(tapBudgetMs)ms"
+                + " (the app is busy or blocked, e.g. cold-launch work or a modal run loop);"
+                + " nothing was performed yet as far as this response can tell — it may still run"
+                + " once the main thread frees up, so retry only after checking the screen")
+        }
         if let thrown { throw thrown }
         return note
     }
@@ -573,7 +599,7 @@ final class FTInAppBridge {
     private func handleType(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(TypeRequest.self, body)
         if req.ref != nil {
-            try performWithSettle { window in
+            try performWithSettle(operation: "the tap before typing") { window in
                 let p = try self.resolvePoint(ref: req.ref, x: nil, y: nil)
                 FTSynthTap(window, p)
             }
@@ -584,11 +610,16 @@ final class FTInAppBridge {
         // FTPressEnterOnComposeFirstResponder に1箇所だけ置く)。文中の改行は本文側にそのまま残る
         let (main, hasTrailingNewline) = Self.splitTrailingNewline(req.text)
         var inserted = false
-        try performWithSettle { _ in
+        // Enter の発火は挿入の成否と別に持つ: 挿入できていても Enter が不発な入力欄がある
+        // (UIKit/Compose 以外が受け口、または return key が action を持たない場合。Flutter の
+        // 既定 return key = TextInputAction.done で FTPressEnterOnComposeFirstResponder が NO を
+        // 返す実例)。以前はここを `inserted || enterFired` で畳んでいたため、Enter が不発でも
+        // 200 を返し呼び出し側は「\n も含めて全部入った」と誤解した(下の 422 で正しく伝える)
+        var enterFired = true
+        try performWithSettle(operation: "the text input") { _ in
             if hasTrailingNewline {
                 inserted = FTInsertTextIntoFirstResponder(main)
-                let enterFired = FTPressEnterOnComposeFirstResponder()
-                inserted = inserted || enterFired
+                enterFired = FTPressEnterOnComposeFirstResponder()
             } else {
                 inserted = FTInsertTextIntoFirstResponder(req.text)
             }
@@ -604,7 +635,17 @@ final class FTInAppBridge {
                 + " (no accessibilityIdentifier/testTag), add a testTag in the app."
                 + " Diagnostics: \(FTFirstResponderDiagnostics())")
         }
-        return ok()
+        // **409 にしない**: 409 は「対象が無い/フォーカス無し」の一時的競合で、host はこれを見て
+        // typeDriver(XCUITest)へ丸ごと撃ち直す(StepExecutor+Actions.swift の case "type" 参照)。
+        // ここはテキストは既に入っている(=一時的競合ではない)ので、撃ち直すと同じ文字列が
+        // 二重に入る。422 は同ルートで他の意味を持たない(clearInput の 422 は XCUITest 側の
+        // 話で /type には来ない)ので、ここでだけ使ってよい
+        guard hasTrailingNewline, !enterFired else { return ok() }
+        throw InAppError(422, "typed the text but could not fire the Return key on this field"
+            + " (the input is not UIKit- or Compose-backed, or its return key is not wired to an"
+            + " action) — the text is already in the field: call pressEnter() separately, or set"
+            + " a returnKeyType/TextInputAction that fires an action on this field."
+            + " Diagnostics: \(FTFirstResponderDiagnostics())")
     }
 
     private func handleClear(_ body: Data) throws -> InAppHTTPServer.Response {
@@ -1109,8 +1150,10 @@ final class FTInAppBridge {
     /// blockBudgetMs = block 自体がメインを保持する見込み時間(press の押下保持等)。
     /// semaphore タイムアウト = blockBudgetMs + capMs + 余裕 とし、settle 完了前の早期打ち切りを防ぐ。
     private func performWithSettle(capMs: Int = 2500, blockBudgetMs: Int = 0,
+                                   operation: String = "the requested action",
                                    _ block: @escaping (UIWindow) throws -> Void) throws {
-        try performSettlingIfMoved(capMs: capMs, blockBudgetMs: blockBudgetMs) { window -> Bool in
+        try performSettlingIfMoved(capMs: capMs, blockBudgetMs: blockBudgetMs,
+                                   operation: operation) { window -> Bool in
             try block(window)
             return true
         }
@@ -1125,9 +1168,13 @@ final class FTInAppBridge {
     /// (受け手の実アプリで `scrollToBottom`/`scrollToTop` が距離にも画面にも依存せず
     /// 8.0s 固定になっていた。2026-08-20 報告)。
     private func performSettlingIfMoved(capMs: Int = 2500, blockBudgetMs: Int = 0,
+                                        operation: String = "the requested action",
                                         _ block: @escaping (UIWindow) throws -> Bool) throws {
         let sem = DispatchSemaphore(value: 0)
         var thrown: Error?
+        // この呼び出しの世代。timeout 後に main が空いて block/整定が実際に走ったとき、その
+        // コールバックが後続の無関係なリクエストの `lastSettleCapped` を書き換えないための比較値
+        let myGeneration = requestGeneration
         DispatchQueue.main.async {
             guard let key = self.keyWindow() else {
                 thrown = InAppError(409, "no key window")
@@ -1147,11 +1194,25 @@ final class FTInAppBridge {
             }
             guard moved else { sem.signal(); return }
             InAppSettle.waitOnMain(capMs: capMs) { converged in
-                if !converged { self.lastSettleCapped = true }
+                if !converged, self.requestGeneration == myGeneration { self.lastSettleCapped = true }
                 sem.signal()
             }
         }
-        _ = sem.wait(timeout: .now() + .milliseconds(blockBudgetMs + capMs + 1500))
+        // 見積り(block の保持時間 + 整定 cap + 余裕)とホスト上限からの天井の**大きいほう**。
+        // 整定の cap は runloop observer とタイマーで測るので main が混んでいると遅れて効く
+        // (8 台並列で 4,000ms を実際に超えた。操作自体は完了していた)
+        let budgetMs = max(blockBudgetMs + capMs + 1500, BridgeAPI.inAppMainThreadWaitMs)
+        let waitResult = sem.wait(timeout: .now() + .milliseconds(budgetMs))
+        if waitResult == .timedOut {
+            // 上の DispatchQueue.main.async は取り消せない(Swift/GCD にキャンセル API が無い)ので、
+            // main が空けば block はこの応答の後で**実際に実行される**ことがある。504 の本文が
+            // それを伝える唯一の情報源(host はこの経路を再試行しない。docs の割り込み節と同じ
+            // 「撃ち直さない」規律を踏まえ、シナリオ側の判断に委ねる)
+            throw InAppError(504, "the app's main thread did not run \(operation) within \(budgetMs)ms"
+                + " (the app is busy or blocked, e.g. cold-launch work or a modal run loop);"
+                + " nothing was performed yet as far as this response can tell — it may still run"
+                + " once the main thread frees up, so retry only after checking the screen")
+        }
         if let thrown { throw thrown }
     }
 

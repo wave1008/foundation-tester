@@ -475,7 +475,13 @@ enum BatchStepResolver {
             raw[dictKey] = s
         case .number(let n):
             if intKeys.contains(dictKey) {
-                raw[dictKey] = Int(n)
+                // `Int(n)` は inf / 桁あふれで trap する(`99999999999999999999` や `1e400` を
+                // Double で受けている)。整数に写せない値は文法エラーとして返す
+                guard let integer = Int(exactly: n) else {
+                    throw ResolveError(message: mismatch(command, displayName, "\(n)")
+                        + " (not a whole number in range)")
+                }
+                raw[dictKey] = integer
             } else if doubleKeys.contains(dictKey) {
                 raw[dictKey] = n
             } else {

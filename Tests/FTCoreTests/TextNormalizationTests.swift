@@ -85,6 +85,16 @@ final class TextNormalizationTests: XCTestCase {
         XCTAssertFalse(text("A\u{0085}B", "AB"), "空白を消してはいけない(見た目が変わる)")
     }
 
+    /// `"\r\n"` は CR+LF の2スカラで1書記素クラスタになる。単独スカラだけ見ると
+    /// 素通りして生の `\r\n` が残り、snapshot の印字(1つの空白へ畳む)と食い違う
+    func testCRLFClusterFoldsLikeASingleWhitespaceScalar() {
+        XCTAssertEqual(TextNormalization.selector.apply("a\r\nb"), "a b")
+        // .text は改行を消去も空白化もしない(見た目の改行を残す) —— 単独の \n と同じ扱いで
+        // 素通り(2スカラのクラスタだからといって、単独スカラと違う道を通らない)
+        XCTAssertEqual(TextNormalization.text.apply("a\nb"), "a\nb")
+        XCTAssertEqual(TextNormalization.text.apply("a\r\nb"), "a\r\nb")
+    }
+
     func testRunsAreCollapsedAndEndsTrimmedForSelectorsOnly() {
         XCTAssertTrue(selector("A  B", "A B"))
         XCTAssertFalse(text("A  B", "A B"))

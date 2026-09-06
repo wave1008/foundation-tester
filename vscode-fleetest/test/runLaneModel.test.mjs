@@ -389,3 +389,38 @@ test("scenarioRequeued は担当ワーカーのレーンに 🔁 行を出す", 
   assert.ok(lineAction, "レーン行アクションが発生する");
   assert.ok(lineAction.text.includes("🔁"));
 });
+
+test("scenarioRequeued: 振り直されたワーカーは workerRunning:false になる(その worker の scenarioFinished は来ない)", () => {
+  const state = createRunLaneState();
+  feed(state, [
+    { kind: "workersReady", workers: [
+      { id: "ios:シム1", name: "シム1", platform: "ios", detail: "" },
+      { id: "ios:シム2", name: "シム2", platform: "ios", detail: "" },
+    ] },
+    { kind: "scenarioStarted", scenario: "Foo.S0010", worker: "ios:シム1" },
+  ]);
+  const actions = feed(state, [{
+    kind: "scenarioRequeued", scenario: "Foo.S0010", worker: "ios:シム1",
+    reason: "ブリッジ接続不能", attempt: 1, limit: 2,
+  }]);
+  assert.deepEqual(
+    actions.filter((a) => a.type === "workerRunning"),
+    [{ type: "workerRunning", workerId: "ios:シム1", running: false }],
+  );
+  assert.equal(snapshotRunLaneState(state).runningWorkers.includes("ios:シム1"), false);
+
+  // 別ワーカーでの再開は通常どおり実行中に戻る
+  const restarted = feed(state, [{ kind: "scenarioStarted", scenario: "Foo.S0010", worker: "ios:シム2" }]);
+  assert.deepEqual(
+    restarted.filter((a) => a.type === "workerRunning"),
+    [{ type: "workerRunning", workerId: "ios:シム2", running: true }],
+  );
+});
+
+test("scenarioRequeued: worker 無し(逐次実行)では workerRunning を出さない", () => {
+  const state = createRunLaneState();
+  const actions = feed(state, [{
+    kind: "scenarioRequeued", scenario: "Foo.S0010", reason: "r", attempt: 1, limit: 2,
+  }]);
+  assert.equal(actions.some((a) => a.type === "workerRunning"), false);
+});

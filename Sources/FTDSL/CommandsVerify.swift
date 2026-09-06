@@ -261,6 +261,22 @@ private func expectedLooksLikeSelector(_ expected: String, verb: String,
     return FTElement(selector: FTSelector.label(expected))
 }
 
+/// `textMatches`/`textMatchesNot`/`valueMatches`/`valueMatchesNot` の正規表現パターンの事前検証。
+/// `String.range(of:options:.regularExpression)` は不正なパターンで throw せず nil を返すだけなので、
+/// ここで止めないと否定形(`*MatchesNot`)は閉じ忘れの括弧1つで**永久に緑**になる(RegexValidation 参照)。
+/// **構文検証はデバイスに触る前(dry-run でも)行う** —— `core.perform` の commandError 経路は
+/// dryRun の素通りより先に判定されるので、dry-run でも同じ理由でここで失敗する
+private func invalidRegexRejected(_ pattern: String, verb: String, selector: FTSelector,
+                                  held: ElementInfo?, file: StaticString, line: UInt) -> FTElement? {
+    guard let reason = RegexValidation.error(for: pattern) else { return nil }
+    let core = FTRuntime.requireCore(command: verb)
+    let step = FlowStep(assert: verb, locator: selector.primary, fallbacks: selector.stepFallbacks)
+    core.perform(step: step, description: "\(verb) \"\(selector.text)\" ~ \"\(pattern)\"",
+                 command: verb, selectorError: selector.preflightError, commandError: reason,
+                 heldElement: held, file: file, line: line)
+    return FTElement(selector: selector, matched: held)
+}
+
 @discardableResult
 public func textIs(_ expected: String, timeout: Double? = nil, requireVisible: Bool = true,
                    strict: Bool = false,
@@ -913,6 +929,8 @@ public struct FTElement {
                             requireVisible: Bool = true,
                             strict: Bool = false,
                        file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+        if let rejected = invalidRegexRejected(pattern, verb: "textMatches", selector: selector,
+                                               held: matched, file: file, line: line) { return rejected }
         textAssert("textMatches", verb: "textMatches", selector: selector, expected: pattern,
                    timeout: timeout, requireVisible: requireVisible, held: matched, strict: strict, file: file, line: line)
         return self
@@ -962,6 +980,8 @@ public struct FTElement {
     public func textMatchesNot(_ pattern: String, timeout: Double? = nil,
                                strict: Bool = false,
                        file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+        if let rejected = invalidRegexRejected(pattern, verb: "textMatchesNot", selector: selector,
+                                               held: matched, file: file, line: line) { return rejected }
         textAssert("textMatchesNot", verb: "textMatchesNot", selector: selector,
                    expected: pattern, timeout: timeout, requireVisible: false,
                    operatorText: "!=", held: matched, strict: strict, file: file, line: line)
@@ -1016,6 +1036,8 @@ public struct FTElement {
                              requireVisible: Bool = true,
                              strict: Bool = false,
                        file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+        if let rejected = invalidRegexRejected(pattern, verb: "valueMatches", selector: selector,
+                                               held: matched, file: file, line: line) { return rejected }
         textAssert("valueMatches", verb: "valueMatches", selector: selector, expected: pattern,
                    timeout: timeout, requireVisible: requireVisible, held: matched, strict: strict, file: file, line: line)
         return self
@@ -1065,6 +1087,8 @@ public struct FTElement {
     public func valueMatchesNot(_ pattern: String, timeout: Double? = nil,
                                 strict: Bool = false,
                        file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+        if let rejected = invalidRegexRejected(pattern, verb: "valueMatchesNot", selector: selector,
+                                               held: matched, file: file, line: line) { return rejected }
         textAssert("valueMatchesNot", verb: "valueMatchesNot", selector: selector,
                    expected: pattern, timeout: timeout, requireVisible: false,
                    operatorText: "!=", held: matched, strict: strict, file: file, line: line)

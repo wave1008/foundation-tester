@@ -916,31 +916,39 @@ public enum RemoteCleanPlan {
     /// ランナーの 8123/8124 のブリッジが落ちた)
     public static func stopsDevices(dryRun: Bool) -> Bool { !dryRun }
 
-    /// keepDays より古いエントリを消す(dryRun なら列挙するだけの)find コマンド一覧。
+    /// keepDays より古いエントリを消す(dryRun なら列挙するだけの)コマンド一覧。
     /// **全発行者(`users/*/work`)+ 旧レイアウト(`work`)を横断する**(§18.2) —— ディスクは
-    /// ホスト共有資源なので保持ポリシーは全員分に掛ける。旧レイアウトの掃除は移行期のためだけ
-    /// (存在しなければ find が対象0件で終わるだけで、呼び出し側の扱いは他のターゲットと同じ)。
-    /// グロブ部分はシェル展開に任せる(呼び出し側は単一プロジェクト/発行者へ絞り込まない)ため、
-    /// `base` 部分だけ `RemoteShell.quote` しグロブ部分は非クォートのまま連結する(引用符の直後に
-    /// 続く非クォート文字列はシェル上で1語に結合される。丸ごとクォートするとグロブが展開されない)
+    /// ホスト共有資源なので保持ポリシーは全員分に掛ける。旧レイアウトの掃除は移行期のためだけ。
+    ///
+    /// **グロブを書かない**(RemoteHooksReap と同じ理由: 相手は zsh で、マッチしないグロブは
+    /// そのコマンドごと落ちる)。work の一覧は find、プロジェクトの一覧も find で作る。
+    /// **results は `runs/<YYYY-MM>/<runID>` の深さで判定する**(RunResultsStore.runDir)——
+    /// `results` 直下を見ると `runs/` ディレクトリ自身が対象になり、その mtime は月ディレクトリを
+    /// 作った時にしか動かないので、月初 + keepDays 日で当月ぶんを含む全 run 記録が消える。
+    /// 無いディレクトリは `if [ -d ]` で飛ばす(find のエラーを警告として出さない)
     public static func commands(layout: RemoteLayout, keepDays: Int, dryRun: Bool) -> [String] {
         let action = dryRun ? "-print" : "-exec rm -rf {} +"
         let base = RemoteShell.quote(layout.base)
+        let users = RemoteShell.quote(layout.usersDir)
+        let legacy = RemoteShell.quote(layout.base + "/work")
         let projects = RemoteLayout.projectsDirName
-        let targets = [
-            // 配信の控え(FTCore.StreamLease)。**ホスト共有の1箇所**で、書いた側は execv で
-            // 化けるので自分では消せない —— 死んだ pid の控えが溜まる(読む側は無視するが、
-            // **pid が一巡して別プロセスに当たると、その台の配信が誰にも張れなくなる**)。
-            // ここで保持ポリシーに掛けて上限を作る(数日前の配信は必ず終わっている)
-            base + "/.fleetest/streams",
-            base + "/users/*/work/.fleetest/dispatch",
-            base + "/users/*/work/\(projects)/*/reports",
-            base + "/users/*/work/\(projects)/*/results",
-            base + "/work/.fleetest/dispatch",
-            base + "/work/\(projects)/*/reports",
-            base + "/work/\(projects)/*/results",
-        ]
-        return targets.map { "find \($0) -mindepth 1 -maxdepth 1 -mtime +\(keepDays) \(action)" }
+        func aged(_ dir: String, depth: Int) -> String {
+            "if [ -d \(dir) ]; then find \(dir) -mindepth \(depth) -maxdepth \(depth)"
+                + " -mtime +\(keepDays) \(action); fi"
+        }
+        // 配信の控え(FTCore.StreamLease)。**ホスト共有の1箇所**で、書いた側は execv で
+        // 化けるので自分では消せない —— 死んだ pid の控えが溜まる(読む側は無視するが、
+        // **pid が一巡して別プロセスに当たると、その台の配信が誰にも張れなくなる**)。
+        // ここで保持ポリシーに掛けて上限を作る(数日前の配信は必ず終わっている)
+        let streams = aged(base + "/.fleetest/streams", depth: 1)
+        let works = "$(find \(users) -mindepth 2 -maxdepth 2 -type d -name work 2>/dev/null) \(legacy)"
+        let perWork = "for w in \(works); do "
+            + aged("\"$w/.fleetest/dispatch\"", depth: 1) + "; "
+            + "for p in $(find \"$w/\(projects)\" -mindepth 1 -maxdepth 1 -type d 2>/dev/null); do "
+            + aged("\"$p/reports\"", depth: 1) + "; "
+            + aged("\"$p/results/runs\"", depth: 2) + "; "
+            + "done; done"
+        return [streams, perWork]
     }
 }
 

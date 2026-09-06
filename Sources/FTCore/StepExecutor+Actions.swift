@@ -365,6 +365,20 @@ extension StepExecutor {
                 // 文言は動的(入れた先を名指しする)のでコードだけ立てる
                 // —— 外側の execute が collectedNotes() で拾う(StepOutcome.notes の doc)
                 noteCodesThisStep.insert(.typeFocusRecovered)
+                // ロケータ有り type(case "type")と同じ読み返し規律: in-app は「200 が返った = 入った」
+                // を保証しない。**ここには actingDriver が無い**(この分岐はロケータ解決前の早期
+                // return で、フォールバックドライバの選定を通らない)ので driver で判定する。
+                // recovered は retypeTargetIfUnfocused が撮った撮り直し後のスナップショット由来
+                // なので、その時点の値をそのまま「撃つ前の値」として使ってよい(clearInput 等の
+                // 反映も込み)
+                if !driver.verifiesTypedText, TypeReadback.isTextInput(recovered) {
+                    let existingValue = TypeReadback.normalizedValue(of: recovered)
+                    if let failure = try await verifyTypedText(driver, element: recovered,
+                                                                expected: existingValue + text,
+                                                                typedOnly: text, phase: &phase) {
+                        return StepOutcome(status: .failed(failure))
+                    }
+                }
                 return StepOutcome(status: .passed,
                                    driverFallback: Self.joinNotes(replaceFallbackNote,
                                        "typed into \(TapTargetGeometry.describe(recovered))"

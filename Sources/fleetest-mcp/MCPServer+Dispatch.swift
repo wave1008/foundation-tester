@@ -465,7 +465,7 @@ extension MCPServer {
             // port は明示引数かこのセッションが覚えている宛先(connectedPorts。driver() を経由した
             // 呼び出しで埋まる)から取る。**どちらも取れなければ nil = 実機でない証拠にはならない
             // ので従来どおり待つ**(best-effort)
-            let logsPort = (args["port"] as? Int).map(UInt16.init) ?? connectedPorts[Self.engineKey(args)]
+            let logsPort = try Self.portArgument(args) ?? connectedPorts[Self.engineKey(args)]
             let logsPhysicalUDID = Self.platformName(args) == "ios"
                 ? logsPort.flatMap { port in
                     (try? RepoRoot.find()).flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }

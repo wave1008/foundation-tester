@@ -300,6 +300,18 @@ final class MCPServer {
     var lastExplicitPlatform: String?
 }
 
+extension MCPServer {
+    /// `port` 引数を UInt16 に畳む。無指定は nil。**範囲外・非整数は MCPError** ——
+    /// `UInt16.init` は 65535 超・負数で trap し、エージェントの typo 1 回でサーバごと落ちる
+    static func portArgument(_ args: [String: Any]) throws -> UInt16? {
+        guard let raw = args["port"] else { return nil }
+        guard let value = raw as? Int, let port = UInt16(exactly: value), port > 0 else {
+            throw MCPError("port must be an integer between 1 and 65535 (got \(raw))")
+        }
+        return port
+    }
+}
+
 struct MCPError: Error, LocalizedError {
     let message: String
     init(_ message: String) { self.message = message }

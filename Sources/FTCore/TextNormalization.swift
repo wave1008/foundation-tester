@@ -68,9 +68,10 @@ public enum TextNormalization: String, Sendable, CaseIterable {
         for cluster in s {
             // **空白は「不可視」ではない**(桁を食う = 見える)。タブ・改行は分類上 `Cc` なので、
             // 下の削除規則より**先に**寄せる —— 順序を逆にすると `"A\tB"` が `"AB"` になり、
-            // 空白の正規化ではなく消去になってしまう(2026-08-09 にテストで検出)
-            if cluster.unicodeScalars.count == 1,
-               let only = cluster.unicodeScalars.first, foldsToSpace(only) {
+            // 空白の正規化ではなく消去になってしまう(2026-08-09 にテストで検出)。
+            // **`allSatisfy` で複数スカラのクラスタも見る** —— `"\r\n"` は CR+LF の2スカラで
+            // 1書記素クラスタになるため、単独スカラだけ見ると素通りして生の `\r\n` が残る
+            if cluster.unicodeScalars.allSatisfy(foldsToSpace) {
                 out.append(" ")
                 continue
             }

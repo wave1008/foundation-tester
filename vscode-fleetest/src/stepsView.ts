@@ -164,9 +164,16 @@ interface CurrentScenario {
   readonly project: string;
 }
 
-class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>, vscode.Disposable {
-  private readonly emitter = new vscode.EventEmitter<void>();
-  readonly onDidChangeTreeData = this.emitter.event;
+/** キャッシュの鍵は project + id。5 SUT は同じクラス名・メソッド名を持つので id だけで引くと
+ * プロジェクト切替後に別プロジェクトの行(ファイルパス)を出す。 */
+function stepsCacheKey(current: CurrentScenario): string {
+  return `${current.project}\u0000${current.id}`;
+}
+
+/** export はテスト用(stepsViewCache.test.mjs)。 */
+export class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>, vscode.Disposable {
+  private readonly emitter: Pick<vscode.EventEmitter<void>, "event" | "fire" | "dispose">;
+  readonly onDidChangeTreeData: vscode.Event<void>;
 
   private treeView: vscode.TreeView<ViewNode> | undefined;
   private current: CurrentScenario | undefined;
@@ -175,11 +182,16 @@ class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>, vscode
   private generation = 0;
 
   constructor(
-    private readonly cli: FleetestCli,
+    private readonly cli: Pick<FleetestCli, "invoke">,
     private readonly workspaceRoot: string,
     private readonly getConfig: () => FleetestConfig,
-    private readonly outputChannel: vscode.OutputChannel,
-  ) {}
+    private readonly outputChannel: Pick<vscode.OutputChannel, "appendLine">,
+    // テストの差し込み口(vscodeStubPlugin 下に vscode.EventEmitter は無い)。製品コードは省略する。
+    emitter?: Pick<vscode.EventEmitter<void>, "event" | "fire" | "dispose">,
+  ) {
+    this.emitter = emitter ?? new vscode.EventEmitter<void>();
+    this.onDidChangeTreeData = this.emitter.event;
+  }
 
   dispose(): void {
     this.emitter.dispose();
@@ -230,7 +242,7 @@ class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>, vscode
       this.render();
       return;
     }
-    const cached = this.cache.get(current.id);
+    const cached = this.cache.get(stepsCacheKey(current));
     if (cached) {
       this.status = { state: "loaded", steps: cached };
       this.render();
@@ -246,7 +258,7 @@ class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>, vscode
         if (generation !== this.generation) {
           return; // 古い応答は破棄する
         }
-        this.cache.set(current.id, steps);
+        this.cache.set(stepsCacheKey(current), steps);
         this.status = { state: "loaded", steps };
         this.render();
       },
