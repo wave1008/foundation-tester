@@ -38,13 +38,58 @@ corporate LAN that does not reach the internet. It is not a setup guide.
 
 - **No telemetry or analytics is ever sent** — there is not a single external URL in the product
   code.
-- The only outbound traffic is **HTTPS to GitHub**, during setup and update (`git clone`,
-  `git ls-remote`, fetching the bootstrap script). **A fully closed network needs an internal
-  mirror.**
 - Apple Intelligence (Foundation Models) runs **entirely on-device**. Nothing leaves the device.
 - **The app under test is never sent to Google.** Android's `adb install` can otherwise be
   blocked indefinitely by a Play Protect prompt, so verification is turned off only for the
   duration of the install and always restored afterward.
+- Outbound traffic happens **only during setup and update**. **Nothing goes out while tests run.**
+
+| What is fetched | Destination | When |
+|---|---|---|
+| Bootstrap scripts | `raw.githubusercontent.com` | Setup and update |
+| fleetest itself | `github.com` | clone, pull, update check |
+| **20+ Swift dependencies** | `github.com` (`apple/*`, `grpc/*`, `swiftlang/*`) | `swift build` |
+| 8 VSCode extension dependencies | `registry.npmjs.org` | Building the extension |
+| `xcodegen` (required), `libimobiledevice` | Homebrew's distribution hosts | Setup |
+
+**By volume the Swift dependencies dominate** — not the fleetest repository itself. The Android
+bridge APK ships inside the repository, so no Android build tooling is needed.
+
+## Closed networks (no internet access)
+
+### Option A (recommended): allow HTTPS to the destinations above
+
+Four destinations need to be reachable (`raw.githubusercontent.com`, `github.com`,
+`registry.npmjs.org`, Homebrew's distribution hosts). Since there is no telemetry and **nothing
+goes out while tests run**, this is usually straightforward to justify in an exemption request.
+**No extra configuration is needed on the tool side.**
+
+### Option B: an internal mirror (when A is not possible)
+
+Use git's `insteadOf` to redirect **all** GitHub traffic. Neither `Package.swift` nor
+`Package.resolved` is edited, so upstream version bumps need no follow-up work.
+
+```
+git config --global url."https://<internal-mirror>/".insteadOf "https://github.com/"
+```
+
+That single setting routes **both fleetest itself and all 20+ Swift dependencies** through the
+mirror. Three things remain:
+
+- **Bootstrap scripts**: `insteadOf` applies to git only, not to `curl`. Clone first, then run
+  `bash <TOOL_ROOT>/Scripts/install.sh` directly (the curl form will not work). Updates use
+  `bash <TOOL_ROOT>/Scripts/update.sh` the same way
+- **npm**: point `registry` in `.npmrc` at the internal proxy
+- **Homebrew**: provide an internal tap, or pre-install `xcodegen` and `libimobiledevice`
+
+To redirect only the initial clone, `FLEETEST_REPO_URL=<mirror URL>` also works.
+
+### Pinning a version
+
+There is **no supported way for a receiver to pin a version** — distribution is a single `main`.
+On a closed network you do not need one: **how often you advance `main` on the mirror is itself
+the internal release gate**, so you control which revision is taken without changing anything the
+receiver does.
 
 ## Remote runners (dispatching to another Mac)
 
@@ -68,8 +113,9 @@ corporate LAN that does not reach the internet. It is not a setup guide.
    5ms, making physical-device scenarios roughly 25% faster.
 2. If a Wi-Fi-connected physical device must be used anyway, **put the test devices and runner
    machines on a segregated VLAN.**
-3. On a closed network, set up an **internal GitHub mirror** — without it, neither setup nor
-   updates work.
+3. On a closed network, first check whether the **four destinations can be allowed** (Option A
+   under "Closed networks" above). If not, set up an internal mirror (Option B). **Decide one of
+   them before you start — otherwise neither setup nor updates work.**
 4. **Never write production credentials into scenarios or profiles.**
 
 ### Link

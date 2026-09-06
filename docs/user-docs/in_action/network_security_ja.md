@@ -35,11 +35,54 @@
 ## 外向きの通信
 
 - **テレメトリ・解析データの送信は一切ありません**(製品コードに外部 URL が1つもありません)。
-- 出ていくのは **GitHub への HTTPS だけ**で、導入と更新のとき(`git clone` / `git ls-remote` /
-  起動スクリプトの取得)です。**完全な閉域網では社内ミラーが必要です。**
 - Apple Intelligence(Foundation Models)は**端末内で動きます**。外へは出ません。
 - **テスト対象アプリを Google へ送りません。** Android の `adb install` は Play Protect の照会で
   止まることがあるため、インストールの間だけ検証を切って必ず元に戻します。
+- 外へ出るのは**導入と更新のときだけ**です。**テストの実行中は外へ出ません。**
+
+| 何を取りに行くか | 行き先 | いつ |
+|---|---|---|
+| 導入スクリプト | `raw.githubusercontent.com` | 導入・更新 |
+| fleetest 本体 | `github.com` | clone・pull・更新の有無の確認 |
+| **Swift の依存 20 本超** | `github.com`(`apple/*`・`grpc/*`・`swiftlang/*`) | `swift build` |
+| VSCode 拡張の依存 8 個 | `registry.npmjs.org` | 拡張のビルド |
+| `xcodegen`(必須)・`libimobiledevice` | Homebrew の配信元 | 導入時 |
+
+**量が一番大きいのは Swift の依存**で、fleetest 自身のリポジトリではありません。
+Android ブリッジの APK はリポジトリに同梱してあるため、Android のビルドツールは要りません。
+
+## 閉域網(インターネットに出さない場合)
+
+### 方針 A(推奨): 上の行き先だけ HTTPS を通す
+
+許可する宛先は4つ(`raw.githubusercontent.com` / `github.com` / `registry.npmjs.org` /
+Homebrew の配信元)だけです。テレメトリが0件で、**テスト実行中は外へ出ない**ことを添えれば、
+例外申請の説明がつけやすい形です。**ツール側に追加の設定は要りません。**
+
+### 方針 B: 社内ミラー(A が通らない場合)
+
+git の `insteadOf` で GitHub 宛てを**丸ごと**差し替えます。`Package.swift` も `Package.resolved` も
+書き換えないので、上流の版が上がっても追随が要りません。
+
+```
+git config --global url."https://<社内ミラー>/".insteadOf "https://github.com/"
+```
+
+これだけで **fleetest 本体と Swift の依存 20 本超が同時に**ミラー経由になります。残るのは3つ:
+
+- **導入スクリプト**: `insteadOf` は git にしか効かず `curl` には効きません。**先にクローンして
+  `bash <TOOL_ROOT>/Scripts/install.sh` を直接実行**してください(curl 形は使えません)。
+  更新も同じく `bash <TOOL_ROOT>/Scripts/update.sh` を使います
+- **npm**: `.npmrc` の `registry` を社内プロキシへ向けます
+- **Homebrew**: 社内 tap を用意するか、`xcodegen` と `libimobiledevice` を事前に入れておきます
+
+初回のクローンだけを差し替えるなら `FLEETEST_REPO_URL=<ミラーの URL>` も使えます。
+
+### 版の固定
+
+**受け手に版を固定させる導線はありません**(配布口は `main` の1本)。閉域網ではその必要も
+ありません —— **ミラー側の `main` をいつ進めるかが、そのまま社内のリリース関門になる**ためです。
+受け手の手順を1つも変えずに、取り込む版を制御できます。
 
 ## リモートランナー(別の Mac へ実行を投げる場合)
 
@@ -61,7 +104,8 @@
    実機のシナリオが約 25% 速くなるという結果もあり、こちらが本来の既定です。
 2. Wi-Fi 接続の実機をどうしても使うなら、**テスト用の端末とランナー機をセグメント分けした
    VLAN に置く**。
-3. 閉域網なら **GitHub の社内ミラー**を用意する(無いと導入も更新もできません)。
+3. 閉域網なら、まず**4つの行き先を許可できるか**を確かめる(上の「閉域網」の方針 A)。
+   通らなければ社内ミラー(方針 B)。**どちらも決めずに始めると導入も更新もできません。**
 4. **本番の資格情報をシナリオ・プロファイルに書かない。**
 
 ### Link
