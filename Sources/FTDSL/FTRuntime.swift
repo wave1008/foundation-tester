@@ -651,14 +651,22 @@ public final class FTDriveCore {
             step.containerInference = effectiveContainerInference(nil)
         }
         let filePath = relativePath("\(file)")
-        // verify() のブロック内アサーション数を数える(判定は FlowStep.assert != nil のみ。
-        // skip/dry-run/失敗いずれの結果になっても「アサーションとして書かれた」事実は変わらない)
-        if step.assert != nil { noteAssertion() }
+        // verify() のブロック内アサーション数を数える(判定は FlowStep.assert != nil に加え、
+        // **結果が skipped でないこと**)。screenLooksLike(FM 無効時)のように assert が
+        // `.skipped` を返す経路は「何も検証していない」ので、数えると「アサーションが1つも
+        // 無い」を見逃すべき verify が緑になる。数えるのは結果が出てから
+        // (dry-run は下で .passed を返すので数える。scenarioAborted は常に .skipped)
+        func noteAssertionUnlessSkipped(_ status: StepResult.Status) {
+            guard step.assert != nil else { return }
+            if case .skipped = status { return }
+            noteAssertion()
+        }
         debugCheckpoint(description: description, file: filePath, line: Int(line))
         if scenarioAborted {
             let status = StepResult.Status.skipped(skipReason)
             recordStep(description: description, status: status, file: filePath, line: Int(line),
                        command: command)
+            noteAssertionUnlessSkipped(status)
             return PerformResult(status: status, element: nil)
         }
         // 構文検証はデバイスに触る前(dry-run でも)に行う。パースは失敗しない契約のため、
@@ -672,6 +680,7 @@ public final class FTDriveCore {
             recordStep(description: description, status: status, file: filePath, line: Int(line),
                        command: command, failureKind: .selectorSyntax)
             handleFailure(stepDescription: description, reason: reason)
+            noteAssertionUnlessSkipped(status)
             return PerformResult(status: status, element: nil)
         }
         if dryRun {
@@ -682,6 +691,7 @@ public final class FTDriveCore {
             recordStep(description: description, status: .passed, file: filePath, line: Int(line),
                        durationMs: continuousClockMilliseconds(clock.now - start),
                        command: command)
+            noteAssertionUnlessSkipped(.passed)
             return PerformResult(status: .passed, element: nil)
         }
 
@@ -701,6 +711,7 @@ public final class FTDriveCore {
                        file: filePath, line: Int(line), durationMs: 0,
                        notes: [.heldValue], command: command)
             trackIDResolution(step: step, status: .passed, description: description)
+            noteAssertionUnlessSkipped(.passed)
             return PerformResult(status: .passed, element: heldElement)
         }
 
@@ -818,6 +829,7 @@ public final class FTDriveCore {
         if case .failed(let reason) = status {
             handleFailure(stepDescription: description, reason: reason)
         }
+        noteAssertionUnlessSkipped(status)
         return PerformResult(status: status, element: outcome?.resolvedElement)
     }
 

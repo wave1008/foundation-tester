@@ -30,11 +30,16 @@ public enum AndroidDeviceCatalogError: Error, LocalizedError {
 
 public enum AndroidDeviceCatalog {
 
+    /// この列挙の adb 呼び出しの締切(秒)。`api monitor` の既定周期 2 秒のループから呼ばれるので、
+    /// wedge した adbd に無期限に握らせない(数 tick ぶんで諦める)。尽きると Shell が子を kill して
+    /// `ShellError.timedOut` を投げる = 各呼び出し側は「取得できない」と同じ扱い
+    /// (bootCompleted は false、avdName は次の経路へ)
+    public static let adbTimeoutSeconds: Double = 10
+
     /// 接続中のデバイスシリアル一覧(state = device のみ)
     public static func connectedSerials() throws -> [String] {
         let adbPath = try AndroidDriver.findADB()
-        // ポーリングループ内から呼ばれる。wedge した adb で締切が無効化しないよう時限化(10s)。
-        let devices = try Shell.run([adbPath, "devices"], timeout: 10)
+        let devices = try Shell.run([adbPath, "devices"], timeout: adbTimeoutSeconds)
         return devices.output.split(separator: "\n").dropFirst()
             .filter { $0.contains("\tdevice") }
             .compactMap { $0.split(separator: "\t").first.map(String.init) }
@@ -44,7 +49,7 @@ public enum AndroidDeviceCatalog {
     /// シャットダウン時は offline のエミュレータにも kill を送る必要がある
     public static func allEmulatorSerials() throws -> [String] {
         let adbPath = try AndroidDriver.findADB()
-        let devices = try Shell.run([adbPath, "devices"], timeout: 10)
+        let devices = try Shell.run([adbPath, "devices"], timeout: adbTimeoutSeconds)
         return devices.output.split(separator: "\n").dropFirst()
             .compactMap { $0.split(separator: "\t").first.map(String.init) }
             .filter { $0.hasPrefix("emulator-") }
@@ -198,7 +203,8 @@ public enum AndroidDeviceCatalog {
         if await EmulatorControl.statusBooted(serial: serial) == true { return true }
         guard let adbPath = try? AndroidDriver.findADB() else { return false }
         guard let result = try? Shell.run(
-            [adbPath, "-s", serial, "shell", "getprop", "sys.boot_completed"]) else {
+            [adbPath, "-s", serial, "shell", "getprop", "sys.boot_completed"],
+            timeout: adbTimeoutSeconds) else {
             return false
         }
         return result.output.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
@@ -211,14 +217,14 @@ public enum AndroidDeviceCatalog {
         if let name = EmulatorControl.avdName(serial: serial) {
             return name
         }
-        if let output = try? Shell.run([adbPath, "-s", serial, "emu", "avd", "name"], timeout: 10).output,
+        if let output = try? Shell.run([adbPath, "-s", serial, "emu", "avd", "name"], timeout: adbTimeoutSeconds).output,
            let first = output.split(separator: "\n").first
                .map({ $0.trimmingCharacters(in: .whitespaces) }),
            !first.isEmpty, first != "OK" {
             return first
         }
         for prop in ["ro.boot.qemu.avd_name", "ro.kernel.qemu.avd_name"] {
-            if let output = try? Shell.run([adbPath, "-s", serial, "shell", "getprop", prop], timeout: 10).output {
+            if let output = try? Shell.run([adbPath, "-s", serial, "shell", "getprop", prop], timeout: adbTimeoutSeconds).output {
                 let name = output.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !name.isEmpty { return name }
             }

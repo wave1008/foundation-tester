@@ -3,10 +3,11 @@
 # 候補)。`--runner` はランナー機(`fleetest run --host` / docs/remote-runner.md §5・§14)としての判定。
 #
 #   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/preflight.sh | bash
-#   bash Scripts/preflight.sh
+#   bash Scripts/preflight.sh [--work-dir <dir>]           # --work-dir 既定はカレント
 #   bash Scripts/preflight.sh --runner [--base <dir>]   # --base 既定は ~/fleetest-runner
 #
-# 既定モード: **カレントディレクトリだけを判定対象**にする(どこで実行したかが答えを変えるため)。
+# 既定モード: **カレントディレクトリ(または --work-dir)だけを判定対象**にする(どこで実行したかが
+# 答えを変えるため)。
 # --runner モード: `<base>/foundation-tester`(クローン)・`<base>/work`(WORK_DIR)を判定対象にする
 # (docs/remote-runner.md §14「構成」)。**sudo を使わない・何も書き換えない** — FileVault・
 # 自動ログイン・スリープ・sshd の有効化はここでは行わず、人間がやる手順を案内するだけ。
@@ -36,10 +37,11 @@ MODE=default
 # `--remote-dir` の既定値(Sources/fleetest/Fleetest.swift・ApiRunCommand.swift・RemoteCommands.swift)と
 # 揃える。ズレるとディスパッチ側とランナー判定が別ディレクトリを見る
 BASE="~/fleetest-runner"
-# --runner 専用。発行者ネームスペース化(§18.2)で work は `$BASE/users/<issuer>/work` になり
-# 既定の `$BASE/work` と一致しなくなったため、呼び出し側(RemoteSetupPlan.preflightArgs)が
-# 実際の WORK_DIR を渡す。未指定なら旧来どおり `$BASE/work` にフォールバックする(古い呼び手互換)
-RUNNER_WORK_DIR=""
+# 両モード共通。--runner では発行者ネームスペース化(§18.2)で work が `$BASE/users/<issuer>/work`
+# になり既定の `$BASE/work` と一致しなくなったため、呼び出し側(RemoteSetupPlan.preflightArgs)が
+# 実際の WORK_DIR を渡す(未指定なら旧来どおり `$BASE/work`)。既定モードでは判定対象の
+# ディレクトリ(未指定ならカレント。**未指定時の出力は1バイトも変えない**)
+WORK_DIR_ARG=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --runner)
@@ -57,7 +59,7 @@ while [ $# -gt 0 ]; do
         printf 'usage: %s [--runner] [--base <dir>] [--work-dir <dir>]\n' "$0" >&2
         exit 1
       fi
-      RUNNER_WORK_DIR="$2"
+      WORK_DIR_ARG="$2"
       shift 2 ;;
     *)
       printf 'usage: %s [--runner] [--base <dir>] [--work-dir <dir>]\n' "$0" >&2
@@ -93,7 +95,7 @@ check_core_toolchain() {
   else
     kv xcode unusable
     kv xcode_error "$(first_line "$xcode_out")"
-    installed_xcode="$(ls -d /Applications/Xcode*.app 2>/dev/null | head -n 1)"
+    installed_xcode="$(ls -d /Applications/Xcode*.app 2>/dev/null | awk 'NR==1')"
     case "$xcode_out" in
       *license*|*License*)
         blocked_reasons+=("the Xcode license has not been accepted → a human must run \`sudo xcodebuild -license accept\`") ;;
@@ -208,7 +210,7 @@ PMSET_OUT
 
   # ---- ツール本体・作業場所(§14「構成」)。未導入は `fleetest remote setup` が作るので情報のみ ----
   tool_root="$BASE/foundation-tester"
-  work_dir="${RUNNER_WORK_DIR:-$BASE/work}"
+  work_dir="${WORK_DIR_ARG:-$BASE/work}"
   kv tool_root "$tool_root"
   kv work_dir "$work_dir"
   # **kv に直値を渡さず変数に入れてから出す**。judgement 文(ready 行)が同じ値を参照するので、
@@ -287,7 +289,14 @@ fi
 # ===================================================================================
 # 既定モード: インストール前の状態判定(この節の出力は1バイトも変えない契約)
 # ===================================================================================
-WORK_DIR="$PWD"
+# --work-dir は `cd` して実行したときと同じ答えを出す(絶対化は install.sh の abspath と同じ
+# `cd && pwd`。無いディレクトリは判定できないので blocked と同じ exit 1 で落とす)
+if [ -n "$WORK_DIR_ARG" ]; then
+  WORK_DIR="$(cd "$WORK_DIR_ARG" 2>/dev/null && pwd)" \
+    || { printf 'preflight: --work-dir does not exist: %s\n' "$WORK_DIR_ARG" >&2; exit 1; }
+else
+  WORK_DIR="$PWD"
+fi
 missing=()
 
 # ---- 構成の判定(SKILL ステップ0 の再実行ガード / 0.5 の構成判定) ---------------
@@ -316,7 +325,7 @@ case "$layout" in
   *)
     # 導入済みなら Package.swift の .package(path:) が正(既定の隣とは限らない)。
     # 見つからなければ既定の隣を候補として見る
-    declared="$(sed -n 's/.*\.package(path: *"\([^"]*\)".*/\1/p' "$WORK_DIR/Package.swift" 2>/dev/null | head -1)"
+    declared="$(sed -n 's/.*\.package(path: *"\([^"]*\)".*/\1/p' "$WORK_DIR/Package.swift" 2>/dev/null | awk 'NR==1')"
     for candidate in "$declared" "../foundation-tester"; do
       [ -n "$candidate" ] || continue
       case "$candidate" in /*) : ;; *) candidate="$WORK_DIR/$candidate" ;; esac

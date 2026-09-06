@@ -475,3 +475,51 @@ test("列の並びが見出し・可変行・固定行で一致する", (t) => {
   assert.deepEqual([editable[HOST], editable[MACHINE], editable[FM], editable[DIR]],
                    ["user@m1u", "M1Ultra", "3", "~/runner"], "可変行");
 });
+
+// **見せているだけの既定は送らない**(2026-09-07)。未設定(0)の行には既定値が実値として入るが、
+// それをそのまま送ると、他の欄を直しただけで全ての未設定行に今日の既定が明示値として書き込まれ、
+// 既定を変えても二度と追従しない。利用者がその欄を打つまでは 0(未設定)のまま送る
+test("未設定の FM 並列枠は既定値を見せていても、他の欄を直したときに 0 のまま送られる", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((m) => posted.push(m));
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig",
+    hosts: [
+      { machine: "M1Ultra", host: "user@m1u", dir: "", fmConcurrency: 2 },
+      { machine: "M1Max", host: "user@m1max", dir: "", fmConcurrency: 0 },
+    ],
+    artifacts: "collect", defaultFMConcurrency: 5,
+    local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0 } });
+
+  const rows = document.querySelectorAll("#settings-remote-hosts-body tr");
+  const unsetFM = rows[2].querySelectorAll("input")[FM];
+  assert.equal(unsetFM.value, "5", "前提: 未設定行には既定値が見えている");
+
+  // 別の行(M1Ultra)のディレクトリを直す → 未設定行の 5 は送らない
+  fillAndCommit(window, rows[1].querySelectorAll("input")[DIR], "~/runner");
+  const sent = JSON.parse(JSON.stringify(posted.filter((m) => m.type === "setRemoteConfig").at(-1)));
+  assert.deepEqual(sent.hosts.map((h) => [h.machine, h.fmConcurrency]),
+    [["local", 0], ["M1Ultra", 2], ["M1Max", 0]],
+    "設定済みは値のまま・未設定(固定行も可変行も)は 0 のまま");
+  assert.equal(sent.hosts[1].dir, "~/runner");
+
+  // 未設定行の欄を打つと、そのときだけ打った値が送られる
+  fillAndCommit(window, unsetFM, "3");
+  const sent2 = JSON.parse(JSON.stringify(posted.filter((m) => m.type === "setRemoteConfig").at(-1)));
+  assert.deepEqual(sent2.hosts.map((h) => [h.machine, h.fmConcurrency]),
+    [["local", 0], ["M1Ultra", 2], ["M1Max", 3]]);
+});
+
+test("未設定の FM 並列枠に既定値と同じ数字を打てば明示値として送られる(打った事実で判定する)", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((m) => posted.push(m));
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig", hosts: [], artifacts: "collect", defaultFMConcurrency: 5,
+    local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0 } });
+  const fm = document.querySelectorAll("#settings-remote-hosts-body tr input")[FM];
+  fillAndCommit(window, fm, "5");
+  const sent = posted.filter((m) => m.type === "setRemoteConfig").at(-1);
+  assert.equal(sent.hosts.find((h) => h.machine === "local").fmConcurrency, 5);
+});

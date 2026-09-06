@@ -170,6 +170,14 @@ enum BatchLineParser {
         return BatchLineArg(label: nil, value: value)
     }
 
+    /// 引用符の中で解くエスケープ(鍵 = バックスラッシュの次の1文字)。Swift の文字列リテラルと
+    /// 同じ集合(`\u{…}` は持たない)。集合を変えたら supportedEscapesReason も直す
+    private static let escapes: [Character: Character] = [
+        "\\": "\\", "'": "'", "\"": "\"", "n": "\n", "t": "\t", "r": "\r", "0": "\0",
+    ]
+    private static let supportedEscapesReason = "supported escapes are \\\\ \\' \\\" \\n \\t \\r \\0"
+        + " (the same as a Swift string literal); write a literal backslash as \\\\"
+
     private static let notAValueReason = "arguments must be a quoted string, a number, "
         + "true/false, or .identifier — nested calls, arrays, and operators are not supported"
 
@@ -191,9 +199,17 @@ enum BatchLineParser {
                 let ch = chars[i]
                 if ch == quote { i += 1; break }
                 if ch == "\\" {
+                    let column = i + 1
                     i += 1
                     guard i < chars.count else { throw fail("unterminated string") }
-                    s.append(chars[i])  // \' \" \\ を解く。それ以外はバックスラッシュを落として通す
+                    // **Swift の文字列リテラルと同じ集合だけ解く**(走った batch = 貼れる DSL)。
+                    // それ以外を黙って落とすと `'C:\Users'` が "C:Users" として走り、draft の
+                    // Swift 側で意味が変わる
+                    guard let decoded = Self.escapes[chars[i]] else {
+                        throw fail("unsupported escape \\\(chars[i]) at column \(column) — "
+                            + Self.supportedEscapesReason)
+                    }
+                    s.append(decoded)
                     i += 1
                     continue
                 }

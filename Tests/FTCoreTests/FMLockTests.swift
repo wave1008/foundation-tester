@@ -101,6 +101,30 @@ final class FMLockTests: XCTestCase {
         }
     }
 
+    /// **枠数はプロセスで1回だけ解決され、保持中に再評価されない**。以前は acquire のポーリングごとに
+    /// `concurrency`(= 設定ファイルの読み)を評価し、値が動くと fd を閉じ直していた —— close は
+    /// 保持中の flock を解放し heldSlots も消えるので、GUI の設定保存(非 atomic 書き)を途中で
+    /// 読んだ1回で全ワーカーの枠が黙って手放された。ここでは差し替え口を保持中に動かして、
+    /// 枠が閉じられない(2本目が依然として取れない)ことと、release 後に fd が生きていることを見る
+    func testConcurrencyIsResolvedOnceAndNotReevaluatedWhileHeld() async throws {
+        try requireSerializationEnabled()
+        try await SharedResource.hostCaches.locked {
+            FMLock.concurrencyForTesting = 1
+            FMLock.resetForTesting()
+            let acquired = await FMLock.acquire(timeoutSeconds: 1)
+            XCTAssertTrue(acquired)
+
+            // reset 無しで枠数を動かす = 設定ファイルの値が途中で変わった形
+            FMLock.concurrencyForTesting = 5
+            let second = await FMLock.acquire(timeoutSeconds: 0.3)
+            XCTAssertFalse(second, "保持中に枠数が動いても fd を開き直さない(枠1のまま・保持も残る)")
+
+            FMLock.release()
+            let afterRelease = await FMLock.acquire(timeoutSeconds: 1)
+            XCTAssertTrue(afterRelease, "release で返した枠が同じ fd で取り直せる = fd が閉じられていない")
+        }
+    }
+
     /// timeout はおおむね守る(待ち続けてシナリオのタイムアウトを食い潰さない)
     func testAcquireRespectsTimeout() async throws {
         try requireSerializationEnabled()

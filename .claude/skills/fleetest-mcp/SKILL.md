@@ -105,7 +105,7 @@ Xcode を同ベータへ揃えてフルリビルド。FoundationModels の ABI �
   "mcpServers": {
     "fleetest": {
       "command": "bash",
-      "args": ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
+      "args": ["-c", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
       "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
     }
   }
@@ -121,8 +121,9 @@ Xcode を同ベータへ揃えてフルリビルド。FoundationModels の ABI �
   (cwd は受け手パッケージ = `TestProjects/` 側を指すため別物)。省略しても実行ファイルの位置から
   自動解決するが、明示しておくと解決に依存しない。
 - build 出力は `/dev/null`(JSON-RPC は stdout 専用・混ぜると壊れる)。
-- `bash -lc`(ログインシェル)は、デスクトップ版 Claude Code が最小 PATH でサーバを起こしても
-  swift/Xcode ツールチェインを引けるようにするため。
+- `bash -c` で足りる —— `mcp-server.sh` 自身が先頭で `/opt/homebrew/bin:/usr/local/bin` を PATH に足すので、
+  最小の PATH でサーバを起こすクライアントでも swift/Xcode を引ける。**`-l`(ログインシェル)にしない**:
+  `~/.bash_profile` の `echo` が stdout に混ざり JSON-RPC のハンドシェイクを壊す。
 - rebuild-on-start なので `/fleetest-update` 後も版ズレしない(無変更なら増分ビルドは即座)。
 - **ビルドのため TOOL_ROOT へ `cd` した後、`exec` 前に元の WORK_DIR へ戻す**(`WD="$PWD"; cd ... ;
   cd "$WD"`)。cwd は `fleetest-mcp` がパッケージルートを特定する入力(`packageRoot()` の探索基準)。
@@ -133,7 +134,7 @@ Xcode を同ベータへ揃えてフルリビルド。FoundationModels の ABI �
 「全プロジェクトで使いたい」場合のみ、代わりに user スコープ登録を案内する(claude CLI が PATH に要る):
 
 ```
-claude mcp add fleetest --scope user -e FT_TOOL_ROOT=<ABS_TOOL_ROOT> -- bash -lc 'exec "<ABS_TOOL_ROOT>/Scripts/mcp-server.sh"'
+claude mcp add fleetest --scope user -e FT_TOOL_ROOT=<ABS_TOOL_ROOT> -- bash -c 'exec "<ABS_TOOL_ROOT>/Scripts/mcp-server.sh"'
 ```
 
 CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
@@ -147,13 +148,13 @@ CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 ```toml
 [mcp_servers.fleetest]
 command = "bash"
-args = ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""]
+args = ["-c", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""]
 
 [mcp_servers.fleetest.env]
 FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 ```
 
-- 起動の中身・`FT_TOOL_ROOT` の意味・`bash -lc` の理由はステップ2と同じ(ランチャは共通)。
+- 起動の中身・`FT_TOOL_ROOT` の意味・`bash -c`(`-l` にしない)の理由はステップ2と同じ(ランチャは共通)。
 - **`cwd` は書かない**。cwd は `fleetest-mcp` が受け手パッケージを特定する入力なので、
   エージェントが開いたディレクトリのままにする。
 - **エージェントが受け手の設定ファイルを書き換えない**。値を出して 🧑 に貼ってもらう。

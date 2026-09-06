@@ -1066,7 +1066,11 @@ FM がアプリを自律探索してシナリオを生成する explore モー�
   `adb shell am force-stop com.google.android.permissioncontroller`+HOME のまま残す(フォールバック)。
   検証(2026-07-18、Pixel 9a/Android 16 実機): 設定→「Security & privacy」タップで SafetyCenter を
   settings と同一タスクに積んで launchApp settings すると、v6 は 10s タイムアウトで error・SafetyCenter
-  居座り、v7 は同条件で自己復旧して settings 前面化(前面判定タイムアウト→掃除+再試行の before/after 確認済み)
+  居座り、v7 は同条件で自己復旧して settings 前面化(前面判定タイムアウト→掃除+再試行の before/after 確認済み)。
+  **版 67 から、前面がシステムダイアログのパッケージ(permissioncontroller / packageinstaller / systemui /
+  chrome。ホストの `systemDialogPackages` と同じ集合)で、かつ対象アプリの窓が `getWindows()` に見えている
+  ときは「ダイアログ越しに前面」として掃除せず成功を返す**(権限ダイアログを force-stop すると権限フローが
+  壊れる)。対象アプリの窓が見えない全画面の居座り(上の SafetyCenter の形)は従来どおり掃除+再試行
 
 ### 8.7.1 更新(2026-07-08): Android もブリッジ化
 

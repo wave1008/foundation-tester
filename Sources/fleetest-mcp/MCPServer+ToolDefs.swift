@@ -481,7 +481,7 @@ extension MCPServer {
         ]),
         // **名前が「長押し」と言い切っていること**。ツールの説明が
         // 遅延ロードされるクライアントでは、呼ぶかどうかを**名前だけ**で決める瞬間があり、
-        // `ft_press` は「ハードウェアキーを押す」と読まれていた。旧名は dispatch で受け続ける
+        // `ft_press` は「ハードウェアキーを押す」と読まれていた。旧名は call() の toolAliases で受ける
         tool("ft_long_press", "Long-press (press and hold) an element (ref) or a coordinate (x,y). "
             + "This is NOT a hardware key press. Use x/y on a map or "
             + "canvas, where the point you want has no element of its own. " + coordinateCaveat, [

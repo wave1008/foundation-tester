@@ -15,7 +15,9 @@ extension MCPServer {
     /// ツール(ft_logs)が port を持たないため、port 単独判定だと fold から漏れて記憶が効かなかった。
     /// device を受けないツール(ft_doctor 等)へ記憶を適用すると、宛先と無関係な応答に
     /// 「この機を使い回しています」という誤解を招く注記が付く
+    /// 旧名は現名へ畳んでから引く(toolAliases 参照。スキーマは現名しか持たない)
     static func toolAcceptsDeviceTarget(_ tool: String) -> Bool {
+        let tool = canonicalToolName(tool)
         guard let definition = toolDefinitions.first(where: { $0["name"] as? String == tool }),
               let schema = definition["inputSchema"] as? [String: Any],
               let props = schema["properties"] as? [String: Any] else { return false }

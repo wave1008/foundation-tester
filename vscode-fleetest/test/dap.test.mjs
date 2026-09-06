@@ -11,11 +11,14 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { test } from "node:test";
 import { createDapDriver } from "./fixtures/dapDriver.mjs";
+import { FORCE_KILL_REQUEST, STILL_RUNNING_EVENT } from "../src/debugAdapter";
 
 // esbuild が out-test/ にバンドルするため import.meta.url はバンドル後の場所を指す。
 // npm test は常に vscode-fleetest/ を cwd として実行される(package.json の "test" スクリプト)ので
 // process.cwd() を基準に fixtures を解決する(runReducer.test.mjs と同じ流儀)。
 const MOCK_RUNNER = path.resolve(process.cwd(), "test", "fixtures", "mock-runner.mjs");
+// stop コマンドも SIGTERM も無視して生き続ける子(終了スクリプトが長い `api run --debug` を模す)
+const MOCK_SLOW_CLEANUP = path.resolve(process.cwd(), "test", "fixtures", "mock-slow-cleanup.mjs");
 // spawn の cwd はリポジトリルート相当として扱う(存在するディレクトリが必要なので
 // vscode-fleetest/ 自身を使う。TestProjects/Mock/... は実在しなくてよい: パス文字列の
 // 相対化/spawn の cwd としてのみ使う)。
@@ -226,6 +229,100 @@ test("spawn 失敗(バイナリ不在)でも TerminatedEvent を出す", async (
 
       await driver.waitForEvent("terminated");
       await driver.waitForEvent("exited");
+    },
+  );
+});
+
+// ---- 停止の方針(2026-09-07)----
+// `api run --debug` は fleetest の子 = 終了スクリプト・dispatch.lock 解放を持つので時限 SIGKILL しない
+// (cli.ts 冒頭の方針と同じ)。stop → SIGTERM の後も生きていれば fleetest.stillRunning を出して待ち、
+// 利用者が選んだとき(fleetest.forceKill 要求 / 「停止」の2回目)だけ SIGKILL する。
+// タイマーは cli.test.mjs と同じく node:test の mock timers で進める(子の生死判定は本物)。
+// **tick の直後に子の死は見えない**(SIGKILL しても close はイベントループの次の周回で届く)ので、
+// 「殺していない」の観測は実時間を待ってから行う。setTimeout は mock 中なので setInterval で待つ。
+
+const realSleep = (ms) => new Promise((resolve) => {
+  const iv = setInterval(() => { clearInterval(iv); resolve(); }, ms);
+});
+// SIGKILL された子の close が届くまでの実時間の上限(子は node プロセス。手元の実測は数十 ms)
+const CHILD_DEATH_OBSERVE_MS = 300;
+
+test("terminate: stop → SIGTERM の後も自動では SIGKILL せず fleetest.stillRunning を出し、forceKill 要求でだけ殺す", async (t) => {
+  let ready;
+  const readyPromise = new Promise((resolve) => { ready = resolve; });
+  await withDriver(
+    { binaryPath: MOCK_SLOW_CLEANUP, log: (line) => { if (line === "ready") ready(); } },
+    async (driver) => {
+      await driver.initialize();
+      await driver.launch({ project: "Mock", scenario: "テスト.T6", skipBuild: true });
+      await driver.configurationDone();
+      await readyPromise; // SIGTERM ハンドラ登録済み(素通りして即終了する競合を避ける)
+
+      t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+      try {
+      const stillRunning = () =>
+        driver.messages.filter((m) => m.type === "event" && m.event === STILL_RUNNING_EVENT).length;
+      const terminated = () => driver.messages.some((m) => m.type === "event" && m.event === "terminated");
+
+      driver.send("terminate", {});
+      await driver.waitForResponse("terminate");
+
+      t.mock.timers.tick(2000); // stop cmd の猶予切れ → SIGTERM(子は無視する)
+      await realSleep(CHILD_DEATH_OBSERVE_MS);
+      assert.equal(terminated(), false, "SIGTERM と一緒に SIGKILL していない(子が生きている)");
+      t.mock.timers.tick(1999);
+      assert.equal(stillRunning(), 0, "SIGTERM から 2 秒未満ではまだ通知しない");
+      t.mock.timers.tick(1);
+      assert.equal(stillRunning(), 1, "SIGTERM から 2 秒で fleetest.stillRunning を1回出す");
+
+      t.mock.timers.tick(60000);
+      await realSleep(CHILD_DEATH_OBSERVE_MS);
+      assert.equal(terminated(), false, "時間が経っても自動では SIGKILL しない(子が生きている)");
+      assert.equal(stillRunning(), 1, "通知は1回だけ");
+
+      driver.send(FORCE_KILL_REQUEST, {});
+      await driver.waitForResponse(FORCE_KILL_REQUEST);
+      await driver.waitForEvent("terminated");
+      await driver.waitForEvent("exited");
+      } finally {
+        t.mock.timers.reset(); // 失敗時も戻す(withDriver の後始末が実時間の timeout を使う)
+      }
+    },
+  );
+});
+
+test("terminate: fleetest.stillRunning の後にもう一度停止要求(disconnect)が来たら強制終了とみなす", async (t) => {
+  let ready;
+  const readyPromise = new Promise((resolve) => { ready = resolve; });
+  await withDriver(
+    { binaryPath: MOCK_SLOW_CLEANUP, log: (line) => { if (line === "ready") ready(); } },
+    async (driver) => {
+      await driver.initialize();
+      await driver.launch({ project: "Mock", scenario: "テスト.T7", skipBuild: true });
+      await driver.configurationDone();
+      await readyPromise;
+
+      t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+      try {
+      driver.send("terminate", {});
+      await driver.waitForResponse("terminate");
+      // 通知前の重複要求は猶予を仕切り直さない(= 殺さない)
+      driver.send("disconnect", {});
+      await driver.waitForResponse("disconnect");
+      // 段ごとに進める(mock timers は tick 中に積まれた次段のタイマーを同じ tick で走らせない)
+      t.mock.timers.tick(2000); // stop 猶予 → SIGTERM
+      t.mock.timers.tick(2000); // SIGTERM 猶予 → 通知
+      await realSleep(CHILD_DEATH_OBSERVE_MS);
+      assert.equal(
+        driver.messages.filter((m) => m.type === "event" && m.event === STILL_RUNNING_EVENT).length, 1);
+      assert.equal(driver.messages.some((m) => m.type === "event" && m.event === "terminated"), false);
+
+      driver.send("disconnect", {});
+      await driver.waitForResponse("disconnect");
+      await driver.waitForEvent("terminated");
+      } finally {
+        t.mock.timers.reset();
+      }
     },
   );
 });

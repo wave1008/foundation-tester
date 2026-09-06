@@ -21,13 +21,14 @@ hand over the runbooks are in [Other agents](./other_agents.md)):
 ```json
 "fleetest": {
   "command": "bash",
-  "args": ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
+  "args": ["-c", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
   "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
 }
 ```
 
-`bash -lc` (a login shell) is what lets the server find the Swift/Xcode toolchain even when the
-client starts it with a minimal PATH. `FT_TOOL_ROOT` points at the bridge assets, which is a
+`bash -c` is enough: `mcp-server.sh` itself prepends `/opt/homebrew/bin:/usr/local/bin` to PATH, so the
+server finds the Swift/Xcode toolchain even when the client starts it with a minimal PATH. Do not use
+`-l` (a login shell): any `echo` in `~/.bash_profile` lands on stdout and breaks the JSON-RPC handshake. `FT_TOOL_ROOT` points at the bridge assets, which is a
 different location from the working directory (your test package).
 
 ## Common Arguments

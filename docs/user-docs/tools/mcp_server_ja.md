@@ -20,13 +20,14 @@ MCP サーバなので、MCP に対応したクライアントならどれでも
 ```json
 "fleetest": {
   "command": "bash",
-  "args": ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
+  "args": ["-c", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
   "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
 }
 ```
 
-`bash -lc`(ログインシェル)は、最小の PATH でサーバを起こすクライアントでも Swift/Xcode の
-ツールチェインを引けるようにするためです。`FT_TOOL_ROOT` はブリッジ資産の位置で、
+`bash -c` で足ります —— `mcp-server.sh` 自身が先頭で `/opt/homebrew/bin:/usr/local/bin` を PATH に足すので、
+最小の PATH でサーバを起こすクライアントでも Swift/Xcode を引けます。`-l`(ログインシェル)にはしないでください:
+`~/.bash_profile` の `echo` が stdout に混ざり JSON-RPC のハンドシェイクを壊します。`FT_TOOL_ROOT` はブリッジ資産の位置で、
 cwd(受け手パッケージ)とは別物です。
 
 ## 共通引数

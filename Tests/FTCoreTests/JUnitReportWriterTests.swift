@@ -134,6 +134,21 @@ final class JUnitReportWriterTests: XCTestCase {
         XCTAssertFalse(stripped.contains("<") || stripped.contains("&"), stripped)
     }
 
+    /// XML 1.0 に無い制御文字(adb/ドライバ出力の ESC 等)が detail/errorLogs に混じっても
+    /// 出力は well-formed であり続ける(壊れると JUnitMerge がホストのファイル丸ごと読み飛ばす)
+    func testControlCharactersAreStrippedSoXMLStaysWellFormed() throws {
+        let xml = JUnitReportWriter.xml(project: "E2E", records: [
+            record(id: "A.f", passed: false,
+                   steps: StepCountsRecord(total: 1, failed: 1),
+                   failedSteps: [FailedStepRecord(index: 1, description: "tap",
+                                                 detail: "\u{1b}[31mx")],
+                   errorLogs: ["\u{0}bad\u{7}"]),
+        ])
+        XCTAssertFalse(xml.unicodeScalars.contains { $0.value == 0x1B }, xml)
+        XCTAssertFalse(xml.unicodeScalars.contains { $0.value == 0x0 || $0.value == 0x7 }, xml)
+        XCTAssertNoThrow(try XMLDocument(data: Data(xml.utf8), options: []))
+    }
+
     func testDotlessScenarioIDUsesWholeIDAsClassAndName() {
         let xml = JUnitReportWriter.xml(project: "P", records: [record(id: "solo", passed: true)])
         XCTAssertTrue(xml.contains(#"<testsuite name="solo""#), xml)

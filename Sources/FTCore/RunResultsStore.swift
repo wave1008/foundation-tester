@@ -211,11 +211,18 @@ public enum RunResultsStore {
                     skipped += 1
                     continue
                 }
-                if let since, let started = formatter.date(from: meta.startedAt), started < since {
-                    continue
-                }
-                if let until, let started = formatter.date(from: meta.startedAt), started > until {
-                    continue
+                // 窓の指定があるのに startedAt がパースできない場合は**除外**する
+                // (scanRecords は文字列比較なので自然に除外側へ倒れるが、こちらは Date へ
+                // パースしてから比較するため、`if let` が失敗すると素通りしてしまっていた —— 窓の
+                // 外にあるかもしれないレコードを「分からないので含める」と黙って読むと、
+                // 「窓から落ちた記録が無い」前提の docs/results-json.md の判定が誤る)
+                if since != nil || until != nil {
+                    guard let started = formatter.date(from: meta.startedAt) else {
+                        skipped += 1
+                        continue
+                    }
+                    if let since, started < since { continue }
+                    if let until, started > until { continue }
                 }
                 results.append(meta)
             }

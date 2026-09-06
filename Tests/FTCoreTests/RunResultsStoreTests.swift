@@ -386,6 +386,19 @@ final class RunResultsStoreTests: XCTestCase {
             [runA, runB, runC].sorted())
     }
 
+    /// 窓(since/until)指定時に startedAt がパースできない run は scanRecords(文字列比較で
+    /// 自然に除外側へ倒れる)と同じく除外する。窓を指定しなければ従来どおり含める
+    func testUnparsableStartedAtIsExcludedOnlyWhenWindowIsGiven() {
+        let runID = "20260215-000000Z-mach-0009"
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
+        RunResultsStore.writeMeta(makeMeta(runID: runID, startedAt: "garbage"), runDir: runDir)
+
+        let since = ISO8601DateFormatter().date(from: "2026-01-01T00:00:00Z")!
+        XCTAssertTrue(RunResultsStore.scanRuns(resultsDir: resultsDir, since: since).isEmpty)
+
+        XCTAssertEqual(RunResultsStore.scanRuns(resultsDir: resultsDir).map(\.runID), [runID])
+    }
+
     // MARK: - RunRecorder
 
     func testRunRecorderSequentialNamingAndFinish() {

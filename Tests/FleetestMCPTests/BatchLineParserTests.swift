@@ -25,6 +25,27 @@ final class BatchLineParserTests: XCTestCase {
         XCTAssertEqual(parsed.args.last?.value, .string("say 'hi' \\ ok"))
     }
 
+    /// **Swift の文字列リテラルと同じ集合を解く**(2026-09-06 のバグ出し: `\t` のバックスラッシュを
+    /// 黙って落として "atb" で走らせていた —— 走った batch と draft の Swift で文字列が食い違う)
+    func testSwiftStringEscapesAreDecodedLikeTheDSL() throws {
+        XCTAssertEqual(try BatchLineParser.parse("type '#f' 'a\\tb'").args.last?.value,
+                       .string("a\tb"))
+        XCTAssertEqual(try BatchLineParser.parse("type '#f' 'l1\\nl2\\r\\0'").args.last?.value,
+                       .string("l1\nl2\r\0"))
+    }
+
+    /// 解けないエスケープは**落とさず断る**(`'C:\Users'` → "C:Users" で走らせない)。
+    /// 文言は「どれが」「どこで」「何なら書けるか」の3つを持つ
+    func testUnknownEscapeIsRejectedNamingItAndTheSupportedSet() {
+        XCTAssertThrowsError(try BatchLineParser.parse("type '#f' 'C:\\Users'")) { error in
+            let reason = (error as? BatchLineSyntaxError)?.reason ?? "\(error)"
+            XCTAssertTrue(reason.contains("unsupported escape \\U"), reason)
+            XCTAssertTrue(reason.contains("at column 14"), reason)  // 1-based。'C:' の直後の `\`
+            XCTAssertTrue(reason.contains("\\t"), reason)
+            XCTAssertTrue(reason.contains("\\\\"), reason)
+        }
+    }
+
     // "…" は '…' と等価(JSON の \" 経由で届く自然な書き方を拒まない。推奨は '…')
 
     func testDoubleQuotedStringEqualsSingleQuoted() throws {

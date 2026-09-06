@@ -353,7 +353,7 @@ products 未宣言でも `swift build --product fleetest-mcp` は暗黙 product 
   "mcpServers": {
     "fleetest": {
       "command": "bash",
-      "args": ["-lc", "WD=\"$PWD\"; cd \"<ABS_TOOL_ROOT>\" && swift build --product fleetest-mcp >/dev/null 2>&1 && cd \"$WD\" && exec \"<ABS_TOOL_ROOT>/.build/debug/fleetest-mcp\""],
+      "args": ["-c", "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH; WD=\"$PWD\"; cd \"<ABS_TOOL_ROOT>\" && swift build --product fleetest-mcp >/dev/null 2>&1 && cd \"$WD\" && exec \"<ABS_TOOL_ROOT>/.build/debug/fleetest-mcp\""],
       "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
     }
   }
@@ -361,8 +361,8 @@ products 未宣言でも `swift build --product fleetest-mcp` は暗黙 product 
 ```
 
   rebuild-on-start なので `/fleetest-update` 後も版ズレしない（無変更なら増分ビルドは即座）。build 出力は
-  `/dev/null`（JSON-RPC は stdout 専用・混ぜると壊れる）。`bash -lc`（ログインシェル）はデスクトップ版
-  Claude Code が最小 PATH でサーバを起こしても swift/Xcode ツールチェインを引けるようにするため。
+  `/dev/null`（JSON-RPC は stdout 専用・混ぜると壊れる）。`bash -c` + 先頭の `export PATH=…` で、デスクトップ版
+  Claude Code が最小 PATH でサーバを起こしても swift/Xcode ツールチェインを引ける（`-l` にしない：`~/.bash_profile` の出力が stdout に混ざり JSON-RPC を壊す）。
   **ビルドのため TOOL_ROOT へ `cd` した後、`exec` 前に元の WORK_DIR へ戻す**（cwd は `fleetest-mcp` が
   パッケージルートを特定する入力。cd したままだと外部パッケージ構成で受け手の `TestProjects/` が見えなくなる）。
   `env.FT_TOOL_ROOT` は**ブリッジ資産（`Runner/`・`InAppBridge/`）のルート**の明示指定（cwd が指す
@@ -370,7 +370,7 @@ products 未宣言でも `swift build --product fleetest-mcp` は暗黙 product 
   `<ABS_TOOL_ROOT>` は3箇所とも同じ絶対パス。
 
 「全プロジェクトで使いたい」場合のみ、代わりに user スコープ登録
-（`claude mcp add fleetest --scope user -- bash -lc '...'`・claude CLI が PATH に要る）を案内する。
+（`claude mcp add fleetest --scope user -- bash -c '...'`・claude CLI が PATH に要る）を案内する。
 CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 
 **検証ゲート**: **WORK_DIR で** `<ABS_TOOL_ROOT>/.build/debug/fleetest doctor --roots-only` が exit 0 で、

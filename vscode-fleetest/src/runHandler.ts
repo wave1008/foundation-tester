@@ -14,7 +14,7 @@ import * as path from "node:path";
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 import { childEnv } from "./childEnv";
-import { type FleetestCli } from "./cli";
+import { type CliInvocationHandle, type FleetestCli } from "./cli";
 import { type FleetestConfig, resolveProjectName } from "./config";
 import { resolveEntryAtCursor, truncateForStatusBar, type TreeItemEntry } from "./copyTestName";
 import { t } from "./i18n";
@@ -23,7 +23,7 @@ import type { LiveRunTarget } from "./liveRunTarget";
 import { runOneShot } from "./oneShotCli";
 import { decideRemoteCompat, type RemoteCompatMachine, type RemoteCompatReport } from "./remoteCompatGate";
 import { findLatestReport, listRecentReports, reportsDir } from "./scenarioReports";
-import type { ScenarioFinishedEventBody } from "./debugAdapter";
+import { FORCE_KILL_REQUEST, type ScenarioFinishedEventBody, STILL_RUNNING_EVENT } from "./debugAdapter";
 import { isRunEvent } from "./model";
 import { type RunEventBus } from "./runEventBus";
 import {
@@ -37,6 +37,18 @@ import type { ScenarioFileWatcher } from "./watcher";
 
 // lastResultsSync.ts の isGuiRunActive が参照する(GUI 実行中はツリーへの反映を譲る)。
 let activeRunCount = 0;
+
+/** SIGTERM 後も後始末が終わらない run について、利用者が選んだときだけ forceKill を撃つ通知。
+ *  「実行」(cli.ts の onStillRunning)と「デバッグ」(debugAdapter.ts の fleetest.stillRunning)の
+ *  両経路が同じ文言・同じ形で出す。 */
+function offerForceKill(forceKill: () => void): void {
+  const forceKillItem = t("run.cancel.forceKillButton");
+  void vscode.window.showWarningMessage(t("run.cancel.stillRunningMessage"), forceKillItem).then((picked) => {
+    if (picked === forceKillItem) {
+      forceKill();
+    }
+  });
+}
 export function isRunActive(): boolean {
   return activeRunCount > 0;
 }
@@ -838,27 +850,22 @@ async function executeRun(
     }
   };
 
-  const cancelListener = token.onCancellationRequested(() => {
+  // **自分の呼び出しだけを止める**(cli.cancelCurrent は「今走っている何か」= 前に積まれた
+  // list-scenarios / ビルドを殺し、続く api run が止められないまま走る)。未着手なら spawn しない。
+  let invocation: CliInvocationHandle | undefined;
+  const cancelInvocation = (): void => {
     // fleetest 自身の子(`api run`)は自前の後始末(dispatch.lock 解放・終了スクリプト)を持つため
     // 時限 SIGKILL しない(cli.ts のコメント参照)。後始末が長引いているときだけ通知し、
     // 利用者が選んだときだけ強制終了する。
-    cli.cancelCurrent({
-      onStillRunning: (forceKill) => {
-        const forceKillItem = t("run.cancel.forceKillButton");
-        void vscode.window.showWarningMessage(t("run.cancel.stillRunningMessage"), forceKillItem).then((picked) => {
-          if (picked === forceKillItem) {
-            forceKill();
-          }
-        });
-      },
-    });
-  });
+    invocation?.cancel({ onStillRunning: offerForceKill });
+  };
+  const cancelListener = token.onCancellationRequested(cancelInvocation);
 
   // liveFollow: livePanel.ts が単一クラス実行のときだけ自動追従する判定(runHandler が liveTarget を用意したか)。
   const runId = eventBus.beginRun(dryRun, liveTarget !== undefined);
 
   try {
-    const result = await cli.invoke(config.binaryPath, workspaceRoot, {
+    invocation = cli.enqueue(config.binaryPath, workspaceRoot, {
       args,
       onNdjsonValue: (value) => {
         if (isRunEvent(value)) {
@@ -884,6 +891,11 @@ async function executeRun(
         }
       },
     });
+    // enqueue より前に取り消されていた分(リスナー登録〜enqueue の間)を拾う
+    if (token.isCancellationRequested) {
+      cancelInvocation();
+    }
+    const result = await invocation.result;
 
     if (!sawEnd && result.exitCode !== 0) {
       // runFinished を受信しないまま(異常終了 / デバイス切断など)プロセスが終了した。
@@ -1023,7 +1035,16 @@ async function executeDebugRun(
     }
   });
   const customEventListener = vscode.debug.onDidReceiveDebugSessionCustomEvent((e) => {
-    if (!matchesThisRun(e.session) || e.event !== "fleetest.scenarioFinished") {
+    if (!matchesThisRun(e.session)) {
+      return;
+    }
+    if (e.event === STILL_RUNNING_EVENT) {
+      // 停止後も後始末が続いている。アダプタは時限 SIGKILL しないので、ここで利用者に選ばせる
+      const session = e.session;
+      offerForceKill(() => void session.customRequest(FORCE_KILL_REQUEST));
+      return;
+    }
+    if (e.event !== "fleetest.scenarioFinished") {
       return;
     }
     const body = e.body as ScenarioFinishedEventBody | undefined;

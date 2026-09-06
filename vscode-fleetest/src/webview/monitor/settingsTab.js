@@ -134,11 +134,18 @@ function makeFMConcurrencyInput(value) {
   input.step = '1';
   // **未設定(0)のときは既定値を実値として出す** —— 空欄だと「何枠で走るのか」が画面から
   // 読めない。空欄にすれば未設定へ戻せる(送るのは 0 で、CLI が既定へ倒し、次の描画で
-  // またこの既定が入る)。既定が読めないときだけウォーターマークに落とす
+  // またこの既定が入る)。既定が読めないときだけウォーターマークに落とす。
+  // **見せているだけの既定は送らない** —— `dataset.unset` が立っている間は payload が 0 を送る
+  // (fmConcurrencyValue)。これが無いと、他の欄を直しただけで全ての未設定行に今日の既定が
+  // 明示値として書き込まれ、既定を変えても二度と追従しない。利用者がこの欄を打った瞬間に外す
   input.value = value > 0 ? String(value)
     : (defaultFMConcurrency === undefined ? '' : String(defaultFMConcurrency));
   input.placeholder = defaultFMConcurrency === undefined ? '' : String(defaultFMConcurrency);
+  if (!(value > 0)) {
+    input.dataset.unset = '1';
+  }
   input.addEventListener('input', () => {
+    delete input.dataset.unset;
     const kept = input.value.replace(/[^1-9]/g, '').slice(0, 1);
     if (kept !== input.value) {
       input.value = kept;
@@ -147,13 +154,22 @@ function makeFMConcurrencyInput(value) {
   return input;
 }
 
+/** 送る FM 並列枠。未設定のまま(dataset.unset)なら 0。空欄・非数値・0 以下も 0 = 解除
+ *  (CLI 側が 0 を「未設定」に倒す)。 */
+function fmConcurrencyValue(input) {
+  if (input.dataset.unset === '1') {
+    return 0;
+  }
+  const n = Number.parseInt(input.value.trim(), 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 function currentHostsPayload() {
   // 固定行は登録簿ではなく LocalConfig へ入る(CLI 側が machine:"local" を見て振り分ける)
   const fixed = [];
   if (localRow) {
-    const n = Number.parseInt(localRow.input.value.trim(), 10);
     fixed.push({ machine: 'local', host: localRow.host, dir: '',
-                 fmConcurrency: Number.isFinite(n) && n > 0 ? n : 0 });
+                 fmConcurrency: fmConcurrencyValue(localRow.input) });
   }
   // 未確定行(confirmed:false)はホストが空のことがあるため、確定済み行だけを送る
   // (「確定」ボタン自体は host が埋まるまで押せないが、ここでも二重に落として安全側に倒す)。
@@ -162,11 +178,9 @@ function currentHostsPayload() {
     .map((row) => {
       const host = row.hostInput.value.trim();
       const machine = row.machineInput.value.trim();
-      // 空欄・非数値・0 以下は 0 = 解除として送る(CLI 側が 0 を「未設定」に倒す)
-      const fm = Number.parseInt(row.fmInput.value.trim(), 10);
       return {
         machine: machine || defaultMachineForHost(host), host, dir: row.dirInput.value.trim(),
-        fmConcurrency: Number.isFinite(fm) && fm > 0 ? fm : 0,
+        fmConcurrency: fmConcurrencyValue(row.fmInput),
       };
     }));
 }

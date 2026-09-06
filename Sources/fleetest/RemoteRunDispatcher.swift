@@ -275,9 +275,24 @@ struct RemoteRunDispatcher {
                     "cannot reach \(host.sshTarget) over ssh (status 255)\n\(result.tail)")
             }
             let existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
-            let existingInfo = existing.flatMap(RemoteDispatchLock.decode)
-            throw RemoteDispatchError.remoteSetupFailed(RemoteDispatchLock.heldMessage(existingInfo))
+            throw RemoteDispatchError.remoteSetupFailed(Self.dispatchLockFailureMessage(
+                status: result.status, lockRead: existing, tail: result.tail, sshTarget: host.sshTarget))
         }
+    }
+
+    /// 取得失敗(status ≠ 0・≠ 255)の文言。読めた控えが**空**(readCommand は不在でも exit 0 で
+    /// 空を返す)なら誰も掴んでいない = mkdir 自体が失敗した(権限・ディスク・base の誤り)ので
+    /// 「held by …」ではなく stderr をそのまま出す。控えが読めない(nil)・壊れている(decode 不能)
+    /// ときは従来どおり holder unknown の held 文言
+    static func dispatchLockFailureMessage(status: Int32, lockRead: String?, tail: String,
+                                           sshTarget: String) -> String {
+        if let lockRead, lockRead.isEmpty {
+            let detail = tail.isEmpty
+                ? " — no error output; if another dispatch finished just now, retry"
+                : ":\n\(tail)"
+            return "could not create the dispatch lock on \(sshTarget) (ssh status \(status))\(detail)"
+        }
+        return RemoteDispatchLock.heldMessage(lockRead.flatMap(RemoteDispatchLock.decode))
     }
 
     /// `--wait-lock`: 取得できない間、解放をポーリングして待つ(奪わない。時刻での自動奪取は無い)。
@@ -375,8 +390,9 @@ struct RemoteRunDispatcher {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: localDir.path),
               names.contains(where: { $0.hasSuffix(".apk") }) else { return }
         let remoteDir = "Library/Caches/fleetest/webview"
-        // グロブ無しの固定コマンド(ssh 越しのグロブ禁止。docs/remote-runner.md §18.7)
-        guard (try? runInherited(["ssh", host.sshTarget, "mkdir -p \(remoteDir)"])) == 0 else {
+        // グロブ無しの固定コマンド(ssh 越しのグロブ禁止。docs/remote-runner.md §18.7)。
+        // sshBase を通す(BatchMode/ConnectTimeout 無しだとパスワード入力で止まる・75 秒固まる)
+        guard (try? runInherited(sshBase + [host.sshTarget, "mkdir -p \(remoteDir)"])) == 0 else {
             log("⚠️ could not prepare the WebView cache directory on \(host.sshTarget)"
                 + " (continuing; WebView levelling on that runner keeps its local donors only)")
             return

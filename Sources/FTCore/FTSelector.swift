@@ -923,9 +923,14 @@ public struct FTSelector {
     /// 無い」= notExist/countIs(x,0) では**必ず成功**になってしまう。実行前にここで落とす。
     /// 呼ぶのは run 開始時の一括検査と `api run --dry-run`(デバイス不要)。
     public static func validationError(_ text: String) -> String? {
-        if let error = unbalancedParenError(text) { return error }
         for clause in splitTopLevel(text, separator: "||") {
-            if clause.trimmingCharacters(in: .whitespaces).isEmpty { continue }
+            let trimmed = clause.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { continue }
+            // `=` エスケープは全体が生ラベル(clauseError と同じ免除)。ここで先に弾かないと、
+            // 括弧チェックを全体テキストにまとめて掛けていたときと同じく、エスケープした
+            // リテラルの中の "(" ")" を構文エラーと誤認する(例: `=smile :)`)
+            if trimmed.hasPrefix("=") { continue }
+            if let error = unbalancedParenError(clause) { return error }
             if let error = clauseError(clause) { return error }
         }
         return nil
@@ -1083,7 +1088,22 @@ public struct FTSelector {
         if let error = negatedFilterError(token) { return error }
         if let error = typeEqualsError(token) { return error }
         if let error = namedFilterError(token) { return error }
+        if let error = emptyIdError(token) { return error }
         return ordinalError(token) ?? typeCaseError(token)
+    }
+
+    /// `#` 短縮形(単独 `#`、または `.型#`)の id 部分が空か。**書き手はほぼ確実に
+    /// 「id を書き忘れた」**意図で、放置すると `idLocator("")` が identifier が "" の要素
+    /// (ラベルの無いレイアウトノード等)を静かに拾う。`exist("#")` が「id を持つ要素なら何でも」
+    /// ではなく「id が空文字列の要素」に一致してしまう穴を実行前に落とす
+    private static func emptyIdError(_ token: String) -> String? {
+        let isIDForm = token.hasPrefix("#") || (token.hasPrefix(".") && token.contains("#"))
+        guard isIDForm, let hashIndex = token.firstIndex(of: "#") else { return nil }
+        var body = token[token.index(after: hashIndex)...]
+        if body.hasSuffix("]"), let bracket = body.firstIndex(of: "[") {
+            body = body[body.startIndex..<bracket]
+        }
+        return body.isEmpty ? "`#` needs an id after it: \"\(token)\"" : nil
     }
 
     /// フィルタ内 OR(`(a|b)`)の中身が空でないか。空の選択肢を通すと「ラベルが空の要素」に

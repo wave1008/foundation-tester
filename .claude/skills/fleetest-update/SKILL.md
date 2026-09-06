@@ -174,7 +174,7 @@ cd <TOOL_ROOT>/vscode-fleetest && npm install && npm run install-local
   "mcpServers": {
     "fleetest": {
       "command": "bash",
-      "args": ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
+      "args": ["-c", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
       "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
     }
   }
@@ -188,7 +188,7 @@ cd <TOOL_ROOT>/vscode-fleetest && npm install && npm run install-local
 - **user スコープ登録**（`claude mcp add fleetest --scope user ...` で入れた場合）: `claude mcp list` /
   `claude mcp get fleetest` で同じ旧パターン（cd 後 exec 前に戻っていない）が無いか確認する。あれば
   一度 `claude mcp remove fleetest --scope user` してから、新テンプレート（上と同じ `WD="$PWD"; cd ... ;
-  cd "$WD" && exec ...`）で `claude mcp add fleetest --scope user -- bash -lc '...'` を再登録する。
+  cd "$WD" && exec ...`）で `claude mcp add fleetest --scope user -- bash -c '...'` を再登録する(`-lc` は使わない。`~/.bash_profile` の出力が JSON-RPC を壊す)。
   CLI が PATH に無ければこのステップはスキップし、WORK_DIR `.mcp.json` 方式への案内に留める。
 - 書き換え後は 🧑 チェックポイント（次のステップ）で Reload Window すれば反映される
   （登録がそもそも無い場合はこのステップは何もしない ―― MCP 未使用の受け手には無関係）。

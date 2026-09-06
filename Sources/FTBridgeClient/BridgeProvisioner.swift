@@ -753,7 +753,9 @@ public struct BridgeProvisioner {
                 return try await stopAndRelaunch()
             }
             do {
-                try await launcher.waitUntilReady(host: BridgeEndpoint(port: port).host,
+                // 宛先は起動した側が記録した .endpoint を読む(LAN 経由の実機はループバックでは
+                // 届かない。仮想デバイス・USB は記録が無く load がループバックを返す)
+                try await launcher.waitUntilReady(host: BridgeEndpoint.load(port: port, repoRoot: repoRoot).host,
                                                   log: { log("\(name): \($0)") })
                 log("✅ \(name): took over the \(engine) bridge that was starting (port \(port))")
                 return port

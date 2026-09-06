@@ -18,6 +18,8 @@
 // (実時間をほぼ待たずに)確認できる。
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { FleetestCli } from "../src/cli";
@@ -39,7 +41,7 @@ function invokeSlowCleanup(cli) {
   const readyPromise = new Promise((resolve) => {
     ready = resolve;
   });
-  const resultPromise = cli.invoke(process.execPath, CWD, {
+  const handle = cli.enqueue(process.execPath, CWD, {
     args: [MOCK_SLOW_CLEANUP],
     onNdjsonValue: () => {},
     onLog: (line) => {
@@ -48,7 +50,7 @@ function invokeSlowCleanup(cli) {
       }
     },
   });
-  return { readyPromise, resultPromise };
+  return { readyPromise, resultPromise: handle.result, handle };
 }
 
 /** resultPromise がまだ解決していないことを、実時間をほぼ使わずに確かめる
@@ -210,4 +212,86 @@ test("escalateAfterMs を渡すと従来どおり指定時間後に自動で SIG
   t.mock.timers.tick(1);
   const result = await resultPromise;
   assert.equal(result.cancelled, true, "escalateAfterMs 経過で自動 SIGKILL され終了する");
+});
+
+// ---- enqueue() のハンドル: 自分の呼び出しだけを止める(2026-09-07)----
+// cancelCurrent() は「今走っている何か」を殺す。run の前に list-scenarios / ビルドが積まれていると
+// そちらを殺し、続く api run が止められないまま走り出す。ハンドルは自分の1回だけを狙う。
+
+test("enqueue().cancel(): 未着手の呼び出しはキューから外して spawn せず、前の呼び出しには触らない", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const cli = new FleetestCli(makeOutputChannel());
+
+  const first = invokeSlowCleanup(cli);
+  await first.readyPromise;
+
+  // 2本目が spawn されたら印を書く(spawn の有無を結果の形ではなくファイルの実体で見る)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-cli-cancel-"));
+  const marker = path.join(dir, "spawned");
+  const second = cli.enqueue(process.execPath, CWD, {
+    args: ["-e", "require('node:fs').writeFileSync(process.argv[1], 'spawned')", marker],
+  });
+  second.cancel();
+
+  const secondResult = await second.result;
+  assert.deepEqual(secondResult, { json: undefined, exitCode: null, cancelled: true },
+    "未着手のキャンセルは spawn せず cancelled:true で即解決する");
+  assert.equal(await stillPending(first.resultPromise), true, "前の呼び出しは生きたまま");
+
+  // 前の呼び出しを終わらせ、キューが空になった後も2本目が走り出していないことを確かめる
+  first.handle.cancel({ escalateAfterMs: 1 });
+  t.mock.timers.tick(1);
+  const firstResult = await first.resultPromise;
+  assert.equal(firstResult.cancelled, true);
+  // キューは直列なので、後から積んだ3本目が完了した時点で「2本目が走ったなら終わっている」
+  await cli.invoke(process.execPath, CWD, { args: ["-e", "0"] });
+  assert.equal(fs.existsSync(marker), false, "取り消した呼び出しは後からも spawn されない");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("enqueue().cancel(): 実行中の自分の呼び出しだけを止め、後ろに積まれた呼び出しは通常どおり走る", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const cli = new FleetestCli(makeOutputChannel());
+
+  const first = invokeSlowCleanup(cli);
+  await first.readyPromise;
+  const second = cli.enqueue(process.execPath, CWD, {
+    args: [MOCK_APPLY_HEAL],
+    stdin: JSON.stringify({ fixes: [] }),
+  });
+
+  first.handle.cancel({ escalateAfterMs: 1 });
+  t.mock.timers.tick(1);
+  const firstResult = await first.resultPromise;
+  assert.equal(firstResult.cancelled, true, "自分の呼び出しは止まる");
+
+  const secondResult = await second.result;
+  assert.equal(secondResult.cancelled, false, "後ろの呼び出しは巻き込まれない");
+  assert.equal(secondResult.exitCode, 0);
+  assert.deepEqual(secondResult.json, { applied: [], failures: [] });
+});
+
+test("enqueue().cancel(): 終了済みの呼び出しに対しては何もしない(二重解決・例外なし)", async () => {
+  const cli = new FleetestCli(makeOutputChannel());
+  const handle = cli.enqueue(process.execPath, CWD, { args: [MOCK_APPLY_HEAL], stdin: "{\"fixes\":[]}" });
+  const result = await handle.result;
+  assert.equal(result.exitCode, 0);
+  handle.cancel();
+  handle.cancel({ escalateAfterMs: 1 });
+  assert.equal(result.cancelled, false);
+});
+
+// ---- stdin の EPIPE(2026-09-07)----
+// 子が stdin を読む前に終わる(または 64KB 超で pipe が詰まったまま終わる)と、書き込みの EPIPE が
+// 非同期の 'error' で来る。リスナーが無いと未処理エラーで拡張ホストごと落ちる。
+
+test("stdin 対応 spawn: 子が読む前に終わっても(EPIPE)未処理の 'error' にならず結果が返る", async () => {
+  const cli = new FleetestCli(makeOutputChannel());
+  // 1MB は pipe のバッファ(64KB)を確実に超え、子は読まずに即終了する
+  const result = await cli.invoke(process.execPath, CWD, {
+    args: ["-e", "process.exit(0)"],
+    stdin: "x".repeat(1 << 20),
+  });
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.cancelled, false);
 });

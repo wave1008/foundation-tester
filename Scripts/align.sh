@@ -102,7 +102,9 @@ for pid in $PIDS; do wait "$pid" || true; done
 FAILED=0
 for m in $MACHINES; do
   code=$(cat "$LOGDIR/$m.code" 2>/dev/null || echo 1)
-  line=$(grep -E "aligned to|❌|error" "$LOGDIR/$m.log" | tail -1)
+  # `|| true` は必須 —— grep が 1 件も拾えないと(errexit + pipefail で)この代入が失敗し、
+  # 集計を出す前にスクリプトごと落ちて EXIT trap が LOGDIR を消す = ログが失われる
+  line=$(grep -E "aligned to|❌|error" "$LOGDIR/$m.log" | tail -1 || true)
   if [ "$code" = 0 ]; then echo "  ✅ $m: ${line:-(出力なし)}"
   else echo "  ❌ $m: ${line:-(出力なし)} (exit=$code / log: $LOGDIR/$m.log)"; FAILED=1
        cp "$LOGDIR/$m.log" "/tmp/align-$m.log"; echo "     ログを /tmp/align-$m.log に残した"; fi

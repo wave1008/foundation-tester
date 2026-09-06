@@ -421,6 +421,27 @@ final class FTSelectorTests: XCTestCase {
         }
     }
 
+    /// `unbalancedParenError` は `||` で割った節ごとに掛ける必要がある。
+    /// 全体テキストにまとめて掛けると、`=` エスケープした節の中の `(` `)` を
+    /// 構文エラーと誤検出する(`=smile :)` はカッコで閉じた絵文字を含む生ラベル)
+    func testValidationEscapedClauseParensAreNotSyntaxErrors() {
+        XCTAssertNil(FTSelector.validationError("=smile :)"))
+        XCTAssertNil(FTSelector.validationError("=(a"))
+        XCTAssertNil(FTSelector.validationError("=a)||#id"))
+        // エスケープしていない不均衡な括弧は引き続き落ちる
+        XCTAssertNotNil(FTSelector.validationError("(a|b"))
+    }
+
+    /// `#` 単独(id を書き忘れた形)は `idLocator("")` に化け、identifier が "" の要素
+    /// (ラベルの無い容器等)に静かに一致してしまう。`.型#` も同じ穴
+    func testValidationRejectsEmptyIDShorthand() {
+        XCTAssertNotNil(FTSelector.validationError("#"))
+        XCTAssertNotNil(FTSelector.validationError(".button#"))
+        // 通常形は引き続き通る
+        XCTAssertNil(FTSelector.validationError("#x"))
+        XCTAssertNil(FTSelector.validationError(".button#x"))
+    }
+
     func testValidationRejectsUnknownFilterName() {
         for text in ["textContans=許可", ".button&&valu=太郎", "checkd=true",
                      // 相対セレクタの引数の中も同じ規則で見る

@@ -116,6 +116,10 @@ export const runStrings = {
   "run.debug.varSection": { ja: "区分", en: "Section" },
   "run.debug.varPosition": { ja: "位置", en: "Position" },
 
+  "run.debug.stillRunning": {
+    ja: "実行の後始末(終了スクリプト・ロック解放)を待っています。応答しない場合はもう一度「停止」を押すと強制終了します。",
+    en: "Waiting for the run to finish cleaning up (teardown script, lock release). Press Stop again to force kill it if it's unresponsive.",
+  },
   "run.debug.stdinWriteFailed": {
     ja: "stdin への書き込みに失敗しました: {error}",
     en: "Failed to write to stdin: {error}",

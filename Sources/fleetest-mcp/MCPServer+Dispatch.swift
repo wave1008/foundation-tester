@@ -206,7 +206,18 @@ extension MCPServer {
     /// ポートで誰も待受していない = XCUITest ランナーのプロセス死で、原因の筆頭は
     /// **同一シミュレータに2本目のランナーが立った**こと(全ポート共通 bundle id のため
     /// 先代が蹴り出される。Fleetest.swift の bridge up 参照)。素のメッセージからは追えない
+    /// 旧名 → 現名。**別名は call() の入口で現名へ畳む**(dispatch の case に旧名を並べない)——
+    /// `toolAcceptsDeviceTarget` はスキーマ(現名)しか知らないので、dispatch だけで受けると
+    /// 宛先の記憶が別名の呼び出しに効かず、**別の機を長押しする**(実測: `ft_tap port: 8138` の後の
+    /// `ft_press x: y:` が既定ポートへ行った)。旧名を落とさない理由は手元のメモ・既存の手順に
+    /// 残っている名前を「不明なツール」にしないため(ツール一覧には現名だけを出す ——
+    /// 名前だけで呼ぶかを決めるクライアントが `ft_press` をハードウェアキーと読んだ)
+    static let toolAliases: [String: String] = ["ft_press": "ft_long_press"]
+
+    static func canonicalToolName(_ tool: String) -> String { toolAliases[tool] ?? tool }
+
     func call(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
+        let tool = Self.canonicalToolName(tool)
         let clock = ContinuousClock()
         let start = clock.now
         // **udid は入口で port へ畳む**。`driver(_:)` は解決後のポートで
@@ -834,14 +845,8 @@ extension MCPServer {
             guard let direction = FTSwipeDirection(rawValue: args["direction"] as? String ?? "") else {
                 throw MCPError("direction must be one of up/down/left/right")
             }
+            try Self.validateScrollFrameArg(args)
             let swipeDriver = try await driver(args)
-            // **型は入口で確かめる**(2026-08-12 のレビュー指摘): resolveScrollFrameArg が見るのは
-            // Int と String だけなので、それ以外(bool・配列・オブジェクト)は空の ScrollFrameArg
-            // になり、**容器を無視した全画面スワイプを「inside …」と名乗って**返していた
-            if let frame = args["scrollFrame"], !(frame is Int), !(frame is String) {
-                throw MCPError("scrollFrame must be a selector string (e.g. \"#list_rows\") or an"
-                    + " ft_snapshot ref (an integer)")
-            }
             // **未指定は今までと1バイトも変えない**(全画面固定の既定経路)。
             // **例外はキーボード表示中**(2026-08-31): 直近の `ft_snapshot` の控えがキーボードを
             // 申告していれば、素の driver.swipe ではなく DSL の swipe と同じ StepExecutor の
@@ -1314,9 +1319,8 @@ extension MCPServer {
                 + (areaIgnored ? "" : iosEngineHint("Flutter", "pinch", args: args))
                 + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
 
-        // `ft_press` は旧名(2026-08-15 に `ft_long_press` へ改名)。**受け続ける** ——
-        // 手元のメモや既存の手順に残っている名前を「不明なツール」で落とす理由が無い
-        case "ft_long_press", "ft_press":
+        // 旧名 `ft_press` は call() の toolAliases が現名へ畳む(ここに並べると記憶の適用から漏れる)
+        case "ft_long_press":
             // 引数名は DSL の tap(holdSeconds:) と同語彙(2026-08-10 の語彙統一)。
             // 旧名は黙って既定値に落とさない(1.0s の長押しに化けて沈黙した誤りになる)。
             // **引数だけで弾ける検証はドライバ取得より前に**(コールドスタートは分単位かかりうる)

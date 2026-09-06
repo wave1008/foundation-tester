@@ -952,6 +952,18 @@ extension MCPServer {
         var note: String = ""
     }
 
+    /// **型は入口で確かめる**(2026-08-12 のレビュー指摘): resolveScrollFrameArg が見るのは
+    /// Int と String だけなので、それ以外(bool・配列・オブジェクト)は空の ScrollFrameArg に
+    /// なり、**容器を無視した全画面の操作を「inside …」と名乗って**返す。ft_swipe と ft_scroll_to の
+    /// 両方が resolveScrollFrameArg より前(ドライバ取得より前)に呼ぶ —— 片方だけに置くと
+    /// もう片方が素通しする(実際に ft_scroll_to が漏れていた)
+    static func validateScrollFrameArg(_ args: [String: Any]) throws {
+        if let frame = args["scrollFrame"], !(frame is Int), !(frame is String) {
+            throw MCPError("scrollFrame must be a selector string (e.g. \"#list_rows\") or an"
+                + " ft_snapshot ref (an integer)")
+        }
+    }
+
     /// **ref はセレクタが書けない容器のための逃げ道**(id の重複・欠落。2026-08-10)。
     /// 既存の stale-ref 再照合(resolveSessionRef → RefGuard.relocate)を通してから frame を取る ——
     /// verifiedRef と同じ規律で、撮った時点から動いていても黙って古い座標を使わない
@@ -1097,6 +1109,7 @@ extension MCPServer {
         guard let direction = FTScrollDirection(rawValue: args["direction"] as? String ?? "down") else {
             throw MCPError("direction must be one of down/up/right/left (content direction)")
         }
+        try Self.validateScrollFrameArg(args)
         let scrollDriver = try await driver(args)
         // **曖昧さは「渡す前に見えていた画面」で判定する**: 探索後の木で数えると、リストが
         // 読み込み直しに入っている回に同名の容器が1つしか残らず黙ってしまう

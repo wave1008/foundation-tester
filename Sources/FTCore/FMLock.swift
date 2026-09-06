@@ -57,8 +57,8 @@ public enum FMLock {
     public static let defaultConcurrency = 5
 
     /// テストだけが使う差し替え口。**production は常に nil**(`FT_FM_CONCURRENCY` を見る)。
-    /// fd を concurrency 本ぶんキャッシュするため、テストがこれを変えたら
-    /// `resetForTesting()` も呼んでキャッシュを作り直させること
+    /// 枠数は最初の `descriptors()` で1回だけ解決して固定するため、テストがこれを変えたら
+    /// `resetForTesting()` も呼んでキャッシュを作り直させること(変えただけでは効かない)
     static var concurrencyForTesting: Int?
 
     /// 解決順は **環境変数 → 設定ファイル → 既定**。
@@ -89,7 +89,6 @@ public enum FMLock {
     /// 1つ返す(呼び出し元の FMGate は取った枠を覚えず defer { leave() } するだけの契約のため)
     private static var heldSlots: [Int] = []
     private static var cachedFDs: [Int32]?
-    private static var cachedConcurrency: Int?
 
     private static func lockURL(slot: Int) -> URL {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
@@ -99,15 +98,16 @@ public enum FMLock {
     }
 
     /// concurrency 本ぶんの fd(プロセスで 1 回だけ開く)。1本でも開けなければ nil = **fail open**
-    /// (ロックファイルの問題で FM 機能そのものを殺さない)
+    /// (ロックファイルの問題で FM 機能そのものを殺さない)。
+    /// **枠数はここで1回だけ解決し、以後は再評価しない**。`concurrency` は `LocalConfig.load()` で
+    /// 毎回ディスクを読むので、acquire のポーリングごとに評価して値が動いたら fd を開き直す形だと、
+    /// 保持中の flock を閉じて手放す(close は flock を解放する)うえ heldSlots も消え、
+    /// 後の release() が何も返せない。設定の変更はプロセスの起動時に効く
     private static func descriptors() -> [Int32]? {
         stateLock.lock()
         defer { stateLock.unlock() }
+        if let cachedFDs { return cachedFDs }
         let n = concurrency
-        if let cachedFDs, cachedConcurrency == n { return cachedFDs }
-        cachedFDs?.forEach { close($0) }
-        cachedFDs = nil
-        heldSlots.removeAll()
 
         try? FileManager.default.createDirectory(
             at: lockURL(slot: 0).deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -121,7 +121,6 @@ public enum FMLock {
             fds.append(fd)
         }
         cachedFDs = fds
-        cachedConcurrency = n
         return fds
     }
 
@@ -167,7 +166,6 @@ public enum FMLock {
         defer { stateLock.unlock() }
         cachedFDs?.forEach { close($0) }
         cachedFDs = nil
-        cachedConcurrency = nil
         heldSlots.removeAll()
     }
 }

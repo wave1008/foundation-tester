@@ -23,6 +23,13 @@ public enum AndroidHealthProbe {
     /// エラー行数がこれを超えるサイズのログは数えず即・閾値超過扱い(エラー爆発時の読み込み抑制)
     static let metalErrorLogSizeCap = 5_000_000
 
+    /// このプローブの adb 呼び出しの締切(秒)。`api monitor` の既定周期 2 秒のループから呼ばれるので、
+    /// wedge した adbd に無期限に握らせない。値はモニターが simctl screenshot に置く 15 秒
+    /// (ApiMonitorCommand.simctlScreenshot)と同じ。尽きると Shell が子を kill して
+    /// `ShellError.timedOut` を投げる = 各呼び出し側の `try?` が「取得できない」に倒す
+    /// (プローブは判定スキップ・renderMode は nil・sleep/wake は次の周へ)
+    public static let adbTimeoutSeconds: Double = 15
+
     /// clock-skew の既定閾値(秒)。エミュレータの正常な揺らぎは数秒以内、今回の実害は約2時間。
     public static let clockSkewThresholdSeconds: Double = 120
 
@@ -47,7 +54,8 @@ public enum AndroidHealthProbe {
     /// 接続毎にキャッシュし、再検出しない)
     public static func detectRenderMode(serial: String) -> String? {
         guard let adbPath = try? AndroidDriver.findADB() else { return nil }
-        guard let result = try? Shell.run([adbPath, "-s", serial, "shell", "dumpsys", "SurfaceFlinger"]) else {
+        guard let result = try? Shell.run([adbPath, "-s", serial, "shell", "dumpsys", "SurfaceFlinger"],
+                                     timeout: adbTimeoutSeconds) else {
             return nil
         }
         return renderMode(fromSurfaceFlinger: result.output)
@@ -59,11 +67,13 @@ public enum AndroidHealthProbe {
     public static func observeIssues(serial: String, hostNow: Date = Date()) async -> Set<String> {
         guard let adbPath = try? AndroidDriver.findADB() else { return [] }
         var issues: Set<String> = []
-        if let wifi = try? Shell.run([adbPath, "-s", serial, "shell", "cmd", "wifi", "status"]),
+        if let wifi = try? Shell.run([adbPath, "-s", serial, "shell", "cmd", "wifi", "status"],
+                                 timeout: adbTimeoutSeconds),
            wifiDisabled(statusOutput: wifi.output) {
             issues.insert(issueWifiDisabled)
         }
-        if let date = try? Shell.run([adbPath, "-s", serial, "shell", "date", "+%s"]),
+        if let date = try? Shell.run([adbPath, "-s", serial, "shell", "date", "+%s"],
+                                 timeout: adbTimeoutSeconds),
            clockSkewed(dateOutput: date.output, hostNow: hostNow.timeIntervalSince1970,
                        thresholdSeconds: clockSkewThresholdSeconds) == true {
             issues.insert(issueClockSkew)
@@ -154,9 +164,11 @@ public enum AndroidHealthProbe {
             if await EmulatorControl.sleepWake(serial: serial, dwellNs: dwellNs) {
                 // gRPC 経路は dwell 済み(sleep→dwell→wake)。wake 後の整定だけ待つ
             } else if let adbPath {
-                _ = try? Shell.run([adbPath, "-s", serial, "shell", "input", "keyevent", "KEYCODE_SLEEP"])
+                _ = try? Shell.run([adbPath, "-s", serial, "shell", "input", "keyevent", "KEYCODE_SLEEP"],
+                                   timeout: adbTimeoutSeconds)
                 try? await Task.sleep(nanoseconds: dwellNs)
-                _ = try? Shell.run([adbPath, "-s", serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP"])
+                _ = try? Shell.run([adbPath, "-s", serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP"],
+                                   timeout: adbTimeoutSeconds)
             } else {
                 return false
             }
@@ -195,7 +207,8 @@ public enum AndroidHealthProbe {
             return uniformFrame(rgba: rgba)
         }
         guard let adbPath = try? AndroidDriver.findADB(),
-              let cap = try? Shell.runData([adbPath, "-s", serial, "exec-out", "screencap", "-p"]),
+              let cap = try? Shell.runData([adbPath, "-s", serial, "exec-out", "screencap", "-p"],
+                                       timeout: adbTimeoutSeconds),
               cap.status == 0 else {
             return false
         }

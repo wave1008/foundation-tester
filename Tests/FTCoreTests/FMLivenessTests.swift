@@ -165,6 +165,46 @@ final class FMLivenessTests: XCTestCase {
         }
     }
 
+    /// **読み→畳み→書きは flock で排他する**(規律 ④「もう片方の経路を消さない」は複数の
+    /// 書き手が同時に走るときにも成り立たなければならない)。text と vision を別スレッドが
+    /// 交互の状態で書き続け、**自分の record が戻った直後にディスクの自分の経路が自分の観測
+    /// 以上であること**を毎回見る —— 排他が無いと、相手が古い記録を読んで畳んだ rename で
+    /// 自分の経路が1つ前へ戻る(それが見えるのはこの直後の読みだけ)
+    func testConcurrentWritersNeverRevertEachOthersPath() throws {
+        try SharedResource.hostCaches.locked {
+            let base = Date().timeIntervalSince1970
+            let iterations = 200
+            let violations = NSLock()
+            var reverted: [String] = []
+            let group = DispatchGroup()
+            for path in [FMLiveness.Path.text, .vision] {
+                group.enter()
+                DispatchQueue.global().async {
+                    defer { group.leave() }
+                    for i in 0..<iterations {
+                        // 状態を交互にして coalesce(同じ状態の書き直しを畳む)を通さない
+                        let state: FMLiveness.State = i % 2 == 0 ? .alive : .dead
+                        let checkedAt = base + Double(i)
+                        FMLiveness.record(path: path, state: state, source: .probe,
+                                          error: state == .dead ? "boom" : nil,
+                                          now: Date(timeIntervalSince1970: checkedAt))
+                        let onDisk = FMLiveness.read()?[path]?.checkedAt ?? -1
+                        if onDisk < checkedAt {
+                            violations.lock()
+                            reverted.append("\(path.rawValue) #\(i): disk=\(onDisk) < mine=\(checkedAt)")
+                            violations.unlock()
+                        }
+                    }
+                }
+            }
+            group.wait()
+            XCTAssertEqual(reverted, [], "相手の書き込みが自分の経路を古い値へ戻した")
+            let final = FMLiveness.read()
+            XCTAssertEqual(final?.text?.checkedAt, base + Double(iterations - 1))
+            XCTAssertEqual(final?.vision?.checkedAt, base + Double(iterations - 1))
+        }
+    }
+
     /// host-metrics の1行に死活が載る。**生・不明のときは null**(0件と混ぜない)
     func testHostMetricsLineCarriesLiveness() throws {
         let dead = FMLiveness.Reading(

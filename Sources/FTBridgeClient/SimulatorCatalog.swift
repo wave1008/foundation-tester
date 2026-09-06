@@ -53,6 +53,13 @@ public enum SimulatorCatalogError: Error, LocalizedError {
 
 public enum SimulatorCatalog {
 
+    /// simctl の締切(秒)。`api monitor` の既定周期 2 秒のループから呼ばれるので、CoreSimulatorService
+    /// が凍った simctl に無期限に握らせない。値はモニターが simctl screenshot に置く 15 秒
+    /// (ApiMonitorCommand.simctlScreenshot。実測 1.7 秒の混雑時の伸び)と同じ。
+    /// 尽きると Shell が子を kill して `ShellError.timedOut` を投げる = 呼び出し側は simctl 失敗と
+    /// 同じ扱い(モニターは `try?` で空一覧、供給はコマンド名入りのエラーで落ちる)
+    public static let simctlTimeoutSeconds: Double = 15
+
     /// 利用可能な iOS シミュレータ一覧(起動中 → OS 降順 → 名前順)。
     /// CoreSimulator 直叩き(FTCoreSimShim。列挙 6ms vs simctl 567ms・2026-07-25 実測)優先、
     /// 利用不能なら simctl フォールバック。殺しスイッチ: FT_SIMULATOR_CONTROL=simctl
@@ -79,7 +86,8 @@ public enum SimulatorCatalog {
 
     /// simctl 経由(従来経路)。テストが等価性検証に使う
     static func devicesViaSimctl() throws -> [SimDeviceInfo] {
-        let result = try Shell.run(["xcrun", "simctl", "list", "devices", "-j"])
+        let result = try Shell.run(["xcrun", "simctl", "list", "devices", "-j"],
+                                   timeout: simctlTimeoutSeconds)
         guard result.status == 0,
               let data = result.output.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

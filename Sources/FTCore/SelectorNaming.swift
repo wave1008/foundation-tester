@@ -102,6 +102,10 @@ public struct SelectorNaming {
     public static func needsEscaping(_ label: String) -> Bool {
         guard let first = label.first else { return false }
         if "#.=!*".contains(first) { return true }
+        // 先頭と同じ理由で末尾の `*` も見る: `startsWith` 記法として往復してしまい
+        // (`FTSelector.parse("Save*")` → serialize が同じ文字列を返す)、②の綴り往復チェックを
+        // すり抜ける。だが実際の意味は「startsWith("Save")」で「完全一致 "Save*"」ではない
+        if label.hasSuffix("*") { return true }
         if ["&&", ">>", "||", "[", "]", "(", ")", "|"].contains(where: label.contains) {
             return true
         }

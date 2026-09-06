@@ -39,6 +39,8 @@ public final class HybridFallbackDriver: AppDriver {
     /// 続く snapshot がアプリ自身の古い木を返す**(2026-08-06 に実測。
     /// ホーム画面を読もうとして 30 要素のアプリ画面が返った)
     private var delegatedApp = false
+    /// 直前の swipe を実際に受けたドライバ(reachedEdgeOnLastSwipe の読み先)
+    private var lastSwipeDriver: AppDriver?
 
     /// primary を使えない状態か(背面化 or primary が抱えられない対象)
     private var delegating: Bool { appBackgrounded || delegatedApp }
@@ -61,19 +63,27 @@ public final class HybridFallbackDriver: AppDriver {
     /// primary を試し、**このエンジンでは不可(501 / ルート不明 404)のときだけ** fallback へ回す。
     /// 409 は含めない(一時的競合。理由は DriverError.isEngineIncapable)
     private func withFallback<T>(_ operation: (AppDriver) async throws -> T) async throws -> T {
+        try await withFallbackTracking(operation).value
+    }
+
+    /// withFallback と同じ振り分けで、**実際に操作を受けたドライバ**も返す(swipe の端申告など
+    /// 「直前の操作を受けた側」に紐づく読み出しのため)
+    private func withFallbackTracking<T>(
+        _ operation: (AppDriver) async throws -> T
+    ) async throws -> (value: T, performer: AppDriver) {
         // 背面化中・別アプリを見ている間は primary を撃たない
         // (前者は応答が返らずタイムアウト分待たされる。後者は無関係な木を触る)
-        if delegatedApp, let foreignApp { return try await operation(foreignApp) }
-        if delegating { return try await operation(fallback) }
+        if delegatedApp, let foreignApp { return (try await operation(foreignApp), foreignApp) }
+        if delegating { return (try await operation(fallback), fallback) }
         do {
             let result = try await operation(primary)
             fallbackNote = nil
-            return result
+            return (result, primary)
         } catch {
             guard DriverError.isEngineIncapable(error) else { throw error }
             let result = try await operation(fallback)
             fallbackNote = "fell back to XCUITest"
-            return result
+            return (result, fallback)
         }
     }
 
@@ -107,8 +117,25 @@ public final class HybridFallbackDriver: AppDriver {
         try await withFallback { try await $0.rotate(to: orientation) }
     }
 
+    /// **回した先すべてに戻させる**。各ドライバは自分が rotate したときだけ戻す(BridgeClient の
+    /// originalOrientation)ので、withFallback で1本に絞ると fallback/foreignApp が回した回転が
+    /// 残る(primary は「回していない」と答えて no-op)。501(そのエンジンでは不可)は無視し、
+    /// それ以外の失敗は全員に撃ってから最初の1つを投げる。
+    /// primary は delegating 中は撃たない(背面化した in-app は応答せずタイムアウト分固まる)
     public func restoreOrientationIfNeeded() async throws {
-        try await withFallback { try await $0.restoreOrientationIfNeeded() }
+        var targets: [AppDriver] = delegating ? [] : [primary]
+        targets.append(fallback)
+        if let foreignApp { targets.append(foreignApp) }
+        var firstError: Error?
+        for driver in targets {
+            do {
+                try await driver.restoreOrientationIfNeeded()
+            } catch {
+                if DriverError.isEngineIncapable(error) { continue }
+                if firstError == nil { firstError = error }
+            }
+        }
+        if let firstError { throw firstError }
     }
 
     public func press(x: Double, y: Double, duration: Double) async throws {
@@ -116,12 +143,14 @@ public final class HybridFallbackDriver: AppDriver {
     }
 
     public func swipe(_ direction: FTSwipeDirection) async throws {
-        try await withFallback { try await $0.swipe(direction) }
+        lastSwipeDriver = try await withFallbackTracking { try await $0.swipe(direction) }.performer
     }
 
     public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
                       path: FTSwipePath?) async throws {
-        try await withFallback { try await $0.swipe(direction, intent: intent, path: path) }
+        lastSwipeDriver = try await withFallbackTracking {
+            try await $0.swipe(direction, intent: intent, path: path)
+        }.performer
     }
 
     public func home() async throws {
@@ -305,7 +334,9 @@ public final class HybridFallbackDriver: AppDriver {
     /// フォールバックしたことは注記として見せる(黙って別経路へ回ると挙動差の原因が読めない)。
     /// primary 自身の注記があればそちらを優先する(最内の観測を潰さない)
     public var lastActionNote: String? { primary.lastActionNote ?? fallbackNote }
-    /// 端の申告は**素通し**(捨てると端送りが毎回ホストの署名判定まで回る)
-    public var reachedEdgeOnLastSwipe: Bool? { primary.reachedEdgeOnLastSwipe }
+    /// 端の申告は**素通し**(捨てると端送りが毎回ホストの署名判定まで回る)。
+    /// 読むのは**直前の swipe を受けたドライバ**(fallback/foreignApp が送ったのに primary を
+    /// 読むと、古い申告か nil を返す)
+    public var reachedEdgeOnLastSwipe: Bool? { (lastSwipeDriver ?? primary).reachedEdgeOnLastSwipe }
     public var lastLaunchTiming: LaunchTiming? { primary.lastLaunchTiming }
 }

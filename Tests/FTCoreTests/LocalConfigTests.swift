@@ -136,3 +136,62 @@ final class LocalConfigIssuerIdTests: XCTestCase {
         XCTAssertEqual(loaded.defaultProject, "SampleApp")
     }
 }
+
+/// `LocalConfig.save` の原子性。読み手(`FMLock.concurrency` → `load`)は別プロセスから随時読むので、
+/// truncate → 書込の2段になる素の write では途中の空ファイルを読んで decode 失敗 = 空設定へ倒れる
+/// (fmConcurrency が既定へ戻る)。
+final class LocalConfigSaveAtomicityTests: XCTestCase {
+
+    private func tempConfigURL() -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LocalConfigAtomic-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("config.json")
+    }
+
+    /// ソース走査: save の write が `.atomic` を付けている(競合テストは取りこぼしうるので、
+    /// 決定的な砦をこちらに置く)
+    func testSaveWritesAtomically() throws {
+        let source = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/FTCore/LocalConfig.swift"), encoding: .utf8)
+        let saveBody = try XCTUnwrap(source.range(of: "public func save(to url: URL")
+            .map { source[$0.lowerBound...] })
+        XCTAssertTrue(saveBody.contains("options: .atomic"),
+                      "LocalConfig.save の write は .atomic でなければならない")
+    }
+
+    /// 書き手と読み手を同時に回しても、読み手が「途中の状態」(decode 失敗 → 空設定)を1度も見ない。
+    /// 常に fmConcurrency を入れて書くので、空設定を読んだら torn read
+    func testConcurrentLoadNeverObservesATornFile() throws {
+        let url = tempConfigURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        var initial = LocalConfig()
+        initial.fmConcurrency = 1
+        try initial.save(to: url)
+
+        let torn = NSLock()
+        var tornReads = 0
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global().async {
+            defer { group.leave() }
+            for i in 0..<300 {
+                var config = LocalConfig()
+                config.fmConcurrency = 1 + (i % 7)
+                // issuerId で本文を長くして、truncate 後の空の窓を広げる
+                config.issuerId = String(repeating: "x", count: 2_000)
+                try? config.save(to: url)
+            }
+        }
+        group.enter()
+        DispatchQueue.global().async {
+            defer { group.leave() }
+            for _ in 0..<3_000 where LocalConfig.load(from: url).fmConcurrency == nil {
+                torn.lock(); tornReads += 1; torn.unlock()
+            }
+        }
+        group.wait()
+        XCTAssertEqual(tornReads, 0, "読み手が途中まで書かれた config.json を見た")
+    }
+}

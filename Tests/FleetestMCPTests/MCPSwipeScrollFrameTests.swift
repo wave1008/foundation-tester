@@ -127,6 +127,29 @@ final class MCPSwipeScrollFrameDispatchTests: XCTestCase {
         XCTAssertFalse(driver.calls.contains { $0.hasPrefix("swipe(") }, "\(driver.calls)")
     }
 
+    /// **ft_scroll_to も同じ門を通る**(2026-09-06 のバグ出し: ft_swipe だけが型を見ていて、
+    /// ft_scroll_to は bool の scrollFrame を空の ScrollFrameArg に落として全画面で探索していた)。
+    /// 文言まで等号で固定する = 判定が `validateScrollFrameArg` の1箇所であること。
+    /// **ドライバ取得より前に断る**ので、FakeDriver は1回も呼ばれない
+    func testScrollToRefusesAWrongTypedScrollFrameWithTheSameTextAsSwipe() async {
+        var swipeMessage = ""
+        do {
+            _ = try await server.call(tool: "ft_swipe",
+                                      args: ["direction": "up", "scrollFrame": true])
+            XCTFail("型違いの scrollFrame は断るはず")
+        } catch { swipeMessage = error.localizedDescription }
+        do {
+            _ = try await server.call(tool: "ft_scroll_to",
+                                      args: ["selector": "#login_btn", "scrollFrame": true])
+            XCTFail("ft_scroll_to も型違いの scrollFrame を断るはず")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, swipeMessage)
+            XCTAssertTrue(error.localizedDescription.contains("scrollFrame must be"),
+                          error.localizedDescription)
+        }
+        XCTAssertEqual(driver.calls, [], "引数だけで弾ける検証がドライバ取得より後に居る")
+    }
+
     /// **呼び出し元の向きがそのまま指の向きとして届くこと**(2026-08-12 の変異で発見した穴)。
     /// `swipeScrollFrameStep` 単体のテストは純関数の中しか見ないので、**ディスパッチが
     /// 途中で写像をかけても落ちなかった**。経路の始点・終点で見る = 指が実際にどちらへ動いたか。

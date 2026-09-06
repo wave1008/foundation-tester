@@ -11,7 +11,9 @@
 // 1回の quietWait 呼び出しの中で自然に完結する(多段遷移(スプラッシュ→本画面)にも追従する)。
 package com.example.ftbridge;
 
+import android.content.Context;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.view.accessibility.AccessibilityEvent;
 import android.app.UiAutomation;
 
@@ -35,6 +37,34 @@ final class QuietWaiter {
     private static final Set<String> RETARGET_EXCLUDED_PACKAGES = new HashSet<>(Arrays.asList(
             "com.android.systemui"
     ));
+    /** 既定 IME のパッケージ(Settings.Secure.DEFAULT_INPUT_METHOD の `/` より前)。構築時に1回だけ読む。
+     *  キーボードの出現は IME パッケージ発の TYPE_WINDOW_STATE_CHANGED で届くので、これへ追従すると
+     *  「キーボードが出たあとのアプリ側の再レイアウト」が関連イベントでなくなり /tap が早期に返る。
+     *  読めなければ null(パッケージ名の ".inputmethod" だけで判定する) */
+    private final String imePackage;
+
+    QuietWaiter(Context context) {
+        this.imePackage = resolveDefaultImePackage(context);
+    }
+
+    private static String resolveDefaultImePackage(Context context) {
+        try {
+            String id = context == null ? null : Settings.Secure.getString(
+                    context.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD);
+            if (id == null || id.isEmpty()) return null;
+            int slash = id.indexOf('/');
+            return slash > 0 ? id.substring(0, slash) : id;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** 静穏対象の追従から除外するか(RETARGET_EXCLUDED_PACKAGES + 既定 IME + IME らしい名前) */
+    private boolean isRetargetExcluded(String pkg) {
+        return RETARGET_EXCLUDED_PACKAGES.contains(pkg)
+                || pkg.equals(imePackage)
+                || pkg.contains(".inputmethod");
+    }
 
     private final Object lock = new Object();
     /** 現在アクティブな quietWait() 呼び出しの静穏対象パッケージ(null なら全パッケージ関連)。
@@ -68,7 +98,7 @@ final class QuietWaiter {
                 // ウィンドウ切替は送信元パッケージを問わず常に関連(静穏タイマーを延長)。
                 // 除外パッケージでなければ、その瞬間に静穏対象をこのパッケージへ追従させる
                 lastRelevantEventMs = now;
-                if (pkg != null && !RETARGET_EXCLUDED_PACKAGES.contains(pkg)) {
+                if (pkg != null && !isRetargetExcluded(pkg)) {
                     target = pkg;
                 }
                 lock.notifyAll();

@@ -330,7 +330,7 @@ public enum ProjectScaffold {
           "mcpServers": {
             "fleetest": {
               "command": "bash",
-              "args": ["-lc", "WD=\\"$PWD\\"; cd \\"<CLONE_ABS>\\" && swift build --product fleetest-mcp >/dev/null 2>&1 && cd \\"$WD\\" && exec \\"<CLONE_ABS>/.build/debug/fleetest-mcp\\""]
+              "args": ["-c", "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH; WD=\\"$PWD\\"; cd \\"<CLONE_ABS>\\" && swift build --product fleetest-mcp >/dev/null 2>&1 && cd \\"$WD\\" && exec \\"<CLONE_ABS>/.build/debug/fleetest-mcp\\""]
             }
           }
         }

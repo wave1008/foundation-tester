@@ -66,7 +66,19 @@ private final class RecordingDriver: AppDriver, @unchecked Sendable {
     }
     func hideKeyboard() async throws { try record("hideKeyboard") }
     func pressEnter() async throws { try record("pressEnter") }
+    /// 直前の swipe の端申告(nil = 答えられない)
+    var edge: Bool?
+    var reachedEdgeOnLastSwipe: Bool? { edge }
     func swipe(_ direction: FTSwipeDirection) async throws { try record("swipe") }
+    func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
+               path: FTSwipePath?) async throws {
+        try record("swipe(intent)")
+    }
+    func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        try record("rotate")
+        return orientation
+    }
+    func restoreOrientationIfNeeded() async throws { try record("restoreOrientationIfNeeded") }
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
               pressSeconds: Double, durationSeconds: Double) async throws {
         try record("drag")
@@ -277,5 +289,78 @@ final class HybridFallbackDriverTests: XCTestCase {
 
         XCTAssertEqual(stub.paths, ["POST /home", "GET /snapshot"],
                        "home() 後の snapshot は activate(POST /session)を打たないこと: \(stub.paths)")
+    }
+
+    // MARK: - Bug 3: 回転の復元は「回した側」に届く
+
+    /// **fallback が回した回転は fallback が戻す**。各ドライバは自分が rotate したときだけ戻す
+    /// (BridgeClient.originalOrientation)ので、withFallback で primary に聞くと「回していない」で
+    /// no-op になり、デバイスが横向きのまま次のシナリオへ渡る
+    func testRestoreReachesTheFallbackThatPerformedTheRotation() async throws {
+        primary.errors["rotate"] = Self.notCapable
+        _ = try await driver.rotate(to: .landscape)
+        log.entries.removeAll()
+
+        try await driver.restoreOrientationIfNeeded()
+
+        XCTAssertTrue(log.entries.contains("xcui.restoreOrientationIfNeeded"),
+                      "fallback が回した回転を fallback に戻させること: \(log.entries)")
+    }
+
+    /// 501(そのエンジンでは不可)は無視して**残りの全員に撃つ**。primary が 501 でも
+    /// fallback/foreignApp へ届く
+    func testRestoreIgnoresEngineIncapableAndStillReachesEveryOtherDriver() async throws {
+        let foreign = RecordingDriver(name: "foreign", log: log)
+        driver = HybridFallbackDriver(primary: primary, fallback: fallback,
+                                      primaryBundleID: "com.example.app", foreignApp: foreign)
+        primary.errors["restoreOrientationIfNeeded"] = Self.notCapable
+
+        try await driver.restoreOrientationIfNeeded()
+
+        XCTAssertEqual(log.entries, ["inapp.restoreOrientationIfNeeded",
+                                     "xcui.restoreOrientationIfNeeded",
+                                     "foreign.restoreOrientationIfNeeded"])
+    }
+
+    /// 背面化中(home の後)は primary を撃たない(応答せずタイムアウト分固まる)が、
+    /// fallback には戻させる
+    func testRestoreSkipsThePrimaryWhileBackgrounded() async throws {
+        primary.errors["home"] = Self.notCapable
+        try await driver.home()
+        log.entries.removeAll()
+
+        try await driver.restoreOrientationIfNeeded()
+
+        XCTAssertEqual(log.entries, ["xcui.restoreOrientationIfNeeded"])
+    }
+
+    // MARK: - Bug 4: 端の申告は「直前の swipe を受けた側」を読む
+
+    /// **fallback が送ったのに primary を読むと nil**(in-app は答えられないか古い値)。
+    /// 読み先は直前の swipe を実際に受けたドライバ
+    func testReachedEdgeReflectsTheDriverThatPerformedTheLastSwipe() async throws {
+        primary.errors["swipe"] = Self.notCapable
+        primary.edge = nil
+        fallback.edge = true
+
+        try await driver.swipe(.up)
+        XCTAssertEqual(driver.reachedEdgeOnLastSwipe, true,
+                       "fallback が送った swipe の端申告は fallback から読むこと")
+
+        // intent 付きの経路も同じ
+        fallback.edge = false
+        try await driver.swipe(.up, intent: .edge, path: nil)
+        XCTAssertEqual(driver.reachedEdgeOnLastSwipe, false)
+    }
+
+    /// primary が送れたときは従来どおり primary の申告
+    func testReachedEdgeStillComesFromThePrimaryWhenItPerformedTheSwipe() async throws {
+        primary.edge = true
+        fallback.edge = false
+
+        try await driver.swipe(.down)
+
+        XCTAssertEqual(driver.reachedEdgeOnLastSwipe, true)
+        XCTAssertEqual(log.entries, ["inapp.swipe"])
     }
 }

@@ -87,6 +87,20 @@ interface PausedInfo {
   section?: RunStepSection;
 }
 
+/**
+ * 停止要求 → SIGTERM の後も子が生きているときに1回だけ出すカスタムイベント(本体なし)。
+ * 時限 SIGKILL はしない(fleetest の子は終了スクリプト・dispatch.lock 解放を持つ。cli.ts 冒頭の方針)。
+ * 受け手(runHandler.ts の executeDebugRun)が「強制終了」を利用者に選ばせ、FORCE_KILL_REQUEST を送る。
+ */
+export const STILL_RUNNING_EVENT = "fleetest.stillRunning";
+/** 利用者が強制終了を選んだときだけ送られるカスタム要求。子へ SIGKILL する。 */
+export const FORCE_KILL_REQUEST = "fleetest.forceKill";
+/**
+ * stop コマンド → SIGTERM → 「まだ生きている」通知の各段の猶予(ms)。cli.ts の
+ * STILL_RUNNING_NOTICE_MS と同じ 2000 —— 殺す時間ではなく利用者に知らせる閾値。
+ */
+const STOP_GRACE_MS = 2000;
+
 /** kind: "fleetest.scenarioFinished" のカスタムイベント本体(runHandler.ts のデバッグプロファイルが購読する)。 */
 export interface ScenarioFinishedEventBody {
   scenario?: string;
@@ -107,6 +121,8 @@ export class FleetestDebugSession extends DebugSession {
   private nextStopReason: StopReason = "breakpoint";
   private terminatedSent = false;
   private killTimer: ReturnType<typeof setTimeout> | undefined;
+  /** STILL_RUNNING_EVENT を出した後。以降の停止要求(「停止」の2回目 = disconnect)は強制終了として扱う。 */
+  private stillRunningNotified = false;
   private reducerState: RunReducerState = createRunReducerState();
 
   constructor(options: FleetestDebugSessionOptions) {
@@ -434,30 +450,63 @@ export class FleetestDebugSession extends DebugSession {
     });
   }
 
-  /** 停止コマンドを送り、2秒後もプロセスが残っていれば SIGTERM、さらに2秒後 SIGKILL する。 */
+  /**
+   * 停止コマンドを送り、STOP_GRACE_MS 後もプロセスが残っていれば SIGTERM、さらに STOP_GRACE_MS 後も
+   * 残っていれば STILL_RUNNING_EVENT を出して**待ち続ける**(自動では SIGKILL しない)。
+   * 通知後にもう一度停止要求が来たら(VS Code は「停止」の2回目を disconnect で送る)利用者の
+   * 選択とみなして SIGKILL する。通知前の重複要求は無視する(進行中の猶予を仕切り直さない)。
+   */
   private stopDebuggee(): void {
-    if (this.killTimer) {
-      clearTimeout(this.killTimer);
-      this.killTimer = undefined;
-    }
     const child = this.child;
     if (!child) {
       this.finishWithTerminated();
       return;
     }
+    if (this.stillRunningNotified) {
+      this.forceKill();
+      return;
+    }
+    if (this.killTimer) {
+      return;
+    }
     this.writeCommand({ cmd: "stop" });
     this.killTimer = setTimeout(() => {
       this.killTimer = undefined;
-      if (child.exitCode === null && child.signalCode === null) {
-        child.kill("SIGTERM");
-        this.killTimer = setTimeout(() => {
-          this.killTimer = undefined;
-          if (child.exitCode === null && child.signalCode === null) {
-            child.kill("SIGKILL");
-          }
-        }, 2000);
+      if (child.exitCode !== null || child.signalCode !== null) {
+        return;
       }
-    }, 2000);
+      child.kill("SIGTERM");
+      this.killTimer = setTimeout(() => {
+        this.killTimer = undefined;
+        if (child.exitCode !== null || child.signalCode !== null) {
+          return;
+        }
+        this.stillRunningNotified = true;
+        this.forwardStderrLine(t("run.debug.stillRunning"));
+        this.sendEvent(new Event(STILL_RUNNING_EVENT));
+      }, STOP_GRACE_MS);
+    }, STOP_GRACE_MS);
+  }
+
+  private forceKill(): void {
+    const child = this.child;
+    if (child && child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL");
+    }
+  }
+
+  protected override customRequest(
+    command: string,
+    response: DebugProtocol.Response,
+    args: unknown,
+    request?: DebugProtocol.Request,
+  ): void {
+    if (command === FORCE_KILL_REQUEST) {
+      this.forceKill();
+      this.sendResponse(response);
+      return;
+    }
+    super.customRequest(command, response, args, request);
   }
 
   private finishWithTerminated(exitCode?: number): void {

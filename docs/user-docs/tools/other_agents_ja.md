@@ -40,7 +40,7 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 ```json
 "fleetest": {
   "command": "bash",
-  "args": ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
+  "args": ["-c", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
   "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
 }
 ```
@@ -50,7 +50,7 @@ TOML で設定するクライアント(Codex の `~/.codex/config.toml` など)�
 ```toml
 [mcp_servers.fleetest]
 command = "bash"
-args = ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""]
+args = ["-c", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""]
 
 [mcp_servers.fleetest.env]
 FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"

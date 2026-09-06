@@ -289,12 +289,37 @@ public enum ScenarioHost {
             onEvent(event)
         }
 
+        // ランナーを起こせなかった失敗も**記録に残す**(scenarios/*.json → JUnit・`--failed` の材料)。
+        // 子は1行も出さないので、失敗ステップ + scenarioFinished(passed:false) を合成して通常の
+        // 失敗と同じ経路(builder → recorder / LastResultsStore)へ流す。**failureKind は付けない**
+        // —— ドライバにもアプリにも触っていない失敗で、既存の種別(driver-unreachable 等)は
+        // どれも事実と違う(結果 JSON は事実だけ。言えないときは欄ごと省く)
+        let abortBeforeLaunch: (String) -> Bool = { reason in
+            emit(.log("❌ \(reason)"))
+            var step = ScenarioEvent(kind: "step")
+            step.scenario = scenarioID
+            step.index = 0
+            step.status = "failed"
+            step.description = reason
+            emit(step)
+            var finished = ScenarioEvent(kind: "scenarioFinished")
+            finished.scenario = scenarioID
+            finished.passed = false
+            emit(finished)
+            if !dryRun { LastResultsStore.record(project: project, scenarioID: scenarioID, passed: false) }
+            if let recording, let builder {
+                recording.recorder.record(builder.build(
+                    passed: false, timedOut: false, startedAt: startedAt,
+                    durationMs: continuousClockMs(clock.now - clockStart), packageRoot: packageRoot()))
+            }
+            return false
+        }
+
         let runner: URL
         do {
             runner = try runnerURL(project: project)
         } catch {
-            emit(.log("❌ \(error.localizedDescription)"))
-            return false
+            return abortBeforeLaunch(error.localizedDescription)
         }
 
         let process = Process()
@@ -347,8 +372,7 @@ public enum ScenarioHost {
         do {
             try process.run()
         } catch {
-            emit(.log("❌ Cannot start the runner: \(error.localizedDescription)"))
-            return false
+            return abortBeforeLaunch("Cannot start the runner: \(error.localizedDescription)")
         }
         if let debug, let stdinPipe {
             debug.onControl(ScenarioRunControl(handle: stdinPipe.fileHandleForWriting))

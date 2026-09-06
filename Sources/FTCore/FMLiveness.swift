@@ -18,7 +18,9 @@
 //     `unavailable` は逆方向に嘘をつかないので、そちらだけはプローブが根拠に使う
 //  ④ **新しい観測が勝つ**。書き手は複数プロセス(ワーカー・監視・CLI)なので、書く前に
 //     ディスクの `checkedAt` と比べ、古い観測で新しい観測を上書きしない。**片方の経路を
-//     書くときにもう片方を消さない**(読んでから畳んで書く)
+//     書くときにもう片方を消さない**(読んでから畳んで書く。読み→畳み→rename は
+//     `fm-liveness.lock` の flock の内側 —— 書き手同士が同じ古い記録を読んで畳むと、
+//     後に rename した側がもう片方の経路を古い値へ戻す)
 //  ⑤ **FM の実測(FMUsageLedger)には書かない**。死活プローブは「仕事」ではないので、
 //     ここへ書いてもモニターの FM レートは動かない(**測る対象を自分で消費して見せない**)
 //
@@ -167,6 +169,10 @@ public enum FMLiveness {
     }
 
     static var fileURL: URL { directory.appendingPathComponent("fm-liveness.json") }
+    /// 読み→畳み→書きを跨ぐ排他(flock)。書き手は複数プロセス(ワーカーの text と
+    /// host-metrics プローブの vision)なので、rename の原子性だけでは足りない ——
+    /// 両方が同じ古い記録を読んで畳むと、後に rename した側がもう片方の経路を古い値へ戻す(④の違反)
+    static let lockFileName = "fm-liveness.lock"
 
     /// 書き込み先。nil = 書かない。**XCTest のプロセスからは書かない** ——
     /// FMHealth.record は単体テストが合成値で直接叩くので、FM を1回も呼んでいないのに
@@ -213,12 +219,16 @@ public enum FMLiveness {
     @discardableResult
     private static func write(path: Path, verdict: Verdict) -> Bool {
         guard let url = writeURL else { return false }
+        let dir = url.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        // 読み→畳み→rename をひとつの臨界区間にする(lockFileName の doc)。ロックを取れないときは
+        // 書かない —— 書き込み失敗と同じ扱い(握りつぶす)で、片方の経路を消す危険を冒さない
+        guard let lockFD = openLocked(dir.appendingPathComponent(lockFileName)) else { return false }
+        defer { close(lockFD) }  // close が flock も解放する
         // ④ もう片方の経路を消さない・自分より新しい観測は上書きしない
         var record = read(at: url) ?? Record()
         if let existing = record[path], existing.checkedAt > verdict.checkedAt { return false }
         record[path] = verdict
-        try? FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         guard let data = try? JSONEncoder().encode(record) else { return false }
         // 一時ファイル → 同一ディレクトリ内 rename(2)。読み手に途中まで書かれた JSON を見せない
         let tmp = url.deletingLastPathComponent().appendingPathComponent(
@@ -229,6 +239,20 @@ public enum FMLiveness {
             return false
         }
         return true
+    }
+
+    /// ロックファイルを開いて LOCK_EX を取る(ブロッキング。臨界区間は 1 回の read/encode/rename
+    /// なので待ちは短い)。開けない・取れないときは nil。同一プロセスの別スレッドも open ごとに
+    /// 別の open file description になるので互いに排他される
+    private static func openLocked(_ lockURL: URL) -> Int32? {
+        let fd = open(lockURL.path, O_CREAT | O_RDWR, 0o644)
+        guard fd >= 0 else { return nil }
+        while flock(fd, LOCK_EX) != 0 {
+            if errno == EINTR { continue }
+            close(fd)
+            return nil
+        }
+        return fd
     }
 
     // MARK: - 読む

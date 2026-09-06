@@ -7,7 +7,11 @@
 // - key を指定した呼び出しは「未着手の pending は1件だけ」に畳む。連打(例: ファイル監視の
 //   立て続けの refresh 要求)で同じ種類のリクエストがキューに複数積まれるのを防ぐ。
 //   実行中のタスクはキャンセルしない(次の要求は実行中タスクの後に1件だけ積まれる)。
-// - キャンセル(cancelCurrent)は既定で SIGTERM のみを送り、SIGKILL しない。fleetest 自身の子
+// - キャンセルは **その呼び出し自身のハンドル**(`enqueue()` が返す `CliInvocationHandle.cancel`)で行う。
+//   `cancelCurrent()` は「今走っている何か」を殺すので、run の前に list-scenarios / ビルドが
+//   キューに居るとそちらを殺し、続く `api run` は止められないまま走り出す(2026-09-07 の実害)。
+//   run のように前に別の呼び出しが積まれうる経路では使わない。
+// - キャンセルは既定で SIGTERM のみを送り、SIGKILL しない。fleetest 自身の子
 //   (`api run` 等)は自前の後始末(dispatch.lock 解放・終了スクリプト)を持ち、その所要時間は
 //   利用者のスクリプト次第で上限を決められないため待つ側に倒す
 //   (Sources/fleetest/InterruptRelay.swift と同じ方針。刺さったら人が kill -9)。
@@ -95,12 +99,30 @@ export interface CancelOptions {
  */
 const STILL_RUNNING_NOTICE_MS = 2000;
 
+/** `enqueue()` が返す、その1回の呼び出しだけを狙うハンドル。 */
+export interface CliInvocationHandle {
+  /** `invoke()` と同じ Promise。 */
+  result: Promise<CliResult>;
+  /**
+   * この呼び出しだけをキャンセルする。未着手ならキューから外して **spawn せず**
+   * `{cancelled:true, exitCode:null}` で解決し、実行中なら `cancelCurrent()` と同じ規律で
+   * SIGTERM を送る。他の呼び出し(前に積まれたビルド・list-scenarios 等)には触らない。
+   */
+  cancel(options?: CancelOptions): void;
+}
+
 interface QueuedTask {
   key: string | undefined;
   run: () => Promise<CliResult>;
   resolve: (result: CliResult) => void;
   reject: (error: unknown) => void;
+  /** cancel() 済み。drain が取り出しても spawn しない(キューから外す前に drain が掴んだ競合用)。 */
+  cancelled: boolean;
+  /** execute が spawn したプロセス。未着手・終了後は undefined。 */
+  proc: FleetestProcess | undefined;
 }
+
+const CANCELLED_BEFORE_START: CliResult = { json: undefined, exitCode: null, cancelled: true };
 
 export class FleetestCli {
   private readonly queue: QueuedTask[] = [];
@@ -111,13 +133,19 @@ export class FleetestCli {
 
   /**
    * 実行中の CLI プロセスがあれば SIGTERM を送る。実行中のプロセスが無ければ何もしない。
+   * **「今走っているのが自分の呼び出しだ」と分かる呼び手専用**(`api live serve` のように
+   * 自分しか積まない経路)。前に別の呼び出しが積まれうる経路は `enqueue()` のハンドルで
+   * 自分の分だけを止める。
    * 既定では SIGKILL しない(fleetest 自身の子は自前の後始末を持つため待つ側に倒す)。
    * `options.escalateAfterMs` を渡したときだけ従来どおり時限 SIGKILL する
    * (後始末を持たない外部・ヘルパー専用)。`options.onStillRunning` を渡すと、
    * SIGTERM から STILL_RUNNING_NOTICE_MS 後もまだ生きていれば1回だけ通知する。
    */
   cancelCurrent(options?: CancelOptions): void {
-    const proc = this.currentProcess;
+    FleetestCli.terminate(this.currentProcess, options);
+  }
+
+  private static terminate(proc: FleetestProcess | undefined, options?: CancelOptions): void {
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
       return;
     }
@@ -147,22 +175,49 @@ export class FleetestCli {
    * この呼び出しで置き換える(古い方は CliSupersededError で reject される)。
    */
   invoke(binaryPath: string, cwd: string, invocation: CliInvocation, key?: string): Promise<CliResult> {
-    return new Promise<CliResult>((resolve, reject) => {
+    return this.enqueue(binaryPath, cwd, invocation, key).result;
+  }
+
+  /** `invoke()` と同じだが、その呼び出しだけを狙って cancel できるハンドルを返す。 */
+  enqueue(binaryPath: string, cwd: string, invocation: CliInvocation, key?: string): CliInvocationHandle {
+    let task: QueuedTask | undefined;
+    const result = new Promise<CliResult>((resolve, reject) => {
       if (key !== undefined) {
-        const existingIndex = this.queue.findIndex((task) => task.key === key);
+        const existingIndex = this.queue.findIndex((queued) => queued.key === key);
         if (existingIndex !== -1) {
           const [removed] = this.queue.splice(existingIndex, 1);
           removed!.reject(new CliSupersededError());
         }
       }
-      this.queue.push({
+      const queued: QueuedTask = {
         key,
-        run: () => this.execute(binaryPath, cwd, invocation),
+        run: () => this.execute(binaryPath, cwd, invocation, queued),
         resolve,
         reject,
-      });
+        cancelled: false,
+        proc: undefined,
+      };
+      task = queued;
+      this.queue.push(queued);
       void this.drain();
     });
+    return {
+      result,
+      cancel: (options) => {
+        if (!task || task.cancelled) {
+          return;
+        }
+        task.cancelled = true;
+        const index = this.queue.indexOf(task);
+        if (index !== -1) {
+          // 未着手: 外して即解決。spawn は一切しない
+          this.queue.splice(index, 1);
+          task.resolve(CANCELLED_BEFORE_START);
+          return;
+        }
+        FleetestCli.terminate(task.proc, options);
+      },
+    };
   }
 
   private async drain(): Promise<void> {
@@ -174,7 +229,8 @@ export class FleetestCli {
       let task = this.queue.shift();
       while (task) {
         try {
-          const result = await task.run();
+          // 取り出しと cancel() の競合(同じ tick で両方が起きる)は spawn の直前で二重に見る
+          const result = task.cancelled ? CANCELLED_BEFORE_START : await task.run();
           task.resolve(result);
         } catch (error) {
           task.reject(error);
@@ -186,7 +242,7 @@ export class FleetestCli {
     }
   }
 
-  private execute(binaryPath: string, cwd: string, invocation: CliInvocation): Promise<CliResult> {
+  private execute(binaryPath: string, cwd: string, invocation: CliInvocation, task: QueuedTask): Promise<CliResult> {
     return new Promise<CliResult>((resolve, reject) => {
       let proc: FleetestProcess;
       try {
@@ -207,7 +263,11 @@ export class FleetestCli {
         return;
       }
       this.currentProcess = proc;
+      task.proc = proc;
       if (invocation.stdin !== undefined) {
+        // 子が読む前に終わる(または 64KB 超で pipe が詰まったまま終わる)と EPIPE が非同期の
+        // 'error' で来る。リスナーが無いと拡張ホストごと落ちる(他の spawn 箇所と同じ)。
+        proc.stdin?.on("error", () => undefined);
         proc.stdin?.end(invocation.stdin, "utf8");
       }
 
@@ -235,11 +295,13 @@ export class FleetestCli {
 
       proc.on("error", (error) => {
         this.currentProcess = undefined;
+        task.proc = undefined;
         reject(new CliError(t("run.cli.executionError", { message: error.message }), error));
       });
 
       proc.on("close", (exitCode, signal) => {
         this.currentProcess = undefined;
+        task.proc = undefined;
         if (parseNdjson) {
           stdoutParser.end();
         }

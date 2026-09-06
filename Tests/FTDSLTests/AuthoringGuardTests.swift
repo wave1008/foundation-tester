@@ -38,10 +38,12 @@ final class AuthoringGuardTests: XCTestCase {
 
     private func makeCore(driver: AppDriver = StubDriver(), dryRun: Bool = true,
                           platform: String = "ios",
+                          screenLooksLikeEnabled: Bool = true,
                           inventoryURL: URL? = nil) -> FTDriveCore {
         FTDriveCore(driver: driver, platform: platform, app: "com.example.app",
                     scenarioID: "T.S0010", scenarioTitle: "t",
-                    delegate: nil, healingEnabled: false, dryRun: dryRun,
+                    delegate: nil, healingEnabled: false,
+                    screenLooksLikeEnabled: screenLooksLikeEnabled, dryRun: dryRun,
                     healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-authoring-guard-test.json"),
                     selectorInventoryURL: inventoryURL,
@@ -111,6 +113,41 @@ final class AuthoringGuardTests: XCTestCase {
         }
         XCTAssertFalse(suggestions(core).contains { $0.contains("contains no assertions") },
                        "thisIs がアサーションとして数えられていない")
+    }
+
+    /// **本題**: screenLooksLike は実行プロファイルで無効化されると `.skipped` を返す
+    /// (StepExecutor+Assert.swift の `screenLooksLikeEnabled` 門)。何も検証していないのに
+    /// perform() の入口で無条件にカウントすると、この expectation は「アサーション0」の
+    /// 警告を免れてしまう(2026-09-07 修正前の状態)
+    func testSkippedAssertionDoesNotCountTowardVerification() {
+        let core = makeCore(dryRun: false, screenLooksLikeEnabled: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "screenLooksLike が無効") {
+                action { tap("#field") }
+                    .expectation { screenLooksLike("何か") }
+            }
+        }
+        XCTAssertTrue(suggestions(core).contains { $0.contains("contains no assertions") },
+                      "skipped の assert がカウントされ、警告が出なかった")
+    }
+
+    /// 実行(dryRun:false)経路でも通常の assert は引き続き数える(skipped だけを除く修正であること)
+    func testOrdinaryAssertionStillCountsInRealExecution() {
+        let core = makeCore(dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "検証している") {
+                action { tap("#field") }
+                    .expectation { exist("#field") }
+            }
+        }
+        XCTAssertFalse(suggestions(core).contains { $0.contains("contains no assertions") },
+                       "通常の assert が数えられなくなった")
     }
 
     /// 実行されなかった条件ブロックがあれば黙る(中に何が書いてあるか分からないため)。

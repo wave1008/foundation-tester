@@ -40,7 +40,7 @@ absolute path of the `foundation-tester` clone; both occurrences are the same va
 ```json
 "fleetest": {
   "command": "bash",
-  "args": ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
+  "args": ["-c", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
   "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
 }
 ```
@@ -51,7 +51,7 @@ this:
 ```toml
 [mcp_servers.fleetest]
 command = "bash"
-args = ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""]
+args = ["-c", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""]
 
 [mcp_servers.fleetest.env]
 FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"

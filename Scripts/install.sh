@@ -222,9 +222,11 @@ WORK_DIR="$(abspath "$WORK_DIR")"
 # tee の影響を受けない。ログを作れない場合でもインストールは続行する
 LOG_FILE=""
 if [ -n "${FT_INSTALL_LOG:-}" ]; then
-  # 再 exec された2周目。1周目と同じログへ続けて書く
+  # 再 exec された2周目。1周目と同じログへ続けて書く。**ここで tee を立て直さない** ——
+  # `exec bash "$0"` はプロセス像を差し替えるだけで fd 1/2 は1周目の tee のパイプのまま
+  # (tee は同じ pid の子として生き続ける)。2本目の tee を挟むと、その stdout が1本目の
+  # パイプなので**2周目の全行がログに2回**書かれる(2026-09-06 バグ出しで実測)
   LOG_FILE="$FT_INSTALL_LOG"
-  exec > >(tee -a "$LOG_FILE") 2>&1
 elif mkdir -p "$WORK_DIR/.fleetest" 2>/dev/null; then
   LOG_FILE="$WORK_DIR/.fleetest/install-$(date +%Y%m%d-%H%M%S).log"
   exec > >(tee -a "$LOG_FILE") 2>&1
@@ -313,7 +315,9 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
   fi
   if [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
     echo "⚠️ The existing clone has local changes: $TOOL_ROOT"
-    git -C "$TOOL_ROOT" status --short | head -20
+    # `| head -20` は使わない —— 汚れが多いと head が先に閉じて git が SIGPIPE で死に、
+    # pipefail + errexit で [fail] を1行も出さずにスクリプトが止まる。awk は入力を最後まで読む
+    git -C "$TOOL_ROOT" status --short | awk 'NR<=20'
     answer=""
     # curl | bash では stdin がスクリプト自身なので、質問と回答は端末から直接行う。
     # 制御端末が無い(エージェント・CI)と /dev/tty は存在しても open に失敗するので、
@@ -577,12 +581,15 @@ servers = data.setdefault("mcpServers", {})
 previous = servers.get("fleetest", {}).get("env", {}).get("FT_TOOL_ROOT")
 # cwd は受け手パッケージ(TestProjects/ の在り処)、FT_TOOL_ROOT はツール本体(ブリッジ資産)。
 # ビルドのため TOOL_ROOT へ cd したあと exec 前に元の cwd へ戻すのが必須。
-# ランチャは Scripts/mcp-server.sh(鮮度判定・ログ・失敗の可視化はあちら)。
+# ランチャは Scripts/mcp-server.sh(鮮度判定・ログ・失敗の可視化・PATH の補正はあちら)。
 # **1行のシェル式を埋め込まない**: 起動のたびに約8秒の no-op ビルドを払い、失敗しても
 # /dev/null で黙って起動しなかった(2026-08-06 の外部フィードバック)
+# **`-l` を付けない**: ログインシェルは ~/.bash_profile を読むので、そこの `echo` 1つが
+# JSON-RPC より前に stdout へ混ざりハンドシェイクが壊れる。swift / xcrun / Homebrew の PATH は
+# mcp-server.sh 自身が補う
 servers["fleetest"] = {
     "command": "bash",
-    "args": ["-lc", 'exec "%s/Scripts/mcp-server.sh"' % tool_root],
+    "args": ["-c", 'exec "%s/Scripts/mcp-server.sh"' % tool_root],
     "env": {"FT_TOOL_ROOT": tool_root},
 }
 with open(path, "w") as f:

@@ -19,8 +19,12 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 final class BridgeRouter implements BridgeHttpServer.Handler {
 
@@ -29,6 +33,22 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     private static final long LAUNCH_CAP_MS = 10_000;
     /** stableActivePackage() の安定待ち上限(ms)。クロスパッケージ遷移の検知用 */
     private static final long STABLE_PACKAGE_BUDGET_MS = 100;
+    /**
+     * アプリの上に乗る「システムのダイアログ」のパッケージ。**force-stop の対象にしない**
+     * (殺すと権限フローが壊れ、systemui なら端末ごと巻き添え)。handleLaunch の前面判定が
+     * これらで詰まったときは「アプリは前面に居て、その上にダイアログが乗っている」として成功を
+     * 返す(以後はホストの system-alert 処理が引き取る)。
+     * 先頭5つは Sources/fleetest-mcp/MCPServer+Driver.swift の `systemDialogPackages` と同じ集合
+     * (同期相手。片方だけ変えない = BridgeRouterGuardsJavaSyncTests)。
+     * com.android.chrome はこちらだけの追加: Custom Tab はアプリの上に別プロセスの全画面が乗る形で、
+     * force-stop するとアプリ側の遷移が壊れる。
+     */
+    static final Set<String> SYSTEM_DIALOG_PACKAGES = new HashSet<>(Arrays.asList(
+            "com.google.android.permissioncontroller", "com.android.permissioncontroller",
+            "com.android.packageinstaller", "com.google.android.packageinstaller",
+            "com.android.systemui",
+            "com.android.chrome"
+    ));
 
     static final class BridgeException extends RuntimeException {
         final int status;
@@ -39,8 +59,10 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     }
 
     private final Instrumentation instrumentation;
-    /** UI 整定検知(操作後の固定 sleep の代替)。構築時に UiAutomation へ1回だけ登録する */
-    private final QuietWaiter quietWaiter = new QuietWaiter();
+    /** UI 整定検知(操作後の固定 sleep の代替)。構築時に UiAutomation へ1回だけ登録する。
+     *  既定 IME の読み出しに context が要るのでコンストラクタで作る(フィールド初期化子では
+     *  instrumentation がまだ null) */
+    private final QuietWaiter quietWaiter;
     /** 直近スナップショットの ref → 中心座標(iOS ランナーの refFrames と同じ役割) */
     private Map<Integer, double[]> refCenters = new HashMap<>();
     private Map<Integer, String> refIds = new HashMap<>();
@@ -52,6 +74,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     BridgeRouter(Instrumentation instrumentation) {
         this.instrumentation = instrumentation;
         this.versionCode = resolveVersionCode(instrumentation);
+        this.quietWaiter = new QuietWaiter(instrumentation.getContext());
         UiAutomation ua = ua();
         ua.setOnAccessibilityEventListener(quietWaiter.listener());
         // getWindows() は既定でこのフラグが立っていないと空を返す(IME ウィンドウの bounds が
@@ -298,9 +321,10 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
 
     private BridgeHttpServer.Response handleSwipe(JSONObject body) {
         String direction = body.optString("direction");
-        double w = lastScreen.width() > 0 ? lastScreen.width() : 1080;
-        double h = lastScreen.height() > 0 ? lastScreen.height() : 2400;
-        double cx = w / 2, cy = h / 2;
+        Rect screen = screenRect();
+        double w = screen.width();
+        double h = screen.height();
+        double cx = screen.left + w / 2, cy = screen.top + h / 2;
         boolean vertical = direction.equals("up") || direction.equals("down");
         // 可変パラメータはホストが用途(FTSwipeIntent)に応じて送る(契約は FTCore/BridgeDTO.SwipeRequest)。
         // distance の既定は**軸で違う**(縦 0.4 = 0.7→0.3 / 横 0.6 = 0.8→0.2。v40 までの固定値と同一)。
@@ -323,10 +347,10 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             return ok();
         }
         switch (direction) {
-            case "up": from = new double[]{cx, h * (0.5 + half)}; to = new double[]{cx, h * (0.5 - half)}; break;
-            case "down": from = new double[]{cx, h * (0.5 - half)}; to = new double[]{cx, h * (0.5 + half)}; break;
-            case "left": from = new double[]{w * (0.5 + half), cy}; to = new double[]{w * (0.5 - half), cy}; break;
-            case "right": from = new double[]{w * (0.5 - half), cy}; to = new double[]{w * (0.5 + half), cy}; break;
+            case "up": from = new double[]{cx, screen.top + h * (0.5 + half)}; to = new double[]{cx, screen.top + h * (0.5 - half)}; break;
+            case "down": from = new double[]{cx, screen.top + h * (0.5 - half)}; to = new double[]{cx, screen.top + h * (0.5 + half)}; break;
+            case "left": from = new double[]{screen.left + w * (0.5 + half), cy}; to = new double[]{screen.left + w * (0.5 - half), cy}; break;
+            case "right": from = new double[]{screen.left + w * (0.5 - half), cy}; to = new double[]{screen.left + w * (0.5 + half), cy}; break;
             default:
                 throw new BridgeException(400, "direction must be one of up/down/left/right");
         }
@@ -358,9 +382,10 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         if (!(scale > 0) || scale == 1 || Double.isInfinite(scale)) {
             throw new BridgeException(400, "scale must be positive and not 1 (received: " + scale + ")");
         }
-        double left = lastScreen.left, top = lastScreen.top;
-        double width = lastScreen.width() > 0 ? lastScreen.width() : 1080;
-        double height = lastScreen.height() > 0 ? lastScreen.height() : 2400;
+        Rect screen = screenRect();
+        double left = screen.left, top = screen.top;
+        double width = screen.width();
+        double height = screen.height();
         JSONObject frame = body.optJSONObject("frame");
         if (frame != null) {
             left = frame.optDouble("x", left);
@@ -451,6 +476,13 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             String pkg = root != null && root.getPackageName() != null
                     ? root.getPackageName().toString() : null;
             if (bundleID.equals(pkg)) break;
+            // アクティブウィンドウはシステムのダイアログだが、その下にアプリのウィンドウが見えている
+            // = アプリは前面に来ている(権限ダイアログが起動直後に出る形)。上限まで待たずに成功
+            if (pkg != null && SYSTEM_DIALOG_PACKAGES.contains(pkg) && hasWindowOf(bundleID)) {
+                android.util.Log.i(BridgeInstrumentation.TAG, "launch: " + bundleID
+                        + " is in front under a system dialog (" + pkg + ")");
+                break;
+            }
             if (SystemClock.uptimeMillis() >= deadline) {
                 return false;
             }
@@ -470,8 +502,19 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         if (attemptLaunch(bundleID)) return ok();
         // 前面判定が別パッケージの居座りで詰んだ。前面を掃除して1回だけ再試行する。
         // force-stop が bundleID しか殺さないと以後の launchApp が全滅する既知の罠(design.md §8.7)。
-        // 掃除対象は bundleID 自身・ブリッジ自身・HOME ランチャーを除いた前面パッケージのみ。
+        // 掃除対象は bundleID 自身・ブリッジ自身・HOME ランチャー・システムのダイアログ
+        // (SYSTEM_DIALOG_PACKAGES)を除いた前面パッケージのみ。
         String stuck = activePackage();
+        if (stuck != null && SYSTEM_DIALOG_PACKAGES.contains(stuck) && hasWindowOf(bundleID)) {
+            // 権限ダイアログ・Custom Tab 等がアプリの上に乗っている(アプリの窓は見えている)。
+            // 殺すとアプリの権限フローが壊れ、再試行の force-stop がアプリごと畳んで「前面に来ない」を
+            // 作る。前面として成功を返し、ダイアログの扱いはホスト(system-alert の注記・操作)に委ねる。
+            // **アプリの窓が見えない全画面の居座り**(設定の上の SafetyCenter = design.md §8.7)は
+            // 従来どおり下の掃除+再試行へ落とす
+            android.util.Log.i(BridgeInstrumentation.TAG, "launch: " + bundleID
+                    + " reported as in front under a system dialog (" + stuck + "); not force-stopping");
+            return ok();
+        }
         String self = instrumentation.getContext().getPackageName();
         String home = resolveHomePackage();
         if (stuck != null && !stuck.equals(bundleID) && !stuck.equals(self) && !stuck.equals(home)) {
@@ -545,6 +588,67 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         String pkg = root != null && root.getPackageName() != null
                 ? root.getPackageName().toString() : null;
         return pkg != null ? pkg : sessionBundleID;
+    }
+
+    /** bundleID のウィンドウが可視ウィンドウ一覧(getWindows。FLAG_RETRIEVE_INTERACTIVE_WINDOWS 前提)に
+     *  居るか。全画面で覆われたアクティビティは一覧に載らないので「ダイアログ越しに見えている」の証拠になる */
+    private boolean hasWindowOf(String bundleID) {
+        try {
+            List<android.view.accessibility.AccessibilityWindowInfo> windows = ua().getWindows();
+            if (windows == null) return false;
+            for (android.view.accessibility.AccessibilityWindowInfo window : windows) {
+                AccessibilityNodeInfo root = window.getRoot();
+                if (root != null && root.getPackageName() != null
+                        && bundleID.equals(root.getPackageName().toString())) {
+                    return true;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // 一覧が取れない環境では証拠なし(上限まで待つ従来の経路へ)
+        }
+        return false;
+    }
+
+    /**
+     * 既定スワイプ・ピンチの基準矩形。直近の /snapshot が報告した screen があればそれ、無ければ
+     * (ブリッジ起動後まだ撮っていない `launchApp → swipe` の形)ディスプレイの実寸を引く。
+     * 固定の既定値は置かない —— 1080x2400 を仮定すると別解像度の端末で座標が画面外へ出て
+     * 黙って空振りしていた。取り方は SnapshotBuilder.displayBounds と同じ
+     * (API 30+: getMaximumWindowMetrics / 未満: getRealMetrics。minSdk 26)。どちらも取れなければ
+     * アクティブウィンドウの根の矩形、それも無ければ 500(推測で撃たない)。
+     */
+    private Rect screenRect() {
+        if (lastScreen.width() > 0 && lastScreen.height() > 0) return lastScreen;
+        try {
+            android.content.Context ctx = instrumentation.getContext();
+            android.view.WindowManager wm = ctx == null ? null
+                    : (android.view.WindowManager) ctx.getSystemService(android.content.Context.WINDOW_SERVICE);
+            if (wm != null) {
+                if (Build.VERSION.SDK_INT >= 30) {
+                    Rect bounds = wm.getMaximumWindowMetrics().getBounds();
+                    if (bounds.width() > 0 && bounds.height() > 0) return bounds;
+                } else {
+                    android.view.Display display = wm.getDefaultDisplay();
+                    if (display != null) {
+                        android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
+                        display.getRealMetrics(metrics);
+                        if (metrics.widthPixels > 0 && metrics.heightPixels > 0) {
+                            return new Rect(0, 0, metrics.widthPixels, metrics.heightPixels);
+                        }
+                    }
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // 取れなければウィンドウの根へ
+        }
+        AccessibilityNodeInfo root = ua().getRootInActiveWindow();
+        if (root != null) {
+            Rect bounds = new Rect();
+            root.getBoundsInScreen(bounds);
+            if (bounds.width() > 0 && bounds.height() > 0) return bounds;
+        }
+        throw new BridgeException(500,
+                "cannot determine the display size for the gesture. Run GET /snapshot first");
     }
 
     /** HOME ランチャーのパッケージ名(復旧時の前面掃除で除外するため)。解決不能なら null */

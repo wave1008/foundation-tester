@@ -727,7 +727,11 @@ extension StepExecutor {
             // 分岐させる契約)。自己修復の対象にもしない — 掴めないことが答えになり得るコマンドで
             // 別要素へ誤リダイレクトすると、空のはずが値を持って返る
             return StepOutcome(status: .skipped(Self.selectNotFoundReason))
-        } else if let fingerprint, let found = fingerprint.resolve(in: snapshot.elements) {
+        } else if let fingerprint,
+                  let found = fingerprint.resolve(in: snapshot.elements.filter {
+                      !Self.hasClampedCoordinates($0, in: snapshot.elements,
+                                                  inferring: step.containerInference ?? true)
+                  }) {
             // ロケータ指紋: 前回このロケータが解決できた要素の type+label が現在の木に
             // **ちょうど1件**だけ一致したので、FM を呼ばず決定的に解決する。0件・複数件のときは
             // `resolve(in:)` が nil を返し、下の FM ヒールへそのまま落ちる(採否は二値のみ)
