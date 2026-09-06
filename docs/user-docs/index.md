@@ -120,6 +120,7 @@ three produce the same `.swift` scenarios.
 - [Writing robust scenarios](in_action/writing_robust_scenarios.md)
 - [Running on CI](in_action/ci.md)
 - [Remote runners](in_action/remote_runners.md)
+- [Network exposure and security](in_action/network_security.md)
 - [Troubleshooting](in_action/troubleshooting.md)
 
 ## Reference

@@ -586,7 +586,7 @@ enum BridgeStatusReport {
     static func render(_ found: [BridgeDiscovery.Found], requested: UInt16) -> String {
         guard !found.isEmpty else {
             return "no bridge is running on this machine"
-                + " (ports \(BridgeDiscovery.portRange.lowerBound)-\(BridgeDiscovery.portRange.upperBound - 1) were scanned)."
+                + " (ports \(BridgeDiscovery.scannedPortsDescription) were scanned)."
                 + " Start one with: fleetest bridge up"
         }
         // **要求されたポートに印を付ける**(--port を渡した人が自分の1本を見失わないため)

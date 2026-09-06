@@ -152,8 +152,15 @@ public enum BridgeDiscovery {
             + " \(found.label). Pass port: or profile: to pin it."
     }
 
+    /// 走査したポート範囲の名乗り。**描くのはここ1箇所**(同じ事実を2箇所の文字列で描いていて、
+    /// 片方が `upperBound - 1` で1本狭く名乗っていた。portRange は ClosedRange = 上端も走査対象)。
+    /// 呼び手: このファイルの noBridgeMessage / fleetest の BridgeStatusReport.render
+    public static var scannedPortsDescription: String {
+        "\(portRange.lowerBound)-\(portRange.upperBound)"
+    }
+
     public static func noBridgeMessage(preferred: UInt16) -> String {
-        "no iOS bridge is running (scanned ports \(portRange.lowerBound)-\(portRange.upperBound))."
+        "no iOS bridge is running (scanned ports \(scannedPortsDescription))."
             + " Start one with `fleetest bridge up --device \"<simulator name>\"`,"
             + " or pass profile: to use a run profile's device."
     }
