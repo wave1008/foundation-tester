@@ -189,7 +189,7 @@ public enum XCUIBridgeResolver {
                 do {
                     let endpoint = try await IOSDeviceTransport.establish(
                         port: port, deviceUDID: device0.udid, repoRoot: repoRoot,
-                        wired: device0.wired, log: logger)
+                        wired: device0.wired, token: launcher.bridgeToken, log: logger)
                     host = endpoint.host
                 } catch {
                     try? launcher.stop()

@@ -77,9 +77,11 @@ public enum IOSDeviceTransport {
     /// deviceUDID は usb のトンネル先指定に使う(lan では未使用)
     /// wired: USB 接続か(devicectl の transportType == "wired")。false なら usb は選べない
     /// `wired` に既定値を置かない —— 既定 true に頼った呼び出し元(live serve の自動起動)が
-    /// LAN 接続の iPhone を iproxy(USB)で待ち、必ず失敗していた(2026-09-07 実機で確認)
+    /// LAN 接続の iPhone を iproxy(USB)で待ち、必ず失敗していた(2026-09-07 実機で確認)。
+    /// `token` にも既定値を置かない —— 呼び忘れは LAN bind のブリッジを認証なしで晒す
+    /// (BridgeAPI 参照)。呼び出し元は `launcher.bridgeToken` を渡す
     public static func establish(port: UInt16, deviceUDID: String, repoRoot: URL,
-                                 wired: Bool,
+                                 wired: Bool, token: String?,
                                  timeoutSeconds: TimeInterval = 180,
                                  log: @escaping (String) -> Void = { _ in }) async throws -> BridgeEndpoint {
         let endpoint: BridgeEndpoint
@@ -93,8 +95,9 @@ public enum IOSDeviceTransport {
             endpoint = BridgeEndpoint(
                 host: try await waitForAnnouncedAddress(
                     port: port, repoRoot: repoRoot, timeoutSeconds: timeoutSeconds, log: log),
-                port: port)
+                port: port, token: token)
         case .usb:
+            // usb はループバックを維持する(トンネルはホスト内で完結)ので認証は不要
             log("transport usb (iproxy USB tunnel)")
             try startIproxy(hostPort: port, devicePort: port,
                             deviceUDID: deviceUDID, repoRoot: repoRoot)

@@ -13,6 +13,7 @@
 //   WIDTH(uint16 BE) HEIGHT(uint16 BE) LEN(uint32 BE) JPEG(LEN バイト)の繰り返し。
 // stdin EOF = 親がパイプを閉じた = 終了指示(常駐ヘルパー共通規約。他 2 ヘルパーと同じ)。
 
+import FTBridgeClient
 import Foundation
 import FTCore
 
@@ -55,10 +56,14 @@ func parseOptions() -> Options {
 /// completion ハンドラが書き込む結果の受け皿。不変条件: signal 前に書き、wait 後に読む
 private final class ResultBox: @unchecked Sendable { var data: Data? }
 
-/// iOS: 常駐ブリッジの /screenshot(PNG)。実機は host が iproxy のループバックか LAN IP になる
-func captureIOS(_ o: Options) -> Data? {
+/// iOS: 常駐ブリッジの /screenshot(PNG)。実機は host が iproxy のループバックか LAN IP になる。
+/// LAN bind(実機)は認証が要る(BridgeAPI 参照) —— token が無ければ 401 になり、そのフレームが
+/// 落ちるだけで黙って壊れる(--token のような CLI 引数は足さない。BridgeClient.swift と同じ理由:
+/// argv は `ps -E` で共有ランナー機の全ユーザーに見える)
+func captureIOS(_ o: Options, token: String?) -> Data? {
     guard let url = URL(string: "http://\(o.host):\(o.port)/screenshot") else { return nil }
     var request = URLRequest(url: url)
+    if let token { request.setValue(token, forHTTPHeaderField: BridgeAPI.bridgeTokenHeader) }
     // fps 間隔より長く待たない(詰まったフレームを溜めるより落とす方がライブ表示として正しい)
     request.timeoutInterval = max(2.0, 2.0 / max(o.fps, 0.1))
     let semaphore = DispatchSemaphore(value: 0)
@@ -134,6 +139,12 @@ Thread.detachNewThread {
 signal(SIGTERM) { _ in exit(0) }
 signal(SIGINT) { _ in exit(0) }
 
+// 起動時に一度だけ台帳(.fleetest/bridge-<port>.endpoint)から読む。取れなければトークン無しで
+// 進む(LAN bind なら 401 で見えるので黙って壊れない。BridgeClient.swift と同じ規律)
+let bridgeToken = (try? RepoRoot.find()).flatMap {
+    BridgeEndpoint.load(port: options.port, repoRoot: $0).token
+}
+
 let interval = 1.0 / max(options.fps, 0.1)
 // 連続失敗は「デバイス消失」とみなして落とす(拡張側の常駐監視が再起動を判断する)。
 // 単発の失敗で落とすと、端末のスリープ復帰やブリッジの一時的な取り込み中で無駄に再起動が走る
@@ -142,7 +153,7 @@ let maxConsecutiveFailures = 10
 
 while true {
     let started = Date()
-    let png = options.platform == "ios" ? captureIOS(options) : captureAndroid(options)
+    let png = options.platform == "ios" ? captureIOS(options, token: bridgeToken) : captureAndroid(options)
     if let png, let (jpeg, width, height) = ImageDownscale.jpeg(
         png: png, maxWidth: options.maxWidth, quality: options.quality) {
         consecutiveFailures = 0

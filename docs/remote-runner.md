@@ -1174,7 +1174,11 @@ plist を `~/Library/LaunchAgents` に配置+load する(**ユーザー空間な
   スクリーンショット・録画・ファイルパスはすべて**外部入力として扱う**。具体的な規律:
   - 回収したレポート(HTML 等)を **webview で無検証に開かない**(§11 の「クリック時に
     回収して開く」の実装地点。外部ブラウザで開く / サニタイズする / テキストとして出す)
-  - 回収パスは**書き込み前に検証**(展開先が想定ディレクトリ配下に解決されること)
+  - 回収パスは**書き込み前に検証**(展開先が想定ディレクトリ配下に解決されること)。
+    回収の rsync には **`--safe-links`**(宛先の外を指すシンボリックリンクを受けない)を付ける
+    —— §15.3 の既定では `results/` は同僚全員が書けるので、入力は「信頼するランナー」ではなく
+    共有ディレクトリとして扱う。**送信側(手元 → リモート)には付けない**(受け手の
+    `TestProjects/` 内の正当なリンクを落とすため)
   - 中継 NDJSON は既存の型検証を通してから描画する(不正行は捨てる)
 - **§7 の適合チェックは認証ではない**。rev・ToolchainFingerprint・machineName は
   **リモートが生成した文字列**であり、敵対的ホストは任意に詐称できる。あれは**版スキュー
@@ -1194,6 +1198,24 @@ plist を `~/Library/LaunchAgents` に配置+load する(**ユーザー空間な
 - 現状これが実害に至っていないのは、未知ホストへの ssh がホスト鍵検証で接続段階に
   失敗し、**rsync 転送(= プロジェクトファイルの送信)に到達しない**ため。
   裏を返せば、**ホスト鍵検証を緩めた瞬間にこれは実害化する**(15.1 の禁止事項と同根)
+
+#### 15.2.1 `fleetest.binaryPath` だけは window スコープのまま(境界は Workspace Trust)
+
+同じ「ワークスペース設定からの乗っ取り」の形が **実行ファイルのパス**にもある ——
+開いたフォルダの `.vscode/settings.json` が `fleetest.binaryPath` を任意の実行ファイルへ
+向けられ、activate 直後の `checkFleetestCompat`(`src/extension.ts`)がそれを spawn する。
+既定値 `.build/debug/fleetest` もワークスペース相対なので、**設定を書き換えなくても**
+その名前のファイルを置いたリポジトリを開けば動く。
+
+**それでも `"scope": "machine"` にはできない**: 受け手のセットアップ(`ProjectScaffold` /
+`InitCommand`)がこの値を `.vscode/settings.json` へ書くので、machine にすると
+セットアップ直後の拡張が CLI を見つけられない。
+
+よって境界は **VSCode の Workspace Trust 1本**に置く。`package.json` の
+`capabilities.untrustedWorkspaces.supported = false` を**明示的に宣言する**(宣言が無くても
+既定で制限モードでは無効化されるが、暗黙に頼ると気づかず外れる)。
+`vscode-fleetest/test/workspaceTrust.test.mjs` が宣言の消失と、
+「binaryPath を machine にして直す」誤った修正の両方を落とす。
 
 ### 15.3 共有ラボの identity(用途②を採るときの明示的選択)
 

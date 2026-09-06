@@ -907,7 +907,7 @@ public struct BridgeProvisioner {
                     do {
                         endpoint = try await IOSDeviceTransport.establish(
                             port: port, deviceUDID: sim.udid, repoRoot: repoRoot,
-                            wired: sim.wired, log: { log("\(name): \($0)") })
+                            wired: sim.wired, token: launcher.bridgeToken, log: { log("\(name): \($0)") })
                     } catch {
                         // 到達手段が確立できなくても xcodebuild は実機で走り続ける。止めないと
                         // 失敗のたびに常駐ランナーとポートが実機に溜まる(実測で 5 本残った)

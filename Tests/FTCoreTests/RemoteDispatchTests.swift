@@ -427,22 +427,44 @@ final class RemoteDispatchTests: XCTestCase {
                 project: "E2E", layout: layout, sshTarget: "user@host",
                 localProjectsDir: "/local/Projects"),
             [
-                "-az",
+                "-az", "--safe-links",
                 "user@host:/Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E/results/",
                 "/local/Projects/E2E/results/",
             ])
     }
 
     /// --delete が無いこと(ローカルの results を巻き添えで消さない)と、両パスとも末尾スラッシュを
-    /// 保つこと(rsync のディレクトリ中身コピー契約)を確認
+    /// 保つこと(rsync のディレクトリ中身コピー契約)を確認。**位置ではなく末尾2要素で見る** ——
+    /// オプションを足したときに添字がずれてこの検証が別の物を見るのを避ける
     func testResultsRsyncArgsOmitsDeleteAndKeepsTrailingSlashes() {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let args = RemoteArtifactCollection.resultsRsyncArgs(
             project: "E2E", layout: layout, sshTarget: "user@host",
             localProjectsDir: "/local/Projects")
         XCTAssertFalse(args.contains("--delete"), "\(args)")
-        XCTAssertTrue(args[1].hasSuffix("/"), args[1])
-        XCTAssertTrue(args[2].hasSuffix("/"), args[2])
+        let paths = Array(args.suffix(2))
+        XCTAssertTrue(paths[0].hasSuffix("/"), paths[0])
+        XCTAssertTrue(paths[1].hasSuffix("/"), paths[1])
+    }
+
+    /// 回収は「信頼するランナー」ではなく共有ディレクトリからの入力(§15.3 は同一 UNIX ユーザー)。
+    /// 宛先の外を指すシンボリックリンクを受けないことを両方の回収経路で固定する
+    func testCollectionRsyncArgsRefuseUnsafeSymlinks() {
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        XCTAssertTrue(RemoteArtifactCollection.resultsRsyncArgs(
+            project: "E2E", layout: layout, sshTarget: "user@host",
+            localProjectsDir: "/local/Projects").contains("--safe-links"))
+        XCTAssertTrue(RemoteArtifactCollection.recordsOnlyRsyncArgs(
+            project: "E2E", layout: layout, sshTarget: "user@host",
+            localProjectsDir: "/local/Projects").contains("--safe-links"))
+    }
+
+    /// 送信(手元 → リモート)には付けない —— 受け手側の正当なシンボリックリンクを落とすため
+    func testTransferRsyncArgsDoNotUseSafeLinks() {
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        XCTAssertFalse(RemoteTransferPlan.rsyncArgs(
+            project: "E2E", localProjectsDir: "/local/Projects", layout: layout,
+            sshTarget: "user@host", ignore: .none).contains("--safe-links"))
     }
 
     // MARK: - RemoteArtifactCollection.recordsOnlyRsyncArgs
@@ -455,7 +477,7 @@ final class RemoteDispatchTests: XCTestCase {
             project: "E2E", layout: layout, sshTarget: "user@host",
             localProjectsDir: "/local/Projects")
         XCTAssertEqual(args, [
-            "-az", "--exclude", "recordings/",
+            "-az", "--safe-links", "--exclude", "recordings/",
             "user@host:/Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E/results/",
             "/local/Projects/E2E/results/",
         ])

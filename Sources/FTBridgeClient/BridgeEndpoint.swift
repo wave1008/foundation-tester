@@ -15,15 +15,21 @@ public struct BridgeEndpoint: Sendable, Hashable, Codable {
 
     public let host: String
     public let port: UInt16
+    /// LAN bind(実機)のときだけ非 nil。BridgeAPI.bridgeTokenHeader で送る値
+    public let token: String?
 
-    public init(host: String = BridgeEndpoint.loopbackHost, port: UInt16) {
+    public init(host: String = BridgeEndpoint.loopbackHost, port: UInt16, token: String? = nil) {
         self.host = host
         self.port = port
+        self.token = token
     }
 
     public var isLoopback: Bool { host == Self.loopbackHost }
 
     // MARK: - 永続化(.fleetest/bridge-<port>.endpoint)
+    //
+    // ファイル形式: 1行目=host / 2行目=token(あれば)。2行目が無い旧形式は token=nil として
+    // 読む(更新前から動いているブリッジと共存するため)。
 
     static func fileURL(port: UInt16, repoRoot: URL) -> URL {
         repoRoot.appendingPathComponent(".fleetest/bridge-\(port).endpoint")
@@ -39,17 +45,22 @@ public struct BridgeEndpoint: Sendable, Hashable, Codable {
         }
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? host.write(to: url, atomically: true, encoding: .utf8)
+        var contents = host
+        if let token { contents += "\n" + token }
+        try? contents.write(to: url, atomically: true, encoding: .utf8)
     }
 
     /// 記録が無ければループバック(= シミュレータ・Android の既定)
     public static func load(port: UInt16, repoRoot: URL) -> BridgeEndpoint {
-        guard let host = try? String(contentsOf: fileURL(port: port, repoRoot: repoRoot),
-                                     encoding: .utf8) else {
+        guard let raw = try? String(contentsOf: fileURL(port: port, repoRoot: repoRoot),
+                                    encoding: .utf8) else {
             return BridgeEndpoint(port: port)
         }
-        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
-        return BridgeEndpoint(host: trimmed.isEmpty ? loopbackHost : trimmed, port: port)
+        let lines = raw.components(separatedBy: "\n")
+        let host = lines[0].trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = lines.count > 1 ? lines[1].trimmingCharacters(in: .whitespacesAndNewlines) : nil
+        return BridgeEndpoint(host: host.isEmpty ? loopbackHost : host, port: port,
+                              token: (token?.isEmpty ?? true) ? nil : token)
     }
 
     public static func forget(port: UInt16, repoRoot: URL) {

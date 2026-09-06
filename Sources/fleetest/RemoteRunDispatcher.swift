@@ -518,7 +518,8 @@ struct RemoteRunDispatcher {
         let localReports = project.reportsDir
         try? FileManager.default.createDirectory(at: localReports, withIntermediateDirectories: true)
         let remoteReports = "\(host.sshTarget):\(remoteReportDir)/"
-        collectRsync(["rsync", "-az", remoteReports, localReports.path + "/"],
+        // --safe-links の理由は RemoteArtifactCollection.rsyncArgs のコメント(回収は共有ディレクトリからの入力)
+        collectRsync(["rsync", "-az", "--safe-links", remoteReports, localReports.path + "/"],
                      what: "reports",
                      missingNote: "note: the remote produced no reports (the run failed before writing any)")
     }

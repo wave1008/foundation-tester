@@ -23,6 +23,12 @@ public final class BridgeClient: AppDriver {
     /// 依存するため、アプリごと in-app ブリッジを消した後は「入れる先を教えてくれる相手」が
     /// 居なくなる(2026-08-19 の受け手報告)
     let simulatorUDID: String?
+    /// LAN bind(実機)のときだけ非 nil。BridgeAPI.bridgeTokenHeader で送る。
+    /// **argv/env で他プロセスへ渡さない** —— 共有ランナー機は全員同一 UNIX ユーザーなので
+    /// argv は `ps -E` で見え、拡張の孤児掃除(orphanSweep)や LocalStreamHolder が実際に
+    /// `ps -E` を撃って出力をログへ流す経路がある。台帳ファイル(.fleetest/bridge-<port>.endpoint)
+    /// 経由なら露出面が増えない
+    let token: String?
     /// リクエストに載せる値(未使用時はキーごと省略 → 旧ランナーと byte 互換)。
     ///
     /// **探索のスワイプだけ quiescence を飛ばす案は不採用**(2026-08-04 実測)。
@@ -89,6 +95,11 @@ public final class BridgeClient: AppDriver {
         self.port = port
         self.physicalUDID = physicalUDID
         self.simulatorUDID = simulatorUDID
+        // **非ループバックのときだけ**台帳を読む —— ループバックはファイルが無い契約
+        // (BridgeEndpoint.persist)なので読んでも常に外れる。シミュレータのポートスキャンは
+        // 32 ポート分回るため、当たらない読みを足さない
+        self.token = host == BridgeEndpoint.loopbackHost ? nil
+            : (try? RepoRoot.find()).flatMap { BridgeEndpoint.load(port: port, repoRoot: $0).token }
         // 高速入力(quiescence スキップ)はプロセス単位の環境変数で有効化する
         // (実行プロファイル iosFastInput / CLI --fast-input が FT_FAST_INPUT=1 を注入。
         //  BridgeClient は hybrid のフォールバック経路でも生成されるため init 引数ではなく env で統一)
@@ -948,6 +959,9 @@ public final class BridgeClient: AppDriver {
         if let timeout { req.timeoutInterval = timeout }
         if body != nil {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        if let token {
+            req.setValue(token, forHTTPHeaderField: BridgeAPI.bridgeTokenHeader)
         }
         do {
             if let collector = HTTPTimingCollector.shared {

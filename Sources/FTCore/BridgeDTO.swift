@@ -325,7 +325,12 @@ public enum BridgeAPI {
     /// returns **422** (text already inserted, Return not fired) so the host does not re-type the
     /// whole string via XCUITest (that would double-insert — 422 is chosen over 409 for exactly
     /// this reason). A stale runner keeps reporting both as silent success → bump.
-    public static let bridgeProtocolVersion = 90
+    ///
+    /// 91: the XCUITest runner now requires `X-FT-Token` on every request while bound to
+    /// `INADDR_ANY` (a physical device on LAN) — until now that listener had no auth and no
+    /// origin check, so anyone on the LAN could drive the device and read the screen. A stale
+    /// runner keeps accepting unauthenticated requests → bump.
+    public static let bridgeProtocolVersion = 91
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -410,6 +415,49 @@ public enum BridgeAPI {
     public static func resolvedBridgeTTLSeconds(_ raw: String?) -> Int {
         guard let raw, let value = Int(raw), value >= 0 else { return bridgeTTLSecondsDefault }
         return value
+    }
+
+    // MARK: - LAN トークン認証(実機バインド時のみ要求)
+    //
+    // 不変条件: 「.fleetest/bridge-<port>.endpoint が在る」⟺「非ループバック(実機 LAN)」⟺
+    // 「FT_BIND_ALL=1」⟺「トークンが要る」。この一致を壊さないこと。
+    // 同期相手: Runner/FleetestRunnerUITests/BridgeHTTPServer.swift(要求側)⇄
+    // Sources/FTBridgeClient/BridgeLauncher.swift(注入)⇄
+    // Sources/FTBridgeClient/BridgeClient.swift・Sources/fleetest-devicepoll/main.swift(送信側)
+
+    /// xctestrun へ注入する env の鍵。ランナーはこれを読んで要求トークンとする
+    public static let bridgeTokenEnvKey = "FT_BRIDGE_TOKEN"
+    /// トークンを運ぶ HTTP ヘッダ名
+    public static let bridgeTokenHeader = "X-FT-Token"
+
+    /// 暗号論的乱数 32 バイトを16進(64文字)にしたもの
+    public static func makeBridgeToken() -> String {
+        var generator = SystemRandomNumberGenerator()
+        var bytes = [UInt8](repeating: 0, count: 32)
+        for i in bytes.indices { bytes[i] = UInt8.random(in: 0...255, using: &generator) }
+        return bytes.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// トークンを要求するか。判定を1箇所に置くための薄いラッパー(現状は bindAll と同義 ——
+    /// 「非ループバック ⟺ トークン要」の不変条件そのもの)
+    public static func bridgeTokenRequired(bindAll: Bool) -> Bool { bindAll }
+
+    /// **定数時間比較**。長さの違いを含め早期 return せず、タイミングでトークンの手掛かりを
+    /// 与えない(LAN 上の総当たりが唯一の攻撃経路であるヘッダ照合のため)
+    public static func bridgeTokenMatches(expected: String, provided: String?) -> Bool {
+        // 空の expected は「未設定」であって「何もかも一致」ではない。start() は空トークンでの
+        // 起動そのものを拒む(fail closed)が、ここでも二重に塞ぐ
+        guard let provided, !expected.isEmpty else { return false }
+        let expectedBytes = Array(expected.utf8)
+        let providedBytes = Array(provided.utf8)
+        var diff: UInt8 = expectedBytes.count == providedBytes.count ? 0 : 1
+        let length = max(expectedBytes.count, providedBytes.count)
+        for i in 0..<length {
+            let a = i < expectedBytes.count ? expectedBytes[i] : 0
+            let b = i < providedBytes.count ? providedBytes[i] : 0
+            diff |= a ^ b
+        }
+        return diff == 0
     }
 }
 

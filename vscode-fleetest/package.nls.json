@@ -53,5 +53,6 @@
   "fleetest.command.copyTestName.title": "Copy Name",
   "fleetest.command.openScenarioReport.title": "Open Report",
   "fleetest.command.enableFailedTestsFilter.title": "Show Failed Tests Only (Exclude Not Run/Passed)",
-  "fleetest.command.disableFailedTestsFilter.title": "Clear Filter (Show All Tests)"
+  "fleetest.command.disableFailedTestsFilter.title": "Clear Filter (Show All Tests)",
+  "fleetest.capabilities.untrustedWorkspaces.description": "fleetest reads fleetest.binaryPath from the folder's settings and runs that executable, so opening an untrusted folder would run code it supplies."
 }

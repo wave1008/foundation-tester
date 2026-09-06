@@ -53,5 +53,6 @@
   "fleetest.command.copyTestName.title": "名前をコピー",
   "fleetest.command.openScenarioReport.title": "レポートを開く",
   "fleetest.command.enableFailedTestsFilter.title": "失敗したテストのみ表示(未実施・成功を除外)",
-  "fleetest.command.disableFailedTestsFilter.title": "フィルターを解除(全テストを表示)"
+  "fleetest.command.disableFailedTestsFilter.title": "フィルターを解除(全テストを表示)",
+  "fleetest.capabilities.untrustedWorkspaces.description": "fleetest は fleetest.binaryPath をそのフォルダの設定から読んで実行するため、信頼していないフォルダを開くとそのフォルダが用意した実行ファイルを動かすことになります。"
 }

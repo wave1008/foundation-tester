@@ -207,6 +207,7 @@ actor LiveBridgeAutoStarter {
                 do {
                     let endpoint = try await IOSDeviceTransport.establish(
                         port: port, deviceUDID: udid, repoRoot: repoRoot, wired: wired,
+                        token: launcher.bridgeToken,
                         log: { message in
                             FileHandle.standardError.write(Data("[live serve] \(message)\n".utf8))
                         })

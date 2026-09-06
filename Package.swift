@@ -231,7 +231,9 @@ let package = Package(
         // simstream(シミュレータ専用)・androidstream(静止画面でフレームが出ない)の実機向け代替
         .executableTarget(
             name: "fleetest-devicepoll",
-            dependencies: ["FTCore"],
+            // FTBridgeClient は LAN bind ブリッジの認証トークン台帳(BridgeEndpoint)を読むために要る。
+            // 依存は FTCore + FTCoreSimShim だけなので軽い
+            dependencies: ["FTCore", "FTBridgeClient"],
             linkerSettings: [
                 .linkedFramework("Foundation"), .linkedFramework("CoreGraphics"),
                 .linkedFramework("ImageIO"), .linkedFramework("UniformTypeIdentifiers"),

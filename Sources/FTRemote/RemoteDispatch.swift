@@ -340,9 +340,15 @@ public enum RemoteArtifactCollection {
                  sshTarget: sshTarget, localProjectsDir: localProjectsDir)
     }
 
+    /// **`--safe-links` は回収(リモート → 手元)にだけ付ける**。ランナーが作ったシンボリックリンクを
+    /// そのまま受けると、宛先ディレクトリの外を指すリンクを置かれ、続く転送がそこへ書き抜ける。
+    /// §15.3 の既定(同一信頼グループ・全員が同じ UNIX ユーザー)では results/ は同僚全員が書けるので、
+    /// 入力は「信頼するランナー」ではなく「共有ディレクトリ」として扱う。
+    /// 送信(手元 → リモート)側の rsyncArgs には付けない —— 送る中身は手元の資産で、
+    /// 受け手のシンボリックリンク(TestProjects/ 内の正当な参照)を落とす副作用のほうが害になる
     private static func rsyncArgs(excludes: [String], project: String, layout: RemoteLayout,
                                   sshTarget: String, localProjectsDir: String) -> [String] {
-        var args = ["-az"]
+        var args = ["-az", "--safe-links"]
         for exclude in excludes { args += ["--exclude", exclude] }
         args += [
             "\(sshTarget):\(layout.projectDir(project))/results/",

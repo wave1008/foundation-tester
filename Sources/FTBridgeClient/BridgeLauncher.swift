@@ -12,6 +12,9 @@ public struct BridgeLauncher {
     /// (実機は "00008130-000A1B2C3D4E5678" の 25 文字型や旧 40 桁 hex 型があり、
     /// 36 文字・ダッシュ 5 分割の判定を外れて name= に化ける)ため呼び出し側が明示する
     public let physical: Bool
+    /// 実機だけがトークンを持つ(LAN bind に認証を要求する。BridgeAPI 参照)。
+    /// シミュレータはループバックのままなので nil
+    public let bridgeToken: String?
 
     var stateDir: URL { repoRoot.appendingPathComponent(".fleetest") }
     /// 実機とシミュレータでビルド成果物(Debug-iphoneos / Debug-iphonesimulator)も
@@ -42,6 +45,7 @@ public struct BridgeLauncher {
         self.device = device
         self.port = port
         self.physical = physical
+        self.bridgeToken = physical ? BridgeAPI.makeBridgeToken() : nil
     }
 
     /// 生成物(.xcodeproj)はコミットしない方針。project.yml を編集したら作り直す
@@ -277,6 +281,8 @@ public struct BridgeLauncher {
             // 実機はデバイス内ループバックがホストから見えないので全インターフェースに開く。
             // 同期相手: Runner/FleetestRunnerUITests/BridgeHTTPServer.swift の start()
             if physical { env["FT_BIND_ALL"] = "1" }
+            // LAN bind の認証トークン。同期相手: BridgeHTTPServer.start() の fail-closed 判定
+            if let bridgeToken { env[BridgeAPI.bridgeTokenEnvKey] = bridgeToken }
             // ブリッジ内の所要内訳ログ(既定 off)。ホスト側の FT_HTTP_TIMING と対で使い、
             // 「ホストの actionMs とブリッジのハンドラ計時の差」を突き合わせるためだけのもの
             if ProcessInfo.processInfo.environment["FT_BRIDGE_TIMING"] == "1" {

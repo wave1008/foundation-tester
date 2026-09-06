@@ -2,7 +2,7 @@
   "name": "vscode-fleetest",
   "displayName": "fleetest mobile",
   "description": "%fleetest.extension.description%",
-  "version": "0.0.799",
+  "version": "0.0.800",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -25,6 +25,12 @@
   "activationEvents": [
     "workspaceContains:Package.swift"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "%fleetest.capabilities.untrustedWorkspaces.description%"
+    }
+  },
   "contributes": {
     "configuration": {
       "title": "fleetest",

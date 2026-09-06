@@ -15,6 +15,8 @@ final class BridgeHTTPServer {
         /// 規則は Android の BridgeHttpServer.readRequest と同じ
         let query: String
         let body: Data
+        /// `X-FT-Token` ヘッダの値(無ければ nil)。同期相手: BridgeAPI.bridgeTokenHeader
+        let token: String?
 
         /// クエリ1個の取り出し(値は素のまま = 数値パラメータしか受けないので decode は要らない)。
         /// 同期相手: AndroidRunner の BridgeRouter.queryParam
@@ -51,6 +53,8 @@ final class BridgeHTTPServer {
         case socketFailed(Int32)
         case bindFailed(Int32)
         case listenFailed(Int32)
+        /// bindAll(実機 LAN)なのに FT_BRIDGE_TOKEN が未設定/空。fail closed で起動しない
+        case tokenMissing
     }
 
     /// main queue の async クロージャが書き込み、セマフォ signal 後に accept スレッドが読む
@@ -63,6 +67,8 @@ final class BridgeHTTPServer {
     private let handler: (Request) -> Response
     private var serverFD: Int32 = -1
     private(set) var isRunning = false
+    /// bindAll(実機 LAN)のときだけ非 nil。start() で一度だけ確定し、以後の照合はこれと比較する
+    private var expectedToken: String?
 
     /// 最終リクエスト時刻(ProcessInfo.systemUptime = 単調クロック。壁時計の NTP ジャンプで
     /// TTL を誤爆させない)。accept スレッドが書き、テストスレッド(FleetestBridgeTests の
@@ -124,6 +130,18 @@ final class BridgeHTTPServer {
         // 既定をループバックのままにするのは、シミュレータ運用で LAN に晒さないため
         let bindAll = ProcessInfo.processInfo.environment["FT_BIND_ALL"] == "1"
         addr.sin_addr = in_addr(s_addr: bindAll ? INADDR_ANY : inet_addr("127.0.0.1"))
+
+        // LAN(非ループバック)は認証必須。不変条件: bindAll ⟺ トークン要(BridgeAPI 参照)。
+        // 空/不在のまま LAN へ開くくらいなら起動しない(fail closed) —— 同期相手:
+        // Sources/FTBridgeClient/BridgeLauncher.swift の injectPort が FT_BRIDGE_TOKEN を注入する
+        if BridgeAPI.bridgeTokenRequired(bindAll: bindAll) {
+            let token = ProcessInfo.processInfo.environment[BridgeAPI.bridgeTokenEnvKey]
+            guard let token, !token.isEmpty else {
+                close(fd)
+                throw ServerError.tokenMissing
+            }
+            expectedToken = token
+        }
 
         let bindResult = withUnsafePointer(to: &addr) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
@@ -204,7 +222,13 @@ final class BridgeHTTPServer {
             setsockopt(clientFD, SOL_SOCKET, SO_RCVTIMEO, &rcvTimeout, socklen_t(MemoryLayout<timeval>.size))
             autoreleasepool {
                 if let request = readRequest(clientFD) {
-                    writeResponse(clientFD, dispatchToMain(request))
+                    if let expectedToken,
+                       !BridgeAPI.bridgeTokenMatches(expected: expectedToken, provided: request.token) {
+                        // 手掛かりを返さない(トークンの有無・長さも言わない)。XCUITest には触れない
+                        writeResponse(clientFD, .error("unauthorized", status: 401))
+                    } else {
+                        writeResponse(clientFD, dispatchToMain(request))
+                    }
                 } else {
                     writeResponse(clientFD, .error("bad request", status: 400))
                 }
@@ -263,10 +287,15 @@ final class BridgeHTTPServer {
         guard parts.count >= 2 else { return nil }
 
         var contentLength = 0
+        var token: String?
+        let tokenHeaderKey = BridgeAPI.bridgeTokenHeader.lowercased()
         for line in lines.dropFirst() {
             let kv = line.split(separator: ":", maxSplits: 1)
-            if kv.count == 2, kv[0].lowercased() == "content-length" {
+            guard kv.count == 2 else { continue }
+            if kv[0].lowercased() == "content-length" {
                 contentLength = Int(kv[1].trimmingCharacters(in: .whitespaces)) ?? 0
+            } else if kv[0].lowercased() == tokenHeaderKey {
+                token = kv[1].trimmingCharacters(in: .whitespaces)
             }
         }
         // 過大/不正な Content-Length は無制限メモリ確保・長時間読取の的になるため弾く(不正=nil→400)。
@@ -283,7 +312,8 @@ final class BridgeHTTPServer {
         return Request(method: String(parts[0]),
                        path: cut.map { String(target[target.startIndex..<$0]) } ?? target,
                        query: cut.map { String(target[target.index(after: $0)...]) } ?? "",
-                       body: body)
+                       body: body,
+                       token: token)
     }
 
     private func writeResponse(_ fd: Int32, _ response: Response) {
