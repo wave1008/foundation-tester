@@ -47,7 +47,8 @@ fleetest run --host mac2 …               ~/fleetest-runner/               ← 
 | Xcode | **発行側と同じ Xcode・同じ macOS**(不一致はディスパッチが止まる) | `xcodebuild -version` |
 | ログイン | **コンソールにログイン済み**(いわゆる Aqua セッションが立っている) | `stat -f%Su /dev/console` がランナーのユーザー名 |
 | 電源 | システムスリープ無効(ディスプレイスリープと画面ロックは可) | `pmset -g \| grep " sleep"` |
-| ネットワーク | リモートログイン ON・鍵で入れる。画面共有 ON を推奨 | 下のステップ1 |
+| ネットワーク | リモートログイン ON・鍵で入れる。画面共有 ON を推奨。**開けるのは発行側 → ランナー機の SSH 1本だけ**(手元の Mac に着信は要らない。転送も成果物回収もライブ映像もこの接続の中を通る) | 下のステップ1 |
+| ファイアウォール | macOS の**「すべての着信接続をブロック」が OFF** であること(ON にすると sshd ごと落ちる。ファイアウォール自体は ON のままでよい) | `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getblockall` が `disabled` |
 | Homebrew | **その macOS を知っている版であること**(古い brew は `unknown or unsupported macOS version` で**起動自体が失敗**し、`xcodegen` を入れられない) | `brew --version` が動くこと |
 | ネットワーク | git が GitHub へ直接出られること(社内プロキシ設定が残っていると clone で数十秒待たされて失敗する) | `git config --global --get-regexp '^https?\.'` が空 |
 | Android | Android SDK と AVD(Android を回すときだけ)。SDK は `~/Library/Android/sdk` か `ANDROID_HOME` で見つける(**シェルの rc は読まれない** —— ディスパッチは非対話 ssh なので `~/.zshrc` の PATH/ANDROID_SDK_ROOT は効かない。ツールは adb・emulator・bundletool の `--adb` を自力で解決するので、標準の場所にある限り設定は要らない) | `fleetest doctor` |
@@ -63,7 +64,9 @@ sudo や GUI が要るものはインストーラでは行わない(無人機に
 **何が足りないかは機械で確認できる** —— ランナー機で `bash Scripts/preflight.sh --runner`
 (または手元から `fleetest remote setup <ホスト>`)を実行すると、残っている項目だけが列挙される。
 
-1. **リモートログインを ON**: システム設定 → 一般 → 共有 → リモートログイン
+1. **リモートログインを ON**: システム設定 → 一般 → 共有 → リモートログイン。あわせて**ファイアウォールの「すべての着信接続をブロック」を OFF に**する
+   (ON だと sshd も遮断される。ファイアウォール自体は ON のままでよい):
+   `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getblockall` が `disabled` であること
 2. **画面共有を ON**(強く推奨。再起動後のログインを手元からやるため)
 3. **システムスリープを無効化**: `sudo pmset -a sleep 0`
 4. **Xcode を導入**し、1回起動してライセンスに同意(`sudo xcodebuild -license accept` /
@@ -89,6 +92,58 @@ ssh -o BatchMode=yes <ユーザー>@<ホスト> 'echo ok'   # これが ok を�
 
 > `StrictHostKeyChecking` を無効にしない。ホスト鍵の検証は「知らないマシンへ
 > プロジェクトを送り込んでしまう」経路を実際に塞いでいる唯一の仕掛け。
+
+### 別のネットワーク(ルーター越し)のランナー
+
+**同じ LAN に居る必要はない。** `ssh <宛先> 'echo ok'` が通る Mac ならディスパッチできる
+—— ブリッジ層を遠隔化する案(ステップ毎の chatty なやりとりに RTT が乗る)は設計時に却下
+してあり、**遠隔化されているのは run 単位のジョブだけ**だから([remote-runner.md](remote-runner.md) §2)。
+
+**ポート番号や踏み台は `~/.ssh/config` に書く。** ホスト文字列は `ssh`/`scp`/`rsync` にそのまま
+渡され、ツールは `-p` も `-J` も付けない。`:` を含む宛先(`host:2222`)・空白・`-` 始まりは
+**登録時に拒否される**ので、Host エイリアスに畳んでそのエイリアスを宛先として使う:
+
+```
+Host mac2
+  HostName 203.0.113.10      # または ProxyJump gw
+  Port 2222
+  User wave1008
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
+```
+
+```bash
+ssh -o BatchMode=yes mac2 'echo ok'
+fleetest remote setup mac2 --project <プロジェクト名>
+```
+
+エイリアスは ssh・rsync・監視の fan-out・ライブ映像の全経路で同じものが使われるので、
+1箇所書けば揃う。
+
+**露出は最小にする。** 信頼モデルは「ランナー機そのものは信頼、返ってくる出力は不信」で、
+**同一信頼グループ内での共有**が前提(remote-runner.md §15)。素のインターネットに 22 を
+晒す形はこの前提から外れる。
+
+| | 設定 |
+|---|---|
+| 推奨 | **VPN(Tailscale 等)でリンクを張り、ルーターのポート転送はしない** |
+| ポート転送するなら | ランナー機の SSH ポートを**1つだけ**。送信元 IP を発行側に限定し、ランナーの sshd は `PasswordAuthentication no` / `PermitRootLogin no` |
+| 発行側(手元) | **開放不要**(接続は全部こちらから張る) |
+| 画面共有(5900) | **ルーターに開けない**。`ssh -L 5900:localhost:5900 <宛先>` でトンネルし `vnc://localhost:5900` へ繋ぐ |
+
+**回線が細いときに起きること**(どれも壊れずに退化する):
+
+- **ライブ映像が張れずポーリングへ落ちる** —— 静止画で運用は続く(全タイル常時配信は
+  そもそも LAN 帯域でも成立しない。remote-runner.md §13)
+- **成果物の回収が重い** —— 効くのは録画。要らなければ実行プロファイルの録画を切る
+- **瞬断するとタイルが `unknown` になる** —— 「観測できていない」であって「空き」ではない。
+  この間は配信を畳んだまま観測だけ続く
+
+**実機をランナー機に繋ぐ場合**、端末と手元の経路は無関係(ランナー機の LAN の話)。
+USB なら何も要らない。LAN 経由の iPhone は**端末が listen し Mac が繋ぎに行く**ので Mac 側の
+ファイアウォール設定は不要だが、**ランナー機と端末が同じサブネットに居ること**と、
+**AP のクライアント隔離(プライバシーセパレータ)が切ってあること**が要る。
+ゲスト SSID に端末を繋いでいると必ずここで詰まる。
 
 ## ステップ2(発行側): ランナー機を用意する
 
@@ -613,6 +668,8 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | 症状・メッセージ | 原因 | 対処 |
 |---|---|---|
 | `cannot reach … over ssh` | 鍵で入れない / ホスト名違い | ステップ1(`BatchMode=yes` でパスワードは聞けない) |
+| `cannot reach … over ssh` だが**ランナー機の前では sshd が動いている** | macOS の「すべての着信接続をブロック」が ON / ルーター側でポートが閉じている | ランナー機で `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getblockall` を確認(`disabled` であること)。手元から `nc -z -G5 <ホスト> <ポート>` で層を切り分ける |
+| `must not contain ':'` / 非標準ポートを指定できない | 宛先にポートを書いた(`host:2222`) | `~/.ssh/config` の Host エイリアスに畳んで、そのエイリアスを宛先にする(「別のネットワーク(ルーター越し)のランナー」) |
 | `remote setup` が preflight で warn 終了(exit 2) | ランナー機に人手の項目が残っている | 出力に列挙された操作を行い、同じコマンドを再実行(冪等) |
 | `Failed to connect to <名前> port 8080`(clone が75秒待って失敗) | ランナー機の git に古いプロキシ設定が残っている | `git config --global --unset-all http.proxy` / 同 `https.proxy`（必要な環境ならプロキシ側を直す） |
 | `unknown or unsupported macOS version` / `brew install xcodegen failed` | Homebrew がその macOS を知らない古い版（brew が1つも動かない） | `git -C /opt/homebrew fetch origin && git -C /opt/homebrew reset --hard origin/master` |

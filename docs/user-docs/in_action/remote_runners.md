@@ -46,6 +46,7 @@ remote runner is entirely self-contained under `~/fleetest-runner/`.
 | Logged into the console (an active GUI session) | `stat -f%Su /dev/console` matches the runner's user |
 | System sleep disabled (display sleep / screen lock are fine) | `pmset -g \| grep " sleep"` |
 | Remote Login on, key-based SSH access | see Step 1 below |
+| Firewall's "Block all incoming connections" is off (it blocks sshd too; the firewall itself may stay on) | `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getblockall` reports `disabled` |
 | Homebrew recent enough to know this macOS | `brew --version` runs |
 | Git can reach GitHub directly (no stale proxy config) | `git config --global --get-regexp '^https?\.'` is empty |
 | Android SDK and AVDs (only if running Android) | `fleetest doctor` |
@@ -71,6 +72,32 @@ remote runner is entirely self-contained under `~/fleetest-runner/`.
 **`/fleetest:fleetest-remote-setup` delegates the machine work to `fleetest remote setup`** — it
 asks what it needs to know, hands off anything that requires a human, and reports the result;
 it does not perform Step 0's manual, sudo/GUI-requiring items itself.
+
+## Runners on another network (across a router)
+
+A runner **does not have to be on the same LAN**. Any Mac you can reach with
+`ssh <target> 'echo ok'` can take dispatches. Only whole jobs are remoted, so the setup
+tolerates round-trip latency reasonably well.
+
+- **The only port you open is SSH, from the issuing machine to the runner.** Nothing listens on
+  the issuing machine — transfers, progress, artifact collection and live video all travel inside
+  that one connection.
+- **Put ports and jump hosts in `~/.ssh/config`.** A target cannot carry a port (`host:2222`);
+  targets containing `:` or whitespace are rejected. Define an alias with `Host mac2` /
+  `HostName` / `Port` / `ProxyJump` and use that alias as the target.
+- **Do not expose the SSH port to the open internet.** The intended shape is a VPN link
+  (Tailscale or similar). If you must forward a port, forward exactly one, restrict it to the
+  issuing machine's address, and disable password authentication on the runner's sshd.
+- **Screen Sharing (5900) does not belong on the router.** Tunnel it instead:
+  `ssh -L 5900:localhost:5900 <target>`, then connect to `vnc://localhost:5900`.
+- **A thin link degrades rather than breaks** — live video falls back to still images when the
+  stream cannot be established, and a tile goes `unknown` while the link is down ("not observed",
+  which is not the same as "free"). The expensive part to collect is screen recordings.
+
+**Physical devices attached to the runner** are a matter of the runner's own LAN, unrelated to the
+route from your machine. Over USB nothing needs configuring. A LAN-attached iPhone listens while
+the Mac connects out, so no firewall change is needed on the Mac — but the runner and the device
+must be on the same subnet, and the access point's client isolation must be off.
 
 ## Terms: machine (alias) and host (host name / IP)
 
