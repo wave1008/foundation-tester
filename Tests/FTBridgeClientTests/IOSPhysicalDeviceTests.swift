@@ -207,6 +207,34 @@ final class IOSPhysicalDeviceTests: XCTestCase {
                        "CRLF ログでも 1 行だけを抜き出せること")
     }
 
+    /// 「automation mode を有効化できずタイムアウト」はランナーが起動してから端末側で落ちる形。
+    /// 実測(2026-09-07 iPhone SE3): ロック解除済み・Developer Mode オンでも出るので、
+    /// ロック/UI Automation 設定/残留セッションの3つを人に案内する
+    func testRunnerFailureReasonExplainsAutomationModeTimeout() throws {
+        let log = "FleetestRunnerUITests-Runner[5616:3824101] [Default] Failed to initialize for UI testing:"
+            + " Error Domain=com.apple.dt.XCTest.XCTFuture Code=1000 \"Timed out while enabling automation mode.\"\r\n"
+            + "Testing failed:\r\n** TEST EXECUTE FAILED **\r\n"
+        let reason = try XCTUnwrap(IOSDeviceTransport.runnerFailureReason(inLog: log))
+        XCTAssertTrue(reason.contains("UI Automation"), reason)
+        XCTAssertTrue(reason.contains("reboot"), reason)
+    }
+
+    /// waitUntilReady は「セッションが終わった」を見つけたら、総称の timedOut を投げる前に
+    /// physicalDiagnosis(runnerFailureReason)を通す —— 理由がログにあるのに届かない形を塞ぐ
+    func testSessionEndedBranchConsultsThePhysicalDiagnosisFirst() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/FTBridgeClient/BridgeLauncher.swift")
+        let code = try String(contentsOf: url, encoding: .utf8)
+        guard let ended = code.range(of: "let marker = Self.runnerSessionEnded(inLog: text)"),
+              let generic = code.range(of: "the test session already ended (\\(marker))") else {
+            return XCTFail("waitUntilReady の session-ended 分岐が見つからない")
+        }
+        let between = code[ended.upperBound..<generic.lowerBound]
+        XCTAssertTrue(between.contains("physicalDiagnosis()"),
+                      "session-ended の分岐で physicalDiagnosis を先に呼んでいない")
+    }
+
     /// 端末ロックは「失敗」ではなく「進まない」条件。throw せず理由として拾えること
     func testBlockingConditionDetectsLockedDevice() throws {
         let log = "Error Domain=com.apple.dt.deviceprep Code=-3 \"Unlock iPhone wave to Continue\"\r\n"

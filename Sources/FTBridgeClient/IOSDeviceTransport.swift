@@ -76,8 +76,10 @@ public enum IOSDeviceTransport {
     /// 実機ブリッジへの到達点を確立する。lan はランナーの宣言を待ち、usb は iproxy を常駐させる。
     /// deviceUDID は usb のトンネル先指定に使う(lan では未使用)
     /// wired: USB 接続か(devicectl の transportType == "wired")。false なら usb は選べない
+    /// `wired` に既定値を置かない —— 既定 true に頼った呼び出し元(live serve の自動起動)が
+    /// LAN 接続の iPhone を iproxy(USB)で待ち、必ず失敗していた(2026-09-07 実機で確認)
     public static func establish(port: UInt16, deviceUDID: String, repoRoot: URL,
-                                 wired: Bool = true,
+                                 wired: Bool,
                                  timeoutSeconds: TimeInterval = 180,
                                  log: @escaping (String) -> Void = { _ in }) async throws -> BridgeEndpoint {
         let endpoint: BridgeEndpoint
@@ -182,6 +184,15 @@ public enum IOSDeviceTransport {
         if text.contains("Developer Mode disabled") {
             return "Developer Mode is off on the device. "
                 + "On the iPhone, turn on Settings → Privacy & Security → Developer Mode"
+        }
+        if text.contains("Timed out while enabling automation mode") {
+            // ランナーは起動したが端末側が UI 自動化モードに入らない。ロック(passcode)・
+            // Settings → Developer → UI Automation のオフ・別のテストセッションの残留のどれか
+            // (実測 2026-09-07 の iPhone SE3: ロック解除済み・Developer Mode オンでも出た)
+            return "the device did not enter UI-automation mode (\"Timed out while enabling"
+                + " automation mode\"). On the iPhone, unlock the screen, make sure"
+                + " Settings → Developer → UI Automation is on, and if another test session"
+                + " is still attached to the device, reboot the iPhone"
         }
         // ここから先は理由を特定できないケース。誤検知を避けるため終端マーカーが出てから判定する
         guard text.contains("** TEST EXECUTE FAILED **")

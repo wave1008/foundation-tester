@@ -99,7 +99,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         // SERVE_REQUEST_TIMEOUT_MS(20秒)にして、通常は拡張の kill→respawn を先に効かせる。
         ResidentProcessGuard.startCommandWatchdog(maxSeconds: 30, logLabel: "live serve")
 
-        let (driver, port) = try await makeDriverAvoidingInApp()
+        var (driver, port) = try await makeDriverAvoidingInApp()
         let starter = makeAutoStarter(port: port)
         if let starter {
             Task { await starter.checkAndRestartIfStale() }
@@ -138,6 +138,14 @@ struct ApiLiveServe: AsyncParsableCommand {
                 continue
             }
             ResidentProcessGuard.noteCommandStart()
+            // 自動起動が成功した直後は宛先を引き直す(実機 LAN: 起動前の loopback から告知アドレスへ)
+            if let starter, await starter.takeStarted(), let repoRoot = try? RepoRoot.find() {
+                let endpoint = BridgeEndpoint.load(port: port, repoRoot: repoRoot)
+                if endpoint.host != BridgeEndpoint.loopbackHost {
+                    driver = BridgeClient(port: port, host: endpoint.host)
+                    logStderr("switched the driver to \(endpoint.host):\(port) (announced by the runner)")
+                }
+            }
             await handle(command: command, driver: driver, starter: starter)
             ResidentProcessGuard.noteCommandEnd()
         }
@@ -172,7 +180,17 @@ struct ApiLiveServe: AsyncParsableCommand {
         do {
             let repoRoot = try RepoRoot.find()
             let physical = SimulatorCatalog.isPhysical(udid: udid) ?? false
-            return LiveBridgeAutoStarter(repoRoot: repoRoot, udid: udid, port: port, physical: physical)
+            // 実機の到達手段は devicectl の transportType で決める(USB = iproxy / LAN = 告知アドレス)。
+            // 一覧に無ければ LAN 側へ倒す(USB 側へ倒すと iproxy を待って必ず失敗する)
+            var wired = false
+            if physical {
+                let info = (try? IOSPhysicalDeviceCatalog.devices())?
+                    .first { $0.udid == udid || $0.deviceCtlIdentifier == udid }
+                wired = info?.transport == "wired"
+                if info == nil { logStderr("transport of \(udid) is unknown to devicectl — assuming LAN") }
+            }
+            return LiveBridgeAutoStarter(repoRoot: repoRoot, udid: udid, port: port,
+                                         physical: physical, wired: wired)
         } catch {
             logStderr("Repository root not found — disabling bridge auto-start: " +
                 error.localizedDescription)

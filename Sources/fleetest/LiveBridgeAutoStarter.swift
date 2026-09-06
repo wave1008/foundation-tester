@@ -30,14 +30,20 @@ actor LiveBridgeAutoStarter {
     /// 実機かシミュレータか(BridgeLauncher.physical に渡す。UDID の形状では判別できないため
     /// 呼び出し側が構築時に一度だけ確定させる。SimulatorCatalog.isPhysical(udid:) 参照)
     private let physical: Bool
+    /// USB 接続か(devicectl の transportType == "wired")。実機の到達手段の選択に使う
+    /// (USB = iproxy トンネル / LAN = ランナーが告知するアドレス)。シミュレータでは読まない
+    private let wired: Bool
     private var state: State = .idle
     private var consecutiveFailures = 0
+    /// 直近の自動起動が成功してから、まだ呼び手が宛先を引き直していないか(takeStarted で消費)
+    private var startedSinceLastCheck = false
 
-    init(repoRoot: URL, udid: String, port: UInt16, physical: Bool) {
+    init(repoRoot: URL, udid: String, port: UInt16, physical: Bool, wired: Bool) {
         self.repoRoot = repoRoot
         self.udid = udid
         self.port = port
         self.physical = physical
+        self.wired = wired
     }
 
     /// 接続拒否を観測したとき呼ぶ。idle なら起動タスクを開始する(starting/failed 中は何もしない
@@ -50,9 +56,10 @@ actor LiveBridgeAutoStarter {
             let udid = self.udid
             let port = self.port
             let physical = self.physical
+            let wired = self.wired
             Task.detached { [weak self] in
                 let result = await Self.launchBridge(
-                    repoRoot: repoRoot, udid: udid, port: port, physical: physical)
+                    repoRoot: repoRoot, udid: udid, port: port, physical: physical, wired: wired)
                 await self?.finishLaunch(result: result)
             }
         }
@@ -81,9 +88,11 @@ actor LiveBridgeAutoStarter {
         let udid = self.udid
         let port = self.port
         let physical = self.physical
+        let wired = self.wired
         Task.detached { [weak self] in
             let result = await Self.launchBridge(
-                repoRoot: repoRoot, udid: udid, port: port, physical: physical, stopFirst: true)
+                repoRoot: repoRoot, udid: udid, port: port, physical: physical, wired: wired,
+                stopFirst: true)
             await self?.finishLaunch(result: result)
         }
     }
@@ -101,11 +110,22 @@ actor LiveBridgeAutoStarter {
         }
     }
 
+    /// 自動起動が成功した直後の1回だけ true。**実機の LAN では宛先が変わる**(起動前は loopback、
+    /// 起動後はランナーが告知した LAN アドレスを `.endpoint` に残す)ので、呼び手はこれを見て
+    /// BridgeEndpoint.load で張り直す。張り直さないと loopback へ撃ち続けて接続拒否 → 再起動の
+    /// 無限ループになる(2026-09-07 iPhone 13/LAN で実測: 起動は成功するのに毎回「leftover」として
+    /// 自分で止めていた)
+    func takeStarted() -> Bool {
+        defer { startedSinceLastCheck = false }
+        return startedSinceLastCheck
+    }
+
     private func finishLaunch(result: Result<Void, Error>) {
         switch result {
         case .success:
             state = .idle
             consecutiveFailures = 0
+            startedSinceLastCheck = true
             logStderr("Bridge auto-start succeeded (udid: \(udid), port: \(port))")
         case .failure(let error):
             consecutiveFailures += 1
@@ -127,7 +147,7 @@ actor LiveBridgeAutoStarter {
     /// port は呼び出し元(実行プロファイル)が固定するため自前の採番は無いが、まだ pid ファイルが
     /// 無い間に BridgeProvisioner.provision() が同じポートを空きと採番する競合があり得るため
     private static func launchBridge(
-        repoRoot: URL, udid: String, port: UInt16, physical: Bool, stopFirst: Bool = false
+        repoRoot: URL, udid: String, port: UInt16, physical: Bool, wired: Bool, stopFirst: Bool = false
     ) async -> Result<Void, Error> {
         let launcher = BridgeLauncher(repoRoot: repoRoot, device: udid, port: port, physical: physical)
         let provisionLock = try? ProvisionLock(stateDir: repoRoot.appendingPathComponent(".fleetest"))
@@ -186,7 +206,7 @@ actor LiveBridgeAutoStarter {
             if physical {
                 do {
                     let endpoint = try await IOSDeviceTransport.establish(
-                        port: port, deviceUDID: udid, repoRoot: repoRoot,
+                        port: port, deviceUDID: udid, repoRoot: repoRoot, wired: wired,
                         log: { message in
                             FileHandle.standardError.write(Data("[live serve] \(message)\n".utf8))
                         })

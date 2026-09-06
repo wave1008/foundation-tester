@@ -766,6 +766,11 @@ public struct BridgeLauncher {
             // **終わったセッションを待たない**(理由は runnerSessionEnded)
             if let text = try? String(contentsOf: logPath, encoding: .utf8),
                let marker = Self.runnerSessionEnded(inLog: text) {
+                // **理由が分かる終わり方は名指しで落とす**(証明書未信頼・Developer Mode・
+                // automation mode のタイムアウト = IOSDeviceTransport.runnerFailureReason)。
+                // 先に総称の「session already ended」を投げると、ログに理由が書いてあるのに
+                // 呼び手には届かない(2026-09-07 iPhone SE3 で実測)
+                _ = try physicalDiagnosis()
                 throw LauncherError.timedOut("the test session already ended (\(marker))",
                                              logPath.path)
             }

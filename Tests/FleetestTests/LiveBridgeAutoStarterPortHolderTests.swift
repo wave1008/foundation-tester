@@ -40,6 +40,17 @@ final class LiveBridgeAutoStarterPortHolderTests: XCTestCase {
         guard let waitRange = code.range(of: "waitUntilReady(host: host") else {
             return XCTFail("establish の結果(host)を waitUntilReady へ渡していない")
         }
+        // **到達手段の選択(wired)を渡す** —— 既定に頼ると LAN の iPhone を iproxy で待って必ず失敗する
+        // (2026-09-07 実機で確認。establish の wired には既定値を置かない)
+        XCTAssertTrue(code.contains("repoRoot: repoRoot, wired: wired,"),
+                      "LiveBridgeAutoStarter が establish に wired を渡していない")
+        // 起動成功後に live serve が宛先を引き直すこと(LAN の告知アドレス)。takeStarted が消費口
+        XCTAssertTrue(code.contains("func takeStarted() -> Bool"), "takeStarted が無い")
+        let serve = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/fleetest/ApiLiveCommand.swift"), encoding: .utf8)
+        XCTAssertTrue(serve.contains("await starter.takeStarted()") && serve.contains("BridgeEndpoint.load(port: port, repoRoot: repoRoot)"),
+                      "ApiLiveCommand が自動起動後に BridgeEndpoint.load で宛先を引き直していない")
         XCTAssertTrue(establishRange.upperBound < waitRange.lowerBound,
                       "establish は waitUntilReady より前に呼ぶこと")
     }
