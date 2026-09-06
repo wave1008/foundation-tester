@@ -122,3 +122,32 @@ final class RunHookLeaseTests: XCTestCase {
         XCTAssertTrue(RunHookLease.isAliveState(SRUN, flags: 0x0000_0004))
     }
 }
+
+/// 刺さったスクリプトの警告(RunHookStall)。打ち切らず、無音が閾値の倍数を跨ぐたびに 1 回
+final class RunHookStallTests: XCTestCase {
+
+    /// 既定はリテラルで固定(他のテストは差し替え口で閾値を明示するので、ここが無いと既定を
+    /// 変える変更が緑のまま通る)
+    func testDefaultThresholdIsPinned() {
+        XCTAssertEqual(RunHookStall.silentWarningSeconds, 60)
+    }
+
+    func testWarnsOnceEachTimeSilenceCrossesAMultipleOfTheThreshold() {
+        XCTAssertFalse(RunHookStall.shouldWarn(silentSeconds: 9.9, warningsSoFar: 0, threshold: 10))
+        XCTAssertTrue(RunHookStall.shouldWarn(silentSeconds: 10, warningsSoFar: 0, threshold: 10))
+        // 1 回出したら次は 2 倍まで黙る
+        XCTAssertFalse(RunHookStall.shouldWarn(silentSeconds: 15, warningsSoFar: 1, threshold: 10))
+        XCTAssertTrue(RunHookStall.shouldWarn(silentSeconds: 20, warningsSoFar: 1, threshold: 10))
+        // 閾値 0 以下は警告しない(無限に鳴らさない)
+        XCTAssertFalse(RunHookStall.shouldWarn(silentSeconds: 100, warningsSoFar: 0, threshold: 0))
+    }
+
+    func testMessageNamesTheScriptThePidAndTheFactThatNothingIsAborted() {
+        let text = RunHookStall.message(kind: .setup, path: "/w/scripts/setup.sh", silentSeconds: 61.7, pid: 4242)
+        XCTAssertTrue(text.contains("setup script"), text)
+        XCTAssertTrue(text.contains("62s"), text)  // 61.7 → 四捨五入
+        XCTAssertTrue(text.contains("/w/scripts/setup.sh"), text)
+        XCTAssertTrue(text.contains("pid 4242"), text)
+        XCTAssertTrue(text.contains("no timeout"), text)
+    }
+}

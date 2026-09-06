@@ -191,3 +191,32 @@ public enum RunHookLease {
         ProcessLiveness.isAliveState(pStat, flags: flags)
     }
 }
+
+/// 刺さった(出力せずに戻らない)スクリプトの警告。**打ち切らない** —— 起こすものは利用者が決めるので
+/// 妥当な上限を決める根拠がこちらに無い(docs/remote-runner.md §17)。代わりに「無音のまま
+/// 待っている」ことを本人に言う(無音だと「止まった」と読まれ、人が kill する判断もできない)。
+public enum RunHookStall {
+
+    /// 無音がこの秒数(単位: 秒)続いたら警告する。根拠: 開始スクリプトの典型(DB / スタブサーバの
+    /// 起動)は出力しながら数秒〜数十秒で戻る。stdin は /dev/null なので対話待ちは即 EOF になり、
+    /// 60 秒の無音が残るのはネットワーク待ち・ロック待ち・デッドロックの形。
+    /// **尽きたとき = 警告を出して待ち続ける**(以後も同じ間隔で 1 行ずつ)
+    public static let silentWarningSeconds: Double = 60
+
+    /// この tick で警告を出すか(純粋)。無音が閾値の倍数を跨ぐたびに 1 回 = 閾値ごとに 1 行。
+    /// 出力が来たら呼び手が `warningsSoFar` を 0 に戻す
+    public static func shouldWarn(silentSeconds: Double, warningsSoFar: Int,
+                                  threshold: Double = silentWarningSeconds) -> Bool {
+        guard threshold > 0 else { return false }
+        return silentSeconds >= threshold * Double(warningsSoFar + 1)
+    }
+
+    /// 警告の文言(呼び手はそのまま log へ)
+    public static func message(kind: RunHook.Kind, path: String, silentSeconds: Double,
+                               pid: Int32) -> String {
+        "⚠️ The \(kind.rawValue) script has produced no output for \(Int(silentSeconds.rounded()))s and is"
+            + " still running (pid \(pid)): \(path) — fleetest keeps waiting (no timeout);"
+            + " check the script, or kill pid \(pid) to abort"
+    }
+}
+

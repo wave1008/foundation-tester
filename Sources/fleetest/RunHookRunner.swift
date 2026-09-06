@@ -126,9 +126,13 @@ enum RunHookRunner {
     /// 子プロセスを起動し、出力を1行ずつ中継する(まとめて出すと、数十秒かかる setup が
     /// 終わるまで画面が無音になり「止まった」と読まれる)。**タイムアウトは置かない** ——
     /// 妥当な上限を決める根拠がこちらに無い(起こすものは利用者が決める)。リモート実行は
-    /// ディスパッチ全体の上限(§16.2 `--remote-timeout`)が外側から縛る
-    private static func execute(script: URL, kind: RunHook.Kind, workingDirectory: URL,
-                                environment: [String: String], log: (String) -> Void) -> Int32 {
+    /// ディスパッチ全体の上限(§16.2 `--remote-timeout`)が外側から縛る。
+    /// **出力せずに戻らない**形は `RunHookStall` の閾値ごとに警告を 1 行出して待ち続ける
+    /// (刺さったのか待っているのかを本人が判断できるように。`stallThreshold` はテストの差し替え口)
+    static func execute(script: URL, kind: RunHook.Kind, workingDirectory: URL,
+                        environment: [String: String],
+                        stallThreshold: Double = RunHookStall.silentWarningSeconds,
+                        log: (String) -> Void) -> Int32 {
         let process = Process()
         // 実行権が無いスクリプトは sh で起動する(chmod を忘れただけで止めない)。権があれば
         // 直接起動 = shebang を尊重する(python/ruby で書いた片付けが sh に食われない)
@@ -171,8 +175,22 @@ enum RunHookRunner {
         }
         // 出力は読み出しスレッドが貯め、こちら側で順に出す(log クロージャは Sendable ではない
         // ので別スレッドから呼ばない)。0.2 秒ごとに吐くので、長い setup でも無音にならない
+        var lastOutputAt = Date()
+        var stallWarnings = 0
         while readDone.wait(timeout: .now() + 0.2) == .timedOut {
-            for line in sink.takePending() { log("   │ \(line)") }
+            let pending = sink.takePending()
+            if !pending.isEmpty {
+                lastOutputAt = Date()
+                stallWarnings = 0
+            }
+            for line in pending { log("   │ \(line)") }
+            let silent = Date().timeIntervalSince(lastOutputAt)
+            if RunHookStall.shouldWarn(silentSeconds: silent, warningsSoFar: stallWarnings,
+                                       threshold: stallThreshold) {
+                stallWarnings += 1
+                log(RunHookStall.message(kind: kind, path: script.path, silentSeconds: silent,
+                                         pid: process.processIdentifier))
+            }
         }
         for line in sink.takePending() { log("   │ \(line)") }
         waitExit()
