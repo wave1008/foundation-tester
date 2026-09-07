@@ -1,4 +1,6 @@
 // 再生失敗時のみ呼ばれる FM フック群(Healer/Verifier/Triager、各セクションは下記 MARK 参照)。
+//
+// **セッションに `model:` を渡さない**(省略 = オンデバイス固定。PCC は禁止。FTCore/FMGate.swift 冒頭)。
 
 import CoreGraphics
 import Foundation

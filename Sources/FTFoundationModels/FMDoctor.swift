@@ -1,3 +1,7 @@
+// 見るのは `SystemLanguageModel`(オンデバイス)だけ。**PCC の可否を足さない** ——
+// 禁止しているものの状態を報告すると「使える」と読まれ、型名がソースに入ると門が落ちる
+// (禁止の理由と門は FTCore/FMGate.swift 冒頭)。
+
 import Foundation
 import FoundationModels
 import FTCore

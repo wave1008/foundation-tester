@@ -21,7 +21,7 @@ iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装
 | Tool calling (`Tool` プロトコル) | 並列/直列の呼び出しグラフを framework が自動処理 | 画面詳細のオンデマンド取得など補助的に使用 |
 | マルチモーダル | 画像+テキスト入力(NSImage/CGImage/CVPixelBuffer/URL) | スクリーンショットの視覚検証・トリアージ |
 | Dynamic Profiles | セッション中にモデル・ツール・instructions を切替 | verifier / triager の役割切替 |
-| `LanguageModel` プロトコル | オンデバイス / PCC(32K ctx) / Claude / Gemini / MLX を同一 Session API で差替 | 難しい計画立案だけ大型モデルに逃がす保険 |
+| `LanguageModel` プロトコル | オンデバイス / PCC(32K ctx) / Claude / Gemini / MLX を同一 Session API で差替 | **使わない**。PCC は完全に禁止(下記)、外部 LLM も同様 |
 | 制約: コンテキスト ~4K トークン級 | TN3193 参照。プロンプト+応答で共有 | **設計全体を規定する最重要制約** |
 | 制約: ホスト全体で共有される資源 | 許可枠(既定5、環境変数で上書き可)で制限される。並列度が枠を超えるとレイテンシが伸びる(performance-tuning.md §3.5) | 並列実行では FM 呼び出し数と枠が実行時間の下限に効く(performance-tuning.md §3.5) |
 
@@ -102,6 +102,24 @@ M1Max の launch storyboard は min=253 / max=255 = stdDev ≈ 0.1 で猶予が�
 **新しい FM 呼び出しを足すときは必ずここを通す**(監査点を 1 つに保つのが目的)。
 なお**ロックの有無自体は全滅の防止には効果が無いことが実測で確認済み**(残しているのは p50 が
 下がるため。経緯と対照データは docs/verification.md)。
+
+**PCC(Private Cloud Compute)は完全に禁止**(ユーザー決定 2026-09-07)。macOS 27 SDK の
+FoundationModels はモデル型を2つ持ち、**`PrivateCloudComputeLanguageModel` を使うとアプリの
+画面情報が Mac の外へ出る**。受け手向けドキュメントが「画面情報は Mac の外に出ない」と
+断定しているので、これは表現ではなく守るべき不変条件。使ってよいのは
+`SystemLanguageModel`(オンデバイス)だけ。
+
+守っているのは型ではなく **`LanguageModelSession` の init の既定値**である点に注意:
+
+| init | `model:` の既定 |
+|---|---|
+| `init(model: SystemLanguageModel = .default, …)` | **あり**(オンデバイス) |
+| `init(model: some LanguageModel, …)` | **なし** —— 明示しないと選べない |
+
+つまり `model:` を省く限りオンデバイスに束縛されるが、**`model:` を1つ書くだけでクラウドへ
+出られる**。機械で止めるのは `PrivateCloudComputeProhibitionTests`(ソース走査。①PCC の型名を
+名指ししない ②セッションに `model:` を明示的に渡さない ③走査自体が Sources に届いていることの
+確認)。PCC のインスタンスは型名を書かずには得られないので、①だけで経路は閉じる —— ②は二重の備え。
 
 ### 1.2 3B モデルに合わせた基本方針: 決定的な再生 + 失敗時のみ FM 介入
 
@@ -1027,7 +1045,7 @@ Android シナリオで約 33%、iOS シナリオで約 27% 所要を短縮し�
 
 | リスク | 対策 |
 |---|---|
-| Apple Intelligence 未有効 / FM 利用不可 | `fleetest doctor` で `availability` を事前診断。`LanguageModel` 差替(PCC/Claude)を用意 |
+| Apple Intelligence 未有効 / FM 利用不可 | `fleetest doctor` で `availability` を事前診断。**PCC/外部 LLM への差替は行わない**(§1.2)—— FM 系は自動スキップで走る |
 | 4K コンテキスト超過 | スナップショット圧縮 + 1 ステップ 1 セッション + 応答の構造化。`contextSizeExceeded` 捕捉時は要素数を半減させて再試行 |
 | 巨大な画面ツリーで snapshot が遅い | ランナー側でフィルタしてから返す(ホストに生ツリーを送らない) |
 | xcodebuild ランナーの不安定さ | `bridge up` にヘルスチェック+自動再起動。`/status` ポーリング |

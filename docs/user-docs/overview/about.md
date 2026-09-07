@@ -33,7 +33,8 @@ stable, and CI-friendly.
 **AI is used only for a few specific features.** Self-healing of broken selectors, visual
 verification of the screen with `screenLooksLike`, and triage of the cause when a step fails.
 All of it runs on Apple's on-device model (Foundation Models), so screen data from your app
-never leaves your Mac.
+never leaves your Mac. **Apple's cloud (Private Cloud Compute) is never used**
+(see [Requirements](environments.md)).
 
 ## Four entry points
 

@@ -1,5 +1,12 @@
 // FM 呼び出しの入場ゲート。**全ての FM 呼び出しはここを通す**(監査点を1つに保つ)。
 //
+// **使ってよいモデルは `SystemLanguageModel`(オンデバイス)だけ。PCC は禁止**
+// (`PrivateCloudComputeLanguageModel` はアプリの画面情報を Mac の外へ出す。受け手向け
+// ドキュメントが「外に出ない」と断定している = 不変条件)。**`LanguageModelSession` に
+// `model:` を渡さない** —— 省けば既定値でオンデバイスに束縛されるが、汎用 init
+// (`model: some LanguageModel`)には**既定が無い**ので、1語書くだけでクラウドへ出る。
+// 同期相手: Tests/FTFoundationModelsTests/PrivateCloudComputeProhibitionTests.swift
+//
 // 2つの関門を順に見る:
 //  1. サーキットブレーカ(FMBreaker): FM が死んでいるなら呼ばない
 //  2. 直列化ロック(FMLock): FM はホスト全体で直列化される資源なので待ち行列を作る

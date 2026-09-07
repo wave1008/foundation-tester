@@ -582,3 +582,41 @@ Y も一緒に消える壊れ方があると、そこだけ穴になる。
 また、**見逃す根拠に挙げた画面は中身まで開く** —— 「これは健全」と書いた1枚が、
 実は拾うべき真陽性だった。
 
+
+---
+
+## 14. PCC(クラウド側のモデル)は1語で届く場所にあった(2026-09-07)
+
+受け手の「FM がネットワークへ送るのでは」という問いから調べ、**3つ誤っていた**。
+
+**①「PCC は設計書の構想止まり」ではなかった。** `Sources` に PCC の文字列が無いことを根拠に
+「実装されていない = 到達できない」と答えたが、実際は macOS 27 SDK に
+`PrivateCloudComputeLanguageModel` が **public な final class として実在**する
+(`availability` / `quotaUsage` / `Error.networkFailure` を自前で持つ)。design.md が
+「PCC(32K ctx) を同一 Session API で差替」と書いていたのは**正しい記述**だった。
+
+**②「型が防いでいる」は誤り。** `LanguageModelSession(instructions:)` の `model:` が
+`SystemLanguageModel` 型だから PCC は渡せない、と読んだ。実際に書いて確かめると
+**typecheck が通った** —— 汎用の `init(model: some LanguageModel, …)` が別に居る。
+守っているのは型ではなく**既定値**で、両者はこう違う:
+
+| init | `model:` の既定 |
+|---|---|
+| `init(model: SystemLanguageModel = .default, …)` | **あり** |
+| `init(model: some LanguageModel, …)` | **なし** —— 明示しないと選べない |
+
+`model:` を省く限りオンデバイスに束縛されるが、**1語書けばクラウドへ出る**。
+
+**③「PCC が無効だから安全」も使えなかった。** 切り分けに使おうとしたが、実測でこの Mac の
+`PrivateCloudComputeLanguageModel.availability` は **`available`** だった(オンデバイス呼び出しは
+907ms で成功)。「今は使えないから安全」という論法は最初から成り立っていない。
+
+**一般化**: **「実装されていない」は「到達できない」ではない。** 自分のソースに無いことは、
+1行足せば届く場所に無いことを意味しない。**フレームワーク側に何が生えているかを SDK の
+`.swiftinterface` で直接読む** —— 記憶と設計書の要約は、世代が変わると静かに古くなる。
+そして**「型が弾く」と言う前に、弾かれるはずのコードを実際に書いてコンパイルする**
+(陽性対照。ここでは `ng.swift` が通ったことで見立てが崩れた)。
+
+門は `PrivateCloudComputeProhibitionTests`(ユーザー決定: 完全禁止・利用者向けトグルも置かない)。
+**PCC のインスタンスは型名を書かずに得られない**ので、型名の走査1本で経路は閉じる。
+`model:` の明示禁止は二重の備え。規則は CLAUDE.md §個別の規律、設計は design.md §1.1 末尾。

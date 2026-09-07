@@ -26,6 +26,9 @@ things. If you enable it later, they just start working.
 - **Failure triage** — a summary of the cause and a suggested fix, written into the report.
 
 All of it runs on-device; screen data from your app never leaves your Mac.
+**Apple's cloud (Private Cloud Compute) is never used.** Foundation Models also offers a
+cloud-hosted model, but fleetest is pinned to the on-device one, and there is no setting that
+switches to the cloud.
 
 ### Limitations
 

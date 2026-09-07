@@ -667,6 +667,18 @@
   **ダイアログを押す方式にしない**(id 無し・ロケール依存・送信の選択肢が画面に出る)。
   キルスイッチは実行プロファイルの `playProtectBypass: false`(ユーザー決定: 設定タブではなく
   プロファイル)—— OFF でもツールは端末のダイアログに答えない(止まるだけ)
+- **PCC(Private Cloud Compute)は完全に禁止**(ユーザー決定 2026-09-07)。FM で使ってよいのは
+  **オンデバイスの `SystemLanguageModel` だけ** —— `PrivateCloudComputeLanguageModel` を使うと
+  アプリの画面情報が Mac の外へ出る。受け手向けドキュメント(docs/user-docs/overview/
+  environments・about の en/ja)が「画面情報は Mac の外に出ない」と**断定している**ので、
+  これは表現ではなく不変条件。**利用者向けのトグルも置かない**(選べる形にしない)。
+  **守っているのは型ではなく `LanguageModelSession` の init の既定値** —— `model:` を省くと
+  `SystemLanguageModel = .default` に束縛されるが、**汎用 init(`model: some LanguageModel`)には
+  既定値が無い**ので `model:` を1つ書くだけでクラウドへ出られる。門は
+  `PrivateCloudComputeProhibitionTests` のソース走査(①PCC の型名を名指ししない
+  ②セッションに `model:` を明示的に渡さない ③走査が Sources に届いていることの確認)。
+  **PCC のインスタンスは型名を書かずに得られない**ので①だけで経路は閉じ、②は二重の備え。
+  経緯と SDK の実地調査は docs/design.md §1.1 末尾
 - **木は a11y が既定。ブラウザで足りないときだけ DOM で補う**(**どの組み合わせでどこから木が
   来るかの一覧は docs/design.md §木はどこから来るか**)。**口は3つ・その上の層は1つ**
   (Android Chrome=CDP / iOS Safari シミュレータ=unix ソケット / iOS Safari 実機=usbmuxd →
