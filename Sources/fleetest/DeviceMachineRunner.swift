@@ -57,7 +57,7 @@ enum DeviceMachineRunner {
     static func run(
         project: TestProject, profileName: String, groups: [Group],
         scenarios: [String], folders: [String],
-        setOverrides: [String: Bool] = [:], noLPT: Bool, lptHistoryRuns: Int?,
+        setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
         performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         quiet: Bool, junit: String?, broadcast: Bool = false

@@ -27,7 +27,7 @@ enum FleetRunner {
     static func run(
         project: TestProject, fleetName: String, fleet: FleetProfileDocument,
         scenarios: [String], folders: [String],
-        setOverrides: [String: Bool] = [:], noLPT: Bool, lptHistoryRuns: Int?,
+        setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
         performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         split: Bool, quiet: Bool, junit: String?
@@ -108,7 +108,7 @@ enum FleetRunner {
     private static func runSplit(
         project: TestProject, fleetName: String, fleet: FleetProfileDocument,
         scenarios: [String], folders: [String],
-        setOverrides: [String: Bool] = [:], noLPT: Bool, lptHistoryRuns: Int?,
+        setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
         performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         quiet: Bool, junit: String?, junitTempDir: URL?
@@ -403,7 +403,7 @@ enum FleetRunner {
         project: String, host: String, profile: String,
         deviceNames: [String] = [], deviceMachine: String? = nil,
         scenarios: [String], folders: [String],
-        setOverrides: [String: Bool] = [:], noLPT: Bool, lptHistoryRuns: Int?,
+        setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
         performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         quiet: Bool, junitPath: String?, broadcast: Bool = false, runGroup: String? = nil
@@ -434,7 +434,7 @@ enum FleetRunner {
         if !folders.isEmpty { args += ["--folder"] + folders }
         // **中継しないと黙って無視される**(子はプロファイルの既定で走る)。値ごと渡すので、
         // 打ち消す/明示で有効にするのどちらも同じ形で届く
-        for key in setOverrides.keys.sorted() { args += ["--set", "\(key)=\(setOverrides[key]!)"] }
+        for key in setOverrides.keys.sorted() { args += ["--set", "\(key)=\(setOverrides[key]!.token)"] }
         if noLPT { args += ["--no-lpt"] }
         if let lptHistoryRuns { args += ["--lpt-history-runs", String(lptHistoryRuns)] }
         if performanceMode { args += ["--performance"] }

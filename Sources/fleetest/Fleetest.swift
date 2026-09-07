@@ -799,17 +799,26 @@ struct RunScenarios: AsyncParsableCommand {
     /// にも同じ口があるので `RunCommandFlagParityTests` の runOnly/apiOnly には入れない)。
     /// 上書きは `ProfileResolver.resolve` / `--profile` 無しの直接実行の両方で
     /// `RunProfileDocument.applyingOverrides` を通る唯一の経路(FTCore/RunProfile.swift)。
-    /// 受け付けるキー・値の検証は `RunProfileSetOverride.parse`(validate() が呼ぶ)。
-    /// **プロファイルの devices 一覧に依存するキー**(`RunProfileDocument.profileOnlyBoolKeys`)は
-    /// `--profile` が無いと run() のプロファイル無し分岐でエラーにする(黙って無視しない)。
-    /// `record` は devices に依存しないが、単一接続(`--ports` 未指定/1個)の経路では別途エラーにする
-    /// (RunOrchestrator の録画セッションが無い。run() 参照)
+    /// 値の型はキーの宣言型に従う(Bool/Int/Double/String。パース失敗は型を名指しでエラーにする。
+    /// 検証は `RunProfileSetOverride.parse`。validate() が呼ぶ)。
+    /// **プロファイルの devices 一覧・供給工程に依存するキー**(`RunProfileDocument.profileOnlyKeys`:
+    /// iosInappEngine/updateWebView/wipeDataOnBloat/recoverCpuFallbackToGpu/app/machine/locale/
+    /// wipeDataThresholdGB)は `--profile` が無いと run() のプロファイル無し分岐でエラーにする
+    /// (黙って無視しない)。`record` は devices に依存しないが、単一接続(`--ports` 未指定/1個)の
+    /// 経路では別途エラーにする(RunOrchestrator の録画セッションが無い。run() 参照)。
+    /// **`reportDir` は `--report-dir` と同時指定するとエラー**(黙ってどちらかを勝たせない。
+    /// validate() 参照)
     @Option(name: .customLong("set"),
-            help: ArgumentHelp("Override one boolean field of the run profile document for this run "
-                + "only (repeatable): <key>=<true|false>, where <key> is exactly the run profile "
-                + "JSON key (e.g. --set falsePositiveCheck=false --set ocr=false). Keys that need a "
-                + "run profile's device list (iosInappEngine, updateWebView, wipeDataOnBloat, "
-                + "recoverCpuFallbackToGpu) need --profile"))
+            help: ArgumentHelp("Override one field of the run profile document for this run only "
+                + "(repeatable): <key>=<value>, where <key> is exactly the run profile JSON key and "
+                + "<value> matches that key's type (e.g. --set falsePositiveCheck=false "
+                + "--set reportDir=/tmp/out). Keys that need a run profile's device list/supply "
+                + "pipeline (iosInappEngine, updateWebView, wipeDataOnBloat, recoverCpuFallbackToGpu, "
+                + "app, machine, locale, wipeDataThresholdGB) need --profile. The run profile keys "
+                + "\"app\"/\"machine\" (an app/machine *profile* name) are unrelated to this command's "
+                + "own --app/--machine flags. Cannot combine reportDir with --report-dir. "
+                + "devices/remoteControl are lists/objects and cannot be set this way; edit the run "
+                + "profile JSON instead"))
     var setOverrides: [String] = []
 
     @Flag(name: .customLong("dry-run"),
@@ -828,7 +837,7 @@ struct RunScenarios: AsyncParsableCommand {
     var failed = false
 
     @Option(name: .customLong("report-dir"),
-            help: "Directory to write reports to (defaults to TestProjects/<name>/reports)")
+            help: "Directory to write reports to (defaults to TestProjects/<name>/reports). Cannot combine with --set reportDir=...")
     var reportDir: String?
 
     @Option(help: "Comma-separated bridge ports for running iOS scenarios in parallel (e.g. 8123,8124). Each port must already have bridge up on a separate device")
@@ -846,7 +855,7 @@ struct RunScenarios: AsyncParsableCommand {
     /// 用語と使い分けは ApiRunCommand の同名オプション参照(machine = 登録簿の名前 =
     /// ローカルエイリアス、host = ホスト名 / IP)
     @Option(name: .customLong("machine"),
-            help: "Dispatch this run to the registered machine (fleetest remote hosts). Requires --profile")
+            help: "Dispatch this run to the registered machine (fleetest remote hosts). Requires --profile. Unrelated to --set machine=... (the run profile's \"machine\" key names a machine *profile*, not a dispatch target)")
     var machine: String?
 
     @Option(help: "Dispatch this run to this host name / IP (user@host or host) over SSH. Prefer --machine for a registered machine. Requires --profile. Experimental (docs/remote-runner.md)")
@@ -948,15 +957,21 @@ struct RunScenarios: AsyncParsableCommand {
     /// `@TestClass(app:)` を書かないシナリオを **実行プロファイル無し**で回すときの逃げ道。
     /// --profile があればそちらのアプリプロファイルから解決されるのでこれは要らない
     @Option(name: .customLong("app"),
-            help: "Default app (bundle ID / package name) for scenarios that declare no @TestClass(app:). Only needed without --profile; with --profile the app profile supplies it")
+            help: "Default app (bundle ID / package name) for scenarios that declare no @TestClass(app:). Only needed without --profile; with --profile the app profile supplies it. Unrelated to --set app=... (the run profile's \"app\" key names an app *profile*, not a bundle ID)")
     var app: String?
 
     @OptionGroup var driverOptions: DriverOptions
 
     func validate() throws {
         if !setOverrides.isEmpty {
-            do { _ = try RunProfileSetOverride.parse(setOverrides) }
+            let parsed: [String: RunProfileSetValue]
+            do { parsed = try RunProfileSetOverride.parse(setOverrides) }
             catch { throw ValidationError(error.localizedDescription) }
+            // 専用フラグと同じキーの `--set` は黙ってどちらかを勝たせない(--profile の有無を問わない)
+            if let message = RunProfileDocument.flagOverrideCollision(
+                flag: "--report-dir", key: "reportDir", flagIsSet: reportDir != nil, overrides: parsed) {
+                throw ValidationError(message)
+            }
         }
         if fleet != nil {
             if host != nil { throw ValidationError("--fleet cannot be combined with --host") }
@@ -1128,7 +1143,7 @@ struct RunScenarios: AsyncParsableCommand {
         if profile == nil {
             // デバイス一覧・録画基盤に依存するキーは適用先が無い。黙って無視しない
             let unsupported = Set(profileOverrides.keys)
-                .intersection(RunProfileDocument.profileOnlyBoolKeys).sorted()
+                .intersection(RunProfileDocument.profileOnlyKeys).sorted()
             guard unsupported.isEmpty else {
                 throw ValidationError("--set \(unsupported.joined(separator: ", ")) needs --profile"
                     + " (there are no devices from a run profile to apply"
@@ -1224,7 +1239,10 @@ struct RunScenarios: AsyncParsableCommand {
             return
         }
 
-        let reportDirPath = reportDir ?? testProject.reportsDir.path
+        // `--report-dir` が優先(validate() が両方指定を既にエラーにしている)。次点は
+        // `--set reportDir=`。`defaultTimeout`/`scenarioTimeout` はこの経路(RunScenarios)に
+        // 専用フラグが無いため `--set` だけが口
+        let reportDirPath = reportDir ?? noProfileSettings.reportDir ?? testProject.reportsDir.path
         let iosPorts: [UInt16] = ports?
             .split(separator: ",")
             .compactMap { UInt16($0.trimmingCharacters(in: .whitespaces)) }
@@ -1240,10 +1258,13 @@ struct RunScenarios: AsyncParsableCommand {
                 + " recording session for --set record to attach to)")
         }
         // record:true のときだけ VideoRecordingConfig を注入(--profile 経路と同じ形。
-        // recordBitrateKbps は --set で上書きできない Int のため既定引数(1500)のまま使う)
+        // bitrate は --set recordBitrateKbps=... で上書きできる(既定は
+        // VideoRecordingConfig.defaultBitrateKbps。effectiveRecordBitrateKbps が0以下を弾く)
         let recordingConfig: VideoRecordingConfig? = noProfileSettings.record
             ? VideoRecordingConfig(runDir: recorder.runDir, androidADBPath: try? AndroidDriver.findADB(),
                                    failuresOnly: noProfileSettings.recordFailuresOnly,
+                                   bitrateKbps: RunProfileDocument.effectiveRecordBitrateKbps(
+                                       noProfileSettings.recordBitrateKbps),
                                    fullResolution: noProfileSettings.recordFullResolution)
             : nil
 
@@ -1255,6 +1276,8 @@ struct RunScenarios: AsyncParsableCommand {
                                                   containerInference: noProfileSettings.containerInference,
                                                   ocr: noProfileSettings.ocrFalsePositiveCheck,
                                                   homeOnStart: noProfileSettings.homeOnStart,
+                                                  defaultTimeout: noProfileSettings.defaultTimeout,
+                                                  scenarioTimeout: noProfileSettings.scenarioTimeout,
                                                   recorder: recorder)
         } else {
             failedCount = await runParallel(items, project: testProject,
@@ -1263,6 +1286,8 @@ struct RunScenarios: AsyncParsableCommand {
                                             containerInference: noProfileSettings.containerInference,
                                             ocr: noProfileSettings.ocrFalsePositiveCheck,
                                             homeOnStart: noProfileSettings.homeOnStart,
+                                            defaultTimeout: noProfileSettings.defaultTimeout,
+                                            scenarioTimeout: noProfileSettings.scenarioTimeout,
                                             recordingConfig: recordingConfig,
                                             recorder: recorder)
         }
@@ -1537,6 +1562,7 @@ struct RunScenarios: AsyncParsableCommand {
                                port: UInt16, reportDir: String,
                                fm: FMConfig, containerInference: Bool, ocr: Bool,
                                homeOnStart: Bool,
+                               defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
                                recorder: RunRecorder?) async throws -> Int {
         let iosUdid = await Self.resolveUdid(port: port)
         // homeOnStart は「run 開始時に1回」の予防措置(ProfileWorkerFactory.pressHomeOnStart)。
@@ -1580,7 +1606,9 @@ struct RunScenarios: AsyncParsableCommand {
             let outcome = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker, fm: fm,
                 reportDir: URL(fileURLWithPath: reportDir),
-                containerInference: containerInference, ocr: ocr, recorder: recorder,
+                defaultTimeout: defaultTimeout,
+                containerInference: containerInference, ocr: ocr,
+                scenarioTimeout: scenarioTimeout, recorder: recorder,
                 appBundleID: app) { event in
                 let lines = RunLogFormatter.lines(for: event)
                 if quiet {
@@ -1607,7 +1635,9 @@ struct RunScenarios: AsyncParsableCommand {
     private func runParallel(_ rawItems: [ScenarioRunItem], project: TestProject,
                              iosPorts: [UInt16], reportDir: String,
                              fm: FMConfig, containerInference: Bool, ocr: Bool,
-                             homeOnStart: Bool, recordingConfig: VideoRecordingConfig?,
+                             homeOnStart: Bool,
+                             defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
+                             recordingConfig: VideoRecordingConfig?,
                              recorder: RunRecorder?) async -> Int {
         let defaultPlatform = driverOptions.platform
         let items = LPTOrdering.apply(rawItems, project: project, defaultPlatform: defaultPlatform,
@@ -1646,7 +1676,9 @@ struct RunScenarios: AsyncParsableCommand {
         let orchestrator = RunOrchestrator(project: project, workers: workers,
                                            fm: fm,
                                            reportDir: URL(fileURLWithPath: reportDir),
+                                           defaultTimeout: defaultTimeout,
                                            containerInference: containerInference, ocr: ocr,
+                                           scenarioTimeout: scenarioTimeout,
                                            recorder: recorder,
                                            recordingConfig: recordingConfig,
                                            appBundleIDs: Self.appBundleIDs(app))

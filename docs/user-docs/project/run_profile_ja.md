@@ -54,11 +54,16 @@
 個別トグルは無効になります。自己修復が既定でオンかどうかは
 実行方法にも依存します。**`--profile` を使う実行は `heal` の既定が ON**、プロファイルを使わない
 素の `fleetest run` は既定 OFF です。
-`fleetest run --profile <name> --set <キー>=<true|false>` は、プロファイルを書き換えずに1回の
-実行だけこの表のどのキーも上書きできます(例: `--set heal=false`・
-`--set falsePositiveCheck=false`。`--set` については
-[running_scenarios_ja.md](../running/running_scenarios_ja.md) 参照。`--profile` の有無を問わず
-効きます —— `--profile` が要るのは実行プロファイルの devices 一覧が要るキーだけです。未知のキーはエラーになります)。
+`fleetest run --profile <name> --set <キー>=<値>` は、プロファイルを書き換えずに1回の
+実行だけこの表のほぼどのキーも上書きできます(例: `--set heal=false`・
+`--set falsePositiveCheck=false`・`--set reportDir=/tmp/out`・`--set defaultTimeout=8`。
+`--set` については [running_scenarios_ja.md](../running/running_scenarios_ja.md) 参照。
+値は上表に示したキーの型と一致させる)。`--profile` の有無を問わず効きます —— 例外は実行
+プロファイルの devices 一覧・供給工程が要るキー(`iosInappEngine`・`updateWebView`・
+`wipeDataOnBloat`・`recoverCpuFallbackToGpu`・`app`・`machine`・`locale`・
+`wipeDataThresholdGB`)で、これらは `--profile` が必須です。`devices`/`remoteControl` は
+配列・オブジェクトなので `<キー>=<値>` の形では指定できません(この2つはプロファイル JSON を
+直接編集してください)。未知のキーはエラーになります。
 
 ## iOS エンジン
 

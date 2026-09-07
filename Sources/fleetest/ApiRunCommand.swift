@@ -36,29 +36,39 @@ struct ApiRunCommand: AsyncParsableCommand {
     var scenarios: [String] = []
 
     /// キーはプロファイル JSON のキーそのもの。`fleetest run` と共有する口(FTCore/RunProfile.swift の
-    /// RunProfileSetOverride)。**プロファイルの devices 一覧に依存するキー**
-    /// (RunProfileDocument.profileOnlyBoolKeys)は `--profile` が無いとエラーにする
-    /// (黙って無視しない。run() のプロファイル無し分岐)。`record` は devices に依存しないので
-    /// ここでは通すが、この経路(runDirect。RunOrchestrator の録画セッションを持たない)では
-    /// 別途エラーにする(run() 参照)
+    /// RunProfileSetOverride)。値の型はキーの宣言型に従う(Bool/Int/Double/String。パース失敗は
+    /// 型を名指しでエラーにする)。**プロファイルの devices 一覧・供給工程に依存するキー**
+    /// (RunProfileDocument.profileOnlyKeys: iosInappEngine/updateWebView/wipeDataOnBloat/
+    /// recoverCpuFallbackToGpu/app/machine/locale/wipeDataThresholdGB)は `--profile` が無いと
+    /// エラーにする(黙って無視しない。run() のプロファイル無し分岐)。`record` は devices に
+    /// 依存しないのでここでは通すが、この経路(runDirect。RunOrchestrator の録画セッションを
+    /// 持たない)では別途エラーにする(run() 参照)。**`--report-dir`/`--default-timeout`/
+    /// `--scenario-timeout` と同じキー(reportDir/defaultTimeout/scenarioTimeout)を同時に
+    /// 指定するとエラー**(黙ってどちらかを勝たせない。run() 参照)
     @Option(name: .customLong("set"),
-            help: ArgumentHelp("Override one boolean field of the run profile document for this run "
-                + "only (repeatable): <key>=<true|false>, where <key> is exactly the run profile "
-                + "JSON key (e.g. --set heal=true --set falsePositiveCheck=false). Keys that need a "
-                + "run profile's device list (iosInappEngine, updateWebView, wipeDataOnBloat, "
-                + "recoverCpuFallbackToGpu) need --profile"))
+            help: ArgumentHelp("Override one field of the run profile document for this run only "
+                + "(repeatable): <key>=<value>, where <key> is exactly the run profile JSON key and "
+                + "<value> matches that key's type (e.g. --set heal=true --set reportDir=/tmp/out "
+                + "--set defaultTimeout=8). Keys that need a run profile's device list/supply pipeline "
+                + "(iosInappEngine, updateWebView, wipeDataOnBloat, recoverCpuFallbackToGpu, app, "
+                + "machine, locale, wipeDataThresholdGB) need --profile. The run profile keys "
+                + "\"app\"/\"machine\" (an app/machine *profile* name) are unrelated to this command's "
+                + "own --app/--machine flags (a bundle ID / package name and a dispatch target). "
+                + "Cannot combine reportDir/defaultTimeout/scenarioTimeout with the matching "
+                + "--report-dir/--default-timeout/--scenario-timeout flag. devices/remoteControl are "
+                + "lists/objects and cannot be set this way; edit the run profile JSON instead"))
     var setOverrides: [String] = []
 
     @Option(name: .customLong("report-dir"),
-            help: "Directory to write reports to (defaults to TestProjects/<name>/reports; with --profile it overrides the profile reportDir)")
+            help: "Directory to write reports to (defaults to TestProjects/<name>/reports; with --profile it overrides the profile reportDir). Cannot combine with --set reportDir=...")
     var reportDir: String?
 
     @Option(name: .customLong("default-timeout"),
-            help: "Default timeout in seconds for assertions such as exist/textIs (decimals allowed, default 5; with --profile the profile defaultTimeout wins)")
+            help: "Default timeout in seconds for assertions such as exist/textIs (decimals allowed, default 5; with --profile the profile defaultTimeout wins). Cannot combine with --set defaultTimeout=...")
     var defaultTimeout: Double?
 
     @Option(name: .customLong("scenario-timeout"),
-            help: "Per-scenario wall-clock timeout in seconds (host-side watchdog; on overrun the child is killed and the scenario fails. Default 90; with --profile the profile scenarioTimeout wins)")
+            help: "Per-scenario wall-clock timeout in seconds (host-side watchdog; on overrun the child is killed and the scenario fails. Default 90; with --profile the profile scenarioTimeout wins). Cannot combine with --set scenarioTimeout=...")
     var scenarioTimeout: Int?
 
     @Flag(name: .customLong("dry-run"),
@@ -101,14 +111,14 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// こちらに無いと「言われたとおりにしたらオプションが無い」で行き止まりになる
     /// (2026-08-20 の受け手報告)
     @Option(name: .customLong("app"),
-            help: "Default app (bundle ID / package name) for scenarios that declare no @TestClass(app:). Only needed without --profile; with --profile the app profile supplies it")
+            help: "Default app (bundle ID / package name) for scenarios that declare no @TestClass(app:). Only needed without --profile; with --profile the app profile supplies it. Unrelated to --set app=... (the run profile's \"app\" key names an app *profile*, not a bundle ID)")
     var app: String?
 
     /// **用語**(2026-08-26 ユーザー決定): machine = 登録簿の名前(このマシンだけのローカル
     /// エイリアス)、host = ホスト名 / IP。`--machine` が本来の口で、`--host` は宛先を直接書く口。
     /// 解決は RemoteHostRegistry.resolve が両方を受けるので、内部では1つの値に畳んで扱う
     @Option(name: .customLong("machine"),
-            help: "Dispatch this run to the registered machine (fleetest remote hosts). Relays its NDJSON stream. Requires --profile")
+            help: "Dispatch this run to the registered machine (fleetest remote hosts). Relays its NDJSON stream. Requires --profile. Unrelated to --set machine=... (the run profile's \"machine\" key names a machine *profile*, not a dispatch target)")
     var machine: String?
 
     @Option(help: "Dispatch this run to this host name / IP (user@host or host) over SSH. Prefer --machine for a registered machine. Requires --profile. Experimental (docs/remote-runner.md)")
@@ -213,12 +223,21 @@ struct ApiRunCommand: AsyncParsableCommand {
         // キーは devices を持つ実行プロファイルが無いと適用先が無いので、`--profile` の無い
         // 経路(runDirect。DeviceMachineRunner/dispatchToRemoteHost はどちらも --profile 必須)
         // でだけ名指しでエラーにする(黙って無視しない)
-        let profileOverrides: [String: Bool]
+        let profileOverrides: [String: RunProfileSetValue]
         do { profileOverrides = try RunProfileSetOverride.parse(setOverrides) }
         catch { throw ValidationError(error.localizedDescription) }
+        // 専用フラグと同じキーの `--set` は黙ってどちらかを勝たせない(--profile の有無を問わない)
+        for (flag, key, isSet) in [("--report-dir", "reportDir", reportDir != nil),
+                                    ("--default-timeout", "defaultTimeout", defaultTimeout != nil),
+                                    ("--scenario-timeout", "scenarioTimeout", scenarioTimeout != nil)] {
+            if let message = RunProfileDocument.flagOverrideCollision(
+                flag: flag, key: key, flagIsSet: isSet, overrides: profileOverrides) {
+                throw ValidationError(message)
+            }
+        }
         if profile == nil {
             let unsupported = Set(profileOverrides.keys)
-                .intersection(RunProfileDocument.profileOnlyBoolKeys).sorted()
+                .intersection(RunProfileDocument.profileOnlyKeys).sorted()
             guard unsupported.isEmpty else {
                 throw ValidationError("--set \(unsupported.joined(separator: ", ")) needs --profile"
                     + " (there are no devices from a run profile to apply"
@@ -742,7 +761,11 @@ struct ApiRunCommand: AsyncParsableCommand {
                            recorder: RunRecorder?) async -> RunOutcome {
         let effectivePlatform = platform ?? "ios"
         let effectivePort = port ?? BridgeAPI.defaultPort
-        let reportDirPath = reportDir ?? project.reportsDir.path
+        // `--report-dir`/`--default-timeout`/`--scenario-timeout` が優先(run() が両方指定を
+        // 既にエラーにしている)。次点は `--set reportDir=`/`defaultTimeout=`/`scenarioTimeout=`
+        let reportDirPath = reportDir ?? noProfileSettings.reportDir ?? project.reportsDir.path
+        let effectiveDefaultTimeout = defaultTimeout ?? noProfileSettings.defaultTimeout
+        let effectiveScenarioTimeout = scenarioTimeout ?? noProfileSettings.scenarioTimeout
 
         // homeOnStart は「run 開始時に1回」の予防措置(ProfileWorkerFactory.pressHomeOnStart)。
         // この経路には ProfileRunner のような常設ワーカー一覧が無いので、実際に使う platform 分の
@@ -785,10 +808,10 @@ struct ApiRunCommand: AsyncParsableCommand {
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
                 fm: noProfileSettings.fm,
-                reportDir: reportDirPath, defaultTimeout: defaultTimeout,
+                reportDir: reportDirPath, defaultTimeout: effectiveDefaultTimeout,
                 containerInference: noProfileSettings.containerInference,
                 ocr: noProfileSettings.ocrFalsePositiveCheck,
-                scenarioTimeout: scenarioTimeout,
+                scenarioTimeout: effectiveScenarioTimeout,
                 dryRun: dryRun, debug: debugOptions, recording: recording,
                 appBundleID: app) { event in
                 // host 発の log イベント等、scenario 未設定のものは現在のシナリオ ID を補う

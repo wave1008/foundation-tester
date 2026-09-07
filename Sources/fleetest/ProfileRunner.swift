@@ -33,7 +33,7 @@ enum ProfileRunner {
     ///   (`ScenarioDispatch.broadcast`)。変わるのは台数を絞らないことと分配だけで、供給・
     ///   インストール・フック(run で1回)・スタッガ・復帰・レポートは通常 run と同じ経路
     static func run(project: TestProject, profileName: String, items rawItems: [ScenarioRunItem],
-                    setOverrides: [String: Bool] = [:],
+                    setOverrides: [String: RunProfileSetValue] = [:],
                     reportDirOverride: String?,
                     quiet: Bool = false, lpt: Bool = true,
                     lptHistoryRuns: Int = LPTOrdering.defaultHistoryRuns,

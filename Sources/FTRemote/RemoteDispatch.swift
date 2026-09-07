@@ -579,7 +579,7 @@ public enum RemoteRunArgs {
     public static func build(project: String, profile: String,
                              scenarios: [String], folders: [String],
                              deviceNames: [String] = [], deviceMachine: String? = nil,
-                             setOverrides: [String: Bool] = [:],
+                             setOverrides: [String: RunProfileSetValue] = [:],
                              noLPT: Bool, lptHistoryRuns: Int?,
                              performanceMode: Bool,
                              broadcast: Bool = false,
@@ -611,7 +611,7 @@ public enum RemoteRunArgs {
         // **中継しないと黙って無視される**(リモート側はプロファイルの既定で走る)。
         // キーの値ごと渡すので、プロファイルの既定を打ち消す/明示で有効にするのどちらも
         // 同じ形で届く(--set の値は RunProfileDocument のキー名そのまま)
-        for key in setOverrides.keys.sorted() { args += ["--set", "\(key)=\(setOverrides[key]!)"] }
+        for key in setOverrides.keys.sorted() { args += ["--set", "\(key)=\(setOverrides[key]!.token)"] }
         if noLPT { args.append("--no-lpt") }
         if let lptHistoryRuns { args += ["--lpt-history-runs", String(lptHistoryRuns)] }
         // 実行の意図を変えるフラグは**中継しないと黙って無視される**(リモート側は
@@ -631,7 +631,7 @@ public enum RemoteRunArgs {
     /// 扱わない(拡張連携は NDJSON 中継のみで完結する)
     public static func buildApi(project: String, profile: String, scenarios: [String],
                                 deviceNames: [String] = [], deviceMachine: String? = nil,
-                                setOverrides: [String: Bool] = [:], noLPT: Bool, lptHistoryRuns: Int?,
+                                setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
                                 performanceMode: Bool,
                                 defaultTimeout: Double?, scenarioTimeout: Double?,
                                 reportDir: String?, workspace: String? = nil,
@@ -648,7 +648,7 @@ public enum RemoteRunArgs {
         if let workspace { args += ["--workspace", workspace] }
         for scenario in scenarios { args += ["--scenario", scenario] }
         // 理由は build() と同じ(--set は run/api run で共有する単一の口)
-        for key in setOverrides.keys.sorted() { args += ["--set", "\(key)=\(setOverrides[key]!)"] }
+        for key in setOverrides.keys.sorted() { args += ["--set", "\(key)=\(setOverrides[key]!.token)"] }
         if noLPT { args.append("--no-lpt") }
         if let lptHistoryRuns { args += ["--lpt-history-runs", String(lptHistoryRuns)] }
         if performanceMode { args.append("--performance") }

@@ -34,7 +34,7 @@ struct RunFileCommand: AsyncParsableCommand {
 
     /// `fleetest run` の `--set` をそのまま下流(RunScenarios.parse)へ中継する
     /// (キー・値の検証は RunScenarios.validate() に委ねる。二重に検証しない)
-    @Option(name: .customLong("set"), help: "Override one boolean field of the run profile document (repeatable): <key>=<true|false>")
+    @Option(name: .customLong("set"), help: "Override one field of the run profile document (repeatable): <key>=<value>, matching that key's type")
     var setOverrides: [String] = []
 
     @Option(name: .customLong("report-dir"), help: "Directory to write reports to")

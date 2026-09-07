@@ -10,6 +10,10 @@ import Foundation
 
 /// RunOrchestrator に注入する録画設定。nil を渡せば録画自体が無効(呼び出し側の既定)。
 public struct VideoRecordingConfig: Sendable {
+    /// bitrateKbps 省略時の既定。`RunProfileDocument.effectiveRecordBitrateKbps` が
+    /// (--profile あり/profile-less の)両経路でこの値を共有する唯一の定義元
+    public static let defaultBitrateKbps = 1500
+
     /// recordings/index.json・録画ファイルの書き出し先(RunRecorder.runDir)
     public let runDir: URL
     /// Android の adb パス(AndroidDriver.findADB() 相当)。nil なら Android 録画は無効
@@ -25,7 +29,7 @@ public struct VideoRecordingConfig: Sendable {
     public let fullResolution: Bool
 
     public init(runDir: URL, androidADBPath: String? = nil, failuresOnly: Bool = false,
-                bitrateKbps: Int = 1500, fullResolution: Bool = false) {
+                bitrateKbps: Int = VideoRecordingConfig.defaultBitrateKbps, fullResolution: Bool = false) {
         self.runDir = runDir
         self.androidADBPath = androidADBPath
         self.failuresOnly = failuresOnly

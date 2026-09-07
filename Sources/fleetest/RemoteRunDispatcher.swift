@@ -45,7 +45,7 @@ struct RemoteRunDispatcher {
     func dispatch(project: TestProject, profile: String,
                   scenarios: [String], folders: [String],
                   deviceNames: [String] = [], deviceMachine: String? = nil,
-                  setOverrides: [String: Bool] = [:],
+                  setOverrides: [String: RunProfileSetValue] = [:],
                   noLPT: Bool, lptHistoryRuns: Int?,
                   performanceMode: Bool,
                   broadcast: Bool = false,
@@ -104,7 +104,7 @@ struct RemoteRunDispatcher {
     /// `fleetest api run` の exit code
     func dispatchApi(project: TestProject, profile: String, scenarios: [String],
                      deviceNames: [String] = [], deviceMachine: String? = nil,
-                     setOverrides: [String: Bool] = [:], noLPT: Bool, lptHistoryRuns: Int?,
+                     setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
                      performanceMode: Bool,
                      defaultTimeout: Double?, scenarioTimeout: Double?,
                      remoteTimeoutSeconds: Int?, runGroup: String? = nil) async throws -> Int32 {

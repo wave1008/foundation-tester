@@ -54,11 +54,15 @@ default to `true` (`falsePositiveCheck` changed from opt-in on 2026-09-03). If `
 the individual toggles have no effect. Whether
 self-healing is on by default also depends on how you invoke the run: **a `--profile` run
 defaults `heal` to ON**, while a plain `fleetest run` (no profile) defaults it to OFF.
-`fleetest run --profile <name> --set <key>=<true|false>` overrides any key on this table for one
-run without editing the profile file — e.g. `--set heal=false` or
-`--set falsePositiveCheck=false` (see [running_scenarios.md](../running/running_scenarios.md) for
-`--set`; it works with or without `--profile` — only the keys that need a run profile's device
-list do — and rejects unknown keys).
+`fleetest run --profile <name> --set <key>=<value>` overrides almost any key on this table for one
+run without editing the profile file — e.g. `--set heal=false`, `--set falsePositiveCheck=false`,
+`--set reportDir=/tmp/out`, `--set defaultTimeout=8` (see
+[running_scenarios.md](../running/running_scenarios.md) for `--set`; the value must match the
+key's type shown above). It works with or without `--profile` — except the keys that need a run
+profile's device list or supply pipeline (`iosInappEngine`, `updateWebView`, `wipeDataOnBloat`,
+`recoverCpuFallbackToGpu`, `app`, `machine`, `locale`, `wipeDataThresholdGB`), which require
+`--profile`. `devices` and `remoteControl` are a list and an object and cannot be expressed as
+`<key>=<value>`; edit the profile JSON for those. Unknown keys are rejected.
 
 ## iOS engine
 

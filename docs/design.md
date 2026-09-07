@@ -1002,7 +1002,7 @@ fleetest doctor                            # FM 可用性・Xcode・シミュレ
 fleetest bridge up|down|status [--platform ios|android] [--device ...] [--serial ...]
                                            # ブリッジ(iOS: 常駐 XCUITest / Android: 常駐 instrumentation)の管理
 fleetest run [--project P] [--profile 名] [--scenario id...] \
-    [--set キー=true|false] [--report-dir ...] [--ports 8123,8124] [--skip-build]
+    [--set キー=値] [--report-dir ...] [--ports 8123,8124] [--skip-build]
                                            # Swift シナリオの決定的実行(プロファイル実行は§11)
 fleetest draft-scenario [--project P] [--testbase 資料.md] [--app ...] [--no-fm] [--dry-run]
                                            # テスト設計資料からシナリオ下書きを生成(§17)

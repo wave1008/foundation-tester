@@ -642,7 +642,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// `--set` は**中継しないと黙って無視される**(リモートはプロファイルの既定で走る)。
     /// キーごとに `--set <key>=<value>` トークンを1つ付け、辞書順で安定させる
     func testRunSetOverridesAreRelayedAsKeyValueTokensSortedByKey() {
-        func args(_ overrides: [String: Bool]) -> [String] {
+        func args(_ overrides: [String: RunProfileSetValue]) -> [String] {
             RemoteRunArgs.build(project: "E2E", profile: "android-1", scenarios: [], folders: [],
                                 setOverrides: overrides,
                                 noLPT: false, lptHistoryRuns: nil,

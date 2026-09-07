@@ -26,7 +26,7 @@ enum ApiRunMachineFanout {
     /// 混在する形になる。CLI 側の多機械ディスパッチ(DeviceMachineRunner/FleetRunner)も同じ理由で
     /// --report-dir を子へ渡していない(既存の踏襲)
     struct Options {
-        var setOverrides: [String: Bool] = [:]
+        var setOverrides: [String: RunProfileSetValue] = [:]
         var defaultTimeout: Double?
         var scenarioTimeout: Int?
         var noLPT: Bool
@@ -187,7 +187,7 @@ enum ApiRunMachineFanout {
         args += ["--scenario"] + scenarioIDs
         // 中継しないと黙って無視される(子はプロファイルの既定で走る。FleetRunner.buildArgs と同じ理由)
         for key in options.setOverrides.keys.sorted() {
-            args += ["--set", "\(key)=\(options.setOverrides[key]!)"]
+            args += ["--set", "\(key)=\(options.setOverrides[key]!.token)"]
         }
         if options.noLPT { args += ["--no-lpt"] }
         if let lptHistoryRuns = options.lptHistoryRuns { args += ["--lpt-history-runs", String(lptHistoryRuns)] }
