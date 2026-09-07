@@ -84,8 +84,8 @@ export const panelsStrings = {
   },
   "panels.runProfile.triageLabel": { ja: "失敗時のトリアージを有効にする", en: "Enable failure triage" },
   "panels.runProfile.screenLooksLikeLabel": {
-    ja: "visionを使用したscreenLooksLikeを有効にする",
-    en: "Enable vision-based screenLooksLike",
+    ja: "visionを使用したscreenLooksLikeを有効にする(macOS 27+)",
+    en: "Enable vision-based screenLooksLike (macOS 27+)",
   },
   "panels.runProfile.ocrLabel": { ja: "OCRの機能を使用する", en: "Use OCR features" },
   "panels.runProfile.iosSectionTitle": { ja: "iOS", en: "iOS" },
