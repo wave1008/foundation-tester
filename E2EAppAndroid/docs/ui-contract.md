@@ -138,7 +138,7 @@ API 30 未満のときだけ `keyevent 66` に落ちる。`OnEditorActionListene
 (本ファイル冒頭の型表と同じ)。**Button/clickable にしない** —— `OcclusionEligibility` は
 テキスト型だけを Tier-2(OCR)へ回すため、他の型では witness が素通りして死ぬ。
 
-- **静的 `@+id`**(`#row_NN` のような実行時生成は不要): 単一固定要素なので
+- **静的 `@+id`**(動的リスト行のような実行時生成は不要): 単一固定要素なので
   `res/values/ids.xml` を経由せず `screen_diagnostics.xml` に直接 `android:id="@+id/txt_ocr_faint"`
   で宣言してある(実行時に `findViewById` で文字列を差し替える必要も無い ——
   `android:text="ocr=readable"` を XML に直値で持つ)。
