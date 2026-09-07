@@ -46,6 +46,7 @@ public struct RunMetaRecord: Codable, Sendable {
         case total, passed, failed, degradedWorkers, freezeRetries, blankRepairs, blankExclusions
         case measurementInvalid, measurementInvalidReasons, workerAnomalies, issuer, runGroup
         case performanceMode, fmDead, fmDeadReason
+        case guarded, guardSkipped, guardStaleFrame
     }
 
     public init(from decoder: Decoder) throws {
@@ -74,6 +75,9 @@ public struct RunMetaRecord: Codable, Sendable {
         performanceMode = try c.decodeIfPresent(Bool.self, forKey: .performanceMode)
         fmDead = try c.decodeIfPresent([String].self, forKey: .fmDead)
         fmDeadReason = try c.decodeIfPresent(String.self, forKey: .fmDeadReason)
+        guarded = try c.decodeIfPresent(Int.self, forKey: .guarded)
+        guardSkipped = try c.decodeIfPresent(Int.self, forKey: .guardSkipped)
+        guardStaleFrame = try c.decodeIfPresent(Int.self, forKey: .guardStaleFrame)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -101,6 +105,9 @@ public struct RunMetaRecord: Codable, Sendable {
         try c.encodeIfPresent(performanceMode, forKey: .performanceMode)
         try c.encodeIfPresent(fmDead, forKey: .fmDead)
         try c.encodeIfPresent(fmDeadReason, forKey: .fmDeadReason)
+        try c.encodeIfPresent(guarded, forKey: .guarded)
+        try c.encodeIfPresent(guardSkipped, forKey: .guardSkipped)
+        try c.encodeIfPresent(guardStaleFrame, forKey: .guardStaleFrame)
     }
 
     public var schemaVersion: Int
@@ -161,6 +168,16 @@ public struct RunMetaRecord: Codable, Sendable {
     public var fmDead: [String]?
     /// fmDead の理由(`text: … / vision: …`)。fmDead が無ければ nil
     public var fmDeadReason: String?
+    /// [occlusion-guard] run 合計: `occlusionFlip` の `visibilityGuardActive` 判定を通ったステップ数
+    /// (StepCountsRecord.guarded の run 横断合計。RunRecorder が累積する)。**guarded が 1 件でも
+    /// あれば guardSkipped/guardStaleFrame は 0 でも必ず書く** —— 欄が無い(nil)は「観測なし」、
+    /// 0 は「観測したが発生しなかった」で意味が違う(不明と 0 を混ぜない)。guarded==0 の run では
+    /// 3欄とも nil のまま(ガードが1度も走らなかった)
+    public var guarded: Int?
+    /// guarded のうち FM が判定を返せず素通りした回の合計(`StepNote.visibilityGuardSkipped`)
+    public var guardSkipped: Int?
+    /// guarded のうち絵が古いまま撮り直しても stale で素通りした回の合計(`StepNote.staleScreenshot`)
+    public var guardStaleFrame: Int?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, host: String, trigger: String, startedAt: String,
@@ -172,7 +189,8 @@ public struct RunMetaRecord: Codable, Sendable {
                 workerAnomalies: [WorkerAnomalyRecord]? = nil,
                 issuer: String? = nil, runGroup: String? = nil,
                 performanceMode: Bool? = nil,
-                fmDead: [String]? = nil, fmDeadReason: String? = nil) {
+                fmDead: [String]? = nil, fmDeadReason: String? = nil,
+                guarded: Int? = nil, guardSkipped: Int? = nil, guardStaleFrame: Int? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.project = project
@@ -196,6 +214,9 @@ public struct RunMetaRecord: Codable, Sendable {
         self.performanceMode = performanceMode
         self.fmDead = fmDead
         self.fmDeadReason = fmDeadReason
+        self.guarded = guarded
+        self.guardSkipped = guardSkipped
+        self.guardStaleFrame = guardStaleFrame
     }
 }
 
@@ -229,10 +250,22 @@ public struct StepCountsRecord: Codable, Sendable {
     /// 高速化の効果を見るときに「当たり率が上がっただけ」を切り分けるための分母。Optional の理由は
     /// inconclusive と同じ
     public var viaHeldValue: Int?
+    /// [occlusion-guard] `occlusionFlip` の `visibilityGuardActive` 判定を通ったステップ数
+    /// (StepOutcome.guardEntered / ScenarioEvent.guarded)。**「誤った緑の検査」がどれだけ効いたかの
+    /// 分母** —— guardSkipped/guardStaleFrame の割合はここに対して読む。0/未使用は nil(inconclusive と
+    /// 同じ理由)
+    public var guarded: Int?
+    /// guarded のうち、FM が判定を返せず素通りした回(`StepNote.visibilityGuardSkipped`)。
+    /// guarded が nil(=一度もガードに入らなかった run)なら常に nil
+    public var guardSkipped: Int?
+    /// guarded のうち、絵が古いまま撮り直しても stale で素通りした回(`StepNote.staleScreenshot`)。
+    /// guarded が nil なら常に nil
+    public var guardStaleFrame: Int?
 
     public init(total: Int = 0, passed: Int = 0, failed: Int = 0, skipped: Int = 0,
                 healed: Int = 0, passedViaFallback: Int = 0, inconclusive: Int? = nil,
-                viaHeldValue: Int? = nil) {
+                viaHeldValue: Int? = nil, guarded: Int? = nil, guardSkipped: Int? = nil,
+                guardStaleFrame: Int? = nil) {
         self.total = total
         self.passed = passed
         self.failed = failed
@@ -241,6 +274,9 @@ public struct StepCountsRecord: Codable, Sendable {
         self.passedViaFallback = passedViaFallback
         self.inconclusive = inconclusive
         self.viaHeldValue = viaHeldValue
+        self.guarded = guarded
+        self.guardSkipped = guardSkipped
+        self.guardStaleFrame = guardStaleFrame
     }
 }
 
@@ -557,6 +593,17 @@ public struct ScenarioRecordBuilder {
         if event.notes?.contains(StepNote.heldValue.rawValue) == true {
             stepCounts.viaHeldValue = (stepCounts.viaHeldValue ?? 0) + 1
         }
+        // [occlusion-guard] 分母は occlusionFlip に実際に入った回数(event.guarded)であって、
+        // visibilityGuardActive が true になった回数ではない(tap 等は occlusionFlip を通らない)
+        if event.guarded == true {
+            stepCounts.guarded = (stepCounts.guarded ?? 0) + 1
+        }
+        if event.notes?.contains(StepNote.visibilityGuardSkipped.rawValue) == true {
+            stepCounts.guardSkipped = (stepCounts.guardSkipped ?? 0) + 1
+        }
+        if event.notes?.contains(StepNote.staleScreenshot.rawValue) == true {
+            stepCounts.guardStaleFrame = (stepCounts.guardStaleFrame ?? 0) + 1
+        }
         switch status {
         case "passed":
             stepCounts.passed += 1
@@ -594,10 +641,18 @@ public struct ScenarioRecordBuilder {
     public func build(passed: Bool, timedOut: Bool, startedAt: Date, durationMs: Int,
                       packageRoot: URL?) -> ScenarioRunRecord {
         let formatter = ISO8601DateFormatter()
+        // [occlusion-guard] ガードに1度でも入ったシナリオでは、素通りの2欄を0でも必ず書く
+        // (欄が無い=ガードに入っていない、0=入ったが素通りは起きなかった。run 合計と同じ規律で、
+        // 片方だけ nil を許すと同じ曖昧さが記録の階層をまたいで残る。docs/results-json.md)
+        var steps = stepCounts
+        if steps.guarded != nil {
+            steps.guardSkipped = steps.guardSkipped ?? 0
+            steps.guardStaleFrame = steps.guardStaleFrame ?? 0
+        }
         return ScenarioRunRecord(
             scenarioID: scenarioID, title: title, platform: platform, worker: worker,
             passed: passed, timedOut: timedOut, startedAt: formatter.string(from: startedAt),
-            durationMs: durationMs, scenes: scenes, steps: stepCounts,
+            durationMs: durationMs, scenes: scenes, steps: steps,
             reportPath: Self.relativize(reportPath, packageRoot: packageRoot),
             failedSteps: passed ? nil : (failedSteps.isEmpty ? nil : failedSteps),
             // **修正提案は成否によらず残す**(fm と同じ理由)。強い提案が出るのは自己修復か

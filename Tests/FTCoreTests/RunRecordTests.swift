@@ -74,7 +74,8 @@ final class RunRecordTests: XCTestCase {
 
     private func stepEvent(index: Int, scene: Int, status: String, description: String = "tap",
                            detail: String? = nil, file: String? = nil, line: Int? = nil,
-                           durationMs: Int? = nil, at: String? = nil) -> ScenarioEvent {
+                           durationMs: Int? = nil, at: String? = nil,
+                           notes: [String]? = nil, guarded: Bool? = nil) -> ScenarioEvent {
         var event = ScenarioEvent(kind: "step")
         event.index = index
         event.scene = scene
@@ -85,6 +86,8 @@ final class RunRecordTests: XCTestCase {
         event.line = line
         event.durationMs = durationMs
         event.at = at
+        event.notes = notes
+        event.guarded = guarded
         return event
     }
 
@@ -360,6 +363,202 @@ final class RunRecordTests: XCTestCase {
 
         let timeline = try? XCTUnwrap(record.timeline)
         XCTAssertEqual(timeline?[1].status, "inconclusive")
+    }
+
+    // MARK: - occlusion-guard(誤った緑の検査)がどれだけ効いたか
+
+    /// **分母は event.guarded==true の回数**であって、ガード対象になり得たステップの数
+    /// (visibilityGuardActive)ではない。tap 等のアクションは guarded を立てない(false/nil)ので
+    /// 数に入らないことを確かめる
+    func testGuardedCountsOnlyStepsThatEnteredOcclusionFlip() {
+        var builder = ScenarioRecordBuilder(
+            scenarioID: "Foo.guard", platform: "ios", title: nil, worker: nil)
+        // exist が occlusionFlip に入り可視と判定された(素通りではない)ケース
+        builder.consume(stepEvent(index: 0, scene: 1, status: "passed", guarded: true))
+        // tap 等のアクションは occlusionFlip を通らない = guarded は立たない
+        builder.consume(stepEvent(index: 1, scene: 1, status: "passed", guarded: false))
+        // visibilityGuardActive が false(ガード無効)で occlusionFlip の入口で降りた
+        builder.consume(stepEvent(index: 2, scene: 1, status: "passed", guarded: nil))
+
+        let record = builder.build(
+            passed: true, timedOut: false, startedAt: Date(timeIntervalSince1970: 0),
+            durationMs: 0, packageRoot: nil)
+
+        XCTAssertEqual(record.steps.guarded, 1, "guarded==true のステップだけを数える")
+        // ガードに入っている以上、素通りが0件だったことは**観測された事実**なので0を書く
+        // (欄を落とすと「ガードに入っていない」と区別が付かない。run 合計と同じ規律)
+        XCTAssertEqual(record.steps.guardSkipped, 0, "入ったが素通りは起きなかった = 0")
+        XCTAssertEqual(record.steps.guardStaleFrame, 0)
+    }
+
+    /// ガードに1度も入らなかったシナリオでは3欄とも省く(0 を書かない) ——
+    /// 「観測なし」と「観測したが0件」を記録の階層をまたいで混ぜないため
+    func testGuardFieldsAreOmittedEntirelyWhenTheGuardNeverRan() {
+        var builder = ScenarioRecordBuilder(
+            scenarioID: "Foo.noguard", platform: "ios", title: nil, worker: nil)
+        builder.consume(stepEvent(index: 0, scene: 1, status: "passed", guarded: false))
+        builder.consume(stepEvent(index: 1, scene: 1, status: "passed", guarded: nil))
+
+        let record = builder.build(
+            passed: true, timedOut: false, startedAt: Date(timeIntervalSince1970: 0),
+            durationMs: 0, packageRoot: nil)
+
+        XCTAssertNil(record.steps.guarded)
+        XCTAssertNil(record.steps.guardSkipped)
+        XCTAssertNil(record.steps.guardStaleFrame)
+    }
+
+    /// guarded に入った回のうち、`visibility-guard-skipped` / `stale-screenshot` の注記が付いた回を
+    /// それぞれ別カウンタへ積む(FM が判定を返せなかった/絵が古かった=素通りの内訳)
+    func testGuardSkippedAndStaleFrameAreCountedFromNotes() {
+        var builder = ScenarioRecordBuilder(
+            scenarioID: "Foo.guardskip", platform: "ios", title: nil, worker: nil)
+        builder.consume(stepEvent(index: 0, scene: 1, status: "passed", guarded: true))
+        builder.consume(stepEvent(index: 1, scene: 1, status: "passed",
+                                  notes: [StepNote.visibilityGuardSkipped.rawValue], guarded: true))
+        builder.consume(stepEvent(index: 2, scene: 1, status: "passed",
+                                  notes: [StepNote.staleScreenshot.rawValue], guarded: true))
+
+        let record = builder.build(
+            passed: true, timedOut: false, startedAt: Date(timeIntervalSince1970: 0),
+            durationMs: 0, packageRoot: nil)
+
+        XCTAssertEqual(record.steps.guarded, 3)
+        XCTAssertEqual(record.steps.guardSkipped, 1)
+        XCTAssertEqual(record.steps.guardStaleFrame, 1)
+    }
+
+    /// ガードが1度も走らなかったシナリオでは3欄とも nil のまま(0を書かない)
+    func testGuardCountsAreNilWhenGuardNeverRan() {
+        var builder = ScenarioRecordBuilder(
+            scenarioID: "Foo.noguard", platform: "ios", title: nil, worker: nil)
+        builder.consume(stepEvent(index: 0, scene: 1, status: "passed"))
+
+        let record = builder.build(
+            passed: true, timedOut: false, startedAt: Date(timeIntervalSince1970: 0),
+            durationMs: 0, packageRoot: nil)
+
+        XCTAssertNil(record.steps.guarded)
+        XCTAssertNil(record.steps.guardSkipped)
+        XCTAssertNil(record.steps.guardStaleFrame)
+    }
+
+    // MARK: - RunRecorder: run 合計への集計と 0/nil の使い分け
+
+    private func runRecorder() throws -> (recorder: RunRecorder, cleanup: () -> Void) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fleetest-runrecord-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let recorder = RunRecorder.begin(project: TestProject(name: "P", rootURL: root),
+                                         profile: nil, trigger: "cli", captureHostMetrics: false)
+        return (recorder, { try? FileManager.default.removeItem(at: root) })
+    }
+
+    private func readMeta(_ recorder: RunRecorder) throws -> RunMetaRecord {
+        try JSONDecoder().decode(
+            RunMetaRecord.self,
+            from: Data(contentsOf: recorder.runDir.appendingPathComponent("run.json")))
+    }
+
+    /// 1度もガードに入らなかった run(全シナリオが guarded==nil)では、run.json にも3欄とも
+    /// 書かない(欠落キー=観測なし、を保つ)
+    func testRunTotalsOmitGuardFieldsWhenNoScenarioEnteredTheGuard() throws {
+        let (recorder, cleanup) = try runRecorder()
+        defer { cleanup() }
+        recorder.record(ScenarioRunRecord(
+            scenarioID: "Foo.a", platform: "ios", passed: true,
+            startedAt: "2026-09-07T00:00:00.000Z", durationMs: 10,
+            steps: StepCountsRecord(total: 1, passed: 1)))
+
+        recorder.finish(total: 1, passed: 1, failed: 0)
+        let meta = try readMeta(recorder)
+        XCTAssertNil(meta.guarded)
+        XCTAssertNil(meta.guardSkipped)
+        XCTAssertNil(meta.guardStaleFrame)
+    }
+
+    /// guarded が1件以上ある run では、guardSkipped/guardStaleFrame が0件でも**明示的に0を書く**
+    /// (欄が無い=観測なし、0=観測したが起きなかった、を混ぜない。CLAUDE.md の規律)
+    func testRunTotalsWriteExplicitZeroWhenGuardRanButNeverSkipped() throws {
+        let (recorder, cleanup) = try runRecorder()
+        defer { cleanup() }
+        recorder.record(ScenarioRunRecord(
+            scenarioID: "Foo.b", platform: "ios", passed: true,
+            startedAt: "2026-09-07T00:00:00.000Z", durationMs: 10,
+            steps: StepCountsRecord(total: 1, passed: 1, guarded: 3)))
+
+        recorder.finish(total: 1, passed: 1, failed: 0)
+        let meta = try readMeta(recorder)
+        XCTAssertEqual(meta.guarded, 3)
+        XCTAssertEqual(meta.guardSkipped, 0, "0件でも欄が無くなってはいけない")
+        XCTAssertEqual(meta.guardStaleFrame, 0)
+    }
+
+    /// 複数シナリオの guarded/guardSkipped/guardStaleFrame は run 合計に単純加算される
+    func testRunTotalsSumAcrossScenarios() throws {
+        let (recorder, cleanup) = try runRecorder()
+        defer { cleanup() }
+        recorder.record(ScenarioRunRecord(
+            scenarioID: "Foo.c1", platform: "ios", passed: true,
+            startedAt: "2026-09-07T00:00:00.000Z", durationMs: 10,
+            steps: StepCountsRecord(total: 2, passed: 2, guarded: 2, guardSkipped: 1,
+                                    guardStaleFrame: 0)))
+        recorder.record(ScenarioRunRecord(
+            scenarioID: "Foo.c2", platform: "ios", passed: true,
+            startedAt: "2026-09-07T00:00:00.000Z", durationMs: 10,
+            steps: StepCountsRecord(total: 1, passed: 1, guarded: 1, guardSkipped: 0,
+                                    guardStaleFrame: 1)))
+
+        recorder.finish(total: 2, passed: 2, failed: 0)
+        let meta = try readMeta(recorder)
+        XCTAssertEqual(meta.guarded, 3)
+        XCTAssertEqual(meta.guardSkipped, 1)
+        XCTAssertEqual(meta.guardStaleFrame, 1)
+    }
+
+    /// 凍結・環境エラーの再実行で `discardLast` が直前の記録を取り消したら、その記録の
+    /// ガード計数も run 合計から引く。引かないと同じシナリオを2回数え、**保護できた割合が
+    /// 実際より高く見える**(この記録を足した目的そのものを損なう)
+    func testDiscardedRecordIsRemovedFromGuardTotals() throws {
+        let (recorder, cleanup) = try runRecorder()
+        defer { cleanup() }
+        // 1回目(凍結して捨てられる回)
+        recorder.record(ScenarioRunRecord(
+            scenarioID: "Foo.retry", platform: "ios", passed: false,
+            startedAt: "2026-09-07T00:00:00.000Z", durationMs: 10,
+            steps: StepCountsRecord(total: 5, passed: 5, guarded: 5, guardSkipped: 4,
+                                    guardStaleFrame: 1)))
+        recorder.discardLast(scenarioID: "Foo.retry")
+        // 再実行(こちらだけが残る)
+        recorder.record(ScenarioRunRecord(
+            scenarioID: "Foo.retry", platform: "ios", passed: true,
+            startedAt: "2026-09-07T00:00:10.000Z", durationMs: 10,
+            steps: StepCountsRecord(total: 2, passed: 2, guarded: 2, guardSkipped: 0,
+                                    guardStaleFrame: 0)))
+
+        recorder.finish(total: 1, passed: 1, failed: 0)
+        let meta = try readMeta(recorder)
+        XCTAssertEqual(meta.guarded, 2, "捨てた回の 5 を足したままにしない")
+        XCTAssertEqual(meta.guardSkipped, 0, "捨てた回の 4 を足したままにしない")
+        XCTAssertEqual(meta.guardStaleFrame, 0)
+    }
+
+    /// 取り消しで合計が 0 に戻ったら3欄とも書かない(「ガードが1度も走らなかった run」と同じ形)
+    func testDiscardingTheOnlyGuardedRecordOmitsTheFields() throws {
+        let (recorder, cleanup) = try runRecorder()
+        defer { cleanup() }
+        recorder.record(ScenarioRunRecord(
+            scenarioID: "Foo.only", platform: "ios", passed: false,
+            startedAt: "2026-09-07T00:00:00.000Z", durationMs: 10,
+            steps: StepCountsRecord(total: 3, passed: 3, guarded: 3, guardSkipped: 2,
+                                    guardStaleFrame: 1)))
+        recorder.discardLast(scenarioID: "Foo.only")
+
+        recorder.finish(total: 0, passed: 0, failed: 0)
+        let meta = try readMeta(recorder)
+        XCTAssertNil(meta.guarded)
+        XCTAssertNil(meta.guardSkipped)
+        XCTAssertNil(meta.guardStaleFrame)
     }
 
     func testSceneWithoutAnyDurationEventsIsNil() {

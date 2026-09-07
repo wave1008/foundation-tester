@@ -183,6 +183,10 @@ public struct StepOutcome: Sendable {
     /// `execute(_:cached:)` が per-step の累積器から詰めるので、**内側の return では空のまま**でよい
     /// (外側で組み直される)。表示文言との同期は `StepExecutor.note(_:into:)` が担保する
     public let notes: [StepNote]
+    /// [occlusion-guard] このステップが `occlusionFlip` の `visibilityGuardActive` 判定を通ったか
+    /// (guardEnteredThisStep から詰める)。集計の分母 —— `ScenarioRecordBuilder` はこれが true の
+    /// ステップだけを occlusion-guard の母数に数える
+    public let guardEntered: Bool
     /// このステップの結果が確定した壁時計時刻(ISO8601+ミリ秒)。execute(_:cached:) が
     /// 返す直前に都度 Date() から採る(failed 以外にも付くが、永続化するのは失敗ステップのみ。
     /// ScenarioEvent.at / FailedStepRecord.at 参照)
@@ -206,11 +210,12 @@ public struct StepOutcome: Sendable {
     public init(status: StepResult.Status, healedStep: FlowStep? = nil, healedByCache: Bool = false,
                healedByFingerprint: Bool = false,
                timing: StepTiming? = nil, driverFallback: String? = nil,
-               notes: [StepNote] = [],
+               notes: [StepNote] = [], guardEntered: Bool = false,
                observedChecked: Bool? = nil, resolvedElement: ElementInfo? = nil,
                scrollSwipes: Int? = nil, failureKind: StepFailureKind? = nil,
                at: String = ISO8601Millis.string(from: Date())) {
         self.failureKind = failureKind
+        self.guardEntered = guardEntered
         self.observedChecked = observedChecked
         self.resolvedElement = resolvedElement
         self.scrollSwipes = scrollSwipes
@@ -546,6 +551,7 @@ public final class StepExecutor {
         resetInterruptScope()
         suppressedInterruptionSeenThisStep = false
         observedCheckedThisStep = nil
+        guardEnteredThisStep = false
         resolvedElementThisStep = nil
         scrollSwipesThisStep = nil
         noteCodesThisStep = []
@@ -590,6 +596,7 @@ public final class StepExecutor {
                                    driverFallback: noteWithInterrupt(nil,
                                                                      failed: !Self.isSuccess(status)),
                                    notes: collectedNotes(),
+                                   guardEntered: guardEnteredThisStep,
                                    observedChecked: observedCheckedThisStep,
                                    resolvedElement: resolvedElementThisStep,
                                    scrollSwipes: scrollSwipesThisStep,
@@ -602,6 +609,10 @@ public final class StepExecutor {
                                                   snapshotMs: phase.snapshotMs,
                                                   actionMs: phase.actionMs, waitMs: phase.waitMs),
                                notes: collectedNotes(),
+                               // **注記を載せる枝は分母も載せる** —— ガードに入って
+                               // stale/skipped を立てた後に例外が出ると、分子だけ数えて
+                               // 分母が落ちる(guardStaleFrame > guarded が起こりうる)
+                               guardEntered: guardEnteredThisStep,
                                scrollSwipes: scrollSwipesThisStep,
                                // 投げられたエラーは**型で**仕分ける(文言一致で数えない)。
                                // 分からない型は nil のまま = 推測しない
@@ -676,6 +687,13 @@ public final class StepExecutor {
     /// executeAssert は Status しか返さないためインスタンス変数で受け渡す
     /// (StepExecutor+Assert.swift の executeAssertChecked から書くため internal)。
     var observedCheckedThisStep: Bool?
+    /// [occlusion-guard] このステップが `occlusionFlip` の `visibilityGuardActive` 判定を通ったか
+    /// (execute が StepOutcome.guardEntered に載せる)。**分母はここ** —— `visibilityGuardActive`
+    /// が true でも tap 等のアクションは occlusionFlip を通らないので、そちらを分母にしてはならない。
+    /// 足切り(型・ラベル・インク)で FM を呼ばずに降りた回もガードが責任を持った総数に入るよう、
+    /// `occlusionFlip` の入口ガードを通った直後に立てる(それより後ろの早期 return では立て直さない)。
+    /// observedCheckedThisStep と同じ受け渡し形
+    var guardEnteredThisStep = false
     /// このステップの assert が **SpringBoard 側の木**で解決したか(= シナリオ自身が
     /// システムアラートを検証している)。立っていれば SystemUIGate は緑を取り消さない ——
     /// 取り消すと `exist("許可しない")` のような、アラートを対象にした検証が一切書けなくなる。

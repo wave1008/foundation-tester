@@ -129,6 +129,9 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | issuer | String? | ディスパッチ発行者の自己申告(認証ではない) |
 | fmDead | [String]? | **run を閉じた時点**でこの機械の FM が死んでいた経路(`"text"` / `"vision"`。`FTCore.FMLiveness`)。生きていた・不明なら欄ごと省略 —— **欄が無いことを「生きていた」と読まない**。**run 全体の状態ではない**(途中で死んで戻った run はここに出ない。そちらは `scenarios/*.json` の `fm.failures` / `fm.firstError`)。**緑の run を仕分けるための欄** —— FM が死んだ run の緑は occlusion-guard・自己修復・screenLooksLike が素通りしただけかもしれない。2026-09-03 より前の記録には無い |
 | fmDeadReason | String? | `fmDead` の理由(`text: … / vision: …`)。`fmDead` が無ければ省略 |
+| guarded | Int? | **occlusion-guard(誤った緑の検査)が run 全体で `occlusionFlip` の `visibilityGuardActive` 判定を通ったステップ数**(run 横断合計)。**分母は occlusionFlip に実際に入った回数であって、`visibilityGuardActive` が true になった回数(検査対象の候補数)ではない** —— tap 等のアクションは `occlusionFlip` を通らないのでこの欄には数えない。足切り(型・ラベル・インク)で FM を呼ばずに素通りした回も、`occlusionFlip` の入口ガードは通っているのでここに数える。1度もガードに入らなかった run では省略(0 は書かない) |
+| guardSkipped | Int? | `guarded` のうち、FM が判定を返せず(死活・ブレーカ・直列化待ち)素通りした回(`visibility-guard-skipped`)。**`guarded` が1件以上ある run では、0件でも必ず書く**(欄が無い=観測なし、0=観測したが起きなかった、を混ぜない)。`guarded` が省略された run では同じく省略 |
+| guardStaleFrame | Int? | `guarded` のうち、絵が古いまま撮り直しても stale で素通りした回(`stale-screenshot`)。`guardSkipped` と同じ 0/nil の規律 |
 | runGroup | String? | **同じ実行から分かれた run を束ねる鍵**。デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run(別 runID・別 machine・リモートは向こうの時計)になるので、`profile` と開始時刻では同じ実行かどうか決められない。ファンアウトの親が1回だけ発行し、手元の子にもリモートの子にも同じ値が入る。**単機の run と 2026-08-26 より前の記録では欠落**(束ねる相手が居ない) |
 
 ### host-metrics.ndjson の FM 欄
@@ -175,7 +178,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | timedOut | Bool? | タイムアウトで強制終了したか |
 | startedAt / durationMs | String / Int | |
 | scenes | [SceneResultRecord] | シーン単位の合否・所要 |
-| steps | StepCountsRecord | 状態別のステップ数(`total` / `passed` / `failed` / `skipped` / `healed` / `passedViaFallback` / `inconclusive` / `viaHeldValue`) |
+| steps | StepCountsRecord | 状態別のステップ数(`total` / `passed` / `failed` / `skipped` / `healed` / `passedViaFallback` / `inconclusive` / `viaHeldValue` / `guarded` / `guardSkipped` / `guardStaleFrame`。最後の3つは下記) |
 | failedSteps | [FailedStepRecord]? | **失敗時のみ**。下記 |
 | fixSuggestions | [FixSuggestionRecord]? | セレクタの修正提案(**成否によらず**残る) |
 | errorLogs | [String]? | ❌/⚠️/⏱ で始まるログの末尾5件。**失敗時のみ** |
@@ -195,6 +198,19 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 **`fm` の `skipped`** は `FMGate` で止められ FM を呼ばずに諦めた回数(ブレーカ作動中 or 枠の
 待ちが timeout 超過)。`calls`/`failures`(呼んで失敗)とは別物 —— occlusion-guard・heal・
 screenLooksLike がこの回数ぶん静かに素通りしたことを事後に確認する材料。
+
+**`steps.guarded` / `guardSkipped` / `guardStaleFrame`(occlusion-guard がどれだけ効いたか)**:
+「緑の run」がどれだけ強い緑かを言うための欄。**分母は `guarded`(occlusionFlip に実際に入った
+ステップ数)であって、FM の判定を得た数ではない** —— `visibilityGuardActive` が true でも tap 等の
+アクションは `occlusionFlip` を通らないので数えない一方、足切り(型・ラベル・インク)で FM を
+呼ばずに通過した回は `occlusionFlip` の入口ガードを通っているので `guarded` に含む。
+`guardSkipped`(FM が判定を返せず素通り)と `guardStaleFrame`(絵が古く素通り)は、その中で
+「ガードに入ったのに判定を得られなかった」回。**差(`guarded - guardSkipped - guardStaleFrame`)を
+「可視性を判定できた回数」と読んではいけない** —— 足切りで FM を呼ばずに通過した回も同じ差に
+入っており、この記録から両者は分けられない。差が言えるのは「素通りとして数えなかった回」まで。
+言えるのは**下限**(`guardSkipped + guardStaleFrame` は確実に判定を得ていない)であって、
+上限ではない。**この2つは `guarded` が1件以上あれば0件でも必ず書く**
+(欄が無い=一度もガードに入っていない、0=入ったが素通りは起きなかった、を混ぜない)。
 
 ### FailedStepRecord
 

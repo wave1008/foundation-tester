@@ -751,7 +751,7 @@ public final class FTDriveCore {
                    actionMs: outcome?.timing?.actionMs,
                    waitMs: outcome?.timing?.waitMs,
                    at: outcome?.at,
-                   notes: outcome?.notes ?? [],
+                   notes: outcome?.notes ?? [], guarded: outcome?.guardEntered ?? false,
                    command: command, failureKind: failureKind)
 
         // 修正提案とヒールキャッシュの更新
@@ -1267,7 +1267,7 @@ public final class FTDriveCore {
     func recordStep(description: String, status: StepResult.Status, file: String, line: Int,
                     durationMs: Int? = nil, snapshotMs: Int? = nil,
                     actionMs: Int? = nil, waitMs: Int? = nil, at: String? = nil,
-                    notes: [StepNote] = [],
+                    notes: [StepNote] = [], guarded: Bool = false,
                     command: String? = nil, failureKind: StepFailureKind? = nil,
                     screenshotData: Data? = nil, screenshotLabel: String? = nil) {
         stateLock.lock()
@@ -1300,6 +1300,9 @@ public final class FTDriveCore {
         event.waitMs = waitMs
         event.at = at
         event.notes = notes.isEmpty ? nil : notes.map(\.rawValue)
+        // false は載せない(notes と同じ流儀)—— ステップごとに流れる NDJSON なので、
+        // 大多数を占める「ガードに入らなかった」を毎行書くと帯域だけ食う
+        event.guarded = guarded ? true : nil
         event.command = command
         // 素性は失敗にだけ付ける(呼び出し側が誤って渡しても落とす)
         if case .failed = status { event.failureKind = failureKind?.rawValue }

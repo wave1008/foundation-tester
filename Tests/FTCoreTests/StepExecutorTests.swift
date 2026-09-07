@@ -497,6 +497,82 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(delegate.visibleCalls, 0, "マスタースイッチ OFF で FM を呼んではいけない")
     }
 
+    // MARK: - guardEntered(occlusion-guard がどれだけ効いたかの分母。RunRecord の guarded 集計元)
+
+    /// occlusionFlip の入口ガード(visibilityGuardActive)を通れば guardEntered が立つ。
+    /// **分母はここ** —— FM の判定を得たかどうかは関係ない
+    func testGuardEnteredWhenOcclusionFlipRuns() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true),
+                                    isAndroid: false)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+        XCTAssertTrue(outcome.guardEntered, "occlusionFlip に入ったのに guardEntered が立っていない")
+    }
+
+    /// **足切りで早期に降りた回も分母に入る** —— 幾何 Tier-0(画面外)で FM を呼ばずに
+    /// 失敗を返す経路でも、occlusionFlip の入口は通っているので guardEntered は立つ
+    func testGuardEnteredEvenWhenGeometryShortCircuitsBeforeCallingFM() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[offscreenTextElement()]])
+        let delegate = FakeVisibilityDelegate(visible: true)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+        XCTAssertEqual(delegate.visibleCalls, 0, "この witness は FM を呼ばない経路であること")
+        XCTAssertTrue(outcome.guardEntered,
+                      "FM を呼ばず足切りで降りた回もガードが責任を持った総数(分母)に入るはず")
+    }
+
+    /// per-step の `occlusionGuard: false` で `visibilityGuardActive` が false になれば、
+    /// occlusionFlip の入口で return する前なので guardEntered は立たない
+    func testGuardEnteredFalseWhenPerStepGuardIsOff() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true),
+                                    isAndroid: false)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: false)
+
+        let outcome = await executor.execute(step)
+        XCTAssertFalse(outcome.guardEntered, "requireVisible:false では occlusionFlip に入らないはず")
+    }
+
+    /// マスタースイッチ(occlusionGuardEnabled:false)でも同じく visibilityGuardActive が false
+    /// になるので guardEntered は立たない
+    func testGuardEnteredFalseWhenMasterSwitchIsOff() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: false),
+                                    occlusionGuardEnabled: false, isAndroid: false)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+        XCTAssertFalse(outcome.guardEntered, "マスタースイッチ OFF では occlusionFlip に入らないはず")
+    }
+
+    /// **tap 等のアクションは occlusionFlip をそもそも通らない**(assert 専用の経路)ので、
+    /// occlusionGuard が有効なシナリオでも action の StepOutcome.guardEntered は常に false
+    func testGuardEnteredFalseForActionSteps() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true),
+                                    isAndroid: false)
+        let outcome = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "msg")))
+        XCTAssertFalse(outcome.guardEntered, "tap は occlusionFlip を通らないはず")
+    }
+
     // MARK: - 可視性照合の幾何 Tier-0 と、FM が答えないときの注記
 
     /// 幾何 Tier-0 の witness: 中心が画面(400x800)の外にある要素。横軸は収まる(幅234)

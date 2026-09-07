@@ -77,6 +77,10 @@ public struct ScenarioEvent: Codable, Sendable {
     public var requestID: Int?
     /// kind == installRequest。installApp() の明示引数(nil = 親が実行プロファイルの appPath を解決する)
     public var installPath: String?
+    /// kind == step。[occlusion-guard] このステップが `occlusionFlip` の `visibilityGuardActive`
+    /// 判定を通ったか(StepOutcome.guardEntered)。action など occlusionFlip を通らないステップでは
+    /// false(意味を持つのは assert のみ)。後発の追加フィールドで Optional = 旧クライアント互換
+    public var guarded: Bool?
 
     public init(kind: String) {
         self.kind = kind

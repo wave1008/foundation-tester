@@ -81,6 +81,9 @@ extension StepExecutor {
                               expectedIsUserText: Bool = false,
                               phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
         guard visibilityGuardActive(perStepGuard: perStepGuard) else { return nil }
+        // **ここより後ろに置かない** —— 足切り(型・ラベル・インク)で FM を呼ばずに
+        // 降りた回もガードが責任を持ったアサーションの総数(分母)に入れるため
+        guardEnteredThisStep = true
         // Tier-0: 画面外は見えていない。**スクショも FM も要らない**ので最初に置く。
         // 足切り(型・ラベル)より前 —— アイコンや無ラベル要素は FM 照合の対象外でも、画面外なのは同じ
         if let c = TapTargetGeometry.offscreenScrollGateCentre(for: element, screen: screen) {

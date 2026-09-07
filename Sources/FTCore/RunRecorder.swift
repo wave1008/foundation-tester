@@ -46,8 +46,16 @@ public final class RunRecorder: @unchecked Sendable {
     /// baseName ごとの、いま残っているファイル名と書き手(ScenarioRunRecord.worker)。書いた順。
     /// **discardLast(worker:) がその書き手のぶんだけを消す**ための台帳 —— ブロードキャスト実行は
     /// 同じ ID を N 台が同時に書くので、「この ID の最新」では別の台の記録を消す
-    private var liveFiles: [String: [(fileName: String, worker: String?)]] = [:]
+    /// **ガードの計数も持つ** —— discardLast が取り消した記録のぶんを引けるようにするため
+    /// (凍結・環境エラーの再実行で同じシナリオが2回書かれる。引かないと二重計上になる)
+    private var liveFiles: [String: [(fileName: String, worker: String?,
+                                      guarded: Int, guardSkipped: Int, guardStaleFrame: Int)]] = [:]
     private let hostMetrics: HostMetricsRecorder?
+    /// [occlusion-guard] run 横断の累積(write(_:) で record.steps から加算・finish() で
+    /// RunMetaRecord へ載せる)。lock で保護(並列ワーカーが同時に record() を呼ぶため)
+    private var guardedTotal = 0
+    private var guardSkippedTotal = 0
+    private var guardStaleFrameTotal = 0
 
     private init(runID: String, projectName: String, profile: String?, machine: String,
                 trigger: String, startedAt: String, runDir: URL,
@@ -134,6 +142,10 @@ public final class RunRecorder: @unchecked Sendable {
         }
         let removed = entries.remove(at: index)
         liveFiles[baseName] = entries
+        // 取り消した記録のガード計数を引く(引かないと再実行のぶんと二重に数える)
+        guardedTotal -= removed.guarded
+        guardSkippedTotal -= removed.guardSkipped
+        guardStaleFrameTotal -= removed.guardStaleFrame
         if index == entries.count, let count = fileNameCounts[baseName], count > 0,
            removed.fileName == Self.fileName(baseName, count: count) {
             fileNameCounts[baseName] = count - 1
@@ -154,6 +166,17 @@ public final class RunRecorder: @unchecked Sendable {
         // (`fleetest run` / `api run` は別実装。RunCommandFlagParityTests の教訓)
         let fmReading = FMLiveness.current()
         let fmDeadPaths = fmReading.deadPaths
+        lock.lock()
+        let guardedSum = guardedTotal
+        let guardSkippedSum = guardSkippedTotal
+        let guardStaleFrameSum = guardStaleFrameTotal
+        lock.unlock()
+        // [occlusion-guard] 1度もガードに入らなかった run では3欄とも省略。
+        // 1件でもあれば guardSkipped/guardStaleFrame は0でも必ず書く
+        // (欄が無い=観測なし、0=観測したが起きなかった、を混ぜない。docs/results-json.md 参照)
+        let guardedValue: Int? = guardedSum > 0 ? guardedSum : nil
+        let guardSkippedValue: Int? = guardedSum > 0 ? guardSkippedSum : nil
+        let guardStaleFrameValue: Int? = guardedSum > 0 ? guardStaleFrameSum : nil
         let meta = RunMetaRecord(
             runID: runID, project: projectName, profile: profile, host: machine,
             trigger: trigger, startedAt: startedAt,
@@ -175,7 +198,9 @@ public final class RunRecorder: @unchecked Sendable {
             // 生・不明は書かない(既存レコードと同じ形)。**不明を「生」と書かない**のが肝で、
             // 欄が無い = 何も観測できなかった、と読む
             fmDead: fmDeadPaths.isEmpty ? nil : fmDeadPaths,
-            fmDeadReason: fmReading.deadSummary())
+            fmDeadReason: fmReading.deadSummary(),
+            guarded: guardedValue, guardSkipped: guardSkippedValue,
+            guardStaleFrame: guardStaleFrameValue)
         RunResultsStore.writeMeta(meta, runDir: runDir)
     }
 
@@ -185,7 +210,17 @@ public final class RunRecorder: @unchecked Sendable {
         let count = (fileNameCounts[baseName] ?? 0) + 1
         fileNameCounts[baseName] = count
         let fileName = Self.fileName(baseName, count: count)
-        liveFiles[baseName, default: []].append((fileName, record.worker))
+        // [occlusion-guard] シナリオ単位の集計(ScenarioRecordBuilder が既に数えたもの)を
+        // run 合計へ足し込むだけ。ここで数え直さない(分母の定義は StepExecutor+Assert.swift の
+        // occlusionFlip 1箇所)
+        let guarded = record.steps.guarded ?? 0
+        let guardSkipped = record.steps.guardSkipped ?? 0
+        let guardStaleFrame = record.steps.guardStaleFrame ?? 0
+        liveFiles[baseName, default: []].append((fileName, record.worker,
+                                                 guarded, guardSkipped, guardStaleFrame))
+        guardedTotal += guarded
+        guardSkippedTotal += guardSkipped
+        guardStaleFrameTotal += guardStaleFrame
         lock.unlock()
         RunResultsStore.writeScenario(record, runDir: runDir, fileName: fileName)
     }
