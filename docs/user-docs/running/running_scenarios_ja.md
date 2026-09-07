@@ -45,8 +45,9 @@ swift run fleetest run --profile ios
 
 `fleetest run-file <path.swift>...` は `Package.swift` に**登録していない** `.swift` を1本以上
 そのまま実行します(プロファイル・レポート・自己修復は `--project` で指定した既存プロジェクトから
-借ります)。プロジェクトに足す前の使い捨てシナリオに便利です。`--profile`・`--scenario`・
-`--heal`・`--ports` を受け付けます。
+借ります)。プロジェクトに足す前の使い捨てシナリオに便利です。`--project`・`--profile`・
+`--scenario`・`--set`(例: `--set heal=true`)・`--report-dir`・`--ports`・`--app`・
+`--platform`/`--port`/`--serial` を受け付けます。
 
 ## exit code と失敗セマンティクス
 

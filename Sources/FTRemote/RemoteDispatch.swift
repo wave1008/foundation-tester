@@ -610,8 +610,16 @@ public enum RemoteRunArgs {
         for folder in folders { args += ["--folder", folder] }
         // **中継しないと黙って無視される**(リモート側はプロファイルの既定で走る)。
         // キーの値ごと渡すので、プロファイルの既定を打ち消す/明示で有効にするのどちらも
-        // 同じ形で届く(--set の値は RunProfileDocument のキー名そのまま)
-        for key in setOverrides.keys.sorted() { args += ["--set", "\(key)=\(setOverrides[key]!.token)"] }
+        // 同じ形で届く(--set の値は RunProfileDocument のキー名そのまま)。
+        // **`reportDir` キーだけは落とす**(`reportDir` 引数が non-nil = 常に `--report-dir` を
+        // 付けているとき)—— どちらも同じ場所(RunProfileDocument.reportDir)へ書くので、
+        // 両方渡すと子側の `RunProfileDocument.flagOverrideCollision` に必ず当たって落ちる。
+        // 落としても実質は変わらない: `--report-dir` は子の解決で常に `resolved.reportDir` より
+        // 優先される(ApiRunCommand.swift/Fleetest.swift の `reportDir ?? resolved.reportDir`)ので、
+        // ディスパッチ単位の隔離先(回収・relink・掃除の起点)が最終的な出力先になる
+        for key in setOverrides.keys.sorted() where !(key == "reportDir" && reportDir != nil) {
+            args += ["--set", "\(key)=\(setOverrides[key]!.token)"]
+        }
         if noLPT { args.append("--no-lpt") }
         if let lptHistoryRuns { args += ["--lpt-history-runs", String(lptHistoryRuns)] }
         // 実行の意図を変えるフラグは**中継しないと黙って無視される**(リモート側は
@@ -647,8 +655,10 @@ public enum RemoteRunArgs {
         // 渡す条件・理由は build() の --workspace と同じ
         if let workspace { args += ["--workspace", workspace] }
         for scenario in scenarios { args += ["--scenario", scenario] }
-        // 理由は build() と同じ(--set は run/api run で共有する単一の口)
-        for key in setOverrides.keys.sorted() { args += ["--set", "\(key)=\(setOverrides[key]!.token)"] }
+        // 理由・reportDir を落とす条件は build() と同じ(--set は run/api run で共有する単一の口)
+        for key in setOverrides.keys.sorted() where !(key == "reportDir" && reportDir != nil) {
+            args += ["--set", "\(key)=\(setOverrides[key]!.token)"]
+        }
         if noLPT { args.append("--no-lpt") }
         if let lptHistoryRuns { args += ["--lpt-history-runs", String(lptHistoryRuns)] }
         if performanceMode { args.append("--performance") }

@@ -32,12 +32,17 @@ enum DeviceMachineRunner {
     ///
     /// **`--host` を明示したときは常に nil** —— 明示指定は「今回はこの機械で走らせる」の意味で、
     /// 分散より強い(MachineDispatch と同じ「明示が勝つ」規律)。
+    ///
+    /// `overrides`(`--set machine=...`)は `determineMachine` へそのまま渡す —— 渡さないと
+    /// ここで見る machine と `resolve()` が最終的に使う machine(上書き後)がズレて、別マシンの
+    /// デバイスを解決しつつ実行は元マシンのままになる(欠陥②)
     static func plan(project: TestProject, profileName: String,
-                     explicitHost: String?, deviceFilter: [String]) throws -> [Group]? {
+                     explicitHost: String?, deviceFilter: [String],
+                     overrides: [String: RunProfileSetValue] = [:]) throws -> [Group]? {
         if explicitHost != nil { return nil }
         let machine = try ProfileResolver.determineMachine(
             project: project,
-            runProfileName: profileName)
+            runProfileName: profileName, overrides: overrides)
         var devices = try ProfileResolver.runDeviceMachines(
             project: project, runProfileName: profileName, machineName: machine.name)
         if !deviceFilter.isEmpty {

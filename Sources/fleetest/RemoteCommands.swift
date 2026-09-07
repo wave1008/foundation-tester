@@ -742,18 +742,19 @@ struct EffectiveDispatchTarget {
 /// 安全側に倒れる
 func resolveEffectiveDispatchTarget(
     explicitTarget: String?, profile: String?, project: String?,
-    requireProfileMachine: Bool, warn: (String) -> Void
+    requireProfileMachine: Bool, warn: (String) -> Void,
+    overrides: [String: RunProfileSetValue] = [:]
 ) throws -> EffectiveDispatchTarget? {
     let explicitNormalized = MachineDispatch.normalize(explicitTarget)
     var machine: String?
     var machineName: String?
     if let profile {
         if explicitNormalized != nil {
-            let resolved = try? machineProfileMachineAndName(profile: profile, project: project)
+            let resolved = try? machineProfileMachineAndName(profile: profile, project: project, overrides: overrides)
             machine = resolved?.machine
             machineName = resolved?.name
         } else if requireProfileMachine {
-            let resolved = try machineProfileMachineAndName(profile: profile, project: project)
+            let resolved = try machineProfileMachineAndName(profile: profile, project: project, overrides: overrides)
             machine = resolved.machine
             machineName = resolved.name
         }
@@ -774,11 +775,11 @@ func resolveEffectiveDispatchTarget(
 /// 複数の機械にまたがる場合はここへ来る前に DeviceMachineRunner が引き取っているので、
 /// 残りは「絞り込みで1つに定まらなかった」= 既定に従う場合だけ
 private func machineProfileMachineAndName(
-    profile: String, project: String?
+    profile: String, project: String?, overrides: [String: RunProfileSetValue] = [:]
 ) throws -> (machine: String?, name: String) {
     let testProject = try ScenarioHost.project(named: project)
     let machine = try ProfileResolver.determineMachine(
-        project: testProject, runProfileName: profile)
+        project: testProject, runProfileName: profile, overrides: overrides)
     let devices = (try? ProfileResolver.runDeviceMachines(
         project: testProject, runProfileName: profile, machineName: machine.name)) ?? []
     let machines = Set(devices.map { DeviceMachineGrouping.display($0.machine) })
@@ -817,9 +818,23 @@ func resolveRemoteTarget(_ dispatch: EffectiveDispatchTarget, remoteDirOverride:
 /// (同名の台が他の機械にもあると、名前だけでは全機械ぶんを拾う)。
 /// プロファイル/マシンが読めないときは従来どおり丸ごと(名前はそのまま・machine は付けない)
 func machineScopedDeviceFilter(
-    project: TestProject, profile: String, targetMachine: String, requestedDevices: [String] = []
+    project: TestProject, profile: String, targetMachine: String, requestedDevices: [String] = [],
+    overrides: [String: RunProfileSetValue] = [:]
 ) throws -> (deviceNames: [String], deviceMachine: String?) {
-    guard let machine = try? ProfileResolver.determineMachine(project: project, runProfileName: profile) else {
+    // **「指定したのに解決できない」と「そもそも決められない」を分ける**。
+    //   runSpecifiedMachineNotFound = 実行プロファイル(または `--set machine=`)が名前を書いたのに
+    //     machines/ に無い。**ユーザーの明示入力が誤っている**ので黙って進めない ——
+    //     ディスパッチ経路(Fleetest.swift の dispatchToRemoteHost)はこの後に resolve() を通らず
+    //     そのまま `dispatcher.dispatch` へ行くため、飲み込むと**誤った指定が無視されたまま
+    //     スコープ無しのデバイス名でリモートへ飛ぶ**
+    //   machineUndetermined = 誰も指定しておらず machines/ が1個でない。**ここでは決められないが
+    //     リモートは自分の machines/ で決められる**ので、絞らずに通してよい(実行プロファイルに
+    //     machine を書かず `--machine <リモート> --device X` で飛ばす使い方がこれ)
+    let machine: (name: String, auto: Bool)
+    do {
+        machine = try ProfileResolver.determineMachine(
+            project: project, runProfileName: profile, overrides: overrides)
+    } catch ProfileError.machineUndetermined {
         return (requestedDevices, nil)
     }
     let devices = (try? ProfileResolver.runDeviceMachines(

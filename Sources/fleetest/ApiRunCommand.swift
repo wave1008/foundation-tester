@@ -135,7 +135,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// 計算をここへ1つにまとめる(消費側ごとに再実装しない)
     private var noProfileSettings: DeviceIndependentRunSettings {
         let overrides = (try? RunProfileSetOverride.parse(setOverrides)) ?? [:]
-        return DeviceIndependentRunSettings.resolve(RunProfileDocument().applyingOverrides(overrides))
+        return DeviceIndependentRunSettings.resolve(DeviceIndependentRunSettings.profileLessBase.applyingOverrides(overrides))
     }
 
     @Option(name: .customLong("remote-dir"),
@@ -275,7 +275,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         // (単一ホストの --host + --debug は dispatchToRemoteHost が同様に拒否している)
         if !dryRun, let profile,
            let groups = try DeviceMachineRunner.plan(
-               project: testProject, profileName: profile, explicitHost: dispatchTarget, deviceFilter: devices) {
+               project: testProject, profileName: profile, explicitHost: dispatchTarget,
+               deviceFilter: devices, overrides: profileOverrides) {
             if debug {
                 throw ValidationError(
                     "--debug is not supported with a profile that spans multiple machines"
@@ -294,7 +295,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
         if let dispatch = try resolveEffectiveDispatchTarget(
         explicitTarget: dispatchTarget, profile: profile, project: project,
-            requireProfileMachine: !dryRun, warn: { logStderr($0) }) {
+            requireProfileMachine: !dryRun, warn: { logStderr($0) },
+            overrides: profileOverrides) {
             try await dispatchToRemoteHost(dispatch, project: testProject)
             return
         }
@@ -364,7 +366,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             if deviceMachine == nil, MachineDispatch.isExplicitLocal(dispatchTarget) {
                 (effectiveDevices, effectiveDeviceHost) = try machineScopedDeviceFilter(
                     project: testProject, profile: profile,
-                    targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices)
+                    targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices,
+                    overrides: profileOverrides)
             }
             let full = resolvedAll.filteringDevices(names: effectiveDevices, deviceMachine: effectiveDeviceHost)
             // 絞り込みを指定したときだけ「合致0」を報告する。指定していないのに0台なのは
@@ -701,6 +704,9 @@ struct ApiRunCommand: AsyncParsableCommand {
         guard let profile else {
             throw ValidationError("--host requires --profile")
         }
+        // machineScopedDeviceFilter と dispatcher.dispatchApi の両方が同じ上書きを見る必要がある
+        // (欠陥②。片方だけに通すと別マシンのデバイスを解決しつつ元マシンへ中継する)
+        let dispatchOverrides = try RunProfileSetOverride.parse(setOverrides)
         if debug {
             throw ValidationError("--debug is not supported with --host")
         }
@@ -739,12 +745,13 @@ struct ApiRunCommand: AsyncParsableCommand {
         var scopedDeviceHost = deviceMachine
         if deviceMachine == nil {
             (scopedDevices, scopedDeviceHost) = try machineScopedDeviceFilter(
-                project: project, profile: profile, targetMachine: dispatch.rawTarget, requestedDevices: devices)
+                project: project, profile: profile, targetMachine: dispatch.rawTarget,
+                requestedDevices: devices, overrides: dispatchOverrides)
         }
         let exitCode = try await dispatcher.dispatchApi(
             project: project, profile: profile, scenarios: scenarios,
             deviceNames: scopedDevices, deviceMachine: scopedDeviceHost,
-            setOverrides: try RunProfileSetOverride.parse(setOverrides),
+            setOverrides: dispatchOverrides,
             noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             performanceMode: performanceMode,
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout.map(Double.init),
@@ -777,7 +784,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             if platformsInUse.contains("ios") {
                 // 宛先は DriverConnection から採る(実機ブリッジは 127.0.0.1 に居ない。
                 // `host:` を省くと LAN 経由の実機で接続拒否になる。BridgeHostPlumbingTests)
-                let iosConnection = DriverConnection(platform: "ios", port: effectivePort)
+                let iosConnection = DriverConnection(platform: "ios", port: effectivePort,
+                                                     host: BridgeEndpoint.resolvedHost(port: effectivePort))
                 primingWorkers.append(RunWorker(
                     label: "ios", platform: "ios",
                     driver: BridgeClient(port: effectivePort,
@@ -800,7 +808,9 @@ struct ApiRunCommand: AsyncParsableCommand {
             let scenarioPlatform = info.platform ?? effectivePlatform
             let connection = scenarioPlatform == "android"
                 ? DriverConnection(platform: "android", serial: serial)
-                : DriverConnection(platform: "ios", port: effectivePort)
+                // 実機のブリッジは 127.0.0.1 に居ない。宛先は記録から引く(BridgeEndpoint)
+                : DriverConnection(platform: "ios", port: effectivePort,
+                                   host: BridgeEndpoint.resolvedHost(port: effectivePort))
             // --platform/--port/--serial 直指定経路にはデバイス論理名が無いため worker は nil
             let recording = recorder.map { ScenarioRecording(recorder: $0, title: info.title) }
 

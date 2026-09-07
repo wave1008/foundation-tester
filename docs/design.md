@@ -3741,7 +3741,12 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
 
 ### 11.4 実行フロー(fleetest run --project P --profile ios)
 
-1. ProfileResolver で合成 → CLI 明示引数(--set/--report-dir 等)が最終上書き
+1. **`--set` は読み込んだ `RunProfileDocument` へ合成の前に当てる**(`ProfileResolver.resolve` の
+   `overrides:`)。**解決後の `ResolvedProfile` を上書きしない** —— 欄ごとに上書きを配線すると
+   足し忘れが生まれ、実際に「チェックボックス 20 個に対し CLI は 4 個・形は3通り」まで育った
+   (maintainer-notes §16)。文書に当てれば全欄が自動で追随する。
+   `--report-dir` 等の専用フラグは従来どおり解決後に効くが、**同じ意味のキーを `--set` でも
+   渡したらエラー**(どちらかを黙って勝たせない)
 2. `ScenarioHost.build(project:)`(ホスト 1 回。入力の BuildFingerprint が前回ビルドと一致すれば
    スキップ=無変更の再実行で no-op build ~2.6s を払わない。performance-tuning §3.2)。
    `fleetest api run` の並列実行経路ではワーカー供給(3〜4)をビルドと並行に開始する

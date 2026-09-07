@@ -562,6 +562,31 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertFalse(result.auto)
     }
 
+    /// 欠陥②(2026-09-08): `--set machine=...` は `resolve()` では効くが(applyingOverrides を
+    /// 読み込み直後に当てるため)、`determineMachine` はディスパッチ判定の前段として単独でも
+    /// 呼ばれる(DeviceMachineRunner.plan / resolveEffectiveDispatchTarget 等)。overrides を渡せば
+    /// そちらも resolve() と同じ machine を返すことを固定する
+    func testDetermineMachineHonorsSetMachineOverride() throws {
+        try writeStandardFixture()
+        try writeSecondMachineFixture()
+
+        // "all" は machine 未指定 → overrides が唯一の決め手
+        let overridden = try ProfileResolver.determineMachine(
+            project: project, environment: [:], runProfileName: "all",
+            overrides: ["machine": .string("B")])
+        XCTAssertEqual(overridden.name, "B")
+        XCTAssertFalse(overridden.auto)
+
+        // ファイル自身の明示指定より overrides が勝つ(applyingOverrides と同じ「後勝ち」規律)
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "machine": "M1 Max(64GB)" }
+        """, to: project.runsDir, name: "onM1")
+        let switched = try ProfileResolver.determineMachine(
+            project: project, environment: [:], runProfileName: "onM1",
+            overrides: ["machine": .string("B")])
+        XCTAssertEqual(switched.name, "B")
+    }
+
     func testDetermineMachineRunProfileMachineNotFoundFails() throws {
         try writeStandardFixture()
         try write("""

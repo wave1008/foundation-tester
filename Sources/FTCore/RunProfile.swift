@@ -864,6 +864,19 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
     /// 未指定は `VideoRecordingConfig.defaultBitrateKbps`
     public let recordBitrateKbps: Int?
 
+    /// `--profile` を使わない実行(`--ports`/`--serial` 直指定)の基底。**プロファイルの既定を
+    /// そのまま使わない** —— 3つだけ意図的に違う:
+    ///   `heal` / `falsePositiveCheck` … profile-less は **FM を積極的に使わない側**へ倒す
+    ///     (`FMConfig.init` の既定と同じ。プロファイルの既定 true を当てると、既に緑だった
+    ///      素の run で `exist`/`textIs` が occlusion-guard を通り**緑が赤に反転しうる**)
+    ///   `homeOnStart` … profile-less は**デバイスに触らない**。この設定は一斉起動直後の
+    ///     黒画面を防ぐためのもので、既に建っているブリッジへ繋ぐだけの経路では、手で用意した
+    ///     画面を Home で流してしまう
+    /// **`--set` はこの基底の上に当てる**ので、`--set heal=true` は従来どおり効く。
+    /// 既定はリテラルで固定するテストを置くこと(`DeviceIndependentRunSettingsTests`)
+    public static let profileLessBase = RunProfileDocument(
+        heal: false, falsePositiveCheck: false, homeOnStart: false)
+
     public static func resolve(_ doc: RunProfileDocument) -> DeviceIndependentRunSettings {
         // fm:false / ocr:false は配下のトグルを無条件に false へ落とす(利用側は個別フラグだけ
         // 見ればよい契約。FMConfig の doc コメント参照)
@@ -1256,13 +1269,20 @@ public enum ProfileResolver {
     /// 「どの機械のデバイスか」はプロファイル内で表現できる。**登録名を復活させない** ——
     /// 名前1つに2つの意味が載ると「マシンプロファイルを改名したらこの Mac の身元が変わる」
     /// (実際に project1 の解決が壊れた)
+    ///
+    /// `overrides`(`--set machine=...`)は `runProfileName` が有るときだけ意味を持つ
+    /// (`explicitMachine` へそのまま渡す。呼び出し側にディスパッチ判定より前に `--set` が
+    /// 見えているとき(`fleetest run`/`api run` の profile 経路)だけ渡せばよい ——
+    /// 渡さない呼び出し元(デバイス一覧・profile setup 等。`--set` を持たない)は既定の
+    /// 空辞書のまま従来どおり動く)
     public static func determineMachine(
         project: TestProject,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        runProfileName: String? = nil
+        runProfileName: String? = nil,
+        overrides: [String: RunProfileSetValue] = [:]
     ) throws -> (name: String, auto: Bool) {
         if let runProfileName,
-           let explicit = explicitMachine(project: project, runProfileName: runProfileName) {
+           let explicit = explicitMachine(project: project, runProfileName: runProfileName, overrides: overrides) {
             let machineURL = project.machinesDir.appendingPathComponent("\(explicit).json")
             guard FileManager.default.fileExists(atPath: machineURL.path) else {
                 throw ProfileError.runSpecifiedMachineNotFound(
@@ -1335,14 +1355,24 @@ public enum ProfileResolver {
         return result
     }
 
-    /// runProfileName の実行プロファイルが指定する machine(trim 後非空)を返す。
+    /// runProfileName の実行プロファイルが指定する machine(trim 後非空)を返す。**`overrides`
+    /// (`--set machine=...`)は `resolve()` と同じ場所(読み込み直後)で当てる** —— ここで
+    /// 当てずに生ファイルの値だけを見ると、`resolve()` は上書き後の machine でデバイスを解決するのに
+    /// ここ(ディスパッチ先・機械別サブ実行の分岐)は元の machine のままになり、「別マシンの
+    /// デバイスを解決しつつ実行は元マシン」で "no simulator with that UDID" に落ちる(欠陥②)。
     /// ファイルが無い/デコード不能/未指定・空文字列なら nil(呼び出し側は fallback を使う。
     /// ファイル自体の欠落・型不一致は resolve() 側で改めて明確なエラーにする)
-    private static func explicitMachine(project: TestProject, runProfileName: String) -> String? {
+    private static func explicitMachine(
+        project: TestProject, runProfileName: String,
+        overrides: [String: RunProfileSetValue] = [:]
+    ) -> String? {
         let runURL = project.runsDir.appendingPathComponent("\(runProfileName).json")
         guard let data = try? Data(contentsOf: runURL),
-              let doc = try? JSONDecoder().decode(RunProfileDocument.self, from: data),
-              let machine = doc.machine?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let loaded = try? JSONDecoder().decode(RunProfileDocument.self, from: data) else {
+            return nil
+        }
+        let doc = loaded.applyingOverrides(overrides)
+        guard let machine = doc.machine?.trimmingCharacters(in: .whitespacesAndNewlines),
               !machine.isEmpty else {
             return nil
         }

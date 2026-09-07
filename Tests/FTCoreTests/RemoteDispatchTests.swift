@@ -657,6 +657,43 @@ final class RemoteDispatchTests: XCTestCase {
             "キーの辞書順で安定させる")
     }
 
+    /// 欠陥①(2026-09-08): `--set reportDir=...` は常に付く `--report-dir`(ディスパッチ単位の
+    /// 隔離先)と同じ欄を書くため、両方中継すると子側の `flagOverrideCollision` に必ず当たって
+    /// 落ちていた。`reportDir` 引数が non-nil のときは `--set reportDir=...` を落とす
+    /// (他のキーは従来どおり残る)
+    func testRunSetOverridesDropReportDirWhenReportDirFlagIsSet() {
+        let args = RemoteRunArgs.build(project: "E2E", profile: "android-1", scenarios: [], folders: [],
+                                       setOverrides: ["reportDir": .string("custom/reports"), "heal": true],
+                                       noLPT: false, lptHistoryRuns: nil, performanceMode: false,
+                                       remoteJUnitPath: nil, reportDir: "/remote/reports")
+        XCTAssertTrue(args.contains("--report-dir"), "\(args)")
+        XCTAssertFalse(args.contains("reportDir=custom/reports"), "\(args)")
+        XCTAssertTrue(args.contains("heal=true"), "他のキーは残る: \(args)")
+    }
+
+    /// reportDir 引数が nil(呼び手が --report-dir を付けない)ときは、通常どおり
+    /// `--set reportDir=...` が中継される(落とす条件は「両方が同じ欄を狙うとき」だけ)
+    func testRunSetOverridesKeepReportDirWhenReportDirFlagIsNotSet() {
+        let args = RemoteRunArgs.build(project: "E2E", profile: "android-1", scenarios: [], folders: [],
+                                       setOverrides: ["reportDir": .string("custom/reports")],
+                                       noLPT: false, lptHistoryRuns: nil, performanceMode: false,
+                                       remoteJUnitPath: nil, reportDir: nil)
+        XCTAssertFalse(args.contains("--report-dir"), "\(args)")
+        XCTAssertTrue(args.contains("reportDir=custom/reports"), "\(args)")
+    }
+
+    /// `api run` 側も同じ欠陥・同じ直し方(build() と共有する `--set` の口)
+    func testApiSetOverridesDropReportDirWhenReportDirFlagIsSet() {
+        let args = RemoteRunArgs.buildApi(project: "E2E", profile: "android-1", scenarios: [],
+                                          setOverrides: ["reportDir": .string("custom/reports"), "heal": true],
+                                          noLPT: false, lptHistoryRuns: nil, performanceMode: false,
+                                          defaultTimeout: nil, scenarioTimeout: nil,
+                                          reportDir: "/remote/reports")
+        XCTAssertTrue(args.contains("--report-dir"), "\(args)")
+        XCTAssertFalse(args.contains("reportDir=custom/reports"), "\(args)")
+        XCTAssertTrue(args.contains("heal=true"), "他のキーは残る: \(args)")
+    }
+
     /// `api run` にも共有の `--set` がそのまま中継される(build() と同じ形)
     func testApiPerformanceModeIsRelayedAndSetOverridesAreRelayed() {
         func args(performance: Bool) -> [String] {

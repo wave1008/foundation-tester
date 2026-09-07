@@ -1015,7 +1015,7 @@ struct RunScenarios: AsyncParsableCommand {
         // BridgeClient(ホスト・サブプロセス両方)が FT_FAST_INPUT を読む
         let profileOverrides = try RunProfileSetOverride.parse(setOverrides)
         let noProfileSettings = DeviceIndependentRunSettings.resolve(
-            RunProfileDocument().applyingOverrides(profileOverrides))
+            DeviceIndependentRunSettings.profileLessBase.applyingOverrides(profileOverrides))
         if noProfileSettings.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }
         if !noProfileSettings.iosPreActionWarmup { setenv("FT_PRE_ACTION_WARMUP", "0", 1) }
         if noProfileSettings.enableAnimations { setenv(AnimationPolicy.environmentKey, "1", 1) }
@@ -1032,7 +1032,7 @@ struct RunScenarios: AsyncParsableCommand {
         if !dryRun, fleet == nil, let profile,
            let groups = try DeviceMachineRunner.plan(
                project: try ScenarioHost.project(named: project), profileName: profile,
-               explicitHost: dispatchTarget, deviceFilter: devices) {
+               explicitHost: dispatchTarget, deviceFilter: devices, overrides: profileOverrides) {
             let exitCode = try await DeviceMachineRunner.run(
                 project: try ScenarioHost.project(named: project), profileName: profile,
                 groups: groups, scenarios: scenarios, folders: folders,
@@ -1046,7 +1046,8 @@ struct RunScenarios: AsyncParsableCommand {
         }
         if !dryRun, let dispatch = try resolveEffectiveDispatchTarget(
         explicitTarget: dispatchTarget, profile: profile, project: project,
-            requireProfileMachine: true, warn: { ConsoleOut.out("⚠️ \($0)") }) {
+            requireProfileMachine: true, warn: { ConsoleOut.out("⚠️ \($0)") },
+            overrides: profileOverrides) {
             try await dispatchToRemoteHost(dispatch)
             return
         }
@@ -1170,9 +1171,10 @@ struct RunScenarios: AsyncParsableCommand {
             if deviceMachine == nil, MachineDispatch.isExplicitLocal(dispatchTarget) {
                 (effectiveDeviceFilter, effectiveDeviceHost) = try machineScopedDeviceFilter(
                     project: testProject, profile: profile,
-                    targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices)
+                    targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices,
+                    overrides: profileOverrides)
             }
-            let runSummary = try await ProfileRunner.run(
+            let (runSummary, fmSettings) = try await ProfileRunner.run(
                 project: testProject, profileName: profile, items: items,
                 setOverrides: profileOverrides,
                 reportDirOverride: reportDir,
@@ -1202,8 +1204,7 @@ struct RunScenarios: AsyncParsableCommand {
                             measurementInvalidReasons: runSummary.measurementInvalidReasons,
                             workerAnomalies: runSummary.workerAnomalies,
                             performanceMode: runSummary.performanceMode,
-                            // ProfileRunner.run は 0 件早期リターンも含め常に埋めて返す(契約)
-                            fmSettings: runSummary.fmSettings!)
+                            fmSettings: fmSettings)
             PhaseLog.mark("recorder-finish")
             try writeJUnitIfRequested(project: testProject, recorder: recorder)
             let skippedSuffix = notApplicable > 0
@@ -1322,6 +1323,9 @@ struct RunScenarios: AsyncParsableCommand {
         guard let profile else {
             throw ValidationError("--host requires --profile")
         }
+        // machineScopedDeviceFilter と dispatcher.dispatch の両方が同じ上書きを見る必要がある
+        // (欠陥②。片方だけに通すと別マシンのデバイスを解決しつつ元マシンへ中継する)
+        let dispatchOverrides = try RunProfileSetOverride.parse(setOverrides)
         // 拒否 or 注記の分岐は FTRemote.RemoteDispatchFlagPolicy に委譲(欠陥1)。origin が
         // 自動ディスパッチ(マシンプロファイルの host)なら --skip-build は注記のみで無視する
         // (リモートは常に自前でビルドする)。他の3つは自動でも意味を持たせられないため拒否のまま
@@ -1351,12 +1355,13 @@ struct RunScenarios: AsyncParsableCommand {
         var scopedDeviceHost = deviceMachine
         if deviceMachine == nil {
             (scopedDevices, scopedDeviceHost) = try machineScopedDeviceFilter(
-                project: testProject, profile: profile, targetMachine: dispatch.rawTarget, requestedDevices: devices)
+                project: testProject, profile: profile, targetMachine: dispatch.rawTarget,
+                requestedDevices: devices, overrides: dispatchOverrides)
         }
         let exitCode = try await dispatcher.dispatch(
             project: testProject, profile: profile, scenarios: scenarios, folders: folders,
             deviceNames: scopedDevices, deviceMachine: scopedDeviceHost,
-            setOverrides: try RunProfileSetOverride.parse(setOverrides),
+            setOverrides: dispatchOverrides,
             noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             performanceMode: performanceMode, broadcast: broadcast,
             localJUnitPath: junit, remoteTimeoutSeconds: remoteTimeout, runGroup: runGroup)
@@ -1482,8 +1487,7 @@ struct RunScenarios: AsyncParsableCommand {
     /// USB トンネル)。**シナリオの子プロセスへも同じ宛先を渡す**(DriverConnection.host →
     /// `--bridge-host`)。片方だけだと親は繋がるのに子だけ接続拒否になる
     private static func bridgeHost(port: UInt16) -> String {
-        (try? RepoRoot.find()).map { BridgeEndpoint.load(port: port, repoRoot: $0).host }
-            ?? BridgeEndpoint.loopbackHost
+        BridgeEndpoint.resolvedHost(port: port)
     }
 
     /// ブリッジの /status(デバイス名)→ 起動中シミュレータの一意な同名から UDID を解決する。

@@ -46,7 +46,8 @@ Run `fleetest run --help` for the full, current list.
 `fleetest run-file <path.swift>...` runs one or more `.swift` files that are **not** registered
 in `Package.swift` (profiles, reports and self-healing are borrowed from an existing project via
 `--project`). Useful for a throwaway scenario you do not want to add to the project yet. Accepts
-`--profile`, `--scenario`, `--heal`, `--ports`.
+`--project`, `--profile`, `--scenario`, `--set` (e.g. `--set heal=true`), `--report-dir`,
+`--ports`, `--app`, and `--platform`/`--port`/`--serial`.
 
 ## Exit code and failure semantics
 

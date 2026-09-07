@@ -32,6 +32,7 @@ final class VocabularyPolarityTests: XCTestCase {
         "README.md",
         "Sources/FTCore/RunProfile.swift",
         "Tests/FTCoreTests/ProfileResolverTests.swift",
+        "Tests/FTCoreTests/RunProfileSetOverrideTests.swift",
         "docs/ci.md",
         "docs/commands.md",
         "docs/design.md",

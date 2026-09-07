@@ -26,7 +26,11 @@ enum ProfileRunner {
             ocr: resolved.ocr, ocrFalsePositiveCheck: resolved.ocrFalsePositiveCheck)
     }
 
-    /// 戻り値: 実行サマリ(失敗数+劣化ワーカー)
+    /// 戻り値: 実行サマリ(失敗数+劣化ワーカー)+ この run で実際に効いていた FM 設定。
+    /// **fmSettings は tuple の2つ目として非 Optional で返す** —— `RunSummary.fmSettings` 自体は
+    /// `RunOrchestrator` の生サマリ(プロファイルの実効値を知らないので常に nil)と共有する型なので
+    /// Optional のままだが、この関数は0件早期リターンも含め全ての戻り経路で計算済みの値を持つ
+    /// (下の2箇所の return 参照)。呼び出し側が `!` で開けずに済むよう、その保証を型で運ぶ
     /// - lpt: LPT 投入順を使うか。並べ替えは defaultPlatform が確定してからでないと
     ///   別 platform の実績で並べてしまうため、この関数の中で行う(呼び出し側では順序を触らない)。
     /// - broadcast: `--broadcast`(ブロードキャスト)。items を**各デバイスで1回ずつ**回す
@@ -42,7 +46,8 @@ enum ProfileRunner {
                     deviceMachine: String? = nil,
                     workspaceOverride: String? = nil,
                     recorder: RunRecorder? = nil,
-                    broadcast: Bool = false) async throws -> RunSummary {
+                    broadcast: Bool = false
+    ) async throws -> (summary: RunSummary, fmSettings: FMSettingsRecord) {
         var items = rawItems
         let runClockStart = Date()
         // 1. マシン決定 → プロファイル合成(実行プロファイル自身の machine 指定があれば最優先)
@@ -111,8 +116,8 @@ enum ProfileRunner {
         }
         // 全部が対象外ならデバイスを起こす意味がない(0 失敗で終える = 正しく緑)
         if items.isEmpty {
-            return RunSummary(total: 0, failed: 0, performanceMode: performanceMode,
-                              fmSettings: fmSettings)
+            return (RunSummary(total: 0, failed: 0, performanceMode: performanceMode,
+                               fmSettings: fmSettings), fmSettings)
         }
 
         // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices の宣言参照)。
@@ -468,16 +473,17 @@ enum ProfileRunner {
         }
         // run 前の blank triage(orchestrator は関与しない)を summary に載せ替えて返す
         // (RunScenarios が recorder.finish で run.json に記録する)
-        return RunSummary(total: finalSummary.total, failed: finalSummary.failed,
-                          degradedWorkers: finalSummary.degradedWorkers,
-                          freezeRetries: finalSummary.freezeRetries,
-                          blankRepairs: triage.repaired, blankExclusions: triage.excluded,
-                          measurementInvalid: validity.invalid,
-                          measurementInvalidReasons: validity.reasons,
-                          fmUnavailableScenarios: finalSummary.fmUnavailableScenarios,
-                          workerAnomalies: finalSummary.workerAnomalies,
-                          performanceMode: performanceMode,
-                          fmSettings: fmSettings)
+        let resultSummary = RunSummary(total: finalSummary.total, failed: finalSummary.failed,
+                                       degradedWorkers: finalSummary.degradedWorkers,
+                                 freezeRetries: finalSummary.freezeRetries,
+                                 blankRepairs: triage.repaired, blankExclusions: triage.excluded,
+                                 measurementInvalid: validity.invalid,
+                                 measurementInvalidReasons: validity.reasons,
+                                 fmUnavailableScenarios: finalSummary.fmUnavailableScenarios,
+                                 workerAnomalies: finalSummary.workerAnomalies,
+                                 performanceMode: performanceMode,
+                                 fmSettings: fmSettings)
+        return (resultSummary, fmSettings)
     }
 
     /// FM を使う run の開始前に、FM が**本当に呼べるか**を確かめて警告する。

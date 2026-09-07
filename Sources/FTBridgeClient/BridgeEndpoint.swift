@@ -50,6 +50,15 @@ public struct BridgeEndpoint: Sendable, Hashable, Codable {
         try? contents.write(to: url, atomically: true, encoding: .utf8)
     }
 
+    /// ポートだけを手掛かりにブリッジの宛先を引く(`--ports`/`--port` 直指定の経路用)。
+    /// **実機のブリッジは 127.0.0.1 に居ない** —— 記録を読まずに loopback を渡すと、LAN 接続の
+    /// 実機で接続拒否になる(`BridgeHostPlumbingTests` が `host:` の欠落を落とすが、
+    /// **loopback を明示的に渡す形は文字面では通ってしまう**ので、宛先はここで引くこと)。
+    /// リポジトリルートが取れない実行では loopback(記録の置き場が無いので他に手掛かりが無い)
+    public static func resolvedHost(port: UInt16) -> String {
+        (try? RepoRoot.find()).map { load(port: port, repoRoot: $0).host } ?? loopbackHost
+    }
+
     /// 記録が無ければループバック(= シミュレータ・Android の既定)
     public static func load(port: UInt16, repoRoot: URL) -> BridgeEndpoint {
         guard let raw = try? String(contentsOf: fileURL(port: port, repoRoot: repoRoot),

@@ -328,6 +328,38 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
 
 final class DeviceIndependentRunSettingsTests: XCTestCase {
 
+    /// **profile-less の基底はリテラルで固定する**。プロファイルの既定(heal/falsePositiveCheck
+    /// はどちらも true)をそのまま使うと、素の `fleetest run` で occlusion-guard が走り始めて
+    /// **既に緑だった run が赤に反転しうる**(2026-09-08 に実際に入れた退行)。homeOnStart も
+    /// 同じで、既に建っているブリッジへ繋ぐだけの経路で手元の画面を Home で流してしまう。
+    /// **`RunProfileDocument` の既定を参照して書かない** —— production の定数で期待値を書くと
+    /// 両方が同時に動いたときに素通りする
+    func testProfileLessBasePinsTheThreeDeliberateDifferences() {
+        let base = DeviceIndependentRunSettings.profileLessBase
+        XCTAssertEqual(base.heal, false, "profile-less の heal は OFF")
+        XCTAssertEqual(base.falsePositiveCheck, false, "profile-less の偽陽性検証は OFF")
+        XCTAssertEqual(base.homeOnStart, false, "profile-less はデバイスに触らない")
+
+        // 残りはプロファイルの既定と同じであること(3つ以外を勝手に倒していない)
+        let settings = DeviceIndependentRunSettings.resolve(base)
+        XCTAssertTrue(settings.fm.enabled)
+        XCTAssertTrue(settings.fm.screenLooksLike)
+        XCTAssertTrue(settings.fm.triage)
+        XCTAssertTrue(settings.ocr)
+        XCTAssertTrue(settings.ocrFalsePositiveCheck)
+        XCTAssertTrue(settings.containerInference)
+        XCTAssertFalse(settings.record)
+    }
+
+    /// `--set` は基底の上に当たる(profile-less でも `--set heal=true` が効く)
+    func testSetOverrideAppliesOnTopOfTheProfileLessBase() {
+        let settings = DeviceIndependentRunSettings.resolve(
+            DeviceIndependentRunSettings.profileLessBase.applyingOverrides(["heal": true]))
+        XCTAssertTrue(settings.fm.heal, "--set heal=true は基底を上書きするはず")
+        XCTAssertFalse(settings.fm.falsePositiveCheck, "触っていない欄は基底のまま")
+    }
+
+
     func testDefaultsMatchTheRunProfileDocumentDefaults() {
         let settings = DeviceIndependentRunSettings.resolve(RunProfileDocument())
         XCTAssertEqual(settings.fm, FMConfig(enabled: true, heal: true, falsePositiveCheck: true,
