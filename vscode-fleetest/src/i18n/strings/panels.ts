@@ -83,7 +83,10 @@ export const panelsStrings = {
     en: "Enable vision-based false-positive verification for text (macOS 27+)",
   },
   "panels.runProfile.triageLabel": { ja: "失敗時のトリアージを有効にする", en: "Enable failure triage" },
-  "panels.runProfile.screenLooksLikeLabel": { ja: "screenLooksLikeを有効にする", en: "Enable screenLooksLike" },
+  "panels.runProfile.screenLooksLikeLabel": {
+    ja: "visionを使用したscreenLooksLikeを有効にする",
+    en: "Enable vision-based screenLooksLike",
+  },
   "panels.runProfile.ocrLabel": { ja: "OCRの機能を使用する", en: "Use OCR features" },
   "panels.runProfile.iosSectionTitle": { ja: "iOS", en: "iOS" },
   "panels.runProfile.inappEngineLabel": {
