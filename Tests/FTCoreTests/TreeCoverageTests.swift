@@ -35,12 +35,18 @@ final class TreeCoverageTests: XCTestCase {
     /// 同上。`NoteCoverageTests` の missingPageContentNote の baseline と一致
     private let expectedMissingContentFixtures: Set<String> = ["and-browser_jma_notree"]
 
-    /// **モーダルが木を置き換えた形**(ネイティブも含む)。2026-09-04 に3枚とも中身を検分した:
+    /// **モーダルが木を置き換えた形**(ネイティブも含む)。2026-09-04 に中身を検分した:
     /// `and-dialog_confirm` は「強制停止しますか?」の6要素だけ(背後の設定画面が無い)、
-    /// `and-overflow` は地図のメニュー項目だけ、`and-browser_jma_notree` はブラウザ chrome だけ。
-    /// **どれも真陽性**
+    /// `and-overflow` は地図のメニュー項目だけ。**どちらも真陽性**。
+    ///
+    /// **`and-browser_jma_notree` はここに含まない**(2026-09-07 に端の空白率へ判定を変えて
+    /// 外れた): 要素19件が全部ブラウザ自身の chrome で、木の中身は端から端まで埋まっている
+    /// (lead 0.026 / trail 0.000)。素の未代表率(内側込み・0.886)で疑っていたのは
+    /// 「ページ本体がまるごと a11y に無い」という別の事実で、そちらは
+    /// `missingPageContent` が引き続き真陽性として拾う(`expectedMissingContentFixtures`)。
+    /// `underreports` の発火集合はこの入れ替わりで変わらない
     private let expectedCollapsedFixtures: Set<String> = [
-        "and-browser_jma_notree", "and-overflow", "and-dialog_confirm",
+        "and-overflow", "and-dialog_confirm",
     ]
 
     func testGapFiresOnExactlyTheKnownBrowserScreens() throws {
@@ -76,14 +82,45 @@ final class TreeCoverageTests: XCTestCase {
         XCTAssertEqual(fired, expectedCollapsedFixtures)
     }
 
+    /// **健全な疎いネイティブ画面は疑われない**(2026-09-07 の witness)。`sut-e2e_noid` は
+    /// 下部タブバーがあり内容が上半分で終わるだけの画面(素の未代表率 0.3806 ≥ 0.35 で
+    /// 誤検知していた)。端の空白は lead 0.089 / trail 0.039 でどちらも閾値未満 ——
+    /// `collapsedTree` と `underreports` の両方を分けて見る: 前者だけ見て緑でも、
+    /// もし判定の担当が `missingPageContent` 側へ静かに移っていたら `underreports` は
+    /// 気付かないまま真になり得る
+    func testAScreenWithContentEndingHalfwayIsNotSuspected() throws {
+        let sut = try XCTUnwrap(try corpus().first { $0.name == "sut-e2e_noid" }?.snapshot)
+        XCTAssertGreaterThanOrEqual(TreeCoverage.unrepresentedScreenFraction(sut),
+                                    TreeCoverage.collapsedTreeFractionThreshold,
+                                    "前提: 内側込みの素の未代表率では閾値を超える画面であること")
+        XCTAssertFalse(TreeCoverage.collapsedTree(in: sut))
+        XCTAssertFalse(TreeCoverage.underreports(sut))
+    }
+
+    /// **`and-browser_jma_notree` は `collapsedTree` からは外れるが `missingPageContent` が
+    /// 拾う**(2026-09-07)。木の中身(ブラウザ chrome 19件)は端から端まで埋まっているので
+    /// `collapsedTree` は黙るのが正しいが、ページ本体が1つも公開されていない事実は消えていない
+    /// ので `underreports` は真のまま —— この2つを分けて書かないと、検知の担当が
+    /// `collapsedTree` から `missingPageContent` へ入れ替わったことに気付けない
+    func testTheBrowserChromeOnlyScreenMovesToMissingPageContentNotCollapsedTree() throws {
+        let jma = try XCTUnwrap(try corpus().first { $0.name == "and-browser_jma_notree" }?.snapshot)
+        XCTAssertFalse(TreeCoverage.collapsedTree(in: jma))
+        XCTAssertTrue(TreeCoverage.missingPageContent(in: jma))
+        XCTAssertTrue(TreeCoverage.underreports(jma))
+    }
+
     /// **陰性対照(閾値の要)**: ソフトキーボードで空いた帯を「木が落ちている」と読まない。
-    /// `and-form_keyboard` は素の未代表率 0.364 で閾値 0.35 を超えるが、空き帯の正体は
-    /// キーボードなので、除いて測れば圏外に落ちる。ここが破れると入力中の画面が全部疑われる
+    /// `and-form_keyboard` はキーボードを除かずに測ると端の空白率 0.364 で閾値 0.35 を
+    /// 超えるが、空き帯の正体はキーボードなので、除けば 0.041 で圏外に落ちる。
+    /// ここが破れると入力中の画面が全部疑われる
     func testAKeyboardBandIsNotCountedAsAMissingTree() throws {
         let form = try XCTUnwrap(try corpus().first { $0.name == "and-form_keyboard" }?.snapshot)
         XCTAssertGreaterThan(TreeCoverage.unrepresentedScreenFraction(form), 0.35,
                              "前提: 素で測ると閾値を超える画面であること")
         XCTAssertLessThan(TreeCoverage.unrepresentedFractionExcludingKeyboard(form), 0.35)
+        // **判定が使う量を直接縛る**(collapsedTree は端の空白で判定する)。
+        // キーボードを除かないとこの値は 0.364 で閾値を超える
+        XCTAssertLessThan(TreeCoverage.edgeUnrepresentedFractionExcludingKeyboard(form), 0.35)
         XCTAssertFalse(TreeCoverage.collapsedTree(in: form))
         XCTAssertFalse(TreeCoverage.underreports(form))
     }

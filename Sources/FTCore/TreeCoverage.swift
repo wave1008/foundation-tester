@@ -294,16 +294,28 @@ public enum TreeCoverage {
     /// `and-form_keyboard` は素の未代表率 0.364 だが、空いている帯の正体はソフトキーボードで、
     /// 木は健全。除くと圏外へ落ちる。
     ///
-    /// 閾値の根拠(2026-09-04・固定コーパス40枚をキーボード除外で測り直した分布):
+    /// **測る量は端(先頭/末尾)の空白だけ**(`edgeUnrepresentedFractionExcludingKeyboard`。
+    /// 内側の空白は数えない)。モーダル・シート・メニューが木を置き換えると chrome(上下のバー)
+    /// ごと消えるので空白は端に出るが、**内容が画面の途中で終わるだけの健全な画面**
+    /// (上下端に要素があり、空白はその間)を素の未代表率で測ると同じ誤検知になる ——
+    /// witness は `sut-e2e_noid`(E2E-iOS「ID なし」画面。下部タブバーがあり内容は上半分で
+    /// 終わる。素の未代表率 0.381 で誤検知していたが、lead 0.089 / trail 0.039 で沈黙する)。
+    ///
+    /// 閾値の根拠(2026-09-07・固定コーパス50枚を端の空白率で測り直した分布):
     /// **健全な最大は 0.151**(`sutec-detail`)、**真陽性の最小は 0.411**(`and-dialog_confirm` ——
     /// 木は「強制停止しますか?」ダイアログの6要素だけで、背後の設定画面は消えている)。
     /// 0.35 はその間で、健全側へ 2.3 倍の余裕を取った値。真陽性は他に
-    /// `and-overflow` 0.564(地図のメニュー項目だけ)/ `and-browser_jma_notree` 0.886。
-    /// **尽きたとき**(健全な疎い画面が 0.35 に届く)は数字を上げる前に、その画面を
+    /// `and-overflow` 0.564(地図のメニュー項目だけ)。**`and-browser_jma_notree` はここに
+    /// 含まれない** —— 木の中身(ブラウザ chrome 19件)は端から端まで埋まっており
+    /// (edge 0.026)、疑わしいのは内側(ページ本体が丸ごと無い)なので `missingPageContent`
+    /// の担当。**尽きたとき**(健全な疎い画面が 0.35 に届く)は数字を上げる前に、その画面を
     /// コーパスへ足して `TreeCoverageTests` の発火集合で差分を見ること
     public static let collapsedTreeFractionThreshold = 0.35
 
-    /// キーボードの帯を除いた viewport に対する未代表率
+    /// キーボードの帯を除いた viewport に対する未代表率(**内側の空白も含む素の値**)。
+    /// `collapsedTree` の判定には使わない(端だけを見る
+    /// `edgeUnrepresentedFractionExcludingKeyboard` を使う)。呼び手は
+    /// `missingPageContentNote` の百分率表示(判定が真になった後の説明用)だけ
     public static func unrepresentedFractionExcludingKeyboard(_ snapshot: SnapshotResponse) -> Double {
         let keyboard = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame,
                                                  in: snapshot.elements).frame
@@ -314,20 +326,50 @@ public enum TreeCoverage {
         return unrepresentedScreenFraction(clipped)
     }
 
+    /// キーボードを除いた viewport に対する**端(先頭 or 末尾)の空白**の大きいほう。
+    /// `unrepresentedScreenFraction` と違って**内側の隙間は無視する** —— 最も近い要素の縁から
+    /// viewport の上端・下端までの距離だけを見る(要素の縦区間を merge しない。内側に
+    /// いくつ隙間があっても関係ない)。screen.height <= 0 相当(viewport が潰れた)では 0、
+    /// 要素が1つも無ければ 1(全面が端)
+    public static func edgeUnrepresentedFractionExcludingKeyboard(_ snapshot: SnapshotResponse) -> Double {
+        let keyboard = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame,
+                                                 in: snapshot.elements).frame
+        let viewport = ScrollGeometry.viewport(snapshot.screen, excludingKeyboard: keyboard)
+        guard viewport.height > 0 else { return 0 }
+        let top = viewport.y, bottom = viewport.y + viewport.height
+        let intervals = snapshot.elements.compactMap { element -> (Double, Double)? in
+            let y0 = max(element.frame.y, top)
+            let y1 = min(element.frame.y + element.frame.height, bottom)
+            return y1 > y0 ? (y0, y1) : nil
+        }
+        guard let leadEdge = intervals.map(\.0).min(),
+              let trailEdge = intervals.map(\.1).max() else { return 1 }
+        let lead = max(0, leadEdge - top)
+        let trail = max(0, bottom - trailEdge)
+        return max(lead, trail) / viewport.height
+    }
+
     /// 「置き換わった木」と言うための最小要素数。**形の性質であって調整値ではない** ——
     /// 木を置き換えたモーダルは**自分の中身を連れてくる**(見出し/本文 + 操作)ので、
     /// 実測した真陽性はいずれもこれ以上ある(`and-dialog_confirm` 6 / `and-overflow` 18 /
-    /// `and-browser_jma_notree` 19 / 実機の iOS アラート 5)。
+    /// 実機の iOS アラート 5)。
     /// 1〜2要素の木は「置き換わった」証拠にならず、**本当に何も無い画面と区別できない**
     /// (完全に空なら `emptyTreeNote` の担当)。**見逃す側に倒す**: 見出しの無い2択シートは拾えない
     public static let collapsedTreeMinimumElements = 3
 
     /// モーダルが木を置き換えた疑い。**打ち切られた木からは結論しない**(`missingPageContent`
     /// と同じ理由 —— 材料が「要素が無いこと」なので、上限で落とされただけの木でも真になる)
+    ///
+    /// **見るのは端の空白だけ**(`edgeUnrepresentedFractionExcludingKeyboard`)。モーダルは
+    /// chrome ごと画面を置き換えるので空白は端に出るが、**内側の空白は「ブラウザが a11y を
+    /// 部分公開している」という根拠があるときだけ**(`gap` / `missingPageContent`)言ってよい。
+    /// 素の未代表率(内側も数える)で判定すると、内容が画面の途中で終わるだけの健全な
+    /// ネイティブ画面(上下端に要素があり、間が空いている)を誤検知する
+    /// (witness は `sut-e2e_noid`。`edgeUnrepresentedFractionExcludingKeyboard` の doc 参照)
     public static func collapsedTree(in snapshot: SnapshotResponse) -> Bool {
         guard snapshot.truncatedCount == 0,
               snapshot.elements.count >= collapsedTreeMinimumElements else { return false }
-        return unrepresentedFractionExcludingKeyboard(snapshot) >= collapsedTreeFractionThreshold
+        return edgeUnrepresentedFractionExcludingKeyboard(snapshot) >= collapsedTreeFractionThreshold
     }
 
     // MARK: - まとめ(否定判定の裏取り)

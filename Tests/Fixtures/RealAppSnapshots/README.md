@@ -139,6 +139,12 @@
 |---|---|---|---|
 | `and-e2e_input_keyboard_resized` | form | E2E-Android(Pixel 4a 実機・View/XML)の入力画面でパスワード欄にフォーカス | **adjustResize でアプリ窓がキーボード上端まで縮み、覆われた要素が木から消える**形。Gboard が 1073px に伸びて窓は 2340→1267px、送信/クリア(`#btn_input_submit` / `#btn_input_clear`)が木に無い。根 `#action_bar_root` の下端 1267 = `keyboardFrame.y` で、キーボード矩形の下には要素が1つも無い —— iOS は覆われた要素が木に残る(`ios-browser_startpage` 55件)ので、「木の要素 ∩ キーボード矩形」で数える注記は Android のこの形で「下に何も無い」と誤って断言していた。`KeyboardOcclusion.windowResizedAboveKeyboard` の witness(`and-form_keyboard` と同型を自前 SUT で固定) |
 
+**2026-09-07 に `collapsedTree` の誤検知(健全な疎いネイティブ画面)対応で足した1枚**:
+
+| ファイル | アーキタイプ | 由来 | 何を代表するか |
+|---|---|---|---|
+| `sut-e2e_noid` | settings | E2E-iOS「ID なし」画面 / iOS 27.0 Simulator・xcuitest | **下部タブバーがあり内容が上半分で終わる健全な画面**。402x874pt・16要素・描かれている要素は1つ残らず木にあるのに、`unrepresentedScreenFraction`(内側込みの素の未代表率)が 0.3806 で `collapsedTreeFractionThreshold`(0.35)を超え、`collapsedTree` が「モーダルに置き換わった」と誤検知していた witness。空白の正体は `qty=0`(下端 y=445.3)から下部タブバー(上端 y=778)までの**ただの余白**。`TreeCoverage.edgeUnrepresentedFractionExcludingKeyboard`(端だけを見る。lead 0.089 / trail 0.039)へ判定を変えて解消した(詳細は `TreeCoverageTests`) |
+
 **採り直すとき**は基準値も一緒に更新する(`SweepHarnessTests.baselines`)。件数が増えたら
 まず誤検知を疑い、真陽性だと確かめてから基準値を上げること —— 黙って上げると、
 この砦は「現状を追認するだけ」になる。

@@ -259,7 +259,11 @@ final class MCPSelectorDurabilityTests: XCTestCase {
         XCTAssertLessThanOrEqual(indexed * 1000 / max(1, total), 255,
                                  "索引セレクタの割合が増えている(実測 25.2%)"
                                  + " —— 画面を足しただけでは上がらない指標なので、絞り込みの退行を疑う")
-        XCTAssertLessThanOrEqual(unwritable, 310, "書けない要素が増えている(実測 307)")
+        // 2026-09-07: sut-e2e_noid(E2E-iOS「ID なし」画面)を足して 307 → 311(+4)。
+        // 増分は**ちょうど4件**で全部数え上げてある —— 無ラベル・無 id の `switch` ×2 と、
+        // 同一ラベル `変更` の `button` ×2(どちらも id を持つ祖先が無いので索引形も書けない)。
+        // **この画面の設計そのもの**(方向セレクタでしか解けない盤面)なので絞り込みの退行ではない
+        XCTAssertLessThanOrEqual(unwritable, 314, "書けない要素が増えている(実測 311)")
         // **書けない側にも割合ゲートを置く**。絶対数だけだと、コーパスを
         // 広げるたびに上限を上げる儀式になる(索引側で既に踏んだ轍)。
         //

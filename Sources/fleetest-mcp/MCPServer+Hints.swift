@@ -839,7 +839,10 @@ extension MCPServer {
     static func missingPageContentNote(_ snapshot: SnapshotResponse) -> String {
         if !TreeCoverage.missingPageContent(in: snapshot) {
             guard TreeCoverage.collapsedTree(in: snapshot) else { return "" }
-            let percent = Int((TreeCoverage.unrepresentedFractionExcludingKeyboard(snapshot) * 100).rounded())
+            // **判定に使った量をそのまま印字する**(collapsedTree は端の空白で判定する)。
+            // 内側込みの素の未代表率を出すと、読み手が確かめようのない数字になる
+            let percent = Int(
+                (TreeCoverage.edgeUnrepresentedFractionExcludingKeyboard(snapshot) * 100).rounded())
             return "note: \(percent)% of the screen has no element in the tree at all — a modal,"
                 + " sheet or menu may have replaced it, in which case everything behind it is gone"
                 + " from the tree (it cannot be waited for, scrolled to, or tapped by selector, and"

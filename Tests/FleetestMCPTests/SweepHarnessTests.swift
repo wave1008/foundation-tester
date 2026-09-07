@@ -271,6 +271,10 @@ final class SweepHarnessTests: XCTestCase {
         "sut-cmp_controls": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 0, disabled: 2,
                                    warnedTappable: 2),
         "sut-cmp_home": Counts(),
+        // E2E-iOS「ID なし」画面(xcuitest)。**全項目0の陰性対照** —— 描かれている要素が
+        // 1つ残らず木にあり、重なりも画面外も無い。`collapsedTree` が内側の空白で
+        // 誤検知していた witness(TreeCoverage.edgeUnrepresentedFractionExcludingKeyboard)
+        "sut-e2e_noid": Counts(),
         // sutec-* は sut-ec-mobile の **iOS in-app** の木(2026-08-08 の in-app 監査で採取。
         // それまで in-app の実樹はコーパスに1枚も無かった)。offscreen は全件確認済みの真陽性:
         // calendar_day の #slot_07 は Simulator 上で無反応タップを実測・#slot_23 とホームの
