@@ -825,6 +825,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 fm: fm, reportDir: reportDirPath,
                 defaultTimeout: resolved.defaultTimeout,
                 containerInference: resolved.containerInference,
+                ocr: resolved.ocr,
                 scenarioTimeout: resolved.scenarioTimeout, dryRun: dryRun,
                 debug: debugOptions, recording: recording,
                 appPath: dryRun ? nil : resolved.apps[scenarioPlatform]?
@@ -911,6 +912,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             project: project, workers: workers, fm: fm,
             reportDir: reportDirURL, defaultTimeout: resolved.defaultTimeout,
             containerInference: resolved.containerInference,
+            ocr: resolved.ocr,
             scenarioTimeout: resolved.scenarioTimeout, recorder: recorder,
             recordingConfig: recordingConfig,
             isDeviceFrozen: { serial in

@@ -967,6 +967,7 @@ test("buildRunProfileTemplate: apps/devices 候補ありなら先頭のappと全
     fm: true,
     heal: true,
     falsePositiveCheck: true,
+    ocr: true,
     screenLooksLike: true,
     triage: true,
     iosInappEngine: true,
@@ -986,6 +987,7 @@ test("buildRunProfileTemplate: 候補が無ければ app は空文字、devices 
     fm: true,
     heal: true,
     falsePositiveCheck: true,
+    ocr: true,
     screenLooksLike: true,
     triage: true,
     iosInappEngine: true,
@@ -1005,6 +1007,7 @@ test("buildRunProfileTemplate: machine が空文字なら machine キー自体�
     fm: true,
     heal: true,
     falsePositiveCheck: true,
+    ocr: true,
     screenLooksLike: true,
     triage: true,
     iosInappEngine: true,
@@ -1490,6 +1493,7 @@ const VALID_RUN_PROFILE_SAVE = {
     falsePositiveCheck: true,
     screenLooksLike: true,
     containerInference: true,
+    ocr: true,
     iosInappEngine: true,
     iosFastInput: false,
     iosPreActionWarmup: true,
@@ -1519,7 +1523,7 @@ test("isMonitorFromWebviewMessage: runProfileLoad は profile 空文字/欠落/�
   assert.equal(isMonitorFromWebviewMessage({ type: "runProfileLoad", profile: 1 }), false);
 });
 
-test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields22項目の型が揃っていれば true", () => {
+test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields23項目の型が揃っていれば true", () => {
   assert.equal(isMonitorFromWebviewMessage(VALID_RUN_PROFILE_SAVE), true);
   // devices は空配列も(型としては)許容する — 「1件以上」の検証はクライアント側の別ロジックが担う。
   assert.equal(
@@ -1539,6 +1543,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields22�
         falsePositiveCheck: false,
         screenLooksLike: false,
         containerInference: false,
+        ocr: false,
         iosInappEngine: false,
         iosFastInput: true,
         iosPreActionWarmup: false,
@@ -1603,6 +1608,13 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 空文字・fields
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
       fields: { ...VALID_RUN_PROFILE_SAVE.fields, containerInference: "true" }, // boolean でない
+    }),
+    false,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      ...VALID_RUN_PROFILE_SAVE,
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, ocr: "true" }, // boolean でない
     }),
     false,
   );
@@ -2736,7 +2748,7 @@ test("syncDevicesInMachineProfile: remove のみ(add:[])は source:local でも�
 
 // ---- parseRunProfileForForm ----
 
-test("parseRunProfileForForm: 正常な値は25フィールドをそのまま読み取る", () => {
+test("parseRunProfileForForm: 正常な値は26フィールドをそのまま読み取る", () => {
   const parsed = parseRunProfileForForm({
     machine: "M1 Max",
     app: "sampleapp",
@@ -2747,6 +2759,7 @@ test("parseRunProfileForForm: 正常な値は25フィールドをそのまま読
     screenLooksLike: false,
     triage: false,
     containerInference: false,
+    ocr: false,
     iosInappEngine: false,
     iosFastInput: true,
     iosPreActionWarmup: false,
@@ -2776,6 +2789,7 @@ test("parseRunProfileForForm: 正常な値は25フィールドをそのまま読
     screenLooksLike: false,
     triage: false,
     containerInference: false,
+    ocr: false,
     iosInappEngine: false,
     iosFastInput: true,
     iosPreActionWarmup: false,
@@ -2797,7 +2811,7 @@ test("parseRunProfileForForm: 正常な値は25フィールドをそのまま読
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、fm/heal/screenLooksLike/falsePositiveCheck/triage/containerInference=true、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionWarmup=true)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、fm/heal/screenLooksLike/falsePositiveCheck/triage/containerInference/ocr=true、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionWarmup=true)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     machine: "",
@@ -2809,6 +2823,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/loc
     triage: true,
     screenLooksLike: true,
     containerInference: true,
+    ocr: true,
     iosInappEngine: true,
     iosFastInput: false,
     iosPreActionWarmup: true,
@@ -2840,6 +2855,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     falsePositiveCheck: "false",
     screenLooksLike: "false",
     containerInference: "false",
+    ocr: "false",
     iosInappEngine: "false",
     iosFastInput: "true",
     reportDir: false,
@@ -2864,6 +2880,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     triage: true,
     screenLooksLike: true,
     containerInference: true,
+    ocr: true,
     iosInappEngine: true,
     iosFastInput: false,
     iosPreActionWarmup: true,
@@ -2930,6 +2947,13 @@ test("parseRunProfileForForm: falsePositiveCheck は boolean ならそのまま�
   assert.equal(parseRunProfileForForm({ falsePositiveCheck: false }).falsePositiveCheck, false);
   assert.equal(parseRunProfileForForm({}).falsePositiveCheck, true);
   assert.equal(parseRunProfileForForm({ falsePositiveCheck: "true" }).falsePositiveCheck, true);
+});
+
+test("parseRunProfileForForm: ocr は boolean ならそのまま返し、欠落/非 boolean は既定値 true", () => {
+  assert.equal(parseRunProfileForForm({ ocr: true }).ocr, true);
+  assert.equal(parseRunProfileForForm({ ocr: false }).ocr, false);
+  assert.equal(parseRunProfileForForm({}).ocr, true);
+  assert.equal(parseRunProfileForForm({ ocr: "true" }).ocr, true);
 });
 
 test("parseRunProfileForForm: homeOnStart は boolean ならそのまま返し、欠落/非 boolean は既定値 true(= 撃つ)", () => {
@@ -3113,6 +3137,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   falsePositiveCheck: true,
   screenLooksLike: true,
   containerInference: true,
+  ocr: true,
   iosInappEngine: true,
   iosFastInput: false,
   iosPreActionWarmup: true,
@@ -3141,6 +3166,7 @@ test("updateRunProfileInObject: 基本更新(machine/app/fm/heal/falsePositiveCh
   assert.equal(result.object.falsePositiveCheck, true);
   assert.equal(result.object.screenLooksLike, true);
   assert.equal(result.object.containerInference, true);
+  assert.equal(result.object.ocr, true);
   assert.equal(result.object.iosInappEngine, true);
   assert.equal(result.object.wipeDataOnBloat, true);
   assert.equal(result.object.wipeDataThresholdGB, 1);
@@ -3202,8 +3228,8 @@ test("updateRunProfileInObject: record/recordFailuresOnly/recordFullResolution/i
   }
 });
 
-test("updateRunProfileInObject: fm/heal/falsePositiveCheck/screenLooksLike/containerInference は heal と同様に true/false どちらも常時書き込む(キー削除しない)", () => {
-  for (const key of ["fm", "heal", "falsePositiveCheck", "screenLooksLike", "containerInference"]) {
+test("updateRunProfileInObject: fm/heal/falsePositiveCheck/screenLooksLike/containerInference/ocr は heal と同様に true/false どちらも常時書き込む(キー削除しない)", () => {
+  for (const key of ["fm", "heal", "falsePositiveCheck", "screenLooksLike", "containerInference", "ocr"]) {
     const enabled = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, [key]: true });
     assert.equal(enabled.object[key], true, `${key}: true で書き込まれるべき`);
 

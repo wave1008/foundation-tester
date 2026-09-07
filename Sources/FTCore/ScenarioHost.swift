@@ -266,6 +266,7 @@ public enum ScenarioHost {
                            connection: DriverConnection,
                            fm: FMConfig = FMConfig(), reportDir: String, defaultTimeout: Double? = nil,
                            containerInference: Bool = true,
+                           ocr: Bool = true,
                            scenarioTimeout: Int? = nil,
                            dryRun: Bool = false,
                            debug: ScenarioDebugOptions? = nil,
@@ -347,6 +348,9 @@ public enum ScenarioHost {
         if let defaultTimeout { args += ["--default-timeout", FTSeconds.format(defaultTimeout)] }
         // **FM とは無関係**(幾何ヒューリスティックの既定)なので FMConfig には入れない
         if !containerInference { args.append("--no-container-inference") }
+        // occlusion guard の OCR 事前判定(FMConfig の外。falsePositiveCheck が off なら guard 自体が
+        // 走らないためこの値は無意味 —— 別ゲートは追加しない)
+        if !ocr { args.append("--no-ocr") }
         if let debug {
             args.append("--debug")
             if debug.pauseOnStart { args.append("--pause-on-start") }

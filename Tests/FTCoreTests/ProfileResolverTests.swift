@@ -1187,6 +1187,41 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertTrue(fmOffOnly.warnings.isEmpty, "containerInference は既知キー: \(fmOffOnly.warnings)")
     }
 
+    // MARK: - ocr(occlusion guard 前段の Vision OCR 事前判定。fm の兄弟キー。既定 true)
+
+    func testOcrDefaultsToTrueAndIsKnown() throws {
+        try writeStandardFixture()
+        let onByDefault = try ProfileResolver.resolve(
+            project: project, runName: "all", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(onByDefault.ocr, "省略時は既定 true のはず")
+
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "ocr": false }
+        """, to: project.runsDir, name: "ocroff")
+        let off = try ProfileResolver.resolve(
+            project: project, runName: "ocroff", machineName: "M1 Max(64GB)")
+        XCTAssertFalse(off.ocr)
+        XCTAssertFalse(off.warnings.contains { $0.contains("ocr") }, "ocr は既知キー: \(off.warnings)")
+
+        // fm/falsePositiveCheck が off でも resolve 層では巻き込まれない(ゲートは downstream の
+        // occlusion guard 実行有無であって、ここではない)ことを同時に見る
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "fm": false }
+        """, to: project.runsDir, name: "ocrfmoffonly")
+        let fmOffOnly = try ProfileResolver.resolve(
+            project: project, runName: "ocrfmoffonly", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(fmOffOnly.ocr, "fm:false でも ocr は既定のまま(downstream でしか無効化されない)")
+        XCTAssertFalse(fmOffOnly.fm.enabled)
+
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "falsePositiveCheck": false }
+        """, to: project.runsDir, name: "ocrfpcoffonly")
+        let fpcOffOnly = try ProfileResolver.resolve(
+            project: project, runName: "ocrfpcoffonly", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(fpcOffOnly.ocr, "falsePositiveCheck:false でも ocr は既定のまま")
+        XCTAssertFalse(fpcOffOnly.fm.falsePositiveCheck)
+    }
+
     func testValidateMachineProfileReportsPhysicalErrors() throws {
         let data = #"""
         { "ios": { "devices": [ { "name": "実機", "kind": "physical", "engine": "inapp" } ] },

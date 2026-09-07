@@ -73,7 +73,7 @@ export const panelsStrings = {
   // panels.common.{app,machine}Profile を再利用するので、語を変えるときは片方だけ直さない
   "panels.runProfile.machineLabel": { ja: "参照する{link}", en: "{link} to reference" },
   "panels.runProfile.appLabel": { ja: "参照する{link}", en: "{link} to reference" },
-  "panels.runProfile.fmSectionTitle": { ja: "FM(Foundation Model)", en: "FM (Foundation Model)" },
+  "panels.runProfile.fmSectionTitle": { ja: "FM(Foundation Model)/OCR", en: "FM (Foundation Model) / OCR" },
   "panels.runProfile.fmLabel": { ja: "FMの機能を使用する", en: "Use FM features" },
   "panels.runProfile.healLabel": { ja: "自己修復(heal)を有効にする", en: "Enable self-heal" },
   // 鍵 `falsePositiveCheck` を指すラベルなので「偽陽性検証」は据え置き(CLAUDE.md §用語)。
@@ -84,6 +84,7 @@ export const panelsStrings = {
   },
   "panels.runProfile.triageLabel": { ja: "失敗時のトリアージを有効にする", en: "Enable failure triage" },
   "panels.runProfile.screenLooksLikeLabel": { ja: "screenLooksLikeを有効にする", en: "Enable screenLooksLike" },
+  "panels.runProfile.ocrLabel": { ja: "OCRの機能を使用する", en: "Use OCR features" },
   "panels.runProfile.iosSectionTitle": { ja: "iOS", en: "iOS" },
   "panels.runProfile.inappEngineLabel": {
     ja: "高速なinappエンジンを使用する",

@@ -53,6 +53,11 @@
       "description": "FM による偽陽性検証(occlusion guard)を有効にするか(既定 true)。",
       "default": true
     },
+    "ocr": {
+      "type": "boolean",
+      "description": "occlusion guard の OCR 事前判定段(Vision)を有効にするか(既定 true)。false で従来どおり FM だけで判定する。falsePositiveCheck が false の run では guard 自体が走らないため効かない。",
+      "default": true
+    },
     "triage": {
       "type": "boolean",
       "description": "失敗時のトリアージ(分類・要約・次の一手)を有効にするか(既定 true)。合否は変えない助言なので、切っても検証の強度は落ちない。",

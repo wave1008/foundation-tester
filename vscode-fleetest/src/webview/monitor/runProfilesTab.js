@@ -27,6 +27,7 @@ const runProfileHeal = document.getElementById('run-profile-heal');
 const runProfileFalsePositiveCheck = document.getElementById('run-profile-false-positive-check');
 const runProfileTriage = document.getElementById('run-profile-triage');
 const runProfileScreenLooksLike = document.getElementById('run-profile-screen-looks-like');
+const runProfileOcr = document.getElementById('run-profile-ocr');
 const runProfileContainerInference = document.getElementById('run-profile-container-inference');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
 const runProfileIosFastInput = document.getElementById('run-profile-ios-fast-input');
@@ -58,7 +59,7 @@ let runProfileNames = [];
 let runProfileApps = [];
 // 編集対象の実行プロファイル名(一覧が0件なら null)。
 let selectedRunProfile = null;
-// 直近ロード(runProfileData ok:true)時点の19フィールド値。null の間はフォーム非表示。
+// 直近ロード(runProfileData ok:true)時点の20フィールド値。null の間はフォーム非表示。
 let runProfileOriginalFields = null;
 // 現在チェック済みのデバイス参照 { name, machine }(表示順。チェックボックス操作・machine 切替の
 // 引き継ぎの正)。**一意なのは (machine, name)** なので名前だけでは持てない
@@ -212,7 +213,7 @@ export function applyRunProfileData(message) {
   renderRunProfileEditor(message.fields);
 }
 
-// ロード済みの19フィールド値でフォームを作り直す(編集途中の値は破棄する)。
+// ロード済みの20フィールド値でフォームを作り直す(編集途中の値は破棄する)。
 function renderRunProfileEditor(fields) {
   runProfileOriginalFields = fields;
   runProfileSubmitting = false;
@@ -227,6 +228,7 @@ function renderRunProfileEditor(fields) {
   runProfileFalsePositiveCheck.checked = fields.falsePositiveCheck;
   runProfileTriage.checked = fields.triage;
   runProfileScreenLooksLike.checked = fields.screenLooksLike;
+  runProfileOcr.checked = fields.ocr;
   updateFmOptionsVisibility();
   updateInappOptionsVisibility();
   runProfileIosInappEngine.checked = fields.iosInappEngine;
@@ -414,6 +416,7 @@ runProfileHeal.addEventListener('change', onRunProfileFormInput);
 runProfileFalsePositiveCheck.addEventListener('change', onRunProfileFormInput);
 runProfileTriage.addEventListener('change', onRunProfileFormInput);
 runProfileScreenLooksLike.addEventListener('change', onRunProfileFormInput);
+runProfileOcr.addEventListener('change', onRunProfileFormInput);
 // inapp エンジン ON のときだけ配下のサブオプション(iosPreActionWarmup)を表示する
 // (暖機は hybrid の domInterop 経路にしか無い = xcuitest エンジンでは効果が無いため。
 //  値そのものはエンジンの状態に関わらず保持・保存する = FM サブオプションと同じ方針)。
@@ -481,6 +484,7 @@ function runProfileValuesEqual(fields) {
     runProfileFalsePositiveCheck.checked === fields.falsePositiveCheck &&
     runProfileTriage.checked === fields.triage &&
     runProfileScreenLooksLike.checked === fields.screenLooksLike &&
+    runProfileOcr.checked === fields.ocr &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosFastInput.checked === fields.iosFastInput &&
     runProfileIosPreActionWarmup.checked === fields.iosPreActionWarmup &&
@@ -520,6 +524,7 @@ function setRunProfileControlsEnabled(enabled) {
   runProfileFalsePositiveCheck.disabled = !enabled;
   runProfileTriage.disabled = !enabled;
   runProfileScreenLooksLike.disabled = !enabled;
+  runProfileOcr.disabled = !enabled;
   runProfileIosInappEngine.disabled = !enabled;
   runProfileIosFastInput.disabled = !enabled;
   runProfileIosPreActionWarmup.disabled = !enabled;
@@ -601,6 +606,7 @@ runProfileConfirm.addEventListener('click', () => {
       falsePositiveCheck: runProfileFalsePositiveCheck.checked,
       triage: runProfileTriage.checked,
       screenLooksLike: runProfileScreenLooksLike.checked,
+      ocr: runProfileOcr.checked,
       iosInappEngine: runProfileIosInappEngine.checked,
       iosFastInput: runProfileIosFastInput.checked,
       iosPreActionWarmup: runProfileIosPreActionWarmup.checked,

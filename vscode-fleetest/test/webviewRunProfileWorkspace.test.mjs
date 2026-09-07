@@ -106,6 +106,7 @@ const RUN_PROFILE_FIELDS = {
   falsePositiveCheck: false,
   screenLooksLike: true,
   containerInference: true,
+  ocr: true,
   iosInappEngine: true,
   iosFastInput: false,
   homeOnStart: true,

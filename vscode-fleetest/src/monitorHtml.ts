@@ -378,6 +378,10 @@ function renderRunProfileSection(): string {
                 <label for="run-profile-screen-looks-like">${t("panels.runProfile.screenLooksLikeLabel")}</label>
               </div>
             </div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-ocr">
+              <label for="run-profile-ocr">${t("panels.runProfile.ocrLabel")}</label>
+            </div>
           </div>
           <div class="run-profile-section-group">
             <div class="run-profile-section-title">${t("panels.runProfile.recordSectionTitle")}</div>

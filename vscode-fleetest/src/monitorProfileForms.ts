@@ -63,6 +63,7 @@ export function buildRunProfileTemplate(
   template.fm = true;
   template.heal = true;
   template.falsePositiveCheck = true;
+  template.ocr = true;
   template.screenLooksLike = true;
   template.triage = true;
   template.iosInappEngine = true;
@@ -101,14 +102,16 @@ export function validateNewAppProfileName(name: string, existing: readonly strin
 }
 
 // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム -----------------------------
-// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム21フィールド変換の純粋関数
+// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム22フィールド変換の純粋関数
 // (未知キー保持のイミュータブルな方針。updateDeviceInMachineProfile と同じ)。
 
-/** 実行プロファイル設定フォームの22フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
+/** 実行プロファイル設定フォームの23フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
  * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、heal/
  * falsePositiveCheck/screenLooksLike/triage は「FM」セクション、iosFastInput / iosPreActionWarmup は「iOS」セクションのサブオプション
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
- * runProfilesTab.js の責務)。containerInference は独立トグル(FM とは無関係の幾何ヒューリスティック)。 */
+ * runProfilesTab.js の責務)。containerInference/ocr は独立トグル(FM とは無関係。ocr は
+ * occlusion guard の Vision OCR 事前判定段。falsePositiveCheck が false の run では guard 自体が
+ * 走らないため効かない)。 */
 /** 実行プロファイルのデバイス参照。**一意なのは (machine, name)** なので machine も持つ
  * (Sources/FTCore/RunProfile.swift の RunDeviceRef と同形。省略=手元)。
  * **JSON キーは "machine"**(2026-08-26 改名。旧 "host" も読む)。 */
@@ -127,6 +130,7 @@ export interface RunProfileFormFields {
   readonly screenLooksLike: boolean;
   readonly triage: boolean;
   readonly containerInference: boolean;
+  readonly ocr: boolean;
   readonly iosInappEngine: boolean;
   readonly iosFastInput: boolean;
   /// **既定 true**。domInterop の委譲イベント直前にランナーへ1回問い合わせてから撃つ
@@ -154,7 +158,7 @@ export interface RunProfileFormFields {
 }
 
 /**
- * runs/<name>.json のトップレベルから、フォームの21フィールドを許容的に読み取る(トップレベルが
+ * runs/<name>.json のトップレベルから、フォームの22フィールドを許容的に読み取る(トップレベルが
  * 非オブジェクトなら null)。各キーは欠落・型不正を「読めなければ空/既定値」で許容し、スキーマ
  * 妥当性検証はしない(保存時 updateRunProfileInObject・CLI 側 ProfileResolver.validate に委ねる)。
  * defaultTimeout/wipeDataThresholdGB/recordBitrateKbps は number ならそのまま String() 化する
@@ -177,6 +181,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const fm = typeof source.fm === "boolean" ? source.fm : true;
   const heal = typeof source.heal === "boolean" ? source.heal : true;
   const falsePositiveCheck = typeof source.falsePositiveCheck === "boolean" ? source.falsePositiveCheck : true;
+  const ocr = typeof source.ocr === "boolean" ? source.ocr : true;
   const triage = typeof source.triage === "boolean" ? source.triage : true;
   // screenIs は改名前の旧キー。新キーが無いときだけ読む(Sources/FTCore/RunProfile.swift の
   // effectiveScreenLooksLike と同じ優先順。保存時は updateRunProfileInObject が旧キーを落とす)
@@ -235,6 +240,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     screenLooksLike,
     triage,
     containerInference,
+    ocr,
     iosInappEngine,
     iosFastInput,
     iosPreActionWarmup,
@@ -261,7 +267,7 @@ export type RunProfileUpdateResult =
   | { readonly ok: false; readonly error: string };
 
 /**
- * runs/<name>.json を、フォームの21フィールドの内容で更新した新オブジェクトを組み立てる
+ * runs/<name>.json を、フォームの22フィールドの内容で更新した新オブジェクトを組み立てる
  * (未知キー保持のイミュータブルな方針。profileObject が非オブジェクトなら ok:false)。
  * defaultTimeout は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
  * wipeDataThresholdGB は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
@@ -299,6 +305,7 @@ export function updateRunProfileInObject(
   result.triage = fields.triage;
   delete result.screenIs;  // 旧キーを残すと同じ設定が2つのキーに現れ、片方だけ直す事故になる
   result.containerInference = fields.containerInference;
+  result.ocr = fields.ocr;  // 同上(既定 true 側。containerInference と同じ理由で常に書く)
   result.iosInappEngine = fields.iosInappEngine;
   result.updateWebView = fields.updateWebView;
   result.wipeDataOnBloat = fields.wipeDataOnBloat;
