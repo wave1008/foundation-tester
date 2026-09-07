@@ -141,6 +141,10 @@ class Tags {
   // 診断
   static const txtBuildInfo = 'txt_build_info';
   static const txtDiagNote = 'txt_diag_note';
+  /// occlusion-guard の Tier-2(Vision OCR)の witness。白地に gray 220/255・枠 160x44・
+  /// フォント 17 で描く(実測 stdDev ≈6.56。Tier-1 の足切り(既定 12)を通り抜けて Tier-2 へ届く)。
+  /// **色を濃くしない・枠を大きくしない**(コントラストを下げる方向だけが効く)。
+  static const txtOcrFaint = 'txt_ocr_faint';
   static const btnFreeze3s = 'btn_freeze_3s';
   static const btnCrash = 'btn_crash';
   static const btnCrashConfirm = 'btn_crash_confirm';

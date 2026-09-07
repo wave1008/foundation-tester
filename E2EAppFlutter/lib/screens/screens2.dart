@@ -601,6 +601,21 @@ class DiagnosticsScreen extends StatelessWidget {
     children: [
       const TaggedText(Tags.txtBuildInfo, 'build=${AppInfo.version}'),
       const TaggedText(Tags.txtDiagNote, '診断メニュー'),
+      // 背景は system の外観設定に関わらず白固定(dark mode だと gray220/白地の
+      // コントラストが反転し witness が黙って死ぬ。値の根拠は Tags.txtOcrFaint のコメント参照)。
+      tagged(
+        Tags.txtOcrFaint,
+        Container(
+          width: 160,
+          height: 44,
+          color: Colors.white,
+          alignment: Alignment.center,
+          child: const Text(
+            'ocr=readable',
+            style: TextStyle(fontSize: 17, color: Color(0xFFDCDCDC)),
+          ),
+        ),
+      ),
       TaggedButton(
         Tags.btnFreeze3s,
         '3秒フリーズ',

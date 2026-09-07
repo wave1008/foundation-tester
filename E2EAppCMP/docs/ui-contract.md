@@ -481,6 +481,7 @@ FM が修復できるかを検証する。
 |---|---|---|---|
 | `#txt_build_info` | Text | `build=<APP_VERSION>` | `Tags.kt` 隣の `AppInfo.VERSION` |
 | `#txt_diag_note` | Text | `診断メニュー` | |
+| `#txt_ocr_faint` | Text | `ocr=readable` | **薄いグレー(gray 220/255)・白背景・160x44・17pt 固定**。値を変えると witness が死ぬ(下記) |
 | `#btn_open_jump` | Button | `飛び越し` | 飛び越し画面を開く。**`#btn_crash` 系より前に置く**(即プロセス落ちの押下対象の近くに新しい押下対象を並べない) |
 | `#btn_freeze_3s` | Button | `3秒フリーズ` | メインスレッドを 3 秒ブロック |
 | `#btn_crash` | Button | `クラッシュさせる` | 確認ダイアログを出すだけ |
@@ -493,6 +494,30 @@ FM が修復できるかを検証する。
 |---|---|---|---|
 | `#txt_photos_result` | Text | `photos=<v>` 初期 `photos=none` | v ∈ `none`/`authorized`/`limited`/`denied`/`restricted`/`notDetermined` |
 | `#btn_request_photos` | Button | `写真へのアクセスを要求` | 押すと **SpringBoard の権限アラート**が出る。**in-app の木には載らない**(別プロセス)ので fallback 経由でだけ見える |
+
+`#txt_ocr_faint` は**全 SUT が持つ**(occlusion-guard の OCR 段(Tier-2)を通す witness)。
+期待文字列は ASCII —— `RegionText.languages(for:)` が英語モデルを選ぶので速く正確になる
+(日本語モデルを載せると可視なテキストを1文字誤読する実測がある)。
+**OCR は描画されたピクセルを読む**ので、フォントのラスタライズが違う SUT では同じ色指定でも
+輝度 stdDev が動きうる。**SUT を足したら A/B(OCR ON/OFF で `fm.calls` が 0↔1 に動くか)を
+必ず取る** —— 死んだ witness は「シナリオが緑」と見分けが付かない。
+
+`#txt_ocr_faint` は**インクの薄いテキストが Tier-1 の足切りを通って Tier-2(Vision OCR)へ届く**
+形の唯一の witness。occlusion-guard は「幾何で無罪 かつ 領域にインクがある」なら Tier-1(FM を
+省く)で終わるが、インクが薄いと Tier-1 を素通りできず Tier-2 の OCR 判定(期待文字列が丸ごと
+読めれば FM を省く)まで進む。自前 SUT には他にこの形の画面が無く、実測でも guard 114 件中
+OCR 段に届いたのは 2 件だけだった —— **`ocrFalsePositiveCheck` を切り替えても結果が変わらず、
+プロファイルのこの設定をデバイス実行で1本も担保できていなかった**穴を塞ぐ。
+
+**色(gray 220/255)・枠(160x44pt)・フォントサイズ(17pt)は実測で決めた値で、変えると
+witness が死ぬ**(輝度 stdDev が Tier-1 の足切り既定 12 を超えると Tier-2 に届かない)。
+実測: 枠160x44/gray200 → stdDev 10.53(○)/ **枠160x44/gray220(採用) → 6.56(○)**/
+枠160x44/gray235 → 3.76(○)/ 枠160x44/gray160 → 18.47(足切り不合格)/ 枠320pt角/黒 →
+16.11(足切り不合格)。**文字を濃くしない・枠を大きくしても代わりにならない** ——
+効くのはコントラストを下げる方向だけで、面積を広げてインク占有率を下げる路線は
+320pt 角でも足切りを超える(枠を大きくするほどむしろインクの総量が増えて逆効果)。
+背景は**システムの外観設定に関わらず白へ固定**してある(dark mode だとコントラストが
+反転し witness が壊れるため)。
 
 **iOS SUT だけが持つ**(縁の帯に潜った操作対象の witness。ホームの `#nav_cover` から開く):
 

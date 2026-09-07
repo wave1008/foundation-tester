@@ -9,6 +9,14 @@ struct DiagnosticsScreen: View {
         ScreenColumn {
             TaggedText(tag: Tags.txtBuildInfo, text: "build=\(AppInfo.version)")
             TaggedText(tag: Tags.txtDiagNote, text: "診断メニュー")
+            // 背景は system の外観設定に関わらず固定(dark mode だと gray220/白地の
+            // コントラストが反転し witness が壊れる)。値は Tags.txtOcrFaint のコメント参照
+            Text("ocr=readable")
+                .font(.system(size: 17))
+                .foregroundColor(Color(white: 220.0 / 255.0))
+                .frame(width: 160, height: 44)
+                .background(Color.white)
+                .accessibilityIdentifier(Tags.txtOcrFaint)
             // **OS のアラートが被さる witness**(iOS SUT だけが持つ)。SpringBoard が別プロセスで
             // 出すので in-app の木には載らず、in-app の注入は OS のイベント経路を通らないため
             // 「人手では不可能な操作」が通ってしまう形の対照になる。

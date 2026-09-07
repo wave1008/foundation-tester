@@ -1,6 +1,9 @@
 package com.ftester.e2e.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.LaunchedEffect
@@ -8,6 +11,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ftester.e2e.AppInfo
 import com.ftester.e2e.Tags
 import com.ftester.e2e.ui.ScreenColumn
@@ -30,6 +37,18 @@ fun DiagnosticsScreen(onOpenJump: () -> Unit = {}) {
     ScreenColumn(scrollable = true) {
         TaggedText(Tags.TXT_BUILD_INFO, "build=${AppInfo.VERSION}")
         TaggedText(Tags.TXT_DIAG_NOTE, "診断メニュー")
+        // 素の Text(Button/clickable でない)= a11y に staticText として出る。色を
+        // MaterialTheme から取らず直書きするのは、背景を system の外観設定に関わらず
+        // 白固定するため(dark mode だと gray220/白地のコントラストが反転し witness が壊れる)。
+        Text(
+            text = "ocr=readable",
+            modifier = Modifier
+                .testTag(Tags.TXT_OCR_FAINT)
+                .size(width = 160.dp, height = 44.dp)
+                .background(Color.White),
+            color = Color(0xFFDCDCDC),
+            fontSize = 17.sp
+        )
         // #btn_crash_confirm(即プロセス落ち)より前に置く: 近くに新しい押下対象を並べない。
         TaggedButton(Tags.BTN_OPEN_JUMP, "飛び越し", onClick = onOpenJump)
         TaggedButton(Tags.BTN_FREEZE_3S, "3秒フリーズ") {

@@ -154,6 +154,11 @@ object Tags {
     // 診断
     const val TXT_BUILD_INFO = "txt_build_info"
     const val TXT_DIAG_NOTE = "txt_diag_note"
+    // occlusion-guard の Tier-2(Vision OCR)の witness: 白地固定・gray 220/255・160x44dp・17sp。
+    // 輝度 stdDev ≈6.56 は Tier-1 の足切り(既定 12)の半分程度で通る。**色を濃くしない・枠を
+    // 大きくしても代わりにならない**(効くのはコントラストを下げる方向だけ。実測は
+    // docs/ui-contract.md 「診断画面」節)。
+    const val TXT_OCR_FAINT = "txt_ocr_faint"
     // 飛び越し画面への入口。ホームのナビ行を増やさない契約(docs/ui-contract.md 「ホーム」節)により、
     // 診断画面から開く形にしてある。
     const val BTN_OPEN_JUMP = "btn_open_jump"

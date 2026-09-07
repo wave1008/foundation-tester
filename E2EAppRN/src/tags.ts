@@ -129,6 +129,10 @@ export const Tags = {
   // 診断。「飛び越し画面」は CMP 専用のため #btn_open_jump は作らない。
   txtBuildInfo: 'txt_build_info',
   txtDiagNote: 'txt_diag_note',
+  // occlusion-guard の Tier-2(Vision OCR)witness。gray220/160x44/17pt は実測値で、
+  // 変えると Tier-1 の輝度足切り(既定12)を通ってしまい witness が死ぬ
+  // (根拠は E2EAppCMP/docs/ui-contract.md §診断画面)。背景は白固定(DiagnosticsScreen.tsx)。
+  txtOcrFaint: 'txt_ocr_faint',
   btnFreeze3s: 'btn_freeze_3s',
   btnCrash: 'btn_crash',
   btnCrashConfirm: 'btn_crash_confirm',

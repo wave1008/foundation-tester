@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { APP_VERSION, Tags } from '../tags';
 import { DialogOverlay, EchoText, ScreenContainer, TaggedButton } from '../ui';
@@ -27,6 +27,11 @@ export function DiagnosticsScreen() {
     <ScreenContainer>
       <EchoText testID={Tags.txtBuildInfo}>{`build=${APP_VERSION}`}</EchoText>
       <EchoText testID={Tags.txtDiagNote}>診断メニュー</EchoText>
+      {/* 背景を白固定(system の dark mode で反転すると gray220 とのコントラストが
+          崩れ witness が死ぬ)。色・枠・フォントサイズは Tags.txtOcrFaint のコメント参照。 */}
+      <EchoText testID={Tags.txtOcrFaint} style={styles.ocrFaintText}>
+        {'ocr=readable'}
+      </EchoText>
       <TaggedButton testID={Tags.btnFreeze3s} label="3秒フリーズ" onPress={freeze} />
       <TaggedButton testID={Tags.btnCrash} label="クラッシュさせる" onPress={() => setConfirming(true)} />
       <DialogOverlay visible={confirming} onRequestClose={() => setConfirming(false)}>
@@ -46,3 +51,13 @@ export function DiagnosticsScreen() {
     </ScreenContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  ocrFaintText: {
+    width: 160,
+    height: 44,
+    fontSize: 17,
+    color: '#DCDCDC',
+    backgroundColor: '#ffffff',
+  },
+});

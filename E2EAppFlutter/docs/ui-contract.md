@@ -121,6 +121,16 @@ XCUITest から到達できない(`hasKeyboardFocus` の要素が見つからず
 (タップの closure は新しい状態で動くのに、`#btn_heal_v1` が schema=v2 でも解決できてしまう。
 2026-07-23 実測)。`key: ValueKey(状態)` でウィジェットごと再生成させて切替を強制する。
 
+### J. OCR witness(`#txt_ocr_faint`)は `TaggedText` でなく `tagged()` 直書き
+
+固定サイズ・固定色が要る(値は E2EAppCMP/docs/ui-contract.md §診断画面)ため、`TaggedText`
+(スタイル無し)ではなく `tagged(Tags.txtOcrFaint, Container(...))` で直接組む
+(`DiagnosticsScreen` = `screens2.dart`)。`Container` は自分の semantics ノードを作らない
+ので、`MergeSemantics` は「identifier のノード」と`Text` が持つ label を**そのまま1枚へ畳む**
+——B節の「葉 + contentDesc → `staticText`」規則がそのまま効き、型を変える追加対応は不要。
+背景は `Container(color: Colors.white)` で明示し、`MaterialApp` のテーマ(未設定 = 既定)に
+依存させない。
+
 ## セレクタ画面の序数(シナリオ 04 が依存)
 
 見えている Button のツリー順は他の SUT と**同じ**:

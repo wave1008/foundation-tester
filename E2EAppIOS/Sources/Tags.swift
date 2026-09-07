@@ -172,6 +172,13 @@ enum Tags {
     // 診断
     static let txtBuildInfo = "txt_build_info"
     static let txtDiagNote = "txt_diag_note"
+    /// **occlusion-guard の Tier-2(Vision OCR)の witness**: 白地に gray 220/255・
+    /// 枠 160x44pt・17pt のテキスト。輝度 stdDev ≈6.56 は Tier-1 の足切り(既定 12)の
+    /// 半分程度で、コントラストの余裕がある(実機のフォントスムージング差を吸収する)。
+    /// **色を濃くすると届かなくなる。枠を大きくしても代わりにならない** ——
+    /// 効くのはコントラストだけで、面積を広げてインク占有率を下げる路線は不合格のまま
+    /// (320pt 角/黒でも stdDev 16.11)。
+    static let txtOcrFaint = "txt_ocr_faint"
     static let btnFreeze3s = "btn_freeze_3s"
     static let btnCrash = "btn_crash"
     static let btnCrashConfirm = "btn_crash_confirm"

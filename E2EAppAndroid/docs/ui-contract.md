@@ -132,6 +132,24 @@ API 30 未満のときだけ `keyevent 66` に落ちる。`OnEditorActionListene
   `textIs` だけ古い値で落ちる)。ブリッジが WebView 内ノードを `refresh()` してから読むことで
   1 秒未満に短縮している(コストは snapshot 1 回あたり +20ms)。
 
+## OCR witness(`#txt_ocr_faint`)の Android 実装
+
+診断画面(`screen_diagnostics.xml`)の `TextView` 1つ。木上は `TextView` → `staticText`
+(本ファイル冒頭の型表と同じ)。**Button/clickable にしない** —— `OcclusionEligibility` は
+テキスト型だけを Tier-2(OCR)へ回すため、他の型では witness が素通りして死ぬ。
+
+- **静的 `@+id`**(`#row_NN` のような実行時生成は不要): 単一固定要素なので
+  `res/values/ids.xml` を経由せず `screen_diagnostics.xml` に直接 `android:id="@+id/txt_ocr_faint"`
+  で宣言してある(実行時に `findViewById` で文字列を差し替える必要も無い ——
+  `android:text="ocr=readable"` を XML に直値で持つ)。
+- **色・背景はテーマ属性を経由しない直値**(`android:textColor="#DCDCDC"` /
+  `android:background="@android:color/white"`)。この SUT の `Theme.FTE2E` は
+  `windowBackground` を白へ固定済みだが、witness 単体でも直値にしてあるので
+  祖先の背景実装が変わっても DayNight で反転しない。
+- **`layout_width`/`layout_height` を `wrap_content` にしない**(160dp x 44dp を固定)。
+  値は E2EAppCMP/docs/ui-contract.md §診断画面の実測(輝度 stdDev)に依存する契約なので、
+  幅・高さ・フォントサイズ(17sp)・色(#DCDCDC)は変えない。
+
 ## 容器つきの入力欄(`#field_wrapped`)
 
 **この SUT だけが持つ**(Material の `TextInputLayout` / `TextInputEditText` と同じ形の再現)。
