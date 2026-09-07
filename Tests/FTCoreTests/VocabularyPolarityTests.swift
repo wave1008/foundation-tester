@@ -31,9 +31,7 @@ final class VocabularyPolarityTests: XCTestCase {
     private static let labelFiles: Set<String> = [
         "README.md",
         "Sources/FTCore/RunProfile.swift",
-        "Sources/FTRemote/RemoteDispatch.swift",
         "Tests/FTCoreTests/ProfileResolverTests.swift",
-        "Tests/FTCoreTests/RemoteDispatchTests.swift",
         "docs/ci.md",
         "docs/commands.md",
         "docs/design.md",
@@ -42,7 +40,6 @@ final class VocabularyPolarityTests: XCTestCase {
         "docs/user-docs/in_action/ci_ja.md",
         "docs/user-docs/overview/environments_ja.md",
         "docs/user-docs/project/run_profile_ja.md",
-        "docs/user-docs/running/running_scenarios_ja.md",
         "docs/user-docs/testclass/select_and_assert_ja.md",
         "docs/verification.md",
         "vscode-fleetest/src/i18n/strings/panels.ts",

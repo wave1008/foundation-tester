@@ -579,9 +579,9 @@ public enum RemoteRunArgs {
     public static func build(project: String, profile: String,
                              scenarios: [String], folders: [String],
                              deviceNames: [String] = [], deviceMachine: String? = nil,
-                             heal: Bool, noHeal: Bool, noFalsePositiveCheck: Bool,
+                             setOverrides: [String: Bool] = [:],
                              noLPT: Bool, lptHistoryRuns: Int?,
-                             fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
+                             performanceMode: Bool,
                              broadcast: Bool = false,
                              remoteJUnitPath: String?,
                              reportDir: String?, workspace: String? = nil,
@@ -608,20 +608,15 @@ public enum RemoteRunArgs {
         if let workspace { args += ["--workspace", workspace] }
         for scenario in scenarios { args += ["--scenario", scenario] }
         for folder in folders { args += ["--folder", folder] }
-        if heal { args.append("--heal") }
-        // `--heal` だけ中継すると、ヒールを止めたつもりでリモートはプロファイルの既定で走る
-        // (`ProfileRunner.healOverride` は nil = 既定・false = 明示 OFF を区別する)
-        if noHeal { args.append("--no-heal") }
-        // 中継しないと、偽陽性検証を切ったつもりでリモートはプロファイルの既定(true)で走る
-        // (--no-heal と同じ罠)
-        if noFalsePositiveCheck { args.append("--no-false-positive-check") }
+        // **中継しないと黙って無視される**(リモート側はプロファイルの既定で走る)。
+        // キーの値ごと渡すので、プロファイルの既定を打ち消す/明示で有効にするのどちらも
+        // 同じ形で届く(--set の値は RunProfileDocument のキー名そのまま)
+        for key in setOverrides.keys.sorted() { args += ["--set", "\(key)=\(setOverrides[key]!)"] }
         if noLPT { args.append("--no-lpt") }
         if let lptHistoryRuns { args += ["--lpt-history-runs", String(lptHistoryRuns)] }
-        if fastInput { args.append("--fast-input") }
         // 実行の意図を変えるフラグは**中継しないと黙って無視される**(リモート側は
         // プロファイルの既定で走る)。ここに載っていない run のフラグは、
         // dispatchToRemoteHost が ValidationError で明示的に拒否している
-        if enableAnimations { args.append("--enable-animations") }
         if performanceMode { args.append("--performance") }
         // 中継しないとリモートは共有キューで走る = 「全台で1回ずつ」が黙って「分配」に化ける
         if broadcast { args.append("--broadcast") }
@@ -634,11 +629,9 @@ public enum RemoteRunArgs {
 
     /// リモートで実行する `fleetest api run` の引数列("fleetest" 自体は含まない)。JUnit は
     /// 扱わない(拡張連携は NDJSON 中継のみで完結する)
-    /// `api run` に `--enable-animations` は無い(アニメーションは実行プロファイルの
-    /// enableAnimations と環境変数から解決する)ので、中継するのは `--performance` だけ
     public static func buildApi(project: String, profile: String, scenarios: [String],
                                 deviceNames: [String] = [], deviceMachine: String? = nil,
-                                heal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
+                                setOverrides: [String: Bool] = [:], noLPT: Bool, lptHistoryRuns: Int?,
                                 performanceMode: Bool,
                                 defaultTimeout: Double?, scenarioTimeout: Double?,
                                 reportDir: String?, workspace: String? = nil,
@@ -654,7 +647,8 @@ public enum RemoteRunArgs {
         // 渡す条件・理由は build() の --workspace と同じ
         if let workspace { args += ["--workspace", workspace] }
         for scenario in scenarios { args += ["--scenario", scenario] }
-        if heal { args.append("--heal") }
+        // 理由は build() と同じ(--set は run/api run で共有する単一の口)
+        for key in setOverrides.keys.sorted() { args += ["--set", "\(key)=\(setOverrides[key]!)"] }
         if noLPT { args.append("--no-lpt") }
         if let lptHistoryRuns { args += ["--lpt-history-runs", String(lptHistoryRuns)] }
         if performanceMode { args.append("--performance") }

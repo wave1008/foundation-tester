@@ -32,8 +32,10 @@ struct RunFileCommand: AsyncParsableCommand {
             help: "Scenario IDs to run (defaults to every @TestClass in the files)")
     var scenarios: [String] = []
 
-    @Flag(help: "Allow FM-based locator self-healing")
-    var heal = false
+    /// `fleetest run` の `--set` をそのまま下流(RunScenarios.parse)へ中継する
+    /// (キー・値の検証は RunScenarios.validate() に委ねる。二重に検証しない)
+    @Option(name: .customLong("set"), help: "Override one boolean field of the run profile document (repeatable): <key>=<true|false>")
+    var setOverrides: [String] = []
 
     @Option(name: .customLong("report-dir"), help: "Directory to write reports to")
     var reportDir: String?
@@ -94,7 +96,7 @@ struct RunFileCommand: AsyncParsableCommand {
         // parse を通らないと読み出しで落ちる)。引数列を作って parse させる
         var arguments = ["--project", target.name, "--scenario"] + selected
         if let profile { arguments += ["--profile", profile] }
-        if heal { arguments.append("--heal") }
+        for token in setOverrides { arguments += ["--set", token] }
         if let reportDir { arguments += ["--report-dir", reportDir] }
         if let ports { arguments += ["--ports", ports] }
         if let app { arguments += ["--app", app] }

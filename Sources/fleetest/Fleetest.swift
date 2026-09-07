@@ -795,16 +795,22 @@ struct RunScenarios: AsyncParsableCommand {
             help: "Scenario folders to run (subfolders directly under scenarios/). Repeatable; can be combined with --scenario and --failed")
     var folders: [String] = []
 
-    @Flag(help: "Allow FM-based locator self-healing")
-    var heal = false
-
-    @Flag(name: .customLong("no-heal"),
-          help: "Disable FM-based locator self-healing even when the run profile enables it (--profile runs default to heal: true)")
-    var noHeal = false
-
-    @Flag(name: .customLong("no-false-positive-check"),
-          help: "Disable the occlusion-guard false-positive check even when the run profile enables it (--profile runs default to falsePositiveCheck: true). No positive counterpart — the profile default is already true")
-    var noFalsePositiveCheck = false
+    /// キーはプロファイル JSON のキーそのもの(kebab 変換しない)。**共有フラグ**(`fleetest api run`
+    /// にも同じ口があるので `RunCommandFlagParityTests` の runOnly/apiOnly には入れない)。
+    /// 上書きは `ProfileResolver.resolve` / `--profile` 無しの直接実行の両方で
+    /// `RunProfileDocument.applyingOverrides` を通る唯一の経路(FTCore/RunProfile.swift)。
+    /// 受け付けるキー・値の検証は `RunProfileSetOverride.parse`(validate() が呼ぶ)。
+    /// **プロファイルの devices 一覧に依存するキー**(`RunProfileDocument.profileOnlyBoolKeys`)は
+    /// `--profile` が無いと run() のプロファイル無し分岐でエラーにする(黙って無視しない)。
+    /// `record` は devices に依存しないが、単一接続(`--ports` 未指定/1個)の経路では別途エラーにする
+    /// (RunOrchestrator の録画セッションが無い。run() 参照)
+    @Option(name: .customLong("set"),
+            help: ArgumentHelp("Override one boolean field of the run profile document for this run "
+                + "only (repeatable): <key>=<true|false>, where <key> is exactly the run profile "
+                + "JSON key (e.g. --set falsePositiveCheck=false --set ocr=false). Keys that need a "
+                + "run profile's device list (iosInappEngine, updateWebView, wipeDataOnBloat, "
+                + "recoverCpuFallbackToGpu) need --profile"))
+    var setOverrides: [String] = []
 
     @Flag(name: .customLong("dry-run"),
           help: "Enumerate and validate the steps without touching a device (No-Load-Run). Catches selector syntax errors, unreachable scenes and expectation blocks with no assertions")
@@ -837,10 +843,6 @@ struct RunScenarios: AsyncParsableCommand {
     @Option(help: "Write a JUnit XML report of this run to the given path (for CI test reporting)")
     var junit: String?
 
-    @Flag(name: .customLong("fast-input"),
-          help: "Enable fast input on the iOS xcuitest bridge (skips the quiescence wait). Can also be set via iosFastInput in the run profile")
-    var fastInput = false
-
     /// 用語と使い分けは ApiRunCommand の同名オプション参照(machine = 登録簿の名前 =
     /// ローカルエイリアス、host = ホスト名 / IP)
     @Option(name: .customLong("machine"),
@@ -864,10 +866,6 @@ struct RunScenarios: AsyncParsableCommand {
     @Option(name: .customLong("remote-artifacts"),
             help: "Collect recordings and run logs (results/) from the remote after the run: collect (default) or on-demand (leave them on the remote; docs/remote-runner.md)")
     var remoteArtifacts: String = "collect"
-
-    @Flag(name: .customLong("enable-animations"),
-          help: "Keep the app's animations instead of turning them off on the device. Can also be set via enableAnimations in the run profile")
-    var enableAnimations = false
 
     @Flag(name: .customLong("performance"),
           help: "Performance-testing mode (--profile only): if a dead lane cannot be revived before the run starts, fail instead of dropping it and continuing on the remaining lanes. iOS lanes are built before the run starts (no late join) so a missing one is reported before the run, not in the middle of it")
@@ -956,8 +954,9 @@ struct RunScenarios: AsyncParsableCommand {
     @OptionGroup var driverOptions: DriverOptions
 
     func validate() throws {
-        if heal && noHeal {
-            throw ValidationError("--heal and --no-heal cannot be used together")
+        if !setOverrides.isEmpty {
+            do { _ = try RunProfileSetOverride.parse(setOverrides) }
+            catch { throw ValidationError(error.localizedDescription) }
         }
         if fleet != nil {
             if host != nil { throw ValidationError("--fleet cannot be combined with --host") }
@@ -993,11 +992,19 @@ struct RunScenarios: AsyncParsableCommand {
     }
 
     func run() async throws {
-        // BridgeClient(ホスト・サブプロセス両方)が FT_FAST_INPUT を読む。プロファイル指定分は
-        // ProfileRunner が同様に注入する
-        if fastInput { setenv("FT_FAST_INPUT", "1", 1) }
-        // プロファイル指定分は ProfileRunner が注入する(こちらは ON 側の上書きのみ)
-        if enableAnimations { setenv(AnimationPolicy.environmentKey, "1", 1) }
+        // `--set` は validate() で検証済み(未知キー・不正値は既に弾かれている)。
+        // **デバイスに依存しない設定は `--profile` の有無に関わらず1つの経路で決まる**
+        // (`DeviceIndependentRunSettings`)。`--profile` ありの経路は `ProfileResolver.resolve`
+        // が同じ上書きをもう一度当てる(実プロファイルの値まで見えるので、ここでの計算は
+        // その代わりにはならない ——ここは「プロファイルを経由しない env トグル」専用)。
+        // BridgeClient(ホスト・サブプロセス両方)が FT_FAST_INPUT を読む
+        let profileOverrides = try RunProfileSetOverride.parse(setOverrides)
+        let noProfileSettings = DeviceIndependentRunSettings.resolve(
+            RunProfileDocument().applyingOverrides(profileOverrides))
+        if noProfileSettings.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }
+        if !noProfileSettings.iosPreActionWarmup { setenv("FT_PRE_ACTION_WARMUP", "0", 1) }
+        if noProfileSettings.enableAnimations { setenv(AnimationPolicy.environmentKey, "1", 1) }
+        if !noProfileSettings.playProtectBypass { setenv(AdbInstallVerifier.environmentKey, "0", 1) }
         // リモート実行はここで打ち切る(以降はローカル実行の段取り。フラグはコマンドラインごと
         // リモートへ中継されるので、向こう側の fleetest が同じ env を自分で立てる)。
         // dry-run だけは送らない(--host 明示・マシンプロファイルの host 自動のどちらも。
@@ -1014,9 +1021,7 @@ struct RunScenarios: AsyncParsableCommand {
             let exitCode = try await DeviceMachineRunner.run(
                 project: try ScenarioHost.project(named: project), profileName: profile,
                 groups: groups, scenarios: scenarios, folders: folders,
-                heal: heal, noHeal: noHeal, noFalsePositiveCheck: noFalsePositiveCheck,
-                noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
-                fastInput: fastInput, enableAnimations: enableAnimations,
+                setOverrides: profileOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                 performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                 remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                 remoteArtifacts: remoteArtifacts, quiet: quiet, junit: junit,
@@ -1101,6 +1106,10 @@ struct RunScenarios: AsyncParsableCommand {
                 ConsoleOut.out("ℹ️ --dry-run touches no device, so --fleet is not used"
                       + " (the scenarios are validated locally, from the same source every fleet entry would run)")
             }
+            if !profileOverrides.isEmpty {
+                ConsoleOut.out("ℹ️ --dry-run touches no device, so --set is not used"
+                      + " (dry-run always runs with FM disabled)")
+            }
             let failedCount = await runDryRun(items, project: testProject)
             ConsoleOut.out(failedCount == 0
                   ? "✅ All \(items.count) scenario(s) passed the dry-run"
@@ -1117,7 +1126,15 @@ struct RunScenarios: AsyncParsableCommand {
         // 2行並ぶうえ、機能ごとのトグルを持たないこちらの既定のほうが情報として粗い。
         // プロファイル無しの run にはその呼び出し元が無いので、ここが唯一の口になる
         if profile == nil {
-            await ProfileRunner.warnIfFMDegraded(fm: FMConfig(enabled: true, heal: heal)) { ConsoleOut.out($0) }
+            // デバイス一覧・録画基盤に依存するキーは適用先が無い。黙って無視しない
+            let unsupported = Set(profileOverrides.keys)
+                .intersection(RunProfileDocument.profileOnlyBoolKeys).sorted()
+            guard unsupported.isEmpty else {
+                throw ValidationError("--set \(unsupported.joined(separator: ", ")) needs --profile"
+                    + " (there are no devices from a run profile to apply"
+                    + " \(unsupported.count == 1 ? "it" : "them") to)")
+            }
+            await ProfileRunner.warnIfFMDegraded(fm: noProfileSettings.fm) { ConsoleOut.out($0) }
         }
 
         PhaseLog.mark("fm-doctor")
@@ -1142,8 +1159,7 @@ struct RunScenarios: AsyncParsableCommand {
             }
             let runSummary = try await ProfileRunner.run(
                 project: testProject, profileName: profile, items: items,
-                healOverride: ProfileRunner.healOverride(heal: heal, noHeal: noHeal),
-                noFalsePositiveCheck: noFalsePositiveCheck,
+                setOverrides: profileOverrides,
                 reportDirOverride: reportDir,
                 quiet: quiet, lpt: !noLPT,
                 lptHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
@@ -1214,27 +1230,55 @@ struct RunScenarios: AsyncParsableCommand {
             .compactMap { UInt16($0.trimmingCharacters(in: .whitespaces)) }
             ?? [driverOptions.port]
 
+        // 単一接続の runSequential は RunOrchestrator を経由しないため録画できない
+        // (FTCore.RunProfileDocument.recordNeedsRejecting 参照)。--ports を2つ以上渡せば
+        // runParallel = RunOrchestrator 経由になり録画できる
+        if RunProfileDocument.recordNeedsRejecting(record: noProfileSettings.record,
+                                                    hasRecordingSession: iosPorts.count > 1) {
+            throw ValidationError("--set record=true needs --profile, or --ports with more than"
+                + " one entry (a single connection here runs scenarios directly; there is no"
+                + " recording session for --set record to attach to)")
+        }
+        // record:true のときだけ VideoRecordingConfig を注入(--profile 経路と同じ形。
+        // recordBitrateKbps は --set で上書きできない Int のため既定引数(1500)のまま使う)
+        let recordingConfig: VideoRecordingConfig? = noProfileSettings.record
+            ? VideoRecordingConfig(runDir: recorder.runDir, androidADBPath: try? AndroidDriver.findADB(),
+                                   failuresOnly: noProfileSettings.recordFailuresOnly,
+                                   fullResolution: noProfileSettings.recordFullResolution)
+            : nil
+
         let failedCount: Int
         if iosPorts.count <= 1 {
             failedCount = try await runSequential(items, project: testProject,
                                                   port: iosPorts[0], reportDir: reportDirPath,
+                                                  fm: noProfileSettings.fm,
+                                                  containerInference: noProfileSettings.containerInference,
+                                                  ocr: noProfileSettings.ocrFalsePositiveCheck,
+                                                  homeOnStart: noProfileSettings.homeOnStart,
                                                   recorder: recorder)
         } else {
             failedCount = await runParallel(items, project: testProject,
                                             iosPorts: iosPorts, reportDir: reportDirPath,
+                                            fm: noProfileSettings.fm,
+                                            containerInference: noProfileSettings.containerInference,
+                                            ocr: noProfileSettings.ocrFalsePositiveCheck,
+                                            homeOnStart: noProfileSettings.homeOnStart,
+                                            recordingConfig: recordingConfig,
                                             recorder: recorder)
         }
-        // --profile 無しの経路(runSequential/runParallel)は FMConfig(heal: heal && !noHeal) を
-        // そのまま使う(falsePositiveCheck は既定 false のままなので、そもそも off の状態を
-        // 打ち消す --no-false-positive-check はこの経路では無意味)。ocr/ocrFalsePositiveCheck は
-        // この経路に専用の上書き口が無く常に既定 true
+        // --profile 無しの経路(runSequential/runParallel)は `--set` の上書きを当てた既定
+        // ドキュメントの実効値(noProfileSettings)をそのまま使う(--profile 経路と同じ
+        // DeviceIndependentRunSettings を通す。ProfileResolver.resolve の宣言参照)
         recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount,
                         // --performance は --profile 専用(ヘルプ参照)。この経路は素通りするので false
                         performanceMode: false,
                         fmSettings: FMSettingsRecord(
-                            fm: true, heal: heal && !noHeal, falsePositiveCheck: false,
-                            screenLooksLike: true, triage: true,
-                            ocr: true, ocrFalsePositiveCheck: true))
+                            fm: noProfileSettings.fm.enabled, heal: noProfileSettings.fm.heal,
+                            falsePositiveCheck: noProfileSettings.fm.falsePositiveCheck,
+                            screenLooksLike: noProfileSettings.fm.screenLooksLike,
+                            triage: noProfileSettings.fm.triage,
+                            ocr: noProfileSettings.ocr,
+                            ocrFalsePositiveCheck: noProfileSettings.ocrFalsePositiveCheck))
         try writeJUnitIfRequested(project: testProject, recorder: recorder)
 
         ConsoleOut.out(failedCount == 0
@@ -1287,9 +1331,8 @@ struct RunScenarios: AsyncParsableCommand {
         let exitCode = try await dispatcher.dispatch(
             project: testProject, profile: profile, scenarios: scenarios, folders: folders,
             deviceNames: scopedDevices, deviceMachine: scopedDeviceHost,
-            heal: heal, noHeal: noHeal, noFalsePositiveCheck: noFalsePositiveCheck,
+            setOverrides: try RunProfileSetOverride.parse(setOverrides),
             noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
-            fastInput: fastInput, enableAnimations: enableAnimations,
             performanceMode: performanceMode, broadcast: broadcast,
             localJUnitPath: junit, remoteTimeoutSeconds: remoteTimeout, runGroup: runGroup)
         if exitCode != 0 {
@@ -1326,9 +1369,8 @@ struct RunScenarios: AsyncParsableCommand {
         let exitCode = try await FleetRunner.run(
             project: testProject, fleetName: fleetName, fleet: doc,
             scenarios: scenarios, folders: folders,
-            heal: heal, noHeal: noHeal, noFalsePositiveCheck: noFalsePositiveCheck,
-            noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
-            fastInput: fastInput, enableAnimations: enableAnimations, performanceMode: performanceMode,
+            setOverrides: try RunProfileSetOverride.parse(setOverrides),
+            noLPT: noLPT, lptHistoryRuns: lptHistoryRuns, performanceMode: performanceMode,
             forceLock: forceLock, waitLock: waitLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
             remoteArtifacts: remoteArtifacts, split: split, quiet: quiet, junit: junit)
         if exitCode != 0 {
@@ -1493,8 +1535,29 @@ struct RunScenarios: AsyncParsableCommand {
 
     private func runSequential(_ items: [ScenarioRunItem], project: TestProject,
                                port: UInt16, reportDir: String,
+                               fm: FMConfig, containerInference: Bool, ocr: Bool,
+                               homeOnStart: Bool,
                                recorder: RunRecorder?) async throws -> Int {
         let iosUdid = await Self.resolveUdid(port: port)
+        // homeOnStart は「run 開始時に1回」の予防措置(ProfileWorkerFactory.pressHomeOnStart)。
+        // この経路は毎シナリオでワーカーを組み直すので、実際に使う platform 分の使い捨てワーカーを
+        // ループの前で1回だけ組んで渡す(ループ側の実行用インスタンスとは別物)
+        let platformsInUse = Set(items.map { $0.info.platform ?? driverOptions.platform })
+        var primingWorkers: [RunWorker] = []
+        if platformsInUse.contains("ios") {
+            let host = Self.bridgeHost(port: port)
+            primingWorkers.append(RunWorker(
+                label: "ios", platform: "ios", driver: BridgeClient(port: port, host: host),
+                connection: DriverConnection(platform: "ios", port: port, udid: iosUdid, host: host)))
+        }
+        if platformsInUse.contains("android"), let driver = try? AndroidDriver(serial: driverOptions.serial) {
+            primingWorkers.append(RunWorker(
+                label: "android", platform: "android", driver: driver,
+                connection: DriverConnection(platform: "android", serial: driverOptions.serial)))
+        }
+        await ProfileWorkerFactory.prepareDevicesOnStart(
+            primingWorkers, homeOnStart: homeOnStart) { ConsoleOut.out($0) }
+
         var failedCount = 0
         for item in items {
             let platform = item.info.platform ?? driverOptions.platform
@@ -1515,8 +1578,9 @@ struct RunScenarios: AsyncParsableCommand {
             // quiet: 全行をバッファし、成功なら結果1行のみ・失敗ならバッファ全体(失敗詳細)を出す
             var buffer: [String] = []
             let outcome = await ScenarioRunner.runOne(
-                project: project, item: item, worker: worker, fm: FMConfig(heal: heal && !noHeal),
-                reportDir: URL(fileURLWithPath: reportDir), recorder: recorder,
+                project: project, item: item, worker: worker, fm: fm,
+                reportDir: URL(fileURLWithPath: reportDir),
+                containerInference: containerInference, ocr: ocr, recorder: recorder,
                 appBundleID: app) { event in
                 let lines = RunLogFormatter.lines(for: event)
                 if quiet {
@@ -1542,6 +1606,8 @@ struct RunScenarios: AsyncParsableCommand {
 
     private func runParallel(_ rawItems: [ScenarioRunItem], project: TestProject,
                              iosPorts: [UInt16], reportDir: String,
+                             fm: FMConfig, containerInference: Bool, ocr: Bool,
+                             homeOnStart: Bool, recordingConfig: VideoRecordingConfig?,
                              recorder: RunRecorder?) async -> Int {
         let defaultPlatform = driverOptions.platform
         let items = LPTOrdering.apply(rawItems, project: project, defaultPlatform: defaultPlatform,
@@ -1573,10 +1639,16 @@ struct RunScenarios: AsyncParsableCommand {
             }
         }
 
+        // 一斉 launch 直後の黒画面を作らないための予防(ProfileRunner.run と同じ呼び出し)
+        await ProfileWorkerFactory.prepareDevicesOnStart(
+            workers, homeOnStart: homeOnStart) { ConsoleOut.out($0) }
+
         let orchestrator = RunOrchestrator(project: project, workers: workers,
-                                           fm: FMConfig(heal: heal && !noHeal),
+                                           fm: fm,
                                            reportDir: URL(fileURLWithPath: reportDir),
+                                           containerInference: containerInference, ocr: ocr,
                                            recorder: recorder,
+                                           recordingConfig: recordingConfig,
                                            appBundleIDs: Self.appBundleIDs(app))
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 

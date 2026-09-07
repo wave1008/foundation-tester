@@ -24,7 +24,7 @@ export interface FleetestConfig {
   serial: string;
   /** false の場合、CLI 呼び出しに --skip-build を付与する。 */
   buildBeforeRun: boolean;
-  /** true の場合、実行(非dry-run)・デバッグ実行の CLI 呼び出しに --heal を付与する。 */
+  /** true の場合、実行(非dry-run)・デバッグ実行の CLI 呼び出しに --set heal=true を付与する。 */
   heal: boolean;
   /** LPT 投入順(過去実績の長い順)。false のとき fleetest api run へ --no-lpt を渡す。 */
   lptScheduling: boolean;

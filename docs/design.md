@@ -1002,7 +1002,7 @@ fleetest doctor                            # FM 可用性・Xcode・シミュレ
 fleetest bridge up|down|status [--platform ios|android] [--device ...] [--serial ...]
                                            # ブリッジ(iOS: 常駐 XCUITest / Android: 常駐 instrumentation)の管理
 fleetest run [--project P] [--profile 名] [--scenario id...] \
-    [--heal] [--report-dir ...] [--ports 8123,8124] [--skip-build]
+    [--set キー=true|false] [--report-dir ...] [--ports 8123,8124] [--skip-build]
                                            # Swift シナリオの決定的実行(プロファイル実行は§11)
 fleetest draft-scenario [--project P] [--testbase 資料.md] [--app ...] [--no-fm] [--dry-run]
                                            # テスト設計資料からシナリオ下書きを生成(§17)
@@ -1332,7 +1332,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
 1. `SampleApp`(ログイン画面 + ホーム画面 + 設定画面の 3 画面 SwiftUI アプリ、
    accessibility identifier 付き)をリポジトリに同梱
 2. M1: `fleetest bridge up` → `curl localhost:8123/snapshot` で圧縮ツリーが返る
-3. M3: SampleApp の identifier を 1 つ改名 → `fleetest run --heal` で修復・成功。
+3. M3: SampleApp の identifier を 1 つ改名 → `fleetest run --set heal=true` で修復・成功。
    意図的にログインを失敗させるビルド → TriageReport が `appBug` と分類する
 4. 性能の検証・回帰比較は `Scripts/bench.swift` の計測基盤で行う。壁時計中央値・
    シナリオ/ステップ内訳・成功率・ホスト CPU/GPU/MEM を `summary.md` に出力し、
@@ -3617,7 +3617,7 @@ run 開始が約1分延びる(ゲスト再起動では戻らない)。戻した�
 シミュレータの Reduce Motion を ON にする(アニメーションは a11y イベントを出さないため、静穏判定を
 通過した後も絵が動き続けてスクリーンショットが遷移途中を掴む。§7 の実害)。判定元は
 `FTCore/AnimationPolicy`(実行プロファイル → `FT_ANIMATIONS` → 各ドライバ。CLI は
-`fleetest run --enable-animations`、環境変数直指定でも ON にできる)。
+`fleetest run --profile <名> --set enableAnimations=true`、環境変数直指定でも ON にできる)。
 
 適用は2箇所ある。**ブリッジのコールド起動時**(`AndroidBridge` / `BridgeLauncher`)だけでは
 ブリッジが run をまたいで再利用されたときに前の run の状態が残るため、**run 開始時にも毎回同期**する
@@ -3649,7 +3649,7 @@ Android 実機はグローバル設定が**永続的に**書き換わるので�
 
 `iosFastInput`(既定 false)を true にすると **iOS xcuitest ブリッジの入力で quiescence 待ちを
 飛ばす**(`FT_FAST_INPUT=1` を実行環境へ注入し、`BridgeClient.fastInput` が受ける。CLI は
-`fleetest run --fast-input`)。動きの激しい画面では整定前タップのフレークリスクを伴うので
+`fleetest run --profile <名> --set iosFastInput=true`)。動きの激しい画面では整定前タップのフレークリスクを伴うので
 オプトイン。計測値は docs/performance-tuning.md。**効くのは XCUITest ランナーだけ**
 (`Runner/FleetestRunnerUITests/FastInput.swift`。`fast` は in-app ブリッジにも送られるが
 あちらは解釈しない = quiescence の概念が無いため)。
@@ -3741,7 +3741,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
 
 ### 11.4 実行フロー(fleetest run --project P --profile ios)
 
-1. ProfileResolver で合成 → CLI 明示引数(--heal/--report-dir 等)が最終上書き
+1. ProfileResolver で合成 → CLI 明示引数(--set/--report-dir 等)が最終上書き
 2. `ScenarioHost.build(project:)`(ホスト 1 回。入力の BuildFingerprint が前回ビルドと一致すれば
    スキップ=無変更の再実行で no-op build ~2.6s を払わない。performance-tuning §3.2)。
    `fleetest api run` の並列実行経路ではワーカー供給(3〜4)をビルドと並行に開始する

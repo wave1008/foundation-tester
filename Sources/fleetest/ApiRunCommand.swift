@@ -35,8 +35,19 @@ struct ApiRunCommand: AsyncParsableCommand {
             help: "Scenario IDs to run (Class.method; a class name alone runs all of its scenarios). Repeatable, at least one required. @Deleted / @Draft scenarios run only on an exact match")
     var scenarios: [String] = []
 
-    @Flag(help: "Allow FM-based locator self-healing (with --profile it overrides the profile heal setting only when true)")
-    var heal = false
+    /// キーはプロファイル JSON のキーそのもの。`fleetest run` と共有する口(FTCore/RunProfile.swift の
+    /// RunProfileSetOverride)。**プロファイルの devices 一覧に依存するキー**
+    /// (RunProfileDocument.profileOnlyBoolKeys)は `--profile` が無いとエラーにする
+    /// (黙って無視しない。run() のプロファイル無し分岐)。`record` は devices に依存しないので
+    /// ここでは通すが、この経路(runDirect。RunOrchestrator の録画セッションを持たない)では
+    /// 別途エラーにする(run() 参照)
+    @Option(name: .customLong("set"),
+            help: ArgumentHelp("Override one boolean field of the run profile document for this run "
+                + "only (repeatable): <key>=<true|false>, where <key> is exactly the run profile "
+                + "JSON key (e.g. --set heal=true --set falsePositiveCheck=false). Keys that need a "
+                + "run profile's device list (iosInappEngine, updateWebView, wipeDataOnBloat, "
+                + "recoverCpuFallbackToGpu) need --profile"))
+    var setOverrides: [String] = []
 
     @Option(name: .customLong("report-dir"),
             help: "Directory to write reports to (defaults to TestProjects/<name>/reports; with --profile it overrides the profile reportDir)")
@@ -106,6 +117,16 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// `--machine` と `--host` はどちらもディスパッチ先を指す。両方あれば --machine を優先
     /// (エイリアスのほうが利用者の意図に近い)。この畳み込みは resolveEffectiveDispatchTarget より前
     var dispatchTarget: String? { machine ?? host }
+
+    /// `--set` を適用した「デバイスに依存しない実効設定」(FTCore.DeviceIndependentRunSettings)。
+    /// **`run()` が先頭で `setOverrides` を検証済みという前提**(不正なトークンなら run() が
+    /// 先に投げている)で `try?` にしている ——`--profile` の有無で分かれる複数の実行経路
+    /// (runDirect / dispatchApi / dispatchToRemoteHost / runWithProfile 系)がそれぞれ必要とするため
+    /// 計算をここへ1つにまとめる(消費側ごとに再実装しない)
+    private var noProfileSettings: DeviceIndependentRunSettings {
+        let overrides = (try? RunProfileSetOverride.parse(setOverrides)) ?? [:]
+        return DeviceIndependentRunSettings.resolve(RunProfileDocument().applyingOverrides(overrides))
+    }
 
     @Option(name: .customLong("remote-dir"),
             help: "Runner-only base directory on the remote host (holds its own clone and workspace; default: the host registry's entry, or ~/fleetest-runner). Must NOT point at an existing local install of foundation-tester")
@@ -188,6 +209,37 @@ struct ApiRunCommand: AsyncParsableCommand {
             host: machine ?? host, fleet: nil, profile: profile) {
             throw ValidationError(message)
         }
+        // `--set` は `fleetest run` と共有する口(FTCore.RunProfileSetOverride)。デバイス依存の
+        // キーは devices を持つ実行プロファイルが無いと適用先が無いので、`--profile` の無い
+        // 経路(runDirect。DeviceMachineRunner/dispatchToRemoteHost はどちらも --profile 必須)
+        // でだけ名指しでエラーにする(黙って無視しない)
+        let profileOverrides: [String: Bool]
+        do { profileOverrides = try RunProfileSetOverride.parse(setOverrides) }
+        catch { throw ValidationError(error.localizedDescription) }
+        if profile == nil {
+            let unsupported = Set(profileOverrides.keys)
+                .intersection(RunProfileDocument.profileOnlyBoolKeys).sorted()
+            guard unsupported.isEmpty else {
+                throw ValidationError("--set \(unsupported.joined(separator: ", ")) needs --profile"
+                    + " (there are no devices from a run profile to apply"
+                    + " \(unsupported.count == 1 ? "it" : "them") to)")
+            }
+            // この経路(runDirect)は RunOrchestrator を経由せず各シナリオを直接の接続で流すため
+            // 録画セッションが無い(FTCore.RunProfileDocument.recordNeedsRejecting 参照)
+            if RunProfileDocument.recordNeedsRejecting(record: noProfileSettings.record,
+                                                        hasRecordingSession: false) {
+                throw ValidationError("--set record=true needs --profile"
+                    + " (without --profile this runs each scenario as an independent connection;"
+                    + " there is no recording session for --set record to attach to)")
+            }
+        }
+        // **デバイスに依存しない設定は `--profile` の有無に関わらず1つの経路で決まる**
+        // (self.noProfileSettings。--profile 経路は `ProfileResolver.resolve(overrides:)` が
+        // 同じ上書きをもう一度当てる)
+        if noProfileSettings.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }
+        if !noProfileSettings.iosPreActionWarmup { setenv("FT_PRE_ACTION_WARMUP", "0", 1) }
+        if noProfileSettings.enableAnimations { setenv(AnimationPolicy.environmentKey, "1", 1) }
+        if !noProfileSettings.playProtectBypass { setenv(AdbInstallVerifier.environmentKey, "0", 1) }
 
         let testProject = try ScenarioHost.project(named: project)
 
@@ -213,7 +265,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             let exitCode = try await ApiRunMachineFanout.run(
                 project: testProject, profileName: profile, groups: groups, scenarios: scenarios,
                 options: ApiRunMachineFanout.Options(
-                    heal: heal, defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout,
+                    setOverrides: profileOverrides, defaultTimeout: defaultTimeout,
+                    scenarioTimeout: scenarioTimeout,
                     noLPT: noLPT, lptHistoryRuns: lptHistoryRuns, performanceMode: performanceMode,
                     remoteDir: remoteDir, remoteTimeout: remoteTimeout, remoteArtifacts: remoteArtifacts,
                     waitLock: waitLock))
@@ -259,7 +312,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             }
             let resolvedAll = try ProfileResolver.resolve(
                 project: testProject, runName: profile, machineName: machine.name,
-                workspaceOverride: workspace)
+                workspaceOverride: workspace, overrides: profileOverrides)
             // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17・
             // 2026-08-18)なので毎回雛形作成(ProfileRunner.run と同じ規律。既に揃っていれば
             // 何もしない。リモートディスパッチは別途ミラー前のローカル側で同じ呼び出しを行う
@@ -321,7 +374,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             // 既定 ON なので OFF のときだけ注入する(WebViewDelegatingDriver.preActionWarmup 参照)
             if !resolved.iosPreActionWarmup { setenv("FT_PRE_ACTION_WARMUP", "0", 1) }
             // 未指定でも必ず書く(既定の "0" を明示し、前段の値を残さない)。環境変数側で
-            // 既に ON なら尊重する(`fleetest run --enable-animations` と手動 export の上書き)
+            // 既に ON なら尊重する(`--set enableAnimations=true` と手動 export の上書き)
             let animations = resolved.enableAnimations || AnimationPolicy.animationsEnabled()
             setenv(AnimationPolicy.environmentKey, animations ? "1" : "0", 1)
             // キルスイッチは既定 ON なので OFF のときだけ注入する(AdbInstallVerifier.bypassEnabled 参照)
@@ -570,24 +623,23 @@ struct ApiRunCommand: AsyncParsableCommand {
         let validity = MeasurementValidity.verdict(
             performanceMode: performanceMode,
             degradedWorkers: outcome.degradedWorkers, blankExclusions: outcome.blankExclusions)
-        // **`api run` に `--no-heal`/`--no-false-positive-check` は無い**(拡張はプロファイルを
-        // 編集させる面。RunCommandFlagParityTests の runOnly)ので、上書きは `--heal` の ON だけ
-        // (runWithProfile/runWithProfileParallel と同じ規則: false は resolved の値を維持)
+        // `--set` の上書きは resolvedProfile(ProfileResolver.resolve)/noProfileSettings
+        // (DeviceIndependentRunSettings)のどちらもここへ来る前に当て済みなので、
+        // ここで CLI 由来の override を二重に適用しない(run.json には実効値がそのまま乗る)
         let fmSettings: FMSettingsRecord
         if let resolvedProfile {
-            var fm = resolvedProfile.fm
-            if heal { fm.heal = fm.enabled }
+            let fm = resolvedProfile.fm
             fmSettings = FMSettingsRecord(
                 fm: fm.enabled, heal: fm.heal, falsePositiveCheck: fm.falsePositiveCheck,
                 screenLooksLike: fm.screenLooksLike, triage: fm.triage,
                 ocr: resolvedProfile.ocr, ocrFalsePositiveCheck: resolvedProfile.ocrFalsePositiveCheck)
         } else {
-            // runDirect と同じ FMConfig(ocr/ocrFalsePositiveCheck はこの経路に無く常に既定 true)
-            let fm = FMConfig(heal: heal)
+            // runDirect と同じ設定(DeviceIndependentRunSettings)
+            let fm = noProfileSettings.fm
             fmSettings = FMSettingsRecord(
                 fm: fm.enabled, heal: fm.heal, falsePositiveCheck: fm.falsePositiveCheck,
                 screenLooksLike: fm.screenLooksLike, triage: fm.triage,
-                ocr: true, ocrFalsePositiveCheck: true)
+                ocr: noProfileSettings.ocr, ocrFalsePositiveCheck: noProfileSettings.ocrFalsePositiveCheck)
         }
         recorder?.finish(total: selected.count, passed: outcome.passed, failed: outcome.failed,
                          degradedWorkers: outcome.degradedWorkers,
@@ -673,7 +725,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         let exitCode = try await dispatcher.dispatchApi(
             project: project, profile: profile, scenarios: scenarios,
             deviceNames: scopedDevices, deviceMachine: scopedDeviceHost,
-            heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+            setOverrides: try RunProfileSetOverride.parse(setOverrides),
+            noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             performanceMode: performanceMode,
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout.map(Double.init),
             remoteTimeoutSeconds: remoteTimeout, runGroup: runGroup)
@@ -691,6 +744,32 @@ struct ApiRunCommand: AsyncParsableCommand {
         let effectivePort = port ?? BridgeAPI.defaultPort
         let reportDirPath = reportDir ?? project.reportsDir.path
 
+        // homeOnStart は「run 開始時に1回」の予防措置(ProfileWorkerFactory.pressHomeOnStart)。
+        // この経路には ProfileRunner のような常設ワーカー一覧が無いので、実際に使う platform 分の
+        // 使い捨てワーカーをここで1回だけ組んで渡す(ループ側の実行用インスタンスとは別物)。
+        // dry-run はデバイスに触らないので撃たない
+        if !dryRun, debugOptions == nil {
+            let platformsInUse = Set(selected.map { $0.platform ?? effectivePlatform })
+            var primingWorkers: [RunWorker] = []
+            if platformsInUse.contains("ios") {
+                // 宛先は DriverConnection から採る(実機ブリッジは 127.0.0.1 に居ない。
+                // `host:` を省くと LAN 経由の実機で接続拒否になる。BridgeHostPlumbingTests)
+                let iosConnection = DriverConnection(platform: "ios", port: effectivePort)
+                primingWorkers.append(RunWorker(
+                    label: "ios", platform: "ios",
+                    driver: BridgeClient(port: effectivePort,
+                                         host: iosConnection.host ?? BridgeEndpoint.loopbackHost),
+                    connection: iosConnection))
+            }
+            if platformsInUse.contains("android"), let driver = try? AndroidDriver(serial: serial) {
+                primingWorkers.append(RunWorker(
+                    label: "android", platform: "android", driver: driver,
+                    connection: DriverConnection(platform: "android", serial: serial)))
+            }
+            await ProfileWorkerFactory.prepareDevicesOnStart(
+                primingWorkers, homeOnStart: noProfileSettings.homeOnStart) { logStderr($0) }
+        }
+
         var passedCount = 0
         var failedCount = 0
         var timing = ScenarioTimingTracker()
@@ -705,7 +784,10 @@ struct ApiRunCommand: AsyncParsableCommand {
             let scenarioStart = Date()
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
-                fm: FMConfig(heal: heal), reportDir: reportDirPath, defaultTimeout: defaultTimeout,
+                fm: noProfileSettings.fm,
+                reportDir: reportDirPath, defaultTimeout: defaultTimeout,
+                containerInference: noProfileSettings.containerInference,
+                ocr: noProfileSettings.ocrFalsePositiveCheck,
                 scenarioTimeout: scenarioTimeout,
                 dryRun: dryRun, debug: debugOptions, recording: recording,
                 appBundleID: app) { event in
@@ -734,9 +816,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         recorder: RunRecorder?
     ) async throws -> RunOutcome {
         let profileName = resolved.runName
-        // --heal は master(fm.enabled)が有効な場合のみ heal を ON にする(false は resolved の値を維持)
-        var fm = resolved.fm
-        if heal { fm.heal = fm.enabled }
+        // `--set` の上書きは ProfileResolver.resolve が resolved.fm へ当て済み(二重適用しない)
+        let fm = resolved.fm
         // dry-run は FM を使わないため警告(と実呼び出し ~1s)を抑止する
         var fmForWarning = fm
         if dryRun { fmForWarning.enabled = false }
@@ -879,9 +960,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         workers: [RunWorker], iosWorkersTask: Task<[RunWorker], Never>?, recorder: RunRecorder?
     ) async throws -> RunOutcome {
         let repoRoot = try RepoRoot.find()
-        // --heal は master(fm.enabled)が有効な場合のみ heal を ON にする(false は resolved の値を維持)
-        var fm = resolved.fm
-        if heal { fm.heal = fm.enabled }
+        // `--set` の上書きは ProfileResolver.resolve が resolved.fm へ当て済み(二重適用しない)
+        let fm = resolved.fm
         await ProfileRunner.warnIfFMDegraded(fm: fm) { logStderr($0) }
         let reportDirURL = reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
 

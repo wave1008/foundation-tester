@@ -740,10 +740,10 @@ async function executeRun(
   if (config.remoteWaitLock > 0 && !liveTarget && profile.length > 0) {
     args.push("--wait-lock", String(config.remoteWaitLock));
   }
-  // --heal は dry-run には付与しない(dry-run はワーカー構築自体を省略するデバイス不要の
+  // --set heal=true は dry-run には付与しない(dry-run はワーカー構築自体を省略するデバイス不要の
   // 検証実行であり、自己修復の対象になる実機動作が発生しないため)。
   if (config.heal && !dryRun) {
-    args.push("--heal");
+    args.push("--set", "heal=true");
   }
   if (dryRun) {
     args.push("--dry-run");

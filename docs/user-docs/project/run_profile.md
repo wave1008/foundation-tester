@@ -53,11 +53,12 @@ selects one.
 default to `true` (`falsePositiveCheck` changed from opt-in on 2026-09-03). If `fm` is `false`,
 the individual toggles have no effect. Whether
 self-healing is on by default also depends on how you invoke the run: **a `--profile` run
-defaults `heal` to ON**, while a plain `fleetest run` (no profile) defaults it to OFF. `--heal`
-and `--no-heal` on the command line override either default (they cannot be combined).
-`fleetest run --no-false-positive-check` overrides `falsePositiveCheck` to off for one run
-without editing the profile — there is no positive counterpart, since the profile default is
-already `true`.
+defaults `heal` to ON**, while a plain `fleetest run` (no profile) defaults it to OFF.
+`fleetest run --profile <name> --set <key>=<true|false>` overrides any key on this table for one
+run without editing the profile file — e.g. `--set heal=false` or
+`--set falsePositiveCheck=false` (see [running_scenarios.md](../running/running_scenarios.md) for
+`--set`; it works with or without `--profile` — only the keys that need a run profile's device
+list do — and rejects unknown keys).
 
 ## iOS engine
 

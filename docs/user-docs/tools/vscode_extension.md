@@ -83,7 +83,7 @@ flaky scenarios, device/worker breakdowns, a daily trend, slow scenarios, and ot
 
 ## Self-Healing Review
 
-Setting `fleetest.heal` to `true` adds `--heal` to Run (not Run (dry-run)) and Debug, enabling
+Setting `fleetest.heal` to `true` adds `--set heal=true` to Run (not Run (dry-run)) and Debug, enabling
 locator self-healing. If the run reports fix suggestions, a confirmation panel opens
 automatically afterward: each candidate shows the file/line, the old and new selector (the new
 one is editable), an optional description, and a live diff preview. Approving applies the change
@@ -117,7 +117,7 @@ Code's display language.
 | `fleetest.binaryPath` | `.build/debug/fleetest` | Path to the `fleetest` binary; falls back to `PATH` if not found |
 | `fleetest.project` | `""` | Test project name; auto-resolved when empty and only one project exists |
 | `fleetest.profile` | `""` | Run profile name; when set, it decides devices/app instead of `fleetest.platform`/`port`/`serial` |
-| `fleetest.heal` | `false` | Enable `--heal` on Run/Debug and open the self-healing review panel |
+| `fleetest.heal` | `false` | Enable `--set heal=true` on Run/Debug and open the self-healing review panel |
 | `fleetest.buildBeforeRun` | `true` | Build the Swift project before each run |
 | `fleetest.lptScheduling` | `true` | Schedule longer-running scenarios first (LPT), using recent run history |
 | `fleetest.monitorInterval` | `2` | Device Monitor polling interval, in seconds |

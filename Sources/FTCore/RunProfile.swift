@@ -600,6 +600,171 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "containerInference",
         "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution", "remoteControl",
     ]
+
+    /// `fleetest run --set <key>=<true|false>` / `fleetest api run --set` が受け付けるキー
+    /// (実行プロファイルのチェックボックスと1対1。キー名はプロファイル JSON のキーそのもの ——
+    /// kebab 変換をしない)。**`RunProfileDocument` の Bool 型の欄の全部から `screenIs` だけを
+    /// 除いたもの**(旧名の受け口で `screenLooksLike` に一本化済み。チェックボックスにも無い)。
+    /// この等号は `RunProfileSetOverrideKeysTests` が Mirror で固定する
+    public static let overridableBoolKeys: Set<String> = [
+        "fm", "heal", "falsePositiveCheck", "triage", "screenLooksLike",
+        "ocr", "ocrFalsePositiveCheck",
+        "iosInappEngine", "iosFastInput", "iosPreActionWarmup",
+        "containerInference", "enableAnimations", "homeOnStart", "playProtectBypass",
+        "updateWebView", "wipeDataOnBloat", "recoverCpuFallbackToGpu",
+        "record", "recordFailuresOnly", "recordFullResolution",
+    ]
+
+    /// `--set` の上書きを当てる唯一の箇所。**呼び出しは「読み込んだ直後・解決(ResolvedProfile)
+    /// より前」であること**(`ProfileResolver.resolve` が守る) —— そうすれば 20 キーすべてが
+    /// 同じ経路で効き、消費側(ResolvedProfile の各フィールド)を個別に配線し直さずに済む。
+    /// **未知キーはここに来ない前提**(CLI 側が `overridableBoolKeys` に対して検証済み。
+    /// 防御的に無視するだけで、ここでは弾かない)
+    public func applyingOverrides(_ overrides: [String: Bool]) -> RunProfileDocument {
+        guard !overrides.isEmpty else { return self }
+        var copy = self
+        for (key, value) in overrides {
+            switch key {
+            case "fm": copy.fm = value
+            case "heal": copy.heal = value
+            case "falsePositiveCheck": copy.falsePositiveCheck = value
+            case "triage": copy.triage = value
+            case "screenLooksLike": copy.screenLooksLike = value
+            case "ocr": copy.ocr = value
+            case "ocrFalsePositiveCheck": copy.ocrFalsePositiveCheck = value
+            case "iosInappEngine": copy.iosInappEngine = value
+            case "iosFastInput": copy.iosFastInput = value
+            case "iosPreActionWarmup": copy.iosPreActionWarmup = value
+            case "containerInference": copy.containerInference = value
+            case "enableAnimations": copy.enableAnimations = value
+            case "homeOnStart": copy.homeOnStart = value
+            case "playProtectBypass": copy.playProtectBypass = value
+            case "updateWebView": copy.updateWebView = value
+            case "wipeDataOnBloat": copy.wipeDataOnBloat = value
+            case "recoverCpuFallbackToGpu": copy.recoverCpuFallbackToGpu = value
+            case "record": copy.record = value
+            case "recordFailuresOnly": copy.recordFailuresOnly = value
+            case "recordFullResolution": copy.recordFullResolution = value
+            default: break
+            }
+        }
+        return copy
+    }
+}
+
+/// `--set <key>=<value>` の1トークンのデコード失敗。CLI 層(`fleetest run`/`fleetest api run`。
+/// 両方が同じ口を呼ぶ ——共通フラグなので `RunCommandFlagParityTests` の対象外)がそのまま
+/// `ValidationError` へ包んで投げる
+public enum RunProfileSetOverrideError: Error, LocalizedError {
+    case invalidFormat(String)
+    case invalidValue(key: String, value: String)
+    case unknownKey(String, available: [String])
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidFormat(let token):
+            return "--set \(token) is not <key>=<true|false>"
+        case .invalidValue(let key, let value):
+            return "--set \(key)=\(value): the value must be \"true\" or \"false\""
+        case .unknownKey(let key, let available):
+            return "--set \(key): unknown key (available: \(available.joined(separator: ", ")))"
+        }
+    }
+}
+
+/// `--set` トークン列の検証つきデコード(`fleetest run`/`fleetest api run` の共有実装)
+public enum RunProfileSetOverride {
+    /// 同じキーの重複指定は後勝ち(左→右の順で辞書に上書きするだけ)
+    public static func parse(_ tokens: [String]) throws -> [String: Bool] {
+        var result: [String: Bool] = [:]
+        for token in tokens {
+            guard let separator = token.firstIndex(of: "=") else {
+                throw RunProfileSetOverrideError.invalidFormat(token)
+            }
+            let key = String(token[token.startIndex..<separator])
+            let rawValue = String(token[token.index(after: separator)...])
+            guard RunProfileDocument.overridableBoolKeys.contains(key) else {
+                throw RunProfileSetOverrideError.unknownKey(
+                    key, available: RunProfileDocument.overridableBoolKeys.sorted())
+            }
+            guard let value = Bool(rawValue) else {
+                throw RunProfileSetOverrideError.invalidValue(key: key, value: rawValue)
+            }
+            result[key] = value
+        }
+        return result
+    }
+}
+
+extension RunProfileDocument {
+    /// `overridableBoolKeys` のうち**プロファイルの devices 一覧と供給工程(AVD の起床・入れ替え)を
+    /// 必要とし、他のプロファイル欄(`wipeDataThresholdGB`・`locale` 等)にも依存する**もの。
+    /// `--set` にこれが混ざっていて `--profile` も無いときは、黙って無視せず名指しでエラーにする
+    /// (呼び出しは RunScenarios.validate / ApiRunCommand.run)。残りのキーは
+    /// `DeviceIndependentRunSettings` を経由して `--profile` 無しでも同じ経路で効く
+    /// (`record`/`recordFailuresOnly`/`recordFullResolution`/`homeOnStart` も含む —— こちらは
+    /// devices への前処理ではなく単に workers に対して働くだけなので profile-less でも配線できる)
+    public static let profileOnlyBoolKeys: Set<String> = [
+        "iosInappEngine", "updateWebView", "wipeDataOnBloat", "recoverCpuFallbackToGpu",
+    ]
+
+    /// `record:true` は devices 一覧に依存しない(`profileOnlyBoolKeys` に無い)が、録画の
+    /// セッション管理は RunOrchestrator(VideoRecordingCoordinator)が持つため、これを経由しない
+    /// 実行経路では録画できない。呼び出し側(Fleetest.swift の runSequential/runParallel 分岐・
+    /// ApiRunCommand.swift の runDirect)が「この run は RunOrchestrator を経由するか」を渡す。
+    /// true(=エラーにすべき)を黙って無視すると「指定したのに何も録れない」緑の run ができる
+    public static func recordNeedsRejecting(record: Bool, hasRecordingSession: Bool) -> Bool {
+        record && !hasRecordingSession
+    }
+}
+
+/// `RunProfileDocument` のうち**デバイス一覧を経由せず決まる**実効設定。`ProfileResolver.resolve`
+/// (デバイスあり)と `--profile` 無しの直接実行(`RunScenarios`/`ApiRunCommand` の profile-less パス)の
+/// **両方がこれを呼ぶ** —— fm/ocr の親子ゲートを二重に書かない。デバイス依存の欄
+/// (`RunProfileDocument.profileOnlyBoolKeys`)はここに無い
+public struct DeviceIndependentRunSettings: Sendable, Equatable {
+    public let fm: FMConfig
+    public let ocr: Bool
+    /// **親スイッチ `ocr` を掛けた後の実効値**(FMConfig が fm を掛けているのと同じ形)
+    public let ocrFalsePositiveCheck: Bool
+    public let iosFastInput: Bool
+    public let iosPreActionWarmup: Bool
+    public let containerInference: Bool
+    public let enableAnimations: Bool
+    public let playProtectBypass: Bool
+    /// run 開始時に各デバイスへ home() を撃つか(RunProfileDocument.homeOnStart。**既定 true**)
+    public let homeOnStart: Bool
+    /// 各ワーカーを run 全体で録画し、シナリオごとに切り出すか(RunProfileDocument.record。既定 false)
+    public let record: Bool
+    /// 成功したシナリオのクリップを保存しないか(RunProfileDocument.recordFailuresOnly。既定 false)
+    public let recordFailuresOnly: Bool
+    /// 半分解像度化をスキップするか(RunProfileDocument.recordFullResolution。既定 false)
+    public let recordFullResolution: Bool
+
+    public static func resolve(_ doc: RunProfileDocument) -> DeviceIndependentRunSettings {
+        // fm:false / ocr:false は配下のトグルを無条件に false へ落とす(利用側は個別フラグだけ
+        // 見ればよい契約。FMConfig の doc コメント参照)
+        let fmEnabled = doc.fm ?? true
+        let ocrEnabled = doc.ocr ?? true
+        return DeviceIndependentRunSettings(
+            fm: FMConfig(
+                enabled: fmEnabled,
+                heal: fmEnabled && (doc.heal ?? true),
+                falsePositiveCheck: fmEnabled && (doc.falsePositiveCheck ?? true),
+                screenLooksLike: fmEnabled && doc.effectiveScreenLooksLike,
+                triage: fmEnabled && (doc.triage ?? true)),
+            ocr: ocrEnabled,
+            ocrFalsePositiveCheck: ocrEnabled && (doc.ocrFalsePositiveCheck ?? true),
+            iosFastInput: doc.iosFastInput ?? false,
+            iosPreActionWarmup: doc.iosPreActionWarmup ?? true,
+            containerInference: doc.containerInference ?? true,
+            enableAnimations: doc.enableAnimations ?? false,
+            playProtectBypass: doc.playProtectBypass ?? true,
+            homeOnStart: doc.homeOnStart ?? true,
+            record: doc.record ?? false,
+            recordFailuresOnly: doc.recordFailuresOnly ?? false,
+            recordFullResolution: doc.recordFullResolution ?? false)
+    }
 }
 
 // MARK: - 解決済みモデル
@@ -1150,7 +1315,8 @@ public enum ProfileResolver {
     ///   解決し、リモートに転送されていない絶対パスを見に行く)
     public static func resolve(project: TestProject, runName: String,
                                machineName: String,
-                               workspaceOverride: String? = nil) throws -> ResolvedProfile {
+                               workspaceOverride: String? = nil,
+                               overrides: [String: Bool] = [:]) throws -> ResolvedProfile {
         var warnings: [String] = []
 
         // 1. 実行プロファイル
@@ -1159,12 +1325,15 @@ public enum ProfileResolver {
             throw ProfileError.runProfileNotFound(
                 name: runName, available: runProfileNames(project: project))
         }
-        let runDoc: RunProfileDocument = try load(runURL, warnings: &warnings) { json in
+        let loadedRunDoc: RunProfileDocument = try load(runURL, warnings: &warnings) { json in
             checkKeys(json, allowed: RunProfileDocument.knownKeys, context: "runs/\(runName).json")
                 + checkDeviceRefKeys(json, context: "runs/\(runName).json")
                 + checkRemoteControlKeys(json, context: "runs/\(runName).json")
                 + legacyKeyWarnings(json, context: "runs/\(runName).json")
         }
+        // `--set` はここで一度だけ当てる(読み込み直後・解決より前)。以降の全処理はこの
+        // runDoc だけを見るので、20 キーすべてが個別の配線無しで効く(RunProfileDocument.applyingOverrides)
+        let runDoc = loadedRunDoc.applyingOverrides(overrides)
         guard let appRef = runDoc.app else {
             throw ProfileError.missingAppReference(run: runName)
         }
@@ -1352,17 +1521,11 @@ public enum ProfileResolver {
             throw ProfileError.invalidLocale(run: runName)
         }
 
-        // fm:false は他の3フラグを無条件に false へ落とす(利用側は個別フラグだけ見ればよい契約。
-        // FMConfig の doc コメント参照)
-        let fmEnabled = runDoc.fm ?? true
-        // ocr:false は配下のトグルを無条件に false へ落とす(fm と同じ契約)
-        let ocrEnabled = runDoc.ocr ?? true
-        let fm = FMConfig(
-            enabled: fmEnabled,
-            heal: fmEnabled && (runDoc.heal ?? true),
-            falsePositiveCheck: fmEnabled && (runDoc.falsePositiveCheck ?? true),
-            screenLooksLike: fmEnabled && runDoc.effectiveScreenLooksLike,
-            triage: fmEnabled && (runDoc.triage ?? true))
+        // デバイスに依存しない実効設定(fm/ocr の親子ゲート含む)は `--profile` 無しの直接実行
+        // (`fleetest run`/`fleetest api run` の profile-less パス)と1つの関数を共有する
+        // (DeviceIndependentRunSettings.resolve)。ここでしか決まらないデバイス依存の欄
+        // (iosInappEngine 等。RunProfileDocument.profileOnlyBoolKeys)だけ runDoc から直接読む
+        let settings = DeviceIndependentRunSettings.resolve(runDoc)
 
         return ResolvedProfile(
             project: project,
@@ -1372,7 +1535,7 @@ public enum ProfileResolver {
             appName: appProfile.resolvedAppName ?? appRef,
             apps: apps,
             devices: devices,
-            fm: fm,
+            fm: settings.fm,
             reportDir: reportDir,
             defaultTimeout: runDoc.defaultTimeout,
             scenarioTimeout: runDoc.scenarioTimeout,
@@ -1381,19 +1544,21 @@ public enum ProfileResolver {
             wipeDataThresholdGB: wipeDataThresholdGB,
             recoverCpuFallbackToGpu: runDoc.recoverCpuFallbackToGpu ?? false,
             locale: locale,
-            iosFastInput: runDoc.iosFastInput ?? false,
-            iosPreActionWarmup: runDoc.iosPreActionWarmup ?? true,
-            containerInference: runDoc.containerInference ?? true,
-            ocr: ocrEnabled,
-            ocrFalsePositiveCheck: ocrEnabled && (runDoc.ocrFalsePositiveCheck ?? true),
-            enableAnimations: runDoc.enableAnimations ?? false,
-            homeOnStart: runDoc.homeOnStart ?? true,
-            playProtectBypass: runDoc.playProtectBypass ?? true,
-            record: runDoc.record ?? false,
-            recordFailuresOnly: runDoc.recordFailuresOnly ?? false,
-            // 0 以下は無意味な指定なので既定にフォールバック(run を止めるほどの問題ではない)
+            iosFastInput: settings.iosFastInput,
+            iosPreActionWarmup: settings.iosPreActionWarmup,
+            containerInference: settings.containerInference,
+            ocr: settings.ocr,
+            ocrFalsePositiveCheck: settings.ocrFalsePositiveCheck,
+            enableAnimations: settings.enableAnimations,
+            homeOnStart: settings.homeOnStart,
+            playProtectBypass: settings.playProtectBypass,
+            record: settings.record,
+            recordFailuresOnly: settings.recordFailuresOnly,
+            // 0 以下は無意味な指定なので既定にフォールバック(run を止めるほどの問題ではない)。
+            // recordBitrateKbps は Int なので --set では上書きできず DeviceIndependentRunSettings に
+            // 無い(profile-less 経路は VideoRecordingConfig の既定引数 1500 をそのまま使う)
             recordBitrateKbps: (runDoc.recordBitrateKbps).map { $0 > 0 ? $0 : 1500 } ?? 1500,
-            recordFullResolution: runDoc.recordFullResolution ?? false,
+            recordFullResolution: settings.recordFullResolution,
             workspaceRoot: workspaceRoot,
             setupHook: setupHook,
             teardownHook: teardownHook,

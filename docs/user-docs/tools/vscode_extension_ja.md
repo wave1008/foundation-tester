@@ -88,7 +88,7 @@ Webview パネルが開きます(1ワークスペースにつき1枚)。各タ�
 
 ## 自己修復の確認
 
-`fleetest.heal` を `true` にすると、**実行**(dry-run を除く)と**デバッグ**に `--heal` が付与され、
+`fleetest.heal` を `true` にすると、**実行**(dry-run を除く)と**デバッグ**に `--set heal=true` が付与され、
 ロケータの自己修復が有効になります。実行結果に修復候補が含まれると、終了後に確認パネルが
 自動的に開きます。各候補には file:line・変更前/変更後セレクタ(変更後は編集可)・任意の説明・
 ライブに追従する diff プレビューが表示されます。承認するとシナリオソースへ直接反映されます。
@@ -120,7 +120,7 @@ Webview パネルが開きます(1ワークスペースにつき1枚)。各タ�
 | `fleetest.binaryPath` | `.build/debug/fleetest` | `fleetest` バイナリのパス。見つからなければ `PATH` から探す |
 | `fleetest.project` | `""` | 対象のテストプロジェクト名。空でプロジェクトが1つなら自動判定 |
 | `fleetest.profile` | `""` | 使用する実行プロファイル名。設定するとデバイス/アプリの決定がこちらに委ねられる |
-| `fleetest.heal` | `false` | 実行/デバッグで `--heal` を有効にし、自己修復の確認パネルを開く |
+| `fleetest.heal` | `false` | 実行/デバッグで `--set heal=true` を有効にし、自己修復の確認パネルを開く |
 | `fleetest.buildBeforeRun` | `true` | 実行前に Swift プロジェクトをビルドする |
 | `fleetest.lptScheduling` | `true` | 過去の実測から実行時間の長いシナリオを先に投入する(LPT) |
 | `fleetest.monitorInterval` | `2` | デバイスモニターのポーリング間隔(秒) |

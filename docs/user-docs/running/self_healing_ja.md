@@ -11,14 +11,15 @@ FM の機能は **experimental で、現時点では英語のみ**です —— 
 ## 有効にする
 
 - **`--profile` を使う実行は `heal` の既定が ON** です。プロファイルを使わない素の
-  `fleetest run` は既定 OFF です。`fleetest run --heal` / `--no-heal` でどちらの既定も
-  上書きできます(両方の同時指定はエラー)。
+  `fleetest run` は既定 OFF です。`fleetest run --profile <name> --set heal=<true|false>` で、
+  プロファイルを書き換えずに1回の実行だけどちらの既定も上書きできます(`--set` については
+  [running_scenarios_ja.md](./running_scenarios_ja.md)参照)。
 - 実行プロファイル自体では、`heal`(既定 `true`)は親スイッチ `fm` 配下の FM トグルの1つです
   ([run_profile_ja.md](../project/run_profile_ja.md)参照)。
 - VSCode 拡張では、設定 `fleetest.heal` が Test Explorer の「実行」「デバッグ」の呼び出しに
-  `--heal` を付与します(「実行 (dry-run)」には付与されません。dry-run はデバイスに触れないため)。
-  `fleetest.heal` が `false`(既定)で `fleetest.profile` を使っている場合は、実行プロファイル側の
-  `heal` 設定がそのまま使われます。
+  `--set heal=true` を付与します(「実行 (dry-run)」には付与されません。dry-run はデバイスに
+  触れないため)。`fleetest.heal` が `false`(既定)で `fleetest.profile` を使っている場合は、
+  実行プロファイル側の `heal` 設定がそのまま使われます。
 
 ## 修復が起きたときの挙動
 
@@ -37,7 +38,7 @@ FM の機能は **experimental で、現時点では英語のみ**です —— 
 
 ## 修復候補の確認と適用(VSCode)
 
-`--heal` を有効にした実行で修復候補が1件以上出ると、VSCode 拡張は自動的に
+`--set heal=true` を有効にした実行で修復候補が1件以上出ると、VSCode 拡張は自動的に
 **「fleetest 自己修復の確認」** パネルを開きます(dry-run の実行では開きません)。各候補について
 以下が確認できます。
 
@@ -48,8 +49,8 @@ FM の機能は **experimental で、現時点では英語のみ**です —— 
 
 「選択した N 件を適用」を押すと、承認した修正が `fleetest api apply-heal` 経由でシナリオソースへ
 書き込まれます。適用に失敗した候補は理由とともに一覧に残り、**残り全件の適用に成功したときだけ**
-パネルが自動的に閉じます。適用せずに閉じてもヒールキャッシュはそのまま残るため、次回 `--heal`
-付きで実行すると同じ候補が再度提案されます。
+パネルが自動的に閉じます。適用せずに閉じてもヒールキャッシュはそのまま残るため、次回
+`--set heal=true` 付きで実行すると同じ候補が再度提案されます。
 
 ### Link
 - [index](../index_ja.md)

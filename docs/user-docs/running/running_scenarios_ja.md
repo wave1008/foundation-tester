@@ -2,8 +2,8 @@
 
 `fleetest run` は Swift DSL シナリオを決定的に実行します(ステップが失敗し自己修復・トリアージが
 有効なとき以外は FM を呼びません)。このページでは CLI オプションを説明します。`--dry-run` は
-[dry_run_ja.md](./dry_run_ja.md)、`--heal` は [self_healing_ja.md](./self_healing_ja.md) を
-参照してください。
+[dry_run_ja.md](./dry_run_ja.md)、`--set` による自己修復の有効化は
+[self_healing_ja.md](./self_healing_ja.md) を参照してください。
 
 ## CLI の呼び方
 
@@ -24,8 +24,7 @@ swift run fleetest run --profile ios
 | `--scenario <id>` | シナリオ ID。クラス名だけならそのクラスの全シナリオ、`Class.method` で1本を指定。複数回指定可・既定は全件。`@Deleted`/`@Draft` シナリオは完全一致のときだけ実行される |
 | `--folder <folder>` | 実行するシナリオフォルダ(`scenarios/` 直下のサブフォルダ)。複数回指定可、`--scenario`/`--failed` と併用可 |
 | `--failed` | 前回失敗したシナリオだけ実行する(結果は毎回 `.fleetest/last-results/` に記録される) |
-| `--heal` / `--no-heal` | 実行プロファイルの `heal` 設定を上書きし、自己修復を強制的に ON/OFF にする |
-| `--no-false-positive-check` | 実行プロファイルの `falsePositiveCheck` 設定を上書きし、この実行だけ occlusion-guard の偽陽性検証を OFF にする(肯定形は無い —— プロファイルの既定が既に `true`) |
+| `--set <キー>=<true\|false>` | 実行プロファイル JSON のキー名そのもので、この実行だけキーを上書きする(例: `heal`・`falsePositiveCheck`・`ocr`・`enableAnimations`・`iosFastInput`。真偽値キーの一覧は [run_profile_ja.md](../project/run_profile_ja.md) 参照)。複数回指定可・`--profile` の有無を問わず効く(ただし実行プロファイルの devices 一覧が要るキー(`iosInappEngine`・`updateWebView`・`wipeDataOnBloat`・`recoverCpuFallbackToGpu`)だけは `--profile` が無いとキーを名指ししてエラー)。`record` は `--profile` か、`--ports` に2つ以上指定するかのどちらかが要る(単一接続には録画セッションを付けるところが無い)・未知のキーはエラー(有効なキー一覧を出す) |
 | `--dry-run` | デバイスに触れずステップを検証する([dry_run_ja.md](./dry_run_ja.md)参照) |
 | `--report-dir <dir>` | レポート出力先(既定: `TestProjects/<name>/reports`) |
 | `--ports <ports>` | 手動並列実行用のカンマ区切り iOS ブリッジポート([parallel_execution_ja.md](./parallel_execution_ja.md)参照) |
@@ -33,8 +32,6 @@ swift run fleetest run --profile ios
 | `--quiet` | サマリのみ出力する(CI・エージェント向け) |
 | `--junit <path>` | JUnit XML レポートをこのパスに出力する |
 | `--broadcast` | 選択したシナリオを、共有配分ではなく実行プロファイルの**全デバイス**で1回ずつ実行する(warmup 等)。`--profile` が必須。結果は `worker` 欄で区別される([results_analysis_ja.md](./results_analysis_ja.md)参照) |
-| `--enable-animations` | アプリのアニメーションを無効化せず残す |
-| `--fast-input` | iOS XCUITest ブリッジの入力で quiescence 待ちを飛ばす |
 | `--no-lpt` | LPT 順序付け(実績時間の長い順)を無効化し、シナリオ ID 順で投入する |
 | `--lpt-history-runs <n>` | LPT 順序付けに読む過去 run 数(既定 5) |
 | `--host <host>` / `--fleet <fleet>` | SSH 経由でリモートマシン/フリートへディスパッチする([remote_runners_ja.md](../in_action/remote_runners_ja.md)参照) |

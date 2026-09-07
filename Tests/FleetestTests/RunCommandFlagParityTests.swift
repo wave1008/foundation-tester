@@ -23,15 +23,11 @@ final class RunCommandFlagParityTests: XCTestCase {
     /// 書けないなら api run 側にも足すのが正しい。
     private static let runOnly: [String: String] = [
         "--broadcast": "分配の差し替え(ScenarioDispatch.broadcast)は ProfileRunner にしか無い。拡張にブロードキャストの導線が無いため api run へは配線していない",
-        "--enable-animations": "実行プロファイルの enableAnimations で指定する面。拡張はプロファイルを編集させるので CLI の上書き口だけでよい",
         "--failed": "前回失敗ぶんの再実行。拡張は Test Explorer 側が対象を持っているので、解決済みの --scenario を渡す",
-        "--fast-input": "実行プロファイルの iosFastInput と同じ。--enable-animations と同じ理由",
         "--fleet": "profiles/fleets/<name>.json による多ホスト並列。拡張は api run --machine を機械ごとに立てる別の経路(RemoteMonitorFanout)を持つ",
         "--folder": "scenarios/ 直下のフォルダ実行。拡張は folder の TestItem を配下 leaf へ展開してから渡す(runHandler.ts)ので、フォルダ名のまま送る口が要らない",
         "--force-lock": "リモートの dispatch.lock の扱い。--fleet / --host 前提の運用オプションで、拡張は単発ディスパッチしか出さない",
         "--junit": "CI 向けの JUnit XML 出力。拡張は NDJSON をそのまま読む",
-        "--no-false-positive-check": "実行プロファイルの falsePositiveCheck と同じ面。拡張はプロファイルを編集させるので CLI の上書き口だけでよい",
-        "--no-heal": "プロファイルが heal:true のときに打ち消す口。**拡張には対応する口が無く、プロファイルで有効にしたヒールを UI から切れない**(意図した差ではなく既知の非対称。埋めるなら api run へ足す)",
         "--ports": "手で建てたブリッジのポートを直に並べる旧来の口。拡張は実行プロファイル経由でしかデバイスを指定しない",
         "--quiet": "ステップ行を止めてサマリだけ出す。api run は常に NDJSON なので概念が無い",
         "--split": "--fleet の分配方式。--fleet が CLI 専用なので従属",

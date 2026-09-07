@@ -39,7 +39,8 @@ public struct WorkerAnomalyRecord: Codable, Sendable {
 }
 
 /// その run で実際に効いていた FM 設定(`FTCore.ResolvedProfile` の実効値。CLI の
-/// `--heal`/`--no-heal`/`--no-false-positive-check` 等の上書きを反映した後の値)。
+/// `--set`(fm/heal/falsePositiveCheck/screenLooksLike/triage/ocr/ocrFalsePositiveCheck)による
+/// 上書きを反映した後の値)。
 /// **7つとも常に明示的に書く**(true/false のどちらも省略しない) —— 省略を許すと
 /// RunMetaRecord.fmSettings が nil(旧レコード)なのか、この構造体の中の1欄だけが
 /// 省略されたのか区別できなくなる。`ocr`/`ocrFalsePositiveCheck` は `FMConfig` の外

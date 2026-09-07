@@ -3,7 +3,7 @@
 `fleetest run` executes Swift DSL scenarios deterministically (no FM involved unless a step
 fails and self-healing or triage is enabled). This page covers the CLI options; see
 [dry_run.md](./dry_run.md) for `--dry-run` and [self_healing.md](./self_healing.md) for
-`--heal`.
+enabling self-healing with `--set`.
 
 ## Invoking the CLI
 
@@ -24,8 +24,7 @@ swift run fleetest run --profile ios
 | `--scenario <id>` | Scenario ID: a class name alone runs every scenario in it, or `Class.method` for one. Repeatable; defaults to all. `@Deleted`/`@Draft` scenarios only run on an exact match |
 | `--folder <folder>` | Scenario folders to run (subfolders directly under `scenarios/`). Repeatable; combinable with `--scenario`/`--failed` |
 | `--failed` | Run only the scenarios that failed last time (results are recorded in `.fleetest/last-results/` on every run) |
-| `--heal` / `--no-heal` | Force self-healing on/off, overriding the run profile's `heal` setting |
-| `--no-false-positive-check` | Turn off the occlusion-guard false-positive check for this run, overriding the run profile's `falsePositiveCheck` setting (no positive counterpart — the profile default is already `true`) |
+| `--set <key>=<true\|false>` | Override one run profile key for this run only, using the exact key name from the profile JSON (e.g. `heal`, `falsePositiveCheck`, `ocr`, `enableAnimations`, `iosFastInput`) — the boolean keys are listed in [run_profile.md](../project/run_profile.md). Repeatable; works with or without `--profile`, except the keys that need a run profile's device list (`iosInappEngine`, `updateWebView`, `wipeDataOnBloat`, `recoverCpuFallbackToGpu`), which name the key in the error when `--profile` is missing. `record` also needs either `--profile` or `--ports` with more than one entry (a single connection has no recording session to attach to). An unknown key is an error that lists the valid keys |
 | `--dry-run` | Validate steps without touching a device (see [dry_run.md](./dry_run.md)) |
 | `--report-dir <dir>` | Directory to write reports to (default: `TestProjects/<name>/reports`) |
 | `--ports <ports>` | Comma-separated bridge ports for manual parallel iOS runs (see [parallel_execution.md](./parallel_execution.md)) |
@@ -33,8 +32,6 @@ swift run fleetest run --profile ios
 | `--quiet` | Print only the summary (for CI and agents) |
 | `--junit <path>` | Write a JUnit XML report to this path |
 | `--broadcast` | Run the selected scenarios once on **every** device of the run profile, instead of sharing them out (e.g. a warm-up). Requires `--profile`; results are told apart by their `worker` field (see [results_analysis.md](./results_analysis.md)) |
-| `--enable-animations` | Keep the app's animations instead of turning them off |
-| `--fast-input` | Skip the quiescence wait on the iOS XCUITest bridge's input |
 | `--no-lpt` | Disable LPT ordering (longest-past-runtime-first dispatch) and run in scenario ID order |
 | `--lpt-history-runs <n>` | Number of past runs to read for LPT ordering (default 5) |
 | `--host <host>` / `--fleet <fleet>` | Dispatch to a remote machine or a fleet of machines over SSH (see [remote_runners.md](../in_action/remote_runners.md)) |

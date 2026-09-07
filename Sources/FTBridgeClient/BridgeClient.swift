@@ -101,7 +101,7 @@ public final class BridgeClient: AppDriver {
         self.token = host == BridgeEndpoint.loopbackHost ? nil
             : (try? RepoRoot.find()).flatMap { BridgeEndpoint.load(port: port, repoRoot: $0).token }
         // 高速入力(quiescence スキップ)はプロセス単位の環境変数で有効化する
-        // (実行プロファイル iosFastInput / CLI --fast-input が FT_FAST_INPUT=1 を注入。
+        // (実行プロファイル iosFastInput / CLI `--set iosFastInput=true` が FT_FAST_INPUT=1 を注入。
         //  BridgeClient は hybrid のフォールバック経路でも生成されるため init 引数ではなく env で統一)
         self.fastInput = ProcessInfo.processInfo.environment["FT_FAST_INPUT"] == "1"
         let config = URLSessionConfiguration.ephemeral

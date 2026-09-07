@@ -53,11 +53,12 @@
 `true` です(`falsePositiveCheck` は 2026-09-03 に既定オフから変更しました)。`fm` が `false` なら
 個別トグルは無効になります。自己修復が既定でオンかどうかは
 実行方法にも依存します。**`--profile` を使う実行は `heal` の既定が ON**、プロファイルを使わない
-素の `fleetest run` は既定 OFF です。コマンドラインの `--heal` / `--no-heal` はどちらの既定も
-上書きします(両方の同時指定はエラー)。
-`fleetest run --no-false-positive-check` は、プロファイルを書き換えずに1回の実行だけ
-`falsePositiveCheck` を OFF に上書きします —— プロファイルの既定が既に `true` なので、
-肯定形(ON にする側)はありません。
+素の `fleetest run` は既定 OFF です。
+`fleetest run --profile <name> --set <キー>=<true|false>` は、プロファイルを書き換えずに1回の
+実行だけこの表のどのキーも上書きできます(例: `--set heal=false`・
+`--set falsePositiveCheck=false`。`--set` については
+[running_scenarios_ja.md](../running/running_scenarios_ja.md) 参照。`--profile` の有無を問わず
+効きます —— `--profile` が要るのは実行プロファイルの devices 一覧が要るキーだけです。未知のキーはエラーになります)。
 
 ## iOS エンジン
 

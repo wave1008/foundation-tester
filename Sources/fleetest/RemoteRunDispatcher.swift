@@ -45,9 +45,9 @@ struct RemoteRunDispatcher {
     func dispatch(project: TestProject, profile: String,
                   scenarios: [String], folders: [String],
                   deviceNames: [String] = [], deviceMachine: String? = nil,
-                  heal: Bool, noHeal: Bool, noFalsePositiveCheck: Bool,
+                  setOverrides: [String: Bool] = [:],
                   noLPT: Bool, lptHistoryRuns: Int?,
-                  fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
+                  performanceMode: Bool,
                   broadcast: Bool = false,
                   localJUnitPath: String?,
                   remoteTimeoutSeconds: Int?, runGroup: String? = nil) async throws -> Int32 {
@@ -72,9 +72,8 @@ struct RemoteRunDispatcher {
         let fleetestArgs = RemoteRunArgs.build(
             project: project.name, profile: profile, scenarios: scenarios, folders: folders,
             deviceNames: deviceNames, deviceMachine: deviceMachine,
-            heal: heal, noHeal: noHeal, noFalsePositiveCheck: noFalsePositiveCheck,
+            setOverrides: setOverrides,
             noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
-            fastInput: fastInput, enableAnimations: enableAnimations,
             performanceMode: performanceMode, broadcast: broadcast,
             remoteJUnitPath: remoteJUnitPath, reportDir: remoteReportDir, workspace: remoteWorkspace,
             runGroup: runGroup)
@@ -105,7 +104,7 @@ struct RemoteRunDispatcher {
     /// `fleetest api run` の exit code
     func dispatchApi(project: TestProject, profile: String, scenarios: [String],
                      deviceNames: [String] = [], deviceMachine: String? = nil,
-                     heal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
+                     setOverrides: [String: Bool] = [:], noLPT: Bool, lptHistoryRuns: Int?,
                      performanceMode: Bool,
                      defaultTimeout: Double?, scenarioTimeout: Double?,
                      remoteTimeoutSeconds: Int?, runGroup: String? = nil) async throws -> Int32 {
@@ -126,7 +125,7 @@ struct RemoteRunDispatcher {
         let fleetestArgs = RemoteRunArgs.buildApi(
             project: project.name, profile: profile, scenarios: scenarios,
             deviceNames: deviceNames, deviceMachine: deviceMachine,
-            heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+            setOverrides: setOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             performanceMode: performanceMode,
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, reportDir: remoteReportDir,
             workspace: remoteWorkspace, runGroup: runGroup)

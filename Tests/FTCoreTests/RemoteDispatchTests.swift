@@ -494,8 +494,7 @@ final class RemoteDispatchTests: XCTestCase {
     func testRemoteRunArgsMinimal() {
         XCTAssertEqual(
             RemoteRunArgs.build(project: "E2E", profile: "ios-inapp", scenarios: [], folders: [],
-                                heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
-                                fastInput: false, enableAnimations: false, performanceMode: false,
+                                noLPT: false, lptHistoryRuns: nil, performanceMode: false,
                                 remoteJUnitPath: nil, reportDir: nil),
             ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet", "--host", "local"])
     }
@@ -508,8 +507,7 @@ final class RemoteDispatchTests: XCTestCase {
         let args = RemoteRunArgs.build(
             project: "E2E", profile: "mixed", scenarios: [], folders: [],
             deviceNames: ["iPhone-01", "iPhone-02"], deviceMachine: "M1Max",
-            heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
-            fastInput: false, enableAnimations: false, performanceMode: false,
+            noLPT: false, lptHistoryRuns: nil, performanceMode: false,
             remoteJUnitPath: nil, reportDir: nil)
         XCTAssertEqual(
             args,
@@ -523,14 +521,13 @@ final class RemoteDispatchTests: XCTestCase {
     func testRemoteRunArgsRelaysTheRunGroup() {
         let args = RemoteRunArgs.build(
             project: "E2E", profile: "mixed", scenarios: [], folders: [],
-            heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
-            fastInput: false, enableAnimations: false, performanceMode: false,
+            noLPT: false, lptHistoryRuns: nil, performanceMode: false,
             remoteJUnitPath: nil, reportDir: nil, runGroup: "20260826-0100Z-LDIPC96-abcd")
         XCTAssertEqual(Array(args.suffix(2)), ["--run-group", "20260826-0100Z-LDIPC96-abcd"], "\(args)")
 
         let api = RemoteRunArgs.buildApi(
             project: "E2E", profile: "mixed", scenarios: [],
-            heal: false, noLPT: false, lptHistoryRuns: nil, performanceMode: false,
+            noLPT: false, lptHistoryRuns: nil, performanceMode: false,
             defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil,
             runGroup: "20260826-0100Z-LDIPC96-abcd")
         XCTAssertEqual(Array(api.suffix(2)), ["--run-group", "20260826-0100Z-LDIPC96-abcd"], "\(api)")
@@ -540,8 +537,7 @@ final class RemoteDispatchTests: XCTestCase {
     func testRemoteRunArgsOmitsTheRunGroupWhenAbsent() {
         let args = RemoteRunArgs.build(
             project: "E2E", profile: "mixed", scenarios: [], folders: [],
-            heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
-            fastInput: false, enableAnimations: false, performanceMode: false,
+            noLPT: false, lptHistoryRuns: nil, performanceMode: false,
             remoteJUnitPath: nil, reportDir: nil)
         XCTAssertFalse(args.contains("--run-group"), "\(args)")
     }
@@ -550,14 +546,12 @@ final class RemoteDispatchTests: XCTestCase {
     func testRemoteRunArgsRelaysBroadcast() {
         let args = RemoteRunArgs.build(
             project: "E2E", profile: "p", scenarios: ["Warm.up"], folders: [],
-            heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
-            fastInput: false, enableAnimations: false, performanceMode: false, broadcast: true,
+            noLPT: false, lptHistoryRuns: nil, performanceMode: false, broadcast: true,
             remoteJUnitPath: nil, reportDir: nil)
         XCTAssertTrue(args.contains("--broadcast"), "\(args)")
         let without = RemoteRunArgs.build(
             project: "E2E", profile: "p", scenarios: ["Warm.up"], folders: [],
-            heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
-            fastInput: false, enableAnimations: false, performanceMode: false,
+            noLPT: false, lptHistoryRuns: nil, performanceMode: false,
             remoteJUnitPath: nil, reportDir: nil)
         XCTAssertFalse(without.contains("--broadcast"))
     }
@@ -567,8 +561,7 @@ final class RemoteDispatchTests: XCTestCase {
     func testRemoteRunArgsRelaysWorkspaceOnlyWhenGiven() {
         let withWorkspace = RemoteRunArgs.build(
             project: "E2E", profile: "p", scenarios: [], folders: [],
-            heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
-            fastInput: false, enableAnimations: false, performanceMode: false,
+            noLPT: false, lptHistoryRuns: nil, performanceMode: false,
             remoteJUnitPath: nil, reportDir: nil,
             workspace: "/Users/ci/fleetest-runner/work/workspace/E2E")
         guard let index = withWorkspace.firstIndex(of: "--workspace") else {
@@ -578,8 +571,7 @@ final class RemoteDispatchTests: XCTestCase {
 
         let withoutWorkspace = RemoteRunArgs.build(
             project: "E2E", profile: "p", scenarios: [], folders: [],
-            heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
-            fastInput: false, enableAnimations: false, performanceMode: false,
+            noLPT: false, lptHistoryRuns: nil, performanceMode: false,
             remoteJUnitPath: nil, reportDir: nil)
         XCTAssertFalse(withoutWorkspace.contains("--workspace"), "\(withoutWorkspace)")
     }
@@ -588,8 +580,9 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertEqual(
             RemoteRunArgs.build(project: "E2E", profile: "ios-inapp",
                                 scenarios: ["Login.S0010", "Login.S0020"], folders: ["smoke"],
-                                heal: true, noHeal: false, noFalsePositiveCheck: false, noLPT: true, lptHistoryRuns: 3,
-                                fastInput: true, enableAnimations: true, performanceMode: true,
+                                setOverrides: ["heal": true, "iosFastInput": true, "enableAnimations": true],
+                                noLPT: true, lptHistoryRuns: 3,
+                                performanceMode: true,
                                 remoteJUnitPath: "/remote/junit.xml",
                                 reportDir: "/remote/reports"),
             [
@@ -597,8 +590,8 @@ final class RemoteDispatchTests: XCTestCase {
                 "--report-dir", "/remote/reports",
                 "--scenario", "Login.S0010", "--scenario", "Login.S0020",
                 "--folder", "smoke",
-                "--heal", "--no-lpt", "--lpt-history-runs", "3", "--fast-input",
-                "--enable-animations", "--performance",
+                "--set", "enableAnimations=true", "--set", "heal=true", "--set", "iosFastInput=true",
+                "--no-lpt", "--lpt-history-runs", "3", "--performance",
                 "--junit", "/remote/junit.xml",
             ])
     }
@@ -610,11 +603,10 @@ final class RemoteDispatchTests: XCTestCase {
     func testRemoteRunArgsAlwaysPinTheRemoteSideToLocal() {
         for args in [
             RemoteRunArgs.build(project: "E2E", profile: "p", scenarios: [], folders: [],
-                                heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
-                                fastInput: false, enableAnimations: false, performanceMode: false,
+                                noLPT: false, lptHistoryRuns: nil, performanceMode: false,
                                 remoteJUnitPath: nil, reportDir: nil),
             RemoteRunArgs.buildApi(project: "E2E", profile: "p", scenarios: [],
-                                   heal: false, noLPT: false, lptHistoryRuns: nil,
+                                   noLPT: false, lptHistoryRuns: nil,
                                    performanceMode: false,
                                    defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil),
         ] {
@@ -628,8 +620,7 @@ final class RemoteDispatchTests: XCTestCase {
     func testRemoteRunArgsReportDirOmittedWhenNil() {
         XCTAssertFalse(
             RemoteRunArgs.build(project: "E2E", profile: "ios-inapp", scenarios: [], folders: [],
-                                heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
-                                fastInput: false, enableAnimations: false, performanceMode: false,
+                                noLPT: false, lptHistoryRuns: nil, performanceMode: false,
                                 remoteJUnitPath: nil, reportDir: nil)
                 .contains("--report-dir"))
     }
@@ -640,8 +631,7 @@ final class RemoteDispatchTests: XCTestCase {
     func testRunPerformanceModeIsRelayedOnlyWhenOn() {
         func args(performance: Bool) -> [String] {
             RemoteRunArgs.build(project: "E2E", profile: "android-1", scenarios: [], folders: [],
-                                heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
-                                fastInput: false, enableAnimations: false,
+                                noLPT: false, lptHistoryRuns: nil,
                                 performanceMode: performance,
                                 remoteJUnitPath: nil, reportDir: nil)
         }
@@ -649,56 +639,36 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertFalse(args(performance: false).contains("--performance"))
     }
 
-    func testRunEnableAnimationsIsRelayedOnlyWhenOn() {
-        func args(animations: Bool) -> [String] {
+    /// `--set` は**中継しないと黙って無視される**(リモートはプロファイルの既定で走る)。
+    /// キーごとに `--set <key>=<value>` トークンを1つ付け、辞書順で安定させる
+    func testRunSetOverridesAreRelayedAsKeyValueTokensSortedByKey() {
+        func args(_ overrides: [String: Bool]) -> [String] {
             RemoteRunArgs.build(project: "E2E", profile: "android-1", scenarios: [], folders: [],
-                                heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
-                                fastInput: false, enableAnimations: animations,
+                                setOverrides: overrides,
+                                noLPT: false, lptHistoryRuns: nil,
                                 performanceMode: false,
                                 remoteJUnitPath: nil, reportDir: nil)
         }
-        XCTAssertTrue(args(animations: true).contains("--enable-animations"))
-        XCTAssertFalse(args(animations: false).contains("--enable-animations"))
+        XCTAssertEqual(Array(args(["enableAnimations": true]).suffix(2)), ["--set", "enableAnimations=true"])
+        XCTAssertFalse(args([:]).contains("--set"))
+        XCTAssertEqual(
+            Array(args(["heal": true, "enableAnimations": false]).suffix(4)),
+            ["--set", "enableAnimations=false", "--set", "heal=true"],
+            "キーの辞書順で安定させる")
     }
 
-    /// `api run` には `--enable-animations` が無い(実行プロファイルと環境変数から解決する)。
-    /// 存在しないフラグを渡すとリモートの fleetest が起動時に落ちるので、**混入しないこと**を固定する
-    func testApiPerformanceModeIsRelayedAndAnimationsFlagIsNever() {
+    /// `api run` にも共有の `--set` がそのまま中継される(build() と同じ形)
+    func testApiPerformanceModeIsRelayedAndSetOverridesAreRelayed() {
         func args(performance: Bool) -> [String] {
             RemoteRunArgs.buildApi(project: "E2E", profile: "android-1", scenarios: [],
-                                   heal: false, noLPT: false, lptHistoryRuns: nil,
+                                   setOverrides: ["heal": true],
+                                   noLPT: false, lptHistoryRuns: nil,
                                    performanceMode: performance,
                                    defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil)
         }
         XCTAssertTrue(args(performance: true).contains("--performance"))
         XCTAssertFalse(args(performance: false).contains("--performance"))
-        XCTAssertFalse(args(performance: true).contains("--enable-animations"))
-    }
-
-    /// `--heal` だけ中継すると、ヒールを止めたつもりでリモートはプロファイルの既定で走る
-    func testRunNoHealIsRelayedOnlyWhenOn() {
-        func args(noHeal: Bool) -> [String] {
-            RemoteRunArgs.build(project: "E2E", profile: "android-1", scenarios: [], folders: [],
-                                heal: false, noHeal: noHeal, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
-                                fastInput: false, enableAnimations: false, performanceMode: false,
-                                remoteJUnitPath: nil, reportDir: nil)
-        }
-        XCTAssertTrue(args(noHeal: true).contains("--no-heal"))
-        XCTAssertFalse(args(noHeal: false).contains("--no-heal"))
-    }
-
-    /// 中継しないと、偽陽性検証を切ったつもりでリモートはプロファイルの既定(true)で走る
-    /// (--no-heal と同じ罠)
-    func testRunNoFalsePositiveCheckIsRelayedOnlyWhenOn() {
-        func args(noFalsePositiveCheck: Bool) -> [String] {
-            RemoteRunArgs.build(project: "E2E", profile: "android-1", scenarios: [], folders: [],
-                                heal: false, noHeal: false, noFalsePositiveCheck: noFalsePositiveCheck,
-                                noLPT: false, lptHistoryRuns: nil,
-                                fastInput: false, enableAnimations: false, performanceMode: false,
-                                remoteJUnitPath: nil, reportDir: nil)
-        }
-        XCTAssertTrue(args(noFalsePositiveCheck: true).contains("--no-false-positive-check"))
-        XCTAssertFalse(args(noFalsePositiveCheck: false).contains("--no-false-positive-check"))
+        XCTAssertEqual(Array(args(performance: false).suffix(2)), ["--set", "heal=true"])
     }
 
     // MARK: - RemoteDispatchGate
@@ -954,7 +924,7 @@ final class RemoteDispatchTests: XCTestCase {
     func testBuildApiMinimal() {
         XCTAssertEqual(
             RemoteRunArgs.buildApi(project: "E2E", profile: "ios-inapp", scenarios: ["Login.S0010"],
-                                   heal: false, noLPT: false, lptHistoryRuns: nil,
+                                   noLPT: false, lptHistoryRuns: nil,
                                    performanceMode: false,
                                    defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil),
             ["api", "run", "--project", "E2E", "--profile", "ios-inapp", "--host", "local",
@@ -965,7 +935,8 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertEqual(
             RemoteRunArgs.buildApi(project: "E2E", profile: "ios-inapp",
                                    scenarios: ["Login.S0010", "Login.S0020"],
-                                   heal: true, noLPT: true, lptHistoryRuns: 3,
+                                   setOverrides: ["heal": true],
+                                   noLPT: true, lptHistoryRuns: 3,
                                    performanceMode: true,
                                    defaultTimeout: 5.5, scenarioTimeout: 90,
                                    reportDir: "/remote/reports"),
@@ -973,7 +944,7 @@ final class RemoteDispatchTests: XCTestCase {
                 "api", "run", "--project", "E2E", "--profile", "ios-inapp", "--host", "local",
                 "--report-dir", "/remote/reports",
                 "--scenario", "Login.S0010", "--scenario", "Login.S0020",
-                "--heal", "--no-lpt", "--lpt-history-runs", "3", "--performance",
+                "--set", "heal=true", "--no-lpt", "--lpt-history-runs", "3", "--performance",
                 "--default-timeout", "5.5", "--scenario-timeout", "90",
             ])
     }
@@ -985,7 +956,7 @@ final class RemoteDispatchTests: XCTestCase {
         let args = RemoteRunArgs.buildApi(
             project: "E2E", profile: "mixed", scenarios: ["Login.S0010"],
             deviceNames: ["iPhone-01", "iPhone-02"], deviceMachine: "M1Max",
-            heal: false, noLPT: false, lptHistoryRuns: nil,
+            noLPT: false, lptHistoryRuns: nil,
             performanceMode: false,
             defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil)
         XCTAssertEqual(
@@ -1001,7 +972,7 @@ final class RemoteDispatchTests: XCTestCase {
     func testBuildApiRelaysWorkspaceOnlyWhenGiven() {
         let withWorkspace = RemoteRunArgs.buildApi(
             project: "E2E", profile: "p", scenarios: ["Login.S0010"],
-            heal: false, noLPT: false, lptHistoryRuns: nil,
+            noLPT: false, lptHistoryRuns: nil,
             performanceMode: false, defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil,
             workspace: "/Users/ci/fleetest-runner/work/workspace/E2E")
         guard let index = withWorkspace.firstIndex(of: "--workspace") else {
@@ -1011,7 +982,7 @@ final class RemoteDispatchTests: XCTestCase {
 
         let withoutWorkspace = RemoteRunArgs.buildApi(
             project: "E2E", profile: "p", scenarios: ["Login.S0010"],
-            heal: false, noLPT: false, lptHistoryRuns: nil,
+            noLPT: false, lptHistoryRuns: nil,
             performanceMode: false, defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil)
         XCTAssertFalse(withoutWorkspace.contains("--workspace"), "\(withoutWorkspace)")
     }

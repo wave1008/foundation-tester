@@ -19,8 +19,7 @@ final class RunGroupPlumbingTests: XCTestCase {
                 project: "E2E-Android", host: host, profile: "android",
                 deviceNames: ["Pixel 3a"], deviceMachine: host,
                 scenarios: ["A.S0010"], folders: [],
-                heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
-                fastInput: false, enableAnimations: false, performanceMode: false,
+                noLPT: false, lptHistoryRuns: nil, performanceMode: false,
                 forceLock: false, waitLock: nil, remoteDir: nil, remoteTimeout: nil,
                 remoteArtifacts: "collect", quiet: false, junitPath: nil, runGroup: key)
             guard let index = args.firstIndex(of: "--run-group") else {
@@ -36,8 +35,7 @@ final class RunGroupPlumbingTests: XCTestCase {
         let args = FleetRunner.buildArgs(
             project: "E2E-Android", host: "local", profile: "android",
             scenarios: [], folders: [],
-            heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
-            fastInput: false, enableAnimations: false, performanceMode: false,
+            noLPT: false, lptHistoryRuns: nil, performanceMode: false,
             forceLock: false, waitLock: nil, remoteDir: nil, remoteTimeout: nil,
             remoteArtifacts: "collect", quiet: false, junitPath: nil)
         XCTAssertFalse(args.contains("--run-group"), "\(args)")
@@ -52,7 +50,7 @@ final class RunGroupPlumbingTests: XCTestCase {
                 project: "E2E-Android", profileName: "android", group: group,
                 scenarioIDs: ["A.S0010"],
                 options: ApiRunMachineFanout.Options(
-                    heal: false, defaultTimeout: nil, scenarioTimeout: nil, noLPT: false,
+                    defaultTimeout: nil, scenarioTimeout: nil, noLPT: false,
                     lptHistoryRuns: nil, performanceMode: false, remoteDir: nil,
                     remoteTimeout: nil, remoteArtifacts: "collect", waitLock: nil),
                 runGroup: key)
@@ -86,7 +84,7 @@ final class RunGroupPlumbingTests: XCTestCase {
                     machine: machine, deviceNames: ["Pixel 3a"], platforms: ["android"]),
                 scenarioIDs: ["A.S0010"],
                 options: ApiRunMachineFanout.Options(
-                    heal: false, defaultTimeout: nil, scenarioTimeout: nil, noLPT: false,
+                    defaultTimeout: nil, scenarioTimeout: nil, noLPT: false,
                     lptHistoryRuns: nil, performanceMode: false, remoteDir: nil,
                     remoteTimeout: nil, remoteArtifacts: "collect", waitLock: 600),
                 runGroup: "g")

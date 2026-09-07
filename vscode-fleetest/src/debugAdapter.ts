@@ -64,7 +64,7 @@ export interface FleetestLaunchRequestArguments extends DebugProtocol.LaunchRequ
   dryRun?: boolean;
   stopOnEntry?: boolean;
   skipBuild?: boolean;
-  /** FM によるロケータ自己修復(--heal)を有効にする。 */
+  /** FM によるロケータ自己修復(`--set heal=true`)を有効にする。 */
   heal?: boolean;
   /** 実行プロファイル名。platform/port/serial との組合せ規則は startDebuggee 参照。 */
   profile?: string;
@@ -379,9 +379,9 @@ export class FleetestDebugSession extends DebugSession {
     if (args.skipBuild) {
       cliArgs.push("--skip-build");
     }
-    // --heal は dry-run には付与しない(runHandler.ts の executeRun と同じ方針)。
+    // --set heal=true は dry-run には付与しない(runHandler.ts の executeRun と同じ方針)。
     if (args.heal && !args.dryRun) {
-      cliArgs.push("--heal");
+      cliArgs.push("--set", "heal=true");
     }
     if (args.stopOnEntry) {
       cliArgs.push("--pause-on-start");

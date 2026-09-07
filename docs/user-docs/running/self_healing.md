@@ -11,13 +11,15 @@ English, and Japanese is not supported by the model during 2026 (2027 is expecte
 ## Enabling it
 
 - **`--profile` runs default `heal` to ON.** A plain `fleetest run` without a profile defaults it
-  to OFF. `fleetest run --heal` / `--no-heal` override either default (mutually exclusive).
+  to OFF. `fleetest run --profile <name> --set heal=<true|false>` overrides either default for
+  one run without editing the profile file (see [running_scenarios.md](./running_scenarios.md)
+  for `--set`).
 - In the run profile itself, `heal` (default `true`) is one of the FM toggles under the parent
   switch `fm` — see [run_profile.md](../project/run_profile.md).
-- In the VS Code extension, the `fleetest.heal` setting appends `--heal` to Test Explorer's "Run"
-  and "Debug" actions (not "Run (dry-run)", since dry-run never touches a device). When
-  `fleetest.heal` is `false` (the default) and you're using `fleetest.profile`, the run profile's
-  own `heal` setting is used instead.
+- In the VS Code extension, the `fleetest.heal` setting appends `--set heal=true` to Test
+  Explorer's "Run" and "Debug" actions (not "Run (dry-run)", since dry-run never touches a
+  device). When `fleetest.heal` is `false` (the default) and you're using `fleetest.profile`,
+  the run profile's own `heal` setting is used instead.
 
 ## What happens on a repair
 
@@ -36,7 +38,7 @@ English, and Japanese is not supported by the model during 2026 (2027 is expecte
 
 ## Reviewing and applying fix suggestions (VS Code)
 
-When a `--heal`-enabled run produces one or more fix suggestions, the VS Code extension
+When a `--set heal=true`-enabled run produces one or more fix suggestions, the VS Code extension
 automatically opens a **"fleetest self-healing review"** panel (dry-run runs never trigger it).
 For each candidate you can see:
 
@@ -48,7 +50,7 @@ For each candidate you can see:
 Clicking "Apply selected" writes the accepted fixes into your scenario source via
 `fleetest api apply-heal`. Fixes that fail to apply stay in the list with a reason; the panel
 closes automatically once every remaining fix has succeeded. Closing without applying leaves the
-heal cache intact, so the same candidates are proposed again on the next `--heal` run.
+heal cache intact, so the same candidates are proposed again on the next `--set heal=true` run.
 
 ### Link
 - [index](../index.md)

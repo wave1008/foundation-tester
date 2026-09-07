@@ -27,8 +27,8 @@ enum FleetRunner {
     static func run(
         project: TestProject, fleetName: String, fleet: FleetProfileDocument,
         scenarios: [String], folders: [String],
-        heal: Bool, noHeal: Bool, noFalsePositiveCheck: Bool, noLPT: Bool, lptHistoryRuns: Int?,
-        fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
+        setOverrides: [String: Bool] = [:], noLPT: Bool, lptHistoryRuns: Int?,
+        performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         split: Bool, quiet: Bool, junit: String?
     ) async throws -> Int32 {
@@ -46,9 +46,8 @@ enum FleetRunner {
             return try await runSplit(
                 project: project, fleetName: fleetName, fleet: fleet,
                 scenarios: scenarios, folders: folders,
-                heal: heal, noHeal: noHeal, noFalsePositiveCheck: noFalsePositiveCheck,
-                noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
-                fastInput: fastInput, enableAnimations: enableAnimations, performanceMode: performanceMode,
+                setOverrides: setOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+                performanceMode: performanceMode,
                 forceLock: forceLock, waitLock: waitLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                 remoteArtifacts: remoteArtifacts, quiet: quiet, junit: junit, junitTempDir: junitTempDir)
         }
@@ -63,9 +62,7 @@ enum FleetRunner {
                     let args = buildArgs(
                         project: project.name, host: entry.host, profile: entry.profile,
                         scenarios: scenarios, folders: folders,
-                        heal: heal, noHeal: noHeal, noFalsePositiveCheck: noFalsePositiveCheck,
-                        noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
-                        fastInput: fastInput, enableAnimations: enableAnimations,
+                        setOverrides: setOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                         performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                         remoteArtifacts: remoteArtifacts, quiet: quiet,
@@ -111,8 +108,8 @@ enum FleetRunner {
     private static func runSplit(
         project: TestProject, fleetName: String, fleet: FleetProfileDocument,
         scenarios: [String], folders: [String],
-        heal: Bool, noHeal: Bool, noFalsePositiveCheck: Bool, noLPT: Bool, lptHistoryRuns: Int?,
-        fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
+        setOverrides: [String: Bool] = [:], noLPT: Bool, lptHistoryRuns: Int?,
+        performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         quiet: Bool, junit: String?, junitTempDir: URL?
     ) async throws -> Int32 {
@@ -196,9 +193,7 @@ enum FleetRunner {
                     let args = buildArgs(
                         project: project.name, host: entry.host, profile: entry.profile,
                         scenarios: ids, folders: [],
-                        heal: heal, noHeal: noHeal, noFalsePositiveCheck: noFalsePositiveCheck,
-                        noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
-                        fastInput: fastInput, enableAnimations: enableAnimations,
+                        setOverrides: setOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                         performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                         remoteArtifacts: remoteArtifacts, quiet: quiet,
@@ -408,8 +403,8 @@ enum FleetRunner {
         project: String, host: String, profile: String,
         deviceNames: [String] = [], deviceMachine: String? = nil,
         scenarios: [String], folders: [String],
-        heal: Bool, noHeal: Bool, noFalsePositiveCheck: Bool, noLPT: Bool, lptHistoryRuns: Int?,
-        fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
+        setOverrides: [String: Bool] = [:], noLPT: Bool, lptHistoryRuns: Int?,
+        performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         quiet: Bool, junitPath: String?, broadcast: Bool = false, runGroup: String? = nil
     ) -> [String] {
@@ -437,13 +432,11 @@ enum FleetRunner {
         if let deviceMachine { args += ["--device-machine", deviceMachine] }
         if !scenarios.isEmpty { args += ["--scenario"] + scenarios }
         if !folders.isEmpty { args += ["--folder"] + folders }
-        if heal { args += ["--heal"] }
-        if noHeal { args += ["--no-heal"] }
-        if noFalsePositiveCheck { args += ["--no-false-positive-check"] }
+        // **中継しないと黙って無視される**(子はプロファイルの既定で走る)。値ごと渡すので、
+        // 打ち消す/明示で有効にするのどちらも同じ形で届く
+        for key in setOverrides.keys.sorted() { args += ["--set", "\(key)=\(setOverrides[key]!)"] }
         if noLPT { args += ["--no-lpt"] }
         if let lptHistoryRuns { args += ["--lpt-history-runs", String(lptHistoryRuns)] }
-        if fastInput { args += ["--fast-input"] }
-        if enableAnimations { args += ["--enable-animations"] }
         if performanceMode { args += ["--performance"] }
         // DeviceMachineRunner のマシン別サブ実行だけが渡す(--fleet は --broadcast と併用不可)
         if broadcast { args += ["--broadcast"] }

@@ -15,34 +15,15 @@ enum ProfileRunner {
     /// ワーカー復帰待ちの上限。監視側の再起動やデバイス自己回復を待つ
     private static let REVIVE_TIMEOUT: TimeInterval = 90
 
-    /// CLI の `--heal` / `--no-heal` → `run(healOverride:)`。**nil = 実行プロファイルの値をそのまま使う**
-    /// (プロファイル実行の heal 既定は true)。両立指定は `RunScenarios.validate()` が弾くので、
-    /// ここに来る組み合わせは3通りだけ。**デバイスが要る run から切り出した純粋関数**なので
-    /// `ProfileRunnerHealOverrideTests` が全組み合わせを固定する
-    static func healOverride(heal: Bool, noHeal: Bool) -> Bool? {
-        if heal { return true }
-        if noHeal { return false }
-        return nil
-    }
-
-    /// CLI の `--heal`/`--no-heal`/`--no-false-positive-check` を適用した実効 FM 設定の組み立て。
-    /// **デバイスが要る run から切り出した純粋関数**(`ProfileRunnerFMSettingsTests` が固定する)。
-    /// `--no-false-positive-check` は否定形しか無い(プロファイルの既定が true なので打ち消す口
-    /// だけでよい。`--heal`/`--no-heal` と違い両立チェックは要らない)。**filteringDevices/
-    /// limitingDevices/broadcast は fm/ocr に触れない**ので、呼び出し側は devices を絞る前の
-    /// `ResolvedProfile` からこれを一度だけ計算して使い回せる
-    static func effectiveFMSettings(
-        resolved: ResolvedProfile, healOverride: Bool?, noFalsePositiveCheck: Bool
-    ) -> (fm: FMConfig, record: FMSettingsRecord) {
-        var fm = resolved.fm
-        if healOverride == true { fm.heal = fm.enabled }
-        if healOverride == false { fm.heal = false }
-        if noFalsePositiveCheck { fm.falsePositiveCheck = false }
-        let record = FMSettingsRecord(
-            fm: fm.enabled, heal: fm.heal, falsePositiveCheck: fm.falsePositiveCheck,
-            screenLooksLike: fm.screenLooksLike, triage: fm.triage,
+    /// 実行プロファイルの実効 FM 設定を、`ResolvedProfile.fm`/`ocr`/`ocrFalsePositiveCheck` から
+    /// そのまま写す(**上書きは `--set` が `ProfileResolver.resolve(overrides:)` で当て済み**なので、
+    /// ここで CLI 由来の override を二重に適用しない)
+    static func fmSettingsRecord(resolved: ResolvedProfile) -> FMSettingsRecord {
+        FMSettingsRecord(
+            fm: resolved.fm.enabled, heal: resolved.fm.heal,
+            falsePositiveCheck: resolved.fm.falsePositiveCheck,
+            screenLooksLike: resolved.fm.screenLooksLike, triage: resolved.fm.triage,
             ocr: resolved.ocr, ocrFalsePositiveCheck: resolved.ocrFalsePositiveCheck)
-        return (fm, record)
     }
 
     /// 戻り値: 実行サマリ(失敗数+劣化ワーカー)
@@ -52,7 +33,7 @@ enum ProfileRunner {
     ///   (`ScenarioDispatch.broadcast`)。変わるのは台数を絞らないことと分配だけで、供給・
     ///   インストール・フック(run で1回)・スタッガ・復帰・レポートは通常 run と同じ経路
     static func run(project: TestProject, profileName: String, items rawItems: [ScenarioRunItem],
-                    healOverride: Bool?, noFalsePositiveCheck: Bool = false,
+                    setOverrides: [String: Bool] = [:],
                     reportDirOverride: String?,
                     quiet: Bool = false, lpt: Bool = true,
                     lptHistoryRuns: Int = LPTOrdering.defaultHistoryRuns,
@@ -74,7 +55,7 @@ enum ProfileRunner {
         }
         let resolvedAll = try ProfileResolver.resolve(
             project: project, runName: profileName, machineName: machine.name,
-            workspaceOverride: workspaceOverride)
+            workspaceOverride: workspaceOverride, overrides: setOverrides)
         // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17・
         // 2026-08-18)なので毎回雛形作成(既に揃っていれば何もしない。WorkspaceScaffold の宣言)。
         // リモートディスパッチはこれとは別に、ミラー前のローカル側で同じ呼び出しを行う
@@ -104,8 +85,8 @@ enum ProfileRunner {
         }
         // **filteringDevices/limitingDevices/broadcast は fm/ocr に触れない**ので、devices を
         // 絞る前のこの時点で計算して 0 件早期リターン・本編の両方で使う
-        let (fm, fmSettings) = Self.effectiveFMSettings(
-            resolved: full, healOverride: healOverride, noFalsePositiveCheck: noFalsePositiveCheck)
+        let fm = full.fm
+        let fmSettings = Self.fmSettingsRecord(resolved: full)
         // OS 対象外(`@TestClass(platform:)` / `@Test(platform:)` がこの run に無い OS を指す)は
         // **キューへ入れる前に外す** —— 入れると RunOrchestrator の「担当ワーカーなし」に落ち、
         // 意図された対象外が失敗として数えられる(PlatformApplicability の宣言)。
@@ -174,7 +155,7 @@ enum ProfileRunner {
         // 既定 ON なので OFF のときだけ注入する(WebViewDelegatingDriver.preActionWarmup 参照)
         if !resolved.iosPreActionWarmup { setenv("FT_PRE_ACTION_WARMUP", "0", 1) }
         // 未指定でも必ず書く(既定の "0" を明示し、前段の値を残さない)。環境変数側で
-        // 既に ON なら尊重する(`fleetest run --enable-animations` と手動 export の上書き)
+        // 既に ON なら尊重する(`--set enableAnimations=true` と手動 export の上書き)
         let animations = resolved.enableAnimations || AnimationPolicy.animationsEnabled()
         setenv(AnimationPolicy.environmentKey, animations ? "1" : "0", 1)
         // キルスイッチは既定 ON なので OFF のときだけ注入する(AdbInstallVerifier.bypassEnabled 参照)

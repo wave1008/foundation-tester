@@ -1,5 +1,5 @@
 // healReviewPanel.ts
-// 自己修復(--heal)の確認パネル。
+// 自己修復の確認パネル。
 //
 // RunEventBus(runHandler.ts と同じインスタンス)を購読し、HealFixCollector(healModel.ts)で
 // fixSuggestion を収集する。実行終了時に候補が1件以上あれば WebviewPanel を開く
