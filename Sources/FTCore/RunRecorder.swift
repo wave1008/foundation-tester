@@ -154,12 +154,16 @@ public final class RunRecorder: @unchecked Sendable {
         RunResultsStore.removeScenario(runDir: runDir, fileName: removed.fileName)
     }
 
+    /// - fmSettings: その run で実際に効いていた FM 設定(実効値)。**既定値を置かない** ——
+    ///   `fleetest run` / `fleetest api run` は別実装で、既定値があると片方の呼び出し元が
+    ///   渡し忘れてもコンパイルが通ってしまう(OverlayWindowOcclusion と同じ規律)
     public func finish(total: Int, passed: Int, failed: Int, degradedWorkers: [String] = [],
                        freezeRetries: [String] = [],
                        blankRepairs: [String] = [], blankExclusions: [String] = [],
                        measurementInvalid: Bool = false, measurementInvalidReasons: [String] = [],
                        workerAnomalies: [WorkerAnomalyRecord] = [],
-                       performanceMode: Bool = false) {
+                       performanceMode: Bool = false,
+                       fmSettings: FMSettingsRecord) {
         hostMetrics?.stop()
         // FM の死活は**引数で受け取らない** —— 機械グローバルな事実(FMLiveness)なので、
         // 呼び出し元が run のたびに集めて渡す形にすると経路ごとに渡し忘れが出る
@@ -200,7 +204,8 @@ public final class RunRecorder: @unchecked Sendable {
             fmDead: fmDeadPaths.isEmpty ? nil : fmDeadPaths,
             fmDeadReason: fmReading.deadSummary(),
             guarded: guardedValue, guardSkipped: guardSkippedValue,
-            guardStaleFrame: guardStaleFrameValue)
+            guardStaleFrame: guardStaleFrameValue,
+            fmSettings: fmSettings)
         RunResultsStore.writeMeta(meta, runDir: runDir)
     }
 

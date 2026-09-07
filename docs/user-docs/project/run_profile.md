@@ -55,6 +55,9 @@ the individual toggles have no effect. Whether
 self-healing is on by default also depends on how you invoke the run: **a `--profile` run
 defaults `heal` to ON**, while a plain `fleetest run` (no profile) defaults it to OFF. `--heal`
 and `--no-heal` on the command line override either default (they cannot be combined).
+`fleetest run --no-false-positive-check` overrides `falsePositiveCheck` to off for one run
+without editing the profile — there is no positive counterpart, since the profile default is
+already `true`.
 
 ## iOS engine
 

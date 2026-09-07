@@ -16,7 +16,7 @@ final class BroadcastFlagTests: XCTestCase {
                 project: "E2E", host: "local", profile: "p",
                 deviceNames: ["iPhone-01"], deviceMachine: "local",
                 scenarios: ["Warm.up"], folders: [],
-                heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+                heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
                 fastInput: false, enableAnimations: false, performanceMode: false,
                 forceLock: false, waitLock: nil, remoteDir: nil, remoteTimeout: nil,
                 remoteArtifacts: "collect", quiet: true, junitPath: nil, broadcast: broadcast)

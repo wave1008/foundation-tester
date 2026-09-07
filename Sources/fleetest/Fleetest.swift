@@ -802,6 +802,10 @@ struct RunScenarios: AsyncParsableCommand {
           help: "Disable FM-based locator self-healing even when the run profile enables it (--profile runs default to heal: true)")
     var noHeal = false
 
+    @Flag(name: .customLong("no-false-positive-check"),
+          help: "Disable the occlusion-guard false-positive check even when the run profile enables it (--profile runs default to falsePositiveCheck: true). No positive counterpart — the profile default is already true")
+    var noFalsePositiveCheck = false
+
     @Flag(name: .customLong("dry-run"),
           help: "Enumerate and validate the steps without touching a device (No-Load-Run). Catches selector syntax errors, unreachable scenes and expectation blocks with no assertions")
     var dryRun = false
@@ -1010,7 +1014,8 @@ struct RunScenarios: AsyncParsableCommand {
             let exitCode = try await DeviceMachineRunner.run(
                 project: try ScenarioHost.project(named: project), profileName: profile,
                 groups: groups, scenarios: scenarios, folders: folders,
-                heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+                heal: heal, noHeal: noHeal, noFalsePositiveCheck: noFalsePositiveCheck,
+                noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                 fastInput: fastInput, enableAnimations: enableAnimations,
                 performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                 remoteDir: remoteDir, remoteTimeout: remoteTimeout,
@@ -1138,6 +1143,7 @@ struct RunScenarios: AsyncParsableCommand {
             let runSummary = try await ProfileRunner.run(
                 project: testProject, profileName: profile, items: items,
                 healOverride: ProfileRunner.healOverride(heal: heal, noHeal: noHeal),
+                noFalsePositiveCheck: noFalsePositiveCheck,
                 reportDirOverride: reportDir,
                 quiet: quiet, lpt: !noLPT,
                 lptHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
@@ -1164,7 +1170,9 @@ struct RunScenarios: AsyncParsableCommand {
                             measurementInvalid: runSummary.measurementInvalid,
                             measurementInvalidReasons: runSummary.measurementInvalidReasons,
                             workerAnomalies: runSummary.workerAnomalies,
-                            performanceMode: runSummary.performanceMode)
+                            performanceMode: runSummary.performanceMode,
+                            // ProfileRunner.run は 0 件早期リターンも含め常に埋めて返す(契約)
+                            fmSettings: runSummary.fmSettings!)
             PhaseLog.mark("recorder-finish")
             try writeJUnitIfRequested(project: testProject, recorder: recorder)
             let skippedSuffix = notApplicable > 0
@@ -1216,7 +1224,15 @@ struct RunScenarios: AsyncParsableCommand {
                                             iosPorts: iosPorts, reportDir: reportDirPath,
                                             recorder: recorder)
         }
-        recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount)
+        // --profile 無しの経路(runSequential/runParallel)は FMConfig(heal: heal && !noHeal) を
+        // そのまま使う(falsePositiveCheck は既定 false のままなので、そもそも off の状態を
+        // 打ち消す --no-false-positive-check はこの経路では無意味)。ocr/ocrFalsePositiveCheck は
+        // この経路に専用の上書き口が無く常に既定 true
+        recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount,
+                        fmSettings: FMSettingsRecord(
+                            fm: true, heal: heal && !noHeal, falsePositiveCheck: false,
+                            screenLooksLike: true, triage: true,
+                            ocr: true, ocrFalsePositiveCheck: true))
         try writeJUnitIfRequested(project: testProject, recorder: recorder)
 
         ConsoleOut.out(failedCount == 0
@@ -1269,7 +1285,8 @@ struct RunScenarios: AsyncParsableCommand {
         let exitCode = try await dispatcher.dispatch(
             project: testProject, profile: profile, scenarios: scenarios, folders: folders,
             deviceNames: scopedDevices, deviceMachine: scopedDeviceHost,
-            heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+            heal: heal, noHeal: noHeal, noFalsePositiveCheck: noFalsePositiveCheck,
+            noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations,
             performanceMode: performanceMode, broadcast: broadcast,
             localJUnitPath: junit, remoteTimeoutSeconds: remoteTimeout, runGroup: runGroup)
@@ -1307,7 +1324,8 @@ struct RunScenarios: AsyncParsableCommand {
         let exitCode = try await FleetRunner.run(
             project: testProject, fleetName: fleetName, fleet: doc,
             scenarios: scenarios, folders: folders,
-            heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+            heal: heal, noHeal: noHeal, noFalsePositiveCheck: noFalsePositiveCheck,
+            noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations, performanceMode: performanceMode,
             forceLock: forceLock, waitLock: waitLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
             remoteArtifacts: remoteArtifacts, split: split, quiet: quiet, junit: junit)

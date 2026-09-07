@@ -1,6 +1,11 @@
 import XCTest
 @testable import FTCore
 
+/// この種のテストが finish() へ渡す fmSettings は値そのものを検査しないので固定の1値でよい
+private let testFMSettings = FMSettingsRecord(
+    fm: true, heal: false, falsePositiveCheck: false, screenLooksLike: true, triage: true,
+    ocr: true, ocrFalsePositiveCheck: true)
+
 /// HostMetricsRecorder(run 単位のホスト負荷採取器)と RunRecorder への配線の検証。
 /// NDJSON `kind:"hostMetrics"` の契約(monitorProcessManager.ts / host-metrics-summary と同期)も守る。
 final class HostMetricsRecorderTests: XCTestCase {
@@ -78,7 +83,7 @@ final class HostMetricsRecorderTests: XCTestCase {
         // HostMetricsLog は open 時にファイルを生成するので begin 直後から存在する
         XCTAssertTrue(FileManager.default.fileExists(atPath: sessionFile.path),
                       "セッションファイルが作られていない: \(sessionFile.path)")
-        recorder.finish(total: 0, passed: 0, failed: 0)
+        recorder.finish(total: 0, passed: 0, failed: 0, fmSettings: testFMSettings)
     }
 
     /// captureHostMetrics: false では採取器を起動せず、ファイルも作らない
@@ -92,6 +97,6 @@ final class HostMetricsRecorderTests: XCTestCase {
             .appendingPathComponent("host-metrics.ndjson")
         XCTAssertFalse(FileManager.default.fileExists(atPath: sessionFile.path),
                        "capture 無効なのにセッションファイルが作られた")
-        recorder.finish(total: 0, passed: 0, failed: 0)
+        recorder.finish(total: 0, passed: 0, failed: 0, fmSettings: testFMSettings)
     }
 }

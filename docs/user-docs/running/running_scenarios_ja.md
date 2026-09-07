@@ -25,6 +25,7 @@ swift run fleetest run --profile ios
 | `--folder <folder>` | 実行するシナリオフォルダ(`scenarios/` 直下のサブフォルダ)。複数回指定可、`--scenario`/`--failed` と併用可 |
 | `--failed` | 前回失敗したシナリオだけ実行する(結果は毎回 `.fleetest/last-results/` に記録される) |
 | `--heal` / `--no-heal` | 実行プロファイルの `heal` 設定を上書きし、自己修復を強制的に ON/OFF にする |
+| `--no-false-positive-check` | 実行プロファイルの `falsePositiveCheck` 設定を上書きし、この実行だけ occlusion-guard の偽陽性検証を OFF にする(肯定形は無い —— プロファイルの既定が既に `true`) |
 | `--dry-run` | デバイスに触れずステップを検証する([dry_run_ja.md](./dry_run_ja.md)参照) |
 | `--report-dir <dir>` | レポート出力先(既定: `TestProjects/<name>/reports`) |
 | `--ports <ports>` | 手動並列実行用のカンマ区切り iOS ブリッジポート([parallel_execution_ja.md](./parallel_execution_ja.md)参照) |

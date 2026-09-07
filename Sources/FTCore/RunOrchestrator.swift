@@ -212,6 +212,10 @@ public struct RunSummary: Sendable {
     /// orchestrator 自身は performanceMode を知らないため常に false を返す —— measurementInvalid と
     /// 同じ理由で呼び手が自分で構築した RunSummary へ埋める
     public let performanceMode: Bool
+    /// この run で実際に効いていた FM 設定(RunMetaRecord.fmSettings にそのまま焼き込む)。
+    /// orchestrator 自身はプロファイルの実効値を知らないため常に nil を返す —— 呼び手
+    /// (ProfileRunner/ApiRunCommand)が resolve 済みの値で自分の RunSummary へ埋める
+    public let fmSettings: FMSettingsRecord?
 
     public init(total: Int, failed: Int, degradedWorkers: [String] = [],
                 freezeRetries: [String] = [],
@@ -219,7 +223,8 @@ public struct RunSummary: Sendable {
                 measurementInvalid: Bool = false, measurementInvalidReasons: [String] = [],
                 fmUnavailableScenarios: Int = 0,
                 workerAnomalies: [WorkerAnomalyRecord] = [],
-                performanceMode: Bool = false) {
+                performanceMode: Bool = false,
+                fmSettings: FMSettingsRecord? = nil) {
         self.total = total
         self.failed = failed
         self.degradedWorkers = degradedWorkers
@@ -231,6 +236,7 @@ public struct RunSummary: Sendable {
         self.fmUnavailableScenarios = fmUnavailableScenarios
         self.workerAnomalies = workerAnomalies
         self.performanceMode = performanceMode
+        self.fmSettings = fmSettings
     }
 
     /// FM の呼び出しが**全部失敗した**か(呼び出しが1件も無いときは false = 使っていないだけ)

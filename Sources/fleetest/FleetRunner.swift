@@ -27,7 +27,7 @@ enum FleetRunner {
     static func run(
         project: TestProject, fleetName: String, fleet: FleetProfileDocument,
         scenarios: [String], folders: [String],
-        heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
+        heal: Bool, noHeal: Bool, noFalsePositiveCheck: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         split: Bool, quiet: Bool, junit: String?
@@ -46,7 +46,8 @@ enum FleetRunner {
             return try await runSplit(
                 project: project, fleetName: fleetName, fleet: fleet,
                 scenarios: scenarios, folders: folders,
-                heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+                heal: heal, noHeal: noHeal, noFalsePositiveCheck: noFalsePositiveCheck,
+                noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                 fastInput: fastInput, enableAnimations: enableAnimations, performanceMode: performanceMode,
                 forceLock: forceLock, waitLock: waitLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                 remoteArtifacts: remoteArtifacts, quiet: quiet, junit: junit, junitTempDir: junitTempDir)
@@ -62,7 +63,8 @@ enum FleetRunner {
                     let args = buildArgs(
                         project: project.name, host: entry.host, profile: entry.profile,
                         scenarios: scenarios, folders: folders,
-                        heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+                        heal: heal, noHeal: noHeal, noFalsePositiveCheck: noFalsePositiveCheck,
+                        noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                         fastInput: fastInput, enableAnimations: enableAnimations,
                         performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
@@ -109,7 +111,7 @@ enum FleetRunner {
     private static func runSplit(
         project: TestProject, fleetName: String, fleet: FleetProfileDocument,
         scenarios: [String], folders: [String],
-        heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
+        heal: Bool, noHeal: Bool, noFalsePositiveCheck: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         quiet: Bool, junit: String?, junitTempDir: URL?
@@ -194,7 +196,8 @@ enum FleetRunner {
                     let args = buildArgs(
                         project: project.name, host: entry.host, profile: entry.profile,
                         scenarios: ids, folders: [],
-                        heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+                        heal: heal, noHeal: noHeal, noFalsePositiveCheck: noFalsePositiveCheck,
+                        noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                         fastInput: fastInput, enableAnimations: enableAnimations,
                         performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
@@ -405,7 +408,7 @@ enum FleetRunner {
         project: String, host: String, profile: String,
         deviceNames: [String] = [], deviceMachine: String? = nil,
         scenarios: [String], folders: [String],
-        heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
+        heal: Bool, noHeal: Bool, noFalsePositiveCheck: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         quiet: Bool, junitPath: String?, broadcast: Bool = false, runGroup: String? = nil
@@ -436,6 +439,7 @@ enum FleetRunner {
         if !folders.isEmpty { args += ["--folder"] + folders }
         if heal { args += ["--heal"] }
         if noHeal { args += ["--no-heal"] }
+        if noFalsePositiveCheck { args += ["--no-false-positive-check"] }
         if noLPT { args += ["--no-lpt"] }
         if let lptHistoryRuns { args += ["--lpt-history-runs", String(lptHistoryRuns)] }
         if fastInput { args += ["--fast-input"] }

@@ -9,6 +9,11 @@
 import XCTest
 @testable import FTCore
 
+/// この種のテストが finish() へ渡す fmSettings は値そのものを検査しないので固定の1値でよい
+private let testFMSettings = FMSettingsRecord(
+    fm: true, heal: false, falsePositiveCheck: false, screenLooksLike: true, triage: true,
+    ocr: true, ocrFalsePositiveCheck: true)
+
 final class ScenarioHostRunnerUnavailableTests: XCTestCase {
 
     private var savedPackageRoot: String?
@@ -47,7 +52,8 @@ final class ScenarioHostRunnerUnavailableTests: XCTestCase {
             recording: ScenarioRecording(recorder: recorder, worker: "ios:iPhone", title: "login")) {
             sink.append($0)
         }
-        recorder.finish(total: 1, passed: passed ? 1 : 0, failed: passed ? 0 : 1)
+        recorder.finish(total: 1, passed: passed ? 1 : 0, failed: passed ? 0 : 1,
+                        fmSettings: testFMSettings)
         return (passed, RunResultsStore.records(runDir: recorder.runDir), sink.events)
     }
 

@@ -19,7 +19,7 @@ final class RunGroupPlumbingTests: XCTestCase {
                 project: "E2E-Android", host: host, profile: "android",
                 deviceNames: ["Pixel 3a"], deviceMachine: host,
                 scenarios: ["A.S0010"], folders: [],
-                heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+                heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
                 fastInput: false, enableAnimations: false, performanceMode: false,
                 forceLock: false, waitLock: nil, remoteDir: nil, remoteTimeout: nil,
                 remoteArtifacts: "collect", quiet: false, junitPath: nil, runGroup: key)
@@ -36,7 +36,7 @@ final class RunGroupPlumbingTests: XCTestCase {
         let args = FleetRunner.buildArgs(
             project: "E2E-Android", host: "local", profile: "android",
             scenarios: [], folders: [],
-            heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+            heal: false, noHeal: false, noFalsePositiveCheck: false, noLPT: false, lptHistoryRuns: nil,
             fastInput: false, enableAnimations: false, performanceMode: false,
             forceLock: false, waitLock: nil, remoteDir: nil, remoteTimeout: nil,
             remoteArtifacts: "collect", quiet: false, junitPath: nil)

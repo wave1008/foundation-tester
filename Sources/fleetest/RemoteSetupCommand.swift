@@ -378,7 +378,8 @@ extension RemoteCommand {
                         project: resolvedProject, profile: profile,
                         scenarios: scenario.map { [$0] } ?? [], folders: [],
                         deviceNames: scopedNames, deviceMachine: scopedHost,
-                        heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+                        heal: false, noHeal: false, noFalsePositiveCheck: false,
+                        noLPT: false, lptHistoryRuns: nil,
                         fastInput: false, enableAnimations: false, performanceMode: false,
                         localJUnitPath: nil, remoteTimeoutSeconds: nil)
                     if exitCode == 0 {

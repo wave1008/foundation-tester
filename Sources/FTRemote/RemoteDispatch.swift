@@ -579,7 +579,8 @@ public enum RemoteRunArgs {
     public static func build(project: String, profile: String,
                              scenarios: [String], folders: [String],
                              deviceNames: [String] = [], deviceMachine: String? = nil,
-                             heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
+                             heal: Bool, noHeal: Bool, noFalsePositiveCheck: Bool,
+                             noLPT: Bool, lptHistoryRuns: Int?,
                              fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
                              broadcast: Bool = false,
                              remoteJUnitPath: String?,
@@ -611,6 +612,9 @@ public enum RemoteRunArgs {
         // `--heal` だけ中継すると、ヒールを止めたつもりでリモートはプロファイルの既定で走る
         // (`ProfileRunner.healOverride` は nil = 既定・false = 明示 OFF を区別する)
         if noHeal { args.append("--no-heal") }
+        // 中継しないと、偽陽性検証を切ったつもりでリモートはプロファイルの既定(true)で走る
+        // (--no-heal と同じ罠)
+        if noFalsePositiveCheck { args.append("--no-false-positive-check") }
         if noLPT { args.append("--no-lpt") }
         if let lptHistoryRuns { args += ["--lpt-history-runs", String(lptHistoryRuns)] }
         if fastInput { args.append("--fast-input") }

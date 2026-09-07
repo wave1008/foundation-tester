@@ -25,6 +25,26 @@ enum ProfileRunner {
         return nil
     }
 
+    /// CLI の `--heal`/`--no-heal`/`--no-false-positive-check` を適用した実効 FM 設定の組み立て。
+    /// **デバイスが要る run から切り出した純粋関数**(`ProfileRunnerFMSettingsTests` が固定する)。
+    /// `--no-false-positive-check` は否定形しか無い(プロファイルの既定が true なので打ち消す口
+    /// だけでよい。`--heal`/`--no-heal` と違い両立チェックは要らない)。**filteringDevices/
+    /// limitingDevices/broadcast は fm/ocr に触れない**ので、呼び出し側は devices を絞る前の
+    /// `ResolvedProfile` からこれを一度だけ計算して使い回せる
+    static func effectiveFMSettings(
+        resolved: ResolvedProfile, healOverride: Bool?, noFalsePositiveCheck: Bool
+    ) -> (fm: FMConfig, record: FMSettingsRecord) {
+        var fm = resolved.fm
+        if healOverride == true { fm.heal = fm.enabled }
+        if healOverride == false { fm.heal = false }
+        if noFalsePositiveCheck { fm.falsePositiveCheck = false }
+        let record = FMSettingsRecord(
+            fm: fm.enabled, heal: fm.heal, falsePositiveCheck: fm.falsePositiveCheck,
+            screenLooksLike: fm.screenLooksLike, triage: fm.triage,
+            ocr: resolved.ocr, ocrFalsePositiveCheck: resolved.ocrFalsePositiveCheck)
+        return (fm, record)
+    }
+
     /// 戻り値: 実行サマリ(失敗数+劣化ワーカー)
     /// - lpt: LPT 投入順を使うか。並べ替えは defaultPlatform が確定してからでないと
     ///   別 platform の実績で並べてしまうため、この関数の中で行う(呼び出し側では順序を触らない)。
@@ -32,7 +52,8 @@ enum ProfileRunner {
     ///   (`ScenarioDispatch.broadcast`)。変わるのは台数を絞らないことと分配だけで、供給・
     ///   インストール・フック(run で1回)・スタッガ・復帰・レポートは通常 run と同じ経路
     static func run(project: TestProject, profileName: String, items rawItems: [ScenarioRunItem],
-                    healOverride: Bool?, reportDirOverride: String?,
+                    healOverride: Bool?, noFalsePositiveCheck: Bool = false,
+                    reportDirOverride: String?,
                     quiet: Bool = false, lpt: Bool = true,
                     lptHistoryRuns: Int = LPTOrdering.defaultHistoryRuns,
                     performanceMode: Bool = false,
@@ -81,6 +102,10 @@ enum ProfileRunner {
                 "\(scope) matched no device in run profile \(profileName)"
                 + " (available: \(resolvedAll.devices.map(\.name).joined(separator: ", ")))")
         }
+        // **filteringDevices/limitingDevices/broadcast は fm/ocr に触れない**ので、devices を
+        // 絞る前のこの時点で計算して 0 件早期リターン・本編の両方で使う
+        let (fm, fmSettings) = Self.effectiveFMSettings(
+            resolved: full, healOverride: healOverride, noFalsePositiveCheck: noFalsePositiveCheck)
         // OS 対象外(`@TestClass(platform:)` / `@Test(platform:)` がこの run に無い OS を指す)は
         // **キューへ入れる前に外す** —— 入れると RunOrchestrator の「担当ワーカーなし」に落ち、
         // 意図された対象外が失敗として数えられる(PlatformApplicability の宣言)。
@@ -105,7 +130,8 @@ enum ProfileRunner {
         }
         // 全部が対象外ならデバイスを起こす意味がない(0 失敗で終える = 正しく緑)
         if items.isEmpty {
-            return RunSummary(total: 0, failed: 0, performanceMode: performanceMode)
+            return RunSummary(total: 0, failed: 0, performanceMode: performanceMode,
+                              fmSettings: fmSettings)
         }
 
         // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices の宣言参照)。
@@ -140,11 +166,8 @@ enum ProfileRunner {
         defer { RunHookRunner.end(hookSession) { ConsoleOut.out($0) } }
 
 
-        // CLI の --heal override は master(fm.enabled)が有効な場合のみ heal を ON にする。
-        // healOverride==false は明示 OFF、nil は profile の値をそのまま使う
-        var fm = resolved.fm
-        if healOverride == true { fm.heal = fm.enabled }
-        if healOverride == false { fm.heal = false }
+        // fm は上(full 確定直後)で計算済み。filteringDevices/limitingDevices/broadcast は
+        // devices だけを変えるので resolved.fm も同じ値のまま(再計算しない)
         await Self.warnIfFMDegraded(fm: fm) { ConsoleOut.out($0) }
         let reportDir = reportDirOverride.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
         if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
@@ -472,7 +495,8 @@ enum ProfileRunner {
                           measurementInvalidReasons: validity.reasons,
                           fmUnavailableScenarios: finalSummary.fmUnavailableScenarios,
                           workerAnomalies: finalSummary.workerAnomalies,
-                          performanceMode: performanceMode)
+                          performanceMode: performanceMode,
+                          fmSettings: fmSettings)
     }
 
     /// FM を使う run の開始前に、FM が**本当に呼べるか**を確かめて警告する。

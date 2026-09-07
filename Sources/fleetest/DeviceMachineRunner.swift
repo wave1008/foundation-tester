@@ -57,7 +57,7 @@ enum DeviceMachineRunner {
     static func run(
         project: TestProject, profileName: String, groups: [Group],
         scenarios: [String], folders: [String],
-        heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
+        heal: Bool, noHeal: Bool, noFalsePositiveCheck: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         quiet: Bool, junit: String?, broadcast: Bool = false
@@ -130,7 +130,8 @@ enum DeviceMachineRunner {
                         project: project.name, host: group.machineLabel, profile: profileName,
                         deviceNames: group.deviceNames, deviceMachine: group.machineLabel,
                         scenarios: ids, folders: [],
-                        heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+                        heal: heal, noHeal: noHeal, noFalsePositiveCheck: noFalsePositiveCheck,
+                        noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                         fastInput: fastInput, enableAnimations: enableAnimations,
                         performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,

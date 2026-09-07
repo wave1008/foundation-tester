@@ -1,6 +1,11 @@
 import XCTest
 @testable import FTCore
 
+/// この種のテストが finish() へ渡す fmSettings は値そのものを検査しないので固定の1値でよい
+private let testFMSettings = FMSettingsRecord(
+    fm: true, heal: false, falsePositiveCheck: false, screenLooksLike: true, triage: true,
+    ocr: true, ocrFalsePositiveCheck: true)
+
 final class RunResultsStoreTests: XCTestCase {
     var repoRoot: URL!
     var project: TestProject!
@@ -425,7 +430,7 @@ final class RunResultsStoreTests: XCTestCase {
         let skippedRecord = skippedData.flatMap { try? JSONDecoder().decode(ScenarioRunRecord.self, from: $0) }
         XCTAssertEqual(skippedRecord?.failedSteps?.first?.description, "対象外")
 
-        recorder.finish(total: 4, passed: 1, failed: 3)
+        recorder.finish(total: 4, passed: 1, failed: 3, fmSettings: testFMSettings)
         let metaData = try? Data(contentsOf: runDir.appendingPathComponent("run.json"))
         let meta = metaData.flatMap { try? JSONDecoder().decode(RunMetaRecord.self, from: $0) }
         XCTAssertNotNil(meta?.finishedAt)
@@ -445,7 +450,7 @@ final class RunResultsStoreTests: XCTestCase {
             .flatMap { try? JSONDecoder().decode(RunMetaRecord.self, from: $0) }
         XCTAssertEqual(beginMeta?.issuer, expected)
 
-        recorder.finish(total: 1, passed: 1, failed: 0)
+        recorder.finish(total: 1, passed: 1, failed: 0, fmSettings: testFMSettings)
         let finishMeta = (try? Data(contentsOf: runDir.appendingPathComponent("run.json")))
             .flatMap { try? JSONDecoder().decode(RunMetaRecord.self, from: $0) }
         XCTAssertEqual(finishMeta?.issuer, expected)
@@ -463,7 +468,7 @@ final class RunResultsStoreTests: XCTestCase {
     /// 契約。RunRecorder.finish の "false は nil で渡す" を確かめる)
     func testFinishOmitsMeasurementInvalidKeysWhenValid() {
         let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
-        recorder.finish(total: 1, passed: 1, failed: 0)
+        recorder.finish(total: 1, passed: 1, failed: 0, fmSettings: testFMSettings)
         let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: recorder.runID)
         let raw = (try? Data(contentsOf: runDir.appendingPathComponent("run.json")))
             .flatMap { String(data: $0, encoding: .utf8) } ?? ""
@@ -480,7 +485,8 @@ final class RunResultsStoreTests: XCTestCase {
         let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
         recorder.finish(total: 4, passed: 3, failed: 1,
                         measurementInvalid: true,
-                        measurementInvalidReasons: ["2 lane(s) degraded or dropped during the run"])
+                        measurementInvalidReasons: ["2 lane(s) degraded or dropped during the run"],
+                        fmSettings: testFMSettings)
         let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: recorder.runID)
         let meta = (try? Data(contentsOf: runDir.appendingPathComponent("run.json")))
             .flatMap { try? JSONDecoder().decode(RunMetaRecord.self, from: $0) }

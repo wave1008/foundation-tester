@@ -570,6 +570,25 @@ struct ApiRunCommand: AsyncParsableCommand {
         let validity = MeasurementValidity.verdict(
             performanceMode: performanceMode,
             degradedWorkers: outcome.degradedWorkers, blankExclusions: outcome.blankExclusions)
+        // **`api run` に `--no-heal`/`--no-false-positive-check` は無い**(拡張はプロファイルを
+        // 編集させる面。RunCommandFlagParityTests の runOnly)ので、上書きは `--heal` の ON だけ
+        // (runWithProfile/runWithProfileParallel と同じ規則: false は resolved の値を維持)
+        let fmSettings: FMSettingsRecord
+        if let resolvedProfile {
+            var fm = resolvedProfile.fm
+            if heal { fm.heal = fm.enabled }
+            fmSettings = FMSettingsRecord(
+                fm: fm.enabled, heal: fm.heal, falsePositiveCheck: fm.falsePositiveCheck,
+                screenLooksLike: fm.screenLooksLike, triage: fm.triage,
+                ocr: resolvedProfile.ocr, ocrFalsePositiveCheck: resolvedProfile.ocrFalsePositiveCheck)
+        } else {
+            // runDirect と同じ FMConfig(ocr/ocrFalsePositiveCheck はこの経路に無く常に既定 true)
+            let fm = FMConfig(heal: heal)
+            fmSettings = FMSettingsRecord(
+                fm: fm.enabled, heal: fm.heal, falsePositiveCheck: fm.falsePositiveCheck,
+                screenLooksLike: fm.screenLooksLike, triage: fm.triage,
+                ocr: true, ocrFalsePositiveCheck: true)
+        }
         recorder?.finish(total: selected.count, passed: outcome.passed, failed: outcome.failed,
                          degradedWorkers: outcome.degradedWorkers,
                          freezeRetries: outcome.freezeRetries,
@@ -577,7 +596,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                          blankExclusions: outcome.blankExclusions,
                          measurementInvalid: validity.invalid,
                          measurementInvalidReasons: validity.reasons,
-                         workerAnomalies: outcome.workerAnomalies)
+                         workerAnomalies: outcome.workerAnomalies,
+                         fmSettings: fmSettings)
         if !outcome.degradedWorkers.isEmpty {
             logStderr("⚠️ Degraded or dropped workers (\(outcome.degradedWorkers.count)):")
             for entry in outcome.degradedWorkers { logStderr("   - \(entry)") }

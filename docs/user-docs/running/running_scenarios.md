@@ -25,6 +25,7 @@ swift run fleetest run --profile ios
 | `--folder <folder>` | Scenario folders to run (subfolders directly under `scenarios/`). Repeatable; combinable with `--scenario`/`--failed` |
 | `--failed` | Run only the scenarios that failed last time (results are recorded in `.fleetest/last-results/` on every run) |
 | `--heal` / `--no-heal` | Force self-healing on/off, overriding the run profile's `heal` setting |
+| `--no-false-positive-check` | Turn off the occlusion-guard false-positive check for this run, overriding the run profile's `falsePositiveCheck` setting (no positive counterpart — the profile default is already `true`) |
 | `--dry-run` | Validate steps without touching a device (see [dry_run.md](./dry_run.md)) |
 | `--report-dir <dir>` | Directory to write reports to (default: `TestProjects/<name>/reports`) |
 | `--ports <ports>` | Comma-separated bridge ports for manual parallel iOS runs (see [parallel_execution.md](./parallel_execution.md)) |

@@ -133,6 +133,21 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | guardSkipped | Int? | `guarded` のうち、FM が判定を返せず(死活・ブレーカ・直列化待ち)素通りした回(`visibility-guard-skipped`)。**`guarded` が1件以上ある run では、0件でも必ず書く**(欄が無い=観測なし、0=観測したが起きなかった、を混ぜない)。`guarded` が省略された run では同じく省略 |
 | guardStaleFrame | Int? | `guarded` のうち、絵が古いまま撮り直しても stale で素通りした回(`stale-screenshot`)。`guardSkipped` と同じ 0/nil の規律 |
 | runGroup | String? | **同じ実行から分かれた run を束ねる鍵**。デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run(別 runID・別 machine・リモートは向こうの時計)になるので、`profile` と開始時刻では同じ実行かどうか決められない。ファンアウトの親が1回だけ発行し、手元の子にもリモートの子にも同じ値が入る。**単機の run と 2026-08-26 より前の記録では欠落**(束ねる相手が居ない) |
+| fmSettings | FMSettingsRecord? | **その run で実際に効いていた FM 設定**(プロファイルの値そのものではなく、`--heal`/`--no-heal`/`--no-false-positive-check` 等の CLI 上書きを反映した後の実効値)。下記の7フィールドを常に持つ。**欄が無い = この版より前の記録**であって、FM が無効だった意味ではない(fmDead 等と同じく「無い」と「false」を混ぜない) |
+
+### fmSettings(`FMSettingsRecord`)
+
+**7つのフィールドは常に明示的に書く**(true/false のどちらも省略しない)。`ocr`/`ocrFalsePositiveCheck` は `FMConfig` の外(実行プロファイルの独立した兄弟キー)だが、記録上はここへまとめてある。
+
+| フィールド | 型 | 意味 |
+|---|---|---|
+| fm | Bool | FM 機能全体の親スイッチの実効値 |
+| heal | Bool | FM によるロケータ自己修復の実効値 |
+| falsePositiveCheck | Bool | occlusion-guard(偽陽性検証)の実効値 |
+| screenLooksLike | Bool | `screenLooksLike` の実効値 |
+| triage | Bool | 失敗時トリアージの実効値 |
+| ocr | Bool | OCR 機能全体の親スイッチの実効値 |
+| ocrFalsePositiveCheck | Bool | OCR を使ったテキストの偽陽性検証の実効値(`ocr` を掛けた後の値) |
 
 ### host-metrics.ndjson の FM 欄
 
