@@ -352,10 +352,11 @@ public final class StepExecutor {
     /// [PoC occlusion-guard] 事前フィルタの閾値。対象 frame 領域の輝度 stddev がこの値以上なら
     /// 「明瞭にインクあり=見えている」とみなし FM を省略する(疑いのある低インク領域だけ FM へ回す)。
     /// 単位はスクショの輝度分散(0〜約128)。実測(合成フィクスチャ)で可視 stddev≳25 / 覆い・空・減光
-    /// stddev≲8 に分離するため既定 12。0 にすると常に FM を呼ぶ(ゲート無効)。
+    /// stddev≲8 に分離するため既定 12。0 にするとインクでは省かない(その先の Tier-2 OCR は通る)。
     public var occlusionInkThreshold: Double
     /// [occlusion-guard Tier-2] Vision OCR ゲートの動作モード。既定は環境変数 `FT_OCCLUSION_OCR`
-    /// から決まる(`RegionText.mode` 参照。既定 off の根拠もそちら)。テストから直接差し替えられる
+    /// から決まる(`RegionText.mode` 参照。**既定 on**・殺しスイッチは `FT_OCCLUSION_OCR=0`)。
+    /// テストから直接差し替えられる
     public var occlusionOCRMode: RegionTextGateMode
     /// [occlusion-guard] スクショ再利用キャッシュ。操作を挟まない連続ガード(exist を並べる等)で
     /// 直近のスクショを使い回し、往復(~125ms)を省く。無効化は action/performCustom(launch/wait)/
@@ -536,8 +537,6 @@ public final class StepExecutor {
         self.occlusionGuard = occlusionGuard
         self.occlusionInkThreshold = occlusionInkThreshold
         self.occlusionOCRMode = occlusionOCRMode
-        // Vision のモデルの初回ロード(実測 25.2s)をガードが撃たれる前に背景で払う
-        RegionText.prewarmIfNeeded(mode: occlusionOCRMode)
         self.occlusionGuardEnabled = occlusionGuardEnabled
         self.screenLooksLikeEnabled = screenLooksLikeEnabled
     }

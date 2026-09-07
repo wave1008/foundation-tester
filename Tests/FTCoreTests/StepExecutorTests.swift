@@ -599,11 +599,22 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(delegate.visibleCalls, 1, "off では OCR に関わらず FM を呼ぶはず")
     }
 
-    /// 生成の時点で Vision の暖機を頼む(最初の read だけ 25.2 秒かかるのを隠す)
-    func testStepExecutorRequestsOCRPrewarmWhenGateIsActive() {
+    /// 暖機を頼むのは**ガードが実際に走る回**(生成のたびに頼むと、ガードが一度も撃たれない
+    /// executor でも Vision のモデルを読み込む)
+    func testOCRPrewarmIsRequestedWhenTheGuardRuns() async throws {
+        let log = CallLog()
+        let label = "こんにちは"
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[screenFillingTextElement(label: label)]],
+                                    screenshots: [screenFillingTextPNG(label)])
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true),
+                                    occlusionInkThreshold: 1000, isAndroid: false)
+        executor.occlusionOCRMode = .on
         let before = RegionText.prewarmRequestCount
-        _ = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()),
-                         occlusionOCRMode: .on, isAndroid: false)
+        XCTAssertEqual(RegionText.prewarmRequestCount, before, "生成だけでは暖機を頼まない")
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+        _ = await executor.execute(step)
         XCTAssertGreaterThan(RegionText.prewarmRequestCount, before)
     }
 

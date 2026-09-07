@@ -55,18 +55,22 @@ public enum OcclusionCorpusDump {
         pruneOldDumps(in: dir)
 
         let stamp = Self.stamp()
-        let pngURL = dir.appendingPathComponent("\(stamp).png")
+        let pngURL = dir.appendingPathComponent("\(Self.filePrefix)\(stamp).png")
         guard let dst = CGImageDestinationCreateWithURL(
             pngURL as CFURL, UTType.png.identifier as CFString, 1, nil) else { return }
         CGImageDestinationAddImage(dst, crop, nil)
         guard CGImageDestinationFinalize(dst) else { return }
 
         guard let json = try? JSONEncoder().encode(entry) else { return }
-        try? json.write(to: dir.appendingPathComponent("\(stamp).json"))
+        try? json.write(to: dir.appendingPathComponent("\(Self.filePrefix)\(stamp).json"))
     }
 
+    /// 自分が書いたファイルの目印。**掃除はこの接頭辞のものだけ**を対象にする
+    /// (置き場を環境変数で差し替えられるので、他人のファイルを消さないため)
+    static let filePrefix = "crop-"
+
     private static func directory(environment: [String: String]) -> URL? {
-        if let dir = environment["FT_OCCLUSION_CORPUS_DIR"] {
+        if let dir = environment["FT_OCCLUSION_CORPUS_DIR"], !dir.isEmpty {
             return URL(fileURLWithPath: dir)
         }
         return FileManager.default.homeDirectoryForCurrentUser
@@ -74,22 +78,15 @@ public enum OcclusionCorpusDump {
     }
 
     private static func stamp() -> String {
-        // FM はホスト全体で直列化(約1回/秒)されるが並列ワーカーで同秒が起き得るため ms まで入れる
+        // **pid を入れる** —— 並列レーンは別プロセスで同じミリ秒に書き得る。時刻だけだと
+        // 片方の PNG ともう片方の JSON が対になり、コーパスが静かに嘘をつく
         let fmt = ISO8601DateFormatter()
         fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return fmt.string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let time = fmt.string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        return "\(time)-\(getpid())"
     }
 
     private static func pruneOldDumps(in dir: URL) {
-        let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
-        let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
-        for url in entries {
-            if let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
-                .contentModificationDate, mtime < cutoff {
-                try? fm.removeItem(at: url)
-            }
-        }
+        DumpRetention.prune(in: dir, prefix: filePrefix, extensions: ["png", "json"])
     }
 }

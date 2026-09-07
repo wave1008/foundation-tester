@@ -24,6 +24,37 @@ final class RegionTextTests: XCTestCase {
         XCTAssertTrue(RegionText.readable(expected: "Log In...", lines: [" log　in "]))
     }
 
+    /// 素の部分一致だと短い期待値が覆いの文字列に当たる(`exist("OK")` が「Cookieの設定」で素通り)。
+    /// ASCII の期待値は語境界を要求する
+    func testReadableRequiresAWordBoundaryForAsciiExpectations() {
+        XCTAssertFalse(RegionText.readable(expected: "OK", lines: ["Cookieの設定"]))
+        XCTAssertFalse(RegionText.readable(expected: "row", lines: ["arrow_40"]))
+        XCTAssertTrue(RegionText.readable(expected: "OK", lines: ["OK!"]))
+        XCTAssertTrue(RegionText.readable(expected: "row_40", lines: ["selected=row_40"]))
+    }
+
+    /// 日本語には語境界が無いので、CJK を含む期待値は素の含有のまま(折り返しも通る)
+    func testReadableKeepsPlainContainmentForJapanese() {
+        XCTAssertTrue(RegionText.readable(expected: "ログイン", lines: ["ログインしてください"]))
+    }
+
+    /// 拡大は画素の上限を超えたら諦める(読めるようにはならず、ビットマップだけが数十 MB になる)
+    func testEnlargeStopsAtThePixelCap() {
+        let small = makeCGImage(width: 200, height: 100)
+        XCTAssertEqual(RegionText.enlarged(small, by: 3).width, 600)
+        let large = makeCGImage(width: 2000, height: 1000)   // ×3 で 18 MP = 上限超え
+        XCTAssertEqual(RegionText.enlarged(large, by: 3).width, 2000)
+    }
+
+    private func makeCGImage(width: Int, height: Int) -> CGImage {
+        let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                            bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        return ctx.makeImage()!
+    }
+
     func testReadableFalseWhenExpectedIsEmpty() {
         XCTAssertFalse(RegionText.readable(expected: "   ", lines: ["ログイン"]))
     }

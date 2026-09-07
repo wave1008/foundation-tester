@@ -152,12 +152,15 @@ extension StepExecutor {
             }
         }
         // Tier-2(FM の手前): 期待テキストが Vision OCR で丸ごと読めれば見えている(FM を呼ばず素通り)。
-        // FM が反転した crop 167 枚全部で OCR も同じ結論(読めない)に到達し、所要は FM の 40〜80倍
-        // 速い(crop で p50 33ms)。既定 off の根拠(可視側コーパス未取得 = 見逃しを作りうる)は
-        // RegionText.mode のコメント参照。off のときはこの if を通らない = 従来の経路のまま
+        // 実 run で FM の段に届いた crop の 97% がここで片付く(p50 92ms。FM は 1.3〜2.8s)。
+        // **読めなかったことは反転の根拠にしない**(判定は必ず FM)。詳細は RegionText の
+        // コメントと docs/poc-fm-occlusion-guard.md §5.17。off のときはこの if を通らない
         var ocrReading: RegionText.Reading?
         var ocrReadable = false
         if occlusionOCRMode != .off {
+            // Vision のモデルの初回ロード(実測 25〜47s)は**ガードが実際に走る executor でだけ**払う
+            // (生成のたびに暖機すると、ガードが一度も撃たれない executor でもモデルを読み込む)
+            RegionText.prewarmIfNeeded(mode: occlusionOCRMode)
             let resolved = await RegionText.resolve(expected: expectedText, pngData: screenshot,
                                                     frame: element.frame, screen: screen)
             ocrReading = resolved?.reading

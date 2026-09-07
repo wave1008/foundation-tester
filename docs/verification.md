@@ -1568,6 +1568,17 @@ launchApp / appIs / removeApp / installApp / clearAppData すべてが実行プ�
 実データで1回動かすまで気付けなかった典型で、判定を「触る id の 2/3 以上が台帳に在るときだけ」へ
 直して 44 → 2 件になった。
 
+**OCR(occlusion-guard の Tier-2)の回帰は実 crop の固定コーパス**
+(`Tests/Fixtures/OcclusionCrops/` の 3 枚 + `manifest.json`。`RegionTextCorpusTests` が
+`swift test` で毎回走る):
+
+- 固定するのは**言語規則の効き目**(日本語モデルを載せると ASCII を誤読する)・**段ごとの読み取り**・
+  **はしごが撃つ回数**の3つ。認識レベルを fast に落とす / 言語補正を効かせる / 拡大を止める /
+  言語規則を壊す、のいずれの変異もこの 3 枚が落とす
+- **合成画像では代表できない**(6pt の合成文字は拡大すると悪化した = 実機の描画とは別物)。
+  crop は実 run の measure モード(`FT_OCCLUSION_OCR=measure`)から採る
+- Vision の**版は固定していない**ので、OS 更新で読みが変わればこのテストが落ちる(それが役目)
+
 **スナップショットの検知は dry-run では当てられない**(木が要る)。掃討は
 **`Tests/Fixtures/RealAppSnapshots/` に固定した実アプリのスナップショット**へ当てる
 (`SweepHarnessTests`。`swift test` で毎回走る):
@@ -2498,6 +2509,8 @@ RN のディープリンク不達を「JS 購読前の競合」と誤診し、�
 ## FM(Foundation Models)が全滅したら
 
 occlusion-guard・自己修復・screenLooksLike は FM 失敗時に nil を返して**素通りする**(呼び出し側が握りつぶす)。
+**OCR の段(Tier-2)があっても同じ** —— OCR は「読めたから見えている」= 素通りの根拠にしかならず、
+反転は必ず FM が決めるので、**FM が死んでいる間は誤った緑を1件も捕まえられない**。
 run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 JSON の `fm` フィールド、それに
 ステップ単位の `notes: ["visibility-guard-skipped"]`(occlusion-guard だけ)が手がかり。
 

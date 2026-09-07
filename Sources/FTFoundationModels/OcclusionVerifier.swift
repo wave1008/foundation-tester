@@ -223,7 +223,7 @@ public struct OcclusionVerifier {
     static func dump(crop: CGImage, expectedText: String) -> String? {
         let env = ProcessInfo.processInfo.environment["FT_OCCLUSION_DUMP_DIR"]
         if env == "off" { return nil }
-        let dir = env.map { URL(fileURLWithPath: $0) }
+        let dir = env.flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
             ?? FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Library/Logs/fleetest/occlusion")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -244,16 +244,8 @@ public struct OcclusionVerifier {
     }
 
     private static func pruneOldDumps(in dir: URL) {
-        let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
-        let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
-        for url in entries {
-            if let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
-                .contentModificationDate, mtime < cutoff {
-                try? fm.removeItem(at: url)
-            }
-        }
+        // 消すのは自分が書いた occlusion-<時刻>.png/.txt だけ(置き場は環境変数で差し替えられる)
+        DumpRetention.prune(in: dir, prefix: "occlusion-", extensions: ["png", "txt"])
     }
 
     static func cgImage(fromPNG data: Data) -> CGImage? {

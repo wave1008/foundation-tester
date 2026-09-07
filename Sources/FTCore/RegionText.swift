@@ -65,9 +65,15 @@ public enum RegionText {
         }
     }()
 
-    /// crop を整数倍に拡大する(補間は high)。倍率 1 なら元の画像をそのまま返す
-    private static func enlarged(_ image: CGImage, by factor: Int) -> CGImage {
-        guard factor > 1 else { return image }
+    /// 拡大後に許す画素数の上限。**根拠**: コーパスの crop は最大でも約 0.19 MP で、
+    /// 画面いっぱいの要素でも 3x 端末で約 3.2 MP。これを超える crop は文字がすでに十分大きく、
+    /// 拡大しても読めるようにはならない一方で、確保するビットマップだけが数十 MB になる
+    static let maxUpscaledPixels = 4_000_000
+
+    /// crop を整数倍に拡大する(補間は high)。倍率 1 と、上限を超える大きさなら元の画像を返す
+    static func enlarged(_ image: CGImage, by factor: Int) -> CGImage {
+        guard factor > 1, image.width * image.height * factor * factor <= maxUpscaledPixels
+        else { return image }
         let width = image.width * factor, height = image.height * factor
         guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
                                   bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
@@ -177,11 +183,36 @@ public enum RegionText {
     /// (部分的に覆われて残りだけ読めた回を「見えている」と通すと、guard の目的である
     /// 誤った緑を作るため)。confidence は判定に使わない(Vision の confidence は 0.3/0.5/1.0 に
     /// 飛び飛びで根拠のある閾値を置けない。読めた文字列そのもので判定する)。
+    /// **期待文字列が ASCII のときは語境界を要求する** —— 素の部分一致だと `exist("OK")` が
+    /// 覆いの「Cookieの設定」に当たって素通りする(短い期待値ほど当たりやすい)。
+    /// 日本語には語境界が無いので CJK を含む期待値は素の含有のまま。
+    /// **残る取りこぼし**: 折り返しを繋いだ文字列がたまたま期待値を作る形(`["row_4", "0 件"]`)。
+    /// 折り返しの連結は正当な用途なので消さない —— 誤る向きは見逃し(誤った緑)だけ。
     public static func readable(expected: String, lines: [String]) -> Bool {
         let needle = normalize(expected)
         guard !needle.isEmpty else { return false }
-        if normalize(lines.joined()).contains(needle) { return true }
-        return lines.contains { normalize($0).contains(needle) }
+        if contains(normalize(lines.joined()), needle) { return true }
+        return lines.contains { contains(normalize($0), needle) }
+    }
+
+    /// `needle` が ASCII だけなら**前後が英数でない位置**でのみ一致と見なす(語境界)。
+    private static func contains(_ haystack: String, _ needle: String) -> Bool {
+        guard needle.allSatisfy({ $0.isASCII }) else { return haystack.contains(needle) }
+        var searchStart = haystack.startIndex
+        while let found = haystack.range(of: needle, range: searchStart..<haystack.endIndex) {
+            let beforeIsWord = found.lowerBound > haystack.startIndex
+                && isWordCharacter(haystack[haystack.index(before: found.lowerBound)])
+            let afterIsWord = found.upperBound < haystack.endIndex
+                && isWordCharacter(haystack[found.upperBound])
+            if !beforeIsWord && !afterIsWord { return true }
+            guard found.lowerBound < haystack.endIndex else { break }
+            searchStart = haystack.index(after: found.lowerBound)
+        }
+        return false
+    }
+
+    private static func isWordCharacter(_ c: Character) -> Bool {
+        c.isASCII && (c.isLetter || c.isNumber)
     }
 
     /// NFKC 互換合成 → 空白(半角・全角・改行・タブ)除去 → 小文字化 → 末尾の省略記号
