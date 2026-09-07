@@ -415,6 +415,107 @@ test("リモートの実機は設定に関わらず MJPEG で張る — h264 を
   }
 });
 
+// --- run 中の台の配信退避(手元・リモート共通の inRun 信号) -----------------------------
+// occupiedMachines(機械単位。共有ランナーの dispatch.lock)と inRun(台単位。RunLease)は
+// 粒度が違う信号で、どちらか一方が立てば畳む。手元の台は machine が無く occupiedMachines では
+// 判定できないため、この信号が無いと「手元だけ run 中も配信が張りっぱなし」になる
+// (実測: 手元 8 台の stale-screenshot 注記がリモートの 5〜14 倍)。
+
+test("inRun:true の手元の台は配信を起こさない", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir();
+  const { deps } = makeDeps(binaryPath);
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([{ ...iosDevice, inRun: true }]);
+    assert.equal(await waitForArgv(dir, "fleetest-simstream", 300), undefined,
+      "run 中の台にヘルパーを起こしてはいけない");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("配信中の台が inRun:true になったら既存の配信を畳む", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir();
+  const { deps } = makeDeps(binaryPath);
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([iosDevice]);
+    // **ヘルパーが実際に起きるまで待つ**(spawn は非同期。待たずに下で argv を消すと
+    // まだ書かれていないファイルを消して落ちる)
+    assert.ok(await waitForArgv(dir, "fleetest-simstream"), "前提: run 開始前は配信が起きる");
+    controller.noteStreamRendered(iosDevice.id);
+    assert.equal(controller.isStreaming(iosDevice.id), true, "前提: run 開始前は配信中");
+
+    controller.applyDevices([{ ...iosDevice, inRun: true }]);
+    assert.equal(controller.isStreaming(iosDevice.id), false, "run 開始で配信が畳まれる");
+
+    // RunLease は pid 生存 + mtime 15 秒で自ら失効するので、run が終わって inRun が
+    // 外れれば次の applyDevices で自動的に配信へ戻る(解除に専用の手当ては要らない)
+    fs.rmSync(path.join(dir, "fleetest-simstream.argv"));
+    controller.applyDevices([iosDevice]);
+    assert.ok(await waitForArgv(dir, "fleetest-simstream"), "run 終了で配信が自動的に戻る");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// 陰性対照: inRun が false・欠落の台は従来どおり配信する(この変更が「常に畳む」側へ
+// 倒れていないことの確認)
+test("inRun:false・欠落の台は従来どおり配信する(陰性対照)", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir();
+  const { deps } = makeDeps(binaryPath);
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([{ ...iosDevice, inRun: false }]);
+    assert.ok(await waitForArgv(dir, "fleetest-simstream"), "inRun:false は配信する");
+    fs.rmSync(path.join(dir, "fleetest-simstream.argv"));
+
+    controller.setVisible(false);
+    controller.setVisible(true);
+    controller.applyDevices([{ id: "ios:no-inrun-field", name: "no-field", platform: "ios",
+      state: "connected", udid: iosDevice.udid, detail: "" }]);
+    assert.ok(await waitForArgv(dir, "fleetest-simstream"), "inRun 欠落は配信する");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// machine 単位の occupiedMachines と台単位の inRun は独立に効く(片方だけでも畳む)
+test("機械の占有(occupiedMachines)と台の inRun は独立に配信を畳む", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir(["fleetest-simstream", "fleetest"]);
+  const { deps } = makeDeps(binaryPath);
+  deps.getConfig = () => ({
+    binaryPath, iosStreamEnabled: true, androidStreamEnabled: false,
+    streamCodec: "h264", liveFps: 12, monitorMaxWidth: 960, project: "demo",
+  });
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    // occupiedMachines だけが立っている(inRun は無し) — 従来どおり畳む
+    controller.applyDevices([remoteDevice]);
+    assert.ok(await waitForArgv(dir, "fleetest"), "前提: 空いていれば配信する");
+    fs.rmSync(path.join(dir, "fleetest.argv"));
+    controller.setOccupiedMachines(new Set(["M1Max"]));
+    controller.applyDevices([remoteDevice]);
+    assert.equal(await waitForArgv(dir, "fleetest", 300), undefined,
+      "機械の占有だけでも畳む(この台の inRun は立っていない)");
+    controller.setOccupiedMachines(new Set());
+
+    // inRun だけが立っている(machine の占有は無し) — こちらも畳む
+    controller.applyDevices([remoteDevice]);
+    assert.ok(await waitForArgv(dir, "fleetest"), "前提: 解放されていれば配信する");
+    fs.rmSync(path.join(dir, "fleetest.argv"));
+    controller.applyDevices([{ ...remoteDevice, inRun: true }]);
+    assert.equal(await waitForArgv(dir, "fleetest", 300), undefined,
+      "台の inRun だけでも畳む(機械は占有されていない)");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("手元に配信ヘルパーが1つも無くてもリモートは配信できる", async () => {
   // fleetest だけ置く(simstream/androidstream/devicepoll は無い)
   const { dir, binaryPath } = makeMockBinaryDir(["fleetest"]);

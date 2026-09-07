@@ -11,8 +11,9 @@
 //     値は "wifi-disabled"|"clock-skew" 等。未知の文字列も受理して保持する)
 //     ("renderMode":"gpu"|"cpu"|null も同様。connected な Android エミュレータのみ設定されうる。
 //     ブート時固定のため接続中は変化しない値)
-//     ("inRun":bool は ApiMonitorCommand.swift の RunLease.isFresh 判定。`fleetest api run` が
-//     このデバイスを使用中なら true。null 化されないが読み手は欠落/非bool を false とみなす)
+//     ("inRun":bool は ApiMonitorCommand.swift の RunLease.isFresh 判定。供給元は RunLease で、
+//     `fleetest api run` と CLI の `fleetest run` の両方が書く(ProfileRunner.writeRunLease)ため
+//     どちらか使用中なら true。null 化されないが読み手は欠落/非bool を false とみなす)
 //     ("registered":bool は ApiMonitorCommand.determineStates(includeUnregistered:) が合成した
 //     マシンプロファイル未記載の起動中デバイスなら false。欠落/非boolは true とみなす)
 //   {"kind":"monitorFrame","device":"..","jpegBase64":"..","width":480,"height":1040}
@@ -69,8 +70,10 @@ export interface MonitorDevice {
   /** iOS ブリッジの実効ポート(connected のときのみ)。fleetest-devicepoll の --port に渡す。
    * Android・未接続は undefined(Swift は null を送るので正規化する)。 */
   readonly port?: number;
-  /** `fleetest api run` がこのデバイスを使用中か(ApiMonitorCommand.swift の RunLease.isFresh)。
-   * Swift は常に true/false を送るが、欠落・非 bool は false として扱う(isMonitorDevice が正規化)。 */
+  /** `fleetest api run` と CLI の `fleetest run` のどちらかがこのデバイスを使用中か
+   * (ApiMonitorCommand.swift の RunLease.isFresh。供給元は RunLease で両経路が書く=
+   * ProfileRunner.writeRunLease)。Swift は常に true/false を送るが、欠落・非 bool は
+   * false として扱う(isMonitorDevice が正規化)。 */
   readonly inRun?: boolean;
   /** このデバイスが画面録画中か。inRun と同じ契約(Swift は常に true/false を送るが、
    * 欠落・非 bool は false として扱う=isMonitorDevice が正規化。旧バイナリとの互換のため)。 */

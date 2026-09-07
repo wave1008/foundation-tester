@@ -156,10 +156,17 @@ export class MonitorDeviceStreamController {
       // codecError を受けたデバイスは設定値に関わらず mjpeg 固定(fallbackToMjpeg 参照)。
       const codec: "mjpeg" | "h264" = this.mjpegFallbackIds.has(device.id) ? "mjpeg" : config.streamCodec;
       const codecArgs = codec === "h264" ? ["--codec", "h264"] : [];
-      // **占有中の機械・他の発行者が配信中の台は起こさない**(共有ランナー。§18.2 M2)。
-      // qualifying に入れない = 既存のパイプラインも下の破棄ループが畳み、タイルは
-      // ポーリングのフレームで更新され続ける
+      // **占有中の機械・その台自身が run 中・他の発行者が配信中の台は起こさない**(共有ランナー。
+      // §18.2 M2)。occupiedMachines(機械単位。dispatch.lock)と inRun(台単位。RunLease)は
+      // 粒度が違う信号で、**どちらか一方が立てば畳む**(手元は machine 無しなので occupiedMachines
+      // では判定できず、inRun がその代わりになる)。qualifying に入れない = 既存のパイプラインも
+      // 下の破棄ループが畳み、タイルはポーリングのフレームで更新され続ける
       if (device.machine !== undefined && this.occupiedMachines.has(device.machine)) {
+        continue;
+      }
+      if (device.inRun === true) {
+        // RunLease は pid 生存 + mtime 15 秒で自ら失効する(解除条件はこの2つだけ)ので、
+        // run が死ねば次の applyDevices(最大 monitorInterval 秒後)で配信は自動的に戻る。
         continue;
       }
       if (device.streamedByOther === true) {
