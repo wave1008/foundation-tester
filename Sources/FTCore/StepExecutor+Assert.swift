@@ -151,6 +151,21 @@ extension StepExecutor {
                 return nil
             }
         }
+        // Tier-2(FM の手前): 期待テキストが Vision OCR で丸ごと読めれば見えている(FM を呼ばず素通り)。
+        // FM が反転した crop 167 枚全部で OCR も同じ結論(読めない)に到達し、所要は FM の 40〜80倍
+        // 速い(crop で p50 33ms)。既定 off の根拠(可視側コーパス未取得 = 見逃しを作りうる)は
+        // RegionText.mode のコメント参照。off のときはこの if を通らない = 従来の経路のまま
+        var ocrReading: RegionText.Reading?
+        var ocrReadable = false
+        if occlusionOCRMode != .off {
+            let resolved = await RegionText.resolve(expected: expectedText, pngData: screenshot,
+                                                    frame: element.frame, screen: screen)
+            ocrReading = resolved?.reading
+            ocrReadable = resolved?.readable ?? false
+            if occlusionOCRMode == .on, ocrReadable {
+                return nil
+            }
+        }
         // 同じスクショ(バイト同一)・同じ frame・同じ期待文字列なら FM に訊き直さない
         // (VisibilityVerdictMemo。答えは同じで、払うのは FM の数秒だけ)
         let memoKey = VisibilityVerdictMemo.key(frame: element.frame, screen: screen, expectedText: expectedText)
@@ -167,10 +182,22 @@ extension StepExecutor {
                 // 観測できず、知っているのはここだけ。結果 JSON の notes から run 横断で数えられる。
                 // **控えない**(次は必ず訊き直す)
                 noteCodesThisStep.insert(.visibilityGuardSkipped)
+                if occlusionOCRMode == .measure {
+                    dumpOCRCorpus(tier: geo ? "geo" : "ink", sd: sd, ocrReading: ocrReading,
+                                  ocrReadable: ocrReadable, expectedText: expectedText,
+                                  screenshot: screenshot, element: element, screen: screen,
+                                  fmVisible: nil, fmState: nil, fmObserved: nil)
+                }
                 return nil
             }
             visibilityVerdictMemo.store(imageHash: memoImageHash, key: memoKey, verdict: fresh)
             v = fresh
+        }
+        if occlusionOCRMode == .measure {
+            dumpOCRCorpus(tier: geo ? "geo" : "ink", sd: sd, ocrReading: ocrReading,
+                          ocrReadable: ocrReadable, expectedText: expectedText,
+                          screenshot: screenshot, element: element, screen: screen,
+                          fmVisible: v.visible, fmState: v.state, fmObserved: v.observedText)
         }
         // launch 直後(noteAppLaunched)は launch storyboard(全画素同一 = crop の stdDev が
         // 厳密に 0)を実 occlusion と見分けられない。門は一度きり —— **可視・不可視の
@@ -194,6 +221,20 @@ extension StepExecutor {
         // 覆われていると答えた」= 純粋な判定誤り。これが無くて切り分けに窮した。
         return .failed("false positive (occlusion): present in the tree but not visually visible [\(v.state)] \(v.reason)"
                        + " observed=\"\(v.observedText)\"")
+    }
+
+    /// [occlusion-guard Tier-2 measure] OCR と FM の判定を並べてコーパスへ書く。run の成否には
+    /// 影響しない(`OcclusionCorpusDump.write` が書き出し失敗を握りつぶす)
+    private func dumpOCRCorpus(tier: String, sd: Double?, ocrReading: RegionText.Reading?,
+                               ocrReadable: Bool, expectedText: String, screenshot: Data,
+                               element: ElementInfo, screen: FTRect,
+                               fmVisible: Bool?, fmState: String?, fmObserved: String?) {
+        let entry = OcclusionCorpusDump.Entry(
+            expectedText: expectedText, tier: tier, inkStdDev: sd,
+            ocrLines: ocrReading?.lines ?? [], ocrReadable: ocrReadable,
+            ocrMs: ocrReading?.elapsedMs ?? 0, fmVisible: fmVisible, fmState: fmState,
+            fmObserved: fmObserved)
+        OcclusionCorpusDump.write(pngData: screenshot, frame: element.frame, screen: screen, entry: entry)
     }
 
     /// 失敗メッセージに「対象を覆っているアプリ内要素」を添える(あれば)。

@@ -354,6 +354,9 @@ public final class StepExecutor {
     /// 単位はスクショの輝度分散(0〜約128)。実測(合成フィクスチャ)で可視 stddev≳25 / 覆い・空・減光
     /// stddev≲8 に分離するため既定 12。0 にすると常に FM を呼ぶ(ゲート無効)。
     public var occlusionInkThreshold: Double
+    /// [occlusion-guard Tier-2] Vision OCR ゲートの動作モード。既定は環境変数 `FT_OCCLUSION_OCR`
+    /// から決まる(`RegionText.mode` 参照。既定 off の根拠もそちら)。テストから直接差し替えられる
+    public var occlusionOCRMode: RegionTextGateMode
     /// [occlusion-guard] スクショ再利用キャッシュ。操作を挟まない連続ガード(exist を並べる等)で
     /// 直近のスクショを使い回し、往復(~125ms)を省く。無効化は action/performCustom(launch/wait)/
     /// poll 待機、および 200ms TTL(下記 guardScreenshot)。静止画面前提のため TTL で staleness を上限。
@@ -511,6 +514,7 @@ public final class StepExecutor {
                 typeDriverGestures: Set<String> = [],
                 delegate: ReplayDelegate? = nil, healingEnabled: Bool = false,
                 occlusionGuard: Bool = false, occlusionInkThreshold: Double = 12,
+                occlusionOCRMode: RegionTextGateMode = RegionText.mode(environment: ProcessInfo.processInfo.environment),
                 occlusionGuardEnabled: Bool = true, screenLooksLikeEnabled: Bool = true,
                 releasesScrollTouch: Bool = false,
                 isAndroid: Bool,
@@ -531,6 +535,9 @@ public final class StepExecutor {
         self.healingEnabled = healingEnabled
         self.occlusionGuard = occlusionGuard
         self.occlusionInkThreshold = occlusionInkThreshold
+        self.occlusionOCRMode = occlusionOCRMode
+        // Vision のモデルの初回ロード(実測 25.2s)をガードが撃たれる前に背景で払う
+        RegionText.prewarmIfNeeded(mode: occlusionOCRMode)
         self.occlusionGuardEnabled = occlusionGuardEnabled
         self.screenLooksLikeEnabled = screenLooksLikeEnabled
     }

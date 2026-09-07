@@ -1,5 +1,6 @@
 import XCTest
 import CoreGraphics
+import CoreText
 import ImageIO
 import UniformTypeIdentifiers
 @testable import FTCore
@@ -495,6 +496,115 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("マスタースイッチ OFF ならツリー一致だけで pass のはず"); return
         }
         XCTAssertEqual(delegate.visibleCalls, 0, "マスタースイッチ OFF で FM を呼んではいけない")
+    }
+
+    // MARK: - occlusion-guard Tier-2(Vision OCR)の結線
+
+    /// 要素が画面全体を覆う frame(=FakeAppDriver の screen と同じ 400x800)にすると、
+    /// OcclusionCrop.rect の適応余白は画像境界にクランプされて常に全画面が crop になる。
+    /// テキストをどこに描いても crop に収まるので、CGContext の座標系(原点位置)を気にせず書ける。
+    private func screenFillingTextElement(label: String) -> ElementInfo {
+        ElementInfo(ref: 1, type: "staticText", identifier: "msg", label: label, value: nil,
+                   placeholder: nil, enabled: true,
+                   frame: FTRect(x: 0, y: 0, width: 400, height: 800), depth: 0)
+    }
+
+    /// 400x800 の白地に指定文字列を描いた PNG(全画面をほぼ白が占めるので Tier-1 のインク足切りは
+    /// 素通りしない = Tier-2 まで確実に到達する)。AppKit(WindowServer)には依存しない
+    private func screenFillingTextPNG(_ text: String) -> Data {
+        let width = 400, height = 800
+        guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                                  bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            fatalError("テスト用 CGContext 生成に失敗")
+        }
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let font = CTFontCreateWithName("Helvetica" as CFString, 40, nil)
+        let attributed = NSAttributedString(string: text, attributes: [
+            .font: font,
+            .foregroundColor: CGColor(red: 0, green: 0, blue: 0, alpha: 1),
+        ])
+        let line = CTLineCreateWithAttributedString(attributed)
+        ctx.textPosition = CGPoint(x: 20, y: CGFloat(height) / 2)
+        CTLineDraw(line, ctx)
+        guard let image = ctx.makeImage() else { fatalError("テスト用 CGImage 生成に失敗") }
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            output, UTType.png.identifier as CFString, 1, nil) else {
+            fatalError("テスト用 PNG destination 生成に失敗")
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else { fatalError("テスト用 PNG 書き出しに失敗") }
+        return output as Data
+    }
+
+    /// occlusionOCRMode=.on: OCR が期待テキストを丸ごと読めた回は FM(delegate)を呼ばず素通りする。
+    /// delegate は visible:false を返す設定にしてある —— 呼ばれていたら失敗へ反転するはずなので、
+    /// pass ならワイヤが正しく OCR で降りたことの強い証拠になる
+    func testOcclusionOCRModeOnSkipsFMWhenReadable() async throws {
+        let log = CallLog()
+        let label = "こんにちは"
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[screenFillingTextElement(label: label)]],
+                                    screenshots: [screenFillingTextPNG(label)])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate,
+                                    occlusionInkThreshold: 1000, isAndroid: false)
+        executor.occlusionOCRMode = .on
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("OCR で読めた回は FM を呼ばず pass のはず"); return
+        }
+        XCTAssertEqual(delegate.visibleCalls, 0, "OCR が読めたら FM を呼んではいけない")
+    }
+
+    /// occlusionOCRMode=.measure: OCR が読めても素通りさせず必ず FM に訊く(コーパス採取のため)
+    func testOcclusionOCRModeMeasureStillCallsFM() async throws {
+        let log = CallLog()
+        let label = "こんにちは"
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[screenFillingTextElement(label: label)]],
+                                    screenshots: [screenFillingTextPNG(label)])
+        let delegate = FakeVisibilityDelegate(visible: true)
+        let executor = StepExecutor(driver: primary, delegate: delegate,
+                                    occlusionInkThreshold: 1000, isAndroid: false)
+        executor.occlusionOCRMode = .measure
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        _ = await executor.execute(step)
+        XCTAssertEqual(delegate.visibleCalls, 1, "measure は OCR が読めても FM を呼ぶはず")
+    }
+
+    /// occlusionOCRMode=.off(殺しスイッチ): OCR を通らず従来どおり FM だけで判定する
+    func testOcclusionOCRModeOffNeverConsultsOCR() async throws {
+        let log = CallLog()
+        let label = "こんにちは"
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[screenFillingTextElement(label: label)]],
+                                    screenshots: [screenFillingTextPNG(label)])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate,
+                                    occlusionInkThreshold: 1000, isAndroid: false)
+        executor.occlusionOCRMode = .off
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        guard case .failed = await executor.execute(step).status else {
+            XCTFail("off は OCR で素通りせず、従来どおり FM の判定(visible:false)で失敗するはず"); return
+        }
+        XCTAssertGreaterThanOrEqual(delegate.visibleCalls, 1, "off では OCR に関わらず FM を呼ぶはず")
+    }
+
+    /// 生成の時点で Vision の暖機を頼む(最初の read だけ 25.2 秒かかるのを隠す)
+    func testStepExecutorRequestsOCRPrewarmWhenGateIsActive() {
+        let before = RegionText.prewarmRequestCount
+        _ = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()),
+                         occlusionOCRMode: .on, isAndroid: false)
+        XCTAssertGreaterThan(RegionText.prewarmRequestCount, before)
     }
 
     // MARK: - guardEntered(occlusion-guard がどれだけ効いたかの分母。RunRecord の guarded 集計元)
@@ -1506,7 +1616,10 @@ final class StepExecutorTests: XCTestCase {
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
                                     screenshots: [Self.blankPNG, Self.nearBlankPNG])
         let delegate = SequenceVisibilityDelegate([false, true])   // 覆い → 可視
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        // このテストが測るのは poll の意味論(覆い→可視で pass)なので OCR は通さない ——
+        // 通すと合否が Vision の所要(並列テストの負荷で動く)に依存する
+        let executor = StepExecutor(driver: primary, delegate: delegate,
+                                    occlusionOCRMode: .off, isAndroid: false)
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 3, occlusionGuard: true)
 

@@ -563,6 +563,17 @@
   `RefGuard`/MCP は転送する。別々に持つと**同じ画面で MCP と DSL の判断が食い違う**
   (実例は maintainer-notes §5)。移設したときは**掃討ゲート(`SweepHarnessTests`)が
   実アプリのコーパスで等価性を検証する**
+- **occlusion-guard の OCR 段(`FTCore.RegionText`)は「素通りの根拠」にしかしない** —— 期待テキストが
+  **丸ごと**読めた回だけ FM を省く(既定 on・殺しスイッチ `FT_OCCLUSION_OCR=0`・`measure` で
+  コーパス採取)。**読めなかったことを反転の根拠にしない** —— 実測で 17% が可視なテキストの
+  1文字誤読(`swipe=down`→`swipe=aown`)で、反転に使うと誤った赤になる。反転の判定は必ず FM。
+  **読ませる言語は期待文字列から決める**(`languages(for:)`。ASCII の期待値に日本語モデルを
+  載せると `swipe=down`→`swipe=aown` と誤読し、所要も 2.3 倍になる)。読めなければ crop を
+  拡大して読み直す(`upscaleLadder = [1,2,3]`。×4 で悪化するので上げ続けない。**1行も読めない
+  crop は段を上げない** = 覆いを待つ poll 周回で毎周3回払わない)。**Vision の版は固定しない**
+  (OS の既定に従う)—— 版・認識レベル・言語補正・言語規則が動いたことの検出は、実 crop の固定
+  コーパス `Tests/Fixtures/OcclusionCrops/` が読みと撃つ回数を等号で固定して担う。
+  crop 矩形は `FTCore.OcclusionCrop` を FM と共有する(別々に持つと同じ画面で判断が食い違う)
 - **木からは原理的に判定できない遮蔽は「ブリッジの申告」+ 専用の型** —— キーボードは
   `KeyboardOcclusion`(`keyboardFrame`)、**それ以外の別ウィンドウは
   `FTCore.OverlayWindowOcclusion`(`overlayWindowFrames`)**。Android の木の根は

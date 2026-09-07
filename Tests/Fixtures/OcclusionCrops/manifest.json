@@ -1,0 +1,29 @@
+{
+  "note": "occlusion-guard Tier-2(RegionText)の固定コーパス。実 run(E2E-CMP / E2E-iOS)で FM の段に届いた crop。値は 2026-09-07 実測(docs/poc-fm-occlusion-guard.md §5.17)",
+  "crops": [
+    {
+      "file": "swipe-down.png",
+      "expectedText": "swipe=down",
+      "readableWithLanguageRule": true,
+      "ladderAttemptsWithRule": 1,
+      "readableAtWithJapanese": {"1": false, "2": true, "3": true},
+      "why": "日本語モデルを載せると d を a と読む(swipe=aown)。期待文字列が ASCII なら英語だけにする規則で等倍から読める = 言語規則が効いている証拠"
+    },
+    {
+      "file": "selected-row40.png",
+      "expectedText": "selected=row_40",
+      "readableWithLanguageRule": true,
+      "ladderAttemptsWithRule": 1,
+      "readableAtWithJapanese": {"1": false, "2": false, "3": true},
+      "why": "同じ誤読(selectea)。日本語込みだと ×3 まで上げて初めて読める = はしごが安全網として効く証拠"
+    },
+    {
+      "file": "offscreen-text.png",
+      "expectedText": "画面外テキスト",
+      "readableWithLanguageRule": false,
+      "ladderAttemptsWithRule": 1,
+      "readableAtWithJapanese": {"1": false, "2": false, "3": false},
+      "why": "下端で切れて描かれていない。1行も読めないので段を上げずに FM へ回す = 見逃しを作らない側の証拠"
+    }
+  ]
+}
