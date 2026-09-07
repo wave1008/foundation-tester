@@ -7,6 +7,7 @@
 import ArgumentParser
 import Foundation
 import FTAndroid
+import FTCore
 
 struct ApiRepairDisplayCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
@@ -24,7 +25,7 @@ struct ApiRepairDisplayCommand: AsyncParsableCommand {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(output)
-        print(String(data: data, encoding: .utf8)!)
+        ConsoleOut.out(String(data: data, encoding: .utf8)!)
     }
 }
 

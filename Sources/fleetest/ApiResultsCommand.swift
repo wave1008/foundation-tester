@@ -57,7 +57,7 @@ struct ApiResultsCommand: AsyncParsableCommand {
         if !noCache,
            let output = cachedOutput(stateDir: stateDir, resultsDir: resultsDir, key: key,
                                      scanDigest: scanDigest, sinceKey: sinceKey, generatedAt: generatedAt) {
-            print(output)
+            ConsoleOut.out(output)
             return
         }
 
@@ -109,7 +109,7 @@ struct ApiResultsCommand: AsyncParsableCommand {
                                                       trendJSON: trendJSON, body: bodyJSON) else {
             throw ValidationError("internal: the results body did not encode as a JSON object")
         }
-        print(output)
+        ConsoleOut.out(output)
     }
 
     private static func makeEncoder() -> JSONEncoder {
@@ -119,7 +119,7 @@ struct ApiResultsCommand: AsyncParsableCommand {
     }
 
     private static func diagnose(_ message: String) {
-        FileHandle.standardError.write(Data("results cache: \(message)\n".utf8))
+        ConsoleOut.err("results cache: \(message)")
     }
 
     /// キャッシュが有効なら合成済みの出力(--scenario 付きは索引から trend を読んで足す)。

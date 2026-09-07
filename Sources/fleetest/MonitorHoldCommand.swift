@@ -45,7 +45,7 @@ struct MonitorCommand: AsyncParsableCommand {
                 until: forMinutes.map { now.timeIntervalSince1970 + $0 * 60 },
                 startedAt: now.timeIntervalSince1970)
             try MonitorHold.save(hold, stateDir: try MonitorCommand.stateDir())
-            print("⏸ Monitor \(hold.describe(now: now))"
+            ConsoleOut.out("⏸ Monitor \(hold.describe(now: now))"
                 + " — the running monitor notices within its polling interval")
         }
     }
@@ -56,7 +56,7 @@ struct MonitorCommand: AsyncParsableCommand {
 
         func run() async throws {
             let wasActive = MonitorHold.clear(stateDir: try MonitorCommand.stateDir())
-            print(wasActive ? "▶️ Monitor hold released" : "▶️ No active hold (nothing to release)")
+            ConsoleOut.out(wasActive ? "▶️ Monitor hold released" : "▶️ No active hold (nothing to release)")
         }
     }
 
@@ -67,10 +67,10 @@ struct MonitorCommand: AsyncParsableCommand {
         func run() async throws {
             guard let hold = MonitorHold.load(stateDir: try MonitorCommand.stateDir()),
                   hold.isActive() else {
-                print("▶️ No active hold")
+                ConsoleOut.out("▶️ No active hold")
                 return
             }
-            print("⏸ Monitor \(hold.describe())")
+            ConsoleOut.out("⏸ Monitor \(hold.describe())")
         }
     }
 }

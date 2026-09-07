@@ -158,7 +158,7 @@ public enum SafariWebInspector {
 
     static func reportInspectorHint(handshakeRefused: Bool, apps: [String: [String: Any]]) {
         guard let hint = inspectorHint(handshakeRefused: handshakeRefused, apps: apps) else { return }
-        FileHandle.standardError.write(Data((hint + "\n").utf8))
+        ConsoleOut.err(hint)
     }
 
     /// JS の文字列を JS のリテラルへ(引用符・バックスラッシュ・改行のエスケープを自分で書かない)

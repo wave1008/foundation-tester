@@ -103,7 +103,7 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(output), let line = String(data: data, encoding: .utf8) else { return }
-        print(line)
+        ConsoleOut.out(line)
     }
 }
 

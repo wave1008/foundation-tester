@@ -659,7 +659,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             physicalIOS: physicalIOS, iosBridgePorts: iosBridgePorts,
             connectedPhysicalSerials: physicalSerials, androidPhysicalNames: androidPhysicalNames)
         for message in skipped {
-            FileHandle.standardError.write(Data((message + "\n").utf8))
+            ConsoleOut.err(message)
         }
         return registeredStates + unregistered
     }
@@ -1448,12 +1448,12 @@ final class MonitorOutput: @unchecked Sendable {
 
     func writeLine(_ line: String) {
         lock.lock(); defer { lock.unlock() }
-        FileHandle.standardOutput.write(Data((line + "\n").utf8))
+        ConsoleOut.out(line)
     }
 
     func writeStderr(_ message: String) {
         lock.lock(); defer { lock.unlock() }
-        FileHandle.standardError.write(Data((message + "\n").utf8))
+        ConsoleOut.err(message)
     }
 }
 

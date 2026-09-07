@@ -188,9 +188,8 @@ public enum RunResultsStore {
 
     private static func warnSkipped(_ count: Int, kind: String) {
         guard count > 0 else { return }
-        let message = "RunResultsStore: skipped \(count) \(kind)(s)" +
-            " (corrupt, or their schemaVersion is too new)\n"
-        FileHandle.standardError.write(Data(message.utf8))
+        ConsoleOut.err("RunResultsStore: skipped \(count) \(kind)(s)" +
+            " (corrupt, or their schemaVersion is too new)")
     }
 
     /// since/until は startedAt(ISO8601)でフィルタ。両方 nil なら全件

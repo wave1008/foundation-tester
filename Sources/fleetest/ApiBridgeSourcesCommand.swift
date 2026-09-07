@@ -31,9 +31,9 @@ struct ApiBridgeSourcesCommand: AsyncParsableCommand {
         }
         let root = try RepoRoot.find()
         if digest {
-            print(try sourceSet.digest(repoRoot: root))
+            ConsoleOut.out(try sourceSet.digest(repoRoot: root))
         } else {
-            try sourceSet.files(repoRoot: root).forEach { print($0) }
+            try sourceSet.files(repoRoot: root).forEach { ConsoleOut.out($0) }
         }
     }
 }

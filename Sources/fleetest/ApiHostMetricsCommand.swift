@@ -93,7 +93,7 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
                 fmCalls: fm?.calls, fmFailures: fm?.failures, fmTotalMs: fm?.totalMs,
                 fmLiveness: FMLiveness.current())
             if let line = sample.encodedLine() {
-                print(line)
+                ConsoleOut.out(line)
                 logger?.append(line)
             }
         }
@@ -164,7 +164,7 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
     }
 
     private func logStderr(_ message: String) {
-        FileHandle.standardError.write(Data(("[host-metrics] " + message + "\n").utf8))
+        ConsoleOut.err("[host-metrics] " + message)
     }
 }
 

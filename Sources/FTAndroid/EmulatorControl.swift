@@ -7,6 +7,7 @@
 
 import FTEmulatorGrpc
 import Foundation
+import FTCore
 
 public enum EmulatorControl {
 
@@ -83,8 +84,8 @@ public enum EmulatorControl {
             return try await op(endpoint)
         } catch {
             markFailed(pid: endpoint.pid)
-            FileHandle.standardError.write(Data(
-                "⚠️ emulator gRPC failed — falling back to adb (\(serial), pid \(endpoint.pid)): \(error)\n".utf8))
+            ConsoleOut.err(
+                "⚠️ emulator gRPC failed — falling back to adb (\(serial), pid \(endpoint.pid)): \(error)")
             return nil
         }
     }

@@ -20,7 +20,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(output)
-        print(String(data: data, encoding: .utf8)!)
+        ConsoleOut.out(String(data: data, encoding: .utf8)!)
     }
 
     // MARK: - iOS

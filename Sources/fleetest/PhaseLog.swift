@@ -2,6 +2,7 @@
 // stdout に混ぜないのは NDJSON/整形出力を汚さないため)。
 
 import Foundation
+import FTCore
 
 enum PhaseLog {
     static let enabled = ProcessInfo.processInfo.environment["FT_PHASE_LOG"] == "1"
@@ -11,9 +12,9 @@ enum PhaseLog {
     static func mark(_ name: String) {
         guard enabled else { return }
         let now = Date()
-        let line = String(format: "[phase] %7.2fs (+%5.2fs) %@\n",
+        let line = String(format: "[phase] %7.2fs (+%5.2fs) %@",
                           now.timeIntervalSince(start), now.timeIntervalSince(last), name)
-        FileHandle.standardError.write(Data(line.utf8))
+        ConsoleOut.err(line)
         last = now
     }
 }

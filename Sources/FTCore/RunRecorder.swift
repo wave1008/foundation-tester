@@ -77,7 +77,7 @@ public final class RunRecorder: @unchecked Sendable {
         let hostMetrics: HostMetricsRecorder? = captureHostMetrics
             ? HostMetricsRecorder(
                 outputURL: runDir.appendingPathComponent("host-metrics.ndjson"), interval: 1,
-                logFailure: { FileHandle.standardError.write(Data(("[RunRecorder] " + $0 + "\n").utf8)) })
+                logFailure: { ConsoleOut.err("[RunRecorder] " + $0) })
             : nil
 
         let issuer = LocalConfig.resolveIssuerId()

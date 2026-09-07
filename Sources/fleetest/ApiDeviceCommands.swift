@@ -46,7 +46,7 @@ struct ApiDeviceUp: AsyncParsableCommand {
         case "host"?, "swiftshader_indirect"?:
             resolvedGpu = gpu!
         default:
-            FileHandle.standardError.write(Data("⚠️ Unknown --gpu value — falling back to host: \(gpu!)\n".utf8))
+            ConsoleOut.err("⚠️ Unknown --gpu value — falling back to host: \(gpu!)")
             resolvedGpu = "host"
         }
         // 直指定モード(--udid): マシンプロファイル未記載の**接続中の実機**のブリッジを起こす。
@@ -298,7 +298,7 @@ struct ApiDevicesUp: AsyncParsableCommand {
     }
 
     private static func logStderr(_ message: String) {
-        FileHandle.standardError.write(Data((message + "\n").utf8))
+        ConsoleOut.err(message)
     }
 }
 
@@ -414,7 +414,7 @@ struct ApiDevicesRestart: AsyncParsableCommand {
     }
 
     private static func logStderr(_ message: String) {
-        FileHandle.standardError.write(Data((message + "\n").utf8))
+        ConsoleOut.err(message)
     }
 }
 
@@ -508,7 +508,7 @@ struct ApiDevicesDown: AsyncParsableCommand {
     }
 
     private static func logStderr(_ message: String) {
-        FileHandle.standardError.write(Data((message + "\n").utf8))
+        ConsoleOut.err(message)
     }
 }
 
@@ -766,7 +766,7 @@ enum ApiDeviceOperation {
     }
 
     private static func logStderr(_ message: String) {
-        FileHandle.standardError.write(Data((message + "\n").utf8))
+        ConsoleOut.err(message)
     }
 }
 
@@ -781,7 +781,7 @@ private enum ApiDeviceEventEmitter {
     static func emitRaw(_ line: String) {
         lock.lock()
         defer { lock.unlock() }
-        print(line)
+        ConsoleOut.out(line)
     }
 
     static func emit<T: Encodable>(_ value: T) {
@@ -791,7 +791,7 @@ private enum ApiDeviceEventEmitter {
               let line = String(data: data, encoding: .utf8) else { return }
         lock.lock()
         defer { lock.unlock() }
-        print(line)
+        ConsoleOut.out(line)
     }
 }
 

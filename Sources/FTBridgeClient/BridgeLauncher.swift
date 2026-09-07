@@ -95,9 +95,9 @@ public struct BridgeLauncher {
         if Self.signingMismatch(
             stored: try? String(contentsOf: signingFingerprintPath, encoding: .utf8),
             current: signing) {
-            FileHandle.standardError.write(Data(
-                ("[bridge] The code-signing settings (team / bundle id prefix) changed — "
-                 + "discarding \(derivedDataPath.lastPathComponent) and rebuilding\n").utf8))
+            ConsoleOut.err(
+                "[bridge] The code-signing settings (team / bundle id prefix) changed — "
+                 + "discarding \(derivedDataPath.lastPathComponent) and rebuilding")
             try? FileManager.default.removeItem(at: derivedDataPath)
         }
         let result = try Shell.run([
@@ -345,8 +345,8 @@ public struct BridgeLauncher {
             Thread.sleep(forTimeInterval: 0.2)
         }
         for pid in remaining { kill(pid, SIGKILL) }
-        let message = "→ Cleaned up leftover runner(s) on port \(port) (pid \(pids.map(String.init).joined(separator: ", ")))\n"
-        FileHandle.standardError.write(Data(message.utf8))
+        ConsoleOut.err("→ Cleaned up leftover runner(s) on port \(port)"
+            + " (pid \(pids.map(String.init).joined(separator: ", ")))")
     }
 
     public func stop() throws {
@@ -410,9 +410,9 @@ public struct BridgeLauncher {
             let ps = try? Shell.run(["ps", "-ww", "-p", String(pid), "-o", "command="])
             let command = (ps?.status == 0 ? ps?.output : nil)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            FileHandle.standardError.write(Data(
-                ("pid \(pid) is no longer the \(kind) (reused by \(command ?? "a different process"));"
-                 + " removed the stale pid file\n").utf8))
+            ConsoleOut.err(
+                "pid \(pid) is no longer the \(kind) (reused by \(command ?? "a different process"));"
+                 + " removed the stale pid file")
         }
         try? FileManager.default.removeItem(at: pidPath)
     }
@@ -827,7 +827,7 @@ public struct BridgeLauncher {
         IOSReduceMotion.apply(
             udid: device,
             animationsEnabled: AnimationPolicy.animationsEnabled()) { message in
-                FileHandle.standardError.write(Data("\(message)\n".utf8))
+                ConsoleOut.err(message)
             }
     }
 

@@ -323,7 +323,7 @@ enum ApiRunMachineFanout {
     private static func writeLine(_ line: String) {
         stdoutLock.lock()
         defer { stdoutLock.unlock() }
-        FileHandle.standardOutput.write(Data((line + "\n").utf8))
+        ConsoleOut.out(line)
     }
 
     private static let stderrLock = NSLock()
@@ -331,7 +331,7 @@ enum ApiRunMachineFanout {
     private static func logStderr(_ message: String) {
         stderrLock.lock()
         defer { stderrLock.unlock() }
-        FileHandle.standardError.write(Data((message + "\n").utf8))
+        ConsoleOut.err(message)
     }
 
     private static func encode<T: Encodable>(_ value: T) -> String {

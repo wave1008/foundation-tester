@@ -218,6 +218,6 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     }
 
     private func warn(_ message: String) {
-        FileHandle.standardError.write(Data("⚠️ [recording] \(udid): \(message)\n".utf8))
+        ConsoleOut.err("⚠️ [recording] \(udid): \(message)")
     }
 }

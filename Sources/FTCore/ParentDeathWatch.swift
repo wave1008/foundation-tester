@@ -32,6 +32,8 @@ public enum ParentDeathWatch {
     public static func armIfRequested(environment: [String: String] = ProcessInfo.processInfo.environment) {
         guard let raw = environment[environmentKey], let parentPID = pid_t(raw) else { return }
         arm(parentPID: parentPID) {
+            // kqueue コールバック文脈から呼ばれうるので ConsoleOut のロックを取らせない
+            // (シグナル安全性に近い制約。生の write のまま残す)
             FileHandle.standardError.write(
                 Data("⚠️ parent process \(parentPID) exited — stopping (FT_PARENT_PID)\n".utf8))
             kill(getpid(), SIGTERM)

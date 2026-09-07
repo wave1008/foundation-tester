@@ -142,9 +142,9 @@ enum VideoRecordingFinalizer {
             reader.cancelReading()
         } else if reader.status != .completed {
             // 散発的な切り出し失敗の診断用(status/error が唯一の手掛かり)
-            FileHandle.standardError.write(Data(
-                ("⚠️ [recording] extractClip reader failed: status=\(reader.status.rawValue) "
-                 + "error=\(String(describing: reader.error))\n").utf8))
+            ConsoleOut.err(
+                "⚠️ [recording] extractClip reader failed: status=\(reader.status.rawValue) "
+                 + "error=\(String(describing: reader.error))")
             writer.cancelWriting()
             // cancelWriting はファイルの削除を保証しないため明示的に消す
             try? FileManager.default.removeItem(at: outputURL)
@@ -156,9 +156,9 @@ enum VideoRecordingFinalizer {
         writer.endSession(atSourceTime: clipEnd)
         await writer.finishWriting()
         if writer.status != .completed {
-            FileHandle.standardError.write(Data(
-                ("⚠️ [recording] extractClip writer failed: status=\(writer.status.rawValue) "
-                 + "error=\(String(describing: writer.error))\n").utf8))
+            ConsoleOut.err(
+                "⚠️ [recording] extractClip writer failed: status=\(writer.status.rawValue) "
+                 + "error=\(String(describing: writer.error))")
             try? FileManager.default.removeItem(at: outputURL)
         }
         return writer.status == .completed

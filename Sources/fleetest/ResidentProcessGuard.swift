@@ -4,6 +4,7 @@
 // この2つの安全弁はメインループの状態と無関係に専用キューのタイマーで動くため、
 // ブロック中でも確実に終了できる。
 
+import FTCore
 import Foundation
 
 enum ResidentProcessGuard {
@@ -99,6 +100,6 @@ enum ResidentProcessGuard {
     }
 
     private static func logStderr(_ label: String, _ message: String) {
-        FileHandle.standardError.write(Data(("[\(label)] " + message + "\n").utf8))
+        ConsoleOut.err("[\(label)] " + message)
     }
 }

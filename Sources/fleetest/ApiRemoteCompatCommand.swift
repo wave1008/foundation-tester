@@ -88,7 +88,7 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(output)
-        print(String(data: data, encoding: .utf8)!)
+        ConsoleOut.out(String(data: data, encoding: .utf8)!)
     }
 
     /// この実行プロファイルが使うリモートホストのラベル一覧(登録名。docs/remote-runner.md §13 —

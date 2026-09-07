@@ -541,20 +541,16 @@ enum FleetRunner {
     // stdout が端末でないと行バッファが効かず、分単位の無音が「止まった」と誤解される)
 
     /// 複数エントリが並行に書くので、1行分を1回の write にまとめて lock で直列化する
-    /// (PIPE_BUF を超える長い行が他エントリの行と噛み合って文字化けするのを防ぐ)
-    private static let outputLock = NSLock()
-
+    /// (PIPE_BUF を超える長い行が他エントリの行と噛み合って文字化けするのを防ぐ)。
+    /// **`FTCore.ConsoleOut` が1つに束ねるロック**を使う —— stdout/stderr が別ロックだと、
+    /// 子プロセスの stdout+stderr 合流(runEntry の Pipe)で片方だけ直列化しても割り込みが止まらない
     static func logLine(host: String, line: String) {
-        outputLock.lock()
-        defer { outputLock.unlock() }
-        FileHandle.standardOutput.write(Data("[\(host)] \(line)\n".utf8))
+        ConsoleOut.out("[\(host)] \(line)")
     }
 
-    /// 子プロセスの中継行と混ざらないよう outputLock 越しに書く(DeviceMachineRunner も同じ口を使う)
+    /// 子プロセスの中継行と混ざらないよう ConsoleOut 越しに書く(DeviceMachineRunner も同じ口を使う)
     static func log(_ message: String) {
-        outputLock.lock()
-        defer { outputLock.unlock() }
-        FileHandle.standardOutput.write(Data((message + "\n").utf8))
+        ConsoleOut.out(message)
     }
 
     private static func printSummary(fleetName: String, outcomes: [FleetEntryOutcome]) {

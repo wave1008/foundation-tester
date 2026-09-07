@@ -735,10 +735,11 @@ struct RemoteRunDispatcher {
             // **stdout が端末でないときは行バッファが効かず、進行が最後まで出ない**。
             // ディスパッチは分単位で無音になり得るので(リモートのビルド)、CI やエージェントが
             // ログへリダイレクトすると「止まったのか進んでいるのか」を判断できない。
-            // FileHandle は libc のバッファを通さないのでそのまま届く
-            FileHandle.standardOutput.write(Data((message + "\n").utf8))
+            // ConsoleOut は libc のバッファを通さないのでそのまま届く(かつ他の書き手と
+            // ロックを共有するので割り込まれない)
+            ConsoleOut.out(message)
         case .apiRun:
-            FileHandle.standardError.write(Data((message + "\n").utf8))
+            ConsoleOut.err(message)
         }
     }
 
@@ -790,7 +791,7 @@ struct RemoteRunDispatcher {
     }
 
     /// ssh の stdout を Pipe で受け行単位に組み立て直し、各行を RemotePathRewrite にかけて
-    /// print(stdout) する。stderr は継承のまま。パイプ 64KB 飽和で子がブロックする罠を避けるため
+    /// ConsoleOut.out(stdout) する。stderr は継承のまま。パイプ 64KB 飽和で子がブロックする罠を避けるため
     /// 読み取りは別スレッドで行う。期限超過時は SIGTERM→2秒猶予→SIGKILL(Shell.runRaw の
     /// timeout 経路と同じ規律)。stdin は /dev/null に固定する(`-tt` は TTY として stdin を
     /// 要求するが、ディスパッチは対話しない)。**timeoutSeconds nil = 無期限**
@@ -818,10 +819,10 @@ struct RemoteRunDispatcher {
             // NDJSON 専用の契約なので、機械可読行だけを stdout へ流し、リモートの人間向け診断は
             // stderr へ振り分け直す(2026-07-31 の localhost E2E で混入を実測)
             if mode == .apiRun, !RemoteRelay.isMachineReadableLine(rewritten) {
-                FileHandle.standardError.write(Data((rewritten + "\n").utf8))
+                ConsoleOut.err(rewritten)
                 return
             }
-            print(rewritten)
+            ConsoleOut.out(rewritten)
         }
         try process.run()
         DispatchQueue.global(qos: .utility).async {

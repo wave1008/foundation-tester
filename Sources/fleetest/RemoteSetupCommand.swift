@@ -18,13 +18,13 @@ private let setupSCPBase = ["scp", "-o", "BatchMode=yes", "-o", "ConnectTimeout=
 /// 分単位かかる install/align の進行が最後まで出ない(ログへリダイレクトすると「止まったのか
 /// 進んでいるのか」が判らない)。RemoteRunDispatcher.log の cliRun 側と同じ規律
 private func say(_ message: String) {
-    FileHandle.standardOutput.write(Data((message + "\n").utf8))
+    ConsoleOut.out(message)
 }
 
 /// `remote exec` の宛先解決アナウンス専用。stdout は転送先コマンドの出力(機械可読の場合が
 /// ある: `-- api device-catalog` 等)そのままの契約なので、stdout に混ぜない
 private func sayStderr(_ message: String) {
-    FileHandle.standardError.write(Data((message + "\n").utf8))
+    ConsoleOut.err(message)
 }
 
 /// ssh/scp をそのまま実行して stdout/stderr を継承する(RemoteRunDispatcher.runInherited と
@@ -404,7 +404,7 @@ extension RemoteCommand {
             if yes { return true }
             guard isatty(fileno(stdin)) != 0 else { return false }
             // 入力を同じ行で待つので改行を付けない(ここは TTY 限定なのでバッファ懸念は無い)
-            FileHandle.standardOutput.write(
+            ConsoleOut.out(
                 Data("This permanently deletes \(base) on \(host). Type 'yes' to continue: ".utf8))
             guard let line = readLine() else { return false }
             return line.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "yes"
@@ -543,13 +543,12 @@ extension RemoteCommand {
             let command = RemoteShell.remoteExecCommand(layout: layout, args: relayed)
             let status = try runInheritedSSH(setupSSHBase + [hostSpec.sshTarget, command])
             if status == 90 {
-                FileHandle.standardError.write(Data(
-                    "the remote fleetest binary is missing — run `fleetest remote setup \(hostSpec.sshTarget)` first\n"
-                        .utf8))
+                ConsoleOut.err(
+                    "the remote fleetest binary is missing — run `fleetest remote setup \(hostSpec.sshTarget)` first")
             } else if status == 91 {
-                FileHandle.standardError.write(Data(
-                    ("this issuer has no runner workspace on \(hostSpec.sshTarget) yet — run `fleetest remote setup "
-                        + "\(hostSpec.sshTarget)` once for this issuer (docs/remote-runner.md §18)\n").utf8))
+                ConsoleOut.err(
+                    "this issuer has no runner workspace on \(hostSpec.sshTarget) yet — run `fleetest remote setup "
+                        + "\(hostSpec.sshTarget)` once for this issuer (docs/remote-runner.md §18)")
             }
             if status != 0 {
                 throw ExitCode(status)

@@ -1623,7 +1623,7 @@ extension MCPServer {
 
     /// stdout は JSON-RPC 専用(混ぜるとクライアントのパースが壊れる)。診断は必ず stderr へ
     static func logStderr(_ message: String) {
-        FileHandle.standardError.write(Data(("[fleetest-mcp] " + message + "\n").utf8))
+        ConsoleOut.err("[fleetest-mcp] " + message)
     }
 
 }

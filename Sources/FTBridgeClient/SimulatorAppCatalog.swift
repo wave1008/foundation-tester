@@ -86,8 +86,7 @@ public enum SimulatorAppCatalog {
             throw SimulatorAppCatalogError.noBootedSimulator(name)
         }
         if matches.count > 1 {
-            FileHandle.standardError.write(
-                Data("Multiple booted simulators share this name. Using \(first.udid): \(name)\n".utf8))
+            ConsoleOut.err("Multiple booted simulators share this name. Using \(first.udid): \(name)")
         }
         return first.udid
     }

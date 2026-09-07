@@ -1249,7 +1249,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     private func writeLine(_ line: String) {
         Self.stdoutLock.lock()
         defer { Self.stdoutLock.unlock() }
-        print(line)
+        ConsoleOut.out(line)
     }
 
     private static let stdoutLock = NSLock()
@@ -1258,7 +1258,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     private static let REVIVE_TIMEOUT: TimeInterval = 90
 
     private func logStderr(_ message: String) {
-        FileHandle.standardError.write(Data((message + "\n").utf8))
+        ConsoleOut.err(message)
     }
 
     /// RemoteDispatchFlagPolicy.Decision の適用。stdout は NDJSON 専用の契約なので注記も stderr へ

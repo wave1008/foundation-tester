@@ -34,7 +34,7 @@ struct ApiDslCommandsCommand: AsyncParsableCommand {
             commands: commands)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        print(String(data: try encoder.encode(output), encoding: .utf8)!)
+        ConsoleOut.out(String(data: try encoder.encode(output), encoding: .utf8)!)
     }
 
     private struct Output: Encodable {

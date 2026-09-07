@@ -165,7 +165,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         let resolution = await XCUIBridgeResolver.resolve(
             preferred: driverOptions.port, repoRoot: try? RepoRoot.find(), autoStart: false,
             logger: { message in
-                FileHandle.standardError.write(Data(("[live serve] " + message + "\n").utf8))
+                ConsoleOut.err("[live serve] " + message)
             })
         return (BridgeClient(port: resolution.endpoint.port, host: resolution.endpoint.host),
                 resolution.endpoint.port)
@@ -424,7 +424,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     }
 
     private func logStderr(_ message: String) {
-        FileHandle.standardError.write(Data(("[live serve] " + message + "\n").utf8))
+        ConsoleOut.err("[live serve] " + message)
     }
 }
 
@@ -446,7 +446,7 @@ private func emitLine<T: Encodable>(_ value: T) {
     encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
     guard let data = try? encoder.encode(value),
           let line = String(data: data, encoding: .utf8) else { return }
-    print(line)
+    ConsoleOut.out(line)
 }
 
 // MARK: - stdin コマンド

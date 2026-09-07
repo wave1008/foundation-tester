@@ -8,6 +8,7 @@
 // nil を 0 と混同しないよう、欠けた区間は "-" で出す。
 
 import Foundation
+import FTCore
 
 /// FT_HTTP_TIMING=1 のときだけ生成される。閾値(既定 1000ms)を超えたリクエストのみ stderr へ出す
 /// (全件出すと 8 レーンで数千行になり、生ログが実行ログを埋める)。
@@ -44,7 +45,6 @@ final class HTTPTimingCollector: NSObject, URLSessionTaskDelegate, @unchecked Se
         parts.append("ttfb=" + gap(tx.requestEndDate, tx.responseStartDate))
         parts.append("recv=" + gap(tx.responseStartDate, tx.responseEndDate))
         parts.append("reused=\(tx.isReusedConnection)")
-        let line: String = parts.joined(separator: " ") + "\n"
-        FileHandle.standardError.write(Data(line.utf8))
+        ConsoleOut.err(parts.joined(separator: " "))
     }
 }

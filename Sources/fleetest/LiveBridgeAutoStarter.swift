@@ -209,7 +209,7 @@ actor LiveBridgeAutoStarter {
                         port: port, deviceUDID: udid, repoRoot: repoRoot, wired: wired,
                         token: launcher.bridgeToken,
                         log: { message in
-                            FileHandle.standardError.write(Data("[live serve] \(message)\n".utf8))
+                            ConsoleOut.err("[live serve] \(message)")
                         })
                     host = endpoint.host
                 } catch {
@@ -229,7 +229,7 @@ actor LiveBridgeAutoStarter {
     }
 
     private func logStderr(_ message: String) {
-        FileHandle.standardError.write(Data(("[live serve] " + message + "\n").utf8))
+        ConsoleOut.err("[live serve] " + message)
     }
 }
 

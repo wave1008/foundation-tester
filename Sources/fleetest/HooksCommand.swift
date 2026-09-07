@@ -24,13 +24,13 @@ struct HooksCommand: AsyncParsableCommand {
 
         func run() async throws {
             let stateDir = try RepoRoot.find().appendingPathComponent(".fleetest")
-            let reaped = RunHookRunner.reapOrphans(stateDir: stateDir) { print($0) }
+            let reaped = RunHookRunner.reapOrphans(stateDir: stateDir) { ConsoleOut.out($0) }
             if reaped == 0 {
                 // **黙るのは「0件のとき」だけ** —— 代行実行したことは共有ランナーでも必ず言う
                 // (他人の run の後始末が走ったのに誰も知らない状態を作らない)
-                if !quiet { print("→ no orphaned teardown scripts") }
+                if !quiet { ConsoleOut.out("→ no orphaned teardown scripts") }
             } else {
-                print("→ reaped \(reaped) orphaned teardown script(s)")
+                ConsoleOut.out("→ reaped \(reaped) orphaned teardown script(s)")
             }
         }
     }

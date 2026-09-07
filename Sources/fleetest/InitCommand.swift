@@ -83,8 +83,8 @@ struct InitCommand: AsyncParsableCommand {
                         URL(fileURLWithPath: $0, relativeTo: cwd).standardizedFileURL.path
                     })
             } catch {
-                FileHandle.standardError.write(Data(("⚠️ Failed to prepare .claude/settings.json: "
-                    + "\(error.localizedDescription)\n").utf8))
+                ConsoleOut.err("⚠️ Failed to prepare .claude/settings.json: "
+                    + "\(error.localizedDescription)")
             }
             // .build/(~1.7GB)等が git status の未追跡ノイズにならないように。失敗しても init は続行
             var addedGitignoreEntries: [String] = []
@@ -92,26 +92,26 @@ struct InitCommand: AsyncParsableCommand {
                 addedGitignoreEntries = try ProjectScaffold.ensureGitignore(packageRoot: cwd)
             } catch {
                 let warning = "⚠️ Failed to prepare .gitignore automatically (add .build/ etc. by hand): "
-                    + "\(error.localizedDescription)\n"
-                FileHandle.standardError.write(Data(warning.utf8))
+                    + "\(error.localizedDescription)"
+                ConsoleOut.err(warning)
             }
-            print("✅ Created the consumer package: \(packageName)")
-            print("   Dependency: \(dependencyLine)")
-            print("   Project:    TestProjects/\(projectName)/ (add .swift files with @TestClass under scenarios/)")
-            print("   App config: point appPath in TestProjects/\(projectName)/profiles/apps/ at your own build")
-            print("   Build:      swift build --product \(project.productName)")
-            print("   Run:        fleetest run --project \(projectName) --profile ios")
+            ConsoleOut.out("✅ Created the consumer package: \(packageName)")
+            ConsoleOut.out("   Dependency: \(dependencyLine)")
+            ConsoleOut.out("   Project:    TestProjects/\(projectName)/ (add .swift files with @TestClass under scenarios/)")
+            ConsoleOut.out("   App config: point appPath in TestProjects/\(projectName)/profiles/apps/ at your own build")
+            ConsoleOut.out("   Build:      swift build --product \(project.productName)")
+            ConsoleOut.out("   Run:        fleetest run --project \(projectName) --profile ios")
             if wroteVSCodeSettings {
-                print("   VSCode ext: set fleetest.project/fleetest.binaryPath in .vscode/settings.json automatically")
+                ConsoleOut.out("   VSCode ext: set fleetest.project/fleetest.binaryPath in .vscode/settings.json automatically")
             }
             if !addedClaudeAllows.isEmpty {
-                print("   Claude Code: added fleetest command permissions to .claude/settings.json"
+                ConsoleOut.out("   Claude Code: added fleetest command permissions to .claude/settings.json"
                       + " (to reduce approval prompts; delete them if unwanted)")
             }
             if !addedGitignoreEntries.isEmpty {
-                print("   .gitignore: appended \(addedGitignoreEntries.joined(separator: " ")) (to keep .build/ etc. out of git noise)")
+                ConsoleOut.out("   .gitignore: appended \(addedGitignoreEntries.joined(separator: " ")) (to keep .build/ etc. out of git noise)")
             }
-            print("   \(AgentIntegration.displayName): open this folder and "
+            ConsoleOut.out("   \(AgentIntegration.displayName): open this folder and "
                   + "\(AgentIntegration.skillInvocationPrefix)fleetest-setup drives device setup "
                   + "through the first run")
         } catch {

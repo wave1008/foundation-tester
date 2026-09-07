@@ -92,7 +92,7 @@ struct RemoteCommand: AsyncParsableCommand {
             } else {
                 emitTable(reports)
                 for r in reports where !r.reachable {
-                    print("\(r.sshTarget): \(r.detail ?? "unreachable")")
+                    ConsoleOut.out("\(r.sshTarget): \(r.detail ?? "unreachable")")
                 }
             }
             if reports.contains(where: { !$0.reachable || !$0.compatible }) {
@@ -109,7 +109,7 @@ struct RemoteCommand: AsyncParsableCommand {
                 let line = zip(row, widths)
                     .map { text, width in text + String(repeating: " ", count: max(0, width - text.count)) }
                     .joined(separator: "  ")
-                print(line)
+                ConsoleOut.out(line)
             }
         }
 
@@ -194,7 +194,7 @@ struct RemoteCommand: AsyncParsableCommand {
             encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
             guard let data = try? encoder.encode(StatusJSON(hosts: hosts)),
                   let line = String(data: data, encoding: .utf8) else { return }
-            print(line)
+            ConsoleOut.out(line)
         }
     }
 
@@ -222,11 +222,11 @@ struct RemoteCommand: AsyncParsableCommand {
             }
             var failures = 0
             for raw in hosts {
-                print("== \(raw) ==")
+                ConsoleOut.out("== \(raw) ==")
                 do {
                     try unlockOne(raw)
                 } catch {
-                    print("error: \(error.localizedDescription)")
+                    ConsoleOut.out("error: \(error.localizedDescription)")
                     failures += 1
                 }
             }
@@ -248,7 +248,7 @@ struct RemoteCommand: AsyncParsableCommand {
                 myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive)
             switch decision {
             case .nothingToDo:
-                print("→ no dispatch lock on \(target); nothing to do")
+                ConsoleOut.out("→ no dispatch lock on \(target); nothing to do")
             case .refuse(let reason):
                 throw UnlockRefused(reason: reason)
             case .release(let reason):
@@ -257,7 +257,7 @@ struct RemoteCommand: AsyncParsableCommand {
                     throw RemoteDispatchError.remoteSetupFailed(
                         "failed to remove the lock (status \(release.status))\n\(release.tail)")
                 }
-                print("→ released the dispatch lock on \(target) (\(reason))")
+                ConsoleOut.out("→ released the dispatch lock on \(target) (\(reason))")
             }
         }
     }
@@ -340,17 +340,17 @@ struct RemoteCommand: AsyncParsableCommand {
                 throw ValidationError("no hosts specified (pass --host <name-or-user@host>)")
             }
             if !dryRun {
-                print("This permanently deletes files older than \(keepDays) day(s) on each host below."
+                ConsoleOut.out("This permanently deletes files older than \(keepDays) day(s) on each host below."
                     + " Pass --dry-run first to preview what would be removed.")
             }
             var failures = 0
             // 破壊的操作なので並列にしない(1台ずつ結果を見せる。docs/remote-runner.md §16.4)
             for raw in hosts {
-                print("== \(raw) ==")
+                ConsoleOut.out("== \(raw) ==")
                 do {
                     try cleanOne(raw)
                 } catch {
-                    print("error: \(error.localizedDescription)")
+                    ConsoleOut.out("error: \(error.localizedDescription)")
                     failures += 1
                 }
             }
@@ -372,15 +372,15 @@ struct RemoteCommand: AsyncParsableCommand {
                 case .proceed:
                     break
                 case .proceedWithWarning(let message):
-                    print("warning: \(message)")
+                    ConsoleOut.out("warning: \(message)")
                 case .refuse(let reason):
                     throw CleanRefused(reason: reason)
                 }
                 // デバイスを止める前に片付ける(docs/remote-runner.md §17)。順序は逆にしない ——
                 // 終了スクリプトはデバイスに触りうる(adb reverse の解除など)
-                print("→ running teardown scripts left behind by dead runs")
+                ConsoleOut.out("→ running teardown scripts left behind by dead runs")
                 runReapAcrossIssuers(target: target, layout: layout)
-                print("→ stopping bridges and shutting down simulators/emulators")
+                ConsoleOut.out("→ stopping bridges and shutting down simulators/emulators")
                 // **`--device-machine local` でその機械に閉じる** —— `devices down` は登録簿の
                 // 全マシンへ掃討を分散するので、付けないとランナー自身の登録簿を辿って
                 // 入れ子のディスパッチになる(経路は1段、の規律。RemoteDeviceFanout.sweepMachines)
@@ -388,10 +388,10 @@ struct RemoteCommand: AsyncParsableCommand {
                     layout: layout, fleetestArgs: ["devices", "down", "--device-machine", "local"])
                 let downResult = try Shell.run(remoteSSHBase + [target, devicesDownCommand])
                 if downResult.status != 0 {
-                    print("warning: `devices down` exited with status \(downResult.status)\n\(downResult.tail)")
+                    ConsoleOut.out("warning: `devices down` exited with status \(downResult.status)\n\(downResult.tail)")
                 }
             } else {
-                print("→ would stop bridges and shut down simulators/emulators (skipped: --dry-run)")
+                ConsoleOut.out("→ would stop bridges and shut down simulators/emulators (skipped: --dry-run)")
             }
 
             var totalEntries = 0
@@ -400,7 +400,7 @@ struct RemoteCommand: AsyncParsableCommand {
                 totalEntries += result.output.split(separator: "\n")
                     .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
             }
-            print(dryRun
+            ConsoleOut.out(dryRun
                 ? "→ \(totalEntries) entr\(totalEntries == 1 ? "y" : "ies") older than \(keepDays) day(s) (not deleted; --dry-run)"
                 : "→ deleting \(totalEntries) entr\(totalEntries == 1 ? "y" : "ies") older than \(keepDays) day(s)")
 
@@ -408,14 +408,14 @@ struct RemoteCommand: AsyncParsableCommand {
                 for command in RemoteCleanPlan.commands(layout: layout, keepDays: keepDays, dryRun: false) {
                     let result = try Shell.run(remoteSSHBase + [target, command])
                     if result.status != 0 {
-                        print("warning: cleanup command exited with status \(result.status): \(command)\n\(result.tail)")
+                        ConsoleOut.out("warning: cleanup command exited with status \(result.status): \(command)\n\(result.tail)")
                     }
                 }
             }
 
             if let dfResult = try? Shell.run(remoteSSHBase + [target, "df -k \(RemoteShell.quote(layout.base)) | tail -1"]),
                let freeKB = RemoteStatusProbe.parseFreeKB(dfResult.output.trimmingCharacters(in: .whitespacesAndNewlines)) {
-                print("→ free space: \(formatFreeSpace(freeKB))")
+                ConsoleOut.out("→ free space: \(formatFreeSpace(freeKB))")
             }
             printDiskByIssuer(target: target, layout: layout)
         }
@@ -445,7 +445,7 @@ struct RemoteCommand: AsyncParsableCommand {
             guard let result = try? Shell.run(remoteSSHBase + [target, command]) else { return }
             let rows = RemoteDiskUsage.parse(result.output, usersDir: layout.usersDir, base: layout.base)
             guard !rows.isEmpty else { return }
-            print("→ disk by issuer: " + rows.map { "\($0.issuer) \(formatFreeSpace($0.kb))" }
+            ConsoleOut.out("→ disk by issuer: " + rows.map { "\($0.issuer) \(formatFreeSpace($0.kb))" }
                 .joined(separator: ", "))
         }
 
@@ -471,11 +471,11 @@ struct RemoteCommand: AsyncParsableCommand {
         private func runReapAcrossIssuers(target: String, layout: RemoteLayout) {
             let command = RemoteHooksReap.commandAcrossIssuers(layout: layout, quiet: false)
             guard let result = try? Shell.run(remoteSSHBase + [target, command]) else {
-                print("warning: failed to run `hooks reap` (could not run ssh)")
+                ConsoleOut.out("warning: failed to run `hooks reap` (could not run ssh)")
                 return
             }
             let trimmed = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { print(trimmed) }
+            if !trimmed.isEmpty { ConsoleOut.out(trimmed) }
         }
     }
 
@@ -502,7 +502,7 @@ struct RemoteCommand: AsyncParsableCommand {
                 } else {
                     Self.emitTable(entries)
                     for target in RemoteHostRegistry.duplicateTargets(entries) {
-                        print("⚠️ multiple entries point at the same host: \(target)"
+                        ConsoleOut.out("⚠️ multiple entries point at the same host: \(target)"
                             + " (dispatching to both fights over the same devices; docs/remote-runner.md §13)")
                     }
                 }
@@ -519,7 +519,7 @@ struct RemoteCommand: AsyncParsableCommand {
                     let line = zip(row, widths)
                         .map { text, width in text + String(repeating: " ", count: max(0, width - text.count)) }
                         .joined(separator: "  ")
-                    print(line)
+                    ConsoleOut.out(line)
                 }
             }
 
@@ -528,7 +528,7 @@ struct RemoteCommand: AsyncParsableCommand {
                 encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
                 guard let data = try? encoder.encode(HostsListJSON(hosts: entries)),
                       let line = String(data: data, encoding: .utf8) else { return }
-                print(line)
+                ConsoleOut.out(line)
             }
         }
 
@@ -573,9 +573,9 @@ struct RemoteCommand: AsyncParsableCommand {
                 config.remoteHosts = RemoteHostRegistry.upsert(entry, into: config.remoteHosts ?? [])
                 try config.save()
                 let slotsNote = slots.map { " (FM concurrency \($0))" } ?? ""
-                print("✅ Registered host \"\(name)\" → \(host)\(slotsNote)")
+                ConsoleOut.out("✅ Registered host \"\(name)\" → \(host)\(slotsNote)")
                 for target in RemoteHostRegistry.duplicateTargets(config.remoteHosts ?? []) where target == host {
-                    print("⚠️ another entry already points at \(target)"
+                    ConsoleOut.out("⚠️ another entry already points at \(target)"
                         + " (dispatching to both fights over the same devices; docs/remote-runner.md §13)")
                 }
             }
@@ -596,7 +596,7 @@ struct RemoteCommand: AsyncParsableCommand {
                 }
                 config.remoteHosts = RemoteHostRegistry.remove(machine: name, from: before)
                 try config.save()
-                print("✅ Removed host \"\(name)\"")
+                ConsoleOut.out("✅ Removed host \"\(name)\"")
             }
         }
     }
@@ -631,10 +631,10 @@ func resolveLayoutIssuer() throws -> String {
     let (id, explicit) = LocalConfig.resolveIssuer()
     try RemoteLayout.validateIssuerKey(id)
     if !explicit, issuerFallbackWarning.shouldWarn() {
-        FileHandle.standardError.write(Data(
-            ("warning: using default issuer '\(id)' for the remote workspace namespace"
+        ConsoleOut.err(
+            "warning: using default issuer '\(id)' for the remote workspace namespace"
                 + " — the default is derived from this machine's hostname, which can change on the network;"
-                + " set issuerId in ~/.config/fleetest/config.json (docs/remote-runner-setup.md)\n").utf8))
+                + " set issuerId in ~/.config/fleetest/config.json (docs/remote-runner-setup.md)")
     }
     return id
 }
@@ -658,11 +658,15 @@ struct ResolvedRemoteHost {
 
     /// **print を使わない**。stdout が端末でないと行バッファが効かず、この1行だけが
     /// 最後まで出ない = 「どこへ送ったか」が進行より後に見える(実測)。NDJSON を stdout に
-    /// 流す経路(api run / remote exec)は stderr へ出す
+    /// 流す経路(api run / remote exec)は stderr へ出す。ConsoleOut 経由にするのは他の書き手
+    /// (RemoteRunDispatcher.log 等)とロックを共有し、割り込みで行が裂けないようにするため
     func announce(toStderr: Bool = false) {
         guard let announcement else { return }
-        let handle = toStderr ? FileHandle.standardError : FileHandle.standardOutput
-        handle.write(Data((announcement + "\n").utf8))
+        if toStderr {
+            ConsoleOut.err(announcement)
+        } else {
+            ConsoleOut.out(announcement)
+        }
     }
 }
 

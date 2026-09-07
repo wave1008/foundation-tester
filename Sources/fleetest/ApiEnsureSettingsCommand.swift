@@ -25,9 +25,9 @@ struct ApiEnsureSettingsCommand: AsyncParsableCommand {
         let added = try ProjectScaffold.writeClaudeSettings(packageRoot: root, toolRoot: toolRoot)
         // 画面に出るのは呼び出し元(install.sh)の1行だけなので短く。中身は settings.json にある
         if added.isEmpty {
-            print(".claude/settings.json is up to date (nothing added)")
+            ConsoleOut.out(".claude/settings.json is up to date (nothing added)")
         } else {
-            print("Added \(added.count) entrie(s) (.claude/settings.json)")
+            ConsoleOut.out("Added \(added.count) entrie(s) (.claude/settings.json)")
         }
     }
 }

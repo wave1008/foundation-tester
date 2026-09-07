@@ -197,6 +197,6 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
     }
 
     private func warn(_ message: String) {
-        FileHandle.standardError.write(Data("⚠️ [recording] \(serial): \(message)\n".utf8))
+        ConsoleOut.err("⚠️ [recording] \(serial): \(message)")
     }
 }

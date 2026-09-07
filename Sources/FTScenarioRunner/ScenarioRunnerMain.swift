@@ -55,23 +55,23 @@ struct ListScenarios: AsyncParsableCommand {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
             let data = try encoder.encode(ListResponse(scenarios: entries))
-            print(String(data: data, encoding: .utf8)!)
+            ConsoleOut.out(String(data: data, encoding: .utf8)!)
         } else {
             guard !classes.isEmpty else {
-                print("No scenarios (add a @TestClass under the project scenarios/)")
+                ConsoleOut.out("No scenarios (add a @TestClass under the project scenarios/)")
                 return
             }
             for testClass in classes {
                 let platform = testClass.platform ?? "ios/android"
                 let app = testClass.app ?? "(from the run profile)"
-                print("\(testClass.className) [\(platform)] app=\(app)")
+                ConsoleOut.out("\(testClass.className) [\(platform)] app=\(app)")
                 for scenario in testClass.scenarios {
                     let title = scenario.title.isEmpty ? "" : " — \(scenario.title)"
                     // 両方付いていれば deleted の表示を優先する(@Deleted が勝つ)
                     let status = scenario.deleted ? " (deleted)" : (scenario.draft ? " (draft)" : "")
                     // クラスと違う platform を宣言しているメソッドだけ明示する
                     let only = scenario.platform.map { " [\($0) only]" } ?? ""
-                    print("  ・ \(testClass.className).\(scenario.name)\(title)\(only)\(status)")
+                    ConsoleOut.out("  ・ \(testClass.className).\(scenario.name)\(title)\(only)\(status)")
                 }
             }
         }
@@ -201,9 +201,7 @@ struct RunScenario: AsyncParsableCommand {
         guard let (testClass, descriptor) = ScenarioDiscovery.find(id: scenario) else {
             let available = ScenarioDiscovery.allTestClasses()
                 .flatMap { c in c.scenarios.map { "\(c.className).\($0.name)" } }
-            FileHandle.standardError.write(Data(
-                ("scenario not found: \(scenario)\navailable: \(available.joined(separator: ", "))\n")
-                    .utf8))
+            ConsoleOut.err("scenario not found: \(scenario)\navailable: \(available.joined(separator: ", "))")
             throw ExitCode(64)
         }
 
@@ -218,10 +216,10 @@ struct RunScenario: AsyncParsableCommand {
         case .resolved(let bundleID, let warning):
             appBundleID = bundleID
             if let warning {
-                FileHandle.standardError.write(Data((warning + "\n").utf8))
+                ConsoleOut.err(warning)
             }
         case .unresolved(let message):
-            FileHandle.standardError.write(Data((message + "\n").utf8))
+            ConsoleOut.err(message)
             throw ExitCode(64)
         }
 
@@ -396,11 +394,11 @@ struct RunScenario: AsyncParsableCommand {
             // 全部赤になる)ので、**せめて run に残す**。stderr は ScenarioHost が
             // "⚠️ " 付きの log イベントへ変換する
             if runPlatform == "ios", uiFrameworkHint == nil {
-                FileHandle.standardError.write(Data(
-                    ("could not determine the UI framework of \(appBundleID) (the bridge did not"
+                ConsoleOut.err(
+                    "could not determine the UI framework of \(appBundleID) (the bridge did not"
                      + " report it and no app bundle was available), so the empty drag after a"
                      + " scroll search is fired blind — on React Native that can select a row."
-                     + " Pass --app-path (the run profile's appPath) to settle it.\n").utf8))
+                     + " Pass --app-path (the run profile's appPath) to settle it.")
             }
         }
 
@@ -409,9 +407,9 @@ struct RunScenario: AsyncParsableCommand {
         let delegate: ReplayDelegate? = noFM ? nil : LazyFMDelegate()
 
         let emit: (ScenarioEvent) -> Void = json
-            ? { print($0.encodedLine()) }
+            ? { ConsoleOut.out($0.encodedLine()) }
             : { event in
-                for line in ScenarioLogFormatter.lines(for: event) { print(line) }
+                for line in ScenarioLogFormatter.lines(for: event) { ConsoleOut.out(line) }
             }
 
         var started = ScenarioEvent(kind: "scenarioStarted")
@@ -530,7 +528,7 @@ struct RunScenario: AsyncParsableCommand {
         do {
             try await core.restoreOrientationIfNeeded()
         } catch {
-            FileHandle.standardError.write(Data("⚠️ failed to restore original orientation: \(error)\n".utf8))
+            ConsoleOut.err("⚠️ failed to restore original orientation: \(error)")
         }
 
         // 「否定側でしか使われず一度も解決できなかった #id」「最後まで不成立の ifCanSelect」
@@ -563,7 +561,7 @@ struct RunScenario: AsyncParsableCommand {
         // 情報行を出すと、インフラ失敗の原因を残すための errorLogs が押し出されて潰れる(実害あり)。
         // FM のコスト(回数・レイテンシ)は結果 JSON の fm とモニターの FM グラフで見る。
         if let warning = FMHealth.warningText() {
-            FileHandle.standardError.write(Data((warning + "\n").utf8))
+            ConsoleOut.err(warning)
         }
 
         if !passed {

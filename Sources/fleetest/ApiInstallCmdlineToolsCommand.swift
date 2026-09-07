@@ -5,6 +5,7 @@
 import ArgumentParser
 import Foundation
 import FTAndroid
+import FTCore
 
 struct ApiInstallCmdlineToolsCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
@@ -16,7 +17,7 @@ struct ApiInstallCmdlineToolsCommand: AsyncParsableCommand {
         var output: ApiInstallCmdlineToolsOutput
         do {
             let result = try await CmdlineToolsInstaller.install { line in
-                FileHandle.standardError.write(Data((line + "\n").utf8))
+                ConsoleOut.err(line)
             }
             output = ApiInstallCmdlineToolsOutput(
                 ok: true, alreadyInstalled: result.alreadyInstalled,
@@ -28,7 +29,7 @@ struct ApiInstallCmdlineToolsCommand: AsyncParsableCommand {
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        print(String(data: try encoder.encode(output), encoding: .utf8)!)
+        ConsoleOut.out(String(data: try encoder.encode(output), encoding: .utf8)!)
         // 失敗は非0で返す(CLI 単体で使うとき用。拡張は JSON の ok を見る)
         if !output.ok { throw ExitCode(1) }
     }

@@ -41,11 +41,11 @@ struct ProjectCommand: AsyncParsableCommand {
                 name: name, app: app, repoRoot: root,
                 platforms: try InitCommand.platforms(from: platform))
 
-            print("✅ Created the project: TestProjects/\(name)/")
-            print("   Scenarios:  TestProjects/\(name)/scenarios/ (add .swift files with @TestClass)")
-            print("   Profiles:   TestProjects/\(name)/profiles/{apps,machines,runs}/")
-            print("   Build:      swift build --product \(project.productName)")
-            print("   Run:        fleetest run --project \(name) --profile ios")
+            ConsoleOut.out("✅ Created the project: TestProjects/\(name)/")
+            ConsoleOut.out("   Scenarios:  TestProjects/\(name)/scenarios/ (add .swift files with @TestClass)")
+            ConsoleOut.out("   Profiles:   TestProjects/\(name)/profiles/{apps,machines,runs}/")
+            ConsoleOut.out("   Build:      swift build --product \(project.productName)")
+            ConsoleOut.out("   Run:        fleetest run --project \(name) --profile ios")
         }
     }
 
@@ -57,7 +57,7 @@ struct ProjectCommand: AsyncParsableCommand {
             let root = try fleetestRepoRoot()
             let projects = ProjectStore.all(repoRoot: root)
             guard !projects.isEmpty else {
-                print("No projects (create one with: fleetest project create <name>)")
+                ConsoleOut.out("No projects (create one with: fleetest project create <name>)")
                 return
             }
             let registered = (try? PackageManifestEditor.registeredProjects(
@@ -72,11 +72,11 @@ struct ProjectCommand: AsyncParsableCommand {
                 let runs = ProfileResolver.runProfileNames(project: project)
                 let runsText = runs.isEmpty ? "no run profiles"
                                             : "runs: \(runs.joined(separator: ", "))"
-                print("・ \(project.name)(\(runsText))"
+                ConsoleOut.out("・ \(project.name)(\(runsText))"
                       + (notes.isEmpty ? "" : " — \(notes.joined(separator: " / "))"))
             }
             for name in registered where !projects.contains(where: { $0.name == name }) {
-                print("・ \(name) — ⚠️ registered in Package.swift but TestProjects/\(name)/ does not exist"
+                ConsoleOut.out("・ \(name) — ⚠️ registered in Package.swift but TestProjects/\(name)/ does not exist"
                       + " (remove it with: fleetest project sync)")
             }
         }
@@ -96,7 +96,7 @@ struct ProjectCommand: AsyncParsableCommand {
             for project in ProjectStore.all(repoRoot: root) {
                 let created = try WorkspaceScaffold.ensureDefault(projectRoot: project.rootURL)
                 if !created.isEmpty {
-                    print("   workspace: created TestProjects/\(project.name)/workspace/"
+                    ConsoleOut.out("   workspace: created TestProjects/\(project.name)/workspace/"
                           + "{\(created.joined(separator: ","))}")
                 }
             }
@@ -151,26 +151,26 @@ struct ProjectCommand: AsyncParsableCommand {
             }
 
             if !unknown.isEmpty {
-                print("❌ Found #id selectors that are not in the contract:")
+                ConsoleOut.out("❌ Found #id selectors that are not in the contract:")
                 let hits = occurrences
                     .filter { unknown.contains($0.id) }
                     .sorted { $0.file.path != $1.file.path ? $0.file.path < $1.file.path
                                                              : $0.line < $1.line }
                 for hit in hits {
-                    print("   \(relativePath(hit.file)):\(hit.line) #\(hit.id)")
+                    ConsoleOut.out("   \(relativePath(hit.file)):\(hit.line) #\(hit.id)")
                 }
             }
 
             if !unusedContractIDs.isEmpty {
                 let sorted = unusedContractIDs.sorted()
-                print("ℹ️ #ids in the contract but unused by scenarios (\(sorted.count)): "
+                ConsoleOut.out("ℹ️ #ids in the contract but unused by scenarios (\(sorted.count)): "
                       + sorted.map { "#\($0)" }.joined(separator: ", "))
             }
 
             guard unknown.isEmpty else {
                 throw ExitCode(1)
             }
-            print("✅ No selector drift (\(files.count) file(s) / \(usedIDs.count) selector(s)"
+            ConsoleOut.out("✅ No selector drift (\(files.count) file(s) / \(usedIDs.count) selector(s)"
                   + " / \(contractIDs.count) contract id(s))")
         }
     }
@@ -187,10 +187,10 @@ struct ProjectCommand: AsyncParsableCommand {
             let added = names.filter { !before.contains($0) }
             let removed = before.filter { !names.contains($0) }
             if added.isEmpty && removed.isEmpty {
-                print("✅ Package.swift is up to date (\(names.count) project(s))")
+                ConsoleOut.out("✅ Package.swift is up to date (\(names.count) project(s))")
             } else {
-                if !added.isEmpty { print("✅ Registered: \(added.joined(separator: ", "))") }
-                if !removed.isEmpty { print("✅ Removed: \(removed.joined(separator: ", "))") }
+                if !added.isEmpty { ConsoleOut.out("✅ Registered: \(added.joined(separator: ", "))") }
+                if !removed.isEmpty { ConsoleOut.out("✅ Removed: \(removed.joined(separator: ", "))") }
             }
         }
     }
@@ -213,27 +213,27 @@ struct ProfileCommand: AsyncParsableCommand {
 
         func run() async throws {
             let testProject = try ScenarioHost.project(named: project)
-            print("Project: \(testProject.name)")
-            print("Apps:     \(list(ProfileResolver.appProfileNames(project: testProject)))")
-            print("Machines: \(list(ProfileResolver.machineNames(project: testProject)))")
+            ConsoleOut.out("Project: \(testProject.name)")
+            ConsoleOut.out("Apps:     \(list(ProfileResolver.appProfileNames(project: testProject)))")
+            ConsoleOut.out("Machines: \(list(ProfileResolver.machineNames(project: testProject)))")
 
             let runs = ProfileResolver.runProfileNames(project: testProject)
             guard !runs.isEmpty else {
-                print("No run profiles (add .json files under profiles/runs/)")
+                ConsoleOut.out("No run profiles (add .json files under profiles/runs/)")
                 return
             }
 
             let ambientMachine = try? ProfileResolver.determineMachine(
                 project: testProject)
             if let ambientMachine {
-                print("Machine name: \(ambientMachine.name)\(ambientMachine.auto ? " (picked automatically)" : "")")
+                ConsoleOut.out("Machine name: \(ambientMachine.name)\(ambientMachine.auto ? " (picked automatically)" : "")")
             } else {
-                print("Machine name: undecided (resolution checks are skipped for run profiles without an "
+                ConsoleOut.out("Machine name: undecided (resolution checks are skipped for run profiles without an "
                     + "explicit machine. Set machine in the run profile, or keep a single "
                     + "profiles/machines/*.json so it is picked automatically)")
             }
 
-            print("Run profiles:")
+            ConsoleOut.out("Run profiles:")
             for run in runs {
                 do {
                     // 実行プロファイル自身の machine 指定があれば最優先する(determineMachine の
@@ -249,12 +249,12 @@ struct ProfileCommand: AsyncParsableCommand {
                     // マシンプロファイルの host はローカルのときだけ黙る(2026-08-17。ユーザー決定:
                     // マシンプロファイルで実行プロファイル経由のリモートホスト指定を表せるようにした)
                     let hostSuffix = resolved.machine.map { " (\($0))" } ?? ""
-                    print("・ \(run) — \(resolved.appName) / \(devices) @ \(resolved.machineName)\(hostSuffix)")
-                    for warning in resolved.warnings { print("    ⚠️ \(warning)") }
+                    ConsoleOut.out("・ \(run) — \(resolved.appName) / \(devices) @ \(resolved.machineName)\(hostSuffix)")
+                    for warning in resolved.warnings { ConsoleOut.out("    ⚠️ \(warning)") }
                 } catch ProfileError.machineUndetermined {
-                    print("・ \(run) — skipped the resolution check because the machine name is undecided")
+                    ConsoleOut.out("・ \(run) — skipped the resolution check because the machine name is undecided")
                 } catch {
-                    print("・ \(run) — ❌ \(error.localizedDescription)")
+                    ConsoleOut.out("・ \(run) — ❌ \(error.localizedDescription)")
                 }
             }
         }

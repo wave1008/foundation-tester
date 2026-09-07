@@ -93,7 +93,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
                     appRef: appRef ?? testProject.name.lowercased(),
                     deviceNames: deviceNames, machine: machineName))
                     .write(to: allURL, options: .atomic)
-                print("   Run:     profiles/runs/all.json … devices=[\(deviceNames.joined(separator: ", "))]")
+                ConsoleOut.out("   Run:     profiles/runs/all.json … devices=[\(deviceNames.joined(separator: ", "))]")
             }
         }
     }
@@ -131,11 +131,11 @@ struct ProfileSetupCommand: AsyncParsableCommand {
                 let os = ApiInstalledDevicesCommand.normalizeOS(picked.os)
                 device["os"] = os
                 device["udid"] = picked.udid
-                print("   Auto-picked (ios): \(picked.name) / \(os) / \(picked.udid)")
+                ConsoleOut.out("   Auto-picked (ios): \(picked.name) / \(os) / \(picked.udid)")
             } else {
                 let picked = try Self.pickAVD()
                 device["avd"] = picked
-                print("   Auto-picked (android): \(picked)")
+                ConsoleOut.out("   Auto-picked (android): \(picked)")
             }
         }
         // 実機判定を誤ると実機向けの準備処理が走って run が壊れる。iOS はカタログ上の
@@ -180,20 +180,20 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             appRef: appRef, deviceNames: [deviceName], machine: machineName))
             .write(to: runURL, options: .atomic)
 
-        print("✅ Created the profiles (project \(testProject.name))")
-        print("   Machine: profiles/machines/\(machineName).json … \(machineDetail)")
-        print("   App:     profiles/apps/\(appRef).json … \(appID)")
-        print("   Run:     profiles/runs/\(runName).json … app=\(appRef) devices=[\(deviceName)]")
+        ConsoleOut.out("✅ Created the profiles (project \(testProject.name))")
+        ConsoleOut.out("   Machine: profiles/machines/\(machineName).json … \(machineDetail)")
+        ConsoleOut.out("   App:     profiles/apps/\(appRef).json … \(appID)")
+        ConsoleOut.out("   Run:     profiles/runs/\(runName).json … app=\(appRef) devices=[\(deviceName)]")
 
         // 検証ゲート: 書いた実行プロファイルが実際に解決できることまで確認する
         let resolved = try ProfileResolver.resolve(
             project: testProject, runName: runName, machineName: machineName)
         for warning in resolved.warnings {
-            print("⚠️ \(warning)")
+            ConsoleOut.out("⚠️ \(warning)")
         }
         let devices = resolved.devices.map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-        print("   Resolved: \(resolved.appName) @ \(machineName) / \(devices)")
-        print("   To run: fleetest run --project \(testProject.name) --profile \(runName)")
+        ConsoleOut.out("   Resolved: \(resolved.appName) @ \(machineName) / \(devices)")
+        ConsoleOut.out("   To run: fleetest run --project \(testProject.name) --profile \(runName)")
         return deviceName
     }
 

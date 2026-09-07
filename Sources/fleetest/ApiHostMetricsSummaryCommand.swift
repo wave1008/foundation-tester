@@ -70,7 +70,7 @@ struct ApiHostMetricsSummaryCommand: ParsableCommand {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(report)
-        print(String(data: data, encoding: .utf8)!)
+        ConsoleOut.out(String(data: data, encoding: .utf8)!)
     }
 
     /// --log 直指定ならそのまま使う(runID は解決しない)。それ以外は --project/--run から
@@ -119,7 +119,7 @@ struct ApiHostMetricsSummaryCommand: ParsableCommand {
     }
 
     private func logStderr(_ message: String) {
-        FileHandle.standardError.write(Data("[host-metrics-summary] \(message)\n".utf8))
+        ConsoleOut.err("[host-metrics-summary] \(message)")
     }
 
     // MARK: - 集計

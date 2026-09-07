@@ -145,7 +145,7 @@ final class MCPServer {
     /// 再確認しない —— 見逃しはそこまでに限られる(verifiedRef 参照)
     var lastScreenProbe: [String: (fingerprint: Int, warning: String)] = [:]
 
-    init(write: @escaping (Data) -> Void = { FileHandle.standardOutput.write($0) },
+    init(write: @escaping (Data) -> Void = { ConsoleOut.out($0) },
          makeDriver: ((_ args: [String: Any]) async throws -> AppDriver)? = nil,
          recordSnapshot: ((_ snapshot: SnapshotResponse, _ platform: String,
                            _ args: [String: Any]) -> Void)? = nil,

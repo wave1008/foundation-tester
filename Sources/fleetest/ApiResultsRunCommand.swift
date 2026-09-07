@@ -33,7 +33,7 @@ struct ApiResultsRunCommand: AsyncParsableCommand {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(output)
-        print(String(data: data, encoding: .utf8)!)
+        ConsoleOut.out(String(data: data, encoding: .utf8)!)
     }
 }
 

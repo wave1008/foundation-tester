@@ -328,9 +328,9 @@ public enum IOSDeviceTransport {
             if isIproxy(pid: pid) {
                 kill(pid, SIGTERM)
             } else if ProcessLiveness.isAlive(pid) {
-                FileHandle.standardError.write(Data(
-                    ("pid \(pid) is no longer the iproxy tunnel (reused by a different process);"
-                     + " removed the stale pid file\n").utf8))
+                ConsoleOut.err(
+                    "pid \(pid) is no longer the iproxy tunnel (reused by a different process);"
+                     + " removed the stale pid file")
             }
         }
         try? FileManager.default.removeItem(at: url)

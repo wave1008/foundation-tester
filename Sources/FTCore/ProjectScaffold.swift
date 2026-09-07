@@ -123,8 +123,8 @@ public enum ProjectScaffold {
         if FileManager.default.fileExists(atPath: url.path) {
             let data = try Data(contentsOf: url)
             guard let parsed = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-                FileHandle.standardError.write(Data(("⚠️ Could not parse \(url.path) as JSON — "
-                    + "skipped appending the Bash permission list\n").utf8))
+                ConsoleOut.err("⚠️ Could not parse \(url.path) as JSON — "
+                    + "skipped appending the Bash permission list")
                 return []
             }
             settings = parsed
@@ -159,8 +159,8 @@ public enum ProjectScaffold {
             let data = try Data(contentsOf: url)
             guard let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 let warning = "⚠️ Could not parse \(url.path) as JSON — "
-                    + "skipped the automatic fleetest.project/fleetest.binaryPath setup (set them by hand)\n"
-                FileHandle.standardError.write(Data(warning.utf8))
+                    + "skipped the automatic fleetest.project/fleetest.binaryPath setup (set them by hand)"
+                ConsoleOut.err(warning)
                 return false
             }
             settings = parsed

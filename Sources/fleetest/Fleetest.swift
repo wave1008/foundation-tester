@@ -163,7 +163,7 @@ struct Doctor: AsyncParsableCommand {
         // availability だけでは実呼び出しの可否が分からない(FMDoctor.checkLive の doc 参照)。
         // doctor は「本当に使えるか」を答える場所なので実呼び出しで確認する
         let fm = await FMDoctor.checkLive()
-        print(fm.available ? "✅ \(fm.detail)" : "❌ \(fm.detail)")
+        ConsoleOut.out(fm.available ? "✅ \(fm.detail)" : "❌ \(fm.detail)")
         // **視覚系も実呼び出しで確かめる**。text と vision は独立に死ぬ(実測)ので、text が
         // 通ったことは occlusion-guard が生きている証拠にならない。ここを能力判定だけに
         // していた頃は、vision 全滅の機械で `--fm-only` が 0 を返し、その run の緑が
@@ -171,7 +171,7 @@ struct Doctor: AsyncParsableCommand {
         let vision = await FMDoctor.visionCheckLive()
         // macOS が対応していないだけ(死ではない)のときは警告どまり、実呼び出しが落ちたら ❌
         let visionUnsupported = !FMVisionSupport.isSupported
-        print(vision.available ? "✅ \(vision.detail)" : (visionUnsupported ? "⚠️ " : "❌ ") + vision.detail)
+        ConsoleOut.out(vision.available ? "✅ \(vision.detail)" : (visionUnsupported ? "⚠️ " : "❌ ") + vision.detail)
         if fmOnly {
             // 可: 0 / 不可: 1。呼び出し側が理由文字列を stdout から読める。
             // **どちらの経路が死んでいても 1**(片方だけ死ぬのが常態で、片方しか見ないゲートは
@@ -184,7 +184,7 @@ struct Doctor: AsyncParsableCommand {
 
         let xcode = try Shell.run(["xcodebuild", "-version"])
         let xcodeLine = xcode.output.split(separator: "\n").first.map(String.init) ?? "unknown"
-        print(xcode.status == 0 ? "✅ \(xcodeLine)" : "❌ xcodebuild not found")
+        ConsoleOut.out(xcode.status == 0 ? "✅ \(xcodeLine)" : "❌ xcodebuild not found")
 
         await reportUnmanagedBridges()
 
@@ -195,7 +195,7 @@ struct Doctor: AsyncParsableCommand {
         // **成果物の Info.plist は見ない** —— 理由は同関数の doc(テンプレートのコピー)
         if let root = try? RepoRoot.find(),
            let stored = BridgeLauncher.staleRunnerToolchain(repoRoot: root) {
-            print("⚠️ The XCUITest runner was built with a different toolchain (\(stored)). "
+            ConsoleOut.out("⚠️ The XCUITest runner was built with a different toolchain (\(stored)). "
                 + "The next bridge start rebuilds it; if the iOS runtime for the new Xcode is missing, "
                 + "install it first (xcodebuild -downloadPlatform iOS)")
         }
@@ -205,9 +205,9 @@ struct Doctor: AsyncParsableCommand {
             .filter { $0.contains("(Booted)") }
             .map { $0.trimmingCharacters(in: .whitespaces) }
         if booted.isEmpty {
-            print("⚠️  No booted simulators (bridge up will boot one automatically)")
+            ConsoleOut.out("⚠️  No booted simulators (bridge up will boot one automatically)")
         } else {
-            print("✅ Booted simulators: \(booted.joined(separator: ", "))")
+            ConsoleOut.out("✅ Booted simulators: \(booted.joined(separator: ", "))")
         }
 
         if let bootedDevices = try? SimulatorCatalog.devices().filter(\.booted) {
@@ -220,14 +220,14 @@ struct Doctor: AsyncParsableCommand {
                 let enabled = read?.status == 0
                     && read?.output.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
                 if !enabled {
-                    print("     ⚠️ \(device.name): Reduce Motion is off. "
+                    ConsoleOut.out("     ⚠️ \(device.name): Reduce Motion is off. "
                           + "Runs are slower because of animation waits (it is enabled automatically on the next bridge start)")
                 }
             }
         }
 
         let xcodegen = try Shell.run(["which", "xcodegen"])
-        print(xcodegen.status == 0
+        ConsoleOut.out(xcodegen.status == 0
               ? "✅ xcodegen: \(xcodegen.output.trimmingCharacters(in: .whitespacesAndNewlines))"
               : "❌ xcodegen is required: brew install xcodegen")
 
@@ -235,19 +235,19 @@ struct Doctor: AsyncParsableCommand {
             let devices = try Shell.run([android.adbPath, "devices"])
             let connected = devices.output.split(separator: "\n").dropFirst()
                 .filter { $0.contains("\tdevice") }
-            print("✅ adb: \(android.adbPath)"
+            ConsoleOut.out("✅ adb: \(android.adbPath)"
                   + (connected.isEmpty ? " (no devices connected)" : " (\(connected.count) connected)"))
             if let apk = try? AndroidDriver.locateBridgeAPK() {
-                print("   ✅ Bridge APK: \(apk.path)")
+                ConsoleOut.out("   ✅ Bridge APK: \(apk.path)")
             } else {
-                print("   ❌ Bridge APK not found (generate it with AndroidRunner/build.sh)")
+                ConsoleOut.out("   ❌ Bridge APK not found (generate it with AndroidRunner/build.sh)")
             }
             // AVD の新規作成(モニターの「デバイスを追加」/ api create-device)にだけ要る。
             // 既存 AVD で実行するぶんには不要なので警告どまり
             if let avdmanager = AndroidSDKLocator.findAVDManager() {
-                print("   ✅ avdmanager: \(avdmanager.path)")
+                ConsoleOut.out("   ✅ avdmanager: \(avdmanager.path)")
             } else {
-                print("   ⚠️ \(AndroidSDKLocator.avdManagerMissingMessage). "
+                ConsoleOut.out("   ⚠️ \(AndroidSDKLocator.avdManagerMissingMessage). "
                       + "New AVDs cannot be created (running on existing AVDs is unaffected). "
                       + AndroidSDKLocator.avdManagerInstallHint)
             }
@@ -255,14 +255,14 @@ struct Doctor: AsyncParsableCommand {
                 guard let serial = line.split(separator: "\t").first.map(String.init) else { continue }
                 // 高速スナップショット用ブリッジ(未導入でも初回操作時に自動導入・起動される)
                 if let driver = try? AndroidDriver(serial: serial) {
-                    print("   ・ \(serial): \(driver.bridgeDoctorSummary())")
+                    ConsoleOut.out("   ・ \(serial): \(driver.bridgeDoctorSummary())")
                     if let warning = driver.animationScaleWarning() {
-                        print("     ⚠️ \(warning)")
+                        ConsoleOut.out("     ⚠️ \(warning)")
                     }
                 }
             }
         } else {
-            print("⚠️ adb not found (set ANDROID_HOME if you use Android)")
+            ConsoleOut.out("⚠️ adb not found (set ANDROID_HOME if you use Android)")
         }
     }
 
@@ -336,14 +336,14 @@ struct Doctor: AsyncParsableCommand {
             }
         }
         if !reaped.isEmpty {
-            print("✂️ Stopped bridges that will not be reused:")
-            reaped.forEach { print("   - \($0)") }
+            ConsoleOut.out("✂️ Stopped bridges that will not be reused:")
+            reaped.forEach { ConsoleOut.out("   - \($0)") }
         }
         if findings.isEmpty {
-            if reaped.isEmpty { print("✅ No unmanaged or stale bridges") }
+            if reaped.isEmpty { ConsoleOut.out("✅ No unmanaged or stale bridges") }
         } else {
-            print("⚠️ Bridges that will not be reused are still running (they hold ports and devices):")
-            findings.forEach { print($0) }
+            ConsoleOut.out("⚠️ Bridges that will not be reused are still running (they hold ports and devices):")
+            findings.forEach { ConsoleOut.out($0) }
         }
     }
 
@@ -356,15 +356,15 @@ struct Doctor: AsyncParsableCommand {
         var resolved = false
         switch Result(catching: { try RepoRoot.find() }) {
         case .success(let root):
-            print("✅ Tool root (bridge assets): \(root.path)")
+            ConsoleOut.out("✅ Tool root (bridge assets): \(root.path)")
             resolved = true
         case .failure(let error):
-            print("❌ Cannot determine the tool root: \(error.localizedDescription)")
+            ConsoleOut.out("❌ Cannot determine the tool root: \(error.localizedDescription)")
         }
         if let packageRoot = ScenarioHost.packageRoot() {
-            print("✅ Scenario package (TestProjects/): \(packageRoot.path)")
+            ConsoleOut.out("✅ Scenario package (TestProjects/): \(packageRoot.path)")
         } else {
-            print("⚠️ No scenario package (Package.swift) found above the current directory"
+            ConsoleOut.out("⚠️ No scenario package (Package.swift) found above the current directory"
                 + " (set FT_PACKAGE_ROOT to point at it explicitly)")
         }
         return resolved
@@ -383,7 +383,7 @@ struct Doctor: AsyncParsableCommand {
         // 何十回も並べて投げても、頭打ち実測ではなく可用性の失敗を測るだけになる
         let base = FMDoctor.check()
         guard base.available else {
-            print("❌ \(base.detail)")
+            ConsoleOut.out("❌ \(base.detail)")
             throw ExitCode(1)
         }
 
@@ -397,38 +397,38 @@ struct Doctor: AsyncParsableCommand {
             imageSize = (w, h)
         }
         let shape = fmLoadVision ? "vision \(imageSize.map { "\($0.width)x\($0.height)" } ?? "64x64")" : "text"
-        print("FM load: \(shape), \(Int(seconds))s x concurrency \(concurrency)")
+        ConsoleOut.out("FM load: \(shape), \(Int(seconds))s x concurrency \(concurrency)")
         let progressClock = ProgressClock()
         let summary = await FMLoadGenerator.run(
             seconds: seconds, concurrency: concurrency, vision: fmLoadVision, imageSize: imageSize
         ) { count in
             // 毎回書くと1行に数百の断片が並ぶ(20秒 × 約8回/秒)。目的は「進んでいる」ことの提示だけ
             guard progressClock.tick(interval: 1) else { return }
-            FileHandle.standardError.write(Data("\r  ...\(count) calls".utf8))
+            ConsoleOut.err(Data("\r  ...\(count) calls".utf8))
         }
-        FileHandle.standardError.write(Data("\r".utf8))
+        ConsoleOut.err(Data("\r".utf8))
 
         // calls=0 only happens when vision was requested but FMVisionSupport says no (the run
         // never dispatched a single call) — report and fail rather than print a fake all-zero summary
         if summary.calls == 0, let reason = summary.firstError {
-            print("❌ \(reason)")
+            ConsoleOut.out("❌ \(reason)")
             throw ExitCode(1)
         }
 
-        print(String(format: "  calls         %5d", summary.calls))
-        print(String(format: "  failures      %5d", summary.failures))
+        ConsoleOut.out(String(format: "  calls         %5d", summary.calls))
+        ConsoleOut.out(String(format: "  failures      %5d", summary.failures))
         // **「FM の天井」を断定しない**。この数字は FMGate/FMLock を通していないので FM 単体の能力で、
         // production の FM 呼び出しは全部あの門で許可枠(既定5・FT_FM_CONCURRENCY で調整)に絞られる
         // (= run 中に見えるレートとは別物)。天井を文言に焼き付けると、環境が変わったときに
         // 数字と矛盾する断定を並べて出すことになる
-        print(String(format: "  throughput    %.2f calls/s", summary.throughputPerSecond))
-        print("  latency       p50 \(summary.p50Ms)ms / max \(summary.maxMs)ms")
+        ConsoleOut.out(String(format: "  throughput    %.2f calls/s", summary.throughputPerSecond))
+        ConsoleOut.out("  latency       p50 \(summary.p50Ms)ms / max \(summary.maxMs)ms")
         if summary.failures > 0, let firstError = summary.firstError {
-            print("  first error: \(firstError)")
+            ConsoleOut.out("  first error: \(firstError)")
         }
-        print("Note: this bypasses FMGate/FMLock, which cap every FM call a run makes to a shared"
+        ConsoleOut.out("Note: this bypasses FMGate/FMLock, which cap every FM call a run makes to a shared"
             + " concurrency limit, so it measures FM itself — not the rate a run can reach.")
-        print("This load is visible in the monitor's FM row too "
+        ConsoleOut.out("This load is visible in the monitor's FM row too "
             + "(FMHealth.record feeds ~/.fleetest/fm-usage/<pid>.json, which `api host-metrics` reads).")
 
         if summary.calls > 0, summary.failures == summary.calls {
@@ -467,9 +467,9 @@ struct Bridge: AsyncParsableCommand {
                 // serial 省略時は接続中の全デバイス(8台並列前のプリウォーム用)
                 for serial in try AndroidBridgeCLI.serials(only: driverOptions.serial) {
                     let driver = try AndroidDriver(serial: serial)
-                    print("→ Starting the Android bridge: \(serial)")
+                    ConsoleOut.out("→ Starting the Android bridge: \(serial)")
                     try await driver.resetAndEnsureBridge()
-                    print("✅ \(serial): \(driver.bridgeDoctorSummary())")
+                    ConsoleOut.out("✅ \(serial): \(driver.bridgeDoctorSummary())")
                 }
                 return
             }
@@ -477,15 +477,15 @@ struct Bridge: AsyncParsableCommand {
             let launcher = BridgeLauncher(repoRoot: root, device: device, port: driverOptions.port,
                                           physical: physical)
 
-            print("→ Generating the project (xcodegen)...")
+            ConsoleOut.out("→ Generating the project (xcodegen)...")
             try launcher.generateProjectIfNeeded()
 
             if !skipBuild {
-                print("→ build-for-testing (the first run takes several minutes)...")
+                ConsoleOut.out("→ build-for-testing (the first run takes several minutes)...")
                 try launcher.buildForTesting()
             }
             if withSampleApp {
-                print("→ Building and installing SampleApp...")
+                ConsoleOut.out("→ Building and installing SampleApp...")
                 try launcher.installSampleApp()
             }
             // 起動は provision() 経由(直接 startDetached しない)。同一シミュレータに XCUITest
@@ -503,18 +503,18 @@ struct Bridge: AsyncParsableCommand {
                 port: driverOptions.port,
                 engine: "xcuitest")
             let provisioned = try await BridgeProvisioner(repoRoot: root)
-                .provision(devices: [(spec.name, spec)], log: { print($0) })
+                .provision(devices: [(spec.name, spec)], log: { ConsoleOut.out($0) })
             // provision() は失敗時に throw する(空配列で正常復帰はしない)ため、first は常に存在する
             let port = provisioned.first?.port ?? driverOptions.port
             // provision は同一デバイスの稼働中ブリッジを preferred(--port)を無視して再利用する。
             // 固定ポート前提のスクリプトが :driverOptions.port を叩いて外さないよう、差異を明示する
             if port != driverOptions.port {
-                print("⚠️ Reused the running bridge on this device (port \(port)) instead of the requested/default "
+                ConsoleOut.out("⚠️ Reused the running bridge on this device (port \(port)) instead of the requested/default "
                     + "port \(driverOptions.port). To rebuild on port \(driverOptions.port), stop it first "
                     + "with `fleetest bridge down --port \(port)` and run again.")
             }
             let host = provisioned.first?.host ?? BridgeEndpoint.loopbackHost
-            print("✅ Bridge ready: http://\(host):\(port)")
+            ConsoleOut.out("✅ Bridge ready: http://\(host):\(port)")
         }
     }
 
@@ -537,14 +537,14 @@ struct Bridge: AsyncParsableCommand {
             if platform == "android" {
                 for serial in try AndroidBridgeCLI.serials(only: serial) {
                     try AndroidDriver(serial: serial).stopBridge()
-                    print("✅ Stopped the Android bridge: \(serial)")
+                    ConsoleOut.out("✅ Stopped the Android bridge: \(serial)")
                 }
                 return
             }
             let root = try RepoRoot.find()
             if all {
                 let stopped = BridgeLauncher.stopAll(repoRoot: root, skipPhysical: false)
-                print(stopped.isEmpty
+                ConsoleOut.out(stopped.isEmpty
                       ? "No bridges are running"
                       : "✅ Stopped bridges (port: \(stopped.joined(separator: ", ")))")
             } else {
@@ -552,7 +552,7 @@ struct Bridge: AsyncParsableCommand {
                 // stop() 側が条件分岐しない宣言をしている)ので false でよい
                 let launcher = BridgeLauncher(repoRoot: root, port: port, physical: false)
                 try launcher.stop()
-                print("✅ Stopped the bridge (port: \(port))")
+                ConsoleOut.out("✅ Stopped the bridge (port: \(port))")
             }
         }
     }
@@ -566,7 +566,7 @@ struct Bridge: AsyncParsableCommand {
             if driverOptions.platform == "android" {
                 for serial in try AndroidBridgeCLI.serials(only: driverOptions.serial) {
                     let driver = try AndroidDriver(serial: serial)
-                    print("\(serial): \(driver.bridgeDoctorSummary())")
+                    ConsoleOut.out("\(serial): \(driver.bridgeDoctorSummary())")
                 }
                 return
             }
@@ -575,7 +575,7 @@ struct Bridge: AsyncParsableCommand {
             // 落ちたのだろう」と報告していた(既定の 8123 が空いていただけ)。Android 側は
             // 元から接続中の全 serial を列挙しており、非対称でもあった。**動いているものを全部出す**
             let found = await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
-            print(BridgeStatusReport.render(found, requested: driverOptions.port))
+            ConsoleOut.out(BridgeStatusReport.render(found, requested: driverOptions.port))
         }
     }
 }
@@ -629,7 +629,7 @@ struct Install: AsyncParsableCommand {
             throw ValidationError("package file not found: \(packagePath)")
         }
         try await driverOptions.makeDriver().install(packagePath: packagePath)
-        print("✅ Installed: \(packagePath)")
+        ConsoleOut.out("✅ Installed: \(packagePath)")
     }
 }
 
@@ -643,7 +643,7 @@ struct Launch: AsyncParsableCommand {
 
     func run() async throws {
         try await driverOptions.makeDriver().launch(bundleID: bundleID)
-        print("✅ Launched: \(bundleID)")
+        ConsoleOut.out("✅ Launched: \(bundleID)")
     }
 }
 
@@ -661,9 +661,9 @@ struct Snapshot: AsyncParsableCommand {
         if json {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            print(String(data: try encoder.encode(snapshot), encoding: .utf8)!)
+            ConsoleOut.out(String(data: try encoder.encode(snapshot), encoding: .utf8)!)
         } else {
-            print(SnapshotRenderer.render(snapshot))
+            ConsoleOut.out(SnapshotRenderer.render(snapshot))
         }
     }
 }
@@ -685,10 +685,10 @@ struct Tap: AsyncParsableCommand {
     func run() async throws {
         if let ref {
             try await driverOptions.makeDriver().tap(ref: ref)
-            print("✅ tap [\(ref)]")
+            ConsoleOut.out("✅ tap [\(ref)]")
         } else if let x, let y {
             try await driverOptions.makeDriver().tap(x: x, y: y)
-            print("✅ tap (\(x), \(y))")
+            ConsoleOut.out("✅ tap (\(x), \(y))")
         } else {
             throw ValidationError("specify either --ref or --x/--y")
         }
@@ -710,7 +710,7 @@ struct TypeCommand: AsyncParsableCommand {
 
     func run() async throws {
         try await driverOptions.makeDriver().type(ref: ref, text: text)
-        print("✅ type \"\(text)\"")
+        ConsoleOut.out("✅ type \"\(text)\"")
     }
 }
 
@@ -727,7 +727,7 @@ struct Swipe: AsyncParsableCommand {
             throw ValidationError("direction must be one of up / down / left / right")
         }
         try await driverOptions.makeDriver().swipe(dir)
-        print("✅ swipe \(direction)")
+        ConsoleOut.out("✅ swipe \(direction)")
     }
 }
 
@@ -744,7 +744,7 @@ struct Press: AsyncParsableCommand {
 
     func run() async throws {
         try await driverOptions.makeDriver().press(ref: ref, duration: duration)
-        print("✅ press [\(ref)] \(duration)s")
+        ConsoleOut.out("✅ press [\(ref)] \(duration)s")
     }
 }
 
@@ -759,7 +759,7 @@ struct Screenshot: AsyncParsableCommand {
     func run() async throws {
         let data = try await driverOptions.makeDriver().screenshot()
         try data.write(to: URL(fileURLWithPath: output))
-        print("✅ Saved: \(output) (\(data.count) bytes)")
+        ConsoleOut.out("✅ Saved: \(output) (\(data.count) bytes)")
     }
 }
 
@@ -770,7 +770,7 @@ struct Terminate: AsyncParsableCommand {
 
     func run() async throws {
         try await driverOptions.makeDriver().terminate()
-        print("✅ Terminated")
+        ConsoleOut.out("✅ Terminated")
     }
 }
 
@@ -1021,7 +1021,7 @@ struct RunScenarios: AsyncParsableCommand {
         }
         if !dryRun, let dispatch = try resolveEffectiveDispatchTarget(
         explicitTarget: dispatchTarget, profile: profile, project: project,
-            requireProfileMachine: true, warn: { print("⚠️ \($0)") }) {
+            requireProfileMachine: true, warn: { ConsoleOut.out("⚠️ \($0)") }) {
             try await dispatchToRemoteHost(dispatch)
             return
         }
@@ -1036,7 +1036,7 @@ struct RunScenarios: AsyncParsableCommand {
 
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
         if !skipBuild {
-            print("→ Building scenarios (\(testProject.name))...")
+            ConsoleOut.out("→ Building scenarios (\(testProject.name))...")
             try ScenarioHost.build(project: testProject)
         }
         PhaseLog.mark("build")
@@ -1050,12 +1050,12 @@ struct RunScenarios: AsyncParsableCommand {
         if scenarios.isEmpty {
             let deletedCount = all.filter(\.deleted).count
             if deletedCount > 0 {
-                print("→ Excluded \(deletedCount) deleted (@Deleted) scenario(s)")
+                ConsoleOut.out("→ Excluded \(deletedCount) deleted (@Deleted) scenario(s)")
             }
             // deleted 側と二重計上しないよう、deleted も付いているものは deleted のほうで数える
             let draftCount = all.filter { $0.draft && !$0.deleted }.count
             if draftCount > 0 {
-                print("→ Excluded \(draftCount) draft (@Draft) scenario(s)")
+                ConsoleOut.out("→ Excluded \(draftCount) draft (@Draft) scenario(s)")
             }
         }
         if !folders.isEmpty {
@@ -1066,13 +1066,13 @@ struct RunScenarios: AsyncParsableCommand {
             let failedSet = LastResultsStore.failedIDs(project: testProject)
             selected = selected.filter { failedSet.contains($0.id) }
             guard !selected.isEmpty else {
-                print("No scenarios failed last time (everything passed, or nothing has run)")
+                ConsoleOut.out("No scenarios failed last time (everything passed, or nothing has run)")
                 return
             }
-            print("→ Re-running the \(selected.count) scenario(s) that failed last time")
+            ConsoleOut.out("→ Re-running the \(selected.count) scenario(s) that failed last time")
         }
         guard !selected.isEmpty else {
-            print("Nothing to run (every scenario is marked @Deleted or @Draft)")
+            ConsoleOut.out("Nothing to run (every scenario is marked @Deleted or @Draft)")
             return
         }
         // LPT 投入順の適用は実行経路ごとに行う(実効 platform が確定してからでないと
@@ -1085,19 +1085,19 @@ struct RunScenarios: AsyncParsableCommand {
         // 混ぜないため。ScenarioHost も dryRun では LastResultsStore へ書かない)
         if dryRun {
             if profile != nil {
-                print("ℹ️ --dry-run touches no device, so --profile is not used"
+                ConsoleOut.out("ℹ️ --dry-run touches no device, so --profile is not used"
                       + " (--platform decides which ios { } / android { } blocks run)")
             }
             if host != nil {
-                print("ℹ️ --dry-run touches no device, so --host is not used"
+                ConsoleOut.out("ℹ️ --dry-run touches no device, so --host is not used"
                       + " (the scenarios are validated locally, from the same source the remote would run)")
             }
             if fleet != nil {
-                print("ℹ️ --dry-run touches no device, so --fleet is not used"
+                ConsoleOut.out("ℹ️ --dry-run touches no device, so --fleet is not used"
                       + " (the scenarios are validated locally, from the same source every fleet entry would run)")
             }
             let failedCount = await runDryRun(items, project: testProject)
-            print(failedCount == 0
+            ConsoleOut.out(failedCount == 0
                   ? "✅ All \(items.count) scenario(s) passed the dry-run"
                   : "❌ \(failedCount) of \(items.count) scenario(s) failed the dry-run")
             if failedCount > 0 { throw ExitCode(1) }
@@ -1112,7 +1112,7 @@ struct RunScenarios: AsyncParsableCommand {
         // 2行並ぶうえ、機能ごとのトグルを持たないこちらの既定のほうが情報として粗い。
         // プロファイル無しの run にはその呼び出し元が無いので、ここが唯一の口になる
         if profile == nil {
-            await ProfileRunner.warnIfFMDegraded(fm: FMConfig(enabled: true, heal: heal)) { print($0) }
+            await ProfileRunner.warnIfFMDegraded(fm: FMConfig(enabled: true, heal: heal)) { ConsoleOut.out($0) }
         }
 
         PhaseLog.mark("fm-doctor")
@@ -1172,7 +1172,7 @@ struct RunScenarios: AsyncParsableCommand {
             // --broadcast は (シナリオ × デバイス) を数える。単位を言わないと「3本のはずが
             // 24 passed」に見える
             let unit = broadcast ? "scenario run(s) (one per scenario per device)" : "scenario(s)"
-            print(failedCount == 0
+            ConsoleOut.out(failedCount == 0
                   ? "✅ All \(ranCount) \(unit) passed\(skippedSuffix)"
                   : "❌ \(failedCount) of \(ranCount) \(unit) failed\(skippedSuffix)")
             // **合否は変えず、劣化だけ伝える**。FM が死んでいると occlusion-guard・
@@ -1185,13 +1185,13 @@ struct RunScenarios: AsyncParsableCommand {
             // 同じ文になり、後者だけだと**ブレーカが落ちて1回も呼ばずに素通りした run で沈黙する**
             let fmReading = FMLiveness.current()
             if let reason = fmReading.deadSummary() {
-                print("⚠️ FM is dead on this machine (\(fmReading.deadPaths.joined(separator: " + "))):"
+                ConsoleOut.out("⚠️ FM is dead on this machine (\(fmReading.deadPaths.joined(separator: " + "))):"
                     + " a green here is not a guarded green — the occlusion-guard, self-healing and"
                     + " screenLooksLike passed through silently."
                     + "\n   \(reason)")
             }
             if runSummary.fmUnavailableScenarios > 0 {
-                print("⚠️ FM unavailable: \(runSummary.fmUnavailableScenarios) scenario(s) ran"
+                ConsoleOut.out("⚠️ FM unavailable: \(runSummary.fmUnavailableScenarios) scenario(s) ran"
                     + " with occlusion-guard / self-healing / screenLooksLike silently disabled."
                     + " Read this run's result with that in mind"
                     + " (confirm with: fleetest doctor --fm-only)")
@@ -1219,7 +1219,7 @@ struct RunScenarios: AsyncParsableCommand {
         recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount)
         try writeJUnitIfRequested(project: testProject, recorder: recorder)
 
-        print(failedCount == 0
+        ConsoleOut.out(failedCount == 0
               ? "✅ All \(items.count) scenario(s) passed"
               : "❌ \(failedCount) of \(items.count) scenario(s) failed")
         if failedCount > 0 {
@@ -1278,15 +1278,15 @@ struct RunScenarios: AsyncParsableCommand {
         }
     }
 
-    /// RemoteDispatchFlagPolicy.Decision の適用。注記は FileHandle 直書き(print を使わない —
+    /// RemoteDispatchFlagPolicy.Decision の適用。注記は ConsoleOut 経由(print を使わない —
     /// RemoteRunDispatcher.log と同じ規律。stdout が端末でないと libc の行バッファが効かず
-    /// 出力が遅延・欠落しうる)
+    /// 出力が遅延・欠落しうる。他の書き手とロックを共有するのでここだけ直書きにしない)
     private func applyFlagPolicy(_ decision: RemoteDispatchFlagPolicy.Decision) throws {
         switch decision {
         case .allowed:
             return
         case .ignoredWithNote(let note):
-            FileHandle.standardOutput.write(Data((note + "\n").utf8))
+            ConsoleOut.out(note)
         case .rejected(let message):
             throw ValidationError(message)
         }
@@ -1328,9 +1328,9 @@ struct RunScenarios: AsyncParsableCommand {
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try xml.write(to: url, atomically: true, encoding: .utf8)
-            print("📄 JUnit report: \(junit) (\(records.count) testcase(s))")
+            ConsoleOut.out("📄 JUnit report: \(junit) (\(records.count) testcase(s))")
         } catch {
-            print("⚠️ Failed to write the JUnit report: \(junit) (\(error.localizedDescription))")
+            ConsoleOut.out("⚠️ Failed to write the JUnit report: \(junit) (\(error.localizedDescription))")
         }
     }
 
@@ -1414,11 +1414,11 @@ struct RunScenarios: AsyncParsableCommand {
               let catalog = try? SimulatorCatalog.devices() else { return nil }
         let matches = catalog.filter { $0.booted && $0.name == status.device }
         if matches.count == 1 { return matches[0].udid }
-        FileHandle.standardError.write(Data(
-            ("install preflight and fast launch are disabled:"
+        ConsoleOut.err(
+            "install preflight and fast launch are disabled:"
              + " \(matches.count) booted simulators are named \"\(status.device)\"."
              + " Launching an app that is not installed will kill the XCUITest runner."
-             + " Use a run profile (--profile) to target a simulator by UDID.\n").utf8))
+             + " Use a run profile (--profile) to target a simulator by UDID.")
         return nil
     }
 
@@ -1459,12 +1459,12 @@ struct RunScenarios: AsyncParsableCommand {
                 if quiet {
                     buffer.append(contentsOf: lines)
                 } else {
-                    for line in lines { print(line) }
+                    for line in lines { ConsoleOut.out(line) }
                 }
             }
             if quiet {
-                print(passed ? "✅ \(item.info.id)" : "❌ \(item.info.id)")
-                if !passed { print(buffer.joined(separator: "\n")) }
+                ConsoleOut.out(passed ? "✅ \(item.info.id)" : "❌ \(item.info.id)")
+                if !passed { ConsoleOut.out(buffer.joined(separator: "\n")) }
             }
             if !passed { failedCount += 1 }
         }
@@ -1502,15 +1502,15 @@ struct RunScenarios: AsyncParsableCommand {
                 if quiet {
                     buffer.append(contentsOf: lines)
                 } else {
-                    for line in lines { print(line) }
+                    for line in lines { ConsoleOut.out(line) }
                 }
             }
             if quiet {
                 if outcome == .passed {
-                    print("✅ \(item.info.id)")
+                    ConsoleOut.out("✅ \(item.info.id)")
                 } else {
-                    print("❌ \(item.info.id)")
-                    print(buffer.joined(separator: "\n"))
+                    ConsoleOut.out("❌ \(item.info.id)")
+                    ConsoleOut.out(buffer.joined(separator: "\n"))
                 }
             }
             if outcome != .passed { failedCount += 1 }
@@ -1527,10 +1527,10 @@ struct RunScenarios: AsyncParsableCommand {
         let items = LPTOrdering.apply(rawItems, project: project, defaultPlatform: defaultPlatform,
                                       enabled: !noLPT,
                                       historyRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
-                                      log: { print($0) })
+                                      log: { ConsoleOut.out($0) })
         let androidItems = items.filter { ($0.info.platform ?? defaultPlatform) == "android" }
         let portList = iosPorts.map(String.init).joined(separator: ", ")
-        print("🚀 Parallel run: \(iosPorts.count) iOS worker(s) (port: \(portList))"
+        ConsoleOut.out("🚀 Parallel run: \(iosPorts.count) iOS worker(s) (port: \(portList))"
               + (androidItems.isEmpty ? "" : " + 1 Android worker") + "\n")
 
         var workers: [RunWorker] = []
@@ -1548,7 +1548,7 @@ struct RunScenarios: AsyncParsableCommand {
                                          connection: DriverConnection(platform: "android",
                                                                       serial: driverOptions.serial)))
             } else {
-                print("❌ Cannot initialise the Android driver (adb not found)")
+                ConsoleOut.out("❌ Cannot initialise the Android driver (adb not found)")
                 // ワーカー不在の android シナリオは orchestrator が flowSkipped(失敗扱い)にする
             }
         }
@@ -1575,13 +1575,13 @@ struct RunScenarios: AsyncParsableCommand {
             case .flowFinished(_, let url, let passed, _, _, _):
                 let all = (buffers.removeValue(forKey: url) ?? []) + lines
                 if quiet {
-                    print(passed ? "✅ \(names[url] ?? url.lastPathComponent)"
+                    ConsoleOut.out(passed ? "✅ \(names[url] ?? url.lastPathComponent)"
                                  : "❌ \(names[url] ?? url.lastPathComponent)\n" + all.joined(separator: "\n"))
                 } else {
-                    print(all.joined(separator: "\n"))
+                    ConsoleOut.out(all.joined(separator: "\n"))
                 }
             default:
-                if !lines.isEmpty { print(lines.joined(separator: "\n")) }
+                if !lines.isEmpty { ConsoleOut.out(lines.joined(separator: "\n")) }
             }
         }
         return await summary.failed

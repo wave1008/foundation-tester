@@ -49,7 +49,7 @@ enum ProfileRunner {
             project: project,
             runProfileName: profileName)
         if machine.auto {
-            print("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
+            ConsoleOut.out("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
         }
         let resolvedAll = try ProfileResolver.resolve(
             project: project, runName: profileName, machineName: machine.name,
@@ -63,11 +63,11 @@ enum ProfileRunner {
         if let workspaceRoot = resolvedAll.workspaceRoot {
             let created = (try? WorkspaceScaffold.ensure(root: workspaceRoot)) ?? []
             if !created.isEmpty {
-                print("→ Created workspace scaffold: " + created.map { "\($0)/" }.joined(separator: ", "))
+                ConsoleOut.out("→ Created workspace scaffold: " + created.map { "\($0)/" }.joined(separator: ", "))
             }
             let staged = try WorkspaceAppStaging.stageWorkspaceApps(resolvedAll)
             if !staged.isEmpty {
-                print("→ Staged app package(s) into the workspace: " + staged.joined(separator: ", "))
+                ConsoleOut.out("→ Staged app package(s) into the workspace: " + staged.joined(separator: ", "))
             }
         }
         // --device / --device-machine(マシン別サブ実行が自分のぶんだけ回す)。**ホストで絞らないと
@@ -99,7 +99,7 @@ enum ProfileRunner {
                                                          runPlatforms: runPlatforms),
                     kind: .notApplicable)
             }
-            print("→ Skipped \(applicability.notApplicable.count) scenario(s) declared for another"
+            ConsoleOut.out("→ Skipped \(applicability.notApplicable.count) scenario(s) declared for another"
                   + " platform (this run covers \(runPlatforms.sorted().joined(separator: ", ")))")
             items = applicability.runnable
         }
@@ -115,18 +115,18 @@ enum ProfileRunner {
         let resolved: ResolvedProfile
         if broadcast {
             resolved = full
-            print("→ Broadcasting \(items.count) scenario(s) to each of \(full.devices.count) device(s)"
+            ConsoleOut.out("→ Broadcasting \(items.count) scenario(s) to each of \(full.devices.count) device(s)"
                 + " (--broadcast)")
         } else {
             let iosCount = items.filter { $0.info.platform != "android" }.count
             let androidCount = items.filter { $0.info.platform != "ios" }.count
             resolved = full.limitingDevices(iosScenarios: iosCount, androidScenarios: androidCount)
             if resolved.devices.count < full.devices.count {
-                print("→ Using \(resolved.devices.count) of \(full.devices.count) device(s)"
+                ConsoleOut.out("→ Using \(resolved.devices.count) of \(full.devices.count) device(s)"
                     + " for \(items.count) scenario(s)")
             }
         }
-        for warning in resolved.warnings { print("⚠️ \(warning)") }
+        for warning in resolved.warnings { ConsoleOut.out("⚠️ \(warning)") }
 
         // 開始スクリプト(docs/remote-runner.md §17)。**デバイスに触る前**に撃つ ——
         // 依存サービスが上がっていない状態でシミュレータを起こしてアプリを入れても、
@@ -136,8 +136,8 @@ enum ProfileRunner {
         // プロセスごと殺された場合は lease が残り、次の run と `fleetest hooks reap` が代わりに撃つ
         let hookStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
         let hookSession = try RunHookRunner.begin(
-            resolved: resolved, stateDir: hookStateDir) { print($0) }
-        defer { RunHookRunner.end(hookSession) { print($0) } }
+            resolved: resolved, stateDir: hookStateDir) { ConsoleOut.out($0) }
+        defer { RunHookRunner.end(hookSession) { ConsoleOut.out($0) } }
 
 
         // CLI の --heal override は master(fm.enabled)が有効な場合のみ heal を ON にする。
@@ -145,7 +145,7 @@ enum ProfileRunner {
         var fm = resolved.fm
         if healOverride == true { fm.heal = fm.enabled }
         if healOverride == false { fm.heal = false }
-        await Self.warnIfFMDegraded(fm: fm) { print($0) }
+        await Self.warnIfFMDegraded(fm: fm) { ConsoleOut.out($0) }
         let reportDir = reportDirOverride.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
         if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
         // 既定 ON なので OFF のときだけ注入する(WebViewDelegatingDriver.preActionWarmup 参照)
@@ -158,27 +158,27 @@ enum ProfileRunner {
         if !resolved.playProtectBypass { setenv(AdbInstallVerifier.environmentKey, "0", 1) }
         let deviceList = resolved.devices
             .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-        print("🧩 Profile \(profileName): \(resolved.appName) @ \(resolved.machineName)")
-        print("   Devices: \(deviceList)")
+        ConsoleOut.out("🧩 Profile \(profileName): \(resolved.appName) @ \(resolved.machineName)")
+        ConsoleOut.out("   Devices: \(deviceList)")
 
         // 1.5. Android AVD 肥大化チェック(超過分は Wipe Data。buildWorkers 前に実行)
         var wipedAndroid: [String] = []
         if resolved.wipeDataOnBloat {
             wipedAndroid = await AndroidDataWiper.wipeBloatedAVDs(
                 devices: resolved.androidDevices, thresholdGB: resolved.wipeDataThresholdGB,
-                locale: resolved.locale) { print($0) }
+                locale: resolved.locale) { ConsoleOut.out($0) }
         }
 
         // 2. Android ワーカー構築(serial 照合=数秒)→ 白化の修復/除外 → 自動インストール。
         // iOS(ブリッジ供給=壊れたブリッジの置き換えで数十秒かかりうる)は lateWorkers として
         // 分離し、Android を供給完了待ちにしない(ApiRunCommand の並列経路と同じ方針)。
         let repoRoot = try RepoRoot.find()
-        await BackendHealthCheck.warnIfUnreachable(resolved: resolved) { print($0) }
+        await BackendHealthCheck.warnIfUnreachable(resolved: resolved) { ConsoleOut.out($0) }
         // GPU 復帰は buildAndroidWorkers より前(emulator プロセスを入れ替えるため serial が
         // 変わりうる。Wipe Data と同じ理由・同じ位置)
         if resolved.recoverCpuFallbackToGpu {
             _ = await AndroidGpuRecovery.recoverCpuFallbackDevices(
-                devices: resolved.androidDevices, locale: resolved.locale) { print($0) }
+                devices: resolved.androidDevices, locale: resolved.locale) { ConsoleOut.out($0) }
         }
         // 死んだレーンの復活(両モード共通)。buildAndroidWorkers の直前(GPU 復帰の後)で
         // 起動していない仮想デバイスを先に起こす。復活できなかった場合の扱いは
@@ -188,12 +188,12 @@ enum ProfileRunner {
                 devices: resolved.androidDevices, runningAVDIDs: Set(running.values))
             if !laneTargets.isEmpty {
                 let outcome = await AndroidLaneRecovery.bootMissingDevices(
-                    devices: laneTargets.map(\.device), locale: resolved.locale) { print($0) }
+                    devices: laneTargets.map(\.device), locale: resolved.locale) { ConsoleOut.out($0) }
                 // 起こせた分は、ブリッジが定着するまで待ってから先へ進む(理由は
                 // awaitDurableAndroidBridges の宣言)
                 await ProfileWorkerFactory.awaitDurableAndroidBridges(
                     devices: laneTargets.map(\.device)
-                        .filter { outcome.booted.contains($0.name) }) { print($0) }
+                        .filter { outcome.booted.contains($0.name) }) { ConsoleOut.out($0) }
             }
         }
         // run-lease(.fleetest/run-<key>.lease)。best-effort: リポジトリ外実行等で root が
@@ -204,8 +204,8 @@ enum ProfileRunner {
         let supplyLease = leaseStateDir.map { SupplyLeaseHolder(stateDir: $0) }
         defer { supplyLease?.release() }
 
-        await ProfileWorkerFactory.preparePhysicalAndroidDevices(resolved: resolved) { print($0) }
-        var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved) { print($0) }
+        await ProfileWorkerFactory.preparePhysicalAndroidDevices(resolved: resolved) { ConsoleOut.out($0) }
+        var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved) { ConsoleOut.out($0) }
         supplyLease?.hold(keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
         let androidSerials = workers.compactMap { $0.connection.serial }
         // **テスト開始時に WebView を揃える**(既定 ON。AndroidWebViewUpdate の宣言参照)
@@ -214,13 +214,13 @@ enum ProfileRunner {
                 targets: androidSerials,
                 allSerials: (try? AndroidDeviceCatalog.connectedSerials()) ?? androidSerials,
                 adb: { args in try? Shell.run([adbPath] + args, timeout: 600).output },
-                log: { print($0) })
+                log: { ConsoleOut.out($0) })
         }
         // **揃わなかった場合は混在を言う**(落とさない。AndroidWebViewVersions の宣言参照)
-        warnIfWebViewVersionsDiffer(serials: androidSerials) { print($0) }
+        warnIfWebViewVersionsDiffer(serials: androidSerials) { ConsoleOut.out($0) }
         let beforeBlankCheck = workers.count
         let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
-                workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { print($0) }
+                workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { ConsoleOut.out($0) }
         workers = triage.workers
         if workers.isEmpty && beforeBlankCheck > 0 {
             throw ProfileWorkerFactory.InstallError(
@@ -228,10 +228,10 @@ enum ProfileRunner {
         }
         workers = try await ProfileWorkerFactory.installIfNeeded(
             apps: resolved.apps, workers: workers,
-            forceAndroidInstall: !wipedAndroid.isEmpty) { print($0) }
+            forceAndroidInstall: !wipedAndroid.isEmpty) { ConsoleOut.out($0) }
         // 一斉 launch 直後の黒画面を作らないための予防(ProfileWorkerFactory.pressHomeOnStart)
         await ProfileWorkerFactory.prepareDevicesOnStart(
-            workers, homeOnStart: resolved.homeOnStart) { print($0) }
+            workers, homeOnStart: resolved.homeOnStart) { ConsoleOut.out($0) }
         let iosDevicesExist = !resolved.iosDevices.isEmpty
 
         // performanceMode では iOS の late join をやめて開始前に建てる。**理由は計測の歪みではなく
@@ -245,7 +245,7 @@ enum ProfileRunner {
         if performanceMode, iosDevicesExist {
             eagerIOSWorkers = await buildIOSLane(
                 resolved: resolved, repoRoot: repoRoot, supplyLease: supplyLease)
-            print("🚀 \(eagerIOSWorkers.count) iOS worker(s) joined")
+            ConsoleOut.out("🚀 \(eagerIOSWorkers.count) iOS worker(s) joined")
         }
         let hasLateIOS = iosDevicesExist && !performanceMode
 
@@ -273,8 +273,8 @@ enum ProfileRunner {
             ? "ios" : "android"
         // 長いシナリオを先に流すと末尾の遊休が減る(実績は platform 別。--no-lpt で従来の ID 順)
         items = LPTOrdering.apply(items, project: project, defaultPlatform: defaultPlatform,
-                                  enabled: lpt, historyRuns: lptHistoryRuns, log: { print($0) })
-        print("🚀 Starting with \(workers.count) Android worker(s)"
+                                  enabled: lpt, historyRuns: lptHistoryRuns, log: { ConsoleOut.out($0) })
+        ConsoleOut.out("🚀 Starting with \(workers.count) Android worker(s)"
             + (hasLateIOS ? " (iOS joins once bridge provisioning finishes)"
                           : (eagerIOSWorkers.isEmpty ? "" : " + \(eagerIOSWorkers.count) iOS worker(s)"))
             + "\n")
@@ -298,7 +298,7 @@ enum ProfileRunner {
                 // 事後判定は isBlankObserved(窓内に一度でも blank)。isPersistentlyBlank だと
                 // 約25秒周期のフラッピングの回復側を引いて凍結を見逃す(実測 2026-07-18)。
                 // 凍結確定時はその場で sleep/wake 修復も試みる(判定・振り直しは従来どおり)
-                await AndroidHealthProbe.observeBlankAndRepair(serial: serial) { print($0) }
+                await AndroidHealthProbe.observeBlankAndRepair(serial: serial) { ConsoleOut.out($0) }
             },
             isDeviceUnreachable: { serial in
                 // adb で state=device の一覧に居なければ消失(offline/未検出)。取得失敗時は誤って
@@ -360,7 +360,7 @@ enum ProfileRunner {
                 guard let udid = retired.connection.udid else { return }  // udid は iOS のみ
                 let stopped = BridgeLauncher.stopMatching(udid: udid, repoRoot: repoRoot)
                 if !stopped.isEmpty {
-                    print("🔧 Stopped stale bridges: port \(stopped.joined(separator: ", "))")
+                    ConsoleOut.out("🔧 Stopped stale bridges: port \(stopped.joined(separator: ", "))")
                 }
             },
             reviveWorker: { retired in
@@ -368,9 +368,9 @@ enum ProfileRunner {
                 let deadline = Date().addingTimeInterval(REVIVE_TIMEOUT)
                 while Date() < deadline {
                     if let w = await ProfileWorkerFactory.buildWorker(forLogicalName: name, resolved: resolved,
-                                                                       repoRoot: repoRoot, log: { print($0) }) {
+                                                                       repoRoot: repoRoot, log: { ConsoleOut.out($0) }) {
                         let installed = (try? await ProfileWorkerFactory.installIfNeeded(
-                            apps: resolved.apps, workers: [w], forceAndroidInstall: false) { print($0) }) ?? [w]
+                            apps: resolved.apps, workers: [w], forceAndroidInstall: false) { ConsoleOut.out($0) }) ?? [w]
                         return installed.first ?? w
                     }
                     try? await Task.sleep(nanoseconds: 5_000_000_000)
@@ -379,7 +379,7 @@ enum ProfileRunner {
             },
             lateWorkers: hasLateIOS ? (platforms: Set(["ios"]), provider: { @Sendable in
                 let ws = await buildIOSLane(resolved: resolved, repoRoot: repoRoot, supplyLease: supplyLease)
-                print("🚀 \(ws.count) iOS worker(s) joined")
+                ConsoleOut.out("🚀 \(ws.count) iOS worker(s) joined")
                 return ws
             }) : nil,
             installHandler: InstallHandlerFactory.make(apps: resolved.apps),
@@ -413,20 +413,20 @@ enum ProfileRunner {
             case .flowFinished(_, let url, let passed, _, _, _):
                 let all = (buffers.removeValue(forKey: url) ?? []) + lines
                 if quiet {
-                    print(passed ? "✅ \(names[url] ?? url.lastPathComponent)"
+                    ConsoleOut.out(passed ? "✅ \(names[url] ?? url.lastPathComponent)"
                                  : "❌ \(names[url] ?? url.lastPathComponent)\n" + all.joined(separator: "\n"))
                 } else {
-                    print(all.joined(separator: "\n"))
+                    ConsoleOut.out(all.joined(separator: "\n"))
                 }
             default:
-                if !lines.isEmpty { print(lines.joined(separator: "\n")) }
+                if !lines.isEmpty { ConsoleOut.out(lines.joined(separator: "\n")) }
             }
         }
 
         let totalSeconds = Date().timeIntervalSince(runClockStart)
         let testStr = timing.testSeconds.map { String(format: "%.1f", $0) } ?? "-"
         let scenarioTotalStr = timing.scenarioTotalSeconds.map { String(format: "%.1f", $0) } ?? "-"
-        print("⏱ Total: \(String(format: "%.1f", totalSeconds))s / "
+        ConsoleOut.out("⏱ Total: \(String(format: "%.1f", totalSeconds))s / "
             + "test time: \(testStr)s / scenario sum: \(scenarioTotalStr)s")
 
         // プラットフォーム別のレーン稼働。台数を増やす前にここを見る(遊休レーンがあるなら
@@ -439,18 +439,18 @@ enum ProfileRunner {
                 "\($0.platform) \($0.lanes) lane(s), \(Int(($0.utilization * 100).rounded()))% busy"
                 + ", last finished at \(String(format: "%.1f", $0.lastFinishSeconds))s"
             }
-            print("📊 Lane utilisation: " + cells.joined(separator: " / "))
-            if let advice = LaneBalanceAdvice.message(for: utilizations) { print(advice) }
+            ConsoleOut.out("📊 Lane utilisation: " + cells.joined(separator: " / "))
+            if let advice = LaneBalanceAdvice.message(for: utilizations) { ConsoleOut.out(advice) }
         }
 
         let finalSummary = await summary
         if !finalSummary.degradedWorkers.isEmpty {
-            print("⚠️ Degraded or dropped workers (\(finalSummary.degradedWorkers.count)):")
-            for entry in finalSummary.degradedWorkers { print("   - \(entry)") }
+            ConsoleOut.out("⚠️ Degraded or dropped workers (\(finalSummary.degradedWorkers.count)):")
+            for entry in finalSummary.degradedWorkers { ConsoleOut.out("   - \(entry)") }
         }
         if !finalSummary.freezeRetries.isEmpty {
-            print("🔁 Results discarded and requeued (\(finalSummary.freezeRetries.count)):")
-            for entry in finalSummary.freezeRetries { print("   - \(entry)") }
+            ConsoleOut.out("🔁 Results discarded and requeued (\(finalSummary.freezeRetries.count)):")
+            for entry in finalSummary.freezeRetries { ConsoleOut.out("   - \(entry)") }
         }
         // performanceMode: レーン数が run 中に変わっていたら所要時間は計測に使えない
         // (MeasurementValidity の宣言参照。既定モードは判定しない=印を付けない)
@@ -458,7 +458,7 @@ enum ProfileRunner {
             performanceMode: performanceMode,
             degradedWorkers: finalSummary.degradedWorkers, blankExclusions: triage.excluded)
         if validity.invalid {
-            print("⏱️❌ Measurement invalid: this run's timing cannot be used for performance"
+            ConsoleOut.out("⏱️❌ Measurement invalid: this run's timing cannot be used for performance"
                 + " comparisons (\(validity.reasons.joined(separator: "; ")))")
         }
         // run 前の blank triage(orchestrator は関与しない)を summary に載せ替えて返す
@@ -529,11 +529,11 @@ enum ProfileRunner {
         do {
             PhaseLog.mark("ios-workers-start")
             var ws = try await ProfileWorkerFactory.buildIOSWorkers(
-                resolved: resolved, repoRoot: repoRoot) { print($0) }
+                resolved: resolved, repoRoot: repoRoot) { ConsoleOut.out($0) }
             PhaseLog.mark("ios-workers-built")
             supplyLease?.hold(keys: ws.compactMap { $0.connection.serial ?? $0.connection.udid })
             ws = (try? await ProfileWorkerFactory.installIfNeeded(
-                apps: resolved.apps, workers: ws, forceAndroidInstall: false) { print($0) }) ?? ws
+                apps: resolved.apps, workers: ws, forceAndroidInstall: false) { ConsoleOut.out($0) }) ?? ws
             PhaseLog.mark("ios-workers-installed")
             // 画面だけ死んだシミュレータを**投入前に回復させる**(BlankWorkerTriage 参照)。
             // 回復は simctl shutdown→boot で、**ブリッジごと死ぬ**ので張り直しまでが1セット。
@@ -545,19 +545,19 @@ enum ProfileRunner {
                 recover: { @Sendable frozen, currentWorkers in
                     await ProfileWorkerFactory.recoverFrozenIOSWorkers(
                         labels: frozen, workers: currentWorkers, resolved: resolved,
-                        repoRoot: repoRoot, apps: resolved.apps) { print($0) }
+                        repoRoot: repoRoot, apps: resolved.apps) { ConsoleOut.out($0) }
                 },
                 stateDir: repoRoot.appendingPathComponent(".fleetest"),
                     nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
                         await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
-                log: { print($0) }).workers
+                log: { ConsoleOut.out($0) }).workers
             ws = recovered
             await ProfileWorkerFactory.prepareDevicesOnStart(
-                ws, homeOnStart: resolved.homeOnStart) { print($0) }
+                ws, homeOnStart: resolved.homeOnStart) { ConsoleOut.out($0) }
             return ws
         } catch {
             // iOS 供給失敗は run 全体を落とさない(iOS シナリオはワーカー不在ドレインで失敗確定)
-            print("❌ Failed to build iOS workers: \(error.localizedDescription)")
+            ConsoleOut.out("❌ Failed to build iOS workers: \(error.localizedDescription)")
             return []
         }
     }

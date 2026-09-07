@@ -42,13 +42,13 @@ struct DevicesCommand: AsyncParsableCommand {
             let machineProfile = try MachineProfileLoad.load(
                 project: project, profile: profile, deviceMachine: deviceMachine,
                 foreign: .notHandled,  // `devices up` は分散しない(api devices-up が分散する側)
-                noteAutoMachine: { print($0) },
-                warn: { print($0) })
+                noteAutoMachine: { ConsoleOut.out($0) },
+                warn: { ConsoleOut.out($0) })
 
             // iOS はブート完了分をバッチで束ねてブリッジ供給する(bootAll 内。ブートと供給は並行)
             let repoRoot = noBridge ? nil : try RepoRoot.find()
-            await DeviceBooter.bootAll(machine: machineProfile, repoRoot: repoRoot) { print($0) }
-            print("✅ Device start-up sequence complete")
+            await DeviceBooter.bootAll(machine: machineProfile, repoRoot: repoRoot) { ConsoleOut.out($0) }
+            ConsoleOut.out("✅ Device start-up sequence complete")
         }
     }
 
@@ -82,12 +82,12 @@ struct DevicesCommand: AsyncParsableCommand {
             // 子は `--device-machine local` で走るので入れ子にはならない
             async let fanout: Void = RemoteDeviceFanout.dispatchSweep(
                 machines: RemoteDeviceFanout.sweepMachines(deviceMachine: deviceMachine),
-                relay: { print($0) })
+                relay: { ConsoleOut.out($0) })
 
             if let root = try? RepoRoot.find() {
                 let stopped = BridgeLauncher.stopAll(repoRoot: root, skipPhysical: true)
                 if !stopped.isEmpty {
-                    print("✅ Bridges stopped (port: \(stopped.joined(separator: ", ")))")
+                    ConsoleOut.out("✅ Bridges stopped (port: \(stopped.joined(separator: ", ")))")
                 }
             }
             // exit code でなくカタログの実状態で成否判定し、Booted が残れば再試行する
@@ -102,14 +102,14 @@ struct DevicesCommand: AsyncParsableCommand {
                     break
                 }
                 if attempt < 3 {
-                    print("→ Some simulators have not shut down yet — retrying (\(attempt)/3)...")
+                    ConsoleOut.out("→ Some simulators have not shut down yet — retrying (\(attempt)/3)...")
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
                 }
             }
             if shutdownConfirmed {
-                print("✅ All simulators shut down")
+                ConsoleOut.out("✅ All simulators shut down")
             } else {
-                print("⚠️ Some simulators will not stop (check xcrun simctl list devices)")
+                ConsoleOut.out("⚠️ Some simulators will not stop (check xcrun simctl list devices)")
             }
             // gRPC SHUTDOWN 優先(adb 経路死亡でも届く)・不可なら emu kill。
             // それでも offline には届かないため、残った qemu を最後に直接落とす
@@ -119,7 +119,7 @@ struct DevicesCommand: AsyncParsableCommand {
                     if await !EmulatorControl.shutdown(serial: serial) {
                         _ = try? Shell.run([adb, "-s", serial, "emu", "kill"])
                     }
-                    print("✅ Emulator shut down (\(serial))")
+                    ConsoleOut.out("✅ Emulator shut down (\(serial))")
                 }
                 if !serials.isEmpty {
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -137,40 +137,40 @@ struct DevicesCommand: AsyncParsableCommand {
                 let filtered = try MachineProfileLoad.load(
                     project: project, profile: profile, deviceMachine: deviceMachine,
                     foreign: .notHandled,  // --profile 付きの掃討は手元だけ
-                    noteAutoMachine: { print($0) },
-                    warn: { print($0) })
+                    noteAutoMachine: { ConsoleOut.out($0) },
+                    warn: { ConsoleOut.out($0) })
 
                 // iOS はシミュレータ停止前に稼働ブリッジも探して停止する(ゾンビ化防止)。repoRoot
                 // 未検出時はブリッジ停止をスキップし simctl shutdown のみ行う(ApiDeviceDown と同じ)
                 let repoRoot = try? RepoRoot.find()
                 for spec in filtered.ios?.devices ?? [] {
                     if spec.isPhysical {
-                        print("✔ \(spec.name): physical device — bulk stop leaves it alone"
+                        ConsoleOut.out("✔ \(spec.name): physical device — bulk stop leaves it alone"
                             + " (stop its bridge from the tile menu)")
                         continue
                     }
                     do {
                         try await DeviceBooter.shutdownOne(
-                            spec: spec, platform: "ios", repoRoot: repoRoot, log: { print($0) })
+                            spec: spec, platform: "ios", repoRoot: repoRoot, log: { ConsoleOut.out($0) })
                     } catch {
-                        print("⚠️ \(spec.name): \(error.localizedDescription)")
+                        ConsoleOut.out("⚠️ \(spec.name): \(error.localizedDescription)")
                     }
                 }
                 for spec in filtered.android?.devices ?? [] {
                     if spec.isPhysical {
-                        print("✔ \(spec.name): physical device — bulk stop leaves it alone"
+                        ConsoleOut.out("✔ \(spec.name): physical device — bulk stop leaves it alone"
                             + " (stop its bridge from the tile menu)")
                         continue
                     }
                     do {
                         try await DeviceBooter.shutdownOne(
-                            spec: spec, platform: "android", log: { print($0) })
+                            spec: spec, platform: "android", log: { ConsoleOut.out($0) })
                     } catch {
-                        print("⚠️ \(spec.name): \(error.localizedDescription)")
+                        ConsoleOut.out("⚠️ \(spec.name): \(error.localizedDescription)")
                     }
                 }
             } catch {
-                print("⚠️ \(error.localizedDescription)")
+                ConsoleOut.out("⚠️ \(error.localizedDescription)")
             }
         }
     }

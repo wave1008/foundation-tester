@@ -908,7 +908,7 @@ public final class AndroidDriver: AppDriver {
         WebViewShotComposite.markBlankCaptureWarned(serial: serial)
         let text = WebViewShotComposite.blankCaptureWarning(
             serial: serial, hasWebViewNode: hasWebViewNode, reason: reason)
-        FileHandle.standardError.write(Data((text + "\n").utf8))
+        ConsoleOut.err(text)
     }
 
     /// DOM 読みが取れず a11y へ黙って落ちていたのを、**端末の事実で決まる理由に限って**
@@ -934,7 +934,7 @@ public final class AndroidDriver: AppDriver {
         guard let reason = WebViewDOMFallback.reason(
             resolution: resolution, systemDebuggable: system, appDebuggable: app) else { return }
         let text = WebViewDOMFallback.warning(serial: serial, packageID: package, reason: reason)
-        FileHandle.standardError.write(Data((text + "\n").utf8))
+        ConsoleOut.err(text)
     }
 
     public func terminate() async throws {

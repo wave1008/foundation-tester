@@ -83,11 +83,11 @@ struct ApiGenScenarioCommand: AsyncParsableCommand {
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         guard let data = try? encoder.encode(value),
               let line = String(data: data, encoding: .utf8) else { return }
-        print(line)
+        ConsoleOut.out(line)
     }
 
     private func logStderr(_ message: String) {
-        FileHandle.standardError.write(Data((message + "\n").utf8))
+        ConsoleOut.err(message)
     }
 }
 

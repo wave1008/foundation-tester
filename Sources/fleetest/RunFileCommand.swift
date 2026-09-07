@@ -69,11 +69,11 @@ struct RunFileCommand: AsyncParsableCommand {
            project == nil || project == owner.name {
             // 既に登録済みターゲットの中にあるファイルはコピーしない(重複クラス定義になる)
             target = owner
-            print("→ Running as a registered scenario of \(owner.name)")
+            ConsoleOut.out("→ Running as a registered scenario of \(owner.name)")
         } else {
             target = try ScenarioHost.project(named: project)
             stagedDir = try Self.stage(urls, into: target)
-            print("→ Staging temporarily into \(target.name): "
+            ConsoleOut.out("→ Staging temporarily into \(target.name): "
                 + urls.map(\.lastPathComponent).joined(separator: ", "))
         }
         defer {

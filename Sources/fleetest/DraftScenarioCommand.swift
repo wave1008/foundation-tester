@@ -51,12 +51,12 @@ struct DraftScenarioCommand: AsyncParsableCommand {
         var draft: ScenarioDraft?
         if !noFm {
             if markdown.count > TestbaseDrafter.maxInputCharacters {
-                print("⚠️ The test base is long, so only the first \(TestbaseDrafter.maxInputCharacters) characters go to FM"
+                ConsoleOut.out("⚠️ The test base is long, so only the first \(TestbaseDrafter.maxInputCharacters) characters go to FM"
                       + " (the rest is not reflected in the draft; split the file or use --no-fm)")
             }
             draft = await TestbaseDrafter.draft(markdown: markdown, fallbackTitle: fallbackTitle)
             if draft == nil {
-                print("⚠️ Foundation Models could not structure it — assembling mechanically from headings and bullets")
+                ConsoleOut.out("⚠️ Foundation Models could not structure it — assembling mechanically from headings and bullets")
             }
         }
         let outline = draft ?? TestbaseOutline.parse(markdown: markdown, fallbackTitle: fallbackTitle)
@@ -74,7 +74,7 @@ struct DraftScenarioCommand: AsyncParsableCommand {
             source: source.lastPathComponent, generatedBy: "fleetest draft-scenario")
 
         if dryRun {
-            print(code)
+            ConsoleOut.out(code)
             return
         }
         let dir = testProject.scenariosDir.appendingPathComponent("Drafts")
@@ -87,9 +87,9 @@ struct DraftScenarioCommand: AsyncParsableCommand {
         let url = try ScenarioCodeGen.writeValidated(
             code: code, className: className, dir: dir,
             quarantineDir: testProject.disabledDir, project: testProject)
-        print("✅ Generated the draft: \(url.path)")
-        print("   \(outline.scenes.count) scene(s) / selectors are still \(ScenarioDraftCodeGen.placeholder)")
-        print("   Next: ft_snapshot on a device, replace with real selectors, then remove the class @Draft")
+        ConsoleOut.out("✅ Generated the draft: \(url.path)")
+        ConsoleOut.out("   \(outline.scenes.count) scene(s) / selectors are still \(ScenarioDraftCodeGen.placeholder)")
+        ConsoleOut.out("   Next: ft_snapshot on a device, replace with real selectors, then remove the class @Draft")
     }
 
     /// --testbase 明示 > docs/testbases/ に 1 ファイル > 候補を並べてエラー

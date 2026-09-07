@@ -229,11 +229,10 @@ extension AndroidDriver {
         guard let serial, !serial.hasPrefix("emulator-") else { return }
         let animations = AnimationPolicy.animationsEnabled()
             ? "animations on (restored to the OS default)" : "animations off"
-        let message = "ℹ️ \(serial): applying these device settings — \(animations) / "
+        ConsoleOut.err("ℹ️ \(serial): applying these device settings — \(animations) / "
             + "hidden_api_policy=1 / stylus handwriting off (its IME hint covers the app) / "
             + "crash and ANR dialogs hidden"
-            + " (on physical devices these persist; revert via Developer options)\n"
-        FileHandle.standardError.write(Data(message.utf8))
+            + " (on physical devices these persist; revert via Developer options)")
     }
 
     /// アニメーションは a11y イベントを発しないため、QuietWaiter の静穏判定後もアニメが表示を
@@ -252,9 +251,8 @@ extension AndroidDriver {
         let consequence = enabled
             ? "the device keeps running without animations"
             : "while they stay on, screenshots can grab a stale frame even after the quiet check"
-        let message = "⚠️ Failed to \(action) the Android animation settings "
-            + "(\(failed.joined(separator: ", "))). \(consequence)\n"
-        FileHandle.standardError.write(Data(message.utf8))
+        ConsoleOut.err("⚠️ Failed to \(action) the Android animation settings "
+            + "(\(failed.joined(separator: ", "))). \(consequence)")
     }
 
     /// クラッシュ/ANR ダイアログを出さない。**アプリを覆って次のシナリオまで巻き込む**のを防ぐ
@@ -266,9 +264,8 @@ extension AndroidDriver {
     private func hideErrorDialogs() {
         guard (try? adb(["shell", "settings", "put", "global",
                          "hide_error_dialogs", "1"]))?.status == 0 else {
-            let message = "⚠️ Failed to set hide_error_dialogs"
-                + " (crash/ANR dialogs may linger and swallow taps in later scenarios)\n"
-            FileHandle.standardError.write(Data(message.utf8))
+            ConsoleOut.err("⚠️ Failed to set hide_error_dialogs"
+                + " (crash/ANR dialogs may linger and swallow taps in later scenarios)")
             return
         }
     }
@@ -282,9 +279,8 @@ extension AndroidDriver {
     private func disableStylusHandwriting() {
         guard (try? adb(["shell", "settings", "put", "secure",
                          "stylus_handwriting_enabled", "0"]))?.status == 0 else {
-            let message = "⚠️ Failed to disable stylus_handwriting_enabled"
-                + " (the IME stylus hint can cover the app and make taps miss)\n"
-            FileHandle.standardError.write(Data(message.utf8))
+            ConsoleOut.err("⚠️ Failed to disable stylus_handwriting_enabled"
+                + " (the IME stylus hint can cover the app and make taps miss)")
             return
         }
     }
@@ -294,8 +290,7 @@ extension AndroidDriver {
     private func allowHiddenAPIReflection() {
         guard (try? adb(["shell", "settings", "put", "global", "hidden_api_policy", "1"]))?.status == 0
         else {
-            FileHandle.standardError.write(Data(
-                "⚠️ Failed to set hidden_api_policy (the /locale locale change is unavailable)\n".utf8))
+            ConsoleOut.err("⚠️ Failed to set hidden_api_policy (the /locale locale change is unavailable)")
             return
         }
     }
@@ -472,7 +467,7 @@ extension AndroidDriver {
     }
 
     private func logStderr(_ message: String) {
-        FileHandle.standardError.write(Data(("\(serial.map { "\($0): " } ?? "")\(message)\n").utf8))
+        ConsoleOut.err("\(serial.map { "\($0): " } ?? "")\(message)")
     }
 
     public func installedBridgeVersionCode() -> Int? {

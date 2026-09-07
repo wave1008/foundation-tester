@@ -216,14 +216,14 @@ actor VideoRecordingCoordinator {
         entries.sort { ($0.segments.first?.startedAt ?? "") < ($1.segments.first?.startedAt ?? "") }
         if clipsFailed > 0 {
             let fallbackNote = softwareEncoderOnly ? " (fell back to the software encoder during this run)" : ""
-            FileHandle.standardError.write(Data(
-                ("⚠️ [recording] \(clipsFailed)/\(clipsAttempted) clips could not be extracted"
-                 + "\(fallbackNote)\n").utf8))
+            ConsoleOut.err(
+                "⚠️ [recording] \(clipsFailed)/\(clipsAttempted) clips could not be extracted"
+                 + "\(fallbackNote)")
         }
         if sourcesFailed > 0 {
-            FileHandle.standardError.write(Data(
-                ("⚠️ [recording] \(sourcesFailed) device(s) produced no usable recording"
-                 + " (the recorder started but nothing readable came out)\n").utf8))
+            ConsoleOut.err(
+                "⚠️ [recording] \(sourcesFailed) device(s) produced no usable recording"
+                 + " (the recorder started but nothing readable came out)")
         }
         RecordingIndexIO.write(entries, runDir: config.runDir,
                                clipsAttempted: clipsAttempted, clipsFailed: clipsFailed,
@@ -297,9 +297,9 @@ actor VideoRecordingCoordinator {
                 // ハードウェアエンコーダの期限超過/失敗を初めて検知。この run の残りは
                 // ソフトウェアへ切り替え、このクリップも1回だけソフトウェアで撮り直す
                 softwareEncoderOnly = true
-                FileHandle.standardError.write(Data(
-                    ("⚠️ [recording] hardware video encoder is unresponsive or failing; "
-                     + "falling back to the software encoder for the rest of this run\n").utf8))
+                ConsoleOut.err(
+                    "⚠️ [recording] hardware video encoder is unresponsive or failing; "
+                     + "falling back to the software encoder for the rest of this run")
                 (outcome, file) = await attemptExtract(preferSoftware: true)
                 if exportsAbandoned {
                     clipsFailed += 1
@@ -315,18 +315,17 @@ actor VideoRecordingCoordinator {
                 // このクリップも巻き添えで失敗しただけのとき、警告を二重に出さないため
                 if !exportsAbandoned {
                     exportsAbandoned = true
-                    FileHandle.standardError.write(Data(
-                        ("⚠️ [recording] \(interval.scenarioID): clip extraction did not finish within "
+                    ConsoleOut.err(
+                        "⚠️ [recording] \(interval.scenarioID): clip extraction did not finish within "
                          + "\(Int(deadline))s even with the software encoder. Giving up on the remaining "
-                         + "clips of this run\n").utf8))
+                         + "clips of this run")
                 }
                 clipsFailed += 1
                 break
             }
             guard outcome == true else {
                 clipsFailed += 1
-                FileHandle.standardError.write(Data(
-                    "⚠️ [recording] \(interval.scenarioID): clip extraction failed\n".utf8))
+                ConsoleOut.err("⚠️ [recording] \(interval.scenarioID): clip extraction failed")
                 continue
             }
             let clipSegments = RecordingWallClock.intersect(

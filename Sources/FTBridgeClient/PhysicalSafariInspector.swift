@@ -49,9 +49,9 @@ enum PhysicalSafariInspector {
         lockdownTLS.close() // 診断チャンネルはここで用済み。webinspector は別ポートへの新規トンネル
 
         if LockdownProtocol.isInvalidService(serviceResponse) {
-            FileHandle.standardError.write(Data(
-                ("fleetest: com.apple.webinspector が実機の lockdown サービス一覧に無い"
-                 + "(Apple が別サービスへ移した可能性。ブラウザ DOM 読み取りは a11y のまま続行)\n").utf8))
+            ConsoleOut.err(
+                "fleetest: com.apple.webinspector が実機の lockdown サービス一覧に無い"
+                 + "(Apple が別サービスへ移した可能性。ブラウザ DOM 読み取りは a11y のまま続行)")
             return nil
         }
         guard let service = LockdownProtocol.serviceStart(serviceResponse) else { return nil }

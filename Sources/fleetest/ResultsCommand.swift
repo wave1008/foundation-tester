@@ -56,7 +56,7 @@ private func printResultsJSON<T: Encodable>(_ value: T) throws {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
     let data = try encoder.encode(value)
-    print(String(data: data, encoding: .utf8)!)
+    ConsoleOut.out(String(data: data, encoding: .utf8)!)
 }
 
 /// startedAt(ISO8601 UTC)をローカルタイムゾーンの人間可読表示に変換する。パース不能ならそのまま返す
@@ -112,7 +112,7 @@ struct ResultsListCommand: AsyncParsableCommand {
             return
         }
         guard !rows.isEmpty else {
-            print("No matching runs")
+            ConsoleOut.out("No matching runs")
             return
         }
         let headers = ["runID", "time", "trigger", "profile", "machine", "passed/failed/total"]
@@ -126,7 +126,7 @@ struct ResultsListCommand: AsyncParsableCommand {
             return [meta.runID, formatLocal(meta.startedAt), meta.trigger,
                     meta.profile ?? "-", meta.host, counts]
         }
-        print(SimpleTable.render(headers: headers, rows: tableRows))
+        ConsoleOut.out(SimpleTable.render(headers: headers, rows: tableRows))
     }
 }
 
@@ -152,7 +152,7 @@ struct ResultsSummaryCommand: AsyncParsableCommand {
             return
         }
         guard !rows.isEmpty else {
-            print("No matching scenarios")
+            ConsoleOut.out("No matching scenarios")
             return
         }
         let headers = ["scenario", "runs", "pass rate", "avg ms", "median ms", "last run", "last result"]
@@ -163,7 +163,7 @@ struct ResultsSummaryCommand: AsyncParsableCommand {
              row.lastRunAt.map(formatLocal) ?? "-",
              row.lastPassed.map { $0 ? "✅" : "❌" } ?? "-"]
         }
-        print(SimpleTable.render(headers: headers, rows: tableRows))
+        ConsoleOut.out(SimpleTable.render(headers: headers, rows: tableRows))
     }
 }
 
@@ -188,7 +188,7 @@ struct ResultsFlakyCommand: AsyncParsableCommand {
             return
         }
         guard !rows.isEmpty else {
-            print("No flaky scenarios (candidates need --min-runs \(minRuns)+ and mixed pass/fail)")
+            ConsoleOut.out("No flaky scenarios (candidates need --min-runs \(minRuns)+ and mixed pass/fail)")
             return
         }
         let headers = ["scenario", "runs", "fail rate", "flip score", "recent results (new→old)"]
@@ -197,7 +197,7 @@ struct ResultsFlakyCommand: AsyncParsableCommand {
              String(format: "%.2f", row.flakinessScore),
              row.recentResults.map { $0 ? "✅" : "❌" }.joined()]
         }
-        print(SimpleTable.render(headers: headers, rows: tableRows))
+        ConsoleOut.out(SimpleTable.render(headers: headers, rows: tableRows))
     }
 }
 
@@ -221,7 +221,7 @@ struct ResultsTrendCommand: AsyncParsableCommand {
             return
         }
         guard !rows.isEmpty else {
-            print("No run history for: \(scenario)")
+            ConsoleOut.out("No run history for: \(scenario)")
             return
         }
         // バーはスキップ合成レコードを除いた最大 durationMs を 20 文字とした相対値
@@ -239,7 +239,7 @@ struct ResultsTrendCommand: AsyncParsableCommand {
             return [formatLocal(record.startedAt), record.runID, record.passed ? "✅" : "❌",
                     String(record.durationMs), record.worker ?? "-", record.host, bar]
         }
-        print(SimpleTable.render(headers: headers, rows: tableRows))
+        ConsoleOut.out(SimpleTable.render(headers: headers, rows: tableRows))
     }
 }
 
@@ -261,18 +261,18 @@ struct ResultsDevicesCommand: AsyncParsableCommand {
             return
         }
         guard !report.byWorker.isEmpty else {
-            print("No matching runs")
+            ConsoleOut.out("No matching runs")
             return
         }
-        print("[per worker]")
-        print(SimpleTable.render(
+        ConsoleOut.out("[per worker]")
+        ConsoleOut.out(SimpleTable.render(
             headers: ["worker", "runs", "pass rate", "avg ms"],
             rows: report.byWorker.map { row in
                 [row.worker, String(row.runs), String(format: "%.1f%%", row.successRate),
                  row.avgDurationMs.map { String(format: "%.0f", $0) } ?? "-"]
             }))
-        print("\n[per platform]")
-        print(SimpleTable.render(
+        ConsoleOut.out("\n[per platform]")
+        ConsoleOut.out(SimpleTable.render(
             headers: ["platform", "runs", "pass rate", "avg ms"],
             rows: report.byPlatform.map { row in
                 [row.platform, String(row.runs), String(format: "%.1f%%", row.successRate),
@@ -302,7 +302,7 @@ struct ResultsSlowCommand: AsyncParsableCommand {
             return
         }
         guard !rows.isEmpty else {
-            print("No matching scenarios")
+            ConsoleOut.out("No matching scenarios")
             return
         }
         let headers = ["scenario", "runs", "avg ms", "p90 ms", "regression", "slowest scene"]
@@ -317,7 +317,7 @@ struct ResultsSlowCommand: AsyncParsableCommand {
             return [row.scenarioID, String(row.runs), String(format: "%.0f", row.avgDurationMs),
                     String(format: "%.0f", row.p90DurationMs), delta, slowestScene]
         }
-        print(SimpleTable.render(headers: headers, rows: tableRows))
+        ConsoleOut.out(SimpleTable.render(headers: headers, rows: tableRows))
     }
 }
 
@@ -342,7 +342,7 @@ struct ResultsInsightsCommand: AsyncParsableCommand {
             return
         }
         guard !rows.isEmpty else {
-            print("Nothing needs attention")
+            ConsoleOut.out("Nothing needs attention")
             return
         }
         for row in rows {
@@ -352,7 +352,7 @@ struct ResultsInsightsCommand: AsyncParsableCommand {
             case "warn": icon = "🟡"
             default: icon = "🔵"
             }
-            print("\(icon) \(row.message)")
+            ConsoleOut.out("\(icon) \(row.message)")
         }
     }
 }
