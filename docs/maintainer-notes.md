@@ -691,3 +691,45 @@ Y も一緒に消える壊れ方があると、そこだけ穴になる。
 口の形と、**集合が漏れていないことを機械で見る仕組み**を先に決める。
 そして**「デバイス依存だから」のような理由づけは、コードで確かめてから書く** ——
 確かめずに書いた分類は、次に読む人が同じ誤解を引き継ぐ土台になる。
+
+## 17. 実行設定を7層で書き直していた(2026-09-08)
+
+`runParallel` の引数を読んだ指摘から出た ——「`FMConfig` や `VideoRecordingConfig` は
+場当たり的ではないか」。
+
+数えると**集約はすでにあった**(`DeviceIndependentRunSettings` / `ResolvedProfile`)。
+壊れていたのは集約ではなく**継ぎ目**で、実行経路の入口で解かれ、同じ集合が7層で書き直されていた:
+
+`runSequential`/`runParallel` → `RunOrchestrator.init` → `ScenarioRunner.runOne` →
+`ScenarioHost.run` → 子の CLI フラグ → `ScenarioRunnerMain` → `FTRuntime.init`
+
+**同じ既定値が3箇所にリテラルで書かれていた**(`containerInference: Bool = true, ocr: Bool = true`)。
+だから**渡し忘れが「引数の省略」として合法**になり、コンパイルでも実行でも見えない。実際
+`ft_run_scenario --profile` は `fm` と `defaultTimeout` だけを拾い、**`ocrFalsePositiveCheck` /
+`containerInference` / `scenarioTimeout` を落としていた** —— プロファイルがそれらを既定と違う値に
+していても、`fleetest run --profile` では効き MCP 経由では黙って無視される。
+
+**`FMConfig` が「場当たり」に見えた理由は FMConfig 自体ではなく非対称だった。**
+プロファイル上は兄弟のトグルなのに、FM 系だけ構造体で `ocr` と `containerInference` は素の Bool。
+`VideoRecordingConfig` は種類が違う(プロファイルの写しではなく `runDir` や `androidADBPath` を
+含む注入物で、`nil` 自体が「録画無効」を運ぶ)ので統合しなかった。
+
+**名前が実体とずれていた。** 呼び出し側は全経路で**親スイッチ `ocr` ではなく
+`ocrFalsePositiveCheck`**(親を掛けた後の実効値)を `ocr:` へ渡していた。`ScenarioHost` の
+コメントだけが正しく、`FTRuntime` のコメントは「実行プロファイルの `ocr`」と書いてあった。
+**この形のまま OCR の用途が増えると、`RunOrchestrator(ocr:)` を読んだ人は親スイッチだと読んで
+occlusion-guard の値を得る** —— 落ちずに誤る型。
+
+直したのは3つ: ①`FTCore.ScenarioExecutionSettings` に束ねて**解かずに運ぶ**(既定値はこの型の
+init 1箇所)②変換 init(`ResolvedProfile` / `DeviceIndependentRunSettings` から)**だけ**を
+写像元にし、`Mirror` で「既定のままの欄が1つも無い」ことを固定 ③`occlusionOCR` へ改名
+(子のフラグも `--no-occlusion-ocr`。旧 `--no-ocr` は `Unknown option` で明示的に落ちるので、
+ホストと子がずれても沈黙しない)。
+
+**副産物**: `OCRToggleWiringTests` が6本から3本になった。「値が7層を通っているか」をソース走査で
+確かめていた3本は、構造体が運ぶようになった時点で**コンパイルが同じことをする**。
+**走査テストは型の効かない継ぎ目にだけ置く** —— 型で守れる区間に走査を残すと、リファクタのたびに
+走査だけが落ち、守っていない性質のために手を入れることになる。
+
+**一般化**: **設定の集約は「型を作ったか」ではなく「継ぎ目で解いていないか」で見る。**
+同じ集合を2層以上で書き直していたら、各層の既定値が**渡し忘れを合法にする装置**になっている。

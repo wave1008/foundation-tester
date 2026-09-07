@@ -654,6 +654,17 @@
   「セッション消失」と読んで activate を撃つ。「セッションはあるが今は無理」は **422** を使う
   (`BridgeRouterStatusContractTests` が 409/503/501 の本数を数えて守る)。in-app ブリッジは逆に
   409 を一時的競合へ広く使ってよい(あちらは包まれない)
+- **実行時設定は継ぎ目で解かない**。`fm` / `occlusionOCR` / `containerInference` / timeouts は
+  `FTCore.ScenarioExecutionSettings` 1つに束ね、`runSequential`/`runParallel` → `RunOrchestrator` →
+  `ScenarioRunner.runOne` → `ScenarioHost.run` をそのまま通す。**既定値はこの型の init 1箇所だけ**
+  —— 層ごとに引数へ解くと、その層の既定が**渡し忘れを合法にする**(コンパイルでも実行でも
+  見えない)→ maintainer-notes §17。プロファイル由来の値の写像元は変換 init
+  (`ResolvedProfile` / `DeviceIndependentRunSettings` から)**だけ**で、欄を足して写像を忘れると
+  `ScenarioExecutionSettingsTests` の `Mirror` 走査が落とす。
+  **走査テストは型の効かない継ぎ目にだけ置く**(`OCRToggleWiringTests` に残すのは子プロセス境界の
+  3本。型で守れる区間の走査は、リファクタのたびに走査だけが落ちる)。
+  **`occlusionOCR` は親スイッチ `ocr` ではない** —— プロファイルの `ocrFalsePositiveCheck`
+  (親を掛けた後の実効値)なので、**OCR の用途が増えてもこの Bool を再利用せず欄を足す**
 
 ### 個別の規律
 

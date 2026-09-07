@@ -390,11 +390,7 @@ enum EnvironmentFault {
 public enum ScenarioRunner {
     /// 戻り値: 実行結果。進捗は onEvent で通知される
     public static func runOne(project: TestProject, item: ScenarioRunItem, worker: RunWorker,
-                              fm: FMConfig, reportDir: URL,
-                              defaultTimeout: Double? = nil,
-                              containerInference: Bool = true,
-                              ocr: Bool = true,
-                              scenarioTimeout: Int? = nil,
+                              settings: ScenarioExecutionSettings, reportDir: URL,
                               debug: ScenarioDebugOptions? = nil,
                               recorder: RunRecorder? = nil,
                               installHandler: (@Sendable (RunWorker, String?) async
@@ -417,10 +413,7 @@ public enum ScenarioRunner {
         var environmentFault = false
         let passed = await ScenarioHost.run(
             project: project, scenarioID: item.info.id, connection: worker.connection,
-            fm: fm, reportDir: reportDir.path,
-            defaultTimeout: defaultTimeout, containerInference: containerInference,
-            ocr: ocr,
-            scenarioTimeout: scenarioTimeout,
+            settings: settings, reportDir: reportDir.path,
             debug: debug, recording: recording,
             installHandler: installHandler.map { handler in
                 { (path: String?) async -> (ok: Bool, message: String) in await handler(worker, path) }
@@ -543,13 +536,9 @@ public final class RunOrchestrator {
     public let events: AsyncStream<RunEvent>
     private let continuation: AsyncStream<RunEvent>.Continuation
     private let workers: [RunWorker]
-    private let fm: FMConfig
+    private let settings: ScenarioExecutionSettings
     private let reportDir: URL
     private let project: TestProject
-    private let defaultTimeout: Double?
-    private let containerInference: Bool
-    private let ocr: Bool
-    private let scenarioTimeout: Int?
     /// デバッグ実行(ブレークポイント・ステップ実行)。呼び出し側が単一シナリオ実行時のみ指定する
     private let debug: ScenarioDebugOptions?
     private let recorder: RunRecorder?
@@ -644,10 +633,8 @@ public final class RunOrchestrator {
         worker.logicalName.map { "\(worker.platform):\($0)" }
     }
 
-    public init(project: TestProject, workers: [RunWorker], fm: FMConfig,
-                reportDir: URL, defaultTimeout: Double? = nil, containerInference: Bool = true,
-                ocr: Bool = true,
-                scenarioTimeout: Int? = nil,
+    public init(project: TestProject, workers: [RunWorker], settings: ScenarioExecutionSettings,
+                reportDir: URL,
                 debug: ScenarioDebugOptions? = nil, recorder: RunRecorder? = nil,
                 recordingConfig: VideoRecordingConfig? = nil,
                 isDeviceFrozen: (@Sendable (String) async -> Bool)? = nil,
@@ -668,13 +655,9 @@ public final class RunOrchestrator {
                 appTargets: [String: ResolvedAppTarget] = [:]) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
-        self.fm = fm
+        self.settings = settings
         self.reportDir = reportDir
         self.project = project
-        self.defaultTimeout = defaultTimeout
-        self.containerInference = containerInference
-        self.ocr = ocr
-        self.scenarioTimeout = scenarioTimeout
         self.debug = debug
         self.recorder = recorder
         self.videoRecording = recordingConfig.map { VideoRecordingCoordinator(config: $0) }
@@ -1062,10 +1045,8 @@ public final class RunOrchestrator {
                 workerLabel: worker.label, scenarioID: item.info.id, at: Date())
             let outcome = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker,
-                fm: fm, reportDir: reportDir,
-                defaultTimeout: defaultTimeout, containerInference: containerInference,
-                ocr: ocr,
-                scenarioTimeout: scenarioTimeout, debug: debug,
+                settings: settings, reportDir: reportDir,
+                debug: debug,
                 recorder: recorder, installHandler: installHandler, appName: appName,
                 appBundleID: appBundleIDs[worker.platform],
                 appPath: appTargets[worker.platform]?

@@ -401,10 +401,11 @@ public final class FTDriveCore {
                 triageEnabled: Bool = true,
                 // 容器の推測に依存する補正の既定(実行プロファイル由来。**FM とは無関係**)
                 containerInference: Bool = true,
-                // occlusion guard 前段の Vision OCR 事前判定(実行プロファイルの `ocr`。`fm` の
-                // 配下ではない)。false のときは FT_OCCLUSION_OCR を読まず常に .off ——
+                // occlusion guard 前段の Vision OCR 事前判定。**親スイッチ `ocr` を掛けた後の
+                // `ocrFalsePositiveCheck` の実効値**であって親スイッチそのものではない。`fm` の
+                // 配下ではない。false のときは FT_OCCLUSION_OCR を読まず常に .off ——
                 // プロファイルの明示 off が環境変数に勝つ
-                ocrEnabled: Bool = true,
+                occlusionOCREnabled: Bool = true,
                 dryRun: Bool = false,
                 healCacheURL: URL? = nil,
                 fingerprintCacheURL: URL? = nil,
@@ -432,7 +433,7 @@ public final class FTDriveCore {
                                      typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                      typeDriverGestures: typeDriverGestures,
                                      delegate: delegate, healingEnabled: healingEnabled,
-                                     occlusionOCRMode: ocrEnabled
+                                     occlusionOCRMode: occlusionOCREnabled
                                          ? RegionText.mode(environment: ProcessInfo.processInfo.environment)
                                          : .off,
                                      occlusionGuardEnabled: falsePositiveCheckEnabled,

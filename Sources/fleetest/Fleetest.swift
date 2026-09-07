@@ -1273,22 +1273,14 @@ struct RunScenarios: AsyncParsableCommand {
         if iosPorts.count <= 1 {
             failedCount = try await runSequential(items, project: testProject,
                                                   port: iosPorts[0], reportDir: reportDirPath,
-                                                  fm: noProfileSettings.fm,
-                                                  containerInference: noProfileSettings.containerInference,
-                                                  ocr: noProfileSettings.ocrFalsePositiveCheck,
+                                                  settings: ScenarioExecutionSettings(noProfileSettings),
                                                   homeOnStart: noProfileSettings.homeOnStart,
-                                                  defaultTimeout: noProfileSettings.defaultTimeout,
-                                                  scenarioTimeout: noProfileSettings.scenarioTimeout,
                                                   recorder: recorder)
         } else {
             failedCount = await runParallel(items, project: testProject,
                                             iosPorts: iosPorts, reportDir: reportDirPath,
-                                            fm: noProfileSettings.fm,
-                                            containerInference: noProfileSettings.containerInference,
-                                            ocr: noProfileSettings.ocrFalsePositiveCheck,
+                                            settings: ScenarioExecutionSettings(noProfileSettings),
                                             homeOnStart: noProfileSettings.homeOnStart,
-                                            defaultTimeout: noProfileSettings.defaultTimeout,
-                                            scenarioTimeout: noProfileSettings.scenarioTimeout,
                                             recordingConfig: recordingConfig,
                                             recorder: recorder)
         }
@@ -1543,7 +1535,8 @@ struct RunScenarios: AsyncParsableCommand {
                 connection: DriverConnection(platform: platform),
                 // **`enabled: false`(= 子へ --no-fm)**。heal だけ切ると失敗のたびに triage が
                 // 走り、デバイスも画面も無いのに FM の直列化待ちを払う(数秒。実測で確認)
-                fm: FMConfig(enabled: false, heal: false), reportDir: tempDir.path,
+                settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false, heal: false)),
+                reportDir: tempDir.path,
                 dryRun: true, appBundleID: app) { event in
                 let lines = ScenarioLogFormatter.lines(for: event)
                     .filter { !$0.contains("→ report:") }
@@ -1564,9 +1557,8 @@ struct RunScenarios: AsyncParsableCommand {
 
     private func runSequential(_ items: [ScenarioRunItem], project: TestProject,
                                port: UInt16, reportDir: String,
-                               fm: FMConfig, containerInference: Bool, ocr: Bool,
+                               settings: ScenarioExecutionSettings,
                                homeOnStart: Bool,
-                               defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
                                recorder: RunRecorder?) async throws -> Int {
         let iosUdid = await Self.resolveUdid(port: port)
         // homeOnStart は「run 開始時に1回」の予防措置(ProfileWorkerFactory.pressHomeOnStart)。
@@ -1608,11 +1600,9 @@ struct RunScenarios: AsyncParsableCommand {
             // quiet: 全行をバッファし、成功なら結果1行のみ・失敗ならバッファ全体(失敗詳細)を出す
             var buffer: [String] = []
             let outcome = await ScenarioRunner.runOne(
-                project: project, item: item, worker: worker, fm: fm,
+                project: project, item: item, worker: worker, settings: settings,
                 reportDir: URL(fileURLWithPath: reportDir),
-                defaultTimeout: defaultTimeout,
-                containerInference: containerInference, ocr: ocr,
-                scenarioTimeout: scenarioTimeout, recorder: recorder,
+                recorder: recorder,
                 appBundleID: app) { event in
                 let lines = RunLogFormatter.lines(for: event)
                 if quiet {
@@ -1638,9 +1628,8 @@ struct RunScenarios: AsyncParsableCommand {
 
     private func runParallel(_ rawItems: [ScenarioRunItem], project: TestProject,
                              iosPorts: [UInt16], reportDir: String,
-                             fm: FMConfig, containerInference: Bool, ocr: Bool,
+                             settings: ScenarioExecutionSettings,
                              homeOnStart: Bool,
-                             defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
                              recordingConfig: VideoRecordingConfig?,
                              recorder: RunRecorder?) async -> Int {
         let defaultPlatform = driverOptions.platform
@@ -1678,11 +1667,8 @@ struct RunScenarios: AsyncParsableCommand {
             workers, homeOnStart: homeOnStart) { ConsoleOut.out($0) }
 
         let orchestrator = RunOrchestrator(project: project, workers: workers,
-                                           fm: fm,
+                                           settings: settings,
                                            reportDir: URL(fileURLWithPath: reportDir),
-                                           defaultTimeout: defaultTimeout,
-                                           containerInference: containerInference, ocr: ocr,
-                                           scenarioTimeout: scenarioTimeout,
                                            recorder: recorder,
                                            recordingConfig: recordingConfig,
                                            appBundleIDs: Self.appBundleIDs(app))

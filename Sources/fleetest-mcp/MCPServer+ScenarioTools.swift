@@ -75,7 +75,8 @@ extension MCPServer {
             connection: DriverConnection(platform: info.platform ?? "ios"),
             // **`enabled: false`(= 子へ --no-fm)**。heal だけ切ると失敗のたびに triage が走り、
             // デバイスも画面も無いのに FM の直列化待ちを数秒払う(2026-08-12 実測)
-            fm: FMConfig(enabled: false, heal: false), reportDir: tempDir.path,
+            settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false, heal: false)),
+            reportDir: tempDir.path,
             dryRun: true) { event in
                 lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
             }
@@ -102,9 +103,8 @@ extension MCPServer {
                 id: id, available: all.map(\.id), scenariosDir: project.scenariosDir))
         }
 
-        var fm = FMConfig(heal: args["heal"] as? Bool ?? false)
+        var exec = ScenarioExecutionSettings(fm: FMConfig(heal: args["heal"] as? Bool ?? false))
         var reportDir = project.reportsDir.path
-        var defaultTimeout: Double?
         var connection: DriverConnection
         var prologue: [String] = []
 
@@ -113,13 +113,13 @@ extension MCPServer {
             let (_, resolved, target) = try await resolveProfileTarget(
                 project: project, profileName: profileName,
                 platformArg: info.platform, prologue: &prologue)
-            fm = resolved.fm
+            // **プロファイルの実行設定は丸ごと通す**(欄ごとに拾うと、足した欄が黙って落ちる)
+            exec = ScenarioExecutionSettings(resolved)
             // heal 引数は master(fm.enabled)が有効な場合のみ ON にする override(未指定は resolved のまま)
             if let healArg = args["heal"] as? Bool {
-                fm.heal = healArg && fm.enabled
+                exec.fm.heal = healArg && exec.fm.enabled
             }
             reportDir = resolved.reportDir.path
-            defaultTimeout = resolved.defaultTimeout
             switch target {
             case .ios(let provisioned, let iosApp):
                 connection = ProfileWorkerFactory.iosConnection(device: provisioned, iosApp: iosApp)
@@ -143,8 +143,7 @@ extension MCPServer {
         var lines: [String] = prologue
         _ = await ScenarioHost.run(project: project, scenarioID: info.id,
                                    connection: connection,
-                                   fm: fm, reportDir: reportDir,
-                                   defaultTimeout: defaultTimeout) { event in
+                                   settings: exec, reportDir: reportDir) { event in
             lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
         }
         return text(lines.joined(separator: "\n"))

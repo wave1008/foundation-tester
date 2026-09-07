@@ -147,8 +147,8 @@ struct RunScenario: AsyncParsableCommand {
           help: "Disable corrections that infer the scroll container from the tree")
     var noContainerInference = false
 
-    @Flag(name: .customLong("no-ocr"), help: "Disable the Vision OCR tier of the occlusion guard (use FM only)")
-    var noOcr = false
+    @Flag(name: .customLong("no-occlusion-ocr"), help: "Disable the Vision OCR tier of the occlusion guard (use FM only)")
+    var noOcclusionOCR = false
 
     @Option(name: .customLong("report-dir"), help: "Directory to write reports to")
     var reportDir: String = "reports"
@@ -439,7 +439,7 @@ struct RunScenario: AsyncParsableCommand {
                                screenLooksLikeEnabled: !noScreenLooksLike,
                                triageEnabled: !noTriage,
                                containerInference: !noContainerInference,
-                               ocrEnabled: !noOcr, dryRun: dryRun,
+                               occlusionOCREnabled: !noOcclusionOCR, dryRun: dryRun,
                                healCacheURL: healCacheURL,
                                fingerprintCacheURL: fingerprintCacheURL,
                                selectorInventoryURL: selectorInventoryURL,

@@ -47,7 +47,7 @@ final class ScenarioHostRunnerUnavailableTests: XCTestCase {
         let passed = await ScenarioHost.run(
             project: project, scenarioID: "Login.S0010",
             connection: DriverConnection(platform: "ios"),
-            fm: FMConfig(enabled: false, heal: false),
+            settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false, heal: false)),
             reportDir: root.appendingPathComponent("reports").path,
             recording: ScenarioRecording(recorder: recorder, worker: "ios:iPhone", title: "login")) {
             sink.append($0)
@@ -131,7 +131,7 @@ final class ScenarioHostRunnerUnavailableTests: XCTestCase {
         let passed = await ScenarioHost.run(
             project: project, scenarioID: "Login.S0010",
             connection: DriverConnection(platform: "ios"),
-            fm: FMConfig(enabled: false, heal: false),
+            settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false, heal: false)),
             reportDir: root.appendingPathComponent("reports").path,
             dryRun: true,
             recording: ScenarioRecording(recorder: recorder)) { _ in }

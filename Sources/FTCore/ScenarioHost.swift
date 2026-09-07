@@ -264,10 +264,8 @@ public enum ScenarioHost {
 
     public static func run(project: TestProject, scenarioID: String,
                            connection: DriverConnection,
-                           fm: FMConfig = FMConfig(), reportDir: String, defaultTimeout: Double? = nil,
-                           containerInference: Bool = true,
-                           ocr: Bool = true,
-                           scenarioTimeout: Int? = nil,
+                           settings: ScenarioExecutionSettings = ScenarioExecutionSettings(),
+                           reportDir: String,
                            dryRun: Bool = false,
                            debug: ScenarioDebugOptions? = nil,
                            recording: ScenarioRecording? = nil,
@@ -276,6 +274,11 @@ public enum ScenarioHost {
                            appName: String? = nil,
                            appBundleID: String? = nil,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
+        let fm = settings.fm
+        let containerInference = settings.containerInference
+        let occlusionOCR = settings.occlusionOCR
+        let defaultTimeout = settings.defaultTimeout
+        let scenarioTimeout = settings.scenarioTimeout
         let startedAt = Date()
         let clock = ContinuousClock()
         let clockStart = clock.now
@@ -350,7 +353,7 @@ public enum ScenarioHost {
         if !containerInference { args.append("--no-container-inference") }
         // occlusion guard の OCR 事前判定(FMConfig の外。falsePositiveCheck が off なら guard 自体が
         // 走らないためこの値は無意味 —— 別ゲートは追加しない)
-        if !ocr { args.append("--no-ocr") }
+        if !occlusionOCR { args.append("--no-occlusion-ocr") }
         if let debug {
             args.append("--debug")
             if debug.pauseOnStart { args.append("--pause-on-start") }
@@ -521,7 +524,8 @@ public enum ScenarioHost {
                                connection: DriverConnection(platform: "ios"),
                                // **`enabled: false`**(heal だけ切ると失敗のたびに triage が走り、
                                // デバイスも画面も無いのに FM の直列化待ちを数秒払う。2026-08-12 実測)
-                               fm: FMConfig(enabled: false, heal: false), reportDir: tempDir.path,
+                               settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false, heal: false)),
+                               reportDir: tempDir.path,
                                dryRun: true) { events.append($0) }
         guard passed else {
             throw ScenarioHostError.dryRunFailed(dryRunFailureDetail(events))

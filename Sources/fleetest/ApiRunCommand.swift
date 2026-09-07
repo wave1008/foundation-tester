@@ -801,6 +801,10 @@ struct ApiRunCommand: AsyncParsableCommand {
                 primingWorkers, homeOnStart: noProfileSettings.homeOnStart) { logStderr($0) }
         }
 
+        var settings = ScenarioExecutionSettings(noProfileSettings)
+        settings.defaultTimeout = effectiveDefaultTimeout
+        settings.scenarioTimeout = effectiveScenarioTimeout
+
         var passedCount = 0
         var failedCount = 0
         var timing = ScenarioTimingTracker()
@@ -817,11 +821,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             let scenarioStart = Date()
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
-                fm: noProfileSettings.fm,
-                reportDir: reportDirPath, defaultTimeout: effectiveDefaultTimeout,
-                containerInference: noProfileSettings.containerInference,
-                ocr: noProfileSettings.ocrFalsePositiveCheck,
-                scenarioTimeout: effectiveScenarioTimeout,
+                settings: settings, reportDir: reportDirPath,
                 dryRun: dryRun, debug: debugOptions, recording: recording,
                 appBundleID: app) { event in
                 // host 発の log イベント等、scenario 未設定のものは現在のシナリオ ID を補う
@@ -957,11 +957,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             // フォールバックとして渡し、installApp() 引数省略時に子が直接インストールできるようにする
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
-                fm: fm, reportDir: reportDirPath,
-                defaultTimeout: resolved.defaultTimeout,
-                containerInference: resolved.containerInference,
-                ocr: resolved.ocrFalsePositiveCheck,
-                scenarioTimeout: resolved.scenarioTimeout, dryRun: dryRun,
+                settings: ScenarioExecutionSettings(resolved), reportDir: reportDirPath,
+                dryRun: dryRun,
                 debug: debugOptions, recording: recording,
                 appPath: dryRun ? nil : resolved.apps[scenarioPlatform]?
                     .packagePath(physical: connection.physical),
@@ -1043,11 +1040,9 @@ struct ApiRunCommand: AsyncParsableCommand {
         }()
 
         let orchestrator = RunOrchestrator(
-            project: project, workers: workers, fm: fm,
-            reportDir: reportDirURL, defaultTimeout: resolved.defaultTimeout,
-            containerInference: resolved.containerInference,
-            ocr: resolved.ocrFalsePositiveCheck,
-            scenarioTimeout: resolved.scenarioTimeout, recorder: recorder,
+            project: project, workers: workers,
+            settings: ScenarioExecutionSettings(resolved),
+            reportDir: reportDirURL, recorder: recorder,
             recordingConfig: recordingConfig,
             isDeviceFrozen: { serial in
                 // 事後判定は isBlankObserved(窓内に一度でも blank)。isPersistentlyBlank だと

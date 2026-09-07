@@ -298,11 +298,9 @@ enum ProfileRunner {
         }()
 
         let orchestrator = RunOrchestrator(
-            project: project, workers: workers + eagerIOSWorkers, fm: fm,
-            reportDir: reportDir, defaultTimeout: resolved.defaultTimeout,
-            containerInference: resolved.containerInference,
-            ocr: resolved.ocrFalsePositiveCheck,
-            scenarioTimeout: resolved.scenarioTimeout, recorder: recorder,
+            project: project, workers: workers + eagerIOSWorkers,
+            settings: ScenarioExecutionSettings(resolved),
+            reportDir: reportDir, recorder: recorder,
             recordingConfig: recordingConfig,
             isDeviceFrozen: { serial in
                 // 事後判定は isBlankObserved(窓内に一度でも blank)。isPersistentlyBlank だと

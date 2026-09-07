@@ -505,7 +505,7 @@ off のときは撃たない)。生成のたびに暖機すると、ガードが
 
 **利用者の口は実行プロファイルの `ocrFalsePositiveCheck`**(既定 true。拡張のプロファイルタブ
 「FM(Foundation Model)/OCR」セクションの「OCRの機能を使用する」配下)。親スイッチ `ocr` を
-false にしても同じく止まる(`fm` と配下のトグルと同じ契約)。`false` にすると `--no-ocr` がランナーへ渡り、
+false にしても同じく止まる(`fm` と配下のトグルと同じ契約)。`false` にすると `--no-occlusion-ocr` がランナーへ渡り、
 **環境変数より優先**して OCR を止める(従来どおり FM だけで判定)。`falsePositiveCheck` が false の
 run では guard 自体が走らないのでこの値は効かない。
 
