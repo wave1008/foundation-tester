@@ -79,8 +79,8 @@ export const panelsStrings = {
   // 鍵 `falsePositiveCheck` を指すラベルなので「偽陽性検証」は据え置き(CLAUDE.md §用語)。
   // 何をするのかが名前から読めないので、括弧で平たく言い添える
   "panels.runProfile.falsePositiveCheckLabel": {
-    ja: "偽陽性検証を有効にする(誤ってPassedになっていないかを視覚的にチェックする)",
-    en: "Enable false-positive verification (visually check that nothing passed by mistake)",
+    ja: "visionを使用したテキストの偽陽性検証を有効にする(macOS 27+)",
+    en: "Enable vision-based false-positive verification for text (macOS 27+)",
   },
   "panels.runProfile.triageLabel": { ja: "失敗時のトリアージを有効にする", en: "Enable failure triage" },
   "panels.runProfile.screenLooksLikeLabel": { ja: "screenLooksLikeを有効にする", en: "Enable screenLooksLike" },
