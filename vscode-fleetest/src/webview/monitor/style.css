@@ -1285,6 +1285,11 @@ button.profile-jump-link:hover:not(:disabled) {
 .run-profile-fm-options .modal-row:last-child {
   margin-bottom: 0;
 }
+/* 字下げされたサブオプション群の直後に来る**同じ階層**のトグル(OCR)。行間 10px のままだと
+   最後のサブオプションと地続きに見え、FM の子だと誤読されるので、1行ぶん余白を足す。 */
+.run-profile-fm-options + .profile-checkbox-row {
+  margin-top: 10px;
+}
 /* .tile-name は白文字前提のため、背景色を必ず持たせる(中立色)。 */
 .tile-name-unknown {
   background-color: var(--vscode-descriptionForeground, #8a8a8a);
