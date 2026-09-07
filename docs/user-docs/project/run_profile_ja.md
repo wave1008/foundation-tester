@@ -23,7 +23,8 @@
 | `falsePositiveCheck` | bool | `true` | `exist`/`textIs` 等の偽陽性検証(occlusion guard)を有効にする。木では一致したが実際には見えていない「誤った緑」を検出する |
 | `triage` | bool | `true` | 失敗時のトリアージ(分類・要約・次の一手)を有効にする。**合否は変えない助言**なので、切っても検証の強度は落ちない(失敗のたびに数秒の FM 呼び出しが走るのを避けたいときに `false`) |
 | `screenLooksLike` | bool | `true` | `screenLooksLike`(FM 視覚検証)を有効にする。`false` のときは該当ステップが失敗ではなく skip になる |
-| `ocr` | bool | `true` | occlusion guard が FM に訊く前に、端末の OCR(Vision)で要素を読む。期待テキストが丸ごと読めた回は FM を呼ばずに通り、読めなければ従来どおり FM が判定する(切ると同じ検査が遅くなるだけ)。`falsePositiveCheck` が `false` の run では guard 自体が走らないので効かない |
+| `ocr` | bool | `true` | OCR 機能全体の親スイッチ。`false` にすると下記の個別トグルに関わらず OCR を使わない |
+| `ocrFalsePositiveCheck` | bool | `true` | occlusion guard が FM に訊く前に、端末の OCR(Vision)で要素を読む。期待テキストが丸ごと読めた回は FM を呼ばずに通り、読めなければ従来どおり FM が判定する(切ると同じ検査が遅くなるだけ)。`falsePositiveCheck` が `false` の run では guard 自体が走らないので効かない |
 | `reportDir` | string | `"reports"` | Markdown レポートの出力先(プロジェクトルート相対) |
 | `defaultTimeout` | number(秒) | DSL 側の既定値 | `timeout:` を取る DSL コマンドの既定タイムアウト |
 | `scenarioTimeout` | int(秒) | `90` | シナリオ単位のホスト側 watchdog(壁時計タイムアウト)。個々のコマンド待ちを縛る `defaultTimeout` とは別物 |

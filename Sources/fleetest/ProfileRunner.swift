@@ -292,7 +292,7 @@ enum ProfileRunner {
             project: project, workers: workers + eagerIOSWorkers, fm: fm,
             reportDir: reportDir, defaultTimeout: resolved.defaultTimeout,
             containerInference: resolved.containerInference,
-            ocr: resolved.ocr,
+            ocr: resolved.ocrFalsePositiveCheck,
             scenarioTimeout: resolved.scenarioTimeout, recorder: recorder,
             recordingConfig: recordingConfig,
             isDeviceFrozen: { serial in

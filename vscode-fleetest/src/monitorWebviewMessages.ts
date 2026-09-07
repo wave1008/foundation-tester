@@ -971,6 +971,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.screenLooksLike === "boolean" &&
         typeof value.fields.containerInference === "boolean" &&
         typeof value.fields.ocr === "boolean" &&
+        typeof value.fields.ocrFalsePositiveCheck === "boolean" &&
         typeof value.fields.iosInappEngine === "boolean" &&
         typeof value.fields.iosFastInput === "boolean" &&
         typeof value.fields.iosPreActionWarmup === "boolean" &&

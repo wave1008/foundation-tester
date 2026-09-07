@@ -23,7 +23,8 @@ selects one.
 | `falsePositiveCheck` | bool | `true` | Occlusion-guard verification on `exist`/`textIs` etc. — catches a "false green" that matched in the tree but is not actually visible |
 | `triage` | bool | `true` | Failure triage (classification, summary, suggested fix). **Advisory only — it never changes pass/fail**, so turning it off costs no verification strength (set `false` to avoid a few seconds of FM per failure) |
 | `screenLooksLike` | bool | `true` | Enable `screenLooksLike` (FM visual verification). When `false`, those steps are skipped rather than failing |
-| `ocr` | bool | `true` | Let the occlusion guard read the element with on-device OCR (Vision) before asking FM. When the expected text is read in full the step passes without an FM call; anything else still goes to FM, so turning this off only makes the same check slower. It has no effect when `falsePositiveCheck` is `false`, because the guard itself does not run |
+| `ocr` | bool | `true` | Master switch for all OCR features. `false` disables them regardless of the individual toggles below |
+| `ocrFalsePositiveCheck` | bool | `true` | Let the occlusion guard read the element with on-device OCR (Vision) before asking FM. When the expected text is read in full the step passes without an FM call; anything else still goes to FM, so turning this off only makes the same check slower. It has no effect when `falsePositiveCheck` is `false`, because the guard itself does not run |
 | `reportDir` | string | `"reports"` | Where to write Markdown reports (relative to the project root) |
 | `defaultTimeout` | number (seconds) | DSL's own default | Default timeout for DSL commands that take `timeout:` |
 | `scenarioTimeout` | int (seconds) | `90` | Host-side wall-clock timeout per scenario (watchdog). Distinct from `defaultTimeout`, which only bounds individual command waits |

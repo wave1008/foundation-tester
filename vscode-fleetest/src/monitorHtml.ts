@@ -382,6 +382,12 @@ function renderRunProfileSection(): string {
               <input type="checkbox" id="run-profile-ocr">
               <label for="run-profile-ocr">${t("panels.runProfile.ocrLabel")}</label>
             </div>
+            <div id="run-profile-ocr-options" class="run-profile-fm-options" style="display: none;">
+              <div class="modal-row profile-checkbox-row">
+                <input type="checkbox" id="run-profile-ocr-false-positive-check">
+                <label for="run-profile-ocr-false-positive-check">${t("panels.runProfile.ocrFalsePositiveCheckLabel")}</label>
+              </div>
+            </div>
           </div>
           <div class="run-profile-section-group">
             <div class="run-profile-section-title">${t("panels.runProfile.recordSectionTitle")}</div>

@@ -53,14 +53,14 @@ final class OCRToggleWiringTests: XCTestCase {
 
     func testProfileRunnerPassesResolvedOcrToTheOrchestrator() throws {
         let profileRunner = try source("Sources/fleetest/ProfileRunner.swift")
-        XCTAssertTrue(profileRunner.contains("ocr: resolved.ocr"),
-                      "resolved.ocr が RunOrchestrator へ渡っていない")
+        XCTAssertTrue(profileRunner.contains("ocr: resolved.ocrFalsePositiveCheck"),
+                      "実効値(親 ocr を掛けた後)が RunOrchestrator へ渡っていない")
     }
 
     /// `--dry-run`/`--debug` の resolved-profile 経路と `--profile` 並列ワーカー経路の両方
     func testApiRunCommandPassesResolvedOcrAtBothCallSites() throws {
         let apiRun = try source("Sources/fleetest/ApiRunCommand.swift")
-        let occurrences = apiRun.components(separatedBy: "ocr: resolved.ocr").count - 1
+        let occurrences = apiRun.components(separatedBy: "ocr: resolved.ocrFalsePositiveCheck").count - 1
         XCTAssertGreaterThanOrEqual(occurrences, 2,
                                     "ocr: resolved.ocr が2箇所未満(dry-run 経路か --profile 経路の "
                                     + "どちらかで配線が落ちている)")

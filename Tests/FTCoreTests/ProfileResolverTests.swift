@@ -1220,6 +1220,20 @@ final class ProfileResolverTests: XCTestCase {
             project: project, runName: "ocrfpcoffonly", machineName: "M1 Max(64GB)")
         XCTAssertTrue(fpcOffOnly.ocr, "falsePositiveCheck:false でも ocr は既定のまま")
         XCTAssertFalse(fpcOffOnly.fm.falsePositiveCheck)
+
+        // 親スイッチ `ocr` は配下の実効値へ掛かる(FMConfig が fm を掛けているのと同じ契約)
+        XCTAssertTrue(onByDefault.ocrFalsePositiveCheck, "省略時は既定 true のはず")
+        XCTAssertFalse(off.ocrFalsePositiveCheck, "親が off なら配下も off")
+
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "ocrFalsePositiveCheck": false }
+        """, to: project.runsDir, name: "ocrfpconly")
+        let ocrFpcOff = try ProfileResolver.resolve(
+            project: project, runName: "ocrfpconly", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(ocrFpcOff.ocr, "親は既定のまま")
+        XCTAssertFalse(ocrFpcOff.ocrFalsePositiveCheck, "個別トグルだけ off にできる")
+        XCTAssertFalse(ocrFpcOff.warnings.contains { $0.contains("ocrFalsePositiveCheck") },
+                       "既知キーのはず: \(ocrFpcOff.warnings)")
     }
 
     func testValidateMachineProfileReportsPhysicalErrors() throws {

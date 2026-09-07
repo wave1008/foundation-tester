@@ -88,6 +88,10 @@ export const panelsStrings = {
     en: "Enable vision-based screenLooksLike (macOS 27+)",
   },
   "panels.runProfile.ocrLabel": { ja: "OCRの機能を使用する", en: "Use OCR features" },
+  "panels.runProfile.ocrFalsePositiveCheckLabel": {
+    ja: "OCRを使用したテキストの偽陽性検証を有効にする",
+    en: "Enable OCR-based false-positive verification for text",
+  },
   "panels.runProfile.iosSectionTitle": { ja: "iOS", en: "iOS" },
   "panels.runProfile.inappEngineLabel": {
     ja: "高速なinappエンジンを使用する",

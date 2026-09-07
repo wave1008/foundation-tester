@@ -434,10 +434,13 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var triage: Bool?
     /// screenLooksLike(screenMatches)を有効にするか(既定 true。無効時は該当ステップを skip)
     public var screenLooksLike: Bool?
-    /// occlusion guard 前段の Vision OCR 事前判定を使うか(既定 true)。**`fm` の配下ではなく
-    /// 独立の兄弟キー**(FMConfig に持たせない)。falsePositiveCheck が false のときは guard 自体が
-    /// 走らないのでこの値は無意味になる(合成箇所を分けているだけで、ここでの追加ゲートは無い)
+    /// OCR 機能全体の親スイッチ(既定 true)。**`fm` の配下ではなく独立の兄弟キー**
+    /// (FMConfig に持たせない)。false にすると下の個別トグルに関わらず OCR を一切使わない
     public var ocr: Bool?
+    /// OCR を使ったテキストの偽陽性検証(occlusion guard 前段の事前判定。既定 true)。
+    /// **`ocr` が false なら値に関わらず無効**。`falsePositiveCheck` が false のときは
+    /// guard 自体が走らないのでこの値は無意味になる(ここでの追加ゲートは無い)
+    public var ocrFalsePositiveCheck: Bool?
     /// 旧名 `screenIs` の受け口(コマンドの改名前に書かれた受け手のプロファイルが動き続けるため)。
     /// **読むのは screenLooksLike が未指定のときだけ**(effectiveScreenLooksLike)。書き出す側は
     /// 新キーだけを書く。この欄を消すと既存のプロファイルが黙って既定値に戻る
@@ -534,7 +537,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
 
     public init(app: String? = nil, devices: [RunDeviceRef]? = nil, fm: Bool? = nil,
                 heal: Bool? = nil, falsePositiveCheck: Bool? = nil, screenLooksLike: Bool? = nil,
-                ocr: Bool? = nil,
+                ocr: Bool? = nil, ocrFalsePositiveCheck: Bool? = nil,
                 triage: Bool? = nil,
                 screenIs: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
@@ -556,6 +559,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.triage = triage
         self.screenLooksLike = screenLooksLike
         self.ocr = ocr
+        self.ocrFalsePositiveCheck = ocrFalsePositiveCheck
         self.screenIs = screenIs
         self.reportDir = reportDir
         self.defaultTimeout = defaultTimeout
@@ -584,7 +588,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var effectiveScreenLooksLike: Bool { screenLooksLike ?? screenIs ?? true }
 
     static let knownKeys: Set<String> = [
-        "app", "devices", "fm", "heal", "falsePositiveCheck", "screenLooksLike", "ocr", "triage",
+        "app", "devices", "fm", "heal", "falsePositiveCheck", "screenLooksLike", "ocr", "ocrFalsePositiveCheck", "triage",
         "screenIs",  // 旧名。effectiveScreenLooksLike が拾う(未知キー警告を出さないため残す)
         "reportDir", "defaultTimeout", "scenarioTimeout",
         "machine", "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
@@ -721,8 +725,11 @@ public struct ResolvedProfile: Sendable {
     public let iosPreActionWarmup: Bool
     /// 容器の推測に依存する補正(RunProfileDocument.containerInference。**既定 true**)
     public let containerInference: Bool
-    /// occlusion guard 前段の Vision OCR 事前判定(RunProfileDocument.ocr。**既定 true**)
+    /// OCR 機能全体の親スイッチ(RunProfileDocument.ocr。**既定 true**)
     public let ocr: Bool
+    /// OCR を使ったテキストの偽陽性検証の実効値(**親スイッチ `ocr` を掛けた後**。
+    /// 利用側はこれだけを見ればよい契約 —— FMConfig が fm を掛けているのと同じ形)
+    public let ocrFalsePositiveCheck: Bool
     /// アプリのアニメーションを残すか(RunProfileDocument.enableAnimations。既定 false=無効化)
     public let enableAnimations: Bool
     /// run 開始時に各デバイスへ home() を撃つか(RunProfileDocument.homeOnStart。**既定 true**)
@@ -1348,6 +1355,8 @@ public enum ProfileResolver {
         // fm:false は他の3フラグを無条件に false へ落とす(利用側は個別フラグだけ見ればよい契約。
         // FMConfig の doc コメント参照)
         let fmEnabled = runDoc.fm ?? true
+        // ocr:false は配下のトグルを無条件に false へ落とす(fm と同じ契約)
+        let ocrEnabled = runDoc.ocr ?? true
         let fm = FMConfig(
             enabled: fmEnabled,
             heal: fmEnabled && (runDoc.heal ?? true),
@@ -1375,7 +1384,8 @@ public enum ProfileResolver {
             iosFastInput: runDoc.iosFastInput ?? false,
             iosPreActionWarmup: runDoc.iosPreActionWarmup ?? true,
             containerInference: runDoc.containerInference ?? true,
-            ocr: runDoc.ocr ?? true,
+            ocr: ocrEnabled,
+            ocrFalsePositiveCheck: ocrEnabled && (runDoc.ocrFalsePositiveCheck ?? true),
             enableAnimations: runDoc.enableAnimations ?? false,
             homeOnStart: runDoc.homeOnStart ?? true,
             playProtectBypass: runDoc.playProtectBypass ?? true,

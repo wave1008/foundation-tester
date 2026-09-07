@@ -28,6 +28,8 @@ const runProfileFalsePositiveCheck = document.getElementById('run-profile-false-
 const runProfileTriage = document.getElementById('run-profile-triage');
 const runProfileScreenLooksLike = document.getElementById('run-profile-screen-looks-like');
 const runProfileOcr = document.getElementById('run-profile-ocr');
+const runProfileOcrOptions = document.getElementById('run-profile-ocr-options');
+const runProfileOcrFalsePositiveCheck = document.getElementById('run-profile-ocr-false-positive-check');
 const runProfileContainerInference = document.getElementById('run-profile-container-inference');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
 const runProfileIosFastInput = document.getElementById('run-profile-ios-fast-input');
@@ -229,7 +231,9 @@ function renderRunProfileEditor(fields) {
   runProfileTriage.checked = fields.triage;
   runProfileScreenLooksLike.checked = fields.screenLooksLike;
   runProfileOcr.checked = fields.ocr;
+  runProfileOcrFalsePositiveCheck.checked = fields.ocrFalsePositiveCheck;
   updateFmOptionsVisibility();
+  updateOcrOptionsVisibility();
   updateInappOptionsVisibility();
   runProfileIosInappEngine.checked = fields.iosInappEngine;
   runProfileIosFastInput.checked = fields.iosFastInput;
@@ -416,7 +420,15 @@ runProfileHeal.addEventListener('change', onRunProfileFormInput);
 runProfileFalsePositiveCheck.addEventListener('change', onRunProfileFormInput);
 runProfileTriage.addEventListener('change', onRunProfileFormInput);
 runProfileScreenLooksLike.addEventListener('change', onRunProfileFormInput);
-runProfileOcr.addEventListener('change', onRunProfileFormInput);
+// ocr ON のときだけ配下のサブオプションを表示する(値は親の状態に関わらず保持・保存する)
+function updateOcrOptionsVisibility() {
+  runProfileOcrOptions.style.display = runProfileOcr.checked ? '' : 'none';
+}
+runProfileOcr.addEventListener('change', () => {
+  updateOcrOptionsVisibility();
+  onRunProfileFormInput();
+});
+runProfileOcrFalsePositiveCheck.addEventListener('change', onRunProfileFormInput);
 // inapp エンジン ON のときだけ配下のサブオプション(iosPreActionWarmup)を表示する
 // (暖機は hybrid の domInterop 経路にしか無い = xcuitest エンジンでは効果が無いため。
 //  値そのものはエンジンの状態に関わらず保持・保存する = FM サブオプションと同じ方針)。
@@ -485,6 +497,7 @@ function runProfileValuesEqual(fields) {
     runProfileTriage.checked === fields.triage &&
     runProfileScreenLooksLike.checked === fields.screenLooksLike &&
     runProfileOcr.checked === fields.ocr &&
+    runProfileOcrFalsePositiveCheck.checked === fields.ocrFalsePositiveCheck &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosFastInput.checked === fields.iosFastInput &&
     runProfileIosPreActionWarmup.checked === fields.iosPreActionWarmup &&
@@ -525,6 +538,7 @@ function setRunProfileControlsEnabled(enabled) {
   runProfileTriage.disabled = !enabled;
   runProfileScreenLooksLike.disabled = !enabled;
   runProfileOcr.disabled = !enabled;
+  runProfileOcrFalsePositiveCheck.disabled = !enabled;
   runProfileIosInappEngine.disabled = !enabled;
   runProfileIosFastInput.disabled = !enabled;
   runProfileIosPreActionWarmup.disabled = !enabled;
@@ -607,6 +621,7 @@ runProfileConfirm.addEventListener('click', () => {
       triage: runProfileTriage.checked,
       screenLooksLike: runProfileScreenLooksLike.checked,
       ocr: runProfileOcr.checked,
+      ocrFalsePositiveCheck: runProfileOcrFalsePositiveCheck.checked,
       iosInappEngine: runProfileIosInappEngine.checked,
       iosFastInput: runProfileIosFastInput.checked,
       iosPreActionWarmup: runProfileIosPreActionWarmup.checked,

@@ -64,6 +64,7 @@ export function buildRunProfileTemplate(
   template.heal = true;
   template.falsePositiveCheck = true;
   template.ocr = true;
+  template.ocrFalsePositiveCheck = true;
   template.screenLooksLike = true;
   template.triage = true;
   template.iosInappEngine = true;
@@ -131,6 +132,8 @@ export interface RunProfileFormFields {
   readonly triage: boolean;
   readonly containerInference: boolean;
   readonly ocr: boolean;
+  /** OCR の配下(親 `ocr` の状態に関わらず保持・保存する。FM のサブオプションと同じ方針) */
+  readonly ocrFalsePositiveCheck: boolean;
   readonly iosInappEngine: boolean;
   readonly iosFastInput: boolean;
   /// **既定 true**。domInterop の委譲イベント直前にランナーへ1回問い合わせてから撃つ
@@ -182,6 +185,8 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const heal = typeof source.heal === "boolean" ? source.heal : true;
   const falsePositiveCheck = typeof source.falsePositiveCheck === "boolean" ? source.falsePositiveCheck : true;
   const ocr = typeof source.ocr === "boolean" ? source.ocr : true;
+  const ocrFalsePositiveCheck =
+    typeof source.ocrFalsePositiveCheck === "boolean" ? source.ocrFalsePositiveCheck : true;
   const triage = typeof source.triage === "boolean" ? source.triage : true;
   // screenIs は改名前の旧キー。新キーが無いときだけ読む(Sources/FTCore/RunProfile.swift の
   // effectiveScreenLooksLike と同じ優先順。保存時は updateRunProfileInObject が旧キーを落とす)
@@ -241,6 +246,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     triage,
     containerInference,
     ocr,
+    ocrFalsePositiveCheck,
     iosInappEngine,
     iosFastInput,
     iosPreActionWarmup,
@@ -305,7 +311,8 @@ export function updateRunProfileInObject(
   result.triage = fields.triage;
   delete result.screenIs;  // 旧キーを残すと同じ設定が2つのキーに現れ、片方だけ直す事故になる
   result.containerInference = fields.containerInference;
-  result.ocr = fields.ocr;  // 同上(既定 true 側。containerInference と同じ理由で常に書く)
+  result.ocr = fields.ocr;
+  result.ocrFalsePositiveCheck = fields.ocrFalsePositiveCheck;  // 同上(既定 true 側。containerInference と同じ理由で常に書く)
   result.iosInappEngine = fields.iosInappEngine;
   result.updateWebView = fields.updateWebView;
   result.wipeDataOnBloat = fields.wipeDataOnBloat;

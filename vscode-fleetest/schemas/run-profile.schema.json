@@ -55,7 +55,12 @@
     },
     "ocr": {
       "type": "boolean",
-      "description": "occlusion guard の OCR 事前判定段(Vision)を有効にするか(既定 true)。false で従来どおり FM だけで判定する。falsePositiveCheck が false の run では guard 自体が走らないため効かない。",
+      "description": "OCR 機能全体の親スイッチ(既定 true)。false にすると下の個別トグルに関わらず OCR を使わない。",
+      "default": true
+    },
+    "ocrFalsePositiveCheck": {
+      "type": "boolean",
+      "description": "OCR を使ったテキストの偽陽性検証(occlusion guard の前段。既定 true)。false で従来どおり FM だけで判定する。ocr が false なら値に関わらず無効。falsePositiveCheck が false の run では guard 自体が走らないため効かない。",
       "default": true
     },
     "triage": {
