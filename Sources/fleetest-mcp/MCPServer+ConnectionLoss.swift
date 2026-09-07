@@ -65,7 +65,8 @@ extension MCPServer {
                 bound: bound, ownerAlive: ownerAlive,
                 vanished: Self.bridgeVanished(port: port, running: running)) {
             case .busy:
-                return Self.bridgeBusyHint(connection: connection, engine: engines[key])
+                return Self.bridgeBusyHint(connection: connection,
+                    engine: Self.resolvedEngine(known: engines[key], port: port, repoRoot: repoRoot))
             case .stillUnclear:
                 return ""
             case .vanished:
@@ -150,11 +151,24 @@ extension MCPServer {
         return ProcessLiveness.isAlive(pid)
     }
 
+    /// engine が nil(最初の呼び出しから失敗し driver 未解決)なら `resolvedEngine` で
+    /// ディスクの台帳から引き直してから渡す —— 固着した in-app ブリッジは最初の呼び出しから
+    /// 失敗するので、素通しすると必ず XCUITest 向けの文面(実害: 永遠に的外れな「Retry」)が出る
+    static func resolvedEngine(known: String?, port: UInt16, repoRoot: URL?) -> String? {
+        if let known { return known }
+        guard let repoRoot else { return nil }
+        let inappPath = InAppBridgeState.url(
+            stateDir: repoRoot.appendingPathComponent(".fleetest"), port: port)
+        return FileManager.default.fileExists(atPath: inappPath.path) ? "inapp" : nil
+    }
+
     /// bound(誰かが listen している)なポートへ「exited」と言わないための正直な文言。
     /// **forgetConnection も呼ばない**呼び手側の判断とセットで使う(iosConnectionLostHint 参照)。
     /// **エンジンで文面を出し分ける**: in-app/hybrid ブリッジは対象アプリが
     /// 前面のときしか応答しない(kernel が handshake を返すので isBound は true のまま)ので、
-    /// XCUITest 向けの「busy・リトライせよ」は永遠に的外れな助言になる
+    /// XCUITest 向けの「busy・リトライせよ」は永遠に的外れな助言になる。
+    /// **engine が不明なら呼び手が `resolvedEngine` でディスクの台帳を見てから渡す契約**
+    /// (この関数自身はディスクを見ない)
     static func bridgeBusyHint(connection: String, engine: String?) -> String {
         guard engine == "inapp" || engine == "hybrid" else {
             return "\nThe XCUITest runner behind \(connection) did not answer in time, but the"
