@@ -33,7 +33,7 @@ final class RunRecordTests: XCTestCase {
         let recorder = RunRecorder.begin(project: TestProject(name: "P", rootURL: root),
                                          profile: "ios-fpc", trigger: "cli",
                                          captureHostMetrics: false)
-        recorder.finish(total: 1, passed: 1, failed: 0, fmSettings: testFMSettings)
+        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings)
         return try JSONDecoder().decode(
             RunMetaRecord.self,
             from: Data(contentsOf: recorder.runDir.appendingPathComponent("run.json")))
@@ -115,7 +115,7 @@ final class RunRecordTests: XCTestCase {
         }
         XCTAssertEqual(try read().runGroup, "20260826-0100Z-LDIPC96-abcd")
 
-        recorder.finish(total: 0, passed: 0, failed: 0, fmSettings: testFMSettings)
+        recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false, fmSettings: testFMSettings)
         XCTAssertEqual(try read().runGroup, "20260826-0100Z-LDIPC96-abcd", "finish で欄が落ちてはいけない")
     }
 
@@ -148,7 +148,7 @@ final class RunRecordTests: XCTestCase {
         let settings = FMSettingsRecord(
             fm: true, heal: false, falsePositiveCheck: true, screenLooksLike: false,
             triage: true, ocr: false, ocrFalsePositiveCheck: true)
-        recorder.finish(total: 1, passed: 1, failed: 0, fmSettings: settings)
+        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: settings)
 
         let data = try Data(contentsOf: recorder.runDir.appendingPathComponent("run.json"))
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -517,7 +517,7 @@ final class RunRecordTests: XCTestCase {
             startedAt: "2026-09-07T00:00:00.000Z", durationMs: 10,
             steps: StepCountsRecord(total: 1, passed: 1)))
 
-        recorder.finish(total: 1, passed: 1, failed: 0, fmSettings: testFMSettings)
+        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings)
         let meta = try readMeta(recorder)
         XCTAssertNil(meta.guarded)
         XCTAssertNil(meta.guardSkipped)
@@ -534,7 +534,7 @@ final class RunRecordTests: XCTestCase {
             startedAt: "2026-09-07T00:00:00.000Z", durationMs: 10,
             steps: StepCountsRecord(total: 1, passed: 1, guarded: 3)))
 
-        recorder.finish(total: 1, passed: 1, failed: 0, fmSettings: testFMSettings)
+        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings)
         let meta = try readMeta(recorder)
         XCTAssertEqual(meta.guarded, 3)
         XCTAssertEqual(meta.guardSkipped, 0, "0件でも欄が無くなってはいけない")
@@ -556,7 +556,7 @@ final class RunRecordTests: XCTestCase {
             steps: StepCountsRecord(total: 1, passed: 1, guarded: 1, guardSkipped: 0,
                                     guardStaleFrame: 1)))
 
-        recorder.finish(total: 2, passed: 2, failed: 0, fmSettings: testFMSettings)
+        recorder.finish(total: 2, passed: 2, failed: 0, performanceMode: false, fmSettings: testFMSettings)
         let meta = try readMeta(recorder)
         XCTAssertEqual(meta.guarded, 3)
         XCTAssertEqual(meta.guardSkipped, 1)
@@ -583,7 +583,7 @@ final class RunRecordTests: XCTestCase {
             steps: StepCountsRecord(total: 2, passed: 2, guarded: 2, guardSkipped: 0,
                                     guardStaleFrame: 0)))
 
-        recorder.finish(total: 1, passed: 1, failed: 0, fmSettings: testFMSettings)
+        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings)
         let meta = try readMeta(recorder)
         XCTAssertEqual(meta.guarded, 2, "捨てた回の 5 を足したままにしない")
         XCTAssertEqual(meta.guardSkipped, 0, "捨てた回の 4 を足したままにしない")
@@ -601,7 +601,7 @@ final class RunRecordTests: XCTestCase {
                                     guardStaleFrame: 1)))
         recorder.discardLast(scenarioID: "Foo.only")
 
-        recorder.finish(total: 0, passed: 0, failed: 0, fmSettings: testFMSettings)
+        recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false, fmSettings: testFMSettings)
         let meta = try readMeta(recorder)
         XCTAssertNil(meta.guarded)
         XCTAssertNil(meta.guardSkipped)

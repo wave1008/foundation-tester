@@ -162,6 +162,7 @@ final class FailureFactsTests: XCTestCase {
                         workerAnomalies: [WorkerAnomalyRecord(
                             kind: "degraded", worker: "android:Pixel",
                             label: "Pixel(android:emulator-5556)", reason: "dropped out")],
+                        performanceMode: false,
                         fmSettings: testFMSettings)
 
         let runDir = RunResultsStore.runDir(
@@ -187,7 +188,7 @@ final class FailureFactsTests: XCTestCase {
         let recorder = RunRecorder.begin(project: project, profile: nil, trigger: "test",
                                          captureHostMetrics: false)
 
-        recorder.finish(total: 1, passed: 1, failed: 0, fmSettings: testFMSettings)
+        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings)
 
         let runDir = RunResultsStore.runDir(
             resultsDir: RunResultsStore.resultsDir(projectRoot: project.rootURL),

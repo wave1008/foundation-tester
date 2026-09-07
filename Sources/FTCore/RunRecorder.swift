@@ -162,7 +162,11 @@ public final class RunRecorder: @unchecked Sendable {
                        blankRepairs: [String] = [], blankExclusions: [String] = [],
                        measurementInvalid: Bool = false, measurementInvalidReasons: [String] = [],
                        workerAnomalies: [WorkerAnomalyRecord] = [],
-                       performanceMode: Bool = false,
+                       // **既定値を置かない** —— `fleetest run` と `fleetest api run` は別実装で、
+                       // 片方が渡し忘れても両方緑のまま通る(実際 api run が渡しておらず、
+                       // 拡張から起こした計測 run が run.json 上で通常 run と見分けられなかった)。
+                       // 渡し忘れをコンパイルで止める。fmSettings も同じ理由で既定値なし
+                       performanceMode: Bool,
                        fmSettings: FMSettingsRecord) {
         hostMetrics?.stop()
         // FM の死活は**引数で受け取らない** —— 機械グローバルな事実(FMLiveness)なので、

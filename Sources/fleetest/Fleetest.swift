@@ -1229,6 +1229,8 @@ struct RunScenarios: AsyncParsableCommand {
         // 打ち消す --no-false-positive-check はこの経路では無意味)。ocr/ocrFalsePositiveCheck は
         // この経路に専用の上書き口が無く常に既定 true
         recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount,
+                        // --performance は --profile 専用(ヘルプ参照)。この経路は素通りするので false
+                        performanceMode: false,
                         fmSettings: FMSettingsRecord(
                             fm: true, heal: heal && !noHeal, falsePositiveCheck: false,
                             screenLooksLike: true, triage: true,

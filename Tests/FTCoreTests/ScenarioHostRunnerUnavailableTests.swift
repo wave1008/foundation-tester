@@ -53,6 +53,7 @@ final class ScenarioHostRunnerUnavailableTests: XCTestCase {
             sink.append($0)
         }
         recorder.finish(total: 1, passed: passed ? 1 : 0, failed: passed ? 0 : 1,
+                        performanceMode: false,
                         fmSettings: testFMSettings)
         return (passed, RunResultsStore.records(runDir: recorder.runDir), sink.events)
     }

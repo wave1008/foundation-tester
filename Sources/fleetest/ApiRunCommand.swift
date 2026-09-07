@@ -597,6 +597,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                          measurementInvalid: validity.invalid,
                          measurementInvalidReasons: validity.reasons,
                          workerAnomalies: outcome.workerAnomalies,
+                         performanceMode: performanceMode,
                          fmSettings: fmSettings)
         if !outcome.degradedWorkers.isEmpty {
             logStderr("⚠️ Degraded or dropped workers (\(outcome.degradedWorkers.count)):")

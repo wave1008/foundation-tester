@@ -83,7 +83,7 @@ final class HostMetricsRecorderTests: XCTestCase {
         // HostMetricsLog は open 時にファイルを生成するので begin 直後から存在する
         XCTAssertTrue(FileManager.default.fileExists(atPath: sessionFile.path),
                       "セッションファイルが作られていない: \(sessionFile.path)")
-        recorder.finish(total: 0, passed: 0, failed: 0, fmSettings: testFMSettings)
+        recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false, fmSettings: testFMSettings)
     }
 
     /// captureHostMetrics: false では採取器を起動せず、ファイルも作らない
@@ -97,6 +97,6 @@ final class HostMetricsRecorderTests: XCTestCase {
             .appendingPathComponent("host-metrics.ndjson")
         XCTAssertFalse(FileManager.default.fileExists(atPath: sessionFile.path),
                        "capture 無効なのにセッションファイルが作られた")
-        recorder.finish(total: 0, passed: 0, failed: 0, fmSettings: testFMSettings)
+        recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false, fmSettings: testFMSettings)
     }
 }
