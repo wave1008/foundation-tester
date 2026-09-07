@@ -345,10 +345,56 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let recordings = try XCTUnwrap(json["recordings"] as? [[String: Any]])
         XCTAssertEqual(recordings.count, 2, "シナリオ区間ごとに 1 エントリのはず")
     }
+
+    /// **アイドルワーカーの空ソースは失敗に数えない**。`deviceKeepCount` は本数+予備1台を
+    /// 残すので、本数 < 台数の run では予備が必ず空になる。数えると小さい run のたびに
+    /// 誤警報が出て「録画が本当に全滅した run」と見分けが付かなくなる
+    func testIdleWorkerWithEmptySourceIsNotCountedAsFailure() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp, androidADBPath: nil, failuresOnly: false),
+            makeSession: { _, _, _ in EmptySourceSession() })
+
+        let worker = makeWorker(1)
+        let started = await coordinator.start(worker)
+        XCTAssertTrue(started, "開始自体は成功する")
+        // シナリオ区間を1つも登録しない = 予備の台
+        await coordinator.finish()
+
+        let indexURL = tmp.appendingPathComponent("recordings/index.json")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: indexURL.path),
+                       "アイドルだけの run は失敗 0 件なので index を書かない")
+    }
+
+    /// 逆向き: **実際にシナリオを回した台の空ソースは数える**(全滅の検出はこちらが担う)。
+    /// 片方向だけだと「常に数えない」変異を素通しする
+    func testWorkerThatRanScenariosWithEmptySourceIsCounted() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp, androidADBPath: nil, failuresOnly: false),
+            makeSession: { _, _, _ in EmptySourceSession() })
+
+        let worker = makeWorker(1)
+        _ = await coordinator.start(worker)
+        await registerInterval(coordinator, worker: worker, scenarioID: "T.S0010")
+        await coordinator.finish()
+
+        let indexURL = tmp.appendingPathComponent("recordings/index.json")
+        let decoded = try JSONDecoder().decode(RecordingIndex.self, from: Data(contentsOf: indexURL))
+        XCTAssertEqual(decoded.sourcesFailed, 1, "シナリオを回した台の空ソースは失敗として残す")
+    }
 }
 
 /// 録画を開始できないセッション(端末側に録画が刺さっている状態の代役)
 private actor DeadSession: DeviceVideoRecorderSession {
     func start() async -> Bool { false }
+    func stop() async -> RecordingSource? { nil }
+}
+
+/// 開始はできるが読めるソースが残らないセッション(録画プロセスは動いたのに空だった形)
+private actor EmptySourceSession: DeviceVideoRecorderSession {
+    func start() async -> Bool { true }
     func stop() async -> RecordingSource? { nil }
 }

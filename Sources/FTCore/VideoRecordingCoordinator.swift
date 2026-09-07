@@ -233,16 +233,20 @@ actor VideoRecordingCoordinator {
     /// 1 ワーカーのフル録画を停止し、そのワーカーで実行された各シナリオの区間ごとに
     /// クリップを切り出す。フルソースは(1件もクリップが取れなくても)必ず削除する
     private func finalize(_ workerLabel: String, _ entry: ActiveEntry) async {
+        // 区間が1つも無いワーカーの録画は破棄(シナリオが1本も来なかったアイドルワーカー等)。
+        // **stop() より先に引く** —— 失敗の数え方がアイドルかどうかで変わるため
+        let intervals = scenarioIntervals.removeValue(forKey: workerLabel) ?? []
         guard let source = await entry.session.stop() else {
             // 読めるファイルが1本も残らなかった(録画プロセスは動いていたのに空だった等)。
-            // **黙って消さない** —— finish() がこの数を index に残し、録画タブに run が出る
-            sourcesFailed += 1
+            // **黙って消さない** —— finish() がこの数を index に残し、録画タブに run が出る。
+            // **ただしアイドルワーカーは数えない** —— `deviceKeepCount` は本数+予備1台を残すので、
+            // 本数 < 台数の run では予備が必ず空になる。数えると小さい run のたびに誤警報が出て、
+            // 「録画が本当に全滅した run」と見分けが付かなくなる(この警告は全滅の検出が目的)
+            if !intervals.isEmpty { sourcesFailed += 1 }
             return
         }
         defer { for file in source.files { try? FileManager.default.removeItem(at: file) } }
 
-        // 区間が1つも無いワーカーの録画は破棄(シナリオが1本も来なかったアイドルワーカー等)
-        let intervals = scenarioIntervals.removeValue(forKey: workerLabel) ?? []
         guard !intervals.isEmpty,
               let recordingRange = RecordingWallClock.wallClockRange(of: source.segments) else { return }
 

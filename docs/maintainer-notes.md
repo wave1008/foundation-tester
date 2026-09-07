@@ -620,3 +620,32 @@ Y も一緒に消える壊れ方があると、そこだけ穴になる。
 門は `PrivateCloudComputeProhibitionTests`(ユーザー決定: 完全禁止・利用者向けトグルも置かない)。
 **PCC のインスタンスは型名を書かずに得られない**ので、型名の走査1本で経路は閉じる。
 `model:` の明示禁止は二重の備え。規則は CLAUDE.md §個別の規律、設計は design.md §1.1 末尾。
+
+---
+
+## 15. 「録画が空」の警告は予備の台が出していた(2026-09-08)
+
+`record: true` の小さな run で毎回
+`⚠️ [recording] 1 device(s) produced no usable recording` が出ていた。
+
+**仮説は外れた。** モニターの Android 配信(`fleetest-androidstream`)が端末上で `screenrecord` を
+掴んでおり、Android は同一端末で 1 本しか動かせないので run 側の録画が空になる —— と読んだ。
+プロセスを見ると実際に配信が `screenrecord` を持っており、`monitor pause` で 0 本に解放される
+ことまで確認できたが、**止めた状態で回しても警告は消えなかった**。
+
+真因は `recordings/index.json` にあった: `clipsAttempted: 1, clipsFailed: 0, sourcesFailed: 1`。
+**回したシナリオの録画は成功していて、失敗していたのは「シナリオが1本も来なかった予備の台」**。
+`ResolvedProfile.deviceKeepCount` は本数 + 予備1台を残すので、**本数 < 台数の run では予備が
+必ず空になる**。`finalize` は `stop()` が nil を返した時点で数えており、アイドル判定
+(区間が0件)はその後ろにあったため、予備が毎回1件として計上されていた。
+
+直しは「区間を `stop()` より先に引き、アイドルなら数えない」の1行。この警告の目的は
+**録画が全滅した run を録画タブから消さないこと**(2026-08-26 の実害)なので、
+実仕事をした台の空ソースは従来どおり数える。両方向のテストを置いた
+(`testIdleWorkerWithEmptySourceIsNotCountedAsFailure` / `testWorkerThatRanScenariosWithEmptySourceIsCounted`)。
+
+**一般化**: **小さい run のたびに出る警告は、まず「その run の構成が警告の前提を満たしているか」を
+疑う**。ここでは「台数 > 本数」という正常な構成そのものが発火条件だった。
+毎回出る警告は読まれなくなり、**本物の全滅と見分けが付かなくなる**ので、
+発火条件を機構の側で絞る。もう1つ: **仮説が観測と一致しても対照は取る** ——
+配信が `screenrecord` を掴んでいるのは事実だったが、それは真因ではなかった。
