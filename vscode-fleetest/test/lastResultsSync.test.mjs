@@ -89,6 +89,8 @@ function makeWorkspace(projects) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-lrs-reconf-"));
   for (const project of projects) {
     fs.mkdirSync(path.join(root, ".fleetest", "last-results", project), { recursive: true });
+    // resolveProjectName は候補(TestProjects/ 配下の実ディレクトリ)に無い設定値を採用しない。
+    fs.mkdirSync(path.join(root, "TestProjects", project), { recursive: true });
   }
   return root;
 }

@@ -8,6 +8,7 @@ import type { Readable, Writable } from "node:stream";
 import { childEnv } from "./childEnv";
 import { resolveProjectName } from "./config";
 import { deviceCommandArgs } from "./remoteRunArgs";
+import { missingProjectMessage } from "./projectResolutionMessages";
 import { t } from "./i18n";
 import {
   type MonitorControlCommand,
@@ -277,10 +278,14 @@ export class MonitorProcessManager {
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
     if (resolution.kind !== "resolved") {
       this.monitorScope = undefined;
-      this.deps.post({
-        type: "processDown",
-        message: t("deviceOps.projectUnresolved"),
-      });
+      // "missing"(設定が存在しないプロジェクト名を指す)は原因を名指しする —— 丸めると
+      // spawn しないだけの空振りに見え、利用者が設定を直す手掛かりが無いまま再起動ボタンを
+      // 押し続ける結果になる(実害: 自動再起動3回で「モニタープロセスが繰り返し終了する」停止)。
+      const message =
+        resolution.kind === "missing"
+          ? missingProjectMessage(resolution.project, resolution.candidates)
+          : t("deviceOps.projectUnresolved");
+      this.deps.post({ type: "processDown", message });
       return;
     }
 

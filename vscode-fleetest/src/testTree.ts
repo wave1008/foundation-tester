@@ -11,6 +11,7 @@ import { type FleetestConfig, resolveProjectName } from "./config";
 import { t } from "./i18n";
 import { lastResultsDir, lookupKey, readFailedScenarioIds } from "./lastResults";
 import type { ListScenariosResult, ScenarioInfo } from "./model";
+import { missingProjectMessage } from "./projectResolutionMessages";
 
 /** @Deleted シナリオに付与する TestTag の id(runHandler.ts の対象解決でも参照する)。 */
 export const DELETED_TAG_ID = "deleted";
@@ -167,6 +168,10 @@ export class FleetestTestTree implements vscode.Disposable {
       void this.promptAmbiguousProject(resolution.candidates);
       return;
     }
+    if (resolution.kind === "missing") {
+      void this.promptMissingProject(resolution.project, resolution.candidates);
+      return;
+    }
 
     const project = resolution.project;
     const generation = ++this.generation;
@@ -220,6 +225,20 @@ export class FleetestTestTree implements vscode.Disposable {
     const selectProjectLabel = t("workbench.testTree.selectProjectButton");
     const choice = await vscode.window.showWarningMessage(
       t("workbench.testTree.ambiguousProjectWarning", { candidates: candidates.join(", ") }),
+      selectProjectLabel,
+    );
+    if (choice === selectProjectLabel) {
+      await vscode.commands.executeCommand("fleetest.selectProject");
+    }
+  }
+
+  /** fleetest.project が候補に無い名前を指しているとき。存在確認せず採用すると
+   * `fleetest api monitor --project <名>` が exit 1 を繰り返し、モニターの自動再起動停止
+   * (実害)まで原因が見えない。設定名・指している名前・候補を出して自力で直せるようにする。 */
+  private async promptMissingProject(project: string, candidates: readonly string[]): Promise<void> {
+    const selectProjectLabel = t("workbench.testTree.selectProjectButton");
+    const choice = await vscode.window.showWarningMessage(
+      missingProjectMessage(project, candidates),
       selectProjectLabel,
     );
     if (choice === selectProjectLabel) {

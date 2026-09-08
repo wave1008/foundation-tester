@@ -17,6 +17,11 @@ import path from "node:path";
 import { test } from "node:test";
 import { MonitorDeviceOps, firstLine, signingGuidance, stderrDetailLine } from "../src/monitorDeviceOps";
 
+// resolveProjectName は TestProjects/ に実在しない名前を採用しない(missing)ので、
+// workspaceRoot は候補ディレクトリを持つ専用の一時ディレクトリにする(共有の /tmp 直下には作らない)。
+const WORKSPACE_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-deviceops-ws-"));
+fs.mkdirSync(path.join(WORKSPACE_ROOT, "TestProjects", "P"), { recursive: true });
+
 /** dirname(binaryPath) に、引数を argv ファイルへ落として即 exit 0 する mock fleetest を置く。 */
 function makeMockBinary() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-deviceops-test-"));
@@ -37,7 +42,7 @@ function makeDeps(binaryPath) {
   const stopAllStreamsCalls = [];
   const posts = [];
   const deps = {
-    workspaceRoot: "/tmp",
+    workspaceRoot: WORKSPACE_ROOT,
     getConfig: () => ({ binaryPath, project: "P", profile: "" }),
     outputChannel: { appendLine() {} },
     post: (message) => posts.push(message),

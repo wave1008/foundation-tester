@@ -4,9 +4,19 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_PROJECT_NAME, resolveProjectFrom } from "../src/projectResolution";
 
-test("設定値があれば候補に関係なくそれ(前後の空白は落とす)", () => {
-  assert.deepEqual(resolveProjectFrom(" MyApp ", ["default", "Other"]),
+test("設定値が候補にあればそれ(前後の空白は落とす)", () => {
+  assert.deepEqual(resolveProjectFrom(" MyApp ", ["default", "MyApp"]),
     { kind: "resolved", project: "MyApp" });
+});
+
+test("設定値が候補に無ければ missing(存在確認せず採用しない)", () => {
+  const candidates = ["default", "Other"];
+  const resolution = resolveProjectFrom(" MyApp ", candidates);
+  assert.deepEqual(resolution, { kind: "missing", project: "MyApp", candidates: ["default", "Other"] });
+});
+
+test("設定値が非空でも候補が0件なら missing(候補は空配列)", () => {
+  assert.deepEqual(resolveProjectFrom("MyApp", []), { kind: "missing", project: "MyApp", candidates: [] });
 });
 
 test("候補が1件ならそれ(名前が default でなくても)", () => {

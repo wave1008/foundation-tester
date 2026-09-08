@@ -192,6 +192,16 @@ export const workbenchStrings = {
     ja: "fleetest: 複数のテストプロジェクトが見つかりました({candidates})。fleetest.project 設定で対象を指定するか、プロジェクトを選択してください。",
     en: "fleetest: Multiple test projects were found ({candidates}). Specify the target in the fleetest.project setting, or select a project.",
   },
+  // projectResolutionMessages.ts の missingProjectMessage が組み立てる(呼び出し元は
+  // monitorProcessManager.ts / testTree.ts。同じ文言を2箇所に書かないための共有キー)。
+  "workbench.project.missingWarning": {
+    ja: "fleetest.project 設定が存在しないテストプロジェクト \"{name}\" を指しています(候補: {candidates})。",
+    en: "The fleetest.project setting points to a test project \"{name}\" that does not exist (available: {candidates}).",
+  },
+  "workbench.project.missingNoCandidates": {
+    ja: "TestProjects/ にプロジェクトがありません",
+    en: "no projects under TestProjects/",
+  },
   "workbench.testTree.selectProjectButton": {
     ja: "プロジェクトを選択",
     en: "Select Project",

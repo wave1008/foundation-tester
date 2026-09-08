@@ -19,6 +19,11 @@ import os from "node:os";
 import path from "node:path";
 import { MonitorDeviceStreamController } from "../src/monitorDeviceStreamController";
 
+// resolveProjectName は TestProjects/ に実在しない名前を採用しない(missing)ので、
+// workspaceRoot は候補ディレクトリを持つ専用の一時ディレクトリにする(共有の /tmp 直下には作らない)。
+const WORKSPACE_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-devicestream-ws-"));
+fs.mkdirSync(path.join(WORKSPACE_ROOT, "TestProjects", "demo"), { recursive: true });
+
 /** dirname(binaryPath) に常駐するだけの mock helper 群を置き、binaryPath を返す。
  * names で置く helper を選べる(実機は fleetest-devicepoll に振り分けられるため)。 */
 function makeMockBinaryDir(names = ["fleetest-simstream"]) {
@@ -50,7 +55,7 @@ async function waitForArgv(dir, name, timeoutMs = 3000) {
 function makeDeps(binaryPath) {
   const controls = [];
   const deps = {
-    workspaceRoot: "/tmp",
+    workspaceRoot: WORKSPACE_ROOT,
     outputChannel: { appendLine() {} },
     getConfig: () => ({
       binaryPath,

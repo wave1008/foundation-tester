@@ -8,8 +8,17 @@
 
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { test } from "node:test";
 import { MonitorProcessManager } from "../src/monitorProcessManager";
+
+// resolveProjectName は TestProjects/ に実在しない名前を採用しない(missing)ので、
+// workspaceRoot は候補ディレクトリを持つ専用の一時ディレクトリにする(共有の /tmp 直下には作らない)。
+// 無いと startMonitorProcess が spawn せず processDown へ落ちる。
+const WORKSPACE_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-procmgr-ws-"));
+fs.mkdirSync(path.join(WORKSPACE_ROOT, "TestProjects", "P"), { recursive: true });
 
 /** spawn が返す ChildProcess の代わりに使う最小 fake(stdin/stdout/stderr + on/kill)。 */
 function makeFakeProc() {
@@ -25,7 +34,7 @@ function makeFakeProc() {
 
 function makeDeps(overrides = {}) {
   return {
-    workspaceRoot: "/tmp/proj",
+    workspaceRoot: WORKSPACE_ROOT,
     outputChannel: { appendLine() {} },
     post: () => {},
     isPanelActive: () => true,
@@ -59,7 +68,7 @@ test("startMonitorProcess は `api monitor --project <p> --interval <i> --max-wi
   assert.equal(calls[0].command, "/usr/local/bin/fleetest");
   assert.deepEqual(calls[0].args, ["api", "monitor", "--project", "P", "--interval", "2", "--max-width", "960"]);
   const { env, ...rest } = calls[0].options;
-  assert.deepEqual(rest, { cwd: "/tmp/proj", shell: false, stdio: ["pipe", "pipe", "pipe"] });
+  assert.deepEqual(rest, { cwd: WORKSPACE_ROOT, shell: false, stdio: ["pipe", "pipe", "pipe"] });
   assert.equal(env.FT_PARENT_PID, String(process.pid));
 });
 
@@ -103,7 +112,7 @@ test("startHostMetricsProcess は `api host-metrics --interval 1` で spawnFn �
   // ときだけ実呼び出しで取り直す)。**既定 OFF なので渡す側の責任**
   assert.deepEqual(calls[0].args, ["api", "host-metrics", "--interval", "1", "--fm-probe"]);
   const { env, ...rest } = calls[0].options;
-  assert.deepEqual(rest, { cwd: "/tmp/proj", shell: false, stdio: ["pipe", "pipe", "pipe"] });
+  assert.deepEqual(rest, { cwd: WORKSPACE_ROOT, shell: false, stdio: ["pipe", "pipe", "pipe"] });
   assert.equal(env.FT_PARENT_PID, String(process.pid));
 });
 
