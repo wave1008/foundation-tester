@@ -35,6 +35,10 @@
       "name": "iPhone 17 Pro(iOS 27.0)-08"
     },
     {
+      "machine": "local",
+      "name": "iPhone SE3"
+    },
+    {
       "machine": "M1Max",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
@@ -44,11 +48,23 @@
     },
     {
       "machine": "M1Ultra",
+      "name": "iPhone 13"
+    },
+    {
+      "machine": "M1Ultra",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
     {
       "machine": "M1Ultra",
       "name": "iPhone 17 Pro(iOS 27.0)-02"
+    },
+    {
+      "machine": "local",
+      "name": "Pixel 3a"
+    },
+    {
+      "machine": "local",
+      "name": "Pixel 4a"
     },
     {
       "machine": "local",
@@ -111,5 +127,9 @@
   "updateWebView": true,
   "wipeDataOnBloat": true,
   "screenLooksLike": true,
-  "iosPreActionWarmup": true
+  "iosPreActionWarmup": true,
+  "triage": true,
+  "ocr": true,
+  "ocrFalsePositiveCheck": true,
+  "playProtectBypass": true
 }
