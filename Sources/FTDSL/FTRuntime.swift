@@ -78,7 +78,7 @@ public struct ScenarioRecordData: Sendable {
     public let app: String
     public let platform: String
     /// 実行プロファイル上のデバイス論理名(profiles/machines/ の name)。orchestrator 経由でない
-    /// 実行(--ports 直指定等)では取得できず nil
+    /// 実行(--port 直指定等)では取得できず nil
     public let deviceName: String?
     /// 技術識別子(Android: adb serial / iOS: シミュレータ UDID)。取得できなければ nil
     public let deviceIdentifier: String?

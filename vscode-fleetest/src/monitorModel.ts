@@ -3,7 +3,7 @@
 // 純粋関数群。monitorPanel.ts と test/ の両方から同じロジックを使うための方針は従来通り):
 //   - monitorDeviceModel.ts:      デバイスの型・`fleetest api monitor` の NDJSON イベントの検証/整列/フィルタ
 //   - monitorWebviewMessages.ts:  extension ⇔ webview の postMessage 契約(型)・検証・変換
-//   - monitorDeviceLifecycle.ts:  device-up/down 等の NDJSON イベント型・デバイスライフサイクルの直列キュー
+//   - monitorDeviceLifecycle.ts:  start-device/stop-device 等の NDJSON イベント型・デバイスライフサイクルの直列キュー
 //   - monitorProfileForms.ts:     実行/アプリ/マシンプロファイルのフォーム解析・検証・デバイスカタログ
 // 拡張側の import は従来通りこのファイル経由でよい(このファイル自体は re-export のみで挙動を持たない)。
 // webview 側(src/webview/monitor/*.js)は CSP で import できないため、上記各ファイルのロジックを

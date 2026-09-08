@@ -1,7 +1,7 @@
 // monitorHealthWatchdog.ts
 // Android エミュレータのゲストOS健全性プローブ異常(wifi-disabled/clock-skew 等。Swift 側で
 // 30秒間隔×2回連続確認済みのもののみ届く)を自動検出し、adb 経由の軽量修復(Wi-Fi 再有効化)または
-// device-up/down 再起動で自動修復するウォッチドッグ。vscode を import しない(test/monitorHealthWatchdog.test.mjs
+// start-device/stop-device 再起動で自動修復するウォッチドッグ。vscode を import しない(test/monitorHealthWatchdog.test.mjs
 // から node:test で検証するため。monitorBridgeWatchdog.ts と同じ方針)。
 //
 // 契約: webview へは { type: "healthWatch", name, phase } を post する(name は deviceOpBusy と
@@ -19,7 +19,7 @@ export interface MonitorHealthWatchdogDeps {
   log(message: string): void;
   /** MonitorDeviceOps.enqueueRestart への委譲(down→up をペアで積む。重複排除は呼び出し先)。 */
   enqueueRestart(name: string): void;
-  /** MonitorDeviceOps.markCpuRender への委譲。以後この名前の device-up は swiftshader で起動する
+  /** MonitorDeviceOps.markCpuRender への委譲。以後この名前の start-device は swiftshader で起動する
    * (セッション中維持)。 */
   forceCpuRender(name: string): void;
   /** adb で Wi-Fi を再有効化する軽量修復。解決失敗・実行失敗は false(例外は投げない)。 */
@@ -96,7 +96,7 @@ function freshEntry(): DeviceHealthEntry {
 
 /**
  * デバイス単位で health 異常を検出し、設定・実行中レーンの状態を見た上で adb Wi-Fi 修復または
- * device-up/down 再起動による自動修復を試みる。observe() は monitorDevices イベント毎(約2秒毎)に
+ * start-device/stop-device 再起動による自動修復を試みる。observe() は monitorDevices イベント毎(約2秒毎)に
  * 呼ばれる想定で、タイマーは持たない(monitor プロセスが止まれば判定も止まる)。
  *
  * Swift 側で確定済み(2回連続観測)の異常だけが届くため、拡張側に連続回数のデバウンスは不要。
@@ -112,7 +112,7 @@ export class MonitorHealthWatchdog {
 
   observe(devices: readonly MonitorDevice[]): void {
     for (const device of devices) {
-      // 未登録(マシンプロファイル未記載)は自動修復の対象外: device-up/down 再起動・Wi-Fi 修復は
+      // 未登録(マシンプロファイル未記載)は自動修復の対象外: start-device/stop-device 再起動・Wi-Fi 修復は
       // いずれもデバイス名でマシンプロファイルを引く前提のため、未登録では操作が成立しない。
       if (device.registered === false) {
         continue;

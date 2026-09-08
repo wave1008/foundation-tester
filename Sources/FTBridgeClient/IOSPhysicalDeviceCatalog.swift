@@ -183,7 +183,7 @@ public enum IOSPhysicalDeviceCatalog {
         return result.status == 0
     }
 
-    /// 到達性の判定はここ1箇所(`resolve` と `api device-up --udid` の両方が通る)。
+    /// 到達性の判定はここ1箇所(`resolve` と `api start-device --udid` の両方が通る)。
     /// 一覧が接続中と言えばそれを信じ、言わなければ**訊いてから**結論する
     public static func confirmedConnected(_ device: IOSPhysicalDeviceInfo,
                                           probe: (String) -> Bool) -> Bool {

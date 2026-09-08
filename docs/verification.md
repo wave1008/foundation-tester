@@ -842,7 +842,7 @@ S0030 型(type が成功扱いなのに後段の検証で値が空)の再発ゼ�
   terminate→launch+注入で描画負荷が同期する瞬間だった(1回目8台・2回目5台)。
   Android で対照実験済みの「複数台同時描画」凍結と同族とみて、**BridgeProvisioner の
   デバイス並列起動を「in-app の新規 launch を含むときだけ同時2台」に絞った**
-  (device-up の同時2台ポリシーと同じ理屈。再利用だけの供給は従来どおり全並列)。
+  (start-device の同時2台ポリシーと同じ理屈。再利用だけの供給は従来どおり全並列)。
   凍結個体の症状は「除外されるほど重い」から「コールドラウンチ直後の tap 呑まれ・
   同一個体でのタップ無反応集中」まで幅がある — **失敗が1台に集中していたら
   まずこのクラスを疑い、その個体を shutdown/boot してから裁定する**
@@ -2120,7 +2120,7 @@ Android エミュレータの表示凍結([[emulator-display-freeze-wedge]])と*
 `excludeBlankScreenWorkers` に `recover:` を渡し、**全機が戻るまで開始しない**:
 
 - 回復の実体は `ProfileWorkerFactory.recoverFrozenIOSWorkers` = **`simctl shutdown` → `boot` →
-  `bootstatus -b`**。**2台ずつ**戻す(一斉 boot は凍結の相関要因そのもので、device-up の
+  `bootstatus -b`**。**2台ずつ**戻す(一斉 boot は凍結の相関要因そのもので、start-device の
   「同時2台」と同じ理屈)
 - **シミュレータを落とすとブリッジも死ぬ**ので、回復と `buildIOSWorkers` での張り直しは1セット。
   生きているブリッジは再利用されるため、実際に建て直るのは落とした機だけ
@@ -2705,7 +2705,7 @@ FM は死んだら**再起動まで回復しない**ので、死んだ後も呼�
 
 ## デバイス供給の競合(モニターと run が同じデバイスを取り合う)
 
-拡張のモニターは watchdog で `device-up` を投げる。run と同じデバイス群を使うので競合し得る。
+拡張のモニターは watchdog で `api start-device` を投げる。run と同じデバイス群を使うので競合し得る。
 **マシン再起動直後**(全デバイスが落ち、拡張も run も同時に供給を始める)が最も踏みやすい。
 
 - **XCUITest ランナーは 1 デバイス 1 本が OS 制約**。2 本目は永久に announce せず、
@@ -2718,7 +2718,7 @@ FM は死んだら**再起動まで回復しない**ので、死んだ後も呼�
      **起動予算を超えて生きているランナーは待たずに建て直す** —— 上の §「起動中のブリッジを待つ」)
   2. run は**供給フェーズ(install・凍結triage)の間も run-lease を保つ**(`SupplyLeaseHolder`)。
      `RunOrchestrator` の lease はシナリオ実行中しか書かれないため、その手前に watchdog の
-     `device-up` が割り込む穴が空いていた
+     `api start-device` が割り込む穴が空いていた
 - それでも手で確実に避けたいときは `fleetest.autoRepairBridge` を false にするか、
   E2E 前にモニターパネルを閉じる
 - **`.adopt` は健全な環境では通らない**(announce 前のランナーが残っていないと発火しない)ので、

@@ -1,6 +1,6 @@
 // monitorBridgeWatchdog.ts
 // iOS/Android ブリッジ突然死(XCUITest ランナー等が無応答のまま固まり、connected だったデバイスが
-// booted のまま復帰しない)を自動検出し、lifecycle ジョブ(device-up)で自動修復するウォッチドッグ。
+// booted のまま復帰しない)を自動検出し、lifecycle ジョブ(start-device)で自動修復するウォッチドッグ。
 // vscode を import しない(test/monitorBridgeWatchdog.test.mjs から node:test で検証するため。
 // orphanSweep.ts と同じ方針)。
 //
@@ -67,7 +67,7 @@ function freshEntry(): DeviceWatchEntry {
 
 /**
  * デバイス単位で connected→booted への降格(ブリッジ無応答)を検出し、設定・実行中レーンの状態を
- * 見た上で device-up ジョブによる自動修復を試みる。observe() は monitorDevices イベント毎に
+ * 見た上で start-device ジョブによる自動修復を試みる。observe() は monitorDevices イベント毎に
  * 呼ばれる想定で、タイマーは持たない(monitor プロセスが止まれば判定も止まる)。
  *
  * 対象は「このインスタンスの生存中に一度でも connected を観測したデバイス」のみ(最初から booted の
@@ -83,7 +83,7 @@ export class MonitorBridgeWatchdog {
 
   observe(devices: readonly MonitorDevice[]): void {
     for (const device of devices) {
-      // 未登録(マシンプロファイル未記載)は対象外: device-up はデバイス名でマシンプロファイルを
+      // 未登録(マシンプロファイル未記載)は対象外: start-device はデバイス名でマシンプロファイルを
       // 引くため、未登録の名前で修復ジョブを積んでも成立しない(monitorHealthWatchdog と同じガード)
       if (device.registered === false) {
         continue;
@@ -138,7 +138,7 @@ export class MonitorBridgeWatchdog {
     if (inRun) {
       // **run の最中は数えない・撃たない**(monitorHealthWatchdog と同じ)。inRun は RunLease
       // 由来なので CLI や別の機械から起こした run も含む —— isAnyRunActive(拡張のレーンだけ)
-      // では見えず、run が自分でブリッジを供給し直している booted に device-up を重ねていた。
+      // では見えず、run が自分でブリッジを供給し直している booted に start-device を重ねていた。
       // streak は 0 に戻す(offline と同じ「連続性が途切れる」扱い)。failed/attemptCount/
       // cooldown は据え置く
       if (entry.degraded && !entry.heldInRun) {

@@ -26,7 +26,7 @@ fleetest(Swift 製の iOS/Android UI テストツール。リポジトリルー�
   ストリーミング(`fleetest-simstream`/`fleetest-androidstream`)で表示する(設定でポーリングの静止画にも切替可)
   (詳細は下記「デバイスモニター」)。並列実行中は同じパネル下部にワーカー(デバイス)別の
   ログレーンを表示する(詳細は下記「並列実行とログレーン」)。各タイルは右クリックメニューから
-  `fleetest api device-up`/`fleetest api device-down` でそのデバイス1台だけを起動/停止できる。
+  `fleetest api start-device`/`fleetest api stop-device` でそのデバイス1台だけを起動/停止できる。
   「プロファイル」タブ(`src/monitorProfilesController.ts`)から実行/アプリ/マシンプロファイルの
   一覧・作成・編集・削除ができ、ブリッジ無応答・Android ゲスト OS 異常を自動検出して修復を試みる
   ウォッチドッグ(`src/monitorBridgeWatchdog.ts` / `src/monitorHealthWatchdog.ts`。設定
@@ -196,7 +196,7 @@ code --install-extension vscode-fleetest-<version>.vsix
 | `fleetest.androidStreamEnabled` | boolean | `true` | Android の画面更新に映像ストリーミング(`fleetest-androidstream`)を使う。無効・ヘルパー未ビルド・adb 未検出時はポーリングにフォールバック |
 | `fleetest.streamCodec` | `"h264"` \| `"mjpeg"` | `"h264"` | デバイス画面ストリーミングのコーデック。`h264`(既定)は WebCodecs によるハードウェアデコードを使う。問題が出る環境では `mjpeg`(従来方式)に切り替える |
 | `fleetest.liveControlOnRun` | boolean | `true` | テスト実行(Run Test)開始時に、ライブ操作パネルをエディタの右側へ自動表示する |
-| `fleetest.autoRepairBridge` | boolean | `true` | ブリッジ無応答(接続済みだったデバイスが起動中のまま復帰しない状態が続く)を検出したら、実行中のレーンが無い間に限り device-up で自動修復を試みる |
+| `fleetest.autoRepairBridge` | boolean | `true` | ブリッジ無応答(接続済みだったデバイスが起動中のまま復帰しない状態が続く)を検出したら、実行中のレーンが無い間に限り start-device で自動修復を試みる |
 | `fleetest.autoRepairDeviceHealth` | boolean | `false` | Android エミュレータのゲスト OS 異常(Wi-Fi 無効・時計のずれ)を検出したとき、Wi-Fi 再有効化→再起動の順で自動修復を試みる |
 | `fleetest.showOnlyFailedTests` | boolean | `false` | Test Explorer のツリーを失敗したテストだけに絞り込む(未実施・成功のテストは非表示)。Test Explorer タイトルバーのフィルターボタンでも切り替えられる |
 | `fleetest.language` | `"auto"` \| `"ja"` \| `"en"` | `"auto"` | 拡張の UI 表示言語。`auto` は VS Code の表示言語に追従する(ja 系なら日本語、それ以外は英語)。詳細は下記「表示言語(i18n)」 |
@@ -338,15 +338,15 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
 - **タイルの右クリックメニューによる個別起動/停止**: 各タイルを右クリックすると、その場に
   1項目だけのコンテキストメニュー(webview 内の自作メニュー。VS Code の Webview は OS の
   ネイティブメニューを表示できないため)が開きます。「未起動」のタイルには**「起動」**
-  (`fleetest api device-up --name <論理名>`。iOS はブリッジ供給も行います)、「接続済み」
-  「起動中」のタイルには**「停止」**(`fleetest api device-down --name <論理名>`)
+  (`fleetest api start-device --name <論理名>`。iOS はブリッジ供給も行います)、「接続済み」
+  「起動中」のタイルには**「停止」**(`fleetest api stop-device --name <論理名>`)
   が表示されます。メニュー外クリック・Esc・スクロールで閉じます。右クリックしてもタイル自体の
   選択(レーン絞り込み)には影響しません。実行中はそのデバイスのタイル画像左上に
   「起動中...」/「停止中...」の小さなバッジが表示され、メニューの項目も同じ文言で無効化されます。
   完了するとモニターの次回ポーリングで状態バッジが自動的に更新されます。失敗した場合
   (`finished` イベントが `ok:false`、またはプロセスの異常終了)は、パネル上部のエラーバナーに
   デバイス名とエラー内容が表示され、出力パネル「fleetest」にも
-  `[fleetest] device-up(<デバイス名>)が失敗しました: <エラー内容>` の形式で必ず記録されます。
+  `[fleetest] start-device(<デバイス名>)が失敗しました: <エラー内容>` の形式で必ず記録されます。
   ログ(`log` イベント)も出力パネル「fleetest」に出力されます。
 - **デバイス操作は1件ずつ順番に実行されます**: 「デバイスを全て起動/終了」とタイル個別の
   起動/停止は、内部で単一の直列キューを共有しており、常に1件ずつ実行されます(ブリッジ供給・
@@ -359,7 +359,7 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
 - **「全て終了」「停止」実行中はモニターのポーリングを一時停止します**: `fleetest api monitor`
   は独立にデバイスを定期ポーリングしているため、そのままだと「全て終了」やタイル右クリックの
   「停止」で片付け中のデバイスへスクリーンショット取得に行ってしまい、接続失敗の警告が数サイクル分
-  出ることがあります。これを避けるため、down 系の操作(bulk down / device-down)の実行直前に
+  出ることがあります。これを避けるため、down 系の操作(bulk down / stop-device)の実行直前に
   拡張側からモニタープロセスへ一時停止を指示し、操作の完了後(成功・失敗を問わず)に再開を
   指示します。再開時はモニター側の状態判定の記憶もクリアされるため、再開直後の1回で
   すぐに「未起動」へ反映されます(up 系の起動操作では一時停止しません。起動の進行状況を
@@ -408,11 +408,11 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
 
 - **ブリッジ無応答の自動修復**(`src/monitorBridgeWatchdog.ts`、設定 `fleetest.autoRepairBridge`
   既定 `true`): 接続済みだったデバイスが起動中(booted)のまま連続で復帰しない状態を検出すると、
-  実行中のログレーンが1つも無い間に限り `device-up` を自動的に積んで再接続を試みます。
+  実行中のログレーンが1つも無い間に限り `start-device` を自動的に積んで再接続を試みます。
 - **Android ゲスト OS 健全性の自動修復**(`src/monitorHealthWatchdog.ts`、設定
   `fleetest.autoRepairDeviceHealth` 既定 `false`): Wi-Fi 無効化・時計のずれ等の異常が Swift 側の
   プローブで連続確認されると、Wi-Fi 再有効化(`src/adbWifiRepair.ts` 経由の adb コマンド)→それでも
-  直らなければ device-down/up での再起動、の順で自動修復を試みます。
+  直らなければ stop-device/start-device での再起動、の順で自動修復を試みます。
 
 ## 並列実行とログレーン
 
@@ -897,7 +897,7 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
     (右端・下端)に近いタイルを右クリックしてもメニューが画面外にはみ出さないことを確認する。
 46. メニューの **「起動」** をクリックすると、そのタイルの画像左上に「起動中...」バッジが表示され、
     同じタイルを再度右クリックするとメニュー項目も「起動中...」で無効化されていることを確認する。
-    出力パネル「fleetest」に `fleetest api device-up` のログが流れることを確認する。完了すると
+    出力パネル「fleetest」に `fleetest api start-device` のログが流れることを確認する。完了すると
     モニターの次回ポーリングでタイルの状態バッジが更新され、右クリックメニューが「停止」に
     切り替わることを確認する(他のタイルの操作や「デバイスを全て起動」ボタンには影響しないことも
     合わせて確認する)。
@@ -999,7 +999,7 @@ vscode-fleetest/
 │   ├── monitorDeviceStreamController.ts # タイル向け画面ストリーミング制御(iOS: fleetest-simstream / Android: fleetest-androidstream)
 │   ├── monitorProcessManager.ts  # monitor/host-metrics 常駐子プロセスの起動・停止・再起動・pause/resume
 │   ├── monitorProfilesController.ts # 「プロファイル」タブ(実行/アプリ/マシンプロファイルのCRUD・フォーム)
-│   ├── monitorBridgeWatchdog.ts  # ブリッジ無応答の自動検出・device-up による自動修復(設定 fleetest.autoRepairBridge。vscode 非依存)
+│   ├── monitorBridgeWatchdog.ts  # ブリッジ無応答の自動検出・start-device による自動修復(設定 fleetest.autoRepairBridge。vscode 非依存)
 │   ├── monitorHealthWatchdog.ts  # Android ゲストOS異常の自動検出・Wi-Fi再有効化/再起動による自動修復(設定 fleetest.autoRepairDeviceHealth。vscode 非依存)
 │   ├── adbWifiRepair.ts          # MonitorHealthWatchdog の Wi-Fi 修復コマンド実行(vscode 非依存)
 │   ├── deviceStream.ts           # 映像ストリーミング常駐 helper のプロセス管理(iOS/Android 共通。ライブ操作・モニタータイル両方が使う)
@@ -1059,7 +1059,7 @@ vscode-fleetest/
     └── fixtures/
         ├── mock-runner.mjs      # `fleetest api run` を模したダミー NDJSON エミッタ(--debug 対応、--pattern parallel/heal で並列実行/自己修復の契約を模す)
         ├── mock-monitor.mjs     # `fleetest api monitor` を模したダミー NDJSON エミッタ
-        ├── mock-device-op.mjs   # `fleetest api device-up`/`fleetest api device-down` を模したダミースクリプト(--fail で ok:false を模せる)
+        ├── mock-device-op.mjs   # `fleetest api start-device`/`fleetest api stop-device` を模したダミースクリプト(--fail で ok:false を模せる)
         ├── mock-apply-heal.mjs  # `fleetest api apply-heal` を模したダミースクリプト(stdin の JSON をそのまま読んで応答を返す)
         ├── mock-validate-profile.mjs  # `fleetest api validate-profile` を模したダミースクリプト(--kind/--name 絞り込みに対応)
         ├── mock-live.mjs         # `fleetest api list-devices`(ワンショット)/`fleetest api live serve`(常駐・stdin の NDJSON コマンドに応答)を模したダミースクリプト(--fail で ok:false を模せる)

@@ -104,7 +104,7 @@ final class BridgeHTTPServer {
     /// 1リクエストの handler(main スレッド上の XCUITest 操作)の壁時計上限(秒)。超過は
     /// "Wait for app to idle" 等で main が恒久ブロックした状態で、main は復帰不能。クライアントの
     /// per-endpoint 上限(interaction 20s / session 45s)より長く、シナリオ watchdog(90s)より短く
-    /// 取り、504 を返してプロセス自死→ポート解放→device-up 再起動に委ねる。
+    /// 取り、504 を返してプロセス自死→ポート解放→start-device 再起動に委ねる。
     static let handlerTimeout: TimeInterval = 60
 
     init(port: UInt16, handler: @escaping (Request) -> Response) {

@@ -20,16 +20,16 @@ struct ApiListApps: AsyncParsableCommand {
 
     func run() async throws {
         let apps: [ApiAppEntry]
-        switch driverOptions.platform {
+        switch driverOptions.resolvedPlatform {
         case "ios":
-            apps = try await Self.iosApps(port: driverOptions.port)
+            apps = try await Self.iosApps(port: driverOptions.resolvedPort)
         case "android":
             apps = try Self.androidApps(serial: driverOptions.serial)
         default:
-            throw ValidationError("platform must be ios or android: \(driverOptions.platform)")
+            throw ValidationError("platform must be ios or android: \(driverOptions.resolvedPlatform)")
         }
 
-        let output = ApiListAppsOutput(apps: apps, platform: driverOptions.platform)
+        let output = ApiListAppsOutput(apps: apps, platform: driverOptions.resolvedPlatform)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(output)

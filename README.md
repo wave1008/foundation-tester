@@ -126,7 +126,7 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 `doctor` が各ステップの導入状況を確認できるので、詰まったら随時 `swift run fleetest doctor` を実行する。
 
 ```bash
-# 1. iOS ブリッジ生成に必要な xcodegen を入れる(未導入だと bridge/device-up が
+# 1. iOS ブリッジ生成に必要な xcodegen を入れる(未導入だと bridge/start-device が
 #    「xcodegen: No such file or directory」で失敗する)
 brew install xcodegen
 
@@ -190,14 +190,15 @@ swift run fleetest run --profile ios           # 実行プロファイル(ブリ
 
 | コマンド | 説明 |
 |---|---|
+| `--version` | `<git の短い revision> (protocol <版>)` を表示(`api version` はプロトコル版だけを JSON で返す別口) |
 | `doctor` | FM・Xcode・シミュレータ・adb の事前診断 |
 | `bridge up / down / status` | iOS ブリッジ(常駐 XCUITest ランナー)の管理 |
-| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--heal` 自己修復、`--report-dir`、`--ports` 並列、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数、`--broadcast` 選んだシナリオを実行プロファイルの**全デバイスで1回ずつ**回す(ブロードキャスト。warmup 向け。供給・フック・復帰・レポートは通常 run と同じで、結果は台ごとに `worker` で区別)、`--quiet`/`--junit` CI 向け出力、`--enable-animations` アプリのアニメーションを残す、`--fast-input` iOS xcuitest の quiescence 待ちを飛ばす)。**`--dry-run` はデバイスに触れずステップを列挙・検証する**(下記「dry-run」) |
-| `run-file <path.swift>...` | Package.swift に**登録していない** .swift をそのまま実行(プロファイル・レポート・自己修復は `--project` のものを借りる。`--profile`、`--scenario`、`--heal`、`--ports`) |
+| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--heal` 自己修復、`--report-dir`、`--port` 並列(繰り返し指定)、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数、`--broadcast` 選んだシナリオを実行プロファイルの**全デバイスで1回ずつ**回す(ブロードキャスト。warmup 向け。供給・フック・復帰・レポートは通常 run と同じで、結果は台ごとに `worker` で区別)、`--quiet`/`--junit` CI 向け出力、`--enable-animations` アプリのアニメーションを残す、`--fast-input` iOS xcuitest の quiescence 待ちを飛ばす)。**`--dry-run` はデバイスに触れずステップを列挙・検証する**(下記「dry-run」) |
+| `run-file <path.swift>...` | Package.swift に**登録していない** .swift をそのまま実行(プロファイル・レポート・自己修復は `--project` のものを借りる。`--profile`、`--scenario`、`--heal`、`--port`) |
 | `project create / list / sync` | テストプロジェクトの作成・一覧・Package.swift 再整合 |
 | `devices up / down` | 実行プロファイルのデバイスを一括起動・停止(ブリッジ供給込み) |
 | `results list / summary / flaky / trend / devices / slow / insights` | 実行結果の集約・分析(reports/ を横断) |
-| `draft-scenario` | テストベース(`docs/testbases/*.md`)からシナリオの下書きを生成(`--testbase`、`--app`、`--platform`、`--no-fm` で FM 不使用、`--dry-run`) |
+| `draft-scenario` | テストベース(`docs/testbases/*.md`)からシナリオの下書きを生成(`--testbase`、`--app-id`、`--platform`、`--no-fm` で FM 不使用、`--dry-run`) |
 | `init` | 外部パッケージ構成の scaffold(`--platform` で作る run 雛形を絞る)(受け手ディレクトリを fleetest テストパッケージ化。スキル入口 `/fleetest-setup` の既定経路) |
 | `profile setup` | マシン/アプリ/実行プロファイルを整合させて作成(冪等。`--platform`、`--device-name`、`--simulator`/`--avd`、`--app-id`、`--auto-device` は既存デバイスから自動選定(iOS は iPad を除外)) |
 | `profile list` | 実行プロファイルの一覧と現在マシンでの解決チェック |
@@ -252,20 +253,21 @@ swift run fleetest run --project SampleApp --profile all   # 解決 → ブリ�
 
 - マシン決定: 実行プロファイルの `machine` > `FT_MACHINE` 環境変数 > machines/ に 1 ファイルならそれ
   (複数あって `machine` 未指定なら候補を挙げて停止する)
-- マシンプロファイルに `"host": "<登録名>"` を書くと、そのデバイスは**別の Mac 上にある**ものとして
+- マシンプロファイルに `"machine": "<登録名>"` を書くと、そのデバイスは**別の Mac 上にある**ものとして
   扱われ、実行プロファイルを選ぶだけでそのマシンへ SSH でディスパッチされる
-  (省略 = 手元。導入は [docs/remote-runner-setup.md](docs/remote-runner-setup.md))
-- `host` は**デバイス1台ずつにも書ける**(トップレベルは既定)。**一意なのは (host, name)** なので
+  (省略 = 手元。導入は [docs/remote-runner-setup.md](docs/remote-runner-setup.md)。
+  旧キー `"host"` のプロファイルもそのまま読める)
+- `machine` は**デバイス1台ずつにも書ける**(トップレベルは既定)。**一意なのは (machine, name)** なので
   別の機械に同名のデバイスが居てよく、**手元10台 + リモート10台を1回の run で**回せる
-  (ホストごとに分かれて走り、シナリオは台数で重み付けて配られる)
+  (機械ごとに分かれて走り、シナリオは台数で重み付けて配られる)
 - このマシンに定義がないデバイス name はスキップ+警告(実行プロファイルはマシン非依存で使い回せる)
 - **並列数 = 解決後のデバイス数**。iOS は稼働中ブリッジを再利用し、不足分だけ自動起動する
 - アプリプロファイルに `appPath`(.app/.apk)があれば実行前に自動インストール(`autoInstall: false` で無効)
-- `--profile` 省略時は従来どおり(手動 `--ports`/`--serial`、稼働中デバイスへの分配)
+- `--profile` 省略時は従来どおり(手動 `--port`/`--serial`、稼働中デバイスへの分配)
 
 ### 並列実行
 
-シミュレータ1台につきブリッジ1本(別ポート)を立て、`run --ports` でシナリオを分配する。
+シミュレータ1台につきブリッジ1本(別ポート)を立て、`run --port`(繰り返し指定)でシナリオを分配する。
 Android シナリオがあれば専用ワーカーも同時に走る(1シナリオ=1サブプロセスで分離)。
 
 ```bash
@@ -274,7 +276,7 @@ swift run fleetest bridge up --device "iPhone 17 Pro"                          #
 swift run fleetest bridge up --device "iPhone 17 Pro Max" --port 8124 --skip-build
 xcrun simctl install "iPhone 17 Pro Max" <対象アプリ.app>   # 各デバイスにアプリを入れる
 
-swift run fleetest run --ports 8123,8124          # シナリオをワーカーに自動分配
+swift run fleetest run --port 8123 --port 8124    # シナリオをワーカーに自動分配
 swift run fleetest bridge down --all              # 全ブリッジ停止
 ```
 

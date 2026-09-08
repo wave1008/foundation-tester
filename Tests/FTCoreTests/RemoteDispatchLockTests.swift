@@ -116,7 +116,7 @@ final class RemoteDispatchLockTests: XCTestCase {
         XCTAssertEqual(message,
             "another dispatch is already running on this remote host"
             + " (started by wave1008-mbp (pid 4242) at 2025-08-12T13:20:00Z)"
-            + " — wait for it to finish, run `fleetest remote unlock --host <host>` if it is your own"
+            + " — wait for it to finish, run `fleetest remote unlock --runner <machine>` if it is your own"
             + " dispatch that died, or pass --force-lock if it is stuck"
             + " (docs/remote-runner.md §5)")
     }

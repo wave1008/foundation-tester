@@ -230,7 +230,7 @@ public struct MachineDeviceList: Codable, Sendable, Equatable {
 /// マシンプロファイル(profiles/machines/<マシン名>.json)。ファイル名がマシン名
 public struct MachineProfile: Codable, Sendable, Equatable {
     /// このマシンの実行先。省略/"local" = このマシンでローカル実行(**既存プロファイルは
-    /// 無改修で動く**)。それ以外は `fleetest remote hosts` の登録名でなければならない
+    /// 無改修で動く**)。それ以外は `fleetest remote machines` の登録名でなければならない
     /// (生の ssh 宛先は書けない — プロファイルはプロジェクト資産で、ssh の実体はローカル設定
     /// = LocalConfig.remoteHosts にだけ置く規律。フリート定義と同じ)。優先順位・食い違いの扱いは
     /// MachineDispatch、登録簿引きは Sources/fleetest/RemoteCommands.swift。
@@ -267,13 +267,13 @@ public struct MachineProfile: Codable, Sendable, Equatable {
     }
 }
 
-/// `MachineProfile.host` と `--host`(CLI 明示)の優先順位を1箇所に固定する純粋関数。
+/// `MachineProfile.host` と `--runner`(CLI 明示)の優先順位を1箇所に固定する純粋関数。
 /// マシンプロファイルに host を持たせたことで、実行プロファイル経由で間接的にリモートホストを
 /// 指定できるようにした(ユーザー決定)。呼び出し側(Sources/fleetest/RemoteCommands.swift)は
 /// ここが返す名前を、由来に応じて登録簿引きするだけで if を散らさない。
 public enum MachineDispatch {
     public struct Decision: Equatable {
-        /// 実際のディスパッチ先(nil = ローカル実行)。**マシン名(エイリアス)か、`--host` で
+        /// 実際のディスパッチ先(nil = ローカル実行)。**マシン名(エイリアス)か、`--runner` で
         /// 直接書かれたホスト名 / IP のどちらか** —— 呼び出し側が登録簿で解決する
         public let target: String?
         /// 明示の宛先とプロファイルの machine が両方非ローカルで食い違うときの1行注記。無ければ nil
@@ -287,18 +287,18 @@ public enum MachineDispatch {
     }
 
     /// nil・空文字・trim 後 "local" は「ローカル」(nil に正規化)。MachineProfile.machine と
-    /// --machine/--host の両方にこの規則を適用する
+    /// --runner にもこの規則を適用する
     public static func normalize(_ raw: String?) -> String? {
         guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty, trimmed != "local" else { return nil }
         return trimmed
     }
 
-    /// **明示の宛先(`--machine` / `--host`)が常に勝つ**。プロファイルの machine が別のリモートを
+    /// **明示の宛先(`--runner`)が常に勝つ**。プロファイルの machine が別のリモートを
     /// 指していれば `mismatchWarning` を返す(黙って上書きしない)。明示が無ければプロファイル側の
     /// 値をそのまま自動採用する。
     ///
-    /// **明示 `--machine local` は「ここで走らせる」の指定であって「未指定」ではない**(欠陥3・
+    /// **明示 `--runner local` は「ここで走らせる」の指定であって「未指定」ではない**(欠陥3・
     /// 2026-08-17)。`normalize` は "local" を nil に畳むため、素の `normalize(explicitTarget)` だけで
     /// 分岐すると "local" が「未指定」と区別できず、プロファイル側の machine へ自動ディスパッチして
     /// しまう(`FleetRunner` の "local" エントリが実際にはリモートへ飛ぶ実害があった)。ここでだけ
@@ -309,7 +309,7 @@ public enum MachineDispatch {
         if isExplicitLocal(explicitTarget) {
             guard let profileMachine else { return Decision(target: nil) }
             return Decision(target: nil, mismatchWarning:
-                "--machine local overrides the machine profile's machine \"\(profileMachine)\""
+                "--runner local overrides the machine profile's machine \"\(profileMachine)\""
                 + " (the run stays local)")
         }
         guard let explicit = normalize(explicitTarget) else {
@@ -319,12 +319,12 @@ public enum MachineDispatch {
             return Decision(target: explicit)
         }
         return Decision(target: explicit, mismatchWarning:
-            "--machine \(explicit) overrides the machine profile's machine \"\(profileMachine)\""
+            "--runner \(explicit) overrides the machine profile's machine \"\(profileMachine)\""
             + " (they differ; the run continues on \(explicit))")
     }
 
     /// 生の(trim 前の)値が文字どおり "local" か。normalize 後の nil(= 未指定)とは区別する。
-    /// `--host local` と実行プロファイルの `"host": "local"` の両方が「ここで走らせる」の明示指定で、
+    /// `--runner local` と実行プロファイルの `"host": "local"` の両方が「ここで走らせる」の明示指定で、
     /// 判定を写すと片方だけズレるのでここが唯一の定義元(呼び出し側は DeviceMachineGrouping.resolve)
     public static func isExplicitLocal(_ raw: String?) -> Bool {
         guard let raw else { return false }
@@ -819,8 +819,8 @@ extension RunProfileDocument {
     /// 専用フラグ(`--report-dir` 等)と同じ意味の `--set <key>=...` が両方指定されたときの
     /// 拒否メッセージ(`nil` = 衝突なし)。**黙ってどちらかを勝たせない** ——
     /// `fleetest run`(reportDir)/`fleetest api run`(reportDir/defaultTimeout/scenarioTimeout)が
-    /// それぞれ自分の持つ専用フラグの分だけ呼ぶ。**`--app`/`--machine` はここでは扱わない** ——
-    /// CLI の `--app`/`--machine` とプロファイルキー `app`/`machine` は別物(前者は
+    /// それぞれ自分の持つ専用フラグの分だけ呼ぶ。**`--app-id`/`--runner` はここでは扱わない** ——
+    /// CLI の `--app-id`/`--runner` とプロファイルキー `app`/`machine` は別物(前者は
     /// `@TestClass(app:)` 省略時の既定アプリ/ディスパッチ先、後者はアプリ/マシン**プロファイル名**)
     public static func flagOverrideCollision(
         flag: String, key: String, flagIsSet: Bool, overrides: [String: RunProfileSetValue]
@@ -864,7 +864,7 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
     /// 未指定は `VideoRecordingConfig.defaultBitrateKbps`
     public let recordBitrateKbps: Int?
 
-    /// `--profile` を使わない実行(`--ports`/`--serial` 直指定)の基底。**プロファイルの既定を
+    /// `--profile` を使わない実行(`--port`/`--serial` 直指定)の基底。**プロファイルの既定を
     /// そのまま使わない** —— 3つだけ意図的に違う:
     ///   `heal` / `falsePositiveCheck` … profile-less は **FM を積極的に使わない側**へ倒す
     ///     (`FMConfig.init` の既定と同じ。プロファイルの既定 true を当てると、既に緑だった
@@ -990,7 +990,7 @@ public struct ResolvedProfile: Sendable {
     public let machineName: String
     /// マシンプロファイルの host(MachineDispatch.normalize 済み。nil = ローカル実行)。
     /// 表示用途(`fleetest profile list`)。実際のディスパッチ判定・登録簿引きは呼び出し側
-    /// (Sources/fleetest/RemoteCommands.swift)が `--host` と突き合わせて行う。
+    /// (Sources/fleetest/RemoteCommands.swift)が `--runner` と突き合わせて行う。
     /// **`var` にする**(memberwise init を直に呼ぶ既存テスト
     /// (Tests/FTAndroidTests/BuildAndroidWorkersPartialFailureTests.swift 等)が
     /// この引数を知らないため既定値が要る。**既定値付きの `let` は memberwise init から

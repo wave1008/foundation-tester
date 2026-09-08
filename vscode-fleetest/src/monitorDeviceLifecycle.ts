@@ -1,19 +1,19 @@
 // monitorDeviceLifecycle.ts
-// デバイス個別起動/停止(device-up/device-down)・一括起動/終了(devices-up/devices-down/
-// devices-restart)の NDJSON イベント型と、それらを1件ずつ直列実行するキューの純粋な状態管理
+// デバイス個別起動/停止(start-device/stop-device)・一括起動/終了(start-all-devices/stop-all-devices/
+// restart-devices)の NDJSON イベント型と、それらを1件ずつ直列実行するキューの純粋な状態管理
 // (spawn 自体は monitorPanel.ts 側)。vscode に依存しない(monitorPanel.ts と
 // test/monitorModel.test.mjs の両方から使うため)。
 
 import { t } from "./i18n";
 import { isRecord, type MonitorDeviceState } from "./monitorDeviceModel";
 
-// ---- デバイス個別起動/停止(fleetest api device-up / device-down) ------------------------
-// 契約(Sources/fleetest/ApiDeviceCommands.swift): `fleetest api device-up --name <論理名>
-// [--project <p>]` / `fleetest api device-down --name <論理名> [--project <p>]` の stdout NDJSON:
+// ---- デバイス個別起動/停止(fleetest api start-device / stop-device) ------------------------
+// 契約(Sources/fleetest/ApiDeviceCommands.swift): `fleetest api start-device --name <論理名>
+// [--project <p>]` / `fleetest api stop-device --name <論理名> [--project <p>]` の stdout NDJSON:
 //   {"kind":"log","message":".."} × n → {"kind":"finished","ok":bool,"error":string|null}
 // (ok:false のときは exit code 1。診断は stderr のみ)。
 
-// wipe = 仮想デバイス1台の初期化(`fleetest api device-wipe`)。up/down と同じ device ジョブとして
+// wipe = 仮想デバイス1台の初期化(`fleetest api wipe-device`)。up/down と同じ device ジョブとして
 // 直列キューに載せる —— 中で停止と再起動をするので、一括起動や個別の起動/停止と重なると
 // simctl/adb・ブリッジ供給が競合する。
 export type DeviceOpKind = "up" | "down" | "wipe";
@@ -23,7 +23,7 @@ export interface DeviceOpLogEvent {
   readonly message: string;
 }
 
-/** device-wipe だけが出すフェーズ通知(Sources/fleetest/ApiDeviceCommands.swift の
+/** wipe-device だけが出すフェーズ通知(Sources/fleetest/ApiDeviceCommands.swift の
  * ApiDeviceWipeStatusEvent と対)。phase の集合は run 開始時の自動 Wipe(model.ts の
  * WipeStatusEvent)と同じで、タイルの表示もそちらと共有する。 */
 export interface DeviceOpWipeStatusEvent {
@@ -69,7 +69,7 @@ export function isDeviceOpEvent(value: unknown): value is DeviceOpEvent {
   }
 }
 
-/** `fleetest api devices-up` の NDJSON 1行分のイベント。
+/** `fleetest api start-all-devices` の NDJSON 1行分のイベント。
  * 契約の同期相手: Sources/fleetest/ApiDeviceCommands.swift ApiDevicesUp(deviceStarting/deviceFinished は
  * ブート開始/完了の即時通知で、モニターの状態スキャンを待たずタイルを「起動中」表示にするために使う。
  * deviceStopping は --restart 指定デバイスの down 開始通知)。 */
@@ -84,7 +84,7 @@ export type DevicesUpEvent =
   | { readonly kind: "deviceStopping"; readonly name: string; readonly platform: string; readonly machine?: string | null }
   | { readonly kind: "deviceStarting"; readonly name: string; readonly platform: string; readonly machine?: string | null }
   | { readonly kind: "deviceFinished"; readonly name: string; readonly platform: string; readonly machine?: string | null }
-  // リモート機1台ぶんの devices-up/down が丸ごと失敗した(親が子の finished{ok:false} を
+  // リモート機1台ぶんの start-all-devices/stop-all-devices が丸ごと失敗した(親が子の finished{ok:false} を
   // 移し替える。Sources/fleetest/RemoteDeviceFanout.swift machineStamped と対)。
   // 親の finished は ok:true のまま来る = これを見ないとその機械の失敗が無音になる
   | { readonly kind: "machineFailed"; readonly machine: string; readonly error: string }
@@ -111,7 +111,7 @@ export function isDevicesUpEvent(value: unknown): value is DevicesUpEvent {
   }
 }
 
-/** `fleetest api devices-restart` の NDJSON 1行分のイベント。deviceStopping/deviceStarting/
+/** `fleetest api restart-devices` の NDJSON 1行分のイベント。deviceStopping/deviceStarting/
  * deviceFinished はバッチ内の1台ごとの down→up 進行通知(モニターの状態スキャンを待たず
  * タイルを更新するために使う。deviceLifecycleStatusFor は restartBatch を常に queued 扱いにする
  * ため、running 表示はこのイベント由来の deviceOpBusy post が担う)。 */
@@ -200,7 +200,7 @@ export type DeviceOpQueueStatus = "queued" | "running";
 
 /** キューに積む1件のデバイスライフサイクル操作。全台(bulk)/1台(device)/複数台GPU再起動(restartBatch)の3種別。 */
 export type DeviceLifecycleJob =
-  // restartNames: up のみ。起動済みでも down→up する対象(devices-up --restart に渡す)。
+  // restartNames: up のみ。起動済みでも down→up する対象(start-all-devices --restart に渡す)。
   | { readonly kind: "bulk"; readonly op: "up" | "down"; readonly restartNames?: readonly string[] }
   // udid/serial: 未登録(マシンプロファイル未記載)デバイスの直指定。monitorDeviceOps.ts
   // executeDeviceOpJob が --name の代わりに --udid/--serial を渡す(対向:
@@ -212,7 +212,7 @@ export type DeviceLifecycleJob =
   // 同名の台が別の機械にも居るのは通常で、手元の同名エントリを引いて別の機械の設定で
   // シミュレータを1台作ってしまう(simctl は無ければ作る)
   | { readonly kind: "device"; readonly name: string; readonly op: "up" | "down"; readonly machine?: string; readonly udid?: string; readonly serial?: string }
-  // wipe は **識別子で撃つ**(`api device-wipe --platform … --udid/--avd`)。delete-device と同じく
+  // wipe は **識別子で撃つ**(`api wipe-device --platform … --udid/--avd`)。delete-device と同じく
   // プロジェクトもマシンプロファイルも参照しない —— 名前で引く形にすると、リモートでは向こうの
   // 複製が古いと `device not found` で必ず失敗する(複製が更新されるのはモニターの fan-out
   // 開始時だけ)。**識別子を省略できない型にしてある**ので、呼び忘れはコンパイルで止まる

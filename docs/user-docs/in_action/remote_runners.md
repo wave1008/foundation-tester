@@ -1,6 +1,6 @@
 # Remote Runners
 
-`fleetest run --host <host>` dispatches a run to another Mac over SSH, runs it there exactly as a
+`fleetest run --runner <runner>` dispatches a run to another Mac over SSH, runs it there exactly as a
 local run, and brings the output and artifacts back. This page summarizes what it can do and how
 to set it up; the full step-by-step is [docs/remote-runner-setup.md](../../remote-runner-setup.md)
 (not duplicated here).
@@ -12,7 +12,7 @@ to set it up; the full step-by-step is [docs/remote-runner-setup.md](../../remot
 | Dispatch a job to one remote host (CLI and VS Code extension) | ✅ |
 | Progress display, cancellation, timeout | ✅ |
 | Collect reports, JUnit, recordings, run logs | ✅ |
-| Provision/remove a runner from your machine in one command (`remote setup`) | ✅ |
+| Provision a runner from your machine in one command (`remote setup`); remove one the same way (`remote teardown`) | ✅ |
 | Batch status/cleanup across hosts (`remote status` / `remote clean`) | ✅ |
 | One-off remote command (`remote exec`) | ✅ |
 | Simultaneous dispatch to multiple hosts (a fleet, `run --fleet`) | ✅ |
@@ -27,7 +27,7 @@ your machine — the runner machine is never edited directly.
 
 ```
 Issuing Mac (yours)                     Runner machine
-fleetest run --host mac2 …               ~/fleetest-runner/               ← dedicated base directory
+fleetest run --runner mac2 …             ~/fleetest-runner/               ← dedicated base directory
   ├ compatibility check (rev, Xcode) ssh ├── foundation-tester/          ← the tool's clone (fixed name, shared)
   ├ transfer (rsync: scenarios/config) ─> └── users/<issuerId>/work/     ← your work area (per issuer)
   ├ display output                             ├── TestProjects/<project>/
@@ -65,8 +65,8 @@ remote runner is entirely self-contained under `~/fleetest-runner/`.
    fingerprint match; `remote setup`'s align step keeps them in sync.
 5. **Step 4 — machine name and profile.** A run profile resolves its device set through a machine
    profile.
-6. **Step 5 — check connectivity**: `fleetest remote status --host <user>@<host>`.
-7. **Step 6 — first dispatch**: `fleetest run --host <user>@<host> --profile <run profile>
+6. **Step 5 — check connectivity**: `fleetest remote status --runner <user>@<host>`.
+7. **Step 6 — first dispatch**: `fleetest run --runner <user>@<host> --profile <run profile>
    --scenario <id>` (the first dispatch takes a few minutes; later ones start in seconds).
 
 **`/fleetest:fleetest-remote-setup` delegates the machine work to `fleetest remote setup`** — it
@@ -119,16 +119,16 @@ A device's machine profile can carry `machine`, naming a registered machine:
 ```
 
 A run profile picks its machine profile by name, so **selecting a run profile also selects
-which machine it runs on** — no separate `--machine` is needed for normal use. Local devices should
+which machine it runs on** — no separate `--runner` is needed for normal use. Local devices should
 write `"machine": "local"` explicitly (omitting it means "inherit the profile's default", which
-matters once a profile mixes local and remote devices). `--machine <name>` on the command line
-overrides the profile (use `--host` to name a host / IP directly). **Profiles written with the old
-key `"host"` are still read** (renamed to `machine` on 2026-08-26).
+matters once a profile mixes local and remote devices). `--runner <name>` on the command line
+overrides the profile, naming either a registered machine or a raw host / IP directly. **Profiles
+written with the old key `"host"` are still read** (renamed to `machine` on 2026-08-26).
 
-## `run --machine` and `--fleet`
+## `run --runner` and `--fleet`
 
 ```bash
-fleetest run --machine <name> --profile <run profile>           # send this one run to a specific machine
+fleetest run --runner <name> --profile <run profile>            # send this one run to a specific machine
 fleetest run --project <project> --fleet <name>                 # run the same scenarios on every host in the fleet
 fleetest run --project <project> --fleet <name> --split          # split scenarios across the fleet's hosts instead
 ```
@@ -163,7 +163,7 @@ holding it and since when.
 - **Wait instead of failing**: `--wait-lock <seconds>` on the CLI, or the
   `fleetest.remoteWaitLock` setting (seconds; default 0 = fail immediately) in the VS Code
   extension. There is deliberately no "steal it" button in the extension.
-- **See who is using it**: the LOCK column of `fleetest remote status --host <machine>`
+- **See who is using it**: the LOCK column of `fleetest remote status --runner <machine>`
   (`-` means "could not tell", not "free"). The Device Monitor shows a 🔒 on that machine's
   toolbar row.
 - **Live video pauses by itself during a run** — when someone's run starts, that machine's tiles

@@ -1,4 +1,4 @@
-// `fleetest run --host` (docs/remote-runner.md §3・§7・Phase 1) の純粋ロジック。
+// `fleetest run --runner` (docs/remote-runner.md §3・§7・Phase 1) の純粋ロジック。
 // SSH/rsync 越しの結合は e2e に残す(ここは文字列合成・判定のみ)。
 
 import Foundation
@@ -496,7 +496,7 @@ final class RemoteDispatchTests: XCTestCase {
             RemoteRunArgs.build(project: "E2E", profile: "ios-inapp", scenarios: [], folders: [],
                                 noLPT: false, lptHistoryRuns: nil, performanceMode: false,
                                 remoteJUnitPath: nil, reportDir: nil),
-            ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet", "--host", "local"])
+            ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet", "--runner", "local"])
     }
 
     /// **リモートのサブ実行はデバイスの絞り込みを中継しないと効かない**(2026-08-17 の実走)。
@@ -511,7 +511,7 @@ final class RemoteDispatchTests: XCTestCase {
             remoteJUnitPath: nil, reportDir: nil)
         XCTAssertEqual(
             args,
-            ["run", "--project", "E2E", "--profile", "mixed", "--quiet", "--host", "local",
+            ["run", "--project", "E2E", "--profile", "mixed", "--quiet", "--runner", "local",
              "--device", "iPhone-01", "iPhone-02", "--device-machine", "local"])
         XCTAssertFalse(args.contains("M1Max"), "ローカルエイリアスが引数に出てはいけない: \(args)")
     }
@@ -586,7 +586,7 @@ final class RemoteDispatchTests: XCTestCase {
                                 remoteJUnitPath: "/remote/junit.xml",
                                 reportDir: "/remote/reports"),
             [
-                "run", "--project", "E2E", "--profile", "ios-inapp", "--quiet", "--host", "local",
+                "run", "--project", "E2E", "--profile", "ios-inapp", "--quiet", "--runner", "local",
                 "--report-dir", "/remote/reports",
                 "--scenario", "Login.S0010", "--scenario", "Login.S0020",
                 "--folder", "smoke",
@@ -597,7 +597,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     /// リモートで走る fleetest が**もう一度ディスパッチしない**ことを固定する。転送された
-    /// マシンプロファイルには host(= そのリモート自身の名前)が入っているので、--host local が
+    /// マシンプロファイルには host(= そのリモート自身の名前)が入っているので、--runner local が
     /// 抜けると向こうの MachineDispatch が自動ディスパッチに入り、登録簿次第で
     /// 「未登録のホスト」で落ちるか自分自身へ ssh する
     func testRemoteRunArgsAlwaysPinTheRemoteSideToLocal() {
@@ -610,8 +610,8 @@ final class RemoteDispatchTests: XCTestCase {
                                    performanceMode: false,
                                    defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil),
         ] {
-            guard let index = args.firstIndex(of: "--host") else {
-                return XCTFail("--host local が無い: \(args)")
+            guard let index = args.firstIndex(of: "--runner") else {
+                return XCTFail("--runner local が無い: \(args)")
             }
             XCTAssertEqual(args[index + 1], "local")
         }
@@ -711,8 +711,8 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteDispatchGate
 
     /// `--dry-run` はデバイスに触れず、判定はローカルのシナリオ原本だけから決まるので
-    /// **`--host` が付いていてもリモートへ送らない**(送っても答えは同じで遅いだけ)。
-    /// この門が無いと `--dry-run --host` が実デバイス実行になる —— リモート送出は
+    /// **`--runner` が付いていてもリモートへ送らない**(送っても答えは同じで遅いだけ)。
+    /// この門が無いと `--dry-run --runner` が実デバイス実行になる —— リモート送出は
     /// `run()` の dryRun 分岐より手前にあり、`--dry-run` は中継の許可リストにも無いため
     func testDryRunIsNotDispatchedRemotely() {
         XCTAssertFalse(RemoteDispatchGate.dispatchesRemotely(host: "user@host", dryRun: true))
@@ -722,7 +722,7 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertTrue(RemoteDispatchGate.dispatchesRemotely(host: "user@host", dryRun: false))
     }
 
-    /// `--host` 無しはどちらの場合もローカル実行(dry-run の有無で変わらない)
+    /// `--runner` 無しはどちらの場合もローカル実行(dry-run の有無で変わらない)
     func testNoHostIsNeverDispatchedRemotely() {
         XCTAssertFalse(RemoteDispatchGate.dispatchesRemotely(host: nil, dryRun: false))
         XCTAssertFalse(RemoteDispatchGate.dispatchesRemotely(host: nil, dryRun: true))
@@ -964,7 +964,7 @@ final class RemoteDispatchTests: XCTestCase {
                                    noLPT: false, lptHistoryRuns: nil,
                                    performanceMode: false,
                                    defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil),
-            ["api", "run", "--project", "E2E", "--profile", "ios-inapp", "--host", "local",
+            ["api", "run", "--project", "E2E", "--profile", "ios-inapp", "--runner", "local",
              "--scenario", "Login.S0010"])
     }
 
@@ -978,7 +978,7 @@ final class RemoteDispatchTests: XCTestCase {
                                    defaultTimeout: 5.5, scenarioTimeout: 90,
                                    reportDir: "/remote/reports"),
             [
-                "api", "run", "--project", "E2E", "--profile", "ios-inapp", "--host", "local",
+                "api", "run", "--project", "E2E", "--profile", "ios-inapp", "--runner", "local",
                 "--report-dir", "/remote/reports",
                 "--scenario", "Login.S0010", "--scenario", "Login.S0020",
                 "--set", "heal=true", "--no-lpt", "--lpt-history-runs", "3", "--performance",
@@ -986,8 +986,8 @@ final class RemoteDispatchTests: XCTestCase {
             ])
     }
 
-    /// ApiRunMachineFanout がホストごとの子(`api run --host <label>`)を立てるようになったため、
-    /// `api run --host` のリモート実行にも `run --host` と同じデバイス絞り込みの中継が要る
+    /// ApiRunMachineFanout がホストごとの子(`api run --runner <label>`)を立てるようになったため、
+    /// `api run --runner` のリモート実行にも `run --runner` と同じデバイス絞り込みの中継が要る
     /// (testRemoteRunArgsRelaysTheDeviceScope と対。渡さないと向こうが全ホストぶんの台を掴む)
     func testBuildApiRelaysTheDeviceScope() {
         let args = RemoteRunArgs.buildApi(
@@ -998,13 +998,13 @@ final class RemoteDispatchTests: XCTestCase {
             defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil)
         XCTAssertEqual(
             args,
-            ["api", "run", "--project", "E2E", "--profile", "mixed", "--host", "local",
+            ["api", "run", "--project", "E2E", "--profile", "mixed", "--runner", "local",
              "--device", "iPhone-01", "iPhone-02", "--device-machine", "local",
              "--scenario", "Login.S0010"])
         XCTAssertFalse(args.contains("M1Max"), "ローカルエイリアスが引数に出てはいけない: \(args)")
     }
 
-    /// build() と対(testRemoteRunArgsRelaysWorkspaceOnlyWhenGiven)。`api run --host` にも
+    /// build() と対(testRemoteRunArgsRelaysWorkspaceOnlyWhenGiven)。`api run --runner` にも
     /// 同じ規律で --workspace が中継される
     func testBuildApiRelaysWorkspaceOnlyWhenGiven() {
         let withWorkspace = RemoteRunArgs.buildApi(
@@ -1109,7 +1109,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     /// **プロファイルだけでも受ける** —— マシンプロファイル経由の自動ディスパッチや、
-    /// デバイスが複数の機械にまたがるプロファイル(ホスト別の子へ分かれる)では `--host` を打たない。
+    /// デバイスが複数の機械にまたがるプロファイル(ホスト別の子へ分かれる)では `--runner` を打たない。
     /// ここを拒否していたため、中断した run が残したロックを解除する手段が無かった
     func testForceLockIsAcceptedWithAProfileAlone() {
         XCTAssertNil(RemoteDispatchFlagPolicy.forceLockRejection(
@@ -1179,14 +1179,14 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertFalse(WaitLockPolling.shouldLogProgress(elapsedSeconds: 50))
     }
 
-    // MARK: - RemoteDispatchFlagPolicy(欠陥1: --host 明示 vs マシンプロファイル自動での併用不可フラグ)
+    // MARK: - RemoteDispatchFlagPolicy(欠陥1: --runner 明示 vs マシンプロファイル自動での併用不可フラグ)
 
     func testSkipBuildIsRejectedForExplicitHost() {
         let decision = RemoteDispatchFlagPolicy.skipBuild(origin: .explicitHost)
         guard case .rejected(let message) = decision else {
             return XCTFail("expected .rejected, got \(decision)")
         }
-        XCTAssertEqual(message, "--skip-build is not supported with --host")
+        XCTAssertEqual(message, "--skip-build is not supported with --runner")
     }
 
     func testSkipBuildIsIgnoredWithNoteForAutoDispatch() {
@@ -1204,11 +1204,11 @@ final class RemoteDispatchTests: XCTestCase {
         guard case .rejected(let message) = decision else {
             return XCTFail("expected .rejected, got \(decision)")
         }
-        XCTAssertEqual(message, "--report-dir is not supported with --host")
+        XCTAssertEqual(message, "--report-dir is not supported with --runner")
     }
 
     func testReportDirIsRejectedForAutoDispatchWithMachineAndHostInMessage() {
-        // 欠陥1: 拒否理由が「--host と併用できない」のままだと、打ってもいない --host を疑うことになる。
+        // 欠陥1: 拒否理由が「--runner と併用できない」のままだと、打ってもいない --runner を疑うことになる。
         // マシン名・host 名を含む理由に変える
         let decision = RemoteDispatchFlagPolicy.rejected(
             flag: "--failed", origin: .autoDispatch(machine: "M1Max", host: "runner1"))
@@ -1218,16 +1218,16 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertTrue(message.contains("--failed"))
         XCTAssertTrue(message.contains("M1Max"))
         XCTAssertTrue(message.contains("runner1"))
-        XCTAssertFalse(message.contains("is not supported with --host"),
-                       "自動ディスパッチでは --host を打っていないので、この文言を出さない")
+        XCTAssertFalse(message.contains("is not supported with --runner"),
+                       "自動ディスパッチでは --runner を打っていないので、この文言を出さない")
     }
 
-    func testPortsIsRejectedForBothOrigins() {
-        guard case .rejected = RemoteDispatchFlagPolicy.rejected(flag: "--ports", origin: .explicitHost) else {
+    func testPortIsRejectedForBothOrigins() {
+        guard case .rejected = RemoteDispatchFlagPolicy.rejected(flag: "--port", origin: .explicitHost) else {
             return XCTFail("expected .rejected for explicitHost")
         }
         guard case .rejected = RemoteDispatchFlagPolicy.rejected(
-            flag: "--ports", origin: .autoDispatch(machine: "M1Max", host: "runner1")) else {
+            flag: "--port", origin: .autoDispatch(machine: "M1Max", host: "runner1")) else {
             return XCTFail("expected .rejected for autoDispatch")
         }
     }

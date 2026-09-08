@@ -45,7 +45,7 @@ public enum ScenarioAppResolution {
         return .unresolved(message:
             "\(scenarioID) declares no @TestClass(app:) and no app could be resolved from a run"
             + " profile. Run it with --profile <name> (the profile's app is used), or pass"
-            + " --app <bundleID>, or write @TestClass(app: \"<bundleID>\").")
+            + " --app-id <bundleID>, or write @TestClass(app: \"<bundleID>\").")
     }
 
     private static func normalized(_ value: String?) -> String? {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 状態判定(読み取りのみ・何も変更しない)。既定モードはインストール前の判定(カレント = WORK_DIR
-# 候補)。`--runner` はランナー機(`fleetest run --host` / docs/remote-runner.md §5・§14)としての判定。
+# 候補)。`--runner` はランナー機(`fleetest run --runner` / docs/remote-runner.md §5・§14)としての判定。
 #
 #   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/preflight.sh | bash
 #   bash Scripts/preflight.sh [--work-dir <dir>]           # --work-dir 既定はカレント

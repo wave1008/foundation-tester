@@ -4,13 +4,14 @@
 
 import XCTest
 @testable import fleetest
+import FTCore
 
 final class HostMetricsSummaryTests: XCTestCase {
 
-    // MARK: - parseBound(--since / --until)
+    // MARK: - --since / --until(パース本体は FTCore.TimeBoundParse。ここはコマンドが使う形の確認)
 
     func testParseBoundAcceptsUnixEpoch() throws {
-        XCTAssertEqual(try ApiHostMetricsSummaryCommand.parseBound("1700000000"), 1_700_000_000)
+        XCTAssertEqual(TimeBoundParse.parse("@1700000000")?.timeIntervalSince1970, 1_700_000_000)
     }
 
     func testParseBoundConvertsDurationsToAbsoluteEpoch() throws {
@@ -18,21 +19,20 @@ final class HostMetricsSummaryTests: XCTestCase {
         // duration は「今から遡る」指定。単位ごとの秒数を確認する(許容は実行時間ぶんの 5s)
         let cases: [(String, Double)] = [("90s", 90), ("10m", 600), ("2h", 7200), ("1d", 86400)]
         for (raw, seconds) in cases {
-            let parsed = try ApiHostMetricsSummaryCommand.parseBound(raw)
-            XCTAssertEqual(parsed, now - seconds, accuracy: 5,
+            let parsed = TimeBoundParse.parse(raw)?.timeIntervalSince1970
+            XCTAssertEqual(parsed ?? -1, now - seconds, accuracy: 5,
                            "\(raw) は \(seconds) 秒前を指すべきです")
         }
     }
 
     func testParseBoundAcceptsFractionalDuration() throws {
         let now = Date().timeIntervalSince1970
-        XCTAssertEqual(try ApiHostMetricsSummaryCommand.parseBound("1.5h"), now - 5400, accuracy: 5)
+        XCTAssertEqual(TimeBoundParse.parse("1.5h")?.timeIntervalSince1970 ?? -1, now - 5400, accuracy: 5)
     }
 
     func testParseBoundRejectsUnknownFormats() {
         for raw in ["10x", "m10", "", "yesterday", "10 m"] {
-            XCTAssertThrowsError(try ApiHostMetricsSummaryCommand.parseBound(raw),
-                                 "\(raw) は不正として弾くべきです")
+            XCTAssertNil(TimeBoundParse.parse(raw), "\(raw) は不正として弾くべきです")
         }
     }
 

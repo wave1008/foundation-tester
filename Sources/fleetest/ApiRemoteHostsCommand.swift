@@ -1,4 +1,4 @@
-// VSCode拡張向け: `--host` 登録簿(LocalConfig.remoteHosts)の読み書き(fleetest api remote-hosts)。
+// VSCode拡張向け: マシン登録簿(LocalConfig.remoteHosts)の読み書き(fleetest api remote-machines)。
 // docs/remote-runner.md §13。stdout には結果 1 行の JSON だけを出す(診断は stderr のみ。
 // ApiCommands.swift と同じ流儀)。
 //
@@ -14,13 +14,13 @@ import FTRemote
 
 struct ApiRemoteHostsCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "remote-hosts",
-        abstract: "Read or update the --host registry (~/.config/fleetest/config.json) and print it as JSON"
+        commandName: "remote-machines",
+        abstract: "Read or update the machine registry (~/.config/fleetest/config.json) and print it as JSON"
             + " on stdout (diagnostics on stderr only; docs/remote-runner.md §13)")
 
     @Option(name: .customLong("import"),
             // ArgumentHelp は文字列リテラルからしか作れない(連結した String は渡せない)
-            help: ArgumentHelp("Upsert these entries (JSON array: [{\"machine\":…,\"host\":…,\"dir\":…}]; the old key \"name\" is still read), "
+            help: ArgumentHelp("Upsert these entries (JSON array: [{\"machine\":…,\"host\":…,\"dir\":…}]), "
                 + "then print the resulting registry. For migrating from the VSCode setting fleetest.remote.hosts"))
     var importJSON: String?
 
@@ -108,12 +108,7 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
 }
 
 /// `--import` のデコード用(ApiRemoteHostEntry の逆向き)。dir は "" もキー省略も未設定として
-/// 受け取る。
-///
-/// **鍵は machine、旧キー name も読む**(2026-08-26 の改名の互換。拡張は machine で送る)。
-/// 2026-08-27 まで `name` だけを必須で読んでおり、**設定タブからのマシン登録は
-/// `--import is not a valid JSON array` で全部失敗していた**(型の効かない境界を片側だけ
-/// 改名した実害。往復は remoteHostsImportKeys のテストで固定する)。
+/// 受け取る。鍵は machine(拡張は machine で送る)。
 ///
 /// **machine は省略可**(キー欠落・空文字とも)。無いときは host のホスト部を名前にする
 /// (RemoteHostRegistry.defaultMachine)。マシン名はこの Mac だけのエイリアスなので、
@@ -127,17 +122,6 @@ struct ApiRemoteHostImportEntry: Decodable {
     /// nil = キーが無い / 0 以下 = 解除 / 正の値 = その枠数
     let fmConcurrency: Int?
 
-    private enum CodingKeys: String, CodingKey { case machine, name, host, dir, fmConcurrency }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        machine = try container.decodeIfPresent(String.self, forKey: .machine)
-            ?? container.decodeIfPresent(String.self, forKey: .name)
-        host = try container.decode(String.self, forKey: .host)
-        dir = try container.decodeIfPresent(String.self, forKey: .dir)
-        fmConcurrency = try container.decodeIfPresent(Int.self, forKey: .fmConcurrency)
-    }
-
     var entry: RemoteHostEntry {
         let given = (machine ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let resolved = given.isEmpty ? RemoteHostRegistry.defaultMachine(forHost: host) : given
@@ -148,7 +132,7 @@ struct ApiRemoteHostImportEntry: Decodable {
 }
 
 /// dir は常にキーを出し、未設定は空文字("")にする(nil にはしない。契約はファイル冒頭のコメント)。
-/// **マシン名のキーは "machine"**(2026-08-26 改名。旧 "name" は入力側だけ受ける)
+/// **マシン名のキーは "machine"**
 private struct ApiRemoteHostEntry: Encodable {
     let machine: String
     let host: String

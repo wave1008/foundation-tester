@@ -14,7 +14,7 @@ import Foundation
 struct ApiRemoteCompatCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "remote-compat",
-        abstract: "Report git revision / toolchain compatibility of a run profile's remote hosts,"
+        abstract: "Report git revision / toolchain compatibility of a run profile's remote runners,"
             + " for the extension's pre-run check (the human-readable table is `fleetest remote status`)")
 
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
@@ -25,7 +25,7 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
 
     @Option(name: .customLong("remote-dir"),
             help: ArgumentHelp("Runner-only base directory override for every host"
-                + " (default: each host registry entry, or ~/fleetest-runner)"))
+                + " (default: each machine registry entry, or ~/fleetest-runner)"))
     var remoteDir: String?
 
     func run() async throws {

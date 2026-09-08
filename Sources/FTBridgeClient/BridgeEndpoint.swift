@@ -50,7 +50,7 @@ public struct BridgeEndpoint: Sendable, Hashable, Codable {
         try? contents.write(to: url, atomically: true, encoding: .utf8)
     }
 
-    /// ポートだけを手掛かりにブリッジの宛先を引く(`--ports`/`--port` 直指定の経路用)。
+    /// ポートだけを手掛かりにブリッジの宛先を引く(`--port` 直指定の経路用)。
     /// **実機のブリッジは 127.0.0.1 に居ない** —— 記録を読まずに loopback を渡すと、LAN 接続の
     /// 実機で接続拒否になる(`BridgeHostPlumbingTests` が `host:` の欠落を落とすが、
     /// **loopback を明示的に渡す形は文字面では通ってしまう**ので、宛先はここで引くこと)。

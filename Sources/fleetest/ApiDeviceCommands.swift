@@ -1,9 +1,9 @@
 // VSCode拡張のライブ操作パネル向け: マシンプロファイル記載のデバイス1台の起動・停止
-// (fleetest api device-up / device-down)。起動・停止の実装(DeviceBooter/BridgeProvisioner)は
+// (fleetest api start-device / stop-device)。起動・停止の実装(DeviceBooter/BridgeProvisioner)は
 // DevicesCommand(fleetest devices)と共通。stdout には NDJSON(log* → finished)だけを出す
 // (診断は stderr のみ。ok:false のときは exit code 1)。
 //
-// device-down は --udid/--serial の直指定モードも持つ(未登録=マシンプロファイル未記載の起動中
+// stop-device は --udid/--serial の直指定モードも持つ(未登録=マシンプロファイル未記載の起動中
 // デバイス向け。ApiMonitorCommand.unregisteredStates 参照)。プロジェクト・マシンプロファイル解決を
 // 一切行わない(ApiDeviceDownDirectTarget/ApiDeviceDownDirectSpec)。対向: vscode-fleetest/src/monitorDeviceOps.ts
 
@@ -13,9 +13,9 @@ import FTAndroid
 import FTBridgeClient
 import FTCore
 
-struct ApiDeviceUp: AsyncParsableCommand {
+struct ApiStartDeviceCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "device-up",
+        commandName: "start-device",
         abstract: "Start one device listed in the machine profile (NDJSON: log* -> finished on "
             + "stdout; diagnostics on stderr only; exit code 1 when ok:false)")
 
@@ -34,7 +34,7 @@ struct ApiDeviceUp: AsyncParsableCommand {
     @Option(help: "Android GPU rendering mode (host / swiftshader_indirect; default host). Used as the CPU-rendering fallback for devices that freeze")
     var gpu: String?
 
-    @Option(name: [.customLong("device-machine"), .customLong("device-host")],
+    @Option(name: .customLong("device-machine"),
             help: "Only match devices assigned to this machine (\"local\" or a registered host name). Set by the caller on the other end of ssh")
     var deviceMachine: String?
 
@@ -78,7 +78,7 @@ struct ApiDeviceUp: AsyncParsableCommand {
 
     /// `--udid` 直指定の1台。プロジェクト・マシンプロファイル解決を経ないため
     /// `ApiDeviceOperation.run` を通らず、NDJSON の log*/finished をここで組み立てる
-    /// (device-down の runDirect と同じ形)
+    /// (stop-device の runDirect と同じ形)
     private static func startPhysicalBridge(udid: String) async throws {
         setvbuf(stdout, nil, _IOLBF, 0)
         let log: @Sendable (String) -> Void = { message in
@@ -98,7 +98,7 @@ struct ApiDeviceUp: AsyncParsableCommand {
     }
 }
 
-/// `device-up --udid` の spec 合成。**接続中の実機だけ**を受ける —— 繋がっていない端末で
+/// `start-device --udid` の spec 合成。**接続中の実機だけ**を受ける —— 繋がっていない端末で
 /// ブリッジを起こそうとすると xcodebuild が数分かけて失敗するので、その手前で落とす。
 /// engine は xcuitest 固定(`fleetest bridge up --physical` と同じ。実機に in-app 注入は無い)。
 /// 到達性の判定は `IOSPhysicalDeviceCatalog.confirmedConnected` に委ねる(判定は1箇所)。
@@ -128,12 +128,12 @@ enum ApiDeviceUpDirectSpec {
 /// 送り直す羽目になる —— 200 バイトの情報のために毎回 rsync を1本払う形は採らない。
 /// **実機は識別子から作る spec が virtual なので原理的に来ない**が、DeviceWiper.target が
 /// 別の呼び手のために拒否を持ち続ける。
-/// stdout の NDJSON は device-up/down と同じ log*/finished に、フェーズ通知
+/// stdout の NDJSON は start-device/stop-device と同じ log*/finished に、フェーズ通知
 /// {"kind":"wipeStatus","phase":"stopping"|"rebooting"|"done"|"failed"} を加えた形
 /// (同期相手: vscode-fleetest/src/monitorDeviceLifecycle.ts の DeviceOpEvent)
-struct ApiDeviceWipe: AsyncParsableCommand {
+struct ApiWipeDeviceCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "device-wipe",
+        commandName: "wipe-device",
         abstract: "Wipe one virtual device by identifier (Android: Wipe Data on --avd; iOS: simctl "
             + "erase on --udid). Resolves no project or machine profile at all, like delete-device. "
             + "NDJSON: log*/wipeStatus* -> finished on stdout; diagnostics on stderr only; exit "
@@ -157,7 +157,7 @@ struct ApiDeviceWipe: AsyncParsableCommand {
             let target = try ApiDeviceWipeTarget.resolve(platform: platform, udid: udid, avd: avd)
             let spec = target.spec(simCatalog: target.platform == "ios"
                                    ? ((try? SimulatorCatalog.devices()) ?? []) : [])
-            // iOS はブリッジの停止・再供給に repoRoot が要る(device-down / device-up と同じ)
+            // iOS はブリッジの停止・再供給に repoRoot が要る(stop-device / start-device と同じ)
             let repoRoot = target.platform == "ios" ? try? RepoRoot.find() : nil
             try await DeviceWiper.wipeOne(
                 spec: spec, platform: target.platform, repoRoot: repoRoot,
@@ -175,7 +175,7 @@ struct ApiDeviceWipe: AsyncParsableCommand {
     }
 }
 
-/// `device-wipe` の引数から対象を決め、spec を組み立てる。I/O を持たない pure 関数
+/// `wipe-device` の引数から対象を決め、spec を組み立てる。I/O を持たない pure 関数
 /// (ユニットテスト対象のため private にしない。ApiDeviceDownDirectSpec と同じ位置づけ)
 enum ApiDeviceWipeTarget: Equatable {
     case ios(udid: String)
@@ -217,9 +217,9 @@ enum ApiDeviceWipeTarget: Equatable {
     }
 }
 
-struct ApiDevicesUp: AsyncParsableCommand {
+struct ApiStartAllDevicesCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "devices-up",
+        commandName: "start-all-devices",
         abstract: "Start every device in the machine profile (NDJSON: log/deviceStarting/deviceFinished -> "
             + "finished on stdout; diagnostics on stderr only)")
 
@@ -240,7 +240,7 @@ struct ApiDevicesUp: AsyncParsableCommand {
             help: "Logical names of devices to restart with down->up even if already running, to bring CPU-rendering devices back onto the GPU. Repeatable; processed two at a time in the same queue as booting stopped devices")
     var restart: [String] = []
 
-    @Option(name: [.customLong("device-machine"), .customLong("device-host")], help: ArgumentHelp(
+    @Option(name: .customLong("device-machine"), help: ArgumentHelp(
         "Operate on the devices that belong to this machine (registered host name)."
         + " Default: the devices with no host (this machine). Used when a parent dispatches"
         + " to a runner: remote exec <name> -- ... --device-machine <name>"))
@@ -263,7 +263,7 @@ struct ApiDevicesUp: AsyncParsableCommand {
             // 同じ規律)—— --no-bridge を渡さないと、向こうだけブリッジを供給する。
             // --restart / --cpu-render は手元の watchdog が持つ名簿なので中継しない
             async let fanout: Void = RemoteDeviceFanout.dispatch(
-                subcommand: "devices-up", machines: machines, project: project, profile: profile,
+                subcommand: "start-all-devices", machines: machines, project: project, profile: profile,
                 extraArgs: noBridge ? ["--no-bridge"] : [],
                 relay: { ApiDeviceEventEmitter.emitRaw($0) })
 
@@ -302,9 +302,9 @@ struct ApiDevicesUp: AsyncParsableCommand {
     }
 }
 
-struct ApiDevicesRestart: AsyncParsableCommand {
+struct ApiRestartDevicesCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "devices-restart",
+        commandName: "restart-devices",
         abstract: "Restart the given devices with down->up, two at a time (NDJSON: "
             + "log/deviceStopping/deviceStarting/deviceFinished -> finished on stdout; "
             + "diagnostics on stderr only; exit code 1 when ok:false)")
@@ -319,7 +319,7 @@ struct ApiDevicesRestart: AsyncParsableCommand {
     @Option(help: "Run profile name (when given, only the devices that profile references are affected)")
     var profile: String?
 
-    @Option(name: [.customLong("device-machine"), .customLong("device-host")], help: ArgumentHelp(
+    @Option(name: .customLong("device-machine"), help: ArgumentHelp(
         "Operate on the devices that belong to this machine (registered host name)."
         + " Default: the devices with no host (this machine)"))
     var deviceMachine: String?
@@ -332,7 +332,7 @@ struct ApiDevicesRestart: AsyncParsableCommand {
         do {
             let machineProfile = try MachineProfileLoad.load(
                 project: project, profile: profile, deviceMachine: deviceMachine,
-                foreign: .notHandled,  // devices-restart は分散しない(watchdog 由来で手元専用)
+                foreign: .notHandled,  // restart-devices は分散しない(watchdog 由来で手元専用)
                 noteAutoMachine: { Self.logStderr($0) },
                 warn: { Self.logStderr($0) })
 
@@ -376,7 +376,7 @@ struct ApiDevicesRestart: AsyncParsableCommand {
     }
 
     /// 1 台分の down→up。shutdownOne/bootOne いずれかが失敗しても deviceFinished は必ず送出する
-    /// (呼び出し側 VSCode 拡張の再スキャン契約。ApiDevicesUp の deviceFinished 契約と同じ)
+    /// (呼び出し側 VSCode 拡張の再スキャン契約。ApiStartAllDevicesCommand の deviceFinished 契約と同じ)
     private static func restartOne(_ item: RestartItem, repoRoot: URL?) async {
         let spec = item.spec
         let platform = item.platform
@@ -418,9 +418,9 @@ struct ApiDevicesRestart: AsyncParsableCommand {
     }
 }
 
-struct ApiDevicesDown: AsyncParsableCommand {
+struct ApiStopAllDevicesCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "devices-down",
+        commandName: "stop-all-devices",
         abstract: "Stop every device in the machine profile (NDJSON: log/deviceStopping/deviceFinished -> "
             + "finished on stdout; diagnostics on stderr only; exit code 1 when ok:false). "
             + "With --profile, only the devices that profile references. The shutdown logic is identical "
@@ -433,7 +433,7 @@ struct ApiDevicesDown: AsyncParsableCommand {
     @Option(help: "Run profile name (when given, only the devices that profile references are stopped)")
     var profile: String?
 
-    @Option(name: [.customLong("device-machine"), .customLong("device-host")], help: ArgumentHelp(
+    @Option(name: .customLong("device-machine"), help: ArgumentHelp(
         "Operate on the devices that belong to this machine (registered host name)."
         + " Default: the devices with no host (this machine). Used when a parent dispatches"
         + " to a runner: remote exec <name> -- ... --device-machine <name>"))
@@ -451,7 +451,7 @@ struct ApiDevicesDown: AsyncParsableCommand {
             let machines = RemoteDeviceFanout.remoteMachines(
                 project: project, profile: profile, deviceMachine: deviceMachine)
             async let fanout: Void = RemoteDeviceFanout.dispatch(
-                subcommand: "devices-down", machines: machines, project: project, profile: profile,
+                subcommand: "stop-all-devices", machines: machines, project: project, profile: profile,
                 relay: { ApiDeviceEventEmitter.emitRaw($0) })
 
             // shutdownProfile と同じ ios→android 逐次(1台落ちるごとに deviceFinished を出すので、
@@ -489,7 +489,7 @@ struct ApiDevicesDown: AsyncParsableCommand {
     }
 
     /// 1台停止。失敗しても deviceFinished は必ず送出する(拡張の再スキャン契約。
-    /// ApiDevicesUp/Restart の deviceFinished 契約と同じ)。
+    /// ApiStartAllDevicesCommand/ApiRestartDevicesCommand の deviceFinished 契約と同じ)。
     private static func shutdownOneEmitting(spec: DeviceSpec, platform: String, repoRoot: URL?) async {
         let log: @Sendable (String) -> Void = { message in
             ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message))
@@ -512,9 +512,9 @@ struct ApiDevicesDown: AsyncParsableCommand {
     }
 }
 
-struct ApiDeviceDown: AsyncParsableCommand {
+struct ApiStopDeviceCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "device-down",
+        commandName: "stop-device",
         abstract: "Stop one device listed in the machine profile (NDJSON: log* -> finished on "
             + "stdout; diagnostics on stderr only; exit code 1 when ok:false). Exactly one of "
             + "--name/--udid/--serial must be given; --udid/--serial stop a device directly "
@@ -537,7 +537,7 @@ struct ApiDeviceDown: AsyncParsableCommand {
     @Option(help: "Run profile name, used to resolve the machine. When given, that profile's machine wins; otherwise FT_MACHINE, the registered machine, or the only entry in machines/. Ignored in direct (--udid/--serial) mode")
     var profile: String?
 
-    @Option(name: [.customLong("device-machine"), .customLong("device-host")],
+    @Option(name: .customLong("device-machine"),
             help: "Only match devices assigned to this machine (\"local\" or a registered host name). Set by the caller on the other end of ssh")
     var deviceMachine: String?
 
@@ -592,7 +592,7 @@ struct ApiDeviceDown: AsyncParsableCommand {
     }
 }
 
-/// --name/--udid/--serial のうちどれで device-down を実行するかの判定。I/O を持たない pure 関数
+/// --name/--udid/--serial のうちどれで stop-device を実行するかの判定。I/O を持たない pure 関数
 /// (ユニットテスト対象のため private にしない)
 enum ApiDeviceDownDirectTarget: Equatable {
     case name(String)
@@ -637,7 +637,7 @@ enum ApiDeviceDownDirectSpec {
     }
 }
 
-/// fleetest api device-up / device-down 共通の実行ロジック
+/// fleetest api start-device / stop-device 共通の実行ロジック
 /// (マシンプロファイル読み込み・--name 解決・NDJSON ストリーミング・エラー処理)
 enum ApiDeviceOperation {
     static func run(
@@ -724,7 +724,7 @@ enum ApiDeviceOperation {
         }
     }
 
-    /// --name をマシンプロファイルの ios/android 両方から検索する(ApiDevicesRestart も利用するため fileprivate)。
+    /// --name をマシンプロファイルの ios/android 両方から検索する(ApiRestartDevicesCommand も利用するため fileprivate)。
     /// **一意なのは name 単体ではなく (host, name)** —— 名前だけで引くと、同名の台が別の機械にも
     /// 居るとき(フリートでは通常)**別の機械のつもりの操作が手元の台に当たる**。
     ///
@@ -771,7 +771,7 @@ enum ApiDeviceOperation {
 }
 
 /// stdout への NDJSON 1行出力(JSONEncoder sortedKeys)。ApiDeviceOperation(1台のみ・並行呼び出し
-/// なし)と ApiDevicesUp(bootAll のワーカータスクから並行に呼ばれる)で共有する。NSLock で
+/// なし)と ApiStartAllDevicesCommand(bootAll のワーカータスクから並行に呼ばれる)で共有する。NSLock で
 /// print までを直列化し、複数タスクからの出力が1行の途中で混ざらないようにする
 private enum ApiDeviceEventEmitter {
     private static let lock = NSLock()
@@ -801,7 +801,7 @@ private struct ApiDeviceLogEvent: Encodable {
     let message: String
 }
 
-/// device-wipe のフェーズ通知(DeviceWiper/AndroidDataWiper の status コールバック由来)。
+/// wipe-device のフェーズ通知(DeviceWiper/AndroidDataWiper の status コールバック由来)。
 /// 拡張はこれをタイルの Wipe 表示(wipeStatus)へそのまま流す —— run 開始時の自動 Wipe
 /// (ApiRunCommand の wipeStatus イベント)と**同じフェーズ集合**にしてある
 private struct ApiDeviceWipeStatusEvent: Encodable {
@@ -809,8 +809,8 @@ private struct ApiDeviceWipeStatusEvent: Encodable {
     let phase: String
 }
 
-/// devices-up の per-device 進捗(kind: "deviceStarting" / "deviceFinished")。
-/// devices-restart も同型を使い、加えて kind: "deviceStopping" を送出する。
+/// start-all-devices の per-device 進捗(kind: "deviceStarting" / "deviceFinished")。
+/// restart-devices も同型を使い、加えて kind: "deviceStopping" を送出する。
 /// 消費側: vscode-fleetest/src/monitorModel.ts isDevicesUpEvent(契約の同期相手)
 private struct ApiDevicesUpLifecycleEvent: Encodable {
     let kind: String

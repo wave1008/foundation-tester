@@ -37,7 +37,7 @@
   Scripts/stream_vs_poll_bench.py --platform ios --conditions static --out /tmp/r.json
   Scripts/stream_vs_poll_bench.py --ios-udid <UDID> --android-serial emulator-5554
   Scripts/stream_vs_poll_bench.py --boot-ios-name シミュ1 --boot-android-name エミュ1 --project SampleApp
-デバイスが無ければ --boot-*-name(+ --project)で `fleetest api device-up` 起動、または事前に手動起動。
+デバイスが無ければ --boot-*-name(+ --project)で `fleetest api start-device` 起動、または事前に手動起動。
 """
 import argparse, json, os, struct, subprocess, sys, threading, time
 
@@ -294,9 +294,9 @@ def first_android(adb):
         pass
     return None
 
-def device_up(root, binary, name, project):
-    print(f"  device-up: {name} ...", flush=True)
-    subprocess.run([binary, "api", "device-up", "--name", name] + (["--project", project] if project else []),
+def start_device(root, binary, name, project):
+    print(f"  start-device: {name} ...", flush=True)
+    subprocess.run([binary, "api", "start-device", "--name", name] + (["--project", project] if project else []),
                    cwd=root, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 # ---- 計測 ----------------------------------------------------------------------
@@ -407,9 +407,9 @@ def main():
     ap.add_argument("--ready-timeout", type=float, default=180.0, help="iOS ブリッジ ready 待ち上限(秒)")
     ap.add_argument("--adb", default=None)
     ap.add_argument("--repo-root", default=None)
-    ap.add_argument("--project", default=None, help="--boot-*-name 用の device-up プロジェクト")
-    ap.add_argument("--boot-ios-name", default=None, help="未起動なら device-up するプロファイル名(例: シミュ1)")
-    ap.add_argument("--boot-android-name", default=None, help="未起動なら device-up するプロファイル名(例: エミュ1)")
+    ap.add_argument("--project", default=None, help="--boot-*-name 用の start-device プロジェクト")
+    ap.add_argument("--boot-ios-name", default=None, help="未起動なら start-device するプロファイル名(例: シミュ1)")
+    ap.add_argument("--boot-android-name", default=None, help="未起動なら start-device するプロファイル名(例: エミュ1)")
     ap.add_argument("--out", default=None, help="結果 JSON 出力先")
     args = ap.parse_args()
 
@@ -421,7 +421,7 @@ def main():
 
     if args.platform in ("ios", "both"):
         if not args.ios_udid and args.boot_ios_name:
-            device_up(root, binary, args.boot_ios_name, args.project)
+            start_device(root, binary, args.boot_ios_name, args.project)
         args.ios_udid = args.ios_udid or booted_ios()
         if not args.ios_udid:
             print("warn: iOS sim が見つからない。--ios-udid か --boot-ios-name を指定(iOS はスキップ)", flush=True)
@@ -430,7 +430,7 @@ def main():
             print("warn: adb が見つからない(Android はスキップ)", flush=True)
         else:
             if not args.android_serial and args.boot_android_name:
-                device_up(root, binary, args.boot_android_name, args.project)
+                start_device(root, binary, args.boot_android_name, args.project)
             args.android_serial = args.android_serial or first_android(adb)
             if not args.android_serial:
                 print("warn: Android emu が見つからない。--android-serial か --boot-android-name を指定(Android はスキップ)", flush=True)

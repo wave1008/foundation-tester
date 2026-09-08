@@ -1,7 +1,7 @@
 import XCTest
 @testable import fleetest
 
-/// 子(リモート機の `api devices-up` / `devices-down`)は `--device-machine local` で走るので
+/// 子(リモート機の `api start-all-devices` / `stop-all-devices`)は `--device-machine local` で走るので
 /// 自分の台を machine:null と名乗る。**親が machine を入れる**ことを固定する ——
 /// 入れないと受け手が同名の手元のタイルを書き換え、機械ごとに2台ずつ起きていても
 /// 「全体で2台しか起動していない」ように見える。

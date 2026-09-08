@@ -1,7 +1,7 @@
 // `--set <key>=<value>` の中継。`fleetest run --heal` 等の旧フラグは
 // FleetRunner.buildArgs(マシン別サブ実行・--fleet の子)と ApiRunMachineFanout.buildArgs
 // (拡張の複数機械プロファイル)の両方へ個別に配線されていた。ここは置き換えた `--set` が
-// 同じ2箇所へ実際に届くことを固定する(FTCoreTests.RemoteDispatchTests は `--host` 越しの
+// 同じ2箇所へ実際に届くことを固定する(FTCoreTests.RemoteDispatchTests は `--runner` 越しの
 // RemoteRunArgs.build/buildApi の中継を固定しており、こちらはローカル子プロセス経路)。
 
 import XCTest

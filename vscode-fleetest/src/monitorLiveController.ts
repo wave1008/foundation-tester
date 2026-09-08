@@ -488,7 +488,7 @@ export class MonitorLiveController implements vscode.Disposable {
   }
 
   /** Run Test 実行前(runHandler.ts の executeRun)から呼ばれる。対象 platform のデバイスへ選び直し、
-   * 未接続なら device-up で起動して待ち、webview の表示状態に関わらずホスト側でストリーミングを起動して
+   * 未接続なら start-device で起動して待ち、webview の表示状態に関わらずホスト側でストリーミングを起動して
    * 最初の同期(接続成功)を最大 timeoutMs 待つ(同期のタイムアウトは処理続行。デバイスは確定済み)。
    * webview の visibility メッセージは別途届くが liveTabVisible の再設定は冪等なので無害。
    * 一致する platform のデバイスが無い / 起動に失敗した / 実体識別子が無いときは undefined を返し、
@@ -505,7 +505,7 @@ export class MonitorLiveController implements vscode.Disposable {
     if (!option || option.platform !== platform) {
       return undefined;
     }
-    // 未接続(offline/booted/unknown)なら device-up で起動して待つ(冷起動は数十秒かかり得る)。
+    // 未接続(offline/booted/unknown)なら start-device で起動して待つ(冷起動は数十秒かかり得る)。
     // 起動後に一覧を取り直し、同じ platform の先頭を選び直してから接続状態を再確認する。
     if (option.state !== "connected") {
       const booted = await this.bootDevice(option.name);
@@ -539,8 +539,8 @@ export class MonitorLiveController implements vscode.Disposable {
     return this.devices.find((o) => o.id === this.selectedDeviceId);
   }
 
-  /** 選択デバイスを `api device-up --name` で起動し完了(exit 0)まで待つ。冷起動で長時間ブロックし得る
-   * (device-up 自身がタイムアウト/リトライを持つ)。進捗は live バナーへ出す。list-devices と同じ
+  /** 選択デバイスを `api start-device --name` で起動し完了(exit 0)まで待つ。冷起動で長時間ブロックし得る
+   * (start-device 自身がタイムアウト/リトライを持つ)。進捗は live バナーへ出す。list-devices と同じ
    * 専用 spawn(runCli=runOneShot)で FleetestCli の直列キューには乗せない。 */
   private async bootDevice(name: string): Promise<boolean> {
     const config = this.deps.getConfig();
@@ -549,7 +549,7 @@ export class MonitorLiveController implements vscode.Disposable {
       return false;
     }
     this.post({ type: "banner", message: t("live.deviceBooting", { name }) });
-    const args = ["api", "device-up", "--name", name, "--project", resolution.project];
+    const args = ["api", "start-device", "--name", name, "--project", resolution.project];
     if (config.profile) {
       args.push("--profile", config.profile);
     }

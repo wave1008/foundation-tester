@@ -82,7 +82,7 @@ export type MonitorToWebviewMessage =
       readonly status: DeviceOpQueueStatus | null;
     }
   | { readonly type: "deviceOpFailed"; readonly name: string; readonly message: string }
-  // 一括 down(api devices-down)で1台停止完了ごとに送る。webview はそのタイルを即「未起動」へ倒す
+  // 一括 down(api stop-all-devices)で1台停止完了ごとに送る。webview はそのタイルを即「未起動」へ倒す
   // (down 中はモニター pause で state 更新が来ないため、落ちた順の反映をこの per-device 通知で行う。
   //  次の devices 反映=resume 後に本物の state で上書きされる)。name は deviceOpBusy と同じ名前空間。
   | { readonly type: "deviceDownFinished"; readonly name: string; readonly machine?: string }
@@ -349,7 +349,7 @@ export type MonitorToWebviewMessage =
     }
   // Wipe Data の進行状況。出どころは2つで phase の集合は共通:
   //   `fleetest api run` の自動 Wipe(model.ts の WipeStatusEvent が NDJSON 契約の同期相手)
-  //   手動の `fleetest api device-wipe`(monitorDeviceLifecycle.ts の DeviceOpWipeStatusEvent)
+  //   手動の `fleetest api wipe-device`(monitorDeviceLifecycle.ts の DeviceOpWipeStatusEvent)
   // name は deviceOpBusy と同じ名前空間(デバイス論理名)。webview はタイルのバッジ表示に使う。
   // machine はそのデバイスが居る機械(省略=手元)。**手動 Wipe は必ず載せる** —— 名前だけだと
   // webview が同名の手元タイルを書き換える(deviceOpBusy と同じ理由)。
@@ -434,7 +434,7 @@ export type MonitorFromWebviewMessage =
   // リスナー登録前のレースで捨てられるため、一度きりの送信はこの通知を待つ)。
   | { readonly type: "ready" }
   // restartNames: 起動済みでも down→up で再起動するデバイス論理名(CPU バッジ機の GPU 復帰)。
-  // 未起動機のブートと同一キューで2台ずつ並行処理される(devices-up --restart。DeviceBooter.bootAll)。
+  // 未起動機のブートと同一キューで2台ずつ並行処理される(start-all-devices --restart。DeviceBooter.bootAll)。
   | { readonly type: "devicesUp"; readonly restartNames?: readonly string[] }
   // 「デバイスの起動を中断」: 実行中の bulk up プロセスを停止/キュー待ちの bulk up を除去する。
   | { readonly type: "devicesUpCancel" }
@@ -445,7 +445,7 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "copyText"; readonly text: string }
   // udid/serial/registered: 未登録(マシンプロファイル未記載)デバイスの直指定用。registered:false の
   // ときだけ deviceTiles.js が iOS udid / Android serial のどちらかを載せる(--name で引けないため)。
-  // 対向: monitorDeviceOps.ts executeDeviceOpJob(device-down --udid/--serial の直指定モード)。
+  // 対向: monitorDeviceOps.ts executeDeviceOpJob(stop-device --udid/--serial の直指定モード)。
   | {
       readonly type: "deviceOp";
       readonly name: string;
@@ -566,7 +566,7 @@ export type MonitorFromWebviewMessage =
   | {
       readonly type: "machineDeviceWipe";
       // **identifier で撃つ**(iOS = シミュレータの UDID / Android = AVD id)。CLI は
-      // `api device-wipe --platform … --udid/--avd` でプロファイルを一切参照しない
+      // `api wipe-device --platform … --udid/--avd` でプロファイルを一切参照しない
       // (delete-device と同じ契約)。name は確認・ログ・タイル表示のためだけに運ぶ。
       // 識別子を持たない行では webview がメニュー項目自体を出さない。
       readonly devices: readonly {

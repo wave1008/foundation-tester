@@ -5,7 +5,7 @@
 
 ## できること・できないこと
 
-`fleetest run --host <ホスト>` は「向こうの Mac で普通にローカル実行し、出力と成果物を
+`fleetest run --runner <ランナー>` は「向こうの Mac で普通にローカル実行し、出力と成果物を
 手元へ返す」だけの機能。**シナリオとプロファイルは実行のたびに自動転送される**ので、
 編集は常に手元だけで行う。
 
@@ -29,7 +29,7 @@
 
 ```
 発行側の Mac(手元)                     ランナー機
-fleetest run --host mac2 …               ~/fleetest-runner/               ← 専用ベースディレクトリ
+fleetest run --runner mac2 …             ~/fleetest-runner/               ← 専用ベースディレクトリ
   ├ 適合チェック(rev・Xcode)   ssh     ├── foundation-tester/          ← ツール本体のクローン(名前固定・共有)
   ├ 転送(rsync: シナリオ・設定) ────>  └── users/<issuerId>/work/      ← あなたの作業場所(発行者ごと)
   ├ 出力を受け取って表示                     ├── TestProjects/<プロジェクト>/
@@ -62,7 +62,7 @@ fleetest run --host mac2 …               ~/fleetest-runner/               ← 
 sudo や GUI が要るものはインストーラでは行わない(無人機に sudo プロンプトを混ぜると
 冪等性と自動化が両方壊れる)。ランナー機の前に座るか、画面共有で行う。
 **何が足りないかは機械で確認できる** —— ランナー機で `bash Scripts/preflight.sh --runner`
-(または手元から `fleetest remote setup <ホスト>`)を実行すると、残っている項目だけが列挙される。
+(または手元から `fleetest remote setup <ランナー>`)を実行すると、残っている項目だけが列挙される。
 
 1. **リモートログインを ON**: システム設定 → 一般 → 共有 → リモートログイン。あわせて**ファイアウォールの「すべての着信接続をブロック」を OFF に**する
    (ON だと sshd も遮断される。ファイアウォール自体は ON のままでよい):
@@ -171,7 +171,7 @@ fleetest remote setup <ユーザー>@<ホスト> --project <プロジェクト�
   スクリプト**を使うため(検証中のブランチでも版が揃う)
 - 拡張・MCP・CLAUDE.md はランナー機には入れない(CLI だけで動く)
 - プロファイル(machines/apps/runs)は**手元のものが実行のたびに転送される**ので、ここでは作らない
-- 撤去は `fleetest remote setup <ホスト> --uninstall`(確認あり。`--yes` で無確認)
+- 撤去は `fleetest remote teardown <ランナー>`(確認あり。`--yes` で無確認)
 
 > 手で入れたい場合は、上の install ステップと同じことを ssh して実行すればよい:
 > `bash install.sh --work-dir ~/fleetest-runner/users/<issuerId>/work --tool-root ~/fleetest-runner/foundation-tester --name <プロジェクト名> --skip-extension --skip-mcp --skip-claude-md`。
@@ -183,7 +183,7 @@ fleetest remote setup <ユーザー>@<ホスト> --project <プロジェクト�
 **何も実行せずに止まる**(黙って古い版で走らせないため)。
 
 **`remote setup` の align ステップが毎回これを行う**ので、手元でコミットを進めたら
-`fleetest remote setup <ホスト>` をもう一度流せば揃う。手で合わせるなら:
+`fleetest remote setup <ランナー>` をもう一度流せば揃う。手で合わせるなら:
 
 ```bash
 ssh <ホスト> 'cd ~/fleetest-runner/foundation-tester && git fetch origin && git checkout <コミット> && swift build --product fleetest'
@@ -195,7 +195,7 @@ ssh <ホスト> 'cd ~/fleetest-runner/foundation-tester && git fetch origin && g
 - **手元の未コミットの変更は届かない**(警告が出る)。ツール本体の変更を試すなら、
   コミットして push し、ランナー機をそのコミットに合わせる
 - Xcode や macOS を更新したら**両方**を更新する。片方だけだと全ディスパッチが止まる
-- `fleetest remote align <ホスト>` だけでも揃う(`remote setup` の align ステップ単体。
+- `fleetest remote align <ランナー>` だけでも揃う(`remote setup` の align ステップ単体。
   preflight/install は通さない軽量版)。VSCode 拡張は実行開始時に版ズレを自動検出し、
   「更新して実行 / キャンセル」のダイアログから更新できる(ズレたまま実行する選択肢は無い。
   更新で直せないズレ = 未 push・到達不能・toolchain 不一致は実行を止めて理由を出す)
@@ -242,15 +242,15 @@ TestProjects/<プロジェクト>/profiles/runs/<名前>.json       # "machine":
 ```
 
 ```bash
-fleetest run --profile <実行プロファイル>   # --machine は要らない。マシンの登録先へ自動で飛ぶ
+fleetest run --profile <実行プロファイル>   # --runner は要らない。マシンの登録先へ自動で飛ぶ
 ```
 
 - **書けるのはマシン名(エイリアス)だけ**(`user@192.168.20.101` のような ssh の実体は書けない)。
   プロファイルはプロジェクト資産で、リポジトリに接続先を混ぜないため。実体は
   `~/.config/fleetest/config.json`(登録簿)にだけ置く
-- **`--machine <マシン名>` を明示すればそちらが勝つ**(ホスト名や IP を直接指定したいときは
-  `--host user@192.168.20.101`)。マシン側が別のリモートを指していれば警告が出る
-  (黙って別の機械へ送らない)。`--machine local` は「今回は手元で走らせる」の明示指定
+- **`--runner <マシン名>` を明示すればそちらが勝つ**(ホスト名や IP を直接指定したいときは
+  `--runner user@192.168.20.101`)。マシン側が別のリモートを指していれば警告が出る
+  (黙って別の機械へ送らない)。`--runner local` は「今回は手元で走らせる」の明示指定
 - **手元のデバイスには `"machine": "local"` と書く**(省略しない。理由は次の節)
 - **旧キー `"host"` のプロファイルもそのまま読めます**(2026-08-26 に `machine` へ改名。
   ツールが書き出すときは新しいキーになります)
@@ -278,15 +278,15 @@ fleetest run --profile <実行プロファイル>   # --machine は要らない�
 - `fleetest run --profile <名前>` は**ホストごとのサブ実行に分かれ**、シナリオを**台数で重み付けて**
   配ります(10台の機械には10台ぶん)。出力は `[ホスト] ` 付き、`--junit` は1ファイルに結合、
   終了コードは非0の最大です
-- **`--machine`(または `--host`)を明示すると分散しません**(その機械だけで走ります)
+- **`--runner` を明示すると分散しません**(その機械だけで走ります)
 - **モニターの実行ボタンからは回せません**(CLI 専用)。混在プロファイルを選んで実行すると、
   その旨のエラーで止まります(一部の台だけ走って「全部通った」に見えるのを防ぐため)
 
 ランナー機の状態は**手元から照会できる**(個別に ssh しなくてよい):
 
 ```bash
-fleetest remote exec <ホスト> -- api installed-devices # 実在するデバイス
-fleetest remote exec <ホスト> -- doctor --fm-only      # FM が使えるか
+fleetest remote exec <ランナー> -- api installed-devices # 実在するデバイス
+fleetest remote exec <ランナー> -- doctor --fm-only      # FM が使えるか
 ```
 
 **アプリのバイナリは転送されない。** アプリプロファイルの `appPath` は、ランナー機で解決できる
@@ -303,7 +303,7 @@ fleetest remote exec <ホスト> -- doctor --fm-only      # FM が使えるか
 ## ステップ5: 疎通を確認する
 
 ```bash
-fleetest remote status --host <ユーザー>@<ホスト>
+fleetest remote status --runner <ユーザー>@<ホスト>
 ```
 
 ```
@@ -315,12 +315,12 @@ user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   -   yes     412
 - `REV` / `TOOLCHAIN` に ⚠️ → ステップ3
 - `BINARY` が `no` → ステップ2(または `swift build --product fleetest`)
 - `FM` を見たいときは `--fm` を付ける(1ホストにつき数秒かかるので既定では見ない)
-- 複数ホストは `--host a --host b`。`--json` で機械可読の1行
+- 複数ホストは `--runner a --runner b`。`--json` で機械可読の1行
 
 ## ステップ6: 最初のディスパッチ
 
 ```bash
-fleetest run --host <ユーザー>@<ホスト> --profile <実行プロファイル> --scenario <シナリオID>
+fleetest run --runner <ユーザー>@<ホスト> --profile <実行プロファイル> --scenario <シナリオID>
 ```
 
 - **初回は数分**(リモートでのシナリオビルドとブリッジ供給)。2回目以降は十数秒で始まる。
@@ -329,13 +329,13 @@ fleetest run --host <ユーザー>@<ホスト> --profile <実行プロファイ�
 - **初回だけ SPM の依存取得でつまずくことがある**(`Couldn't fetch updates from remote repositories` /
   `Recv failure: Operation timed out`)。ランナー機の回線が細いと出る。**再実行すれば進む**
   (取得済みの分は残る)。確実にやるなら先に
-  `fleetest remote exec <ホスト> -- ...` ではなく、ランナー機で
+  `fleetest remote exec <ランナー> -- ...` ではなく、ランナー機で
   `cd ~/fleetest-runner/users/<issuerId>/work && swift package resolve` を通しておく
 - **Android を回すときは、先にエミュレータを起こしておく**(iOS と違い自動では起きない):
-  `fleetest remote exec <ホスト> -- devices up --profile <実行プロファイル>`
-- `--host` と併用できないもの: `--ports` / `--report-dir` / `--failed` / `--skip-build`
+  `fleetest remote exec <ランナー> -- devices up --profile <実行プロファイル>`
+- `--runner` と併用できないもの: `--port` / `--report-dir` / `--failed` / `--skip-build`
   (理由付きで即座に止まる)。`--dry-run` は手元のシナリオだけで判定できるので、
-  `--host` を付けていても**送らずローカルで完結する**
+  `--runner` を付けていても**送らずローカルで完結する**
 - 途中で Ctrl-C すると**リモート側の実行も止まる**。`--remote-timeout <秒>` で全体の上限も付けられる
   (既定はシナリオ数から算出)
 
@@ -349,13 +349,13 @@ fleetest run --host <ユーザー>@<ホスト> --profile <実行プロファイ�
 
 ## ホストに名前を付ける・複数台へ一斉に流す
 
-**登録簿**に名前を付けると、以後は `--host <名前>` で指せる(登録は
+**登録簿**に名前を付けると、以後は `--runner <名前>` で指せる(登録は
 `~/.config/fleetest/config.json`。リポジトリの設定からは触れない):
 
 ```bash
-fleetest remote hosts add M1Max --host <ユーザー>@192.168.20.101
-fleetest remote hosts                      # 一覧
-fleetest run --host M1Max --profile <実行プロファイル>
+fleetest remote machines add M1Max --host <ユーザー>@192.168.20.101
+fleetest remote machines                   # 一覧
+fleetest run --runner M1Max --profile <実行プロファイル>
 ```
 
 送り先の同一性は **ssh の宛先(とホスト鍵)** が保証します(以前はランナー機の登録名とも
@@ -411,11 +411,11 @@ fleetest run --project <プロジェクト> --fleet <名前> --split --junit rep
 「そのホストのぶんは全部通った」に見えてしまうためです。
 
 **同一ホストへ二重に投げると、後から来たほうが止まります**(誰がいつから掴んでいるかを表示)。
-自分のディスパッチが死んで残ったロックは `fleetest remote unlock --host <ホスト>` で外します
+自分のディスパッチが死んで残ったロックは `fleetest remote unlock --runner <ランナー>` で外します
 (他の人のロックは外しません)。他の人のものが止まったまま解放されない場合だけ `--force-lock` で
 奪えます(警告が出ます)。
 
-**`--host <ホスト>` に `--device <名前>` を付けると、その名前はそのホストの台に限定されます**
+**`--runner <ランナー>` に `--device <名前>` を付けると、その名前はそのホストの台に限定されます**
 (同名の台が複数の機械にあるプロファイルでも1台に絞れる)。そのホストに無い名前は、
 そのホストの台を列挙して手元で止まります。
 
@@ -430,7 +430,7 @@ fleetest run --project <プロジェクト> --fleet <名前> --split --junit rep
 押す(押すまで反映されない)。`作業ベースディレクトリ` 空欄 = `~/fleetest-runner`。
 
 **これは VSCode の設定ではなく CLI の登録簿**(`~/.config/fleetest/config.json`)を読み書きしている
-(`fleetest api remote-hosts`)ので、`fleetest remote hosts add` で足したものと同じ表に出る。
+(`fleetest api remote-machines`)ので、`fleetest remote machines add` で足したものと同じ表に出る。
 リポジトリの `.vscode/settings.json` からディスパッチ先を差し替えられないための構造。
 
 拡張が持つリモート関連の設定キーは **`fleetest.remote.artifacts`**(`collect` 既定 / `on-demand`)
@@ -454,7 +454,7 @@ fleetest run --project <プロジェクト> --fleet <名前> --split --junit rep
 同じことは CLI でもできる:
 
 ```bash
-fleetest remote exec <ホスト> -- api installed-devices     # 実在するデバイス
+fleetest remote exec <ランナー> -- api installed-devices     # 実在するデバイス
 fleetest api delete-device --platform ios --udid <UDID>    # 手元のデバイスの実体を削除
 fleetest api delete-device --platform android --avd <AVD名>
 ```
@@ -539,7 +539,7 @@ done
 
 - 書いたパスは**送られず、ランナー機にあるものも消されない**(両方)
 - 除外を足す前に運ばれてしまった複製は、ランナー機に残ったままになる。必要なら
-  `fleetest remote exec <ホスト> -- …` や ssh で1回だけ消す(以後は運ばれない)
+  `fleetest remote exec <ランナー> -- …` や ssh で1回だけ消す(以後は運ばれない)
 - ディスパッチのログに `==> .fleetest-transfer-ignore: N exclude pattern(s) from …` と出る
   (出なければファイルが読まれていない = 置き場所か名前を疑う)
 - `#` / `;` で始まる行はコメント。`+`/`-` で始める rsync の filter 規則の書式は使えない
@@ -547,16 +547,16 @@ done
 ## 日常運用
 
 ```bash
-fleetest remote status --host <ホスト>                        # 使える状態か
-fleetest remote clean --host <ホスト> --keep-days 7 --dry-run # 何が消えるか見る
-fleetest remote clean --host <ホスト> --keep-days 7           # 実際に消す
-fleetest remote exec <ホスト> -- <サブコマンド>               # 単発の照会・操作(下記)
+fleetest remote status --runner <ランナー>                        # 使える状態か
+fleetest remote clean --runner <ランナー> --keep-days 7 --dry-run # 何が消えるか見る
+fleetest remote clean --runner <ランナー> --keep-days 7           # 実際に消す
+fleetest remote exec <ランナー> -- <サブコマンド>                 # 単発の照会・操作(下記)
 ```
 
 - **`remote clean` は定期的に。** ランナー機は誰も見ないので、results・reports・録画が
   溜まり続けて、ある日ディスクフルで止まる。孤児プロセスやゾンビブリッジの掃除、
   死んだ run が残した終了スクリプトの実行も同時に行う
-- **ツールの更新**は `fleetest remote setup <ホスト>` をもう一度流すだけ(冪等。align が版を揃える)
+- **ツールの更新**は `fleetest remote setup <ランナー>` をもう一度流すだけ(冪等。align が版を揃える)
 - **`remote exec` はリモートで `fleetest` を1本走らせる汎用の口**。デバイス一覧・FM の可否・
   `devices down`・カタログ照会など、用途ごとに ssh を書かずにこれ1つで済ませる。
   `--remote-dir` を使うときは**ホスト名より前**に置く(ホスト名より後ろは全部リモートへ素通し)
@@ -598,7 +598,7 @@ ssh-ed25519 AAAA… suzuki@dev-mba
 変わると次のディスパッチが**別人扱い**になり、ランナー上に新しい作業場所が作られてしまう
 (未設定のまま使うと警告が出る)。使える文字は英数と `@ . _ -` だけ。
 
-**各自が `fleetest remote setup <ホスト>` を1回流す**(自分の作業場所を作るため。tool は
+**各自が `fleetest remote setup <ランナー>` を1回流す**(自分の作業場所を作るため。tool は
 共有済みなので数秒で終わる)。setup していない人のディスパッチは
 「no runner workspace — run: fleetest remote setup」で止まる。
 
@@ -618,7 +618,7 @@ fleetest run --profile <名前> --wait-lock 600   # 最大10分、解放を待�
 **今どのマシンが使われているかは1コマンドで見える**:
 
 ```bash
-fleetest remote status --host M1Max --host M1Ultra   # 右端の LOCK 欄(free / held by <発行者> / -)
+fleetest remote status --runner M1Max --runner M1Ultra   # 右端の LOCK 欄(free / held by <発行者> / -)
 ```
 
 `-` は「判定できなかった」で、空きという意味ではない(ランナーの版が古いときに出る)。
@@ -626,7 +626,7 @@ fleetest remote status --host M1Max --host M1Ultra   # 右端の LOCK 欄(free /
 
 `--force-lock`(奪う)は相手の run を壊すので、表示された相手に確認してから。
 時間で自動的に奪う仕組みは意図的に無い。**自分のディスパッチが死んで残ったロック**は
-`fleetest remote unlock --host <ホスト>` で外す(自分のものだけ。動いている自分の run のロックや
+`fleetest remote unlock --runner <ランナー>` で外す(自分のものだけ。動いている自分の run のロックや
 他の人のロックは外さない)。
 
 ### 版はフリートで揃える(ピン運用)
@@ -677,20 +677,20 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | `is sitting at the login window` | ランナー機がログイン画面 | 解錠してログイン(画面共有) |
 | `setup script exited with status 1` で**シナリオが0本**。手でランナーの画面から同じスクリプトを流すと通る | **ssh 越しに起こしたプロセスはローカルネットワーク権限を取れない**(許可を与える相手がシステム設定の一覧に現れない)。依存サービスが同じ機械の別アドレス(コンテナの 192.168.64.x 等)へ出ようとして `EHOSTUNREACH` | 依存サービスへの接続先を **`127.0.0.1` にする**(コンテナ実行基盤は loopback へ publish していることが多い)。LAN 越しが要るなら、そのサービスをランナーの GUI セッションで常駐させる |
 | `git revision mismatch` | 版がズレている | メッセージの向き付き案内に従う(「複数人でフリートを共有する」の表。単独利用ならステップ3) |
-| `another dispatch is already running on this remote host` | 別のディスパッチ(他の人・別ターミナル)が実行中、または自分のディスパッチが死んでロックが残った | 待つ(`--wait-lock <秒>`)。保持者が自分で死んでいるなら `fleetest remote unlock --host <ホスト>`。他の人のもので確認できたときだけ `--force-lock` |
+| `another dispatch is already running on this remote host` | 別のディスパッチ(他の人・別ターミナル)が実行中、または自分のディスパッチが死んでロックが残った | 待つ(`--wait-lock <秒>`)。保持者が自分で死んでいるなら `fleetest remote unlock --runner <ランナー>`。他の人のもので確認できたときだけ `--force-lock` |
 | `toolchain mismatch` | Xcode / macOS が違う | 両機を同じ版に |
 | `fleetest binary not found on remote` | ビルドされていない | ランナー機で `swift build --product fleetest` |
 | `unknown package` | クローンのディレクトリ名を変えた | `~/fleetest-runner/foundation-tester` に戻す |
 | `no running emulator for AVD …` | Android のエミュレータが未起動 | ステップ6 の `devices up` |
-| `no runner workspace at …`(exit 91) | あなたの issuerId の作業場所がまだ無い(未 setup / issuerId が変わった) | `fleetest remote setup <ホスト>` を1回。issuerId は明示設定にする(「複数人でフリートを共有する」) |
+| `no runner workspace at …`(exit 91) | あなたの issuerId の作業場所がまだ無い(未 setup / issuerId が変わった) | `fleetest remote setup <ランナー>` を1回。issuerId は明示設定にする(「複数人でフリートを共有する」) |
 | シナリオが0本 / 見つからない | プロジェクト名が手元と違う | ステップ2 の `--name` を手元と揃える |
 | アプリのインストールに失敗する | `appPath` がランナー機で解決できない | ステップ4（相対パスは自分の WORK_DIR = `<base>/users/<issuerId>/work` 基準。バイナリは転送されない） |
 | `.apks` のインストールで `needs bundletool` | ランナー機に bundletool が無い | ランナー機で `brew install bundletool`（`.apks` を使うときだけ要る。単一 `.apk` なら不要） |
 | `Couldn't fetch updates from remote repositories` / `Recv failure: Operation timed out` | ランナー機の回線が細く SPM の依存取得が落ちた | 再実行する（取得済みは残るので数回で通る）。事前に `swift package resolve` を通しておくと確実 |
 | `Foundation Models unavailable` の警告 | ランナー機で Apple Intelligence が無効 | heal / screenLooksLike / トリアージを使わないなら無視してよい（実行は続く）。使うならシステム言語を英語にして有効化 |
-| `--ports is not supported with --host` 等 | 併用できない指定 | ステップ6 の一覧 |
-| 手元で走ってほしいのにリモートへ飛ぶ / その逆 | 実行プロファイルが指す**マシンプロファイルの `host`** が効いている | ステップ4。今回だけ変えるなら `--host local` / `--host <名前>`(明示が勝つ) |
-| `--host … overrides the machine profile's host …` | `--host` とマシン側の `host` が違う機械を指している | 警告どおり `--host` が使われる。意図と違えばどちらかを直す |
+| `--port is not supported with --runner` 等 | 併用できない指定 | ステップ6 の一覧 |
+| 手元で走ってほしいのにリモートへ飛ぶ / その逆 | 実行プロファイルが指す**マシンプロファイルの `host`** が効いている | ステップ4。今回だけ変えるなら `--runner local` / `--runner <名前>`(明示が勝つ) |
+| `--runner … overrides the machine profile's host …` | `--runner` とマシン側の `host` が違う機械を指している | 警告どおり `--runner` が使われる。意図と違えばどちらかを直す |
 | `the device is currently running — stop it first` | 起動中のデバイスは削除できない | `fleetest devices down` で停止してから削除する |
 | `no such simulator/AVD` | 既に削除済み / 識別子が違う | 一覧を取り直す(ダイアログのホストを選び直す) |
 | タイルが「<マシン> に届いていません」のまま | その機械の fleetest が古い(`Unknown option '--device-machine'` が OUTPUT に出る)/ ssh が通らない | ステップ3 で版を揃えてから、モニターの「モニター再起動」(諦めた接続はここでやり直す) |

@@ -710,7 +710,7 @@ public enum ProfileWorkerFactory {
     /// かかる。下の実測コメント)。張り直しは `buildIOSWorkers` を呼び直すだけでよい ——
     /// 生きているブリッジは再利用されるので、実際に建て直るのは落とした機だけ。
     ///
-    /// **2台ずつ**戻す: 一斉 boot は凍結の相関要因そのもので、device-up の「同時2台」と同じ理屈。
+    /// **2台ずつ**戻す: 一斉 boot は凍結の相関要因そのもので、start-device の「同時2台」と同じ理屈。
     /// udid はワーカーの connection から採る(label は表示用で simctl には渡せない)。
     ///
     /// **iOS ワーカーの供給口は3つある**(ProfileRunner の遅延合流 / ApiRunCommand の遅延合流 /

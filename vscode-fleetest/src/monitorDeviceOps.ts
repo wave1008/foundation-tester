@@ -179,10 +179,10 @@ export class MonitorDeviceOps {
    * 違い Set にする(他の行の削除は妨げない。webview 側もその行の checkbox を disabled にして
    * 連打を防ぐが、直後の再送・別経路からの二重送信に対する保険として持つ)。 */
   private readonly deletingIdentifiers = new Set<string>();
-  /** 実行中の bulk up(devices-up)プロセス。「デバイスの起動を中断」の kill 対象。close で undefined に戻す。 */
+  /** 実行中の bulk up(start-all-devices)プロセス。「デバイスの起動を中断」の kill 対象。close で undefined に戻す。 */
   private bulkUpProc: PipeProcess | undefined;
   /** 凍結が治らず CPU 描画(swiftshader)へフォールバックしたデバイス論理名。セッション中維持
-   * (host に戻すと再凍結するため)。個別 device-up 時に --gpu を、bulk devices-up
+   * (host に戻すと再凍結するため)。個別 start-device 時に --gpu を、bulk start-all-devices
    * (executeBulkJob)時に --cpu-render を付ける(CLI 側の同期相手:
    * Sources/fleetest/ApiDeviceCommands.swift の cpuRender → DeviceBooter.bootAll)。 */
   private readonly cpuRenderNames = new Set<string>();
@@ -238,7 +238,7 @@ export class MonitorDeviceOps {
   }
 
   /** プロファイルタブのデバイス行右クリック「Wipe Data」: 対象を1台ずつ device ジョブとして積む
-   * (実処理は `fleetest api device-wipe`)。**確認は runWipeDevices で済ませてから呼ぶ**
+   * (実処理は `fleetest api wipe-device`)。**確認は runWipeDevices で済ませてから呼ぶ**
    * (この関数自体は聞かない)。既に同じ台のジョブがキューに居れば無視する
    * (引き当ては (machine, name) —— 別の機械の同名の台は別の台)。
    * 積めた台数を返す(0 = 全部が既に処理中)。 */
@@ -269,7 +269,7 @@ export class MonitorDeviceOps {
     this.pushLifecycleJob({ kind: "device", name, op: "up" });
   }
 
-  /** MonitorHealthWatchdogDeps.forceCpuRender への実装。以後この名前の device-up は
+  /** MonitorHealthWatchdogDeps.forceCpuRender への実装。以後この名前の start-device は
    * swiftshader で起動する(セッション中維持)。 */
   markCpuRender(name: string): void {
     this.cpuRenderNames.add(name);
@@ -278,7 +278,7 @@ export class MonitorDeviceOps {
   /** monitorDevices 観測ごとに呼ぶ。CPU 描画でなくなった個体を記憶から落とす。
    * 実行プロファイルの recoverCpuFallbackToGpu(run 開始時の GPU 復帰。Swift 側
    * AndroidGpuRecovery)は拡張の外で emulator を入れ替えるため、これが無いと記憶だけ CPU のまま
-   * 残り、次の個別 device-up がタイルのバッジと矛盾して再び swiftshader で起こしてしまう。
+   * 残り、次の個別 start-device がタイルのバッジと矛盾して再び swiftshader で起こしてしまう。
    * **ライフサイクルジョブ進行中の個体は対象外**: watchdog の CPU フォールバックは
    * markCpuRender → enqueueRestart の順で、再起動が始まるまでの数秒はまだ GPU で connected の
    * ままなので、除外しないと記憶が使われる前に消える(=フォールバックが永久に発動しない)。 */
@@ -308,7 +308,7 @@ export class MonitorDeviceOps {
   }
 
   /** 「デバイスを全て起動」: 未起動機のブートと CPU バッジ機の GPU 再起動を1ジョブ
-   * (devices-up --restart)に統合して積む。CLI 側の単一キューを2ワーカーが消化するため、
+   * (start-all-devices --restart)に統合して積む。CLI 側の単一キューを2ワーカーが消化するため、
    * 種別を問わず常に最大2台だけが起動処理中になる(2台同時でホスト CPU がほぼ飽和するため)。 */
   bulkUpWithRestarts(restartNames: readonly string[]): void {
     const targets = restartNames.filter((n) => !hasDeviceLifecycleJobFor(this.lifecycleQueue, n));
@@ -344,12 +344,12 @@ export class MonitorDeviceOps {
     }
   }
 
-  /** CPU 描画フォールバックの記憶を解除し、手元の台は devices-restart(2台ずつ並行の down→up)
+  /** CPU 描画フォールバックの記憶を解除し、手元の台は restart-devices(2台ずつ並行の down→up)
    * 1ジョブでまとめて再起動する。次回起動は --gpu が付かず host(GPU)。以後また画面凍結して
    * watchdog の自動フォールバックが走れば CPU に戻る(既知のトレードオフ。docs/design.md §12.4)。
    * **別の機械の台はその機械で down→up する**(タイルの起動/停止と同じ device ジョブ =
-   * `remote exec <machine> -- api device-down/up … --device-machine local`)。
-   * `devices-restart` は手元専用(ApiDevicesRestart の foreign: .notHandled)で、名前だけで
+   * `remote exec <machine> -- api stop-device/start-device … --device-machine local`)。
+   * `restart-devices` は手元専用(ApiDevicesRestart の foreign: .notHandled)で、名前だけで
    * 積むとリモートのタイルの「GPU で再起動」が**手元の同名の台**を再起動する。
    * 直列キューに既に載っているデバイスは除外(連打防止の既存方針)。 */
   restartWithGpuBatch(targets: readonly GpuRestartTarget[]): void {
@@ -444,7 +444,7 @@ export class MonitorDeviceOps {
     }
   }
 
-  /** キュー先頭のジョブを実行する(devices up/down の一括実行、または device-up/down の個別実行)。 */
+  /** キュー先頭のジョブを実行する(devices up/down の一括実行、または start-device/stop-device の個別実行)。 */
   /** モニター pause の参照カウント(down 系ジョブが同時に複数走るため。0→1 で pause、1→0 で resume)。 */
   private monitorPauseDepth = 0;
 
@@ -542,15 +542,15 @@ export class MonitorDeviceOps {
   private executeBulkJob(kind: "up" | "down", restartNames: readonly string[] = []): void {
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
-    // up は api devices-up(deviceStarting/deviceFinished の NDJSON でタイルを即時更新)。
-    // down は profile 指定時のみ api devices-down(deviceStopping/deviceFinished の NDJSON。1台落ちる
+    // up は api start-all-devices(deviceStarting/deviceFinished の NDJSON でタイルを即時更新)。
+    // down は profile 指定時のみ api stop-all-devices(deviceStopping/deviceFinished の NDJSON。1台落ちる
     // ごとにそのタイルを「未起動」へ倒す)。profile 無しは従来の devices down(全ブリッジ停止+
     // simctl shutdown all+全 qemu kill の全掃討。プレーンテキスト)。
     const useNdjson = kind === "up" || (kind === "down" && !!config.profile);
     const args: string[] = kind === "up"
-      ? ["api", "devices-up"]
+      ? ["api", "start-all-devices"]
       : useNdjson
-        ? ["api", "devices-down"]
+        ? ["api", "stop-all-devices"]
         : ["devices", "down"];
     if (kind === "up") {
       // 起動済みでも down→up する対象(CPU バッジ機の GPU 復帰)。未起動機のブートと同一キューで
@@ -634,7 +634,7 @@ export class MonitorDeviceOps {
       return;
     }
 
-    // ---- NDJSON 経路(up: devices-up / profile 指定 down: devices-down)----
+    // ---- NDJSON 経路(up: start-all-devices / profile 指定 down: stop-all-devices)----
     // up は deviceStarting/deviceFinished、down は deviceStopping/deviceFinished を per-device に流す。
     // モニターの状態スキャン到達を待たず、up は「起動中」、down は1台落ちるごとに「未起動」へタイルを
     // 即時反映する。イベント形は共通(isDevicesUpEvent)。stderr は診断ログのみでプレーンテキスト。
@@ -732,7 +732,7 @@ export class MonitorDeviceOps {
   }
 
   /**
-   * `fleetest api devices-restart` を短命プロセスとして実行する(restartBatch ジョブの実処理)。
+   * `fleetest api restart-devices` を短命プロセスとして実行する(restartBatch ジョブの実処理)。
    * CLI 側が 2 台ずつ並行で down→up し、per-device の deviceStopping/deviceStarting/deviceFinished
    * NDJSON を流す(契約: monitorModel.ts isDevicesRestartEvent / Sources/fleetest/ApiDeviceCommands.swift)。
    * 全体の構造(spawn 例外・'error'+'close' 二重発火の finishOnce ガード・close 時の表示剥がし)は
@@ -741,7 +741,7 @@ export class MonitorDeviceOps {
   private executeRestartBatchJob(names: readonly string[]): void {
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
-    const args: string[] = ["api", "devices-restart"];
+    const args: string[] = ["api", "restart-devices"];
     for (const n of names) {
       args.push("--name", n);
     }
@@ -785,19 +785,19 @@ export class MonitorDeviceOps {
       (value) => {
         if (!isDevicesRestartEvent(value)) {
           this.deps.outputChannel.appendLine(
-            t("deviceOps.log.unknownLine", { label: "devices-restart", value: JSON.stringify(value) }),
+            t("deviceOps.log.unknownLine", { label: "restart-devices", value: JSON.stringify(value) }),
           );
           return;
         }
         switch (value.kind) {
           case "log":
-            this.deps.outputChannel.appendLine(`[devices-restart] ${value.message}`);
+            this.deps.outputChannel.appendLine(`[restart-devices] ${value.message}`);
             break;
           case "deviceStopping":
             // このデバイスの down が始まる。ストリームをここで止める(simctl/adb に殺される前に
             // タイルを切断表示へ倒す。バッチ開始時に全台止めない理由は runLifecycleQueueHead 参照)。
             busyNames.add(value.name);
-            // devices-restart(GPU 復帰)は手元の Android エミュレータ専用なので host を持たない
+            // restart-devices(GPU 復帰)は手元の Android エミュレータ専用なので host を持たない
             this.deps.stopDeviceStreams(value.name);
             this.deps.post({ type: "deviceOpBusy", name: value.name, op: "down", status: "running" });
             break;
@@ -818,14 +818,14 @@ export class MonitorDeviceOps {
             break;
         }
       },
-      (line) => this.deps.outputChannel.appendLine(`[devices-restart stdout] ${line}`),
+      (line) => this.deps.outputChannel.appendLine(`[restart-devices stdout] ${line}`),
     );
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
     proc.stderr.on("data", (chunk: Buffer) => {
       for (const rawLine of chunk.toString("utf8").split("\n")) {
         const line = rawLine.trim();
         if (line.length > 0) {
-          this.deps.outputChannel.appendLine(`[devices-restart stderr] ${line}`);
+          this.deps.outputChannel.appendLine(`[restart-devices stderr] ${line}`);
         }
       }
     });
@@ -849,6 +849,15 @@ export class MonitorDeviceOps {
     });
   }
 
+  /** device ジョブの op から、実際に叩く CLI サブコマンド名(ログ・失敗メッセージの表示用)。 */
+  private static deviceOpCommandName(op: "up" | "down" | "wipe"): string {
+    switch (op) {
+      case "up": return "start-device";
+      case "down": return "stop-device";
+      case "wipe": return "wipe-device";
+    }
+  }
+
   /** up が失敗したときの追加試行回数(計 1+2=3 回)。再起動(down→up)の up が転けてデバイスが
    * 下がったまま放置される事故を防ぐ。watchdog は offline/消失を blank-screen として拾えず
    * 二度と復旧しないため、この経路で確実に復帰を試みる。down は再試行しない(消したいだけなので)。 */
@@ -858,7 +867,7 @@ export class MonitorDeviceOps {
 
   /**
    * タイル右クリックメニューの起動/停止項目・再起動(down→up)から、デバイス1台だけを
-   * `fleetest api device-up`/`device-down` で起動/停止する(device ジョブの実処理)。
+   * `fleetest api start-device`/`stop-device` で起動/停止する(device ジョブの実処理)。
    * up が失敗した場合は deviceUpMaxRetries まで再試行してからキューを進める。
    * 失敗時(finished ok:false、または finished を出せずに落ちた場合を含む)は、バナーがパネルを
    * 閉じると消えるため、事後診断できるよう出力チャネルにも必ずログを残す。
@@ -879,7 +888,7 @@ export class MonitorDeviceOps {
     this.runDeviceOpAttempt(job, 0, finishOnce);
   }
 
-  /** device-up/down の1回分の実行。up が失敗し追加試行が残っていれば遅延後に再試行、
+  /** start-device/stop-device の1回分の実行。up が失敗し追加試行が残っていれば遅延後に再試行、
    * それ以外(成功・down・up の上限到達)は finishOnce でキューを進める。 */
   private runDeviceOpAttempt(
     job: Extract<DeviceLifecycleJob, { kind: "device" }>,
@@ -894,14 +903,14 @@ export class MonitorDeviceOps {
     // 未登録(マシンプロファイル未記載)デバイスの直指定モード: --name の代わりに --udid/--serial を渡し、
     // プロジェクト・マシンプロファイル解決に使う --project/--profile も付けない(直指定はそれらを
     // 一切参照しない契約。Sources/fleetest/ApiDeviceCommands.swift ApiDeviceDownDirectTarget)。
-    // **up の直指定は --udid だけ** —— 実機のブリッジ起動(device-up --udid)がそれ。
+    // **up の直指定は --udid だけ** —— 実機のブリッジ起動(start-device --udid)がそれ。
     // serial(Android)の up は端末の電源を入れる操作になり存在しないので down のみ。
     const direct = udid !== undefined || (op === "down" && serial !== undefined);
     // **別の機械の台はその機械で操作する** —— 手元で `--name` を渡すと、手元のマシン
     // プロファイルの同名エントリを引いて**別の機械の設定でこの Mac にシミュレータを作る**
     // (simctl は無ければ作る)。一括起動が RemoteDeviceFanout で分散するのと同じ規律
     const args: string[] = machine ? ["remote", "exec", machine, "--"] : [];
-    args.push("api", op === "up" ? "device-up" : op === "down" ? "device-down" : "device-wipe");
+    args.push("api", op === "up" ? "start-device" : op === "down" ? "stop-device" : "wipe-device");
     // **wipe は識別子だけで撃つ**(delete-device と同じ契約: プロジェクトもマシンプロファイルも
     // 参照しない)。名前で引く形にすると、リモートでは向こうのプロファイル複製が古いと
     // `device not found` で必ず失敗し、操作のたびにプロジェクトを送り直す羽目になる
@@ -946,7 +955,9 @@ export class MonitorDeviceOps {
     let failureLogged = false;
     const logFailure = (message: string): void => {
       failureLogged = true;
-      this.deps.outputChannel.appendLine(t("deviceOps.log.deviceOpFailed", { op, name, attemptLabel, message }));
+      this.deps.outputChannel.appendLine(
+        t("deviceOps.log.deviceOpFailed", { command: MonitorDeviceOps.deviceOpCommandName(op), name, attemptLabel, message }),
+      );
     };
 
     // 署名エラー(finished の signingProblems 付き)は設定の問題で、再試行しても必ず同じ失敗に
@@ -1000,12 +1011,15 @@ export class MonitorDeviceOps {
       (value) => {
         if (!isDeviceOpEvent(value)) {
           this.deps.outputChannel.appendLine(
-            t("deviceOps.log.unknownLine", { label: `device-${op} ${name}`, value: JSON.stringify(value) }),
+            t("deviceOps.log.unknownLine", {
+              label: `${MonitorDeviceOps.deviceOpCommandName(op)} ${name}`,
+              value: JSON.stringify(value),
+            }),
           );
           return;
         }
         if (value.kind === "log") {
-          this.deps.outputChannel.appendLine(`[device-${op} ${name}] ${value.message}`);
+          this.deps.outputChannel.appendLine(`[${MonitorDeviceOps.deviceOpCommandName(op)} ${name}] ${value.message}`);
         } else if (value.kind === "wipeStatus") {
           // run 開始時の自動 Wipe と同じタイル表示を使う(footer の「Wipe: 停止中/再起動中」)。
           // **machine も載せる** —— 名前だけだと同名の手元タイルが書き換わる
@@ -1017,7 +1031,8 @@ export class MonitorDeviceOps {
           const localized = value.signingProblems === undefined
             ? null
             : signingGuidance(value.signingProblems, value.signingLogPath, machine !== undefined);
-          const message = localized ?? value.error ?? t("deviceOps.deviceOpFailedGeneric", { op });
+          const message = localized ?? value.error
+            ?? t("deviceOps.deviceOpFailedGeneric", { command: MonitorDeviceOps.deviceOpCommandName(op) });
           logFailure(message);
           // **自分で組み立てた案内は全文をバナーへ**(短く整形済みで数行。読み切れる)。
           // signingProblems 付きの error も全文 —— CLI が畳んだ数行の案内で、生のビルドログ
@@ -1031,7 +1046,7 @@ export class MonitorDeviceOps {
           });
         }
       },
-      (line) => this.deps.outputChannel.appendLine(`[device-${op} ${name} stdout] ${line}`),
+      (line) => this.deps.outputChannel.appendLine(`[${MonitorDeviceOps.deviceOpCommandName(op)} ${name} stdout] ${line}`),
     );
     // **stderr を控える** —— CLI が NDJSON を出さずに終わる失敗(引数・プロファイル解決の
     // ValidationError 等)は理由が stderr にしか無い。控えないと close の分岐で
@@ -1039,10 +1054,10 @@ export class MonitorDeviceOps {
     // タイルの「ブリッジ起動」が無反応に見えた)
     let stderr = "";
     const stderrParser = new NdjsonParser(
-      (value) => this.deps.outputChannel.appendLine(`[device-${op} ${name} stderr] ${JSON.stringify(value)}`),
+      (value) => this.deps.outputChannel.appendLine(`[${MonitorDeviceOps.deviceOpCommandName(op)} ${name} stderr] ${JSON.stringify(value)}`),
       (line) => {
         stderr += `${line}\n`;
-        this.deps.outputChannel.appendLine(`[device-${op} ${name} stderr] ${line}`);
+        this.deps.outputChannel.appendLine(`[${MonitorDeviceOps.deviceOpCommandName(op)} ${name} stderr] ${line}`);
       },
     );
 
@@ -1058,7 +1073,9 @@ export class MonitorDeviceOps {
       stdoutParser.end();
       stderrParser.end();
       this.deps.outputChannel.appendLine(
-        t("deviceOps.log.deviceOpClosed", { op, name, attemptLabel, exitCode: String(exitCode) }),
+        t("deviceOps.log.deviceOpClosed", {
+          command: MonitorDeviceOps.deviceOpCommandName(op), name, attemptLabel, exitCode: String(exitCode),
+        }),
       );
       // finished(ok:false)を経由せずに落ちたケース(引数エラー・クラッシュ・kill 等)を捕捉する。
       // finished 経由で既にログ済みの場合は二重に出さない。

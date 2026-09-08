@@ -1,4 +1,4 @@
-// 手動 Wipe Data(fleetest api device-wipe)の**振り分けだけ**を検証する。
+// 手動 Wipe Data(fleetest api wipe-device)の**振り分けだけ**を検証する。
 // 実際の削除・停止・再起動はデバイスに触るのでここでは対象外
 // (Android の対象ファイル列挙は AndroidDataWiperTests)。
 // ここが守るのは「消せないものを途中まで進めない」—— 実機・avd 未設定・未知の platform は

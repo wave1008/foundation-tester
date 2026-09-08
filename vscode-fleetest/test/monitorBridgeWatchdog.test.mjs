@@ -99,7 +99,7 @@ test("ライフサイクルキューが busy(一括down 等)なら閾値到達�
   // 無応答検知(unresponsive)はするが、キュー busy 中は修復 up を enqueue しない
   // (停止処理中の booted を無応答と誤検知して停止デバイスを再起動する競合を防ぐ)。
   assert.ok(h.posts.some((p) => p.phase === "unresponsive"));
-  assert.deepEqual(h.jobs, [], "busy 中は device-up を積まない");
+  assert.deepEqual(h.jobs, [], "busy 中は start-device を積まない");
 
   // busy が解ければ次の booted 観測で修復 up を積む
   h.setQueueBusy(false);
@@ -119,7 +119,7 @@ test("5回未満の booted の後に connected へ戻れば streak がリセッ�
   assert.deepEqual(h.posts, [], "4回連続(閾値未満)では unresponsive にならない");
 });
 
-test("autoRepairBridge 有効・実行中レーン無しなら device-up ジョブを投入し repairing を post する", () => {
+test("autoRepairBridge 有効・実行中レーン無しなら start-device ジョブを投入し repairing を post する", () => {
   const h = createHarness({ autoRepairEnabled: true, runActive: false });
   h.watchdog.observe([device("Sim1", "connected")]);
   for (let i = 0; i < 5; i += 1) {
@@ -300,7 +300,7 @@ test("リモートのデバイスだけでは修復ジョブを積まない(別�
 
 // **run の最中の台は修復しない**。inRun は RunLease 由来なので、CLI や別の機械から起こした
 // run も含む(isAnyRunActive は拡張自身のレーンしか見ない)。run が自分でブリッジを供給し直す
-// 間の booted に device-up を重ねると、run のブリッジを横から入れ替えることになる
+// 間の booted に start-device を重ねると、run のブリッジを横から入れ替えることになる
 // (monitorHealthWatchdog の inRun 保留と同じ規律)。
 test("inRun の間は booted が連続しても unresponsive にも修復にもならず、解けたら通常どおり数え直す", () => {
   const h = createHarness({ autoRepairEnabled: true, runActive: false });
@@ -308,7 +308,7 @@ test("inRun の間は booted が連続しても unresponsive にも修復にも�
   for (let i = 0; i < 5; i += 1) {
     h.watchdog.observe([{ ...device("Sim1", "booted"), inRun: true }]);
   }
-  assert.deepEqual(h.jobs, [], "run の最中に device-up を積まない");
+  assert.deepEqual(h.jobs, [], "run の最中に start-device を積まない");
   assert.deepEqual(h.posts, [], "run 自身の供給中の booted を無応答と言わない");
 
   // inRun が解けた直後は 0 から数え直す(4回では閾値に届かない)

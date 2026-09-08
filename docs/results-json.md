@@ -22,6 +22,23 @@ results/runs/<YYYY-MM>/<runID>/
 
 ---
 
+## `--since` / `--until` の文法
+
+`fleetest results *` / `fleetest api results` の `--since`、`fleetest api host-metrics-summary` の
+`--since` / `--until` が共有する唯一の実装は `Sources/FTCore/TimeBoundParse.swift`。
+受理するのは3形だけ:
+
+| 形 | 例 | 意味 |
+|---|---|---|
+| `<数>[smhd]` | `90s` / `30m` / `2h` / `30d` | 相対期間(小数可・0以下は拒否)。now から遡る |
+| `YYYY-MM-DD` | `2026-09-01` | UTC 0時 |
+| `@<epoch>` | `@1757280000` | unix epoch 秒(**`@` 接頭辞が必須**。小数可)。GNU `date -d @<epoch>` と同じ慣用 |
+
+**裸の数値は拒否する** —— epoch として読むと `30d` の打ち間違いの `30` が epoch 30(≈1970年 =
+実質全期間)として黙って通ってしまうため。どれにも一致しなければエラー(呼び出し側は
+`TimeBoundParse.rejection(option:raw:)` の文言を返す)。時刻境界を取るオプションを新設するときは
+必ずこの1箇所を通す。
+
 ## 落ちた run の仕分け(このページの主目的)
 
 **ツールは「環境要因の失敗」を判定しない**。アプリが重いのかマシンが混んでいるのかは

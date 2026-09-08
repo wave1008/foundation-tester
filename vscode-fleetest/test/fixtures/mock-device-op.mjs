@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // mock-device-op.mjs
-// `fleetest api device-up` / `fleetest api device-down` を模したダミー実行スクリプト。
+// `fleetest api start-device` / `fleetest api stop-device` を模したダミー実行スクリプト。
 // monitorPanel.ts のデバイスタイル個別起動/停止ボタンが実際に spawn する形(第一引数が
-// "device-up"/"device-down"、以降 --name/--project)を再現する。テストから spawn して
+// "start-device"/"stop-device"、以降 --name/--project)を再現する。テストから spawn して
 // NdjsonParser → monitorModel.isDeviceOpEvent の配線を検証するためのフィクスチャ
 // (実バイナリは使わない)。
 //
-// 使い方: node mock-device-op.mjs (device-up|device-down) --name <n> [--project <p>] [--fail]
+// 使い方: node mock-device-op.mjs (start-device|stop-device) --name <n> [--project <p>] [--fail]
 //   --fail 無し(既定): log を2行出力してから {"kind":"finished","ok":true,"error":null} で exit 0。
 //   --fail: log を1行出力してから {"kind":"finished","ok":false,"error":"..."} で exit 1
 //   (ApiDeviceCommands.swift の ok:false 方針と同じ)。
@@ -32,14 +32,14 @@ function emitStderr(message) {
 }
 
 const sub = args[0];
-if (sub !== "device-up" && sub !== "device-down") {
+if (sub !== "start-device" && sub !== "stop-device") {
   emitStderr(`mock-device-op: 未知のサブコマンドです: ${String(sub)}`);
   process.exit(1);
 }
 
 const name = optionValue("--name", "シミュ1");
 const fail = args.includes("--fail");
-const verb = sub === "device-up" ? "起動" : "停止";
+const verb = sub === "start-device" ? "起動" : "停止";
 
 emit({ kind: "log", message: `${name} を${verb}しています...` });
 

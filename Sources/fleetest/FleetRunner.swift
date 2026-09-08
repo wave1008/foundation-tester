@@ -1,12 +1,12 @@
 // FleetRunner.swift
 // `fleetest run --fleet <name>`(docs/remote-runner.md §13「フリート実行」)。
 // 各エントリを、この fleetest バイナリ自身の子プロセスとして並行に起動する
-// ("local" → `fleetest run --profile <p> …` / それ以外 → `fleetest run --host <h> --profile <p> …`)。
+// ("local" → `fleetest run --profile <p> …` / それ以外 → `fleetest run --runner <h> --profile <p> …`)。
 // **子プロセス方式にする理由**: ローカル実行の出力は ProfileRunner 等の深い階層から直接
 // stdout へ書かれており、プロセス内蔵の hook では行ごとに `[<host>] ` を前置できない
 // (リモート側も RemoteRunDispatcher が stdout へ直接書く。同じ理由)。プロセス境界で捕まえれば
 // local/remote を同じ仕組みで prefix できる。同一ホストへの二重ディスパッチ防止(dispatch.lock)は
-// 子プロセスが `--host` 経由でいつも通る RemoteRunDispatcher.dispatch が担うので、ここでは
+// 子プロセスが `--runner` 経由でいつも通る RemoteRunDispatcher.dispatch が担うので、ここでは
 // 何もしなくてよい ―― フリート専用のロック処理を重複して持たない。
 
 import ArgumentParser
@@ -409,22 +409,22 @@ enum FleetRunner {
         quiet: Bool, junitPath: String?, broadcast: Bool = false, runGroup: String? = nil
     ) -> [String] {
         var args = ["run", "--project", project, "--profile", profile]
-        // "local" エントリも常に --host を渡す(欠陥3・2026-08-17)。子プロセスは自分自身が
-        // MachineDispatch を再適用するため、--host を省略すると「未指定」と区別が付かず、
+        // "local" エントリも常に --runner を渡す(欠陥3・2026-08-17)。子プロセスは自分自身が
+        // MachineDispatch を再適用するため、--runner を省略すると「未指定」と区別が付かず、
         // entry.profile が引くマシンプロファイルに host が設定されていると子がそこへ自動
         // ディスパッチしてしまい、{"host":"local"} と書いた意味が失われる(重複ホスト拒否も
         // 無意味になる)。"local" を明示すれば MachineDispatch.resolve がそこで止める
         // (RunProfile.swift 参照)。--force-lock/--wait-lock 等のリモート専用フラグは引き続きリモートのみ
         // (ロックは発行側の関心。"local" 子には転送しない)
         if host != "local" {
-            args += ["--host", host]
+            args += ["--runner", host]
             if forceLock { args += ["--force-lock"] }
             if let waitLock { args += ["--wait-lock", String(waitLock)] }
             if let remoteDir { args += ["--remote-dir", remoteDir] }
             if let remoteTimeout { args += ["--remote-timeout", String(remoteTimeout)] }
             if remoteArtifacts != "collect" { args += ["--remote-artifacts", remoteArtifacts] }
         } else {
-            args += ["--host", "local"]
+            args += ["--runner", "local"]
         }
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
         // **ホストも渡す** —— 一意なのは (host, name) なので、名前だけだと子が別の機械の

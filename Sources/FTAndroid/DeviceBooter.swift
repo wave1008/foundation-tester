@@ -120,7 +120,7 @@ public enum DeviceBooter {
     }
 
     /// 凍結フォールバック中の個体(cpuRenderNames)は一括起動でも swiftshader を維持する
-    /// (従来は bulk devices-up が host で起き上がり直してフォールバックが消える穴だった。
+    /// (従来は bulk start-all-devices が host で起き上がり直してフォールバックが消える穴だった。
     /// 名簿は VSCode 拡張 MonitorDeviceOps.cpuRenderNames が --cpu-render で渡す)
     private static func gpuMode(name: String, platform: String, cpuRenderNames: Set<String>) -> String {
         platform == "android" && cpuRenderNames.contains(name) ? "swiftshader_indirect" : "host"
@@ -211,7 +211,7 @@ public enum DeviceBooter {
         }
     }
 
-    /// device-up 経由のブートに適用する既定ロケール(実行プロファイル locale が届くのは
+    /// start-device 経由のブートに適用する既定ロケール(実行プロファイル locale が届くのは
     /// AndroidDataWiper の wipe 後再起動経路のみ。ユーザー既定 = ja_JP)
     public static let defaultLocale = "ja_JP"
 

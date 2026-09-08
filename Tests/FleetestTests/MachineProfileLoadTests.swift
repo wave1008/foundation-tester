@@ -1,4 +1,4 @@
-// 一括起動・停止(`api devices-up` / `devices-down` / `devices-restart`)が読む台帳の決め方。
+// 一括起動・停止(`api start-all-devices` / `stop-all-devices` / `restart-devices`)が読む台帳の決め方。
 //
 // 実害(2026-08-29): マシンプロファイルが2つある案件で**実行プロファイルを選んでいない**
 // (「(プロファイルなし)」)まま「デバイスを全て起動」を押すと、`determineMachine` が
@@ -64,9 +64,9 @@ final class MachineProfileLoadTests: XCTestCase {
             .appendingPathComponent("Sources/fleetest/ApiDeviceCommands.swift")
         let code = try String(contentsOf: url, encoding: .utf8)
 
-        // api devices-up / api devices-down = 分散する2つ。devices-restart は分散しない
+        // api start-all-devices / api stop-all-devices = 分散する2つ。restart-devices は分散しない
         XCTAssertEqual(code.components(separatedBy: "foreign: .dispatchedByCaller").count - 1, 2,
-                       "分散を宣言してよいのは api devices-up と api devices-down の2つだけ")
+                       "分散を宣言してよいのは api start-all-devices と api stop-all-devices の2つだけ")
         XCTAssertEqual(code.components(separatedBy: "RemoteDeviceFanout.dispatch(").count - 1, 2,
                        "実際に分散している箇所の数と一致すること(片方だけ増減したら気付く)")
     }

@@ -24,7 +24,7 @@ final class BroadcastFlagTests: XCTestCase {
         XCTAssertFalse(args(broadcast: false).contains("--broadcast"))
     }
 
-    /// --profile 無しでは拒否する(レーン = プロファイルのデバイス。--ports にはレーンの名が無い)
+    /// --profile 無しでは拒否する(レーン = プロファイルのデバイス。--port にはレーンの名が無い)
     func testBroadcastRequiresProfile() {
         XCTAssertThrowsError(try RunScenarios.parse(["--broadcast"])) { error in
             XCTAssertTrue(RunScenarios.message(for: error).contains("--broadcast requires --profile"),

@@ -4,7 +4,7 @@ import XCTest
 @testable import FTBridgeClient
 import FTCore
 
-/// ユーザー決定: 実機は一括デバイス操作(devices up/down・api devices-up/down/restart・
+/// ユーザー決定: 実機は一括デバイス操作(devices up/down・api start-all-devices/down/restart・
 /// モニターの「全て起動/終了」)の対象外にする —— 実機は端末そのものを起動・停止できないため、
 /// 一括起動に混じると `BridgeProvisioner.provision` の数分のビルド(xcodebuild
 /// build-for-testing)を始めてしまい、固定2台の同時起動枠の半分をそれが専有して他機の起動を遅らせる。
@@ -100,9 +100,9 @@ final class BulkOperationExcludesPhysicalTests: XCTestCase {
         // もう片方が残るので緑のまま通る(実際にこの変異が生き残った)
         let api = try source("Sources/fleetest/ApiDeviceCommands.swift")
         XCTAssertEqual(api.components(separatedBy: "Self.logPhysicalSkip(spec: spec)").count - 1, 2,
-                       "api devices-down の ios/android 両ループが実機を弾く")
+                       "api stop-all-devices の ios/android 両ループが実機を弾く")
         XCTAssertTrue(api.contains("if spec.isPhysical {"),
-                      "api devices-restart も実機を items に積まない")
+                      "api restart-devices も実機を items に積まない")
 
         let devices = try source("Sources/fleetest/DevicesCommand.swift")
         XCTAssertEqual(devices.components(separatedBy: "if spec.isPhysical {").count - 1, 2,

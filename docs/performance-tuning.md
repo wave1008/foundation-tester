@@ -198,7 +198,7 @@ demo-4devices(16 シナリオ・ウォーム・§3.1 と同条件)の実測は w
    138s→79s と速かったが、供給中デバイス+ブート中デバイスが同時に 3〜4 台進行して見えるため
    撤回した(再検討時は git 履歴のこの日付近傍を参照)。ワーカー間の provision() 同時実行の
    排他は provision() 内の ProvisionLock(flock)が担う。
-3. **`api devices-up`(NDJSON)**: 拡張の一括起動はこれを spawn し、`deviceStarting`/
+3. **`api start-all-devices`(NDJSON)**: 拡張の一括起動はこれを spawn し、`deviceStarting`/
    `deviceFinished` イベントで該当タイルを即「起動中」表示にする(モニターの 2 秒周期スキャン
    の観測を待たない)。タイルのプレースホルダは「待機中(順番待ち)→ 起動中(ブート処理中)→
    接続中(booted・フレーム未着)→ 画面表示」。
@@ -215,14 +215,14 @@ cores/3 への同時数自動スケールも実装後に撤回(同ユーザー�
   `MonitorDeviceOps.monitorPauseDepth`)ので、resume(down 完了)まで各デバイスの offline 遷移が届かず
   最後にまとめて反映されていた。**`suppressFrames` はフレームだけ止めて状態スキャンは継続する別コマンド**
   (pause と混同しない)。タイルの `offline` は monitor 供給の `device.state` 依存。
-- 対策: profile 指定の bulk down を **`api devices-down`(NDJSON)** に切替(`Sources/fleetest/
+- 対策: profile 指定の bulk down を **`api stop-all-devices`(NDJSON)** に切替(`Sources/fleetest/
   ApiDeviceCommands.swift`)。停止ロジックは `DevicesCommand.Down` の `shutdownProfile` と同一(ios→android
   逐次の `shutdownOne`)で、per-device の `deviceStopping`/`deviceFinished` を足しただけ=回帰なし。拡張は
   `deviceFinished` 受信ごとに **そのタイルだけ offline を先行反映**(`deviceDownFinished` メッセージ →
   `deviceTiles.applyDeviceDownFinished`。monitor は pause のまま=ストリーム再開の競合なし。resume 後の
   devices 反映で本物の state に上書き)。**profile 無しの down は従来の `devices down`**(全ブリッジ停止+
   simctl shutdown all+全 qemu kill の全掃討)のまま=orphan sim/emu も掃討するため。
-- イベント形は devices-up と共通(`isDevicesUpEvent`)。契約同期相手: `ApiDevicesDown`(Swift)/
+- イベント形は start-all-devices と共通(`isDevicesUpEvent`)。契約同期相手: `ApiStopAllDevicesCommand`(Swift)/
   `monitorDeviceOps.ts` executeBulkJob / `monitorModel.ts` `deviceDownFinished` / `deviceTiles.js`。
 
 ### 3.5 FM の許可枠(FMLock)は 5。約1回/秒は FM の天井ではない
@@ -1408,7 +1408,7 @@ swift Scripts/bench.swift --project SampleApp --profile ios --iterations 3 \
 python3 Scripts/stream_vs_poll_bench.py
 # 片OS・静止のみ・計測窓を延ばして JSON 出力先指定
 python3 Scripts/stream_vs_poll_bench.py --platform ios --conditions static --meas 20 --out /tmp/r.json
-# 未起動なら device-up して計測(プロファイル名指定)
+# 未起動なら start-device して計測(プロファイル名指定)
 python3 Scripts/stream_vs_poll_bench.py --boot-ios-name シミュ1 --boot-android-name エミュ1 --project SampleApp
 ```
 
@@ -1518,7 +1518,7 @@ fleetest results insights --project <name>     # 🟡 unsettledSteps の行を�
 | ワーカー参加の間隔(`FT_WORKER_STAGGER_SEC`) | Sources/FTCore/RunOrchestrator.swift(`WorkerStagger.seconds`) | 1.5s(`0` で無効) | run 開始時にワーカーを1本ずつ参加させる間隔。**先頭2本は待たない**(`simultaneousHead`=2。BridgeProvisioner の「in-app の新規起動は同時2台」と同じ値)。各シナリオは `condition { launchApp() }` から始まるので、N 本同時に積むと**最初の launch が N 本同時**に走る。**定常のレーン数は変えない**ので伸びるのは立ち上がりだけ(10 台で約 12 秒)。1.5 の根拠は「シミュレータの launch がおおむね1〜3秒」という観測だけで、凍結率で較正した値ではない |
 | ワーカー参加の CPU 上限(`FT_WORKER_START_CPU_MAX`) | Sources/FTCore/WorkerStartGate.swift(`WorkerStagger.cpuCeiling`) | 1.0 = 100%(`1` 以下は割合・超えたらパーセント) | **これ未満になるまで次のワーカーを起こさない**。間隔は時間の当て推量で、ホストが実際に空いたことを見ていない —— 供給が長引いた run では飽和したまま次を起こす。**先頭2本もこの門は通る**(間隔だけが先頭免除)。**30 秒(`cpuWaitCap`)空かなければ諦めて素通しし、以降その run では CPU を見ない**(飽和の理由がテストと無関係なとき立ち上がりが際限なく延びるため。諦めは1回だけ警告)。`CPUSampler` は連続呼び出しだと差分が取れず nil を返すので、**1窓(0.5s)以内の測定値は使い回す**(これが無いと先頭2本が測定窓のぶん離れ「間隔0」が崩れる)。コストは通常設定で最初の1窓=約 0.5 秒 |
 | `maxConcurrent`(bootAll 引数) | Sources/FTAndroid/DeviceBooter.swift | 2(固定。ユーザー決定 2026-07-16) | devices up の同時進行数(1台=ブート→iOS ブリッジ供給まで)。上限がブートストーム防止を兼ねる(旧 CPU 負荷ゲートは廃止済み。§3.3)。上げると速いがタイルの進行表示も増える |
-| GPU 描画モード / 凍結時 CPU フォールバック | DeviceBooter.startEmulator(gpuMode) / ApiDeviceUp `--gpu` / ApiDevicesUp `--cpu-render` / monitorHealthWatchdog | 既定 host / 凍結個体のみ swiftshader_indirect | `-gpu host` は速い(モーション時 約1コア/台)が**画面凍結の主因**(§7)。swiftshader は免疫だが 約3コア/台。全機 swiftshader ではなく、凍結が displayRepair/streamRepair で治らない個体だけ per-device で swiftshader 再起動(セッション中維持。bulk devices-up も `--cpu-render <論理名>` で維持される。host への意図的復帰は devices-restart) |
+| GPU 描画モード / 凍結時 CPU フォールバック | DeviceBooter.startEmulator(gpuMode) / ApiStartDeviceCommand `--gpu` / ApiStartAllDevicesCommand `--cpu-render` / monitorHealthWatchdog | 既定 host / 凍結個体のみ swiftshader_indirect | `-gpu host` は速い(モーション時 約1コア/台)が**画面凍結の主因**(§7)。swiftshader は免疫だが 約3コア/台。全機 swiftshader ではなく、凍結が displayRepair/streamRepair で治らない個体だけ per-device で swiftshader 再起動(セッション中維持。bulk `start-all-devices` も `--cpu-render <論理名>` で維持される。host への意図的復帰は `restart-devices`) |
 | 探索の打ち切り(`unmovedRoundsToStopSearch`) | Sources/FTCore/StepExecutor+ScrollFrame.swift | 2 周連続で木が不変なら打ち切り | 端に着いた後も上限まで振り続けるのをやめる。**見つからない探索が 7.40s → 2.05s**(実測 2026-08-06)。1 にすると遅れて描画される行を取りこぼす |
 | 逆走査(`reverseSweepSpanRatio` / `MaxSwipes` / `DragSpeed`) | Sources/FTCore/StepExecutor+ScrollFrame.swift | 容器の 0.5 ぶん / 8 本 / 120px/s | 端に着いても見つからないときだけ、逆向きに細刻みで戻って拾い直す。**失敗が確定してからしか撃たない**ので通常経路のコストは 0。速度を上げるとフリングになって反対の端まで走る(実測: 189px 指定が約 700px 走った)。**MCP の ft_scroll_to の1回目だけは半開きシートの停滞で逆走査を撃たない**(`defersPartialSheetRecovery`。シートを展開して再試行する側の逆走査が救済を引き継ぐ。実測: 畳まれた経路カードで 7.8s の丸損 → 同一シナリオ 21s → 10.7s。2026-08-10) |
 | `FT_CONTAINER_INFERENCE` | 環境変数(`StepExecutor.containerInferenceEnabled`) | 既定 on / `off` で無効 | **容器をツリーから推測して行う補正の殺しスイッチ**。見切れ判定・ghost の掴み直し・救済ドラッグ・座標補正(見えている部分を撃つ)・壊れた座標の候補除外が**まとめて止まり**、推測を持たなかった頃の挙動へ戻る。容器は「pre-order で直前の depth の小さい要素 + 同 depth の兄弟が2つ以上中に居る」という推測なので、**想定外のツリーでは外れ得る**(外れると別の場所を叩く・明後日へ送る・正当な要素が消える)。E2E は 4 SUT しか見ていないので利用者の逃げ道として置く。**run 全体を殺す最上位のスイッチ**で、より細かい単位は実行プロファイルの `containerInference` と DSL の `tap(containerInference:)` / `withoutContainerInference { }`(docs/commands.md) |
@@ -1736,7 +1736,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 - **`simctl list` は ~0.5s の固定費(件数非依存)**: 279件でも booted 6件でも 0.57 vs 0.45s=
   CoreSimulator 呼び出し自体のコストで、クエリを狭めても縮まない(booted 限定は未ブート対象の
   resolve を壊すので不可)。provision は catalog を1回取得して scan/resolve で使い回す=per-run は
-  1回で最小(これ以上削れない)。devices-up だけは 2回/台(DeviceBooter の boot 確認+provision)だが、
+  1回で最小(これ以上削れない)。start-all-devices だけは 2回/台(DeviceBooter の boot 確認+provision)だが、
   boot 中はデバイス状態が変わり catalog キャッシュは誤認を招くうえ効果も ~1% なので見送り
 
 ## 8. 今後の改善候補(価値が出たら)

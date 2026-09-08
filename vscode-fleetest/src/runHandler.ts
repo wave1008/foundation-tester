@@ -712,7 +712,7 @@ async function executeRun(
   // 空なら platform/port/serial を渡す。**liveTarget は profile 空のときだけ立つ**(上の連動ガード。
   // ここの前提が実装から抜けていて、プロファイルが黙って捨てられていた時期がある)。
   // リモートディスパッチの要否は CLI 側がマシンプロファイルの host フィールドから判定する
-  // (拡張は --host 等を組み立てない)。
+  // (拡張は --runner 等を組み立てない)。
   if (liveTarget) {
     args.push("--platform", liveTarget.platform);
     if (liveTarget.platform === "android" && liveTarget.serial) {

@@ -28,7 +28,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
-    @Option(help: "Run profile name (profiles/runs/<name>.json). Includes device provisioning and auto-install. Cannot be combined with --platform/--port/--serial")
+    @Option(help: "Run profile name (profiles/runs/<name>.json). Includes device provisioning and auto-install. Cannot be combined with --platform/--port/--serial/--app-id")
     var profile: String?
 
     @Option(name: .customLong("scenario"), parsing: .upToNextOption,
@@ -53,7 +53,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 + "(iosInappEngine, updateWebView, wipeDataOnBloat, recoverCpuFallbackToGpu, app, "
                 + "machine, locale, wipeDataThresholdGB) need --profile. The run profile keys "
                 + "\"app\"/\"machine\" (an app/machine *profile* name) are unrelated to this command's "
-                + "own --app/--machine flags (a bundle ID / package name and a dispatch target). "
+                + "own --app-id/--runner flags (a bundle ID / package name and a dispatch target). "
                 + "Cannot combine reportDir/defaultTimeout/scenarioTimeout with the matching "
                 + "--report-dir/--default-timeout/--scenario-timeout flag. devices/remoteControl are "
                 + "lists/objects and cannot be set this way; edit the run profile JSON instead"))
@@ -100,33 +100,27 @@ struct ApiRunCommand: AsyncParsableCommand {
     @Option(help: "Target platform: ios / android (default ios; cannot be combined with --profile)")
     var platform: String?
 
-    @Option(name: .long, help: "Bridge port number (iOS only; cannot be combined with --profile)")
-    var port: UInt16?
+    @Option(name: .customLong("port"),
+            help: "Bridge port number (iOS only; cannot be combined with --profile). Can only be given once here — this path has no --profile-less parallel run; use --profile for multiple devices")
+    var ports: [UInt16] = []
 
     @Option(help: "Android device serial (adb -s; defaults to the only connected device. Cannot be combined with --profile)")
     var serial: String?
 
-    /// `fleetest run --app` と揃える。**揃えないと逃げ道の案内が届かない** ——
-    /// 「app が解決できない」のエラーは --app を勧めるが、拡張は api run を使うので、
+    /// `fleetest run --app-id` と揃える。**揃えないと逃げ道の案内が届かない** ——
+    /// 「app が解決できない」のエラーは --app-id を勧めるが、拡張は api run を使うので、
     /// こちらに無いと「言われたとおりにしたらオプションが無い」で行き止まりになる
     /// (2026-08-20 の受け手報告)
-    @Option(name: .customLong("app"),
-            help: "Default app (bundle ID / package name) for scenarios that declare no @TestClass(app:). Only needed without --profile; with --profile the app profile supplies it. Unrelated to --set app=... (the run profile's \"app\" key names an app *profile*, not a bundle ID)")
-    var app: String?
+    @Option(name: .customLong("app-id"),
+            help: "Default app (bundle ID / package name) for scenarios that declare no @TestClass(app:). Cannot be combined with --profile (the app profile supplies the bundle ID)")
+    var appID: String?
 
     /// **用語**(2026-08-26 ユーザー決定): machine = 登録簿の名前(このマシンだけのローカル
-    /// エイリアス)、host = ホスト名 / IP。`--machine` が本来の口で、`--host` は宛先を直接書く口。
-    /// 解決は RemoteHostRegistry.resolve が両方を受けるので、内部では1つの値に畳んで扱う
-    @Option(name: .customLong("machine"),
-            help: "Dispatch this run to the registered machine (fleetest remote hosts). Relays its NDJSON stream. Requires --profile. Unrelated to --set machine=... (the run profile's \"machine\" key names a machine *profile*, not a dispatch target)")
-    var machine: String?
-
-    @Option(help: "Dispatch this run to this host name / IP (user@host or host) over SSH. Prefer --machine for a registered machine. Requires --profile. Experimental (docs/remote-runner.md)")
-    var host: String?
-
-    /// `--machine` と `--host` はどちらもディスパッチ先を指す。両方あれば --machine を優先
-    /// (エイリアスのほうが利用者の意図に近い)。この畳み込みは resolveEffectiveDispatchTarget より前
-    var dispatchTarget: String? { machine ?? host }
+    /// エイリアス)、host = ホスト名 / IP。解決は RemoteHostRegistry.resolve がどちらの形も受ける
+    @Option(name: .customLong("runner"), help: ArgumentHelp(
+        "Dispatch this run to a remote runner: a registered machine name (fleetest remote machines) "
+        + "or a raw user@host/host. Relays its NDJSON stream. Requires --profile"))
+    var runner: String?
 
     /// `--set` を適用した「デバイスに依存しない実効設定」(FTCore.DeviceIndependentRunSettings)。
     /// **`run()` が先頭で `setOverrides` を検証済みという前提**(不正なトークンなら run() が
@@ -156,11 +150,11 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// 殺せる導線を作らない(§5 の決定を維持)
     @Option(name: .customLong("wait-lock"),
             help: ArgumentHelp("Instead of failing fast, poll until a remote host's dispatch.lock is released, "
-              + "up to this many seconds (docs/remote-runner.md §5). Needs a run profile or --machine/--host"))
+              + "up to this many seconds (docs/remote-runner.md §5). Needs a run profile or --runner"))
     var waitLock: Int?
 
     @Flag(name: .customLong("performance"),
-          help: "Performance-testing mode (--profile only): if a dead lane cannot be revived before the run starts, fail instead of dropping it and continuing on the remaining lanes. iOS lanes are built before the run starts (no late join) so a missing one is reported before the run, not in the middle of it")
+          help: "Performance-testing mode (requires --profile): if a dead lane cannot be revived before the run starts, fail instead of dropping it and continuing on the remaining lanes. iOS lanes are built before the run starts (no late join) so a missing one is reported before the run, not in the middle of it")
     var performanceMode = false
 
     @Option(name: .customLong("device"), parsing: .upToNextOption,
@@ -173,7 +167,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// **どの機械のデバイスを使うか**。`--device` は名前でしか絞れないが、一意なのは (host, name)
     /// なので、名前だけだと別の機械の同名デバイスまで掴む(run の同名オプションと同じ規律)。
     /// マシン別サブ実行(ApiRunMachineFanout)が自分で付ける値で、手で打つものではない
-    @Option(name: [.customLong("device-machine"), .customLong("device-host")],
+    @Option(name: .customLong("device-machine"),
             help: ArgumentHelp(
                 "Only use the devices assigned to this machine (\"local\" or a registered host name). "
                 + "Set by the per-host sub-runs; not for hand use",
@@ -198,26 +192,43 @@ struct ApiRunCommand: AsyncParsableCommand {
         visibility: .hidden))
     var workspace: String?
 
-    func run() async throws {
-        // pause等のイベントが既定の全バッファに滞留すると読み手(VSCode拡張)と相互待ちになる
-        // (ScenarioRunnerMain.swift の --debug 実装と同じ理由)。--debug 以外も常に行バッファにする
-        setvbuf(stdout, nil, _IOLBF, 0)
-
+    /// 引数だけで決まる検査は全部ここに置く(プロジェクト解決やファイル I/O が要るものは run() に残す)。
+    /// ArgumentParser は parse 時にこれを呼ぶので、swift build の前・NDJSON を1行も出す前に落ちる
+    func validate() throws {
         guard !scenarios.isEmpty else {
             throw ValidationError("specify at least one --scenario")
         }
         if debug && scenarios.count != 1 {
             throw ValidationError("--debug can only be used with exactly one --scenario")
         }
-        if profile != nil && (platform != nil || port != nil || serial != nil) {
+        if profile != nil && (platform != nil || !ports.isEmpty || serial != nil) {
             throw ValidationError("--profile cannot be combined with --platform/--port/--serial")
+        }
+        if profile != nil && appID != nil {
+            throw ValidationError("--app-id cannot be combined with --profile (the app profile supplies the bundle ID)")
+        }
+        // このコマンドの --profile 無し経路(runDirect)は単一接続を逐次に流すだけで、
+        // `fleetest run` の runParallel に相当する多重ポート経路を持たない
+        if ports.count > 1 {
+            throw ValidationError("--port can only be given once here"
+                + " (api run has no --profile parallel path; use --profile for multiple devices)")
+        }
+        if performanceMode && profile == nil {
+            throw ValidationError("--performance requires --profile")
         }
         // 純粋にローカルだけの実行で --wait-lock は打ち間違い(待つ相手が居ない)。
         // 判定は run と同じ FTRemote.RemoteDispatchFlagPolicy(2つ目の規則を作らない。--fleet は
         // api run に無いので常に nil)
         if waitLock != nil, let message = RemoteDispatchFlagPolicy.waitLockRejection(
-            host: machine ?? host, fleet: nil, profile: profile) {
+            host: runner, fleet: nil, profile: profile) {
             throw ValidationError(message)
+        }
+        // 明示 --runner("local" を除く)は --profile が無いと dispatchToRemoteHost の
+        // 冒頭で必ず落ちる。resolveEffectiveDispatchTarget は --profile 無しではマシンプロファイル
+        // 経由の自動ディスパッチを見ない(machineProfileMachineAndName は `if let profile` の内側)ので、
+        // 明示 target をそのまま返す = ファイル I/O なしで引数だけから決まる
+        if profile == nil, let target = runner, !MachineDispatch.isExplicitLocal(target) {
+            throw ValidationError("--runner requires --profile")
         }
         // `--set` は `fleetest run` と共有する口(FTCore.RunProfileSetOverride)。デバイス依存の
         // キーは devices を持つ実行プロファイルが無いと適用先が無いので、`--profile` の無い
@@ -252,6 +263,17 @@ struct ApiRunCommand: AsyncParsableCommand {
                     + " there is no recording session for --set record to attach to)")
             }
         }
+    }
+
+    func run() async throws {
+        // pause等のイベントが既定の全バッファに滞留すると読み手(VSCode拡張)と相互待ちになる
+        // (ScenarioRunnerMain.swift の --debug 実装と同じ理由)。--debug 以外も常に行バッファにする
+        setvbuf(stdout, nil, _IOLBF, 0)
+
+        // validate() が既に検査済み(--scenario 必須・--debug の単一性・--profile と
+        // --platform/--port/--serial/--app-id/--performance の関係・--wait-lock/--runner・
+        // `--set` の型・専用フラグとの衝突・--profile 無し時の profile-only キーと record の可否)
+        let profileOverrides = try RunProfileSetOverride.parse(setOverrides)
         // **デバイスに依存しない設定は `--profile` の有無に関わらず1つの経路で決まる**
         // (self.noProfileSettings。--profile 経路は `ProfileResolver.resolve(overrides:)` が
         // 同じ上書きをもう一度当てる)
@@ -262,20 +284,20 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         let testProject = try ScenarioHost.project(named: project)
 
-        // NDJSON はここより後でしか出さない(emitLine(ApiRunStartedEvent) 以降)。--host/マシン
+        // NDJSON はここより後でしか出さない(emitLine(ApiRunStartedEvent) 以降)。--runner/マシン
         // プロファイルの host はローカルでは何も実行せずリモートの出力を中継するだけなので、
-        // 必ずそれより前に分岐する。--host 明示 + --dry-run は dispatchToRemoteHost が明示的に
+        // 必ずそれより前に分岐する。--runner 明示 + --dry-run は dispatchToRemoteHost が明示的に
         // 拒否する(既存どおり)ため常に解決へ進める一方、自動側(host 未指定)は dry-run のとき
         // マシン側 host を見ない(requireProfileMachine: !dryRun)= ローカルで dry-run が走る。
         // 優先順位・食い違いは FTCore.MachineDispatch に委譲(ユーザー決定)
         // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとの子プロセス(`fleetest api
-        // run --host <label>`)へ分け、NDJSON を ApiRunMachineFanout が1本へ多重化する
-        // (docs/remote-runner.md §13)。--host 明示や全台が同じ機械なら nil が返り従来経路のまま。
+        // run --runner <label>`)へ分け、NDJSON を ApiRunMachineFanout が1本へ多重化する
+        // (docs/remote-runner.md §13)。--runner 明示や全台が同じ機械なら nil が返り従来経路のまま。
         // --debug は子プロセスの stdin へ橋渡しする経路が無いため、ここでだけ明示的に拒否する
-        // (単一ホストの --host + --debug は dispatchToRemoteHost が同様に拒否している)
+        // (単一ホストの --runner + --debug は dispatchToRemoteHost が同様に拒否している)
         if !dryRun, let profile,
            let groups = try DeviceMachineRunner.plan(
-               project: testProject, profileName: profile, explicitHost: dispatchTarget,
+               project: testProject, profileName: profile, explicitHost: runner,
                deviceFilter: devices, overrides: profileOverrides) {
             if debug {
                 throw ValidationError(
@@ -294,7 +316,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             return
         }
         if let dispatch = try resolveEffectiveDispatchTarget(
-        explicitTarget: dispatchTarget, profile: profile, project: project,
+        explicitTarget: runner, profile: profile, project: project,
             requireProfileMachine: !dryRun, warn: { logStderr($0) },
             overrides: profileOverrides) {
             try await dispatchToRemoteHost(dispatch, project: testProject)
@@ -356,14 +378,14 @@ struct ApiRunCommand: AsyncParsableCommand {
             // 回すのに使う(ProfileRunner.run と同じ順序・同じメッセージ規律 —— ホストで絞らないと
             // 別の機械の同名デバイスまで掴む。filteringDevices の宣言)
             //
-            // 明示 --host local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
+            // 明示 --runner local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
             // local 枠だけに絞る(他ホスト担当分まで手元で解決すると存在しない台を掴む。
             // マシン別サブ実行は --device/--device-machine を持つのでこの分岐に入らない)。
             // **明示 --device があっても絞る**(RunScenarios.run と同型。受け手報告 2026-08-24:
             // 名前だけでは同名の台が別の機械のエントリに解決し、向こうの UDID を手元で探す)
             var effectiveDevices = devices
             var effectiveDeviceHost = deviceMachine
-            if deviceMachine == nil, MachineDispatch.isExplicitLocal(dispatchTarget) {
+            if deviceMachine == nil, MachineDispatch.isExplicitLocal(runner) {
                 (effectiveDevices, effectiveDeviceHost) = try machineScopedDeviceFilter(
                     project: testProject, profile: profile,
                     targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices,
@@ -435,7 +457,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 全ワーカーの開始が 10s→81s に悪化した対策。2026-07-18)。
         let triageBox = BlankTriageBox()
         // 供給フェーズ(install・凍結triage)の間も run-lease を保つ。RunOrchestrator の lease は
-        // シナリオ実行中しか書かれず、その手前に device-up が割り込む穴が空くため
+        // シナリオ実行中しか書かれず、その手前に start-device が割り込む穴が空くため
         let supplyLease = (try? RepoRoot.find())
             .map { SupplyLeaseHolder(stateDir: $0.appendingPathComponent(".fleetest")) }
         defer { supplyLease?.release() }
@@ -694,7 +716,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
     }
 
-    // MARK: - --host(拡張連携用 NDJSON 中継。docs/remote-runner.md §3・§12)
+    // MARK: - --runner(拡張連携用 NDJSON 中継。docs/remote-runner.md §3・§12)
 
     /// リモート `fleetest api run` の NDJSON を stdout へそのまま中継する。stdin 制御系
     /// (--debug)・ローカル専用系(--dry-run 等)はリモートでは意味を持たない/中継されないため
@@ -702,22 +724,22 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// ここでは個別に確認しない
     private func dispatchToRemoteHost(_ dispatch: EffectiveDispatchTarget, project: TestProject) async throws {
         guard let profile else {
-            throw ValidationError("--host requires --profile")
+            throw ValidationError("--runner requires --profile")
         }
         // machineScopedDeviceFilter と dispatcher.dispatchApi の両方が同じ上書きを見る必要がある
         // (欠陥②。片方だけに通すと別マシンのデバイスを解決しつつ元マシンへ中継する)
         let dispatchOverrides = try RunProfileSetOverride.parse(setOverrides)
         if debug {
-            throw ValidationError("--debug is not supported with --host")
+            throw ValidationError("--debug is not supported with --runner")
         }
         if !breakpoints.isEmpty {
-            throw ValidationError("--breakpoint is not supported with --host")
+            throw ValidationError("--breakpoint is not supported with --runner")
         }
         if pauseOnStart {
-            throw ValidationError("--pause-on-start is not supported with --host")
+            throw ValidationError("--pause-on-start is not supported with --runner")
         }
         if dryRun {
-            throw ValidationError("--dry-run is not supported with --host")
+            throw ValidationError("--dry-run is not supported with --runner")
         }
         // 拒否 or 注記の分岐は FTRemote.RemoteDispatchFlagPolicy に委譲(欠陥1)。VSCode 拡張は
         // 設定 fleetest.buildBeforeRun: false のとき常に --skip-build を送るため、マシンプロファイル
@@ -767,7 +789,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                            debugOptions: ScenarioDebugOptions?,
                            recorder: RunRecorder?) async -> RunOutcome {
         let effectivePlatform = platform ?? "ios"
-        let effectivePort = port ?? BridgeAPI.defaultPort
+        // count<=1 は validate() が既に保証済み(--port を2回以上渡すと弾く)
+        let effectivePort = ports.first ?? BridgeAPI.defaultPort
         // `--report-dir`/`--default-timeout`/`--scenario-timeout` が優先(run() が両方指定を
         // 既にエラーにしている)。次点は `--set reportDir=`/`defaultTimeout=`/`scenarioTimeout=`
         let reportDirPath = reportDir ?? noProfileSettings.reportDir ?? project.reportsDir.path
@@ -823,7 +846,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 project: project, scenarioID: info.id, connection: connection,
                 settings: settings, reportDir: reportDirPath,
                 dryRun: dryRun, debug: debugOptions, recording: recording,
-                appBundleID: app) { event in
+                appBundleID: appID) { event in
                 // host 発の log イベント等、scenario 未設定のものは現在のシナリオ ID を補う
                 var event = event
                 if event.scenario == nil { event.scenario = info.id }

@@ -507,7 +507,7 @@ test("isDeviceOpEvent: 未知のkind・フィールド欠落/型不一致は fal
   assert.equal(isDeviceOpEvent(null), false);
 });
 
-test("isDeviceOpEvent: device-wipe の wipeStatus は既知の phase だけ true", () => {
+test("isDeviceOpEvent: wipe-device の wipeStatus は既知の phase だけ true", () => {
   for (const phase of ["stopping", "rebooting", "done", "failed"]) {
     assert.equal(isDeviceOpEvent({ kind: "wipeStatus", phase }), true);
   }
@@ -3768,8 +3768,8 @@ test("isDeleteDeviceEvent: 未知のkind・フィールド欠落/型不一致は
 
 // ---- 統合: mock-device-op.mjs → NdjsonParser → isDeviceOpEvent ----
 
-test("統合: mock-device-op.mjs device-up(成功)は log→log→finished(ok:true) の順で exit 0", async () => {
-  const { events, exitCode } = await runMockDeviceOp(["device-up", "--name", "シミュ1"]);
+test("統合: mock-device-op.mjs start-device(成功)は log→log→finished(ok:true) の順で exit 0", async () => {
+  const { events, exitCode } = await runMockDeviceOp(["start-device", "--name", "シミュ1"]);
   assert.equal(exitCode, 0);
   assert.deepEqual(
     events.map((e) => e.kind),
@@ -3779,8 +3779,8 @@ test("統合: mock-device-op.mjs device-up(成功)は log→log→finished(ok:tr
   assert.equal(events[2].error, null);
 });
 
-test("統合: mock-device-op.mjs device-down --fail は log→finished(ok:false) の順で exit 1", async () => {
-  const { events, exitCode } = await runMockDeviceOp(["device-down", "--name", "シミュ2", "--fail"]);
+test("統合: mock-device-op.mjs stop-device --fail は log→finished(ok:false) の順で exit 1", async () => {
+  const { events, exitCode } = await runMockDeviceOp(["stop-device", "--name", "シミュ2", "--fail"]);
   assert.equal(exitCode, 1);
   assert.deepEqual(
     events.map((e) => e.kind),

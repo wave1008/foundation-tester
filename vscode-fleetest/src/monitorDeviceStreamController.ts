@@ -337,7 +337,7 @@ export class MonitorDeviceStreamController {
     this.reapply();
   }
 
-  /** device-down ジョブ(monitorDeviceOps.ts)の実行開始時に呼ぶ。deviceId は "<platform>:<name>"
+  /** stop-device ジョブ(monitorDeviceOps.ts)の実行開始時に呼ぶ。deviceId は "<platform>:<name>"
    * (リモートは "<platform>:<machine>/<name>"。Swift 側 MonitorTarget.id)だがジョブは name しか
    * 持たないため、名前部分の一致で判定する(同名デバイスが ios/android 両方・複数の機械に
    * 存在する場合も全部破棄する)。 */

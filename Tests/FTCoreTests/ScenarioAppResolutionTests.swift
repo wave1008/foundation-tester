@@ -53,7 +53,7 @@ final class ScenarioAppResolutionTests: XCTestCase {
             return XCTFail("unresolved を期待")
         }
         XCTAssertTrue(message.contains("--profile"), message)
-        XCTAssertTrue(message.contains("--app"), message)
+        XCTAssertTrue(message.contains("--app-id"), message)
         XCTAssertTrue(message.contains("@TestClass(app:"), message)
         XCTAssertTrue(message.contains("T.S0010"), message)
     }

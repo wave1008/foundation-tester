@@ -25,16 +25,28 @@ struct ApiHostMetricsSummaryCommand: ParsableCommand {
     var runArg = "latest"
 
     @Option(name: .customLong("since"),
-            help: "Start of the window: a duration (e.g. 10m/2h/90s/1d) or unix epoch seconds. Defaults to everything")
+            help: "Start of the window: a duration (e.g. 90s/30m/2h/30d), a date (YYYY-MM-DD) or an epoch (@1757280000). Defaults to everything")
     var since: String?
 
     @Option(name: .customLong("until"),
-            help: "End of the window: a duration (e.g. 10m/2h/90s/1d) or unix epoch seconds. Defaults to now")
+            help: "End of the window: a duration (e.g. 90s/30m/2h/30d), a date (YYYY-MM-DD) or an epoch (@1757280000). Defaults to now")
     var until: String?
 
     func run() throws {
-        let sinceEpoch = try since.map(Self.parseBound)
-        let untilEpoch = try until.map(Self.parseBound)
+        // --since/--until のパースは TimeBoundParse.parse が唯一の実装(呼び出しはこの2箇所だけ
+        // なので共有ラッパーは作らない。作ると「どちらを直すか」の入口が増える)
+        let sinceEpoch = try since.map { raw -> Double in
+            guard let date = TimeBoundParse.parse(raw) else {
+                throw ValidationError(TimeBoundParse.rejection(option: "--since/--until", raw: raw))
+            }
+            return date.timeIntervalSince1970
+        }
+        let untilEpoch = try until.map { raw -> Double in
+            guard let date = TimeBoundParse.parse(raw) else {
+                throw ValidationError(TimeBoundParse.rejection(option: "--since/--until", raw: raw))
+            }
+            return date.timeIntervalSince1970
+        }
 
         let (resolvedLogPath, resolvedRunID) = try resolveLogPath()
 
@@ -93,29 +105,6 @@ struct ApiHostMetricsSummaryCommand: ParsableCommand {
 
         let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: meta.runID)
         return (runDir.appendingPathComponent("host-metrics.ndjson").path, meta.runID)
-    }
-
-    /// duration(数値+s/m/h/d)は `now - value*単位秒` へ、数値のみは unix epoch 秒として解釈する。
-    /// どちらの形式にも合わなければ ValidationError(ArgumentParser が stderr に出して非0終了)
-    static func parseBound(_ raw: String) throws -> Double {
-        if let range = raw.range(of: #"^([0-9]+(?:\.[0-9]+)?)([smhd])$"#, options: .regularExpression) {
-            let matched = raw[range]
-            guard let value = Double(matched.dropLast()) else {
-                throw ValidationError("invalid duration: \(raw)")
-            }
-            let unitSeconds: Double
-            switch matched.last! {
-            case "s": unitSeconds = 1
-            case "m": unitSeconds = 60
-            case "h": unitSeconds = 3600
-            case "d": unitSeconds = 86400
-            default: unitSeconds = 1  // 正規表現で [smhd] に限定済みのため到達しない
-            }
-            return Date().timeIntervalSince1970 - value * unitSeconds
-        }
-        if let epoch = Double(raw) { return epoch }
-        throw ValidationError(
-            "--since/--until must be a duration (e.g. 10m/2h/90s/1d) or unix epoch seconds: \(raw)")
     }
 
     private func logStderr(_ message: String) {

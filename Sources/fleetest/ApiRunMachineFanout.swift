@@ -1,7 +1,7 @@
 // ApiRunMachineFanout.swift
 // `fleetest api run --profile <p>` で p のデバイスが複数の機械にまたがるときの実行
 // (docs/remote-runner.md §13)。DeviceMachineRunner(`fleetest run` の同じ状況)と同じ割り当て
-// (build→list→resolve→assign)を再利用し、ホストごとに `fleetest api run --host <label> …` を
+// (build→list→resolve→assign)を再利用し、ホストごとに `fleetest api run --runner <label> …` を
 // 子プロセスとして並行に起動、NDJSON を1本の stdout ストリームへ多重化する。
 //
 // 拡張(vscode-fleetest/src/model.ts)は「1本の NDJSON = runStarted → workersReady →
@@ -101,9 +101,9 @@ enum ApiRunMachineFanout {
         let groupMachines = active.map { $0.group.machine }
 
         // 拡張のキャンセル(SIGTERM/SIGINT)・stdin EOF のどちらでも全子へ SIGTERM を送る。
-        // 子(単発の `fleetest api run --host <label>`)は自分ではシグナルを捕まえないので既定の
+        // 子(単発の `fleetest api run --runner <label>`)は自分ではシグナルを捕まえないので既定の
         // 即時終了になり、リモート子はその内部の ssh(-tt 付き)が親の死で SIGHUP を孫プロセスへ
-        // 伝える(RemoteRunDispatcher.sshRunBase の宣言と同じ機構)。単発 `api run --host` は
+        // 伝える(RemoteRunDispatcher.sshRunBase の宣言と同じ機構)。単発 `api run --runner` は
         // 自分自身が拡張の直接の子なので OS がこの経路で保護するが、ここは**この fanout が
         // 増やした孫プロセス**を対象にする(既存の保護の外側)
         let registry = ChildProcessRegistry()
@@ -166,12 +166,12 @@ enum ApiRunMachineFanout {
     ) -> [String] {
         let machineLabel = group.machineLabel
         var args = ["api", "run", "--project", project, "--profile", profileName]
-        // **常に --host を渡す**(FleetRunner.buildArgs と同じ理由: 省略すると子が自分でマシン
+        // **常に --runner を渡す**(FleetRunner.buildArgs と同じ理由: 省略すると子が自分でマシン
         // プロファイルの host を再解決してしまう。"local" は MachineDispatch.resolve が
         // 明示指定として止める)
-        args += ["--machine", machineLabel]
+        args += ["--runner", machineLabel]
         // **--skip-build はローカル子だけ**(dispatchToRemoteHost が .explicitHost origin では
-        // "--skip-build is not supported with --host" で拒否する。RemoteDispatchFlagPolicy.skipBuild
+        // "--skip-build is not supported with --runner" で拒否する。RemoteDispatchFlagPolicy.skipBuild
         // の宣言参照。リモートは自前でビルドするので、渡す必要も無い)
         if machineLabel == DeviceMachineGrouping.localDisplayName {
             args += ["--skip-build"]

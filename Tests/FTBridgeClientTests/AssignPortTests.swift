@@ -1,5 +1,5 @@
 // BridgeProvisioner.assignPort の採番ロジック(pid ファイル存在=使用中とみなす)を
-// デバイス不要で検証する。並列 device-up の bindFailed(48) 競合の中核ロジック。
+// デバイス不要で検証する。並列 start-device の bindFailed(48) 競合の中核ロジック。
 
 import XCTest
 @testable import FTBridgeClient

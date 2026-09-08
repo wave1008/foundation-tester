@@ -3,7 +3,7 @@
 //
 // RunOrchestrator が書く lease は「シナリオ実行中」だけなので、その手前の install・凍結triage の
 // 間は lease が無く、モニターの watchdog からは「誰も走っていない」に見える(inRun=false)。
-// そこへ device-up が割り込むと、同じデバイスのブリッジを起動し直して run を巻き添えにする。
+// そこへ start-device が割り込むと、同じデバイスのブリッジを起動し直して run を巻き添えにする。
 // 書く先は RunLease と同一ファイルなので、読み手(ApiMonitorCommand の inRun 判定)は変更不要。
 
 import Foundation

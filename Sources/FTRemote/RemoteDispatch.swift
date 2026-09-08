@@ -1,5 +1,5 @@
 // RemoteDispatch.swift
-// `fleetest run --host` (docs/remote-runner.md §3・§7・Phase 1) の純粋ロジック。
+// `fleetest run --runner` (docs/remote-runner.md §3・§7・Phase 1) の純粋ロジック。
 // プロセス起動・ネットワーク I/O はここに置かない(呼び出し側 = Sources/fleetest/RemoteRunDispatcher.swift)。
 
 import Foundation
@@ -7,7 +7,7 @@ import FTCore
 
 public enum RemoteDispatchError: Error, LocalizedError {
     case invalidHost(String)
-    /// 宛先そのものは妥当だが、そのマシンに割り当てられた台が無い(--machine の絞り込み)
+    /// 宛先そのものは妥当だが、そのマシンに割り当てられた台が無い(--runner の絞り込み)
     case invalidMachine(String)
     case invalidDevice(String)
     case invalidRemoteDir(String)
@@ -19,9 +19,9 @@ public enum RemoteDispatchError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidHost(let detail):
-            return "invalid --machine/--host: \(detail)"
+            return "invalid --runner: \(detail)"
         case .invalidMachine(let detail):
-            return "invalid --machine: \(detail)"
+            return "invalid --runner: \(detail)"
         case .invalidDevice(let detail):
             return "invalid --device: \(detail)"
         case .invalidRemoteDir(let detail):
@@ -453,7 +453,7 @@ public enum RemoteArtifactsMode: String, Sendable, CaseIterable {
 
 public enum RemoteDispatchGate {
 
-    /// `--host` が付いていても**リモートへ送らない**場合がある。
+    /// `--runner` が付いていても**リモートへ送らない**場合がある。
     ///
     /// `--dry-run` はデバイスにも FM にも触れず、判定(セレクタ構文・到達しない scene・
     /// アサーションの無い expectation)は**ローカルのシナリオ原本だけから決まる**
@@ -462,14 +462,14 @@ public enum RemoteDispatchGate {
     /// 無視する(拒否ではなく注記して続行する)のと同じ扱いにする。
     ///
     /// **順序の罠**: `run()` のリモート送出は dryRun の分岐より手前にあるので、この門を
-    /// 通さないと `--dry-run --host` が**デバイスに触らないつもりで実デバイス実行になる**
+    /// 通さないと `--dry-run --runner` が**デバイスに触らないつもりで実デバイス実行になる**
     /// (`--dry-run` は中継の許可リストにも載っていないため、リモートは本番実行する)
     public static func dispatchesRemotely(host: String?, dryRun: Bool) -> Bool {
         host != nil && !dryRun
     }
 }
 
-/// `--host` が明示指定か、実行プロファイルのマシン `host` 経由の自動ディスパッチかを表す
+/// `--runner` が明示指定か、実行プロファイルのマシン `host` 経由の自動ディスパッチかを表す
 /// (欠陥1・2026-08-17)。ローカル専用フラグとの併用可否・拒否理由の文言はこれで分岐する
 /// (RemoteDispatchFlagPolicy 参照)。machine/host は自動ディスパッチのときの文言合成専用
 public enum RemoteDispatchOrigin: Equatable, Sendable {
@@ -477,7 +477,7 @@ public enum RemoteDispatchOrigin: Equatable, Sendable {
     case autoDispatch(machine: String, host: String)
 }
 
-/// `--host`(明示または自動)と併用できないローカル専用フラグの扱い。origin で「拒否」と
+/// `--runner`(明示または自動)と併用できないローカル専用フラグの扱い。origin で「拒否」と
 /// 「注記して無視」を分ける純粋ロジック(呼び出し側の if に判定を散らさない)
 public enum RemoteDispatchFlagPolicy {
     public enum Decision: Equatable {
@@ -490,12 +490,12 @@ public enum RemoteDispatchFlagPolicy {
     /// `--skip-build`: リモートは常に自前でビルドするため、ローカルのビルド抑止指定はそもそも
     /// 意味を持たない。**自動ディスパッチでは黙って無視する**(拡張の `buildBeforeRun: false` は
     /// 常に `--skip-build` を送るため、host を持つマシンで実行すると利用者が打っていないフラグを
-    /// 理由に必ず落ちていた)。`--host` 明示は従来どおり拒否のまま(利用者が意識して付けたフラグ
+    /// 理由に必ず落ちていた)。`--runner` 明示は従来どおり拒否のまま(利用者が意識して付けたフラグ
     /// なので、効かないことを黙認せず気づかせる)
     public static func skipBuild(origin: RemoteDispatchOrigin) -> Decision {
         switch origin {
         case .explicitHost:
-            return .rejected("--skip-build is not supported with --host")
+            return .rejected("--skip-build is not supported with --runner")
         case .autoDispatch:
             return .ignoredWithNote(
                 "note: --skip-build is ignored (the remote always builds itself before running)")
@@ -503,8 +503,8 @@ public enum RemoteDispatchFlagPolicy {
     }
 
     /// `--force-lock`(dispatch.lock を奪う)を受け付けてよいか。**リモートへ行きうる指定が
-    /// 1つでもあれば受け付ける** —— `--host` / `--fleet` だけを条件にすると、
-    /// **マシンプロファイル経由で自動ディスパッチする実行プロファイル**(`--host` を打たない)や
+    /// 1つでもあれば受け付ける** —— `--runner` / `--fleet` だけを条件にすると、
+    /// **マシンプロファイル経由で自動ディスパッチする実行プロファイル**(`--runner` を打たない)や
     /// **デバイスが複数の機械にまたがるプロファイル**(ホスト別の子へ分かれる)で使えず、
     /// 中断した run が残したロックを解除する手段が `remote clean`(デバイスも止まる)か
     /// 手動削除しか無くなる(2026-08-18 に実際に詰まった。子への転送自体は
@@ -513,7 +513,7 @@ public enum RemoteDispatchFlagPolicy {
     public static func forceLockRejection(host: String?, fleet: String?, profile: String?) -> String? {
         let hasRemoteRoute = host != nil || fleet != nil || profile != nil
         guard !hasRemoteRoute else { return nil }
-        return "--force-lock requires a run profile, --host or --fleet"
+        return "--force-lock requires a run profile, --runner or --fleet"
             + " (it releases the dispatch lock on a remote host)"
     }
 
@@ -522,7 +522,7 @@ public enum RemoteDispatchFlagPolicy {
     public static func waitLockRejection(host: String?, fleet: String?, profile: String?) -> String? {
         let hasRemoteRoute = host != nil || fleet != nil || profile != nil
         guard !hasRemoteRoute else { return nil }
-        return "--wait-lock requires a run profile, --host or --fleet"
+        return "--wait-lock requires a run profile, --runner or --fleet"
             + " (it waits for the dispatch lock on a remote host)"
     }
 
@@ -532,17 +532,17 @@ public enum RemoteDispatchFlagPolicy {
         return "--wait-lock and --force-lock cannot be used together"
     }
 
-    /// `--report-dir` / `--failed` / `--ports`: どちらの origin でも拒否する(意味を持たせられない
+    /// `--report-dir` / `--failed` / `--port`: どちらの origin でも拒否する(意味を持たせられない
     /// のは skipBuild と違い自動側でも変わらない)。文言だけ origin で変える —— 自動ディスパッチの
-    /// 拒否理由を「--host と併用できない」のままにすると、利用者は打ってもいない `--host` を
+    /// 拒否理由を「--runner と併用できない」のままにすると、利用者は打ってもいない `--runner` を
     /// 疑うことになる
     public static func rejected(flag: String, origin: RemoteDispatchOrigin) -> Decision {
         switch origin {
         case .explicitHost:
-            return .rejected("\(flag) is not supported with --host")
+            return .rejected("\(flag) is not supported with --runner")
         case .autoDispatch(let machine, let host):
             return .rejected("\(flag) cannot be used: this profile automatically dispatches to"
-                + " machine \"\(machine)\"'s host \"\(host)\" — pass --host local to run it here instead")
+                + " machine \"\(machine)\"'s host \"\(host)\" — pass --runner local to run it here instead")
         }
     }
 }
@@ -586,12 +586,12 @@ public enum RemoteRunArgs {
                              remoteJUnitPath: String?,
                              reportDir: String?, workspace: String? = nil,
                              runGroup: String? = nil) -> [String] {
-        // **リモート側は必ず「ここで走らせる」**(--host local)。省略すると、向こうの fleetest が
+        // **リモート側は必ず「ここで走らせる」**(--runner local)。省略すると、向こうの fleetest が
         // 転送されたマシンプロファイルの host(= 自分のはずのホスト名)を読んで**もう一度
         // ディスパッチしようとする** —— 登録簿に無ければ「未登録のホスト」で落ち、あれば
         // 自分自身へ ssh する。"local" は MachineDispatch.resolve が明示指定として止める
-        // (FleetRunner が "local" エントリに --host local を渡すのと同じ理由)
-        var args = ["run", "--project", project, "--profile", profile, "--quiet", "--host", "local"]
+        // (FleetRunner が "local" エントリに --runner local を渡すのと同じ理由)
+        var args = ["run", "--project", project, "--profile", profile, "--quiet", "--runner", "local"]
         if let reportDir { args += ["--report-dir", reportDir] }
         // **デバイスの絞り込みは中継しないと効かない** —— 向こうは同じマシンプロファイルを
         // 受け取るので、渡さないと**全ホストぶんの台**を自分のものとして解決しようとする
@@ -644,11 +644,11 @@ public enum RemoteRunArgs {
                                 defaultTimeout: Double?, scenarioTimeout: Double?,
                                 reportDir: String?, workspace: String? = nil,
                                 runGroup: String? = nil) -> [String] {
-        // --host local の理由は build() のコメント(リモートでの再ディスパッチを止める)
-        var args = ["api", "run", "--project", project, "--profile", profile, "--host", "local"]
+        // --runner local の理由は build() のコメント(リモートでの再ディスパッチを止める)
+        var args = ["api", "run", "--project", project, "--profile", profile, "--runner", "local"]
         if let reportDir { args += ["--report-dir", reportDir] }
         // **デバイスの絞り込みは中継しないと効かない**(build() と同じ理由。ApiRunMachineFanout が
-        // 複数機械にまたがるプロファイルをホストごとの子へ分けるようになったため、`api run --host`
+        // 複数機械にまたがるプロファイルをホストごとの子へ分けるようになったため、`api run --runner`
         // でも同名デバイスが別の機械に居りうる。2026-08-17)。値が "local" 固定なのも build() と同じ
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
         if deviceMachine != nil { args += ["--device-machine", DeviceMachineGrouping.localDisplayName] }

@@ -40,16 +40,22 @@ struct RunFileCommand: AsyncParsableCommand {
     @Option(name: .customLong("report-dir"), help: "Directory to write reports to")
     var reportDir: String?
 
-    @Option(help: "Comma-separated bridge ports for running iOS scenarios in parallel")
-    var ports: String?
+    @Option(name: .customLong("port"), help: "Bridge port for running iOS scenarios in parallel. Repeatable (--port 8123 --port 8124)")
+    var ports: [UInt16] = []
 
     /// `@TestClass(app:)` を書かないシナリオを --profile 無しで回すときの逃げ道
     /// (--profile があればアプリプロファイルから解決されるので不要)
-    @Option(name: .customLong("app"),
-            help: "Default app (bundle ID / package name) for scenarios that declare no @TestClass(app:). Only needed without --profile")
-    var app: String?
+    @Option(name: .customLong("app-id"),
+            help: "Default app ID (bundle ID / package name) for scenarios that declare no @TestClass(app:). Only needed without --profile")
+    var appID: String?
 
-    @OptionGroup var driverOptions: DriverOptions
+    // DriverOptions を @OptionGroup にすると --port が(上の repeatable --port と)二重宣言になるため、
+    // platform/serial を自前で持つ(fleetest run 側と同じ形)
+    @Option(help: "Target platform: ios / android (default ios)")
+    var platform: String?
+
+    @Option(help: "Android device serial (adb -s; defaults to the only connected device)")
+    var serial: String?
 
     func run() async throws {
         let urls = try files.map { path -> URL in
@@ -98,10 +104,10 @@ struct RunFileCommand: AsyncParsableCommand {
         if let profile { arguments += ["--profile", profile] }
         for token in setOverrides { arguments += ["--set", token] }
         if let reportDir { arguments += ["--report-dir", reportDir] }
-        if let ports { arguments += ["--ports", ports] }
-        if let app { arguments += ["--app", app] }
-        arguments += ["--platform", driverOptions.platform, "--port", String(driverOptions.port)]
-        if let serial = driverOptions.serial { arguments += ["--serial", serial] }
+        for port in ports { arguments += ["--port", String(port)] }
+        if let appID { arguments += ["--app-id", appID] }
+        if let platform { arguments += ["--platform", platform] }
+        if let serial { arguments += ["--serial", serial] }
         let command = try RunScenarios.parse(arguments)
         try await command.run()
     }

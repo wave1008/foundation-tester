@@ -50,31 +50,31 @@ final class SetOverrideFlagCollisionTests: XCTestCase {
         }
     }
 
-    /// `ApiRunCommand` は同期 `validate()` を持たず、`--set` の型検査(RunProfileSetOverride.parse)は
-    /// 専用フラグとの衝突チェックと同じく非同期の `run()` の中で行う。**`parse()` 単体では
-    /// setOverrides を生の文字列配列としてしか受け取らない**ので、型の合わない値でも
-    /// ここでは落ちない(前提が崩れていないことの固定 —— 崩れていたら run() 側の検査が
-    /// 二重化するか、あるいは意図せず parse() 側だけで止まって run() の検査コードが
-    /// 一度も通らなくなる)
-    func testApiRunParseDoesNotEagerlyValidateSetOverrides() {
-        XCTAssertNoThrow(
-            try ApiRunCommand.parse(["--scenario", "A.S0010", "--set", "defaultTimeout=soon"]))
+    /// `ApiRunCommand` も `RunScenarios` と同じく `validate()` で `--set` の型検査
+    /// (RunProfileSetOverride.parse)を行うため、型の合わない値は parse() 自体で落ちる
+    /// (プロジェクト解決やデバイスに触れる前。専用フラグとの衝突チェックと同じ場所)
+    func testApiRunEagerlyValidatesSetOverridesAtParse() {
+        XCTAssertThrowsError(
+            try ApiRunCommand.parse(["--scenario", "A.S0010", "--set", "defaultTimeout=soon"])
+        ) { error in
+            let message = ApiRunCommand.message(for: error)
+            XCTAssertTrue(message.contains("defaultTimeout"), message)
+        }
     }
 
-    /// `api run` 側の衝突チェックは `run()` の先頭(スカラー解析の直後)にあり、プロジェクト解決
+    /// `api run` 側の衝突チェックは `validate()`(= parse 時点)にあり、プロジェクト解決
     /// (`ScenarioHost.project`)より前に throw する。デバイス・プロジェクトの用意なしに
     /// 決定的に検証できる(この位置より後ろへ動かすと、実プロジェクトが無い環境でこのテストが
     /// 別の理由で失敗するようになる)
-    func testApiRunRejectsReportDirFlagAndSetOverrideTogetherBeforeTouchingAnyProject() async throws {
-        let command = try ApiRunCommand.parse([
-            "--scenario", "A.S0010", "--report-dir", "/tmp/a", "--set", "reportDir=/tmp/b",
-        ])
-        do {
-            try await command.run()
-            XCTFail("expected a collision error")
-        } catch let error as ValidationError {
-            XCTAssertTrue(error.message.contains("--report-dir"), error.message)
-            XCTAssertTrue(error.message.contains("--set reportDir"), error.message)
+    func testApiRunRejectsReportDirFlagAndSetOverrideTogetherAtParse() {
+        XCTAssertThrowsError(
+            try ApiRunCommand.parse([
+                "--scenario", "A.S0010", "--report-dir", "/tmp/a", "--set", "reportDir=/tmp/b",
+            ])
+        ) { error in
+            let message = ApiRunCommand.message(for: error)
+            XCTAssertTrue(message.contains("--report-dir"), message)
+            XCTAssertTrue(message.contains("--set reportDir"), message)
         }
     }
 }

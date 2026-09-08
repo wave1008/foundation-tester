@@ -1,5 +1,5 @@
 // RemoteRunDispatcher.swift
-// `fleetest run --host` のプロセス起動(ssh/rsync)を集約する。純粋ロジックは
+// `fleetest run --runner` のプロセス起動(ssh/rsync)を集約する。純粋ロジックは
 // Sources/FTRemote/RemoteDispatch.swift 側(単体テスト対象)。同一ホストへの二重ディスパッチ防止
 // (dispatch.lock の取得・解放。docs/remote-runner.md §5)もここで行う。純粋ロジックは
 // Sources/FTRemote/RemoteDispatchLock.swift 側。
@@ -9,8 +9,8 @@ import FTCore
 import FTRemote
 import Foundation
 
-/// cliRun = `fleetest run --host`(人間向け進行・出力とも stdout)。apiRun = `fleetest api run
-/// --host`(NDJSON 中継のため進行メッセージは stderr へ逃がす。stdout は中継行専用)
+/// cliRun = `fleetest run --runner`(人間向け進行・出力とも stdout)。apiRun = `fleetest api run
+/// --runner`(NDJSON 中継のため進行メッセージは stderr へ逃がす。stdout は中継行専用)
 enum RemoteDispatchMode {
     case cliRun
     case apiRun
@@ -36,7 +36,7 @@ struct RemoteRunDispatcher {
     /// `--wait-lock <秒>`: 取得できない間、解放をポーリングして待つ(forceLock と併用不可 ——
     /// FTRemote.RemoteDispatchFlagPolicy.waitLockConflictsWithForceLock が入口で弾く)
     var waitLock: Int? = nil
-    /// `--host` の生値(登録簿名 or 生 ssh 宛先)。RemoteHostFactsStore の鍵として使う
+    /// `--runner` の生値(登録簿名 or 生 ssh 宛先)。RemoteHostFactsStore の鍵として使う
     /// (FleetSplit の機械別見積りの供給源。docs/remote-runner.md §13)。nil のまま渡された
     /// 構築箇所(facts を書く必要のない経路)では facts の保存をスキップする
     var hostLabel: String? = nil
@@ -99,7 +99,7 @@ struct RemoteRunDispatcher {
         return exitCode
     }
 
-    /// `fleetest api run --host`: dispatch と同じ流れ(レイアウト解決→適合チェック→転送→実行→回収)
+    /// `fleetest api run --runner`: dispatch と同じ流れ(レイアウト解決→適合チェック→転送→実行→回収)
     /// だが JUnit は扱わない(拡張連携は NDJSON 中継のみで完結する)。戻り値 = リモート
     /// `fleetest api run` の exit code
     func dispatchApi(project: TestProject, profile: String, scenarios: [String],
@@ -251,7 +251,7 @@ struct RemoteRunDispatcher {
     // MARK: - 2. 同一ホストへの二重ディスパッチ防止(docs/remote-runner.md §5)
 
     /// フリート内の重複は FleetProfile.validate で防げるが、別フリート・別人・CLI/GUI 併走に
-    /// よる同一ホストへの二重実行はここでしか防げない。**単発の `run --host` でも常に取得する**
+    /// よる同一ホストへの二重実行はここでしか防げない。**単発の `run --runner` でも常に取得する**
     /// (フリート専用の仕組みにしない ―― 競合はフリートかどうかと無関係にホスト単位で起きる)
     private func acquireDispatchLock(layout: RemoteLayout) throws {
         log("==> acquiring dispatch lock on \(host.sshTarget)")

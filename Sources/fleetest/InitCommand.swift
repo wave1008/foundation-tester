@@ -16,8 +16,8 @@ struct InitCommand: AsyncParsableCommand {
     @Option(help: "Project name (becomes an SPM target name; defaults to one derived from the current directory)")
     var name: String?
 
-    @Option(help: "Bundle ID / package name of the app under test")
-    var app: String = "com.example.myapp"
+    @Option(name: .customLong("app-id"), help: "Bundle ID / package name of the app under test")
+    var appID: String = "com.example.myapp"
 
     @Option(help: "Which run profiles to scaffold: ios / android / both (default both)")
     var platform: String = "both"
@@ -66,7 +66,7 @@ struct InitCommand: AsyncParsableCommand {
 
         do {
             let project = try ProjectScaffold.createAndRegister(
-                name: projectName, app: app, repoRoot: cwd,
+                name: projectName, app: appID, repoRoot: cwd,
                 platforms: try Self.platforms(from: platform))
             // 受け手が自分のプロジェクトをエージェントで開いて fleetest-setup で残りを駆動できるように
             try ProjectScaffold.writeRecipientSkill(

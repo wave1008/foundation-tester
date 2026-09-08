@@ -10,32 +10,11 @@ public enum RunResultsQuery {
 
     // MARK: - --since 解析
 
-    /// "30d" / "12h"(相対時間、referenceDate 基準)、または "YYYY-MM-DD"(UTC 0時)を Date に変換する。
-    /// どちらの形式にも一致しなければ nil(呼び出し側でエラーにすること)
+    /// 実装は FTCore.TimeBoundParse へ委譲(--since/--until の文法の唯一の定義元。受理する3形は
+    /// そちらの doc を参照)。この関数は呼び出し側(fleetest results / api results)と
+    /// 既存テストが `referenceDate:` の引数名で呼んでいるため、薄いエイリアスとして残す
     public static func parseSince(_ raw: String, referenceDate: Date = Date()) -> Date? {
-        if let absolute = parseAbsoluteDate(raw) { return absolute }
-        return parseRelativeDuration(raw, referenceDate: referenceDate)
-    }
-
-    private static func parseAbsoluteDate(_ raw: String) -> Date? {
-        guard raw.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil else { return nil }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        return formatter.date(from: raw)
-    }
-
-    private static func parseRelativeDuration(_ raw: String, referenceDate: Date) -> Date? {
-        guard let unitChar = raw.last else { return nil }
-        let unitSeconds: TimeInterval
-        switch unitChar {
-        case "d": unitSeconds = 86400
-        case "h": unitSeconds = 3600
-        default: return nil
-        }
-        guard let amount = Double(raw.dropLast()), amount > 0 else { return nil }
-        return referenceDate.addingTimeInterval(-amount * unitSeconds)
+        TimeBoundParse.parse(raw, now: referenceDate)
     }
 
     // MARK: - 共通ヘルパー

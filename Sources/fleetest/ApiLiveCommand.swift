@@ -155,15 +155,15 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// 指定ポートが in-app なら同じデバイスの XCUITest ブリッジへ振り替える(XCUIBridgeResolver)。
     /// 戻り値のポートは以後の自動起動・再起動が同じ宛先を見るために返す
     private func makeDriverAvoidingInApp() async throws -> (AppDriver, UInt16) {
-        guard driverOptions.platform == "ios" else {
-            return (try driverOptions.makeDriver(), driverOptions.port)
+        guard driverOptions.resolvedPlatform == "ios" else {
+            return (try driverOptions.makeDriver(), driverOptions.resolvedPort)
         }
         // **autoStart:false**(= 走査までで止める)。serve は常駐で、拡張は応答が無いと
         // kill→respawn するため、起動時に build-for-testing(分単位)でブロックしてはいけない。
         // hybrid は in-app と XCUITest を両方張るので走査だけで必ず見つかる。
         // 見つからないのは engine=inapp 単独のときで、そのときは理由を stderr に出して素通しする
         let resolution = await XCUIBridgeResolver.resolve(
-            preferred: driverOptions.port, repoRoot: try? RepoRoot.find(), autoStart: false,
+            preferred: driverOptions.resolvedPort, repoRoot: try? RepoRoot.find(), autoStart: false,
             logger: { message in
                 ConsoleOut.err("[live serve] " + message)
             })
@@ -176,7 +176,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// **physical は construction 時に1回だけ解決する**(SimulatorCatalog.isPhysical(udid:)。
     /// 判別できなければシミュレータ扱いに倒す = 従来の既定 false と同じで退行しない)
     private func makeAutoStarter(port: UInt16) -> LiveBridgeAutoStarter? {
-        guard driverOptions.platform == "ios", let udid else { return nil }
+        guard driverOptions.resolvedPlatform == "ios", let udid else { return nil }
         do {
             let repoRoot = try RepoRoot.find()
             let physical = SimulatorCatalog.isPhysical(udid: udid) ?? false
@@ -340,7 +340,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             }
             // 中身が同じなら入れ直さない(run 側 BridgeProvisioner と同じ規律)。
             // 再インストールはアプリを終了させ、記録開始のたびに状態が消えるため
-            if driverOptions.platform == "ios", let udid,
+            if driverOptions.resolvedPlatform == "ios", let udid,
                let bundleID = Self.bundleID(inAppBundle: path),
                InstalledAppCheck.simulatorAppIsCurrent(
                    udid: udid, bundleID: bundleID, appPath: path) {
@@ -348,7 +348,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                 return
             }
             try await driver.install(packagePath: path)
-            if driverOptions.platform == "ios", let udid,
+            if driverOptions.resolvedPlatform == "ios", let udid,
                let bundleID = Self.bundleID(inAppBundle: path) {
                 InstalledAppCheck.recordInstalled(udid: udid, bundleID: bundleID, appPath: path)
             }
@@ -384,7 +384,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             }
             emitLine(ApiLiveSnapshotEvent(
                 ok: true, error: nil,
-                platform: driverOptions.platform,
+                platform: driverOptions.resolvedPlatform,
                 screen: ApiLiveScreenSize(width: snap.screen.width, height: snap.screen.height),
                 image: jpeg.data.base64EncodedString(), elements: elements))
         } catch {

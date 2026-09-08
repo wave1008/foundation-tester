@@ -1,5 +1,5 @@
 // RunOrchestrator.swift
-// シナリオ並列実行のオーケストレーション。CLI(fleetest run --ports / fleetest api run)が使う。
+// シナリオ並列実行のオーケストレーション。CLI(fleetest run --port / fleetest api run)が使う。
 // シナリオ実行の実体は fleetest-scenarios サブプロセス(ScenarioHost)で、
 // FM フックはサブプロセス側が持つ。ワーカーのドライバはウォームアップ・接続確認用。
 
@@ -89,7 +89,7 @@ public struct RunWorker {
     public let connection: DriverConnection  // サブプロセスへ渡す接続情報
     /// 実行プロファイル上のデバイス論理名(profiles/machines/ の name)。
     /// ProfileWorkerFactory 経由で構築されたワーカーのみ設定される(fleetest api run の
-    /// workersReady イベントの id 構築に使う。--ports 等の非プロファイル経路では nil)
+    /// workersReady イベントの id 構築に使う。--port 等の非プロファイル経路では nil)
     public let logicalName: String?
 
     /// 既知の platform 名。label から platform を戻すときの照合に使う。
@@ -583,7 +583,7 @@ public final class RunOrchestrator {
     /// 2ランナー競合を起こす。isDeviceFrozen と同じ理由で呼び出し側が注入
     private let cleanupRetiredWorker: (@Sendable (RunWorker) async -> Void)?
     /// retired ワーカーの論理デバイス復帰。nil(未注入)なら復帰を試みず即ギブアップ
-    /// (呼び出し側がプロファイル経由の場合のみ注入。--ports 等の非プロファイル経路では nil)
+    /// (呼び出し側がプロファイル経由の場合のみ注入。--port 等の非プロファイル経路では nil)
     private let reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)?
     /// 遅延参加ワーカー(iOS ブリッジ供給待ち)。platforms は「後から必ず来る platform」の宣言で、
     /// これが無いと初期ワーカーに iOS が居ない時点で iOS シナリオが「担当ワーカーなし」で即失敗する。

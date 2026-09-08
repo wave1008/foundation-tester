@@ -4,9 +4,9 @@
 // (monitorPanel.ts が直近取得分を lastKnownRemoteHosts に控えるのは差分計算のためだけ)。
 //
 // 契約(CLI 側と並行実装):
-//   fleetest api remote-hosts                     → {"hosts":[{name,host,dir,machine}, …]}
-//   fleetest api remote-hosts --import '<JSON配列>' → upsert 後の一覧を同じ形で返す
-//   fleetest api remote-hosts --remove <name>       → 削除後の一覧を同じ形で返す
+//   fleetest api remote-machines                     → {"hosts":[{name,host,dir,machine}, …]}
+//   fleetest api remote-machines --import '<JSON配列>' → upsert 後の一覧を同じ形で返す
+//   fleetest api remote-machines --remove <name>       → 削除後の一覧を同じ形で返す
 // 出力は1行 JSON、失敗は非ゼロ終了(oneShotCli.ts の runOneShot が spawn+JSON.parse を担う)。
 //
 // spawn を伴う glue(fetchRemoteHosts 等)は他の単発 CLI 呼び出し(compatCheck.ts・
@@ -43,12 +43,12 @@ async function runRemoteHostsCli(deps: RemoteHostsCliDeps, args: readonly string
     result = await runOneShot(config.binaryPath, deps.workspaceRoot, [...args], deps.outputChannel, deps.registerChild);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    deps.outputChannel.appendLine(`[remote-hosts] ${args.join(" ")}: ${message}`);
+    deps.outputChannel.appendLine(`[remote-machines] ${args.join(" ")}: ${message}`);
     return { error: message };
   }
   if (result.exitCode !== 0) {
     deps.outputChannel.appendLine(
-      `[remote-hosts] ${args.join(" ")} failed (exit ${String(result.exitCode)}): ${result.stderrTail}`,
+      `[remote-machines] ${args.join(" ")} failed (exit ${String(result.exitCode)}): ${result.stderrTail}`,
     );
     const message = result.stderrTail.trim();
     return { error: message.length > 0 ? message : `exit ${String(result.exitCode)}` };
@@ -57,15 +57,15 @@ async function runRemoteHostsCli(deps: RemoteHostsCliDeps, args: readonly string
   const defaultFMConcurrency = parseDefaultFMConcurrency(result.json);
   const local = parseLocalMachine(result.json);
   if (hosts === undefined) {
-    deps.outputChannel.appendLine(`[remote-hosts] ${args.join(" ")}: unexpected output shape`);
+    deps.outputChannel.appendLine(`[remote-machines] ${args.join(" ")}: unexpected output shape`);
     return { error: "unexpected output shape" };
   }
   return { hosts, defaultFMConcurrency, local };
 }
 
-/** `fleetest api remote-hosts` で登録簿全体を読む。失敗時は error(呼び出し側でログ済み)。 */
+/** `fleetest api remote-machines` で登録簿全体を読む。失敗時は error(呼び出し側でログ済み)。 */
 export function fetchRemoteHosts(deps: RemoteHostsCliDeps): Promise<RemoteHostsCliOutcome> {
-  return runRemoteHostsCli(deps, ["api", "remote-hosts"]);
+  return runRemoteHostsCli(deps, ["api", "remote-machines"]);
 }
 
 /** entries を upsert し、結果の一覧(全件)を返す。空配列を渡しても安全(何もしない)。 */
@@ -73,10 +73,10 @@ export function importRemoteHosts(
   deps: RemoteHostsCliDeps,
   entries: readonly RemoteHostEntry[],
 ): Promise<RemoteHostsCliOutcome> {
-  return runRemoteHostsCli(deps, ["api", "remote-hosts", "--import", JSON.stringify(entries)]);
+  return runRemoteHostsCli(deps, ["api", "remote-machines", "--import", JSON.stringify(entries)]);
 }
 
 /** name の登録を削除し、結果の一覧を返す。 */
 export function removeRemoteHost(deps: RemoteHostsCliDeps, name: string): Promise<RemoteHostsCliOutcome> {
-  return runRemoteHostsCli(deps, ["api", "remote-hosts", "--remove", name]);
+  return runRemoteHostsCli(deps, ["api", "remote-machines", "--remove", name]);
 }

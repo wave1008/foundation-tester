@@ -1,5 +1,5 @@
 // RemoteHostRegistry.swift
-// `--host` の論理名登録簿(LocalConfig.remoteHosts。docs/remote-runner.md §13)。
+// `--runner` の論理名登録簿(LocalConfig.remoteHosts。docs/remote-runner.md §13)。
 // ssh/ファイル I/O はここに置かない(呼び出し側 = Sources/fleetest/RemoteCommands.swift の
 // RemoteHostResolver)。ここは名前の妥当性・解決規則・並び順だけを扱う純粋関数。
 
@@ -12,12 +12,12 @@ public enum RemoteHostRegistryError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidName(let detail):
-            return "invalid host name: \(detail)"
+            return "invalid machine name: \(detail)"
         }
     }
 }
 
-/// `--host` に渡された生文字列の解決結果
+/// `--runner` に渡された生文字列の解決結果
 public enum RemoteHostResolution: Equatable {
     /// 登録簿に同名があった
     case registered(RemoteHostEntry)
@@ -35,7 +35,7 @@ public enum RemoteHostRegistry {
         charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-")
 
     /// 登録簿への登録名として妥当か("local"・空文字は予約名として拒否)。
-    /// `--host` に渡された文字列の解決は resolve(_:entries:) を使う(reserved は throw しない)
+    /// `--runner` に渡された文字列の解決は resolve(_:entries:) を使う(reserved は throw しない)
     public static func validateName(_ raw: String) throws {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -64,7 +64,7 @@ public enum RemoteHostRegistry {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// `--host <raw>` の解決。**登録簿が優先**(同名の登録があれば raw を ssh 宛先として
+    /// `--runner <raw>` の解決。**登録簿が優先**(同名の登録があれば raw を ssh 宛先として
     /// 解釈し直さない)。"local"・空文字は登録簿を見るまでもなく reserved
     public static func resolve(_ raw: String, entries: [RemoteHostEntry]) -> RemoteHostResolution {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -209,7 +209,7 @@ enum ProfileRunner {
         // 取れない場合は書かない(monitor 側の inRun 判定が false になるだけで安全)
         let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
         // 供給フェーズ(install・凍結triage)の間も lease を保つ。RunOrchestrator の lease は
-        // シナリオ実行中しか書かれず、その手前に device-up が割り込む穴が空くため
+        // シナリオ実行中しか書かれず、その手前に start-device が割り込む穴が空くため
         let supplyLease = leaseStateDir.map { SupplyLeaseHolder(stateDir: $0) }
         defer { supplyLease?.release() }
 

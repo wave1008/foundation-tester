@@ -138,7 +138,7 @@ final class FailureFactsTests: XCTestCase {
         XCTAssertEqual(RunOrchestrator.workerID(worker), "android:Pixel 9(Android 15)-02")
     }
 
-    /// 論理名を持たない経路(--ports 等)では worker を作らない(label だけで照合させる)
+    /// 論理名を持たない経路(--port 等)では worker を作らない(label だけで照合させる)
     func testWorkerIDIsNilWithoutALogicalName() {
         let worker = RunWorker(label: "ios:8100", platform: "ios", driver: QuietDriver(),
                                connection: DriverConnection(platform: "ios", physical: false), logicalName: nil)

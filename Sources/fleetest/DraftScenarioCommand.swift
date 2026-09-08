@@ -24,8 +24,9 @@ struct DraftScenarioCommand: AsyncParsableCommand {
     @Option(help: "Name of the generated test class (defaults to one derived from the test base heading)")
     var name: String?
 
-    @Option(help: "Bundle ID of the app under test (defaults to the value from the app profile)")
-    var app: String?
+    @Option(name: .customLong("app-id"),
+            help: "Bundle ID of the app under test (defaults to the value from the app profile)")
+    var appID: String?
 
     @Option(help: "Target platform: ios / android (defaults to both)")
     var platform: String?
@@ -62,9 +63,9 @@ struct DraftScenarioCommand: AsyncParsableCommand {
         let outline = draft ?? TestbaseOutline.parse(markdown: markdown, fallbackTitle: fallbackTitle)
 
         // プロファイルから導いた値は生成コードに焼かない(実行プロファイルで解決させる)。
-        // --app で明示された値だけは書き手の意図として残す
+        // --app-id で明示された値だけは書き手の意図として残す
         let bundleID = try resolveApp(in: testProject)
-        let declaredApp = app == nil ? nil : bundleID
+        let declaredApp = appID == nil ? nil : bundleID
         let className = ScenarioCodeGen.suggestedClassName(
             fromName: name ?? outline.title,
             existing: name == nil
@@ -111,9 +112,9 @@ struct DraftScenarioCommand: AsyncParsableCommand {
         throw ValidationError("multiple test bases exist. Pick one with --testbase:\n\(list)")
     }
 
-    /// --app 明示 > アプリプロファイル(指定 platform → ios → android の順で最初に見つかった bundle ID)
+    /// --app-id 明示 > アプリプロファイル(指定 platform → ios → android の順で最初に見つかった bundle ID)
     private func resolveApp(in project: TestProject) throws -> String {
-        if let app { return app }
+        if let appID { return appID }
         let files = (try? FileManager.default.contentsOfDirectory(
             at: project.appsDir, includingPropertiesForKeys: nil))?
             .filter { $0.pathExtension == "json" }
@@ -127,7 +128,7 @@ struct DraftScenarioCommand: AsyncParsableCommand {
                 }
             }
         }
-        throw ValidationError("cannot determine the app under test. Give a bundle ID with --app, "
+        throw ValidationError("cannot determine the app under test. Give a bundle ID with --app-id, "
                               + "or add an app profile under \(project.appsDir.path)")
     }
 }

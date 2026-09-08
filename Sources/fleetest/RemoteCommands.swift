@@ -5,11 +5,11 @@
 // Sources/fleetest/RemoteRunDispatcher.swift と同じ規律(BatchMode=yes・ConnectTimeout=10)だが
 // そちらは private のため複製する。
 // `remote setup` / `remote exec` は Sources/fleetest/RemoteSetupCommand.swift(RemoteCommand の
-// extension として Setup/Exec を定義。ここではサブコマンド一覧への登録だけ行う)。
-// `remote hosts` (list/add/remove) はここで定義する。登録簿(名前→ssh 実体)は
-// LocalConfig.remoteHosts に置く(docs/remote-runner.md §13・§15.2)。`--host` を受ける
-// 全コマンド(run/api run/remote status・clean・setup・exec)は RemoteHostResolver.resolve を
-// 通す(個別に登録簿を読む実装を増やさない)。
+// extension として Setup/Exec/Align/Teardown を定義。ここではサブコマンド一覧への登録だけ行う)。
+// `remote machines` (list/add/remove) はここで定義する。登録簿(machine→ssh 実体)は
+// LocalConfig.remoteHosts に置く(docs/remote-runner.md §13・§15.2)。`--runner`(status/clean/
+// unlock)・`<runner>` positional(setup/align/exec/teardown)を受ける全コマンドは
+// RemoteHostResolver.resolve を通す(個別に登録簿を読む実装を増やさない)。
 
 import ArgumentParser
 import FTBridgeClient
@@ -26,21 +26,21 @@ struct RemoteCommand: AsyncParsableCommand {
         commandName: "remote",
         abstract: "Fleet operations for --host dispatch: provision, diagnose, clean up and query remote runners "
             + "(docs/remote-runner.md §14/§16.4/§16.5)",
-        subcommands: [Status.self, Clean.self, Unlock.self, Setup.self, Align.self, Exec.self, Hosts.self])
+        subcommands: [Status.self, Clean.self, Unlock.self, Setup.self, Teardown.self, Align.self, Exec.self, Machines.self])
 
     // MARK: - status
 
     struct Status: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "status",
-            abstract: "Show reachability, login state, git revision, toolchain, and free disk space for a fleet of remote hosts (docs/remote-runner.md §16.5)")
+            abstract: "Show reachability, login state, git revision, toolchain, and free disk space for a fleet of remote runners (docs/remote-runner.md §16.5)")
 
-        @Option(name: .customLong("host"), parsing: .upToNextOption,
-                help: "Remote host to check: a registered name (fleetest remote hosts) or a raw user@host/host. Repeatable, required")
+        @Option(name: .customLong("runner"), parsing: .upToNextOption,
+                help: "Remote runner to check: a registered machine (fleetest remote machines) or a raw user@host/host. Repeatable, required")
         var hosts: [String] = []
 
         @Option(name: .customLong("remote-dir"),
-                help: "Runner-only base directory on the remote host (default: the host registry's entry, or ~/fleetest-runner)")
+                help: "Runner-only base directory on the remote host (default: the machine registry's entry, or ~/fleetest-runner)")
         var remoteDir: String?
 
         @Flag(help: "Also probe Foundation Models availability on each host (runs `<binary> doctor --fm-only`; adds a few seconds per host, so it is off by default)")
@@ -51,7 +51,7 @@ struct RemoteCommand: AsyncParsableCommand {
 
         func run() async throws {
             guard !hosts.isEmpty else {
-                throw ValidationError("no hosts specified (pass --host <name-or-user@host>)")
+                throw ValidationError("no runners specified (pass --runner <machine-or-user@host>)")
             }
             // 解決(登録簿の読み取りのみ)は並列プローブより先に、全ホストぶん一括で行う。
             // 失敗した解決はネットワークへ出さず即 unreachable 行にする
@@ -208,17 +208,17 @@ struct RemoteCommand: AsyncParsableCommand {
             abstract: "Release the dispatch lock a dispatch of yours left behind on a remote host"
                 + " (never touches another issuer's lock; docs/remote-runner.md §5)")
 
-        @Option(name: .customLong("host"), parsing: .upToNextOption,
-                help: "Remote host: a registered name (fleetest remote hosts) or a raw user@host/host. Repeatable, required")
+        @Option(name: .customLong("runner"), parsing: .upToNextOption,
+                help: "Remote runner: a registered machine (fleetest remote machines) or a raw user@host/host. Repeatable, required")
         var hosts: [String] = []
 
         @Option(name: .customLong("remote-dir"),
-                help: "Runner-only base directory on the remote host (default: the host registry's entry, or ~/fleetest-runner)")
+                help: "Runner-only base directory on the remote host (default: the machine registry's entry, or ~/fleetest-runner)")
         var remoteDir: String?
 
         func run() async throws {
             guard !hosts.isEmpty else {
-                throw ValidationError("no hosts specified (pass --host <name-or-user@host>)")
+                throw ValidationError("no runners specified (pass --runner <machine-or-user@host>)")
             }
             var failures = 0
             for raw in hosts {
@@ -315,14 +315,14 @@ struct RemoteCommand: AsyncParsableCommand {
     struct Clean: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "clean",
-            abstract: "Stop orphaned bridges/simulators and delete results, reports, and dispatch leftovers older than --keep-days on remote hosts (docs/remote-runner.md §16.4)")
+            abstract: "Stop orphaned bridges/simulators and delete results, reports, and dispatch leftovers older than --keep-days on remote runners (docs/remote-runner.md §16.4)")
 
-        @Option(name: .customLong("host"), parsing: .upToNextOption,
-                help: "Remote host to clean: a registered name (fleetest remote hosts) or a raw user@host/host. Repeatable, required")
+        @Option(name: .customLong("runner"), parsing: .upToNextOption,
+                help: "Remote runner to clean: a registered machine (fleetest remote machines) or a raw user@host/host. Repeatable, required")
         var hosts: [String] = []
 
         @Option(name: .customLong("remote-dir"),
-                help: "Runner-only base directory on the remote host (default: the host registry's entry, or ~/fleetest-runner)")
+                help: "Runner-only base directory on the remote host (default: the machine registry's entry, or ~/fleetest-runner)")
         var remoteDir: String?
 
         @Option(name: .customLong("keep-days"), help: "Delete results/reports/dispatch entries older than this many days")
@@ -337,7 +337,7 @@ struct RemoteCommand: AsyncParsableCommand {
 
         func run() async throws {
             guard !hosts.isEmpty else {
-                throw ValidationError("no hosts specified (pass --host <name-or-user@host>)")
+                throw ValidationError("no runners specified (pass --runner <machine-or-user@host>)")
             }
             if !dryRun {
                 ConsoleOut.out("This permanently deletes files older than \(keepDays) day(s) on each host below."
@@ -479,18 +479,18 @@ struct RemoteCommand: AsyncParsableCommand {
         }
     }
 
-    // MARK: - hosts
+    // MARK: - machines
 
-    struct Hosts: AsyncParsableCommand {
+    struct Machines: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            commandName: "hosts",
-            abstract: "Manage the --host registry (name -> ssh destination; docs/remote-runner.md §13)",
+            commandName: "machines",
+            abstract: "Manage the machine registry (local alias -> ssh destination; docs/remote-runner.md §13)",
             subcommands: [List.self, Add.self, Remove.self],
             defaultSubcommand: List.self)
 
         struct List: AsyncParsableCommand {
             static let configuration = CommandConfiguration(
-                commandName: "list", abstract: "List registered remote hosts")
+                commandName: "list", abstract: "List registered remote machines")
 
             @Flag(help: "Emit one JSON object instead of a table")
             var json = false
@@ -509,7 +509,7 @@ struct RemoteCommand: AsyncParsableCommand {
             }
 
             private static func emitTable(_ entries: [RemoteHostEntry]) {
-                let header = ["NAME", "HOST", "DIR", "FM"]
+                let header = ["MACHINE", "HOST", "DIR", "FM"]
                 var rows = [header]
                 rows.append(contentsOf: entries.map {
                     [$0.machine, $0.host, $0.dir ?? "-", $0.fmConcurrency.map(String.init) ?? "-"]
@@ -526,7 +526,7 @@ struct RemoteCommand: AsyncParsableCommand {
             private static func emitJSON(_ entries: [RemoteHostEntry]) {
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-                guard let data = try? encoder.encode(HostsListJSON(hosts: entries)),
+                guard let data = try? encoder.encode(MachinesListJSON(machines: entries)),
                       let line = String(data: data, encoding: .utf8) else { return }
                 ConsoleOut.out(line)
             }
@@ -534,10 +534,10 @@ struct RemoteCommand: AsyncParsableCommand {
 
         struct Add: AsyncParsableCommand {
             static let configuration = CommandConfiguration(
-                commandName: "add", abstract: "Register or update a remote host (upsert by name)")
+                commandName: "add", abstract: "Register or update a remote machine (upsert by name)")
 
-            @Argument(help: "Logical name for this host (letters, digits, _ . - only; \"local\" is reserved)")
-            var name: String
+            @Argument(help: "Local alias for this runner (letters, digits, _ . - only; \"local\" is reserved)")
+            var machine: String
 
             @Option(help: "SSH destination (user@host or host)")
             var host: String
@@ -555,7 +555,7 @@ struct RemoteCommand: AsyncParsableCommand {
             var clearFmConcurrency = false
 
             func run() async throws {
-                try RemoteHostRegistry.validateName(name)
+                try RemoteHostRegistry.validateName(machine)
                 _ = try RemoteHostSpec.parse(host)
                 if let dir { try RemoteLayout.validateBase(dir) }
                 if let fmConcurrency, fmConcurrency < 1 {
@@ -567,13 +567,13 @@ struct RemoteCommand: AsyncParsableCommand {
                 var config = LocalConfig.load()
                 // **省略したら既存の値を保つ**。upsert なので「指定なし = nil で上書き」にすると、
                 // 別件で add を打ち直した瞬間に設定が黙って消える。消すのは --clear-fm-concurrency だけ
-                let existing = (config.remoteHosts ?? []).first { $0.machine == name }?.fmConcurrency
+                let existing = (config.remoteHosts ?? []).first { $0.machine == machine }?.fmConcurrency
                 let slots = clearFmConcurrency ? nil : (fmConcurrency ?? existing)
-                let entry = RemoteHostEntry(machine: name, host: host, dir: dir, fmConcurrency: slots)
+                let entry = RemoteHostEntry(machine: machine, host: host, dir: dir, fmConcurrency: slots)
                 config.remoteHosts = RemoteHostRegistry.upsert(entry, into: config.remoteHosts ?? [])
                 try config.save()
                 let slotsNote = slots.map { " (FM concurrency \($0))" } ?? ""
-                ConsoleOut.out("✅ Registered host \"\(name)\" → \(host)\(slotsNote)")
+                ConsoleOut.out("✅ Registered machine \"\(machine)\" → \(host)\(slotsNote)")
                 for target in RemoteHostRegistry.duplicateTargets(config.remoteHosts ?? []) where target == host {
                     ConsoleOut.out("⚠️ another entry already points at \(target)"
                         + " (dispatching to both fights over the same devices; docs/remote-runner.md §13)")
@@ -583,28 +583,28 @@ struct RemoteCommand: AsyncParsableCommand {
 
         struct Remove: AsyncParsableCommand {
             static let configuration = CommandConfiguration(
-                commandName: "remove", abstract: "Remove a registered remote host")
+                commandName: "remove", abstract: "Remove a registered remote machine")
 
-            @Argument(help: "Logical name to remove")
-            var name: String
+            @Argument(help: "Local alias to remove")
+            var machine: String
 
             func run() async throws {
                 var config = LocalConfig.load()
                 let before = config.remoteHosts ?? []
-                guard before.contains(where: { $0.machine == name }) else {
-                    throw ValidationError("no host named \"\(name)\" is registered")
+                guard before.contains(where: { $0.machine == machine }) else {
+                    throw ValidationError("no machine named \"\(machine)\" is registered")
                 }
-                config.remoteHosts = RemoteHostRegistry.remove(machine: name, from: before)
+                config.remoteHosts = RemoteHostRegistry.remove(machine: machine, from: before)
                 try config.save()
-                ConsoleOut.out("✅ Removed host \"\(name)\"")
+                ConsoleOut.out("✅ Removed machine \"\(machine)\"")
             }
         }
     }
 }
 
-/// `fleetest remote hosts list --json` の出力全体
-private struct HostsListJSON: Encodable {
-    let hosts: [RemoteHostEntry]
+/// `fleetest remote machines list --json` の出力全体
+private struct MachinesListJSON: Encodable {
+    let machines: [RemoteHostEntry]
 }
 
 // MARK: - issuer resolution (choke point for every RemoteLayout construction; §18.2)
@@ -639,10 +639,11 @@ func resolveLayoutIssuer() throws -> String {
     return id
 }
 
-// MARK: - --host resolution (shared by run/api run/remote status・clean・setup・exec)
+// MARK: - --host/--runner resolution (shared by run/api run's --host、remote status・clean・
+// unlock の --runner、remote setup・align・exec・teardown の positional runner)
 
-/// `--host` の解決結果。**登録簿が優先**: 同名の登録があればそれを使い、無ければ raw を
-/// そのまま ssh 宛先として扱う(docs/remote-runner.md §13)
+/// `--host`/`--runner`/positional runner の解決結果。**登録簿が優先**: 同名の登録があればそれを
+/// 使い、無ければ raw をそのまま ssh 宛先として扱う(docs/remote-runner.md §13)
 struct ResolvedRemoteHost {
     let hostSpec: RemoteHostSpec
     /// 明示 `--remote-dir` > 登録簿の dir > CLI 既定("~/fleetest-runner")
@@ -803,7 +804,7 @@ func resolveRemoteTarget(_ dispatch: EffectiveDispatchTarget, remoteDirOverride:
         throw RemoteDispatchError.invalidHost(
             "the machine profile's machine \"\(dispatch.rawTarget)\" is not a registered machine"
             + (entries.isEmpty
-               ? " (no hosts registered — run: fleetest remote hosts add <name> --host <user@host>)"
+               ? " (no machines registered — run: fleetest remote machines add <name> --host <user@host>)"
                : " (available: \(entries.map(\.machine).sorted().joined(separator: ", ")))"))
     }
     return try RemoteHostResolver.resolve(rawHost: dispatch.rawTarget, remoteDirOverride: remoteDirOverride)
@@ -852,7 +853,7 @@ func machineScopedDeviceFilter(
             throw RemoteDispatchError.invalidDevice(
                 "\(names) is not assigned to machine \"\(targetMachine)\" in profile \"\(profile)\""
                 + (available.isEmpty ? " (it has no devices there)" : " (its devices there: \(there))")
-                + " — with --machine, --device is limited to that machine's devices;"
+                + " — with --runner, --device is limited to that machine's devices;"
                 + " pass --device-machine to target another machine's device of the same name")
         }
     }

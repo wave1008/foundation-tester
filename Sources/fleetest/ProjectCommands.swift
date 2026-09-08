@@ -29,8 +29,8 @@ struct ProjectCommand: AsyncParsableCommand {
         @Argument(help: "Project name (becomes an SPM target name, so only letters, digits, _ and -)")
         var name: String
 
-        @Option(help: "Bundle ID / package name of the app under test")
-        var app: String = "com.example.myapp"
+        @Option(name: .customLong("app-id"), help: "Bundle ID / package name of the app under test")
+        var appID: String = "com.example.myapp"
 
         @Option(help: "Which run profiles to scaffold: ios / android / both (default both)")
         var platform: String = "both"
@@ -38,7 +38,7 @@ struct ProjectCommand: AsyncParsableCommand {
         func run() async throws {
             let root = try fleetestRepoRoot()
             let project = try ProjectScaffold.createAndRegister(
-                name: name, app: app, repoRoot: root,
+                name: name, app: appID, repoRoot: root,
                 platforms: try InitCommand.platforms(from: platform))
 
             ConsoleOut.out("✅ Created the project: TestProjects/\(name)/")

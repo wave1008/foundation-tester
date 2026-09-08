@@ -1,4 +1,4 @@
-// device-up の --udid 直指定(マシンプロファイル未記載の実機のブリッジ起動)。
+// start-device の --udid 直指定(マシンプロファイル未記載の実機のブリッジ起動)。
 // ApiDeviceUpDirectSpec.physicalIOSSpec の I/O は到達性の probe だけなので、
 // **必ず probe を注入して**devicectl 無しで判定ロジックだけを検証する
 // (注入を省くと本物の devicectl を撃つ = 単体テストがホストの実機構成に依存する)。

@@ -29,11 +29,11 @@ public enum RemoteDispatchDeviceScope: Equatable, Sendable {
     }
 }
 
-/// `--machine M` に **明示の `--device <名前>`** が付いたとき(`--device-machine` 無し)の扱い。
+/// `--runner M` に **明示の `--device <名前>`** が付いたとき(`--device-machine` 無し)の扱い。
 /// 同名の台が複数の機械にある混在プロファイルでは、名前だけを子へ渡すと**全機械ぶんの同名を拾い**、
 /// 手元の UDID をランナー機で探して `no simulator with that UDID` で落ちる(受け手報告 2026-08-23:
 /// local/M1Max/M1Ultra に同名の iPhone があるプロファイルで --device 1台 → Devices に3台並んだ)。
-/// `--machine` を付けたときの `--device` は**そのマシンの台に限定**する(明示が勝つ規律と同じ向き)
+/// `--runner` を付けたときの `--device` は**そのマシンの台に限定**する(明示が勝つ規律と同じ向き)
 public enum RemoteDispatchExplicitDeviceScope: Equatable, Sendable {
     /// 全デバイスが machine 未指定 = 名前をそのまま渡す(受け側が自分の台として解釈する)
     case passThrough

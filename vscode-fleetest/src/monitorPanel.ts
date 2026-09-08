@@ -123,7 +123,7 @@ export interface MonitorPanelDeps {
     name: string,
     host: string | undefined,
   ): { readonly machines: readonly string[]; readonly runs: readonly string[] };
-  /** MonitorDeviceStreamController.disposeForDeviceNameへの委譲。MonitorDeviceOpsのdevice-downジョブが
+  /** MonitorDeviceStreamController.disposeForDeviceNameへの委譲。MonitorDeviceOpsのstop-deviceジョブが
    * 実行を開始する時点(simctl/adbで実際に殺す前)で呼び、タイルを即座に切断表示へ倒す。 */
   stopDeviceStreams(name: string, machine?: string): void;
   /** MonitorDeviceStreamController.disposeAllForDownへの委譲。MonitorDeviceOpsの一括downジョブの
@@ -219,7 +219,7 @@ export class MonitorPanelController implements vscode.Disposable {
   /** stopping/rebooting を post 済みで done/failed が未着のデバイス名。runEnded 時、キャンセル等で
    * done/failed が来ないまま残った名前にバッジ固着を防ぐため phase:"done" を post する。 */
   private readonly wipeInProgress = new Set<string>();
-  /** 直近に CLI(`fleetest api remote-hosts`)から取得・同期した登録簿。setRemoteConfig の
+  /** 直近に CLI(`fleetest api remote-machines`)から取得・同期した登録簿。setRemoteConfig の
    * 差分計算(diffRemoteHostsForSync)の基準に使うだけで、これ自体が正ではない
    * (docs/remote-runner.md §13「原則」。正は CLI の LocalConfig)。 */
   private lastKnownRemoteHosts: RemoteHostEntry[] = [];

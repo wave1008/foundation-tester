@@ -11,7 +11,7 @@ import type { MessageDict } from "../core";
 export const hookScaffoldStrings = {
   "hookScaffold.setupTemplate": {
     ja: `#!/bin/sh
-# テスト実行の前に、デバイスを動かす機械(この Mac、--host でディスパッチしたときはランナー機)
+# テスト実行の前に、デバイスを動かす機械(この Mac、--runner でディスパッチしたときはランナー機)
 # の上で走る。テスト対象アプリが必要とするもの —— DB・スタブサーバ・初期データ —— の用意に使う。
 #
 # 規則
@@ -57,7 +57,7 @@ set -eu
 `,
     en: `#!/bin/sh
 # Runs before the scenarios, on the machine that drives the devices (this Mac, or the
-# remote runner when the run is dispatched with --host). Use it to start whatever the app
+# remote runner when the run is dispatched with --runner). Use it to start whatever the app
 # under test needs: a database, a stub/mock server, seed data.
 #
 # Rules

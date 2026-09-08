@@ -43,7 +43,7 @@ git URL へ依存させます(`--fleetest-branch` で追従するブランチを
 
 | コマンド | 説明 |
 |---|---|
-| `fleetest project create <name> [--app <bundleID>] [--platform ios\|android\|both]` | 新しいテストプロジェクトを作成し `Package.swift` に登録する |
+| `fleetest project create <name> [--app-id <bundleID>] [--platform ios\|android\|both]` | 新しいテストプロジェクトを作成し `Package.swift` に登録する |
 | `fleetest project list` | テストプロジェクトの一覧と `Package.swift` への登録有無を表示する |
 | `fleetest project sync` | `TestProjects/` を走査して `Package.swift` のマーカー区間を再生成する(手動コピーや `git pull` の後に実行する) |
 

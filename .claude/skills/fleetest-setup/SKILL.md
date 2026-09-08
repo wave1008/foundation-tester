@@ -263,10 +263,10 @@ FM 無しで動く。**人間に「有効か」を聞かない**：
 
 ```
 ../foundation-tester/.build/debug/fleetest init \
-  --fleetest-path ../foundation-tester --name <ProjectName> --app <bundleID>
+  --fleetest-path ../foundation-tester --name <ProjectName> --app-id <bundleID>
 ```
 
-  bundle ID が未確定なら `--app` を**省略**する(既定のプレースホルダ `com.example.myapp` で作成される)。
+  bundle ID が未確定なら `--app-id` を**省略**する(既定のプレースホルダ `com.example.myapp` で作成される)。
 
   → WORK_DIR に `Package.swift`(空マーカー区間 + fleetest 依存)と `TestProjects/<ProjectName>/`、
   `.vscode/settings.json`(`fleetest.binaryPath`・`fleetest.project`。拡張の手動設定を不要にする)が生成され、
@@ -279,7 +279,7 @@ FM 無しで動く。**人間に「有効か」を聞かない**：
   binaryPath の手動設定を 🧑 に案内する)。
   以降このスキル内で `fleetest ...` と書いたら `../foundation-tester/.build/debug/fleetest ...` を実行する。
 
-- **clone 構成**: TOOL_ROOT(=WORK_DIR)で `swift run fleetest project create <ProjectName> --app <bundleID>`。
+- **clone 構成**: TOOL_ROOT(=WORK_DIR)で `swift run fleetest project create <ProjectName> --app-id <bundleID>`。
   `TestProjects/<ProjectName>/` と Package.swift のターゲット登録が生成されたことを確認する。
 
 **検証ゲート(init 後の .gitignore)**: WORK_DIR が git リポジトリ(既存 repo 直下を含む)なら、

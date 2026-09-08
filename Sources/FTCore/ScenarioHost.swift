@@ -63,7 +63,7 @@ public struct DriverConnection: Sendable, Hashable {
     /// ルーティングを正しく決めるために使う(サブプロセスの mismatch 判定を参照)。
     public let inappBundleID: String?
     /// 実行プロファイル上のデバイス論理名(profiles/machines/ の name)。レポートヘッダ表示用
-    /// (ProfileWorkerFactory/MCPServer のプロファイル経路で設定される。--ports 直指定等では nil)
+    /// (ProfileWorkerFactory/MCPServer のプロファイル経路で設定される。--port 直指定等では nil)
     public let deviceName: String?
     /// 実機か(DeviceSpec.kind == physical)。simctl / エミュレータ前提の処理を止めるための判別軸。
     /// サブプロセスへは --physical で渡る(iOS の FastLaunchDriver 抑止に必要)

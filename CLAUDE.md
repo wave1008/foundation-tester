@@ -197,7 +197,7 @@
   (自分の台は `machine: "local"`・他機の台は削除)ので、**転送物にも引数にもエイリアスは出ない**
 - **リモートのデバイスの監視と配信**: 手元の `api monitor` は simctl/adb = **この機械しか観測
   できない**。別の機械のぶんは `RemoteMonitorFanout` が
-  `remote exec <host> -- api monitor --device-machine local` を1本ずつ立てて合流させ、
+  `remote exec <runner> -- api monitor --device-machine local` を1本ずつ立てて合流させ、
   ライブ映像は**1デバイス = 1本の ssh**(`api device-stream` が向こうで宛先を解決し配信ヘルパーへ
   `execv` で化ける = stdout のバイト列が手元起動時と同一なので `StreamPipeline` をそのまま使える)。**多重化の枠は作らない**(却下理由は docs/remote-runner.md §13)。
   守る規律3つ: **①他の機械の台を走査しない**(仕分けは `ApiMonitorCommand.scope` が pure に持つ)/
@@ -205,7 +205,7 @@
   動いていても止まって見える。拡張の `MonitorDeviceState` と対)/ **③配信が張れなければ
   ポーリングへ落ちる**。**版が揃っていないと状態も映像も来ない**。
   **操作も同じ規律** —— 一括だけでなく**タイル1枚の起動・停止もその機械へ回す**
-  (手元で `api device-up --name` を撃つと、同名の台が別の機械にも居るとき**別の機械の設定で
+  (手元で `api start-device --name` を撃つと、同名の台が別の機械にも居るとき**別の機械の設定で
   この Mac にシミュレータが1台できる**。`findDevice` は (machine, name) で引き、
   `--device-machine` の既定は手元)。
   **中継する側が machine を埋める**(3経路とも: `RemoteMonitorFanout.ingest` /
@@ -214,7 +214,7 @@
   **同名の手元のタイル**を書き換える(機械ごとに2台ずつ起きていても「全体で2台」に見える)。
   **自動修復(watchdog)はリモートの台を見ない**(修復手段が手元にしか効かず、記録が name 単位)。
   **ホストの負荷(MEM/CPU/GPU/FM)も同じ** —— 拡張が
-  `remote exec <machine> -- api host-metrics` を機械ごとに立て、ツールバーのグラフを
+  `remote exec <runner> -- api host-metrics` を機械ごとに立て、ツールバーのグラフを
   **機械ごとの行**にする(左端は手元が `local`・以降は機械名。1行のときはラベルを出さない)。
   **行の集合は直近の monitorDevices に居る機械で決める**(表示フィルタは通さない = ssh の churn を
   作らない)/ **消えた機械の行は捨てる**(古い値を出し続けない)/ **機械名は spawn した側が付ける**
@@ -245,7 +245,7 @@
   出し分けない** —— occlusion-guard・screenLooksLike・triage は heal を切っていても FM を引く)/
   run.json の `fmDead`・`fmDeadReason` / `ft_status`・`ft_doctor`・`fleetest doctor --fm-only`
   (**doctor は text と vision を両方 実呼び出しで確かめ、どちらが死んでも exit 1**)
-- リモート実行(`run --machine` / `--host` の SSH ディスパッチ):
+- リモート実行(`run --runner` の SSH ディスパッチ):
   - **ssh 越しに何かを起動する経路を新設したら非対話 PATH の補正
     (`/opt/homebrew:/usr/local/bin`)を必ず写す**(既存は `RemoteShell.remoteRunCommand`)
   - **子プロセスを spawn する経路を足したら中断のリレーも足す**(`InterruptRelay`)。
@@ -253,8 +253,8 @@
     async 文脈に書かない = Swift 6 でエラー。同期関数の既存2箇所は据え置き)。
     **SIGKILL へのエスカレートは ssh にだけ**。**シグナルソースは1プロセスに1組**
     → maintainer-notes §3.2。`fleetest remote unlock` は自分の死んだディスパッチのロックだけを外す(`RemoteDispatchUnlock`)
-  - **`--machine M`(旧 `--host`)+ 明示 `--device` は M の台に限定**
-    (`RemoteDispatchExplicitDeviceScope`)。**`--machine local` も同じ判定を通す**
+  - **`--runner M` + 明示 `--device` は M の台に限定**
+    (`RemoteDispatchExplicitDeviceScope`)。**`--runner local` も同じ判定を通す**
     (run / api run の2経路。絞らないと別ホストのエントリの UDID を手元で探して
     `no simulator with that UDID` で止まる)
   - **LPT はリモートでも実績で回る**: 実績 JSON は on-demand でも常に回収・実績と観測窓は
@@ -291,7 +291,7 @@
   `<workspace>/scripts/setup.sh` / `teardown.sh` が**あれば実行、無ければ何もしない**
   (名前も置き場所も固定。拡張のフォームにも入力欄を置かない = ユーザー決定)。
   **呼ぶのは `ProfileRunner.run` と `ApiRunCommand` の2箇所** —— リモートの子は
-  `fleetest run --host local` として向こうで同じコードを通るので `RemoteRunDispatcher` には
+  `fleetest run --runner local` として向こうで同じコードを通るので `RemoteRunDispatcher` には
   足さない。守る規律3つ: **①setup の失敗は run を止める**(teardown の失敗は結果を変えない)/
   **②デバイスに触る前に撃つ** / **③片付けは defer だけに頼らない** —— setup の前に
   `.fleetest/hooks/<pid>.json` を置き、次の run 開始時と `fleetest hooks reap`(`remote clean` が撃つ)が死んだ pid の
@@ -433,7 +433,7 @@
   選択肢は無いので既定スイートと同一の実行を二度払うだけ)。OS の絞り込みは `--ios` / `--android`
 - **この漏れは e2e.sh が検出する** —— **回さなかった側**のブリッジ入力集合(`BridgeSourceSet`)の
   digest を、そのエンジンの実行が**全部成功したときだけ** `.fleetest/<engine>-e2e-verified` へ
-  記録し、開始時と終了時に食い違いを警告する(`fleetest api bridge-sources --set inapp|xcuitest --digest`)。**落とさず警告だけ**
+  記録し、開始時と終了時に食い違いを警告する(`fleetest api bridge-sources --bridge inapp|xcuitest --digest`)。**落とさず警告だけ**
   —— **ただし xcuitest の警告は 2026-09-02 時点で鳴りっぱなし**(既知の打鍵中抜け2本で
   E2E-RN が赤 → 全緑が条件の印が永久に更新されない。**未検証の意味ではない**)。
   この警告を見たら回す前に docs/verification.md の該当節を読む
@@ -536,7 +536,12 @@
 - **`fleetest run` と `fleetest api run` はオプションも配線も別々に持つ2実装**。片方だけに足した
   変更はどちらの経路も緑のまま通る(実行されるのは足したほうだけ)。**意図した差分は
   `RunCommandFlagParityTests` が等号で固定する** —— 片側にフラグを足すと落ちるので、
-  「両方に足す」か「片側だけでよい理由を表へ書く」かを必ず選ぶ
+  「両方に足す」か「片側だけでよい理由を表へ書く」かを必ず選ぶ。**フラグの集合だけでなく
+  「併用不可・必須」の検査規則も両方に揃える** —— フラグ名が同じでも検査が片方に無いと、
+  同じ打鍵が片方で通り片方で落ちる(実際にそうなっていた: `--profile` + `--port` が `run` では
+  黙って無視され `api run` ではエラーだった)
+- **`--since` / `--until` の文法は `FTCore.TimeBoundParse` が唯一の定義元**(docs/results-json.md
+  §`--since`/`--until` の文法)。時刻境界を取るオプションを新設するときは必ずここを通す
 - **ブリッジの挙動・エンドポイントを変えたら版を上げる** → maintainer-notes §4.4。
   iOS = `Sources/FTCore/BridgeDTO.swift` の `bridgeProtocolVersion`(in-app dylib と XCUITest
   ランナーの共通定数)/ Android = `AndroidRunner/build.sh` の `VERSION_CODE` と
@@ -690,7 +695,7 @@
   `RunProfileDocument` の全欄**(配列・オブジェクトと旧名 `screenIs` を除く)を `Mirror` で
   等号固定(`RunProfileSetOverrideTests`)—— 新しい欄を足して `--set` から漏れると落ちる。
   **同じ意味の専用フラグ(`--report-dir` / `--default-timeout` / `--scenario-timeout`)と
-  併用したらエラー**(片方を黙って勝たせない)。**`--app` / `--machine` は衝突させない** ——
+  併用したらエラー**(片方を黙って勝たせない)。**`--app-id` / `--runner` は衝突させない** ——
   CLI のそれらは「既定アプリの bundle ID」「リモートディスパッチ先」で、プロファイルのキー
   `app`(アプリプロファイル名)・`machine`(マシンプロファイル名)とは**別物**。
   **`--profile` を要求してよいのは、プロファイルの devices 一覧・供給工程が要るキーだけ**
@@ -733,7 +738,7 @@
   無いときは **launch 直後の最初の触る操作と失敗時だけ1回聞いて** `system-alert-present` の注記と
   題名を残す(止めない・閉じない)。常時監視へ広げない
 - **終了猶予の方針は1つ**(Codex 指摘 2026-09-06): **自前の後始末を持つ fleetest のプロセス**
-  (`api run` / `run --machine` の子 / `fleetest-scenarios` = 終了スクリプト・dispatch.lock の解放・
+  (`api run` / `run --runner` の子 / `fleetest-scenarios` = 終了スクリプト・dispatch.lock の解放・
   向きの復元)には**時限の SIGKILL を送らない** —— SIGTERM を送って待ち、刺さったら人が強制終了する
   (`InterruptRelay` の fleetest の子 = `escalateAfter: nil` / `ParentDeathWatch` = SIGTERM のみ /
   拡張の `api run` キャンセル = SIGTERM のみ + 2 秒経っても生きていれば「強制終了」ボタンを出す)。

@@ -194,7 +194,7 @@ export function classifyResident(
     if (/\bapi\s+run(?:\s|$)/.test(cmd) || /(^|\/)fleetest\s+run(?:\s|$)/.test(cmd)) {
       return { type: "run", detail: extractArg(cmd, "--profile") };
     }
-    // その他の fleetest CLI 常駐(devices-up 等の一括操作を含む取りこぼし受け)
+    // その他の fleetest CLI 常駐(start-all-devices 等の一括操作を含む取りこぼし受け)
     return { type: "fleetest", detail: "" };
   }
 

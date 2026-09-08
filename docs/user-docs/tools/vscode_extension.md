@@ -38,7 +38,7 @@ is unavailable.
 - Status badges: **Connected** (green) — bridge attached, ready to drive; **Starting**
   (yellow) — device is up but the bridge hasn't attached yet; **Not started**
   (gray) — device is down.
-- Right-click a tile to start or stop that one device (`fleetest api device-up`/`device-down`).
+- Right-click a tile to start or stop that one device (`fleetest api start-device`/`stop-device`).
   Device operations run one at a time through a shared queue, so queued tiles show a
   "Waiting..." badge.
 - Toolbar buttons start/stop every device on the machine profile and restart the monitor process.

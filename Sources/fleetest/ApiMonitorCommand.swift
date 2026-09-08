@@ -59,7 +59,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// この機械のデバイスだけを走査し、他の機械のぶんは `RemoteMonitorFanout` がその機械で
     /// 1本ずつ `--device-machine <host>` を走らせて合流させる。**この値が入っているのは子のとき** ——
     /// 子は自分のぶんだけを見て、それ以上の fan-out はしない(入れ子のディスパッチを作らない)
-    @Option(name: [.customLong("device-machine"), .customLong("device-host")],
+    @Option(name: .customLong("device-machine"),
             help: "Only observe the devices assigned to this machine, treating them as local (set by the parent monitor when it fans out; not for hand use)")
     var deviceMachine: String?
 

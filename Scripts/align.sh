@@ -37,13 +37,13 @@ fi
 
 HEAD_SHA="$(git rev-parse HEAD)"
 
-MACHINES=$("$FLEETEST" api remote-hosts | python3 -c '
+MACHINES=$("$FLEETEST" api remote-machines | python3 -c '
 import json,sys
 print("\n".join(h["machine"] for h in json.load(sys.stdin).get("hosts", []) if h.get("machine")))')
 [ -n "$MACHINES" ] || { echo "❌ 登録簿にリモート機が無い(fleetest remote setup)" >&2; exit 1; }
 
 HOST_ARGS=""
-for m in $MACHINES; do HOST_ARGS="$HOST_ARGS --host $m"; done
+for m in $MACHINES; do HOST_ARGS="$HOST_ARGS --runner $m"; done
 
 # **押し込む前に、向こうが空いているかを見る**(dispatch.lock)。`remote align` 自身も
 # ロックを取るので run を壊すことは無いが、**握られていれば align 段で1機ずつ ❌ になる**だけで、

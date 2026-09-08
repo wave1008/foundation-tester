@@ -19,7 +19,7 @@ public struct WorkerAnomalyRecord: Codable, Sendable {
     /// "retryLimit"(振り直しの上限に達し、失敗として記録した)
     public var kind: String
     /// ScenarioRunRecord.worker と**同じ規則**("<platform>:<デバイス論理名>")。
-    /// 論理名を持たない経路(--ports 等)では nil = label だけで照合する
+    /// 論理名を持たない経路(--port 等)では nil = label だけで照合する
     public var worker: String?
     /// 表示上の識別子(degradedWorkers の1行に出るものと同一)
     public var label: String

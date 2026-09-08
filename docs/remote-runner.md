@@ -1,6 +1,6 @@
 # リモートランナー構想
 
-2026-07-30 の検討結果の文書化。**Phase 1(`run --host` / `api run --host` と GUI の
+2026-07-30 の検討結果の文書化。**Phase 1(`run --runner` / `api run --runner` と GUI の
 ホスト登録・実行先選択)は実装済み(§12)。§14 の導入コマンド一式(`preflight.sh --runner` /
 `remote setup` / 汎用転送 `remote exec`)も実装済み(2026-08-16)。Phase 2 以降と §13 は設計のみで未実装**。
 **別マシン(M1Ultra)への導入とシナリオ1本の実走まで実機で確認済み(2026-08-16。§14 末尾に実測と罠)**。
@@ -13,8 +13,8 @@
 
 | 語 | 意味 | 書く場所 | 鍵にしてよいか |
 |---|---|---|---|
-| **host** | **ホスト名 または IP アドレス**(`user@host` の形も含む。ネットワーク上の実体) | ホスト登録簿の `host`、`--host`、ssh 宛先 | **よい**(安定した識別子) |
-| **machine** | その host に対する**ローカルエイリアス**。このマシンの登録簿だけが知っている名前 | ホスト登録簿の `machine`、プロファイルの `machine`、`--machine` | **原則だめ** —— 頻繁に変わりうるので記録の鍵に使わない。**例外はその machine 自身に関する構成**(登録簿・プロファイルのデバイス割り当て) |
+| **host** | **ホスト名 または IP アドレス**(`user@host` の形も含む。ネットワーク上の実体) | ホスト登録簿の `host`、`--runner`、ssh 宛先 | **よい**(安定した識別子) |
+| **machine** | その host に対する**ローカルエイリアス**。このマシンの登録簿だけが知っている名前 | ホスト登録簿の `machine`、プロファイルの `machine`、`--runner` | **原則だめ** —— 頻繁に変わりうるので記録の鍵に使わない。**例外はその machine 自身に関する構成**(登録簿・プロファイルのデバイス割り当て) |
 
 守る規律は4つ:
 
@@ -52,14 +52,14 @@
 `machine: "local"` に書き換わった。
 
 **CLI ⇄ 拡張のワイヤも揃えた(ProtocolVersion 9)**: `api monitor` の `machineHost` → `machine`、
-`api devices-up` のライフサイクル行の `host` → `machine`、`api remote-compat` の
+`api start-all-devices` のライフサイクル行の `host` → `machine`、`api remote-compat` の
 `hosts[].name` → `machines[].machine`(`sshTarget` は本物のホストなのでそのまま)。
 **旧キーは読まない** —— この3つは拡張だけが読む口で、版が合っていなければ拡張が起動時に警告する。
 
 **Swift 側の識別子も同時に揃えた**(挙動は不変): `DeviceHostGrouping` → `DeviceMachineGrouping`
 (ファイルごと)・`RunDeviceHost` → `RunDeviceMachine`・`DeviceHostRunner` → `DeviceMachineRunner`・
 `ApiRunHostFanout` → `ApiRunMachineFanout`・`MachineHostDispatch` → `MachineDispatch`
-(`Decision.host` → `.target` = マシン名か `--host` の生の宛先)・`deviceHost` → `deviceMachine`。
+(`Decision.host` → `.target` = マシン名か `--runner` の生の宛先)・`deviceHost` → `deviceMachine`。
 **`host` を残したのは本物のホストだけ**(登録簿の ssh 宛先・ブリッジの宛先 IP・`RemoteHostFacts` の
 鍵・fleet 定義の `runs[].host`)。
 
@@ -90,7 +90,7 @@
 リモート実行=「向こうの Mac で普通にローカル実行し、結果を手元へストリームする」だけにする。
 新プロトコル・認証・常駐デーモンは作らない(トランスポートは SSH)。
 
-`fleetest run --host <mac>` の流れ(**当初設計**。実装済みの Phase 1 は clone 構成・
+`fleetest run --runner <mac>` の流れ(**当初設計**。実装済みの Phase 1 は clone 構成・
 アプリ非転送・`project sync` 経由など意図的な逸脱を含む — **現状の正は §12**):
 
 1. 適合チェック(§7。不一致は fail fast)
@@ -118,7 +118,7 @@
   ディレクトリを上書きするため、宛先は**登録簿(§13)に登録された値のみ**を使う
 
 **ホスト混在プロファイル(devices に `host: "local"` と `host: "M1Max"` 等が並ぶ形)を
-`--host <名前>` で単一ホストへ送るときは、そのホスト担当のデバイスだけが
+`--runner <名前>` で単一ホストへ送るときは、そのホスト担当のデバイスだけが
 `--device`/`--device-machine` として自動で付く**(丸ごと送ると受け側の「local」枠が発行元の
 Mac のデバイスに解決され、存在しない台の起動を試みるため)。担当が1台も無いプロファイルは
 ディスパッチ前にエラーで止まる。
@@ -127,7 +127,7 @@ Mac のデバイスに解決され、存在しない台の起動を試みるた�
 
 ```
 ┌─ ローカル Mac(発行側)────────────────────────────┐
-│ fleetest run --host mac2 --profile …                │
+│ fleetest run --runner mac2 --profile …              │
 │  ├─ 適合チェック(rev / Toolchain / Protocol)     │
 │  ├─ 転送(rsync: シナリオ・プロファイル・アプリ)  │
 │  ├─ NDJSON 受信 → 進捗表示・拡張へ中継            │
@@ -279,7 +279,7 @@ Android は `no running emulator for AVD ...` で失敗する)。`fleetest devic
   (**「そのまま実行」は置かない** —— ズレたまま走らせるとリモート担当分は必ず
   checkCompatibility に弾かれ、部分失敗の run にしかならない。align で直せないズレ
   = 未 push・到達不能・toolchain 不一致は実行を止めて理由を出す。チェック自体を外すのは
-  設定 `fleetest.remoteCompatCheck`)。ズレの解消(揃えるだけ)は `fleetest remote align <host>` —
+  設定 `fleetest.remoteCompatCheck`)。ズレの解消(揃えるだけ)は `fleetest remote align <runner>` —
   `remote setup` の align ステップだけを単独で実行する軽量版(preflight/install は通さない)
 
   **手元を更新したあと全機を揃えるときは `Scripts/align.sh`**(push → 登録簿の全機へ
@@ -379,7 +379,7 @@ platform を見積もって、一番遅く終わる機械に最も多く配る**
 | ディスパッチの体験(転送→実行→中継→回収) | ✅ 成立。JUnit・Markdown レポートともローカルへ回収できた |
 | **初回/2回目以降の所要**(Phase 1 ゲート) | 初回 **95秒**(リモートビルド+ブリッジ供給込み)/ 2回目 **10.8秒**(ブリッジ温存・増分ビルド)。コールドは初回だけで、実用に耐える |
 | キャンセル伝播(`-tt`) | ✅ 実証。`-tt` ありはローカルの ssh を kill するとリモートのプロセスも消え、**`-tt` なしは残る**(対照実験) |
-| `api run --host` の NDJSON 中継(拡張経路) | ✅ 成立。stdout は全行が妥当な NDJSON・リモートの診断は stderr へ(`-tt` による合流を中継側で振り分け。§12) |
+| `api run --runner` の NDJSON 中継(拡張経路) | ✅ 成立。stdout は全行が妥当な NDJSON・リモートの診断は stderr へ(`-tt` による合流を中継側で振り分け。§12) |
 | `--remote-timeout` の実発火 | ✅ 実証。期限で打ち切られ、**リモートのプロセスも残らない**(SIGTERM→SIGKILL が届く) |
 
 **設計への影響**: §5 が前提にしていた「Background セッションでは iOS シミュレータが動かない」は
@@ -418,7 +418,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
 - §9 の実験4回を実施(①が最優先 — 到達経路を決める。**①は実施済み**)
 - **ゲート**: 対話的分散・共有の需要が実在するか/ジョブ粒度の体験が成立するかをユーザーが判断
 
-### Phase 1: `fleetest run --host <mac>`(単一リモート・ジョブ粒度)
+### Phase 1: `fleetest run --runner <mac>`(単一リモート・ジョブ粒度)
 
 - 適合チェック(§7)・rsync 転送・リモート実行・出力ストリームバック(§3 の用途分け)・
   成果物回収(JUnit の `report:` パス書き換え含む)
@@ -520,7 +520,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
 
 ## 12. Phase 1 実装メモ(2026-07-31)
 
-`fleetest run --host <user@host>`(`--profile` 必須。`--ports`/`--report-dir`/`--failed`/
+`fleetest run --runner <user@host>`(`--profile` 必須。`--port`/`--report-dir`/`--failed`/
 `--skip-build` は併用不可)・`--remote-dir`(既定: ローカルルートと同じ絶対パス)・
 (`--remote-session` は asuser 撤去に伴い廃止)。純粋ロジックは
 `Sources/FTRemote/RemoteDispatch.swift`(単体テスト対象)、プロセス起動は
@@ -577,7 +577,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
   導入はディスパッチより前に済ませる
 - `remote clean` の `devices down` も同じ経路で実行する(リモートの fleetest を直接叩く)
 - **`ssh -tt` はリモートの stderr を stdout に合流させる**(擬似 TTY は1本の流れ)。
-  `api run --host` の stdout は NDJSON 専用の契約なので、**中継側で行を振り分ける**
+  `api run --runner` の stdout は NDJSON 専用の契約なので、**中継側で行を振り分ける**
   (JSON 行 = stdout / それ以外 = stderr。`RemoteRelay.isMachineReadableLine`)。
   入れないとリモートの人間向け診断が NDJSON に混入する(2026-07-31 実測・修正済み)
 
@@ -586,7 +586,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
 CLI 中継(`fleetest run` の起動)のみが対象で、rev 一致(= 同一 upstream コミット)に
 包含されるため
 
-`fleetest api run --host` を実装(拡張連携用の NDJSON 中継。人間向け進行は stderr・NDJSON は
+`fleetest api run --runner` を実装(拡張連携用の NDJSON 中継。人間向け進行は stderr・NDJSON は
 stdout を行単位でリモート→ローカルへパス書き換えして中継)。`--interactive`(`--debug`)/
 `--breakpoint`/`--dry-run` 等の stdin 制御・ローカル専用系は併用不可。`ProtocolVersion` は
 不変(NDJSON の形を変えていない)。
@@ -601,13 +601,13 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
 > **2026-08-17 に実行先セレクタは廃止**(§13 の実装で確定した点を参照)。`fleetest.remote.target`
 > という設定キーはもう無く、ディスパッチ先は**マシンプロファイルの `host`**(= 実行プロファイルが
 > 参照するマシン)で決まる。登録簿は LocalConfig へ移り、`fleetest.remote.hosts` も設定キーとしては
-> 存在しない(設定タブは `fleetest api remote-hosts` を読み書きする)。残る設定キーは
+> 存在しない(設定タブは `fleetest api remote-machines` を読み書きする)。残る設定キーは
 > `fleetest.remote.artifacts` だけ。
 
 ## 13. フリート実行と多ホスト GUI(**段1・段4は実装済み: 2026-08-16**。段2・3・5 は未実装)
 
-**実装済み**: 登録簿の LocalConfig 移行(段1。`fleetest remote hosts` / `--host <登録名>` /
-`api remote-hosts` / 拡張の移行)・フリート定義と `run --fleet`(段4)・実行先重複の拒否・
+**実装済み**: 登録簿の LocalConfig 移行(段1。`fleetest remote machines` / `--runner <登録名>` /
+`api remote-machines` / 拡張の移行)・フリート定義と `run --fleet`(段4)・実行先重複の拒否・
 **同一リモートへの二重ディスパッチのロック**(§5 の直列化に相当。ただし待たずに fail fast)。
 実機2台(M1Ultra + M1Max)で一斉実行と混在(`local` + リモート)を実走確認済み。
 **results の集計は最初から成立していた**(下記。マージの実装は不要だった)。
@@ -642,16 +642,16 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
   子プロセスの起動・行の前置・JUnit 結合・集計は FleetRunner のヘルパを共有し、
   シナリオの割り当ては `FleetSplit.partition` に**台数の重み**(`entryCapacities`)を渡して行う ——
   総量で均すと台数の少ないホストだけが最後まで残り、壁時計が縮まない。
-  子には `--device <名前…>` と `--host <ホスト|local>` を渡す
-- **`--host` 明示は分散より強い**(「今回はこの機械で」の意味。MachineDispatch と同じ規律)
-- **`--host H` に明示の `--device <名前>` を付けたら、名前は H の台に限定する**(2026-08-24。
+  子には `--device <名前…>` と `--runner <ホスト|local>` を渡す
+- **`--runner` 明示は分散より強い**(「今回はこの機械で」の意味。MachineDispatch と同じ規律)
+- **`--runner H` に明示の `--device <名前>` を付けたら、名前は H の台に限定する**(2026-08-24。
   `RemoteDispatchExplicitDeviceScope`)。混在プロファイルでは同名の台が複数の機械にあるので、
   名前だけを子へ渡すと**全機械ぶんの同名を拾い**、手元の UDID をランナー機で探して
   `no simulator with that UDID` で落ちた(受け手報告 2026-08-23: local/M1Max/M1Ultra の同名
   iPhone で `--device` 1台 → Devices に3台)。子には `--device-machine M` を付けて渡し、
   名前が H に無ければ**H の台を列挙して手元で止める**(遠い失敗にしない)。別の機械の同名を
   指したいときは `--device-machine` を明示する。machine 未指定のプロファイルは従来どおり名前を素通し。
-  **`--host local` も同じ判定を通す**(2026-08-24。`run` / `api run` の2経路。手元実行だからと
+  **`--runner local` も同じ判定を通す**(2026-08-24。`run` / `api run` の2経路。手元実行だからと
   素通しにすると、名前が別ホストのエントリに解決して手元でそのホストの UDID を探し
   `no simulator with that UDID` で止まる — 受け手報告)
 - **ディスパッチ先はデバイスの居場所が優先**(`machineProfileHostAndName`)。既定だけを見ると、
@@ -661,10 +661,10 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
   一部の台だけ走らせるほうが「全部走った」と誤読されるので危険
 
 **この作業でリモート実行の欠陥が1つ出た(修正済み)**: `RemoteRunArgs.build`/`buildApi` が
-リモートへ `--host local` を渡していなかったため、マシンプロファイルに host があると
+リモートへ `--runner local` を渡していなかったため、マシンプロファイルに host があると
 **リモート側の fleetest が自分自身へ再ディスパッチしようとする**(登録簿に無ければ
 「未登録のホスト」で落ち、あれば自分へ ssh する)。`FleetRunner` が "local" エントリに
-`--host local` を渡すのと同じ理由で、リモート側は常にそこで止める。
+`--runner local` を渡すのと同じ理由で、リモート側は常にそこで止める。
 
 ### GUI のホスト指定はマシンプロファイルへ集約した(2026-08-17)
 
@@ -676,9 +676,9 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
   省略・空・`"local"` = ローカル。**旧キー `"host"` も読む**)。実行プロファイルは
   マシンプロファイル名を通じてそれを指すので、**実行プロファイルを選べば実行先も決まる**
   (間接指定)。ssh の実体は書けない = 登録名(エイリアス)だけ(§0 の規律3)
-- **`--machine`(登録名)/ `--host`(ホスト名・IP)は上書きとして残す**(CLI と自動化向け。
-  `--host` は当面エイリアスも受けるが、本来の口は `--machine`)。優先順位・食い違いの扱いは
-  `FTCore.MachineDispatch`。**明示 `--host local` は「ここで走らせる」であって未指定ではない**
+- **`--runner`(登録名またはホスト名・IP)は上書きとして残す**(CLI と自動化向け。
+  マシン名・生のホスト値のどちらも受ける単一の口)。優先順位・食い違いの扱いは
+  `FTCore.MachineDispatch`。**明示 `--runner local` は「ここで走らせる」であって未指定ではない**
 - **設定タブの「実行先」は廃止**。設定タブが持つのは**登録簿(名前 → ssh 宛先)だけ**
 - **マシンプロファイルの「取得元」も廃止**。デバイス候補をどのマシンから採るかは
   **「デバイスを選択」ダイアログのマシン選択**(`#device-pick-machine-select`)に移した
@@ -752,7 +752,7 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
 
 フリート内の重複は validate で防げるが、**別プロセス・別人・CLI と GUI の併走**は防げない。
 `<base>/.fleetest/dispatch.lock` を **`mkdir` の原子性**で取る(`test -e` → 作成の2段は競合に
-対して無意味)。**フリート専用にしない** —— 同一ホストの取り合いは `--host` 単発でも起きるので、
+対して無意味)。**フリート専用にしない** —— 同一ホストの取り合いは `--runner` 単発でも起きるので、
 ディスパッチ経路そのものに置く。
 
 - 取れなければ**待たずに fail fast**(exit 1)。誰がいつから掴んでいるかを出す
@@ -765,7 +765,7 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
 - ロック情報が読めなくても**ロック自体は尊重する**(壊れた情報で素通ししない)
 - 解放は `defer` で必ず行う(成功・失敗・タイムアウトのいずれでも)。**中断でも動くように、
   中断は子へ流して巻き戻す**(§16.1。時間で SIGKILL するとこの `defer` を飛ばす)
-- **`fleetest remote unlock --host <h>`(2026-08-24)**: 自分の死んだディスパッチが残したロック
+- **`fleetest remote unlock --runner <h>`(2026-08-24)**: 自分の死んだディスパッチが残したロック
   **だけ**を外す。`--force-lock` は走っているかもしれない他人の run を奪うので、残骸の片付けに
   それを使わせない(受け手要望: 複数人でフリートを共有すると「残ったロック + --force-lock」が
   事故になる)。判定は `RemoteDispatchUnlock.decide`(純粋関数): ロック無し=何もしない /
@@ -773,9 +773,9 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
   発行者無し=外さない / 同じ発行者で発行元がこの機械かつ pid が生きている=外さない(止めれば
   自分で解放する)/ それ以外=外す。**別の機械の pid の生死は見えない**ので、発行者が自分なら
   本人の申告として外す。heldMessage にこの口を案内する
-- **`--force-lock` は `--host` / `--fleet` に限らない**(2026-08-18 に緩めた。判定は
+- **`--force-lock` は `--runner` / `--fleet` に限らない**(2026-08-18 に緩めた。判定は
   `RemoteDispatchFlagPolicy.forceLockRejection`)。マシンプロファイル経由の自動ディスパッチや、
-  デバイスが複数の機械にまたがるプロファイル(ホスト別の子へ分かれる)では `--host` を打たない
+  デバイスが複数の機械にまたがるプロファイル(ホスト別の子へ分かれる)では `--runner` を打たない
   ので、限定していると**残ったロックを解除する手段が `remote clean`(デバイスも止まる)か
   手動削除しか無くなる**(実際に詰まった)。純粋にローカルだけの実行のときだけ打ち間違いとして拒否する
 
@@ -801,7 +801,7 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   (プロファイルの正は手元)。作成したデバイスは既存の経路で**手元のプロファイルへ**登録する。
   引数の組み立ては純粋関数1つ(`deviceCommandArgs`)に閉じ、ローカル取得時は引数を
   1バイトも変えない。
-  **経路は §14 の汎用転送(`fleetest --host <name> <サブコマンド>`)をそのまま使う** —
+  **経路は §14 の汎用転送(`fleetest --runner <name> <サブコマンド>`)をそのまま使う** —
   カタログ照会用の個別 ssh 実装は書かない。
   **リモートに対する破壊的操作(デバイス作成・削除・`devices down` 相当)は
   §11 と同じ modal 確認を付ける** — 共有ラボでは他人の実行環境を壊し得るため
@@ -864,7 +864,7 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
 **マシンプロファイルに無いリモートの台も devices に足す**(`mergedDevices`)—— listedTargets は
 手元のぶんしか無いので、そこで落とすと fan-out の結果が捨てられる。並びは id 順に固定
 (辞書の順序に任せるとタイルが毎サイクル並べ替わる)。
-| 映像 | 拡張が配信ヘルパーを直接 spawn | 拡張が `remote exec <host> -- api device-stream …` を spawn |
+| 映像 | 拡張が配信ヘルパーを直接 spawn | 拡張が `remote exec <runner> -- api device-stream …` を spawn |
 | 静止画 | monitorFrame(2秒毎) | 同じ(子の行をそのまま中継) |
 
 - **`--device-machine <machine>`**: 「この機械のデバイスとして扱う対象」。リモート機には
@@ -904,10 +904,10 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   interval(2秒)より長いため、1サイクル1台に固定して追加コストを撮影1回で頭打ちにし、
   更新間隔は対象の台数から決まるようにしてある。配信中(`suppressFrames`)の台は撮らない
 - **操作もその機械へ回す**(2026-08-17 のレビューで実バグ)。一括の起動・停止は
-  `RemoteDeviceFanout` で分散していたが、**タイル1枚の起動・停止は手元で `api device-up --name`
+  `RemoteDeviceFanout` で分散していたが、**タイル1枚の起動・停止は手元で `api start-device --name`
   を撃っていた** —— `findDevice` は名前だけで引くので、同名の台が別の機械にも居ると
   **別の機械の設定でこの Mac にシミュレータが1台できる**(simctl は無ければ作る)。
-  現在は拡張が `remote exec <machine> -- api device-up … --device-machine local` を通し、
+  現在は拡張が `remote exec <machine> -- api start-device … --device-machine local` を通し、
   `findDevice` も (machine, name) で引く。**向こうへ渡す値は常に `local`** —— 宛先はもう
   `remote exec` で選んでおり、送ったプロファイルは自分の台を `machine:"local"` に畳んである
   (§0 の規律「引数にエイリアスを出さない」)。**エイリアスを渡すと向こうで一致するエントリが
@@ -918,10 +918,10 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   **「M1Max を止めたつもりで手元が止まり、しかも ok:true で成功に見える」**になる
   (2026-08-17 に実際に起きた)。実行プロファイルの参照解決と同じ規律。
   **同じ規律で回すのは起動・停止だけではない** —— プロファイルタブの右クリック「Wipe Data」も
-  `remote exec <machine> -- api device-wipe …` を通す(手元で撃つと、同名の台が別の機械にも
+  `remote exec <machine> -- api wipe-device …` を通す(手元で撃つと、同名の台が別の機械にも
   居るとき**手元の台が初期化される**)
 - **「全て終了」(実行プロファイル未選択)も分散する**(2026-08-30 の実害)。拡張はこのとき
-  `api devices-down` ではなく従来の `fleetest devices down`(全ブリッジ停止 + `simctl shutdown all`
+  `api stop-all-devices` ではなく従来の `fleetest devices down`(全ブリッジ停止 + `simctl shutdown all`
   + 残った qemu の kill = マシンプロファイルに無い台も止める掃討)を呼ぶ。この掃討が手元しか
   見ていなかったので、**監視は登録簿の全マシンへ張るのに停止は手元だけ**という食い違いになり、
   リモートのタイルが1枚も消えなかった。現在は `RemoteDeviceFanout.dispatchSweep` が
@@ -936,7 +936,7 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   名前で撃つと `device not found: <名前>` で必ず失敗する。**タイルの起動・停止はこの穴を踏まない**
   —— タイルはモニターが起動時に読んだ台にしか出ないので、押せる名前は必ず同期済み。
   踏むのは**ライブのプロファイルを見ているプロファイルタブ**だけで、そこから撃つ Wipe Data は
-  **識別子で撃つ**(`api device-wipe --platform ios --udid <UDID>` /
+  **識別子で撃つ**(`api wipe-device --platform ios --udid <UDID>` /
   `--platform android --avd <ID>`)ことで解決した —— `api delete-device` と同じ契約で、
   プロジェクトもマシンプロファイルも参照しない。
   **操作のたびにプロジェクトを送り直す案(`remote exec --sync-project`)は却下** ——
@@ -983,14 +983,14 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
 
 **版が揃っていないと配信も状態も来ない**(`--device-machine` / `api device-stream` は新しい)。
 古い機械は「Unknown option」で即死 → 3回で諦め → タイルは「届いていません」のまま。
-`fleetest remote setup <host>` で揃える。
+`fleetest remote setup <runner>` で揃える。
 
 ### 実装順序
 
 | 段 | 内容 | 依存 |
 |---|---|---|
 | 0 | **暫定対処: `fleetest.remote.hosts`/`remote.target` へ `"scope": "machine"` 付与**(§15.2。移行前の設定乗っ取り防止) | なし。**Phase 1 実装へ即時適用済み(2026-07-31)** |
-| 1 | 登録簿の LocalConfig 移行+machine 対応・接続確認・状態表示+**汎用転送 `--host <サブコマンド>`**(§14) | — |
+| 1 | 登録簿の LocalConfig 移行+machine 対応・接続確認・状態表示+**汎用転送 `--runner <サブコマンド>`**(§14) | — |
 | 2 | マシンプロファイルタブの取得元セレクタ(段1の汎用転送を使うだけ) | 1 |
 | 3 | appPath の ssh 実在チェック(上書き機構は作らない) | 1 |
 | 4 | フリート定義+`run --fleet`+静的検証(host→machine→デバイス名解決の赤字表示) | 1 |
@@ -1055,7 +1055,7 @@ Scripts/install.sh             **そのまま流用**(外部構成で呼ぶ):
                                **--skip-project は使えない**(WORK_DIR に Package.swift が要る。§12)。
                                --tool-root も渡さない(既定の <work-dir>/../foundation-tester が
                                RemoteLayout.toolRoot とちょうど一致する)
-fleetest remote setup <host>    発行側の入口。local(手元のプロジェクト解決)→ reach → preflight
+fleetest remote setup <runner>  発行側の入口。local(手元のプロジェクト解決)→ reach → preflight
                                → install → align → machine → verify の7段。preflight と
                                install.sh は**手元のスクリプトを scp で送って実行する**
                                (リモートに clone が無い初回と、curl 形が main 固定で
@@ -1118,17 +1118,17 @@ ssh 越しの操作を用途ごとに実装しない。**2種類だけ**に整�
 
 | 種別 | 形 | 例 |
 |---|---|---|
-| **汎用転送**(状態照会・単発操作) | `fleetest remote exec <host> -- <サブコマンド>` = リモートで同じコマンドを実行して出力と終了コードを返すだけ | `remote exec studio -- doctor --fm-only`(§14 の FM 検証)/ `-- api device-catalog`・`-- api installed-devices`・`-- api create-device`・`-- api delete-device`(§13 のデバイス選択ダイアログ)/ `-- devices down` |
-| **ディスパッチ**(run 系) | `run --host` / `api run --host`(実装済み) | 転送(rsync)→ 実行 → 中継 → 回収が付く |
+| **汎用転送**(状態照会・単発操作) | `fleetest remote exec <runner> -- <サブコマンド>` = リモートで同じコマンドを実行して出力と終了コードを返すだけ | `remote exec studio -- doctor --fm-only`(§14 の FM 検証)/ `-- api device-catalog`・`-- api installed-devices`・`-- api create-device`・`-- api delete-device`(§13 のデバイス選択ダイアログ)/ `-- devices down` |
+| **ディスパッチ**(run 系) | `run --runner` / `api run --runner`(実装済み) | 転送(rsync)→ 実行 → 中継 → 回収が付く |
 
 §13 の「取得元セレクタ」「リモートデバイス作成」、§14 の FM 検証、設定タブの
 「このホストを更新」は**すべて汎用転送1つで賄える** — 個別の ssh 実装を書かない
 (RemoteExec ヘルパの一段上の一般化)。
 
 **当初案 `fleetest --host <name> <サブコマンド>` から形を変えた(2026-08-16)**:
-トップレベルの `--host` はサブコマンド解決と衝突し、`run --host`(ディスパッチ)と
-意味も食い違う。`remote exec <host> -- <args>` なら**ホスト名より後ろは全部素通し**という
-規則1つで済む。転送する引数に `--host` が含まれていたら拒否する(入れ子のディスパッチを作らない)。
+トップレベルの `--host` はサブコマンド解決と衝突し、`run --runner`(ディスパッチ)と
+意味も食い違う。`remote exec <runner> -- <args>` なら**ホスト名より後ろは全部素通し**という
+規則1つで済む。転送する引数に `--runner` が含まれていたら拒否する(入れ子のディスパッチを作らない)。
 
 ### 利用者から見た手順
 
@@ -1138,7 +1138,7 @@ ssh 越しの操作を用途ごとに実装しない。**2種類だけ**に整�
    (+必要に応じ Android SDK・英語化+AI 有効化)。以後この機械に触るのは、
    **モード A なら再起動のたびの解錠+ログイン1回だけ・モード B なら不要**
 2. **ステップ1(発行側から)**: `ssh-copy-id`(初回のみパスワード1回)→ 設定タブで
-   ホスト登録 → `fleetest remote setup <host>`。不足があれば手動手順の番号付きで
+   ホスト登録 → `fleetest remote setup <runner>`。不足があれば手動手順の番号付きで
    列挙されて止まる(直して同じコマンドを再実行 — 冪等)。全部揃うと
    clone → build(コールド数分は初回のみ)→ toolchain/FM 検証 →
    **SampleApp 1本のディスパッチ実走**まで通って ✅
@@ -1149,7 +1149,7 @@ ssh 越しの操作を用途ごとに実装しない。**2種類だけ**に整�
    (自動ログインで Aqua が立つ)。**モード A** は計画再起動なら
    `sudo fdesetup authrestart` → 起動後に画面共有でログイン1回。以後また無人。
    ログイン前にディスパッチすると「loginwindow で待機中 — 解錠が必要」で落ちる(§5)
-4. **撤去**: `fleetest remote setup <host> --uninstall`(LaunchAgent 撤去+clone 削除は
+4. **撤去**: `fleetest remote teardown <runner>`(LaunchAgent 撤去+clone 削除は
    確認付き)。手動ステップ0の戻し方は手順書に併記
 
 ### Phase 2 との接続
@@ -1297,7 +1297,7 @@ SIGHUP が伝播しない)。拡張の run キャンセル・Ctrl-C・ローカ�
 
 ssh を `-tt`(擬似 TTY 強制割り当て)で起動し、切断時に SIGHUP がリモートのプロセスグループへ
 伝わるようにする。副作用として ssh が stdin を TTY 化するため、**stdin は `/dev/null` に固定**
-する(ディスパッチは対話しない。`--debug` 等の stdin 制御はそもそも `--host` と併用不可)。
+する(ディスパッチは対話しない。`--debug` 等の stdin 制御はそもそも `--runner` と併用不可)。
 
 **`-tt` だけでは足りない**(2026-08-18 に実測): **親を殺しても子は死なない** —— Foundation の
 `Process` は親の終了に子を巻き込まないので、fleetest を kill しても **ssh クライアントが生き残り**、
@@ -1323,7 +1323,7 @@ ssh を `-tt`(擬似 TTY 強制割り当て)で起動し、切断時に SIGHUP �
   (`InterruptRelayTests` が自プロセスへ SIGINT を撃って固定する)
 
 取りこぼした孤児は 16.4 の `remote clean`(+ 終了スクリプトは `hooks reap`)で掃除する。
-**自分の死んだディスパッチが残したロックだけ**は `fleetest remote unlock --host <h>` で外す
+**自分の死んだディスパッチが残したロックだけ**は `fleetest remote unlock --runner <h>` で外す
 (下記「二重ディスパッチのロック」)。
 
 ### 16.2 ディスパッチ全体のタイムアウト(要実装)
@@ -1345,7 +1345,7 @@ ssh を `-tt`(擬似 TTY 強制割り当て)で起動し、切断時に SIGHUP �
 
 `<base>/work` の results DB・reports・録画は**溜まり続ける**。ローカルなら人が気付くが
 **ランナーは誰も見ない** — 数か月でディスクフルになり、ある日フリート全体が落ちる。
-`fleetest remote clean <host>` で ①孤児プロセス・ゾンビブリッジの掃除(`devices down` 相当)
+`fleetest remote clean <runner>` で ①孤児プロセス・ゾンビブリッジの掃除(`devices down` 相当)
 ②保持ポリシーを超えた results/reports/録画の削除、を行う。空き容量は 16.5 の status に出す。
 **走っている run があるときは中止する**(§18.7。`--ignore-lock` で押し切れる)。
 **発行者別の使用量も出す**(`du -sk users/*/work`。ディスクはホスト共有資源なので
@@ -1389,7 +1389,7 @@ Xcode/macOS を更新すると ToolchainFingerprint が不一致になり**全�
 - **インフラ起因の失敗はシナリオの失敗と区別する**(到達不能・loginwindow・タイムアウト)。
   将来の別ホストへの振り替え(Phase 3)は**インフラ起因に限定**する —
   シナリオ失敗の自動リトライは flake を隠すため入れない(既存方針)
-- `--host` + ドライラン(転送内容と実行コマンドだけ表示)は切り分けに有用。
+- `--runner` + ドライラン(転送内容と実行コマンドだけ表示)は切り分けに有用。
   現在 `--dry-run` は併用不可なので、別フラグとして足す価値がある
 
 ### 実装順序
@@ -1483,7 +1483,7 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   declaredAppPaths` で原本パスだけ取得する)。同じコードパスがリモートの子(ssh 越しに
   実行される `fleetest run`/`api run` 自身)でも走るが、そちらは原本を持たないため
   上記の「dest があれば無視」で無害化される
-- **ミラー(プロジェクト外を指したときだけ)**: `--host` ディスパッチ時、`TestProjects/<project>/`
+- **ミラー(プロジェクト外を指したときだけ)**: `--runner` ディスパッチ時、`TestProjects/<project>/`
   の転送(§13)とは別枠でワークスペースを丸ごと rsync する(`RemoteTransferPlan.
   workspaceRsyncArgs` = `-az --delete`、除外は `.git`/`.DS_Store`/`node_modules`)。
   ミラー先はプロジェクトごとに分ける(`<remoteDir>/work/workspace/<project>/`。
@@ -1494,9 +1494,9 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   ない** —— リモートディスパッチ(`Sources/fleetest/RemoteRunDispatcher.swift` の
   `prepareWorkspace`)が、`WorkspaceRemoteDispatch.placement` の計算結果(配下ならプロジェクト
   ディレクトリ配下のパス、配下でなければミラー先)をリモートの子(`fleetest run/api run
-  --host local …`)へ必ず渡す。渡し漏れると子は自分自身の既定/宣言で別のパスを組み立ててしまう
+  --runner local …`)へ必ず渡す。渡し漏れると子は自分自身の既定/宣言で別のパスを組み立ててしまう
 - **多ホスト(§13 DeviceMachineRunner/ApiRunMachineFanout・フリート§8)への波及なし**: どちらも
-  ホストごとの子プロセスとして `fleetest (api) run --host <label> …` を起動するだけで、
+  ホストごとの子プロセスとして `fleetest (api) run --runner <label> …` を起動するだけで、
   各子は自分自身が `RemoteRunDispatcher` を経由するときに独立してワークスペースの用意を行う
   (二重実装ではなく、既存の子プロセス起動経路にこの節の機構がそのまま乗る)
 
@@ -1545,7 +1545,7 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   名前と置き場所が1つに決まっているほうが、受け手にも回収側にも読み違えが起きない。
   無ければ何もしない(スクリプトを使わない利用者に空ファイルを強いない)
 - **実行場所はランナー機**。呼ぶのは `ProfileRunner.run` と `ApiRunCommand` の2箇所
-  (ワークスペースのステージングと同じ場所)で、リモートの子は `fleetest run --host local` として
+  (ワークスペースのステージングと同じ場所)で、リモートの子は `fleetest run --runner local` として
   向こうで同じコードを通る —— **`RemoteRunDispatcher` には何も足さない**(手元とリモートで
   実装が割れない)。ワークスペースごと運ばれるので、スクリプトと資材は勝手に届く
 - **順序**: デバイスに触る前に撃つ(依存サービスが無いままシミュレータを起こしても、
@@ -1718,7 +1718,7 @@ upstream main を clone して update.sh で追従するので、2人の rev は
 ```
 
 - **これが唯一のレイアウト**(二重サポートしない — モードが2つあると版スキューと同型の
-  恒常バグ族になる)。既存利用者の移行は `fleetest remote setup <host>` を1回再実行
+  恒常バグ族になる)。既存利用者の移行は `fleetest remote setup <runner>` を1回再実行
   (tool は既存なのでコールドビルド無し)。旧 `<base>/work` は手で消してよい
   (`remote clean` の保持ポリシー掃除は移行期の間、旧レイアウトも対象に含める)
 - **鍵は issuerId**。パスに使うので文字種を入口で検証する(`RemoteLayout.validateIssuerKey`:
@@ -1840,9 +1840,9 @@ upstream main を clone して update.sh で追従するので、2人の rev は
 (`FMLock.defaultConcurrency` = 5。根拠は docs/performance-tuning.md §3.5)が効く。
 
 ```
-fleetest remote hosts add M1Ultra --host user@10.0.0.2 --fm-concurrency 1
-fleetest remote hosts add M1Ultra --host user@10.0.0.2 --clear-fm-concurrency   # 既定へ戻す
-fleetest remote hosts list                                                       # FM 列に出る
+fleetest remote machines add M1Ultra --host user@10.0.0.2 --fm-concurrency 1
+fleetest remote machines add M1Ultra --host user@10.0.0.2 --clear-fm-concurrency   # 既定へ戻す
+fleetest remote machines list                                                       # FM 列に出る
 ```
 
 **`--fm-concurrency` を省略した add は既存の値を保つ**(upsert なので、指定なしを「消す」に

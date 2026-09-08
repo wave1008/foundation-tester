@@ -108,7 +108,7 @@ public enum AndroidDataWiper {
     }
 
     /// 1台ぶんの Wipe Data(しきい値を見ない。手元/リモートの手動実行 =
-    /// `fleetest api device-wipe` から DeviceWiper 経由で呼ぶ)。**肥大化チェックの経路と
+    /// `fleetest api wipe-device` から DeviceWiper 経由で呼ぶ)。**肥大化チェックの経路と
     /// 同じ本体**(performWipe)を通す —— 停止できたときだけ消す・稼働中だった台だけ起こし直す、
     /// という規律を2箇所に持たない。AVD ディレクトリが見つからないのは失敗
     /// (自動チェックは毎 run のノイズになるので警告して飛ばすが、人が選んで撃った1台は黙って

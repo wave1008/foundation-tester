@@ -384,7 +384,7 @@ public struct BridgeProvisioner {
         // シミュレータの画面凍結クラスタが同日2回発生した(a11y は応答・描画とタップが停止。
         // 凍結検出器がワーカー除外して完走はする)。Android で対照実験済みの「複数台同時描画」
         // 凍結と同族とみて、一括デバイス起動と同じ「同時2台」に絞る(ユーザー決定の
-        // device-up ポリシーと同じ理屈)。再利用/adopt だけの供給は launch を伴わないので
+        // start-device ポリシーと同じ理屈)。再利用/adopt だけの供給は launch を伴わないので
         // 従来どおり全並列 = xcuitest ランナー再利用時の供給時間は変わらない
         let launchesInApp = plans.contains { plan in
             plan.bridges.contains { bridge in

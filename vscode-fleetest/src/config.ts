@@ -63,7 +63,7 @@ export interface FleetestConfig {
    * resolveFailedFilter。トグルボタンの context key 同期は extension.ts registerCommands)。 */
   showOnlyFailedTests: boolean;
   /** true の場合、ブリッジ無応答(connected→booted 降格が booted 連続5回続く)を検出したら、実行中の
-   * レーンが無い間に限り device-up で自動修復を試みる(monitorBridgeWatchdog.ts)。 */
+   * レーンが無い間に限り start-device で自動修復を試みる(monitorBridgeWatchdog.ts)。 */
   autoRepairBridge: boolean;
   /** true の場合、Android ゲスト OS 異常(Wi-Fi 無効・時計凍結)を検出したら Wi-Fi 再有効化→再起動の
    * 順で自動修復を試みる(monitorHealthWatchdog.ts)。既定 false: autoRepairBridge と異なり、
@@ -79,7 +79,7 @@ export interface FleetestConfig {
    * results/ を回収するか("collect" 既定 / "on-demand" は回収しない)。run がどのホストへ
    * ディスパッチされるかはこの設定には無い —— CLI がマシンプロファイルの `host` フィールドから
    * 判定する(拡張は関与しない)。登録簿(name→host/dir/machine)もここには持たない ——
-   * 正は CLI の LocalConfig で、remoteHostsController.ts が `fleetest api remote-hosts` を読む
+   * 正は CLI の LocalConfig で、remoteHostsController.ts が `fleetest api remote-machines` を読む
    * (設定タブのホスト表を支えるためだけに使う)。 */
   remote: { artifacts: "collect" | "on-demand" };
   /** true の場合、実行(dry-run・ライブ操作パネル連動を除く)開始前に `fleetest api remote-compat` で

@@ -98,8 +98,8 @@ test('失敗があれば印を書かない(失敗を検証済みにしない)', 
 })
 
 // ゲートが呼ぶ形(e2e.sh 側)はバイナリが無くても見られるので、実在照合と分けて常に走らせる。
-test('ゲートは api bridge-sources を --set/--digest 付きで呼ぶ', () => {
-  assert.match(source, /api bridge-sources --set "\$1" --digest/)
+test('ゲートは api bridge-sources を --bridge/--digest 付きで呼ぶ', () => {
+  assert.match(source, /api bridge-sources --bridge "\$1" --digest/)
 })
 
 test('ゲートが呼ぶ api サブコマンドが実在する',
@@ -108,9 +108,9 @@ test('ゲートが呼ぶ api サブコマンドが実在する',
   const help = execFileSync('bash', ['-c',
     `cd ${JSON.stringify(ROOT)} && .build/debug/fleetest api bridge-sources --help 2>&1 || true`],
     { encoding: 'utf8' })
-  assert.match(help, /--set/)
+  assert.match(help, /--bridge/)
   assert.match(help, /--digest/)
-  // --set が受ける値(この2つを渡す)が help に出ていること
+  // --bridge が受ける値(この2つを渡す)が help に出ていること
   assert.match(help, /inapp/)
   assert.match(help, /xcuitest/)
 })

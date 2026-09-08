@@ -704,7 +704,7 @@ export function renderDeviceOpMenuItem() {
   // 未登録(マシンプロファイル未記載)のシミュレータ/エミュレータは起動(up)が --name 前提のため
   // 成立しない。停止(down)だけ出す。
   // **実機は例外** —— 実機の up は「ブリッジを起動」であって端末の電源ではなく、udid で撃てる
-  // (device-up --udid)。ここで隠すと、繋がっている実機がタイルに出るのに何も操作できない
+  // (start-device --udid)。ここで隠すと、繋がっている実機がタイルに出るのに何も操作できない
   // (2026-07-25 に一度直した実害が、未登録デバイスを出すようになった時点で実機に再発していた)
   if (device.registered === false && item.op !== 'down' && device.kind !== 'physical') {
     deviceOpMenuItemBtn.style.display = 'none';
@@ -923,7 +923,7 @@ deviceOpMenuItemBtn.addEventListener('click', (event) => {
     machine: device.machine,
   };
   // 未登録(registered:false)はマシンプロファイルに無いため --name で引けない。udid(iOS)/
-  // serial(Android)を載せ、拡張側(monitorDeviceOps.ts)が device-down --udid/--serial の
+  // serial(Android)を載せ、拡張側(monitorDeviceOps.ts)が stop-device --udid/--serial の
   // 直指定モードへ振り分ける(契約: monitorWebviewMessages.ts の "deviceOp")。
   if (device.registered === false) {
     message.registered = false;
@@ -1181,7 +1181,7 @@ export function applyH264Chunk(message) {
 
 // 契約: { type: 'deviceOpBusy', name, op, status }(monitorDeviceOps.ts postDeviceLifecycleStatus と対。
 // op: 'up'|'down'|null、status: 'queued'|'running'|null)。一括起動時は executeBulkJob の
-// devices-up NDJSON 中継からも同形のメッセージが飛ぶ(op:'up'→null。由来は個別デバイスではなく一括起動)。
+// start-all-devices NDJSON 中継からも同形のメッセージが飛ぶ(op:'up'→null。由来は個別デバイスではなく一括起動)。
 export function applyDeviceOpBusy(message) {
   const entry = findTileByName(message.name, message.machine);
   if (!entry) {
@@ -1214,7 +1214,7 @@ export function applyDeviceOpBusy(message) {
   renderFrame(entry);
 }
 
-// 契約: { type: 'deviceDownFinished', name }(monitorWebviewMessages.ts / monitorDeviceOps.ts の api devices-down)。
+// 契約: { type: 'deviceDownFinished', name }(monitorWebviewMessages.ts / monitorDeviceOps.ts の api stop-all-devices)。
 // 一括 down で1台の停止が完了した通知。down 中はモニターが pause で state 更新を出さないため、この
 // タイルだけ offline を先行反映して「未起動」へ倒す(次の devices 反映=resume 後に本物の state で
 // 上書きされる)。opBusy も解除する。offline を立てることで renderFrame が凍結フレームを出さない

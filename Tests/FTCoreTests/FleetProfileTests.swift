@@ -179,7 +179,7 @@ final class FleetProfileTests: XCTestCase {
     // MARK: - description text
 
     func testUnregisteredHostDescriptionMentionsHostsAdd() {
-        XCTAssertTrue(FleetValidationIssue.unregisteredHost("x").description.contains("remote hosts add"))
+        XCTAssertTrue(FleetValidationIssue.unregisteredHost("x").description.contains("remote machines add"))
     }
 
     // MARK: - aggregateExitCode

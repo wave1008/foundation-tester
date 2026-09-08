@@ -17,16 +17,16 @@ struct ApiBridgeSourcesCommand: AsyncParsableCommand {
             + " Touches no device")
 
     @Option(help: "Which bridge: inapp / xcuitest / android")
-    var set: String = "inapp"
+    var bridge: String = "inapp"
 
     @Flag(help: "Print one digest line instead of the file list")
     var digest = false
 
     func run() async throws {
         // 綴りは CLI 向けの語(inapp)で受け、内部の case 名(inApp)へ寄せる
-        let normalized = set.lowercased() == "inapp" ? "inApp" : set
+        let normalized = bridge.lowercased() == "inapp" ? "inApp" : bridge
         guard let sourceSet = BridgeSourceSet(rawValue: normalized) else {
-            throw ValidationError("unknown --set \(set)"
+            throw ValidationError("unknown --bridge \(bridge)"
                 + " (expected one of: inapp, xcuitest, android)")
         }
         let root = try RepoRoot.find()

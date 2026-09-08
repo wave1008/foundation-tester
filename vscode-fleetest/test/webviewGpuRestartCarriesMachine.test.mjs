@@ -1,9 +1,9 @@
 // タイルの「GPU で再起動」が **(machine, name)** で宛先を言うことの DOM テスト。
 //
 // 実害の形: リモートのタイルも CPU バッジ(renderMode==='cpu')を出すのでメニューは出るが、
-// 名前だけを送っていたため、拡張は手元の `api devices-restart --name` を撃ち**手元の同名の台**が
+// 名前だけを送っていたため、拡張は手元の `api restart-devices --name` を撃ち**手元の同名の台**が
 // 再起動された。deviceOp(起動/停止)は machine を載せていたのに、この経路だけ落ちていた。
-// 一括起動の restartNames(devices-up --restart)は手元へしか中継されないので、リモートの
+// 一括起動の restartNames(start-all-devices --restart)は手元へしか中継されないので、リモートの
 // CPU バッジ機は含めない(含めると同じ形で手元の同名の台が再起動される)。
 //
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewRemoteTilePlaceholder.test.mjs と同じ。
@@ -133,5 +133,5 @@ test("「デバイスを全て起動」の restartNames にリモートの CPU �
     new window.MouseEvent("click", { bubbles: true, cancelable: true }));
   const up = sent.find((m) => m.type === "devicesUp");
   assert.deepStrictEqual(JSON.parse(JSON.stringify(up)), { type: "devicesUp", restartNames: ["Dev 2"] },
-    "devices-up --restart は手元へしか中継されないので、リモートの名前は手元の同名の台を再起動してしまう");
+    "start-all-devices --restart は手元へしか中継されないので、リモートの名前は手元の同名の台を再起動してしまう");
 });

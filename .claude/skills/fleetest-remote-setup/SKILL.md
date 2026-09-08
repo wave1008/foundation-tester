@@ -9,7 +9,7 @@ description: 別の Mac(ランナー機)を用意して、手元から SSH で�
 > この手順書は日本語だが、読者はエージェントであり利用者の言語とは独立している。
 
 手元の Mac から**別の Mac(ランナー機)へジョブ単位でディスパッチする**ための導入。
-実行は `fleetest run --host <ホスト>` になり、シナリオとプロファイルは実行のたびに自動転送される。
+実行は `fleetest run --runner <ランナー>` になり、シナリオとプロファイルは実行のたびに自動転送される。
 
 **利用者向けの全体像・前提の一覧・トラブルシュート表は docs/remote-runner-setup.md**
 (この手順書と重複させない。詳細を聞かれたらそちらを読んで答える)。
@@ -108,13 +108,13 @@ fleetest remote exec <宛先> -- api installed-devices
 (iOS は `name`/`simulator`/`os`/`udid`、Android は `name`/`avd`)。
 **プロファイルは手元の資産で、実行のたびに転送される**ので、編集は常に手元だけで行う。
 
-**`"host"` に登録名を入れる**(ステップ0で決めた名前 = `remote hosts add` した名前)。
-これが**ディスパッチ先の決定点**で、以後 `--host` を付けなくても実行プロファイルを選ぶだけで
+**`"machine"` に登録名を入れる**(ステップ0で決めた名前 = `remote machines add` した名前)。
+これが**ディスパッチ先の決定点**で、以後 `--runner` を付けなくても実行プロファイルを選ぶだけで
 その機械へ飛ぶ。ローカルのマシンプロファイルには書かない(省略 = 手元)。
 **ssh の実体(`user@host`)は書けない** —— 登録名だけ。
 
 ```jsonc
-{ "host": "<登録名>", "ios": { "devices": [{ "name": "iPhone 17 Pro", "udid": "…" }] } }
+{ "machine": "<登録名>", "ios": { "devices": [{ "name": "iPhone 17 Pro", "udid": "…" }] } }
 ```
 
 続けて実行プロファイル(`profiles/runs/<名前>.json`)を1つ作る:
@@ -139,7 +139,7 @@ fleetest remote setup <宛先> --project <プロジェクト> --profile <実行�
 **ビルドが通っただけでは成功ではない。** 実ディスパッチ1本が通って初めて完了。
 `✅ [ok] verify: dispatch to <宛先> passed` が出れば導入完了。
 
-以後の実行は **`--host` を付けない**(ステップ4 でマシンプロファイルに `host` を書いてあれば、
+以後の実行は **`--runner` を付けない**(ステップ4 でマシンプロファイルに `machine` を書いてあれば、
 実行プロファイルを選ぶだけでその機械へ飛ぶ):
 
 ```
@@ -147,15 +147,15 @@ fleetest run --project <プロジェクト> --profile <実行プロファイル>
 ```
 
 初回はリモートのコールドビルドで数分、**2回目以降は十数秒**(ブリッジを再利用する)。
-今回だけ行き先を変えたいときだけ `--host <登録名>` / `--host local` を足す(明示が勝つ)。
+今回だけ行き先を変えたいときだけ `--runner <登録名>` / `--runner local` を足す(明示が勝つ)。
 
 ### 7. 完了報告(ユーザーの言語で)
 
-- 実行コマンド(上の `run --host` の形)
+- 実行コマンド(上の `run --runner` の形)
 - 成果物の場所: レポートと録画は手元の `TestProjects/<プロジェクト>/reports` / `results` へ回収される
 - 日常運用の口を3つだけ伝える:
-  - `fleetest remote status --host <宛先>` — 使える状態か(到達性・ログイン・版・空き容量)
-  - `fleetest remote clean --host <宛先> --keep-days 7` — **定期的に。**
+  - `fleetest remote status --runner <宛先>` — 使える状態か(到達性・ログイン・版・空き容量)
+  - `fleetest remote clean --runner <宛先> --keep-days 7` — **定期的に。**
     ランナー機は誰も見ないので results/録画が溜まり、ある日ディスクフルで止まる
   - `fleetest remote setup <宛先>` — **ツールを更新したらこれを流し直す**(版を合わせる。
     更新専用の手順は無い = 導入と同じコマンド。**Xcode/macOS の更新だけは例外**で、
@@ -180,11 +180,11 @@ fleetest run --project <プロジェクト> --profile <実行プロファイル>
 
 ## 2台目以降を足すとき
 
-同じ手順を繰り返すだけ。**登録簿に名前を付けておく**(その名前をマシンプロファイルの `host` に
-書くと、実行プロファイルの選択だけで行き先が決まる。`--host <名前>` でも指せる):
+同じ手順を繰り返すだけ。**登録簿に名前を付けておく**(その名前をマシンプロファイルの `machine` に
+書くと、実行プロファイルの選択だけで行き先が決まる。`--runner <名前>` でも指せる):
 
 ```
-fleetest remote hosts add <名前> --host <宛先>
+fleetest remote machines add <名前> --host <宛先>
 ```
 
 複数台へ一斉に流すなら**フリート**を作る(`TestProjects/<プロジェクト>/profiles/fleets/<名前>.json`。

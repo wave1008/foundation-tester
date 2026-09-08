@@ -260,7 +260,7 @@ export const panelsStrings = {
   "panels.settings.languageJa": { ja: "日本語", en: "日本語" },
   "panels.settings.languageEn": { ja: "English", en: "English" },
 
-  // docs/remote-runner.md §12。実体は CLI のホスト登録簿(`fleetest api remote-hosts`)+
+  // docs/remote-runner.md §12。実体は CLI のホスト登録簿(`fleetest api remote-machines`)+
   // fleetest.remote.artifacts 設定(config.ts)、このタブはもう1つの操作口。
   // 行内容(削除ボタン)は settingsTab.js が動的生成するため webview 側辞書
   // (i18n/strings/webviewMonitorB.ts の wvMonitor2.remote.*)を使う。ここは静的ラベルのみ。
@@ -269,7 +269,7 @@ export const panelsStrings = {
   "panels.settings.remoteArtifactsLabel": { ja: "成果物(録画・ログ)", en: "Artifacts (recordings, logs)" },
   "panels.settings.remoteArtifactsCollect": { ja: "回収する", en: "Collect" },
   "panels.settings.remoteArtifactsOnDemand": { ja: "オンデマンド", en: "On demand" },
-  // 列見出しは「マシン」(2026-08-26 指示)。プロファイルの machine 欄・--machine に書く名前と同じもの
+  // 列見出しは「マシン」(2026-08-26 指示)。プロファイルの machine 欄・--runner に書く名前と同じもの
   "panels.settings.remoteHostsColMachine": {
     ja: "マシン(任意のエイリアス)",
     en: "Machine (optional alias)",

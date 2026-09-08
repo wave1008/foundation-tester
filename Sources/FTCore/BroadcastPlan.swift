@@ -62,7 +62,7 @@ public struct BroadcastPlan: Sendable {
     }
 
     /// ワーカーがどのレーンのぶんを回すか。プロファイル経路は `logicalName`(復帰で label =
-    /// ポートが変わっても同じ台は同じ key に戻る)。非プロファイル経路(--ports)は label
+    /// ポートが変わっても同じ台は同じ key に戻る)。非プロファイル経路(--port)は label
     public static func laneKey(of worker: RunWorker) -> String {
         worker.logicalName ?? worker.label
     }

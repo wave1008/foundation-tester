@@ -1,4 +1,4 @@
-// device-down の --name/--udid/--serial 直指定モード(未登録デバイス向け)。
+// stop-device の --name/--udid/--serial 直指定モード(未登録デバイス向け)。
 // ApiDeviceDownDirectTarget.resolve(検証)・ApiDeviceDownDirectSpec(spec 合成)はどちらも
 // I/O を持たない pure 関数なので、ここではカタログ・シミュレータ無しで判定ロジックだけを検証する。
 

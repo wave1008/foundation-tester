@@ -1,4 +1,4 @@
-// ホスト混在プロファイルを --host で単一ホストへ丸ごと送らないための絞り込み判定を固定する。
+// ホスト混在プロファイルを --runner で単一ホストへ丸ごと送らないための絞り込み判定を固定する。
 // 丸ごと送ると受け側の「local」枠が発行元のデバイスに解決される(2026-08-18 実害)。
 
 import XCTest
@@ -53,7 +53,7 @@ final class RemoteDispatchDeviceScopeTests: XCTestCase {
     }
 }
 
-/// `--host H --device <名前>`(--device-machine 無し)は H の台に限定する。同名の台が3機に
+/// `--runner H --device <名前>`(--device-machine 無し)は H の台に限定する。同名の台が3機に
 /// あるプロファイルで名前だけを渡すと、子が3機ぶんを拾って手元の UDID を向こうで探す
 /// (受け手報告 2026-08-23)
 final class RemoteDispatchExplicitDeviceScopeTests: XCTestCase {

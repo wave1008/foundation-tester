@@ -998,13 +998,14 @@ struct TriageSuggestion {          // 失敗トリアージ
 ## 6. CLI UX
 
 ```
+fleetest --version                         # <git の短い revision> (protocol <版>)。ビルドの特定に使う
 fleetest doctor                            # FM 可用性・Xcode・シミュレータ・adb の事前チェック
 fleetest bridge up|down|status [--platform ios|android] [--device ...] [--serial ...]
                                            # ブリッジ(iOS: 常駐 XCUITest / Android: 常駐 instrumentation)の管理
 fleetest run [--project P] [--profile 名] [--scenario id...] \
-    [--set キー=値] [--report-dir ...] [--ports 8123,8124] [--skip-build]
+    [--set キー=値] [--report-dir ...] [--port 8123 --port 8124] [--skip-build]
                                            # Swift シナリオの決定的実行(プロファイル実行は§11)
-fleetest draft-scenario [--project P] [--testbase 資料.md] [--app ...] [--no-fm] [--dry-run]
+fleetest draft-scenario [--project P] [--testbase 資料.md] [--app-id ...] [--no-fm] [--dry-run]
                                            # テスト設計資料からシナリオ下書きを生成(§17)
 fleetest project create|list|sync          # テストプロジェクトの作成・一覧・Package.swift 再整合(§11)
 fleetest profile list                      # 実行プロファイルの一覧と現在マシンでの解決チェック(§11)
@@ -1021,6 +1022,9 @@ fleetest snapshot [--json] | tap | type | swipe | press | screenshot
   起動する経路は無い)。プロセスは常駐し、停止は `bridge down` か `devices down` を要する
 - **`run --profile` は終了時にブリッジを停止しない**(常駐を残すのが仕様。次の run が版一致なら再利用する。
   利用者向けのコマンドは README「コマンド一覧」)
+- **`fleetest --version` と `fleetest api version` は用途が違う**: 前者は人間向け(revision + protocol 版の
+  1行)、後者は従来どおりプロトコル版だけを JSON で返す機械可読な口(`ToolVersion.describe()` /
+  `fleetestProtocolVersion`)
 
 CLI/MCP/VSCode 拡張はいずれも同じ `fleetest api ...` 系サブコマンドを経由して呼び出す共通実装(§11.4 参照)。
 
@@ -1356,7 +1360,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   `app:` を書いた場合は**そちらが勝つ** —— 1プロジェクトに複数アプリのシナリオが混在する構成を
   壊さないため(実行プロファイル側にシナリオを絞り込む仕組みが無く、プロファイルを常に勝たせると
   別アプリのシナリオが**黙って**誤ったアプリを起動する)。食い違いは警告1行だけ出す。
-  どちらからも決まらなければ明示エラー(`fleetest run --app <bundleID>` が逃げ道。
+  どちらからも決まらなければ明示エラー(`fleetest run --app-id <bundleID>` が逃げ道。
   **dry-run だけは代替表記で通す** —— デバイスに触らず bundle ID を使わないので、
   ここで落とすと「実行プロファイル無しでは構文検査もできない」になる)
 - **`@Test(platform:)`** はメソッド単位の対象 OS 宣言(クラスの `platform:` より優先)。
@@ -3429,7 +3433,7 @@ executableTarget `fleetest-scenarios-<name>`(path: `TestProjects/<name>/scenario
   バイナリ毎に objc 走査が分かれるため、シナリオ一覧のプロジェクト別化は発見ロジック無変更で成立
 - プロジェクト名は SPM ターゲット名になるため `^[A-Za-z0-9_][A-Za-z0-9_-]*$`(日本語はクラス名側で使う)
 - `--project` 省略時の解決: TestProjects/ が 1 つならそれ → LocalConfig.defaultProject → 候補一覧付きエラー
-- CLI: `fleetest project create <name> [--app <bundleID>]` / `project list` / `project sync`
+- CLI: `fleetest project create <name> [--app-id <bundleID>]` / `project list` / `project sync`
   (手動コピーや git pull 後の TestProjects/ ↔ マーカー区間の再整合)
 
 ### 11.2 プロファイルは 3 種の組み合わせ
@@ -3520,7 +3524,7 @@ targeting = bundletool にしか決められない。feature module を足した
 - 拡張のデバイスピッカー(「+既存から選択」)が接続中の実機を出すので、手書きしなくてよい
 - **iOS 実機は engine が `xcuitest` に固定される**(dylib 注入は実機不可なので `iosInappEngine`
   の既定 hybrid を無視する。`engine: "inapp"` を明示すると検証エラー)
-- **実機は一括操作(`devices up/down` / `api devices-up/devices-down/devices-restart` /
+- **実機は一括操作(`devices up/down` / `api start-all-devices/stop-all-devices/restart-devices` /
   モニターの「全て起動」「全て終了」)の対象外**(ユーザー決定 2026-08-30。再提案しない)——
   実機は端末そのものを起動・停止できないため、混ざっていると一括起動が数分のブリッジ供給
   (build-for-testing)を始めて同時起動枠(2台)の半分を専有し、他機のブートを遅らせていた。
@@ -3578,7 +3582,7 @@ skip(素通り)になり、FM 利用不可時と同じ扱い。**`triage` は合
 再インストール、ロケールは下記 `locale` が再ブート後に自動適用される)。
 
 手動の Wipe Data はプロファイルタブの**デバイス行の右クリック**から撃つ(Android =
-`fleetest api device-wipe --platform android --avd <ID>` = 上と同じファイル集合の削除、
+`fleetest api wipe-device --platform android --avd <ID>` = 上と同じファイル集合の削除、
 iOS = `--platform ios --udid <UDID>` = `simctl erase`。リモートは `remote exec <機械> --` で回す)。
 **識別子だけで撃ち、プロジェクトもマシンプロファイルも参照しない**(`api delete-device` と同じ契約)
 —— 名前で引くと、リモートではランナー側の複製が古いときに `device not found` で必ず失敗し
@@ -3610,7 +3614,7 @@ run 開始が約1分延びる(ゲスト再起動では戻らない)。戻した�
 また CPU に落とす(§12.4 の既知トレードオフ)。UI はデバイスタブの実行プロファイル設定
 「CPUフォールバックをGPUに回復する」。拡張側の記憶(`MonitorDeviceOps.cpuRenderNames`)は
 モニターが再検出した renderMode を見て `syncCpuRenderNames` が落とす(run 側の復帰は拡張の外で
-起きるため、これが無いと次の個別 device-up が再び swiftshader で起こしてしまう)。
+起きるため、これが無いと次の個別 `start-device` が再び swiftshader で起こしてしまう)。
 
 `enableAnimations`(既定 false)を true にすると、**テスト対象アプリのアニメーションを残す**。
 既定(false)では run 開始時に Android の `window/transition/animator_*_scale` を 0 にし、iOS
@@ -3705,12 +3709,12 @@ run 自体は完了させる。期限側は敗者 task に触れず放置する(
 `--bit-rate` の両方に適用。`recordFullResolution`(既定 false)は true で半分解像度化(iOS 再エンコード
 時の縮小・Android `screenrecord --size`)をスキップしフル解像度のまま出力する。
 
-`locale`(既定 "ja_JP")は Android エミュレータのブート完了時(device-up と wipe 後の再起動)に
+`locale`(既定 "ja_JP")は Android エミュレータのブート完了時(`api start-device` と wipe 後の再起動)に
 適用される。**Play イメージは root/`setprop`/`settings put system system_locales`/emulator の
 `-change-locale` が全て無効**(実測 2026-07-17)のため、適用はブリッジの `POST /locale`
 (BridgeRouter.java: shell 権限借用 CHANGE_CONFIGURATION + IActivityManager.
 updatePersistentConfiguration、要 `hidden_api_policy=1`=ブリッジ起動時に自動設定)で行う。
-一致時は no-op、変更は再起動を跨いで永続。iOS には影響しない。device-up 経由の既定は
+一致時は no-op、変更は再起動を跨いで永続。iOS には影響しない。`api start-device` 経由の既定は
 DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wipe 再起動経路のみ)。
 
 ### 11.3 解決規則(ProfileResolver)
@@ -3734,7 +3738,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
 5. platform 未指定(@TestClass / @Test 両対応)のシナリオは iOS ワーカーがいれば ios キューへ。
    **platform を宣言していて、この run がその OS を回さないシナリオはキューに入れず skipped**
    (`PlatformApplicability`。ProfileRunner / `api run` の profile 経路だけ。
-   `--ports` / `--serial` 直指定は回す OS の集合を宣言しないので対象外)
+   `--port` / `--serial` 直指定は回す OS の集合を宣言しないので対象外)
 6. 未知キーは警告(タイポ検出)。相対パスのチルダ展開あり。基準は用途で異なる:
    `appPath` はリポジトリルート基準、`reportDir` はプロジェクトルート基準(RunProfile.resolve)
 7. 合成後は必須検証済みの `ResolvedProfile` になり、実行コードはこれだけを見る
@@ -3780,7 +3784,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
 ### 11.5 インターフェース
 
 - CLI: `fleetest run [--project P] [--profile 名] [--scenario ...]`(profile 未指定時は従来どおり
-  手動 --ports/--serial)、`fleetest profile list`(解決結果と整合チェック)
+  手動 --port/--serial)、`fleetest profile list`(解決結果と整合チェック)
 - **GUI(SwiftUI 版 `fleetest-gui`)は 2026-07-10 に削除**。対話的 UI は VSCode 拡張
   (`vscode-fleetest/`)に一本化した。プロジェクト/実行プロファイルの選択はコマンドパレット
   (「fleetest: プロジェクトを選択」「fleetest: 実行プロファイルを選択」、`fleetest.project` /
@@ -3847,7 +3851,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
 XCUITest ランナーは HTTP サーバだけ死んで xcodebuild 親が残ることがある(2026-07-14 実例)。
 
 - **watchdog**(`vscode-fleetest/src/monitorBridgeWatchdog.ts`): 一度 connected になったデバイスが
-  booted(実体は起動中・ブリッジ無応答)へ降格して連続5観測(約10秒)続いたら `device-up` を
+  booted(実体は起動中・ブリッジ無応答)へ降格して連続5観測(約10秒)続いたら `api start-device` を
   自動投入。実行レーン稼働中は保留・クールダウン3分・2回失敗で諦めて表示(`fleetest.autoRepairBridge`
   既定 ON)。タイルに出すのは諦めた後(failed)だけで、文言は実機「デバイス未接続」/仮想機
   「接続できません」(内部語ではなくユーザーの取れる行動が分かる語にする。fleetest 出力への
@@ -3865,7 +3869,7 @@ XCUITest ランナーは HTTP サーバだけ死んで xcodebuild 親が残る�
   36.5.10。切り分け実測 2026-07-17。performance-tuning.md §7 参照)。swiftshader_indirect は免疫だが
   CPU 約3倍。そこで **基本 host・凍結が軽量修復で治らない個体だけ per-device で swiftshader_indirect
   再起動**にフォールバックする(§12.4 の watchdog ラダー)。`bootOne(gpuMode:)`→`startEmulator`、
-  CLI は `fleetest api device-up --gpu swiftshader_indirect`。swangle_indirect は screencap 0B で不採用
+  CLI は `fleetest api start-device --gpu swiftshader_indirect`。swangle_indirect は screencap 0B で不採用
 - H.264 化で webview Renderer 30-65%(瞬時)→ 8.4%(65秒平均)、helper モーション時
   Android 5.2%→1.0%。monitor は suppressFrames で常時 11%→約2%
 
@@ -3897,7 +3901,7 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     固着した合成バッファの無効化→再合成で直す最軽量修復。readback が効かない個体にも効く。
     クールダウン 60s)**→ ストリームヘルパー再起動(`restartStream`。読み出し再開で一時回復。
     クールダウン 120s)→ 効かなければ **CPU 描画へフォールバック**(`forceCpuRender`→`MonitorDeviceOps`
-    が個別 device-up に `--gpu swiftshader_indirect` を付与。セッション中維持。bulk devices-up も
+    が個別の `start-device` に `--gpu swiftshader_indirect` を付与。セッション中維持。bulk `start-all-devices` も
     `--cpu-render` で維持)→ それでも駄目なら failed。
     **host 再起動は挟まない**(実測で host 再起動は治らず再凍結=無駄。§12.3・performance-tuning.md §7)。
     run 経路(CLI/api run)は watchdog と独立に、実行前トリアージ「blank 検出→sleep/wake 修復→
@@ -3927,7 +3931,7 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   名指しする**(同じ ID を別の台が同時に書いているので、「この ID の最新」では別の台の記録を消す。
   欠番は詰めない)。参加しなかった台のぶんは「device … never joined the run」、離脱して復帰できなかった
   台のぶんは「… dropped out and could not be revived」で失敗として残す(準備できなかった台が緑に紛れない)。
-  ホスト混在プロファイルは `DeviceMachineRunner` が**分割せず全ホストへ全件**を渡し、`--host` は
+  ホスト混在プロファイルは `DeviceMachineRunner` が**分割せず全ホストへ全件**を渡し、`--runner` は
   `RemoteRunArgs.build` が中継する。`--fleet` とは併用不可(中継していないので黙って分配になる)。
   `api run`(拡張)には載せていない(Test Explorer は flowURL = シナリオ1項目の前提)
 - **実行中の凍結による結果取り消し+別デバイス再実行**(`RunOrchestrator.runWorker`。2026-07-17):
@@ -4033,18 +4037,18 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   拾えず二度と復旧しなかった。対策として up 失敗時は `deviceUpMaxRetries`(=2、`deviceUpRetryDelayMs`=3s 間隔)
   まで再試行してからキューを進める(down は再試行しない)。試行の終端は `settle(failed)` に集約し、
   ジョブ単位の `finishOnce` で `finishLifecycleQueueHead` を1回だけ呼ぶ
-- **GPU 再起動と一括起動の単一キュー統合(`devices-up --restart`)**(2026-07-18): 本質要件は
+- **GPU 再起動と一括起動の単一キュー統合(`start-all-devices --restart`)**(2026-07-18): 本質要件は
   「操作種別を問わず**同時2台まで**」(2台同時でホスト CPU がほぼ飽和するため)。ジョブを分けると
   ジョブ境界がバリアになり並行枠が遊ぶ(例: CPU 機3台の再起動の端数1台の間、未起動機が待つ)。
   そこで「全て起動」は `devicesUp{restartNames}` 1メッセージ→ bulk up 1ジョブ→
-  `fleetest api devices-up --restart A --restart B` とし、**DeviceBooter.bootAll の単一キュー**に
+  `fleetest api start-all-devices --restart A --restart B` とし、**DeviceBooter.bootAll の単一キュー**に
   再起動アイテム(先頭。起動済みでもスキップせず shutdownOne→bootOne[host GPU])と通常ブート
   アイテム(restart 対象は除外=同一機の二重処理防止)を混載、既存の2ワーカーが消化する。
   NDJSON に `deviceStopping`(--restart 機の down 開始)を追加(検証: monitorModel.ts
   `isDevicesUpEvent`。受信時にそのデバイスだけ stopDeviceStreams)。cpuRenderNames の解除は
   `MonitorDeviceOps.bulkUpWithRestarts`。右クリック単発「GPUで再起動」は従来どおり
-  `restartBatch` ジョブ(`fleetest api devices-restart`、`isDevicesRestartEvent`)を使う
-- **一括 down の per-device 反映(`api devices-down`)**(2026-07-19): monitor は down 中 pause で
+  `restartBatch` ジョブ(`fleetest api restart-devices`、`isDevicesRestartEvent`)を使う
+- **一括 down の per-device 反映(`api stop-all-devices`)**(2026-07-19): monitor は down 中 pause で
   状態スキャンごと止まる(→タイルが全台落ちてからまとめて「未起動」化していた)。対策として **profile 指定の
   bulk down を NDJSON 化**(`deviceStopping`/`deviceFinished`。停止ロジックは `shutdownProfile` と同一で回帰なし)、
   拡張は `deviceFinished` ごとにそのタイルだけ offline を先行反映(`deviceDownFinished` → resume 後に本物の

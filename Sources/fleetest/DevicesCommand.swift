@@ -4,7 +4,7 @@
 //                           登録簿の全マシンでも同じ掃討を走らせる。RemoteDeviceFanout.dispatchSweep)
 // どちらも --profile(実行プロファイル名)指定時は、そのプロファイルが参照するデバイスのみを
 // 対象にする(RunProfileScope.swift。省略時はマシンプロファイルの全デバイス)。
-// DeviceBooter / BridgeProvisioner を直接使う(fleetest api device-up/device-down と共通の実装)。
+// DeviceBooter / BridgeProvisioner を直接使う(fleetest api start-device/stop-device と共通の実装)。
 
 import ArgumentParser
 import Foundation
@@ -32,8 +32,8 @@ struct DevicesCommand: AsyncParsableCommand {
         @Flag(name: .customLong("no-bridge"), help: "Do not provision the iOS bridge")
         var noBridge = false
 
-        @Option(name: [.customLong("device-machine"), .customLong("device-host")], help: ArgumentHelp(
-            "Operate on the devices that belong to this machine (registered host name)."
+        @Option(name: .customLong("device-machine"), help: ArgumentHelp(
+            "Operate on the devices that belong to this machine (a name registered with fleetest remote machines)."
             + " Default: the devices with no host (this machine). Used when a parent dispatches"
             + " to a runner: remote exec <name> -- ... --device-machine <name>"))
         var deviceMachine: String?
@@ -41,7 +41,7 @@ struct DevicesCommand: AsyncParsableCommand {
         func run() async throws {
             let machineProfile = try MachineProfileLoad.load(
                 project: project, profile: profile, deviceMachine: deviceMachine,
-                foreign: .notHandled,  // `devices up` は分散しない(api devices-up が分散する側)
+                foreign: .notHandled,  // `devices up` は分散しない(api start-all-devices が分散する側)
                 noteAutoMachine: { ConsoleOut.out($0) },
                 warn: { ConsoleOut.out($0) })
 
@@ -65,8 +65,8 @@ struct DevicesCommand: AsyncParsableCommand {
         @Option(help: "Run profile name (when given, only the devices that profile references are stopped individually; otherwise every bridge is stopped and all simulators and emulators are shut down)")
         var profile: String?
 
-        @Option(name: [.customLong("device-machine"), .customLong("device-host")], help: ArgumentHelp(
-            "Operate on the devices that belong to this machine (registered host name)."
+        @Option(name: .customLong("device-machine"), help: ArgumentHelp(
+            "Operate on the devices that belong to this machine (a name registered with fleetest remote machines)."
             + " Default: the devices with no host (this machine). Used when a parent dispatches"
             + " to a runner: remote exec <name> -- ... --device-machine <name>"))
         var deviceMachine: String?
@@ -176,7 +176,7 @@ struct DevicesCommand: AsyncParsableCommand {
     }
 }
 
-/// devices up/down・api devices-up 共通: プロジェクト/実行プロファイルからマシンプロファイルを
+/// devices up/down・api start-all-devices 共通: プロジェクト/実行プロファイルからマシンプロファイルを
 /// 解決して読み込む(profile 指定時はそのプロファイルが参照するデバイスのみに絞る)。
 /// Up の従来コードをそのまま移した実装(ApiDeviceOperation の machineProfileNotFound ガードは
 /// 意図的に取り込まない。ファイル未検出時は Data(contentsOf:) がそのまま throw する Up 従来挙動を維持)
@@ -189,7 +189,7 @@ enum MachineProfileLoad {
     /// 「その機械で起動してください」と案内すると、直後にツール自身が起動するので嘘になる
     /// (実害 2026-08-30: 一括起動のログで、案内の 2 秒後に fan-out が同じ台を起動していた)
     enum ForeignDevices {
-        /// 呼び出し側が RemoteDeviceFanout でその機械へ回す(api devices-up / devices-down)
+        /// 呼び出し側が RemoteDeviceFanout でその機械へ回す(api start-all-devices / stop-all-devices)
         case dispatchedByCaller
         /// 誰も扱わない = 本当に落とす(手元専用の経路)
         case notHandled

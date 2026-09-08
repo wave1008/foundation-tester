@@ -17,7 +17,7 @@ platform with a worker, normally `ios` if any iOS device is present). **A scenar
 than queued** — the other OS's devices in the same profile just sit idle for it. To run a
 platform-agnostic scenario on both OSes, run `--profile ios` and `--profile android` separately.
 
-## Without a run profile (manual `--ports`)
+## Without a run profile (manual `--port`)
 
 Start one bridge per simulator, on separate ports, then hand `run` the port list:
 
@@ -26,7 +26,7 @@ fleetest bridge up --device "iPhone 17 Pro"                          # port 8123
 fleetest bridge up --device "iPhone 17 Pro Max" --port 8124 --skip-build
 xcrun simctl install "iPhone 17 Pro Max" <path/to/App.app>           # install on each device
 
-fleetest run --ports 8123,8124          # scenarios are auto-distributed to the workers
+fleetest run --port 8123 --port 8124    # scenarios are auto-distributed to the workers
 fleetest bridge down --all              # stop every bridge
 ```
 

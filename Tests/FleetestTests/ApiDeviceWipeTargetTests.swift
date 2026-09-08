@@ -1,4 +1,4 @@
-// device-wipe の識別子直指定(delete-device と同じ契約: プロジェクト・マシンプロファイルを
+// wipe-device の識別子直指定(delete-device と同じ契約: プロジェクト・マシンプロファイルを
 // 一切参照しない)。ApiDeviceWipeTarget は I/O を持たない pure 関数なので、ここでは
 // 検証と spec 合成だけを見る(実際の削除・停止・再起動は DeviceWiper 側)。
 

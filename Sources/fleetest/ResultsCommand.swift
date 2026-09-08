@@ -27,7 +27,7 @@ struct ResultsQueryOptions: ParsableArguments {
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
-    @Option(help: "Start of the period: a relative value such as 30d/12h, or YYYY-MM-DD (default 90d)")
+    @Option(help: "Start of the period: a duration (e.g. 90s/30m/2h/30d), a date (YYYY-MM-DD) or an epoch (@1757280000) (default 90d)")
     var since: String = "90d"
 
     @Flag(help: "Print the result as a single line of JSON")
@@ -38,7 +38,7 @@ struct ResultsQueryOptions: ParsableArguments {
         let testProject = try ScenarioHost.project(named: project)
         let resultsDir = RunResultsStore.resultsDir(projectRoot: testProject.rootURL)
         guard let sinceDate = RunResultsQuery.parseSince(since) else {
-            throw ValidationError("invalid --since format: \(since) (e.g. 30d, 12h, 2026-06-01)")
+            throw ValidationError(TimeBoundParse.rejection(option: "--since", raw: since))
         }
         return (testProject, resultsDir, sinceDate)
     }

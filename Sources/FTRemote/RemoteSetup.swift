@@ -160,7 +160,7 @@ public enum RemoteSetupPlan {
             + "git checkout \(RemoteShell.quote(revision)) && " + builds
     }
 
-    /// `--uninstall` が base ごと削除してよいかの判定(docs/remote-runner.md §14 撤去)。
+    /// `remote teardown` が base ごと削除してよいかの判定(docs/remote-runner.md §14 撤去)。
     /// 拒否理由: ①空・相対パス(想定外の解決) ②"/" 丸ごと ③$HOME そのもの(ランナーのホームごと
     /// 消す) ④浅すぎる絶対パス(ルート直下1階層。例 "/tmp" "/etc" はシステムディレクトリ・
     /// 他用途のディレクトリと衝突しやすい)。**$HOME 配下限定はしない** — `--remote-dir` は

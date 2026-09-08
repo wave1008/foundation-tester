@@ -263,9 +263,9 @@ btnUp.addEventListener('click', () => {
     return;
   }
   // CPU 描画フォールバック中(CPUバッジ)の Android は restartNames として渡し、未起動機のブートと
-  // 同一キュー(devices-up --restart。1ジョブ・2台ずつ並行)で down→up される。ジョブを分けないので
+  // 同一キュー(start-all-devices --restart。1ジョブ・2台ずつ並行)で down→up される。ジョブを分けないので
   // 種別を問わず常に最大2台だけが起動処理中(受信側: monitorPanel.ts → monitorDeviceOps.bulkUpWithRestarts)。
-  // **手元の台だけ** —— `devices-up --restart` は手元の名簿で、リモートへ中継されない
+  // **手元の台だけ** —— `start-all-devices --restart` は手元の名簿で、リモートへ中継されない
   // (ApiDevicesUp)。リモートの CPU バッジ機の名前を混ぜると、手元の同名の台が再起動される
   const cpuNames = [...tiles.values()]
     .filter((entry) => entry.device.platform === 'android' && entry.device.renderMode === 'cpu'

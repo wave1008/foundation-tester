@@ -8,7 +8,7 @@ import XCTest
 /// 実害 2026-08-30: モニターの「全て終了」はプロファイル未選択のとき従来の `devices down` を
 /// 呼ぶ。これが手元しか掃討しないので、**タイルに出ているリモートの台が1枚も消えなかった**
 /// (監視は登録簿の全マシンへ張るのに、停止は手元だけ = 集合が食い違っていた)。
-/// `api devices-up` の同型は d678ae8f で直っており、これはその掃討漏れ。
+/// `api start-all-devices` の同型は d678ae8f で直っており、これはその掃討漏れ。
 final class DevicesDownSweepFanoutTests: XCTestCase {
 
     private func source(_ relativePath: String) throws -> String {

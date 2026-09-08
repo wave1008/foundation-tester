@@ -2,7 +2,7 @@
 // このファイルが持つのは2つ:
 // (a) リモートホスト登録簿(machine/host/dir)の正規化・解決・差分計算。設定タブのホスト表
 //     (マシン/ホスト/作業ベースディレクトリ)を支える。登録簿の正は CLI の LocalConfig(~/.config/fleetest/config.json。
-//     `fleetest api remote-hosts` 経由。remoteHostsController.ts が spawn を担う)。
+//     `fleetest api remote-machines` 経由。remoteHostsController.ts が spawn を担う)。
 // (b) DeviceCommandSource/deviceCommandArgs。「既存デバイスを追加」ダイアログで特定のマシンから
 //     デバイス候補(device-catalog/installed-devices/create-device)を取得するときに使う。
 //
@@ -14,7 +14,7 @@
 // 実行し vscode-stub で落ちるため)。
 
 export interface RemoteHostEntry {
-  /** マシン名(設定タブで付ける名前)。プロファイルの `machine` 欄・`--host` に書くのはこれ。
+  /** マシン名(設定タブで付ける名前)。プロファイルの `machine` 欄・`--runner` に書くのはこれ。
    * **JSON キーは "machine"**(2026-08-26 改名。CLI が旧キー "name" も読む)。 */
   readonly machine: string;
   readonly host: string;
@@ -49,7 +49,7 @@ export function deviceCommandArgs(source: DeviceCommandSource, apiArgs: readonly
 }
 
 /**
- * リモートホスト登録簿の生の値(JSON。`fleetest api remote-hosts` の stdout の hosts[]。
+ * リモートホスト登録簿の生の値(JSON。`fleetest api remote-machines` の stdout の hosts[]。
  * 外部プロセス由来で型不定)を防御的に正規化する。machine も host も空の要素は捨てる
  * (識別もホストも持たない無意味な登録)。machine が空なら host のホスト部を流用する
  * (一意キーとして機能させるため)。host が空の要素も捨てない(壊れた登録として設定タブに
@@ -96,11 +96,11 @@ export function normalizeRemoteHosts(raw: unknown): RemoteHostEntry[] {
 }
 
 /**
- * `fleetest api remote-hosts` の stdout(JSON.parse 済み)から hosts[] を取り出し正規化する。
+ * `fleetest api remote-machines` の stdout(JSON.parse 済み)から hosts[] を取り出し正規化する。
  * 形が違えば undefined(呼び出し側は CLI 呼び出し失敗と同じ扱いにする)。
  */
 /**
- * `fleetest api remote-hosts` が返す**未設定時の FM 枠**(CLI 側 FMLock.defaultConcurrency)。
+ * `fleetest api remote-machines` が返す**未設定時の FM 枠**(CLI 側 FMLock.defaultConcurrency)。
  * 拡張はこの数を GUI のウォーターマークに出すだけで、値そのものは持たない ——
  * **定数を二重に持つと片方だけ変わったときに嘘を表示する**。読めなければ undefined。
  */
@@ -178,7 +178,7 @@ export function diffRemoteHostsForSync(
   return { removedNames, upserts };
 }
 
-/** `fleetest api remote-hosts` の応答のうち **hosts[] 以外の欄**の控え。
+/** `fleetest api remote-machines` の応答のうち **hosts[] 以外の欄**の控え。
  *  拡張はこれを保持し、webview へ送り返す `remoteConfig` に載せる。 */
 export interface RemoteHostsSideFields {
   readonly defaultFMConcurrency?: number;
@@ -188,7 +188,7 @@ export interface RemoteHostsSideFields {
 /**
  * 控えを CLI 応答で更新する。**応答に無い欄は据え置く**(消さない)。
  *
- * **読み取り(`api remote-hosts`)だけでなく書き込み(`--import` / `--remove`)の応答からも通す。**
+ * **読み取り(`api remote-machines`)だけでなく書き込み(`--import` / `--remove`)の応答からも通す。**
  * 読み取り時にしか控えないと、書き込み直後に webview へ送り返す `local` が古いままになり、
  * 固定行(この機械)に打った FM 枠が**打った瞬間に元の値へ戻る** = 変更できない、という
  * 症状になる(2026-09-02 に実際に踏んだ)。`diffRemoteHostsForSync` が hosts[] の欄を

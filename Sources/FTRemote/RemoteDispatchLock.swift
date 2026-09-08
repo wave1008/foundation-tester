@@ -68,7 +68,7 @@ public enum RemoteDispatchLock {
     /// (相手の完了を待つ / stuck なら --force-lock で奪う)を必ず含める
     public static func heldMessage(_ info: RemoteDispatchLockInfo?) -> String {
         "another dispatch is already running on this remote host (\(holderDescription(info)))"
-            + " — wait for it to finish, run `fleetest remote unlock --host <host>` if it is your own"
+            + " — wait for it to finish, run `fleetest remote unlock --runner <machine>` if it is your own"
             + " dispatch that died, or pass --force-lock if it is stuck"
             + " (docs/remote-runner.md §5)"
     }

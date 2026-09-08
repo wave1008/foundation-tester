@@ -45,7 +45,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
             warn("this simulator is not recording right now — a \(Int(Self.smokeSeconds))s test recording"
                  + " came out empty. The device most likely holds a stuck host recording session"
                  + " (it survives the client process). Shut it down and boot it again"
-                 + " (fleetest device-down/up, or xcrun simctl shutdown/boot \(udid))."
+                 + " (fleetest api stop-device/start-device, or xcrun simctl shutdown/boot \(udid))."
                  + " Skipping recording for this device")
             return false
         }

@@ -1,13 +1,13 @@
 // RemoteDeviceFanout.swift
 // **デバイスの起動・停止を機械ごとに分散する**(docs/remote-runner.md §13)。
-// 1つの実行プロファイルのデバイスが複数の機械にまたがるとき、`api devices-up` / `devices-down` は
+// 1つの実行プロファイルのデバイスが複数の機械にまたがるとき、`api start-all-devices` / `stop-all-devices` は
 // 手元のぶんを自分で処理しつつ、**リモートのぶんをその機械へ投げる**。
 //
 // 分散する理由は速さ: 起動は機械ごとに独立した資源(CPU・GPU・ディスク)を使うので、
 // 「同時2台」の上限は**機械ごとに**持てる。3台の機械なら 3×2 台が同時に立ち上がる。
 //
 // 実装の方針:
-// - 子は `fleetest remote exec <machine> -- api devices-up … --device-machine local` を**自分自身の
+// - 子は `fleetest remote exec <machine> -- api start-all-devices … --device-machine local` を**自分自身の
 //   バイナリ**で起動する(ssh の張り方・PATH 補正・宛先解決を remote exec に委ねる。
 //   FleetRunner が子プロセスで fleetest を呼ぶのと同じ形)
 // - **--device-machine が要る** —— リモート機のプロファイルにはそのデバイスの machine(= その

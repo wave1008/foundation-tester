@@ -1,6 +1,6 @@
 # リモート実行
 
-`fleetest run --host <ホスト>` は、別の Mac へ SSH でジョブを投げ、向こうで普通にローカル実行し、
+`fleetest run --runner <ランナー>` は、別の Mac へ SSH でジョブを投げ、向こうで普通にローカル実行し、
 出力と成果物を手元へ持ち帰る機能です。このページはできることとセットアップの流れの要点で、
 詳細な手順は [docs/remote-runner-setup.md](../../remote-runner-setup.md) を参照してください
 (ここでは手順を複製しません)。
@@ -12,7 +12,7 @@
 | 1台のリモートへジョブ単位でディスパッチ(CLI・VSCode 拡張の両方) | ✅ |
 | 実行中の進行表示・キャンセル・タイムアウト | ✅ |
 | レポート・JUnit・録画・run ログの回収 | ✅ |
-| ランナー機の導入・撤去を手元から1コマンド(`remote setup`) | ✅ |
+| ランナー機の導入は手元から1コマンド(`remote setup`)。撤去も同様(`remote teardown`) | ✅ |
 | 複数ホストの一括診断・掃除(`remote status` / `remote clean`) | ✅ |
 | リモートで単発の `fleetest` を走らせる(`remote exec`) | ✅ |
 | 複数ホストへの同時実行(フリート。`run --fleet`) | ✅ |
@@ -27,7 +27,7 @@
 
 ```
 発行側の Mac(手元)                     ランナー機
-fleetest run --host mac2 …               ~/fleetest-runner/               ← 専用ベースディレクトリ
+fleetest run --runner mac2 …             ~/fleetest-runner/               ← 専用ベースディレクトリ
   ├ 適合チェック(rev・Xcode)   ssh     ├── foundation-tester/          ← ツール本体のクローン(名前固定・共有)
   ├ 転送(rsync: シナリオ・設定) ────>  └── users/<issuerId>/work/      ← あなたの作業場所(発行者ごと)
   ├ 出力を受け取って表示                     ├── TestProjects/<プロジェクト>/
@@ -65,8 +65,8 @@ fleetest run --host mac2 …               ~/fleetest-runner/               ← 
    止まります。`remote setup` の align ステップが揃えます。
 5. **ステップ4 — マシン名とプロファイル。** 実行プロファイルはマシンプロファイル経由で
    デバイス構成を解決します。
-6. **ステップ5 — 疎通を確認する**: `fleetest remote status --host <ユーザー>@<ホスト>`。
-7. **ステップ6 — 最初のディスパッチ**: `fleetest run --host <ユーザー>@<ホスト> --profile
+6. **ステップ5 — 疎通を確認する**: `fleetest remote status --runner <ユーザー>@<ホスト>`。
+7. **ステップ6 — 最初のディスパッチ**: `fleetest run --runner <ユーザー>@<ホスト> --profile
    <実行プロファイル> --scenario <ID>`(初回は数分、以降は数秒で始まります)。
 
 **`/fleetest:fleetest-remote-setup` は機械作業を `fleetest remote setup` に委ねます** ——
@@ -118,16 +118,16 @@ Mac のファイアウォール設定は不要ですが、**ランナー機と�
 ```
 
 実行プロファイルはマシンプロファイル名でそれを指すため、**実行プロファイルを選べば
-どの機械で走るかも一緒に決まります** —— 通常の利用に `--machine` は要りません。手元のデバイスは
+どの機械で走るかも一緒に決まります** —— 通常の利用に `--runner` は要りません。手元のデバイスは
 `"machine": "local"` と明示します(省略すると「プロファイルの既定を継ぐ」意味になり、
 1つのプロファイルに手元とリモートが混在するときに影響します)。コマンドラインの
-`--machine <マシン名>` はプロファイルより優先されます(ホスト名や IP を直接指定するときは
-`--host`)。**旧キー `"host"` のプロファイルもそのまま読めます**(2026-08-26 に `machine` へ改名)。
+`--runner <名前>` はプロファイルより優先されます(登録済みマシン名・ホスト名/IP のどちらも
+直接指定できます)。**旧キー `"host"` のプロファイルもそのまま読めます**(2026-08-26 に `machine` へ改名)。
 
-## `run --machine` と `--fleet`
+## `run --runner` と `--fleet`
 
 ```bash
-fleetest run --machine <マシン名> --profile <実行プロファイル>   # この回だけ特定のマシンへ送る
+fleetest run --runner <名前> --profile <実行プロファイル>        # この回だけ特定のマシンへ送る
 fleetest run --project <プロジェクト> --fleet <名前>             # フリートの全ホストで同じシナリオを回す
 fleetest run --project <プロジェクト> --fleet <名前> --split      # 全ホストで回す代わりに台数で分散する
 ```
@@ -160,7 +160,7 @@ fleetest run --project <プロジェクト> --fleet <名前> --split      # 全�
 
 - **待って実行する**: CLI は `--wait-lock <秒>`、VSCode 拡張は設定 `fleetest.remoteWaitLock`
   に秒数(既定 0 = 待たずに失敗)。奪う操作は拡張にはありません
-- **誰が使っているか**: `fleetest remote status --host <マシン名>` の LOCK 欄
+- **誰が使っているか**: `fleetest remote status --runner <マシン名>` の LOCK 欄
   (`-` は「判定できなかった」で、空きという意味ではありません)。デバイスモニターでは
   ツールバーの機械の行に 🔒 が出ます
 - **ライブ映像は実行中だけ自動で止まります** —— 誰かの実行が始まると、その機械のタイルは

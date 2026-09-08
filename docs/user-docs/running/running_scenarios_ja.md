@@ -20,23 +20,23 @@ swift run fleetest run --profile ios
 | オプション | 説明 |
 |---|---|
 | `--project <project>` | テストプロジェクト名(省略時の解決順は [creating_project_ja.md](../project/creating_project_ja.md) 参照) |
-| `--profile <profile>` | 実行プロファイル名(`profiles/runs/<name>.json`)。ブリッジ供給と自動インストールを含む |
+| `--profile <profile>` | 実行プロファイル名(`profiles/runs/<name>.json`)。ブリッジ供給と自動インストールを含む。**`--platform`/`--port`/`--serial`/`--app-id` とは併用できない**(プロファイルがそれらを全部供給するため)——併用すると黙って無視されず、エラーになる |
 | `--scenario <id>` | シナリオ ID。クラス名だけならそのクラスの全シナリオ、`Class.method` で1本を指定。複数回指定可・既定は全件。`@Deleted`/`@Draft` シナリオは完全一致のときだけ実行される |
 | `--folder <folder>` | 実行するシナリオフォルダ(`scenarios/` 直下のサブフォルダ)。複数回指定可、`--scenario`/`--failed` と併用可 |
 | `--failed` | 前回失敗したシナリオだけ実行する(結果は毎回 `.fleetest/last-results/` に記録される) |
-| `--set <キー>=<値>` | 実行プロファイル JSON のキー名そのものと、そのキーの型に合う値で、この実行だけキーを上書きする —— 真偽値キー(例: `heal`・`falsePositiveCheck`・`ocr`・`enableAnimations`・`iosFastInput`)は `true`/`false`、スカラーキーは文字列や数値(例: `--set reportDir=/tmp/out`・`--set defaultTimeout=8`)。全キーの一覧は [run_profile_ja.md](../project/run_profile_ja.md) 参照。複数回指定可・`--profile` の有無を問わず効く(ただし実行プロファイルの devices 一覧・供給工程が要るキー(`iosInappEngine`・`updateWebView`・`wipeDataOnBloat`・`recoverCpuFallbackToGpu`・`app`・`machine`・`locale`・`wipeDataThresholdGB`)だけは `--profile` が無いとキーを名指ししてエラー)。`record` は `--profile` か、`--ports` に2つ以上指定するかのどちらかが要る(単一接続には録画セッションを付けるところが無い)。`reportDir` は `--report-dir` と同時指定できない(同じ欄を二重に指定することになるため、どちらか一方を使う)。実行プロファイルのキー `app`/`machine` はアプリ/マシン**プロファイル名**を指し、このコマンド自身の `--app`/`--machine` フラグとは別物。`devices`/`remoteControl` は配列・オブジェクトなのでこの形では指定できない(実行プロファイル JSON を直接編集する)。未知のキー・型の合わない値・配列/オブジェクトのキーはエラー(対処法を示す) |
+| `--set <キー>=<値>` | 実行プロファイル JSON のキー名そのものと、そのキーの型に合う値で、この実行だけキーを上書きする —— 真偽値キー(例: `heal`・`falsePositiveCheck`・`ocr`・`enableAnimations`・`iosFastInput`)は `true`/`false`、スカラーキーは文字列や数値(例: `--set reportDir=/tmp/out`・`--set defaultTimeout=8`)。全キーの一覧は [run_profile_ja.md](../project/run_profile_ja.md) 参照。複数回指定可・`--profile` の有無を問わず効く(ただし実行プロファイルの devices 一覧・供給工程が要るキー(`iosInappEngine`・`updateWebView`・`wipeDataOnBloat`・`recoverCpuFallbackToGpu`・`app`・`machine`・`locale`・`wipeDataThresholdGB`)だけは `--profile` が無いとキーを名指ししてエラー)。`record` は `--profile` か、`--port` を2回以上指定するかのどちらかが要る(単一接続には録画セッションを付けるところが無い)。`reportDir` は `--report-dir` と同時指定できない(同じ欄を二重に指定することになるため、どちらか一方を使う)。実行プロファイルのキー `app`/`machine` はアプリ/マシン**プロファイル名**を指し、このコマンド自身の `--app-id`/`--runner` フラグとは別物。`devices`/`remoteControl` は配列・オブジェクトなのでこの形では指定できない(実行プロファイル JSON を直接編集する)。未知のキー・型の合わない値・配列/オブジェクトのキーはエラー(対処法を示す) |
 | `--dry-run` | デバイスに触れずステップを検証する([dry_run_ja.md](./dry_run_ja.md)参照) |
 | `--report-dir <dir>` | レポート出力先(既定: `TestProjects/<name>/reports`)。`--set reportDir=...` と同時指定できない |
-| `--ports <ports>` | 手動並列実行用のカンマ区切り iOS ブリッジポート([parallel_execution_ja.md](./parallel_execution_ja.md)参照) |
+| `--port <port>` | 手動並列実行用の iOS ブリッジポート。複数回指定可(`--port 8123 --port 8124`。[parallel_execution_ja.md](./parallel_execution_ja.md)参照) |
 | `--skip-build` | 実行前の `swift build` をスキップする |
 | `--quiet` | サマリのみ出力する(CI・エージェント向け) |
 | `--junit <path>` | JUnit XML レポートをこのパスに出力する |
 | `--broadcast` | 選択したシナリオを、共有配分ではなく実行プロファイルの**全デバイス**で1回ずつ実行する(warmup 等)。`--profile` が必須。結果は `worker` 欄で区別される([results_analysis_ja.md](./results_analysis_ja.md)参照) |
 | `--no-lpt` | LPT 順序付け(実績時間の長い順)を無効化し、シナリオ ID 順で投入する |
 | `--lpt-history-runs <n>` | LPT 順序付けに読む過去 run 数(既定 5) |
-| `--host <host>` / `--fleet <fleet>` | SSH 経由でリモートマシン/フリートへディスパッチする([remote_runners_ja.md](../in_action/remote_runners_ja.md)参照) |
+| `--runner <runner>` / `--fleet <fleet>` | SSH 経由でリモートマシン/フリートへディスパッチする([remote_runners_ja.md](../in_action/remote_runners_ja.md)参照) |
 | `--platform <ios\|android>` | `--profile` 無しでの対象プラットフォーム(既定 `ios`) |
-| `--app <bundleID>` | `@TestClass(app:)` 未指定シナリオの既定アプリ。`--profile` 無しのときだけ必要。`--set app=...` とは別物(実行プロファイルの `app` キーはアプリ**プロファイル名**を指す) |
+| `--app-id <bundleID>` | `@TestClass(app:)` 未指定シナリオの既定アプリ。`--profile` 無しのときだけ必要。`--set app=...` とは別物(実行プロファイルの `app` キーはアプリ**プロファイル名**を指す) |
 | `--port <n>` / `--serial <s>` | `--profile` 無しでのブリッジポート(iOS)/デバイス serial(Android) |
 
 最新の全一覧は `fleetest run --help` を実行してください。
@@ -46,8 +46,8 @@ swift run fleetest run --profile ios
 `fleetest run-file <path.swift>...` は `Package.swift` に**登録していない** `.swift` を1本以上
 そのまま実行します(プロファイル・レポート・自己修復は `--project` で指定した既存プロジェクトから
 借ります)。プロジェクトに足す前の使い捨てシナリオに便利です。`--project`・`--profile`・
-`--scenario`・`--set`(例: `--set heal=true`)・`--report-dir`・`--ports`・`--app`・
-`--platform`/`--port`/`--serial` を受け付けます。
+`--scenario`・`--set`(例: `--set heal=true`)・`--report-dir`・`--port`・`--app-id`・
+`--platform`/`--serial` を受け付けます。
 
 ## exit code と失敗セマンティクス
 

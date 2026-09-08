@@ -500,7 +500,7 @@ project_exists() {
 
 # 省略可能な引数は配列で渡す(空文字列を引数として渡さないため)
 APP_ARGS=()
-[ -n "$APP_ID" ] && APP_ARGS=(--app "$APP_ID")
+[ -n "$APP_ID" ] && APP_ARGS=(--app-id "$APP_ID")
 # 指示していないプラットフォームの run を作らない(machines と runs の名前不整合の温床)
 PLATFORM_ARGS=(--platform "$PLATFORM")
 NAME_ARGS=()

@@ -24,11 +24,10 @@ final class RunCommandFlagParityTests: XCTestCase {
     private static let runOnly: [String: String] = [
         "--broadcast": "分配の差し替え(ScenarioDispatch.broadcast)は ProfileRunner にしか無い。拡張にブロードキャストの導線が無いため api run へは配線していない",
         "--failed": "前回失敗ぶんの再実行。拡張は Test Explorer 側が対象を持っているので、解決済みの --scenario を渡す",
-        "--fleet": "profiles/fleets/<name>.json による多ホスト並列。拡張は api run --machine を機械ごとに立てる別の経路(RemoteMonitorFanout)を持つ",
+        "--fleet": "profiles/fleets/<name>.json による多ホスト並列。拡張は api run --runner を機械ごとに立てる別の経路(RemoteMonitorFanout)を持つ",
         "--folder": "scenarios/ 直下のフォルダ実行。拡張は folder の TestItem を配下 leaf へ展開してから渡す(runHandler.ts)ので、フォルダ名のまま送る口が要らない",
-        "--force-lock": "リモートの dispatch.lock の扱い。--fleet / --host 前提の運用オプションで、拡張は単発ディスパッチしか出さない",
+        "--force-lock": "リモートの dispatch.lock の扱い。--fleet / --runner 前提の運用オプションで、拡張は単発ディスパッチしか出さない",
         "--junit": "CI 向けの JUnit XML 出力。拡張は NDJSON をそのまま読む",
-        "--ports": "手で建てたブリッジのポートを直に並べる旧来の口。拡張は実行プロファイル経由でしかデバイスを指定しない",
         "--quiet": "ステップ行を止めてサマリだけ出す。api run は常に NDJSON なので概念が無い",
         "--split": "--fleet の分配方式。--fleet が CLI 専用なので従属",
     ]
@@ -79,14 +78,14 @@ final class RunCommandFlagParityTests: XCTestCase {
         let help = """
         OPTIONS:
           --project <project>     Test project name
-          --wait-lock <wait-lock> Poll until the lock is released. Needs --profile, --host or --fleet. Cannot be combined with --force-lock
+          --wait-lock <wait-lock> Poll until the lock is released. Needs --profile, --runner or --fleet. Cannot be combined with --force-lock
           --lpt-history-runs <lpt-history-runs>
                                   Number of past runs to read. See --no-lpt
           -h, --help              Show help information.
         """
         XCTAssertEqual(Self.longFlags(fromHelp: help),
                        ["--project", "--wait-lock", "--lpt-history-runs"],
-                       "説明列の --profile/--host/--fleet/--force-lock/--no-lpt を宣言と取り違えている")
+                       "説明列の --profile/--runner/--fleet/--force-lock/--no-lpt を宣言と取り違えている")
     }
 
     /// 宣言列でないところに出るフラグは全部無視する: USAGE 節の折り返し(`[--flag …]`)と、
@@ -155,7 +154,7 @@ final class RunCommandFlagParityTests: XCTestCase {
     /// ヘルプの**宣言列**から `--long` を集める。
     ///
     /// **空白の数で宣言列と説明列を分けない** —— 宣言が説明列に届く長さだと区切りが1スペースになり
-    /// (`--wait-lock <wait-lock> Instead of …`)、説明文に出てくる `--host` や `--fleet.` まで
+    /// (`--wait-lock <wait-lock> Instead of …`)、説明文に出てくる `--runner` や `--fleet.` まで
     /// フラグとして拾う。代わりに**宣言列の文法**で切る: 行頭から「フラグ」か「`<値>`」である
     /// 限り読み進め、それ以外の語(= 説明文の1語目)で止める。
     private static func longFlags<C: ParsableCommand>(of command: C.Type) -> Set<String> {

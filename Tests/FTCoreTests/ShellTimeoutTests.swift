@@ -5,7 +5,7 @@ import XCTest
 final class ShellTimeoutTests: XCTestCase {
 
     /// wedge した子(`sleep 30`)を timeout で kill し、締切近辺で ShellError.timedOut を投げる。
-    /// これが機能しないと 30s 丸ごとブロックする(= adb/simctl の wedge で device-up が永久ハングする回帰)。
+    /// これが機能しないと 30s 丸ごとブロックする(= adb/simctl の wedge で start-device が永久ハングする回帰)。
     func testTimeoutKillsWedgedChild() {
         let start = Date()
         XCTAssertThrowsError(try Shell.run(["sleep", "30"], timeout: 0.5)) { error in

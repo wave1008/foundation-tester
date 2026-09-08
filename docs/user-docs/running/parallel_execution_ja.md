@@ -17,7 +17,7 @@ fleetest run --project SampleApp --profile all
 もう一方の OS のデバイスは、そのシナリオぶんは空回りするだけです。プラットフォーム非依存の
 シナリオを両 OS で回すには、`--profile ios` と `--profile android` を別々に実行してください。
 
-## 実行プロファイルを使わない場合(手動 `--ports`)
+## 実行プロファイルを使わない場合(手動 `--port`)
 
 シミュレータごとに別ポートでブリッジを起動し、ポート一覧を `run` に渡します。
 
@@ -26,7 +26,7 @@ fleetest bridge up --device "iPhone 17 Pro"                          # port 8123
 fleetest bridge up --device "iPhone 17 Pro Max" --port 8124 --skip-build
 xcrun simctl install "iPhone 17 Pro Max" <対象アプリ.app>            # 各デバイスにアプリを入れる
 
-fleetest run --ports 8123,8124          # シナリオをワーカーに自動分配
+fleetest run --port 8123 --port 8124    # シナリオをワーカーに自動分配
 fleetest bridge down --all              # 全ブリッジ停止
 ```
 

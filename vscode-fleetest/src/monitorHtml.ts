@@ -792,7 +792,7 @@ function renderSettingsPanel(): string {
         <label class="settings-item"><input type="checkbox" id="settings-polling-mode"> ${t("panels.settings.pollingModeLabel")}</label>
         <div class="settings-hint">${t("panels.settings.pollingModeHint")}</div>
       </div>
-      <!-- 実体は CLI のホスト登録簿("fleetest api remote-hosts")+ fleetest.remote.artifacts 設定
+      <!-- 実体は CLI のホスト登録簿("fleetest api remote-machines")+ fleetest.remote.artifacts 設定
            (config.ts)。ここはもう1つの操作口(docs/remote-runner.md §12)。ホスト一覧
            (#settings-remote-hosts-body)は行数が可変のため settingsTab.js が動的に組み立てる。
            「追加」で足した行は name/host が埋まって行内の「確定」ボタンを押すまで CLI へ送らない

@@ -44,7 +44,7 @@ on a git URL instead (`--fleetest-branch` selects the branch to track; it defaul
 
 | Command | Description |
 |---|---|
-| `fleetest project create <name> [--app <bundleID>] [--platform ios\|android\|both]` | Scaffold a new test project and register it in `Package.swift` |
+| `fleetest project create <name> [--app-id <bundleID>] [--platform ios\|android\|both]` | Scaffold a new test project and register it in `Package.swift` |
 | `fleetest project list` | List test projects and whether they are registered in `Package.swift` |
 | `fleetest project sync` | Regenerate the `Package.swift` marker section from a scan of `TestProjects/` (run this after a manual copy or a `git pull`) |
 

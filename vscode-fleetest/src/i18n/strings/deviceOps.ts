@@ -8,8 +8,8 @@ export const deviceOpsStrings = {
   "deviceOps.nameListMore": { ja: "{shown} ほか", en: "{shown} and more" },
 
   "deviceOps.log.cancelBulkUpSigterm": {
-    ja: "[fleetest] デバイスの起動を中断します(devices-up へ SIGTERM)",
-    en: "[fleetest] Stopping device startup (sending SIGTERM to devices-up)",
+    ja: "[fleetest] デバイスの起動を中断します(start-all-devices へ SIGTERM)",
+    en: "[fleetest] Stopping device startup (sending SIGTERM to start-all-devices)",
   },
   "deviceOps.log.bulkUpQueueCancelled": {
     ja: "[fleetest] キュー待ちの一括起動を取り消しました",
@@ -91,31 +91,31 @@ export const deviceOpsStrings = {
     en: "[fleetest] {label} failed: {error}",
   },
   "deviceOps.log.devicesRestartStartFailed": {
-    ja: "[fleetest] devices-restart の起動に失敗しました: {error}",
-    en: "[fleetest] Failed to start devices-restart: {error}",
+    ja: "[fleetest] restart-devices の起動に失敗しました: {error}",
+    en: "[fleetest] Failed to start restart-devices: {error}",
   },
   "deviceOps.log.devicesRestartFailed": {
-    ja: "[fleetest] devices-restart が失敗しました: {error}",
-    en: "[fleetest] devices-restart failed: {error}",
+    ja: "[fleetest] restart-devices が失敗しました: {error}",
+    en: "[fleetest] restart-devices failed: {error}",
   },
   "deviceOps.log.devicesRestartRuntimeError": {
-    ja: "[fleetest] devices-restart の実行でエラーが発生しました: {error}",
-    en: "[fleetest] An error occurred while running devices-restart: {error}",
+    ja: "[fleetest] restart-devices の実行でエラーが発生しました: {error}",
+    en: "[fleetest] An error occurred while running restart-devices: {error}",
   },
   "deviceOps.log.devicesRestartClosed": {
-    ja: "[fleetest] devices-restart が終了しました(exit code: {exitCode})",
-    en: "[fleetest] devices-restart finished (exit code: {exitCode})",
+    ja: "[fleetest] restart-devices が終了しました(exit code: {exitCode})",
+    en: "[fleetest] restart-devices finished (exit code: {exitCode})",
   },
   "deviceOps.retryLabel": { ja: "(再試行 {attempt}/{max})", en: " (retry {attempt}/{max})" },
   "deviceOps.log.deviceOpFailed": {
-    ja: "[fleetest] device-{op}({name})が失敗しました{attemptLabel}: {message}",
-    en: "[fleetest] device-{op}({name}) failed{attemptLabel}: {message}",
+    ja: "[fleetest] {command}({name})が失敗しました{attemptLabel}: {message}",
+    en: "[fleetest] {command}({name}) failed{attemptLabel}: {message}",
   },
   "deviceOps.log.deviceUpRetrying": {
-    ja: "[fleetest] device-up({name})を再試行します({nextAttempt}/{max}、{delayMs}ms 後)",
-    en: "[fleetest] Retrying device-up({name}) ({nextAttempt}/{max}, after {delayMs}ms)",
+    ja: "[fleetest] start-device({name})を再試行します({nextAttempt}/{max}、{delayMs}ms 後)",
+    en: "[fleetest] Retrying start-device({name}) ({nextAttempt}/{max}, after {delayMs}ms)",
   },
-  "deviceOps.deviceOpFailedGeneric": { ja: "device-{op} に失敗しました。", en: "device-{op} failed." },
+  "deviceOps.deviceOpFailedGeneric": { ja: "{command} に失敗しました。", en: "{command} failed." },
   // 実機のブリッジが署名で建たないときの案内。**判定は CLI**(FTBridgeClient の
   // XcodeSigningDiagnosis)で、文言はここが持つ(CLAUDE.md「共有するのは判定であって文言ではない」)。
   // **事実(どれが欠けているか)は言い、手順は書かない**(Xcode の画面の道順は版ごとに
@@ -178,8 +178,8 @@ export const deviceOpsStrings = {
     en: "Full xcodebuild output: {path}",
   },
   "deviceOps.log.deviceOpClosed": {
-    ja: "[fleetest] device-{op}({name})が終了しました{attemptLabel}(exit code: {exitCode})",
-    en: "[fleetest] device-{op}({name}) finished{attemptLabel} (exit code: {exitCode})",
+    ja: "[fleetest] {command}({name})が終了しました{attemptLabel}(exit code: {exitCode})",
+    en: "[fleetest] {command}({name}) finished{attemptLabel} (exit code: {exitCode})",
   },
   "deviceOps.processExitedWithCode": {
     ja: "プロセスが exit code {exitCode} で終了しました",

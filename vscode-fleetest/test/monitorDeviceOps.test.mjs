@@ -60,7 +60,7 @@ async function waitUntilIdle(deviceOps, timeoutMs = 3000) {
   }
 }
 
-test("device-down ジョブは実行開始時に stopDeviceStreams(name) を同期的に呼ぶ(stopAllStreamsは呼ばない)", async () => {
+test("stop-device ジョブは実行開始時に stopDeviceStreams(name) を同期的に呼ぶ(stopAllStreamsは呼ばない)", async () => {
   const { dir, binaryPath } = makeMockBinary();
   const { deps, stopDeviceStreamsCalls, stopAllStreamsCalls } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
@@ -76,7 +76,7 @@ test("device-down ジョブは実行開始時に stopDeviceStreams(name) を同�
   }
 });
 
-test("device-up ジョブは stopDeviceStreams/stopAllStreams のどちらも呼ばない", async () => {
+test("start-device ジョブは stopDeviceStreams/stopAllStreams のどちらも呼ばない", async () => {
   const { dir, binaryPath } = makeMockBinary();
   const { deps, stopDeviceStreamsCalls, stopAllStreamsCalls } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
@@ -173,7 +173,7 @@ test("syncCpuRenderNames: renderMode が cpu / 未受信 / connected 以外 / �
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// ---- device-down 直指定モード(未登録デバイス。udid/serial 指定時の引数組み立て) ----
+// ---- stop-device 直指定モード(未登録デバイス。udid/serial 指定時の引数組み立て) ----
 // 対向: Sources/fleetest/ApiDeviceCommands.swift ApiDeviceDownDirectTarget(--name/--udid/--serial の
 // うちちょうど1つ)。monitorDeviceOps.ts runDeviceOpAttempt が --name の代わりに --udid/--serial を
 // 渡し、--project/--profile も付けないことを spawn 引数で検証する。
@@ -185,7 +185,7 @@ async function runDeviceJobAndReadArgs(deviceOps, argsLog, job) {
   return fs.existsSync(argsLog) ? fs.readFileSync(argsLog, "utf8") : "";
 }
 
-test("device-down は udid 指定時、--udid を渡し --name/--project/--profile を渡さない", async () => {
+test("stop-device は udid 指定時、--udid を渡し --name/--project/--profile を渡さない", async () => {
   const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
   const { deps } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
@@ -203,7 +203,7 @@ test("device-down は udid 指定時、--udid を渡し --name/--project/--profi
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("device-up は udid 指定時、--udid を渡す(接続中の実機のブリッジ起動)", async () => {
+test("start-device は udid 指定時、--udid を渡す(接続中の実機のブリッジ起動)", async () => {
   const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
   const { deps } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
@@ -214,7 +214,7 @@ test("device-up は udid 指定時、--udid を渡す(接続中の実機のブ�
     op: "up",
     udid: "00008110-000260242EEB801E",
   });
-  assert.match(args, /device-up/);
+  assert.match(args, /start-device/);
   assert.match(args, /--udid 00008110-000260242EEB801E/);
   assert.doesNotMatch(args, /--name/);
   assert.doesNotMatch(args, /--project/);
@@ -224,7 +224,7 @@ test("device-up は udid 指定時、--udid を渡す(接続中の実機のブ�
 
 // Android の up に直指定は無い(端末の電源を入れる操作は存在しない)。serial 付きの up は
 // 従来どおり --name 経路へ落ちること
-test("device-up は serial 指定でも直指定にせず --name 経路のまま", async () => {
+test("start-device は serial 指定でも直指定にせず --name 経路のまま", async () => {
   const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
   const { deps } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
@@ -240,7 +240,7 @@ test("device-up は serial 指定でも直指定にせず --name 経路のまま
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("device-down は serial 指定時、--serial を渡し --name/--project/--profile を渡さない", async () => {
+test("stop-device は serial 指定時、--serial を渡し --name/--project/--profile を渡さない", async () => {
   const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
   const { deps } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
@@ -258,7 +258,7 @@ test("device-down は serial 指定時、--serial を渡し --name/--project/--p
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("device-down は udid/serial 無指定なら従来どおり --name/--project/--profile を渡す", async () => {
+test("stop-device は udid/serial 無指定なら従来どおり --name/--project/--profile を渡す", async () => {
   const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
   const { deps } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
@@ -317,7 +317,7 @@ test("wipe ジョブは識別子で撃つ(--platform/--avd。プロファイル�
     );
     await waitUntilIdle(deviceOps);
     const line = argvLines(dir).at(-1);
-    assert.match(line, /^api device-wipe --platform android --avd Pixel_8$/);
+    assert.match(line, /^api wipe-device --platform android --avd Pixel_8$/);
     assert.doesNotMatch(line, /--name/);
     assert.doesNotMatch(line, /--project/);
     assert.doesNotMatch(line, /--device-machine/);
@@ -333,7 +333,7 @@ test("iOS の wipe は --udid で撃つ", async () => {
   try {
     deviceOps.enqueueWipe([{ name: "シミュ1", platform: "ios", identifier: "UDID-1" }]);
     await waitUntilIdle(deviceOps);
-    assert.match(argvLines(dir).at(-1), /^api device-wipe --platform ios --udid UDID-1$/);
+    assert.match(argvLines(dir).at(-1), /^api wipe-device --platform ios --udid UDID-1$/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -349,7 +349,7 @@ test("リモートの台の wipe はその機械で実行する(識別子はそ�
     ]);
     await waitUntilIdle(deviceOps);
     const line = argvLines(dir).at(-1);
-    assert.match(line, /^remote exec M1Max -- api device-wipe --platform android --avd Pixel_8$/);
+    assert.match(line, /^remote exec M1Max -- api wipe-device --platform android --avd Pixel_8$/);
     // 向こうのプロファイルを読まないので、送り直し(--sync-project)も要らない
     assert.doesNotMatch(line, /--sync-project/);
   } finally {
@@ -388,7 +388,7 @@ test("同じ台に別の操作が載っている間は wipe を積まない(戻�
 });
 
 // --- 別の機械のデバイスの単体操作 ---------------------------------------------------------
-// 実害の形(2026-08-17 のレビュー): `api device-up --name X` は**手元の**マシンプロファイルを
+// 実害の形(2026-08-17 のレビュー): `api start-device --name X` は**手元の**マシンプロファイルを
 // 名前だけで引く(ApiDeviceOperation.findDevice)。同名の台が別の機械にも居るのは通常なので、
 // リモートのタイルから起動すると**別の機械の設定でこの Mac にシミュレータが1台できる**
 // (simctl は無ければ作る)。一括起動が RemoteDeviceFanout で分散するのと同じ規律に揃える。
@@ -401,7 +401,7 @@ test("リモートのデバイスの起動はその機械で実行する(remote 
     deviceOps.enqueueLifecycleJob({ kind: "device", name: "シミュ1", op: "up", machine: "M1Max" });
     await waitUntilIdle(deviceOps);
     const line = argvLines(dir).at(-1);
-    assert.match(line, /^remote exec M1Max -- api device-up/, "その機械で起こす");
+    assert.match(line, /^remote exec M1Max -- api start-device/, "その機械で起こす");
     // **向こうでは "local"** —— 送ったプロファイルは自分の台を machine:"local" に畳んである
     // (RunnerProfileView)。エイリアスを渡すと向こうで一致せず
     // "device not found: <名前> on M1Max" になる(2026-08-29 に実機で確認)
@@ -438,7 +438,7 @@ exit 1
     const lines = argvLines(dir);
     assert.equal(lines.length, 2, "1回目 + 再試行");
     for (const [index, line] of lines.entries()) {
-      assert.match(line, /^remote exec M1Ultra -- api device-up/, `${index + 1}回目もその機械で起こす`);
+      assert.match(line, /^remote exec M1Ultra -- api start-device/, `${index + 1}回目もその機械で起こす`);
     }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -484,7 +484,7 @@ test("手元のデバイスは remote exec を経由せず、手元の台に絞�
     deviceOps.enqueueLifecycleJob({ kind: "device", name: "シミュ1", op: "up" });
     await waitUntilIdle(deviceOps);
     const line = argvLines(dir).at(-1);
-    assert.match(line, /^api device-up/);
+    assert.match(line, /^api start-device/);
     assert.doesNotMatch(line, /remote exec/);
     assert.match(line, /--device-machine local/, "同名のリモートの台を引かないための絞り込み");
   } finally {
@@ -751,11 +751,11 @@ test("stderr が何も無ければ exit code だけでもバナーへ出す(黙�
   }
 });
 
-// 「GPU で再起動」の宛先。`api devices-restart` は手元専用(ApiDevicesRestart の
+// 「GPU で再起動」の宛先。`api restart-devices` は手元専用(ApiDevicesRestart の
 // foreign: .notHandled)なので、リモートのタイルから名前だけで積むと**手元の同名の台**を
 // 再起動していた(実害: リモート機の CPU バッジ機に「GPU で再起動」→ この Mac のエミュレータが落ちる)。
 // リモートはタイルの起動/停止と同じ device ジョブ(remote exec + --device-machine local)へ回す。
-test("リモートのタイルの「GPU で再起動」はその機械で down→up し、手元の devices-restart を撃たない", async () => {
+test("リモートのタイルの「GPU で再起動」はその機械で down→up し、手元の restart-devices を撃たない", async () => {
   const { dir, binaryPath } = makeMockBinary();
   const { deps, stopDeviceStreamsCalls } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
@@ -766,11 +766,11 @@ test("リモートのタイルの「GPU で再起動」はその機械で down�
     await waitUntilIdle(deviceOps);
     const lines = argvLines(dir);
     assert.equal(lines.length, 2, "down と up の2本");
-    assert.match(lines[0], /^remote exec M1Max -- api device-down --name エミュ1 /);
-    assert.match(lines[1], /^remote exec M1Max -- api device-up --name エミュ1 /);
+    assert.match(lines[0], /^remote exec M1Max -- api stop-device --name エミュ1 /);
+    assert.match(lines[1], /^remote exec M1Max -- api start-device --name エミュ1 /);
     for (const line of lines) {
       assert.match(line, /--device-machine local/);
-      assert.doesNotMatch(line, /devices-restart/, "手元の同名の台を再起動してはいけない");
+      assert.doesNotMatch(line, /restart-devices/, "手元の同名の台を再起動してはいけない");
       assert.doesNotMatch(line, /--gpu/, "手元の名簿(cpuRenderNames)を別の機械の台に適用しない");
     }
     // down の前に配信を畳む(タイルの停止と同じ経路を通っている証拠)
@@ -780,7 +780,7 @@ test("リモートのタイルの「GPU で再起動」はその機械で down�
   }
 });
 
-test("手元のタイルの「GPU で再起動」は従来どおり devices-restart 1本(machine 省略)", async () => {
+test("手元のタイルの「GPU で再起動」は従来どおり restart-devices 1本(machine 省略)", async () => {
   const { dir, binaryPath } = makeMockBinary();
   const { deps } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
@@ -789,14 +789,14 @@ test("手元のタイルの「GPU で再起動」は従来どおり devices-rest
     await waitUntilIdle(deviceOps);
     const lines = argvLines(dir);
     assert.equal(lines.length, 1);
-    assert.match(lines[0], /^api devices-restart --name エミュ1 /);
+    assert.match(lines[0], /^api restart-devices --name エミュ1 /);
     assert.doesNotMatch(lines[0], /remote exec/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("バッチの「GPU で再起動」は手元を devices-restart 1本にまとめ、リモートは機械ごとの device ジョブに分ける", async () => {
+test("バッチの「GPU で再起動」は手元を restart-devices 1本にまとめ、リモートは機械ごとの device ジョブに分ける", async () => {
   const { dir, binaryPath } = makeMockBinary();
   const { deps, posts } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
@@ -806,8 +806,8 @@ test("バッチの「GPU で再起動」は手元を devices-restart 1本にま�
     ]);
     await waitUntilIdle(deviceOps);
     const lines = argvLines(dir);
-    const local = lines.filter((line) => line.startsWith("api devices-restart"));
-    const remote = lines.filter((line) => line.startsWith("remote exec M1Max -- api device-"));
+    const local = lines.filter((line) => line.startsWith("api restart-devices"));
+    const remote = lines.filter((line) => /^remote exec M1Max -- api (?:start-device|stop-device)\b/.test(line));
     assert.equal(local.length, 1);
     assert.match(local[0], /--name エミュ1 --name エミュ2 /, "手元は1ジョブにまとめる(2台ずつ並行は CLI 側)");
     assert.equal(remote.length, 2, "リモートは down と up");

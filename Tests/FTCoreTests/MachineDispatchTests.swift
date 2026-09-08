@@ -1,6 +1,6 @@
 // MachineDispatchTests.swift
 // マシンプロファイルの host(自動リモートディスパッチ、ユーザー決定)まわりの
-// 破ったら落ちるテスト: JSON 後方互換・正規化・--host との優先順位(純粋関数)・
+// 破ったら落ちるテスト: JSON 後方互換・正規化・--runner との優先順位(純粋関数)・
 // ProfileResolver 経由の読み取り。
 
 import XCTest
@@ -52,7 +52,7 @@ final class MachineDispatchTests: XCTestCase {
 
     func testResolveMachineHostAloneAutoDispatches() {
         let decision = MachineDispatch.resolve(explicitTarget: nil, profileMachine: "runner1")
-        XCTAssertEqual(decision.target, "runner1", "実行プロファイル経由の間接指定(--host 未指定)")
+        XCTAssertEqual(decision.target, "runner1", "実行プロファイル経由の間接指定(--runner 未指定)")
         XCTAssertNil(decision.mismatchWarning)
     }
 
@@ -70,24 +70,24 @@ final class MachineDispatchTests: XCTestCase {
 
     func testResolveExplicitWinsOverDifferingMachineHostWithWarning() {
         let decision = MachineDispatch.resolve(explicitTarget: "cliHost", profileMachine: "machine")
-        XCTAssertEqual(decision.target, "cliHost", "--host が常に勝つ")
+        XCTAssertEqual(decision.target, "cliHost", "--runner が常に勝つ")
         guard let warning = decision.mismatchWarning else {
-            return XCTFail("expected a mismatch warning when --host and the machine profile disagree")
+            return XCTFail("expected a mismatch warning when --runner and the machine profile disagree")
         }
         XCTAssertTrue(warning.contains("cliHost"))
         XCTAssertTrue(warning.contains("machine"))
     }
 
     func testResolveExplicitLocalOverridesMachineHostAndWarns() {
-        // 欠陥3: "--host local" は「ここで走らせる」の明示指定であり、
+        // 欠陥3: "--runner local" は「ここで走らせる」の明示指定であり、
         // 「未指定」ではない。マシン側が別のリモートを指していても黙って上書きせず、
         // 通常の食い違いと同じ規律で warn したうえでローカルに留まる
         // (以前は normalize の畳み込みだけで判定しており、この組み合わせだけ
         // マシン側の host へ自動ディスパッチしてしまっていた)
         let decision = MachineDispatch.resolve(explicitTarget: "local", profileMachine: "runner1")
-        XCTAssertNil(decision.target, "--host local は常にローカルに留まる")
+        XCTAssertNil(decision.target, "--runner local は常にローカルに留まる")
         guard let warning = decision.mismatchWarning else {
-            return XCTFail("expected a mismatch warning when --host local overrides the machine host")
+            return XCTFail("expected a mismatch warning when --runner local overrides the machine host")
         }
         XCTAssertTrue(warning.contains("runner1"))
     }

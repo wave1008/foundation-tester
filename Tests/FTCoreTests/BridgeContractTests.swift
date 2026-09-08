@@ -133,7 +133,7 @@ final class BridgeContractTests: XCTestCase {
             "Sources/FTCore/WebViewDOMSnapshot.swift": "649134e9ee668e692000ad362c71f5821ac21f351485ba5c985ec75d64594726",
         ],
         .xcuitest: [
-            "Runner/FleetestRunnerUITests/BridgeHTTPServer.swift": "d98bb5e7d837e0fbe5e352eee09931679372332fe1b77987b10050800d57cba4",
+            "Runner/FleetestRunnerUITests/BridgeHTTPServer.swift": "28025e9581fef3f627b79506e6835bb88203b9f38a6f26f2cf28bc5f7dcd8592",
             "Runner/FleetestRunnerUITests/BridgeRouter.swift": "ef346dd22c5cc8304583c0da8d91a4c523c21d2030ec2b2af69379a4eefe3adc",
             "Runner/FleetestRunnerUITests/BridgingHeader.h": "f7ff424d9283644d0e7a0c6e202911ecbf2d9c12d469eea330d91471c4788272",
             "Runner/FleetestRunnerUITests/DisplayHeartbeat.swift": "c62c30a45e842d5ec7aff60210284d679b76f6e44358a3f4c97429fe918e5ffa",

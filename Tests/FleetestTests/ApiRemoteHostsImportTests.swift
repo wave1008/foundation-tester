@@ -1,9 +1,7 @@
-// `fleetest api remote-hosts --import` が受け取る JSON の鍵と、マシン名省略時の既定。
+// `fleetest api remote-machines --import` が受け取る JSON の鍵と、マシン名省略時の既定。
 //
 // **拡張は machine で送る**(vscode-fleetest/src/remoteRunArgs.ts の RemoteHostEntry)。
-// 2026-08-27 まで実装は旧キー name だけを必須で読んでおり、**設定タブからのマシン登録が
-// 常に「--import is not a valid JSON array」で失敗していた**(2026-08-26 の改名で
-// 片側だけ残った)。型の効かない境界なので、鍵の集合をここで固定する。
+// 型の効かない境界なので、鍵の集合をここで固定する。
 
 import XCTest
 @testable import fleetest
@@ -22,9 +20,11 @@ final class ApiRemoteHostsImportTests: XCTestCase {
         XCTAssertNil(entries[0].dir, "空文字の dir は未設定として扱う")
     }
 
-    func testStillReadsTheLegacyNameKey() throws {
+    /// 旧キー "name" はもう読まない。指定されても未知キーとして無視され、
+    /// machine 省略時と同じ既定(host のホスト部)に落ちる
+    func testLegacyNameKeyIsIgnoredAndFallsBackToTheHostPart() throws {
         let entries = try decode(#"[{"name":"old","host":"user@legacy"}]"#)
-        XCTAssertEqual(entries.map(\.machine), ["old"])
+        XCTAssertEqual(entries.map(\.machine), ["legacy"])
     }
 
     /// **マシン名は省略可**: 無ければ host のホスト部(user@ を落とす)を名前にする

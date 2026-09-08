@@ -1,5 +1,5 @@
 // RemoteSetupCommand.swift
-// `fleetest remote setup` / `fleetest remote exec` (docs/remote-runner.md §14)。
+// `fleetest remote setup` / `teardown` / `align` / `exec` (docs/remote-runner.md §14)。
 // 純粋ロジックは Sources/FTRemote/RemoteSetup.swift 側(RemoteSetupPlan、単体テスト対象)。
 // ssh の張り方は Sources/fleetest/RemoteRunDispatcher.swift・RemoteCommands.swift と同じ規律
 // (BatchMode=yes・ConnectTimeout=10)だが、そちらは private のため複製する。
@@ -111,16 +111,16 @@ extension RemoteCommand {
     struct Setup: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "setup",
-            abstract: "Provision a remote Mac to receive --host dispatches (idempotent)",
+            abstract: "Provision a remote Mac to receive --runner dispatches (idempotent)",
             discussion: "Steps: local → reach → preflight → install → align → verify "
                 + "(docs/remote-runner.md §14). Exit codes match install.sh: "
                 + "0 = done / 2 = stopped with steps left for a human / 1 = failed.")
 
-        @Argument(help: "Remote host to set up: a registered name (fleetest remote hosts) or a raw user@host/host")
-        var host: String
+        @Argument(help: "Remote runner to set up: a registered machine (fleetest remote machines) or a raw user@host/host")
+        var runner: String
 
         @Option(name: .customLong("remote-dir"),
-                help: "Runner-only base directory on the remote host (default: the host registry's entry, or ~/fleetest-runner)")
+                help: "Runner-only base directory on the remote host (default: the machine registry's entry, or ~/fleetest-runner)")
         var remoteDir: String?
 
         // ArgumentHelp は文字列**リテラル**からしか作れない(連結した String は渡せない)。
@@ -139,23 +139,8 @@ extension RemoteCommand {
         @Flag(name: .customLong("skip-verify"), help: "Skip the verification dispatch")
         var skipVerify = false
 
-        @Flag(help: ArgumentHelp("Delete the remote base directory instead of installing "
-            + "(destructive; asks for confirmation unless --yes)"))
-        var uninstall = false
-
-        @Flag(help: "Do not prompt for confirmation before --uninstall")
-        var yes = false
-
-        func validate() throws {
-            guard uninstall else { return }
-            if project != nil || profile != nil || scenario != nil || skipVerify {
-                throw ValidationError(
-                    "--uninstall does not use --project/--profile/--scenario/--skip-verify")
-            }
-        }
-
         func run() async throws {
-            let resolved = try RemoteHostResolver.resolve(rawHost: host, remoteDirOverride: remoteDir)
+            let resolved = try RemoteHostResolver.resolve(rawHost: runner, remoteDirOverride: remoteDir)
             let hostSpec = resolved.hostSpec
             resolved.announce()
 
@@ -183,21 +168,19 @@ extension RemoteCommand {
 
             // ローカル側の前提はネットワークより先に解く。後ろに置くと、--project の指定漏れが
             // ssh 往復とリモートの preflight を払った後に「install の失敗」として現れる
-            var localPrerequisites: (repoRoot: URL, project: TestProject)?
-            if !uninstall {
-                guard let repoRoot = try? RepoRoot.find() else {
-                    emit("local", .fail,
-                         "cannot resolve the local tool root (run this inside the foundation-tester repo)")
-                    try summarizeAndExit()
-                }
-                do {
-                    localPrerequisites = (repoRoot, try ScenarioHost.project(named: project))
-                } catch {
-                    emit("local", .fail, "cannot resolve the local project: \(error.localizedDescription)")
-                    try summarizeAndExit()
-                }
-                emit("local", .ok, "project \(localPrerequisites!.project.name)")
+            guard let repoRoot = try? RepoRoot.find() else {
+                emit("local", .fail,
+                     "cannot resolve the local tool root (run this inside the foundation-tester repo)")
+                try summarizeAndExit()
             }
+            let resolvedProject: TestProject
+            do {
+                resolvedProject = try ScenarioHost.project(named: project)
+            } catch {
+                emit("local", .fail, "cannot resolve the local project: \(error.localizedDescription)")
+                try summarizeAndExit()
+            }
+            emit("local", .ok, "project \(resolvedProject.name)")
 
             say("==> reach: checking \(hostSpec.sshTarget)...")
             let (session, home, reachError) = remoteReach(hostSpec: hostSpec)
@@ -227,31 +210,6 @@ extension RemoteCommand {
             }
             let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home),
                                       issuer: issuer)
-
-            if uninstall {
-                do {
-                    try RemoteSetupPlan.validateUninstallBase(layout.base, home: home)
-                } catch {
-                    emit("uninstall", .fail, error.localizedDescription)
-                    try summarizeAndExit()
-                }
-                guard confirmUninstall(base: layout.base, host: hostSpec.sshTarget) else {
-                    emit("uninstall", .fail, "cancelled (pass --yes to skip the confirmation prompt)")
-                    try summarizeAndExit()
-                }
-                say("==> uninstall: deleting \(layout.base) on \(hostSpec.sshTarget)...")
-                let command = RemoteSetupPlan.uninstallCommand(base: layout.base)
-                let status = (try? runInheritedSSH(setupSSHBase + [hostSpec.sshTarget, command])) ?? -1
-                if status == 0 {
-                    emit("uninstall", .ok, "deleted \(layout.base)")
-                } else {
-                    emit("uninstall", .fail, "rm exited with status \(status)")
-                }
-                try summarizeAndExit()
-            }
-
-            // uninstall は上で return するので、ここに来た時点で必ず解決済み
-            let (repoRoot, resolvedProject) = localPrerequisites!
 
             let stamp = "\(Int(Date().timeIntervalSince1970))-\(ProcessInfo.processInfo.processIdentifier)"
 
@@ -370,10 +328,10 @@ extension RemoteCommand {
                 say("==> verify: dispatching \(what) to \(hostSpec.sshTarget) (this is the real success gate)...")
                 let dispatcher = RemoteRunDispatcher(
                     host: hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: repoRoot,
-                    hostLabel: host)
+                    hostLabel: runner)
                 do {
                     let (scopedNames, scopedHost) = try machineScopedDeviceFilter(
-                        project: resolvedProject, profile: profile, targetMachine: host)
+                        project: resolvedProject, profile: profile, targetMachine: runner)
                     let exitCode = try await dispatcher.dispatch(
                         project: resolvedProject, profile: profile,
                         scenarios: scenario.map { [$0] } ?? [], folders: [],
@@ -397,6 +355,69 @@ extension RemoteCommand {
 
             try summarizeAndExit()
         }
+    }
+
+    struct Teardown: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "teardown",
+            abstract: "Delete the remote base directory of a runner (destructive)")
+
+        @Argument(help: "Remote runner to delete: a registered machine (fleetest remote machines) or a raw user@host/host")
+        var runner: String
+
+        @Option(name: .customLong("remote-dir"),
+                help: "Runner-only base directory on the remote host (default: the machine registry's entry, or ~/fleetest-runner)")
+        var remoteDir: String?
+
+        @Flag(help: "Do not prompt for confirmation")
+        var yes = false
+
+        func run() async throws {
+            let resolved = try RemoteHostResolver.resolve(rawHost: runner, remoteDirOverride: remoteDir)
+            let hostSpec = resolved.hostSpec
+            resolved.announce()
+
+            say("==> reach: checking \(hostSpec.sshTarget)...")
+            let (session, home, reachError) = remoteReach(hostSpec: hostSpec)
+            guard let home else {
+                say(reachError ?? "unreachable")
+                throw ExitCode(1)
+            }
+            if let session, !session.isLoggedIn {
+                say("\(hostSpec.sshTarget) is sitting at the login window (console user: "
+                    + "\(session.consoleUser), expected: \(session.sshUser)) — unlock and log in on the "
+                    + "runner, then retry (docs/remote-runner.md §5)")
+                throw ExitCode(1)
+            }
+
+            let layout: RemoteLayout
+            do {
+                layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home),
+                                      issuer: try resolveLayoutIssuer())
+            } catch {
+                say(error.localizedDescription)
+                throw ExitCode(1)
+            }
+
+            do {
+                try RemoteSetupPlan.validateUninstallBase(layout.base, home: home)
+            } catch {
+                say(error.localizedDescription)
+                throw ExitCode(1)
+            }
+            guard confirmUninstall(base: layout.base, host: hostSpec.sshTarget) else {
+                say("cancelled (pass --yes to skip the confirmation prompt)")
+                throw ExitCode(1)
+            }
+            say("==> teardown: deleting \(layout.base) on \(hostSpec.sshTarget)...")
+            let command = RemoteSetupPlan.uninstallCommand(base: layout.base)
+            let status = (try? runInheritedSSH(setupSSHBase + [hostSpec.sshTarget, command])) ?? -1
+            guard status == 0 else {
+                say("rm exited with status \(status)")
+                throw ExitCode(1)
+            }
+            say("✅ deleted \(layout.base)")
+        }
 
         /// `--yes` があれば無条件に許可。無ければ TTY からのみ確認を取る(非対話セッションは
         /// 確認できないので拒否する。破壊的操作は必ず人の確認を経る)
@@ -417,15 +438,15 @@ extension RemoteCommand {
             abstract: "Fetch, checkout and build the local HEAD revision on a runner"
                 + " (the align step of `remote setup` alone; docs/remote-runner.md §14)")
 
-        @Argument(help: "Remote host to align: a registered name (fleetest remote hosts) or a raw user@host/host")
-        var host: String
+        @Argument(help: "Remote runner to align: a registered machine (fleetest remote machines) or a raw user@host/host")
+        var runner: String
 
         @Option(name: .customLong("remote-dir"),
-                help: "Runner-only base directory on the remote host (default: the host registry's entry, or ~/fleetest-runner)")
+                help: "Runner-only base directory on the remote host (default: the machine registry's entry, or ~/fleetest-runner)")
         var remoteDir: String?
 
         func run() async throws {
-            let resolved = try RemoteHostResolver.resolve(rawHost: host, remoteDirOverride: remoteDir)
+            let resolved = try RemoteHostResolver.resolve(rawHost: runner, remoteDirOverride: remoteDir)
             let hostSpec = resolved.hostSpec
             resolved.announce()
 
@@ -493,23 +514,23 @@ extension RemoteCommand {
     struct Exec: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "exec",
-            abstract: "Run `fleetest <args>` on a remote host and relay its output and exit code",
+            abstract: "Run `fleetest <args>` on a remote runner and relay its output and exit code",
             discussion: "The generic transport for one-shot queries and operations "
                 + "(docs/remote-runner.md §14): do not add a dedicated ssh path for a new use case, use this. "
-                + "Everything after <host> is passed through verbatim, so --remote-dir must come before it.\n"
+                + "Everything after <runner> is passed through verbatim, so --remote-dir must come before it.\n"
                 + "  fleetest remote exec mac2 -- doctor --fm-only\n"
                 + "  fleetest remote exec --remote-dir ~/runner mac2 -- api device-catalog")
 
-        @Argument(help: "Remote host to run on: a registered name (fleetest remote hosts) or a raw user@host/host")
-        var host: String
+        @Argument(help: "Remote runner to run on: a registered machine (fleetest remote machines) or a raw user@host/host")
+        var runner: String
 
         @Option(name: .customLong("remote-dir"),
-                help: "Runner-only base directory on the remote host (default: the host registry's entry, or ~/fleetest-runner)")
+                help: "Runner-only base directory on the remote host (default: the machine registry's entry, or ~/fleetest-runner)")
         var remoteDir: String?
 
         // 設計文書(docs/remote-runner.md §14)は `fleetest --host <name> <サブコマンド>` の形で
         // 書いているが、ArgumentParser のサブコマンド解決と `run --host` の意味が衝突するため
-        // `remote exec <host> -- <args>` に変えた(トップレベルに --host オプションは無い)
+        // `remote exec <runner> -- <args>` に変えた(トップレベルに --host オプションは無い)
         @Argument(parsing: .captureForPassthrough,
                   help: "The fleetest subcommand and its arguments to run remotely, e.g. -- doctor --fm-only")
         var args: [String] = []
@@ -518,12 +539,12 @@ extension RemoteCommand {
             var relayed = args
             if relayed.first == "--" { relayed.removeFirst() }
             guard !relayed.isEmpty else {
-                throw ValidationError("no fleetest subcommand given (usage: remote exec <host> -- <subcommand> [args...])")
+                throw ValidationError("no fleetest subcommand given (usage: remote exec <runner> -- <subcommand> [args...])")
             }
-            guard !relayed.contains("--host") else {
-                throw ValidationError("--host cannot be relayed through `remote exec` (no nested dispatch to another host)")
+            guard !relayed.contains("--runner") else {
+                throw ValidationError("--runner cannot be relayed through `remote exec` (no nested dispatch to another runner)")
             }
-            let resolved = try RemoteHostResolver.resolve(rawHost: host, remoteDirOverride: remoteDir)
+            let resolved = try RemoteHostResolver.resolve(rawHost: runner, remoteDirOverride: remoteDir)
             let hostSpec = resolved.hostSpec
             // 端末で打ったときだけ。拡張は配信・メトリクス・fan-out で1機に十数本を立てるので、
             // 毎本同じ行が並ぶ(fan-out の親が機械と宛先を1行出す = RemoteMonitorFanout)

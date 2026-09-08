@@ -139,7 +139,7 @@ needs_rebuild() {  # $1 = 成果物パス, $2.. = 監視するソースディレ
 # in-app/xcuitest 両方変えた回の E2E 254 本が全部 engine=xcuitest だった)。
 # **警告だけで落とさない** —— 検知は警告から始める、が本リポジトリの方針。
 # 一覧の定義元は Sources/FTCore/BridgeSourceSet.swift(ここに二重に書かない)
-engine_digest() { "$FLEETEST" api bridge-sources --set "$1" --digest 2>/dev/null; }
+engine_digest() { "$FLEETEST" api bridge-sources --bridge "$1" --digest 2>/dev/null; }
 engine_marker() { echo "$ROOT/.fleetest/$1-e2e-verified"; }
 # このスイートが回す iOS エンジンと、回さない側
 RUN_ENGINE=inapp; SKIP_ENGINE=xcuitest
