@@ -565,7 +565,9 @@ struct ApiStopDeviceCommand: AsyncParsableCommand {
             try await Self.runDirect(spec: spec, platform: "ios", repoRoot: try? RepoRoot.find())
         case .serial(let serial):
             let runningAVDs = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
-            switch ApiDeviceDownDirectSpec.androidSpec(serial: serial, runningAVDs: runningAVDs) {
+            let connected = Set((try? AndroidDeviceCatalog.connectedSerials()) ?? [])
+            switch ApiDeviceDownDirectSpec.androidSpec(
+                serial: serial, runningAVDs: runningAVDs, connectedSerials: connected) {
             case .success(let spec):
                 try await Self.runDirect(spec: spec, platform: "android", repoRoot: nil)
             case .failure(let message):
@@ -632,13 +634,21 @@ enum ApiDeviceDownDirectSpec {
         return DeviceSpec(name: name, udid: udid)
     }
 
-    /// runningAVDs(serial -> canonical AVD ID)から解決する。見つからなければ呼び出し側が
-    /// emitFinished(ok:false) するためのメッセージを返す
-    static func androidSpec(serial: String, runningAVDs: [String: String]) -> SpecResult {
-        guard let avdID = runningAVDs[serial] else {
-            return .failure("serial not found among running emulators: \(serial)")
+    /// runningAVDs(serial -> canonical AVD ID)から解決する。エミュレータに無ければ
+    /// **接続中の実機**として解決する —— 実機は AVD を持たないので runningAVDs だけを見ると
+    /// 必ず失敗し、タイルの「ブリッジ停止」が実機で使えない。
+    /// **実機は kind: .physical にする**(これが無いと DeviceBooter.shutdownOne が
+    /// エミュレータ扱いで `adb emu kill` を撃ち、利用者の端末を落としにいく)。
+    /// どちらでもなければ呼び出し側が emitFinished(ok:false) するためのメッセージを返す
+    static func androidSpec(serial: String, runningAVDs: [String: String],
+                            connectedSerials: Set<String>) -> SpecResult {
+        if let avdID = runningAVDs[serial] {
+            return .success(DeviceSpec(name: avdID, avd: avdID))
         }
-        return .success(DeviceSpec(name: avdID, avd: avdID))
+        if connectedSerials.contains(serial) {
+            return .success(DeviceSpec(name: serial, kind: .physical, serial: serial))
+        }
+        return .failure("serial not found among running emulators or connected devices: \(serial)")
     }
 }
 

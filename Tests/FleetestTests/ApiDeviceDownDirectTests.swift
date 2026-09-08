@@ -59,7 +59,8 @@ final class ApiDeviceDownDirectTests: XCTestCase {
 
     func testAndroidSpecResolvesAvdIdFromSerial() throws {
         let result = ApiDeviceDownDirectSpec.androidSpec(
-            serial: "emulator-5554", runningAVDs: ["emulator-5554": "Pixel_9_Android_15_-01"])
+            serial: "emulator-5554", runningAVDs: ["emulator-5554": "Pixel_9_Android_15_-01"],
+            connectedSerials: ["emulator-5554"])
         switch result {
         case .success(let spec):
             XCTAssertEqual(spec.name, "Pixel_9_Android_15_-01")
@@ -70,12 +71,38 @@ final class ApiDeviceDownDirectTests: XCTestCase {
     }
 
     func testAndroidSpecFailsWhenSerialNotFound() {
-        let result = ApiDeviceDownDirectSpec.androidSpec(serial: "emulator-9999", runningAVDs: [:])
+        let result = ApiDeviceDownDirectSpec.androidSpec(
+            serial: "emulator-9999", runningAVDs: [:], connectedSerials: [])
         switch result {
         case .success:
             XCTFail("expected failure")
         case .failure(let message):
             XCTAssertTrue(message.contains("emulator-9999"))
         }
+    }
+
+    /// 実機(AVD を持たない)は runningAVDs に居ないので、接続一覧から解決する。
+    /// **kind が physical でないと DeviceBooter.shutdownOne がエミュレータ扱いで
+    /// `adb emu kill` を撃つ** —— 利用者の端末を落とすので、ここは名前ではなく kind で固定する
+    func testAndroidSpecResolvesConnectedPhysicalDeviceAsPhysical() {
+        let result = ApiDeviceDownDirectSpec.androidSpec(
+            serial: "93MAY0CY1M", runningAVDs: [:], connectedSerials: ["93MAY0CY1M"])
+        switch result {
+        case .success(let spec):
+            XCTAssertTrue(spec.isPhysical, "実機を physical に解決しないと adb emu kill が飛ぶ")
+            XCTAssertEqual(spec.serial, "93MAY0CY1M")
+            XCTAssertNil(spec.avd, "実機に AVD を持たせない")
+        case .failure(let message):
+            XCTFail("expected success, got failure: \(message)")
+        }
+    }
+
+    /// エミュレータは physical にしない(こちらは端末ごと停止してよい)
+    func testAndroidSpecKeepsEmulatorsNonPhysical() {
+        let result = ApiDeviceDownDirectSpec.androidSpec(
+            serial: "emulator-5554", runningAVDs: ["emulator-5554": "AVD-1"],
+            connectedSerials: ["emulator-5554"])
+        guard case .success(let spec) = result else { return XCTFail("expected success") }
+        XCTAssertFalse(spec.isPhysical)
     }
 }
