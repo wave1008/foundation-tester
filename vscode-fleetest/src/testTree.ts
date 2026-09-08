@@ -53,6 +53,8 @@ export class FleetestTestTree implements vscode.Disposable {
   private lastScenarios: ScenarioInfo[] = [];
   /** 直近の list-scenarios 結果。フィルター切替時に CLI を叩き直さず再構築するために保持する。 */
   private lastData: ListScenariosResult | undefined;
+  /** run 中に来たプロジェクト切替を run 終了まで持ち越す旗(notePendingProjectSwitch)。 */
+  private projectSwitchPending = false;
 
   constructor(
     private readonly cli: FleetestCli,
@@ -96,6 +98,57 @@ export class FleetestTestTree implements vscode.Disposable {
       return undefined;
     }
     return readFailedScenarioIds(lastResultsDir(workspaceRoot, resolution.project));
+  }
+
+  /**
+   * プロジェクト切替による全再構築。**先にツリーと保持データを捨てる** —— 一覧は CLI
+   * (そのプロジェクトが未ビルドなら swift build を含む)が返るまで来ないので、捨てないと
+   * その間ずっと前のプロジェクトのシナリオが並び、押せば新しいプロジェクトの設定で走って
+   * 噛み合わない。待っていることは進捗で示す —— **プログラム経由の refresh では
+   * Test Explorer のスピナーは出ない**(あれは refreshHandler = 更新ボタン専用)。
+   */
+  async refreshForProjectSwitch(): Promise<void> {
+    this.projectSwitchPending = false;
+    this.clearTree();
+    const workspaceRoot = this.getWorkspaceRoot();
+    const resolution = workspaceRoot ? resolveProjectName(workspaceRoot, this.getConfig()) : undefined;
+    if (!resolution || resolution.kind !== "resolved") {
+      // 候補なし/あいまいの分岐は refresh() 側が扱う(待ちが無いので進捗も出さない)。
+      await this.refresh();
+      return;
+    }
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Window,
+        title: t("workbench.testTree.refreshingForProject", { project: resolution.project }),
+      },
+      () => this.refresh(),
+    );
+  }
+
+  /** run 中に来たプロジェクト切替。TestRun がアイテムを参照している間は再構築できないので
+   * 旗だけ立てて run 終了で拾う(flushPendingProjectSwitch)。拾わないと、rebuildFromLastData は
+   * 前のプロジェクトのデータを並べ直すだけなので手で更新するまで古いまま残る。 */
+  notePendingProjectSwitch(): void {
+    this.projectSwitchPending = true;
+  }
+
+  /** GUI 実行(実行・デバッグ)の終了時に呼ぶ。持ち越したプロジェクト切替があれば再構築する。 */
+  flushPendingProjectSwitch(): void {
+    if (!this.projectSwitchPending) {
+      return;
+    }
+    // **ここでも畳む** —— 続けて run が終わった(2本目)ときに同じ切替をもう一度撃たない。
+    this.projectSwitchPending = false;
+    void this.refreshForProjectSwitch();
+  }
+
+  /** ツリーと保持データを空にする。**lastData も捨てる** —— 残すと、待っている間の
+   * フィルター切替(rebuildFromLastData)が前のプロジェクトの一覧を並べ直す。 */
+  private clearTree(): void {
+    this.controller.items.replace([]);
+    this.lastData = undefined;
+    this.lastScenarios = [];
   }
 
   async refresh(): Promise<void> {

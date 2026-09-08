@@ -168,6 +168,10 @@ export const workbenchStrings = {
     en: "Section: {section}",
   },
 
+  "workbench.testTree.refreshingForProject": {
+    ja: "fleetest: シナリオ一覧を更新中({project})",
+    en: "fleetest: Updating the scenario list ({project})",
+  },
   "workbench.testTree.noProjectsLog": {
     ja: "[fleetest] TestProjects/ 配下にテストプロジェクトが見つかりません。",
     en: "[fleetest] No test projects found under TestProjects/.",

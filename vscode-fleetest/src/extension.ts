@@ -163,6 +163,8 @@ export function activate(context: vscode.ExtensionContext): void {
       // 最新実行を乗っ取る(lastResultsSync.ts 冒頭コメント参照)。
       lastResultsSync.absorb(executedScenarioIds);
       onResultsChanged();
+      // run 中に来ていたプロジェクト切替(registerCommands の onDidChangeConfiguration)を拾う。
+      testTree.flushPendingProjectSwitch();
     },
     livePanel.prepareForRun,
   );
@@ -348,8 +350,13 @@ function registerCommands(
       // (モニターが起動できなくなる。2026-08-17 の実害)。判定は
       // config.ts の reconciledProfileForProject(勝手に別の名前を選ばない)
       void reconcileProfileWithProject();
-      if (!isRunActive()) {
-        void testTree.refresh();
+      // 実行中は TestRun がアイテムを参照しているので再構築しない。**旗を立てて run 終了で拾う**
+      // —— 拾わないと rebuildFromLastData が前のプロジェクトのデータを並べ直すだけで、
+      // 手で更新するまで古い一覧が残る。
+      if (isRunActive()) {
+        testTree.notePendingProjectSwitch();
+      } else {
+        void testTree.refreshForProjectSwitch();
       }
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
