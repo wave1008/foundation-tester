@@ -213,7 +213,8 @@ final class FMLivenessTests: XCTestCase {
                                        error: "ANE 0x10006"))
         let line = HostMetricsSample(
             ts: 1_700_000_001, cpu: 0.1, gpu: 0.2, memUsedBytes: 1, memTotalBytes: 2,
-            fmCalls: 0, fmFailures: 0, fmTotalMs: 0, fmLiveness: dead).encodedLine()
+            fmCalls: 0, fmFailures: 0, fmTotalMs: 0,
+            ocrCalls: 0, ocrFailures: 0, ocrTotalMs: 0, fmLiveness: dead).encodedLine()
         let json = try XCTUnwrap(line)
         XCTAssertTrue(json.contains("\"fmVisionState\":\"dead\""), json)
         XCTAssertTrue(json.contains("\"fmTextState\":null"), "観測の無い経路は null(不明)。\(json)")
@@ -222,7 +223,8 @@ final class FMLivenessTests: XCTestCase {
 
         let quiet = HostMetricsSample(
             ts: 1, cpu: nil, gpu: nil, memUsedBytes: nil, memTotalBytes: nil,
-            fmCalls: 0, fmFailures: 0, fmTotalMs: 0).encodedLine()
+            fmCalls: 0, fmFailures: 0, fmTotalMs: 0,
+            ocrCalls: 0, ocrFailures: 0, ocrTotalMs: 0).encodedLine()
         XCTAssertTrue(try XCTUnwrap(quiet).contains("\"fmDeadReason\":null"),
                       "死活を渡さない呼び出し元は不明のまま(欄は必ず出す)")
     }
@@ -233,6 +235,7 @@ final class FMLivenessTests: XCTestCase {
         let sample = HostMetricsSample(
             ts: 1, cpu: nil, gpu: nil, memUsedBytes: nil, memTotalBytes: nil,
             fmCalls: nil, fmFailures: nil, fmTotalMs: nil,
+            ocrCalls: nil, ocrFailures: nil, ocrTotalMs: nil,
             fmLiveness: FMLiveness.Reading(
                 text: FMLiveness.Verdict(state: .dead, checkedAt: 1, source: .probe, error: long),
                 vision: nil))

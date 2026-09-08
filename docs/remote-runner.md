@@ -961,7 +961,7 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   入れ、log 行の先頭に `[<machine>]` を付ける —— 監視の `RemoteMonitorFanout.ingest`・run の
   `ApiRunMachineFanout` の rehost と**同じ規律**(中継する側が3つとも machine を埋める)
 
-- **ホストの負荷(MEM/CPU/GPU/FM)もその機械で採る**(2026-08-28)。手元の `api host-metrics` は
+- **ホストの負荷(MEM/CPU/GPU/OCR/FM)もその機械で採る**(2026-08-28)。手元の `api host-metrics` は
   **この Mac の値しか出せない**ので、リモート機のぶんは拡張が
   `remote exec <machine> -- api host-metrics --interval 1` を**機械ごとに1本**立てて、
   ツールバーのグラフを**機械ごとの行**にする(左端は手元が `local`・以降は機械名。

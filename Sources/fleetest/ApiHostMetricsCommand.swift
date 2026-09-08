@@ -8,7 +8,8 @@
 // 集計は api host-metrics-summary。
 // fmCalls/fmFailures/fmTotalMs はこのプロセス自身の実測ではない —— FM を実際に呼ぶのは
 // 各シナリオランナー(FTFoundationModels)で、このコマンドは FMUsageLedger の控えを毎 tick
-// 読むだけ(Sources/FTCore/FMUsageLedger.swift 参照)。
+// 読むだけ(Sources/FTCore/FMUsageLedger.swift 参照)。ocrCalls/ocrFailures/ocrTotalMs も同じ
+// 供給経路(OCRUsageLedger。呼ぶのは RegionText)。
 //
 // **死活(fmTextState/fmVisionState/fmDeadReason)は別の軸**。回数は「使われたか」しか言えず、
 // 誰も呼んでいない間は**死んでいても 0 件と同じ絵**になる。台帳(FTCore.FMLiveness)は毎 tick
@@ -66,6 +67,7 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
         _ = cpuSampler.sample()
         // nil = 基準未取得。最初の drain は控えるだけで増分を出さない(FMUsageLedger.drain 参照)
         var fmPrevious: [Int32: FMUsageLedger.Counters]?
+        var ocrPrevious: [Int32: OCRUsageLedger.Counters]?
         // プローブは1〜2秒かかる(FM の実呼び出し)ので、サンプリングの刻み(1秒)を止めない
         // ように切り離して走らせる。**重ねない** —— 前回がまだ返っていないなら撃たない
         // (FM の枠を掴んだまま次を並べると、死んでいる機械で待ち行列だけが伸びる)
@@ -79,6 +81,7 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
             let gpu = gpuSampler.sample()
             let mem = memorySampler.sample()
             let fm = FMUsageLedger.drain(previous: &fmPrevious)
+            let ocr = OCRUsageLedger.drain(previous: &ocrPrevious)
             if fmProbe, probing.begin() {
                 Task.detached {
                     await FMLivenessProbe.refresh()
@@ -91,6 +94,7 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
                 cpu: cpu, gpu: gpu,
                 memUsedBytes: mem?.used, memTotalBytes: mem?.total,
                 fmCalls: fm?.calls, fmFailures: fm?.failures, fmTotalMs: fm?.totalMs,
+                ocrCalls: ocr?.calls, ocrFailures: ocr?.failures, ocrTotalMs: ocr?.totalMs,
                 fmLiveness: FMLiveness.current())
             if let line = sample.encodedLine() {
                 ConsoleOut.out(line)

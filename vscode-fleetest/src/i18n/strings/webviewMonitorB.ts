@@ -152,6 +152,10 @@ export const webviewMonitorBStrings = {
   "wvMonitor2.hostCharts.lockIssuerUnknown": { ja: "誰か", en: "someone" },
   "wvMonitor2.hostCharts.cpuTitle": { ja: "CPU負荷 {value}", en: "CPU load {value}" },
   "wvMonitor2.hostCharts.gpuTitle": { ja: "GPU負荷 {value}", en: "GPU load {value}" },
+  "wvMonitor2.hostCharts.ocrTitle": {
+    ja: "OCR {rate}回/秒(直近{seconds}秒: {calls}回 / 失敗{failures}回 / 計{totalSec}秒)",
+    en: "OCR {rate}/s (last {seconds}s: {calls} calls / {failures} failed / {totalSec}s total)",
+  },
   "wvMonitor2.hostCharts.fmTitle": {
     ja: "FM {rate}回/秒(直近{seconds}秒: {calls}回 / 失敗{failures}回 / 計{totalSec}秒)",
     en: "FM {rate}/s (last {seconds}s: {calls} calls / {failures} failed / {totalSec}s total)",

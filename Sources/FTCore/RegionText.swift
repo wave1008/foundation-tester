@@ -140,6 +140,9 @@ public enum RegionText {
     /// frame(pt)領域を OcclusionCrop.rect で切り出して Vision で読む。
     /// nil = 画像不正 / crop が作れない(退化 frame・画面外)/ OCR が失敗。
     /// `lines` は各 observation の topCandidates(1) を Vision が返した順に並べたもの。
+    ///
+    /// **`recognize` を実際に撃った回だけ `OCRUsageLedger` へ記録する**(crop が作れず到達しなかった
+    /// 回は数えない。暖機(prewarmOnce)は `read` を経由しないのでここには入らない = 数えない)。
     public static func read(pngData: Data, frame: FTRect, screen: FTRect,
                             cropPadding: CGFloat = 24,
                             languages: [String] = defaultLanguages,
@@ -152,8 +155,16 @@ public enum RegionText {
               let cropped = full.cropping(to: rect) else { return nil }
         let crop = enlarged(cropped, by: upscale)
         let start = Date()
-        guard let lines = try? await recognize(crop, languages: languages) else { return nil }
-        return Reading(lines: lines, elapsedMs: Date().timeIntervalSince(start) * 1000)
+        let lines: [String]
+        do {
+            lines = try await recognize(crop, languages: languages)
+        } catch {
+            OCRUsageLedger.record(ok: false, ms: Date().timeIntervalSince(start) * 1000)
+            return nil
+        }
+        let elapsedMs = Date().timeIntervalSince(start) * 1000
+        OCRUsageLedger.record(ok: true, ms: elapsedMs)
+        return Reading(lines: lines, elapsedMs: elapsedMs)
     }
 
     public static let defaultLanguages = ["ja-JP", "en-US"]

@@ -1,4 +1,4 @@
-// ツールバーのホストグラフ(MEM/CPU/GPU/FM)を**機械ごとの行**にする配線テスト(hostCharts.js)。
+// ツールバーのホストグラフ(MEM/CPU/GPU/OCR/FM)を**機械ごとの行**にする配線テスト(hostCharts.js)。
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewAutoFitToggle.test.mjs と同じ。
 //
 // ここで見るのは行の集合と宛先の分岐だけ(描画そのものは jsdom にキャンバスが無いので測れない):
@@ -88,13 +88,18 @@ function machineLabels(document) {
   return rows(document).map((row) => row.querySelector(".hm-machine").textContent);
 }
 
-/** 1行ぶんの表示値(MEM/CPU/GPU/FM の順)。 */
+/** 1行ぶんの表示値(MEM/CPU/GPU/OCR/FM の順)。 */
 function values(row) {
   return [...row.querySelectorAll(".host-metric")].map((metric) => metric.querySelector(".hm-value").textContent);
 }
 
 function rowFor(document, machine) {
   return document.querySelector(`#host-metrics .hm-row[data-machine="${machine}"]`);
+}
+
+/** OCR のセル(値・class の検証に使う)。 */
+function ocrCell(document, machine) {
+  return rowFor(document, machine).querySelector('[data-metric="ocr"]');
 }
 
 /** FM のツールチップ。**窓(直近 N tick)の集計はラベルではなくここに出る** ——
@@ -104,19 +109,27 @@ function fmTitle(document, machine) {
   return rowFor(document, machine).querySelector('[data-metric="fm"]').title;
 }
 
-/** fm 省略時は fmCalls:0(既知の0件、欠測ではない)。欠測にしたいテストは { fmCalls: null } を渡す。
- *  死活(fmTextState/fmVisionState/fmDeadReason/fmCheckedAt)は**回数とは別の軸**なので、
- *  省略時は不明(null)= 旧 CLI の行と同じ形。 */
-function hostMetricsSample(machine, cpu, fm = {}) {
+/** OCR のツールチップ。fmTitle と同じ理由(窓の集計はここでしか検証できない)。 */
+function ocrTitle(document, machine) {
+  return ocrCell(document, machine).title;
+}
+
+/** fm/ocr 省略時は calls:0(既知の0件、欠測ではない)。欠測にしたいテストは { calls: null } … を
+ *  渡す(旧来どおり fmCalls/ocrCalls のフルキー名で上書きする)。
+ *  死活(fmTextState/fmVisionState/fmDeadReason/fmCheckedAt)は**回数とは別の軸**で OCR には無い
+ *  ので、省略時は不明(null)= 旧 CLI の行と同じ形。 */
+function hostMetricsSample(machine, cpu, fm = {}, ocr = {}) {
   const {
     fmCalls = 0, fmFailures = 0, fmTotalMs = 0,
     fmTextState = null, fmVisionState = null, fmDeadReason = null,
     fmCheckedAt = Date.now() / 1000,
   } = fm;
+  const { ocrCalls = 0, ocrFailures = 0, ocrTotalMs = 0 } = ocr;
   return {
     type: "hostMetrics", ...(machine ? { machine } : {}),
     cpu, gpu: 0.25, memUsedBytes: 8 * 1024 * 1024 * 1024, memTotalBytes: 32 * 1024 * 1024 * 1024,
     fmCalls, fmFailures, fmTotalMs, fmTextState, fmVisionState, fmDeadReason, fmCheckedAt,
+    ocrCalls, ocrFailures, ocrTotalMs,
   };
 }
 
@@ -143,7 +156,7 @@ test("hostMetricsMachines で機械ごとの行が増え、左端が local / <�
   for (const row of rows(document)) {
     assert.deepEqual(
       [...row.querySelectorAll(".host-metric")].map((m) => m.dataset.metric),
-      ["mem", "cpu", "gpu", "fm"], "どの行も MEM/CPU/GPU/FM の4系列を持つ",
+      ["mem", "cpu", "gpu", "ocr", "fm"], "どの行も MEM/CPU/GPU/OCR/FM の5系列を持つ",
     );
   }
   assert.equal(document.querySelectorAll("#hm-cpu").length, 1, "複製した行に id を残さない");
@@ -200,15 +213,15 @@ test("サンプルは machine の行にだけ積み、描くのは手元の tick
   send(window, hostMetricsSample("mac2", 0.9));
 
   assert.deepEqual(
-    values(rowFor(document, "mac2")), ["–", "–", "–", "–"],
+    values(rowFor(document, "mac2")), ["–", "–", "–", "–", "–"],
     "リモートのサンプルは保持するだけ(行ごとにばらばらの瞬間で書き換えない)",
   );
-  assert.deepEqual(values(rowFor(document, "")), ["–", "–", "–", "–"], "手元の行も動かない");
+  assert.deepEqual(values(rowFor(document, "")), ["–", "–", "–", "–", "–"], "手元の行も動かない");
 
   send(window, hostMetricsSample(undefined, 0.1));
-  assert.deepEqual(values(rowFor(document, "")), ["25%", "10%", "25%", "0"], "machine 欄が無ければ手元");
+  assert.deepEqual(values(rowFor(document, "")), ["25%", "10%", "25%", "0", "0"], "machine 欄が無ければ手元");
   assert.deepEqual(
-    values(rowFor(document, "mac2")), ["25%", "90%", "25%", "0"],
+    values(rowFor(document, "mac2")), ["25%", "90%", "25%", "0", "0"],
     "リモートは手元と同じ tick で、保持していた最新値で描かれる",
   );
 });
@@ -222,7 +235,7 @@ test("同じ tick までに複数届いたら最後の1つだけを使う", (t) 
   send(window, hostMetricsSample("mac2", 0.4));
   send(window, hostMetricsSample(undefined, 0.1));
 
-  assert.deepEqual(values(rowFor(document, "mac2")), ["25%", "40%", "25%", "0"]);
+  assert.deepEqual(values(rowFor(document, "mac2")), ["25%", "40%", "25%", "0", "0"]);
 });
 
 test("サンプルの無い tick は直近の値を使い回し、途絶えたら欠測にする", (t) => {
@@ -254,14 +267,14 @@ test("手元が黙ったらリモートが刻みを引き取り、手元が戻�
 
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
   send(window, hostMetricsSample("mac2", 0.9));
-  assert.deepEqual(values(rowFor(document, "mac2")), ["–", "–", "–", "–"], "猶予の内は手元を待つ");
+  assert.deepEqual(values(rowFor(document, "mac2")), ["–", "–", "–", "–", "–"], "猶予の内は手元を待つ");
 
   advance(6000);
   send(window, hostMetricsSample("mac2", 0.8));
-  assert.deepEqual(values(rowFor(document, "mac2")), ["25%", "80%", "25%", "0"], "無音が続けば委譲");
+  assert.deepEqual(values(rowFor(document, "mac2")), ["25%", "80%", "25%", "0", "0"], "無音が続けば委譲");
 
   send(window, hostMetricsSample(undefined, 0.1));
-  assert.deepEqual(values(rowFor(document, "")), ["25%", "10%", "25%", "0"]);
+  assert.deepEqual(values(rowFor(document, "")), ["25%", "10%", "25%", "0", "0"]);
   send(window, hostMetricsSample("mac2", 0.5));
   assert.equal(
     values(rowFor(document, "mac2"))[1], "80%",
@@ -656,4 +669,68 @@ test("FM の縦軸は全行で共有される(行ごとに伸縮しない)", (t)
   assert.ok(high > 0 && low > 0, "両方とも描かれていること");
   assert.ok(Math.abs(high / low - 4) < 0.01,
     `高さの比は値の比(8:2=4)になるはず。実際 ${(high / low).toFixed(2)}(行ごとなら約2.5)`);
+});
+
+// OCR は GPU と FM の間(供給元は同じ hostMetrics の ocrCalls/ocrFailures/ocrTotalMs)。
+// 数え方・窓・欠測の扱いは FM の系列に倣うが、**死活・バッジは持たない**。
+test("OCR は機械ごとの行に積まれ、値のセルは直近 tick の呼び出し回数", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  const ocrOf = (machine) => ocrCell(document, machine).querySelector(".hm-value").textContent;
+
+  for (const c of [1, 0, 2]) {
+    send(window, hostMetricsSample("mac2", 0.9, {}, { ocrCalls: c }));
+    send(window, hostMetricsSample(undefined, 0.1)); // 手元の tick で commit させる
+  }
+
+  assert.equal(ocrOf("mac2"), "2", "最後の tick の回数がそのまま値のセルに出る(窓の平均ではない)");
+});
+
+test("OCR のツールチップは窓の移動窓レートを出す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+
+  for (let i = 0; i < 5; i += 1) {
+    send(window, hostMetricsSample("mac2", 0.9, {}, { ocrCalls: 1 }));
+    send(window, hostMetricsSample(undefined, 0.1));
+  }
+
+  assert.match(ocrTitle(document, "mac2"), /OCR 1\.0回\/秒|OCR 1\.0\/s/,
+    "直近5 tick で1回ずつ観測できた = 1.0/秒");
+});
+
+test("ocrCalls が null は欠測(–)、0 は 0(不明と0件を混ぜない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  const ocrOf = (machine) => ocrCell(document, machine).querySelector(".hm-value").textContent;
+
+  send(window, hostMetricsSample("mac2", 0.9, {}, { ocrCalls: null }));
+  send(window, hostMetricsSample(undefined, 0.1));
+  assert.equal(ocrOf("mac2"), "–", "直近 tick が不明(控えを読めない)なら欠測表示");
+
+  send(window, hostMetricsSample("mac2", 0.9, {}, { ocrCalls: 0 }));
+  send(window, hostMetricsSample(undefined, 0.1));
+  assert.equal(ocrOf("mac2"), "0", "既知の0件(呼び出しが無かった)は欠測と区別する");
+});
+
+// FM の失敗はガード自体を無効化するので死活の軸が要るが、OCR の失敗はその回の判定が FM へ
+// 回るだけで判定能力は落ちない —— OCR には死活もバッジも作らない(FM が死んでいても道連れにしない)
+test("FM が死んでいても OCR の系列は死の扱いを受けない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  send(window, hostMetricsSample("mac2", 0.9,
+    { fmTextState: "dead", fmVisionState: "dead", fmDeadReason: "text: x / vision: y" },
+    { ocrCalls: 3 }));
+  send(window, hostMetricsSample(undefined, 0.1));
+
+  const fmEntry = rowFor(document, "mac2").querySelector('[data-metric="fm"]');
+  assert.ok(fmEntry.classList.contains("hm-fm-dead"), "前提: FM は死んでいる");
+  const entry = ocrCell(document, "mac2");
+  assert.equal(entry.classList.contains("hm-fm-dead"), false, "OCR のセルに hm-fm-dead は付かない");
+  assert.equal(entry.classList.contains("hm-fm-warn"), false, "OCR のセルに hm-fm-warn も付かない");
+  assert.equal(entry.querySelector(".hm-value").textContent, "3", "OCR の回数はそのまま出る");
 });

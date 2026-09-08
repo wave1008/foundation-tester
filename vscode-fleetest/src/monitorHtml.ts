@@ -265,6 +265,7 @@ function renderDevicesPanel(): string {
           <span class="host-metric" id="hm-mem" data-metric="mem" title="${t("panels.hostMetrics.memTitle")}"><span class="hm-label">MEM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <span class="host-metric" id="hm-cpu" data-metric="cpu" title="${t("panels.hostMetrics.cpuTitle")}"><span class="hm-label">CPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <span class="host-metric" id="hm-gpu" data-metric="gpu" title="${t("panels.hostMetrics.gpuTitle")}"><span class="hm-label">GPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
+          <span class="host-metric" id="hm-ocr" data-metric="ocr" title="${t("panels.hostMetrics.ocrTitle")}"><span class="hm-label">OCR</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <span class="host-metric" id="hm-fm" data-metric="fm" title="${t("panels.hostMetrics.fmTitle")}"><span class="hm-label">FM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <!-- FM が死んでいるときだけ、どの経路が死んだかを語で出す(hostCharts.js の
                hmRenderFmLabel が入れる)。**行の最後尾に置く** —— ここより左に足すと

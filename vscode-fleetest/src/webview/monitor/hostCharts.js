@@ -12,17 +12,19 @@
 // 行の DOM は手元の行(monitorHtml.ts の data-machine="")を複製して作るので、**中の要素は
 // data-metric で引く**(id は手元の行にしか無い)。
 //
-// FM系列も他と同じ hostMetrics ストリームから来る(host-metrics プロセス自身は FM を叩かない ——
-// FM を呼んだ側のプロセスが `~/.fleetest/fm-usage/<pid>.json` に置いた控えを、host-metrics が
-// 毎 tick 読んで集計する。Sources 側の詳細は関知しない)。run の FM 呼び出しは
-// FTCore の FMGate/FMLock が**ホスト全体で枠の数まで**に絞るので、生の1秒差分は小さな整数に
-// なって読めない。表示は直近 HM_FM_RATE_WINDOW_TICKS tick の移動窓平均(回/秒)。
-// **縦軸の上限は HM_FM_MAX_RATE を下限とするオートスケール**。純粋なオートスケールだと
+// FM/OCR系列も他と同じ hostMetrics ストリームから来る(host-metrics プロセス自身はどちらも
+// 叩かない —— 呼んだ側のプロセスが `~/.fleetest/fm-usage/<pid>.json` /
+// `~/.fleetest/ocr-usage/<pid>.json` に置いた控えを、host-metrics が毎 tick 読んで集計する。
+// Sources 側の詳細は関知しない)。run の FM
+// 呼び出しは FTCore の FMGate/FMLock が**ホスト全体で枠の数まで**に絞るので、生の1秒差分は
+// 小さな整数になって読めない。表示は直近 HM_COUNT_RATE_WINDOW_TICKS tick の移動窓平均(回/秒)。
+// **縦軸の上限は件数系列(FM/OCR)ごとの下限を持つオートスケール**。純粋なオートスケールだと
 // 窓の最大値で毎回伸縮し、「1回」と「5回」が同じ高さに描かれて行同士も時刻同士も比べられない。
 // 固定にすると超える負荷が天井で潰れる。両方を避けるのが下限付きスケール(hmCountScale)。
+// FM と OCR は別の量なので**別々の縦軸**(片方に合わせると読めなくなる)。
 
 import { t } from '../i18n.js';
-import { hmSharedCountScale } from './hostChartScale.js';
+import { HM_FM_MAX_RATE, HM_OCR_MAX_RATE, hmSharedCountScale } from './hostChartScale.js';
 import { setHoverTip } from './hoverTip.js';
 
 const HM_MAX_SAMPLES = 60;
@@ -33,18 +35,19 @@ const HM_CLOCK_TAKEOVER_MS = 5000;
 // 保持したサンプルを何 tick まで使い回してよいか。両側とも --interval 1 なので、生きている機械が
 // 位相のずれで落とせるのは1 tick まで。これを超えたら観測が途絶えたとみなし欠測(–)にする。
 const HM_STALE_TICKS = 2;
-// FM のレート表示の移動窓(tick 数)。host-metrics --interval は 1 固定(monitorProcessManager.ts
-// startHostMetricsProcess)なので 1 tick = 1 秒とみなせる。run の FM は直列化で約1回/秒に
-// 張り付き、生の1秒差分は 0/1 の二値になり読めないため、10 tick(=10秒)の移動窓平均にして
-// 0.1 刻みで見えるようにする。
-const HM_FM_RATE_WINDOW_TICKS = 10;
+// 件数系列(FM/OCR)のレート表示の移動窓(tick 数)。host-metrics --interval は 1 固定
+// (monitorProcessManager.ts startHostMetricsProcess)なので 1 tick = 1 秒とみなせる。run の FM は
+// 直列化で約1回/秒に張り付き、生の1秒差分は 0/1 の二値になり読めないため、10 tick(=10秒)の
+// 移動窓平均にして 0.1 刻みで見えるようにする。OCR も同じ窓を使う(件数系列共通)。
+const HM_COUNT_RATE_WINDOW_TICKS = 10;
 // バリデータ検証済みパレット(ダーク/ライトで系列色を切り替える。グリッド・軸は描かない)。
 // dead は FM が死んでいる間の系列色。**色相を持たない**のが要件 —— 赤にすると「異常な値が
 // 出ている」に見えるが、実際は値そのものに意味が無い(死んでいる間の回数は 0 で張り付く)。
 // 明度は他系列と同じ帯に置く(背景に対して同じ読みやすさ)。
+// ocr は青 —— cpu(赤)/gpu(琥珀)/fm(紫)/mem(緑)のどれとも色相が被らない。
 const HM_COLORS = {
-  dark: { cpu: '#f2555a', gpu: '#b8891f', fm: '#a06be0', mem: '#2f9e63', dead: '#8b9099' },
-  light: { cpu: '#e5484d', gpu: '#e6a700', fm: '#8e4ec6', mem: '#30a46c', dead: '#8b8d98' },
+  dark: { cpu: '#f2555a', gpu: '#b8891f', ocr: '#3b9eff', fm: '#a06be0', mem: '#2f9e63', dead: '#8b9099' },
+  light: { cpu: '#e5484d', gpu: '#e6a700', ocr: '#0090ff', fm: '#8e4ec6', mem: '#30a46c', dead: '#8b8d98' },
 };
 
 /** 手元の行の表示名(左端のラベル)。CLI 側の DeviceMachineGrouping.localDisplayName と同じ語。 */
@@ -62,8 +65,8 @@ function hmIsLightTheme() {
     document.body.classList.contains('vscode-high-contrast-light');
 }
 
-// countScale=true の系列は samples が「比率」ではなく「件数」。描画時にバッファ内の最大値で
-// 正規化する(FM は上限が定義できないため。固定上限だと実測レンジで潰れて読めない)
+// countScale=true の系列は samples が「比率」ではなく「件数」(FM/OCR)。描画時に
+// hmDrawAllRows が求めた共有スケールで正規化する(固定上限だと実測レンジで潰れて読めない)
 function hmMakeEntry(rowEl, metric, colorKey, countScale = false) {
   const el = rowEl.querySelector(`.host-metric[data-metric="${metric}"]`);
   return {
@@ -78,23 +81,29 @@ function hmMakeEntry(rowEl, metric, colorKey, countScale = false) {
 
 // failures は FM 死活の検知用。FM 失敗は呼び出し側(occlusion-guard/heal/screenLooksLike)が
 // 握りつぶして素通りする契約なので、ここで可視化しないと全滅が正常時と区別できない。
+// OCR の failures は死活の軸を持たない(OCR の失敗はその回の判定が FM へ回るだけで判定能力は
+// 落ちないため) —— ツールチップの事実としてだけ出す。
 function hmMakeRow(rowEl, machine) {
   const entries = {
     cpu: hmMakeEntry(rowEl, 'cpu', 'cpu'),
     gpu: hmMakeEntry(rowEl, 'gpu', 'gpu'),
+    ocr: hmMakeEntry(rowEl, 'ocr', 'ocr', true),
     fm: hmMakeEntry(rowEl, 'fm', 'fm', true),
     mem: hmMakeEntry(rowEl, 'mem', 'mem'),
   };
   return {
     machine,
     el: rowEl,
-    // 死んだ経路を語で出す枠(行の最後尾。監視の対象は FM だけなので entries には入れない)
+    // 死んだ経路を語で出す枠(行の最後尾。監視の対象は FM だけなので entries には入れない。
+    // OCR は死活を持たないのでバッジも無い)
     deadBadge: rowEl.querySelector('.hm-fm-dead-badge'),
     entries,
-    all: [entries.cpu, entries.gpu, entries.fm, entries.mem],
-    // FM のレート表示・死活判定に使う直近 HM_FM_RATE_WINDOW_TICKS tick ぶんの生値
+    all: [entries.cpu, entries.gpu, entries.ocr, entries.fm, entries.mem],
+    // FM/OCR のレート表示に使う直近 HM_COUNT_RATE_WINDOW_TICKS tick ぶんの生値
     // ({calls,failures,totalMs} | 欠測は calls:null)。古い順に shift する。
+    // fm は死活判定(fmIsDead)にも使う。
     fm: { window: [] },
+    ocr: { window: [] },
     // FM の死活(FMLiveness の最新の観測)。**窓を持たない** —— これはレートではなく
     // 「今この機械で FM を呼べるか」という水準で、直近の1サンプルがそのまま答え。
     // 'alive' / 'dead' / null=不明。呼び出しが0件でも埋まるのが回数系列との違い。
@@ -234,11 +243,11 @@ export function setHostMetricMachines(machines) {
   hmSyncMultiClass();
 }
 
-/** row.fm.window(直近 HM_FM_RATE_WINDOW_TICKS tick)を集計する。窓内が全て欠測(calls:null)
- *  なら null を返す(呼び出し側はこれを「不明」= 表示 '–' の合図にする。0件は別に区別できる —
- *  欠測でない tick は calls が数値、0 も含む)。 */
-function hmFmWindowStats(row) {
-  const known = row.fm.window.filter((tick) => tick.calls !== null);
+/** 件数系列(FM/OCR)の窓(直近 HM_COUNT_RATE_WINDOW_TICKS tick。row.fm.window / row.ocr.window)を
+ *  集計する。窓内が全て欠測(calls:null)なら null を返す(呼び出し側はこれを「不明」= 表示 '–'
+ *  の合図にする。0件は別に区別できる —— 欠測でない tick は calls が数値、0 も含む)。 */
+function hmWindowStats(window) {
+  const known = window.filter((tick) => tick.calls !== null);
   if (known.length === 0) {
     return null;
   }
@@ -267,7 +276,7 @@ function fmIsDead(row) {
   if (fmDeadPaths(row).length > 0) {
     return true;
   }
-  const stats = hmFmWindowStats(row);
+  const stats = hmWindowStats(row.fm.window);
   return !!stats && stats.failures > 0 && stats.failures >= stats.calls;
 }
 
@@ -278,14 +287,14 @@ function hmTitlePrefix(row) {
 
 function hmRenderFmLabel(row) {
   const entry = row.entries.fm;
-  const stats = hmFmWindowStats(row);
+  const stats = hmWindowStats(row.fm.window);
   const dead = fmIsDead(row);
   const partial = !!stats && !dead && stats.failures > 0;
   entry.el.classList.toggle('hm-fm-dead', dead);
   entry.el.classList.toggle('hm-fm-warn', partial);
   // **数字は直近 tick の呼び出し回数そのもの**(窓の移動平均ではない)。スパークラインが
   // 描いているのも tick ごとの回数なので、線と数字の単位が一致する。
-  // ⚠︎/⚠ と ツールチップは窓(HM_FM_RATE_WINDOW_TICKS tick)で判定する —— 1 tick では
+  // ⚠︎/⚠ と ツールチップは窓(HM_COUNT_RATE_WINDOW_TICKS tick)で判定する —— 1 tick では
   // 「全部失敗」がすぐ立ってしまい落ち着かないため。
   const latest = row.fm.window.length > 0 ? row.fm.window[row.fm.window.length - 1] : null;
   const callsText = latest && latest.calls !== null ? String(latest.calls) : '–';
@@ -294,7 +303,7 @@ function hmRenderFmLabel(row) {
   // 回数には意味が無い。欠測と同じ '–' に倒し、死であることはグレーの線とツールチップが言う
   entry.value.textContent = dead ? '–' : (partial ? '⚠' : '') + callsText;
   let title = hmTitlePrefix(row) + t('wvMonitor2.hostCharts.fmTitle', {
-    seconds: String(HM_FM_RATE_WINDOW_TICKS),
+    seconds: String(HM_COUNT_RATE_WINDOW_TICKS),
     rate: stats ? stats.rate.toFixed(1) : '–',
     calls: stats ? String(stats.calls) : '–',
     failures: stats ? String(stats.failures) : '–',
@@ -307,10 +316,10 @@ function hmRenderFmLabel(row) {
   // 窓内の全滅だけはバッジが経路を名指しできない(台帳が無い)ので、ここに残す
   if (deadPaths.length === 0 && dead) {
     title += '\n' + t('wvMonitor2.hostCharts.fmDeadLine', {
-      seconds: String(HM_FM_RATE_WINDOW_TICKS), failures: String(stats.failures) });
+      seconds: String(HM_COUNT_RATE_WINDOW_TICKS), failures: String(stats.failures) });
   } else if (partial) {
     title += '\n' + t('wvMonitor2.hostCharts.fmWarnLine', {
-      seconds: String(HM_FM_RATE_WINDOW_TICKS),
+      seconds: String(HM_COUNT_RATE_WINDOW_TICKS),
       failures: String(stats.failures),
       successes: String(stats.calls - stats.failures),
     });
@@ -343,7 +352,27 @@ function hmRenderDeadBadge(row, { dead, deadPaths, stats }) {
   badge.title = deadPaths.length > 0
     ? `${row.liveness.reason ?? ''}\n${hmFormatAge(row.liveness.checkedAt)}`.trim()
     : t('wvMonitor2.hostCharts.fmDeadLine', {
-      seconds: String(HM_FM_RATE_WINDOW_TICKS), failures: String(stats.failures) });
+      seconds: String(HM_COUNT_RATE_WINDOW_TICKS), failures: String(stats.failures) });
+}
+
+/** OCR 呼び出し回数の表示。**死活・バッジは持たない**(FM と違う) —— FM の失敗は
+ *  ガード自体を無効化する(誰も知らせない)ので死活の軸が要るが、OCR の失敗はその回の判定が
+ *  FM へ回るだけで判定能力は落ちない。失敗はツールチップの事実だけで足りる。 */
+function hmRenderOcrLabel(row) {
+  const entry = row.entries.ocr;
+  const stats = hmWindowStats(row.ocr.window);
+  // 数字は直近 tick の呼び出し回数そのもの(hmRenderFmLabel と同じ理由 —— スパークラインの
+  // 単位と一致させる)。
+  const latest = row.ocr.window.length > 0 ? row.ocr.window[row.ocr.window.length - 1] : null;
+  const callsText = latest && latest.calls !== null ? String(latest.calls) : '–';
+  entry.value.textContent = callsText;
+  entry.el.title = hmTitlePrefix(row) + t('wvMonitor2.hostCharts.ocrTitle', {
+    seconds: String(HM_COUNT_RATE_WINDOW_TICKS),
+    rate: stats ? stats.rate.toFixed(1) : '–',
+    calls: stats ? String(stats.calls) : '–',
+    failures: stats ? String(stats.failures) : '–',
+    totalSec: stats ? (stats.totalMs / 1000).toFixed(1) : '–',
+  });
 }
 
 function hmPushSample(entry, ratio) {
@@ -483,13 +512,17 @@ function hmCommitTick() {
   hmDrawAllRows();
 }
 
-/** 全行のスパークラインを描く。件数系列(FM)は**全行で1つの縦軸**を共有する。 */
+/** 全行のスパークラインを描く。件数系列(FM/OCR)は**全行で1つの縦軸**を、
+ *  ただし**FM と OCR は別々の縦軸**を共有する(別の量なので片方に合わせると読めなくなる)。 */
 function hmDrawAllRows() {
-  const fmScale = hmSharedCountScale(
-    [...hmRows.values()].map((row) => row.entries.fm.samples));
-  for (const row of hmRows.values()) {
+  const rows = [...hmRows.values()];
+  const fmScale = hmSharedCountScale(rows.map((row) => row.entries.fm.samples), HM_FM_MAX_RATE);
+  const ocrScale = hmSharedCountScale(rows.map((row) => row.entries.ocr.samples), HM_OCR_MAX_RATE);
+  for (const row of rows) {
     for (const entry of row.all) {
-      hmDraw(row, entry, entry.countScale ? fmScale : 1);
+      // entry ごとにどちらの縦軸を使うかは identity で引く(行ごとのスケールへ静かに戻らない)。
+      const scale = entry === row.entries.fm ? fmScale : entry === row.entries.ocr ? ocrScale : 1;
+      hmDraw(row, entry, entry.countScale ? scale : 1);
     }
   }
 }
@@ -520,6 +553,9 @@ function hmRenderRow(row, sample) {
   const fmCalls = sample && typeof sample.fmCalls === 'number' ? sample.fmCalls : null;
   const fmFailures = sample && typeof sample.fmFailures === 'number' ? sample.fmFailures : null;
   const fmTotalMs = sample && typeof sample.fmTotalMs === 'number' ? sample.fmTotalMs : null;
+  const ocrCalls = sample && typeof sample.ocrCalls === 'number' ? sample.ocrCalls : null;
+  const ocrFailures = sample && typeof sample.ocrFailures === 'number' ? sample.ocrFailures : null;
+  const ocrTotalMs = sample && typeof sample.ocrTotalMs === 'number' ? sample.ocrTotalMs : null;
   // 欠測 tick(sample が null)は死活も**不明へ戻す**。古い「生きている」を出し続けると、
   // 観測が途絶えたことと FM が健康であることが同じ絵になる(不明と生を混ぜない)
   row.liveness = {
@@ -532,12 +568,17 @@ function hmRenderRow(row, sample) {
   hmPushSample(row.entries.cpu, cpu);
   hmPushSample(row.entries.gpu, gpu);
   row.fm.window.push({ calls: fmCalls, failures: fmFailures, totalMs: fmTotalMs });
-  if (row.fm.window.length > HM_FM_RATE_WINDOW_TICKS) {
+  if (row.fm.window.length > HM_COUNT_RATE_WINDOW_TICKS) {
     row.fm.window.shift();
   }
-  // FM は他の3系列と違い**割合ではなく件数**。描画時に hmCountScale で正規化する
+  row.ocr.window.push({ calls: ocrCalls, failures: ocrFailures, totalMs: ocrTotalMs });
+  if (row.ocr.window.length > HM_COUNT_RATE_WINDOW_TICKS) {
+    row.ocr.window.shift();
+  }
+  // FM/OCR は他の3系列と違い**割合ではなく件数**。描画時に hmCountScale で正規化する
   // (hmDraw の countScale)
   hmPushSample(row.entries.fm, fmCalls);
+  hmPushSample(row.entries.ocr, ocrCalls);
   hmPushSample(row.entries.mem, memRatio);
 
   row.entries.cpu.value.textContent = hmFormatPercent(cpu);
@@ -547,6 +588,7 @@ function hmRenderRow(row, sample) {
   const prefix = hmTitlePrefix(row);
   row.entries.cpu.el.title = prefix + t('wvMonitor2.hostCharts.cpuTitle', { value: hmFormatPercent(cpu) });
   row.entries.gpu.el.title = prefix + t('wvMonitor2.hostCharts.gpuTitle', { value: hmFormatPercent(gpu) });
+  hmRenderOcrLabel(row);
   hmRenderFmLabel(row);
   row.entries.mem.el.title = prefix + t('wvMonitor2.hostCharts.memTitle', {
     used: hmFormatGb(memUsedBytes),

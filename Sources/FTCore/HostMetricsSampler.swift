@@ -297,6 +297,14 @@ public struct HostMetricsSample: Encodable {
     public let fmCalls: Int?
     public let fmFailures: Int?
     public let fmTotalMs: Int?
+    /// このサンプリング間隔中に完了した OCR(Vision の文字認識。RegionText)呼び出し数
+    /// (この機械の全プロセス合計)。供給元は OCRUsageLedger。1件 = `recognize` 1回
+    /// (`RegionText.resolve` の拡大はしごは最大 `RegionText.upscaleLadder.count` 回まで撃つので、
+    /// 1回のガードで最大3件になりうる)。3欄とも null = 控えを読めなかった(不明)、
+    /// 0 = 呼び出しが無かった。混ぜない(fmCalls と同じ規律。UsageLedger 参照)
+    public let ocrCalls: Int?
+    public let ocrFailures: Int?
+    public let ocrTotalMs: Int?
     /// FM の**死活**(FTCore.FMLiveness)。呼び出し回数とは別の軸 —— 上の3欄は「使われたか」しか
     /// 言えず、**誰も呼んでいない間は死んでいても 0 件と同じ絵になる**。ここは経路ごとの
     /// 最後の観測で、"alive" / "dead" / **null = 不明**(観測が無い・古い)の3値。混ぜないこと。
@@ -318,6 +326,7 @@ public struct HostMetricsSample: Encodable {
     public init(ts: Double, cpu: Double?, gpu: Double?,
                 memUsedBytes: Int?, memTotalBytes: Int?,
                 fmCalls: Int?, fmFailures: Int?, fmTotalMs: Int?,
+                ocrCalls: Int?, ocrFailures: Int?, ocrTotalMs: Int?,
                 fmLiveness: FMLiveness.Reading = FMLiveness.Reading(text: nil, vision: nil)) {
         self.ts = ts
         self.cpu = cpu
@@ -327,6 +336,9 @@ public struct HostMetricsSample: Encodable {
         self.fmCalls = fmCalls
         self.fmFailures = fmFailures
         self.fmTotalMs = fmTotalMs
+        self.ocrCalls = ocrCalls
+        self.ocrFailures = ocrFailures
+        self.ocrTotalMs = ocrTotalMs
         self.fmTextState = fmLiveness.text?.state.rawValue
         self.fmVisionState = fmLiveness.vision?.state.rawValue
         self.fmDeadReason = fmLiveness.deadSummary(limit: Self.deadReasonLimit)
@@ -336,6 +348,7 @@ public struct HostMetricsSample: Encodable {
 
     private enum CodingKeys: String, CodingKey {
         case kind, ts, cpu, gpu, memUsedBytes, memTotalBytes, fmCalls, fmFailures, fmTotalMs
+        case ocrCalls, ocrFailures, ocrTotalMs
         case fmTextState, fmVisionState, fmDeadReason, fmCheckedAt
     }
 
@@ -350,6 +363,9 @@ public struct HostMetricsSample: Encodable {
         try container.encode(fmCalls, forKey: .fmCalls)
         try container.encode(fmFailures, forKey: .fmFailures)
         try container.encode(fmTotalMs, forKey: .fmTotalMs)
+        try container.encode(ocrCalls, forKey: .ocrCalls)
+        try container.encode(ocrFailures, forKey: .ocrFailures)
+        try container.encode(ocrTotalMs, forKey: .ocrTotalMs)
         try container.encode(fmTextState, forKey: .fmTextState)
         try container.encode(fmVisionState, forKey: .fmVisionState)
         try container.encode(fmDeadReason, forKey: .fmDeadReason)
@@ -414,6 +430,7 @@ public final class HostMetricsRecorder: @unchecked Sendable {
         let exitSemaphore = self.exitSemaphore
         // nil = 基準未取得。最初の drain は控えるだけで増分を出さない(FMUsageLedger.drain 参照)
         var fmPrevious: [Int32: FMUsageLedger.Counters]?
+        var ocrPrevious: [Int32: OCRUsageLedger.Counters]?
 
         let thread = Thread {
             // 初回は差分が取れないサンプラー(CPU)のための捨てサンプル
@@ -432,10 +449,12 @@ public final class HostMetricsRecorder: @unchecked Sendable {
                 let gpu = gpuSampler.sample()
                 let mem = memorySampler.sample()
                 let fm = FMUsageLedger.drain(previous: &fmPrevious)
+                let ocr = OCRUsageLedger.drain(previous: &ocrPrevious)
                 let sample = HostMetricsSample(
                     ts: Date().timeIntervalSince1970, cpu: cpu, gpu: gpu,
                     memUsedBytes: mem?.used, memTotalBytes: mem?.total,
                     fmCalls: fm?.calls, fmFailures: fm?.failures, fmTotalMs: fm?.totalMs,
+                    ocrCalls: ocr?.calls, ocrFailures: ocr?.failures, ocrTotalMs: ocr?.totalMs,
                     // run の記録器は**読むだけ**(プローブは撃たない)。run 中は実呼び出しが
                     // 台帳を養い続けるので、撃つ必要が無い(FMLivenessProbe.refresh の門①)
                     fmLiveness: FMLiveness.current())

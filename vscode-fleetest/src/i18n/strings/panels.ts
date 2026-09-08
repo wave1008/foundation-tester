@@ -55,6 +55,7 @@ export const panelsStrings = {
   "panels.hostMetrics.memTitle": { ja: "メモリ使用量", en: "Memory usage" },
   "panels.hostMetrics.cpuTitle": { ja: "CPU負荷", en: "CPU load" },
   "panels.hostMetrics.gpuTitle": { ja: "GPU負荷", en: "GPU load" },
+  "panels.hostMetrics.ocrTitle": { ja: "OCR 呼び出し回数", en: "OCR call count" },
   "panels.hostMetrics.fmTitle": { ja: "FM 呼び出し回数", en: "FM call count" },
 
   "panels.devices.emptyMessage": { ja: "デバイスを待機しています", en: "Waiting for devices" },
