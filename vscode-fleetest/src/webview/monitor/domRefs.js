@@ -10,6 +10,7 @@ export const btnDown = document.getElementById('btn-devices-down');
 export const btnRestart = document.getElementById('btn-restart');
 export const btnSelectAll = document.getElementById('btn-select-all');
 export const btnAutoFit = document.getElementById('btn-auto-fit');
+export const projectSelect = document.getElementById('project-select');
 export const profileSelect = document.getElementById('profile-select');
 
 export const devicesPanel = document.getElementById('panel-devices');

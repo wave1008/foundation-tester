@@ -354,6 +354,23 @@ test("ログへ戻したら段組みも横一列へ戻す(行の指定を残さ�
   assert.equal(grid.style.gridTemplateRows, "");
 });
 
+// 再起動の間は新しいフレームが来ないので、畳まないと最後の1枚が出たまま残る(タイルを
+// 消すだけでは消えない —— 拡大表示はレーン側の DOM に居る)。
+test("モニター再起動で拡大表示を畳む(古い絵を出したままにしない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, [{}, {}]);
+  clickTile(document, 0);
+  sendFrame(window, "d0", "QUJD");
+  assert.equal(visiblePreviews(document).length, 1, "前提: 拡大表示が出ている");
+
+  document.getElementById("btn-restart").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  assert.equal(document.querySelectorAll("#lanes-grid .lane-preview-media").length, 0, "絵の要素ごと外すこと");
+  assert.equal(visiblePreviews(document).length, 0);
+  assert.equal(visibleLogs(document).length, 2, "レーン自体は run の状態なので残しログへ戻す");
+});
+
 test("選択したままデバイスが消えても拡大表示を残さない", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());

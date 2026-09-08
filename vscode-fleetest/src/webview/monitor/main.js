@@ -24,6 +24,7 @@ import {
   applyDeviceDownFinished,
   tiles,
   applyProfileInfo,
+  applySelectAllDevices,
   applyBridgeWatch,
   applyHealthWatch,
   applyWipeStatus,
@@ -246,6 +247,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'tileAutoFit':
       setTileAutoFit(message.value);
+      break;
+    case 'selectAllDevices':
+      applySelectAllDevices(message.value);
       break;
     case 'dashboard':
       handleDashboardMessage(message.message);

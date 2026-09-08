@@ -10,6 +10,7 @@ import { t } from "./i18n";
 import {
   listAppProfileNames,
   listMachineProfiles,
+  listProjectCandidates,
   listRunProfileNames,
   type MachineProfileSummary,
   readMachineDeviceNames,
@@ -166,6 +167,7 @@ export class MonitorProfilesController {
       resolution.kind === "resolved" ? listAppProfileNames(this.deps.workspaceRoot, resolution.project) : [];
     this.deps.post({
       type: "profileInfo",
+      projects: listProjectCandidates(this.deps.workspaceRoot),
       profiles,
       current: config.profile,
       filter: config.monitorDeviceFilter,
@@ -316,6 +318,35 @@ export class MonitorProfilesController {
         );
       },
     );
+  }
+
+  /**
+   * デバイスタブのプロジェクト選択を設定へ反映する。selectProfile と同じく、成功後の再描画は
+   * onDidChangeConfiguration 経由(postProfileInfo・モニター再起動)に任せてここからは post しない。
+   * 実行プロファイルの追随(切替先に無い名前を未選択へ落とす)は extension.ts の
+   * reconciledProfileForProject が担うので、ここでは fleetest.project だけを書く。
+   */
+  selectProject(project: string): void {
+    if (!listProjectCandidates(this.deps.workspaceRoot).includes(project)) {
+      return;
+    }
+    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
+    if (resolution.kind === "resolved" && resolution.project === project) {
+      return;
+    }
+    vscode.workspace
+      .getConfiguration("fleetest")
+      .update("project", project, vscode.ConfigurationTarget.Workspace)
+      .then(
+        () => {
+          this.deps.outputChannel.appendLine(t("profiles.log.projectSet", { name: project }));
+        },
+        (error: unknown) => {
+          this.deps.outputChannel.appendLine(
+            t("profiles.log.projectSetFailed", { name: project, error: String(error) }),
+          );
+        },
+      );
   }
 
   // ---- 実行プロファイルの追加/コピー/名前変更/削除(プロファイルタブ下半分のアイコンボタン) ------

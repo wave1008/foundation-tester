@@ -91,6 +91,8 @@ export type MonitorToWebviewMessage =
   | { readonly type: "deviceDownFinished"; readonly name: string; readonly machine?: string }
   | {
       readonly type: "profileInfo";
+      /** TestProjects/ 直下のテストプロジェクト名一覧(デバイスタブのプロジェクト選択が使う)。 */
+      readonly projects: readonly string[];
       /** 対象プロジェクトの実行プロファイル名一覧(TestProjects/<project>/profiles/runs/ 直下)。 */
       readonly profiles: readonly string[];
       /** 現在の fleetest.profile 設定値。"" はプロファイルなし。 */
@@ -336,6 +338,10 @@ export type MonitorToWebviewMessage =
   // デバイスタブの auto-fit トグルの状態(true = 全デバイスが横幅に収まる高さへ自動調整)。
   // 永続化の理由と経路は tilePaneHeight と同じ(setTileAutoFit と対の契約)。
   | { readonly type: "tileAutoFit"; readonly value: boolean }
+  // デバイスタブの全選択トグルの状態(true = 全デバイス選択)。永続化の理由と経路は
+  // tileAutoFit と同じ(setSelectAllDevices と対の契約)。**0枚でも復元する** ——
+  // ready 直後はモニターがまだ台を出しておらず、出てきた台を webview 側が選び直す。
+  | { readonly type: "selectAllDevices"; readonly value: boolean }
   // ブリッジ突然死の自動修復ウォッチドッグ(monitorBridgeWatchdog.ts)の状態遷移通知。name は
   // deviceOpBusy と同じ名前空間(デバイス論理名)。webview 側はタイルのバッジ表示に使う。
   | {
@@ -477,6 +483,10 @@ export type MonitorFromWebviewMessage =
       readonly devices: readonly { readonly name: string; readonly machine?: string }[];
     }
   | { readonly type: "selectProfile"; readonly profile: string }
+  // デバイスタブのプロジェクト選択。ダッシュボード封筒の同名メッセージとは別経路だが、
+  // どちらも fleetest.project 設定を書き換えるだけ(実行プロファイルの追随は
+  // extension.ts の reconciledProfileForProject が行う)。
+  | { readonly type: "selectProject"; readonly project: string }
   // 実行プロファイルの追加/コピー/名前変更/削除(マシンプロファイルの追加/コピー/削除/名前変更と
   // 同じ構成)。コピー/名前変更/削除の対象 profile の空文字は「対象なし」として検証で弾く。
   | { readonly type: "profileAdd" }
@@ -687,6 +697,10 @@ export type MonitorFromWebviewMessage =
   // auto-fit トグルの切替(ボタン押下・手動ドラッグによる自動 OFF)。monitorPanel.ts が
   // workspaceState へ永続化し、パネル再作成時に "tileAutoFit" メッセージで復元する。
   | { readonly type: "setTileAutoFit"; readonly value: boolean }
+  // 全選択トグルの状態が変わったとき(ボタン・Cmd/Ctrl+A・右クリックメニュー、および
+  // 個別選択で全台が揃った/崩れたとき)。monitorPanel.ts が workspaceState へ永続化し、
+  // パネル再作成時に "selectAllDevices" メッセージで復元する。
+  | { readonly type: "setSelectAllDevices"; readonly value: boolean }
   // webview 側 WebCodecs が未対応/デコード失敗したときに1回送られてくる(受け手: monitorPanel.ts の
   // codecError ハンドラ→monitorDeviceStreamController.fallbackToMjpeg/monitorLiveController.fallbackToMjpeg)。
   // scope="tile" は device 必須(対象タイルを1つ特定するため)、scope="live" は選択中デバイスに
@@ -829,6 +843,9 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       );
     case "selectProfile":
       return typeof value.profile === "string";
+    // 空文字は「未選択」= 切り替え先が無いので弾く(selectProfile と違い意味を持たない)。
+    case "selectProject":
+      return typeof value.project === "string" && value.project !== "";
     case "profileCopy":
     case "profileRename":
     case "profileDelete":
@@ -1041,6 +1058,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "setTilePaneHeight":
       return typeof value.value === "number" && value.value > 0;
     case "setTileAutoFit":
+    case "setSelectAllDevices":
       return typeof value.value === "boolean";
     case "codecError":
       return (

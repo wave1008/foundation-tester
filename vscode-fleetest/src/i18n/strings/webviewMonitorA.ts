@@ -126,6 +126,7 @@ export const webviewMonitorAStrings = {
   "wvMonitor.bulk.cancelStart": { ja: "デバイスの起動を中断", en: "Cancel Starting Devices" },
   "wvMonitor.bulk.startAll": { ja: "デバイスを全て起動", en: "Start All Devices" },
 
+  "wvMonitor.project.placeholder": { ja: "(プロジェクトを選択)", en: "(Select a project)" },
   "wvMonitor.profile.none": { ja: "(プロファイルなし)", en: "(No profile)" },
   "wvMonitor.profile.running": { ja: "(起動中のデバイス)", en: "(Running devices)" },
   // バナーは自動では消えない(読む前に消えるため)。閉じ方を示す

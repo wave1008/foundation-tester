@@ -216,6 +216,8 @@ export class MonitorPanelController implements vscode.Disposable {
   private tilePaneHeight: number | undefined;
   /** デバイスタブの auto-fit トグル(タイル高さを全デバイスが横幅に収まる高さへ自動調整)。 */
   private tileAutoFit: boolean;
+  /** デバイスタブの全選択トグル(workspaceState の "monitor.selectAllDevices")。 */
+  private selectAllDevices: boolean;
   /** stopping/rebooting を post 済みで done/failed が未着のデバイス名。runEnded 時、キャンセル等で
    * done/failed が来ないまま残った名前にバッジ固着を防ぐため phase:"done" を post する。 */
   private readonly wipeInProgress = new Set<string>();
@@ -240,6 +242,8 @@ export class MonitorPanelController implements vscode.Disposable {
     this.tilePaneHeight = workspaceState.get<number>("monitor.tilePaneHeight");
     // 既定 ON(webview 側 splitter.js の「!== false」と揃える。片方だけ変えない)。
     this.tileAutoFit = workspaceState.get<boolean>("monitor.tileAutoFit", true);
+    // 既定 OFF(選んでいない状態から始める。webview 側 deviceTiles.js の初期値と揃える)。
+    this.selectAllDevices = workspaceState.get<boolean>("monitor.selectAllDevices", false);
     this.deps = {
       workspaceRoot: this.workspaceRoot,
       getConfig: this.getConfig,
@@ -629,6 +633,9 @@ export class MonitorPanelController implements vscode.Disposable {
       case "selectProfile":
         this.profiles.selectProfile(message.profile);
         break;
+      case "selectProject":
+        this.profiles.selectProject(message.project);
+        break;
       case "profileAdd":
         void this.profiles.handleProfileAdd();
         break;
@@ -766,6 +773,10 @@ export class MonitorPanelController implements vscode.Disposable {
         this.tileAutoFit = message.value;
         void this.workspaceState.update("monitor.tileAutoFit", message.value);
         break;
+      case "setSelectAllDevices":
+        this.selectAllDevices = message.value;
+        void this.workspaceState.update("monitor.selectAllDevices", message.value);
+        break;
       case "streamRendered":
         // webview がストリームフレームを描画できた ack。これを受けて初めてポーリングを間引く
         // (契約: monitorDeviceStreamController.ts 冒頭)
@@ -870,6 +881,7 @@ export class MonitorPanelController implements vscode.Disposable {
     }
     // auto-fit は tilePaneHeight より後に送る(ON なら高さは復元値ではなく再計算で決まる)。
     this.post({ type: "tileAutoFit", value: this.tileAutoFit });
+    this.post({ type: "selectAllDevices", value: this.selectAllDevices });
     // 設定タブの更新セクション。ネットワークに出るので ready のたびに1回だけ(webview 再読込は稀)。
     // 失敗しても他の初期化を止めない fire-and-forget
     void this.update.check();

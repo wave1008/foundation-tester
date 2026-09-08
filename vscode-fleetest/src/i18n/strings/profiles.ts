@@ -96,6 +96,14 @@ export const profilesStrings = {
   },
 
   // ---- 実行プロファイル ----
+  "profiles.log.projectSet": {
+    ja: "[fleetest] テストプロジェクトを「{name}」に設定しました。",
+    en: "[fleetest] Set the test project to \"{name}\".",
+  },
+  "profiles.log.projectSetFailed": {
+    ja: "[fleetest] テストプロジェクトの設定に失敗しました({name}): {error}",
+    en: "[fleetest] Failed to set the test project ({name}): {error}",
+  },
   "profiles.log.runProfileSet": {
     ja: "[fleetest] 実行プロファイルを「{name}」に設定しました。",
     en: "[fleetest] Set the run profile to \"{name}\".",

@@ -32,6 +32,7 @@ export const panelsStrings = {
   },
   "panels.recordings.autoAdvanceLabel": { ja: "連続再生", en: "Auto-play next" },
 
+  "panels.common.testProject": { ja: "テストプロジェクト", en: "Test Project" },
   "panels.common.runProfile": { ja: "実行プロファイル", en: "Run Profile" },
   "panels.common.appProfile": { ja: "アプリプロファイル", en: "App Profile" },
   "panels.common.machineProfile": { ja: "マシンプロファイル", en: "Machine Profile" },
@@ -43,6 +44,10 @@ export const panelsStrings = {
   "panels.common.runLog": { ja: "実行ログ", en: "Run Log" },
   "panels.common.port": { ja: "ポート", en: "Port" },
 
+  "panels.toolbar.projectSelectTitle": {
+    ja: "対象のテストプロジェクト(fleetest.project 設定)。切り替えると実行プロファイルの一覧も入れ替わる",
+    en: "Target test project (fleetest.project setting). Switching it also swaps the run profile list",
+  },
   "panels.toolbar.runProfileSelectTitle": {
     ja: "以後のテスト実行・デバッグ実行と、このモニターの監視対象デバイスに使う実行プロファイル(fleetest.profile 設定)",
     en: "Run profile used for subsequent test/debug runs and this monitor's watched devices (fleetest.profile setting)",

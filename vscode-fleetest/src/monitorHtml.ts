@@ -245,6 +245,11 @@ function renderDashboardPanel(): string {
 function renderDevicesPanel(): string {
   return `<div id="panel-devices" class="tab-panel" role="tabpanel" aria-labelledby="tab-devices">
     <div id="toolbar" class="toolbar">
+      <!-- 実行プロファイルはプロジェクトに属するので、その左に置いて左→右で絞り込みになる順にする。
+           選ぶと fleetest.project 設定が変わり、実行プロファイル一覧もこれに追従する。 -->
+      <label class="profile-label">${t("panels.common.testProject")}
+        <select id="project-select" title="${t("panels.toolbar.projectSelectTitle")}" disabled></select>
+      </label>
       <label class="profile-label">${t("panels.common.runProfile")}
         <select id="profile-select" title="${t("panels.toolbar.runProfileSelectTitle")}" disabled></select>
       </label>

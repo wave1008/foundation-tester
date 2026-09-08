@@ -7,7 +7,7 @@
 
 import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
-import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, profileSelect, tilePane, tileMarquee } from './domRefs.js';
+import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, projectSelect, profileSelect, tilePane, tileMarquee } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers, relayoutPreviewsForResize } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
@@ -121,12 +121,26 @@ export const selectedDeviceIds = new Set();
 // 「デバイスをすべて選択」が入っているか。台が1枚でも居る間は**選択の集合から導く**
 // (トグルの向きと挙動を2箇所に持たない)が、**フリートが空の間だけ据え置く** ——
 // モニター再起動や「すべて終了」で0枚になっても ON を落とさない = 戻ってきた台を選び直させない。
+// 初期値はホストが ready 後に送る 'selectAllDevices' で上書きされる(前回の値の復元)。
 let selectAllOn = false;
+
+// **旗を書く唯一の口**。値が変わったときだけホストへ知らせて workspaceState へ残す
+// (契約: monitorWebviewMessages.ts の setSelectAllDevices / selectAllDevices)。
+// persist:false はホストからの復元自身(投げ返しても同じ値だが、往復を作らない)。
+function setSelectAllOn(value, persist = true) {
+  if (selectAllOn === value) {
+    return;
+  }
+  selectAllOn = value;
+  if (persist) {
+    vscode.postMessage({ type: 'setSelectAllDevices', value });
+  }
+}
 
 // tiles / selectedDeviceIds のどちらかが変わったら呼ぶ(0枚のときは据え置き)。
 function refreshSelectAllState() {
   if (tiles.size > 0) {
-    selectAllOn = selectedDeviceIds.size === tiles.size;
+    setSelectAllOn(selectedDeviceIds.size === tiles.size);
   }
 }
 
@@ -859,18 +873,28 @@ function renderSelectAllButton() {
 
 // 全選択の ON/OFF を切り替える口はこの2つだけ(ツールバー・Cmd/Ctrl+A・右クリックメニューが
 // 共有する)。**旗をここで明示的に書く** —— 0枚のときは選択の集合から導けないため。
-function selectAllDevices() {
+function selectAllDevices(persist = true) {
   for (const id of tiles.keys()) {
     selectedDeviceIds.add(id);
   }
-  selectAllOn = true;
+  setSelectAllOn(true, persist);
   updateSelectionUi();
 }
 
-function deselectAllDevices() {
+function deselectAllDevices(persist = true) {
   selectedDeviceIds.clear();
-  selectAllOn = false;
+  setSelectAllOn(false, persist);
   updateSelectionUi();
+}
+
+// ホストが ready 後に1回送る前回値の復元(workspaceState)。**0枚でも旗だけは立てる** ——
+// 復元時点ではモニターがまだ台を出しておらず、applyDevices が出てきた台を選び直す。
+export function applySelectAllDevices(value) {
+  if (value) {
+    selectAllDevices(false);
+  } else {
+    deselectAllDevices(false);
+  }
 }
 
 function toggleSelectAll() {
@@ -1091,6 +1115,11 @@ export function clearTilesForRestart() {
   selectedDeviceIds.clear();
   emptyMessage.style.display = 'flex';
   renderSelectAllButton();
+  // 下のペインの拡大表示も畳む。**タイルを消すだけでは消えない** —— 拡大表示はレーン側の
+  // DOM に居て、再起動の間は新しいフレームが来ないので最後の1枚が出たまま残る
+  // (レーン自体は run の状態なので消さない。tiles が空になったこの時点で
+  //  updateLaneVisibility が全レーンの拡大表示を detach し、ログ表示へ戻す)。
+  updateLaneVisibility();
 }
 
 export function applyDevices(devices) {
@@ -1524,6 +1553,7 @@ export function setBusy(busy, bulkOp) {
 
 // この select は「使用する実行プロファイルの指定」のみ。追加/編集は runProfilesTab.js が担当。
 
+const PROJECT_PLACEHOLDER_LABEL = t('wvMonitor.project.placeholder');
 const PROFILE_NONE_LABEL = t('wvMonitor.profile.none');
 const PROFILE_RUNNING_LABEL = t('wvMonitor.profile.running');
 // src/monitorDeviceModel.ts の RUNNING_DEVICES_PROFILE_VALUE の複製(webview は CSP で import 不可)。
@@ -1535,6 +1565,7 @@ const PROFILE_RUNNING_VALUE = '@running';
 export function applyProfileInfo(message) {
   const profiles = Array.isArray(message.profiles) ? message.profiles : [];
   const current = typeof message.current === 'string' ? message.current : '';
+  applyProjectInfo(message);
   // filter==='running' は profile 未選択(current==='')と組で来る。選択表示は予約値側にする。
   runningFilterActive = message.filter === 'running';
   renderUnregisteredBadges();
@@ -1573,6 +1604,39 @@ export function applyProfileInfo(message) {
 
 profileSelect.addEventListener('change', () => {
   vscode.postMessage({ type: 'selectProfile', profile: profileSelect.value });
+});
+
+// プロジェクト選択。実行プロファイルはプロジェクトに属するので、切り替えると profileInfo が
+// 再送されて右隣のドロップダウンも入れ替わる(追随はホスト側)。
+// 未解決(current==='')のときだけ選べない placeholder を先頭に置く —— ダッシュボードタブの
+// applyProjects と同じ形(選択の意味も送信先の設定も同じなので、片方だけ変えない)。
+function applyProjectInfo(message) {
+  const projects = Array.isArray(message.projects) ? message.projects : [];
+  const current = typeof message.project === 'string' ? message.project : '';
+  projectSelect.textContent = '';
+  if (current === '') {
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    placeholder.textContent = PROJECT_PLACEHOLDER_LABEL;
+    projectSelect.appendChild(placeholder);
+  }
+  for (const name of projects) {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name;
+    projectSelect.appendChild(option);
+  }
+  projectSelect.value = current;
+  // 候補が無ければ触らせない(押しても切り替え先が無い)。
+  projectSelect.disabled = projects.length === 0;
+}
+
+projectSelect.addEventListener('change', () => {
+  if (projectSelect.value !== '') {
+    vscode.postMessage({ type: 'selectProject', project: projectSelect.value });
+  }
 });
 
 function toggleDeviceSelection(id) {
