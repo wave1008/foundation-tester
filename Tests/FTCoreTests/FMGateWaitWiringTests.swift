@@ -2,6 +2,11 @@
 // gateWait の算術は FMHealthTests が見ている。ここが無いと「常に 0 を返す計測器」と
 // 「待ちが無かった run」を区別できない —— 待ちが 0 なら直列化を緩める価値は無い、という
 // 判断をこの数字1つに賭けるので、production の経路を実際に通ることを固定する。
+//
+// FMHealth.record は合成値(kind: "test")で直接叩くため、既定の書き込み先ではなく
+// テストごとの一時ディレクトリへ逃がす(FT_FM_LIVENESS_DIR / FT_FM_USAGE_DIR。
+// FMUsageLedgerTests / FMLivenessTests と同じ形)。逃がさないと本番の FM 台帳へ
+// 「FM は生きている」という偽の観測を書いてしまう(実測 2026-09-08)
 
 import FTTestSupport
 import XCTest
@@ -13,11 +18,32 @@ final class FMGateWaitWiringTests: XCTestCase {
     /// 短いと「保持中に2本目が入った」ことを再現できず、待ち 0 で通ってしまう
     private let holdSeconds: TimeInterval = 0.3
 
-    override func tearDown() {
+    private var livenessDir: URL!
+    private var savedLivenessEnv: String?
+    private var usageDir: URL!
+    private var savedUsageEnv: String?
+
+    override func setUpWithError() throws {
+        livenessDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("FMGateWaitWiringTests-liveness-\(UUID().uuidString)")
+        savedLivenessEnv = ProcessInfo.processInfo.environment["FT_FM_LIVENESS_DIR"]
+        setenv("FT_FM_LIVENESS_DIR", livenessDir.path, 1)
+        usageDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("FMGateWaitWiringTests-usage-\(UUID().uuidString)")
+        savedUsageEnv = ProcessInfo.processInfo.environment["FT_FM_USAGE_DIR"]
+        setenv("FT_FM_USAGE_DIR", usageDir.path, 1)
+        FMLiveness.resetWriteMemo()
+    }
+
+    override func tearDownWithError() throws {
+        if let savedLivenessEnv { setenv("FT_FM_LIVENESS_DIR", savedLivenessEnv, 1) } else { unsetenv("FT_FM_LIVENESS_DIR") }
+        if let savedUsageEnv { setenv("FT_FM_USAGE_DIR", savedUsageEnv, 1) } else { unsetenv("FT_FM_USAGE_DIR") }
+        FMLiveness.resetWriteMemo()
+        try? FileManager.default.removeItem(at: livenessDir)
+        try? FileManager.default.removeItem(at: usageDir)
         FMGate.leave()
         FMLock.concurrencyForTesting = nil
         FMLock.resetForTesting()
-        super.tearDown()
     }
 
     /// 1本目が門を保持している間に入った2本目は、**保持時間ぶんの待ちを記録する**。

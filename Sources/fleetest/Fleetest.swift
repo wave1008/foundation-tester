@@ -46,6 +46,7 @@ struct Fleetest: AsyncParsableCommand {
     /// asyncParseAsRoot → run() → catch { exit(withError:) } の既定挙動をそのまま保つ
     static func main() async {
         ParentDeathWatch.armIfRequested()
+        FMLedgerWriteRole.enableForProduction()
         await self.main(nil)
     }
 }

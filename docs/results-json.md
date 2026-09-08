@@ -144,8 +144,8 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | measurementInvalidReasons | [String]? | 同上の理由(英語) |
 | performanceMode | Bool? | `--performance` の run だけ true(false は書かない)。有効な計測 run = これが true かつ measurementInvalid が無い run。2026-09-01 より前の記録には無い |
 | issuer | String? | ディスパッチ発行者の自己申告(認証ではない) |
-| fmDead | [String]? | **run を閉じた時点**でこの機械の FM が死んでいた経路(`"text"` / `"vision"`。`FTCore.FMLiveness`)。生きていた・不明なら欄ごと省略 —— **欄が無いことを「生きていた」と読まない**。**run 全体の状態ではない**(途中で死んで戻った run はここに出ない。そちらは `scenarios/*.json` の `fm.failures` / `fm.firstError`)。**緑の run を仕分けるための欄** —— FM が死んだ run の緑は occlusion-guard・自己修復・screenLooksLike が素通りしただけかもしれない。2026-09-03 より前の記録には無い |
-| fmDeadReason | String? | `fmDead` の理由(`text: … / vision: …`)。`fmDead` が無ければ省略 |
+| fmDead | [String]? | **run を閉じた時点**でこの機械の FM が死んでいた経路(`"text"` / `"vision"`。`FTCore.FMLiveness`)。生きていた・不明なら欄ごと省略 —— **欄が無いことを「生きていた」と読まない**。**run 全体の状態ではない**(途中で死んで戻った run はここに出ない。そちらは `scenarios/*.json` の `fm.failures` / `fm.firstError`)。**緑の run を仕分けるための欄** —— FM が死んだ run の緑は occlusion-guard・自己修復・screenLooksLike が素通りしただけかもしれない。2026-09-03 より前の記録には無い。**台帳(FMLiveness)の観測が古い/無い経路は、`FMBreaker.isOpen`(サーキットブレーカが開いている = 直前に連続失敗した既知の事実)が真なら dead として補う**(観測済みの経路は上書きしない。ブレーカは呼ばずに死と言える唯一の根拠 —— run 全体がブレーカ開の間に終わり、台帳が一度も更新されないまま run が閉じるケースを拾う。2026-09-09 より前の記録は台帳の観測だけで、この補いを持たない) |
+| fmDeadReason | String? | `fmDead` の理由(`text: … / vision: …`)。**ブレーカ由来の補いは `"circuit breaker open"` になる**(実呼び出しの失敗理由が無いため)。`fmDead` が無ければ省略 |
 | guarded | Int? | **occlusion-guard(誤った緑の検査)が run 全体で `occlusionFlip` の `visibilityGuardActive` 判定を通ったステップ数**(run 横断合計)。**分母は occlusionFlip に実際に入った回数であって、`visibilityGuardActive` が true になった回数(検査対象の候補数)ではない** —— tap 等のアクションは `occlusionFlip` を通らないのでこの欄には数えない。足切り(型・ラベル・インク)で FM を呼ばずに素通りした回も、`occlusionFlip` の入口ガードは通っているのでここに数える。1度もガードに入らなかった run では省略(0 は書かない) |
 | guardSkipped | Int? | `guarded` のうち、FM が判定を返せず(死活・ブレーカ・直列化待ち)素通りした回(`visibility-guard-skipped`)。**`guarded` が1件以上ある run では、0件でも必ず書く**(欄が無い=観測なし、0=観測したが起きなかった、を混ぜない)。`guarded` が省略された run では同じく省略 |
 | guardStaleFrame | Int? | `guarded` のうち、絵が古いまま撮り直しても stale で素通りした回(`stale-screenshot`)。`guardSkipped` と同じ 0/nil の規律 |
@@ -266,6 +266,11 @@ screenLooksLike がこの回数ぶん静かに素通りしたことを事後に�
 `scene` / `sceneTitle` / `index` / `description` / `status` / `at` / `durationMs` / `notes`。
 **run 横断で注記を数えるときは `description` の文言一致ではなく `notes` を見る**
 (文言を変えた瞬間に集計が 0 件になる)。
+
+`durationMs` の内訳として `snapshotMs` / `actionMs` / `waitMs`(Int?)も持つ。StepExecutor が
+計測できたステップ(tap/exist 等)だけ非nil で、performCustom 経由(wait/procedure 等)は
+durationMs のみ、skip・dry-run 等は3欄とも省略。**欄が無い=未計測であって0ではない**
+(guarded 系と同じ規律)。2026-09-09 より前の記録には無い。
 
 ---
 

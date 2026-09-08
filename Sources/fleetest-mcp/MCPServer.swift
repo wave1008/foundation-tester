@@ -17,6 +17,7 @@ import FTCore
 @main
 struct FleetestMCP {
     static func main() async {
+        FMLedgerWriteRole.enableForProduction()
         let server = MCPServer()
         await server.run()
     }

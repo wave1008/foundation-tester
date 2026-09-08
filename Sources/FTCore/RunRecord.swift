@@ -375,6 +375,12 @@ public struct TimelineStepRecord: Codable, Sendable {
     /// ISO8601+ミリ秒(ScenarioEvent.at 由来)。取得できないステップでは nil
     public var at: String?
     public var durationMs: Int?
+    /// durationMs の内訳(ScenarioEvent.snapshotMs/actionMs/waitMs 由来)。StepExecutor が
+    /// 計測できたステップだけ非nil(StepTiming の doc)。未計測のステップと、この3欄を
+    /// 持たない旧レコードはどれも nil ——**欄が無い=不明であって0ではない**(docs/results-json.md)
+    public var snapshotMs: Int?
+    public var actionMs: Int?
+    public var waitMs: Int?
     /// StepNote の rawValue(ScenarioEvent.notes 由来)。**run 横断の集計はここだけを見る**
     /// (description の文言一致で数えない。StepNote の doc 参照)。注記が無いステップと、
     /// notes を持たない旧レコードはどちらも nil
@@ -382,6 +388,7 @@ public struct TimelineStepRecord: Codable, Sendable {
 
     public init(scene: Int? = nil, sceneTitle: String? = nil, index: Int, description: String,
                 status: String, at: String? = nil, durationMs: Int? = nil,
+                snapshotMs: Int? = nil, actionMs: Int? = nil, waitMs: Int? = nil,
                 notes: [String]? = nil) {
         self.scene = scene
         self.sceneTitle = sceneTitle
@@ -390,6 +397,9 @@ public struct TimelineStepRecord: Codable, Sendable {
         self.status = status
         self.at = at
         self.durationMs = durationMs
+        self.snapshotMs = snapshotMs
+        self.actionMs = actionMs
+        self.waitMs = waitMs
         self.notes = notes
     }
 }
@@ -625,6 +635,7 @@ public struct ScenarioRecordBuilder {
             scene: event.scene, sceneTitle: event.sceneTitle ?? event.scene.flatMap { sceneTitles[$0] },
             index: event.index ?? 0, description: event.description ?? "",
             status: status, at: event.at, durationMs: event.durationMs,
+            snapshotMs: event.snapshotMs, actionMs: event.actionMs, waitMs: event.waitMs,
             notes: event.notes?.isEmpty == true ? nil : event.notes))
         if event.notes?.contains(StepNote.heldValue.rawValue) == true {
             stepCounts.viaHeldValue = (stepCounts.viaHeldValue ?? 0) + 1

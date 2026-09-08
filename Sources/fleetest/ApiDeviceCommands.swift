@@ -230,7 +230,8 @@ struct ApiStartAllDevicesCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "start-all-devices",
         abstract: "Start every device in the machine profile (NDJSON: log/deviceStarting/deviceFinished -> "
-            + "finished on stdout; diagnostics on stderr only)")
+            + "finished on stdout; diagnostics on stderr only; ok:false and exit code 1 only when every "
+            + "device on this machine failed to start, otherwise ok:true even with partial failures)")
 
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
@@ -278,7 +279,7 @@ struct ApiStartAllDevicesCommand: AsyncParsableCommand {
 
             // deviceStopping/deviceStarting/deviceFinished は bootAll のワーカータスクから並行に
             // 呼ばれるため、emit(ApiDeviceEventEmitter 経由)でロックして直列化する
-            await DeviceBooter.bootAll(
+            let outcomes = await DeviceBooter.bootAll(
                 machine: machineProfile, repoRoot: repoRoot,
                 restartNames: Set(restart),
                 cpuRenderNames: Set(cpuRender),
@@ -299,7 +300,19 @@ struct ApiStartAllDevicesCommand: AsyncParsableCommand {
                                                    machine: MachineDispatch.normalize(deviceMachine)))
                 })
             await fanout  // リモート分の完走まで finished を出さない(受け手の「全部終わった」の合図)
+            // **手元の台が1台以上あって0台も起動できなかったときだけ ok:false**(部分失敗は従来どおり
+            // ok:true。「1台の失敗で全体を落とさない」規律は変えず、全滅だけを失敗として伝える —
+            // 以前は bootAll が例外を握って何を積んでも ok:true・exit 0 だった)。リモートの機械ごとの
+            // 失敗は既存の machineFailed が別途伝える(ここでは手元の outcomes だけを見る)
+            let summary = DeviceBooter.BootOutcomeSummarizer.summarize(outcomes)
+            if summary.allFailed {
+                ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(
+                    ok: false, error: "every device failed to start: \(summary.failedNames.joined(separator: ", "))"))
+                throw ExitCode(1)
+            }
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
+        } catch let exitCode as ExitCode {
+            throw exitCode
         } catch {
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent.failure(error))
             throw ExitCode(1)
@@ -316,7 +329,8 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
         commandName: "restart-devices",
         abstract: "Restart the given devices with down->up, two at a time (NDJSON: "
             + "log/deviceStopping/deviceStarting/deviceFinished -> finished on stdout; "
-            + "diagnostics on stderr only; exit code 1 when ok:false)")
+            + "diagnostics on stderr only; ok:false and exit code 1 when a device is not found, the "
+            + "profile fails to load, or every non-physical device given failed to restart)")
 
     @Option(name: .customLong("name"), parsing: .upToNextOption,
             help: "Logical names of the devices to restart (under ios or android in the machine profile). Repeatable")
@@ -366,14 +380,26 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
 
             let repoRoot = try? RepoRoot.find()
             let queue = RestartQueue(items)
+            let outcomes = RestartOutcomeCollector()
             await withTaskGroup(of: Void.self) { group in
                 for _ in 0..<min(2, items.count) {
                     group.addTask {
                         while let item = await queue.next() {
-                            await Self.restartOne(item, repoRoot: repoRoot)
+                            let succeeded = await Self.restartOne(item, repoRoot: repoRoot)
+                            await outcomes.record(DeviceBooter.BootOutcome(
+                                name: item.spec.name, platform: item.platform, succeeded: succeeded))
                         }
                     }
                 }
+            }
+            // physical だけの --name 集合(items が空)は誰も試みていないので全滅扱いにしない。
+            // それ以外は「渡した台が1台も再起動できなかった」ときだけ ok:false(部分失敗は ok:true。
+            // 以前は restartOne が例外を握るだけで常に ok:true・exit 0 だった)
+            let summary = DeviceBooter.BootOutcomeSummarizer.summarize(await outcomes.all())
+            if summary.allFailed {
+                ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(
+                    ok: false, error: "every device failed to restart: \(summary.failedNames.joined(separator: ", "))"))
+                throw ExitCode(1)
             }
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
         } catch let exitCode as ExitCode {
@@ -384,9 +410,17 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
         }
     }
 
-    /// 1 台分の down→up。shutdownOne/bootOne いずれかが失敗しても deviceFinished は必ず送出する
-    /// (呼び出し側 VSCode 拡張の再スキャン契約。ApiStartAllDevicesCommand の deviceFinished 契約と同じ)
-    private static func restartOne(_ item: RestartItem, repoRoot: URL?) async {
+    /// restartOne のワーカータスクから並行に record される(DeviceBooter の BootOutcomeCollector と同じ形)
+    private actor RestartOutcomeCollector {
+        private var outcomes: [DeviceBooter.BootOutcome] = []
+        func record(_ outcome: DeviceBooter.BootOutcome) { outcomes.append(outcome) }
+        func all() -> [DeviceBooter.BootOutcome] { outcomes }
+    }
+
+    /// 1 台分の down→up。戻り値はこの1台の成否(呼び出し側が全滅判定に使う)。shutdownOne/bootOne
+    /// いずれかが失敗しても deviceFinished は必ず送出する(呼び出し側 VSCode 拡張の再スキャン契約。
+    /// ApiStartAllDevicesCommand の deviceFinished 契約と同じ)
+    private static func restartOne(_ item: RestartItem, repoRoot: URL?) async -> Bool {
         let spec = item.spec
         let platform = item.platform
         let log: @Sendable (String) -> Void = { message in
@@ -395,6 +429,7 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
         ApiDeviceEventEmitter.emit(
             ApiDevicesUpLifecycleEvent(kind: "deviceStopping", name: spec.name, platform: platform,
                                        machine: spec.machine))
+        var succeeded = true
         do {
             try await DeviceBooter.shutdownOne(
                 spec: spec, platform: platform,
@@ -405,10 +440,12 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
             try await DeviceBooter.bootOne(spec: spec, platform: platform, log: log)
         } catch {
             log("❌ \(spec.name): \(error.localizedDescription)")
+            succeeded = false
         }
         ApiDeviceEventEmitter.emit(
             ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: spec.name, platform: platform,
                                        machine: spec.machine))
+        return succeeded
     }
 
     private struct RestartItem: Sendable {

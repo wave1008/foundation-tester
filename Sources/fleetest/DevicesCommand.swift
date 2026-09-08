@@ -1,5 +1,6 @@
 // マシンプロファイルに定義されたデバイス群の起動・停止 CLI。
-//   fleetest devices up   … 並行起動(最大2台同時・起動済みスキップ・iOS はブリッジ供給まで)
+//   fleetest devices up   … 並行起動(最大2台同時・起動済みスキップ・iOS はブリッジ供給まで。
+//                           1台以上あって0台成功=全滅は exit 1、部分失敗は要約1行を出し exit 0)
 //   fleetest devices down … 全ブリッジ停止+シミュレータ/エミュレータ全終了(--profile 無しは
 //                           登録簿の全マシンでも同じ掃討を走らせる。RemoteDeviceFanout.dispatchSweep)
 // どちらも --profile(実行プロファイル名)指定時は、そのプロファイルが参照するデバイスのみを
@@ -21,7 +22,8 @@ struct DevicesCommand: AsyncParsableCommand {
     struct Up: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Start every device (at most two at a time; already-running devices are skipped."
-                + " With --profile, only the devices that profile references)")
+                + " With --profile, only the devices that profile references. Exit code 1 if every"
+                + " device failed to start; partial failures still exit 0 but are summarized)")
 
         @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
         var project: String?
@@ -47,8 +49,22 @@ struct DevicesCommand: AsyncParsableCommand {
 
             // iOS はブート完了分をバッチで束ねてブリッジ供給する(bootAll 内。ブートと供給は並行)
             let repoRoot = noBridge ? nil : try RepoRoot.find()
-            await DeviceBooter.bootAll(machine: machineProfile, repoRoot: repoRoot) { ConsoleOut.out($0) }
-            ConsoleOut.out("✅ Device start-up sequence complete")
+            let outcomes = await DeviceBooter.bootAll(
+                machine: machineProfile, repoRoot: repoRoot) { ConsoleOut.out($0) }
+            let summary = DeviceBooter.BootOutcomeSummarizer.summarize(outcomes)
+            // 1台も無い/全部成功は従来どおりの1行。**全滅は exit 1**(1台以上あって0台成功。
+            // 1台も起動できていないのに exit 0 で ✅ を出していたのが不具合1の実害)。
+            // 部分失敗は exit 0 のまま(CLAUDE.md「1台の失敗で全体を落とさない」)だが必ず要約する
+            if summary.failedNames.isEmpty {
+                ConsoleOut.out("✅ Device start-up sequence complete")
+            } else if summary.allFailed {
+                ConsoleOut.out("❌ Device start-up failed: 0/\(summary.total) started"
+                    + " — failed: \(summary.failedNames.joined(separator: ", "))")
+                throw ExitCode(1)
+            } else {
+                ConsoleOut.out("⚠️ Device start-up sequence complete: \(summary.succeededCount)/\(summary.total) started"
+                    + " — failed: \(summary.failedNames.joined(separator: ", "))")
+            }
         }
     }
 

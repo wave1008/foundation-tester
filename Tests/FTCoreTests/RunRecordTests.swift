@@ -14,7 +14,11 @@ final class RunRecordTests: XCTestCase {
     /// 台帳(FMLiveness)へ死を注入して run.json を作らせる。**緑の run では1度も通らない経路**
     /// なので、フルスイートを何度回してもここは守られない(2026-09-03 の実 run で形を確認した)。
     /// FT_FM_LIVENESS_DIR はプロセス全体の状態なので SharedResource.hostCaches で直列化する。
-    private func recordedMeta(injecting record: FMLiveness.Record?) throws -> RunMetaRecord {
+    /// **FMBreaker もホスト単位の実ファイル**(`~/Library/Caches/fleetest/fm-breaker.state`)を持つ
+    /// —— この実機で FM が実際に落ちていることがある(件1 の発端そのもの)ので、隔離しないと
+    /// production の状態を拾って breakerOpen=false の期待が揺れる。既定で「閉じている」に固定する
+    private func recordedMeta(injecting record: FMLiveness.Record?,
+                              breakerOpen: Bool = false) throws -> RunMetaRecord {
         let ledgerDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("fleetest-fmdead-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: ledgerDir, withIntermediateDirectories: true)
@@ -24,6 +28,18 @@ final class RunRecordTests: XCTestCase {
         defer { if let saved { setenv("FT_FM_LIVENESS_DIR", saved, 1) } else { unsetenv("FT_FM_LIVENESS_DIR") } }
         if let record {
             try JSONEncoder().encode(record).write(to: ledgerDir.appendingPathComponent("fm-liveness.json"))
+        }
+
+        let breakerDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fleetest-fmbreaker-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: breakerDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: breakerDir) }
+        let savedBreakerURL = FMBreaker.stateURLForTesting
+        FMBreaker.stateURLForTesting = breakerDir.appendingPathComponent("fm-breaker.state")
+        defer { FMBreaker.stateURLForTesting = savedBreakerURL }
+        FMBreaker.reset()
+        if breakerOpen {
+            for _ in 0..<FMBreaker.threshold { FMBreaker.recordFailure() }
         }
 
         let root = FileManager.default.temporaryDirectory
@@ -77,9 +93,42 @@ final class RunRecordTests: XCTestCase {
         }
     }
 
+    /// 件1: 台帳の観測が無く(不明)、かつサーキットブレーカが開いていれば dead として補う。
+    /// ブレーカは経路を区別しないので両方とも dead になる —— 「呼べば失敗する」が両経路に等しく効くため
+    func testUnknownLivenessWithOpenBreakerIsRecordedAsDead() throws {
+        try SharedResource.hostCaches.locked {
+            let meta = try recordedMeta(injecting: nil, breakerOpen: true)
+            XCTAssertEqual(meta.fmDead, ["text", "vision"])
+            XCTAssertEqual(meta.fmDeadReason, "text: circuit breaker open / vision: circuit breaker open")
+        }
+    }
+
+    /// **観測済みの経路は上書きしない**(新しい観測が勝つ規律)。text は台帳の生きた観測が
+    /// あるので、ブレーカが開いていても text を dead にしない —— vision だけ不明のぶんを補う
+    func testOpenBreakerDoesNotOverrideAFreshKnownReading() throws {
+        try SharedResource.hostCaches.locked {
+            let meta = try recordedMeta(
+                injecting: FMLiveness.Record(text: verdict(.alive, nil), vision: nil),
+                breakerOpen: true)
+            XCTAssertEqual(meta.fmDead, ["vision"], "観測済みの text は上書きしない")
+            XCTAssertEqual(meta.fmDeadReason, "vision: circuit breaker open")
+        }
+    }
+
+    /// ブレーカが閉じていれば、不明はこれまでどおり不明のまま(欄を省略する)。
+    /// 件1 の直しがこの規律まで壊していないことの対照
+    func testUnknownLivenessWithClosedBreakerStaysOmitted() throws {
+        try SharedResource.hostCaches.locked {
+            let meta = try recordedMeta(injecting: nil, breakerOpen: false)
+            XCTAssertNil(meta.fmDead)
+            XCTAssertNil(meta.fmDeadReason)
+        }
+    }
+
     private func stepEvent(index: Int, scene: Int, status: String, description: String = "tap",
                            detail: String? = nil, file: String? = nil, line: Int? = nil,
-                           durationMs: Int? = nil, at: String? = nil,
+                           durationMs: Int? = nil, snapshotMs: Int? = nil, actionMs: Int? = nil,
+                           waitMs: Int? = nil, at: String? = nil,
                            notes: [String]? = nil, guarded: Bool? = nil) -> ScenarioEvent {
         var event = ScenarioEvent(kind: "step")
         event.index = index
@@ -90,6 +139,9 @@ final class RunRecordTests: XCTestCase {
         event.file = file
         event.line = line
         event.durationMs = durationMs
+        event.snapshotMs = snapshotMs
+        event.actionMs = actionMs
+        event.waitMs = waitMs
         event.at = at
         event.notes = notes
         event.guarded = guarded
@@ -386,6 +438,40 @@ final class RunRecordTests: XCTestCase {
             durationMs: 0, packageRoot: nil)
 
         XCTAssertNil(record.timeline)
+    }
+
+    /// 件2: durationMs の内訳(snapshotMs/actionMs/waitMs)は計測できたステップだけ載り、
+    /// 未計測のステップと欄そのものが無い旧レコードはキーごと省略される(0 と混ぜない)
+    func testTimelineCarriesDurationBreakdownWhenMeasured() throws {
+        var builder = ScenarioRecordBuilder(
+            scenarioID: "Foo.breakdown", platform: "ios", title: nil, worker: nil)
+
+        builder.consume(stepEvent(index: 1, scene: 1, status: "passed", description: "tap \"#btn\"",
+                                  durationMs: 104_000, snapshotMs: 90_000, actionMs: 12_000, waitMs: 2_000))
+        builder.consume(stepEvent(index: 2, scene: 1, status: "passed", description: "wait(1)",
+                                  durationMs: 1000))
+
+        let record = builder.build(
+            passed: true, timedOut: false, startedAt: Date(timeIntervalSince1970: 0),
+            durationMs: 105_000, packageRoot: nil)
+
+        let timeline = try XCTUnwrap(record.timeline)
+        XCTAssertEqual(timeline[0].snapshotMs, 90_000)
+        XCTAssertEqual(timeline[0].actionMs, 12_000)
+        XCTAssertEqual(timeline[0].waitMs, 2_000)
+        XCTAssertNil(timeline[1].snapshotMs, "未計測のステップはキーごと省略(0 ではない)")
+        XCTAssertNil(timeline[1].actionMs)
+        XCTAssertNil(timeline[1].waitMs)
+
+        // JSON へ落としたときも欄ごと消えること(synthesized Codable が Optional を
+        // encodeIfPresent で書く契約。手で キー集合を確かめる)
+        let data = try JSONEncoder().encode(record)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let jsonTimeline = try XCTUnwrap(json["timeline"] as? [[String: Any]])
+        XCTAssertEqual(jsonTimeline[0]["snapshotMs"] as? Int, 90_000)
+        XCTAssertNil(jsonTimeline[1]["snapshotMs"], "nil の欄はキーごと出ないこと")
+        XCTAssertNil(jsonTimeline[1]["actionMs"])
+        XCTAssertNil(jsonTimeline[1]["waitMs"])
     }
 
     /// inconclusive(verify にアサーション0個等)は failed に数えず、専用カウンタへ積む

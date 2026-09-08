@@ -87,7 +87,23 @@ public enum FMBreaker {
             .appendingPathComponent("fm-breaker.state")
     }
 
-    private static var stateURL: URL { stateURLForTesting ?? defaultStateURL }
+    /// opt-in していないプロセス(= 単体テスト)は**プロセスごとに隔離した置き場**を使う。
+    /// 無効化はしない —— ブレーカの挙動自体を検証するテストがあるので、置き場だけを本番から外す。
+    /// これが無いと、合成値で `FMHealth.record(ok: false)` を叩くテスト(FMHealthTests)が
+    /// **機械全体の FM を 10 分止める**(cooldownSeconds)。実害2件(2026-09-08):
+    /// 耐久 run が FM 無しで走った / 同じスイートの FMGateWaitWiringTests が enter を短絡されて落ちた。
+    /// 置き場の判定は FMLiveness / FMUsageLedger と同じ門(FMLedgerWriteRole)を通す
+    /// **`private` を外してあるのはテストのため**(置き場の決まり方を I/O 抜きで表明する)
+    static var stateURL: URL {
+        if let stateURLForTesting { return stateURLForTesting }
+        guard FMLedgerWriteRole.permitsProductionWrite else { return processLocalStateURL }
+        return defaultStateURL
+    }
+
+    private static var processLocalStateURL: URL {
+        URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("fleetest-fm-breaker-\(getpid()).state")
+    }
 
     /// マシンが最後に起動した時刻。kern.boottime は**スリープでは変わらず、実際の再起動でだけ進む**
     /// (ProcessInfo.systemUptime はスリープ中止まる実装があり、起動時刻の逆算に使うとスリープの

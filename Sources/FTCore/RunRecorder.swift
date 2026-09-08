@@ -172,7 +172,7 @@ public final class RunRecorder: @unchecked Sendable {
         // FM の死活は**引数で受け取らない** —— 機械グローバルな事実(FMLiveness)なので、
         // 呼び出し元が run のたびに集めて渡す形にすると経路ごとに渡し忘れが出る
         // (`fleetest run` / `api run` は別実装。RunCommandFlagParityTests の教訓)
-        let fmReading = FMLiveness.current()
+        let fmReading = Self.fmReadingWithBreakerFallback(FMLiveness.current())
         let fmDeadPaths = fmReading.deadPaths
         lock.lock()
         let guardedSum = guardedTotal
@@ -211,6 +211,23 @@ public final class RunRecorder: @unchecked Sendable {
             guardStaleFrame: guardStaleFrameValue,
             fmSettings: fmSettings)
         RunResultsStore.writeMeta(meta, runDir: runDir)
+    }
+
+    /// 台帳(FMLiveness)の観測が古い/無い経路だけ、開いたサーキットブレーカの事実で dead を補う。
+    /// **観測済みの経路(生でも死でも)は上書きしない**(新しい観測が勝つ規律。FMLiveness ①③)——
+    /// ブレーカが開いた後にその経路が生きて戻っていても、この台帳はまだ古い記録しか知らない
+    /// ことがある。**ブレーカは経路を区別しない**(FMHealth の doc)ので、開いていれば
+    /// 「呼べば失敗する」という同じ事実を両経路に等しく適用してよい。
+    /// 根拠は `FMLiveness.Source.breaker`(呼ばずに死と言える唯一の根拠)
+    private static func fmReadingWithBreakerFallback(_ reading: FMLiveness.Reading) -> FMLiveness.Reading {
+        guard FMBreaker.isOpen else { return reading }
+        func withBreakerFallback(_ verdict: FMLiveness.Verdict?) -> FMLiveness.Verdict? {
+            guard verdict == nil else { return verdict }
+            return FMLiveness.Verdict(state: .dead, checkedAt: Date().timeIntervalSince1970,
+                                      source: .breaker, error: "circuit breaker open")
+        }
+        return FMLiveness.Reading(text: withBreakerFallback(reading.text),
+                                  vision: withBreakerFallback(reading.vision))
     }
 
     private func write(_ record: ScenarioRunRecord) {

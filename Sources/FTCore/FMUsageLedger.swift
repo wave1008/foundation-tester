@@ -67,13 +67,17 @@ public enum FMUsageLedger {
     }
 
     /// 書き込み先。nil = 書かない。
-    /// **XCTest のプロセスからは書かない** —— FMHealth.record は単体テストが合成値で直接叩くので、
-    /// FM を1回も呼んでいないのに監視の FM 行が動く(偽の実測がユーザーに見える)。
-    /// 控え自体を検証するテストは FT_FM_USAGE_DIR を明示するので影響を受けない
-    private static var writeDirectory: URL? {
+    /// **`FMLedgerWriteRole` が opt-in した production の実行ファイルだけへ書く**(fail-closed。
+    /// FMLedgerWriteRole.swift 冒頭)。`XCTestConfigurationFilePath` の判定は二重の備えとして残す ——
+    /// `swift test --parallel` のワーカーでは立たないことがあるのでこれ単独では守れない
+    /// (FMHealth.record は単体テストが合成値で直接叩くので、その回に FM を1回も呼んでいないのに
+    /// 監視の FM レートが動く = 偽の実測がユーザーに見える)。控え自体を検証するテストは
+    /// FT_FM_USAGE_DIR を明示するので影響を受けない。**`private` を外してあるのはテストのため**
+    static var writeDirectory: URL? {
         if let override = ProcessInfo.processInfo.environment["FT_FM_USAGE_DIR"], !override.isEmpty {
             return URL(fileURLWithPath: override)
         }
+        guard FMLedgerWriteRole.permitsProductionWrite else { return nil }
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return nil }
         return directory
     }

@@ -33,7 +33,10 @@ public enum DeviceBooter {
     /// 「同時進行が maxConcurrent 台を超えて見えない」こと自体が要件(ユーザー決定。
     /// ブート完了分を束ねる供給バッチ化 ProvisionBatcher は速いが同時進行が上限を超えるため撤回。
     /// 再検討時は git 履歴参照)。
-    /// deviceFinished は成否問わず必ず呼ばれる(呼び出し側の再スキャン契約)。
+    /// deviceFinished は成否問わず必ず呼ばれる(呼び出し側の再スキャン契約。変更しない)。
+    /// **戻り値は台ごとの成否**(呼び出し側が exit code / 要約文言を決めるための材料。
+    /// BootOutcomeSummarizer が純粋に要約する。deviceFinished の契約とは別軸)
+    @discardableResult
     public static func bootAll(
         machine: MachineProfile,
         repoRoot: URL? = nil,
@@ -44,7 +47,7 @@ public enum DeviceBooter {
         deviceStopping: @escaping @Sendable (String, String) -> Void = { _, _ in },
         deviceStarting: @escaping @Sendable (String, String) -> Void = { _, _ in },
         deviceFinished: @escaping @Sendable (String, String) -> Void = { _, _ in }
-    ) async {
+    ) async -> [BootOutcome] {
         // iOS(軽い)を先頭に、Android(重い)を後ろに並べた早い者勝ちキュー。各プラットフォーム内は
         // name 昇順に整列してモニタータイルの表示順(左→右)と起動順を一致させる(表示規則の同期相手:
         // vscode-fleetest/src/monitorModel.ts sortMonitorDevices「ios→android・各内は name 順」。
@@ -61,19 +64,22 @@ public enum DeviceBooter {
         // 混ぜると一枠を専有して他機のブートを遅らせる(ユーザー決定 2026-09-08)。
         let (items, physicalItems) = buildBootQueue(
             machine: machine, restartNames: restartNames, cpuRenderNames: cpuRenderNames)
-        guard !items.isEmpty || !physicalItems.isEmpty else { return }
+        guard !items.isEmpty || !physicalItems.isEmpty else { return [] }
 
         let queue = BootQueue(items)
         let physicalQueue = BootQueue(physicalItems)
+        let outcomes = BootOutcomeCollector()
         await withTaskGroup(of: Void.self) { group in
             if !items.isEmpty {
                 for _ in 0..<max(1, min(maxConcurrent, items.count)) {
                     group.addTask {
                         while let item = await queue.next() {
-                            await bootItem(item, repoRoot: repoRoot,
+                            let succeeded = await bootItem(item, repoRoot: repoRoot,
                                            log: log, deviceStopping: deviceStopping,
                                            deviceStarting: deviceStarting,
                                            deviceFinished: deviceFinished)
+                            await outcomes.record(BootOutcome(
+                                name: item.spec.name, platform: item.platform, succeeded: succeeded))
                         }
                     }
                 }
@@ -82,14 +88,17 @@ public enum DeviceBooter {
                 // 幅1固定(実機レーン)。maxConcurrent はここに影響しない。
                 group.addTask {
                     while let item = await physicalQueue.next() {
-                        await bootItem(item, repoRoot: repoRoot,
+                        let succeeded = await bootItem(item, repoRoot: repoRoot,
                                        log: log, deviceStopping: deviceStopping,
                                        deviceStarting: deviceStarting,
                                        deviceFinished: deviceFinished)
+                        await outcomes.record(BootOutcome(
+                            name: item.spec.name, platform: item.platform, succeeded: succeeded))
                     }
                 }
             }
         }
+        return await outcomes.all()
     }
 
     struct BootItem: Sendable {
@@ -98,6 +107,49 @@ public enum DeviceBooter {
         let restart: Bool
         /// android のみ有効(ios は無視される)。cpuRenderNames 該当機は swiftshader_indirect
         let gpuMode: String
+    }
+
+    /// 一括起動1台分の結果(bootAll の戻り値要素)。**public struct の暗黙メンバワイズ init は
+    /// internal**(Swift の仕様)なので、他モジュール(fleetest)の restart-devices が構成できるよう
+    /// 明示的に public init を持つ
+    public struct BootOutcome: Sendable, Equatable {
+        public let name: String
+        public let platform: String
+        public let succeeded: Bool
+
+        public init(name: String, platform: String, succeeded: Bool) {
+            self.name = name
+            self.platform = platform
+            self.succeeded = succeeded
+        }
+    }
+
+    /// bootAll のワーカータスクから並行に record される(BootQueue と同じ actor 直列化)
+    private actor BootOutcomeCollector {
+        private var outcomes: [BootOutcome] = []
+        func record(_ outcome: BootOutcome) { outcomes.append(outcome) }
+        func all() -> [BootOutcome] { outcomes }
+    }
+
+    /// bootAll の結果要約。I/O を持たない純粋関数(呼び出し側の CLI/API が exit code と
+    /// 1行サマリを決める材料にする。BootOutcomeSummarizerTests で固定)
+    public struct BootOutcomeSummary: Sendable, Equatable {
+        public let total: Int
+        public let succeededCount: Int
+        /// 失敗した台の名前(BootOutcome の登場順。並行実行の完了順なので呼び出しごとに揺れうる)
+        public let failedNames: [String]
+        /// 1台以上あって、そのうち1台も成功しなかった
+        public var allFailed: Bool { total > 0 && succeededCount == 0 }
+    }
+
+    public enum BootOutcomeSummarizer {
+        public static func summarize(_ outcomes: [BootOutcome]) -> BootOutcomeSummary {
+            let failed = outcomes.filter { !$0.succeeded }
+            return BootOutcomeSummary(
+                total: outcomes.count,
+                succeededCount: outcomes.count - failed.count,
+                failedNames: failed.map(\.name))
+        }
     }
 
     /// 一括起動のキューを組み立てる純関数(I/O なし)。**実機は items へ混ぜず physicalItems
@@ -157,14 +209,16 @@ public enum DeviceBooter {
     /// **実機(spec.isPhysical)は shutdownOne も runningDescription も通らない**
     /// (端末そのものの起動・停止は無いため。到達性確認は bootOne の実機分岐が行う)——
     /// android の実機はブリッジも起こす(iOS は下の共通 ios ブロックが供給する)。
+    /// 戻り値はこの1台の成否(bootAll が BootOutcome へ束ねる)
     private static func bootItem(
         _ item: BootItem, repoRoot: URL?,
         log: @escaping @Sendable (String) -> Void,
         deviceStopping: @escaping @Sendable (String, String) -> Void,
         deviceStarting: @escaping @Sendable (String, String) -> Void,
         deviceFinished: @escaping @Sendable (String, String) -> Void
-    ) async {
+    ) async -> Bool {
         let spec = item.spec
+        var succeeded = true
         do {
             if spec.isPhysical {
                 deviceStarting(spec.name, item.platform)
@@ -194,8 +248,10 @@ public enum DeviceBooter {
             }
         } catch {
             log("❌ \(spec.name): \(error.localizedDescription)")
+            succeeded = false
         }
         deviceFinished(spec.name, item.platform)
+        return succeeded
     }
 
     /// 1 台起動(起動済みなら何もしない)
@@ -232,7 +288,7 @@ public enum DeviceBooter {
                 return
             }
             log("→ \(spec.name): starting the emulator (\(avdID))...")
-            let serial = try await startEmulator(avd: avdID, gpuMode: gpuMode)
+            let serial = try await startEmulator(avd: avdID, gpuMode: gpuMode, log: log)
             try await waitForAndroidBoot(serial: serial)
             await applyLocale(serial: serial, locale: defaultLocale, deviceName: spec.name, log: log)
             log("✅ \(spec.name): started (\(serial))")
@@ -408,12 +464,80 @@ public enum DeviceBooter {
         throw DeviceBooterError.emulatorBinaryNotFound
     }
 
+    /// 早期終了(bootstorm/AVD 名誤り/stale ロック等)の失敗詳細。ログ末尾の FATAL/ERROR 行を
+    /// 添えて投げる(startEmulator が stale ロックの自己修復要否をこの行から判定するため。
+    /// `commandFailed` に直接畳まない = 判定材料の行を文字列から再パースしないで済む)
+    private struct EarlyExitFailure: Error {
+        let detail: String
+        let logTail: [String]
+    }
+
+    /// stale な `hardware-qemu.ini.lock` を消して1回だけ再試行してよいかの判定(純粋関数。
+    /// StaleAVDLockTests で固定)。**実プロセスが1つでも生きていれば触らない**
+    /// (pid は再利用されるので生死判定に使わない。実体は ps 走査の AndroidDataWiper.avdProcessPresent
+    /// が担う。CLAUDE.md「台帳はプロセスの実体で掃除する」)。ログが多重起動を示していない失敗は
+    /// ロックが原因と決め打ちしない
+    enum StaleAVDLock {
+        static let multiInstanceMarker = "Running multiple emulators with the same AVD"
+
+        static func shouldRetry(logTail: [String], avdProcessRunning: Bool) -> Bool {
+            guard !avdProcessRunning else { return false }
+            return logTail.contains { $0.contains(multiInstanceMarker) }
+        }
+    }
+
+    /// ログ本文から FATAL/ERROR 行を拾う(emulator 自身の終了理由。process.terminationStatus は
+    /// 数値だけなのでここにしか出ない)。純粋関数。空 = 拾えなかった(該当行なし/ログ未生成)
+    static func fatalLines(in logText: String, limit: Int = 3) -> [String] {
+        var matches: [String] = []
+        logText.enumerateLines { line, _ in
+            if line.contains("FATAL") || line.contains("ERROR") {
+                matches.append(line.trimmingCharacters(in: .whitespaces))
+            }
+        }
+        return Array(matches.suffix(limit))
+    }
+
+    /// その AVD を握る qemu プロセスが実在するか(`ps` 1回分の走査。判定は
+    /// AndroidDataWiper.avdProcessPresent と共有=同じ実体判定を二重に持たない)。
+    /// `ps` が読めないときは「居るかもしれない」に倒す(誤ってロックを消さない側)
+    private static func emulatorProcessRunning(avdID: String) -> Bool {
+        guard let result = try? Shell.run(["/bin/ps", "-eo", "command"], timeout: 10) else { return true }
+        return AndroidDataWiper.avdProcessPresent(psOutput: result.output, avdID: avdID)
+    }
+
     /// エミュレータをヘッドレスでデタッチ起動し、serial(自動採番)を検出して返す(検出待ち上限60秒)。
     /// 並行起動時に他デバイスの serial を拾わないよう、新規 serial の AVD 名を照合する。
     /// locale の -change-locale は **Play イメージ(フリート全機)では無効**(実測 2026-07-17。
     /// AOSP イメージ向けの保険として残置)。実効的なロケール適用はブート完了後の applyLocale
-    /// (ブリッジ /locale)が担う
-    static func startEmulator(avd: String, gpuMode: String = "host", locale: String? = "ja_JP") async throws -> String {
+    /// (ブリッジ /locale)が担う。
+    /// **stale ロックは1回だけ自己修復する** —— 早期終了のログが多重起動を示し、かつ実際には
+    /// その AVD を握るプロセスが1つも無いときだけ hardware-qemu.ini.lock を消して撃ち直す
+    /// (multiinstance.lock は消さない=全 AVD 常時存在するファイル)
+    static func startEmulator(avd: String, gpuMode: String = "host", locale: String? = "ja_JP",
+                              log: @escaping @Sendable (String) -> Void = { _ in }) async throws -> String {
+        do {
+            return try await attemptStartEmulator(avd: avd, gpuMode: gpuMode, locale: locale)
+        } catch let failure as EarlyExitFailure {
+            guard StaleAVDLock.shouldRetry(
+                logTail: failure.logTail, avdProcessRunning: emulatorProcessRunning(avdID: avd)
+            ) else {
+                throw DeviceBooterError.commandFailed(failure.detail)
+            }
+            let lockURL = AndroidDeviceCatalog.avdContentDirectory(id: avd)
+                .appendingPathComponent("hardware-qemu.ini.lock")
+            try? FileManager.default.removeItem(at: lockURL)
+            log("→ \(avd): found a stale hardware-qemu.ini.lock with no emulator process holding it"
+                + " — removed it and retrying the boot once")
+            do {
+                return try await attemptStartEmulator(avd: avd, gpuMode: gpuMode, locale: locale)
+            } catch let retryFailure as EarlyExitFailure {
+                throw DeviceBooterError.commandFailed(retryFailure.detail)
+            }
+        }
+    }
+
+    private static func attemptStartEmulator(avd: String, gpuMode: String, locale: String?) async throws -> String {
         let binary = try findEmulatorBinary()
         let adbPath = try AndroidDriver.findADB()
         let before = Set((try? AndroidDeviceCatalog.connectedSerials()) ?? [])
@@ -459,10 +583,15 @@ public enum DeviceBooter {
             // **isRunning を「起動できたか」の判定に流用しない** —— ここが偽になるのは
             // 「serial を掴む前にプロセスが消えた」ときだけで、それ以外の失敗は下の期限切れが拾う
             if !process.isRunning {
-                throw DeviceBooterError.commandFailed(
-                    "the emulator exited before it registered with adb"
-                        + " (status \(process.terminationStatus); \(avd)."
-                        + " Check the AVD name and \(EmulatorLog.url(avdID: avd).path))")
+                let logURL = EmulatorLog.url(avdID: avd)
+                let tail = fatalLines(in: (try? String(contentsOf: logURL, encoding: .utf8)) ?? "")
+                var detail = "the emulator exited before it registered with adb"
+                    + " (status \(process.terminationStatus); \(avd)."
+                    + " Check the AVD name and \(logURL.path))"
+                if !tail.isEmpty {
+                    detail += " — its own log says: " + tail.joined(separator: " | ")
+                }
+                throw EarlyExitFailure(detail: detail, logTail: tail)
             }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
