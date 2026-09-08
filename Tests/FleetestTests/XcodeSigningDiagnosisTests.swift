@@ -42,22 +42,24 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
         Command CodeSign failed with a nonzero exit code
         ** TEST BUILD FAILED **
         """
-        XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: log), [.keySigningAccessDenied])
+        XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: log), [.keychainLocked])
         XCTAssertNotNil(XcodeSigningDiagnosis.guidance(
-            problems: [.keySigningAccessDenied], fullLogPath: nil, overSSH: true))
+            problems: [.keychainLocked], fullLogPath: nil, overSSH: true))
     }
 
-    /// **keychainLocked と keySigningAccessDenied を取り違えない** —— 片方だけのログでは
-    /// もう片方が出ず、両方揃ったログでは両方出る(順序は宣言順)
-    func testKeychainLockedAndKeySigningAccessDeniedAreNotConfused() {
-        let onlyLocked = "error: User interaction is not allowed. (in target 'FleetestRunnerApp')"
-        XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: onlyLocked), [.keychainLocked])
+    /// **ロックの現れ方は2通りあり、どちらも同じ原因**(2026-09-08 に M1Ultra で実測:
+    /// 同一 ssh 接続内で unlock すると codesign が通り、ACL の操作は要らなかった)。
+    /// 別々の問題として数えると、対処が2つあるかのような案内になる
+    func testBothWordingsOfALockedKeychainMapToTheSameProblem() {
+        let interaction = "error: User interaction is not allowed. (in target 'FleetestRunnerApp')"
+        XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: interaction), [.keychainLocked])
 
-        let onlyDenied = "FleetestRunnerApp.debug.dylib: errSecInternalComponent"
-        XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: onlyDenied), [.keySigningAccessDenied])
+        let errSec = "FleetestRunnerApp.debug.dylib: errSecInternalComponent"
+        XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: errSec), [.keychainLocked])
 
-        let both = onlyLocked + "\n" + onlyDenied
-        XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: both), [.keychainLocked, .keySigningAccessDenied])
+        // 両方出ていても1件に畳む(重複は畳む契約)
+        XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: interaction + "\n" + errSec),
+                       [.keychainLocked])
     }
 
     func testAnUnrelatedFailureIsLeftAlone() {
@@ -159,8 +161,7 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
     func testRawValuesAreTheWireContractWithTheExtension() {
         XCTAssertEqual(XcodeSigningProblem.allCases.map(\.rawValue),
                        ["noAccount", "noAccountForTeam", "invalidCertificate", "deviceNotRegistered",
-                        "certificateNotInProfile", "deviceNotInProfile", "keychainLocked",
-                        "keySigningAccessDenied"])
+                        "certificateNotInProfile", "deviceNotInProfile", "keychainLocked"])
     }
 }
 
@@ -191,9 +192,9 @@ final class XcodeSigningDiagnosisRealLogTests: XCTestCase {
 
     /// 解錠の問題(User interaction is not allowed)は**出ていない** —— 取り違えると
     /// 「解錠してください」という誤った対処を案内する
-    func testTheRealLogIsNotReportedAsALockedKeychain() {
-        let problems = XcodeSigningDiagnosis.problems(inBuildLog: realLog)
-        XCTAssertFalse(problems.contains(.keychainLocked),
-                       "解錠済みなのにロックと診断している(対処が set-key-partition-list ではなく解錠になる)")
+    /// この実ログは**キーチェーンのロック**として診断されるのが正しい —— ssh 接続ごとに
+    /// ロック状態から始まるためで、同一接続内で解錠すれば codesign は通る(実測)
+    func testTheRealLogIsReportedAsALockedKeychain() {
+        XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: realLog), [.keychainLocked])
     }
 }

@@ -110,7 +110,6 @@ const SIGNING_FACT_KEYS: Record<string, MessageKey> = {
   certificateNotInProfile: "deviceOps.signing.fact.certificateNotInProfile",
   deviceNotInProfile: "deviceOps.signing.fact.deviceNotInProfile",
   keychainLocked: "deviceOps.signing.fact.keychainLocked",
-  keySigningAccessDenied: "deviceOps.signing.fact.keySigningAccessDenied",
 };
 
 /** ポータル通信(端末登録・プロファイルの取り直し)が要る種別(Swift 側 needsProvisioningUpdate

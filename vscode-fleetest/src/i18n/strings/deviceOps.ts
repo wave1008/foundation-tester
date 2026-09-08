@@ -155,14 +155,11 @@ export const deviceOpsStrings = {
     en: "the provisioning profile does not include this device",
   },
   "deviceOps.signing.fact.keychainLocked": {
-    ja: "ログインキーチェーンに触れません(ssh 越しのビルドで起きます)",
-    en: "the login keychain is not available (typical of builds started over ssh)",
-  },
-  "deviceOps.signing.fact.keySigningAccessDenied": {
-    ja: "署名鍵は解錠されていますが、非対話セッションからのアクセスを ACL が許可していません"
-      + "(ssh 越しのビルドで起きます)",
-    en: "the signing key is unlocked but its access control does not permit this non-interactive"
-      + " session to use it (typical of builds started over ssh)",
+    ja: "このセッションではログインキーチェーンがロックされており、codesign が署名鍵を使えません。"
+      + "ssh は接続ごとにロック状態から始まるため、画面や別のシェルで解錠しても引き継がれません",
+    en: "the login keychain is locked in this session, so codesign cannot use the signing key."
+      + " Each ssh connection starts locked — unlocking it in a GUI session or another shell"
+      + " does not carry over",
   },
   "deviceOps.signing.portalNeedsGui": {
     ja: "端末登録・プロファイルの取り直しは ssh からはできません。その Mac の GUI セッションで一度"

@@ -34,9 +34,11 @@ import Foundation
 ///   - **プロジェクトの Signing & Capabilities では直せない** —— ランナーの .xcodeproj は
 ///     xcodegen が生成し(generateProjectIfNeeded)、ビルドのたびに DEVELOPMENT_TEAM を
 ///     コマンドラインで上書きする(codeSigningArguments)。**Team の正は fleetest の設定**
-///   - keychainLocked / keySigningAccessDenied は **ssh 越しのビルド固有** —— GUI セッションでは
-///     出ない。対処は `security set-key-partition-list`(この案内には書かない。手順は版で古くなる)。
-///     直すコマンドはその Mac 側で1回打てば以後の ssh 越しビルドに効く(GUI セッションは不要)
+///   - keychainLocked は **ssh 越しのビルド固有** —— GUI セッションでは出ない。
+///     **鍵の ACL の問題ではない**(`security set-key-partition-list` は不要だった。2026-09-08 に
+///     M1Ultra で実測)。ロックそのものが原因で、**解錠は接続ごとに閉じる** —— その Mac の画面や
+///     別のシェルで解錠しても remote exec の新しい接続には届かない。恒久化はランナー機側の運用で行う
+///     (ユーザー決定 2026-09-08: ツールは利用者のキーチェーンを解錠しない)
 public enum XcodeSigningProblem: String, Sendable, CaseIterable {
     /// Xcode に Apple ID が1つも無い
     case noAccount
@@ -54,14 +56,12 @@ public enum XcodeSigningProblem: String, Sendable, CaseIterable {
     /// その端末が provisioning profile に入っていない
     case deviceNotInProfile
     /// キーチェーンがロックされていて署名鍵に触れない。**ssh 越しのビルドで出る**
-    /// (remote exec 経由の実機ビルド。2026-08-29 に M1Ultra で実測)
+    /// (remote exec 経由の実機ビルド)。ログの現れ方は2通りで、どちらも同じ原因:
+    /// `User interaction is not allowed` と `errSecInternalComponent`(codesign が鍵を使えない)。
+    /// **解錠は ssh 接続ごと** —— GUI セッションや別のシェルで解錠しても、remote exec が
+    /// 毎回張る新しい接続には届かない(2026-09-08 に M1Ultra で実測。同一接続内で
+    /// unlock → codesign は成功、別接続では再びロック)
     case keychainLocked
-    /// **keychainLocked とは別**: キーチェーンは解錠済み(`security find-identity` に署名 ID が
-    /// 見える)なのに、署名鍵の ACL が非対話セッションからのアクセスを許可していない状態。
-    /// 原因も対処(`security set-key-partition-list`)も keychainLocked(対処は解錠)とは別なので
-    /// 混ぜない。**ssh 越しのビルドで出る**(GUI セッションでは人がダイアログに答えられるため
-    /// 出ない。2026-09-08 に M1Ultra で ssh 越しの codesign を直接叩いて再現・実測)
-    case keySigningAccessDenied
 
     /// この問題の事実の1文(英語 = CLI の言語。拡張は raw 値から自分の言語で組み立て直す)
     var fact: String {
@@ -75,10 +75,9 @@ public enum XcodeSigningProblem: String, Sendable, CaseIterable {
             return "the provisioning profile does not include the signing certificate"
         case .deviceNotInProfile: return "the provisioning profile does not include this device"
         case .keychainLocked:
-            return "the login keychain is not available (typical of builds started over ssh)"
-        case .keySigningAccessDenied:
-            return "the signing key is unlocked but its access control does not permit this"
-                + " non-interactive session to use it (typical of builds started over ssh)"
+            return "the login keychain is locked in this session, so codesign cannot use the"
+                + " signing key. Each ssh connection starts locked — unlocking it in a GUI"
+                + " session or another shell does not carry over"
         }
     }
 
@@ -88,8 +87,7 @@ public enum XcodeSigningProblem: String, Sendable, CaseIterable {
     var needsProvisioningUpdate: Bool {
         switch self {
         case .deviceNotRegistered, .certificateNotInProfile, .deviceNotInProfile: return true
-        case .noAccount, .noAccountForTeam, .invalidCertificate, .keychainLocked,
-             .keySigningAccessDenied:
+        case .noAccount, .noAccountForTeam, .invalidCertificate, .keychainLocked:
             return false
         }
     }
@@ -108,9 +106,13 @@ public enum XcodeSigningDiagnosis {
             (.certificateNotInProfile, "doesn't include signing certificate"),
             (.deviceNotInProfile, "doesn't include the currently selected device"),
             (.keychainLocked, "User interaction is not allowed"),
-            (.keySigningAccessDenied, "errSecInternalComponent"),
+            (.keychainLocked, "errSecInternalComponent"),
         ]
-        return signatures.filter { log.contains($0.1) }.map(\.0)
+        // **重複は畳む**(doc の契約)—— 1つの問題が複数の綴りで現れることがある
+        // (keychainLocked は "User interaction is not allowed" と "errSecInternalComponent" の2通り)。
+        // 畳まないと同じ事実が2行並び、対処が2つあるかのように読める
+        var seen: Set<XcodeSigningProblem> = []
+        return signatures.filter { log.contains($0.1) }.map(\.0).filter { seen.insert($0).inserted }
     }
 
     /// このビルドが ssh セッションで走っているか(sshd が立てる環境変数)。**GUI セッションの
