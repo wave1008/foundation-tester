@@ -126,6 +126,14 @@ export const deviceOpsStrings = {
     en: "Cannot code-sign the bridge runner for a physical device. Fix Xcode's signing setup on the Mac"
       + " that the device is connected to, then start the bridge again.",
   },
+  // キーチェーンのロックだけのときの見出し。**直す場所を決めつけない** —— Xcode の署名設定は
+  // 正しくても出る(証明書もプロファイルも解決できている)ので、設定を疑わせない
+  "deviceOps.signing.headlineNotXcodeSetup": {
+    ja: "実機用のブリッジに署名できません。その端末が繋がっている Mac で直してから、"
+      + "もう一度ブリッジを起動してください。",
+    en: "Cannot code-sign the bridge runner for a physical device. Fix it on the Mac"
+      + " that the device is connected to, then start the bridge again.",
+  },
   "deviceOps.signing.detected": {
     ja: "検出: {facts}。",
     en: "Detected: {facts}.",

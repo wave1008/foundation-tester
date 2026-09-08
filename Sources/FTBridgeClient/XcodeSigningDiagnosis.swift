@@ -135,9 +135,16 @@ public enum XcodeSigningDiagnosis {
     public static func guidance(problems: [XcodeSigningProblem], fullLogPath: String?,
                                 overSSH: Bool) -> String? {
         guard !problems.isEmpty else { return nil }
+        // **見出しで直す場所を決めつけない** —— 署名の失敗が全部 Xcode の設定とは限らない。
+        // キーチェーンのロックは Xcode の署名設定が正しくても出る(証明書もプロファイルも
+        // 解決できている)ので、「Xcode の設定を直せ」と言うと見当違いの場所を探させる
+        let onlyKeychain = problems.allSatisfy { $0 == .keychainLocked }
         var lines = [
-            "Cannot code-sign the bridge runner for a physical device on this Mac."
-                + " Fix Xcode's signing setup there, then start the bridge again.",
+            onlyKeychain
+                ? "Cannot code-sign the bridge runner for a physical device on this Mac."
+                    + " Fix it there, then start the bridge again."
+                : "Cannot code-sign the bridge runner for a physical device on this Mac."
+                    + " Fix Xcode's signing setup there, then start the bridge again.",
             "Detected: " + problems.map(\.fact).joined(separator: "; ") + ".",
         ]
         if problems.contains(where: \.needsProvisioningUpdate) {

@@ -139,7 +139,11 @@ export function signingGuidance(
   if (facts.length === 0) {
     return null;
   }
-  const lines = [t("deviceOps.signing.headline")];
+  // キーチェーンのロックだけなら Xcode の署名設定は無関係(CLI 側の guidance と同じ出し分け)
+  const onlyKeychain = problems.every((kind) => kind === "keychainLocked");
+  const lines = [t(onlyKeychain
+    ? "deviceOps.signing.headlineNotXcodeSetup"
+    : "deviceOps.signing.headline")];
   lines.push(t("deviceOps.signing.detected", { facts: facts.join(" / ") }));
   if (problems.some((kind) => SIGNING_NEEDS_PORTAL.has(kind))) {
     lines.push(t(overSSH ? "deviceOps.signing.portalNeedsGui" : "deviceOps.signing.portalRetryOnce"));

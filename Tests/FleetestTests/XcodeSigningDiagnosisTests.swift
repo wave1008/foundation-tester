@@ -198,3 +198,34 @@ final class XcodeSigningDiagnosisRealLogTests: XCTestCase {
         XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: realLog), [.keychainLocked])
     }
 }
+
+/// 見出しは**直す場所を決めつけない**。キーチェーンのロックは Xcode の署名設定が正しくても
+/// 出る(証明書もプロファイルも解決できている)ので、「Xcode の設定を直せ」と言うと
+/// 見当違いの場所を探させる(2026-09-08 に実際にそう案内してしまった)
+final class XcodeSigningGuidanceHeadlineTests: XCTestCase {
+
+    func testALockedKeychainDoesNotBlameXcodeSettings() {
+        let text = XcodeSigningDiagnosis.guidance(
+            problems: [.keychainLocked], fullLogPath: nil, overSSH: true)
+        XCTAssertNotNil(text)
+        XCTAssertFalse(text!.contains("Xcode's signing setup"),
+                       "キーチェーンのロックで Xcode の署名設定を疑わせている")
+    }
+
+    /// 退行防止: 本当に Xcode の設定が原因の問題では従来どおり名指しする
+    func testRealSigningSetupProblemsStillPointAtXcode() {
+        for problem in [XcodeSigningProblem.noAccount, .noAccountForTeam, .invalidCertificate] {
+            let text = XcodeSigningDiagnosis.guidance(
+                problems: [problem], fullLogPath: nil, overSSH: false)
+            XCTAssertTrue(text?.contains("Xcode's signing setup") == true,
+                          "\(problem) で Xcode を名指ししなくなっている")
+        }
+    }
+
+    /// ロックと他の問題が同時に出ているときは Xcode を名指しする(片方は本当に設定の問題)
+    func testAMixedFailureStillPointsAtXcode() {
+        let text = XcodeSigningDiagnosis.guidance(
+            problems: [.keychainLocked, .invalidCertificate], fullLogPath: nil, overSSH: true)
+        XCTAssertTrue(text?.contains("Xcode's signing setup") == true)
+    }
+}
