@@ -100,7 +100,7 @@ final class MachineInventoryTests: XCTestCase {
                 source("M1Ultra.json", ios: [DeviceSpec(name: "sim-01", udid: "AAA")]),
                 source("M2Ultra.json", ios: [DeviceSpec(name: "sim-01", udid: "BBB")]),
             ],
-            registry: [])
+            registry: [], existsLocally: nil)
         XCTAssertEqual(names(merged.entries), ["ios:local/sim-01"], "畳み込みは従来どおり先頭を採る")
         XCTAssertEqual(merged.conflicts.count, 1)
         let message = merged.conflicts.first?.message ?? ""
@@ -118,7 +118,7 @@ final class MachineInventoryTests: XCTestCase {
                 source("a.json", ios: [DeviceSpec(name: "sim-01", udid: "AAA")]),
                 source("b.json", ios: [DeviceSpec(name: "sim-01", os: "27.0", udid: "AAA")]),
             ],
-            registry: [])
+            registry: [], existsLocally: nil)
         XCTAssertEqual(merged.conflicts, [])
     }
 
@@ -129,7 +129,7 @@ final class MachineInventoryTests: XCTestCase {
                 source("a.json", ios: [DeviceSpec(name: "sim-01", udid: "AAA")]),
                 source("b.json", ios: [DeviceSpec(name: "sim-01", simulator: "iPhone 17 Pro", os: "27.0")]),
             ],
-            registry: [])
+            registry: [], existsLocally: nil)
         XCTAssertEqual(merged.conflicts, [])
     }
 
@@ -141,7 +141,7 @@ final class MachineInventoryTests: XCTestCase {
                 source("b.json", android: [DeviceSpec(name: "emu-01", avd: "Pixel_9-02"),
                                            DeviceSpec(name: "phone", serial: "S2")]),
             ],
-            registry: [])
+            registry: [], existsLocally: nil)
         XCTAssertEqual(merged.conflicts.map(\.name).sorted(), ["emu-01", "phone"])
         XCTAssertTrue(merged.conflicts.contains { $0.message.contains("avd Pixel_9-02") },
                       "\(merged.conflicts.map(\.message))")
@@ -156,9 +156,100 @@ final class MachineInventoryTests: XCTestCase {
                 source("a.json", ios: [DeviceSpec(name: "sim-01", udid: "AAA")]),
                 source("b.json", ios: [DeviceSpec(name: "sim-01", machine: "M1Max", udid: "BBB")]),
             ],
-            registry: ["M1Max"])
+            registry: ["M1Max"], existsLocally: nil)
         XCTAssertEqual(names(merged.entries), ["ios:local/sim-01", "ios:M1Max/sim-01"])
         XCTAssertEqual(merged.conflicts, [])
+    }
+
+    // MARK: - 実在で決める(手元の台だけ)
+    //
+    // 述語(existsLocally)は呼び手が起動時に1回だけ材料を採って畳んだもの
+    // (ApiMonitorCommand.localPresencePredicate)。merge 自体は I/O を持たない。
+
+    /// 実害の witness: 先頭の台帳が手元に実在しない udid を名乗り、後続が実在する台を名乗る
+    func testTheLedgerWhoseDeviceExistsOnThisMachineWins() {
+        let merged = MachineInventory.merge(
+            sources: [
+                source("M1Ultra.json", ios: [DeviceSpec(name: "sim-00", udid: "KEEP"),
+                                             DeviceSpec(name: "sim-01", udid: "PHANTOM")]),
+                source("M2Ultra.json", ios: [DeviceSpec(name: "sim-01", udid: "REAL")]),
+            ],
+            registry: [],
+            existsLocally: { ["KEEP", "REAL"].contains($0.udid ?? "") })
+        // 差し替えても並びは最初に現れた場所のまま
+        XCTAssertEqual(names(merged.entries), ["ios:local/sim-00", "ios:local/sim-01"])
+        XCTAssertEqual(merged.entries.map { $0.spec.udid }, ["KEEP", "REAL"])
+        XCTAssertEqual(merged.conflicts.count, 1)
+        XCTAssertEqual(merged.conflicts.first?.resolvedByLocalPresence, true)
+        // **決着した行は警告ではなく事実の報告**として読めること(決着できなかった下の行と別物)
+        XCTAssertEqual(
+            merged.conflicts.first?.message,
+            "machine profiles disagree about ios:local/sim-01:"
+            + " M2Ultra.json says udid REAL, M1Ultra.json says udid PHANTOM."
+            + " Using M2Ultra.json — that device exists on this machine,"
+            + " the one M1Ultra.json describes does not.")
+    }
+
+    func testTheFirstLedgerStillWinsWhenBothDevicesExist() {
+        let merged = MachineInventory.merge(
+            sources: [
+                source("a.json", ios: [DeviceSpec(name: "sim-01", udid: "AAA")]),
+                source("b.json", ios: [DeviceSpec(name: "sim-01", udid: "BBB")]),
+            ],
+            registry: [], existsLocally: { _ in true })
+        XCTAssertEqual(merged.entries.map { $0.spec.udid }, ["AAA"])
+        XCTAssertEqual(merged.conflicts.count, 1)
+        XCTAssertEqual(merged.conflicts.first?.resolvedByLocalPresence, false)
+    }
+
+    func testTheFirstLedgerStillWinsWhenNeitherDeviceExists() {
+        let merged = MachineInventory.merge(
+            sources: [
+                source("a.json", ios: [DeviceSpec(name: "sim-01", udid: "AAA")]),
+                source("b.json", ios: [DeviceSpec(name: "sim-01", udid: "BBB")]),
+            ],
+            registry: [], existsLocally: { _ in false })
+        XCTAssertEqual(merged.entries.map { $0.spec.udid }, ["AAA"])
+        XCTAssertEqual(merged.conflicts.count, 1)
+        XCTAssertEqual(merged.conflicts.first?.resolvedByLocalPresence, false)
+    }
+
+    func testWithoutThePredicateTheOutcomeAndTheWordingAreUnchanged() {
+        let merged = MachineInventory.merge(
+            sources: [
+                source("M1Ultra.json", ios: [DeviceSpec(name: "sim-01", udid: "AAA")]),
+                source("M2Ultra.json", ios: [DeviceSpec(name: "sim-01", udid: "BBB")]),
+            ],
+            registry: [], existsLocally: nil)
+        XCTAssertEqual(merged.entries.map { $0.spec.udid }, ["AAA"])
+        XCTAssertEqual(merged.conflicts.count, 1)
+        XCTAssertEqual(merged.conflicts.first?.resolvedByLocalPresence, false)
+        XCTAssertEqual(
+            merged.conflicts.first?.message,
+            "machine profiles disagree about ios:local/sim-01:"
+            + " M1Ultra.json says udid AAA, M2Ultra.json says udid BBB."
+            + " Using M1Ultra.json — the device M2Ultra.json describes is not listed."
+            + " Is one of them written from another machine's point of view"
+            + " (\"machine\": \"local\" for a device that lives on a runner)?")
+    }
+
+    func testADeviceOnAnotherMachineIsNeverJudgedByLocalPresence() {
+        // 他機の台の実体はこの機械からは見えない —— 述語に訊きもしない
+        var asked: [String] = []
+        let merged = MachineInventory.merge(
+            sources: [
+                source("a.json", ios: [DeviceSpec(name: "sim-01", machine: "M1Max", udid: "PHANTOM")]),
+                source("b.json", ios: [DeviceSpec(name: "sim-01", machine: "M1Max", udid: "REAL")]),
+            ],
+            registry: ["M1Max"],
+            existsLocally: { spec in
+                asked.append(spec.udid ?? "")
+                return spec.udid == "REAL"
+            })
+        XCTAssertEqual(merged.entries.map { $0.spec.udid }, ["PHANTOM"], "他機の台は先頭優先のまま")
+        XCTAssertEqual(asked, [])
+        XCTAssertEqual(merged.conflicts.count, 1)
+        XCTAssertEqual(merged.conflicts.first?.resolvedByLocalPresence, false)
     }
 
     func testLoadAllNamedCarriesTheFileNameForTheWarning() throws {
@@ -170,7 +261,7 @@ final class MachineInventoryTests: XCTestCase {
             XCTFail("読める台帳で警告は出ない")
         }
         XCTAssertEqual(sources.map(\.name), ["M1Ultra.json", "M2Ultra.json"])
-        let merged = MachineInventory.merge(sources: sources, registry: [])
+        let merged = MachineInventory.merge(sources: sources, registry: [], existsLocally: nil)
         XCTAssertEqual(merged.conflicts.count, 1)
         XCTAssertTrue(merged.conflicts.first?.message.contains("M2Ultra.json") == true,
                       "\(merged.conflicts)")
@@ -194,7 +285,8 @@ final class MachineInventoryTests: XCTestCase {
             let registry = sources.flatMap { source in
                 DeviceMachineGrouping.entries(machine: source.profile).compactMap(\.machine)
             }
-            let conflicts = MachineInventory.merge(sources: sources, registry: registry).conflicts
+            let conflicts = MachineInventory.merge(
+                sources: sources, registry: registry, existsLocally: nil).conflicts
             XCTAssertEqual(conflicts, [], "\(name): \(conflicts.map(\.message).joined(separator: " / "))")
         }
     }

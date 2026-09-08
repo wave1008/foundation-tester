@@ -84,7 +84,10 @@ struct ApiListDevices: AsyncParsableCommand {
         // 常駐監視と違い単発呼び出しなので、ばたつき抑制は不要かつ状態を持てない)。
         // --profile 指定時は監視対象がそのプロファイル参照デバイスに絞られている意図のため
         // 未登録デバイスは合成しない(ApiMonitorCommand.run の同じ条件と揃える)
-        let states = await ApiMonitorCommand.determineStates(targets: targets, includeUnregistered: profile == nil)
+        // 単発なので衝突の警告はその場で出す(常駐監視だけが変化を見て絞る)
+        let (states, skipped) = await ApiMonitorCommand.determineStates(
+            targets: targets, includeUnregistered: profile == nil)
+        for message in skipped { logStderr(message) }
 
         let devices = states.map { state in
             ApiDeviceEntry(

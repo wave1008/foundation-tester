@@ -79,7 +79,8 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
 
         // 宛先(udid / adb serial / ブリッジのポート)の解決は monitor と同じ判定を通す ——
         // 「どの実体か」の規則を2つ持たない
-        let states = await ApiMonitorCommand.determineStates(targets: [target])
+        // includeUnregistered なし = 合成しないので skipped は常に空
+        let states = await ApiMonitorCommand.determineStates(targets: [target]).states
         guard let state = states.first else {
             throw ValidationError("could not determine the state of \(name)")
         }

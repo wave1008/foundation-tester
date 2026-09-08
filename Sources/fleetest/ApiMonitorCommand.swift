@@ -120,7 +120,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             let registry = (LocalConfig.load().remoteHosts ?? []).map(\.machine)
             let merged = MachineInventory.merge(
                 sources: MachineInventory.loadAllNamed(project: testProject) { logStderr("[monitor] \($0)") },
-                registry: registry)
+                registry: registry, existsLocally: Self.localPresencePredicate())
             // **食い違いは黙って畳まない** —— 負けた台帳の台が実在するほうだと、起動中の台が
             // 下の unregisteredStates で「id 衝突」として落ち、画面から消える(実害 2026-09-03)
             for conflict in merged.conflicts { logStderr("[monitor] \(conflict.message)") }
@@ -201,6 +201,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
         // 直近の hold 状態(変化したときだけ monitorHold イベントと stderr を出す)
         var lastHoldActive = false
+        // 直近サイクルで id 衝突により落とした合成デバイスの警告(変化したときだけ出す)
+        var lastSkipped: Set<String> = []
         // **ランナー機の上で走っているときだけ**(FT_RUNNER_BASE が立っている = 発行側の
         // remoteExecCommand から起こされた子)、その機械の dispatch.lock を毎周期読んで
         // monitorLock を出す。手元では nil のまま = 1行も出ない(docs/remote-runner.md §18.2)。
@@ -269,7 +271,19 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             }
 
             // --profile 指定時はスコープを絞る意図のため未登録デバイスは合成しない
-            let observed = await Self.determineStates(targets: ownedTargets, includeUnregistered: profile == nil)
+            let (observed, skipped) = await Self.determineStates(
+                targets: ownedTargets, includeUnregistered: profile == nil)
+            // **変わったときだけ出す** —— 毎周期そのまま出すと同じ行が永久に流れ続ける。
+            // 空へ戻った回も1行出す(出さないと「直ったのか、まだ衝突しているのか」が読めない)
+            let skippedNow = Set(skipped)
+            if skippedNow != lastSkipped {
+                if skippedNow.isEmpty {
+                    logStderr("[monitor] The device id collisions reported above are gone")
+                } else {
+                    for message in skippedNow.sorted() { logStderr(message) }
+                }
+                lastSkipped = skippedNow
+            }
             let states = Self.debounce(observed, confirmed: &confirmed) { message in
                 self.logStderr(message)
             }
@@ -606,6 +620,27 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             streamedByOther: nil, bridgeRunning: nil)
     }
 
+    /// `MachineInventory.merge` へ渡す「その台の実体がこの機械にあるか」の述語。
+    /// **呼ぶのは targets を組む起動時の1回だけ** —— 監視ループ(既定 2 秒周期)へ I/O を足さない
+    /// ため、材料はここで畳んでからクロージャに閉じ込める。
+    /// **判定できない種別に true を返さない**: 実機 iOS の列挙は devicectl(秒オーダー)が要るので
+    /// ここでは払わず false = 「この機械で観測していない」に倒す。AVD は id と表示名の完全一致だけ
+    /// (取りこぼしも false 側 = 従来どおり先頭優先のまま)。見る順は MachineInventory の
+    /// identity(of:) と同じ udid → avd → serial
+    static func localPresencePredicate() -> (DeviceSpec) -> Bool {
+        // udid の大小は台帳ごとに揺れる(simctl は大文字)ので畳んで比べる
+        let simulatorUdids = Set(((try? SimulatorCatalog.devices()) ?? []).map { $0.udid.uppercased() })
+        let installedAVDs = AndroidDeviceCatalog.installedAVDs()
+        let avdLabels = Set(installedAVDs.map(\.id) + installedAVDs.compactMap(\.displayName))
+        let serials = Set((try? AndroidDeviceCatalog.connectedSerials()) ?? [])
+        return { spec in
+            if let udid = spec.udid { return simulatorUdids.contains(udid.uppercased()) }
+            if let avd = spec.avd { return avdLabels.contains(avd) }
+            if let serial = spec.serial { return serials.contains(serial) }
+            return false
+        }
+    }
+
     // MARK: - デバイス状態判定
 
     /// iOS は simctl 一覧+ブリッジ /status、Android は起動中 AVD 一覧をそれぞれ一括取得して
@@ -613,10 +648,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// internal: ApiListDevicesCommand.swift が単発の状態判定にも同じロジックを再利用する
     /// includeUnregistered: true のとき、マシンプロファイル未記載でも起動中(iOS booted sim /
     /// Android running AVD)なら合成した DeviceRuntimeState を追加で返す(unregisteredStates 参照。
-    /// 実機は対象外)。list-devices(--profile 指定時と同様スコープを絞る意図)は既定 false のまま
+    /// 実機は対象外)。list-devices(--profile 指定時と同様スコープを絞る意図)は既定 false のまま。
+    /// `skipped`(id 衝突で落とした合成デバイス)は**返すだけ** —— 常駐監視は毎周期ここを通るので、
+    /// その場で出すと原因が残る間ずっと同じ行が流れ続ける(呼び手が変化を見て出す)
     static func determineStates(targets: [MonitorTarget],
                                 repoRoot: URL? = try? RepoRoot.find(),
-                                includeUnregistered: Bool = false) async -> [DeviceRuntimeState] {
+                                includeUnregistered: Bool = false)
+        async -> (states: [DeviceRuntimeState], skipped: [String]) {
         async let bridgeStatusesTask = scanBridgeStatuses(repoRoot: repoRoot)
         let simCatalog = (try? SimulatorCatalog.devices()) ?? []
         let runningAVDs = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
@@ -660,7 +698,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 : androidState(target: target, runningAVDs: runningAVDs,
                                connectedSerials: connectedSerials, bootCompleted: bootCompleted)
         }
-        guard includeUnregistered else { return registeredStates }
+        guard includeUnregistered else { return (registeredStates, []) }
 
         let registeredIosUdids = Set(registeredStates.compactMap { $0.iosUdid })
         // **接続中の実機も合成する**(unregisteredStates の doc)。列挙元は api installed-devices と
@@ -683,10 +721,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             registeredTargets: targets, registeredIosUdids: registeredIosUdids,
             physicalIOS: physicalIOS, iosBridgePorts: iosBridgePorts,
             connectedPhysicalSerials: physicalSerials, androidPhysicalNames: androidPhysicalNames)
-        for message in skipped {
-            ConsoleOut.err(message)
-        }
-        return registeredStates + unregistered
+        return (registeredStates + unregistered, skipped)
     }
 
     /// 未登録(マシンプロファイル未記載)の起動中デバイスを合成する。iOS は booted なシミュレータの

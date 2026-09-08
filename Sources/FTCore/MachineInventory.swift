@@ -15,7 +15,9 @@
 //     普通(手元の台は両方の台帳に居る)なので、重複はエラーではない。**入力の順序で決まる**ので
 //     呼び出し側はファイル名順など安定した順で渡すこと
 //   - **ただし重複が「同じ台」とは限らない** —— 実体(udid/avd/serial)が食い違うときは
-//     IdentityConflict を添えて返す(merge)。どちらが正しいかはここでは決められないので警告だけ
+//     IdentityConflict を添えて返す(merge)。**手元の台は「この機械に実在するほう」で決める**
+//     (判定は呼び手が注入する述語。実在しないほうが勝つと、起動中の本物が id 衝突で監視から
+//     消える)。決められないときは先頭優先のまま警告する
 //
 // **I/O は loadAll / loadAllNamed だけ**(残りは純粋関数)。
 // テストは Tests/FleetestTests/MachineInventoryTests.swift。
@@ -53,13 +55,22 @@ public enum MachineInventory {
         public let keptIdentity: String
         public let ignoredProfile: String
         public let ignoredIdentity: String
+        /// 採ったほうが**この機械に実在する**ことで決着したか。false = 決められなかった
+        /// (材料が無い / 両方実在 / 両方不在 / 他機の台)ので先頭優先のまま
+        public let resolvedByLocalPresence: Bool
 
         public var message: String {
-            "machine profiles disagree about \(platform):\(machine)/\(name):"
-            + " \(keptProfile) says \(keptIdentity), \(ignoredProfile) says \(ignoredIdentity)."
-            + " Using \(keptProfile) — the device \(ignoredProfile) describes is not listed."
-            + " Is one of them written from another machine's point of view"
-            + " (\"machine\": \"local\" for a device that lives on a runner)?"
+            let head = "machine profiles disagree about \(platform):\(machine)/\(name):"
+                + " \(keptProfile) says \(keptIdentity), \(ignoredProfile) says \(ignoredIdentity)."
+            if resolvedByLocalPresence {
+                return head
+                    + " Using \(keptProfile) — that device exists on this machine,"
+                    + " the one \(ignoredProfile) describes does not."
+            }
+            return head
+                + " Using \(keptProfile) — the device \(ignoredProfile) describes is not listed."
+                + " Is one of them written from another machine's point of view"
+                + " (\"machine\": \"local\" for a device that lives on a runner)?"
         }
     }
 
@@ -104,19 +115,23 @@ public enum MachineInventory {
         registry: [String]
     ) -> [DeviceMachineGrouping.CatalogEntry] {
         merge(sources: profiles.enumerated().map { Source(name: "#\($0.offset + 1)", profile: $0.element) },
-              registry: registry).entries
+              registry: registry, existsLocally: nil).entries
     }
 
     /// observableEntries と同じ畳み込みに **identity の食い違い**を添えて返す。
-    /// 呼び手(監視)は conflicts を stderr へ出すだけ —— どちらが正しいかはここでは決められない
-    /// (実体が手元にあるかを見ないと分からず、この関数は I/O を持たない)。
-    /// **警告に留める**のは、同居自体は誤りではない(構成の使い分け)ため
-    public static func merge(sources: [Source], registry: [String]) -> Merged {
+    /// `existsLocally` は「その spec の実体がこの機械にあるか」の述語(nil = 判定材料が無い)。
+    /// **既定値は置かない** —— 渡し忘れをコンパイルで止める。**この関数は I/O を持たない**ので、
+    /// 材料の採取(simctl / adb)は呼び手が起動時に1回だけ済ませて畳んで渡すこと。
+    /// 決着できない食い違い(材料が無い・両方実在・両方不在・**他機の台**)は従来どおり先頭を
+    /// 採って警告する —— 同居自体は誤りではない(構成の使い分け)
+    public static func merge(sources: [Source], registry: [String],
+                             existsLocally: ((DeviceSpec) -> Bool)?) -> Merged {
         let registered = Set(registry.compactMap { MachineDispatch.normalize($0) })
         var result: [DeviceMachineGrouping.CatalogEntry] = []
         var conflicts: [IdentityConflict] = []
-        // 鍵 → (採用したエントリの台帳名, 実体)
-        var seen: [String: (profile: String, identity: String?)] = [:]
+        // 鍵 → (採用したエントリの台帳名, 実体, result 内の位置)。位置は差し替えに要る
+        // (順序は最初に現れた場所のまま保つ)
+        var seen: [String: (profile: String, identity: String?, index: Int)] = [:]
         for source in sources {
             for entry in DeviceMachineGrouping.entries(machine: source.profile) {
                 // entries() が実効マシンを spec へ焼き込んである(nil = 手元)
@@ -127,20 +142,36 @@ public enum MachineInventory {
                 let key = "\(entry.platform)\t\(DeviceMachineGrouping.display(entry.machine))\t\(entry.name)"
                 let identity = identity(of: entry.spec)
                 guard let kept = seen[key] else {
-                    seen[key] = (source.name, identity)
+                    seen[key] = (source.name, identity, result.count)
                     result.append(entry)
                     continue
                 }
                 // **両方が実体を名乗っていて、それが違うときだけ** —— 片方が名前だけで書いて
                 // いるのは同じ台の粗い記述なので黙る(誤検知を出さない側に倒す)
-                if let identity, let keptIdentity = kept.identity, identity != keptIdentity {
+                guard let identity, let keptIdentity = kept.identity, identity != keptIdentity else {
+                    continue
+                }
+                // **実在で決められるのは手元の台だけ** —— 他機の台の実体はこの機械から見えない
+                if entry.machine == nil, let existsLocally,
+                   !existsLocally(result[kept.index].spec), existsLocally(entry.spec) {
+                    result[kept.index] = entry
+                    seen[key] = (source.name, identity, kept.index)
                     conflicts.append(IdentityConflict(
                         platform: entry.platform,
                         machine: DeviceMachineGrouping.display(entry.machine),
                         name: entry.name,
-                        keptProfile: kept.profile, keptIdentity: keptIdentity,
-                        ignoredProfile: source.name, ignoredIdentity: identity))
+                        keptProfile: source.name, keptIdentity: identity,
+                        ignoredProfile: kept.profile, ignoredIdentity: keptIdentity,
+                        resolvedByLocalPresence: true))
+                    continue
                 }
+                conflicts.append(IdentityConflict(
+                    platform: entry.platform,
+                    machine: DeviceMachineGrouping.display(entry.machine),
+                    name: entry.name,
+                    keptProfile: kept.profile, keptIdentity: keptIdentity,
+                    ignoredProfile: source.name, ignoredIdentity: identity,
+                    resolvedByLocalPresence: false))
             }
         }
         return Merged(entries: result, conflicts: conflicts)

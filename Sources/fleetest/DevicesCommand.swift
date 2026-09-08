@@ -245,9 +245,11 @@ enum MachineProfileLoad {
         guard let profile else {
             let inventory = MachineInventory.merge(
                 sources: MachineInventory.loadAllNamed(project: testProject) { warn("→ \($0)") },
-                registry: registry)
+                registry: registry, existsLocally: nil)
             // 食い違いを黙って畳むと、実在しないほうの実体で起動しようとして
-            // `no simulator with that UDID` になる(ApiMonitorCommand と同じ規律)
+            // `no simulator with that UDID` になる。**ここは先頭優先のまま警告だけ** ——
+            // 実在で決着させる述語(ApiMonitorCommand.localPresencePredicate)は simctl/adb を
+            // 叩くので、単発コマンドの応答へ載せない
             for conflict in inventory.conflicts { warn("→ \(conflict.message)") }
             let merged = MachineInventory.mergedProfile(inventory.entries)
             return keepingDevices(of: deviceMachine, in: merged, foreign: foreign, warn: warn)
