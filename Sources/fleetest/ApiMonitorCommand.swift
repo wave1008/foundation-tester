@@ -324,6 +324,26 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 }
             }
 
+            // Android 実機のブリッジ生死(state=connected の実機だけ。shouldProbeBridge)。
+            // `ensureBridge()` は通さない(観測のためだけにブリッジを建てない)。対象は少数
+            // (通常1〜3台)・`pidof` 1往復が数十ミリ秒なので、health probe と違い**毎サイクル**叩く
+            // —— healthProbeIntervalSeconds(30秒)級に低頻度化すると、タイルメニューで
+            // ブリッジを止めた直後にタイル表示が変わらず「効いていない」と読まれる。
+            // 台数が増えて重くなったら healthProbeIntervalSeconds と同じ形の TTL キャッシュへ寄せる
+            let bridgeProbeSerials = Set(states.compactMap { state -> String? in
+                Self.shouldProbeBridge(state: state) ? state.androidSerial : nil
+            })
+            let bridgeRunningBySerial: [String: Bool?] = await withTaskGroup(
+                of: (String, Bool?).self, returning: [String: Bool?].self
+            ) { group in
+                for serial in bridgeProbeSerials {
+                    group.addTask { (serial, AndroidDriver.isBridgeRunning(serial: serial)) }
+                }
+                var result: [String: Bool?] = [:]
+                for await (serial, running) in group { result[serial] = running }
+                return result
+            }
+
             // 手元の二重配信の判定に使う 1 周期ぶんのプロセス一覧(FTCore.LocalStreamHolder)。
             // 台ごとに ps を撃たない
             let processRows = states.isEmpty ? [] : LocalStreamHolder.snapshot()
@@ -358,10 +378,15 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                                                   myOwner: LocalStreamHolder.myOwner())
                 } ?? false
                 let streamedByOther: Bool? = (leasedByOther ?? false) || heldLocally ? true : leasedByOther
+                var bridgeRunning: Bool?
+                if let serial = state.androidSerial, let probed = bridgeRunningBySerial[serial] {
+                    bridgeRunning = probed
+                }
                 return state.info(health: confirmedIssues.isEmpty ? nil : confirmedIssues,
                                    renderMode: state.androidSerial.flatMap { renderModeCache[$0] },
                                    inRun: inRun, recording: recording, host: bridgeHost,
-                                   frozen: frozenVerdict.isFrozen, streamedByOther: streamedByOther)
+                                   frozen: frozenVerdict.isFrozen, streamedByOther: streamedByOther,
+                                   bridgeRunning: bridgeRunning)
             }
             emitLine(ApiMonitorDevicesEvent(devices: Self.mergedDevices(
                 listedTargets: listedTargets, observed: observedInfos,
@@ -578,7 +603,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             inRun: false, kind: target.spec.isPhysical ? "physical" : "virtual",
             host: nil, port: nil, recording: false, registered: target.registered,
             machine: MachineDispatch.normalize(target.spec.machine), frozen: false, wired: nil,
-            streamedByOther: nil)
+            streamedByOther: nil, bridgeRunning: nil)
     }
 
     // MARK: - デバイス状態判定
@@ -1078,6 +1103,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                                   iosPort: nil, androidSerial: nil, iosUdid: sim.udid)
     }
 
+    /// `bridgeRunning` を観測する対象か(Android 実機の connected のみ)。iOS 実機の既存規則
+    /// (`deviceTiles.js` の `kind==='physical'` 限定)に揃える —— エミュレータは一括終了で
+    /// 端末ごと消えるため「端末はあるがブリッジが無い」がほぼ起きない
+    static func shouldProbeBridge(state: DeviceRuntimeState) -> Bool {
+        state.state == "connected" && state.target.spec.isPhysical && state.target.platform == "android"
+    }
+
     /// Android: AVD起動+ブート完了 → connected。AVD起動のみ(ブート未完了)→ booted
     /// (ブリッジAPKインストールを試みさせないため)。AVD未起動 → offline
     static func androidState(
@@ -1368,7 +1400,8 @@ struct DeviceRuntimeState {
     /// (list-devices は同じ情報を ApiDeviceEntry として別途組み立てる)
     func info(health: [String]?, renderMode: String?, inRun: Bool,
                           recording: Bool, host: String? = nil,
-                          frozen: Bool = false, streamedByOther: Bool? = nil) -> ApiMonitorDeviceInfo {
+                          frozen: Bool = false, streamedByOther: Bool? = nil,
+                          bridgeRunning: Bool? = nil) -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(id: target.id, name: target.name,
                              platform: target.platform, state: state, detail: detail,
                              udid: iosUdid, serial: androidSerial, health: health, renderMode: renderMode,
@@ -1377,7 +1410,8 @@ struct DeviceRuntimeState {
                              host: host, port: iosPort,
                              recording: recording, registered: target.registered,
                              machine: MachineDispatch.normalize(target.spec.machine),
-                             frozen: frozen, wired: wired, streamedByOther: streamedByOther)
+                             frozen: frozen, wired: wired, streamedByOther: streamedByOther,
+                             bridgeRunning: bridgeRunning)
     }
 }
 
@@ -1700,6 +1734,15 @@ struct ApiMonitorDeviceInfo: Codable {
     /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
     /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.streamedByOther)
     let streamedByOther: Bool?
+    /// Android 実機のブリッジ(常駐 APK)が生きているか。**設定するのは
+    /// `shouldProbeBridge` が true の台(Android 実機の connected)だけ** —— iOS の
+    /// `state==="booted"`(ブリッジ無しの意味)と判定の出所が違う。Android の `state` は
+    /// 「adb に見えるか」と「ブート完了か」しか表さず、ブリッジの有無とは無関係なので専用の欄にした。
+    /// **観測できない(adb 失敗/timeout)ときは nil**(「不明」)—— false に丸めると、
+    /// pidof がたまたま失敗しただけの回に絵が消える(誤って「ブリッジが無い」と断定する)。
+    /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
+    /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.bridgeRunning)
+    let bridgeRunning: Bool?
 }
 
 /// monitorFrame イベント: state == connected のデバイスのみ、スクリーンショットを添えて出す

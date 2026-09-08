@@ -349,6 +349,33 @@ extension AndroidDriver {
         Self.setRegistry(bridgeKey, nil)
     }
 
+    /// 生死判定の唯一の信号(`adb shell pidof <bridgePackage>`)。`bridgeDoctorSummary` と
+    /// `isBridgeRunning` の両方がこれを通す(判定を2箇所に持たない)。**`ensureBridge()` は
+    /// 呼ばない** —— 観測のためだけにブリッジを建てる副作用は入れない
+    private static func pidofResult(serial: String?, adbPath: String, timeout: Double? = nil) -> Shell.Result? {
+        var args = [adbPath]
+        if let serial { args += ["-s", serial] }
+        args += ["shell", "pidof", bridgePackage]
+        return try? Shell.run(args, timeout: timeout)
+    }
+
+    /// `pidofResult` の出力から生死を判定する純関数(テスト用に分離)。
+    /// **取得できない(nil)ときは nil を返し、false(未起動)に丸めない** —— 丸めると
+    /// 「観測できない」と「ブリッジが無い」を混同し、pidof がたまたま失敗しただけの回に
+    /// 絵が消える(false と誤認する)ことになる
+    static func bridgeRunningVerdict(_ result: Shell.Result?) -> Bool? {
+        guard let result else { return nil }
+        return !result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// ブリッジを**建てずに**生死だけを見る(`ensureBridge()` を通さない)。
+    /// `api monitor` の毎サイクルから叩かれる想定なので timeout を必ず指定し、adb が刺さっても
+    /// サイクルを握らせない
+    public static func isBridgeRunning(serial: String?, timeout: Double = 5) -> Bool? {
+        guard let adbPath = try? AndroidDriver.findADB() else { return nil }
+        return bridgeRunningVerdict(pidofResult(serial: serial, adbPath: adbPath, timeout: timeout))
+    }
+
     /// doctor / bridge status 用の1行サマリ
     public func bridgeDoctorSummary() -> String {
         guard let version = installedBridgeVersionCode() else {
@@ -362,7 +389,7 @@ extension AndroidDriver {
         } else if version != Self.expectedBridgeVersionCode {
             summary += " (update required → v\(Self.expectedBridgeVersionCode); updated automatically on next use)"
         }
-        let pid = (try? adb(["shell", "pidof", Self.bridgePackage]))?
+        let pid = Self.pidofResult(serial: serial, adbPath: adbPath)?
             .output.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if pid.isEmpty {
             summary += " stopped (started automatically on first use)"

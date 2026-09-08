@@ -76,13 +76,20 @@ function deviceOpMenuItem(state, busy, physical) {
   };
 }
 
-// iOS 実機の state==='booted' は「端末は接続済みだがブリッジが1本も無い」の意味
-// (ApiMonitorCommand.iosState。シミュレータの booted=起動済みとは意味が違う)。実機のブリッジは
-// 自動供給されない(run かタイルのメニューからのみ起動する)ため、この状態は待っても変わらない。
-// 「接続中」スピナーのまま放置すると復帰待ちに見えるので未起動として扱う(ユーザー決定)。
-// android 実機の booted は「adb は見えるがブート未完了」= 本当に遷移途中なので対象外。
+// iOS と Android で判定の出所が違う(揃えたのは「実機でブリッジが無ければ絵を出さない」結果だけ):
+// - iOS 実機の state==='booted' は「端末は接続済みだがブリッジが1本も無い」の意味
+//   (ApiMonitorCommand.iosState。シミュレータの booted=起動済みとは意味が違う)。実機のブリッジは
+//   自動供給されない(run かタイルのメニューからのみ起動する)ため、この状態は待っても変わらない。
+//   「接続中」スピナーのまま放置すると復帰待ちに見えるので未起動として扱う(ユーザー決定)。
+// - android 実機の booted は「adb は見えるがブート未完了」= 本当に遷移途中(意味が違うので使えない)。
+//   代わりに専用の欄 device.bridgeRunning(ApiMonitorCommand.shouldProbeBridge が Android 実機の
+//   connected だけに設定)を見る。**=== false でだけ未起動にする** —— undefined は「不明」
+//   (欠落・観測不能)なので、それを未起動側に倒すと pidof が一時的に失敗しただけで絵が消える。
 function bridgeNotRunning(device) {
-  return device.kind === 'physical' && device.platform === 'ios' && device.state === 'booted';
+  if (device.kind !== 'physical') { return false; }
+  if (device.platform === 'ios') { return device.state === 'booted'; }
+  if (device.platform === 'android') { return device.bridgeRunning === false; }
+  return false;
 }
 
 // device id -> タイルDOM要素・最新フレーム(1枚のみ保持、履歴は溜めない)

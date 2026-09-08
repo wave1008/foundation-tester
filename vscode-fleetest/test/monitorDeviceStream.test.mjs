@@ -214,6 +214,31 @@ test("Android 実機も devicepoll に振り分けられる(--serial 付き)", a
   }
 });
 
+// Android 実機のブリッジが未起動(bridgeRunning===false)と確定している台は devicepoll を
+// 起こさない(絵を捨てるだけのプロセスを走らせない。タイル側は deviceTiles.js の
+// bridgeNotRunning がフレームを畳む)。上のテストは bridgeRunning 省略(=不明)で devicepoll が
+// 起動することを確認済みなので、ここでは false のときだけを見る(往復の反対側)。
+test("Android 実機はブリッジ未起動(bridgeRunning===false)と確定していれば devicepoll を起こさない", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir(["fleetest-androidstream", "fleetest-devicepoll"]);
+  const { deps } = makeDeps(binaryPath);
+  deps.getConfig = () => ({
+    binaryPath, iosStreamEnabled: true, androidStreamEnabled: true,
+    streamCodec: "h264", liveFps: 12, monitorMaxWidth: 960,
+  });
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([{
+      id: "phys-and", name: "Pixel 実機", platform: "android", state: "connected",
+      detail: "", kind: "physical", serial: "14141JEC204922", bridgeRunning: false,
+    }]);
+    assert.equal(fs.existsSync(path.join(dir, "fleetest-devicepoll.argv")), false,
+      "ブリッジ未起動が確定している台に devicepoll を起こさないこと");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("シミュレータは従来どおり simstream(実機振り分けの巻き添えにしない)", async () => {
   const { dir, binaryPath } = makeMockBinaryDir(["fleetest-simstream", "fleetest-devicepoll"]);
   const { deps } = makeDeps(binaryPath);

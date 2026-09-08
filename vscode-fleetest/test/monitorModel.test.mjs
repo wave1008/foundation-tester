@@ -238,6 +238,51 @@ test("isMonitorEvent: monitorDevices の registered は true/false をそのま�
   assert.equal(value.devices[1].registered, false);
 });
 
+// bridgeRunning は registered と違い「欠落は true」ではなく「欠落は undefined(不明)」に
+// 正規化する —— false に丸めると、Android 実機のブリッジが生きているのに観測できなかった
+// 回にタイルの絵が消える(ApiMonitorCommand.swift の bridgeRunningVerdict と同じ規律)。
+test("isMonitorEvent: monitorDevices の bridgeRunning は欠落・null・非boolean値を undefined に正規化する(false に倒さない)", () => {
+  const missing = {
+    kind: "monitorDevices",
+    devices: [{ id: "d1", name: "d1", platform: "android", state: "connected", detail: "" }],
+  };
+  assert.equal(isMonitorEvent(missing), true);
+  assert.equal(missing.devices[0].bridgeRunning, undefined);
+
+  const nullValue = {
+    kind: "monitorDevices",
+    devices: [
+      { id: "d1", name: "d1", platform: "android", state: "connected", detail: "", bridgeRunning: null },
+    ],
+  };
+  assert.equal(isMonitorEvent(nullValue), true);
+  assert.equal(nullValue.devices[0].bridgeRunning, undefined);
+
+  const invalidType = {
+    kind: "monitorDevices",
+    devices: [
+      { id: "d1", name: "d1", platform: "android", state: "connected", detail: "", bridgeRunning: "false" },
+    ],
+  };
+  assert.equal(isMonitorEvent(invalidType), true);
+  assert.equal(invalidType.devices[0].bridgeRunning, undefined);
+});
+
+test("isMonitorEvent: monitorDevices の bridgeRunning は true/false を区別して保持する(3値)", () => {
+  const value = {
+    kind: "monitorDevices",
+    devices: [
+      { id: "d1", name: "d1", platform: "android", state: "connected", detail: "", bridgeRunning: true },
+      { id: "d2", name: "d2", platform: "android", state: "connected", detail: "", bridgeRunning: false },
+      { id: "d3", name: "d3", platform: "ios", state: "connected", detail: "" },
+    ],
+  };
+  assert.equal(isMonitorEvent(value), true);
+  assert.equal(value.devices[0].bridgeRunning, true);
+  assert.equal(value.devices[1].bridgeRunning, false, "未起動(false)は不明(undefined)に潰さない");
+  assert.equal(value.devices[2].bridgeRunning, undefined);
+});
+
 test("isMonitorEvent: monitorFrame は width/height が欠落/非数値なら false", () => {
   assert.equal(
     isMonitorEvent({ kind: "monitorFrame", device: "d", jpegBase64: "A", height: 100 }),

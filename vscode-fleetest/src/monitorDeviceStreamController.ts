@@ -223,7 +223,12 @@ export class MonitorDeviceStreamController {
       if (devicePollPath && device.kind === "physical") {
         const enabled = device.platform === "ios" ? config.iosStreamEnabled : config.androidStreamEnabled;
         const reachable = device.platform === "ios" ? device.port !== undefined : device.serial !== undefined;
-        if (!enabled || !reachable) {
+        // Android 実機のブリッジが確定で未起動(bridgeRunning===false)なら devicepoll を起こさない
+        // ——絵を捨てるだけのプロセスを走らせない(タイル側も bridgeNotRunning でフレームを捨てる)。
+        // undefined(不明。観測不能/欠落)は起こす側に倒す —— 誤って畳むと生きているブリッジの
+        // 映像まで止まる。iOS は state==="booted" の時点で connected に入って来ないのでここでは無関係
+        const bridgeConfirmedDown = device.platform === "android" && device.bridgeRunning === false;
+        if (!enabled || !reachable || bridgeConfirmedDown) {
           continue;
         }
         const pollArgs = device.platform === "ios"

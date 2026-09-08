@@ -96,6 +96,15 @@ export interface MonitorDevice {
    * 同じ台を人数ぶん捕捉するとランナーが痛む(docs/remote-runner.md §18.2)。
    * 手元の台・単独利用・旧 CLI は欠落 = undefined(false と同義)。 */
   readonly streamedByOther?: boolean;
+  /** Android 実機のブリッジ(常駐 APK)が生きているか。**設定されるのは Android 実機の
+   * connected のみ**(ApiMonitorCommand.shouldProbeBridge)。iOS 実機は state==="booted" で
+   * 「ブリッジが無い」を表せるが、Android の state は「adb に見えるか」「ブート完了か」しか
+   * 表さずブリッジの有無とは無関係なので、この専用の欄で見る。
+   * **true/false と undefined(不明)を区別する** —— 欠落・非 bool・観測失敗(adb timeout 等)は
+   * すべて undefined(「不明」)に正規化し、false(未起動)には倒さない。false に倒すと、
+   * pidof がたまたま失敗しただけの回にタイルの絵が消える(誤って「ブリッジが無い」と断定する)。
+   * (契約は Sources/fleetest/ApiMonitorCommand.swift の ApiMonitorDeviceInfo.bridgeRunning) */
+  readonly bridgeRunning?: boolean;
 }
 
 /** `fleetest api monitor` の NDJSON 1行分のイベント(kind で判別)。 */
@@ -183,6 +192,12 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     // 側に倒す(誤って止めると映像が出ない = 気付きにくい退行になる)。
     value.streamedByOther = undefined;
   }
+  if (value.bridgeRunning !== true && value.bridgeRunning !== false) {
+    // **他の欄と違い false へ丸めない** —— 欠落/null/型不正/観測不能はすべて undefined
+    // (「不明」)のまま保つ。false に丸めると bridgeNotRunning() が「未起動」と誤認し、
+    // 生きているブリッジのフレームまで消してしまう。
+    value.bridgeRunning = undefined;
+  }
   return (
     typeof value.id === "string" &&
     typeof value.name === "string" &&
@@ -199,7 +214,8 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     typeof value.inRun === "boolean" &&
     typeof value.recording === "boolean" &&
     typeof value.registered === "boolean" &&
-    typeof value.frozen === "boolean"
+    typeof value.frozen === "boolean" &&
+    (value.bridgeRunning === undefined || typeof value.bridgeRunning === "boolean")
   );
 }
 
