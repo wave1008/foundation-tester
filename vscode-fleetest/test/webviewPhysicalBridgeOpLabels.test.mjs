@@ -112,25 +112,25 @@ function queuedChipText(document) {
   return chip && chip.style.display !== "none" ? chip.textContent : "";
 }
 
-test("実機 + 起動(up)キュー待ち: チップは「ブリッジ起動待ち」", (t) => {
+test("実機 + 起動(up)キュー待ち: チップは「ブリッジ起動待機」", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendPhysicalAndroid(window, false);
   post(window, { type: "deviceOpBusy", name: deviceName, op: "up", status: "queued" });
 
   const text = queuedChipText(document);
-  assert.match(text, /ブリッジ起動待ち/);
+  assert.match(text, /ブリッジ起動待機/);
   assert.doesNotMatch(text, /^起動待機$/, "実機の端末を起動するわけではない");
 });
 
-test("実機 + 停止(down)キュー待ち: チップは「ブリッジ停止待ち」", (t) => {
+test("実機 + 停止(down)キュー待ち: チップは「ブリッジ停止待機」", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendPhysicalAndroid(window, true);
   post(window, { type: "deviceOpBusy", name: deviceName, op: "down", status: "queued" });
 
   const text = queuedChipText(document);
-  assert.match(text, /ブリッジ停止待ち/);
+  assert.match(text, /ブリッジ停止待機/);
   assert.doesNotMatch(text, /再起動待機/, "実機のブリッジ停止は再起動ではない");
 });
 

@@ -3524,12 +3524,16 @@ targeting = bundletool にしか決められない。feature module を足した
 - 拡張のデバイスピッカー(「+既存から選択」)が接続中の実機を出すので、手書きしなくてよい
 - **iOS 実機は engine が `xcuitest` に固定される**(dylib 注入は実機不可なので `iosInappEngine`
   の既定 hybrid を無視する。`engine: "inapp"` を明示すると検証エラー)
-- **一括起動(`devices up` / `api start-all-devices` / モニターの「全て起動」)と `restart-devices`
-  (down→up の両方向とも)は実機を対象外のまま**(ユーザー決定 2026-08-30。再提案しない)——
-  実機は端末そのものを起動できないため、混ざっていると一括起動が数分のブリッジ供給
-  (build-for-testing)を始めて同時起動枠(2台)の半分を専有し、他機のブートを遅らせていた。
-  実機はキューに積まず1行ログするだけで、`deviceStarting`/`deviceFinished` も出さない
-  (拡張のタイルを「待機中」に倒さない)
+- **一括起動(`devices up` / `api start-all-devices` / モニターの「全て起動」)は実機を含む**
+  (ユーザー決定 2026-09-08。2026-08-30 の除外を撤回)—— 実機の「起動」= ブリッジの起動
+  (iOS は `BridgeProvisioner` の供給、Android は `DeviceBooter.startPhysicalAndroidBridge`)。
+  **仮想デバイスの同時起動枠(maxConcurrent=2)とは別の、幅1の専用レーンで走る**
+  (`DeviceBooter.buildBootQueue` の `physicalItems`)ので、数分かかるブリッジ供給が
+  仮想デバイスのブートを遅らせることはない(2026-08-30 に丸ごと除外していた理由はこれで、
+  レーンを分けたことで解消した)。`deviceStarting`/`deviceFinished` も他機と同様に出す
+  (拡張のタイルは「ブリッジ起動待機」→「ブリッジを起動中」)。
+  **`restart-devices`(down→up)だけは実機を丸ごと対象外のまま** —— 実機は端末を停止できず
+  down 側が成立しない
 - **一括停止(`devices down` の `--profile` 指定時 / `--profile` 無しの掃討(sweep) /
   `api stop-all-devices` / モニターの「全て終了」)は実機のブリッジだけ止める**
   (ユーザー決定 2026-09-08。起動側の規則は変えていない)—— **端末そのものは絶対に落とさない**
@@ -3545,8 +3549,8 @@ targeting = bundletool にしか決められない。feature module を足した
     `allEmulatorSerials()` を引いた残り(= 実機の serial)へ個別に `AndroidDriver.stopBridge()`
     を撃つ。**この掃討は以前 `skipPhysical: true` で実機のブリッジを素通りしていたが、
     それでは「全て終了」を押しても実機のブリッジが残るため 2026-09-08 に false へ改めた**
-  **ブリッジの起動・停止は `fleetest run`・モニタータイルの右クリックメニュー・上記の一括停止**
-  が担う(ラベルは「ブリッジを起動/停止」)。`bridge down --all` も同じく実機のブリッジを含めて
+  **ブリッジの起動・停止は `fleetest run`・モニタータイルの右クリックメニュー・上記の一括起動・
+  一括停止** が担う(ラベルは「ブリッジを起動/停止」)。`bridge down --all` も同じく実機のブリッジを含めて
   止める(明示コマンドなので元から対象)
 - **iOS 実機の `state: "booted"` は「端末は接続済みだがブリッジが1本も無い」**の意味
   (`ApiMonitorCommand.iosState`。シミュレータの booted=起動済みとは意味が違う)。実機のブリッジは

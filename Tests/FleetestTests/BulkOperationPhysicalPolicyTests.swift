@@ -4,11 +4,15 @@ import XCTest
 @testable import FTBridgeClient
 import FTCore
 
-/// ユーザー決定: **一括起動**(devices up・api start-all-devices・restart-devices・
-/// モニターの「全て起動」)は実機の対象外のまま —— 実機は端末そのものを起動できないため、
-/// 一括起動に混じると `BridgeProvisioner.provision` の数分のビルド(xcodebuild
-/// build-for-testing)を始めてしまい、固定2台の同時起動枠の半分をそれが専有して他機の起動を遅らせる。
-/// restart-devices は down→up の1台単位サイクルなので、実機は down 側も含めて丸ごと対象外。
+/// ユーザー決定 2026-09-08: **一括起動**(devices up・api start-all-devices・
+/// モニターの「全て起動」)は実機を**含む** —— 実機の「起動」= ブリッジの起動(iOS は
+/// `BridgeProvisioner.provision`、Android は `DeviceBooter.startPhysicalAndroidBridge`)。
+/// **仮想デバイスの同時起動枠(maxConcurrent)とは別の、幅1の専用レーン**(`bootAll` が
+/// `physicalItems` を直列に流す追加タスク)で走らせることで、数分かかる iOS のビルド
+/// (xcodebuild build-for-testing)が仮想デバイスの起動を遅らせないようにする
+/// (2026-08-30 に丸ごと除外していた理由がこれで、レーンを分けたことで解消した)。
+/// `restart-devices` は down→up の1台単位サイクルなので、実機は down 側が成立せず
+/// 従来どおり丸ごと対象外のまま(この決定の対象外)。
 ///
 /// **一括停止**(devices down --profile・devices down の掃討(profile 無し)・
 /// api stop-all-devices・モニターの「全て終了」= 上記のいずれか)は 2026-09-08 に
@@ -28,17 +32,17 @@ import FTCore
 ///   どちらも端末停止コマンド(`simctl shutdown` / `adb emu kill`)は実機に一切撃たない
 ///
 /// ここで固定する純関数が壊れると黙って退化する:
-/// - `DeviceBooter.buildBootQueue` が実機を弾き損ねると、実機が再びキューへ紛れ込む
-///   (bootAll が数分のブリッジ供給を始め、maxConcurrent の枠を専有する退行)
+/// - `DeviceBooter.buildBootQueue` が実機を items(仮想デバイス用の maxConcurrent レーン)へ
+///   混ぜてしまうと、数分のブリッジ供給が仮想デバイスの同時起動枠を専有する退行が戻る
 /// - `BridgeLauncher.isPhysicalRunnerCommand` の判定が壊れると、`stopAll(skipPhysical: true)` を
 ///   将来どこかが呼んだときに、生きている実機ランナーの pid ファイルを消してポート採番
 ///   (assignPort)がずれる(現状どの呼び出し元も false で呼ぶ)
 /// - `DeviceBooter.shutdownOne` の実機分岐が壊れると、利用者の端末そのものを落とす
 ///   (`simctl shutdown` / `adb emu kill`)か、逆に一括停止で実機のブリッジが残り続ける
 /// - `DevicesCommand.Down.run` の掃討側 Android ブロックが壊れると、同じ2通りの失敗が起きる
-final class BulkOperationExcludesPhysicalTests: XCTestCase {
+final class BulkOperationPhysicalPolicyTests: XCTestCase {
 
-    // MARK: - DeviceBooter.buildBootQueue(一括起動は実機を対象外のまま)
+    // MARK: - DeviceBooter.buildBootQueue(一括起動は実機を専用レーンで含む)
 
     private func mixedMachine() -> MachineProfile {
         MachineProfile(
@@ -54,28 +58,73 @@ final class BulkOperationExcludesPhysicalTests: XCTestCase {
             ]))
     }
 
-    /// 実機は items に一切現れず、items の並びは従来どおり ios→android・各内 name 昇順
-    /// (vscode-fleetest/src/monitorModel.ts sortMonitorDevices と対のタイル表示順契約)。
-    /// skippedPhysical には除外した実機がちょうど載る
-    func testBuildBootQueueExcludesPhysicalDevices() {
+    /// 実機は items(仮想デバイス用・maxConcurrent レーン)に一切現れず、専用の
+    /// physicalItems へ ios→android・各内 name 昇順で入る。items の並びは従来どおり
+    /// ios→android・各内 name 昇順(vscode-fleetest/src/monitorModel.ts sortMonitorDevices
+    /// と対のタイル表示順契約)。物理項目は必ず restart: false(down→up を行わない)
+    func testBuildBootQueuePutsPhysicalDevicesInTheirOwnLane() {
         let result = DeviceBooter.buildBootQueue(
             machine: mixedMachine(), restartNames: [], cpuRenderNames: [])
 
         XCTAssertEqual(result.items.map(\.spec.name), ["iPhone-A", "iPhone-B", "Pixel-A", "Pixel-B"])
-        XCTAssertEqual(Set(result.skippedPhysical.map(\.name)), ["iPhone-Real", "Pixel-Real"])
+        XCTAssertEqual(result.physicalItems.map(\.spec.name), ["iPhone-Real", "Pixel-Real"])
         XCTAssertFalse(result.items.contains { $0.spec.isPhysical },
-                       "実機は同時起動枠を専有するのでキューに絶対に入れてはいけない")
+                       "実機は仮想デバイスの同時起動枠を専有するので items に入れてはいけない")
+        XCTAssertTrue(result.physicalItems.allSatisfy { !$0.restart },
+                      "実機は down→up を行わないので常に restart: false")
     }
 
-    /// restartNames(凍結復帰の強制再起動リスト)に実機の名前が混じっても、実機は再起動先頭
-    /// 位置にも通常ブート項目にも入らない(watchdog の名簿は仮想デバイスしか知らないはずだが、
-    /// 万一混入しても実機側で down→up を撃たないことを固定する)
-    func testBuildBootQueueExcludesPhysicalDevicesEvenWhenNamedForRestart() {
+    /// restartNames(凍結復帰の強制再起動リスト)に実機の名前が混じっても、実機は
+    /// down→up ではなく通常の起動項目として physicalItems に入る(watchdog の名簿は
+    /// 仮想デバイスしか知らないはずだが、万一混入しても実機側で down→up を撃たないことを固定する)
+    func testBuildBootQueueNeverRestartsPhysicalDevicesEvenWhenNamed() {
         let result = DeviceBooter.buildBootQueue(
             machine: mixedMachine(), restartNames: ["iPhone-Real"], cpuRenderNames: [])
 
-        XCTAssertTrue(result.skippedPhysical.contains { $0.name == "iPhone-Real" })
+        XCTAssertTrue(result.physicalItems.contains { $0.spec.name == "iPhone-Real" && !$0.restart })
         XCTAssertFalse(result.items.contains { $0.spec.isPhysical })
+    }
+
+    // MARK: - DeviceBooter.bootAll(実機レーンは maxConcurrent の外・幅1)
+
+    /// `bootAll` は仮想デバイス用のワーカー数(`min(maxConcurrent, items.count)`)に手を加えず、
+    /// physicalItems 用にちょうど1本だけ追加のタスクを立てて直列に流す。**両方向の変異で
+    /// 落ちる形**: 実機レーンを削除する変異(実機が二度と起動しない)も、physicalItems を
+    /// items へ畳み込む変異(仮想デバイスの同時起動枠を専有する退行の再発)も検出する
+    func testBootAllRunsPhysicalItemsInASeparateSingleWidthLane() throws {
+        let source = try source("Sources/FTAndroid/DeviceBooter.swift")
+        guard let bootAllStart = source.range(of: "public static func bootAll("),
+              let bootAllEnd = source.range(of: "struct BootItem: Sendable {")
+        else {
+            XCTFail("bootAll の定義が見つからない(リファクタでシグネチャが変わった?)")
+            return
+        }
+        let body = String(source[bootAllStart.upperBound..<bootAllEnd.lowerBound])
+
+        XCTAssertTrue(body.contains("min(maxConcurrent, items.count)"),
+                      "仮想デバイスのワーカー数式は items.count のままで physicalItems を含めない")
+        XCTAssertEqual(body.components(separatedBy: "group.addTask {").count - 1, 2,
+                       "追加タスクはちょうど1本(仮想デバイス用の for ループ1箇所 + 実機レーン1箇所)")
+        XCTAssertTrue(body.contains("physicalQueue.next()"),
+                      "実機レーンは physicalQueue を直列に(1本のタスクで)消費する")
+        XCTAssertFalse(body.contains("min(maxConcurrent, items.count + physicalItems.count)"),
+                       "実機は maxConcurrent のワーカー数計算に含めてはいけない(専有の再発)")
+    }
+
+    /// Android 実機のブリッジ起動は `DeviceBooter.startPhysicalAndroidBridge` の1箇所に
+    /// 定義され、呼び出し元は `DeviceBooter.bootItem`(一括起動の実機レーン)と
+    /// `ApiDeviceCommands.swift` の `api start-device`(単体操作)の**ちょうど2箇所**。
+    /// 本数で数える —— 「存在するか」だけだと片方の呼び出し元が重複実装に戻っても緑のまま通る
+    func testAndroidPhysicalBridgeStartRoutesThroughTheSingleDefinition() throws {
+        let booter = try source("Sources/FTAndroid/DeviceBooter.swift")
+        let api = try source("Sources/fleetest/ApiDeviceCommands.swift")
+
+        XCTAssertEqual(booter.components(separatedBy: "public static func startPhysicalAndroidBridge(").count - 1, 1,
+                       "定義は DeviceBooter に1箇所だけ")
+        XCTAssertEqual(booter.components(separatedBy: "try await startPhysicalAndroidBridge(spec: spec").count - 1, 1,
+                       "bootItem の実機分岐が呼ぶのはちょうど1回")
+        XCTAssertEqual(api.components(separatedBy: "DeviceBooter.startPhysicalAndroidBridge(spec: spec").count - 1, 1,
+                       "api start-device の実機分岐が呼ぶのはちょうど1回")
     }
 
     // MARK: - BridgeLauncher.isPhysicalRunnerCommand

@@ -413,8 +413,8 @@ function renderFrame(entry) {
   // シャットダウン扱いにしない(ライブ映像を出したまま順番待ち)。実際に落ち始める running でだけ倒す。
   // これを外すと、一括起動の後ろに積まれた再起動待ちの CPU 機が、まだ動いているのに数分間
   // 「シャットダウン中」表示で固まって見える(順番待ちを停止中と誤認させる)。
-  // 実機は一括操作(bulkOpActive)の対象外(ユーザー決定 2026-08-30)。タイル単体操作
-  // (entry.opBusy。右クリックのブリッジ起動/停止)は実機でも従来どおり効かせる
+  // 一括起動は実機も対象(ブリッジ起動待機)・一括終了は実機タイルを触らない(ユーザー決定)。
+  // タイル単体操作(entry.opBusy。右クリックのブリッジ起動/停止)は実機でも従来どおり効かせる
   const isPhysical = entry.device.kind === 'physical';
   const shuttingDown = !offline && ((!isPhysical && bulkOpActive === 'down')
     || (entry.opBusy?.op === 'down' && entry.opBusy.status === 'running'));
@@ -424,7 +424,7 @@ function renderFrame(entry) {
   const upRunning = offline
     && ((entry.opBusy?.op === 'up' && entry.opBusy.status === 'running') || !!entry.awaitingStateAfterUp);
   const waitingUp = offline && !upRunning
-    && ((!isPhysical && bulkOpActive === 'up') || entry.opBusy?.op === 'up');
+    && (bulkOpActive === 'up' || entry.opBusy?.op === 'up');
   // 実機は queued/running/awaitingStateAfterUp のどれでも同じ「ブリッジを起動中」と言う
   // (queued/running を「待機中」と「起動中」に分ける非実機の区別は、実機では利用者にできる
   // ことが変わらないので意味を持たない)。**bridgeNotRunning より先に判定させる**こと
@@ -713,7 +713,8 @@ function renderMeta(entry) {
     footerText ? (footerTip ? footerText + '\n' + footerTip : footerText) : footerTip);
 
   // キュー待ちチップ(ヘッダー)。per-device の queued(再起動待ち/個別起動待ち)に加え、
-  // 一括起動中で CLI が未到達の未起動機(per-device 状態なし)にも「起動待機」を出す。
+  // 一括起動中で CLI が未到達の未起動機(per-device 状態なし)にも「起動待機」を出す
+  // (一括起動は実機も対象。一括終了は実機タイルを触らない)。
   // bulkOpActive 変化時の再評価は setBusy 側の renderMeta 一括呼び出しが担う。
   let queuedText = '';
   if (entry.opBusy?.status === 'queued') {
@@ -725,9 +726,14 @@ function renderMeta(entry) {
       : entry.opBusy.op === 'down'
         ? (physicalQueued ? t('wvMonitor.tile.queuedBridgeStop') : t('wvMonitor.tile.queuedRestart'))
         : (physicalQueued ? t('wvMonitor.tile.queuedBridgeStart') : t('wvMonitor.tile.queuedStart'));
-  } else if (!entry.opBusy && !entry.awaitingStateAfterUp
-             && entry.device.kind !== 'physical' && bulkOpActive === 'up' && entry.device.state === 'offline') {
-    queuedText = t('wvMonitor.tile.queuedStart');
+  } else if (!entry.opBusy && !entry.awaitingStateAfterUp && bulkOpActive === 'up'
+             && (entry.device.state === 'offline' || bridgeNotRunning(entry))) {
+    // bridgeNotRunning は physical 以外では常に false(deviceBridgeNotRunning/
+    // bridgeStoppedLocally とも kind==='physical' 限定)なので、この条件は仮想機では
+    // 従来どおり state==='offline' だけで決まる
+    queuedText = entry.device.kind === 'physical'
+      ? t('wvMonitor.tile.queuedBridgeStart')
+      : t('wvMonitor.tile.queuedStart');
   }
   entry.queuedBadgeEl.style.display = queuedText ? 'inline-block' : 'none';
   entry.queuedBadgeEl.textContent = queuedText;

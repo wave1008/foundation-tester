@@ -1,14 +1,17 @@
-// 一括操作(bulkOpActive)は実機を対象にしない(2026-08-30 のユーザー決定)。
+// 一括操作(bulkOpActive)の実機ポリシー(ユーザー決定 2026-09-08)。
 //
-// 背景: 実機は端末そのものを起動・終了できず(端末が触れるのはブリッジだけ)、一括起動に
-// 実機が混ざると XCUITest ランナーのビルド+インストールに数分かかるうえ、固定2台の同時起動枠
-// の半分を占有して他の台の起動を遅らせていた。CLI 側は devices up/down 等から実機を除外する
-// (このテストの対象外)。ここは webview 表示側 —— deviceTiles.js の renderFrame(shuttingDown/
-// waitingUp)と renderMeta(起動待機チップ)が bulkOpActive を見て実機タイルまで
-// 「待機中」「シャットダウン中」に染めてしまわないかを確かめる。
+// 一括起動(bulkOp:'up')は実機も対象にする —— CLI 側は `api start-all-devices` が実機の
+// ブリッジも別レーンで起動し deviceStarting/deviceFinished を流す(このテストの対象外)。
+// webview は CLI が個々の実機へ到達するまでの間、「未起動」の実機タイルを仮想デバイスと同じ
+// 「待機中」プレースホルダ+「ブリッジ起動待機」チップで見せる(deviceTiles.js の renderFrame の
+// waitingUp と renderMeta の起動待機チップ)。CLI が到達すると deviceOpBusy(op:'up') が飛び、
+// 「ブリッジを起動中」表示に切り替わる(physicalBridgeStarting が waitingUp より優先)。
 //
-// タイル単体操作(entry.opBusy。右クリックの「ブリッジを起動/停止」)は実機でも従来どおり
-// 効く必要がある(ブリッジ自体の起動/停止は個別に残る)ので、そちらも別途確認する。
+// 一括終了(bulkOp:'down')は従来どおり実機タイルに触らない(端末の電源が触れないため。
+// ここは変更していないので旧テストをそのまま残す)。
+//
+// タイル単体操作(entry.opBusy。右クリックの「ブリッジを起動/停止」)は一括操作と無関係に
+// 従来どおり効く必要があるので、そちらも別途確認する。
 //
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewWipeTile.test.mjs と同じ。
 
@@ -91,7 +94,7 @@ function queuedChipText(tile) {
   return tile.querySelector(".badge-queued")?.textContent ?? "";
 }
 
-test("一括起動(bulkOp:up)はオフラインの実機タイルを待機中にしない", (t) => {
+test("一括起動(bulkOp:up)はオフラインの実機タイルも待機中にする", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
@@ -113,16 +116,55 @@ test("一括起動(bulkOp:up)はオフラインの実機タイルを待機中に
 
   post(window, { type: "bootBusy", busy: true, bulkOp: "up" });
 
-  // 仮想デバイスは従来どおり「待機中」(wvMonitor.tile.waiting)
+  // 仮想デバイスは従来どおり「待機中」(wvMonitor.tile.waiting)+「起動待機」チップ
   assert.match(placeholderText(virtualTile), /待機中/);
-  assert.equal(queuedChipVisible(virtualTile), true, "仮想デバイスの起動待機チップは出る(この確認が無いと Change 2 の欠落を見逃す)");
+  assert.equal(queuedChipVisible(virtualTile), true);
   assert.match(queuedChipText(virtualTile), /起動待機/);
 
-  // 実機は一括操作の対象外 —— bulkOpActive だけでは「待機中」にならず、通常の
-  // オフライン表示(wvMonitor.deviceState.offline)のまま
-  assert.doesNotMatch(placeholderText(physicalTile), /待機中/);
-  assert.match(placeholderText(physicalTile), /未起動/);
-  assert.equal(queuedChipVisible(physicalTile), false, "実機の起動待機チップは出てはいけない(Change 2)");
+  // 実機も一括起動の対象 —— offline の実機は仮想デバイスと同じ「待機中」プレースホルダ+
+  // 「ブリッジ起動待機」チップ(実機専用文言)を出す
+  assert.match(placeholderText(physicalTile), /待機中/);
+  assert.equal(queuedChipVisible(physicalTile), true);
+  assert.match(queuedChipText(physicalTile), /ブリッジ起動待機/);
+});
+
+test("一括起動(bulkOp:up)は state:booted でブリッジ不在の実機も待機中にし、CLI 到達後は起動中表示へ切り替わる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  // iOS 実機の state:'booted' は「端末は接続済みだがブリッジが無い」の意味(deviceBridgeNotRunning
+  // のコメント参照)。offline とは別の未起動の形として実機だけが取りうる
+  post(window, {
+    type: "devices",
+    devices: [
+      {
+        id: "ios:iPhone 実機", name: "iPhone 実機", platform: "ios", state: "booted", kind: "physical",
+        udid: "00008130-DDDD", recording: false,
+      },
+    ],
+  });
+
+  const [physicalTile] = tiles(document);
+
+  post(window, { type: "bootBusy", busy: true, bulkOp: "up" });
+
+  assert.match(placeholderText(physicalTile), /待機中/);
+  assert.equal(queuedChipVisible(physicalTile), true);
+  assert.match(queuedChipText(physicalTile), /ブリッジ起動待機/);
+
+  // CLI がこの実機に到達(deviceStarting 相当)
+  post(window, { type: "deviceOpBusy", name: "iPhone 実機", op: "up", status: "running" });
+
+  assert.match(placeholderText(physicalTile), /ブリッジを起動中/);
+  assert.equal(queuedChipVisible(physicalTile), false, "起動中に切り替わったらチップは隠れる");
+
+  // 操作完了(deviceFinished 相当)。次の devices サイクルが観測に追いつくまでは
+  // awaitingStateAfterUp が「起動中」表示を保つ(applyDeviceOpBusy のコメント参照) ——
+  // 「ブリッジ起動待機」の古いチップに戻って固まらないことを確かめる
+  assert.doesNotThrow(() => post(window, { type: "deviceOpBusy", name: "iPhone 実機", op: null, status: null }));
+
+  assert.match(placeholderText(physicalTile), /ブリッジを起動中/);
+  assert.equal(queuedChipVisible(physicalTile), false, "完了直後もチップが古い文言で出っぱなしにならない");
 });
 
 test("一括終了(bulkOp:down)は接続中の実機タイルをシャットダウン中にしない", (t) => {
@@ -156,8 +198,8 @@ test("一括終了(bulkOp:down)は接続中の実機タイルをシャットダ�
   assert.equal(showsImage(virtualTile), false);
   assert.match(placeholderText(virtualTile), /シャットダウン中/);
 
-  // 実機は一括終了の対象外 —— 一括操作では触られていないのでライブ映像を出したまま
-  assert.equal(showsImage(physicalTile), true, "実機は bulkOpActive の対象外なのでライブ映像を残す");
+  // 実機は一括終了の対象外(変更していない) —— 一括操作では触られていないのでライブ映像を出したまま
+  assert.equal(showsImage(physicalTile), true, "実機は bulkOpActive==='down' の対象外なのでライブ映像を残す");
 });
 
 test("実機タイル単体のブリッジ停止(opBusy)は一括操作と無関係に従来どおり効く", (t) => {
@@ -185,7 +227,7 @@ test("実機タイル単体のブリッジ停止(opBusy)は一括操作と無関
   // 右クリック「ブリッジを停止」= タイル単体の deviceOpBusy(op:'down', status:'running')
   post(window, { type: "deviceOpBusy", name: "iPhone Live", op: "down", status: "running" });
 
-  assert.equal(showsImage(physicalTile), false, "単体のブリッジ停止操作は Change 1 で無効化していない");
+  assert.equal(showsImage(physicalTile), false, "単体のブリッジ停止操作は無効化していない");
   // 実機は端末そのものを止めないので「シャットダウン中」ではない(止まるのはブリッジだけ)
   assert.match(placeholderText(physicalTile), /ブリッジを停止中/);
   assert.doesNotMatch(placeholderText(physicalTile), /シャットダウン中/);

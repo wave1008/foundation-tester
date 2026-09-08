@@ -117,8 +117,8 @@ export const webviewMonitorAStrings = {
   },
   "wvMonitor.tile.queuedStart": { ja: "起動待機", en: "Start pending" },
   // 実機は端末を起動・停止しないので、待っているのはブリッジの起動/停止(tile.stoppingBridge と同じ理由)
-  "wvMonitor.tile.queuedBridgeStart": { ja: "ブリッジ起動待ち", en: "Bridge start pending" },
-  "wvMonitor.tile.queuedBridgeStop": { ja: "ブリッジ停止待ち", en: "Bridge stop pending" },
+  "wvMonitor.tile.queuedBridgeStart": { ja: "ブリッジ起動待機", en: "Bridge start pending" },
+  "wvMonitor.tile.queuedBridgeStop": { ja: "ブリッジ停止待機", en: "Bridge stop pending" },
 
   "wvMonitor.deviceState.booting": { ja: "起動中", en: "Starting" },
   "wvMonitor.deviceState.offline": { ja: "未起動", en: "Not started" },

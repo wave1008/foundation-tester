@@ -80,9 +80,7 @@ struct ApiStartDeviceCommand: AsyncParsableCommand {
             // **エミュレータは対象外** —— タイルがこの状態を出すのは実機だけで、
             // エミュレータのブリッジは最初の使用時に自動で立つ
             if platform == "android", spec.isPhysical {
-                let serial = try AndroidDeviceCatalog.resolveSerial(spec: spec)
-                log("→ \(spec.name): starting the bridge (\(serial))")
-                try await AndroidDriver(serial: serial).resetAndEnsureBridge()
+                try await DeviceBooter.startPhysicalAndroidBridge(spec: spec, log: log)
             }
         }
     }
