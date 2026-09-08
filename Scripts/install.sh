@@ -61,7 +61,7 @@ Usage: install.sh [options]
 
   --work-dir <dir>   Consumer directory that holds TestProjects/ (default: current directory)
   --name <name>      Project name to create (letters, digits, _ and -; derived from the directory name when omitted)
-  --app <bundleID>   Bundle ID / package name of the app under test (--app-id also works; optional, can be changed later)
+  --app-id <id>      Bundle ID / package name of the app under test (optional, can be changed later)
   --platform <p>     Which run profiles to scaffold: ios / android / both (default both)
   --app-name <name>  Display name of the app. Together with --machine, profiles are created too
   --machine <name>   This machine's name (machines/<name>.json; registered if not yet)
@@ -94,7 +94,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --work-dir) WORK_DIR="${2:?--work-dir requires a value}"; shift 2 ;;
     --name) PROJECT_NAME="${2:?--name requires a value}"; shift 2 ;;
-    --app|--app-id) APP_ID="${2:?--app requires a value}"; shift 2 ;;
+    --app-id) APP_ID="${2:?--app-id requires a value}"; shift 2 ;;
     --platform) PLATFORM="${2:?--platform requires a value}"; shift 2 ;;
     --app-name) APP_NAME="${2:?--app-name requires a value}"; shift 2 ;;
     --machine) MACHINE="${2:?--machine requires a value}"; shift 2 ;;
