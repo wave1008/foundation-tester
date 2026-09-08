@@ -35,11 +35,15 @@ public struct BridgeEndpoint: Sendable, Hashable, Codable {
         repoRoot.appendingPathComponent(".fleetest/bridge-\(port).endpoint")
     }
 
-    /// 127.0.0.1 以外のときだけ書く(ループバックはファイルが無い=既定、という契約にして
-    /// シミュレータ運用に新しいファイルを増やさない)
+    /// 127.0.0.1 以外、または token を持つときだけ書く(シミュレータ運用に新しいファイルを
+    /// 増やさない、という既存の契約は保つ)。**判定は「ループバックか」ではなく「token を持つか」**
+    /// —— 実機の USB トンネルは到達先こそループバックだが、ブリッジ側は LAN と同じく
+    /// `FT_BIND_ALL=1` で認証を要求する(IOSDeviceTransport.establish の usb 分岐参照)。
+    /// ここでループバックを理由に書かずにいると、この establish 呼び出し自身の戻り値以外
+    /// (再接続・別プロセスからの読み直し)が token を一生読めない
     public func persist(repoRoot: URL) {
         let url = Self.fileURL(port: port, repoRoot: repoRoot)
-        guard !isLoopback else {
+        guard !isLoopback || token != nil else {
             try? FileManager.default.removeItem(at: url)
             return
         }

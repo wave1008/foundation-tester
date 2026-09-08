@@ -68,8 +68,7 @@ public enum BridgeDiscovery {
     public static func isAlive(port: UInt16, repoRoot: URL?) async -> Bool {
         let endpoint = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0) }
             ?? BridgeEndpoint(port: port)
-        let status = try? await BridgeClient(port: endpoint.port, timeoutSeconds: 2,
-                                             host: endpoint.host).status(timeout: 2)
+        let status = try? await BridgeClient(endpoint: endpoint, timeoutSeconds: 2).status(timeout: 2)
         return status != nil
     }
 
@@ -113,7 +112,7 @@ public enum BridgeDiscovery {
                     let endpoint = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0) }
                         ?? BridgeEndpoint(port: port)
                     guard let status = try? await BridgeClient(
-                        port: endpoint.port, timeoutSeconds: 2, host: endpoint.host).status(timeout: 2),
+                        endpoint: endpoint, timeoutSeconds: 2).status(timeout: 2),
                         status.ready else { return nil }
                     let recorded = repoRoot.flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }
                     return Found(port: port, device: status.device, engine: status.engine ?? "xcuitest",

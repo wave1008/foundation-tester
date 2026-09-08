@@ -41,8 +41,8 @@ final class XCUIBridgeResolverPortHolderTests: XCTestCase {
             return XCTFail("IOSDeviceTransport.establish を呼んでいない — "
                 + "実機のブリッジ起動がループバックを待ち続けて必ずタイムアウトする")
         }
-        guard let waitRange = code.range(of: "waitUntilReady(host: host") else {
-            return XCTFail("establish の結果(host)を waitUntilReady へ渡していない")
+        guard let waitRange = code.range(of: "waitUntilReady(endpoint: establishedEndpoint") else {
+            return XCTFail("establish の結果(endpoint = host + token)を waitUntilReady へ渡していない")
         }
         XCTAssertTrue(establishRange.upperBound < waitRange.lowerBound,
                       "establish は waitUntilReady より前に呼ぶこと")

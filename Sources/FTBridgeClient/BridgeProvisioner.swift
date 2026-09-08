@@ -754,9 +754,12 @@ public struct BridgeProvisioner {
             }
             do {
                 // 宛先は起動した側が記録した .endpoint を読む(LAN 経由の実機はループバックでは
-                // 届かない。仮想デバイス・USB は記録が無く load がループバックを返す)
-                try await launcher.waitUntilReady(host: BridgeEndpoint.load(port: port, repoRoot: repoRoot).host,
-                                                  log: { log("\(name): \($0)") })
+                // 届かない。usb トンネルは host こそループバックだが token を記録している ——
+                // endpoint ごと渡さないと host だけでは再現できない。仮想デバイスは記録が無く
+                // load がループバック・token 無しを返す)
+                try await launcher.waitUntilReady(
+                    endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot),
+                    log: { log("\(name): \($0)") })
                 log("✅ \(name): took over the \(engine) bridge that was starting (port \(port))")
                 return port
             } catch {
@@ -917,7 +920,7 @@ public struct BridgeProvisioner {
                     log("→ \(name): connecting to the physical-device bridge at \(endpoint.host):\(port)")
                 }
                 do {
-                    try await launcher.waitUntilReady(host: endpoint.host,
+                    try await launcher.waitUntilReady(endpoint: endpoint,
                                                       log: { log("\(name): \($0)") })
                 } catch let error as LauncherError {
                     guard case .portInUse = error else {
@@ -1060,7 +1063,7 @@ public struct BridgeProvisioner {
                     // 実機ブリッジは 127.0.0.1 に居ない。establish が残した宛先を使う
                     // (記録が無ければループバック = シミュレータ/Android の既定)
                     let endpoint = BridgeEndpoint.load(port: port, repoRoot: self.repoRoot)
-                    let client = BridgeClient(port: port, timeoutSeconds: 2, host: endpoint.host)
+                    let client = BridgeClient(endpoint: endpoint, timeoutSeconds: 2)
                     guard let status = try? await client.status(timeout: 2), status.ready else {
                         return nil
                     }

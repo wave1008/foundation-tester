@@ -308,9 +308,11 @@ struct RunScenario: AsyncParsableCommand {
                         let inapp = InAppDriver(repoRoot: repoRoot, udid: udid ?? "booted", port: port)
                         if engine == "hybrid", let xcuiPort {
                             let xcuiHost = bridgeHost ?? BridgeEndpoint.loopbackHost
-                            fallbackDriver = SystemUIDriver(port: xcuiPort, host: xcuiHost)
+                            fallbackDriver = SystemUIDriver(port: xcuiPort, host: xcuiHost,
+                                                            physicalUDID: physical ? udid : nil)
                             let attach = AppAttachDriver(port: xcuiPort, host: xcuiHost,
-                                                         bundleID: appBundleID)
+                                                         bundleID: appBundleID,
+                                                         physicalUDID: physical ? udid : nil)
                             typeDriver = attach
                             // WebView 画面だけドライバごと XCUITest へ委譲する(in-app は WKWebView の
                             // 中身を原理的に採れない)。attach は typeDriver と**同じインスタンス**を

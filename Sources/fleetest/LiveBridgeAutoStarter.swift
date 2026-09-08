@@ -74,9 +74,10 @@ actor LiveBridgeAutoStarter {
     /// serve 起動時に呼ぶ。旧ビルドのブリッジ(/status の protocolVersion が現行値と不一致)を
     /// 検知したら再起動する。接続不可(不在含む)は何もしない(不在は既存の接続拒否経路が担当)
     func checkAndRestartIfStale() async {
-        // LAN 経由の実機は 127.0.0.1 に居ない。establish が残した宛先で問う(無ければループバック)
-        let client = BridgeClient(port: port, timeoutSeconds: 3,
-                                  host: BridgeEndpoint.load(port: port, repoRoot: repoRoot).host)
+        // LAN・usb 経由の実機は 127.0.0.1 に居ない(usb は host こそループバックだが token が要る)。
+        // establish が残した宛先(host・token)をそのまま問う(記録が無ければループバック・token 無し)
+        let client = BridgeClient(endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot),
+                                  timeoutSeconds: 3)
         guard let status = try? await client.status() else { return }
         if status.ready && status.protocolVersion == BridgeAPI.bridgeProtocolVersion { return }
         guard case .idle = state else { return }
@@ -202,16 +203,15 @@ actor LiveBridgeAutoStarter {
             // (LAN の宛先解決 or iproxy の USB トンネル)を確立してから待つ
             // (BridgeProvisioner.executeBridge と同じ手順。飛ばすとループバックを待ち続け、
             // 実機のライブ復帰が必ず 180 秒後に failed になる)
-            var host = BridgeEndpoint.loopbackHost
+            var establishedEndpoint: BridgeEndpoint?
             if physical {
                 do {
-                    let endpoint = try await IOSDeviceTransport.establish(
+                    establishedEndpoint = try await IOSDeviceTransport.establish(
                         port: port, deviceUDID: udid, repoRoot: repoRoot, wired: wired,
                         token: launcher.bridgeToken,
                         log: { message in
                             ConsoleOut.err("[live serve] \(message)")
                         })
-                    host = endpoint.host
                 } catch {
                     // launcher.stop() が establish の到達手段(iproxy/endpoint 記録)の
                     // teardown も内包する(IOSDeviceTransport.teardown を直接呼ぶのと同じ)
@@ -219,7 +219,7 @@ actor LiveBridgeAutoStarter {
                     return .failure(error)
                 }
             }
-            try await launcher.waitUntilReady(host: host)
+            try await launcher.waitUntilReady(endpoint: establishedEndpoint)
             return .success(())
         } catch {
             releaseLockOnce()

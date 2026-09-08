@@ -23,7 +23,11 @@ public final class BridgeClient: AppDriver {
     /// 依存するため、アプリごと in-app ブリッジを消した後は「入れる先を教えてくれる相手」が
     /// 居なくなる(2026-08-19 の受け手報告)
     let simulatorUDID: String?
-    /// LAN bind(実機)のときだけ非 nil。BridgeAPI.bridgeTokenHeader で送る。
+    /// 実機ブリッジ接続時だけ非 nil(LAN・USB トンネルのどちらも)。BridgeAPI.bridgeTokenHeader で送る。
+    /// **トークンの要否は宛先がループバックかでは決まらない** —— 実機は USB トンネル経由でも
+    /// 到達先はループバックだが、ブリッジ側は `FT_BIND_ALL=1` で fail-closed に認証を要求する
+    /// (IOSDeviceTransport.establish 参照)。呼び出し元が `token:`/`endpoint:` で明示しないときは
+    /// `inferredToken` が代わりに解決する(既定の推測。詳細はそちらの doc)。
     /// **argv/env で他プロセスへ渡さない** —— 共有ランナー機は全員同一 UNIX ユーザーなので
     /// argv は `ps -E` で見え、拡張の孤児掃除(orphanSweep)や LocalStreamHolder が実際に
     /// `ps -E` を撃って出力をログへ流す経路がある。台帳ファイル(.fleetest/bridge-<port>.endpoint)
@@ -72,34 +76,64 @@ public final class BridgeClient: AppDriver {
     /// 上書きするため、timeoutSeconds でクランプしないと短い指定が無効化される(実害:
     /// scanBridgeStatuses の 1s が status() の 45s に化け、suspend ゾンビ存在時に
     /// monitor/list-devices のスキャンが毎回 45s 待った。2026-07-25)
+    /// token: 省略時は `inferredToken(host:port:physicalUDID:)` が推測する。**呼び出し元が
+    /// 既に解決済みの `BridgeEndpoint` を持っているなら、推測させず `init(endpoint:)` を使うこと**
+    /// —— host だけを取り出してここへ渡すと token を静かに失う(usb トンネルは host が
+    /// ループバックのままなので、この convenience init の既定推測でも拾えないことがある)
     public convenience init(port: UInt16 = BridgeAPI.defaultPort, timeoutSeconds: TimeInterval = 120,
                             host: String = BridgeEndpoint.loopbackHost,
+                            token: String? = nil,
                             physicalUDID: String? = nil,
                             simulatorUDID: String? = nil) {
         self.init(port: port, timeoutSeconds: timeoutSeconds,
                   interactionTimeout: min(Timeout.interaction, timeoutSeconds),
                   sessionTimeout: min(Timeout.session, timeoutSeconds),
-                  host: host, physicalUDID: physicalUDID, simulatorUDID: simulatorUDID)
+                  host: host,
+                  token: token ?? Self.inferredToken(host: host, port: port, physicalUDID: physicalUDID),
+                  physicalUDID: physicalUDID, simulatorUDID: simulatorUDID)
+    }
+
+    /// **宛先からトークンの要否を推測しない**。呼び出し元が `BridgeEndpoint` を解決済み
+    /// (provision・XCUIBridgeResolver 等)なら、host だけ取り出さずこちらを使うこと。
+    /// endpoint.host が usb トンネルのループバックでも endpoint.token をそのまま送る
+    public convenience init(endpoint: BridgeEndpoint, timeoutSeconds: TimeInterval = 120,
+                            physicalUDID: String? = nil,
+                            simulatorUDID: String? = nil) {
+        self.init(port: endpoint.port, timeoutSeconds: timeoutSeconds,
+                  interactionTimeout: min(Timeout.interaction, timeoutSeconds),
+                  sessionTimeout: min(Timeout.session, timeoutSeconds),
+                  host: endpoint.host, token: endpoint.token,
+                  physicalUDID: physicalUDID, simulatorUDID: simulatorUDID)
+    }
+
+    /// **判断の軸は「宛先がループバックか」ではなく「そのブリッジが token を要求するか」**。
+    /// 実機は USB トンネル(到達先はループバック)でも LAN と同じく `FT_BIND_ALL=1` で token を
+    /// 要求する(BridgeLauncher.bridgeToken 参照)ため、host だけでは判別できない。
+    /// physicalUDID を渡す呼び出し元は「実機だと分かっている」ので host を問わず台帳を読む。
+    /// **physicalUDID が無いときは非ループバックのときだけ読む**(既存の最適化を保つ —— シミュレータの
+    /// ポートスキャンは範囲を並列で読むため、当たらない読みを増やさない)
+    static func inferredToken(host: String, port: UInt16, physicalUDID: String?) -> String? {
+        guard host != BridgeEndpoint.loopbackHost || physicalUDID != nil else { return nil }
+        return (try? RepoRoot.find()).flatMap { BridgeEndpoint.load(port: port, repoRoot: $0).token }
     }
 
     /// テスト専用 seam: interaction/session の予算を短縮注入する(未応答ブリッジのタイムアウト
     /// 検証等)。公開 init(port:timeoutSeconds:) はこれを既定予算付きで呼ぶだけで公開 API は不変。
     /// host はシミュレータ(ホストとネットワークスタックを共有)では常に 127.0.0.1。
-    /// iOS 実機だけ LAN IP を渡す(BridgeEndpoint 参照)
+    /// iOS 実機だけ LAN IP か usb トンネルのループバックを渡す(BridgeEndpoint 参照)。
+    /// **token は呼び出し元(上の2つの convenience init)が解決済みの値を渡す**——
+    /// ここではもう推測しない(推測は inferredToken の1箇所に閉じる)
     init(port: UInt16, timeoutSeconds: TimeInterval = 120,
         interactionTimeout: TimeInterval, sessionTimeout: TimeInterval,
         host: String = BridgeEndpoint.loopbackHost,
+        token: String? = nil,
         physicalUDID: String? = nil,
         simulatorUDID: String? = nil) {
         self.baseURL = URL(string: "http://\(host):\(port)")!
         self.port = port
         self.physicalUDID = physicalUDID
         self.simulatorUDID = simulatorUDID
-        // **非ループバックのときだけ**台帳を読む —— ループバックはファイルが無い契約
-        // (BridgeEndpoint.persist)なので読んでも常に外れる。シミュレータのポートスキャンは
-        // 32 ポート分回るため、当たらない読みを足さない
-        self.token = host == BridgeEndpoint.loopbackHost ? nil
-            : (try? RepoRoot.find()).flatMap { BridgeEndpoint.load(port: port, repoRoot: $0).token }
+        self.token = token
         // 高速入力(quiescence スキップ)はプロセス単位の環境変数で有効化する
         // (実行プロファイル iosFastInput / CLI `--set iosFastInput=true` が FT_FAST_INPUT=1 を注入。
         //  BridgeClient は hybrid のフォールバック経路でも生成されるため init 引数ではなく env で統一)

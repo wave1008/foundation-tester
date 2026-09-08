@@ -138,13 +138,13 @@ struct ApiLiveServe: AsyncParsableCommand {
                 continue
             }
             ResidentProcessGuard.noteCommandStart()
-            // 自動起動が成功した直後は宛先を引き直す(実機 LAN: 起動前の loopback から告知アドレスへ)
+            // 自動起動が成功した直後は宛先を引き直す(実機 LAN: 起動前の loopback から告知アドレスへ。
+            // usb: host はループバックのままだが establish が新たに token を記録している ——
+            // host だけで判定すると usb は再取得されず、起動前の token 無し driver を握ったままになる)
             if let starter, await starter.takeStarted(), let repoRoot = try? RepoRoot.find() {
                 let endpoint = BridgeEndpoint.load(port: port, repoRoot: repoRoot)
-                if endpoint.host != BridgeEndpoint.loopbackHost {
-                    driver = BridgeClient(port: port, host: endpoint.host)
-                    logStderr("switched the driver to \(endpoint.host):\(port) (announced by the runner)")
-                }
+                driver = BridgeClient(endpoint: endpoint)
+                logStderr("switched the driver to \(endpoint.host):\(port) (announced by the runner)")
             }
             await handle(command: command, driver: driver, starter: starter)
             ResidentProcessGuard.noteCommandEnd()
@@ -167,8 +167,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             logger: { message in
                 ConsoleOut.err("[live serve] " + message)
             })
-        return (BridgeClient(port: resolution.endpoint.port, host: resolution.endpoint.host),
-                resolution.endpoint.port)
+        return (BridgeClient(endpoint: resolution.endpoint), resolution.endpoint.port)
     }
 
     /// platform=ios かつ --udid 指定時のみ自動起動を有効化する。RepoRoot.find() の失敗は

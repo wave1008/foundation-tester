@@ -64,7 +64,7 @@ public enum XCUIBridgeResolver {
     }
 
     private static func client(_ endpoint: BridgeEndpoint, timeout: TimeInterval) -> BridgeClient {
-        BridgeClient(port: endpoint.port, timeoutSeconds: timeout, host: endpoint.host)
+        BridgeClient(endpoint: endpoint, timeoutSeconds: timeout)
     }
 
     private struct Scan {
@@ -184,19 +184,18 @@ public enum XCUIBridgeResolver {
             // (LAN の宛先解決 or iproxy の USB トンネル)を確立する(BridgeProvisioner.executeBridge
             // と同じ手順)。これを飛ばすと waitUntilReady がループバックへ待ち続け、
             // 実機では必ず 180 秒後に failed になる
-            var host = BridgeEndpoint.loopbackHost
+            var establishedEndpoint: BridgeEndpoint?
             if device0.physical {
                 do {
-                    let endpoint = try await IOSDeviceTransport.establish(
+                    establishedEndpoint = try await IOSDeviceTransport.establish(
                         port: port, deviceUDID: device0.udid, repoRoot: repoRoot,
                         wired: device0.wired, token: launcher.bridgeToken, log: logger)
-                    host = endpoint.host
                 } catch {
                     try? launcher.stop()
                     return giveUp("failed to start the XCUITest bridge: \(error.localizedDescription)")
                 }
             }
-            try await launcher.waitUntilReady(host: host, log: logger)
+            try await launcher.waitUntilReady(endpoint: establishedEndpoint, log: logger)
         } catch {
             releaseLockOnce()
             // 起動途中のプロセス・pid ファイルを残さない(以後のポート採番を汚すため。

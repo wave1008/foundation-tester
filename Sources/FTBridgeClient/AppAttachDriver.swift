@@ -22,9 +22,11 @@ public final class AppAttachDriver: AppDriver {
     /// **1インスタンス1回だけ**(= 1シナリオ1回。以降は snapshot() の activate が維持する)
     private var attached = false
 
-    /// host: 主ドライバと同じ宛先(SystemUIDriver.init と同じ理由で既定を置かない)
-    public init(port: UInt16, host: String, bundleID: String) {
-        self.client = BridgeClient(port: port, host: host)
+    /// host: 主ドライバと同じ宛先(SystemUIDriver.init と同じ理由で既定を置かない)。
+    /// physicalUDID: 実機なら渡すこと(SystemUIDriver.init と同じ理由 —— usb トンネルは
+    /// host だけでは実機と判別できず token を取り逃す)
+    public init(port: UInt16, host: String, bundleID: String, physicalUDID: String? = nil) {
+        self.client = BridgeClient(port: port, host: host, physicalUDID: physicalUDID)
         self.bundleID = bundleID
     }
 

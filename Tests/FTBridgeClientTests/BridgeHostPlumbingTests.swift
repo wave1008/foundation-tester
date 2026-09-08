@@ -5,6 +5,10 @@
 // 「接続拒否」になる(2026-09-04 iPhone 13: xcuitest の SystemUIDriver が host 無しで作られ、
 // 不在確認・遅延 exist・アラート操作 = システム UI 層を参照するステップだけ 18/34 が赤。
 // USB(iproxy)ではループバックで隠れる)。落とすのはここだけ。同型: CommandNamePlumbingTests。
+//
+// **`endpoint:` 形も合格**とする —— `BridgeEndpoint` は host・port・token を丸ごと持つので、
+// 宛先だけ取り出して渡し直す余地が無い(`host:` より強い)。トークンの渡し忘れは
+// BridgeClientPhysicalTokenTests が別に見る。
 
 import XCTest
 @testable import FTBridgeClient
@@ -62,12 +66,15 @@ final class BridgeHostPlumbingTests: XCTestCase {
                     }
                     if started, depth <= 0 { break }
                 }
-                if !joined.contains("host:") {
+                // `endpoint:` 形は host と token を丸ごと運ぶ(host: より強い) ——
+                // 宛先を取り出して渡し直す余地が無いので、渡し忘れが起こり得ない
+                if !joined.contains("host:") && !joined.contains("endpoint:") {
                     missing.append("\(relative):\(index + 1) \(trimmed)")
                 }
                 // ラッパー(呼び手から host を受け取る型)は**その引数をそのまま**渡すこと ——
                 // `host: BridgeEndpoint.loopbackHost` と書けば上の検査は通るが、実機では同じ穴
-                if passesHostThrough.contains(relative), !joined.contains("host: host") {
+                if passesHostThrough.contains(relative),
+                   !joined.contains("host: host"), !joined.contains("endpoint:") {
                     missing.append("\(relative):\(index + 1) \(trimmed) — must forward its host parameter")
                 }
             }

@@ -768,10 +768,13 @@ public struct BridgeLauncher {
     /// 無情報な待ちが減る(猶予の上乗せではない)
     public static let startupTimeoutSeconds: TimeInterval = 180
 
+    /// endpoint: nil = ループバック・token 無し(シミュレータの既定)。**実機は必ず渡すこと**——
+    /// establish() の戻り値をそのまま渡す(host だけ取り出すと token を静かに失う。usb トンネルは
+    /// host がループバックのままなので、この関数の既定と区別が付かなくなる)
     public func waitUntilReady(timeout: TimeInterval = BridgeLauncher.startupTimeoutSeconds,
-                               host: String = BridgeEndpoint.loopbackHost,
+                               endpoint: BridgeEndpoint? = nil,
                                log: @escaping (String) -> Void = { _ in }) async throws {
-        let client = BridgeClient(port: port, host: host)
+        let client = BridgeClient(endpoint: endpoint ?? BridgeEndpoint(port: port))
         let deadline = Date().addingTimeInterval(timeout)
         var lastError: Error?
         var blocker: String?

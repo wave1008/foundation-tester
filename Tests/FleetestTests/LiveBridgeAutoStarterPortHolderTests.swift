@@ -37,8 +37,8 @@ final class LiveBridgeAutoStarterPortHolderTests: XCTestCase {
             return XCTFail("IOSDeviceTransport.establish を呼んでいない — "
                 + "実機のブリッジ復帰がループバックを待ち続けて必ずタイムアウトする")
         }
-        guard let waitRange = code.range(of: "waitUntilReady(host: host") else {
-            return XCTFail("establish の結果(host)を waitUntilReady へ渡していない")
+        guard let waitRange = code.range(of: "waitUntilReady(endpoint: establishedEndpoint") else {
+            return XCTFail("establish の結果(endpoint = host + token)を waitUntilReady へ渡していない")
         }
         // **到達手段の選択(wired)を渡す** —— 既定に頼ると LAN の iPhone を iproxy で待って必ず失敗する
         // (2026-09-07 実機で確認。establish の wired には既定値を置かない)

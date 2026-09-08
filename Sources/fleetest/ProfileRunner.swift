@@ -332,10 +332,14 @@ enum ProfileRunner {
                 }
                 do {
                     // 実機ブリッジは 127.0.0.1 に居ない。宛先は DriverConnection 経由で届く
-                    // (取り違えると失敗のたびに健全な実機ワーカーを「接続不能」で離脱させる)
+                    // (取り違えると失敗のたびに健全な実機ワーカーを「接続不能」で離脱させる)。
+                    // physicalUDID も渡す —— usb トンネルは host がループバックのままでも
+                    // token を要求するため、host だけでは実機の判別に使えない
+                    // (ProfileWorkerFactory.warnOnResidualSystemAlerts と同じ規律)
                     _ = try await BridgeClient(
                         port: port,
-                        host: worker.connection.host ?? BridgeEndpoint.loopbackHost)
+                        host: worker.connection.host ?? BridgeEndpoint.loopbackHost,
+                        physicalUDID: worker.connection.physical ? worker.connection.udid : nil)
                         .status(timeout: 5)
                     return .ok
                 } catch DriverError.bridgeConnectionRefused {

@@ -97,17 +97,27 @@ public enum IOSDeviceTransport {
                     port: port, repoRoot: repoRoot, timeoutSeconds: timeoutSeconds, log: log),
                 port: port, token: token)
         case .usb:
-            // usb はループバックを維持する(トンネルはホスト内で完結)ので認証は不要
+            // **usb もトークンを載せる**: 認証を要求するのはブリッジ側(実機は 0.0.0.0 に bind
+            // するため FT_BIND_ALL=1 で fail-closed に token を要求する。BridgeLauncher.bridgeToken /
+            // BridgeDTO.bridgeTokenRequired 参照)。usb トンネルは「ホストからの到達先」を
+            // ループバックへ戻すだけで、相手が認証を求めるかどうかとは無関係
             log("transport usb (iproxy USB tunnel)")
             try startIproxy(hostPort: port, devicePort: port,
                             deviceUDID: deviceUDID, repoRoot: repoRoot)
-            endpoint = BridgeEndpoint(port: port)
+            endpoint = Self.usbEndpoint(port: port, token: token)
         }
         endpoint.persist(repoRoot: repoRoot)
         // status.udid を申告できない実機のための補記(BridgeDeviceRecord のコメント参照)。
         // establish は実機の経路にしか無いので、仮想デバイスにはこの記録が増えない
         BridgeDeviceRecord.persist(udid: deviceUDID, port: port, repoRoot: repoRoot)
         return endpoint
+    }
+
+    /// usb 分岐の endpoint 組み立てだけを切り出した純関数(iproxy の起動を伴わないのでテストできる)。
+    /// **host は常にループバックだが token は落とさない** —— ブリッジ側の認証要求は host と無関係
+    /// (establish 本体のコメント参照)
+    static func usbEndpoint(port: UInt16, token: String?) -> BridgeEndpoint {
+        BridgeEndpoint(port: port, token: token)
     }
 
     /// 実機ブリッジの後始末(usb のトンネル停止+endpoint/udid 記録の破棄)。lan は何も残さない

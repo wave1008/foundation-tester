@@ -456,8 +456,7 @@ extension MCPServer {
         // (no-op のままなら実害は無く、広げると誤拒否の側にリスクが移る)
         let endpoint = (try? RepoRoot.find()).map { BridgeEndpoint.load(port: port, repoRoot: $0) }
             ?? BridgeEndpoint(port: port)
-        guard let now = try? await BridgeClient(port: endpoint.port, timeoutSeconds: 5,
-                                                host: endpoint.host).status().udid,
+        guard let now = try? await BridgeClient(endpoint: endpoint, timeoutSeconds: 5).status().udid,
               let moved = Self.keyChangedDevice(previous: recorded, now: now) else { return nil }
         forgetDeviceState(key)
         return Self.movedDeviceRefusal(port: port, previousUDID: moved, nowUDID: now)

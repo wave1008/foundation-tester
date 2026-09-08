@@ -41,12 +41,25 @@ final class BridgeEndpointTokenTests: XCTestCase {
         XCTAssertNil(loaded.token)
     }
 
-    /// ループバックは persist しても書かない(既存挙動の維持。トークン付きでも同じ)
-    func testLoopbackPersistRemovesFile() {
+    /// ループバック **かつ token 無し**のときだけ persist しても書かない(既存挙動の維持)
+    func testLoopbackWithoutTokenPersistRemovesFile() {
         let url = root.appendingPathComponent(".fleetest/bridge-8901.endpoint")
         BridgeEndpoint(host: "192.168.1.23", port: 8901, token: "deadbeef").persist(repoRoot: root)
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
         BridgeEndpoint(port: 8901).persist(repoRoot: root)
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    /// **ループバックでも token を持つなら書く**(usb トンネルの実機)。判定は「ループバックか」
+    /// ではなく「token を持つか」——ここが変わらないと establish(usb) の戻り値が別プロセス・
+    /// 再接続から一生読めない(IOSDeviceTransport.establish の usb 分岐と対)
+    func testLoopbackWithTokenPersistWritesTheFile() {
+        let url = root.appendingPathComponent(".fleetest/bridge-8901.endpoint")
+        BridgeEndpoint(port: 8901, token: "usb-token").persist(repoRoot: root)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path),
+                      "loopback + token の persist はファイルを書くこと(usb トンネルの実機)")
+        let loaded = BridgeEndpoint.load(port: 8901, repoRoot: root)
+        XCTAssertEqual(loaded.host, BridgeEndpoint.loopbackHost)
+        XCTAssertEqual(loaded.token, "usb-token")
     }
 }

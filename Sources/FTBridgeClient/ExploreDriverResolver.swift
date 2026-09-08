@@ -60,8 +60,7 @@ public enum ExploreDriverResolver {
         let endpoint = repoRoot.map { BridgeEndpoint.load(port: preferred, repoRoot: $0) }
             ?? BridgeEndpoint(port: preferred)
         // timeout を明示する(引数なしは sessionTimeout=45s に上書きされる。XCUIBridgeResolver と同じ)
-        let status = try? await BridgeClient(port: endpoint.port, timeoutSeconds: 3,
-                                             host: endpoint.host).status(timeout: 3)
+        let status = try? await BridgeClient(endpoint: endpoint, timeoutSeconds: 3).status(timeout: 3)
         let udid = (status?.device).flatMap(bootedSimulatorUDID)
         guard status?.engine == "inapp" else {
             // **実機は `/status.udid` を自己申告できない**(SIMULATOR_UDID が無い)ので、
@@ -96,8 +95,11 @@ public enum ExploreDriverResolver {
             logger("port \(preferred) is an in-app bridge, but this device cannot be driven through it"
                 + " (\(udid == nil ? "the simulator could not be identified" : "the bridge did not report its app"))"
                 + " — using the XCUITest bridge (port \(port))")
+            // port は plan() 経由で常に resolution.endpoint.port と同じ値(direct=preferred,
+            // rerouteToXCUI=xcuiPort。どちらも resolution.endpoint から採った値)なので
+            // endpoint をそのまま渡してよい(host だけ渡すと usb トンネルの token を落とす)
             return Resolved(driver: SessionRecoveryDriver(
-                base: BridgeClient(port: port, host: resolution.endpoint.host)),
+                base: BridgeClient(endpoint: resolution.endpoint)),
                             engine: "xcuitest", udid: udid)
         case .inappOnly(let port):
             guard let repoRoot, let udid else {
@@ -105,9 +107,10 @@ public enum ExploreDriverResolver {
                 // 静かに変わる(ジェスチャの効き方が変わって見える)。上の分岐と同じ扱い
                 logger(Self.unidentifiedSimulatorNote(port: port, repoRoot: repoRoot))
                 // 縮退でも SessionRecoveryDriver で包む(通常経路と同じ。素の BridgeClient だと
-                // スナップショット正規化=ラッパー統合が掛からず、同じ画面で挙動が割れる)
+                // スナップショット正規化=ラッパー統合が掛からず、同じ画面で挙動が割れる)。
+                // port は .inappOnly(port: preferred) なので endpoint(preferred の宛先)と同一
                 return Resolved(driver: SessionRecoveryDriver(
-                                    base: BridgeClient(port: port, host: endpoint.host)),
+                                    base: BridgeClient(endpoint: endpoint)),
                                 engine: "xcuitest", udid: udid)
             }
             logger("port \(port) is an in-app bridge — using it (no XCUITest bridge for fallback:"
@@ -116,11 +119,15 @@ public enum ExploreDriverResolver {
                             engine: "inapp", udid: udid)
         case .hybrid(let inappPort, let xcuiPort, let bundleID):
             guard let repoRoot, let udid else {
+                // xcuiPort == resolution.endpoint.port(plan() の .hybrid は line 88 の xcuiPort を
+                // そのまま運ぶ)。未識別(実機・同名複数)の可能性があるので endpoint ごと渡す
                 logger(Self.unidentifiedSimulatorNote(port: inappPort, repoRoot: repoRoot))
                 return Resolved(driver: SessionRecoveryDriver(
-                                    base: BridgeClient(port: xcuiPort, host: resolution.endpoint.host)),
+                                    base: BridgeClient(endpoint: resolution.endpoint)),
                                 engine: "xcuitest", udid: udid)
             }
+            // ここへ来るのは udid(シミュレータ)が特定できたときだけ(bootedSimulatorUDID の宣言)——
+            // 実機はここを通らないので host のみで token を落としても安全
             logger("port \(inappPort) is an in-app bridge — driving it with the XCUITest bridge"
                 + " (port \(xcuiPort)) as fallback, matching the hybrid run engine")
             // attach は**同じインスタンス**を委譲とフォールバックの両方へ(MCPServer.iosDriver と同じ理由)
