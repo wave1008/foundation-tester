@@ -9,6 +9,12 @@
 // **`endpoint:` 形も合格**とする —— `BridgeEndpoint` は host・port・token を丸ごと持つので、
 // 宛先だけ取り出して渡し直す余地が無い(`host:` より強い)。トークンの渡し忘れは
 // BridgeClientPhysicalTokenTests が別に見る。
+//
+// **host だけでは足りない**(2026-09-08 iPhone SE3・USB): usb トンネルの実機は host が
+// ループバックのまま token を要求するので、`host:` だけ渡した生成は token を推測できず
+// (BridgeClient.inferredToken はループバック + physicalUDID 無しで短絡)401 になる。
+// モニターの scanBridgeStatuses がこの形で、**生きているブリッジが「未起動」に見えた**。
+// 生成には `endpoint:`(記録を丸ごと)か `physicalUDID:`(実機だと分かっている)を必ず添える。
 
 import XCTest
 @testable import FTBridgeClient
@@ -71,6 +77,11 @@ final class BridgeHostPlumbingTests: XCTestCase {
                 if !joined.contains("host:") && !joined.contains("endpoint:") {
                     missing.append("\(relative):\(index + 1) \(trimmed)")
                 }
+                // host だけでは usb トンネルの token を解決できない(ファイル冒頭)
+                if !joined.contains("endpoint:") && !joined.contains("physicalUDID:") {
+                    missing.append("\(relative):\(index + 1) \(trimmed)"
+                                   + " — must pass endpoint: or physicalUDID: (usb tunnel token)")
+                }
                 // ラッパー(呼び手から host を受け取る型)は**その引数をそのまま**渡すこと ——
                 // `host: BridgeEndpoint.loopbackHost` と書けば上の検査は通るが、実機では同じ穴
                 if passesHostThrough.contains(relative),
@@ -80,6 +91,7 @@ final class BridgeHostPlumbingTests: XCTestCase {
             }
         }
         XCTAssertGreaterThan(scanned, 10, "走査が呼び出しを拾えていない(パターンを見直す)")
-        XCTAssertEqual(missing, [], "host: を渡していない BridgeClient の生成(LAN 経由の実機で接続拒否になる)")
+        XCTAssertEqual(missing, [], "宛先か token を運べていない BridgeClient の生成"
+                       + "(LAN 経由の実機で接続拒否 / usb トンネルの実機で 401 になる)")
     }
 }

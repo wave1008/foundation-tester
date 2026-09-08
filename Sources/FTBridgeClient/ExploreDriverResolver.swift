@@ -137,8 +137,8 @@ public enum ExploreDriverResolver {
             return Resolved(driver: HybridFallbackDriver(
                 primary: WebViewDelegatingDriver(primary: inapp, delegated: attach),
                 fallback: attach, primaryBundleID: bundleID,
-                foreignApp: SessionRecoveryDriver(base: BridgeClient(
-                    port: xcuiPort, host: resolution.endpoint.host))), engine: "hybrid", udid: udid)
+                foreignApp: SessionRecoveryDriver(base: BridgeClient(endpoint: resolution.endpoint))),
+                            engine: "hybrid", udid: udid)
         }
     }
 

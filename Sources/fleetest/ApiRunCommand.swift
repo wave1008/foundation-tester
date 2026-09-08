@@ -805,15 +805,9 @@ struct ApiRunCommand: AsyncParsableCommand {
             let platformsInUse = Set(selected.map { $0.platform ?? effectivePlatform })
             var primingWorkers: [RunWorker] = []
             if platformsInUse.contains("ios") {
-                // 宛先は DriverConnection から採る(実機ブリッジは 127.0.0.1 に居ない。
-                // `host:` を省くと LAN 経由の実機で接続拒否になる。BridgeHostPlumbingTests)
-                let iosConnection = DriverConnection(platform: "ios", port: effectivePort,
-                                                     host: BridgeEndpoint.resolvedHost(port: effectivePort))
-                primingWorkers.append(RunWorker(
-                    label: "ios", platform: "ios",
-                    driver: BridgeClient(port: effectivePort,
-                                         host: iosConnection.host ?? BridgeEndpoint.loopbackHost),
-                    connection: iosConnection))
+                // 宛先・token・実機判定は記録から(PortDirectIOSTarget。`fleetest run` と同じ判定)
+                primingWorkers.append(
+                    PortDirectIOSTarget(port: effectivePort).makeWorker(label: "ios", simulatorUDID: nil))
             }
             if platformsInUse.contains("android"), let driver = try? AndroidDriver(serial: serial) {
                 primingWorkers.append(RunWorker(
@@ -835,9 +829,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             let scenarioPlatform = info.platform ?? effectivePlatform
             let connection = scenarioPlatform == "android"
                 ? DriverConnection(platform: "android", serial: serial)
-                // 実機のブリッジは 127.0.0.1 に居ない。宛先は記録から引く(BridgeEndpoint)
-                : DriverConnection(platform: "ios", port: effectivePort,
-                                   host: BridgeEndpoint.resolvedHost(port: effectivePort))
+                // 宛先・実機判定は記録から引く(PortDirectIOSTarget。`fleetest run` と同じ判定)
+                : PortDirectIOSTarget(port: effectivePort).connection(simulatorUDID: nil)
             // --platform/--port/--serial 直指定経路にはデバイス論理名が無いため worker は nil
             let recording = recorder.map { ScenarioRecording(recorder: $0, title: info.title) }
 

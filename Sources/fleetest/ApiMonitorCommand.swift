@@ -1180,11 +1180,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         ) { group in
             for port in portRange {
                 group.addTask {
-                    // LAN 経由の実機ブリッジは 127.0.0.1 に居ない。establish が残した宛先を使う
-                    // (記録が無ければループバック = シミュレータ・USB トンネル・Android の既定)
-                    let host = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0).host }
-                        ?? BridgeEndpoint.loopbackHost
-                    let client = BridgeClient(port: port, timeoutSeconds: timeout, host: host)
+                    // 実機ブリッジは 127.0.0.1 に居ない(LAN)か、居ても token が要る(usb トンネル)。
+                    // establish が残した記録を**丸ごと**使う —— host だけ取り出すと usb の token が
+                    // 落ちて 401 になり、生きているブリッジが「未起動」に見える(2026-09-08 iPhone SE3)。
+                    // 記録が無ければループバック・token 無し = シミュレータ・Android の既定
+                    let endpoint = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0) }
+                        ?? BridgeEndpoint(port: port)
+                    let client = BridgeClient(endpoint: endpoint, timeoutSeconds: timeout)
                     guard let status = try? await client.status(), status.ready else { return nil }
                     return (port, status)
                 }
@@ -1208,10 +1210,10 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 }
                 return try Self.simctlScreenshot(udid: udid)
             }
-            // LAN 経由の実機は 127.0.0.1 に居ない(scanBridgeStatuses と同じ宛先の引き方)
-            let host = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0).host }
-                ?? BridgeEndpoint.loopbackHost
-            return try await BridgeClient(port: port, timeoutSeconds: 5, host: host).screenshot()
+            // 宛先と token は scanBridgeStatuses と同じ引き方(記録を丸ごと)
+            let endpoint = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0) }
+                ?? BridgeEndpoint(port: port)
+            return try await BridgeClient(endpoint: endpoint, timeoutSeconds: 5).screenshot()
         }
         guard let serial = state.androidSerial else { throw MonitorError.noEndpoint }
         return try Self.androidScreenshot(serial: serial)

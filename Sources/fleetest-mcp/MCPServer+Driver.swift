@@ -674,7 +674,8 @@ extension MCPServer {
         return (HybridFallbackDriver(primary: WebViewDelegatingDriver(primary: inapp, delegated: attach),
                                      fallback: attach, primaryBundleID: bundleID,
                                      foreignApp: SessionRecoveryDriver(base: BridgeClient(
-                                         port: xcuiPort, host: provisioned.host))),
+                                         port: xcuiPort, host: provisioned.host,
+                                         physicalUDID: provisioned.physical ? provisioned.udid : nil))),
                 provisioned.port)
     }
 

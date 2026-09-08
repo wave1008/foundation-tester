@@ -54,13 +54,16 @@ public struct BridgeEndpoint: Sendable, Hashable, Codable {
         try? contents.write(to: url, atomically: true, encoding: .utf8)
     }
 
-    /// ポートだけを手掛かりにブリッジの宛先を引く(`--port` 直指定の経路用)。
+    /// ポートだけを手掛かりにブリッジの宛先を**丸ごと**引く(`--port` 直指定の経路用)。
     /// **実機のブリッジは 127.0.0.1 に居ない** —— 記録を読まずに loopback を渡すと、LAN 接続の
     /// 実機で接続拒否になる(`BridgeHostPlumbingTests` が `host:` の欠落を落とすが、
     /// **loopback を明示的に渡す形は文字面では通ってしまう**ので、宛先はここで引くこと)。
-    /// リポジトリルートが取れない実行では loopback(記録の置き場が無いので他に手掛かりが無い)
-    public static func resolvedHost(port: UInt16) -> String {
-        (try? RepoRoot.find()).map { load(port: port, repoRoot: $0).host } ?? loopbackHost
+    /// **host だけを取り出して `BridgeClient(port:host:)` に渡さない** —— usb トンネルの実機は
+    /// host がループバックのまま token を要求するので、`BridgeClient(endpoint:)` へそのまま渡す
+    /// (2026-09-08 iPhone SE3: モニターが host だけで生成して 401 → 生きているブリッジが「未起動」)。
+    /// リポジトリルートが取れない実行では loopback・token 無し(記録の置き場が無い)
+    public static func resolved(port: UInt16) -> BridgeEndpoint {
+        (try? RepoRoot.find()).map { load(port: port, repoRoot: $0) } ?? BridgeEndpoint(port: port)
     }
 
     /// 記録が無ければループバック(= シミュレータ・Android の既定)
@@ -108,5 +111,10 @@ public enum BridgeDeviceRecord {
 
     public static func forget(port: UInt16, repoRoot: URL) {
         try? FileManager.default.removeItem(at: fileURL(port: port, repoRoot: repoRoot))
+    }
+
+    /// `--port` 直指定の経路用(BridgeEndpoint.resolved と対)。リポジトリルートが取れなければ nil
+    public static func resolved(port: UInt16) -> String? {
+        (try? RepoRoot.find()).flatMap { load(port: port, repoRoot: $0) }
     }
 }
