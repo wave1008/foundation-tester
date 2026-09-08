@@ -144,6 +144,37 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
         XCTAssertFalse(XcodeSigningDiagnosis.isSSHSession(environment: ["TERM_PROGRAM": "Apple_Terminal"]))
     }
 
+    /// **両方向とも書く**(検知の類は両方向に掛ける規律)—— 実機でも ssh でもないと解錠を試みない
+    func testShouldAttemptKeychainUnlockCoversAllFourCombinations() {
+        let sshEnv = ["SSH_CONNECTION": "10.0.0.2 1 10.0.0.1 22"]
+        let guiEnv = ["TERM_PROGRAM": "Apple_Terminal"]
+        XCTAssertTrue(XcodeSigningDiagnosis.shouldAttemptKeychainUnlock(physical: true, environment: sshEnv))
+        XCTAssertFalse(XcodeSigningDiagnosis.shouldAttemptKeychainUnlock(physical: true, environment: guiEnv))
+        XCTAssertFalse(XcodeSigningDiagnosis.shouldAttemptKeychainUnlock(physical: false, environment: sshEnv))
+        XCTAssertFalse(XcodeSigningDiagnosis.shouldAttemptKeychainUnlock(physical: false, environment: guiEnv))
+    }
+
+    /// **`-p` の直後が空文字であることを固定する** —— ここが崩れると非対話セッションで
+    /// パスワードプロンプトを出して永久にハングする(このテストが守る唯一の理由)
+    func testUnlockKeychainArgumentsAlwaysPassesAnEmptyPasswordAdjacentToDashP() {
+        let path = "/Users/x/Library/Keychains/login.keychain-db"
+        let args = XcodeSigningDiagnosis.unlockKeychainArguments(path: path)
+        XCTAssertTrue(args.contains("security"), "\(args)")
+        XCTAssertTrue(args.contains("unlock-keychain"), "\(args)")
+        guard let pIndex = args.firstIndex(of: "-p") else {
+            XCTFail("no -p flag: \(args)")
+            return
+        }
+        XCTAssertTrue(pIndex + 1 < args.count, "\(args)")
+        XCTAssertEqual(args[pIndex + 1], "", "-p must be immediately followed by an empty password: \(args)")
+        XCTAssertEqual(args.last, path, "\(args)")
+    }
+
+    func testLoginKeychainPath() {
+        XCTAssertEqual(XcodeSigningDiagnosis.loginKeychainPath(homeDirectory: "/Users/x"),
+                       "/Users/x/Library/Keychains/login.keychain-db")
+    }
+
     /// 生ログを残せなかったときは在り処を書かない
     func testWithoutALogPathThePathLineIsOmitted() throws {
         let guidance = try XCTUnwrap(
@@ -242,6 +273,21 @@ final class XcodeSigningKeychainScopeGuidanceTests: XCTestCase {
             problems: [.keychainLocked], fullLogPath: nil, overSSH: true)
         XCTAssertTrue(text?.contains("the session the build runs in") == true,
                       "解錠する場所を言っていない(事実だけでは行き止まりになる)")
+    }
+
+    /// **退行防止**: 「ログインシェルのプロファイルが通例」という誤った主張(login shell profile は
+    /// remote exec の ssh セッションでは決して実行されない)を再び書かない
+    func testDoesNotClaimALoginShellProfileIsTheUsualPlace() {
+        let text = XcodeSigningDiagnosis.guidance(
+            problems: [.keychainLocked], fullLogPath: nil, overSSH: true)
+        XCTAssertFalse(text?.contains("login shell profile is the usual place") == true, text ?? "nil")
+    }
+
+    /// ここまで診断が来た理由(自動解錠を既に試み、通らなかった)を言う
+    func testMentionsTheAutomaticUnlockAlreadyAttempted() {
+        let text = XcodeSigningDiagnosis.guidance(
+            problems: [.keychainLocked], fullLogPath: nil, overSSH: true)
+        XCTAssertTrue(text?.contains("already tries to unlock it automatically") == true, text ?? "nil")
     }
 
     /// **GUI セッションでは出さない** —— ssh の接続ごとという制約はそこには無く、

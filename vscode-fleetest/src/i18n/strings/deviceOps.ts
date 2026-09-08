@@ -186,14 +186,22 @@ export const deviceOpsStrings = {
   },
   // **手順を書かない規律の例外**(portalNeedsGui と同じ理由)—— remote exec が毎回新しい ssh 接続を
   // 張るという実行経路の制約で、知らないと手で解錠しては同じ失敗を繰り返す。
-  // どこで解錠するかまで言い、鍵の置き場所や具体的な設定は言わない
+  // どこで解錠するかまで言い、鍵の置き場所や具体的な設定は言わない。
+  // fleetest はビルド直前に空パスワードでの自動解錠を既に試みている(BridgeLauncher)ので、
+  // この文言まで来るのは実パスワード付きキーチェーンだけ
   "deviceOps.signing.keychainUnlockScope": {
     ja: "ssh は接続のたびにロック状態から始まるため、ビルドが走るセッションの中で解錠されている"
-      + "必要があります(手で別の場所で解錠しても引き継がれません)。その Mac のログインシェルの"
-      + "プロファイルに置くのが通例です。",
+      + "必要があります(手で別の場所で解錠しても引き継がれません)。fleetest はビルド前に空"
+      + "パスワードでの自動解錠を既に試みていますが、ここまで来たということはそれが通らなかった"
+      + "ということ、つまりこのキーチェーンには実パスワードが設定されています —— 解錠する仕組みは"
+      + "その同じ種類の非対話 ssh セッションの中で動く必要があり、ログインシェルのプロファイル"
+      + "(~/.zprofile 等)はこれらのセッションでは実行されないため対象になりません。",
     en: "Each ssh connection starts with the keychain locked, so it has to be unlocked in the session"
       + " the build runs in — unlocking it by hand elsewhere does not carry over."
-      + " On that Mac, a login shell profile is the usual place.",
+      + " fleetest already tries to unlock it automatically with an empty password before the build;"
+      + " that did not get through here, so this keychain has a real password — whatever unlocks it"
+      + " must work inside that same kind of non-interactive ssh session, which a login shell profile"
+      + " (e.g. ~/.zprofile) does not, since these sessions never run one.",
   },
   "deviceOps.signing.fullLog": {
     ja: "xcodebuild の全出力: {path}",

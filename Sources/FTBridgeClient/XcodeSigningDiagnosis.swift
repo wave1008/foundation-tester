@@ -37,8 +37,9 @@ import Foundation
 ///   - keychainLocked は **ssh 越しのビルド固有** —— GUI セッションでは出ない。
 ///     **鍵の ACL の問題ではない**(`security set-key-partition-list` は不要だった。2026-09-08 に
 ///     M1Ultra で実測)。ロックそのものが原因で、**解錠は接続ごとに閉じる** —— その Mac の画面や
-///     別のシェルで解錠しても remote exec の新しい接続には届かない。恒久化はランナー機側の運用で行う
-///     (ユーザー決定 2026-09-08: ツールは利用者のキーチェーンを解錠しない)
+///     別のシェルで解錠しても remote exec の新しい接続には届かない。**ツールは実機 ssh ビルドの
+///     直前に空パスワードでの自動解錠を試みる**(BridgeLauncher.buildForTesting)。この診断まで
+///     来るのはその解錠が通らなかったとき、つまりキーチェーンに実パスワードが設定されているときだけ
 public enum XcodeSigningProblem: String, Sendable, CaseIterable {
     /// Xcode に Apple ID が1つも無い
     case noAccount
@@ -122,6 +123,26 @@ public enum XcodeSigningDiagnosis {
         environment["SSH_CONNECTION"] != nil || environment["SSH_TTY"] != nil
     }
 
+    /// 実機ビルドが ssh セッションで走っているときだけ true(キーチェーンが接続ごとにロックで
+    /// 始まるのはこの経路だけ —— シミュレータは署名不要、GUI セッションはロックで始まらない)。
+    public static func shouldAttemptKeychainUnlock(physical: Bool, environment: [String: String]) -> Bool {
+        physical && isSSHSession(environment: environment)
+    }
+
+    /// **`-p ""` を必ず含める** —— `-p` を省くと `security unlock-keychain` が対話プロンプトを
+    /// 出し、非対話の ssh セッションでは永久にハングする。試すのは空パスワードだけ ——
+    /// 実パスワードを渡す先(設定・環境変数)は用意しない(このツールはパスワードを保持しない)ので、
+    /// 実パスワード付きキーチェーンはここで失敗して当然で、既存の署名診断へ落ちる。
+    public static func unlockKeychainArguments(path: String) -> [String] {
+        ["security", "unlock-keychain", "-p", "", path]
+    }
+
+    /// ログインキーチェーンの場所。`security default-keychain` での解決には頼らない ——
+    /// 非対話の ssh セッションでは既定キーチェーンの解決自体が失敗し得る。
+    public static func loginKeychainPath(homeDirectory: String) -> String {
+        homeDirectory + "/Library/Keychains/login.keychain-db"
+    }
+
     /// 見出し + 事実(どれが欠けているか)+ 生ログの在り処。problems が空なら nil
     /// (呼び手は生の出力をそのまま出す)。
     ///
@@ -161,7 +182,11 @@ public enum XcodeSigningDiagnosis {
         if overSSH, problems.contains(.keychainLocked) {
             lines.append("Each ssh connection starts with the keychain locked, so it has to be"
                 + " unlocked in the session the build runs in — unlocking it by hand elsewhere"
-                + " does not carry over. On that Mac, a login shell profile is the usual place.")
+                + " does not carry over. fleetest already tries to unlock it automatically with an"
+                + " empty password before the build; that did not get through here, so this keychain"
+                + " has a real password — whatever unlocks it must work inside that same kind of"
+                + " non-interactive ssh session, which a login shell profile (e.g. ~/.zprofile) does"
+                + " not, since these sessions never run one.")
         }
         if let fullLogPath {
             lines.append("Full xcodebuild output: \(fullLogPath)")

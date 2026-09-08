@@ -16,6 +16,10 @@ public struct BridgeLauncher {
     /// シミュレータはループバックのままなので nil
     public let bridgeToken: String?
 
+    /// `security unlock-keychain` の締切(秒)。ローカルで完結するコマンドの安全弁であって、
+    /// 想定所要時間ではない(ハングした場合だけこの秒数を払う)
+    static let keychainUnlockTimeoutSeconds: Double = 5
+
     var stateDir: URL { repoRoot.appendingPathComponent(".fleetest") }
     /// 実機とシミュレータでビルド成果物(Debug-iphoneos / Debug-iphonesimulator)も
     /// xctestrun も別物なので DerivedData ごと分ける(混在すると findXCTestRun が誤った方を掴む)
@@ -87,6 +91,10 @@ public struct BridgeLauncher {
 
     public func buildForTesting() throws {
         try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+        if XcodeSigningDiagnosis.shouldAttemptKeychainUnlock(
+            physical: physical, environment: ProcessInfo.processInfo.environment) {
+            attemptKeychainUnlock()
+        }
         let signingArguments = try codeSigningArguments()
         let signing = signingArguments.joined(separator: "\n")
         // 署名設定(チーム・接頭辞)が変わっても増分ビルドは旧 bundle id のランナー .app を
@@ -121,6 +129,29 @@ public struct BridgeLauncher {
         ToolchainFingerprint.store(at: Self.runnerFingerprintPath(derivedDataPath: derivedDataPath))
         if !signing.isEmpty {
             try? (signing + "\n").write(to: signingFingerprintPath, atomically: true, encoding: .utf8)
+        }
+    }
+
+    /// 空パスワードだけを試す(実パスワードはどこにも保持しない)。**失敗を握りつぶす** ——
+    /// パスワード付きキーチェーンでは失敗して当然で、その先は既存の署名診断(keychainLocked)に
+    /// 委ねる。timeout(タイムアウトも含め)を buildForTesting へ伝播させない
+    private func attemptKeychainUnlock() {
+        let path = XcodeSigningDiagnosis.loginKeychainPath(homeDirectory: NSHomeDirectory())
+        let args = XcodeSigningDiagnosis.unlockKeychainArguments(path: path)
+        do {
+            let result = try Shell.run(args, timeout: Self.keychainUnlockTimeoutSeconds)
+            if result.status == 0 {
+                ConsoleOut.err(
+                    "[bridge] Unlocked the login keychain for this ssh session (needed for code-signing)")
+            } else {
+                ConsoleOut.err(
+                    "[bridge] Could not unlock the login keychain with an empty password —"
+                        + " it likely has one; continuing (codesign may fail below)")
+            }
+        } catch {
+            ConsoleOut.err(
+                "[bridge] Could not unlock the login keychain with an empty password —"
+                    + " it likely has one; continuing (codesign may fail below)")
         }
     }
 
