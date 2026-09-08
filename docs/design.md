@@ -3524,15 +3524,25 @@ targeting = bundletool にしか決められない。feature module を足した
 - 拡張のデバイスピッカー(「+既存から選択」)が接続中の実機を出すので、手書きしなくてよい
 - **iOS 実機は engine が `xcuitest` に固定される**(dylib 注入は実機不可なので `iosInappEngine`
   の既定 hybrid を無視する。`engine: "inapp"` を明示すると検証エラー)
-- **実機は一括操作(`devices up/down` / `api start-all-devices/stop-all-devices/restart-devices` /
-  モニターの「全て起動」「全て終了」)の対象外**(ユーザー決定 2026-08-30。再提案しない)——
-  実機は端末そのものを起動・停止できないため、混ざっていると一括起動が数分のブリッジ供給
+- **一括起動(`devices up` / `api start-all-devices` / モニターの「全て起動」)と `restart-devices`
+  (down→up の両方向とも)は実機を対象外のまま**(ユーザー決定 2026-08-30。再提案しない)——
+  実機は端末そのものを起動できないため、混ざっていると一括起動が数分のブリッジ供給
   (build-for-testing)を始めて同時起動枠(2台)の半分を専有し、他機のブートを遅らせていた。
-  一括操作は実機をキューに積まず1行ログするだけで、`deviceStopping`/`deviceStarting`/
-  `deviceFinished` も出さない(拡張のタイルを一括操作の「待機中/シャットダウン中」に倒さない)。
-  **ブリッジの起動・停止は `fleetest run` とモニタータイルの右クリックメニューだけ**が担う
-  (ラベルは「ブリッジを起動/停止」)。`bridge down --all` は例外(明示的な全停止コマンドなので
-  実機のブリッジも含めて止める)
+  実機はキューに積まず1行ログするだけで、`deviceStarting`/`deviceFinished` も出さない
+  (拡張のタイルを「待機中」に倒さない)
+- **一括停止(`devices down` の `--profile` 指定時 / `api stop-all-devices` /
+  モニターの「全て終了」)は実機のブリッジだけ止める**(ユーザー決定 2026-09-08。起動側の
+  規則は変えていない)—— `DeviceBooter.shutdownOne` の実機分岐が端末停止コマンド
+  (`simctl shutdown`/`adb emu kill`)を撃たず、iOS はポート照合でブリッジプロセスを止め、
+  Android は `AndroidDriver.stopBridge()` でアプリと adb forward を止める。**端末そのものは
+  絶対に落とさない**(利用者の電話を勝手に落とさない)。イベントは `deviceStopping`/
+  `deviceFinished` を出さない(実機は端末が生き続けるので、出すと拡張のタイルが「停止した」→
+  次の観測で「接続中」に戻りちらつく) —— log イベント1行だけ報告する。
+  `devices down`(`--profile` 無し)の掃討(sweep)は従来どおり実機を素通りする
+  (`BridgeLauncher.stopAll(skipPhysical: true)`。1台ずつ ssh で辿らない設計のため)。
+  **ブリッジの起動・停止は `fleetest run`・モニタータイルの右クリックメニュー・上記の一括停止**
+  が担う(ラベルは「ブリッジを起動/停止」)。`bridge down --all` は明示的な全停止コマンドなので
+  従来どおり実機のブリッジも含めて止める
 - **iOS 実機の `state: "booted"` は「端末は接続済みだがブリッジが1本も無い」**の意味
   (`ApiMonitorCommand.iosState`。シミュレータの booted=起動済みとは意味が違う)。実機のブリッジは
   自動供給されないのでこの状態は待っても変わらない ⇒ モニタータイルは**未起動として表示**し、

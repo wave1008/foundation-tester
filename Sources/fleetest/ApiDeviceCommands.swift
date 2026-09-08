@@ -459,14 +459,14 @@ struct ApiStopAllDevicesCommand: AsyncParsableCommand {
             let repoRoot = try? RepoRoot.find()
             for spec in machineProfile.ios?.devices ?? [] {
                 if spec.isPhysical {
-                    Self.logPhysicalSkip(spec: spec)
+                    await Self.stopPhysicalBridgeOnly(spec: spec, platform: "ios", repoRoot: repoRoot)
                     continue
                 }
                 await Self.shutdownOneEmitting(spec: spec, platform: "ios", repoRoot: repoRoot)
             }
             for spec in machineProfile.android?.devices ?? [] {
                 if spec.isPhysical {
-                    Self.logPhysicalSkip(spec: spec)
+                    await Self.stopPhysicalBridgeOnly(spec: spec, platform: "android", repoRoot: nil)
                     continue
                 }
                 await Self.shutdownOneEmitting(spec: spec, platform: "android", repoRoot: nil)
@@ -479,13 +479,18 @@ struct ApiStopAllDevicesCommand: AsyncParsableCommand {
         }
     }
 
-    /// 実機はスキップし理由を1行だけ log イベントで報告する(deviceStopping/deviceFinished は
-    /// 出さない —— 拡張のタイルは「その台を一括操作の対象にしていない」ことがそのまま伝わる
-    /// べきで、シャットダウン中の表示に倒すべきではない)
-    private static func logPhysicalSkip(spec: DeviceSpec) {
-        ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(
-            message: "✔ \(spec.name): physical device — bulk stop leaves it alone"
-                + " (stop its bridge from the tile menu)"))
+    /// 実機は端末を落とさずブリッジだけ止める(DeviceBooter.shutdownOne の実機分岐が保証する)。
+    /// deviceStopping/deviceFinished は出さない —— 実機は端末が生き続けるので、出すと拡張の
+    /// タイルが「停止した」と一瞬表示してから次の観測で「接続中」に戻りちらつく
+    private static func stopPhysicalBridgeOnly(spec: DeviceSpec, platform: String, repoRoot: URL?) async {
+        let log: @Sendable (String) -> Void = { message in
+            ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message))
+        }
+        do {
+            try await DeviceBooter.shutdownOne(spec: spec, platform: platform, repoRoot: repoRoot, log: log)
+        } catch {
+            log("❌ \(spec.name): \(error.localizedDescription)")
+        }
     }
 
     /// 1台停止。失敗しても deviceFinished は必ず送出する(拡張の再スキャン契約。

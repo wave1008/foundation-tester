@@ -79,14 +79,10 @@ func captureIOS(_ o: Options, token: String?) -> Data? {
 }
 
 /// Android: adb exec-out screencap -p(PNG)。iOS 側と同じく fps 間隔より長く待たない ——
-/// adb が刺さる(端末の抜き差し・スリープ)と EOF が来ないので、期限で子孫ごと止めて
-/// そのフレームを落とす(連続失敗は主ループが数えて exit(4))
+/// 実体は FTCore.AndroidScreencap(ブリッジ不要)。連続失敗は主ループが数えて exit(4)
 func captureAndroid(_ o: Options) -> Data? {
     let timeout = max(2.0, 2.0 / max(o.fps, 0.1))
-    guard let result = try? Shell.runData([o.adb, "-s", o.serial, "exec-out", "screencap", "-p"],
-                                          timeout: timeout),
-          result.status == 0, !result.data.isEmpty else { return nil }
-    return result.data
+    return AndroidScreencap.capturePNG(adb: o.adb, serial: o.serial, timeout: timeout)
 }
 
 // MARK: - 変換・出力

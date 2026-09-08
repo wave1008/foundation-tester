@@ -236,7 +236,7 @@ public enum DeviceBooter {
     public static func shutdownOne(spec: DeviceSpec, platform: String,
                                    repoRoot: URL? = nil,
                                    log: @escaping @Sendable (String) -> Void) async throws {
-        // 実機は停止しない(ユーザーの端末を勝手に落とさない)。iOS はブリッジだけ止める。
+        // 実機は停止しない(ユーザーの端末を勝手に落とさない)。ブリッジだけ止める。
         // Android の adb emu kill は実機に存在せず、serial 消失待ちで毎回 15s 空振りする
         if spec.isPhysical {
             if platform == "ios", let repoRoot {
@@ -248,8 +248,12 @@ public enum DeviceBooter {
                 for port in (udid.map { BridgeLauncher.stopMatching(udid: $0, repoRoot: repoRoot) } ?? []) {
                     log("→ \(spec.name): stopping the bridge (port \(port))")
                 }
+            } else if platform == "android", let serial = try? AndroidDeviceCatalog.resolveSerial(spec: spec),
+                      let driver = try? AndroidDriver(serial: serial) {
+                log("→ \(spec.name): stopping the bridge (\(serial))")
+                driver.stopBridge()
             }
-            log("✔ \(spec.name): physical device — not stopping it")
+            log("✔ \(spec.name): physical device — stopped its bridge only (the device itself keeps running)")
             return
         }
         if platform == "ios" {

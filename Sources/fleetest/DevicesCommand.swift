@@ -54,10 +54,12 @@ struct DevicesCommand: AsyncParsableCommand {
 
     struct Down: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Stop every bridge and shut down all simulators and emulators (physical devices are"
-                + " excluded), on this machine and on every machine in the remote registry."
-                + " With --profile, only the devices that profile references are stopped individually,"
-                + " on this machine only.")
+            abstract: "Stop every bridge and shut down all simulators and emulators, on this machine and"
+                + " on every machine in the remote registry (physical devices keep running; without"
+                + " --profile their bridges are left alone too — use --profile or bridge down to stop"
+                + " them). With --profile, only the devices that profile references are stopped"
+                + " individually, on this machine only (physical devices in scope get their bridge"
+                + " stopped, but are never shut down).")
 
         @Option(help: "Test project name (only used with --profile; defaults to the only one in TestProjects/, or the default project)")
         var project: String?
@@ -131,7 +133,8 @@ struct DevicesCommand: AsyncParsableCommand {
 
         /// 対象デバイスのみ ios→android の順で shutdownOne により個別停止する(ApiDeviceDown と
         /// 同じ流儀)。マシン解決・読み込み・個々の停止いずれの失敗も警告に留めて続行し
-        /// (1台の失敗で全体を止めない)、exit 0 で完走する
+        /// (1台の失敗で全体を止めない)、exit 0 で完走する。実機の扱い(端末は落とさずブリッジ
+        /// だけ止める)は shutdownOne 側の分岐に任せる —— 呼び出し側に実機の知識を持たせない
         private func shutdownProfile(_ profile: String) async {
             do {
                 let filtered = try MachineProfileLoad.load(
@@ -144,11 +147,6 @@ struct DevicesCommand: AsyncParsableCommand {
                 // 未検出時はブリッジ停止をスキップし simctl shutdown のみ行う(ApiDeviceDown と同じ)
                 let repoRoot = try? RepoRoot.find()
                 for spec in filtered.ios?.devices ?? [] {
-                    if spec.isPhysical {
-                        ConsoleOut.out("✔ \(spec.name): physical device — bulk stop leaves it alone"
-                            + " (stop its bridge from the tile menu)")
-                        continue
-                    }
                     do {
                         try await DeviceBooter.shutdownOne(
                             spec: spec, platform: "ios", repoRoot: repoRoot, log: { ConsoleOut.out($0) })
@@ -157,11 +155,6 @@ struct DevicesCommand: AsyncParsableCommand {
                     }
                 }
                 for spec in filtered.android?.devices ?? [] {
-                    if spec.isPhysical {
-                        ConsoleOut.out("✔ \(spec.name): physical device — bulk stop leaves it alone"
-                            + " (stop its bridge from the tile menu)")
-                        continue
-                    }
                     do {
                         try await DeviceBooter.shutdownOne(
                             spec: spec, platform: "android", log: { ConsoleOut.out($0) })

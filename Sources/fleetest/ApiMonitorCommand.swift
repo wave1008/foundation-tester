@@ -1182,7 +1182,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             return try await BridgeClient(port: port, timeoutSeconds: 5, host: host).screenshot()
         }
         guard let serial = state.androidSerial else { throw MonitorError.noEndpoint }
-        return try await AndroidDriver(serial: serial).screenshot()
+        return try Self.androidScreenshot(serial: serial)
     }
 
     /// ブリッジを持たないシミュレータの1枚。**実測 1.7 秒**(M2 Ultra・iPhone 17 Pro)なので、
@@ -1196,6 +1196,30 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             throw MonitorError.simctlScreenshotFailed(udid: udid)
         }
         return try Data(contentsOf: URL(fileURLWithPath: path))
+    }
+
+    /// adb 実行ファイルのパス。プロセス起動後の初回だけ解決し持ち回る(この関数は既定 2 秒周期で
+    /// 呼ばれるので、毎サイクル `AndroidDriver.findADB()` を呼び直す理由が無い)。
+    /// 見つからなければ以後ずっと Android 撮影を諦める(前回フレームがタイルに残る)
+    private static let resolvedAndroidADBPath: String? = try? AndroidDriver.findADB()
+
+    /// Android 静止画の締切(秒)。`adb exec-out screencap -p` は通常1秒未満で返るが、
+    /// adb が刺さる(端末のスリープ復帰・USB 切断)と延々と待つ。simctl 撮影と同じ 15 秒で切り、
+    /// 1サイクル(既定 2 秒)を握り続けさせない
+    fileprivate static let androidScreencapTimeoutSeconds: TimeInterval = 15
+
+    /// **`AndroidDriver.screenshot()`(ブリッジ経由)へ戻さない** —— あちらは `ensureBridge()` を
+    /// 通るので、ブリッジを終了させた実機でも観測のたびに建ててしまう(利用者が「全て終了」を
+    /// 押した実機のブリッジが監視のポーリングだけで復活する副作用があった)。
+    /// `AndroidScreencap`(adb 直叩き)は WebView の CDP 合成を持たないが、配信/ポーリングヘルパー
+    /// (fleetest-devicepoll)も同じ adb 直叩きで合成していないので、タイルの見え方としては後退しない
+    private static func androidScreenshot(serial: String) throws -> Data {
+        guard let adb = resolvedAndroidADBPath else { throw MonitorError.adbNotFound }
+        guard let png = AndroidScreencap.capturePNG(
+            adb: adb, serial: serial, timeout: androidScreencapTimeoutSeconds) else {
+            throw MonitorError.androidScreencapFailed(serial: serial)
+        }
+        return png
     }
 
     /// SIGTERM/SIGINT/EOF を最大 0.1 秒粒度で検知しながら interval 秒待つ
@@ -1531,6 +1555,11 @@ private enum MonitorError: Error, LocalizedError {
     case noEndpoint
     /// `simctl io screenshot` が失敗した、または 15 秒で切った(run に使われて混んでいる形が典型)
     case simctlScreenshotFailed(udid: String)
+    /// adb 実行ファイルが見つからない(AndroidDriver.findADB() 参照)
+    case adbNotFound
+    /// `adb exec-out screencap -p` が失敗した、または締切で切った
+    /// (端末のスリープ復帰・USB 切断で adb が刺さった形が典型)
+    case androidScreencapFailed(serial: String)
 
     var errorDescription: String? {
         switch self {
@@ -1540,6 +1569,12 @@ private enum MonitorError: Error, LocalizedError {
         case .simctlScreenshotFailed(let udid):
             return "`simctl io screenshot` failed or did not return within 15 s (\(udid))."
                 + " The simulator is busy — a test run is probably driving it"
+        case .adbNotFound:
+            return "adb not found (set ANDROID_HOME)"
+        case .androidScreencapFailed(let serial):
+            return "`adb exec-out screencap -p` failed or did not return within"
+                + " \(Int(ApiMonitorCommand.androidScreencapTimeoutSeconds)) s (\(serial))."
+                + " The device is probably asleep or disconnected"
         }
     }
 }
