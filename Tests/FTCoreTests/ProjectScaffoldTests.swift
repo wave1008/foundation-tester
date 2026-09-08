@@ -187,6 +187,35 @@ final class ProjectScaffoldTests: XCTestCase {
                        [ProfileWriter.defaultDeviceName(platform: "android")])
     }
 
+    /// 空のディレクトリは雛形を置いてよい(受け手・拡張が先に mkdir しただけの器)。
+    /// 中身が1つでもあれば不可(上書きは資産を消す側)。`.DS_Store` は中身に数えない
+    func testCanScaffoldOnlyIntoAbsentOrEmptyDirectory() throws {
+        let fm = FileManager.default
+        let absent = packageRoot.appendingPathComponent("TestProjects/Absent")
+        XCTAssertTrue(ProjectScaffold.canScaffold(into: absent))
+
+        let empty = packageRoot.appendingPathComponent("TestProjects/Empty")
+        try fm.createDirectory(at: empty, withIntermediateDirectories: true)
+        XCTAssertTrue(ProjectScaffold.canScaffold(into: empty))
+        try Data().write(to: empty.appendingPathComponent(".DS_Store"))
+        XCTAssertTrue(ProjectScaffold.canScaffold(into: empty), ".DS_Store だけなら空扱い")
+
+        let occupied = packageRoot.appendingPathComponent("TestProjects/Occupied")
+        try fm.createDirectory(at: occupied.appendingPathComponent("scenarios"),
+                               withIntermediateDirectories: true)
+        XCTAssertFalse(ProjectScaffold.canScaffold(into: occupied))
+
+        let file = packageRoot.appendingPathComponent("TestProjects/File")
+        try fm.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: file)
+        XCTAssertFalse(ProjectScaffold.canScaffold(into: file), "同名のファイルは不可")
+
+        // 空の器へ create が通り、通常の雛形が揃う
+        let project = TestProject(name: "Empty", rootURL: empty)
+        try ProjectScaffold.create(project: project, app: "com.example.myapp", platforms: ["ios"])
+        XCTAssertTrue(fm.fileExists(atPath: project.scenariosDir.appendingPathComponent("_Main.swift").path))
+    }
+
     /// 導入時から既定ワークスペースの規約フォルダを置く(run 時の ensure だけに任せると、
     /// 初回実行まで scripts/ = setup.sh の置き場所が見えない)。名前の正は WorkspaceScaffold
     func testCreatePlacesDefaultWorkspaceFolders() throws {

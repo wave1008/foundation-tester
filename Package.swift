@@ -192,6 +192,13 @@ let package = Package(
             swiftSettings: swift5Mode
         ),
         .executableTarget(
+            name: "fleetest-scenarios-default",
+            dependencies: ["FTScenarioRunner", "FTDSL"],
+            path: "TestProjects/default/scenarios",
+            exclude: ["_disabled"],
+            swiftSettings: swift5Mode
+        ),
+        .executableTarget(
             name: "fleetest-scenarios-project1",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/project1/scenarios",

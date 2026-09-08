@@ -62,7 +62,15 @@ git URL へ依存させます(`--fleetest-branch` で追従するブランチを
 
 1. `TestProjects/` にプロジェクトが1つだけならそれを使う
 2. それ以外なら、設定済みのデフォルトプロジェクトを使う
-3. どちらも無ければ、候補一覧付きのエラーで停止する
+3. それも無ければ、`default` という名前のプロジェクトがあればそれを使う
+4. どれも無ければ、候補一覧付きのエラーで停止する
+
+## `default` プロジェクト
+
+VSCode 拡張は起動時に `TestProjects/default/` が無ければ(または空なら)`fleetest project create default`
+で作成し、`fleetest.project` が空のときはこの `default` を初期選択にします。すぐにシナリオを置ける器として
+使えます(アプリプロファイルの bundle ID はプレースホルダなので、実行前に差し替えてください)。
+別の名前で作ったプロジェクトを使うときは、拡張の「プロジェクトを選択」か `fleetest.project` で切り替えます。
 
 ### Link
 - [index](../index_ja.md)

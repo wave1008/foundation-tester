@@ -16,6 +16,7 @@ import {
   resolveWorkspaceRoot,
 } from "./config";
 import { registerDebugAdapter } from "./debugConfig";
+import { defaultProjectState, ensureDefaultProject } from "./defaultProject";
 import { registerHealReviewPanel } from "./healReviewPanel";
 import { initI18n, setLocaleFromConfig, t } from "./i18n";
 import { handleLanguageChange } from "./languageChangeHandler";
@@ -24,6 +25,7 @@ import { registerLivePanel } from "./livePanel";
 import { registerMonitorPanel } from "./monitorPanel";
 import { sweepOrphans } from "./orphanSweep";
 import { registerProfileDiagnostics } from "./profileDiagnostics";
+import { DEFAULT_PROJECT_NAME } from "./projectResolution";
 import { registerReportCodeLens } from "./reportCodeLens";
 import { RunEventBus } from "./runEventBus";
 import { isRunActive, registerRunHandler } from "./runHandler";
@@ -72,6 +74,19 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const cli = new FleetestCli(outputChannel);
   const getConfig = (): FleetestConfig => readConfig(workspaceRoot);
+
+  // 既定プロジェクト(TestProjects/default/)を用意する。**最初に CLI キューへ積む**ので、
+  // 後続の list-scenarios(ビルド)より先に Package.swift の登録が済む。無いときだけ spawn
+  // (defaultProject.ts)。作成の成否は最後の testTree.refresh() の前に受け取る
+  if (defaultProjectState(workspaceRoot) === "missing") {
+    outputChannel.appendLine(t("workbench.defaultProject.creatingLog", { project: DEFAULT_PROJECT_NAME }));
+  }
+  const defaultProjectReady = ensureDefaultProject({
+    workspaceRoot,
+    binaryPath: getConfig().binaryPath,
+    cli,
+    log: (line) => outputChannel.appendLine(`[project create] ${line}`),
+  });
 
   // CLI ↔ 拡張のプロトコル版照合(compatCheck.ts)。activate をブロックしない fire-and-forget。
   void checkFleetestCompat(getConfig().binaryPath, workspaceRoot, outputChannel, (proc) => {
@@ -178,7 +193,21 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  void testTree.refresh();
+  // 既定プロジェクトの作成を待ってから最初のツリー構築へ進む(待たないと、作成前の
+  // 候補で「複数あります」の選択を出してしまう)。既にあれば即座に解決する
+  void defaultProjectReady.then((outcome) => {
+    if (outcome.kind === "created") {
+      outputChannel.appendLine(t("workbench.defaultProject.createdLog", { project: DEFAULT_PROJECT_NAME }));
+      // 登録時点では未解決だった監視先(last-results)を、解決できるようになった今 張り直す
+      lastResultsSync.reconfigure();
+    } else if (outcome.kind === "failed") {
+      const message = t("workbench.defaultProject.createFailed",
+        { project: DEFAULT_PROJECT_NAME, detail: outcome.detail });
+      outputChannel.appendLine(message);
+      void vscode.window.showWarningMessage(`${message} ${t("workbench.outputPanelHint")}`);
+    }
+    void testTree.refresh();
+  });
 }
 
 export function deactivate(): void {

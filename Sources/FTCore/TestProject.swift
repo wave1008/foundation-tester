@@ -93,8 +93,15 @@ public enum ProjectStore {
             .sorted { $0.name < $1.name }
     }
 
+    /// VSCode 拡張が起動時に用意する既定プロジェクトの名前(`TestProjects/default/`)。
+    /// 拡張(vscode-fleetest/src/projectResolution.ts の DEFAULT_PROJECT_NAME)と同じ文字列
+    /// (defaultProjectNameSync.test.mjs が突き合わせる)。省略時の解決でも同じ名前を優先する ——
+    /// 拡張と CLI/MCP で「どのプロジェクトか」が食い違わないため
+    public static let defaultProjectName = "default"
+
     /// プロジェクト解決。name 指定 → 一致するもの。
-    /// 省略時: 1 つならそれ → defaultProject(LocalConfig)→ エラー(候補一覧付き)
+    /// 省略時: 1 つならそれ → defaultProject(LocalConfig)→ `defaultProjectName` のプロジェクト →
+    /// エラー(候補一覧付き)
     public static func find(_ name: String?, repoRoot: URL,
                             defaultProject: String? = nil) throws -> TestProject {
         let projects = all(repoRoot: repoRoot)
@@ -110,6 +117,9 @@ public enum ProjectStore {
         if projects.count == 1 { return projects[0] }
         if let defaultProject,
            let project = projects.first(where: { $0.name == defaultProject }) {
+            return project
+        }
+        if let project = projects.first(where: { $0.name == defaultProjectName }) {
             return project
         }
         throw ProjectStoreError.ambiguous(available: projects.map(\.name))

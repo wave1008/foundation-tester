@@ -1,0 +1,9 @@
+{
+  "app": "default",
+  "devices": [
+    { "name": "simulator1" },
+    { "name": "emulator1" }
+  ],
+  "heal": false,
+  "reportDir": "reports"
+}

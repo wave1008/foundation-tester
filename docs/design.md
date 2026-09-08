@@ -3432,7 +3432,8 @@ executableTarget `fleetest-scenarios-<name>`(path: `TestProjects/<name>/scenario
 - プロジェクト間はビルド隔離される(1 プロジェクトのコンパイルエラーが他を止めない)。
   バイナリ毎に objc 走査が分かれるため、シナリオ一覧のプロジェクト別化は発見ロジック無変更で成立
 - プロジェクト名は SPM ターゲット名になるため `^[A-Za-z0-9_][A-Za-z0-9_-]*$`(日本語はクラス名側で使う)
-- `--project` 省略時の解決: TestProjects/ が 1 つならそれ → LocalConfig.defaultProject → 候補一覧付きエラー
+- `--project` 省略時の解決: TestProjects/ が 1 つならそれ → LocalConfig.defaultProject → `default` という名前の
+  プロジェクト(拡張が起動時に用意する。`ProjectStore.defaultProjectName`)→ 候補一覧付きエラー
 - CLI: `fleetest project create <name> [--app-id <bundleID>]` / `project list` / `project sync`
   (手動コピーや git pull 後の TestProjects/ ↔ マーカー区間の再整合)
 

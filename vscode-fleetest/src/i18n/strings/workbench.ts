@@ -82,6 +82,19 @@ export const workbenchStrings = {
     en: "[fleetest] Project set to \"{project}\".",
   },
 
+  "workbench.defaultProject.creatingLog": {
+    ja: "[fleetest] 既定プロジェクト TestProjects/{project}/ が無いので作成します(fleetest project create)。",
+    en: "[fleetest] Default project TestProjects/{project}/ is missing; creating it (fleetest project create).",
+  },
+  "workbench.defaultProject.createdLog": {
+    ja: "[fleetest] 既定プロジェクト TestProjects/{project}/ を作成しました。",
+    en: "[fleetest] Created the default project TestProjects/{project}/.",
+  },
+  "workbench.defaultProject.createFailed": {
+    ja: "fleetest: 既定プロジェクト TestProjects/{project}/ を作成できませんでした。{detail}",
+    en: "fleetest: Could not create the default project TestProjects/{project}/. {detail}",
+  },
+
   "workbench.project.unresolvedWarning": {
     ja: "fleetest: 対象のテストプロジェクトを解決できませんでした。fleetest.project 設定を確認してください。",
     en: "fleetest: Could not resolve the target test project. Check the fleetest.project setting.",

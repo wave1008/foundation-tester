@@ -28,7 +28,7 @@ public enum ProjectScaffold {
         let project = TestProject(
             name: name,
             rootURL: ProjectStore.projectsDir(repoRoot: repoRoot).appendingPathComponent(name))
-        guard !FileManager.default.fileExists(atPath: project.rootURL.path) else {
+        guard canScaffold(into: project.rootURL) else {
             throw ProjectScaffoldError.alreadyExists(project.rootURL)
         }
         try create(project: project, app: app, platforms: platforms)
@@ -37,6 +37,21 @@ public enum ProjectScaffold {
             projectNames: ProjectStore.all(repoRoot: repoRoot).map(\.name),
             external: isExternalPackage(repoRoot: repoRoot))
         return project
+    }
+
+    /// 雛形を置いてよい場所か。無い、または**空のディレクトリ**なら可(受け手や拡張が先に
+    /// `mkdir` しただけの器を「既にある」で断らない)。中身が1つでもあれば不可 —— 上書きは
+    /// 受け手の資産を消す側に倒れる。`.DS_Store` だけは中身に数えない
+    public static func canScaffold(into rootURL: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: rootURL.path, isDirectory: &isDirectory) else {
+            return true
+        }
+        guard isDirectory.boolValue,
+              let entries = try? FileManager.default.contentsOfDirectory(atPath: rootURL.path) else {
+            return false
+        }
+        return entries.allSatisfy { $0 == ".DS_Store" }
     }
 
     /// 受け手のパッケージ(fleetest を SPM 依存として引く)か、fleetest 本体リポジトリかを判定する。

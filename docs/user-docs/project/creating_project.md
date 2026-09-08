@@ -63,7 +63,16 @@ Most commands accept `--project <name>`. When it is omitted, the tool resolves i
 
 1. If `TestProjects/` contains exactly one project, use it.
 2. Otherwise, fall back to the configured default project.
-3. Otherwise, fail with a list of candidate project names.
+3. Otherwise, use the project named `default` if there is one.
+4. Otherwise, fail with a list of candidate project names.
+
+## The `default` project
+
+When the VSCode extension starts, it creates `TestProjects/default/` with `fleetest project create default`
+if it is missing (or empty), and selects `default` initially while `fleetest.project` is empty. It is a
+ready-made place for your first scenarios (the app profile's bundle ID is a placeholder; replace it before
+running). To work in a project you created under another name, switch with the "Select project" command or
+the `fleetest.project` setting.
 
 ### Link
 - [index](../index.md)

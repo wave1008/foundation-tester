@@ -3,6 +3,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { resolveBinaryPath } from "./binaryPathResolve";
+import { type ProjectResolution, resolveProjectFrom } from "./projectResolution";
+
+export type { ProjectResolution } from "./projectResolution";
 
 export type Platform = "ios" | "android";
 
@@ -613,29 +616,13 @@ export function listMachineProfiles(workspaceRoot: string, project: string): Mac
 }
 
 
-export type ProjectResolution =
-  | { kind: "resolved"; project: string }
-  | { kind: "none" }
-  | { kind: "ambiguous"; candidates: string[] };
-
 /**
  * fleetest.project が設定されていればそれを優先。空なら TestProjects/ 直下から自動判定
- * (1つだけなら採用、0/複数は呼び出し側で誘導が必要)。
+ * (規則は projectResolution.ts。1つだけならそれ → `default` → 0/複数は呼び出し側で誘導が必要)。
  */
 export function resolveProjectName(
   workspaceRoot: string,
   config: FleetestConfig,
 ): ProjectResolution {
-  const configured = config.project.trim();
-  if (configured.length > 0) {
-    return { kind: "resolved", project: configured };
-  }
-  const candidates = listProjectCandidates(workspaceRoot);
-  if (candidates.length === 1) {
-    return { kind: "resolved", project: candidates[0]! };
-  }
-  if (candidates.length === 0) {
-    return { kind: "none" };
-  }
-  return { kind: "ambiguous", candidates };
+  return resolveProjectFrom(config.project, listProjectCandidates(workspaceRoot));
 }

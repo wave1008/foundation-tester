@@ -1,0 +1,10 @@
+{
+  "ios": {
+    "appName": "default",
+    "app": "com.example.myapp"
+  },
+  "android": {
+    "appName": "default",
+    "app": "com.example.myapp"
+  }
+}

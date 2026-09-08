@@ -60,6 +60,23 @@ final class ProjectStoreTests: XCTestCase {
         XCTAssertEqual(project.name, "Only")
     }
 
+    /// 省略時に複数あれば `default` という名前のプロジェクトを選ぶ(拡張が起動時に作る既定
+    /// プロジェクト。vscode-fleetest/src/projectResolution.ts と同じ規則)。LocalConfig の
+    /// defaultProject が指定されていればそちらが勝つ。名前はリテラルで固定する
+    func testFindPrefersProjectNamedDefaultWhenAmbiguous() throws {
+        try makeProject("Beta")
+        try makeProject("Alpha")
+        try makeProject("default")
+        XCTAssertEqual(ProjectStore.defaultProjectName, "default")
+
+        XCTAssertEqual(try ProjectStore.find(nil, repoRoot: repoRoot).name, "default")
+        XCTAssertEqual(try ProjectStore.find(nil, repoRoot: repoRoot, defaultProject: "Alpha").name,
+                       "Alpha", "LocalConfig の既定が `default` より優先")
+        XCTAssertEqual(try ProjectStore.find("Beta", repoRoot: repoRoot).name, "Beta", "明示が最優先")
+        XCTAssertEqual(try ProjectStore.find(nil, repoRoot: repoRoot, defaultProject: "Ghost").name,
+                       "default", "LocalConfig の既定が実在しなければ `default` へ落ちる")
+    }
+
     func testNameValidation() {
         XCTAssertTrue(ProjectStore.isValidName("SampleApp"))
         XCTAssertTrue(ProjectStore.isValidName("a-b_c1"))

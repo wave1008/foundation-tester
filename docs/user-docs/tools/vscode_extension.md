@@ -7,7 +7,11 @@ CLI used from the terminal, so behavior matches the CLI and MCP entry points.
 ## Test Explorer
 
 Scenarios appear in the Testing view as a folder → class → `@Test` method tree, built from
-`TestProjects/<project>/scenarios/**/*.swift`. Each test item offers three run profiles:
+`TestProjects/<project>/scenarios/**/*.swift`. The target `<project>` comes from the
+`fleetest.project` setting; when it is empty the extension auto-resolves it, creating
+`TestProjects/default/` on startup with `fleetest project create default` if it is missing and selecting
+that `default` project initially (see [Creating a project](../project/creating_project.md)). Each test
+item offers three run profiles:
 
 - **Run** — executes the scenario on a device.
 - **Run (dry-run)** — validates the scenario without a device (selector syntax, unreachable
@@ -115,7 +119,7 @@ Code's display language.
 | Setting | Default | Description |
 |---|---|---|
 | `fleetest.binaryPath` | `.build/debug/fleetest` | Path to the `fleetest` binary; falls back to `PATH` if not found |
-| `fleetest.project` | `""` | Test project name; auto-resolved when empty and only one project exists |
+| `fleetest.project` | `""` | Test project name; auto-resolved when empty (the only project, or `default` when there are several) |
 | `fleetest.profile` | `""` | Run profile name; when set, it decides devices/app instead of `fleetest.platform`/`port`/`serial` |
 | `fleetest.heal` | `false` | Enable `--set heal=true` on Run/Debug and open the self-healing review panel |
 | `fleetest.buildBeforeRun` | `true` | Build the Swift project before each run |
