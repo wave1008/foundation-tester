@@ -101,10 +101,34 @@ test("高さ自動調整ボタンと1つのグループに入り、そのすぐ�
   assert.equal(el.querySelectorAll("svg").length, 1);
 });
 
-test("台数が0のときは押せない", (t) => {
+// 台を待っている間(「デバイスを待機しています」)も切り替えられる —— ここで入れておけば
+// 出てきた台が選択された状態で並ぶ。押せなくすると待機中だけ状態を変えられない。
+
+test("台数が0でも押せる(待機中に入れておける)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  assert.equal(button(document).disabled, true);
+  assert.equal(button(document).disabled, false);
+  assert.equal(button(document).getAttribute("aria-pressed"), "false");
+
+  click(document, button(document));
+  assert.equal(button(document).getAttribute("aria-pressed"), "true", "0枚でも ON にできる");
+
+  sendDevices(window, 3);
+  assert.equal(selectedCount(document), 3, "出てきた台は選択された状態で並ぶ");
+});
+
+test("待機中に ON を解除できる(再起動で持ち越した ON を捨てる)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 2);
+  click(document, button(document));
+  restartMonitor(window, document);
+  assert.equal(button(document).getAttribute("aria-pressed"), "true", "前提: 待機中も ON のまま");
+
+  click(document, button(document));
+  assert.equal(button(document).getAttribute("aria-pressed"), "false");
+  sendDevices(window, 2);
+  assert.equal(selectedCount(document), 0, "解除したので選ばれない");
 });
 
 test("押すと全デバイスが選択され、もう一度押すと全解除される", (t) => {
@@ -145,27 +169,168 @@ test("右端の2つはネイティブ title ではなく自前ツールチップ
   }
 });
 
-test("デバイスが増えたら全選択の続きではなく「全選択」に戻る", (t) => {
+// 全選択が ON の間にフリートが増えたときの契約(ユーザー要求 2026-09-09)。
+// ON = 全タイルが選択済み(webview には別の旗が無い)。
+
+test("全選択が ON の間に増えたデバイスも選択に加わる", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, 2);
   click(document, button(document));
   assert.equal(button(document).getAttribute("aria-pressed"), "true");
 
-  sendDevices(window, 3); // 3台目が起動 = 全部は選ばれていない
-  assert.equal(button(document).getAttribute("aria-pressed"), "false", "押せば残り1台も選べる");
+  sendDevices(window, 3); // 3台目が起動
+  assert.equal(selectedCount(document), 3, "後から現れた台も選択される");
+  assert.equal(button(document).getAttribute("aria-pressed"), "true", "ON のまま");
+  assert.equal(document.querySelectorAll("#grid .tile").length, 3);
+});
+
+/**
+ * jsdom にはレイアウトが無いので、タイルの当たり矩形を自分で置く(webviewFleetMarquee と同じ形)。
+ * 幅 100・間隔 10・高さ 200 のタイルを横に並べ、その中の画像を 80x140 に置く。
+ */
+function layoutTiles(document) {
+  const stub = (el, left, top, width, height) => {
+    el.getBoundingClientRect = () => ({
+      left, top, width, height, right: left + width, bottom: top + height, x: left, y: top,
+    });
+  };
+  stub(document.getElementById("tile-pane"), 0, 0, 1000, 300);
+  tiles(document).forEach((tile, i) => {
+    stub(tile, i * 110, 0, 100, 200);
+    stub(tile.querySelector(".frame-wrap"), i * 110 + 10, 30, 80, 140);
+  });
+}
+
+/** 画像の中心をクリックして1台の選択をトグルする(当たり判定は座標で決まる)。 */
+function clickImage(window, document, index) {
+  const target = document.querySelectorAll("#grid .tile .frame-wrap")[index];
+  const [x, y] = [index * 110 + 50, 100];
+  target.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+  target.dispatchEvent(new window.MouseEvent("pointerup", { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+}
+
+test("全選択が OFF のときは増えたデバイスを選ばない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 2);
+  assert.equal(selectedCount(document), 0, "前提: 何も選んでいない");
+
+  sendDevices(window, 3);
+  assert.equal(selectedCount(document), 0);
+
+  // 一部だけ選んだ状態(= OFF)でも同じ
+  layoutTiles(document);
+  clickImage(window, document, 0);
+  assert.equal(selectedCount(document), 1, "前提: 1台だけ選択");
+  sendDevices(window, 4);
+  assert.equal(selectedCount(document), 1, "増えた台は選ばない");
+});
+
+test("全選択のまま台が減っても ON のまま(残りは全部選択)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
   click(document, button(document));
+  sendDevices(window, 2);
+  assert.equal(selectedCount(document), 2);
+  assert.equal(button(document).getAttribute("aria-pressed"), "true");
+
+  // 減ってから増えた場合も続く
+  sendDevices(window, 3);
   assert.equal(selectedCount(document), 3);
 });
 
-test("全部消えたら押せない状態に戻る", (t) => {
+/** ツールバーの「モニター再起動」。タイルを全部捨ててから host が新しい devices を送り直す。 */
+function restartMonitor(window, document) {
+  document.getElementById("btn-restart").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+}
+
+test("モニター再起動を挟んでも ON は続く(戻ってきた台を選び直させない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  click(document, button(document));
+  assert.equal(selectedCount(document), 3, "前提: ON");
+
+  restartMonitor(window, document);
+  assert.equal(document.querySelectorAll("#grid .tile").length, 0, "タイルは作り直す");
+  assert.equal(button(document).getAttribute("aria-pressed"), "true", "待機中も ON を保つ");
+
+  sendDevices(window, 3);
+  assert.equal(selectedCount(document), 3, "戻ってきた台は選択された状態で出る");
+  assert.equal(button(document).getAttribute("aria-pressed"), "true");
+});
+
+test("再起動後に別のデバイスが返ってきても選択と台数がずれない(古い id を持ち越さない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  click(document, button(document));
+
+  restartMonitor(window, document);
+  // 再起動後に見つかったのが別の3台(id が変わる)。古い id を残すと選択の数だけ増え、
+  // 全部が選択表示なのにボタンは「未選択」を指す状態になる。
+  const devices = Array.from({ length: 3 }, (_, i) => ({
+    id: `x${i}`, name: `Other ${i}`, platform: "ios", state: "booted", kind: "virtual",
+    udid: `UDID-X${i}`, recording: false,
+  }));
+  window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices } }));
+
+  assert.equal(selectedCount(document), 3);
+  assert.equal(button(document).getAttribute("aria-pressed"), "true");
+});
+
+test("OFF のまま再起動したら ON にはならない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  restartMonitor(window, document);
+  sendDevices(window, 3);
+  assert.equal(selectedCount(document), 0);
+});
+
+test("全解除してから再起動しても ON にはならない(据え置くのは0枚の間だけ)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  click(document, button(document));
+  click(document, button(document)); // 全解除
+  assert.equal(selectedCount(document), 0, "前提: OFF");
+
+  restartMonitor(window, document);
+  sendDevices(window, 3);
+  assert.equal(selectedCount(document), 0);
+});
+
+test("「すべて終了」で0台になっても ON は続く(起動し直した台は選択されて出る)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  click(document, button(document));
+
+  sendDevices(window, 0); // 全台シャットダウン
+  sendDevices(window, 3); // 起動し直し
+  assert.equal(selectedCount(document), 3);
+});
+
+test("0台を挟んでも OFF は OFF のまま(空を「全部選ばれている」と読まない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  sendDevices(window, 0);
+  sendDevices(window, 3);
+  assert.equal(selectedCount(document), 0);
+});
+
+test("全部消えても押せる状態のまま(ON は据え置く)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, 2);
   click(document, button(document));
   sendDevices(window, 0);
-  assert.equal(button(document).disabled, true);
-  assert.equal(button(document).getAttribute("aria-pressed"), "false");
+  assert.equal(button(document).disabled, false);
+  assert.equal(button(document).getAttribute("aria-pressed"), "true");
 });
 
 // ---- Cmd/Ctrl+A(フリートを触っている間だけ) ----
@@ -340,6 +505,24 @@ test("メニューの「すべて選択」はデバイスを全選択し、テ�
 
   assert.equal(selectedCount(document), 3);
   assert.equal(cleared, 1, "Cmd/Ctrl+A と同じ扱い");
+});
+
+test("台を待っている間もメニューから ON/OFF できる(空きエリアの右クリック)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const grid = document.getElementById("grid");
+  grid.dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+  assert.equal(menuSelectAll(document).disabled, false, "0枚でも選択側は押せる");
+  assert.equal(menuDeselectAll(document).disabled, true, "OFF のときの解除は結果が変わらない");
+
+  click(document, menuSelectAll(document));
+  sendDevices(window, 2);
+  assert.equal(selectedCount(document), 2);
+
+  // ON になったので、次は解除側だけが押せる
+  grid.dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+  assert.equal(menuSelectAll(document).disabled, true);
+  assert.equal(menuDeselectAll(document).disabled, false);
 });
 
 test("メニューの「すべて解除」も同じ", (t) => {

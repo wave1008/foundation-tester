@@ -18,12 +18,11 @@ import {
   showBanner,
   hideBanner,
   setBusy,
-  closeDeviceOpMenu,
+  clearTilesForRestart,
   applyDeviceOpBusy,
   applyDeviceOpFailed,
   applyDeviceDownFinished,
   tiles,
-  selectedDeviceIds,
   applyProfileInfo,
   applyBridgeWatch,
   applyHealthWatch,
@@ -279,13 +278,8 @@ btnUp.addEventListener('click', () => {
 btnDown.addEventListener('click', () => vscode.postMessage({ type: 'devicesDown' }));
 btnRestart.addEventListener('click', () => {
   hideBanner();
-  closeDeviceOpMenu();
-  for (const entry of tiles.values()) {
-    entry.tile.remove();
-  }
-  tiles.clear();
-  selectedDeviceIds.clear();
-  emptyMessage.style.display = 'flex';
+  // タイルと選択の掃除は deviceTiles.js が持つ(全選択の ON はそちらで据え置く)。
+  clearTilesForRestart();
   vscode.postMessage({ type: 'restartMonitor' });
 });
 

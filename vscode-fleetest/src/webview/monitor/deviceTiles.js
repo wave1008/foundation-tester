@@ -118,6 +118,17 @@ export const tiles = new Map();
 let bulkOpActive = null;
 // 空 = 全ワーカー表示(絞り込みなし)
 export const selectedDeviceIds = new Set();
+// 「デバイスをすべて選択」が入っているか。台が1枚でも居る間は**選択の集合から導く**
+// (トグルの向きと挙動を2箇所に持たない)が、**フリートが空の間だけ据え置く** ——
+// モニター再起動や「すべて終了」で0枚になっても ON を落とさない = 戻ってきた台を選び直させない。
+let selectAllOn = false;
+
+// tiles / selectedDeviceIds のどちらかが変わったら呼ぶ(0枚のときは据え置き)。
+function refreshSelectAllState() {
+  if (tiles.size > 0) {
+    selectAllOn = selectedDeviceIds.size === tiles.size;
+  }
+}
 
 // 出力ペインの拡大表示(選択したデバイスぶん。DOM は laneLog.js が用意し attach/detach を呼ぶ)。
 // canvas も img も DOM の2箇所には置けないので「複製」で描く: mjpeg は同じ data URL を別の img へ、
@@ -818,22 +829,26 @@ function openDeviceOpMenu(entry, clientX, clientY) {
 }
 
 // 「すべて選択」「すべて解除」は今の状態で押せるかが決まる(結果が変わらないなら押させない)。
+// 判定はツールバーのトグルと同じ旗で行う —— 0枚でも ON/OFF は意味を持つ(出てきた台を
+// 選ぶかどうか)ので、台数では無効化しない。
 function renderSelectionMenuItems() {
-  deviceOpMenuSelectAllBtn.disabled = tiles.size === 0 || selectedDeviceIds.size === tiles.size;
-  deviceOpMenuDeselectAllBtn.disabled = selectedDeviceIds.size === 0;
+  deviceOpMenuSelectAllBtn.disabled = selectAllOn;
+  deviceOpMenuDeselectAllBtn.disabled = !selectAllOn && selectedDeviceIds.size === 0;
 }
 
 // ツールバーの全選択トグル。**全部選ばれているときだけ解除側**になる(部分選択から押した
-// ときに選択が消えると、選び直しの手間が大きい)。台数が変わっても押せるかは変わらないので
-// 無効化は「1台も居ない」ときだけ。
+// ときに選択が消えると、選び直しの手間が大きい)。
+// **これが「全選択が ON か」の唯一の定義**(旗を書くのは refreshSelectAllState と
+// selectAllDevices/deselectAllDevices だけ)。
 function selectAllIsDeselect() {
-  return tiles.size > 0 && selectedDeviceIds.size === tiles.size;
+  return selectAllOn;
 }
 
+// **0枚でも押せる**(disabled にしない) —— 台を待っている間に入れておけば、出てきた台が
+// 選択された状態で並ぶ。押せなくすると「待機しています」の間だけ切り替えられない。
 function renderSelectAllButton() {
   const deselect = selectAllIsDeselect();
   const label = t(deselect ? 'wvMonitor.toolbar.deselectAll' : 'wvMonitor.toolbar.selectAll');
-  btnSelectAll.disabled = tiles.size === 0;
   btnSelectAll.classList.toggle('toggled', deselect);
   btnSelectAll.setAttribute('aria-pressed', deselect ? 'true' : 'false');
   // ネイティブ title ではなく自前ツールチップ(0.2秒)。setHoverTip が title を空にするので
@@ -842,24 +857,31 @@ function renderSelectAllButton() {
   btnSelectAll.setAttribute('aria-label', label);
 }
 
-function toggleSelectAll() {
-  if (tiles.size === 0) {
-    return;
+// 全選択の ON/OFF を切り替える口はこの2つだけ(ツールバー・Cmd/Ctrl+A・右クリックメニューが
+// 共有する)。**旗をここで明示的に書く** —— 0枚のときは選択の集合から導けないため。
+function selectAllDevices() {
+  for (const id of tiles.keys()) {
+    selectedDeviceIds.add(id);
   }
-  if (selectAllIsDeselect()) {
-    selectedDeviceIds.clear();
-  } else {
-    for (const id of tiles.keys()) {
-      selectedDeviceIds.add(id);
-    }
-  }
+  selectAllOn = true;
   updateSelectionUi();
 }
 
-btnSelectAll.addEventListener('click', () => {
-  if (btnSelectAll.disabled) {
-    return;
+function deselectAllDevices() {
+  selectedDeviceIds.clear();
+  selectAllOn = false;
+  updateSelectionUi();
+}
+
+function toggleSelectAll() {
+  if (selectAllIsDeselect()) {
+    deselectAllDevices();
+  } else {
+    selectAllDevices();
   }
+}
+
+btnSelectAll.addEventListener('click', () => {
   toggleSelectAll();
 });
 
@@ -936,7 +958,7 @@ document.addEventListener('keydown', (event) => {
   dropTextSelection();
 }, true);
 
-// 初期表示(devices が1度も届いていない間)。押せない状態と説明を先に入れておく。
+// 初期表示(devices が1度も届いていない間)。説明とトグルの向きを先に入れておく。
 renderSelectAllButton();
 
 deviceOpMenuSelectAllBtn.addEventListener('click', (event) => {
@@ -944,10 +966,7 @@ deviceOpMenuSelectAllBtn.addEventListener('click', (event) => {
   if (deviceOpMenuSelectAllBtn.disabled) {
     return;
   }
-  for (const id of tiles.keys()) {
-    selectedDeviceIds.add(id);
-  }
-  updateSelectionUi();
+  selectAllDevices();
   dropTextSelection(); // Cmd/Ctrl+A と同じ扱い(dropTextSelection の doc 参照)
   closeDeviceOpMenu();
 });
@@ -957,8 +976,7 @@ deviceOpMenuDeselectAllBtn.addEventListener('click', (event) => {
   if (deviceOpMenuDeselectAllBtn.disabled) {
     return;
   }
-  selectedDeviceIds.clear();
-  updateSelectionUi();
+  deselectAllDevices();
   dropTextSelection();
   closeDeviceOpMenu();
 });
@@ -1060,6 +1078,21 @@ function clearTileError(entry) {
   entry.errorEl.removeAttribute('title');
 }
 
+// モニター再起動でタイルを作り直す前の掃除(呼び手は main.js の再起動ボタン)。
+// **selectAllOn は畳まない** —— 0枚の間だけ据え置き、戻ってきた台を applyDevices が選び直す
+// (再起動のたびに全選択が外れると、8台構成では毎回押し直しになる)。
+export function clearTilesForRestart() {
+  closeDeviceOpMenu();
+  for (const entry of tiles.values()) {
+    disposeH264(entry);
+    entry.tile.remove();
+  }
+  tiles.clear();
+  selectedDeviceIds.clear();
+  emptyMessage.style.display = 'flex';
+  renderSelectAllButton();
+}
+
 export function applyDevices(devices) {
   const previousTileCount = tiles.size;
   // リモートのデバイスが混ざる構成でだけホスト名の段を出す(全タイルで高さを揃えるため
@@ -1070,6 +1103,13 @@ export function applyDevices(devices) {
     grid.classList.toggle('with-machine-row', nextMachineRow);
     notifyTileLayoutChanged('deviceCount');
   }
+  // 全選択が ON(= 今の全タイルが選択済み)の間は、**後から現れたデバイスも選択に足す**
+  // = フリートが増えても「全部選択」のままにする(ユーザー要求 2026-09-09)。判定は
+  // タイルを増やす前に採る —— 1台でも足すと等号が崩れて ON が読めなくなる。
+  // **selectAllIsDeselect() ではなく旗そのものを読む** —— 再起動直後は0枚なのであちらは
+  // 常に OFF を返し、戻ってきた台が選ばれない。
+  const wasAllSelected = selectAllOn;
+  let selectionGrew = false;
   const seen = new Set();
   for (const device of devices) {
     seen.add(device.id);
@@ -1077,6 +1117,10 @@ export function applyDevices(devices) {
     if (!entry) {
       entry = createTile(device);
       entry.runningBadgeEl.style.display = runningWorkers.has(device.id) ? 'inline-block' : 'none';
+      if (wasAllSelected) {
+        selectedDeviceIds.add(device.id);
+        selectionGrew = true;
+      }
     } else {
       entry.device = device;
       // **新しい観測が来た = 起動直後の空白は終わり**(下の awaitingStateAfterUp を必ずここで畳む)。
@@ -1142,7 +1186,14 @@ export function applyDevices(devices) {
   // renderMeta では最初の数枚が古い判定のまま残る)。
   renderUnregisteredBadges();
   // 選択そのものは変わらなくても、台数が変われば全選択トグルの向き(選択/解除)は変わる。
-  renderSelectAllButton();
+  // 増えたデバイスを選択に足したときは、タイルの選択表示も付け直す(updateSelectionUi は
+  // ボタンの描き直しを含むので二重には呼ばない)。
+  refreshSelectAllState();
+  if (selectionGrew) {
+    updateSelectionUi();
+  } else {
+    renderSelectAllButton();
+  }
   relayoutTiles();
   // devices は数秒ごとのポーリングで届くため、台数が変わったときだけ通知する
   // (毎サイクル通知すると auto-fit の再計測が無駄に走る)。
@@ -1534,6 +1585,7 @@ function toggleDeviceSelection(id) {
 }
 
 function updateSelectionUi() {
+  refreshSelectAllState();
   for (const [id, entry] of tiles) {
     entry.tile.classList.toggle('selected', selectedDeviceIds.has(id));
   }
@@ -1614,9 +1666,11 @@ function applyTileClickAt(x, y) {
   if (deviceBandContainsY(y)) {
     return;
   }
+  // 台が居る間はここで旗も落ちる(選択が空 ≠ 台数 → refreshSelectAllState が OFF にする)。
+  // **0枚のときは触らない** —— 見えている選択が無いので、待機中に入れておいた ON を
+  // 空きエリアのクリックで黙って外さない(外す口はトグルとメニューの「すべて解除」)。
   if (selectedDeviceIds.size > 0) {
-    selectedDeviceIds.clear();
-    updateSelectionUi();
+    deselectAllDevices();
   }
 }
 
