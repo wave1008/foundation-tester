@@ -441,7 +441,8 @@ public final class FTDriveCore {
                                      releasesScrollTouch: platform == "ios",
                                      isAndroid: platform == "android",
                                      uiFramework: uiFramework,
-                                     containerInference: containerInference)
+                                     containerInference: containerInference,
+                                     commandTimeoutSeconds: FTSync.commandTimeout)
         self.scenarioID = scenarioID
         self.scenarioTitle = scenarioTitle
         self.dryRun = dryRun

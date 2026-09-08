@@ -186,6 +186,14 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 報告から説明できるように残す。判定は `ReinstallSource`
     case reinstalledToClearData = "reinstalled-to-clear-data"
 
+    /// snapshot 1回の実測がこのステップの待ち予算(`step.timeout ?? FlowStep.defaultWaitSeconds`)を
+    /// 超えた(`TimelineStepRecord.snapshotMs` で内訳を追える)。**判定は変えない** ——
+    /// このステップの合否とは無関係に、遅かった事実だけを残す。`SlowSnapshotBudget` が
+    /// 期限後の追加取り直しをこの所要を根拠に止める判断の材料と同じ計測値。
+    /// **率が上がったらフリートの供給が詰まっている**(冷えたフリートでブリッジの
+    /// a11y ツリー直列化が伸びる形の先行指標)
+    case slowSnapshot = "slow-snapshot"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -227,6 +235,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .reinstalledToClearData:
             return "a physical device has no clearAppData, so the app was reinstalled instead —"
                 + " permission grants are reset too, so the next launch can show system alerts"
+        case .slowSnapshot:
+            return "a single snapshot took longer than this step's wait budget"
         case .visibilityGuardSkipped:
             return "the FM visibility check gave no verdict, so this passed on tree presence and"
                 + " on-screen geometry alone"

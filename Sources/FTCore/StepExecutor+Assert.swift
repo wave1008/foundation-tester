@@ -529,7 +529,9 @@ extension StepExecutor {
             guard result.found else { return failed(.notFound, Self.scrollNotFoundMessage(step, result)) }
         }
         var deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        let stepStart = clock.now
         var freshRetry = AssertFreshRetry()
+        var lastSnapshotMs = 0
         var backoff = PollBackoff()
         var primaryMisses = 0
         // occlusion-guard: 要素が見つかっても覆われている場合、過渡的オーバーレイ(ローディング/
@@ -546,7 +548,13 @@ extension StepExecutor {
             var start = clock.now
             if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
-            phase.snapshotMs += Self.ms(clock.now - start)
+            if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
+            let snapshotMs = Self.ms(clock.now - start)
+            phase.snapshotMs += snapshotMs
+            lastSnapshotMs = snapshotMs
+            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+                noteCodesThisStep.insert(.slowSnapshot)
+            }
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
             // **見つからないのは上限で間引かれたからかもしれない**。否定側だけ
@@ -604,11 +612,19 @@ extension StepExecutor {
             }
             if Date() >= deadline {   // 初回照会後にここで離脱(timeout==0 も含む)
                 // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
-                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                if SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
+                                                lastSnapshotMs: lastSnapshotMs,
+                                                commandTimeoutMs: commandTimeoutMs),
+                   freshRetry.arm(ifSupported: driver.supportsCacheBypass) {
+                    continue
+                }
                 // launch storyboard(一様色)を実 occlusion と誤らないよう、このステップの
                 // 予算をもう一度だけ払って待ち直す。延長幅はこの deadline を作った式の再利用
                 // (`step.timeout ?? FlowStep.defaultWaitSeconds`)—— 新しい定数は置かない
-                if !firstFrameExtended, firstFrameBlankObserved, lastOcclusion != nil {
+                if !firstFrameExtended, firstFrameBlankObserved, lastOcclusion != nil,
+                   SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
+                                                lastSnapshotMs: lastSnapshotMs,
+                                                commandTimeoutMs: commandTimeoutMs) {
                     firstFrameExtended = true
                     deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
                     noteCodesThisStep.insert(.firstFramePending)
@@ -641,7 +657,9 @@ extension StepExecutor {
             return .skipped("expected was not specified")
         }
         var deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        let stepStart = clock.now
         var freshRetry = AssertFreshRetry()
+        var lastSnapshotMs = 0
         var lastActual: String?
         var found = false
         var backoff = PollBackoff()
@@ -662,7 +680,13 @@ extension StepExecutor {
             var start = clock.now
             if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
-            phase.snapshotMs += Self.ms(clock.now - start)
+            if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
+            let snapshotMs = Self.ms(clock.now - start)
+            phase.snapshotMs += snapshotMs
+            lastSnapshotMs = snapshotMs
+            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+                noteCodesThisStep.insert(.slowSnapshot)
+            }
             try await dismissInterruption(in: &snapshot, phase: &phase)
             // 見つからないのは上限で間引かれたからかもしれない(exists 側 331〜334行と同じ型)
             if snapshot.truncatedCount > 0, !needsCeiling,
@@ -732,11 +756,19 @@ extension StepExecutor {
             }
             if Date() >= deadline {   // 初回照会後にここで離脱(timeout==0 も含む)
                 // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
-                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                if SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
+                                                lastSnapshotMs: lastSnapshotMs,
+                                                commandTimeoutMs: commandTimeoutMs),
+                   freshRetry.arm(ifSupported: driver.supportsCacheBypass) {
+                    continue
+                }
                 // launch storyboard(一様色)を実 occlusion と誤らないよう、このステップの
                 // 予算をもう一度だけ払って待ち直す。延長幅はこの deadline を作った式の再利用
                 // (`step.timeout ?? FlowStep.defaultWaitSeconds`)—— 新しい定数は置かない
-                if !firstFrameExtended, firstFrameBlankObserved, lastOcclusion != nil {
+                if !firstFrameExtended, firstFrameBlankObserved, lastOcclusion != nil,
+                   SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
+                                                lastSnapshotMs: lastSnapshotMs,
+                                                commandTimeoutMs: commandTimeoutMs) {
                     firstFrameExtended = true
                     deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
                     noteCodesThisStep.insert(.firstFramePending)
@@ -828,7 +860,9 @@ extension StepExecutor {
         // 「消えるまで待つ」。初回で不在なら即 pass、在るならタイムアウトまで消滅を待つ。
         // 可視性(occlusion)は見ない: ツリーから消えたことが唯一の判定。
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        let stepStart = clock.now
         var freshRetry = AssertFreshRetry()
+        var lastSnapshotMs = 0
         // 否定形を通す前の確認は1周だけ(上の continue が deadline 検査を飛ばすため)
         var passConfirmed = false
         var backoff = PollBackoff()
@@ -839,7 +873,13 @@ extension StepExecutor {
             let start = clock.now
             if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
-            phase.snapshotMs += Self.ms(clock.now - start)
+            if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
+            let snapshotMs = Self.ms(clock.now - start)
+            phase.snapshotMs += snapshotMs
+            lastSnapshotMs = snapshotMs
+            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+                noteCodesThisStep.insert(.slowSnapshot)
+            }
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
             var resolved = Self.resolve(step: step, in: snapshot, strictForAssert: true)
@@ -897,7 +937,12 @@ extension StepExecutor {
             }
             if Date() >= deadline {
                 // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
-                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                if SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
+                                                lastSnapshotMs: lastSnapshotMs,
+                                                commandTimeoutMs: commandTimeoutMs),
+                   freshRetry.arm(ifSupported: driver.supportsCacheBypass) {
+                    continue
+                }
                 break
             }
             let waitStart = clock.now
@@ -920,7 +965,9 @@ extension StepExecutor {
             return .skipped("expected was not specified")
         }
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        let stepStart = clock.now
         var freshRetry = AssertFreshRetry()
+        var lastSnapshotMs = 0
         // 否定形を通す前の確認は1周だけ(上の continue が deadline 検査を飛ばすため)
         var passConfirmed = false
         var backoff = PollBackoff()
@@ -940,7 +987,13 @@ extension StepExecutor {
             let start = clock.now
             if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
-            phase.snapshotMs += Self.ms(clock.now - start)
+            if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
+            let snapshotMs = Self.ms(clock.now - start)
+            phase.snapshotMs += snapshotMs
+            lastSnapshotMs = snapshotMs
+            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+                noteCodesThisStep.insert(.slowSnapshot)
+            }
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
             // **要素は在ることが前提の経路**: 未発見のときだけ撮り直す(exists 側 331〜334行と同じ型)。
@@ -977,7 +1030,12 @@ extension StepExecutor {
             }
             if Date() >= deadline {
                 // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
-                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                if SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
+                                                lastSnapshotMs: lastSnapshotMs,
+                                                commandTimeoutMs: commandTimeoutMs),
+                   freshRetry.arm(ifSupported: driver.supportsCacheBypass) {
+                    continue
+                }
                 break
             }
             let waitStart = clock.now
@@ -1028,7 +1086,9 @@ extension StepExecutor {
         let clock = ContinuousClock()
         let wantEnabled = assert == "enabled"
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        let stepStart = clock.now
         var freshRetry = AssertFreshRetry()
+        var lastSnapshotMs = 0
         var backoff = PollBackoff()
         var found = false
         /// 失敗文言に切り詰めを添えるための直近の観測
@@ -1039,7 +1099,13 @@ extension StepExecutor {
             let start = clock.now
             if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
-            phase.snapshotMs += Self.ms(clock.now - start)
+            if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
+            let snapshotMs = Self.ms(clock.now - start)
+            phase.snapshotMs += snapshotMs
+            lastSnapshotMs = snapshotMs
+            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+                noteCodesThisStep.insert(.slowSnapshot)
+            }
             try await dismissInterruption(in: &snapshot, phase: &phase)
             // 見つからないのは上限で間引かれたからかもしれない(exists 側 331〜334行と同じ型)
             if snapshot.truncatedCount > 0, !needsCeiling,
@@ -1059,7 +1125,12 @@ extension StepExecutor {
             }
             if Date() >= deadline {
                 // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
-                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                if SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
+                                                lastSnapshotMs: lastSnapshotMs,
+                                                commandTimeoutMs: commandTimeoutMs),
+                   freshRetry.arm(ifSupported: driver.supportsCacheBypass) {
+                    continue
+                }
                 break
             }
             let waitStart = clock.now
@@ -1084,7 +1155,9 @@ extension StepExecutor {
         let clock = ContinuousClock()
         let wantShown = assert == "keyboardShown"
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        let stepStart = clock.now
         var freshRetry = AssertFreshRetry()
+        var lastSnapshotMs = 0
         // 否定形を通す前の確認は1周だけ(上の continue が deadline 検査を飛ばすため)
         var passConfirmed = false
         var backoff = PollBackoff()
@@ -1093,7 +1166,13 @@ extension StepExecutor {
             driver.captureKeyboardStateOnNextSnapshot()
             let start = clock.now
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
-            phase.snapshotMs += Self.ms(clock.now - start)
+            if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
+            let snapshotMs = Self.ms(clock.now - start)
+            phase.snapshotMs += snapshotMs
+            lastSnapshotMs = snapshotMs
+            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+                noteCodesThisStep.insert(.slowSnapshot)
+            }
             try await dismissInterruption(in: &snapshot, phase: &phase)
             lastShown = snapshot.keyboardShown
             if snapshot.keyboardShown == wantShown {
@@ -1109,7 +1188,12 @@ extension StepExecutor {
             }
             if Date() >= deadline {
                 // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
-                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                if SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
+                                                lastSnapshotMs: lastSnapshotMs,
+                                                commandTimeoutMs: commandTimeoutMs),
+                   freshRetry.arm(ifSupported: driver.supportsCacheBypass) {
+                    continue
+                }
                 break
             }
             let waitStart = clock.now
@@ -1132,7 +1216,9 @@ extension StepExecutor {
         // 「状態が違う」と「見つからない」を別メッセージにするのは enabled と同じ規律
         let wantChecked = assert == "checked"
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        let stepStart = clock.now
         var freshRetry = AssertFreshRetry()
+        var lastSnapshotMs = 0
         var backoff = PollBackoff()
         var found = false
         /// 失敗文言に切り詰めを添えるための直近の観測
@@ -1143,7 +1229,13 @@ extension StepExecutor {
             let start = clock.now
             if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
-            phase.snapshotMs += Self.ms(clock.now - start)
+            if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
+            let snapshotMs = Self.ms(clock.now - start)
+            phase.snapshotMs += snapshotMs
+            lastSnapshotMs = snapshotMs
+            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+                noteCodesThisStep.insert(.slowSnapshot)
+            }
             try await dismissInterruption(in: &snapshot, phase: &phase)
             // 見つからないのは上限で間引かれたからかもしれない(exists 側 331〜334行と同じ型)
             if snapshot.truncatedCount > 0, !needsCeiling,
@@ -1165,7 +1257,12 @@ extension StepExecutor {
             }
             if Date() >= deadline {
                 // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
-                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                if SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
+                                                lastSnapshotMs: lastSnapshotMs,
+                                                commandTimeoutMs: commandTimeoutMs),
+                   freshRetry.arm(ifSupported: driver.supportsCacheBypass) {
+                    continue
+                }
                 break
             }
             let waitStart = clock.now
@@ -1191,7 +1288,9 @@ extension StepExecutor {
         // 節の優先順位が効くのは要素を1つ選ぶときだけで、数えるときは節を跨いで合計する
         let chain = [locator] + (step.fallbacks ?? [])
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        let stepStart = clock.now
         var freshRetry = AssertFreshRetry()
+        var lastSnapshotMs = 0
         var backoff = PollBackoff()
         var actual = 0
         var breakdown: [(clause: FlowLocator, elements: [ElementInfo])] = []
@@ -1204,7 +1303,13 @@ extension StepExecutor {
             let start = clock.now
             if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
-            phase.snapshotMs += Self.ms(clock.now - start)
+            if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
+            let snapshotMs = Self.ms(clock.now - start)
+            phase.snapshotMs += snapshotMs
+            lastSnapshotMs = snapshotMs
+            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+                noteCodesThisStep.insert(.slowSnapshot)
+            }
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
             // **件数は木の完全性がそのまま結果になる**(間引かれた分は「無い」と区別が付かない)。
@@ -1232,7 +1337,12 @@ extension StepExecutor {
             }
             if Date() >= deadline {
                 // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
-                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                if SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
+                                                lastSnapshotMs: lastSnapshotMs,
+                                                commandTimeoutMs: commandTimeoutMs),
+                   freshRetry.arm(ifSupported: driver.supportsCacheBypass) {
+                    continue
+                }
                 break
             }
             let waitStart = clock.now

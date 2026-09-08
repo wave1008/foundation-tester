@@ -43,6 +43,9 @@ final class FakeAppDriver: AppDriver {
     /// SnapshotResponse.overlayWindowFrames(木に出ないオーバーレイ・ウィンドウの申告。
     /// keyboardFrame と同じく全 snapshot() 呼び出しに一律で乗せる)
     var overlayWindowFrames: [FTRect]?
+    /// テスト専用: snapshot() を返す前にこの分だけ待つ(SlowSnapshotBudget の配線を実際の
+    /// StepExecutor ループで検証するため。nil = 待たない)
+    var snapshotDelay: Duration?
 
     init(name: String, log: CallLog, snapshotElements: [[ElementInfo]] = [],
          screenshots: [Data]? = nil) {
@@ -82,6 +85,7 @@ final class FakeAppDriver: AppDriver {
         // (testItGivesUpWithinTheBudget…)は、どこかに協調的な打ち切り点が無いと
         // Task.cancel() が届かず**ハングして「生き残り」に見える**
         try Task.checkCancellation()
+        if let snapshotDelay { try? await Task.sleep(for: snapshotDelay) }
         snapshotCallCount += 1
         log.entries.append("\(name).snapshot")
         let elements: [ElementInfo]

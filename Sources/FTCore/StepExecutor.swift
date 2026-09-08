@@ -489,6 +489,12 @@ public final class StepExecutor {
     /// **DSL には展開する者がいない**ので false のまま = 逆走査が唯一の救済として残る
     let defersPartialSheetRecovery: Bool
 
+    /// FTDSL コマンド1回分の外枠(`FTDSL.FTSync.commandTimeout`)をミリ秒にしたもの。
+    /// **FTCore から FTDSL は参照できない**ため、呼び出し側(FTRuntime)が渡す値をそのまま持つ
+    /// だけで、ここでは既定値を作らない。nil は「外枠を持たない呼び出し元」(MCP 等)を表し、
+    /// `SlowSnapshotBudget.mayRetake` は常に許可を返す = 従来どおり
+    let commandTimeoutMs: Int?
+
     /// 画面が変わり得る操作の直後に呼び、スクショ再利用キャッシュを捨てる(performCustom から呼ぶ)。
     public func invalidateScreenshotCache() { cachedScreenshot = nil }
 
@@ -521,12 +527,14 @@ public final class StepExecutor {
                 isAndroid: Bool,
                 uiFramework: String? = nil,
                 containerInference: Bool = true,
-                defersPartialSheetRecovery: Bool = false) {
+                defersPartialSheetRecovery: Bool = false,
+                commandTimeoutSeconds: TimeInterval? = nil) {
         self.releasesScrollTouch = releasesScrollTouch
         self.isAndroid = isAndroid
         self.uiFramework = uiFramework
         self.containerInference = containerInference
         self.defersPartialSheetRecovery = defersPartialSheetRecovery
+        self.commandTimeoutMs = commandTimeoutSeconds.map { Int($0 * 1000) }
         self.driver = driver
         self.fallbackDriver = fallbackDriver
         self.typeDriver = typeDriver
