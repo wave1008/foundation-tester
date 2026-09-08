@@ -46,6 +46,9 @@ git URL へ依存させます(`--fleetest-branch` で追従するブランチを
 | `fleetest project create <name> [--app-id <bundleID>] [--platform ios\|android\|both]` | 新しいテストプロジェクトを作成し `Package.swift` に登録する |
 | `fleetest project list` | テストプロジェクトの一覧と `Package.swift` への登録有無を表示する |
 | `fleetest project sync` | `TestProjects/` を走査して `Package.swift` のマーカー区間を再生成する(手動コピーや `git pull` の後に実行する) |
+| `fleetest project copy <source> <newName>` | プロジェクトを新しい名前で複製し `Package.swift` に登録する。実行の産物とキャッシュ(`reports/`・`results/`・`.fleetest/`)は複製されないので、複製先はまっさらな状態から始まる |
+| `fleetest project rename <oldName> <newName>` | プロジェクトのディレクトリを改名し `Package.swift` を更新する |
+| `fleetest project delete <name> --yes` | プロジェクトのディレクトリをゴミ箱へ移し(完全削除ではない)`Package.swift` から除く。`--yes` は必須 —— 付けなければ何も削除されない |
 
 `Package.swift` のマーカー区間(`// === fleetest projects begin/end ===` の間)は
 `create`/`sync` が全置換で再生成するので、手で編集しないでください。

@@ -1,5 +1,5 @@
 // テストプロジェクト・マシン名・実行プロファイルの管理 CLI。
-//   fleetest project create/list/sync … TestProjects/<name>/ と Package.swift マーカー区間の管理
+//   fleetest project create/copy/rename/delete/list/sync … TestProjects/<name>/ と Package.swift マーカー区間の管理
 //   fleetest profile list             … 実行プロファイルと部品プロファイルの一覧・整合チェック
 
 import ArgumentParser
@@ -20,7 +20,8 @@ struct ProjectCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "project",
         abstract: "Manage test projects (TestProjects/<name>/)",
-        subcommands: [Create.self, List.self, Sync.self, LintSelectors.self])
+        subcommands: [Create.self, List.self, Sync.self, LintSelectors.self,
+                      Copy.self, Rename.self, Delete.self])
 
     struct Create: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
@@ -46,6 +47,73 @@ struct ProjectCommand: AsyncParsableCommand {
             ConsoleOut.out("   Profiles:   TestProjects/\(name)/profiles/{apps,machines,runs}/")
             ConsoleOut.out("   Build:      swift build --product \(project.productName)")
             ConsoleOut.out("   Run:        fleetest run --project \(name) --profile ios")
+        }
+    }
+
+    struct Copy: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Duplicate a test project under a new name (excludes reports/results/heal cache)")
+
+        @Argument(help: "Name of the project to copy")
+        var source: String
+
+        @Argument(help: "Name for the new project")
+        var newName: String
+
+        func run() async throws {
+            let root = try fleetestRepoRoot()
+            let project = try ProjectMutation.copy(source: source, newName: newName, repoRoot: root)
+            ConsoleOut.out("✅ Copied \(source) → TestProjects/\(project.name)/")
+            ConsoleOut.out("   Build: swift build --product \(project.productName)")
+        }
+    }
+
+    struct Rename: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Rename a test project and update Package.swift")
+
+        @Argument(help: "Current project name")
+        var oldName: String
+
+        @Argument(help: "New project name")
+        var newName: String
+
+        func run() async throws {
+            let root = try fleetestRepoRoot()
+            let project = try ProjectMutation.rename(oldName: oldName, newName: newName, repoRoot: root)
+            ConsoleOut.out("✅ Renamed \(oldName) → TestProjects/\(project.name)/")
+
+            var config = LocalConfig.load()
+            if config.defaultProject == oldName {
+                config.defaultProject = newName
+                try config.save()
+            }
+        }
+    }
+
+    struct Delete: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Move a test project to the Trash and remove it from Package.swift")
+
+        @Argument(help: "Name of the project to delete")
+        var name: String
+
+        @Flag(name: .customLong("yes"), help: "Confirm the deletion (required — without it, nothing is deleted)")
+        var yes = false
+
+        func run() async throws {
+            guard yes else {
+                throw ValidationError("refusing to delete \(name) without --yes (nothing was deleted)")
+            }
+            let root = try fleetestRepoRoot()
+            let trashedURL = try ProjectMutation.delete(name: name, repoRoot: root)
+            ConsoleOut.out("✅ Moved TestProjects/\(name)/ to the Trash: \(trashedURL.path)")
+
+            var config = LocalConfig.load()
+            if config.defaultProject == name {
+                config.defaultProject = nil
+                try config.save()
+            }
         }
     }
 
