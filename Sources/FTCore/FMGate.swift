@@ -92,11 +92,11 @@ public enum FMBreaker {
     /// これが無いと、合成値で `FMHealth.record(ok: false)` を叩くテスト(FMHealthTests)が
     /// **機械全体の FM を 10 分止める**(cooldownSeconds)。実害2件(2026-09-08):
     /// 耐久 run が FM 無しで走った / 同じスイートの FMGateWaitWiringTests が enter を短絡されて落ちた。
-    /// 置き場の判定は FMLiveness / FMUsageLedger と同じ門(FMLedgerWriteRole)を通す
+    /// 置き場の判定は FMLiveness / FMUsageLedger と同じ門(LedgerWriteRole)を通す
     /// **`private` を外してあるのはテストのため**(置き場の決まり方を I/O 抜きで表明する)
     static var stateURL: URL {
         if let stateURLForTesting { return stateURLForTesting }
-        guard FMLedgerWriteRole.permitsProductionWrite else { return processLocalStateURL }
+        guard LedgerWriteRole.permitsProductionWrite else { return processLocalStateURL }
         return defaultStateURL
     }
 

@@ -1,4 +1,4 @@
-// FMLedgerWriteRole(FM 台帳の書き込み許可)の検証。
+// LedgerWriteRole(台帳の書き込み許可)の検証。
 //
 // 元の門は「XCTestConfigurationFilePath が無ければ書く」(fail-open)で、`swift test --parallel`
 // のワーカーではこの環境変数が立たないことがあり、合成値の FMHealth.record が本番の台帳を
@@ -10,25 +10,25 @@ import FTTestSupport
 import XCTest
 @testable import FTCore
 
-final class FMLedgerWriteRoleTests: XCTestCase {
+final class LedgerWriteRoleTests: XCTestCase {
 
     override func tearDown() {
-        FMLedgerWriteRole.resetForTesting()
+        LedgerWriteRole.resetForTesting()
         super.tearDown()
     }
 
     /// opt-in していないプロセスは許可されない。呼び出し忘れの既定値がこちらであることを固定する
     /// (`isProduction` の既定を true に変える変異はここで落ちる)
     func testDisabledUntilProductionOptsIn() {
-        FMLedgerWriteRole.resetForTesting()
-        XCTAssertFalse(FMLedgerWriteRole.permitsProductionWrite)
+        LedgerWriteRole.resetForTesting()
+        XCTAssertFalse(LedgerWriteRole.permitsProductionWrite)
     }
 
     /// `enableForProduction()` を呼んだら許可される(no-op 化する変異はここで落ちる)
     func testEnableForProductionGrantsPermission() {
-        FMLedgerWriteRole.resetForTesting()
-        FMLedgerWriteRole.enableForProduction()
-        XCTAssertTrue(FMLedgerWriteRole.permitsProductionWrite)
+        LedgerWriteRole.resetForTesting()
+        LedgerWriteRole.enableForProduction()
+        XCTAssertTrue(LedgerWriteRole.permitsProductionWrite)
     }
 
     /// FMLiveness / FMUsageLedger の書き込み先そのものがこの門を読んでいることを固定する。
@@ -43,7 +43,7 @@ final class FMLedgerWriteRoleTests: XCTestCase {
             defer {
                 if let savedLiveness { setenv("FT_FM_LIVENESS_DIR", savedLiveness, 1) }
             }
-            FMLedgerWriteRole.resetForTesting()
+            LedgerWriteRole.resetForTesting()
             XCTAssertNil(FMLiveness.writeURL,
                         "opt-in の無いプロセスから本番の fm-liveness.json への書き込み先が開いている")
         }
@@ -56,7 +56,7 @@ final class FMLedgerWriteRoleTests: XCTestCase {
             defer {
                 if let savedUsage { setenv("FT_FM_USAGE_DIR", savedUsage, 1) }
             }
-            FMLedgerWriteRole.resetForTesting()
+            LedgerWriteRole.resetForTesting()
             XCTAssertNil(FMUsageLedger.writeDirectory,
                         "opt-in の無いプロセスから本番の fm-usage/ への書き込み先が開いている")
         }
@@ -72,13 +72,13 @@ final class FMLedgerWriteRoleTests: XCTestCase {
         FMBreaker.stateURLForTesting = nil
         defer { FMBreaker.stateURLForTesting = saved }
 
-        FMLedgerWriteRole.resetForTesting()
+        LedgerWriteRole.resetForTesting()
         XCTAssertNotEqual(FMBreaker.stateURL, FMBreaker.defaultStateURL,
                           "opt-in の無いプロセスが本番のブレーカを掴んでいる")
         XCTAssertTrue(FMBreaker.stateURL.lastPathComponent.contains("\(getpid())"),
                       "プロセスごとに隔離されていない(別のテストプロセスと共有される)")
 
-        FMLedgerWriteRole.enableForProduction()
+        LedgerWriteRole.enableForProduction()
         XCTAssertEqual(FMBreaker.stateURL, FMBreaker.defaultStateURL,
                        "production では従来どおりホスト単位で1つ(ワーカー間で落ちた事実を共有する)")
     }
@@ -91,9 +91,9 @@ final class FMLedgerWriteRoleTests: XCTestCase {
         FMBreaker.stateURLForTesting = override
         defer { FMBreaker.stateURLForTesting = saved }
 
-        FMLedgerWriteRole.resetForTesting()
+        LedgerWriteRole.resetForTesting()
         XCTAssertEqual(FMBreaker.stateURL, override)
-        FMLedgerWriteRole.enableForProduction()
+        LedgerWriteRole.enableForProduction()
         XCTAssertEqual(FMBreaker.stateURL, override)
     }
 }

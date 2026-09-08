@@ -174,8 +174,8 @@ public enum FMLiveness {
     /// 両方が同じ古い記録を読んで畳むと、後に rename した側がもう片方の経路を古い値へ戻す(④の違反)
     static let lockFileName = "fm-liveness.lock"
 
-    /// 書き込み先。nil = 書かない。**`FMLedgerWriteRole` が opt-in した production の実行ファイル
-    /// だけへ書く**(fail-closed。FMLedgerWriteRole.swift 冒頭)。`XCTestConfigurationFilePath` の
+    /// 書き込み先。nil = 書かない。**`LedgerWriteRole` が opt-in した production の実行ファイル
+    /// だけへ書く**(fail-closed。LedgerWriteRole.swift 冒頭)。`XCTestConfigurationFilePath` の
     /// 判定は二重の備えとして残す —— `swift test --parallel` のワーカーでは立たないことがあるので
     /// これ単独では守れない。台帳自体を検証するテストは FT_FM_LIVENESS_DIR を明示するので影響を受けない。
     /// **`private` を外してあるのはテストのため**(@testable でこの門自体を直接検証する)
@@ -183,7 +183,7 @@ public enum FMLiveness {
         if let override = ProcessInfo.processInfo.environment["FT_FM_LIVENESS_DIR"], !override.isEmpty {
             return URL(fileURLWithPath: override).appendingPathComponent("fm-liveness.json")
         }
-        guard FMLedgerWriteRole.permitsProductionWrite else { return nil }
+        guard LedgerWriteRole.permitsProductionWrite else { return nil }
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return nil }
         return fileURL
     }

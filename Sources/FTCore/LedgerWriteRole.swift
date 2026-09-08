@@ -1,4 +1,5 @@
-// FM 台帳(FMLiveness / FMUsageLedger)を production の実行ファイルだけに書かせるための門。
+// 機械グローバルな台帳(FMLiveness / FMUsageLedger / OCRUsageLedger)を production の実行ファイル
+// だけに書かせるための門。
 //
 // 元の門は「XCTestConfigurationFilePath が無ければ書く」(fail-open)だった。だが
 // `swift test --parallel` のワーカープロセスではこの環境変数が立たないことがあり、
@@ -10,26 +11,27 @@
 // 「不明」(台帳が書かれないだけ)であって「嘘」ではない —— このリポジトリの規律
 // (FMLiveness.swift 冒頭③「不明と死を混ぜない」)と同じ向き。
 //
-// opt-in する入口の集合は FMLedgerWriteRoleWiringTests がソース走査で固定する。
+// opt-in する入口の集合は LedgerWriteRoleWiringTests がソース走査で固定する。
 
 import Foundation
 
-public enum FMLedgerWriteRole {
+public enum LedgerWriteRole {
     private static let lock = NSLock()
     private static var isProduction = false
 
     /// production の実行ファイルが起動直後に1回呼ぶ。呼ばなければ `permitsProductionWrite` は
-    /// 常に false のまま(= FMLiveness/FMUsageLedger は既定の書き込み先を開かない)
+    /// 常に false のまま(= FMLiveness/FMUsageLedger/OCRUsageLedger は既定の書き込み先を開かない)
     public static func enableForProduction() {
         lock.lock()
         isProduction = true
         lock.unlock()
     }
 
-    /// 既定の書き込み先(~/.fleetest/…)を開いてよいか。**`FT_FM_LIVENESS_DIR` /
-    /// `FT_FM_USAGE_DIR` の明示指定はこれより先に呼び出し側で判定させること**(このプロパティは
-    /// opt-in の有無だけを見る)。`XCTestConfigurationFilePath` の判定は呼び出し側が別途重ねる
-    /// 二重の備え(FMLiveness.swift / FMUsageLedger.swift)
+    /// 既定の書き込み先(~/.fleetest/…)を開いてよいか。**各台帳の環境変数によるディレクトリ
+    /// 上書き(`FT_FM_LIVENESS_DIR` / `FT_FM_USAGE_DIR` / `FT_OCR_USAGE_DIR`)はこれより先に
+    /// 呼び出し側で判定させること**(このプロパティは opt-in の有無だけを見る)。
+    /// `XCTestConfigurationFilePath` の判定は呼び出し側が別途重ねる二重の備え
+    /// (FMLiveness.swift / UsageLedger.swift)
     public static var permitsProductionWrite: Bool {
         lock.lock()
         defer { lock.unlock() }
