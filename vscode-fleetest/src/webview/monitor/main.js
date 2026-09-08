@@ -20,6 +20,7 @@ import {
   setBusy,
   closeDeviceOpMenu,
   applyDeviceOpBusy,
+  applyDeviceOpFailed,
   applyDeviceDownFinished,
   tiles,
   selectedDeviceIds,
@@ -132,6 +133,8 @@ window.addEventListener('message', (event) => {
       applyWipeStatus(message);
       break;
     case 'deviceOpFailed':
+      // 先読みの印を捨ててから知らせる(捨てないと「起動中」表示のまま操作不能になる)
+      applyDeviceOpFailed(message);
       showBanner(message.name + ': ' + message.message);
       break;
     case 'laneSectionVisible':

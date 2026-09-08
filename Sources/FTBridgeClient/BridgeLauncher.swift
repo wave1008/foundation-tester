@@ -662,11 +662,12 @@ public struct BridgeLauncher {
 
     /// .fleetest/bridge-*.pid(xcuitest)と bridge-*.inapp(dylib 注入)を走査して全ブリッジを
     /// 停止する。戻り値は停止したポート一覧。
-    /// - skipPhysical: true なら実機向けランナー(isPhysicalRunnerCommand で同定)を対象から外す
-    ///   (ユーザー決定: 一括デバイス操作は実機を触らない。`bridge down --all` は false で呼ぶ)。
+    /// - skipPhysical: true なら実機向けランナー(isPhysicalRunnerCommand で同定)を対象から外す。
+    ///   **一括停止(devices down の掃討・`bridge down --all`)はどちらも false で呼ぶ**
+    ///   (ユーザー決定 2026-09-08: 実機のブリッジも止める。端末そのものは呼び出し側が触らない)。
     ///   **既定値は置かない** —— 新しい呼び出し元が選択を明示せず素通りするのを防ぐ。
-    ///   除外した実機は kill もせず pid ファイルも消さない(生きているランナーのファイルを
-    ///   消すとポート採番(assignPort)が壊れる)
+    ///   true 側を選ぶと、除外した実機は kill もせず pid ファイルも消さない(生きているランナーの
+    ///   ファイルを消すとポート採番(assignPort)が壊れる)
     public static func stopAll(repoRoot: URL, skipPhysical: Bool) -> [String] {
         let stateDir = repoRoot.appendingPathComponent(".fleetest")
         guard let entries = try? FileManager.default.contentsOfDirectory(

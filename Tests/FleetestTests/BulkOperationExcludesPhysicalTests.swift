@@ -10,22 +10,32 @@ import FTCore
 /// build-for-testing)を始めてしまい、固定2台の同時起動枠の半分をそれが専有して他機の起動を遅らせる。
 /// restart-devices は down→up の1台単位サイクルなので、実機は down 側も含めて丸ごと対象外。
 ///
-/// **一括停止**(devices down --profile・api stop-all-devices・モニターの「全て終了」)は
-/// 2026-09-08 にユーザーが規則を改めた ——「全て終了」した実機は**ブリッジだけ**止まってほしい
-/// (端末そのものは絶対に落とさない)。分岐は `DeviceBooter.shutdownOne` の1箇所に集約し、
-/// 呼び出し側は実機の知識を持たない。NDJSON 経路(api stop-all-devices)だけは
-/// deviceStopping/deviceFinished を出さない特例が要る(実機は端末が生き続けるので、出すと
-/// 拡張のタイルが「停止した」→次の観測で「接続中」に戻りちらつく)。
-/// profile 無しの掃討(devices down)は従来どおり実機のブリッジも素通りする(別の規則。
-/// testSweepSkipsPhysicalBridgesButBridgeDownAllDoesNot が守る)。
+/// **一括停止**(devices down --profile・devices down の掃討(profile 無し)・
+/// api stop-all-devices・モニターの「全て終了」= 上記のいずれか)は 2026-09-08 に
+/// ユーザーが規則を改めた ——「全て終了」した実機は**ブリッジだけ**止まってほしい
+/// (端末そのものは絶対に落とさない)。**この規則は掃討(devices down・profile 無し)にも及ぶ**
+/// —— 以前は掃討だけ実機のブリッジを素通りしていたが、それでは「全て終了」を押しても
+/// 実機のブリッジが残る(ユーザー指摘 2026-09-08)。
+/// - profile 指定の個別停止は `DeviceBooter.shutdownOne` の実機分岐に一本化(呼び出し側は
+///   実機の知識を持たない)。NDJSON 経路(api stop-all-devices)だけは deviceStopping/
+///   deviceFinished を出さない特例が要る(実機は端末が生き続けるので、出すと拡張のタイルが
+///   「停止した」→次の観測で「接続中」に戻りちらつく)
+/// - 掃討(profile 無し)は個々の DeviceSpec を持たない(接続中の全台を対象にするため)ので
+///   shutdownOne は経由しない —— iOS は `BridgeLauncher.stopAll(skipPhysical: false)`
+///   (ps 走査でランナーを殺すだけ)、Android は `AndroidDeviceCatalog.connectedSerials()` から
+///   `allEmulatorSerials()` を引いた残り(= 実機の serial)へ個別に
+///   `AndroidDriver(serial:).stopBridge()` を撃つ(`DevicesCommand.Down.run` 内)。
+///   どちらも端末停止コマンド(`simctl shutdown` / `adb emu kill`)は実機に一切撃たない
 ///
 /// ここで固定する純関数が壊れると黙って退化する:
 /// - `DeviceBooter.buildBootQueue` が実機を弾き損ねると、実機が再びキューへ紛れ込む
 ///   (bootAll が数分のブリッジ供給を始め、maxConcurrent の枠を専有する退行)
-/// - `BridgeLauncher.isPhysicalRunnerCommand` の判定が壊れると、`stopAll(skipPhysical: true)` が
-///   生きている実機ランナーの pid ファイルを消してしまい、次のポート採番(assignPort)がずれる
+/// - `BridgeLauncher.isPhysicalRunnerCommand` の判定が壊れると、`stopAll(skipPhysical: true)` を
+///   将来どこかが呼んだときに、生きている実機ランナーの pid ファイルを消してポート採番
+///   (assignPort)がずれる(現状どの呼び出し元も false で呼ぶ)
 /// - `DeviceBooter.shutdownOne` の実機分岐が壊れると、利用者の端末そのものを落とす
 ///   (`simctl shutdown` / `adb emu kill`)か、逆に一括停止で実機のブリッジが残り続ける
+/// - `DevicesCommand.Down.run` の掃討側 Android ブロックが壊れると、同じ2通りの失敗が起きる
 final class BulkOperationExcludesPhysicalTests: XCTestCase {
 
     // MARK: - DeviceBooter.buildBootQueue(一括起動は実機を対象外のまま)
@@ -193,13 +203,47 @@ final class BulkOperationExcludesPhysicalTests: XCTestCase {
                        "devices down --profile の ios/android 両ループが無条件で shutdownOne を呼ぶ")
     }
 
-    /// 掃討(profile 無しの devices down)は実機のブリッジを残し、
-    /// **明示コマンドの `bridge down --all` だけが実機のブリッジも止める**。
-    /// この2つは同じ関数を別の引数で呼ぶので、取り違えるとどちらかが黙って壊れる
-    func testSweepSkipsPhysicalBridgesButBridgeDownAllDoesNot() throws {
+    /// 掃討(profile 無しの devices down = モニターの「全て終了」の実体)と明示コマンドの
+    /// `bridge down --all` は、2026-09-08 のユーザー決定でどちらも実機の iOS ブリッジを止める
+    /// (skipPhysical: false)。以前はこの2つを別の引数で呼び分けていたが、掃討側だけ実機の
+    /// ブリッジが残る不具合になっていた —— この等号がまた `true` に戻ると同じ不具合が再発する
+    func testSweepAndBridgeDownAllBothStopIOSPhysicalBridges() throws {
         XCTAssertTrue(try source("Sources/fleetest/DevicesCommand.swift")
-            .contains("BridgeLauncher.stopAll(repoRoot: root, skipPhysical: true)"))
+            .contains("BridgeLauncher.stopAll(repoRoot: root, skipPhysical: false)"),
+            "掃討(devices down・profile 無し)も実機の iOS ブリッジを止めること")
         XCTAssertTrue(try source("Sources/fleetest/Fleetest.swift")
             .contains("BridgeLauncher.stopAll(repoRoot: root, skipPhysical: false)"))
+    }
+
+    /// 掃討(profile 無しの devices down)は Android の実機ブリッジも止める。対象は
+    /// `connectedSerials()`(adb に見えている全台)から `allEmulatorSerials()` を引いた残り
+    /// (= 実機の serial)で、エミュレータの停止ループ(emu kill/simctl 相当)とは別の枠に
+    /// 切り出してあることをブロックごと厳密な隣接部分文字列で確認する。
+    /// **両方向の変異で落ちる形**: ブロックが消える変異(実機ブリッジが残り続ける退行)も、
+    /// ブロックの中に端末停止コマンドが紛れ込む変異(利用者の端末を落とす退行)も検出する
+    func testSweepStopsAndroidPhysicalBridgesWithoutTouchingDevicePower() throws {
+        let devices = try source("Sources/fleetest/DevicesCommand.swift")
+        guard let startRange = devices.range(
+            of: "if let connected = try? AndroidDeviceCatalog.connectedSerials(),"),
+              let endRange = devices.range(of: "await fanout")
+        else {
+            XCTFail("掃討の Android 実機ブリッジ停止ブロックの目印文字列が見つからない"
+                + "(リファクタで構造が変わった? このテストも合わせて直すこと)")
+            return
+        }
+        XCTAssertLessThan(startRange.upperBound, endRange.lowerBound,
+                          "実機ブリッジ停止ブロックは await fanout より前にあるはず")
+        let block = String(devices[startRange.lowerBound..<endRange.lowerBound])
+
+        XCTAssertTrue(block.contains("AndroidDeviceCatalog.allEmulatorSerials()"),
+                      "connectedSerials() からエミュレータ分を引いて実機の serial だけ残す")
+        XCTAssertTrue(block.contains("AndroidDriver(serial: serial)") && block.contains(".stopBridge()"),
+                      "実機は AndroidDriver.stopBridge() でブリッジだけ止める")
+        XCTAssertFalse(block.contains("\"emu\", \"kill\""),
+                       "実機の Android に adb emu kill を撃ってはいけない(存在しないコマンドで空振りする)")
+        XCTAssertFalse(block.contains("\"simctl\", \"shutdown\""),
+                       "この経路は Android 用(iOS の simctl shutdown が紛れ込んではいけない)")
+        XCTAssertFalse(block.contains("EmulatorControl.shutdown"),
+                       "実機はエミュレータ用の gRPC shutdown 経路を通らない(別ブロックのまま)")
     }
 }

@@ -392,6 +392,9 @@ function createTile(device) {
     bridgeStoppedLocally: false,
     // 印が立っている間に「まだ動いている」観測が連続した回数(applyDevices だけが読み書きする)。
     bridgeStoppedLocallyStaleObservations: 0,
+    // 直前の操作が失敗したか。**状態の追いつきを待つのは成功したときだけ正当**なので、
+    // 失敗後に awaitingStateAfterUp を立てさせないための記憶(applyDeviceOpFailed が立てる)。
+    lastOpFailed: false,
   };
   tiles.set(device.id, entry);
   return entry;
@@ -1268,15 +1271,25 @@ export function applyDeviceOpBusy(message) {
   // 実機は device.state が 'offline' にならない(端末は起動も停止もしない。無いのはブリッジだけ)
   // ので、bridgeNotRunning もここで見る。無いと up 完了直後に awaitingStateAfterUp が立たず、
   // 次の devices サイクルまでの間だけ「ブリッジ未起動」に落ちて点滅する。
-  if (prev?.op === 'up' && !entry.opBusy
+  // **失敗した操作のあとは待たない** —— 状態が変わるのを待つのは操作が成功したときだけ正当で、
+  // 失敗しているなら待つ対象が無い。待たせると次の観測まで「起動中」が残り、その間タイルの
+  // メニューも押せないままになる(lastOpFailed は applyDeviceOpFailed が立てる)
+  if (prev?.op === 'up' && !entry.opBusy && !entry.lastOpFailed
       && (entry.device.state === 'offline' || bridgeNotRunning(entry))) {
     entry.awaitingStateAfterUp = true;
+  }
+  // 新しい操作が始まったら失敗の記憶は捨てる(次の操作の判断を縛らない)
+  if (entry.opBusy) {
+    entry.lastOpFailed = false;
   }
   // 実機のブリッジ停止完了: 観測(devices サイクル)が追いつくまで「未起動」を先行反映する
   // (bridgeNotRunning 経由でフレーム抑制・ラベル・メニューに効く)。畳む条件は applyDevices 側
   // (observedBridgeStillRunning のコメント)。仮想デバイスは対象外 —— 仮想機は state が
   // 'offline' に落ちるので既存の offline 判定だけで足りる(applyDeviceDownFinished と同型)。
-  if (prev?.op === 'down' && !entry.opBusy && entry.device.kind === 'physical') {
+  // **失敗したときは立てない**(up 側の lastOpFailed と同じ理由)—— 止まっていないのに
+  // 「停止した」と先読みすると、まだ動いている台を「未起動」と偽って表示し続ける
+  if (prev?.op === 'down' && !entry.opBusy && !entry.lastOpFailed
+      && entry.device.kind === 'physical') {
     entry.bridgeStoppedLocally = true;
     entry.bridgeStoppedLocallyStaleObservations = 0;
   }
@@ -1336,6 +1349,26 @@ export function applyHealthWatch(message) {
 // 契約: { type: 'wipeStatus', name, machine?, phase }(name は deviceOpBusy と同じ device.name
 // 名前空間。契約元は model.ts の WipeStatusEvent / monitorPanel.ts の handleWipeStatusEvent と、
 // 手動 Wipe の monitorDeviceOps.ts)。**machine 省略は「手元」**(run 由来は載せてこない)。
+// 契約: { type: 'deviceOpFailed', name, message }(monitorDeviceOps.ts)。操作が失敗した通知。
+// **観測を待たずに先読みの状態を捨てる** —— 失敗したのだから「起動中/停止中」を出し続ける根拠は
+// もう無い。捨てないと、次の devices 観測が来るまで(モニターが止まっていれば永久に)
+// 「ブリッジを起動中」のまま残り、その間タイルのメニューも押せない。
+// 落とすのは**推測の印だけ**で、観測値(device)には触らない。
+export function applyDeviceOpFailed(message) {
+  const entry = findTileByName(message.name, message.machine);
+  if (!entry) {
+    return;
+  }
+  entry.awaitingStateAfterUp = false;
+  entry.bridgeStoppedLocally = false;
+  entry.bridgeStoppedLocallyStaleObservations = 0;
+  // **印を消すだけでは足りない** —— この直後に届くジョブ終了(op:null)を
+  // applyDeviceOpBusy が受けて awaitingStateAfterUp を立て直すので、失敗を覚えて立てさせない
+  entry.lastOpFailed = true;
+  renderMeta(entry);
+  renderFrame(entry);
+}
+
 export function applyWipeStatus(message) {
   const entry = findTileByName(message.name, message.machine);
   if (!entry) {

@@ -307,3 +307,37 @@ test("退行防止: 仮想デバイスの個別 down 完了直後にフレーム
   sendFrame(window, "android:Emu 1");
   assert.equal(showsImage(document), true);
 });
+
+test("起動が失敗したら「ブリッジを起動中」で固まらず「ブリッジ未起動」へ戻る", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendPhysicalAndroid(window, false);
+
+  post(window, { type: "deviceOpBusy", name: deviceName, op: "up", status: "running" });
+  assert.match(placeholderText(document), /ブリッジを起動中/, "前提: 起動中が出ている");
+
+  // 失敗 → ジョブ終了(op:null)の順で届く(monitorDeviceOps の実際の順序)
+  post(window, { type: "deviceOpFailed", name: deviceName, message: "boom" });
+  post(window, { type: "deviceOpBusy", name: deviceName, op: null, status: null });
+
+  const text = placeholderText(document);
+  assert.match(text, /ブリッジ未起動/, "失敗したのに起動中を出し続けない");
+  assert.doesNotMatch(text, /ブリッジを起動中/);
+  assert.equal(showsImage(document), false, "ブリッジが無いので画像も出さない");
+});
+
+test("停止が失敗したら先読みの印を捨て、観測どおりに戻る", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendPhysicalAndroid(window, true);
+
+  post(window, { type: "deviceOpBusy", name: deviceName, op: "down", status: "running" });
+  // 実際の到着順: 失敗の通知 → ジョブ終了(monitorDeviceOps の runDeviceOpAttempt)
+  post(window, { type: "deviceOpFailed", name: deviceName, message: "boom" });
+  post(window, { type: "deviceOpBusy", name: deviceName, op: null, status: null });
+
+  // 印を捨てたので、まだ動いているという観測がそのまま効く(画像が出る)
+  sendPhysicalAndroid(window, true);
+  sendFrame(window, deviceId);
+  assert.equal(showsImage(document), true, "停止に失敗した台を「未起動」と偽らない");
+});

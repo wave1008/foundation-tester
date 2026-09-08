@@ -1002,7 +1002,7 @@ export class MonitorDeviceOps {
       });
     } catch (error) {
       logFailure(String(error));
-      this.deps.post({ type: "deviceOpFailed", name, message: String(error) });
+      this.deps.post({ type: "deviceOpFailed", name, machine, message: String(error) });
       settle(true);
       return;
     }
@@ -1041,7 +1041,7 @@ export class MonitorDeviceOps {
           // 全文を流すとパネルが埋まる(実害 2026-08-29)。
           // **OUTPUT へは誘導しない** —— 常時流れていて利用者が読む場所ではない(ユーザー決定)
           this.deps.post({
-            type: "deviceOpFailed", name,
+            type: "deviceOpFailed", name, machine,
             message: localized ?? (value.signingProblems !== undefined ? message : firstLine(message)),
           });
         }
@@ -1066,7 +1066,7 @@ export class MonitorDeviceOps {
 
     proc.on("error", (error) => {
       logFailure(error.message);
-      this.deps.post({ type: "deviceOpFailed", name, message: error.message });
+      this.deps.post({ type: "deviceOpFailed", name, machine, message: error.message });
       settle(true);
     });
     proc.on("close", (exitCode) => {
@@ -1091,7 +1091,7 @@ export class MonitorDeviceOps {
             ? t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) })
             : detail;
         logFailure(message);
-        this.deps.post({ type: "deviceOpFailed", name, message });
+        this.deps.post({ type: "deviceOpFailed", name, machine, message });
       }
       settle(failureLogged);
     });

@@ -3530,19 +3530,24 @@ targeting = bundletool にしか決められない。feature module を足した
   (build-for-testing)を始めて同時起動枠(2台)の半分を専有し、他機のブートを遅らせていた。
   実機はキューに積まず1行ログするだけで、`deviceStarting`/`deviceFinished` も出さない
   (拡張のタイルを「待機中」に倒さない)
-- **一括停止(`devices down` の `--profile` 指定時 / `api stop-all-devices` /
-  モニターの「全て終了」)は実機のブリッジだけ止める**(ユーザー決定 2026-09-08。起動側の
-  規則は変えていない)—— `DeviceBooter.shutdownOne` の実機分岐が端末停止コマンド
-  (`simctl shutdown`/`adb emu kill`)を撃たず、iOS はポート照合でブリッジプロセスを止め、
-  Android は `AndroidDriver.stopBridge()` でアプリと adb forward を止める。**端末そのものは
-  絶対に落とさない**(利用者の電話を勝手に落とさない)。イベントは `deviceStopping`/
-  `deviceFinished` を出さない(実機は端末が生き続けるので、出すと拡張のタイルが「停止した」→
-  次の観測で「接続中」に戻りちらつく) —— log イベント1行だけ報告する。
-  `devices down`(`--profile` 無し)の掃討(sweep)は従来どおり実機を素通りする
-  (`BridgeLauncher.stopAll(skipPhysical: true)`。1台ずつ ssh で辿らない設計のため)。
+- **一括停止(`devices down` の `--profile` 指定時 / `--profile` 無しの掃討(sweep) /
+  `api stop-all-devices` / モニターの「全て終了」)は実機のブリッジだけ止める**
+  (ユーザー決定 2026-09-08。起動側の規則は変えていない)—— **端末そのものは絶対に落とさない**
+  (利用者の電話を勝手に落とさない)。イベントは `deviceStopping`/`deviceFinished` を出さない
+  (実機は端末が生き続けるので、出すと拡張のタイルが「停止した」→次の観測で「接続中」に戻り
+  ちらつく) —— log イベント1行だけ報告する。分岐は2箇所ある(どちらも同じ制約を満たす):
+  - `--profile` 指定時 / `api stop-all-devices` は `DeviceBooter.shutdownOne` の実機分岐
+    (spec 単位)。iOS はポート照合でブリッジプロセスを止め、Android は
+    `AndroidDriver.stopBridge()` でアプリと adb forward を止める
+  - `--profile` 無しの掃討(sweep)は spec を持たない(接続中の全台が対象)ので、
+    `DevicesCommand.Down.run` が直接: iOS は `BridgeLauncher.stopAll(skipPhysical: false)`
+    (ps 走査でランナーだけ殺す)、Android は `AndroidDeviceCatalog.connectedSerials()` から
+    `allEmulatorSerials()` を引いた残り(= 実機の serial)へ個別に `AndroidDriver.stopBridge()`
+    を撃つ。**この掃討は以前 `skipPhysical: true` で実機のブリッジを素通りしていたが、
+    それでは「全て終了」を押しても実機のブリッジが残るため 2026-09-08 に false へ改めた**
   **ブリッジの起動・停止は `fleetest run`・モニタータイルの右クリックメニュー・上記の一括停止**
-  が担う(ラベルは「ブリッジを起動/停止」)。`bridge down --all` は明示的な全停止コマンドなので
-  従来どおり実機のブリッジも含めて止める
+  が担う(ラベルは「ブリッジを起動/停止」)。`bridge down --all` も同じく実機のブリッジを含めて
+  止める(明示コマンドなので元から対象)
 - **iOS 実機の `state: "booted"` は「端末は接続済みだがブリッジが1本も無い」**の意味
   (`ApiMonitorCommand.iosState`。シミュレータの booted=起動済みとは意味が違う)。実機のブリッジは
   自動供給されないのでこの状態は待っても変わらない ⇒ モニタータイルは**未起動として表示**し、

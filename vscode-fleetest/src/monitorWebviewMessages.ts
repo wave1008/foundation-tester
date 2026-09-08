@@ -81,7 +81,10 @@ export type MonitorToWebviewMessage =
       /** キュー内での状態("running"=実行中／"queued"=順番待ち)。op が null のときは null。 */
       readonly status: DeviceOpQueueStatus | null;
     }
-  | { readonly type: "deviceOpFailed"; readonly name: string; readonly message: string }
+  // machine も載せる —— 落とすとリモートの失敗が**同名の手元タイル**の状態を戻す
+  // (deviceOpBusy と同じ理由)
+  | { readonly type: "deviceOpFailed"; readonly name: string; readonly machine?: string;
+      readonly message: string }
   // 一括 down(api stop-all-devices)で1台停止完了ごとに送る。webview はそのタイルを即「未起動」へ倒す
   // (down 中はモニター pause で state 更新が来ないため、落ちた順の反映をこの per-device 通知で行う。
   //  次の devices 反映=resume 後に本物の state で上書きされる)。name は deviceOpBusy と同じ名前空間。

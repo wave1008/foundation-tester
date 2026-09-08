@@ -55,11 +55,10 @@ struct DevicesCommand: AsyncParsableCommand {
     struct Down: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Stop every bridge and shut down all simulators and emulators, on this machine and"
-                + " on every machine in the remote registry (physical devices keep running; without"
-                + " --profile their bridges are left alone too — use --profile or bridge down to stop"
-                + " them). With --profile, only the devices that profile references are stopped"
-                + " individually, on this machine only (physical devices in scope get their bridge"
-                + " stopped, but are never shut down).")
+                + " on every machine in the remote registry (physical devices are never shut down, but"
+                + " their bridges are always stopped too). With --profile, only the devices that profile"
+                + " references are stopped individually, on this machine only (physical devices in scope"
+                + " get their bridge stopped, but are never shut down).")
 
         @Option(help: "Test project name (only used with --profile; defaults to the only one in TestProjects/, or the default project)")
         var project: String?
@@ -87,7 +86,10 @@ struct DevicesCommand: AsyncParsableCommand {
                 relay: { ConsoleOut.out($0) })
 
             if let root = try? RepoRoot.find() {
-                let stopped = BridgeLauncher.stopAll(repoRoot: root, skipPhysical: true)
+                // 実機ランナー(xcodebuild)も掃討対象 —— 「全て終了」は実機のブリッジも
+                // 止める(ユーザー決定 2026-09-08)。stopAll は ps を見て殺すだけで、実機の
+                // 端末そのものには simctl/adb 相当のコマンドを一切撃たない
+                let stopped = BridgeLauncher.stopAll(repoRoot: root, skipPhysical: false)
                 if !stopped.isEmpty {
                     ConsoleOut.out("✅ Bridges stopped (port: \(stopped.joined(separator: ", ")))")
                 }
@@ -126,6 +128,20 @@ struct DevicesCommand: AsyncParsableCommand {
                 if !serials.isEmpty {
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
                     _ = try? Shell.run(["pkill", "-9", "-f", "sdk/emulator/qemu"])
+                }
+            }
+            // 実機のブリッジも掃討対象(ユーザー決定 2026-09-08)。emu kill/pkill は撃たない ——
+            // connectedSerials()(adb に見えている全台)から allEmulatorSerials() を引いた残りが
+            // 実機の serial で、AndroidDriver.stopBridge() はアプリの force-stop + adb forward
+            // 解除だけを行い端末の電源には触らない
+            if let connected = try? AndroidDeviceCatalog.connectedSerials(),
+               let emulators = try? AndroidDeviceCatalog.allEmulatorSerials() {
+                let emulatorSerials = Set(emulators)
+                for serial in connected where !emulatorSerials.contains(serial) {
+                    if let driver = try? AndroidDriver(serial: serial) {
+                        driver.stopBridge()
+                        ConsoleOut.out("✅ Bridge stopped (physical device \(serial), device itself keeps running)")
+                    }
                 }
             }
             await fanout  // リモート分の完走まで抜けない(呼び出し側の「全部終わった」の合図)
