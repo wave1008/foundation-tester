@@ -142,7 +142,7 @@
         "udid": "6C7ADCB9-B221-4377-85BA-5258DEC86C69"
       },
       {
-        "machine": "local",
+        "machine": "M1Ultra",
         "name": "iPhone 13",
         "kind": "physical",
         "os": "26.6.1",

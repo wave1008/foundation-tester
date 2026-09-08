@@ -129,7 +129,7 @@
         "udid": "95212B76-43ED-4F10-9421-93485C5FBF7A"
       },
       {
-        "machine": "local",
+        "machine": "M1Ultra",
         "name": "iPhone 13(実機)",
         "kind": "physical",
         "model": "iPhone 13",
