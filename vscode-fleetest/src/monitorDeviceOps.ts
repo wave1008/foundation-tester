@@ -148,6 +148,10 @@ export function signingGuidance(
   if (problems.some((kind) => SIGNING_NEEDS_PORTAL.has(kind))) {
     lines.push(t(overSSH ? "deviceOps.signing.portalNeedsGui" : "deviceOps.signing.portalRetryOnce"));
   }
+  // CLI 側の guidance と同じ出し分け(判定は同じ、文言はそれぞれが持つ)
+  if (overSSH && problems.includes("keychainLocked")) {
+    lines.push(t("deviceOps.signing.keychainUnlockScope"));
+  }
   if (logPath !== undefined) {
     lines.push(t("deviceOps.signing.fullLog", { path: logPath }));
   }

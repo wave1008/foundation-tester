@@ -184,6 +184,17 @@ export const deviceOpsStrings = {
     ja: "{machine} のデバイス操作が失敗しました: {error}",
     en: "The device operation on {machine} failed: {error}",
   },
+  // **手順を書かない規律の例外**(portalNeedsGui と同じ理由)—— remote exec が毎回新しい ssh 接続を
+  // 張るという実行経路の制約で、知らないと手で解錠しては同じ失敗を繰り返す。
+  // どこで解錠するかまで言い、鍵の置き場所や具体的な設定は言わない
+  "deviceOps.signing.keychainUnlockScope": {
+    ja: "ssh は接続のたびにロック状態から始まるため、ビルドが走るセッションの中で解錠されている"
+      + "必要があります(手で別の場所で解錠しても引き継がれません)。その Mac のログインシェルの"
+      + "プロファイルに置くのが通例です。",
+    en: "Each ssh connection starts with the keychain locked, so it has to be unlocked in the session"
+      + " the build runs in — unlocking it by hand elsewhere does not carry over."
+      + " On that Mac, a login shell profile is the usual place.",
+  },
   "deviceOps.signing.fullLog": {
     ja: "xcodebuild の全出力: {path}",
     en: "Full xcodebuild output: {path}",

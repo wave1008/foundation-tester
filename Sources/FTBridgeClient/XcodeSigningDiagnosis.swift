@@ -154,6 +154,15 @@ public enum XcodeSigningDiagnosis {
                     + " (the first attempt may fail once right after registering; run it again)."
                 : "The first build right after registering a device may fail once — run it again.")
         }
+        // **ここは手順を書かない規律の例外**(ポータルの行と同じ理由)—— remote exec は毎回
+        // 新しい ssh 接続を張るという**このツールの実行経路の制約**で、知らないと手で解錠しては
+        // 何度でも同じ失敗を繰り返す(2026-09-08 に実際にそうなった)。**どこで解錠するか**まで
+        // 言い、鍵の置き場所や具体的な設定は言わない(運用は機械ごとに違い、書けば古くなる)
+        if overSSH, problems.contains(.keychainLocked) {
+            lines.append("Each ssh connection starts with the keychain locked, so it has to be"
+                + " unlocked in the session the build runs in — unlocking it by hand elsewhere"
+                + " does not carry over. On that Mac, a login shell profile is the usual place.")
+        }
         if let fullLogPath {
             lines.append("Full xcodebuild output: \(fullLogPath)")
         }

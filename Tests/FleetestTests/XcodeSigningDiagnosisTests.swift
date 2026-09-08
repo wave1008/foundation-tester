@@ -97,16 +97,18 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
         XCTAssertFalse(first.contains("\n"))
     }
 
-    /// **事実は言い、手順は書かない**。案内は最大4行:
-    /// 見出し / Detected(事実の列挙)/ ポータル通信の制約(要るときだけ)/ ログの在り処。
+    /// **事実は言い、手順は書かない**。案内は最大5行:
+    /// 見出し / Detected(事実の列挙)/ ポータル通信の制約(要るときだけ)/
+    /// キーチェーンの解錠がどのセッションに要るか(要るときだけ)/ ログの在り処。
+    /// **後ろの2つは「このツールの実行経路の制約」の例外**で、事実だけだと行き止まりになる。
     /// **Xcode の画面の道順は引き続き出さない**(版ごとに変わり、必ず古くなる)
     func testTheGuidanceStatesFactsButTellsNoSteps() throws {
         let guidance = try XCTUnwrap(XcodeSigningDiagnosis.guidance(
             problems: XcodeSigningProblem.allCases, fullLogPath: "/tmp/bridge-build-8123.log", overSSH: true))
         let lines = guidance.split(separator: "\n")
-        XCTAssertEqual(lines.count, 4, guidance)
+        XCTAssertEqual(lines.count, 5, guidance)
         XCTAssertTrue(String(lines[1]).hasPrefix("Detected: "), guidance)
-        XCTAssertEqual(String(lines[3]), "Full xcodebuild output: /tmp/bridge-build-8123.log")
+        XCTAssertEqual(String(lines[4]), "Full xcodebuild output: /tmp/bridge-build-8123.log")
         // 手順・画面の道順は出さない(事実の名詞 — 証明書・チーム・プロファイル — は出してよい)
         for forbidden in ["1.", "▸", "Manage Certificates", "Accounts settings", "Settings →",
                           "Developer Mode", "simulators need no signing"] {
@@ -227,5 +229,33 @@ final class XcodeSigningGuidanceHeadlineTests: XCTestCase {
         let text = XcodeSigningDiagnosis.guidance(
             problems: [.keychainLocked, .invalidCertificate], fullLogPath: nil, overSSH: true)
         XCTAssertTrue(text?.contains("Xcode's signing setup") == true)
+    }
+}
+
+/// ロックの案内は**事実だけでは行き止まり**になる —— 「接続ごとにロックされる」と言われても
+/// どこで解錠すればよいか分からないと、手で解錠しては同じ失敗を繰り返す(2026-09-08 に実際に
+/// そうなった)。ポータルの行と同じ「実行経路の制約」の例外として1行添える
+final class XcodeSigningKeychainScopeGuidanceTests: XCTestCase {
+
+    func testTheSshCaseSaysWhereTheUnlockHasToHappen() {
+        let text = XcodeSigningDiagnosis.guidance(
+            problems: [.keychainLocked], fullLogPath: nil, overSSH: true)
+        XCTAssertTrue(text?.contains("the session the build runs in") == true,
+                      "解錠する場所を言っていない(事実だけでは行き止まりになる)")
+    }
+
+    /// **GUI セッションでは出さない** —— ssh の接続ごとという制約はそこには無く、
+    /// 出すと関係のない場所を探させる
+    func testTheLineIsAbsentInAGUISession() {
+        let text = XcodeSigningDiagnosis.guidance(
+            problems: [.keychainLocked], fullLogPath: nil, overSSH: false)
+        XCTAssertFalse(text?.contains("the session the build runs in") == true)
+    }
+
+    /// ロックが無いときは出さない(ssh でも、別の署名問題には関係がない)
+    func testTheLineIsAbsentWithoutALockedKeychain() {
+        let text = XcodeSigningDiagnosis.guidance(
+            problems: [.invalidCertificate], fullLogPath: nil, overSSH: true)
+        XCTAssertFalse(text?.contains("the session the build runs in") == true)
     }
 }
