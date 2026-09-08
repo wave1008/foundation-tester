@@ -32,6 +32,34 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
         XCTAssertNotNil(XcodeSigningDiagnosis.guidance(problems: [.keychainLocked], fullLogPath: nil, overSSH: true))
     }
 
+    /// **keychainLocked とは別の case で拾われる**(解錠済みだが ACL が非対話セッションを
+    /// 拒む状態。2026-09-08 に ssh 越しの codesign を直接叩いて実測した文言)
+    func testTheDeniedKeySigningAccessIsPickedUp() {
+        let log = """
+        Signing Identity:     "Apple Development: Nobuhiro Senba (73YMA2YH5T)"
+        Provisioning Profile: "iOS Team Provisioning Profile: *"
+        /usr/bin/codesign --force --sign 7BC760... FleetestRunnerApp.debug.dylib: errSecInternalComponent
+        Command CodeSign failed with a nonzero exit code
+        ** TEST BUILD FAILED **
+        """
+        XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: log), [.keySigningAccessDenied])
+        XCTAssertNotNil(XcodeSigningDiagnosis.guidance(
+            problems: [.keySigningAccessDenied], fullLogPath: nil, overSSH: true))
+    }
+
+    /// **keychainLocked と keySigningAccessDenied を取り違えない** —— 片方だけのログでは
+    /// もう片方が出ず、両方揃ったログでは両方出る(順序は宣言順)
+    func testKeychainLockedAndKeySigningAccessDeniedAreNotConfused() {
+        let onlyLocked = "error: User interaction is not allowed. (in target 'FleetestRunnerApp')"
+        XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: onlyLocked), [.keychainLocked])
+
+        let onlyDenied = "FleetestRunnerApp.debug.dylib: errSecInternalComponent"
+        XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: onlyDenied), [.keySigningAccessDenied])
+
+        let both = onlyLocked + "\n" + onlyDenied
+        XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: both), [.keychainLocked, .keySigningAccessDenied])
+    }
+
     func testAnUnrelatedFailureIsLeftAlone() {
         // **当てはまらないログには触らない** —— 畳んで良いのは「何をすればいいか言える」ときだけ。
         // ここで生ログを捨てると、原因の分からない失敗になる
@@ -131,6 +159,41 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
     func testRawValuesAreTheWireContractWithTheExtension() {
         XCTAssertEqual(XcodeSigningProblem.allCases.map(\.rawValue),
                        ["noAccount", "noAccountForTeam", "invalidCertificate", "deviceNotRegistered",
-                        "certificateNotInProfile", "deviceNotInProfile", "keychainLocked"])
+                        "certificateNotInProfile", "deviceNotInProfile", "keychainLocked",
+                        "keySigningAccessDenied"])
+    }
+}
+
+/// **実際に起きた失敗のログ**を食わせる(合成のログだけだと、実物の書式が違っても緑のままになる)。
+/// 2026-09-08 に M1Ultra へ ssh で dispatch した iPhone 13 のブリッジ起動で出たもの。
+/// 署名 ID とプロビジョニングプロファイルは解決できており、**署名の実行だけ**が落ちている点が要。
+final class XcodeSigningDiagnosisRealLogTests: XCTestCase {
+
+    private let realLog = """
+        CodeSign /Users/wave1008/fleetest-runner/foundation-tester/.fleetest/DerivedData-device/Build/Products/Debug-iphoneos/FleetestRunnerApp.app/FleetestRunnerApp.debug.dylib (in target 'FleetestRunnerApp' from project 'FleetestRunner')
+            cd /Users/wave1008/fleetest-runner/foundation-tester/Runner
+
+            Signing Identity:     "Apple Development: Nobuhiro Senba (73YMA2YH5T)"
+            Provisioning Profile: "iOS Team Provisioning Profile: *"
+                                  (e3102005-61a1-4e96-96d9-d0cb684a1c68)
+
+            /usr/bin/codesign --force --sign 7BC7602764D57D07304ED7FCE30BA7A6528EEE05 --timestamp\\=none --generate-entitlement-der /Users/wave1008/fleetest-runner/foundation-tester/.fleetest/DerivedData-device/Build/Products/Debug-iphoneos/FleetestRunnerApp.app/FleetestRunnerApp.debug.dylib
+        /Users/wave1008/fleetest-runner/foundation-tester/.fleetest/DerivedData-device/Build/Products/Debug-iphoneos/FleetestRunnerApp.app/FleetestRunnerApp.debug.dylib: errSecInternalComponent
+        Command CodeSign failed with a nonzero exit code
+        ** TEST BUILD FAILED **
+        """
+
+    func testTheRealSshCodeSignFailureIsDiagnosed() {
+        let problems = XcodeSigningDiagnosis.problems(inBuildLog: realLog)
+        XCTAssertFalse(problems.isEmpty,
+                       "実ログから署名問題を1つも拾えていない(拾えないと再試行が止まらずフルビルドを繰り返す)")
+    }
+
+    /// 解錠の問題(User interaction is not allowed)は**出ていない** —— 取り違えると
+    /// 「解錠してください」という誤った対処を案内する
+    func testTheRealLogIsNotReportedAsALockedKeychain() {
+        let problems = XcodeSigningDiagnosis.problems(inBuildLog: realLog)
+        XCTAssertFalse(problems.contains(.keychainLocked),
+                       "解錠済みなのにロックと診断している(対処が set-key-partition-list ではなく解錠になる)")
     }
 }

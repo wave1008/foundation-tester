@@ -34,7 +34,9 @@ import Foundation
 ///   - **プロジェクトの Signing & Capabilities では直せない** —— ランナーの .xcodeproj は
 ///     xcodegen が生成し(generateProjectIfNeeded)、ビルドのたびに DEVELOPMENT_TEAM を
 ///     コマンドラインで上書きする(codeSigningArguments)。**Team の正は fleetest の設定**
-///   - keychainLocked は **ssh 越しのビルド固有** —— GUI セッションでは出ない
+///   - keychainLocked / keySigningAccessDenied は **ssh 越しのビルド固有** —— GUI セッションでは
+///     出ない。対処は `security set-key-partition-list`(この案内には書かない。手順は版で古くなる)。
+///     直すコマンドはその Mac 側で1回打てば以後の ssh 越しビルドに効く(GUI セッションは不要)
 public enum XcodeSigningProblem: String, Sendable, CaseIterable {
     /// Xcode に Apple ID が1つも無い
     case noAccount
@@ -54,6 +56,12 @@ public enum XcodeSigningProblem: String, Sendable, CaseIterable {
     /// キーチェーンがロックされていて署名鍵に触れない。**ssh 越しのビルドで出る**
     /// (remote exec 経由の実機ビルド。2026-08-29 に M1Ultra で実測)
     case keychainLocked
+    /// **keychainLocked とは別**: キーチェーンは解錠済み(`security find-identity` に署名 ID が
+    /// 見える)なのに、署名鍵の ACL が非対話セッションからのアクセスを許可していない状態。
+    /// 原因も対処(`security set-key-partition-list`)も keychainLocked(対処は解錠)とは別なので
+    /// 混ぜない。**ssh 越しのビルドで出る**(GUI セッションでは人がダイアログに答えられるため
+    /// 出ない。2026-09-08 に M1Ultra で ssh 越しの codesign を直接叩いて再現・実測)
+    case keySigningAccessDenied
 
     /// この問題の事実の1文(英語 = CLI の言語。拡張は raw 値から自分の言語で組み立て直す)
     var fact: String {
@@ -68,6 +76,9 @@ public enum XcodeSigningProblem: String, Sendable, CaseIterable {
         case .deviceNotInProfile: return "the provisioning profile does not include this device"
         case .keychainLocked:
             return "the login keychain is not available (typical of builds started over ssh)"
+        case .keySigningAccessDenied:
+            return "the signing key is unlocked but its access control does not permit this"
+                + " non-interactive session to use it (typical of builds started over ssh)"
         }
     }
 
@@ -77,7 +88,9 @@ public enum XcodeSigningProblem: String, Sendable, CaseIterable {
     var needsProvisioningUpdate: Bool {
         switch self {
         case .deviceNotRegistered, .certificateNotInProfile, .deviceNotInProfile: return true
-        case .noAccount, .noAccountForTeam, .invalidCertificate, .keychainLocked: return false
+        case .noAccount, .noAccountForTeam, .invalidCertificate, .keychainLocked,
+             .keySigningAccessDenied:
+            return false
         }
     }
 }
@@ -95,6 +108,7 @@ public enum XcodeSigningDiagnosis {
             (.certificateNotInProfile, "doesn't include signing certificate"),
             (.deviceNotInProfile, "doesn't include the currently selected device"),
             (.keychainLocked, "User interaction is not allowed"),
+            (.keySigningAccessDenied, "errSecInternalComponent"),
         ]
         return signatures.filter { log.contains($0.1) }.map(\.0)
     }

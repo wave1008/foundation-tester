@@ -110,6 +110,7 @@ const SIGNING_FACT_KEYS: Record<string, MessageKey> = {
   certificateNotInProfile: "deviceOps.signing.fact.certificateNotInProfile",
   deviceNotInProfile: "deviceOps.signing.fact.deviceNotInProfile",
   keychainLocked: "deviceOps.signing.fact.keychainLocked",
+  keySigningAccessDenied: "deviceOps.signing.fact.keySigningAccessDenied",
 };
 
 /** ポータル通信(端末登録・プロファイルの取り直し)が要る種別(Swift 側 needsProvisioningUpdate
@@ -150,15 +151,51 @@ export function signingGuidance(
   return lines.join("\n");
 }
 
+/** xcodebuild 自身が出す素の verdict バナー(例: "** TEST BUILD FAILED **")。見出しと同じ
+ * 「失敗した」を繰り返すだけで原因を持たないので、原因行を探すときは候補から外す
+ * (外さないと常に最終行のこれを拾って見出しの言い直しにしかならない)。 */
+const XCODEBUILD_VERDICT_BANNER = /^\*\*.*\*\*$/;
+
+/** 失敗の印(error: / errSec* / failed)を含む行を**後ろから**探す。xcodebuild は原因の行を
+ * 先に出し、末尾に verdict バナーを置く構成なので、後ろから探すほうが「直前の具体行」に
+ * 素早く当たる(前から探すと無関係な note/序盤の行に当たる)。 */
+function reasonLine(lines: readonly string[]): string | undefined {
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i];
+    if (line === undefined || XCODEBUILD_VERDICT_BANNER.test(line)) {
+      continue;
+    }
+    if (/error|errsec|fail/i.test(line)) {
+      return line;
+    }
+  }
+  return undefined;
+}
+
 /** 複数行のエラーの1行目(バナー用)。空行は飛ばし、長ければ切る
  * (stderrDetailLine と対 —— あちらは stderr の**最後**の実質行、こちらは NDJSON の
- * error の**先頭**行。CLI が先頭行に要点を置く契約なのでここは先頭を採る)。 */
+ * error の**先頭**行。CLI が先頭行に要点を置く契約なのでここは先頭を採る)。
+ *
+ * **先頭行が見出し(":" で終わる)なら単独では情報が無い**
+ * (実例: "xcodebuild build-for-testing failed:\n<tail>" — 原因は次の行以降。見出しだけを
+ * 返すと「失敗しました」しか言わないバナーになる)。このときは reasonLine で原因らしい行を
+ * 後ろから探して添える。見つからなければ最後の非空行を使う。見出しで終わらない普通の
+ * 1行エラーは従来どおり(ここを通らない)。 */
 export function firstLine(message: string, limit = 200): string {
-  const line = message.split("\n").map((value) => value.trim()).find((value) => value.length > 0);
-  if (line === undefined) {
+  const lines = message.split("\n").map((value) => value.trim()).filter((value) => value.length > 0);
+  const head = lines[0];
+  if (head === undefined) {
     return message;
   }
-  return line.length > limit ? `${line.slice(0, limit)}…` : line;
+  let text = head;
+  if (head.endsWith(":")) {
+    const tail = lines.slice(1);
+    const detail = reasonLine(tail) ?? tail[tail.length - 1];
+    if (detail !== undefined && detail !== head) {
+      text = `${head} ${detail}`;
+    }
+  }
+  return text.length > limit ? `${text.slice(0, limit)}…` : text;
 }
 
 /** デバイスライフサイクルの直列キューおよび device-catalog/installed-devices/create-device の

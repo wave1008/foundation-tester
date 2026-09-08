@@ -158,6 +158,12 @@ export const deviceOpsStrings = {
     ja: "ログインキーチェーンに触れません(ssh 越しのビルドで起きます)",
     en: "the login keychain is not available (typical of builds started over ssh)",
   },
+  "deviceOps.signing.fact.keySigningAccessDenied": {
+    ja: "署名鍵は解錠されていますが、非対話セッションからのアクセスを ACL が許可していません"
+      + "(ssh 越しのビルドで起きます)",
+    en: "the signing key is unlocked but its access control does not permit this non-interactive"
+      + " session to use it (typical of builds started over ssh)",
+  },
   "deviceOps.signing.portalNeedsGui": {
     ja: "端末登録・プロファイルの取り直しは ssh からはできません。その Mac の GUI セッションで一度"
       + "ブリッジを起動してください(登録直後の1回目は失敗することがあります。その場合はもう一度)。",

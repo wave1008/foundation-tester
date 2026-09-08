@@ -607,6 +607,55 @@ test("firstLine: 1行だけのエラーはそのまま(既存の見え方を変�
   assert.equal(firstLine("no simulator with that UDID"), "no simulator with that UDID");
 });
 
+// ---- firstLine: 見出し(":" で終わる)は単独では情報が無いので原因行を添える ----
+// 実測: "xcodebuild build-for-testing failed:\n<tail>"(BridgeLauncher の LauncherError.commandFailed)。
+// 見出しだけを返すと「失敗しました」の言い直ししか出ない(実害)。xcodebuild は原因の行を
+// 先に出し、末尾に "** … FAILED **" という素の verdict バナー(原因を持たない)を置く構成なので、
+// 後ろから探すほうが「直前の具体行」に早く当たる(前から探すと途中の note 行に化ける)。
+
+test("firstLine: 見出しは原因らしい行(fail/error/errSec)を後ろから拾って添える", () => {
+  const log = [
+    "xcodebuild build-for-testing failed:",
+    'Signing Identity:     "Apple Development: Nobuhiro Senba (73YMA2YH5T)"',
+    'Provisioning Profile: "iOS Team Provisioning Profile: *"',
+    "/usr/bin/codesign --force --sign 7BC760... FleetestRunnerApp.debug.dylib: errSecInternalComponent",
+    "Command CodeSign failed with a nonzero exit code",
+    "** TEST BUILD FAILED **",
+  ].join("\n");
+  // verdict バナー("** TEST BUILD FAILED **")は候補から外れ、その手前の具体行を拾う
+  // (前から探すと errSec の行に化ける = 後ろから探す規律を機械的に固定する)
+  assert.equal(
+    firstLine(log),
+    "xcodebuild build-for-testing failed: Command CodeSign failed with a nonzero exit code",
+  );
+});
+
+test("firstLine: 見出しが ':' で終わらなければ後続行は探索しない(普通の1行エラーは従来どおり)", () => {
+  const log = ["no simulator with that UDID", "error: unrelated later line"].join("\n");
+  assert.equal(firstLine(log), "no simulator with that UDID");
+});
+
+test("firstLine: 見出しの後に失敗の印を含む行が無ければ最後の非空行を使う", () => {
+  const log = [
+    "xcodebuild build-for-testing failed:",
+    "note: Building targets in dependency order",
+    "Build description signature: f30a5be201e0c69fa5ccc471b00b3321",
+  ].join("\n");
+  assert.equal(
+    firstLine(log),
+    "xcodebuild build-for-testing failed: Build description signature: f30a5be201e0c69fa5ccc471b00b3321",
+  );
+});
+
+test("firstLine: 見出し+原因行を足しても200文字上限は維持される", () => {
+  const head = "xcodebuild build-for-testing failed:";
+  const log = [head, `error: ${"x".repeat(250)}`].join("\n");
+  const result = firstLine(log);
+  assert.equal(result.length, 201, "上限200文字+省略記号");
+  assert.ok(result.endsWith("…"));
+  assert.ok(result.startsWith(head));
+});
+
 // ---- 実機の署名エラーの案内(signingGuidance)----
 // **判定は CLI・文言は拡張**(CLAUDE.md「共有するのは判定であって文言ではない」)。CLI の error は
 // 英語(CLI 利用者向け)なので、拡張は機械可読の signingProblems から自分の言語で組み立て直す。
@@ -690,7 +739,7 @@ test("署名の案内は全文がバナーへ渡る", async () => {
   }
 });
 
-test("生のエラー(署名以外)は1行目だけ渡す(長いビルドログでパネルを埋めない)", async () => {
+test("生のエラー(署名以外)は見出し+原因の1行だけ渡す(長いビルドログでパネルを埋めない)", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-deviceops-raw-"));
   const binaryPath = path.join(dir, "fleetest");
   const finished = JSON.stringify({
@@ -705,7 +754,10 @@ test("生のエラー(署名以外)は1行目だけ渡す(長いビルドログ�
     deviceOps.enqueueLifecycleJob({ kind: "device", name: "シム1", op: "down" });
     await waitUntilIdle(deviceOps);
     const failed = posts.filter((m) => m.type === "deviceOpFailed").at(-1);
-    assert.equal(failed.message, "xcodebuild failed:");
+    // 見出しが ":" で終わるときは原因行を1つだけ添える(添えないと情報がゼロになる)。
+    // 埋めない性質は保つ: 足すのは1行だけで、全体は 200 文字上限のまま
+    assert.equal(failed.message, "xcodebuild failed: line4");
+    assert.ok(failed.message.length <= 200);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
