@@ -691,9 +691,14 @@ function renderMeta(entry) {
   // bulkOpActive 変化時の再評価は setBusy 側の renderMeta 一括呼び出しが担う。
   let queuedText = '';
   if (entry.opBusy?.status === 'queued') {
+    // 実機で待っているのはブリッジの起動/停止(端末そのものは起動も停止もしない)。
+    // 仮想デバイスの「起動待機」「再起動待機」は端末の操作を指すので変えない
+    const physicalQueued = entry.device.kind === 'physical';
     queuedText = entry.opBusy.op === 'wipe'
       ? t('wvMonitor.tile.queuedWipe')
-      : entry.opBusy.op === 'down' ? t('wvMonitor.tile.queuedRestart') : t('wvMonitor.tile.queuedStart');
+      : entry.opBusy.op === 'down'
+        ? (physicalQueued ? t('wvMonitor.tile.queuedBridgeStop') : t('wvMonitor.tile.queuedRestart'))
+        : (physicalQueued ? t('wvMonitor.tile.queuedBridgeStart') : t('wvMonitor.tile.queuedStart'));
   } else if (!entry.opBusy && !entry.awaitingStateAfterUp
              && entry.device.kind !== 'physical' && bulkOpActive === 'up' && entry.device.state === 'offline') {
     queuedText = t('wvMonitor.tile.queuedStart');

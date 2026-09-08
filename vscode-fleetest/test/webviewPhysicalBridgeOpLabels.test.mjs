@@ -107,6 +107,44 @@ function showsImage(document) {
   return tile(document).querySelector(".frame-wrap img") !== null;
 }
 
+function queuedChipText(document) {
+  const chip = tile(document).querySelector(".badge-queued");
+  return chip && chip.style.display !== "none" ? chip.textContent : "";
+}
+
+test("実機 + 起動(up)キュー待ち: チップは「ブリッジ起動待ち」", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendPhysicalAndroid(window, false);
+  post(window, { type: "deviceOpBusy", name: deviceName, op: "up", status: "queued" });
+
+  const text = queuedChipText(document);
+  assert.match(text, /ブリッジ起動待ち/);
+  assert.doesNotMatch(text, /^起動待機$/, "実機の端末を起動するわけではない");
+});
+
+test("実機 + 停止(down)キュー待ち: チップは「ブリッジ停止待ち」", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendPhysicalAndroid(window, true);
+  post(window, { type: "deviceOpBusy", name: deviceName, op: "down", status: "queued" });
+
+  const text = queuedChipText(document);
+  assert.match(text, /ブリッジ停止待ち/);
+  assert.doesNotMatch(text, /再起動待機/, "実機のブリッジ停止は再起動ではない");
+});
+
+test("退行防止: 仮想デバイスのキュー待ちチップは従来どおり", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendVirtual(window, "offline");
+  post(window, { type: "deviceOpBusy", name: "Emu 1", op: "up", status: "queued" });
+  assert.match(queuedChipText(document), /起動待機/);
+
+  post(window, { type: "deviceOpBusy", name: "Emu 1", op: "down", status: "queued" });
+  assert.match(queuedChipText(document), /再起動待機/);
+});
+
 test("実機 + ブリッジ停止(down)実行中: 「ブリッジを停止中」(「シャットダウン中」ではない)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
