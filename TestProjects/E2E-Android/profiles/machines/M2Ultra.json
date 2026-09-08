@@ -141,7 +141,7 @@
         "model": "Pixel 4a"
       },
       {
-        "machine": "M1Ultra",
+        "machine": "local",
         "name": "Pixel 3a",
         "kind": "physical",
         "os": "12",

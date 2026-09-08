@@ -73,6 +73,17 @@ struct ApiStartDeviceCommand: AsyncParsableCommand {
                 _ = try await BridgeProvisioner(repoRoot: root)
                     .provision(devices: [(spec.name, spec)], log: log)
             }
+            // **Android 実機も同じ理由でブリッジを起こす** —— 実機に「起動」は無いので
+            // DeviceBooter.bootOne は到達性を確認して返すだけ。ここで起こさないと、タイルが
+            // 「ブリッジ未起動」を出しているのに起動操作が何も変えない(monitor が配る
+            // bridgeRunning は AndroidBridge.isBridgeRunning が見ている)。
+            // **エミュレータは対象外** —— タイルがこの状態を出すのは実機だけで、
+            // エミュレータのブリッジは最初の使用時に自動で立つ
+            if platform == "android", spec.isPhysical {
+                let serial = try AndroidDeviceCatalog.resolveSerial(spec: spec)
+                log("→ \(spec.name): starting the bridge (\(serial))")
+                try await AndroidDriver(serial: serial).resetAndEnsureBridge()
+            }
         }
     }
 
