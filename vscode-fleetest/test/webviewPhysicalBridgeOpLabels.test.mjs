@@ -214,3 +214,96 @@ test("実機 + 起動完了 + 画像が来ている: 画像を出す", (t) => {
   sendFrame(window, deviceId);
   assert.equal(showsImage(document), true);
 });
+
+// ブリッジ停止完了直後、遅れて届く devices 観測が停止より前の bridgeRunning:true を運んでくる
+// ことがある(生死プローブはモニターの1サイクルの頭で走るため)。この回だけ無視しないと、
+// 「停止中」→ 画像が一瞬再表示 → 「未起動」という指摘のちらつきになる(bridgeStoppedLocally)。
+function completeBridgeDown(window) {
+  post(window, { type: "deviceOpBusy", name: deviceName, op: "down", status: "running" });
+  post(window, { type: "deviceOpBusy", name: deviceName, op: null, status: null });
+}
+
+test("実機 + ブリッジ停止完了 + 直後の観測が bridgeRunning:true でも画像を出さない(指摘の再現)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendPhysicalAndroid(window, true);
+  completeBridgeDown(window);
+
+  sendPhysicalAndroid(window, true);
+  sendFrame(window, deviceId);
+  assert.equal(showsImage(document), false, "1回目の running 観測はまだ信じない");
+  assert.match(placeholderText(document), /ブリッジ未起動/);
+});
+
+test("実機 + ブリッジ停止完了 + 観測が bridgeRunning:false: 印は畳まれ「ブリッジ未起動」のまま", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendPhysicalAndroid(window, true);
+  completeBridgeDown(window);
+
+  sendPhysicalAndroid(window, false);
+  sendFrame(window, deviceId);
+  assert.equal(showsImage(document), false);
+  assert.match(placeholderText(document), /ブリッジ未起動/);
+});
+
+test("実機 + ブリッジ停止完了 + 2回連続で bridgeRunning:true: 停止が効かなかったとみなし画像を出す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendPhysicalAndroid(window, true);
+  completeBridgeDown(window);
+
+  sendPhysicalAndroid(window, true);
+  sendFrame(window, deviceId);
+  assert.equal(showsImage(document), false, "1回目はまだ無視する");
+
+  sendPhysicalAndroid(window, true);
+  sendFrame(window, deviceId);
+  assert.equal(showsImage(document), true, "2回連続なら停止は効いていないので観測を信じる");
+});
+
+test("実機 + ブリッジ停止完了後に新しい起動(up)操作: 印を引きずらず即座に観測を信じる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendPhysicalAndroid(window, true);
+  completeBridgeDown(window);
+
+  post(window, { type: "deviceOpBusy", name: deviceName, op: "up", status: "running" });
+  post(window, { type: "deviceOpBusy", name: deviceName, op: null, status: null });
+  // up 完了後、最初の devices 観測が bridgeRunning:true を伝えたら即座に画像を出す。
+  // 停止時の印(bridgeStoppedLocally)が畳まれずに残っていると、1回だけ無視するロジックに
+  // 巻き込まれてこの回では画像が出ない(退行)。
+  sendPhysicalAndroid(window, true);
+  sendFrame(window, deviceId);
+  assert.equal(showsImage(document), true);
+});
+
+test("退行防止: 仮想デバイスの down 完了後(deviceDownFinished)の挙動は変わらない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendVirtual(window, "connected");
+  sendFrame(window, "android:Emu 1");
+  post(window, { type: "deviceOpBusy", name: "Emu 1", op: "down", status: "running" });
+  post(window, { type: "deviceDownFinished", name: "Emu 1" });
+
+  assert.equal(showsImage(document), false, "offline 先行反映でプレースホルダのまま");
+  assert.doesNotMatch(placeholderText(document), /ブリッジ未起動/, "仮想デバイスは端末の未起動と言う");
+
+  sendVirtual(window, "connected");
+  sendFrame(window, "android:Emu 1");
+  assert.equal(showsImage(document), true, "次の devices 観測で通常どおり画像に戻る");
+});
+
+test("退行防止: 仮想デバイスの個別 down 完了直後にフレームが来ても画像を出す(bridgeStoppedLocally は実機専用)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendVirtual(window, "connected");
+  sendFrame(window, "android:Emu 1");
+  post(window, { type: "deviceOpBusy", name: "Emu 1", op: "down", status: "running" });
+  post(window, { type: "deviceOpBusy", name: "Emu 1", op: null, status: null });
+  // devices 観測を挟まず直接フレームを送る。device.state はまだ 'connected' のまま
+  // (仮想デバイスの個別 down では offline 先行反映が無い)なので、bridgeStoppedLocally が
+  // 誤って立っていれば offline 扱いになり画像が消える。実機専用のはずなので消えてはいけない。
+  sendFrame(window, "android:Emu 1");
+  assert.equal(showsImage(document), true);
+});

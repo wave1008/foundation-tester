@@ -85,10 +85,28 @@ function deviceOpMenuItem(state, busy, physical) {
 //   代わりに専用の欄 device.bridgeRunning(ApiMonitorCommand.shouldProbeBridge が Android 実機の
 //   connected だけに設定)を見る。**=== false でだけ未起動にする** —— undefined は「不明」
 //   (欠落・観測不能)なので、それを未起動側に倒すと pidof が一時的に失敗しただけで絵が消える。
-function bridgeNotRunning(device) {
+function deviceBridgeNotRunning(device) {
   if (device.kind !== 'physical') { return false; }
   if (device.platform === 'ios') { return device.state === 'booted'; }
   if (device.platform === 'android') { return device.bridgeRunning === false; }
+  return false;
+}
+
+// entry.bridgeStoppedLocally(印。立てる/畳む条件は applyDeviceOpBusy・applyDevices のコメント)は
+// 「実機のブリッジ停止操作が完了した」という webview 側の事実で、まだ観測(devices サイクル)が
+// 追いついていない間だけ真になる。フレーム抑制・ラベル・メニューの3箇所全部がこの印を
+// deviceBridgeNotRunning の結果と同格に見る(別々に見ると同じタイルで判断が食い違う)。
+function bridgeNotRunning(entry) {
+  return entry.bridgeStoppedLocally || deviceBridgeNotRunning(entry.device);
+}
+
+// 印を畳むかどうかの判定専用(deviceBridgeNotRunning とは極性・undefined の扱いが違うので分ける):
+// ここでは「まだ動いているように見えるか」を判定し、動いていなければ(false/undefined とも)
+// 即座に畳んでよい —— 定常状態と違い、直前に自分で down を撃った直後なので「不明」を
+// 楽観側(まだ動いていない)に倒しても pidof の一時的失敗を未起動と誤認するリスクが無い。
+function observedBridgeStillRunning(device) {
+  if (device.platform === 'ios') { return device.state === 'connected'; }
+  if (device.platform === 'android') { return device.bridgeRunning === true; }
   return false;
 }
 
@@ -369,6 +387,11 @@ function createTile(device) {
     // 3サイクル連続観測したら「本当にまだ CPU」とみなして解除する(staleConnectedCycles)。
     renderModeStale: false,
     staleConnectedCycles: 0,
+    // 実機のブリッジ停止完了後、観測(devices サイクル)が追いつくまでの間だけ true
+    // (applyDeviceOpBusy が立て、applyDevices が畳む。bridgeNotRunning から参照)。
+    bridgeStoppedLocally: false,
+    // 印が立っている間に「まだ動いている」観測が連続した回数(applyDevices だけが読み書きする)。
+    bridgeStoppedLocallyStaleObservations: 0,
   };
   tiles.set(device.id, entry);
   return entry;
@@ -380,7 +403,7 @@ function renderFrame(entry) {
   // 残っているのはブリッジが死ぬ前の古い1枚で、生きた画面と見分けがつかない
   // unknown(誰も観測していない)もフレームは来ないのでプレースホルダ側で扱う
   const offline = entry.device.state === 'offline' || entry.device.state === 'unknown'
-    || bridgeNotRunning(entry.device);
+    || bridgeNotRunning(entry);
   // 終了中(一括・個別とも)は最終フレームを凍結表示のまま見せず、プレースホルダに倒す
   // (ストリームは down 開始時に破棄済みで、以後フレームは更新されない)。
   // ただし個別 down が「キュー待ち(queued)」の間はまだ stopDeviceStreams 前=ストリーム生存中なので
@@ -477,7 +500,7 @@ function renderFrame(entry) {
               ? (upRunning
                 ? t('wvMonitor.deviceState.booting')
                 // 繋がっている実機は「未起動」ではない —— 無いのはブリッジだけ
-                : bridgeNotRunning(entry.device)
+                : bridgeNotRunning(entry)
                   ? t('wvMonitor.tile.bridgeNotRunning')
                   : t('wvMonitor.deviceState.offline'))
               : t('wvMonitor.tile.connecting');
@@ -721,7 +744,7 @@ export function renderDeviceOpMenuItem() {
   const device = deviceOpMenuEntry.device;
   // ブリッジ不在の実機は offline と同じ扱い(そのまま booted を渡すと「ブリッジを停止」が出て、
   // 止まっているものを止める操作しか選べなくなる)
-  const item = deviceOpMenuItem(bridgeNotRunning(device) ? 'offline' : device.state,
+  const item = deviceOpMenuItem(bridgeNotRunning(deviceOpMenuEntry) ? 'offline' : device.state,
                                 deviceOpMenuEntry.opBusy, device.kind === 'physical');
   // 未登録(マシンプロファイル未記載)のシミュレータ/エミュレータは起動(up)が --name 前提のため
   // 成立しない。停止(down)だけ出す。
@@ -1061,6 +1084,25 @@ export function applyDevices(devices) {
           }
         }
       }
+      // bridgeStoppedLocally の解除判定(印の意味は createTile 初期化コメント参照)。
+      // 「まだ動いていない」観測(false/undefined とも)は即座に畳む —— 直前に自分で down を
+      // 撃った直後なので、不明を楽観側(未起動)に倒しても定常状態の誤検知にはならない。
+      // 「まだ動いている」観測は**1回だけ無視する**: ブリッジ生死プローブはモニターの1サイクルの
+      // 頭で走るため、停止完了の直後の1サイクルだけは停止より前に採った値を運びうる。
+      // 2サイクル連続で running なら遅延ではなく「停止が効かなかった」事実なので観測を信じて畳む
+      // (畳まないと停止が失敗したタイルが永久に「未起動」表示で固まる)。
+      if (entry.bridgeStoppedLocally) {
+        if (observedBridgeStillRunning(device)) {
+          entry.bridgeStoppedLocallyStaleObservations += 1;
+          if (entry.bridgeStoppedLocallyStaleObservations >= 2) {
+            entry.bridgeStoppedLocally = false;
+            entry.bridgeStoppedLocallyStaleObservations = 0;
+          }
+        } else {
+          entry.bridgeStoppedLocally = false;
+          entry.bridgeStoppedLocallyStaleObservations = 0;
+        }
+      }
     }
     renderMeta(entry);
     renderFrame(entry);
@@ -1211,6 +1253,13 @@ export function applyDeviceOpBusy(message) {
   }
   const prev = entry.opBusy;
   entry.opBusy = message.op ? { op: message.op, status: message.status || 'running' } : undefined;
+  // 新しい操作(up/down/wipe)が来たら bridgeStoppedLocally は畳む —— 前回の down 完了から
+  // 観測が追いつく前に次の操作が始まった場合、その古い印を引きずらない(起動し直したのに
+  // 「未起動」のまま固まる事故を避ける)。
+  if (entry.opBusy) {
+    entry.bridgeStoppedLocally = false;
+    entry.bridgeStoppedLocallyStaleObservations = 0;
+  }
   // **起動が終わった直後の1瞬だけ「待機中」へ落ちるのを防ぐ**。CLI の deviceFinished は
   // モニターの観測サイクル(既定2秒)より先に来るので、busy を剥がした時点ではまだ state が
   // offline のまま = 「一括起動中の未起動機」= 待機中/起動待機 の条件に合致してしまう
@@ -1220,8 +1269,16 @@ export function applyDeviceOpBusy(message) {
   // ので、bridgeNotRunning もここで見る。無いと up 完了直後に awaitingStateAfterUp が立たず、
   // 次の devices サイクルまでの間だけ「ブリッジ未起動」に落ちて点滅する。
   if (prev?.op === 'up' && !entry.opBusy
-      && (entry.device.state === 'offline' || bridgeNotRunning(entry.device))) {
+      && (entry.device.state === 'offline' || bridgeNotRunning(entry))) {
     entry.awaitingStateAfterUp = true;
+  }
+  // 実機のブリッジ停止完了: 観測(devices サイクル)が追いつくまで「未起動」を先行反映する
+  // (bridgeNotRunning 経由でフレーム抑制・ラベル・メニューに効く)。畳む条件は applyDevices 側
+  // (observedBridgeStillRunning のコメント)。仮想デバイスは対象外 —— 仮想機は state が
+  // 'offline' に落ちるので既存の offline 判定だけで足りる(applyDeviceDownFinished と同型)。
+  if (prev?.op === 'down' && !entry.opBusy && entry.device.kind === 'physical') {
+    entry.bridgeStoppedLocally = true;
+    entry.bridgeStoppedLocallyStaleObservations = 0;
   }
   // down が実際に走り始めた時点から、monitor の 'cpu' は再起動前の残存値になりうる
   // (フラグの意味・解除は createTile 初期化コメントと applyDevices 参照)。
