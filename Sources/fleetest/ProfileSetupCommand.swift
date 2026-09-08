@@ -82,8 +82,9 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         for target in platforms {
             deviceNames.append(try await setUp(platform: target))
         }
-        // scaffold が作る all.json は machine もデバイスの実在も知らないまま残る。
-        // 両方作ったときはここで揃える(拡張の編集画面で「(未指定)」にならないように)
+        // 古い雛形が作った all.json は machine もデバイスの実在も知らないまま残る。
+        // 両方作ったときはここで揃える(拡張の編集画面で「(未指定)」にならないように)。
+        // **無ければ作らない** —— 今の雛形は all.json を置かない(ユーザー決定)
         if platforms.count > 1 {
             let testProject = try ScenarioHost.project(named: project)
             let allURL = testProject.runsDir.appendingPathComponent("all.json")

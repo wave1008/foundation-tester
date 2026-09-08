@@ -391,23 +391,87 @@ public enum ProjectScaffold {
             to: project.testbasesDir.appendingPathComponent("README.md"),
             atomically: true, encoding: .utf8)
 
+        // 中身は空。デバイスは受け手が拡張のデバイスタブか `fleetest profile setup` で足す。
+        // **名前を固定するのが肝** —— 実行プロファイルが machine で名指しするので、
+        // あとから別名のマシンプロファイルが増えても determineMachine が迷わない
+        try "{}\n".write(to: project.machinesDir.appendingPathComponent("\(scaffoldMachineName).json"),
+                         atomically: true, encoding: .utf8)
+
+        try demoScenario(app: app).write(
+            to: project.scenariosDir.appendingPathComponent("\(demoScenarioFileName).swift"),
+            atomically: true, encoding: .utf8)
+
         let appRef = project.name.lowercased()
         try appProfileTemplate(appName: project.name, app: app).write(
             to: project.appsDir.appendingPathComponent("\(appRef).json"),
             atomically: true, encoding: .utf8)
-        let deviceName = ["ios": "simulator1", "android": "emulator1"]
-        for platform in platforms {
-            guard let device = deviceName[platform] else { continue }
-            try runProfileTemplate(app: appRef, deviceNames: [device]).write(
+        for platform in platforms where knownPlatforms.contains(platform) {
+            try runProfileTemplate(app: appRef, machine: scaffoldMachineName).write(
                 to: project.runsDir.appendingPathComponent("\(platform).json"),
                 atomically: true, encoding: .utf8)
         }
-        // all は両プラットフォームを作ったときだけ(片方しか無い all は解決できない)
-        if platforms.contains("ios"), platforms.contains("android") {
-            try runProfileTemplate(app: appRef, deviceNames: ["simulator1", "emulator1"]).write(
-                to: project.runsDir.appendingPathComponent("all.json"),
-                atomically: true, encoding: .utf8)
+    }
+
+    /// run を作る対象。これ以外の値は無視する(呼び出し側の platforms は検証済みだが、
+    /// 未知の名前で runs/<名前>.json ができると解決できないプロファイルが残る)
+    static let knownPlatforms: Set<String> = ["ios", "android"]
+
+    /// 雛形が置くマシンプロファイルの名前。**ファイル名と実行プロファイルの `machine` の
+    /// 両方がこれを指す**ので、片方だけ変えると解決できなくなる
+    public static let scaffoldMachineName = "local"
+
+    /// 雛形が置くデモシナリオのファイル名(拡張子なし)
+    public static let demoScenarioFileName = "sample_test"
+
+    /// 受け手が最初に読むシナリオ。**実セレクタは書けない**(雛形生成の時点で対象アプリの画面を
+    /// 知らない)ので、実コードは launchApp と appIs だけに留め、操作・検証の書き方はコメントで示す。
+    /// この形ならデバイスを登録した時点でそのまま緑になる —— 動かないコードから始めると、
+    /// 受け手は自分の設定を疑うことになる
+    static func demoScenario(app: String) -> String {
+        """
+        // \(demoScenarioFileName).swift
+        // 雛形が置いたデモ。**消して構いません**(自分のシナリオを書き始めるときの雛形として使う)。
+        // コマンドの一覧と引数は docs/commands.md、書き方の流れは docs/user-docs/ を参照。
+
+        import FTDSL
+
+        // app: 対象アプリの bundle ID / package name。プロファイル
+        // (profiles/apps/*.json)とは独立にここで指定する。
+        // platform: を書くとその OS でだけ実行される(省略時は両方)。
+        @TestClass(app: "\(app)")
+        class デモ {
+
+            @Test("アプリが起動して前面に出る")
+            func S0010() {
+                scenario {
+                    // scene = 画面。condition(前提)→ action(操作)→ expectation(検証)の順に書く。
+                    scene(1, "アプリを起動する") {
+                        condition {
+                            launchApp()
+                        }.expectation {
+                            appIs("\(app)")
+                            screenshot(filename: "起動直後")
+                        }
+                    }
+
+                    // 以降は書き方の例。セレクタ("#id" や "テキスト")を自分のアプリのものに
+                    // 差し替えて有効化する。**セレクタは推測で書かない** —— `ft_snapshot`(MCP)か
+                    // `fleetest api snapshot` で実際の画面から採る。
+                    //
+                    // scene(2, "ログインする") {
+                    //     action {
+                    //         tap("#input_id")
+                    //         type("demo")
+                    //         tap("#btn_login")
+                    //     }.expectation {
+                    //         exist("#txt_home")
+                    //         select("#txt_user").textIs("demo")
+                    //     }
+                    // }
+                }
+            }
         }
+        """
     }
 
     static let mainSwift = """
@@ -505,16 +569,16 @@ public enum ProjectScaffold {
     // os は書かない(名前一致の最新ランタイムに解決される)。版を固定するとホストの Xcode に
     // 無いランタイムを指して解決不能になる(macOS/Xcode の世代差で実際に起きる)
 
-    public static func runProfileTemplate(app: String, deviceNames: [String]) -> String {
-        let devices = deviceNames
-            .map { #"    { "name": "\#($0)" }"# }
-            .joined(separator: ",\n")
+    /// **devices は空**(ユーザー決定)。雛形のマシンプロファイルも空なので、実体の無い論理名を
+    /// 置くと最初の `profile list` が「そのデバイスが解決できない」で赤くなり、
+    /// 本当にやるべきこと(デバイスの登録)が読み取りにくくなる
+    public static func runProfileTemplate(app: String, machine: String) -> String {
+        // キー順は ProfileWriter.runProfile と揃える(machine → app → devices → …)
         return """
         {
+          "machine": "\(machine)",
           "app": "\(app)",
-          "devices": [
-        \(devices)
-          ],
+          "devices": [],
           "heal": false,
           "reportDir": "reports"
         }

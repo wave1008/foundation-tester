@@ -155,36 +155,73 @@ final class ProjectScaffoldTests: XCTestCase {
         XCTAssertEqual(try runNames(project), ["ios.json"])
     }
 
-    /// all は両方作ったときだけ(片方しか無い all は解決できない)
-    func testAllProfileOnlyWhenBothPlatforms() throws {
+    /// 両方指示しても run はプラットフォームごとの2本だけ(横断の all は作らない。ユーザー決定)
+    func testBothPlatformsCreateOnlyPerPlatformRuns() throws {
         let project = makeProject()
         try ProjectScaffold.create(project: project, app: "com.example.myapp",
                                    platforms: ["ios", "android"])
-        XCTAssertEqual(try runNames(project), ["all.json", "android.json", "ios.json"])
+        XCTAssertEqual(try runNames(project), ["android.json", "ios.json"])
     }
 
-    /// マシンプロファイルは**ユーザーが名前を決めたときだけ**作る(scaffold が登録済みの名前で
-    /// 勝手に作り、あとから別名でも作られて machines/ に2つ並ぶ事故があった)
-    func testMachineProfileIsNotCreated() throws {
+    /// マシンプロファイルは固定名 local.json を空で作る(ユーザー決定)。**登録済みのマシン名では
+    /// 作らない** —— 以前それをやって、あとから別名でも作られ machines/ に2つ並ぶ事故があった。
+    /// 固定名なら run が machine で名指しできるので、2つ目が増えても解決は揺れない
+    func testMachineProfileIsScaffoldedAsEmptyLocal() throws {
         let project = makeProject()
         try ProjectScaffold.create(project: project, app: "com.example.myapp", platforms: ["ios"])
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: project.machinesDir.path),
-                       ["README.md"], "雛形の説明だけで、実体の .json は作らない")
+        XCTAssertEqual(
+            try FileManager.default.contentsOfDirectory(atPath: project.machinesDir.path).sorted(),
+            ["README.md", "local.json"])
+        let data = try Data(contentsOf: project.machinesDir.appendingPathComponent("local.json"))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertTrue(object.isEmpty, "中身は空(デバイスは受け手が足す)")
     }
 
-    /// run の devices は ProfileWriter の既定論理名を参照する(片方だけ変えると解決できなくなる)
-    func testRunProfileReferencesDefaultDeviceNames() throws {
+    /// run の machine は雛形のマシンプロファイル名を指す(片方だけ変えると解決できなくなる)
+    func testRunProfilesReferenceTheScaffoldedMachine() throws {
         let project = makeProject()
         try ProjectScaffold.create(project: project, app: "com.example.myapp",
                                    platforms: ["ios", "android"])
-        func devices(_ file: String) throws -> [String] {
+        for file in ["ios.json", "android.json"] {
             let data = try Data(contentsOf: project.runsDir.appendingPathComponent(file))
             let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-            return (object["devices"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
+            XCTAssertEqual(object["machine"] as? String, "local", file)
         }
-        XCTAssertEqual(try devices("ios.json"), [ProfileWriter.defaultDeviceName(platform: "ios")])
-        XCTAssertEqual(try devices("android.json"),
-                       [ProfileWriter.defaultDeviceName(platform: "android")])
+    }
+
+    /// run の devices は空(ユーザー決定)。雛形のマシンプロファイルも空なので、論理名を置くと
+    /// 最初の `profile list` が「そのデバイスが解決できない」で赤くなり、本当にやるべきこと
+    /// (デバイスの登録)が読み取りにくくなる
+    func testRunProfileDevicesAreEmpty() throws {
+        let project = makeProject()
+        try ProjectScaffold.create(project: project, app: "com.example.myapp",
+                                   platforms: ["ios", "android"])
+        for file in ["ios.json", "android.json"] {
+            let data = try Data(contentsOf: project.runsDir.appendingPathComponent(file))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let devices = try XCTUnwrap(object["devices"] as? [Any], file)
+            XCTAssertTrue(devices.isEmpty, file)
+        }
+    }
+
+    /// 雛形はデモシナリオを1本置く。**コンパイルできることと dry-run を通ることが要件**なので、
+    /// 実セレクタを使う操作は書かない(対象アプリの画面を知らない)。ここで固定するのは
+    /// 「置かれること」「対象アプリの ID が埋まること」「推測のセレクタが混ざらないこと」
+    func testDemoScenarioIsScaffolded() throws {
+        let project = makeProject()
+        try ProjectScaffold.create(project: project, app: "com.example.demo", platforms: ["ios"])
+        // **リテラルで書く**(production の定数で組むと、改名の変異をテストが追随して素通しする)
+        let url = project.scenariosDir.appendingPathComponent("sample_test.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(source.contains(#"@TestClass(app: "com.example.demo")"#), source)
+        XCTAssertTrue(source.contains(#"appIs("com.example.demo")"#), source)
+        // 実行されるコードにセレクタは無い(書き方の例はコメントの中だけ)
+        let live = source
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+        XCTAssertFalse(live.contains("#"), "実行されるコードに #id セレクタを書かない")
+        XCTAssertFalse(live.contains("tap("), "実行されるコードに操作を書かない")
     }
 
     /// 空のディレクトリは雛形を置いてよい(受け手・拡張が先に mkdir しただけの器)。
