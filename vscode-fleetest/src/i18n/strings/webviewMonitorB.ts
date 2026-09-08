@@ -1,6 +1,6 @@
 // バッチJ 辞書(webview 側)。namespace: wvMonitor2.
 // 対象ソース: webview/monitor/{runProfilesTab,processesTab,machineProfilesTab,appProfilesTab,
-//   laneLog,hostCharts,splitter,h264Decoder,main,menu,tabs,settingsTab}.js,
+//   projectsTab,laneLog,hostCharts,splitter,h264Decoder,main,menu,tabs,settingsTab}.js,
 //   webview/live/main.js
 // webview バンドルから import される。**vscode 非依存**を保つこと。
 // キーは "wvMonitor2." 始まり。ja は元の日本語と byte-identical(既存テスト互換)。
@@ -110,6 +110,9 @@ export const webviewMonitorBStrings = {
     ja: "選択した{count}台を Wipe Data",
     en: "Wipe Data on {count} selected",
   },
+
+  // projectsTab.js
+  "wvMonitor2.project.none": { ja: "テストプロジェクトがありません。", en: "No test projects." },
 
   // appProfilesTab.js
   "wvMonitor2.appProfile.none": { ja: "アプリプロファイルがありません。", en: "No app profiles." },

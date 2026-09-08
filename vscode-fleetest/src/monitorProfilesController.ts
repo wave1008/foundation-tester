@@ -6,7 +6,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { t } from "./i18n";
+import { t, type MessageKey } from "./i18n";
 import {
   listAppProfileNames,
   listMachineProfiles,
@@ -35,6 +35,7 @@ import {
   updateRunProfileInObject,
   validateNewAppProfileName,
   validateNewMachineProfileName,
+  validateNewProjectName,
   validateNewRunProfileName,
 } from "./monitorModel";
 import { type HookScaffoldResult, resolveWorkspaceDir, writeHookScriptTemplates } from "./runHookScaffold";
@@ -79,6 +80,9 @@ export class MonitorProfilesController {
   private pendingNameInput: { id: number; resolve: (value: string | undefined) => void } | undefined;
   /** promptName() 呼び出しごとに採番するID(nameInputConfirm/Cancel との対応付け)。 */
   private nameInputSeq = 0;
+  /** project 系(create/copy/rename/delete)は Package.swift を書き換える CLI 呼び出しを伴うため、
+   * 応答待ちの間に別の project 操作を受け付けると競合する。4操作共通で1つのフラグで排他する。 */
+  private projectOpBusy = false;
 
   constructor(private readonly deps: MonitorPanelDeps) {
     this.profileFileWatcher = vscode.workspace.createFileSystemWatcher(
@@ -173,6 +177,7 @@ export class MonitorProfilesController {
       filter: config.monitorDeviceFilter,
       apps,
       project: resolution.kind === "resolved" ? resolution.project : "",
+      projectDir: resolution.kind === "resolved" ? this.projectDir(resolution.project) : "",
     });
   }
 
@@ -352,6 +357,12 @@ export class MonitorProfilesController {
   // ---- 実行プロファイルの追加/コピー/名前変更/削除(プロファイルタブ下半分のアイコンボタン) ------
   // fleetest.profile 設定(selectProfile)には触れない(名前変更で対象を指していた場合の追随を除く。
   // handleProfileRename 参照)。
+
+  /** TestProjects/<project> ディレクトリのワークスペースルート基準の相対パス
+   * (プロファイルタブの参照専用欄が出す。実行プロファイルのワークスペース欄と同じ基準)。 */
+  private projectDir(project: string): string {
+    return path.join("TestProjects", project);
+  }
 
   /** TestProjects/<project>/profiles/runs ディレクトリの絶対パス。 */
   private runsDir(project: string): string {
@@ -713,6 +724,217 @@ export class MonitorProfilesController {
         t("profiles.log.appProfileRenameFailed", { name: profile, error: String(error) }),
       );
       void vscode.window.showErrorMessage(`fleetest: ${t("profiles.msg.appProfileRenameFailed", { name: profile })}`);
+    }
+  }
+
+  // ---- プロジェクト自体の追加/コピー/名前変更/削除(プロファイルタブ先頭のアイコンボタン) --------
+  // 実行/アプリ/マシンプロファイルと違い fs を直に触らず、Package.swift を書き換える
+  // `fleetest project ...` を deps.runFleetestCli 経由(CLI キュー)で呼ぶ(list-scenarios の
+  // ビルドと同時に走らせないため。直接 spawn しない)。
+
+  /** CLI 呼び出し失敗時の共通報告。project 系は非0終了でも JS の Error を投げない
+   * (fs 直書き系の catch(error) と違い message が無い)ため、CLI 出力の末尾を detail として
+   * ログ・ポップアップの両方に添える(空なら OUTPUT パネルを見る案内で埋める)。 */
+  private reportProjectCliFailure(
+    logKey: MessageKey,
+    msgKey: MessageKey,
+    params: Record<string, string>,
+    outcome: { readonly output: string },
+  ): void {
+    const detail = outcome.output || t("workbench.outputPanelHint");
+    this.deps.outputChannel.appendLine(t(logKey, { ...params, detail }));
+    void vscode.window.showErrorMessage(`fleetest: ${t(msgKey, { ...params, detail })}`);
+  }
+
+  /** 「+」ボタン: 新しいテストプロジェクト名を入力させ、`fleetest project create` で作成して
+   * 選択する。 */
+  async handleProjectAdd(): Promise<void> {
+    if (this.projectOpBusy) {
+      return;
+    }
+    this.projectOpBusy = true;
+    try {
+      const existing = listProjectCandidates(this.deps.workspaceRoot);
+      const input = await this.promptName({
+        title: t("profiles.title.newProject"),
+        value: "",
+        noun: t("profiles.noun.projectName"),
+        dupLabel: t("profiles.label.project"),
+        existing,
+        caseInsensitiveDup: false,
+      });
+      if (input === undefined) {
+        return;
+      }
+      const name = input.trim();
+      // webview側検証をすり抜けた場合の防御的な再検証。
+      const nameError = validateNewProjectName(name, existing);
+      if (nameError) {
+        void vscode.window.showWarningMessage(`fleetest: ${nameError}`);
+        return;
+      }
+      const outcome = await this.deps.runFleetestCli(["project", "create", name]);
+      if (outcome.ok) {
+        this.deps.outputChannel.appendLine(t("profiles.log.projectAdded", { name }));
+        this.selectProject(name);
+      } else {
+        this.reportProjectCliFailure("profiles.log.projectAddFailed", "profiles.msg.projectAddFailed", { name }, outcome);
+      }
+      this.postProfileInfo();
+      this.postMachineProfileInfo();
+    } finally {
+      this.projectOpBusy = false;
+    }
+  }
+
+  /** 「コピー」ボタン: コピー元の内容をそのまま新しい名前で複製し(`fleetest project copy`)、
+   * 複製先を選択する。 */
+  async handleProjectCopy(source: string): Promise<void> {
+    if (this.projectOpBusy) {
+      return;
+    }
+    this.projectOpBusy = true;
+    try {
+      const existing = listProjectCandidates(this.deps.workspaceRoot);
+      if (!existing.includes(source)) {
+        void vscode.window.showWarningMessage(`fleetest: ${t("profiles.msg.projectNotFound", { name: source })}`);
+        this.postProfileInfo();
+        return;
+      }
+      const input = await this.promptName({
+        title: t("profiles.title.copyProject", { source }),
+        value: `${source}-copy`,
+        noun: t("profiles.noun.projectName"),
+        dupLabel: t("profiles.label.project"),
+        existing,
+        caseInsensitiveDup: false,
+      });
+      if (input === undefined) {
+        return;
+      }
+      const name = input.trim();
+      // webview側検証をすり抜けた場合の防御的な再検証。
+      const nameError = validateNewProjectName(name, existing);
+      if (nameError) {
+        void vscode.window.showWarningMessage(`fleetest: ${nameError}`);
+        return;
+      }
+      const outcome = await this.deps.runFleetestCli(["project", "copy", source, name]);
+      if (outcome.ok) {
+        this.deps.outputChannel.appendLine(t("profiles.log.projectCopied", { source, name }));
+        this.selectProject(name);
+      } else {
+        this.reportProjectCliFailure("profiles.log.projectCopyFailed", "profiles.msg.projectCopyFailed", { name }, outcome);
+      }
+      this.postProfileInfo();
+      this.postMachineProfileInfo();
+    } finally {
+      this.projectOpBusy = false;
+    }
+  }
+
+  /** 「✏」ボタン: `fleetest project rename` で改名する。fleetest.project 設定が旧名を指して
+   * いた場合だけ新名へ書き換える(未設定=自動解決の場合は、候補一覧が変わるだけで
+   * resolveProjectName が新名を自然に拾うため触らない)。 */
+  async handleProjectRename(project: string): Promise<void> {
+    if (this.projectOpBusy) {
+      return;
+    }
+    this.projectOpBusy = true;
+    try {
+      const existing = listProjectCandidates(this.deps.workspaceRoot);
+      if (!existing.includes(project)) {
+        void vscode.window.showWarningMessage(`fleetest: ${t("profiles.msg.projectNotFound", { name: project })}`);
+        this.postProfileInfo();
+        return;
+      }
+      // 重複チェックは自分自身(現在の名前)を除いた一覧に対して行う(handleAppProfileRename と同じ方針)。
+      const dupCandidates = existing.filter((name) => name !== project);
+      const input = await this.promptName({
+        title: t("profiles.title.renameProject", { name: project }),
+        value: project,
+        noun: t("profiles.noun.projectName"),
+        dupLabel: t("profiles.label.project"),
+        existing: dupCandidates,
+        caseInsensitiveDup: false,
+      });
+      if (input === undefined) {
+        return;
+      }
+      const newName = input.trim();
+      // webview側検証をすり抜けた場合の防御的な再検証。
+      const nameError = validateNewProjectName(newName, dupCandidates);
+      if (nameError) {
+        void vscode.window.showWarningMessage(`fleetest: ${nameError}`);
+        return;
+      }
+      if (newName === project) {
+        return;
+      }
+      const outcome = await this.deps.runFleetestCli(["project", "rename", project, newName]);
+      if (outcome.ok) {
+        this.deps.outputChannel.appendLine(t("profiles.log.projectRenamed", { oldName: project, newName }));
+        if (this.deps.getConfig().project === project) {
+          void vscode.workspace
+            .getConfiguration("fleetest")
+            .update("project", newName, vscode.ConfigurationTarget.Workspace);
+        }
+      } else {
+        this.reportProjectCliFailure(
+          "profiles.log.projectRenameFailed",
+          "profiles.msg.projectRenameFailed",
+          { name: project },
+          outcome,
+        );
+      }
+      this.postProfileInfo();
+      this.postMachineProfileInfo();
+    } finally {
+      this.projectOpBusy = false;
+    }
+  }
+
+  /** 「−」ボタン: モーダル確認(ゴミ箱へ移動する旨)で「削除」が選ばれたときのみ
+   * `fleetest project delete --yes` を呼ぶ。削除対象が選択中(解決済み)のプロジェクトであれば
+   * 残りの先頭へ切り替える(削除前に判定する —— 削除後は候補から消えて判定できなくなるため)。 */
+  async handleProjectDelete(name: string): Promise<void> {
+    if (this.projectOpBusy) {
+      return;
+    }
+    this.projectOpBusy = true;
+    try {
+      const deleteLabel = t("profiles.button.delete");
+      const choice = await vscode.window.showWarningMessage(
+        t("profiles.confirm.deleteProject", { name }),
+        { modal: true },
+        deleteLabel,
+      );
+      if (choice !== deleteLabel) {
+        return;
+      }
+      const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
+      const wasSelected = resolution.kind === "resolved" && resolution.project === name;
+      const outcome = await this.deps.runFleetestCli(["project", "delete", name, "--yes"]);
+      if (outcome.ok) {
+        this.deps.outputChannel.appendLine(t("profiles.log.projectDeleted", { name }));
+        if (wasSelected) {
+          const remaining = listProjectCandidates(this.deps.workspaceRoot);
+          void vscode.workspace
+            .getConfiguration("fleetest")
+            .update("project", remaining[0] ?? "", vscode.ConfigurationTarget.Workspace);
+        }
+      } else {
+        this.reportProjectCliFailure(
+          "profiles.log.projectDeleteFailed",
+          "profiles.msg.projectDeleteFailed",
+          { name },
+          outcome,
+        );
+      }
+      this.postProfileInfo();
+      this.postMachineProfileInfo();
+    } finally {
+      this.projectOpBusy = false;
     }
   }
 

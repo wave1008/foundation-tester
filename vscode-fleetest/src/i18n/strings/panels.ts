@@ -70,6 +70,12 @@ export const panelsStrings = {
     en: "Output for each device appears here once a test runs",
   },
 
+  "panels.project.directoryLabel": { ja: "プロジェクトディレクトリ", en: "Project directory" },
+  "panels.project.addTitle": { ja: "テストプロジェクトの追加", en: "Add test project" },
+  "panels.project.copyTitle": { ja: "テストプロジェクトのコピー", en: "Copy test project" },
+  "panels.project.removeTitle": { ja: "テストプロジェクトの削除", en: "Delete test project" },
+  "panels.project.renameTitle": { ja: "テストプロジェクト名の変更", en: "Rename test project" },
+
   "panels.runProfile.noneSelected": { ja: "(実行プロファイルなし)", en: "(No run profile)" },
   "panels.runProfile.addTitle": { ja: "実行プロファイルの追加", en: "Add run profile" },
   "panels.runProfile.copyTitle": { ja: "実行プロファイルのコピー", en: "Copy run profile" },

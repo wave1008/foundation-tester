@@ -902,7 +902,7 @@ html.select-all-guard * {
 }
 .device-op-menu-item:disabled { opacity: 0.6; cursor: default; }
 
-/* ---- プロファイルタブ: #panel-profiles を単一の縦スクロールコンテナにする(DOM順: 実行/アプリ/マシン) ---- */
+/* ---- プロファイルタブ: #panel-profiles を単一の縦スクロールコンテナにする(DOM順: プロジェクト/アプリ/マシン/実行) ---- */
 #panel-profiles {
   overflow-y: auto;
 }
@@ -911,8 +911,22 @@ html.select-all-guard * {
   display: flex;
   flex-direction: column;
 }
-.run-profile-section {
+/* 先頭セクションなので上境界線は不要。**flex: 0 0 auto は要る** —— 親(.tab-panel)が
+   flex column なので、既定の flex-shrink:1 のままだと下のセクションが溢れたときに
+   ツールバー1行が潰れる。 */
+#project-section {
   flex: 0 0 auto;
+}
+/* 他セクションの <x>-profile-body と同じ本文余白。 */
+.project-body {
+  padding: 12px;
+}
+/* ラベルが長い("プロジェクトディレクトリ")ため .modal-row > label の flex:0 0 90px を
+   #id で上書きする(幅はアプリ/実行プロファイルの本文と同じ 170px)。**nowrap も要る** ——
+   テーマのフォント次第では 170px でも折り返すので、幅だけでは改行を止められない。 */
+#project-body .modal-row > label {
+  flex: 0 0 170px;
+  white-space: nowrap;
 }
 .app-profile-section {
   flex: 0 0 auto;
@@ -923,6 +937,10 @@ html.select-all-guard * {
   border-top: 1px solid var(--vscode-panel-border, transparent);
   /* コンテンツに応じて伸びる(内部スクロールは持たない)。0件時に潰れないよう最小高さを確保。 */
   min-height: 180px;
+}
+.run-profile-section {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--vscode-panel-border, transparent);
 }
 
 /* ---- プロファイルタブ: 固定ヘッダ(セクションジャンプリンク) ---- */

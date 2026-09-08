@@ -46,8 +46,8 @@ is unavailable.
   Device operations run one at a time through a shared queue, so queued tiles show a
   "Waiting..." badge.
 - Toolbar buttons start/stop every device on the machine profile and restart the monitor process.
-- The **Profiles** tab lists, creates, copies, renames, deletes and edits run/app/
-  machine profiles.
+- The **Profiles** tab lists, creates, copies, renames and deletes test projects themselves,
+  and lists, creates, copies, renames, deletes and edits run/app/machine profiles.
 - The **Settings** tab holds display and update options, including the update-check and
   update actions described below.
 

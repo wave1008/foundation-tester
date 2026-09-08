@@ -1,5 +1,5 @@
 // バッチI 辞書(webview 側)。namespace: wvMonitor.
-// 対象ソース: webview/monitor/{deviceTiles,modals,liveTab}.js
+// 対象ソース: webview/monitor/{deviceTiles,modals,liveTab,projectsTab}.js
 // webview バンドル(src/webview/i18n.js)から import される。**vscode 非依存**を保つこと。
 // キーは "wvMonitor." 始まり。ja は元の日本語と byte-identical(既存テスト互換)。
 import type { MessageDict } from "../core";

@@ -107,6 +107,9 @@ export type MonitorToWebviewMessage =
        * "TestProjects/<project>/workspace" を透かしで出すのに使う(相対パスはリポジトリルート
        * 基準なので、この文字列はそのまま入力しても既定と同じ場所を指す)。 */
       readonly project: string;
+      /** 対象プロジェクトのディレクトリ(ワークスペースルート基準の相対パス。解決できなければ "")。
+       * プロファイルタブの「プロジェクトディレクトリ」欄が参照専用で出すだけで、入力としては使わない。 */
+      readonly projectDir: string;
     }
   | {
       readonly type: "machineProfileInfo";
@@ -493,6 +496,13 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "profileCopy"; readonly profile: string }
   | { readonly type: "profileRename"; readonly profile: string }
   | { readonly type: "profileDelete"; readonly profile: string }
+  // プロファイルタブ先頭: テストプロジェクト自体の追加/コピー/名前変更/削除(実行プロファイルの
+  // profileAdd/profileCopy/profileRename/profileDelete と同じ構成)。デバイスタブの selectProject
+  // (project 切替)とは別メッセージ(こちらは TestProjects/<name>/ 自体の作成・改名・削除)。
+  | { readonly type: "projectAdd" }
+  | { readonly type: "projectCopy"; readonly project: string }
+  | { readonly type: "projectRename"; readonly project: string }
+  | { readonly type: "projectDelete"; readonly project: string }
   // マシンプロファイルの手動再取得リクエスト(machines/*.json の FileSystemWatcher とは別経路)。
   | { readonly type: "machineProfileRefresh" }
   // マシンプロファイル自体の追加/コピー/削除/名前変更。追加は対象を指さないため引数なし。
@@ -813,6 +823,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "devicesDown":
     case "restartMonitor":
     case "profileAdd":
+    case "projectAdd":
       return true;
     case "devicesUp":
       return (
@@ -850,6 +861,10 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "profileRename":
     case "profileDelete":
       return typeof value.profile === "string" && value.profile !== "";
+    case "projectCopy":
+    case "projectRename":
+    case "projectDelete":
+      return typeof value.project === "string" && value.project !== "";
     case "machineProfileRefresh":
     case "installCmdlineToolsRequest":
     case "machineProfileAdd":

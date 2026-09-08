@@ -321,6 +321,33 @@ function profileJumpLink(targetId: string, label: string): string {
   return `<button type="button" class="profile-jump-link" data-target="${targetId}">${label}</button>`;
 }
 
+/** プロジェクトは TestProjects/<name>/ ディレクトリのみで名前以外の設定値を持たないため、
+ * 実行/アプリ/マシンプロファイルと違い編集フォーム本体を持たない(ツールバー1行のみ)。 */
+function renderProjectSection(): string {
+  return `<div id="project-section" class="profile-section">
+      <div class="profile-toolbar">
+        <span class="profile-toolbar-title">${t("panels.common.testProject")}</span>
+        <select id="project-section-select" style="display: none;"></select>
+        <!-- machine-name-static と同じく初期テキストは置かない(JS 側 wvMonitor2.project.none で埋める)。 -->
+        <span id="project-name-static" class="machine-name-static" style="display: none;"></span>
+        <button id="btn-project-add" class="icon-button" title="${t("panels.project.addTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
+        <button id="btn-project-copy" class="icon-button" title="${t("panels.project.copyTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 4l1-1h5.414L14 6.586V14l-1 1H5l-1-1V4zm9 3l-3-3H5v10h8V7zM3 1L2 2v10l1 1V2h6.414l-1-1H3z"/></svg></button>
+        <button id="btn-project-remove" class="icon-button" title="${t("panels.project.removeTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8H1V7h14v1z"/></svg></button>
+        <button id="btn-project-rename" class="icon-button" title="${t("panels.project.renameTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"/></svg></button>
+        <div class="profile-toolbar-buttons">
+          <span id="project-error" class="modal-error profile-toolbar-error"></span>
+        </div>
+      </div>
+      <div id="project-body" class="project-body">
+        <!-- 参照のみ。値(絶対パス)と title は projectsTab.js が入れる。解決できないときは行ごと隠す。 -->
+        <div class="modal-row" id="project-directory-row" style="display: none;">
+          <label>${t("panels.project.directoryLabel")}</label>
+          <span id="project-directory" class="editor-readonly-value"></span>
+        </div>
+      </div>
+    </div>`;
+}
+
 function renderRunProfileSection(): string {
   return `<div id="run-profile-section" class="profile-section run-profile-section">
       <div class="profile-toolbar">
@@ -659,11 +686,13 @@ function renderMachineProfileSection(): string {
 
 function renderProfilesPanel(): string {
   return `<div id="panel-profiles" class="tab-panel" role="tabpanel" aria-labelledby="tab-profiles" style="display: none;">
-    ${renderRunProfileSection()}
+    ${renderProjectSection()}
+
+    ${renderAppProfileSection()}
 
     ${renderMachineProfileSection()}
 
-    ${renderAppProfileSection()}
+    ${renderRunProfileSection()}
   </div>`;
 }
 

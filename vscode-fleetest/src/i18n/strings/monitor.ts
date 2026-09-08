@@ -85,6 +85,26 @@ export const monitorStrings = {
     en: "The app profile format is invalid.",
   },
 
+  // ---- monitorProfileForms.ts: validateNewProjectName ----
+  // 規則は Sources/FTCore/TestProject.swift の ProjectStore.isValidName と同じ(SPM ターゲット名の
+  // 制約。test/projectNameRuleSync.test.mjs が正規表現を突き合わせる)。
+  "monitor.project.nameNoSpaces": {
+    ja: "テストプロジェクト名の前後に空白を含めることはできません。",
+    en: "The test project name cannot have leading or trailing spaces.",
+  },
+  "monitor.project.nameRequired": {
+    ja: "テストプロジェクト名を入力してください。",
+    en: "Enter a test project name.",
+  },
+  "monitor.project.nameInvalid": {
+    ja: "テストプロジェクト名は半角英数字・アンダースコア・ハイフンのみが使え、先頭にハイフンは使えません。",
+    en: "The test project name may only contain ASCII letters, digits, underscores, and hyphens, and cannot start with a hyphen.",
+  },
+  "monitor.project.nameExists": {
+    ja: "テストプロジェクト「{name}」は既に存在します。",
+    en: 'Test project "{name}" already exists.',
+  },
+
   // ---- monitorModel.ts: validateNewDeviceName / updateDeviceInMachineProfile ----
   "monitor.device.nameRequired": {
     ja: "デバイス名を入力してください。",

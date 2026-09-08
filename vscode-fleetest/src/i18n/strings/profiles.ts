@@ -95,6 +95,77 @@ export const profilesStrings = {
     en: "Remove the selected device(s)?",
   },
 
+  // ---- プロジェクト(テストプロジェクト自体の追加/コピー/削除/名前変更) ----
+  "profiles.label.project": { ja: "テストプロジェクト", en: "Test project" },
+  "profiles.noun.projectName": { ja: "テストプロジェクト名", en: "Test project name" },
+  "profiles.title.newProject": { ja: "新しいテストプロジェクト名", en: "New test project name" },
+  "profiles.title.copyProject": {
+    ja: "「{source}」のコピー先のテストプロジェクト名",
+    en: "Test project name to copy \"{source}\" to",
+  },
+  "profiles.title.renameProject": {
+    ja: "「{name}」の新しいテストプロジェクト名",
+    en: "New test project name for \"{name}\"",
+  },
+  // trashItem を使うため「削除」でなく「ゴミ箱へ移動」(取り消せる)と伝える
+  // (他の削除確認は「元に戻せません」と正反対の意味になるため文言を分ける)。
+  "profiles.confirm.deleteProject": {
+    ja: "テストプロジェクト「{name}」をゴミ箱へ移動しますか?(ゴミ箱から復元すれば取り消せます)",
+    en: "Move test project \"{name}\" to the trash? (You can undo this by restoring it from the trash.)",
+  },
+  "profiles.msg.projectNotFound": {
+    ja: "テストプロジェクト「{name}」が見つかりません。",
+    en: "Test project \"{name}\" not found.",
+  },
+  "profiles.log.projectAdded": {
+    ja: "[fleetest] テストプロジェクト「{name}」を追加しました。",
+    en: "[fleetest] Added test project \"{name}\".",
+  },
+  "profiles.log.projectAddFailed": {
+    ja: "[fleetest] テストプロジェクト「{name}」の追加に失敗しました: {detail}",
+    en: "[fleetest] Failed to add test project \"{name}\": {detail}",
+  },
+  "profiles.msg.projectAddFailed": {
+    ja: "テストプロジェクト「{name}」の追加に失敗しました。{detail}",
+    en: "Failed to add test project \"{name}\". {detail}",
+  },
+  "profiles.log.projectCopied": {
+    ja: "[fleetest] テストプロジェクト「{source}」を「{name}」としてコピーしました。",
+    en: "[fleetest] Copied test project \"{source}\" as \"{name}\".",
+  },
+  "profiles.log.projectCopyFailed": {
+    ja: "[fleetest] テストプロジェクト「{name}」のコピーに失敗しました: {detail}",
+    en: "[fleetest] Failed to copy test project \"{name}\": {detail}",
+  },
+  "profiles.msg.projectCopyFailed": {
+    ja: "テストプロジェクト「{name}」のコピーに失敗しました。{detail}",
+    en: "Failed to copy test project \"{name}\". {detail}",
+  },
+  "profiles.log.projectRenamed": {
+    ja: "[fleetest] テストプロジェクト「{oldName}」を「{newName}」に変更しました。",
+    en: "[fleetest] Renamed test project \"{oldName}\" to \"{newName}\".",
+  },
+  "profiles.log.projectRenameFailed": {
+    ja: "[fleetest] テストプロジェクト「{name}」の名前変更に失敗しました: {detail}",
+    en: "[fleetest] Failed to rename test project \"{name}\": {detail}",
+  },
+  "profiles.msg.projectRenameFailed": {
+    ja: "テストプロジェクト「{name}」の名前変更に失敗しました。{detail}",
+    en: "Failed to rename test project \"{name}\". {detail}",
+  },
+  "profiles.log.projectDeleted": {
+    ja: "[fleetest] テストプロジェクト「{name}」をゴミ箱へ移動しました。",
+    en: "[fleetest] Moved test project \"{name}\" to the trash.",
+  },
+  "profiles.log.projectDeleteFailed": {
+    ja: "[fleetest] テストプロジェクト「{name}」の削除に失敗しました: {detail}",
+    en: "[fleetest] Failed to delete test project \"{name}\": {detail}",
+  },
+  "profiles.msg.projectDeleteFailed": {
+    ja: "テストプロジェクト「{name}」の削除に失敗しました。{detail}",
+    en: "Failed to delete test project \"{name}\". {detail}",
+  },
+
   // ---- 実行プロファイル ----
   "profiles.log.projectSet": {
     ja: "[fleetest] テストプロジェクトを「{name}」に設定しました。",

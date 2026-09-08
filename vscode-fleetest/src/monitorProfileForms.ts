@@ -102,6 +102,35 @@ export function validateNewAppProfileName(name: string, existing: readonly strin
   return null;
 }
 
+// ---- プロジェクト自体の追加/コピー/名前変更(名前検証) ---------------------------------
+// monitorProfilesController.ts の handleProjectAdd/Copy/Rename が使う純粋ロジック。
+
+/** SPM のターゲット名として有効な文字集合。Sources/FTCore/TestProject.swift の
+ * ProjectStore.isValidName と文字列として同期する(test/projectNameRuleSync.test.mjs が検証)。 */
+const PROJECT_NAME_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_-]*$/;
+
+/**
+ * テストプロジェクト名(TestProjects/<name>/ の <name>)の妥当性検証。プロジェクト名は
+ * SPM のターゲット名になるため、他のプロファイル名(validateNewAppProfileName 等)と違い
+ * 日本語・空白・"/" ".": 始まりだけでなく使える文字自体を英数字・"_"・"-" に限定する
+ * (先頭は英数字・"_" のみ、"-" 始まりは不可)。
+ */
+export function validateNewProjectName(name: string, existing: readonly string[]): string | null {
+  if (name !== name.trim()) {
+    return t("monitor.project.nameNoSpaces");
+  }
+  if (name.length === 0) {
+    return t("monitor.project.nameRequired");
+  }
+  if (!PROJECT_NAME_PATTERN.test(name)) {
+    return t("monitor.project.nameInvalid");
+  }
+  if (existing.includes(name)) {
+    return t("monitor.project.nameExists", { name });
+  }
+  return null;
+}
+
 // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム -----------------------------
 // handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム22フィールド変換の純粋関数
 // (未知キー保持のイミュータブルな方針。updateDeviceInMachineProfile と同じ)。

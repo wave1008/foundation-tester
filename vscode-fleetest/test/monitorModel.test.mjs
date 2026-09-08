@@ -54,6 +54,7 @@ import {
   validateNewAppProfileName,
   validateNewDeviceName,
   validateNewMachineProfileName,
+  validateNewProjectName,
   validateNewRunProfileName,
 } from "../src/monitorModel";
 
@@ -997,6 +998,39 @@ test("validateNewAppProfileName: '.' で始まる場合はエラー", () => {
 
 test("validateNewAppProfileName: 既存名と重複する場合はエラー", () => {
   assert.notEqual(validateNewAppProfileName("sampleapp", ["sampleapp", "otherapp"]), null);
+});
+
+// ---- validateNewProjectName(新規/コピー先/リネーム後のテストプロジェクト名検証) ----
+
+test("validateNewProjectName: 妥当な名前は null(問題なし)", () => {
+  assert.equal(validateNewProjectName("sampleapp", []), null);
+  assert.equal(validateNewProjectName("My-App_1", ["sampleapp"]), null);
+  assert.equal(validateNewProjectName("_hidden", []), null);
+});
+
+test("validateNewProjectName: 空文字はエラー", () => {
+  assert.notEqual(validateNewProjectName("", []), null);
+});
+
+test("validateNewProjectName: 前後に空白を含む(trim済みでない)場合はエラー", () => {
+  assert.notEqual(validateNewProjectName(" sampleapp", []), null);
+  assert.notEqual(validateNewProjectName("sampleapp ", []), null);
+});
+
+test("validateNewProjectName: 日本語を含む場合はエラー", () => {
+  assert.notEqual(validateNewProjectName("サンプル", []), null);
+});
+
+test("validateNewProjectName: '/' を含む場合はエラー", () => {
+  assert.notEqual(validateNewProjectName("a/b", []), null);
+});
+
+test("validateNewProjectName: '-' で始まる場合はエラー(SPM ターゲット名の制約)", () => {
+  assert.notEqual(validateNewProjectName("-hidden", []), null);
+});
+
+test("validateNewProjectName: 既存名と重複する場合はエラー", () => {
+  assert.notEqual(validateNewProjectName("sampleapp", ["sampleapp", "otherapp"]), null);
 });
 
 // ---- buildRunProfileTemplate(新規実行プロファイルのテンプレートJSON生成) ----

@@ -36,6 +36,7 @@ import type { Readable } from "node:stream";
 import * as vscode from "vscode";
 import { repairDisplay, repairWifi } from "./adbWifiRepair";
 import { childEnv } from "./childEnv";
+import type { FleetestCli } from "./cli";
 import { type FleetestConfig, resolveAdb, resolveProjectName } from "./config";
 import { currentLocale, t } from "./i18n";
 import {
@@ -134,6 +135,9 @@ export interface MonitorPanelDeps {
   /** 録画動画ファイル(絶対パス)を webview から読める URI 文字列に変換する(録画タブ用)。
    * パネル未生成時は null。localResourceRoots(TestProjects/ 配下)の対象外パスを渡さないこと。 */
   videoWebviewUri(absPath: string): string | null;
+  /** `fleetest <args>` を CLI キュー経由で実行する(Package.swift を書き換える project 系は
+   *  list-scenarios のビルドと同時に走らせない)。出力は出力パネルへ流し、末尾を返す。 */
+  runFleetestCli(args: readonly string[]): Promise<{ readonly ok: boolean; readonly output: string }>;
 }
 
 export function registerMonitorPanel(
@@ -141,6 +145,7 @@ export function registerMonitorPanel(
   workspaceRoot: string,
   getConfig: () => FleetestConfig,
   outputChannel: vscode.OutputChannel,
+  cli: FleetestCli,
   eventBus: RunEventBus,
   openLiveForDevice: (id: string) => void,
 ): { relocalize(): void } {
@@ -148,6 +153,7 @@ export function registerMonitorPanel(
     workspaceRoot,
     getConfig,
     outputChannel,
+    cli,
     eventBus,
     context.extensionUri,
     context.workspaceState,
@@ -233,6 +239,7 @@ export class MonitorPanelController implements vscode.Disposable {
     private readonly workspaceRoot: string,
     private readonly getConfig: () => FleetestConfig,
     private readonly outputChannel: vscode.OutputChannel,
+    private readonly cli: FleetestCli,
     eventBus: RunEventBus,
     private readonly extensionUri: vscode.Uri,
     private readonly workspaceState: vscode.Memento,
@@ -278,6 +285,7 @@ export class MonitorPanelController implements vscode.Disposable {
       stopAllStreams: () => this.deviceStream.disposeAllForDown(),
       videoWebviewUri: (absPath) =>
         this.panel ? this.panel.webview.asWebviewUri(vscode.Uri.file(absPath)).toString() : null,
+      runFleetestCli: (args) => this.runFleetestCli(args),
     };
     this.deviceStream = new MonitorDeviceStreamController(this.deps);
     this.processManager = new MonitorProcessManager(this.deps);
@@ -363,6 +371,26 @@ export class MonitorPanelController implements vscode.Disposable {
       return;
     }
     this.processManager.restartMonitorProcess();
+  }
+
+  /** MonitorPanelDeps.runFleetestCli の実装。stdout は人向けの文(JSON でない)なので NDJSON
+   * モードにして行ごとに出力パネルへ流す(defaultProject.ts の ensureDefaultProject と同じ形)。
+   * 例外・非0終了は ok:false として返す(呼び出し側はここで throw を気にせず結果だけ見る)。 */
+  private async runFleetestCli(args: readonly string[]): Promise<{ readonly ok: boolean; readonly output: string }> {
+    const tail: string[] = [];
+    try {
+      const result = await this.cli.invoke(this.getConfig().binaryPath, this.workspaceRoot, {
+        args: [...args],
+        onNdjsonValue: () => undefined,
+        onLog: (line) => {
+          tail.push(line);
+          this.outputChannel.appendLine(line);
+        },
+      });
+      return { ok: result.exitCode === 0, output: tail.slice(-3).join(" / ") };
+    } catch (error) {
+      return { ok: false, output: error instanceof Error ? error.message : String(error) };
+    }
   }
 
   /** モニターは ViewColumn.Beside(通常2列目以降)に開く。生成ソースはその1つ左(モニターが
@@ -635,6 +663,18 @@ export class MonitorPanelController implements vscode.Disposable {
         break;
       case "selectProject":
         this.profiles.selectProject(message.project);
+        break;
+      case "projectAdd":
+        void this.profiles.handleProjectAdd();
+        break;
+      case "projectCopy":
+        void this.profiles.handleProjectCopy(message.project);
+        break;
+      case "projectDelete":
+        void this.profiles.handleProjectDelete(message.project);
+        break;
+      case "projectRename":
+        void this.profiles.handleProjectRename(message.project);
         break;
       case "profileAdd":
         void this.profiles.handleProfileAdd();
