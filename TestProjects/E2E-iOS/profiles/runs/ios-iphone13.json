@@ -3,7 +3,7 @@
   "app": "ft_e2e_ios_device",
   "devices": [
     {
-      "machine": "local",
+      "machine": "M1Ultra",
       "name": "iPhone 13(実機)"
     }
   ],
