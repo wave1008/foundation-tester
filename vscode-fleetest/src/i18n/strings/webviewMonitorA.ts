@@ -63,6 +63,10 @@ export const webviewMonitorAStrings = {
   // 繋がっている iOS 実機でブリッジが起きていないだけの状態。**「未起動」と言わない** ——
   // 端末は動いており、無いのはブリッジだけ(タイルのメニューから起こせる)
   "wvMonitor.tile.bridgeNotRunning": { ja: "ブリッジ未起動", en: "No bridge" },
+  // 実機は端末そのものを起動・停止しない(deviceTiles.js の isPhysical 分岐と対)。
+  // shuttingDown/startingBridge の言い換え専用。
+  "wvMonitor.tile.stoppingBridge": { ja: "ブリッジを停止中", en: "Stopping bridge" },
+  "wvMonitor.tile.startingBridge": { ja: "ブリッジを起動中", en: "Starting bridge" },
   "wvMonitor.tile.remoteUnobservable": {
     ja: "{machine}\n状態不明",
     en: "{machine}\nunknown",

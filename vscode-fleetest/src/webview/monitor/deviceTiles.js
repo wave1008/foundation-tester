@@ -399,6 +399,13 @@ function renderFrame(entry) {
     && ((entry.opBusy?.op === 'up' && entry.opBusy.status === 'running') || !!entry.awaitingStateAfterUp);
   const waitingUp = offline && !upRunning
     && ((!isPhysical && bulkOpActive === 'up') || entry.opBusy?.op === 'up');
+  // 実機は queued/running/awaitingStateAfterUp のどれでも同じ「ブリッジを起動中」と言う
+  // (queued/running を「待機中」と「起動中」に分ける非実機の区別は、実機では利用者にできる
+  // ことが変わらないので意味を持たない)。**bridgeNotRunning より先に判定させる**こと
+  // (下のラベル選択の優先順位を参照) —— でないと起動完了直後〜次の devices サイクルの間
+  // 「ブリッジ未起動」が一瞬混じる。
+  const physicalBridgeStarting = isPhysical && offline
+    && (entry.opBusy?.op === 'up' || !!entry.awaitingStateAfterUp);
   // **Wipe Data 中は最後のフレームを出さない**。中身を消して(場合によっては数分かけて)
   // 作り直している最中に、消える前の画面を映し続けることになる —— しかも down と違って
   // 状態が offline へ倒れるとは限らない(止めずに終わる台もある)ので、放っておくと
@@ -460,17 +467,20 @@ function renderFrame(entry) {
         ? t('wvMonitor.tile.remoteUnobservable', { machine: entry.device.machine })
         : t('wvMonitor.tile.stateUnknown'))
       : shuttingDown
-        ? t('wvMonitor.tile.shuttingDown')
-        : waitingUp
-          ? t('wvMonitor.tile.waiting')
-          : offline
-            ? (upRunning
-              ? t('wvMonitor.deviceState.booting')
-              // 繋がっている実機は「未起動」ではない —— 無いのはブリッジだけ
-              : bridgeNotRunning(entry.device)
-                ? t('wvMonitor.tile.bridgeNotRunning')
-                : t('wvMonitor.deviceState.offline'))
-            : t('wvMonitor.tile.connecting');
+        // 実機は端末そのものを起動・停止しない(操作対象はブリッジだけ)ので言い換える
+        ? (isPhysical ? t('wvMonitor.tile.stoppingBridge') : t('wvMonitor.tile.shuttingDown'))
+        : physicalBridgeStarting
+          ? t('wvMonitor.tile.startingBridge')
+          : waitingUp
+            ? t('wvMonitor.tile.waiting')
+            : offline
+              ? (upRunning
+                ? t('wvMonitor.deviceState.booting')
+                // 繋がっている実機は「未起動」ではない —— 無いのはブリッジだけ
+                : bridgeNotRunning(entry.device)
+                  ? t('wvMonitor.tile.bridgeNotRunning')
+                  : t('wvMonitor.deviceState.offline'))
+              : t('wvMonitor.tile.connecting');
     entry.placeholderEl.append(labelSpan);
     entry.frameWrapEl.appendChild(entry.placeholderEl);
   }
@@ -1201,7 +1211,11 @@ export function applyDeviceOpBusy(message) {
   // offline のまま = 「一括起動中の未起動機」= 待機中/起動待機 の条件に合致してしまう
   // (実害 2026-08-29: 起動中 → 一瞬 待機中 → 画面)。**次の観測が来るまで**起動中を保つ
   // (時間で消さない = 定数を置かない。applyDevices が必ず畳む)
-  if (prev?.op === 'up' && !entry.opBusy && entry.device.state === 'offline') {
+  // 実機は device.state が 'offline' にならない(端末は起動も停止もしない。無いのはブリッジだけ)
+  // ので、bridgeNotRunning もここで見る。無いと up 完了直後に awaitingStateAfterUp が立たず、
+  // 次の devices サイクルまでの間だけ「ブリッジ未起動」に落ちて点滅する。
+  if (prev?.op === 'up' && !entry.opBusy
+      && (entry.device.state === 'offline' || bridgeNotRunning(entry.device))) {
     entry.awaitingStateAfterUp = true;
   }
   // down が実際に走り始めた時点から、monitor の 'cpu' は再起動前の残存値になりうる

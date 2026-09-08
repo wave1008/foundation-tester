@@ -186,5 +186,7 @@ test("実機タイル単体のブリッジ停止(opBusy)は一括操作と無関
   post(window, { type: "deviceOpBusy", name: "iPhone Live", op: "down", status: "running" });
 
   assert.equal(showsImage(physicalTile), false, "単体のブリッジ停止操作は Change 1 で無効化していない");
-  assert.match(placeholderText(physicalTile), /シャットダウン中/);
+  // 実機は端末そのものを止めないので「シャットダウン中」ではない(止まるのはブリッジだけ)
+  assert.match(placeholderText(physicalTile), /ブリッジを停止中/);
+  assert.doesNotMatch(placeholderText(physicalTile), /シャットダウン中/);
 });
