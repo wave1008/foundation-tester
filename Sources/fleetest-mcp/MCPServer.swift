@@ -249,6 +249,15 @@ final class MCPServer {
         return supportedProtocolVersions.last!
     }
 
+    /// JSON の `null` は JSONSerialization で NSNull になり、`args["x"] != nil` 型の判定を
+    /// 「指定あり」に倒す(waitFor / scrollFrame / url / ref / duration の判定がそれ)。
+    /// 省略欄に null を埋めるクライアントのために、**call() の入口で1回だけ**落とす ——
+    /// 判定を1箇所ずつ値の型に直す形にすると、次に足した判定が同じ穴を再生産する。
+    /// 見るのは最上位だけ(配列の中の null は各引数の `as? [Int]` が既に弾く)
+    static func droppingNullArguments(_ args: [String: Any]) -> [String: Any] {
+        args.filter { !($0.value is NSNull) }
+    }
+
     private func reply(id: Any?, result: [String: Any]) {
         send(["jsonrpc": "2.0", "id": id ?? NSNull(), "result": result])
     }

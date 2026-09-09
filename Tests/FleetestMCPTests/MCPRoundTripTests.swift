@@ -26,6 +26,24 @@ final class MCPRoundTripTests: XCTestCase {
         content.compactMap { $0["text"] as? String }.joined(separator: "\n")
     }
 
+    // MARK: - JSON null の引数
+
+    /// **省略欄に `null` を埋めるクライアントでも「指定あり」に化けない**。`args["waitFor"] != nil`
+    /// 型の判定は NSNull を「渡された」と読むので、waitForChange が「waitFor に負けた」と
+    /// 言い出す(Claude Code は null を送らないが、doc は他クライアントを謳っている)
+    func testNullArgumentsAreTreatedAsOmitted() async throws {
+        let text = bodyText(try await server.call(
+            tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true, "waitForChange": true,
+                                   "timeout": 0, "waitFor": NSNull()]))
+        XCTAssertFalse(text.contains("waitForChange was ignored"), text)
+    }
+
+    func testDroppingNullArgumentsKeepsEveryOtherValue() {
+        let kept = MCPServer.droppingNullArguments(
+            ["a": NSNull(), "b": false, "c": 0, "d": "", "e": [NSNull()]])
+        XCTAssertEqual(Set(kept.keys), ["b", "c", "d", "e"], "null 以外(false/0/空文字/配列)は残す")
+    }
+
     // MARK: - snapshotAfter(操作の結果をその場で返す)
 
     func testTapWithSnapshotAfterAppendsTheTree() async throws {

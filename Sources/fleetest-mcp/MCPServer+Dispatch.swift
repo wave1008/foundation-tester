@@ -218,6 +218,8 @@ extension MCPServer {
 
     func call(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
         let tool = Self.canonicalToolName(tool)
+        // JSON null の欄は「省略」に畳む(droppingNullArguments 参照)。foldingUDIDIntoPort より前
+        let args = Self.droppingNullArguments(args)
         let clock = ContinuousClock()
         let start = clock.now
         // **udid は入口で port へ畳む**。`driver(_:)` は解決後のポートで
