@@ -142,10 +142,14 @@ function clearAllLanes() {
   updateLaneVisibility();
 }
 
+// workersReady はワーカー構成の全置換だが、**全体レーン(__overall__)は消さない** ——
+// worker を持たないイベント(供給フェーズの進行)の受け皿で workersReady には現れないため、
+// 消すと「起動しています (3/8)」の行が最初のワーカー合流で丸ごと消える
+// (syncLanesToDevices が同じ理由で __overall__ を除外しているのと対)。
 function configureLanes(laneInfos) {
   const nextIds = new Set(laneInfos.map((l) => l.id));
   for (const [id, lane] of [...lanes]) {
-    if (!nextIds.has(id)) {
+    if (id !== OVERALL_LANE_ID && !nextIds.has(id)) {
       removeLane(id, lane);
       lanes.delete(id);
     }
@@ -288,6 +292,10 @@ export function applyLaneAction(action) {
       break;
     case 'line':
       appendLaneLine(action.laneId, action.text);
+      break;
+    case 'status':
+      // 見出しの状況行。デバイスを選択している間もここは見えるので、供給の進行が消えない
+      lanesRunStatus.textContent = action.text;
       break;
     case 'workerRunning':
       setTileRunning(action.workerId, action.running);

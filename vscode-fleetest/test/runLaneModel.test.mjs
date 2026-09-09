@@ -439,3 +439,39 @@ test("workerDisplayLabel: machine があれば machine/name、手元は name の
   );
   assert.equal(workerDisplayLabel("Pixel 9-01", undefined), "Pixel 9-01");
 });
+
+// 全体レーン(worker を持たないイベントの受け皿)は workersReady で消えない。
+// 実害 2026-09-09: 供給フェーズの進行が最初のワーカー合流で丸ごと消えていた
+// (webview 側の同じ規則は webviewOverallLaneKept.test.mjs)。
+test("workersReady: 全体レーンの行は消さない(供給フェーズの進行の受け皿)", () => {
+  const state = createRunLaneState();
+  feed(state, [{ kind: "log", message: "▶️ (3/8) Pixel 9-03: starting" }]);
+  assert.deepEqual(snapshotRunLaneState(state).linesByLane[OVERALL_LANE_ID],
+    ["  ▶️ (3/8) Pixel 9-03: starting"]);
+
+  feed(state, [{ kind: "workersReady", workers: [
+    { id: "android:M1Max/Pixel 10-01", name: "Pixel 10-01", platform: "android", detail: "", machine: "M1Max" },
+  ] }]);
+  const snapshot = snapshotRunLaneState(state);
+  assert.deepEqual(snapshot.linesByLane[OVERALL_LANE_ID], ["  ▶️ (3/8) Pixel 9-03: starting"],
+    "ワーカーが合流しても供給フェーズの行は残す");
+
+  // 合流後に届いた行も同じレーンへ積まれる
+  feed(state, [{ kind: "log", message: "✅ (3/8) Pixel 9-03: revived" }]);
+  assert.equal(snapshotRunLaneState(state).linesByLane[OVERALL_LANE_ID].length, 2);
+});
+
+// worker を持たない log は見出しの状況行にも出す。デバイスを選択している間はレーン欄が
+// 拡大表示に変わりログが出ない(ユーザー決定)ので、選択中の唯一の進行表示になる。
+test("log: worker 無しは status アクションも出す / worker 付きは出さない", () => {
+  const state = createRunLaneState();
+  const actions = feed(state, [{ kind: "log", message: "▶️ (3/8) Pixel 9-03: starting" }]);
+  assert.deepEqual(actions.filter((a) => a.type === "status"),
+    [{ type: "status", text: "▶️ (3/8) Pixel 9-03: starting" }]);
+
+  const withWorker = feed(state, [
+    { kind: "log", message: "ワーカーのログ", worker: "android:Pixel 9-01" },
+  ]);
+  assert.equal(withWorker.some((a) => a.type === "status"), false,
+    "レーンに属す log は見出しを奪わない");
+});

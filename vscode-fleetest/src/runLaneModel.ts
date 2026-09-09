@@ -43,6 +43,10 @@ export type LaneAction =
   | { readonly type: "lanesConfigured"; readonly lanes: readonly LaneInfo[] }
   /** レーンへの1行追加。 */
   | { readonly type: "line"; readonly laneId: string; readonly text: string }
+  /** 見出し行に出す1行の状況(worker を持たない log。供給フェーズの進行が主な出どころ)。
+   * **レーン欄はデバイスを選択している間ログを置かない**(ユーザー決定)ので、選択中でも
+   * 進行が見えるように見出しへ出す。runFinished の集計行と同じ場所で、後から上書きされる。 */
+  | { readonly type: "status"; readonly text: string }
   /** ワーカーの実行中状態の変化(タイルの「実行中」バッジに反映)。 */
   | { readonly type: "workerRunning"; readonly workerId: string; readonly running: boolean }
   /** runFinished。全体の完了表示に使う。totalSeconds はここでクライアント側計算(runStartedAtMs 起点、
@@ -168,6 +172,13 @@ export function resetRunLaneState(state: RunLaneState): LaneAction[] {
 function applyWorkers(state: RunLaneState, workers: readonly WorkerInfo[]): LaneAction[] {
   const kept = new Map(state.lanes);
   state.lanes.clear();
+  // **全体レーンは残す**: worker を持たないイベント(供給フェーズの進行)の受け皿で、
+  // workersReady には現れない。落とすと最初のワーカー合流で供給の進行が丸ごと消える
+  // (webview 側の configureLanes も同じ理由で __overall__ を除外する)。
+  const overall = kept.get(OVERALL_LANE_ID);
+  if (overall) {
+    state.lanes.set(OVERALL_LANE_ID, overall);
+  }
   const lanes: LaneInfo[] = [];
   for (const worker of workers) {
     const info: LaneInfo = {
@@ -296,7 +307,13 @@ export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: num
       if (message.length === 0) {
         return [];
       }
-      return pushLine(state, laneIdOf(event), `  ${message}`);
+      const actions = pushLine(state, laneIdOf(event), `  ${message}`);
+      // worker を持たない log(供給フェーズの進行)は見出しにも出す —— デバイスを選択している
+      // 間はレーン欄が拡大表示に変わりログが出ないため(laneLog.updateLaneVisibility)
+      if (event.worker === undefined) {
+        actions.push({ type: "status", text: message });
+      }
+      return actions;
     }
 
     case "runFinished": {

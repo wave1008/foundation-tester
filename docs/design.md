@@ -4010,7 +4010,16 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     開始と結果の2行。worker を持たないので表示先は「全体」レーン(workersReady で置き換わる)。
     **複数機械の実行では中継側が機械名を埋める**(`ApiRunMachineFanout.machineStampedLog` が
     worker を持たない log の message へ `[<machine>] ` を付ける。手元の子も `[local]` と名乗る)——
-    埋めないと3機ぶんの「Reviving 8 dead lane(s)」が混ざってどの機械のものか読めない
+    埋めないと3機ぶんの「Reviving 8 dead lane(s)」が混ざってどの機械のものか読めない。
+    **全体レーン(`__overall__`)は workersReady で消さない**(実害 2026-09-09: レーン構成の
+    全置換が worker を持たない受け皿ごと消しており、最初のワーカー合流で供給の進行が
+    タブから丸ごと消えていた —— 複数マシンでは合流が機械ごとに来るので最後には何も残らない)。
+    ホスト(`runLaneModel.applyWorkers`)と webview(`laneLog.configureLanes`)の**両方**に
+    同じ除外がある(`syncLanesToDevices` が同じ理由で既に除外していたのと対)。
+    **それでもデバイスを選択している間はレーン欄にログを置かない**(ユーザー決定)ので、
+    worker を持たない log は見出しの状況行(`#lanes-run-status`)にも出す(LaneAction の
+    `status`)—— 18台選択のまま実行していると、レーン欄には拡大表示だけが並び進行が
+    どこにも出ていなかった(実害 2026-09-09)
   - **ワーカーの表示名は machine 込み**(`vscode-fleetest/src/runLaneModel.ts` の
     `workerDisplayLabel`): TEST RESULTS の行頭は worker 名だけを出しており、同名のデバイスが
     別の機械にも居る実行(実測: performance-android は M1Max と M1Ultra の両方に
