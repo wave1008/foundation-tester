@@ -1,7 +1,7 @@
 // lanesの読み書きはこのモジュールに閉じる。deviceTiles.jsとはselectedDeviceIds/tiles/
 // runningWorkers(いずれも再代入されないMap/Set)を介して相互参照する。
 
-import { MAX_LANE_LINES, OVERALL_LANE_ID, overallLaneName } from "../../runLaneModel";
+import { MAX_LANE_LINES, OVERALL_LANE_ID, overallLaneName, workerDisplayLabel } from "../../runLaneModel";
 import { lanesTitle, lanesPlaceholder, lanesGrid, lanesSelectionStatus, lanesRunStatus } from './domRefs.js';
 import { tiles, selectedDeviceIds, attachDeviceMirror, detachDeviceMirror } from './deviceTiles.js';
 import { t } from '../i18n.js';
@@ -55,7 +55,7 @@ function setLaneHeader(headerEl, name, platform, machine) {
   const pill = document.createElement('span');
   pill.className = 'lane-name ' + (platform ? 'tile-name-' + platform : 'lane-name-neutral');
   pill.textContent = name;
-  setHoverTip(pill, machine ? machine + ' / ' + name : name);
+  setHoverTip(pill, workerDisplayLabel(name, machine));
   headerEl.appendChild(pill);
   if (machine) {
     const host = document.createElement('span');

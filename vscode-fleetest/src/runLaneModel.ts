@@ -17,6 +17,14 @@ export { overallLaneName };
 /** レーンごとに保持する最大行数。超えた分は古い行から捨てる。 */
 export const MAX_LANE_LINES = 500;
 
+/** ワーカー1台の表示名。**machine を落とさない** —— 複数の機械にまたがる実行では同名のデバイスが
+ * 別の機械にも居る(実測: performance-android は M1Max と M1Ultra の両方に "Pixel 10…-01"〜"-04" を
+ * 持つ)ので、名前だけにするとどちらの機械の行か判別できない。worker id と同じ `machine/name` の形。
+ * 使い手は TEST RESULTS の行頭(runHandler.ts)とレーン見出しの hover(webview/monitor/laneLog.js)。 */
+export function workerDisplayLabel(name: string, machine?: string): string {
+  return machine ? `${machine}/${name}` : name;
+}
+
 export interface LaneInfo {
   readonly id: string;
   readonly name: string;

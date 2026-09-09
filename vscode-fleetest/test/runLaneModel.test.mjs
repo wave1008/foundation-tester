@@ -20,6 +20,7 @@ import {
   overallLaneName,
   reduceLaneEvent,
   snapshotRunLaneState,
+  workerDisplayLabel,
 } from "../src/runLaneModel";
 
 const MOCK_RUNNER = path.resolve(process.cwd(), "test", "fixtures", "mock-runner.mjs");
@@ -423,4 +424,18 @@ test("scenarioRequeued: worker 無し(逐次実行)では workerRunning を出�
     kind: "scenarioRequeued", scenario: "Foo.S0010", reason: "r", attempt: 1, limit: 2,
   }]);
   assert.equal(actions.some((a) => a.type === "workerRunning"), false);
+});
+
+// workerDisplayLabel: TEST RESULTS の行頭(runHandler.ts)とレーン見出しの hover(laneLog.js)が
+// 共有する表示名。**machine を落とすと同名デバイスの行が区別できない**(実プロファイル
+// performance-android は M1Max と M1Ultra の両方に "Pixel 10…-01" を持つ)。
+test("workerDisplayLabel: machine があれば machine/name、手元は name のまま", () => {
+  assert.equal(workerDisplayLabel("Pixel 10-01", "M1Max"), "M1Max/Pixel 10-01");
+  assert.equal(workerDisplayLabel("Pixel 10-01", "M1Ultra"), "M1Ultra/Pixel 10-01");
+  assert.notEqual(
+    workerDisplayLabel("Pixel 10-01", "M1Max"),
+    workerDisplayLabel("Pixel 10-01", "M1Ultra"),
+    "同名デバイスが別の機械に居るとき、表示名が同じになってはいけない",
+  );
+  assert.equal(workerDisplayLabel("Pixel 9-01", undefined), "Pixel 9-01");
 });

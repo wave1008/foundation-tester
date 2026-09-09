@@ -26,6 +26,7 @@ import { findLatestReport, listRecentReports, reportsDir } from "./scenarioRepor
 import { FORCE_KILL_REQUEST, type ScenarioFinishedEventBody, STILL_RUNNING_EVENT } from "./debugAdapter";
 import { isRunEvent } from "./model";
 import { type RunEventBus } from "./runEventBus";
+import { workerDisplayLabel } from "./runLaneModel";
 import {
   createRunReducerState,
   reduceRunEvent,
@@ -888,7 +889,8 @@ async function executeRun(
         break;
       case "workers":
         for (const worker of action.workers) {
-          workerNames.set(worker.id, worker.name);
+          // machine 込みの表示名にする(同名デバイスが別の機械にも居る。workerDisplayLabel の宣言)
+          workerNames.set(worker.id, workerDisplayLabel(worker.name, worker.machine));
         }
         break;
     }

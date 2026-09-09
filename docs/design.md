@@ -4007,7 +4007,15 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     出揃っている)。`ApiRunCommand.logSupply` が stderr と NDJSON の両方へ出し、`SupplyLogRelay` が
     **runStarted より前の行を貯めて runStarted の直後に流す**(拡張のレーン状態は NDJSON の runStarted で
     clear されるため。対向: vscode-fleetest/src/runLaneModel.ts)。台ごとの進行は `(i/N)` 付きで
-    開始と結果の2行。worker を持たないので表示先は「全体」レーン(workersReady で置き換わる)
+    開始と結果の2行。worker を持たないので表示先は「全体」レーン(workersReady で置き換わる)。
+    **複数機械の実行では中継側が機械名を埋める**(`ApiRunMachineFanout.machineStampedLog` が
+    worker を持たない log の message へ `[<machine>] ` を付ける。手元の子も `[local]` と名乗る)——
+    埋めないと3機ぶんの「Reviving 8 dead lane(s)」が混ざってどの機械のものか読めない
+  - **ワーカーの表示名は machine 込み**(`vscode-fleetest/src/runLaneModel.ts` の
+    `workerDisplayLabel`): TEST RESULTS の行頭は worker 名だけを出しており、同名のデバイスが
+    別の機械にも居る実行(実測: performance-android は M1Max と M1Ultra の両方に
+    "Pixel 10…-01"〜"-04")では**どちらの機械の行か判別できなかった**。レーン見出しの hover と
+    同じ規則(`machine/name`)を1箇所に置いて両方から呼ぶ
   - **iOS ブリッジの実行前プレフライトは不採用**(ユーザー決定 2026-07-18): ウェッジ機で
     `scenarioTimeout`(90s)を失うのを実行前の status 確認で回避する試み。①「item を取ってから
     5s×2 判定→振り直し+離脱」は 10台同時の AX スパイク(一過性の遅さ)で9台一斉離脱・freeze-retry

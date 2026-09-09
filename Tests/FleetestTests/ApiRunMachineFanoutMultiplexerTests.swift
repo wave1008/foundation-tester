@@ -94,6 +94,33 @@ final class ApiRunMachineFanoutMultiplexerTests: XCTestCase {
         XCTAssertEqual(mux.ingest(childIndex: 0, line: line), [line])
     }
 
+    /// worker を持たない log(供給フェーズの進行)は**機械を名乗らせる** ——
+    /// 3機ぶんの「Reviving 8 dead lane(s)」が混ざるとどの機械のものか読めない
+    func testWorkerlessLogIsStampedWithTheMachine() {
+        var mux = MachineFanoutMultiplexer(groupMachines: ["M1Max"])
+        let out = mux.ingest(
+            childIndex: 0,
+            line: #"{"kind":"log","message":"🔁 Reviving 8 dead lane(s)"}"#)
+        XCTAssertEqual(out.count, 1)
+        XCTAssertEqual(jsonObject(out[0])["message"] as? String,
+                       "[M1Max] 🔁 Reviving 8 dead lane(s)")
+        XCTAssertNil(jsonObject(out[0])["worker"], "レーンには属さないままにする")
+    }
+
+    /// 手元の子も名乗る(無印の行があると親のものか手元のものか読めない)
+    func testWorkerlessLogFromTheLocalChildIsStampedAsLocal() {
+        var mux = MachineFanoutMultiplexer(groupMachines: [nil])
+        let out = mux.ingest(childIndex: 0, line: #"{"kind":"log","message":"→ hello"}"#)
+        XCTAssertEqual(jsonObject(out[0])["message"] as? String, "[local] → hello")
+    }
+
+    /// **log 以外の worker 無しの行は触らない**(wipeStatus 等。message 欄の意味が違う)
+    func testWorkerlessNonLogLinesAreStillUntouched() {
+        var mux = MachineFanoutMultiplexer(groupMachines: ["M1Max"])
+        let line = #"{"device":"Pixel 10","kind":"wipeStatus","phase":"rebooting"}"#
+        XCTAssertEqual(mux.ingest(childIndex: 0, line: line), [line])
+    }
+
     // MARK: - 子が担当シナリオを残して終了したら failed を合成する
 
     func testChildExitLeavesUnfinishedScenariosSynthesizedAsFailed() {

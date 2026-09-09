@@ -459,7 +459,11 @@ struct MachineFanoutMultiplexer {
             let finishedScenario = kind == "scenarioFinished" ? obj["scenario"] as? String : nil
             guard let worker = obj["worker"] as? String,
                   let colon = worker.firstIndex(of: ":") else {
-                return .other(line, finishedScenario: finishedScenario)
+                // **worker を持たない log は機械を名乗らせる**(中継する側が machine を埋める規律。
+                // RemoteMonitorFanout.ingest / RemoteDeviceFanout.machineStamped と同じ)——
+                // 供給フェーズの進行(ApiRunCommand.logSupply)はレーンに属さないので、
+                // 3機ぶんの「Reviving 8 dead lane(s)」がどの機械のものか分からなくなる
+                return .other(machineStampedLog(obj, host: host) ?? line, finishedScenario: finishedScenario)
             }
             let platform = String(worker[..<colon])
             let name = String(worker[worker.index(after: colon)...])
@@ -474,6 +478,20 @@ struct MachineFanoutMultiplexer {
             }
             return .other(text, finishedScenario: finishedScenario)
         }
+    }
+
+    /// kind == "log" かつ worker を持たない行の message に `[<機械名>] ` を付ける。
+    /// **手元の子も名乗る**(fanout は必ず複数機械なので、無印の行があると「親のものか手元のものか」
+    /// が読めない。用語は登録簿と同じ machine で、手元は "local")。
+    /// 対象外・組み立てに失敗したら nil を返して素通しさせる(壊れた形で再構築しない)
+    private static func machineStampedLog(_ obj: [String: Any], host: String?) -> String? {
+        guard obj["kind"] as? String == "log", obj["worker"] == nil,
+              let message = obj["message"] as? String else { return nil }
+        var mutated = obj
+        mutated["message"] = "[\(MachineDispatch.normalize(host) ?? "local")] \(message)"
+        guard let data = try? JSONSerialization.data(withJSONObject: mutated, options: [.sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else { return nil }
+        return text
     }
 
     private static func encode(_ event: ApiWorkersReadyEvent) -> String {
