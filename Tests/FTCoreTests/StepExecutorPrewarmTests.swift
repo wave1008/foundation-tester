@@ -73,20 +73,27 @@ private final class SilentDriver: AppDriver {
 final class OCRShortcutGateTests: XCTestCase {
 
     func testTakesTheShortcutOnlyWhenTheModelIsWarm() {
-        XCTAssertTrue(RegionText.shouldTakeShortcut(mode: .on, warm: true))
-        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .on, warm: false),
+        XCTAssertTrue(RegionText.shouldTakeShortcut(mode: .on, warm: true, abandonedInFlight: 0))
+        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .on, warm: false, abandonedInFlight: 0),
                        "モデルが載っていないのに近道を撃っている")
     }
 
     /// 殺しスイッチ(FT_OCCLUSION_OCR=0)は暖まっていても撃たない
     func testKillSwitchWinsOverWarm() {
-        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .off, warm: true))
+        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .off, warm: true, abandonedInFlight: 0))
     }
 
     /// コーパス採取(measure)は暖まっていれば撃つ(採るのが目的)
     func testMeasureModeTakesTheShortcutWhenWarm() {
-        XCTAssertTrue(RegionText.shouldTakeShortcut(mode: .measure, warm: true))
-        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .measure, warm: false))
+        XCTAssertTrue(RegionText.shouldTakeShortcut(mode: .measure, warm: true, abandonedInFlight: 0))
+        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .measure, warm: false, abandonedInFlight: 0))
+    }
+
+    /// **諦めた読みが走っている間は撃たない**(積み増すと全部予算切れになる。shouldTakeShortcut の doc)
+    func testDoesNotPileUpBehindAnAbandonedRead() {
+        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .on, warm: true, abandonedInFlight: 1),
+                       "詰まった読みの後ろに新しい読みを積んでいる")
+        XCTAssertTrue(RegionText.shouldTakeShortcut(mode: .on, warm: true, abandonedInFlight: 0))
     }
 }
 
@@ -110,5 +117,46 @@ final class RegionTextWarmDefaultTests: XCTestCase {
     func testWarmOverrideIsNotSetInProduction() {
         XCTAssertNil(RegionText.warmOverrideForTesting,
                      "差し替え口が残っている(テストが後始末していない)")
+    }
+}
+
+/// 諦めた読みの本数(`abandonedInFlight`)は**諦めた瞬間に増え、その読みが戻ったら減る**。
+/// 戻しを忘れると近道が永久に閉じ、増やし忘れると積み増しが止まらない
+final class RegionTextAbandonedInFlightTests: XCTestCase {
+
+    func testCountsTheAbandonedReadUntilItFinishes() async throws {
+        // 予算 0 で撃つと必ず諦める(Vision の呼び出しは 0ms では返らない)
+        let png = try XCTUnwrap(Self.tinyTextPNG())
+        let rect = FTRect(x: 0, y: 0, width: 120, height: 40)
+        let before = RegionText.abandonedInFlight
+        let outcome = await RegionText.resolveWithinBudget(expected: "fleetest", pngData: png,
+                                                           frame: rect, screen: rect,
+                                                           budget: .zero)
+        guard case .budgetExhausted = outcome else { return XCTFail("予算 0 なのに諦めていない") }
+        XCTAssertEqual(RegionText.abandonedInFlight, before + 1, "諦めた読みを数えていない")
+        // 読みは走り続けて戻る(健全な Vision なら 1 秒以内)
+        for _ in 0..<100 {
+            if RegionText.abandonedInFlight == before { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertEqual(RegionText.abandonedInFlight, before, "戻った読みを引いていない(近道が永久に閉じる)")
+    }
+
+    private static func tinyTextPNG() -> Data? {
+        let w = 120, h = 40
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        let font = CTFontCreateWithName("Helvetica" as CFString, 24, nil)
+        let a = NSAttributedString(string: "fleetest", attributes: [
+            NSAttributedString.Key(kCTFontAttributeName as String): font,
+            NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(red: 0, green: 0, blue: 0, alpha: 1)])
+        ctx.textPosition = CGPoint(x: 4, y: 10); CTLineDraw(CTLineCreateWithAttributedString(a), ctx)
+        guard let img = ctx.makeImage() else { return nil }
+        let out = NSMutableData()
+        guard let d = CGImageDestinationCreateWithData(out, "public.png" as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(d, img, nil); guard CGImageDestinationFinalize(d) else { return nil }
+        return out as Data
     }
 }

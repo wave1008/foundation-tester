@@ -163,7 +163,8 @@ extension StepExecutor {
         RegionText.prewarmIfNeeded(mode: occlusionOCRMode)
         // **モデルが載るまで近道は撃たない** —— 撃つと 1 ステップにつき予算を丸ごと捨てる
         // (実測 2026-09-10: 最初にガードへ入った1ステップが 36〜108 秒を払っていた)
-        if RegionText.shouldTakeShortcut(mode: occlusionOCRMode, warm: RegionText.isWarm) {
+        if RegionText.shouldTakeShortcut(mode: occlusionOCRMode, warm: RegionText.isWarm,
+                                         abandonedInFlight: RegionText.abandonedInFlight) {
             // **この段は guardMs に計上する** —— スクショ(actionMs)と違いどの内訳にも入って
             // いなかった
             let ocrStart = clock.now

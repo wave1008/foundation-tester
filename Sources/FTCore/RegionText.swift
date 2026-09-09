@@ -94,11 +94,28 @@ public enum RegionText {
     /// 探りは `renderedProbe()` = 必ず文字がある画像なので、空 = 読めていない
     public static func warmedUp(probe: [String]?) -> Bool { !(probe ?? []).isEmpty }
 
-    /// OCR の近道を撃ってよいか。**モデルが載るまでは撃たない** —— 近道は FM を省くための
-    /// ものなので、載っていない間に撃っても予算を捨てるだけで、判定は結局 FM が下す。
-    /// 純粋関数(呼び出し側の配線は1箇所)
-    public static func shouldTakeShortcut(mode: RegionTextGateMode, warm: Bool) -> Bool {
-        mode != .off && warm
+    /// OCR の近道を撃ってよいか。純粋関数(呼び出し側の配線は1箇所)。
+    /// - **モデルが載るまでは撃たない** —— 載っていない間に撃っても予算を捨てるだけで、判定は
+    ///   結局 FM が下す
+    /// - **諦めた読みが走っている間は撃たない** —— 実測(2026-09-10 SNB-M1 ジェスチャ S0010):
+    ///   最初の実 crop の読みが詰まっている間、ステップごとに新しい読みを積み増して 12 本が
+    ///   全部予算切れになり、捌けた瞬間に協調スレッドプールが 6.4 秒止まった。1 本詰まったら
+    ///   それが戻るまで FM に任せるほうが、予算を 12 回捨てるより安い
+    public static func shouldTakeShortcut(mode: RegionTextGateMode, warm: Bool,
+                                          abandonedInFlight: Int) -> Bool {
+        mode != .off && warm && abandonedInFlight == 0
+    }
+
+    private static let inFlightLock = NSLock()
+    private static var abandoned = 0
+
+    /// 予算切れで諦めたが、まだ走っている読みの本数(shouldTakeShortcut の doc)
+    public static var abandonedInFlight: Int {
+        inFlightLock.lock(); defer { inFlightLock.unlock() }; return abandoned
+    }
+
+    private static func noteAbandoned(_ delta: Int) {
+        inFlightLock.lock(); abandoned = max(0, abandoned + delta); inFlightLock.unlock()
     }
 
     /// 拡大後に許す画素数の上限。**根拠**: コーパスの crop は最大でも約 0.19 MP で、
@@ -209,6 +226,7 @@ public enum RegionText {
         // (ocr-budget-exhausted)だけでは「予算が狭い」のか「読みが本当に遅い」のかが分けられない。
         // 所要・段数・画素数が揃えば、はしごを詰めるべきか予算を動かすべきかが決まる
         let outcome = await TaskBudget.run(budget, onLateFinish: { (r: (readable: Bool, reading: Reading)?, elapsed: Duration) in
+            noteAbandoned(-1)
             let ms = Int(elapsed.components.seconds) * 1000
                 + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
             ConsoleOut.err("[fleetest] ocr shortcut finished late: \(ms)ms"
@@ -219,7 +237,9 @@ public enum RegionText {
                           cropPadding: cropPadding, languages: languages)
         }
         switch outcome {
-        case .exhausted: return .budgetExhausted
+        case .exhausted:
+            noteAbandoned(+1)
+            return .budgetExhausted
         case .value(nil): return .unreadable
         case .value(let r?): return .read(readable: r.readable, reading: r.reading)
         }
