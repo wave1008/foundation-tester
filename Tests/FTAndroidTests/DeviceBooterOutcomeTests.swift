@@ -110,3 +110,34 @@ final class StaleAVDLockTests: XCTestCase {
         XCTAssertFalse(DeviceBooter.StaleAVDLock.shouldRetry(logTail: [], avdProcessRunning: false))
     }
 }
+
+/// 「すでに停止している」を停止の失敗として数えない(実害 2026-09-10)。
+/// iOS は `sim.booted` の guard で成功扱いなのに、Android は serial の解決が
+/// `avdNotRunning` で throw するため停止済みの台が「停止に失敗」に化け、全台停止済みの機械で
+/// 一括停止が `every device failed to stop` を出していた(全滅だけを失敗と伝えるように
+/// なって表面化した)。**プロファイルの誤り(avd 未記載)は失敗のまま**。
+final class DeviceBooterAlreadyStoppedTests: XCTestCase {
+
+    func testAvdNotRunningCountsAsAlreadyStopped() {
+        let error = AndroidDeviceCatalogError.avdNotRunning("avd-1", running: [:])
+        XCTAssertTrue(DeviceBooter.isAlreadyStopped(error),
+                      "起動していない = 停止済み。停止の失敗にはしない")
+    }
+
+    func testMissingAvdInProfileIsStillAFailure() {
+        let error = AndroidDeviceCatalogError.noIdentifier(name: "Pixel 9")
+        XCTAssertFalse(DeviceBooter.isAlreadyStopped(error),
+                       "プロファイルに avd が無いのは設定の誤り。黙って成功にしない")
+    }
+
+    func testDisconnectedPhysicalDeviceIsStillAFailure() {
+        let error = AndroidDeviceCatalogError.deviceNotConnected(
+            name: "Pixel 4a", serial: "SERIAL", connected: [])
+        XCTAssertFalse(DeviceBooter.isAlreadyStopped(error))
+    }
+
+    func testUnrelatedErrorsAreNotAlreadyStopped() {
+        struct Boom: Error {}
+        XCTAssertFalse(DeviceBooter.isAlreadyStopped(Boom()))
+    }
+}

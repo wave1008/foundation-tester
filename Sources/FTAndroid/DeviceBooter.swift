@@ -424,7 +424,19 @@ public enum DeviceBooter {
             throw DeviceBooterError.commandFailed(
                 "simctl shutdown: the simulator did not stop after 3 attempts (last output: \(lastResult?.tail ?? ""))")
         } else {
-            let serial = try AndroidDeviceCatalog.resolveSerial(spec: spec)
+            // **「すでに停止している」は成功**(iOS の `guard sim.booted else { … already stopped }`
+            // と同じ扱い)。Android は serial の解決が `avdNotRunning` で throw するため、
+            // 素通しすると停止済みの台が「停止に失敗」に化ける —— 全台停止済みの機械で
+            // 一括停止が `every device failed to stop` を出していた(実害 2026-09-10。
+            // 一括停止が全滅だけを失敗と伝えるようになって表面化した)。
+            // **avd 未記載(noIdentifier)等はそのまま失敗**(プロファイルの誤りは黙らせない)
+            let serial: String
+            do {
+                serial = try AndroidDeviceCatalog.resolveSerial(spec: spec)
+            } catch let error where Self.isAlreadyStopped(error) {
+                log("✔ \(spec.name): already stopped")
+                return
+            }
             // gRPC setVmState(SHUTDOWN) 優先(adb 経路がウェッジした個体にも届く)・
             // 不可なら従来の adb emu kill
             if await !EmulatorControl.shutdown(serial: serial) {
@@ -444,6 +456,14 @@ public enum DeviceBooter {
             }
             log("⚠️ \(spec.name): sent emu kill but could not confirm the serial disappeared (\(serial))")
         }
+    }
+
+    /// 停止の文脈で「もう止まっている」と読むべきエラーか。**デバイス不要の純粋関数**
+    /// (規則はここだけ・テストが直接叩く)。停止済みの台に停止を頼むのは成功で、
+    /// プロファイルの誤り(avd 未記載)は失敗のまま
+    static func isAlreadyStopped(_ error: Error) -> Bool {
+        if case AndroidDeviceCatalogError.avdNotRunning = error { return true }
+        return false
     }
 
     /// 実機の到達性説明("iPhone 15 Pro(wired)" / "14141JEC204922")。未接続は throw

@@ -3544,6 +3544,13 @@ targeting = bundletool にしか決められない。feature module を足した
   (拡張のタイルは「ブリッジ起動待機」→「ブリッジを起動中」)。
   **`restart-devices`(down→up)だけは実機を丸ごと対象外のまま** —— 実機は端末を停止できず
   down 側が成立しない
+- **「すでに停止している」は停止の成功**(実害 2026-09-10。`DeviceBooter.isAlreadyStopped`):
+  iOS は `sim.booted` の guard で成功扱いなのに、Android は serial の解決が `avdNotRunning` で
+  throw するため**停止済みの台が「停止に失敗」に化けていた**。全滅だけを失敗として伝えるように
+  なった直後、全台停止済みの機械で一括停止が `every device failed to stop` を出した
+  (受け手の報告。それまでは何を積んでも ok:true だったので隠れていた)。
+  **プロファイルの誤り(avd 未記載)や実機の未接続は失敗のまま** —— 仕分けは純粋関数の1箇所で、
+  テストが直接叩く(`DeviceBooterAlreadyStoppedTests`)
 - **一括停止(`devices down` の `--profile` 指定時 / `--profile` 無しの掃討(sweep) /
   `api stop-all-devices` / モニターの「全て終了」)は実機のブリッジだけ止める**
   (ユーザー決定 2026-09-08。起動側の規則は変えていない)—— **端末そのものは絶対に落とさない**
