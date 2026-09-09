@@ -7,7 +7,7 @@
 
 import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
-import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee } from './domRefs.js';
+import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRestart, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers, relayoutPreviewsForResize } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
@@ -1511,6 +1511,19 @@ export function hideBanner() {
 let bulkBusy = false;
 let bulkBusyOp = null;
 let runningFilterActive = false;
+// 直近の profileInfo が持っていたテストプロジェクトの候補数(0 なら切り替え先が無い)。
+// 一括起動の最中は候補があっても触らせないので、判定は refreshBulkButtons に集める。
+let projectCandidateCount = 0;
+// 「デバイスの起動を中断」を押した後、bootBusy が返るまでの間だけ立てる旗。SIGTERM の後始末
+// (実行中の台の完走待ち)で数秒かかるので、押されたことを webview 側で見せる必要がある。
+let upCancelRequested = false;
+// GUI 実行(testRunActive)の進行と、その中断を押したかどうか。中断も完了まで数秒かかるので
+// 起動キューの中断と同じ形で受理を見せる。
+let testRunActive = false;
+let runCancelRequested = false;
+// profileInfo を1度でも受けたか。受ける前の実行プロファイル select は選択肢が1つも無いので
+// 触らせない(bootBusy が先に来ても解放しないための旗)。
+let profileInfoReceived = false;
 
 function refreshBulkButtons() {
   // bulk up 実行中は「全て起動」ボタンを中断ボタンに転用する(クリック時の分岐は main.js。
@@ -1519,19 +1532,52 @@ function refreshBulkButtons() {
   // 「起動中のデバイス」表示中の一括起動は禁止(一覧に出ていない未起動デバイスまで起動するため)。
   // 中断ボタンとして使っている間は無効化しない(進行中のジョブを止める導線を残す)。
   const blockedByFilter = runningFilterActive && !upCancelMode;
-  btnUp.disabled = (bulkBusy && !upCancelMode) || blockedByFilter;
+  // 実行中は一括操作も対象の切り替えも止める(走っている run の下から台と名簿を外さない)。
+  btnUp.disabled = (bulkBusy && !upCancelMode) || blockedByFilter || testRunActive;
   // 中断の間だけ赤系にする(同じ位置・同じボタンが別の操作になるので、色で気付けるようにする。
   // 見た目の定義は style.css の button.bulk-cancel)
   btnUp.classList.toggle('bulk-cancel', upCancelMode);
-  btnUp.textContent = upCancelMode ? t('wvMonitor.bulk.cancelStart') : t('wvMonitor.bulk.startAll');
-  btnUp.title = blockedByFilter ? t('wvMonitor.bulk.startAllDisabledRunning') : '';
-  btnDown.disabled = bulkBusy;
+  // 中断を押した後は文言とスピナーで受理を見せる。**押せるままにする** —— SIGTERM が刺さった
+  // ときの再送の口が無くなるほうが困る(無効化して復帰を時限に頼ると根拠の無い定数が要る)。
+  const cancelling = upCancelMode && upCancelRequested;
+  btnUp.classList.toggle('cancelling', cancelling);
+  btnUp.textContent = cancelling
+    ? t('wvMonitor.bulk.cancelling')
+    : upCancelMode ? t('wvMonitor.bulk.cancelStart') : t('wvMonitor.bulk.startAll');
+  btnUp.title = cancelling
+    ? t('wvMonitor.bulk.cancellingTitle')
+    : blockedByFilter ? t('wvMonitor.bulk.startAllDisabledRunning') : '';
+  // 起動キューが動いている間は畳む操作を出さない(「全て終了」は down の最中も同じ)。
+  // 「モニター再起動」は monitor プロセスごと建て直すので、起動の進行(bootBusy)を
+  // 取りこぼして中断の導線が消える。
+  btnDown.disabled = bulkBusy || testRunActive;
+  btnRestart.disabled = upCancelMode;
+  btnRestart.title = upCancelMode ? t('wvMonitor.bulk.disabledWhileStarting') : '';
+  // 一括操作(起動・終了)が動いている間は対象そのものを動かさせない —— テストプロジェクト/
+  // 実行プロファイルを変えると監視スコープが変わり(モニター再起動)、走っているキューは
+  // 前の名簿のまま進む。**この2行は applyProfileInfo / applyProjectInfo の代入より後に効く
+  // 必要がある**(どちらも最後に refreshBulkButtons() を呼んでいる)。
+  projectSelect.disabled = bulkBusy || testRunActive || projectCandidateCount === 0;
+  profileSelect.disabled = bulkBusy || testRunActive || !profileInfoReceived;
+}
+
+/** 「デバイスの起動を中断」を押した瞬間に呼ぶ(呼び手: main.js のクリック)。中断の完了は
+ * bootBusy でしか分からず数秒かかるので、押されたことだけを先に見せる。 */
+export function noteUpCancelRequested() {
+  upCancelRequested = true;
+  refreshBulkButtons();
 }
 
 export function setBusy(busy, bulkOp) {
   bulkBusy = busy;
   bulkBusyOp = bulkOp;
+  // 起動キューが up で走っている間だけ旗を保つ。**busy:true/op:'up' の再送では落とさない**
+  // —— キューが動くたびに bootBusy は来るので、落とすと文言が中断表示へ戻る。
+  if (!(busy && bulkOp === 'up')) {
+    upCancelRequested = false;
+  }
   refreshBulkButtons();
+  refreshRunTestsButton();
   const next = bulkOp === 'up' || bulkOp === 'down' ? bulkOp : null;
   if (bulkOpActive !== next) {
     const wasDown = bulkOpActive === 'down';
@@ -1601,7 +1647,7 @@ export function applyProfileInfo(message) {
     profileSelect.appendChild(unknownOption);
   }
   profileSelect.value = runningFilterActive ? PROFILE_RUNNING_VALUE : current;
-  profileSelect.disabled = false;
+  profileInfoReceived = true;
   knownProfiles = new Set(profiles);
   refreshRunTestsButton();
   refreshBulkButtons();
@@ -1617,14 +1663,56 @@ profileSelect.addEventListener('change', () => {
 // 押せるのは実体のある実行プロファイルが選ばれている間だけ。**判定は profiles の集合で行う**
 // —— 未選択('')・表示フィルタ(@running)に加えて、設定に名前はあるがファイルが無い
 // (applyProfileInfo の unknownOption)も弾く必要があり、値の形では見分けられない。
+// 一括操作(全て起動 / 全て終了)が動いている間も押せない —— 台が揃う前・畳んでいる最中に
+// 走らせることになる。判定は btnUp のラベルではなく同じ入力(setBusy の bulkBusy/bulkBusyOp)
+// から採る(表示から状態を読み戻すと i18n の差し替えで黙って壊れる)。
 function refreshRunTestsButton() {
-  const selectable = knownProfiles.has(profileSelect.value);
+  // 実行中は同じボタンが中断になる(起動の「デバイスの起動を中断」と同じ形・同じ色)。
+  // **中断は常に押せる** —— 止める口を塞がない。押した後は受理を見せるが無効化はしない。
+  if (testRunActive) {
+    btnRunTests.disabled = false;
+    btnRunTests.classList.add('bulk-cancel');
+    btnRunTests.classList.toggle('cancelling', runCancelRequested);
+    btnRunTests.textContent = runCancelRequested
+      ? t('wvMonitor.runTests.cancelling')
+      : t('wvMonitor.runTests.cancel');
+    btnRunTests.title = runCancelRequested
+      ? t('wvMonitor.runTests.cancellingTitle')
+      : t('wvMonitor.runTests.cancelTitle');
+    return;
+  }
+  btnRunTests.classList.remove('bulk-cancel', 'cancelling');
+  btnRunTests.textContent = t('wvMonitor.runTests.run');
+  const selectable = knownProfiles.has(profileSelect.value) && !bulkBusy;
   btnRunTests.disabled = !selectable;
-  btnRunTests.title = selectable ? t('wvMonitor.runTests.title') : t('wvMonitor.runTests.disabledNoProfile');
+  btnRunTests.title = selectable
+    ? t('wvMonitor.runTests.title')
+    : bulkBusy
+      ? bulkBusyOp === 'down'
+        ? t('wvMonitor.runTests.disabledStoppingDevices')
+        : t('wvMonitor.runTests.disabledStartingDevices')
+      : t('wvMonitor.runTests.disabledNoProfile');
+}
+
+/** GUI 実行の開始/終了(host の RunEventBus 由来)。誰が起こした実行でも同じ扱いにする。 */
+export function applyTestRunActive(active) {
+  testRunActive = active;
+  if (!active) {
+    runCancelRequested = false;
+  }
+  refreshBulkButtons();
+  refreshRunTestsButton();
 }
 
 btnRunTests.addEventListener('click', () => {
   if (btnRunTests.disabled) {
+    return;
+  }
+  if (testRunActive) {
+    // 中断は CLI の後始末を待つので、押されたことを先に見せる(起動キューの中断と同じ)。
+    runCancelRequested = true;
+    refreshRunTestsButton();
+    vscode.postMessage({ type: 'cancelTests' });
     return;
   }
   vscode.postMessage({ type: 'runTests' });
@@ -1653,8 +1741,9 @@ function applyProjectInfo(message) {
     projectSelect.appendChild(option);
   }
   projectSelect.value = current;
-  // 候補が無ければ触らせない(押しても切り替え先が無い)。
-  projectSelect.disabled = projects.length === 0;
+  // 候補が無ければ触らせない(押しても切り替え先が無い)。実際に落とすのは refreshBulkButtons
+  // (一括起動中のロックと同じ1箇所で決める)。
+  projectCandidateCount = projects.length;
 }
 
 projectSelect.addEventListener('change', () => {

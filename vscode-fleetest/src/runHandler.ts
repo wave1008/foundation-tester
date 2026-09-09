@@ -37,6 +37,9 @@ import type { ScenarioFileWatcher } from "./watcher";
 
 // lastResultsSync.ts の isGuiRunActive が参照する(GUI 実行中はツリーへの反映を譲る)。
 let activeRunCount = 0;
+/** fleetest.runAllTests が起こした実行の中断口。VSCode の停止ボタンはこの token を知らないので、
+ * 「テストを中断」から止めるにはここを通す。実行が終わったら必ず外す。 */
+const programmaticRunCancelSources = new Set<vscode.CancellationTokenSource>();
 
 /** SIGTERM 後も後始末が終わらない run について、利用者が選んだときだけ forceKill を撃つ通知。
  *  「実行」(cli.ts の onStillRunning)と「デバッグ」(debugAdapter.ts の fleetest.stillRunning)の
@@ -140,10 +143,28 @@ export function registerRunHandler(
       }
       const request = new vscode.TestRunRequest(undefined, undefined, runProfile);
       const tokenSource = new vscode.CancellationTokenSource();
+      // **自分で起こした実行は自分の token でしか止まらない** —— VSCode の停止ボタンが握るのは
+      // ハンドラへ渡す側の token で、ここは自前で作っているため。中断の口(fleetest.cancelTestRun)
+      // のために控えておく。
+      programmaticRunCancelSources.add(tokenSource);
       try {
         await runHandler(request, tokenSource.token);
       } finally {
+        programmaticRunCancelSources.delete(tokenSource);
         tokenSource.dispose();
+      }
+    }),
+    // デバイスタブの「テストを中断」(monitorPanel.ts)。自前で起こした実行は控えた token を、
+    // Test Explorer から起こされた実行は本体の停止コマンドを撃って止める(どちらが走っているかは
+    // ここでは分からないので両方撃つ。走っていなければどちらも no-op)。
+    vscode.commands.registerCommand("fleetest.cancelTestRun", async () => {
+      for (const source of [...programmaticRunCancelSources]) {
+        source.cancel();
+      }
+      try {
+        await vscode.commands.executeCommand("testing.cancelRun");
+      } catch {
+        // 本体のコマンドが無い環境でも自前の中断は済んでいる
       }
     }),
     vscode.commands.registerCommand(

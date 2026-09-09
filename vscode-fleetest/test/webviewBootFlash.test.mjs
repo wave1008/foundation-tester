@@ -38,12 +38,15 @@ before(async () => {
 });
 
 function createWebview() {
+  const posted = [];
   const dom = new JSDOM(panelHtml, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://localhost/" });
   const { window } = dom;
-  window.acquireVsCodeApi = () => ({ postMessage: () => {}, setState: () => {}, getState: () => undefined });
+  window.acquireVsCodeApi = () => ({
+    postMessage: (message) => posted.push(message), setState: () => {}, getState: () => undefined,
+  });
   window.HTMLElement.prototype.scrollIntoView = () => {};
   window.eval(webviewBundle);
-  return { window, document: window.document };
+  return { window, document: window.document, posted };
 }
 
 function post(window, data) {
@@ -114,6 +117,49 @@ test("一括起動の実行中だけ、ボタンが中断表示 + 赤系クラ�
   post(window, { type: "bootBusy", busy: false, bulkOp: null });
   assert.equal(btn.textContent, "デバイスを全て起動");
   assert.equal(btn.classList.contains("bulk-cancel"), false, "終わったら戻す");
+});
+
+// 中断の完了は bootBusy でしか分からず、SIGTERM の後始末(実行中の台の完走待ち)で数秒かかる。
+// その間ボタンが「デバイスの起動を中断」のままだと、押せたのかどうかが分からない(2026-09-09 の報告)。
+test("中断を押した瞬間に受理を見せる(文言・スピナー)。押せるままにして再送の口を残す", (t) => {
+  const { window, document, posted } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, "offline");
+  post(window, { type: "bootBusy", busy: true, bulkOp: "up" });
+  const btn = document.getElementById("btn-devices-up");
+
+  btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  assert.equal(btn.textContent, "中断しています…");
+  assert.equal(btn.classList.contains("cancelling"), true, "スピナーは ::before(cancelling)で出す");
+  assert.equal(btn.classList.contains("bulk-cancel"), true, "色は中断のまま");
+  assert.equal(btn.disabled, false, "SIGTERM が刺さったときの再送の口を消さない");
+  assert.deepEqual(posted.filter((m) => m?.type === "devicesUpCancel").length, 1);
+
+  // 再送は同じメッセージをもう1回送るだけ(表示は変わらない)
+  btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(posted.filter((m) => m?.type === "devicesUpCancel").length, 2);
+  assert.equal(btn.textContent, "中断しています…");
+});
+
+test("中断の受理表示は、起動キューが動いて bootBusy が再送されても消えない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, "offline");
+  post(window, { type: "bootBusy", busy: true, bulkOp: "up" });
+  const btn = document.getElementById("btn-devices-up");
+  btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  post(window, { type: "bootBusy", busy: true, bulkOp: "up" });
+  assert.equal(btn.textContent, "中断しています…");
+
+  // 中断が実って busy が落ちたら通常表示へ戻り、次の一括起動は中断表示から始まらない
+  post(window, { type: "bootBusy", busy: false, bulkOp: null });
+  assert.equal(btn.textContent, "デバイスを全て起動");
+  assert.equal(btn.classList.contains("cancelling"), false);
+
+  post(window, { type: "bootBusy", busy: true, bulkOp: "up" });
+  assert.equal(btn.textContent, "デバイスの起動を中断");
 });
 
 test("一括終了(down)の実行中は赤くしない(中断ボタンではない)", (t) => {

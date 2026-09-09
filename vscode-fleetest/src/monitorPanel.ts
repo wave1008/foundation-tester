@@ -227,6 +227,8 @@ export class MonitorPanelController implements vscode.Disposable {
   /** stopping/rebooting を post 済みで done/failed が未着のデバイス名。runEnded 時、キャンセル等で
    * done/failed が来ないまま残った名前にバッジ固着を防ぐため phase:"done" を post する。 */
   private readonly wipeInProgress = new Set<string>();
+  /** GUI 実行(RunEventBus の runStarted〜runEnded)の間だけ true。 */
+  private testRunActive = false;
   /** 直近に CLI(`fleetest api remote-machines`)から取得・同期した登録簿。setRemoteConfig の
    * 差分計算(diffRemoteHostsForSync)の基準に使うだけで、これ自体が正ではない
    * (docs/remote-runner.md §13「原則」。正は CLI の LocalConfig)。 */
@@ -564,6 +566,7 @@ export class MonitorPanelController implements vscode.Disposable {
       case "runStarted":
         this.laneSectionVisible = true;
         this.post({ type: "laneSectionVisible", visible: true });
+        this.setTestRunActive(true);
         this.dashboard.noteRunStarted(message.isDryRun);
         break;
       case "event":
@@ -587,9 +590,17 @@ export class MonitorPanelController implements vscode.Disposable {
         // がどれも起きず、終わった run が出ないままになる。runEnded は NDJSON プロセス終了後
         // (= recordings/index.json 書き出し済み)なので、ここで取り直せば競合しない。
         void this.recordings.refreshSessions();
+        this.setTestRunActive(false);
         this.dashboard.noteRunEnded();
         break;
     }
+  }
+
+  /** GUI 実行の進行を webview へ配る。**状態を持つ**のは webview 再読込(sendInitialState)で
+   * 復元するため —— 失うと実行中なのにツールバーが操作可能に戻る。 */
+  private setTestRunActive(active: boolean): void {
+    this.testRunActive = active;
+    this.post({ type: "testRunActive", active });
   }
 
   private handleWipeStatusEvent(name: string, phase: WipeStatusMessage["phase"]): void {
@@ -632,6 +643,9 @@ export class MonitorPanelController implements vscode.Disposable {
         // 実行そのものは Test Explorer の run プロファイルが持つ(runHandler.ts)。ここから
         // 直に CLI を起こすと結果がツリーへ載らず、進行も TEST RESULTS に出ない。
         void vscode.commands.executeCommand("fleetest.runAllTests");
+        break;
+      case "cancelTests":
+        void vscode.commands.executeCommand("fleetest.cancelTestRun");
         break;
       case "copyText":
         void vscode.env.clipboard.writeText(message.text).then(() => {
@@ -890,6 +904,7 @@ export class MonitorPanelController implements vscode.Disposable {
     this.deviceOps.resendQueueStatus();
     // webview 再読込でホストグラフの行(手元 + リモート機)が消えるので配り直す
     this.processManager.postHostMetricsMachines();
+    this.post({ type: "testRunActive", active: this.testRunActive });
     this.post({ type: "pollingMode", value: this.pollingMode });
     this.post({
       type: "lptScheduling",

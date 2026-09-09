@@ -125,6 +125,13 @@ export const webviewMonitorAStrings = {
 
   "wvMonitor.bulk.cancelStart": { ja: "デバイスの起動を中断", en: "Cancel Starting Devices" },
   "wvMonitor.bulk.startAll": { ja: "デバイスを全て起動", en: "Start All Devices" },
+  // 中断を押した後、bootBusy が返るまでの表示。中断は「以降の台へ進まない」の意味で、
+  // 実行中の台(最大2)はエミュレータ/simctl が detach 済みなので完走しうる。
+  "wvMonitor.bulk.cancelling": { ja: "中断しています…", en: "Cancelling…" },
+  "wvMonitor.bulk.cancellingTitle": {
+    ja: "中断を要求しました(実行中のデバイスは起動を終えることがあります)。変わらないときはもう一度押すと再送します。",
+    en: "Cancellation requested (devices already starting may finish). Press again to resend if nothing changes.",
+  },
 
   "wvMonitor.project.placeholder": { ja: "(プロジェクトを選択)", en: "(Select a project)" },
   "wvMonitor.profile.none": { ja: "(プロファイルなし)", en: "(No profile)" },
@@ -139,6 +146,19 @@ export const webviewMonitorAStrings = {
   },
   // 「テスト実行」ボタンの説明。押せる/押せないで入れ替えるので静的 HTML には置かない
   // (btnUp と同じ形)。
+  // ボタンの文言(実行 ⇄ 中断)。**ja は panels.toolbar.runTests と byte 一致させる** ——
+  // 静的 HTML の初期表示と webview の再描画で文字が変わらないようにする。
+  "wvMonitor.runTests.run": { ja: "テスト実行", en: "Run Tests" },
+  "wvMonitor.runTests.cancel": { ja: "テストを中断", en: "Cancel Test Run" },
+  "wvMonitor.runTests.cancelTitle": {
+    ja: "実行中のテストを中断します(実行中のシナリオは終了処理を行ってから止まります)。",
+    en: "Cancel the running tests (scenarios in flight stop after their cleanup).",
+  },
+  "wvMonitor.runTests.cancelling": { ja: "中断しています…", en: "Cancelling…" },
+  "wvMonitor.runTests.cancellingTitle": {
+    ja: "中断を要求しました(終了処理のぶん待ちます)。変わらないときはもう一度押すと再送します。",
+    en: "Cancellation requested (waiting for cleanup). Press again to resend if nothing changes.",
+  },
   "wvMonitor.runTests.title": {
     ja: "Test Explorer を開き、選択中の実行プロファイルで全シナリオを実行する",
     en: "Open the Test Explorer and run all scenarios with the selected run profile",
@@ -146,6 +166,19 @@ export const webviewMonitorAStrings = {
   "wvMonitor.runTests.disabledNoProfile": {
     ja: "実体のある実行プロファイルを選ぶと実行できます。",
     en: "Select an existing run profile to run tests.",
+  },
+  // 一括起動の最中に押せなくなるボタン(「モニター再起動」)の説明。
+  "wvMonitor.bulk.disabledWhileStarting": {
+    ja: "デバイスの起動中は使えません(起動の完了か中断を待ってください)。",
+    en: "Unavailable while devices are starting (wait for it to finish or cancel it).",
+  },
+  "wvMonitor.runTests.disabledStartingDevices": {
+    ja: "デバイスの起動中は実行できません(起動の完了か中断を待ってください)。",
+    en: "Unavailable while devices are starting (wait for it to finish or cancel it).",
+  },
+  "wvMonitor.runTests.disabledStoppingDevices": {
+    ja: "デバイスの終了中は実行できません(終了の完了を待ってください)。",
+    en: "Unavailable while devices are stopping (wait for it to finish).",
   },
 
   "wvMonitor.bulk.startAllDisabledRunning": {

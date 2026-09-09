@@ -154,6 +154,21 @@ button.bulk-cancel {
   border-color: var(--vscode-errorForeground, #f14c4c);
   color: var(--vscode-button-foreground, #ffffff);
 }
+/* 中断を押してから bootBusy が返るまで(数秒)。文言だけだと押せたのか分からないので回す。
+   形と keyframes は tabbar-update.busy::before と同じ(色つきボタンの上に載る側)。 */
+button.bulk-cancel.cancelling::before {
+  content: '';
+  display: inline-block;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: currentColor;
+  animation: ft-placeholder-spin 1s linear infinite;
+}
 /* hover は button.secondary と同じ考え方(前景色へ 20% 寄せる)—— テーマによらず必ず変化する */
 button.bulk-cancel:hover:not(:disabled) {
   background-color: color-mix(in srgb,

@@ -18,6 +18,8 @@ import {
   showBanner,
   hideBanner,
   setBusy,
+  noteUpCancelRequested,
+  applyTestRunActive,
   clearTilesForRestart,
   applyDeviceOpBusy,
   applyDeviceOpFailed,
@@ -99,6 +101,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'deviceError':
       applyDeviceError(message);
+      break;
+    case 'testRunActive':
+      applyTestRunActive(!!message.active);
       break;
     case 'bootBusy':
       bulkUpActive = !!message.busy && message.bulkOp === 'up';
@@ -267,6 +272,9 @@ let bulkUpActive = false;
 
 btnUp.addEventListener('click', () => {
   if (bulkUpActive) {
+    // 中断は bootBusy が返るまで数秒かかる。押されたことは webview 側で先に見せる
+    // (受理の表示は deviceTiles.js の refreshBulkButtons)。
+    noteUpCancelRequested();
     vscode.postMessage({ type: 'devicesUpCancel' });
     return;
   }

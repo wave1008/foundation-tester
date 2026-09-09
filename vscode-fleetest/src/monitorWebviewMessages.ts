@@ -71,6 +71,11 @@ export type MonitorToWebviewMessage =
     }
   | { readonly type: "deviceError"; readonly device?: string; readonly message: string }
   | { readonly type: "bootBusy"; readonly busy: boolean; readonly bulkOp: "up" | "down" | null }
+  // GUI 実行(Test Explorer / デバイスタブの「テスト実行」)の進行。true の間だけツールバーの
+  // 対象選択と一括操作を畳み、「テスト実行」を中断ボタンに変える(対向: deviceTiles.js の
+  // applyTestRunActive)。**出所は RunEventBus の runStarted/runEnded**なので、誰が起こした
+  // 実行でも同じ扱いになる。
+  | { readonly type: "testRunActive"; readonly active: boolean }
   | { readonly type: "processDown"; readonly message: string }
   | {
       readonly type: "deviceOpBusy";
@@ -456,6 +461,9 @@ export type MonitorFromWebviewMessage =
   // (受け手: monitorPanel.ts → コマンド fleetest.runAllTests = runHandler.ts)。
   // 押せるのは実体のある実行プロファイルが選ばれている間だけ(判定は webview 側)。
   | { readonly type: "runTests" }
+  // 「テストを中断」: 実行中の GUI 実行を止める(受け手: monitorPanel.ts → コマンド
+  // fleetest.cancelTestRun = runHandler.ts)。押せるのは testRunActive の間だけ。
+  | { readonly type: "cancelTests" }
   // エラーバナーの「コピー」: text をホスト側で vscode.env.clipboard へ書く(webview の
   // navigator.clipboard はフォーカス条件で失敗しうる)。対向: deviceTiles.js showBanner
   | { readonly type: "copyText"; readonly text: string }
@@ -827,6 +835,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "devicesDown":
     case "restartMonitor":
     case "runTests":
+    case "cancelTests":
     case "profileAdd":
     case "projectAdd":
       return true;

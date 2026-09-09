@@ -6,6 +6,11 @@
 // - 押せるのは profiles に実在する名前が選ばれているときだけ(未選択・@running・
 //   設定にはあるがファイルが無い名前は弾く)
 // - 押すと runTests を送る
+// - 一括起動の最中(「デバイスの起動を中断」表示)は「全て終了」「モニター再起動」と揃って押せない
+// - 一括停止(「全て終了」)の最中も select・全て起動/終了・テスト実行を触らせない
+//   (モニター再起動だけは止めない)
+// - 同じ間はテストプロジェクト・実行プロファイルの select も触らせない
+// - テスト実行中(testRunActive)は select・一括起動/終了を畳み、ボタンが「テストを中断」になる
 // - 「モニター再起動」の右隣に並ぶ(左のモニター操作群と切り分けるマージン付き)
 
 import assert from "node:assert/strict";
@@ -146,6 +151,141 @@ test("押すと runTests を送る(押せないときは送らない)", (t) => {
     posted.filter((m) => m?.type === "runTests").map((m) => ({ type: m.type })),
     [{ type: "runTests" }],
   );
+});
+
+function sendBootBusy(window, busy, bulkOp) {
+  window.dispatchEvent(
+    new window.MessageEvent("message", { data: { type: "bootBusy", busy, bulkOp } }),
+  );
+}
+
+test("一括起動の最中は「全て終了」「モニター再起動」「テスト実行」が揃って押せない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendProfileInfo(window);
+  const ids = ["btn-devices-down", "btn-restart", "btn-run-tests"];
+
+  sendBootBusy(window, true, "up");
+  assert.equal(
+    document.getElementById("btn-devices-up").textContent,
+    "デバイスの起動を中断",
+    "この状態を「デバイスの起動を中断」表示で定義している",
+  );
+  assert.deepEqual(ids.map((id) => document.getElementById(id).disabled), [true, true, true]);
+
+  // 起動が終われば(実行プロファイルは選ばれたまま)3つとも戻る
+  sendBootBusy(window, false, undefined);
+  assert.deepEqual(ids.map((id) => document.getElementById(id).disabled), [false, false, false]);
+});
+
+test("一括起動の最中はテストプロジェクト・実行プロファイルを変更できない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendProfileInfo(window);
+  const selects = ["project-select", "profile-select"];
+  assert.deepEqual(selects.map((id) => document.getElementById(id).disabled), [false, false]);
+
+  sendBootBusy(window, true, "up");
+  assert.deepEqual(selects.map((id) => document.getElementById(id).disabled), [true, true]);
+
+  // 起動中に profileInfo が届いても解放しない(applyProfileInfo の代入より後に効かせる)
+  sendProfileInfo(window);
+  assert.deepEqual(selects.map((id) => document.getElementById(id).disabled), [true, true]);
+
+  sendBootBusy(window, false, undefined);
+  assert.deepEqual(selects.map((id) => document.getElementById(id).disabled), [false, false]);
+});
+
+test("profileInfo より先に bootBusy が来ても select は触らせないまま", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  sendBootBusy(window, false, undefined);
+
+  // 選択肢が1つも無い select を押せる状態にしない
+  assert.equal(document.getElementById("project-select").disabled, true);
+  assert.equal(document.getElementById("profile-select").disabled, true);
+});
+
+test("一括停止(「全て終了」)の最中も操作させない(モニター再起動だけは止めない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendProfileInfo(window);
+  const locked = ["project-select", "profile-select", "btn-devices-up", "btn-devices-down", "btn-run-tests"];
+
+  sendBootBusy(window, true, "down");
+  assert.deepEqual(locked.map((id) => document.getElementById(id).disabled), [true, true, true, true, true]);
+  // 停止中に profileInfo が届いても select を解放しない(起動中と同じ理由)
+  sendProfileInfo(window);
+  assert.deepEqual(locked.map((id) => document.getElementById(id).disabled), [true, true, true, true, true]);
+  assert.equal(document.getElementById("btn-restart").disabled, false, "監視の建て直しは止めない");
+
+  sendBootBusy(window, false, undefined);
+  assert.deepEqual(locked.map((id) => document.getElementById(id).disabled), [false, false, false, false, false]);
+});
+
+test("起動の最中に実行プロファイルを選び直しても「テスト実行」は押せないまま", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendProfileInfo(window);
+  sendBootBusy(window, true, "up");
+
+  const select = document.getElementById("profile-select");
+  select.value = "fleet";
+  select.dispatchEvent(new window.Event("change", { bubbles: true }));
+
+  assert.equal(document.getElementById("btn-run-tests").disabled, true);
+});
+
+function sendTestRunActive(window, active) {
+  window.dispatchEvent(new window.MessageEvent("message", { data: { type: "testRunActive", active } }));
+}
+
+test("テスト実行中はツールバーを畳み、ボタンが「テストを中断」に変わる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendProfileInfo(window);
+  const locked = ["project-select", "profile-select", "btn-devices-up", "btn-devices-down"];
+  const button = document.getElementById("btn-run-tests");
+
+  sendTestRunActive(window, true);
+  assert.deepEqual(locked.map((id) => document.getElementById(id).disabled), [true, true, true, true]);
+  assert.equal(button.textContent, "テストを中断");
+  assert.equal(button.classList.contains("bulk-cancel"), true, "中断は起動キューの中断と同じ色");
+  assert.equal(button.disabled, false, "止める口は常に開けておく");
+
+  // 実行中に profileInfo が届いても解放しない(applyProfileInfo の代入より後に効かせる)
+  sendProfileInfo(window);
+  assert.deepEqual(locked.map((id) => document.getElementById(id).disabled), [true, true, true, true]);
+
+  sendTestRunActive(window, false);
+  assert.deepEqual(locked.map((id) => document.getElementById(id).disabled), [false, false, false, false]);
+  assert.equal(button.textContent, "テスト実行");
+  assert.equal(button.classList.contains("bulk-cancel"), false);
+});
+
+test("実行中に押すと cancelTests を送り、受理を見せたまま再送もできる", (t) => {
+  const { window, document, posted } = createWebview();
+  t.after(() => window.close());
+  sendProfileInfo(window);
+  sendTestRunActive(window, true);
+  const button = document.getElementById("btn-run-tests");
+
+  button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(posted.filter((m) => m?.type === "cancelTests").length, 1);
+  assert.equal(posted.filter((m) => m?.type === "runTests").length, 0, "実行中に走らせ直さない");
+  assert.equal(button.textContent, "中断しています…");
+  assert.equal(button.classList.contains("cancelling"), true);
+  assert.equal(button.disabled, false);
+
+  button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(posted.filter((m) => m?.type === "cancelTests").length, 2, "刺さったときの再送の口");
+
+  // 実行が終われば受理表示も消える(次の実行が中断表示から始まらない)
+  sendTestRunActive(window, false);
+  sendTestRunActive(window, true);
+  assert.equal(button.textContent, "テストを中断");
+  assert.equal(button.classList.contains("cancelling"), false);
 });
 
 test("「モニター再起動」の右隣に置き、左のモニター操作群とはマージンで切る", (t) => {
