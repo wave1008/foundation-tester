@@ -12,6 +12,14 @@
 import AVFoundation
 import Foundation
 
+/// stderr の drain タスク(detached)から立てる旗。actor の外から書くのでロックで守る。
+private final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flag = false
+    func set() { lock.lock(); flag = true; lock.unlock() }
+    var value: Bool { lock.lock(); defer { lock.unlock() }; return flag }
+}
+
 actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     /// 予期しない死亡からの再spawn上限。無限リトライで死に続けるデバイスに張り付かないため
     private static let maxRestarts = 5
@@ -41,12 +49,23 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
 
     func start() async -> Bool {
         killStaleRecording()
-        guard await smokeCheckPasses() else {
-            warn("this simulator is not recording right now — a \(Int(Self.smokeSeconds))s test recording"
-                 + " came out empty. The device most likely holds a stuck host recording session"
-                 + " (it survives the client process). Shut it down and boot it again"
-                 + " (fleetest api stop-device/start-device, or xcrun simctl shutdown/boot \(udid))."
-                 + " Skipping recording for this device")
+        if let failure = await smokeCheck() {
+            switch failure {
+            case .hostRecordingBusy:
+                warn("this simulator holds a host recording session (simctl: \"Host recording is already"
+                     + " in progress\"). It survives the client process, so shut the device down and boot"
+                     + " it again (fleetest api stop-device --udid \(udid) then start-device --name <名前>,"
+                     + " or xcrun simctl shutdown/boot \(udid)). Skipping recording for this device")
+            case .emptyFile:
+                warn("a \(Int(Self.smokeSeconds))s test recording came out empty (simctl reported no"
+                     + " error). Skipping recording for this device")
+            case .didNotStop:
+                warn("the test recording did not stop within \(Int(Self.smokeStopGraceSeconds))s of SIGINT"
+                     + " — leaving it alone (killing it would hold the device's recording session until"
+                     + " the next boot). Skipping recording for this device")
+            case .cannotStart(let detail):
+                warn("cannot start the test recording: \(detail)")
+            }
             return false
         }
         return await spawnNextPart()
@@ -61,7 +80,20 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     /// (実測: 8 秒間ずっと 0、停止した瞬間に 21KB)。だから短い録画を1本**閉じて**大きさを見る。
     /// 失敗しても run は続ける(録画はできないが実行はできる)。
     private static let smokeSeconds: Double = 1
-    private func smokeCheckPasses() async -> Bool {
+    /// SIGINT の猶予。**尽きても SIGKILL しない**(理由は smokeCheck の宣言)
+    private static let smokeStopGraceSeconds: Double = 15
+    /// 失敗の理由。**推測で名乗らない** —— simctl の stderr が言ったことだけを持ち帰る
+    enum SmokeFailure {
+        /// 端末側にセッションが残っている(simctl が "Host recording is already in progress")
+        case hostRecordingBusy
+        /// 起動はしたが中身が空(0 バイト)
+        case emptyFile
+        /// SIGINT を送っても止まらなかった(**SIGKILL しない** = セッションを残さない)
+        case didNotStop
+        /// simctl を起こせなかった
+        case cannotStart(String)
+    }
+    private func smokeCheck() async -> SmokeFailure? {
         let url = workDir.appendingPathComponent("\(fileStem)-smoke.mov")
         try? FileManager.default.removeItem(at: url)
         defer { try? FileManager.default.removeItem(at: url) }
@@ -70,21 +102,37 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
         process.arguments = ["simctl", "io", udid, "recordVideo", "--codec=h264", "--force", url.path]
         process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        // **stderr を捨てない**: 「セッションが残っている」と「空だった」は原因も対処も違う
+        let stderrPipe = Pipe()
+        process.standardError = stderrPipe
+        let stderrHandle = stderrPipe.fileHandleForReading
+        let sawBusy = LockedFlag()
+        Task.detached {
+            for await line in ScenarioHost.lineStream(stderrHandle) {
+                if line.contains("Host recording is already in progress") { sawBusy.set() }
+            }
+        }
         let exitStream = ProcessExitWait.prepare(process)
         do {
             try process.run()
         } catch {
-            warn("cannot start the test recording: \(error.localizedDescription)")
-            return false
+            return .cannotStart(error.localizedDescription)
         }
         try? await Task.sleep(nanoseconds: UInt64(Self.smokeSeconds * 1_000_000_000))
-        // **停止は SIGINT**(SIGTERM/SIGKILL だと moov が書かれず、健全な端末でも空に見える)
+        // **停止は SIGINT**(SIGTERM/SIGKILL だと moov が書かれず、健全な端末でも空に見える)。
+        // **猶予が尽きても SIGKILL しない**(実測 2026-09-09): SIGINT 以外で殺した recordVideo は
+        // **端末側のセッションを握ったまま**になり、その台は再起動するまで録画できなくなる ——
+        // 以後の録画は "Host recording is already in progress" で全部落ち、ツール自身が
+        // 「セッションが残っている」と警告する自作自演になっていた。止まらない個体は放置する
+        // (次の recordVideo は busy で落ちるが、セッションを増やさない)
         if process.isRunning { process.interrupt() }
-        await raceWithDeadline(seconds: 5, onTimeout: ()) { for await _ in exitStream {} }
-        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+        await raceWithDeadline(seconds: Self.smokeStopGraceSeconds, onTimeout: ()) {
+            for await _ in exitStream {}
+        }
+        if sawBusy.value { return .hostRecordingBusy }
+        if process.isRunning { return .didNotStop }
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? nil
-        return (size ?? 0) > 0
+        return (size ?? 0) > 0 ? nil : .emptyFile
     }
 
     /// run を数十秒間隔で連続させると、直前セッションの CoreSimulator io 解放が間に合わず
@@ -142,9 +190,12 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
             return nil
         }
         guard let observedStart = observedStartOrNil else {
+            // **SIGKILL しない**(smokeCheck と同じ理由): SIGINT 以外で殺すと端末側のセッションが
+            // 残り、その台は再起動まで録画できなくなる
             if process.isRunning { process.interrupt() }
-            _ = await raceWithDeadline(seconds: 3, onTimeout: ()) { for await _ in exitStream {} }
-            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            _ = await raceWithDeadline(seconds: Self.smokeStopGraceSeconds, onTimeout: ()) {
+                for await _ in exitStream {}
+            }
             try? FileManager.default.removeItem(at: url)
             return false
         }
@@ -190,14 +241,19 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     func stop() async -> RecordingSource? {
         stopRequested = true
         if let process, let watchTask {
-            process.interrupt()  // SIGINT。SIGKILL すると moov 未書き込みでファイルが壊れる
+            // 停止は SIGINT だけ(強制終了すると moov 未書き込みでファイルが壊れ、
+            // 端末側の録画セッションも残る)
+            process.interrupt()
             let exited = await raceWithDeadline(seconds: 15, onTimeout: false) {
                 await watchTask.value  // handlePartExited(→finalizePart)の完了を待つ
                 return true
             }
             if !exited {
-                if kill(process.processIdentifier, 0) == 0 { kill(process.processIdentifier, SIGKILL) }
-                warn("stopping the recording timed out after 15s — discarding the final segment")
+                // **SIGKILL しない**(smokeCheck と同じ理由)。刺さった client は放置し、
+                // 次の run の smokeCheck が busy として正直に報告する
+                warn("stopping the recording timed out after 15s — discarding the final segment"
+                     + " (leaving the recorder alone: killing it would hold this device's recording"
+                     + " session until the next boot)")
                 try? FileManager.default.removeItem(at: movURL(for: partIndex))
             }
         }
@@ -211,10 +267,12 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     }
 
     /// 同じ udid への stale な recordVideo(client プロセス)を起動前に best-effort で止める。
+    /// **SIGINT で止める**(既定の SIGTERM だと moov が書かれないうえ、端末側のセッションが
+    /// 握られたまま残り、その台が再起動まで録画できなくなる。実測 2026-09-09)。
     /// **端末側に残るセッションはこれでは解けない** —— プロセスが1つも無いのに録画が始まらない形が
-    /// あり、そちらは smokeCheckPasses が捕まえる
+    /// あり、そちらは smokeCheck が busy として報告する
     private func killStaleRecording() {
-        _ = try? Shell.run(["pkill", "-f", "simctl io \(udid) recordVideo"])
+        _ = try? Shell.run(["pkill", "-INT", "-f", "simctl io \(udid) recordVideo"])
     }
 
     private func warn(_ message: String) {

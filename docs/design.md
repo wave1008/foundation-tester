@@ -4048,6 +4048,15 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     `monitorBridgeWatchdog`): 供給中の台(10 秒後に ready)へ「booted が5回連続したためブリッジ
     無応答とみなします」を出していた。修復は既存の門で止まっていたので実害は誤検知の警告だけだが、
     **検知は誤検知0が条件**なので `inRun` と同じく streak ごと 0 に戻す
+  - **録画の client を SIGINT 以外で殺さない**(実測 2026-09-09。`IOSSimulatorVideoRecorder`):
+    `simctl io <udid> recordVideo` を SIGKILL/SIGTERM で殺すと**端末側の録画セッションが握られたまま
+    残り**、その台は**再起動するまで**録画できない(以後 "Host recording is already in progress" で
+    全部落ちる)。ツールは猶予切れで SIGKILL しており、**自分で作ったセッションを自分で
+    「残っている」と警告する自作自演**になっていた(実験: 該当台は数分後も busy、
+    `api stop-device` で解け、再起動後は 120KB の録画が撮れた)。停止は SIGINT のみ・止まらない
+    個体は放置(`RecordingKillDisciplineTests` がソース走査で固定)。**stale の掃除も `pkill -INT`**。
+    失敗の理由は simctl の stderr から採り、busy / 空 / 止まらない / 起こせない を撃ち分ける
+    (`SmokeFailure`)—— 以前は stderr を捨てて全部「セッションが残っている」と断定していた
   - **モニターの撮影失敗は事実だけ言う**(2026-09-09): `simctl io screenshot` の期限切れに
     「a test run is probably driving it」と断定していたが、run の2分前(一括起動中)の失敗にも
     同じ推測が出ていた。原因は候補として並べる(run / 一括起動 / 刺さった simctl)
