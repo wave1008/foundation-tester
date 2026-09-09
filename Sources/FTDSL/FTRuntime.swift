@@ -738,13 +738,27 @@ public final class FTDriveCore {
 
         let executor = self.executor
         let cachedLocators = cachedEntry?.locators ?? []
+        // 打ち切られた回は outcome が nil = StepExecutor の計時ごと失われるので、**ホスト側でも測る**。
+        // ここを測らないと、いちばん高いステップ(コマンド上限まるごと)だけが結果 JSON に
+        // 時間ゼロで載り、scenes[].durationMs もその分を落とす(2026-09-09 に results DB で確認:
+        // `the command timed out` の 10 件すべてが durationMs 無し)
+        let hostClock = ContinuousClock()
+        let hostStart = hostClock.now
         let outcome = FTSync.run {
             await executor.execute(step, cached: cachedLocators, fingerprint: cachedFingerprint)
         }
+        // `at` は**失敗確定時刻**(docs/results-json.md。録画の再生位置に使う)なので打ち切りが
+        // 決まった瞬間を採る —— 開始時刻を入れると再生位置がコマンド上限のぶん(120秒)ずれる
+        let hostFinishedAt = ISO8601Millis.string(from: Date())
         let status = outcome?.status
             ?? .failed("the command timed out (\(Int(FTSync.commandTimeout))s)")
         // outcome が nil = FTSync が打ち切った(StepExecutor は素性を返せていない)
         let failureKind = outcome?.failureKind ?? .timeout
+        // **埋めるのは外から見えた2つだけ**。snapshotMs / actionMs / waitMs は打ち切られた側にしか
+        // 無いので nil のまま残す(「言えないときは欄ごと省く」——「その他」に丸めない)
+        let recordedDurationMs = outcome?.timing?.durationMs
+            ?? continuousClockMilliseconds(hostClock.now - hostStart)
+        let recordedAt = outcome?.at ?? hostFinishedAt
         // driverFallback はロケータの .passedViaFallback とは別物(セレクタは正しくドライバが
         // 変わっただけ、または無言 no-op になり得る経路の注記)。修正提案は出さず、説明文に
         // 括弧書きで付けるだけ。値は表示済み文言(StepExecutor.StepOutcome.driverFallback 参照)。
@@ -755,11 +769,11 @@ public final class FTDriveCore {
             recordedDescription = description
         }
         recordStep(description: recordedDescription, status: status, file: filePath, line: Int(line),
-                   durationMs: outcome?.timing?.durationMs,
+                   durationMs: recordedDurationMs,
                    snapshotMs: outcome?.timing?.snapshotMs,
                    actionMs: outcome?.timing?.actionMs,
                    waitMs: outcome?.timing?.waitMs,
-                   at: outcome?.at,
+                   at: recordedAt,
                    notes: outcome?.notes ?? [], guarded: outcome?.guardEntered ?? false,
                    command: command, failureKind: failureKind)
 
