@@ -72,7 +72,7 @@ these; naming a second device requires future calls to be explicit again.
 | `ft_dry_run` | Device-free validation: selector syntax, unreachable scenes, assertion-less expectations, unknown `#id`s. For a scenario that declares no platform, `platform:` (default ios) picks the `ios { } / android { }` branch and the `#id` ledger |
 | `ft_list_projects` | List test projects and their run profiles |
 | `ft_draft_scenario` | Turn a recorded exploration into a Swift scenario draft (not written to disk) |
-| `ft_list_devices` / `ft_list_apps` / `ft_logs` | Device / app / log inventory |
+| `ft_list_devices` / `ft_list_apps` / `ft_logs` | Device / app / log inventory. `ft_list_devices`'s `profile:` narrows the list to that run profile's devices; devices that live on another machine are named but not listed |
 
 ## Physical Devices
 

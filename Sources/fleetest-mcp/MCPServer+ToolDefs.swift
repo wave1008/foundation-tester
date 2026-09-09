@@ -169,7 +169,9 @@ extension MCPServer {
         tool("ft_status", "Check the device/bridge connection state", [:]),
         tool("ft_list_devices", "List the devices this Mac can drive (simulators, emulators and "
             + "physical devices) with the udid/serial the other tools take. It works before any "
-            + "profile exists — without a machine profile it lists what is booted or connected now", [
+            + "profile exists — without a machine profile it lists what is booted or connected now. "
+            + "profile: narrows the list to that run profile's devices; devices that live on another "
+            + "machine are named but not listed (they cannot be driven from here)", [
             "platform": ["type": "string", "enum": ["ios", "android"],
                          "description": "Only this platform (default: both)"],
             "profile": profileProperty,

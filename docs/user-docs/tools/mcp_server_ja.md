@@ -71,7 +71,7 @@ cwd(受け手パッケージ)とは別物です。
 | `ft_dry_run` | デバイス不要の検証(セレクタの構文誤り・到達しない scene・アサーション無しの expectation・実在しない `#id`)。platform 宣言の無いシナリオは `platform:`(既定 ios)で `ios { } / android { }` の分岐と `#id` 台帳を選ぶ |
 | `ft_list_projects` | テストプロジェクトと実行プロファイルの一覧 |
 | `ft_draft_scenario` | 探索した操作列を Swift シナリオの下書きにして返す(ファイルには書かない) |
-| `ft_list_devices` / `ft_list_apps` / `ft_logs` | デバイス・アプリ・ログの棚卸し |
+| `ft_list_devices` / `ft_list_apps` / `ft_logs` | デバイス・アプリ・ログの棚卸し。`ft_list_devices` の `profile:` はその実行プロファイルが参照するデバイスだけに絞る。別の機械に居るデバイスは名前だけ挙げて一覧には出さない |
 
 ## 実機
 

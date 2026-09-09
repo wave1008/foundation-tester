@@ -8,6 +8,10 @@
 // ApiListDevicesCommand.swift の ApiMonitorCommand.determineStates は fleetest 実行ターゲットに
 // 閉じていて fleetest-mcp からは見えないため使わない。ここでは同種の判定を軽量に再実装する
 // (登録デバイスの疎通は 1 台ずつ試し、1 台の失敗で他を落とさない)。
+// ただし絞り込み(実行プロファイルによる devices 選別・別マシンの除外)は
+// ApiListDevicesCommand.swift と同じ FTCore.RunProfileScope / DeviceMachineGrouping を通し、
+// CLI と MCP の答えを揃える。**devicesText は絶対に throw しない契約は不変**なので、
+// この絞り込みが失敗しても本文に理由を書いて絞り込み前の集合で続行する。
 
 import Foundation
 import FTAndroid
@@ -41,6 +45,8 @@ enum DeviceInventory {
     struct ResolvedMachine {
         let name: String
         let profile: MachineProfile
+        /// `RunProfileScope.filteredMachineProfile` が要る(devices up/down・api list-devices と同じ)
+        let project: TestProject
     }
 
     // MARK: - ft_list_devices
@@ -62,13 +68,61 @@ enum DeviceInventory {
 
         let lookup = resolveMachine(project: project, profile: profile)
         if case .resolved(let machine) = lookup {
-            var rows: [Row] = []
-            if wantsIOS { rows += await iosMachineRows(specs: machine.profile.ios?.devices ?? []) }
-            if wantsAndroid { rows += androidMachineRows(specs: machine.profile.android?.devices ?? []) }
-            guard !rows.isEmpty else {
-                return "machine profile \"\(machine.name)\" defines no \(platform ?? "ios/android") devices."
+            var notes: [String] = []
+            var machineProfile = machine.profile
+            // profile: が渡されたら CLI(ApiListDevicesCommand)と同じ RunProfileScope で絞る。
+            // 失敗しても devicesText は throw しない契約なので、理由を本文に書いて絞り込み前の
+            // マシンプロファイルで続行する(壊れた実行プロファイルを黙って隠さない)
+            if let profile {
+                do {
+                    machineProfile = try RunProfileScope.filteredMachineProfile(
+                        project: machine.project, machineName: machine.name,
+                        machineProfile: machineProfile, runProfileName: profile,
+                        warn: { notes.append($0) })
+                } catch {
+                    notes.append("could not narrow to run profile \"\(profile)\": \(describe(error))"
+                        + " — showing every device in machine profile \(machine.name) instead")
+                }
             }
-            return (["machine profile: \(machine.name)"] + rows.map(line)).joined(separator: "\n")
+
+            // 別の機械の台はここから操作できないので落とす(CLI の ApiListDevicesCommand と同じ
+            // DeviceMachineGrouping 判定)。落とした台数・機械名は本文に残す(stderr は MCP
+            // クライアントに見えないため)
+            let entries = DeviceMachineGrouping.entries(machine: machineProfile)
+                .filter { ($0.platform == "ios" && wantsIOS) || ($0.platform == "android" && wantsAndroid) }
+            let (local, movedAway) = localDevices(entries: entries)
+            if !movedAway.isEmpty {
+                let machines = Set(movedAway.map { DeviceMachineGrouping.display($0.machine) }).sorted()
+                notes.append(movedAwayNote(count: movedAway.count, machines: machines))
+            }
+
+            var registeredRows: [Row] = []
+            if wantsIOS {
+                registeredRows += await iosMachineRows(
+                    specs: local.filter { $0.platform == "ios" }.map(\.spec))
+            }
+            if wantsAndroid {
+                registeredRows += androidMachineRows(
+                    specs: local.filter { $0.platform == "android" }.map(\.spec))
+            }
+
+            // **合成は profile: 無指定のときだけ**(CLI の同じ規律。profile: 指定は絞り込みの意図
+            // なので未登録の台は足さない)。合成行は Row.registered=false のまま出るので、
+            // line(_:) の "unregistered" だけで足りる(重複した「N 台は未登録」の1行は足さない)
+            var rows = registeredRows
+            if profile == nil {
+                var unregisteredRows: [Row] = []
+                if wantsIOS { unregisteredRows += await iosFallbackRows() }
+                if wantsAndroid { unregisteredRows += androidFallbackRows() }
+                rows = merging(registered: registeredRows, unregistered: unregisteredRows)
+            }
+
+            guard !rows.isEmpty else {
+                let text = noLocalDevicesText(machineName: machine.name, platform: platform,
+                                              allMovedAway: !movedAway.isEmpty)
+                return ([text] + notes).joined(separator: "\n")
+            }
+            return (["machine profile: \(machine.name)"] + notes + rows.map(line)).joined(separator: "\n")
         }
 
         var rows: [Row] = []
@@ -77,6 +131,50 @@ enum DeviceInventory {
         let header = fallbackHeader(reason: lookup.reason, abbreviated: abbreviated(lookup.reason))
         guard !rows.isEmpty else { return header + "\nNone found." }
         return ([header] + rows.map(line)).joined(separator: "\n")
+    }
+
+    /// **手元に残る台と、別の機械へ移す台を分ける**(純粋関数・テスト用)。entries() が
+    /// effectiveMachine を解決して spec.machine へ書き戻し済みなので、ここでは再計算せず
+    /// machine が nil かどうかだけを見る
+    static func localDevices(entries: [DeviceMachineGrouping.CatalogEntry])
+        -> (kept: [DeviceMachineGrouping.CatalogEntry], movedAway: [DeviceMachineGrouping.CatalogEntry]) {
+        var kept: [DeviceMachineGrouping.CatalogEntry] = []
+        var movedAway: [DeviceMachineGrouping.CatalogEntry] = []
+        for entry in entries {
+            if entry.machine == nil { kept.append(entry) } else { movedAway.append(entry) }
+        }
+        return (kept, movedAway)
+    }
+
+    /// 別の機械へ落ちた台の案内文(純粋関数・テスト用)。stderr は MCP クライアントに見えないため
+    /// devicesText はこれを本文へ載せる
+    static func movedAwayNote(count: Int, machines: [String]) -> String {
+        "\(count) device(s) live on \(machines.joined(separator: ", "))"
+            + " and cannot be operated from here — use `fleetest run --runner <machine>` to run"
+            + " them there"
+    }
+
+    /// 手元に1台も残らなかったときの見出し(純粋関数・テスト用)。**`allMovedAway` で言い分ける** ——
+    /// 元から0台の「defines no ... devices」と、全部が別の機械に居るのは別の事実
+    static func noLocalDevicesText(machineName: String, platform: String?, allMovedAway: Bool) -> String {
+        let base = "machine profile \"\(machineName)\" defines no \(platform ?? "ios/android") devices"
+        return allMovedAway ? base + " on this machine (they all live on another machine)." : base + "."
+    }
+
+    /// 未登録の合成行(iosFallbackRows/androidFallbackRows)を、識別子(iOS=udid/Android=serial)が
+    /// 登録行と重なるものを除いて末尾へ足す(純粋関数・テスト用)。platform を鍵に含めるのは
+    /// udid と serial が万一同じ文字列になっても混同しないため。**identifier が nil の登録行
+    /// (起動していない台)は衝突しない** —— compactMap で鍵の集合から自然に落ちる
+    static func merging(registered: [Row], unregistered: [Row]) -> [Row] {
+        let seen = Set(registered.compactMap { row -> String? in
+            guard let id = row.identifier else { return nil }
+            return "\(row.platform)\t\(id)"
+        })
+        let extra = unregistered.filter { row in
+            guard let id = row.identifier else { return true }
+            return !seen.contains("\(row.platform)\t\(id)")
+        }
+        return registered + extra
     }
 
     /// マシンプロファイルを使えないときの見出し(純粋関数・テスト用)。
@@ -169,7 +267,7 @@ enum DeviceInventory {
         guard let decoded = try? JSONDecoder().decode(MachineProfile.self, from: data) else {
             return .unavailable("machine profile \"\(machine.name)\" could not be decoded")
         }
-        return .resolved(ResolvedMachine(name: machine.name, profile: decoded))
+        return .resolved(ResolvedMachine(name: machine.name, profile: decoded, project: testProject))
     }
 
     /// **CLI のフラグ表記のまま出さない**: この文は FTCore(CLI 向け)から来るので

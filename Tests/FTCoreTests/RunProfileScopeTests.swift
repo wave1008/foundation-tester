@@ -4,8 +4,7 @@
 // 実機なしで固められる部分なので単体テストで押さえる。
 
 import XCTest
-import FTCore
-@testable import fleetest
+@testable import FTCore
 
 final class RunProfileScopeTests: XCTestCase {
 
@@ -14,7 +13,7 @@ final class RunProfileScopeTests: XCTestCase {
 
     override func setUpWithError() throws {
         tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("FleetestTests-\(UUID().uuidString)")
+            .appendingPathComponent("FTCoreTests-\(UUID().uuidString)")
         let root = tempDir.appendingPathComponent("TestProjects/SampleApp")
         project = TestProject(name: "SampleApp", rootURL: root)
         try FileManager.default.createDirectory(at: project.runsDir, withIntermediateDirectories: true)
@@ -133,12 +132,21 @@ final class RunProfileScopeTests: XCTestCase {
             warnings: &warnings))
     }
 
+    /// **文言まで固定する**: この文は CLI(`devices up/down` / `api monitor` / `api list-devices`)が
+    /// そのまま利用者へ出す。要求した名前と、どのマシンプロファイルを見たかの両方が要る ——
+    /// どちらが欠けても「どこを直せばよいか」が読めなくなる
     func testThrowsWhenNoReferencedDeviceExistsOnThisMachine() throws {
         try writeRunProfile("foreign", deviceNames: ["別マシンの機1", "別マシンの機2"])
         var warnings: [String] = []
         XCTAssertThrowsError(try filtered(
             runProfile: "foreign", machine: machineProfile(ios: ["シミュ1"], android: ["エミュ1"]),
-            warnings: &warnings))
+            warnings: &warnings)) { error in
+            XCTAssertEqual(
+                (error as? LocalizedError)?.errorDescription,
+                "none of the devices referenced by run profile foreign"
+                    + " (別マシンの機1, 別マシンの機2) exist in machine profile M2 Ultra",
+                "\(error)")
+        }
     }
 
     func testThrowsWhenRunProfileIsNotDecodable() throws {

@@ -1161,6 +1161,9 @@ public enum ProfileError: Error, LocalizedError {
     /// 実行プロファイルの参照が machine を書いておらず、同名が複数のマシンに居る
     case ambiguousDeviceRef(name: String, machines: [String], run: String, machine: String)
     case noDevicesResolved(run: String, machine: String, requested: [String], available: [String])
+    /// `RunProfileScope.filteredMachineProfile` が絞り込んだ結果、デバイスが1台も残らない
+    /// (noDevicesResolved と文言が違う別 case。流用しない)
+    case noDevicesInMachineProfile(run: String, requested: [String], machine: String)
     case missingBundleID(platform: String, appProfile: String)
     case invalidWipeDataThreshold(run: String)
     case invalidLocale(run: String)
@@ -1206,6 +1209,10 @@ public enum ProfileError: Error, LocalizedError {
             return "none of the devices in run profile \(run) resolve on machine \(machine)"
                 + " (requested: \(requested.joined(separator: ", ")) / "
                 + "defined: \(available.isEmpty ? "none" : available.joined(separator: ", ")))"
+        case .noDevicesInMachineProfile(let run, let requested, let machine):
+            return "none of the devices referenced by run profile \(run) " +
+                "(\(requested.joined(separator: ", "))) " +
+                "exist in machine profile \(machine)"
         case .missingBundleID(let platform, let appProfile):
             // common の app は廃止(merging 参照)のため、案内は platform セクション限定
             return "app profile \(appProfile) has no \"app\" (bundle ID / package name) for \(platform)"

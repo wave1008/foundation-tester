@@ -1,19 +1,18 @@
 // 実行プロファイル(profiles/runs/<name>.json)によるマシンプロファイルの絞り込み(共通ヘルパー)。
-// `fleetest api monitor --profile`・`fleetest devices up/down --profile` が共通で使う。
+// `fleetest api monitor --profile`・`fleetest devices up/down --profile`・
+// `fleetest api list-devices --profile`・`ft_list_devices(profile:)` が共通で使う。
 // ProfileResolver.resolve() は app 参照の解決・bundle ID 検証まで行い、監視・起動制御には
 // 過剰なため、ここでは RunProfileDocument を直接デコードして devices(name 参照)だけを見る。
 
-import ArgumentParser
-import FTCore
 import Foundation
 
-enum RunProfileScope {
+public enum RunProfileScope {
     /// 実行プロファイルが devices で参照するデバイスのみに絞り込んだ MachineProfile のコピーを返す。
     /// - 実行プロファイルが存在しない・デコード不能・devices が空: ProfileError を投げる。
     /// - 実行プロファイルが参照する名前のうち、マシンプロファイルに無いものがあれば warn 経由で
     ///   警告する(処理は継続。マシンごとにデバイス構成が違いうるための想定内ケース)。
-    /// - 絞り込んだ結果、デバイスが1台も残らない: ValidationError を投げる。
-    static func filteredMachineProfile(
+    /// - 絞り込んだ結果、デバイスが1台も残らない: ProfileError.noDevicesInMachineProfile を投げる。
+    public static func filteredMachineProfile(
         project: TestProject,
         machineName: String,
         machineProfile: MachineProfile,
@@ -70,10 +69,8 @@ enum RunProfileScope {
         let filteredIOS = matched.filter { $0.platform == "ios" }.map(\.spec)
         let filteredAndroid = matched.filter { $0.platform == "android" }.map(\.spec)
         guard !filteredIOS.isEmpty || !filteredAndroid.isEmpty else {
-            throw ValidationError(
-                "none of the devices referenced by run profile \(runProfileName) " +
-                "(\(deviceRefs.map(\.name).joined(separator: ", "))) " +
-                "exist in machine profile \(machineName)")
+            throw ProfileError.noDevicesInMachineProfile(
+                run: runProfileName, requested: deviceRefs.map(\.name), machine: machineName)
         }
         return MachineProfile(
             ios: filteredIOS.isEmpty ? nil : MachineDeviceList(devices: filteredIOS),

@@ -398,4 +398,87 @@ final class DeviceInventoryTests: XCTestCase {
             abbreviated: { _ in true })
         XCTAssertTrue(text.contains("reason given in the first ft_list_devices"), text)
     }
+
+    // MARK: - localDevices(別マシンの除外。CLI の ApiListDevicesCommand と同じ判定)
+
+    /// 手元(machine 未指定): デバイス側もプロファイル側も machine を書いていなければ手元
+    func testLocalDevicesKeepsAnUnspecifiedDeviceOnAMachinelessProfile() {
+        let profile = MachineProfile(ios: MachineDeviceList(devices: [DeviceSpec(name: "iPhone-01")]))
+        let entries = DeviceMachineGrouping.entries(machine: profile)
+        let (kept, movedAway) = DeviceInventory.localDevices(entries: entries)
+        XCTAssertEqual(kept.map(\.name), ["iPhone-01"])
+        XCTAssertTrue(movedAway.isEmpty)
+    }
+
+    /// プロファイル既定がリモート: デバイス側が machine を書いていなければプロファイルの既定を継ぐ
+    func testLocalDevicesDropsADeviceThatInheritsARemoteProfileDefault() {
+        let profile = MachineProfile(machine: "M2Ultra",
+                                     ios: MachineDeviceList(devices: [DeviceSpec(name: "iPhone-01")]))
+        let entries = DeviceMachineGrouping.entries(machine: profile)
+        let (kept, movedAway) = DeviceInventory.localDevices(entries: entries)
+        XCTAssertTrue(kept.isEmpty, "リモート既定を継いだ台が手元に残っている")
+        XCTAssertEqual(movedAway.map { DeviceMachineGrouping.display($0.machine) }, ["M2Ultra"])
+    }
+
+    /// デバイスが "local" を明示: プロファイル既定がリモートでも、明示指定はそれより強い
+    /// (DeviceMachineGrouping.effectiveMachine の規則)
+    func testLocalDevicesKeepsADeviceThatExplicitlyNamesLocal() {
+        let profile = MachineProfile(
+            machine: "M2Ultra",
+            ios: MachineDeviceList(devices: [DeviceSpec(name: "iPhone-01", machine: "local")]))
+        let entries = DeviceMachineGrouping.entries(machine: profile)
+        let (kept, movedAway) = DeviceInventory.localDevices(entries: entries)
+        XCTAssertEqual(kept.map(\.name), ["iPhone-01"])
+        XCTAssertTrue(movedAway.isEmpty)
+    }
+
+    func testMovedAwayNoteNamesTheCountAndMachines() {
+        let text = DeviceInventory.movedAwayNote(count: 2, machines: ["M1Max", "M2Ultra"])
+        XCTAssertTrue(text.contains("2 device(s)"), text)
+        XCTAssertTrue(text.contains("M1Max, M2Ultra"), text)
+        XCTAssertTrue(text.contains("fleetest run --runner"), text)
+    }
+
+    func testNoLocalDevicesTextDistinguishesTrulyEmptyFromAllMovedAway() {
+        let empty = DeviceInventory.noLocalDevicesText(machineName: "M1Max", platform: "ios",
+                                                        allMovedAway: false)
+        XCTAssertTrue(empty.contains("defines no ios devices."), empty)
+        XCTAssertFalse(empty.contains("another machine"), empty)
+
+        let movedAway = DeviceInventory.noLocalDevicesText(machineName: "M1Max", platform: "ios",
+                                                            allMovedAway: true)
+        XCTAssertTrue(movedAway.contains("another machine"), movedAway)
+    }
+
+    // MARK: - merging(未登録の合成。identifier の重複だけ除く)
+
+    private func row(identifier: String?, registered: Bool) -> DeviceInventory.Row {
+        DeviceInventory.Row(name: "x", platform: "ios", identifier: identifier, running: true,
+                            physical: false, registered: registered, bridges: [])
+    }
+
+    /// 識別子が重ならない未登録行は末尾へ足す
+    func testMergingAppendsUnregisteredRowsThatDoNotCollide() {
+        let registered = [row(identifier: "SIM-1", registered: true)]
+        let unregistered = [row(identifier: "SIM-2", registered: false)]
+        let merged = DeviceInventory.merging(registered: registered, unregistered: unregistered)
+        XCTAssertEqual(merged.map(\.identifier), ["SIM-1", "SIM-2"])
+        XCTAssertEqual(merged.last?.registered, false)
+    }
+
+    /// 同じ udid/serial の未登録行は落とす(同じ端末を二重に出さない)
+    func testMergingDropsAnUnregisteredRowThatDuplicatesARegisteredIdentifier() {
+        let registered = [row(identifier: "SIM-1", registered: true)]
+        let unregistered = [row(identifier: "SIM-1", registered: false)]
+        let merged = DeviceInventory.merging(registered: registered, unregistered: unregistered)
+        XCTAssertEqual(merged.count, 1, "同じ識別子の合成行が二重に出ている")
+    }
+
+    /// 識別子 nil の登録行(起動していない台)は衝突判定に参加しない —— 未登録行は素通りする
+    func testMergingIsNotBlockedByARegisteredRowWithNoIdentifier() {
+        let registered = [row(identifier: nil, registered: true)]
+        let unregistered = [row(identifier: "SIM-9", registered: false)]
+        let merged = DeviceInventory.merging(registered: registered, unregistered: unregistered)
+        XCTAssertEqual(merged.count, 2, "識別子 nil の登録行が合成をブロックしている")
+    }
 }
