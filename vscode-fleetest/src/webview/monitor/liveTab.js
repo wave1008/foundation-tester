@@ -764,7 +764,7 @@ export function refreshLiveDevices() {
   post({ type: 'refreshDevices' });
 }
 
-// ---- 要素一覧 / 操作記録 の上下スプリッター(splitter.js のデバイスタブ版と同パターン。
+// ---- 要素一覧 / 操作記録 の上下スプリッター(splitter.js の「テスト実行」タブ版と同パターン。
 // こちらはライブタブ専用で elements セクションの高さ[px]を持つ。位置は vscode.setState に永続化)。----
 
 const MIN_LIVE_SECTION = 80; // px。elements/oplog 各セクションの最小高(CSS の min-height と揃える)

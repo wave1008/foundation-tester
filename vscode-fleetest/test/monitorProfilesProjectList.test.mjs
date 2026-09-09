@@ -2,7 +2,7 @@
 // postProfileInfo が「TestProjects/ 直下のプロジェクト一覧」を載せることの回帰テスト
 // (fake-deps パターンは monitorProfilesDeviceMachineScope.test.mjs と同じ)。
 //
-// デバイスタブのプロジェクト選択はこの1メッセージだけで作られる。ここが空だと、実行プロファイルの
+// 「テスト実行」タブのプロジェクト選択はこの1メッセージだけで作られる。ここが空だと、実行プロファイルの
 // ドロップダウンだけが並んで切り替え先が1つも出ない(webview 側の形は
 // webviewProjectSelect.test.mjs が固定する)。
 

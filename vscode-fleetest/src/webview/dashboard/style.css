@@ -2,7 +2,7 @@
  * 結果ダッシュボード(モニターパネル「ダッシュボード」タブ)のスタイル。単独 entryPoint ではなく、
  * src/webview/monitor/style.css の @import '../dashboard/style.css' で media/monitor/style.css へ
  * 束ねられる(esbuild が相対 @import をバンドルする。モニター側 renderHtml() の
- * <link rel="stylesheet"> 1本で両方読み込まれる)。#toolbar/.toolbar はデバイスタブの同名 id/class と
+ * <link rel="stylesheet"> 1本で両方読み込まれる)。#toolbar/.toolbar は「テスト実行」タブの同名 id/class と
  * 衝突するため .dash-toolbar に改名済み(id 側は monitorHtml.ts の renderDashboardPanel() 側)。
  */
 

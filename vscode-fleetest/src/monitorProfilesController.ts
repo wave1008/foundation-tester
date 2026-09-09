@@ -326,7 +326,7 @@ export class MonitorProfilesController {
   }
 
   /**
-   * デバイスタブのプロジェクト選択を設定へ反映する。selectProfile と同じく、成功後の再描画は
+   * 「テスト実行」タブのプロジェクト選択を設定へ反映する。selectProfile と同じく、成功後の再描画は
    * onDidChangeConfiguration 経由(postProfileInfo・モニター再起動)に任せてここからは post しない。
    * 実行プロファイルの追随(切替先に無い名前を未選択へ落とす)は extension.ts の
    * reconciledProfileForProject が担うので、ここでは fleetest.project だけを書く。

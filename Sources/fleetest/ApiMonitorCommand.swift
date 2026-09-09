@@ -1717,9 +1717,9 @@ struct ApiMonitorDeviceInfo: Codable {
     let platform: String
     let state: String
     let detail: String
-    /// iOS の解決済みシミュレータ UDID(デバイスタブの fleetest-simstream 画面ストリーミングに使う)。Android は nil。
+    /// iOS の解決済みシミュレータ UDID(「テスト実行」タブの fleetest-simstream 画面ストリーミングに使う)。Android は nil。
     let udid: String?
-    /// Android の adb serial(デバイスタブの fleetest-androidstream 画面ストリーミングに使う)。iOS は nil。
+    /// Android の adb serial(「テスト実行」タブの fleetest-androidstream 画面ストリーミングに使う)。iOS は nil。
     let serial: String?
     /// AndroidHealthProbe で確定した異常の識別子一覧。異常なし・非対象(iOS/実機/未接続)は nil
     let health: [String]?

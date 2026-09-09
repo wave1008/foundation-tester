@@ -13,7 +13,7 @@ import { computeFitPaneHeight } from './tileFitModel.js';
 
 const MIN_PANE_HEIGHT = 120;
 
-// 保存値がない初期表示はスプリット領域の上下中央(50%)。「デバイス」タブ非表示等で
+// 保存値がない初期表示はスプリット領域の上下中央(50%)。「テスト実行」タブ非表示等で
 // 領域が測れないときのみ window.innerHeight で代替する。
 function defaultTilePaneHeight() {
   const available = availableSplitHeight();
@@ -26,7 +26,7 @@ let desiredTilePaneHeight =
     : defaultTilePaneHeight();
 let tilePaneHeight = desiredTilePaneHeight;
 
-// document.body.clientHeight だとタブバー分ずれるため、「デバイス」タブパネル自身の
+// document.body.clientHeight だとタブバー分ずれるため、「テスト実行」タブパネル自身の
 // clientHeight を基準にする。
 function availableSplitHeight() {
   const bannerHeight = banner.classList.contains('visible') ? banner.offsetHeight : 0;
@@ -39,7 +39,7 @@ function clampTilePaneHeight(height) {
   return Math.min(Math.max(height, MIN_PANE_HEIGHT), maxHeight);
 }
 
-// 「デバイス」タブ非表示(display:none)の間はdevicesPanel.clientHeightが0になり、誤って
+// 「テスト実行」タブ非表示(display:none)の間はdevicesPanel.clientHeightが0になり、誤って
 // 最小値にクランプしてしまうため何もせず抜ける(タブ復帰時にswitchTabが呼び直す)。
 function splitAreaHidden() {
   return devicesPanel.clientHeight === 0 || devicesPanel.offsetParent === null;
@@ -85,7 +85,7 @@ function persistTilePaneHeight() {
   vscode.postMessage({ type: 'setTilePaneHeight', value: desiredTilePaneHeight });
 }
 
-// host からの復元値(sendInitialState)を反映する。「デバイス」タブ非表示中は描画が no-op のため、
+// host からの復元値(sendInitialState)を反映する。「テスト実行」タブ非表示中は描画が no-op のため、
 // desired だけ更新して次の switchTab の reapplyTilePaneHeight で反映されるようにする。
 export function setTilePaneHeight(height) {
   if (typeof height !== 'number' || !(height > 0)) {

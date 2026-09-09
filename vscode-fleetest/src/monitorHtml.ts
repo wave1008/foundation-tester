@@ -74,7 +74,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 function renderTabBar(): string {
   return `<div id="tabbar" role="tablist">
     <button id="tab-dashboard" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-dashboard">${t("panels.tabs.dashboard")}</button>
-    <button id="tab-devices" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="panel-devices">${t("panels.tabs.devices")}</button>
+    <button id="tab-devices" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="panel-devices">${t("panels.tabs.testRun")}</button>
     <button id="tab-profiles" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-profiles">${t("panels.tabs.profiles")}</button>
     <button id="tab-recordings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-recordings">${t("panels.tabs.recordings")}</button>
     <button id="tab-processes" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-processes">${t("panels.tabs.processes")}</button>
@@ -87,7 +87,7 @@ function renderTabBar(): string {
 
 // 「ダッシュボード」タブ。旧・単独パネル(dashboardPanel.ts)の renderHtml() 本文をそのまま移設した
 // もの(セクション構成・id は不変。挙動は monitorDashboardController.ts / src/webview/monitor/
-// dashboardTab.js が持つ)。**#toolbar/.toolbar だけ dash- 接頭辞に改名**(デバイスタブの
+// dashboardTab.js が持つ)。**#toolbar/.toolbar だけ dash- 接頭辞に改名**(「テスト実行」タブの
 // #toolbar/.toolbar と同一 document 内で衝突するため。他の id/class は monitor 側と衝突しない
 // ことを確認済み)。
 function renderDashboardPanel(): string {

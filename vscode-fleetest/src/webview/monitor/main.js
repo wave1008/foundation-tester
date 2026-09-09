@@ -1,6 +1,6 @@
 // エントリポイント。機能別ESモジュール:
 //   vscodeApi.js  acquireVsCodeApi(1回のみ)+persistedState / domRefs.js  共有DOM定数
-//   splitter.js/deviceTiles.js/laneLog.js/hostCharts.js  デバイスタブ
+//   splitter.js/deviceTiles.js/laneLog.js/hostCharts.js  「テスト実行」タブ
 //   projectsTab.js/machineProfilesTab.js/appProfilesTab.js/runProfilesTab.js  プロファイルタブ
 //   settingsTab.js  設定タブ / modals.js  3モーダル / tabs.js  タブ切替
 // ライブ操作は独立パネル(src/webview/live/main.js、UI本体は liveTab.js を共有)へ分離済み。

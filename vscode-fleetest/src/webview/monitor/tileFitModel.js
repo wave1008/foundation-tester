@@ -1,4 +1,4 @@
-// デバイスタブ auto-fit の高さ計算(DOM 非依存。実測は splitter.js が行う)。
+// 「テスト実行」タブ auto-fit の高さ計算(DOM 非依存。実測は splitter.js が行う)。
 //
 // 前提(style.css): .grid は flex-wrap:nowrap の1行・横スクロール、画像の幅は
 // 「--tile-image-h × --tile-aspect」で決まる。タイル幅はそれに padding/border を足したもの

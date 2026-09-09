@@ -4,7 +4,7 @@ import { vscode } from './vscodeApi.js';
 import { machineProfiles, findMachine } from './machineProfilesTab.js';
 import { t } from '../i18n.js';
 
-// 選択は「編集対象」であり、デバイスタブの実行プロファイル選択(fleetest.profile)とは独立。
+// 選択は「編集対象」であり、「テスト実行」タブの実行プロファイル選択(fleetest.profile)とは独立。
 // dirty管理: フォーム値と runProfileOriginalFields の比較で「確定」を有効化。
 // - 選択変更(明示操作)は編集破棄して再ロード。
 // - profileInfo/machineProfileInfo 再受信時: 編集中なら保持、未編集なら再ロード(消失時はcurrent→先頭)。

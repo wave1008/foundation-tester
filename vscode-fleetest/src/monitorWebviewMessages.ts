@@ -71,7 +71,7 @@ export type MonitorToWebviewMessage =
     }
   | { readonly type: "deviceError"; readonly device?: string; readonly message: string }
   | { readonly type: "bootBusy"; readonly busy: boolean; readonly bulkOp: "up" | "down" | null }
-  // GUI 実行(Test Explorer / デバイスタブの「テスト実行」)の進行。true の間だけツールバーの
+  // GUI 実行(Test Explorer / 「テスト実行」タブの「テスト実行」)の進行。true の間だけツールバーの
   // 対象選択と一括操作を畳み、「テスト実行」を中断ボタンに変える(対向: deviceTiles.js の
   // applyTestRunActive)。**出所は RunEventBus の runStarted/runEnded**なので、誰が起こした
   // 実行でも同じ扱いになる。
@@ -96,7 +96,7 @@ export type MonitorToWebviewMessage =
   | { readonly type: "deviceDownFinished"; readonly name: string; readonly machine?: string }
   | {
       readonly type: "profileInfo";
-      /** TestProjects/ 直下のテストプロジェクト名一覧(デバイスタブのプロジェクト選択が使う)。 */
+      /** TestProjects/ 直下のテストプロジェクト名一覧(「テスト実行」タブのプロジェクト選択が使う)。 */
       readonly projects: readonly string[];
       /** 対象プロジェクトの実行プロファイル名一覧(TestProjects/<project>/profiles/runs/ 直下)。 */
       readonly profiles: readonly string[];
@@ -339,14 +339,14 @@ export type MonitorToWebviewMessage =
   // プロセスタブ「常駐プロセス」一覧。refreshResidentProcesses 受信時に送る。
   // 対向: processesTab.js の applyResidentMessage。
   | { readonly type: "residentProcesses"; readonly items: readonly ResidentProcess[]; readonly ts: number }
-  // デバイスタブのスプリッター位置(タイルペイン高さ px)。ready 直後に workspaceState の永続値を反映する。
+  // 「テスト実行」タブのスプリッター位置(タイルペイン高さ px)。ready 直後に workspaceState の永続値を反映する。
   // webview の getState はパネルを閉じると失われるため host 側で永続化する(setTilePaneHeight と対の契約)。
   // webview 側は splitter.js の setTilePaneHeight へ渡す。
   | { readonly type: "tilePaneHeight"; readonly value: number }
-  // デバイスタブの auto-fit トグルの状態(true = 全デバイスが横幅に収まる高さへ自動調整)。
+  // 「テスト実行」タブの auto-fit トグルの状態(true = 全デバイスが横幅に収まる高さへ自動調整)。
   // 永続化の理由と経路は tilePaneHeight と同じ(setTileAutoFit と対の契約)。
   | { readonly type: "tileAutoFit"; readonly value: boolean }
-  // デバイスタブの全選択トグルの状態(true = 全デバイス選択)。永続化の理由と経路は
+  // 「テスト実行」タブの全選択トグルの状態(true = 全デバイス選択)。永続化の理由と経路は
   // tileAutoFit と同じ(setSelectAllDevices と対の契約)。**0枚でも復元する** ——
   // ready 直後はモニターがまだ台を出しておらず、出てきた台を webview 側が選び直す。
   | { readonly type: "selectAllDevices"; readonly value: boolean }
@@ -498,7 +498,7 @@ export type MonitorFromWebviewMessage =
       readonly devices: readonly { readonly name: string; readonly machine?: string }[];
     }
   | { readonly type: "selectProfile"; readonly profile: string }
-  // デバイスタブのプロジェクト選択。ダッシュボード封筒の同名メッセージとは別経路だが、
+  // 「テスト実行」タブのプロジェクト選択。ダッシュボード封筒の同名メッセージとは別経路だが、
   // どちらも fleetest.project 設定を書き換えるだけ(実行プロファイルの追随は
   // extension.ts の reconciledProfileForProject が行う)。
   | { readonly type: "selectProject"; readonly project: string }
@@ -509,7 +509,7 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "profileRename"; readonly profile: string }
   | { readonly type: "profileDelete"; readonly profile: string }
   // プロファイルタブ先頭: テストプロジェクト自体の追加/コピー/名前変更/削除(実行プロファイルの
-  // profileAdd/profileCopy/profileRename/profileDelete と同じ構成)。デバイスタブの selectProject
+  // profileAdd/profileCopy/profileRename/profileDelete と同じ構成)。「テスト実行」タブの selectProject
   // (project 切替)とは別メッセージ(こちらは TestProjects/<name>/ 自体の作成・改名・削除)。
   | { readonly type: "projectAdd" }
   | { readonly type: "projectCopy"; readonly project: string }
@@ -713,7 +713,7 @@ export type MonitorFromWebviewMessage =
   // 再起動せずにモニターパネル(タブ)を閉じる。確認ダイアログは出さず即実行。応答は返さない
   // (成功時は webview ごと消える。掃討の失敗はホスト側の showErrorMessage で通知しつつ閉じる)
   | { readonly type: "killAllResidentProcessesAndClose" }
-  // デバイスタブのスプリッターをドラッグ終了した時のタイルペイン高さ(px)。monitorPanel.ts が
+  // 「テスト実行」タブのスプリッターをドラッグ終了した時のタイルペイン高さ(px)。monitorPanel.ts が
   // workspaceState へ永続化し、パネル再作成時に "tilePaneHeight" メッセージで復元する。
   | { readonly type: "setTilePaneHeight"; readonly value: number }
   // auto-fit トグルの切替(ボタン押下・手動ドラッグによる自動 OFF)。monitorPanel.ts が

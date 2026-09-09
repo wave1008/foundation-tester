@@ -3601,7 +3601,7 @@ machines/ が1つのときだけ自動採用)。
 skip(素通り)になり、FM 利用不可時と同じ扱い。**`triage` は合否を変えない助言**なので、
 切っても検証の強度は落ちない(失敗のたびに平均6秒の FM 呼び出しが走るのを避けたいときに切る)。
 子への伝搬は `ScenarioHost` が `--no-triage` 等を渡す形で、3段(プロファイル → 子 → 実行時)が
-つながっていることは `FMToggleWiringTests` が固定する。UI はデバイスタブの実行プロファイル設定
+つながっていることは `FMToggleWiringTests` が固定する。UI は「テスト実行」タブの実行プロファイル設定
 「FM(Foundation Model)」セクション(親チェックボックス ON のときだけ個別トグルを表示)。
 
 `wipeDataOnBloat`(既定 true)は実行開始時に Android AVD の wipe 対象
@@ -3640,7 +3640,7 @@ run 開始時の自動 Wipe と**同じタイル表示**へ流す。
 (AndroidGpuRecovery.swift。`dumpsys SurfaceFlinger` で現に CPU の個体だけが対象、1台ずつ直列)。
 GPU モードは emulator の**起動引数で固定**されるためプロセス再起動が必須で、該当機1台につき
 run 開始が約1分延びる(ゲスト再起動では戻らない)。戻した先で再び凍結すればモニターの watchdog が
-また CPU に落とす(§12.4 の既知トレードオフ)。UI はデバイスタブの実行プロファイル設定
+また CPU に落とす(§12.4 の既知トレードオフ)。UI は「テスト実行」タブの実行プロファイル設定
 「CPUフォールバックをGPUに回復する」。拡張側の記憶(`MonitorDeviceOps.cpuRenderNames`)は
 モニターが再検出した renderMode を見て `syncCpuRenderNames` が落とす(run 側の復帰は拡張の外で
 起きるため、これが無いと次の個別 `start-device` が再び swiftshader で起こしてしまう)。
@@ -3678,7 +3678,7 @@ Android 実機はグローバル設定が**永続的に**書き換わるので�
 (`ProfileWorkerFactory.pressHomeOnStart`)。一斉に launch した直後の端末は「描画要求が無いだけ」で
 画面が黒いまま止まることがあり、そのままだと凍結と見分けが付かない(2026-08-11 実測: 黒かった5台の
 うち4台は入力で戻った)。予防として1回だけ入力を入れる。**デバイスあたり1回**なので実行時間への
-影響はほぼゼロ。UI はデバイスタブの実行プロファイル設定。
+影響はほぼゼロ。UI は「テスト実行」タブの実行プロファイル設定。
 
 `iosFastInput`(既定 false)を true にすると **iOS xcuitest ブリッジの入力で quiescence 待ちを
 飛ばす**(`FT_FAST_INPUT=1` を実行環境へ注入し、`BridgeClient.fastInput` が受ける。CLI は
@@ -3818,8 +3818,8 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
   (`vscode-fleetest/`)に一本化した。プロジェクト/実行プロファイルの選択はコマンドパレット
   (「fleetest: プロジェクトを選択」「fleetest: 実行プロファイルを選択」、`fleetest.project` /
   `fleetest.profile` 設定)、プロファイル JSON の編集・保存時検証は問題パネル(Diagnostics)で行う。
-  **実行/デバッグ実行は `fleetest.profile` 未指定なら実行せず、デバイスタブでの指定を促す通知
-  (「デバイスタブを開く」= `fleetest.showDeviceMonitor`)を出す**(未指定だとブリッジ自動供給の無い
+  **実行/デバッグ実行は `fleetest.profile` 未指定なら実行せず、「テスト実行」タブでの指定を促す通知
+  (ボタン「テスト実行」タブを開く = `fleetest.showDeviceMonitor`)を出す**(未指定だとブリッジ自動供給の無い
   直接ポート接続に落ち、全シナリオが接続拒否で即失敗するため。ユーザー決定 2026-07-26。
   dry-run とライブ操作パネル連動は実デバイスを要さない/解決済みのため除外)
   内部的には CLI と同じ `fleetest api ...` サブコマンドを呼ぶため、解決ロジック(ProfileResolver 等)
@@ -4087,11 +4087,11 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   `adb forward --list` から情報行を合成(ホスト PID 無し→PID 列は `(遅延起動)`/デバイス内 PID `(12345)`)。
   停止ボタンは「プロセスを終了してタブを閉じる」の1つ(2026-08-19 に「すべて強制終了」を廃止して
   置き換え)。掃討スコープは**ユーザー決定**で: ① iOS ブリッジ/ランナー・in-app・モニター/
-  host-metrics/stream を停止し **iOS シミュレータと Android エミュ本体(qemu)は残す**(デバイスタブの領域。
+  host-metrics/stream を停止し **iOS シミュレータと Android エミュ本体(qemu)は残す**(「テスト実行」タブの領域。
   `bridge down --all`=sim を残す/`bridge down --platform android`=qemu を残す/残余 SIGKILL は
   **この workspace 由来のみ**=workspaceRoot/binaryDir を含むコマンド。machine-wide 巻き込み回避)、
   ② **MCP サーバ(mcp)は表示・掃討とも対象外**(セッション保護)、③ 掃討後は**再起動せず
-  モニターパネルを閉じる**(モニターを止めたままタブを開いておくとデバイスタブが状態更新を失い
+  モニターパネルを閉じる**(モニターを止めたままタブを開いておくと「テスト実行」タブが状態更新を失い
   凍結するため、「止める=閉じる」を1操作にする。再開はパネルを開き直すだけ)
 
 - **監視と実行の協調(run-lease)**(2026-07-18): monitor(watchdog)と run は別プロセスで無協調のため、
@@ -4117,7 +4117,7 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   持たず全て実測して渡す(style.css を変えたとき片方だけ古くなるのを防ぐ)
 - **前提**: 差分計算は「**今のペイン高さ ↔ 今の `--tile-image-h` が対応している**」ことに依存する。
   この対応が崩れると、崩れた差のぶんだけ高さが増減して二度と収まらない
-- **罠(実害 2026-07-31)**: `devices` のポーリングは「デバイス」タブが**非表示の間も届き続ける**
+- **罠(実害 2026-07-31)**: `devices` のポーリングは「テスト実行」タブが**非表示の間も届き続ける**
   (タブ非表示で止まるのはフレーム配信だけ。`devicesTabVisible`)。`applyDevices` は毎回
   `relayoutTiles` を呼ぶため、`display:none` 中は `clientHeight=0` → `--tile-image-h` が下限 60px に
   潰れて書き込まれ、上の対応が壊れていた。**タブへ戻ると実際の画像高さぶん過大**になりタイルが

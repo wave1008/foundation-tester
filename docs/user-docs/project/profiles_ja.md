@@ -86,7 +86,7 @@
 
 ## VSCode での編集
 
-VSCode 拡張の「デバイス」タブから実行/アプリ/マシンプロファイルを対話的に編集できます。また
+VSCode 拡張の「テスト実行」タブから実行/アプリ/マシンプロファイルを対話的に編集できます。また
 `profiles/{apps,machines,runs}/*.json` には拡張が提供する JSON スキーマ(`schemas/*.schema.json`)が
 適用され、手で編集する際も補完・ホバー・構造レベルの検証が効きます。詳細は
 [vscode-fleetest/README.md](../../../vscode-fleetest/README.md)(「実行プロファイルの編集支援」)を

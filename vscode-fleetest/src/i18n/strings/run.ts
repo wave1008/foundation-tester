@@ -37,10 +37,10 @@ export const runStrings = {
   },
 
   "run.profileRequired.message": {
-    ja: "❌ 実行プロファイルが指定されていません。テストを実行する前にデバイスタブで実行プロファイルを指定して下さい。",
-    en: "❌ No run profile is selected. Select one in the Devices tab before running tests.",
+    ja: "❌ 実行プロファイルが指定されていません。テストを実行する前に「テスト実行」タブで実行プロファイルを指定して下さい。",
+    en: "❌ No run profile is selected. Select one in the Test Run tab before running tests.",
   },
-  "run.profileRequired.openDeviceTab": { ja: "デバイスタブを開く", en: "Open Devices tab" },
+  "run.profileRequired.openTestRunTab": { ja: "「テスト実行」タブを開く", en: "Open the Test Run tab" },
 
   "run.label.all": { ja: "全体", en: "All" },
 

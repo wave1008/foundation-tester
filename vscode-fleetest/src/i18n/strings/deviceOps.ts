@@ -316,8 +316,8 @@ export const deviceOpsStrings = {
   },
   "deviceOps.wipeConfirmButton": { ja: "Wipe Data", en: "Wipe Data" },
   "deviceOps.wipeStarted": {
-    ja: "Wipe Dataを実行しました。進捗状況はデバイスタブで確認できます。",
-    en: "Wipe Data started. You can follow it on the Devices tab.",
+    ja: "Wipe Dataを実行しました。進捗状況は「テスト実行」タブで確認できます。",
+    en: "Wipe Data started. You can follow it on the Test Run tab.",
   },
   "deviceOps.wipeAllBusy": {
     ja: "対象のデバイスはすべて別の操作を実行中です。完了してからやり直してください。",

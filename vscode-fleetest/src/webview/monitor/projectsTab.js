@@ -29,7 +29,7 @@ export function applyProjectInfo(message) {
     projectSelect.style.display = '';
     projectNameStatic.style.display = 'none';
     projectSelect.textContent = '';
-    // 未解決(候補が複数あってどれとも決まっていない)ときの置き札。デバイスタブの
+    // 未解決(候補が複数あってどれとも決まっていない)ときの置き札。「テスト実行」タブの
     // 同じ select(deviceTiles.js の applyProjectInfo)と同じ形にする
     if (current === '') {
       const placeholder = document.createElement('option');

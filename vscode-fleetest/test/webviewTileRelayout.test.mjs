@@ -1,7 +1,7 @@
 // relayoutTiles(deviceTiles.js)が --tile-image-h を書く条件の DOM テスト。
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewDevicesTabVisible.test.mjs と同じ。
 //
-// 背景(実害): devices のポーリングは「デバイス」タブが非表示の間もホストから届き、
+// 背景(実害): devices のポーリングは「テスト実行」タブが非表示の間もホストから届き、
 // applyDevices が relayoutTiles を呼ぶ。display:none 中は clientHeight=0 で下限 60px に
 // 潰れるため、以前はそこで --tile-image-h が 60px に書き換わっていた。auto-fit
 // (splitter.js の computeFitTilePaneHeight)は「今のペイン高さ ↔ 今の --tile-image-h」が

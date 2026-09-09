@@ -1,4 +1,4 @@
-// デバイスタブ「auto-fit」トグル(splitter.js)の配線テスト。
+// 「テスト実行」タブ「auto-fit」トグル(splitter.js)の配線テスト。
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewDevicesTabVisible.test.mjs と同じ。
 //
 // jsdom にはレイアウトが無い(clientHeight/offsetParent が 0/null)ため、高さの計算自体は

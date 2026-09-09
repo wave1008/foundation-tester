@@ -268,7 +268,7 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
  * ホストでのまとまりはその中にあるため(config.ts の listMachineProfiles と同じ規則 —
  * 変更時は両方揃える)。タイルは1列なので、外側=左右のかたまりになる。
  * monitorProcessManager.ts が monitorDevices 受信時に適用し、以降の全消費側
- * (デバイスタブのタイル)はこの順で受け取る。
+ * (「テスト実行」タブのタイル)はこの順で受け取る。
  */
 export function sortMonitorDevices(devices: readonly MonitorDevice[]): MonitorDevice[] {
   return [...devices].sort((a, b) => {

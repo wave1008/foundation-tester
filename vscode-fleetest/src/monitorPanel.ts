@@ -210,19 +210,19 @@ export class MonitorPanelController implements vscode.Disposable {
    * webview の初期 switchTab が必ず正しい値を送ってくる。 */
   private devicesTabVisible = true;
 
-  /** 配信helperを動かすのはパネルが見えていて かつ デバイスタブが開いているときだけ。
+  /** 配信helperを動かすのはパネルが見えていて かつ 「テスト実行」タブが開いているときだけ。
    * どちらか一方でも欠けると H.264 のエンコード/デコードが丸ごと無駄になる。 */
   private applyDeviceStreamVisibility(): void {
     this.deviceStream.setVisible(this.panelVisible && this.devicesTabVisible);
   }
   /** 設定タブ「ポーリングモードを使用する」の現在値(ワークスペース単位で永続化)。 */
   private pollingMode: boolean;
-  /** デバイスタブのスプリッター位置(タイルペイン高さ px)。未設定(パネル未ドラッグ)は undefined。
+  /** 「テスト実行」タブのスプリッター位置(タイルペイン高さ px)。未設定(パネル未ドラッグ)は undefined。
    * webview の getState はパネルを閉じると失われるため host 側で永続化する(splitter.js と対の契約)。 */
   private tilePaneHeight: number | undefined;
-  /** デバイスタブの auto-fit トグル(タイル高さを全デバイスが横幅に収まる高さへ自動調整)。 */
+  /** 「テスト実行」タブの auto-fit トグル(タイル高さを全デバイスが横幅に収まる高さへ自動調整)。 */
   private tileAutoFit: boolean;
-  /** デバイスタブの全選択トグル(workspaceState の "monitor.selectAllDevices")。 */
+  /** 「テスト実行」タブの全選択トグル(workspaceState の "monitor.selectAllDevices")。 */
   private selectAllDevices: boolean;
   /** stopping/rebooting を post 済みで done/failed が未着のデバイス名。runEnded 時、キャンセル等で
    * done/failed が来ないまま残った名前にバッジ固着を防ぐため phase:"done" を post する。 */
@@ -1034,7 +1034,7 @@ export class MonitorPanelController implements vscode.Disposable {
     ]);
     // config の binaryPath 配下(このリポジトリのビルド成果物)は名前を問わず fleetest 由来として拾う。
     const binaryDir = path.dirname(this.getConfig().binaryPath);
-    // 表示・掃除の対象外を取得段階で除外する: Android エミュ本体(qemu、デバイスタブの領域)と
+    // 表示・掃除の対象外を取得段階で除外する: Android エミュ本体(qemu、「テスト実行」タブの領域)と
     // MCP サーバ(mcp、セッションを守るため掃討しない=表示もしない)。
     const host = parseResidentProcesses(stdout, { simulatorNames, binaryDir, inappBridges, locale: currentLocale() }).filter(
       (p) => p.type !== "emulator" && p.type !== "mcp",
@@ -1157,7 +1157,7 @@ export class MonitorPanelController implements vscode.Disposable {
     this.processManager.stopMonitorProcess();
     this.processManager.stopHostMetricsProcess();
     // 2) iOS ブリッジをシミュレータ本体を残してクリーン停止(xcuitest+inapp。pid/inapp ファイル基準で
-    //    SIGTERM→simctl terminate。simctl shutdown はしない=デバイスタブの領域)。
+    //    SIGTERM→simctl terminate。simctl shutdown はしない=「テスト実行」タブの領域)。
     await this.runFleetest(["bridge", "down", "--all"]);
     // 3) Android ブリッジを am force-stop + adb forward --remove で停止(qemu=エミュレータ本体は残す)。
     //    adb 未検出環境ではスキップ(出力ノイズを避ける)。
@@ -1192,7 +1192,7 @@ export class MonitorPanelController implements vscode.Disposable {
       await this.killResidentProcessesCore();
     } catch (e) {
       // 掃討が途中で失敗してもタブは閉じる(core の step 1 でモニターは既に停止済みで、
-      // 開いたままでもデバイスタブは固まるだけ)。失敗はダイアログで知らせる。
+      // 開いたままでも「テスト実行」タブは固まるだけ)。失敗はダイアログで知らせる。
       void vscode.window.showErrorMessage(t("monitor.residentKillClose.error", { error: String(e) }));
     }
     // restartAll はしない(「終了して閉じる」なので自動復帰させない)。タブを閉じる。

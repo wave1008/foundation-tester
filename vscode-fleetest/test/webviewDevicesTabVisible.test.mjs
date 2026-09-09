@@ -7,7 +7,7 @@
 //
 // 検証対象:
 // - デバイス以外のタブへ切り替えると visible:false を送る
-// - デバイスタブへ戻すと visible:true を送る
+// - 「テスト実行」タブへ戻すと visible:true を送る
 // - 起動時の初期タブでも 1 回送る(ホストが初期状態を知る唯一の経路)
 
 import assert from "node:assert/strict";
@@ -100,7 +100,7 @@ test("デバイス以外のタブへ切り替えると visible:false を送る",
     "タイルが display:none の間は配信 helper とデコードを止められるようにする");
 });
 
-test("デバイスタブへ戻すと visible:true を送る", (t) => {
+test("「テスト実行」タブへ戻すと visible:true を送る", (t) => {
   const { window, document, posted } = createWebview();
   t.after(() => window.close());
   clickTab(document, "settings");

@@ -341,7 +341,7 @@ function applyDeviceListHeightCap() {
     machineDeviceList.style.maxHeight = next;
   }
 }
-// 一覧はタブが非表示のまま描画されることがある(モニター起動直後は「デバイス」タブが前面)。
+// 一覧はタブが非表示のまま描画されることがある(モニター起動直後は「テスト実行」タブが前面)。
 // そのときは寸法が取れないので、可視になって箱ができた時点で測り直す。
 if (typeof ResizeObserver !== 'undefined') {
   new ResizeObserver(() => applyDeviceListHeightCap()).observe(machineDeviceList);

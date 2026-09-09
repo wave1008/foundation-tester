@@ -88,7 +88,7 @@ machines.
 
 ## Editing in VS Code
 
-The VS Code extension's Device tab lets you edit run/app/machine profiles interactively, and
+The VS Code extension's Test Run tab lets you edit run/app/machine profiles interactively, and
 `profiles/{apps,machines,runs}/*.json` get a JSON schema (`schemas/*.schema.json`) contributed by
 the extension for completion, hover and structural validation while editing by hand. See
 the "実行プロファイルの編集支援" section of

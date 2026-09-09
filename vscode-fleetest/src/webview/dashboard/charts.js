@@ -302,7 +302,7 @@ export function initDailyChart() {
   }, { passive: false });
   // 幅はペイン(ウィンドウ)の幅に追従する。ResizeObserver は jsdom(webview テスト)に無いので使わない
   window.addEventListener('resize', updateScrollHints);
-  // モニターはデバイスタブで開くので、データはダッシュボードが非表示のうちに届くことが多い
+  // モニターは「テスト実行」タブで開くので、データはダッシュボードが非表示のうちに届くことが多い
   // (tabs.js の switchTab が display を切り替えた直後にこのイベントを出す)
   document.addEventListener('ft-tab-activated', (event) => {
     if (event.detail && event.detail.tab === 'dashboard') {

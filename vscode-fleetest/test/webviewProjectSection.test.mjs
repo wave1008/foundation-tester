@@ -1,12 +1,12 @@
 // プロファイルタブ先頭「プロジェクト」セクション(#project-section)の DOM テスト。
-// 実 HTML+実バンドルで動かす方式は webviewProjectSelect.test.mjs(デバイスタブの #project-select)と
+// 実 HTML+実バンドルで動かす方式は webviewProjectSelect.test.mjs(「テスト実行」タブの #project-select)と
 // 同じ。こちらはプロファイルタブの #project-section-select + 追加/コピー/削除/名前変更ボタンを見る。
 //
 // 検証対象:
 // - profileInfo の projects/project で一覧と選択が入る(0件時は static 表示に切り替わる)
 // - [+]は常に有効、コピー/削除/名前変更は一覧0件で無効
 // - 各ボタンで projectAdd/projectCopy/projectDelete/projectRename を送る
-// - select の変更で selectProject を送る(デバイスタブの project-select と同じメッセージ)
+// - select の変更で selectProject を送る(「テスト実行」タブの project-select と同じメッセージ)
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";

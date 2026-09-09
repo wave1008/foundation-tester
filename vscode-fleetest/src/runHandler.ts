@@ -110,7 +110,7 @@ export function registerRunHandler(
     false,
   );
 
-  // 既定の「実行」プロファイル。デバイスタブの「テスト実行」(fleetest.runAllTests)からも
+  // 既定の「実行」プロファイル。「テスト実行」タブの「テスト実行」(fleetest.runAllTests)からも
   // これで走らせる —— 別に handler を作ると実行の見え方(TestRun の帰属)が2通りになる。
   const runHandler = makeHandler(false);
   const runProfile = controller.createRunProfile(
@@ -132,7 +132,7 @@ export function registerRunHandler(
         executeDebugRun(controller, workspaceRoot, getConfig, watcher, request, token, onRunFinished),
       true,
     ),
-    // モニターのデバイスタブ「テスト実行」ボタンの受け口(monitorPanel.ts)。include 無しの
+    // モニターの「テスト実行」タブ「テスト実行」ボタンの受け口(monitorPanel.ts)。include 無しの
     // request = 全シナリオ(@Deleted/@Draft は resolveTargets が外す)。**先に Test Explorer を
     // 前面に出す** —— 進行と結果はそこにしか出ないので、出さないと押しても無反応に見える。
     vscode.commands.registerCommand("fleetest.runAllTests", async () => {
@@ -154,7 +154,7 @@ export function registerRunHandler(
         tokenSource.dispose();
       }
     }),
-    // デバイスタブの「テストを中断」(monitorPanel.ts)。自前で起こした実行は控えた token を、
+    // 「テスト実行」タブの「テストを中断」(monitorPanel.ts)。自前で起こした実行は控えた token を、
     // Test Explorer から起こされた実行は本体の停止コマンドを撃って止める(どちらが走っているかは
     // ここでは分からないので両方撃つ。走っていなければどちらも no-op)。
     vscode.commands.registerCommand("fleetest.cancelTestRun", async () => {
@@ -625,7 +625,7 @@ async function executeRun(
     }
     run.end();
     void vscode.window
-      .showErrorMessage(`fleetest: ${message}`, t("run.profileRequired.openDeviceTab"))
+      .showErrorMessage(`fleetest: ${message}`, t("run.profileRequired.openTestRunTab"))
       .then((picked) => {
         if (picked !== undefined) {
           void vscode.commands.executeCommand("fleetest.showDeviceMonitor");
@@ -1043,7 +1043,7 @@ async function executeDebugRun(
     run.errored(item, new vscode.TestMessage(message));
     run.end();
     void vscode.window
-      .showErrorMessage(`fleetest: ${message}`, t("run.profileRequired.openDeviceTab"))
+      .showErrorMessage(`fleetest: ${message}`, t("run.profileRequired.openTestRunTab"))
       .then((picked) => {
         if (picked !== undefined) {
           void vscode.commands.executeCommand("fleetest.showDeviceMonitor");

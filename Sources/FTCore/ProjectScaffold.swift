@@ -391,7 +391,7 @@ public enum ProjectScaffold {
             to: project.testbasesDir.appendingPathComponent("README.md"),
             atomically: true, encoding: .utf8)
 
-        // 中身は空。デバイスは受け手が拡張のデバイスタブか `fleetest profile setup` で足す。
+        // 中身は空。デバイスは受け手が拡張の「テスト実行」タブか `fleetest profile setup` で足す。
         // **名前を固定するのが肝** —— 実行プロファイルが machine で名指しするので、
         // あとから別名のマシンプロファイルが増えても determineMachine が迷わない
         try "{}\n".write(to: project.machinesDir.appendingPathComponent("\(scaffoldMachineName).json"),

@@ -103,7 +103,7 @@ test("flaky scenarioID cell click requests the trend and opens the section", (t)
   assert.equal(window.document.querySelectorAll("#trend-body tbody tr").length, 1);
 });
 
-// 日別成功率の横スクロール: モニターはデバイスタブで開くので、データはダッシュボードが
+// 日別成功率の横スクロール: モニターは「テスト実行」タブで開くので、データはダッシュボードが
 // display:none のうちに届く(scrollWidth/clientWidth が 0 で右端寄せもフェード判定も空振りする)。
 // タブが表示された時点(tabs.js の ft-tab-activated)で右端(最新日)へ寄せ、フェードの class が付くこと。
 // jsdom は canvas もレイアウトも持たないので、2D コンテキストと wrap の寸法だけ差し替える。
@@ -125,7 +125,7 @@ test("daily chart scrolls to the newest day when the dashboard tab is shown afte
   Object.defineProperty(wrap, "scrollWidth", { get: () => (shown ? 964 : 0) });
   Object.defineProperty(wrap, "scrollLeft", { get: () => scrollLeft, set: (v) => { scrollLeft = v; } });
 
-  // createWebview はダッシュボードタブを開いているので、いったんデバイスタブへ(= 非表示で受信)
+  // createWebview はダッシュボードタブを開いているので、いったん「テスト実行」タブへ(= 非表示で受信)
   window.document.getElementById("tab-devices").click();
   const daily = [];
   for (let d = 0; d < 40; d++) {
