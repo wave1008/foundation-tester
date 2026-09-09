@@ -1,20 +1,20 @@
 // テーブル/ヘッドラインの DOM 組み立て(charts.js の日別チャートを除く表示ロジック一式)。
 // innerHTML は使わず createElement/textContent で組み立てる(値にシナリオID等の外部由来文字列を
 // 含むため)。run 詳細/実行履歴セクション自体の組み立ては runDetail.js/trend.js に分離してある
-// (このファイルが肥大しないように。ここは runs/flaky/summary/triage 等のクリックの起点だけ持つ)。
+// (このファイルが肥大しないように。ここは runs/flaky/summary 等のクリックの起点だけ持つ)。
 
 import {
   formatDeltaPercent,
   formatDurationHuman,
-  formatDurationMs,
+  formatDurationSeconds,
   formatLocalDateTime,
   formatPercent,
-  formatShortDateTime,
+  formatPercentInteger,
   passFailMark,
   recentResultsMarks,
 } from './format.js';
 import { t } from '../i18n.js';
-import { clearChildren, td, tdNum } from './domUtil.js';
+import { clearChildren, td, tdMid, tdNum } from './domUtil.js';
 import { machineLabels } from './machineNames.js';
 import { requestRunDetail } from './runDetail.js';
 import { requestTrend } from './trend.js';
@@ -236,9 +236,6 @@ export function renderFlakyTable(flaky) {
     const tr = document.createElement('tr');
     tr.append(
       scenarioIdCell(row.scenarioID),
-      tdNum(String(row.runs)),
-      tdNum(formatPercent(row.failureRate)),
-      tdNum(row.flakinessScore.toFixed(2)),
       td(recentResultsMarks(row.recentResults)),
     );
     body.appendChild(tr);
@@ -250,28 +247,15 @@ export function renderSummaryTable(summary) {
   clearChildren(body);
   for (const row of summary) {
     const tr = document.createElement('tr');
+    // 列の順序は monitorHtml.ts renderDashboardPanel() の #table-summary の見出しと1:1
+    // (位置で対応するので片方だけ並べ替えると値が別の見出しの下に出る)
     tr.append(
       scenarioIdCell(row.scenarioID),
-      tdNum(String(row.runs)),
-      tdNum(formatPercent(row.successRate)),
-      tdNum(formatDurationMs(row.avgDurationMs)),
+      tdMid(typeof row.lastPassed === 'boolean' ? passFailMark(row.lastPassed) : '–'),
       td(formatLocalDateTime(row.lastRunAt)),
-      td(typeof row.lastPassed === 'boolean' ? passFailMark(row.lastPassed) : '–'),
-    );
-    body.appendChild(tr);
-  }
-}
-
-export function renderDevicesTable(byWorker) {
-  const body = document.getElementById('table-devices-body');
-  clearChildren(body);
-  for (const row of byWorker) {
-    const tr = document.createElement('tr');
-    tr.append(
-      td(row.worker),
       tdNum(String(row.runs)),
-      tdNum(formatPercent(row.successRate)),
-      tdNum(formatDurationMs(row.avgDurationMs)),
+      tdNum(formatPercentInteger(row.successRate)),
+      tdNum(formatDurationSeconds(row.avgDurationMs)),
     );
     body.appendChild(tr);
   }
@@ -325,57 +309,6 @@ function slowestSceneText(slowestScene, slowestSceneAvgMs) {
     : slowestScene;
 }
 
-function matrixScenarioNameCell(scenario) {
-  const cell = document.createElement('td');
-  cell.textContent = scenario.title || scenario.scenarioID;
-  if (scenario.title && scenario.title !== scenario.scenarioID) {
-    cell.title = scenario.scenarioID;
-  }
-  return cell;
-}
-
-function matrixSuccessRateCell(cells) {
-  const nonNull = cells.filter((c) => c !== null);
-  const passCount = nonNull.filter((c) => c === 1).length;
-  const rate = nonNull.length > 0 ? (passCount / nonNull.length) * 100 : null;
-  return tdNum(formatPercent(rate));
-}
-
-function matrixDotCell(cell) {
-  const wrap = document.createElement('td');
-  const dot = document.createElement('span');
-  dot.className = 'matrix-dot ' + (cell === 1 ? 'matrix-dot-pass' : cell === 0 ? 'matrix-dot-fail' : 'matrix-dot-empty');
-  wrap.appendChild(dot);
-  return wrap;
-}
-
-export function renderMatrixTable(matrix) {
-  const headRow = document.getElementById('table-matrix-head');
-  const body = document.getElementById('table-matrix-body');
-
-  // 先頭2列(シナリオ名・成功率)は monitorHtml.ts renderDashboardPanel() の静的 HTML(i18n 済み見出し)。
-  // run 列は本数が可変なのでここで都度再構築する(未翻訳の技術的な日時見出しのみ)。
-  while (headRow.children.length > 2) {
-    headRow.removeChild(headRow.lastChild);
-  }
-  for (const run of matrix.runs) {
-    const th = document.createElement('th');
-    th.textContent = formatShortDateTime(run.startedAt);
-    th.title = run.runID + (run.profile ? ' / ' + run.profile : '');
-    headRow.appendChild(th);
-  }
-
-  clearChildren(body);
-  for (const scenario of matrix.scenarios) {
-    const tr = document.createElement('tr');
-    tr.append(matrixScenarioNameCell(scenario), matrixSuccessRateCell(scenario.cells));
-    for (const cell of scenario.cells) {
-      tr.appendChild(matrixDotCell(cell));
-    }
-    body.appendChild(tr);
-  }
-}
-
 export function renderSlowTable(slow) {
   const body = document.getElementById('table-slow-body');
   const emptyEl = document.getElementById('slow-empty');
@@ -397,50 +330,3 @@ export function renderSlowTable(slow) {
   }
 }
 
-export function renderTriageTable(triage) {
-  const section = document.getElementById('section-triage');
-  if (!triage) {
-    section.style.display = 'none';
-    return;
-  }
-  section.style.display = 'block';
-
-  const summaryEl = document.getElementById('triage-summary');
-  clearChildren(summaryEl);
-  const summarySpan = document.createElement('span');
-  summarySpan.textContent = t('wvDashboard.render.triageSummary', {
-    totalFailed: String(triage.totalFailed),
-    unreachedCount: String(triage.unreachedCount),
-  });
-  summaryEl.appendChild(summarySpan);
-
-  const body = document.getElementById('table-triage-body');
-  const table = document.getElementById('table-triage');
-  const notesBody = document.getElementById('table-triage-notes-body');
-  const notesTable = document.getElementById('table-triage-notes');
-  const emptyEl = document.getElementById('triage-empty');
-  clearChildren(body);
-  clearChildren(notesBody);
-
-  const hasRows = triage.rows.length > 0;
-  table.style.display = hasRows ? 'table' : 'none';
-  emptyEl.style.display = hasRows ? 'none' : 'block';
-  for (const row of triage.rows) {
-    const tr = document.createElement('tr');
-    tr.append(
-      td(row.section || '–'),
-      td(row.command || '–'),
-      td(row.failureKind || '–'),
-      tdNum(String(row.count)),
-      td(row.scenarioIDs.join(', ')),
-    );
-    body.appendChild(tr);
-  }
-
-  notesTable.style.display = triage.noteCounts.length === 0 ? 'none' : 'table';
-  for (const row of triage.noteCounts) {
-    const tr = document.createElement('tr');
-    tr.append(td(row.note), tdNum(String(row.count)));
-    notesBody.appendChild(tr);
-  }
-}

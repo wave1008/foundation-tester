@@ -56,8 +56,12 @@ export interface RunMetaRecord {
   readonly performanceMode?: boolean | null;
 }
 
+/** api results の summary は直近 N run の窓で集計されている
+ *  (N = RunResultsQuery.recentScenarioRunsWindow)。CLI の `fleetest results summary` は
+ *  窓を切らないので、同じシナリオでも数字は一致しない。 */
 export interface ScenarioSummaryRow {
   readonly scenarioID: string;
+  /** 集計に使った run 数(窓の上限まで)。窓内の総実行回数ではない。 */
   readonly runs: number;
   /** 0-100 */
   readonly successRate: number;
@@ -179,12 +183,14 @@ export interface ScenarioRunRecord {
   readonly timeline?: readonly unknown[] | null;
 }
 
+/** 各欄は直近 N run の窓だけで計算されている(N = RunResultsQuery.recentScenarioRunsWindow)。 */
 export interface SlowScenarioRow {
   readonly scenarioID: string;
+  /** 集計に使った run 数(窓の上限まで)。窓内の総実行回数ではない。 */
   readonly runs: number;
   readonly avgDurationMs: number;
   readonly p90DurationMs: number;
-  /** 前半→後半の平均変化率%。4回未満はキー欠落。 */
+  /** 窓の中での前半→後半の平均変化率%。窓の run が4回未満はキー欠落。 */
   readonly deltaPct?: number | null;
   /** 最も遅い scene のタイトル。無ければキー欠落(slowestSceneAvgMs も同様)。 */
   readonly slowestScene?: string | null;

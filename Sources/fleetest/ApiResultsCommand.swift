@@ -70,8 +70,10 @@ struct ApiResultsCommand: AsyncParsableCommand {
             schemaVersion: 1,
             project: testProject.name,
             runs: recentRuns,
-            summary: RunResultsQuery.scenarioSummary(records),
-            flaky: RunResultsQuery.flakyScenarios(records, minRuns: minRuns),
+            summary: RunResultsQuery.scenarioSummary(
+                records, recentRuns: RunResultsQuery.recentScenarioRunsWindow),
+            flaky: RunResultsQuery.flakyScenarios(
+                records, minRuns: minRuns, recentRuns: RunResultsQuery.recentScenarioRunsWindow),
             devices: RunResultsQuery.deviceSummary(records),
             daily: RunResultsQuery.dailyRates(records),
             slow: RunResultsQuery.slowTests(records, limit: 10),

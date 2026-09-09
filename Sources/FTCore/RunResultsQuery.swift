@@ -69,6 +69,7 @@ public enum RunResultsQuery {
 
     public struct ScenarioSummaryRow: Codable, Sendable, Equatable {
         public let scenarioID: String
+        /// 集計に使った run 数(呼び手が渡した窓まで。窓内の総実行回数ではない)
         public let runs: Int
         /// 0-100
         public let successRate: Double
@@ -79,10 +80,18 @@ public enum RunResultsQuery {
         public let lastPassed: Bool?
     }
 
-    /// シナリオ別に集計する。成功率昇順(問題のあるものが上)。同率は scenarioID 昇順
-    public static func scenarioSummary(_ records: [ScenarioRunRecord]) -> [ScenarioSummaryRow] {
+    /// シナリオ別に集計する。成功率昇順(問題のあるものが上)。同率は scenarioID 昇順。
+    /// recentRuns = 集計に使う直近 run 数(1 未満は 1 として扱う)。**既定値は置かない** ——
+    /// ダッシュボードは窓を切り(recentScenarioRunsWindow)、CLI の `results summary` は
+    /// --since の窓をそのまま出す(.max)ので、渡し忘れを既定で吸わせない
+    public static func scenarioSummary(
+        _ records: [ScenarioRunRecord], recentRuns: Int
+    ) -> [ScenarioSummaryRow] {
+        let window = max(1, recentRuns)
         let grouped = Dictionary(grouping: records, by: \.scenarioID)
-        let rows = grouped.map { scenarioID, group -> ScenarioSummaryRow in
+        let rows = grouped.map { scenarioID, allRecords -> ScenarioSummaryRow in
+            let group = Array(
+                allRecords.sorted { date(from: $0.startedAt) < date(from: $1.startedAt) }.suffix(window))
             let passedCount = group.filter(\.passed).count
             let successRate = group.isEmpty ? 0 : Double(passedCount) / Double(group.count) * 100
             let durations = group.filter { !isSkippedSynthetic($0) }.map(\.durationMs)
@@ -100,8 +109,14 @@ public enum RunResultsQuery {
 
     // MARK: - flaky
 
+    /// recentResults の表示上限(単位: run)。ダッシュボードは窓(recentScenarioRunsWindow)と
+    /// 同じ本数にして**判定と表示を一致させる** —— 表示だけ狭いと「全部 ✅ なのに不安定」の行が出る
+    /// (FlakyRecentResultsVisibility のテストが窓を広げた瞬間に落ちる)
+    public static let flakyRecentResultsCap = 10
+
     public struct FlakyRow: Codable, Sendable, Equatable {
         public let scenarioID: String
+        /// 判定に使った run 数(呼び手が渡した窓まで)
         public let runs: Int
         /// 0-100
         public let failureRate: Double
@@ -111,12 +126,20 @@ public enum RunResultsQuery {
         public let recentResults: [Bool]
     }
 
-    /// 期間内に pass/fail が混在し、実行回数が minRuns 以上のシナリオを不安定度降順で返す
-    public static func flakyScenarios(_ records: [ScenarioRunRecord], minRuns: Int) -> [FlakyRow] {
+    /// 窓の中で pass/fail が混在し、実行回数が minRuns 以上のシナリオを不安定度降順で返す。
+    /// recentRuns = 判定に使う直近 run 数(1 未満は 1 として扱う)。**既定値は置かない** ——
+    /// ダッシュボードは窓を切り(recentScenarioRunsWindow。直近が全部 ✅ のシナリオは
+    /// 混在なしとして落ちる)、CLI の `results flaky` は --since の窓をそのまま見る(.max)
+    public static func flakyScenarios(
+        _ records: [ScenarioRunRecord], minRuns: Int, recentRuns: Int
+    ) -> [FlakyRow] {
+        let window = max(1, recentRuns)
         let grouped = Dictionary(grouping: records, by: \.scenarioID)
-        let rows = grouped.compactMap { scenarioID, group -> FlakyRow? in
+        let rows = grouped.compactMap { scenarioID, allRecords -> FlakyRow? in
+            let group = Array(
+                allRecords.sorted { date(from: $0.startedAt) < date(from: $1.startedAt) }.suffix(window))
             guard group.count >= minRuns else { return nil }
-            let chronological = group.sorted { date(from: $0.startedAt) < date(from: $1.startedAt) }
+            let chronological = group
             let passedValues = Set(chronological.map(\.passed))
             guard passedValues.count > 1 else { return nil }  // pass/fail 混在なしは対象外
 
@@ -127,7 +150,7 @@ public enum RunResultsQuery {
             let flakinessScore = Double(transitions) / Double(chronological.count - 1)
             let failedCount = chronological.filter { !$0.passed }.count
             let failureRate = Double(failedCount) / Double(chronological.count) * 100
-            let recentResults = chronological.reversed().prefix(10).map(\.passed)
+            let recentResults = chronological.reversed().prefix(flakyRecentResultsCap).map(\.passed)
 
             return FlakyRow(
                 scenarioID: scenarioID, runs: chronological.count, failureRate: failureRate,
@@ -231,23 +254,38 @@ public enum RunResultsQuery {
     /// deltaPct を計算する最小実行回数(未満は前半/後半比較が意味を持たないため nil)
     private static let slowTestsMinRunsForDelta = 4
 
+    /// ダッシュボードの per-scenario 集計(遅いテスト・シナリオ別サマリ)が使う直近 run 数
+    /// (単位: run)。どちらも「今どうなっているか」を見る表なので、窓を切らないと窓内
+    /// (--since)の古い記録が平均と成功率を支配して、直した結果が見えない。
+    /// 10 = slowTestsMinRunsForDelta(4)を満たし、p90 が最近接順位法で最大値へ退化しない桁。
+    /// 窓が尽きた(記録が 10 未満)ときは在るだけで計算し runs がその数を名乗る。
+    /// 変えるときは見出しの「直近 N 回」も直す(vscode-fleetest/test/slowTestsWindow.test.mjs)
+    public static let recentScenarioRunsWindow = 10
+
     public struct SlowTestRow: Codable, Sendable, Equatable {
         public let scenarioID: String
+        /// 集計に使った run 数(上限は recentScenarioRunsWindow。窓内の総実行回数ではない)
         public let runs: Int
         public let avgDurationMs: Double
         public let p90DurationMs: Double
-        /// 時系列で前半平均→後半平均の変化率(%)。実行 4 回未満は nil
+        /// 窓の中で前半平均→後半平均の変化率(%)。窓の run が 4 回未満は nil
         public let deltaPct: Double?
         /// scene 平均所要時間が最大の scene タイトルとその平均(scene データが無ければ nil)
         public let slowestScene: String?
         public let slowestSceneAvgMs: Double?
     }
 
-    /// avgDurationMs 降順。isSkippedSynthetic は除外
-    public static func slowTests(_ records: [ScenarioRunRecord], limit: Int) -> [SlowTestRow] {
+    /// avgDurationMs 降順。isSkippedSynthetic は除外。
+    /// 各行は直近 recentRuns 回(1 未満は 1 として扱う)だけで計算する ——
+    /// avg/p90/runs/deltaPct/slowestScene のすべてが同じ窓に乗る(行の中で窓を混ぜない)
+    public static func slowTests(
+        _ records: [ScenarioRunRecord], limit: Int, recentRuns: Int = recentScenarioRunsWindow
+    ) -> [SlowTestRow] {
+        let window = max(1, recentRuns)
         let grouped = Dictionary(grouping: records.filter { !isSkippedSynthetic($0) }, by: \.scenarioID)
         let rows = grouped.compactMap { scenarioID, group -> SlowTestRow? in
-            let chronological = group.sorted { date(from: $0.startedAt) < date(from: $1.startedAt) }
+            let chronological = Array(
+                group.sorted { date(from: $0.startedAt) < date(from: $1.startedAt) }.suffix(window))
             let durations = chronological.map(\.durationMs)
             guard let avg = average(durations) else { return nil }
             let (slowestScene, slowestSceneAvgMs) = slowestSceneInfo(chronological)
@@ -389,7 +427,7 @@ public enum RunResultsQuery {
             guard let deltaPct = row.deltaPct, deltaPct >= durationRegressionPct else { continue }
             rows.append(InsightRow(
                 kind: "durationRegression", severity: "warn", scenarioID: row.scenarioID, worker: nil,
-                message: "\(row.scenarioID): duration regressed (+\(String(format: "%.0f", deltaPct))% vs the first half)",
+                message: "\(row.scenarioID): duration regressed (+\(String(format: "%.0f", deltaPct))% vs the first half of the last \(recentScenarioRunsWindow) runs)",
                 count: nil, deltaPct: deltaPct))
         }
 

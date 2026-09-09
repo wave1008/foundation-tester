@@ -145,7 +145,8 @@ struct ResultsSummaryCommand: AsyncParsableCommand {
         let (_, resultsDir, sinceDate) = try options.resolve()
         let records = RunResultsStore.scanRecords(resultsDir: resultsDir, since: sinceDate)
         let filtered = scenario.map { id in records.filter { $0.scenarioID == id } } ?? records
-        let rows = RunResultsQuery.scenarioSummary(filtered)
+        // CLI は --since の窓をそのまま集計する(ダッシュボードだけが直近 N 回へ絞る)
+        let rows = RunResultsQuery.scenarioSummary(filtered, recentRuns: .max)
 
         if options.json {
             try printResultsJSON(rows)
@@ -181,7 +182,8 @@ struct ResultsFlakyCommand: AsyncParsableCommand {
     func run() throws {
         let (_, resultsDir, sinceDate) = try options.resolve()
         let records = RunResultsStore.scanRecords(resultsDir: resultsDir, since: sinceDate)
-        let rows = RunResultsQuery.flakyScenarios(records, minRuns: minRuns)
+        // CLI は --since の窓をそのまま見る(ダッシュボードだけが直近 N 回へ絞る)
+        let rows = RunResultsQuery.flakyScenarios(records, minRuns: minRuns, recentRuns: .max)
 
         if options.json {
             try printResultsJSON(rows)

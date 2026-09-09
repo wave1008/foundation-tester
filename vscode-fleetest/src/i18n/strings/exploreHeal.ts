@@ -176,36 +176,30 @@ export const exploreHealStrings = {
     en: "No notable issues ✅",
   },
   "exploreHeal.dashboard.headingFlaky": {
-    ja: "不安定なシナリオ",
-    en: "Flaky Scenarios",
+    ja: "不安定なシナリオ(直近10回)",
+    en: "Flaky Scenarios (last 10 runs)",
   },
   "exploreHeal.dashboard.flakyEmpty": {
     ja: "不安定なシナリオはありません。",
     en: "No flaky scenarios.",
   },
+  // 見出しの「直近N回」は RunResultsQuery.recentScenarioRunsWindow と一致必須
+  // (ズレても描画も集計も通るので test/slowTestsWindow.test.mjs が等号で縛る)
   "exploreHeal.dashboard.headingSlow": {
-    ja: "遅いテスト",
-    en: "Slow Tests",
+    ja: "遅いテスト(直近10回)",
+    en: "Slow Tests (last 10 runs)",
   },
   "exploreHeal.dashboard.slowEmpty": {
     ja: "遅いテストはありません。",
     en: "No slow tests.",
-  },
-  "exploreHeal.dashboard.headingMatrix": {
-    ja: "シナリオ×run マトリクス",
-    en: "Scenario × Run Matrix",
   },
   "exploreHeal.dashboard.headingDaily": {
     ja: "日別成功率",
     en: "Daily Success Rate",
   },
   "exploreHeal.dashboard.headingSummary": {
-    ja: "シナリオ別サマリ",
-    en: "Scenario Summary",
-  },
-  "exploreHeal.dashboard.headingDevices": {
-    ja: "デバイス別集計",
-    en: "Device Breakdown",
+    ja: "シナリオ別サマリ(直近10回)",
+    en: "Scenario Summary (last 10 runs)",
   },
   "exploreHeal.dashboard.colScenarioId": {
     ja: "シナリオID",
@@ -219,14 +213,6 @@ export const exploreHealStrings = {
     ja: "成功率",
     en: "Success Rate",
   },
-  "exploreHeal.dashboard.colFailureRate": {
-    ja: "失敗率",
-    en: "Failure Rate",
-  },
-  "exploreHeal.dashboard.colFlakinessScore": {
-    ja: "遷移スコア",
-    en: "Flakiness Score",
-  },
   "exploreHeal.dashboard.colRecentResults": {
     ja: "直近の結果(新→旧)",
     en: "Recent Results (New→Old)",
@@ -235,9 +221,9 @@ export const exploreHealStrings = {
     ja: "平均",
     en: "Average",
   },
-  "exploreHeal.dashboard.colAvgMs": {
-    ja: "平均ms",
-    en: "Avg ms",
+  "exploreHeal.dashboard.colAvgSec": {
+    ja: "平均sec",
+    en: "Avg sec",
   },
   "exploreHeal.dashboard.colRegressionRate": {
     ja: "悪化率",
@@ -259,47 +245,19 @@ export const exploreHealStrings = {
     ja: "日時",
     en: "Date/Time",
   },
+  "exploreHeal.dashboard.colMachine": {
+    ja: "マシン",
+    en: "Machine",
+  },
+  "exploreHeal.dashboard.colProfile": {
+    ja: "プロファイル",
+    en: "Profile",
+  },
   // パフォーマンス測定 / 直近の実行の表の結果列。セルは "38 / 2"(件数)なので見出しで単位を示す
   "exploreHeal.dashboard.colPassedFailed": { ja: "pass/fail", en: "pass/fail" },
   "exploreHeal.dashboard.closeButton": {
     ja: "閉じる",
     en: "Close",
-  },
-  "exploreHeal.dashboard.headingTriage": {
-    ja: "失敗の仕分け",
-    en: "Failure Triage",
-  },
-  "exploreHeal.dashboard.headingTriageNotes": {
-    ja: "注記の内訳",
-    en: "Note Breakdown",
-  },
-  "exploreHeal.dashboard.colSection": {
-    ja: "フェーズ",
-    en: "Section",
-  },
-  "exploreHeal.dashboard.colCommand": {
-    ja: "コマンド",
-    en: "Command",
-  },
-  "exploreHeal.dashboard.colFailureKind": {
-    ja: "経路",
-    en: "Failure Kind",
-  },
-  "exploreHeal.dashboard.colCount": {
-    ja: "件数",
-    en: "Count",
-  },
-  "exploreHeal.dashboard.colScenarioExamples": {
-    ja: "シナリオ例",
-    en: "Example Scenarios",
-  },
-  "exploreHeal.dashboard.colNote": {
-    ja: "注記",
-    en: "Note",
-  },
-  "exploreHeal.dashboard.triageEmpty": {
-    ja: "失敗はありません。",
-    en: "No failures.",
   },
   "exploreHeal.dashboard.reportNotFound": {
     ja: "レポートを開けません。他のマシンで実行された run のレポートは gitignore のため転送されず、開けません。",

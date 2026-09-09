@@ -19,10 +19,6 @@ export const webviewDashboardStrings = {
   "wvDashboard.render.headlineIncomplete": { ja: "未完了", en: "Incomplete" },
   "wvDashboard.render.none": { ja: "(なし)", en: "(None)" },
   "wvDashboard.render.anomalyHint": { ja: "配信/劣化を疑う: {breakdown}", en: "Suspect streaming/degradation first: {breakdown}" },
-  "wvDashboard.render.triageSummary": {
-    ja: "失敗 {totalFailed} 件(うちステップ未到達 {unreachedCount} 件)",
-    en: "{totalFailed} failures ({unreachedCount} unreached before any step)",
-  },
 
   // performance.js
   "wvDashboard.perf.comparisonHeadingPair": {

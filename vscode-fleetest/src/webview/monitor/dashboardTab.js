@@ -13,16 +13,13 @@ import { initDailyChart, renderDailyChart } from '../dashboard/charts.js';
 import { formatLocalDateTime } from '../dashboard/format.js';
 import { t } from '../i18n.js';
 import {
-  renderDevicesTable,
   renderFlakyTable,
   groupRuns,
   renderHeadline,
   renderInsights,
-  renderMatrixTable,
   renderRunsTable,
   renderSlowTable,
   renderSummaryTable,
-  renderTriageTable,
 } from '../dashboard/render.js';
 import { renderPerformance } from '../dashboard/performance.js';
 import { setMachineAliases } from '../dashboard/machineNames.js';
@@ -82,29 +79,19 @@ function applyData(payload) {
   showState('data');
   // 各セクションの host 表示を machine へ読み替えるため、描画より先に対応表を差し替える
   setMachineAliases(payload.machines || []);
-  // キー欠落(旧 CLI)を許容する契約(dashboardModel.ts)のため performance は undefined のことがある。
-  renderPerformance(payload.performance);
   // 直近の実行も実行(runGroup)単位に畳む(パフォーマンス一覧と同じ規則)
   const runGroups = groupRuns(payload.runs);
   const statsByRunID = new Map((payload.runStats || []).map((s) => [s.runID, s]));
   renderHeadline(runGroups[0]);
   renderRunsTable(runGroups, statsByRunID);
+  // キー欠落(旧 CLI)を許容する契約(dashboardModel.ts)のため performance は undefined のことがある。
+  renderPerformance(payload.performance);
   // slow/insights はキー欠落(古い CLI)を許容する契約(dashboardModel.ts)のためデフォルト空配列。
+  renderSlowTable(payload.slow || []);
   renderInsights(payload.insights || []);
   renderFlakyTable(payload.flaky);
-  renderSlowTable(payload.slow || []);
-  const matrixSection = document.getElementById('section-matrix');
-  if (payload.matrix) {
-    matrixSection.style.display = 'block';
-    renderMatrixTable(payload.matrix);
-  } else {
-    matrixSection.style.display = 'none';
-  }
-  // triage はキー欠落(古い CLI)を許容する契約(dashboardModel.ts)。
-  renderTriageTable(payload.triage);
   renderDailyChart(payload.daily);
   renderSummaryTable(payload.summary);
-  renderDevicesTable(payload.devices.byWorker);
 }
 
 /** monitor/main.js の直下ディスパッチャの case 'dashboard' から呼ぶ(message = 封筒の中身)。 */

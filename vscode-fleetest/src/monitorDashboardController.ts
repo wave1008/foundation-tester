@@ -186,6 +186,9 @@ export class MonitorDashboardController {
         RESULTS_SINCE,
         "--min-runs",
         String(RESULTS_MIN_RUNS),
+        // マトリクスのセクションは無いので計算も転送もさせない(0 = matrix キー自体を出さない)
+        "--matrix-runs",
+        "0",
       ];
       const result = await this.runOneShotTracked(args);
       if (!isApiResultsPayload(result.json)) {
@@ -273,6 +276,8 @@ export class MonitorDashboardController {
         RESULTS_SINCE,
         "--min-runs",
         String(RESULTS_MIN_RUNS),
+        "--matrix-runs",
+        "0",
         "--scenario",
         scenarioID,
       ];

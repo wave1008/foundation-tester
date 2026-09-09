@@ -67,7 +67,7 @@ final class RunResultsQueryTests: XCTestCase {
             makeRecord(scenarioID: "Stable.b", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 50),
             makeRecord(scenarioID: "Stable.b", passed: true, startedAt: "2026-01-02T00:00:00Z", durationMs: 60),
         ]
-        let rows = RunResultsQuery.scenarioSummary(records)
+        let rows = RunResultsQuery.scenarioSummary(records, recentRuns: .max)
         XCTAssertEqual(rows.map(\.scenarioID), ["Flaky.a", "Stable.b"])  // 成功率昇順(問題のあるものが上)
 
         let flaky = rows[0]
@@ -84,6 +84,48 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertEqual(stable.medianDurationMs, 55)
     }
 
+    func testScenarioSummaryCountsOnlyTheRecentWindow() {
+        // 古い 5 回が失敗・直近 10 回が成功。窓を切れば成功率 100% / runs=10
+        let records = (0..<15).map { i in
+            makeRecord(
+                scenarioID: "Foo.a", passed: i >= 5,
+                startedAt: String(format: "2026-01-%02dT00:00:00Z", i + 1),
+                durationMs: i < 5 ? 900 : 100)
+        }
+        let windowed = RunResultsQuery.scenarioSummary(
+            records, recentRuns: RunResultsQuery.recentScenarioRunsWindow)
+        XCTAssertEqual(windowed[0].runs, 10, "runs は集計に使った run 数を名乗る")
+        XCTAssertEqual(windowed[0].successRate, 100, accuracy: 0.001)
+        XCTAssertEqual(windowed[0].avgDurationMs, 100)
+        XCTAssertEqual(windowed[0].medianDurationMs, 100)
+
+        // .max は窓なし(CLI の results summary と同じ)
+        let all = RunResultsQuery.scenarioSummary(records, recentRuns: .max)
+        XCTAssertEqual(all[0].runs, 15)
+        XCTAssertEqual(all[0].successRate, 200.0 / 3, accuracy: 0.001)
+    }
+
+    func testScenarioSummaryWindowKeepsTheLatestRunFacts() {
+        // 窓は末尾(新しい側)から取る —— 最終実行・最終結果が古い記録に化けないこと
+        let records = (0..<12).map { i in
+            makeRecord(
+                scenarioID: "Foo.a", passed: i == 11,
+                startedAt: String(format: "2026-01-%02dT00:00:00Z", i + 1), durationMs: 100)
+        }
+        let rows = RunResultsQuery.scenarioSummary(records, recentRuns: 10)
+        XCTAssertEqual(rows[0].lastRunAt, "2026-01-12T00:00:00Z")
+        XCTAssertEqual(rows[0].lastPassed, true)
+    }
+
+    func testScenarioSummaryRecentRunsClampsBelowOne() {
+        let records = (0..<3).map { i in
+            makeRecord(
+                scenarioID: "Foo.a", passed: true,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 100)
+        }
+        XCTAssertEqual(RunResultsQuery.scenarioSummary(records, recentRuns: 0)[0].runs, 1)
+    }
+
     func testScenarioSummaryExcludesSkippedSyntheticFromDuration() {
         let records = [
             makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100),
@@ -91,7 +133,7 @@ final class RunResultsQueryTests: XCTestCase {
                 scenarioID: "Foo.a", passed: false, startedAt: "2026-01-02T00:00:00Z", durationMs: 0,
                 steps: StepCountsRecord(total: 1, skipped: 1)),
         ]
-        let rows = RunResultsQuery.scenarioSummary(records)
+        let rows = RunResultsQuery.scenarioSummary(records, recentRuns: .max)
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows[0].runs, 2)
         XCTAssertEqual(rows[0].successRate, 50)
@@ -107,7 +149,7 @@ final class RunResultsQueryTests: XCTestCase {
                 scenarioID: "Flaky.a", passed: i % 2 == 0,
                 startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 100)
         }
-        let rows = RunResultsQuery.flakyScenarios(records, minRuns: 5)
+        let rows = RunResultsQuery.flakyScenarios(records, minRuns: 5, recentRuns: .max)
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows[0].scenarioID, "Flaky.a")
         XCTAssertEqual(rows[0].runs, 5)
@@ -123,7 +165,42 @@ final class RunResultsQueryTests: XCTestCase {
                 scenarioID: "Stable.a", passed: true,
                 startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 100)
         }
-        XCTAssertTrue(RunResultsQuery.flakyScenarios(stable, minRuns: 5).isEmpty)
+        XCTAssertTrue(RunResultsQuery.flakyScenarios(stable, minRuns: 5, recentRuns: .max).isEmpty)
+    }
+
+    /// 直近が全部 ✅ のシナリオは一覧に出さない(ユーザー指示)。窓の中で混在が無くなるので落ちる
+    func testFlakyScenariosDropsScenariosGreenThroughoutTheWindow() {
+        let window = RunResultsQuery.recentScenarioRunsWindow
+        // 古い 4 回は失敗、直近 window 回は全部成功
+        let records = (0..<(window + 4)).map { i in
+            makeRecord(
+                scenarioID: "Fixed.a", passed: i >= 4,
+                startedAt: String(format: "2026-01-%02dT00:00:00Z", i + 1), durationMs: 100)
+        }
+        XCTAssertTrue(
+            RunResultsQuery.flakyScenarios(records, minRuns: 5, recentRuns: window).isEmpty,
+            "直近の窓が全部 ✅ のシナリオは不安定ではない")
+        // 窓を切らなければ(CLI)従来どおり混在として出る
+        XCTAssertEqual(
+            RunResultsQuery.flakyScenarios(records, minRuns: 5, recentRuns: .max).count, 1)
+    }
+
+    /// **表示と判定の窓を一致させる**ことの検証 —— 表示上限だけ狭いと「全部 ✅ の行」が出る。
+    /// 窓を広げて cap を据え置いた瞬間にここが落ちる(ユーザー指示を機械で守る)
+    func testFlakyRecentResultsShowTheWholeJudgementWindow() {
+        XCTAssertEqual(RunResultsQuery.flakyRecentResultsCap, RunResultsQuery.recentScenarioRunsWindow,
+                       "表示上限と判定の窓がズレている。狭い表示は全部 ✅ の行を作る")
+        let window = RunResultsQuery.recentScenarioRunsWindow
+        // 窓のうち最古の1回だけ失敗 —— 表示が窓全体なら ❌ が必ず1つ見える
+        let records = (0..<window).map { i in
+            makeRecord(
+                scenarioID: "Edge.a", passed: i != 0,
+                startedAt: String(format: "2026-01-%02dT00:00:00Z", i + 1), durationMs: 100)
+        }
+        let rows = RunResultsQuery.flakyScenarios(records, minRuns: 5, recentRuns: window)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].recentResults.count, window)
+        XCTAssertTrue(rows[0].recentResults.contains(false), "一覧の行に ❌ が1つも無い")
     }
 
     func testFlakyScenariosExcludesBelowMinRuns() {
@@ -132,8 +209,8 @@ final class RunResultsQueryTests: XCTestCase {
                 scenarioID: "Foo.a", passed: i % 2 == 0,
                 startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 100)
         }
-        XCTAssertTrue(RunResultsQuery.flakyScenarios(records, minRuns: 5).isEmpty)
-        XCTAssertEqual(RunResultsQuery.flakyScenarios(records, minRuns: 3).count, 1)
+        XCTAssertTrue(RunResultsQuery.flakyScenarios(records, minRuns: 5, recentRuns: .max).isEmpty)
+        XCTAssertEqual(RunResultsQuery.flakyScenarios(records, minRuns: 3, recentRuns: .max).count, 1)
     }
 
     // MARK: - trend
@@ -222,6 +299,60 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertEqual(rows[0].runs, 3)
         XCTAssertEqual(rows[0].avgDurationMs, 400, accuracy: 0.001)
         XCTAssertEqual(rows[0].p90DurationMs, 900)  // nearest-rank: ceil(0.9*3)=3件目
+    }
+
+    func testSlowTestsRecentRunsDefaultIsPinned() {
+        // 既定の窓は production のリテラルで固定する(他のテストが recentRuns: を明示するため、
+        // 既定を変える変更が緑のまま通らないようにする)
+        XCTAssertEqual(RunResultsQuery.recentScenarioRunsWindow, 10)
+    }
+
+    func testSlowTestsAveragesOnlyTheRecentWindow() {
+        // 古い 3 回(1000ms)+ 直近 10 回(100ms)。窓に入るのは直近 10 回だけ
+        let records = (0..<13).map { i in
+            makeRecord(
+                scenarioID: "Foo.a", passed: true,
+                startedAt: String(format: "2026-01-%02dT00:00:00Z", i + 1),
+                durationMs: i < 3 ? 1000 : 100)
+        }
+        let rows = RunResultsQuery.slowTests(records, limit: 10)
+        XCTAssertEqual(rows[0].runs, 10, "runs は集計に使った run 数を名乗る")
+        XCTAssertEqual(rows[0].avgDurationMs, 100, accuracy: 0.001)
+        XCTAssertEqual(rows[0].p90DurationMs, 100)
+        XCTAssertEqual(rows[0].deltaPct, 0, "deltaPct も同じ窓の前半/後半で見る")
+    }
+
+    func testSlowTestsWindowMovesTheRankingAndScene() {
+        // 窓の外(古い)が遅く、窓の中(直近)が速いシナリオは上位に来ない
+        let slowPast = (0..<12).map { i in
+            makeRecord(
+                scenarioID: "Past.a", passed: true,
+                startedAt: String(format: "2026-01-%02dT00:00:00Z", i + 1),
+                durationMs: i < 2 ? 9000 : 100,
+                scenes: [SceneResultRecord(scene: 1, title: i < 2 ? "Old" : "New", passed: true,
+                                           durationMs: i < 2 ? 9000 : 100)])
+        }
+        let steady = [
+            makeRecord(scenarioID: "Now.b", passed: true, startedAt: "2026-02-01T00:00:00Z", durationMs: 500)
+        ]
+        let rows = RunResultsQuery.slowTests(slowPast + steady, limit: 10)
+        XCTAssertEqual(rows.map(\.scenarioID), ["Now.b", "Past.a"])
+        XCTAssertEqual(rows[1].slowestScene, "New", "scene の集計も窓の中だけで行う")
+    }
+
+    func testSlowTestsRecentRunsOverrideNarrowsTheWindow() {
+        let records = (0..<4).map { i in
+            makeRecord(
+                scenarioID: "Foo.a", passed: true,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1),
+                durationMs: i < 2 ? 1000 : 100)
+        }
+        XCTAssertEqual(RunResultsQuery.slowTests(records, limit: 10, recentRuns: 2)[0].avgDurationMs, 100,
+                       accuracy: 0.001)
+        // 1 未満は 1 として扱う(0 件平均の nil で行が消えない)
+        let clamped = RunResultsQuery.slowTests(records, limit: 10, recentRuns: 0)
+        XCTAssertEqual(clamped[0].runs, 1)
+        XCTAssertEqual(clamped[0].avgDurationMs, 100, accuracy: 0.001)
     }
 
     func testSlowTestsExcludesSkippedSyntheticAndRespectsLimit() {

@@ -35,3 +35,10 @@ export function tdNum(text) {
   cell.className = 'num';
   return cell;
 }
+
+/** 記号1文字のセル(中央寄せ。見出しは th.mid を対で付ける = monitorHtml.ts) */
+export function tdMid(text) {
+  const cell = td(text);
+  cell.className = 'mid';
+  return cell;
+}
