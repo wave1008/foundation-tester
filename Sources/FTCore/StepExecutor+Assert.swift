@@ -178,7 +178,9 @@ extension StepExecutor {
                 // 近道が本道より高くついた。**黙らない** —— 率が上がれば Vision の劣化が分かる
                 noteCodesThisStep.insert(.ocrBudgetExhausted)
             }
-            phase.guardMs += Self.ms(clock.now - ocrStart)
+            let ocrElapsed = Self.ms(clock.now - ocrStart)
+            phase.guardMs += ocrElapsed
+            phase.ocrMs += ocrElapsed
             if occlusionOCRMode == .on, ocrReadable {
                 return nil
             }

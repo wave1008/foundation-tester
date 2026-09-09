@@ -791,7 +791,7 @@ public final class FTDriveCore {
                    scheduleDelayMs: scheduleDelay.milliseconds,
                    cpuMs: cpuMs, ioBlockedMs: ioBlockedMs,
                    stallMs: stallMs, poolStallMs: poolStallMs,
-                   guardMs: outcome?.timing?.guardMs,
+                   guardMs: outcome?.timing?.guardMs, ocrMs: outcome?.timing?.ocrMs,
                    at: recordedAt,
                    notes: outcome?.notes ?? [], guarded: outcome?.guardEntered ?? false,
                    command: command, failureKind: failureKind)
@@ -1316,7 +1316,7 @@ public final class FTDriveCore {
                     actionMs: Int? = nil, waitMs: Int? = nil,
                     scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, ioBlockedMs: Int? = nil,
                     stallMs: Int? = nil, poolStallMs: Int? = nil, guardMs: Int? = nil,
-                    at: String? = nil,
+                    ocrMs: Int? = nil, at: String? = nil,
                     notes: [StepNote] = [], guarded: Bool = false,
                     command: String? = nil, failureKind: StepFailureKind? = nil,
                     screenshotData: Data? = nil, screenshotLabel: String? = nil) {
@@ -1352,6 +1352,7 @@ public final class FTDriveCore {
         event.stallMs = stallMs
         event.poolStallMs = poolStallMs
         event.guardMs = guardMs
+        event.ocrMs = ocrMs
         event.actionMs = actionMs
         event.waitMs = waitMs
         event.at = at

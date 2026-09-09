@@ -76,6 +76,9 @@ public struct ScenarioEvent: Codable, Sendable {
     /// **スクショは actionMs 側**。ここが大きいステップは、判定ではなく**見えているかの確認**に
     /// 締め切りを使っている(Vision のモデル初回ロードは実測 25〜47 秒)
     public var guardMs: Int?
+    /// guardMs の内訳: **OCR 段だけ**(残りが FM 段)。近道が近道になっているかを見る欄。
+    /// 注記 `ocr-budget-exhausted` と併せて読む —— 予算ちょうどで並んでいれば予算が狭い
+    public var ocrMs: Int?
     /// kind == scenarioFinished。このシナリオの FM 呼び出し実測(回数・レイテンシ)。
     /// FM を使わなかったシナリオでは nil(キーごと省略)。FM はホスト全体で直列化するため、
     /// 並列実行では他レーンの待ちも含む値になる(FMHealth の doc 参照)

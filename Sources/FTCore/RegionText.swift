@@ -185,8 +185,13 @@ public enum RegionText {
         case budgetExhausted
     }
 
-    /// FM の照合の実測下限。**この時間を超えたら OCR は近道ではない**(単位: 実時間)
-    public static let occlusionBudget: Duration = .milliseconds(1300)
+    /// FM の照合の実測下限。**この時間を超えたら OCR は近道ではない**(単位: 実時間)。
+    /// **`FT_OCR_BUDGET_MS` は保守者の計測用の口** —— 予算を広げて「近道が本当は何ミリ秒
+    /// 要るのか」を実負荷で採るために使う(利用者向けのノブではない)
+    public static var occlusionBudget: Duration {
+        let ms = Int(ProcessInfo.processInfo.environment["FT_OCR_BUDGET_MS"] ?? "") ?? 1300
+        return .milliseconds(ms)
+    }
 
     public static func resolveWithinBudget(expected: String, pngData: Data,
                                            frame: FTRect, screen: FTRect,

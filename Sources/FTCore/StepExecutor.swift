@@ -163,10 +163,12 @@ public struct StepTiming: Sendable, Equatable {
     public var stallMs: Int?
     public var poolStallMs: Int?
     public var guardMs: Int?
+    public var ocrMs: Int?
 
     public init(durationMs: Int, snapshotMs: Int? = nil, actionMs: Int? = nil, waitMs: Int? = nil,
                 scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, ioBlockedMs: Int? = nil,
-                stallMs: Int? = nil, poolStallMs: Int? = nil, guardMs: Int? = nil) {
+                stallMs: Int? = nil, poolStallMs: Int? = nil, guardMs: Int? = nil,
+                ocrMs: Int? = nil) {
         self.durationMs = durationMs
         self.snapshotMs = snapshotMs
         self.actionMs = actionMs
@@ -177,6 +179,7 @@ public struct StepTiming: Sendable, Equatable {
         self.stallMs = stallMs
         self.poolStallMs = poolStallMs
         self.guardMs = guardMs
+        self.ocrMs = ocrMs
     }
 }
 
@@ -610,7 +613,7 @@ public final class StepExecutor {
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
                                                       actionMs: phase.actionMs, waitMs: phase.waitMs,
-                                                      guardMs: phase.guardMs),
+                                                      guardMs: phase.guardMs, ocrMs: phase.ocrMs),
                                    driverFallback: noteWithInterrupt(
                                        Self.joinNotes(outcome.driverFallback, systemAlertAdvisoryThisStep),
                                        failed: !Self.isSuccess(status)),
@@ -633,7 +636,7 @@ public final class StepExecutor {
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
                                                       actionMs: phase.actionMs, waitMs: phase.waitMs,
-                                                      guardMs: phase.guardMs),
+                                                      guardMs: phase.guardMs, ocrMs: phase.ocrMs),
                                    driverFallback: noteWithInterrupt(nil,
                                                                      failed: !Self.isSuccess(status)),
                                    notes: collectedNotes(),
@@ -649,7 +652,7 @@ public final class StepExecutor {
                                timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                   snapshotMs: phase.snapshotMs,
                                                   actionMs: phase.actionMs, waitMs: phase.waitMs,
-                                                  guardMs: phase.guardMs),
+                                                  guardMs: phase.guardMs, ocrMs: phase.ocrMs),
                                notes: collectedNotes(),
                                // **注記を載せる枝は分母も載せる** —— ガードに入って
                                // stale/skipped を立てた後に例外が出ると、分子だけ数えて
@@ -714,6 +717,8 @@ public final class StepExecutor {
         /// occlusion-guard のうち**どの内訳にも入っていなかった段**(Vision OCR と FM の照合)。
         /// スクショは actionMs に入っているのでここには足さない(二重計上しない)
         var guardMs = 0
+        /// guardMs の内訳: OCR 段だけ(残りが FM 段)。**近道が近道になっているか**を見る欄
+        var ocrMs = 0
     }
 
     /// ContinuousClock の Duration → 整数ミリ秒(秒成分×1000 + attoseconds成分。

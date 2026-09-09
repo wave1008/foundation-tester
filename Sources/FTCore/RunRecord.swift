@@ -390,8 +390,9 @@ public struct TimelineStepRecord: Codable, Sendable {
     public var ioBlockedMs: Int?
     public var stallMs: Int?
     public var poolStallMs: Int?
-    /// occlusion-guard の OCR/FM 段(ScenarioEvent の同名欄の doc)
+    /// occlusion-guard の OCR/FM 段と、そのうち OCR だけ(ScenarioEvent の同名欄の doc)
     public var guardMs: Int?
+    public var ocrMs: Int?
     /// StepNote の rawValue(ScenarioEvent.notes 由来)。**run 横断の集計はここだけを見る**
     /// (description の文言一致で数えない。StepNote の doc 参照)。注記が無いステップと、
     /// notes を持たない旧レコードはどちらも nil
@@ -402,7 +403,7 @@ public struct TimelineStepRecord: Codable, Sendable {
                 snapshotMs: Int? = nil, actionMs: Int? = nil, waitMs: Int? = nil,
                 scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, ioBlockedMs: Int? = nil,
                 stallMs: Int? = nil, poolStallMs: Int? = nil, guardMs: Int? = nil,
-                notes: [String]? = nil) {
+                ocrMs: Int? = nil, notes: [String]? = nil) {
         self.scene = scene
         self.sceneTitle = sceneTitle
         self.index = index
@@ -419,6 +420,7 @@ public struct TimelineStepRecord: Codable, Sendable {
         self.stallMs = stallMs
         self.poolStallMs = poolStallMs
         self.guardMs = guardMs
+        self.ocrMs = ocrMs
         self.notes = notes
     }
 }
@@ -657,7 +659,7 @@ public struct ScenarioRecordBuilder {
             snapshotMs: event.snapshotMs, actionMs: event.actionMs, waitMs: event.waitMs,
             scheduleDelayMs: event.scheduleDelayMs, cpuMs: event.cpuMs,
             ioBlockedMs: event.ioBlockedMs,
-            stallMs: event.stallMs, poolStallMs: event.poolStallMs, guardMs: event.guardMs,
+            stallMs: event.stallMs, poolStallMs: event.poolStallMs, guardMs: event.guardMs, ocrMs: event.ocrMs,
             notes: event.notes?.isEmpty == true ? nil : event.notes))
         if event.notes?.contains(StepNote.heldValue.rawValue) == true {
             stepCounts.viaHeldValue = (stepCounts.viaHeldValue ?? 0) + 1
