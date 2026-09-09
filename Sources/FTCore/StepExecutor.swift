@@ -160,9 +160,13 @@ public struct StepTiming: Sendable, Equatable {
     public var scheduleDelayMs: Int?
     public var cpuMs: Int?
     public var ioBlockedMs: Int?
+    public var stallMs: Int?
+    public var poolStallMs: Int?
+    public var guardMs: Int?
 
     public init(durationMs: Int, snapshotMs: Int? = nil, actionMs: Int? = nil, waitMs: Int? = nil,
-                scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, ioBlockedMs: Int? = nil) {
+                scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, ioBlockedMs: Int? = nil,
+                stallMs: Int? = nil, poolStallMs: Int? = nil, guardMs: Int? = nil) {
         self.durationMs = durationMs
         self.snapshotMs = snapshotMs
         self.actionMs = actionMs
@@ -170,6 +174,9 @@ public struct StepTiming: Sendable, Equatable {
         self.scheduleDelayMs = scheduleDelayMs
         self.cpuMs = cpuMs
         self.ioBlockedMs = ioBlockedMs
+        self.stallMs = stallMs
+        self.poolStallMs = poolStallMs
+        self.guardMs = guardMs
     }
 }
 
@@ -594,7 +601,8 @@ public final class StepExecutor {
                                    healedByFingerprint: outcome.healedByFingerprint,
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
-                                                      actionMs: phase.actionMs, waitMs: phase.waitMs),
+                                                      actionMs: phase.actionMs, waitMs: phase.waitMs,
+                                                      guardMs: phase.guardMs),
                                    driverFallback: noteWithInterrupt(
                                        Self.joinNotes(outcome.driverFallback, systemAlertAdvisoryThisStep),
                                        failed: !Self.isSuccess(status)),
@@ -616,7 +624,8 @@ public final class StepExecutor {
                 return StepOutcome(status: status,
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
-                                                      actionMs: phase.actionMs, waitMs: phase.waitMs),
+                                                      actionMs: phase.actionMs, waitMs: phase.waitMs,
+                                                      guardMs: phase.guardMs),
                                    driverFallback: noteWithInterrupt(nil,
                                                                      failed: !Self.isSuccess(status)),
                                    notes: collectedNotes(),
@@ -631,7 +640,8 @@ public final class StepExecutor {
             return StepOutcome(status: .failed("execution error: \(error.localizedDescription)"),
                                timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                   snapshotMs: phase.snapshotMs,
-                                                  actionMs: phase.actionMs, waitMs: phase.waitMs),
+                                                  actionMs: phase.actionMs, waitMs: phase.waitMs,
+                                                  guardMs: phase.guardMs),
                                notes: collectedNotes(),
                                // **注記を載せる枝は分母も載せる** —— ガードに入って
                                // stale/skipped を立てた後に例外が出ると、分子だけ数えて
@@ -693,6 +703,9 @@ public final class StepExecutor {
         var snapshotMs = 0
         var actionMs = 0
         var waitMs = 0
+        /// occlusion-guard のうち**どの内訳にも入っていなかった段**(Vision OCR と FM の照合)。
+        /// スクショは actionMs に入っているのでここには足さない(二重計上しない)
+        var guardMs = 0
     }
 
     /// ContinuousClock の Duration → 整数ミリ秒(秒成分×1000 + attoseconds成分。

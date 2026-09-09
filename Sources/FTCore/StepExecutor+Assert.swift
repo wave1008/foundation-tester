@@ -81,6 +81,7 @@ extension StepExecutor {
                               expectedIsUserText: Bool = false,
                               phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
         guard visibilityGuardActive(perStepGuard: perStepGuard) else { return nil }
+        let clock = ContinuousClock()
         // **ここより後ろに置かない** —— 足切り(型・ラベル・インク)で FM を呼ばずに
         // 降りた回もガードが責任を持ったアサーションの総数(分母)に入れるため
         guardEnteredThisStep = true
@@ -160,9 +161,13 @@ extension StepExecutor {
         if occlusionOCRMode != .off {
             // Vision のモデルの初回ロード(実測 25〜47s)は**ガードが実際に走る executor でだけ**払う
             // (生成のたびに暖機すると、ガードが一度も撃たれない executor でもモデルを読み込む)
+            // **この段は guardMs に計上する** —— スクショ(actionMs)と違いどの内訳にも入って
+            // おらず、初回ロードを踏むとステップの締め切りがここで丸ごと消える
+            let ocrStart = clock.now
             RegionText.prewarmIfNeeded(mode: occlusionOCRMode)
             let resolved = await RegionText.resolve(expected: expectedText, pngData: screenshot,
                                                     frame: element.frame, screen: screen)
+            phase.guardMs += Self.ms(clock.now - ocrStart)
             ocrReading = resolved?.reading
             ocrReadable = resolved?.readable ?? false
             if occlusionOCRMode == .on, ocrReadable {
@@ -177,8 +182,12 @@ extension StepExecutor {
         if let cached = visibilityVerdictMemo.lookup(imageHash: memoImageHash, key: memoKey) {
             v = cached
         } else {
-            guard let fresh = await delegate.verifyElementVisible(
+            // FM の段も guardMs に入れる(fm は run 単位の集計で、ステップの内訳には出ない)
+            let fmStart = clock.now
+            let freshVerdict = await delegate.verifyElementVisible(
                 expectedText: expectedText, frame: element.frame, screen: screen, screenshotPNG: screenshot)
+            phase.guardMs += Self.ms(clock.now - fmStart)
+            guard let fresh = freshVerdict
             else {
                 // **訊いたのに答えが無い**(FM の失敗・ブレーカ開・直列化待ちの期限切れ・画像不正)。
                 // 素通りは従来どおりだが、**黙らない** —— シナリオ側からは「判定能力が欠けている」ことを

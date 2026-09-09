@@ -66,6 +66,16 @@ public struct ScenarioEvent: Codable, Sendable {
     /// **全レーンが同時に固まる**(ConsoleOut の doc)。ここが durationMs の大半を占める
     /// ステップは、仕事をしていないのではなく**書けなくて進めなかった**
     public var ioBlockedMs: Int?
+    /// **プロセスごと止まっていた時間**(専用 OS スレッドの心拍が遅れたぶんの合計。ミリ秒)。
+    /// ここが durationMs の大半なら、ステップは待たされた側で締め切りは不当(StallMeter の doc)
+    public var stallMs: Int?
+    /// **協調スレッドプールが詰まっていた時間**(プール上の心拍が遅れたぶん)。
+    /// stallMs が小さいのにこちらが大きい = 誰かが cooperative thread をブロックしている
+    public var poolStallMs: Int?
+    /// durationMs の内訳: occlusion-guard の Vision OCR と FM 照合(ミリ秒)。
+    /// **スクショは actionMs 側**。ここが大きいステップは、判定ではなく**見えているかの確認**に
+    /// 締め切りを使っている(Vision のモデル初回ロードは実測 25〜47 秒)
+    public var guardMs: Int?
     /// kind == scenarioFinished。このシナリオの FM 呼び出し実測(回数・レイテンシ)。
     /// FM を使わなかったシナリオでは nil(キーごと省略)。FM はホスト全体で直列化するため、
     /// 並列実行では他レーンの待ちも含む値になる(FMHealth の doc 参照)

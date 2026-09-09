@@ -750,6 +750,9 @@ public final class FTDriveCore {
         let scheduleDelay = FTSync.ScheduleDelay()
         let cpuStart = ProcessCPUTime.milliseconds()
         let ioBlockedStart = ConsoleOut.blockedMilliseconds
+        StallMeter.shared.startIfNeeded()
+        let stallStart = StallMeter.shared.threadStallMilliseconds
+        let poolStallStart = StallMeter.shared.poolStallMilliseconds
         let outcome = FTSync.run(scheduleDelay: scheduleDelay) {
             await executor.execute(step, cached: cachedLocators, fingerprint: cachedFingerprint)
         }
@@ -757,6 +760,8 @@ public final class FTDriveCore {
         // **プロセス全体の値**(cpuMs と同じ)。1レーンが書けずに詰まると協調スレッドプールごと
         // 止まり、書いていないレーンのステップまで固まるので、レーン別に測っても意味が無い
         let ioBlockedMs = max(0, ConsoleOut.blockedMilliseconds - ioBlockedStart)
+        let stallMs = max(0, StallMeter.shared.threadStallMilliseconds - stallStart)
+        let poolStallMs = max(0, StallMeter.shared.poolStallMilliseconds - poolStallStart)
         // `at` は**失敗確定時刻**(docs/results-json.md。録画の再生位置に使う)なので打ち切りが
         // 決まった瞬間を採る —— 開始時刻を入れると再生位置がコマンド上限のぶん(120秒)ずれる
         let hostFinishedAt = ISO8601Millis.string(from: Date())
@@ -785,6 +790,8 @@ public final class FTDriveCore {
                    waitMs: outcome?.timing?.waitMs,
                    scheduleDelayMs: scheduleDelay.milliseconds,
                    cpuMs: cpuMs, ioBlockedMs: ioBlockedMs,
+                   stallMs: stallMs, poolStallMs: poolStallMs,
+                   guardMs: outcome?.timing?.guardMs,
                    at: recordedAt,
                    notes: outcome?.notes ?? [], guarded: outcome?.guardEntered ?? false,
                    command: command, failureKind: failureKind)
@@ -1308,6 +1315,7 @@ public final class FTDriveCore {
                     durationMs: Int? = nil, snapshotMs: Int? = nil,
                     actionMs: Int? = nil, waitMs: Int? = nil,
                     scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, ioBlockedMs: Int? = nil,
+                    stallMs: Int? = nil, poolStallMs: Int? = nil, guardMs: Int? = nil,
                     at: String? = nil,
                     notes: [StepNote] = [], guarded: Bool = false,
                     command: String? = nil, failureKind: StepFailureKind? = nil,
@@ -1341,6 +1349,9 @@ public final class FTDriveCore {
         event.scheduleDelayMs = scheduleDelayMs
         event.cpuMs = cpuMs
         event.ioBlockedMs = ioBlockedMs
+        event.stallMs = stallMs
+        event.poolStallMs = poolStallMs
+        event.guardMs = guardMs
         event.actionMs = actionMs
         event.waitMs = waitMs
         event.at = at

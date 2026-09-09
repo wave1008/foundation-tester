@@ -385,8 +385,13 @@ public struct TimelineStepRecord: Codable, Sendable {
     /// **欄が無い=不明であって0ではない**(ScenarioEvent の同名欄の doc)
     public var scheduleDelayMs: Int?
     public var cpuMs: Int?
-    /// 出力経路でブロックされた時間(ScenarioEvent の同名欄の doc)
+    /// 出力経路でブロックされた時間 / プロセスごと・協調スレッドプールごと止まっていた時間
+    /// (いずれも ScenarioEvent の同名欄の doc)
     public var ioBlockedMs: Int?
+    public var stallMs: Int?
+    public var poolStallMs: Int?
+    /// occlusion-guard の OCR/FM 段(ScenarioEvent の同名欄の doc)
+    public var guardMs: Int?
     /// StepNote の rawValue(ScenarioEvent.notes 由来)。**run 横断の集計はここだけを見る**
     /// (description の文言一致で数えない。StepNote の doc 参照)。注記が無いステップと、
     /// notes を持たない旧レコードはどちらも nil
@@ -396,6 +401,7 @@ public struct TimelineStepRecord: Codable, Sendable {
                 status: String, at: String? = nil, durationMs: Int? = nil,
                 snapshotMs: Int? = nil, actionMs: Int? = nil, waitMs: Int? = nil,
                 scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, ioBlockedMs: Int? = nil,
+                stallMs: Int? = nil, poolStallMs: Int? = nil, guardMs: Int? = nil,
                 notes: [String]? = nil) {
         self.scene = scene
         self.sceneTitle = sceneTitle
@@ -410,6 +416,9 @@ public struct TimelineStepRecord: Codable, Sendable {
         self.scheduleDelayMs = scheduleDelayMs
         self.cpuMs = cpuMs
         self.ioBlockedMs = ioBlockedMs
+        self.stallMs = stallMs
+        self.poolStallMs = poolStallMs
+        self.guardMs = guardMs
         self.notes = notes
     }
 }
@@ -648,6 +657,7 @@ public struct ScenarioRecordBuilder {
             snapshotMs: event.snapshotMs, actionMs: event.actionMs, waitMs: event.waitMs,
             scheduleDelayMs: event.scheduleDelayMs, cpuMs: event.cpuMs,
             ioBlockedMs: event.ioBlockedMs,
+            stallMs: event.stallMs, poolStallMs: event.poolStallMs, guardMs: event.guardMs,
             notes: event.notes?.isEmpty == true ? nil : event.notes))
         if event.notes?.contains(StepNote.heldValue.rawValue) == true {
             stepCounts.viaHeldValue = (stepCounts.viaHeldValue ?? 0) + 1

@@ -68,6 +68,10 @@ final class StepBudgetInstrumentTests: XCTestCase {
         event.durationMs = 120_000
         event.scheduleDelayMs = 119_500
         event.cpuMs = 3
+        event.ioBlockedMs = 4
+        event.stallMs = 5
+        event.poolStallMs = 6
+        event.guardMs = 118_000
         var builder = ScenarioRecordBuilder(scenarioID: "Foo.a", platform: "ios",
                                             title: nil, worker: nil)
         builder.consume(event)
@@ -75,5 +79,9 @@ final class StepBudgetInstrumentTests: XCTestCase {
                                    durationMs: 120_000, packageRoot: nil)
         XCTAssertEqual(record.timeline?.first?.scheduleDelayMs, 119_500)
         XCTAssertEqual(record.timeline?.first?.cpuMs, 3)
+        XCTAssertEqual(record.timeline?.first?.ioBlockedMs, 4)
+        XCTAssertEqual(record.timeline?.first?.stallMs, 5)
+        XCTAssertEqual(record.timeline?.first?.poolStallMs, 6)
+        XCTAssertEqual(record.timeline?.first?.guardMs, 118_000)
     }
 }
