@@ -468,10 +468,11 @@ struct ApiStopAllDevicesCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "stop-all-devices",
         abstract: "Stop every device in the machine profile (NDJSON: log/deviceStopping/deviceFinished -> "
-            + "finished on stdout; diagnostics on stderr only; exit code 1 when ok:false). "
-            + "With --profile, only the devices that profile references. The shutdown logic is identical "
-            + "to shutdownProfile in DevicesCommand.Down (sequential ios->android shutdownOne) with "
-            + "per-device progress added")
+            + "finished on stdout; diagnostics on stderr only; ok:false and exit code 1 only when every "
+            + "device on this machine failed to stop, otherwise ok:true even with partial failures, "
+            + "summarized in a log line). With --profile, only the devices that profile references. "
+            + "The shutdown logic is identical to shutdownProfile in DevicesCommand.Down "
+            + "(DeviceBooter.shutdownAll: sequential ios->android) with per-device progress added")
 
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
@@ -500,62 +501,45 @@ struct ApiStopAllDevicesCommand: AsyncParsableCommand {
                 subcommand: "stop-all-devices", machines: machines, project: project, profile: profile,
                 relay: { ApiDeviceEventEmitter.emitRaw($0) })
 
-            // shutdownProfile と同じ ios→android 逐次(1台落ちるごとに deviceFinished を出すので、
-            // 拡張側は落ちた順にタイルを「未起動」へ倒せる)。iOS のみブリッジ停止のため repoRoot を渡す。
+            // deviceStopping/deviceFinished は shutdownAll のループから直列に呼ばれる(並行実行は無い)。
+            // iOS のみブリッジ停止のため repoRoot を渡す(shutdownAll が android には nil を渡す)。
             let repoRoot = try? RepoRoot.find()
-            for spec in machineProfile.ios?.devices ?? [] {
-                if spec.isPhysical {
-                    await Self.stopPhysicalBridgeOnly(spec: spec, platform: "ios", repoRoot: repoRoot)
-                    continue
-                }
-                await Self.shutdownOneEmitting(spec: spec, platform: "ios", repoRoot: repoRoot)
-            }
-            for spec in machineProfile.android?.devices ?? [] {
-                if spec.isPhysical {
-                    await Self.stopPhysicalBridgeOnly(spec: spec, platform: "android", repoRoot: nil)
-                    continue
-                }
-                await Self.shutdownOneEmitting(spec: spec, platform: "android", repoRoot: nil)
-            }
+            let outcomes = await DeviceBooter.shutdownAll(
+                machine: machineProfile, repoRoot: repoRoot,
+                log: { message in ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message)) },
+                deviceStopping: { name, platform in
+                    ApiDeviceEventEmitter.emit(
+                        ApiDevicesUpLifecycleEvent(kind: "deviceStopping", name: name, platform: platform,
+                                                   machine: MachineDispatch.normalize(deviceMachine)))
+                },
+                deviceFinished: { name, platform in
+                    ApiDeviceEventEmitter.emit(
+                        ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: name, platform: platform,
+                                                   machine: MachineDispatch.normalize(deviceMachine)))
+                })
             await fanout  // リモート分の完走まで finished を出さない(受け手の「全部終わった」の合図)
+            // **手元の台が1台以上あって0台も停止できなかったときだけ ok:false**(部分失敗は従来どおり
+            // ok:true。「1台の失敗で全体を落とさない」規律は変えず、全滅だけを失敗として伝える —
+            // 以前は例外を握って何を積んでも ok:true・exit 0 だった)。リモートの機械ごとの失敗は
+            // 既存の機構が別途伝える(ここでは手元の outcomes だけを見る)
+            let summary = DeviceBooter.BootOutcomeSummarizer.summarize(outcomes)
+            if summary.allFailed {
+                ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(
+                    ok: false, error: "every device failed to stop: \(summary.failedNames.joined(separator: ", "))"))
+                throw ExitCode(1)
+            }
+            if !summary.failedNames.isEmpty {
+                ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(
+                    message: "⚠️ Device shutdown complete: \(summary.succeededCount)/\(summary.total) stopped"
+                        + " — failed: \(summary.failedNames.joined(separator: ", "))"))
+            }
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
+        } catch let exitCode as ExitCode {
+            throw exitCode
         } catch {
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent.failure(error))
             throw ExitCode(1)
         }
-    }
-
-    /// 実機は端末を落とさずブリッジだけ止める(DeviceBooter.shutdownOne の実機分岐が保証する)。
-    /// deviceStopping/deviceFinished は出さない —— 実機は端末が生き続けるので、出すと拡張の
-    /// タイルが「停止した」と一瞬表示してから次の観測で「接続中」に戻りちらつく
-    private static func stopPhysicalBridgeOnly(spec: DeviceSpec, platform: String, repoRoot: URL?) async {
-        let log: @Sendable (String) -> Void = { message in
-            ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message))
-        }
-        do {
-            try await DeviceBooter.shutdownOne(spec: spec, platform: platform, repoRoot: repoRoot, log: log)
-        } catch {
-            log("❌ \(spec.name): \(error.localizedDescription)")
-        }
-    }
-
-    /// 1台停止。失敗しても deviceFinished は必ず送出する(拡張の再スキャン契約。
-    /// ApiStartAllDevicesCommand/ApiRestartDevicesCommand の deviceFinished 契約と同じ)。
-    private static func shutdownOneEmitting(spec: DeviceSpec, platform: String, repoRoot: URL?) async {
-        let log: @Sendable (String) -> Void = { message in
-            ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message))
-        }
-        ApiDeviceEventEmitter.emit(
-            ApiDevicesUpLifecycleEvent(kind: "deviceStopping", name: spec.name, platform: platform,
-                                       machine: spec.machine))
-        do {
-            try await DeviceBooter.shutdownOne(spec: spec, platform: platform, repoRoot: repoRoot, log: log)
-        } catch {
-            log("❌ \(spec.name): \(error.localizedDescription)")
-        }
-        ApiDeviceEventEmitter.emit(
-            ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: spec.name, platform: platform,
-                                       machine: spec.machine))
     }
 
     private static func logStderr(_ message: String) {

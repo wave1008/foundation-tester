@@ -74,7 +74,8 @@ struct DevicesCommand: AsyncParsableCommand {
                 + " on every machine in the remote registry (physical devices are never shut down, but"
                 + " their bridges are always stopped too). With --profile, only the devices that profile"
                 + " references are stopped individually, on this machine only (physical devices in scope"
-                + " get their bridge stopped, but are never shut down).")
+                + " get their bridge stopped, but are never shut down). With --profile, exit code 1 if"
+                + " every targeted device failed to stop; partial failures still exit 0 but are summarized.")
 
         @Option(help: "Test project name (only used with --profile; defaults to the only one in TestProjects/, or the default project)")
         var project: String?
@@ -90,7 +91,7 @@ struct DevicesCommand: AsyncParsableCommand {
 
         func run() async throws {
             if let profile {
-                await shutdownProfile(profile)
+                try await shutdownProfile(profile)
                 return
             }
 
@@ -163,39 +164,41 @@ struct DevicesCommand: AsyncParsableCommand {
             await fanout  // リモート分の完走まで抜けない(呼び出し側の「全部終わった」の合図)
         }
 
-        /// 対象デバイスのみ ios→android の順で shutdownOne により個別停止する(ApiDeviceDown と
-        /// 同じ流儀)。マシン解決・読み込み・個々の停止いずれの失敗も警告に留めて続行し
-        /// (1台の失敗で全体を止めない)、exit 0 で完走する。実機の扱い(端末は落とさずブリッジ
-        /// だけ止める)は shutdownOne 側の分岐に任せる —— 呼び出し側に実機の知識を持たせない
-        private func shutdownProfile(_ profile: String) async {
+        /// 対象デバイスのみ ios→android の順で DeviceBooter.shutdownAll により個別停止する
+        /// (ApiStopAllDevicesCommand と共通の実装)。**全部成功=✅・部分失敗=⚠️ 要約 exit 0・
+        /// 全滅(1台以上あって0台成功)=❌ 要約 exit 1** の3分岐(Up.run と同じ形。「1台の失敗で
+        /// 全体を落とさない」規律は部分失敗の側で保たれる)。実機の扱い(端末は落とさずブリッジ
+        /// だけ止める)は shutdownAll 側の分岐に任せる —— 呼び出し側に実機の知識を持たせない
+        private func shutdownProfile(_ profile: String) async throws {
+            let filtered: MachineProfile
             do {
-                let filtered = try MachineProfileLoad.load(
+                filtered = try MachineProfileLoad.load(
                     project: project, profile: profile, deviceMachine: deviceMachine,
                     foreign: .notHandled,  // --profile 付きの掃討は手元だけ
                     noteAutoMachine: { ConsoleOut.out($0) },
                     warn: { ConsoleOut.out($0) })
-
-                // iOS はシミュレータ停止前に稼働ブリッジも探して停止する(ゾンビ化防止)。repoRoot
-                // 未検出時はブリッジ停止をスキップし simctl shutdown のみ行う(ApiDeviceDown と同じ)
-                let repoRoot = try? RepoRoot.find()
-                for spec in filtered.ios?.devices ?? [] {
-                    do {
-                        try await DeviceBooter.shutdownOne(
-                            spec: spec, platform: "ios", repoRoot: repoRoot, log: { ConsoleOut.out($0) })
-                    } catch {
-                        ConsoleOut.out("⚠️ \(spec.name): \(error.localizedDescription)")
-                    }
-                }
-                for spec in filtered.android?.devices ?? [] {
-                    do {
-                        try await DeviceBooter.shutdownOne(
-                            spec: spec, platform: "android", log: { ConsoleOut.out($0) })
-                    } catch {
-                        ConsoleOut.out("⚠️ \(spec.name): \(error.localizedDescription)")
-                    }
-                }
             } catch {
+                // プロファイル自体の読み込み失敗は1台も停止を試みていないので「全滅」とは区別し、
+                // 警告に留めて exit 0 で帰る(下の3分岐とは別軸)
                 ConsoleOut.out("⚠️ \(error.localizedDescription)")
+                return
+            }
+
+            // iOS はシミュレータ停止前に稼働ブリッジも探して停止する(ゾンビ化防止)。repoRoot
+            // 未検出時はブリッジ停止をスキップし simctl shutdown のみ行う(ApiStopAllDevicesCommand と同じ)
+            let repoRoot = try? RepoRoot.find()
+            let outcomes = await DeviceBooter.shutdownAll(
+                machine: filtered, repoRoot: repoRoot, log: { ConsoleOut.out($0) })
+            let summary = DeviceBooter.BootOutcomeSummarizer.summarize(outcomes)
+            if summary.failedNames.isEmpty {
+                ConsoleOut.out("✅ Device shutdown complete")
+            } else if summary.allFailed {
+                ConsoleOut.out("❌ Device shutdown failed: 0/\(summary.total) stopped"
+                    + " — failed: \(summary.failedNames.joined(separator: ", "))")
+                throw ExitCode(1)
+            } else {
+                ConsoleOut.out("⚠️ Device shutdown complete: \(summary.succeededCount)/\(summary.total) stopped"
+                    + " — failed: \(summary.failedNames.joined(separator: ", "))")
             }
         }
     }

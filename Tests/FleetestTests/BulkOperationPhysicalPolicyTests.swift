@@ -20,10 +20,10 @@ import FTCore
 /// (端末そのものは絶対に落とさない)。**この規則は掃討(devices down・profile 無し)にも及ぶ**
 /// —— 以前は掃討だけ実機のブリッジを素通りしていたが、それでは「全て終了」を押しても
 /// 実機のブリッジが残る(ユーザー指摘 2026-09-08)。
-/// - profile 指定の個別停止は `DeviceBooter.shutdownOne` の実機分岐に一本化(呼び出し側は
-///   実機の知識を持たない)。NDJSON 経路(api stop-all-devices)だけは deviceStopping/
-///   deviceFinished を出さない特例が要る(実機は端末が生き続けるので、出すと拡張のタイルが
-///   「停止した」→次の観測で「接続中」に戻りちらつく)
+/// - profile 指定の個別停止(devices down --profile・api stop-all-devices)は共通の
+///   `DeviceBooter.shutdownAll` に一本化(呼び出し側は実機の知識を持たない)。実機には
+///   deviceStopping/deviceFinished を出さない(実機は端末が生き続けるので、出すと拡張のタイルが
+///   「停止した」→次の観測で「接続中」に戻りちらつく) —— この抑止も shutdownAll 内の1箇所だけ
 /// - 掃討(profile 無し)は個々の DeviceSpec を持たない(接続中の全台を対象にするため)ので
 ///   shutdownOne は経由しない —— iOS は `BridgeLauncher.stopAll(skipPhysical: false)`
 ///   (ps 走査でランナーを殺すだけ)、Android は `AndroidDeviceCatalog.connectedSerials()` から
@@ -195,28 +195,20 @@ final class BulkOperationPhysicalPolicyTests: XCTestCase {
                       "実機の Android は一括停止でブリッジ(と adb forward)を止める経路が要る")
     }
 
-    /// 一括停止(api stop-all-devices)の ios/android 両ループが、実機でも
-    /// `stopPhysicalBridgeOnly` 経由で `DeviceBooter.shutdownOne` まで到達すること。
-    /// **本数で数える** —— 「存在するか」だけだと片方のループから消えてももう片方が残るので
-    /// 緑のまま通る(devices down --profile 側で実際にこの変異が生き残った実績あり)
-    func testStopAllDevicesRoutesPhysicalDevicesThroughShutdownOne() throws {
+    /// 一括停止(api stop-all-devices)は実機の特別扱いを自前で持たず、共通実装
+    /// `DeviceBooter.shutdownAll` に一本化している(実機で deviceStopping/deviceFinished を
+    /// 出さない規律そのものは Tests/FTAndroidTests/DeviceBooterShutdownAllTests.swift の
+    /// testProgressIsNotEmittedForPhysicalDevices が行動として固定する)。旧来の
+    /// stopPhysicalBridgeOnly/shutdownOneEmitting の2実装に戻っていないことを本数で確かめる ——
+    /// 「存在するか」だけだと片方が復活しても緑のまま通る
+    func testStopAllDevicesRoutesThroughTheSharedShutdownAll() throws {
         let api = try source("Sources/fleetest/ApiDeviceCommands.swift")
-        XCTAssertEqual(api.components(separatedBy: "await Self.stopPhysicalBridgeOnly(spec: spec").count - 1, 2,
-                       "api stop-all-devices の ios/android 両ループが実機でも stopPhysicalBridgeOnly を通す")
-
-        guard let start = api.range(of: "private static func stopPhysicalBridgeOnly"),
-              let end = api.range(of: "private static func shutdownOneEmitting")
-        else {
-            XCTFail("stopPhysicalBridgeOnly / shutdownOneEmitting の定義が見つからない")
-            return
-        }
-        let body = api[start.upperBound..<end.lowerBound]
-        XCTAssertTrue(body.contains("DeviceBooter.shutdownOne("),
-                      "stopPhysicalBridgeOnly は shutdownOne まで到達すること(実機のブリッジを止める)")
-        XCTAssertFalse(body.contains("\"deviceStopping\""),
-                       "実機は deviceStopping を出してはいけない(端末は生き続けるのでタイルがちらつく)")
-        XCTAssertFalse(body.contains("\"deviceFinished\""),
-                       "実機は deviceFinished を出してはいけない(端末は生き続けるのでタイルがちらつく)")
+        XCTAssertEqual(api.components(separatedBy: "await DeviceBooter.shutdownAll(").count - 1, 1,
+                       "api stop-all-devices は DeviceBooter.shutdownAll をちょうど1回呼ぶ")
+        XCTAssertFalse(api.contains("stopPhysicalBridgeOnly"),
+                       "実機の特別扱いは shutdownAll 側に一本化したので、呼び出し側に専用関数を残さない")
+        XCTAssertFalse(api.contains("shutdownOneEmitting"),
+                       "1台停止+イベント送出も shutdownAll に一本化したので、呼び出し側に専用関数を残さない")
     }
 
     /// api restart-devices は今回のユーザー決定の対象外(down→up の1台単位サイクルなので、
@@ -240,16 +232,17 @@ final class BulkOperationPhysicalPolicyTests: XCTestCase {
                        "restart-devices の実機分岐は shutdownOne を呼ばない(端末を丸ごと対象外にする)")
     }
 
-    /// devices down --profile の ios/android 両ループはもう実機を特別扱いしない ——
-    /// `DeviceBooter.shutdownOne` 側の実機分岐に一本化し、呼び出し側は実機の知識を持たない
-    /// (物理か否かの分岐がここに残っていたら、また `stopPhysicalBridgeOnly` のような特例が
-    /// 二重に生えている兆候)
+    /// devices down --profile はもう実機を特別扱いしない —— `DeviceBooter.shutdownAll` 側の
+    /// 実機分岐に一本化し、呼び出し側は実機の知識を持たない(物理か否かの分岐がここに残っていたら、
+    /// また `stopPhysicalBridgeOnly` のような特例が二重に生えている兆候)
     func testDevicesDownProfilePathHasNoPhysicalSpecialCasing() throws {
         let devices = try source("Sources/fleetest/DevicesCommand.swift")
         XCTAssertFalse(devices.contains("isPhysical"),
-                       "devices down --profile は shutdownOne に実機判定を一本化したので isPhysical を書かない")
-        XCTAssertEqual(devices.components(separatedBy: "try await DeviceBooter.shutdownOne(").count - 1, 2,
-                       "devices down --profile の ios/android 両ループが無条件で shutdownOne を呼ぶ")
+                       "devices down --profile は shutdownAll に実機判定を一本化したので isPhysical を書かない")
+        XCTAssertEqual(devices.components(separatedBy: "await DeviceBooter.shutdownAll(").count - 1, 1,
+                       "devices down --profile は共通の DeviceBooter.shutdownAll をちょうど1回呼ぶ")
+        XCTAssertFalse(devices.contains("DeviceBooter.shutdownOne("),
+                       "個々の shutdownOne 直呼びは shutdownAll に一本化したので呼び出し側に残らない")
     }
 
     /// 掃討(profile 無しの devices down = モニターの「全て終了」の実体)と明示コマンドの

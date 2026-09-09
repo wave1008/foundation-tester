@@ -101,6 +101,54 @@ public enum DeviceBooter {
         return await outcomes.all()
     }
 
+    /// 一括停止(devices down --profile / api stop-all-devices)の共通処理。**ios → android の順に
+    /// 1台ずつ逐次**(呼び出し元2箇所と同じ順序。停止は並行にしない)。deviceFinished は成否問わず
+    /// 必ず呼ぶ(拡張の再スキャン契約。bootAll と同じ)。
+    /// **実機(spec.isPhysical)には deviceStopping / deviceFinished を出さない** —— 端末そのものは
+    /// 生き続けるので、出すと拡張のタイルが「停止した」と一瞬表示してから次の観測で「接続中」に
+    /// 戻りちらつく(旧 stopPhysicalBridgeOnly の doc)。実機も outcomes には含める
+    /// (試みた台の母数に入れる)。**戻り値は台ごとの成否**(BootOutcomeSummarizer が要約する)。
+    @discardableResult
+    public static func shutdownAll(
+        machine: MachineProfile,
+        repoRoot: URL?,
+        log: @escaping @Sendable (String) -> Void,
+        deviceStopping: @Sendable (String, String) -> Void = { _, _ in },
+        deviceFinished: @Sendable (String, String) -> Void = { _, _ in },
+        /// テストから差し替えるための注入口。この経路は緑の run では1度も失敗しないので、
+        /// 失敗の分岐は注入でしか通せない(BlankWorkerTriage.isPersistentlyBlank の screenshot 引数と同じ思想)。
+        stopOne: ((DeviceSpec, String) async throws -> Void)? = nil
+    ) async -> [BootOutcome] {
+        let entries: [(spec: DeviceSpec, platform: String)] =
+            (machine.ios?.devices ?? []).map { ($0, "ios") } +
+            (machine.android?.devices ?? []).map { ($0, "android") }
+        var outcomes: [BootOutcome] = []
+        for entry in entries {
+            let spec = entry.spec
+            let platform = entry.platform
+            if !spec.isPhysical {
+                deviceStopping(spec.name, platform)
+            }
+            var succeeded = true
+            do {
+                if let stopOne {
+                    try await stopOne(spec, platform)
+                } else {
+                    try await shutdownOne(spec: spec, platform: platform,
+                                          repoRoot: platform == "ios" ? repoRoot : nil, log: log)
+                }
+            } catch {
+                log("❌ \(spec.name): \(error.localizedDescription)")
+                succeeded = false
+            }
+            if !spec.isPhysical {
+                deviceFinished(spec.name, platform)
+            }
+            outcomes.append(BootOutcome(name: spec.name, platform: platform, succeeded: succeeded))
+        }
+        return outcomes
+    }
+
     struct BootItem: Sendable {
         let spec: DeviceSpec
         let platform: String
