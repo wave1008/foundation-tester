@@ -55,6 +55,9 @@ export const panelsStrings = {
   "panels.toolbar.startAllDevices": { ja: "デバイスを全て起動", en: "Start All Devices" },
   "panels.toolbar.stopAll": { ja: "全て終了", en: "Stop All" },
   "panels.toolbar.restartMonitor": { ja: "モニター再起動", en: "Restart Monitor" },
+  // デバイスタブのツールバー右寄り。押すと Test Explorer を前面に出して全シナリオを走らせる
+  // (配線: webview/monitor/deviceTiles.js → monitorPanel.ts → コマンド fleetest.runAllTests)。
+  "panels.toolbar.runTests": { ja: "テスト実行", en: "Run Tests" },
   "panels.banner.copied": { ja: "エラーメッセージをコピーしました", en: "Copied the error message" },
   "panels.toolbar.autoFitTitle": { ja: "自動フィット", en: "Auto-fit" },
   "panels.hostMetrics.memTitle": { ja: "メモリ使用量", en: "Memory usage" },

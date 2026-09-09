@@ -352,11 +352,12 @@ test("isMonitorFromWebviewMessage: copyText は空でない text だけ通す", 
   assert.equal(isMonitorFromWebviewMessage({ type: "copyText" }), false);
 });
 
-test("isMonitorFromWebviewMessage: ready/devicesUp/devicesDown/restartMonitor を true と判定する", () => {
+test("isMonitorFromWebviewMessage: ready/devicesUp/devicesDown/restartMonitor/runTests を true と判定する", () => {
   assert.equal(isMonitorFromWebviewMessage({ type: "ready" }), true);
   assert.equal(isMonitorFromWebviewMessage({ type: "devicesUp" }), true);
   assert.equal(isMonitorFromWebviewMessage({ type: "devicesDown" }), true);
   assert.equal(isMonitorFromWebviewMessage({ type: "restartMonitor" }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "runTests" }), true);
 });
 
 test("isMonitorFromWebviewMessage: batchCreateDevices は names を検証する(空・99超・空文字は false)", () => {

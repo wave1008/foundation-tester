@@ -628,6 +628,11 @@ export class MonitorPanelController implements vscode.Disposable {
         this.deviceStream.restartAllStreams();
         this.processManager.restartAll();
         break;
+      case "runTests":
+        // 実行そのものは Test Explorer の run プロファイルが持つ(runHandler.ts)。ここから
+        // 直に CLI を起こすと結果がツリーへ載らず、進行も TEST RESULTS に出ない。
+        void vscode.commands.executeCommand("fleetest.runAllTests");
+        break;
       case "copyText":
         void vscode.env.clipboard.writeText(message.text).then(() => {
           vscode.window.setStatusBarMessage(t("panels.banner.copied"), 3000);

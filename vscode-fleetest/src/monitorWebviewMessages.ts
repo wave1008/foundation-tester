@@ -452,6 +452,10 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "devicesUpCancel" }
   | { readonly type: "devicesDown" }
   | { readonly type: "restartMonitor" }
+  // ツールバーの「テスト実行」: Test Explorer を前面に出して全シナリオを走らせる
+  // (受け手: monitorPanel.ts → コマンド fleetest.runAllTests = runHandler.ts)。
+  // 押せるのは実体のある実行プロファイルが選ばれている間だけ(判定は webview 側)。
+  | { readonly type: "runTests" }
   // エラーバナーの「コピー」: text をホスト側で vscode.env.clipboard へ書く(webview の
   // navigator.clipboard はフォーカス条件で失敗しうる)。対向: deviceTiles.js showBanner
   | { readonly type: "copyText"; readonly text: string }
@@ -822,6 +826,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "devicesUpCancel":
     case "devicesDown":
     case "restartMonitor":
+    case "runTests":
     case "profileAdd":
     case "projectAdd":
       return true;

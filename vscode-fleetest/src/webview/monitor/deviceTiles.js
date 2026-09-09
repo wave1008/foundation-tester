@@ -7,7 +7,7 @@
 
 import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
-import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, projectSelect, profileSelect, tilePane, tileMarquee } from './domRefs.js';
+import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers, relayoutPreviewsForResize } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
@@ -1561,6 +1561,9 @@ const PROFILE_RUNNING_LABEL = t('wvMonitor.profile.running');
 // monitorProfilesController.selectProfile が行う。
 const PROFILE_RUNNING_VALUE = '@running';
 
+// 実在する実行プロファイル名(直近の profileInfo)。「テスト実行」を押せるかの判定に使う。
+let knownProfiles = new Set();
+
 // 現在値が profiles に無ければ(手書き設定等)unknownOption で補い選択状態を保つ。
 export function applyProfileInfo(message) {
   const profiles = Array.isArray(message.profiles) ? message.profiles : [];
@@ -1599,11 +1602,32 @@ export function applyProfileInfo(message) {
   }
   profileSelect.value = runningFilterActive ? PROFILE_RUNNING_VALUE : current;
   profileSelect.disabled = false;
+  knownProfiles = new Set(profiles);
+  refreshRunTestsButton();
   refreshBulkButtons();
 }
 
 profileSelect.addEventListener('change', () => {
+  // 送った先の設定変更 → profileInfo の往復を待たずに押せる/押せないを合わせる
+  // (往復は数百 ms かかり、その間だけ押せてしまうと「無いプロファイルで走った」に見える)。
+  refreshRunTestsButton();
   vscode.postMessage({ type: 'selectProfile', profile: profileSelect.value });
+});
+
+// 押せるのは実体のある実行プロファイルが選ばれている間だけ。**判定は profiles の集合で行う**
+// —— 未選択('')・表示フィルタ(@running)に加えて、設定に名前はあるがファイルが無い
+// (applyProfileInfo の unknownOption)も弾く必要があり、値の形では見分けられない。
+function refreshRunTestsButton() {
+  const selectable = knownProfiles.has(profileSelect.value);
+  btnRunTests.disabled = !selectable;
+  btnRunTests.title = selectable ? t('wvMonitor.runTests.title') : t('wvMonitor.runTests.disabledNoProfile');
+}
+
+btnRunTests.addEventListener('click', () => {
+  if (btnRunTests.disabled) {
+    return;
+  }
+  vscode.postMessage({ type: 'runTests' });
 });
 
 // プロジェクト選択。実行プロファイルはプロジェクトに属するので、切り替えると profileInfo が

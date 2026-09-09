@@ -250,9 +250,13 @@ button.bulk-cancel:hover:not(:disabled) {
 .host-metrics.hm-multi .hm-lock.hm-lock-on {
   visibility: visible;
 }
-/* 「モニター再起動」とホストグラフの間だけ広げる(ツールバーの gap 8px + ここの 8px)。
-   左のボタン群(実行プロファイル・一括起動/停止・再起動)と、右の観測の表示を切り分ける。 */
+/* 「モニター再起動」と「テスト実行」の間だけ広げる(ツールバーの gap 8px + ここの 8px)。
+   左のモニター操作群(実行プロファイル・一括起動/停止・再起動)と、テスト実行を切り分ける。 */
 #btn-restart {
+  margin-right: 8px;
+}
+/* 「テスト実行」とホストグラフの間も同じだけ広げる(操作のボタン群と、右の観測の表示の境目)。 */
+#btn-run-tests {
   margin-right: 8px;
 }
 /* ツールバー右端へ寄せる。**寄せるのはグループ1つだけ** —— 個々のボタンに margin-left:auto を

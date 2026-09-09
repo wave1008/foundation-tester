@@ -8,6 +8,7 @@ export const banner = document.getElementById('banner');
 export const btnUp = document.getElementById('btn-devices-up');
 export const btnDown = document.getElementById('btn-devices-down');
 export const btnRestart = document.getElementById('btn-restart');
+export const btnRunTests = document.getElementById('btn-run-tests');
 export const btnSelectAll = document.getElementById('btn-select-all');
 export const btnAutoFit = document.getElementById('btn-auto-fit');
 export const projectSelect = document.getElementById('project-select');

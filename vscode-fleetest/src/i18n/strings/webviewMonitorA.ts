@@ -137,6 +137,17 @@ export const webviewMonitorAStrings = {
     ja: "メッセージをコピーします(閉じません)",
     en: "Copy the message (does not dismiss it)",
   },
+  // 「テスト実行」ボタンの説明。押せる/押せないで入れ替えるので静的 HTML には置かない
+  // (btnUp と同じ形)。
+  "wvMonitor.runTests.title": {
+    ja: "Test Explorer を開き、選択中の実行プロファイルで全シナリオを実行する",
+    en: "Open the Test Explorer and run all scenarios with the selected run profile",
+  },
+  "wvMonitor.runTests.disabledNoProfile": {
+    ja: "実体のある実行プロファイルを選ぶと実行できます。",
+    en: "Select an existing run profile to run tests.",
+  },
+
   "wvMonitor.bulk.startAllDisabledRunning": {
     ja: "「(起動中のデバイス)」表示中は使えません(未起動のデバイスが一覧に出ないため)。「(プロファイルなし)」か実行プロファイルを選んでください。",
     en: "Unavailable while showing \"(Running devices)\" because devices that are not started are hidden. Select \"(No profile)\" or a run profile.",

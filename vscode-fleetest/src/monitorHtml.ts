@@ -215,6 +215,10 @@ function renderDevicesPanel(): string {
       <button id="btn-devices-up">${t("panels.toolbar.startAllDevices")}</button>
       <button id="btn-devices-down" class="secondary">${t("panels.toolbar.stopAll")}</button>
       <button id="btn-restart" class="secondary">${t("panels.toolbar.restartMonitor")}</button>
+      <!-- 押せるのは実体のある実行プロファイルが選ばれている間だけ(判定と title は
+           deviceTiles.js の refreshRunTestsButton)。初期状態は disabled —— profileInfo が
+           届くまで実行プロファイルが何か分からない。 -->
+      <button id="btn-run-tests" disabled>${t("panels.toolbar.runTests")}</button>
       <!-- hostMetricsメッセージ受信のたびにmain.js側で再描画(独自タイマーなし)。
            **リモート機のぶんは行が増える**(hostCharts.js が data-machine="" の行を複製する)ので、
            行の中身は data-metric で引く(id は手元の行にしか無い)。 -->
