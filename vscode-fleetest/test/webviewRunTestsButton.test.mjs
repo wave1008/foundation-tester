@@ -264,6 +264,27 @@ test("テスト実行中はツールバーを畳み、ボタンが「テスト�
   assert.equal(button.classList.contains("bulk-cancel"), false);
 });
 
+test("テスト実行が起こした一括起動では「デバイスの起動を中断」を出さない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendProfileInfo(window);
+  const btnUp = document.getElementById("btn-devices-up");
+
+  // 「テスト実行」→ 先に一括起動(monitorPanel.startTestRunAfterDevicesUp)。この順で届く。
+  sendTestRunActive(window, true);
+  sendBootBusy(window, true, "up");
+  assert.equal(btnUp.textContent, "デバイスを全て起動",
+    "押せない中断ボタンを出さない(中断の口は「テストを中断」)");
+  assert.equal(btnUp.disabled, true);
+  assert.equal(btnUp.classList.contains("bulk-cancel"), false);
+  assert.equal(document.getElementById("btn-run-tests").textContent, "テストを中断");
+
+  // 「デバイスを全て起動」ボタンから起こした一括起動は従来どおり中断ボタンになる
+  sendTestRunActive(window, false);
+  assert.equal(btnUp.textContent, "デバイスの起動を中断");
+  assert.equal(btnUp.disabled, false);
+});
+
 test("実行中に押すと cancelTests を送り、受理を見せたまま再送もできる", (t) => {
   const { window, document, posted } = createWebview();
   t.after(() => window.close());

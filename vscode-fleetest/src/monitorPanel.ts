@@ -229,6 +229,10 @@ export class MonitorPanelController implements vscode.Disposable {
   private readonly wipeInProgress = new Set<string>();
   /** GUI 実行(RunEventBus の runStarted〜runEnded)の間だけ true。 */
   private testRunActive = false;
+  /** 「テスト実行」を押してから run を投げるまでの間(= 一括起動の完了待ち)。
+   * この間の「テストを中断」は run ではなく一括起動を止める(startTestRunAfterDevicesUp)。 */
+  private pendingRunStart = false;
+  private runStartAborted = false;
   /** 直近に CLI(`fleetest api remote-machines`)から取得・同期した登録簿。setRemoteConfig の
    * 差分計算(diffRemoteHostsForSync)の基準に使うだけで、これ自体が正ではない
    * (docs/remote-runner.md §13「原則」。正は CLI の LocalConfig)。 */
@@ -596,6 +600,34 @@ export class MonitorPanelController implements vscode.Disposable {
     }
   }
 
+  /**
+   * 「テスト実行」ボタンは**まず「デバイスを全て起動」と同じ処理**を通す(ユーザー決定 2026-09-09)。
+   * タイルの「起動待機」バッジはこのライフサイクルキューからしか出ないので、run 内の供給
+   * (ApiRunCommand → AndroidLaneRecovery)に任せるとボタンから起動したときだけ無表示になっていた。
+   * **run 内の供給は消せない** —— Test Explorer からの実行・CLI・リモート機にはモニターが居ない
+   * (あちらは冪等なので、ここで起こしてあれば起動済みとして素通りする)。
+   *
+   * 実行そのものは Test Explorer の run プロファイルが持つ(runHandler.ts)。ここから直に CLI を
+   * 起こすと結果がツリーへ載らず、進行も TEST RESULTS に出ない。
+   */
+  private async startTestRunAfterDevicesUp(): Promise<void> {
+    if (this.pendingRunStart || this.testRunActive) {
+      return;
+    }
+    this.pendingRunStart = true;
+    this.runStartAborted = false;
+    // 起動を待っている間もツールバーは実行中の見た目にする(= 中断の口を出す・連打を塞ぐ)
+    this.setTestRunActive(true);
+    this.deviceOps.bulkUpWithRestarts([]);
+    await this.deviceOps.whenLifecycleQueueIdle();
+    this.pendingRunStart = false;
+    if (this.runStartAborted) {
+      this.setTestRunActive(false);
+      return;
+    }
+    void vscode.commands.executeCommand("fleetest.runAllTests");
+  }
+
   /** GUI 実行の進行を webview へ配る。**状態を持つ**のは webview 再読込(sendInitialState)で
    * 復元するため —— 失うと実行中なのにツールバーが操作可能に戻る。 */
   private setTestRunActive(active: boolean): void {
@@ -640,11 +672,16 @@ export class MonitorPanelController implements vscode.Disposable {
         this.processManager.restartAll();
         break;
       case "runTests":
-        // 実行そのものは Test Explorer の run プロファイルが持つ(runHandler.ts)。ここから
-        // 直に CLI を起こすと結果がツリーへ載らず、進行も TEST RESULTS に出ない。
-        void vscode.commands.executeCommand("fleetest.runAllTests");
+        void this.startTestRunAfterDevicesUp();
         break;
       case "cancelTests":
+        // run を投げる前(デバイス起動待ち)の中断は、一括起動を止めて run へ進まない。
+        // この段では走っている run がまだ無いので cancelTestRun は撃たない。
+        if (this.pendingRunStart) {
+          this.runStartAborted = true;
+          this.deviceOps.cancelBulkUp();
+          break;
+        }
         void vscode.commands.executeCommand("fleetest.cancelTestRun");
         break;
       case "copyText":

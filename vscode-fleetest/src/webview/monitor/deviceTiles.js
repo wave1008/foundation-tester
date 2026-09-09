@@ -1528,7 +1528,11 @@ let profileInfoReceived = false;
 function refreshBulkButtons() {
   // bulk up 実行中は「全て起動」ボタンを中断ボタンに転用する(クリック時の分岐は main.js。
   // 受け手: monitorPanel.ts devicesUpCancel → MonitorDeviceOps.cancelBulkUp)。
-  const upCancelMode = bulkBusy && bulkBusyOp === 'up';
+  // **GUI 実行が起こした一括起動は中断ボタンにしない**(ユーザー指示 2026-09-09)——
+  // 「テスト実行」は先に一括起動を通す(monitorPanel.startTestRunAfterDevicesUp)が、実行中は
+  // ツールバーを畳むので押せず、「デバイスの起動を中断」が押せない文言だけ出ていた。
+  // この段の中断の口は「テストを中断」1つ(押すと一括起動を止めて run へ進まない)。
+  const upCancelMode = bulkBusy && bulkBusyOp === 'up' && !testRunActive;
   // 「起動中のデバイス」表示中の一括起動は禁止(一覧に出ていない未起動デバイスまで起動するため)。
   // 中断ボタンとして使っている間は無効化しない(進行中のジョブを止める導線を残す)。
   const blockedByFilter = runningFilterActive && !upCancelMode;

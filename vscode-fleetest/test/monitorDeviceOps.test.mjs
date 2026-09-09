@@ -876,3 +876,38 @@ test("バッチの「GPU で再起動」は手元を restart-devices 1本にま�
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// whenLifecycleQueueIdle:「テスト実行」ボタンが**一括起動の完了を待ってから** run を投げるための口
+// (monitorPanel.startTestRunAfterDevicesUp)。待てないと run 内の供給と一括起動が二重に走る。
+test("whenLifecycleQueueIdle: 空なら即解決・ジョブがあれば完了まで待つ", async () => {
+  const { dir, binaryPath } = makeMockBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    let idleImmediately = false;
+    await deviceOps.whenLifecycleQueueIdle().then(() => { idleImmediately = true; });
+    assert.equal(idleImmediately, true, "空のキューは待たせない");
+
+    deviceOps.bulkUpWithRestarts([]);
+    assert.equal(deviceOps.isQueueBusy(), true, "一括起動はキューに載る");
+    let resolved = false;
+    const waited = deviceOps.whenLifecycleQueueIdle().then(() => { resolved = true; });
+    assert.equal(resolved, false, "ジョブが走っている間は解決しない");
+    // **期限を置く**: 解決しない実装だと await が返らず、テストが落ちずに終わらなくなる
+    let timer;
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("whenLifecycleQueueIdle が解決しなかった")), 5000);
+    });
+    try {
+      await Promise.race([waited, deadline]);
+    } finally {
+      clearTimeout(timer);
+    }
+    assert.equal(resolved, true);
+    assert.equal(deviceOps.isQueueBusy(), false);
+    assert.ok(argvLines(dir).some((line) => line.startsWith("api start-all-devices")),
+      "待った先で実際に一括起動が走っている");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

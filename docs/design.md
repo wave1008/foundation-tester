@@ -4020,6 +4020,18 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     worker を持たない log は見出しの状況行(`#lanes-run-status`)にも出す(LaneAction の
     `status`)—— 18台選択のまま実行していると、レーン欄には拡大表示だけが並び進行が
     どこにも出ていなかった(実害 2026-09-09)
+  - **「テスト実行」ボタンは先に「デバイスを全て起動」と同じ処理を通す**(ユーザー決定 2026-09-09。
+    `monitorPanel.startTestRunAfterDevicesUp`): タイルの「起動待機」バッジは拡張の
+    ライフサイクルキュー(`opBusy` / `bulkOpActive`)からしか出ないので、run 内の供給
+    (`AndroidLaneRecovery`)に任せるとボタンから起動したときだけ無表示になっていた。
+    一括起動の完了は `MonitorDeviceOps.whenLifecycleQueueIdle` で待ってから run を投げる。
+    **run 内の供給は消さない**(Test Explorer 直・CLI・リモート機にはモニターが居ない。
+    冪等なので起動済みなら素通りする)。**この待ちの間の「テストを中断」は run ではなく
+    一括起動を止める**(まだ run が無い)。一括起動が一部失敗しても run へは進む
+    (残りは run 内の供給と部分失敗の許容が面倒を見る)。**この段では「デバイスの起動を中断」を
+    出さない**(ユーザー指示 2026-09-09)—— 実行中はツールバーを畳むので押せず、押せない
+    文言だけが出ていた。中断の口は「テストを中断」1つ(`refreshBulkButtons` の `upCancelMode` は
+    `testRunActive` の間 false)
   - **ワーカーの表示名は machine 込み**(`vscode-fleetest/src/runLaneModel.ts` の
     `workerDisplayLabel`): TEST RESULTS の行頭は worker 名だけを出しており、同名のデバイスが
     別の機械にも居る実行(実測: performance-android は M1Max と M1Ultra の両方に

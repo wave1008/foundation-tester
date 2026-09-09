@@ -239,6 +239,32 @@ export class MonitorDeviceOps {
     return isDeviceLifecycleQueueBusy(this.lifecycleQueue);
   }
 
+  /** キューが空になったら解決する待ち手(「テスト実行」の起動待ち。monitorPanel)。 */
+  private queueIdleWaiters: (() => void)[] = [];
+
+  /** ライフサイクルキューが空になるまで待つ(既に空なら即解決)。「テスト実行」が
+   * 一括起動の完了を待ってから run を投げるための口 —— 中断で bulk up を止めた場合も
+   * ジョブが終わって空になるので同じように解決する(呼び手が中断を見て run を諦める)。 */
+  whenLifecycleQueueIdle(): Promise<void> {
+    if (!this.isQueueBusy()) {
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      this.queueIdleWaiters.push(resolve);
+    });
+  }
+
+  private resolveQueueIdleWaiters(): void {
+    if (this.isQueueBusy() || this.queueIdleWaiters.length === 0) {
+      return;
+    }
+    const waiters = this.queueIdleWaiters;
+    this.queueIdleWaiters = [];
+    for (const resolve of waiters) {
+      resolve();
+    }
+  }
+
   /**
    * デバイスライフサイクル操作をキューに積む。空なら即実行、そうでなければ先行ジョブの完了後に
    * 実行される。同じデバイスへの deviceOp が既にキュー内(実行中/待機中)にあれば連打とみなして
@@ -575,6 +601,8 @@ export class MonitorDeviceOps {
     // bulk 完了時に bulkOp:null を届けて「待機中」/「シャットダウン中」表示を解除するため、空でなくても送る。
     this.postBootBusy();
     this.scheduleLifecycleJobs();
+    // **スケジューラを回した後に見る** —— 待機ジョブが昇格していれば空ではない
+    this.resolveQueueIdleWaiters();
   }
 
   /**
