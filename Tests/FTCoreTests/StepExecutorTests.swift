@@ -552,6 +552,10 @@ final class StepExecutorTests: XCTestCase {
         let executor = StepExecutor(driver: primary, delegate: delegate,
                                     occlusionInkThreshold: 1000, isAndroid: false)
         executor.occlusionOCRMode = .on
+        // 近道は「モデルが載っている」ときだけ撃つ(RegionText.shouldTakeShortcut)。
+        // この検証が見たいのは OCR が読めた先の分岐なので、載っている状態に固定する
+        RegionText.warmOverrideForTesting = true
+        defer { RegionText.warmOverrideForTesting = nil }
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -572,6 +576,10 @@ final class StepExecutorTests: XCTestCase {
         let executor = StepExecutor(driver: primary, delegate: delegate,
                                     occlusionInkThreshold: 1000, isAndroid: false)
         executor.occlusionOCRMode = .measure
+        // 近道は「モデルが載っている」ときだけ撃つ(RegionText.shouldTakeShortcut)。
+        // この検証が見たいのは OCR が読めた先の分岐なので、載っている状態に固定する
+        RegionText.warmOverrideForTesting = true
+        defer { RegionText.warmOverrideForTesting = nil }
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 

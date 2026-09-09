@@ -158,13 +158,15 @@ extension StepExecutor {
         // コメントと docs/poc-fm-occlusion-guard.md §5.17。off のときはこの if を通らない
         var ocrReading: RegionText.Reading?
         var ocrReadable = false
-        if occlusionOCRMode != .off {
-            // Vision のモデルの初回ロード(実測 25〜47s)は**ガードが実際に走る executor でだけ**払う
-            // (生成のたびに暖機すると、ガードが一度も撃たれない executor でもモデルを読み込む)
+        // 暖機は executor を作った時点で始めてある(StepExecutor.init)。ここで頼むのは、
+        // ステップ指定の requireVisible だけでガードが立つ(executor 既定は off)経路のため
+        RegionText.prewarmIfNeeded(mode: occlusionOCRMode)
+        // **モデルが載るまで近道は撃たない** —— 撃つと 1 ステップにつき予算を丸ごと捨てる
+        // (実測 2026-09-10: 最初にガードへ入った1ステップが 36〜108 秒を払っていた)
+        if RegionText.shouldTakeShortcut(mode: occlusionOCRMode, warm: RegionText.isWarm) {
             // **この段は guardMs に計上する** —— スクショ(actionMs)と違いどの内訳にも入って
-            // おらず、初回ロードを踏むとステップの締め切りがここで丸ごと消える
+            // いなかった
             let ocrStart = clock.now
-            RegionText.prewarmIfNeeded(mode: occlusionOCRMode)
             switch await RegionText.resolveWithinBudget(expected: expectedText, pngData: screenshot,
                                                         frame: element.frame, screen: screen) {
             case .read(let readable, let reading):

@@ -13,12 +13,19 @@ final class TaskBudgetTests: XCTestCase {
         XCTAssertEqual(v, 42)
     }
 
-    func testExhaustsWhenTheWorkIsSlowerThanTheBudget() async {
-        let outcome = await TaskBudget.run(.milliseconds(50)) {
+    /// **測るのは戻り値ではなく所要**(2026-09-10 に実際に間違えた): `.exhausted` を返しながら
+    /// 仕事の完了まで待っていると、諦めた意味が無いのにテストは緑になる
+    func testExhaustsAtTheBudgetWithoutWaitingForTheWork() async {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let outcome = await TaskBudget.run(.milliseconds(100)) {
             try? await Task.sleep(for: .seconds(5))
             return 1
         }
+        let elapsed = clock.now - start
         guard case .exhausted = outcome else { return XCTFail("予算を超えたのに待ち切った") }
+        XCTAssertLessThan(elapsed, .seconds(2),
+                          "予算で諦めたのに仕事の完了まで待っている(所要 \(elapsed))")
     }
 
     /// **諦めた後も仕事は走り続ける** —— ここが逆になると、次の呼び出しもまた予算を使い切る
@@ -46,5 +53,33 @@ final class TaskBudgetTests: XCTestCase {
         }
         var completed: Bool { lock.lock(); defer { lock.unlock() }; return done }
         var wasCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
+    }
+}
+
+/// 合流点(Gate)の契約: **先に届いたほうだけを採る**。
+/// 後着が勝つと、仕事が終わっているのに `.exhausted` を返す(結果を捨てる)ことが起こりうる。
+final class TaskBudgetGateTests: XCTestCase {
+
+    /// 待ち始める前に 2 本届いても**先着**が返る
+    func testFirstDeliveryWinsEvenBeforeAnyoneWaits() async {
+        let gate = TaskBudget.Gate<Int>()
+        gate.deliver(.value(1))
+        gate.deliver(.exhausted)
+        guard case .value(let v) = await gate.wait() else {
+            return XCTFail("後から届いた予算切れが先着の結果を上書きした")
+        }
+        XCTAssertEqual(v, 1)
+    }
+
+    /// 待っている最中に 2 本届いても落ちない(継続の二重 resume はクラッシュ)
+    func testSecondDeliveryWhileWaitingIsDropped() async {
+        let gate = TaskBudget.Gate<Int>()
+        Task.detached {
+            try? await Task.sleep(for: .milliseconds(30))
+            gate.deliver(.value(7))
+            gate.deliver(.exhausted)
+        }
+        guard case .value(let v) = await gate.wait() else { return XCTFail("先着が採られていない") }
+        XCTAssertEqual(v, 7)
     }
 }

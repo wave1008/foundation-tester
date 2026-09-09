@@ -67,3 +67,48 @@ private final class SilentDriver: AppDriver {
     func screenshot() async throws -> Data { Data() }
     func terminate() async throws {}
 }
+
+/// 近道(OCR)を撃つかの判定。**モデルが載るまでは撃たない** —— 撃つと 1 ステップにつき
+/// 予算(RegionText.occlusionBudget)を丸ごと捨てるだけで、判定は結局 FM が下す
+final class OCRShortcutGateTests: XCTestCase {
+
+    func testTakesTheShortcutOnlyWhenTheModelIsWarm() {
+        XCTAssertTrue(RegionText.shouldTakeShortcut(mode: .on, warm: true))
+        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .on, warm: false),
+                       "モデルが載っていないのに近道を撃っている")
+    }
+
+    /// 殺しスイッチ(FT_OCCLUSION_OCR=0)は暖まっていても撃たない
+    func testKillSwitchWinsOverWarm() {
+        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .off, warm: true))
+    }
+
+    /// コーパス採取(measure)は暖まっていれば撃つ(採るのが目的)
+    func testMeasureModeTakesTheShortcutWhenWarm() {
+        XCTAssertTrue(RegionText.shouldTakeShortcut(mode: .measure, warm: true))
+        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .measure, warm: false))
+    }
+}
+
+/// 暖機の探りの結果から warm と言ってよいかの判定(`RegionText.warmedUp`)。
+/// **読めなかった回を warm と言うと**、劣化した Vision に対して近道を撃ち続け、
+/// ステップごとに予算を捨てることになる
+final class RegionTextWarmVerdictTests: XCTestCase {
+
+    func testWarmOnlyWhenTheProbeActuallyRead() {
+        XCTAssertTrue(RegionText.warmedUp(probe: ["ログイン"]))
+        // **呼び出しが成功しても 1 行も返らない**状態が実在する(RegionText.warmedUp の doc)
+        XCTAssertFalse(RegionText.warmedUp(probe: []), "1行も読めていないのに warm と言っている")
+        XCTAssertFalse(RegionText.warmedUp(probe: nil), "読めていないのに warm と言っている")
+    }
+}
+
+/// 差し替え口(`warmOverrideForTesting`)だけになると「暖機を一度も通らない」変更が
+/// 緑のまま通るので、**production の既定**をここで固定する
+final class RegionTextWarmDefaultTests: XCTestCase {
+
+    func testWarmOverrideIsNotSetInProduction() {
+        XCTAssertNil(RegionText.warmOverrideForTesting,
+                     "差し替え口が残っている(テストが後始末していない)")
+    }
+}

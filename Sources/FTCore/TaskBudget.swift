@@ -5,9 +5,10 @@
 // 止めると初期化がやり直しになり、次のステップもまた予算を使い切る —— 放っておけばそのまま
 // 暖機として効き、2 回目以降は桁が変わる。
 //
-// **仕事を構造化並行の子(group.addTask)にしない**のが要点 —— 子にすると `cancelAll()` が
-// 仕事ごと巻き戻す。非構造化タスクは親スコープの cancel を継がないので、諦めた後も走り切る
-// (`Task.detached` にしているのは、加えて task-local と優先度を呼び手から継がないため)。
+// **タスクグループで待ってはいけない**(2026-09-10 に実際に間違えた): `withTaskGroup` の本体を
+// 抜けるとき、グループは残った子の完了を待つ。子が非構造化タスクの `value` を await していると
+// `cancelAll()` では止まらないので、**戻り値だけ `.exhausted` で所要は仕事の全長**になる
+// —— 諦めたのに何も速くならない。だから合流点は「先に来たほうで1回だけ resume する門」にする。
 
 import Foundation
 
@@ -19,22 +20,55 @@ public enum Budgeted<T: Sendable>: Sendable {
 
 public enum TaskBudget {
     /// `work` が `budget` 以内に返れば `.value`、返らなければ `.exhausted`。
-    /// **`.exhausted` を返した後も `work` は走り続ける**(このファイル冒頭の理由)
+    /// **`.exhausted` は予算ちょうどで返る**(仕事の完了を待たない)し、
+    /// **その後も `work` は走り続ける**(このファイル冒頭の理由)
     public static func run<T: Sendable>(_ budget: Duration,
                                         _ work: @escaping @Sendable () async -> T)
         async -> Budgeted<T> {
-        // 非構造化タスク(group.addTask ではない)。ここを子にすると下の cancelAll() で巻き添えになる
-        let task = Task.detached(priority: .userInitiated) { await work() }
-        return await withTaskGroup(of: Budgeted<T>.self, returning: Budgeted<T>.self) { group in
-            group.addTask { .value(await task.value) }
-            group.addTask {
-                try? await Task.sleep(for: budget)
-                return .exhausted
+        let gate = Gate<T>()
+        // どちらも非構造化。呼び手が消えてもこの2本は巻き添えにならない
+        Task.detached(priority: .userInitiated) { gate.deliver(.value(await work())) }
+        Task.detached(priority: .userInitiated) {
+            try? await Task.sleep(for: budget)
+            gate.deliver(.exhausted)
+        }
+        return await gate.wait()
+    }
+
+    /// 先に来たほうで**ちょうど1回だけ** resume する門。2 本目の deliver は捨てる
+    /// (継続の二重 resume はクラッシュ)
+    /// **先着だけを採る**契約は TaskBudgetGateTests が直接固定する(内部型だが internal にしてあるのは
+    /// そのため。2 本が待ち始める前に届く順序は `run` からは作れない)
+    final class Gate<T: Sendable>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<Budgeted<T>, Never>?
+        private var delivered: Budgeted<T>?
+
+        init() {}
+
+        func wait() async -> Budgeted<T> {
+            await withCheckedContinuation { (c: CheckedContinuation<Budgeted<T>, Never>) in
+                lock.lock()
+                // 待ち始める前に決着していることがある(予算 0・即返る仕事)
+                if let value = delivered {
+                    lock.unlock()
+                    c.resume(returning: value)
+                    return
+                }
+                continuation = c
+                lock.unlock()
             }
-            let first = await group.next() ?? .exhausted
-            // 勝った側だけを採る。**detached の task はここで止まらない**
-            group.cancelAll()
-            return first
+        }
+
+        func deliver(_ outcome: Budgeted<T>) {
+            lock.lock()
+            // **先着だけを採る**。ここを外すと 2 本目が継続を二重に resume してクラッシュする
+            guard delivered == nil else { return lock.unlock() }
+            delivered = outcome
+            let c = continuation
+            continuation = nil
+            lock.unlock()
+            c?.resume(returning: outcome)
         }
     }
 }

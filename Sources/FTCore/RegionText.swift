@@ -61,9 +61,40 @@ public enum RegionText {
         Task.detached(priority: .utility) {
             // 空の画像では認識器が言語モデルまで読み込まないことがあるので、文字を描いて読ませる
             guard let image = renderedProbe() else { return }
-            _ = try? await recognize(image, languages: defaultLanguages)
+            let read = try? await recognize(image, languages: defaultLanguages)
+            guard warmedUp(probe: read) else { return }
+            warmLock.lock(); warm = true; warmLock.unlock()
         }
     }()
+
+    private static let warmLock = NSLock()
+    private static var warm = false
+
+    /// Vision のモデルが載って**実際に読めた**か。載っていない間に近道(OCR)を撃つと、
+    /// ステップごとに予算(`occlusionBudget`)を丸ごと捨てることになる
+    public static var isWarm: Bool {
+        if let forced = warmOverrideForTesting { return forced }
+        warmLock.lock(); defer { warmLock.unlock() }; return warm
+    }
+
+    /// テストから既知の状態にするための差し替え口(production では nil のまま)。
+    /// **既定が nil であること自体は `RegionTextWarmDefaultTests` が固定する** ——
+    /// 差し替えだけになると「暖機を一度も通らない」変更が緑で通る
+    public static var warmOverrideForTesting: Bool?
+
+    /// 暖機の探りの結果から「モデルが載った」と言ってよいか。
+    /// **文字を描いた探りが実際に読めたときだけ** —— 呼び出しが成功しても 1 行も返らない状態が
+    /// 実在する(2026-09-10: この Mac で Vision が終日 `[]` を返していた)。そこで近道を撃つと
+    /// 毎ステップ予算(occlusionBudget)を捨てるだけで、判定は結局 FM が下す。
+    /// 探りは `renderedProbe()` = 必ず文字がある画像なので、空 = 読めていない
+    public static func warmedUp(probe: [String]?) -> Bool { !(probe ?? []).isEmpty }
+
+    /// OCR の近道を撃ってよいか。**モデルが載るまでは撃たない** —— 近道は FM を省くための
+    /// ものなので、載っていない間に撃っても予算を捨てるだけで、判定は結局 FM が下す。
+    /// 純粋関数(呼び出し側の配線は1箇所)
+    public static func shouldTakeShortcut(mode: RegionTextGateMode, warm: Bool) -> Bool {
+        mode != .off && warm
+    }
 
     /// 拡大後に許す画素数の上限。**根拠**: コーパスの crop は最大でも約 0.19 MP で、
     /// 画面いっぱいの要素でも 3x 端末で約 3.2 MP。これを超える crop は文字がすでに十分大きく、
