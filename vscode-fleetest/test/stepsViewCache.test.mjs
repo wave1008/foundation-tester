@@ -72,3 +72,35 @@ test("同じ project + id へ戻るとキャッシュから出す(取り直さ�
   assert.equal(cli.calls.length, 2);
   assert.equal(loadedFile(provider), "TestProjects/E2E-CMP/scenarios/S.swift");
 });
+
+test("warnings は scene より先の子ノードとして出る", async () => {
+  const warning = "⚠️ the expectation block of scene 1 contains no assertions.";
+  const cli = {
+    calls: [],
+    async invoke() {
+      return { exitCode: 0, cancelled: false, json: { steps: [stepRow("E2E-CMP")], warnings: [warning] } };
+    },
+  };
+  const provider = new StepsTreeDataProvider(
+    cli, "/repo", () => ({ binaryPath: "fleetest", buildBeforeRun: false }), { appendLine: () => {} }, fakeEmitter(),
+  );
+  provider.setScenario("Login.S0010", "E2E-CMP");
+  await flush();
+
+  const children = provider.getChildren();
+  assert.equal(children[0].type, "warning");
+  assert.equal(children[0].warning.message, warning);
+  assert.equal(children[1].type, "scene");
+});
+
+test("warnings が無ければ(未指定の旧 CLI 応答含め)先頭は scene のまま", async () => {
+  const cli = fakeCli(); // json に warnings キーが無い旧 CLI 応答を模す
+  const provider = new StepsTreeDataProvider(
+    cli, "/repo", () => ({ binaryPath: "fleetest", buildBeforeRun: false }), { appendLine: () => {} }, fakeEmitter(),
+  );
+  provider.setScenario("Login.S0010", "E2E-CMP");
+  await flush();
+
+  const children = provider.getChildren();
+  assert.equal(children[0].type, "scene");
+});

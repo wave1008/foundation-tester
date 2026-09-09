@@ -252,8 +252,9 @@ struct ApiSteps: AsyncParsableCommand {
         let events = try await ScenarioHost.dryRunSteps(
             project: testProject, scenarioID: scenario)
         let rows = Self.stepRows(from: events, packageRoot: ScenarioHost.packageRoot())
+        let warnings = Self.warnings(from: events)
 
-        let output = ApiStepsOutput(scenario: scenario, steps: rows)
+        let output = ApiStepsOutput(scenario: scenario, steps: rows, warnings: warnings)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(output)
@@ -307,6 +308,21 @@ struct ApiSteps: AsyncParsableCommand {
         }
     }
 
+    /// dry-run が出した警告だけを拾う。kind == "log" の `message` は利用者の print(素の行)と
+    /// フレームワークの警告/情報/中断マーカーを同じ経路で運ぶ(FTRuntime.swift の
+    /// `emit(.log("⚠️ " + message))` 等。ScenarioHost.swift の "kind == log = 利用者の print 専用"
+    /// というコメントは実態と食い違っている)。**⚠️ 接頭辞の行だけ**を警告として拾う
+    /// (MCP の `pendingWarnings` と同じ判別規則。MCPServer+Driver.swift の
+    /// `prologue.filter { $0.hasPrefix("⚠️") }` 参照)。文言は接頭辞込みでそのまま返す
+    static func warnings(from events: [ScenarioEvent]) -> [String] {
+        events.compactMap { event in
+            guard event.kind == "log", let message = event.message, message.hasPrefix("⚠️") else {
+                return nil
+            }
+            return message
+        }
+    }
+
     private func logStderr(_ message: String) {
         ConsoleOut.err(message)
     }
@@ -353,4 +369,7 @@ private struct ApiStepRow: Encodable {
 private struct ApiStepsOutput: Encodable {
     let scenario: String
     let steps: [ApiStepRow]
+    /// dry-run が出した警告(空の expectation ブロック・台帳に無い #id 等。ApiSteps.warnings
+    /// の doc 参照)。既存キーへの追加なので ProtocolVersion は上げない
+    let warnings: [String]
 }

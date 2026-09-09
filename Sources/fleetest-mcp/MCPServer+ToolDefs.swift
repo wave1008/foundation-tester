@@ -517,18 +517,28 @@ extension MCPServer {
             "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
         ], scope: .project),
         tool("ft_dry_run", "Dry-run a scenario without any device. Catches selector syntax errors, unreachable scenes and expectation blocks with no assertions in seconds. "
-            + "Run it after ft_list_scenarios (compile) and before ft_run_scenario (real device) — it cannot tell whether a selector matches a real element", [
-            "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios)"],
+            + "Run it after ft_list_scenarios (compile) and before ft_run_scenario (real device) — it cannot tell whether a selector matches a real element. "
+            + "A class name runs every scenario of the class except @Deleted/@Draft (same as fleetest run)", [
+            "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios) or a class name"],
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
             "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
+            "platform": ["type": "string", "enum": ["ios", "android"],
+                        "description": "Platform for a scenario that declares none — decides which "
+                            + "ios { } / android { } branch and which #id ledger the dry-run checks "
+                            + "(default ios)"],
         ], required: ["id"], scope: .project),
-        tool("ft_run_scenario", "Run a scenario deterministically. On failure, returns the triage and the report path. Builds automatically", [
-            "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios)"],
+        tool("ft_run_scenario", "Run a scenario deterministically. On failure, returns the triage and the report path. Builds automatically. "
+            + "A class name runs every scenario of the class except @Deleted/@Draft (same as fleetest run). "
+            + "Unlike fleetest run it does not run the profile's setup/teardown scripts, install or update the app, "
+            + "send the device home first, or record into results/ — use fleetest run for a full run", [
+            "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios) or a class name"],
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
-            "profile": ["type": "string", "description": "Run profile name (profiles/runs/; resolves the connection, heal and report destination)"],
+            "profile": ["type": "string", "description": "Run profile name (profiles/runs/; resolves the connection, heal and report destination). "
+                + "Cannot be combined with platform/port/serial/udid — the profile picks the device"],
             "heal": ["type": "boolean", "description": "Override for locator self-healing (defaults to the profile setting, or false without a profile; ineffective when the profile has fm:false)"],
             "port": ["type": "integer", "description": "iOS bridge port (default: the running bridge)"],
             "serial": ["type": "string", "description": "Android device serial (default: the connected device)"],
+            "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
         ], required: ["id"]),
         tool("ft_list_projects", "List the test projects (TestProjects/) and their run profiles", [:],
              scope: .none),

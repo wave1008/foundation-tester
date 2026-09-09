@@ -61,24 +61,80 @@ struct DriverOptions: ParsableArguments {
     @Option(help: "Android device serial (adb -s; defaults to the only connected device)")
     var serial: String?
 
+    @Flag(help: "Proceed even if the connected bridge's protocol version differs from this build (manual drive commands only)")
+    var allowVersionSkew = false
+
+    /// `makeDriver` を通らないコマンド(`bridge up/status`・`api list-apps`・`api live`)が
+    /// この OptionGroup を共有しているので、そこでは `--allow-version-skew` が黙って効かない。
+    /// **指定したのに効かない形を作らない** —— 効かせられない場所では名指しで断る
+    func rejectVersionSkewFlag(in command: String) throws {
+        if allowVersionSkew {
+            throw ValidationError("--allow-version-skew has no effect on \(command)"
+                + " (it applies to the manual drive commands: snapshot/tap/type/swipe/press/"
+                + "screenshot/launch/install/terminate)")
+        }
+    }
+
     /// `platform`/`port` は non-Optional にしない —— 既定値を持たせると「指定された」と
     /// 「既定のまま」が区別できず、`--profile` との併用禁止のような検査ができなくなる
     /// (`RunRejectionTests` 参照)。既定値が要る箇所はここを通す
     var resolvedPlatform: String { platform ?? "ios" }
     var resolvedPort: UInt16 { port ?? BridgeAPI.defaultPort }
 
-    /// FTFoundationModels/FTCore はこの抽象のみに依存(BridgeClient/AndroidDriver を直接見ない)
-    func makeDriver(overriding platformOverride: String? = nil) throws -> AppDriver {
+    /// FTFoundationModels/FTCore はこの抽象のみに依存(BridgeClient/AndroidDriver を直接見ない)。
+    /// **手動駆動サブコマンド(install/launch/snapshot/tap/type/swipe/press/screenshot/
+    /// terminate)だけがここを通る** —— `bridge up`/`bridge status` は `resolvedPort` を
+    /// 直接使うので、この探索・版ズレ拒否の影響を受けない。
+    /// 宛先解決は MCP(ft_*)と同じ `FTBridgeClient.BridgeTargetResolution` /
+    /// `FTAndroid.AndroidTargetResolution` を通す(判定を2つ持たない)
+    func makeDriver(overriding platformOverride: String? = nil) async throws -> AppDriver {
         switch platformOverride ?? resolvedPlatform {
         case "ios":
             // 実機ブリッジは 127.0.0.1 に居ない(LAN)か token が要る(usb)。provision が残した
-            // 宛先を丸ごと使う(記録が無ければループバック = シミュレータの既定)
-            return PortDirectIOSTarget(port: resolvedPort).makeDriver()
+            // 宛先を丸ごと使う(記録が無ければループバック = シミュレータの既定)。
+            // **明示 --port は探索しない**ので実機は従来どおり通る
+            let resolvedPort: UInt16
+            do {
+                resolvedPort = try await BridgeTargetResolution.iosPort(
+                    explicit: port, log: { ConsoleOut.err($0) })
+            } catch let error as BridgeTargetError {
+                throw ValidationError(error.errorDescription ?? "\(error)")
+            }
+            let driver = PortDirectIOSTarget(port: resolvedPort).makeDriver()
+            if let skew = await BridgeTargetResolution.versionSkew(driver: driver) {
+                guard allowVersionSkew else {
+                    throw ValidationError(Self.skewMessage(skew, port: resolvedPort))
+                }
+                ConsoleOut.err("⚠️ --allow-version-skew: proceeding despite a bridge/host mismatch. "
+                               + Self.skewMessage(skew, port: resolvedPort))
+            }
+            return driver
         case "android":
-            return try AndroidDriver(serial: serial)
+            do {
+                let resolvedSerial = try AndroidTargetResolution.serial(
+                    explicit: serial, log: { ConsoleOut.err($0) })
+                return try AndroidDriver(serial: resolvedSerial)
+            } catch let error as AndroidTargetError {
+                throw ValidationError(error.errorDescription ?? "\(error)")
+            }
         default:
             throw ValidationError("platform must be ios or android: \(platformOverride ?? resolvedPlatform)")
         }
+    }
+
+    /// 版ズレの CLI 向け文言(純粋関数・テスト用)。**判定(running/expected の比較)は
+    /// `BridgeVersionSkew`(FTBridgeClient・MCP と共有)** —— ここは対処の言い回しだけ持つ
+    /// (MCP は `fleetest-mcp`/`bridge down --all` を名指しする。こちらは `fleetest` の
+    /// 再ビルドと、この宛先だけを建て直す `bridge down --port` を名指しする。文言は呼び手ごと)
+    static func skewMessage(_ skew: BridgeVersionSkew, port: UInt16) -> String {
+        let side = skew.bridgeIsNewer
+            ? "the bridge on port \(port) is NEWER than this build (v\(skew.running) > v\(skew.expected)) —"
+                + " your fleetest binary is stale, so rebuild it (swift build --product fleetest) or pull"
+            : "the bridge on port \(port) is OLDER than this build (v\(skew.running) < v\(skew.expected)) —"
+                + " restart it with `fleetest bridge down --port \(port) && fleetest bridge up`"
+        return "bridge protocol mismatch: \(side)."
+            + " Refusing to operate: a stale bridge answers with the behaviour of its own version."
+            + " Pass --allow-version-skew to proceed anyway."
     }
 }
 
@@ -467,6 +523,8 @@ struct Bridge: AsyncParsableCommand {
 
         @OptionGroup var driverOptions: DriverOptions
 
+        func validate() throws { try driverOptions.rejectVersionSkewFlag(in: "bridge up") }
+
         func run() async throws {
             if driverOptions.resolvedPlatform == "android" {
                 // serial 省略時は接続中の全デバイス(8台並列前のプリウォーム用)
@@ -566,6 +624,8 @@ struct Bridge: AsyncParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Show the bridge status")
 
         @OptionGroup var driverOptions: DriverOptions
+
+        func validate() throws { try driverOptions.rejectVersionSkewFlag(in: "bridge status") }
 
         func run() async throws {
             if driverOptions.resolvedPlatform == "android" {
@@ -679,10 +739,10 @@ struct Tap: AsyncParsableCommand {
     @Option(help: "Reference number from snapshot")
     var ref: Int?
 
-    @Option(help: "X coordinate (pt)")
+    @Option(help: "X coordinate — iOS=pt / Android=px (same coordinate system as the snapshot frames)")
     var x: Double?
 
-    @Option(help: "Y coordinate (pt)")
+    @Option(help: "Y coordinate — iOS=pt / Android=px (same coordinate system as the snapshot frames)")
     var y: Double?
 
     @OptionGroup var driverOptions: DriverOptions
@@ -743,13 +803,13 @@ struct Press: AsyncParsableCommand {
     var ref: Int
 
     @Option(help: "Press duration in seconds")
-    var duration: Double = 1.0
+    var holdSeconds: Double = 1.0
 
     @OptionGroup var driverOptions: DriverOptions
 
     func run() async throws {
-        try await driverOptions.makeDriver().press(ref: ref, duration: duration)
-        ConsoleOut.out("✅ press [\(ref)] \(duration)s")
+        try await driverOptions.makeDriver().press(ref: ref, duration: holdSeconds)
+        ConsoleOut.out("✅ press [\(ref)] \(holdSeconds)s")
     }
 }
 
@@ -1066,10 +1126,7 @@ struct RunScenarios: AsyncParsableCommand {
         let profileOverrides = try RunProfileSetOverride.parse(setOverrides)
         let noProfileSettings = DeviceIndependentRunSettings.resolve(
             DeviceIndependentRunSettings.profileLessBase.applyingOverrides(profileOverrides))
-        if noProfileSettings.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }
-        if !noProfileSettings.iosPreActionWarmup { setenv("FT_PRE_ACTION_WARMUP", "0", 1) }
-        if noProfileSettings.enableAnimations { setenv(AnimationPolicy.environmentKey, "1", 1) }
-        if !noProfileSettings.playProtectBypass { setenv(AdbInstallVerifier.environmentKey, "0", 1) }
+        RunEnvironment.apply(noProfileSettings)
         // リモート実行はここで打ち切る(以降はローカル実行の段取り。フラグはコマンドラインごと
         // リモートへ中継されるので、向こう側の fleetest が同じ env を自分で立てる)。
         // dry-run だけは送らない(--runner 明示・マシンプロファイルの host 自動のどちらも。
@@ -1122,7 +1179,7 @@ struct RunScenarios: AsyncParsableCommand {
             throw ValidationError(
                 "no scenarios (add a @TestClass under TestProjects/\(testProject.name)/scenarios/)")
         }
-        var selected = try Self.resolve(scenarios, from: all, scenariosDir: testProject.scenariosDir)
+        var selected = try ScenarioSelection.resolve(scenarios, from: all, scenariosDir: testProject.scenariosDir)
         if scenarios.isEmpty {
             let deletedCount = all.filter(\.deleted).count
             if deletedCount > 0 {
@@ -1448,42 +1505,6 @@ struct RunScenarios: AsyncParsableCommand {
         } catch {
             ConsoleOut.out("⚠️ Failed to write the JUnit report: \(junit) (\(error.localizedDescription))")
         }
-    }
-
-    /// @Deleted(論理削除)/ @Draft(実装中)は全件実行・クラス名展開から除外
-    /// (完全一致の明示指定のみ実行可。実装しながら個別に回す運用のため)。
-    /// `scenariosDir` は「見つからない」を `_disabled`(コンパイル対象外)在住と見分けるための
-    /// 追加情報 —— 省略した呼び出し元(profile/fleet 経由)は従来文のまま
-    static func resolve(_ ids: [String], from all: [ScenarioInfo],
-                        scenariosDir: URL? = nil) throws -> [ScenarioInfo] {
-        guard !ids.isEmpty else { return all.filter { !$0.deleted && !$0.draft } }
-        var result: [ScenarioInfo] = []
-        for id in ids {
-            if let exact = all.first(where: { $0.id == id }) {
-                result.append(exact)
-                continue
-            }
-            let classMatches = all.filter { $0.id.hasPrefix(id + ".") && !$0.deleted && !$0.draft }
-            guard !classMatches.isEmpty else {
-                if all.contains(where: { $0.id.hasPrefix(id + ".") }) {
-                    let allDeleted = all.filter { $0.id.hasPrefix(id + ".") }.allSatisfy(\.deleted)
-                    let reason = allDeleted
-                        ? "is deleted (@Deleted)"
-                        : "is deleted (@Deleted) or a draft (@Draft)"
-                    throw ValidationError(
-                        "every scenario of \(id) \(reason)"
-                        + " (an exact Class.method reference still runs it)")
-                }
-                if let scenariosDir {
-                    throw ValidationError(ScenarioFolders.notFoundMessage(
-                        id: id, available: all.map(\.id), scenariosDir: scenariosDir))
-                }
-                throw ValidationError(
-                    "scenario not found: \(id) (available: \(all.map(\.id).joined(separator: ", ")))")
-            }
-            result.append(contentsOf: classMatches)
-        }
-        return result
     }
 
     /// --folder でシナリオを絞り込む(クラス名→ソースファイル→フォルダ名で照合)。

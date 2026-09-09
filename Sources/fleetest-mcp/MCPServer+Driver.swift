@@ -273,16 +273,18 @@ extension MCPServer {
     ///
     /// **どちらが新しいかを明示する**(G-4): 対処が変わる ——
     /// ブリッジが古い = 建て直す / ホストが古い = こちらを建て直す(or pull)。
-    /// **判定できないときは黙る**(旧ブリッジは版を返さない = nil。それを「古い」と断じると常時警告)
+    /// **判定できないときは黙る**(旧ブリッジは版を返さない = nil。それを「古い」と断じると常時警告)。
+    ///
+    /// **判定(running/expected の比較)は `BridgeTargetResolution.versionSkew` を通す**
+    /// (CLI の手動駆動サブコマンドと共有)。ここに残すのは MCP 向けの文言だけ
+    /// (`fleetest-mcp` を名指しする対処。CLI 側は別の文を組む)
     static func bridgeVersionSkew(driver: AppDriver) async -> String? {
-        guard let running = try? await driver.status().protocolVersion,
-              running != BridgeAPI.bridgeProtocolVersion else { return nil }
-        let expected = BridgeAPI.bridgeProtocolVersion
-        let side = running > expected
-            ? "the bridge is NEWER than this build (v\(running) > v\(expected)) —"
+        guard let skew = await BridgeTargetResolution.versionSkew(driver: driver) else { return nil }
+        let side = skew.bridgeIsNewer
+            ? "the bridge is NEWER than this build (v\(skew.running) > v\(skew.expected)) —"
                 + " your fleetest-mcp binary is stale, so rebuild it"
                 + " (swift build --product fleetest-mcp) or pull"
-            : "the bridge is OLDER than this build (v\(running) < v\(expected)) —"
+            : "the bridge is OLDER than this build (v\(skew.running) < v\(skew.expected)) —"
                 + " restart it with `fleetest bridge down --all && fleetest bridge up`"
         return "bridge protocol mismatch: \(side)."
             + " Refusing to operate: a stale bridge answers with the behaviour and the notes of"
@@ -585,45 +587,27 @@ extension MCPServer {
 
     /// profile 無しの iOS 宛先。**明示 port は探索しない**(利用者が宛先を決めている)。
     /// 既定ポートが死んでいるのは珍しくない —— `bridge up` は稼働中ブリッジの再利用や
-    /// pid ファイルの残りで別ポートを選ぶ(Fleetest.swift の警告)
+    /// pid ファイルの残りで別ポートを選ぶ(Fleetest.swift の警告)。
+    /// **判定は `FTBridgeClient.BridgeTargetResolution.iosPort` を通す**(CLI の手動駆動
+    /// サブコマンドと共有)。ここは `BridgeTargetError` を `MCPError` へ包むだけ
+    /// (文言は BridgeDiscovery のまま1文字も変えない)
     static func resolveIOSPort(explicit: UInt16?) async throws -> UInt16 {
-        if let explicit { return explicit }
-        let preferred = BridgeAPI.defaultPort
-        let repoRoot = try? RepoRoot.find()
-        if await BridgeDiscovery.isAlive(port: preferred, repoRoot: repoRoot) { return preferred }
-        // **応答なしを死と読まない**: 待受が続いているなら乗り換え先は別デバイスになる
-        let bound = BridgeDiscovery.isBound(port: preferred, repoRoot: repoRoot)
-        let found = bound ? [] : await BridgeDiscovery.scan(excluding: preferred, repoRoot: repoRoot)
-        switch BridgeDiscovery.decide(preferredAlive: false, preferredBound: bound, found: found) {
-        case .usePreferred:
-            return preferred
-        case .preferredBusy:
-            throw MCPError(BridgeDiscovery.busyMessage(preferred: preferred))
-        case .adopt(let bridge):
-            logStderr(BridgeDiscovery.adoptedNote(preferred: preferred, found: bridge))
-            return bridge.port
-        case .none:
-            throw MCPError(BridgeDiscovery.noBridgeMessage(preferred: preferred))
-        case .ambiguous(let bridges):
-            throw MCPError(BridgeDiscovery.ambiguousMessage(preferred: preferred, found: bridges))
+        do {
+            return try await BridgeTargetResolution.iosPort(explicit: explicit, log: Self.logStderr)
+        } catch let error as BridgeTargetError {
+            throw MCPError(error.errorDescription ?? "\(error)")
         }
     }
 
     /// profile 無しの Android 宛先。**serial 無しで adb を撃たない**(複数台なら
-    /// "more than one device/emulator" が生で出る)
+    /// "more than one device/emulator" が生で出る)。
+    /// **判定は `FTAndroid.AndroidTargetResolution.serial` を通す**(CLI と共有)。
+    /// ここは `AndroidTargetError` を `MCPError` へ包むだけ
     static func resolveAndroidSerial(explicit: String?) throws -> String {
-        if let explicit, !explicit.isEmpty { return explicit }
-        let serials = AndroidSerialResolver.connectedSerials()
-        switch AndroidSerialResolver.decide(explicit: nil, connected: serials) {
-        case .use(let serial):
-            logStderr(AndroidSerialResolver.adoptedNote(
-                AndroidSerialResolver.describe(serials: [serial])[0]))
-            return serial
-        case .none:
-            throw MCPError(AndroidSerialResolver.noDeviceMessage)
-        case .ambiguous(let devices):
-            throw MCPError(AndroidSerialResolver.ambiguousMessage(
-                AndroidSerialResolver.describe(serials: devices.map(\.serial))))
+        do {
+            return try AndroidTargetResolution.serial(explicit: explicit, log: Self.logStderr)
+        } catch let error as AndroidTargetError {
+            throw MCPError(error.errorDescription ?? "\(error)")
         }
     }
 

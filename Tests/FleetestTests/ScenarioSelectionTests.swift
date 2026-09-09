@@ -23,32 +23,32 @@ final class ScenarioSelectionTests: XCTestCase {
 
     func testEmptySelectionRunsEverythingExceptDeleted() throws {
         // 無指定=全実行。@Deleted は下書き(セレクタが TODO のまま)なので必ず除く
-        let result = try RunScenarios.resolve([], from: all)
+        let result = try ScenarioSelection.resolve([], from: all)
         XCTAssertEqual(result.map(\.id),
                        ["ログインテスト.S0010", "ログインテスト.S0020", "設定画面.S0010"])
     }
 
     func testExactIDIsSelectedEvenWhenDeleted() throws {
         // 完全指定は @Deleted でも実行できる(下書きを個別に試す運用のため)
-        let result = try RunScenarios.resolve(["ログインテスト.S0030"], from: all)
+        let result = try ScenarioSelection.resolve(["ログインテスト.S0030"], from: all)
         XCTAssertEqual(result.map(\.id), ["ログインテスト.S0030"])
     }
 
     func testClassNameExpandsToItsScenariosExcludingDeleted() throws {
-        let result = try RunScenarios.resolve(["ログインテスト"], from: all)
+        let result = try ScenarioSelection.resolve(["ログインテスト"], from: all)
         XCTAssertEqual(result.map(\.id), ["ログインテスト.S0010", "ログインテスト.S0020"],
                        "クラス指定では @Deleted を含めない")
     }
 
     func testMultipleSelectorsArePreservedInOrder() throws {
-        let result = try RunScenarios.resolve(["設定画面.S0010", "ログインテスト"], from: all)
+        let result = try ScenarioSelection.resolve(["設定画面.S0010", "ログインテスト"], from: all)
         XCTAssertEqual(result.map(\.id),
                        ["設定画面.S0010", "ログインテスト.S0010", "ログインテスト.S0020"],
                        "指定順を保つ")
     }
 
     func testUnknownIDThrowsWithAvailableList() {
-        XCTAssertThrowsError(try RunScenarios.resolve(["知らないやつ"], from: all)) { error in
+        XCTAssertThrowsError(try ScenarioSelection.resolve(["知らないやつ"], from: all)) { error in
             let message = "\(error)"
             XCTAssertTrue(message.contains("知らないやつ"), message)
             // 利用可能一覧を出さないと、利用者は正しい ID を推測できない
@@ -61,7 +61,7 @@ final class ScenarioSelectionTests: XCTestCase {
     func testUnknownIDNamesTheQuarantineFileWhenPresent() throws {
         let dir = try makeScenariosDir(["_disabled": ["クラッシュ検知"]])
         XCTAssertThrowsError(
-            try RunScenarios.resolve(["クラッシュ検知.S0010"], from: all, scenariosDir: dir)
+            try ScenarioSelection.resolve(["クラッシュ検知.S0010"], from: all, scenariosDir: dir)
         ) { error in
             let message = "\(error)"
             XCTAssertTrue(message.contains("scenarios/_disabled/クラッシュ検知.swift"), message)
@@ -71,7 +71,7 @@ final class ScenarioSelectionTests: XCTestCase {
 
     /// scenariosDir を渡さない呼び出し元(profile/fleet 経由)は従来文のまま
     func testUnknownIDWithoutScenariosDirKeepsTheTraditionalMessage() {
-        XCTAssertThrowsError(try RunScenarios.resolve(["知らないやつ"], from: all)) { error in
+        XCTAssertThrowsError(try ScenarioSelection.resolve(["知らないやつ"], from: all)) { error in
             let message = "\(error)"
             XCTAssertTrue(message.contains("available:"), message)
         }
@@ -80,7 +80,7 @@ final class ScenarioSelectionTests: XCTestCase {
     func testClassWhoseScenariosAreAllDeletedThrowsDistinctMessage() {
         // 「見つからない」ではなく「全て削除済み」と言い分ける(原因が違うため)
         let onlyDeleted = [info("下書き.S0010", deleted: true)]
-        XCTAssertThrowsError(try RunScenarios.resolve(["下書き"], from: onlyDeleted)) { error in
+        XCTAssertThrowsError(try ScenarioSelection.resolve(["下書き"], from: onlyDeleted)) { error in
             let message = "\(error)"
             XCTAssertTrue(message.contains("deleted"), message)
             XCTAssertTrue(message.contains("exact Class.method"), "回避方法を示すこと: \(message)")
@@ -91,26 +91,26 @@ final class ScenarioSelectionTests: XCTestCase {
 
     func testEmptySelectionExcludesDraft() throws {
         let withDraft = all + [info("実装中.S0010", draft: true)]
-        let result = try RunScenarios.resolve([], from: withDraft)
+        let result = try ScenarioSelection.resolve([], from: withDraft)
         XCTAssertFalse(result.map(\.id).contains("実装中.S0010"))
     }
 
     func testExactIDIsSelectedEvenWhenDraft() throws {
         // 完全指定は @Draft でも実行できる(実装しながら個別に試す運用のため)
         let withDraft = all + [info("実装中.S0010", draft: true)]
-        let result = try RunScenarios.resolve(["実装中.S0010"], from: withDraft)
+        let result = try ScenarioSelection.resolve(["実装中.S0010"], from: withDraft)
         XCTAssertEqual(result.map(\.id), ["実装中.S0010"])
     }
 
     func testClassNameExpandsToItsScenariosExcludingDraft() throws {
         let withDraft = [info("実装中.S0010"), info("実装中.S0020", draft: true)]
-        let result = try RunScenarios.resolve(["実装中"], from: withDraft)
+        let result = try ScenarioSelection.resolve(["実装中"], from: withDraft)
         XCTAssertEqual(result.map(\.id), ["実装中.S0010"], "クラス指定では @Draft を含めない")
     }
 
     func testClassWhoseScenariosAreAllDraftThrowsMessageMentioningDraft() {
         let onlyDraft = [info("実装中.S0010", draft: true)]
-        XCTAssertThrowsError(try RunScenarios.resolve(["実装中"], from: onlyDraft)) { error in
+        XCTAssertThrowsError(try ScenarioSelection.resolve(["実装中"], from: onlyDraft)) { error in
             let message = "\(error)"
             XCTAssertTrue(message.contains("draft"), message)
             XCTAssertTrue(message.contains("exact Class.method"), "回避方法を示すこと: \(message)")
@@ -119,7 +119,7 @@ final class ScenarioSelectionTests: XCTestCase {
 
     func testPrefixDoesNotMatchWithoutDotBoundary() throws {
         // "ログイン" が "ログインテスト.S0010" を巻き込まない(区切りは "." のみ)
-        XCTAssertThrowsError(try RunScenarios.resolve(["ログイン"], from: all))
+        XCTAssertThrowsError(try ScenarioSelection.resolve(["ログイン"], from: all))
     }
 
     // MARK: - filterByFolders

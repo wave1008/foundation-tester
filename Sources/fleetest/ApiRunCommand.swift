@@ -277,10 +277,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // **デバイスに依存しない設定は `--profile` の有無に関わらず1つの経路で決まる**
         // (self.noProfileSettings。--profile 経路は `ProfileResolver.resolve(overrides:)` が
         // 同じ上書きをもう一度当てる)
-        if noProfileSettings.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }
-        if !noProfileSettings.iosPreActionWarmup { setenv("FT_PRE_ACTION_WARMUP", "0", 1) }
-        if noProfileSettings.enableAnimations { setenv(AnimationPolicy.environmentKey, "1", 1) }
-        if !noProfileSettings.playProtectBypass { setenv(AdbInstallVerifier.environmentKey, "0", 1) }
+        RunEnvironment.apply(noProfileSettings)
 
         let testProject = try ScenarioHost.project(named: project)
 
@@ -414,15 +411,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                     + " for \(scenarios.count) scenario(s)")
             }
             for warning in resolved.warnings { logStderr("⚠️ \(warning)") }
-            if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
-            // 既定 ON なので OFF のときだけ注入する(WebViewDelegatingDriver.preActionWarmup 参照)
-            if !resolved.iosPreActionWarmup { setenv("FT_PRE_ACTION_WARMUP", "0", 1) }
-            // 未指定でも必ず書く(既定の "0" を明示し、前段の値を残さない)。環境変数側で
-            // 既に ON なら尊重する(`--set enableAnimations=true` と手動 export の上書き)
-            let animations = resolved.enableAnimations || AnimationPolicy.animationsEnabled()
-            setenv(AnimationPolicy.environmentKey, animations ? "1" : "0", 1)
-            // キルスイッチは既定 ON なので OFF のときだけ注入する(AdbInstallVerifier.bypassEnabled 参照)
-            if !resolved.playProtectBypass { setenv(AdbInstallVerifier.environmentKey, "0", 1) }
+            RunEnvironment.apply(resolved)
             resolvedProfile = resolved
         }
 
@@ -575,7 +564,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             throw ValidationError(
                 "no scenarios (add a @TestClass under TestProjects/\(testProject.name)/scenarios/)")
         }
-        var selected = try RunScenarios.resolve(scenarios, from: all)
+        var selected = try ScenarioSelection.resolve(scenarios, from: all)
         guard !selected.isEmpty else {
             throw ValidationError("nothing to run (every scenario is marked @Deleted or @Draft)")
         }
@@ -818,7 +807,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 primingWorkers, homeOnStart: noProfileSettings.homeOnStart) { logStderr($0) }
         }
 
-        var settings = ScenarioExecutionSettings(noProfileSettings)
+        var settings = ApiRun.withDryRunFM(ScenarioExecutionSettings(noProfileSettings), dryRun: dryRun)
         settings.defaultTimeout = effectiveDefaultTimeout
         settings.scenarioTimeout = effectiveScenarioTimeout
 
@@ -973,7 +962,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             // フォールバックとして渡し、installApp() 引数省略時に子が直接インストールできるようにする
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
-                settings: ScenarioExecutionSettings(resolved), reportDir: reportDirPath,
+                settings: ApiRun.withDryRunFM(ScenarioExecutionSettings(resolved), dryRun: dryRun),
+                reportDir: reportDirPath,
                 dryRun: dryRun,
                 debug: debugOptions, recording: recording,
                 appPath: dryRun ? nil : resolved.apps[scenarioPlatform]?
@@ -1674,5 +1664,15 @@ enum ApiRun {
     static func exactScenarioCount(_ selectors: [String]) -> Int {
         guard !selectors.isEmpty, selectors.allSatisfy({ $0.contains(".") }) else { return 0 }
         return selectors.count
+    }
+
+    /// dry-run は FM を丸ごと切る(`fleetest run --dry-run` / `ft_dry_run` と同じ)。
+    /// heal だけ切ると失敗のたびに triage が走り、デバイスも画面も無いのに FM の直列化待ちを払う
+    static func withDryRunFM(_ settings: ScenarioExecutionSettings,
+                             dryRun: Bool) -> ScenarioExecutionSettings {
+        guard dryRun else { return settings }
+        var out = settings
+        out.fm = FMConfig(enabled: false, heal: false)
+        return out
     }
 }

@@ -16,7 +16,7 @@ Xcode, xcodegen, simulators, and adb.
 
 ## Apple Intelligence (optional)
 
-Fleetest works without Apple Intelligence (Foundation Models), but enabling it unlocks three
+Fleetest works without Apple Intelligence (Foundation Models), but enabling it unlocks four
 things. If you enable it later, they just start working.
 
 - **Self-healing** — when a selector breaks, the model repairs it so the scenario can keep going.
@@ -24,6 +24,8 @@ things. If you enable it later, they just start working.
 - **`screenLooksLike`** — visual verification of the screen against a natural-language
   description.
 - **Failure triage** — a summary of the cause and a suggested fix, written into the report.
+- **Occlusion guard** — the `requireVisible` check of `exist`, which keeps an element that is in
+  the tree but covered by something else from passing as "visible".
 
 All of it runs on-device; screen data from your app never leaves your Mac.
 **Apple's cloud (Private Cloud Compute) is never used.** Foundation Models also offers a
@@ -41,7 +43,8 @@ switches to the cloud.
   else works without restriction.
 - When FM is unavailable, these features are **skipped**, not failed. The run stays green with
   the features silently off, so confirm they actually work with `fleetest doctor --fm-only`,
-  which performs one real inference. Details in
+  which performs one real inference on each of the text and vision paths and exits 1 when
+  either is dead. Details in
   [Troubleshooting](../in_action/troubleshooting.md).
 
 ## Supported UI frameworks

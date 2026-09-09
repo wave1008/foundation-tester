@@ -69,14 +69,17 @@ final class AdbInstallVerifierTests: XCTestCase {
         XCTAssertFalse(AdbInstallVerifier.bypassEnabled(environment: ["FT_PLAY_PROTECT_BYPASS": "false"]))
     }
 
-    /// 配線の固定: プロファイルの `playProtectBypass` を環境変数へ渡す3経路(run / api run / MCP の
-    /// profile 解決)がどれも `AdbInstallVerifier.environmentKey` を書く
+    /// 配線の固定: プロファイルの `playProtectBypass` を環境変数へ渡す4経路(run / api run / MCP の
+    /// profile 解決 / ProfileRunner)がどれも `FTCore.RunEnvironment.apply` を通る(キルスイッチを
+    /// "0" で書くのはそちらの1箇所。`RunEnvironmentTests` が固定)。**素の setenv に戻さない**
     func testEveryProfileEntryPointInjectsTheKillSwitch() throws {
         for file in ["fleetest/ProfileRunner.swift", "fleetest/ApiRunCommand.swift",
-                     "fleetest-mcp/MCPServer+Dispatch.swift"] {
+                     "fleetest/Fleetest.swift", "fleetest-mcp/MCPServer+Dispatch.swift"] {
             let source = try String(contentsOf: sourcesRoot.appendingPathComponent(file), encoding: .utf8)
-            XCTAssertTrue(source.contains("setenv(AdbInstallVerifier.environmentKey"),
+            XCTAssertTrue(source.contains("RunEnvironment.apply("),
                           "\(file) が playProtectBypass を環境変数へ渡していない")
+            XCTAssertFalse(source.contains("setenv(AdbInstallVerifier.environmentKey"),
+                           "\(file) がキルスイッチを RunEnvironment を通さず直接書いている")
         }
     }
 

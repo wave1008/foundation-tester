@@ -40,6 +40,9 @@ export interface ScenarioInfo {
 export interface StepsResult {
   scenario: string;
   steps: StepRow[];
+  /** dry-run が出した警告(空の expectation ブロック・台帳に無い #id 等)。旧 CLI との
+   * 互換のため optional(欠けていれば警告なしとして扱う)。 */
+  warnings?: string[];
 }
 
 export type StepSection = "condition" | "action" | "expectation";

@@ -16,13 +16,15 @@ Xcode・xcodegen・シミュレータ・adb。
 
 ## Apple Intelligence(任意)
 
-Apple Intelligence(Foundation Models)は無くても動きますが、有効にすると次の3つが使えます。
+Apple Intelligence(Foundation Models)は無くても動きますが、有効にすると次の4つが使えます。
 後から有効化しても、そのまま使えるようになります。
 
 - **自己修復** —— セレクタが壊れたときにモデルが修復し、シナリオを続行させます。修復結果は
   キャッシュされ、2回目以降の実行ではモデルを呼びません。
 - **`screenLooksLike`** —— 画面と自然文の説明を照合する視覚検証です。
 - **失敗時のトリアージ** —— 失敗原因の要約と修正案をレポートに残します。
+- **遮蔽チェック(occlusion-guard)** —— `exist` の `requireVisible` 判定で、木には在るが
+  別のものに覆われている要素を「見えている」と誤って緑にしないための確認です。
 
 処理はすべてオンデバイスで、アプリの画面情報が Mac の外に出ることはありません。
 **Apple のクラウド(Private Cloud Compute)は使いません。** Foundation Models にはクラウド側で
@@ -39,7 +41,8 @@ Apple Intelligence(Foundation Models)は無くても動きますが、有効に�
   macOS 27+ 必須のためで、自動で無効になり、他の機能は制限なく動きます。
 - FM が使えない環境では、これらの機能は失敗ではなく**スキップ**されます。run は緑のまま、
   機能だけが黙って無効になるので、実際に使えているかは `fleetest doctor --fm-only` で確認して
-  ください。1回実際に推論して判定します。詳細は
+  ください。テキストと画像の2経路をそれぞれ実際に推論して判定し、どちらかが死んでいれば
+  exit 1 になります。詳細は
   [トラブルシューティング](../in_action/troubleshooting_ja.md)。
 
 ## 動作確認している UI フレームワーク

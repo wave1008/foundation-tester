@@ -91,6 +91,9 @@ struct ApiLiveServe: AsyncParsableCommand {
 
     @OptionGroup var driverOptions: DriverOptions
 
+    // iOS は XCUIBridgeResolver 経由で makeDriver を通らないので、ここでは効かせられない
+    func validate() throws { try driverOptions.rejectVersionSkewFlag(in: "api live") }
+
     func run() async throws {
         // ストリーミング読み取りが前提のため常に行バッファにする(他の常駐 api コマンドと同じ理由)
         setvbuf(stdout, nil, _IOLBF, 0)
@@ -156,7 +159,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// 戻り値のポートは以後の自動起動・再起動が同じ宛先を見るために返す
     private func makeDriverAvoidingInApp() async throws -> (AppDriver, UInt16) {
         guard driverOptions.resolvedPlatform == "ios" else {
-            return (try driverOptions.makeDriver(), driverOptions.resolvedPort)
+            return (try await driverOptions.makeDriver(), driverOptions.resolvedPort)
         }
         // **autoStart:false**(= 走査までで止める)。serve は常駐で、拡張は応答が無いと
         // kill→respawn するため、起動時に build-for-testing(分単位)でブロックしてはいけない。

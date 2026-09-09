@@ -18,7 +18,12 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
     /// **udid は置かない** —— 入口の foldingUDIDIntoPort が稼働中ブリッジへ畳むので、ブリッジが
     /// 死んだ後(このツールの出番)は「ブリッジが無い」で落ちる。記録は port でしか引けない
     private static let deviceFreeTools: [String: Set<String>] = [
-        "ft_list_scenarios": [], "ft_dry_run": [], "ft_list_projects": [], "ft_doctor": [],
+        "ft_list_scenarios": [],
+        // ft_dry_run はデバイスに触らないが "platform" だけは持つ —— 宣言の無いシナリオの
+        // ios { } / android { } 分岐と #id 台帳を選ぶだけで、宛先の選択ではない
+        // (requiredDeviceKeys の "platform" と同じキー名を共有するだけ)
+        "ft_dry_run": ["platform"],
+        "ft_list_projects": [], "ft_doctor": [],
         "ft_dsl_commands": [],
         // 記録済みの操作列から下書きを組むだけ = デバイスに触らない
         "ft_draft_scenario": [],
@@ -49,6 +54,31 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
 
     func testToolDefinitionsIsNonEmpty() {
         XCTAssertFalse(MCPServer.toolDefinitions.isEmpty)
+    }
+
+    private func properties(of name: String) -> [String: Any] {
+        let definition = MCPServer.toolDefinitions.first { $0["name"] as? String == name }
+        let schema = definition?["inputSchema"] as? [String: Any]
+        return schema?["properties"] as? [String: Any] ?? [:]
+    }
+
+    /// ft_run_scenario は skipBuild を実装している(MCPServer+ScenarioTools.swift の
+    /// `args["skipBuild"] as? Bool ?? false`)のに、以前はスキーマに宣言が無く MCP クライアントから
+    /// 渡す術が無かった(ft_list_scenarios/ft_dry_run と同じ文言で足す)
+    func testRunScenarioDeclaresSkipBuild() {
+        let props = properties(of: "ft_run_scenario")
+        XCTAssertNotNil(props["skipBuild"], "ft_run_scenario に skipBuild が無い")
+        XCTAssertEqual((props["skipBuild"] as? [String: Any])?["type"] as? String, "boolean")
+    }
+
+    /// ft_dry_run は platform を "ios" に固定していた(#id 台帳の照合は platform 別なので
+    /// Android のシナリオがずれていた)。スキーマから渡せることを固定する
+    func testDryRunDeclaresPlatform() {
+        let props = properties(of: "ft_dry_run")
+        guard let platform = props["platform"] as? [String: Any] else {
+            return XCTFail("ft_dry_run に platform が無い")
+        }
+        XCTAssertEqual(platform["enum"] as? [String], ["ios", "android"])
     }
 
     /// **snapshotAfter を持つツールは interactiveOnly/expandBulk も持つ**:

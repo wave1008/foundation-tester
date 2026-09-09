@@ -27,10 +27,10 @@ public enum AdbInstallVerifier {
     public static let settingKey = "verifier_verify_adb_installs"
 
     /// キルスイッチの伝搬経路: 実行プロファイルの `playProtectBypass`(既定 true)→ この環境変数
-    /// (ProfileRunner / ApiRunCommand / MCP の profile 解決が setenv)→ `bypassEnabled`。
+    /// (`FTCore.RunEnvironment` が唯一の注入元)→ `bypassEnabled`。
     /// **未設定 = バイパスする**(プロファイルを通らない経路 ── `fleetest install`・MCP の直接指定 ── でも
     /// 送らない側に倒す)。"0" / "false" / "off" / "no" だけが OFF
-    public static let environmentKey = "FT_PLAY_PROTECT_BYPASS"
+    public static let environmentKey = RunEnvironmentKeys.playProtectBypass
 
     public static func bypassEnabled(
         environment: [String: String] = ProcessInfo.processInfo.environment

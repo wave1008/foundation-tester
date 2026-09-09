@@ -7,6 +7,28 @@
 import { t } from "./i18n";
 import type { StepRow, StepSection } from "./model";
 
+/** dry-run が出した警告(StepsResult.warnings)1件分のノード。TreeView の先頭に scene より
+ * 前置して出す(fetchSteps が届けた警告は既に握りつぶされていた=空の expectation ブロック・
+ * 台帳に無い #id 等。ApiSteps.warnings の doc 参照)。 */
+export interface StepTreeWarningNode {
+  readonly kind: "warning";
+  /** ApiSteps.warnings が返す生の文言(⚠️ 接頭辞込み)。 */
+  readonly message: string;
+  /** TreeItem.label 相当。 */
+  readonly label: string;
+  /** TreeItem.tooltip 相当。 */
+  readonly tooltip: string;
+}
+
+export function buildWarningNodes(warnings: readonly string[]): StepTreeWarningNode[] {
+  return warnings.map((message) => ({
+    kind: "warning",
+    message,
+    label: message,
+    tooltip: `${t("workbench.stepsView.warningTooltip")}\n${message}`,
+  }));
+}
+
 export interface StepTreeSceneNode {
   readonly kind: "scene";
   readonly scene: number;

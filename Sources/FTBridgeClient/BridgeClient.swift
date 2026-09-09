@@ -135,9 +135,10 @@ public final class BridgeClient: AppDriver {
         self.simulatorUDID = simulatorUDID
         self.token = token
         // 高速入力(quiescence スキップ)はプロセス単位の環境変数で有効化する
-        // (実行プロファイル iosFastInput / CLI `--set iosFastInput=true` が FT_FAST_INPUT=1 を注入。
-        //  BridgeClient は hybrid のフォールバック経路でも生成されるため init 引数ではなく env で統一)
-        self.fastInput = ProcessInfo.processInfo.environment["FT_FAST_INPUT"] == "1"
+        // (実行プロファイル iosFastInput / CLI `--set iosFastInput=true` を `FTCore.RunEnvironment` が
+        //  FT_FAST_INPUT=1 へ注入。BridgeClient は hybrid のフォールバック経路でも生成されるため
+        //  init 引数ではなく env で統一)
+        self.fastInput = ProcessInfo.processInfo.environment[RunEnvironmentKeys.fastInput] == "1"
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = timeoutSeconds
         self.session = URLSession(configuration: config)

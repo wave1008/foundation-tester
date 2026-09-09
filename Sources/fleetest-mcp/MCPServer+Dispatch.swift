@@ -171,9 +171,10 @@ extension MCPServer {
         let resolved = try ProfileResolver.resolve(
             project: project, runName: profileName, machineName: machine.name)
         prologue.append(contentsOf: resolved.warnings.map { "⚠️ \($0)" })
-        // プロファイル経由の ft_install / clearAppData の入れ直しにも Play Protect のキルスイッチを効かせる
-        // (既定 ON なので OFF のときだけ注入。ProfileRunner と同じ)
-        setenv(AdbInstallVerifier.environmentKey, resolved.playProtectBypass ? "1" : "0", 1)
+        // CLI の profile 経路(ProfileRunner/ApiRunCommand)と同じ1箇所(FTCore.RunEnvironment)を
+        // 通す —— Play Protect のキルスイッチだけでなく iosFastInput/iosPreActionWarmup/
+        // enableAnimations も同時に注入する
+        RunEnvironment.apply(resolved)
         let platform = platformArg ?? resolved.devices.first?.platform ?? "ios"
         guard let device = resolved.devices.first(where: { $0.platform == platform }) else {
             throw MCPError("profile \(profileName) has no \(platform) device")

@@ -153,6 +153,10 @@ export const workbenchStrings = {
     ja: "このシナリオにはステップがありません。",
     en: "This scenario has no steps.",
   },
+  "workbench.stepsView.warningTooltip": {
+    ja: "dry-run の警告",
+    en: "dry-run warning",
+  },
 
   "workbench.common.loading": {
     ja: "読み込み中...",

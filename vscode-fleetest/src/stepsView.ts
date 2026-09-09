@@ -14,7 +14,13 @@ import { CliSupersededError, type FleetestCli } from "./cli";
 import { type FleetestConfig, resolveProjectName } from "./config";
 import { t } from "./i18n";
 import type { ScenarioInfo, StepRow, StepsResult } from "./model";
-import { buildStepTree, type StepTreeSceneNode, type StepTreeStepNode } from "./stepsModel";
+import {
+  buildStepTree,
+  buildWarningNodes,
+  type StepTreeSceneNode,
+  type StepTreeStepNode,
+  type StepTreeWarningNode,
+} from "./stepsModel";
 import type { FleetestTestTree } from "./testTree";
 import type { ScenarioFileWatcher } from "./watcher";
 
@@ -151,13 +157,20 @@ type ViewNode =
   | { readonly type: "empty"; readonly message?: string }
   | { readonly type: "loading" }
   | { readonly type: "error"; readonly message: string }
+  | { readonly type: "warning"; readonly warning: StepTreeWarningNode }
   | { readonly type: "scene"; readonly scene: StepTreeSceneNode }
   | { readonly type: "step"; readonly step: StepTreeStepNode };
+
+/** 1回の取得結果。warnings は StepsResult.warnings(旧 CLI との互換で optional)。 */
+interface StepsFetchResult {
+  readonly steps: readonly StepRow[];
+  readonly warnings: readonly string[];
+}
 
 type FetchStatus =
   | { readonly state: "loading" }
   | { readonly state: "error"; readonly message: string }
-  | { readonly state: "loaded"; readonly steps: readonly StepRow[] };
+  | ({ readonly state: "loaded" } & StepsFetchResult);
 
 interface CurrentScenario {
   readonly id: string;
@@ -178,7 +191,7 @@ export class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>,
   private treeView: vscode.TreeView<ViewNode> | undefined;
   private current: CurrentScenario | undefined;
   private status: FetchStatus = { state: "loading" };
-  private readonly cache = new Map<string, readonly StepRow[]>();
+  private readonly cache = new Map<string, StepsFetchResult>();
   private generation = 0;
 
   constructor(
@@ -244,7 +257,7 @@ export class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>,
     }
     const cached = this.cache.get(stepsCacheKey(current));
     if (cached) {
-      this.status = { state: "loaded", steps: cached };
+      this.status = { state: "loaded", ...cached };
       this.render();
       return;
     }
@@ -254,12 +267,12 @@ export class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>,
     const generation = ++this.generation;
 
     this.fetchSteps(current).then(
-      (steps) => {
+      (result) => {
         if (generation !== this.generation) {
           return; // 古い応答は破棄する
         }
-        this.cache.set(stepsCacheKey(current), steps);
-        this.status = { state: "loaded", steps };
+        this.cache.set(stepsCacheKey(current), result);
+        this.status = { state: "loaded", ...result };
         this.render();
       },
       (error: unknown) => {
@@ -276,7 +289,7 @@ export class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>,
     );
   }
 
-  private async fetchSteps(current: CurrentScenario): Promise<readonly StepRow[]> {
+  private async fetchSteps(current: CurrentScenario): Promise<StepsFetchResult> {
     const config = this.getConfig();
     const args = ["api", "steps", "--project", current.project, "--scenario", current.id];
     if (!config.buildBeforeRun) {
@@ -313,7 +326,7 @@ export class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>,
     if (!parsed || !Array.isArray(parsed.steps)) {
       throw new Error(t("workbench.stepsView.parseFailed"));
     }
-    return parsed.steps;
+    return { steps: parsed.steps, warnings: parsed.warnings ?? [] };
   }
 
   private render(): void {
@@ -337,6 +350,13 @@ export class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>,
         const item = new vscode.TreeItem(t("workbench.common.errorPrefix", { message: element.message }));
         item.tooltip = element.message;
         item.iconPath = new vscode.ThemeIcon("error");
+        return item;
+      }
+      case "warning": {
+        const item = new vscode.TreeItem(element.warning.label, vscode.TreeItemCollapsibleState.None);
+        item.tooltip = element.warning.tooltip;
+        item.iconPath = new vscode.ThemeIcon("warning");
+        item.contextValue = "fleetestStepsWarning";
         return item;
       }
       case "scene": {
@@ -382,11 +402,15 @@ export class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>,
       return [{ type: "error", message: this.status.message }];
     }
 
+    const warnings = buildWarningNodes(this.status.warnings);
     const scenes = buildStepTree(this.status.steps);
-    if (scenes.length === 0) {
+    if (scenes.length === 0 && warnings.length === 0) {
       return [{ type: "empty", message: t("workbench.stepsView.noSteps") }];
     }
-    return scenes.map((scene) => ({ type: "scene", scene }));
+    return [
+      ...warnings.map((warning): ViewNode => ({ type: "warning", warning })),
+      ...scenes.map((scene): ViewNode => ({ type: "scene", scene })),
+    ];
   }
 }
 

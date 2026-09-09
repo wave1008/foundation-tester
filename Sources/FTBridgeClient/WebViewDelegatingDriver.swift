@@ -59,7 +59,7 @@ public final class WebViewDelegatingDriver: AppDriver {
 
     public init(primary: AppDriver, delegated: AppDriver,
                 preActionWarmup: Bool =
-                    ProcessInfo.processInfo.environment["FT_PRE_ACTION_WARMUP"] != "0") {
+                    ProcessInfo.processInfo.environment[RunEnvironmentKeys.preActionWarmup] != "0") {
         self.preActionWarmup = preActionWarmup
         self.primary = primary
         self.delegated = delegated
@@ -211,7 +211,7 @@ public final class WebViewDelegatingDriver: AppDriver {
     /// 確率的に落ちる実測があり、安全な境界を引けない。機構(testmanagerd の何が冷えるのか)は
     /// 非公開で特定できておらず、この暖機は観測に立脚した防御
     /// 実行プロファイル iosPreActionWarmup(既定 true)。OFF は FT_PRE_ACTION_WARMUP=0 で届く
-    /// (注入は ProfileRunner / ApiRunCommand の2箇所)
+    /// (注入は唯一 `FTCore.RunEnvironment`)
     private let preActionWarmup: Bool
 
     private func warmDelegatedForEvent() async {

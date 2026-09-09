@@ -54,7 +54,7 @@ cwd(受け手パッケージ)とは別物です。
 | `ft_status` | 接続確認 — 宛先デバイスと、session のアプリが今も前面かを返す |
 | `ft_doctor` | FM(Foundation Models)可用性。使えないときは無効になる機能(自己修復・トリアージ・`screenLooksLike`・遮蔽チェック)を返す |
 | `ft_launch` / `ft_terminate` | アプリの起動・終了 |
-| `ft_install` | パッケージファイルからアプリをインストール(iOS: `.app` / Android: `.apk`) |
+| `ft_install` | パッケージファイルからアプリをインストール(iOS: `.app` / Android: `.apk` または分割バンドルの `.apks`) |
 | `ft_snapshot` | 画面要素一覧のスナップショット(圧縮された set-of-mark 形式)。`waitFor` でセレクタが出るまで待つ |
 | `ft_tap` / `ft_type` / `ft_swipe` / `ft_long_press` | 画面操作 — タップ・入力(`pressEnter: true` で入力後 Enter/IME まで撃つ)・スワイプ・長押し |
 | `ft_scroll_to` | セレクタが出るまでスクロールして、撮り直した要素一覧を返す。`scrollFrame:` には `scroll` 印の容器のセレクタのほか、**任意の要素の ref**(その frame を帯として使う。Compose のチップ列・カルーセル向け)も渡せる |
@@ -67,8 +67,8 @@ cwd(受け手パッケージ)とは別物です。
 | `ft_dsl_commands` | DSL コマンドの索引(名前と署名)。書く前に存在確認できる |
 | `ft_double_tap` / `ft_pinch` / `ft_drag` | ダブルタップ・ピンチ・任意方向のドラッグ |
 | `ft_screenshot` | 視覚確認用のスクリーンショット画像 |
-| `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(自動ビルド込み。コンパイルエラーはそのまま返る) |
-| `ft_dry_run` | デバイス不要の検証(セレクタの構文誤り・到達しない scene・アサーション無しの expectation・実在しない `#id`) |
+| `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(自動ビルド込み。コンパイルエラーはそのまま返る)。`id` にクラス名を渡すと `fleetest run` と同じく `@Deleted`/`@Draft` 以外の全本を順に流す。`profile:` は `port`/`serial`/`platform`/`udid` と併用できない。**`fleetest run` と違い、プロファイルの setup/teardown スクリプト・アプリの install/update・run 開始時の home・`results/` への記録は行わない**(フルの run は CLI で) |
+| `ft_dry_run` | デバイス不要の検証(セレクタの構文誤り・到達しない scene・アサーション無しの expectation・実在しない `#id`)。platform 宣言の無いシナリオは `platform:`(既定 ios)で `ios { } / android { }` の分岐と `#id` 台帳を選ぶ |
 | `ft_list_projects` | テストプロジェクトと実行プロファイルの一覧 |
 | `ft_draft_scenario` | 探索した操作列を Swift シナリオの下書きにして返す(ファイルには書かない) |
 | `ft_list_devices` / `ft_list_apps` / `ft_logs` | デバイス・アプリ・ログの棚卸し |

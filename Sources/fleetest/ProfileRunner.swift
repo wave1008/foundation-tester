@@ -156,15 +156,7 @@ enum ProfileRunner {
         // devices だけを変えるので resolved.fm も同じ値のまま(再計算しない)
         await Self.warnIfFMDegraded(fm: fm) { ConsoleOut.out($0) }
         let reportDir = reportDirOverride.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
-        if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
-        // 既定 ON なので OFF のときだけ注入する(WebViewDelegatingDriver.preActionWarmup 参照)
-        if !resolved.iosPreActionWarmup { setenv("FT_PRE_ACTION_WARMUP", "0", 1) }
-        // 未指定でも必ず書く(既定の "0" を明示し、前段の値を残さない)。環境変数側で
-        // 既に ON なら尊重する(`--set enableAnimations=true` と手動 export の上書き)
-        let animations = resolved.enableAnimations || AnimationPolicy.animationsEnabled()
-        setenv(AnimationPolicy.environmentKey, animations ? "1" : "0", 1)
-        // キルスイッチは既定 ON なので OFF のときだけ注入する(AdbInstallVerifier.bypassEnabled 参照)
-        if !resolved.playProtectBypass { setenv(AdbInstallVerifier.environmentKey, "0", 1) }
+        RunEnvironment.apply(resolved)
         let deviceList = resolved.devices
             .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
         ConsoleOut.out("🧩 Profile \(profileName): \(resolved.appName) @ \(resolved.machineName)")

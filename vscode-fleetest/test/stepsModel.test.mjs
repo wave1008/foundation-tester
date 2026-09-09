@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildStepTree } from "../src/stepsModel";
+import { buildStepTree, buildWarningNodes } from "../src/stepsModel";
 
 /** テスト用の StepRow を最小限の指定で組み立てるヘルパー。 */
 function step(overrides) {
@@ -67,6 +67,26 @@ test("description は comment を優先し、無ければ generatedComment、ど
 
 test("空の steps 配列では空配列を返す", () => {
   assert.deepEqual(buildStepTree([]), []);
+});
+
+test("buildWarningNodes は ApiSteps.warnings の各行を⚠️接頭辞込みのノードにする", () => {
+  const warnings = [
+    "⚠️ the expectation block of scene 1 (\"login\") contains no assertions (it checks nothing).",
+    "⚠️ `#foo`: no snapshot taken for this project contains this id (it may be misspelled).",
+  ];
+
+  const nodes = buildWarningNodes(warnings);
+
+  assert.equal(nodes.length, 2);
+  assert.equal(nodes[0].kind, "warning");
+  assert.equal(nodes[0].message, warnings[0]);
+  assert.equal(nodes[0].label, warnings[0]);
+  assert.equal(nodes[0].tooltip, `dry-run の警告\n${warnings[0]}`);
+  assert.equal(nodes[1].message, warnings[1]);
+});
+
+test("buildWarningNodes は空配列に空配列を返す", () => {
+  assert.deepEqual(buildWarningNodes([]), []);
 });
 
 test("scene の出現順序を保持する(シーン番号でソートし直さない)", () => {

@@ -145,7 +145,8 @@ FoundationModels はモデル型を2つ持ち、**`PrivateCloudComputeLanguageMo
 
 ```
 ┌─ macOS ホスト ────────────────────────────────────────────────────┐
-│  fleetest CLI / MCP サーバ / VSCode 拡張(共通で fleetest api を呼ぶ) │
+│  fleetest CLI / MCP サーバ / VSCode 拡張(拡張は fleetest api を呼ぶ。   │
+│  MCP サーバは FTCore/FTBridgeClient を直接リンクし fleetest api を経由しない) │
 │  ├─ FTFoundationModels        : FoundationModels エージェント層               │
 │  │   ├─ ReplayAssist      (ロケータ修復・画面検証・トリアージ)     │
 │  │   └─ OcclusionVerifier / FMDoctor / ScenarioNamer / TestbaseDrafter │
@@ -1022,11 +1023,19 @@ fleetest snapshot [--json] | tap | type | swipe | press | screenshot
   起動する経路は無い)。プロセスは常駐し、停止は `bridge down` か `devices down` を要する
 - **`run --profile` は終了時にブリッジを停止しない**(常駐を残すのが仕様。次の run が版一致なら再利用する。
   利用者向けのコマンドは README「コマンド一覧」)
+- **手動駆動プリミティブの宛先解決(ポート探索・serial の自動採用・版ズレの拒否 `--allow-version-skew`)は
+  MCP(ft_*)と同じ `FTBridgeClient.BridgeTargetResolution` / `FTAndroid.AndroidTargetResolution` を通す**
+  (判定は1箇所・文言は呼び手ごと)。ref の撮り直し照合・snapshot のキャッシュ回避・入力の読み返しといった
+  MCP 側の探索防御は CLI へ持ち込まない(1手ずつ確認する用途なので、2つ目の実装を作らない)
 - **`fleetest --version` と `fleetest api version` は用途が違う**: 前者は人間向け(revision + protocol 版の
   1行)、後者は従来どおりプロトコル版だけを JSON で返す機械可読な口(`ToolVersion.describe()` /
   `fleetestProtocolVersion`)
 
-CLI/MCP/VSCode 拡張はいずれも同じ `fleetest api ...` 系サブコマンドを経由して呼び出す共通実装(§11.4 参照)。
+VSCode 拡張は `fleetest api ...` 系サブコマンドを経由して呼び出す(§11.4 参照)。MCP サーバは
+`fleetest api` を経由せず FTCore / FTBridgeClient / FTAndroid を直接リンクする —— 共有できるのは
+これらのモジュールに置いた純粋ロジックだけで、`Sources/fleetest/` の型は MCP から見えない。
+**CLI と MCP で同じ判定を持たせたいときは FTCore 側へ置く**(`Sources/fleetest/` に書くと
+MCP には届かず、同じ処理の2つ目の実装が育つ)。
 
 ---
 

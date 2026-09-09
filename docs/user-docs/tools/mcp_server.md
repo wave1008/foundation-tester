@@ -55,7 +55,7 @@ these; naming a second device requires future calls to be explicit again.
 | `ft_status` | Connection check — reports the target device and whether the app session is still in the foreground |
 | `ft_doctor` | Foundation Models (FM) availability; when unavailable, lists which features are disabled (self-healing, triage, `screenLooksLike`, occlusion checks) |
 | `ft_launch` / `ft_terminate` | Launch or terminate the app |
-| `ft_install` | Install the app from a package file (`.app` on iOS, `.apk` on Android) |
+| `ft_install` | Install the app from a package file (`.app` on iOS, `.apk` or a split `.apks` bundle on Android) |
 | `ft_snapshot` | Element list snapshot (compressed, set-of-mark style); `waitFor` waits for a selector to appear |
 | `ft_tap` / `ft_type` / `ft_swipe` / `ft_long_press` | Screen operations — tap, type (`pressEnter: true` sends Enter/IME after typing), swipe, long press |
 | `ft_scroll_to` | Scroll a container until a selector appears, then return the refreshed element list. `scrollFrame:` takes the selector of a container marked `scroll`, or the **ref of any element** (its frame becomes the swipe area — for Compose chip rows and carousels) |
@@ -68,8 +68,8 @@ these; naming a second device requires future calls to be explicit again.
 | `ft_dsl_commands` | DSL command index (names and signatures), for checking a command exists before writing it |
 | `ft_double_tap` / `ft_pinch` / `ft_drag` | Double tap, pinch, and arbitrary-direction drag |
 | `ft_screenshot` | Screenshot image, for visual inspection |
-| `ft_list_scenarios` / `ft_run_scenario` | List scenarios / run one deterministically (auto-builds; compile errors are returned as-is) |
-| `ft_dry_run` | Device-free validation: selector syntax, unreachable scenes, assertion-less expectations, unknown `#id`s |
+| `ft_list_scenarios` / `ft_run_scenario` | List scenarios / run deterministically (auto-builds; compile errors are returned as-is). A class name as `id` runs every scenario of the class except `@Deleted`/`@Draft`, like `fleetest run`. `profile:` cannot be combined with `port`/`serial`/`platform`/`udid`. **Unlike `fleetest run` it does not run the profile's setup/teardown scripts, install or update the app, send the device home first, or record into `results/`** (use the CLI for a full run) |
+| `ft_dry_run` | Device-free validation: selector syntax, unreachable scenes, assertion-less expectations, unknown `#id`s. For a scenario that declares no platform, `platform:` (default ios) picks the `ios { } / android { }` branch and the `#id` ledger |
 | `ft_list_projects` | List test projects and their run profiles |
 | `ft_draft_scenario` | Turn a recorded exploration into a Swift scenario draft (not written to disk) |
 | `ft_list_devices` / `ft_list_apps` / `ft_logs` | Device / app / log inventory |
