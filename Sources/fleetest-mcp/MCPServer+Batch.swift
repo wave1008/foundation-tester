@@ -84,11 +84,15 @@ extension MCPServer {
             return (step, "select \"\(selector.text)\"")
         },
         "type": BatchStepBuilder(keys: ["selector", "text", "timeout", "replace"]) { raw in
-            guard let text = raw["text"] as? String, !text.isEmpty else {
-                throw MCPError("type requires text")
+            let replace = raw["replace"] as? Bool == true
+            // **空文字は replace: true のときだけ通す**: 欄を空にする形で、DSL の
+            // `type(_:_:replace:)` と `ft_type` が同じことをする(断ると「シナリオに書ける行が
+            // batch を通らない」になる)。replace 無しの空文字は何も起きないので断る
+            guard let text = raw["text"] as? String, !text.isEmpty || replace else {
+                throw MCPError("type requires text — to empty a field use clearInput,"
+                    + " or pass replace: true with an empty string")
             }
             let selector = optionalBatchSelector(raw)
-            let replace = raw["replace"] as? Bool == true
             var step = FlowStep(action: "type", locator: selector?.primary,
                                 fallbacks: selector.flatMap(batchFallbacks), text: text,
                                 timeout: raw["timeout"] as? Double)

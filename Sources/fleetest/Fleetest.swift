@@ -225,6 +225,9 @@ struct Doctor: AsyncParsableCommand {
         // doctor は「本当に使えるか」を答える場所なので実呼び出しで確認する
         let fm = await FMDoctor.checkLive()
         ConsoleOut.out(fm.available ? "✅ \(fm.detail)" : "❌ \(fm.detail)")
+        // **何が止まるかまで書く**(ft_doctor と同じ本文)。受け手向けドキュメントは FM の可否を
+        // この経路で確かめろと案内しているので、ここが黙ると「使えない」しか分からない
+        if !fm.available { ConsoleOut.out("   " + FMDoctor.unavailableImpact) }
         // **視覚系も実呼び出しで確かめる**。text と vision は独立に死ぬ(実測)ので、text が
         // 通ったことは occlusion-guard が生きている証拠にならない。ここを能力判定だけに
         // していた頃は、vision 全滅の機械で `--fm-only` が 0 を返し、その run の緑が

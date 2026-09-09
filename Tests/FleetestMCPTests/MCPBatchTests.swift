@@ -32,6 +32,31 @@ final class MCPBatchTests: XCTestCase {
         ["steps": dsl]
     }
 
+    // MARK: - 欄を空にする type(replace: true + 空文字)
+
+    /// **シナリオに書ける行は batch も通す**: `type("#field", "", replace: true)` は DSL でも
+    /// `ft_type` でも「欄を空にする」形。ここを断ると「通ったバッチはシナリオ行になる」の
+    /// 逆向きが成り立たない
+    func testEmptyTextWithReplaceEmptiesTheField() async throws {
+        let text = body(try await server.call(tool: "ft_batch",
+                                              args: steps("type '#login_btn' '' replace: true")))
+        XCTAssertTrue(text.contains("(replace)"), text)
+        XCTAssertFalse(text.contains("FAILED"), text)
+        XCTAssertTrue(driver.calls.contains { $0.hasPrefix("type(") }, "\(driver.calls)")
+    }
+
+    /// **replace 無しの空文字は断る**(何も起きない手なので、通すと黙って無駄な1手になる)。
+    /// 断り文は代わりに撃つものを名指しする
+    func testEmptyTextWithoutReplaceIsRefusedAndNamesClearInput() async {
+        do {
+            _ = try await server.call(tool: "ft_batch", args: steps("type '#field' ''"))
+            XCTFail("replace 無しの空文字が通った")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("clearInput"),
+                          error.localizedDescription)
+        }
+    }
+
     // MARK: - 座標タップ(2026-08-16 に解禁)
 
     /// **座標タップはバッチで通る**(DSL の `tap(x:y:)` へ 1:1 で書き出せる)。
