@@ -6,19 +6,24 @@ import XCTest
 /// 並べるとコンテキストを食うだけでなく「渡せば効く」と誤解させる。
 /// 逆に**デバイス系から漏れると MCP クライアントから送れない**ので、両方向を検査する。
 final class MCPServerToolDefinitionsTests: XCTestCase {
-    private static let requiredDeviceKeys: Set<String> = ["platform", "port", "serial", "profile", "project"]
+    private static let requiredDeviceKeys: Set<String> = [
+        "platform", "port", "serial", "profile", "project", "udid",
+    ]
 
     /// デバイスを掴まないツール(driver(_:) を呼ばない)と、そこで**意味を持つ**選択プロパティ。
     /// 空 = 1つも宣言してはいけない。増減したらここも直す。
-    /// ft_list_devices はプロファイルを読むだけ・ft_logs は adb とホストのファイルだけを見るので、
-    /// 宛先を絞る引数は要るが port/serial/profile の全部は要らない
+    /// ft_list_devices はプロファイルを読むだけなので profile 以外の宛先は要らない。
+    /// ft_logs は adb とホストのファイルだけを見るが、**実機の判別に port が要る**
+    /// (`.fleetest/bridge-<port>.device` の記録を引く。無いと実機を「クラッシュ無し」と誤答する)。
+    /// **udid は置かない** —— 入口の foldingUDIDIntoPort が稼働中ブリッジへ畳むので、ブリッジが
+    /// 死んだ後(このツールの出番)は「ブリッジが無い」で落ちる。記録は port でしか引けない
     private static let deviceFreeTools: [String: Set<String>] = [
         "ft_list_scenarios": [], "ft_dry_run": [], "ft_list_projects": [], "ft_doctor": [],
         "ft_dsl_commands": [],
         // 記録済みの操作列から下書きを組むだけ = デバイスに触らない
         "ft_draft_scenario": [],
         "ft_list_devices": ["platform", "profile"],
-        "ft_logs": ["platform", "serial"],
+        "ft_logs": ["platform", "serial", "port"],
     ]
 
     func testDeviceToolsDeclareDeviceSelectionProperties() {

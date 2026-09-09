@@ -35,7 +35,7 @@ extension MCPServer {
     // 足したくなったら serverInstructions 側へ(initialize で1回だけ渡る)
     static let udidProperty: [String: Any] = [
         "type": "string",
-        "description": "iOS simulator UDID to drive (as printed by ft_list_devices)",
+        "description": "iOS device UDID to drive — simulator or physical (as printed by ft_list_devices)",
     ]
     /// 操作系ツールの「結果の木も一緒に返す」スイッチ。**撮り直し不要と言い切る**(言わないと
     /// 読み手は木を受け取ったうえで習慣的に ft_snapshot を撃つ)
@@ -91,7 +91,7 @@ extension MCPServer {
     static let serverInstructions = """
         Common arguments accepted by every ft_* device tool: platform (default ios) / project / \
         profile (profiles/runs/<name>; same device and engine as ft_run_scenario) / \
-        udid (iOS simulator, as printed by ft_list_devices — resolved to the bridge running on \
+        udid (iOS simulator or physical device, as printed by ft_list_devices — resolved to the bridge running on \
         it; a device with no bridge cannot be driven and says so; if port is also given the two \
         must agree) / serial (Android device) / port (iOS bridge port; default: the running \
         bridge. An in-app bridge answers only while the app it is injected into is frontmost — \
@@ -188,11 +188,16 @@ extension MCPServer {
         tool("ft_logs", "Read why the app died. iOS returns the crash report summary and the .ips "
             + "path for a simulator — there is no runtime log on iOS, so a running app yields "
             + "nothing here; Android returns recent logcat lines. It never goes through the bridge, "
-            + "so it still answers after a crash took the bridge with it", [
+            + "so it still answers after a crash took the bridge with it. A physical iPhone keeps "
+            + "its crash reports on the device — pass port (the bridge port it had, even if that "
+            + "bridge is gone now) or have driven it earlier in this session, so the tool can say "
+            + "so instead of reporting no crash", [
             "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android). "
                 + "Defaults to the bundle ID of the last ft_launch"],
             "platform": platformProperty,
             "serial": serialProperty,
+            "port": ["type": "integer", "description": "iOS bridge port the device had — read "
+                + "without contacting it, so it works after the bridge died"],
             "lines": ["type": "integer", "description": "Android: how many recent lines to return (default 100)"],
             "sinceSeconds": ["type": "integer", "description": "How far back to look (default 300)"],
             "all": ["type": "boolean", "description": "Android: read the main buffer too, not just crashes"],

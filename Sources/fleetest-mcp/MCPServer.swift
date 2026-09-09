@@ -205,7 +205,8 @@ final class MCPServer {
         switch method {
         case "initialize":
             reply(id: id, result: [
-                "protocolVersion": (message["params"] as? [String: Any])?["protocolVersion"] ?? "2024-11-05",
+                "protocolVersion": Self.negotiatedProtocolVersion(
+                    requested: (message["params"] as? [String: Any])?["protocolVersion"] as? String),
                 "capabilities": ["tools": [String: Any]()],
                 "serverInfo": ["name": "fleetest", "version": "0.1.0"],
                 "instructions": Self.serverInstructions,
@@ -234,6 +235,18 @@ final class MCPServer {
         default:
             reply(id: id, error: ["code": -32601, "message": "method not found: \(method)"])
         }
+    }
+
+    /// このサーバが実装している MCP の版。**2025-03-26 は入れない** —— その版は JSON-RPC バッチの
+    /// 受信を必須にするが、parseMessage は配列を捨てる(バッチを送るクライアントが永久に待つ)。
+    /// 2025-06-18 はバッチを廃止し、tools だけのサーバに追加の必須事項は無い
+    static let supportedProtocolVersions = ["2024-11-05", "2025-06-18"]
+
+    /// 版交渉: 対応している版の要求はその版、それ以外(未対応・未指定)は自分の最新を返す。
+    /// 要求をそのまま echo しない(対応していない版の必須事項まで名乗ることになる)
+    static func negotiatedProtocolVersion(requested: String?) -> String {
+        if let requested, supportedProtocolVersions.contains(requested) { return requested }
+        return supportedProtocolVersions.last!
     }
 
     private func reply(id: Any?, result: [String: Any]) {

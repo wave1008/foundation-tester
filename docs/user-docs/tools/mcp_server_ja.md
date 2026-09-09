@@ -39,9 +39,10 @@ cwd(受け手パッケージ)とは別物です。
 | `platform` | `ios`(既定)または `android` |
 | `project` | テストプロジェクト名 |
 | `profile` | 実行プロファイル名(`profiles/runs/<name>`)。`ft_run_scenario` と同じデバイス・エンジンで動く |
-| `udid` | iOS シミュレータの UDID(`ft_list_devices` で取得) |
+| `udid` | iOS デバイスの UDID(シミュレータ・実機とも。`ft_list_devices` で取得) |
 | `serial` | Android デバイスのシリアル番号 |
 | `port` | iOS ブリッジのポート(既定: 起動中のブリッジ) |
+| `allowVersionSkew` | ブリッジのプロトコル版がツールと合わなくても操作する(既定 off = 拒否。押し通した応答には毎回警告が付く) |
 
 一度いずれかの呼び出しでデバイスを明示すると、以降これらを省略した呼び出しにも記憶が使われます。
 別のデバイスを一度でも明示すると、以降は再び明示が必要になります。

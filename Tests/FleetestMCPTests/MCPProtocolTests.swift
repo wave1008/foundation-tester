@@ -47,21 +47,40 @@ final class MCPProtocolTests: XCTestCase {
 
     // MARK: - メソッド
 
-    func testInitializeEchoesRequestedProtocolVersionAndAnnouncesTools() async throws {
+    func testInitializeAcceptsASupportedProtocolVersionAndAnnouncesTools() async throws {
         await send(["jsonrpc": "2.0", "id": 1, "method": "initialize",
                     "params": ["protocolVersion": "2025-06-18"]])
         let result = try XCTUnwrap(sent.first?["result"] as? [String: Any])
         XCTAssertEqual(result["protocolVersion"] as? String, "2025-06-18",
-                       "クライアントが要求した版をそのまま返すこと")
+                       "対応している版を要求されたらその版を返すこと")
         let capabilities = try XCTUnwrap(result["capabilities"] as? [String: Any])
         XCTAssertNotNil(capabilities["tools"], "tools capability を名乗らないとツールが呼ばれない")
         XCTAssertEqual((result["serverInfo"] as? [String: Any])?["name"] as? String, "fleetest")
     }
 
-    func testInitializeFallsBackToDefaultProtocolVersion() async throws {
+    /// 要求された版に対応していないときは**自分が対応する版**を返す(MCP の版交渉の規則)。
+    /// 要求をそのまま echo すると、その版が必須にする挙動(2025-03-26 の JSON-RPC バッチ受信)を
+    /// 名乗ったうえで parseMessage が配列を捨てる = バッチを送るクライアントが永久に待つ
+    func testInitializeAnswersAnUnsupportedVersionWithItsOwnLatest() async throws {
+        for requested in ["2025-03-26", "2099-01-01", "garbage"] {
+            sent = []
+            await send(["jsonrpc": "2.0", "id": 1, "method": "initialize",
+                        "params": ["protocolVersion": requested]])
+            let result = try XCTUnwrap(sent.first?["result"] as? [String: Any])
+            XCTAssertEqual(result["protocolVersion"] as? String, "2025-06-18",
+                           "要求 \(requested) を echo してはいけない")
+        }
+    }
+
+    func testInitializeWithoutAVersionAnswersTheLatestSupported() async throws {
         await send(["jsonrpc": "2.0", "id": 1, "method": "initialize"])
         let result = try XCTUnwrap(sent.first?["result"] as? [String: Any])
-        XCTAssertEqual(result["protocolVersion"] as? String, "2024-11-05")
+        XCTAssertEqual(result["protocolVersion"] as? String, "2025-06-18")
+    }
+
+    /// 対応版の集合は**リテラルで固定**する(2025-03-26 を足すにはバッチ受信の実装が要る)
+    func testSupportedProtocolVersionsArePinned() {
+        XCTAssertEqual(MCPServer.supportedProtocolVersions, ["2024-11-05", "2025-06-18"])
     }
 
     func testPingRepliesEmptyResult() async throws {

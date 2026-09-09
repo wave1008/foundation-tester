@@ -512,10 +512,9 @@ extension MCPServer {
     /// (deviceFromMemoryKey 付き)は port/udid を持っていても**明示扱いしない** —— さもないと
     /// この直後の iosMemoryAfterResolve が「利用者が選んだ」として記憶を上書きし、ポート再利用で
     /// 別デバイスに化けたときに記憶が黙って乗り換わる。
-    /// **`profile:` も名指しとして数える**(実機監査 2026-08-13): 実機のブリッジは `/status` に
-    /// udid を載せないため udid/port で指せず、`profile:` が実機を指す唯一の現実的な手段。
-    /// ここが profile を見ないと、実機を使うセッションは2台目を触っても曖昧さガードに数えられず
-    /// 省略呼び出しが黙って別の機(仮想デバイス側)へ流れる
+    /// **`profile:` も名指しとして数える**: profile で実機を指すセッションは udid/port を
+    /// 一度も渡さないので、ここが profile を見ないと2台目を触っても曖昧さガードに数えられず
+    /// 省略呼び出しが黙って別の機(仮想デバイス側)へ流れる(実機監査 2026-08-13 で実際に踏んだ)
     static func recordsIOSMemory(_ args: [String: Any]) -> Bool {
         (argsGaveIOSTarget(args) || args["profile"] is String) && !injectedFromMemory(args)
     }

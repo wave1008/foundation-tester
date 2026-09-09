@@ -40,9 +40,10 @@ Every device tool accepts the same targeting arguments:
 | `platform` | `ios` (default) or `android` |
 | `project` | Test project name |
 | `profile` | Run profile name (`profiles/runs/<name>`) — drives the same device and engine as `ft_run_scenario` |
-| `udid` | iOS simulator UDID (from `ft_list_devices`) |
+| `udid` | iOS device UDID — simulator or physical (from `ft_list_devices`) |
 | `serial` | Android device serial |
 | `port` | iOS bridge port (default: whichever bridge is already running) |
+| `allowVersionSkew` | Operate even when the bridge's protocol version does not match the tool's (default off = refused; every response that went through carries a warning) |
 
 Once a call names a device explicitly, the server remembers it for later calls that omit all of
 these; naming a second device requires future calls to be explicit again.
