@@ -564,6 +564,14 @@ public final class StepExecutor {
         self.occlusionOCRMode = occlusionOCRMode
         self.occlusionGuardEnabled = occlusionGuardEnabled
         self.screenLooksLikeEnabled = screenLooksLikeEnabled
+        // **ガードに入った時ではなく、ここで**暖機を始める(2026-09-10)。Vision のモデルの初回
+        // ロードはプロセスに1回・実測 25〜108 秒で、ガードの中から呼ぶと**最初にガードへ入った
+        // 1ステップがそれを丸ごと払う**(実測: そのステップだけ 36〜108 秒・以降は 100〜300ms)。
+        // 撃つのは**この executor の既定でガードが効くとき**だけ ——
+        // ガードが一度も撃たれない run に Vision を読ませない(prewarmIfNeeded の doc)
+        if occlusionGuardEnabled, occlusionGuard {
+            RegionText.prewarmIfNeeded(mode: occlusionOCRMode)
+        }
     }
 
     /// cached: ヒールキャッシュ由来のロケータ連鎖。fingerprint: 前回このロケータが解決できた

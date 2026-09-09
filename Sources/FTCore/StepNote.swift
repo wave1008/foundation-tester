@@ -194,9 +194,15 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// a11y ツリー直列化が伸びる形の先行指標)
     case slowSnapshot = "slow-snapshot"
 
+    /// occlusion-guard の OCR 段(FM を省くための近道)が予算内に返らず、FM へ落ちた。
+    /// **判定は変えない** —— 読めなかったのと同じ扱い。率が上がったら Vision のモデルが
+    /// 載っていない(プロセス初回)か、Vision 自体が劣化している(`RegionText.occlusionBudget`)
+    case ocrBudgetExhausted = "ocr-budget-exhausted"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
+        case .ocrBudgetExhausted: return "the OCR shortcut ran out of budget (asked FM instead)"
         case .settleCapped: return "the screen did not settle (poll limit)"
         case .heldValue: return "from the grabbed value"
         case .scrollFrameMissing: return "the scrollFrame did not resolve, so the search stopped early"

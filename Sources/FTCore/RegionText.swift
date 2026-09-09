@@ -137,6 +137,44 @@ public enum RegionText {
         return last.map { (false, $0) }
     }
 
+    /// **近道が本道より遅くなったら本道へ落ちる**ための予算つき入口。
+    ///
+    /// OCR 段は FM の照合(実測 1.3〜2.8 秒)を省くためだけの近道なので、それより高くつくなら
+    /// 存在意義が無い。**予算は置き換える相手の下限 1.3 秒** —— 調整値ではなく「近道であること」の
+    /// 定義。尽きたら `.budgetExhausted` を返し、呼び手は従来の「読めなかった」と同じく FM へ落とす
+    /// (判定は変えない。読めなかったことを反転の根拠にしない契約は resolve の doc と同じ)。
+    ///
+    /// **走っている OCR は止めない** —— Vision のモデルの初回ロードは**プロセスに1回**なので、
+    /// ここで止めると次のステップもまた予算を使い切る。放っておけばそのまま暖機として効き、
+    /// 2 回目以降は 40〜130ms で返る(実測 2026-09-10: 予算を入れる前は最初にガードへ入った
+    /// 1ステップだけが 36〜108 秒を払い、以降は 100〜300ms だった)
+    public enum BudgetedReading: Sendable {
+        case read(readable: Bool, reading: Reading)
+        case unreadable
+        case budgetExhausted
+    }
+
+    /// FM の照合の実測下限。**この時間を超えたら OCR は近道ではない**(単位: 実時間)
+    public static let occlusionBudget: Duration = .milliseconds(1300)
+
+    public static func resolveWithinBudget(expected: String, pngData: Data,
+                                           frame: FTRect, screen: FTRect,
+                                           cropPadding: CGFloat = 24,
+                                           languages: [String]? = nil,
+                                           budget: Duration = RegionText.occlusionBudget)
+        async -> BudgetedReading {
+        // 諦めても走っている読みを止めない理由は TaskBudget の冒頭
+        let outcome = await TaskBudget.run(budget) {
+            await resolve(expected: expected, pngData: pngData, frame: frame, screen: screen,
+                          cropPadding: cropPadding, languages: languages)
+        }
+        switch outcome {
+        case .exhausted: return .budgetExhausted
+        case .value(nil): return .unreadable
+        case .value(let r?): return .read(readable: r.readable, reading: r.reading)
+        }
+    }
+
     /// frame(pt)領域を OcclusionCrop.rect で切り出して Vision で読む。
     /// nil = 画像不正 / crop が作れない(退化 frame・画面外)/ OCR が失敗。
     /// `lines` は各 observation の topCandidates(1) を Vision が返した順に並べたもの。

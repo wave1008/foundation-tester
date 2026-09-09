@@ -165,11 +165,18 @@ extension StepExecutor {
             // おらず、初回ロードを踏むとステップの締め切りがここで丸ごと消える
             let ocrStart = clock.now
             RegionText.prewarmIfNeeded(mode: occlusionOCRMode)
-            let resolved = await RegionText.resolve(expected: expectedText, pngData: screenshot,
-                                                    frame: element.frame, screen: screen)
+            switch await RegionText.resolveWithinBudget(expected: expectedText, pngData: screenshot,
+                                                        frame: element.frame, screen: screen) {
+            case .read(let readable, let reading):
+                ocrReading = reading
+                ocrReadable = readable
+            case .unreadable:
+                break
+            case .budgetExhausted:
+                // 近道が本道より高くついた。**黙らない** —— 率が上がれば Vision の劣化が分かる
+                noteCodesThisStep.insert(.ocrBudgetExhausted)
+            }
             phase.guardMs += Self.ms(clock.now - ocrStart)
-            ocrReading = resolved?.reading
-            ocrReadable = resolved?.readable ?? false
             if occlusionOCRMode == .on, ocrReadable {
                 return nil
             }
