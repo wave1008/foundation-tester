@@ -6,6 +6,11 @@
 // kill するだけなので誤判定の実害が無い(生存判定として使っていない):
 //   - Sources/FTCore/ScenarioHost.swift
 //   - Sources/FTCore/IOSSimulatorVideoRecorder.swift
+//
+// **走査は Tests/ にも掛ける**(実害 2026-09-10): テストが `kill(pid, 0)` で死亡を判定しており、
+// 親が reap する前のゾンビを「生きている」と読んでフル `swift test` で落ちた
+// (BridgeLauncherPidReuseTests。単独では reap が間に合って緑だったので気づけなかった)。
+// テスト側の例外は「ゾンビが kill(0) に応えることそのものを確かめる witness」だけ。
 
 import Foundation
 import XCTest
@@ -15,6 +20,10 @@ final class ProcessLivenessSourceScanTests: XCTestCase {
     private static let exempt: Set<String> = [
         "Sources/FTCore/ScenarioHost.swift",
         "Sources/FTCore/IOSSimulatorVideoRecorder.swift",
+        // ゾンビが kill(0) に応えること自体の witness(この形を確かめるのが目的のテスト)
+        "Tests/FTCoreTests/ProcessLivenessTests.swift",
+        // 走査そのもの(失敗メッセージにこの呼び出し形を書いてある)
+        "Tests/FTCoreTests/ProcessLivenessSourceScanTests.swift",
     ]
 
     /// `kill(<式>, 0)` の呼び出し形(第2引数がリテラル 0 のシグナル送信 = 生存確認のみに使う形)。
@@ -35,8 +44,12 @@ final class ProcessLivenessSourceScanTests: XCTestCase {
     }
 
     private static func scan() -> [Hit] {
+        Self.scan(directory: "Sources") + Self.scan(directory: "Tests")
+    }
+
+    private static func scan(directory: String) -> [Hit] {
         let root = repoRoot
-        let sourcesRoot = root.appendingPathComponent("Sources")
+        let sourcesRoot = root.appendingPathComponent(directory)
         guard let walker = FileManager.default.enumerator(
             at: sourcesRoot, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])
         else { return [] }
@@ -45,7 +58,7 @@ final class ProcessLivenessSourceScanTests: XCTestCase {
             let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
             if isDirectory { continue }
             guard url.pathExtension == "swift" else { continue }
-            let relative = "Sources" + url.path.dropFirst(sourcesRoot.path.count)
+            let relative = directory + url.path.dropFirst(sourcesRoot.path.count)
             guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
             for (index, substring) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
                 let line = String(substring)
@@ -62,6 +75,12 @@ final class ProcessLivenessSourceScanTests: XCTestCase {
     }
 
     private static let hits: [Hit] = scan()
+
+    /// 走査が Tests/ にも届いていることの確認(片方だけ見て緑になる型を塞ぐ)
+    func testScanReachesBothSourcesAndTests() {
+        XCTAssertTrue(Self.hits.contains { $0.file.hasPrefix("Sources/") }, "Sources を読めていない")
+        XCTAssertTrue(Self.hits.contains { $0.file.hasPrefix("Tests/") }, "Tests を読めていない")
+    }
 
     func testKillWithSignalZeroOnlyAppearsInTheExemptedFiles() {
         let offenders = Self.hits.filter { !Self.exempt.contains($0.file) }

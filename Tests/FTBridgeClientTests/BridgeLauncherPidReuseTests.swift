@@ -4,6 +4,7 @@
 // BridgeLauncher.isOurRunner(pid:port:) でコマンドラインを確認し、一致しなければ撃たず
 // stale な pid ファイルだけ片付ける。
 
+import FTCore
 import XCTest
 @testable import FTBridgeClient
 
@@ -31,6 +32,17 @@ final class BridgeLauncherPidReuseTests: XCTestCase {
 
     // MARK: - stop() / stopAndWait(): pid が生きているが自分たちのランナーでないとき撃たない
 
+    /// 死ぬまで待つ(**壁時計の閾値で合否を決めない** —— 「死んだ」という事象そのものを待つ)。
+    /// 期限は「負荷で遅れても十分」な上限で、通常は数十 ms で返る
+    private func waitUntilNotAlive(_ pid: Int32, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if !ProcessLiveness.isAlive(pid) { return true }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        return !ProcessLiveness.isAlive(pid)
+    }
+
     private func makeRepoRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("ft-pidreuse-\(UUID().uuidString)")
@@ -54,8 +66,10 @@ final class BridgeLauncherPidReuseTests: XCTestCase {
 
         try launcher.stop()
 
-        XCTAssertEqual(kill(proc.processIdentifier, 0), 0,
-                       "無関係プロセスを撃ってはいけない(PID 再利用の実害)")
+        // **生死の判定は ProcessLiveness**(`kill(pid, 0)` はゾンビにも成功するので、撃たれた
+        // 直後の未 reap を「生きている」と誤って読む = 撃ってしまっても緑になる)
+        XCTAssertTrue(ProcessLiveness.isAlive(proc.processIdentifier),
+                      "無関係プロセスを撃ってはいけない(PID 再利用の実害)")
         XCTAssertFalse(FileManager.default.fileExists(atPath: launcher.pidPath.path),
                        "stale な pid ファイルは片付けること")
     }
@@ -79,8 +93,10 @@ final class BridgeLauncherPidReuseTests: XCTestCase {
             XCTAssertEqual(notRunningPort, 8189 as UInt16?)
         }
 
-        XCTAssertEqual(kill(proc.processIdentifier, 0), 0,
-                       "無関係プロセスを撃ってはいけない(PID 再利用の実害)")
+        // **生死の判定は ProcessLiveness**(`kill(pid, 0)` はゾンビにも成功するので、撃たれた
+        // 直後の未 reap を「生きている」と誤って読む = 撃ってしまっても緑になる)
+        XCTAssertTrue(ProcessLiveness.isAlive(proc.processIdentifier),
+                      "無関係プロセスを撃ってはいけない(PID 再利用の実害)")
         XCTAssertFalse(FileManager.default.fileExists(atPath: launcher.pidPath.path),
                        "stale な pid ファイルは片付けること")
     }
@@ -103,8 +119,12 @@ final class BridgeLauncherPidReuseTests: XCTestCase {
         try String(pid).write(to: launcher.pidPath, atomically: true, encoding: .utf8)
 
         try launcher.stop()
-        BridgeLauncher.confirmDeaths(pids: [pid], timeout: 5)
-        XCTAssertNotEqual(kill(pid, 0), 0, "自分たちのランナーは従来どおり止まること")
+        // **`confirmDeaths` は使わない** —— 残っていれば自分で SIGKILL するので、stop() が撃てて
+        // いなくてもこの陽性対照が緑になる。**判定も `kill(pid, 0)` では行わない**(ゾンビにも
+        // 成功するため、親が reap する前は「生きている」と読む —— 2026-09-10 のフル
+        // `swift test` はこれで落ちた。単独では reap が間に合って通っていた)
+        XCTAssertTrue(waitUntilNotAlive(pid, timeout: 10),
+                      "自分たちのランナーは従来どおり止まること")
         process.waitUntilExit()
     }
 }

@@ -2,6 +2,7 @@
 // 消す(即削除すると assignPort がポートを空きと誤認し bindFailed(48) を招く)ことを、実プロセス
 // (/bin/sleep)を立てて検証する。
 
+import FTCore
 import XCTest
 @testable import FTBridgeClient
 
@@ -37,7 +38,10 @@ final class BridgeLauncherStopTests: XCTestCase {
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: pidPath.path),
                        "死亡確認を経て pid ファイルが削除される")
-        XCTAssertNotEqual(kill(pid, 0), 0, "プロセスは死亡している")
+        // **生死の判定は ProcessLiveness**(`kill(pid, 0)` はゾンビにも成功するので、親が reap
+        // する前は「生きている」と読む = 負荷で揺れる。同型で 2026-09-10 に
+        // BridgeLauncherPidReuseTests が落ちた)
+        XCTAssertFalse(ProcessLiveness.isAlive(pid), "プロセスは死亡している")
         proc.waitUntilExit()
     }
 
