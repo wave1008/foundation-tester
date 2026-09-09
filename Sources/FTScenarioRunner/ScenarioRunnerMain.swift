@@ -25,11 +25,36 @@ struct Root: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "fleetest-scenarios",
         abstract: "List and run Swift DSL scenarios (the runner invoked by fleetest run)",
-        subcommands: [ListScenarios.self, RunScenario.self]
+        subcommands: [ListScenarios.self, RunScenario.self, WarmOCR.self]
     )
 }
 
 // MARK: - list
+
+/// Vision の認識器のコンパイルキャッシュを**このプロセス名で**コミットさせる(ホストが run の
+/// 開始時に背景で起こす。理由と実測は `RegionText.commitCompileCache`)。結果は JSON 1 行
+struct WarmOCR: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "warm-ocr",
+        abstract: "Warm the on-device text recognizer so later scenario processes start fast")
+
+    func run() async throws {
+        // 機械で同時に 1 本(OCRWarmupLock の冒頭)。取れなければ別の暖機が走っているので何もしない
+        guard let lock = OCRWarmupLock.tryAcquire(processName: ProcessInfo.processInfo.processName) else {
+            ConsoleOut.out(#"{"warmups":[],"skipped":"another warm-ocr is running"}"#)
+            return
+        }
+        defer { try? lock.close() }
+        let results = await RegionText.commitCompileCache()
+        let rows = results.map { r -> [String: Any] in
+            ["languages": r.languages, "ms": r.ms, "lines": r.lines, "error": r.error ?? ""]
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: ["warmups": rows]),
+           let line = String(data: data, encoding: .utf8) {
+            ConsoleOut.out(line)
+        }
+    }
+}
 
 struct ListScenarios: AsyncParsableCommand {
     static let configuration = CommandConfiguration(

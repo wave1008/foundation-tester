@@ -4,6 +4,7 @@
 // **ただしガードが効かない run では撃たない** —— 使いもしない Vision を読ませない。
 
 import Foundation
+import CoreML
 import XCTest
 @testable import FTCore
 
@@ -174,5 +175,28 @@ final class OCRHangSamplingGateTests: XCTestCase {
         XCTAssertFalse(w.hasReturned)
         w.markReturned()
         XCTAssertTrue(w.hasReturned)
+    }
+}
+
+/// 認識器を載せる装置の選び方(`RegionText.pickNonNeuralEngine` / `computeChoice`)。
+/// **ANE を選ばない**のが要点 —— 最初の実 crop で ANE 向けコンパイル(21.8 秒)を払う
+final class OCRComputeDeviceChoiceTests: XCTestCase {
+    func testAvoidsNeuralEngineByDefaultAndOnlyOptsBackInExplicitly() {
+        XCTAssertEqual(RegionText.computeChoice(environment: [:]), .avoidNeuralEngine)
+        XCTAssertEqual(RegionText.computeChoice(environment: ["FT_OCR_COMPUTE": "cpu"]), .avoidNeuralEngine)
+        XCTAssertEqual(RegionText.computeChoice(environment: ["FT_OCR_COMPUTE": "default"]), .visionDefault)
+    }
+    func testPrefersCPUThenGPUAndNeverNeuralEngine() {
+        let all = MLComputeDevice.allComputeDevices
+        let cpu = all.first { if case .cpu = $0 { return true } else { return false } }
+        let gpu = all.first { if case .gpu = $0 { return true } else { return false } }
+        let ane = all.first { if case .neuralEngine = $0 { return true } else { return false } }
+        if let cpu, let gpu, let ane {
+            XCTAssertEqual(RegionText.pickNonNeuralEngine([ane, gpu, cpu]), cpu, "CPU があるのに選んでいない")
+            XCTAssertEqual(RegionText.pickNonNeuralEngine([ane, gpu]), gpu, "CPU が無いときは GPU")
+            XCTAssertNil(RegionText.pickNonNeuralEngine([ane]), "ANE しか無いなら既定に任せる(ANE を自分で選ばない)")
+        } else {
+            XCTAssertNil(RegionText.pickNonNeuralEngine([]))
+        }
     }
 }

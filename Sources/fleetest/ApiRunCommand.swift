@@ -559,7 +559,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             try ScenarioHost.build(project: testProject) { logStderr($0) }
         }
 
-        let all = try ScenarioHost.list(project: testProject)
+        let all = try ScenarioHost.listForRun(project: testProject, dryRun: dryRun)
         guard !all.isEmpty else {
             throw ValidationError(
                 "no scenarios (add a @TestClass under TestProjects/\(testProject.name)/scenarios/)")

@@ -77,7 +77,8 @@ enum DeviceMachineRunner {
 
         // 割り当てを決めるにはシナリオ一覧が要る(--split と同じ理由でローカルで1回ビルドする)
         try ScenarioHost.build(project: project, log: { FleetRunner.log($0) })
-        let all = try ScenarioHost.list(project: project)
+        // 機械分担の run に dry-run は無い(dry-run は手元の run 経路で先に畳まれる)
+        let all = try ScenarioHost.listForRun(project: project, dryRun: false)
         guard !all.isEmpty else {
             throw ValidationError(
                 "no scenarios (add a @TestClass under TestProjects/\(project.name)/scenarios/)")

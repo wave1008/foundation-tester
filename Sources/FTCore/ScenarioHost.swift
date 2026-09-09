@@ -219,6 +219,55 @@ public enum ScenarioHost {
     }
 
     /// シナリオ一覧を取得する
+    /// occlusion-guard の OCR 近道が使う Vision の認識器を、**シナリオ実行バイナリと同じプロセス名**で
+    /// 1回撃ち切ってコンパイルキャッシュをコミットさせる(理由と実測は `RegionText.commitCompileCache`)。
+    /// **待たない** —— デバイス供給と並行して走らせる(コールドで 20〜45 秒 × 2 言語集合。
+    /// 暖まっていれば 0.5 秒)。最初の数本のシナリオは間に合わないことがあるが、以後は全部速い。
+    /// OCR の殺しスイッチが効いている run では起こさない(使わない Vision を読ませない)。
+    /// 失敗は握りつぶす(暖機であって合否に関わらない)。**起こすのは `listForRun` だけ**
+    /// (dry-run / MCP / codegen の一覧取得(`list`)では起こさない。`OCRWarmupWiringTests`)
+    static func warmOCRCache(project: TestProject) {
+        guard RegionText.mode(environment: ProcessInfo.processInfo.environment) != .off else { return }
+        // **1 プロセスにつき 1 回**。複数の機械に跨る profile は同じ親の中で run 経路を 3 回通る
+        // (実測: warm-ocr が 3 本同時に走った)。同じキャッシュを 3 本が競ってコンパイルするだけ
+        warmupLock.lock()
+        let already = warmupStarted
+        warmupStarted = true
+        warmupLock.unlock()
+        guard !already else { return }
+        guard let runner = try? runnerURL(project: project) else { return }
+        let process = Process()
+        process.executableURL = runner
+        process.arguments = ["warm-ocr"]
+        // **親の死で巻き込まない**(`FT_PARENT_PID` を渡さない = ParentDeathWatch を武装しない)。
+        // 1 シナリオだけの短い run(約 30 秒)では親が先に終わるが、暖機はコールドで 20〜45 秒 × 2 で、
+        // 親と一緒に死ぬとコンパイルがコミットされず、次の run もまたゼロから払う(この暖機が
+        // 直そうとしている当のもの)。自分で終わる有限(≤ 約 1.5 分)の子なので孤児の心配は無い。
+        // 拡張の孤児掃除も `FT_PARENT_PID` の印を持つものだけを殺すので巻き込まれない
+        var env = ProcessInfo.processInfo.environment
+        if env["DEVELOPER_DIR"] == nil, let dir = resolvedDeveloperDir { env["DEVELOPER_DIR"] = dir }
+        process.environment = env
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        process.qualityOfService = .utility
+        try? process.run()
+    }
+
+    /// **シナリオを実際に走らせる経路**の一覧取得。`list` に加えて認識器の暖機を背景で起こす
+    /// (`warmOCRCache`)。一覧だけ要る経路(dry-run / MCP / codegen)は `list` を使う ——
+    /// 使わない Vision を読ませない。呼び出し元の集合は `OCRWarmupWiringTests` が等号で固定
+    /// `dryRun` の run では起こさない —— ステップを実行しないので OCR も走らず、しかも暖機は親の死を
+    /// 生き延びる子(下の doc)なので、dry-run を使う終了テスト(`CrossLayerTerminationTests`)が
+    /// 「子孫が残った」と正しく落とす
+    public static func listForRun(project: TestProject, dryRun: Bool) throws -> [ScenarioInfo] {
+        let all = try list(project: project)
+        if !dryRun { warmOCRCache(project: project) }
+        return all
+    }
+
+    private static let warmupLock = NSLock()
+    private static var warmupStarted = false
+
     public static func list(project: TestProject) throws -> [ScenarioInfo] {
         let runner = try runnerURL(project: project)
         let result = try Shell.run([runner.path, "list", "--json"])

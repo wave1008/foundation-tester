@@ -1182,7 +1182,7 @@ struct RunScenarios: AsyncParsableCommand {
             try ScenarioHost.build(project: testProject)
         }
         PhaseLog.mark("build")
-        let all = try ScenarioHost.list(project: testProject)
+        let all = try ScenarioHost.listForRun(project: testProject, dryRun: dryRun)
         PhaseLog.mark("scenario-list")
         guard !all.isEmpty else {
             throw ValidationError(

@@ -11,6 +11,7 @@
 import CoreGraphics
 import CoreText
 import Foundation
+import CoreML
 import ImageIO
 import Vision
 
@@ -60,20 +61,85 @@ public enum RegionText {
     private static var prewarmRequests = 0
 
     private static let prewarmOnce: Void = {
-        // **.utility にしない**: この暖機は「近道を撃ってよいか」(shouldTakeShortcut)の門を
-        // 開ける側なので、8 レーンで飽和した協調スレッドプールで後回しにされると、その間ずっと
-        // 近道が撃たれず全ステップが FM(p50 3.3 秒)へ落ちる
-        Task.detached(priority: .userInitiated) {
+        // **専用スレッド**(協調スレッドプールに載せない): 下の flock はブロックする。
+        // 別の暖機(`warm-ocr`)がコンパイル中ならその完了を待ってから読む —— 待たずに自分でも
+        // コンパイルすると 8 レーンぶんが同じモデルを同時に焼いて CPU を奪い合い、自分の分は
+        // プロセスが先に死んでコミットされない(OCRWarmupLock の冒頭)
+        let thread = Thread {
+            let lock = OCRWarmupLock.acquire(processName: ProcessInfo.processInfo.processName)
+            defer { try? lock?.close() }
             // 空の画像では認識器が言語モデルまで読み込まないことがあるので、文字を描いて読ませる
-            guard let image = renderedProbe() else { return }
-            let read = try? await recognize(image, languages: defaultLanguages)
+            guard let image = renderedProbe() else { recordPrewarmOutcome(lines: nil, error: "no probe image"); return }
+            let started = Date()
+            let done = DispatchSemaphore(value: 0)
+            let box = ProbeBox()
+            Task.detached(priority: .userInitiated) {
+                do { box.set(try await recognize(image, languages: defaultLanguages), nil) }
+                catch { box.set(nil, "\(error)") }
+                done.signal()
+            }
+            done.wait()
+            let (read, failure) = box.get()
+            recordPrewarmOutcome(lines: read, error: failure, ms: Int(Date().timeIntervalSince(started) * 1000))
             guard warmedUp(probe: read) else { return }
-            warmLock.lock(); warm = true; warmLock.unlock()
+            markWarm()
         }
+        thread.name = "fleetest-ocr-prewarm"
+        thread.qualityOfService = .userInitiated
+        thread.start()
     }()
+
+    private final class ProbeBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var lines: [String]?
+        private var error: String?
+        func set(_ l: [String]?, _ e: String?) { lock.lock(); lines = l; error = e; lock.unlock() }
+        func get() -> ([String]?, String?) { lock.lock(); defer { lock.unlock() }; return (lines, error) }
+    }
 
     private static let warmLock = NSLock()
     private static var warm = false
+    /// 同期関数に閉じ込める(async 文脈で lock/unlock を直に書くと Swift 6 で診断が出る)
+    private static func markWarm() { warmLock.lock(); warm = true; warmLock.unlock() }
+
+    /// **コンパイル結果をキャッシュへコミットさせる**ための暖機(待つ版)。
+    ///
+    /// Espresso(Vision の認識器の実体)のコンパイルキャッシュは**プロセス名ごと**
+    /// (`~/Library/Caches/<プロセス名>/com.apple.e5rt.e5bundlecache`)で、コンパイル
+    /// (コールドで 20〜45 秒)が**そのプロセスの生存中に終わったときだけ**コミットされる。
+    /// シナリオ実行プロセス(1シナリオ=1プロセス・20〜60 秒)は終わる前に死んで `.tmp` を残すだけで、
+    /// 次のプロセスがまたゼロから払っていた(実測 2026-09-10: E2E-CMP で完了 1 / 放置 53)。
+    /// 鍵は**プロセス名とバイナリの素性の両方**(別名にコピーしてもコールド・作り直してもコールド。
+    /// 同一ソースの再ビルドは決定的で同じバイナリになるため、そこでは暖まったままに見える)。
+    /// つまり保守者はコミットのたびに SUT ごと 1 回払い直す(背景・供給と並行)。受け手は導入ごとに 1 回。
+    /// だから **同じプロセス名の、待てるプロセス**(`fleetest-scenarios-<project> warm-ocr`)で
+    /// 1回撃ち切る。以後そのプロセス名の初回読みは 160〜290ms になる。
+    /// 読ませる言語集合は `languages(for:)` が返しうる2つ(モデルが別で、別々にコンパイルされる)
+    public static let warmupLanguageSets: [[String]] = [["en-US"], defaultLanguages]
+
+    public struct WarmupResult: Sendable {
+        public let languages: [String]
+        public let ms: Int
+        public let lines: [String]
+        public let error: String?
+    }
+
+    public static func commitCompileCache() async -> [WarmupResult] {
+        guard let image = renderedProbe() else { return [] }
+        var results: [WarmupResult] = []
+        for languages in warmupLanguageSets {
+            let started = Date()
+            do {
+                let lines = try await recognize(image, languages: languages)
+                results.append(WarmupResult(languages: languages, ms: Int(Date().timeIntervalSince(started) * 1000),
+                                            lines: lines, error: nil))
+            } catch {
+                results.append(WarmupResult(languages: languages, ms: Int(Date().timeIntervalSince(started) * 1000),
+                                            lines: [], error: "\(error)"))
+            }
+        }
+        return results
+    }
 
     /// Vision のモデルが載って**実際に読めた**か。載っていない間に近道(OCR)を撃つと、
     /// ステップごとに予算(`occlusionBudget`)を丸ごと捨てることになる
@@ -237,6 +303,20 @@ public enum RegionText {
         var hasReturned: Bool { lock.lock(); defer { lock.unlock() }; return returned }
     }
 
+    /// 暖機の探りの顛末(FT_OCR_HANG_SAMPLE=1 のとき)。**warm にならない理由**はここにしか出ない
+    static func recordPrewarmOutcome(lines: [String]?, error: String?, ms: Int = 0) {
+        guard hangSamplingEnabled(environment: ProcessInfo.processInfo.environment) else { return }
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".fleetest/ocr-late", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let pid = ProcessInfo.processInfo.processIdentifier
+        let entry: [String: Any] = ["pid": pid, "prewarm": true, "ms": ms,
+                                    "lines": lines ?? [], "error": error ?? "", "warm": warmedUp(probe: lines)]
+        if let data = try? JSONSerialization.data(withJSONObject: entry) {
+            try? data.write(to: dir.appendingPathComponent("prewarm-\(pid).json"))
+        }
+    }
+
     static func recordLateFinish(ms: Int, attempts: Int, pixels: Int, readable: Bool, expected: String) {
         guard hangSamplingEnabled(environment: ProcessInfo.processInfo.environment) else { return }
         let dir = FileManager.default.homeDirectoryForCurrentUser
@@ -354,6 +434,28 @@ public enum RegionText {
     /// 版(revision)は指定しない —— **OS が既定に選んだものを使う**。固定すると新しい OS で
     /// 改善された認識器を使えなくなる。版が動いたときの検出は実 crop の固定コーパス
     /// (`Tests/Fixtures/OcclusionCrops/`・段ごとの読み取りを等号で固定)が担う。
+    /// 認識器を載せる計算装置。**既定は ANE を避ける**(CPU 優先・次に GPU)。
+    ///
+    /// **これは初回 20〜45 秒の原因ではない** —— あれは Espresso のコンパイルキャッシュがプロセス名
+    /// ごとで、シナリオ実行プロセスがコミットする前に死んでいたため(`commitCompileCache` の doc。
+    /// 装置を CPU にしてもコンパイルは同じだけ走る = 3 秒時点のスタックで確認)。
+    /// ANE を避ける理由は実行時のほう: 定常の所要は CPU/GPU/ANE で同じ(実測 100〜160ms)で、
+    /// ANE は FM フラップ(fm-flap)と同じ部品なので、判定の近道をそこに依存させない。
+    /// 装置を変えると読みが変わる(固定コーパス: selected-row40 の ja+en ×3 は ANE では読めて CPU では
+    /// 読めない。production の言語規則の経路は両装置で同じ)。
+    /// `FT_OCR_COMPUTE=default` は Vision の既定(ANE 込み)へ戻す**計測用の口**
+    public enum ComputeChoice: Equatable { case avoidNeuralEngine, visionDefault }
+
+    public static func computeChoice(environment: [String: String]) -> ComputeChoice {
+        environment["FT_OCR_COMPUTE"] == "default" ? .visionDefault : .avoidNeuralEngine
+    }
+
+    /// 候補から ANE 以外を選ぶ(CPU 優先・次に GPU)。無ければ nil = Vision の既定に任せる。純粋関数
+    static func pickNonNeuralEngine(_ candidates: [MLComputeDevice]) -> MLComputeDevice? {
+        if let cpu = candidates.first(where: { if case .cpu = $0 { return true } else { return false } }) { return cpu }
+        return candidates.first(where: { if case .gpu = $0 { return true } else { return false } })
+    }
+
     private static func recognize(_ image: CGImage, languages: [String]) async throws -> [String] {
         var request = RecognizeTextRequest()
         // 実測 p50 33ms なので速度のために fast へ落とさない(欠けを取りこぼすほうが高くつく)。
@@ -361,6 +463,13 @@ public enum RegionText {
         // 欠けを推測で埋めさせない(言語補正は「読めた」の意味を弱める)。
         request.usesLanguageCorrection = false
         request.recognitionLanguages = languages.map { Locale.Language(identifier: $0) }
+        if computeChoice(environment: ProcessInfo.processInfo.environment) == .avoidNeuralEngine {
+            for (stage, candidates) in request.supportedComputeStageDevices {
+                if let device = pickNonNeuralEngine(candidates) {
+                    request.setComputeDevice(device, for: stage)
+                }
+            }
+        }
         return try await request.perform(on: image).compactMap { $0.topCandidates(1).first?.string }
     }
 
