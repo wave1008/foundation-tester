@@ -1638,8 +1638,12 @@ private enum MonitorError: Error, LocalizedError {
             return "no bridge port and no capturable device id"
                 + " (a physical device without a bridge, or an unresolved Android serial)"
         case .simctlScreenshotFailed(let udid):
+            // **事実だけ言う**(2026-09-09): 以前は「a test run is probably driving it」と書いており、
+            // run が始まる2分前(一括起動の最中)の失敗にも同じ推測を断定していた。混んでいる理由は
+            // ここからは分からない —— 起こりうる原因だけを候補として並べる
             return "`simctl io screenshot` failed or did not return within 15 s (\(udid))."
-                + " The simulator is busy — a test run is probably driving it"
+                + " Something else is holding the simulator (a run, a bulk start/stop, or a stuck"
+                + " simctl); the connection is kept and the next cycle retries"
         case .adbNotFound:
             return "adb not found (set ANDROID_HOME)"
         case .androidScreencapFailed(let serial):

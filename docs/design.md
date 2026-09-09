@@ -4032,6 +4032,19 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     出さない**(ユーザー指示 2026-09-09)—— 実行中はツールバーを畳むので押せず、押せない
     文言だけが出ていた。中断の口は「テストを中断」1つ(`refreshBulkButtons` の `upCancelMode` は
     `testRunActive` の間 false)
+  - **run 開始時の home は XCUITest ブリッジへ撃つ**(実害 2026-09-09。
+    `ProfileWorkerFactory.systemUIClient`): `RunWorker.driver` は in-app ブリッジ宛の BridgeClient で、
+    in-app には `/home` のルートが無い。hybrid(既定 `iosInappEngine: true`)でもそのまま撃っていたため
+    **18 台すべてで 0/N = homeOnStart が一度も効いていなかった**(黒画面の予防措置。2026-08-11 の実測が
+    根拠)。しかもログは「inapp 固定の台だけができない」と誤って説明していた。宛先の決定は
+    `systemUIClient` の1箇所に寄せ、残存アラートの警告(`warnOnResidualSystemAlerts`)と共有する
+  - **一括起動/停止の最中はブリッジ無応答を数えない**(実害 2026-09-09。
+    `monitorBridgeWatchdog`): 供給中の台(10 秒後に ready)へ「booted が5回連続したためブリッジ
+    無応答とみなします」を出していた。修復は既存の門で止まっていたので実害は誤検知の警告だけだが、
+    **検知は誤検知0が条件**なので `inRun` と同じく streak ごと 0 に戻す
+  - **モニターの撮影失敗は事実だけ言う**(2026-09-09): `simctl io screenshot` の期限切れに
+    「a test run is probably driving it」と断定していたが、run の2分前(一括起動中)の失敗にも
+    同じ推測が出ていた。原因は候補として並べる(run / 一括起動 / 刺さった simctl)
   - **ワーカーの表示名は machine 込み**(`vscode-fleetest/src/runLaneModel.ts` の
     `workerDisplayLabel`): TEST RESULTS の行頭は worker 名だけを出しており、同名のデバイスが
     別の機械にも居る実行(実測: performance-android は M1Max と M1Ultra の両方に

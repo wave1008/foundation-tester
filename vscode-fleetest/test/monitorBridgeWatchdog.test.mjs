@@ -90,20 +90,24 @@ test("connected 観測後、booted が連続5回で unresponsive を post+log �
   assert.deepEqual(h.jobs, []);
 });
 
-test("ライフサイクルキューが busy(一括down 等)なら閾値到達でも修復 up を積まない", () => {
+test("ライフサイクルキューが busy(一括起動/停止)の間は数えない・宣言しない", () => {
   const h = createHarness({ queueBusy: true });
   h.watchdog.observe([device("Sim1", "connected")]);
   for (let i = 0; i < 5; i += 1) {
     h.watchdog.observe([device("Sim1", "booted")]);
   }
-  // 無応答検知(unresponsive)はするが、キュー busy 中は修復 up を enqueue しない
-  // (停止処理中の booted を無応答と誤検知して停止デバイスを再起動する競合を防ぐ)。
-  assert.ok(h.posts.some((p) => p.phase === "unresponsive"));
+  // 供給中の booted は「まだ起動しきっていない」だけ(実害 2026-09-09: 10秒後に xcuitest bridge
+  // ready になる台へ「ブリッジ無応答」を出していた)。inRun と同じく streak ごと 0 に戻す。
+  assert.deepEqual(h.posts, [], "busy 中は unresponsive を宣言しない");
+  assert.deepEqual(h.logs, [], "誤検知の警告を出さない");
   assert.deepEqual(h.jobs, [], "busy 中は start-device を積まない");
 
-  // busy が解ければ次の booted 観測で修復 up を積む
+  // busy が解けてから数え直す(閾値に届いて初めて検知し、同じ観測で修復を積む)
   h.setQueueBusy(false);
-  h.watchdog.observe([device("Sim1", "booted")]);
+  for (let i = 0; i < 5; i += 1) {
+    h.watchdog.observe([device("Sim1", "booted")]);
+  }
+  assert.ok(h.posts.some((p) => p.phase === "unresponsive"));
   assert.deepEqual(h.jobs, [{ kind: "device", name: "Sim1", op: "up" }]);
 });
 

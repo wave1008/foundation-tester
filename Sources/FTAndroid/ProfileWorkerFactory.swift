@@ -50,9 +50,10 @@ public enum ProfileWorkerFactory {
     /// 戻った)。この状態は本物の凍結と受動観測では見分けが付かないので、**先に1回入力を入れて
     /// 描画を動かしておく**。デバイスあたり1回なので実行時間への影響はほぼ無い。
     ///
-    /// `engine=inapp` 単独のデバイスだけは撃てない(in-app ドライバは自プロセス外を操作できず 501)。
-    /// **実行プロファイルからは到達しない構成**なので代替は用意しない —— `iosInappEngine` は
-    /// true→hybrid / false→xcuitest のどちらかで、両方とも home() が通る。
+    /// **iOS は `systemUIClient` 経由で撃つ**(実害 2026-09-09): `RunWorker.driver` は in-app
+    /// ブリッジ宛の BridgeClient で、in-app には `/home` のルートが無い。hybrid でもそのまま撃つと
+    /// 必ず失敗し、実測で 18 台すべてが 0/N だった(= この予防措置が一度も効いていなかった)。
+    /// XCUITest ブリッジを持たない台(engine=inapp 単独)だけが撃てない。
     ///
     /// **結果は正直に出す**: 最初の実装は `try?` で握り潰して台数だけログしており、
     /// **1台も撃てていないのに成功したように見えていた**。
@@ -61,7 +62,8 @@ public enum ProfileWorkerFactory {
         guard enabled, !workers.isEmpty else { return }
         let results = await withTaskGroup(of: Bool.self, returning: [Bool].self) { group in
             for worker in workers {
-                group.addTask { (try? await worker.driver.home()) != nil }
+                let driver: AppDriver = systemUIClient(for: worker) ?? worker.driver
+                group.addTask { (try? await driver.home()) != nil }
             }
             var out: [Bool] = []
             for await ok in group { out.append(ok) }
@@ -72,8 +74,8 @@ public enum ProfileWorkerFactory {
             log("🏠 pressed home on \(done) device(s) (homeOnStart)")
         } else {
             log("🏠 pressed home on \(done)/\(results.count) device(s) (homeOnStart)"
-                + " — the rest do not support it (an iOS device pinned to engine=inapp cannot press"
-                + " home; hybrid and xcuitest can)")
+                + " — the rest could not be reached (an iOS device with no XCUITest bridge cannot"
+                + " press home; the in-app bridge has no /home route)")
         }
     }
 
@@ -92,28 +94,37 @@ public enum ProfileWorkerFactory {
     /// (in-app ブリッジは注入先アプリのプロセスしか見えない = 「アラートが無い」と誤って言える)。
     /// 固定費は iOS ワーカーあたり snapshot 1枚で、全台並行に撃つ。
     /// **失敗は握りつぶす** —— これは診断であって run を止める理由にはしない
+    /// **アプリの外(SpringBoard)を触れる driver**。in-app ブリッジは注入先アプリしか見えず
+    /// `/home` のルートも持たないので、hybrid でも必ず XCUITest ブリッジ側へ回す
+    /// (`RunWorker.driver` は in-app ブリッジ宛なので、そのまま使うと 0/N になる。実害 2026-09-09:
+    /// homeOnStart が hybrid の全台で不発だったのに「inapp 固定の台だけができない」と説明していた)。
+    /// iOS 以外・XCUITest ブリッジを持たない台は nil(呼び手は黙って飛ばす)。
+    /// 使い手は pressHomeOnStart と warnOnResidualSystemAlerts の2つ。
+    static func systemUIClient(for worker: RunWorker) -> BridgeClient? {
+        guard worker.platform == "ios" else { return nil }
+        let host = worker.connection.host ?? BridgeEndpoint.loopbackHost
+        // 実機/シミュレータの UDID はここで分かっているので渡し切る
+        // (PhysicalUDIDPlumbingTests の規律。渡さないと実機が名前引きの simctl 経路へ落ちる)
+        let physicalUDID = worker.connection.physical ? worker.connection.udid : nil
+        let simulatorUDID = worker.connection.physical ? nil : worker.connection.udid
+        if let xcuiPort = worker.connection.xcuiPort {
+            return BridgeClient(port: xcuiPort, host: host,
+                                physicalUDID: physicalUDID, simulatorUDID: simulatorUDID)
+        }
+        let engine = worker.connection.engine
+        guard engine == nil || engine == "xcuitest", let port = worker.connection.port else {
+            return nil
+        }
+        return BridgeClient(port: port, host: host,
+                            physicalUDID: physicalUDID, simulatorUDID: simulatorUDID)
+    }
+
     public static func warnOnResidualSystemAlerts(
         _ workers: [RunWorker], log: @escaping @Sendable (String) -> Void
     ) async {
         let targets: [(String, BridgeClient)] = workers.compactMap { worker in
-            guard worker.platform == "ios" else { return nil }
-            let host = worker.connection.host ?? BridgeEndpoint.loopbackHost
-            // 実機/シミュレータの UDID はここで分かっているので渡し切る
-            // (PhysicalUDIDPlumbingTests の規律。渡さないと実機が名前引きの simctl 経路へ落ちる)
-            let physicalUDID = worker.connection.physical ? worker.connection.udid : nil
-            let simulatorUDID = worker.connection.physical ? nil : worker.connection.udid
-            if let xcuiPort = worker.connection.xcuiPort {
-                return (worker.label, BridgeClient(port: xcuiPort, host: host,
-                                                   physicalUDID: physicalUDID,
-                                                   simulatorUDID: simulatorUDID))
-            }
-            let engine = worker.connection.engine
-            guard engine == nil || engine == "xcuitest", let port = worker.connection.port else {
-                return nil
-            }
-            return (worker.label, BridgeClient(port: port, host: host,
-                                               physicalUDID: physicalUDID,
-                                               simulatorUDID: simulatorUDID))
+            guard let client = systemUIClient(for: worker) else { return nil }
+            return (worker.label, client)
         }
         guard !targets.isEmpty else { return }
         await withTaskGroup(of: String?.self) { group in
