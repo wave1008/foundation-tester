@@ -50,18 +50,29 @@ public enum ProfileWorkerFactory {
     /// 戻った)。この状態は本物の凍結と受動観測では見分けが付かないので、**先に1回入力を入れて
     /// 描画を動かしておく**。デバイスあたり1回なので実行時間への影響はほぼ無い。
     ///
-    /// **iOS は `systemUIClient` 経由で撃つ**(実害 2026-09-09): `RunWorker.driver` は in-app
-    /// ブリッジ宛の BridgeClient で、in-app には `/home` のルートが無い。hybrid でもそのまま撃つと
-    /// 必ず失敗し、実測で 18 台すべてが 0/N だった(= この予防措置が一度も効いていなかった)。
-    /// XCUITest ブリッジを持たない台(engine=inapp 単独)だけが撃てない。
+    /// **in-app ブリッジを持つ台には撃たない**(実測 2026-09-09、3機18台)。`home` はアプリを背面へ
+    /// 送るが、**in-app ブリッジはそのアプリの中に居る**ので背面に回った瞬間に無応答になる ——
+    /// 供給が「壊れたブリッジ」と見て停止・張り直しに入り、3機で13台がワーカーから脱落した
+    /// (シナリオの結果は緑のままだが手元の run が 50s → 136s)。engine=inapp/hybrid は黙って飛ばす。
+    ///
+    /// 撃てる台(xcuitest 単独の iOS・Android)は `systemUIClient` 経由で XCUITest ブリッジへ回す
+    /// —— `RunWorker.driver` は in-app ブリッジ宛のことがあり、in-app に `/home` のルートは無い。
     ///
     /// **結果は正直に出す**: 最初の実装は `try?` で握り潰して台数だけログしており、
     /// **1台も撃てていないのに成功したように見えていた**。
     public static func pressHomeOnStart(_ workers: [RunWorker], enabled: Bool,
                                         log: @escaping @Sendable (String) -> Void) async {
         guard enabled, !workers.isEmpty else { return }
+        let plan = homeOnStartPlan(workers)
+        let skippedNote = plan.skipped.isEmpty ? ""
+            : " — skipped \(plan.skipped.count) device(s) with an in-app bridge"
+                + " (home would send the app to the background and the bridge lives inside it)"
+        guard !plan.targets.isEmpty else {
+            log("🏠 pressed home on 0 device(s) (homeOnStart)\(skippedNote)")
+            return
+        }
         let results = await withTaskGroup(of: Bool.self, returning: [Bool].self) { group in
-            for worker in workers {
+            for worker in plan.targets {
                 let driver: AppDriver = systemUIClient(for: worker) ?? worker.driver
                 group.addTask { (try? await driver.home()) != nil }
             }
@@ -71,12 +82,30 @@ public enum ProfileWorkerFactory {
         }
         let done = results.filter { $0 }.count
         if done == results.count {
-            log("🏠 pressed home on \(done) device(s) (homeOnStart)")
+            log("🏠 pressed home on \(done) device(s) (homeOnStart)\(skippedNote)")
         } else {
-            log("🏠 pressed home on \(done)/\(results.count) device(s) (homeOnStart)"
-                + " — the rest could not be reached (an iOS device with no XCUITest bridge cannot"
-                + " press home; the in-app bridge has no /home route)")
+            log("🏠 pressed home on \(done)/\(results.count) device(s) (homeOnStart)\(skippedNote)"
+                + " — the rest could not be reached")
         }
+    }
+
+    /// `pressHomeOnStart` の対象と除外。**デバイス不要の純粋関数**(規則はここだけ・テストが直接叩く)。
+    /// 除外は「in-app ブリッジを持つ台」だけ —— 判定は engine で行い、xcuiPort の有無では**決めない**
+    /// (hybrid は両方のブリッジを持つので、xcuiPort があっても撃つとアプリが背面に落ちる)。
+    static func homeOnStartPlan(
+        _ workers: [RunWorker]
+    ) -> (targets: [RunWorker], skipped: [RunWorker]) {
+        var targets: [RunWorker] = []
+        var skipped: [RunWorker] = []
+        for worker in workers {
+            let engine = worker.connection.engine
+            if engine == "inapp" || engine == "hybrid" {
+                skipped.append(worker)
+            } else {
+                targets.append(worker)
+            }
+        }
+        return (targets, skipped)
     }
 
     /// run 開始時のデバイス準備を**1箇所に束ねる**。iOS ワーカーの供給口は3つあり、

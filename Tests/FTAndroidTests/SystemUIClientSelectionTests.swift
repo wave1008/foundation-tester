@@ -12,6 +12,36 @@ import FTCore
 
 final class SystemUIClientSelectionTests: XCTestCase {
 
+    // MARK: - homeOnStart の対象
+
+    /// **in-app ブリッジを持つ台には撃たない**(実測 2026-09-09): home でアプリが背面に回ると
+    /// in-app ブリッジが無応答になり、供給が壊れたブリッジと見て張り直す(3機で13台が脱落)。
+    /// hybrid は xcuiPort も持つので、**xcuiPort の有無で判定してはいけない**。
+    func testHybridAndInappAreSkippedEvenWhenTheyHaveAnXcuitestBridge() {
+        let hybrid = worker(platform: "ios",
+                            connection: DriverConnection(platform: "ios", port: 8131, engine: "hybrid",
+                                                         udid: "U1", xcuiPort: 8123))
+        let inapp = worker(platform: "ios",
+                           connection: DriverConnection(platform: "ios", port: 8132, engine: "inapp",
+                                                        udid: "U2"))
+        let plan = ProfileWorkerFactory.homeOnStartPlan([hybrid, inapp])
+        XCTAssertTrue(plan.targets.isEmpty)
+        XCTAssertEqual(plan.skipped.count, 2)
+    }
+
+    /// xcuitest 単独の iOS と Android は撃つ(engine を宣言しない台も従来どおり対象)
+    func testXcuitestAndAndroidStayTargets() {
+        let xcuitest = worker(platform: "ios",
+                              connection: DriverConnection(platform: "ios", port: 8123, udid: "U1"))
+        let android = worker(platform: "android",
+                             connection: DriverConnection(platform: "android", port: 8200,
+                                                          serial: "emulator-5554"))
+        let plan = ProfileWorkerFactory.homeOnStartPlan([xcuitest, android])
+        XCTAssertEqual(plan.targets.count, 2)
+        XCTAssertTrue(plan.skipped.isEmpty)
+    }
+
+
     private final class NullDriver: AppDriver, @unchecked Sendable {
         func screenshot() async throws -> Data { Data() }
         func status() async throws -> StatusResponse {

@@ -4032,12 +4032,18 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     出さない**(ユーザー指示 2026-09-09)—— 実行中はツールバーを畳むので押せず、押せない
     文言だけが出ていた。中断の口は「テストを中断」1つ(`refreshBulkButtons` の `upCancelMode` は
     `testRunActive` の間 false)
-  - **run 開始時の home は XCUITest ブリッジへ撃つ**(実害 2026-09-09。
-    `ProfileWorkerFactory.systemUIClient`): `RunWorker.driver` は in-app ブリッジ宛の BridgeClient で、
-    in-app には `/home` のルートが無い。hybrid(既定 `iosInappEngine: true`)でもそのまま撃っていたため
-    **18 台すべてで 0/N = homeOnStart が一度も効いていなかった**(黒画面の予防措置。2026-08-11 の実測が
-    根拠)。しかもログは「inapp 固定の台だけができない」と誤って説明していた。宛先の決定は
-    `systemUIClient` の1箇所に寄せ、残存アラートの警告(`warnOnResidualSystemAlerts`)と共有する
+  - **run 開始時の home は in-app ブリッジを持つ台には撃たない**(実測 2026-09-09。
+    `ProfileWorkerFactory.homeOnStartPlan`): 発端は「`RunWorker.driver` が in-app ブリッジ宛で
+    `/home` のルートが無く、hybrid でも 18 台すべてが 0/N = homeOnStart が一度も効いていなかった」
+    (黒画面の予防措置。2026-08-11 の実測が根拠)。XCUITest ブリッジ側へ回して**効くようにしたら
+    退行した** —— home はアプリを背面へ送り、in-app ブリッジは**そのアプリの中に居る**ので
+    無応答になる。供給が壊れたブリッジと見て停止・張り直しに入り、**3機で13台がワーカーから脱落**
+    (結果は緑のままだが手元の run が 50s → 136s)。よって engine=inapp/hybrid は対象外にし、
+    撃てる台(xcuitest 単独・Android)だけ `systemUIClient` 経由で XCUITest ブリッジへ回す。
+    **判定は engine で行う**(hybrid は xcuiPort も持つので、xcuiPort の有無で決めると同じ穴に落ちる)。
+    宛先の決定自体は `systemUIClient` の1箇所で、残存アラートの警告(`warnOnResidualSystemAlerts`)と共有。
+    **hybrid で黒画面の予防を復活させるなら「home → アプリを再前面化」が要る**(未検証。
+    現状は既定エンジンで予防が効かないままだが、2026-08-11 以降その実害の報告は無い)
   - **一括起動/停止の最中はブリッジ無応答を数えない**(実害 2026-09-09。
     `monitorBridgeWatchdog`): 供給中の台(10 秒後に ready)へ「booted が5回連続したためブリッジ
     無応答とみなします」を出していた。修復は既存の門で止まっていたので実害は誤検知の警告だけだが、
