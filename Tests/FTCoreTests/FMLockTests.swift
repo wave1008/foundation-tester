@@ -8,6 +8,21 @@ import XCTest
 
 final class FMLockTests: XCTestCase {
 
+    /// **本番の枠に触らない**: 枠のロックファイルは `~/Library/Caches/fleetest/fm.lock.<slot>` で
+    /// 機械の全 fleetest プロセスと共有される。素のまま検証すると、走っている run から枠を
+    /// 奪う/奪われるため、`acquire(timeoutSeconds: 1)` が負荷で落ちる(2026-09-10 のフル
+    /// `swift test` で2回。単独では緑)。テストごとに専用のディレクトリを指す
+    private var lockDir: URL!
+
+    override func setUp() {
+        super.setUp()
+        lockDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fm-lock-test-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: lockDir, withIntermediateDirectories: true)
+        FMLock.lockDirectoryForTesting = lockDir
+        FMLock.resetForTesting()
+    }
+
     /// 殺しスイッチが立っているときは排他しないのが正しい挙動なので、排他の検証は飛ばす
     private func requireSerializationEnabled() throws {
         if !FMLock.isEnabled { throw XCTSkip("FT_FM_SERIALIZE=0 では排他しない") }
@@ -18,7 +33,9 @@ final class FMLockTests: XCTestCase {
         // 何本掴んでいたか分からないので、余分に release() する(無害。何も持っていなければ no-op)
         for _ in 0..<20 { FMLock.release() }
         FMLock.concurrencyForTesting = nil
+        FMLock.lockDirectoryForTesting = nil
         FMLock.resetForTesting()
+        if let lockDir { try? FileManager.default.removeItem(at: lockDir) }
         super.tearDown()
     }
 

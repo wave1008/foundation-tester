@@ -22,8 +22,16 @@ final class FMGateWaitWiringTests: XCTestCase {
     private var savedLivenessEnv: String?
     private var usageDir: URL!
     private var savedUsageEnv: String?
+    /// **本番の枠に触らない**(FMLockTests と同じ理由): 枠のロックファイルは機械の全 fleetest
+    /// プロセスと共有されるので、走っている run から枠を奪う/奪われると検証が負荷で揺れる
+    private var lockDir: URL!
 
     override func setUpWithError() throws {
+        lockDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("FMGateWaitWiringTests-lock-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: lockDir, withIntermediateDirectories: true)
+        FMLock.lockDirectoryForTesting = lockDir
+        FMLock.resetForTesting()
         livenessDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("FMGateWaitWiringTests-liveness-\(UUID().uuidString)")
         savedLivenessEnv = ProcessInfo.processInfo.environment["FT_FM_LIVENESS_DIR"]
@@ -43,7 +51,9 @@ final class FMGateWaitWiringTests: XCTestCase {
         try? FileManager.default.removeItem(at: usageDir)
         FMGate.leave()
         FMLock.concurrencyForTesting = nil
+        FMLock.lockDirectoryForTesting = nil
         FMLock.resetForTesting()
+        if let lockDir { try? FileManager.default.removeItem(at: lockDir) }
     }
 
     /// 1本目が門を保持している間に入った2本目は、**保持時間ぶんの待ちを記録する**。

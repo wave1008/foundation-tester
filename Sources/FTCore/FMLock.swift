@@ -90,7 +90,18 @@ public enum FMLock {
     private static var heldSlots: [Int] = []
     private static var cachedFDs: [Int32]?
 
+    /// テストだけが使う置き場の差し替え口。**枠は機械で共有する資源**なので、素のままだと
+    /// `swift test` が**走っている本物の run から枠を奪い/奪われる** —— 実際 2026-09-10 の
+    /// フル `swift test` で `acquire(timeoutSeconds: 1)` が2回落ちた(単独では緑)。
+    /// テストは自分専用のディレクトリを指し、本番の枠に触れないこと(台帳の
+    /// `LedgerWriteRole` と同じ「テストは本番の資源に触らない」規律)。
+    /// 差し替えたら `resetForTesting()` も呼ぶこと(fd キャッシュを作り直させる)
+    static var lockDirectoryForTesting: URL?
+
     private static func lockURL(slot: Int) -> URL {
+        if let lockDirectoryForTesting {
+            return lockDirectoryForTesting.appendingPathComponent("fm.lock.\(slot)")
+        }
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
         return base.appendingPathComponent("fleetest", isDirectory: true)

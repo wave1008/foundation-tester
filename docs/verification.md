@@ -405,7 +405,7 @@ production とテストの両方が新しいキーになっているか**を見�
   同型の危険は `.fleetest/` の台帳書き込み・`DiagnosticReports` の走査・simctl/adb を呼ぶテスト。
   **並列を初めて通したときは数回まわす**(今回は 6 連続で緑を確認してから既定にした)
 - **共有資源に触るテストの方針は2段**: **①隔離できるなら隔離**(差し替え口を production に
-  持たせ、テストは一時パスを使う。`FMBreaker` がこの型)/ **②隔離できないホストの実体**
+  持たせ、テストは一時パスを使う。`FMBreaker` と `FMLock` がこの型)/ **②隔離できないホストの実体**
   (simctl・adb・起動中の Simulator/Emulator・固定パス)は `Sources/FTTestSupport/SharedResource.swift`
   の `SharedResource.<key>.locked { }` で資源キーごとにファイルロック(flock)して直列化する
   (①が使えないときの下位の手段。クラス単位の直列化は採らない)。
@@ -414,6 +414,14 @@ production とテストの両方が新しいキーになっているか**を見�
   相互デッドロックする。検出はせず呼び出し側の規律)。**プロセス死で自動解放される**のが flock を
   選んだ理由(存在チェック方式のロックファイルだとテストが落ちた回に残留し、以降が全部止まる)。
   `XCTSkipUnless` によるスキップ判定は必ずロックの外に置く(既定の実行でロックを取らない)
+- **`SharedResource` は「同じ資源に触る他のテスト」しか止められない**(実害 2026-09-10):
+  `FMLock` の枠は `~/Library/Caches/fleetest/fm.lock.<slot>` で**機械の全 fleetest プロセスと
+  共有**するので、`swift test` の最中に**走っている run から枠を奪う/奪われる**。フル
+  `swift test --parallel` で `acquire(timeoutSeconds: 1)` が2回落ちた(単独では緑)。
+  `SharedResource.hostCaches` は他のテストとの競合しか防げない —— 隔離は①の型(置き場の
+  差し替え口 `FMLock.lockDirectoryForTesting`)で行う。**確かめ方**: 本番の枠5本を flock で
+  掴んだまま該当テストを回す —— 隔離前は 18 件落ち、隔離後は緑(この witness が無いと
+  「たまたま通った」と見分けられない)
 - **in-app ブリッジは `simctl launch` で消える**(dylib が注入されない素の起動になる)。
   検証の下準備でアプリを前面に戻すつもりの `simctl launch` が**検証対象のブリッジを壊す**ので、
   in-app を使う実験では前面化も `ft_launch`(= 注入つき再起動)で行う
