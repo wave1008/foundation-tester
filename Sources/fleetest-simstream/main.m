@@ -12,6 +12,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <dlfcn.h>
+#include <pthread.h>
 #import <unistd.h>
 #import <errno.h>
 #import <math.h>
@@ -102,6 +103,10 @@ static void ftWriteAll(const void *buf, size_t len) {
 //   KIND=3は0) DATA(LENバイト。キーフレームはSPS+PPS+IDR連結、開始コードは4バイトへ正規化)。
 // stdout はこのバイナリ専用(ログ/診断は全て stderr)。バッファ済み stdio は EOF まで
 // flush されない実績あり(Android版で実害)なので write() 都度発行+_IONBF を併用する。
+// **レコード単位のロック**: アタッチ中の生存 ping(別キュー)と、アタッチ後のフレーム(gQueue)が
+// 同じ stdout へ書くため。ヘッダと DATA の間に他のレコードが割り込むと消費側のパースが壊れる。
+static pthread_mutex_t gWriteLock = PTHREAD_MUTEX_INITIALIZER;
+
 static void ftWriteFrame(NSData *jpeg, uint16_t w, uint16_t h) {
     uint8_t hdr[8];
     hdr[0] = (uint8_t)(w >> 8);
@@ -113,8 +118,10 @@ static void ftWriteFrame(NSData *jpeg, uint16_t w, uint16_t h) {
     hdr[5] = (uint8_t)(len >> 16);
     hdr[6] = (uint8_t)(len >> 8);
     hdr[7] = (uint8_t)(len & 0xFF);
+    pthread_mutex_lock(&gWriteLock);
     ftWriteAll(hdr, sizeof(hdr));
     ftWriteAll(jpeg.bytes, jpeg.length);
+    pthread_mutex_unlock(&gWriteLock);
 }
 
 // v2ヘッダ(--codec h264 専用。フォーマット詳細は上のファイル冒頭契約コメント参照)。
@@ -126,8 +133,10 @@ static void ftWriteV2(uint8_t kind, uint8_t flags, uint16_t w, uint16_t h, const
     hdr[4] = (uint8_t)(h >> 8); hdr[5] = (uint8_t)(h & 0xFF);
     hdr[6] = (uint8_t)(len >> 24); hdr[7] = (uint8_t)(len >> 16);
     hdr[8] = (uint8_t)(len >> 8);  hdr[9] = (uint8_t)(len & 0xFF);
+    pthread_mutex_lock(&gWriteLock);
     ftWriteAll(hdr, sizeof(hdr));
     if (len > 0) ftWriteAll(data, len);
+    pthread_mutex_unlock(&gWriteLock);
 }
 
 // gLastEmitはkeepaliveタイマーのアイドル判定と共有するため、書き込みの都度ここで更新する。
@@ -498,6 +507,26 @@ int main(int argc, char **argv) {
     gMaxWidth = (maxWidth > 0) ? maxWidth : 0;
     gCodecH264 = [codec isEqualToString:@"h264"];
 
+    // **アタッチの間も生存を知らせる**(実害 2026-09-09): 消費側(vscode-fleetest の
+    // deviceStream.ts)は「15秒1バイトも来なければ helper が固まった」と見て kill→再起動するが、
+    // この下の CoreSimulator へのアタッチ(SimServiceContext / ioPorts / setPowerState)は
+    // dispatch_main より前の同期処理で、**keepalive タイマーがまだ動いていない**。起動ストームの
+    // 最中はここが十数秒かかり、健全な helper が繰り返し殺されていた(M1Ultra の6台で観測)。
+    // ping は「生きている」だけを言い、フレームが来た証拠にはならない(消費側が区別する)。
+    // mjpeg(v1)には ping レコードが無いので h264 のときだけ流す。
+    __block double attachStart = ftNow();
+    dispatch_source_t attachPingSrc = NULL;
+    if (gCodecH264) {
+        dispatch_queue_t pingQueue =
+            dispatch_queue_create("com.foundation-tester.fleetest-simstream.attach-ping",
+                                  DISPATCH_QUEUE_SERIAL);
+        attachPingSrc = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, pingQueue);
+        dispatch_source_set_timer(attachPingSrc, dispatch_time(DISPATCH_TIME_NOW, 0),
+                                  (uint64_t)(3.0 * NSEC_PER_SEC), (uint64_t)(0.5 * NSEC_PER_SEC));
+        dispatch_source_set_event_handler(attachPingSrc, ^{ ftWritePing(); });
+        dispatch_resume(attachPingSrc);
+    }
+
     // CoreSimulator のこのパスは Xcode バージョン非依存で安定。SimulatorKit はベストエフォート
     // (無くても主要APIはCoreSimulator側にある)。ただしどちらもセレクタの存在自体は
     // Xcodeバージョンに依存し壊れうるため、以降は個別に respondsToSelector で確認する。
@@ -614,6 +643,16 @@ int main(int argc, char **argv) {
     ((void (*)(id, SEL, int, dispatch_queue_t, void (^)(void)))objc_msgSend)(
         gDesc, sel_registerName("setPowerState:completionQueue:completionHandler:"), 1, gQueue,
         ^{ ftEmitInitialFrame(); });
+
+    // アタッチ完了。以後の生存表明は下の keepalive が担うので、こちらは止める。
+    // **遅かったときだけ実測を残す**(無音だと「起動ストームで遅い」を次に検証できない)
+    if (attachPingSrc) {
+        dispatch_source_cancel(attachPingSrc);
+        double attachSeconds = ftNow() - attachStart;
+        if (attachSeconds > 5.0) {
+            fprintf(stderr, "note: attaching to the simulator took %.1fs\n", attachSeconds);
+        }
+    }
 
     signal(SIGTERM, SIG_IGN);
     signal(SIGINT, SIG_IGN);

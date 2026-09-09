@@ -4048,6 +4048,17 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     `monitorBridgeWatchdog`): 供給中の台(10 秒後に ready)へ「booted が5回連続したためブリッジ
     無応答とみなします」を出していた。修復は既存の門で止まっていたので実害は誤検知の警告だけだが、
     **検知は誤検知0が条件**なので `inRun` と同じく streak ごと 0 に戻す
+  - **配信 helper は「アタッチ中」も生存を知らせる**(実害 2026-09-09。`fleetest-simstream`):
+    消費側(`vscode-fleetest/src/deviceStream.ts`)は 15 秒 1 バイトも来なければ helper が固まったと
+    見て kill→再起動する。静止画面は 3 秒ごとの keepalive ping で埋めてあったが、**CoreSimulator への
+    アタッチ**(SimServiceContext / ioPorts / setPowerState)は `dispatch_main` より前の同期処理で、
+    その窓には ping が1本も無かった —— 起動ストームの最中に健全な helper が繰り返し殺されていた
+    (M1Ultra の6台で観測)。アタッチ前から 3 秒ごとに ping を流し、完了したら止める(以後は既存の
+    keepalive)。**ping は「生きている」だけ**でフレームの証拠にはしない(消費側が区別する)。
+    stdout はレコード単位でロックする(ping と gQueue のフレームが交錯するとパースが壊れる)。
+    **アタッチが 5 秒を超えたときだけ実測を stderr に残す**(次に遅かったときの根拠を作る)。
+    v1(mjpeg)には ping レコードが無いので h264 のときだけ。検証は `SimStreamAttachPingTests`
+    (実在しない UDID を渡す = デバイス不要で「アタッチ前に ping が出る」を固定)
   - **録画の client を SIGINT 以外で殺さない**(実測 2026-09-09。`IOSSimulatorVideoRecorder`):
     `simctl io <udid> recordVideo` を SIGKILL/SIGTERM で殺すと**端末側の録画セッションが握られたまま
     残り**、その台は**再起動するまで**録画できない(以後 "Host recording is already in progress" で
