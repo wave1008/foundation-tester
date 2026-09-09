@@ -131,6 +131,8 @@ final class RegionTextTests: XCTestCase {
         let reading = try XCTUnwrap(readingRaw)
         XCTAssertTrue(RegionText.readable(expected: "ログイン", lines: reading.lines),
                      "描いた文字列が読めるはず: \(reading.lines)")
+        // 遅かった回の説明に使う画素数(等倍・frame = 画像全体なので画像そのものの画素数)
+        XCTAssertEqual(reading.pixels, 240 * 80, "読ませた画像の画素数が記録されていない")
     }
 
     func testReadFindsNothingOnBlankImage() async throws {

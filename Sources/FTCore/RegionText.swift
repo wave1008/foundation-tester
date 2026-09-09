@@ -24,6 +24,8 @@ public enum RegionText {
         public let elapsedMs: Double
         /// 何段まで拡大して読んだか(1 = 等倍だけ)
         public var attempts: Int = 1
+        /// 最後に読ませた画像の画素数(拡大後)。**遅かった回の説明に要る** —— 所要は画素数で決まる
+        public var pixels: Int = 0
     }
 
     /// `FT_OCCLUSION_OCR`: "0"/"off" → 殺しスイッチ(OCR を呼ばず従来どおり FM だけ)/
@@ -58,7 +60,10 @@ public enum RegionText {
     private static var prewarmRequests = 0
 
     private static let prewarmOnce: Void = {
-        Task.detached(priority: .utility) {
+        // **.utility にしない**: この暖機は「近道を撃ってよいか」(shouldTakeShortcut)の門を
+        // 開ける側なので、8 レーンで飽和した協調スレッドプールで後回しにされると、その間ずっと
+        // 近道が撃たれず全ステップが FM(p50 3.3 秒)へ落ちる
+        Task.detached(priority: .userInitiated) {
             // 空の画像では認識器が言語モデルまで読み込まないことがあるので、文字を描いて読ませる
             guard let image = renderedProbe() else { return }
             let read = try? await recognize(image, languages: defaultLanguages)
@@ -156,7 +161,7 @@ public enum RegionText {
             else { return last.map { (false, $0) } }
             let accumulated = Reading(lines: reading.lines,
                                       elapsedMs: (last?.elapsedMs ?? 0) + reading.elapsedMs,
-                                      attempts: index + 1)
+                                      attempts: index + 1, pixels: reading.pixels)
             if readable(expected: expected, lines: reading.lines) { return (true, accumulated) }
             // **1行も読めない crop は段を上げない** —— 拡大は画素を増やすだけで文字を作らないので、
             // 覆い・空白・画面外はどこまで上げても読めない(実測: ×1 で無読の 3 枚は ×2/×3 でも 0 枚が
@@ -199,8 +204,17 @@ public enum RegionText {
                                            languages: [String]? = nil,
                                            budget: Duration = RegionText.occlusionBudget)
         async -> BudgetedReading {
-        // 諦めても走っている読みを止めない理由は TaskBudget の冒頭
-        let outcome = await TaskBudget.run(budget) {
+        // 諦めても走っている読みを止めない理由は TaskBudget の冒頭。
+        // **諦めた読みが最終的にどうなったか**は stderr に1行残す —— 予算切れの記録
+        // (ocr-budget-exhausted)だけでは「予算が狭い」のか「読みが本当に遅い」のかが分けられない。
+        // 所要・段数・画素数が揃えば、はしごを詰めるべきか予算を動かすべきかが決まる
+        let outcome = await TaskBudget.run(budget, onLateFinish: { (r: (readable: Bool, reading: Reading)?, elapsed: Duration) in
+            let ms = Int(elapsed.components.seconds) * 1000
+                + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
+            ConsoleOut.err("[fleetest] ocr shortcut finished late: \(ms)ms"
+                + " attempts=\(r?.reading.attempts ?? 0) pixels=\(r?.reading.pixels ?? 0)"
+                + " readable=\(r?.readable ?? false) expected=\"\(expected)\"")
+        }) {
             await resolve(expected: expected, pngData: pngData, frame: frame, screen: screen,
                           cropPadding: cropPadding, languages: languages)
         }
@@ -238,7 +252,8 @@ public enum RegionText {
         }
         let elapsedMs = Date().timeIntervalSince(start) * 1000
         OCRUsageLedger.record(ok: true, ms: elapsedMs)
-        return Reading(lines: lines, elapsedMs: elapsedMs)
+        return Reading(lines: lines, elapsedMs: elapsedMs, attempts: 1,
+                       pixels: crop.width * crop.height)
     }
 
     public static let defaultLanguages = ["ja-JP", "en-US"]

@@ -83,3 +83,38 @@ final class TaskBudgetGateTests: XCTestCase {
         XCTAssertEqual(v, 7)
     }
 }
+
+/// 諦めた仕事の**本当の所要**を残す口(`onLateFinish`)。両方向で固定する ——
+/// 予算内に終わった回に呼ぶと「遅かった」の記録が嘘になる
+final class TaskBudgetLateFinishTests: XCTestCase {
+
+    func testLateFinishFiresOnlyAfterExhaustionWithTheRealElapsed() async {
+        let seen = LateSeen()
+        let outcome = await TaskBudget.run(.milliseconds(50), onLateFinish: { v, elapsed in
+            seen.record(v, elapsed)
+        }) {
+            try? await Task.sleep(for: .milliseconds(300))
+            return 9
+        }
+        guard case .exhausted = outcome else { return XCTFail("予算を超えたのに待ち切った") }
+        try? await Task.sleep(for: .seconds(1))
+        XCTAssertEqual(seen.value, 9, "遅れて終わった仕事の値が届いていない")
+        XCTAssertGreaterThanOrEqual(seen.elapsed ?? .zero, .milliseconds(250),
+                                    "所要が仕事の全長ではない(予算で切った値になっている)")
+    }
+
+    func testLateFinishDoesNotFireWhenTheWorkFitsInTheBudget() async {
+        let seen = LateSeen()
+        let outcome = await TaskBudget.run(.seconds(5), onLateFinish: { v, e in seen.record(v, e) }) { 1 }
+        guard case .value = outcome else { return XCTFail("予算内なのに諦めた") }
+        try? await Task.sleep(for: .milliseconds(200))
+        XCTAssertNil(seen.value, "予算内に終わった回を「遅かった」と記録している")
+    }
+
+    private final class LateSeen: @unchecked Sendable {
+        private let lock = NSLock()
+        private(set) var value: Int?
+        private(set) var elapsed: Duration?
+        func record(_ v: Int, _ e: Duration) { lock.lock(); value = v; elapsed = e; lock.unlock() }
+    }
+}

@@ -22,12 +22,20 @@ public enum TaskBudget {
     /// `work` が `budget` 以内に返れば `.value`、返らなければ `.exhausted`。
     /// **`.exhausted` は予算ちょうどで返る**(仕事の完了を待たない)し、
     /// **その後も `work` は走り続ける**(このファイル冒頭の理由)
+    /// `onLateFinish` は **`.exhausted` を返した後に仕事が終わったとき**だけ呼ばれる
+    /// (予算内に終わった回は呼ばない)。諦めた仕事の本当の所要を残すための口
     public static func run<T: Sendable>(_ budget: Duration,
+                                        onLateFinish: (@Sendable (T, Duration) -> Void)? = nil,
                                         _ work: @escaping @Sendable () async -> T)
         async -> Budgeted<T> {
         let gate = Gate<T>()
-        // どちらも非構造化。呼び手が消えてもこの2本は巻き添えにならない
-        Task.detached(priority: .userInitiated) { gate.deliver(.value(await work())) }
+        // どちらも非構造化(group.addTask ではない)。呼び手が消えてもこの2本は巻き添えにならない
+        Task.detached(priority: .userInitiated) {
+            let clock = ContinuousClock()
+            let start = clock.now
+            let value = await work()
+            if !gate.deliver(.value(value)) { onLateFinish?(value, clock.now - start) }
+        }
         Task.detached(priority: .userInitiated) {
             try? await Task.sleep(for: budget)
             gate.deliver(.exhausted)
@@ -60,15 +68,18 @@ public enum TaskBudget {
             }
         }
 
-        func deliver(_ outcome: Budgeted<T>) {
+        /// 戻り値 = 先着として採られたか(false = 既に決着していて捨てた)
+        @discardableResult
+        func deliver(_ outcome: Budgeted<T>) -> Bool {
             lock.lock()
             // **先着だけを採る**。ここを外すと 2 本目が継続を二重に resume してクラッシュする
-            guard delivered == nil else { return lock.unlock() }
+            guard delivered == nil else { lock.unlock(); return false }
             delivered = outcome
             let c = continuation
             continuation = nil
             lock.unlock()
             c?.resume(returning: outcome)
+            return true
         }
     }
 }
