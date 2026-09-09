@@ -105,6 +105,39 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertTrue(reasons[0].contains("remote=abc"), reasons[0])
     }
 
+    // MARK: - RemoteCompat.mismatches(ProbeOutcome)
+
+    /// 照会が失敗したら**判定は fail-closed のまま**で、理由の行が1本増える
+    /// (レーンが丸ごと落ちたときに「なぜ取れなかったか」が残る)
+    func testProbeFailureKeepsFailClosedAndCarriesTheReason() {
+        let reasons = RemoteCompat.mismatches(
+            localRevision: "abc",
+            remoteRevision: .failed(detail: "ssh command failed (status 128): git -C /x rev-parse HEAD"),
+            localToolchain: "Xcode 27.0", remoteToolchain: .value("Xcode 27.0"))
+        XCTAssertEqual(reasons.count, 2, "\(reasons)")
+        XCTAssertTrue(reasons[0].contains("could not determine the remote value"), reasons[0])
+        XCTAssertTrue(reasons[1].contains("status 128"), reasons[1])
+        XCTAssertTrue(reasons[1].contains("git revision"), reasons[1])
+    }
+
+    /// 失敗行は "git revision" で**始まらない** —— 呼び出し側は接頭辞で向きの案内を
+    /// 分岐するので、照会の失敗がそこへ食い込むと「push していない」等の誤誘導になる
+    func testProbeFailureDoesNotCollideWithTheAdvicePrefix() {
+        let reasons = RemoteCompat.mismatches(
+            localRevision: "abc", remoteRevision: .failed(detail: "timed out"),
+            localToolchain: "Xcode 27.0", remoteToolchain: .failed(detail: "timed out"))
+        XCTAssertEqual(reasons.filter { $0.hasPrefix("git revision") }.count, 1, "\(reasons)")
+        XCTAssertEqual(reasons.filter { $0.hasPrefix("toolchain") }.count, 1, "\(reasons)")
+        XCTAssertEqual(reasons.count, 4, "\(reasons)")
+    }
+
+    /// 値が揃っていれば失敗行は出ない(照会が成功した回に余計な行を足さない)
+    func testProbeValuesMatchingYieldNoReasons() {
+        XCTAssertEqual(RemoteCompat.mismatches(
+            localRevision: "abc", remoteRevision: .value("abc"),
+            localToolchain: "Xcode 27.0", remoteToolchain: .value("Xcode 27.0")), [])
+    }
+
     // MARK: - RemoteCompat.classifyRelation
 
     func testClassifyRelationLocalBehind() {

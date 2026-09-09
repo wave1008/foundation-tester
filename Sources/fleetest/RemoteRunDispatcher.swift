@@ -206,12 +206,15 @@ struct RemoteRunDispatcher {
             log("warning: uncommitted local changes will NOT reach the remote")
         }
 
-        let remoteRevision = try? sshCapture("git -C \(RemoteShell.quote(layout.toolRoot)) rev-parse HEAD")
+        let revisionProbe = probeRemote("git revision") {
+            try sshCapture("git -C \(RemoteShell.quote(layout.toolRoot)) rev-parse HEAD")
+        }
         let localToolchain = ToolchainFingerprint.current()
-        let remoteToolchain = try? remoteToolchainFingerprint()
+        let toolchainProbe = probeRemote("toolchain") { try remoteToolchainFingerprint() }
+        let remoteRevision = revisionProbe.capturedValue
         var reasons = RemoteCompat.mismatches(
-            localRevision: localRevision, remoteRevision: remoteRevision,
-            localToolchain: localToolchain, remoteToolchain: remoteToolchain)
+            localRevision: localRevision, remoteRevision: revisionProbe,
+            localToolchain: localToolchain, remoteToolchain: toolchainProbe)
         // rev 不一致の**いちばん多い原因は「まだ push していない」**。ランナーは origin から
         // fetch するので、押していないコミットへは remote setup でも合わせられない
         // (そのままだと checkout が exit 128 で落ちるだけ。2026-08-16 に実際に踏んだ)
@@ -760,6 +763,32 @@ struct RemoteRunDispatcher {
     /// 伝播する。照会系(sshBase)には付けない — TTY 化で stdout に CR が混ざり
     /// git rev-parse 等のキャプチャ結果を汚す
     private var sshRunBase: [String] { sshBase + ["-tt"] }
+
+    /// 適合チェックの照会。**失敗を「値が無い」に潰さず理由を持ち帰る**(RemoteCompat.ProbeOutcome)。
+    /// 判定は緩めない —— 2回とも失敗すれば非互換のまま落ちる。
+    ///
+    /// **1回だけ引き直す**: ssh の単発失敗はレーンごと(= シナリオ数本)を捨てるのに対し、
+    /// 引き直しの費用は ssh 1往復。**待ち時間は置かない** —— 何秒待てば直るかを言える根拠が
+    /// 無い定数はここに要らない(CLAUDE.md「根拠のない定数は排除」)
+    private func probeRemote(_ label: String,
+                             _ body: () throws -> String) -> RemoteCompat.ProbeOutcome {
+        do {
+            return .value(try body())
+        } catch {
+            log("warning: could not query the remote \(label) (\(describe(error))) — retrying once")
+            do {
+                return .value(try body())
+            } catch {
+                return .failed(detail: describe(error))
+            }
+        }
+    }
+
+    /// LocalizedError は errorDescription、それ以外は説明を採る(ShellError は
+    /// CustomStringConvertible なので "\(error)" が期限切れの文面になる)
+    private func describe(_ error: Error) -> String {
+        (error as? LocalizedError)?.errorDescription ?? "\(error)"
+    }
 
     private func sshCapture(_ command: String) throws -> String {
         let result = try Shell.run(sshBase + [host.sshTarget, command],

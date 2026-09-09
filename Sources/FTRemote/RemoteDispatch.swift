@@ -111,6 +111,44 @@ public enum RemoteCompat {
         }
     }
 
+    /// リモート側の照会の結果。**失敗を nil に潰さない** —— 「値が無い」と「なぜ取れなかったか」は
+    /// 別の情報で、後者を捨てると**レーンが丸ごと落ちた理由が誰にも分からない**
+    /// (2026-09-09 のフル E2E で実際に踏んだ: 適合チェックの `try?` が ssh の失敗を握り潰し、
+    /// `could not determine the remote value` だけが出て、そのプロファイルの4本が1本も走らなかった)
+    public enum ProbeOutcome: Equatable, Sendable {
+        case value(String)
+        case failed(detail: String)
+
+        public var capturedValue: String? {
+            if case let .value(value) = self { return value }
+            return nil
+        }
+        public var failureDetail: String? {
+            if case let .failed(detail) = self { return detail }
+            return nil
+        }
+    }
+
+    /// 照会の失敗理由まで載せる形。**判定は mismatches(remoteRevision:) と同じ fail-closed**
+    /// (失敗は値が無いのと同じ扱いで非互換に倒す)で、足すのは説明だけ。
+    ///
+    /// 失敗行を**末尾に足す**のは呼び出し側のため —— 向きの案内(relationAdvice /
+    /// unpublishedRevisionMessage)は reasons の接頭辞 "git revision" で分岐するので、
+    /// 照会の失敗行がそこへ食い込まないよう別の接頭辞にしてある
+    public static func mismatches(
+        localRevision: String?, remoteRevision: ProbeOutcome,
+        localToolchain: String?, remoteToolchain: ProbeOutcome
+    ) -> [String] {
+        var reasons = mismatches(
+            localRevision: localRevision, remoteRevision: remoteRevision.capturedValue,
+            localToolchain: localToolchain, remoteToolchain: remoteToolchain.capturedValue)
+        for (label, probe) in [("git revision", remoteRevision), ("toolchain", remoteToolchain)] {
+            guard let detail = probe.failureDetail else { continue }
+            reasons.append("could not query the remote \(label): \(detail)")
+        }
+        return reasons
+    }
+
     /// fail-closed: 片方でも取得できなければ(nil)不一致に含める(古い/未検証の組で
     /// 黙って走らせない。CLAUDE.md「片方だけ変えない」規律をマシン間に広げる)。
     ///
