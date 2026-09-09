@@ -160,3 +160,19 @@ final class RegionTextAbandonedInFlightTests: XCTestCase {
         return out as Data
     }
 }
+
+/// 詰まった読みの採取口(`FT_OCR_HANG_SAMPLE`)は**既定 OFF**。利用者の run が sample(1) を
+/// 起こしてはいけないし、旗が立った読みは採らない
+final class OCRHangSamplingGateTests: XCTestCase {
+    func testDisabledByDefaultAndOnlyOnExplicitOptIn() {
+        XCTAssertFalse(RegionText.hangSamplingEnabled(environment: [:]))
+        XCTAssertFalse(RegionText.hangSamplingEnabled(environment: ["FT_OCR_HANG_SAMPLE": "0"]))
+        XCTAssertTrue(RegionText.hangSamplingEnabled(environment: ["FT_OCR_HANG_SAMPLE": "1"]))
+    }
+    func testHangWatchRemembersTheReturn() {
+        let w = RegionText.HangWatch()
+        XCTAssertFalse(w.hasReturned)
+        w.markReturned()
+        XCTAssertTrue(w.hasReturned)
+    }
+}

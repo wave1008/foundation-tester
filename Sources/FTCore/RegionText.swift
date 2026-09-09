@@ -215,17 +215,63 @@ public enum RegionText {
         return .milliseconds(ms)
     }
 
+    /// **保守者向けの採取口**(`FT_OCR_HANG_SAMPLE=1` のときだけ): 諦めた読みが
+    /// `hangSampleAfterSeconds` たっても戻らなければ、自分自身を `/usr/bin/sample` で採って
+    /// `~/.fleetest/ocr-hang/<pid>-<時刻>.txt` に落とす。**再現が本番負荷でしか起きない**
+    /// (単体・8 並列・シミュレータ稼働中の別プロセスでは全て 100〜160ms)ので、詰まっている
+    /// 瞬間のスタックはプロセス自身に採らせるしかない。XPC 待ちなら Vision デーモン側、
+    /// ロック待ちなら自プロセス側、と切り分けられる。既定 OFF・利用者には見せない
+    public static func hangSamplingEnabled(environment: [String: String]) -> Bool {
+        environment["FT_OCR_HANG_SAMPLE"] == "1"
+    }
+    /// 予算(1.3 秒)の後にさらに待つ長さ。単体の実測(最大 160ms)から桁で離れていれば「遅い」ではなく
+    /// 「詰まっている」と言える —— 10 秒はその境目であって調整値ではない
+    static let hangSampleAfterSeconds: Double = 10
+
+    /// 諦めた読みが戻ったかの旗(late finish が立てる)。採取は戻っていないときだけ
+    final class HangWatch: @unchecked Sendable {
+        private let lock = NSLock()
+        private var returned = false
+        func markReturned() { lock.lock(); returned = true; lock.unlock() }
+        var hasReturned: Bool { lock.lock(); defer { lock.unlock() }; return returned }
+    }
+
+    static func sampleSelfIfStillHung(_ watch: HangWatch, expected: String) {
+        guard hangSamplingEnabled(environment: ProcessInfo.processInfo.environment) else { return }
+        // 協調スレッドを塞がないよう専用スレッドで待って採る(sample(1) は 3 秒ブロックする)
+        let t = Thread {
+            Thread.sleep(forTimeInterval: hangSampleAfterSeconds)
+            guard !watch.hasReturned else { return }
+            let dir = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".fleetest/ocr-hang", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "")
+            let pid = ProcessInfo.processInfo.processIdentifier
+            let file = dir.appendingPathComponent("\(pid)-\(stamp).txt")
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/sample")
+            p.arguments = ["\(pid)", "3", "-file", file.path]
+            try? p.run(); p.waitUntilExit()
+            ConsoleOut.err("[fleetest] ocr shortcut still hung after \(Int(hangSampleAfterSeconds))s;"
+                + " sampled to \(file.path) expected=\"\(expected)\"")
+        }
+        t.name = "fleetest-ocr-hang-sample"
+        t.start()
+    }
+
     public static func resolveWithinBudget(expected: String, pngData: Data,
                                            frame: FTRect, screen: FTRect,
                                            cropPadding: CGFloat = 24,
                                            languages: [String]? = nil,
                                            budget: Duration = RegionText.occlusionBudget)
         async -> BudgetedReading {
+        let watch = HangWatch()
         // 諦めても走っている読みを止めない理由は TaskBudget の冒頭。
         // **諦めた読みが最終的にどうなったか**は stderr に1行残す —— 予算切れの記録
         // (ocr-budget-exhausted)だけでは「予算が狭い」のか「読みが本当に遅い」のかが分けられない。
         // 所要・段数・画素数が揃えば、はしごを詰めるべきか予算を動かすべきかが決まる
         let outcome = await TaskBudget.run(budget, onLateFinish: { (r: (readable: Bool, reading: Reading)?, elapsed: Duration) in
+            watch.markReturned()
             noteAbandoned(-1)
             let ms = Int(elapsed.components.seconds) * 1000
                 + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
@@ -239,6 +285,7 @@ public enum RegionText {
         switch outcome {
         case .exhausted:
             noteAbandoned(+1)
+            sampleSelfIfStillHung(watch, expected: expected)
             return .budgetExhausted
         case .value(nil): return .unreadable
         case .value(let r?): return .read(readable: r.readable, reading: r.reading)
