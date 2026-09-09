@@ -78,4 +78,43 @@ final class MonitorFrozenDebounceTests: XCTestCase {
         var zero = MonitorFrozenDebounce(confirmThreshold: 0)
         XCTAssertTrue(zero.record(uniformBlank: true, id: "a"))
     }
+
+    // MARK: - record(blankness:) — 判定不能(nil)の扱い
+
+    /// 読めないフレーム(nil)を挟んでも、確定済みの凍結は取り消されない
+    func testUndecodableFrameKeepsAConfirmedFreeze() {
+        var debounce = MonitorFrozenDebounce(confirmThreshold: 2)
+        debounce.record(uniformBlank: true, id: "ios:01")
+        debounce.record(uniformBlank: true, id: "ios:01")
+        XCTAssertTrue(debounce.verdict(id: "ios:01").isFrozen)
+        XCTAssertTrue(debounce.record(blankness: nil, id: "ios:01"))
+        XCTAssertTrue(debounce.verdict(id: "ios:01").isFrozen)
+    }
+
+    /// nil だけを何度撃っても確定しない(欠測は凍結の根拠にならない)
+    func testUndecodableFramesAloneNeverConfirmAFreeze() {
+        var debounce = MonitorFrozenDebounce(confirmThreshold: 2)
+        XCTAssertFalse(debounce.record(blankness: nil, id: "ios:01"))
+        XCTAssertFalse(debounce.record(blankness: nil, id: "ios:01"))
+        XCTAssertFalse(debounce.record(blankness: nil, id: "ios:01"))
+        XCTAssertFalse(debounce.verdict(id: "ios:01").isFrozen)
+    }
+
+    /// nil を挟んでも streak は数え直しにならない(撮れなかったサイクルと同じ扱い)
+    func testUndecodableFrameDoesNotResetTheStreak() {
+        var debounce = MonitorFrozenDebounce(confirmThreshold: 2)
+        XCTAssertFalse(debounce.record(blankness: true, id: "ios:01"))
+        debounce.record(blankness: nil, id: "ios:01")
+        XCTAssertTrue(debounce.record(blankness: true, id: "ios:01"))
+    }
+
+    /// 逆方向の固定: 「読めて一様でない」(false)は従来どおり streak を消す
+    /// (欠測(nil)と読めて一様でない(false)を混同しない)
+    func testDecodedNonBlankFrameStillClearsTheStreak() {
+        var debounce = MonitorFrozenDebounce(confirmThreshold: 2)
+        debounce.record(blankness: true, id: "ios:01")
+        XCTAssertFalse(debounce.record(blankness: false, id: "ios:01"))
+        XCTAssertFalse(debounce.record(blankness: true, id: "ios:01"),
+                       "false の後は数え直しになること")
+    }
 }

@@ -43,6 +43,39 @@ final class BlankFrameDetectorTests: XCTestCase {
         XCTAssertFalse(BlankFrameDetector.isUniformBlank(pngData: png))
     }
 
+    // MARK: - uniformBlankness(判定不能を nil で返す口)
+
+    func testUniformBlanknessReturnsNilForEmptyData() {
+        XCTAssertNil(BlankFrameDetector.uniformBlankness(pngData: Data()))
+    }
+
+    func testUniformBlanknessReturnsNilForNonPNGData() {
+        XCTAssertNil(BlankFrameDetector.uniformBlankness(pngData: Data("not a png".utf8)))
+    }
+
+    func testUniformBlanknessReturnsTrueForUniformWhiteAndFalseForContent() {
+        let blank = Self.makePNG(width: 64, height: 64) { context in
+            context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+        }
+        XCTAssertEqual(BlankFrameDetector.uniformBlankness(pngData: blank), true)
+
+        let content = Self.makePNG(width: 64, height: 64) { context in
+            context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+            context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+            context.fill(CGRect(x: 24, y: 24, width: 16, height: 16))
+        }
+        XCTAssertEqual(BlankFrameDetector.uniformBlankness(pngData: content), false)
+    }
+
+    /// isUniformBlank は判定不能も false に丸める(他の呼び出し元3箇所が依存する安全側の契約)。
+    /// uniformBlankness を足しても isUniformBlank の挙動は変わらないことを固定する
+    func testIsUniformBlankStillFoldsUndecodableToFalse() {
+        XCTAssertFalse(BlankFrameDetector.isUniformBlank(pngData: Data()))
+        XCTAssertFalse(BlankFrameDetector.isUniformBlank(pngData: Data("not a png".utf8)))
+    }
+
     // MARK: - テスト用 PNG 合成
 
     private static func makePNG(width: Int, height: Int, draw: (CGContext) -> Void) -> Data {

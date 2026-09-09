@@ -479,8 +479,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 }
                 loggedFetchFailure.remove(state.target.id)
                 // ---- 観測段: **縮小前の PNG で判定する**(JPEG 化は非可逆で、縮小も一様性を
-                // 薄める方向に働く)。撮れなかったサイクル(上の continue)では記録しない = 直前の確定を保つ
-                let uniform = BlankFrameDetector.isUniformBlank(pngData: png)
+                // 薄める方向に働く)。撮れなかったサイクル(上の continue)では記録しない = 直前の確定を保つ。
+                // nil(デコード不能)も欠測として同じ扱い(record(blankness:) が確定を変えない)
+                let blankness = BlankFrameDetector.uniformBlankness(pngData: png)
                 // **run 中は streak を積まず忘れる**(frozenVerdict の inRun と対)。記録だけ続けて
                 // 判定側で無視すると、run 終了の瞬間に run 中の黒で確定済みの ❄️ が出る —— 終了後の
                 // 黒は2回の新規確認からやり直す
@@ -491,7 +492,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 if captureInRun {
                     frozenDebounce.forget(id: state.target.id)
                 } else {
-                    frozenDebounce.record(uniformBlank: uniform, id: state.target.id)
+                    frozenDebounce.record(blankness: blankness, id: state.target.id)
                 }
 
                 // ---- 配信段: ここから先だけが抑制の対象
@@ -508,8 +509,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     // 過渡的でユーザーに対処可能性が無いため)。stderr のみ・同一メッセージ連続中は
                     // 再ログしない。持続するならブリッジ不調のサイン(curl /screenshot で切り分け)
                     let message = error.localizedDescription
+                    // 抑止の鍵は message のまま(バイト数を混ぜるとサイズが揺れるたび再ログしてしまう)
                     if lastErrorMessage[state.target.id] != message {
-                        logStderr("[monitor] \(state.target.id): \(message) (not notifying the tile)")
+                        logStderr("[monitor] \(state.target.id): \(message) (\(png.count) bytes, not notifying the tile)")
                         lastErrorMessage[state.target.id] = message
                     }
                 }
@@ -1481,6 +1483,16 @@ struct MonitorFrozenDebounce {
         streaks[id] = streak
         if streak >= confirmThreshold { confirmedIDs.insert(id) }
         return confirmedIDs.contains(id)
+    }
+
+    /// PNG が読めなかった等でこのサイクルは判定不能(nil)のとき、
+    /// **状態を一切変えず**確定を保つ(撮れなかったサイクルと同じ扱い) ——
+    /// 読めないフレームを「一様でない」の証拠にすると、壊れた絵を返し続けるブリッジの台で
+    /// 凍結が永久に確定しない
+    @discardableResult
+    mutating func record(blankness: Bool?, id: String) -> Bool {
+        guard let blankness else { return confirmedIDs.contains(id) }
+        return record(uniformBlank: blankness, id: id)
     }
 
     /// 確定状態を**根拠つき**で返す(唯一の読み口)。真偽値ではなく FTCore.FrozenVerdict を

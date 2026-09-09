@@ -16,10 +16,21 @@ public enum BlankFrameDetector {
                                       sampleGrid: Int = 16,
                                       tolerance: Int = 8,
                                       uniformFraction: Double = 0.995) -> Bool {
+        uniformBlankness(pngData: pngData, sampleGrid: sampleGrid,
+                         tolerance: tolerance, uniformFraction: uniformFraction) ?? false
+    }
+
+    /// `isUniformBlank` と同じ判定を、**デコード・描画に失敗した場合は nil**(判定不能)で返す。
+    /// nil = 欠測。「一様でない」の能動的な証拠(false)と区別する必要がある呼び手だけがこちらを使う
+    /// (例: モニターの凍結デバウンス。読めないフレームで確定を取り消さないため)。
+    public static func uniformBlankness(pngData: Data,
+                                        sampleGrid: Int = 16,
+                                        tolerance: Int = 8,
+                                        uniformFraction: Double = 0.995) -> Bool? {
         guard sampleGrid > 0,
               let source = CGImageSourceCreateWithData(pngData as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-            return false
+            return nil
         }
 
         let bytesPerPixel = 4
@@ -50,7 +61,7 @@ public enum BlankFrameDetector {
             return Double(uniformCount) / Double(total)
         }
 
-        guard let fraction else { return false }
+        guard let fraction else { return nil }
         return fraction >= uniformFraction
     }
 }
