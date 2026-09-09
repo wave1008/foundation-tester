@@ -1311,6 +1311,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             step.waitMs = result.timing?.waitMs
             step.scheduleDelayMs = result.timing?.scheduleDelayMs
             step.cpuMs = result.timing?.cpuMs
+            step.ioBlockedMs = result.timing?.ioBlockedMs
             step.at = result.at
             return [step.encodedLine()]
 

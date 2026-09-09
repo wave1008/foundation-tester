@@ -17,6 +17,36 @@ public enum ConsoleOut {
     /// stdout 書き手と stderr 書き手が同じ1個のロックを取る(上記の理由により分けない)
     private static let lock = NSLock()
 
+    /// **出力経路でブロックされた時間**(このプロセスの全書き手の合計。ミリ秒)。
+    /// write(2) はブロッキングなので、読み手が詰まると**ロックを握ったまま返らない** ——
+    /// そのとき止まるのは書こうとしたスレッドだけでなく、協調スレッドプールごと詰まって
+    /// **全レーンが同時に固まる**。ステップの壁時計の締め切り(FTSync.commandTimeout)が
+    /// この待ちに食われていないかを記録から判定するための計器(2026-09-10)。
+    /// 読み手は `blockedMilliseconds` の差分を取る(cpuMs と同じ使い方)
+    private static let meterLock = NSLock()
+    private static var blockedMs = 0
+    private static var longestBlockMs = 0
+
+    /// プロセス開始からの累計。差分を取って「このステップの間に何ミリ秒ブロックされたか」を出す
+    public static var blockedMilliseconds: Int {
+        meterLock.lock(); defer { meterLock.unlock() }; return blockedMs
+    }
+
+    /// 1 回の書き込みが返るまでの最長。合計だけだと「細かい待ちが多い」と
+    /// 「1 回で 100 秒詰まった」を区別できない
+    public static var longestBlockMilliseconds: Int {
+        meterLock.lock(); defer { meterLock.unlock() }; return longestBlockMs
+    }
+
+    private static func recordBlocked(_ duration: Duration) {
+        let ms = Int(duration.components.seconds) * 1000
+            + Int(duration.components.attoseconds / 1_000_000_000_000_000)
+        meterLock.lock()
+        blockedMs += ms
+        longestBlockMs = max(longestBlockMs, ms)
+        meterLock.unlock()
+    }
+
     /// `print(text)` 相当。呼び出し側は末尾に改行を付けない(ここで1個だけ付与する)
     public static func out(_ text: String) {
         emit(text, fd: FileHandle.standardOutput.fileDescriptor)
@@ -49,8 +79,12 @@ public enum ConsoleOut {
     /// 本体(バイト列版)。改行の付与は文字列版が済ませている
     static func emit(_ data: Data, fd: Int32) {
         var data = data
+        // **ロック待ちも計器に含める** —— 先客が write(2) で詰まっているときの待ちが
+        // まさに測りたいもの(recordBlocked の doc)
+        let clock = ContinuousClock()
+        let start = clock.now
         lock.lock()
-        defer { lock.unlock() }
+        defer { lock.unlock(); recordBlocked(clock.now - start) }
         data.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) in
             guard let base = buffer.baseAddress else { return }
             var offset = 0

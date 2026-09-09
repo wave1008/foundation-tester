@@ -516,7 +516,8 @@ public enum ScenarioRunner {
         let timing = event.durationMs.map {
             StepTiming(durationMs: $0, snapshotMs: event.snapshotMs,
                       actionMs: event.actionMs, waitMs: event.waitMs,
-                      scheduleDelayMs: event.scheduleDelayMs, cpuMs: event.cpuMs)
+                      scheduleDelayMs: event.scheduleDelayMs, cpuMs: event.cpuMs,
+                      ioBlockedMs: event.ioBlockedMs)
         }
         return StepResult(index: event.index ?? 0, description: event.description ?? "",
                           status: status, scene: event.scene, sceneTitle: event.sceneTitle,

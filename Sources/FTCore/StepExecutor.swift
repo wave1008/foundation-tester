@@ -159,15 +159,17 @@ public struct StepTiming: Sendable, Equatable {
     /// サブプロセスの ScenarioEvent から写した値だけ。意味は ScenarioEvent の同名欄の doc
     public var scheduleDelayMs: Int?
     public var cpuMs: Int?
+    public var ioBlockedMs: Int?
 
     public init(durationMs: Int, snapshotMs: Int? = nil, actionMs: Int? = nil, waitMs: Int? = nil,
-                scheduleDelayMs: Int? = nil, cpuMs: Int? = nil) {
+                scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, ioBlockedMs: Int? = nil) {
         self.durationMs = durationMs
         self.snapshotMs = snapshotMs
         self.actionMs = actionMs
         self.waitMs = waitMs
         self.scheduleDelayMs = scheduleDelayMs
         self.cpuMs = cpuMs
+        self.ioBlockedMs = ioBlockedMs
     }
 }
 

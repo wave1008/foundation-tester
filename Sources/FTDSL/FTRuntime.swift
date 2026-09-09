@@ -749,10 +749,14 @@ public final class FTDriveCore {
         // ステップを打ち切っていないかを、記録から判定できるようにする
         let scheduleDelay = FTSync.ScheduleDelay()
         let cpuStart = ProcessCPUTime.milliseconds()
+        let ioBlockedStart = ConsoleOut.blockedMilliseconds
         let outcome = FTSync.run(scheduleDelay: scheduleDelay) {
             await executor.execute(step, cached: cachedLocators, fingerprint: cachedFingerprint)
         }
         let cpuMs = ProcessCPUTime.delta(from: cpuStart, to: ProcessCPUTime.milliseconds())
+        // **プロセス全体の値**(cpuMs と同じ)。1レーンが書けずに詰まると協調スレッドプールごと
+        // 止まり、書いていないレーンのステップまで固まるので、レーン別に測っても意味が無い
+        let ioBlockedMs = max(0, ConsoleOut.blockedMilliseconds - ioBlockedStart)
         // `at` は**失敗確定時刻**(docs/results-json.md。録画の再生位置に使う)なので打ち切りが
         // 決まった瞬間を採る —— 開始時刻を入れると再生位置がコマンド上限のぶん(120秒)ずれる
         let hostFinishedAt = ISO8601Millis.string(from: Date())
@@ -780,7 +784,7 @@ public final class FTDriveCore {
                    actionMs: outcome?.timing?.actionMs,
                    waitMs: outcome?.timing?.waitMs,
                    scheduleDelayMs: scheduleDelay.milliseconds,
-                   cpuMs: cpuMs,
+                   cpuMs: cpuMs, ioBlockedMs: ioBlockedMs,
                    at: recordedAt,
                    notes: outcome?.notes ?? [], guarded: outcome?.guardEntered ?? false,
                    command: command, failureKind: failureKind)
@@ -1286,7 +1290,8 @@ public final class FTDriveCore {
     // MARK: - 記録
 
     /// scheduleDelayMs: このステップの async タスクが走り出すまでの順番待ち /
-    /// cpuMs: その間にプロセスが貰えた CPU 時間(どちらも締め切りの妥当性を測るための計器。
+    /// cpuMs: その間にプロセスが貰えた CPU 時間 / ioBlockedMs: 出力経路でブロックされた時間
+    /// (いずれも締め切りの妥当性を測るための計器。
     /// ScenarioEvent の同名欄の doc)。**打ち切られた回でも scheduleDelayMs は残る**
     /// (タスクは走り出していたが結果を返せなかった、が区別できる)。
     /// durationMs/snapshotMs/actionMs/waitMs: ステップの時間内訳(単位ミリ秒)。
@@ -1302,7 +1307,8 @@ public final class FTDriveCore {
     func recordStep(description: String, status: StepResult.Status, file: String, line: Int,
                     durationMs: Int? = nil, snapshotMs: Int? = nil,
                     actionMs: Int? = nil, waitMs: Int? = nil,
-                    scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, at: String? = nil,
+                    scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, ioBlockedMs: Int? = nil,
+                    at: String? = nil,
                     notes: [StepNote] = [], guarded: Bool = false,
                     command: String? = nil, failureKind: StepFailureKind? = nil,
                     screenshotData: Data? = nil, screenshotLabel: String? = nil) {
@@ -1334,6 +1340,7 @@ public final class FTDriveCore {
         event.snapshotMs = snapshotMs
         event.scheduleDelayMs = scheduleDelayMs
         event.cpuMs = cpuMs
+        event.ioBlockedMs = ioBlockedMs
         event.actionMs = actionMs
         event.waitMs = waitMs
         event.at = at

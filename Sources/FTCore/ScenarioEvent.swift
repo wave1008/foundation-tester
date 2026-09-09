@@ -61,6 +61,11 @@ public struct ScenarioEvent: Codable, Sendable {
     /// 壁時計は進むのに CPU はほとんど増えない。**単独ではハングを検出できない**
     /// (I/O 待ちも CPU 0)ので、進捗の尺度と組み合わせて読む
     public var cpuMs: Int?
+    /// **出力経路でブロックされた時間**(ミリ秒)。stdout/stderr は全書き手が1個のロックと
+    /// blocking な write(2) を共有するので、読み手が詰まると協調スレッドプールごと止まり
+    /// **全レーンが同時に固まる**(ConsoleOut の doc)。ここが durationMs の大半を占める
+    /// ステップは、仕事をしていないのではなく**書けなくて進めなかった**
+    public var ioBlockedMs: Int?
     /// kind == scenarioFinished。このシナリオの FM 呼び出し実測(回数・レイテンシ)。
     /// FM を使わなかったシナリオでは nil(キーごと省略)。FM はホスト全体で直列化するため、
     /// 並列実行では他レーンの待ちも含む値になる(FMHealth の doc 参照)
