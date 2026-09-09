@@ -3998,6 +3998,16 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     宣言する(iOS は供給前でも id="ios:論理名" が確定。detail「ブリッジ供給中...」のプレースホルダ)。
     label→id 変換は WorkerIDMap(NSLock)で iOS 合流時に merge。iOS 供給失敗は run を落とさず
     iOS シナリオのみワーカー不在ドレインで失敗確定(Android の結果は生きる)。CLI(ProfileRunner)も同構成
+  - **供給フェーズの進行は NDJSON の `log` にも流す**(2026-09-09): 供給(デバイス起動・インストール・
+    凍結 triage)の行は stderr だけに出ていたため、拡張の OUTPUT には出るが「テスト実行」タブは無音だった。
+    **デバイスが起動していない状態からの run は供給が長い**(実測 2026-09-09: 手元 Android 8台で
+    クリック→最初のシナリオまで 3分39秒。うち起動プロセスの投入だけで 1分41秒 ——
+    `AndroidLaneRecovery` は凍結対策で**1台ずつ直列**に起こす)ので、タイルが1台ずつ点いていく様子が
+    「テストが1本ずつ走っている」ように見える(**実行そのものは並列**。同 run の8レーンは13秒以内に
+    出揃っている)。`ApiRunCommand.logSupply` が stderr と NDJSON の両方へ出し、`SupplyLogRelay` が
+    **runStarted より前の行を貯めて runStarted の直後に流す**(拡張のレーン状態は NDJSON の runStarted で
+    clear されるため。対向: vscode-fleetest/src/runLaneModel.ts)。台ごとの進行は `(i/N)` 付きで
+    開始と結果の2行。worker を持たないので表示先は「全体」レーン(workersReady で置き換わる)
   - **iOS ブリッジの実行前プレフライトは不採用**(ユーザー決定 2026-07-18): ウェッジ機で
     `scenarioTimeout`(90s)を失うのを実行前の status 確認で回避する試み。①「item を取ってから
     5s×2 判定→振り直し+離脱」は 10台同時の AX スパイク(一過性の遅さ)で9台一斉離脱・freeze-retry

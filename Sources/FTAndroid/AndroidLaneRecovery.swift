@@ -70,11 +70,15 @@ public enum AndroidLaneRecovery {
 
         var booted: [String] = []
         var failed: [(name: String, error: Error)] = []
-        for device in devices {
+        for (offset, device) in devices.enumerated() {
+            // 進行は**1台ごとに開始も出す**(直列なので完了行だけだと、1台に1分近くかかる間
+            // 何も出ない。読み手は拡張の「テスト実行」タブ = ApiRunCommand.logSupply)
+            let progress = "(\(offset + 1)/\(devices.count))"
             // avd 未指定は起動引数を組めない(plan が除外済み。直接呼ばれたときの保険)。
             // **表示名を AVD ID として使わない** —— 別の AVD を起こしうる
             guard let avd = device.spec.avd else { continue }
             let avdID = AndroidDeviceCatalog.canonicalAVDID(avd)
+            log("▶️ \(progress) \(device.name): starting")
             var lastError: Error?
             var succeeded = false
             for attempt in 1...maxBootAttempts {
@@ -92,12 +96,12 @@ public enum AndroidLaneRecovery {
             }
             if succeeded {
                 booted.append(device.name)
-                log("✅ \(device.name): revived (\(avdID))")
+                log("✅ \(progress) \(device.name): revived (\(avdID))")
             } else {
                 let error = lastError ?? LaneRecoveryError(
                     message: "\(device.name): no boot attempt ran")
                 failed.append((device.name, error))
-                log("❌ \(device.name): could not be revived after \(maxBootAttempts) attempt(s)"
+                log("❌ \(progress) \(device.name): could not be revived after \(maxBootAttempts) attempt(s)"
                     + " — \(error.localizedDescription)")
             }
         }

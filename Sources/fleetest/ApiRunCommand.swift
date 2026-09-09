@@ -457,8 +457,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             androidWorkersTask = Task {
                 let deviceList = resolved.devices
                     .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-                logStderr("🧩 Profile \(resolved.runName): \(resolved.appName) @ \(resolved.machineName)")
-                logStderr("   Devices: \(deviceList)")
+                logSupply("🧩 Profile \(resolved.runName): \(resolved.appName) @ \(resolved.machineName)")
+                logSupply("   Devices: \(deviceList)")
                 var wipedAndroid: [String] = []
                 if resolved.wipeDataOnBloat {
                     wipedAndroid = await AndroidDataWiper.wipeBloatedAVDs(
@@ -466,13 +466,13 @@ struct ApiRunCommand: AsyncParsableCommand {
                         thresholdGB: resolved.wipeDataThresholdGB,
                         locale: resolved.locale,
                         status: { self.emitLine(ApiWipeStatusEvent(device: $0, phase: $1)) },
-                        log: { logStderr($0) })
+                        log: { logSupply($0) })
                 }
                 // CPU 描画フォールバック機の GPU 復帰は buildAndroidWorkers より前(emulator
                 // プロセスを入れ替えるため serial が変わりうる。Wipe Data と同じ理由・同じ位置)
                 if resolved.recoverCpuFallbackToGpu {
                     _ = await AndroidGpuRecovery.recoverCpuFallbackDevices(
-                        devices: resolved.androidDevices, locale: resolved.locale) { logStderr($0) }
+                        devices: resolved.androidDevices, locale: resolved.locale) { logSupply($0) }
                 }
                 // 死んだレーンの復活(両モード共通)。buildAndroidWorkers の直前(GPU 復帰の後)で
                 // 起動していない仮想デバイスを先に起こす。復活できなかった場合の扱いは
@@ -482,32 +482,32 @@ struct ApiRunCommand: AsyncParsableCommand {
                         devices: resolved.androidDevices, runningAVDIDs: Set(running.values))
                     if !laneTargets.isEmpty {
                         let outcome = await AndroidLaneRecovery.bootMissingDevices(
-                            devices: laneTargets.map(\.device), locale: resolved.locale) { logStderr($0) }
+                            devices: laneTargets.map(\.device), locale: resolved.locale) { logSupply($0) }
                         // 起こせた分は、ブリッジが定着するまで待ってから先へ進む(理由は
                         // awaitDurableAndroidBridges の宣言)
                         await ProfileWorkerFactory.awaitDurableAndroidBridges(
                             devices: laneTargets.map(\.device)
-                                .filter { outcome.booted.contains($0.name) }) { logStderr($0) }
+                                .filter { outcome.booted.contains($0.name) }) { logSupply($0) }
                     }
                 }
                 await ProfileWorkerFactory.preparePhysicalAndroidDevices(
-                    resolved: resolved) { logStderr($0) }
+                    resolved: resolved) { logSupply($0) }
                 var workers = try ProfileWorkerFactory.buildAndroidWorkers(
-                    resolved: resolved) { logStderr($0) }
+                    resolved: resolved) { logSupply($0) }
                 supplyLease?.hold(
                     keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
                 // 凍結機は修復→不発なら guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
                 // (CLI の ProfileRunner と同じ。全滅しても throw せず
                 // 空で返す=iOS の合流を殺さない。android シナリオはワーカー不在ドレインで失敗確定)
                 let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
-                workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { logStderr($0) }
+                workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { logSupply($0) }
                 workers = triage.workers
                 triageBox.set(repaired: triage.repaired, excluded: triage.excluded)
                 workers = try await ProfileWorkerFactory.installIfNeeded(
                     apps: resolved.apps, workers: workers,
-                    forceAndroidInstall: !wipedAndroid.isEmpty) { logStderr($0) }
+                    forceAndroidInstall: !wipedAndroid.isEmpty) { logSupply($0) }
                 if !workers.isEmpty {
-                    logStderr("🚀 Starting with \(workers.count) Android worker(s) (iOS joins once bridge provisioning finishes)")
+                    logSupply("🚀 Starting with \(workers.count) Android worker(s) (iOS joins once bridge provisioning finishes)")
                 }
                 return workers
             }
@@ -515,12 +515,12 @@ struct ApiRunCommand: AsyncParsableCommand {
                 iosWorkersTask = Task {
                     do {
                         var workers = try await ProfileWorkerFactory.buildIOSWorkers(
-                            resolved: resolved, repoRoot: try RepoRoot.find()) { logStderr($0) }
+                            resolved: resolved, repoRoot: try RepoRoot.find()) { logSupply($0) }
                         supplyLease?.hold(
                             keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
                         workers = (try? await ProfileWorkerFactory.installIfNeeded(
                             apps: resolved.apps, workers: workers,
-                            forceAndroidInstall: false) { logStderr($0) }) ?? workers
+                            forceAndroidInstall: false) { logSupply($0) }) ?? workers
                         // 画面だけ死んだシミュレータを**投入前に**弾く(BlankWorkerTriage 参照)。
                         // Android は buildAndroidWorkers 直後に同等の処理(修復つき)を通している
                         let repoRoot = try RepoRoot.find()
@@ -529,22 +529,22 @@ struct ApiRunCommand: AsyncParsableCommand {
                             recover: { @Sendable frozen, currentWorkers in
                                 await ProfileWorkerFactory.recoverFrozenIOSWorkers(
                                     labels: frozen, workers: currentWorkers, resolved: resolved,
-                                    repoRoot: repoRoot, apps: resolved.apps) { logStderr($0) }
+                                    repoRoot: repoRoot, apps: resolved.apps) { logSupply($0) }
                             },
                             // 判定をモニターへ配る(DeviceFrozenStore)。run が知っている凍結を
                             // モニターが知らない状態を作らないための唯一の口
                             stateDir: repoRoot.appendingPathComponent(".fleetest"),
                             nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
                                 await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
-                            log: { logStderr($0) }).workers
+                            log: { logSupply($0) }).workers
                         await ProfileWorkerFactory.prepareDevicesOnStart(
-                            workers, homeOnStart: resolved.homeOnStart) { logStderr($0) }
-                        logStderr("🚀 \(workers.count) iOS worker(s) joined")
+                            workers, homeOnStart: resolved.homeOnStart) { logSupply($0) }
+                        logSupply("🚀 \(workers.count) iOS worker(s) joined")
                         return workers
                     } catch {
                         // iOS 供給失敗は run 全体を落とさない(iOS シナリオはワーカー不在として
                         // ドレインで失敗確定し、Android の結果は生きる)
-                        logStderr("❌ Failed to build iOS workers: \(error.localizedDescription)")
+                        logSupply("❌ Failed to build iOS workers: \(error.localizedDescription)")
                         return []
                     }
                 }
@@ -598,6 +598,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
 
         emitLine(ApiRunStartedEvent(total: selected.count))
+        // 供給フェーズは runStarted より前に走り始めるので、貯めた進行行をここで流す
+        Self.supplyRelay.start { Self.writeLineLocked($0) }
 
         var outcome: RunOutcome
         if let resolvedProfile {
@@ -871,8 +873,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         if !dryRun {
             let deviceList = resolved.devices
                 .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-            logStderr("🧩 Profile \(profileName): \(resolved.appName) @ \(resolved.machineName)")
-            logStderr("   Devices: \(deviceList)")
+            logSupply("🧩 Profile \(profileName): \(resolved.appName) @ \(resolved.machineName)")
+            logSupply("   Devices: \(deviceList)")
             var wipedAndroid: [String] = []
             if resolved.wipeDataOnBloat {
                 wipedAndroid = await AndroidDataWiper.wipeBloatedAVDs(
@@ -880,20 +882,20 @@ struct ApiRunCommand: AsyncParsableCommand {
                     thresholdGB: resolved.wipeDataThresholdGB,
                     locale: resolved.locale,
                     status: { self.emitLine(ApiWipeStatusEvent(device: $0, phase: $1)) },
-                    log: { logStderr($0) })
+                    log: { logSupply($0) })
             }
             // GPU 復帰は buildWorkers より前(理由は並列経路の同処理を参照)
             if resolved.recoverCpuFallbackToGpu {
                 _ = await AndroidGpuRecovery.recoverCpuFallbackDevices(
-                    devices: resolved.androidDevices, locale: resolved.locale) { logStderr($0) }
+                    devices: resolved.androidDevices, locale: resolved.locale) { logSupply($0) }
             }
             workers = try await ProfileWorkerFactory.buildWorkers(
-                resolved: resolved, repoRoot: try RepoRoot.find()) { logStderr($0) }
+                resolved: resolved, repoRoot: try RepoRoot.find()) { logSupply($0) }
             supplyLease?.hold(
                 keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
             // android は修復→guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
             let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
-                workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { logStderr($0) }
+                workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { logSupply($0) }
             workers = triage.workers
             // iOS も **shutdown → boot → ブリッジ張り直し**で回復を試み、駄目な個体だけ除外する
             // (BlankWorkerTriage 参照)。**この経路にも通すこと** ——
@@ -904,19 +906,19 @@ struct ApiRunCommand: AsyncParsableCommand {
                 recover: { @Sendable frozen, currentWorkers in
                     await ProfileWorkerFactory.recoverFrozenIOSWorkers(
                         labels: frozen, workers: currentWorkers, resolved: resolved,
-                        repoRoot: iosRepoRoot, apps: resolved.apps) { logStderr($0) }
+                        repoRoot: iosRepoRoot, apps: resolved.apps) { logSupply($0) }
                 },
                 stateDir: iosRepoRoot.appendingPathComponent(".fleetest"),
                             nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
                                 await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
-                log: { logStderr($0) })
+                log: { logSupply($0) })
             workers = iosTriage.workers
             await ProfileWorkerFactory.prepareDevicesOnStart(
-                workers, homeOnStart: resolved.homeOnStart) { logStderr($0) }
+                workers, homeOnStart: resolved.homeOnStart) { logSupply($0) }
             blankTriage = (triage.repaired, triage.excluded + iosTriage.excluded)
             workers = try await ProfileWorkerFactory.installIfNeeded(
                 apps: resolved.apps, workers: workers,
-                forceAndroidInstall: !wipedAndroid.isEmpty) { logStderr($0) }
+                forceAndroidInstall: !wipedAndroid.isEmpty) { logSupply($0) }
         }
 
         // シナリオが platform 未指定のときの既定 platform(iOS ワーカーがあれば ios 優先。
@@ -1387,19 +1389,36 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// stdout への 1 行書き込みをロックで直列化する(--profile 並列実行時は複数ワーカーの
     /// イベントが並行して届きうるため。行の途中で他の書き込みが割り込むと NDJSON が壊れる)。
     /// 逐次実行経路も同じ関数を通すが、単一スレッドからの呼び出しのみなので実害はない
-    private func writeLine(_ line: String) {
-        Self.stdoutLock.lock()
-        defer { Self.stdoutLock.unlock() }
+    private func writeLine(_ line: String) { Self.writeLineLocked(line) }
+
+    /// 供給フェーズの Task からも同じロックで書けるように static でも持つ(実体は writeLine と同じ)
+    private static func writeLineLocked(_ line: String) {
+        stdoutLock.lock()
+        defer { stdoutLock.unlock() }
         ConsoleOut.out(line)
     }
 
     private static let stdoutLock = NSLock()
+
+    /// 供給フェーズの進行を NDJSON へも流す中継(貯める理由は SupplyLogRelay の宣言)
+    private static let supplyRelay = SupplyLogRelay()
 
     /// ワーカー復帰待ちの上限。監視側の再起動やデバイス自己回復を待つ
     private static let REVIVE_TIMEOUT: TimeInterval = 90
 
     private func logStderr(_ message: String) {
         ConsoleOut.err(message)
+    }
+
+    /// 供給フェーズ(デバイス起動・インストール・凍結 triage)の進行。**stderr と NDJSON の両方**へ出す
+    /// —— stderr は拡張の OUTPUT にしか出ないので、これが無いと「テスト実行」タブは供給の数分間
+    /// 無音になる(デバイスが起動していないと実測 3分39秒)。runStarted 前の行の扱いは
+    /// SupplyLogRelay の宣言。
+    private func logSupply(_ message: String) {
+        logStderr(message)
+        var event = ScenarioEvent(kind: "log")
+        event.message = message
+        Self.supplyRelay.emit(event.encodedLine()) { Self.writeLineLocked($0) }
     }
 
     /// RemoteDispatchFlagPolicy.Decision の適用。stdout は NDJSON 専用の契約なので注記も stderr へ

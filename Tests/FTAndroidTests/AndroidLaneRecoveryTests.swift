@@ -116,6 +116,32 @@ final class AndroidLaneRecoveryTests: XCTestCase {
         XCTAssertEqual(result.failed.map(\.name), ["d1"])
     }
 
+    /// 進行は**台ごとに開始と結果の2行**を (i/N) 付きで出す。直列で1台に1分近くかかるため、
+    /// 完了行だけだと待っている間ずっと無音になる(読み手は拡張の「テスト実行」タブ)。
+    func testLogsPerDeviceProgressBeforeAndAfterEachBoot() async {
+        let lines = LockedBox([String]())
+        let devices = [device("d1"), device("d2"), device("d3")]
+        _ = await AndroidLaneRecovery.bootMissingDevices(
+            devices: devices, locale: "ja_JP",
+            log: { line in lines.mutate { $0.append(line) } },
+            boot: { _, _ in })
+        // 冒頭の "Reviving N dead lane(s)" も starting を含むので、台ごとの2行だけを取る
+        let progress = lines.value.filter { $0.hasPrefix("▶️") || $0.hasPrefix("✅") }
+        XCTAssertEqual(progress.count, 6, "3台なら開始3行 + 結果3行")
+        for (index, name) in ["d1", "d2", "d3"].enumerated() {
+            let counter = "(\(index + 1)/3)"
+            XCTAssertTrue(progress.contains { $0.contains(counter) && $0.contains(name)
+                && $0.contains("starting") },
+                          "\(name) の開始行に \(counter) が無い: \(progress)")
+            XCTAssertTrue(progress.contains { $0.contains(counter) && $0.contains(name)
+                && $0.contains("revived") },
+                          "\(name) の結果行に \(counter) が無い: \(progress)")
+        }
+        // 開始行は必ずその台の結果行より前(待っている間に出るための順序)
+        XCTAssertLessThan(progress.firstIndex { $0.contains("starting") && $0.contains("d2") } ?? -1,
+                          progress.firstIndex { $0.contains("revived") && $0.contains("d2") } ?? -1)
+    }
+
     /// 空配列は何もしない(ログも起動もしない)
     func testEmptyDevicesDoesNothing() async {
         let logged = LockedBox(false)
