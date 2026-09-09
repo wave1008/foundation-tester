@@ -64,6 +64,15 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
         guard codec == "mjpeg" || codec == "h264" else {
             throw ValidationError("--codec must be mjpeg or h264")
         }
+        // **解決の間も生存を知らせる**(実測 2026-09-09): 拡張は 15 秒 1 バイトも来なければ
+        // 配信が固まったと見て kill→再起動する。ヘルパー自身はアタッチ中も ping を流すが、
+        // **ここ(ssh 越しの解決 = MachineProfileLoad + determineStates)は exec より前**で、
+        // 起動ストームの最中は determineStates が十数秒かかる(実測: ヘルパーが起きる前に
+        // 15 秒の期限が切れ、健全な配信が繰り返し殺されていた。M1Ultra の6台)。
+        // v1(mjpeg)には ping レコードが無いので h264 のときだけ。
+        let resolvePing = codec == "h264" ? StreamResolvePing() : nil
+        resolvePing?.start()
+        defer { resolvePing?.stop() }
         let machineProfile = try MachineProfileLoad.load(
             project: project, profile: profile, deviceMachine: deviceMachine,
             foreign: .notHandled,  // 1台ぶんの配信。警告は捨てているので表示は変わらない
@@ -94,6 +103,8 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
                               info: .now(pid: ProcessInfo.processInfo.processIdentifier,
                                          issuer: LocalConfig.resolveIssuerId()))
         }
+        // **ping を止め切ってから化ける** —— 書き込みの途中で execv するとレコードが切れる
+        resolvePing?.stop()
         // ヘルパーへ化ける(戻ってこない)。失敗したときだけ下へ落ちる
         try Self.exec(argv: argv)
     }
@@ -154,5 +165,49 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
         defer { for pointer in pointers where pointer != nil { free(pointer) } }
         execv(argv[0], &pointers)
         throw ValidationError("cannot start \(argv[0]): \(String(cString: strerror(errno)))")
+    }
+}
+
+/// 解決フェーズの生存 ping(v2 の KIND=3・LEN=0 レコード)。3 秒ごとに 1 本流し、`stop()` で
+/// **書き込み途中でないことを保証してから**止める(execv の直前に呼ぶ)。
+/// 形式の定義元は vscode-fleetest/src/deviceStream.ts、送り手の対はfleetest-simstream の
+/// アタッチ中 ping。**ヘルパーが書くバイト列と同じ形**なので、消費側に新しい分岐は要らない。
+final class StreamResolvePing: @unchecked Sendable {
+    /// fleetest-simstream の keepalive と同じ刻み(消費側の 15 秒判定に対して十分短い)
+    private static let intervalSeconds: Double = 3
+    private let queue = DispatchQueue(label: "fleetest.device-stream.resolve-ping")
+    private var timer: DispatchSourceTimer?
+
+    func start() {
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now(), repeating: Self.intervalSeconds, leeway: .milliseconds(500))
+        timer.setEventHandler { Self.writePing() }
+        self.timer = timer
+        timer.resume()
+    }
+
+    /// **同期的に止める**: queue へ空の仕事を積んで待つことで、走っている writePing の完了を待ち切る
+    func stop() {
+        guard let timer else { return }
+        self.timer = nil
+        timer.cancel()
+        queue.sync {}
+    }
+
+    private static func writePing() {
+        var record = [UInt8](repeating: 0, count: 10)
+        record[0] = 3  // KIND=3(ping)。FLAGS/WIDTH/HEIGHT/LEN は 0
+        record.withUnsafeBytes { buffer in
+            var offset = 0
+            while offset < buffer.count {
+                let written = write(STDOUT_FILENO, buffer.baseAddress!.advanced(by: offset),
+                                    buffer.count - offset)
+                if written < 0 {
+                    if errno == EINTR { continue }
+                    return  // 親が閉じた。以後の ping は無意味
+                }
+                offset += written
+            }
+        }
     }
 }

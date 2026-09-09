@@ -4058,7 +4058,13 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     stdout はレコード単位でロックする(ping と gQueue のフレームが交錯するとパースが壊れる)。
     **アタッチが 5 秒を超えたときだけ実測を stderr に残す**(次に遅かったときの根拠を作る)。
     v1(mjpeg)には ping レコードが無いので h264 のときだけ。検証は `SimStreamAttachPingTests`
-    (実在しない UDID を渡す = デバイス不要で「アタッチ前に ping が出る」を固定)
+    (実在しない UDID を渡す = デバイス不要で「アタッチ前に ping が出る」を固定)。
+    **リモートの台には手前にもう1段ある**(実測 2026-09-09): 拡張は
+    `remote exec <host> -- api device-stream` を起こし、そのコマンドが向こうで宛先を解決してから
+    ヘルパーへ exec する。解決(`MachineProfileLoad` + `ApiMonitorCommand.determineStates`)は
+    起動ストームの最中に十数秒かかり、**ヘルパーが起きる前に 15 秒の期限が切れていた**
+    (ヘルパー側の ping では届かない —— 実測: wedge の 19 秒後にヘルパーが
+    「attaching took 15.3s」を出した)。同じ ping を解決の間も流す(`StreamResolvePing`)
   - **録画の client を SIGINT 以外で殺さない**(実測 2026-09-09。`IOSSimulatorVideoRecorder`):
     `simctl io <udid> recordVideo` を SIGKILL/SIGTERM で殺すと**端末側の録画セッションが握られたまま
     残り**、その台は**再起動するまで**録画できない(以後 "Host recording is already in progress" で

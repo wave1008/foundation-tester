@@ -6,6 +6,11 @@
 // keepalive タイマーがまだ動いていない。起動ストームの最中はここが十数秒かかり、健全な helper が
 // 繰り返し殺されていた(M1Ultra の6台で観測)。**デバイスを1台も要らずに**確かめられるよう、
 // 実在しない UDID を渡して「アタッチに失敗する前に ping が出ているか」を見る。
+//
+// **リモートの台には手前にもう1段ある**: 拡張は `remote exec <host> -- api device-stream` を起こし、
+// そのコマンドが向こうで宛先を解決してからヘルパーへ exec する。解決(determineStates)は起動
+// ストームの最中に十数秒かかり、実測ではヘルパーが起きる前に 15 秒の期限が切れていた。
+// よってその段でも ping を流す(`ApiDeviceStreamCommand` / `StreamResolvePing`)。
 
 import XCTest
 import FTCore
@@ -63,5 +68,44 @@ final class SimStreamAttachPingTests: XCTestCase {
         let data = out.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         XCTAssertEqual(data.count, 0, "v1(mjpeg)には ping レコードが無い")
+    }
+    /// リモート経路の手前の段(`api device-stream` の解決)でも ping が出る。
+    /// **解決に失敗しても、失敗より前に 1 本出ている**ことを実バイナリで見る(デバイス不要)
+    func testDeviceStreamEmitsAPingWhileResolvingTheTarget() throws {
+        let binary = repoRoot().appendingPathComponent(".build/debug/fleetest")
+        guard FileManager.default.isExecutableFile(atPath: binary.path) else {
+            XCTFail("fleetest が .build/debug に無い(swift build --product fleetest)")
+            throw XCTSkip("binary missing")
+        }
+        let out = try runDeviceStream(binary: binary, codec: "h264")
+        XCTAssertGreaterThanOrEqual(out.count, 10, "解決の前に ping を出していない")
+        XCTAssertEqual([UInt8](out.prefix(10)), [3, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                       "KIND=3・LEN=0 の ping レコードであること")
+    }
+
+    /// mjpeg(v1)には ping レコードが無いので、こちらでも出さない
+    func testDeviceStreamDoesNotPingForMjpeg() throws {
+        let binary = repoRoot().appendingPathComponent(".build/debug/fleetest")
+        guard FileManager.default.isExecutableFile(atPath: binary.path) else {
+            throw XCTSkip("binary missing")
+        }
+        XCTAssertEqual(try runDeviceStream(binary: binary, codec: "mjpeg").count, 0)
+    }
+
+    /// 実在しないテストプロジェクトを指すので、解決は必ず失敗する(このホストの構成に依存しない)
+    private func runDeviceStream(binary: URL, codec: String) throws -> Data {
+        let process = Process()
+        process.executableURL = binary
+        process.arguments = ["api", "device-stream",
+                             "--project", "no-such-project-\(UUID().uuidString)",
+                             "--platform", "ios", "--name", "no-such-device", "--codec", codec]
+        let out = Pipe()
+        process.standardOutput = out
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        XCTAssertNotEqual(process.terminationStatus, 0, "解決は失敗する前提のテスト")
+        return data
     }
 }
