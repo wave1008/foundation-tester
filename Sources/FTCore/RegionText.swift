@@ -224,9 +224,10 @@ public enum RegionText {
     public static func hangSamplingEnabled(environment: [String: String]) -> Bool {
         environment["FT_OCR_HANG_SAMPLE"] == "1"
     }
-    /// 予算(1.3 秒)の後にさらに待つ長さ。単体の実測(最大 160ms)から桁で離れていれば「遅い」ではなく
-    /// 「詰まっている」と言える —— 10 秒はその境目であって調整値ではない
-    static let hangSampleAfterSeconds: Double = 10
+    /// 予算切れの後にさらに待ってから採る長さ。単体の実測は最大 160ms なので、その 20 倍
+    /// = 3 秒たってもまだ走っている読みは「遅い」ではなく異常で、**戻る前に**スタックを採れる
+    /// (実測 2026-09-10: 諦めた読みは 10 秒以内には戻る = 10 秒待つと採れない)。調整値ではない
+    static let hangSampleAfterSeconds: Double = 3
 
     /// 諦めた読みが戻ったかの旗(late finish が立てる)。採取は戻っていないときだけ
     final class HangWatch: @unchecked Sendable {
@@ -234,6 +235,20 @@ public enum RegionText {
         private var returned = false
         func markReturned() { lock.lock(); returned = true; lock.unlock() }
         var hasReturned: Bool { lock.lock(); defer { lock.unlock() }; return returned }
+    }
+
+    static func recordLateFinish(ms: Int, attempts: Int, pixels: Int, readable: Bool, expected: String) {
+        guard hangSamplingEnabled(environment: ProcessInfo.processInfo.environment) else { return }
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".fleetest/ocr-late", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let pid = ProcessInfo.processInfo.processIdentifier
+        let stamp = Int(Date().timeIntervalSince1970 * 1000)
+        let entry: [String: Any] = ["pid": pid, "ms": ms, "attempts": attempts, "pixels": pixels,
+                                    "readable": readable, "expected": expected, "at": stamp]
+        if let data = try? JSONSerialization.data(withJSONObject: entry) {
+            try? data.write(to: dir.appendingPathComponent("\(pid)-\(stamp).json"))
+        }
     }
 
     static func sampleSelfIfStillHung(_ watch: HangWatch, expected: String) {
@@ -252,7 +267,7 @@ public enum RegionText {
             p.executableURL = URL(fileURLWithPath: "/usr/bin/sample")
             p.arguments = ["\(pid)", "3", "-file", file.path]
             try? p.run(); p.waitUntilExit()
-            ConsoleOut.err("[fleetest] ocr shortcut still hung after \(Int(hangSampleAfterSeconds))s;"
+            ConsoleOut.err("[fleetest] ocr shortcut still in flight after \(Int(hangSampleAfterSeconds))s;"
                 + " sampled to \(file.path) expected=\"\(expected)\"")
         }
         t.name = "fleetest-ocr-hang-sample"
@@ -275,6 +290,10 @@ public enum RegionText {
             noteAbandoned(-1)
             let ms = Int(elapsed.components.seconds) * 1000
                 + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
+            // **ファイルにも残す**(FT_OCR_HANG_SAMPLE=1 のとき): stderr の中継は経路によって
+            // 落ちうるが、ファイルは落ちない。読み手は ~/.fleetest/ocr-late/ を集計する
+            recordLateFinish(ms: ms, attempts: r?.reading.attempts ?? 0, pixels: r?.reading.pixels ?? 0,
+                             readable: r?.readable ?? false, expected: expected)
             ConsoleOut.err("[fleetest] ocr shortcut finished late: \(ms)ms"
                 + " attempts=\(r?.reading.attempts ?? 0) pixels=\(r?.reading.pixels ?? 0)"
                 + " readable=\(r?.readable ?? false) expected=\"\(expected)\"")
