@@ -381,6 +381,10 @@ public struct TimelineStepRecord: Codable, Sendable {
     public var snapshotMs: Int?
     public var actionMs: Int?
     public var waitMs: Int?
+    /// 順番待ち(async タスクを作ってから最初の1命令まで)と、このプロセスが貰えた CPU 時間。
+    /// **欄が無い=不明であって0ではない**(ScenarioEvent の同名欄の doc)
+    public var scheduleDelayMs: Int?
+    public var cpuMs: Int?
     /// StepNote の rawValue(ScenarioEvent.notes 由来)。**run 横断の集計はここだけを見る**
     /// (description の文言一致で数えない。StepNote の doc 参照)。注記が無いステップと、
     /// notes を持たない旧レコードはどちらも nil
@@ -389,6 +393,7 @@ public struct TimelineStepRecord: Codable, Sendable {
     public init(scene: Int? = nil, sceneTitle: String? = nil, index: Int, description: String,
                 status: String, at: String? = nil, durationMs: Int? = nil,
                 snapshotMs: Int? = nil, actionMs: Int? = nil, waitMs: Int? = nil,
+                scheduleDelayMs: Int? = nil, cpuMs: Int? = nil,
                 notes: [String]? = nil) {
         self.scene = scene
         self.sceneTitle = sceneTitle
@@ -400,6 +405,8 @@ public struct TimelineStepRecord: Codable, Sendable {
         self.snapshotMs = snapshotMs
         self.actionMs = actionMs
         self.waitMs = waitMs
+        self.scheduleDelayMs = scheduleDelayMs
+        self.cpuMs = cpuMs
         self.notes = notes
     }
 }
@@ -636,6 +643,7 @@ public struct ScenarioRecordBuilder {
             index: event.index ?? 0, description: event.description ?? "",
             status: status, at: event.at, durationMs: event.durationMs,
             snapshotMs: event.snapshotMs, actionMs: event.actionMs, waitMs: event.waitMs,
+            scheduleDelayMs: event.scheduleDelayMs, cpuMs: event.cpuMs,
             notes: event.notes?.isEmpty == true ? nil : event.notes))
         if event.notes?.contains(StepNote.heldValue.rawValue) == true {
             stepCounts.viaHeldValue = (stepCounts.viaHeldValue ?? 0) + 1

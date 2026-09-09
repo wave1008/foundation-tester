@@ -744,9 +744,15 @@ public final class FTDriveCore {
         // `the command timed out` の 10 件すべてが durationMs 無し)
         let hostClock = ContinuousClock()
         let hostStart = hostClock.now
-        let outcome = FTSync.run {
+        // **締め切りの妥当性を測る2つ**(2026-09-10): 順番待ち(タスクが走り出すまで)と、
+        // このプロセスが実際に貰えた CPU 時間。壁時計 120 秒の上限が、飽和で進めなかっただけの
+        // ステップを打ち切っていないかを、記録から判定できるようにする
+        let scheduleDelay = FTSync.ScheduleDelay()
+        let cpuStart = ProcessCPUTime.milliseconds()
+        let outcome = FTSync.run(scheduleDelay: scheduleDelay) {
             await executor.execute(step, cached: cachedLocators, fingerprint: cachedFingerprint)
         }
+        let cpuMs = ProcessCPUTime.delta(from: cpuStart, to: ProcessCPUTime.milliseconds())
         // `at` は**失敗確定時刻**(docs/results-json.md。録画の再生位置に使う)なので打ち切りが
         // 決まった瞬間を採る —— 開始時刻を入れると再生位置がコマンド上限のぶん(120秒)ずれる
         let hostFinishedAt = ISO8601Millis.string(from: Date())
@@ -773,6 +779,8 @@ public final class FTDriveCore {
                    snapshotMs: outcome?.timing?.snapshotMs,
                    actionMs: outcome?.timing?.actionMs,
                    waitMs: outcome?.timing?.waitMs,
+                   scheduleDelayMs: scheduleDelay.milliseconds,
+                   cpuMs: cpuMs,
                    at: recordedAt,
                    notes: outcome?.notes ?? [], guarded: outcome?.guardEntered ?? false,
                    command: command, failureKind: failureKind)
@@ -1277,6 +1285,10 @@ public final class FTDriveCore {
 
     // MARK: - 記録
 
+    /// scheduleDelayMs: このステップの async タスクが走り出すまでの順番待ち /
+    /// cpuMs: その間にプロセスが貰えた CPU 時間(どちらも締め切りの妥当性を測るための計器。
+    /// ScenarioEvent の同名欄の doc)。**打ち切られた回でも scheduleDelayMs は残る**
+    /// (タスクは走り出していたが結果を返せなかった、が区別できる)。
     /// durationMs/snapshotMs/actionMs/waitMs: ステップの時間内訳(単位ミリ秒)。
     /// StepExecutor 経由のステップ(tap/exist 等)は 4 つとも渡され、performCustom 経由は
     /// durationMs のみ(launchApp/restartApp は launchTiming 経由で actionMs/waitMs も持つ。
@@ -1289,7 +1301,8 @@ public final class FTDriveCore {
     /// failureKind: 失敗の素性(`StepFailureKind`)。failed 以外では常に nil
     func recordStep(description: String, status: StepResult.Status, file: String, line: Int,
                     durationMs: Int? = nil, snapshotMs: Int? = nil,
-                    actionMs: Int? = nil, waitMs: Int? = nil, at: String? = nil,
+                    actionMs: Int? = nil, waitMs: Int? = nil,
+                    scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, at: String? = nil,
                     notes: [StepNote] = [], guarded: Bool = false,
                     command: String? = nil, failureKind: StepFailureKind? = nil,
                     screenshotData: Data? = nil, screenshotLabel: String? = nil) {
@@ -1319,6 +1332,8 @@ public final class FTDriveCore {
         event.line = line == 0 ? nil : line
         event.durationMs = durationMs
         event.snapshotMs = snapshotMs
+        event.scheduleDelayMs = scheduleDelayMs
+        event.cpuMs = cpuMs
         event.actionMs = actionMs
         event.waitMs = waitMs
         event.at = at

@@ -52,6 +52,15 @@ public struct ScenarioEvent: Codable, Sendable {
     public var actionMs: Int?
     /// durationMs の内訳: 固定 sleep・ポーリング待ちの合計(ミリ秒)
     public var waitMs: Int?
+    /// **順番待ち**: このステップの async タスクを作ってから最初の1命令が走るまで(ミリ秒)。
+    /// 協調スレッドプールが詰まると、ステップは1命令も実行しないまま壁時計だけが進む ——
+    /// 締め切り(FTSync.commandTimeout)が妥当かを判断する材料(実測 2026-09-10: 20 秒超の
+    /// ステップは snapshot/action/wait のどれにも計上されない時間が 99.7% を占めていた)
+    public var scheduleDelayMs: Int?
+    /// **このプロセスが実際に貰えた CPU 時間**(user+sys の増分。ミリ秒)。ホストが飽和していると
+    /// 壁時計は進むのに CPU はほとんど増えない。**単独ではハングを検出できない**
+    /// (I/O 待ちも CPU 0)ので、進捗の尺度と組み合わせて読む
+    public var cpuMs: Int?
     /// kind == scenarioFinished。このシナリオの FM 呼び出し実測(回数・レイテンシ)。
     /// FM を使わなかったシナリオでは nil(キーごと省略)。FM はホスト全体で直列化するため、
     /// 並列実行では他レーンの待ちも含む値になる(FMHealth の doc 参照)

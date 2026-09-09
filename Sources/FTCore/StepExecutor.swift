@@ -154,12 +154,20 @@ public struct StepTiming: Sendable, Equatable {
     public var snapshotMs: Int?
     public var actionMs: Int?
     public var waitMs: Int?
+    /// 順番待ち(async タスクが走り出すまで)と、その間にプロセスが貰えた CPU 時間。
+    /// **StepExecutor は測れない**(どちらも DSL 側の FTRuntime で測る)ので、ここを通るのは
+    /// サブプロセスの ScenarioEvent から写した値だけ。意味は ScenarioEvent の同名欄の doc
+    public var scheduleDelayMs: Int?
+    public var cpuMs: Int?
 
-    public init(durationMs: Int, snapshotMs: Int? = nil, actionMs: Int? = nil, waitMs: Int? = nil) {
+    public init(durationMs: Int, snapshotMs: Int? = nil, actionMs: Int? = nil, waitMs: Int? = nil,
+                scheduleDelayMs: Int? = nil, cpuMs: Int? = nil) {
         self.durationMs = durationMs
         self.snapshotMs = snapshotMs
         self.actionMs = actionMs
         self.waitMs = waitMs
+        self.scheduleDelayMs = scheduleDelayMs
+        self.cpuMs = cpuMs
     }
 }
 

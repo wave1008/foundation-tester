@@ -1309,6 +1309,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             step.snapshotMs = result.timing?.snapshotMs
             step.actionMs = result.timing?.actionMs
             step.waitMs = result.timing?.waitMs
+            step.scheduleDelayMs = result.timing?.scheduleDelayMs
+            step.cpuMs = result.timing?.cpuMs
             step.at = result.at
             return [step.encodedLine()]
 

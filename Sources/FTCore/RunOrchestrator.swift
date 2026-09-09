@@ -515,7 +515,8 @@ public enum ScenarioRunner {
         // 未計測のステップ(dry-run・スキップ等)なので timing 自体を nil のままにする
         let timing = event.durationMs.map {
             StepTiming(durationMs: $0, snapshotMs: event.snapshotMs,
-                      actionMs: event.actionMs, waitMs: event.waitMs)
+                      actionMs: event.actionMs, waitMs: event.waitMs,
+                      scheduleDelayMs: event.scheduleDelayMs, cpuMs: event.cpuMs)
         }
         return StepResult(index: event.index ?? 0, description: event.description ?? "",
                           status: status, scene: event.scene, sceneTitle: event.sceneTitle,
