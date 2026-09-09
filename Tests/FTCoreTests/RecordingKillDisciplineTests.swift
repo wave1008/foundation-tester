@@ -9,6 +9,7 @@
 // 型では守れない規律なのでソースで見る(ShellSourceScanTests / ProcessLivenessSourceScanTests と同型)。
 
 import XCTest
+@testable import FTCore
 
 final class RecordingKillDisciplineTests: XCTestCase {
 
@@ -47,5 +48,17 @@ final class RecordingKillDisciplineTests: XCTestCase {
         let source = codeLines(try recorderSource())
         XCTAssertTrue(source.contains("recordVideo"), "走査対象のソースを読めていない")
         XCTAssertTrue(source.contains("process.interrupt()"), "SIGINT で止める実装が見当たらない")
+    }
+    // MARK: - 再試行の仕分け
+
+    /// **一過性の空振りだけ再試行する**(実測 2026-09-10: M1Ultra の6台が run 開始直後に同時に
+    /// 空になり、数分後には同じ台で 1 秒 66KB が撮れた)。端末側にセッションが残っている形は
+    /// 待っても解けない(シャットダウンが要る)ので、繰り返して時間を捨てない。
+    func testOnlyTransientSmokeFailuresAreRetried() {
+        XCTAssertTrue(IOSSimulatorVideoRecorder.isTransient(.emptyFile))
+        XCTAssertTrue(IOSSimulatorVideoRecorder.isTransient(.didNotStop))
+        XCTAssertFalse(IOSSimulatorVideoRecorder.isTransient(.hostRecordingBusy),
+                       "端末側のセッションは再試行では解けない")
+        XCTAssertFalse(IOSSimulatorVideoRecorder.isTransient(.cannotStart("boom")))
     }
 }

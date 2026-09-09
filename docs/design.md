@@ -4073,7 +4073,12 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     `api stop-device` で解け、再起動後は 120KB の録画が撮れた)。停止は SIGINT のみ・止まらない
     個体は放置(`RecordingKillDisciplineTests` がソース走査で固定)。**stale の掃除も `pkill -INT`**。
     失敗の理由は simctl の stderr から採り、busy / 空 / 止まらない / 起こせない を撃ち分ける
-    (`SmokeFailure`)—— 以前は stderr を捨てて全部「セッションが残っている」と断定していた
+    (`SmokeFailure`)—— 以前は stderr を捨てて全部「セッションが残っている」と断定していた。
+    **空振りは一過性なので再試行する**(実測 2026-09-10: M1Ultra の6台が run 開始直後に同時に
+    空になったが、数分後には同じ台で 1 秒 66KB が撮れ、並列6本でも空いていれば全部成功した)——
+    予算は `spawnNextPart` と同じ(`startAttempts` / `startRetryBackoffSeconds` を共有。同じ
+    一過性を2つの数字で持たない)。**busy は再試行しない**(端末側のセッションはシャットダウン
+    以外では解けない)。仕分けは `isTransient` の1箇所で、テストが直接叩く
   - **モニターの撮影失敗は事実だけ言う**(2026-09-09): `simctl io screenshot` の期限切れに
     「a test run is probably driving it」と断定していたが、run の2分前(一括起動中)の失敗にも
     同じ推測が出ていた。原因は候補として並べる(run / 一括起動 / 刺さった simctl)

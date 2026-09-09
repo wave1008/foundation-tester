@@ -23,6 +23,12 @@ private final class LockedFlag: @unchecked Sendable {
 actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     /// 予期しない死亡からの再spawn上限。無限リトライで死に続けるデバイスに張り付かないため
     private static let maxRestarts = 5
+    /// **録画の開始が一過性に空振りするときの再試行**。直前セッションの CoreSimulator io 解放が
+    /// 間に合わない形(spawnNextPart の宣言)と、run 開始直後の負荷で撮れない形(実測 2026-09-10:
+    /// M1Ultra の6台が同時に空になり、数分後には同じ台で 1 秒 66KB が撮れた。並列6本でも
+    /// 空いていれば全部成功)は同じ一過性なので、**予算はここ1箇所**にして smokeCheck と共有する
+    private static let startAttempts = 3
+    private static let startRetryBackoffSeconds: Double = 2
 
     private let udid: String
     private let workDir: URL
@@ -49,7 +55,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
 
     func start() async -> Bool {
         killStaleRecording()
-        if let failure = await smokeCheck() {
+        if let failure = await smokeCheckWithRetries() {
             switch failure {
             case .hostRecordingBusy:
                 warn("this simulator holds a host recording session (simctl: \"Host recording is already"
@@ -79,6 +85,33 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     /// **「ファイルが育たない」は検知に使えない** —— 正常な録画でも**閉じるまで 0 バイトのまま**
     /// (実測: 8 秒間ずっと 0、停止した瞬間に 21KB)。だから短い録画を1本**閉じて**大きさを見る。
     /// 失敗しても run は続ける(録画はできないが実行はできる)。
+    /// **一過性の空振りは再試行する**(予算は startAttempts と共有)。busy は端末側にセッションが
+    /// 残っている形で、待っても解けない(= 再試行しても同じ)ので即あきらめる。
+    private func smokeCheckWithRetries() async -> SmokeFailure? {
+        var last: SmokeFailure?
+        for attempt in 1...Self.startAttempts {
+            guard let failure = await smokeCheck() else { return nil }
+            last = failure
+            guard Self.isTransient(failure) else { return failure }
+            if attempt < Self.startAttempts {
+                warn("the test recording came out empty"
+                     + " (attempt \(attempt)/\(Self.startAttempts)) — retrying")
+                try? await Task.sleep(
+                    nanoseconds: UInt64(Self.startRetryBackoffSeconds * 1_000_000_000))
+            }
+        }
+        return last
+    }
+
+    /// 再試行して意味があるか。**デバイス不要の純粋関数**(規則はここだけ・テストが直接叩く)
+    static func isTransient(_ failure: SmokeFailure) -> Bool {
+        switch failure {
+        case .emptyFile, .didNotStop: return true
+        // 端末側のセッションは待っても解けない(シャットダウンが要る)/ simctl を起こせないのも同じ
+        case .hostRecordingBusy, .cannotStart: return false
+        }
+    }
+
     private static let smokeSeconds: Double = 1
     /// SIGINT の猶予。**尽きても SIGKILL しない**(理由は smokeCheck の宣言)
     private static let smokeStopGraceSeconds: Double = 15
@@ -141,10 +174,11 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     /// 確認できたら watchTask(exit 監視)を張って呼び出し元へ戻る
     private func spawnNextPart() async -> Bool {
         guard !stopRequested else { return false }
-        for attempt in 1...3 {
+        for attempt in 1...Self.startAttempts {
             if await spawnPartOnce() { return true }
-            warn("could not confirm recordVideo started (attempt \(attempt)/3)")
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            warn("could not confirm recordVideo started (attempt \(attempt)/\(Self.startAttempts))")
+            try? await Task.sleep(
+                nanoseconds: UInt64(Self.startRetryBackoffSeconds * 1_000_000_000))
             guard !stopRequested else { return false }
         }
         return false
