@@ -4048,6 +4048,15 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     `monitorBridgeWatchdog`): 供給中の台(10 秒後に ready)へ「booted が5回連続したためブリッジ
     無応答とみなします」を出していた。修復は既存の門で止まっていたので実害は誤検知の警告だけだが、
     **検知は誤検知0が条件**なので `inRun` と同じく streak ごと 0 に戻す
+  - **ブリッジの定着待ちは台ごとに並列**(実測 2026-09-10。`awaitDurableAndroidBridges`):
+    **直列にする理由は起こす側にしかない** —— `AndroidLaneRecovery.bootMissingDevices` が1台ずつ
+    なのは「複数台の同時ブート描画が画面凍結の契機」だから。定着待ちは `/status` を叩くだけで
+    描画を伴わないのに直列で、1台あたり最低 8 秒の dwell を台数ぶん積んでいた
+    (実測 2026-09-09: 手元 Android 8台で run 開始→最初のシナリオが 3分41秒。起動の投入 105 秒を
+    除いた 116 秒がこの待ち + install/triage)。並列化後の実測(同じ8台・冷起動)は
+    **起動 134 秒 → ワーカー確定 179 秒 = 待ちは 45 秒**(8台とも同じ秒に待ち始めている)。
+    **和ではなく最大**になるのが並列化の形。テストは待ちの差し込み口で重なりを見る
+    (`DurableBridgeWaitConcurrencyTests`。直列に戻すと落ちる)
   - **配信 helper は「アタッチ中」も生存を知らせる**(実害 2026-09-09。`fleetest-simstream`):
     消費側(`vscode-fleetest/src/deviceStream.ts`)は 15 秒 1 バイトも来なければ helper が固まったと
     見て kill→再起動する。静止画面は 3 秒ごとの keepalive ping で埋めてあったが、**CoreSimulator への

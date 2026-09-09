@@ -451,10 +451,29 @@ public enum ProfileWorkerFactory {
     /// ここはその直後に、**実際に起こせた分だけ**を渡して呼ぶ
     /// (起こせなかったレーンの扱いは `FTCore.LaneGate` の責務なので待たない)。
     /// buildAndroidWorkers より前に呼ぶこと
+    /// **待ちは台ごとに並列**(実測 2026-09-09: 直列だと冷起動が ≈28 秒/台の台数比例になり、
+    /// 手元8台で run 開始まで 3分41秒 —— そのうち約半分がこの待ちだった)。
+    /// **直列にする理由は起こす側にしか無い** —— `AndroidLaneRecovery.bootMissingDevices` が
+    /// 1台ずつなのは「複数台の同時ブート描画が画面凍結の契機」だから。こちらは `/status` を
+    /// 叩いて待つだけで描画を伴わないので、束ねても同じ危険は無い。
+    /// `wait` は1台分の待ちの差し込み口(既定 nil = 本番経路。テストは並列性だけを見る)。
     public static func awaitDurableAndroidBridges(
-        devices: [ResolvedDevice], log: @escaping @Sendable (String) -> Void) async {
-        for device in devices where !device.spec.isPhysical {
-            await waitForDurableBridge(spec: device.spec, name: device.name, log: log)
+        devices: [ResolvedDevice], log: @escaping @Sendable (String) -> Void,
+        wait: (@Sendable (_ spec: DeviceSpec, _ name: String) async -> Void)? = nil
+    ) async {
+        let targets = devices.filter { !$0.spec.isPhysical }
+        guard !targets.isEmpty else { return }
+        await withTaskGroup(of: Void.self) { group in
+            for device in targets {
+                group.addTask {
+                    if let wait {
+                        await wait(device.spec, device.name)
+                    } else {
+                        await waitForDurableBridge(spec: device.spec, name: device.name, log: log)
+                    }
+                }
+            }
+            await group.waitForAll()
         }
     }
 
