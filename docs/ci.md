@@ -29,7 +29,10 @@ bash foundation-tester/Scripts/install.sh --work-dir "$PWD" --skip-extension --s
 fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml
 ```
 
-- **exit code**: 0 = 全シナリオ成功 / 1 = 失敗あり(JUnit は**失敗時も書かれる**)
+- **exit code**: 0 = 全シナリオ成功 / 1 = 失敗あり(JUnit は**失敗時も書かれる**)。
+  **書けない出力先は run を始める前に断る**(exit 64)—— レポートは run 後に書くので、
+  親ディレクトリが無い程度なら通すが、途中がファイル・書き込み不可のパスは即座に落とす
+  (20 分走ってから「書けなかった」と言わない)
 - **JUnit XML**: `<testsuite>` = シナリオクラス、`<testcase>` = シナリオ。
   失敗には最初の失敗ステップの要約(message)・全失敗ステップとソース位置・
   Markdown レポートのパス・実行 worker が入る。

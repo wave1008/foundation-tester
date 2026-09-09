@@ -1035,6 +1035,12 @@ struct RunScenarios: AsyncParsableCommand {
     var resolvedPlatform: String { platform ?? "ios" }
 
     func validate() throws {
+        // レポートは run 後に書くので、書けない先は**始める前に**言う(フリート run では
+        // 20 分走ってから分かっていた)。末尾の書き込み失敗が警告のみの規律は変えない
+        // (判定は FTCore.JUnitOutputPath の doc)
+        if let junit, let reason = JUnitOutputPath.unwritableReason(path: junit) {
+            throw ValidationError("--junit \(junit) cannot be written: \(reason)")
+        }
         let parsed: [String: RunProfileSetValue]
         do { parsed = try RunProfileSetOverride.parse(setOverrides) }
         catch { throw ValidationError(error.localizedDescription) }
