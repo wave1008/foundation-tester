@@ -307,12 +307,16 @@ fleetest remote status --runner <ユーザー>@<ホスト>
 ```
 
 ```
-HOST          REACHABLE  LOGIN  REV          TOOLCHAIN     FM  BINARY  FREE
-user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   -   yes     412 GB
+HOST          REACHABLE  LOGIN  REV          TOOLCHAIN     RUNTIME             FM  BINARY  FREE
+user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 24A434  -   yes     412 GB
 ```
 
 - `LOGIN` が `no (console: …)` → ランナー機がログイン画面で待っている。解錠してログインする
 - `REV` / `TOOLCHAIN` に ⚠️ → ステップ3
+- `RUNTIME` に ⚠️ → その機械の iOS シミュレータのランタイムが手元と違う。とくに `(beta)` は
+  **正式版の Xcode ではシミュレータが起動できないことがある**(一覧には使える形で出るので気づけない)。
+  その機械で `xcodebuild -downloadPlatform iOS` を打つ。**警告だけ**で exit code は変えない。
+  `-` は不明(Xcode が無い・`simctl` が 10 秒以内に答えない = CoreSimulatorService の詰まり)で、警告は鳴らない
 - `BINARY` が `no` → ステップ2(または `swift build --product fleetest`)
 - `FM` を見たいときは `--fm` を付ける(1ホストにつき数秒かかるので既定では見ない)
 - 複数ホストは `--runner a --runner b`。`--json` で機械可読の1行

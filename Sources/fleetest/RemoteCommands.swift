@@ -70,11 +70,12 @@ struct RemoteCommand: AsyncParsableCommand {
             let wantFM = fm
             let localRevision = localGitRevision()
             let localToolchain = ToolchainFingerprint.current()
+            let localRuntime = SimulatorRuntimeFingerprint.current()
 
             let probed: [HostRow] = await withTaskGroup(of: (Int, HostRow).self) { group in
                 for (index, entry) in targets.enumerated() {
                     group.addTask {
-                        (index, await RemoteStatusProbing.probe(entry.resolved, wantFM: wantFM))
+                        (index, await RemoteStatusProbing.probe(entry.resolved, wantFM: wantFM, wantRuntime: true))
                     }
                 }
                 var collected: [Int: HostRow] = [:]
@@ -88,11 +89,17 @@ struct RemoteCommand: AsyncParsableCommand {
             }
 
             if json {
-                emitJSON(reports)
+                emitJSON(reports, localRuntime: localRuntime)
             } else {
-                emitTable(reports)
+                emitTable(reports, localRuntime: localRuntime)
                 for r in reports where !r.reachable {
                     ConsoleOut.out("\(r.sshTarget): \(r.detail ?? "unreachable")")
+                }
+                // **警告だけ**(exit code に入れない。新しい検知はまず警告から)
+                for r in reports where Self.runtimeMatches(local: localRuntime, remote: r.status?.simulatorRuntime) == false {
+                    ConsoleOut.out("⚠️ \(r.sshTarget): the iOS simulator runtime differs from this Mac"
+                        + " (here: \(localRuntime ?? "?"), there: \(r.status?.simulatorRuntime ?? "?"))."
+                        + " Simulators may fail to start there; on that machine run: xcodebuild -downloadPlatform iOS")
                 }
             }
             if reports.contains(where: { !$0.reachable || !$0.compatible }) {
@@ -100,10 +107,10 @@ struct RemoteCommand: AsyncParsableCommand {
             }
         }
 
-        private func emitTable(_ reports: [HostReport]) {
-            let header = ["HOST", "REACHABLE", "LOGIN", "REV", "TOOLCHAIN", "FM", "BINARY", "FREE", "LOCK"]
+        private func emitTable(_ reports: [HostReport], localRuntime: String?) {
+            let header = ["HOST", "REACHABLE", "LOGIN", "REV", "TOOLCHAIN", "RUNTIME", "FM", "BINARY", "FREE", "LOCK"]
             var rows = [header]
-            rows.append(contentsOf: reports.map(cells))
+            rows.append(contentsOf: reports.map { cells($0, localRuntime: localRuntime) })
             let widths = (0..<header.count).map { col in rows.map { $0[col].count }.max() ?? 0 }
             for row in rows {
                 let line = zip(row, widths)
@@ -113,9 +120,9 @@ struct RemoteCommand: AsyncParsableCommand {
             }
         }
 
-        private func cells(_ r: HostReport) -> [String] {
+        private func cells(_ r: HostReport, localRuntime: String?) -> [String] {
             guard r.reachable else {
-                return [r.sshTarget, "no", "-", "-", "-", "-", "-", "-", "-"]
+                return [r.sshTarget, "no", "-", "-", "-", "-", "-", "-", "-", "-"]
             }
             let login: String
             if let session = r.status?.session {
@@ -129,7 +136,25 @@ struct RemoteCommand: AsyncParsableCommand {
             return [r.sshTarget, "yes", login,
                     mark(r, label: "git revision", value: r.status?.revision),
                     mark(r, label: "toolchain", value: r.status?.toolchain),
+                    Self.runtimeCell(local: localRuntime, remote: r.status?.simulatorRuntime),
                     fm, binary, free, Self.lockCell(r.status?.lock)]
+        }
+
+        /// ランタイムの指紋が手元と一致するか。**どちらかが読めなければ nil(不明)** ——
+        /// 不明を「違う」に倒すと Xcode の無い機械で毎回警告が鳴る
+        static func runtimeMatches(local: String?, remote: String?) -> Bool? {
+            guard let local, let remote else { return nil }
+            return local == remote
+        }
+
+        /// RUNTIME の1セル(`✅ iOS 27.0: 24A434` / `⚠️ iOS 27.0: 24A5423a (beta)` / `-` = 不明)
+        static func runtimeCell(local: String?, remote: String?) -> String {
+            guard let remote else { return "-" }
+            switch runtimeMatches(local: local, remote: remote) {
+            case true?: return "✅ \(remote)"
+            case false?: return "⚠️ \(remote)"
+            case nil: return remote
+            }
         }
 
         /// FM の1セル。**「どのランナーで FM が使えるか」を機械ごとに ssh して実呼び出しせずに
@@ -170,7 +195,7 @@ struct RemoteCommand: AsyncParsableCommand {
             return "\(icon) \(value ?? "?")"
         }
 
-        private func emitJSON(_ reports: [HostReport]) {
+        private func emitJSON(_ reports: [HostReport], localRuntime: String?) {
             let hosts = reports.map { r in
                 StatusHostJSON(
                     host: r.sshTarget,
@@ -183,6 +208,8 @@ struct RemoteCommand: AsyncParsableCommand {
                     toolchain: r.status?.toolchain,
                     toolchainCompatible: r.reachable
                         ? !r.mismatchReasons.contains(where: { $0.hasPrefix("toolchain") }) : nil,
+                    runtime: r.status?.simulatorRuntime,
+                    runtimeMatches: Self.runtimeMatches(local: localRuntime, remote: r.status?.simulatorRuntime),
                     fm: r.fmOK,
                     fmState: Self.fmCell(live: r.fmOK, ledger: r.status?.fmLiveness),
                     binaryPresent: r.status?.binaryPresent,
@@ -879,12 +906,13 @@ enum RemoteStatusProbing {
     /// 全ホスト並列・1 ssh 呼び出しに収める設計のため、$HOME 解決だけの往復を別に持たない。
     /// リモートシェルが実行時に自分の $HOME で展開する。RemoteStatusProbe.command が
     /// 二重引用符で包むのはこのため)
-    static func probe(_ resolved: ResolvedRemoteHost, wantFM: Bool) async -> HostRow {
+    /// `wantRuntime` = RUNTIME 欄を採るか(`RemoteStatusProbe.command` の `simulatorRuntime`)
+    static func probe(_ resolved: ResolvedRemoteHost, wantFM: Bool, wantRuntime: Bool) async -> HostRow {
         let target = resolved.hostSpec.sshTarget
         do {
             let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: "$HOME"),
                                       issuer: try resolveLayoutIssuer())
-            let command = RemoteStatusProbe.command(layout: layout)
+            let command = RemoteStatusProbe.command(layout: layout, simulatorRuntime: wantRuntime)
             let result = try Shell.run(remoteSSHBase + [target, command])
             // ssh は自身の接続失敗(DNS/認証/タイムアウト等)だけ 255 を返す規約 — リモート
             // コマンドの終了コードはそのまま通るため、df 等が失敗しても到達はしている
@@ -956,6 +984,10 @@ private struct StatusHostJSON: Encodable {
     let revisionCompatible: Bool?
     let toolchain: String?
     let toolchainCompatible: Bool?
+    /// iOS シミュレータのランタイムの指紋。`runtimeMatches` は手元との一致(null = どちらかが不明)。
+    /// **警告だけ** —— ここが false でも exit code は変えない
+    let runtime: String?
+    let runtimeMatches: Bool?
     /// `--fm` の実呼び出しの結果だけ。付けていなければ null(**FM の生死ではない**)
     let fm: Bool?
     /// 表示と同じ文字列("ok" / "ng" / "ng:vision" / "ng:text+vision" / "-" = 不明)。

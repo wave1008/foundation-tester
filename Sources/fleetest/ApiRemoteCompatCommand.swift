@@ -54,7 +54,7 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
 
         let probed: [Int: HostRow] = await withTaskGroup(of: (Int, HostRow).self) { group in
             for entry in targets {
-                group.addTask { (entry.index, await RemoteStatusProbing.probe(entry.resolved, wantFM: false)) }
+                group.addTask { (entry.index, await RemoteStatusProbing.probe(entry.resolved, wantFM: false, wantRuntime: false)) }
             }
             var collected: [Int: HostRow] = [:]
             for await (index, row) in group { collected[index] = row }

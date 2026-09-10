@@ -829,11 +829,14 @@ public struct RemoteHostStatus: Equatable, Sendable {
     /// (`--fm` は「今この瞬間を実呼び出しで確かめる」ための別口として残る)。
     /// **鮮度の判定は読み手が行う**(checkedAt は向こうの時計。ここでは生の記録を運ぶだけ)
     public let fmLiveness: FMLiveness.Record?
+    /// iOS シミュレータのランタイムの指紋(`SimulatorRuntimeFingerprint`)。nil = 読めない = 不明
+    public let simulatorRuntime: String?
 
-    /// lock / fmLiveness は既定 nil ―― 既存の5引数呼び出し(と、それを固定しているテスト)を壊さない
+    /// lock / fmLiveness / simulatorRuntime は既定 nil ―― 既存の5引数呼び出し(と、それを固定している
+    /// テスト)を壊さない
     public init(session: RemoteSessionInfo?, revision: String?, toolchain: String?,
                 binaryPresent: Bool, freeKB: Int?, lock: RemoteDispatchLock.Probe? = nil,
-                fmLiveness: FMLiveness.Record? = nil) {
+                fmLiveness: FMLiveness.Record? = nil, simulatorRuntime: String? = nil) {
         self.session = session
         self.revision = revision
         self.toolchain = toolchain
@@ -841,6 +844,7 @@ public struct RemoteHostStatus: Equatable, Sendable {
         self.freeKB = freeKB
         self.lock = lock
         self.fmLiveness = fmLiveness
+        self.simulatorRuntime = simulatorRuntime
     }
 }
 
@@ -853,9 +857,13 @@ public struct RemoteHostStatus: Equatable, Sendable {
 public enum RemoteStatusProbe {
     private static let separator = "---FT---"
 
-    public static func command(layout: RemoteLayout) -> String {
+    /// `simulatorRuntime` = RUNTIME 欄の2ブロックを足すか。**`remote status` だけが true** ——
+    /// `api remote-compat`(拡張がリモート実行の前に毎回待つ)は値を読まないので、simctl の往復
+    /// (0.4〜1 秒・サービスが刺されば期限まで)を実行開始の前に払わせない。既定値を置かない
+    /// (新しい呼び出し元にどちらかを選ばせる)
+    public static func command(layout: RemoteLayout, simulatorRuntime: Bool) -> String {
         let sep = "echo '\(separator)'"
-        let steps = [
+        var steps = [
             "echo $HOME; \(RemoteProbe.consoleUserCommand); id -un",
             "git -C \(dquote(layout.toolRoot)) rev-parse HEAD 2>/dev/null || echo -",
             "xcodebuild -version",
@@ -864,15 +872,27 @@ public enum RemoteStatusProbe {
             "df -k \(dquote(layout.base)) | tail -1",
             // **dispatch.lock はホストに1本**(発行者ネームスペースの外側)。RemoteDispatchLock の
             // probeCommand と同じ形だが、こちらは $HOME 未解決の base を扱うため dquote で包む
-            // (単一引用符だと展開されない。ファイル冒頭の注記と同じ理由)
+            // (単一引用符だと展開されない。ファイル冒頭の注記と同じ理由)。
+            // info.json は `printf '%s'` で書かれ改行で終わらない —— **cat の後の echo を外さない**
+            // (無いと次の区切りが同じ行に付き、握られている間だけ後ろのブロックが全部ずれる)
             "if [ -d \(dquote(RemoteDispatchLock.lockDirPath(base: layout.base))) ]; then echo held;"
-                + " cat \(dquote(RemoteDispatchLock.infoFilePath(base: layout.base))) 2>/dev/null || true;"
+                + " cat \(dquote(RemoteDispatchLock.infoFilePath(base: layout.base))) 2>/dev/null || true; echo;"
                 + " else echo absent; fi",
             // FM の死活台帳。**レイアウトの外**(~/.fleetest。FM はホストの資源でプロジェクトにも
             // 発行者にも属さない)。**実呼び出しはしない** —— ここで doctor を撃つと status が
             // ホストの FM を消費し、しかもホスト数ぶん直列化の枠を奪う
-            "cat \"$HOME/.fleetest/fm-liveness.json\" 2>/dev/null || true",
+            // **末尾の echo は外さない** —— 台帳は改行で終わらないので、無いと次の区切りが
+            // `}}---FT---` と同じ行に付き、区切りとして読まれず後ろのブロックが全部ずれる
+            "cat \"$HOME/.fleetest/fm-liveness.json\" 2>/dev/null || true; echo",
         ]
+        if simulatorRuntime {
+            // iOS シミュレータのランタイム(RUNTIME 欄)。手元と同じ2コマンド、simctl だけ期限付き
+            // (SimulatorRuntimeFingerprint。Xcode が無い・期限切れは空 = 不明)
+            steps += [
+                "\(SimulatorRuntimeFingerprint.sdkVersionCommand) 2>/dev/null || true",
+                "\(SimulatorRuntimeFingerprint.remoteRuntimeListCommand) 2>/dev/null || true",
+            ]
+        }
         return steps.joined(separator: "; \(sep); ")
     }
 
@@ -896,10 +916,13 @@ public enum RemoteStatusProbe {
         // 旧ランナー(ブロックが7個しか無い)・台帳が無い・壊れている、いずれも nil = 不明。
         // **「FM は生きている」に倒さない**(不明と生を混ぜない。FMLiveness.swift 冒頭 ①)
         let fmLiveness = block(7).flatMap(parseFMLiveness)
+        let simulatorRuntime = block(8).flatMap { sdk in
+            block(9).flatMap { SimulatorRuntimeFingerprint.compose(sdkVersion: sdk, runtimeList: $0) }
+        }
 
         return RemoteHostStatus(session: session, revision: revision, toolchain: toolchain,
                                 binaryPresent: binaryPresent, freeKB: freeKB, lock: lock,
-                                fmLiveness: fmLiveness)
+                                fmLiveness: fmLiveness, simulatorRuntime: simulatorRuntime)
     }
 
     /// 台帳の JSON。空・壊れているは nil(不明)。**部分的に読めた枝は活かす** ——

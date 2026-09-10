@@ -79,7 +79,7 @@ final class RemoteStatusFMProbeTests: XCTestCase {
     /// 読むのは**レイアウトの外**の ~/.fleetest(FM はホストの資源で、プロジェクトにも
     /// 発行者にも属さない)。**実呼び出しのコマンドを混ぜない**
     func testCommandReadsTheLedgerWithoutCallingFM() {
-        let command = RemoteStatusProbe.command(layout: layout)
+        let command = RemoteStatusProbe.command(layout: layout, simulatorRuntime: true)
         XCTAssertTrue(command.contains("$HOME/.fleetest/fm-liveness.json"), command)
         XCTAssertFalse(command.contains("doctor"), "status から FM を実呼び出ししない。\(command)")
         XCTAssertFalse(command.contains("--fm-only"), command)

@@ -1362,7 +1362,7 @@ final class RemoteDispatchTests: XCTestCase {
         let binary = "\"/Users/ci/fleetest-runner/foundation-tester/.build/debug/fleetest\""
         let base = "\"/Users/ci/fleetest-runner\""
         XCTAssertEqual(
-            RemoteStatusProbe.command(layout: layout),
+            RemoteStatusProbe.command(layout: layout, simulatorRuntime: true),
             "echo $HOME; if launchctl print gui/$(id -u) >/dev/null 2>&1; then id -un;"
             + " else stat -f%Su /dev/console; fi; id -un; echo '---FT---'; "
             + "git -C \(tool) rev-parse HEAD 2>/dev/null || echo -; echo '---FT---'; "
@@ -1371,12 +1371,64 @@ final class RemoteDispatchTests: XCTestCase {
             + "test -x \(binary) && echo yes || echo no; echo '---FT---'; "
             + "df -k \(base) | tail -1; echo '---FT---'; "
             + "if [ -d \"/Users/ci/fleetest-runner/.fleetest/dispatch.lock\" ]; then echo held;"
-            + " cat \"/Users/ci/fleetest-runner/.fleetest/dispatch.lock/info.json\" 2>/dev/null || true;"
+            + " cat \"/Users/ci/fleetest-runner/.fleetest/dispatch.lock/info.json\" 2>/dev/null || true; echo;"
             + " else echo absent; fi; echo '---FT---'; "
             // FM の死活台帳。**レイアウトの外**(~/.fleetest)を読む —— FM はホストの資源で、
             // プロジェクトにも発行者にも属さない。**実呼び出しは混ぜない**(status がホストの
             // FM を消費し、ホスト数ぶん直列化の枠を奪うことになる)
-            + "cat \"$HOME/.fleetest/fm-liveness.json\" 2>/dev/null || true")
+            + "cat \"$HOME/.fleetest/fm-liveness.json\" 2>/dev/null || true; echo; echo '---FT---'; "
+            // iOS シミュレータのランタイム(RUNTIME 欄)。手元と同じ2コマンド、simctl だけ期限付き
+            + "xcrun --sdk iphonesimulator --show-sdk-version 2>/dev/null || true; echo '---FT---'; "
+            + "perl -e 'alarm shift; exec @ARGV' 10 xcrun simctl list runtimes 2>/dev/null || true")
+    }
+
+    /// `api remote-compat`(拡張がリモート実行の前に毎回待つ)は RUNTIME を読まない ——
+    /// simctl の往復を実行開始の前に払わせない。落とすのは FM の台帳までの8ブロック
+    func testStatusProbeWithoutRuntimeOmitsSimctl() {
+        let layout = RemoteLayout(base: "/b", issuer: "alice")
+        let command = RemoteStatusProbe.command(layout: layout, simulatorRuntime: false)
+        XCTAssertFalse(command.contains("simctl"), command)
+        XCTAssertFalse(command.contains("--show-sdk-version"), command)
+        XCTAssertTrue(command.hasSuffix("cat \"$HOME/.fleetest/fm-liveness.json\" 2>/dev/null || true; echo"), command)
+        XCTAssertEqual(command.components(separatedBy: "echo '---FT---'").count, 8)
+    }
+
+    /// **ファイルを cat するブロックは必ず改行で閉じる**。改行で終わらないファイル(FM の台帳・
+    /// `printf '%s'` で書くロックの info.json)の直後に区切りが来ると `}}---FT---` が1行になり、
+    /// 区切りとして読まれず後ろのブロックが全部ずれる(2026-09-10 実データで RUNTIME が両機とも
+    /// 読めなかった。単体テストの出力は区切りを自前で改行付きに組むので出ない)
+    func testEveryCatInTheStatusProbeIsFollowedByANewline() {
+        let command = RemoteStatusProbe.command(layout: RemoteLayout(base: "/b", issuer: "alice"), simulatorRuntime: true)
+        let cats = command.components(separatedBy: " cat ").dropFirst()
+        XCTAssertEqual(cats.count, 2, "cat の本数が変わった(ロックの info.json と FM の台帳)—— 検査を見直すこと")
+        for rest in cats {
+            let upToSeparator = rest.components(separatedBy: "echo '---FT---'")[0]
+            XCTAssertTrue(upToSeparator.contains("; echo;"),
+                          "cat の後に改行を足していない: cat \(upToSeparator)")
+        }
+    }
+
+    /// RUNTIME 欄も同じ1往復に相乗りさせる。**実物の出力の形**(2026-09-10 の M1Max = ベータだけ /
+    /// M1Ultra = ベータと正式版が同居)で、手元と比べられる指紋になること
+    func testStatusProbeParsesTheSimulatorRuntimeBlocks() {
+        let base = statusOutput(
+            session: "/Users/ci\nalice\nalice", revision: "abc123",
+            xcodeVersion: "Xcode 27.0\nBuild version 27A266a", sdkBuild: "24A430",
+            binary: "yes", df: "/dev/disk3s1s1  965538800 542000000 400000000   58%    /")
+            + "\n\(Self.statusSeparator)\nabsent\n\(Self.statusSeparator)\n"
+        let betaOnly = base + "\(Self.statusSeparator)\n27.0\n\(Self.statusSeparator)\n== Runtimes ==\n"
+            + "iOS 26.2 (26.2 - 23C54) - com.apple.CoreSimulator.SimRuntime.iOS-26-2\n"
+            + "iOS 27.0 (27.0 - 24A5423a) - com.apple.CoreSimulator.SimRuntime.iOS-27-0"
+        XCTAssertEqual(RemoteStatusProbe.parse(betaOnly).simulatorRuntime, "iOS 27.0: 24A5423a (beta)")
+        let mixed = base + "\(Self.statusSeparator)\n27.0\n\(Self.statusSeparator)\n== Runtimes ==\n"
+            + "iOS 27.0 (27.0 - 24A5355p) - com.apple.CoreSimulator.SimRuntime.iOS-27-0\n"
+            + "iOS 27.0 (27.0 - 24A434) - com.apple.CoreSimulator.SimRuntime.iOS-27-0"
+        XCTAssertEqual(RemoteStatusProbe.parse(mixed).simulatorRuntime, "iOS 27.0: 24A434")
+        // 旧形(ブロックが足りない)・SDK が読めない(Xcode 無し)は nil = 不明
+        XCTAssertNil(RemoteStatusProbe.parse(base).simulatorRuntime)
+        XCTAssertNil(RemoteStatusProbe.parse(base + "\(Self.statusSeparator)\n\n\(Self.statusSeparator)\n").simulatorRuntime)
+        // simctl が期限切れ(空のブロック)は不明。**「ランタイムが無い」= none に倒さない**
+        XCTAssertNil(RemoteStatusProbe.parse(base + "\(Self.statusSeparator)\n27.0\n\(Self.statusSeparator)\n").simulatorRuntime)
     }
 
     /// 占有(誰が使っているか)を **remote status の1往復に相乗りさせる**(§18.1 #1)。
@@ -1400,7 +1452,8 @@ final class RemoteDispatchTests: XCTestCase {
     /// 二重引用符で包むだけで壊れない(単一引用符と違い変数展開を妨げない)ことを確認
     func testStatusProbeCommandQuotesDoNotSuppressHomeExpansion() {
         let layout = RemoteLayout(base: RemoteLayout.resolveBase("~/fleetest-runner", home: "$HOME"), issuer: "alice")
-        XCTAssertTrue(RemoteStatusProbe.command(layout: layout).contains("\"$HOME/fleetest-runner/foundation-tester\""))
+        XCTAssertTrue(RemoteStatusProbe.command(layout: layout, simulatorRuntime: true)
+            .contains("\"$HOME/fleetest-runner/foundation-tester\""))
     }
 
     // MARK: - RemoteStatusProbe.dquote
