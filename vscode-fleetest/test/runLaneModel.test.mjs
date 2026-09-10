@@ -203,32 +203,9 @@ test("runFinished: 実行中のワーカーが全て workerRunning:false にな�
 
   const actions = feed(state, [{ kind: "runFinished", passed: 0, failed: 1 }]);
   assert.ok(actions.some((a) => a.type === "workerRunning" && a.workerId === "ios:シミュ1" && !a.running));
+  // 完了の集計(件数・所要)は運ばない —— 見出しの状況行を空に戻す合図だけ(ユーザー決定)
   const finished = actions.find((a) => a.type === "runFinished");
-  assert.ok(finished);
-  assert.equal(finished.passed, 0);
-  assert.equal(finished.failed, 1);
-  // runStarted を経ていないので runStartedAtMs 未設定 → totalSeconds も event 側フィールドも undefined
-  assert.equal(finished.totalSeconds, undefined);
-  assert.equal(finished.testSeconds, undefined);
-  assert.equal(finished.scenarioTotalSeconds, undefined);
-});
-
-test("runFinished: runStarted からの経過秒数(totalSeconds)と event の testSeconds/scenarioTotalSeconds が素通しされる", () => {
-  const state = createRunLaneState();
-  const actions = feed(
-    state,
-    [
-      { kind: "runStarted", total: 1 },
-      { kind: "runFinished", passed: 1, failed: 0, testSeconds: 12.3, scenarioTotalSeconds: 45.6 },
-    ],
-    { nowMs: (tick) => (tick === 0 ? 1000 : 3500) },
-  );
-
-  const finished = actions.find((a) => a.type === "runFinished");
-  assert.ok(finished);
-  assert.equal(finished.totalSeconds, 2.5);
-  assert.equal(finished.testSeconds, 12.3);
-  assert.equal(finished.scenarioTotalSeconds, 45.6);
+  assert.deepEqual(finished, { type: "runFinished" });
 });
 
 test("wipeStatus はログレーンにアクションを発生させない(タイルのバッジ表示専用)", () => {
@@ -329,16 +306,7 @@ test("統合: mock-runner.mjs(parallel パターン)の出力を NdjsonParser �
   assert.deepEqual(runningByWorker.get("ios:シミュ1"), [true, false]);
   assert.deepEqual(runningByWorker.get("ios:シミュ2"), [true, false]);
 
-  // mock-runner.mjs は runStarted を出すが testSeconds/scenarioTotalSeconds は出さない
-  // (NDJSON に無い旧イベント形も再現できることの確認を兼ねる)。totalSeconds は実クロック依存のため型のみ検証。
-  const finished = actions.find((a) => a.type === "runFinished");
-  assert.ok(finished);
-  assert.equal(finished.passed, 1);
-  assert.equal(finished.failed, 1);
-  assert.equal(typeof finished.totalSeconds, "number");
-  assert.ok(finished.totalSeconds >= 0);
-  assert.equal(finished.testSeconds, undefined);
-  assert.equal(finished.scenarioTotalSeconds, undefined);
+  assert.deepEqual(actions.find((a) => a.type === "runFinished"), { type: "runFinished" });
 });
 
 /**

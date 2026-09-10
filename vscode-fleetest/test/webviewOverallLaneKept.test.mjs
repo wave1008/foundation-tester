@@ -118,3 +118,14 @@ test("status アクションは見出しの状況行に出る", (t) => {
   assert.equal(document.getElementById("lanes-run-status").textContent, "✅ (3/8) Pixel 9-03: revived",
     "新しい進行で上書きする");
 });
+
+// 完了の集計(「完了: 成功 N / 失敗 M(トータル …)」)は出さない(ユーザー決定)。
+// 空に戻すのは、直前の進行が完了後も残って「まだ走っている」と読まれないため
+test("runFinished で見出しの状況行は空に戻り、集計は出ない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  send(window, { type: "runEvent", action: { type: "status", text: "▶️ (8/8) Pixel 9-08: starting" } });
+  send(window, { type: "runEvent", action: { type: "runFinished" } });
+  assert.equal(document.getElementById("lanes-run-status").textContent, "");
+});

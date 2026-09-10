@@ -300,23 +300,10 @@ export function applyLaneAction(action) {
     case 'workerRunning':
       setTileRunning(action.workerId, action.running);
       break;
-    case 'runFinished': {
-      const base = t('wvMonitor2.laneLog.runFinished', { passed: action.passed, failed: action.failed });
-      const timingParts = [];
-      if (action.totalSeconds != null) {
-        timingParts.push(t('wvMonitor2.laneLog.timingTotal', { seconds: action.totalSeconds.toFixed(1) }));
-      }
-      if (action.testSeconds != null) {
-        timingParts.push(t('wvMonitor2.laneLog.timingTest', { seconds: action.testSeconds.toFixed(1) }));
-      }
-      if (action.scenarioTotalSeconds != null) {
-        timingParts.push(
-          t('wvMonitor2.laneLog.timingScenarioTotal', { seconds: action.scenarioTotalSeconds.toFixed(1) }),
-        );
-      }
-      lanesRunStatus.textContent = timingParts.length > 0 ? base + '(' + timingParts.join(' / ') + ')' : base;
+    case 'runFinished':
+      // 完了の集計は出さない(ユーザー決定)。直前の進行表示を残さないよう空に戻すだけ
+      lanesRunStatus.textContent = '';
       break;
-    }
     default:
       break;
   }

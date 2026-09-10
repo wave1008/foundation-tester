@@ -45,20 +45,12 @@ export type LaneAction =
   | { readonly type: "line"; readonly laneId: string; readonly text: string }
   /** 見出し行に出す1行の状況(worker を持たない log。供給フェーズの進行が主な出どころ)。
    * **レーン欄はデバイスを選択している間ログを置かない**(ユーザー決定)ので、選択中でも
-   * 進行が見えるように見出しへ出す。runFinished の集計行と同じ場所で、後から上書きされる。 */
+   * 進行が見えるように見出しへ出す。run の完了(runFinished)で空に戻る。 */
   | { readonly type: "status"; readonly text: string }
   /** ワーカーの実行中状態の変化(タイルの「実行中」バッジに反映)。 */
   | { readonly type: "workerRunning"; readonly workerId: string; readonly running: boolean }
-  /** runFinished。全体の完了表示に使う。totalSeconds はここでクライアント側計算(runStartedAtMs 起点、
-   * NDJSON に対応フィールドが無いため)。testSeconds/scenarioTotalSeconds は event からの素通し。 */
-  | {
-      readonly type: "runFinished";
-      readonly passed: number;
-      readonly failed: number;
-      readonly totalSeconds?: number;
-      readonly testSeconds?: number;
-      readonly scenarioTotalSeconds?: number;
-    };
+  /** runFinished。見出しの状況行を空に戻す合図(完了の集計は出さない = ユーザー決定)。 */
+  | { readonly type: "runFinished" };
 
 interface LaneEntry {
   info: LaneInfo;
@@ -75,7 +67,6 @@ export interface RunLaneState {
   lanes: Map<string, LaneEntry>;
   runningWorkers: Set<string>;
   scenarioTimings: Map<string, ScenarioTiming>;
-  runStartedAtMs: number | undefined;
 }
 
 export function createRunLaneState(): RunLaneState {
@@ -83,7 +74,6 @@ export function createRunLaneState(): RunLaneState {
     lanes: new Map(),
     runningWorkers: new Set(),
     scenarioTimings: new Map(),
-    runStartedAtMs: undefined,
   };
 }
 
@@ -224,7 +214,6 @@ export function isAnyLaneRunning(state: RunLaneState): boolean {
 export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: number): LaneAction[] {
   switch (event.kind) {
     case "runStarted":
-      state.runStartedAtMs = nowMs;
       return resetRunLaneState(state);
 
     case "workersReady":
@@ -317,18 +306,7 @@ export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: num
     }
 
     case "runFinished": {
-      const actions: LaneAction[] = [...forceEndRunLaneState(state)];
-      const totalSeconds =
-        state.runStartedAtMs != null ? (nowMs - state.runStartedAtMs) / 1000 : undefined;
-      actions.push({
-        type: "runFinished",
-        passed: event.passed,
-        failed: event.failed,
-        totalSeconds,
-        testSeconds: event.testSeconds,
-        scenarioTotalSeconds: event.scenarioTotalSeconds,
-      });
-      return actions;
+      return [...forceEndRunLaneState(state), { type: "runFinished" }];
     }
 
     case "scenarioRequeued": {

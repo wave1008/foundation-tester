@@ -135,16 +135,6 @@ export const webviewMonitorBStrings = {
   "wvMonitor2.laneLog.titleDevices": { ja: "デバイス", en: "Devices" },
   "wvMonitor2.laneLog.selectedCount": { ja: "選択中{count}台を表示", en: "Showing {count} selected" },
   "wvMonitor2.laneLog.allWorkers": { ja: "全ワーカー", en: "All workers" },
-  "wvMonitor2.laneLog.runFinished": {
-    ja: "完了: 成功 {passed} / 失敗 {failed}",
-    en: "Done: passed {passed} / failed {failed}",
-  },
-  "wvMonitor2.laneLog.timingTotal": { ja: "トータル {seconds}s", en: "Total {seconds}s" },
-  "wvMonitor2.laneLog.timingTest": { ja: "テスト実時間 {seconds}s", en: "Test time {seconds}s" },
-  "wvMonitor2.laneLog.timingScenarioTotal": {
-    ja: "シナリオ合計 {seconds}s",
-    en: "Scenario total {seconds}s",
-  },
 
   // hostCharts.js
   "wvMonitor2.hostCharts.lockOther": {
