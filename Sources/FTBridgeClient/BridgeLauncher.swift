@@ -29,6 +29,11 @@ public struct BridgeLauncher {
     // ポート別に分離(複数ブリッジ=複数シミュレータの並列運用のため)
     var logPath: URL { stateDir.appendingPathComponent("bridge-\(port).log") }
     var pidPath: URL { stateDir.appendingPathComponent("bridge-\(port).pid") }
+    /// `test-without-building` の結果の束。**ポートごとに1つを固定し、起動のたびに作り直す**。
+    /// 指定しないと Xcode は既定の DerivedData に起動ごとの新しいフォルダ
+    /// (`FleetestRunner-<hash>/Logs/Test/*.xcresult`)を作り、終わらない UI テストの結果を
+    /// 誰も読まないまま積む(実測 100 個・1.8 GB・1 日約 50 個)
+    var resultBundlePath: URL { stateDir.appendingPathComponent("xcresult/bridge-\(port).xcresult") }
     var projectPath: URL { repoRoot.appendingPathComponent("Runner/FleetestRunner.xcodeproj") }
 
     /// --device には名前("iPhone 17")と UDID のどちらも渡せる(シミュレータのみ。実機は UDID 必須)
@@ -279,19 +284,34 @@ public struct BridgeLauncher {
 
         FileManager.default.createFile(atPath: logPath.path, contents: nil)
         let logHandle = try FileHandle(forWritingTo: logPath)
+        // xcodebuild は既存の束があると起動を拒むので、前回分を消してから渡す。前回のブリッジは
+        // 上の killOrphanRunners と呼び手の停止で既に居ない(同じポートに2本は立たない)
+        try FileManager.default.createDirectory(
+            at: resultBundlePath.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: resultBundlePath)
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcodebuild")
-        process.arguments = [
-            "test-without-building",
-            "-xctestrun", xctestrun.path,
-            "-destination", destination,
-        ]
+        process.arguments = testWithoutBuildingArguments(xctestrun: xctestrun)
         process.currentDirectoryURL = repoRoot
         process.standardOutput = logHandle
         process.standardError = logHandle
         try process.run()
         try String(process.processIdentifier).write(to: pidPath, atomically: true, encoding: .utf8)
+    }
+
+    /// ブリッジを起こす `xcodebuild` の引数。**結果の束と作業フォルダの置き場を必ず渡す**
+    /// (`BridgeLauncherCaptureSettingsTests` が固定)
+    func testWithoutBuildingArguments(xctestrun: URL) -> [String] {
+        [
+            "test-without-building",
+            "-xctestrun", xctestrun.path,
+            "-destination", destination,
+            "-resultBundlePath", resultBundlePath.path,
+            // 指定しないと、束を外へ出しても既定の DerivedData に空のフォルダを起動ごとに1つ作る
+            // (ビルドと同じ置き場を渡せば、起動のたびに同じ場所を使い回す)
+            "-derivedDataPath", derivedDataPath.path,
+        ]
     }
 
     /// XCTest の自動記録(画面の動画・自動スクリーンショット)の設定。ビルドが書く既定は

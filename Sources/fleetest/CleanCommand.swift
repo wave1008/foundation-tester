@@ -45,16 +45,16 @@ struct CleanCommand: AsyncParsableCommand {
     var activeRunID: String?
 
     func run() async throws {
-        let repoRoot = try fleetestRepoRoot()
+        let roots = try RetentionSweeper.Roots.resolve()
         if background {
-            RunCompletionSweep.runInBackground(repoRoot: repoRoot, activeRunID: activeRunID)
+            RunCompletionSweep.runInBackground(roots: roots, activeRunID: activeRunID)
             return
         }
         // 錠は消す処理だけが取る。**変数に束縛して run の終わりまで保持する**(捨てると即座に閉じて外れる)
         let lock = dryRun ? nil : try Self.acquireLockOrExplain()
         defer { withExtendedLifetime(lock) {} }
         let report = RetentionSweeper.clean(
-            repoRoot: repoRoot,
+            roots: roots,
             categories: Self.categories(recordings: recordings, reports: reports, logs: logs,
                                         deviceCaptures: deviceCaptures),
             policy: LocalConfig.load().retention ?? RetentionPolicy(),
@@ -109,7 +109,7 @@ struct ApiCleanCommand: AsyncParsableCommand {
         let lock = dryRun ? nil : try CleanCommand.acquireLockOrExplain()
         defer { withExtendedLifetime(lock) {} }
         let report = RetentionSweeper.clean(
-            repoRoot: try fleetestRepoRoot(),
+            roots: try RetentionSweeper.Roots.resolve(),
             categories: RetentionSweeper.Category.allCases,
             policy: LocalConfig.load().retention ?? RetentionPolicy(),
             dryRun: dryRun,

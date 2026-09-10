@@ -26,19 +26,44 @@ enum RetentionSweeper {
         }
     }
 
-    /// **時間で打ち切らない**。自動の掃除は run の完了後に**別プロセスの背景**で走る
-    /// (`RunCompletionSweep`)のでテストの実行時間に乗らず、手動は頼まれた分を最後まで消す。
-    /// 同時に2本は走らない(`FTCore.RetentionSweepLock`)
+    // **時間で打ち切らない**。自動の掃除は run の完了後に**別プロセスの背景**で走る
+    // (`RunCompletionSweep`)のでテストの実行時間に乗らず、手動は頼まれた分を最後まで消す。
+    // 同時に2本は走らない(`FTCore.RetentionSweepLock`)
+
+    /// 掃除が見る2つの場所。**1つの値で兼ねない** —— 受け手の外部構成(既定)では別の場所で、
+    /// 兼ねると背景の掃除が受け手のプロジェクトを1度も見なかった(ツールの場所から起動していた)。
+    ///   - `package`: シナリオのパッケージ(`TestProjects/` を持つ = 受け手の WORK_DIR)。
+    ///     録画・レポートはここ。`install.sh` のログも `<package>/.fleetest/` に書かれる
+    ///   - `tool`: ツールのクローン(`RepoRoot.find()`)。ブリッジのログと台帳(`bridge-<port>.pid`)は
+    ///     ここの `.fleetest/` にある = 添付とログの guarded 判定の拠り所
+    /// 保守者のクローン構成では2つは同じ場所になる
+    struct Roots: Equatable, Sendable {
+        let package: URL
+        let tool: URL
+
+        /// ログを探す `.fleetest/`(同じ場所なら1つ)
+        var stateDirs: [URL] {
+            let dirs = [tool, package].map { $0.appendingPathComponent(".fleetest") }
+            return dirs[0].standardizedFileURL == dirs[1].standardizedFileURL ? [dirs[0]] : dirs
+        }
+
+        /// このプロセスの cwd から2つを決める(`fleetest run` / `api run` と同じ解決)。
+        /// ツールが見つからないときはパッケージの場所で代える(台帳が無いので guarded 判定は安全側に倒る)
+        static func resolve() throws -> Roots {
+            let package = try fleetestRepoRoot()
+            return Roots(package: package, tool: (try? RepoRoot.find()) ?? package)
+        }
+    }
 
     // MARK: - セッションの採取
 
-    static func sessions(for category: Category, repoRoot: URL,
+    static func sessions(for category: Category, roots: Roots,
                          activeRunID: String?) -> [RetentionSweep.Session] {
         switch category {
-        case .deviceCaptures: return deviceCaptureSessions(repoRoot: repoRoot)
-        case .recordings: return recordingSessions(repoRoot: repoRoot, activeRunID: activeRunID)
-        case .reports: return reportSessions(repoRoot: repoRoot, activeRunID: activeRunID)
-        case .logs: return logSessions(repoRoot: repoRoot)
+        case .deviceCaptures: return deviceCaptureSessions(toolRoot: roots.tool)
+        case .recordings: return recordingSessions(packageRoot: roots.package, activeRunID: activeRunID)
+        case .reports: return reportSessions(packageRoot: roots.package, activeRunID: activeRunID)
+        case .logs: return logSessions(roots: roots)
         }
     }
 
@@ -46,9 +71,9 @@ enum RetentionSweeper {
 
     /// 単位は run 1件。**消すのは `recordings/` だけ** —— runDir 自体・run.json・scenarios/ は
     /// 残す(結果 JSON を消すと run の履歴・LPT の実績が失われる)
-    static func recordingSessions(repoRoot: URL, activeRunID: String?) -> [RetentionSweep.Session] {
+    static func recordingSessions(packageRoot: URL, activeRunID: String?) -> [RetentionSweep.Session] {
         var sessions: [RetentionSweep.Session] = []
-        for project in ProjectStore.all(repoRoot: repoRoot) {
+        for project in ProjectStore.all(repoRoot: packageRoot) {
             for runDir in runDirectories(project: project) {
                 let dir = runDir.appendingPathComponent(RecordingIndexIO.directoryName)
                 guard let measured = measure(directory: dir) else { continue }
@@ -77,12 +102,12 @@ enum RetentionSweeper {
     /// 日は**ファイル名のローカル時刻**から取る(runID の UTC とは別系統。混ぜない)。
     /// `.md` と `.png` はどちらも `scenario-<yyyyMMdd>-<HHmmss>-<SSS>-` で始まる
     /// (`ScenarioReportWriter` の命名)ので、同じ規則で1つの日へ入る。
-    static func reportSessions(repoRoot: URL, activeRunID: String?) -> [RetentionSweep.Session] {
+    static func reportSessions(packageRoot: URL, activeRunID: String?) -> [RetentionSweep.Session] {
         // 今日のぶんは触らない(たった今終わった run のレポートを守る唯一の砦。
         // activeRunID は UTC の runID なので日の判定には使えない)
         let today = localDayStamp(Date())
         var sessions: [RetentionSweep.Session] = []
-        for project in ProjectStore.all(repoRoot: repoRoot) {
+        for project in ProjectStore.all(repoRoot: packageRoot) {
             var byDay: [String: [URL]] = [:]
             for url in regularFiles(in: project.reportsDir) {
                 guard let day = reportDay(of: url.lastPathComponent) else { continue }
@@ -119,14 +144,18 @@ enum RetentionSweeper {
     /// 単位はファイル1本。`bridge-<port>.log` は1ブリッジセッション、`pre-push-*` / `install-*` は
     /// 1回の実行のログなので、まとめずに1本=1セッションでよい。
     /// **生死は `FTCore.ProcessLiveness.isAlive` だけで見る**(`kill(pid, 0)` はゾンビにも成功する)
-    static func logSessions(repoRoot: URL) -> [RetentionSweep.Session] {
-        let stateDir = repoRoot.appendingPathComponent(".fleetest")
+    /// ブリッジのログはツール側、`install.sh` のログはパッケージ側の `.fleetest/` にあるので両方を見る。
+    /// **生きているかの台帳はツール側だけ**(ブリッジを起こすのはツールの `BridgeLauncher`)
+    static func logSessions(roots: Roots) -> [RetentionSweep.Session] {
+        let ledgerDir = roots.tool.appendingPathComponent(".fleetest")
         var sessions: [RetentionSweep.Session] = []
-        for url in regularFiles(in: stateDir) where url.pathExtension == "log" {
-            guard let measured = measure(files: [url]) else { continue }
-            sessions.append(RetentionSweep.Session(
-                id: url.lastPathComponent, bytes: measured.bytes, newestModified: measured.newest,
-                paths: [url], guarded: bridgeLogIsLive(url: url, stateDir: stateDir)))
+        for stateDir in roots.stateDirs {
+            for url in regularFiles(in: stateDir) where url.pathExtension == "log" {
+                guard let measured = measure(files: [url]) else { continue }
+                sessions.append(RetentionSweep.Session(
+                    id: url.path, bytes: measured.bytes, newestModified: measured.newest,
+                    paths: [url], guarded: bridgeLogIsLive(url: url, stateDir: ledgerDir)))
+            }
         }
         return sessions
     }
@@ -149,10 +178,10 @@ enum RetentionSweeper {
     ///   - ブリッジが無く Shutdown → 全部が1つの消してよいセッション
     ///   - ブリッジが無いが Booted → **丸ごと guarded**(このリポジトリ以外の誰かが使っている
     ///     可能性がある)。起動状態が読めないときも同じ扱い
-    static func deviceCaptureSessions(repoRoot: URL) -> [RetentionSweep.Session] {
+    static func deviceCaptureSessions(toolRoot: URL) -> [RetentionSweep.Session] {
         let devicesDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Developer/CoreSimulator/Devices")
-        let bridges = liveBridgeStarts(repoRoot: repoRoot)
+        let bridges = liveBridgeStarts(toolRoot: toolRoot)
         // simctl は**1回だけ**(デバイスごとに呼ぶと台数ぶんの秒を払う)。読めなければ
         // 起動状態は不明 = 全台 guarded へ倒す
         let booted: Set<String>? = (try? SimulatorCatalog.devices())
@@ -237,8 +266,8 @@ enum RetentionSweeper {
     /// (`-destination ... id=<UDID>`)にしか無い —— `BridgeLauncher.portsMatching(udid:)` と
     /// 同じ照合を、こちらは pid ごと1回の走査で行う(ps は**1回だけ**。`ps -p <pid列>` は
     /// 壊れた pid が1つ混じると出力ごと空になるので使わない)
-    private static func liveBridgeStarts(repoRoot: URL) -> [String: BridgeStart] {
-        let stateDir = repoRoot.appendingPathComponent(".fleetest")
+    private static func liveBridgeStarts(toolRoot: URL) -> [String: BridgeStart] {
+        let stateDir = toolRoot.appendingPathComponent(".fleetest")
         var pids: [pid_t] = []
         for url in regularFiles(in: stateDir) where url.pathExtension == "pid" {
             let name = url.deletingPathExtension().lastPathComponent
@@ -361,7 +390,7 @@ enum RetentionSweeper {
     ///
     /// **錠は呼び手が取る**(`RetentionSweepLock`)。ここは消すだけ
     @discardableResult
-    static func clean(repoRoot: URL, categories: [Category], policy: RetentionPolicy,
+    static func clean(roots: Roots, categories: [Category], policy: RetentionPolicy,
                       dryRun: Bool, activeRunID: String? = nil,
                       log: (String) -> Void, notice: (String) -> Void) -> CleanReport {
         var reports: [CategoryReport] = []
@@ -369,7 +398,7 @@ enum RetentionSweeper {
         for category in Category.allCases where categories.contains(category) {
             let maxBytes = category.maxBytes(policy)
             let line = RetentionPolicy.sweepLine(forCap: maxBytes)
-            let collected = sessions(for: category, repoRoot: repoRoot, activeRunID: activeRunID)
+            let collected = sessions(for: category, roots: roots, activeRunID: activeRunID)
             let plan = RetentionSweep.plan(sessions: collected, maxBytes: line)
             let usage = collected.reduce(Int64(0)) { $0 + $1.bytes }
             if plan.overCapAfterGuards {
@@ -391,10 +420,10 @@ enum RetentionSweeper {
     }
 
     /// 系統ごとの現在の使用量(guarded を含む合計)。`api retention` の `usage` 欄
-    static func usage(repoRoot: URL) -> [Category: Int64] {
+    static func usage(roots: Roots) -> [Category: Int64] {
         var result: [Category: Int64] = [:]
         for category in Category.allCases {
-            result[category] = sessions(for: category, repoRoot: repoRoot, activeRunID: nil)
+            result[category] = sessions(for: category, roots: roots, activeRunID: nil)
                 .reduce(Int64(0)) { $0 + $1.bytes }
         }
         return result

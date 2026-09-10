@@ -61,13 +61,28 @@ final class RunCompletionSweepWiringTests: XCTestCase {
         }
     }
 
-    /// 子の環境から `FT_PARENT_PID` だけが抜ける(他の変数は引き継ぐ)
-    func testChildEnvironmentDropsOnlyTheParentPID() {
-        let env = RunCompletionSweep.childEnvironment(base: ["FT_PARENT_PID": "123", "PATH": "/usr/bin",
-                                                            "DEVELOPER_DIR": "/Applications/X.app"])
+    /// 子の環境: `FT_PARENT_PID` を抜き、他の変数は引き継ぎ、**親が決めた2つの場所を固定する**
+    func testChildEnvironmentDropsTheParentPIDAndPinsBothRoots() {
+        let roots = RetentionSweeper.Roots(package: URL(fileURLWithPath: "/work/app"),
+                                           tool: URL(fileURLWithPath: "/tools/foundation-tester"))
+        let env = RunCompletionSweep.childEnvironment(
+            roots: roots, base: ["FT_PARENT_PID": "123", "PATH": "/usr/bin",
+                                 "DEVELOPER_DIR": "/Applications/X.app",
+                                 "FT_PACKAGE_ROOT": "/stale", "FT_TOOL_ROOT": "/stale"])
         XCTAssertNil(env["FT_PARENT_PID"], "親の run と一緒に掃除が殺される")
         XCTAssertEqual(env["PATH"], "/usr/bin")
         XCTAssertEqual(env["DEVELOPER_DIR"], "/Applications/X.app")
+        // 受け手の外部構成では2つが別の場所。子に解決し直させると取り違える
+        XCTAssertEqual(env["FT_PACKAGE_ROOT"], "/work/app", "掃除がプロジェクトの場所を取り違える")
+        XCTAssertEqual(env["FT_TOOL_ROOT"], "/tools/foundation-tester")
+    }
+
+    /// 子の作業フォルダはプロジェクトの場所(ツールの場所ではない)
+    func testSpawnRunsTheChildInThePackageRoot() throws {
+        let text = try String(contentsOf: Self.repoRoot
+            .appendingPathComponent("Sources/fleetest/RunCompletionSweep.swift"), encoding: .utf8)
+        XCTAssertTrue(text.contains("process.currentDirectoryURL = roots.package"),
+                      "背景の掃除をツールの場所で起こしている —— 受け手のプロジェクトを見ない")
     }
 
     /// 子の標準入出力を3本とも /dev/null にしている(継がせると拡張・ssh が掃除の終わりまで待つ)

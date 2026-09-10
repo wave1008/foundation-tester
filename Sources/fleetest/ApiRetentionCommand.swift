@@ -31,14 +31,14 @@ struct ApiRetentionCommand: AsyncParsableCommand {
     var withUsage = false
 
     func run() async throws {
-        let repoRoot = try fleetestRepoRoot()
+        let roots = try RetentionSweeper.Roots.resolve()
         var config = LocalConfig.load()
         if let importJSON {
             config.retention = Self.merge(config.retention, with: try Self.decode(importJSON))
             try config.save()
         }
         let policy = config.retention ?? RetentionPolicy()
-        let usage = withUsage ? RetentionSweeper.usage(repoRoot: repoRoot) : nil
+        let usage = withUsage ? RetentionSweeper.usage(roots: roots) : nil
         Self.emit(policy: policy, usage: usage)
     }
 

@@ -14,6 +14,9 @@
 //   - **`FT_PARENT_PID` を渡さない**(ParentDeathWatch を武装しない)。親の run は子より先に必ず
 //     終わるので、渡すと掃除が起動直後に殺される。拡張の孤児掃除も印の無いものは殺さない。
 //     自分で終わる有限の子なので孤児の心配は無い(`warm-ocr` と同じ例外)
+//   - **親が決めた2つの場所を子へそのまま渡す**(`FT_PACKAGE_ROOT` / `FT_TOOL_ROOT`。どちらも既存の上書き口)。
+//     子に解決し直させると、受け手の外部構成では cwd と実行ファイルの位置からツールの場所を
+//     プロジェクトの場所と取り違え、受け手の録画・レポートを1度も掃除しなかった
 //   - 同時起動は子の側で錠(`RetentionSweepLock`)が止める。起こす側は数えない
 
 import FTBridgeClient
@@ -22,21 +25,21 @@ import Foundation
 
 enum RunCompletionSweep {
 
-    /// 背景の掃除の出力先(リポジトリの `.fleetest/`)。**毎回上書き** —— 1本の掃除の顛末だけを持つ
-    /// (溜めると、それ自体が掃除の対象を増やす)
+    /// 背景の掃除の出力先(**ツール側の** `.fleetest/`。ブリッジの台帳と同じ置き場)。**毎回上書き** ——
+    /// 1本の掃除の顛末だけを持つ(溜めると、それ自体が掃除の対象を増やす)
     static let logName = "cleanup.log"
 
     /// 結果を書き終えた直後に呼ぶ。**待たない**。`activeRunID` はこの run の runID
     /// (背景の掃除が、終わったばかりの自分の run を消さないための保護)。設定が OFF なら何もしない
     static func spawn(activeRunID: String?, log: (String) -> Void) {
         let policy = (LocalConfig.load().retention ?? RetentionPolicy()).resolved
-        guard policy.effectiveSweepAfterRun, let repoRoot = try? RepoRoot.find() else { return }
+        guard policy.effectiveSweepAfterRun, let roots = try? RetentionSweeper.Roots.resolve() else { return }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: FleetRunner.selfBinaryPath())
         process.arguments = ["clean", "--background"]
             + (activeRunID.map { ["--active-run-id", $0] } ?? [])
-        process.currentDirectoryURL = repoRoot
-        process.environment = childEnvironment()
+        process.currentDirectoryURL = roots.package
+        process.environment = childEnvironment(roots: roots)
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
@@ -47,20 +50,28 @@ enum RunCompletionSweep {
             return
         }
         log("🧹 Cleanup continues in the background after this run"
-            + " (log: .fleetest/\(logName); limits: fleetest api retention)")
+            + " (log: \(logURL(roots: roots).path); limits: fleetest api retention)")
     }
 
-    /// 背景の掃除の環境。**`FT_PARENT_PID` だけを抜く**(上の規律)。純粋関数にしてあるのはテストのため
-    static func childEnvironment(base: [String: String] = ProcessInfo.processInfo.environment)
+    /// 背景の掃除の環境。**`FT_PARENT_PID` を抜き、親が決めた2つの場所を固定する**(上の規律)。
+    /// 純粋関数にしてあるのはテストのため
+    static func childEnvironment(roots: RetentionSweeper.Roots,
+                                 base: [String: String] = ProcessInfo.processInfo.environment)
         -> [String: String] {
         var env = base
         env.removeValue(forKey: ParentDeathWatch.environmentKey)
+        env["FT_PACKAGE_ROOT"] = roots.package.path
+        env["FT_TOOL_ROOT"] = roots.tool.path
         return env
+    }
+
+    static func logURL(roots: RetentionSweeper.Roots) -> URL {
+        roots.tool.appendingPathComponent(".fleetest").appendingPathComponent(logName)
     }
 
     /// `fleetest clean --background` の本体(子の側)。**例外を投げない・何も出さない**
     /// (出力先は /dev/null。顛末は `.fleetest/cleanup.log` にだけ残す)
-    static func runInBackground(repoRoot: URL, activeRunID: String?) {
+    static func runInBackground(roots: RetentionSweeper.Roots, activeRunID: String?) {
         // ssh 越しの run(リモートランナー)ではセッションの終わりに SIGHUP が来うる。掃除は
         // 消し終えるまで走らせたい(冪等なので途中で死んでも壊れはしないが、毎回途中で終わると
         // 永久に片付かない)
@@ -72,7 +83,7 @@ enum RunCompletionSweep {
         guard let lock = RetentionSweepLock.tryAcquire() else { return }
         defer { withExtendedLifetime(lock) {} }
 
-        let logURL = repoRoot.appendingPathComponent(".fleetest").appendingPathComponent(logName)
+        let logURL = Self.logURL(roots: roots)
         FileManager.default.createFile(atPath: logURL.path, contents: nil)
         let handle = try? FileHandle(forWritingTo: logURL)
         defer { try? handle?.close() }
@@ -81,9 +92,10 @@ enum RunCompletionSweep {
             handle?.write(Data("\(stamp.string(from: Date())) \(line)\n".utf8))
         }
 
-        write("started (pid \(getpid())\(activeRunID.map { ", after run \($0)" } ?? ""))")
+        write("started (pid \(getpid())\(activeRunID.map { ", after run \($0)" } ?? ""))"
+            + " — projects: \(roots.package.path), tool: \(roots.tool.path)")
         let report = RetentionSweeper.clean(
-            repoRoot: repoRoot, categories: RetentionSweeper.Category.allCases,
+            roots: roots, categories: RetentionSweeper.Category.allCases,
             policy: (LocalConfig.load().retention ?? RetentionPolicy()).resolved,
             dryRun: false, activeRunID: activeRunID,
             log: write, notice: write)

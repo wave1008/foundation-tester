@@ -69,6 +69,21 @@ final class BridgeLauncherCaptureSettingsTests: XCTestCase {
         assertRecordingOff(target)
     }
 
+    /// 結果の束と作業フォルダを**固定の場所**に渡す。渡さないと Xcode が既定の DerivedData に
+    /// 起動ごとの新しいフォルダを作り、誰も読まない結果の束を積む(実測 100 個・1.8 GB)
+    func testLaunchPinsTheResultBundleAndDerivedDataPerPort() {
+        let launcher = BridgeLauncher(repoRoot: root, device: "iPhone 17", port: 8914, physical: false)
+        let args = launcher.testWithoutBuildingArguments(xctestrun: root.appendingPathComponent("x.xctestrun"))
+        func value(after flag: String) -> String? {
+            args.firstIndex(of: flag).flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
+        }
+        XCTAssertEqual(value(after: "-resultBundlePath"),
+                       root.appendingPathComponent(".fleetest/xcresult/bridge-8914.xcresult").path,
+                       "結果の束が既定の場所へ積まれる")
+        XCTAssertEqual(value(after: "-derivedDataPath"), launcher.derivedDataPath.path,
+                       "既定の DerivedData に空のフォルダが起動ごとに増える")
+    }
+
     /// 実機のランナーにも同じ設定を書く(実機の端末内はホストの掃除の対象外なので、作らせないのが唯一の手)
     func testPhysicalDeviceGetsRecordingTurnedOffToo() throws {
         let launcher = BridgeLauncher(repoRoot: root, device: "00008130-000A1B2C3D4E5678",
