@@ -154,7 +154,7 @@ fleetest run --project <プロジェクト> --profile <実行プロファイル>
 - 実行コマンド(上の `run --runner` の形)
 - 成果物の場所: レポートと録画は手元の `TestProjects/<プロジェクト>/reports` / `results` へ回収される
 - 日常運用の口を3つだけ伝える:
-  - `fleetest remote status --runner <宛先>` — 使える状態か(到達性・ログイン・版・空き容量)
+  - `fleetest remote status --runner <宛先>` — 使える状態か(到達性・ログイン・版・シミュレータのランタイム・空き容量)
   - `fleetest remote clean --runner <宛先> --keep-days 7` — **定期的に。**
     ランナー機は誰も見ないので results/録画が溜まり、ある日ディスクフルで止まる
   - `fleetest remote setup <宛先>` — **ツールを更新したらこれを流し直す**(版を合わせる。
