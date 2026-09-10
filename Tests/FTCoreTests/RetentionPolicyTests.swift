@@ -67,3 +67,28 @@ final class RetentionPolicyTests: XCTestCase {
         XCTAssertNil(old.retention)
     }
 }
+
+/// 発動の線(上限の 90%)。**期待値はリテラル**(production の定数から導くと、90 を別の値へ
+/// 変えても緑のまま通る)
+final class RetentionSweepLineTests: XCTestCase {
+
+    func testTheLineIsNinetyPercentOfTheLimit() {
+        XCTAssertEqual(RetentionPolicy.sweepTriggerPercent, 90)
+        XCTAssertEqual(RetentionPolicy.sweepLine(forCap: 100), 90)
+        XCTAssertEqual(RetentionPolicy.sweepLine(forCap: 21_474_836_480), 19_327_352_832) // 20 GiB → 18 GiB
+        XCTAssertEqual(RetentionPolicy.sweepLine(forCap: 1_048_576_000), 943_718_400)     // 1000 MiB → 900 MiB
+    }
+
+    /// 端数は切り捨て(線の手前で止まる側 = 上限を越えない側へ倒す)
+    func testTheLineRoundsDown() {
+        XCTAssertEqual(RetentionPolicy.sweepLine(forCap: 15), 13)   // 13.5
+        XCTAssertEqual(RetentionPolicy.sweepLine(forCap: 199), 179) // 179.1
+    }
+
+    /// 0(保持しない)と負は線 0。巨大な上限でも桁あふれしない
+    func testZeroNegativeAndHugeLimits() {
+        XCTAssertEqual(RetentionPolicy.sweepLine(forCap: 0), 0)
+        XCTAssertEqual(RetentionPolicy.sweepLine(forCap: -5), 0)
+        XCTAssertEqual(RetentionPolicy.sweepLine(forCap: Int64.max), 8_301_034_833_169_298_226)
+    }
+}

@@ -300,8 +300,13 @@ export const panelsStrings = {
   // webviewMonitorB.ts の wvMonitor2.cleanup.*。単位記号(GB/MB)は言語に依らないので辞書に置かない。
   "panels.settings.cleanupSectionTitle": { ja: "クリーンアップ", en: "Cleanup" },
   "panels.settings.cleanupEnabledLabel": {
-    ja: "テスト実行の完了時にクリーンアップする",
-    en: "Clean up when a test run finishes",
+    ja: "テスト完了後にバックグラウンドでクリーンアップする",
+    en: "Clean up in the background after a test run",
+  },
+  // 発動の線(90%)は CLI の RetentionPolicy.sweepTriggerPercent と同じ値。「今すぐ掃除」も同じ規則
+  "panels.settings.cleanupHint": {
+    ja: "上限の 90% を超えたカテゴリだけ、古いものから 90% まで削除します(今すぐ掃除も同じ)。テストの実行時間には含まれず、同時に2つは走りません。",
+    en: "Only categories above 90% of their limit are trimmed back to 90%, oldest first (Clean up now does the same). It does not count toward the test run time, and never runs twice at once.",
   },
   "panels.settings.cleanupDeviceCapturesLabel": {
     ja: "デバイスの録画・スクショの上限",

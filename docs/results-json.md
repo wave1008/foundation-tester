@@ -18,12 +18,63 @@ results/runs/<YYYY-MM>/<runID>/
 
 ## 保持容量(何がいつ消えるか)
 
-run の完了時に保持容量の掃除が走る(既定 ON。切るのは `sweepAfterRun`)。**上限はカテゴリごとの
-合計バイト数**で、新しい順に積んで上限を超えたところから古いセッションを**丸ごと**落とす
-(半端に残るセッションを作らない)。判定は `FTCore.RetentionSweep.plan`(純粋関数)が唯一の定義元。
+run の**完了後に、別プロセスの背景で**保持容量の掃除が走る(既定 ON。切るのは `sweepAfterRun`)。
+**テストの実行時間には含まれない** —— run は掃除を起こしたら待たずに終わる(`RunCompletionSweep`)。
+**発動するのは合計が上限の 90% を超えたカテゴリだけ**で、古いセッションから**丸ごと**落として
+90% まで戻す(次の run が書く分として上限の 10% を空けておく。半端に残るセッションを作らない)。
+判定は `FTCore.RetentionSweep.plan`(純粋関数)、90% は `RetentionPolicy.sweepTriggerPercent` が唯一の定義元。
+**消す処理は機械で同時に1本**(`FTCore.RetentionSweepLock` = `~/.fleetest/retention-sweep.lock` の flock)。
+背景の掃除は先客がいれば黙って抜け、手動の掃除は先客の pid を名指しして断る。
 
-| カテゴリ | 対象 | 削除の単位 | 既定 |
+| カテゴリ | 対象 | 削除の単位 | 既定の上限 |
 |---|---|---|---|
+| `deviceCaptures` | シミュレータ内の XCUITest 添付(Apple の仕組みが勝手に撮る録画・スクショ) | ブリッジのセッション | 20 GiB |
+| `recordings` | fleetest の録画 `results/runs/<月>/<runID>/recordings/` | run 1件 | 100 GiB |
+| `reports` | `<project>/reports/` の `.md` と `.png` | 日 1件 | 1000 MiB |
+| `logs` | `<repoRoot>/.fleetest/*.log` | ファイル1本 | 500 MiB |
+
+**結果 JSON は消えない**。`recordings/` を落としても `run.json` と `scenarios/*.json` は残るので、
+フレークの推移も LPT の実績も過去に遡れる。**消えるのは録画とレポートだけ** —— 古い run の
+`reportPath` が指す `.md` は消えている場合があり、読み手は不在に耐えること(拡張の2経路は
+存在を確かめてから開く)。
+
+**消さないもの(guarded)**: 終わったばかりの自分の run / 進行中の run(`run.json` に完了時刻が無い)/
+今日のレポート / 生きているブリッジのログ / 稼働中ブリッジが開始した後の添付。
+guarded だけで線を超えていても**消せるものは全部消す**(線に届かないことを理由に手を止めない)。
+
+**背景の掃除は時間で打ち切らない**(テストに乗らないので打ち切る理由が無い)。次の run と
+重なっても邪魔しないよう**背景帯**(`PRIO_DARWIN_BG`)で CPU とディスクを譲る。顛末は
+`<repoRoot>/.fleetest/cleanup.log`(毎回上書き)。手動は `fleetest clean` / 設定タブの「今すぐ掃除」
+(同じ 90% の規則)。**`--dry-run` は1バイトも消さずに一覧だけ出す**(錠も取らない)。
+
+設定は `fleetest api retention`(マシン設定 `~/.config/fleetest/config.json`。VSCode 設定ではない
+= 端末から直接打った run にも効く)。拡張はモニターの設定タブ「クリーンアップ」から同じ口を叩く。
+
+---|---|---|---|
+| `deviceCaptures` | シミュレータ内の XCUITest 添付(Apple の仕組みが勝手に撮る録画・スクショ) | ブリッジのセッション | 20 GiB |
+| `recordings` | fleetest の録画 `results/runs/<月>/<runID>/recordings/` | run 1件 | 100 GiB |
+| `reports` | `<project>/reports/` の `.md` と `.png` | 日 1件 | 1000 MiB |
+| `logs` | `<repoRoot>/.fleetest/*.log` | ファイル1本 | 500 MiB |
+
+**結果 JSON は消えない**。`recordings/` を落としても `run.json` と `scenarios/*.json` は残るので、
+フレークの推移も LPT の実績も過去に遡れる。**消えるのは録画とレポートだけ** —— 古い run の
+`reportPath` が指す `.md` は消えている場合があり、読み手は不在に耐えること(拡張の2経路は
+存在を確かめてから開く)。
+
+**消さないもの(guarded)**: 記録を始めたばかりの自分の run / 進行中の run(`run.json` に完了時刻が無い)/
+今日のレポート / 生きているブリッジのログ / 稼働中ブリッジが開始した後の添付。
+guarded だけで線を超えていても**消せるものは全部消す**(線に届かないことを理由に手を止めない)。
+
+**開始を遅らせる量**: 採取(線を超えているかを知るための全ファイルの stat。実測 温 3.7 秒 /
+冷 約 13 秒)+ 削除(10 秒の予算をカテゴリで等分。どのカテゴリも最低1セッションは消える)。
+予算が尽きた分は次の run が続きから消し、その旨を1行出す。**手動の掃除(`fleetest clean` /
+設定タブの「今すぐ掃除」)は予算を持たず最後まで消す**(同じ 90% の規則)。
+
+設定は `fleetest api retention`(マシン設定 `~/.config/fleetest/config.json`。VSCode 設定ではない
+= 端末から直接打った run にも効く)。拡張はモニターの設定タブ「クリーンアップ」から同じ口を叩く。
+**`--dry-run` は1バイトも消さずに一覧だけ出す**。
+
+---|---|---|---|
 | `deviceCaptures` | シミュレータ内の XCUITest 添付(録画・スクショ) | ブリッジのセッション | 20 GiB |
 | `recordings` | `results/runs/<月>/<runID>/recordings/` | run 1件 | 100 GiB |
 | `reports` | `<project>/reports/` の `.md` と `.png` | 日 1件 | 1000 MiB |

@@ -40,7 +40,7 @@ export const RETENTION_FIELDS: readonly RetentionField[] = [
   { key: "logsMaxBytes", usageKey: "logs", unit: "MB" },
 ];
 
-/** 上限ではない真偽値の鍵(run 完了時に掃除するか)。 */
+/** 上限ではない真偽値の鍵(run 完了後に背景で掃除するか。発動は上限の 90% 超)。 */
 export const RETENTION_SWEEP_KEY = "sweepAfterRun";
 
 function unitFactor(unit: RetentionUnit): number {

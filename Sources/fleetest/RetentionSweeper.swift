@@ -26,11 +26,9 @@ enum RetentionSweeper {
         }
     }
 
-    /// 削除に使ってよい壁時計(秒)。**run の完了時に走る**ので、run の所要をこれ以上伸ばさない
-    /// 上限として置く。削除は冪等 —— 途中で止めても壊れず、残りは次回の run が続きから消す。
-    /// 尽きたら「予算切れ。残り N セッションは次回」を1行出して**成功として返る**
-    /// (掃除の失敗で run の成否を変えない)
-    static let defaultBudgetSeconds: Double = 10
+    /// **時間で打ち切らない**。自動の掃除は run の完了後に**別プロセスの背景**で走る
+    /// (`RunCompletionSweep`)のでテストの実行時間に乗らず、手動は頼まれた分を最後まで消す。
+    /// 同時に2本は走らない(`FTCore.RetentionSweepLock`)
 
     // MARK: - セッションの採取
 
@@ -65,6 +63,9 @@ enum RetentionSweeper {
 
     // MARK: - (b) レポート
 
+    /// **セッション内のパスを並べ替えない** —— 削除の順序に意味は無く、`URL.path` での比較は
+    /// 日本語のファイル名を毎回 Unicode 正規化するので 15 万件で採取時間の大半を食った
+    /// (実測: 採取 20 秒のうち並べ替えが 98%)。決定性は plan の (mtime, id) 順が持つ。
     /// **単位は run ではなく日**。**日付が読めないファイルには触らない**
     /// (利用者が置いた別のファイルかもしれない)。run 単位(結果 JSON の `reportPath` で引く)は実測で
     /// 360 秒かかった —— 結果 JSON 155,785 件の復号と、PNG を stem で親へ結び直す総当たり
@@ -91,7 +92,7 @@ enum RetentionSweeper {
                 guard let measured = measure(files: files) else { continue }
                 sessions.append(RetentionSweep.Session(
                     id: "\(project.name) \(day)", bytes: measured.bytes,
-                    newestModified: measured.newest, paths: files.sorted { $0.path < $1.path },
+                    newestModified: measured.newest, paths: files,
                     guarded: day >= today))
             }
         }
@@ -196,7 +197,7 @@ enum RetentionSweeper {
         guard let measured = measure(files: files) else { return }
         sessions.append(RetentionSweep.Session(
             id: id, bytes: measured.bytes, newestModified: measured.newest,
-            paths: files.sorted { $0.path < $1.path }, guarded: guarded))
+            paths: files, guarded: guarded))
     }
 
     /// MCMMetadataIdentifier が `com.apple.testmanagerd` のコンテナだけを見る。
@@ -297,26 +298,14 @@ enum RetentionSweeper {
         var freedBytes: Int64 = 0
         /// 消せなかったパスの数(失敗しても続ける。run の成否は変えない)
         var failures = 0
-        var budgetExhausted = false
-        /// 予算切れで手を付けなかったセッション数(次回へ持ち越す)
-        var remainingSessions = 0
     }
 
     /// plan の `delete` を消す。**例外を投げない**(呼び出し側の run の成否を変えない。
     /// `RunHookRunner.end` と同じ規律)。`dryRun` では**1バイトも消さず**に一覧だけ返す
     static func apply(_ plan: RetentionSweep.Plan, dryRun: Bool,
-                      deadline: ContinuousClock.Instant,
                       log: (String) -> Void) -> ApplyResult {
         var result = ApplyResult()
-        let clock = ContinuousClock()
-        for (index, session) in plan.delete.enumerated() {
-            guard dryRun || clock.now < deadline else {
-                result.budgetExhausted = true
-                result.remainingSessions = plan.delete.count - index
-                log("⏱️ Time budget exhausted — \(result.remainingSessions) session(s)"
-                    + " will be swept on the next run")
-                break
-            }
+        for session in plan.delete {
             if dryRun {
                 log("· would delete \(session.id) (\(bytesText(session.bytes)))")
             } else {
@@ -333,6 +322,7 @@ enum RetentionSweeper {
                     }
                 }
                 guard !failed else { continue }
+                log("· deleted \(session.id) (\(bytesText(session.bytes)))")
             }
             result.deletedSessions += 1
             result.freedBytes += session.bytes
@@ -345,6 +335,8 @@ enum RetentionSweeper {
     struct CategoryReport: Encodable, Sendable {
         let category: String
         let maxBytes: Int64
+        /// 発動の線 = 削除後の目標(`RetentionPolicy.sweepLine`)
+        let sweepLineBytes: Int64
         /// 掃除前の合計(guarded を含む)
         let usageBytes: Int64
         let plannedSessions: Int
@@ -353,7 +345,6 @@ enum RetentionSweeper {
         let keptBytes: Int64
         /// true なら掃除しても上限に収まらない(生きているものが占めている)
         let overCapAfterGuards: Bool
-        let budgetExhausted: Bool
         let failures: Int
     }
 
@@ -363,33 +354,38 @@ enum RetentionSweeper {
         let categories: [CategoryReport]
     }
 
+    /// - `log`: 削除の一覧(1セッション1行)
+    /// - `notice`: 利用者が知るべき事実だけ(guarded だけで線を超えている)。
+    ///   **一覧と口を分けてある** —— 同じ口に流して文字列で選り分けると、文言を変えた瞬間に
+    ///   通知が黙って消える(一度そうなって、打ち切られたことが画面に出なかった)
+    ///
+    /// **錠は呼び手が取る**(`RetentionSweepLock`)。ここは消すだけ
     @discardableResult
     static func clean(repoRoot: URL, categories: [Category], policy: RetentionPolicy,
                       dryRun: Bool, activeRunID: String? = nil,
-                      budgetSeconds: Double = defaultBudgetSeconds,
-                      log: (String) -> Void) -> CleanReport {
-        // 予算は**カテゴリ横断で1本**(カテゴリごとに配ると、掃除の総時間が系統数ぶん伸びる)
-        let deadline = ContinuousClock().now.advanced(by: .seconds(budgetSeconds))
+                      log: (String) -> Void, notice: (String) -> Void) -> CleanReport {
         var reports: [CategoryReport] = []
         var freed: Int64 = 0
         for category in Category.allCases where categories.contains(category) {
-            let collected = sessions(for: category, repoRoot: repoRoot, activeRunID: activeRunID)
             let maxBytes = category.maxBytes(policy)
-            let plan = RetentionSweep.plan(sessions: collected, maxBytes: maxBytes)
+            let line = RetentionPolicy.sweepLine(forCap: maxBytes)
+            let collected = sessions(for: category, repoRoot: repoRoot, activeRunID: activeRunID)
+            let plan = RetentionSweep.plan(sessions: collected, maxBytes: line)
             let usage = collected.reduce(Int64(0)) { $0 + $1.bytes }
             if plan.overCapAfterGuards {
-                log("⚠️ \(category.rawValue): live sessions alone exceed the cap"
-                    + " (\(bytesText(usage)) / \(bytesText(maxBytes)))"
-                    + " — stop the bridges or the runs that hold them, or raise the cap")
+                notice("⚠️ \(category.rawValue): live sessions alone exceed the sweep line"
+                    + " (\(bytesText(usage)) / \(bytesText(line)) = \(RetentionPolicy.sweepTriggerPercent)%"
+                    + " of the \(bytesText(maxBytes)) limit) — stop the bridges or the runs that hold"
+                    + " them, or raise the limit")
             }
-            let applied = apply(plan, dryRun: dryRun, deadline: deadline, log: log)
+            let applied = apply(plan, dryRun: dryRun, log: log)
             freed += applied.freedBytes
             reports.append(CategoryReport(
-                category: category.rawValue, maxBytes: maxBytes, usageBytes: usage,
+                category: category.rawValue, maxBytes: maxBytes, sweepLineBytes: line,
+                usageBytes: usage,
                 plannedSessions: plan.delete.count, deletedSessions: applied.deletedSessions,
                 freedBytes: applied.freedBytes, keptBytes: usage - applied.freedBytes,
-                overCapAfterGuards: plan.overCapAfterGuards,
-                budgetExhausted: applied.budgetExhausted, failures: applied.failures))
+                overCapAfterGuards: plan.overCapAfterGuards, failures: applied.failures))
         }
         return CleanReport(dryRun: dryRun, freedBytes: freed, categories: reports)
     }

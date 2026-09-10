@@ -542,17 +542,21 @@
   黙って無視され `api run` ではエラーだった)
 - **`--since` / `--until` の文法は `FTCore.TimeBoundParse` が唯一の定義元**(docs/results-json.md
   §`--since`/`--until` の文法)。時刻境界を取るオプションを新設するときは必ずここを通す
-- **保持容量の掃除は run 完了時の3経路すべてに要る**(`Fleetest.swift` のプロファイル経路と
-  プロファイル無し経路・`ApiRunCommand`)。**結果を書く経路 = 掃除する経路**で、
-  `RunCompletionSweepWiringTests` が本数を等号で固定する。判定は `FTCore.RetentionSweep.plan`
-  (純粋関数)の1箇所・採取と削除は `Sources/fleetest/RetentionSweeper.swift`。
-  **既存の teardown の defer に相乗りしない**(プロファイル経路の defer は `recorder.finish` より
-  前に走るので、今回の run を保護できない)。既定値は `FTCore.RetentionPolicy` の1箇所だけに置き、
-  拡張は `api retention` が返す実効値を表示する(既定を両側に持たない)。
-  **`api retention` の使用量は `--usage` を付けたときだけ測る** —— 集計は実測 21 秒で、
-  毎回払うと設定タブが空欄のまま待つ。**レポートの単位は run ではなく日**
-  (run 単位は結果 JSON 155,785 件の復号と PNG の総当たりで実測 360 秒。→ docs/results-json.md
-  §保持容量)
+- **保持容量の掃除は run の完了後に背景の別プロセスで**(`RunCompletionSweep.spawn` →
+  `fleetest clean --background`。**テストの実行時間に含めない** = ユーザー決定。開始時に置く・
+  run の中で同期に走らせる形へ戻さない)。起こすのは**結果を書く3経路**(`Fleetest.swift` の
+  プロファイル経路・プロファイル無し経路・`ApiRunCommand`)で、`RunCompletionSweepWiringTests` が
+  本数・順序(結果の後)・「記録開始の直後に無いこと」を固定する。**子の標準入出力は3本とも
+  /dev/null**(継がせると拡張は NDJSON の EOF を、ssh は channel の閉鎖を掃除の終わりまで待つ)・
+  **`FT_PARENT_PID` を抜く**(渡すと親の終了と同時に殺される)。**消す処理は機械で同時に1本**
+  (`FTCore.RetentionSweepLock` = flock。背景は先客がいれば黙って抜け、手動は名指しして断る。
+  dry-run は取らない)。**発動は上限の 90% 超・目標も 90%**(`RetentionPolicy.sweepTriggerPercent`)。
+  判定は `FTCore.RetentionSweep.plan`(純粋関数)の1箇所・採取と削除は
+  `Sources/fleetest/RetentionSweeper.swift`。**削除の一覧と通知は口を分ける**(`log` / `notice`)。
+  既定値は `FTCore.RetentionPolicy` の1箇所だけ・拡張は `api retention` の実効値を表示する。
+  **`api retention` の使用量は `--usage` を付けたときだけ測る**。**レポートの単位は run ではなく日**・
+  **セッション内のパスを `URL.path` で並べ替えない**(日本語名の正規化で採取の 98% を食った)
+  → docs/results-json.md §保持容量
 - **ブリッジの挙動・エンドポイントを変えたら版を上げる** → maintainer-notes §4.4。
   iOS = `Sources/FTCore/BridgeDTO.swift` の `bridgeProtocolVersion`(in-app dylib と XCUITest
   ランナーの共通定数)/ Android = `AndroidRunner/build.sh` の `VERSION_CODE` と
@@ -786,7 +790,7 @@
   SIGTERM → 2 秒で `_exit`。**opt-in** = 端末のシェルから `fleetest run &` した親が閉じても run を
   巻き込まない。`Process()` で `fleetest` / `fleetest-scenarios` を起こす経路を足したら
   `ParentDeathWatch.childEnvironment()` を渡す —— `ParentDeathWatchWiringTests` が集合を等号で固定。
-  **唯一の例外は `warm-ocr`**: 親の死を生き延びないとコンパイルがコミットされない。有限で自分で終わる)
+  **例外は `warm-ocr` と背景の掃除(`RunCompletionSweep`)の2つ**: どちらも親の死を生き延びないと目的を果たせない(コンパイルのコミット / 親の run は掃除より先に必ず終わる)。有限で自分で終わる)
   ③**台帳(`.fleetest/bridge-<port>.pid/.inapp/.endpoint/.device`)はプロセスの実体で掃除する**
   (`StaleLedgerSweep` = provision の入口。`.inapp` は LISTEN 実体の有無、`.endpoint/.device` は
   対の `.pid` の生死。**`/status` 応答で生死を決めない**)。採番は `ProvisionLock` の内側でだけ行う

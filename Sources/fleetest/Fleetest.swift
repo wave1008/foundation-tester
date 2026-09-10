@@ -1317,9 +1317,8 @@ struct RunScenarios: AsyncParsableCommand {
                             fmSettings: fmSettings)
             PhaseLog.mark("recorder-finish")
             try writeJUnitIfRequested(project: testProject, recorder: recorder)
-            // 結果を書き終えた後に掃除する(teardown の defer より後。この run の成果物を
-            // 保護するには runID が要る)
-            RunCompletionSweep.run(activeRunID: recorder.runID) { ConsoleOut.out($0) }
+            // 保持容量の掃除は**結果を書き終えた後に背景の別プロセスで**(テストの実行時間に含めない)
+            RunCompletionSweep.spawn(activeRunID: recorder.runID) { ConsoleOut.out($0) }
             let skippedSuffix = notApplicable > 0
                 ? " (\(notApplicable) skipped: declared for another platform)" : ""
             // --broadcast は (シナリオ × デバイス) を数える。単位を言わないと「3本のはずが
@@ -1400,7 +1399,7 @@ struct RunScenarios: AsyncParsableCommand {
                             ocr: noProfileSettings.ocr,
                             ocrFalsePositiveCheck: noProfileSettings.ocrFalsePositiveCheck))
         try writeJUnitIfRequested(project: testProject, recorder: recorder)
-        RunCompletionSweep.run(activeRunID: recorder.runID) { ConsoleOut.out($0) }
+        RunCompletionSweep.spawn(activeRunID: recorder.runID) { ConsoleOut.out($0) }
 
         ConsoleOut.out(failedCount == 0
               ? "✅ All \(items.count) scenario(s) passed"

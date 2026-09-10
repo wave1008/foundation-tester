@@ -19,7 +19,7 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
     public var reportsMaxBytes: Int64?
     /// <repoRoot>/.fleetest/*.log の上限。nil = 既定
     public var logsMaxBytes: Int64?
-    /// run の完了時に自動で掃除するか。nil = 既定
+    /// run の完了後に背景で自動掃除するか(発動は上限の `sweepTriggerPercent`% を超えたときだけ)。nil = 既定
     public var sweepAfterRun: Bool?
 
     public init(deviceCapturesMaxBytes: Int64? = nil,
@@ -60,9 +60,20 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
     /// 尽きたら古いログファイルから消える(生きているブリッジのログは消さない)
     public static let defaultLogsMaxBytes: Int64 = 500 * 1_048_576
 
-    /// 既定で run の完了時に掃除する。**掃除は run の壁時計に乗る**ので、時間予算
-    /// (`RetentionSweeper.defaultBudgetSeconds`)で頭を抑える
+    /// 既定で run の完了後に掃除する。**背景の別プロセス**で走るのでテストの実行時間には乗らない
     public static let defaultSweepAfterRun = true
+
+    /// 掃除が発動する線(上限に対する %)。**発動の線と削除後の目標は同じ線**。
+    /// 上限の 90% を超えていたら 90% まで落とす = **次の run が書く分として上限の 10% を空けておく**
+    /// (ユーザー決定)。目標を上限そのものにすると、90% と 100% の間では
+    /// 発動しても1バイトも消えない(毎回採取だけ払う)。手動の掃除も同じ線を使う
+    public static let sweepTriggerPercent: Int64 = 90
+
+    /// 上限 → 発動の線(バイト)。**切り捨て・桁あふれ無し**(上限を先に 100 で割る)
+    public static func sweepLine(forCap cap: Int64) -> Int64 {
+        guard cap > 0 else { return 0 }
+        return cap / 100 * sweepTriggerPercent + cap % 100 * sweepTriggerPercent / 100
+    }
 
     // MARK: - 実効値
 

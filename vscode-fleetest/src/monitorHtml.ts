@@ -819,6 +819,7 @@ function renderSettingsPanel(): string {
       <div class="settings-group">
         <div class="settings-section-title">${t("panels.settings.cleanupSectionTitle")}</div>
         <label class="settings-item"><input type="checkbox" id="settings-cleanup-enabled"> ${t("panels.settings.cleanupEnabledLabel")}</label>
+        <div class="settings-hint">${t("panels.settings.cleanupHint")}</div>
         <label class="settings-item settings-item-inline" for="settings-cleanup-device-captures">
           ${t("panels.settings.cleanupDeviceCapturesLabel")}
           <input type="number" id="settings-cleanup-device-captures" class="settings-number" min="0" step="any">
