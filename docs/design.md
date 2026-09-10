@@ -59,6 +59,24 @@ Tier-0 幾何 = 収まる軸の中心が画面外なら不可視(`TapTargetGeome
 実 crop の固定コーパス**(`Tests/Fixtures/OcclusionCrops/`)が担う。既定 on・殺しスイッチは
 `FT_OCCLUSION_OCR=0`・`measure` でコーパス採取(実測は docs/poc-fm-occlusion-guard.md §5.17)。
 
+**近道が本道より高くつかないための3つの門と、暖機の置き場**(2026-09-10。経緯は
+docs/maintainer-notes.md §18): ①**モデルが載って実際に読めるまで近道は撃たない**
+(`RegionText.isWarm`。暖機の探りが 1 行以上読めた回だけ warm。Vision が `[]` を返し続ける日がある)/
+②**諦めた読みが走っている間は撃たない**(`abandonedInFlight`。積み増すと 12 本が全部予算切れになり
+戻った瞬間に協調スレッドプールが止まる)/ ③**予算 1.3 秒 = 置き換える相手(FM 照合)の実測下限**
+(`RegionText.occlusionBudget`。尽きたら FM へ落ち注記 `ocr-budget-exhausted`。**諦めても読みは止めない**
+= そのまま暖機として効く。合流点は `TaskBudget`)。判定は3つとも変えない(読めなかったのと同じ扱い)。
+暖機の実体は Espresso(認識器)の **AOT コンパイル**で、キャッシュは
+`~/Library/Caches/<プロセス名>/com.apple.e5rt.e5bundlecache` に**プロセス名とバイナリの素性で**鍵付けされ、
+**コンパイル(コールド 20〜45 秒 × 言語集合 2)がそのプロセスの生存中に終わったときだけコミット**される。
+1 シナリオ = 1 プロセスの実行バイナリは終わる前に死んで `.tmp` を残すだけなので、
+**run の開始時に同じプロセス名の待てる子 `fleetest-scenarios-<project> warm-ocr` を背景で 1 本起こす**
+(`ScenarioHost.listForRun`。dry-run / MCP / codegen の一覧取得 `list` では起こさない・機械で同時に 1 本
+= `OCRWarmupLock`・**親の死を生き延びる** = `FT_PARENT_PID` を渡さない唯一の例外)。シナリオ側の探りは
+同じロックを**待ってから**読む(8 レーンが同じモデルを同時に焼かない)。認識器は **ANE を避けて CPU/GPU**
+に載せる(定常の所要は同じ 100〜160ms。判定の近道を FM フラップと同じ部品に依存させない。装置で読みが
+変わる 1 行はコーパスに固定)。実測: シナリオ側の暖機 22,980ms → 218ms、実 crop の初回読み 21,830ms → 98〜122ms。
+
 **launch 直後の未描画画面は「覆い」と見分けられない**(2026-09-03): `restartApp` / `launchApp` は
 木が引けた時点で戻るので、a11y の木は新インスタンスの要素を返しているのに画面はまだ
 launch storyboard(全画素同一)ということが起きる。負荷の高いランナーでは描画が既定の待ち窓に

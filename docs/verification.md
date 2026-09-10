@@ -1586,6 +1586,31 @@ launchApp / appIs / removeApp / installApp / clearAppData すべてが実行プ�
 - **合成画像では代表できない**(6pt の合成文字は拡大すると悪化した = 実機の描画とは別物)。
   crop は実 run の measure モード(`FT_OCCLUSION_OCR=measure`)から採る
 - Vision の**版は固定していない**ので、OS 更新で読みが変わればこのテストが落ちる(それが役目)
+- **`RegionTextTests` / `RegionTextCorpusTests` が「読めるはず: []」で落ちたら、まず HEAD 対照**
+  (`git stash push -u` → 同じテスト → `git stash pop`)。この Mac では Vision が**機械全体で数時間
+  `[]` を返し続けて自然回復する**ことがある(2026-09-10。FM フラップと同じ ML 基盤)。自分の変更の
+  せいに見えるが、HEAD でも同じ件数が落ちる
+- **認識器の装置を変えると読みが変わる**(CPU に載せたら selected-row40 の ja+en ×3 が読めなくなった)。
+  コーパスの `manifest.json` は**出荷する装置**(`RegionText.pickNonNeuralEngine`)の値で固定し、
+  変えるときは装置ごとの差を `why` に書く
+
+**OCR の近道が遅い/撃たれないときの診断**(2026-09-10 に組んだ計器。全部保守者向け・既定 OFF):
+
+- `FT_OCR_HANG_SAMPLE=1` で run すると、シナリオ実行プロセスが `~/.fleetest/ocr-late/` に
+  **暖機の顛末**(`prewarm-<pid>.json`: 所要・読めた行・warm になったか)と**諦めた読みの顛末**
+  (`<pid>-<時刻>.json`: 本当の所要・段数・画素数)を書き、予算切れの後 3 秒たっても戻らない読みが
+  あれば `/usr/bin/sample` で**自分のスタック**を `~/.fleetest/ocr-hang/` に落とす。
+  **子の stderr は run のログには出ない**(親が `log` イベント → 疑似ステップへ畳む)ので、
+  診断はファイルで採る
+- `FT_OCR_BUDGET_MS=1` にすると近道が**必ず予算切れ**になり、諦めた読みの本当の所要が全件採れる
+  (予算を広げて分布を見る用途にも同じ口)
+- **単体テスト・素の CLI では再現しない**: xctest ホストは `com.apple.dt.xctest.tool` の、CLI は
+  そのプロセス名のキャッシュを持っていて暖まって見える。**シナリオ実行プロセスの中で測る**
+  (`fleetest run --scenario <1本>` に上の環境変数)。コールドにするには
+  `~/Library/Caches/fleetest-scenarios-<project>/com.apple.e5rt.e5bundlecache` を消す
+- 結果 JSON の読み方: `ocrMs`(OCR 段の所要)・`guardMs`(OCR + FM)・注記 `ocr-budget-exhausted`。
+  1 プロセス内で `guardMs > 0` を並べて**最初の 1 件だけ桁違いに大きい**なら初期化の型
+  (docs/results-json.md §TimelineStepRecord)
 
 **スナップショットの検知は dry-run では当てられない**(木が要る)。掃討は
 **`Tests/Fixtures/RealAppSnapshots/` に固定した実アプリのスナップショット**へ当てる

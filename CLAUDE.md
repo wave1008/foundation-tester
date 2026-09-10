@@ -734,6 +734,15 @@
   ときだけ。経緯と壊れ方は maintainer-notes §4.5.1)
   **座標ドラッグは `StepExecutor.dragWithFallback` だけから撃つ**(in-app は drag が 501。
   `driver.drag` を直に呼ぶと hybrid で黙って不発になる)
+- **occlusion-guard の OCR 近道はステップの予算で初期化を払わない**(2026-09-10。経緯は
+  maintainer-notes §18): 認識器(Espresso)のコンパイルキャッシュは**プロセス名とバイナリの素性ごと・
+  コンパイルがプロセスの生存中に終わったときだけコミット**。**シナリオを実際に走らせる経路は
+  `ScenarioHost.listForRun`**(run / api run / 機械分担の 3 箇所。`OCRWarmupWiringTests` が等号で固定)で
+  同じプロセス名の待てる子 `warm-ocr` を背景で起こす。一覧だけの経路(dry-run / MCP / codegen)は `list`。
+  近道を撃つのは **warm(探りが 1 行以上読めた)かつ 詰まった読みが無い**ときだけ(`shouldTakeShortcut`。
+  純粋関数・配線は走査で固定)、予算 1.3 秒 = 置き換える相手の実測下限、**諦めても読みは止めない**。
+  認識器は ANE を避ける(定常の所要は同じ・装置で読みが変わる分はコーパスに固定)。
+  **締め切り・予算のテストは戻り値でなく所要を直接測る**(`TaskBudgetTests`)
 - **システムアラートの判定は2段**: 登録がある間は `SystemUIGate` が毎ステップ止める / 登録が
   無いときは **launch 直後の最初の触る操作と失敗時だけ1回聞いて** `system-alert-present` の注記と
   題名を残す(止めない・閉じない)。常時監視へ広げない
@@ -765,7 +774,8 @@
   (`FTCore.ParentDeathWatch`。spawn 側が `FT_PARENT_PID` を渡した子だけが kqueue で親の EXIT を待ち、
   SIGTERM → 2 秒で `_exit`。**opt-in** = 端末のシェルから `fleetest run &` した親が閉じても run を
   巻き込まない。`Process()` で `fleetest` / `fleetest-scenarios` を起こす経路を足したら
-  `ParentDeathWatch.childEnvironment()` を渡す —— `ParentDeathWatchWiringTests` が集合を等号で固定)
+  `ParentDeathWatch.childEnvironment()` を渡す —— `ParentDeathWatchWiringTests` が集合を等号で固定。
+  **唯一の例外は `warm-ocr`**: 親の死を生き延びないとコンパイルがコミットされない。有限で自分で終わる)
   ③**台帳(`.fleetest/bridge-<port>.pid/.inapp/.endpoint/.device`)はプロセスの実体で掃除する**
   (`StaleLedgerSweep` = provision の入口。`.inapp` は LISTEN 実体の有無、`.endpoint/.device` は
   対の `.pid` の生死。**`/status` 応答で生死を決めない**)。採番は `ProvisionLock` の内側でだけ行う
