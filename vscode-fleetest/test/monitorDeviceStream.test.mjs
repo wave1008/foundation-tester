@@ -564,3 +564,38 @@ test("手元に配信ヘルパーが1つも無くてもリモートは配信で�
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// パネルを隠すと**全台を抑止する**。空集合を送ると monitor が全台を2秒ごとに撮って見えない画面へ
+// 送り続けた(実測: 手元 16 台で 1 分 106 枚・3 MB)。再表示で今の配信の集合へ戻し撮影を再開させる
+test("非表示の間は全台を抑止し、再表示で配信の集合(直後は空)へ戻す", () => {
+  const { dir, binaryPath } = makeMockBinaryDir();
+  const { deps, controls } = makeDeps(binaryPath);
+  const controller = new MonitorDeviceStreamController(deps);
+  const other = { ...iosDevice, id: "sim-udid-2", udid: "BBBBBBBB-CCCC-DDDD-EEEE-FFFFFFFFFFFF" };
+  try {
+    controller.applyDevices([iosDevice, other]);
+    controls.length = 0;
+
+    controller.setVisible(false);
+    const hidden = controls.filter((c) => c.cmd === "suppressFrames");
+    assert.ok(hidden.length > 0, "非表示で suppressFrames が送られる");
+    assert.deepEqual([...hidden.at(-1).devices].sort(), [iosDevice.id, other.id].sort(),
+      "空集合を送ると全台の撮影が見えない画面へ流れる");
+    assert.ok(!hidden.some((c) => c.devices.length === 0), "途中でも空集合を挟まない(1周期ぶん撮影が流れる)");
+
+    // 隠れている間に増えた台も抑止へ入る
+    const third = { ...iosDevice, id: "sim-udid-3", udid: "CCCCCCCC-DDDD-EEEE-FFFF-000000000000" };
+    controller.applyDevices([iosDevice, other, third]);
+    assert.deepEqual([...controls.filter((c) => c.cmd === "suppressFrames").at(-1).devices].sort(),
+      [iosDevice.id, other.id, third.id].sort(), "隠れている間に増えた台の撮影が流れる");
+
+    controls.length = 0;
+    controller.setVisible(true);
+    const shown = controls.filter((c) => c.cmd === "suppressFrames");
+    assert.equal(shown.length, 1, "再表示で抑止を即座に戻す");
+    assert.deepEqual(shown[0].devices, [], "再表示直後は配信がまだ無い = 全台のポーリングを戻す");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

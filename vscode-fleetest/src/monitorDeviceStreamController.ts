@@ -111,7 +111,10 @@ export class MonitorDeviceStreamController {
   applyDevices(devices: readonly MonitorDevice[]): void {
     this.lastDevices = devices;
     if (!this.visible) {
-      return; // 非表示中は setVisible(false) で全破棄済み。再開は次の setVisible(true) 後の呼び出しに任せる。
+      // 非表示中は setVisible(false) で全破棄・全台抑止済み。**隠れている間に増えた台も抑止へ入れる**
+      // (抜けるとその台だけ見えない画面へ撮影が流れ続ける)。再開は次の setVisible(true) 後に任せる
+      this.sendSuppress(new Set(devices.map((device) => device.id)));
+      return;
     }
     if (this.deps.isPollingMode()) {
       // 全破棄のみでポーリングへ委ねる(disposeAll が streamingDeviceIds もクリアするため、
@@ -468,28 +471,48 @@ export class MonitorDeviceStreamController {
 
   /** streamingDeviceIds の現在値を monitor へ suppressFrames として送る(前回と同じなら送らない)。 */
   private flushSuppressFrames(): void {
-    const current = this.streamingDeviceIds;
+    this.sendSuppress(this.streamingDeviceIds);
+  }
+
+  private sendSuppress(ids: ReadonlySet<string>): void {
     if (
       this.lastSuppressedIds &&
-      this.lastSuppressedIds.size === current.size &&
-      [...current].every((id) => this.lastSuppressedIds?.has(id))
+      this.lastSuppressedIds.size === ids.size &&
+      [...ids].every((id) => this.lastSuppressedIds?.has(id))
     ) {
       return;
     }
-    this.lastSuppressedIds = new Set(current);
-    this.deps.writeMonitorControl({ cmd: "suppressFrames", devices: [...current] });
+    this.lastSuppressedIds = new Set(ids);
+    this.deps.writeMonitorControl({ cmd: "suppressFrames", devices: [...ids] });
   }
 
-  /** パネルの表示状態(WebviewPanel.visible)に合わせる。非表示中はリソースを使わないよう全破棄し、
-   * 再表示時は次の monitorDevices イベント(monitorProcessManager.ts、最大 monitorInterval 秒後)で
-   * applyDevices が呼ばれ再構築される。 */
+  /** パネルの表示状態(WebviewPanel.visible)に合わせる。非表示中は配信を全破棄し**全台を抑止する**。
+   * 再表示時は抑止を今の配信の集合(直後は空 = 全台のポーリングが戻る)へ戻し、次の monitorDevices
+   * イベント(monitorProcessManager.ts、最大 monitorInterval 秒後)で applyDevices が配信を再構築する。 */
   setVisible(visible: boolean): void {
     this.visible = visible;
     if (visible) {
       this.gaveUpDeviceIds.clear(); // 再表示は仕切り直し(諦めたデバイスも次の applyDevices で再試行)
+      this.syncSuppressFramesNow();
     } else {
-      this.disposeAll();
+      this.hideAll();
     }
+  }
+
+  /** **空集合を送らない**(disposeAll との違い)。空を送ると monitor は全台を2秒ごとに撮って
+   * 見えない画面へ送り続けた(実測: 手元 16 台で 1 分 106 枚・3 MB。monitor の CPU は変わらず、
+   * 無駄は送った先の拡張ホスト側)。抑止中も monitor は凍結の探りを間隔を落として続ける(観測は止めない) */
+  private hideAll(): void {
+    for (const deviceId of [...this.pipelines.keys()]) {
+      this.pipelines.get(deviceId)?.pipeline.dispose();
+      this.pipelines.delete(deviceId);
+      this.streamingDeviceIds.delete(deviceId);
+    }
+    if (this.suppressSyncTimer) {
+      clearTimeout(this.suppressSyncTimer);
+      this.suppressSyncTimer = undefined;
+    }
+    this.sendSuppress(new Set((this.lastDevices ?? []).map((device) => device.id)));
   }
 
   dispose(): void {
