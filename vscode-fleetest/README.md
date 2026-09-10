@@ -202,6 +202,16 @@ code --install-extension vscode-fleetest-<version>.vsix
 | `fleetest.language` | `"auto"` \| `"ja"` \| `"en"` | `"auto"` | 拡張の UI 表示言語。`auto` は VS Code の表示言語に追従する(ja 系なら日本語、それ以外は英語)。詳細は下記「表示言語(i18n)」 |
 | `fleetest.updateCheck` | `"auto"` \| `"off"` | `"auto"` | 起動時(1日1回まで)に fleetest の更新有無を確認し、あれば通知する。**確認するだけで取り込みはしない**。詳細は下記「更新チェック」 |
 
+### 設定タブにあって VSCode 設定ではない項目
+
+「設定」タブにはあるが `.vscode/settings.json`(`fleetest.*`)には**入らない**設定です。保存先は
+CLI 側で、拡張は値を持ちません(表示している既定値も CLI が返したものです)。
+
+| 項目 | 保存先 | 説明 |
+|---|---|---|
+| クリーンアップ | CLI のマシン設定(`fleetest api retention` で読み書き) | テスト実行の完了時に掃除するか(`sweepAfterRun`)と、デバイスの録画・スクショ / 録画 / レポート / ログの上限(`deviceCapturesMaxBytes`・`recordingsMaxBytes`・`reportsMaxBytes`・`logsMaxBytes`。契約はバイト、画面は GB / MB)。上限は**マシン単位**で、プロジェクトや実行プロファイルには紐づきません。空欄・負の値を入れるとその項目だけ既定へ戻ります(`0` は「保持しない」という有効な指定)。「今すぐ掃除」は `fleetest api clean` を実行します(先に `--dry-run` で消える合計を見積もり、確認ダイアログを出してから実行) |
+| マシン(リモートホスト) | CLI のホスト登録簿(`fleetest api remote-machines`) | 下記「デバイスモニター」および `docs/remote-runner.md` §12 |
+
 ## 更新チェックと更新(設定タブ)
 
 **更新の状態確認と実行は「設定」タブの「更新」セクション**にあります(`src/monitorUpdateController.ts`)。

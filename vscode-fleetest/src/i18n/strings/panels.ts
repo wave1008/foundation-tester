@@ -295,6 +295,23 @@ export const panelsStrings = {
   "panels.settings.remoteHostsColFMConcurrency": { ja: "FM 並列枠", en: "FM concurrency" },
   "panels.settings.remoteHostsAdd": { ja: "リモートホストを追加", en: "Add remote host" },
 
+  // 設定タブ「クリーンアップ」セクション(静的ラベル)。保持ポリシーの実体は **VSCode 設定ではなく
+  // CLI 側のマシン設定**(`fleetest api retention`)。動的表示(使用量・掃除の結果)は
+  // webviewMonitorB.ts の wvMonitor2.cleanup.*。単位記号(GB/MB)は言語に依らないので辞書に置かない。
+  "panels.settings.cleanupSectionTitle": { ja: "クリーンアップ", en: "Cleanup" },
+  "panels.settings.cleanupEnabledLabel": {
+    ja: "テスト実行の完了時にクリーンアップする",
+    en: "Clean up when a test run finishes",
+  },
+  "panels.settings.cleanupDeviceCapturesLabel": {
+    ja: "デバイスの録画・スクショの上限",
+    en: "Limit for device recordings and screenshots",
+  },
+  "panels.settings.cleanupRecordingsLabel": { ja: "録画の上限", en: "Limit for recordings" },
+  "panels.settings.cleanupReportsLabel": { ja: "レポートの上限", en: "Limit for reports" },
+  "panels.settings.cleanupLogsLabel": { ja: "ログの上限", en: "Limit for logs" },
+  "panels.settings.cleanupNowButton": { ja: "今すぐ掃除", en: "Clean up now" },
+
   "panels.deviceMenu.liveControl": { ja: "ライブ操作", en: "Live Control" },
   "panels.deviceMenu.restartWithGpu": { ja: "GPUで再起動", en: "Restart with GPU" },
   // フリートの右クリック(タイルの上でも空きエリアでも出る。deviceTiles.js openDeviceOpMenu)

@@ -4121,6 +4121,43 @@ test("setLptScheduling: boolean の value だけ受け付ける", () => {
   assert.equal(isMonitorFromWebviewMessage({ type: "setLptScheduling", value: "true" }), false);
 });
 
+test("setRetention: 上限はバイト(0以上の整数)か null・未知の鍵は弾く", () => {
+  // 設定タブ「クリーンアップ」(対向: src/webview/monitor/settingsTab.js)。鍵は CLI の JSON と
+  // 1文字も同じ。未知の鍵を通すと綴り違いがそのまま CLI へ渡り、黙って無視されて
+  // 「打ったのに効かない」になる。
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRetention", patch: { logsMaxBytes: 524288000 } }), true);
+  // 0 は「保持しない」の有効な指定
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRetention", patch: { logsMaxBytes: 0 } }), true);
+  // null = その鍵を既定へ戻す(入力欄を空にした・不正値を打った場合)
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRetention", patch: { logsMaxBytes: null } }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRetention", patch: { sweepAfterRun: false } }), true);
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      type: "setRetention",
+      patch: { deviceCapturesMaxBytes: 21474836480, recordingsMaxBytes: null },
+    }),
+    true,
+  );
+
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRetention", patch: { logsMaxBytes: -1 } }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRetention", patch: { logsMaxBytes: 1.5 } }), false,
+    "バイトは整数(単位変換は webview 側で済ませる)");
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRetention", patch: { logsMaxBytes: "500" } }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRetention", patch: { sweepAfterRun: 1 } }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRetention", patch: { logMaxBytes: 1 } }), false,
+    "綴り違いの鍵");
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRetention", patch: {} }), false, "空の差分は送らない");
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRetention" }), false);
+});
+
+test("runCleanup: boolean の dryRun だけ受け付ける", () => {
+  // dryRun 欠落を通すと undefined が false 扱いになり、見積もりのつもりで本当に消える
+  assert.equal(isMonitorFromWebviewMessage({ type: "runCleanup", dryRun: false }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "runCleanup", dryRun: true }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "runCleanup" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "runCleanup", dryRun: "false" }), false);
+});
+
 test("setLptHistoryRuns: 1以上の整数か null だけ受け付ける", () => {
   // 0・負値・小数を通すと実績の走査件数が壊れる(CLI 側でも 1 に丸めるが入口で弾く)
   assert.equal(isMonitorFromWebviewMessage({ type: "setLptHistoryRuns", value: 20 }), true);

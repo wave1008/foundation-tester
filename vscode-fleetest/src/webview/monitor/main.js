@@ -230,6 +230,7 @@ window.addEventListener('message', (event) => {
     case 'lptHistoryRuns':
     case 'language':
     case 'updateStatus':
+    case 'retention':
       applySettings(message);
       break;
     // devicePickMachine.js は remoteConfig(#device-pick-overlay 内のマシン選択の選択肢)を独立に

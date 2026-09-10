@@ -2172,6 +2172,22 @@ input[type="search"]::placeholder {
   line-height: 1.5;
   color: var(--vscode-descriptionForeground);
 }
+/* クリーンアップ(設定タブ)。数値入力の右に単位記号、その右に現在の使用量を並べる
+   (.settings-item-inline の1行に収める)。 */
+.settings-unit {
+  color: var(--vscode-descriptionForeground);
+}
+.settings-cleanup-usage {
+  margin-left: 4px;
+}
+.settings-cleanup-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-cleanup-error {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
 /* リモート実行ホスト一覧(可変行数・settingsTab.js が組み立てる)。.resident-table と同じ
    罫線方針(auto レイアウト、最右列は縦線なし)。 */
 .settings-remote-hosts-table {

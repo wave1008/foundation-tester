@@ -220,4 +220,22 @@ export const webviewMonitorBStrings = {
     ja: "マシン登録簿への反映に失敗しました: {reason}",
     en: "Failed to save the machine registry: {reason}",
   },
+
+  // 設定タブ「クリーンアップ」の動的表示(settingsTab.js)。値の正は CLI 側のマシン設定で、
+  // 使用量も掃除の結果も CLI が返したバイト数を写すだけ({size} は "870.2 GB" の形)。
+  "wvMonitor2.cleanup.usage": { ja: "現在 {size}", en: "Now {size}" },
+  "wvMonitor2.cleanup.unavailable": {
+    ja: "クリーンアップ設定を読み込めませんでした: {reason}",
+    en: "Could not load the cleanup settings: {reason}",
+  },
+  "wvMonitor2.cleanup.saveFailed": {
+    ja: "クリーンアップ設定の保存に失敗しました: {reason}",
+    en: "Failed to save the cleanup settings: {reason}",
+  },
+  "wvMonitor2.cleanup.running": { ja: "掃除しています…", en: "Cleaning up..." },
+  "wvMonitor2.cleanup.done": { ja: "{size} を削除しました", en: "Deleted {size}" },
+  "wvMonitor2.cleanup.dryRunDone": { ja: "{size} が削除対象です", en: "{size} would be deleted" },
+  "wvMonitor2.cleanup.nothing": { ja: "削除するものはありません", en: "Nothing to delete" },
+  "wvMonitor2.cleanup.cancelled": { ja: "掃除を中止しました", en: "Cleanup was cancelled" },
+  "wvMonitor2.cleanup.failed": { ja: "掃除に失敗しました: {reason}", en: "Cleanup failed: {reason}" },
 } satisfies MessageDict;

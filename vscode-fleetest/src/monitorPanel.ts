@@ -64,6 +64,14 @@ import {
   type RemoteHostsCliOutcome,
 } from "./remoteHostsController";
 import { diffRemoteHostsForSync, mergeRemoteHostsSideFields, type RemoteHostEntry } from "./remoteRunArgs";
+import {
+  fetchRetention,
+  fetchRetentionUsage,
+  type RetentionCliDeps,
+  runCleanup,
+  updateRetention,
+} from "./retentionController";
+import { formatBytesAuto, type RetentionPatch } from "./retentionModel";
 import { TYPE_ORDER, parseAndroidBridges, parseResidentProcesses, type ResidentProcess } from "./residentProcesses";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
 import {
@@ -555,6 +563,78 @@ export class MonitorPanelController implements vscode.Disposable {
     this.lastKnownLocalMachine = merged.local;
   }
 
+  /** クリーンアップ設定の CLI 呼び出しも、リモートホスト登録簿と同じ短命ワンショット
+   *  (キャンセル対象に登録せず終了を待つだけ)。 */
+  private retentionDeps(): RetentionCliDeps {
+    return this.remoteHostsDeps();
+  }
+
+  /**
+   * 設定タブ「クリーンアップ」の欄変更を CLI 側のマシン設定へ反映する。**書き込み後は必ず
+   * CLI が返した確定形で webview を作り直す**(マシン登録簿と同じ規律)—— 拡張は保持ポリシーを
+   * 持たないので、打った値が本当に入ったかは CLI の応答でしか分からない。失敗理由は
+   * retention.error に乗せて webview へ返す(OUTPUT へのログだけにしない = 値が黙って戻る)。
+   */
+  private async applyRetentionPatch(patch: RetentionPatch): Promise<void> {
+    const deps = this.retentionDeps();
+    const result = await updateRetention(deps, patch);
+    if (result.error === undefined) {
+      this.post({ type: "retention", ...result });
+      return;
+    }
+    // 書き込みに失敗した回は**現在値を読み直して理由と一緒に返す** —— 応答が理由だけだと
+    // webview は「ポリシーを読めない古い CLI」と区別できず、欄ごと無効になって次に開き直すまで
+    // 直せなくなる。読み直しも失敗したなら本当に使えないので理由だけを返す。
+    const refreshed = await fetchRetention(deps);
+    this.post(
+      refreshed.error === undefined
+        ? { type: "retention", ...refreshed, error: result.error }
+        : { type: "retention", error: result.error },
+    );
+  }
+
+  /**
+   * 「今すぐ掃除」。**消す前に必ず1回聞く**(破壊的操作)—— 先に `--dry-run` を撃って消える合計を
+   * 見せ、ホスト側のモーダルで確認してから実行する(webview では window.confirm が効かない)。
+   * 実行後は retention を読み直して使用量ごと配り直す(掃除で必ず変わるため)。
+   * dryRun=true で来たときは見積もるだけで確認もしない。
+   */
+  private async handleRunCleanup(dryRun: boolean): Promise<void> {
+    const deps = this.retentionDeps();
+    this.post({ type: "retention", cleanup: { state: "running", dryRun } });
+    const preview = await runCleanup(deps, true);
+    if (preview.error !== undefined) {
+      this.post({ type: "retention", cleanup: { state: "failed", dryRun, error: preview.error } });
+      return;
+    }
+    if (dryRun) {
+      this.post({ type: "retention", cleanup: { state: "done", dryRun: true, freedBytes: preview.freedBytes } });
+      return;
+    }
+    const proceed = t("monitor.cleanup.confirmButton");
+    const message =
+      preview.freedBytes === undefined
+        ? t("monitor.cleanup.confirmMessageUnknownSize")
+        : t("monitor.cleanup.confirmMessage", { size: formatBytesAuto(preview.freedBytes) });
+    const choice = await vscode.window.showWarningMessage(message, { modal: true }, proceed);
+    if (choice !== proceed) {
+      this.post({ type: "retention", cleanup: { state: "cancelled" } });
+      return;
+    }
+    const result = await runCleanup(deps, false);
+    if (result.error !== undefined) {
+      this.post({ type: "retention", cleanup: { state: "failed", error: result.error } });
+      return;
+    }
+    // 使用量は掃除で必ず変わるので、結果と一緒に読み直したものを配る
+    const refreshed = await fetchRetention(deps);
+    this.post({
+      type: "retention",
+      ...refreshed,
+      cleanup: { state: "done", dryRun: false, freedBytes: result.freedBytes },
+    });
+  }
+
   private hydrateLaneUi(): void {
     if (this.laneSectionVisible) {
       this.post({ type: "laneSectionVisible", visible: true });
@@ -693,6 +773,12 @@ export class MonitorPanelController implements vscode.Disposable {
         this.devicesTabVisible = message.visible;
         this.applyDeviceStreamVisibility();
         return;
+      case "setRetention":
+        void this.applyRetentionPatch(message.patch);
+        break;
+      case "runCleanup":
+        void this.handleRunCleanup(message.dryRun);
+        break;
       case "refreshResidentProcesses":
         void this.refreshResidentProcesses();
         break;
@@ -973,6 +1059,22 @@ export class MonitorPanelController implements vscode.Disposable {
                 local: this.lastKnownLocalMachine });
       });
     }
+    // 設定タブ「クリーンアップ」。**保持ポリシーの正は CLI 側のマシン設定**で、拡張は既定値を
+    // 持たない。読めなければ error だけを配って webview がセクションを無効表示にする
+    // (コマンドを持たない古い CLI でも他の初期化を止めない)。
+    // **2段で読む**: 上限だけなら即座に返る(実測 0.9 秒)が、使用量の集計は全ファイルを
+    // stat して回るので実測 21 秒かかる。1回で済ませると、その間ずっと入力欄が空欄になる
+    void fetchRetention(this.retentionDeps()).then((result) => {
+      this.post({ type: "retention", ...result });
+      if (result.error !== undefined) {
+        return;
+      }
+      void fetchRetentionUsage(this.retentionDeps()).then((withUsage) => {
+        if (withUsage.error === undefined) {
+          this.post({ type: "retention", ...withUsage });
+        }
+      });
+    });
     if (this.tilePaneHeight !== undefined) {
       this.post({ type: "tilePaneHeight", value: this.tilePaneHeight });
     }

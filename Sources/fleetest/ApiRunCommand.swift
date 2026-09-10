@@ -701,6 +701,9 @@ struct ApiRunCommand: AsyncParsableCommand {
         emitLine(ApiRunFinishedEvent(passed: outcome.passed, failed: outcome.failed,
                                      testSeconds: outcome.testSeconds,
                                      scenarioTotalSeconds: outcome.scenarioTotalSeconds))
+        // **失敗時の throw より前**(赤い run でも掃除は走る)。stdout は NDJSON 専用なので
+        // 掃除の1行は stderr へ
+        RunCompletionSweep.run(activeRunID: recorder?.runID) { logStderr($0) }
 
         if outcome.failed > 0 {
             throw ExitCode(1)

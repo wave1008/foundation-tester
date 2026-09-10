@@ -272,6 +272,18 @@ export const monitorStrings = {
     en: "Update fleetest? It runs git pull, rebuild, and extension reinstall, and takes a few minutes.",
   },
   "monitor.update.confirmButton": { ja: "更新する", en: "Update" },
+  // 「今すぐ掃除」の確認(モーダル)。webview では confirm が効かないのでホスト側で出す。
+  // 消える合計は先に撃った --dry-run の結果({size} は "12.3 GB" の形)。
+  "monitor.cleanup.confirmMessage": {
+    ja: "{size} を削除します。元に戻せません。続けますか?",
+    en: "Delete {size}? This cannot be undone. Continue?",
+  },
+  // 見積もりが読めなかったとき(CLI が合計を返さない形のとき)も、消す前に必ず1回聞く。
+  "monitor.cleanup.confirmMessageUnknownSize": {
+    ja: "クリーンアップを実行します(削除量を見積もれませんでした)。元に戻せません。続けますか?",
+    en: "Run cleanup? The amount to delete could not be estimated, and this cannot be undone.",
+  },
+  "monitor.cleanup.confirmButton": { ja: "削除する", en: "Delete" },
   // 「更新を確認」で更新が見つかったとき、その場で適用するか聞く(押した本人はもう考えている)。
   "monitor.update.foundMessage": {
     ja: "fleetest に更新があります({local} → {remote})。今すぐ更新しますか?",

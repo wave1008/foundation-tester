@@ -36,4 +36,23 @@ public enum ProcessLiveness {
         guard pStat != SZOMB else { return false }
         return flags & processExitingFlag == 0
     }
+
+    /// 生きているプロセスの開始時刻(死んでいる・読めないなら nil)。
+    /// **`ps -o lstart=` を使わない** —— 出力がロケール依存で、パースが利用者の環境で黙って外れる。
+    /// `kinfo_proc.kp_proc.p_starttime` は epoch 基準の timeval なので変換が要らない。
+    /// 用途: そのプロセスが動き出す前/後でファイル群を分ける(RetentionSweeper の添付の
+    /// セッション境界)。**nil のときは呼び手が安全側(消さない)へ倒すこと**
+    public static func startTime(_ pid: pid_t) -> Date? {
+        guard pid > 0 else { return nil }
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0,
+              isAliveState(Int32(info.kp_proc.p_stat), flags: info.kp_proc.p_flag) else { return nil }
+        // `p_starttime` は C マクロ(`p_un.__p_starttime` の別名)なので Swift へは import
+        // されない —— 共用体の実体を直に読む
+        let started = info.kp_proc.p_un.__p_starttime
+        return Date(timeIntervalSince1970:
+            Double(started.tv_sec) + Double(started.tv_usec) / 1_000_000)
+    }
 }

@@ -16,6 +16,34 @@ results/runs/<YYYY-MM>/<runID>/
 マシン名を撤去し、複数マシンの衝突回避は乱数の拡幅で担保。旧形式もそのまま読める ——
 どの機械の run かは `host` 欄が持つ)。
 
+## 保持容量(何がいつ消えるか)
+
+run の完了時に保持容量の掃除が走る(既定 ON。切るのは `sweepAfterRun`)。**上限はカテゴリごとの
+合計バイト数**で、新しい順に積んで上限を超えたところから古いセッションを**丸ごと**落とす
+(半端に残るセッションを作らない)。判定は `FTCore.RetentionSweep.plan`(純粋関数)が唯一の定義元。
+
+| カテゴリ | 対象 | 削除の単位 | 既定 |
+|---|---|---|---|
+| `deviceCaptures` | シミュレータ内の XCUITest 添付(録画・スクショ) | ブリッジのセッション | 20 GiB |
+| `recordings` | `results/runs/<月>/<runID>/recordings/` | run 1件 | 100 GiB |
+| `reports` | `<project>/reports/` の `.md` と `.png` | 日 1件 | 1000 MiB |
+| `logs` | `<repoRoot>/.fleetest/*.log` | ファイル1本 | 500 MiB |
+
+**結果 JSON は消えない**。`recordings/` を落としても `run.json` と `scenarios/*.json` は残るので、
+フレークの推移も LPT の実績も過去に遡れる。**消えるのは録画とレポートだけ** —— 古い run の
+`reportPath` が指す `.md` は消えている場合があり、読み手は不在に耐えること(拡張の2経路は
+存在を確かめてから開く)。
+
+**消さないもの(guarded)**: 進行中の run(`run.json` に完了時刻が無い)/ たった今終わった run /
+今日のレポート / 生きているブリッジのログ / 稼働中ブリッジが開始した後の添付。
+guarded だけで上限を超えていても**消せるものは全部消す**(上限に届かないことを理由に手を止めない)。
+
+設定は `fleetest api retention`(マシン設定 `~/.config/fleetest/config.json`。VSCode 設定ではない
+= 端末から直接打った run にも効く)。拡張はモニターの設定タブ「クリーンアップ」から同じ口を叩く。
+手で回すのは `fleetest clean [--dry-run]`。**`--dry-run` は1バイトも消さずに一覧だけ出す**。
+
+---
+
 **後方互換の契約**: 欄はすべて後発追加が Optional。**古い run も読み続けられる**ように、
 新しい欄が無い = キーごと省略される(空配列・false は書かない)。rawValue(`failureKind` /
 `notes` の文字列)は永続化されるので**一度出したものは変えない**。

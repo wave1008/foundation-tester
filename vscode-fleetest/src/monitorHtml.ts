@@ -810,6 +810,45 @@ function renderSettingsPanel(): string {
           </select>
         </label>
       </div>
+      <!-- クリーンアップ。**保持ポリシーの実体は VSCode 設定ではなく CLI 側のマシン設定**
+           ("fleetest api retention")。既定値も使用量も CLI が返したものを写すだけで、拡張は
+           値を持たない(FM 枠と同じ規律)。画面は GB / MB、契約はバイトで、変換は
+           retentionModel.ts の1経路だけを通る。「今すぐ掃除」の確認は**ホスト側のモーダル**
+           (webview では window.confirm が効かない)。
+           対向: settingsTab.js の applyRetention / setRetention・runCleanup、monitorPanel.ts。 -->
+      <div class="settings-group">
+        <div class="settings-section-title">${t("panels.settings.cleanupSectionTitle")}</div>
+        <label class="settings-item"><input type="checkbox" id="settings-cleanup-enabled"> ${t("panels.settings.cleanupEnabledLabel")}</label>
+        <label class="settings-item settings-item-inline" for="settings-cleanup-device-captures">
+          ${t("panels.settings.cleanupDeviceCapturesLabel")}
+          <input type="number" id="settings-cleanup-device-captures" class="settings-number" min="0" step="any">
+          <span class="settings-unit">GB</span>
+          <span id="settings-cleanup-device-captures-usage" class="settings-hint settings-cleanup-usage"></span>
+        </label>
+        <label class="settings-item settings-item-inline" for="settings-cleanup-recordings">
+          ${t("panels.settings.cleanupRecordingsLabel")}
+          <input type="number" id="settings-cleanup-recordings" class="settings-number" min="0" step="any">
+          <span class="settings-unit">GB</span>
+          <span id="settings-cleanup-recordings-usage" class="settings-hint settings-cleanup-usage"></span>
+        </label>
+        <label class="settings-item settings-item-inline" for="settings-cleanup-reports">
+          ${t("panels.settings.cleanupReportsLabel")}
+          <input type="number" id="settings-cleanup-reports" class="settings-number" min="0" step="any">
+          <span class="settings-unit">MB</span>
+          <span id="settings-cleanup-reports-usage" class="settings-hint settings-cleanup-usage"></span>
+        </label>
+        <label class="settings-item settings-item-inline" for="settings-cleanup-logs">
+          ${t("panels.settings.cleanupLogsLabel")}
+          <input type="number" id="settings-cleanup-logs" class="settings-number" min="0" step="any">
+          <span class="settings-unit">MB</span>
+          <span id="settings-cleanup-logs-usage" class="settings-hint settings-cleanup-usage"></span>
+        </label>
+        <div class="settings-cleanup-actions">
+          <button id="settings-cleanup-now" class="secondary" type="button">${t("panels.settings.cleanupNowButton")}</button>
+          <span id="settings-cleanup-result" class="settings-hint"></span>
+        </div>
+        <div id="settings-cleanup-error" class="settings-hint settings-cleanup-error" hidden></div>
+      </div>
       <div class="settings-group">
         <div class="settings-section-title">${t("panels.settings.remoteSectionTitle")}</div>
         <div class="settings-remote-hosts-actions">

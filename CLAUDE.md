@@ -542,6 +542,17 @@
   黙って無視され `api run` ではエラーだった)
 - **`--since` / `--until` の文法は `FTCore.TimeBoundParse` が唯一の定義元**(docs/results-json.md
   §`--since`/`--until` の文法)。時刻境界を取るオプションを新設するときは必ずここを通す
+- **保持容量の掃除は run 完了時の3経路すべてに要る**(`Fleetest.swift` のプロファイル経路と
+  プロファイル無し経路・`ApiRunCommand`)。**結果を書く経路 = 掃除する経路**で、
+  `RunCompletionSweepWiringTests` が本数を等号で固定する。判定は `FTCore.RetentionSweep.plan`
+  (純粋関数)の1箇所・採取と削除は `Sources/fleetest/RetentionSweeper.swift`。
+  **既存の teardown の defer に相乗りしない**(プロファイル経路の defer は `recorder.finish` より
+  前に走るので、今回の run を保護できない)。既定値は `FTCore.RetentionPolicy` の1箇所だけに置き、
+  拡張は `api retention` が返す実効値を表示する(既定を両側に持たない)。
+  **`api retention` の使用量は `--usage` を付けたときだけ測る** —— 集計は実測 21 秒で、
+  毎回払うと設定タブが空欄のまま待つ。**レポートの単位は run ではなく日**
+  (run 単位は結果 JSON 155,785 件の復号と PNG の総当たりで実測 360 秒。→ docs/results-json.md
+  §保持容量)
 - **ブリッジの挙動・エンドポイントを変えたら版を上げる** → maintainer-notes §4.4。
   iOS = `Sources/FTCore/BridgeDTO.swift` の `bridgeProtocolVersion`(in-app dylib と XCUITest
   ランナーの共通定数)/ Android = `AndroidRunner/build.sh` の `VERSION_CODE` と

@@ -10,6 +10,15 @@
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
 import { defaultMachineForHost } from '../../remoteRunArgs';
+import {
+  RETENTION_FIELDS,
+  RETENTION_SWEEP_KEY,
+  bytesToUnitValue,
+  formatBytes,
+  formatBytesAuto,
+  parseRetentionInput,
+  unitValueToBytes,
+} from '../../retentionModel';
 import { switchTab } from './tabs.js';
 
 const pollingModeCheckbox = document.getElementById('settings-polling-mode');
@@ -427,6 +436,151 @@ function applyUpdateStatus(message) {
   }
 }
 
+// ---- クリーンアップ(CLI 側のマシン設定。`fleetest api retention` / `api clean`) ----------
+// **正は CLI**。既定値も使用量も CLI が返したものを写すだけで、拡張は値を持たない
+// (二重管理にすると片方だけ変わったときに嘘を表示する。FM 枠と同じ規律)。
+// 画面は GB / MB、契約はバイト。**変換は retentionModel.js の1経路だけ**を通す。
+//
+// HTML の id と CLI の鍵の対応。RETENTION_FIELDS の並びと1対1(片方だけ変えない)。
+const CLEANUP_INPUT_IDS = {
+  deviceCapturesMaxBytes: 'settings-cleanup-device-captures',
+  recordingsMaxBytes: 'settings-cleanup-recordings',
+  reportsMaxBytes: 'settings-cleanup-reports',
+  logsMaxBytes: 'settings-cleanup-logs',
+};
+const cleanupEnabledCheckbox = document.getElementById('settings-cleanup-enabled');
+const cleanupNowButton = document.getElementById('settings-cleanup-now');
+const cleanupResult = document.getElementById('settings-cleanup-result');
+const cleanupError = document.getElementById('settings-cleanup-error');
+// 拡張から届く既定値(空欄・不正値のときに入力欄へ入れ直す値)。届くまでは undefined。
+let cleanupDefaults;
+// CLI からポリシーを読めているか(読めていなければ欄も「今すぐ掃除」も押せない)。
+let cleanupAvailable = false;
+
+const cleanupRows = RETENTION_FIELDS.map((field) => ({
+  field,
+  input: document.getElementById(CLEANUP_INPUT_IDS[field.key]),
+  usage: document.getElementById(`${CLEANUP_INPUT_IDS[field.key]}-usage`),
+}));
+
+/** 既定値(バイト)を入力欄の単位へ。CLI 応答が未着・欄が無いときは undefined。 */
+function cleanupDefaultValue(field) {
+  const raw = cleanupDefaults ? cleanupDefaults[field.key] : undefined;
+  return typeof raw === 'number' ? bytesToUnitValue(raw, field.unit) : undefined;
+}
+
+for (const row of cleanupRows) {
+  // **入力欄を空欄のまま残さない**(実際に効いている上限が常に見えている状態にする)。
+  // 不正値は null を送って CLI 側を既定へ戻し、UI にも既定値を入れ直す。
+  // **0 は有効な指定**(保持しない)なので弾かない。判定は parseRetentionInput の1箇所。
+  row.input.addEventListener('change', () => {
+    const parsed = parseRetentionInput(row.input.value);
+    if (parsed === null) {
+      const fallback = cleanupDefaultValue(row.field);
+      row.input.value = fallback === undefined ? '' : String(fallback);
+    }
+    vscode.postMessage({
+      type: 'setRetention',
+      patch: { [row.field.key]: parsed === null ? null : unitValueToBytes(parsed, row.field.unit) },
+    });
+  });
+}
+
+cleanupEnabledCheckbox.addEventListener('change', () => {
+  vscode.postMessage({
+    type: 'setRetention',
+    patch: { [RETENTION_SWEEP_KEY]: cleanupEnabledCheckbox.checked },
+  });
+});
+
+// 確認ダイアログは**ホスト側**(monitorPanel.ts の showWarningMessage modal)。webview では
+// window.confirm が効かない。ホストは先に --dry-run を撃ち、消える合計を見せてから実行する。
+cleanupNowButton.addEventListener('click', () => {
+  vscode.postMessage({ type: 'runCleanup', dryRun: false });
+});
+
+function applyCleanupOutcome(cleanup) {
+  // 掃除が終わってもセクションごと使えない状態(古い CLI・読みの失敗)なら押せないまま残す
+  cleanupNowButton.disabled = cleanup.state === 'running' || !cleanupAvailable;
+  if (cleanup.state === 'running') {
+    cleanupResult.textContent = t('wvMonitor2.cleanup.running');
+    return;
+  }
+  if (cleanup.state === 'cancelled') {
+    cleanupResult.textContent = t('wvMonitor2.cleanup.cancelled');
+    return;
+  }
+  if (cleanup.state === 'failed') {
+    cleanupResult.textContent = t('wvMonitor2.cleanup.failed', { reason: cleanup.error || '' });
+    return;
+  }
+  if (typeof cleanup.freedBytes !== 'number') {
+    cleanupResult.textContent = '';
+    return;
+  }
+  if (cleanup.freedBytes === 0) {
+    cleanupResult.textContent = t('wvMonitor2.cleanup.nothing');
+    return;
+  }
+  // 合計は大きさで単位が変わる(1GB 未満は MB)。**判定は retentionModel の1箇所**
+  // —— ホスト側の確認ダイアログも同じ関数を通す。
+  const size = formatBytesAuto(cleanup.freedBytes);
+  cleanupResult.textContent = cleanup.dryRun
+    ? t('wvMonitor2.cleanup.dryRunDone', { size })
+    : t('wvMonitor2.cleanup.done', { size });
+}
+
+/**
+ * retention 受信(ready 直後 / setRetention・runCleanup の応答)。policy が無ければ無効表示。
+ * **掃除の進行だけを載せた配信(policy も error も無い)では欄に触らない** —— 触ると
+ * 「今すぐ掃除」を押した瞬間に上限の入力欄が全部無効になる。
+ */
+function applyRetention(message) {
+  const policy = message.policy;
+  const available = policy !== undefined && policy !== null;
+  const hasReason = typeof message.error === 'string' && message.error !== '';
+  if (!available && !hasReason) {
+    if (message.cleanup) {
+      applyCleanupOutcome(message.cleanup);
+    }
+    return;
+  }
+  cleanupAvailable = available;
+  if (message.defaults) {
+    cleanupDefaults = message.defaults;
+  }
+  cleanupEnabledCheckbox.disabled = !available;
+  cleanupNowButton.disabled = !available;
+  for (const row of cleanupRows) {
+    row.input.disabled = !available;
+    const fallback = cleanupDefaultValue(row.field);
+    row.input.placeholder = fallback === undefined ? '' : String(fallback);
+    const current = available ? policy[row.field.key] : undefined;
+    if (typeof current === 'number') {
+      row.input.value = String(bytesToUnitValue(current, row.field.unit));
+    }
+    const used = message.usage ? message.usage[row.field.usageKey] : undefined;
+    row.usage.textContent =
+      typeof used === 'number' ? t('wvMonitor2.cleanup.usage', { size: formatBytes(used, row.field.unit) }) : '';
+  }
+  if (available && typeof policy[RETENTION_SWEEP_KEY] === 'boolean') {
+    cleanupEnabledCheckbox.checked = policy[RETENTION_SWEEP_KEY];
+  }
+  // 読めなかった理由(コマンドを持たない古い CLI 等)と、保存に失敗した理由を出し分ける
+  // —— 前者は欄そのものが使えず、後者は打った値が届いていない。
+  if (!hasReason) {
+    cleanupError.hidden = true;
+  } else {
+    cleanupError.textContent = available
+      ? t('wvMonitor2.cleanup.saveFailed', { reason: message.error })
+      : t('wvMonitor2.cleanup.unavailable', { reason: message.error });
+    cleanupError.hidden = false;
+  }
+  if (message.cleanup) {
+    applyCleanupOutcome(message.cleanup);
+  }
+}
+
 export function applySettings(message) {
   if (message.type === 'pollingMode') {
     pollingModeCheckbox.checked = !!message.value;
@@ -444,5 +598,7 @@ export function applySettings(message) {
     applyRemoteConfig(message);
   } else if (message.type === 'updateStatus') {
     applyUpdateStatus(message);
+  } else if (message.type === 'retention') {
+    applyRetention(message);
   }
 }

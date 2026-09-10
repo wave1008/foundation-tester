@@ -1,6 +1,6 @@
 // LocalConfig.swift
 // マシンローカル設定(~/.config/fleetest/config.json)。
-// デフォルトプロジェクト・実機署名・リモートホスト登録簿を保持する。
+// デフォルトプロジェクト・実機署名・リモートホスト登録簿・保持容量ポリシーを保持する。
 // **「このマシンの名前」は持たない**(理由は ProfileResolver.determineMachine の宣言 ——
 // プロファイル名と機械の身元を1つの値に載せると、マシンプロファイルを改名しただけで
 // この Mac の身元まで変わる)。
@@ -32,12 +32,16 @@ public struct LocalConfig: Codable, Sendable, Equatable {
     /// (RemoteHostRegistry.validateName)なので、手元だけはここに置く。
     /// 機械によっては FM を2並列以上で呼ぶと壊れる(docs/remote-runner.md §19)
     public var fmConcurrency: Int?
+    /// ログ・録画・レポート・デバイス添付の保持容量(`fleetest clean` / run 完了時の掃除)。
+    /// **既定値はここに持たない** —— 唯一の定義元は `RetentionPolicy` の static。
+    /// nil(欄ごと無い)は「全部既定」であって「掃除しない」ではない
+    public var retention: RetentionPolicy?
 
     public init(defaultProject: String? = nil,
                 lastRunProfile: [String: String]? = nil,
                 developmentTeam: String? = nil, bundleIDPrefix: String? = nil,
                 remoteHosts: [RemoteHostEntry]? = nil, issuerId: String? = nil,
-                fmConcurrency: Int? = nil) {
+                fmConcurrency: Int? = nil, retention: RetentionPolicy? = nil) {
         self.defaultProject = defaultProject
         self.lastRunProfile = lastRunProfile
         self.developmentTeam = developmentTeam
@@ -45,6 +49,7 @@ public struct LocalConfig: Codable, Sendable, Equatable {
         self.remoteHosts = remoteHosts
         self.issuerId = issuerId
         self.fmConcurrency = fmConcurrency
+        self.retention = retention
     }
 
     /// 実機署名の設定。優先順位: 環境変数 > 設定ファイル。

@@ -16,6 +16,7 @@ import type {
 } from "./recordingsModel";
 import type { RecordingSessionSummary } from "./recordingsStore";
 import type { DeviceCommandSource, RemoteHostEntry } from "./remoteRunArgs";
+import { isRetentionPatch, type RetentionPatch, type RetentionUsage, type RetentionValues } from "./retentionModel";
 import type { ResidentProcess } from "./residentProcesses";
 import { isRecord, type MonitorDevice, type MonitorEvent, type MonitorPlatform } from "./monitorDeviceModel";
 import type { DeviceOpKind, DeviceOpQueueStatus } from "./monitorDeviceLifecycle";
@@ -336,6 +337,27 @@ export type MonitorToWebviewMessage =
   // **実行ログは webview に送らない**(VSCode の OUTPUT へ出す。monitorUpdateController.ts 冒頭)。
   | { readonly type: "updateStatus"; readonly state: string; readonly localHead: string;
       readonly remoteHead: string; readonly reason: string }
+  // 設定タブ「クリーンアップ」セクション。保持ポリシーの正は CLI 側のマシン設定
+  // (`fleetest api retention`)で、**拡張は既定値を持たない** —— policy(実効値)・defaults・
+  // usage はすべて CLI が返したものをそのまま配る(FM 枠と同じ規律)。ready 直後と
+  // setRetention/runCleanup の応答で送る。対向: settingsTab.js の applyRetention。
+  // policy が無い(= コマンドを持たない古い CLI・読みの失敗)ときは error だけを載せる ——
+  // webview はセクションを無効表示にして理由を出す。
+  | {
+      readonly type: "retention";
+      readonly policy?: RetentionValues;
+      readonly defaults?: RetentionValues;
+      readonly usage?: RetentionUsage;
+      readonly error?: string;
+      /** 「今すぐ掃除」の進行と結果。掃除を伴わない配信では undefined。
+       *  freedBytes は dry-run では「消える合計」、実行では「消した合計」 */
+      readonly cleanup?: {
+        readonly state: "running" | "done" | "cancelled" | "failed";
+        readonly dryRun?: boolean;
+        readonly freedBytes?: number;
+        readonly error?: string;
+      };
+    }
   // プロセスタブ「常駐プロセス」一覧。refreshResidentProcesses 受信時に送る。
   // 対向: processesTab.js の applyResidentMessage。
   | { readonly type: "residentProcesses"; readonly items: readonly ResidentProcess[]; readonly ts: number }
@@ -695,6 +717,13 @@ export type MonitorFromWebviewMessage =
       readonly hosts: readonly RemoteHostEntry[];
       readonly artifacts: "collect" | "on-demand";
     }
+  // 設定タブ「クリーンアップ」の欄変更(settingsTab.js)。**渡した鍵だけ**を CLI へ送り、
+  // null はその鍵を既定へ戻す(空欄・不正値のとき)。0 は「保持しない」の有効な指定。
+  | { readonly type: "setRetention"; readonly patch: RetentionPatch }
+  // 設定タブ「今すぐ掃除」。dryRun=true は見積もるだけ。**確認はホスト側**(webview では
+  // window.confirm が効かない)—— dryRun=false でも monitorPanel.ts が先に見積もりを撃ち、
+  // 消える合計をモーダルに出してから実行する。
+  | { readonly type: "runCleanup"; readonly dryRun: boolean }
   // 設定タブ「更新」の「更新を確認」ボタン(settingsTab.js)。monitorPanel.ts が update-check.sh を実行する。
   | { readonly type: "checkUpdate" }
   // 設定タブ「更新」の「更新する」ボタン。monitorPanel.ts が update.sh を実行し、出力は OUTPUT へ出す。
@@ -1071,6 +1100,11 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       );
     case "devicesTabVisible":
       return typeof value.visible === "boolean";
+    case "setRetention":
+      // 未知の鍵・負値・非整数を通すと CLI へそのまま渡り、綴り違いが黙って無視される
+      return isRetentionPatch(value.patch);
+    case "runCleanup":
+      return typeof value.dryRun === "boolean";
     case "setLptScheduling":
       return typeof value.value === "boolean";
     case "setLptHistoryRuns":
