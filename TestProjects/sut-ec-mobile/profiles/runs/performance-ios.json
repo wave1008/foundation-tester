@@ -75,9 +75,9 @@
       "name": "iPhone 17 Pro(iOS 27.0)-06"
     }
   ],
-  "falsePositiveCheck": false,
+  "falsePositiveCheck": true,
   "fm": true,
-  "heal": false,
+  "heal": true,
   "iosInappEngine": true,
   "record": true,
   "recoverCpuFallbackToGpu": true,
@@ -85,5 +85,10 @@
   "screenLooksLike": true,
   "containerInference": true,
   "updateWebView": true,
-  "homeOnStart": true
+  "homeOnStart": true,
+  "triage": true,
+  "ocr": true,
+  "ocrFalsePositiveCheck": true,
+  "iosPreActionWarmup": true,
+  "playProtectBypass": true
 }
