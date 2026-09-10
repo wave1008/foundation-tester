@@ -294,6 +294,18 @@ public struct BridgeLauncher {
         try String(process.processIdentifier).write(to: pidPath, atomically: true, encoding: .utf8)
     }
 
+    /// XCTest の自動記録(画面の動画・自動スクリーンショット)の設定。ビルドが書く既定は
+    /// 「動画で撮る・成功したら捨てる」だが、**ブリッジは終わらない UI テスト**なので「成功したら」が
+    /// 永久に来ず、止めるときもテストは完了しない —— 誰も読まない動画がシミュレータ内
+    /// (testmanagerd の tmp/Attachments)に溜まり続けた(実測 870 GB)。動画は画面全体を撮るので、
+    /// in-app エンジンで操作している間も伸びる。fleetest の録画機能はこれとは別経路
+    /// (`simctl io recordVideo`)で、この設定の影響を受けない
+    static let captureSettings: [String: String] = [
+        "PreferredScreenCaptureFormat": "screenshots",
+        "SystemAttachmentLifetime": "keepNever",
+        "UserAttachmentLifetime": "keepNever",
+    ]
+
     func injectPort(into xctestrun: URL) throws -> URL {
         let data = try Data(contentsOf: xctestrun)
         guard var plist = try PropertyListSerialization.propertyList(from: data, format: nil)
@@ -320,6 +332,7 @@ public struct BridgeLauncher {
                 env["FT_BRIDGE_TIMING"] = "1"
             }
             target["EnvironmentVariables"] = env
+            for (key, value) in Self.captureSettings { target[key] = value }
         }
 
         if var configurations = plist["TestConfigurations"] as? [[String: Any]] {

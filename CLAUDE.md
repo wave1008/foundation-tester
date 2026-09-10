@@ -555,8 +555,11 @@
   `Sources/fleetest/RetentionSweeper.swift`。**削除の一覧と通知は口を分ける**(`log` / `notice`)。
   既定値は `FTCore.RetentionPolicy` の1箇所だけ・拡張は `api retention` の実効値を表示する。
   **`api retention` の使用量は `--usage` を付けたときだけ測る**。**レポートの単位は run ではなく日**・
-  **セッション内のパスを `URL.path` で並べ替えない**(日本語名の正規化で採取の 98% を食った)
-  → docs/results-json.md §保持容量
+  **セッション内のパスを `URL.path` で並べ替えない**(日本語名の正規化で採取の 98% を食った)。
+  **XCUITest ランナーの自動記録は起動時に止める**(`BridgeLauncher.captureSettings` = 静止画・常に捨てる。
+  ビルド既定の「動画・成功時に捨てる」は終わらないテストでは永久に捨てられず 870 GB 溜まった。
+  `BridgeLauncherCaptureSettingsTests` がリテラルで固定。**旧形式の xctestrun(トップレベルに対象)も通す**
+  —— 実際のビルドが書くのは旧形式)→ docs/results-json.md §保持容量
 - **ブリッジの挙動・エンドポイントを変えたら版を上げる** → maintainer-notes §4.4。
   iOS = `Sources/FTCore/BridgeDTO.swift` の `bridgeProtocolVersion`(in-app dylib と XCUITest
   ランナーの共通定数)/ Android = `AndroidRunner/build.sh` の `VERSION_CODE` と

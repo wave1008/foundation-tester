@@ -16,6 +16,12 @@ results/runs/<YYYY-MM>/<runID>/
 マシン名を撤去し、複数マシンの衝突回避は乱数の拡幅で担保。旧形式もそのまま読める ——
 どの機械の run かは `host` 欄が持つ)。
 
+**後方互換の契約**: 欄はすべて後発追加が Optional。**古い run も読み続けられる**ように、
+新しい欄が無い = キーごと省略される(空配列・false は書かない)。rawValue(`failureKind` /
+`notes` の文字列)は永続化されるので**一度出したものは変えない**。
+
+---
+
 ## 保持容量(何がいつ消えるか)
 
 run の**完了後に、別プロセスの背景で**保持容量の掃除が走る(既定 ON。切るのは `sweepAfterRun`)。
@@ -50,54 +56,11 @@ guarded だけで線を超えていても**消せるものは全部消す**(線�
 設定は `fleetest api retention`(マシン設定 `~/.config/fleetest/config.json`。VSCode 設定ではない
 = 端末から直接打った run にも効く)。拡張はモニターの設定タブ「クリーンアップ」から同じ口を叩く。
 
----|---|---|---|
-| `deviceCaptures` | シミュレータ内の XCUITest 添付(Apple の仕組みが勝手に撮る録画・スクショ) | ブリッジのセッション | 20 GiB |
-| `recordings` | fleetest の録画 `results/runs/<月>/<runID>/recordings/` | run 1件 | 100 GiB |
-| `reports` | `<project>/reports/` の `.md` と `.png` | 日 1件 | 1000 MiB |
-| `logs` | `<repoRoot>/.fleetest/*.log` | ファイル1本 | 500 MiB |
-
-**結果 JSON は消えない**。`recordings/` を落としても `run.json` と `scenarios/*.json` は残るので、
-フレークの推移も LPT の実績も過去に遡れる。**消えるのは録画とレポートだけ** —— 古い run の
-`reportPath` が指す `.md` は消えている場合があり、読み手は不在に耐えること(拡張の2経路は
-存在を確かめてから開く)。
-
-**消さないもの(guarded)**: 記録を始めたばかりの自分の run / 進行中の run(`run.json` に完了時刻が無い)/
-今日のレポート / 生きているブリッジのログ / 稼働中ブリッジが開始した後の添付。
-guarded だけで線を超えていても**消せるものは全部消す**(線に届かないことを理由に手を止めない)。
-
-**開始を遅らせる量**: 採取(線を超えているかを知るための全ファイルの stat。実測 温 3.7 秒 /
-冷 約 13 秒)+ 削除(10 秒の予算をカテゴリで等分。どのカテゴリも最低1セッションは消える)。
-予算が尽きた分は次の run が続きから消し、その旨を1行出す。**手動の掃除(`fleetest clean` /
-設定タブの「今すぐ掃除」)は予算を持たず最後まで消す**(同じ 90% の規則)。
-
-設定は `fleetest api retention`(マシン設定 `~/.config/fleetest/config.json`。VSCode 設定ではない
-= 端末から直接打った run にも効く)。拡張はモニターの設定タブ「クリーンアップ」から同じ口を叩く。
-**`--dry-run` は1バイトも消さずに一覧だけ出す**。
-
----|---|---|---|
-| `deviceCaptures` | シミュレータ内の XCUITest 添付(録画・スクショ) | ブリッジのセッション | 20 GiB |
-| `recordings` | `results/runs/<月>/<runID>/recordings/` | run 1件 | 100 GiB |
-| `reports` | `<project>/reports/` の `.md` と `.png` | 日 1件 | 1000 MiB |
-| `logs` | `<repoRoot>/.fleetest/*.log` | ファイル1本 | 500 MiB |
-
-**結果 JSON は消えない**。`recordings/` を落としても `run.json` と `scenarios/*.json` は残るので、
-フレークの推移も LPT の実績も過去に遡れる。**消えるのは録画とレポートだけ** —— 古い run の
-`reportPath` が指す `.md` は消えている場合があり、読み手は不在に耐えること(拡張の2経路は
-存在を確かめてから開く)。
-
-**消さないもの(guarded)**: 進行中の run(`run.json` に完了時刻が無い)/ たった今終わった run /
-今日のレポート / 生きているブリッジのログ / 稼働中ブリッジが開始した後の添付。
-guarded だけで上限を超えていても**消せるものは全部消す**(上限に届かないことを理由に手を止めない)。
-
-設定は `fleetest api retention`(マシン設定 `~/.config/fleetest/config.json`。VSCode 設定ではない
-= 端末から直接打った run にも効く)。拡張はモニターの設定タブ「クリーンアップ」から同じ口を叩く。
-手で回すのは `fleetest clean [--dry-run]`。**`--dry-run` は1バイトも消さずに一覧だけ出す**。
-
----
-
-**後方互換の契約**: 欄はすべて後発追加が Optional。**古い run も読み続けられる**ように、
-新しい欄が無い = キーごと省略される(空配列・false は書かない)。rawValue(`failureKind` /
-`notes` の文字列)は永続化されるので**一度出したものは変えない**。
+**`deviceCaptures` はもう新しくは溜まらない**。ブリッジの起動時に XCTest の自動記録を止めている
+(`BridgeLauncher.captureSettings` = 静止画・常に捨てる)。ビルドが書く既定は「動画で撮る・成功したら
+捨てる」で、終わらない UI テストであるブリッジでは捨てる時点が永久に来なかった。実測(XCUITest 3本):
+既定 = 動画 4 本・59.8 MB 増 / 停止後 = 増加 0(合否と所要は同じ)。**残るのはこの設定より前に
+起動したブリッジの分だけ**で、それをこの掃除が片付ける。
 
 ---
 
