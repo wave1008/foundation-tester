@@ -307,7 +307,7 @@ struct ApiStartAllDevicesCommand: AsyncParsableCommand {
             let summary = DeviceBooter.BootOutcomeSummarizer.summarize(outcomes)
             if summary.allFailed {
                 ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(
-                    ok: false, error: "every device failed to start: \(summary.failedNames.joined(separator: ", "))"))
+                    ok: false, error: "every device failed to start: \(summary.failedDescription)"))
                 throw ExitCode(1)
             }
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
@@ -385,9 +385,9 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
                 for _ in 0..<min(2, items.count) {
                     group.addTask {
                         while let item = await queue.next() {
-                            let succeeded = await Self.restartOne(item, repoRoot: repoRoot)
+                            let failure = await Self.restartOne(item, repoRoot: repoRoot)
                             await outcomes.record(DeviceBooter.BootOutcome(
-                                name: item.spec.name, platform: item.platform, succeeded: succeeded))
+                                name: item.spec.name, platform: item.platform, failure: failure))
                         }
                     }
                 }
@@ -398,7 +398,7 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
             let summary = DeviceBooter.BootOutcomeSummarizer.summarize(await outcomes.all())
             if summary.allFailed {
                 ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(
-                    ok: false, error: "every device failed to restart: \(summary.failedNames.joined(separator: ", "))"))
+                    ok: false, error: "every device failed to restart: \(summary.failedDescription)"))
                 throw ExitCode(1)
             }
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
@@ -420,7 +420,8 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
     /// 1 台分の down→up。戻り値はこの1台の成否(呼び出し側が全滅判定に使う)。shutdownOne/bootOne
     /// いずれかが失敗しても deviceFinished は必ず送出する(呼び出し側 VSCode 拡張の再スキャン契約。
     /// ApiStartAllDevicesCommand の deviceFinished 契約と同じ)
-    private static func restartOne(_ item: RestartItem, repoRoot: URL?) async -> Bool {
+    /// 戻り値は失敗の理由(nil = 成功)
+    private static func restartOne(_ item: RestartItem, repoRoot: URL?) async -> String? {
         let spec = item.spec
         let platform = item.platform
         let log: @Sendable (String) -> Void = { message in
@@ -429,7 +430,7 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
         ApiDeviceEventEmitter.emit(
             ApiDevicesUpLifecycleEvent(kind: "deviceStopping", name: spec.name, platform: platform,
                                        machine: spec.machine))
-        var succeeded = true
+        var failure: String?
         do {
             try await DeviceBooter.shutdownOne(
                 spec: spec, platform: platform,
@@ -440,12 +441,12 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
             try await DeviceBooter.bootOne(spec: spec, platform: platform, log: log)
         } catch {
             log("❌ \(spec.name): \(error.localizedDescription)")
-            succeeded = false
+            failure = error.localizedDescription
         }
         ApiDeviceEventEmitter.emit(
             ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: spec.name, platform: platform,
                                        machine: spec.machine))
-        return succeeded
+        return failure
     }
 
     private struct RestartItem: Sendable {
@@ -525,13 +526,13 @@ struct ApiStopAllDevicesCommand: AsyncParsableCommand {
             let summary = DeviceBooter.BootOutcomeSummarizer.summarize(outcomes)
             if summary.allFailed {
                 ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(
-                    ok: false, error: "every device failed to stop: \(summary.failedNames.joined(separator: ", "))"))
+                    ok: false, error: "every device failed to stop: \(summary.failedDescription)"))
                 throw ExitCode(1)
             }
             if !summary.failedNames.isEmpty {
                 ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(
                     message: "⚠️ Device shutdown complete: \(summary.succeededCount)/\(summary.total) stopped"
-                        + " — failed: \(summary.failedNames.joined(separator: ", "))"))
+                        + " — failed: \(summary.failedDescription)"))
             }
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
         } catch let exitCode as ExitCode {

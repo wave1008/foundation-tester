@@ -59,11 +59,11 @@ struct DevicesCommand: AsyncParsableCommand {
                 ConsoleOut.out("✅ Device start-up sequence complete")
             } else if summary.allFailed {
                 ConsoleOut.out("❌ Device start-up failed: 0/\(summary.total) started"
-                    + " — failed: \(summary.failedNames.joined(separator: ", "))")
+                    + " — failed: \(summary.failedDescription)")
                 throw ExitCode(1)
             } else {
                 ConsoleOut.out("⚠️ Device start-up sequence complete: \(summary.succeededCount)/\(summary.total) started"
-                    + " — failed: \(summary.failedNames.joined(separator: ", "))")
+                    + " — failed: \(summary.failedDescription)")
             }
         }
     }
@@ -194,11 +194,11 @@ struct DevicesCommand: AsyncParsableCommand {
                 ConsoleOut.out("✅ Device shutdown complete")
             } else if summary.allFailed {
                 ConsoleOut.out("❌ Device shutdown failed: 0/\(summary.total) stopped"
-                    + " — failed: \(summary.failedNames.joined(separator: ", "))")
+                    + " — failed: \(summary.failedDescription)")
                 throw ExitCode(1)
             } else {
                 ConsoleOut.out("⚠️ Device shutdown complete: \(summary.succeededCount)/\(summary.total) stopped"
-                    + " — failed: \(summary.failedNames.joined(separator: ", "))")
+                    + " — failed: \(summary.failedDescription)")
             }
         }
     }

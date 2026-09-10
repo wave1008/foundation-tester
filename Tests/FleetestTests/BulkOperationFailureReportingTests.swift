@@ -61,4 +61,17 @@ final class BulkOperationFailureReportingTests: XCTestCase {
         XCTAssertEqual(api.components(separatedBy: "catch let exitCode as ExitCode").count - 1, 3,
                        "3経路とも ExitCode を素通しする catch を持つこと")
     }
+
+    /// 失敗の要約には**理由を載せる**(`failedDescription`)。名前だけを並べると、全台が同じ原因で
+    /// 落ちたとき(2026-09-10: ランタイム欠落で4台)に拡張のバナーから原因が消える
+    func testFailureSummariesCarryTheReasonNotJustTheNames() throws {
+        for (path, expected) in [("Sources/fleetest/ApiDeviceCommands.swift", 4),
+                                 ("Sources/fleetest/DevicesCommand.swift", 4)] {
+            let text = try source(path)
+            XCTAssertFalse(text.contains("failedNames.joined"),
+                           "\(path): 失敗の要約が台の名前だけになっている(理由が落ちる)")
+            XCTAssertEqual(text.components(separatedBy: "summary.failedDescription").count - 1, expected,
+                           "\(path): 失敗を要約する箇所の本数が変わった —— 理由を載せているか見直すこと")
+        }
+    }
 }

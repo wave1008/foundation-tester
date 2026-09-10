@@ -74,12 +74,12 @@ public enum DeviceBooter {
                 for _ in 0..<max(1, min(maxConcurrent, items.count)) {
                     group.addTask {
                         while let item = await queue.next() {
-                            let succeeded = await bootItem(item, repoRoot: repoRoot,
+                            let failure = await bootItem(item, repoRoot: repoRoot,
                                            log: log, deviceStopping: deviceStopping,
                                            deviceStarting: deviceStarting,
                                            deviceFinished: deviceFinished)
                             await outcomes.record(BootOutcome(
-                                name: item.spec.name, platform: item.platform, succeeded: succeeded))
+                                name: item.spec.name, platform: item.platform, failure: failure))
                         }
                     }
                 }
@@ -88,12 +88,12 @@ public enum DeviceBooter {
                 // 幅1固定(実機レーン)。maxConcurrent はここに影響しない。
                 group.addTask {
                     while let item = await physicalQueue.next() {
-                        let succeeded = await bootItem(item, repoRoot: repoRoot,
+                        let failure = await bootItem(item, repoRoot: repoRoot,
                                        log: log, deviceStopping: deviceStopping,
                                        deviceStarting: deviceStarting,
                                        deviceFinished: deviceFinished)
                         await outcomes.record(BootOutcome(
-                            name: item.spec.name, platform: item.platform, succeeded: succeeded))
+                            name: item.spec.name, platform: item.platform, failure: failure))
                     }
                 }
             }
@@ -129,7 +129,7 @@ public enum DeviceBooter {
             if !spec.isPhysical {
                 deviceStopping(spec.name, platform)
             }
-            var succeeded = true
+            var failure: String?
             do {
                 if let stopOne {
                     try await stopOne(spec, platform)
@@ -139,12 +139,12 @@ public enum DeviceBooter {
                 }
             } catch {
                 log("❌ \(spec.name): \(error.localizedDescription)")
-                succeeded = false
+                failure = error.localizedDescription
             }
             if !spec.isPhysical {
                 deviceFinished(spec.name, platform)
             }
-            outcomes.append(BootOutcome(name: spec.name, platform: platform, succeeded: succeeded))
+            outcomes.append(BootOutcome(name: spec.name, platform: platform, failure: failure))
         }
         return outcomes
     }
@@ -163,12 +163,16 @@ public enum DeviceBooter {
     public struct BootOutcome: Sendable, Equatable {
         public let name: String
         public let platform: String
-        public let succeeded: Bool
+        /// 失敗の理由(エラーの文言)。**nil = 成功**。成否はここから導く —— 別々に持つと
+        /// 「失敗なのに理由が無い」形が作れ、全滅の1行が台の名前だけになる(実害 2026-09-10:
+        /// ランタイム欠落で4台とも落ちたのに、拡張のバナーには名前しか出なかった)
+        public let failure: String?
+        public var succeeded: Bool { failure == nil }
 
-        public init(name: String, platform: String, succeeded: Bool) {
+        public init(name: String, platform: String, failure: String?) {
             self.name = name
             self.platform = platform
-            self.succeeded = succeeded
+            self.failure = failure
         }
     }
 
@@ -186,17 +190,52 @@ public enum DeviceBooter {
         public let succeededCount: Int
         /// 失敗した台の名前(BootOutcome の登場順。並行実行の完了順なので呼び出しごとに揺れうる)
         public let failedNames: [String]
+        /// 失敗を理由ごとに束ねたもの(理由の初出順)
+        public let failureGroups: [FailureGroup]
         /// 1台以上あって、そのうち1台も成功しなかった
         public var allFailed: Bool { total > 0 && succeededCount == 0 }
+
+        /// 失敗の1行(`A, B — 理由1; C — 理由2`)。**同じ理由は1回だけ言う** —— 全台が同じ原因で
+        /// 落ちる形(ランタイム欠落・Xcode 未選択)で理由を台数ぶん繰り返すと読めない。
+        /// 理由が空の台は名前だけ
+        public var failedDescription: String {
+            failureGroups.map { group in
+                let names = group.names.joined(separator: ", ")
+                return group.reason.isEmpty ? names : "\(names) — \(group.reason)"
+            }.joined(separator: "; ")
+        }
+
+        public struct FailureGroup: Sendable, Equatable {
+            public let reason: String
+            public let names: [String]
+        }
     }
 
     public enum BootOutcomeSummarizer {
         public static func summarize(_ outcomes: [BootOutcome]) -> BootOutcomeSummary {
             let failed = outcomes.filter { !$0.succeeded }
+            var groups: [BootOutcomeSummary.FailureGroup] = []
+            for outcome in failed {
+                let reason = oneLine(outcome.failure ?? "")
+                if let index = groups.firstIndex(where: { $0.reason == reason }) {
+                    groups[index] = .init(reason: reason, names: groups[index].names + [outcome.name])
+                } else {
+                    groups.append(.init(reason: reason, names: [outcome.name]))
+                }
+            }
             return BootOutcomeSummary(
                 total: outcomes.count,
                 succeededCount: outcomes.count - failed.count,
-                failedNames: failed.map(\.name))
+                failedNames: failed.map(\.name),
+                failureGroups: groups)
+        }
+
+        /// 複数行のエラー(simctl は4行で返す)を1行へ畳む。拡張のバナーは1行で出すため
+        static func oneLine(_ text: String) -> String {
+            text.split(whereSeparator: \.isNewline)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+                .joined(separator: " / ")
         }
     }
 
@@ -264,9 +303,9 @@ public enum DeviceBooter {
         deviceStopping: @escaping @Sendable (String, String) -> Void,
         deviceStarting: @escaping @Sendable (String, String) -> Void,
         deviceFinished: @escaping @Sendable (String, String) -> Void
-    ) async -> Bool {
+    ) async -> String? {
         let spec = item.spec
-        var succeeded = true
+        var failure: String?
         do {
             if spec.isPhysical {
                 deviceStarting(spec.name, item.platform)
@@ -296,10 +335,10 @@ public enum DeviceBooter {
             }
         } catch {
             log("❌ \(spec.name): \(error.localizedDescription)")
-            succeeded = false
+            failure = error.localizedDescription
         }
         deviceFinished(spec.name, item.platform)
-        return succeeded
+        return failure
     }
 
     /// 1 台起動(起動済みなら何もしない)

@@ -22,8 +22,8 @@ final class BootOutcomeSummarizerTests: XCTestCase {
 
     func testAllSucceededIsNotAllFailed() {
         let summary = DeviceBooter.BootOutcomeSummarizer.summarize([
-            DeviceBooter.BootOutcome(name: "iPhone 17 Pro", platform: "ios", succeeded: true),
-            DeviceBooter.BootOutcome(name: "Pixel 9", platform: "android", succeeded: true),
+            DeviceBooter.BootOutcome(name: "iPhone 17 Pro", platform: "ios", failure: nil),
+            DeviceBooter.BootOutcome(name: "Pixel 9", platform: "android", failure: nil),
         ])
         XCTAssertEqual(summary.total, 2)
         XCTAssertEqual(summary.succeededCount, 2)
@@ -34,8 +34,8 @@ final class BootOutcomeSummarizerTests: XCTestCase {
     /// 不具合1そのもの: 1台以上あって、1台も成功しなかったら全滅
     func testEveryDeviceFailingIsAllFailed() {
         let summary = DeviceBooter.BootOutcomeSummarizer.summarize([
-            DeviceBooter.BootOutcome(name: "Pixel 9(Android 15)-01", platform: "android", succeeded: false),
-            DeviceBooter.BootOutcome(name: "Pixel 9(Android 15)-02", platform: "android", succeeded: false),
+            DeviceBooter.BootOutcome(name: "Pixel 9(Android 15)-01", platform: "android", failure: "boom"),
+            DeviceBooter.BootOutcome(name: "Pixel 9(Android 15)-02", platform: "android", failure: "boom"),
         ])
         XCTAssertEqual(summary.succeededCount, 0)
         XCTAssertEqual(summary.failedNames, ["Pixel 9(Android 15)-01", "Pixel 9(Android 15)-02"])
@@ -45,13 +45,46 @@ final class BootOutcomeSummarizerTests: XCTestCase {
     /// 「1台の失敗で全体を落とさない」規律 —— 部分失敗は全滅ではない
     func testPartialFailureIsNotAllFailed() {
         let summary = DeviceBooter.BootOutcomeSummarizer.summarize([
-            DeviceBooter.BootOutcome(name: "iPhone 17 Pro", platform: "ios", succeeded: true),
-            DeviceBooter.BootOutcome(name: "Pixel 9(Android 15)-03", platform: "android", succeeded: false),
+            DeviceBooter.BootOutcome(name: "iPhone 17 Pro", platform: "ios", failure: nil),
+            DeviceBooter.BootOutcome(name: "Pixel 9(Android 15)-03", platform: "android", failure: "boom"),
         ])
         XCTAssertEqual(summary.total, 2)
         XCTAssertEqual(summary.succeededCount, 1)
         XCTAssertEqual(summary.failedNames, ["Pixel 9(Android 15)-03"])
         XCTAssertFalse(summary.allFailed)
+    }
+
+    /// 実害 2026-09-10 の形: 4台が同じ理由(simctl の4行のエラー)で落ちた。
+    /// 全滅の1行に**理由が載り**、**同じ理由は1回だけ**・複数行は1行に畳まれる
+    func testAllFailedDescriptionCarriesTheReasonOnceForIdenticalFailures() {
+        let simctl = """
+            simctl bootstatus: An error was encountered processing the command (domain=com.apple.CoreSimulator.SimError, code=401):
+            The iOS 27.0 simulator runtime is not available.
+            runtime path not found
+            """
+        let summary = DeviceBooter.BootOutcomeSummarizer.summarize(
+            ["-02", "-01", "-04", "-03"].map {
+                DeviceBooter.BootOutcome(name: "iPhone 17 Pro(iOS 27.0)\($0)", platform: "ios", failure: simctl)
+            })
+        XCTAssertTrue(summary.allFailed)
+        XCTAssertEqual(summary.failedDescription,
+                       "iPhone 17 Pro(iOS 27.0)-02, iPhone 17 Pro(iOS 27.0)-01, iPhone 17 Pro(iOS 27.0)-04,"
+                       + " iPhone 17 Pro(iOS 27.0)-03 — simctl bootstatus: An error was encountered processing"
+                       + " the command (domain=com.apple.CoreSimulator.SimError, code=401): / The iOS 27.0"
+                       + " simulator runtime is not available. / runtime path not found")
+    }
+
+    /// 理由が違う台は理由ごとに束ねる(初出順)。理由の無い失敗は名前だけ
+    func testDifferentReasonsAreGroupedInFirstSeenOrder() {
+        let summary = DeviceBooter.BootOutcomeSummarizer.summarize([
+            DeviceBooter.BootOutcome(name: "A", platform: "ios", failure: "runtime missing"),
+            DeviceBooter.BootOutcome(name: "B", platform: "android", failure: "avd not found"),
+            DeviceBooter.BootOutcome(name: "C", platform: "ios", failure: "runtime missing"),
+            DeviceBooter.BootOutcome(name: "D", platform: "ios", failure: nil),
+            DeviceBooter.BootOutcome(name: "E", platform: "ios", failure: ""),
+        ])
+        XCTAssertEqual(summary.failedNames, ["A", "B", "C", "E"])
+        XCTAssertEqual(summary.failedDescription, "A, C — runtime missing; B — avd not found; E")
     }
 }
 
