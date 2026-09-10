@@ -2751,7 +2751,8 @@ FM は死んだら**再起動まで回復しない**ので、死んだ後も呼�
      **起動予算を超えて生きているランナーは待たずに建て直す** —— 上の §「起動中のブリッジを待つ」)
   2. run は**供給フェーズ(install・凍結triage)の間も run-lease を保つ**(`SupplyLeaseHolder`)。
      `RunOrchestrator` の lease はシナリオ実行中しか書かれないため、その手前に watchdog の
-     `api start-device` が割り込む穴が空いていた
+     `api start-device` が割り込む穴が空いていた。**orchestrator が書き始めたキーは手放す**
+     (`handOff`。手放さないと担当を終えた台の lease を run の最後まで書き戻す)
 - それでも手で確実に避けたいときは `fleetest.autoRepairBridge` を false にするか、
   E2E 前にモニターパネルを閉じる
 - **`.adopt` は健全な環境では通らない**(announce 前のランナーが残っていないと発火しない)ので、

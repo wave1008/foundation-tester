@@ -343,6 +343,8 @@ enum ProfileRunner {
             writeRunLease: { key in
                 guard let leaseStateDir else { return }
                 RunLease.write(stateDir: leaseStateDir, key: key, pid: ProcessInfo.processInfo.processIdentifier)
+                // 書いた後に手放す(順序を逆にすると一瞬 lease が消える)。SupplyLeaseHolder 冒頭参照
+                supplyLease?.handOff(key: key)
             },
             removeRunLease: { key in
                 guard let leaseStateDir else { return }

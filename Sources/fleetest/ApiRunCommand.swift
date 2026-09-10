@@ -637,7 +637,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 outcome = try await runWithProfileParallel(
                     resolved: resolvedProfile, project: testProject, selected: selected,
                     workers: androidWorkers + eagerIOSWorkers, iosWorkersTask: effectiveIosWorkersTask,
-                    recorder: recorder)
+                    recorder: recorder, supplyLease: supplyLease)
             }
         } else {
             outcome = await runDirect(
@@ -996,7 +996,8 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// workers はビルドと並行して呼び出し側(run())が先行構築済みのもの
     private func runWithProfileParallel(
         resolved: ResolvedProfile, project: TestProject, selected: [ScenarioInfo],
-        workers: [RunWorker], iosWorkersTask: Task<[RunWorker], Never>?, recorder: RunRecorder?
+        workers: [RunWorker], iosWorkersTask: Task<[RunWorker], Never>?, recorder: RunRecorder?,
+        supplyLease: SupplyLeaseHolder?
     ) async throws -> RunOutcome {
         let repoRoot = try RepoRoot.find()
         // `--set` の上書きは ProfileResolver.resolve が resolved.fm へ当て済み(二重適用しない)
@@ -1102,6 +1103,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             writeRunLease: { key in
                 guard let leaseStateDir else { return }
                 RunLease.write(stateDir: leaseStateDir, key: key, pid: ProcessInfo.processInfo.processIdentifier)
+                // 書いた後に手放す(順序を逆にすると一瞬 lease が消える)。SupplyLeaseHolder 冒頭参照
+                supplyLease?.handOff(key: key)
             },
             removeRunLease: { key in
                 guard let leaseStateDir else { return }

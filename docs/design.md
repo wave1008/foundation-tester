@@ -4220,9 +4220,13 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
 - **監視と実行の協調(run-lease)**(2026-07-18): monitor(watchdog)と run は別プロセスで無協調のため、
   watchdog が実行中デバイスに破壊的再起動をかけて run のワーカーを壊していた。対策として run→monitor 方向の
   lease を追加(`Sources/FTBridgeClient/RunLease.swift`。`run-<key>.lease`)。`fleetest api run`
-  (RunOrchestrator)がワーカー担当デバイス(serial/udid)へ 5s ハートビートで write、離脱・完了時に remove
-  (FTCore→FTBridgeClient は循環のため `writeRunLease`/`removeRunLease` クロージャ注入。`RunLeaseKeys` actor で
-  管理)。`fleetest api monitor` が `RunLease.isFresh` を読んでデバイスイベントに `inRun` を載せ、拡張の
+  (RunOrchestrator)がワーカー担当デバイス(serial/udid)へ 5s ハートビートで write、完了時と
+  **離脱して復帰を諦めたとき**に remove(復帰の最中は保つ)。FTCore→FTBridgeClient は循環のため
+  `writeRunLease`/`removeRunLease` クロージャ注入。記帳は `RunLeaseLedger` actor で、**打ち直しと削除を
+  actor の中で直列化**する(外でキー一覧を取ってから書くと、消した直後に書き戻す)。供給フェーズの lease
+  (`SupplyLeaseHolder`)は orchestrator が書き始めたキーを `handOff` で手放す —— 手放さないと、担当を
+  終えた台の lease を供給側のハートビートが run の最後まで書き戻し、モニターの配信が張られては畳まれる
+  (2026-09-11)。`fleetest api monitor` が `RunLease.isFresh` を読んでデバイスイベントに `inRun` を載せ、拡張の
   `monitorHealthWatchdog` が **clock-skew 等の host 再起動分岐のみ inRun 中は保留**(restartAttempts/cooldown を
   動かさず見送る)。**blank-screen(CPU フォールバック再起動)と wifi 修復は inRun でも実行**(凍結はデータ汚染で
   即対応が要件、wifi は非破壊)。凍結で run のワーカーが壊れる分は §12.4 の requeue が回復する
