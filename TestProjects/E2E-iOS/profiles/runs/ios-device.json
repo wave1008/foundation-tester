@@ -8,6 +8,5 @@
     }
   ],
   "heal": true,
-  "iosInappEngine": false,
-  "reportDir": "reports"
+  "iosInappEngine": false
 }

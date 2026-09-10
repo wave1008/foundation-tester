@@ -323,11 +323,9 @@ function renderRunProfileSection(): string {
         <button id="btn-run-profile-copy" class="icon-button" title="${t("panels.runProfile.copyTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 4l1-1h5.414L14 6.586V14l-1 1H5l-1-1V4zm9 3l-3-3H5v10h8V7zM3 1L2 2v10l1 1V2h6.414l-1-1H3z"/></svg></button>
         <button id="btn-run-profile-remove" class="icon-button" title="${t("panels.runProfile.removeTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8H1V7h14v1z"/></svg></button>
         <button id="btn-run-profile-rename" class="icon-button" title="${t("panels.runProfile.renameTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"/></svg></button>
-        <!-- 確定/キャンセルはフォーム末尾ではなく sticky なツールバーに置く(フォームが長く
-             スクロールしないと届かないため)。エラーもボタンの隣でないと押下時に見えない。 -->
+        <!-- 各セクションは操作ごとに自動保存する(確定ボタンも保存状態の表示も無い = 設定タブと同じ)。
+             エラーはフォーム末尾ではなく sticky なツールバーに出す(フォームが長く、末尾だと見えないため)。 -->
         <div class="profile-toolbar-buttons">
-          <button id="run-profile-confirm" type="button" disabled>${t("panels.common.confirm")}</button>
-          <button id="run-profile-cancel" class="secondary" type="button" style="display: none;">${t("panels.common.cancel")}</button>
           <span id="run-profile-error" class="modal-error profile-toolbar-error"></span>
         </div>
       </div>
@@ -398,7 +396,7 @@ function renderRunProfileSection(): string {
               </div>
               <div class="modal-row">
                 <label for="run-profile-record-bitrate">${t("panels.runProfile.recordBitrateLabel")}</label>
-                <input type="text" id="run-profile-record-bitrate" placeholder="1500">
+                <input type="text" id="run-profile-record-bitrate" class="run-profile-number-input" placeholder="1500">
               </div>
               <div class="modal-row profile-checkbox-row">
                 <input type="checkbox" id="run-profile-record-full-resolution">
@@ -443,11 +441,11 @@ function renderRunProfileSection(): string {
             </div>
             <div class="modal-row">
               <label for="run-profile-wipe-threshold">${t("panels.runProfile.wipeThresholdLabel")}</label>
-              <input type="text" id="run-profile-wipe-threshold" placeholder="8">
+              <input type="text" id="run-profile-wipe-threshold" class="run-profile-number-input" placeholder="8">
             </div>
             <div class="modal-row">
               <label for="run-profile-locale">${t("panels.runProfile.localeLabel")}</label>
-              <input type="text" id="run-profile-locale" placeholder="ja_JP">
+              <input type="text" id="run-profile-locale" class="run-profile-locale-input" placeholder="ja_JP">
             </div>
           </div>
           <div class="run-profile-section-group">
@@ -476,11 +474,12 @@ function renderRunProfileSection(): string {
               <label for="run-profile-container-inference">${t("panels.runProfile.containerInferenceLabel")}</label>
             </div>
             <div class="modal-row">
-              <label for="run-profile-default-timeout">defaultTimeout</label>
-              <input type="text" id="run-profile-default-timeout">
+              <label for="run-profile-default-timeout">${t("panels.runProfile.defaultTimeoutLabel")}</label>
+              <input type="text" id="run-profile-default-timeout" class="run-profile-number-input">
             </div>
             <div class="modal-row">
               <label for="run-profile-report-dir">reportDir</label>
+              <!-- 透かしは未指定時の既定(Sources/FTCore/RunProfile.swift の runDoc.reportDir ?? "reports" と同期) -->
               <input type="text" id="run-profile-report-dir" placeholder="reports">
             </div>
           </div>
@@ -500,8 +499,6 @@ function renderAppProfileSection(): string {
         <button id="btn-app-profile-remove" class="icon-button" title="${t("panels.appProfile.removeTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8H1V7h14v1z"/></svg></button>
         <button id="btn-app-profile-rename" class="icon-button" title="${t("panels.appProfile.renameTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"/></svg></button>
         <div class="profile-toolbar-buttons">
-          <button id="app-profile-confirm" type="button" disabled>${t("panels.common.confirm")}</button>
-          <button id="app-profile-cancel" class="secondary" type="button" style="display: none;">${t("panels.common.cancel")}</button>
           <span id="app-profile-error" class="modal-error profile-toolbar-error"></span>
         </div>
       </div>
@@ -571,8 +568,6 @@ function renderMachineProfileSection(): string {
         <button id="btn-machine-remove" class="icon-button" title="${t("panels.machineProfile.removeTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8H1V7h14v1z"/></svg></button>
         <button id="btn-machine-rename" class="icon-button" title="${t("panels.machineProfile.renameTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"/></svg></button>
         <div class="profile-toolbar-buttons">
-          <button id="editor-confirm" type="button" disabled>${t("panels.common.confirm")}</button>
-          <button id="editor-cancel" class="secondary" type="button" style="display: none;">${t("panels.common.cancel")}</button>
           <span id="editor-error" class="modal-error profile-toolbar-error"></span>
         </div>
       </div>

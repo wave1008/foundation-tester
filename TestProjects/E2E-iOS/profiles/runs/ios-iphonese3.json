@@ -9,6 +9,5 @@
   ],
   "heal": false,
   "iosInappEngine": false,
-  "reportDir": "reports",
   "scenarioTimeout": 180
 }

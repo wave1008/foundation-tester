@@ -10,6 +10,5 @@
       "name": "エミュ1"
     }
   ],
-  "heal": false,
-  "reportDir": "reports"
+  "heal": false
 }

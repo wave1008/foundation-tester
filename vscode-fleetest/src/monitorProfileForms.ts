@@ -70,7 +70,7 @@ export function buildRunProfileTemplate(
   template.iosInappEngine = true;
   template.updateWebView = true;   // 既定 ON(WebView の版差でシナリオが端末ごとに落ちるため)
   template.wipeDataOnBloat = true;
-  template.reportDir = "reports";
+  // reportDir は書かない(未指定 = 既定の reports。フォームは placeholder で既定を見せる)
   return `${JSON.stringify(template, null, 2)}\n`;
 }
 
@@ -1294,7 +1294,7 @@ export function removeDevicesFromMachineProfile(
   return { object: current, removed };
 }
 
-// ---- プロファイルタブ右ペインの編集フォーム「確定」(machineDeviceUpdate) -----------------------
+// ---- プロファイルタブ右ペインの編集フォームの自動保存(machineDeviceUpdate) -----------------------
 // handleMachineDeviceUpdate(monitorPanel.ts)が使う純粋関数(ファイル I/O は呼び出し側)。
 
 /** 編集フォームから送られる、trim 済み文字列のみのフィールド一式(空文字は「未入力/対象外」)。 */

@@ -6,6 +6,5 @@
       "name": "メイン機"
     }
   ],
-  "heal": false,
-  "reportDir": "reports"
+  "heal": false
 }

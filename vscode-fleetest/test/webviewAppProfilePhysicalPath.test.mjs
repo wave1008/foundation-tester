@@ -113,27 +113,22 @@ test("実機用パッケージパスの欄は iOS だけにあり、読み込ん
   assert.equal(window.document.getElementById("app-profile-android-app-path-physical"), null);
 });
 
-test("実機用パッケージパスを変えると確定が有効になり、appProfileSave の ios に載る(android には載らない)", (t) => {
-  const { window, posted, sendToWebview } = loadedWebview(t);
-
-  const confirm = window.document.getElementById("app-profile-confirm");
-  assert.equal(confirm.disabled, true, "読み込み直後は未編集なので確定は無効");
+test("実機用パッケージパスは入力を終えると自動保存され、appProfileSave の ios に載る(android には載らない)", (t) => {
+  const { window, posted } = loadedWebview(t);
 
   const input = window.document.getElementById("app-profile-ios-app-path-physical");
+  posted.length = 0;
   input.value = "  build/ios-device/Sample-signed.app  ";
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
-  assert.equal(confirm.disabled, false, "この欄の編集も dirty として拾う");
+  assert.equal(posted.length, 0, "打鍵ごと(input)には送らない");
 
-  posted.length = 0;
-  confirm.click();
+  input.dispatchEvent(new window.Event("change", { bubbles: true }));
   assert.equal(posted.length, 1);
   assert.equal(posted[0].type, "appProfileSave");
   assert.equal(posted[0].profile, "sampleapp");
   assert.equal(posted[0].fields.ios.appPathPhysical, "build/ios-device/Sample-signed.app");
   assert.equal("appPathPhysical" in posted[0].fields.android, false);
 
-  // 保存中は他の欄と同じく無効化され、結果で戻る
-  assert.equal(input.disabled, true);
-  sendToWebview({ type: "appProfileSaveResult", profile: "sampleapp", ok: true, error: null });
+  // 保存中も無効化しない(無効化するとフォーカスが外れ、Tab で次の欄へ移った入力が途切れる)
   assert.equal(input.disabled, false);
 });

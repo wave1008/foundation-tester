@@ -28,7 +28,6 @@
   "heal": false,
   "iosInappEngine": true,
   "record": true,
-  "reportDir": "reports",
   "screenIs": true,
   "wipeDataOnBloat": true
 }

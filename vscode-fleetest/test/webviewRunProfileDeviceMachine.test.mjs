@@ -95,7 +95,7 @@ const RUN_PROFILE_DATA = {
   ok: true,
   error: null,
   // 数値・文字列の欄は **省略しない** —— undefined を入力欄へ入れると "undefined" になり、
-  // 確定時の入力検証で弾かれて runProfileSave まで到達しない(拡張は常に全欄を送る)。
+  // 保存前の入力検証で弾かれて runProfileSave まで到達しない(拡張は常に全欄を送る)。
   fields: {
     machine: "local+remote",
     app: "sut-ec-mobile",
@@ -131,7 +131,7 @@ test("リモートの台の参照は、その機械の行だけにチェック�
   assert.equal(checkedOf(local), false, "手元の同名を巻き込んでいる");
 });
 
-test("確定は machine 付きの参照で保存し、拡張側のゲートを通る", (t) => {
+test("自動保存は machine 付きの参照で保存し、拡張側のゲートを通る", (t) => {
   const posted = [];
   const { window, sendToWebview } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
@@ -139,10 +139,8 @@ test("確定は machine 付きの参照で保存し、拡張側のゲートを�
   sendToWebview(PROFILE_INFO);
   sendToWebview(RUN_PROFILE_DATA);
 
-  // 何も触らずに確定する = 読んだ参照をそのまま書き戻す(実害が出たのはこの経路)。
-  const confirm = window.document.getElementById("run-profile-confirm");
-  confirm.disabled = false;
-  confirm.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  // デバイス以外の欄だけ変えて保存する = 読んだ参照をそのまま書き戻す(実害が出たのはこの経路)。
+  window.document.getElementById("run-profile-heal").click();
 
   const raw = posted.filter((m) => m.type === "runProfileSave").at(-1);
   assert.ok(raw, `runProfileSave が送られる (error=${window.document.getElementById("run-profile-error").textContent} posted=${posted.map((m) => m.type).join(",")})`);

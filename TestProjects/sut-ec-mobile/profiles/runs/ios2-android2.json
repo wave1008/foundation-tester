@@ -25,7 +25,6 @@
   "heal": true,
   "iosInappEngine": true,
   "recoverCpuFallbackToGpu": true,
-  "reportDir": "reports",
   "screenIs": true,
   "wipeDataOnBloat": true
 }

@@ -35,7 +35,6 @@
   "iosInappEngine": true,
   "record": true,
   "recoverCpuFallbackToGpu": true,
-  "reportDir": "reports",
   "updateWebView": true,
   "wipeDataOnBloat": true,
   "screenLooksLike": true

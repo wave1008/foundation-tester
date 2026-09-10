@@ -126,7 +126,7 @@ test("右クリック→除去は、その行のマシンを載せて送る", (t
   assert.equal(localRemove.devices[0].machine, undefined, "手元のデバイスに machine は載せない(省略=手元)");
 });
 
-test("編集フォームの確定は、選択した行のマシンを載せて送る", (t) => {
+test("編集フォームの自動保存は、選択した行のマシンを載せて送る", (t) => {
   const posted = [];
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
@@ -141,7 +141,7 @@ test("編集フォームの確定は、選択した行のマシンを載せて�
   const nameInput = document.getElementById("editor-name");
   nameInput.value = "シミュ1-改";
   nameInput.dispatchEvent(new window.Event("input", { bubbles: true }));
-  document.getElementById("editor-confirm").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  nameInput.dispatchEvent(new window.Event("change", { bubbles: true }));
 
   const update = posted.filter((m) => m.type === "machineDeviceUpdate").pop();
   assert.equal(update.originalName, "シミュ1");
@@ -149,11 +149,11 @@ test("編集フォームの確定は、選択した行のマシンを載せて�
   assert.equal(update.fields.udid, "UDID-M1MAX");
   // **machine(編集中のマシンプロファイル名)と deviceMachine(その台が居る機械)は別物**。
   // 同じキーに寄せると片方が undefined になり、拡張側の検証がメッセージごと捨てて
-  // 「確定中...」のまま何も起きない(2026-08-26 の改名で実際に起きた)
+  // 保存中のまま何も起きない(2026-08-26 の改名で実際に起きた)
   assert.equal(update.machine, "M1", "どのマシンプロファイルを書くかが落ちている");
 });
 
-test("手元の行の確定には deviceMachine を載せない(省略=手元)", (t) => {
+test("手元の行の自動保存には deviceMachine を載せない(省略=手元)", (t) => {
   const posted = [];
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
@@ -166,7 +166,7 @@ test("手元の行の確定には deviceMachine を載せない(省略=手元)",
   const nameInput = document.getElementById("editor-name");
   nameInput.value = "シミュ1-改";
   nameInput.dispatchEvent(new window.Event("input", { bubbles: true }));
-  document.getElementById("editor-confirm").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  nameInput.dispatchEvent(new window.Event("change", { bubbles: true }));
 
   const update = posted.filter((m) => m.type === "machineDeviceUpdate").pop();
   assert.equal(update.deviceMachine, undefined);
@@ -189,7 +189,7 @@ test("別マシンの同名へのリネームは webview 側の重複検証で�
   const nameInput = document.getElementById("editor-name");
   nameInput.value = "シミュA"; // 手元に居る名前。M1Max では未使用なので許される
   nameInput.dispatchEvent(new window.Event("input", { bubbles: true }));
-  document.getElementById("editor-confirm").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  nameInput.dispatchEvent(new window.Event("change", { bubbles: true }));
 
   assert.equal(document.getElementById("editor-error").textContent, "");
   const update = posted.filter((m) => m.type === "machineDeviceUpdate").pop();

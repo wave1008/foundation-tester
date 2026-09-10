@@ -10,7 +10,6 @@
   "falsePositiveCheck": true,
   "heal": true,
   "iosInappEngine": true,
-  "reportDir": "reports",
   "scenarioTimeout": 180,
   "wipeDataOnBloat": false
 }

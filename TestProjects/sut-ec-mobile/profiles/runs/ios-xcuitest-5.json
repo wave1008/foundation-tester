@@ -27,6 +27,5 @@
   "iosInappEngine": false,
   "record": true,
   "recoverCpuFallbackToGpu": true,
-  "reportDir": "reports",
   "wipeDataOnBloat": true
 }

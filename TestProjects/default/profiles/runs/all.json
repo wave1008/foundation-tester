@@ -4,6 +4,5 @@
     { "name": "simulator1" },
     { "name": "emulator1" }
   ],
-  "heal": false,
-  "reportDir": "reports"
+  "heal": false
 }

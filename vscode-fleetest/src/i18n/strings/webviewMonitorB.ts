@@ -9,7 +9,6 @@ import type { MessageDict } from "../core";
 export const webviewMonitorBStrings = {
   // 共通(複数タブで再利用)
   "wvMonitor2.common.confirm": { ja: "確定", en: "Confirm" },
-  "wvMonitor2.common.confirming": { ja: "確定中...", en: "Confirming..." },
   "wvMonitor2.common.loading": { ja: "読み込み中...", en: "Loading..." },
   "wvMonitor2.common.unspecified": { ja: "(未指定)", en: "(Unspecified)" },
 
@@ -42,6 +41,10 @@ export const webviewMonitorBStrings = {
   "wvMonitor2.runProfile.validation.deviceRequired": {
     ja: "デバイスを1台以上選択してください。",
     en: "Select at least one device.",
+  },
+  "wvMonitor2.runProfile.validation.noDeviceOnMachine": {
+    ja: "選択中のデバイスはマシンプロファイル {machine} に1台もありません。このマシンのデバイスを選んでください。",
+    en: "None of the selected devices are in machine profile {machine}. Select devices from this machine.",
   },
   "wvMonitor2.runProfile.validation.timeoutInvalid": {
     ja: "defaultTimeout は正の数(秒)で入力してください。",

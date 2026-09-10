@@ -3,9 +3,9 @@
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
 
-// dirty管理・再ロードの方針は runProfilesTab.js と同じ(フォールバックは常に一覧の先頭。
-// 「現在値」に相当する設定が無いため)。クライアント側必須検証は無い(全フィールド省略可。
-// Swift側 validate-profile が担当)。
+// 自動保存・dirty管理・再ロードの方針は runProfilesTab.js と同じ(冒頭コメント参照。フォールバックは
+// 常に一覧の先頭。「現在値」に相当する設定が無いため)。クライアント側必須検証は無い(全フィールド
+// 省略可。Swift側 validate-profile が担当)。
 
 const appProfileSelect = document.getElementById('app-profile-select');
 const appProfileNameStatic = document.getElementById('app-profile-name-static');
@@ -16,8 +16,6 @@ const btnAppProfileRename = document.getElementById('btn-app-profile-rename');
 const appProfilePlaceholder = document.getElementById('app-profile-placeholder');
 const appProfileEditor = document.getElementById('app-profile-editor');
 const appProfileError = document.getElementById('app-profile-error');
-const appProfileConfirm = document.getElementById('app-profile-confirm');
-const appProfileCancel = document.getElementById('app-profile-cancel');
 
 // common: autoInstallのみ(表示名はios/androidそれぞれに持ち、commonからは継承しない)。
 // ios/android: appName/app/appPath(autoInstallはcommonに一本化)。
@@ -63,24 +61,23 @@ let selectedAppProfile = null;
 let appProfileOriginalFields = null;
 let appProfileDirty = false;
 let appProfileSubmitting = false;
+// 送信中の保存要求が送った値(成功したら新しい appProfileOriginalFields)と、送信中に確定した変更の有無。
+let appProfileSubmittedFields = null;
+let appProfileSaveQueued = false;
 
 function appProfileEditing() {
   return appProfileDirty || appProfileSubmitting;
 }
 
-function refreshAppProfileButtonsUi() {
-  appProfileConfirm.disabled = appProfileSubmitting || !appProfileDirty;
-  appProfileCancel.style.display = appProfileDirty ? '' : 'none';
-  appProfileCancel.disabled = appProfileSubmitting;
-}
 function setAppProfileDirty(dirty) {
   appProfileDirty = dirty;
-  refreshAppProfileButtonsUi();
 }
 
 function showAppProfilePlaceholder(text) {
   appProfileOriginalFields = null;
   appProfileSubmitting = false;
+  appProfileSubmittedFields = null;
+  appProfileSaveQueued = false;
   appProfileEditor.style.display = 'none';
   appProfilePlaceholder.style.display = '';
   appProfilePlaceholder.textContent = text;
@@ -185,6 +182,11 @@ export function applyAppProfileData(message) {
     showAppProfilePlaceholder(message.error || t('wvMonitor2.appProfile.loadFailed'));
     return;
   }
+  // 保存結果の反響で画面と同じ値なら作り直さない(applyRunProfileData と同じ理由)
+  if (appProfileOriginalFields !== null && appProfileValuesEqual(message.fields)) {
+    appProfileOriginalFields = message.fields;
+    return;
+  }
   renderAppProfileEditor(message.fields);
 }
 
@@ -192,6 +194,8 @@ export function applyAppProfileData(message) {
 function renderAppProfileEditor(fields) {
   appProfileOriginalFields = fields;
   appProfileSubmitting = false;
+  appProfileSubmittedFields = null;
+  appProfileSaveQueued = false;
   appProfileError.textContent = '';
 
   setAppProfileAutoInstall(appProfileGroups.common, fields.common.autoInstall);
@@ -203,8 +207,6 @@ function renderAppProfileEditor(fields) {
     }
   }
 
-  setAppProfileControlsEnabled(true);
-  appProfileConfirm.textContent = t('wvMonitor2.common.confirm');
   appProfilePlaceholder.style.display = 'none';
   appProfileEditor.style.display = '';
   setAppProfileDirty(false);
@@ -241,7 +243,7 @@ function appProfileValuesEqual(fields) {
 }
 
 function onAppProfileFormInput() {
-  if (appProfileOriginalFields === null || appProfileSubmitting) {
+  if (appProfileOriginalFields === null) {
     return;
   }
   setAppProfileDirty(!appProfileValuesEqual(appProfileOriginalFields));
@@ -249,75 +251,60 @@ function onAppProfileFormInput() {
   appProfileError.textContent = '';
 }
 
-appProfileGroups.common.autoInstall.addEventListener('change', onAppProfileFormInput);
-for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
-  const dom = appProfileGroups[group];
-  for (const key of APP_PROFILE_PLATFORM_FIELD_KEYS[group]) {
-    dom[key].addEventListener('input', onAppProfileFormInput);
+// 入力を終えたとき(change)に呼ぶ(saveRunProfileIfDirty と同じ契約)。
+function saveAppProfileIfDirty() {
+  if (appProfileOriginalFields === null || !selectedAppProfile) {
+    return;
   }
-}
-
-function setAppProfileControlsEnabled(enabled) {
-  appProfileGroups.common.autoInstall.disabled = !enabled;
-  for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
-    const dom = appProfileGroups[group];
-    for (const key of APP_PROFILE_PLATFORM_FIELD_KEYS[group]) {
-      dom[key].disabled = !enabled;
-    }
+  if (appProfileSubmitting) {
+    appProfileSaveQueued = true;
+    return;
   }
-}
-
-appProfileConfirm.addEventListener('click', () => {
-  if (appProfileConfirm.disabled || appProfileSubmitting || !selectedAppProfile) {
+  appProfileSaveQueued = false;
+  if (!appProfileDirty) {
     return;
   }
   appProfileSubmitting = true;
-  setAppProfileControlsEnabled(false);
-  appProfileConfirm.textContent = t('wvMonitor2.common.confirming');
+  appProfileSubmittedFields = collectAppProfileFields();
   appProfileError.textContent = '';
-  refreshAppProfileButtonsUi();
-  vscode.postMessage({
-    type: 'appProfileSave',
-    profile: selectedAppProfile,
-    fields: collectAppProfileFields(),
-  });
+  vscode.postMessage({ type: 'appProfileSave', profile: selectedAppProfile, fields: appProfileSubmittedFields });
+}
+
+// dirty の更新と保存はフォーム全体でバブリングで受ける(runProfilesTab.js の同名ブロックと同じ方針)。
+appProfileEditor.addEventListener('input', onAppProfileFormInput);
+appProfileEditor.addEventListener('change', () => {
+  onAppProfileFormInput();
+  saveAppProfileIfDirty();
 });
 
-// requestAppProfileLoad内部でshowAppProfilePlaceholder→setAppProfileDirty(false)の順に呼ばれるため、
-// dirty解除→再ロードの順序が保たれる(順序を崩すとapplyAppProfileDataの編集中ガードに阻まれる)。
-appProfileCancel.addEventListener('click', () => {
-  if (appProfileCancel.disabled) {
-    return;
-  }
-  appProfileError.textContent = '';
-  requestAppProfileLoad();
-});
-
-// Enter=確定 / Esc=キャンセル(runProfilesTab.js の同名ブロックと同じ方針)。
+// Enter = テキスト欄の入力を終えて保存 / Esc = 未保存の編集を破棄して再ロード(runProfilesTab.js と同じ)。
 document.getElementById('app-profile-section').addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' && !event.target.closest('button') && !appProfileConfirm.disabled) {
+  if (event.key === 'Enter' && event.target.matches('input[type="text"]')) {
     event.preventDefault();
-    appProfileConfirm.click();
-  } else if (event.key === 'Escape' && appProfileDirty && !appProfileCancel.disabled) {
+    saveAppProfileIfDirty();
+  } else if (event.key === 'Escape' && appProfileDirty && !appProfileSubmitting) {
     event.preventDefault();
-    appProfileCancel.click();
+    appProfileError.textContent = '';
+    requestAppProfileLoad();
   }
 });
 
-// ok:trueなら続けてhostからappProfileDataが来てフォームが最新化される。ok:falseはエラー表示のみ。
+// ok:trueなら続けてhostからappProfileDataが来る。ok:falseはエラー表示のみで入力値は保持する。
 export function applyAppProfileSaveResult(message) {
-  if (message.profile !== selectedAppProfile) {
+  if (message.profile !== selectedAppProfile || !appProfileSubmitting) {
     return;
   }
   appProfileSubmitting = false;
-  appProfileConfirm.textContent = t('wvMonitor2.common.confirm');
-  setAppProfileControlsEnabled(true);
   if (message.ok) {
+    appProfileOriginalFields = appProfileSubmittedFields;
     appProfileError.textContent = '';
-    setAppProfileDirty(false);
   } else {
-    refreshAppProfileButtonsUi();
     appProfileError.textContent = message.error || t('wvMonitor2.appProfile.saveFailed');
+  }
+  appProfileSubmittedFields = null;
+  setAppProfileDirty(!appProfileValuesEqual(appProfileOriginalFields));
+  if (appProfileSaveQueued) {
+    saveAppProfileIfDirty();
   }
 }
 

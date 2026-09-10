@@ -33,7 +33,6 @@
   "iosInappEngine": true,
   "record": true,
   "recoverCpuFallbackToGpu": true,
-  "reportDir": "reports",
   "screenIs": true,
   "wipeDataOnBloat": true,
   "containerInference": true,

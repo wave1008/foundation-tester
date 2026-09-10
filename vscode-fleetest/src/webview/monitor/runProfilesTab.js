@@ -5,10 +5,15 @@ import { machineProfiles, findMachine } from './machineProfilesTab.js';
 import { t } from '../i18n.js';
 
 // 選択は「編集対象」であり、「テスト実行」タブの実行プロファイル選択(fleetest.profile)とは独立。
-// dirty管理: フォーム値と runProfileOriginalFields の比較で「確定」を有効化。
-// - 選択変更(明示操作)は編集破棄して再ロード。
+// 自動保存(確定ボタンは無い): チェック/選択は change で即、テキストは change(= blur か Enter で
+// 入力を終えたとき)で runProfileSave を送る。dirty = フォーム値と runProfileOriginalFields
+// (直近に保存/ロードした値)の差。検証で弾かれた値は dirty のまま残り、エラーを出す。
+// - 送信中もコントロールは無効化しない(無効化するとフォーカスが外れ、Tab で次の欄へ移った入力が
+//   途切れる)。送信中に確定した変更は runProfileSaveQueued に積み、結果の到着後にもう1回送る
+//   (並行に2本送らない = 後の保存が先に着いて古い値で上書きされる順序逆転を作らない)。
+// - 選択変更(明示操作)と Esc は未保存の編集を破棄して再ロード。
 // - profileInfo/machineProfileInfo 再受信時: 編集中なら保持、未編集なら再ロード(消失時はcurrent→先頭)。
-// - runProfileFileChanged(外部編集)は同名 && 未編集のときのみ再ロード。
+// - runProfileFileChanged(外部編集・自分の保存の反響)は同名 && 未編集のときのみ再ロード。
 
 const runProfileSelect = document.getElementById('run-profile-select');
 const runProfileNameStatic = document.getElementById('run-profile-name-static');
@@ -53,8 +58,11 @@ const btnRunProfileHookScaffold = document.getElementById('btn-run-profile-hook-
 const runProfileReportDir = document.getElementById('run-profile-report-dir');
 const runProfileDefaultTimeout = document.getElementById('run-profile-default-timeout');
 const runProfileError = document.getElementById('run-profile-error');
-const runProfileConfirm = document.getElementById('run-profile-confirm');
-const runProfileCancel = document.getElementById('run-profile-cancel');
+// 保存時に前後の空白を落として書き戻す欄(送る値と画面の値を一致させ、保存後に dirty が残らないように)
+const runProfileTextInputs = [
+  runProfileRecordBitrate, runProfileWipeThreshold, runProfileLocale,
+  runProfileWorkspace, runProfileReportDir, runProfileDefaultTimeout,
+];
 
 // 直近受信の一覧(profileInfo 由来)。
 let runProfileNames = [];
@@ -68,24 +76,23 @@ let runProfileOriginalFields = null;
 let runProfileCheckedRefs = [];
 let runProfileDirty = false;
 let runProfileSubmitting = false;
+// 送信中(runProfileSubmitting)の保存要求が送った値。成功したらこれが新しい runProfileOriginalFields。
+let runProfileSubmittedFields = null;
+let runProfileSaveQueued = false;
 
 function runProfileEditing() {
   return runProfileDirty || runProfileSubmitting;
 }
 
-function refreshRunProfileButtonsUi() {
-  runProfileConfirm.disabled = runProfileSubmitting || !runProfileDirty;
-  runProfileCancel.style.display = runProfileDirty ? '' : 'none';
-  runProfileCancel.disabled = runProfileSubmitting;
-}
 function setRunProfileDirty(dirty) {
   runProfileDirty = dirty;
-  refreshRunProfileButtonsUi();
 }
 
 function showRunProfilePlaceholder(text) {
   runProfileOriginalFields = null;
   runProfileSubmitting = false;
+  runProfileSubmittedFields = null;
+  runProfileSaveQueued = false;
   runProfileEditor.style.display = 'none';
   runProfilePlaceholder.style.display = '';
   runProfilePlaceholder.textContent = text;
@@ -212,6 +219,12 @@ export function applyRunProfileData(message) {
     showRunProfilePlaceholder(message.error || t('wvMonitor2.runProfile.loadFailed'));
     return;
   }
+  // 自動保存のたびに保存結果の反響として届く。画面と同じ値なら作り直さない(作り直すとデバイスの
+  // チェックボックスが作り直され、今触っている欄からフォーカスが外れる)
+  if (runProfileOriginalFields !== null && runProfileValuesEqual(message.fields)) {
+    runProfileOriginalFields = message.fields;
+    return;
+  }
   renderRunProfileEditor(message.fields);
 }
 
@@ -219,6 +232,8 @@ export function applyRunProfileData(message) {
 function renderRunProfileEditor(fields) {
   runProfileOriginalFields = fields;
   runProfileSubmitting = false;
+  runProfileSubmittedFields = null;
+  runProfileSaveQueued = false;
   runProfileError.textContent = '';
 
   renderRunProfileMachineSelect(fields.machine);
@@ -256,8 +271,6 @@ function renderRunProfileEditor(fields) {
   runProfileReportDir.value = fields.reportDir;
   runProfileDefaultTimeout.value = fields.defaultTimeout;
 
-  setRunProfileControlsEnabled(true);
-  runProfileConfirm.textContent = t('wvMonitor2.common.confirm');
   runProfilePlaceholder.style.display = 'none';
   runProfileEditor.style.display = '';
   setRunProfileDirty(false);
@@ -293,7 +306,7 @@ function renderRunProfileMachineSelect(value) {
 function renderRunProfileAppSelect(value) {
   runProfileApp.textContent = '';
   let matched = value === '';
-  // 空文字(未指定)を常に先頭に置く(app欠落プロファイルの現在値を表す。空のまま確定は検証で弾かれる)。
+  // 空文字(未指定)を常に先頭に置く(app欠落プロファイルの現在値を表す。空のままの保存は検証で弾かれる)。
   const emptyOption = document.createElement('option');
   emptyOption.value = '';
   emptyOption.textContent = t('wvMonitor2.common.unspecified');
@@ -317,7 +330,7 @@ function renderRunProfileAppSelect(value) {
 }
 
 // 選択肢=フォーム内選択中マシンのデバイス。checkedNamesにあるがマシンに無い名前は注記付きで
-// 末尾表示(チェックを外せば確定時に除去される)。マシン未指定("")の間は案内のみ表示。
+// 末尾表示(チェックを外せば保存時に除去される)。マシン未指定("")の間は案内のみ表示。
 function renderRunProfileDevices() {
   runProfileDevices.textContent = '';
   const machineName = runProfileMachine.value;
@@ -398,15 +411,12 @@ function onRunProfileDeviceToggle() {
     }
   }
   runProfileCheckedRefs = checked;
-  onRunProfileFormInput();
 }
 
 // マシン切替: チェック状態(runProfileCheckedRefs)は (machine, name) で引き継いだまま一覧を作り直す。
 runProfileMachine.addEventListener('change', () => {
   renderRunProfileDevices();
-  onRunProfileFormInput();
 });
-runProfileApp.addEventListener('change', onRunProfileFormInput);
 // fm ON のときだけ配下のサブオプション(heal/falsePositiveCheck/screenLooksLike)を表示する
 // (値そのものは fm の状態に関わらず保持・保存する)。
 function updateFmOptionsVisibility() {
@@ -414,21 +424,14 @@ function updateFmOptionsVisibility() {
 }
 runProfileFm.addEventListener('change', () => {
   updateFmOptionsVisibility();
-  onRunProfileFormInput();
 });
-runProfileHeal.addEventListener('change', onRunProfileFormInput);
-runProfileFalsePositiveCheck.addEventListener('change', onRunProfileFormInput);
-runProfileTriage.addEventListener('change', onRunProfileFormInput);
-runProfileScreenLooksLike.addEventListener('change', onRunProfileFormInput);
 // ocr ON のときだけ配下のサブオプションを表示する(値は親の状態に関わらず保持・保存する)
 function updateOcrOptionsVisibility() {
   runProfileOcrOptions.style.display = runProfileOcr.checked ? '' : 'none';
 }
 runProfileOcr.addEventListener('change', () => {
   updateOcrOptionsVisibility();
-  onRunProfileFormInput();
 });
-runProfileOcrFalsePositiveCheck.addEventListener('change', onRunProfileFormInput);
 // inapp エンジン ON のときだけ配下のサブオプション(iosPreActionWarmup)を表示する
 // (暖機は hybrid の domInterop 経路にしか無い = xcuitest エンジンでは効果が無いため。
 //  値そのものはエンジンの状態に関わらず保持・保存する = FM サブオプションと同じ方針)。
@@ -437,14 +440,7 @@ function updateInappOptionsVisibility() {
 }
 runProfileIosInappEngine.addEventListener('change', () => {
   updateInappOptionsVisibility();
-  onRunProfileFormInput();
 });
-runProfileIosPreActionWarmup.addEventListener('change', onRunProfileFormInput);
-runProfileIosFastInput.addEventListener('change', onRunProfileFormInput);
-runProfileEnableAnimations.addEventListener('change', onRunProfileFormInput);
-runProfileContainerInference.addEventListener('change', onRunProfileFormInput);
-runProfileWipeDataOnBloat.addEventListener('change', onRunProfileFormInput);
-runProfileRecoverCpuFallback.addEventListener('change', onRunProfileFormInput);
 // record ON のときだけ配下のサブオプション(recordFailuresOnly/recordBitrateKbps/
 // recordFullResolution)を表示する(値そのものは record の状態に関わらず保持・保存する)。
 function updateRecordOptionsVisibility() {
@@ -452,17 +448,10 @@ function updateRecordOptionsVisibility() {
 }
 runProfileRecord.addEventListener('change', () => {
   updateRecordOptionsVisibility();
-  onRunProfileFormInput();
 });
-runProfileRecordFailuresOnly.addEventListener('change', onRunProfileFormInput);
-runProfileRecordBitrate.addEventListener('input', onRunProfileFormInput);
-runProfileRecordFullResolution.addEventListener('change', onRunProfileFormInput);
-runProfileWipeThreshold.addEventListener('input', onRunProfileFormInput);
-runProfileLocale.addEventListener('input', onRunProfileFormInput);
-runProfileWorkspace.addEventListener('input', onRunProfileFormInput);
 
 // 雛形の作成はフォームの値ではなくファイルを作る操作なので dirty にしない。ワークスペースは
-// **入力中の値**を送る(保存前に押しても、画面に見えている場所へ作られる)
+// **入力中の値**を送る(検証で弾かれて未保存でも、画面に見えている場所へ作られる)
 btnRunProfileHookScaffold.addEventListener('click', () => {
   if (btnRunProfileHookScaffold.disabled || !selectedRunProfile) {
     return;
@@ -473,8 +462,6 @@ btnRunProfileHookScaffold.addEventListener('click', () => {
     workspace: runProfileWorkspace.value.trim(),
   });
 });
-runProfileReportDir.addEventListener('input', onRunProfileFormInput);
-runProfileDefaultTimeout.addEventListener('input', onRunProfileFormInput);
 
 // devicesは集合比較(順序無視)。マシンのデバイス順とプロファイル記載順は独立なため、配列比較だと
 // チェック操作なしでdirtyになってしまう。
@@ -521,7 +508,7 @@ function runProfileValuesEqual(fields) {
 }
 
 function onRunProfileFormInput() {
-  if (runProfileOriginalFields === null || runProfileSubmitting) {
+  if (runProfileOriginalFields === null) {
     return;
   }
   setRunProfileDirty(!runProfileValuesEqual(runProfileOriginalFields));
@@ -529,38 +516,7 @@ function onRunProfileFormInput() {
   runProfileError.textContent = '';
 }
 
-function setRunProfileControlsEnabled(enabled) {
-  runProfileMachine.disabled = !enabled;
-  runProfileApp.disabled = !enabled;
-  runProfileFm.disabled = !enabled;
-  runProfileHeal.disabled = !enabled;
-  runProfileFalsePositiveCheck.disabled = !enabled;
-  runProfileTriage.disabled = !enabled;
-  runProfileScreenLooksLike.disabled = !enabled;
-  runProfileOcr.disabled = !enabled;
-  runProfileOcrFalsePositiveCheck.disabled = !enabled;
-  runProfileIosInappEngine.disabled = !enabled;
-  runProfileIosFastInput.disabled = !enabled;
-  runProfileIosPreActionWarmup.disabled = !enabled;
-  runProfileContainerInference.disabled = !enabled;
-  runProfileWipeDataOnBloat.disabled = !enabled;
-  runProfileRecoverCpuFallback.disabled = !enabled;
-  runProfileRecord.disabled = !enabled;
-  runProfileRecordFailuresOnly.disabled = !enabled;
-  runProfileRecordBitrate.disabled = !enabled;
-  runProfileRecordFullResolution.disabled = !enabled;
-  runProfileWipeThreshold.disabled = !enabled;
-  runProfileLocale.disabled = !enabled;
-  runProfileWorkspace.disabled = !enabled;
-  btnRunProfileHookScaffold.disabled = !enabled;
-  runProfileReportDir.disabled = !enabled;
-  runProfileDefaultTimeout.disabled = !enabled;
-  for (const checkbox of runProfileDevices.querySelectorAll('input[type="checkbox"]')) {
-    checkbox.disabled = !enabled;
-  }
-}
-
-// クライアント検証(確定時)。問題なければ null。
+// クライアント検証(保存前)。問題なければ null。
 function validateRunProfileFields() {
   const machine = runProfileMachine.value.trim();
   if (machine === '') {
@@ -574,6 +530,14 @@ function validateRunProfileFields() {
   }
   if (runProfileCheckedRefs.length === 0) {
     return t('wvMonitor2.runProfile.validation.deviceRequired');
+  }
+  // 1台もこのマシンに無い参照は保存しない: `api monitor` / run が noDevicesInMachineProfile で落ちる
+  // (Sources/FTCore/RunProfileScope.swift)。**マシンを切り替えた直後は前のマシンの参照が残る**ので、
+  // 自動保存だとこれが無いと切り替えた瞬間に壊れたプロファイルを書く。一部だけ無いのは許す
+  // (monitor/run は警告して続行する。「マシンに無い」の注記と同じ判定)
+  const machineKeys = new Set(findMachine(machine).devices.map((d) => refKey({ name: d.name, machine: d.machine })));
+  if (!runProfileCheckedRefs.some((ref) => machineKeys.has(refKey(ref)))) {
+    return t('wvMonitor2.runProfile.validation.noDeviceOnMachine', { machine });
   }
   const timeout = runProfileDefaultTimeout.value.trim();
   if (timeout !== '' && (!/^\d+(\.\d+)?$/.test(timeout) || Number(timeout) <= 0)) {
@@ -594,8 +558,17 @@ function validateRunProfileFields() {
   return null;
 }
 
-runProfileConfirm.addEventListener('click', () => {
-  if (runProfileConfirm.disabled || runProfileSubmitting || !selectedRunProfile) {
+// 入力を終えたとき(change)に呼ぶ。未編集なら何もしない・送信中なら結果の到着後へ回す。
+function saveRunProfileIfDirty() {
+  if (runProfileOriginalFields === null || !selectedRunProfile) {
+    return;
+  }
+  if (runProfileSubmitting) {
+    runProfileSaveQueued = true;
+    return;
+  }
+  runProfileSaveQueued = false;
+  if (!runProfileDirty) {
     return;
   }
   const validationError = validateRunProfileFields();
@@ -603,85 +576,95 @@ runProfileConfirm.addEventListener('click', () => {
     runProfileError.textContent = validationError;
     return;
   }
+  for (const input of runProfileTextInputs) {
+    const trimmed = input.value.trim();
+    if (input.value !== trimmed) {
+      input.value = trimmed;
+    }
+  }
   runProfileSubmitting = true;
-  setRunProfileControlsEnabled(false);
-  runProfileConfirm.textContent = t('wvMonitor2.common.confirming');
+  runProfileSubmittedFields = collectRunProfileFields();
   runProfileError.textContent = '';
-  refreshRunProfileButtonsUi();
-  vscode.postMessage({
-    type: 'runProfileSave',
-    profile: selectedRunProfile,
-    fields: {
-      machine: runProfileMachine.value.trim(),
-      app: runProfileApp.value.trim(),
-      devices: runProfileCheckedRefs.map((r) => (r.machine ? { name: r.name, machine: r.machine } : { name: r.name })),
-      fm: runProfileFm.checked,
-      heal: runProfileHeal.checked,
-      falsePositiveCheck: runProfileFalsePositiveCheck.checked,
-      triage: runProfileTriage.checked,
-      screenLooksLike: runProfileScreenLooksLike.checked,
-      ocr: runProfileOcr.checked,
-      ocrFalsePositiveCheck: runProfileOcrFalsePositiveCheck.checked,
-      iosInappEngine: runProfileIosInappEngine.checked,
-      iosFastInput: runProfileIosFastInput.checked,
-      iosPreActionWarmup: runProfileIosPreActionWarmup.checked,
-      homeOnStart: runProfileHomeOnStart.checked,
-      playProtectBypass: runProfilePlayProtectBypass.checked,
-      enableAnimations: runProfileEnableAnimations.checked,
-      containerInference: runProfileContainerInference.checked,
-      updateWebView: runProfileUpdateWebView.checked,
-      wipeDataOnBloat: runProfileWipeDataOnBloat.checked,
-      recoverCpuFallbackToGpu: runProfileRecoverCpuFallback.checked,
-      record: runProfileRecord.checked,
-      recordFailuresOnly: runProfileRecordFailuresOnly.checked,
-      recordBitrateKbps: runProfileRecordBitrate.value.trim(),
-      recordFullResolution: runProfileRecordFullResolution.checked,
-      wipeDataThresholdGB: runProfileWipeThreshold.value.trim(),
-      locale: runProfileLocale.value.trim(),
-      workspace: runProfileWorkspace.value.trim(),
-      reportDir: runProfileReportDir.value.trim(),
-      defaultTimeout: runProfileDefaultTimeout.value.trim(),
-    },
-  });
+  vscode.postMessage({ type: 'runProfileSave', profile: selectedRunProfile, fields: runProfileSubmittedFields });
+}
+
+// runProfileSave の fields(monitorWebviewMessages.ts の検証と対)。text 系は trim 済み。
+function collectRunProfileFields() {
+  return {
+    machine: runProfileMachine.value.trim(),
+    app: runProfileApp.value.trim(),
+    devices: runProfileCheckedRefs.map((r) => (r.machine ? { name: r.name, machine: r.machine } : { name: r.name })),
+    fm: runProfileFm.checked,
+    heal: runProfileHeal.checked,
+    falsePositiveCheck: runProfileFalsePositiveCheck.checked,
+    triage: runProfileTriage.checked,
+    screenLooksLike: runProfileScreenLooksLike.checked,
+    ocr: runProfileOcr.checked,
+    ocrFalsePositiveCheck: runProfileOcrFalsePositiveCheck.checked,
+    iosInappEngine: runProfileIosInappEngine.checked,
+    iosFastInput: runProfileIosFastInput.checked,
+    iosPreActionWarmup: runProfileIosPreActionWarmup.checked,
+    homeOnStart: runProfileHomeOnStart.checked,
+    playProtectBypass: runProfilePlayProtectBypass.checked,
+    enableAnimations: runProfileEnableAnimations.checked,
+    containerInference: runProfileContainerInference.checked,
+    updateWebView: runProfileUpdateWebView.checked,
+    wipeDataOnBloat: runProfileWipeDataOnBloat.checked,
+    recoverCpuFallbackToGpu: runProfileRecoverCpuFallback.checked,
+    record: runProfileRecord.checked,
+    recordFailuresOnly: runProfileRecordFailuresOnly.checked,
+    recordBitrateKbps: runProfileRecordBitrate.value.trim(),
+    recordFullResolution: runProfileRecordFullResolution.checked,
+    wipeDataThresholdGB: runProfileWipeThreshold.value.trim(),
+    locale: runProfileLocale.value.trim(),
+    workspace: runProfileWorkspace.value.trim(),
+    reportDir: runProfileReportDir.value.trim(),
+    defaultTimeout: runProfileDefaultTimeout.value.trim(),
+  };
+}
+
+// dirty の更新と保存はフォーム全体でバブリングで受ける(欄ごとに購読すると付け忘れた欄の変更が
+// 保存されない。実際に homeOnStart/playProtectBypass/updateWebView が漏れていた)。各欄の固有の
+// リスナー(表示切替・デバイス一覧の作り直し)は target で先に走るので、ここは確定後の値を見る。
+// 保存の契機は change だけ —— input(打鍵ごと)では送らない = 入力途中の値を検証してエラーを
+// 出したり書き込んだりしない。
+runProfileEditor.addEventListener('input', onRunProfileFormInput);
+runProfileEditor.addEventListener('change', () => {
+  onRunProfileFormInput();
+  saveRunProfileIfDirty();
 });
 
-// requestRunProfileLoad内部でshowRunProfilePlaceholder→setRunProfileDirty(false)の順に呼ばれるため、
-// dirty解除→再ロードの順序が保たれる(順序を崩すとapplyRunProfileDataの編集中ガードに阻まれる)。
-runProfileCancel.addEventListener('click', () => {
-  if (runProfileCancel.disabled) {
-    return;
-  }
-  runProfileError.textContent = '';
-  requestRunProfileLoad();
-});
-
-// Enter=確定 / Esc=キャンセル。フォーカスがセクション内にある間だけ効く(セクション要素で
-// bubbling を受けるためモーダル側の document レベル Esc リスナーとは衝突しない)。
-// button 上の Enter はそのボタン自身の activation に任せる。
+// Enter = テキスト欄の入力を終えて保存 / Esc = 未保存の編集(検証で弾かれた値)を破棄して再ロード。
+// フォーカスがセクション内にある間だけ効く(セクション要素で bubbling を受けるためモーダル側の
+// document レベル Esc リスナーとは衝突しない)。
 document.getElementById('run-profile-section').addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' && !event.target.closest('button') && !runProfileConfirm.disabled) {
+  if (event.key === 'Enter' && event.target.matches('input[type="text"]')) {
     event.preventDefault();
-    runProfileConfirm.click();
-  } else if (event.key === 'Escape' && runProfileDirty && !runProfileCancel.disabled) {
+    saveRunProfileIfDirty();
+  } else if (event.key === 'Escape' && runProfileDirty && !runProfileSubmitting) {
     event.preventDefault();
-    runProfileCancel.click();
+    runProfileError.textContent = '';
+    requestRunProfileLoad();
   }
 });
 
-// ok:trueなら続けてhostからrunProfileDataが来てフォームが最新化される。ok:falseはエラー表示のみ。
+// ok:trueなら続けてhostからrunProfileDataが来る(値が画面と同じなら作り直さない)。ok:falseはエラー表示のみで
+// 入力値は保持する(dirty のまま)。
 export function applyRunProfileSaveResult(message) {
-  if (message.profile !== selectedRunProfile) {
+  if (message.profile !== selectedRunProfile || !runProfileSubmitting) {
     return;
   }
   runProfileSubmitting = false;
-  runProfileConfirm.textContent = t('wvMonitor2.common.confirm');
-  setRunProfileControlsEnabled(true);
   if (message.ok) {
+    runProfileOriginalFields = runProfileSubmittedFields;
     runProfileError.textContent = '';
-    setRunProfileDirty(false);
   } else {
-    refreshRunProfileButtonsUi();
     runProfileError.textContent = message.error || t('wvMonitor2.runProfile.saveFailed');
+  }
+  runProfileSubmittedFields = null;
+  setRunProfileDirty(!runProfileValuesEqual(runProfileOriginalFields));
+  if (runProfileSaveQueued) {
+    saveRunProfileIfDirty();
   }
 }
 

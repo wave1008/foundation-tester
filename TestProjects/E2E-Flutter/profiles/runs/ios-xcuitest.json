@@ -61,7 +61,6 @@
   ],
   "heal": true,
   "iosInappEngine": false,
-  "reportDir": "reports",
   "scenarioTimeout": 240,
   "wipeDataOnBloat": true
 }

@@ -579,8 +579,8 @@ public enum ProjectScaffold {
           "machine": "\(machine)",
           "app": "\(app)",
           "devices": [],
-          "heal": false,
-          "reportDir": "reports"
+          "falsePositiveCheck": true,
+          "heal": true
         }
         """
     }

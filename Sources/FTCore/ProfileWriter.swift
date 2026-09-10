@@ -82,14 +82,15 @@ public enum ProfileWriter {
     /// (この一致が崩れると ProfileResolver が「デバイスが見つかりません」で落ちる)。
     /// machine は**書いたときのマシン名**を明示する。CLI は登録名でも解決できるが、
     /// 拡張の実行プロファイル編集は machine が無いとデバイスを一覧できない(「(未指定)」表示)。
-    /// 別マシンで使い回すときは machines/<名>.json を用意するか、この行を消して登録名解決に戻す
+    /// 別マシンで使い回すときは machines/<名>.json を用意するか、この行を消して登録名解決に戻す。
+    /// reportDir は書かない(未指定 = 既定の reports。拡張のフォームは既定を透かしで見せる)
     public static func runProfile(appRef: String, deviceNames: [String],
                                   machine: String? = nil) -> [String: Any] {
         var profile: [String: Any] = [
             "app": appRef,
             "devices": deviceNames.map { ["name": $0] },
-            "heal": false,
-            "reportDir": "reports",
+            "falsePositiveCheck": true,
+            "heal": true,
         ]
         if let machine { profile["machine"] = machine }
         return profile

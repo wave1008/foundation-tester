@@ -124,15 +124,6 @@ button:not([class]):disabled {
   background-color: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.3));
   color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
 }
-/* 確定ボタンのみ非活性時に完全透明にする(要素は残し行の高さは維持)。モーダル OK は
-   気付けなくなるため上のグレー表現のままにする。 */
-#run-profile-confirm:disabled,
-#app-profile-confirm:disabled,
-#editor-confirm:disabled {
-  background-color: transparent;
-  border-color: transparent;
-  color: transparent;
-}
 button.secondary {
   background-color: var(--vscode-button-secondaryBackground, transparent);
   color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
@@ -1253,6 +1244,17 @@ button.profile-jump-link:hover:not(:disabled) {
    flex:0 0 90px をソース順に依存せず上書きする(具体度をID分上げる)。 */
 #run-profile-editor .modal-row > label {
   flex: 0 0 170px;
+}
+/* 短い値しか入らない欄は `.modal-row > input` の flex:1 1 auto で行幅まで伸ばさない。
+   幅 = 字数 × ch + 左右 padding 12px + 枠(border-box)。数値 = 6字(bitrate「12000」・
+   しきい値/timeout「12.5」)、ロケール = 11字(「zh_Hant_TW」10字) */
+#run-profile-editor .modal-row > input.run-profile-number-input {
+  flex: 0 0 auto;
+  width: calc(6ch + 14px);
+}
+#run-profile-editor .modal-row > input.run-profile-locale-input {
+  flex: 0 0 auto;
+  width: calc(11ch + 14px);
 }
 .run-profile-devices-row {
   align-items: flex-start;

@@ -29,6 +29,5 @@
   ],
   "heal": false,
   "iosInappEngine": true,
-  "reportDir": "reports",
   "wipeDataOnBloat": true
 }

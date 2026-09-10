@@ -44,8 +44,6 @@ const editorSerial = document.getElementById('editor-serial');
 const editorSerialRow = document.getElementById('editor-serial-row');
 const editorDeviceKind = document.getElementById('editor-device-kind');
 const editorError = document.getElementById('editor-error');
-const editorConfirm = document.getElementById('editor-confirm');
-const editorCancel = document.getElementById('editor-cancel');
 const machineDeviceMenu = document.getElementById('machine-device-menu');
 const machineDeviceMenuItemBtn = document.getElementById('machine-device-menu-item');
 const machineDeviceMenuWipeBtn = document.getElementById('machine-device-menu-wipe');
@@ -75,8 +73,15 @@ let editorTarget = null;
 // フォーム再構築時点の6フィールド値。dirty 判定と再プリフィル可否判定に使う。
 let editorOriginalValues = null;
 let editorDirty = false;
-// machineDeviceUpdate 応答待ち中か(二重送信防止・再プリフィル抑止に使う)。
+// 今のフォームの対象について machineDeviceUpdate 応答待ち中か(二重送信防止・再プリフィル抑止に使う)。
 let editorSubmitting = false;
+// 送った machineDeviceUpdate を送った順に { target(送信時の editorTarget の参照), values }。
+// ホストは同期で処理し応答は送った順に返るので先頭から対応付ける。**自動保存は blur で撃つ**ので、
+// 名前を書き換えて別の行をクリックすると「送信 → 選択の移動 → 応答」の順になる。対象が変わって
+// いたら応答で選択を引き戻さない(editorSubmitting は作り直しで false に戻るので別に持つ)
+const editorPendingSaves = [];
+// 送信中に確定した変更があるか(応答の到着後にもう1回送る)。
+let editorSaveQueued = false;
 
 export function findMachine(name) {
   return machineProfiles.find((m) => m.name === name);
@@ -426,15 +431,8 @@ function valuesEqual(a, b) {
   );
 }
 
-// キャンセルは dirty の間だけ表示。送信中は確定・キャンセルとも無効化する。
-function refreshEditorButtonsUi() {
-  editorConfirm.disabled = editorSubmitting || !editorDirty;
-  editorCancel.style.display = editorDirty ? '' : 'none';
-  editorCancel.disabled = editorSubmitting;
-}
 function setEditorDirty(dirty) {
   editorDirty = dirty;
-  refreshEditorButtonsUi();
 }
 
 // 選択中デバイスの値でフォームを作り直す(編集途中の値は破棄する)。
@@ -445,6 +443,7 @@ function renderDeviceEditor(machine, device) {
                    deviceMachine: device.machine ?? undefined };
   editorOriginalValues = deviceFieldValues(device);
   editorSubmitting = false;
+  editorSaveQueued = false;
   editorError.textContent = '';
   editorDeviceName.className = 'tile-name tile-name-' + device.platform;
   editorDeviceName.textContent = device.name;
@@ -493,7 +492,6 @@ function renderDeviceEditor(machine, device) {
     deviceInfoRequested.add(infoKey);
     vscode.postMessage({ type: 'installedDevicesRequest' });
   }
-  editorConfirm.textContent = t('wvMonitor2.common.confirm');
   profileDetailPlaceholder.style.display = 'none';
   machineDeviceEditor.style.display = '';
   setEditorDirty(false);
@@ -507,6 +505,7 @@ function clearDeviceEditor(text) {
   editorTarget = null;
   editorOriginalValues = null;
   editorSubmitting = false;
+  editorSaveQueued = false;
   machineDeviceEditor.style.display = 'none';
   profileDetailPlaceholder.style.display = '';
   profileDetailPlaceholder.textContent = text !== undefined ? text : DEVICE_PLACEHOLDER_DEFAULT_TEXT;
@@ -573,7 +572,7 @@ function refreshEditorAfterProfileInfo() {
 }
 
 function onEditorFieldInput() {
-  if (!editorTarget || editorSubmitting) {
+  if (!editorTarget) {
     return;
   }
   setEditorDirty(!valuesEqual(currentEditorValues(), editorOriginalValues));
@@ -584,27 +583,25 @@ for (const input of editorFieldInputs) {
   input.addEventListener('input', onEditorFieldInput);
 }
 
-// キャンセル: machineProfiles は watcher 経由で常に最新のため、rebuildEditorForSelection が
-// そのまま「ファイルの現在値に戻す」動作になる。
-editorCancel.addEventListener('click', () => {
-  if (editorCancel.disabled) {
-    return;
-  }
-  rebuildEditorForSelection();
+// 保存の契機は change(blur か Enter で入力を終えたとき)。runProfilesTab.js の同名ブロックと同じ方針。
+machineDeviceEditor.addEventListener('change', () => {
+  onEditorFieldInput();
+  saveDeviceEditorIfDirty();
 });
 
-// Enter=確定 / Esc=キャンセル(runProfilesTab.js の同名ブロックと同じ方針)。
+// Enter = 入力を終えて保存 / Esc = 未保存の編集を破棄(machineProfiles は watcher 経由で常に最新の
+// ため、rebuildEditorForSelection がそのまま「ファイルの現在値に戻す」動作になる)。
 // デバイス右クリックメニュー表示中の Esc はメニュー閉じ(既存リスナー)に譲る。
 document.getElementById('machine-profile-section').addEventListener('keydown', (event) => {
   if (machineDeviceMenuEntry) {
     return;
   }
-  if (event.key === 'Enter' && !event.target.closest('button') && !editorConfirm.disabled) {
+  if (event.key === 'Enter' && event.target.matches('#machine-device-editor input[type="text"]')) {
     event.preventDefault();
-    editorConfirm.click();
-  } else if (event.key === 'Escape' && editorDirty && !editorCancel.disabled) {
+    saveDeviceEditorIfDirty();
+  } else if (event.key === 'Escape' && editorDirty && !editorSubmitting) {
     event.preventDefault();
-    editorCancel.click();
+    rebuildEditorForSelection();
   }
 });
 
@@ -629,8 +626,17 @@ function validateDeviceEditorFields(name) {
   return null;
 }
 
-editorConfirm.addEventListener('click', () => {
-  if (editorConfirm.disabled || editorSubmitting || !editorTarget) {
+// 入力を終えたとき(change / Enter)に呼ぶ。未編集なら何もしない・送信中なら応答の到着後へ回す。
+function saveDeviceEditorIfDirty() {
+  if (!editorTarget) {
+    return;
+  }
+  if (editorSubmitting) {
+    editorSaveQueued = true;
+    return;
+  }
+  editorSaveQueued = false;
+  if (!editorDirty) {
     return;
   }
   const name = editorName.value.trim();
@@ -639,10 +645,16 @@ editorConfirm.addEventListener('click', () => {
     editorError.textContent = validationError;
     return;
   }
+  // 送る値(trim 済み)と画面を揃える(揃えないと保存後も dirty が残る)
+  if (editorName.value !== name) {
+    editorName.value = name;
+  }
+  if (editorPort.value !== editorPort.value.trim()) {
+    editorPort.value = editorPort.value.trim();
+  }
   editorSubmitting = true;
-  editorConfirm.textContent = t('wvMonitor2.common.confirming');
+  editorPendingSaves.push({ target: editorTarget, values: currentEditorValues() });
   editorError.textContent = '';
-  refreshEditorButtonsUi();
   vscode.postMessage({
     type: 'machineDeviceUpdate',
     machine: editorTarget.machine,
@@ -661,22 +673,36 @@ editorConfirm.addEventListener('click', () => {
       serial: editorTarget.platform === 'android' ? editorSerial.textContent.trim() : '',
     },
   });
-});
+}
 
 // ok:true なら直後の machineProfileInfo 再送で一覧/フォームが最新化される。ok:false なら
 // エラー表示のみで入力値は保持する。
 export function applyMachineDeviceUpdateResult(message) {
+  const submitted = editorPendingSaves.shift();
+  if (!submitted) {
+    return;
+  }
+  if (submitted.target !== editorTarget) {
+    // 送信のあとで別のデバイス/マシンへ移った: 選択は引き戻さない(失敗だけは知らせる)
+    if (!message.ok) {
+      editorError.textContent = message.error || t('wvMonitor2.machine.updateFailed');
+    }
+    return;
+  }
   editorSubmitting = false;
-  editorConfirm.textContent = t('wvMonitor2.common.confirm');
   if (message.ok) {
     // リネームで名前が変わるのでキーを作り直す。**ホストは編集対象のもの**(名前だけだと
-    // 別ホストの同名行が選択される)。
-    selectedDeviceKeys = new Set([deviceKey({ machine: editorTarget?.deviceMachine, name: message.name })]);
+    // 別ホストの同名行が選択される)。続けて保存するときも新しい名前で引き当てる
+    selectedDeviceKeys = new Set([deviceKey({ machine: editorTarget.deviceMachine, name: message.name })]);
+    editorTarget.originalName = message.name;
+    editorOriginalValues = { ...editorOriginalValues, ...submitted.values };
     editorError.textContent = '';
-    setEditorDirty(false);
   } else {
-    refreshEditorButtonsUi();
     editorError.textContent = message.error || t('wvMonitor2.machine.updateFailed');
+  }
+  setEditorDirty(!valuesEqual(currentEditorValues(), editorOriginalValues));
+  if (editorSaveQueued) {
+    saveDeviceEditorIfDirty();
   }
 }
 

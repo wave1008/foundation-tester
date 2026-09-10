@@ -3,6 +3,5 @@
   "devices": [
     { "name": "emulator1" }
   ],
-  "heal": false,
-  "reportDir": "reports"
+  "heal": false
 }

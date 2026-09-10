@@ -40,7 +40,13 @@ import {
 } from "./monitorModel";
 import { type HookScaffoldResult, resolveWorkspaceDir, writeHookScriptTemplates } from "./runHookScaffold";
 import type { MonitorPanelDeps } from "./monitorPanel";
-import { MONITOR_RESTART_DEBOUNCE_MS, monitorRestartNeeded, type ScopeFileKind } from "./monitorScopeFiles";
+import {
+  MONITOR_RESTART_DEBOUNCE_MS,
+  monitorRestartNeeded,
+  runProfileNeedsRestart,
+  runProfileScopeKey,
+  type ScopeFileKind,
+} from "./monitorScopeFiles";
 
 type MachineDeviceUpdateMessage = Extract<MonitorFromWebviewMessage, { type: "machineDeviceUpdate" }>;
 type MachineDevicesSyncMessage = Extract<MonitorFromWebviewMessage, { type: "machineDevicesSync" }>;
@@ -73,6 +79,14 @@ export class MonitorProfilesController {
   private readonly appsFileWatcher: vscode.FileSystemWatcher;
   /** 監視対象ファイルの変化をまとめてモニターを再起動するタイマー(monitorScopeFiles.ts)。 */
   private monitorRestartTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 実行プロファイルごと(鍵 = 絶対パス)の、直近に見た監視スコープの指紋(runProfileScopeKey)。
+   * 置くのは watcher と**初回**ロードだけ —— 保存直後のロードで置くと、続いて来る watcher が
+   * 「変化なし」と読み、devices を変えても再起動しなくなる */
+  private readonly runScopeKeys = new Map<string, string>();
+  /** フォームの保存が最後に書いた内容(鍵 = 絶対パス)。watcher が見た内容と一致しなければ手編集 */
+  private readonly runFormWrites = new Map<string, string>();
+  /** 直近の変化が手編集だった実行プロファイル(次のフォーム保存で1回再起動する。runProfileNeedsRestart) */
+  private readonly runEditedOutside = new Set<string>();
   /**
    * 名前入力モーダル(#name-input-overlay)の応答待ち状態。promptName() 呼び出しごとに id を払い出し、
    * webview からの nameInputConfirm/Cancel の id と突き合わせて resolve する。
@@ -90,12 +104,17 @@ export class MonitorProfilesController {
     );
     this.profileFileWatcher.onDidCreate(() => this.postProfileInfo());
     this.profileFileWatcher.onDidDelete((uri) => {
+      this.runScopeKeys.delete(path.resolve(uri.fsPath));
+      this.runFormWrites.delete(path.resolve(uri.fsPath));
+      this.runEditedOutside.delete(path.resolve(uri.fsPath));
       this.postProfileInfo();
       this.scheduleMonitorRestart("run", uri);
     });
     this.profileFileWatcher.onDidChange((uri) => {
       this.deps.post({ type: "runProfileFileChanged", name: path.basename(uri.fsPath, ".json") });
-      this.scheduleMonitorRestart("run", uri);
+      if (this.runProfileChangeNeedsRestart(uri.fsPath)) {
+        this.scheduleMonitorRestart("run", uri);
+      }
     });
     this.machineFileWatcher = vscode.workspace.createFileSystemWatcher(
       new vscode.RelativePattern(deps.workspaceRoot, "TestProjects/*/profiles/machines/*.json"),
@@ -144,6 +163,36 @@ export class MonitorProfilesController {
       this.deps.outputChannel.appendLine(t("profiles.log.monitorRestartForScopeFiles"));
       this.deps.restartMonitor();
     }, MONITOR_RESTART_DEBOUNCE_MS);
+  }
+
+  /** 変更後の実行プロファイルを読み、モニターの再起動が要るか(runProfileNeedsRestart)。指紋も更新する */
+  private runProfileChangeNeedsRestart(filePath: string): boolean {
+    const key = path.resolve(filePath);
+    let text: string | null;
+    try {
+      text = fs.readFileSync(key, "utf8");
+    } catch {
+      text = null;
+    }
+    const nextKey = text === null ? null : runProfileScopeKey(text);
+    const fromForm = text !== null && this.runFormWrites.get(key) === text;
+    const restart = runProfileNeedsRestart({
+      fromForm,
+      editedOutsideBefore: this.runEditedOutside.has(key),
+      previousKey: this.runScopeKeys.get(key),
+      nextKey,
+    });
+    if (nextKey === null) {
+      this.runScopeKeys.delete(key);
+    } else {
+      this.runScopeKeys.set(key, nextKey);
+    }
+    if (fromForm) {
+      this.runEditedOutside.delete(key);
+    } else {
+      this.runEditedOutside.add(key);
+    }
+    return restart;
   }
 
   /** dispose() から呼ばれる: プロファイル関連のファイルウォッチャーを破棄する。 */
@@ -1324,7 +1373,7 @@ export class MonitorProfilesController {
   }
 
   /**
-   * 右ペイン編集フォーム「確定」: machines/<machine>.json の対象デバイスを更新する。フォームが
+   * 右ペイン編集フォームの自動保存: machines/<machine>.json の対象デバイスを更新する。フォームが
    * クライアント側検証済みのため確認ダイアログは無く、結果は machineDeviceUpdateResult で即返す。
    * プロジェクト未解決時もフォームのエラー表示に載せたいため resolveProjectName を直接呼ぶ
    * (resolveProjectOrWarn の vscode.window 警告は使わない)。
@@ -1490,7 +1539,12 @@ export class MonitorProfilesController {
     const runPath = path.join(this.runsDir(resolution.project), `${profile}.json`);
     let parsed: unknown;
     try {
-      parsed = JSON.parse(fs.readFileSync(runPath, "utf8"));
+      const text = fs.readFileSync(runPath, "utf8");
+      parsed = JSON.parse(text);
+      const scopeKey = runProfileScopeKey(text);
+      if (scopeKey !== null && !this.runScopeKeys.has(path.resolve(runPath))) {
+        this.runScopeKeys.set(path.resolve(runPath), scopeKey);
+      }
     } catch (error) {
       this.deps.outputChannel.appendLine(
         t("profiles.log.runProfileLoadFailed", { name: profile, error: String(error) }),
@@ -1508,7 +1562,7 @@ export class MonitorProfilesController {
   }
 
   /**
-   * 「確定」への応答。書き込み成功後、handleRunProfileLoad を呼び直して最新の fields を再送する
+   * 保存要求(フォームの自動保存)への応答。書き込み成功後、handleRunProfileLoad を呼び直して最新の fields を再送する
    * (保存直後にフォームを最新化するため)。
    */
   handleRunProfileSave(message: RunProfileSaveMessage): void {
@@ -1541,8 +1595,10 @@ export class MonitorProfilesController {
       return;
     }
 
+    const text = `${JSON.stringify(result.object, null, 2)}\n`;
     try {
-      fs.writeFileSync(runPath, `${JSON.stringify(result.object, null, 2)}\n`, "utf8");
+      fs.writeFileSync(runPath, text, "utf8");
+      this.runFormWrites.set(path.resolve(runPath), text);
     } catch (error) {
       this.deps.outputChannel.appendLine(
         t("profiles.log.runProfileWriteFailed", { name: profile, error: String(error) }),
@@ -1644,7 +1700,7 @@ export class MonitorProfilesController {
     sendResult(true, null, fields);
   }
 
-  /** 「確定」への応答(handleRunProfileSave と同じく handleAppProfileLoad 再呼び出しでフォームを最新化)。 */
+  /** 保存要求への応答(handleRunProfileSave と同じく handleAppProfileLoad 再呼び出しでフォームを最新化)。 */
   handleAppProfileSave(message: AppProfileSaveMessage): void {
     const { profile, fields } = message;
     const sendResult = (ok: boolean, error: string | null) => {

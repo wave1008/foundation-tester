@@ -1039,7 +1039,6 @@ test("buildRunProfileTemplate: apps/devices 候補ありなら先頭のappと全
     iosInappEngine: true,
     updateWebView: true,
     wipeDataOnBloat: true,
-    reportDir: "reports",
   });
 });
 
@@ -1060,7 +1059,6 @@ test("buildRunProfileTemplate: 候補が無ければ app は空文字、devices 
     iosInappEngine: true,
     updateWebView: true,
     wipeDataOnBloat: true,
-    reportDir: "reports",
   });
 });
 
@@ -1081,7 +1079,6 @@ test("buildRunProfileTemplate: machine が空文字なら machine キー自体�
     iosInappEngine: true,
     updateWebView: true,
     wipeDataOnBloat: true,
-    reportDir: "reports",
   });
 });
 

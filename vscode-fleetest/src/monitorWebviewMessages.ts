@@ -641,7 +641,7 @@ export type MonitorFromWebviewMessage =
       readonly name: string;
       readonly source: DeviceCommandSource;
     }
-  // プロファイルタブ右ペインの編集フォーム「確定」。fields はクライアント側で trim 済み(空文字=
+  // プロファイルタブ右ペインの編集フォームの自動保存。fields はクライアント側で trim 済み(空文字=
   // 未入力/対象外)。createDevice と違い machine/originalName 以外は空文字を許容する。
   | {
       readonly type: "machineDeviceUpdate";
@@ -665,7 +665,7 @@ export type MonitorFromWebviewMessage =
   // 実行プロファイル設定フォームの選択変更・初回表示時のロード要求。profile の空文字は
   // profileCopy 等と同じ理由で不正として弾く。
   | { readonly type: "runProfileLoad"; readonly profile: string }
-  // 同フォームの「確定」。fields はクライアント側 trim 済み(machineDeviceUpdate と同じ方針)。
+  // 同フォームの自動保存。fields はクライアント側 trim 済み(machineDeviceUpdate と同じ方針)。
   // machine/app はクライアント側で必須検証済みの想定だが、型検証自体は空文字も許容する。
   | {
       readonly type: "runProfileSave";
@@ -687,7 +687,7 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "appProfileDelete"; readonly profile: string }
   // アプリプロファイル設定フォームのロード要求(runProfileLoad と同じ方針。profile の空文字は不正)。
   | { readonly type: "appProfileLoad"; readonly profile: string }
-  // 同フォームの「確定」(runProfileSave と同じ方針)。アプリプロファイルは全フィールド省略可のため
+  // 同フォームの自動保存(runProfileSave と同じ方針)。アプリプロファイルは全フィールド省略可のため
   // 機械的な必須検証は無い。
   | {
       readonly type: "appProfileSave";
