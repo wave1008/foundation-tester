@@ -475,11 +475,12 @@ function renderRunProfileSection(): string {
             </div>
             <div class="modal-row">
               <label for="run-profile-default-timeout">${t("panels.runProfile.defaultTimeoutLabel")}</label>
-              <input type="text" id="run-profile-default-timeout" class="run-profile-number-input">
+              <!-- 透かしは未指定時の既定(Sources/FTCore/DefaultWait.swift の seconds。runProfilePlaceholderSync.test.mjs) -->
+              <input type="text" id="run-profile-default-timeout" class="run-profile-number-input" placeholder="5">
             </div>
             <div class="modal-row">
               <label for="run-profile-report-dir">reportDir</label>
-              <!-- 透かしは未指定時の既定(Sources/FTCore/RunProfile.swift の runDoc.reportDir ?? "reports" と同期) -->
+              <!-- 透かしは未指定時の既定(Sources/FTCore/RunProfile.swift の runDoc.reportDir ?? "reports"。runProfilePlaceholderSync.test.mjs) -->
               <input type="text" id="run-profile-report-dir" placeholder="reports">
             </div>
           </div>
