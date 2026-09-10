@@ -50,11 +50,11 @@ guarded だけで線を超えていても**消せるものは全部消す**(線�
 
 **背景の掃除は時間で打ち切らない**(テストに乗らないので打ち切る理由が無い)。次の run と
 重なっても邪魔しないよう**背景帯**(`PRIO_DARWIN_BG`)で CPU とディスクを譲る。顛末は
-`<repoRoot>/.fleetest/cleanup.log`(毎回上書き)。手動は `fleetest clean` / 設定タブの「今すぐ掃除」
+`<repoRoot>/.fleetest/cleanup.log`(毎回上書き)。手動は `fleetest clean` / 設定タブの「今すぐクリーンアップ」
 (同じ 90% の規則)。**`--dry-run` は1バイトも消さずに一覧だけ出す**(錠も取らない)。
 
 設定は `fleetest api retention`(マシン設定 `~/.config/fleetest/config.json`。VSCode 設定ではない
-= 端末から直接打った run にも効く)。拡張はモニターの設定タブ「クリーンアップ」から同じ口を叩く。
+= 端末から直接打った run にも効く)。拡張はモニターの設定タブ「ログ・録画」のクリーンアップ欄から同じ口を叩く。
 
 **`deviceCaptures` はもう新しくは溜まらない**。ブリッジの起動時に XCTest の自動記録を止めている
 (`BridgeLauncher.captureSettings` = 静止画・常に捨てる)。ビルドが書く既定は「動画で撮る・成功したら

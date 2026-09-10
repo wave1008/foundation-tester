@@ -270,7 +270,7 @@ export const panelsStrings = {
   "panels.settings.updateChecking": { ja: "確認しています…", en: "Checking..." },
   "panels.settings.updateCheckButton": { ja: "更新を確認", en: "Check for updates" },
   "panels.settings.updateRunButton": { ja: "更新する", en: "Update now" },
-  "panels.settings.languageLabel": { ja: "表示言語", en: "Display language" },
+  "panels.settings.languageLabel": { ja: "表示言語(Display Language)", en: "Display Language" },
   "panels.settings.languageAuto": { ja: "自動(VS Code に追従)", en: "Auto (follow VS Code)" },
   "panels.settings.languageJa": { ja: "日本語", en: "日本語" },
   "panels.settings.languageEn": { ja: "English", en: "English" },
@@ -279,9 +279,9 @@ export const panelsStrings = {
   // fleetest.remote.artifacts 設定(config.ts)、このタブはもう1つの操作口。
   // 行内容(削除ボタン)は settingsTab.js が動的生成するため webview 側辞書
   // (i18n/strings/webviewMonitorB.ts の wvMonitor2.remote.*)を使う。ここは静的ラベルのみ。
-  "panels.settings.logSectionTitle": { ja: "ログ", en: "Logs" },
+  "panels.settings.logSectionTitle": { ja: "ログ・録画", en: "Logs & recordings" },
   "panels.settings.remoteSectionTitle": { ja: "マシン", en: "Machines" },
-  "panels.settings.remoteArtifactsLabel": { ja: "成果物(録画・ログ)", en: "Artifacts (recordings, logs)" },
+  "panels.settings.remoteArtifactsLabel": { ja: "成果物(ログ・録画)", en: "Artifacts (logs, recordings)" },
   "panels.settings.remoteArtifactsCollect": { ja: "回収する", en: "Collect" },
   "panels.settings.remoteArtifactsOnDemand": { ja: "オンデマンド", en: "On demand" },
   // 列見出しは「マシン」(2026-08-26 指示)。プロファイルの machine 欄・--runner に書く名前と同じもの
@@ -295,18 +295,17 @@ export const panelsStrings = {
   "panels.settings.remoteHostsColFMConcurrency": { ja: "FM 並列枠", en: "FM concurrency" },
   "panels.settings.remoteHostsAdd": { ja: "リモートホストを追加", en: "Add remote host" },
 
-  // 設定タブ「クリーンアップ」セクション(静的ラベル)。保持ポリシーの実体は **VSCode 設定ではなく
+  // 設定タブ「ログ・録画」のクリーンアップ欄(静的ラベル)。保持ポリシーの実体は **VSCode 設定ではなく
   // CLI 側のマシン設定**(`fleetest api retention`)。動的表示(使用量・掃除の結果)は
   // webviewMonitorB.ts の wvMonitor2.cleanup.*。単位記号(GB/MB)は言語に依らないので辞書に置かない。
-  "panels.settings.cleanupSectionTitle": { ja: "クリーンアップ", en: "Cleanup" },
   "panels.settings.cleanupEnabledLabel": {
     ja: "テスト完了後にバックグラウンドでクリーンアップする",
     en: "Clean up in the background after a test run",
   },
-  // 発動の線(90%)は CLI の RetentionPolicy.sweepTriggerPercent と同じ値。「今すぐ掃除」も同じ規則
+  // 発動の線(90%)は CLI の RetentionPolicy.sweepTriggerPercent と同じ値。「今すぐクリーンアップ」も同じ規則
   "panels.settings.cleanupHint": {
-    ja: "上限の 90% を超えたカテゴリだけ、古いものから 90% まで削除します(今すぐ掃除も同じ)。テストの実行時間には含まれず、同時に2つは走りません。",
-    en: "Only categories above 90% of their limit are trimmed back to 90%, oldest first (Clean up now does the same). It does not count toward the test run time, and never runs twice at once.",
+    ja: "指定した上限の90%に達した時にクリーンアップが実行されます",
+    en: "Cleanup runs when usage reaches 90% of the specified limit.",
   },
   "panels.settings.cleanupDeviceCapturesLabel": {
     ja: "デバイスの録画・スクショの上限",
@@ -315,7 +314,7 @@ export const panelsStrings = {
   "panels.settings.cleanupRecordingsLabel": { ja: "録画の上限", en: "Limit for recordings" },
   "panels.settings.cleanupReportsLabel": { ja: "レポートの上限", en: "Limit for reports" },
   "panels.settings.cleanupLogsLabel": { ja: "ログの上限", en: "Limit for logs" },
-  "panels.settings.cleanupNowButton": { ja: "今すぐ掃除", en: "Clean up now" },
+  "panels.settings.cleanupNowButton": { ja: "今すぐクリーンアップ", en: "Clean up now" },
 
   "panels.deviceMenu.liveControl": { ja: "ライブ操作", en: "Live Control" },
   "panels.deviceMenu.restartWithGpu": { ja: "GPUで再起動", en: "Restart with GPU" },

@@ -454,13 +454,15 @@ const cleanupResult = document.getElementById('settings-cleanup-result');
 const cleanupError = document.getElementById('settings-cleanup-error');
 // 拡張から届く既定値(空欄・不正値のときに入力欄へ入れ直す値)。届くまでは undefined。
 let cleanupDefaults;
-// CLI からポリシーを読めているか(読めていなければ欄も「今すぐ掃除」も押せない)。
+// CLI からポリシーを読めているか(読めていなければ欄も「今すぐクリーンアップ」も押せない)。
 let cleanupAvailable = false;
 
 const cleanupRows = RETENTION_FIELDS.map((field) => ({
   field,
   input: document.getElementById(CLEANUP_INPUT_IDS[field.key]),
   usage: document.getElementById(`${CLEANUP_INPUT_IDS[field.key]}-usage`),
+  // 表示中の使用量が実測値か(false = 計測待ちの「現在 - GB」か空)
+  measured: false,
 }));
 
 /** 既定値(バイト)を入力欄の単位へ。CLI 応答が未着・欄が無いときは undefined。 */
@@ -506,8 +508,9 @@ function applyCleanupOutcome(cleanup) {
     cleanupResult.textContent = t('wvMonitor2.cleanup.running');
     return;
   }
+  // 確認ダイアログで取り消した回は何も出さない(実行中の表示を消すだけ)
   if (cleanup.state === 'cancelled') {
-    cleanupResult.textContent = t('wvMonitor2.cleanup.cancelled');
+    cleanupResult.textContent = '';
     return;
   }
   if (cleanup.state === 'failed') {
@@ -533,7 +536,7 @@ function applyCleanupOutcome(cleanup) {
 /**
  * retention 受信(ready 直後 / setRetention・runCleanup の応答)。policy が無ければ無効表示。
  * **掃除の進行だけを載せた配信(policy も error も無い)では欄に触らない** —— 触ると
- * 「今すぐ掃除」を押した瞬間に上限の入力欄が全部無効になる。
+ * 「今すぐクリーンアップ」を押した瞬間に上限の入力欄が全部無効になる。
  */
 function applyRetention(message) {
   const policy = message.policy;
@@ -551,6 +554,10 @@ function applyRetention(message) {
   }
   cleanupEnabledCheckbox.disabled = !available;
   cleanupNowButton.disabled = !available;
+  // 使用量の欠け = CLI が測っていない(--usage 無しの応答。書き込みの応答は必ずこれ)で、0 ではない。
+  // **実測値があれば残す** —— 消すと設定を1つ変えるたびに使用量が消える。計測待ち(まだ一度も
+  // 測れていない・実際に削除した直後で前の値が嘘)は「現在 - GB」、欄が使えないときは空。
+  const usageStale = message.cleanup !== undefined && message.cleanup.state === 'done' && !message.cleanup.dryRun;
   for (const row of cleanupRows) {
     row.input.disabled = !available;
     const fallback = cleanupDefaultValue(row.field);
@@ -560,8 +567,16 @@ function applyRetention(message) {
       row.input.value = String(bytesToUnitValue(current, row.field.unit));
     }
     const used = message.usage ? message.usage[row.field.usageKey] : undefined;
-    row.usage.textContent =
-      typeof used === 'number' ? t('wvMonitor2.cleanup.usage', { size: formatBytes(used, row.field.unit) }) : '';
+    if (typeof used === 'number') {
+      row.usage.textContent = t('wvMonitor2.cleanup.usage', { size: formatBytes(used, row.field.unit) });
+      row.measured = true;
+    } else if (!available) {
+      row.usage.textContent = '';
+      row.measured = false;
+    } else if (usageStale || !row.measured) {
+      row.usage.textContent = t('wvMonitor2.cleanup.usagePending', { unit: row.field.unit });
+      row.measured = false;
+    }
   }
   if (available && typeof policy[RETENTION_SWEEP_KEY] === 'boolean') {
     cleanupEnabledCheckbox.checked = policy[RETENTION_SWEEP_KEY];

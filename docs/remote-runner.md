@@ -554,7 +554,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
   注記を1行出す)。appPath はリモート側で有効なパスであることが前提
 - results DB の**マージ**(ローカルの集計に混ぜる)は行わない(Phase 3 の課題)。ただし
   **録画と run ログ(`results/` 配下)の回収は実装済み**(2026-08-01): `--remote-artifacts`
-  (`collect` 既定 / `on-demand`)で選ぶ。GUI は設定タブの「成果物(録画・ログ)」。
+  (`collect` 既定 / `on-demand`)で選ぶ。GUI は設定タブ「ログ・録画」の「成果物(ログ・録画)」。
   `collect` はローカルの `Projects/<name>/results/` へ rsync(**`--delete` は付けない** —
   ローカルで別に走った run の results を巻き添えで消さない。差分転送なので再ディスパッチは安い)。
   `on-demand` でも実績 JSON(run.json/scenarios/*.json/host-metrics.ndjson)は常に回収する ——

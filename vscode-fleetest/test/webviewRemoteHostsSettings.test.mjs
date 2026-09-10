@@ -357,10 +357,10 @@ test("この機械の FM 枠は machine:'local' として送られる(登録簿�
   assert.equal(local.host, "wave1008@localhost");
 });
 
-// セクションの構成。**成果物(録画・ログ)は「ログ」に属し、マシンより上**。
+// セクションの構成。**成果物(ログ・録画)は「ログ・録画」に属し、マシンより上**。
 // artifacts セレクタは remoteConfig/setRemoteConfig に相乗りしているので、DOM 上で
 // 別セクションへ移しても配線は変わらない —— その前提が崩れていないことも併せて見る
-test("ログ セクションがマシンの上にあり、成果物セレクタを含む", (t) => {
+test("ログ・録画 セクションがマシンの上にあり、成果物セレクタとクリーンアップ欄を含む", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
@@ -371,18 +371,30 @@ test("ログ セクションがマシンの上にあり、成果物セレクタ�
   assert.ok(log >= 0 && machines >= 0, `見出しが見つからない: ${titles.join(" / ")}`);
   assert.ok(log < machines, "ログ はマシンより上");
 
-  // 成果物セレクタは「ログ」セクションの中(= マシン設定の表とは別のグループ)
+  // 成果物セレクタは「ログ・録画」セクションの中(= マシン設定の表とは別のグループ)
   const artifacts = document.getElementById("settings-remote-artifacts");
   const group = artifacts.closest(".settings-group");
-  assert.match(group.querySelector(".settings-section-title").textContent, /ログ|Logs/);
+  assert.match(group.querySelector(".settings-section-title").textContent, /^ログ・録画$|^Logs & recordings$/);
   assert.equal(group.querySelector(".settings-remote-hosts-table"), null, "表は別セクション");
+
+  // クリーンアップ欄は同じセクションの成果物セレクタより下。独立した「クリーンアップ」見出しは無い
+  const cleanup = document.getElementById("settings-cleanup-enabled");
+  assert.equal(cleanup.closest(".settings-group"), group, "クリーンアップ欄はログ・録画の中");
+  assert.ok(artifacts.compareDocumentPosition(cleanup) & window.Node.DOCUMENT_POSITION_FOLLOWING, "成果物の下");
+  assert.equal(titles.some((x) => /^クリーンアップ$|^Cleanup$/.test(x)), false, "クリーンアップ見出しは廃止");
 });
 
 test("追加ボタンの文言はリモートホストを追加", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  assert.match(document.getElementById("settings-remote-hosts-add").textContent,
-               /リモートホストを追加|Add remote host/);
+  const add = document.getElementById("settings-remote-hosts-add");
+  assert.match(add.textContent, /リモートホストを追加|Add remote host/);
+  // 追加ボタンはマシン セクションの一番下(表・エラー表示より後)
+  const group = add.closest(".settings-group");
+  const last = group.lastElementChild;
+  assert.ok(last.contains(add), "セクションの最後の要素");
+  assert.ok(group.querySelector(".settings-remote-hosts-table").compareDocumentPosition(add)
+            & window.Node.DOCUMENT_POSITION_FOLLOWING, "表より下");
 });
 
 // FM 並列枠は 1〜9 の1桁だけ。**固定行と可変行の両方**に効くこと(片方だけ書くと漏れる)

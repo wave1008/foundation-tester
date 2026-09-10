@@ -1,5 +1,5 @@
 // webviewCleanupSettings.test.mjs
-// 設定タブ「クリーンアップ」(settingsTab.js)の往復テスト。実 HTML+実バンドルで動かす方式は
+// 設定タブ「ログ・録画」のクリーンアップ欄(settingsTab.js)の往復テスト。実 HTML+実バンドルで動かす方式は
 // webviewDevicesTabVisible.test.mjs と同じ。
 //
 // 縛るのは3つ:
@@ -228,7 +228,7 @@ test("クリーンアップ: トグルの切替が setRetention として送ら�
   assert.equal(isMonitorFromWebviewMessage(messages[0]), true);
 });
 
-test("クリーンアップ: 「今すぐ掃除」は runCleanup を送り、確認はホスト側に委ねる", (t) => {
+test("クリーンアップ: 「今すぐクリーンアップ」は runCleanup を送り、確認はホスト側に委ねる", (t) => {
   const { window, document, posted } = createWebview();
   t.after(() => window.close());
   post(window, RESPONSE);
@@ -254,8 +254,10 @@ test("クリーンアップ: 掃除の進行と結果が行に出る(実行中�
   assert.equal(document.getElementById("settings-cleanup-now").disabled, false);
   assert.ok(document.getElementById("settings-cleanup-result").textContent.includes("3 GB"));
 
+  post(window, { type: "retention", cleanup: { state: "running", dryRun: false } });
   post(window, { type: "retention", cleanup: { state: "cancelled" } });
-  assert.notEqual(document.getElementById("settings-cleanup-result").textContent, "");
+  assert.equal(document.getElementById("settings-cleanup-result").textContent, "", "取り消しは何も出さない");
+  assert.equal(document.getElementById("settings-cleanup-now").disabled, false);
 });
 
 test("クリーンアップ: policy が読めなければ欄を無効にして理由を出す(古い CLI)", (t) => {
@@ -303,10 +305,47 @@ test("クリーンアップ: 使用量は後から届く(上限だけ先に出�
     String(RESPONSE.policy.logsMaxBytes / 1024 / 1024),
   );
   const before = document.getElementById(`${INPUT_IDS.logsMaxBytes}-usage`).textContent;
-  assert.ok(!before.includes(formatBytes(RESPONSE.usage.logs, "MB")), `測る前: ${before}`);
+  assert.equal(before, "現在 - MB", "測る前は計測待ちの表示(行の単位つき)");
+  assert.equal(document.getElementById(`${INPUT_IDS.deviceCapturesMaxBytes}-usage`).textContent, "現在 - GB");
 
   // 2段目: `--usage` 付きの読み直しが届くと、同じ行が使用量で埋まる
   post(window, RESPONSE);
   const after = document.getElementById(`${INPUT_IDS.logsMaxBytes}-usage`).textContent;
   assert.ok(after.includes(formatBytes(RESPONSE.usage.logs, "MB")), `測った後: ${after}`);
+});
+
+test("クリーンアップ: 設定を変えた応答(使用量を測っていない)で使用量の表示を消さない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const logsUsage = () => document.getElementById(`${INPUT_IDS.logsMaxBytes}-usage`).textContent;
+  const measured = formatBytes(RESPONSE.usage.logs, "MB");
+  post(window, RESPONSE);
+
+  // 書き込み(`--import`)の応答は `--usage` 無し。ホストの parseRetentionResponse は null を落として {} にする
+  const writeResponse = {
+    type: "retention",
+    policy: { ...RESPONSE.policy, sweepAfterRun: false },
+    defaults: RESPONSE.defaults,
+    usage: {},
+  };
+  post(window, writeResponse);
+  assert.ok(logsUsage().includes(measured), `トグル後も残る: ${logsUsage()}`);
+  assert.equal(document.getElementById("settings-cleanup-enabled").checked, false, "設定そのものは反映される");
+
+  // 見積もりだけ(dry-run)は何も消していないので残す
+  post(window, { ...writeResponse, cleanup: { state: "done", dryRun: true, freedBytes: 3 * BYTES_PER_GB } });
+  assert.ok(logsUsage().includes(measured), `dry-run 後も残る: ${logsUsage()}`);
+
+  // 実際に削除した直後は前の値が嘘になるので計測待ちに戻す(ホストが測り直して埋める)
+  post(window, { ...writeResponse, cleanup: { state: "done", dryRun: false, freedBytes: 3 * BYTES_PER_GB } });
+  assert.equal(logsUsage(), "現在 - MB", "削除後は古い使用量を出さない");
+  // 測り直しの前に設定を変えても計測待ちのまま(古い値に戻らない)
+  post(window, writeResponse);
+  assert.equal(logsUsage(), "現在 - MB");
+  post(window, RESPONSE);
+  assert.ok(logsUsage().includes(measured), `測り直しで埋まる: ${logsUsage()}`);
+
+  // 欄が使えなくなったら使用量も出さない
+  post(window, { type: "retention", error: "unknown subcommand: retention" });
+  assert.equal(logsUsage(), "");
 });

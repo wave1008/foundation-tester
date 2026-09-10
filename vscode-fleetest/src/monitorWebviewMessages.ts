@@ -337,7 +337,7 @@ export type MonitorToWebviewMessage =
   // **実行ログは webview に送らない**(VSCode の OUTPUT へ出す。monitorUpdateController.ts 冒頭)。
   | { readonly type: "updateStatus"; readonly state: string; readonly localHead: string;
       readonly remoteHead: string; readonly reason: string }
-  // 設定タブ「クリーンアップ」セクション。保持ポリシーの正は CLI 側のマシン設定
+  // 設定タブ「ログ・録画」のクリーンアップ欄。保持ポリシーの正は CLI 側のマシン設定
   // (`fleetest api retention`)で、**拡張は既定値を持たない** —— policy(実効値)・defaults・
   // usage はすべて CLI が返したものをそのまま配る(FM 枠と同じ規律)。ready 直後と
   // setRetention/runCleanup の応答で送る。対向: settingsTab.js の applyRetention。
@@ -349,7 +349,7 @@ export type MonitorToWebviewMessage =
       readonly defaults?: RetentionValues;
       readonly usage?: RetentionUsage;
       readonly error?: string;
-      /** 「今すぐ掃除」の進行と結果。掃除を伴わない配信では undefined。
+      /** 「今すぐクリーンアップ」の進行と結果。掃除を伴わない配信では undefined。
        *  freedBytes は dry-run では「消える合計」、実行では「消した合計」 */
       readonly cleanup?: {
         readonly state: "running" | "done" | "cancelled" | "failed";
@@ -717,10 +717,10 @@ export type MonitorFromWebviewMessage =
       readonly hosts: readonly RemoteHostEntry[];
       readonly artifacts: "collect" | "on-demand";
     }
-  // 設定タブ「クリーンアップ」の欄変更(settingsTab.js)。**渡した鍵だけ**を CLI へ送り、
+  // 設定タブ「ログ・録画」のクリーンアップ欄の欄変更(settingsTab.js)。**渡した鍵だけ**を CLI へ送り、
   // null はその鍵を既定へ戻す(空欄・不正値のとき)。0 は「保持しない」の有効な指定。
   | { readonly type: "setRetention"; readonly patch: RetentionPatch }
-  // 設定タブ「今すぐ掃除」。dryRun=true は見積もるだけ。**確認はホスト側**(webview では
+  // 設定タブ「今すぐクリーンアップ」。dryRun=true は見積もるだけ。**確認はホスト側**(webview では
   // window.confirm が効かない)—— dryRun=false でも monitorPanel.ts が先に見積もりを撃ち、
   // 消える合計をモーダルに出してから実行する。
   | { readonly type: "runCleanup"; readonly dryRun: boolean }

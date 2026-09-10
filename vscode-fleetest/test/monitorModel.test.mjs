@@ -4122,7 +4122,7 @@ test("setLptScheduling: boolean の value だけ受け付ける", () => {
 });
 
 test("setRetention: 上限はバイト(0以上の整数)か null・未知の鍵は弾く", () => {
-  // 設定タブ「クリーンアップ」(対向: src/webview/monitor/settingsTab.js)。鍵は CLI の JSON と
+  // 設定タブ「ログ・録画」のクリーンアップ欄(対向: src/webview/monitor/settingsTab.js)。鍵は CLI の JSON と
   // 1文字も同じ。未知の鍵を通すと綴り違いがそのまま CLI へ渡り、黙って無視されて
   // 「打ったのに効かない」になる。
   assert.equal(isMonitorFromWebviewMessage({ type: "setRetention", patch: { logsMaxBytes: 524288000 } }), true);

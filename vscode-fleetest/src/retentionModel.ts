@@ -1,5 +1,5 @@
 // retentionModel.ts
-// 設定タブ「クリーンアップ」の単位変換・入力検証・CLI 応答の解釈(純粋関数)。
+// 設定タブ「ログ・録画」のクリーンアップ欄の単位変換・入力検証・CLI 応答の解釈(純粋関数)。
 // **vscode 非依存**(webview の settingsTab.js と拡張側 monitorPanel.ts/retentionController.ts の
 // 両方が読む。i18n/index.ts は import しない —— webview バンドルが壊れる)。
 //

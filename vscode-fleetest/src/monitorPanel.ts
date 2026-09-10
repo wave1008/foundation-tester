@@ -570,7 +570,7 @@ export class MonitorPanelController implements vscode.Disposable {
   }
 
   /**
-   * 設定タブ「クリーンアップ」の欄変更を CLI 側のマシン設定へ反映する。**書き込み後は必ず
+   * 設定タブ「ログ・録画」のクリーンアップ欄の欄変更を CLI 側のマシン設定へ反映する。**書き込み後は必ず
    * CLI が返した確定形で webview を作り直す**(マシン登録簿と同じ規律)—— 拡張は保持ポリシーを
    * 持たないので、打った値が本当に入ったかは CLI の応答でしか分からない。失敗理由は
    * retention.error に乗せて webview へ返す(OUTPUT へのログだけにしない = 値が黙って戻る)。
@@ -594,7 +594,7 @@ export class MonitorPanelController implements vscode.Disposable {
   }
 
   /**
-   * 「今すぐ掃除」。**消す前に必ず1回聞く**(破壊的操作)—— 先に `--dry-run` を撃って消える合計を
+   * 「今すぐクリーンアップ」。**消す前に必ず1回聞く**(破壊的操作)—— 先に `--dry-run` を撃って消える合計を
    * 見せ、ホスト側のモーダルで確認してから実行する(webview では window.confirm が効かない)。
    * 実行後は retention を読み直して使用量ごと配り直す(掃除で必ず変わるため)。
    * dryRun=true で来たときは見積もるだけで確認もしない。
@@ -626,13 +626,21 @@ export class MonitorPanelController implements vscode.Disposable {
       this.post({ type: "retention", cleanup: { state: "failed", error: result.error } });
       return;
     }
-    // 使用量は掃除で必ず変わるので、結果と一緒に読み直したものを配る
+    // 使用量は掃除で必ず変わる。初回表示と同じ2段で読む(使用量の集計は実測 21 秒かかるので、
+    // 結果を先に出してから埋める。webview は done を見て古い使用量を消しておく)
     const refreshed = await fetchRetention(deps);
     this.post({
       type: "retention",
       ...refreshed,
       cleanup: { state: "done", dryRun: false, freedBytes: result.freedBytes },
     });
+    if (refreshed.error !== undefined) {
+      return;
+    }
+    const withUsage = await fetchRetentionUsage(deps);
+    if (withUsage.error === undefined) {
+      this.post({ type: "retention", ...withUsage });
+    }
   }
 
   private hydrateLaneUi(): void {
@@ -1059,7 +1067,7 @@ export class MonitorPanelController implements vscode.Disposable {
                 local: this.lastKnownLocalMachine });
       });
     }
-    // 設定タブ「クリーンアップ」。**保持ポリシーの正は CLI 側のマシン設定**で、拡張は既定値を
+    // 設定タブ「ログ・録画」のクリーンアップ欄。**保持ポリシーの正は CLI 側のマシン設定**で、拡張は既定値を
     // 持たない。読めなければ error だけを配って webview がセクションを無効表示にする
     // (コマンドを持たない古い CLI でも他の初期化を止めない)。
     // **2段で読む**: 上限だけなら即座に返る(実測 0.9 秒)が、使用量の集計は全ファイルを

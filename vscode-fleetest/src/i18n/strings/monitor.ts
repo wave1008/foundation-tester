@@ -272,7 +272,7 @@ export const monitorStrings = {
     en: "Update fleetest? It runs git pull, rebuild, and extension reinstall, and takes a few minutes.",
   },
   "monitor.update.confirmButton": { ja: "更新する", en: "Update" },
-  // 「今すぐ掃除」の確認(モーダル)。webview では confirm が効かないのでホスト側で出す。
+  // 「今すぐクリーンアップ」の確認(モーダル)。webview では confirm が効かないのでホスト側で出す。
   // 消える合計は先に撃った --dry-run の結果({size} は "12.3 GB" の形)。
   "monitor.cleanup.confirmMessage": {
     ja: "{size} を削除します。元に戻せません。続けますか?",

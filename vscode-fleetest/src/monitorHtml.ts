@@ -798,8 +798,14 @@ function renderSettingsPanel(): string {
            artifacts セレクタは remoteConfig/setRemoteConfig に相乗り(専用メッセージ型は無い)。
            #settings-remote-hosts-error は直前の同期が失敗したときの理由(remoteConfig.error)。
            対向: settingsTab.js の applySettings / setRemoteConfig, monitorPanel.ts。 -->
-      <!-- ログ。**artifacts セレクタは remoteConfig/setRemoteConfig に相乗り**(専用メッセージ型は
-           無い)ので、DOM 上でマシンと別セクションになっても配線は変わらない。 -->
+      <!-- ログ・録画。**artifacts セレクタは remoteConfig/setRemoteConfig に相乗り**(専用メッセージ型は
+           無い)ので、DOM 上でマシンと別セクションになっても配線は変わらない。
+           その下のクリーンアップ欄は**保持ポリシーの実体が VSCode 設定ではなく CLI 側のマシン設定**
+           ("fleetest api retention")。既定値も使用量も CLI が返したものを写すだけで、拡張は
+           値を持たない(FM 枠と同じ規律)。画面は GB / MB、契約はバイトで、変換は
+           retentionModel.ts の1経路だけを通る。「今すぐクリーンアップ」の確認は**ホスト側のモーダル**
+           (webview では window.confirm が効かない)。
+           対向: settingsTab.js の applyRetention / setRetention・runCleanup、monitorPanel.ts。 -->
       <div class="settings-group">
         <div class="settings-section-title">${t("panels.settings.logSectionTitle")}</div>
         <label class="settings-item settings-item-inline" for="settings-remote-artifacts">
@@ -809,15 +815,6 @@ function renderSettingsPanel(): string {
             <option value="on-demand">${t("panels.settings.remoteArtifactsOnDemand")}</option>
           </select>
         </label>
-      </div>
-      <!-- クリーンアップ。**保持ポリシーの実体は VSCode 設定ではなく CLI 側のマシン設定**
-           ("fleetest api retention")。既定値も使用量も CLI が返したものを写すだけで、拡張は
-           値を持たない(FM 枠と同じ規律)。画面は GB / MB、契約はバイトで、変換は
-           retentionModel.ts の1経路だけを通る。「今すぐ掃除」の確認は**ホスト側のモーダル**
-           (webview では window.confirm が効かない)。
-           対向: settingsTab.js の applyRetention / setRetention・runCleanup、monitorPanel.ts。 -->
-      <div class="settings-group">
-        <div class="settings-section-title">${t("panels.settings.cleanupSectionTitle")}</div>
         <label class="settings-item"><input type="checkbox" id="settings-cleanup-enabled"> ${t("panels.settings.cleanupEnabledLabel")}</label>
         <div class="settings-hint">${t("panels.settings.cleanupHint")}</div>
         <div class="settings-cleanup-grid">
@@ -854,9 +851,6 @@ function renderSettingsPanel(): string {
       </div>
       <div class="settings-group">
         <div class="settings-section-title">${t("panels.settings.remoteSectionTitle")}</div>
-        <div class="settings-remote-hosts-actions">
-          <button id="settings-remote-hosts-add" class="secondary" type="button">${t("panels.settings.remoteHostsAdd")}</button>
-        </div>
         <table class="settings-remote-hosts-table">
           <thead>
             <tr>
@@ -870,6 +864,9 @@ function renderSettingsPanel(): string {
           <tbody id="settings-remote-hosts-body"></tbody>
         </table>
         <div id="settings-remote-hosts-error" class="settings-hint settings-remote-hosts-error" hidden></div>
+        <div class="settings-remote-hosts-actions">
+          <button id="settings-remote-hosts-add" class="secondary" type="button">${t("panels.settings.remoteHostsAdd")}</button>
+        </div>
       </div>
     </div>
   </div>`;
