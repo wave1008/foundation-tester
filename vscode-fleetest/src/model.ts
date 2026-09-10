@@ -74,7 +74,8 @@ export type RunEventKind =
   | "log"
   | "runFinished"
   | "wipeStatus"
-  | "scenarioRequeued";
+  | "scenarioRequeued"
+  | "recordingFinalizing";
 
 const RUN_EVENT_KINDS: ReadonlySet<string> = new Set<RunEventKind>([
   "runStarted",
@@ -90,6 +91,7 @@ const RUN_EVENT_KINDS: ReadonlySet<string> = new Set<RunEventKind>([
   "runFinished",
   "wipeStatus",
   "scenarioRequeued",
+  "recordingFinalizing",
 ]);
 
 /** 並列実行(`--profile` 指定時)のワーカー(デバイス)1台分の情報。 */
@@ -239,6 +241,9 @@ export interface RunFinishedEvent {
   failed: number;
   testSeconds?: number;
   scenarioTotalSeconds?: number;
+  /** 結果を書いた run の runID(記録しない dry-run / debug と旧 CLI では欠落)。run 完了時に録画タブで
+   *  開く run の特定に使う(runEventBus.ts の runEnded.resultRun)。 */
+  runID?: string;
 }
 
 /**
@@ -266,6 +271,16 @@ export interface ScenarioRequeuedEvent {
   limit: number;
 }
 
+/**
+ * どのワーカーももうシナリオを実行しておらず、残りは録画のクリップ切り出しと後始末だけになった
+ * (録画した run で1回だけ。複数機械の run では全機械が終えたとき)。モニターはここから録画タブへ
+ * 移るまで「録画を編集中」を出す(monitorPanel.ts)。
+ * 同期相手: Sources/FTCore/RunOrchestrator.swift RunEvent.recordingFinalizing
+ */
+export interface RecordingFinalizingEvent {
+  kind: "recordingFinalizing";
+}
+
 /** NDJSON の1行分のイベント(kind で判別する共用体)。 */
 export type RunEvent =
   | RunStartedEvent
@@ -280,7 +295,8 @@ export type RunEvent =
   | LogEvent
   | RunFinishedEvent
   | WipeStatusEvent
-  | ScenarioRequeuedEvent;
+  | ScenarioRequeuedEvent
+  | RecordingFinalizingEvent;
 
 /**
  * unknown 値(NdjsonParser が JSON.parse しただけの値。cli.ts の onNdjsonValue 経由)が

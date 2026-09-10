@@ -324,5 +324,9 @@ export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: num
     case "wipeStatus":
       // デバイスタイルのバッジ表示(monitorPanel.ts の handleBusMessage)専用。ログレーンには出さない。
       return [];
+
+    case "recordingFinalizing":
+      // 「録画を編集中」表示(monitorPanel.ts の handleBusMessage)専用。ログレーンには出さない。
+      return [];
   }
 }

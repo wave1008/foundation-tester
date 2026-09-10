@@ -696,7 +696,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
         emitLine(ApiRunFinishedEvent(passed: outcome.passed, failed: outcome.failed,
                                      testSeconds: outcome.testSeconds,
-                                     scenarioTotalSeconds: outcome.scenarioTotalSeconds))
+                                     scenarioTotalSeconds: outcome.scenarioTotalSeconds,
+                                     runID: recorder?.runID))
         // 保持容量の掃除は**背景の別プロセスで**(テストの実行時間に含めない)。**失敗時の throw より
         // 前**(赤い run でも起こす)。記録しない run(dry-run / debug)では起こさない。
         // stdout は NDJSON 専用なので1行は stderr へ
@@ -1365,6 +1366,10 @@ struct ApiRunCommand: AsyncParsableCommand {
             finished.passed = false
 
             return [started, step, finished].map { $0.encodedLine() }
+
+        case .recordingFinalizing:
+            // 同期相手: vscode-fleetest/src/model.ts の RecordingFinalizingEvent
+            return [ScenarioEvent(kind: "recordingFinalizing").encodedLine()]
         }
     }
 
@@ -1523,6 +1528,10 @@ struct ApiRunFinishedEvent: Encodable {
     let failed: Int
     let testSeconds: Double?
     let scenarioTotalSeconds: Double?
+    /// 結果を書いた run の runID(記録しない dry-run / debug では nil = キー省略)。拡張は run 完了時に
+    /// この run の録画を開く(monitorRecordingsController.ts の revealRun)。束ねた run では
+    /// どれか1つでよい —— 読み手は runGroup から全体を引き直す(recordingsStore.ts resolveSessionRunIDs)
+    let runID: String?
 }
 
 /// 実行の集計結果。testSeconds/scenarioTotalSeconds は ScenarioTimingTracker 参照

@@ -175,7 +175,34 @@ public enum RunEvent: Sendable {
                       triage: TriageInfo?, reportURL: URL?, fm: FMUsageRecord?)
     /// 担当ワーカー不在などで実行できなかった(失敗として数える)
     case flowSkipped(flowURL: URL, reason: String)
+    /// もうどのワーカーもシナリオを実行しておらず、残りは録画のクリップ切り出しと後始末だけになった
+    /// (録画を1本でも開始できた run で1回だけ。判定は TestingSlots)。NDJSON では "recordingFinalizing"。
+    /// 拡張はここから録画タブへ移るまで「録画を編集中」を出す(vscode-fleetest/src/model.ts)
+    case recordingFinalizing
     case runFinished(passed: Int, failed: Int)
+}
+
+/// まだシナリオを実行しうるスロット(参加済みワーカー + 参加待ちの枠)の数。0 になった瞬間が
+/// 「テストが全部終わり、録画の切り出し待ちだけが残った」時点。各スロットは**ちょうど1回**閉じる:
+/// ワーカーは runWorker の完了経路(切り出しの直前)か、superviseWorker が復帰を諦めたとき。
+/// 参加待ちの枠は admit のループ(遅延参加を含む)を抜けたとき —— これが無いと、先に参加した
+/// ワーカーが全部終えた瞬間(後続の参加前)に 0 を踏む
+actor TestingSlots {
+    private var openCount = 0
+    private var recordingStarted = false
+    private var announced = false
+
+    func open() { openCount += 1 }
+
+    func noteRecordingStarted() { recordingStarted = true }
+
+    /// true = これで全スロットが閉じ、録画を開始できたワーカーが居た(1 run に1回だけ true)
+    func close() -> Bool {
+        openCount -= 1
+        guard openCount == 0, recordingStarted, !announced else { return false }
+        announced = true
+        return true
+    }
 }
 
 public struct RunSummary: Sendable {
@@ -547,6 +574,8 @@ public final class RunOrchestrator {
     private let recorder: RunRecorder?
     /// run profile の record:true 時のワーカー動画録画(nil = 無効)。VideoRecordingCoordinator.swift
     private let videoRecording: VideoRecordingCoordinator?
+    /// recordingFinalizing を出す時点の判定(TestingSlots の宣言参照)
+    private let testingSlots = TestingSlots()
     /// Android の画面凍結(blank-screen)判定。FTCore は FTAndroid に依存できない(循環)ため
     /// 実プローブ(AndroidHealthProbe)の注入は呼び出し側(fleetest ターゲット)が行う。
     /// nil(未注入)時は常に false(凍結扱いしない)
@@ -860,8 +889,11 @@ public final class RunOrchestrator {
                 await startGate.waitForTurn(log: { [continuation] message in
                     continuation.yield(.workerLog(worker: worker.label, message: message))
                 })
+                await testingSlots.open()
                 group.addTask { await self.superviseWorker(worker, queue: queue) }
             }
+            // 参加待ちの枠(下の admit ループ・遅延参加を抜けたら閉じる)
+            await testingSlots.open()
             // キューが無いワーカー(shared: その platform のシナリオが無い / broadcast: レーンの
             // ぶんが 0 本、または計画に無い台)は参加させない
             for worker in workers {
@@ -878,6 +910,7 @@ public final class RunOrchestrator {
                     await admit(worker, queue)
                 }
             }
+            await closeTestingSlot()
             var failedAcrossWorkers = 0
             for await workerFailed in group { failedAcrossWorkers += workerFailed }
             return failedAcrossWorkers
@@ -985,6 +1018,7 @@ public final class RunOrchestrator {
                 // queue が空/復帰未注入/復帰回数上限 のいずれかならこれ以上粘っても無駄なので諦める
                 guard revives < MAX_WORKER_REVIVES, await queue.hasItems(), let revive = reviveWorker else {
                     if let retiredKey { await runLeases.release(retiredKey) }
+                    await closeTestingSlot()
                     return totalFailed
                 }
                 continuation.yield(.workerLog(worker: retired.label,
@@ -994,6 +1028,7 @@ public final class RunOrchestrator {
                     continuation.yield(.workerLog(worker: retired.label,
                         message: "⛔ Could not revive the worker"))
                     if let retiredKey { await runLeases.release(retiredKey) }
+                    await closeTestingSlot()
                     return totalFailed
                 }
                 // 復帰先が別のキー(別の serial で上がり直した等)なら旧キーはもう誰も使わない。
@@ -1032,8 +1067,11 @@ public final class RunOrchestrator {
 
         // 録画プロセスの起動に成功したときだけ RecordingLease を書く(record:false・adb/udid 不明・
         // プロセス spawn 失敗はいずれも false を返し、lease は書かれない)
-        if await videoRecording?.start(worker) == true, let leaseKey {
-            await recordingLeases.acquire(leaseKey)
+        if await videoRecording?.start(worker) == true {
+            await testingSlots.noteRecordingStarted()
+            if let leaseKey {
+                await recordingLeases.acquire(leaseKey)
+            }
         }
 
         var failed = 0
@@ -1140,8 +1178,16 @@ public final class RunOrchestrator {
             failed += 1
         }
         if let leaseKey { await runLeases.release(leaseKey) }
+        // 切り出し(stopRecording)より前に閉じる —— 最後のワーカーの切り出しこそが待ち時間の本体
+        await closeTestingSlot()
         await stopRecording(worker, leaseKey: leaseKey)
         return .completed(failed)
+    }
+
+    private func closeTestingSlot() async {
+        if await testingSlots.close() {
+            continuation.yield(.recordingFinalizing)
+        }
     }
 
     /// run-lease / 録画 lease のキー(iOS = シミュレータ UDID / Android = adb serial)
@@ -1209,6 +1255,8 @@ public enum RunLogFormatter {
             let name = flowURL.lastPathComponent.removingPercentEncoding
                 ?? flowURL.lastPathComponent
             return ["⚠️ Cannot run \(name): \(reason)", ""]
+        case .recordingFinalizing:
+            return ["🎬 All scenarios finished — extracting the per-scenario recording clips..."]
         }
     }
 

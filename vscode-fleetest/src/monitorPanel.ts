@@ -235,8 +235,15 @@ export class MonitorPanelController implements vscode.Disposable {
   /** stopping/rebooting を post 済みで done/failed が未着のデバイス名。runEnded 時、キャンセル等で
    * done/failed が来ないまま残った名前にバッジ固着を防ぐため phase:"done" を post する。 */
   private readonly wipeInProgress = new Set<string>();
-  /** GUI 実行(RunEventBus の runStarted〜runEnded)の間だけ true。 */
+  /** ツールバーの「実行中」表示(= 「テストを中断」)。runStarted〜runEnded に加え、「テスト実行」を
+   * 押してから run が始まるまで(startTestRunAfterDevicesUp)も true。 */
   private testRunActive = false;
+  /** RunEventBus の runStarted〜runEnded の間だけ true(= 本当に run が走っている)。testRunActive を
+   * 戻す判定の正本 —— 押下で立てた testRunActive は、run が始まらなければ runEnded が来ず戻らない。 */
+  private busRunActive = false;
+  /** 「録画を編集中」表示。recordingFinalizing(テストが全部終わり録画の切り出しだけが残った)から、
+   * run の終了後に録画タブへの自動表示(revealRun)を片付けるまで true。webview 再読込でも復元する。 */
+  private recordingsFinalizing = false;
   /** 「テスト実行」を押してから run を投げるまでの間(= 一括起動の完了待ち)。
    * この間の「テストを中断」は run ではなく一括起動を止める(startTestRunAfterDevicesUp)。 */
   private pendingRunStart = false;
@@ -650,20 +657,26 @@ export class MonitorPanelController implements vscode.Disposable {
   private handleBusMessage(message: RunBusMessage): void {
     switch (message.type) {
       case "runStarted":
+        this.busRunActive = true;
         this.laneSectionVisible = true;
         this.post({ type: "laneSectionVisible", visible: true });
         this.setTestRunActive(true);
+        this.setRecordingsFinalizing(false);
         this.dashboard.noteRunStarted(message.isDryRun);
         break;
       case "event":
         if (message.event.kind === "wipeStatus") {
           this.handleWipeStatusEvent(message.event.device, message.event.phase);
         }
+        if (message.event.kind === "recordingFinalizing") {
+          this.setRecordingsFinalizing(true);
+        }
         for (const action of reduceLaneEvent(this.laneState, message.event, Date.now())) {
           this.post({ type: "runEvent", action });
         }
         break;
       case "runEnded":
+        this.busRunActive = false;
         // runFinished未受信のまま終了(異常終了/キャンセル)した場合の後始末。正常終了時は無害(no-op)。
         for (const action of forceEndRunLaneState(this.laneState)) {
           this.post({ type: "runEvent", action });
@@ -674,8 +687,17 @@ export class MonitorPanelController implements vscode.Disposable {
         this.wipeInProgress.clear();
         // 録画タブを開いたまま実行すると、一覧の更新契機(タブ活性化・更新ボタン・再生からの戻る)
         // がどれも起きず、終わった run が出ないままになる。runEnded は NDJSON プロセス終了後
-        // (= recordings/index.json 書き出し済み)なので、ここで取り直せば競合しない。
+        // (= recordings/index.json 書き出し済み。リモート分の回収も済み)なので、ここで取り直せば競合しない。
         void this.recordings.refreshSessions();
+        // 「録画を編集中」は録画タブへ移る(revealRun の post)まで出したままにする。録画が読めない
+        // run・キャンセルでもここで必ず消す(次の runStarted まで残さない)
+        if (message.resultRun) {
+          void this.recordings
+            .revealRun(message.resultRun.project, message.resultRun.runID)
+            .finally(() => this.setRecordingsFinalizing(false));
+        } else {
+          this.setRecordingsFinalizing(false);
+        }
         this.setTestRunActive(false);
         this.dashboard.noteRunEnded();
         break;
@@ -707,7 +729,21 @@ export class MonitorPanelController implements vscode.Disposable {
       this.setTestRunActive(false);
       return;
     }
-    void vscode.commands.executeCommand("fleetest.runAllTests");
+    // コマンドは起こした run の終了(runEnded の後)か、run を始めずに抜けたとき(対象0件・プロジェクト
+    // 未解決・互換チェック失敗・開始前の中断)に戻る。**後者では runEnded が来ない**ので、戻った時点で
+    // run が走っていなければここで戻す(戻さないと「テストを中断」のまま固まる)
+    try {
+      await this.runAllTests();
+    } finally {
+      if (!this.busRunActive) {
+        this.setTestRunActive(false);
+      }
+    }
+  }
+
+  /** 差し替え口(テストは vscode スタブの executeCommand を await できないため)。 */
+  private async runAllTests(): Promise<void> {
+    await vscode.commands.executeCommand("fleetest.runAllTests");
   }
 
   /** GUI 実行の進行を webview へ配る。**状態を持つ**のは webview 再読込(sendInitialState)で
@@ -715,6 +751,11 @@ export class MonitorPanelController implements vscode.Disposable {
   private setTestRunActive(active: boolean): void {
     this.testRunActive = active;
     this.post({ type: "testRunActive", active });
+  }
+
+  private setRecordingsFinalizing(active: boolean): void {
+    this.recordingsFinalizing = active;
+    this.post({ type: "recordingsFinalizing", active });
   }
 
   private handleWipeStatusEvent(name: string, phase: WipeStatusMessage["phase"]): void {
@@ -752,6 +793,8 @@ export class MonitorPanelController implements vscode.Disposable {
         // (monitorDeviceStreamController.restartAllStreams 参照)。
         this.deviceStream.restartAllStreams();
         this.processManager.restartAll();
+        // ツールバーの実行中表示も実体(run が走っているか・起動待ちか)に合わせ直す
+        this.setTestRunActive(this.busRunActive || this.pendingRunStart);
         break;
       case "runTests":
         void this.startTestRunAfterDevicesUp();
@@ -1029,6 +1072,7 @@ export class MonitorPanelController implements vscode.Disposable {
     // webview 再読込でホストグラフの行(手元 + リモート機)が消えるので配り直す
     this.processManager.postHostMetricsMachines();
     this.post({ type: "testRunActive", active: this.testRunActive });
+    this.post({ type: "recordingsFinalizing", active: this.recordingsFinalizing });
     this.post({ type: "pollingMode", value: this.pollingMode });
     this.post({
       type: "lptScheduling",

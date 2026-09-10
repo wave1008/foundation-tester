@@ -7,7 +7,7 @@ import { closeDeviceOpMenu } from './deviceTiles.js';
 import { closeMachineDeviceMenu } from './machineProfilesTab.js';
 import { reapplyTilePaneHeight } from './splitter.js';
 
-export const TAB_IDS = ['dashboard', 'devices', 'profiles', 'processes', 'recordings', 'settings'];
+export const TAB_IDS = ['dashboard', 'devices', 'recordings', 'profiles', 'processes', 'settings'];
 const tabButtons = {
   dashboard: document.getElementById('tab-dashboard'),
   devices: document.getElementById('tab-devices'),
@@ -25,11 +25,19 @@ const tabPanels = {
   settings: document.getElementById('panel-settings'),
 };
 
+let currentTabId = null;
+
 function persistActiveTab(tab) {
   vscode.setState(Object.assign({}, vscode.getState(), { activeTab: tab }));
 }
 
+/** 表示中のタブ ID(初回 switchTab 前は null)。 */
+export function currentTab() {
+  return currentTabId;
+}
+
 export function switchTab(tab) {
+  currentTabId = tab;
   // タブ切替中に前のタブで開いていた右クリックメニューを残さない。
   closeDeviceOpMenu();
   closeMachineDeviceMenu();

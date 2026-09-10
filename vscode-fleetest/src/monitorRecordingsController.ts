@@ -20,6 +20,9 @@ import {
 } from "./recordingsModel";
 import { listRecordingSessions, loadRecordingSessionDetail, resolveSessionRunIDs } from "./recordingsStore";
 import type { MonitorPanelDeps } from "./monitorPanel";
+import type { MonitorToWebviewMessage } from "./monitorWebviewMessages";
+
+type RecordingsSessionMessage = Extract<MonitorToWebviewMessage, { type: "recordingsSession" }>;
 
 export class MonitorRecordingsController {
   constructor(private readonly deps: MonitorPanelDeps) {}
@@ -30,14 +33,9 @@ export class MonitorRecordingsController {
   }
 
   async openSession(project: string, runID: string): Promise<void> {
-    // **束ねたセッションはディスクから引き直す**(runGroup を共有する run 全部。recordingsStore の
-    // resolveSessionRunIDs)。webview が持つ一覧は古くなりうるので鍵の解決を任せない
-    const runIDs = await resolveSessionRunIDs(this.deps.workspaceRoot, project, runID);
-    const details = (
-      await Promise.all(runIDs.map((id) => loadRecordingSessionDetail(this.deps.workspaceRoot, project, id)))
-    ).filter((d): d is NonNullable<typeof d> => d !== null);
-    if (details.length === 0) {
-      this.deps.post({
+    const session = await this.buildSession(project, runID);
+    this.deps.post(
+      session ?? {
         type: "recordingsSession",
         ok: false,
         project,
@@ -49,8 +47,29 @@ export class MonitorRecordingsController {
         machine: null,
         machines: null,
         devices: null,
-      });
-      return;
+      },
+    );
+  }
+
+  /** run 完了時の自動表示。**録画を読めたときだけ** reveal 付きで送る(録画しない run・index.json 未作成は
+   *  何も送らない = 一覧ビューへ戻す ok:false も送らない)。タブを切り替えるかは webview が決める
+   *  (「テスト実行」タブを見ているときだけ。main.js の recordingsSession)。 */
+  async revealRun(project: string, runID: string): Promise<void> {
+    const session = await this.buildSession(project, runID);
+    if (session) {
+      this.deps.post({ ...session, reveal: true });
+    }
+  }
+
+  private async buildSession(project: string, runID: string): Promise<RecordingsSessionMessage | null> {
+    // **束ねたセッションはディスクから引き直す**(runGroup を共有する run 全部。recordingsStore の
+    // resolveSessionRunIDs)。webview が持つ一覧は古くなりうるので鍵の解決を任せない
+    const runIDs = await resolveSessionRunIDs(this.deps.workspaceRoot, project, runID);
+    const details = (
+      await Promise.all(runIDs.map((id) => loadRecordingSessionDetail(this.deps.workspaceRoot, project, id)))
+    ).filter((d): d is NonNullable<typeof d> => d !== null);
+    if (details.length === 0) {
+      return null;
     }
     // scenarioID ごとに最初にマッチしたエントリの動画だけ webview URI 化する(revive 再実行での
     // 重複 scenarioID は recordingsModel.ts 側と同じ「最初の1件」規約)。**束ねたセッションでは
@@ -104,7 +123,7 @@ export class MonitorRecordingsController {
     // エラーとツリーは機械をまたいで1つに混ぜる(壁時計順・クラス初出順。単機のときは従来と同じ)
     errors.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
     const tree = groupTreeByClass(treeScenarios);
-    this.deps.post({
+    return {
       type: "recordingsSession",
       ok: true,
       project,
@@ -120,6 +139,6 @@ export class MonitorRecordingsController {
       clipsFailed,
       sourcesFailed,
       encoderFallback,
-    });
+    };
   }
 }

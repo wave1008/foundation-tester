@@ -8,7 +8,7 @@ export const panelsStrings = {
   "panels.tabs.testRun": { ja: "テスト実行", en: "Test Run" },
   "panels.tabs.profiles": { ja: "プロファイル", en: "Profiles" },
   "panels.tabs.processes": { ja: "プロセス", en: "Processes" },
-  "panels.tabs.recordings": { ja: "録画", en: "Recordings" },
+  "panels.tabs.recordings": { ja: "録画セッション", en: "Recording Sessions" },
   "panels.tabs.settings": { ja: "設定", en: "Settings" },
 
   "panels.recordings.sessionsTitle": { ja: "録画セッション", en: "Recording Sessions" },
@@ -57,6 +57,7 @@ export const panelsStrings = {
   // 「テスト実行」タブのツールバー右寄り。押すと Test Explorer を前面に出して全シナリオを走らせる
   // (配線: webview/monitor/deviceTiles.js → monitorPanel.ts → コマンド fleetest.runAllTests)。
   "panels.toolbar.runTests": { ja: "テスト実行", en: "Run Tests" },
+  "panels.toolbar.recordingsFinalizing": { ja: "録画を編集中...", en: "Editing recordings..." },
   "panels.banner.copied": { ja: "エラーメッセージをコピーしました", en: "Copied the error message" },
   "panels.toolbar.autoFitTitle": { ja: "自動フィット", en: "Auto-fit" },
   "panels.hostMetrics.memTitle": { ja: "メモリ使用量", en: "Memory usage" },

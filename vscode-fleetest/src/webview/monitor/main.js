@@ -70,10 +70,12 @@ import { applySettings } from './settingsTab.js';
 import { applyDevicePickMachines } from './devicePickMachine.js';
 import { applyResidentMessage } from './processesTab.js';
 import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
-import { activateTab, TAB_IDS, switchTab } from './tabs.js';
+import { activateTab, currentTab, TAB_IDS, switchTab } from './tabs.js';
 import { setTilePaneHeight, setTileAutoFit } from './splitter.js';
 import { adoptTitleHoverTips } from './hoverTip.js';
 import { handleDashboardMessage } from './dashboardTab.js';
+
+const recordingsFinalizingNote = document.getElementById('run-recordings-finalizing');
 
 window.addEventListener('message', (event) => {
   const message = event.data;
@@ -104,6 +106,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'testRunActive':
       applyTestRunActive(!!message.active);
+      break;
+    case 'recordingsFinalizing':
+      recordingsFinalizingNote.hidden = !message.active;
       break;
     case 'bootBusy':
       bulkUpActive = !!message.busy && message.bulkOp === 'up';
@@ -248,6 +253,16 @@ window.addEventListener('message', (event) => {
       applyRecordingsSessions(message);
       break;
     case 'recordingsSession':
+      // reveal = run 完了時の自動表示(monitorRecordingsController.ts の revealRun)。「テスト実行」タブを
+      // 見ているときだけ切り替える —— 他のタブで作業中なら奪わない(録画タブの再生中の別セッションも潰さない)。
+      // 先に再生ビューへ差し替えてから切り替える: 逆順だと ft-tab-activated が一覧の再取得を撃つ
+      if (message.reveal) {
+        if (currentTab() === 'devices') {
+          applyRecordingsSession(message);
+          activateTab('recordings');
+        }
+        break;
+      }
       applyRecordingsSession(message);
       break;
     case 'tilePaneHeight':

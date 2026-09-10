@@ -13,6 +13,7 @@
 // - ツリー行クリックで選択ハイライト+エラー一覧フィルター(チップ表示)、再クリックで解除
 // - キーボード(録画タブアクティブ・再生ビュー表示中のみ): Space で play/pause
 // - 連続再生 ON で 'ended' 発火時に次のテスト(scenarioNav の次エントリ)の動画へ切り替わる
+// - run 完了時の reveal は「テスト実行」タブ表示中だけ録画タブへ切り替えて再生ビューを開く
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -65,13 +66,13 @@ before(async () => {
   webviewBundle = mainBuild.outputFiles[0].text;
 });
 
-/** 実 HTML+バンドルを読み込んだ webview 相当の DOM を作り、録画タブをアクティブにする
+/** 実 HTML+バンドルを読み込んだ webview 相当の DOM を作り、tab(既定は録画タブ)をアクティブにする
  * (実ユーザー操作と同じくタブボタンをクリックする。キーボードショートカットが
  * 「録画タブアクティブ」を条件にするため必須)。
  * 呼び出し側は必ず t.after(() => window.close()) で後始末すること — main.js は
  * processesTab.js の setInterval(1秒ポーリング)を含むため、close() し忘れると
  * jsdom window ごとにタイマーが残り続け、テストプロセスが終了しなくなる。 */
-function createWebview() {
+function createWebview({ tab = "recordings" } = {}) {
   const dom = new JSDOM(panelHtml, {
     runScripts: "outside-only",
     pretendToBeVisual: true,
@@ -103,7 +104,7 @@ function createWebview() {
     Object.defineProperty(video, "paused", { value: true, configurable: true });
   };
 
-  window.document.getElementById("tab-recordings").click();
+  window.document.getElementById(`tab-${tab}`).click();
 
   const sendToWebview = (data) => window.dispatchEvent(new window.MessageEvent("message", { data }));
   return {
@@ -373,4 +374,78 @@ test("再生: 一部だけ欠落しているときはプレイヤーを出した
   assert.notEqual(notice.style.display, "none");
   assert.match(notice.textContent, /2/);
   assert.equal(window.document.querySelector(".recordings-no-video-message").style.display, "none");
+});
+
+// ---- run 完了時の自動表示(reveal。monitorRecordingsController.ts の revealRun) ----------------
+
+/** tab-<id> ボタンが選択状態か(tabs.js の switchTab が active と aria-selected を立てる)。 */
+function isTabActive(window, id) {
+  return window.document.getElementById(`tab-${id}`).classList.contains("active");
+}
+
+test("reveal: 「テスト実行」タブ表示中なら録画タブへ切り替えて再生ビューで開く", (t) => {
+  const { window, posts, video, sendToWebview } = createWebview({ tab: "devices" });
+  t.after(() => window.close());
+  assert.ok(isTabActive(window, "devices"), "前提: テスト実行タブから始まる");
+  posts.length = 0;
+
+  sendToWebview({ ...SESSION_MESSAGE, reveal: true });
+
+  assert.ok(isTabActive(window, "recordings"), "録画タブへ遷移する");
+  assert.equal(window.document.getElementById("panel-recordings").style.display, "flex");
+  assert.equal(window.document.getElementById("recordings-player-view").style.display, "flex", "セッション詳細(再生ビュー)を出す");
+  assert.equal(window.document.getElementById("recordings-session-title").textContent, "SampleApp / 20260724-000000");
+  assert.equal(video.src, VIDEOS[0].videoUri, "最初のシナリオの動画を読み込む");
+  assert.equal(
+    posts.some((m) => m.type === "recordingsRefresh"),
+    false,
+    "再生ビューを出してから切り替える(先に切り替えると一覧の再取得を撃つ)",
+  );
+});
+
+test("reveal: 他のタブで作業中なら切り替えず、録画タブの中身も差し替えない", (t) => {
+  const { window, video, sendToWebview } = createWebview({ tab: "settings" });
+  t.after(() => window.close());
+
+  sendToWebview({ ...SESSION_MESSAGE, reveal: true });
+
+  assert.ok(isTabActive(window, "settings"), "設定タブのまま");
+  assert.equal(window.document.getElementById("recordings-player-view").style.display, "none", "再生ビューも開かない");
+  assert.equal(video.getAttribute("src"), null);
+});
+
+test("reveal: 録画タブで別のセッションを再生中なら差し替えない", (t) => {
+  const { window, video, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview(SESSION_MESSAGE);
+  const playing = video.src;
+
+  sendToWebview({ ...SESSION_MESSAGE, runID: "20260725-000000", videos: [VIDEOS[1]], reveal: true });
+
+  assert.equal(window.document.getElementById("recordings-session-title").textContent, "SampleApp / 20260724-000000");
+  assert.equal(video.src, playing);
+});
+
+test("reveal 無し(利用者が一覧から開いた応答)はタブを切り替えない", (t) => {
+  const { window, sendToWebview } = createWebview({ tab: "devices" });
+  t.after(() => window.close());
+
+  sendToWebview(SESSION_MESSAGE);
+
+  assert.ok(isTabActive(window, "devices"));
+});
+
+test("recordingsFinalizing: テスト実行ボタンの右に「録画を編集中...」を出し入れする", (t) => {
+  const { window, sendToWebview } = createWebview({ tab: "devices" });
+  t.after(() => window.close());
+  const note = window.document.getElementById("run-recordings-finalizing");
+  assert.equal(note.previousElementSibling.id, "btn-run-tests", "テスト実行ボタンのすぐ右");
+  assert.equal(note.hidden, true, "既定は出さない");
+
+  sendToWebview({ type: "recordingsFinalizing", active: true });
+  assert.equal(note.hidden, false);
+  assert.equal(note.textContent, "録画を編集中...");
+
+  sendToWebview({ type: "recordingsFinalizing", active: false });
+  assert.equal(note.hidden, true);
 });

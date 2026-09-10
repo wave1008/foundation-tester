@@ -55,6 +55,11 @@ final class RunEventNDJSONTests: XCTestCase {
                                          description: "tap", file: nil, line: nil)), [])
     }
 
+    /// 拡張(vscode-fleetest/src/model.ts の RecordingFinalizingEvent)が読む kind 名を固定する
+    func testRecordingFinalizingIsASingleKindOnlyLine() {
+        XCTAssertEqual(lines(.recordingFinalizing), [#"{"kind":"recordingFinalizing"}"#])
+    }
+
     // MARK: - シナリオ・scene のライフサイクル
 
     func testFlowStartedCarriesTitleFromRunItem() throws {

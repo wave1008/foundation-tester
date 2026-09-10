@@ -75,8 +75,8 @@ function renderTabBar(): string {
   return `<div id="tabbar" role="tablist">
     <button id="tab-dashboard" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-dashboard">${t("panels.tabs.dashboard")}</button>
     <button id="tab-devices" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="panel-devices">${t("panels.tabs.testRun")}</button>
-    <button id="tab-profiles" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-profiles">${t("panels.tabs.profiles")}</button>
     <button id="tab-recordings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-recordings">${t("panels.tabs.recordings")}</button>
+    <button id="tab-profiles" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-profiles">${t("panels.tabs.profiles")}</button>
     <button id="tab-processes" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-processes">${t("panels.tabs.processes")}</button>
     <button id="tab-settings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-settings">${t("panels.tabs.settings")}</button>
     <!-- 更新があるときだけ現れるボタン(タブの並びの直後。タブに関係なく常に見える)。
@@ -219,6 +219,8 @@ function renderDevicesPanel(): string {
            deviceTiles.js の refreshRunTestsButton)。初期状態は disabled —— profileInfo が
            届くまで実行プロファイルが何か分からない。 -->
       <button id="btn-run-tests" disabled>${t("panels.toolbar.runTests")}</button>
+      <!-- テストが全部終わってから録画タブへ移るまでの間だけ出す(main.js の recordingsFinalizing) -->
+      <span id="run-recordings-finalizing" class="run-recordings-finalizing" hidden>${t("panels.toolbar.recordingsFinalizing")}</span>
       <!-- hostMetricsメッセージ受信のたびにmain.js側で再描画(独自タイマーなし)。
            **リモート機のぶんは行が増える**(hostCharts.js が data-machine="" の行を複製する)ので、
            行の中身は data-metric で引く(id は手元の行にしか無い)。 -->

@@ -83,7 +83,8 @@ enum ApiRunMachineFanout {
             writeLine(encode(ApiRunStartedEvent(total: 0)))
             writeLine(encode(ApiRunFinishedEvent(
                 passed: 0, failed: 0,
-                testSeconds: Date().timeIntervalSince(dispatchStart), scenarioTotalSeconds: nil)))
+                testSeconds: Date().timeIntervalSince(dispatchStart), scenarioTotalSeconds: nil,
+                runID: nil)))
             return 0
         }
         for (_, group, ids) in active {
@@ -141,10 +142,11 @@ enum ApiRunMachineFanout {
         // 各子タスクの return を待つので、この時点で runChild は必ず .exited を yield 済み)
         continuation.finish()
 
-        let (totalPassed, totalFailed) = await multiplexed
+        let (totalPassed, totalFailed, runID) = await multiplexed
         writeLine(encode(ApiRunFinishedEvent(
             passed: totalPassed, failed: totalFailed,
-            testSeconds: Date().timeIntervalSince(dispatchStart), scenarioTotalSeconds: nil)))
+            testSeconds: Date().timeIntervalSince(dispatchStart), scenarioTotalSeconds: nil,
+            runID: runID)))
 
         logStderr("")
         logStderr("=== profile \"\(profileName)\" across machines ===")
@@ -302,7 +304,7 @@ enum ApiRunMachineFanout {
     private static func consume(
         stream: AsyncStream<ChildEvent>, groupMachines: [String?], assignedScenarioIDs: [[String]],
         isCancelled: @escaping @Sendable () -> Bool
-    ) async -> (passed: Int, failed: Int) {
+    ) async -> (passed: Int, failed: Int, runID: String?) {
         var multiplexer = MachineFanoutMultiplexer(groupMachines: groupMachines, assignedScenarioIDs: assignedScenarioIDs)
         for await event in stream {
             switch event {
@@ -314,7 +316,7 @@ enum ApiRunMachineFanout {
                 for line in multiplexer.childExited(index, exitCode: status) { writeLine(line) }
             }
         }
-        return (multiplexer.totalPassed, multiplexer.totalFailed)
+        return (multiplexer.totalPassed, multiplexer.totalFailed, multiplexer.runID)
     }
 
     // MARK: - 出力(FleetRunner.log/logLine と同じ規律。stdout は NDJSON 専用・行単位で lock)
@@ -361,6 +363,15 @@ struct MachineFanoutMultiplexer {
     private var finishedByIndex: [Set<String>]
     private(set) var totalPassed = 0
     private(set) var totalFailed = 0
+    /// 子の runFinished が運んだ runID のうち最初の1つ。子は同じ runGroup を共有するので
+    /// どれでも束ねたセッション全体に届く(ApiRunFinishedEvent.runID の宣言参照)
+    private(set) var runID: String?
+    /// recordingFinalizing は子ごとに来るので**全部の子がテストを終えた時点で1回だけ**出す
+    /// (1台目の子の分をそのまま流すと、他の機械がまだテスト中なのに「録画を編集中」になる)。
+    /// 終えた = 自分の recordingFinalizing を出したか、プロセスが終わったか(録画しない子は後者だけ)
+    private var finalizingIndices: Set<Int> = []
+    private var exitedIndices: Set<Int> = []
+    private var finalizingRelayed = false
 
     init(groupMachines: [String?], assignedScenarioIDs: [[String]] = []) {
         self.groupMachines = groupMachines
@@ -376,14 +387,18 @@ struct MachineFanoutMultiplexer {
         switch Self.classify(line, host: groupMachines[childIndex]) {
         case .runStarted:
             return []
-        case .runFinished(let passed, let failed):
+        case .runFinished(let passed, let failed, let childRunID):
             totalPassed += passed
             totalFailed += failed
+            if runID == nil { runID = childRunID }
             return []
         case .workersReady(let workers):
             workersByIndex[childIndex] = workers
             let merged = groupMachines.indices.flatMap { workersByIndex[$0] }
             return [Self.encode(ApiWorkersReadyEvent(workers: merged))]
+        case .recordingFinalizing(let line):
+            finalizingIndices.insert(childIndex)
+            return relayFinalizingIfAllDone(line)
         case .other(let rewritten, let finishedScenario):
             if let scenario = finishedScenario { finishedByIndex[childIndex].insert(scenario) }
             return [rewritten]
@@ -393,8 +408,11 @@ struct MachineFanoutMultiplexer {
     /// 子プロセスの終了。担当していたが scenarioFinished が来ないまま終わったシナリオを
     /// failed として合成する(正常に全部完了していれば空配列)
     mutating func childExited(_ index: Int, exitCode: Int32) -> [String] {
+        exitedIndices.insert(index)
         let unfinished = assignedScenarioIDs[index].filter { !finishedByIndex[index].contains($0) }
-        guard !unfinished.isEmpty else { return [] }
+        guard !unfinished.isEmpty else {
+            return relayFinalizingIfAllDone(ScenarioEvent(kind: "recordingFinalizing").encodedLine())
+        }
         totalFailed += unfinished.count
         let machineLabel = DeviceMachineGrouping.display(groupMachines[index])
         var log = ScenarioEvent(kind: "log")
@@ -414,12 +432,22 @@ struct MachineFanoutMultiplexer {
             finished.passed = false
             lines.append(finished.encodedLine())
         }
-        return lines
+        return lines + relayFinalizingIfAllDone(ScenarioEvent(kind: "recordingFinalizing").encodedLine())
+    }
+
+    /// 1つでも子が recordingFinalizing を出し、かつ全部の子が「出した or 終わった」なら1回だけ line を返す
+    private mutating func relayFinalizingIfAllDone(_ line: String) -> [String] {
+        guard !finalizingRelayed, !finalizingIndices.isEmpty,
+              groupMachines.indices.allSatisfy({ finalizingIndices.contains($0) || exitedIndices.contains($0) })
+        else { return [] }
+        finalizingRelayed = true
+        return [line]
     }
 
     private enum ClassifiedLine {
         case runStarted
-        case runFinished(passed: Int, failed: Int)
+        case runFinished(passed: Int, failed: Int, runID: String?)
+        case recordingFinalizing(String)
         case workersReady([ApiWorkerInfo])
         /// finishedScenario: kind == scenarioFinished のときだけシナリオ ID(childExited の
         /// 未完了判定に使う)
@@ -441,7 +469,11 @@ struct MachineFanoutMultiplexer {
         case "runStarted":
             return .runStarted
         case "runFinished":
-            return .runFinished(passed: obj["passed"] as? Int ?? 0, failed: obj["failed"] as? Int ?? 0)
+            let runID = (obj["runID"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            return .runFinished(passed: obj["passed"] as? Int ?? 0, failed: obj["failed"] as? Int ?? 0,
+                                runID: runID)
+        case "recordingFinalizing":
+            return .recordingFinalizing(line)
         case "workersReady":
             let raw = obj["workers"] as? [[String: Any]] ?? []
             let workers = raw.compactMap { entry -> ApiWorkerInfo? in

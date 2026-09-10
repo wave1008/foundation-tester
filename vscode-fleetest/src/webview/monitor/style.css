@@ -265,6 +265,18 @@ button.bulk-cancel:hover:not(:disabled) {
 #btn-run-tests {
   margin-right: 8px;
 }
+/* テスト実行ボタン右の「録画を編集中...」(出るのはテストが全部終わってから録画タブへ移るまで)。
+   右の余白はボタンと同じ —— 出ている間もホストグラフとの境目を保つ */
+.run-recordings-finalizing {
+  flex: 0 0 auto;
+  margin-right: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+}
+.run-recordings-finalizing[hidden] {
+  display: none;
+}
 /* ツールバー右端へ寄せる。**寄せるのはグループ1つだけ** —— 個々のボタンに margin-left:auto を
    付けると、その間がツールバーの gap ぶん開いて別々のボタンに見える。 */
 .toolbar-tail-start {

@@ -549,6 +549,7 @@ async function executeRun(
   // runFinished(NDJSON)で埋まる。ApiRunCommand.swift の ApiRunFinishedEvent と同期(model.ts の RunFinishedEvent)。
   let testSeconds: number | undefined;
   let scenarioTotalSeconds: number | undefined;
+  let resultRunID: string | undefined;
 
   if (targets.size === 0) {
     if (failedOnly) {
@@ -919,6 +920,7 @@ async function executeRun(
           if (value.kind === "runFinished") {
             testSeconds = value.testSeconds;
             scenarioTotalSeconds = value.scenarioTotalSeconds;
+            resultRunID = typeof value.runID === "string" && value.runID !== "" ? value.runID : undefined;
           }
         }
         const { state, actions } = reduceRunEvent(reducerState, value, Date.now());
@@ -973,7 +975,10 @@ async function executeRun(
         );
       }
     }
-    eventBus.endRun(runId);
+    eventBus.endRun(
+      runId,
+      resultRunID !== undefined ? { project: resolution.project, runID: resultRunID } : undefined,
+    );
     cancelListener.dispose();
     watcher.setSuspended(false);
     activeRunCount -= 1;

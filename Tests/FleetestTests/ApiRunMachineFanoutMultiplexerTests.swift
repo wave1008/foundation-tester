@@ -32,6 +32,62 @@ final class ApiRunMachineFanoutMultiplexerTests: XCTestCase {
         XCTAssertEqual(mux.totalFailed, 1)
     }
 
+    /// 集計の runFinished が運ぶ runID は子が名乗った最初の1つ(runID を持たない子 = 記録しない run は飛ばす)
+    func testRunFinishedKeepsTheFirstChildRunID() {
+        var mux = MachineFanoutMultiplexer(groupMachines: [nil, "M1Max", "M2"])
+        XCTAssertNil(mux.runID)
+        _ = mux.ingest(childIndex: 0, line: #"{"kind":"runFinished","passed":1,"failed":0}"#)
+        XCTAssertNil(mux.runID, "runID の無い子から runID を作らない")
+        _ = mux.ingest(childIndex: 1, line: #"{"kind":"runFinished","passed":1,"failed":0,"runID":"20260911-101010-aaaa"}"#)
+        _ = mux.ingest(childIndex: 2, line: #"{"kind":"runFinished","passed":1,"failed":0,"runID":"20260911-101011-bbbb"}"#)
+        XCTAssertEqual(mux.runID, "20260911-101010-aaaa")
+    }
+
+    // MARK: - recordingFinalizing は全部の子がテストを終えたときに1回だけ
+
+    private let finalizing = #"{"kind":"recordingFinalizing"}"#
+
+    func testRecordingFinalizingWaitsForEveryChild() {
+        var mux = MachineFanoutMultiplexer(groupMachines: [nil, "M1Max"])
+        XCTAssertEqual(mux.ingest(childIndex: 0, line: finalizing), [], "M1Max がまだテスト中")
+        XCTAssertEqual(mux.ingest(childIndex: 1, line: finalizing), [finalizing])
+        XCTAssertEqual(mux.childExited(0, exitCode: 0), [], "2回目は出さない")
+        XCTAssertEqual(mux.childExited(1, exitCode: 0), [])
+    }
+
+    func testRecordingFinalizingCountsAChildThatExitedWithoutRecording() {
+        var mux = MachineFanoutMultiplexer(groupMachines: [nil, "M1Max"])
+        XCTAssertEqual(mux.ingest(childIndex: 1, line: finalizing), [])
+        XCTAssertEqual(mux.childExited(0, exitCode: 0), [finalizing], "録画しない子は終了で「終えた」に数える")
+    }
+
+    func testRecordingFinalizingIsNotSynthesizedWhenNoChildRecorded() {
+        var mux = MachineFanoutMultiplexer(groupMachines: [nil, "M1Max"])
+        XCTAssertEqual(mux.childExited(0, exitCode: 0), [])
+        XCTAssertEqual(mux.childExited(1, exitCode: 0), [], "どの子も録画していなければ出さない")
+    }
+
+    func testRecordingFinalizingFollowsSynthesizedFailuresOfAnExitedChild() {
+        var mux = MachineFanoutMultiplexer(groupMachines: [nil, "M1Max"], assignedScenarioIDs: [["A.S1"], ["B.S1"]])
+        XCTAssertEqual(mux.ingest(childIndex: 0, line: finalizing), [])
+        let lines = mux.childExited(1, exitCode: 1)
+        XCTAssertEqual(lines.last, finalizing, "未完了の合成 failed の後に出す")
+        XCTAssertEqual(lines.filter { $0 == finalizing }.count, 1)
+    }
+
+    /// 拡張(vscode-fleetest/src/model.ts の RunFinishedEvent.runID)が読むキー名を固定する。記録しない run ではキーごと省く
+    func testRunFinishedEventEncodesRunIDOnlyWhenRecorded() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let recorded = try encoder.encode(ApiRunFinishedEvent(
+            passed: 1, failed: 0, testSeconds: nil, scenarioTotalSeconds: nil, runID: "20260911-101010-aaaa"))
+        XCTAssertEqual(String(data: recorded, encoding: .utf8),
+                       #"{"failed":0,"kind":"runFinished","passed":1,"runID":"20260911-101010-aaaa"}"#)
+        let unrecorded = try encoder.encode(ApiRunFinishedEvent(
+            passed: 1, failed: 0, testSeconds: nil, scenarioTotalSeconds: nil, runID: nil))
+        XCTAssertEqual(String(data: unrecorded, encoding: .utf8), #"{"failed":0,"kind":"runFinished","passed":1}"#)
+    }
+
     // MARK: - workersReady は子ごとに届くたび累積で再送する(バッファしない)
 
     func testWorkersReadyResendsCumulativelyPerChild() {

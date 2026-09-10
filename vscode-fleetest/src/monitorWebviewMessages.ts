@@ -430,7 +430,14 @@ export type MonitorToWebviewMessage =
        *  取り違えないための欄。Sources/FTCore/RecordingIndex.swift の sourcesFailed と同期)。 */
       readonly sourcesFailed?: number | null;
       readonly encoderFallback?: boolean;
+      // true = recordingsOpen への応答ではなく run 完了時の自動表示(monitorRecordingsController.ts の
+      // revealRun。ok:true のときだけ来る)。webview は「テスト実行」タブ表示中だけ録画タブへ切り替えて
+      // 開き、それ以外のタブでは捨てる(main.js の recordingsSession)
+      readonly reveal?: boolean;
     }
+  // 「テスト実行」ボタン右の「録画を編集中」表示(monitorPanel.ts の setRecordingsFinalizing)。
+  // 対向: src/webview/monitor/main.js の recordingsFinalizing
+  | { readonly type: "recordingsFinalizing"; readonly active: boolean }
   // ---- ダッシュボードタブ -------------------------------------------------------------------
   // 「結果ダッシュボード」タブ(旧 dashboardPanel.ts)向けの封筒。dashboardModel.ts の
   // DashboardToWebviewMessage/DashboardFromWebviewMessage 自体はモニターへの統合前と不変

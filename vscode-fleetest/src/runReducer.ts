@@ -175,6 +175,10 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
       // デバイスタイルのバッジ表示(monitorPanel.ts)専用。Test Explorer 出力には出さない。
       return [];
 
+    case "recordingFinalizing":
+      // モニターの「録画を編集中」表示(monitorPanel.ts)専用。Test Explorer 出力には出さない。
+      return [];
+
     case "scenarioRequeued":
       return [
         {

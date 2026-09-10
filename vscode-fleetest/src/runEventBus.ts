@@ -11,7 +11,14 @@ import type { RunEvent } from "./model";
 export type RunBusMessage =
   | { readonly type: "runStarted"; readonly runId: number; readonly isDryRun: boolean; readonly liveFollow: boolean }
   | { readonly type: "event"; readonly runId: number; readonly event: RunEvent }
-  | { readonly type: "runEnded"; readonly runId: number };
+  | { readonly type: "runEnded"; readonly runId: number; readonly resultRun?: RunResultRef };
+
+/** 終わった run の結果の置き場(TestProjects/<project>/results/runs/…/<runID>)。runFinished が
+ *  runID を運んだときだけ付く(キャンセル・異常終了・dry-run では無い)。 */
+export interface RunResultRef {
+  readonly project: string;
+  readonly runID: string;
+}
 
 export type RunBusListener = (message: RunBusMessage) => void;
 
@@ -40,8 +47,8 @@ export class RunEventBus {
     this.emit({ type: "event", runId, event });
   }
 
-  endRun(runId: number): void {
-    this.emit({ type: "runEnded", runId });
+  endRun(runId: number, resultRun?: RunResultRef): void {
+    this.emit(resultRun ? { type: "runEnded", runId, resultRun } : { type: "runEnded", runId });
   }
 
   private emit(message: RunBusMessage): void {
