@@ -937,10 +937,6 @@ struct RunScenarios: AsyncParsableCommand {
             help: "Timeout in seconds for the whole remote dispatch (default: auto, sized from the scenario count; see docs/remote-runner.md)")
     var remoteTimeout: Int?
 
-    @Option(name: .customLong("remote-artifacts"),
-            help: "Collect recordings and run logs (results/) from the remote after the run: collect (default) or on-demand (leave them on the remote; docs/remote-runner.md)")
-    var remoteArtifacts: String = "collect"
-
     @Flag(name: .customLong("performance"),
           help: "Performance-testing mode (requires --profile or --fleet): if a dead lane cannot be revived before the run starts, fail instead of dropping it and continuing on the remaining lanes. iOS lanes are built before the run starts (no late join) so a missing one is reported before the run, not in the middle of it")
     var performanceMode = false
@@ -1156,7 +1152,7 @@ struct RunScenarios: AsyncParsableCommand {
                 setOverrides: profileOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                 performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                 remoteDir: remoteDir, remoteTimeout: remoteTimeout,
-                remoteArtifacts: remoteArtifacts, quiet: quiet, junit: junit,
+                quiet: quiet, junit: junit,
                 broadcast: broadcast)
             if exitCode != 0 { throw ExitCode(exitCode) }
             return
@@ -1439,12 +1435,11 @@ struct RunScenarios: AsyncParsableCommand {
 
         let resolved = try resolveRemoteTarget(dispatch, remoteDirOverride: remoteDir)
         resolved.announce()
-        let artifactsMode = try RemoteArtifactsMode.parse(remoteArtifacts)
         let testProject = try ScenarioHost.project(named: project)
         let localRoot = try RepoRoot.find()
         let dispatcher = RemoteRunDispatcher(
             host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
-            artifacts: artifactsMode, forceLock: forceLock, waitLock: waitLock, hostLabel: dispatch.rawTarget)
+            forceLock: forceLock, waitLock: waitLock, hostLabel: dispatch.rawTarget)
         var scopedDevices = devices
         var scopedDeviceHost = deviceMachine
         if deviceMachine == nil {
@@ -1496,7 +1491,7 @@ struct RunScenarios: AsyncParsableCommand {
             setOverrides: try RunProfileSetOverride.parse(setOverrides),
             noLPT: noLPT, lptHistoryRuns: lptHistoryRuns, performanceMode: performanceMode,
             forceLock: forceLock, waitLock: waitLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
-            remoteArtifacts: remoteArtifacts, split: split, quiet: quiet, junit: junit)
+            split: split, quiet: quiet, junit: junit)
         if exitCode != 0 {
             throw ExitCode(exitCode)
         }

@@ -48,8 +48,8 @@ is unavailable.
 - Toolbar buttons start/stop every device on the machine profile and restart the monitor process.
 - The **Profiles** tab lists, creates, copies, renames and deletes test projects themselves,
   and lists, creates, copies, renames, deletes and edits run/app/machine profiles.
-- The **Settings** tab holds display and update options, including the update-check and
-  update actions described below.
+- The **Settings** tab holds display, update, log-and-recording cleanup, and remote machine
+  settings, including the update-check and update actions described below.
 
 ## Live Control
 
@@ -112,7 +112,32 @@ reads `git ls-remote` and never modifies the repository.
 ## Display Language
 
 `fleetest.language` (`auto`/`ja`/`en`) controls the extension's own UI text. `auto` follows VS
-Code's display language.
+Code's display language. You can also switch it from **"Display Language"** in the Settings tab.
+
+## Cleaning Up Logs and Recordings
+
+Recordings, reports, and logs pile up with every run, so each category has a size limit and the
+oldest files are deleted first. The controls are in the Settings tab's **"Logs & recordings"**
+section. They are stored as **this Mac's settings** (`fleetest api retention`), not VS Code
+settings, so they also apply to tests you run directly from a terminal.
+
+- **"Clean up in the background after a test run"** (on by default): cleanup runs in the
+  background after each test run. It does not count toward the test run time.
+- **Limits**: only a category whose usage reaches 90% of its limit is trimmed, oldest first, back
+  down to 90%. `0` means keep nothing; clearing a field resets just that item to its default.
+
+  | Item | Default limit |
+  |---|---|
+  | Device recordings and screenshots | 20 GB |
+  | Recordings | 100 GB |
+  | Reports | 1000 MB |
+  | Logs | 500 MB |
+
+- Each row shows the **current usage** on its right. Measuring takes about 20 seconds; until then
+  it reads "Now - GB".
+- **"Clean up now"**: deletes right away using the same rule. Before deleting, a confirmation
+  dialog shows the total that will be removed.
+- Result records (the pass/fail and timing JSON) are never deleted.
 
 ## Key Settings
 

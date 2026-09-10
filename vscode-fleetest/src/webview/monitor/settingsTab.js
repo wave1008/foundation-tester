@@ -1,7 +1,7 @@
 // モニターパネル「設定」タブ(#panel-settings)。main.js が applySettings を message
 // ディスパッチャに組み込む。対向: src/monitorWebviewMessages.ts の setPollingMode/pollingMode・
 // setLanguage/language メッセージ、処理は src/monitorPanel.ts。常駐プロセス一覧は processesTab.js を参照。
-// リモート実行のホスト表と artifacts(results/ 回収モード)セレクタは remoteConfig/setRemoteConfig に相乗り。
+// リモート実行のホスト表は remoteConfig/setRemoteConfig で同期する。
 //
 // 更新セクション: checkUpdate/runUpdate を送り、updateStatus を受ける(実処理は
 // src/monitorUpdateController.ts → Scripts/update-check.sh / update.sh)。
@@ -27,7 +27,6 @@ const lptHistoryInput = document.getElementById('settings-lpt-history');
 // 拡張から届く既定値(空欄・不正値のときに戻す値)。届くまでは null。
 let lptHistoryDefault = null;
 const languageSelect = document.getElementById('settings-language');
-const remoteArtifactsSelect = document.getElementById('settings-remote-artifacts');
 const remoteHostsBody = document.getElementById('settings-remote-hosts-body');
 const remoteHostsAddButton = document.getElementById('settings-remote-hosts-add');
 const updateStatus = document.getElementById('settings-update-status');
@@ -199,7 +198,6 @@ function sendRemoteConfig() {
   vscode.postMessage({
     type: 'setRemoteConfig',
     hosts: currentHostsPayload(),
-    artifacts: remoteArtifactsSelect.value,
   });
 }
 
@@ -330,10 +328,6 @@ remoteHostsAddButton.addEventListener('click', () => {
   addHostRow(null, false);
 });
 
-remoteArtifactsSelect.addEventListener('change', () => {
-  sendRemoteConfig();
-});
-
 // remoteConfig 受信(ready 直後 / setRemoteConfig の応答)で確定済み行を作り直す。
 // 未確定行(「追加」を押してまだ確定していない入力中の行)は CLI へ一度も送っていないため
 // message.hosts には含まれない。ここで作り直すと消えてしまうので、DOM ごと退避して後ろへ戻す。
@@ -363,7 +357,6 @@ function applyRemoteConfig(message) {
     remoteHostsBody.appendChild(row.tr);
     hostRows.push(row);
   }
-  remoteArtifactsSelect.value = message.artifacts === 'on-demand' ? 'on-demand' : 'collect';
   if (typeof message.error === 'string' && message.error !== '') {
     remoteHostsError.textContent = t('wvMonitor2.remote.syncFailed', { reason: message.error });
     remoteHostsError.hidden = false;

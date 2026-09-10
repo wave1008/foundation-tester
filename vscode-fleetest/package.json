@@ -2,7 +2,7 @@
   "name": "vscode-fleetest",
   "displayName": "fleetest mobile",
   "description": "%fleetest.extension.description%",
-  "version": "0.0.875",
+  "version": "0.0.876",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -187,16 +187,6 @@
           "type": "boolean",
           "default": true,
           "description": "%fleetest.config.remoteCompatCheck.description%"
-        },
-        "fleetest.remote.artifacts": {
-          "type": "string",
-          "scope": "machine",
-          "enum": [
-            "collect",
-            "on-demand"
-          ],
-          "default": "collect",
-          "description": "%fleetest.config.remoteArtifacts.description%"
         }
       }
     },

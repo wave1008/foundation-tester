@@ -78,13 +78,6 @@ export interface FleetestConfig {
   /** "auto": 起動時に upstream の更新有無を確認し、あれば通知する(updateCheck.ts)。"off": 確認しない。
    * 確認するだけで取り込みはしない(取り込みは /fleetest-update)。 */
   updateCheck: UpdateCheckMode;
-  /** リモート実行結果の回収方針(docs/remote-runner.md §13「原則」)。artifacts はリモートの
-   * results/ を回収するか("collect" 既定 / "on-demand" は回収しない)。run がどのホストへ
-   * ディスパッチされるかはこの設定には無い —— CLI がマシンプロファイルの `host` フィールドから
-   * 判定する(拡張は関与しない)。登録簿(name→host/dir/machine)もここには持たない ——
-   * 正は CLI の LocalConfig で、remoteHostsController.ts が `fleetest api remote-machines` を読む
-   * (設定タブのホスト表を支えるためだけに使う)。 */
-  remote: { artifacts: "collect" | "on-demand" };
   /** true の場合、実行(dry-run・ライブ操作パネル連動を除く)開始前に `fleetest api remote-compat` で
    * リモート機の版ズレを照合し、ズレていれば確認ダイアログを出す(runHandler.ts executeRun)。 */
   remoteCompatCheck: boolean;
@@ -129,9 +122,6 @@ export function readConfig(workspaceRoot: string): FleetestConfig {
     autoRepairDeviceHealth: configuration.get<boolean>("autoRepairDeviceHealth", false),
     liveControlOnRun: configuration.get<boolean>("liveControlOnRun", true),
     updateCheck: configuration.get<string>("updateCheck", "auto") === "off" ? "off" : "auto",
-    remote: {
-      artifacts: configuration.get<string>("remote.artifacts", "collect") === "on-demand" ? "on-demand" : "collect",
-    },
     remoteCompatCheck: configuration.get<boolean>("remoteCompatCheck", true),
   };
 }

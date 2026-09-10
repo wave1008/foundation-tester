@@ -29,7 +29,7 @@ enum FleetRunner {
         scenarios: [String], folders: [String],
         setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
         performanceMode: Bool,
-        forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
+        forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?,
         split: Bool, quiet: Bool, junit: String?
     ) async throws -> Int32 {
         try preflightFolders(folders, project: project, fleetName: fleetName)
@@ -49,7 +49,7 @@ enum FleetRunner {
                 setOverrides: setOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                 performanceMode: performanceMode,
                 forceLock: forceLock, waitLock: waitLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
-                remoteArtifacts: remoteArtifacts, quiet: quiet, junit: junit, junitTempDir: junitTempDir)
+                quiet: quiet, junit: junit, junitTempDir: junitTempDir)
         }
 
         let binary = selfBinaryPath()
@@ -65,7 +65,7 @@ enum FleetRunner {
                         setOverrides: setOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                         performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
-                        remoteArtifacts: remoteArtifacts, quiet: quiet,
+                        quiet: quiet,
                         junitPath: entryJUnitPath(tempDir: junitTempDir, index: index))
                     let start = Date()
                     let exitCode = await runEntry(binary: binary, args: args, hostLabel: entry.host)
@@ -110,7 +110,7 @@ enum FleetRunner {
         scenarios: [String], folders: [String],
         setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
         performanceMode: Bool,
-        forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
+        forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?,
         quiet: Bool, junit: String?, junitTempDir: URL?
     ) async throws -> Int32 {
         log("==> fleet \"\(fleetName)\" --split: building \(project.name) locally to resolve"
@@ -196,7 +196,7 @@ enum FleetRunner {
                         setOverrides: setOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                         performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
-                        remoteArtifacts: remoteArtifacts, quiet: quiet,
+                        quiet: quiet,
                         junitPath: entryJUnitPath(tempDir: junitTempDir, index: index))
                     let start = Date()
                     let exitCode = await runEntry(binary: binary, args: args, hostLabel: entry.host)
@@ -405,7 +405,7 @@ enum FleetRunner {
         scenarios: [String], folders: [String],
         setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
         performanceMode: Bool,
-        forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
+        forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?,
         quiet: Bool, junitPath: String?, broadcast: Bool = false, runGroup: String? = nil
     ) -> [String] {
         var args = ["run", "--project", project, "--profile", profile]
@@ -422,7 +422,6 @@ enum FleetRunner {
             if let waitLock { args += ["--wait-lock", String(waitLock)] }
             if let remoteDir { args += ["--remote-dir", remoteDir] }
             if let remoteTimeout { args += ["--remote-timeout", String(remoteTimeout)] }
-            if remoteArtifacts != "collect" { args += ["--remote-artifacts", remoteArtifacts] }
         } else {
             args += ["--runner", "local"]
         }

@@ -19,7 +19,7 @@ final class SetOverrideRelayTests: XCTestCase {
             setOverrides: ["heal": true, "enableAnimations": false],
             noLPT: false, lptHistoryRuns: nil, performanceMode: false,
             forceLock: false, waitLock: nil, remoteDir: nil, remoteTimeout: nil,
-            remoteArtifacts: "collect", quiet: false, junitPath: nil)
+            quiet: false, junitPath: nil)
         guard let index = args.firstIndex(of: "--set") else {
             return XCTFail("--set が中継されていない: \(args)")
         }
@@ -33,7 +33,7 @@ final class SetOverrideRelayTests: XCTestCase {
             scenarios: [], folders: [],
             noLPT: false, lptHistoryRuns: nil, performanceMode: false,
             forceLock: false, waitLock: nil, remoteDir: nil, remoteTimeout: nil,
-            remoteArtifacts: "collect", quiet: false, junitPath: nil)
+            quiet: false, junitPath: nil)
         XCTAssertFalse(args.contains("--set"), "\(args)")
     }
 
@@ -48,7 +48,7 @@ final class SetOverrideRelayTests: XCTestCase {
                 setOverrides: ["falsePositiveCheck": false, "ocr": true],
                 defaultTimeout: nil, scenarioTimeout: nil, noLPT: false,
                 lptHistoryRuns: nil, performanceMode: false, remoteDir: nil,
-                remoteTimeout: nil, remoteArtifacts: "collect", waitLock: nil),
+                remoteTimeout: nil, waitLock: nil),
             runGroup: "g")
         guard let index = args.firstIndex(of: "--set") else {
             return XCTFail("--set が中継されていない: \(args)")
@@ -68,7 +68,7 @@ final class SetOverrideRelayTests: XCTestCase {
             options: ApiRunMachineFanout.Options(
                 defaultTimeout: nil, scenarioTimeout: nil, noLPT: false,
                 lptHistoryRuns: nil, performanceMode: false, remoteDir: nil,
-                remoteTimeout: nil, remoteArtifacts: "collect", waitLock: nil),
+                remoteTimeout: nil, waitLock: nil),
             runGroup: "g")
         XCTAssertFalse(args.contains("--set"), "\(args)")
     }

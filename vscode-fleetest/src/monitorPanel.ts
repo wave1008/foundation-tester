@@ -506,17 +506,13 @@ export class MonitorPanelController implements vscode.Disposable {
 
   /**
    * 設定タブのリモートホスト行編集(追加・削除・machine/host/dir 変更)を CLI 登録簿へ反映する。
-   * lastKnownRemoteHosts との差分だけを送る(diffRemoteHostsForSync)ので、artifacts のみの
-   * 変更(hosts は不変)では CLI を叩かない。削除→追加(import は upsert)の順で送ることで、
-   * rename(同じ行の machine 変更)も「旧名を消し新名を作る」として正しく扱える。
+   * lastKnownRemoteHosts との差分だけを送る(diffRemoteHostsForSync)。削除→追加(import は upsert)
+   * の順で送ることで、rename(同じ行の machine 変更)も「旧名を消し新名を作る」として正しく扱える。
    * CLI 呼び出しが失敗した行は lastKnownRemoteHosts に残らない(=書き込めなかったことが
    * 次に webview へ返す一覧に反映される)。失敗理由は remoteConfig.error に乗せて webview へ返す
    * (settingsTab.js が画面に出す。OUTPUT へのログだけにしない —— 行が黙って消えて見える)。
    */
-  private async syncRemoteHostsFromWebview(
-    hosts: readonly RemoteHostEntry[],
-    artifacts: "collect" | "on-demand",
-  ): Promise<void> {
+  private async syncRemoteHostsFromWebview(hosts: readonly RemoteHostEntry[]): Promise<void> {
     const deps = this.remoteHostsDeps();
     const { removedNames, upserts } = diffRemoteHostsForSync(this.lastKnownRemoteHosts, hosts);
     let finalHosts = this.lastKnownRemoteHosts;
@@ -541,10 +537,8 @@ export class MonitorPanelController implements vscode.Disposable {
     }
     this.lastKnownRemoteHosts = finalHosts;
 
-    const remoteConfiguration = vscode.workspace.getConfiguration("fleetest");
-    void remoteConfiguration.update("remote.artifacts", artifacts, vscode.ConfigurationTarget.Global);
     // CLI が返した確定形(書き込めなかった行の除外・machine の実値を含む)で webview を必ず作り直す。
-    this.post({ type: "remoteConfig", hosts: finalHosts, artifacts, error,
+    this.post({ type: "remoteConfig", hosts: finalHosts, error,
                 defaultFMConcurrency: this.lastKnownDefaultFMConcurrency,
                 local: this.lastKnownLocalMachine });
   }
@@ -951,8 +945,7 @@ export class MonitorPanelController implements vscode.Disposable {
           .update("language", message.value, vscode.ConfigurationTarget.Global);
         break;
       case "setRemoteConfig": {
-        const artifacts = message.artifacts === "on-demand" ? "on-demand" : "collect";
-        void this.syncRemoteHostsFromWebview(message.hosts, artifacts);
+        void this.syncRemoteHostsFromWebview(message.hosts);
         break;
       }
       case "setTilePaneHeight":
@@ -1053,16 +1046,12 @@ export class MonitorPanelController implements vscode.Disposable {
       value: vscode.workspace.getConfiguration("fleetest").get<"auto" | "ja" | "en">("language", "auto"),
     });
     {
-      // hosts の正は CLI の LocalConfig(docs/remote-runner.md §13「原則」)。artifacts は
-      // 引き続き VSCode 設定(config.ts の readConfig と同じ既定値)。fetch は非同期なので
+      // hosts の正は CLI の LocalConfig(docs/remote-runner.md §13「原則」)。fetch は非同期なので
       // fire-and-forget で送り直す(失敗しても他の初期化を止めない。update-check と同じ方針)。
-      const remoteConfiguration = vscode.workspace.getConfiguration("fleetest");
-      const artifacts =
-        remoteConfiguration.get<string>("remote.artifacts", "collect") === "on-demand" ? "on-demand" : "collect";
       void fetchRemoteHosts(this.remoteHostsDeps()).then((result) => {
         this.lastKnownRemoteHosts = result.hosts ?? [];
         this.noteRemoteHostsOutcome(result);
-        this.post({ type: "remoteConfig", hosts: this.lastKnownRemoteHosts, artifacts,
+        this.post({ type: "remoteConfig", hosts: this.lastKnownRemoteHosts,
                     defaultFMConcurrency: this.lastKnownDefaultFMConcurrency,
                 local: this.lastKnownLocalMachine });
       });

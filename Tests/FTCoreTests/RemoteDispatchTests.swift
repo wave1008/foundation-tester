@@ -424,33 +424,6 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertEqual(placement, .outsideProject)
     }
 
-    // MARK: - RemoteArtifactsMode.parse
-
-    func testArtifactsModeParseCollect() throws {
-        XCTAssertEqual(try RemoteArtifactsMode.parse("collect"), .collect)
-    }
-
-    func testArtifactsModeParseOnDemand() throws {
-        XCTAssertEqual(try RemoteArtifactsMode.parse("on-demand"), .onDemand)
-    }
-
-    func testArtifactsModeParseRejectsBogusValue() {
-        XCTAssertThrowsError(try RemoteArtifactsMode.parse("bogus")) { error in
-            guard case RemoteDispatchError.invalidArtifactsMode = error else {
-                return XCTFail("expected invalidArtifactsMode, got \(error)")
-            }
-        }
-    }
-
-    /// rawValue の完全一致でしか受理しない(大文字小文字は区別する)
-    func testArtifactsModeParseRejectsCapitalizedValue() {
-        XCTAssertThrowsError(try RemoteArtifactsMode.parse("Collect")) { error in
-            guard case RemoteDispatchError.invalidArtifactsMode = error else {
-                return XCTFail("expected invalidArtifactsMode, got \(error)")
-            }
-        }
-    }
-
     // MARK: - RemoteArtifactCollection.resultsRsyncArgs
 
     func testResultsRsyncArgs() {
@@ -481,13 +454,10 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     /// 回収は「信頼するランナー」ではなく共有ディレクトリからの入力(§15.3 は同一 UNIX ユーザー)。
-    /// 宛先の外を指すシンボリックリンクを受けないことを両方の回収経路で固定する
+    /// 宛先の外を指すシンボリックリンクを受けないことを固定する
     func testCollectionRsyncArgsRefuseUnsafeSymlinks() {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         XCTAssertTrue(RemoteArtifactCollection.resultsRsyncArgs(
-            project: "E2E", layout: layout, sshTarget: "user@host",
-            localProjectsDir: "/local/Projects").contains("--safe-links"))
-        XCTAssertTrue(RemoteArtifactCollection.recordsOnlyRsyncArgs(
             project: "E2E", layout: layout, sshTarget: "user@host",
             localProjectsDir: "/local/Projects").contains("--safe-links"))
     }
@@ -498,28 +468,6 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertFalse(RemoteTransferPlan.rsyncArgs(
             project: "E2E", localProjectsDir: "/local/Projects", layout: layout,
             sshTarget: "user@host", ignore: .none).contains("--safe-links"))
-    }
-
-    // MARK: - RemoteArtifactCollection.recordsOnlyRsyncArgs
-
-    /// 録画(recordings/)だけを除外し、src/dst は resultsRsyncArgs と同一であること —— on-demand
-    /// でも実績 JSON は resultsRsyncArgs と同じ場所から同じ場所へ回収されることを固定する
-    func testRecordsOnlyRsyncArgsExcludesRecordingsAndOmitsDelete() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
-        let args = RemoteArtifactCollection.recordsOnlyRsyncArgs(
-            project: "E2E", layout: layout, sshTarget: "user@host",
-            localProjectsDir: "/local/Projects")
-        XCTAssertEqual(args, [
-            "-az", "--safe-links", "--exclude", "recordings/",
-            "user@host:/Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E/results/",
-            "/local/Projects/E2E/results/",
-        ])
-        XCTAssertFalse(args.contains("--delete"), "\(args)")
-
-        let resultsArgs = RemoteArtifactCollection.resultsRsyncArgs(
-            project: "E2E", layout: layout, sshTarget: "user@host",
-            localProjectsDir: "/local/Projects")
-        XCTAssertEqual(args.filter { $0 != "--exclude" && $0 != "recordings/" }, resultsArgs)
     }
 
     // MARK: - RemoteRunArgs.build

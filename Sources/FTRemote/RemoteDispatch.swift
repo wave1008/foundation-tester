@@ -11,7 +11,6 @@ public enum RemoteDispatchError: Error, LocalizedError {
     case invalidMachine(String)
     case invalidDevice(String)
     case invalidRemoteDir(String)
-    case invalidArtifactsMode(String)
     case incompatible([String])
     case remoteSetupFailed(String)
     case invalidIssuer(String)
@@ -26,8 +25,6 @@ public enum RemoteDispatchError: Error, LocalizedError {
             return "invalid --device: \(detail)"
         case .invalidRemoteDir(let detail):
             return "invalid --remote-dir: \(detail)"
-        case .invalidArtifactsMode(let detail):
-            return "invalid --remote-artifacts: \(detail)"
         case .incompatible(let reasons):
             return (["remote host is not compatible:"] + reasons.map { "  - \($0)" })
                 .joined(separator: "\n")
@@ -364,17 +361,7 @@ public enum RemoteArtifactCollection {
     /// results を巻き添えで消してはいけない)。差分のみ転送するので繰り返し呼んでも安い
     public static func resultsRsyncArgs(project: String, layout: RemoteLayout,
                                         sshTarget: String, localProjectsDir: String) -> [String] {
-        rsyncArgs(excludes: [], project: project, layout: layout,
-                 sshTarget: sshTarget, localProjectsDir: localProjectsDir)
-    }
-
-    /// results/ 回収のうち録画(runs/<runID>/recordings/)だけを除いた rsync 引数。
-    /// on-demand モードでも実績 JSON(run.json / scenarios/*.json / host-metrics.ndjson)は
-    /// 常に回収する —— 回収しないと LPT(投入順・フリート割り当て)がリモートで走った
-    /// シナリオを永久に「実績なし」として扱う。--delete を付けない理由は resultsRsyncArgs と同じ
-    public static func recordsOnlyRsyncArgs(project: String, layout: RemoteLayout,
-                                            sshTarget: String, localProjectsDir: String) -> [String] {
-        rsyncArgs(excludes: ["recordings/"], project: project, layout: layout,
+        rsyncArgs(project: project, layout: layout,
                  sshTarget: sshTarget, localProjectsDir: localProjectsDir)
     }
 
@@ -384,10 +371,9 @@ public enum RemoteArtifactCollection {
     /// 入力は「信頼するランナー」ではなく「共有ディレクトリ」として扱う。
     /// 送信(手元 → リモート)側の rsyncArgs には付けない —— 送る中身は手元の資産で、
     /// 受け手のシンボリックリンク(TestProjects/ 内の正当な参照)を落とす副作用のほうが害になる
-    private static func rsyncArgs(excludes: [String], project: String, layout: RemoteLayout,
+    private static func rsyncArgs(project: String, layout: RemoteLayout,
                                   sshTarget: String, localProjectsDir: String) -> [String] {
         var args = ["-az", "--safe-links"]
-        for exclude in excludes { args += ["--exclude", exclude] }
         args += [
             "\(sshTarget):\(layout.projectDir(project))/results/",
             "\(localProjectsDir)/\(project)/results/",
@@ -473,19 +459,6 @@ public enum WorkspaceRemoteDispatch {
 
     private static func normalizedComponents(_ path: String) -> [String] {
         URL(fileURLWithPath: path).standardizedFileURL.pathComponents.filter { $0 != "/" }
-    }
-}
-
-public enum RemoteArtifactsMode: String, Sendable, CaseIterable {
-    case collect
-    case onDemand = "on-demand"
-
-    public static func parse(_ raw: String) throws -> RemoteArtifactsMode {
-        guard let mode = RemoteArtifactsMode(rawValue: raw) else {
-            throw RemoteDispatchError.invalidArtifactsMode(
-                "must be one of collect, on-demand: \"\(raw)\"")
-        }
-        return mode
     }
 }
 

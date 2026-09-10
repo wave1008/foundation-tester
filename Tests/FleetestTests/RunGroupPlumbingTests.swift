@@ -21,7 +21,7 @@ final class RunGroupPlumbingTests: XCTestCase {
                 scenarios: ["A.S0010"], folders: [],
                 noLPT: false, lptHistoryRuns: nil, performanceMode: false,
                 forceLock: false, waitLock: nil, remoteDir: nil, remoteTimeout: nil,
-                remoteArtifacts: "collect", quiet: false, junitPath: nil, runGroup: key)
+                quiet: false, junitPath: nil, runGroup: key)
             guard let index = args.firstIndex(of: "--run-group") else {
                 XCTFail("host=\(host) に束ね鍵が付いていない: \(args)")
                 return
@@ -37,7 +37,7 @@ final class RunGroupPlumbingTests: XCTestCase {
             scenarios: [], folders: [],
             noLPT: false, lptHistoryRuns: nil, performanceMode: false,
             forceLock: false, waitLock: nil, remoteDir: nil, remoteTimeout: nil,
-            remoteArtifacts: "collect", quiet: false, junitPath: nil)
+            quiet: false, junitPath: nil)
         XCTAssertFalse(args.contains("--run-group"), "\(args)")
     }
 
@@ -52,7 +52,7 @@ final class RunGroupPlumbingTests: XCTestCase {
                 options: ApiRunMachineFanout.Options(
                     defaultTimeout: nil, scenarioTimeout: nil, noLPT: false,
                     lptHistoryRuns: nil, performanceMode: false, remoteDir: nil,
-                    remoteTimeout: nil, remoteArtifacts: "collect", waitLock: nil),
+                    remoteTimeout: nil, waitLock: nil),
                 runGroup: key)
             guard let index = args.firstIndex(of: "--run-group") else {
                 XCTFail("machine=\(String(describing: machine)) に束ね鍵が付いていない: \(args)")
@@ -86,7 +86,7 @@ final class RunGroupPlumbingTests: XCTestCase {
                 options: ApiRunMachineFanout.Options(
                     defaultTimeout: nil, scenarioTimeout: nil, noLPT: false,
                     lptHistoryRuns: nil, performanceMode: false, remoteDir: nil,
-                    remoteTimeout: nil, remoteArtifacts: "collect", waitLock: 600),
+                    remoteTimeout: nil, waitLock: 600),
                 runGroup: "g")
         }
         let remote = args(machine: "M1Ultra")

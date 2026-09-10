@@ -85,7 +85,6 @@ const [HOST, MACHINE, FM, DIR] = [0, 1, 2, 3];
 const REMOTE_CONFIG = {
   type: "remoteConfig",
   hosts: [{ machine: "M1Max", host: "user@m1max", dir: "" }],
-  artifacts: "collect",
 };
 
 test("列の並びはホスト → マシン(任意) → 作業ベースディレクトリ", (t) => {
@@ -208,8 +207,7 @@ test("FM 並列枠は列に出て、値が往復する", (t) => {
   t.after(() => window.close());
 
   post(window, { type: "remoteConfig",
-    hosts: [{ machine: "M1Ultra", host: "user@m1u", dir: "", fmConcurrency: 1 }],
-    artifacts: "collect" });
+    hosts: [{ machine: "M1Ultra", host: "user@m1u", dir: "", fmConcurrency: 1 }] });
   const inputs = document.querySelectorAll("#settings-remote-hosts-body tr input");
   assert.equal(inputs[FM].value, "1", "設定済みの値が欄に出る");
 
@@ -224,8 +222,7 @@ test("FM 並列枠の空欄は 0(未設定)として送られる", (t) => {
   t.after(() => window.close());
 
   post(window, { type: "remoteConfig",
-    hosts: [{ machine: "M1Ultra", host: "user@m1u", dir: "", fmConcurrency: 2 }],
-    artifacts: "collect" });
+    hosts: [{ machine: "M1Ultra", host: "user@m1u", dir: "", fmConcurrency: 2 }] });
   const inputs = document.querySelectorAll("#settings-remote-hosts-body tr input");
   fillAndCommit(window, inputs[FM], "");
   const sent = posted.filter((m) => m.type === "setRemoteConfig").at(-1);
@@ -238,8 +235,7 @@ test("未設定(0)は空欄で描かれる", (t) => {
   t.after(() => window.close());
 
   post(window, { type: "remoteConfig",
-    hosts: [{ machine: "M1Max", host: "user@m1max", dir: "", fmConcurrency: 0 }],
-    artifacts: "collect" });
+    hosts: [{ machine: "M1Max", host: "user@m1max", dir: "", fmConcurrency: 0 }] });
   const inputs = document.querySelectorAll("#settings-remote-hosts-body tr input");
   assert.equal(inputs[FM].value, "");
 });
@@ -252,7 +248,7 @@ test("未設定の FM 並列枠には CLI が返した既定値が実値とし�
 
   post(window, { type: "remoteConfig",
     hosts: [{ machine: "M1Max", host: "user@m1max", dir: "", fmConcurrency: 0 }],
-    artifacts: "collect", defaultFMConcurrency: 5,
+    defaultFMConcurrency: 5,
     local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0 } });
 
   // 固定行・可変行のどちらも空欄にしない(空欄だと「何枠で走るのか」が画面から読めない)
@@ -271,7 +267,7 @@ test("設定済みの FM 並列枠は既定値で上書きしない", (t) => {
 
   post(window, { type: "remoteConfig",
     hosts: [{ machine: "M1Ultra", host: "user@m1u", dir: "", fmConcurrency: 2 }],
-    artifacts: "collect", defaultFMConcurrency: 5,
+    defaultFMConcurrency: 5,
     local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 3 } });
 
   const rows = document.querySelectorAll("#settings-remote-hosts-body tr");
@@ -284,8 +280,7 @@ test("既定値が届いていなければウォーターマークは出さな�
   t.after(() => window.close());
 
   post(window, { type: "remoteConfig",
-    hosts: [{ machine: "M1Max", host: "user@m1max", dir: "", fmConcurrency: 0 }],
-    artifacts: "collect" });
+    hosts: [{ machine: "M1Max", host: "user@m1max", dir: "", fmConcurrency: 0 }] });
   const inputs = document.querySelectorAll("#settings-remote-hosts-body tr input");
   assert.equal(inputs[FM].placeholder, "");
   assert.equal(inputs[FM].value, "", "既定が読めないなら実値も入れない(推測を書き込まない)");
@@ -298,7 +293,7 @@ test("列幅のクラスが見出し・可変行・固定行の3箇所に付い�
   t.after(() => window.close());
 
   post(window, { type: "remoteConfig", hosts: [{ machine: "M1Max", host: "user@m1max", dir: "" }],
-    artifacts: "collect", defaultFMConcurrency: 5,
+    defaultFMConcurrency: 5,
     local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0 } });
 
   // 幅は CSS が列ごとのクラスで決める。**見出しとセルの両方に要る**(片方だけだと効かない)
@@ -324,7 +319,7 @@ test("この機械の行が先頭に固定で描かれ、削除ボタンを持�
   t.after(() => window.close());
 
   post(window, { type: "remoteConfig", hosts: [{ machine: "M1Max", host: "user@m1max", dir: "" }],
-    artifacts: "collect", defaultFMConcurrency: 5,
+    defaultFMConcurrency: 5,
     local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0 } });
 
   const rows = document.querySelectorAll("#settings-remote-hosts-body tr");
@@ -346,7 +341,7 @@ test("この機械の FM 枠は machine:'local' として送られる(登録簿�
   const { window, document } = createWebview((m) => posted.push(m));
   t.after(() => window.close());
 
-  post(window, { type: "remoteConfig", hosts: [], artifacts: "collect", defaultFMConcurrency: 5,
+  post(window, { type: "remoteConfig", hosts: [], defaultFMConcurrency: 5,
     local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0 } });
   const inputs = document.querySelectorAll("#settings-remote-hosts-body tr input");
   fillAndCommit(window, inputs[FM], "2");
@@ -357,10 +352,8 @@ test("この機械の FM 枠は machine:'local' として送られる(登録簿�
   assert.equal(local.host, "wave1008@localhost");
 });
 
-// セクションの構成。**成果物(ログ・録画)は「ログ・録画」に属し、マシンより上**。
-// artifacts セレクタは remoteConfig/setRemoteConfig に相乗りしているので、DOM 上で
-// 別セクションへ移しても配線は変わらない —— その前提が崩れていないことも併せて見る
-test("ログ・録画 セクションがマシンの上にあり、成果物セレクタとクリーンアップ欄を含む", (t) => {
+// セクションの構成。**クリーンアップ欄は「ログ・録画」に属し、マシンより上**。
+test("ログ・録画 セクションがマシンの上にあり、クリーンアップ欄を含む", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
@@ -371,16 +364,13 @@ test("ログ・録画 セクションがマシンの上にあり、成果物セ�
   assert.ok(log >= 0 && machines >= 0, `見出しが見つからない: ${titles.join(" / ")}`);
   assert.ok(log < machines, "ログ はマシンより上");
 
-  // 成果物セレクタは「ログ・録画」セクションの中(= マシン設定の表とは別のグループ)
-  const artifacts = document.getElementById("settings-remote-artifacts");
-  const group = artifacts.closest(".settings-group");
+  // クリーンアップ欄は「ログ・録画」セクションの中(= マシン設定の表とは別のグループ)
+  const cleanup = document.getElementById("settings-cleanup-enabled");
+  const group = cleanup.closest(".settings-group");
   assert.match(group.querySelector(".settings-section-title").textContent, /^ログ・録画$|^Logs & recordings$/);
   assert.equal(group.querySelector(".settings-remote-hosts-table"), null, "表は別セクション");
 
-  // クリーンアップ欄は同じセクションの成果物セレクタより下。独立した「クリーンアップ」見出しは無い
-  const cleanup = document.getElementById("settings-cleanup-enabled");
-  assert.equal(cleanup.closest(".settings-group"), group, "クリーンアップ欄はログ・録画の中");
-  assert.ok(artifacts.compareDocumentPosition(cleanup) & window.Node.DOCUMENT_POSITION_FOLLOWING, "成果物の下");
+  assert.equal(document.getElementById("settings-remote-artifacts"), null, "成果物セレクタは無い");
   assert.equal(titles.some((x) => /^クリーンアップ$|^Cleanup$/.test(x)), false, "クリーンアップ見出しは廃止");
 });
 
@@ -409,7 +399,7 @@ test("FM 並列枠は 1〜9 の1桁だけ受け付ける(可変行)", (t) => {
   t.after(() => window.close());
 
   post(window, { type: "remoteConfig", hosts: [{ machine: "M1Max", host: "user@m1max", dir: "" }],
-    artifacts: "collect", defaultFMConcurrency: 5 });
+    defaultFMConcurrency: 5 });
   const fm = document.querySelectorAll("#settings-remote-hosts-body tr input")[FM];
 
   assert.equal(typeInto(window, fm, "3"), "3", "1桁の数字は通る");
@@ -429,7 +419,7 @@ test("FM 並列枠の入力欄は履歴件数と同じデザイン(type=number +
   t.after(() => window.close());
 
   post(window, { type: "remoteConfig", hosts: [{ machine: "M1Max", host: "user@m1max", dir: "" }],
-    artifacts: "collect", defaultFMConcurrency: 5,
+    defaultFMConcurrency: 5,
     local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0 } });
 
   const history = document.getElementById("settings-lpt-history");
@@ -451,7 +441,7 @@ test("FM 並列枠は 1〜9 の1桁だけ受け付ける(この機械の固定�
   const { window, document } = createWebview();
   t.after(() => window.close());
 
-  post(window, { type: "remoteConfig", hosts: [], artifacts: "collect", defaultFMConcurrency: 5,
+  post(window, { type: "remoteConfig", hosts: [], defaultFMConcurrency: 5,
     local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0 } });
   const fm = document.querySelectorAll("#settings-remote-hosts-body tr input")[FM];
 
@@ -468,7 +458,7 @@ test("列の並びが見出し・可変行・固定行で一致する", (t) => {
 
   post(window, { type: "remoteConfig",
     hosts: [{ machine: "M1Ultra", host: "user@m1u", dir: "~/runner", fmConcurrency: 3 }],
-    artifacts: "collect", defaultFMConcurrency: 5,
+    defaultFMConcurrency: 5,
     local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 7 } });
 
   const headers = [...document.querySelectorAll(".settings-remote-hosts-table thead th")]
@@ -501,7 +491,7 @@ test("未設定の FM 並列枠は既定値を見せていても、他の欄を�
       { machine: "M1Ultra", host: "user@m1u", dir: "", fmConcurrency: 2 },
       { machine: "M1Max", host: "user@m1max", dir: "", fmConcurrency: 0 },
     ],
-    artifacts: "collect", defaultFMConcurrency: 5,
+    defaultFMConcurrency: 5,
     local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0 } });
 
   const rows = document.querySelectorAll("#settings-remote-hosts-body tr");
@@ -528,7 +518,7 @@ test("未設定の FM 並列枠に既定値と同じ数字を打てば明示値�
   const { window, document } = createWebview((m) => posted.push(m));
   t.after(() => window.close());
 
-  post(window, { type: "remoteConfig", hosts: [], artifacts: "collect", defaultFMConcurrency: 5,
+  post(window, { type: "remoteConfig", hosts: [], defaultFMConcurrency: 5,
     local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0 } });
   const fm = document.querySelectorAll("#settings-remote-hosts-body tr input")[FM];
   fillAndCommit(window, fm, "5");

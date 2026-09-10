@@ -275,15 +275,12 @@ export const panelsStrings = {
   "panels.settings.languageJa": { ja: "日本語", en: "日本語" },
   "panels.settings.languageEn": { ja: "English", en: "English" },
 
-  // docs/remote-runner.md §12。実体は CLI のホスト登録簿(`fleetest api remote-machines`)+
-  // fleetest.remote.artifacts 設定(config.ts)、このタブはもう1つの操作口。
-  // 行内容(削除ボタン)は settingsTab.js が動的生成するため webview 側辞書
-  // (i18n/strings/webviewMonitorB.ts の wvMonitor2.remote.*)を使う。ここは静的ラベルのみ。
+  // docs/remote-runner.md §12。実体は CLI のホスト登録簿(`fleetest api remote-machines`)、
+  // このタブはもう1つの操作口。行内容(削除ボタン)は settingsTab.js が動的生成するため
+  // webview 側辞書(i18n/strings/webviewMonitorB.ts の wvMonitor2.remote.*)を使う。
+  // ここは静的ラベルのみ。
   "panels.settings.logSectionTitle": { ja: "ログ・録画", en: "Logs & recordings" },
   "panels.settings.remoteSectionTitle": { ja: "マシン", en: "Machines" },
-  "panels.settings.remoteArtifactsLabel": { ja: "成果物(ログ・録画)", en: "Artifacts (logs, recordings)" },
-  "panels.settings.remoteArtifactsCollect": { ja: "回収する", en: "Collect" },
-  "panels.settings.remoteArtifactsOnDemand": { ja: "オンデマンド", en: "On demand" },
   // 列見出しは「マシン」(2026-08-26 指示)。プロファイルの machine 欄・--runner に書く名前と同じもの
   "panels.settings.remoteHostsColMachine": {
     ja: "マシン(任意のエイリアス)",

@@ -414,42 +414,27 @@ test("isMonitorFromWebviewMessage: setTileAutoFit は boolean value のみ受理
   assert.equal(isMonitorFromWebviewMessage({ type: "setTileAutoFit", value: "true" }), false);
 });
 
-test("isMonitorFromWebviewMessage: setRemoteConfig は hosts[](machine/host/dir)+artifacts なら true", () => {
+test("isMonitorFromWebviewMessage: setRemoteConfig は hosts[](machine/host/dir)なら true", () => {
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "setRemoteConfig",
       hosts: [{ machine: "mac-01", host: "user@mac-01", dir: "" }],
-      artifacts: "collect",
     }),
     true,
   );
   // hosts 空配列も正常値
   assert.equal(
-    isMonitorFromWebviewMessage({
-      type: "setRemoteConfig", hosts: [], artifacts: "on-demand",
-    }),
+    isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: [] }),
     true,
   );
 });
 
-test("isMonitorFromWebviewMessage: setRemoteConfig は artifacts 欠落・不正値なら false", () => {
-  assert.equal(
-    isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: [] }), false);
-  assert.equal(
-    isMonitorFromWebviewMessage({
-      type: "setRemoteConfig", hosts: [], artifacts: "bogus",
-    }),
-    false,
-  );
-});
-
 test("isMonitorFromWebviewMessage: setRemoteConfig は hosts 要素の型不正・hosts 欠落なら false", () => {
-  assert.equal(isMonitorFromWebviewMessage({ type: "setRemoteConfig", artifacts: "collect" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRemoteConfig" }), false);
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "setRemoteConfig",
       hosts: [{ machine: "mac-01", host: 123, dir: "" }],
-      artifacts: "collect",
     }),
     false,
   );
@@ -458,12 +443,11 @@ test("isMonitorFromWebviewMessage: setRemoteConfig は hosts 要素の型不正�
     isMonitorFromWebviewMessage({
       type: "setRemoteConfig",
       hosts: [{ name: "mac-01", host: "user@mac-01", dir: "" }],
-      artifacts: "collect",
     }),
     false,
   );
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: "not-an-array", artifacts: "collect" }),
+    isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: "not-an-array" }),
     false,
   );
 });

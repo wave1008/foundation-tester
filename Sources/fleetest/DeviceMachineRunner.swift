@@ -64,7 +64,7 @@ enum DeviceMachineRunner {
         scenarios: [String], folders: [String],
         setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
         performanceMode: Bool,
-        forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
+        forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?,
         quiet: Bool, junit: String?, broadcast: Bool = false
     ) async throws -> Int32 {
         let junitTempDir = try FleetRunner.makeJUnitTempDir(requested: junit)
@@ -139,7 +139,7 @@ enum DeviceMachineRunner {
                         setOverrides: setOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                         performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
-                        remoteArtifacts: remoteArtifacts, quiet: quiet,
+                        quiet: quiet,
                         junitPath: FleetRunner.entryJUnitPath(tempDir: junitTempDir, index: index),
                         broadcast: broadcast, runGroup: runGroup)
                     let start = Date()

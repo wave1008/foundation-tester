@@ -257,7 +257,7 @@
     (`RemoteDispatchExplicitDeviceScope`)。**`--runner local` も同じ判定を通す**
     (run / api run の2経路。絞らないと別ホストのエントリの UDID を手元で探して
     `no simulator with that UDID` で止まる)
-  - **LPT はリモートでも実績で回る**: 実績 JSON は on-demand でも常に回収・実績と観測窓は
+  - **LPT はリモートでも実績で回る**: 実績 JSON は run のたびに常に回収・実績と観測窓は
     machine 別・フリート割り当ては facts キャッシュ(`.fleetest/remote-hosts/<host>.json`)で
     機械別に見積もる(実測は docs/performance-tuning.md §3.7)。**facts の machine 採取は
     relink より前** → maintainer-notes §3.3

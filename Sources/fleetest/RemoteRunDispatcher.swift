@@ -29,7 +29,6 @@ struct RemoteRunDispatcher {
     let localRepoRoot: URL
     // var: default 付き let は memberwise init から除外され .apiRun を注入できない
     var mode: RemoteDispatchMode = .cliRun
-    var artifacts: RemoteArtifactsMode = .collect
     /// `--force-lock`: 既存の dispatch.lock を奪ってから取得する(docs/remote-runner.md §5)。
     /// 既定では奪わない(stuck なロックを機械的に stale 判定しない)
     var forceLock: Bool = false
@@ -88,7 +87,7 @@ struct RemoteRunDispatcher {
         if let localJUnitPath, let remoteJUnitPath {
             collectJUnit(remotePath: remoteJUnitPath, localPath: localJUnitPath, layout: layout)
         }
-        collectArtifactsIfRequested(project: project, layout: layout)
+        collectArtifacts(project: project, layout: layout)
         // relink より先に撃つ(relink が reportPath を書き換えると stamp がファイルから消え、
         // stamp 走査で machine を採れなくなる。2026-08-18 に実ディスパッチで machine 欠落を確認)
         saveHostFacts(project: project, stamp: stamp, overheadSeconds: overheadSeconds, session: session)
@@ -137,7 +136,7 @@ struct RemoteRunDispatcher {
             fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds)
 
         collectReports(project: project, remoteReportDir: remoteReportDir)
-        collectArtifactsIfRequested(project: project, layout: layout)
+        collectArtifacts(project: project, layout: layout)
         // relink より先に撃つ(relink が reportPath を書き換えると stamp がファイルから消え、
         // stamp 走査で machine を採れなくなる。2026-08-18 に実ディスパッチで machine 欠落を確認)
         saveHostFacts(project: project, stamp: stamp, overheadSeconds: overheadSeconds, session: session)
@@ -528,26 +527,13 @@ struct RemoteRunDispatcher {
                      missingNote: "note: the remote produced no reports (the run failed before writing any)")
     }
 
-    /// .onDemand でも実績 JSON(run.json/scenarios/*.json/host-metrics.ndjson)は常に回収する ——
-    /// 回収しないと LPT がリモートで走ったシナリオを永久に「実績なし」として扱う。重いのは
-    /// 録画だけなので、それだけリモートに残す。.collect: 録画も含め results/ を丸ごと回収する。
-    /// 失敗は warn のみ(run の成否は変えない。collectReports と同じ規律)
-    private func collectArtifactsIfRequested(project: TestProject, layout: RemoteLayout) {
+    /// 実績 JSON(run.json/scenarios/*.json/host-metrics.ndjson)と録画を含め results/ を
+    /// 丸ごと回収する。失敗は warn のみ(run の成否は変えない。collectReports と同じ規律)
+    private func collectArtifacts(project: TestProject, layout: RemoteLayout) {
         let localResults = project.rootURL.appendingPathComponent("results")
         try? FileManager.default.createDirectory(at: localResults, withIntermediateDirectories: true)
         let localProjectsDir = project.rootURL.deletingLastPathComponent().path
 
-        guard artifacts == .collect else {
-            log("==> collecting run records")
-            let args = ["rsync"] + RemoteArtifactCollection.recordsOnlyRsyncArgs(
-                project: project.name, layout: layout, sshTarget: host.sshTarget,
-                localProjectsDir: localProjectsDir)
-            collectRsync(args, what: "run records",
-                         missingNote: "note: the remote produced no run records (the run failed before writing any)")
-            log("note: recordings stay on \(host.sshTarget) "
-                + "(\(layout.projectDir(project.name))/results) — set remote artifacts to \"collect\" to pull them")
-            return
-        }
         log("==> collecting recordings and run logs")
         let args = ["rsync"] + RemoteArtifactCollection.resultsRsyncArgs(
             project: project.name, layout: layout, sshTarget: host.sshTarget,

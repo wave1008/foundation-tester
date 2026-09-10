@@ -20,7 +20,7 @@
 | 複数ホストへの**同時**実行(フリート。`run --fleet`) | ✅ |
 | 同一リモートへの二重ディスパッチの防止 | ✅ ロックで fail fast(`--force-lock` で奪える) |
 | 1つのシナリオ集合を台数で**分散**する(ホスト間の分割) | ✅ `run --fleet <名前> --split` |
-| リモート実行分が `fleetest results` の集計に載る | ✅ 既定(`--remote-artifacts collect`)で回収され、そのまま集計・flaky 検出の対象になる |
+| リモート実行分が `fleetest results` の集計に載る | ✅ 常に回収され、そのまま集計・flaky 検出の対象になる |
 | 複数エントリの JUnit を1ファイルに集約 | ✅ `run --fleet … --junit <パス>` |
 | リモート機のデバイス一覧の取得・作成・削除(プロファイル編集のダイアログから) | ✅ |
 | モニターの「テスト実行」タブでのリモートデバイスの表示・画面配信 | ✅ 状態・静止画・ライブ映像(2026-08-17。自動修復 watchdog はリモートの台を見ない) |
@@ -348,7 +348,7 @@ fleetest run --runner <ユーザー>@<ホスト> --profile <実行プロファ�
 | もの | 行き先 |
 |---|---|
 | レポート | 手元の `TestProjects/<プロジェクト>/reports/` へ回収(リモート側は回収後に削除) |
-| 録画・run ログ | 既定(`--remote-artifacts collect`)で手元の `results/` へ回収。`on-demand` にするとリモートに残し場所だけ知らせる |
+| 録画・run ログ | 常に手元の `results/` へ回収する |
 | JUnit | `--junit <パス>` で手元に書かれる(中に載るリモートの絶対パスは手元向けに置換されるが、レポート本体は上の `reports/` にある) |
 
 ## ホストに名前を付ける・複数台へ一斉に流す
@@ -437,8 +437,7 @@ fleetest run --project <プロジェクト> --fleet <名前> --split --junit rep
 (`fleetest api remote-machines`)ので、`fleetest remote machines add` で足したものと同じ表に出る。
 リポジトリの `.vscode/settings.json` からディスパッチ先を差し替えられないための構造。
 
-拡張が持つリモート関連の設定キーは **`fleetest.remote.artifacts`**(`collect` 既定 / `on-demand`)
-**だけ**。
+リモート実行の録画・run ログは常に手元へ回収するので、回収に関する設定はありません。
 
 ### 2. マシンプロファイルにホストとデバイスを入れる(「プロファイル」タブ)
 

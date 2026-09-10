@@ -315,14 +315,11 @@ export type MonitorToWebviewMessage =
   // 設定タブの表示言語セレクタ(#settings-language)の現在値(fleetest.language 設定の生値)。ready 直後に
   // 送る。webview 側は settingsTab.js の applySettings。切替は setLanguage と対。
   | { readonly type: "language"; readonly value: "auto" | "ja" | "en" }
-  // 設定タブのリモート実行セクション(CLI のホスト登録簿 + fleetest.remote.artifacts 設定の生値)。
-  // ready 直後に送る。webview 側は settingsTab.js の applySettings。
-  // artifacts(results/ 回収モード)も同じメッセージに相乗りする(専用メッセージ型は起こさない)。
-  // 変更は setRemoteConfig と対(docs/remote-runner.md §12)。
+  // 設定タブのリモート実行セクション(CLI のホスト登録簿)。ready 直後に送る。
+  // webview 側は settingsTab.js の applySettings。変更は setRemoteConfig と対(docs/remote-runner.md §12)。
   | {
       readonly type: "remoteConfig";
       readonly hosts: readonly RemoteHostEntry[];
-      readonly artifacts: "collect" | "on-demand";
       /** 未設定時の FM 枠(CLI 側 FMLock.defaultConcurrency)。ウォーターマークに出すだけ。
        *  **拡張はこの数を持たない** —— 二重管理にすると片方だけ変わったときに嘘を表示する */
       readonly defaultFMConcurrency?: number;
@@ -709,13 +706,11 @@ export type MonitorFromWebviewMessage =
   // 設定タブの表示言語セレクタ変更(settingsTab.js)。monitorPanel.ts が fleetest.language 設定(Global)を
   // 更新する。反映は extension.ts の onDidChangeConfiguration ハンドラ(ツリー再翻訳 + 再読み込み案内)。
   | { readonly type: "setLanguage"; readonly value: "auto" | "ja" | "en" }
-  // 設定タブのリモート実行セクション変更(settingsTab.js)。monitorPanel.ts が CLI のホスト登録簿と
-  // fleetest.remote.artifacts 設定(Global)を更新する。hosts は正規化済みの想定だが検証は型のみ。
-  // artifacts は remoteConfig と同じ相乗り。
+  // 設定タブのリモート実行セクション変更(settingsTab.js)。monitorPanel.ts が CLI のホスト登録簿を
+  // 更新する。hosts は正規化済みの想定だが検証は型のみ。
   | {
       readonly type: "setRemoteConfig";
       readonly hosts: readonly RemoteHostEntry[];
-      readonly artifacts: "collect" | "on-demand";
     }
   // 設定タブ「ログ・録画」のクリーンアップ欄の欄変更(settingsTab.js)。**渡した鍵だけ**を CLI へ送り、
   // null はその鍵を既定へ戻す(空欄・不正値のとき)。0 は「保持しない」の有効な指定。
@@ -1093,11 +1088,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "setLanguage":
       return value.value === "auto" || value.value === "ja" || value.value === "en";
     case "setRemoteConfig":
-      return (
-        Array.isArray(value.hosts) &&
-        value.hosts.every(isRemoteHostEntryLike) &&
-        (value.artifacts === "collect" || value.artifacts === "on-demand")
-      );
+      return Array.isArray(value.hosts) && value.hosts.every(isRemoteHostEntryLike);
     case "devicesTabVisible":
       return typeof value.visible === "boolean";
     case "setRetention":

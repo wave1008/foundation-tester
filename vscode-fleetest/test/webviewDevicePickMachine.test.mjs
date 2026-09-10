@@ -101,7 +101,6 @@ function assertRemoteSource(source, machine) {
 const REMOTE_CONFIG_WITH_M1MAX = {
   type: "remoteConfig",
   hosts: [{ machine: "M1Max", host: "user@m1max", dir: "" }],
-  artifacts: "collect",
 };
 
 const EMPTY_INSTALLED_DEVICES = {

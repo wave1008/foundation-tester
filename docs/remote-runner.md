@@ -552,14 +552,11 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
   作っていない)。マシン自身の `~/foundation-tester` や `Projects/` には一切触れない
 - アプリバイナリは転送しない(rsync 対象はシナリオ・プロファイルのみ。dispatch 開始時に
   注記を1行出す)。appPath はリモート側で有効なパスであることが前提
-- results DB の**マージ**(ローカルの集計に混ぜる)は行わない(Phase 3 の課題)。ただし
-  **録画と run ログ(`results/` 配下)の回収は実装済み**(2026-08-01): `--remote-artifacts`
-  (`collect` 既定 / `on-demand`)で選ぶ。GUI は設定タブ「ログ・録画」の「成果物(ログ・録画)」。
-  `collect` はローカルの `Projects/<name>/results/` へ rsync(**`--delete` は付けない** —
-  ローカルで別に走った run の results を巻き添えで消さない。差分転送なので再ディスパッチは安い)。
-  `on-demand` でも実績 JSON(run.json/scenarios/*.json/host-metrics.ndjson)は常に回収する ——
-  回収しないと LPT(投入順・フリート割り当て)がリモートで走ったシナリオを永久に「実績なし」として
-  扱う(2026-08-18)。重いのは録画だけなので、`on-demand` はそれだけリモートに残し、パスを1行案内する。
+- results DB の**マージ**(ローカルの集計に混ぜる)は行わない(Phase 3 の課題)。**録画と run ログ
+  (`results/` 配下)は run のたびにローカルの `Projects/<name>/results/` へ rsync で回収する**
+  (**`--delete` は付けない** — ローカルで別に走った run の results を巻き添えで消さない。
+  差分転送なので再ディスパッチは安い)。回収しないと LPT(投入順・フリート割り当て)が
+  リモートで走ったシナリオを永久に「実績なし」として扱う。
   拡張連携(`fleetest api run` の NDJSON 中継)は §12 末尾のとおり後日実装
 - **レポート回収はディスパッチ単位に隔離**(2026-07-31)。run に
   `--report-dir <base>/work/.fleetest/dispatch/<stamp>/reports` を内部で渡し、
@@ -606,8 +603,8 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
 > **2026-08-17 に実行先セレクタは廃止**(§13 の実装で確定した点を参照)。`fleetest.remote.target`
 > という設定キーはもう無く、ディスパッチ先は**マシンプロファイルの `host`**(= 実行プロファイルが
 > 参照するマシン)で決まる。登録簿は LocalConfig へ移り、`fleetest.remote.hosts` も設定キーとしては
-> 存在しない(設定タブは `fleetest api remote-machines` を読み書きする)。残る設定キーは
-> `fleetest.remote.artifacts` だけ。
+> 存在しない(設定タブは `fleetest api remote-machines` を読み書きする)。`fleetest.remote.*`
+> 形の設定キーは無い。
 
 ## 13. フリート実行と多ホスト GUI(**段1・段4は実装済み: 2026-08-16**。段2・3・5 は未実装)
 
@@ -1002,14 +999,13 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
 | 5 | 「テスト実行」タブ多ホスト化(**状態・静止画・ライブ映像は 2026-08-17 実装済み**。watchdog 分界と自動修復は未実装) | 1。①〜④と独立に後回し可 |
 
 **results の扱い(2026-08-16 に実測で確認。当初の想定と違う)**: `fleetest results` 系の集計は
-`results/runs/` を走査する**ファイルベース**なので、`--remote-artifacts collect`(既定)が
-results/ を回収した時点で**リモート実行分もそのまま集計に載る**(実測: `results list` に
-M1Ultra / M1Max の run が machine 名付きで並ぶ)。「マージの実装」は要らなかった。
+`results/runs/` を走査する**ファイルベース**なので、results/ の回収が済んだ時点で
+**リモート実行分もそのまま集計に載る**(実測: `results list` に M1Ultra / M1Max の run が
+machine 名付きで並ぶ)。「マージの実装」は要らなかった。
 
 ただし**レポートへのリンクだけは壊れていた** —— リモートの run が記録する `reportPath` は
 ディスパッチ単位の隔離先(回収後に削除される)を指すため。回収後に記録側を回収先へ
-向け直す(`FTRemote.RemoteReportLink`)。`on-demand` でも録画以外(実績 JSON)は回収されるので
-集計には載る。載らないのは録画だけ。
+向け直す(`FTRemote.RemoteReportLink`)。
 
 ## 14. ランナー機の前提とインストーラー(実装済み: 2026-08-16)
 
@@ -1250,9 +1246,8 @@ plist を `~/Library/LaunchAgents` に配置+load する(**ユーザー空間な
 - **シナリオ・プロファイルに本番資格情報を置かない**。テスト資格情報も
   スクリーンショット・録画に写り込む(ログイン画面の入力等)。共有ラボでは他人が
   読める場所に残るため、**録画はランナー上に残さず回収後に削除する**
-  (実装済み: 2026-08-31。`--remote-artifacts collect` のとき、**回収に成功したときだけ**
-  `RemoteArtifactCollection.deleteRecordingsCommand` で消す —— 回収できていない物を消すと
-  唯一の証拠を失う。on-demand は「向こうに置いたまま」が指定の意味なので消さない)
+  (**回収に成功したときだけ** `RemoteArtifactCollection.deleteRecordingsCommand` で消す ——
+  回収できていない物を消すと唯一の証拠を失う)
 - 転送物は最小に保つ(アプリバイナリを送らない既定を維持。§12)
 
 ### 15.5 破壊的操作

@@ -18,7 +18,7 @@ final class BroadcastFlagTests: XCTestCase {
                 scenarios: ["Warm.up"], folders: [],
                 noLPT: false, lptHistoryRuns: nil, performanceMode: false,
                 forceLock: false, waitLock: nil, remoteDir: nil, remoteTimeout: nil,
-                remoteArtifacts: "collect", quiet: true, junitPath: nil, broadcast: broadcast)
+                quiet: true, junitPath: nil, broadcast: broadcast)
         }
         XCTAssertTrue(args(broadcast: true).contains("--broadcast"))
         XCTAssertFalse(args(broadcast: false).contains("--broadcast"))

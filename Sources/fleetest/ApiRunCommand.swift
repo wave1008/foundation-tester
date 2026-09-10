@@ -140,10 +140,6 @@ struct ApiRunCommand: AsyncParsableCommand {
             help: "Timeout in seconds for the whole remote dispatch (default: auto, sized from the scenario count; see docs/remote-runner.md)")
     var remoteTimeout: Int?
 
-    @Option(name: .customLong("remote-artifacts"),
-            help: "Collect recordings and run logs (results/) from the remote after the run: collect (default) or on-demand (leave them on the remote; docs/remote-runner.md)")
-    var remoteArtifacts: String = "collect"
-
     /// **拡張から待てるようにするための口**(docs/remote-runner.md §18.2 M2)。共有ランナーでは
     /// 「ロックが取れないので失敗しました」を人間が手で押し直す運用になり、そこが摩擦の実体だった。
     /// **奪う口(--force-lock)は足さない** —— 走っているかもしれない他人の run を GUI から
@@ -307,7 +303,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                     setOverrides: profileOverrides, defaultTimeout: defaultTimeout,
                     scenarioTimeout: scenarioTimeout,
                     noLPT: noLPT, lptHistoryRuns: lptHistoryRuns, performanceMode: performanceMode,
-                    remoteDir: remoteDir, remoteTimeout: remoteTimeout, remoteArtifacts: remoteArtifacts,
+                    remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                     waitLock: waitLock))
             if exitCode != 0 { throw ExitCode(exitCode) }
             return
@@ -754,11 +750,10 @@ struct ApiRunCommand: AsyncParsableCommand {
         // stdout は NDJSON 専用の契約(RemoteRunDispatcher.log の apiRun 分岐と同じ規律)なので、
         // アナウンスは stderr へ出す
         resolved.announce(toStderr: true)
-        let artifactsMode = try RemoteArtifactsMode.parse(remoteArtifacts)
         let localRoot = try RepoRoot.find()
         var dispatcher = RemoteRunDispatcher(
             host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
-            mode: .apiRun, artifacts: artifactsMode, hostLabel: dispatch.rawTarget)
+            mode: .apiRun, hostLabel: dispatch.rawTarget)
         dispatcher.waitLock = waitLock
         var scopedDevices = devices
         var scopedDeviceHost = deviceMachine
