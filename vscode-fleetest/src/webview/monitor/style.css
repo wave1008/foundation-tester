@@ -2172,13 +2172,30 @@ input[type="search"]::placeholder {
   line-height: 1.5;
   color: var(--vscode-descriptionForeground);
 }
-/* クリーンアップ(設定タブ)。数値入力の右に単位記号、その右に現在の使用量を並べる
-   (.settings-item-inline の1行に収める)。 */
+/* クリーンアップ(設定タブ)。4行を「ラベル | 入力 | 単位 | 使用量」の列に揃える。
+   各行は label のまま subgrid で親の列を借りる(display:contents にすると label の箱が消え、
+   クリック範囲・cursor が文字の上だけになる)。 */
+.settings-cleanup-grid {
+  display: grid;
+  grid-template-columns: max-content max-content max-content 1fr;
+  column-gap: 8px;
+  row-gap: 6px;
+  align-items: center;
+}
+.settings-cleanup-grid > .settings-cleanup-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  cursor: default;
+}
+/* .settings-number(56px = FM 並列枠の1桁用)では既定の「1000」MB がスピナーに食われて見切れる。
+   4桁 + 小数1桁 + スピナーが収まる幅 */
+.settings-cleanup-number {
+  width: 88px;
+}
 .settings-unit {
   color: var(--vscode-descriptionForeground);
-}
-.settings-cleanup-usage {
-  margin-left: 4px;
 }
 .settings-cleanup-actions {
   display: flex;

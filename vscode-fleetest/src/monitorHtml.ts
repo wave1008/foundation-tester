@@ -820,30 +820,32 @@ function renderSettingsPanel(): string {
         <div class="settings-section-title">${t("panels.settings.cleanupSectionTitle")}</div>
         <label class="settings-item"><input type="checkbox" id="settings-cleanup-enabled"> ${t("panels.settings.cleanupEnabledLabel")}</label>
         <div class="settings-hint">${t("panels.settings.cleanupHint")}</div>
-        <label class="settings-item settings-item-inline" for="settings-cleanup-device-captures">
-          ${t("panels.settings.cleanupDeviceCapturesLabel")}
-          <input type="number" id="settings-cleanup-device-captures" class="settings-number" min="0" step="any">
-          <span class="settings-unit">GB</span>
-          <span id="settings-cleanup-device-captures-usage" class="settings-hint settings-cleanup-usage"></span>
-        </label>
-        <label class="settings-item settings-item-inline" for="settings-cleanup-recordings">
-          ${t("panels.settings.cleanupRecordingsLabel")}
-          <input type="number" id="settings-cleanup-recordings" class="settings-number" min="0" step="any">
-          <span class="settings-unit">GB</span>
-          <span id="settings-cleanup-recordings-usage" class="settings-hint settings-cleanup-usage"></span>
-        </label>
-        <label class="settings-item settings-item-inline" for="settings-cleanup-reports">
-          ${t("panels.settings.cleanupReportsLabel")}
-          <input type="number" id="settings-cleanup-reports" class="settings-number" min="0" step="any">
-          <span class="settings-unit">MB</span>
-          <span id="settings-cleanup-reports-usage" class="settings-hint settings-cleanup-usage"></span>
-        </label>
-        <label class="settings-item settings-item-inline" for="settings-cleanup-logs">
-          ${t("panels.settings.cleanupLogsLabel")}
-          <input type="number" id="settings-cleanup-logs" class="settings-number" min="0" step="any">
-          <span class="settings-unit">MB</span>
-          <span id="settings-cleanup-logs-usage" class="settings-hint settings-cleanup-usage"></span>
-        </label>
+        <div class="settings-cleanup-grid">
+          <label class="settings-item settings-cleanup-row" for="settings-cleanup-device-captures">
+            <span>${t("panels.settings.cleanupDeviceCapturesLabel")}</span>
+            <input type="number" id="settings-cleanup-device-captures" class="settings-number settings-cleanup-number" min="0" step="any">
+            <span class="settings-unit">GB</span>
+            <span id="settings-cleanup-device-captures-usage" class="settings-hint settings-cleanup-usage"></span>
+          </label>
+          <label class="settings-item settings-cleanup-row" for="settings-cleanup-recordings">
+            <span>${t("panels.settings.cleanupRecordingsLabel")}</span>
+            <input type="number" id="settings-cleanup-recordings" class="settings-number settings-cleanup-number" min="0" step="any">
+            <span class="settings-unit">GB</span>
+            <span id="settings-cleanup-recordings-usage" class="settings-hint settings-cleanup-usage"></span>
+          </label>
+          <label class="settings-item settings-cleanup-row" for="settings-cleanup-reports">
+            <span>${t("panels.settings.cleanupReportsLabel")}</span>
+            <input type="number" id="settings-cleanup-reports" class="settings-number settings-cleanup-number" min="0" step="any">
+            <span class="settings-unit">MB</span>
+            <span id="settings-cleanup-reports-usage" class="settings-hint settings-cleanup-usage"></span>
+          </label>
+          <label class="settings-item settings-cleanup-row" for="settings-cleanup-logs">
+            <span>${t("panels.settings.cleanupLogsLabel")}</span>
+            <input type="number" id="settings-cleanup-logs" class="settings-number settings-cleanup-number" min="0" step="any">
+            <span class="settings-unit">MB</span>
+            <span id="settings-cleanup-logs-usage" class="settings-hint settings-cleanup-usage"></span>
+          </label>
+        </div>
         <div class="settings-cleanup-actions">
           <button id="settings-cleanup-now" class="secondary" type="button">${t("panels.settings.cleanupNowButton")}</button>
           <span id="settings-cleanup-result" class="settings-hint"></span>
