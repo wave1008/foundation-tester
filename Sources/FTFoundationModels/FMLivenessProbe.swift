@@ -131,7 +131,7 @@ public enum FMLivenessProbe {
             case .text:
                 _ = try await LanguageModelSession().respond(
                     to: "Answer with just OK.",
-                    options: GenerationOptions(sampling: .greedy, maximumResponseTokens: maxResponseTokens))
+                    options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: maxResponseTokens))
             case .vision:
                 guard #available(macOS 27, *) else {
                     // 呼び出し側(refresh)は isSupported で弾いているので通らない。#available は
@@ -143,7 +143,7 @@ public enum FMLivenessProbe {
                 }
                 _ = try await LanguageModelSession().respond(
                     generating: FMLoadGenerator.LoadVisionVerdict.self,
-                    options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 16)
+                    options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 16)
                 ) {
                     "Is this image a single solid color?"
                     Attachment(FMLoadGenerator.probeImage)

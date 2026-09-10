@@ -92,7 +92,7 @@ public enum FMLoadGenerator {
                 }
                 _ = try await LanguageModelSession().respond(
                     generating: LoadVisionVerdict.self,
-                    options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 16)
+                    options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 16)
                 ) {
                     "Is this image a single solid color?"
                     Attachment(imageSize.map { Self.makeImage(width: $0.width, height: $0.height) } ?? Self.probeImage)
@@ -100,7 +100,7 @@ public enum FMLoadGenerator {
             } else {
                 _ = try await LanguageModelSession().respond(
                     to: "Answer with just OK.",
-                    options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 8))
+                    options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 8))
             }
             let ms = Self.elapsedMs(startedAt)
             FMHealth.record(kind: "loadtest", path: vision ? .vision : .text, ms: ms, ok: true)

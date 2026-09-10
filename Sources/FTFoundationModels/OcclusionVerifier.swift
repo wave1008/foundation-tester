@@ -152,7 +152,7 @@ public struct OcclusionVerifier {
                     ?? LanguageModelSession(instructions: instructions)
                 let screening = try await screeningSession.respond(
                     generating: VisibilityScreening.self,
-                    options: GenerationOptions(sampling: .greedy,
+                    options: GenerationOptions(samplingMode: .greedy,
                                                maximumResponseTokens: Self.screeningResponseTokens)
                 ) {
                     prompt()
@@ -177,7 +177,7 @@ public struct OcclusionVerifier {
         do {
             let verdict = try await session.respond(
                 generating: VisibilityVerdict.self,
-                options: GenerationOptions(sampling: .greedy,
+                options: GenerationOptions(samplingMode: .greedy,
                                            maximumResponseTokens: Self.detailResponseTokens)
             ) {
                 prompt()

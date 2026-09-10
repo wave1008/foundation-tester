@@ -54,7 +54,7 @@ public enum TestbaseDrafter {
             let response = try await session.respond(
                 to: "テスト設計書:\n\(input)",
                 generating: TestbaseDraftSuggestion.self,
-                options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 700))
+                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 700))
             return convert(response.content, fallbackTitle: fallbackTitle)
         } catch {
             return nil

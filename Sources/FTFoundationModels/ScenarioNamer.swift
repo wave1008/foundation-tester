@@ -51,7 +51,7 @@ public enum ScenarioNamer {
             let response = try await session.respond(
                 to: prompt,
                 generating: ScenarioNameSuggestion.self,
-                options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 120))
+                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 120))
             let name = firstSentence(response.content.name, maxCount: 20)
             let desc = firstSentence(response.content.description, maxCount: 40)
             guard !name.isEmpty else { return nil }

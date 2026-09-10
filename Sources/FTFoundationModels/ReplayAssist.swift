@@ -97,7 +97,7 @@ public final class FMReplayDelegate: ReplayDelegate {
             let suggestion = try await session.respond(
                 to: prompt,
                 generating: LocatorRepairSuggestion.self,
-                options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 250)
+                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 250)
             ).content
 
             FMHealth.record(kind: "heal", path: .text, ms: OcclusionVerifier.elapsedMs(healStartedAt), ok: true)
@@ -202,7 +202,7 @@ public final class FMReplayDelegate: ReplayDelegate {
         do {
             let verdict = try await session.respond(
                 generating: ScreenVerdict.self,
-                options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 200)
+                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 200)
             ) {
                 "Expected screen state: \(expected)\nDecide whether the screenshot below matches this state."
                 Attachment(cgImage)
@@ -284,7 +284,7 @@ public final class FMReplayDelegate: ReplayDelegate {
             do {
                 let suggestion = try await LanguageModelSession(instructions: instructions).respond(
                     generating: TriageSuggestion.self,
-                    options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 300)
+                    options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 300)
                 ) {
                     text
                     "Screenshot at the moment of failure:"
@@ -305,7 +305,7 @@ public final class FMReplayDelegate: ReplayDelegate {
             let suggestion = try await textSession.respond(
                 to: text,
                 generating: TriageSuggestion.self,
-                options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 300)
+                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 300)
             ).content
             FMHealth.record(kind: "triage", path: .text, ms: OcclusionVerifier.elapsedMs(textStartedAt), ok: true)
             return Self.info(from: suggestion)
