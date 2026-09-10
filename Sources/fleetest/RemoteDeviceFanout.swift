@@ -198,14 +198,20 @@ enum RemoteDeviceFanout {
             let thread = Thread {
                 var buffer = Data()
                 while true {
-                    let chunk = pipe.fileHandleForReading.availableData
-                    if chunk.isEmpty { break }
-                    buffer.append(chunk)
-                    while let newline = buffer.firstIndex(of: 0x0A) {
-                        let line = String(decoding: buffer[buffer.startIndex..<newline], as: UTF8.self)
-                        buffer.removeSubrange(buffer.startIndex...newline)
-                        if !line.isEmpty { relay(line) }
+                    // **1回ごとに解放の区切り**(autoreleasepool)—— Thread の区切りはスレッドの終わりにしか
+                    // 来ないので、自動解放の NSData が抜けないループで溜まる
+                    let eof: Bool = autoreleasepool {
+                        let chunk = pipe.fileHandleForReading.availableData
+                        if chunk.isEmpty { return true }
+                        buffer.append(chunk)
+                        while let newline = buffer.firstIndex(of: 0x0A) {
+                            let line = String(decoding: buffer[buffer.startIndex..<newline], as: UTF8.self)
+                            buffer.removeSubrange(buffer.startIndex...newline)
+                            if !line.isEmpty { relay(line) }
+                        }
+                        return false
                     }
+                    if eof { break }
                 }
                 process.waitUntilExit()
                 continuation.resume()

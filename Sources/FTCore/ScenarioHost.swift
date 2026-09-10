@@ -604,7 +604,9 @@ public enum ScenarioHost {
         AsyncStream { continuation in
             // readabilityHandler は FileHandle 内部のキューで直列に呼ばれる
             var buffer = Data()
-            handle.readabilityHandler = { handle in
+            handle.readabilityHandler = { handle in autoreleasepool {
+                // 呼び出しごとの解放の区切りは Foundation の内部キュー次第なので明示する
+                // (自動解放の NSData が長いシナリオの間ずっと溜まらないように)
                 let chunk = handle.availableData
                 if chunk.isEmpty {  // EOF
                     handle.readabilityHandler = nil
@@ -622,7 +624,7 @@ public enum ScenarioHost {
                     buffer.removeSubrange(buffer.startIndex...newline)
                     continuation.yield(line)
                 }
-            }
+            } }
             continuation.onTermination = { _ in
                 handle.readabilityHandler = nil
             }

@@ -165,10 +165,15 @@ enum RunHookRunner {
         DispatchQueue.global(qos: .utility).async {
             let splitter = StreamLineSplitter()
             while true {
-                // availableData = 届いた分だけ返す(readData(ofLength:) は EOF まで貯める)
-                let chunk = readHandle.availableData
-                if chunk.isEmpty { break }   // 子の終了で書込端が閉じ EOF
-                sink.append(splitter.feed(chunk))
+                // availableData = 届いた分だけ返す(readData(ofLength:) は EOF まで貯める)。
+                // **1回ごとに解放の区切り**(autoreleasepool)—— 自動解放の NSData が抜けないループで溜まる
+                let eof: Bool = autoreleasepool {
+                    let chunk = readHandle.availableData
+                    if chunk.isEmpty { return true }   // 子の終了で書込端が閉じ EOF
+                    sink.append(splitter.feed(chunk))
+                    return false
+                }
+                if eof { break }
             }
             if let last = splitter.flush() { sink.append([last]) }
             readDone.signal()

@@ -858,10 +858,15 @@ struct RemoteRunDispatcher {
         DispatchQueue.global(qos: .utility).async {
             while true {
                 // availableData = 届いた分だけ返す(readData(ofLength:) は length か EOF まで
-                // 貯めるので、NDJSON 中継が ssh の終了時の一括になる。2026-08-18 実測)
-                let chunk = readHandle.availableData
-                if chunk.isEmpty { break }   // 子の終了/kill による書込端クローズで EOF
-                for line in splitter.feed(chunk) { relayLine(line) }
+                // 貯めるので、NDJSON 中継が ssh の終了時の一括になる。2026-08-18 実測)。
+                // **1回ごとに解放の区切り**(autoreleasepool)—— 自動解放の NSData が抜けないループで溜まる
+                let eof: Bool = autoreleasepool {
+                    let chunk = readHandle.availableData
+                    if chunk.isEmpty { return true }   // 子の終了/kill による書込端クローズで EOF
+                    for line in splitter.feed(chunk) { relayLine(line) }
+                    return false
+                }
+                if eof { break }
             }
             readDone.signal()
         }

@@ -335,14 +335,20 @@ final class RemoteMonitorFanout: @unchecked Sendable {
     private static func forEachLine(of pipe: Pipe, _ body: (String) -> Void) {
         var buffer = Data()
         while true {
-            let chunk = pipe.fileHandleForReading.availableData
-            if chunk.isEmpty { break }
-            buffer.append(chunk)
-            while let newline = buffer.firstIndex(of: 0x0A) {
-                let line = String(decoding: buffer[buffer.startIndex..<newline], as: UTF8.self)
-                buffer.removeSubrange(buffer.startIndex...newline)
-                if !line.isEmpty { body(line) }
+            // **1回ごとに解放の区切り**(autoreleasepool)。`availableData` の NSData は自動解放で、
+            // 抜けないループの中では区切りまで1つも解放されない(api monitor が 1 時間に約 630 MB 溜めた)
+            let eof: Bool = autoreleasepool {
+                let chunk = pipe.fileHandleForReading.availableData
+                if chunk.isEmpty { return true }
+                buffer.append(chunk)
+                while let newline = buffer.firstIndex(of: 0x0A) {
+                    let line = String(decoding: buffer[buffer.startIndex..<newline], as: UTF8.self)
+                    buffer.removeSubrange(buffer.startIndex...newline)
+                    if !line.isEmpty { body(line) }
+                }
+                return false
             }
+            if eof { break }
         }
     }
 }

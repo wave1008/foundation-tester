@@ -787,6 +787,9 @@
   孫が書込端を継承したまま残る形だけ。`(sleep 3) &` の孫で 3 秒待っていた)。
   **`readDataToEndOfFile` を子プロセスのパイプに使わない**(EOF まで戻らない = 期限が置けない。
   `ShellSourceScanTests` が Sources 全体で落とす。対話プロンプトへ答える子は `Shell.run(stdin:)`)。
+  **`availableData` を読むループは1回ごとに `autoreleasepool` で区切る**(返る NSData は自動解放で、
+  抜けないループ・`Thread`・長く生きる readabilityHandler の中では1つも解放されない。拡張が1日じゅう
+  生かす `api monitor` が 1 時間に約 630 MB 溜めた。`AvailableDataAutoreleaseScanTests` が Sources 全体で落とす)。
   **グループの残存は直接の子の終了と独立に見る**(Codex 指摘 2026-09-06: 子が SIGTERM で素直に
   終わっても `trap '' TERM` の孫は残る。猶予が尽きたら `killpg(pgid, 0)` で残りを確かめ SIGKILL)。
   witness は `ShellTimeoutTests` の孫3本

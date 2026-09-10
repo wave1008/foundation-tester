@@ -27,10 +27,15 @@ public final class PipeLinePump: @unchecked Sendable {
     public func start() {
         DispatchQueue.global(qos: .utility).async { [self] in
             while true {
-                // availableData = 届いた分だけ返す(readData(ofLength:) は EOF まで貯める。2026-08-18 実測)
-                let chunk = handle.availableData
-                if chunk.isEmpty { break }   // 子の終了による書込端クローズで EOF
-                for line in splitter.feed(chunk) { onLine(line) }
+                // availableData = 届いた分だけ返す(readData(ofLength:) は EOF まで貯める。2026-08-18 実測)。
+                // **1回ごとに解放の区切り**(autoreleasepool)—— 自動解放の NSData が抜けないループで溜まる
+                let eof: Bool = autoreleasepool {
+                    let chunk = handle.availableData
+                    if chunk.isEmpty { return true }   // 子の終了による書込端クローズで EOF
+                    for line in splitter.feed(chunk) { onLine(line) }
+                    return false
+                }
+                if eof { break }
             }
             continuation.finish()
         }
