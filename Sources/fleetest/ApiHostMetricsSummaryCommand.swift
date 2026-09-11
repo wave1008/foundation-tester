@@ -55,6 +55,11 @@ struct ApiHostMetricsSummaryCommand: ParsableCommand {
         let candidatePaths = [resolvedLogPath + ".1", resolvedLogPath]
         let existingPaths = candidatePaths.filter { FileManager.default.fileExists(atPath: $0) }
         if existingPaths.isEmpty {
+            // 明示した --log が無いのは打ち間違い = 止める。run から解決した場所に無いのは
+            // 「その run はホスト負荷を記録していない」= 標本 0 の集計を返す(事実)
+            if logPath != nil {
+                throw ValidationError("--log file not found: \(resolvedLogPath)")
+            }
             logStderr("log file not found: \(resolvedLogPath)")
         }
 

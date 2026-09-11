@@ -43,8 +43,9 @@ struct Fleetest: AsyncParsableCommand {
 
     /// AsyncParsableCommand の既定 main() を隠し、パース前に武装だけ差し込む
     /// (`FT_PARENT_PID` が無ければ armIfRequested は no-op = 挙動は変わらない)。
-    /// `self.main(nil)` は AsyncParsableCommand 拡張の `main(_ arguments:)` を呼ぶ ——
-    /// asyncParseAsRoot → run() → catch { exit(withError:) } の既定挙動をそのまま保つ
+    /// パース → run() → catch は既定と同じ形で、**違うのは run() の中で投げた ValidationError だけ**:
+    /// 既定の `exit(withError:)` はルートの Usage(`fleetest <subcommand>`)を出すので、どのコマンドの
+    /// 使い方を見ればよいかが消える。そのサブコマンドの help を名指しする(exit code は同じ 64)
     static func main() async {
         // 出力の読み手が先に死ぬと(`| head`/`| tee` を Ctrl-C 等)、書き込みが SIGPIPE で
         // このプロセスごと即死し、中断後の巻き戻し(録画の停止・lease 解放・run.json 完了)が
@@ -58,7 +59,39 @@ struct Fleetest: AsyncParsableCommand {
         _ = fcntl(FileHandle.standardError.fileDescriptor, F_SETNOSIGPIPE, 1)
         ParentDeathWatch.armIfRequested()
         LedgerWriteRole.enableForProduction()
-        await self.main(nil)
+        let command: ParsableCommand
+        do {
+            command = try parseAsRoot(nil)
+        } catch {
+            exit(withError: error)
+        }
+        do {
+            if var asyncCommand = command as? AsyncParsableCommand {
+                try await asyncCommand.run()
+            } else {
+                var syncCommand = command
+                try syncCommand.run()
+            }
+        } catch let error as ValidationError {
+            ConsoleOut.err("Error: \(error.message)")
+            ConsoleOut.err("  See 'fleetest \(commandPath(of: type(of: command)) ?? "") --help'"
+                + " for more information.")
+            Foundation.exit(ExitCode.validationFailure.rawValue)
+        } catch {
+            exit(withError: error)
+        }
+    }
+
+    /// サブコマンドの型からルート以下の名前の並び("results list")を引く。見つからなければ nil
+    static func commandPath(of target: ParsableCommand.Type) -> String? {
+        func search(_ type: ParsableCommand.Type, _ path: [String]) -> [String]? {
+            if type == target { return path }
+            for sub in type.configuration.subcommands {
+                if let found = search(sub, path + [sub._commandName]) { return found }
+            }
+            return nil
+        }
+        return search(Fleetest.self, []).map { $0.joined(separator: " ") }
     }
 }
 
@@ -217,6 +250,8 @@ struct Doctor: AsyncParsableCommand {
             if fmOnly { throw ValidationError("--fm-load cannot be combined with --fm-only") }
             if rootsOnly { throw ValidationError("--fm-load cannot be combined with --roots-only") }
         }
+        // run() は --roots-only を先に見て抜けるので、併用すると --fm-only が黙って効かない
+        if fmOnly, rootsOnly { throw ValidationError("--fm-only cannot be combined with --roots-only") }
     }
 
     func run() async throws {
@@ -1047,6 +1082,10 @@ struct RunScenarios: AsyncParsableCommand {
         // (判定は FTCore.JUnitOutputPath の doc)
         if let junit, let reason = JUnitOutputPath.unwritableReason(path: junit) {
             throw ValidationError("--junit \(junit) cannot be written: \(reason)")
+        }
+        // dry-run は JUnit を書かない(実行していない結果を合否として CI に渡さない)ので、黙って無視せず断る
+        if junit != nil, dryRun {
+            throw ValidationError("--junit cannot be combined with --dry-run (a dry-run writes no JUnit report)")
         }
         let parsed: [String: RunProfileSetValue]
         do { parsed = try RunProfileSetOverride.parse(setOverrides) }

@@ -41,6 +41,14 @@ public enum DSLCommandIndex {
     /// 索引に載せない `public func`(マクロが生成する呼び出し口で、利用者は書かない)
     public static let internalNames: Set<String> = ["ftRunSetUp", "ftRunTearDown"]
 
+    /// 分類の一覧(索引に出てくる順)。`api dsl-commands --category` の help はここから導出する
+    /// (手書きの列挙は分類を足したときに必ずずれる)
+    public static var categories: [String] {
+        var seen: [String] = []
+        for command in all where !seen.contains(command.category) { seen.append(command.category) }
+        return seen
+    }
+
     public static let all: [DSLCommandInfo] = [
         // MARK: structure
         .init("scenario", "structure", "scenario { }",

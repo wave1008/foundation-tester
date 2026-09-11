@@ -12,7 +12,8 @@ struct ApiDslCommandsCommand: AsyncParsableCommand {
         abstract: "Print the Swift DSL command index as JSON on stdout"
             + " (name, category, signature, summary, chainable). Touches no device")
 
-    @Option(help: "Only the commands of one category (structure/operation/scroll/flick/existence/text/value/app/control/this)")
+    @Option(help: ArgumentHelp("Only the commands of one category ("
+        + DSLCommandIndex.categories.joined(separator: "/") + ")"))
     var category: String?
 
     @Option(help: "Only the command with this exact name")
