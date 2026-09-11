@@ -356,7 +356,16 @@ public enum BridgeAPI {
     /// the effects window's frame, which stays full-screen even after the keyboard closes — it
     /// used to stay stuck at `true` forever after the first time a keyboard appeared. A stale
     /// runner/dylib keeps all six defects → bump.
-    public static let bridgeProtocolVersion = 94
+    /// v95: in-app — (e)'s check refused every ref'd type/clear on Flutter (its text receiver is a
+    /// 1x1pt view at the field's editable origin, so it never contains the tapped centre; the host
+    /// then fell back to XCUITest) and the first type after SwiftUI shifted the layout for the
+    /// keyboard; it now compares against the element's live frame, judges zero-area receivers by
+    /// the element's frame, and polls up to `FocusWait.waitSeconds`. Window stacking breaks
+    /// windowLevel ties by the app's window order. XCUITest runner — POST /type and /clear with a
+    /// ref that is not a text input now refuse (422) when the tap left keyboard focus on the field
+    /// that had it before; they used to type/clear into that field and return ok, which also
+    /// undid (e) under hybrid, where the host retries in-app's 409 on XCUITest.
+    public static let bridgeProtocolVersion = 95
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1237,6 +1246,15 @@ public struct RotateResponse: Codable {
 public enum RotationSettle {
     public static let deadlineSeconds: Double = 3.0
     public static let pollIntervalSeconds: Double = 0.1
+}
+
+/// 焦点待ちの上限と刻み。**唯一の定義元**: MCP の awaitFocus・DSL の pressEnter
+/// (StepExecutor+Actions)・in-app ブリッジの ref 指定 type/clear(タップ後に受け口が動くのを待つ)。
+/// ブリッジのソース集合に入るのでここに置く。
+/// **上限が短い**のは、焦点を報告しないフレームワークで毎回これを丸ごと待つため
+public enum FocusWait {
+    public static let waitSeconds: Double = 1.5
+    public static let pollSeconds: Double = 0.15
 }
 
 /// **スクロールの向き**(コンテンツ基準。標準用語どおり `.down` = 下に読み進める)。

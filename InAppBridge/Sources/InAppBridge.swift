@@ -682,7 +682,7 @@ final class FTInAppBridge {
     /// handleTap が通知由来の枠(keyboardFrameIfVisible)で先に断る。前から順に見て最初に hitTest が
     /// 当たった窓で決める(実際のタッチ配送と同じ規則)
     private static func topmostHitView(at point: CGPoint) -> (view: UIView, window: UIWindow)? {
-        for window in UIApplication.shared.windows.sorted(by: { $0.windowLevel > $1.windowLevel }) {
+        for window in backToFront(UIApplication.shared.windows).reversed() {
             guard !window.isHidden, window.alpha > 0.01 else { continue }
             // point は screen 座標(from: nil = 画面の固定座標系。isCovered と同じ変換)
             let local = window.convert(point, from: nil)
@@ -731,30 +731,76 @@ final class FTInAppBridge {
     /// (FTInsertTextIntoFirstResponder のコメント参照)。かわりに「タップした座標を現在の受け口が
     /// 実際に含むか」で判定する(受け口が正しければ、そこへ直前にタップした点の上に物理的に
     /// 存在するはず)。**受け口が UIView でない(判定不能)ときは許可する**(isReachable と
-    /// 同じ方針)
-    private static func requireFocusMoved(toward point: CGPoint, action: String) throws {
+    /// 同じ方針)。
+    /// **面積の無い受け口は点でなく「叩いた要素の枠の中にあるか」で見る** —— Flutter の
+    /// FlutterTextInputView は 1×1pt で欄の編集領域の左上に置かれる(実測 (16,310 1x1)・欄は
+    /// (16,298 370x48)・叩いた中心は (201,322))ので、点を含むことは原理的に無い。
+    /// 面積のある受け口(UIKit・Compose)を枠で見ないのは、枠の大きい容器を叩いたときに中の
+    /// 前の欄を「叩いた先」と取り違えるため。
+    /// **タップ直後の1回読みで断らない** —— Flutter はタップからフォーカス移動までが非同期
+    /// (engine → framework → 受け口の付け替え)で、直後は「受け口なし/前の欄」が見える。
+    /// FocusWait の上限まで main を空けながら読み直し、上限で最後の読みを判定する
+    /// (待つのは断る経路だけ。正しく動いた回は最初の読みで抜ける)。
+    /// **ハンドラのスレッドから呼ぶ**(main の上で待つとフォーカス移動そのものが進まない)。
+    /// **比べる相手は叩いた要素の「今の」枠**(AX ノードの accessibilityFrame。取れなければ snapshot の枠)——
+    /// 最初にキーボードが出たとき SwiftUI は欄を避けて中身をずらす(実測: 欄が y=237 → 103)ので、
+    /// 叩いた時点の座標のままでは正しい受け口を「別の欄」と断る
+    private func requireFocusMoved(ref: Int, tapped point: CGPoint, action: String) throws {
+        let deadline = Date().addingTimeInterval(FocusWait.waitSeconds)
+        enum Poll { case focused, pending, refused(String) }
+        while true {
+            // 診断(全窓の view 走査)は断ると決まった1回だけ作る
+            let poll: Poll = mainSync {
+                let axFrame = (self.nodes.object(forKey: NSNumber(value: ref)) as? NSObject)?.accessibilityFrame
+                let live = axFrame.flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil }
+                let target = live ?? self.frames[ref]
+                let centre = live.map { CGPoint(x: $0.midX, y: $0.midY) } ?? point
+                guard let reason = Self.focusRefusal(toward: centre, within: target, action: action)
+                else { return .focused }
+                guard Date() >= deadline else { return .pending }
+                return .refused(reason + " Diagnostics: \(FTFirstResponderDiagnostics())")
+            }
+            switch poll {
+            case .focused: return
+            case .refused(let message): throw InAppError(409, message)
+            case .pending: Thread.sleep(forTimeInterval: FocusWait.pollSeconds)
+            }
+        }
+    }
+
+    private static func focusRefusal(toward point: CGPoint, within target: CGRect?, action: String) -> String? {
         guard let receiver = FTCurrentTextReceiver() else {
-            throw InAppError(409, "no focused input field after tapping the target — the ref is"
+            return "no focused input field after tapping the target — the ref is"
                 + " probably not a text input (tapping it does not move keyboard focus)."
                 + " \(action) needs a focused field: pass the ref of the input element itself."
-                + " Diagnostics: \(FTFirstResponderDiagnostics())")
         }
-        guard let view = receiver as? UIView else { return }
-        guard view.convert(view.bounds, to: nil).contains(point) else {
-            throw InAppError(409, "keyboard focus landed on a different field than the one"
-                + " tapped — refusing to \(action) into the wrong field."
-                + " Diagnostics: \(FTFirstResponderDiagnostics())")
+        guard let view = receiver as? UIView else { return nil }
+        let rect = view.convert(view.bounds, to: nil)
+        let hasNoArea = rect.width <= 1 || rect.height <= 1
+        let landed = hasNoArea
+            ? target.map { $0.contains(CGPoint(x: rect.midX, y: rect.midY)) } ?? false
+            : rect.contains(point)
+        guard landed else {
+            return "keyboard focus landed on a different field than the one"
+                + " tapped — refusing to \(action) into the wrong field"
+                + " (receiver at \(Self.describe(rect)), tapped \(Int(point.x)),\(Int(point.y)))."
         }
+        return nil
+    }
+
+    private static func describe(_ rect: CGRect) -> String {
+        "(\(Int(rect.minX)),\(Int(rect.minY)) \(Int(rect.width))x\(Int(rect.height)))"
     }
 
     private func handleType(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(TypeRequest.self, body)
         if let ref = req.ref {
+            var point = CGPoint.zero
             try performWithSettle(operation: "the tap before typing") { window in
-                let p = try self.resolvePoint(ref: ref, x: nil, y: nil)
-                FTSynthTap(window, p)
-                try Self.requireFocusMoved(toward: p, action: "type")
+                point = try self.resolvePoint(ref: ref, x: nil, y: nil)
+                FTSynthTap(window, point)
             }
+            try requireFocusMoved(ref: ref, tapped: point, action: "type")
         }
         // 末尾の改行1つは本文と分けて **pressEnter と同じ経路**へ流す(「type の末尾改行 = pressEnter」が
         // 契約。Compose は "\n" 完全一致の insertText でだけ IME アクションに変換し、UITextField は
@@ -803,11 +849,12 @@ final class FTInAppBridge {
     private func handleClear(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(ClearRequest.self, body)
         if let ref = req.ref {
+            var point = CGPoint.zero
             try performWithSettle { window in
-                let p = try self.resolvePoint(ref: ref, x: nil, y: nil)
-                FTSynthTap(window, p)
-                try Self.requireFocusMoved(toward: p, action: "clear")
+                point = try self.resolvePoint(ref: ref, x: nil, y: nil)
+                FTSynthTap(window, point)
             }
+            try requireFocusMoved(ref: ref, tapped: point, action: "clear")
         }
         var cleared = false
         try performWithSettle { _ in cleared = FTClearTextInFirstResponder() }
@@ -1275,8 +1322,7 @@ final class FTInAppBridge {
             // **可視な窓を奥から手前へ重ねて描く**。キーウィンドウ1枚だけ描くと、
             // 別 UIWindow のモーダルが**写らない**画像を証跡として残すことになる
             // (木は載せるようになったのに画像だけ食い違う)
-            let windows = Self.visibleWindows(keyWindow: key)
-                .sorted { $0.windowLevel < $1.windowLevel }
+            let windows = Self.backToFront(Self.visibleWindows(keyWindow: key))
             let renderer = UIGraphicsImageRenderer(bounds: key.bounds)
             let image = renderer.image { _ in
                 for window in windows {
@@ -1435,18 +1481,30 @@ final class FTInAppBridge {
     /// 「いま指が当たる窓」を選ぶ(木が覆いを落とす規則と揃う)
     static func frontmostTouchableWindow(keyWindow: UIWindow) -> UIWindow {
         let center = CGPoint(x: keyWindow.bounds.midX, y: keyWindow.bounds.midY)
-        var best = keyWindow
-        for window in UIApplication.shared.windows where window !== keyWindow {
+        // 手前から見て最初に当たった窓。keyWindow まで降りたらそれ以上奥は見ない
+        for window in backToFront(UIApplication.shared.windows).reversed() {
+            if window === keyWindow { return keyWindow }
             let name = NSStringFromClass(type(of: window))
             guard !name.contains("TextEffects"), !name.contains("RemoteKeyboard") else { continue }
-            guard !window.isHidden, window.alpha > 0.01,
-                  window.windowLevel > best.windowLevel else { continue }
+            guard !window.isHidden, window.alpha > 0.01 else { continue }
             let local = window.convert(center, from: nil)
             guard window.bounds.contains(local),
                   window.hitTest(local, with: nil) != nil else { continue }
-            best = window
+            return window
         }
-        return best
+        return keyWindow
+    }
+
+    /// 窓の重なり順(奥 → 手前)。**windowLevel だけで並べない** —— 同じ階層の窓の前後は
+    /// `UIApplication.windows` の並び(奥 → 手前)が決めるので、それを第2鍵にする。
+    /// windowLevel だけだと同順位の前後が渡し順で決まり、keyWindow を先頭に置く visibleWindows
+    /// では同じ階層の手前の窓を奥として扱う(木の遮蔽・合成画像・タップ先が揃って食い違う)
+    static func backToFront(_ windows: [UIWindow]) -> [UIWindow] {
+        let stacking = UIApplication.shared.windows
+        func rank(_ window: UIWindow) -> Int { stacking.firstIndex { $0 === window } ?? stacking.count }
+        return windows.sorted { a, b in
+            a.windowLevel != b.windowLevel ? a.windowLevel < b.windowLevel : rank(a) < rank(b)
+        }
     }
 
     private func keyWindow() -> UIWindow? {

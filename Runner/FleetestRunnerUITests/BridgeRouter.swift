@@ -617,10 +617,14 @@ final class BridgeRouter {
     private func handleType(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(TypeRequest.self, body)
         let app = try requireLiveApp()
+        let focusBefore = focusBeforeTappingNonInput(app, ref: req.ref)
+        var tapped: CGPoint?
         if let ref = req.ref {
             // tap() が quiescence まで待つため追加待ちは不要(旧: 固定400ms・keyboards クエリは
             // キーボードが別プロセス扱いのため常にタイムアウトし逆効果だった。2026-07-12実測)
-            coordinate(app, try resolvePoint(ref: ref, x: nil, y: nil)).tap()
+            let point = try resolvePoint(ref: ref, x: nil, y: nil)
+            coordinate(app, point).tap()
+            tapped = point
         }
         // 末尾の改行1つは本文と分けて送る(改行は Return キー相当で、値には残らない=検証対象外)。
         // 本文を入れ切ってから発火するので「空のまま送信された」も同時に塞げる
@@ -642,7 +646,8 @@ final class BridgeRouter {
             // テストが Tear Down して**ランナーごと落ちる**(ref が入力欄でない・
             // ref 無しで未フォーカスのどちらも踏む)。in-app は同じ状況で 409 を返せるので、
             // ここは 422 で先に失敗させて揃える(409 は requireApp() 専用という不変条件)
-            try Self.requireKeyboardFocus(app)
+            let focusAfter = try Self.requireKeyboardFocus(app)
+            try Self.requireFocusMoved(from: focusBefore, to: focusAfter, tapped: tapped, action: "type")
             app.typeText(req.text)
             return .json(OKResponse())
         }
@@ -730,15 +735,50 @@ final class BridgeRouter {
     /// in-app の同じ状況の文言(`no focused input field — tap the target field
     /// first`)と揃える。**409 ではなく 422**(409 は requireApp() 専用という不変条件。
     /// ここは「セッションはあるが今は打てない」であってセッション消失ではない)
-    private static func requireKeyboardFocus(_ app: XCUIApplication) throws {
-        let focused = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
-        guard focused.exists else {
+    @discardableResult
+    private static func requireKeyboardFocus(_ app: XCUIApplication) throws -> FocusMark {
+        guard let focused = focusMark(app) else {
             throw BridgeError(422, "nothing has keyboard focus, so there is nothing to type into."
                 + " If you passed a ref, it is probably not the input element itself — tapping a"
                 + " container does not move focus. Tap the field (or pass the ref of the element"
                 + " whose type is a text field) and try again")
         }
+        return focused
+    }
+
+    /// 焦点を持つ要素の控え。タップの前後で「焦点が動いたか」を比べるためだけに使う
+    private struct FocusMark: Equatable {
+        let identifier: String
+        let type: XCUIElement.ElementType
+        let frame: CGRect
+    }
+
+    /// ライブクエリ1回(0.5s 級)。検証つきの主経路には持ち込まない(handleType 冒頭のコメント参照)
+    private static func focusMark(_ app: XCUIApplication) -> FocusMark? {
+        let focused = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
+        guard let snap = try? focused.snapshot() else { return nil }
+        return FocusMark(identifier: snap.identifier, type: snap.elementType, frame: snap.frame)
+    }
+
+    /// **入力欄でない ref への type / clear は、タップで焦点が動いたことを確かめる**。確かめないと、
+    /// 焦点を持たない要素を叩いても前の欄の焦点はそのまま残り、**前の欄へ打って(消して)200 を返す**
+    /// (ホストは xcuitest の読み返しを信じて二重に確かめないので誤った緑になる。実測: Flutter で
+    /// パスワード欄に焦点を残して送信ボタンの ref へ type → パスワード欄に追記)。
+    /// 比べるのは**タップ前に焦点を持っていた要素そのもの**で、タップした座標ではない —— 最初に
+    /// キーボードが出たとき SwiftUI は中身をずらすので、叩いた時点の座標では正しい欄を取り違える。
+    /// 入力欄の ref はここを通さない(叩けば焦点が動くので、主経路にライブクエリを足さない)
+    private func focusBeforeTappingNonInput(_ app: XCUIApplication, ref: Int?) -> FocusMark? {
+        guard let ref, let target = refElements[ref], !TypeReadback.isTextInput(target) else { return nil }
+        return Self.focusMark(app)
+    }
+
+    private static func requireFocusMoved(from before: FocusMark?, to after: FocusMark,
+                                          tapped: CGPoint?, action: String) throws {
+        guard let before, let tapped, after == before, !after.frame.contains(tapped) else { return }
+        throw BridgeError(422, "keyboard focus did not move when the target was tapped — it is still on"
+            + " the field that had it before, so \(action) would act on that field instead."
+            + " The ref is probably not a text input: pass the ref of the input element itself")
     }
 
     /// hasKeyboardFocus な要素を探して末尾へカーソルを送ってから delete を打つ。**文中をタップして
@@ -768,11 +808,18 @@ final class BridgeRouter {
     private func handleClear(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(ClearRequest.self, body)
         let app = try requireLiveApp()
+        let focusBefore = focusBeforeTappingNonInput(app, ref: req.ref)
+        var tapped: CGPoint?
         if let ref = req.ref {
-            coordinate(app, try resolvePoint(ref: ref, x: nil, y: nil)).tap()
+            let point = try resolvePoint(ref: ref, x: nil, y: nil)
+            coordinate(app, point).tap()
+            tapped = point
         }
         let focused = app.descendants(matching: .any)
             .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
+        if focusBefore != nil, let focusAfter = Self.focusMark(app) {
+            try Self.requireFocusMoved(from: focusBefore, to: focusAfter, tapped: tapped, action: "clear")
+        }
         guard focused.exists else {
             // **原因を名指しする**(2026-08-12 のブラウザ監査): 「ref を指定してください」だけだと
             // ref を渡した呼び手が読む先を失う —— 実際に起きるのは「渡した ref が入力欄ではなく、

@@ -63,7 +63,7 @@ enum InAppSnapshot {
         // 重複すると同じラベルが並んでセレクタが曖昧になり、DOM も2回読むことになる
         var visited = Set<ObjectIdentifier>()
         var gathered: [Gathered] = []
-        let ordered = windows.sorted(by: { $0.windowLevel < $1.windowLevel })   // 奥 → 手前
+        let ordered = FTInAppBridge.backToFront(windows)   // 奥 → 手前
         for (index, window) in ordered.enumerated() {
             collect(window, depth: 0, screen: screen, front: Array(ordered[(index + 1)...]),
                     clip: nil, visited: &visited, gathered: &gathered)
