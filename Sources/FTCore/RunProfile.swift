@@ -1218,6 +1218,11 @@ public enum ProfileError: Error, LocalizedError {
             return "the machine profile \"\(machine)\" referenced by run profile \(run) was not found"
                 + availableHint(available, empty: "profiles/machines/ is empty")
         case .machineUndetermined(let available):
+            // 0 件と複数件で直し方が違う(「複数ある」と言いながら空、と食い違わせない)
+            guard !available.isEmpty else {
+                return "cannot tell which machine profile to use: profiles/machines/ is empty."
+                    + " Create one (`fleetest profile setup`) and set \"machine\": \"<name>\" in the run profile"
+            }
             return "cannot tell which machine profile to use: the run profile does not set "
                 + "\"machine\" and profiles/machines/ holds more than one. Add \"machine\": "
                 + "\"<name>\" to the run profile (or set FT_MACHINE for a one-off run)"
@@ -1786,6 +1791,31 @@ public enum ProfileResolver {
         return base.appendingPathComponent(expanded).standardizedFileURL.path
     }
 
+    /// デコード失敗を「どのキーが・何を期待したか」で言う(型の違いだけではどの欄を直すか分からない)
+    static func describeDecodingError(_ error: Error) -> String {
+        func path(_ context: DecodingError.Context) -> String {
+            var out = ""
+            for key in context.codingPath {
+                if let index = key.intValue { out += "[\(index)]" }
+                else { out += (out.isEmpty ? "" : ".") + key.stringValue }
+            }
+            return out.isEmpty ? "the top level" : "\"" + out + "\""
+        }
+        switch error as? DecodingError {
+        case .typeMismatch(let type, let context)?:
+            return "\(path(context)): expected \(type)"
+        case .valueNotFound(let type, let context)?:
+            return "\(path(context)): expected \(type), got null"
+        case .keyNotFound(let key, let context)?:
+            let parent = context.codingPath.isEmpty ? "" : " in " + path(context)
+            return "missing \"\(key.stringValue)\"\(parent)"
+        case .dataCorrupted(let context)?:
+            return "\(path(context)): \(context.debugDescription)"
+        default:
+            return "type mismatch"
+        }
+    }
+
     // MARK: - 単一ファイル検証(プロファイルエディタ用)
 
     /// プロファイルファイル 1 つの検証。戻り値: (エラー, 警告)。
@@ -1794,16 +1824,20 @@ public enum ProfileResolver {
     public static func validate(
         kind: ProfileFileKind, data: Data, context: String, project: TestProject
     ) -> (errors: [String], warnings: [String]) {
-        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+        guard let parsed = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else {
             return (["cannot parse as JSON (syntax error)"], [])
+        }
+        guard let json = parsed as? [String: Any] else {
+            let got = parsed is [Any] ? "an array" : "a single value"
+            return (["the top level must be a JSON object ({ ... }), not \(got)"], [])
         }
         var errors: [String] = []
         var warnings: [String] = []
         let decoder = JSONDecoder()
         switch kind {
         case .app:
-            if (try? decoder.decode(AppProfile.self, from: data)) == nil {
-                errors.append("cannot load as an app profile (type mismatch)")
+            do { _ = try decoder.decode(AppProfile.self, from: data) } catch {
+                errors.append("cannot load as an app profile (\(describeDecodingError(error)))")
             }
             warnings += checkAppProfileKeys(json, context: context)
             warnings += checkDeprecatedSectionKeys(json, context: context)
@@ -1824,7 +1858,10 @@ public enum ProfileResolver {
                     }
                 }
             } else {
-                errors.append("cannot load as a machine profile (type mismatch)")
+                let reason: String
+                do { _ = try decoder.decode(MachineProfile.self, from: data); reason = "" }
+                catch { reason = describeDecodingError(error) }
+                errors.append("cannot load as a machine profile (\(reason))")
             }
             warnings += checkMachineProfileKeys(json, context: context)
         case .run:
@@ -1848,7 +1885,10 @@ public enum ProfileResolver {
                     errors.append("\"locale\" must look like ja_JP")
                 }
             } else {
-                errors.append("cannot load as a run profile (type mismatch)")
+                let reason: String
+                do { _ = try decoder.decode(RunProfileDocument.self, from: data); reason = "" }
+                catch { reason = describeDecodingError(error) }
+                errors.append("cannot load as a run profile (\(reason))")
             }
             warnings += checkKeys(json, allowed: RunProfileDocument.knownKeys, context: context)
             warnings += checkDeviceRefKeys(json, context: context)

@@ -201,7 +201,10 @@ private final class ProgressClock: @unchecked Sendable {
 
 struct Doctor: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Preflight checks for Foundation Models, Xcode and simulators")
+        abstract: "Preflight checks for Foundation Models, Xcode and simulators",
+        discussion: "Without --fm-only/--roots-only it also stops bridges that are certainly stale:"
+            + " an older version started from this repository, or one whose owning repository no longer"
+            + " exists. Bridges owned by another workspace, or whose owner is unknown, are only reported.")
 
     // FM/Apple Intelligence の可否だけを判定して exit code に反映する高速ゲート。
     // setup スキルがビルド直後に人間へ聞かずに自動判定するために使う(FM 不可なら非0で終了)。

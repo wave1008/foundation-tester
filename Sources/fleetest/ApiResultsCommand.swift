@@ -18,13 +18,15 @@ struct ApiResultsCommand: AsyncParsableCommand {
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
-    @Option(help: "Start of the period: a duration (e.g. 90s/30m/2h/30d), a date (YYYY-MM-DD) or an epoch (@1757280000) (default 90d)")
+    @Option(help: "Start of the period: a duration (e.g. 90s/30m/2h/30d), a date (YYYY-MM-DD) or an epoch (@1757280000)")
     var since: String = "90d"
 
     @Option(help: "Number of entries to include in runs (descending by runID)")
     var limit: Int = 50
 
-    @Option(name: .customLong("min-runs"), help: "Minimum number of runs before a scenario is considered for flakiness")
+    @Option(name: .customLong("min-runs"), help: ArgumentHelp(
+        "Minimum number of runs before a scenario is considered for flakiness (flaky looks at each scenario's"
+        + " last \(RunResultsQuery.recentScenarioRunsWindow) runs, so at most \(RunResultsQuery.recentScenarioRunsWindow))"))
     var minRuns: Int = 5
 
     @Option(help: "Scenario ID whose trend (run history) to output; omitted unless given")
@@ -36,6 +38,14 @@ struct ApiResultsCommand: AsyncParsableCommand {
     @Flag(name: .customLong("no-cache"),
           help: "Recompute instead of reading the output cache (<project>/.fleetest/results-cache/); the cache is rewritten either way")
     var noCache = false
+
+    func validate() throws {
+        // flaky は各シナリオの直近 N run しか見ないので、N を超える --min-runs は必ず 0 件になる(黙って効かない)
+        guard minRuns <= RunResultsQuery.recentScenarioRunsWindow else {
+            throw ValidationError("--min-runs \(minRuns) can never match: flaky looks at each scenario's last"
+                + " \(RunResultsQuery.recentScenarioRunsWindow) runs (use `fleetest results flaky` for the full history)")
+        }
+    }
 
     func run() throws {
         let testProject = try ScenarioHost.project(named: project)

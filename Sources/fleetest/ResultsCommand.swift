@@ -27,7 +27,7 @@ struct ResultsQueryOptions: ParsableArguments {
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
-    @Option(help: "Start of the period: a duration (e.g. 90s/30m/2h/30d), a date (YYYY-MM-DD) or an epoch (@1757280000) (default 90d)")
+    @Option(help: "Start of the period: a duration (e.g. 90s/30m/2h/30d), a date (YYYY-MM-DD) or an epoch (@1757280000)")
     var since: String = "90d"
 
     @Flag(help: "Print the result as a single line of JSON")
