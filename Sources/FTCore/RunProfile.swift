@@ -1126,9 +1126,14 @@ public struct ResolvedProfile: Sendable {
         return filtered
     }
 
-    public func limitingDevices(iosScenarios: Int, androidScenarios: Int) -> ResolvedProfile {
+    /// `deprioritizing` の台は各 platform の並びの**後ろへ回してから**先頭を取る = 他の台で足りればそちらを使う
+    /// (MCP が操作している台。ユーザー決定「避けて、足りなければ警告して使う」)。**既定値を置かない** ——
+    /// 呼び出し元が渡し忘れると黙って MCP の台から先に使う形へ戻る
+    public func limitingDevices(iosScenarios: Int, androidScenarios: Int,
+                                deprioritizing: (ResolvedDevice) -> Bool) -> ResolvedProfile {
         func keep(_ list: [ResolvedDevice], _ count: Int) -> [ResolvedDevice] {
-            Array(list.prefix(Self.deviceKeepCount(available: list.count, scenarios: count)))
+            let ordered = list.filter { !deprioritizing($0) } + list.filter(deprioritizing)
+            return Array(ordered.prefix(Self.deviceKeepCount(available: list.count, scenarios: count)))
         }
         let kept = Set(keep(iosDevices, iosScenarios) + keep(androidDevices, androidScenarios))
         guard kept.count < devices.count else { return self }

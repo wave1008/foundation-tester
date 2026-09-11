@@ -72,7 +72,13 @@ enum ProfileRunner {
     /// 解決の規則はワーカー構築と同じもの(AndroidDeviceCatalog.canonicalAVDID + 起動中の AVD /
     /// SimulatorCatalog.resolve)。iOS 実機は devicectl を引かず udid の記載をそのまま使う
     static func leaseKeysBeforePreparation(resolved: ResolvedProfile) -> [(device: String, key: String)] {
-        var keys: [(device: String, key: String)] = []
+        leaseKeysByDevice(resolved: resolved).map { entry in
+            ("\(entry.device.name)(\(entry.device.platform):\(entry.key))", entry.key)
+        }
+    }
+
+    static func leaseKeysByDevice(resolved: ResolvedProfile) -> [(device: ResolvedDevice, key: String)] {
+        var keys: [(device: ResolvedDevice, key: String)] = []
         let android = resolved.androidDevices
         if !android.isEmpty {
             let running = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
@@ -86,7 +92,7 @@ enum ProfileRunner {
                 } else {
                     serial = nil
                 }
-                if let serial { keys.append(("\(device.name)(android:\(serial))", serial)) }
+                if let serial { keys.append((device, serial)) }
             }
         }
         let ios = resolved.iosDevices
@@ -96,10 +102,41 @@ enum ProfileRunner {
                 let udid = device.spec.isPhysical
                     ? device.spec.udid
                     : (try? SimulatorCatalog.resolve(spec: device.spec, in: simulators))?.udid
-                if let udid { keys.append(("\(device.name)(ios:\(udid))", udid)) }
+                if let udid { keys.append((device, udid)) }
             }
         }
         return keys
+    }
+
+    /// **回す本数に絞るとき、MCP(fleetest-mcp)が操作している台を後回しにする**(ユーザー決定「避けて、
+    /// 足りなければ警告して使う」)。それでも使う台は警告で名指しする(断らない = 新しい検知は警告から)。
+    /// 印(`MCPDeviceLease`)が1つも無ければ台の実体を引かない(simctl/adb の往復を払わない)。
+    /// 自分と親の pid が持つ印は数えない(MCP が起こした run が自分を「MCP が操作中」と言わない)。
+    /// `trim: false`(--broadcast)は絞らず、使う台の警告だけ返す
+    static func limitingDevicesAvoidingMCP(
+        _ full: ResolvedProfile, iosScenarios: Int, androidScenarios: Int, trim: Bool,
+        leaseStateDir: URL?
+    ) -> (resolved: ResolvedProfile, warnings: [String]) {
+        let holders = leaseStateDir.map {
+            MCPDeviceLease.liveHolders(stateDir: $0, excluding: [getpid(), getppid()])
+        } ?? [:]
+        var heldBy: [ResolvedDevice: Int32] = [:]
+        if !holders.isEmpty {
+            for entry in leaseKeysByDevice(resolved: full) {
+                if let pid = holders[entry.key] { heldBy[entry.device] = pid }
+            }
+        }
+        let resolved = trim
+            ? full.limitingDevices(iosScenarios: iosScenarios, androidScenarios: androidScenarios,
+                                   deprioritizing: { heldBy[$0] != nil })
+            : full
+        let warnings = resolved.devices.compactMap { device in
+            heldBy[device].map { pid in
+                "\(device.name) is being driven by an MCP session (pid \(pid)) — this run takes it over"
+                    + " (no other device was free); the session will see the run's screens"
+            }
+        }
+        return (resolved, warnings)
     }
 
     /// 戻り値: 実行サマリ(失敗数+劣化ワーカー)+ この run で実際に効いていた FM 設定。
@@ -200,21 +237,19 @@ enum ProfileRunner {
         // 本数はここで確定している(items は呼び出し側で解決済み)ので、ブリッジ供給・アプリ版チェック・
         // blank triage が丸ごと縮む。platform 未指定のシナリオは**両方**に数える(どちらでも走りうる)。
         // **--broadcast は絞らない** —— 各台で1回ずつ走らせるのが目的なので、絞ると回るべき台が落ちる
-        let resolved: ResolvedProfile
+        let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
+        let (resolved, mcpWarnings) = Self.limitingDevicesAvoidingMCP(
+            full, iosScenarios: items.filter { $0.info.platform != "android" }.count,
+            androidScenarios: items.filter { $0.info.platform != "ios" }.count,
+            trim: !broadcast, leaseStateDir: leaseStateDir)
         if broadcast {
-            resolved = full
             ConsoleOut.out("→ Broadcasting \(items.count) scenario(s) to each of \(full.devices.count) device(s)"
                 + " (--broadcast)")
-        } else {
-            let iosCount = items.filter { $0.info.platform != "android" }.count
-            let androidCount = items.filter { $0.info.platform != "ios" }.count
-            resolved = full.limitingDevices(iosScenarios: iosCount, androidScenarios: androidCount)
-            if resolved.devices.count < full.devices.count {
-                ConsoleOut.out("→ Using \(resolved.devices.count) of \(full.devices.count) device(s)"
-                    + " for \(items.count) scenario(s)")
-            }
+        } else if resolved.devices.count < full.devices.count {
+            ConsoleOut.out("→ Using \(resolved.devices.count) of \(full.devices.count) device(s)"
+                + " for \(items.count) scenario(s)")
         }
-        for warning in resolved.warnings { ConsoleOut.out("⚠️ \(warning)") }
+        for warning in resolved.warnings + mcpWarnings { ConsoleOut.out("⚠️ \(warning)") }
 
         // 開始スクリプト(docs/remote-runner.md §17)。**デバイスに触る前**に撃つ ——
         // 依存サービスが上がっていない状態でシミュレータを起こしてアプリを入れても、
@@ -275,9 +310,8 @@ enum ProfileRunner {
                         .filter { outcome.booted.contains($0.name) }) { ConsoleOut.out($0) }
             }
         }
-        // run-lease(.fleetest/run-<key>.lease)。best-effort: リポジトリ外実行等で root が
-        // 取れない場合は書かない(monitor 側の inRun 判定が false になるだけで安全)
-        let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
+        // run-lease(.fleetest/run-<key>.lease)は上で求めた leaseStateDir へ。best-effort: リポジトリ外
+        // 実行等で root が取れない場合は書かない(monitor 側の inRun 判定が false になるだけで安全)
         // 供給フェーズ(install・凍結triage)の間も lease を保つ。RunOrchestrator の lease は
         // シナリオ実行中しか書かれず、その手前に start-device が割り込む穴が空くため
         let supplyLease = leaseStateDir.map { SupplyLeaseHolder(stateDir: $0) }

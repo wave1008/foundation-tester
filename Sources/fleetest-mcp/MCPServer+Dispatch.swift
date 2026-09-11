@@ -266,14 +266,38 @@ extension MCPServer {
             if !rememberedNote.isEmpty {
                 content = [["type": "text", "text": rememberedNote]] + content
             }
+            if Self.toolAcceptsDeviceTarget(tool), let runNote = markDeviceInUse(args: resolved) {
+                content = [["type": "text", "text": runNote]] + content
+            }
             return Self.withElapsed(content, since: start, clock: clock)
         } catch {
+            // run が台を使っている最中は失敗しやすい(アプリの起こし直し・ブリッジの建て直し)ので、失敗にも言う
+            let runNote = Self.toolAcceptsDeviceTarget(tool) ? markDeviceInUse(args: resolved) : nil
             let hint = await connectionLostHint(error, args: resolved)
                 + Self.setTextRefusedHint(tool: tool, args: resolved,
                                           message: error.localizedDescription)
+                + (runNote.map { " " + $0 } ?? "")
             guard !hint.isEmpty else { throw error }
             throw MCPError(error.localizedDescription + hint)
         }
+    }
+
+    /// **この MCP が操作している台に印を置き(run が後回しにする)、run が使用中なら1行で言う**
+    /// (ユーザー決定: run は MCP の台を避け、MCP は run の台を触ったら警告する = 断らない)。
+    /// 台の鍵は解決済みの記録(udids / connectedAndroidSerials)から採る = run の lease と同じ鍵。
+    /// 記録が無い(接続する前に失敗した回)ときは引数の udid / serial。どれも無ければ何もしない
+    func markDeviceInUse(args: [String: Any]) -> String? {
+        let key = Self.engineKey(args)
+        let recorded = (udids[key] ?? nil) ?? connectedAndroidSerials[key]
+        guard let stateDir = deviceLeaseStateDir,
+              let deviceKey = recorded ?? (args["udid"] as? String) ?? (args["serial"] as? String),
+              !deviceKey.isEmpty else { return nil }
+        let pid = ProcessInfo.processInfo.processIdentifier
+        MCPDeviceLease.write(stateDir: stateDir, key: deviceKey, pid: pid)
+        guard let holder = RunLease.holderPID(stateDir: stateDir, key: deviceKey), holder != pid else { return nil }
+        return "⚠️ a fleetest run (pid \(holder)) is using this device right now — what you do here and what"
+            + " the run does interfere with each other (screens, input, app state)."
+            + " Wait for the run to finish, or drive another device."
     }
 
     /// ios/android 分岐の共通尾部(2026-08-12 の掃討・2026-08-12 曖昧化対応で拡張):

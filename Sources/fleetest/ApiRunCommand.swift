@@ -422,12 +422,14 @@ struct ApiRunCommand: AsyncParsableCommand {
             // 1つの ID は高々1本なので本数が決まる。クラス名指定・全件は絞らない
             // (そこは並列度が要る場面で、絞ると遅くなる)。platform はまだ分からないので両方に同じ数を使う
             let exactCount = ApiRun.exactScenarioCount(scenarios)
-            let resolved = full.limitingDevices(iosScenarios: exactCount, androidScenarios: exactCount)
+            let (resolved, mcpWarnings) = ProfileRunner.limitingDevicesAvoidingMCP(
+                full, iosScenarios: exactCount, androidScenarios: exactCount, trim: true,
+                leaseStateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest"))
             if resolved.devices.count < full.devices.count {
                 logStderr("→ Using \(resolved.devices.count) of \(full.devices.count) device(s)"
                     + " for \(scenarios.count) scenario(s)")
             }
-            for warning in resolved.warnings { logStderr("⚠️ \(warning)") }
+            for warning in resolved.warnings + mcpWarnings { logStderr("⚠️ \(warning)") }
             RunEnvironment.apply(resolved)
             resolvedProfile = resolved
         }

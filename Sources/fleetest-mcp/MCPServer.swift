@@ -124,6 +124,10 @@ final class MCPServer {
     /// プロファイル解決で出た警告(未解決のデバイス名など)。**次に返す応答へ1度だけ**混ぜる。
     /// stderr だけに出していたときは MCP クライアントに一切届かなかった
     var pendingWarnings: [String: [String]] = [:]
+    /// 台の印(`MCPDeviceLease`)と run の lease を読む場所(run と同じ `RepoRoot/.fleetest`)。
+    /// nil = 印を置かない。**差し替えドライバ(テスト)では既定 nil** —— 既定のままだと偽の台の印を本物の
+    /// `.fleetest/` へ書き散らす(実際に `mcp-emulator-5554.lease` が残った)。テストは一時フォルダを渡す
+    var deviceLeaseStateDir: URL?
     /// **セッション(プロセス)を通じて1度だけ**満額で説明した注記の鍵。以後は短縮形にする
     /// (`once` 参照)。engineKey を跨いで共有する — 説明の中身は接続先に依らず同じ文なので、
     /// 機ごとに割ると同じ長文が機の数だけ繰り返される
@@ -168,6 +172,8 @@ final class MCPServer {
         self.makeDriver = makeDriver
         self.recordSnapshot = recordSnapshot ?? MCPServer.recordSelectors
         self.checksVersionOnInjectedDriver = checksVersionOnInjectedDriver
+        self.deviceLeaseStateDir = makeDriver == nil
+            ? (try? RepoRoot.find())?.appendingPathComponent(".fleetest") : nil
     }
 
     // MARK: - メインループ(stdio: 改行区切り JSON-RPC)

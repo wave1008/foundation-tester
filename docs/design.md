@@ -4234,6 +4234,13 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   `monitorHealthWatchdog` が **clock-skew 等の host 再起動分岐のみ inRun 中は保留**(restartAttempts/cooldown を
   動かさず見送る)。**blank-screen(CPU フォールバック再起動)と wifi 修復は inRun でも実行**(凍結はデータ汚染で
   即対応が要件、wifi は非破壊)。凍結で run のワーカーが壊れる分は §12.4 の requeue が回復する
+- **MCP と run の協調(mcp-lease)**(2026-09-11・ユーザー決定「避けて、足りなければ警告して使う」):
+  fleetest-mcp は台を指すツールのたびに `.fleetest/mcp-<key>.lease`(`MCPDeviceLease`・鍵は run-lease と同じ)へ
+  自分の pid を書く。**生死は pid だけ**(時間の閾値を置かない —— run は印を避けるだけで断らないので、使い終わった
+  後も MCP が生きている間は残る印の損は「その台を後回し」に収まる)。run(`run` / `api run` の両方)は回す本数に
+  絞るとき印のある台を後回しにし(`ResolvedProfile.limitingDevices(deprioritizing:)`)、それでも使う台は
+  「MCP(pid N)が操作中。この run が奪う」と警告する(自分と親の pid の印は数えない)。逆向きは MCP が
+  run-lease のある台を触った応答(成功・失敗とも)の先頭で1行言う(断らない)。**差し替えドライバの MCP は印を置かない**
 
 ### 12.5 タイルペインの auto-fit と「非表示中は実測しない」規律(2026-07-30/31)
 
