@@ -38,8 +38,10 @@ though the source still has the old selector. See
 
 ## Last-run results (for `--failed`)
 
-`.fleetest/last-results/<project>/` records which scenarios passed or failed on the most
-recent run, so `fleetest run --failed` can re-run just the failures.
+`.fleetest/last-results/<project>/<profile>/` records which scenarios passed or failed on the
+most recent run **for that run profile**, so `fleetest run --failed` can re-run just the
+failures. Records are kept separately per run profile (and in their own bucket for a
+profile-less run), so a green run of one profile never hides a red run of another.
 
 ## From the VS Code extension
 

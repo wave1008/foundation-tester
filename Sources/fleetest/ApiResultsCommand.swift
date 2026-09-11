@@ -48,8 +48,17 @@ struct ApiResultsCommand: AsyncParsableCommand {
         // windowKey と同じ書式(ISO8601 "Z")。出力の since と有効判定の sinceKey は同じ値
         let sinceKey = RunResultsStore.windowKey(sinceDate)
         let stateDir = testProject.stateDir
+        // insights の retiredScenarios は results/ の走査ではなく scenarios/ の**ソース**走査
+        // (definedScenarioClasses(of:) → ScenarioFolders.classFileMap)に依存するので、
+        // scanDigest(results/ 側)だけでは追随しない(シナリオを消しても次の run まで
+        // 古い出力を返し、`--no-cache` と食い違う)。同じ走査規則の指紋
+        // (ScenarioFolders.directorySignature。他に使い道が無く、テストだけが当てていた)を
+        // 鍵に混ぜる
+        let scenariosDigest = ScenarioFolders.directorySignature(scenariosDir: testProject.scenariosDir)
+            .joined(separator: "\u{1}")
         let key = ResultsOutputCache.argumentsKey(
-            arguments: [testProject.name, since, String(limit), String(minRuns), String(matrixRuns)],
+            arguments: [testProject.name, since, String(limit), String(minRuns), String(matrixRuns),
+                        scenariosDigest],
             executable: Bundle.main.executableURL)
         // 指紋は走査より先に取る(順序の理由は scanFingerprint の doc)
         let scanDigest = RunResultsStore.scanFingerprint(resultsDir: resultsDir, since: sinceDate)

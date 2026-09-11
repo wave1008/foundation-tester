@@ -59,6 +59,12 @@ several runs. Ten checks, each emitted as one row with a severity:
 > than one failing an assertion; that is all the row asserts. Deciding whether a slow app or a
 > busy machine was responsible is still yours to make, from evidence outside the tool.
 
+Every row that names a scenario (all of the above except `unfinishedRuns`/`retiredScenarios`) is
+scoped to one **(scenario, platform)** pair, not just the scenario ID. A project that runs the
+same scenario ID on both `ios` and `android` (for example a Compose Multiplatform suite) gets a
+separate row per platform — mixing the two would blend unrelated pass/fail and duration histories
+into one misleading trend. `fleetest results slow` scopes its rows the same way.
+
 ## Reading a failed run
 
 The tool records only observable facts — it does not guess whether a failure was "environmental"

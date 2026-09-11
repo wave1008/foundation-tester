@@ -59,6 +59,12 @@ results/runs/<YYYY-MM>/<runID>/
 > この行の言っていることの全てです。アプリが重かったのかマシンが混んでいたのかの判断は、
 > 引き続きツールの外の材料からあなたが行います。
 
+シナリオ名が付く行(上表のうち `unfinishedRuns`/`retiredScenarios` を除く全部)は、scenarioID
+だけでなく**(シナリオ, platform)** の組ごとに出ます。同じシナリオ ID を `ios` と `android` の
+両方で回すプロジェクト(Compose Multiplatform の E2E 等)では platform ごとに別の行になります
+—— 混ぜると無関係な合否・所要時間の履歴が1つの誤った傾向に見えます。`fleetest results slow`
+も同じ単位で行を分けます。
+
 ## 失敗した run の読み方
 
 ツールは観測できる事実だけを記録します —— 失敗が「環境要因」だったかは判定しません(アプリが

@@ -186,6 +186,9 @@ export interface ScenarioRunRecord {
 /** 各欄は直近 N run の窓だけで計算されている(N = RunResultsQuery.recentScenarioRunsWindow)。 */
 export interface SlowScenarioRow {
   readonly scenarioID: string;
+  /** `ios` / `android`。同じ scenarioID を複数 platform で回すプロジェクトでは platform ごとに
+   * 別行になる。本フィールド追加前の CLI ではキー欠落。 */
+  readonly platform?: string | null;
   /** 集計に使った run 数(窓の上限まで)。窓内の総実行回数ではない。 */
   readonly runs: number;
   readonly avgDurationMs: number;
@@ -215,6 +218,9 @@ export interface InsightRecord {
   readonly kind: InsightKind;
   readonly severity: InsightSeverity;
   readonly scenarioID?: string | null;
+  /** scenarioID を持つ行には必ず付く(同じ scenarioID を複数 platform で回すプロジェクトの
+   * 行を区別する)。本フィールド追加前の CLI ではキー欠落。 */
+  readonly platform?: string | null;
   /** deviceBias のみ */
   readonly worker?: string | null;
   readonly message: string;
@@ -516,6 +522,7 @@ function isSlowScenarioRow(value: unknown): value is SlowScenarioRow {
   if (!isRecord(value)) return false;
   return (
     typeof value.scenarioID === "string" &&
+    isOptString(value.platform) &&
     typeof value.runs === "number" &&
     typeof value.avgDurationMs === "number" &&
     typeof value.p90DurationMs === "number" &&
@@ -550,6 +557,7 @@ function isInsightRecord(value: unknown): value is InsightRecord {
     isInsightKind(value.kind) &&
     isInsightSeverity(value.severity) &&
     isOptString(value.scenarioID) &&
+    isOptString(value.platform) &&
     isOptString(value.worker) &&
     typeof value.message === "string" &&
     isOptNumber(value.count) &&

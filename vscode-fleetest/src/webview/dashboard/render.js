@@ -320,6 +320,7 @@ export function renderSlowTable(slow) {
     const tr = document.createElement('tr');
     tr.append(
       td(row.scenarioID),
+      td(row.platform || '–'),
       tdNum(String(row.runs)),
       tdNum(formatDurationHuman(row.avgDurationMs)),
       tdNum(formatDurationHuman(row.p90DurationMs)),

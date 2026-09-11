@@ -154,6 +154,13 @@ jq -r 'select(.workerAnomalies == null) | .runID' results/runs/2026-08/*/run.jso
 | **標本数** | 1% のフレークは 40 回の実行では半分の確率で1度も現れない。**「フレークを示したシナリオ数」は実行回数が減るだけで下がる** | 期間ごとの最小回数へ間引いて再標本化する |
 | **デバイス構成** | `worker` の顔ぶれは黙って変わる。**小画面・旧 API の台が1台入っただけで「Android が悪化した」に見える**(実例: `tap` が画面外の台でだけ落ちた) | `worker` 別に割り、片方の期間にしか居ない台は落とす |
 
+**`results slow` / `results insights`(と `api results` の `slow`/`insights` キー)は「シナリオの集合」の
+単位を自分で守る**: 集計は scenarioID だけでなく **(scenarioID, platform)** で束ねる。
+E2E-CMP のように同じ scenarioID を iOS/Android の両方で回すプロジェクトで、scenarioID だけで
+前後半・連続失敗・偏りを見ると2つの platform の記録が混ざる(実測: iOS を XCUITest エンジンで
+1回回しただけで、Android の記録と混ざった `duration regressed` が10本以上出た)。
+`SlowTestRow`/`InsightRow` はどちらも `platform` 欄を持ち、メッセージにも `[platform]` が付く。
+
 ```bash
 # 30本+ の run(= フルスイート相当)のシナリオ実行だけを取り出す
 find results/runs/2026-0[78] -mindepth 1 -maxdepth 1 -type d \
@@ -186,7 +193,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | profile | String? | 実行プロファイル名 |
 | host | String | **実行マシンのホスト名**(`FT_MACHINE` > hostname を sanitize したもの)。**LPT の同一マシン判定はこれ**。**マシン名(設定タブで付けたローカルエイリアス)は記録しない** —— エイリアスは頻繁に変わりうるので記録の鍵にしない(2026-08-26 ユーザー決定。用語は docs/remote-runner.md §0)。**旧キー `machine` の記録も読める** |
 | trigger | String | `"api"`(拡張)/ `"cli"` |
-| startedAt / finishedAt | String / String? | ISO8601。**finishedAt が無い = 未完了**(クラッシュ検出) |
+| startedAt / finishedAt | String / String? | ISO8601。**finishedAt が無い = 未完了**(クラッシュ検出。`interrupted`/`abortReason` が付いた run は finishedAt を持つので、この判定には掛からない) |
 | total / passed / failed | Int? | 実行完了まで nil |
 | workerAnomalies | [WorkerAnomalyRecord]? | ワーカー異常の構造化記録(下記)。**機械的な除外はここを見る** |
 | degradedWorkers | [String]? | 劣化・離脱したワーカー(「label: 理由」)。表示用 |
@@ -203,6 +210,9 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | guardStaleFrame | Int? | `guarded` のうち、絵が古いまま撮り直しても stale で素通りした回(`stale-screenshot`)。`guardSkipped` と同じ 0/nil の規律 |
 | runGroup | String? | **同じ実行から分かれた run を束ねる鍵**。デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run(別 runID・別 machine・リモートは向こうの時計)になるので、`profile` と開始時刻では同じ実行かどうか決められない。ファンアウトの親が1回だけ発行し、手元の子にもリモートの子にも同じ値が入る。**単機の run と 2026-08-26 より前の記録では欠落**(束ねる相手が居ない) |
 | fmSettings | FMSettingsRecord? | **その run で実際に効いていた FM 設定**(プロファイルの値そのものではなく、`--set heal=…`/`--set falsePositiveCheck=…` 等の CLI 上書きを反映した後の実効値)。下記の7フィールドを常に持つ。**欄が無い = この版より前の記録**であって、FM が無効だった意味ではない(fmDead 等と同じく「無い」と「false」を混ぜない) |
+| setOverrides | [String: String]? | **この run に効いた `--set <key>=<value>` の上書き**(キーは実行プロファイル JSON のキーそのもの、値は型を問わず文字列化したもの。例 `{"scenarioTimeout": "3", "iosInappEngine": "false"}`)。上書きが無い run では省略(空辞書ではなく無し)。**打ち切り run(`--set scenarioTimeout=…` で短くした run 等)を insights/flaky の集計から機械的に外すための欄** —— この欄が無い記録では、`--set` で打ち切った run と通常の失敗が見分けられない(この版より前の記録は全て欄が無い) |
+| interrupted | Bool? | **この run が SIGINT/SIGTERM(拡張の「テストを中断」・端末の Ctrl-C・`kill <pid>` 等)を受けたか**。true の run は途中で打ち切られており、残っていたシナリオは `"the run was interrupted (SIGINT/SIGTERM) before this scenario started"` という理由で failed に数えられる。false は書かない(既存レコードと同じ形)。**results insights がここを見て「クラッシュ/強制終了」ではなく「利用者が止めた」と読み分ける**。2026-09-11 より前の記録には無い(それより前は中断で finishedAt 自体が欠落していた) |
+| abortReason | String? | **供給段(ワーカー構築・レーン検査等)の例外で run 全体が始まる前に終わったときの理由**(英語、人間可読)。この欄がある run は `total` 分すべて未実行(`passed:0`)。正常終了・`interrupted` の run では省略。**この欄が無いと理由はログにしか残らず、`results insights` の「クラッシュか強制終了」に紛れる**。2026-09-11 より前の記録には無い |
 
 ### fmSettings(`FMSettingsRecord`)
 
@@ -381,11 +391,17 @@ snapshot/action/wait のどれにも計上されない時間だった実測。
 定義元は `Sources/FTCore/ResultsOutputCache.swift`(有効判定・合成)と
 `RunResultsStore.scanFingerprint`(入力の指紋)。
 
-- **鍵**: 引数(project / `--since` の文字列 / limit / min-runs / matrix-runs)+ 実行ファイルの
+- **鍵**: 引数(project / `--since` の文字列 / limit / min-runs / matrix-runs)+
+  **シナリオソースの指紋**(`ScenarioFolders.directorySignature(scenariosDir:)`。TestProjects の
+  `scenarios/` 配下の .swift のパス・mtime・size)+ 実行ファイルの
   mtime・size(建て直せば必ず外れる = 集計や契約を変えたときにキャッシュの版を手で上げる規律に
-  頼らない)+ 入力の指紋(走査する run ごとに `run.json` と `scenarios/` ディレクトリの
+  頼らない)+ 入力の指紋(**`results/` 側**。走査する run ごとに `run.json` と `scenarios/` ディレクトリの
   stat 2回。記録の追加・削除・finish の上書き・rsync 回収はどれもエントリの作成/rename/削除なので
-  必ず動く)。**捕まえないのは rename 無しの in-place 書き換えだけ**(記録の規律の外)
+  必ず動く)。**捕まえないのは rename 無しの in-place 書き換えだけ**(記録の規律の外)。
+  **シナリオソースの指紋が要る理由(C1)**: `insights` の `retiredScenarios` は結果 DB ではなく
+  **ソース**(`definedScenarioClasses(of:)` → `classFileMap` の走査)で「今もあるシナリオか」を
+  決めるので、上の「入力の指紋」(results/ の走査)だけではシナリオの削除・改名を検知できず、
+  次の run が書かれるまで古い insights を返し続けていた(`--no-cache` と食い違う)
 - **`--since 90d` は呼ぶたびに動く**ので鍵に入れず、「前回含めた最古の記録より手前に境界がある」
   条件で厳密に判定する(何も窓から落ちていない = 出力は同一)。落ちていれば計算し直す
 - **`--scenario`(trend)は鍵に入れない**。scenarioID → 記録ファイルの索引を別ファイルに持ち、

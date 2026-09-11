@@ -307,7 +307,9 @@ struct ResultsSlowCommand: AsyncParsableCommand {
             ConsoleOut.out("No matching scenarios")
             return
         }
-        let headers = ["scenario", "runs", "avg ms", "p90 ms", "regression", "slowest scene"]
+        // 同じ scenarioID を複数 platform で回すプロジェクトでは1シナリオが複数行に分かれる
+        // (slowTests は (scenarioID, platform) で束ねる)ので platform 欄を出す
+        let headers = ["scenario", "platform", "runs", "avg ms", "p90 ms", "regression", "slowest scene"]
         let tableRows = rows.map { row -> [String] in
             let delta = row.deltaPct.map { String(format: "%+.0f%%", $0) } ?? "-"
             let slowestScene: String
@@ -316,7 +318,7 @@ struct ResultsSlowCommand: AsyncParsableCommand {
             } else {
                 slowestScene = "-"
             }
-            return [row.scenarioID, String(row.runs), String(format: "%.0f", row.avgDurationMs),
+            return [row.scenarioID, row.platform, String(row.runs), String(format: "%.0f", row.avgDurationMs),
                     String(format: "%.0f", row.p90DurationMs), delta, slowestScene]
         }
         ConsoleOut.out(SimpleTable.render(headers: headers, rows: tableRows))
@@ -328,7 +330,7 @@ struct ResultsSlowCommand: AsyncParsableCommand {
 struct ResultsInsightsCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "insights",
-        abstract: "Detect things worth attention: regressions, consecutive failures, infrastructure-caused failures and stale selectors")
+        abstract: "Detect things worth attention: regressions, consecutive failures, failures with a non-assertion signature, and stale selectors")
 
     @OptionGroup var options: ResultsQueryOptions
 

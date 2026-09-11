@@ -144,7 +144,7 @@ function renderDashboardPanel(): string {
       <h2>${t("exploreHeal.dashboard.headingSlow")}</h2>
       <table id="table-slow" class="dash-table">
         <thead>
-          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th class="num">${t("exploreHeal.dashboard.colRuns")}</th><th class="num">${t("exploreHeal.dashboard.colAverage")}</th><th class="num">p90</th><th class="num">${t("exploreHeal.dashboard.colRegressionRate")}</th><th>${t("exploreHeal.dashboard.colSlowestScene")}</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th>${t("exploreHeal.dashboard.colPlatform")}</th><th class="num">${t("exploreHeal.dashboard.colRuns")}</th><th class="num">${t("exploreHeal.dashboard.colAverage")}</th><th class="num">p90</th><th class="num">${t("exploreHeal.dashboard.colRegressionRate")}</th><th>${t("exploreHeal.dashboard.colSlowestScene")}</th></tr>
         </thead>
         <tbody id="table-slow-body"></tbody>
       </table>

@@ -72,8 +72,8 @@ There is no built-in per-scenario retry in CI: automatic retries hide flakiness 
 Instead:
 
 - **Detection**: `fleetest results flaky` lists scenarios with mixed pass/fail history, ranked by
-  instability (`fleetest results insights` also flags regressions, infrastructure-caused failures,
-  and stale selectors).
+  instability (`fleetest results insights` also flags regressions, failures with a non-assertion
+  signature, and stale selectors).
 - **Local reproduction**: `fleetest run --failed` re-runs only the scenarios that failed last time.
 - Infrastructure-caused failures (e.g. a frozen device) are automatically requeued *within* a run
   — the failed result is discarded and the scenario reruns on another device, so only the final

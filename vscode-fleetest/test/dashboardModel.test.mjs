@@ -113,6 +113,7 @@ test("isApiResultsPayload: slow/insights を含む完全な値も true と判定
     slow: [
       {
         scenarioID: "Checkout",
+        platform: "ios",
         runs: 12,
         avgDurationMs: 8300.5,
         p90DurationMs: 12000.0,
@@ -120,16 +121,30 @@ test("isApiResultsPayload: slow/insights を含む完全な値も true と判定
         slowestScene: "ログイン画面",
         slowestSceneAvgMs: 4100.0,
       },
-      // deltaPct/slowestScene/slowestSceneAvgMs 省略(4回未満・該当なし相当)
+      // platform/deltaPct/slowestScene/slowestSceneAvgMs 省略(旧 CLI・4回未満・該当なし相当)
       { scenarioID: "Login", runs: 3, avgDurationMs: 900.0, p90DurationMs: 1200.0 },
     ],
     insights: [
-      { kind: "newFailure", severity: "critical", scenarioID: "Checkout", message: "新規失敗が発生しました" },
+      // 同じ scenarioID を複数 platform で回すプロジェクトのため insights も platform を持つ
+      { kind: "newFailure", severity: "critical", scenarioID: "Checkout", platform: "ios", message: "新規失敗が発生しました" },
       { kind: "deviceBias", severity: "warn", worker: "android:Pixel 8", message: "特定端末で失敗率が高い", count: 3 },
       { kind: "durationRegression", severity: "info", scenarioID: "Login", message: "所要時間が悪化", deltaPct: 20.5 },
     ],
   });
   assert.equal(isApiResultsPayload(payload), true);
+});
+
+test("isApiResultsPayload: slow/insights の platform が文字列以外なら false", () => {
+  // platform 欄の型検査そのものを固定する(検査を戻すと数値でも通ってしまう)
+  const badSlow = validPayload({
+    slow: [{ scenarioID: "Checkout", platform: 42, runs: 1, avgDurationMs: 1, p90DurationMs: 1 }],
+  });
+  assert.equal(isApiResultsPayload(badSlow), false);
+
+  const badInsight = validPayload({
+    insights: [{ kind: "newFailure", severity: "critical", scenarioID: "Checkout", platform: 42, message: "x" }],
+  });
+  assert.equal(isApiResultsPayload(badInsight), false);
 });
 
 test("isApiResultsPayload: matrix を含む完全な値も true と判定する", () => {

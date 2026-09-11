@@ -423,6 +423,28 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertNil(rows[0].slowestSceneAvgMs)
     }
 
+    /// E2E-CMP のようなプロジェクトは同じ scenarioID を iOS/Android の両方で回す。
+    /// scenarioID だけで束ねると、片方の platform の記録がもう片方の平均・p90 を動かす
+    func testSlowTestsGroupsByScenarioAndPlatform() {
+        let android = (0..<2).map { i in
+            makeRecord(
+                scenarioID: "Foo.a", passed: true,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 100,
+                platform: "android")
+        }
+        let ios = (0..<2).map { i in
+            makeRecord(
+                scenarioID: "Foo.a", passed: true,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 900,
+                platform: "ios")
+        }
+        let rows = RunResultsQuery.slowTests(android + ios, limit: 10)
+        XCTAssertEqual(rows.count, 2, "同じ scenarioID でも platform ごとに別行になる")
+        XCTAssertEqual(rows.first { $0.platform == "android" }?.avgDurationMs, 100)
+        XCTAssertEqual(rows.first { $0.platform == "ios" }?.avgDurationMs, 900,
+                       "android の記録の平均に混ざっていない")
+    }
+
     // MARK: - insights: newFailure / consecutiveFailures
 
     func testInsightsNewFailureAfterThreeConsecutivePasses() {
@@ -473,6 +495,33 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertFalse(rows.contains { $0.kind == "newFailure" })
     }
 
+    /// 同じ scenarioID を android(3連続失敗)と ios(その後3連続成功)で回すプロジェクトでは、
+    /// scenarioID だけで束ねて時系列順に並べると**末尾は ios の成功**になり、android の連続失敗が
+    /// 隠れてしまう(trailingStreak が「通っている」と読む = consecutiveFailures が1件も出ない)。
+    /// (scenarioID, platform) で束ねれば android 独自の履歴として検知できる
+    func testInsightsConsecutiveFailuresDoesNotMixPlatforms() {
+        let androidFailing = (0..<3).map { i in
+            makeRecord(
+                scenarioID: "Foo.a", passed: false,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 100,
+                platform: "android")
+        }
+        let iosPassing = (0..<3).map { i in
+            makeRecord(
+                scenarioID: "Foo.a", passed: true,
+                startedAt: String(format: "2026-01-1%dT00:00:00Z", i), durationMs: 100,
+                platform: "ios")
+        }
+        let rows = RunResultsQuery.insights(records: androidFailing + iosPassing, runs: [])
+        let consecutive = rows.filter { $0.kind == "consecutiveFailures" }
+        XCTAssertEqual(consecutive.count, 1, "android 側の3連敗が platform 別に検知されること")
+        XCTAssertEqual(consecutive.first?.scenarioID, "Foo.a")
+        XCTAssertEqual(consecutive.first?.platform, "android")
+        XCTAssertTrue(consecutive.first?.message.contains("[android]") ?? false)
+        // ios 側(3連続成功)からは何も出ない
+        XCTAssertFalse(rows.contains { $0.kind == "newFailure" })
+    }
+
     // MARK: - insights: infraFailures
 
     func testInsightsInfraFailuresAtThreshold() {
@@ -489,7 +538,11 @@ final class RunResultsQueryTests: XCTestCase {
         let row = try? XCTUnwrap(rows.first { $0.kind == "infraFailures" })
         XCTAssertEqual(row?.severity, "warn")
         XCTAssertEqual(row?.count, 2)
-        XCTAssertTrue(row?.message.contains("vs 0 assertion-caused") ?? false)
+        XCTAssertTrue(row?.message.contains("vs 0 assertion failure(s)") ?? false)
+        // 「環境要因の失敗」を主張しない(記録された経路を数えているだけ)。
+        // docs/user-docs/running/results_analysis.md の注記と揃える
+        XCTAssertFalse(row?.message.contains("infrastructure-caused") ?? true,
+                       "原因を断定する文言を戻していないか")
     }
 
     func testInsightsNoInfraFailuresBelowThreshold() {

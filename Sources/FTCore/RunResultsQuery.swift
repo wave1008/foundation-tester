@@ -251,6 +251,16 @@ public enum RunResultsQuery {
 
     // MARK: - slow
 
+    /// シナリオ単位の集計(slowTests/insights)を束ねる鍵。E2E-CMP のように同じ scenarioID を
+    /// iOS/Android の両方で回すプロジェクトでは、scenarioID だけで束ねると別プラットフォームの
+    /// 実行時間・合否を1本の傾向へ混ぜてしまう(実測: XCUITest で1回回しただけで
+    /// E2E-CMP 10 本・E2E-Flutter 11 本が「duration regressed」と誤って出た)。
+    /// LPT の見積りは platform で分けている(docs/remote-runner.md §8)のに合わせる
+    private struct ScenarioPlatformKey: Hashable {
+        let scenarioID: String
+        let platform: String
+    }
+
     /// deltaPct を計算する最小実行回数(未満は前半/後半比較が意味を持たないため nil)
     private static let slowTestsMinRunsForDelta = 4
 
@@ -264,6 +274,10 @@ public enum RunResultsQuery {
 
     public struct SlowTestRow: Codable, Sendable, Equatable {
         public let scenarioID: String
+        /// `ios` / `android`。同じ scenarioID を複数 platform で回すプロジェクトでは
+        /// scenarioID ごとに platform の数だけ行が並ぶ(scenarioID だけでは行を一意に
+        /// 決められない)
+        public let platform: String
         /// 集計に使った run 数(上限は recentScenarioRunsWindow。窓内の総実行回数ではない)
         public let runs: Int
         public let avgDurationMs: Double
@@ -275,27 +289,32 @@ public enum RunResultsQuery {
         public let slowestSceneAvgMs: Double?
     }
 
-    /// avgDurationMs 降順。isSkippedSynthetic は除外。
+    /// avgDurationMs 降順。isSkippedSynthetic は除外。**束ねる鍵は (scenarioID, platform)**
+    /// (ScenarioPlatformKey の doc 参照。同じ scenarioID が複数 platform に居れば複数行になる)。
     /// 各行は直近 recentRuns 回(1 未満は 1 として扱う)だけで計算する ——
     /// avg/p90/runs/deltaPct/slowestScene のすべてが同じ窓に乗る(行の中で窓を混ぜない)
     public static func slowTests(
         _ records: [ScenarioRunRecord], limit: Int, recentRuns: Int = recentScenarioRunsWindow
     ) -> [SlowTestRow] {
         let window = max(1, recentRuns)
-        let grouped = Dictionary(grouping: records.filter { !isSkippedSynthetic($0) }, by: \.scenarioID)
-        let rows = grouped.compactMap { scenarioID, group -> SlowTestRow? in
+        let grouped = Dictionary(grouping: records.filter { !isSkippedSynthetic($0) }) {
+            ScenarioPlatformKey(scenarioID: $0.scenarioID, platform: $0.platform)
+        }
+        let rows = grouped.compactMap { key, group -> SlowTestRow? in
             let chronological = Array(
                 group.sorted { date(from: $0.startedAt) < date(from: $1.startedAt) }.suffix(window))
             let durations = chronological.map(\.durationMs)
             guard let avg = average(durations) else { return nil }
             let (slowestScene, slowestSceneAvgMs) = slowestSceneInfo(chronological)
             return SlowTestRow(
-                scenarioID: scenarioID, runs: chronological.count, avgDurationMs: avg,
+                scenarioID: key.scenarioID, platform: key.platform, runs: chronological.count, avgDurationMs: avg,
                 p90DurationMs: percentile(durations, 0.9), deltaPct: durationDeltaPct(chronological),
                 slowestScene: slowestScene, slowestSceneAvgMs: slowestSceneAvgMs)
         }
-        return Array(rows.sorted {
-            $0.avgDurationMs == $1.avgDurationMs ? $0.scenarioID < $1.scenarioID : $0.avgDurationMs > $1.avgDurationMs
+        return Array(rows.sorted { lhs, rhs in
+            if lhs.avgDurationMs != rhs.avgDurationMs { return lhs.avgDurationMs > rhs.avgDurationMs }
+            if lhs.scenarioID != rhs.scenarioID { return lhs.scenarioID < rhs.scenarioID }
+            return lhs.platform < rhs.platform
         }.prefix(max(0, limit)))
     }
 
@@ -389,6 +408,10 @@ public enum RunResultsQuery {
         /// "critical" | "warn" | "info"
         public let severity: String
         public let scenarioID: String?
+        /// scenarioID が付く行(scenarioID を持たない unfinishedRuns/retiredScenarios を除く全種)
+        /// では必ず付く。**scenarioID だけでは行の対象を一意に決められない**(同じ scenarioID を
+        /// 複数 platform で回すプロジェクトでは、これが無いと iOS/Android を混ぜた行に見える)
+        public let platform: String?
         public let worker: String?
         public let message: String
         public let count: Int?
@@ -407,34 +430,45 @@ public enum RunResultsQuery {
         // 削除・_disabled 化されたシナリオの「末尾の失敗」は永久に critical を出し続け、
         // severity 順の先頭を占めて本物を押し下げる(実測: 12 行中 5 行がこれだった)
         let (records, retiredIDs) = partitionRetired(records, definedClasses: definedClasses)
-        let grouped = Dictionary(grouping: records, by: \.scenarioID)
-
-        for (scenarioID, group) in grouped {
-            let chronological = group.sorted { date(from: $0.startedAt) < date(from: $1.startedAt) }
-            rows.append(contentsOf: failureStreakInsights(scenarioID: scenarioID, chronological: chronological))
-            rows.append(contentsOf: infraFailureInsights(scenarioID: scenarioID, chronological: chronological))
-            if let row = selectorDecayInsight(scenarioID: scenarioID, group: group) {
-                rows.append(row)
-            }
-            rows.append(contentsOf: deviceBiasInsights(scenarioID: scenarioID, group: group))
-            if let row = unsettledStepsInsight(scenarioID: scenarioID, group: group) {
-                rows.append(row)
-            }
-            rows.append(contentsOf: healRelianceInsights(scenarioID: scenarioID, group: group))
+        // **束ねる鍵は (scenarioID, platform)**(ScenarioPlatformKey の doc)。scenarioID だけで
+        // 束ねると、同じ scenarioID を複数 platform で回すプロジェクト(E2E-CMP 等)の前後半比較・
+        // 連続失敗・偏り判定が platform を混ぜて誤った行を出す
+        let grouped = Dictionary(grouping: records) {
+            ScenarioPlatformKey(scenarioID: $0.scenarioID, platform: $0.platform)
         }
 
+        for (key, group) in grouped {
+            let chronological = group.sorted { date(from: $0.startedAt) < date(from: $1.startedAt) }
+            rows.append(contentsOf: failureStreakInsights(
+                scenarioID: key.scenarioID, platform: key.platform, chronological: chronological))
+            rows.append(contentsOf: infraFailureInsights(
+                scenarioID: key.scenarioID, platform: key.platform, chronological: chronological))
+            if let row = selectorDecayInsight(scenarioID: key.scenarioID, platform: key.platform, group: group) {
+                rows.append(row)
+            }
+            rows.append(contentsOf: deviceBiasInsights(scenarioID: key.scenarioID, platform: key.platform, group: group))
+            if let row = unsettledStepsInsight(scenarioID: key.scenarioID, platform: key.platform, group: group) {
+                rows.append(row)
+            }
+            rows.append(contentsOf: healRelianceInsights(scenarioID: key.scenarioID, platform: key.platform, group: group))
+        }
+
+        // slowTests 自体が (scenarioID, platform) で束ねている(同じ理由。上の doc 参照)ので、
+        // ここは行ごとの platform をそのまま運ぶだけでよい
         for row in slowTests(records, limit: .max) {
             guard let deltaPct = row.deltaPct, deltaPct >= durationRegressionPct else { continue }
             rows.append(InsightRow(
-                kind: "durationRegression", severity: "warn", scenarioID: row.scenarioID, worker: nil,
-                message: "\(row.scenarioID): duration regressed (+\(String(format: "%.0f", deltaPct))% vs the first half of the last \(recentScenarioRunsWindow) runs)",
+                kind: "durationRegression", severity: "warn", scenarioID: row.scenarioID,
+                platform: row.platform, worker: nil,
+                message: "\(scenarioLabel(row.scenarioID, row.platform)): duration regressed"
+                    + " (+\(String(format: "%.0f", deltaPct))% vs the first half of the last \(recentScenarioRunsWindow) runs)",
                 count: nil, deltaPct: deltaPct))
         }
 
         // **黙って落とさない**: 外した事実は出す(消えたシナリオの結果が残っていること自体が情報)
         if !retiredIDs.isEmpty {
             rows.append(InsightRow(
-                kind: "retiredScenarios", severity: "info", scenarioID: nil, worker: nil,
+                kind: "retiredScenarios", severity: "info", scenarioID: nil, platform: nil, worker: nil,
                 message: "\(retiredIDs.count) scenario(s) have results but are no longer being run"
                     + " (excluded from the checks above): \(retiredIDs.prefix(3).joined(separator: ", "))"
                     + (retiredIDs.count > 3 ? ", …" : ""),
@@ -444,7 +478,7 @@ public enum RunResultsQuery {
         let unfinishedCount = runs.filter { $0.finishedAt == nil }.count
         if unfinishedCount >= unfinishedRunsMinCount {
             rows.append(InsightRow(
-                kind: "unfinishedRuns", severity: "info", scenarioID: nil, worker: nil,
+                kind: "unfinishedRuns", severity: "info", scenarioID: nil, platform: nil, worker: nil,
                 message: "\(unfinishedCount) incomplete run(s) (possible crash or force-quit)",
                 count: unfinishedCount, deltaPct: nil))
         }
@@ -455,8 +489,16 @@ public enum RunResultsQuery {
             let lhsCount = lhs.count ?? 0, rhsCount = rhs.count ?? 0
             if lhsCount != rhsCount { return lhsCount > rhsCount }
             if lhs.kind != rhs.kind { return lhs.kind < rhs.kind }
-            return (lhs.scenarioID ?? "") < (rhs.scenarioID ?? "")
+            if lhs.scenarioID != rhs.scenarioID { return (lhs.scenarioID ?? "") < (rhs.scenarioID ?? "") }
+            return (lhs.platform ?? "") < (rhs.platform ?? "")
         }
+    }
+
+    /// insight の message 冒頭に付ける「どのシナリオ・どの platform か」のラベル
+    /// (scenarioID だけでは同じ scenarioID を複数 platform で回すプロジェクトの行を
+    /// 区別できない)
+    private static func scenarioLabel(_ scenarioID: String, _ platform: String) -> String {
+        "\(scenarioID) [\(platform)]"
     }
 
     // MARK: - triage
@@ -947,22 +989,25 @@ public enum RunResultsQuery {
 
     /// newFailure/consecutiveFailures は末尾の fail 連続長で排他的に決まる(2 件目以降は重複しない)
     private static func failureStreakInsights(
-        scenarioID: String, chronological: [ScenarioRunRecord]
+        scenarioID: String, platform: String, chronological: [ScenarioRunRecord]
     ) -> [InsightRow] {
         let streak = trailingStreak(chronological.map(\.passed))
         guard !streak.passed else { return [] }
 
         if streak.length >= consecutiveFailureThreshold {
             return [InsightRow(
-                kind: "consecutiveFailures", severity: "critical", scenarioID: scenarioID, worker: nil,
-                message: "\(scenarioID): failed the last \(streak.length) run(s) in a row", count: streak.length, deltaPct: nil)]
+                kind: "consecutiveFailures", severity: "critical", scenarioID: scenarioID,
+                platform: platform, worker: nil,
+                message: "\(scenarioLabel(scenarioID, platform)): failed the last \(streak.length) run(s) in a row",
+                count: streak.length, deltaPct: nil)]
         }
         guard streak.length == 1 else { return [] }
         let priorStreak = trailingStreak(chronological.dropLast().map(\.passed))
         guard priorStreak.passed, priorStreak.length >= newFailurePriorPassThreshold else { return [] }
         return [InsightRow(
-            kind: "newFailure", severity: "critical", scenarioID: scenarioID, worker: nil,
-            message: "\(scenarioID): failed after \(priorStreak.length) consecutive passes (possible regression)",
+            kind: "newFailure", severity: "critical", scenarioID: scenarioID, platform: platform, worker: nil,
+            message: "\(scenarioLabel(scenarioID, platform)): failed after \(priorStreak.length)"
+                + " consecutive passes (possible regression)",
             count: priorStreak.length, deltaPct: nil)]
     }
 
@@ -973,17 +1018,22 @@ public enum RunResultsQuery {
         return noFailedSteps && hasErrorLogs
     }
 
+    /// **原因を断定しない**(CLAUDE.md「環境要因の失敗という分類は置かない」)——
+    /// timedOut/ステップ未到達という**記録された経路**を数えているだけで、機械が混んでいた・
+    /// アプリが重かったの区別はできない。docs/user-docs/running/results_analysis.md の
+    /// 「infraFailures と『原因』について」と同じ言い回しに揃える
     private static func infraFailureInsights(
-        scenarioID: String, chronological: [ScenarioRunRecord]
+        scenarioID: String, platform: String, chronological: [ScenarioRunRecord]
     ) -> [InsightRow] {
         let failedRecords = chronological.filter { !$0.passed }
         let infraFailures = failedRecords.filter(isInfraFailure)
         guard infraFailures.count >= infraFailureMinCount else { return [] }
         let assertionCount = failedRecords.count - infraFailures.count
         return [InsightRow(
-            kind: "infraFailures", severity: "warn", scenarioID: scenarioID, worker: nil,
-            message: "\(scenarioID): \(infraFailures.count) infrastructure-caused failure(s) (bridge/device/timeout)"
-                + " (vs \(assertionCount) assertion-caused)",
+            kind: "infraFailures", severity: "warn", scenarioID: scenarioID, platform: platform, worker: nil,
+            message: "\(scenarioLabel(scenarioID, platform)): \(infraFailures.count) failure(s)"
+                + " with a non-assertion signature (timed out, or ended without reaching a step)"
+                + " vs \(assertionCount) assertion failure(s)",
             count: infraFailures.count, deltaPct: nil)]
     }
 
@@ -991,7 +1041,9 @@ public enum RunResultsQuery {
     /// フォールバックや自己修復を意図的に検証するシナリオ(このリポジトリの
     /// `セレクタの型と序数とフォールバックが解決できること` 等)が毎 run 同じ件数を出すため、
     /// 3 run 目から永久に鳴り続けて一覧を埋める。1 run あたりの件数を前半/後半で比べる。
-    private static func selectorDecayInsight(scenarioID: String, group: [ScenarioRunRecord]) -> InsightRow? {
+    private static func selectorDecayInsight(
+        scenarioID: String, platform: String, group: [ScenarioRunRecord]
+    ) -> InsightRow? {
         let chronological = group.sorted { date(from: $0.startedAt) < date(from: $1.startedAt) }
         let counts = chronological.map { $0.steps.healed + $0.steps.passedViaFallback }
         let total = counts.reduce(0, +)
@@ -1008,8 +1060,9 @@ public enum RunResultsQuery {
         let trend = deltaPct.map { "+\(String(format: "%.0f", $0))% per run" }
             ?? "newly appeared"
         return InsightRow(
-            kind: "selectorDecay", severity: "warn", scenarioID: scenarioID, worker: nil,
-            message: "\(scenarioID): reliance on self-heal/fallback is growing (\(trend), \(total) time(s) total)",
+            kind: "selectorDecay", severity: "warn", scenarioID: scenarioID, platform: platform, worker: nil,
+            message: "\(scenarioLabel(scenarioID, platform)): reliance on self-heal/fallback is growing"
+                + " (\(trend), \(total) time(s) total)",
             count: total, deltaPct: deltaPct)
     }
 
@@ -1019,7 +1072,7 @@ public enum RunResultsQuery {
     /// `.fleetest/heal-cache.json` に残り、2 回目以降は FM すら呼ばずに通る。
     /// 速度のための仕組みが「壊れたセレクタを永久に緑にする装置」になっていないかを、
     /// **提案が何 run 続いたか**で見る(1 run だけなら直せばよい。続いているなら放置されている)。
-    private static func healRelianceInsights(scenarioID: String,
+    private static func healRelianceInsights(scenarioID: String, platform: String,
                                              group: [ScenarioRunRecord]) -> [InsightRow] {
         var runsPerSelector: [String: Int] = [:]
         for record in group {
@@ -1032,9 +1085,9 @@ public enum RunResultsQuery {
             .sorted { $0.key < $1.key }
             .map { selector, runs in
                 InsightRow(
-                    kind: "healReliance", severity: "warn", scenarioID: scenarioID, worker: nil,
-                    message: "\(scenarioID): \"\(selector)\" has been passing only via self-heal/cache"
-                        + " for \(runs) run(s) — apply the suggested selector",
+                    kind: "healReliance", severity: "warn", scenarioID: scenarioID, platform: platform, worker: nil,
+                    message: "\(scenarioLabel(scenarioID, platform)): \"\(selector)\" has been passing"
+                        + " only via self-heal/cache for \(runs) run(s) — apply the suggested selector",
                     count: runs, deltaPct: nil)
             }
     }
@@ -1071,7 +1124,7 @@ public enum RunResultsQuery {
     /// **notes を持たない旧レコードは 0 件として数える** = 率が下がる側 ==
     /// 「まだ測れていない」を「異常あり」と言わない側に倒れる(過小報告は安全・過剰報告は害)。
     /// timeline が無い記録も同じ扱い。
-    private static func unsettledStepsInsight(scenarioID: String,
+    private static func unsettledStepsInsight(scenarioID: String, platform: String,
                                               group: [ScenarioRunRecord]) -> InsightRow? {
         guard group.count >= unsettledMinRuns else { return nil }
         let affected = group.filter { record in
@@ -1086,13 +1139,16 @@ public enum RunResultsQuery {
             }.count ?? 0)
         }
         return InsightRow(
-            kind: "unsettledSteps", severity: "warn", scenarioID: scenarioID, worker: nil,
-            message: "\(scenarioID): the screen was still moving when \(steps) step(s) went ahead"
+            kind: "unsettledSteps", severity: "warn", scenarioID: scenarioID, platform: platform, worker: nil,
+            message: "\(scenarioLabel(scenarioID, platform)): the screen was still moving when"
+                + " \(steps) step(s) went ahead"
                 + " (in \(affected.count)/\(group.count) runs; a leading indicator of flakiness)",
             count: steps, deltaPct: nil)
     }
 
-    private static func deviceBiasInsights(scenarioID: String, group: [ScenarioRunRecord]) -> [InsightRow] {
+    private static func deviceBiasInsights(
+        scenarioID: String, platform: String, group: [ScenarioRunRecord]
+    ) -> [InsightRow] {
         let byWorker = Dictionary(grouping: group.filter { $0.worker != nil }) { $0.worker! }
         guard byWorker.count >= deviceBiasMinWorkerKinds else { return [] }
 
@@ -1106,8 +1162,8 @@ public enum RunResultsQuery {
             let workerFailureRate = Double(workerFailed) / Double(workerRecords.count)
             guard workerFailureRate >= overallFailureRate * deviceBiasRatioMultiplier else { return nil }
             return InsightRow(
-                kind: "deviceBias", severity: "warn", scenarioID: scenarioID, worker: worker,
-                message: "\(scenarioID): failures cluster on \(worker) (its failure rate is "
+                kind: "deviceBias", severity: "warn", scenarioID: scenarioID, platform: platform, worker: worker,
+                message: "\(scenarioLabel(scenarioID, platform)): failures cluster on \(worker) (its failure rate is "
                     + "\(String(format: "%.0f", workerFailureRate * 100))% vs overall"
                     + "\(String(format: "%.0f", overallFailureRate * 100))%)",
                 count: workerFailed, deltaPct: nil)
