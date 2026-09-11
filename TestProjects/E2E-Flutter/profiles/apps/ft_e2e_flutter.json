@@ -3,12 +3,12 @@
     "autoInstall": true
   },
   "ios": {
-    "appName": "FT E2E Flutter",
+    "appName": "Ft E2e Flutter",
     "app": "com.ftester.e2e.flutter",
     "appPath": "E2EAppFlutter/dist/ios-simulator/FTE2EFlutter.app"
   },
   "android": {
-    "appName": "FT E2E Flutter",
+    "appName": "ft_e2e_flutter",
     "app": "com.ftester.e2e.flutter",
     "appPath": "E2EAppFlutter/dist/android/ft-e2e-flutter-debug.apk"
   }
