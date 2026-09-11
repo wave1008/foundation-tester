@@ -375,10 +375,13 @@ public enum RemoteArtifactCollection {
     /// **`--out-format=%n` は回収後の走査を今回の転送分だけに絞るためだけに付けている**: 今回**実際に転送された**ファイルの
     /// 相対パスが rsync の stdout に1行ずつ出るので、呼び出し側(`transferredScenarioJSONPaths`)は
     /// それだけを読めば済み、過去2か月分の全 run を毎回スキャンせずに済む。`-v` は付けない
-    /// (out-format 単独でも転送ログは出る。詳細ログは要らない)
+    /// (out-format 単独でも転送ログは出る。詳細ログは要らない)。
+    /// **`-8`(`--8-bit-output`)が要る** —— 無いと rsync(macOS の openrsync も)は非 ASCII の
+    /// ファイル名を `\#203\#206…` にエスケープして出すので、日本語のシナリオ名の JSON が1件も
+    /// 実在のパスに一致せず、回収後の3処理(relink・facts・`--failed` の記録)が黙って空振りする(実測)
     private static func rsyncArgs(project: String, layout: RemoteLayout,
                                   sshTarget: String, localProjectsDir: String) -> [String] {
-        var args = ["-az", "--safe-links", "--out-format=%n"]
+        var args = ["-az", "--safe-links", "-8", "--out-format=%n"]
         args += [
             "\(sshTarget):\(layout.projectDir(project))/results/",
             "\(localProjectsDir)/\(project)/results/",

@@ -433,19 +433,57 @@ final class RemoteDispatchTests: XCTestCase {
                 project: "E2E", layout: layout, sshTarget: "user@host",
                 localProjectsDir: "/local/Projects"),
             [
-                "-az", "--safe-links", "--out-format=%n",
+                "-az", "--safe-links", "-8", "--out-format=%n",
                 "user@host:/Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E/results/",
                 "/local/Projects/E2E/results/",
             ])
     }
 
     /// `--out-format=%n` が付いていること(転送済みファイル一覧を rsync の stdout から
-    /// 読み取るための唯一の口。無いと saveHostFacts/relinkCollectedReports が再び全件スキャンに戻る)
+    /// 読み取るための唯一の口。無いと回収後の relink・facts・`--failed` の記録が1件も読めない)
     func testResultsRsyncArgsRequestsOutFormatForTransferredFileList() {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         XCTAssertTrue(RemoteArtifactCollection.resultsRsyncArgs(
             project: "E2E", layout: layout, sshTarget: "user@host",
             localProjectsDir: "/local/Projects").contains("--out-format=%n"))
+    }
+
+    /// **本物の rsync に同じフラグで日本語名のファイルを運ばせ**、出力から拾ったパスが実在の
+    /// ファイルに一致すること。`-8` が無いと rsync(macOS の openrsync も)は非 ASCII を
+    /// `\#203…` にエスケープして出し、日本語のシナリオ名の JSON が1件も読めなかった(実測)。
+    /// ASCII 名の fixture ではこの壊れ方は出ない。宛先・送り元は一時ディレクトリだけ(ssh は使わない:
+    /// 引数の末尾2要素 = 送り元と宛先を手元のパスに差し替える)
+    func testTransferredPathsFromRealRsyncOutputMatchJapaneseFileNames() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ft-rsync-8bit-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let name = "テキスト入力が正しくechoされること.S0030.json"
+        let scenarios = root.appendingPathComponent("src/runs/2026-09/r1/scenarios")
+        try FileManager.default.createDirectory(at: scenarios, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("dst"),
+                                                withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: scenarios.appendingPathComponent(name))
+
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        var args = RemoteArtifactCollection.resultsRsyncArgs(
+            project: "E2E", layout: layout, sshTarget: "user@host", localProjectsDir: "/unused")
+        args.removeLast(2)
+        args += [root.appendingPathComponent("src").path + "/", root.appendingPathComponent("dst").path + "/"]
+        let rsync = Process()
+        rsync.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        rsync.arguments = ["rsync"] + args
+        let pipe = Pipe()
+        rsync.standardOutput = pipe
+        rsync.standardError = FileHandle.nullDevice
+        try rsync.run()
+        rsync.waitUntilExit()
+        XCTAssertEqual(rsync.terminationStatus, 0)
+        let output = String(decoding: pipe.fileHandleForReading.availableData, as: UTF8.self)
+
+        let paths = RemoteArtifactCollection.transferredScenarioJSONPaths(rsyncOutput: output)
+        XCTAssertEqual(paths.count, 1, output)
+        let collected = root.appendingPathComponent("dst").appendingPathComponent(paths.first ?? "")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: collected.path), output)
     }
 
     /// --delete が無いこと(ローカルの results を巻き添えで消さない)と、両パスとも末尾スラッシュを
