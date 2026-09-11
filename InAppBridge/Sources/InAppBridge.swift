@@ -28,6 +28,8 @@ final class FTInAppBridge {
     private var frames: [Int: CGRect] = [:]
     /// 直近 snapshot の ref → 見えている範囲(InAppSnapshot.Result.clips)。frames と同じ時点で差し替える
     private var clips: [Int: CGRect] = [:]
+    /// 直近 snapshot で入力欄だった ref(`TypeReadback.isTextInput`)。frames と同じ時点で差し替える
+    private var textInputRefs: Set<Int> = []
     private let nodes = NSMapTable<NSNumber, AnyObject>(keyOptions: .strongMemory, valueOptions: .weakMemory)
     // compose-resources = Compose Multiplatform のリソースバンドル(2026-07-20 実バンドルで検証済みマーカー)。
     // Frameworks/Flutter.framework = Flutter アプリのマーカー。type ルーティング判定(StepExecutor)に使う
@@ -214,6 +216,7 @@ final class FTInAppBridge {
         mainSync {
             self.frames = merged.frames
             self.clips = merged.clips
+            self.textInputRefs = Set(merged.elements.filter(TypeReadback.isTextInput).map(\.ref))
             self.nodes.removeAllObjects()
             for (ref, node) in merged.nodes { self.nodes.setObject(node, forKey: NSNumber(value: ref)) }
         }
@@ -736,7 +739,11 @@ final class FTInAppBridge {
     /// FlutterTextInputView は 1×1pt で欄の編集領域の左上に置かれる(実測 (16,310 1x1)・欄は
     /// (16,298 370x48)・叩いた中心は (201,322))ので、点を含むことは原理的に無い。
     /// 面積のある受け口(UIKit・Compose)を枠で見ないのは、枠の大きい容器を叩いたときに中の
-    /// 前の欄を「叩いた先」と取り違えるため。
+    /// 前の欄を「叩いた先」と取り違えるため。**面積の無い受け口でも、叩いたのが入力欄でない
+    /// (容器)ときは枠だけでは足りない** —— 前の欄を内側に含む容器を叩いて焦点が動かなかった形が
+    /// 通ってしまう。そのときはタップの前後で受け口が動いたこと(別の view か、位置が変わった)も要る
+    /// (XCUITest ランナーの `requireFocusMoved` と同じ考え方)。叩いたのが入力欄なら、既に焦点の
+    /// ある欄を叩き直した形(受け口は動かない)も通す
     /// **タップ直後の1回読みで断らない** —— Flutter はタップからフォーカス移動までが非同期
     /// (engine → framework → 受け口の付け替え)で、直後は「受け口なし/前の欄」が見える。
     /// FocusWait の上限まで main を空けながら読み直し、上限で最後の読みを判定する
@@ -745,7 +752,8 @@ final class FTInAppBridge {
     /// **比べる相手は叩いた要素の「今の」枠**(AX ノードの accessibilityFrame。取れなければ snapshot の枠)——
     /// 最初にキーボードが出たとき SwiftUI は欄を避けて中身をずらす(実測: 欄が y=237 → 103)ので、
     /// 叩いた時点の座標のままでは正しい受け口を「別の欄」と断る
-    private func requireFocusMoved(ref: Int, tapped point: CGPoint, action: String) throws {
+    private func requireFocusMoved(ref: Int, tapped point: CGPoint, before: ReceiverMark?,
+                                   action: String) throws {
         let deadline = Date().addingTimeInterval(FocusWait.waitSeconds)
         enum Poll { case focused, pending, refused(String) }
         while true {
@@ -755,7 +763,9 @@ final class FTInAppBridge {
                 let live = axFrame.flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil }
                 let target = live ?? self.frames[ref]
                 let centre = live.map { CGPoint(x: $0.midX, y: $0.midY) } ?? point
-                guard let reason = Self.focusRefusal(toward: centre, within: target, action: action)
+                guard let reason = Self.focusRefusal(toward: centre, within: target,
+                                                     targetIsInput: self.textInputRefs.contains(ref),
+                                                     before: before, action: action)
                 else { return .focused }
                 guard Date() >= deadline else { return .pending }
                 return .refused(reason + " Diagnostics: \(FTFirstResponderDiagnostics())")
@@ -768,7 +778,20 @@ final class FTInAppBridge {
         }
     }
 
-    private static func focusRefusal(toward point: CGPoint, within target: CGRect?, action: String) -> String? {
+    /// タップ直前の受け口(面積の無い受け口が「動いたか」を比べるためだけに使う)
+    private struct ReceiverMark {
+        let id: ObjectIdentifier
+        let rect: CGRect
+    }
+
+    /// main で呼ぶ(タップの直前)
+    private static func receiverMark() -> ReceiverMark? {
+        guard let view = FTCurrentTextReceiver() as? UIView else { return nil }
+        return ReceiverMark(id: ObjectIdentifier(view), rect: view.convert(view.bounds, to: nil))
+    }
+
+    private static func focusRefusal(toward point: CGPoint, within target: CGRect?, targetIsInput: Bool,
+                                     before: ReceiverMark?, action: String) -> String? {
         guard let receiver = FTCurrentTextReceiver() else {
             return "no focused input field after tapping the target — the ref is"
                 + " probably not a text input (tapping it does not move keyboard focus)."
@@ -777,9 +800,14 @@ final class FTInAppBridge {
         guard let view = receiver as? UIView else { return nil }
         let rect = view.convert(view.bounds, to: nil)
         let hasNoArea = rect.width <= 1 || rect.height <= 1
-        let landed = hasNoArea
-            ? target.map { $0.contains(CGPoint(x: rect.midX, y: rect.midY)) } ?? false
-            : rect.contains(point)
+        let landed: Bool
+        if hasNoArea {
+            let inside = target.map { $0.contains(CGPoint(x: rect.midX, y: rect.midY)) } ?? false
+            let moved = before.map { $0.id != ObjectIdentifier(view) || $0.rect != rect } ?? true
+            landed = inside && (targetIsInput || moved)
+        } else {
+            landed = rect.contains(point)
+        }
         guard landed else {
             return "keyboard focus is not on the tapped element — it is on another field"
                 + " (receiver at \(Self.describe(rect)), tapped \(Int(point.x)),\(Int(point.y))),"
@@ -797,11 +825,13 @@ final class FTInAppBridge {
         let req = try decode(TypeRequest.self, body)
         if let ref = req.ref {
             var point = CGPoint.zero
+            var before: ReceiverMark?
             try performWithSettle(operation: "the tap before typing") { window in
                 point = try self.resolvePoint(ref: ref, x: nil, y: nil)
+                before = Self.receiverMark()
                 FTSynthTap(window, point)
             }
-            try requireFocusMoved(ref: ref, tapped: point, action: "type")
+            try requireFocusMoved(ref: ref, tapped: point, before: before, action: "type")
         }
         // 末尾の改行1つは本文と分けて **pressEnter と同じ経路**へ流す(「type の末尾改行 = pressEnter」が
         // 契約。Compose は "\n" 完全一致の insertText でだけ IME アクションに変換し、UITextField は
@@ -851,11 +881,13 @@ final class FTInAppBridge {
         let req = try decode(ClearRequest.self, body)
         if let ref = req.ref {
             var point = CGPoint.zero
+            var before: ReceiverMark?
             try performWithSettle { window in
                 point = try self.resolvePoint(ref: ref, x: nil, y: nil)
+                before = Self.receiverMark()
                 FTSynthTap(window, point)
             }
-            try requireFocusMoved(ref: ref, tapped: point, action: "clear")
+            try requireFocusMoved(ref: ref, tapped: point, before: before, action: "clear")
         }
         var cleared = false
         try performWithSettle { _ in cleared = FTClearTextInFirstResponder() }

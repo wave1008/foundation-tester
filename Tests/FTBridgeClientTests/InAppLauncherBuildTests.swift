@@ -21,6 +21,7 @@ final class InAppLauncherBuildTests: XCTestCase {
         try write("InAppBridge/Sources/InAppSnapshot.swift")
         try write("Sources/FTCore/BridgeDTO.swift")
         try write("Sources/FTCore/WebViewDOMSnapshot.swift")
+        try write("Sources/FTCore/TypeReadback.swift")
     }
 
     override func tearDownWithError() throws {

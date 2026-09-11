@@ -38,6 +38,7 @@ public enum BridgeSourceSet: String, CaseIterable, Sendable {
                 "InAppBridge/build.sh",
                 "Sources/FTCore/BridgeDTO.swift",
                 "Sources/FTCore/WebViewDOMSnapshot.swift",
+                "Sources/FTCore/TypeReadback.swift",
             ]
         case .xcuitest:
             // Runner/project.yml は含めない: UITests の設定はブリッジ挙動に効くが、同ファイルは

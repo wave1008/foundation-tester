@@ -2,8 +2,10 @@
 // XCUITest ランナー /type の読み返し判定(純粋ロジック)。
 // 実行系は BridgeRouter.handleType(Runner は SPM ターゲットではなく単体テストできないため、
 // 判定だけをここへ切り出して FTCoreTests でテストする)。
-// Runner/project.yml の FleetestRunnerUITests.sources と BridgeSourceSet.xcuitest の
-// 両方に載せること(片方だけ変えない)。Foundation のみに依存すること。
+// **両方のブリッジがコンパイルする**: XCUITest = Runner/project.yml の FleetestRunnerUITests.sources と
+// BridgeSourceSet.xcuitest / in-app = InAppBridge/build.sh の SWIFT_SOURCES と BridgeSourceSet.inApp
+// (`isTextInput` を焦点の確認に使う)。それぞれ2箇所ずつ、片方だけ変えない。
+// Foundation と BridgeDTO(ElementInfo)のみに依存すること。ホスト専用の関数を足さない(両ブリッジの指紋が鳴る)
 
 import Foundation
 

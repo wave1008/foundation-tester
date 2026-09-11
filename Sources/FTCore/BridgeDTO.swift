@@ -369,7 +369,10 @@ public enum BridgeAPI {
     /// field") after actually emptying it — WebKit applies the edit asynchronously, so the
     /// synchronous read-back still saw the old text; the caller verifies from the tree instead.
     /// The (e) refusal names the ref as probably not a text input instead of "a different field".
-    public static let bridgeProtocolVersion = 96
+    /// v97 (in-app only): (e)'s check for a zero-area receiver (Flutter) no longer passes a ref that
+    /// is not a text input (a container holding the previously focused field) when the tap left the
+    /// receiver where it was — it typed/cleared into that field and returned ok.
+    public static let bridgeProtocolVersion = 97
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
