@@ -23,9 +23,9 @@ public final class AppAttachDriver: AppDriver {
     private var attached = false
 
     /// host: 主ドライバと同じ宛先(SystemUIDriver.init と同じ理由で既定を置かない)。
-    /// physicalUDID: 実機なら渡すこと(SystemUIDriver.init と同じ理由 —— usb トンネルは
-    /// host だけでは実機と判別できず token を取り逃す)
-    public init(port: UInt16, host: String, bundleID: String, physicalUDID: String? = nil) {
+    /// physicalUDID: 実機なら渡すこと(SystemUIDriver.init と同じ理由で既定を置かない ——
+    /// usb トンネルは host だけでは実機と判別できず token を取り逃す)
+    public init(port: UInt16, host: String, bundleID: String, physicalUDID: String?) {
         self.client = BridgeClient(port: port, host: host, physicalUDID: physicalUDID)
         self.bundleID = bundleID
     }

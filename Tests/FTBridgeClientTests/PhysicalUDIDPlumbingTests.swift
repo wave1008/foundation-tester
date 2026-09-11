@@ -38,6 +38,34 @@ final class PhysicalUDIDPlumbingTests: FTBridgeClientSourceScanCase {
                       + " 名前引きの simctl 経路へ誤って落ち、Invalid device の的外れな失敗になる): \(offenders)")
     }
 
+    /// **包み(SystemUIDriver / AppAttachDriver)も同じ**。中で `BridgeClient(port:)` を作るので上の走査に
+    /// 映らず、usb トンネルの実機では token を取り逃して 401 になる(2026-09-11 iPhone SE3: xcuitest 経路の
+    /// SystemUIDriver だけ渡しておらず、不在確認・遅延 exist・アラート操作・tapAppIcon が全部 401 で
+    /// E2E-iOS 15/35 赤。**LAN の実機は host が LAN IP なので token を読み、隠れる**)。
+    /// 包みの init に既定値は無いのでコンパイルが渡し忘れを止めるが、`physicalUDID: nil` の直書きは通るので、
+    /// 実機かどうかが分かっているファイルではそれも落とす
+    func testWrapperConstructionsForwardPhysicalUDID() throws {
+        var checked = 0
+        var offenders: [String] = []
+        let files = Self.filesRequiringPhysicalUDID + ["Sources/fleetest-mcp/MCPServer+Driver.swift"]
+        for relativePath in files {
+            let source = try Self.readSource(relativePath)
+            for callPrefix in ["SystemUIDriver(", "AppAttachDriver("] {
+                for range in Self.argumentRanges(in: source, callPrefix: callPrefix) {
+                    checked += 1
+                    let arguments = Self.collapsed(String(source[range]))
+                    if !arguments.contains("physicalUDID:") || arguments.contains("physicalUDID: nil") {
+                        offenders.append("\(relativePath):\(Self.lineNumber(of: range.lowerBound, in: source))")
+                    }
+                }
+            }
+        }
+        XCTAssertGreaterThan(checked, 0, "走査対象が見つからない = パスかシグネチャの書式が変わった")
+        XCTAssertTrue(offenders.isEmpty,
+                      "SystemUIDriver / AppAttachDriver の構築は実機の UDID を physicalUDID: へ渡すこと"
+                      + "(nil の直書きも不可。渡さないと usb トンネルの実機で 401): \(offenders)")
+    }
+
     /// **シミュレータの UDID も同じく渡し切ること**。
     /// 渡さないと install/uninstall/clearAppData の対象特定が `status()` に落ち、
     /// **`removeApp()` の直後の `installApp()` が「接続拒否」で失敗する** ——

@@ -395,6 +395,7 @@ struct RunScenario: AsyncParsableCommand {
                     // 「操作が効かない」だけが見える(2026-08-25 に E2E-iOS で踏んだ)
                     let systemUI = SystemUIDriver(port: port,
                                                   host: bridgeHost ?? BridgeEndpoint.loopbackHost,
+                                                  physicalUDID: physical ? udid : nil,
                                                   sharesPrimarySession: true)
                     homeScreenDriver = systemUI
                     fallbackDriver = systemUI

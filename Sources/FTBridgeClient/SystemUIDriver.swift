@@ -32,8 +32,10 @@ public final class SystemUIDriver: AppDriver {
     /// 落とすと 127.0.0.1 へ行き、LAN 経由の実機では不在確認・遅延 exist・アラート操作だけが
     /// 「接続拒否」で落ちる(2026-09-04 iPhone 13 で 18/34 赤。USB トンネルでは隠れる)。
     /// physicalUDID: 実機なら渡すこと —— usb トンネルは host がループバックのままでも token を
-    /// 要求するため(establish の usb 分岐)、host だけでは BridgeClient が実機と判別できない
-    public init(port: UInt16, host: String, physicalUDID: String? = nil,
+    /// 要求するため(establish の usb 分岐)、host だけでは BridgeClient が実機と判別できない。
+    /// **host と同じく既定を置かない**: 渡し忘れると usb の実機だけで不在確認・遅延 exist・
+    /// アラート操作・tapAppIcon が 401 になる(2026-09-11 iPhone SE3 で E2E-iOS 15/35 赤。LAN では隠れる)
+    public init(port: UInt16, host: String, physicalUDID: String?,
                sharesPrimarySession: Bool = false) {
         self.client = BridgeClient(port: port, host: host, physicalUDID: physicalUDID)
         self.sharesPrimarySession = sharesPrimarySession

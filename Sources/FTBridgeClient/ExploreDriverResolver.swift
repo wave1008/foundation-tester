@@ -132,7 +132,7 @@ public enum ExploreDriverResolver {
                 + " (port \(xcuiPort)) as fallback, matching the hybrid run engine")
             // attach は**同じインスタンス**を委譲とフォールバックの両方へ(MCPServer.iosDriver と同じ理由)
             let attach = AppAttachDriver(port: xcuiPort, host: resolution.endpoint.host,
-                                         bundleID: bundleID)
+                                         bundleID: bundleID, physicalUDID: nil)
             let inapp = InAppDriver(repoRoot: repoRoot, udid: udid, port: inappPort)
             return Resolved(driver: HybridFallbackDriver(
                 primary: WebViewDelegatingDriver(primary: inapp, delegated: attach),

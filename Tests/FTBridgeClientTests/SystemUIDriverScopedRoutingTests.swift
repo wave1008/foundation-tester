@@ -115,7 +115,7 @@ final class SystemUIDriverScopedRoutingTests: XCTestCase {
         for (k, v) in extra { responses[k] = v }
         let stub = try RoutingStubServer(responses: responses)
         return (stub, SystemUIDriver(port: stub.port, host: BridgeEndpoint.loopbackHost,
-                              sharesPrimarySession: true))
+                              physicalUDID: nil, sharesPrimarySession: true))
     }
 
     /// **知らない ref の 404 を「旧ランナー」と読み替えない**。読み替えると同じ番号が
@@ -198,7 +198,7 @@ final class SystemUIDriverScopedRoutingTests: XCTestCase {
         let stub = try RoutingStubServer()
         defer { stub.stop() }
         let driver = SystemUIDriver(port: stub.port, host: BridgeEndpoint.loopbackHost,
-                                    sharesPrimarySession: false)
+                                    physicalUDID: nil, sharesPrimarySession: false)
 
         _ = try? await driver.snapshot()
         try await driver.tap(ref: 1)

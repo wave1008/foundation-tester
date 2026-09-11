@@ -81,7 +81,7 @@ final class AppAttachDriverAttachTests: XCTestCase {
         let stub = try RecordingStubServer()
         defer { stub.stop() }
         let driver = AppAttachDriver(port: stub.port, host: BridgeEndpoint.loopbackHost,
-                                      bundleID: "com.example.target")
+                                      bundleID: "com.example.target", physicalUDID: nil)
 
         try await driver.swipe(.up)
 
@@ -95,7 +95,7 @@ final class AppAttachDriverAttachTests: XCTestCase {
         let stub = try RecordingStubServer()
         defer { stub.stop() }
         let driver = AppAttachDriver(port: stub.port, host: BridgeEndpoint.loopbackHost,
-                                      bundleID: "com.example.target")
+                                      bundleID: "com.example.target", physicalUDID: nil)
 
         try await driver.swipe(.up)
         try await driver.swipe(.down)
@@ -111,7 +111,7 @@ final class AppAttachDriverAttachTests: XCTestCase {
         let stub = try RecordingStubServer()
         defer { stub.stop() }
         let driver = AppAttachDriver(port: stub.port, host: BridgeEndpoint.loopbackHost,
-                                      bundleID: "com.example.target")
+                                      bundleID: "com.example.target", physicalUDID: nil)
 
         _ = try? await driver.snapshot()
         try await driver.swipe(.up)
@@ -128,7 +128,7 @@ final class AppAttachDriverAttachTests: XCTestCase {
         let stub = try RecordingStubServer()
         defer { stub.stop() }
         let driver = AppAttachDriver(port: stub.port, host: BridgeEndpoint.loopbackHost,
-                                      bundleID: "com.example.target")
+                                      bundleID: "com.example.target", physicalUDID: nil)
 
         _ = try? await driver.snapshotWithoutReactivating(bypassingCache: false)
 
