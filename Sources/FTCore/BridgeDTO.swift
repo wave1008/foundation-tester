@@ -503,6 +503,26 @@ public enum BridgeAPI {
     }
 }
 
+/// ref 指定の type / clear で、タップ後の受け口(first responder)が**叩いた要素のもの**か。
+/// **ブリッジと共有する純粋関数**(in-app ブリッジの `requireFocusMoved` が使う)。
+/// - **面積のある受け口**(UIKit・Compose): 叩いた点を含むか。枠で見ないのは、大きい容器を叩いたときに
+///   中の前の欄を「叩いた先」と取り違えるため
+/// - **面積の無い受け口**(Flutter の 1×1pt。欄の編集領域の左上に置かれ、叩いた点を含むことが原理的に無い。
+///   実測: 受け口 (16,310 1x1)・欄 (16,298 370x48)・叩いた中心 (201,322)): 叩いた要素の枠の中にあるか。
+///   **叩いたのが入力欄でない(容器)なら、タップの前後で受け口が動いたことも要る** —— 前の欄を内側に含む
+///   容器を叩いて焦点が動かなかった形を通すと、前の欄へ打って 200 を返す。入力欄なら、焦点のある欄を
+///   叩き直した形(受け口は動かない)も通す
+public enum FocusLanding {
+    /// `movedSinceTap` = タップの前後で受け口が別の view になったか位置が変わったか(タップ前に受け口が
+    /// 無ければ true)。`target` = 叩いた要素の今の枠(取れなければ nil = 面積の無い受け口は通さない)
+    public static func landed(receiver: CGRect, tapped: CGPoint, target: CGRect?,
+                              targetIsInput: Bool, movedSinceTap: Bool) -> Bool {
+        guard receiver.width <= 1 || receiver.height <= 1 else { return receiver.contains(tapped) }
+        let inside = target.map { $0.contains(CGPoint(x: receiver.midX, y: receiver.midY)) } ?? false
+        return inside && (targetIsInput || movedSinceTap)
+    }
+}
+
 /// 座標タップ(in-app)でどの snapshot 要素を activate するか。**ブリッジと共有する純粋関数**
 /// (in-app ブリッジはこのファイルをそのままコンパイルする)。
 /// 候補は **frame が点を含み、かつ見えている範囲(`clips` = 祖先のスクロール容器で切った後)にも

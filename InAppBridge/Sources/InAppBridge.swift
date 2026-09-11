@@ -734,16 +734,7 @@ final class FTInAppBridge {
     /// (FTInsertTextIntoFirstResponder のコメント参照)。かわりに「タップした座標を現在の受け口が
     /// 実際に含むか」で判定する(受け口が正しければ、そこへ直前にタップした点の上に物理的に
     /// 存在するはず)。**受け口が UIView でない(判定不能)ときは許可する**(isReachable と
-    /// 同じ方針)。
-    /// **面積の無い受け口は点でなく「叩いた要素の枠の中にあるか」で見る** —— Flutter の
-    /// FlutterTextInputView は 1×1pt で欄の編集領域の左上に置かれる(実測 (16,310 1x1)・欄は
-    /// (16,298 370x48)・叩いた中心は (201,322))ので、点を含むことは原理的に無い。
-    /// 面積のある受け口(UIKit・Compose)を枠で見ないのは、枠の大きい容器を叩いたときに中の
-    /// 前の欄を「叩いた先」と取り違えるため。**面積の無い受け口でも、叩いたのが入力欄でない
-    /// (容器)ときは枠だけでは足りない** —— 前の欄を内側に含む容器を叩いて焦点が動かなかった形が
-    /// 通ってしまう。そのときはタップの前後で受け口が動いたこと(別の view か、位置が変わった)も要る
-    /// (XCUITest ランナーの `requireFocusMoved` と同じ考え方)。叩いたのが入力欄なら、既に焦点の
-    /// ある欄を叩き直した形(受け口は動かない)も通す
+    /// 同じ方針)。当たり判定(面積の有無・容器の扱い)は `FocusLanding.landed`(BridgeDTO)の1箇所
     /// **タップ直後の1回読みで断らない** —— Flutter はタップからフォーカス移動までが非同期
     /// (engine → framework → 受け口の付け替え)で、直後は「受け口なし/前の欄」が見える。
     /// FocusWait の上限まで main を空けながら読み直し、上限で最後の読みを判定する
@@ -799,16 +790,9 @@ final class FTInAppBridge {
         }
         guard let view = receiver as? UIView else { return nil }
         let rect = view.convert(view.bounds, to: nil)
-        let hasNoArea = rect.width <= 1 || rect.height <= 1
-        let landed: Bool
-        if hasNoArea {
-            let inside = target.map { $0.contains(CGPoint(x: rect.midX, y: rect.midY)) } ?? false
-            let moved = before.map { $0.id != ObjectIdentifier(view) || $0.rect != rect } ?? true
-            landed = inside && (targetIsInput || moved)
-        } else {
-            landed = rect.contains(point)
-        }
-        guard landed else {
+        let moved = before.map { $0.id != ObjectIdentifier(view) || $0.rect != rect } ?? true
+        guard FocusLanding.landed(receiver: rect, tapped: point, target: target,
+                                  targetIsInput: targetIsInput, movedSinceTap: moved) else {
             return "keyboard focus is not on the tapped element — it is on another field"
                 + " (receiver at \(Self.describe(rect)), tapped \(Int(point.x)),\(Int(point.y))),"
                 + " so \(action) would act on that field instead. The ref is probably not a text"
