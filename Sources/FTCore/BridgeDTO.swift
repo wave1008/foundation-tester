@@ -372,7 +372,10 @@ public enum BridgeAPI {
     /// v97 (in-app only): (e)'s check for a zero-area receiver (Flutter) no longer passes a ref that
     /// is not a text input (a container holding the previously focused field) when the tap left the
     /// receiver where it was — it typed/cleared into that field and returned ok.
-    public static let bridgeProtocolVersion = 97
+    /// v98 (in-app only): (e) passes a ref that wraps exactly one text input again when that input already
+    /// holds focus (a second type / replace into a Flutter field wrapped by an id-carrying container was
+    /// refused after a 1.5s wait under v97).
+    public static let bridgeProtocolVersion = 98
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -509,17 +512,21 @@ public enum BridgeAPI {
 ///   中の前の欄を「叩いた先」と取り違えるため
 /// - **面積の無い受け口**(Flutter の 1×1pt。欄の編集領域の左上に置かれ、叩いた点を含むことが原理的に無い。
 ///   実測: 受け口 (16,310 1x1)・欄 (16,298 370x48)・叩いた中心 (201,322)): 叩いた要素の枠の中にあるか。
-///   **叩いたのが入力欄でない(容器)なら、タップの前後で受け口が動いたことも要る** —— 前の欄を内側に含む
-///   容器を叩いて焦点が動かなかった形を通すと、前の欄へ打って 200 を返す。入力欄なら、焦点のある欄を
-///   叩き直した形(受け口は動かない)も通す
+///   **叩いたのが入力欄でない(容器)なら、タップの前後で受け口が動いたか、容器の中の入力欄がちょうど1つで
+///   受け口がその欄の中にあることが要る** —— 前の欄を内側に含む容器(欄が2つ以上)を叩いて焦点が動かなかった形を
+///   通すと、前の欄へ打って 200 を返す。欄が1つだけの包み(id を持つのが包み側)は、焦点のある欄を叩き直した形でも
+///   叩いた先はその欄なので通す(`TapTargetGeometry.nonInputTypeTargetNote` と同じ「ちょうど1つ」の考え方)。
+///   入力欄そのものなら叩き直し(受け口は動かない)も通す
 public enum FocusLanding {
     /// `movedSinceTap` = タップの前後で受け口が別の view になったか位置が変わったか(タップ前に受け口が
-    /// 無ければ true)。`target` = 叩いた要素の今の枠(取れなければ nil = 面積の無い受け口は通さない)
-    public static func landed(receiver: CGRect, tapped: CGPoint, target: CGRect?,
-                              targetIsInput: Bool, movedSinceTap: Bool) -> Bool {
+    /// 無ければ true)。`target` = 叩いた要素の今の枠(取れなければ nil = 面積の無い受け口は通さない)。
+    /// `soleInnerInput` = 叩いた要素の中の入力欄がちょうど1つならその枠(0個・2個以上は nil)
+    public static func landed(receiver: CGRect, tapped: CGPoint, target: CGRect?, targetIsInput: Bool,
+                              movedSinceTap: Bool, soleInnerInput: CGRect?) -> Bool {
         guard receiver.width <= 1 || receiver.height <= 1 else { return receiver.contains(tapped) }
-        let inside = target.map { $0.contains(CGPoint(x: receiver.midX, y: receiver.midY)) } ?? false
-        return inside && (targetIsInput || movedSinceTap)
+        let centre = CGPoint(x: receiver.midX, y: receiver.midY)
+        guard target.map({ $0.contains(centre) }) ?? false else { return false }
+        return targetIsInput || movedSinceTap || (soleInnerInput?.contains(centre) ?? false)
     }
 }
 

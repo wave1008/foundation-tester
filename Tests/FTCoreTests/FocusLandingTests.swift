@@ -18,38 +18,54 @@ final class FocusLandingTests: XCTestCase {
     /// **本命**: パスワード欄に焦点を残して、2つの欄を包む容器を叩いた(焦点は動かない)→ 通さない
     func testAContainerHoldingThePreviouslyFocusedFieldIsNotALanding() {
         XCTAssertFalse(FocusLanding.landed(receiver: passwordReceiver, tapped: CGPoint(x: 201, y: 350),
-                                           target: card, targetIsInput: false, movedSinceTap: false))
+                                           target: card, targetIsInput: false, movedSinceTap: false, soleInnerInput: nil))
     }
 
     /// 包み(id を持つ行)を叩いて中の欄へ焦点が移った形は通す(受け口が動いた)
     func testAContainerWhoseTapMovedFocusInsideIsALanding() {
         XCTAssertTrue(FocusLanding.landed(receiver: singleReceiver, tapped: CGPoint(x: 201, y: 350),
-                                          target: card, targetIsInput: false, movedSinceTap: true))
+                                          target: card, targetIsInput: false, movedSinceTap: true, soleInnerInput: nil))
     }
 
     /// 焦点のある欄を叩き直した(受け口は動かない)形は、叩いたのが入力欄なら通す
     func testRetappingTheFocusedFieldIsALanding() {
         XCTAssertTrue(FocusLanding.landed(receiver: singleReceiver, tapped: CGPoint(x: 201, y: 322),
-                                          target: single, targetIsInput: true, movedSinceTap: false))
+                                          target: single, targetIsInput: true, movedSinceTap: false, soleInnerInput: nil))
     }
 
     /// 別の欄に焦点が残った(受け口が叩いた欄の外)形は、入力欄を叩いても通さない
     func testAReceiverOutsideTheTappedFieldIsNotALanding() {
         XCTAssertFalse(FocusLanding.landed(receiver: passwordReceiver, tapped: CGPoint(x: 201, y: 322),
-                                           target: single, targetIsInput: true, movedSinceTap: false))
+                                           target: single, targetIsInput: true, movedSinceTap: false, soleInnerInput: nil))
     }
 
     /// 叩いた要素の枠が取れないときは、面積の無い受け口は通さない(判断の材料が無い)
     func testAZeroAreaReceiverWithoutATargetFrameIsNotALanding() {
         XCTAssertFalse(FocusLanding.landed(receiver: singleReceiver, tapped: CGPoint(x: 201, y: 322),
-                                           target: nil, targetIsInput: true, movedSinceTap: true))
+                                           target: nil, targetIsInput: true, movedSinceTap: true, soleInnerInput: nil))
     }
 
     /// 面積のある受け口(UIKit・Compose)は点で見る: 容器の枠の中でも点が欄の外なら通さない
     func testAnAreaReceiverIsJudgedByThePointOnly() {
         XCTAssertTrue(FocusLanding.landed(receiver: single, tapped: CGPoint(x: 201, y: 322),
-                                          target: card, targetIsInput: false, movedSinceTap: false))
+                                          target: card, targetIsInput: false, movedSinceTap: false, soleInnerInput: nil))
         XCTAssertFalse(FocusLanding.landed(receiver: password, tapped: CGPoint(x: 201, y: 350),
-                                           target: card, targetIsInput: false, movedSinceTap: true))
+                                           target: card, targetIsInput: false, movedSinceTap: true, soleInnerInput: nil))
+    }
+
+    /// **欄が1つだけの包み**(id を持つのが包み側)を、焦点のある中の欄ごと叩き直した形は通す
+    /// (受け口は動かないが、叩いた先はその欄。2回目の type・replace がこの形)
+    func testAWrapperAroundTheOneFocusedFieldIsALanding() {
+        let wrapper = CGRect(x: 0, y: 290, width: 402, height: 64)
+        XCTAssertTrue(FocusLanding.landed(receiver: singleReceiver, tapped: CGPoint(x: 201, y: 322),
+                                          target: wrapper, targetIsInput: false, movedSinceTap: false,
+                                          soleInnerInput: single))
+    }
+
+    /// 包みの中の欄が1つでも、受け口がその欄の外(別の欄に焦点が残った)なら通さない
+    func testASoleInnerInputThatDoesNotHoldTheReceiverIsNotALanding() {
+        XCTAssertFalse(FocusLanding.landed(receiver: passwordReceiver, tapped: CGPoint(x: 201, y: 350),
+                                           target: card, targetIsInput: false, movedSinceTap: false,
+                                           soleInnerInput: single))
     }
 }

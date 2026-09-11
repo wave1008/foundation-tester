@@ -754,8 +754,14 @@ final class FTInAppBridge {
                 let live = axFrame.flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil }
                 let target = live ?? self.frames[ref]
                 let centre = live.map { CGPoint(x: $0.midX, y: $0.midY) } ?? point
+                // 叩いた要素の中の入力欄(snapshot の枠で含まれるもの)。ちょうど1つのときだけ渡す
+                let inner = self.frames[ref].map { outer in
+                    self.textInputRefs.filter { $0 != ref }.compactMap { self.frames[$0] }
+                        .filter { outer.contains($0) }
+                } ?? []
                 guard let reason = Self.focusRefusal(toward: centre, within: target,
                                                      targetIsInput: self.textInputRefs.contains(ref),
+                                                     soleInnerInput: inner.count == 1 ? inner[0] : nil,
                                                      before: before, action: action)
                 else { return .focused }
                 guard Date() >= deadline else { return .pending }
@@ -782,7 +788,7 @@ final class FTInAppBridge {
     }
 
     private static func focusRefusal(toward point: CGPoint, within target: CGRect?, targetIsInput: Bool,
-                                     before: ReceiverMark?, action: String) -> String? {
+                                     soleInnerInput: CGRect?, before: ReceiverMark?, action: String) -> String? {
         guard let receiver = FTCurrentTextReceiver() else {
             return "no focused input field after tapping the target — the ref is"
                 + " probably not a text input (tapping it does not move keyboard focus)."
@@ -791,8 +797,8 @@ final class FTInAppBridge {
         guard let view = receiver as? UIView else { return nil }
         let rect = view.convert(view.bounds, to: nil)
         let moved = before.map { $0.id != ObjectIdentifier(view) || $0.rect != rect } ?? true
-        guard FocusLanding.landed(receiver: rect, tapped: point, target: target,
-                                  targetIsInput: targetIsInput, movedSinceTap: moved) else {
+        guard FocusLanding.landed(receiver: rect, tapped: point, target: target, targetIsInput: targetIsInput,
+                                  movedSinceTap: moved, soleInnerInput: soleInnerInput) else {
             return "keyboard focus is not on the tapped element — it is on another field"
                 + " (receiver at \(Self.describe(rect)), tapped \(Int(point.x)),\(Int(point.y))),"
                 + " so \(action) would act on that field instead. The ref is probably not a text"
