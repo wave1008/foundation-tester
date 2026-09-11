@@ -655,8 +655,8 @@ extension StepExecutor {
     /// タップそのもので、この doc が禁じている「矩形の中で離す」を実装自身が踏んでいた。
     /// 実機(iPhone 実機・SmartNews)の全幅セルで `ft_scroll_to` が**記事を開く**形で 2/2 再現
     ///。自前 SUT の行はすべてインセット(例 16,270 330x56)なので E2E には出ない
-    /// —— 全幅の行は実アプリに固有。実機は `AppBundleInspector` が必ず nil を返すので
-    /// `shouldEmptyDrag` が常に true になり、全アプリが対象になる。
+    /// —— 全幅の行は実アプリに固有。撃つのは Compose / Flutter と判定できたときだけ
+    /// (`shouldEmptyDrag`。不明なら撃たない)。
     /// 撃たない代償は「容器が次の1タッチを消費したまま」= 呼び手のやり直しで回復するが、
     /// 撃った場合の代償は**アプリの状態が変わって戻せない**(読み取り専用のはずの scrollTo が書き込む)
     static func emptyDragEndX(of element: ElementInfo, from x: Double, screen: FTRect) -> Double? {

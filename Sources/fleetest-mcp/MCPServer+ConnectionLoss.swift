@@ -258,6 +258,7 @@ extension MCPServer {
         lastScreenProbe[key] = nil
         systemAlertProbePending.remove(key)
         uiFrameworkHints[key] = nil
+        uiFrameworkUnknownPending.remove(key)
         lastScreenshots[key] = nil
         rememberedSnapshotFilters[key] = nil
         sheetRescueFutile[key] = nil

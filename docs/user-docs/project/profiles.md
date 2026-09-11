@@ -34,7 +34,14 @@ section wins on conflicts):
   (`CFBundleDisplayName`, falling back to `CFBundleName`; localized names also count).
 - `appPath` is relative to the repository root by default (`~` and absolute paths also work).
   Android accepts `.apk` or `.apks` (an App Bundle split set; installing `.apks` requires
-  `bundletool`).
+  `bundletool`). iOS `appPath` is a `.app` (simulators install nothing else); `appPathPhysical`
+  may be a `.app` or an `.ipa`.
+- The tool also reads the app's UI framework from that package (Compose Multiplatform / Flutter /
+  everything else) to decide whether a scroll needs a relief gesture before the next tap, and
+  remembers the answer per bundle ID. When neither the package nor a remembered answer is at hand
+  (an app installed on a physical device by other means), the relief gesture is not sent and the
+  run says so once — on Compose / Flutter a tap right after a scroll may then be swallowed; point
+  `appPath` / `appPathPhysical` at the package once to settle it.
 - `healthCheckURL` (in `common`, optional): a backend URL checked at the start of a run
   (3-second timeout, warns but does not block).
 

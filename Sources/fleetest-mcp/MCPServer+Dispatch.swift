@@ -269,6 +269,9 @@ extension MCPServer {
             if Self.toolAcceptsDeviceTarget(tool), let runNote = markDeviceInUse(args: resolved) {
                 content = [["type": "text", "text": runNote]] + content
             }
+            if let note = takeUIFrameworkUnknownNote(args: resolved) {
+                content = [["type": "text", "text": note]] + content
+            }
             return Self.withElapsed(content, since: start, clock: clock)
         } catch {
             // run が台を使っている最中は失敗しやすい(アプリの起こし直し・ブリッジの建て直し)ので、失敗にも言う
@@ -280,6 +283,16 @@ extension MCPServer {
             guard !hint.isEmpty else { throw error }
             throw MCPError(error.localizedDescription + hint)
         }
+    }
+
+    /// 実機で uiFramework が判定できないまま探索した回の直後に1回だけ(resolveExecutorHints が立てる)
+    func takeUIFrameworkUnknownNote(args: [String: Any]) -> String? {
+        let key = Self.engineKey(args)
+        guard uiFrameworkUnknownPending.remove(key) != nil else { return nil }
+        return "ℹ️ the UI framework of the app on this physical device is unknown (no .app/.ipa seen for"
+            + " this bundle id yet), so the relief drag after a scroll is not sent — on Compose Multiplatform /"
+            + " Flutter the tap right after a scroll can be swallowed. ft_install it from its .app/.ipa once;"
+            + " the result is remembered for the bundle id"
     }
 
     /// **この MCP が操作している台に印を置き(run が後回しにする)、run が使用中なら1行で言う**

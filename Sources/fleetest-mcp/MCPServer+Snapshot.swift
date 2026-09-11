@@ -1110,14 +1110,21 @@ extension MCPServer {
         guard !isAndroid else { return (true, nil) }
         if let cached = uiFrameworkHints[key] { return (false, cached) }
         if engineForKey == "xcuitest" {
-            // profile 無しでも、resolver が udid を特定できていれば、attach 中のアプリ
-            // (status.sessionBundleID)のバンドルマーカーで判定できる(成功だけ記憶)
-            if let udid = udids[key] ?? nil,
-               let bundleID = (try? await driver.status())?.sessionBundleID,
-               let hint = AppBundleInspector.detect(udid: udid, bundleID: bundleID,
-                                                    physical: false) {
-                uiFrameworkHints[key] = hint
-                return (false, hint)
+            // profile 無しでも、attach 中のアプリ(status.sessionBundleID)なら判定できる(成功だけ記憶):
+            // 材料は ft_install で入れたパッケージ(installedPackagePaths)→ シミュレータのバンドル →
+            // 台帳(以前に判定した bundle ID)。**実機は simctl を撃たない**(udid の形が同じなので
+            // `Invalid device` で失敗するだけ。実機かどうかは `.fleetest/bridge-<port>.device`)
+            if let bundleID = (try? await driver.status())?.sessionBundleID {
+                let physical = connectedPorts[key].flatMap { port in
+                    (try? RepoRoot.find()).flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }
+                } != nil
+                if let hint = AppBundleInspector.detect(appPath: installedPackagePaths[key],
+                                                        udid: udids[key] ?? nil, bundleID: bundleID,
+                                                        physical: physical) {
+                    uiFrameworkHints[key] = hint
+                    return (false, hint)
+                }
+                if physical { uiFrameworkUnknownPending.insert(key) }
             }
             return (false, nil)
         }

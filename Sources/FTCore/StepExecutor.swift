@@ -500,9 +500,11 @@ public final class StepExecutor {
     /// Pressable の pressRetentionOffset(既定20pt)内に収まり onPress が成立し、`scrollTo` しただけで
     /// 行が選択された(2026-08-08 E2E-RN S0100 実測: `selected=row_40`)。Android がタッチ消費を
     /// 持たず releasesScrollTouch=false で対象外なのと同型の理由。
-    /// **nil(不明)は従来どおり打つ**(実機・判定失敗経路で挙動を変えないため)
+    /// **nil(不明)は打たない**(2026-09-12 に反転): 打って外れると行やボタンが押されてアプリの状態が
+    /// 黙って変わる(取り消せない)が、打たずに外れるとタップが吸われて失敗として見える。不明になるのは
+    /// 材料(.app / .ipa)も台帳(AppFrameworkLedger)も無い実機だけ
     var shouldEmptyDrag: Bool {
-        releasesScrollTouch && (uiFramework == nil || uiFramework == "compose" || uiFramework == "flutter")
+        releasesScrollTouch && (uiFramework == "compose" || uiFramework == "flutter")
     }
 
     /// **容器の推測に依存する補正**の既定(実行プロファイルの `containerInference`。既定 true)。

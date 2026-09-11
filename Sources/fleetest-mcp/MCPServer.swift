@@ -67,6 +67,9 @@ final class MCPServer {
     /// scroll_to の空打ちゲート用 uiFramework(engineKey ごと)。**成功だけ**記憶する —
     /// 失敗(nil)を覚えると、suspend 中の1回のタイムアウトで判定がセッション全体に固定される
     var uiFrameworkHints: [String: String] = [:]
+    /// 実機で uiFramework が不明のまま探索を撃った engineKey(次の応答で1回だけ言う。
+    /// 不明のとき空打ちは撃たれないので、Compose / Flutter なら吸われた形が赤に出る)
+    var uiFrameworkUnknownPending: Set<String> = []
     /// 特定できたシミュレータの udid(engineKey ごと)。xcuitest のマーカー判定に使う
     var udids: [String: String?] = [:]
     /// drivers と同じキーで**最後に ft_launch した bundleID**を覚える。

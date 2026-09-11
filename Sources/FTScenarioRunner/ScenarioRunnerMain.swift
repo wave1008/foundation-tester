@@ -427,17 +427,17 @@ struct RunScenario: AsyncParsableCommand {
                 _ = try await driver.status()
             }
             // **不明のまま進むことは黙らない**。自己申告もバンドルのマーカーも
-            // 取れないのは実機で --app-path が無いときで、そのとき shouldEmptyDrag は
-            // 「不明なら打つ」へ倒れる = RN なら scrollTo が行を選ぶ(沈黙する実害)。
-            // 判断は変えない(打たない側へ倒すと Compose の探索直後タップが容器に吸われて
-            // 全部赤になる)ので、**せめて run に残す**。stderr は ScenarioHost が
+            // 取れないのは実機で材料(.app / .ipa)も台帳(AppFrameworkLedger)も無いときで、そのとき
+            // shouldEmptyDrag は「不明なら打たない」へ倒れる = Compose / Flutter なら探索直後のタップが
+            // 容器に吸われて赤になる(失敗として見える側)。**run に残す**。stderr は ScenarioHost が
             // "⚠️ " 付きの log イベントへ変換する
             if runPlatform == "ios", uiFrameworkHint == nil {
                 ConsoleOut.err(
                     "could not determine the UI framework of \(appBundleID) (the bridge did not"
-                     + " report it and no app bundle was available), so the empty drag after a"
-                     + " scroll search is fired blind — on React Native that can select a row."
-                     + " Pass --app-path (the run profile's appPath) to settle it.")
+                     + " report it, no .app/.ipa was available, and nothing is remembered for this"
+                     + " bundle id), so the relief drag after a scroll search is NOT sent — on Compose"
+                     + " Multiplatform / Flutter the tap right after a scroll can be swallowed. Point"
+                     + " appPath / appPathPhysical at the app package once; the result is remembered")
             }
         }
 

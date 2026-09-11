@@ -2158,9 +2158,17 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   「不明なら打つ」へ倒れ、RN では横抜き 4pt が `pressRetentionOffset`(既定20pt)に収まって
   `onPress` が成立する = **`scrollTo` しただけで行が選択される**(E2E-RN S0100 を
   プローブ無応答で回して再現。`selected=row_40`)。自己申告が取れなければ
-  **バンドルのマーカー**(`AppBundleInspector.detect(appPath:udid:bundleID:physical:)` =
-  デバイスの応答が要らない)へ落とし、それも無ければ**盲打ちであることを run に残す**
-  (判断は変えない —— 打たない側へ倒すと Compose の探索直後タップが容器に吸われる)。
+  **パッケージのマーカー**(`AppBundleInspector.detect(appPath:udid:bundleID:physical:)` =
+  デバイスの応答が要らない。材料は .app / .ipa の両方 = `AppPackageReader`。Flutter は
+  `Frameworks/Flutter.framework`、Compose は実行ファイル(デバッグは `<exe>.debug.dylib`)の中の
+  クラス名 `SkikoUIView` —— `compose-resources` フォルダはリソースを使わないアプリに無い)へ落とし、
+  判定できたら **bundle ID ごとの台帳**(`AppFrameworkLedger` = `~/.fleetest/app-frameworks/`)に
+  覚える。材料が無いときは台帳、それも無ければ nil = **不明なら打たない**(2026-09-12 に反転):
+  打って外れると UIKit / SwiftUI / RN の行が押されてアプリの状態が黙って変わる(物理 iPhone 13 で
+  `ft_scroll_to` が診断画面を開いた)が、打たずに外れるとタップが吸われて失敗として見える。
+  不明になるのは材料も台帳も無い**物理 iPhone だけ**(端末に入ったアプリの中身は devicectl でも
+  端末上のランナーからも読めない —— サンドボックスが `Operation not permitted`。2026-09-12 実測)。
+  そのときは run の log と MCP の応答に「判定できなかったので撃っていない」と1回残す。
   **別ステップにしない理由**: 利用者が書いたのは1コマンドなので記録も1行にする。
   合成ステップは**ソース行を持たない**ためジャンプも修正提案の照合もできず、説明の要る状態になる
   (2026-07-27 に一度その形で入れて、直した)。

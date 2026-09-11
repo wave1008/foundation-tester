@@ -148,7 +148,7 @@ extension StepExecutorTests {
                 [container, filler],
                 [container, filler, target],
             ])
-            let executor = StepExecutor(driver: primary, releasesScrollTouch: true, isAndroid: false)
+            let executor = StepExecutor(driver: primary, releasesScrollTouch: true, isAndroid: false, uiFramework: "compose")
             _ = await executor.execute(FlowStep(action: "tap",
                                                 locator: FlowLocator(id: "cell_40"),
                                                 direction: "up", maxSwipes: 6))

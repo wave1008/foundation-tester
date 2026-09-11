@@ -33,7 +33,13 @@
   `api validate-profile`)に警告が出ます。
 - `appPath` の相対パスは既定でリポジトリルート基準です(`~` 展開・絶対パスも可)。Android は
   `.apk` のほか `.apks`(App Bundle 由来のスプリット束)も書けます(インストールには
-  `bundletool` が要ります)。
+  `bundletool` が要ります)。iOS の `appPath` は `.app`(シミュレータはそれしか入りません)、
+  `appPathPhysical` は `.app` でも `.ipa` でも書けます。
+- ツールはそのパッケージからアプリの UI フレームワーク(Compose Multiplatform / Flutter / それ以外)も
+  読み、スクロールの直後のタップの前に肩代わりのジェスチャが要るかを決めます。答えは bundle ID ごとに
+  覚えます。パッケージも覚えた答えも無いとき(物理端末に別の方法で入れたアプリ)は肩代わりを送らず、
+  実行時に1回そう言います —— Compose / Flutter ではスクロール直後のタップが吸われることがあるので、
+  一度 `appPath` / `appPathPhysical` にパッケージを指せば以後は覚えた答えで動きます。
 - `healthCheckURL`(`common` のみ・任意): 実行開始前に到達確認するバックエンドの URL
   (3秒タイムアウト。不達でも警告だけでブロックしません)。
 

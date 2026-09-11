@@ -425,7 +425,7 @@ extension StepExecutorTests {
             [container, inside1, inside2, ghost],    // 掴み直し1回目: まだ ghost(= ここで救済が走る)
             [container, inside1, inside2, settled],  // 救済後: 容器の中
         ])
-        let executor = StepExecutor(driver: primary, releasesScrollTouch: true, isAndroid: false)
+        let executor = StepExecutor(driver: primary, releasesScrollTouch: true, isAndroid: false, uiFramework: "compose")
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "row_30"),
                             direction: "up", maxSwipes: 2)
 
@@ -612,7 +612,7 @@ extension StepExecutorTests {
         primary.dragError = DriverError.badResponse(status: 501, body: "未対応")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log)
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver,
-                                    releasesScrollTouch: true, isAndroid: false)
+                                    releasesScrollTouch: true, isAndroid: false, uiFramework: "compose")
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_40"), maxSwipes: 2)
 
         guard case .passed = await executor.execute(step).status else {
@@ -642,10 +642,10 @@ extension StepExecutorTests {
                       "uiFramework=uikit では終端の空打ちを撃たないこと: \(primary.dragCalls)")
     }
 
-    /// uiFramework が "compose"、または判定できず nil(不明)のときは**従来どおり**空打ちを撃つこと。
-    /// nil を skip 側へ倒すと、実機や AppBundleInspector が判定失敗した経路まで一括で挙動が変わる
-    func testEmptyDragStillFiresForComposeAndUnknownFramework() async throws {
-        let frameworks: [String?] = [nil, "compose"]
+    /// uiFramework が "compose" / "flutter" のときだけ空打ちを撃つこと(自前描画のスクロール容器が
+    /// 次の1タッチを消費するのはこの2つ)
+    func testEmptyDragFiresForComposeAndFlutter() async throws {
+        let frameworks: [String?] = ["compose", "flutter"]
         for framework in frameworks {
             let log = CallLog()
             let row = framed(ref: 1, id: "row_40", x: 16, y: 300, width: 370, height: 56)
@@ -660,6 +660,23 @@ extension StepExecutorTests {
             XCTAssertFalse(primary.dragCalls.isEmpty,
                            "uiFramework=\(String(describing: framework)) では空打ちを撃つこと: \(primary.dragCalls)")
         }
+    }
+
+    /// **判定できず nil(不明)のときは撃たない**(2026-09-12 に反転)。打って外れると UIKit / SwiftUI /
+    /// RN の行やボタンが押されてアプリの状態が黙って変わる(物理 iPhone 13 で scrollTo が診断画面を開いた)が、
+    /// 打たずに外れるとタップが吸われて失敗として見える。不明になるのは材料も台帳も無い実機だけ
+    func testEmptyDragIsNotFiredWhenTheFrameworkIsUnknown() async throws {
+        let log = CallLog()
+        let row = framed(ref: 1, id: "row_40", x: 16, y: 300, width: 370, height: 56)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[], [], [row]])
+        let executor = StepExecutor(driver: primary, releasesScrollTouch: true, isAndroid: false, uiFramework: nil)
+        let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_40"), maxSwipes: 2)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("スワイプ後の snapshot で見つかるので pass のはず"); return
+        }
+        XCTAssertTrue(primary.dragCalls.isEmpty,
+                      "uiFramework が不明なのに空打ちを撃った(実機で行を押す側に倒れている): \(primary.dragCalls)")
     }
 
     /// drag のラッチは swipe に波及しないこと。in-app は drag だけ不可・swipe は

@@ -150,10 +150,12 @@ extension MCPServer {
             // engine=xcuitest はブリッジが uiFramework を申告しないが、profile 経由なら
             // 対象 bundleID が分かるのでバンドルのマーカーで判定して覚える(scroll_to の
             // 空打ちゲート用。DSL の xcuitest 経路と同じ判定 = AppBundleInspector)
-            if case .ios(let provisioned, let iosApp) = target, !provisioned.physical,
+            // 実機は appPathPhysical(.app / .ipa)か台帳(AppFrameworkLedger)で答える
+            if case .ios(let provisioned, let iosApp) = target,
                engines[key] == "xcuitest", let bundleID = iosApp?.bundleID,
                let hint = AppBundleInspector.detect(
-                   udid: provisioned.udid, bundleID: bundleID, physical: false) {
+                   appPath: iosApp?.packagePath(physical: provisioned.physical),
+                   udid: provisioned.udid, bundleID: bundleID, physical: provisioned.physical) {
                 uiFrameworkHints[key] = hint
             }
             // **profile 経由でも宛先を記録する**。ここが空だと ft_status が
