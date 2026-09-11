@@ -26,6 +26,30 @@ enum ProfileRunner {
             ocr: resolved.ocr, ocrFalsePositiveCheck: resolved.ocrFalsePositiveCheck)
     }
 
+    /// この run が使おうとしている台の run-lease(`.fleetest/run-<key>.lease`)に、
+    /// 生きた別プロセスが既に居ないか確かめて、居れば台+保持者 pid を名指しして拒否する
+    /// (ユーザー決定「拒否して止める」)。
+    /// **呼び出しは各供給フェーズが `supplyLease?.hold(keys:)` で自分の lease を書き始める直前**
+    /// (書いた後だと自分の lease を自分と衝突と見なしてしまう)。判定自体は `RunLeaseGuard.conflicts`
+    /// (pure function)。`leaseStateDir` が取れない(リポジトリ外実行等)なら何もしない ——
+    /// そもそも lease を書けないので検査材料が無く、安全側(検査なし)に倒す。
+    /// ApiRunCommand と共用(Android/iOS どちらの供給フェーズからも同じ形で呼ぶ)
+    static func rejectIfDeviceLeased(
+        workers: [RunWorker], leaseStateDir: URL?,
+        selfPID: Int32 = ProcessInfo.processInfo.processIdentifier
+    ) throws {
+        guard let leaseStateDir else { return }
+        let devices: [(device: String, key: String)] = workers.compactMap { worker in
+            (worker.connection.serial ?? worker.connection.udid).map { (worker.label, $0) }
+        }
+        let conflicts = RunLeaseGuard.conflicts(
+            devices: devices, selfPID: selfPID,
+            holderPID: { RunLease.holderPID(stateDir: leaseStateDir, key: $0) })
+        guard conflicts.isEmpty else {
+            throw ProfileWorkerFactory.InstallError(message: RunLeaseGuard.message(conflicts))
+        }
+    }
+
     /// 戻り値: 実行サマリ(失敗数+劣化ワーカー)+ この run で実際に効いていた FM 設定。
     /// **fmSettings は tuple の2つ目として非 Optional で返す** —— `RunSummary.fmSettings` 自体は
     /// `RunOrchestrator` の生サマリ(プロファイルの実効値を知らないので常に nil)と共有する型なので
@@ -207,6 +231,9 @@ enum ProfileRunner {
 
         await ProfileWorkerFactory.preparePhysicalAndroidDevices(resolved: resolved) { ConsoleOut.out($0) }
         var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved) { ConsoleOut.out($0) }
+        // 供給フェーズが自分の lease を書き始める(次行の hold)前に、生きた別プロセスが
+        // 同じ台を既に使っていないか確かめる(拒否して止める。)
+        try Self.rejectIfDeviceLeased(workers: workers, leaseStateDir: leaseStateDir)
         supplyLease?.hold(keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
         let androidSerials = workers.compactMap { $0.connection.serial }
         // **テスト開始時に WebView を揃える**(既定 ON。AndroidWebViewUpdate の宣言参照)
@@ -288,6 +315,12 @@ enum ProfileRunner {
                 failuresOnly: resolved.recordFailuresOnly, bitrateKbps: resolved.recordBitrateKbps,
                 fullResolution: resolved.recordFullResolution)
         }()
+
+        // SIGINT/SIGTERM を受けたら、新しいシナリオを配らず・今動いている子(fleetest-scenarios)
+        // を SIGTERM してから RunOrchestrator.run() の通常の完了経路(録画停止・lease 解放・
+        // drain・summary)を通す(ApiRunCommand.runWithProfileParallel と同じ形。CLAUDE.md
+        // 「終了猶予の方針」= 自前の後始末を持つ fleetest の子には時限の SIGKILL を送らない)
+        let interruptState = RunInterruptState()
 
         let orchestrator = RunOrchestrator(
             project: project, workers: workers + eagerIOSWorkers,
@@ -391,7 +424,13 @@ enum ProfileRunner {
             installHandler: InstallHandlerFactory.make(apps: resolved.apps),
             appName: resolved.appName,
             appBundleIDs: resolved.apps.mapValues(\.bundleID),
-            appTargets: resolved.apps)
+            appTargets: resolved.apps,
+            registerChildProcess: { interruptState.registerChildProcess($0) })
+        let interruptRelay = InterruptRelay.observing {
+            interruptState.requestStop()
+            orchestrator.requestInterrupt()
+        }
+        defer { interruptRelay.stop() }
         PhaseLog.mark("orchestrator-setup")
         // レーン = 絞り込み後の全デバイス(供給に失敗して参加しなかった台のぶんは、orchestrator が
         // 「never joined」でそのレーンの本数を失敗として残す = 準備できなかった台が緑に紛れない)
@@ -478,7 +517,8 @@ enum ProfileRunner {
                                  fmUnavailableScenarios: finalSummary.fmUnavailableScenarios,
                                  workerAnomalies: finalSummary.workerAnomalies,
                                  performanceMode: performanceMode,
-                                 fmSettings: fmSettings)
+                                 fmSettings: fmSettings,
+                                 interrupted: finalSummary.interrupted)
         return (resultSummary, fmSettings)
     }
 
@@ -539,6 +579,11 @@ enum ProfileRunner {
             var ws = try await ProfileWorkerFactory.buildIOSWorkers(
                 resolved: resolved, repoRoot: repoRoot) { ConsoleOut.out($0) }
             PhaseLog.mark("ios-workers-built")
+            // 同じ理由(Android 経路のコメント参照)。ここで throw すると呼び出し元の
+            // do/catch が「❌ Failed to build iOS workers: …」として拒否理由(台+保持者 pid)を
+            // そのまま出す(iOS 供給失敗は run 全体を落とさない既存の規律はそのまま=このレーンだけ空になる)
+            try rejectIfDeviceLeased(
+                workers: ws, leaseStateDir: repoRoot.appendingPathComponent(".fleetest"))
             supplyLease?.hold(keys: ws.compactMap { $0.connection.serial ?? $0.connection.udid })
             ws = (try? await ProfileWorkerFactory.installIfNeeded(
                 apps: resolved.apps, workers: ws, forceAndroidInstall: false) { ConsoleOut.out($0) }) ?? ws

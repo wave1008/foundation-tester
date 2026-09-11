@@ -25,12 +25,18 @@ public enum RunLease {
 
     /// lease ファイル存在 + pid 生存 + mtime が stalenessSeconds 以内、の全条件を満たすときだけ true
     public static func isFresh(stateDir: URL, key: String, now: Date = Date()) -> Bool {
+        holderPID(stateDir: stateDir, key: key, now: now) != nil
+    }
+
+    /// 鮮度のある lease の保持者 pid(RunLeaseGuard.conflicts が名指しの拒否メッセージに使う)。
+    /// isFresh と同じ条件(生存+mtime)を満たさなければ nil
+    public static func holderPID(stateDir: URL, key: String, now: Date = Date()) -> Int32? {
         let url = leaseURL(stateDir: stateDir, key: key)
         guard let pidString = try? String(contentsOf: url, encoding: .utf8),
               let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)),
-              pid > 0, ProcessLiveness.isAlive(pid) else { return false }
+              pid > 0, ProcessLiveness.isAlive(pid) else { return nil }
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let mtime = attrs[.modificationDate] as? Date else { return false }
-        return now.timeIntervalSince(mtime) <= stalenessSeconds
+              let mtime = attrs[.modificationDate] as? Date else { return nil }
+        return now.timeIntervalSince(mtime) <= stalenessSeconds ? pid : nil
     }
 }

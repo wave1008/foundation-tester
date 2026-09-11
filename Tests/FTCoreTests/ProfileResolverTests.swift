@@ -874,6 +874,45 @@ final class ProfileResolverTests: XCTestCase {
                       "wipeDataThresholdGB エラーが出るはず: \(errors)")
     }
 
+    // MARK: - scenarioTimeout / defaultTimeout(負値・0・NaN が
+    // ScenarioHost の watchdog(UInt64 変換 → trap)まで届かないよう入口で弾く)
+
+    func testValidateRunScenarioTimeoutZeroOrNegativeErrors() throws {
+        try writeStandardFixture()
+        for bad in ["0", "-5"] {
+            let data = #"{ "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "scenarioTimeout": \#(bad) }"#
+                .data(using: .utf8)!
+            let (errors, _) = ProfileResolver.validate(
+                kind: .run, data: data, context: "runs/badScenarioTimeout.json", project: project)
+            XCTAssertTrue(errors.contains { $0.contains("scenarioTimeout") },
+                          "scenarioTimeout=\(bad) はエラーになるはず: \(errors)")
+        }
+    }
+
+    func testValidateRunScenarioTimeoutPositiveIsFine() throws {
+        try writeStandardFixture()
+        let data = #"""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "scenarioTimeout": 45 }
+        """#.data(using: .utf8)!
+        let (errors, _) = ProfileResolver.validate(
+            kind: .run, data: data, context: "runs/goodScenarioTimeout.json", project: project)
+        XCTAssertFalse(errors.contains { $0.contains("scenarioTimeout") }, "\(errors)")
+    }
+
+    /// **NaN は JSON の literal ではない**ので profile JSON からは書けない(`--set defaultTimeout=nan`
+    /// 側のテストで確認する)。ここでは 0/負値だけを見る
+    func testValidateRunDefaultTimeoutZeroOrNegativeErrors() throws {
+        try writeStandardFixture()
+        for bad in ["0", "-1.5"] {
+            let data = #"{ "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "defaultTimeout": \#(bad) }"#
+                .data(using: .utf8)!
+            let (errors, _) = ProfileResolver.validate(
+                kind: .run, data: data, context: "runs/badDefaultTimeout.json", project: project)
+            XCTAssertTrue(errors.contains { $0.contains("defaultTimeout") },
+                          "defaultTimeout=\(bad) はエラーになるはず: \(errors)")
+        }
+    }
+
     // MARK: - record
 
     func testRecordDefaultsToFalseWhenUnspecified() throws {

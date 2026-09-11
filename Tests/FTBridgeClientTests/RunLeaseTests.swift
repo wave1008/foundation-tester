@@ -60,4 +60,34 @@ final class RunLeaseTests: XCTestCase {
         RunLease.remove(stateDir: stateDir, key: serial)
         XCTAssertFalse(RunLease.isFresh(stateDir: stateDir, key: serial))
     }
+
+    // RunLeaseGuard は isFresh ではなく holderPID(保持者 pid)を読む。isFresh の3条件
+    // (存在+生存+鮮度)を holderPID も同じく守ることを確認する(戻す revert すると
+    // pid が取れず 二重使用の拒否メッセージから保持者 pid が消える)
+    func testHolderPIDReturnsPIDWhenFresh() throws {
+        let stateDir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        let pid = ProcessInfo.processInfo.processIdentifier
+
+        RunLease.write(stateDir: stateDir, key: udid, pid: pid)
+        XCTAssertEqual(RunLease.holderPID(stateDir: stateDir, key: udid), pid)
+    }
+
+    func testHolderPIDNilWhenStaleOrDeadOrMissing() throws {
+        let stateDir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+
+        XCTAssertNil(RunLease.holderPID(stateDir: stateDir, key: udid))
+
+        try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+        try String(999999).write(to: RunLease.leaseURL(stateDir: stateDir, key: udid),
+                                 atomically: true, encoding: .utf8)
+        XCTAssertNil(RunLease.holderPID(stateDir: stateDir, key: udid))
+
+        RunLease.write(stateDir: stateDir, key: udid, pid: ProcessInfo.processInfo.processIdentifier)
+        let past = Date().addingTimeInterval(-30)
+        try FileManager.default.setAttributes(
+            [.modificationDate: past], ofItemAtPath: RunLease.leaseURL(stateDir: stateDir, key: udid).path)
+        XCTAssertNil(RunLease.holderPID(stateDir: stateDir, key: udid))
+    }
 }

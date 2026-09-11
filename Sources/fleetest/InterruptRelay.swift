@@ -21,10 +21,19 @@
 import Foundation
 
 final class InterruptRelay {
-    private struct Target {
-        let process: Process
-        let escalateAfter: TimeInterval?
+    private enum Target {
+        case process(Process, escalateAfter: TimeInterval?)
+        /// `Process` を伴わない購読(手元だけの `api run`/`run`)。呼び出し側が自分で
+        /// 「新しいシナリオを配らない」「実行中のシナリオ子へ SIGTERM」を行ってから通常の完了経路へ
+        /// 進む —— ここでは通知するだけ(escalate は無意味 = process が無い)
+        case observer(@Sendable () -> Void)
     }
+
+    /// observer 用の識別子アンカー。ObjectIdentifier は寿命に依存しないただの値なので、
+    /// このトークンは targets 辞書の値(Target.observer と一緒に保持されるわけではない)経由では
+    /// 保持されない —— 呼び出し側が返り値の InterruptRelay を保持している間、このトークンも
+    /// InterruptRelay 自身が握って生かす
+    private final class ObserverToken {}
 
     private static let signals: [Int32] = [SIGINT, SIGTERM, SIGHUP]
     private static let queue = DispatchQueue(label: "fleetest.interrupt-relay")
@@ -33,10 +42,13 @@ final class InterruptRelay {
     private static var sources: [DispatchSourceSignal] = []
 
     private let id: ObjectIdentifier
+    /// 自分が observer 版のときだけ非 nil(識別子アンカーを生かし続けるため)
+    private let observerToken: ObserverToken?
     private var stopped = false
 
-    private init(id: ObjectIdentifier) {
+    private init(id: ObjectIdentifier, observerToken: ObserverToken? = nil) {
         self.id = id
+        self.observerToken = observerToken
     }
 
     /// `process` が動いている間だけ中断を横取りし、受けたら子へ SIGTERM を送る。
@@ -56,9 +68,24 @@ final class InterruptRelay {
         lock.lock()
         defer { lock.unlock() }
         let wasEmpty = targets.isEmpty
-        targets[id] = Target(process: process, escalateAfter: escalateAfter)
+        targets[id] = .process(process, escalateAfter: escalateAfter)
         if wasEmpty { installSources() }
         return InterruptRelay(id: id)
+    }
+
+    /// `Process` を持たない購読(手元だけの `api run`/`run`)。SIGINT/SIGTERM/SIGHUP を
+    /// 受けるたび `onInterrupt` を呼ぶだけ(処理は呼び出し側 —— 新しいシナリオの配布停止・
+    /// 実行中のシナリオ子への SIGTERM は呼び出し側の責務)。**同じ静的なシグナルソース集合を
+    /// `forwarding(to:)` と共有する**(1プロセスに1組。二重にソースを立てない)
+    static func observing(_ onInterrupt: @escaping @Sendable () -> Void) -> InterruptRelay {
+        let token = ObserverToken()
+        let id = ObjectIdentifier(token)
+        lock.lock()
+        defer { lock.unlock() }
+        let wasEmpty = targets.isEmpty
+        targets[id] = .observer(onInterrupt)
+        if wasEmpty { installSources() }
+        return InterruptRelay(id: id, observerToken: token)
     }
 
     /// 横取りをやめる。**最後の1つが止まったときだけ**既定動作へ戻す(以降の中断は普通に
@@ -104,13 +131,68 @@ final class InterruptRelay {
         let snapshot = Array(targets.values)
         lock.unlock()
         for target in snapshot {
-            guard target.process.isRunning else { continue }
-            target.process.terminate()
-            guard let escalateAfter = target.escalateAfter else { continue }
-            let process = target.process
-            queue.asyncAfter(deadline: .now() + escalateAfter) {
-                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            switch target {
+            case .process(let process, let escalateAfter):
+                guard process.isRunning else { continue }
+                process.terminate()
+                guard let escalateAfter else { continue }
+                queue.asyncAfter(deadline: .now() + escalateAfter) {
+                    if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                }
+            case .observer(let onInterrupt):
+                onInterrupt()
             }
+        }
+    }
+}
+
+/// ローカル実行中の `api run`/`run` が中断(SIGINT/SIGTERM)を受けたときに握る状態。
+/// 二役をまとめる: ①新しいシナリオを配らない(RunOrchestrator.requestInterrupt() 越しに
+/// フラグを立てる/逐次経路は `isStopped` を直接読む)②いま動いているシナリオ子
+/// (fleetest-scenarios)を SIGTERM する(ScenarioHost.run(registerChildProcess:) 経由で登録)。
+/// FTCore はこの型を知らない(fleetest ターゲットへの依存を作らない) —— 両方 closure で渡す。
+/// **2回目の中断は待たずに強制終了する**(1回目で通常の完了経路が刺さった場合に人が抜けられる
+/// ように。CLAUDE.md「終了猶予の方針」—— この force exit だけは registerChildProcess の
+/// SIGTERM や defer の巻き戻しを待たない最終手段)
+final class RunInterruptState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stopped = false
+    private var runningProcesses: [ObjectIdentifier: Process] = [:]
+
+    var isStopped: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return stopped
+    }
+
+    /// InterruptRelay.observing(_:) に渡す。1回目: 新規配布の停止フラグを立て、登録済みの
+    /// 実行中プロセス全部へ SIGTERM(2回目以降: プロセスの再列挙は無害だが、それに加えて
+    /// このプロセス自体を即終了させる)
+    func requestStop() {
+        lock.lock()
+        let firstTime = !stopped
+        stopped = true
+        let toKill = Array(runningProcesses.values)
+        lock.unlock()
+        for process in toKill where process.isRunning { process.terminate() }
+        guard !firstTime else { return }
+        // rc=143 は「同じシグナルを2回受けた」ことの目印(1回目は下の通常経路で rc=1 になる)
+        exit(143)
+    }
+
+    /// ScenarioHost.run(registerChildProcess:) に渡す。登録前に既に中断済みならその場で
+    /// SIGTERM する(register と中断到着の競合を取りこぼさない)
+    func registerChildProcess(_ process: Process) -> @Sendable () -> Void {
+        let id = ObjectIdentifier(process)
+        lock.lock()
+        let alreadyStopped = stopped
+        if !alreadyStopped { runningProcesses[id] = process }
+        lock.unlock()
+        if alreadyStopped, process.isRunning { process.terminate() }
+        return { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            self.runningProcesses.removeValue(forKey: id)
+            self.lock.unlock()
         }
     }
 }

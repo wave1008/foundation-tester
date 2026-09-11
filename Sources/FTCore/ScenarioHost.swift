@@ -115,6 +115,14 @@ public enum ScenarioHost {
     /// この値は子には渡さない(--default-timeout=子内部の検証待ちとは別物)
     public static let defaultScenarioTimeout = 90
 
+    /// watchdog の待ち時間。**負値は 0 秒へ**(即発火。trap しない側へ倒すだけで、
+    /// 正の値への丸めはしない — 入口検証(`RunProfileSetOverride`/`api validate-profile`/
+    /// `ApiRunCommand.validate`)が本来の弾き役)。`Duration.seconds(Int)` は乗算せず秒をそのまま
+    /// 保持するので、`UInt64(seconds) * 1_000_000_000` の桁あふれ trap も起きない
+    public static func watchdogDuration(seconds: Int) -> Duration {
+        .seconds(max(0, seconds))
+    }
+
     /// `xcode-select -p` の結果(ホストで1回だけ解決)。未解決・Xcode 無しなら nil
     /// テストが「解決できたなら必ず子へ載る」を検証するため internal
     static let resolvedDeveloperDir: String? = {
@@ -184,6 +192,23 @@ public enum ScenarioHost {
         if let fingerprint {
             BuildFingerprint.store(fingerprint, productName: project.productName, repoRoot: root)
         }
+    }
+
+    /// `--skip-build` はビルドを省いて、直前にビルドされたシナリオ実行バイナリをそのまま使う。
+    /// ソース(スキーマ・シナリオ)が変わったのに古いバイナリで走らせる事故を、`build()` と同じ
+    /// build-fingerprint(mtime+size)で検知し**警告を1行だけ出す**(止めない —— `--skip-build`
+    /// は意図してビルドを省く口なので、食い違いも意図的なことがある。新しい検知は警告から)。
+    /// フィンガープリントが計算できない(Sources/ 列挙失敗等)なら判定材料が無いので黙る(安全側)。
+    /// `run`/`api run` の両方の `--skip-build` 分岐から呼ぶ
+    public static func warnIfSkipBuildStale(project: TestProject, log: (String) -> Void) {
+        guard let root = packageRoot() else { return }
+        guard let fingerprint = BuildFingerprint.compute(
+            repoRoot: root, scenariosDir: project.scenariosDir) else { return }
+        guard fingerprint != BuildFingerprint.stored(
+            productName: project.productName, repoRoot: root) else { return }
+        log("⚠️ --skip-build: the scenario source has changed since \(project.productName) was last"
+            + " built (or it was never built through fleetest) — running with the existing binary,"
+            + " which may not match the current source")
     }
 
     /// ランナー実行ファイルの場所: packageRoot/.build/debug(そのプロジェクトを所有する repo)→
@@ -322,6 +347,12 @@ public enum ScenarioHost {
                            appPath: String? = nil,
                            appName: String? = nil,
                            appBundleID: String? = nil,
+                           /// 呼び出し側(ローカル `api run`/`run`)が中断(SIGINT/SIGTERM)を
+                           /// 受けたとき、いま動いているこの子を SIGTERM で止められるように登録する
+                           /// 口。呼ばれるのは子の起動に成功した直後だけ・戻り値の unregister は
+                           /// この関数の終わりで必ず呼ぶ(呼ばないと長時間 run で登録簿が肥大化する)。
+                           /// nil(未注入)なら中断の対象にならない(既存呼び出し元は無変更のまま)
+                           registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)? = nil,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
         let fm = settings.fm
         let containerInference = settings.containerInference
@@ -359,7 +390,10 @@ public enum ScenarioHost {
             finished.scenario = scenarioID
             finished.passed = false
             emit(finished)
-            if !dryRun { LastResultsStore.record(project: project, scenarioID: scenarioID, passed: false) }
+            if !dryRun {
+                LastResultsStore.record(project: project, scenarioID: scenarioID, passed: false,
+                                        profile: settings.profileName)
+            }
             if let recording, let builder {
                 recording.recorder.record(builder.build(
                     passed: false, timedOut: false, startedAt: startedAt,
@@ -430,6 +464,10 @@ public enum ScenarioHost {
         } catch {
             return abortBeforeLaunch("Cannot start the runner: \(error.localizedDescription)")
         }
+        // 中断が来ていれば即 SIGTERM(register 自体と中断到着の競合を取りこぼさない。
+        // 呼び出し側の実装 = ApiRunCommand/Fleetest の RunInterruptState 参照)
+        let unregisterChildProcess = registerChildProcess?(process)
+        defer { unregisterChildProcess?() }
         if let debug, let stdinPipe {
             debug.onControl(ScenarioRunControl(handle: stdinPipe.fileHandleForWriting))
         }
@@ -443,7 +481,11 @@ public enum ScenarioHost {
         var killer: Task<Void, Never>?
         if let watchdogSeconds {
             killer = Task {
-                try? await Task.sleep(nanoseconds: UInt64(watchdogSeconds) * 1_000_000_000)
+                // 旧実装の `UInt64(watchdogSeconds) * 1_000_000_000` は負値で `UInt64(negative)` が
+                // trap し、桁の大きい値では乗算が overflow して trap した。入口検証
+                // (`RunProfileSetOverride`/`api validate-profile`/`ApiRunCommand.validate`)が
+                // 本来の弾き役だが、ここは最後の安全網として watchdogDuration で二重に守る
+                try? await Task.sleep(for: Self.watchdogDuration(seconds: watchdogSeconds))
                 guard !Task.isCancelled, await timeoutGuard.claim() else { return }
                 process.terminate()  // SIGTERM
                 try? await Task.sleep(nanoseconds: 2_000_000_000)  // 2s 猶予
@@ -519,7 +561,10 @@ public enum ScenarioHost {
             finished.scenario = scenarioID
             finished.passed = false
             emit(finished)
-            if !dryRun { LastResultsStore.record(project: project, scenarioID: scenarioID, passed: false) }
+            if !dryRun {
+                LastResultsStore.record(project: project, scenarioID: scenarioID, passed: false,
+                                        profile: settings.profileName)
+            }
             if let recording, let builder {
                 recording.recorder.record(builder.build(
                     passed: false, timedOut: true, startedAt: startedAt,
@@ -530,7 +575,10 @@ public enum ScenarioHost {
         // scenarioFinished が来なかった場合(クラッシュ等)は exit code で判定
         let result = passed ?? (process.terminationStatus == 0)
         // dry-run は実機能を動かしていないため直近結果を上書きしない(実失敗を消さない)
-        if !dryRun { LastResultsStore.record(project: project, scenarioID: scenarioID, passed: result) }
+        if !dryRun {
+            LastResultsStore.record(project: project, scenarioID: scenarioID, passed: result,
+                                    profile: settings.profileName)
+        }
         if let recording, let builder {
             recording.recorder.record(builder.build(
                 passed: result, timedOut: false, startedAt: startedAt,

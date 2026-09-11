@@ -46,6 +46,16 @@ struct Fleetest: AsyncParsableCommand {
     /// `self.main(nil)` は AsyncParsableCommand 拡張の `main(_ arguments:)` を呼ぶ ——
     /// asyncParseAsRoot → run() → catch { exit(withError:) } の既定挙動をそのまま保つ
     static func main() async {
+        // 出力の読み手が先に死ぬと(`| head`/`| tee` を Ctrl-C 等)、書き込みが SIGPIPE で
+        // このプロセスごと即死し、中断後の巻き戻し(録画の停止・lease 解放・run.json 完了)が
+        // 1つも走らない(実測: rc=141、simctl recordVideo の孤児)。
+        // fd 単位で SIGPIPE を止めて EPIPE を write(2) の戻り値で受ける
+        // (`signal(SIGPIPE, SIG_IGN)` はプロセス全体の副作用で simctl/adb 等の exec した子にも
+        // 継承されるため使わない。Shell.swift の同じ判断を fleetest 自身の stdout/stderr にも適用)。
+        // ConsoleOut.emit の write ループは EPIPE(n<0 かつ非 EINTR)で無限ループも例外もせず
+        // 静かに return するので、ここで止めるだけで十分
+        _ = fcntl(FileHandle.standardOutput.fileDescriptor, F_SETNOSIGPIPE, 1)
+        _ = fcntl(FileHandle.standardError.fileDescriptor, F_SETNOSIGPIPE, 1)
         ParentDeathWatch.armIfRequested()
         LedgerWriteRole.enableForProduction()
         await self.main(nil)
@@ -1072,6 +1082,12 @@ struct RunScenarios: AsyncParsableCommand {
                     + " recording session for --set record to attach to)")
             }
         }
+        // `--platform` は dry-run でも検証する(`ios{}`/`android{}` の選択に直結するので、
+        // 大文字違い等が黙って両方を実行してしまう。)
+        if let platform, !RunWorker.knownPlatforms.contains(platform) {
+            throw ValidationError("--platform must be one of "
+                + "\(RunWorker.knownPlatforms.sorted().joined(separator: "/")): \(platform)")
+        }
         if profile != nil,
            platform != nil || !ports.isEmpty || serial != nil {
             throw ValidationError("--profile cannot be combined with --platform/--port/--serial")
@@ -1177,6 +1193,9 @@ struct RunScenarios: AsyncParsableCommand {
         if !skipBuild {
             ConsoleOut.out("→ Building scenarios (\(testProject.name))...")
             try ScenarioHost.build(project: testProject)
+        } else {
+            // 食い違っていても止めない(警告のみ。)
+            ScenarioHost.warnIfSkipBuildStale(project: testProject) { ConsoleOut.out($0) }
         }
         PhaseLog.mark("build")
         let all = try ScenarioHost.listForRun(project: testProject, dryRun: dryRun)
@@ -1202,7 +1221,12 @@ struct RunScenarios: AsyncParsableCommand {
                                                 scenariosDir: testProject.scenariosDir)
         }
         if failed {
-            let failedSet = LastResultsStore.failedIDs(project: testProject)
+            // (project, profile) 単位の記録。プロファイル無しの run は専用の区分
+            // (LastResultsStore.noProfileKey)を読む。**リモート実行の分はここでは拾えない** ——
+            // 手元でこの分岐へ来る時点でリモート/フリートへの分岐(dispatchToRemoteHost/
+            // dispatchToFleet)は既に return 済みなので、`--failed` は常にこの機械での直近実行を見る。
+            // リモートで落ちた分は RemoteRunDispatcher が回収した scenario JSON から書く
+            let failedSet = LastResultsStore.failedIDs(project: testProject, profile: profile)
             selected = selected.filter { failedSet.contains($0.id) }
             guard !selected.isEmpty else {
                 ConsoleOut.out("No scenarios failed last time (everything passed, or nothing has run)")
@@ -1280,18 +1304,41 @@ struct RunScenarios: AsyncParsableCommand {
                     targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices,
                     overrides: profileOverrides)
             }
-            let (runSummary, fmSettings) = try await ProfileRunner.run(
-                project: testProject, profileName: profile, items: items,
-                setOverrides: profileOverrides,
-                reportDirOverride: reportDir,
-                quiet: quiet, lpt: !noLPT,
-                lptHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
-                performanceMode: performanceMode,
-                deviceFilter: effectiveDeviceFilter,
-                deviceMachine: effectiveDeviceHost,
-                workspaceOverride: workspace,
-                recorder: recorder,
-                broadcast: broadcast)
+            let runSummary: RunSummary
+            let fmSettings: FMSettingsRecord
+            do {
+                (runSummary, fmSettings) = try await ProfileRunner.run(
+                    project: testProject, profileName: profile, items: items,
+                    setOverrides: profileOverrides,
+                    reportDirOverride: reportDir,
+                    quiet: quiet, lpt: !noLPT,
+                    lptHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
+                    performanceMode: performanceMode,
+                    deviceFilter: effectiveDeviceFilter,
+                    deviceMachine: effectiveDeviceHost,
+                    workspaceOverride: workspace,
+                    recorder: recorder,
+                    broadcast: broadcast)
+            } catch {
+                // 供給段(ワーカー構築等)の例外は run.json を完了させずに投げていた
+                // (finishedAt 無し = results insights が「クラッシュ/強制終了」に誤分類する)。
+                // ここへ来るのは常にシナリオ実行が
+                // 1本も始まる前なので、items 分すべて未実行という分かっている事実だけを記録する。
+                // fmSettings は resolve 前で実効値が無いため noProfileSettings で近似する
+                // (この run は abortReason 付きなので実効値の断定ではないと読み手に伝わる)
+                recorder.finish(total: items.count, passed: 0, failed: items.count,
+                                performanceMode: performanceMode,
+                                fmSettings: FMSettingsRecord(
+                                    fm: noProfileSettings.fm.enabled, heal: noProfileSettings.fm.heal,
+                                    falsePositiveCheck: noProfileSettings.fm.falsePositiveCheck,
+                                    screenLooksLike: noProfileSettings.fm.screenLooksLike,
+                                    triage: noProfileSettings.fm.triage,
+                                    ocr: noProfileSettings.ocr,
+                                    ocrFalsePositiveCheck: noProfileSettings.ocrFalsePositiveCheck),
+                                setOverrides: profileOverrides.mapValues(\.token),
+                                abortReason: error.localizedDescription)
+                throw error
+            }
             let failedCount = runSummary.failed
             // **回した本数は items.count ではない** —— ProfileRunner が OS 対象外
             // (`@TestClass(platform:)` / `@Test(platform:)`)を投入前に外すので、
@@ -1310,7 +1357,9 @@ struct RunScenarios: AsyncParsableCommand {
                             measurementInvalidReasons: runSummary.measurementInvalidReasons,
                             workerAnomalies: runSummary.workerAnomalies,
                             performanceMode: runSummary.performanceMode,
-                            fmSettings: fmSettings)
+                            fmSettings: fmSettings,
+                            setOverrides: profileOverrides.mapValues(\.token),
+                            interrupted: runSummary.interrupted)
             PhaseLog.mark("recorder-finish")
             try writeJUnitIfRequested(project: testProject, recorder: recorder)
             // 保持容量の掃除は**結果を書き終えた後に背景の別プロセスで**(テストの実行時間に含めない)
@@ -1366,20 +1415,39 @@ struct RunScenarios: AsyncParsableCommand {
                                    fullResolution: noProfileSettings.recordFullResolution)
             : nil
 
+        // 供給段の例外(AndroidDriver 初期化等)は run.json を完了させずに投げていた。
+        // fmSettings は下の finish 呼び出しと同じ noProfileSettings 由来の値なので先に計算する
+        let noProfileFMSettings = FMSettingsRecord(
+            fm: noProfileSettings.fm.enabled, heal: noProfileSettings.fm.heal,
+            falsePositiveCheck: noProfileSettings.fm.falsePositiveCheck,
+            screenLooksLike: noProfileSettings.fm.screenLooksLike,
+            triage: noProfileSettings.fm.triage,
+            ocr: noProfileSettings.ocr, ocrFalsePositiveCheck: noProfileSettings.ocrFalsePositiveCheck)
         let failedCount: Int
-        if iosPorts.count <= 1 {
-            failedCount = try await runSequential(items, project: testProject,
-                                                  port: iosPorts[0], reportDir: reportDirPath,
-                                                  settings: ScenarioExecutionSettings(noProfileSettings),
-                                                  homeOnStart: noProfileSettings.homeOnStart,
-                                                  recorder: recorder)
-        } else {
-            failedCount = await runParallel(items, project: testProject,
-                                            iosPorts: iosPorts, reportDir: reportDirPath,
-                                            settings: ScenarioExecutionSettings(noProfileSettings),
-                                            homeOnStart: noProfileSettings.homeOnStart,
-                                            recordingConfig: recordingConfig,
-                                            recorder: recorder)
+        let interrupted: Bool
+        do {
+            if iosPorts.count <= 1 {
+                (failedCount, interrupted) = try await runSequential(items, project: testProject,
+                                                      port: iosPorts[0], reportDir: reportDirPath,
+                                                      settings: ScenarioExecutionSettings(noProfileSettings),
+                                                      homeOnStart: noProfileSettings.homeOnStart,
+                                                      recorder: recorder)
+            } else {
+                (failedCount, interrupted) = await runParallel(items, project: testProject,
+                                                iosPorts: iosPorts, reportDir: reportDirPath,
+                                                settings: ScenarioExecutionSettings(noProfileSettings),
+                                                homeOnStart: noProfileSettings.homeOnStart,
+                                                recordingConfig: recordingConfig,
+                                                recorder: recorder)
+            }
+        } catch {
+            // 供給段の throw はここへ来る時点で
+            // シナリオ実行が1本も始まっていない(total 分すべて未実行)
+            recorder.finish(total: items.count, passed: 0, failed: items.count,
+                            performanceMode: false, fmSettings: noProfileFMSettings,
+                            setOverrides: profileOverrides.mapValues(\.token),
+                            abortReason: error.localizedDescription)
+            throw error
         }
         // --profile 無しの経路(runSequential/runParallel)は `--set` の上書きを当てた既定
         // ドキュメントの実効値(noProfileSettings)をそのまま使う(--profile 経路と同じ
@@ -1387,13 +1455,9 @@ struct RunScenarios: AsyncParsableCommand {
         recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount,
                         // --performance は --profile 専用(ヘルプ参照)。この経路は素通りするので false
                         performanceMode: false,
-                        fmSettings: FMSettingsRecord(
-                            fm: noProfileSettings.fm.enabled, heal: noProfileSettings.fm.heal,
-                            falsePositiveCheck: noProfileSettings.fm.falsePositiveCheck,
-                            screenLooksLike: noProfileSettings.fm.screenLooksLike,
-                            triage: noProfileSettings.fm.triage,
-                            ocr: noProfileSettings.ocr,
-                            ocrFalsePositiveCheck: noProfileSettings.ocrFalsePositiveCheck))
+                        fmSettings: noProfileFMSettings,
+                        setOverrides: profileOverrides.mapValues(\.token),
+                        interrupted: interrupted)
         try writeJUnitIfRequested(project: testProject, recorder: recorder)
         RunCompletionSweep.spawn(activeRunID: recorder.runID) { ConsoleOut.out($0) }
 
@@ -1611,7 +1675,14 @@ struct RunScenarios: AsyncParsableCommand {
                                port: UInt16, reportDir: String,
                                settings: ScenarioExecutionSettings,
                                homeOnStart: Bool,
-                               recorder: RunRecorder?) async throws -> Int {
+                               recorder: RunRecorder?
+    ) async throws -> (failed: Int, interrupted: Bool) {
+        // 次のシナリオへ進まず、今動いている子(fleetest-scenarios)を SIGTERM してから
+        // 普通に return する(呼び出し元の通常の完了経路をそのまま通す。ApiRunCommand.runDirect
+        // と同じ形)
+        let interruptState = RunInterruptState()
+        let interruptRelay = InterruptRelay.observing { interruptState.requestStop() }
+        defer { interruptRelay.stop() }
         let iosUdid = await Self.resolveUdid(port: port)
         // homeOnStart は「run 開始時に1回」の予防措置(ProfileWorkerFactory.pressHomeOnStart)。
         // この経路は毎シナリオでワーカーを組み直すので、実際に使う platform 分の使い捨てワーカーを
@@ -1635,6 +1706,7 @@ struct RunScenarios: AsyncParsableCommand {
 
         var failedCount = 0
         for item in items {
+            guard !interruptState.isStopped else { break }
             let platform = item.info.platform ?? resolvedPlatform
             let driver: AppDriver
             let connection: DriverConnection
@@ -1655,7 +1727,8 @@ struct RunScenarios: AsyncParsableCommand {
                 project: project, item: item, worker: worker, settings: settings,
                 reportDir: URL(fileURLWithPath: reportDir),
                 recorder: recorder,
-                appBundleID: appID) { event in
+                appBundleID: appID,
+                registerChildProcess: { interruptState.registerChildProcess($0) }) { event in
                 let lines = RunLogFormatter.lines(for: event)
                 if quiet {
                     buffer.append(contentsOf: lines)
@@ -1673,7 +1746,7 @@ struct RunScenarios: AsyncParsableCommand {
             }
             if outcome != .passed { failedCount += 1 }
         }
-        return failedCount
+        return (failedCount, interruptState.isStopped)
     }
 
     // MARK: - 並列実行(iOS はポート毎のワーカー、Android は専用ワーカー)
@@ -1683,7 +1756,8 @@ struct RunScenarios: AsyncParsableCommand {
                              settings: ScenarioExecutionSettings,
                              homeOnStart: Bool,
                              recordingConfig: VideoRecordingConfig?,
-                             recorder: RunRecorder?) async -> Int {
+                             recorder: RunRecorder?
+    ) async -> (failed: Int, interrupted: Bool) {
         let defaultPlatform = resolvedPlatform
         let items = LPTOrdering.apply(rawItems, project: project, defaultPlatform: defaultPlatform,
                                       enabled: !noLPT,
@@ -1715,12 +1789,20 @@ struct RunScenarios: AsyncParsableCommand {
         await ProfileWorkerFactory.prepareDevicesOnStart(
             workers, homeOnStart: homeOnStart) { ConsoleOut.out($0) }
 
+        // ApiRunCommand.runWithProfileParallel / ProfileRunner.run と同じ形
+        let interruptState = RunInterruptState()
         let orchestrator = RunOrchestrator(project: project, workers: workers,
                                            settings: settings,
                                            reportDir: URL(fileURLWithPath: reportDir),
                                            recorder: recorder,
                                            recordingConfig: recordingConfig,
-                                           appBundleIDs: Self.appBundleIDs(appID))
+                                           appBundleIDs: Self.appBundleIDs(appID),
+                                           registerChildProcess: { interruptState.registerChildProcess($0) })
+        let interruptRelay = InterruptRelay.observing {
+            interruptState.requestStop()
+            orchestrator.requestInterrupt()
+        }
+        defer { interruptRelay.stop() }
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         // シナリオ毎にバッファして完了時に一括表示(並列時のステップ行の混線防止)。
@@ -1747,7 +1829,8 @@ struct RunScenarios: AsyncParsableCommand {
                 if !lines.isEmpty { ConsoleOut.out(lines.joined(separator: "\n")) }
             }
         }
-        return await summary.failed
+        let result = await summary
+        return (result.failed, result.interrupted)
     }
 }
 

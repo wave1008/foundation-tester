@@ -286,6 +286,7 @@ public struct BridgeProvisioner {
         // .inapp/.endpoint/.device を採番前に回収する(assignPort は .pid/.inapp の有無だけで
         // 使用中とみなすため、放置すると採番がドリフトする)
         Self.sweepStaleLedgers(repoRoot: repoRoot)
+        Self.sweepStaleLeases(repoRoot: repoRoot)
 
         let catalog = try SimulatorCatalog.devices()
 
@@ -496,6 +497,28 @@ public struct BridgeProvisioner {
             if stale.contains(.inapp) { try? FileManager.default.removeItem(at: inappPath) }
             if stale.contains(.endpoint) { try? FileManager.default.removeItem(at: endpointPath) }
             if stale.contains(.device) { try? FileManager.default.removeItem(at: devicePath) }
+        }
+    }
+
+    /// `run-<key>.lease` / `recording-<key>.lease`(RunLease/RecordingLease)の掃除。
+    /// 判定(isFresh/holderPID)は pid+mtime で既に安全(死んだ保持者を busy と読まない)なので、
+    /// これは正しさの修正ではなく片付け —— 正常終了時は書き手が `.remove()` するが、
+    /// 落ちた(SIGKILL・クラッシュ)場合は誰も消さず永久に残る。**生存判定は pid だけ**
+    /// (mtime では消さない = CLAUDE.md「生存判定は pid だけ」。まだ書き込み途中の新しいファイルでも
+    /// pid が生きていれば残す)
+    static func sweepStaleLeases(repoRoot: URL) {
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: stateDir, includingPropertiesForKeys: nil) else { return }
+        for entry in entries where entry.pathExtension == "lease" {
+            let base = entry.deletingPathExtension().lastPathComponent
+            guard base.hasPrefix("run-") || base.hasPrefix("recording-") else { continue }
+            guard let pidString = try? String(contentsOf: entry, encoding: .utf8),
+                  let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  pid > 0, ProcessLiveness.isAlive(pid) else {
+                try? FileManager.default.removeItem(at: entry)
+                continue
+            }
         }
     }
 
@@ -731,9 +754,13 @@ public struct BridgeProvisioner {
             log("→ \(name): taking over the starting \(engine) bridge (port \(port), \(sim.name))...")
             let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
                                           physical: sim.physical)
-            // 起動した側(前回の executeBridge、あるいは別プロセス)は自分の budget を待ち切った
-            // 時点で諦めている。budget 以上生きているのに announce していないランナーは、これ以上
-            // 待っても announce しない孤児なので、待たずに止めて建て直す
+            // budget 以上生きているのに announce していないランナーは、これ以上待っても
+            // announce しない(可能性が高い)ので待たずに止めて建て直す。**elapsed はプロセスの
+            // 総生存時間**(`ps -o etime=`)であって「無応答になってからの時間」ではない ——
+            // 一度も応答しないまま budget を超えた孤児と、長く正常に応答していたが最近固まった
+            // ランナー(09-06 台帳 §3.1「XCUITest の座標ジェスチャが背面でランナーを殺す」)を
+            // ここでは区別できない。judge/ログの文言は両方に当てはまる言い方にすること
+            // (「起動中」「起動した側は諦めた」と断定しない)
             func stopAndRelaunch() async throws -> UInt16 {
                 try? await launcher.stopAndWait()
                 return try await executeBridge(
@@ -746,10 +773,9 @@ public struct BridgeProvisioner {
             let elapsed = launcher.runnerElapsed()
             // .restart は elapsed != nil のときしか返らない(decide 参照)ので force unwrap は安全
             if StartingRunnerVerdict.decide(elapsed: elapsed, budget: BridgeLauncher.startupTimeoutSeconds) == .restart {
-                log("⚠️ \(name): the starting bridge on port \(port) has been alive for \(Int(elapsed!))s "
-                    + "without answering — longer than the startup budget "
-                    + "(\(Int(BridgeLauncher.startupTimeoutSeconds))s), so the process that launched it has "
-                    + "already given up; stopping and restarting it")
+                log("⚠️ \(name): the bridge on port \(port) has been alive for \(Int(elapsed!))s"
+                    + " without answering (past the \(Int(BridgeLauncher.startupTimeoutSeconds))s"
+                    + " allowed for it to become ready) — stopping and restarting it")
                 return try await stopAndRelaunch()
             }
             do {

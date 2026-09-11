@@ -725,6 +725,10 @@ public enum RunProfileSetOverrideError: Error, LocalizedError {
     case unknownKey(String, available: [String])
     /// `devices`/`remoteControl`(配列・オブジェクト)は `key=value` で表せない
     case arrayOrObjectKey(String)
+    /// 型は合っているが範囲外(`scenarioTimeout`/`defaultTimeout` の負値・0・NaN)。
+    /// `invalidValue` と分けるのは、型不一致(整数の場所に文字列)と範囲外(整数だが 0 以下)を
+    /// 同じ文言で混ぜると「何が悪いか」が伝わらないため
+    case outOfRange(key: String, value: String, reason: String)
 
     public var errorDescription: String? {
         switch self {
@@ -737,6 +741,8 @@ public enum RunProfileSetOverrideError: Error, LocalizedError {
         case .arrayOrObjectKey(let key):
             return "--set \(key): \"\(key)\" is a list/object field in the run profile and cannot be"
                 + " expressed as <key>=<value> on the command line — edit the run profile JSON instead"
+        case .outOfRange(let key, let value, let reason):
+            return "--set \(key)=\(value): \(reason)"
         }
     }
 }
@@ -769,10 +775,22 @@ public enum RunProfileSetOverride {
                 guard let value = Int(rawValue) else {
                     throw RunProfileSetOverrideError.invalidValue(key: key, value: rawValue, expected: .int)
                 }
+                // scenarioTimeout はホストの watchdog(ScenarioHost.watchdogDuration)の秒数。
+                // 0 以下は「即タイムアウト」で実質シナリオを一切走らせない意味の無い値
+                if key == "scenarioTimeout", value < 1 {
+                    throw RunProfileSetOverrideError.outOfRange(
+                        key: key, value: rawValue, reason: "must be a positive number of seconds")
+                }
                 result[key] = .int(value)
             case .double:
                 guard let value = Double(rawValue) else {
                     throw RunProfileSetOverrideError.invalidValue(key: key, value: rawValue, expected: .double)
+                }
+                // defaultTimeout は DSL コマンドの検証待ち秒。0 以下・NaN(`Double("nan")` は
+                // 成功する)は「待たない」とも違う無意味な値で、下流の待ち処理を壊しかねない
+                if key == "defaultTimeout", !(value > 0 && value.isFinite) {
+                    throw RunProfileSetOverrideError.outOfRange(
+                        key: key, value: rawValue, reason: "must be a positive, finite number of seconds")
                 }
                 result[key] = .double(value)
             case .string:
@@ -1802,6 +1820,15 @@ public enum ProfileResolver {
                 if (doc.devices ?? []).isEmpty { errors.append("no \"devices\"") }
                 if let threshold = doc.wipeDataThresholdGB, threshold <= 0 {
                     errors.append("\"wipeDataThresholdGB\" must be a positive number (GB)")
+                }
+                // 負値・0・NaN はホストの watchdog(ScenarioHost.watchdogDuration)まで
+                // 届くと壊れた/意味の無い挙動になる(0 秒 watchdog・即トリガー)。DSL 内部の
+                // 検証待ち(defaultTimeout)も同じ理由 —— 0 以下は「待たない」と区別が付かない
+                if let scenarioTimeout = doc.scenarioTimeout, scenarioTimeout < 1 {
+                    errors.append("\"scenarioTimeout\" must be a positive number of seconds")
+                }
+                if let defaultTimeout = doc.defaultTimeout, !(defaultTimeout > 0 && defaultTimeout.isFinite) {
+                    errors.append("\"defaultTimeout\" must be a positive, finite number of seconds")
                 }
                 let locale = (doc.locale ?? "ja_JP").trimmingCharacters(in: .whitespacesAndNewlines)
                 if !isValidLocale(locale) {

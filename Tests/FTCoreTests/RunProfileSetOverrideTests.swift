@@ -132,6 +132,40 @@ final class RunProfileSetOverrideParseTests: XCTestCase {
         }
     }
 
+    // MARK: - scenarioTimeout/defaultTimeout の範囲外値(負値・0・NaN)を弾く
+
+    func testRejectsZeroOrNegativeScenarioTimeout() {
+        for bad in ["0", "-5"] {
+            XCTAssertThrowsError(try RunProfileSetOverride.parse(["scenarioTimeout=\(bad)"])) { error in
+                guard case RunProfileSetOverrideError.outOfRange(let key, let value, let reason) = error else {
+                    return XCTFail("expected outOfRange for scenarioTimeout=\(bad), got \(error)")
+                }
+                XCTAssertEqual(key, "scenarioTimeout")
+                XCTAssertEqual(value, bad)
+                XCTAssertTrue(reason.contains("positive"), reason)
+            }
+        }
+    }
+
+    func testRejectsZeroNegativeOrNaNDefaultTimeout() {
+        for bad in ["0", "-1.5", "nan"] {
+            XCTAssertThrowsError(try RunProfileSetOverride.parse(["defaultTimeout=\(bad)"])) { error in
+                guard case RunProfileSetOverrideError.outOfRange(let key, let value, _) = error else {
+                    return XCTFail("expected outOfRange for defaultTimeout=\(bad), got \(error)")
+                }
+                XCTAssertEqual(key, "defaultTimeout")
+                XCTAssertEqual(value, bad)
+            }
+        }
+    }
+
+    /// 正の値は従来どおり通る(範囲チェックが健全な値まで弾いていないことの対照)
+    func testPositiveScenarioAndDefaultTimeoutStillParse() throws {
+        let overrides = try RunProfileSetOverride.parse(["scenarioTimeout=45", "defaultTimeout=7.5"])
+        XCTAssertEqual(overrides["scenarioTimeout"], .int(45))
+        XCTAssertEqual(overrides["defaultTimeout"], .double(7.5))
+    }
+
     /// `--set <key>=<token>` の再構成(RemoteRunArgs/FleetRunner/ApiRunMachineFanout が子プロセスへ
     /// 中継するときに使う)は parse() の逆変換になっている(round-trip)
     func testTokenRoundTripsThroughParse() throws {

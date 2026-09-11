@@ -243,6 +243,11 @@ public struct RunSummary: Sendable {
     /// orchestrator 自身はプロファイルの実効値を知らないため常に nil を返す —— 呼び手
     /// (ProfileRunner/ApiRunCommand)が resolve 済みの値で自分の RunSummary へ埋める
     public let fmSettings: FMSettingsRecord?
+    /// この run が SIGINT/SIGTERM で中断されたか(RunOrchestrator.requestInterrupt() が
+    /// 呼ばれたか)。**呼び手が RunMetaRecord.interrupted へそのまま焼き込む** ——
+    /// 「デバイス/ワーカーの問題で赤くなった」と「利用者が止めた」を results insights が
+    /// 混同しないため
+    public let interrupted: Bool
 
     public init(total: Int, failed: Int, degradedWorkers: [String] = [],
                 freezeRetries: [String] = [],
@@ -251,7 +256,8 @@ public struct RunSummary: Sendable {
                 fmUnavailableScenarios: Int = 0,
                 workerAnomalies: [WorkerAnomalyRecord] = [],
                 performanceMode: Bool = false,
-                fmSettings: FMSettingsRecord? = nil) {
+                fmSettings: FMSettingsRecord? = nil,
+                interrupted: Bool = false) {
         self.total = total
         self.failed = failed
         self.degradedWorkers = degradedWorkers
@@ -264,6 +270,7 @@ public struct RunSummary: Sendable {
         self.workerAnomalies = workerAnomalies
         self.performanceMode = performanceMode
         self.fmSettings = fmSettings
+        self.interrupted = interrupted
     }
 
     /// FM の呼び出しが**全部失敗した**か(呼び出しが1件も無いときは false = 使っていないだけ)
@@ -334,6 +341,14 @@ private actor Counter {
     private var value = 0
     func increment() { value += 1 }
     func snapshot() -> Int { value }
+}
+
+/// 中断要求の状態(RunOrchestrator.requestInterrupt() が立てる)。並列ワーカーから
+/// 読まれるため actor で直列化する(他の Counter 等と同じ理由)
+private actor RunInterruptFlag {
+    private var requested = false
+    func request() { requested = true }
+    func isRequested() -> Bool { requested }
 }
 
 /// 1 シナリオあたりの凍結再実行上限。ポイズンシナリオのフリート全滅を防ぐ
@@ -424,6 +439,9 @@ public enum ScenarioRunner {
                               appName: String? = nil,
                               appBundleID: String? = nil,
                               appPath: String? = nil,
+                              /// ScenarioHost.run(registerChildProcess:) への素通し
+                              /// (RunOrchestrator が中断口として保持する同名プロパティ参照)
+                              registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)? = nil,
                               onEvent: @escaping (RunEvent) -> Void) async -> ScenarioOutcome {
         onEvent(.flowStarted(worker: worker.label, flowURL: item.url,
                              flowName: item.info.id, isDirty: false))
@@ -444,7 +462,8 @@ public enum ScenarioRunner {
             installHandler: installHandler.map { handler in
                 { (path: String?) async -> (ok: Bool, message: String) in await handler(worker, path) }
             },
-            appPath: appPath, appName: appName, appBundleID: appBundleID) { event in
+            appPath: appPath, appName: appName, appBundleID: appBundleID,
+            registerChildProcess: registerChildProcess) { event in
             switch event.kind {
             case "sceneStarted":
                 onEvent(.sceneStarted(worker: worker.label, flowURL: item.url,
@@ -644,6 +663,15 @@ public final class RunOrchestrator {
     /// run 全体で通ったシナリオ数(全レーン合計)。ワーカー・サーキットブレーカの「離脱の証拠」
     /// (WorkerCircuitBreaker の冒頭)。自レーンの通過は streak を切るので、streak 中の増分は他レーンの通過
     private let runPasses = Counter()
+    /// 呼び出し側(ローカル `api run`/`run`)が SIGINT/SIGTERM を受けたときに立てる。
+    /// 新しいシナリオの配布だけを止める(実行中の子プロセスの SIGTERM は呼び出し側の責務 ——
+    /// registerChildProcess 経由でホスト(fleetest ターゲット)が直接持つ登録簿を撃つ。ここに
+    /// 二重に持たない)。立った後は通常の完了経路(録画の停止・index.json・lease 解放・
+    /// drain)をそのまま通る —— 新規に何かを分岐させない
+    private let interruptRequested = RunInterruptFlag()
+    /// ScenarioHost.run(registerChildProcess:) への素通し(呼び出し側が実行中の子を SIGTERM
+    /// できるようにする登録口。FTCore は fleetest ターゲットの型を知らないので closure で受ける)
+    private let registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)?
 
     /// ワーカー離脱を通知(イベント yield + 劣化ワーカー収集)を1箇所に集約する。
     private func reportWorkerFailed(_ worker: RunWorker, _ message: String) async {
@@ -677,7 +705,8 @@ public final class RunOrchestrator {
                                   -> (ok: Bool, message: String))? = nil,
                 appName: String? = nil,
                 appBundleIDs: [String: String] = [:],
-                appTargets: [String: ResolvedAppTarget] = [:]) {
+                appTargets: [String: ResolvedAppTarget] = [:],
+                registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)? = nil) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
         self.settings = settings
@@ -700,6 +729,15 @@ public final class RunOrchestrator {
         self.appName = appName
         self.appBundleIDs = appBundleIDs
         self.appTargets = appTargets
+        self.registerChildProcess = registerChildProcess
+    }
+
+    /// 呼び出し側の SIGINT/SIGTERM ハンドラから呼ぶ。**新しいシナリオの配布を止めるだけ**
+    /// (実行中の子プロセスの SIGTERM は呼び出し側が registerChildProcess の登録簿で行う ——
+    /// ここでは二重に持たない)。立てた後は run() の通常の完了経路(録画停止・lease 解放・
+    /// drain・summary)がそのまま走る
+    public func requestInterrupt() {
+        Task { await interruptRequested.request() }
     }
 
     private func deviceUnreachable(_ serial: String) async -> Bool {
@@ -923,10 +961,16 @@ public final class RunOrchestrator {
         // 全ワーカー終了後に 1 回だけ index.json を書く(拡張側との契約。RecordingIndexIO 参照)
         await videoRecording?.finish()
 
-        // ワーカー全滅(broadcast: そのレーンの台が不在・復帰不能)でキューに残ったシナリオは失敗扱い
+        // ワーカー全滅(broadcast: そのレーンの台が不在・復帰不能)でキューに残ったシナリオは失敗扱い。
+        // 中断による drain は「ワーカーが使えない」ではなく事実が違うので理由を差し替える
+        // (results insights が誤って「デバイス側の問題」と読まないように)
         let joined = await joinedKeys.snapshot()
+        let interrupted = await interruptRequested.isRequested()
         for (key, queue) in queues {
-            let drain = drainInfo(key, joined.contains(key))
+            var drain = drainInfo(key, joined.contains(key))
+            if interrupted {
+                drain.reason = "the run was interrupted (SIGINT/SIGTERM) before this scenario started"
+            }
             while let item = await queue.next() {
                 continuation.yield(.flowSkipped(flowURL: item.url, reason: drain.reason))
                 recorder?.recordSkipped(scenarioID: item.info.id, title: item.info.title,
@@ -940,7 +984,8 @@ public final class RunOrchestrator {
                                  degradedWorkers: await degraded.snapshot(),
                                  freezeRetries: await retries.snapshot(),
                                  fmUnavailableScenarios: await fmUnavailable.snapshot(),
-                                 workerAnomalies: await anomalies.snapshot())
+                                 workerAnomalies: await anomalies.snapshot(),
+                                 interrupted: interrupted)
         continuation.yield(.runFinished(passed: summary.passed, failed: summary.failed))
         continuation.finish()
         return summary
@@ -1080,7 +1125,10 @@ public final class RunOrchestrator {
         // 「取ってから判定」版は一過性の AX スパイクで9台一斉離脱、「取る前に2sで即断」版も
         // 負荷時の誤判定で品質が安定しなかった。ウェッジは失敗後の事後チェック
         // (bridgeUnreachable/deviceUnreachable/deviceFrozen → 振り直し)だけで拾う。
-        while let item = await queue.next() {
+        // 中断要求後は新しいシナリオを配らない(既にキューから抜けた1件は最後まで走らせる ——
+        // ここで打ち切ると in-flight の子プロセスと記録の整合が崩れる。子を止めるのは
+        // registerChildProcess 経由の SIGTERM で、呼び出し側の責務)
+        while await !interruptRequested.isRequested(), let item = await queue.next() {
             // 動画のシナリオ毎クリップ切り出し用の壁時計区間通知(録画無効時は no-op)。
             // ワーカーの録画プロセス自体は起動しっぱなしで、ここでは区間だけ記録する
             await videoRecording?.scenarioStarted(
@@ -1093,6 +1141,7 @@ public final class RunOrchestrator {
                 appBundleID: appBundleIDs[worker.platform],
                 appPath: appTargets[worker.platform]?
                     .packagePath(physical: worker.connection.physical),
+                registerChildProcess: registerChildProcess,
                 onEvent: { [continuation, fmCounter = self.fmUnavailable] event in
                     // **FM 全滅のまま走ったシナリオを数える**(合否は変えない。summary の
                     // fmUnavailableScenarios。ここで数えるのは、実行結果に FM の可否が
@@ -1222,7 +1271,9 @@ public enum RunLogFormatter {
         case .workerLog(let worker, let message):
             return ["ℹ️ [\(worker)] \(message)"]
         case .flowRequeued(_, _, let reason, let attempt, let limit):
-            return ["  🔁 Re-running on another device because of \(reason) (\(attempt)/\(limit))"]
+            // 復活した台へ再キューされることがあり、「別の台」と断定すると事実と違う
+            // (元の物理台のまま・ポートだけ新しいケースがある)
+            return ["  🔁 Re-queued because of \(reason) (\(attempt)/\(limit))"]
         case .flowStarted(let worker, _, let flowName, let isDirty):
             var lines = ["▶ \(flowName) [\(worker)]"]
             if isDirty { lines.append("  ⚠️ This flow is dirty (needs review)") }

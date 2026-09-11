@@ -46,6 +46,18 @@ final class RunRejectionParityTests: XCTestCase {
         .init(label: "set reportDir collides with --report-dir",
               arguments: ["--report-dir", "/tmp/a", "--set", "reportDir=/tmp/b"], rejected: true),
 
+        // --platform の値そのものの検証
+        .init(label: "invalid platform value", arguments: ["--platform", "iOS"], rejected: true),
+        .init(label: "valid platform alone", arguments: ["--platform", "android"], rejected: false),
+
+        // --dry-run はデバイスにも録画にも触れないので、profile-only なキーの `--set` を
+        // 理由に拒否しない(run はもとから通していた。api run 側の検査に `--dry-run` の除外が
+        // 無かったのが割れの原因。)
+        .init(label: "dry-run set profile-only key without profile",
+              arguments: ["--dry-run", "--set", "iosInappEngine=false"], rejected: false),
+        .init(label: "dry-run set record without profile",
+              arguments: ["--dry-run", "--set", "record=true"], rejected: false),
+
         // 陰性対照。これが無いと「常に throw する実装」と区別できない
         .init(label: "profile alone", arguments: ["--profile", "p"], rejected: false),
         .init(label: "port alone", arguments: ["--port", "8200"], rejected: false),

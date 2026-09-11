@@ -54,7 +54,7 @@ final class ScenarioHostRunnerUnavailableTests: XCTestCase {
         }
         recorder.finish(total: 1, passed: passed ? 1 : 0, failed: passed ? 0 : 1,
                         performanceMode: false,
-                        fmSettings: testFMSettings)
+                        fmSettings: testFMSettings, setOverrides: nil)
         return (passed, RunResultsStore.records(runDir: recorder.runDir), sink.events)
     }
 
@@ -96,7 +96,7 @@ final class ScenarioHostRunnerUnavailableTests: XCTestCase {
         let result = await runOnce(project: project)
 
         assertFailedRecord(result, reasonContains: "not found")
-        XCTAssertTrue(LastResultsStore.failedIDs(project: project).contains("Login.S0010"),
+        XCTAssertTrue(LastResultsStore.failedIDs(project: project, profile: nil).contains("Login.S0010"),
                       "`--failed` の材料(直近結果)にも失敗として残る")
     }
 
@@ -118,7 +118,7 @@ final class ScenarioHostRunnerUnavailableTests: XCTestCase {
         let result = await runOnce(project: project)
 
         assertFailedRecord(result, reasonContains: "Cannot start the runner")
-        XCTAssertTrue(LastResultsStore.failedIDs(project: project).contains("Login.S0010"))
+        XCTAssertTrue(LastResultsStore.failedIDs(project: project, profile: nil).contains("Login.S0010"))
     }
 
     /// dry-run は従来どおり記録対象外(false は返すが scenarios/ には書かない・直近結果も触らない)
@@ -137,6 +137,6 @@ final class ScenarioHostRunnerUnavailableTests: XCTestCase {
             recording: ScenarioRecording(recorder: recorder)) { _ in }
         XCTAssertFalse(passed)
         XCTAssertTrue(RunResultsStore.records(runDir: recorder.runDir).isEmpty)
-        XCTAssertFalse(LastResultsStore.failedIDs(project: project).contains("Login.S0010"))
+        XCTAssertFalse(LastResultsStore.failedIDs(project: project, profile: nil).contains("Login.S0010"))
     }
 }

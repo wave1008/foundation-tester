@@ -167,7 +167,17 @@ public final class RunRecorder: @unchecked Sendable {
                        // 拡張から起こした計測 run が run.json 上で通常 run と見分けられなかった)。
                        // 渡し忘れをコンパイルで止める。fmSettings も同じ理由で既定値なし
                        performanceMode: Bool,
-                       fmSettings: FMSettingsRecord) {
+                       fmSettings: FMSettingsRecord,
+                       // `--set` の上書き(RunProfileSetValue.token に変換済みの文字列。無ければ
+                       // nil)。**既定値を置かない** —— performanceMode/fmSettings と同じ理由
+                       // (`fleetest run`/`api run` は別実装。渡し忘れをコンパイルで止める。
+                       //)
+                       setOverrides: [String: String]?,
+                       // **既定値を持つ**(上と違い「渡し忘れ」が安全側に倒れる —— 大半の
+                       // run は中断も中断以外の異常終了もしないので、省略時の false/nil がそのまま
+                       // 正しい事実になる)
+                       interrupted: Bool = false,
+                       abortReason: String? = nil) {
         hostMetrics?.stop()
         // FM の死活は**引数で受け取らない** —— 機械グローバルな事実(FMLiveness)なので、
         // 呼び出し元が run のたびに集めて渡す形にすると経路ごとに渡し忘れが出る
@@ -209,7 +219,12 @@ public final class RunRecorder: @unchecked Sendable {
             fmDeadReason: fmReading.deadSummary(),
             guarded: guardedValue, guardSkipped: guardSkippedValue,
             guardStaleFrame: guardStaleFrameValue,
-            fmSettings: fmSettings)
+            fmSettings: fmSettings,
+            // 空辞書は nil に畳む(「上書き無し」と「キー0件の空辞書」を区別する意味が無い)
+            setOverrides: (setOverrides?.isEmpty ?? true) ? nil : setOverrides,
+            // false/nil は書かない(既存レコードと同じ形。他の Bool 欄と同じ流儀)
+            interrupted: interrupted ? true : nil,
+            abortReason: abortReason)
         RunResultsStore.writeMeta(meta, runDir: runDir)
     }
 

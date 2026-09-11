@@ -50,4 +50,55 @@ final class InterruptRelayTests: XCTestCase {
         relay.stop()
         XCTAssertEqual(InterruptRelay.registeredCount, 0)
     }
+
+    /// `Process` を伴わない購読(手元の `api run`/`run` が中断ハンドラを登録する形)。
+    /// **戻すと落ちる根拠**: `.observing` を消す/`forwardToAll` の `.observer` ケースを外すと、
+    /// このテストは SIGINT を送ってもコールバックが呼ばれず既定動作(テストプロセスごと終了)に
+    /// フォールバックする(このテスト自身が検出用に自分へ SIGINT を送る。壊れていなければ無害)
+    func testObservingIsNotifiedOnSignalAndStopsAfterStop() throws {
+        final class Flag: @unchecked Sendable {
+            private let lock = NSLock()
+            private(set) var count = 0
+            func increment() { lock.lock(); count += 1; lock.unlock() }
+        }
+        let flag = Flag()
+        let relay = InterruptRelay.observing { flag.increment() }
+        XCTAssertEqual(InterruptRelay.registeredCount, 1)
+
+        kill(getpid(), SIGINT)
+        let deadline = Date().addingTimeInterval(5)
+        while flag.count == 0, Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+        XCTAssertEqual(flag.count, 1, "observer は SIGINT のたびに呼ばれる")
+
+        relay.stop()
+        XCTAssertEqual(InterruptRelay.registeredCount, 0)
+        // stop 後は既定動作(このプロセス自体は SIG_DFL に戻るが、テストを落とさないよう
+        // 二度目の SIGINT は送らない —— 「呼ばれ続けない」ことは registeredCount==0 で確認済み)
+    }
+
+    /// process 版と observer 版が同時に登録されても、シグナルソースは1組のまま
+    /// (1プロセスに1組。CLAUDE.md の規律)
+    func testProcessAndObserverTargetsShareOneSignalSourceSet() throws {
+        let p = try sleeper()
+        defer { if p.isRunning { p.terminate() } }
+        final class Flag: @unchecked Sendable {
+            private let lock = NSLock()
+            private(set) var count = 0
+            func increment() { lock.lock(); count += 1; lock.unlock() }
+        }
+        let flag = Flag()
+        let processRelay = InterruptRelay.forwarding(to: p, escalateAfter: nil)
+        let observerRelay = InterruptRelay.observing { flag.increment() }
+        XCTAssertEqual(InterruptRelay.registeredCount, 2)
+
+        kill(getpid(), SIGINT)
+        let deadline = Date().addingTimeInterval(5)
+        while (p.isRunning || flag.count == 0), Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+        XCTAssertFalse(p.isRunning, "process 版も引き続き届く")
+        XCTAssertEqual(flag.count, 1, "observer 版も同じシグナルで届く")
+
+        processRelay.stop()
+        observerRelay.stop()
+        XCTAssertEqual(InterruptRelay.registeredCount, 0)
+    }
 }

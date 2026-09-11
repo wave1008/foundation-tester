@@ -10,17 +10,24 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     public var containerInference: Bool
     public var defaultTimeout: Double?
     public var scenarioTimeout: Int?
+    /// 実行プロファイル名(`LastResultsStore` が `(project, profile)` 単位で `--failed` の記録を
+    /// 分けるための鍵)。**profile-less な run(`DeviceIndependentRunSettings` 経由)は
+    /// 意図的に nil のまま** —— そもそも profile という概念が無いので、専用の区分
+    /// (`LastResultsStore.noProfileKey`)へ記録される。`ResolvedProfile` 経由(`--profile` あり)は
+    /// 必ず `resolved.runName` を運ぶ
+    public var profileName: String?
 
     /// 既定値はこの1箇所だけに置く。他の層(ScenarioHost/RunOrchestrator/CLI)に既定を書かない。
     /// `homeOnStart` はデバイスに触る工程の設定なのでここには入れない
     public init(fm: FMConfig = FMConfig(), occlusionOCR: Bool = true,
                 containerInference: Bool = true, defaultTimeout: Double? = nil,
-                scenarioTimeout: Int? = nil) {
+                scenarioTimeout: Int? = nil, profileName: String? = nil) {
         self.fm = fm
         self.occlusionOCR = occlusionOCR
         self.containerInference = containerInference
         self.defaultTimeout = defaultTimeout
         self.scenarioTimeout = scenarioTimeout
+        self.profileName = profileName
     }
 
     public init(_ settings: DeviceIndependentRunSettings) {
@@ -32,6 +39,7 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     public init(_ resolved: ResolvedProfile) {
         self.init(fm: resolved.fm, occlusionOCR: resolved.ocrFalsePositiveCheck,
                   containerInference: resolved.containerInference,
-                  defaultTimeout: resolved.defaultTimeout, scenarioTimeout: resolved.scenarioTimeout)
+                  defaultTimeout: resolved.defaultTimeout, scenarioTimeout: resolved.scenarioTimeout,
+                  profileName: resolved.runName)
     }
 }

@@ -108,7 +108,17 @@ struct RunFileCommand: AsyncParsableCommand {
         if let appID { arguments += ["--app-id", appID] }
         if let platform { arguments += ["--platform", platform] }
         if let serial { arguments += ["--serial", serial] }
-        let command = try RunScenarios.parse(arguments)
+        // RunScenarios.parse(arguments) は `run`(RunScenarios)自身の Usage を焼き込んだ形で
+        // validate() の失敗を投げる(--profile/--port の併用等)。素通しすると「Usage: run <options> /
+        // See 'run --help'」が出て run-file の呼び手を誤誘導する。メッセージ本文だけを
+        // run-file 自身の throw として持ち直す(Fleetest.swift/ApiRunCommand.swift の
+        // RunProfileSetOverride.parse 呼び出しと同じ規律)
+        let command: RunScenarios
+        do {
+            command = try RunScenarios.parse(arguments)
+        } catch {
+            throw ValidationError(error.localizedDescription)
+        }
         try await command.run()
     }
 

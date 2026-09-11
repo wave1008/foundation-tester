@@ -74,7 +74,8 @@ public struct RunMetaRecord: Codable, Sendable {
         case total, passed, failed, degradedWorkers, freezeRetries, blankRepairs, blankExclusions
         case measurementInvalid, measurementInvalidReasons, workerAnomalies, issuer, runGroup
         case performanceMode, fmDead, fmDeadReason
-        case guarded, guardSkipped, guardStaleFrame, fmSettings
+        case guarded, guardSkipped, guardStaleFrame, fmSettings, setOverrides
+        case interrupted, abortReason
     }
 
     public init(from decoder: Decoder) throws {
@@ -107,6 +108,9 @@ public struct RunMetaRecord: Codable, Sendable {
         guardSkipped = try c.decodeIfPresent(Int.self, forKey: .guardSkipped)
         guardStaleFrame = try c.decodeIfPresent(Int.self, forKey: .guardStaleFrame)
         fmSettings = try c.decodeIfPresent(FMSettingsRecord.self, forKey: .fmSettings)
+        setOverrides = try c.decodeIfPresent([String: String].self, forKey: .setOverrides)
+        interrupted = try c.decodeIfPresent(Bool.self, forKey: .interrupted)
+        abortReason = try c.decodeIfPresent(String.self, forKey: .abortReason)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -138,6 +142,9 @@ public struct RunMetaRecord: Codable, Sendable {
         try c.encodeIfPresent(guardSkipped, forKey: .guardSkipped)
         try c.encodeIfPresent(guardStaleFrame, forKey: .guardStaleFrame)
         try c.encodeIfPresent(fmSettings, forKey: .fmSettings)
+        try c.encodeIfPresent(setOverrides, forKey: .setOverrides)
+        try c.encodeIfPresent(interrupted, forKey: .interrupted)
+        try c.encodeIfPresent(abortReason, forKey: .abortReason)
     }
 
     public var schemaVersion: Int
@@ -212,6 +219,21 @@ public struct RunMetaRecord: Codable, Sendable {
     /// **欄が無い = この版より前の記録**であって、FM が無効だった意味ではない
     /// (fmDead 等と同じ「無い/false」を混ぜない規律)
     public var fmSettings: FMSettingsRecord?
+    /// `--set <key>=<value>` の上書き。**キーは
+    /// プロファイル JSON のキーそのもの**(`RunProfileSetOverride.parse` が受けたもの)・値は
+    /// `RunProfileSetValue.token`(型を問わず文字列化。例 "3"/"false")。上書きが無い run では nil
+    /// (空辞書ではなく省く。この欄が無い=この版より前の記録、と旧レコードを区別しない ——
+    /// 上書き無しの run は昔からずっと無かったので混同の実害が無い)。**insights/flaky の集計は
+    /// この欄を読んで打ち切り run 等を除外できる**(insights の比較への混ざりをこれ以上増やさないため)
+    public var setOverrides: [String: String]?
+    /// この run が SIGINT/SIGTERM で中断されたか。false/未発生は nil(既存レコードと同じ形)。
+    /// **results insights がここを見て「クラッシュ」ではなく「利用者が止めた」と読み分ける**
+    /// 
+    public var interrupted: Bool?
+    /// 供給段(ワーカー構築等)で run が例外により終了したときの理由(英語、人間可読)。
+    /// 正常終了・中断(interrupted)のときは nil。**finishedAt はこの場合も必ず書く**
+    /// (この欄が唯一の追加情報 —— 無いと理由がログにしか残らない)
+    public var abortReason: String?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, host: String, trigger: String, startedAt: String,
@@ -225,7 +247,9 @@ public struct RunMetaRecord: Codable, Sendable {
                 performanceMode: Bool? = nil,
                 fmDead: [String]? = nil, fmDeadReason: String? = nil,
                 guarded: Int? = nil, guardSkipped: Int? = nil, guardStaleFrame: Int? = nil,
-                fmSettings: FMSettingsRecord? = nil) {
+                fmSettings: FMSettingsRecord? = nil,
+                setOverrides: [String: String]? = nil,
+                interrupted: Bool? = nil, abortReason: String? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.project = project
@@ -253,6 +277,9 @@ public struct RunMetaRecord: Codable, Sendable {
         self.guardSkipped = guardSkipped
         self.guardStaleFrame = guardStaleFrame
         self.fmSettings = fmSettings
+        self.setOverrides = setOverrides
+        self.interrupted = interrupted
+        self.abortReason = abortReason
     }
 }
 

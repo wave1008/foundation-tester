@@ -101,4 +101,37 @@ final class RunRejectionTests: XCTestCase {
             XCTAssertTrue(message.contains("--port can only be given once here"), message)
         }
     }
+
+    // MARK: - `--scenario-timeout`/`--default-timeout` の範囲外値
+
+    /// 旧実装はこれを検査せず、`ScenarioHost` の watchdog(`UInt64(negative)`)で trap していた
+    func testApiRunRejectsZeroOrNegativeScenarioTimeout() {
+        // 負値は `=` で渡す(空白区切りだと ArgumentParser が `-5` をオプションと読み、
+        // 値の欠落として別のエラーになる = 範囲検査まで届かない)
+        for bad in ["0", "-5"] {
+            XCTAssertThrowsError(
+                try ApiRunCommand.parse(["--scenario", "A.b", "--scenario-timeout=\(bad)"])
+            ) { error in
+                let message = ApiRunCommand.message(for: error)
+                XCTAssertTrue(message.contains("--scenario-timeout must be a positive"), message)
+            }
+        }
+    }
+
+    func testApiRunRejectsZeroNegativeOrNaNDefaultTimeout() {
+        for bad in ["0", "-1.5", "nan"] {
+            XCTAssertThrowsError(
+                try ApiRunCommand.parse(["--scenario", "A.b", "--default-timeout=\(bad)"])
+            ) { error in
+                let message = ApiRunCommand.message(for: error)
+                XCTAssertTrue(message.contains("--default-timeout must be a positive"), message)
+            }
+        }
+    }
+
+    /// 陰性対照: 正の値は通る
+    func testApiRunAllowsPositiveTimeouts() {
+        XCTAssertNoThrow(try ApiRunCommand.parse(
+            ["--scenario", "A.b", "--scenario-timeout", "45", "--default-timeout", "7.5"]))
+    }
 }

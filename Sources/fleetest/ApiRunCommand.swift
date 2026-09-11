@@ -197,6 +197,11 @@ struct ApiRunCommand: AsyncParsableCommand {
         if debug && scenarios.count != 1 {
             throw ValidationError("--debug can only be used with exactly one --scenario")
         }
+        // 同じ理由(run と共有。)
+        if let platform, !RunWorker.knownPlatforms.contains(platform) {
+            throw ValidationError("--platform must be one of "
+                + "\(RunWorker.knownPlatforms.sorted().joined(separator: "/")): \(platform)")
+        }
         if profile != nil && (platform != nil || !ports.isEmpty || serial != nil) {
             throw ValidationError("--profile cannot be combined with --platform/--port/--serial")
         }
@@ -211,6 +216,17 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
         if performanceMode && profile == nil {
             throw ValidationError("--performance requires --profile")
+        }
+        // scenarioTimeout はホスト watchdog の秒数(ScenarioHost.watchdogDuration)。
+        // 0以下は「即タイムアウト」で意味が無く、`--set scenarioTimeout=` 側の同じ検査
+        // (RunProfileSetOverride.parse)と合わせる
+        if let scenarioTimeout, scenarioTimeout < 1 {
+            throw ValidationError("--scenario-timeout must be a positive number of seconds")
+        }
+        // defaultTimeout は DSL の検証待ち秒。0以下・NaN(`Double("nan")` はパース成功する)は
+        // 無意味な値
+        if let defaultTimeout, !(defaultTimeout > 0 && defaultTimeout.isFinite) {
+            throw ValidationError("--default-timeout must be a positive, finite number of seconds")
         }
         // 純粋にローカルだけの実行で --wait-lock は打ち間違い(待つ相手が居ない)。
         // 判定は run と同じ FTRemote.RemoteDispatchFlagPolicy(2つ目の規則を作らない。--fleet は
@@ -242,7 +258,11 @@ struct ApiRunCommand: AsyncParsableCommand {
                 throw ValidationError(message)
             }
         }
-        if profile == nil {
+        // `--dry-run` はデバイスにも録画にも触れないので `--set` はそもそも使われない
+        // (`fleetest run` の同じ分岐と同じ理由・同じ規律)。
+        // ここを skip しないと、profile-only なキー(app/machine 等)を dry-run で試すだけの
+        // 打鍵が `--profile` 必須のエラーで止まる ——`run` は info 注記だけで進む
+        if profile == nil, !dryRun {
             let unsupported = Set(profileOverrides.keys)
                 .intersection(RunProfileDocument.profileOnlyKeys).sorted()
             guard unsupported.isEmpty else {
@@ -490,6 +510,11 @@ struct ApiRunCommand: AsyncParsableCommand {
                     resolved: resolved) { logSupply($0) }
                 var workers = try ProfileWorkerFactory.buildAndroidWorkers(
                     resolved: resolved) { logSupply($0) }
+                // 供給フェーズが自分の lease を書き始める(次行の hold)前に、生きた別プロセスが
+                // 同じ台を既に使っていないか確かめる(拒否して止める。ProfileRunner と共用)
+                try ProfileRunner.rejectIfDeviceLeased(
+                    workers: workers,
+                    leaseStateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest"))
                 supplyLease?.hold(
                     keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
                 // 凍結機は修復→不発なら guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
@@ -512,6 +537,12 @@ struct ApiRunCommand: AsyncParsableCommand {
                     do {
                         var workers = try await ProfileWorkerFactory.buildIOSWorkers(
                             resolved: resolved, repoRoot: try RepoRoot.find()) { logSupply($0) }
+                        // 同じ理由(Android 側のコメント参照)。ここで throw すると下の catch が
+                        // 「❌ Failed to build iOS workers: …」として拒否理由(台+保持者 pid)を出す
+                        // (iOS 供給失敗は run 全体を落とさない既存の規律のまま=このレーンだけ空になる)
+                        try ProfileRunner.rejectIfDeviceLeased(
+                            workers: workers,
+                            leaseStateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest"))
                         supplyLease?.hold(
                             keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
                         workers = (try? await ProfileWorkerFactory.installIfNeeded(
@@ -553,6 +584,9 @@ struct ApiRunCommand: AsyncParsableCommand {
         if !skipBuild {
             logStderr("→ Building scenarios (\(testProject.name))...")
             try ScenarioHost.build(project: testProject) { logStderr($0) }
+        } else {
+            // 食い違っていても止めない(警告のみ。)
+            ScenarioHost.warnIfSkipBuildStale(project: testProject) { logStderr($0) }
         }
 
         let all = try ScenarioHost.listForRun(project: testProject, dryRun: dryRun)
@@ -597,66 +631,10 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 供給フェーズは runStarted より前に走り始めるので、貯めた進行行をここで流す
         Self.supplyRelay.start { Self.writeLineLocked($0) }
 
-        var outcome: RunOutcome
-        if let resolvedProfile {
-            // --dry-run/--debug は単純な逐次実行のまま(worker フィールド無し)。それ以外は
-            // RunOrchestrator による並列実行
-            if dryRun || debugOptions != nil {
-                outcome = try await runWithProfile(
-                    resolved: resolvedProfile, project: testProject, selected: selected,
-                    debugOptions: debugOptions, recorder: recorder)
-            } else {
-                let androidWorkers = try await androidWorkersTask!.value
-                // performanceMode では iOS の late join をやめて開始前に建てる。**理由は計測の
-                // 歪みではなくゲートの可視性**(ProfileRunner の同じ箇所のコメント参照)。
-                // iosWorkersTask は既に走っているので新しい実装は要らず、待つタイミングを
-                // 早めるだけ(2つ目の実装を書かない)
-                var eagerIOSWorkers: [RunWorker] = []
-                var effectiveIosWorkersTask = iosWorkersTask
-                if performanceMode, let task = iosWorkersTask {
-                    eagerIOSWorkers = await task.value
-                    effectiveIosWorkersTask = nil
-                }
-                // performanceMode: 復活できなかったレーンがあれば run を開始せずに失敗する
-                // (既定 false ではここへ来ない=切り離して完走を優先する従来どおりの挙動)
-                if performanceMode {
-                    let missingAndroid = LaneGate.missing(
-                        expected: resolvedProfile.androidDevices.map(\.name),
-                        actual: androidWorkers.compactMap(\.logicalName))
-                    let missingIOS = resolvedProfile.iosDevices.isEmpty ? [] : LaneGate.missing(
-                        expected: resolvedProfile.iosDevices.map(\.name),
-                        actual: eagerIOSWorkers.compactMap(\.logicalName))
-                    let missing = missingAndroid + missingIOS
-                    if !missing.isEmpty {
-                        throw ProfileWorkerFactory.InstallError(
-                            message: "performance mode: \(missing.count) device(s) could not be "
-                                + "started (\(missing.joined(separator: ", "))). Fix the devices, "
-                                + "or turn performanceMode off to run on the remaining lanes.")
-                    }
-                }
-                outcome = try await runWithProfileParallel(
-                    resolved: resolvedProfile, project: testProject, selected: selected,
-                    workers: androidWorkers + eagerIOSWorkers, iosWorkersTask: effectiveIosWorkersTask,
-                    recorder: recorder, supplyLease: supplyLease)
-            }
-        } else {
-            outcome = await runDirect(
-                project: testProject, selected: selected, debugOptions: debugOptions,
-                recorder: recorder)
-        }
-
-        // 並列経路の triage は box 経由(sequential 経路は outcome に設定済みのため二重加算しない)
-        let boxTriage = triageBox.get()
-        if outcome.blankRepairs.isEmpty { outcome.blankRepairs = boxTriage.repaired }
-        if outcome.blankExclusions.isEmpty { outcome.blankExclusions = boxTriage.excluded }
-        // performanceMode: レーン数が run 中に変わっていたら所要時間は計測に使えない
-        // (MeasurementValidity の宣言参照。既定モードは判定しない=印を付けない)
-        let validity = MeasurementValidity.verdict(
-            performanceMode: performanceMode,
-            degradedWorkers: outcome.degradedWorkers, blankExclusions: outcome.blankExclusions)
         // `--set` の上書きは resolvedProfile(ProfileResolver.resolve)/noProfileSettings
         // (DeviceIndependentRunSettings)のどちらもここへ来る前に当て済みなので、
-        // ここで CLI 由来の override を二重に適用しない(run.json には実効値がそのまま乗る)
+        // ここで CLI 由来の override を二重に適用しない(run.json には実効値がそのまま乗る)。
+        // 供給段の abort 記録(下の catch)にも要るためここで先に計算する(元は outcome 確定後だった)
         let fmSettings: FMSettingsRecord
         if let resolvedProfile {
             let fm = resolvedProfile.fm
@@ -672,6 +650,78 @@ struct ApiRunCommand: AsyncParsableCommand {
                 screenLooksLike: fm.screenLooksLike, triage: fm.triage,
                 ocr: noProfileSettings.ocr, ocrFalsePositiveCheck: noProfileSettings.ocrFalsePositiveCheck)
         }
+
+        var outcome: RunOutcome
+        do {
+            if let resolvedProfile {
+                // --dry-run/--debug は単純な逐次実行のまま(worker フィールド無し)。それ以外は
+                // RunOrchestrator による並列実行
+                if dryRun || debugOptions != nil {
+                    outcome = try await runWithProfile(
+                        resolved: resolvedProfile, project: testProject, selected: selected,
+                        debugOptions: debugOptions, recorder: recorder)
+                } else {
+                    let androidWorkers = try await androidWorkersTask!.value
+                    // performanceMode では iOS の late join をやめて開始前に建てる。**理由は計測の
+                    // 歪みではなくゲートの可視性**(ProfileRunner の同じ箇所のコメント参照)。
+                    // iosWorkersTask は既に走っているので新しい実装は要らず、待つタイミングを
+                    // 早めるだけ(2つ目の実装を書かない)
+                    var eagerIOSWorkers: [RunWorker] = []
+                    var effectiveIosWorkersTask = iosWorkersTask
+                    if performanceMode, let task = iosWorkersTask {
+                        eagerIOSWorkers = await task.value
+                        effectiveIosWorkersTask = nil
+                    }
+                    // performanceMode: 復活できなかったレーンがあれば run を開始せずに失敗する
+                    // (既定 false ではここへ来ない=切り離して完走を優先する従来どおりの挙動)
+                    if performanceMode {
+                        let missingAndroid = LaneGate.missing(
+                            expected: resolvedProfile.androidDevices.map(\.name),
+                            actual: androidWorkers.compactMap(\.logicalName))
+                        let missingIOS = resolvedProfile.iosDevices.isEmpty ? [] : LaneGate.missing(
+                            expected: resolvedProfile.iosDevices.map(\.name),
+                            actual: eagerIOSWorkers.compactMap(\.logicalName))
+                        let missing = missingAndroid + missingIOS
+                        if !missing.isEmpty {
+                            throw ProfileWorkerFactory.InstallError(
+                                message: "performance mode: \(missing.count) device(s) could not be "
+                                    + "started (\(missing.joined(separator: ", "))). Fix the devices, "
+                                    + "or turn performanceMode off to run on the remaining lanes.")
+                        }
+                    }
+                    outcome = try await runWithProfileParallel(
+                        resolved: resolvedProfile, project: testProject, selected: selected,
+                        workers: androidWorkers + eagerIOSWorkers, iosWorkersTask: effectiveIosWorkersTask,
+                        recorder: recorder, supplyLease: supplyLease)
+                }
+            } else {
+                outcome = await runDirect(
+                    project: testProject, selected: selected, debugOptions: debugOptions,
+                    recorder: recorder)
+            }
+        } catch {
+            // 供給段(ワーカー構築・performanceMode のレーン不足等)の例外は run.json を
+            // 完了させずに投げていた(finishedAt 無し = results insights が「クラッシュ/強制終了」
+            // に誤分類し、割り当て分の記録も0件になっていた)。
+            // ここへ来るのは常にシナリオ実行が1本も始まる前(供給・レーン検査の throw だけ)なので、
+            // total 分すべて未実行という分かっている事実だけを記録してから rethrow する
+            recorder?.finish(total: selected.count, passed: 0, failed: selected.count,
+                             performanceMode: performanceMode, fmSettings: fmSettings,
+                             setOverrides: profileOverrides.mapValues(\.token),
+                             abortReason: error.localizedDescription)
+            throw error
+        }
+
+        // 並列経路の triage は box 経由(sequential 経路は outcome に設定済みのため二重加算しない)
+        let boxTriage = triageBox.get()
+        if outcome.blankRepairs.isEmpty { outcome.blankRepairs = boxTriage.repaired }
+        if outcome.blankExclusions.isEmpty { outcome.blankExclusions = boxTriage.excluded }
+        // performanceMode: レーン数が run 中に変わっていたら所要時間は計測に使えない
+        // (MeasurementValidity の宣言参照。既定モードは判定しない=印を付けない)
+        let validity = MeasurementValidity.verdict(
+            performanceMode: performanceMode,
+            degradedWorkers: outcome.degradedWorkers, blankExclusions: outcome.blankExclusions)
+        // fmSettings は上(do/catch より前)で計算済み —— 供給段の abort 記録もここを使うため
         recorder?.finish(total: selected.count, passed: outcome.passed, failed: outcome.failed,
                          degradedWorkers: outcome.degradedWorkers,
                          freezeRetries: outcome.freezeRetries,
@@ -681,7 +731,9 @@ struct ApiRunCommand: AsyncParsableCommand {
                          measurementInvalidReasons: validity.reasons,
                          workerAnomalies: outcome.workerAnomalies,
                          performanceMode: performanceMode,
-                         fmSettings: fmSettings)
+                         fmSettings: fmSettings,
+                         setOverrides: profileOverrides.mapValues(\.token),
+                         interrupted: outcome.interrupted)
         if !outcome.degradedWorkers.isEmpty {
             logStderr("⚠️ Degraded or dropped workers (\(outcome.degradedWorkers.count)):")
             for entry in outcome.degradedWorkers { logStderr("   - \(entry)") }
@@ -815,10 +867,18 @@ struct ApiRunCommand: AsyncParsableCommand {
         settings.defaultTimeout = effectiveDefaultTimeout
         settings.scenarioTimeout = effectiveScenarioTimeout
 
+        // SIGINT/SIGTERM を受けたら、次のシナリオへ進まず・今動いている子を SIGTERM してから
+        // 普通に return する(呼び出し元 run() の通常の完了経路 = recorder.finish/RunCompletionSweep
+        // をそのまま通す。新しい分岐を足さない)
+        let interruptState = RunInterruptState()
+        let interruptRelay = InterruptRelay.observing { interruptState.requestStop() }
+        defer { interruptRelay.stop() }
+
         var passedCount = 0
         var failedCount = 0
         var timing = ScenarioTimingTracker()
         for info in selected {
+            guard !interruptState.isStopped else { break }
             let scenarioPlatform = info.platform ?? effectivePlatform
             let connection = scenarioPlatform == "android"
                 ? DriverConnection(platform: "android", serial: serial)
@@ -832,7 +892,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                 project: project, scenarioID: info.id, connection: connection,
                 settings: settings, reportDir: reportDirPath,
                 dryRun: dryRun, debug: debugOptions, recording: recording,
-                appBundleID: appID) { event in
+                appBundleID: appID,
+                registerChildProcess: { interruptState.registerChildProcess($0) }) { event in
                 // host 発の log イベント等、scenario 未設定のものは現在のシナリオ ID を補う
                 var event = event
                 if event.scenario == nil { event.scenario = info.id }
@@ -844,7 +905,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
         return RunOutcome(passed: passedCount, failed: failedCount,
                           testSeconds: timing.testSeconds,
-                          scenarioTotalSeconds: timing.scenarioTotalSeconds)
+                          scenarioTotalSeconds: timing.scenarioTotalSeconds,
+                          interrupted: interruptState.isStopped)
     }
 
     // MARK: - --profile 指定
@@ -893,6 +955,10 @@ struct ApiRunCommand: AsyncParsableCommand {
             }
             workers = try await ProfileWorkerFactory.buildWorkers(
                 resolved: resolved, repoRoot: try RepoRoot.find()) { logSupply($0) }
+            // 同じ理由(並列経路と共通。ここは --debug --profile の逐次経路)
+            try ProfileRunner.rejectIfDeviceLeased(
+                workers: workers,
+                leaseStateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest"))
             supplyLease?.hold(
                 keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
             // android は修復→guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
@@ -929,10 +995,17 @@ struct ApiRunCommand: AsyncParsableCommand {
             ? (resolved.iosDevices.isEmpty ? "android" : "ios")
             : (workers.contains { $0.platform == "ios" } ? "ios" : "android")
 
+        // 中断時は次のシナリオへ進まず、今動いている子を SIGTERM してから普通に return する
+        // (呼び出し元 run() の通常の完了経路をそのまま通す。runDirect と同じ形)
+        let interruptState = RunInterruptState()
+        let interruptRelay = InterruptRelay.observing { interruptState.requestStop() }
+        defer { interruptRelay.stop() }
+
         var passedCount = 0
         var failedCount = 0
         var timing = ScenarioTimingTracker()
         for info in selected {
+            guard !interruptState.isStopped else { break }
             let scenarioPlatform = info.platform ?? defaultPlatform
 
             let connection: DriverConnection
@@ -973,7 +1046,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                 appPath: dryRun ? nil : resolved.apps[scenarioPlatform]?
                     .packagePath(physical: connection.physical),
                 appName: resolved.appName,
-                appBundleID: resolved.apps[scenarioPlatform]?.bundleID) { event in
+                appBundleID: resolved.apps[scenarioPlatform]?.bundleID,
+                registerChildProcess: { interruptState.registerChildProcess($0) }) { event in
                 var event = event
                 if event.scenario == nil { event.scenario = info.id }
                 writeLine(event.encodedLine())
@@ -986,7 +1060,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                           testSeconds: timing.testSeconds,
                           scenarioTotalSeconds: timing.scenarioTotalSeconds,
                           blankRepairs: blankTriage.repaired,
-                          blankExclusions: blankTriage.excluded)
+                          blankExclusions: blankTriage.excluded,
+                          interrupted: interruptState.isStopped)
     }
 
     // MARK: - --profile 指定(ワーカー並列実行。--dry-run/--debug 以外)
@@ -1049,6 +1124,12 @@ struct ApiRunCommand: AsyncParsableCommand {
                 failuresOnly: resolved.recordFailuresOnly, bitrateKbps: resolved.recordBitrateKbps,
                 fullResolution: resolved.recordFullResolution)
         }()
+
+        // SIGINT/SIGTERM を受けたら、新しいシナリオを配らず・今動いている子を SIGTERM する
+        // (orchestrator.requestInterrupt() で配布停止・interruptState 経由で子の登録簿を撃つ)。
+        // 立てた後は RunOrchestrator.run() の通常の完了経路(録画停止・lease 解放・drain・summary)を
+        // そのまま通す —— ここでは新しい分岐を作らない
+        let interruptState = RunInterruptState()
 
         let orchestrator = RunOrchestrator(
             project: project, workers: workers,
@@ -1158,7 +1239,13 @@ struct ApiRunCommand: AsyncParsableCommand {
             installHandler: InstallHandlerFactory.make(apps: resolved.apps),
             appName: resolved.appName,
             appBundleIDs: resolved.apps.mapValues(\.bundleID),
-            appTargets: resolved.apps)
+            appTargets: resolved.apps,
+            registerChildProcess: { interruptState.registerChildProcess($0) })
+        let interruptRelay = InterruptRelay.observing {
+            interruptState.requestStop()
+            orchestrator.requestInterrupt()
+        }
+        defer { interruptRelay.stop() }
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         var timing = ScenarioTimingTracker()
@@ -1175,7 +1262,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                           scenarioTotalSeconds: timing.scenarioTotalSeconds,
                           degradedWorkers: result.degradedWorkers,
                           freezeRetries: result.freezeRetries,
-                          workerAnomalies: result.workerAnomalies)
+                          workerAnomalies: result.workerAnomalies,
+                          interrupted: result.interrupted)
     }
 
     /// workersReady の devices 配列を組み立てる(id 形式は ApiWorkersReadyEvent 参照)
@@ -1577,6 +1665,8 @@ struct RunOutcome {
     var blankExclusions: [String] = []
     /// 上2つ(degraded/freeze)と同じ事象の構造化版(run.json の workerAnomalies)
     var workerAnomalies: [WorkerAnomalyRecord] = []
+    /// この run が SIGINT/SIGTERM で中断されたか(RunInterruptState 参照)
+    var interrupted = false
 }
 
 /// 並列ワーカー構築 Task から blank triage を run() へ運ぶ入れ物

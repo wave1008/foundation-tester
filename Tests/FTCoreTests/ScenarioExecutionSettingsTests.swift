@@ -13,12 +13,15 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
         XCTAssertEqual(settings.containerInference, true)
         XCTAssertNil(settings.defaultTimeout)
         XCTAssertNil(settings.scenarioTimeout)
+        XCTAssertNil(settings.profileName)
         XCTAssertEqual(settings.fm, FMConfig())
     }
 
     /// 既定インスタンスと同名欄を `String(describing:)` で突き合わせ、1件でも既定のままなら
-    /// 変換 init がその欄を運んでいない証拠として落とす
-    private func assertNoFieldStaysDefault(_ value: ScenarioExecutionSettings,
+    /// 変換 init がその欄を運んでいない証拠として落とす。`excluding` は**意図的に既定のまま残る欄**
+    /// (profileName: DeviceIndependentRunSettings には profile という概念自体が無いので、その
+    /// 変換 init だけ運びようがない)
+    private func assertNoFieldStaysDefault(_ value: ScenarioExecutionSettings, excluding: Set<String> = [],
                                             file: StaticString = #filePath, line: UInt = #line) {
         let defaults = Mirror(reflecting: ScenarioExecutionSettings())
         let defaultsByLabel = Dictionary(uniqueKeysWithValues: defaults.children.compactMap {
@@ -27,7 +30,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
             return (label, String(describing: child.value))
         })
         for child in Mirror(reflecting: value).children {
-            guard let label = child.label else { continue }
+            guard let label = child.label, !excluding.contains(label) else { continue }
             XCTAssertNotEqual(String(describing: child.value), defaultsByLabel[label],
                               "\(label) が既定値のまま(変換 init がこの欄を運んでいない)",
                               file: file, line: line)
@@ -53,7 +56,18 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
             defaultTimeout: 12.5,
             scenarioTimeout: 42,
             recordBitrateKbps: 2500)
-        assertNoFieldStaysDefault(ScenarioExecutionSettings(nonDefault))
+        assertNoFieldStaysDefault(ScenarioExecutionSettings(nonDefault), excluding: ["profileName"])
+    }
+
+    /// profile-less の変換は `profileName` を nil のまま運ぶ(LastResultsStore.noProfileKey の区分へ)
+    func testDeviceIndependentRunSettingsMappingLeavesProfileNameNil() {
+        let settings = ScenarioExecutionSettings(DeviceIndependentRunSettings(
+            fm: FMConfig(), ocr: true, ocrFalsePositiveCheck: true, iosFastInput: false,
+            iosPreActionWarmup: true, containerInference: true, enableAnimations: false,
+            playProtectBypass: true, homeOnStart: true, record: false, recordFailuresOnly: false,
+            recordFullResolution: false, reportDir: nil, defaultTimeout: nil, scenarioTimeout: nil,
+            recordBitrateKbps: nil))
+        XCTAssertNil(settings.profileName)
     }
 
     /// `ResolvedProfile` の memberwise init は internal なので `@testable import FTCore` で触る
