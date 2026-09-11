@@ -637,8 +637,20 @@ extension StepExecutor {
                 await emptyDrag(x: x, y: y, toX: toX)
                 let settled = try await settledSignature(phase: &phase)
                 snapshot = settled.snapshot
-                // 空打ちで木が入れ替わるので ref を取り直す(古い ref は別要素を指す)
-                if let refreshed = Self.resolve(step: step, in: snapshot) { resolved = refreshed }
+                // 空打ちで木が入れ替わるので ref を取り直す(古い ref は別要素を指す)。
+                // **取り直せないなら撃たずに失敗させる**: 空打ちが画面を変えた(下の行・ボタンが
+                // 発火した)形で、古い ref のまま撃つと新しい木の別の要素を押して ok になる
+                // (2026-09-11 物理 iPhone 13: 空打ちで診断画面へ遷移 → 古い ref が #tab_home を押して
+                // ホームへ戻り ok)。救済(キャッシュ・指紋・FM)にも回さない —— 変わった画面で
+                // 別の要素へ「修復」するのも同じ誤った緑。撃ち直しもしない(吸われた操作と同じ規律)
+                guard let refreshed = Self.resolve(step: step, in: snapshot) else {
+                    return StepOutcome(status: failed(.notFound,
+                        "the element was found, but the relief drag after \(ghostSwipes) extra swipe(s)"
+                        + " changed the screen and it is gone from the tree (the drag may have fired a"
+                        + " row or button under it). Nothing was tapped: the earlier reference would now"
+                        + " point at another element"))
+                }
+                resolved = refreshed
             }
         }
 
