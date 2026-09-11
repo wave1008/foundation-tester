@@ -94,4 +94,44 @@ final class BridgeHostPlumbingTests: XCTestCase {
         XCTAssertEqual(missing, [], "宛先か token を運べていない BridgeClient の生成"
                        + "(LAN 経由の実機で接続拒否 / usb トンネルの実機で 401 になる)")
     }
+
+    /// **シナリオの子プロセスへ渡す iOS の接続(`port:` を持つ `DriverConnection(`)も host と実機判定を運ぶ**。
+    /// 子は `DriverConnection.host` / `physical` から BridgeClient を作るので、ポートだけ渡すと
+    /// 127.0.0.1・physical=false で走る(2026-09-11 物理 iPhone 13: MCP の ft_run_scenario の
+    /// プロファイル無し経路がこの形で、LAN の実機に接続拒否 3/3)。上の走査は `BridgeClient(` しか見ないので網の外だった
+    func testEveryIOSDriverConnectionCarriesHostAndPhysical() throws {
+        let sources = repoRoot.appendingPathComponent("Sources")
+        let enumerator = FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil)!
+        var missing: [String] = []
+        var scanned = 0
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            let relative = String(url.path.dropFirst(repoRoot.path.count + 1))
+            let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: "\n")
+            for (index, line) in lines.enumerated() where line.contains("DriverConnection(") {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.hasPrefix("//") { continue }
+                var joined = ""
+                var depth = 0
+                var started = false
+                for candidate in lines[index...] {
+                    joined += candidate + "\n"
+                    for ch in candidate {
+                        if ch == "(" { depth += 1; started = true }
+                        if ch == ")" { depth -= 1 }
+                    }
+                    if started, depth <= 0 { break }
+                }
+                // ポートを持たない接続(Android・dry-run)は宛先が要らない
+                guard joined.contains("port:") else { continue }
+                scanned += 1
+                if !joined.contains("host:") || !joined.contains("physical:") {
+                    missing.append("\(relative):\(index + 1) \(trimmed)")
+                }
+            }
+        }
+        XCTAssertGreaterThan(scanned, 0, "走査が呼び出しを拾えていない(パターンを見直す)")
+        XCTAssertEqual(missing, [], "host と physical を運ばない iOS の DriverConnection の生成"
+                       + "(子プロセスが LAN の実機で接続拒否 / usb トンネルの実機で 401 になる)。"
+                       + " --port 直指定なら PortDirectIOSTarget(port:).connection(simulatorUDID:) を使う")
+    }
 }

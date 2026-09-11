@@ -182,15 +182,19 @@ extension MCPServer {
             RunEnvironment.apply(DeviceIndependentRunSettings.resolve(DeviceIndependentRunSettings.profileLessBase))
             let platform = infos.first?.platform ?? (args["platform"] as? String ?? "ios")
             // **宛先の決め方は探索系(driver(_:))と同じにする**。片方だけ賢いと
-            // 「ft_snapshot は繋がるのに ft_run_scenario だけ既定ポートで落ちる」になる
-            connection = DriverConnection(
-                platform: platform,
-                port: platform == "ios"
-                    ? try await Self.resolveIOSPort(explicit: try Self.portArgument(args))
-                    : nil,
-                serial: platform == "android"
-                    ? try Self.resolveAndroidSerial(explicit: args["serial"] as? String)
-                    : nil)
+            // 「ft_snapshot は繋がるのに ft_run_scenario だけ既定ポートで落ちる」になる。
+            // **iOS の接続は CLI の `--port` 直指定と同じ PortDirectIOSTarget から作る** —— ポートだけ
+            // 渡すと子プロセスは 127.0.0.1・physical=false で走り、LAN の実機は接続拒否、usb トンネルの
+            // 実機は token 無しの 401 になる(2026-09-11 物理 iPhone 13 で 3/3。「クラッシュ」と誤帰属)
+            if platform == "ios" {
+                connection = PortDirectIOSTarget(
+                    port: try await Self.resolveIOSPort(explicit: try Self.portArgument(args)))
+                    .connection(simulatorUDID: (args["udid"] as? String).flatMap { $0.isEmpty ? nil : $0 })
+            } else {
+                connection = DriverConnection(
+                    platform: platform,
+                    serial: try Self.resolveAndroidSerial(explicit: args["serial"] as? String))
+            }
         }
 
         var lines: [String] = prologue
