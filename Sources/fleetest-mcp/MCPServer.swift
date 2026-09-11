@@ -153,8 +153,8 @@ final class MCPServer {
     /// 流用していたが、実機 iPhone ではレイアウトが収まる前に予算が尽きていた
     var rotationSettleDeadlineSeconds: Double = RotationSettle.deadlineSeconds
 
-    /// ref を撃つ直前の覆い探針(`/systemalert` 等・`screenNotRepresentedWarning`)を
-    /// 木の指紋ごとに覚える(engineKey ごと)。**健全性の上限**: 木がバイト同一のまま
+    /// ref を撃つ直前の覆い探針(`screenNotRepresentedWarning` = 覆う面とヒットテスト。
+    /// `/systemalert` は含まない = 毎回聞く)を木の指紋ごとに覚える(engineKey ごと)。**健全性の上限**: 木がバイト同一のまま
     /// 覆う面が出た/消えた画面(静止画面へ出た Control Center 等)は、次に木が変わるまで
     /// 再確認しない —— 見逃しはそこまでに限られる(verifiedRef 参照)
     var lastScreenProbe: [String: (fingerprint: Int, warning: String)] = [:]

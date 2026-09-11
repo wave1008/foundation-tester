@@ -737,10 +737,6 @@ extension MCPServer {
     /// 面が分かっているならそちらが正確なので、当たったほうだけを言う。
     /// 覆っているときは `hitTest` を聞かずに済むので往復も1つ減る
     static func screenNotRepresentedWarning(_ found: ElementInfo, driver: AppDriver) async -> String {
-        // **名指しできるアラートを最初に聞く**: SpringBoard の許可アラートは覆い判定
-        // (systemUICoveringWarning)より確度が高い名指しができる(題名・ボタンまで読める)
-        let alert = await systemAlertNote(driver: driver)
-        if !alert.isEmpty { return " (\(alert))" }
         let covering = await systemUICoveringWarning(found, driver: driver)
         if !covering.isEmpty { return covering }
         return await treeDoesNotMatchScreenWarning(found, driver: driver)
@@ -756,9 +752,16 @@ extension MCPServer {
     /// **健全性の限界(意図した上限)**: 木をバイト同一に保ったまま覆う面が出入りする形
     /// (静止画面の上に Control Center が出た/消えた、等)は、次に木そのものが変わるまで
     /// 再確認しない。見逃しの範囲はそこまでに限られる —— 木が動けば必ず撮り直す
+    ///
+    /// **アラートだけは使い回さず毎回聞く**(1往復・Simulator で 33〜38ms)—— SpringBoard の
+    /// 許可アラートはアプリの木を1バイトも変えずに湧くので、指紋で使い回すと次に木が変わるまで
+    /// 見えない(権限を要求するボタンを叩いた直後の画面がこれ)。名指しできるアラートは覆い判定より
+    /// 確度が高いので、出ていれば残り2問は聞かない
     func memoizedScreenProbe(_ found: ElementInfo, fresh: SnapshotResponse,
                              driver: AppDriver, args: [String: Any]) async -> String {
         let key = Self.engineKey(args)
+        let alert = await Self.systemAlertTapWarning(found, driver: driver, engine: engines[key])
+        if !alert.isEmpty { return alert }
         let fingerprint = Self.treeFingerprint(fresh)
         if let memo = lastScreenProbe[key], memo.fingerprint == fingerprint {
             return memo.warning
@@ -780,18 +783,48 @@ extension MCPServer {
     /// (NoteCoverageTests.testSnapshotBodyEmitsOnlyCatalogNotes がこの形を許容している)。
     ///
     /// **呼び出し元が2つ**: `snapshotBody` は `systemAlertProbePending` が立っているときだけ
-    /// (launch 直後の1回)、`screenNotRepresentedWarning` は ft_tap のたびに毎回
-    /// (systemUICoveringWarning と同じく費用は MCP のタップ経路だけで既に許容されている)。
-    /// 答えられない(旧ブリッジ・in-app・Android)/ 出ていないときは黙る
+    /// (launch 直後の1回)、タップ経路は `systemAlertTapWarning` として ref のたびに毎回
+    /// (費用は MCP のタップ経路だけ)。答えられない(旧ブリッジ・Android。hybrid は XCUITest 側へ
+    /// 聞く)/ 出ていないときは黙る
     static func systemAlertNote(driver: AppDriver) async -> String {
-        guard let probe = try? await driver.systemAlert(), SystemUIGate.isCovered(probe)
-        else { return "" }
-        let described = SystemUIGate.describeUnregistered(probe)
-        let what = described.map { "a system alert (\($0))" } ?? "a system alert"
+        guard let what = await frontSystemAlert(driver: driver) else { return "" }
         return "note: \(what) is in front of the app — the tree below is the app behind it;"
-            + " nothing in it is reachable and the alert is drawn by SpringBoard so it never"
-            + " appears here. Read it with `ft_launch bundleId: com.apple.springboard`,"
-            + " tap its button by ref, then `ft_launch` your app again."
+            + " a user cannot reach any of it and the alert is drawn by SpringBoard so it never"
+            + " appears here. \(handleAlertFirst)."
+    }
+
+    /// タップ経路の文言。**「何も届かない」と言わない** —— どちらのエンジンでもタップは届き、
+    /// 起きることがエンジンで違う(実測): in-app はアプリのプロセス内で activate / 合成タッチを
+    /// 撃つのでアラートを残したままアプリが反応する / XCUITest は XCTest 自身の割り込み処理がアラートのボタン
+    /// (拒否側)を押してからタップを通すので、権限の状態を黙って変える
+    static func systemAlertTapWarning(_ found: ElementInfo, driver: AppDriver,
+                                      engine: String?) async -> String {
+        guard let what = await frontSystemAlert(driver: driver) else { return "" }
+        let consequence: String
+        switch engine {
+        case "inapp", "hybrid":
+            consequence = "the in-app engine delivers the tap to \(RefGuard.describe(found)) inside"
+                + " the app's own process, so it still reaches the app behind the alert, which no user"
+                + " could do"
+        case "xcuitest":
+            consequence = "XCTest handles such an alert on its own before tapping and can press one"
+                + " of its buttons (observed: the deny button), silently changing the permission;"
+                + " the tap then reaches the app"
+        default:
+            consequence = "what this tap does to the alert depends on the engine"
+        }
+        return " (warning: \(what) is in front of the app, so a finger would land on the alert —"
+            + " \(consequence). \(handleAlertFirst))"
+    }
+
+    private static let handleAlertFirst = "Handle the alert first: read it with"
+        + " `ft_launch bundleId: com.apple.springboard`, tap its button by ref,"
+        + " then `ft_launch` your app again"
+
+    private static func frontSystemAlert(driver: AppDriver) async -> String? {
+        guard let probe = try? await driver.systemAlert(), SystemUIGate.isCovered(probe)
+        else { return nil }
+        return SystemUIGate.describeUnregistered(probe).map { "a system alert (\($0))" } ?? "a system alert"
     }
 
     /// **SpringBoard の面がアプリを覆っている**ことを SpringBoard に聞く(iOS xcuitest だけ)。

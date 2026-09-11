@@ -28,8 +28,8 @@ final class SystemAlertSnapshotNoteTests: XCTestCase {
     private static let expectedNote =
         "note: a system alert (「“SUT Store”がローカルネットワーク上のデバイスを見つけることを"
         + "許可しますか?」, buttons: 「許可しない」 / 「許可」) is in front of the app — the tree"
-        + " below is the app behind it; nothing in it is reachable and the alert is drawn by"
-        + " SpringBoard so it never appears here. Read it with"
+        + " below is the app behind it; a user cannot reach any of it and the alert is drawn by"
+        + " SpringBoard so it never appears here. Handle the alert first: read it with"
         + " `ft_launch bundleId: com.apple.springboard`, tap its button by ref,"
         + " then `ft_launch` your app again."
 
