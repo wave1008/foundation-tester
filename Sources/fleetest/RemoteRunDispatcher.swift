@@ -300,9 +300,15 @@ struct RemoteRunDispatcher {
             // `RemoteDispatchUnlock.decideAutomaticSweep` を共有する(同じ規則を2箇所に持たない)。
             // 他人・他機のロックは release を返さない(refuse)ので、そこは従来どおり待たせる/
             // 手作業の unlock を案内する
-            if case .release(let reason) = Self.staleLockAutoRelease(
+            var decision = Self.staleLockAutoRelease(
                 lockRead: existing, myIssuer: LocalConfig.resolveIssuerId(),
-                myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive) {
+                myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive)
+            if case .release = decision {
+                decision = RemoteDispatchUnlock.guardingLiveRemoteRun(
+                    decision, livePIDs: liveDispatchedRunPIDs(layout: layout))
+            }
+            switch decision {
+            case .release(let reason):
                 log("==> auto-releasing a stale dispatch lock on \(host.sshTarget) left by a dead process"
                     + " of ours (\(reason))")
                 _ = try? sshCapture(RemoteDispatchLock.releaseCommand(base: layout.base))
@@ -310,10 +316,34 @@ struct RemoteRunDispatcher {
                     base: layout.base, info: info)])
                 if result.status == 0 { return }
                 existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
+            case .refuse(let reason) where Self.isOwnStaleLock(lockRead: existing):
+                // 自分の死んだディスパッチのロックだが、その run がまだ生きている/確かめられない。
+                // 定型文(heldMessage)は unlock を勧めるので使わない(unlock も同じ理由で断る)
+                throw RemoteDispatchError.remoteSetupFailed(
+                    "the dispatch lock on \(host.sshTarget) belongs to an earlier dispatch of yours from this"
+                    + " Mac that is no longer running here, so it was not released: \(reason)")
+            default:
+                break
             }
             throw RemoteDispatchError.remoteSetupFailed(Self.dispatchLockFailureMessage(
                 status: result.status, lockRead: existing, tail: result.tail, sshTarget: host.sshTarget))
         }
+    }
+
+    /// ランナー上でディスパッチの run が生きている pid(`RemoteDispatchLock.liveDispatchedRunsCommand`)。
+    /// ssh に失敗したら nil(= 確かめられなかった。guardingLiveRemoteRun は外さない側に倒す)
+    private func liveDispatchedRunPIDs(layout: RemoteLayout) -> [Int32]? {
+        guard let probe = try? Shell.run(sshBase + [host.sshTarget,
+                                                    RemoteDispatchLock.liveDispatchedRunsCommand(base: layout.base)]),
+              probe.status == 0 else { return nil }
+        return RemoteDispatchLock.parseLivePIDs(probe.output)
+    }
+
+    /// 控えが「自分がこの機械から掴んだ」ロックか(自動回収を試みた = 名指しして断る理由を足す対象)
+    static func isOwnStaleLock(lockRead: String?) -> Bool {
+        guard let lockRead, let info = RemoteDispatchLock.decode(lockRead) else { return false }
+        return info.issuer == LocalConfig.resolveIssuerId()
+            && info.issuerHost.caseInsensitiveCompare(ProcessInfo.processInfo.hostName) == .orderedSame
     }
 
     /// 取得失敗のあと、既存ロックの控え(生の JSON テキスト。読めなければ nil・空はロック不在)から
@@ -544,9 +574,12 @@ struct RemoteRunDispatcher {
         let command = RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: fleetestArgs,
                                                    issuer: LocalConfig.resolveIssuerId(),
                                                    fmConcurrency: registeredFMConcurrency)
+        // ssh を「このプロセスが死んだら止まる」包みに入れる(孤児の ssh がリモートの run を出力の write で
+        // 止めたままにする。理由は ParentBoundCommand の冒頭)
         let status = try runInheritedWithLineRewrite(
-            sshRunBase + [host.sshTarget, command], layout: layout, timeoutSeconds: timeoutSeconds,
-            stamp: stamp, project: project)
+            ParentBoundCommand.wrap(sshRunBase + [host.sshTarget, command],
+                                    parentPID: ProcessInfo.processInfo.processIdentifier),
+            layout: layout, timeoutSeconds: timeoutSeconds, stamp: stamp, project: project)
         if status == 90 {
             log("==> the remote fleetest binary is missing — build it on the remote first"
                 + " (swift build --product fleetest)")

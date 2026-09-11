@@ -253,7 +253,7 @@
     **async 文脈でパイプを行読みするときは `FTRemote.PipeLinePump`**(semaphore の `wait` を
     async 文脈に書かない = Swift 6 でエラー。同期関数の既存2箇所は据え置き)。
     **SIGKILL へのエスカレートは ssh にだけ**。**シグナルソースは1プロセスに1組**
-    → maintainer-notes §3.2。`fleetest remote unlock` は自分の死んだディスパッチのロックだけを外す(`RemoteDispatchUnlock`)
+    → maintainer-notes §3.2。`fleetest remote unlock` は自分の死んだディスパッチのロックだけを外す(`RemoteDispatchUnlock`)。**ロックの自動回収・unlock はランナー上でその run が生きていないことを確かめてから外す**(手元の pid が死んでもリモートの run は生きている)。**`-tt` の ssh は `ParentBoundCommand` で包む**(`kill -9` で親が死ぬと孤児の ssh がリモートの run を出力の write で止めたままにする)
   - **`--runner M` + 明示 `--device` は M の台に限定**
     (`RemoteDispatchExplicitDeviceScope`)。**`--runner local` も同じ判定を通す**
     (run / api run の2経路。絞らないと別ホストのエントリの UDID を手元で探して

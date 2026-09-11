@@ -139,6 +139,31 @@ public enum RemoteDispatchLock {
         return "if [ -d \(dir) ]; then echo held; cat \(info) 2>/dev/null || true; else echo absent; fi"
     }
 
+    /// ランナー上で**ディスパッチが起こした run がまだ生きているか**を見る(生きている pid を1行1つで出す)。
+    /// ディスパッチの run は必ず `--report-dir <base>/users/<issuer>/work/.fleetest/dispatch/<stamp>/reports`
+    /// を引数に持つ(RemoteLayout.dispatchReportDir)ので、その形の引数を持つプロセスを pgrep する。
+    /// この pgrep を起動したシェル(コマンド行にこの式を含む)は一致しない —— macOS の pgrep は既定で
+    /// 自分と祖先を除く(pgrep(1) の `-a`。ランナーは macOS。`testProbeFindsOnlyADispatchedRunOnARealProcessTable`)。
+    /// 一致なし(pgrep の終了コード 1)は `|| true` で 0 にする(ssh の失敗 = 255 と区別するため)
+    public static func liveDispatchedRunsCommand(base: String) -> String {
+        let pattern = regexEscaped(base) + "/users/[^ /]+/work/" + regexEscaped(".fleetest/dispatch/")
+        return "pgrep -f -- \(RemoteShell.quote(pattern)) || true"
+    }
+
+    public static func parseLivePIDs(_ output: String) -> [Int32] {
+        output.split(whereSeparator: \.isNewline)
+            .compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) }
+    }
+
+    static func regexEscaped(_ text: String) -> String {
+        var escaped = ""
+        for character in text {
+            if "\\.^$|?*+()[]{}".contains(character) { escaped.append("\\") }
+            escaped.append(character)
+        }
+        return escaped
+    }
+
     private static func writeInfoCommand(base: String, info: RemoteDispatchLockInfo) -> String {
         let payload = encode(info) ?? "{}"
         return "printf '%s' \(RemoteShell.quote(payload)) > \(RemoteShell.quote(infoFilePath(base: base)))"
@@ -207,6 +232,26 @@ public enum RemoteDispatchUnlock {
                 : "it was acquired by you from \(info.issuerHost) (pid \(info.pid) — not checkable from here)"
             return .release(reason: why)
         }
+    }
+
+    /// release の判定に「ランナー上でディスパッチの run がまだ生きていないか」を掛ける(3つの呼び口 =
+    /// 次のディスパッチの自動回収・モニター起動時の掃除・`remote unlock` が共有する)。
+    /// **手元の pid が死んでいてもリモートの run は生きていることがある** —— `kill -9` 等で後始末が
+    /// 走らないと、手元の ssh が孤児として残り、リモートの run は最後まで流れる(実測)。そこでロックを
+    /// 外すと同じ台へ2本目が乗る。`livePIDs == nil`(確かめられなかった)も外さない(不明を空きに倒さない)
+    public static func guardingLiveRemoteRun(_ decision: Decision, livePIDs: [Int32]?) -> Decision {
+        guard case .release = decision else { return decision }
+        guard let livePIDs else {
+            return .refuse(reason: "could not check whether the run that dispatch started is still"
+                + " running on the runner")
+        }
+        guard livePIDs.isEmpty else {
+            return .refuse(reason: "the run that dispatch started is still running on the runner"
+                + " (pid \(livePIDs.map(String.init).joined(separator: ", "))) — its local side died but"
+                + " that run did not. Wait for it to finish; the next dispatch then releases the lock"
+                + " automatically")
+        }
+        return decision
     }
 
     /// モニター起動時の**自動掃除**用の判定。手動の unlock より保守側 —— 自分のロックでも

@@ -775,6 +775,13 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
   発行者無し=外さない / 同じ発行者で発行元がこの機械かつ pid が生きている=外さない(止めれば
   自分で解放する)/ それ以外=外す。**別の機械の pid の生死は見えない**ので、発行者が自分なら
   本人の申告として外す。heldMessage にこの口を案内する
+- **自動回収**: 次のディスパッチ(と、モニター起動時の掃除)は、**この機械から掴んだ自分のロックで
+  その pid が死んでいる**ときだけ自動で外す(`RemoteDispatchUnlock.decideAutomaticSweep`)。
+  **外す前に、ランナー上でそのディスパッチの run がまだ生きていないかを見る**
+  (`RemoteDispatchUnlock.guardingLiveRemoteRun`。unlock も同じ): 手元の pid が死んでもリモートの run は
+  生きていることがあり、そこで外すと同じ台へ2本目が乗る。判定材料はディスパッチの run が必ず持つ
+  引数 `--report-dir <base>/users/<issuer>/work/.fleetest/dispatch/…`(`liveDispatchedRunsCommand`
+  = pgrep)。**確かめられない(ssh の失敗)ときも外さない**
 - **`--force-lock` は `--runner` / `--fleet` に限らない**(2026-08-18 に緩めた。判定は
   `RemoteDispatchFlagPolicy.forceLockRejection`)。マシンプロファイル経由の自動ディスパッチや、
   デバイスが複数の機械にまたがるプロファイル(ホスト別の子へ分かれる)では `--runner` を打たない
@@ -1321,6 +1328,15 @@ ssh を `-tt`(擬似 TTY 強制割り当て)で起動し、切断時に SIGHUP �
   端末の Ctrl-C はプロセスグループ全体に届くので子も自力で止まり、差として現れない
   (「Ctrl-C では止まるのに kill -INT では残る」はこの形)。今は登録 0→1 で立て 1→0 で戻す
   (`InterruptRelayTests` が自プロセスへ SIGINT を撃って固定する)
+
+- **`kill -9` 等で親が後始末無しに死んでも ssh を残さない**(`FTRemote.ParentBoundCommand`)。
+  InterruptRelay はシグナルを受けられないと働かないので、`-tt` の ssh を `/bin/sh` の包みに入れ、
+  包みの見張りが 2 秒ごとに「自分の親が起動時の pid のままか」を見て、変わっていたら ssh へ SIGTERM を送る
+  (親が死ぬと包みは launchd へ付け替わる)。**孤児の ssh は害が大きい**: 出力の渡し先を失って channel を
+  読まなくなるので、リモートの run は出力の write で止まったまま終わらない(実測: 11 分止まり、ssh を止めた
+  瞬間に完走した)—— dispatch.lock も台も握り続け、上の自動回収も「run が生きている」ので効かない。
+  包みの後はリモートの run が SIGHUP で中断の経路を通って終わり(`interrupted: true`)、次のディスパッチが
+  ロックを自動回収する(2026-09-11 に M1Max で確認)
 
 取りこぼした孤児は 16.4 の `remote clean`(+ 終了スクリプトは `hooks reap`)で掃除する。
 **自分の死んだディスパッチが残したロックだけ**は `fleetest remote unlock --runner <h>` で外す

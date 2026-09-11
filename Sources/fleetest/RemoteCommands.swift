@@ -272,9 +272,13 @@ struct RemoteCommand: AsyncParsableCommand {
                 throw RemoteDispatchError.remoteSetupFailed(
                     "could not read the dispatch lock on \(target) (status \(probeResult.status))\n\(probeResult.tail)")
             }
-            let decision = RemoteDispatchUnlock.decide(
+            var decision = RemoteDispatchUnlock.decide(
                 probe: probe, myIssuer: LocalConfig.resolveIssuerId(),
                 myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive)
+            if case .release = decision {
+                decision = RemoteDispatchUnlock.guardingLiveRemoteRun(
+                    decision, livePIDs: liveDispatchedRunPIDs(target: target, base: layout.base))
+            }
             switch decision {
             case .nothingToDo:
                 ConsoleOut.out("→ no dispatch lock on \(target); nothing to do")
@@ -289,6 +293,15 @@ struct RemoteCommand: AsyncParsableCommand {
                 ConsoleOut.out("→ released the dispatch lock on \(target) (\(reason))")
             }
         }
+    }
+
+    /// ランナー上でディスパッチの run が生きている pid(unlock とモニター起動時の掃除が共有)。
+    /// ssh に失敗したら nil(guardingLiveRemoteRun は外さない側に倒す)
+    static func liveDispatchedRunPIDs(target: String, base: String) -> [Int32]? {
+        guard let probe = try? Shell.run(
+            remoteSSHBase + [target, RemoteDispatchLock.liveDispatchedRunsCommand(base: base)]),
+              probe.status == 0 else { return nil }
+        return RemoteDispatchLock.parseLivePIDs(probe.output)
     }
 
     /// `remote unlock` が外さなかった理由(run() が localizedDescription を出すので LocalizedError)
@@ -315,10 +328,18 @@ struct RemoteCommand: AsyncParsableCommand {
                         remoteSSHBase + [target, RemoteDispatchLock.probeCommand(base: layout.base)])
                     guard probeResult.status == 0,
                           let probe = RemoteDispatchLock.parseProbe(probeResult.output) else { continue }
-                    guard case .release(let reason) = RemoteDispatchUnlock.decideAutomaticSweep(
+                    let decision = RemoteDispatchUnlock.decideAutomaticSweep(
                         probe: probe, myIssuer: LocalConfig.resolveIssuerId(),
                         myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive)
-                    else { continue }
+                    guard case .release = decision else { continue }
+                    let guarded = RemoteDispatchUnlock.guardingLiveRemoteRun(
+                        decision, livePIDs: liveDispatchedRunPIDs(target: target, base: layout.base))
+                    guard case .release(let reason) = guarded else {
+                        if case .refuse(let why) = guarded {
+                            log("[monitor] kept the dispatch lock on \(machine): \(why)")
+                        }
+                        continue
+                    }
                     let release = try Shell.run(
                         remoteSSHBase + [target, RemoteDispatchLock.releaseCommand(base: layout.base)])
                     if release.status == 0 {
