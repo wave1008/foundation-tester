@@ -27,14 +27,20 @@ extension MCPServer {
     /// run 経路(`ProfileWorkerFactory.preparePhysicalAndroidDevices` → `AndroidPhysicalDevice.
     /// prepareForRun`)と**同じ処理を同じ粒度で**呼ぶ(起こす・ロック解除。消灯の抑止は
     /// 端末の設定のまま変えない——2026-09-05 のユーザー決定はそのまま尊重する)。
-    /// **このセッションでその機へ初めて触れたときだけ**(`preparedPhysicalAndroid`)——
-    /// run が「build の前に1回」なのと同じ粒度で、毎呼び出しに adb 往復を払わない
+    /// **このセッションでその機へ初めて触れたときは準備を丸ごと**(`preparedPhysicalAndroid`)、
+    /// **2回目以降は画面の状態を1往復で見て、消灯・ロック中のときだけ起こす**(`wakeIfAsleep`)。
+    /// 初回だけだと、セッションの途中で消えた後の `ft_launch` が 23 秒後に「アプリが前面に来なかった」
+    /// とだけ言い、常時表示の snapshot を「システムダイアログ」と誤って言った(2026-09-11 Pixel 3a)。
+    /// 確認は 0.1 秒前後(run のシナリオごとの確認と同じ関数)
     func prepareAndroidDeviceIfNeeded(_ resolved: AppDriver, args: [String: Any]) async {
         guard resolved is AndroidDriver, makeDriver == nil else { return }
         let key = Self.engineKey(args)
-        guard !preparedPhysicalAndroid.contains(key),
-              let serial = connectedAndroidSerials[key],
+        guard let serial = connectedAndroidSerials[key],
               DevicePicker.isPhysicalAndroidSerial(serial) else { return }
+        guard !preparedPhysicalAndroid.contains(key) else {
+            await AndroidPhysicalDevice.wakeIfAsleep(serial: serial, log: Self.logStderr)
+            return
+        }
         preparedPhysicalAndroid.insert(key)
         await AndroidPhysicalDevice.prepareForRun(serial: serial, log: Self.logStderr)
     }

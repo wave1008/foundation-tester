@@ -1,7 +1,8 @@
 // 物理 Android の画面が消灯したままだと、`ft_snapshot` は常時表示の木を返し `ft_tap` は `done` を
 // 返す(消灯に一言も触れない)。そこで run 経路(`ProfileWorkerFactory.preparePhysicalAndroidDevices` → `AndroidPhysicalDevice.
 // prepareForRun`)と同じ処理を、`driver(_:)` の唯一の呼び口(全ツール共通)から
-// このセッションでその機へ初めて触れたときに1回だけ呼ぶ(`prepareAndroidDeviceIfNeeded`)。
+// このセッションでその機へ初めて触れたときに呼び、2回目以降は消灯・ロック中のときだけ起こす
+// (`prepareAndroidDeviceIfNeeded` → `AndroidPhysicalDevice.wakeIfAsleep`)。
 //
 // **`AndroidDriver` は FTAndroid 依存で FakeDriver からは模せない**ので(実体は adb を叩く)、
 // 「本物の Android + 未起動」の分岐は実機無しでは動的に確かめられない。ここで確かめるのは
@@ -62,7 +63,9 @@ final class MCPPhysicalAndroidWakeTests: XCTestCase {
                       "Android 限定・テスト無効化の門")
         XCTAssertTrue(code.contains("DevicePicker.isPhysicalAndroidSerial(serial)"),
                       "物理端末だけに絞る判定")
-        XCTAssertTrue(code.contains("preparedPhysicalAndroid.insert(key)"), "一度きりの記録")
+        XCTAssertTrue(code.contains("preparedPhysicalAndroid.insert(key)"), "初回の記録")
+        XCTAssertTrue(code.contains("AndroidPhysicalDevice.wakeIfAsleep(serial: serial, log: Self.logStderr)"),
+                      "2回目以降に消灯を確かめていない(セッションの途中で消えた画面を起こさない)")
         XCTAssertTrue(code.contains("AndroidPhysicalDevice.prepareForRun(serial: serial, log: Self.logStderr)"),
                       "run 経路と同じ関数を呼んでいること")
     }

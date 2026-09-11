@@ -2897,9 +2897,12 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
 - **画面ロックは「なし」にしておく**。PIN/パターンが設定されていると adb から解除できず、
   ロック中は `UiAutomation.getRootInActiveWindow()` が対象アプリにならないので **全シナリオが
   launch 500(「アプリの画面が表示されませんでした」)で落ちる**
-- run 前に `AndroidPhysicalDevice.prepareForRun` が点灯・ロック解除・消灯抑止
-  (`svc power stayon true`)を行う。`stayon usb` では**効かない**ことがある(AC として認識される
-  ケーブル/ハブがあり、bitmask が USB=2 だけだと外れる。true=AC|USB|WIRELESS=7 を使う)
+- run 前に `AndroidPhysicalDevice.prepareForRun` が点灯・ロック解除を行う。**消灯は抑止しない**
+  (2026-09-05 ユーザー決定。`svc power stayon` は true も false も撃たない —— false を旧版の後始末として
+  撃っていた頃は、持ち主の「充電中はスリープしない」を run・MCP のたびに消していた)。
+  その代わり**シナリオごと(子プロセス)と MCP の呼び出しごとに1往復で画面を確かめ、消灯・ロック中の
+  ときだけ起こす**(`wakeIfAsleep`。0.07〜0.15 秒)。run 開始時の1回だけだと、途中で1回消えた後の
+  全シナリオが launch 500 で落ち、消灯に一言も触れなかった(2026-09-11 Pixel 4a で 22/24 赤)
 - **ロック状態の判定に `isKeyguardShowing` と `mCurrentFocus` を使ってはいけない**。
   Pixel 4a/Android 13 実測(2026-07-25)で、実際には解除されランチャーが見えている状態でも
   `true` / `NotificationShade` を返し続けた。**信用できるのは `topResumedActivity` の有無だけ**

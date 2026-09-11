@@ -29,10 +29,11 @@ public enum AndroidPhysicalDevice {
         }
 
         // **消灯抑止はツールの仕事にしない**(2026-09-05 ユーザー決定)。端末の画面設定は
-        // 端末側で決めるもので、ツールが `stayon` を張ると**端末に永続する副作用**が残る。
-        // **ここで撃つ false は後始末** —— 旧版が張った stayon を抱えたままの端末を戻す。
-        // 点灯と解除は残す(ロック中は launch が 500 で落ちるため run の前提であって抑止ではない)
-        shell(["shell", "svc", "power", "stayon", "false"])
+        // 端末側で決めるもので、`stayon` は true も false も撃たない —— false を「旧版の後始末」として
+        // 撃っていた頃は、持ち主が開発者オプションで立てた「充電中はスリープしない」(7)と区別できず
+        // run・MCP のたびに 0 へ消していた(2026-09-11 Pixel 3a で 7 → 0)。
+        // 点灯と解除は残す(ロック中は launch が 500 で落ちるため run の前提であって抑止ではない)。
+        // 途中で消えた分は `wakeIfAsleep` がシナリオごと・MCP の呼び出しごとに起こし直す
         shell(["shell", "input", "keyevent", "KEYCODE_WAKEUP"])
         // 点灯を待ってから解除する。Dozing(AOD)中に投げた dismiss-keyguard は黙って無視される
         for _ in 0..<10 where !isAwake(adb: adb, serial: serial) {
@@ -51,6 +52,42 @@ public enum AndroidPhysicalDevice {
         }
         log("⚠️ \(serial): could not unlock the lock screen"
             + " (a PIN/pattern lock cannot be cleared over adb — set the device to no lock)")
+    }
+
+    /// **消灯・ロック中のときだけ** `prepareForRun` を撃つ(点いていて解除済みなら何もしない)。起こしたら true。
+    /// 起こすのが run 開始時の1回だけだと、途中で1回消えた後の全シナリオが「アプリが前面に来ない」
+    /// (launch の 500)で落ち、消灯に一言も触れなかった(2026-09-11 Pixel 4a: 1回の消灯で 22/24 赤)。
+    /// 確認は1往復(端末側で grep。Pixel 4a / 3a で 0.07〜0.15 秒)なので、シナリオごと・MCP の呼び出しごとに払う
+    @discardableResult
+    public static func wakeIfAsleep(serial: String, log: (String) -> Void = { _ in }) async -> Bool {
+        guard screenAwakeAndUnlocked(serial: serial) == false else { return false }
+        log("⚠️ \(serial): the screen was off or locked — waking and unlocking it before continuing"
+            + " (the tool does not keep the screen on; the device's own settings decide when it turns off)")
+        // **成功の「✔」行は流さない**: シナリオの子では stderr の1行が結果の errorLogs(上限5件)の1枠を
+        // 取り、情報行が本物の失敗の手掛かりを押し出す(ScenarioRunnerMain の FMHealth の注意と同じ)。
+        // 解除できなかった「⚠️」は残す
+        await prepareForRun(serial: serial, log: { line in
+            if !line.hasPrefix("✔") { log(line) }
+        })
+        return true
+    }
+
+    /// 画面が点いていてロックも外れているか(1往復・端末側で grep)。取れなければ nil
+    public static func screenAwakeAndUnlocked(serial: String) -> Bool? {
+        guard let adb = try? AndroidDriver.findADB(),
+              let output = try? Shell.run(
+                [adb, "-s", serial, "shell",
+                 "dumpsys power | grep -m1 mWakefulness=; "
+                    + "dumpsys activity activities | grep -m1 topResumedActivity="],
+                timeout: 15).output else { return nil }
+        return awakeAndUnlocked(checkOutput: output)
+    }
+
+    /// `wakeIfAsleep` の確認の出力を読む純粋関数。**取れなかった(空)は nil** = 起こさない
+    /// (確かめられないのに撃たない)。ロックの判定は topResumedActivity の有無だけ(ファイル冒頭)
+    static func awakeAndUnlocked(checkOutput output: String) -> Bool? {
+        guard output.contains("mWakefulness=") else { return nil }
+        return output.contains("mWakefulness=Awake") && output.contains("topResumedActivity=")
     }
 
     /// dumpsys power の mWakefulness(Awake / Dozing / Asleep)。取得できなければ Awake 扱い

@@ -407,6 +407,13 @@ struct RunScenario: AsyncParsableCommand {
                         appPath: appPath, udid: udid, bundleID: appBundleID, physical: physical)
                 }
             case "android":
+                // **実機はシナリオごとに画面の状態を見て、消灯・ロック中なら起こす**(子プロセス = シナリオ
+                // 1本なので、run・api run・run-file・MCP の ft_run_scenario がすべてここを通る)。
+                // run 開始時の1回だけだと、途中で1回消えた後の全シナリオが launch 500 で落ちる
+                // (AndroidPhysicalDevice.wakeIfAsleep の doc)
+                if let serial, DevicePicker.isPhysicalAndroidSerial(serial) {
+                    await AndroidPhysicalDevice.wakeIfAsleep(serial: serial, log: { ConsoleOut.err($0) })
+                }
                 driver = try AndroidDriver(serial: serial)
             default:
                 throw ValidationError("platform must be ios or android: \(runPlatform)")
@@ -578,6 +585,15 @@ struct RunScenario: AsyncParsableCommand {
 
         // デバッグの stop で中断した場合は成功扱いにしない(確認まで到達していない)
         let passed = record.passed && !core.stoppedByUser
+        // **落ちたときだけ**、Android 実機の画面が途中で消えていなかったかを1往復で見て名指しする。
+        // シナリオの前の確認(wakeIfAsleep)は実行中に消えた1本を救えず、その失敗文は
+        // 「セレクタが解決できない」としか言わない(2026-09-11 Pixel 4a)。緑の run では撃たない
+        if !passed, runPlatform == "android", let serial, DevicePicker.isPhysicalAndroidSerial(serial),
+           AndroidPhysicalDevice.screenAwakeAndUnlocked(serial: serial) == false {
+            ConsoleOut.err("⚠️ \(serial): the screen was off or locked when this scenario failed — steps after"
+                + " it went off could not reach the app (the next scenario wakes it; the tool does not keep"
+                + " the screen on)")
+        }
         var finished = ScenarioEvent(kind: "scenarioFinished")
         finished.scenario = scenarioID
         finished.passed = passed
