@@ -753,15 +753,10 @@ extension MCPServer {
     /// (静止画面の上に Control Center が出た/消えた、等)は、次に木そのものが変わるまで
     /// 再確認しない。見逃しの範囲はそこまでに限られる —— 木が動けば必ず撮り直す
     ///
-    /// **アラートだけは使い回さず毎回聞く**(1往復・Simulator で 33〜38ms)—— SpringBoard の
-    /// 許可アラートはアプリの木を1バイトも変えずに湧くので、指紋で使い回すと次に木が変わるまで
-    /// 見えない(権限を要求するボタンを叩いた直後の画面がこれ)。名指しできるアラートは覆い判定より
-    /// 確度が高いので、出ていれば残り2問は聞かない
+    /// **アラートはここで聞かない**(`verifiedRef` が毎回聞いて断る。`systemAlertTapRefusal` 参照)
     func memoizedScreenProbe(_ found: ElementInfo, fresh: SnapshotResponse,
                              driver: AppDriver, args: [String: Any]) async -> String {
         let key = Self.engineKey(args)
-        let alert = await Self.systemAlertTapWarning(found, driver: driver, engine: engines[key])
-        if !alert.isEmpty { return alert }
         let fingerprint = Self.treeFingerprint(fresh)
         if let memo = lastScreenProbe[key], memo.fingerprint == fingerprint {
             return memo.warning
@@ -783,8 +778,8 @@ extension MCPServer {
     /// (NoteCoverageTests.testSnapshotBodyEmitsOnlyCatalogNotes がこの形を許容している)。
     ///
     /// **呼び出し元が2つ**: `snapshotBody` は `systemAlertProbePending` が立っているときだけ
-    /// (launch 直後の1回)、タップ経路は `systemAlertTapWarning` として ref のたびに毎回
-    /// (費用は MCP のタップ経路だけ)。答えられない(旧ブリッジ・Android。hybrid は XCUITest 側へ
+    /// (launch 直後の1回)、ref 操作の経路は `systemAlertTapRefusal` として毎回
+    /// (費用は MCP の ref 操作だけ)。答えられない(旧ブリッジ・Android。hybrid は XCUITest 側へ
     /// 聞く)/ 出ていないときは黙る
     static func systemAlertNote(driver: AppDriver) async -> String {
         guard let what = await frontSystemAlert(driver: driver) else { return "" }
@@ -793,28 +788,29 @@ extension MCPServer {
             + " appears here. \(handleAlertFirst)."
     }
 
-    /// タップ経路の文言。**「何も届かない」と言わない** —— どちらのエンジンでもタップは届き、
-    /// 起きることがエンジンで違う(実測): in-app はアプリのプロセス内で activate / 合成タッチを
-    /// 撃つのでアラートを残したままアプリが反応する / XCUITest は XCTest 自身の割り込み処理がアラートのボタン
-    /// (拒否側)を押してからタップを通すので、権限の状態を黙って変える
-    static func systemAlertTapWarning(_ found: ElementInfo, driver: AppDriver,
-                                      engine: String?) async -> String {
-        guard let what = await frontSystemAlert(driver: driver) else { return "" }
+    /// **システムアラートが前面にある間、ref の操作は断る**(ref 操作 = ft_tap / ft_type / ft_clear_input /
+    /// ft_long_press / ft_batch の1手目。どれも `verifiedRef` を通る)。警告にとどめないのは、
+    /// どちらのエンジンでも操作が届き、起きることが取り返しにくいため(実測):
+    /// in-app はアプリのプロセス内で activate / 合成タッチを撃つのでアラートを残したまま背面のアプリが反応し、
+    /// XCUITest は XCTest 自身の割り込み処理がアラートのボタン(拒否側)を押してから通すので権限を黙って変える。
+    /// **断らないもの**: 座標の操作(XCUITest ではアラートそのものに当たる正当な操作)・DSL(`SystemUIGate` の
+    /// 2段の規律が別にある)。SpringBoard に attach している間は呼び手が呼ばない(アラートのボタンを押す経路)
+    static func systemAlertTapRefusal(_ target: ElementInfo, driver: AppDriver,
+                                      engine: String?) async -> String? {
+        guard let what = await frontSystemAlert(driver: driver) else { return nil }
         let consequence: String
         switch engine {
         case "inapp", "hybrid":
-            consequence = "the in-app engine delivers the tap to \(RefGuard.describe(found)) inside"
-                + " the app's own process, so it still reaches the app behind the alert, which no user"
-                + " could do"
+            consequence = "the in-app engine acts inside the app's own process, so it would still reach"
+                + " the app behind the alert, which no user could do"
         case "xcuitest":
-            consequence = "XCTest handles such an alert on its own before tapping and can press one"
-                + " of its buttons (observed: the deny button), silently changing the permission;"
-                + " the tap then reaches the app"
+            consequence = "XCTest would handle the alert on its own first and can press one of its"
+                + " buttons (observed: the deny button), silently changing the permission"
         default:
-            consequence = "what this tap does to the alert depends on the engine"
+            consequence = "what the tool would do to the alert depends on the engine"
         }
-        return " (warning: \(what) is in front of the app, so a finger would land on the alert —"
-            + " \(consequence). \(handleAlertFirst))"
+        return "refusing to act on \(RefGuard.describe(target)): \(what) is in front of the app,"
+            + " so a finger would land on the alert — \(consequence). \(handleAlertFirst)."
     }
 
     private static let handleAlertFirst = "Handle the alert first: read it with"
@@ -932,6 +928,11 @@ extension MCPServer {
         let fresh = try await freshSnapshot(driver, args: args)
         if let message = Self.refFromAnotherAppMessage(
             ref: ref, takenFrom: takenFrom, fresh: fresh) { throw MCPError(message) }
+        let key = Self.engineKey(args)
+        if launchedBundleIDs[key] != "com.apple.springboard",
+           let refusal = await Self.systemAlertTapRefusal(target, driver: driver, engine: engines[key]) {
+            throw MCPError(refusal)
+        }
         // **ref の出所についての注記はまとめて先頭に置く**(何に当たったかより前に言う)。
         // 2つは排他 —— screenChangedUnderRefNote は isStale のとき黙る
         let actedSinceTakenFrom = (sessionActionCounts[Self.engineKey(args)] ?? 0)

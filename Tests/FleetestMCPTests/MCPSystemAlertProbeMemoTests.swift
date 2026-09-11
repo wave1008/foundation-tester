@@ -6,7 +6,7 @@
 // 撃つだけの探索でも、そのたびに全部払っていた。撮り直した木の指紋(StaleFrameDetector と同じ
 // 判定)が前回と変わっていなければ、覆う面とヒットテストの答えを使い回す。
 // **/systemalert だけは毎回聞く** —— SpringBoard の許可アラートは木を変えずに湧くので、使い回すと
-// 次に木が変わるまで見えない(SystemAlertTapWarningTests が本命を固定)
+// 次に木が変わるまで見えない(SystemAlertTapRefusalTests が本命を固定)
 
 import XCTest
 import FTCore
@@ -81,18 +81,22 @@ final class MCPSystemAlertProbeMemoTests: XCTestCase {
         XCTAssertEqual(driver.calls.filter { $0.hasPrefix("systemUICovering") }.count, 1, "\(driver.calls)")
     }
 
-    /// 出ているアラートは毎回聞いて毎回名指しする
-    func testAnAlertIsNamedOnEveryReply() async throws {
+    /// 出ているアラートは毎回聞いて毎回断る(使い回しで2回目が素通りしない)
+    func testAnAlertRefusesEveryTap() async throws {
         driver.snapshotResponse = screen([element(x: 10)])
         driver.scriptedSystemAlert = SystemAlertProbeResponse(
             present: true, title: "何かのアラート", buttons: ["OK"])
         _ = try await server.call(tool: "ft_snapshot", args: [:])
 
-        let first = try await server.call(tool: "ft_tap", args: ["ref": 1])
-        let second = try await server.call(tool: "ft_tap", args: ["ref": 1])
-
-        XCTAssertTrue(Self.text(first).contains("a system alert"), Self.text(first))
-        XCTAssertTrue(Self.text(second).contains("a system alert"), Self.text(second))
+        for _ in 0..<2 {
+            do {
+                _ = try await server.call(tool: "ft_tap", args: ["ref": 1])
+                XCTFail("アラートが前面にある間の ref タップは断るはず")
+            } catch {
+                XCTAssertTrue(error.localizedDescription.contains("a system alert"), error.localizedDescription)
+            }
+        }
         XCTAssertEqual(driver.calls.filter { $0 == "systemAlert" }.count, 2, "\(driver.calls)")
+        XCTAssertFalse(driver.calls.contains { $0.hasPrefix("tap") }, "\(driver.calls)")
     }
 }

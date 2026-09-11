@@ -340,8 +340,12 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   ボタン)を残す。止めない・閉じない(新しい検知は警告から。閉じるのはシナリオの責務)。
   失敗文言に題名が出るので、時間切れの仕分けが「アラートだった」で即決まる。**MCP も同じ形**
   (2026-08-31): `ft_launch` / `ft_open_url` / `ft_install` / `ft_clear_app_data` の直後の**最初の
-  `ft_snapshot` で1回**、`ft_tap` の ref 照合では毎回聞き、前面にあれば題名・ボタンを名指しして
-  SpringBoard へ attach する手順を出す(SpringBoard に attach 中は出さない)。判定は `SystemUIGate` の1箇所
+  `ft_snapshot` で1回**、**ref の操作(ft_tap / ft_type / ft_clear_input / ft_long_press / ft_batch の1手目)
+  では毎回聞き、前面にあれば断る**(題名・ボタンを名指しして SpringBoard へ attach する手順を出す。
+  SpringBoard に attach 中は断らない)。**MCP だけ警告でなく拒否**なのは、どちらのエンジンでも操作が
+  届くため —— in-app はアラートを残したまま背面のアプリが反応し、XCUITest は XCTest の割り込み処理が
+  アラートのボタン(拒否側)を押して権限を黙って変える(実測)。座標の操作は断らない(XCUITest では
+  アラートそのものに当たる)。判定は `SystemUIGate` の1箇所
 - **起動元の自己申告と doctor の刈り取り(2026-07-30)**: 3ブリッジとも `/status` で起動元
   (`ownerRepo`。iOS xcuitest はホスト上で停止できる `ownerPid` も)と直前の無通信秒数
   (`idleSeconds`)を申告する(注入経路: xctestrun 環境変数 / `-e owner` / SIMCTL_CHILD)。
