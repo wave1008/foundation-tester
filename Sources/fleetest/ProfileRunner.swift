@@ -50,6 +50,58 @@ enum ProfileRunner {
         }
     }
 
+    /// **開始スクリプトと供給の前**に、使う台の lease キーを台の実体から引いて二重使用を断る。
+    /// 供給段は破壊的な準備(Wipe Data・GPU 復帰・古いブリッジの停止・凍結台の再起動)を含むので、
+    /// ワーカー構築後の判定(rejectIfDeviceLeased)だけだと、2本目が1本目の台を消去・再起動してから断る。
+    /// 引けない台(停止中のエミュレータ・一覧に無いシミュレータ)は飛ばす —— 生きた run はそこを掴めない。
+    /// ワーカー構築後の判定は残す(準備で serial が変わりうる)。ApiRunCommand と共用
+    static func rejectIfDevicesLeasedBeforePreparation(
+        resolved: ResolvedProfile, leaseStateDir: URL?,
+        selfPID: Int32 = ProcessInfo.processInfo.processIdentifier
+    ) throws {
+        guard let leaseStateDir else { return }
+        let conflicts = RunLeaseGuard.conflicts(
+            devices: leaseKeysBeforePreparation(resolved: resolved), selfPID: selfPID,
+            holderPID: { RunLease.holderPID(stateDir: leaseStateDir, key: $0) })
+        guard conflicts.isEmpty else {
+            throw ProfileWorkerFactory.InstallError(message: RunLeaseGuard.message(conflicts))
+        }
+    }
+
+    /// 台 → lease キー(Android = serial / iOS = udid。RunWorker の `serial ?? udid` と同じ値)。
+    /// 解決の規則はワーカー構築と同じもの(AndroidDeviceCatalog.canonicalAVDID + 起動中の AVD /
+    /// SimulatorCatalog.resolve)。iOS 実機は devicectl を引かず udid の記載をそのまま使う
+    static func leaseKeysBeforePreparation(resolved: ResolvedProfile) -> [(device: String, key: String)] {
+        var keys: [(device: String, key: String)] = []
+        let android = resolved.androidDevices
+        if !android.isEmpty {
+            let running = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
+            for device in android {
+                let serial: String?
+                if device.spec.isPhysical {
+                    serial = device.spec.serial
+                } else if let avd = device.spec.avd {
+                    let canonical = AndroidDeviceCatalog.canonicalAVDID(avd)
+                    serial = running.first(where: { $0.value == canonical })?.key
+                } else {
+                    serial = nil
+                }
+                if let serial { keys.append(("\(device.name)(android:\(serial))", serial)) }
+            }
+        }
+        let ios = resolved.iosDevices
+        if !ios.isEmpty {
+            let simulators = (try? SimulatorCatalog.devices()) ?? []
+            for device in ios {
+                let udid = device.spec.isPhysical
+                    ? device.spec.udid
+                    : (try? SimulatorCatalog.resolve(spec: device.spec, in: simulators))?.udid
+                if let udid { keys.append(("\(device.name)(ios:\(udid))", udid)) }
+            }
+        }
+        return keys
+    }
+
     /// 戻り値: 実行サマリ(失敗数+劣化ワーカー)+ この run で実際に効いていた FM 設定。
     /// **fmSettings は tuple の2つ目として非 Optional で返す** —— `RunSummary.fmSettings` 自体は
     /// `RunOrchestrator` の生サマリ(プロファイルの実効値を知らないので常に nil)と共有する型なので
@@ -171,6 +223,8 @@ enum ProfileRunner {
         // 終了スクリプトは defer で必ず撃つ(途中の throw・シナリオの失敗のいずれでも)。
         // プロセスごと殺された場合は lease が残り、次の run と `fleetest hooks reap` が代わりに撃つ
         let hookStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
+        // 二重使用は開始スクリプトと破壊的な準備より前に断る(rejectIfDevicesLeasedBeforePreparation)
+        try Self.rejectIfDevicesLeasedBeforePreparation(resolved: resolved, leaseStateDir: hookStateDir)
         let hookSession = try RunHookRunner.begin(
             resolved: resolved, stateDir: hookStateDir) { ConsoleOut.out($0) }
         defer { RunHookRunner.end(hookSession) { ConsoleOut.out($0) } }
@@ -320,7 +374,7 @@ enum ProfileRunner {
         // を SIGTERM してから RunOrchestrator.run() の通常の完了経路(録画停止・lease 解放・
         // drain・summary)を通す(ApiRunCommand.runWithProfileParallel と同じ形。CLAUDE.md
         // 「終了猶予の方針」= 自前の後始末を持つ fleetest の子には時限の SIGKILL を送らない)
-        let interruptState = RunInterruptState()
+        let interruptState = RunInterruptState(recorder: recorder)
 
         let orchestrator = RunOrchestrator(
             project: project, workers: workers + eagerIOSWorkers,

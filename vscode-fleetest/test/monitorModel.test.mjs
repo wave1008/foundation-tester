@@ -3387,7 +3387,7 @@ test("updateRunProfileInObject: machine/app/reportDir は空文字ならキー�
   assert.equal("reportDir" in result.object, false);
 });
 
-test("updateRunProfileInObject: defaultTimeout は空文字でキー削除、正の数文字列(小数可)で number 化、不正値でエラー", () => {
+test("updateRunProfileInObject: defaultTimeout は空文字でキー削除、0 以上の数文字列(小数可)で number 化、不正値でエラー", () => {
   const removed = updateRunProfileInObject(
     { defaultTimeout: 10 },
     { ...BASE_RUN_PROFILE_FIELDS, defaultTimeout: "" },
@@ -3406,7 +3406,14 @@ test("updateRunProfileInObject: defaultTimeout は空文字でキー削除、正
   assert.equal(fractional.object.defaultTimeout, 1.5);
   assert.equal(typeof fractional.object.defaultTimeout, "number");
 
-  for (const invalid of ["0", "-1", "0.0", "1.2.3", "1e3", ".5", "abc"]) {
+  // 0 は正当(初回スナップショットだけ。CLI の --set defaultTimeout=0 と同じ規則)
+  for (const zeroText of ["0", "0.0"]) {
+    const zero = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, defaultTimeout: zeroText });
+    assert.equal(zero.ok, true, `defaultTimeout=${zeroText} は正当な値`);
+    assert.equal(zero.object.defaultTimeout, 0);
+  }
+
+  for (const invalid of ["-1", "1.2.3", "1e3", ".5", "abc"]) {
     const result = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, defaultTimeout: invalid });
     assert.equal(result.ok, false, `defaultTimeout=${invalid} は不正値としてエラーになるべき`);
     assert.match(result.error, /defaultTimeout/);

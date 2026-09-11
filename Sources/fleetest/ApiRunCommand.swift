@@ -223,10 +223,11 @@ struct ApiRunCommand: AsyncParsableCommand {
         if let scenarioTimeout, scenarioTimeout < 1 {
             throw ValidationError("--scenario-timeout must be a positive number of seconds")
         }
-        // defaultTimeout は DSL の検証待ち秒。0以下・NaN(`Double("nan")` はパース成功する)は
-        // 無意味な値
-        if let defaultTimeout, !(defaultTimeout > 0 && defaultTimeout.isFinite) {
-            throw ValidationError("--default-timeout must be a positive, finite number of seconds")
+        // defaultTimeout は DSL の検証待ち秒。0 は正当(初回スナップショットだけ = `timeout: 0` と同じ)。
+        // 負値・NaN(`Double("nan")` はパース成功する)・無限大は断る(`--set defaultTimeout=` と同じ検査)
+        if let defaultTimeout, !(defaultTimeout >= 0 && defaultTimeout.isFinite) {
+            throw ValidationError("--default-timeout must be a non-negative, finite number of seconds"
+                + " (0 = the first snapshot only, no waiting)")
         }
         // 純粋にローカルだけの実行で --wait-lock は打ち間違い(待つ相手が居ない)。
         // 判定は run と同じ FTRemote.RemoteDispatchFlagPolicy(2つ目の規則を作らない。--fleet は
@@ -438,6 +439,11 @@ struct ApiRunCommand: AsyncParsableCommand {
         var hookSession: RunHookSession?
         if let resolved = resolvedProfile {
             let hookStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
+            // 二重使用は開始スクリプトと破壊的な準備より前に断る(ProfileRunner と同じ判定)
+            if !dryRun {
+                try ProfileRunner.rejectIfDevicesLeasedBeforePreparation(
+                    resolved: resolved, leaseStateDir: hookStateDir)
+            }
             hookSession = try RunHookRunner.begin(
                 resolved: resolved, stateDir: hookStateDir) { logStderr($0) }
         }
@@ -870,15 +876,21 @@ struct ApiRunCommand: AsyncParsableCommand {
         // SIGINT/SIGTERM を受けたら、次のシナリオへ進まず・今動いている子を SIGTERM してから
         // 普通に return する(呼び出し元 run() の通常の完了経路 = recorder.finish/RunCompletionSweep
         // をそのまま通す。新しい分岐を足さない)
-        let interruptState = RunInterruptState()
+        let interruptState = RunInterruptState(recorder: recorder)
         let interruptRelay = InterruptRelay.observing { interruptState.requestStop() }
         defer { interruptRelay.stop() }
 
         var passedCount = 0
         var failedCount = 0
         var timing = ScenarioTimingTracker()
-        for info in selected {
-            guard !interruptState.isStopped else { break }
+        for (index, info) in selected.enumerated() {
+            if interruptState.isStopped {
+                // 始まらなかった分を記録して失敗に数える(RunRecorder.recordInterruptedBeforeStart)
+                let notStarted = Array(selected[index...])
+                recorder?.recordInterruptedBeforeStart(notStarted, defaultPlatform: effectivePlatform)
+                failedCount += notStarted.count
+                break
+            }
             let scenarioPlatform = info.platform ?? effectivePlatform
             let connection = scenarioPlatform == "android"
                 ? DriverConnection(platform: "android", serial: serial)
@@ -997,15 +1009,21 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         // 中断時は次のシナリオへ進まず、今動いている子を SIGTERM してから普通に return する
         // (呼び出し元 run() の通常の完了経路をそのまま通す。runDirect と同じ形)
-        let interruptState = RunInterruptState()
+        let interruptState = RunInterruptState(recorder: recorder)
         let interruptRelay = InterruptRelay.observing { interruptState.requestStop() }
         defer { interruptRelay.stop() }
 
         var passedCount = 0
         var failedCount = 0
         var timing = ScenarioTimingTracker()
-        for info in selected {
-            guard !interruptState.isStopped else { break }
+        for (index, info) in selected.enumerated() {
+            if interruptState.isStopped {
+                // 始まらなかった分を記録して失敗に数える(RunRecorder.recordInterruptedBeforeStart)
+                let notStarted = Array(selected[index...])
+                recorder?.recordInterruptedBeforeStart(notStarted, defaultPlatform: defaultPlatform)
+                failedCount += notStarted.count
+                break
+            }
             let scenarioPlatform = info.platform ?? defaultPlatform
 
             let connection: DriverConnection
@@ -1129,7 +1147,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // (orchestrator.requestInterrupt() で配布停止・interruptState 経由で子の登録簿を撃つ)。
         // 立てた後は RunOrchestrator.run() の通常の完了経路(録画停止・lease 解放・drain・summary)を
         // そのまま通す —— ここでは新しい分岐を作らない
-        let interruptState = RunInterruptState()
+        let interruptState = RunInterruptState(recorder: recorder)
 
         let orchestrator = RunOrchestrator(
             project: project, workers: workers,

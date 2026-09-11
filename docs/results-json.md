@@ -211,7 +211,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | runGroup | String? | **同じ実行から分かれた run を束ねる鍵**。デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run(別 runID・別 machine・リモートは向こうの時計)になるので、`profile` と開始時刻では同じ実行かどうか決められない。ファンアウトの親が1回だけ発行し、手元の子にもリモートの子にも同じ値が入る。**単機の run と 2026-08-26 より前の記録では欠落**(束ねる相手が居ない) |
 | fmSettings | FMSettingsRecord? | **その run で実際に効いていた FM 設定**(プロファイルの値そのものではなく、`--set heal=…`/`--set falsePositiveCheck=…` 等の CLI 上書きを反映した後の実効値)。下記の7フィールドを常に持つ。**欄が無い = この版より前の記録**であって、FM が無効だった意味ではない(fmDead 等と同じく「無い」と「false」を混ぜない) |
 | setOverrides | [String: String]? | **この run に効いた `--set <key>=<value>` の上書き**(キーは実行プロファイル JSON のキーそのもの、値は型を問わず文字列化したもの。例 `{"scenarioTimeout": "3", "iosInappEngine": "false"}`)。上書きが無い run では省略(空辞書ではなく無し)。**打ち切り run(`--set scenarioTimeout=…` で短くした run 等)を insights/flaky の集計から機械的に外すための欄** —— この欄が無い記録では、`--set` で打ち切った run と通常の失敗が見分けられない(この版より前の記録は全て欄が無い) |
-| interrupted | Bool? | **この run が SIGINT/SIGTERM(拡張の「テストを中断」・端末の Ctrl-C・`kill <pid>` 等)を受けたか**。true の run は途中で打ち切られており、残っていたシナリオは `"the run was interrupted (SIGINT/SIGTERM) before this scenario started"` という理由で failed に数えられる。false は書かない(既存レコードと同じ形)。**results insights がここを見て「クラッシュ/強制終了」ではなく「利用者が止めた」と読み分ける**。2026-09-11 より前の記録には無い(それより前は中断で finishedAt 自体が欠落していた) |
+| interrupted | Bool? | **この run が SIGINT/SIGTERM(拡張の「テストを中断」・端末の Ctrl-C・`kill <pid>` 等)を受けたか**。true の run は途中で打ち切られており、残っていたシナリオは `"the run was interrupted (SIGINT/SIGTERM) before this scenario started"` という理由で failed に数えられる。false は書かない(既存レコードと同じ形)。**始まらなかったシナリオは `skipKind: "interrupted"` で記録され、`results insights` と flaky の判定からは外れる**(中断のたびに回帰の疑いを並べない)。2026-09-11 より前の記録には無い(それより前は中断で finishedAt 自体が欠落していた) |
 | abortReason | String? | **供給段(ワーカー構築・レーン検査等)の例外で run 全体が始まる前に終わったときの理由**(英語、人間可読)。この欄がある run は `total` 分すべて未実行(`passed:0`)。正常終了・`interrupted` の run では省略。**この欄が無いと理由はログにしか残らず、`results insights` の「クラッシュか強制終了」に紛れる**。2026-09-11 より前の記録には無い |
 
 ### fmSettings(`FMSettingsRecord`)
@@ -279,7 +279,8 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | errorLogs | [String]? | ❌/⚠️/⏱ で始まるログの末尾5件。**失敗時のみ** |
 | fm | FMUsageRecord? | FM 呼び出しの実測(成否によらず) |
 | timeline | [TimelineStepRecord]? | 全ステップ(到着順)。`notes` を含む |
-| skipKind | String? | `notApplicable`(対象プラットフォーム外 = 意図された未実行)/ `noWorker`(ワーカー不在等の事故) |
+| skipKind | String? | `notApplicable`(対象プラットフォーム外 = 意図された未実行)/ `noWorker`(ワーカー不在等の事故)/ `interrupted`(run の中断で始まらなかった。run の失敗数には数えるが、`results insights` と flaky の判定からは外す) |
+| interrupted | Bool? | **run が中断(SIGINT/SIGTERM)された後に失敗で終わった**(中断は走っているシナリオ子を止めるので、シナリオの性質とは無関係に落ちる)。true のときだけ書く。`skipKind: interrupted` と同じく `results insights` と flaky の判定からは外す |
 | reportPath | String? | Markdown レポート(リポジトリルート相対。**gitignore なので他マシンからは開けない**) |
 
 **ステップに到達しないまま落ちた run** では `failedSteps` が空になる(ブリッジ未接続・

@@ -440,6 +440,47 @@ final class RunResultsStoreTests: XCTestCase {
         XCTAssertFalse(meta?.host.isEmpty ?? true)
     }
 
+    /// 中断で始まらなかったシナリオは `skipKind: interrupted`・中断の理由で記録される(逐次経路3箇所と
+    /// RunOrchestrator のキュー残りが同じ形。insights はこの種類を履歴から外す)
+    func testRecordInterruptedBeforeStartWritesInterruptedSkipRecords() {
+        let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
+        recorder.recordInterruptedBeforeStart(
+            [ScenarioInfo(id: "Foo.a", title: "a", platform: "android"), ScenarioInfo(id: "Foo.b", title: "b")],
+            defaultPlatform: "ios")
+        let scenariosDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: recorder.runID)
+            .appendingPathComponent("scenarios")
+        func read(_ name: String) -> ScenarioRunRecord? {
+            (try? Data(contentsOf: scenariosDir.appendingPathComponent(name)))
+                .flatMap { try? JSONDecoder().decode(ScenarioRunRecord.self, from: $0) }
+        }
+        let a = read("Foo.a.json"), b = read("Foo.b.json")
+        XCTAssertEqual(a?.skipKind, .interrupted)
+        XCTAssertEqual(b?.skipKind, .interrupted)
+        XCTAssertEqual(a?.platform, "android")
+        XCTAssertEqual(b?.platform, "ios")
+        XCTAssertEqual(a?.passed, false)
+        XCTAssertEqual(a?.failedSteps?.first?.description, RunRecorder.interruptedBeforeStartReason)
+    }
+
+    /// 中断の印(markInterrupted)より後に書く**失敗**だけに `interrupted: true` が付く
+    /// (印より前の失敗・合格・合成レコードには付けない)
+    func testFailuresRecordedAfterTheInterruptAreMarkedInterrupted() {
+        let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
+        recorder.record(makeScenarioRecord(scenarioID: "Foo.before", runID: "", passed: false))
+        recorder.markInterrupted()
+        recorder.record(makeScenarioRecord(scenarioID: "Foo.killed", runID: "", passed: false))
+        recorder.record(makeScenarioRecord(scenarioID: "Foo.passed", runID: "", passed: true))
+        let scenariosDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: recorder.runID)
+            .appendingPathComponent("scenarios")
+        func read(_ name: String) -> ScenarioRunRecord? {
+            (try? Data(contentsOf: scenariosDir.appendingPathComponent(name)))
+                .flatMap { try? JSONDecoder().decode(ScenarioRunRecord.self, from: $0) }
+        }
+        XCTAssertNil(read("Foo.before.json")?.interrupted)
+        XCTAssertEqual(read("Foo.killed.json")?.interrupted, true)
+        XCTAssertNil(read("Foo.passed.json")?.interrupted)
+    }
+
     /// issuer は begin() 時点で焼き込まれ、finish() でも同じ値が引き継がれる
     func testBeginAndFinishRecordIssuer() {
         let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)

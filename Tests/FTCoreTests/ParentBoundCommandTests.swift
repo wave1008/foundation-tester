@@ -53,6 +53,30 @@ final class ParentBoundCommandTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(start), Double(ParentBoundCommand.pollSeconds))
     }
 
+    /// **出力をパイプで読む側の EOF も遅らせない**(ディスパッチャは ssh の stdout を EOF まで中継する)。
+    /// 見張りが stdout を継いでいると、見張りの `sleep` がパイプを握って EOF が見張りの間隔ぶん遅れる
+    func testOutputPipeReachesEOFWithoutWaitingForThePoll() throws {
+        let process = Process()
+        let argv = ParentBoundCommand.wrap(["/bin/echo", "hi"],
+                                           parentPID: ProcessInfo.processInfo.processIdentifier)
+        process.executableURL = URL(fileURLWithPath: argv[0])
+        process.arguments = Array(argv.dropFirst())
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        let start = Date()
+        try process.run()
+        var output = Data()
+        while true {
+            let chunk = pipe.fileHandleForReading.availableData
+            if chunk.isEmpty { break }
+            output.append(chunk)
+        }
+        XCTAssertEqual(String(decoding: output, as: UTF8.self), "hi\n")
+        XCTAssertLessThan(Date().timeIntervalSince(start), Double(ParentBoundCommand.pollSeconds) / 2)
+        process.waitUntilExit()
+    }
+
     /// **親(包みを起こしたプロセス)が SIGKILL で死んだら、子を止める**(孤児の ssh を残さない)
     func testStopsTheChildWhenItsParentDies() throws {
         // 親 = 包みを背景で起こして待つ sh(launcher)。包みには launcher 自身の pid($$)を親として渡す

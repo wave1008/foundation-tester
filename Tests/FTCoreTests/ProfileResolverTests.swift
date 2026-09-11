@@ -900,10 +900,15 @@ final class ProfileResolverTests: XCTestCase {
     }
 
     /// **NaN は JSON の literal ではない**ので profile JSON からは書けない(`--set defaultTimeout=nan`
-    /// 側のテストで確認する)。ここでは 0/負値だけを見る
-    func testValidateRunDefaultTimeoutZeroOrNegativeErrors() throws {
+    /// 側のテストで確認する)。ここでは負値だけを見る。**0 は正当**(初回スナップショットだけ)
+    func testValidateRunDefaultTimeoutNegativeErrorsButZeroIsAccepted() throws {
         try writeStandardFixture()
-        for bad in ["0", "-1.5"] {
+        let zero = #"{ "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "defaultTimeout": 0 }"#
+            .data(using: .utf8)!
+        let (zeroErrors, _) = ProfileResolver.validate(
+            kind: .run, data: zero, context: "runs/zeroDefaultTimeout.json", project: project)
+        XCTAssertFalse(zeroErrors.contains { $0.contains("defaultTimeout") }, "\(zeroErrors)")
+        for bad in ["-1.5"] {
             let data = #"{ "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "defaultTimeout": \#(bad) }"#
                 .data(using: .utf8)!
             let (errors, _) = ProfileResolver.validate(

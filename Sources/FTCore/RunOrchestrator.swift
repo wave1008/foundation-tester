@@ -345,10 +345,58 @@ private actor Counter {
 
 /// 中断要求の状態(RunOrchestrator.requestInterrupt() が立てる)。並列ワーカーから
 /// 読まれるため actor で直列化する(他の Counter 等と同じ理由)
-private actor RunInterruptFlag {
+actor RunInterruptFlag {
     private var requested = false
-    func request() { requested = true }
+    private var waiters: [CheckedContinuation<Bool, Never>] = []
+    func request() {
+        requested = true
+        resumeWaiters(with: true)
+    }
     func isRequested() -> Bool { requested }
+    /// 中断が来たら true・`stopWaiting()` で打ち切られたら false を返す(待ち手を漏らさないため、
+    /// 待ちの相手が先に終わった呼び手は必ず stopWaiting を呼ぶ)
+    func waitUntilRequested() async -> Bool {
+        if requested { return true }
+        return await withCheckedContinuation { waiters.append($0) }
+    }
+    func stopWaiting() { resumeWaiters(with: false) }
+    private func resumeWaiters(with value: Bool) {
+        let pending = waiters
+        waiters.removeAll()
+        pending.forEach { $0.resume(returning: value) }
+    }
+}
+
+/// `work` の結果を待つ。**ただし中断が先に来たら待たずに `fallback` を返す**(`work` は背後で最後まで
+/// 走る = 取り消す口の無い仕事でも呼び手は抜けられる)。`work` が先に終われば待ち手を片付けてから返す
+func awaitUnlessInterrupted<T: Sendable>(
+    _ work: @escaping @Sendable () async -> T, interrupted flag: RunInterruptFlag, fallback: T
+) async -> T {
+    await withCheckedContinuation { continuation in
+        let first = FirstResumer(continuation)
+        Task {
+            let value = await work()
+            await flag.stopWaiting()
+            first.resume(value)
+        }
+        Task {
+            if await flag.waitUntilRequested() { first.resume(fallback) }
+        }
+    }
+}
+
+/// 2つの async のうち先に終わったほうの値(一度だけ resume する)
+private final class FirstResumer<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Value, Never>?
+    init(_ continuation: CheckedContinuation<Value, Never>) { self.continuation = continuation }
+    func resume(_ value: Value) {
+        lock.lock()
+        let pending = continuation
+        continuation = nil
+        lock.unlock()
+        pending?.resume(returning: value)
+    }
 }
 
 /// 1 シナリオあたりの凍結再実行上限。ポイズンシナリオのフリート全滅を防ぐ
@@ -941,8 +989,13 @@ public final class RunOrchestrator {
             }
             // 遅延参加(iOS ブリッジ供給待ち)。この await の間も上で積んだ初期ワーカーの子タスクは
             // 並行実行される(group スコープ内の await は子を止めない)ため、Android は先に走り出す。
+            // **中断が来たら供給を待たない** —— 供給(シミュレータの起動・ブリッジのビルド)は数分かかりうり、
+            // 待つと Ctrl-C が効かず、2回目の Ctrl-C が後始末を飛ばして即終了する。供給は背後で最後まで
+            // 走る(取り消す口が無い)が、その台にはシナリオを配らない(キュー残りは中断として記録される)
             if let late = lateWorkers {
-                for worker in await late.provider() {
+                let joiners = await awaitUnlessInterrupted(
+                    late.provider, interrupted: interruptRequested, fallback: [])
+                for worker in joiners {
                     guard let queue = queues[queueKey(worker)] else { continue }
                     await joinedKeys.insert(queueKey(worker))
                     await admit(worker, queue)
@@ -969,13 +1022,14 @@ public final class RunOrchestrator {
         for (key, queue) in queues {
             var drain = drainInfo(key, joined.contains(key))
             if interrupted {
-                drain.reason = "the run was interrupted (SIGINT/SIGTERM) before this scenario started"
+                drain.reason = RunRecorder.interruptedBeforeStartReason
             }
             while let item = await queue.next() {
                 continuation.yield(.flowSkipped(flowURL: item.url, reason: drain.reason))
                 recorder?.recordSkipped(scenarioID: item.info.id, title: item.info.title,
                                         platform: drain.platform, worker: drain.worker,
-                                        reason: drain.reason)
+                                        reason: drain.reason,
+                                        kind: interrupted ? .interrupted : .noWorker)
                 failed += 1
             }
         }

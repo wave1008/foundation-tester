@@ -107,7 +107,25 @@ public final class RunRecorder: @unchecked Sendable {
         record.runID = runID
         record.host = machine
         record.profile = profile
+        if !record.passed, record.skipKind == nil, isInterrupted { record.interrupted = true }
         write(record)
+    }
+
+    /// run が中断された(SIGINT/SIGTERM)。以後に書く**失敗**の記録に `interrupted: true` を付ける
+    /// (中断がシナリオ子を止めたので、シナリオの性質の失敗ではない)。中断の受け口
+    /// (RunInterruptState.requestStop)が1回目に呼ぶ
+    public func markInterrupted() {
+        interruptLock.lock()
+        interruptMarked = true
+        interruptLock.unlock()
+    }
+
+    private let interruptLock = NSLock()
+    private var interruptMarked = false
+    private var isInterrupted: Bool {
+        interruptLock.lock()
+        defer { interruptLock.unlock() }
+        return interruptMarked
     }
 
     /// 実行に至らなかったシナリオの合成レコード。kind の既定は `.noWorker`(インフラ都合)で、
@@ -124,6 +142,22 @@ public final class RunRecorder: @unchecked Sendable {
             failedSteps: [FailedStepRecord(index: 0, description: reason)],
             skipKind: kind)
         write(record)
+    }
+
+    /// 中断(SIGINT/SIGTERM)で**始まらなかった**シナリオの理由(RunOrchestrator のキュー残りと
+    /// 逐次経路 3 箇所で同じ文言にする)
+    public static let interruptedBeforeStartReason =
+        "the run was interrupted (SIGINT/SIGTERM) before this scenario started"
+
+    /// 中断で始まらなかったシナリオを `skipKind: interrupted` で記録する(逐次経路は中断を受けると
+    /// ループを抜けるだけなので、呼び手が残りをここへ渡す)。**呼び手は同じ本数を失敗数に足す** ——
+    /// 足さないと「全体 - 失敗」で数える経路が走っていない分を合格と数え、「All N passed」で exit 0 になる
+    public func recordInterruptedBeforeStart(_ scenarios: [ScenarioInfo], defaultPlatform: String) {
+        for info in scenarios {
+            recordSkipped(scenarioID: info.id, title: info.title,
+                          platform: info.platform ?? defaultPlatform, worker: nil,
+                          reason: Self.interruptedBeforeStartReason, kind: .interrupted)
+        }
     }
 
     /// 凍結・環境エラーによる再実行時に直前の記録を取り消す。

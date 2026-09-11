@@ -176,7 +176,7 @@ export interface ScenarioRunRecord {
   readonly failedSteps?: readonly FailedStepRecord[] | null;
   /** ❌/⚠️/⏱ で始まるログの末尾5件。失敗時のみ。 */
   readonly errorLogs?: readonly string[] | null;
-  /** "notApplicable"(対象プラットフォーム外)/ "noWorker"(ワーカー不在等の事故)。 */
+  /** "notApplicable"(対象プラットフォーム外)/ "noWorker"(ワーカー不在等の事故)/ "interrupted"(run の中断で始まらなかった)。 */
   readonly skipKind?: string | null;
   readonly fixSuggestions?: readonly FixSuggestionRecord[] | null;
   /** 録画再生 UI 向け。ダッシュボードの表示には使わない(Array であることだけ検証)。 */

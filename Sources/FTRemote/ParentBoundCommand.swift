@@ -22,14 +22,16 @@ public enum ParentBoundCommand {
         ["/bin/sh", "-c", script, "fleetest-ssh-watch", String(parentPID)] + argv
     }
 
-    /// `$1` = 見張る親の pid。`$$` はサブシェルの中でも包み自身の pid
+    /// `$1` = 見張る親の pid。`$$` はサブシェルの中でも包み自身の pid。
+    /// **見張りの標準入出力は /dev/null** —— 継がせると、`kill $w` の後も見張りの `sleep` が出力の
+    /// パイプを握り続け、読み手(ディスパッチャの中継)の EOF が毎回最大 2 秒遅れる(実測 2.04 秒)
     static let script = """
         p=$1; shift
         "$@" & c=$!
         ( while kill -0 $c 2>/dev/null; do
             sleep \(pollSeconds)
             [ "$(ps -o ppid= -p $$ | tr -d ' ')" = "$p" ] || { kill -TERM $c 2>/dev/null; exit 0; }
-          done ) &
+          done ) </dev/null >/dev/null 2>&1 &
         w=$!
         wait $c; s=$?
         kill $w 2>/dev/null

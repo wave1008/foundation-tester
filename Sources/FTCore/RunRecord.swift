@@ -479,6 +479,10 @@ public enum ScenarioSkipKind: String, Codable, Sendable {
     case notApplicable
     /// 担当ワーカー不在・全滅・振り直し上限などのインフラ都合。従来どおり失敗として数える
     case noWorker
+    /// run が中断(SIGINT/SIGTERM)されて**始まらなかった**。run の失敗数には数えるが、シナリオの
+    /// 履歴(insights の連続失敗・新規失敗・flaky)には入れない —— 利用者が止めただけで、シナリオの
+    /// 性質ではない(入れると中断のたびに「回帰の疑い」が並ぶ)
+    case interrupted
 }
 
 public struct ScenarioRunRecord: Codable, Sendable {
@@ -487,7 +491,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, runID, scenarioID, title, platform, worker, host, machine, profile
         case passed, timedOut, startedAt, durationMs, scenes, steps, reportPath, failedSteps
-        case fixSuggestions, errorLogs, fm, timeline, skipKind
+        case fixSuggestions, errorLogs, fm, timeline, skipKind, interrupted
     }
 
     public init(from decoder: Decoder) throws {
@@ -514,6 +518,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
         fm = try c.decodeIfPresent(FMUsageRecord.self, forKey: .fm)
         timeline = try c.decodeIfPresent([TimelineStepRecord].self, forKey: .timeline)
         skipKind = try c.decodeIfPresent(ScenarioSkipKind.self, forKey: .skipKind)
+        interrupted = try c.decodeIfPresent(Bool.self, forKey: .interrupted)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -539,6 +544,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
         try c.encodeIfPresent(fm, forKey: .fm)
         try c.encodeIfPresent(timeline, forKey: .timeline)
         try c.encodeIfPresent(skipKind, forKey: .skipKind)
+        try c.encodeIfPresent(interrupted, forKey: .interrupted)
     }
 
     public var schemaVersion: Int
@@ -577,6 +583,11 @@ public struct ScenarioRunRecord: Codable, Sendable {
     public var timeline: [TimelineStepRecord]?
     /// recordSkipped の合成レコードだけが持つ理由の種別(通常実行は nil。旧レコードも nil)
     public var skipKind: ScenarioSkipKind?
+    /// **run が中断(SIGINT/SIGTERM)された後に失敗で終わった**(中断はシナリオ子へ SIGTERM を送るので、
+    /// そのとき走っていたシナリオはシナリオ自身の性質と無関係に落ちる)。true のときだけ書く。
+    /// insights・flaky はこの記録を履歴から外す(`RunResultsQuery.isInterruptedRecord`)。
+    /// 始まらなかった分は `skipKind: interrupted` のほう(RunRecorder.markInterrupted が付ける)
+    public var interrupted: Bool?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String = "",
                 scenarioID: String, title: String? = nil, platform: String, worker: String? = nil,

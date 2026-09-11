@@ -14,6 +14,7 @@
 
 import Foundation
 import XCTest
+@testable import fleetest
 
 final class RunFileDelegatedErrorAttributionTests: XCTestCase {
 
@@ -40,8 +41,22 @@ final class RunFileDelegatedErrorAttributionTests: XCTestCase {
         let window = code[windowStart..<windowEnd]
         XCTAssertTrue(window.contains("do {"), "RunScenarios.parse の呼び出しが do/catch で囲われていない")
         XCTAssertTrue(window.contains("catch"), "RunScenarios.parse の呼び出しが do/catch で囲われていない")
-        XCTAssertTrue(window.contains("ValidationError(error.localizedDescription)"),
+        XCTAssertTrue(window.contains("ValidationError(RunScenarios.message(for: error))"),
                       "捕まえたエラーを ValidationError へ詰め直していない"
-                      + "(素通しすると RunScenarios=`run` の Usage/help 案内が run-file の失敗に出る)")
+                      + "(素通しすると RunScenarios=`run` の Usage/help 案内が run-file の失敗に出る。"
+                      + "localizedDescription で詰めると ArgumentParser の内部エラーの本文が消える)")
+    }
+
+    /// 詰め直しに使う文言は本文を保つ(localizedDescription だと ArgumentParser の内部エラーが
+    /// 「The operation couldn't be completed.」に化ける)
+    func testDelegatedParseErrorKeepsItsMessage() {
+        do {
+            _ = try RunScenarios.parse(["--no-such-flag"])
+            XCTFail("an unknown flag must not parse")
+        } catch {
+            let message = RunScenarios.message(for: error)
+            XCTAssertTrue(message.contains("no-such-flag"), message)
+            XCTAssertFalse(message.contains("The operation couldn"), message)
+        }
     }
 }

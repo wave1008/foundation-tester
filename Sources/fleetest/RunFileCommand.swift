@@ -113,11 +113,13 @@ struct RunFileCommand: AsyncParsableCommand {
         // See 'run --help'」が出て run-file の呼び手を誤誘導する。メッセージ本文だけを
         // run-file 自身の throw として持ち直す(Fleetest.swift/ApiRunCommand.swift の
         // RunProfileSetOverride.parse 呼び出しと同じ規律)
+        // 詰め直しは **localizedDescription ではなく message(for:)** —— ArgumentParser の内部エラーは
+        // LocalizedError ではないので「The operation couldn't be completed.」に化けて本文が消える
         let command: RunScenarios
         do {
             command = try RunScenarios.parse(arguments)
         } catch {
-            throw ValidationError(error.localizedDescription)
+            throw ValidationError(RunScenarios.message(for: error))
         }
         try await command.run()
     }

@@ -725,7 +725,7 @@ public enum RunProfileSetOverrideError: Error, LocalizedError {
     case unknownKey(String, available: [String])
     /// `devices`/`remoteControl`(配列・オブジェクト)は `key=value` で表せない
     case arrayOrObjectKey(String)
-    /// 型は合っているが範囲外(`scenarioTimeout`/`defaultTimeout` の負値・0・NaN)。
+    /// 型は合っているが範囲外(`scenarioTimeout` の負値・0 / `defaultTimeout` の負値・NaN)。
     /// `invalidValue` と分けるのは、型不一致(整数の場所に文字列)と範囲外(整数だが 0 以下)を
     /// 同じ文言で混ぜると「何が悪いか」が伝わらないため
     case outOfRange(key: String, value: String, reason: String)
@@ -786,11 +786,12 @@ public enum RunProfileSetOverride {
                 guard let value = Double(rawValue) else {
                     throw RunProfileSetOverrideError.invalidValue(key: key, value: rawValue, expected: .double)
                 }
-                // defaultTimeout は DSL コマンドの検証待ち秒。0 以下・NaN(`Double("nan")` は
-                // 成功する)は「待たない」とも違う無意味な値で、下流の待ち処理を壊しかねない
-                if key == "defaultTimeout", !(value > 0 && value.isFinite) {
+                // defaultTimeout は DSL コマンドの検証待ち秒。**0 は正当**(初回スナップショットだけを見る。
+                // ステップの `timeout: 0` と同じ意味・docs/commands.md)。負値・NaN(`Double("nan")` は
+                // 成功する)・無限大は下流の待ち処理を壊すので断る
+                if key == "defaultTimeout", !(value >= 0 && value.isFinite) {
                     throw RunProfileSetOverrideError.outOfRange(
-                        key: key, value: rawValue, reason: "must be a positive, finite number of seconds")
+                        key: key, value: rawValue, reason: "must be a non-negative, finite number of seconds (0 = the first snapshot only, no waiting)")
                 }
                 result[key] = .double(value)
             case .string:
@@ -1822,13 +1823,13 @@ public enum ProfileResolver {
                     errors.append("\"wipeDataThresholdGB\" must be a positive number (GB)")
                 }
                 // 負値・0・NaN はホストの watchdog(ScenarioHost.watchdogDuration)まで
-                // 届くと壊れた/意味の無い挙動になる(0 秒 watchdog・即トリガー)。DSL 内部の
-                // 検証待ち(defaultTimeout)も同じ理由 —— 0 以下は「待たない」と区別が付かない
+                // 届くと壊れた/意味の無い挙動になる(0 秒 watchdog・即トリガー)
                 if let scenarioTimeout = doc.scenarioTimeout, scenarioTimeout < 1 {
                     errors.append("\"scenarioTimeout\" must be a positive number of seconds")
                 }
-                if let defaultTimeout = doc.defaultTimeout, !(defaultTimeout > 0 && defaultTimeout.isFinite) {
-                    errors.append("\"defaultTimeout\" must be a positive, finite number of seconds")
+                // 検証待ち(defaultTimeout)の 0 は正当(初回スナップショットだけを見る)。負値だけ断る
+                if let defaultTimeout = doc.defaultTimeout, !(defaultTimeout >= 0 && defaultTimeout.isFinite) {
+                    errors.append("\"defaultTimeout\" must be a non-negative, finite number of seconds (0 = the first snapshot only, no waiting)")
                 }
                 let locale = (doc.locale ?? "ja_JP").trimmingCharacters(in: .whitespacesAndNewlines)
                 if !isValidLocale(locale) {

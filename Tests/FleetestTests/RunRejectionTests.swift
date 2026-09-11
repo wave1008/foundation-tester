@@ -118,13 +118,14 @@ final class RunRejectionTests: XCTestCase {
         }
     }
 
-    func testApiRunRejectsZeroNegativeOrNaNDefaultTimeout() {
-        for bad in ["0", "-1.5", "nan"] {
+    func testApiRunRejectsNegativeOrNaNDefaultTimeoutButAcceptsZero() {
+        XCTAssertNoThrow(try ApiRunCommand.parse(["--scenario", "A.b", "--default-timeout=0"]))
+        for bad in ["-1.5", "nan", "inf"] {
             XCTAssertThrowsError(
                 try ApiRunCommand.parse(["--scenario", "A.b", "--default-timeout=\(bad)"])
             ) { error in
                 let message = ApiRunCommand.message(for: error)
-                XCTAssertTrue(message.contains("--default-timeout must be a positive"), message)
+                XCTAssertTrue(message.contains("--default-timeout must be a non-negative"), message)
             }
         }
     }

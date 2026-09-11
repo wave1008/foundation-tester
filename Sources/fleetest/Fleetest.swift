@@ -1680,7 +1680,7 @@ struct RunScenarios: AsyncParsableCommand {
         // 次のシナリオへ進まず、今動いている子(fleetest-scenarios)を SIGTERM してから
         // 普通に return する(呼び出し元の通常の完了経路をそのまま通す。ApiRunCommand.runDirect
         // と同じ形)
-        let interruptState = RunInterruptState()
+        let interruptState = RunInterruptState(recorder: recorder)
         let interruptRelay = InterruptRelay.observing { interruptState.requestStop() }
         defer { interruptRelay.stop() }
         let iosUdid = await Self.resolveUdid(port: port)
@@ -1705,8 +1705,14 @@ struct RunScenarios: AsyncParsableCommand {
             primingWorkers, homeOnStart: homeOnStart) { ConsoleOut.out($0) }
 
         var failedCount = 0
-        for item in items {
-            guard !interruptState.isStopped else { break }
+        for (index, item) in items.enumerated() {
+            if interruptState.isStopped {
+                // 始まらなかった分を記録して失敗に数える(RunRecorder.recordInterruptedBeforeStart)
+                let notStarted = items[index...].map(\.info)
+                recorder?.recordInterruptedBeforeStart(notStarted, defaultPlatform: resolvedPlatform)
+                failedCount += notStarted.count
+                break
+            }
             let platform = item.info.platform ?? resolvedPlatform
             let driver: AppDriver
             let connection: DriverConnection
@@ -1790,7 +1796,7 @@ struct RunScenarios: AsyncParsableCommand {
             workers, homeOnStart: homeOnStart) { ConsoleOut.out($0) }
 
         // ApiRunCommand.runWithProfileParallel / ProfileRunner.run と同じ形
-        let interruptState = RunInterruptState()
+        let interruptState = RunInterruptState(recorder: recorder)
         let orchestrator = RunOrchestrator(project: project, workers: workers,
                                            settings: settings,
                                            reportDir: URL(fileURLWithPath: reportDir),

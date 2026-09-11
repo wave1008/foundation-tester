@@ -461,6 +461,51 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertFalse(rows.contains { $0.kind == "consecutiveFailures" })
     }
 
+    /// 中断で始まらなかった記録(skipKind interrupted)はシナリオの履歴に入れない ——
+    /// 3連続 pass の後に来ても newFailure にしない(同じ位置の noWorker は従来どおり失敗)
+    private func passesThenSkip(_ kind: ScenarioSkipKind) -> [ScenarioRunRecord] {
+        var records = (0..<3).map { i in
+            makeRecord(scenarioID: "Foo.a", passed: true,
+                       startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 100)
+        }
+        var skipped = makeRecord(scenarioID: "Foo.a", passed: false, startedAt: "2026-01-04T00:00:00Z",
+                                 durationMs: 0, steps: StepCountsRecord(total: 1, skipped: 1))
+        skipped.skipKind = kind
+        records.append(skipped)
+        return records
+    }
+
+    func testInsightsIgnoreScenariosThatAnInterruptionKeptFromStarting() {
+        let rows = RunResultsQuery.insights(records: passesThenSkip(.interrupted), runs: [])
+        XCTAssertFalse(rows.contains { $0.kind == "newFailure" || $0.kind == "consecutiveFailures" }, "\(rows)")
+    }
+
+    /// 中断で止められて落ちた記録(interrupted: true)も履歴に入れない
+    func testInsightsIgnoreFailuresCausedByTheInterrupt() {
+        var records = (0..<3).map { i in
+            makeRecord(scenarioID: "Foo.a", passed: true,
+                       startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 100)
+        }
+        var killed = makeRecord(scenarioID: "Foo.a", passed: false, startedAt: "2026-01-04T00:00:00Z",
+                                durationMs: 1200)
+        killed.interrupted = true
+        records.append(killed)
+        let rows = RunResultsQuery.insights(records: records, runs: [])
+        XCTAssertFalse(rows.contains { $0.kind == "newFailure" }, "\(rows)")
+    }
+
+    func testInsightsStillCountANoWorkerSkipAsAFailure() {
+        let rows = RunResultsQuery.insights(records: passesThenSkip(.noWorker), runs: [])
+        XCTAssertTrue(rows.contains { $0.kind == "newFailure" }, "\(rows)")
+    }
+
+    func testFlakyIgnoresScenariosThatAnInterruptionKeptFromStarting() {
+        var records = passesThenSkip(.interrupted)
+        records.append(makeRecord(scenarioID: "Foo.a", passed: true,
+                                  startedAt: "2026-01-05T00:00:00Z", durationMs: 100))
+        XCTAssertTrue(RunResultsQuery.flakyScenarios(records, minRuns: 2, recentRuns: .max).isEmpty)
+    }
+
     func testInsightsNoNewFailureWithOnlyTwoPriorPasses() {
         let records = (0..<3).map { i in
             makeRecord(

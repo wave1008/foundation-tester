@@ -303,12 +303,16 @@ struct RemoteRunDispatcher {
             var decision = Self.staleLockAutoRelease(
                 lockRead: existing, myIssuer: LocalConfig.resolveIssuerId(),
                 myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive)
+            // 「自分の死んだディスパッチ」と判定できた(= release)のに、ランナー上でその run が生きていた/
+            // 確かめられなかった回だけ専用の文言にする。それ以外(自分の生きているディスパッチ・他人のロック)は
+            // 定型文(--wait-lock / unlock の案内付き)のまま
+            var keptBecauseRunIsAlive: String?
             if case .release = decision {
                 decision = RemoteDispatchUnlock.guardingLiveRemoteRun(
                     decision, livePIDs: liveDispatchedRunPIDs(layout: layout))
+                if case .refuse(let reason) = decision { keptBecauseRunIsAlive = reason }
             }
-            switch decision {
-            case .release(let reason):
+            if case .release(let reason) = decision {
                 log("==> auto-releasing a stale dispatch lock on \(host.sshTarget) left by a dead process"
                     + " of ours (\(reason))")
                 _ = try? sshCapture(RemoteDispatchLock.releaseCommand(base: layout.base))
@@ -316,14 +320,12 @@ struct RemoteRunDispatcher {
                     base: layout.base, info: info)])
                 if result.status == 0 { return }
                 existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
-            case .refuse(let reason) where Self.isOwnStaleLock(lockRead: existing):
-                // 自分の死んだディスパッチのロックだが、その run がまだ生きている/確かめられない。
+            }
+            if let keptBecauseRunIsAlive {
                 // 定型文(heldMessage)は unlock を勧めるので使わない(unlock も同じ理由で断る)
                 throw RemoteDispatchError.remoteSetupFailed(
                     "the dispatch lock on \(host.sshTarget) belongs to an earlier dispatch of yours from this"
-                    + " Mac that is no longer running here, so it was not released: \(reason)")
-            default:
-                break
+                    + " Mac that is no longer running here, so it was not released: \(keptBecauseRunIsAlive)")
             }
             throw RemoteDispatchError.remoteSetupFailed(Self.dispatchLockFailureMessage(
                 status: result.status, lockRead: existing, tail: result.tail, sshTarget: host.sshTarget))
@@ -337,13 +339,6 @@ struct RemoteRunDispatcher {
                                                     RemoteDispatchLock.liveDispatchedRunsCommand(base: layout.base)]),
               probe.status == 0 else { return nil }
         return RemoteDispatchLock.parseLivePIDs(probe.output)
-    }
-
-    /// 控えが「自分がこの機械から掴んだ」ロックか(自動回収を試みた = 名指しして断る理由を足す対象)
-    static func isOwnStaleLock(lockRead: String?) -> Bool {
-        guard let lockRead, let info = RemoteDispatchLock.decode(lockRead) else { return false }
-        return info.issuer == LocalConfig.resolveIssuerId()
-            && info.issuerHost.caseInsensitiveCompare(ProcessInfo.processInfo.hostName) == .orderedSame
     }
 
     /// 取得失敗のあと、既存ロックの控え(生の JSON テキスト。読めなければ nil・空はロック不在)から

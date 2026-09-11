@@ -363,7 +363,8 @@ export function updateRunProfileInObject(
   const timeoutTrimmed = fields.defaultTimeout.trim();
   if (timeoutTrimmed.length === 0) {
     delete result.defaultTimeout;
-  } else if (!/^\d+(\.\d+)?$/.test(timeoutTrimmed) || Number(timeoutTrimmed) <= 0) {
+  } else if (!/^\d+(\.\d+)?$/.test(timeoutTrimmed)) {
+    // 0 は正当(初回スナップショットだけを見る。CLI の --set defaultTimeout= と同じ規則)
     return { ok: false, error: t("monitor.runProfile.defaultTimeoutInvalid") };
   } else {
     result.defaultTimeout = Number(timeoutTrimmed);

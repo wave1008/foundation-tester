@@ -19,6 +19,7 @@
 // 全体に届くので子も自力で止まり、差が出ない)。ソースは登録が 0→1 で立て、1→0 で戻す。
 
 import Foundation
+import FTCore
 
 final class InterruptRelay {
     private enum Target {
@@ -158,6 +159,13 @@ final class RunInterruptState: @unchecked Sendable {
     private let lock = NSLock()
     private var stopped = false
     private var runningProcesses: [ObjectIdentifier: Process] = [:]
+    /// 1回目の中断で `markInterrupted()` を呼ぶ相手(以後に書く失敗の記録へ `interrupted: true` を付ける)。
+    /// **既定値を置かない** —— 渡し忘れると中断で止めたシナリオが「回帰の疑い」として履歴に残る
+    private let recorder: RunRecorder?
+
+    init(recorder: RunRecorder?) {
+        self.recorder = recorder
+    }
 
     var isStopped: Bool {
         lock.lock(); defer { lock.unlock() }
@@ -173,6 +181,8 @@ final class RunInterruptState: @unchecked Sendable {
         stopped = true
         let toKill = Array(runningProcesses.values)
         lock.unlock()
+        // 子を止める前に印を付ける(止めた子の失敗の記録が印より先に書かれないように)
+        if firstTime { recorder?.markInterrupted() }
         for process in toKill where process.isRunning { process.terminate() }
         guard !firstTime else { return }
         // rc=143 は「同じシグナルを2回受けた」ことの目印(1回目は下の通常経路で rc=1 になる)

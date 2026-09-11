@@ -22,7 +22,7 @@ final class RunInterruptStateTests: XCTestCase {
     /// 中断時に「今動いているシナリオ子」が SIGTERM されず孤児として残る
     /// 
     func testRequestStopTerminatesRegisteredRunningProcesses() throws {
-        let state = RunInterruptState()
+        let state = RunInterruptState(recorder: nil)
         let p = try sleeper()
         defer { if p.isRunning { p.terminate() } }
         let unregister = state.registerChildProcess(p)
@@ -41,7 +41,7 @@ final class RunInterruptStateTests: XCTestCase {
     /// 落とすと、register と中断到着が競合したとき(中断が先に来ていた場合)その子だけ
     /// 生き残ってしまう
     func testRegisterChildProcessTerminatesImmediatelyIfAlreadyStopped() throws {
-        let state = RunInterruptState()
+        let state = RunInterruptState(recorder: nil)
         state.requestStop()  // まだ何も登録していない状態で中断済みにする(1回目 = exit しない)
         XCTAssertTrue(state.isStopped)
 
@@ -57,7 +57,7 @@ final class RunInterruptStateTests: XCTestCase {
     /// unregister 後は登録簿から外れる(次に requestStop() が呼ばれても触らない ——
     /// 直接には確認できないが、少なくとも unregister 自体がクラッシュしないことを確認する)
     func testUnregisterRemovesTheProcessWithoutCrashing() throws {
-        let state = RunInterruptState()
+        let state = RunInterruptState(recorder: nil)
         let p = try sleeper()
         defer { if p.isRunning { p.terminate() } }
         let unregister = state.registerChildProcess(p)

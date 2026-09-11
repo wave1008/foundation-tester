@@ -147,8 +147,9 @@ final class RunProfileSetOverrideParseTests: XCTestCase {
         }
     }
 
-    func testRejectsZeroNegativeOrNaNDefaultTimeout() {
-        for bad in ["0", "-1.5", "nan"] {
+    func testRejectsNegativeOrNaNDefaultTimeoutButAcceptsZero() {
+        XCTAssertNoThrow(try RunProfileSetOverride.parse(["defaultTimeout=0"]))
+        for bad in ["-1.5", "nan", "inf"] {
             XCTAssertThrowsError(try RunProfileSetOverride.parse(["defaultTimeout=\(bad)"])) { error in
                 guard case RunProfileSetOverrideError.outOfRange(let key, let value, _) = error else {
                     return XCTFail("expected outOfRange for defaultTimeout=\(bad), got \(error)")
