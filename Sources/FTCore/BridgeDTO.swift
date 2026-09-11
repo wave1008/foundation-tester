@@ -365,7 +365,11 @@ public enum BridgeAPI {
     /// ref that is not a text input now refuse (422) when the tap left keyboard focus on the field
     /// that had it before; they used to type/clear into that field and return ok, which also
     /// undid (e) under hybrid, where the host retries in-app's 409 on XCUITest.
-    public static let bridgeProtocolVersion = 95
+    /// v96 (in-app only): POST /clear on a WKWebView field no longer answers 409 ("no focused input
+    /// field") after actually emptying it — WebKit applies the edit asynchronously, so the
+    /// synchronous read-back still saw the old text; the caller verifies from the tree instead.
+    /// The (e) refusal names the ref as probably not a text input instead of "a different field".
+    public static let bridgeProtocolVersion = 96
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///

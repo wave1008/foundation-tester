@@ -319,6 +319,12 @@ static BOOL ftIsFlutterApp(void) {
     return NSClassFromString(@"FlutterViewController") != nil;
 }
 
+// WKWebView の入力受け口(WKContentView)か。私有クラスなので名前で引き、無ければ NO
+static BOOL ftIsWebContent(id responder) {
+    Class cls = NSClassFromString(@"WKContentView");
+    return cls != nil && [responder isKindOfClass:cls];
+}
+
 // Flutter の入力受け口か。**engine 配送(pressEnter)は受け口そのものを特定する必要がある**ため
 // こちらはクラス名で見る。secure 欄はサブクラスで別名なので prefix 一致では足りない
 static BOOL ftIsFlutterTextInput(id responder) {
@@ -390,6 +396,19 @@ BOOL FTClearTextInFirstResponder(void) {
         if ([view.delegate respondsToSelector:@selector(textViewDidChange:)]) {
             [view.delegate textViewDidChange:view];
         }
+        return YES;
+    }
+    // **WebView の欄(WKContentView)は全選択 → 1回の削除**。WebKit は文書範囲を返さず(range が nil)、
+    // 編集も Web プロセスで非同期に反映されるので、下の2経路はどちらも読み返しが減らないまま
+    // deleteBackward を上限(10000)まで空打ちして NO を返していた(実測: 欄は空になったのに 409
+    // 「焦点のある欄が無い」)。2つの命令は同じ IPC の順で処理されるので読み返しを待たずに届く。
+    // **ここでは読み返さない** —— 確かめは呼び手が木で行う(StepExecutor.performClearInput の
+    // 事後検証・MCP の replaceVerificationNote)
+    if (ftIsWebContent(responder)) {
+        if (![responder respondsToSelector:@selector(selectAll:)]
+            || ![responder conformsToProtocol:@protocol(UIKeyInput)]) return NO;
+        [responder selectAll:nil];
+        [(id<UIKeyInput>)responder deleteBackward];
         return YES;
     }
     // UITextField/UITextView 以外の UITextInput 準拠(Compose の IntermediateTextInputUIView 等)。

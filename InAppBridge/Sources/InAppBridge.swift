@@ -781,9 +781,10 @@ final class FTInAppBridge {
             ? target.map { $0.contains(CGPoint(x: rect.midX, y: rect.midY)) } ?? false
             : rect.contains(point)
         guard landed else {
-            return "keyboard focus landed on a different field than the one"
-                + " tapped — refusing to \(action) into the wrong field"
-                + " (receiver at \(Self.describe(rect)), tapped \(Int(point.x)),\(Int(point.y)))."
+            return "keyboard focus is not on the tapped element — it is on another field"
+                + " (receiver at \(Self.describe(rect)), tapped \(Int(point.x)),\(Int(point.y))),"
+                + " so \(action) would act on that field instead. The ref is probably not a text"
+                + " input (or the tap did not reach it): pass the ref of the input element itself."
         }
         return nil
     }
