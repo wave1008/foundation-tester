@@ -370,10 +370,15 @@ public enum RemoteArtifactCollection {
     /// §15.3 の既定(同一信頼グループ・全員が同じ UNIX ユーザー)では results/ は同僚全員が書けるので、
     /// 入力は「信頼するランナー」ではなく「共有ディレクトリ」として扱う。
     /// 送信(手元 → リモート)側の rsyncArgs には付けない —— 送る中身は手元の資産で、
-    /// 受け手のシンボリックリンク(TestProjects/ 内の正当な参照)を落とす副作用のほうが害になる
+    /// 受け手のシンボリックリンク(TestProjects/ 内の正当な参照)を落とす副作用のほうが害になる。
+    ///
+    /// **`--out-format=%n` は回収後の走査を今回の転送分だけに絞るためだけに付けている**: 今回**実際に転送された**ファイルの
+    /// 相対パスが rsync の stdout に1行ずつ出るので、呼び出し側(`transferredScenarioJSONPaths`)は
+    /// それだけを読めば済み、過去2か月分の全 run を毎回スキャンせずに済む。`-v` は付けない
+    /// (out-format 単独でも転送ログは出る。詳細ログは要らない)
     private static func rsyncArgs(project: String, layout: RemoteLayout,
                                   sshTarget: String, localProjectsDir: String) -> [String] {
-        var args = ["-az", "--safe-links"]
+        var args = ["-az", "--safe-links", "--out-format=%n"]
         args += [
             "\(sshTarget):\(layout.projectDir(project))/results/",
             "\(localProjectsDir)/\(project)/results/",
@@ -410,6 +415,20 @@ extension RemoteArtifactCollection {
     public static func isMissingSourceFailure(status: Int32, stderr: String) -> Bool {
         guard status == 23 else { return false }
         return stderr.contains("No such file or directory")
+    }
+
+    /// results 回収の rsync に `--out-format=%n` を足したときの stdout から、**今回実際に転送された**
+    /// scenario JSON の相対パス(results/ 起点。例 "runs/2026-09/20260910-195757Z-.../scenarios/S1.json")
+    /// だけを拾う。転送されなかった(差分無し = 既に回収済み)ファイルはここに現れないので、
+    /// 呼び出し側はこの一覧だけを読めば済み、**過去2か月分の全 run を毎回全件スキャンしなくてよくなる**
+    /// (46,945 ファイル・23.6 秒/回 × 2回 の実測。RemoteRunDispatcher.swift の
+    /// `saveHostFacts`/`relinkCollectedReports` が唯一の消費先)。ディスパッチの stamp は呼び出し側が
+    /// 一意に払い出すため、この run の scenario JSON は必ず「新規」として rsync の出力に現れる
+    /// (根拠のある窓や時刻の閾値を置かない代わりに、rsync 自身の差分判定に委ねる)
+    public static func transferredScenarioJSONPaths(rsyncOutput: String) -> [String] {
+        rsyncOutput.split(separator: "\n", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.contains("/scenarios/") && $0.hasSuffix(".json") }
     }
 }
 
@@ -1153,6 +1172,25 @@ public enum RemoteReportLink {
         let fileName = String(recorded[range.upperBound...])
         guard !fileName.isEmpty, !fileName.contains("/") else { return nil }
         return projectReportsPathFromRepoRoot + "/" + fileName
+    }
+
+    /// JUnit XML・NDJSON 中継行など、**まだ `workDir → localRoot` の単純置換をかけていない**
+    /// リモート絶対パスを含むテキストに対して、「ディスパッチ単位の隔離先 → 回収先
+    /// (`TestProjects/<project>/reports/`)」を**先に**当てる。マーカーは
+    /// `rewrittenReportPath` と同じ規則 —— ずれると scenario JSON の reportPath とログ上の
+    /// パスが別の場所を指す。
+    ///
+    /// 隔離先(`.fleetest/dispatch/<stamp>/reports/`)は回収後にリモート側で削除される
+    /// (`RemoteRunDispatcher.cleanupDispatchDir`)ので、この書き換えを飛ばして
+    /// `RemotePathRewrite.rewrite(remoteRoot: workDir, localRoot:)` だけを当てると、
+    /// `<手元ルート>/.fleetest/dispatch/<stamp>/reports/<file>` という**手元に実体の無いパス**が
+    /// 画面・JUnit に出る(実物は `<手元ルート>/TestProjects/<project>/reports/<file>`)。
+    /// 呼び出し側は、この関数の結果へさらに `RemotePathRewrite.rewrite` を適用すること
+    /// (workDir → localRoot の置換は変わらず必要 —— こちらは workDir 配下の相対部分だけを直す)
+    public static func rewriteDispatchReportPaths(_ text: String, stamp: String, project: String) -> String {
+        let marker = ".fleetest/dispatch/\(stamp)/reports/"
+        let replacement = "\(RemoteLayout.projectsDirName)/\(project)/reports/"
+        return text.replacingOccurrences(of: marker, with: replacement)
     }
 }
 

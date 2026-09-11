@@ -24,7 +24,7 @@ private let remoteSSHBase = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout
 struct RemoteCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "remote",
-        abstract: "Fleet operations for --host dispatch: provision, diagnose, clean up and query remote runners "
+        abstract: "Fleet operations for --runner dispatch: provision, diagnose, clean up and query remote runners "
             + "(docs/remote-runner.md §14/§16.4/§16.5)",
         subcommands: [Status.self, Clean.self, Unlock.self, Setup.self, Teardown.self, Align.self, Exec.self, Machines.self])
 
@@ -60,7 +60,9 @@ struct RemoteCommand: AsyncParsableCommand {
             for raw in hosts {
                 do {
                     let resolved = try RemoteHostResolver.resolve(rawHost: raw, remoteDirOverride: remoteDir)
-                    resolved.announce()
+                    // `--json` の stdout は1つの JSON オブジェクトだけの契約。announce() を
+                    // stdout へ出すと1行目に `==> host …` が混ざって JSON として読めなくなる
+                    resolved.announce(toStderr: json)
                     targets.append((raw, resolved))
                 } catch {
                     rows.append(HostRow(sshTarget: raw, reachable: false,

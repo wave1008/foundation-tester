@@ -433,10 +433,19 @@ final class RemoteDispatchTests: XCTestCase {
                 project: "E2E", layout: layout, sshTarget: "user@host",
                 localProjectsDir: "/local/Projects"),
             [
-                "-az", "--safe-links",
+                "-az", "--safe-links", "--out-format=%n",
                 "user@host:/Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E/results/",
                 "/local/Projects/E2E/results/",
             ])
+    }
+
+    /// `--out-format=%n` が付いていること(転送済みファイル一覧を rsync の stdout から
+    /// 読み取るための唯一の口。無いと saveHostFacts/relinkCollectedReports が再び全件スキャンに戻る)
+    func testResultsRsyncArgsRequestsOutFormatForTransferredFileList() {
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        XCTAssertTrue(RemoteArtifactCollection.resultsRsyncArgs(
+            project: "E2E", layout: layout, sshTarget: "user@host",
+            localProjectsDir: "/local/Projects").contains("--out-format=%n"))
     }
 
     /// --delete が無いこと(ローカルの results を巻き添えで消さない)と、両パスとも末尾スラッシュを
@@ -1641,6 +1650,69 @@ final class RemoteDispatchTests: XCTestCase {
             recorded: ".fleetest/dispatch/20260816-130735-24451/reports/sub/scenario-1-S0010.md",
             stamp: "20260816-130735-24451",
             projectReportsPathFromRepoRoot: "TestProjects/E2E-iOS/reports"))
+    }
+
+    // MARK: - RemoteReportLink.rewriteDispatchReportPaths 
+
+    /// JUnit/中継行の中の「隔離先」を先に「回収先」へ書き換える。呼び出し側はこの結果へさらに
+    /// RemotePathRewrite.rewrite(workDir→localRoot) を当てるので、ここでは workDir 込みの
+    /// 絶対パスのまま検証する
+    func testRewriteDispatchReportPathsRedirectsToCollectedReportsDir() {
+        let text = "report: /Users/ci/fleetest-runner/users/alice/work/.fleetest/dispatch/"
+            + "20260816-130735-24451/reports/scenario-1-S0010.md"
+        let rewritten = RemoteReportLink.rewriteDispatchReportPaths(
+            text, stamp: "20260816-130735-24451", project: "E2E-iOS")
+        XCTAssertEqual(rewritten,
+            "report: /Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E-iOS/reports/scenario-1-S0010.md")
+    }
+
+    /// 他の run(別 stamp)の隔離先は書き換えない
+    func testRewriteDispatchReportPathsLeavesOtherStampsAlone() {
+        let text = ".fleetest/dispatch/20260816-999999-11111/reports/scenario-1-S0010.md"
+        XCTAssertEqual(
+            RemoteReportLink.rewriteDispatchReportPaths(text, stamp: "20260816-130735-24451", project: "E2E-iOS"),
+            text)
+    }
+
+    /// マーカーの無いテキスト(隔離先を含まない行)はそのまま
+    func testRewriteDispatchReportPathsLeavesUnrelatedTextAlone() {
+        let text = "==> remote run finished (exit 0)"
+        XCTAssertEqual(
+            RemoteReportLink.rewriteDispatchReportPaths(text, stamp: "20260816-130735-24451", project: "E2E-iOS"),
+            text)
+    }
+
+    /// 2段書き換えを通しで確認する: rewriteDispatchReportPaths → RemotePathRewrite.rewrite の順で、
+    /// 最終的に手元の TestProjects/<project>/reports/ を指すこと(報告パスが手元に無いパスを指していた実害の再現)
+    func testTwoStageRewriteProducesALocalReportsPath() {
+        let remoteRoot = "/Users/ci/fleetest-runner/users/alice/work"
+        let localRoot = "/Users/wave1008/github/wave1008/foundation-tester"
+        let remoteLine = "report: \(remoteRoot)/.fleetest/dispatch/20260816-130735-24451/reports/S0010.md"
+        let stage1 = RemoteReportLink.rewriteDispatchReportPaths(
+            remoteLine, stamp: "20260816-130735-24451", project: "E2E-iOS")
+        let stage2 = RemotePathRewrite.rewrite(stage1, remoteRoot: remoteRoot, localRoot: localRoot)
+        XCTAssertEqual(stage2, "report: \(localRoot)/TestProjects/E2E-iOS/reports/S0010.md")
+    }
+
+    // MARK: - RemoteArtifactCollection.transferredScenarioJSONPaths 
+
+    /// `--out-format=%n` の出力から scenario JSON の相対パスだけを拾う
+    func testTransferredScenarioJSONPathsFiltersToScenarioJSON() {
+        let output = """
+            runs/2026-09/20260911-045012Z-1234/scenarios/S0010.json
+            runs/2026-09/20260911-045012Z-1234/run.json
+            runs/2026-09/20260911-045012Z-1234/recordings/S0010.mov
+            runs/2026-09/20260911-045012Z-1234/scenarios/S0020.json
+            """
+        XCTAssertEqual(RemoteArtifactCollection.transferredScenarioJSONPaths(rsyncOutput: output), [
+            "runs/2026-09/20260911-045012Z-1234/scenarios/S0010.json",
+            "runs/2026-09/20260911-045012Z-1234/scenarios/S0020.json",
+        ])
+    }
+
+    /// 何も転送されなかった(差分無し)ときは空
+    func testTransferredScenarioJSONPathsEmptyWhenNothingTransferred() {
+        XCTAssertEqual(RemoteArtifactCollection.transferredScenarioJSONPaths(rsyncOutput: ""), [])
     }
 
     // MARK: - RemoteArtifactCollection.isMissingSourceFailure

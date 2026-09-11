@@ -74,4 +74,53 @@ final class RemoteDispatchLockFailureMessageTests: XCTestCase {
             XCTAssertFalse(message.contains("could not create"), message)
         }
     }
+
+    // MARK: - staleLockAutoRelease (自分のこの機械の死んだディスパッチだけ自動で回収する)
+
+    private func encodedLock(issuerHost: String, pid: Int32, issuer: String?) -> String {
+        RemoteDispatchLock.encode(RemoteDispatchLockInfo(
+            issuerHost: issuerHost, pid: pid, acquiredAt: "2026-09-11T00:00:00Z", issuer: issuer))!
+    }
+
+    /// 同じ発行者・同じ機械・pid が死んでいる → release(自動回収してよい)
+    func testReleasesOwnDeadDispatchOnThisMachine() {
+        let lock = encodedLock(issuerHost: "my-mac", pid: 4242, issuer: "wave1008")
+        guard case .release = RemoteRunDispatcher.staleLockAutoRelease(
+            lockRead: lock, myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }
+        ) else { return XCTFail("expected release") }
+    }
+
+    /// 同じ発行者・同じ機械だが pid が生きている → refuse(本当に走っている自分の run)
+    func testRefusesWhenOwnDispatchIsStillAlive() {
+        let lock = encodedLock(issuerHost: "my-mac", pid: 4242, issuer: "wave1008")
+        guard case .refuse = RemoteRunDispatcher.staleLockAutoRelease(
+            lockRead: lock, myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in true }
+        ) else { return XCTFail("expected refuse") }
+    }
+
+    /// 発行者が別人 → refuse(他人のロックには触らない)
+    func testRefusesAnotherIssuersLock() {
+        let lock = encodedLock(issuerHost: "my-mac", pid: 4242, issuer: "someone-else")
+        guard case .refuse = RemoteRunDispatcher.staleLockAutoRelease(
+            lockRead: lock, myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }
+        ) else { return XCTFail("expected refuse") }
+    }
+
+    /// 自分の発行だが**別の機械から**発行したもの → refuse(pid の生死をここから確認できない。
+    /// decideAutomaticSweep は手動 unlock より保守的)
+    func testRefusesOwnIssuerFromAnotherMachine() {
+        let lock = encodedLock(issuerHost: "other-mac", pid: 4242, issuer: "wave1008")
+        guard case .refuse = RemoteRunDispatcher.staleLockAutoRelease(
+            lockRead: lock, myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }
+        ) else { return XCTFail("expected refuse") }
+    }
+
+    /// 控えが空(誰も掴んでいない)・読めない(ssh 失敗)は回収する対象が無い = nothingToDo
+    func testEmptyOrUnreadableLockIsNothingToDo() {
+        for read in ["", nil] {
+            XCTAssertEqual(RemoteRunDispatcher.staleLockAutoRelease(
+                lockRead: read, myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }),
+                .nothingToDo)
+        }
+    }
 }

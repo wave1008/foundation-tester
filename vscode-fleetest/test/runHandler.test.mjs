@@ -24,10 +24,16 @@ function controllerWith(...roots) {
   return { items: collection(roots) };
 }
 
-function makeStateDir(entries) {
+// last-results/<project>/ の直下はプロファイルごとのサブディレクトリ。単一プロファイルの
+// ケースを書くテストはすべて同じ1つのサブディレクトリ("profileA")へ書く(中身の走査に profile 名
+// 自体は影響しないので、テストはこのダミー名で足りる)。複数プロファイルの畳み込みは専用のテストで
+// 別のサブディレクトリを2つ作って確認する。
+function makeStateDir(entries, profile = "profileA") {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-last-results-test-"));
+  const profileDir = path.join(dir, profile);
+  fs.mkdirSync(profileDir, { recursive: true });
   for (const [name, content] of Object.entries(entries)) {
-    fs.writeFileSync(path.join(dir, name), content, "utf8");
+    fs.writeFileSync(path.join(profileDir, name), content, "utf8");
   }
   return dir;
 }
@@ -58,7 +64,9 @@ test("readFailedScenarioIds: NFD ファイル名でも NFC の id で照合で�
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-nfd-"));
   try {
     const nfcId = "デモ_Android時計.S0010";
-    fs.writeFileSync(path.join(dir, nfcId.normalize("NFD")), "failed");
+    const profileDir = path.join(dir, "profileA");
+    fs.mkdirSync(profileDir, { recursive: true });
+    fs.writeFileSync(path.join(profileDir, nfcId.normalize("NFD")), "failed");
     const ids = readFailedScenarioIds(dir);
     assert.equal(ids.has(lookupKey(nfcId)), true);
   } finally {
@@ -90,7 +98,9 @@ test("readAllResults: NFD ファイル名は NFC キーで格納される", () =
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-nfd-"));
   try {
     const nfcId = "デモ_Android時計.S0010";
-    fs.writeFileSync(path.join(dir, nfcId.normalize("NFD")), "passed");
+    const profileDir = path.join(dir, "profileA");
+    fs.mkdirSync(profileDir, { recursive: true });
+    fs.writeFileSync(path.join(profileDir, nfcId.normalize("NFD")), "passed");
     const results = readAllResults(dir);
     assert.equal(results.get(lookupKey(nfcId)), "passed");
   } finally {
@@ -105,6 +115,39 @@ test("readAllResults: passed/failed 以外の内容のファイルはスキッ�
   });
   const results = readAllResults(dir);
   assert.deepEqual([...results.keys()], ["クラスA.成功シナリオ"]);
+});
+
+// (project, profile) ごとの記録を1つのアイコン状態へ畳む
+
+test("readAllResults: 別プロファイルの状態を横断して集計する", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-last-results-multi-"));
+  try {
+    fs.mkdirSync(path.join(dir, "ios-inapp"), { recursive: true });
+    fs.mkdirSync(path.join(dir, "android"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "ios-inapp", "クラスA.両方緑"), "passed");
+    fs.writeFileSync(path.join(dir, "android", "クラスA.両方緑"), "passed");
+    fs.writeFileSync(path.join(dir, "ios-inapp", "クラスA.片方だけ赤"), "failed");
+    fs.writeFileSync(path.join(dir, "android", "クラスA.片方だけ赤"), "passed");
+    const results = readAllResults(dir);
+    assert.equal(results.get("クラスA.両方緑"), "passed");
+    // どちらか一方でも failed なら failed(別プロファイルの緑が赤を隠さない)
+    assert.equal(results.get("クラスA.片方だけ赤"), "failed");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("readAllResults: プロファイルの走査順に関わらず failed が勝つ(passed が後に来ても上書きしない)", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-last-results-order-"));
+  try {
+    fs.mkdirSync(path.join(dir, "a-profile"), { recursive: true });
+    fs.mkdirSync(path.join(dir, "z-profile"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "a-profile", "クラスA.S0010"), "failed");
+    fs.writeFileSync(path.join(dir, "z-profile", "クラスA.S0010"), "passed");
+    assert.equal(readAllResults(dir).get("クラスA.S0010"), "failed");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 // ---- resolveTargets ----

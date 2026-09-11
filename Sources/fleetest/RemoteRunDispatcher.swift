@@ -81,17 +81,28 @@ struct RemoteRunDispatcher {
         announceTimeout(timeoutSeconds)
         let overheadSeconds = Date().timeIntervalSince(setupStart)
         let exitCode = try runRemoteAndRelay(
-            fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds)
+            fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds,
+            stamp: stamp, project: project.name)
 
         collectReports(project: project, remoteReportDir: remoteReportDir)
         if let localJUnitPath, let remoteJUnitPath {
-            collectJUnit(remotePath: remoteJUnitPath, localPath: localJUnitPath, layout: layout)
+            collectJUnit(remotePath: remoteJUnitPath, localPath: localJUnitPath, layout: layout,
+                        stamp: stamp, project: project.name)
         }
-        collectArtifacts(project: project, layout: layout)
+        let transferredScenarioPaths = collectArtifacts(project: project, layout: layout)
+        // 今回の回収で転送された scenario JSON だけを読む。**読んだ結果は1回だけ作り**、
+        // saveHostFacts/relinkCollectedReports/writeLastResults の3箇所へ共有する
+        // (以前は同じ全件走査(過去2か月分)を毎ディスパッチ2回行っていた)
+        let texts = collectedScenarioTexts(
+            project: project, stamp: stamp, transferredScenarioPaths: transferredScenarioPaths)
         // relink より先に撃つ(relink が reportPath を書き換えると stamp がファイルから消え、
         // stamp 走査で machine を採れなくなる。2026-08-18 に実ディスパッチで machine 欠落を確認)
-        saveHostFacts(project: project, stamp: stamp, overheadSeconds: overheadSeconds, session: session)
-        relinkCollectedReports(project: project, stamp: stamp)
+        saveHostFacts(project: project, overheadSeconds: overheadSeconds, session: session, texts: texts)
+        relinkCollectedReports(project: project, stamp: stamp, texts: texts)
+        // リモートで走った分の `--failed` 記録を手元へ書く。リモート側の
+        // ScenarioHost.run() は手元の LastResultsStore を書けないので、回収した scenario JSON
+        // (scenarioID/passed/profile)から直接書く
+        writeLastResults(texts: texts, project: project)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
         log("==> remote run finished (exit \(exitCode))")
@@ -133,14 +144,20 @@ struct RemoteRunDispatcher {
         announceTimeout(timeoutSeconds)
         let overheadSeconds = Date().timeIntervalSince(setupStart)
         let exitCode = try runRemoteAndRelay(
-            fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds)
+            fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds,
+            stamp: stamp, project: project.name)
 
         collectReports(project: project, remoteReportDir: remoteReportDir)
-        collectArtifacts(project: project, layout: layout)
+        let transferredScenarioPaths = collectArtifacts(project: project, layout: layout)
+        // 理由は dispatch() と同じ(読むのは今回転送された分だけ・結果は1回だけ作って共有)
+        let texts = collectedScenarioTexts(
+            project: project, stamp: stamp, transferredScenarioPaths: transferredScenarioPaths)
         // relink より先に撃つ(relink が reportPath を書き換えると stamp がファイルから消え、
         // stamp 走査で machine を採れなくなる。2026-08-18 に実ディスパッチで machine 欠落を確認)
-        saveHostFacts(project: project, stamp: stamp, overheadSeconds: overheadSeconds, session: session)
-        relinkCollectedReports(project: project, stamp: stamp)
+        saveHostFacts(project: project, overheadSeconds: overheadSeconds, session: session, texts: texts)
+        relinkCollectedReports(project: project, stamp: stamp, texts: texts)
+        // 理由は dispatch() と同じ
+        writeLastResults(texts: texts, project: project)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
         log("==> remote run finished (exit \(exitCode))")
@@ -270,17 +287,46 @@ struct RemoteRunDispatcher {
             try acquireDispatchLockWithWait(layout: layout, info: info, limitSeconds: waitLock)
             return
         }
-        let result = try Shell.run(sshBase + [host.sshTarget, RemoteDispatchLock.acquireCommand(
+        var result = try Shell.run(sshBase + [host.sshTarget, RemoteDispatchLock.acquireCommand(
             base: layout.base, info: info)])
         guard result.status == 0 else {
             guard result.status != 255 else {
                 throw RemoteDispatchError.remoteSetupFailed(
                     "cannot reach \(host.sshTarget) over ssh (status 255)\n\(result.tail)")
             }
-            let existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
+            var existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
+            // **自分の死んだディスパッチが残したロックは自動で回収する**。判定は
+            // `remote unlock`/モニター起動時の自動掃除(StaleLockSweep)と同じ
+            // `RemoteDispatchUnlock.decideAutomaticSweep` を共有する(同じ規則を2箇所に持たない)。
+            // 他人・他機のロックは release を返さない(refuse)ので、そこは従来どおり待たせる/
+            // 手作業の unlock を案内する
+            if case .release(let reason) = Self.staleLockAutoRelease(
+                lockRead: existing, myIssuer: LocalConfig.resolveIssuerId(),
+                myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive) {
+                log("==> auto-releasing a stale dispatch lock on \(host.sshTarget) left by a dead process"
+                    + " of ours (\(reason))")
+                _ = try? sshCapture(RemoteDispatchLock.releaseCommand(base: layout.base))
+                result = try Shell.run(sshBase + [host.sshTarget, RemoteDispatchLock.acquireCommand(
+                    base: layout.base, info: info)])
+                if result.status == 0 { return }
+                existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
+            }
             throw RemoteDispatchError.remoteSetupFailed(Self.dispatchLockFailureMessage(
                 status: result.status, lockRead: existing, tail: result.tail, sshTarget: host.sshTarget))
         }
+    }
+
+    /// 取得失敗のあと、既存ロックの控え(生の JSON テキスト。読めなければ nil・空はロック不在)から
+    /// 「自分のこの機械の死んだディスパッチなら自動回収してよいか」を判定する。純粋関数
+    /// (I/O は呼び出し側)。空(誰も掴んでいない)・読めない(ssh 失敗)は `.nothingToDo` —— 回収する
+    /// 対象が無い/判定できないので、通常のエラー文言(dispatchLockFailureMessage)に任せる
+    static func staleLockAutoRelease(
+        lockRead: String?, myIssuer: String, myHost: String, pidAlive: (Int32) -> Bool
+    ) -> RemoteDispatchUnlock.Decision {
+        guard let lockRead, !lockRead.isEmpty else { return .nothingToDo }
+        let probe = RemoteDispatchLock.Probe.held(RemoteDispatchLock.decode(lockRead))
+        return RemoteDispatchUnlock.decideAutomaticSweep(
+            probe: probe, myIssuer: myIssuer, myHost: myHost, pidAlive: pidAlive)
     }
 
     /// 取得失敗(status ≠ 0・≠ 255)の文言。読めた控えが**空**(readCommand は不在でも exit 0 で
@@ -493,13 +539,14 @@ struct RemoteRunDispatcher {
     }
 
     private func runRemoteAndRelay(fleetestArgs: [String], layout: RemoteLayout,
-                                   timeoutSeconds: Int?) throws -> Int32 {
+                                   timeoutSeconds: Int?, stamp: String, project: String) throws -> Int32 {
         log("==> running on \(host.sshTarget): fleetest \(fleetestArgs.joined(separator: " "))")
         let command = RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: fleetestArgs,
                                                    issuer: LocalConfig.resolveIssuerId(),
                                                    fmConcurrency: registeredFMConcurrency)
         let status = try runInheritedWithLineRewrite(
-            sshRunBase + [host.sshTarget, command], layout: layout, timeoutSeconds: timeoutSeconds)
+            sshRunBase + [host.sshTarget, command], layout: layout, timeoutSeconds: timeoutSeconds,
+            stamp: stamp, project: project)
         if status == 90 {
             log("==> the remote fleetest binary is missing — build it on the remote first"
                 + " (swift build --product fleetest)")
@@ -528,8 +575,12 @@ struct RemoteRunDispatcher {
     }
 
     /// 実績 JSON(run.json/scenarios/*.json/host-metrics.ndjson)と録画を含め results/ を
-    /// 丸ごと回収する。失敗は warn のみ(run の成否は変えない。collectReports と同じ規律)
-    private func collectArtifacts(project: TestProject, layout: RemoteLayout) {
+    /// 丸ごと回収する。失敗は warn のみ(run の成否は変えない。collectReports と同じ規律)。
+    /// **戻り値 = この回収で実際に転送された scenario JSON の相対パス**(rsync
+    /// `--out-format=%n` の出力から拾う。何も転送されなかった/回収自体に失敗したときは空配列 ——
+    /// `collectedScenarioTexts` はこの一覧しか読まないので、そのときは何も読めない)
+    @discardableResult
+    private func collectArtifacts(project: TestProject, layout: RemoteLayout) -> [String] {
         let localResults = project.rootURL.appendingPathComponent("results")
         try? FileManager.default.createDirectory(at: localResults, withIntermediateDirectories: true)
         let localProjectsDir = project.rootURL.deletingLastPathComponent().path
@@ -538,23 +589,26 @@ struct RemoteRunDispatcher {
         let args = ["rsync"] + RemoteArtifactCollection.resultsRsyncArgs(
             project: project.name, layout: layout, sshTarget: host.sshTarget,
             localProjectsDir: localProjectsDir)
-        let collected = collectRsync(args, what: "recordings and run logs",
-                                     missingNote: "note: the remote produced no recordings or run logs")
+        let (collected, output) = collectRsyncCapturingOutput(
+            args, what: "recordings and run logs",
+            missingNote: "note: the remote produced no recordings or run logs")
         // **回収できたときだけ**リモートの録画を消す(docs/remote-runner.md §15.4:
         // 録画にはテスト資格情報の入力画面が写り込み、共有ランナーでは同じ UNIX アカウントの
         // 全員が読める)。回収に失敗したまま消すと唯一の証拠を失うので、失敗時は残す
         if collected { deleteRemoteRecordings(project: project, layout: layout) }
+        return collected ? RemoteArtifactCollection.transferredScenarioJSONPaths(rsyncOutput: output) : []
     }
 
     /// 回収した results の `reportPath` を、回収先(ローカルの `TestProjects/<project>/reports/`)へ
     /// 向け直す。リモートは**ディスパッチ単位の隔離先**を記録しており、そこは回収後に消えるので、
     /// 直さないと**リモート実行の結果だけ results からレポートへ飛べない**(規則は
-    /// `RemoteReportLink`)。走査は当月と前月の run ディレクトリに限り、**この stamp を含む
-    /// 記録だけ**書き換える(他の run に触らない)。失敗は warn のみ(run の成否は変えない)
-    private func relinkCollectedReports(project: TestProject, stamp: String) {
+    /// `RemoteReportLink`)。`texts` は `collectedScenarioTexts` の結果を呼び出し側と共有したもの
+    /// (同じ走査を2回行わない)。失敗は warn のみ(run の成否は変えない)
+    private func relinkCollectedReports(project: TestProject, stamp: String,
+                                        texts: [(url: URL, text: String)]) {
         let reportsFromRepoRoot = "\(RemoteLayout.projectsDirName)/\(project.name)/reports"
         var relinked = 0
-        for (url, text) in collectedScenarioTexts(project: project, stamp: stamp) {
+        for (url, text) in texts {
             guard let recorded = Self.recordedField(in: text, key: "reportPath"),
                   let rewritten = RemoteReportLink.rewrittenReportPath(
                     recorded: recorded, stamp: stamp,
@@ -565,31 +619,35 @@ struct RemoteRunDispatcher {
         if relinked > 0 { log("==> relinked \(relinked) report path(s) to the collected copies") }
     }
 
-    /// この stamp を含む今回の回収済み scenario JSON(当月・前月の runs ディレクトリのみ)。
-    /// relinkCollectedReports と saveHostFacts が共有する
-    private func collectedScenarioTexts(project: TestProject, stamp: String) -> [(url: URL, text: String)] {
-        let fm = FileManager.default
-        let runsDir = project.rootURL.appendingPathComponent("results/runs")
-        let months = ((try? fm.contentsOfDirectory(atPath: runsDir.path)) ?? []).sorted().suffix(2)
+    /// **この stamp を含む・今回の回収で転送された** scenario JSON だけを読む。
+    /// 以前は「当月+前月の runs ディレクトリを全件 String で読み `contains(stamp)`」という
+    /// 走査を `saveHostFacts`/`relinkCollectedReports` がそれぞれ独立に行っており、
+    /// 手元の E2E-CMP 規模(46,945 ファイル)で1回23.6秒 × 2回 = ディスパッチごとに約50秒
+    /// 手元レーンを遊ばせていた。`transferredScenarioPaths` は `collectArtifacts` が
+    /// rsync `--out-format=%n` から拾った一覧(このディスパッチで新規に転送されたファイルだけ)
+    /// なので、件数は「今回走った本数」程度で済む。`stamp` を含むかの確認は残す(このディスパッチの
+    /// stamp は一意なので理屈上は不要だが、判定を一箇所(この関数)に保つ)。
+    /// 呼び出し側は結果を1回だけ作り、saveHostFacts/relinkCollectedReports/writeLastResults へ渡す
+    // internal(not private): RemoteDispatcherScenarioTextsTests exercises this directly with a
+    // fake results/ tree to prove the "only the transferred paths" scoping
+    func collectedScenarioTexts(
+        project: TestProject, stamp: String, transferredScenarioPaths: [String]
+    ) -> [(url: URL, text: String)] {
+        let localResults = project.rootURL.appendingPathComponent("results")
         var results: [(URL, String)] = []
-        for month in months {
-            let monthDir = runsDir.appendingPathComponent(month)
-            for runID in (try? fm.contentsOfDirectory(atPath: monthDir.path)) ?? [] {
-                let scenariosDir = monthDir.appendingPathComponent("\(runID)/scenarios")
-                for file in (try? fm.contentsOfDirectory(atPath: scenariosDir.path)) ?? [] {
-                    let url = scenariosDir.appendingPathComponent(file)
-                    guard let text = try? String(contentsOf: url, encoding: .utf8),
-                          text.contains(stamp) else { continue }
-                    results.append((url, text))
-                }
-            }
+        for relative in transferredScenarioPaths {
+            let url = localResults.appendingPathComponent(relative)
+            guard let text = try? String(contentsOf: url, encoding: .utf8),
+                  text.contains(stamp) else { continue }
+            results.append((url, text))
         }
         return results
     }
 
     /// scenario JSON の `"<key>": "…"` の値だけを取り出す(JSON を再エンコードすると
     /// 鍵の順序や表現が変わり、他のツールが読む記録を無用に書き換えるため文字列置換にする)
-    private static func recordedField(in json: String, key: String) -> String? {
+    // internal(not private): tested directly (RemoteDispatcherScenarioTextsTests)
+    static func recordedField(in json: String, key: String) -> String? {
         guard let keyRange = json.range(of: "\"\(key)\"") else { return nil }
         let rest = json[keyRange.upperBound...]
         guard let open = rest.range(of: "\""), let close = rest[open.upperBound...].range(of: "\"") else {
@@ -608,12 +666,11 @@ struct RemoteRunDispatcher {
     /// concurrentDevices はレコードの "worker" の相異なる値の個数(この stamp のぶんだけ)。
     /// hostLabel が無い構築箇所(旧経路)では何もしない。失敗は黙って握る(advisory キャッシュ。
     /// run の成否・ログを汚さない)
-    private func saveHostFacts(project: TestProject, stamp: String, overheadSeconds: Double,
-                               session: RemoteSessionInfo?) {
+    private func saveHostFacts(project: TestProject, overheadSeconds: Double,
+                               session: RemoteSessionInfo?, texts: [(url: URL, text: String)]) {
         let dir = RemoteHostFactsStore.dir(project: project)
         let key = host.sshTarget
         let existing = RemoteHostFactsStore.load(dir: dir, host: key)
-        let texts = collectedScenarioTexts(project: project, stamp: stamp)
         let recorded = recordedMachine(texts: texts) ?? existing?.host
         let concurrentDevices = recordedConcurrentDevices(texts: texts) ?? existing?.concurrentDevices
         let facts = RemoteHostFacts(
@@ -650,6 +707,37 @@ struct RemoteRunDispatcher {
         return workers.isEmpty ? nil : workers.count
     }
 
+    /// リモートで走ったシナリオの `--failed` 記録を手元へ書く。リモート機の
+    /// `ScenarioHost.run()` はリモート機自身の `.fleetest/last-results/` へ書くだけなので、
+    /// 手元は何も記録されず `--failed` がリモートで落ちた分を拾えなかった
+    /// )。回収済み scenario JSON の
+    /// `scenarioID`/`passed`/`profile`(profile は `RunRecorder` が既に書いている実効プロファイル名。
+    /// profile-less な run では欄自体が無い = nil → `LastResultsStore.noProfileKey` へ畳まれる)
+    /// から直接書く。**同じ stamp に複数シナリオが乗る(broadcast 含む)のは後勝ちでよい** ——
+    /// LastResultsStore はローカル実行でも「直近の1件」の記録
+    // internal(not private): tested directly (RemoteDispatcherScenarioTextsTests)
+    func writeLastResults(texts: [(url: URL, text: String)], project: TestProject) {
+        for (_, text) in texts {
+            guard let scenarioID = Self.recordedField(in: text, key: "scenarioID"),
+                  let passed = Self.recordedBoolField(in: text, key: "passed") else { continue }
+            LastResultsStore.record(project: project, scenarioID: scenarioID, passed: passed,
+                                    profile: Self.recordedField(in: text, key: "profile"))
+        }
+    }
+
+    /// scenario JSON の `"<key>": true|false` の値を取り出す(`recordedField` は引用符付きの
+    /// 文字列専用なので、Bool の `passed` はこちらで読む)
+    // internal(not private): tested directly (RemoteDispatcherScenarioTextsTests)
+    static func recordedBoolField(in json: String, key: String) -> Bool? {
+        guard let keyRange = json.range(of: "\"\(key)\"") else { return nil }
+        let rest = json[keyRange.upperBound...]
+        guard let colon = rest.firstIndex(of: ":") else { return nil }
+        let afterColon = rest[rest.index(after: colon)...].drop(while: { $0 == " " })
+        if afterColon.hasPrefix("true") { return true }
+        if afterColon.hasPrefix("false") { return false }
+        return nil
+    }
+
     /// 回収の rsync。**転送元不在(= run が成果物を作る前に落ちた)は警告にしない** ——
     /// 本当の失敗理由の下にノイズを積まないため(RemoteArtifactCollection.isMissingSourceFailure)。
     /// stderr を見る必要があるので継承ではなく捕捉する(回収は少量で進行表示が要らない)
@@ -657,17 +745,26 @@ struct RemoteRunDispatcher {
     /// 転送元不在は「消す物も無い」なので成功と同じ扱いでよいが、区別できるよう false を返す)
     @discardableResult
     private func collectRsync(_ args: [String], what: String, missingNote: String) -> Bool {
+        collectRsyncCapturingOutput(args, what: what, missingNote: missingNote).ok
+    }
+
+    /// collectRsync と同じ規律だが、**成功時の stdout(rsync の出力)も返す**(
+    /// `--out-format=%n` を付けた呼び出しから転送済みファイル一覧を得るため)。output を使わない
+    /// 呼び出し元は collectRsync を使う
+    private func collectRsyncCapturingOutput(
+        _ args: [String], what: String, missingNote: String
+    ) -> (ok: Bool, output: String) {
         guard let result = try? Shell.run(args) else {
             log("warning: failed to collect \(what) from the remote (could not run rsync)")
-            return false
+            return (false, "")
         }
-        guard result.status != 0 else { return true }
+        guard result.status != 0 else { return (true, result.output) }
         if RemoteArtifactCollection.isMissingSourceFailure(status: result.status, stderr: result.tail) {
             log(missingNote)
-            return false
+            return (false, "")
         }
         log("warning: failed to collect \(what) from the remote (rsync exited with \(result.status))\n\(result.tail)")
-        return false
+        return (false, "")
     }
 
     /// 回収済みの録画をランナーから消す。実績 JSON(run.json / scenarios/*.json)は**消さない** ——
@@ -684,16 +781,22 @@ struct RemoteRunDispatcher {
         }
     }
 
-    private func collectJUnit(remotePath: String, localPath: String, layout: RemoteLayout) {
+    private func collectJUnit(remotePath: String, localPath: String, layout: RemoteLayout,
+                              stamp: String, project: String) {
         guard let xml = try? sshCapture("cat \(RemoteShell.quote(remotePath))"), !xml.isEmpty else {
             log("warning: failed to collect the remote JUnit report (\(remotePath))")
             return
         }
+        // **ディスパッチ単位の隔離先 → 回収先(reports/)を先に当ててから** workDir → localRoot を
+        // 当てる。順序を逆にする(workDir 置換だけ)と、隔離先(回収後にリモートで削除される)
+        // を指す**手元に存在しないパス**が JUnit の report 属性に残る
+        let reportsRedirected = RemoteReportLink.rewriteDispatchReportPaths(
+            xml, stamp: stamp, project: project)
         // **写す先は workDir**(base ではない)。base のまま置換すると `users/<issuer>/work` が
         // 残って手元に存在しないパスができる(2026-08-26 の実害。§18.2 の発行者ネームスペースを
         // 足したときに追随し損ねていた)
         let rewritten = RemotePathRewrite.rewrite(
-            xml, remoteRoot: layout.workDir, localRoot: localRepoRoot.path)
+            reportsRedirected, remoteRoot: layout.workDir, localRoot: localRepoRoot.path)
         let url = URL(fileURLWithPath: localPath)
         do {
             try FileManager.default.createDirectory(
@@ -813,7 +916,8 @@ struct RemoteRunDispatcher {
     /// 要求するが、ディスパッチは対話しない)。**timeoutSeconds nil = 無期限**
     /// (`.distantFuture` を渡す。欠陥2: RemoteTimeout.seconds がシナリオ数不明を表す nil)
     private func runInheritedWithLineRewrite(_ argv: [String], layout: RemoteLayout,
-                                             timeoutSeconds: Int?) throws -> Int32 {
+                                             timeoutSeconds: Int?, stamp: String,
+                                             project: String) throws -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = argv
@@ -830,7 +934,12 @@ struct RemoteRunDispatcher {
         let localRoot = localRepoRoot.path
         let mode = self.mode
         func relayLine(_ line: String) {
-            let rewritten = RemotePathRewrite.rewrite(line, remoteRoot: remoteRoot, localRoot: localRoot)
+            // ディスパッチ単位の隔離先 → 回収先(reports/)を**先に**当てる(collectJUnit と
+            // 同じ順序 — 理由は RemoteReportLink.rewriteDispatchReportPaths の宣言)
+            let reportsRedirected = RemoteReportLink.rewriteDispatchReportPaths(
+                line, stamp: stamp, project: project)
+            let rewritten = RemotePathRewrite.rewrite(
+                reportsRedirected, remoteRoot: remoteRoot, localRoot: localRoot)
             // `-tt`(擬似 TTY)はリモートの stderr を stdout に合流させる。apiRun の stdout は
             // NDJSON 専用の契約なので、機械可読行だけを stdout へ流し、リモートの人間向け診断は
             // stderr へ振り分け直す(2026-07-31 の localhost E2E で混入を実測)

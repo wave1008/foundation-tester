@@ -191,7 +191,11 @@ export function registerLastResultsSync(deps: LastResultsSyncDeps): LastResultsS
       return;
     }
     try {
-      fsWatcher = fs.watch(lastResultsDir(workspaceRoot, resolution.project), () => scheduleTick());
+      // last-results/<project>/ の直下はプロファイルごとのサブディレクトリで、実際の
+      // シナリオファイルはその中にある。非 recursive だと(プラットフォーム次第で)サブ
+      // ディレクトリ内の変更を拾えない —— macOS(FSEvents)は recursive: true をサポートする
+      fsWatcher = fs.watch(
+        lastResultsDir(workspaceRoot, resolution.project), { recursive: true }, () => scheduleTick());
       if (dirRetryTimer) {
         clearInterval(dirRetryTimer);
         dirRetryTimer = undefined;

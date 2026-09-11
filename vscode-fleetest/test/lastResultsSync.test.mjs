@@ -95,6 +95,15 @@ function makeWorkspace(projects) {
   return root;
 }
 
+// last-results/<project>/ の直下はプロファイルごとのサブディレクトリ(lastResults.ts の
+// readAllResults 参照)。この統合テストは実ファイルシステム + fs.watch を使うので、新レイアウトの
+// パスへ書く
+function writeResult(root, project, profile, scenarioId, state) {
+  const dir = path.join(root, ".fleetest", "last-results", project, profile);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, scenarioId), state);
+}
+
 test("reconfigure: プロジェクト切替後は新プロジェクトの last-results への書き込みが反映される", async () => {
   const root = makeWorkspace(["ProjA", "ProjB"]);
   const config = { project: "ProjA" };
@@ -108,13 +117,14 @@ test("reconfigure: プロジェクト切替後は新プロジェクトの last-r
     onResultsApplied: () => { applied += 1; },
   });
   try {
-    fs.writeFileSync(path.join(root, ".fleetest", "last-results", "ProjA", "Login.S0010"), "passed");
+    // last-results/<project>/ の直下はプロファイルごとのサブディレクトリ
+    writeResult(root, "ProjA", "ios-inapp", "Login.S0010", "passed");
     await sleep(DEBOUNCE_WAIT_MS);
     assert.equal(applied, 1, "切替前: ProjA への書き込みが反映される(実験系の陽性対照)");
 
     config.project = "ProjB";
     sync.reconfigure();
-    fs.writeFileSync(path.join(root, ".fleetest", "last-results", "ProjB", "Login.S0010"), "failed");
+    writeResult(root, "ProjB", "ios-inapp", "Login.S0010", "failed");
     await sleep(DEBOUNCE_WAIT_MS);
     assert.equal(applied, 2, "切替後: ProjB への書き込みが反映されない(監視先が旧プロジェクトのまま)");
   } finally {
@@ -138,13 +148,13 @@ test("reconfigure: スナップショットを捨てるので、同じ id・同�
     onResultsApplied: () => { applied += 1; },
   });
   try {
-    fs.writeFileSync(path.join(root, ".fleetest", "last-results", "ProjA", "Login.S0010"), "passed");
+    writeResult(root, "ProjA", "ios-inapp", "Login.S0010", "passed");
     await sleep(DEBOUNCE_WAIT_MS);
     assert.equal(applied, 1);
 
     config.project = "ProjB";
     sync.reconfigure();
-    fs.writeFileSync(path.join(root, ".fleetest", "last-results", "ProjB", "Login.S0010"), "passed");
+    writeResult(root, "ProjB", "ios-inapp", "Login.S0010", "passed");
     await sleep(DEBOUNCE_WAIT_MS);
     assert.equal(applied, 2);
   } finally {
@@ -166,7 +176,7 @@ test("dispose 後は書き込みが反映されない(watch と timer が閉じ�
   });
   sync.dispose();
   try {
-    fs.writeFileSync(path.join(root, ".fleetest", "last-results", "ProjA", "Login.S0010"), "passed");
+    writeResult(root, "ProjA", "ios-inapp", "Login.S0010", "passed");
     await sleep(DEBOUNCE_WAIT_MS);
     assert.equal(applied, 0);
   } finally {
