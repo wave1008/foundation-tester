@@ -37,6 +37,10 @@ struct ProjectCommand: AsyncParsableCommand {
         var platform: String = "both"
 
         func run() async throws {
+            guard InitCommand.isValidAppID(appID) else {
+                throw ValidationError("invalid --app-id: \(appID)"
+                    + " (bundle ID / package name: letters, digits, '.', '_' and '-' only)")
+            }
             let root = try fleetestRepoRoot()
             let project = try ProjectScaffold.createAndRegister(
                 name: name, app: appID, repoRoot: root,

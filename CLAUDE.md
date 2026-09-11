@@ -205,9 +205,10 @@
   動いていても止まって見える。拡張の `MonitorDeviceState` と対)/ **③配信が張れなければ
   ポーリングへ落ちる**。**版が揃っていないと状態も映像も来ない**。
   **操作も同じ規律** —— 一括だけでなく**タイル1枚の起動・停止もその機械へ回す**
-  (手元で `api start-device --name` を撃つと、同名の台が別の機械にも居るとき**別の機械の設定で
-  この Mac にシミュレータが1台できる**。`findDevice` は (machine, name) で引き、
-  `--device-machine` の既定は手元)。
+  (`--device-machine` を付けずに `api start-device --name` を撃つと、同名の台が別の機械にも
+  居るとき**別の機械の設定でこの Mac にシミュレータが1台できる**、という事故を防ぐのがこの規律。
+  `findDevice` は (machine, name) で引き、`--device-machine` 省略時に同名の台が複数の機械に
+  居れば `.ambiguous` で断る —— 黙って手元を選びはしない)。
   **中継する側が machine を埋める**(3経路とも: `RemoteMonitorFanout.ingest` /
   `RemoteDeviceFanout.machineStamped` / `ApiRunMachineFanout` の rehost)—— 子は
   `--device-machine local` で走るので自分の台を `machine:null` と名乗り、そのまま流すと拡張が

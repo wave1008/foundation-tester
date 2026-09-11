@@ -50,6 +50,10 @@ struct InitCommand: AsyncParsableCommand {
             throw ValidationError("invalid project name: \(projectName)"
                 + " (letters, digits, _ and - only; specify one with --name)")
         }
+        guard Self.isValidAppID(appID) else {
+            throw ValidationError("invalid --app-id: \(appID)"
+                + " (bundle ID / package name: letters, digits, '.', '_' and '-' only)")
+        }
 
         let dependencyLine: String
         if let fleetestPath {
@@ -119,6 +123,14 @@ struct InitCommand: AsyncParsableCommand {
             try? FileManager.default.removeItem(at: manifest)
             throw error
         }
+    }
+
+    /// bundle ID / package name として妥当な文字だけを許す(`AndroidWebViewDOM.probeCommand` と
+    /// 同じ許容集合)。値は install/launch や profiles/apps/*.json・雛形シナリオの `@TestClass(app:)` /
+    /// `appIs(...)` へそのまま入るので、注入にはならなくても分かりにくい後段の失敗になる前に弾く
+    static func isValidAppID(_ value: String) -> Bool {
+        let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
+        return !value.isEmpty && value.allSatisfy { allowed.contains($0) }
     }
 
     /// ディレクトリ名を SPM ターゲット名(`^[A-Za-z0-9_][A-Za-z0-9_-]*$`)へ寄せる

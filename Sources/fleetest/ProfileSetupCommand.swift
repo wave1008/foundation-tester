@@ -61,6 +61,10 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     var autoDevice = false
 
     func run() async throws {
+        guard InitCommand.isValidAppID(appID) else {
+            throw ValidationError("invalid --app-id: \(appID)"
+                + " (bundle ID / package name: letters, digits, '.', '_' and '-' only)")
+        }
         let platforms: [String]
         switch platform {
         case "both":
