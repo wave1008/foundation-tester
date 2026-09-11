@@ -1,6 +1,6 @@
 // MCP(fleetest-mcp)が操作している台を run が黙って奪わない(ユーザー決定「避けて、足りなければ警告して使う」):
 // ①MCP は台を指すツールのたびに `.fleetest/mcp-<鍵>.lease` へ自分の pid を書く
-// ②run は回す本数に絞るとき印のある台を後回しにし、それでも使う台は警告で名指しする
+// ②run は印のある台を、ほかの台で本数ぶん足りるなら予備にも残さない。足りないときだけ使い、警告で名指しする
 // ③MCP は run の lease がある台を触ったら応答の先頭で言う(断らない)
 // 台の鍵を simctl/adb を引かずに決めるため、ここでは物理 iOS(udid の記載をそのまま使う)で組む。
 
@@ -48,15 +48,38 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
     func testDeprioritizedDevicesAreTrimmedFirst() {
         let a = phone("A", udid: "UA"), b = phone("B", udid: "UB"), c = phone("C", udid: "UC")
         let kept = profile([a, b, c]).limitingDevices(iosScenarios: 1, androidScenarios: 0,
-                                                      deprioritizing: { $0 == a })
+                                                      avoiding: { $0 == a })
         XCTAssertEqual(kept.devices.map(\.name), ["B", "C"], "1本 + 予備1台 = 2台。MCP の A を後回しにする")
     }
 
     func testDeprioritizedDevicesAreStillUsedWhenNothingElseIsFree() {
         let a = phone("A", udid: "UA"), b = phone("B", udid: "UB")
         let kept = profile([a, b]).limitingDevices(iosScenarios: 5, androidScenarios: 0,
-                                                   deprioritizing: { $0 == a })
+                                                   avoiding: { $0 == a })
         XCTAssertEqual(Set(kept.devices.map(\.name)), ["A", "B"])
+    }
+
+    /// 予備にも残さない(残した台はシナリオを早い者勝ちで取り合うので、予備でも結局そこで走る)
+    func testAnAvoidedDeviceIsNotKeptEvenAsTheSpare() {
+        let a = phone("A", udid: "UA"), b = phone("B", udid: "UB")
+        let kept = profile([a, b]).limitingDevices(iosScenarios: 1, androidScenarios: 0, avoiding: { $0 == a })
+        XCTAssertEqual(kept.devices.map(\.name), ["B"])
+    }
+
+    /// 本数が分からない(0 = 絞らない)ときも、ほかに台があれば外す / 全部が避ける台なら使う
+    func testUntrimmedRunsDropAvoidedDevicesOnlyWhenOthersExist() {
+        let a = phone("A", udid: "UA"), b = phone("B", udid: "UB"), c = phone("C", udid: "UC")
+        XCTAssertEqual(profile([a, b, c]).limitingDevices(iosScenarios: 0, androidScenarios: 0,
+                                                          avoiding: { $0 == a }).devices.map(\.name), ["B", "C"])
+        XCTAssertEqual(profile([a, b]).limitingDevices(iosScenarios: 0, androidScenarios: 0,
+                                                       avoiding: { _ in true }).devices.map(\.name), ["A", "B"])
+    }
+
+    /// 避ける台が無ければ従来と同じ(本数 + 予備1台)
+    func testNothingAvoidedKeepsTheOldTrimming() {
+        let a = phone("A", udid: "UA"), b = phone("B", udid: "UB"), c = phone("C", udid: "UC")
+        XCTAssertEqual(profile([a, b, c]).limitingDevices(iosScenarios: 1, androidScenarios: 0,
+                                                          avoiding: { _ in false }).devices.map(\.name), ["A", "B"])
     }
 
     // MARK: - 印の読み取り
@@ -66,6 +89,21 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
         MCPDeviceLease.write(stateDir: stateDir, key: "UB", pid: getpid())
         MCPDeviceLease.write(stateDir: stateDir, key: "UC", pid: 99_999_9)
         XCTAssertEqual(MCPDeviceLease.liveHolders(stateDir: stateDir, excluding: [getpid()]), ["UA": otherLivePID])
+    }
+
+    /// **pid の再利用で生き返らない**: 開始時刻が一致しない印は死んだ扱い
+    func testALeaseWhosePIDWasReusedIsNotLive() throws {
+        try "\(otherLivePID) 12345".write(to: MCPDeviceLease.leaseURL(stateDir: stateDir, key: "UA"),
+                                         atomically: true, encoding: .utf8)
+        XCTAssertTrue(MCPDeviceLease.liveHolders(stateDir: stateDir, excluding: []).isEmpty)
+    }
+
+    /// MCP の終了で自分の印だけ消す
+    func testRemoveAllDropsOnlyThatPIDsLeases() {
+        MCPDeviceLease.write(stateDir: stateDir, key: "UA", pid: getpid())
+        MCPDeviceLease.write(stateDir: stateDir, key: "UB", pid: otherLivePID)
+        MCPDeviceLease.removeAll(stateDir: stateDir, pid: getpid())
+        XCTAssertEqual(MCPDeviceLease.liveHolders(stateDir: stateDir, excluding: []), ["UB": otherLivePID])
     }
 
     // MARK: - run 側

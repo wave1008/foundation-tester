@@ -108,8 +108,9 @@ enum ProfileRunner {
         return keys
     }
 
-    /// **回す本数に絞るとき、MCP(fleetest-mcp)が操作している台を後回しにする**(ユーザー決定「避けて、
-    /// 足りなければ警告して使う」)。それでも使う台は警告で名指しする(断らない = 新しい検知は警告から)。
+    /// **回す本数に絞るとき、MCP(fleetest-mcp)が操作している台を避ける**(ユーザー決定「避けて、
+    /// 足りなければ警告して使う」。予備にも残さない理由は `ResolvedProfile.limitingDevices(avoiding:)`)。
+    /// それでも使う台は警告で名指しする(断らない = 新しい検知は警告から)。
     /// 印(`MCPDeviceLease`)が1つも無ければ台の実体を引かない(simctl/adb の往復を払わない)。
     /// 自分と親の pid が持つ印は数えない(MCP が起こした run が自分を「MCP が操作中」と言わない)。
     /// `trim: false`(--broadcast)は絞らず、使う台の警告だけ返す
@@ -128,12 +129,13 @@ enum ProfileRunner {
         }
         let resolved = trim
             ? full.limitingDevices(iosScenarios: iosScenarios, androidScenarios: androidScenarios,
-                                   deprioritizing: { heldBy[$0] != nil })
+                                   avoiding: { heldBy[$0] != nil })
             : full
+        let why = trim ? "no other device was free" : "--broadcast runs on every device"
         let warnings = resolved.devices.compactMap { device in
             heldBy[device].map { pid in
                 "\(device.name) is being driven by an MCP session (pid \(pid)) — this run takes it over"
-                    + " (no other device was free); the session will see the run's screens"
+                    + " (\(why)); the session will see the run's screens"
             }
         }
         return (resolved, warnings)

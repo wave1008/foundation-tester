@@ -1126,14 +1126,21 @@ public struct ResolvedProfile: Sendable {
         return filtered
     }
 
-    /// `deprioritizing` の台は各 platform の並びの**後ろへ回してから**先頭を取る = 他の台で足りればそちらを使う
-    /// (MCP が操作している台。ユーザー決定「避けて、足りなければ警告して使う」)。**既定値を置かない** ——
-    /// 呼び出し元が渡し忘れると黙って MCP の台から先に使う形へ戻る
+    /// `avoiding` の台(MCP が操作している台。ユーザー決定「避けて、足りなければ警告して使う」)は、**ほかの台で
+    /// 本数ぶん足りるなら予備にも残さない** —— 残した台はシナリオを早い者勝ちで取り合うので、予備として残すと
+    /// 結局そこで走る。本数が分からない(0 = 絞らない)ときは、ほかに台があれば外す。足りないときだけ足りない
+    /// ぶんを加える。**既定値を置かない** —— 呼び出し元が渡し忘れると黙って MCP の台を使う形へ戻る
     public func limitingDevices(iosScenarios: Int, androidScenarios: Int,
-                                deprioritizing: (ResolvedDevice) -> Bool) -> ResolvedProfile {
+                                avoiding: (ResolvedDevice) -> Bool) -> ResolvedProfile {
         func keep(_ list: [ResolvedDevice], _ count: Int) -> [ResolvedDevice] {
-            let ordered = list.filter { !deprioritizing($0) } + list.filter(deprioritizing)
-            return Array(ordered.prefix(Self.deviceKeepCount(available: list.count, scenarios: count)))
+            let free = list.filter { !avoiding($0) }
+            let avoided = list.filter(avoiding)
+            guard count > 0 else { return free.isEmpty ? avoided : free }
+            if free.count >= count {
+                return Array(free.prefix(Self.deviceKeepCount(available: free.count, scenarios: count)))
+            }
+            let total = Self.deviceKeepCount(available: list.count, scenarios: count)
+            return free + avoided.prefix(total - free.count)
         }
         let kept = Set(keep(iosDevices, iosScenarios) + keep(androidDevices, androidScenarios))
         guard kept.count < devices.count else { return self }

@@ -512,6 +512,11 @@ public struct BridgeProvisioner {
             at: stateDir, includingPropertiesForKeys: nil) else { return }
         for entry in entries where entry.pathExtension == "lease" {
             let base = entry.deletingPathExtension().lastPathComponent
+            if MCPDeviceLease.isLeaseFile(entry.lastPathComponent) {
+                // MCP の印は pid + 開始時刻で見る(pid の再利用で生き返らせない)
+                if MCPDeviceLease.holder(at: entry) == nil { try? FileManager.default.removeItem(at: entry) }
+                continue
+            }
             guard base.hasPrefix("run-") || base.hasPrefix("recording-") else { continue }
             guard let pidString = try? String(contentsOf: entry, encoding: .utf8),
                   let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)),

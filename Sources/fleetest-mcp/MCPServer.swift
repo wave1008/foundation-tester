@@ -206,6 +206,10 @@ final class MCPServer {
             guard let message = Self.parseMessage(line) else { continue }
             await handle(message)
         }
+        // stdin EOF = セッションの終わり。台の印を残すと、使っていない台を run が避け続ける
+        if let deviceLeaseStateDir {
+            MCPDeviceLease.removeAll(stateDir: deviceLeaseStateDir, pid: ProcessInfo.processInfo.processIdentifier)
+        }
     }
 
     /// 1行を JSON-RPC メッセージとして解釈する。空行・非 JSON・JSON オブジェクトでないものは nil

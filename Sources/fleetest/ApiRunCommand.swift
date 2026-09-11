@@ -422,9 +422,11 @@ struct ApiRunCommand: AsyncParsableCommand {
             // 1つの ID は高々1本なので本数が決まる。クラス名指定・全件は絞らない
             // (そこは並列度が要る場面で、絞ると遅くなる)。platform はまだ分からないので両方に同じ数を使う
             let exactCount = ApiRun.exactScenarioCount(scenarios)
+            // dry-run はデバイスに触らないので MCP の台を避ける理由が無い(印を読むと simctl/adb を引き、
+            // 「奪う」と嘘の警告を出す)
             let (resolved, mcpWarnings) = ProfileRunner.limitingDevicesAvoidingMCP(
                 full, iosScenarios: exactCount, androidScenarios: exactCount, trim: true,
-                leaseStateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest"))
+                leaseStateDir: dryRun ? nil : (try? RepoRoot.find())?.appendingPathComponent(".fleetest"))
             if resolved.devices.count < full.devices.count {
                 logStderr("→ Using \(resolved.devices.count) of \(full.devices.count) device(s)"
                     + " for \(scenarios.count) scenario(s)")

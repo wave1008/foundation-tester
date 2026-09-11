@@ -33,8 +33,8 @@ final class MCPDeviceLeaseTests: XCTestCase {
     /// 台を指すツールを通ったら、その台の鍵で自分の pid の印を置く
     func testADeviceToolLeavesTheMCPLease() async throws {
         _ = try await snapshotText()
-        let text = try String(contentsOf: MCPDeviceLease.leaseURL(stateDir: stateDir, key: "UDID-X"), encoding: .utf8)
-        XCTAssertEqual(Int32(text), ProcessInfo.processInfo.processIdentifier)
+        XCTAssertEqual(MCPDeviceLease.liveHolders(stateDir: stateDir, excluding: []),
+                       ["UDID-X": ProcessInfo.processInfo.processIdentifier])
     }
 
     /// **本命(逆向き)**: run の lease がある台を触ったら、その pid を名指しして言う(操作は止めない)
