@@ -36,6 +36,7 @@ public enum SimulatorCatalogError: Error, LocalizedError {
     case simctlFailed(String)
     case udidNotFound(String)
     case nameNotFound(name: String, os: String?, available: [String])
+    case ambiguousName(name: String, os: String, udids: [String])
 
     public var errorDescription: String? {
         switch self {
@@ -47,6 +48,9 @@ public enum SimulatorCatalogError: Error, LocalizedError {
             let osText = os.map { "(\($0))" } ?? ""
             return "simulator not found: \(name)\(osText)"
                 + " (available: \(available.isEmpty ? "none" : available.joined(separator: ", ")))"
+        case .ambiguousName(let name, let os, let udids):
+            return "several simulators are named \(name) (\(os)): \(udids.joined(separator: ", "))"
+                + " — name one by its UDID instead"
         }
     }
 }
@@ -150,6 +154,13 @@ public enum SimulatorCatalog {
             throw SimulatorCatalogError.nameNotFound(
                 name: name, os: os,
                 available: Array(Set(devices.map(\.name))).sorted())
+        }
+        // **起動状態も OS も同じ同名の台が複数なら規則では決まらない** —— 黙って1台目を選ぶと、
+        // 同名の別の台(プロファイルが UDID で指している方)を起動して使う(実例: 同名が2台ある機で
+        // `bridge up --device <名前>` が別の1台を起こした)。起動中の1台・新しい OS を選ぶ規則は残す
+        let tied = candidates.filter { $0.booted == best.booted && $0.os == best.os }
+        guard tied.count == 1 else {
+            throw SimulatorCatalogError.ambiguousName(name: name, os: best.os, udids: tied.map(\.udid))
         }
         return best  // devices は 起動中 → OS 降順 で並んでいる
     }
