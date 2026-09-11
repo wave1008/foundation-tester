@@ -45,6 +45,72 @@ public enum AppBundleInspector {
         return isDeviceBuild(supportedPlatforms: dict["CFBundleSupportedPlatforms"] as? [String])
     }
 
+    /// ホーム画面のアイコンの下に出る名前の候補を返す純粋関数。
+    /// 名前の優先は iOS の表示と同じ(CFBundleDisplayName → CFBundleName)。**ローカライズ値も全部候補に入れる** ——
+    /// 表示は端末の言語で変わるので、どれか1つに一致すれば食い違いとしない(誤検知を出さない側に倒す)。
+    /// 空 = 判らない(呼び手は黙る)
+    public static func iconNameCandidates(infoPlist: [String: Any],
+                                          localized: [[String: Any]]) -> [String] {
+        func name(_ dict: [String: Any]) -> String? {
+            for key in ["CFBundleDisplayName", "CFBundleName"] {
+                if let value = dict[key] as? String, !value.isEmpty { return value }
+            }
+            return nil
+        }
+        var names: [String] = []
+        for dict in [infoPlist] + localized {
+            if let value = name(dict), !names.contains(value) { names.append(value) }
+        }
+        return names
+    }
+
+    /// ビルド済み .app から `iconNameCandidates` を読む(パス未指定・Info.plist が読めない = 空)。
+    /// ローカライズは `<lang>.lproj/InfoPlist.strings` と、文字列カタログのビルドが置く
+    /// `InfoPlist.loctable`(言語 → キー → 値)の両方を見る
+    public static func iconNameCandidates(appPath: String?) -> [String] {
+        guard let appPath, let info = plistDictionary(atPath:
+            (appPath as NSString).appendingPathComponent("Info.plist")) else { return [] }
+        var localized: [[String: Any]] = []
+        let entries = (try? FileManager.default.contentsOfDirectory(atPath: appPath)) ?? []
+        for entry in entries.sorted() where entry.hasSuffix(".lproj") {
+            let strings = ((appPath as NSString).appendingPathComponent(entry) as NSString)
+                .appendingPathComponent("InfoPlist.strings")
+            if let dict = plistDictionary(atPath: strings) { localized.append(dict) }
+        }
+        if let table = plistDictionary(atPath:
+            (appPath as NSString).appendingPathComponent("InfoPlist.loctable")) {
+            for language in table.keys.sorted() {
+                if let dict = table[language] as? [String: Any] { localized.append(dict) }
+            }
+        }
+        return iconNameCandidates(infoPlist: info, localized: localized)
+    }
+
+    /// アプリプロファイルの `appName` がアイコン名の候補のどれとも一致しないときの警告(一致・候補が空は nil)。
+    /// **appName はアイコン名を兼ねる**: 名前を省いた `tapAppIcon()` はこれとラベルの完全一致で探し
+    /// (`AppIconLocator.findIcon`)、システムアラートの題名がこの名前を含まなければ「前の run の残りかも」と
+    /// 助言する(`SystemUIGate.mayBeLeftover`)。どちらも食い違うと黙って誤る(2026-09-11: 実機用
+    /// プロファイルに「(実機)」を足した appName で tapAppIcon が App icon not found)。止めはしない
+    public static func appNameMismatchWarning(appRef: String, platform: String, appName: String,
+                                              candidates: [String]) -> String? {
+        guard !candidates.isEmpty, !candidates.contains(appName) else { return nil }
+        let shown = candidates.map { "\"\($0)\"" }.joined(separator: " / ")
+        return "apps/\(appRef).json: \(platform).appName \"\(appName)\" is not the name shown under"
+            + " the app icon (\(shown), read from the app bundle at appPath) — tapAppIcon() without"
+            + " a name looks for appName on the home screen, and a system alert whose title does not"
+            + " name appName is reported as possibly left over from an earlier run."
+            + " Set \(platform).appName to the name under the icon"
+    }
+
+    /// バイナリ / XML の plist と、`"key" = "value";` 形の .strings の両方を読む
+    /// (PropertyListSerialization は旧形式 = .strings も解釈する)
+    private static func plistDictionary(atPath path: String) -> [String: Any]? {
+        guard let data = FileManager.default.contents(atPath: path),
+              let object = try? PropertyListSerialization.propertyList(from: data, format: nil)
+        else { return nil }
+        return object as? [String: Any]
+    }
+
     /// バンドルから判定できる手段を**安い順に**当てる(--app-path → simctl)。
     ///
     /// **ブリッジの自己申告が取れなかったときの受け皿**として使うこと。

@@ -27,6 +27,11 @@ section wins on conflicts):
 - `appName` (display name), `app` (bundle ID / package) and `appPath` are only read from the
   `ios`/`android` sections (writing them in `common` is ignored, so the display name can differ
   per OS).
+- `appName` must be exactly the name shown under the app icon on the home screen: `tapAppIcon()`
+  without a name looks for it, and a system alert is attributed to your app by it. Do not add a
+  suffix to tell profiles apart (e.g. "(device)"). On iOS, a run (and `api validate-profile`)
+  warns when it matches none of the app bundle's display names read from `appPath`
+  (`CFBundleDisplayName`, falling back to `CFBundleName`; localized names also count).
 - `appPath` is relative to the repository root by default (`~` and absolute paths also work).
   Android accepts `.apk` or `.apks` (an App Bundle split set; installing `.apks` requires
   `bundletool`).

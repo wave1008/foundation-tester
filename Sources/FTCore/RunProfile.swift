@@ -1706,6 +1706,22 @@ public enum ProfileResolver {
                     + " \"appPathPhysical\" — a simulator build cannot be installed on a device"
                     + " (it is unsigned); set appPathPhysical to a device build")
             }
+            // appName はアイコン名を兼ねる(AppBundleInspector.appNameMismatchWarning の doc)。
+            // 読めるのは iOS の .app だけ(APK のラベルは aapt が要る)。候補は原本2つの和 ——
+            // 片方にしか無い名前でも一致すれば黙る(誤検知を出さない側)
+            if platform == "ios", let appName = section.appName {
+                var candidates: [String] = []
+                for path in [sourcePath, physicalSource].compactMap({ $0 }) {
+                    for name in AppBundleInspector.iconNameCandidates(appPath: path)
+                    where !candidates.contains(name) {
+                        candidates.append(name)
+                    }
+                }
+                if let warning = AppBundleInspector.appNameMismatchWarning(
+                    appRef: appRef, platform: platform, appName: appName, candidates: candidates) {
+                    warnings.append(warning)
+                }
+            }
         }
 
         let reportDir = URL(fileURLWithPath:
