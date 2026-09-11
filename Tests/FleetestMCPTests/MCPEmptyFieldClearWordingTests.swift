@@ -42,6 +42,18 @@ final class MCPEmptyFieldClearWordingTests: XCTestCase {
         XCTAssertTrue(note.contains("could not be read back"), note)
     }
 
+    /// **入力欄でない要素(容器の ref を受け付けた回)の nil は「空」と読まない** —— そもそも値を出さない
+    /// 要素なので、消えた証拠にならない
+    func testNilValueOnANonInputElementIsNotReadAsCleared() {
+        let container = ElementInfo(ref: 1, type: "other", identifier: "search_container", label: nil,
+                                    value: nil, placeholder: nil, enabled: true,
+                                    frame: FTRect(x: 0, y: 0, width: 200, height: 40), depth: 1)
+        let note = MCPServer.replaceVerificationNote(
+            target: container, expected: "", fresh: tree(container), requestedAs: "clear")
+        XCTAssertFalse(note.contains("cleared the field"), note)
+        XCTAssertTrue(note.contains("could not be read back"), note)
+    }
+
     /// 従来の「空文字」の空も同じく成功のまま(退行させない)
     func testEmptyStringValueAfterAClearOnlyRequestStillReadsAsCleared() {
         let empty = field(value: "")

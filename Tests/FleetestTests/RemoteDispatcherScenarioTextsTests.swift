@@ -112,4 +112,17 @@ final class RemoteDispatcherScenarioTextsTests: XCTestCase {
         dispatcher.writeLastResults(texts: texts, project: project)
         XCTAssertTrue(LastResultsStore.failedIDs(project: project, profile: nil).contains("Login.S0030"))
     }
+
+    /// 回収の rsync が一部だけ転送で終わっても(終了コード ≠ 0)、転送できた分の後処理は進める ——
+    /// 出力を捨てる形・「成功したときだけ一覧を返す」形に戻さない(RemoteDispatchTests が本物の rsync で
+    /// 「一部失敗でも出力に転送できた分が並ぶ」ことを確かめている)
+    func testPartialCollectionKeepsTheTransferredList() throws {
+        let source = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/fleetest/RemoteRunDispatcher.swift"), encoding: .utf8)
+        XCTAssertTrue(source.contains("return (false, result.output)"),
+                      "collectRsyncCapturingOutput must return the output on a non-zero exit")
+        XCTAssertFalse(source.contains("collected ? RemoteArtifactCollection.transferredScenarioJSONPaths"),
+                       "collectArtifacts must read the transferred list even when the collection partly failed")
+    }
 }

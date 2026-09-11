@@ -219,6 +219,21 @@ final class TypeAfterTapFocusTests: XCTestCase {
         XCTAssertTrue(InputFocusRescue.focusIsElsewhere(from: tapped, in: [tapped, outsideAndFocused]))
     }
 
+    /// **ref は木ごとに振り直される**: タップ前の木で叩いた要素と同じ番号の、**別の**要素が撮り直した木で
+    /// 焦点を持っていても「叩いた要素に焦点がある」と読まない(番号の偶然の一致で救済を止めない)
+    func testACoincidentalRefMatchInTheNewTreeIsNotTheTappedElement() {
+        let tapped = container(ref: 8, id: "txtMailAddress")
+        let otherFieldWithTheSameRef = field(ref: 8, id: "single", focused: true, y: 100)
+        XCTAssertTrue(InputFocusRescue.focusIsElsewhere(from: tapped, in: [otherFieldWithTheSameRef]))
+    }
+
+    /// 同じ要素かは id + 型で見る(ref が変わっていても、同じ id の欄に焦点があれば救済しない)
+    func testTheSameElementIsRecognisedByIdEvenWithANewRef() {
+        let tapped = field(ref: 9, id: "single")
+        let sameFieldNewRef = field(ref: 31, id: "single", focused: true, y: 400)
+        XCTAssertFalse(InputFocusRescue.focusIsElsewhere(from: tapped, in: [sameFieldNewRef]))
+    }
+
     /// StepExecutor 経由: 別の欄に焦点を残したまま容器を叩いても、
     /// `type` は前の欄でなく叩いた容器の中身へ入ること
     func testRescuesIntoTheTappedContainerEvenWhenAnotherFieldStillHasFocus() async throws {

@@ -486,6 +486,45 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: collected.path), output)
     }
 
+    /// **一部だけ転送できた回(rsync の終了コード 23)も、出力には転送できたファイルが並ぶ** —— 回収側は
+    /// 終了コードが 0 でなくても出力を読み、転送できた分の後処理(relink・facts・`--failed`)を進める
+    /// (RemoteRunDispatcher.collectRsyncCapturingOutput)。読めないファイルを1つ混ぜて本物の rsync で確かめる
+    func testPartialTransferStillListsTheFilesThatWereTransferred() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ft-rsync-partial-\(UUID().uuidString)")
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o644],
+                ofItemAtPath: root.appendingPathComponent("src/runs/r1/scenarios/B.s1.json").path)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let scenarios = root.appendingPathComponent("src/runs/r1/scenarios")
+        try FileManager.default.createDirectory(at: scenarios, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("dst"),
+                                                withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: scenarios.appendingPathComponent("A.s1.json"))
+        try Data("{}".utf8).write(to: scenarios.appendingPathComponent("B.s1.json"))
+        try FileManager.default.setAttributes([.posixPermissions: 0o000],
+                                              ofItemAtPath: scenarios.appendingPathComponent("B.s1.json").path)
+
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        var args = RemoteArtifactCollection.resultsRsyncArgs(
+            project: "E2E", layout: layout, sshTarget: "user@host", localProjectsDir: "/unused")
+        args.removeLast(2)
+        args += [root.appendingPathComponent("src").path + "/", root.appendingPathComponent("dst").path + "/"]
+        let rsync = Process()
+        rsync.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        rsync.arguments = ["rsync"] + args
+        let pipe = Pipe()
+        rsync.standardOutput = pipe
+        rsync.standardError = pipe   // Shell.run と同じく stderr も同じ出力に混ざる
+        try rsync.run()
+        rsync.waitUntilExit()
+        XCTAssertNotEqual(rsync.terminationStatus, 0, "the unreadable file must make rsync fail")
+        let output = String(decoding: pipe.fileHandleForReading.availableData, as: UTF8.self)
+        XCTAssertEqual(RemoteArtifactCollection.transferredScenarioJSONPaths(rsyncOutput: output),
+                       ["runs/r1/scenarios/A.s1.json"], output)
+    }
+
     /// --delete が無いこと(ローカルの results を巻き添えで消さない)と、両パスとも末尾スラッシュを
     /// 保つこと(rsync のディレクトリ中身コピー契約)を確認。**位置ではなく末尾2要素で見る** ——
     /// オプションを足したときに添字がずれてこの検証が別の物を見るのを避ける

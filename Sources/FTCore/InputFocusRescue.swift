@@ -27,9 +27,15 @@ public enum InputFocusRescue {
     /// - **焦点が叩いた対象の外の別の欄に残っている**なら救済すべき(true)。Android は
     ///   容器(TextInputLayout)を叩いても前の EditText の焦点を外さないことがあり、
     /// ここを「焦点が無い」としてしまうと `type` が前の欄へ送られて誤って緑になる
+    ///
+    /// **ref では突き合わせない** —— `tapped` はタップ前の木、`elements` はタップ後に撮り直した木で、
+    /// ref は木ごとに振り直される(別の要素が同じ番号を持ちうる)。同一の要素かは id + 型で見て、
+    /// id が無ければ位置(焦点のある要素の中心が叩いた要素の矩形に入るか)で見る
     public static func focusIsElsewhere(from tapped: ElementInfo, in elements: [ElementInfo]) -> Bool {
         guard let focused = elements.first(where: { $0.focused == true }) else { return true }
-        if focused.ref == tapped.ref { return false }
+        if let id = tapped.identifier, !id.isEmpty, focused.identifier == id, focused.type == tapped.type {
+            return false
+        }
         return !contains(tapped.frame, centreOf: focused.frame)
     }
 

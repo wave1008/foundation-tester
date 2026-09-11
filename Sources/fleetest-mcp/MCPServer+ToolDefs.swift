@@ -617,8 +617,10 @@ extension MCPServer {
             // **値が無い = 空、であって「読めない」ではない**: Android の空の EditText は
             // value 属性そのものを省き、iOS も空欄は nil を返す(空文字ではなく nil)。
             // expected も空(clear-only)ならこれは成功 —— 非空を期待するとき
-            // (実際に置き換える文字列がある)だけ、本当に読めないので保留のまま返す
-            guard expected.isEmpty else {
+            // (実際に置き換える文字列がある)だけ、本当に読めないので保留のまま返す。
+            // **ただし「空」と読めるのは入力欄だけ** —— 容器など入力欄でない要素はそもそも値を出さないので、
+            // nil は消えた証拠にならない(容器の ref を受け付けた回に「cleared」と言っていた)
+            guard expected.isEmpty, TypeReadback.isTextInput(found) else {
                 return " (\(requestedAs) requested; its value could not be read back)"
             }
             return " (cleared the field)"

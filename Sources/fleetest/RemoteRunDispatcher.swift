@@ -605,7 +605,7 @@ struct RemoteRunDispatcher {
     /// 実績 JSON(run.json/scenarios/*.json/host-metrics.ndjson)と録画を含め results/ を
     /// 丸ごと回収する。失敗は warn のみ(run の成否は変えない。collectReports と同じ規律)。
     /// **戻り値 = この回収で実際に転送された scenario JSON の相対パス**(rsync
-    /// `--out-format=%n` の出力から拾う。何も転送されなかった/回収自体に失敗したときは空配列 ——
+    /// `--out-format=%n` の出力から拾う。一部だけ転送できた回もその分は返す。何も転送されなかったときは空配列 ——
     /// `collectedScenarioTexts` はこの一覧しか読まないので、そのときは何も読めない)
     @discardableResult
     private func collectArtifacts(project: TestProject, layout: RemoteLayout) -> [String] {
@@ -624,7 +624,8 @@ struct RemoteRunDispatcher {
         // 録画にはテスト資格情報の入力画面が写り込み、共有ランナーでは同じ UNIX アカウントの
         // 全員が読める)。回収に失敗したまま消すと唯一の証拠を失うので、失敗時は残す
         if collected { deleteRemoteRecordings(project: project, layout: layout) }
-        return collected ? RemoteArtifactCollection.transferredScenarioJSONPaths(rsyncOutput: output) : []
+        // 一部だけ転送できた回も、転送できた分は読む(collectRsyncCapturingOutput が出力を返す)
+        return RemoteArtifactCollection.transferredScenarioJSONPaths(rsyncOutput: output)
     }
 
     /// 回収した results の `reportPath` を、回収先(ローカルの `TestProjects/<project>/reports/`)へ
@@ -792,7 +793,9 @@ struct RemoteRunDispatcher {
             return (false, "")
         }
         log("warning: failed to collect \(what) from the remote (rsync exited with \(result.status))\n\(result.tail)")
-        return (false, "")
+        // **出力は捨てない** —— 一部だけ転送(23/24 等)でも、`--out-format=%n` の行は実際に転送できた
+        // ファイルだけなので、その分の後処理(relink・facts・`--failed` の記録)は進められる
+        return (false, result.output)
     }
 
     /// 回収済みの録画をランナーから消す。実績 JSON(run.json / scenarios/*.json)は**消さない** ——
