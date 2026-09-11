@@ -285,4 +285,70 @@ final class ScrollSearchStopTests: XCTestCase {
         XCTAssertFalse(message.contains("was not run"), message)
         XCTAssertTrue(message.contains("disappeared from the tree after 3 swipe(s)"), message)
     }
+
+    // MARK: - 容器指定なしの横方向探索の失敗文
+
+    private func scrollToRight(_ id: String, maxSwipes: Int) -> FlowStep {
+        FlowStep(action: "scrollTo", locator: FlowLocator(id: id),
+                 direction: "right", maxSwipes: maxSwipes)
+    }
+
+    /// ボトムシートの案内は縦方向の探索のときだけ。横方向(`tapWithScrollRight` 等)に
+    /// まで出すと、画面のどこかに無関係な縦シートがあるだけの誤誘導になる
+    func testBottomSheetHintDoesNotAppearForAHorizontalSearch() {
+        let step = scrollToRight("missing", maxSwipes: 8)
+        let stopped = StepExecutor.ScrollSearchResult(found: false, fallback: nil, viaXCUITest: false,
+                                                       hintJumps: 0, swipes: 3, stoppedUnmoving: true,
+                                                       containerIsPartialHeight: true)
+        let message = StepExecutor.scrollNotFoundMessage(step, stopped)
+        XCTAssertFalse(message.contains("bottom sheet"), message)
+    }
+
+    /// 探索方向に合う宣言済みの容器が木にあれば、その名前で `scrollFrame:` を勧める
+    func testDirectionMatchedScrollFrameCandidateIsSuggested() {
+        let step = scrollToRight("missing", maxSwipes: 8)
+        var stopped = StepExecutor.ScrollSearchResult(found: false, fallback: nil, viaXCUITest: false,
+                                                       hintJumps: 0, swipes: 3, stoppedUnmoving: true,
+                                                       containerIsPartialHeight: true)
+        stopped.directionMatchedScrollFrameCandidate = "#carousel_tags"
+        let message = StepExecutor.scrollNotFoundMessage(step, stopped)
+        XCTAssertTrue(message.contains("scrollFrame: #carousel_tags"), message)
+    }
+
+    /// 候補が無ければ従来どおり(誤って何かを勧めない)
+    func testNoScrollFrameHintWhenNoCandidateWasFound() {
+        let step = scrollToRight("missing", maxSwipes: 8)
+        let stopped = StepExecutor.ScrollSearchResult(found: false, fallback: nil, viaXCUITest: false,
+                                                       hintJumps: 0, swipes: 3, stoppedUnmoving: true)
+        let message = StepExecutor.scrollNotFoundMessage(step, stopped)
+        XCTAssertFalse(message.contains("scrollFrame:"), message)
+    }
+
+    /// 横に広い(幅 > 高さ)の申告容器は横方向探索の候補に採る。縦長は採らない
+    func testDirectionMatchedCandidatePicksAWideContainerForHorizontalSearch() {
+        let wideCarousel = ElementInfo(ref: 1, type: "other", identifier: "carousel_tags",
+                                       label: nil, value: nil, placeholder: nil, enabled: true,
+                                       frame: FTRect(x: 0, y: 100, width: 400, height: 80),
+                                       depth: 2, scrollable: true)
+        let tallList = ElementInfo(ref: 2, type: "other", identifier: "main_list",
+                                   label: nil, value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: 200, width: 400, height: 600),
+                                   depth: 2, scrollable: true)
+        let tree = snapshot([wideCarousel, tallList])
+
+        XCTAssertEqual(StepExecutor.directionMatchedScrollFrameCandidate(in: tree, vertical: false),
+                       "#carousel_tags", "横スワイプなら幅の広い容器を勧めること")
+        XCTAssertEqual(StepExecutor.directionMatchedScrollFrameCandidate(in: tree, vertical: true),
+                       "#main_list", "縦スワイプなら縦長の容器を勧めること")
+    }
+
+    /// 名指しできない(id もラベルも無い)候補は勧めない
+    func testDirectionMatchedCandidateSkipsUnnamableContainers() {
+        let unnamed = ElementInfo(ref: 1, type: "other", identifier: nil, label: nil, value: nil,
+                                  placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 0, y: 100, width: 400, height: 80),
+                                  depth: 2, scrollable: true)
+        XCTAssertNil(StepExecutor.directionMatchedScrollFrameCandidate(
+            in: snapshot([unnamed]), vertical: false))
+    }
 }

@@ -258,4 +258,47 @@ final class SystemUIGateTests: XCTestCase {
         XCTAssertFalse(message.contains("Buttons on this alert"),
                        "空の一覧を出さないこと: \(message)")
     }
+
+    // MARK: - 未登録アラートが前の run/シナリオの残りかもしれない、の判断材料
+
+    /// 題名に今のアプリの表示名が引用符付きで含まれるなら、今のアプリ由来と見てよい(言わない)
+    func testMayBeLeftoverIsFalseWhenTitleNamesTheCurrentApp() {
+        XCTAssertFalse(SystemUIGate.mayBeLeftover(
+            title: "Allow “FT E2E iOS” to access your photo library?",
+            currentAppDisplayName: "FT E2E iOS"))
+    }
+
+    /// 題名が今のアプリを名指ししていないなら、前の run/シナリオの残りの可能性がある
+    func testMayBeLeftoverIsTrueWhenTitleNamesADifferentApp() {
+        XCTAssertTrue(SystemUIGate.mayBeLeftover(
+            title: "Allow “FT E2E Flutter” to access your photo library?",
+            currentAppDisplayName: "FT E2E iOS"))
+    }
+
+    /// **言えないなら断定しない**: 題名・今のアプリ名のどちらかが分からなければ黙る(false)
+    func testMayBeLeftoverStaysSilentWhenEitherNameIsUnknown() {
+        XCTAssertFalse(SystemUIGate.mayBeLeftover(title: nil, currentAppDisplayName: "FT E2E iOS"))
+        XCTAssertFalse(SystemUIGate.mayBeLeftover(title: "何かのアラート", currentAppDisplayName: nil))
+        XCTAssertFalse(SystemUIGate.mayBeLeftover(title: "", currentAppDisplayName: ""))
+    }
+
+    /// unregisteredAdvice は判断材料が揃ったときだけヒントを足す。揃わなければ従来どおりの文言のまま
+    func testUnregisteredAdviceAddsTheLeftoverHintOnlyWhenItCanTell() {
+        let withHint = SystemUIGate.unregisteredAdvice(
+            "「Allow “FT E2E Flutter” to access your photo library?」",
+            title: "Allow “FT E2E Flutter” to access your photo library?",
+            currentAppDisplayName: "FT E2E iOS")
+        XCTAssertTrue(withHint.contains("left over"), withHint)
+        XCTAssertTrue(withHint.contains("does not go away") || withHint.contains("will not go away"),
+                      withHint)
+
+        let sameApp = SystemUIGate.unregisteredAdvice(
+            "「Allow “FT E2E iOS” to access your photo library?」",
+            title: "Allow “FT E2E iOS” to access your photo library?",
+            currentAppDisplayName: "FT E2E iOS")
+        XCTAssertFalse(sameApp.contains("left over"), sameApp)
+
+        let noAppName = SystemUIGate.unregisteredAdvice("何かのアラート")
+        XCTAssertFalse(noAppName.contains("left over"), noAppName)
+    }
 }

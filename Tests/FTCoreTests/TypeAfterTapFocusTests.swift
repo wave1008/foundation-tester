@@ -192,9 +192,49 @@ final class TypeAfterTapFocusTests: XCTestCase {
             after: tapped, in: [tapped, field(ref: 9, enabled: false)]))
     }
 
-    /// 申告が1つでもあれば「焦点がある」と読む
-    func testFocusIsReadFromTheTree() {
-        XCTAssertTrue(InputFocusRescue.nothingHasFocus([field(ref: 9)]))
-        XCTAssertFalse(InputFocusRescue.nothingHasFocus([field(ref: 9, focused: true)]))
+    /// 申告が無ければ救済すべき(true)
+    func testFocusElsewhereWhenNothingIsFocused() {
+        let tapped = container(ref: 8, id: "txtMailAddress")
+        XCTAssertTrue(InputFocusRescue.focusIsElsewhere(from: tapped, in: [tapped, field(ref: 9)]))
+    }
+
+    /// 叩いた要素そのものに焦点があるなら救済しない(フォーカスだけが立たなかった形ではない)
+    func testFocusNotElsewhereWhenTheTappedElementItselfHasFocus() {
+        let tapped = field(ref: 9, focused: true)
+        XCTAssertFalse(InputFocusRescue.focusIsElsewhere(from: tapped, in: [tapped]))
+    }
+
+    /// 叩いた容器の**内側**に焦点があるなら救済しない(従来どおりの速い経路)
+    func testFocusNotElsewhereWhenFocusIsInsideTheTappedContainer() {
+        let tapped = container(ref: 8, id: "txtMailAddress")
+        let inside = field(ref: 9, focused: true)
+        XCTAssertFalse(InputFocusRescue.focusIsElsewhere(from: tapped, in: [tapped, inside]))
+    }
+
+    /// 叩いた容器の**外**の別の欄に焦点が残っているなら救済すべき
+    /// (Android は容器を叩いても前の EditText の焦点を外さない)
+    func testFocusIsElsewhereWhenFocusIsOutsideTheTappedContainer() {
+        let tapped = container(ref: 8, id: "txtMailAddress")
+        let outsideAndFocused = field(ref: 20, id: "single", focused: true, y: 100)
+        XCTAssertTrue(InputFocusRescue.focusIsElsewhere(from: tapped, in: [tapped, outsideAndFocused]))
+    }
+
+    /// StepExecutor 経由: 別の欄に焦点を残したまま容器を叩いても、
+    /// `type` は前の欄でなく叩いた容器の中身へ入ること
+    func testRescuesIntoTheTappedContainerEvenWhenAnotherFieldStillHasFocus() async throws {
+        let stillFocusedElsewhere = field(ref: 20, id: "single", focused: true, y: 100)
+        let driver = RecordingDriver(elements: [stillFocusedElsewhere,
+                                                container(ref: 8, id: "txtMailAddress"),
+                                                field(ref: 9)])
+        let executor = StepExecutor(driver: driver, isAndroid: false)
+        _ = await executor.execute(FlowStep(action: "tap",
+                                            locator: FlowLocator(id: "txtMailAddress"), timeout: 1))
+
+        let outcome = await executor.execute(FlowStep(action: "type", text: "W3"))
+
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(driver.typedRefs, [9],
+                       "前に焦点があった別の欄(ref 20)でなく、叩いた容器の中の欄(ref 9)へ入れること")
+        XCTAssertTrue(outcome.notes.contains(.typeFocusRecovered), "救済は注記に残す")
     }
 }

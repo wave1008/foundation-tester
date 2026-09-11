@@ -252,6 +252,23 @@ final class StepDescriptionTests: XCTestCase {
         XCTAssertEqual(lines, ["tap(\"設定\")"])
     }
 
+    // MARK: - 制御文字はログ表示のためにエスケープする
+
+    /// 改行を含む文字列をそのまま description に埋め込むと、ログ・失敗レポートの行が
+    /// 実際の改行で割れる(`type("xyz\n")` が典型)。表示用にエスケープすること
+    func testEscapingControlCharactersEscapesNewlines() {
+        XCTAssertEqual(StepDescription.escapingControlCharacters("xyz\n"), "xyz\\n")
+        XCTAssertEqual(StepDescription.escapingControlCharacters("a\r\nb"), "a\\nb")
+        XCTAssertEqual(StepDescription.escapingControlCharacters("a\tb"), "a\\tb")
+    }
+
+    /// 制御文字を含まない通常の文字列は1バイトも変えない(誤検知しない)
+    func testEscapingControlCharactersLeavesOrdinaryTextUntouched() {
+        XCTAssertEqual(StepDescription.escapingControlCharacters("hello123"), "hello123")
+        XCTAssertEqual(StepDescription.escapingControlCharacters("こんにちは"), "こんにちは")
+        XCTAssertEqual(StepDescription.escapingControlCharacters(""), "")
+    }
+
     /// FlowStep.direction はジェスチャ(指の動き)、DSL の direction はコンテンツ基準。
     /// 生成コードは**コンテンツ基準**で書き戻す(往復させると向きが反転する退行を防ぐ)
     func testCodeGenWritesScrollDirectionInContentTerms() {

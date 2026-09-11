@@ -51,6 +51,12 @@ extension StepExecutor {
         /// ソフトキーボードの上でスワイプすると始点がキー面に乗って「1度も動かなかった」に
         /// 見えるため(ScrollGeometry.viewport 参照)、その主因を名指しする
         var keyboardFrame: FTRect? = nil
+        /// `scrollFrame` 未指定で全画面探索したときだけ埋める —— 探索方向に合う
+        /// (縦横比から推定)、書けるセレクタを持つスクロール容器が木にあったら、その名前。
+        /// found の成否に関わらず埋まりうる(失敗文が「scrollFrame: を検討しろ」と
+        /// 具体名で言うための材料。`suggestedScrollFrame` とは別 —— あちらは reverseSweeps が
+        /// 実際に拾い直した容器、こちらは探索を試す前から木にあった宣言候補)
+        var directionMatchedScrollFrameCandidate: String?
     }
 
     /// 探索の注記を組み立てつつ、**機械可読コードを今のステップへ記録する**。
@@ -106,6 +112,8 @@ extension StepExecutor {
         if result?.scrollFrameMissing == true {
             return Self.scrollFrameFailFastMessage(step, action: "search", swipes: result?.swipes ?? 0)
         }
+        let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
+        let vertical = direction == .up || direction == .down
         let limit = max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)
         // 打ち切ったときは**実際の回数**を出す(上限を名乗ると「8回も振ったのに」と読めてしまう)
         let swipes = result?.stoppedUnmoving == true ? (result?.swipes ?? limit) : limit
@@ -125,11 +133,24 @@ extension StepExecutor {
         }
         // **シート展開のヒント**: 半開ボトムシート内のリストは容器が動いても中身は動かず、
         // 「動かなくなった」だけでは利用者がシートの状態に気付けない(2026-08-08・Google マップ実測)。
-        // **全画面リストの末尾到達には出さない**(containerIsPartialHeight。2026-08-08)
-        let sheetHint = result?.stoppedUnmoving == true && result?.containerIsPartialHeight == true
+        // **全画面リストの末尾到達には出さない**(containerIsPartialHeight。2026-08-08)。
+        // **縦方向の探索のときだけ**(ボトムシートは縦の概念。`tapWithScrollRight` 等の
+        // 横方向探索にまで出すと、画面のどこかに無関係な縦シートがあるだけで誤誘導になる ——
+        // `containerIsPartialHeight` は scrollContainer が解決できないと画面全体から
+        // シート的な容器の有無だけを見て決めるため、探索方向を問わず true になり得た)
+        let sheetHint = vertical && result?.stoppedUnmoving == true
+            && result?.containerIsPartialHeight == true
             ? " If the list sits inside a half-open bottom sheet, expand the sheet first"
                 + " (drag its grabber upward) and retry."
             : ""
+        // `scrollFrame` を指定していれば全画面探索はそもそも起きない = 未指定のときだけ
+        // 埋まる(ScrollSearchResult.directionMatchedScrollFrameCandidate の doc)。
+        // 画面に探索方向へ動かせそうな容器が申告されているのに、全画面スワイプだけを繰り返して
+        // 「シートを広げろ」「端に着いた」と的外れに言っていた場合の案内
+        let scrollFrameHint = result?.directionMatchedScrollFrameCandidate.map {
+            " A scroll area matching this direction is declared on screen (scrollFrame: \($0))"
+                + " — consider passing scrollFrame: to search inside it instead of the whole screen."
+        } ?? ""
         // **キーボードが主因の可能性を名指しする**: swipe の始点は画面全体の固定比率で作られるため、
         // ソフトキーボードの上で振ると始点がキー面に乗って何も動かない(キーボードは常にタッチを
         // 飲む)。**1度も動かなかった回にだけ出す**(`!contentEverMoved`) —— 末尾に着いた回は
@@ -141,7 +162,7 @@ extension StepExecutor {
                 + " \(Int(kb.width))x\(Int(kb.height))); pass scrollFrame or close the keyboard"
         }
         return "element not found after \(swipes) scroll(s)\(stopped): \(step.locatorSummary)"
-            + sheetHint + keyboardHint
+            + sheetHint + keyboardHint + scrollFrameHint
     }
 
     /// `notExist(scroll:)` の裏返し: スクロール探索中に見つかってしまったら不在検証は失敗
@@ -335,6 +356,20 @@ extension StepExecutor {
     /// スナップショット中の webView コンテナ(ヒントのドラッグ領域)。無ければ nil
     static func webViewContainer(in snapshot: SnapshotResponse) -> FTRect? {
         snapshot.elements.first(where: { $0.type == "webView" })?.frame
+    }
+
+    /// 探索方向に合う、書けるセレクタを持つスクロール容器を木から1つ選ぶ
+    /// (`scrollFrame` 未指定の失敗文で名指しするため。`ScrollSearchResult.
+    /// directionMatchedScrollFrameCandidate` の doc)。**向きは容器自身の縦横比から推定する**——
+    /// scrollable 申告に方向情報は無いため。横スワイプで探しているのに縦長の全画面リストを
+    /// 勧めても意味が無い(逆も同じ)。名指しできない(id もラベルも無い)候補は除く
+    static func directionMatchedScrollFrameCandidate(in snapshot: SnapshotResponse,
+                                                     vertical: Bool) -> String? {
+        ScrollFrameCandidates.candidates(in: snapshot).first {
+            guard $0.selector != nil else { return false }
+            return vertical ? $0.visible.height >= $0.visible.width
+                            : $0.visible.width > $0.visible.height
+        }?.selector
     }
 
     /// **スクロール探索の本体**。`scrollTo` コマンドと、`tap(scroll:)` / `exist(scroll:)` の
@@ -577,6 +612,13 @@ extension StepExecutor {
                                                         containerIsPartialHeight: containerIsPartialHeight,
                                                         maxTruncatedDuringSearch: truncatedDuringSearch,
                                                         keyboardFrame: stoppedKeyboard)
+                        // 未指定の全画面探索が的外れな案内(シート展開・端到達)を出す前に、
+                        // 探索方向に合う宣言済みの容器を名指しできないか確かめる
+                        if step.scrollFrame == nil {
+                            result.directionMatchedScrollFrameCandidate =
+                                Self.directionMatchedScrollFrameCandidate(in: confirmed.snapshot,
+                                                                          vertical: vertical)
+                        }
                         guard recoverOnMiss, step.containerInference ?? true,
                               // 半開きシートで呼び手が展開・再試行するなら、逆走査はそちらの
                               // 再試行(全画面高)に譲る(defersPartialSheetRecovery の宣言参照)
@@ -650,8 +692,14 @@ extension StepExecutor {
                                                                          in: latest)
             return result
         }
-        return ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
-                                  hintJumps: hintJumps, swipes: swipes,
-                                  maxTruncatedDuringSearch: truncatedDuringSearch)
+        var exhausted = ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
+                                           hintJumps: hintJumps, swipes: swipes,
+                                           maxTruncatedDuringSearch: truncatedDuringSearch)
+        if step.scrollFrame == nil, let latest = previousSnapshot {
+            exhausted.directionMatchedScrollFrameCandidate =
+                Self.directionMatchedScrollFrameCandidate(in: latest,
+                                                          vertical: direction == .up || direction == .down)
+        }
+        return exhausted
     }
 }

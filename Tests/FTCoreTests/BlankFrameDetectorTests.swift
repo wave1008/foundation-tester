@@ -76,6 +76,26 @@ final class BlankFrameDetectorTests: XCTestCase {
         XCTAssertFalse(BlankFrameDetector.isUniformBlank(pngData: Data("not a png".utf8)))
     }
 
+    // MARK: - FrozenFrameJudgement(システムアラートの白を凍結の根拠にしない)
+
+    func testBlankWithNoSystemAlertIsFrozen() {
+        XCTAssertTrue(FrozenFrameJudgement.shouldMarkFrozen(evidenceBlank: true,
+                                                            systemAlertPresent: false))
+    }
+
+    /// 白フレームでも、前面にシステムアラートがあると分かっているなら凍結ではない
+    func testBlankWithSystemAlertPresentIsNotFrozen() {
+        XCTAssertFalse(FrozenFrameJudgement.shouldMarkFrozen(evidenceBlank: true,
+                                                             systemAlertPresent: true))
+    }
+
+    func testNotBlankIsNeverFrozenRegardlessOfAlert() {
+        XCTAssertFalse(FrozenFrameJudgement.shouldMarkFrozen(evidenceBlank: false,
+                                                             systemAlertPresent: false))
+        XCTAssertFalse(FrozenFrameJudgement.shouldMarkFrozen(evidenceBlank: false,
+                                                             systemAlertPresent: true))
+    }
+
     // MARK: - テスト用 PNG 合成
 
     private static func makePNG(width: Int, height: Int, draw: (CGContext) -> Void) -> Data {

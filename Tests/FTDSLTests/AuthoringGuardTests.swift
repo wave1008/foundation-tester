@@ -179,6 +179,27 @@ final class AuthoringGuardTests: XCTestCase {
         }
     }
 
+    /// 前段の失敗でシナリオが中断された後、それだけの理由でスキップされた assert は
+    /// 「宣言されている」と数える(「アサーションが無い」と誤 lint しない)。
+    /// スキップの理由が screenLooksLike 無効等(検証自体が成立しない)とは別物であること
+    func testExpectationSkippedByScenarioAbortIsNotReportedAsMissing() {
+        let core = makeCore(dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "前段が落ちて中断される") {
+                action { tap("#missing", timeout: 0) }   // 存在しない要素 → 即座に失敗して中断
+                    .expectation { exist("#field") }      // 中断でスキップされるだけの assert
+            }
+        }
+
+        XCTAssertFalse(suggestions(core).contains { $0.contains("contains no assertions") },
+                       "中断でスキップされただけの assert を「アサーションが無い」と誤 lint した")
+        XCTAssertEqual(core.scenarioAssertionCount, 1,
+                       "スキップされても宣言されたアサーションとして数えること")
+    }
+
     // MARK: - シナリオ全体でアサーションが無い
 
     func testScenarioWithoutAnyAssertionIsReported() {
@@ -375,6 +396,46 @@ final class AuthoringGuardTests: XCTestCase {
         }
         let recorded = core.finalRecord.scenes.flatMap(\.steps)
         XCTAssertFalse(recorded.contains { isFailed($0.status) }, "通常の入力文字列を誤って落とした")
+    }
+
+    // MARK: - 改行入りの type はログの行を割らない
+
+    /// **本題**: `type("xyz\n")` の description に生の改行を埋めると、
+    /// ログ・失敗レポートでその行が実際に2行へ割れる。記録された description は
+    /// エスケープ済み(`\n` の2文字)であること
+    func testTypeWithNewlineDoesNotSplitTheRecordedDescription() {
+        let core = makeCore(driver: StubDriver(), dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") { action { tap("#field"); type("xyz\n") } }
+        }
+
+        let recorded = core.finalRecord.scenes.flatMap(\.steps)
+        guard let typeStep = recorded.last else { return XCTFail("記録されたステップが無い") }
+        XCTAssertFalse(typeStep.description.contains("\n"),
+                       "description に生の改行が残っている: \(typeStep.description)")
+        XCTAssertTrue(typeStep.description.contains("xyz\\n"),
+                      "エスケープした形で残ること: \(typeStep.description)")
+    }
+
+    /// セレクタ付きの type("#selector", "xyz\n") も同じく割らない
+    func testTypeWithSelectorAndNewlineDoesNotSplitTheRecordedDescription() {
+        let core = makeCore(driver: StubDriver(), dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") { action { type("#field", "xyz\n") } }
+        }
+
+        let recorded = core.finalRecord.scenes.flatMap(\.steps)
+        guard let typeStep = recorded.last else { return XCTFail("記録されたステップが無い") }
+        XCTAssertFalse(typeStep.description.contains("\n"),
+                       "description に生の改行が残っている: \(typeStep.description)")
+        XCTAssertTrue(typeStep.description.contains("xyz\\n"),
+                      "エスケープした形で残ること: \(typeStep.description)")
     }
 
     func testSelectorLikeInputDetection() {

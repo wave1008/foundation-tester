@@ -83,8 +83,14 @@ public enum ScenarioReportWriter {
                 // 縮小表示+クリックでフルサイズ(markdown プレビューはインライン HTML を描画する。
                 // ![...]() 直埋めだと端末縦解像度のまま表示され確認しづらい)
                 md += "\n### Screenshot at failure (click for full size)\n\n"
-                if scene.evidenceBlank {
+                // 「凍結」と書くかは凍結の判定(markDeviceFrozen)と同じ FrozenFrameJudgement で決める
+                if FrozenFrameJudgement.shouldMarkFrozen(evidenceBlank: scene.evidenceBlank,
+                                                         systemAlertPresent: scene.failureUnderSystemAlert) {
                     md += "\n> ⚠️ The evidence screenshot is a blank frame (frozen device display), so it is not valid evidence.\n"
+                } else if scene.evidenceBlank {
+                    md += "\n> ⚠️ The evidence screenshot is a blank frame because a system alert was in front of"
+                        + " the app (the in-app screenshot goes blank while the app is inactive), so it is not"
+                        + " valid evidence. This is not counted as a frozen display.\n"
                 }
                 md += "<a href=\"\(imageName)\"><img src=\"\(imageName)\" width=\"320\"/></a>\n"
             }

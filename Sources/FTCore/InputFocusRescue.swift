@@ -17,11 +17,20 @@ import Foundation
 
 public enum InputFocusRescue {
 
-    /// 木の中で**入力フォーカスを持つ要素が1つも無い**か。
-    /// **申告が無いこと**(全要素 nil)も「無い」に含める —— その場合に救済へ進んでも、
-    /// 入れる先が一意に決まらなければ何もしないので、誤って別の欄へ入れることはない
-    public static func nothingHasFocus(_ elements: [ElementInfo]) -> Bool {
-        !elements.contains { $0.focused == true }
+    /// **救済すべきか**: 焦点のある要素が、叩いた要素そのものでも内側でもないか。
+    ///
+    /// - 焦点がどこにも無ければ救済すべき(true)。**申告が無いこと**(全要素 nil)も含める ——
+    ///   その場合に救済へ進んでも、入れる先が一意に決まらなければ何もしないので、
+    ///   誤って別の欄へ入れることはない
+    /// - 焦点が叩いた要素そのもの、またはその内側にあるなら救済しない(false)——
+    ///   従来どおりフォーカス中要素へ送る速い経路
+    /// - **焦点が叩いた対象の外の別の欄に残っている**なら救済すべき(true)。Android は
+    ///   容器(TextInputLayout)を叩いても前の EditText の焦点を外さないことがあり、
+    /// ここを「焦点が無い」としてしまうと `type` が前の欄へ送られて誤って緑になる
+    public static func focusIsElsewhere(from tapped: ElementInfo, in elements: [ElementInfo]) -> Bool {
+        guard let focused = elements.first(where: { $0.focused == true }) else { return true }
+        if focused.ref == tapped.ref { return false }
+        return !contains(tapped.frame, centreOf: focused.frame)
     }
 
     /// 直前に叩いた要素から「入れるべき欄」を決める。**一意に決まらなければ nil**。

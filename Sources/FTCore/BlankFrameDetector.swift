@@ -65,3 +65,13 @@ public enum BlankFrameDetector {
         return fraction >= uniformFraction
     }
 }
+
+/// **白フレームを凍結の根拠にしてよいか**。前面にシステムアラートがある
+/// (`StepNote.systemAlertPresent`)と分かっている間は、in-app スクショが一様な白になるのは
+/// アプリの非アクティブ化のせいであって画面凍結ではない。ここを見ずに「白 = 凍結」と決めると、
+/// 台は生きているのにワーカー離脱・ブリッジ停止・同じ台での再実行を繰り返して結果が変わらない
+public enum FrozenFrameJudgement {
+    public static func shouldMarkFrozen(evidenceBlank: Bool, systemAlertPresent: Bool) -> Bool {
+        evidenceBlank && !systemAlertPresent
+    }
+}

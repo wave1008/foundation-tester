@@ -367,4 +367,26 @@ public enum StepDescription {
     private static func formatSeconds(_ seconds: Double) -> String {
         FTSeconds.format(seconds)
     }
+
+    /// **制御文字をログ・レポート表示のためにエスケープする**。`type("xyz\n")` のような
+    /// DSL 引数の生テキストをそのまま description へ埋め込むと、実際の改行がログ・失敗レポートの
+    /// 行を割る(`✅ 102. [action] type "#field" "xyz` の次の行が `"` だけになる)。
+    /// **`unquote`/`unquotedTail`(引用符区切り)のパースには影響しない** —— `"` はそのまま残る
+    public static func escapingControlCharacters(_ text: String) -> String {
+        guard text.contains(where: { $0.isNewline || $0 == "\t" }) else { return text }
+        var result = ""
+        result.reserveCapacity(text.count)
+        for character in text {
+            // **`isNewline` で一括判定**(単純な "\n"/"\r" 一致だと "\r\n" は1つの Character
+            // (書記素クラスタ)なのでどちらのケースにも当たらず、素通りしてしまう)
+            if character.isNewline {
+                result += "\\n"
+            } else if character == "\t" {
+                result += "\\t"
+            } else {
+                result.append(character)
+            }
+        }
+        return result
+    }
 }

@@ -64,13 +64,34 @@ public enum SystemUIGate {
         }
     }
 
-    /// 登録が無いのに前面に出ていたときの助言(操作を止めない側の文言。失敗文言にも足す)
-    public static func unregisteredAdvice(_ described: String?) -> String {
+    /// 未登録のアラートが「前のシナリオ/run の残り」かもしれないという判断材料。
+    /// **断定はしない** —— true でも確実な証拠ではなく、false は「今のアプリ由来」の証明でもない
+    /// (単に言う根拠が無いだけ)。判断材料は1つだけ: アラートの題名に**今のアプリの表示名**が
+    /// 引用符付きで含まれているか(iOS の許可アラートの定型句 `“アプリ名”`。
+    /// `OpenURLConsent.confirmButtonRef` と同じ照合形)。含まれていれば今のアプリ由来と見てよいので
+    /// 言わない。**題名・今のアプリ名のどちらかが分からなければ黙る**(言えないことは断定しない)
+    public static func mayBeLeftover(title: String?, currentAppDisplayName: String?) -> Bool {
+        guard let title, !title.isEmpty else { return false }
+        guard let name = currentAppDisplayName, !name.isEmpty else { return false }
+        return !(title.contains("“\(name)”") || title.contains("\"\(name)\""))
+    }
+
+    /// 登録が無いのに前面に出ていたときの助言(操作を止めない側の文言。失敗文言にも足す)。
+    /// `title`/`currentAppDisplayName` は 「前の run の残りかも」判断材料(`mayBeLeftover`)——
+    /// 両方揃わなければ何も足さない
+    public static func unregisteredAdvice(_ described: String?, title: String? = nil,
+                                          currentAppDisplayName: String? = nil) -> String {
         let what = described.map { "a system alert (\($0))" } ?? "a system alert"
-        return "\(what) is in front of the app and no iosAlertHandler is registered for it"
+        var message = "\(what) is in front of the app and no iosAlertHandler is registered for it"
             + " — the in-app engine still reaches the app behind it, but a person could not."
             + " Register iosAlertHandler(alert: \"*…*\", button: \"…\") before the step that"
             + " triggers it, or dismiss it in the scenario"
+        if mayBeLeftover(title: title, currentAppDisplayName: currentAppDisplayName) {
+            message += ". Its title does not name the current app, so it may be left over from"
+                + " a previous scenario or run — it will not go away just because the requesting"
+                + " app is terminated, and stays until something answers it"
+        }
+        return message
     }
 
     /// 待ち切れなかったときの失敗の言い分。

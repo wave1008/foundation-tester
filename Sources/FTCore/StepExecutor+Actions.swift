@@ -35,8 +35,10 @@ extension StepExecutor {
         if systemAlertProbePending,
            Self.interactsByTouch(action) || action == "type" || action == "swipe" {
             systemAlertProbePending = false
-            if let described = await unregisteredSystemAlert(phase: &phase) {
-                systemAlertAdvisoryThisStep = SystemUIGate.unregisteredAdvice(described)
+            if let probe = await unregisteredSystemAlert(phase: &phase) {
+                systemAlertAdvisoryThisStep = SystemUIGate.unregisteredAdvice(
+                    SystemUIGate.describeUnregistered(probe), title: probe.title,
+                    currentAppDisplayName: expectedAppDisplayName)
             }
         }
         // ロケータ不要のアクション
@@ -2120,8 +2122,10 @@ extension StepExecutor {
         return nil
     }
 
-    /// 直前のタップが**焦点を立てられていなかった**ときに、入れ直す先を決める。
-    /// nil = 従来どおりフォーカス中要素へ送ってよい(焦点がある / 先が一意に決まらない)。
+    /// 直前のタップが**叩いた対象へ焦点を立てられていなかった**ときに、入れ直す先を決める。
+    /// nil = 従来どおりフォーカス中要素へ送ってよい(焦点が叩いた対象そのもの/内側にある、
+    /// または先が一意に決まらない)。**焦点が叩いた対象の外の別の欄に残っているだけでも
+    /// 救済へ進む**(前の欄の焦点が外れないまま容器を叩く Android の形)。
     /// **木は撮り直す** —— ref は木ごとに振り直されるので、タップ時の ref は使えない。
     /// 判定と選び方は `InputFocusRescue`(純関数)に置く
     func retypeTargetIfUnfocused(after tapped: ElementInfo,
@@ -2133,7 +2137,7 @@ extension StepExecutor {
         // 焦点が無い理由が**割り込みに持っていかれた**ことなら、閉じてから見る
         // (閉じずに入れ先を選ぶと、覆いの下の欄を名指しして ref で撃つことになる)
         try await dismissInterruption(in: &snapshot, phase: &phase)
-        guard InputFocusRescue.nothingHasFocus(snapshot.elements) else { return nil }
+        guard InputFocusRescue.focusIsElsewhere(from: tapped, in: snapshot.elements) else { return nil }
         return InputFocusRescue.fieldToType(after: tapped, in: snapshot.elements)
     }
 

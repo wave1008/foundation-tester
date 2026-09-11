@@ -234,6 +234,34 @@ class テキスト入力が正しくechoされること {
                     tap("#tab_home")
                 }
             }
+            // scene 18 は焦点がどこにも無い状態からしか容器を叩かない。Android は焦点を持たない
+            // 容器を叩いても前の EditText の焦点を外さないので、「別の欄に焦点を残したまま容器を
+            // 叩く」形は救済の門(InputFocusRescue)が別に要る —— 19/20 はその門の witness。
+            // 門を「木の全体で焦点が無いか」に戻すと、type が #field_single へ入り wrapped が空のまま緑になる
+            scene(19, "別の欄に焦点を残したまま容器を叩く準備") {
+                condition {
+                    tap("#nav_input")
+                    tap("#btn_input_clear")
+                }.action {
+                    tap("#field_single")
+                    type("#field_single", "kb")
+                }.expectation {
+                    select("#txt_echo_single").textIs("single=kb")
+                }
+            }
+            scene(20, "焦点が別の欄にあっても容器を叩いてからの type は中身の欄へ入る") {
+                action {
+                    tap("#field_wrapped")
+                    type("W3")
+                }.expectation {
+                    select("#txt_echo_wrapped").textIs("wrapped=W3")
+                    // 前に焦点があった #field_single が誤って上書きされていないこと
+                    select("#txt_echo_single").textIs("single=kb")
+                }.action {
+                    hideKeyboard()
+                    tap("#tab_home")
+                }
+            }
         }
     }
 }

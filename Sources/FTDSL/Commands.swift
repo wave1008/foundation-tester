@@ -229,8 +229,12 @@ public func type(_ text: String, replace: Bool = false,
     var step = FlowStep(action: "type", text: text)
     step.replace = replace ? true : nil
     let suffix = replace ? " (replace)" : ""
+    // **改行等はログ・レポート表示のためにエスケープする** —— 生のまま埋めると
+    // `type("xyz\n")` の描画行がそこで割れる。ステップ自身に送るテキスト(`step.text`)は
+    // 生のまま(実際に打鍵する内容は変えない)
     FTRuntime.requireCore(command: "type")
-        .perform(step: step, description: "type \"\(text)\"\(suffix)",
+        .perform(step: step,
+                 description: "type \"\(StepDescription.escapingControlCharacters(text))\"\(suffix)",
                  command: "type",
                  commandError: FTSelector.selectorLikeInputError(text),
                  file: file, line: line)
@@ -278,8 +282,10 @@ private func typeImpl(_ selector: FTSelector, _ text: String, replace: Bool, tim
                         scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
     step.replace = replace ? true : nil
     let suffix = replace ? " (replace)" : ""
+    // 表示だけエスケープする(打鍵内容の `step.text` は生のまま)
     perform("type", selector, step: step,
-            description: "type \"\(selector.text)\" \"\(text)\"\(suffix)", file: file, line: line)
+            description: "type \"\(selector.text)\" \"\(StepDescription.escapingControlCharacters(text))\"\(suffix)",
+            file: file, line: line)
 }
 
 /// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ)。省略時は既定の再試行(約0.7秒)

@@ -276,6 +276,10 @@ public final class StepExecutor {
     /// 空 = 監視しない。**fallbackDriver がある(hybrid)ときだけ効く**。
     /// 登録の形・発火で外れる規則は `SystemAlertRule` / `SystemAlertWatchlist` の doc
     public var systemAlertWatchlist = SystemAlertWatchlist()
+    /// 現在のシナリオが動かしているアプリの表示名(`FTDriveCore.appDisplayName` から同期)。
+    /// nil = 分からない。**未登録アラートの題名にこの名前が無いとき**、そのアラートが
+    /// 「前のシナリオ/run の残り」かもしれないという判断材料になる(SystemUIGate.mayBeLeftover)
+    public var expectedAppDisplayName: String?
     /// **登録の無い**システムアラートを1回だけ確かめる契機(launch 系の直後)。FTRuntime が
     /// launchApp / restartApp 等の後に立て、次の触る操作が消費する。登録がある間は
     /// SystemUIGate(毎ステップ)が担うのでこちらは見ない
@@ -309,12 +313,14 @@ public final class StepExecutor {
         firstFrameGatePending = true
     }
 
-    /// **登録が無いときだけ**1回 SpringBoard に聞き、前面に出ていれば名指しを返す。
+    /// **登録が無いときだけ**1回 SpringBoard に聞き、前面に出ていれば申告(probe)を返す。
+    /// **返すのは生の probe**(呼び手が `SystemUIGate.describeUnregistered`/`mayBeLeftover` へ
+    /// 渡す。題名を素通りさせないと 「前の run の残りかも」判断ができない)。
     /// 登録がある間は `waitOutSystemUI` / `SystemUIGate` が担うので nil(二重に聞かない)。
     /// XCUITest ランナー(fallback)が無い構成も nil(聞く口が無い)。
     /// 契機は2つだけ(安さのため): launch 直後の最初の触る操作 / ステップの失敗。
     /// **操作は止めない**(閉じるのはシナリオの責務。新しい検知は警告から)
-    func unregisteredSystemAlert(phase: inout PhaseAccumulator) async -> String? {
+    func unregisteredSystemAlert(phase: inout PhaseAccumulator) async -> SystemAlertProbeResponse? {
         guard !systemAlertWatchlist.isWatching, let fb = fallbackDriver else { return nil }
         let clock = ContinuousClock()
         let start = clock.now
@@ -322,7 +328,7 @@ public final class StepExecutor {
         phase.snapshotMs += Self.ms(clock.now - start)
         guard SystemUIGate.isCovered(probe) else { return nil }
         noteCodesThisStep.insert(.systemAlertPresent)
-        return SystemUIGate.describeUnregistered(probe)
+        return probe
     }
 
     /// 失敗ステータスに「前面のシステムアラート」を添える(登録が無いときだけ・1往復)。
@@ -330,8 +336,11 @@ public final class StepExecutor {
     func annotatedWithSystemAlert(_ status: StepResult.Status,
                                   phase: inout PhaseAccumulator) async -> StepResult.Status {
         guard case .failed(let message) = status else { return status }
-        guard let described = await unregisteredSystemAlert(phase: &phase) else { return status }
-        return .failed(message + " — " + SystemUIGate.unregisteredAdvice(described))
+        guard let probe = await unregisteredSystemAlert(phase: &phase) else { return status }
+        let advice = SystemUIGate.unregisteredAdvice(SystemUIGate.describeUnregistered(probe),
+                                                      title: probe.title,
+                                                      currentAppDisplayName: expectedAppDisplayName)
+        return .failed(message + " — " + advice)
     }
     /// hybrid 用: type アクションを XCUITest(アプリ attach)で実行する代替ドライバ。inapp が
     /// UIKit 非依存アプリ(Compose 等)で type 不能(409)なときの経路。fallbackDriver(springboard

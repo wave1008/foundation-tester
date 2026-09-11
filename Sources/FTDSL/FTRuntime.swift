@@ -50,8 +50,12 @@ public struct SceneRecordData: Sendable {
     public var steps: [DSLStepRecord] = []
     public var triage: TriageInfo?
     public var failureScreenshot: Data?
-    /// 失敗時証跡スクショが白フレーム(画面凍結)でエビデンス無効。ScenarioReportWriter が警告表示する。
+    /// 失敗時証跡スクショが白フレームでエビデンス無効。ScenarioReportWriter が警告表示する。
     public var evidenceBlank: Bool = false
+    /// その失敗が前面のシステムアラート(`StepNote.systemAlertPresent`)を伴っていたか。
+    /// 白の原因を「凍結」と書くかどうかを `FrozenFrameJudgement` で決めるための材料
+    /// (アラート中の in-app スクショはアプリの非アクティブ化で白くなる)
+    public var failureUnderSystemAlert: Bool = false
     /// 失敗時点の要素一覧(SnapshotRenderer の1要素1行テキスト)。スクリーンショットからは
     /// `#id` を読み取れないため、直すための情報はこちらが本体(レポートに折りたたみで載せる)
     public var failureElements: String?
@@ -363,8 +367,12 @@ public final class FTDriveCore {
     /// 分けずに `appPathOverride` を使い回すと、許可を戻した瞬間に二重インストールが復活する
     public var appPackagePath: String?
     /// --app-name で親が解決して渡したアプリの表示名(プロファイルの appName)。
-    /// tapAppIcon() 引数省略時の既定(Shirates の appIconName 既定=プロファイル、に相当)
-    public var appDisplayName: String?
+    /// tapAppIcon() 引数省略時の既定(Shirates の appIconName 既定=プロファイル、に相当)。
+    /// **executor へ同期する**(didSet) —— 未登録の権限アラートが「前の run/シナリオの残り」
+    /// かもしれないという判断材料(`SystemUIGate.mayBeLeftover`)に使うため
+    public var appDisplayName: String? {
+        didSet { executor.expectedAppDisplayName = appDisplayName }
+    }
     /// DSL の `iosAlertHandler` からの登録(発火したら台帳から外れる。
     /// 規則の意味は FTCore.SystemAlertRule)
     func addSystemAlertRule(_ rule: SystemAlertRule) {
@@ -662,9 +670,13 @@ public final class FTDriveCore {
         let filePath = relativePath("\(file)")
         // verify() のブロック内アサーション数を数える(判定は FlowStep.assert != nil に加え、
         // **結果が skipped でないこと**)。screenLooksLike(FM 無効時)のように assert が
-        // `.skipped` を返す経路は「何も検証していない」ので、数えると「アサーションが1つも
-        // 無い」を見逃すべき verify が緑になる。数えるのは結果が出てから
-        // (dry-run は下で .passed を返すので数える。scenarioAborted は常に .skipped)
+        // 実行された上で `.skipped` を返す経路は「検証自体が成立しない」ので、数えると
+        // 「アサーションが1つも無い」を見逃すべき verify/expectation が緑になる。数えるのは
+        // 結果が出てから(dry-run は下で .passed を返すので数える)。
+        // **scenarioAborted による skip は別扱い**(下の早期 return が直接 noteAssertion する)——
+        // こちらは「アサーションは書かれていたが、シナリオ中断で実行されなかっただけ」なので
+        // 「宣言されている」と数える。書かれてもいないのに lint が「アサーションが無い」と誤るのは、
+        // 前段の失敗でシナリオが止まっただけの普通の赤い run で誤誘導になる
         func noteAssertionUnlessSkipped(_ status: StepResult.Status) {
             guard step.assert != nil else { return }
             if case .skipped = status { return }
@@ -675,7 +687,7 @@ public final class FTDriveCore {
             let status = StepResult.Status.skipped(skipReason)
             recordStep(description: description, status: status, file: filePath, line: Int(line),
                        command: command)
-            noteAssertionUnlessSkipped(status)
+            if step.assert != nil { noteAssertion() }
             return PerformResult(status: status, element: nil)
         }
         // 構文検証はデバイスに触る前(dry-run でも)に行う。パースは失敗しない契約のため、
@@ -869,7 +881,8 @@ public final class FTDriveCore {
                                 selectorText: selectorText, description: description)
 
         if case .failed(let reason) = status {
-            handleFailure(stepDescription: description, reason: reason)
+            handleFailure(stepDescription: description, reason: reason,
+                          systemAlertPresent: outcome?.notes.contains(.systemAlertPresent) == true)
         }
         noteAssertionUnlessSkipped(status)
         return PerformResult(status: status, element: outcome?.resolvedElement)
@@ -1388,8 +1401,13 @@ public final class FTDriveCore {
         emit(event)
     }
 
-    /// perform を通らないコマンド(ifCanSelect の構文エラー)からも呼ぶため internal
-    func handleFailure(stepDescription: String, reason: String) {
+    /// perform を通らないコマンド(ifCanSelect の構文エラー)からも呼ぶため internal。
+    /// `systemAlertPresent`: このステップの失敗が、前面のシステムアラート
+    /// (`StepNote.systemAlertPresent`。呼び手が既に得ている `outcome.notes` から渡す)を伴うか。
+    /// **文言の一致では判定しない** —— アラートで非アクティブになったアプリの in-app スクショは
+    /// 一様な白になり、白フレーム検査が「画面凍結」と誤判定していた。事実が分かっている間は
+    /// 白フレームを凍結の根拠にしない
+    func handleFailure(stepDescription: String, reason: String, systemAlertPresent: Bool = false) {
         // 失敗したら**シナリオ全体を中断**する(Shirates と同じ。scene を跨いで続行しない。
         // tearDown だけは runLifecycle(allowAfterFailure:) がこのフラグを一時解除して実行する)
         scenarioAborted = true
@@ -1447,9 +1465,15 @@ public final class FTDriveCore {
                 record.scenes[index].failureScreenshot = screenshot
                 record.scenes[index].triage = triage
                 record.scenes[index].evidenceBlank = evidenceBlank
+                record.scenes[index].failureUnderSystemAlert = systemAlertPresent
                 record.scenes[index].failureElements = elementsText
             }
-            if evidenceBlank { markDeviceFrozen() }
+            // 判定は FrozenFrameJudgement(純関数)。システムアラートに覆われている間の白は
+            // 凍結の証拠にしない
+            if FrozenFrameJudgement.shouldMarkFrozen(evidenceBlank: evidenceBlank,
+                                                     systemAlertPresent: systemAlertPresent) {
+                markDeviceFrozen()
+            }
         }
         // **process が無いことは window の覆いより優先度が高い容疑**なので先に確かめる
         // (プロセスが落ちていれば別プロセスの window どうこうは無意味な情報になる)

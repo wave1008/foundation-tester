@@ -99,6 +99,36 @@ final class ScenarioReportWriterTests: XCTestCase {
         XCTAssertEqual(imgCount, 1)
     }
 
+    // MARK: - 白い証拠スクショの原因の書き分け
+
+    private func reportForBlankEvidence(underSystemAlert: Bool) throws -> String {
+        var record = ScenarioRecordData(id: "Sample.testCase", title: "サンプル",
+                                        app: "com.example.app", platform: "ios")
+        var scene = SceneRecordData(number: 1, title: "s")
+        scene.steps = [DSLStepRecord(index: 1, section: nil, description: "exist \"#a\"",
+                                     status: .failed("element not found"), file: "", line: 0)]
+        scene.failureScreenshot = Data([0x01])
+        scene.evidenceBlank = true
+        scene.failureUnderSystemAlert = underSystemAlert
+        record.scenes = [scene]
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = try ScenarioReportWriter.write(record: record, to: dir)
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    func testBlankEvidenceWithoutSystemAlertIsCalledFrozen() throws {
+        let content = try reportForBlankEvidence(underSystemAlert: false)
+        XCTAssertTrue(content.contains("frozen device display"), content)
+    }
+
+    /// アラート中の白は凍結の証拠にしない(FrozenFrameJudgement)。レポートも同じ判定で書き分ける
+    func testBlankEvidenceUnderSystemAlertIsNotCalledFrozen() throws {
+        let content = try reportForBlankEvidence(underSystemAlert: true)
+        XCTAssertFalse(content.contains("frozen device display"), content)
+        XCTAssertTrue(content.contains("a system alert was in front of the app"), content)
+    }
+
     // MARK: - inconclusive ステップの表示
 
     func testWriteMarksInconclusiveStepsWithQuestionIconAndReason() throws {
