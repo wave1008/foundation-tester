@@ -358,6 +358,10 @@ static id _Nullable ftClearTarget(void) {
     return ftCurrentFirstResponder();
 }
 
+id _Nullable FTCurrentTextReceiver(void) {
+    return ftClearTarget();
+}
+
 BOOL FTClearTextInFirstResponder(void) {
     id responder = ftClearTarget();
     if (!responder) return NO;

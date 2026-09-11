@@ -510,7 +510,10 @@ final class BridgeRouter {
 
     private func captureOnce(_ app: XCUIApplication) throws -> Captured {
         let root = try app.snapshot()
-        let screen = root.frame
+        // 別 UIWindow の上部バナー(高さ180)の本体に触れた直後、root.frame が**そのバナー窓の
+        // frame** に縮む(402x180)。そのまま使うと下の shouldInclude の `frame.intersects(screen)`
+        // がアプリ本体を丸ごと画面外扱いして木から消す(XCUITest 固有。in-app は可視な窓を自分で歩く)
+        let screen = Self.screenBounds(root: root)
         var elements: [ElementInfo] = []
         var frames: [Int: CGRect] = [:]
         var identities: [Int: (identifier: String?, label: String?, type: String)] = [:]
@@ -528,6 +531,32 @@ final class BridgeRouter {
                         truncated: truncated,
                         truncatedTiers: truncatedTiers, bulkExempt: bulkExempt, screen: screen,
                         keyboardFrame: keyboardFrame, offscreen: offscreenHints)
+    }
+
+    /// 「画面」の外接矩形 = root.frame に、**ディスプレイに収まる**子(各 UIWindow)の frame を union
+    /// したもの。root.frame は手前の別 UIWindow の frame に縮むことがあるが、アプリ本体の窓の frame は
+    /// 歪まない。**収まらない子は足さない** —— SpringBoard の木には画面外の窓が居て、素朴に union すると
+    /// 画面が 1206x2622(ディスプレイの3倍)に膨らみ、画面外の要素が木に載る(`/systemui/snapshot` も同じ)。
+    /// ディスプレイの寸法が取れないときは root.frame のまま
+    private static func screenBounds(root: XCUIElementSnapshot) -> CGRect {
+        guard let display = displaySides else { return root.frame }
+        return root.children.reduce(root.frame) { acc, child in
+            fits(child.frame.size, within: display) ? acc.union(child.frame) : acc
+        }
+    }
+
+    /// ディスプレイの長辺・短辺(pt)。回転で縦横が入れ替わるので辺の長さだけを持つ。
+    /// 採るのはプロセスで最初の1回(`static let` の初期化はスレッド安全)。XCUIScreen の
+    /// スクショはアプリに触れない(`/screenshot` と同じ)。`UIImage.size` は pt
+    private static let displaySides: (long: CGFloat, short: CGFloat)? = {
+        let size = XCUIScreen.main.screenshot().image.size
+        guard size.width > 0, size.height > 0 else { return nil }
+        return (max(size.width, size.height), min(size.width, size.height))
+    }()
+
+    /// frame は 1/scale pt 刻みの端数を持つので、ディスプレイちょうどの窓を落とさないよう 1pt 見逃す
+    private static func fits(_ size: CGSize, within display: (long: CGFloat, short: CGFloat)) -> Bool {
+        max(size.width, size.height) <= display.long + 1 && min(size.width, size.height) <= display.short + 1
     }
 
     private func handleTap(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -573,12 +602,15 @@ final class BridgeRouter {
     /// 追送すると同じ文字を2回入れる(Android の `InputInjector` で実害。
     /// docs/design.md §Android のテキスト注入の規律)。
     ///
-    /// 検証できない経路(ref なし・テキスト欄でない対象・文中の改行)は従来どおり
-    /// `app.typeText` を1回だけ送る。
+    /// 検証できない経路(ref なし・テキスト欄でない対象・secure 欄・文中の改行)は従来どおり
+    /// `app.typeText` を1回だけ送る——ただし**この分岐だけ**焦点の有無を確かめてから送る
+    /// (`requireKeyboardFocus`。焦点が無いまま撃つとランナーごと落ちるので、
+    /// ここでだけライブクエリを払って先に 422 で失敗させる)。
     ///
     /// **読み返しはスナップショットで行い、ライブクエリ(`descendants` + `hasKeyboardFocus`)は
-    /// 使わない**。ライブクエリは1回 0.5s 級で、happy path が倍以上遅くなる(実測: /type の
-    /// p50 が 842ms → 2,166ms)。**打鍵も `app.typeText` のまま**にする —— 要素に対する
+    /// 検証つきの主経路(isTextInput な ref)には使わない**。ライブクエリは1回 0.5s 級で、
+    /// happy path が倍以上遅くなる(実測: /type の p50 が 842ms → 2,166ms)。
+    /// **打鍵も `app.typeText` のまま**にする —— 要素に対する
     /// `typeText` はイベント合成の失敗が XCTest の失敗になり**ランナーごと落ちる**
     /// (実測1件: 高負荷で `Type '...' into "field_single" TextView` の Synthesize event を
     /// 最後にランナーが死んだ)。
@@ -595,9 +627,22 @@ final class BridgeRouter {
         let (main, hasTrailingNewline) = Self.splitTrailingNewline(req.text)
         // 入力前の値は**直近スナップショットの値をそのまま使う**(ホストは /type の直前に必ず
         // snapshot を撮っている)。ここで撮り直すと happy path に取得1回ぶん乗る
+        //
+        // **secure 欄(`isMaskedInput`)もここへ落とす**: 中身は伏せ字(`•`)でしか読めないため、
+        // 下の読み返しループに入れると `expected` に `•` が混ざり、それを本物の1文字として
+        // resend して欄へ literal な bullet を打ち込む(実害。TypeReadback.isMaskedInput
+        // の doc 参照)。検証を諦めて1回だけ送る側にとどめる
         guard !main.contains("\n"),
               let target = req.ref.flatMap({ refElements[$0] }),
-              TypeReadback.isTextInput(target) else {
+              TypeReadback.isTextInput(target), !TypeReadback.isMaskedInput(target) else {
+            // **この分岐だけ焦点の有無を確かめる**(ライブクエリ = 上のコメントで避けている
+            // コストそのものだが、検証つきの主経路には持ち込まない・この分岐だけで払う)。
+            // 焦点が無いまま `app.typeText` を撃つと XCTest が
+            // "Neither element nor any descendant has keyboard focus" で失敗し、
+            // テストが Tear Down して**ランナーごと落ちる**(ref が入力欄でない・
+            // ref 無しで未フォーカスのどちらも踏む)。in-app は同じ状況で 409 を返せるので、
+            // ここは 422 で先に失敗させて揃える(409 は requireApp() 専用という不変条件)
+            try Self.requireKeyboardFocus(app)
             app.typeText(req.text)
             return .json(OKResponse())
         }
@@ -677,6 +722,23 @@ final class BridgeRouter {
     private static func splitTrailingNewline(_ text: String) -> (main: String, hasTrailingNewline: Bool) {
         guard text != "\n", text.hasSuffix("\n") else { return (text, false) }
         return (String(text.dropLast()), true)
+    }
+
+    /// **/type の未検証な分岐(guard の else)だけが払うライブクエリ**(handleType 冒頭の
+    /// コメント参照。検証つきの主経路には持ち込まない)。焦点が無いまま `app.typeText` を
+    /// 撃つと XCTest の event synthesis が失敗し、テストが Tear Down してランナーごと落ちる。
+    /// in-app の同じ状況の文言(`no focused input field — tap the target field
+    /// first`)と揃える。**409 ではなく 422**(409 は requireApp() 専用という不変条件。
+    /// ここは「セッションはあるが今は打てない」であってセッション消失ではない)
+    private static func requireKeyboardFocus(_ app: XCUIApplication) throws {
+        let focused = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
+        guard focused.exists else {
+            throw BridgeError(422, "nothing has keyboard focus, so there is nothing to type into."
+                + " If you passed a ref, it is probably not the input element itself — tapping a"
+                + " container does not move focus. Tap the field (or pass the ref of the element"
+                + " whose type is a text field) and try again")
+        }
     }
 
     /// hasKeyboardFocus な要素を探して末尾へカーソルを送ってから delete を打つ。**文中をタップして

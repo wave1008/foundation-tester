@@ -26,6 +26,8 @@ final class FTInAppBridge {
     // accept ループは1本ずつ処理するので単純プロパティで足りる(同時アクセスなし)。
     // nodes は弱参照テーブル(画面遷移後に旧ビュー階層を snapshot 更新まで抱え込まないため)。
     private var frames: [Int: CGRect] = [:]
+    /// 直近 snapshot の ref → 見えている範囲(InAppSnapshot.Result.clips)。frames と同じ時点で差し替える
+    private var clips: [Int: CGRect] = [:]
     private let nodes = NSMapTable<NSNumber, AnyObject>(keyOptions: .strongMemory, valueOptions: .weakMemory)
     // compose-resources = Compose Multiplatform のリソースバンドル(2026-07-20 実バンドルで検証済みマーカー)。
     // Frameworks/Flutter.framework = Flutter アプリのマーカー。type ルーティング判定(StepExecutor)に使う
@@ -211,6 +213,7 @@ final class FTInAppBridge {
 
         mainSync {
             self.frames = merged.frames
+            self.clips = merged.clips
             self.nodes.removeAllObjects()
             for (ref, node) in merged.nodes { self.nodes.setObject(node, forKey: NSNumber(value: ref)) }
         }
@@ -235,6 +238,13 @@ final class FTInAppBridge {
     /// keyboardWillChangeFrame の最新値(画面座標)。nil = 非表示または不明。
     /// メインスレッドでのみ読み書きする(observeKeyboardFrame も snapshot も mainSync 内)
     private static var observedKeyboardFrame: CGRect?
+    /// 通知から得た「今キーボードが出ているか」。nil = まだ1度も通知を受けていない
+    /// (ブリッジ起動前から開いていた等)。**keyboardIsVisible はこれを優先する**。
+    /// 実害: 以前は TextEffects window の frame(下のコメントどおり閉じた後も全画面のまま
+    /// 居残る)だけで判定しており、`pressEnter` でキーボードを閉じても `keyboardShown: true` が
+    /// 固定化していた。show/hide の通知は「今どちらか」を直接言うので、居残る frame に頼らずに
+    /// 閉じたら確実に false へ戻る
+    private static var observedKeyboardShown: Bool?
     private static var keyboardObserversInstalled = false
 
     private static func observeKeyboardFrame() {
@@ -247,22 +257,27 @@ final class FTInAppBridge {
                 as? NSValue)?.cgRectValue else { return }
             // 閉じるときは end frame が画面外(minY >= 画面下端)で来る
             let screen = UIScreen.main.bounds
-            observedKeyboardFrame = frame.minY < screen.maxY - 1 ? frame : nil
+            let onScreen = frame.minY < screen.maxY - 1
+            observedKeyboardFrame = onScreen ? frame : nil
+            observedKeyboardShown = onScreen
         }
         center.addObserver(forName: UIResponder.keyboardWillHideNotification,
                            object: nil, queue: .main) { _ in
             observedKeyboardFrame = nil
+            observedKeyboardShown = false
         }
     }
 
-    /// ソフトキーボードが表示中か。**キーボードは UITextEffectsWindow(キーウィンドウとは別)に
-    /// 載る**ので window 一覧から探す。閉じた直後は window が画面外(y >= 画面下端)へ退避する
-    /// だけで残るため、可視かつ画面内に張り出しているかで見る
+    /// ソフトキーボードが表示中か。**通知由来の状態(`observedKeyboardShown`)を優先する** ——
+    /// キーボードは UITextEffectsWindow(キーウィンドウとは別)に載るが、その window の frame は
+    /// 閉じた後も全画面のまま居残る(keyboardFrameIfVisible のコメント参照)ので、frame の
+    /// 有無では「閉じた」を判定できない。通知をまだ1度も受けていないとき(起動前から開いていた
+    /// 等)だけ、window の可視性(isHidden/alpha)で縮退する
     private static func keyboardIsVisible() -> Bool {
+        if let shown = observedKeyboardShown { return shown }
         for window in UIApplication.shared.windows
         where NSStringFromClass(type(of: window)).contains("TextEffects") {
-            guard !window.isHidden, window.alpha > 0.01 else { continue }
-            if window.frame.minY < window.screen.bounds.maxY - 1 { return true }
+            if !window.isHidden, window.alpha > 0.01 { return true }
         }
         return false
     }
@@ -294,6 +309,7 @@ final class FTInAppBridge {
         var elements: [ElementInfo]
         var frames: [Int: CGRect]
         var nodes: [Int: NSObject]
+        var clips: [Int: CGRect]
         var truncated: Int
         var note: String?
         /// BridgeDTO の SnapshotResponse.webViewPath。"dom" = uikit ホスト等で DOM を読めた /
@@ -335,7 +351,7 @@ final class FTInAppBridge {
         let containers = base.elements.filter { $0.type == "webView" }
         guard !containers.isEmpty else {
             return MergedSnapshot(elements: base.elements, frames: base.frames,
-                                  nodes: base.nodes, truncated: base.truncated, note: nil,
+                                  nodes: base.nodes, clips: base.clips, truncated: base.truncated, note: nil,
                                   webViewPath: nil, truncatedTiers: base.truncatedTiers,
                                   bulkExempt: base.bulkExempt)
         }
@@ -368,7 +384,7 @@ final class FTInAppBridge {
             // 実在する要素に対する exist が満了まで落ち続ける(理由は何も残らない)。
             // だから読めなかったことを経路と注記で名乗る。判定は変えない(委譲の可否はホストが決める)
             return MergedSnapshot(elements: base.elements, frames: base.frames,
-                                  nodes: base.nodes, truncated: base.truncated,
+                                  nodes: base.nodes, clips: base.clips, truncated: base.truncated,
                                   note: Self.unreadNote(unread),
                                   webViewPath: unread.isEmpty ? nil : "dom-unread",
                                   truncatedTiers: base.truncatedTiers,
@@ -396,15 +412,19 @@ final class FTInAppBridge {
         var elements: [ElementInfo] = []
         var frames: [Int: CGRect] = [:]
         var nodes: [Int: NSObject] = [:]
+        var clips: [Int: CGRect] = [:]
         for slot in kept {
             var copy: ElementInfo
             var frame: CGRect?
             var node: NSObject?
+            // DOM 由来の要素は持たない(WebView 内のスクロールは AX の容器として見えない)
+            var clip: CGRect?
             switch slot {
             case .base(let i):
                 copy = base.elements[i]
                 frame = base.frames[copy.ref]
                 node = base.nodes[copy.ref]
+                clip = base.clips[copy.ref]
             case .dom(let container, let index):
                 copy = domByRef[container]!.elements[index]
                 frame = domByRef[container]!.frames[index]
@@ -413,8 +433,9 @@ final class FTInAppBridge {
             elements.append(copy)
             if let frame { frames[copy.ref] = frame }
             if let node { nodes[copy.ref] = node }
+            if let clip { clips[copy.ref] = clip }
         }
-        return MergedSnapshot(elements: elements, frames: frames, nodes: nodes,
+        return MergedSnapshot(elements: elements, frames: frames, nodes: nodes, clips: clips,
                               truncated: base.truncated + dropped, note: note,
                               webViewPath: anyInterop ? "dom-interop" : "dom",
                               truncatedTiers: truncatedTiers, bulkExempt: base.bulkExempt)
@@ -426,15 +447,68 @@ final class FTInAppBridge {
             let note = try tapByRef(ref, req: req)
             return ok(note)
         }
+        let clippedNote = NoteBox()
         try performWithSettle(operation: "the tap") { window in
             let p = try self.resolvePoint(ref: nil, x: req.x, y: req.y)
+            // **画面外は撃たない**(実害: 直近 snapshot の frame は古い/クランプされていない
+            // ことがあり、画面外の座標でも「点を含む最小要素」が見つかって activate してしまう)。
+            // 画面は window ではなく UIScreen そのものから見る —— window.bounds は手前の別窓の
+            // モーダルで縮むことがある(別窓で木の screen が縮む件と同じ理由。ここは別窓の frame では判定しない)
+            let screen = UIScreen.main.bounds
+            // **端ちょうどは画面内として許す**(過剰な拒否をしない。CGRect.contains は上端/右端を
+            // 含まない半開区間なので使わない —— MCP 側の同種ガード
+            // `MCPOffscreenCoordinateGuardTests.testAllowsACoordinateExactlyOnTheScreenEdge` と
+            // 同じ判定に揃える)
+            guard (screen.minX...screen.maxX).contains(p.x),
+                  (screen.minY...screen.maxY).contains(p.y) else {
+                throw InAppError(422, "the point (\(Int(p.x)), \(Int(p.y))) is outside the screen"
+                    + " (\(Int(screen.width))x\(Int(screen.height))) — nothing to tap there")
+            }
+            // **キーボードの上も撃たない**。in-app はキーを押せない(キーボードは別プロセスが描く)うえ、
+            // 下の topmostHitView はキーボードの窓を拾えず、下に隠れた要素を activate していた
+            // (実測: キーボードの下へ押し上げられた #tab_home の枠内を撃つと遷移した)。
+            // 枠は通知由来の keyboardFrameIfVisible(TextEffects 窓の frame は全画面のまま居残るので使わない)
+            if let keyboard = Self.keyboardFrameIfVisible(), keyboard.contains(p) {
+                throw InAppError(422, "the point (\(Int(p.x)), \(Int(p.y))) is on the software keyboard"
+                    + " (\(Int(keyboard.minX)),\(Int(keyboard.minY)) \(Int(keyboard.width))x\(Int(keyboard.height)))"
+                    + " — the in-app engine cannot press keys, and what lies beneath is not visible."
+                    + " Use type to enter text; pressEnter closes the keyboard so what is under it can be reached")
+            }
             // 座標指定は直近 snapshot で point を含む最小要素を activate(SwiftUI の活性化要素は
             // 合成 AX ノードで hitTest の view 階層には無いため、snapshot 要素から解決する)。
-            // 合成タッチはジェスチャを発火しないので座標タップが無言 no-op になるのを防ぐ。無ければ合成タッチ。
-            if self.activateSnapshotNode(containing: p) { return }
-            FTSynthTap(window, p)
+            // 合成タッチはジェスチャを発火しないので座標タップが無言 no-op になるのを防ぐ。
+            //
+            // **ただし、その点で実際にタッチを受けるのがその要素であることを確かめてからにする**
+            // (実害: 画面外・スクロール容器で切れた位置・キーボード/別窓の下にある「見えない」
+            // 要素が撃ち抜かれ、そこへ遷移していた)。判定は素性の分からない frame の算術ではなく、
+            // **実際にその点を hitTest してみる**(容器のクリップ・window の重なりは hitTest が
+            // 自然に反映する。祖先/子孫まで見るのは、AX ノードの frame と実 view 階層の粒度が
+            // 一致するとは限らないため——セル内のラベル等)
+            let hit = Self.topmostHitView(at: p)
+            if let hit {
+                switch self.activateSnapshotNode(containing: p, ifReachableFrom: hit.view) {
+                case .activated: return
+                case .notActivated(let clipped):
+                    clippedNote.text = clipped.map {
+                        "\($0) contains this point but is clipped by its scroll container here (not drawn),"
+                            + " so it was not activated; sent a touch to what is on screen at that point"
+                    }
+                }
+            }
+            // 見えている実体(キーボード・別窓・容器の外側)へ撃つ。frontmostTouchableWindow は
+            // keyWindow の中心基準の粗い選択なので、hitTest が実際に見つけた窓があればそちらを使う
+            FTSynthTap(hit?.window ?? window, p)
         }
-        return ok()
+        return ok(clippedNote.text)
+    }
+
+    /// escaping な block から注記を持ち出すための箱
+    private final class NoteBox { var text: String? }
+
+    private enum CoordinateActivation {
+        case activated
+        /// clipped = 点を frame に含むが容器で切れていたため候補から外した要素のうち最小のもの(名指し用)
+        case notActivated(clipped: String?)
     }
 
     /// ref 指定タップ。accessibilityActivate(要素のデフォルトアクション=ボタン発火・セル選択等を
@@ -470,7 +544,8 @@ final class FTInAppBridge {
             // 無言 no-op になり得る(throw は追加しない: 誤検知で正常系を壊す方が害が大きい)。
             // 反応しない場合は accessibilityIdentifier(testTag)を付けるか engine=xcuitest を検討
             // (hybrid の XCUITest フォールバックは springboard 参照でアプリ要素には効かない)。
-            note = "activate 不発 → 合成タッチ(要素が反応しない場合は testTag 付与か engine=xcuitest を検討)"
+            note = "activate did not fire -> synthetic touch (if the element does not respond,"
+                + " consider adding a testTag or engine=xcuitest)"
             do {
                 let p = try freshTapPoint ?? self.resolvePoint(ref: ref, x: req.x, y: req.y)
                 FTSynthTap(window, p)
@@ -492,7 +567,7 @@ final class FTInAppBridge {
                     freshTapPoint = CGPoint(x: fresh.frame.midX, y: fresh.frame.midY)
                 }
                 if fresh.node.accessibilityActivate() {
-                    note = "activate 不発 → 要素を取り直して再実行"
+                    note = "activate did not fire -> re-fetched the element and retried"
                     finish(window)
                     return
                 }
@@ -583,25 +658,102 @@ final class FTInAppBridge {
         return candidate.flatMap { pack($0) }
     }
 
-    /// point を含む最小フレームの snapshot 要素を accessibilityActivate する(座標→要素解決)。
-    private func activateSnapshotNode(containing point: CGPoint) -> Bool {
-        var bestRef: Int?
-        var bestArea = CGFloat.greatestFiniteMagnitude
-        for (ref, frame) in frames where frame.contains(point) {
-            let area = frame.width * frame.height
-            if area < bestArea { bestArea = area; bestRef = ref }
+    /// 座標→要素解決。候補の選び方(見えている範囲に点が入る要素の最小面積)は
+    /// `BridgeCoordinateTapTarget.choose`(FTCore の純粋関数)。選んだ要素は**実際にその点で
+    /// タッチを受けるのがその要素(かその祖先/子孫)であるときだけ** accessibilityActivate する。
+    /// 見つからない/見えていなければ notActivated(呼び出し元が合成タッチへ落とす)
+    private func activateSnapshotNode(containing point: CGPoint,
+                                      ifReachableFrom hitView: UIView) -> CoordinateActivation {
+        let choice = BridgeCoordinateTapTarget.choose(point: point, frames: frames, clips: clips)
+        let clippedName: String? = choice.clippedRef.flatMap { ref -> String? in
+            guard let node = nodes.object(forKey: NSNumber(value: ref)) as? NSObject else { return nil }
+            if let id = FTAccessibilityIdentifier(node), !id.isEmpty { return "#\(id)" }
+            return node.accessibilityLabel.map { "\"\($0)\"" } ?? "an element"
         }
-        guard let ref = bestRef,
-              let node = nodes.object(forKey: NSNumber(value: ref)) as? NSObject else { return false }
-        return node.accessibilityActivate()
+        guard let ref = choice.ref,
+              let node = nodes.object(forKey: NSNumber(value: ref)) as? NSObject,
+              Self.isReachable(hitView, forNode: node) else { return .notActivated(clipped: clippedName) }
+        return node.accessibilityActivate() ? .activated : .notActivated(clipped: clippedName)
+    }
+
+    /// point(スクリーン座標)で実際にタッチを受ける view と、それが載る window。
+    /// キーボード(TextEffects)/RemoteKeyboard の窓も除外せずに探すが、**キーボードはこれでは
+    /// 捕まらない**(実測: キーボードの下の要素の枠内を撃つとその要素が返った)—— キーボードの上の点は
+    /// handleTap が通知由来の枠(keyboardFrameIfVisible)で先に断る。前から順に見て最初に hitTest が
+    /// 当たった窓で決める(実際のタッチ配送と同じ規則)
+    private static func topmostHitView(at point: CGPoint) -> (view: UIView, window: UIWindow)? {
+        for window in UIApplication.shared.windows.sorted(by: { $0.windowLevel > $1.windowLevel }) {
+            guard !window.isHidden, window.alpha > 0.01 else { continue }
+            // point は screen 座標(from: nil = 画面の固定座標系。isCovered と同じ変換)
+            let local = window.convert(point, from: nil)
+            guard window.bounds.contains(local), let hit = window.hitTest(local, with: nil)
+            else { continue }
+            return (hit, window)
+        }
+        return nil
+    }
+
+    /// node の frame がその点を含んでいても、**実際にその点でタッチを受けるのが node 自身
+    /// (かその祖先/子孫)でなければ撃たない**。祖先/子孫の両方向を見るのは、AX ノードの frame と
+    /// 実 view 階層の粒度が一致するとは限らないため(セルの中のラベル等)。
+    /// **判定不能(node が UIView でも辿れもしない)なら許可する**(誤検知で正常系を壊す方を
+    /// 避ける。FTSynthTap の synthFallback と同じ方針)
+    private static func isReachable(_ hit: UIView, forNode node: NSObject) -> Bool {
+        let anchor = (node as? UIView) ?? nearestView(of: node)
+        guard let anchor else { return true }
+        return hit === anchor || hit.isDescendant(of: anchor) || anchor.isDescendant(of: hit)
+    }
+
+    /// node から辿れる最も近い UIView。AX 専用ノード(SwiftUI 等)は accessibilityContainer を
+    /// 辿る(`window(of:)` と同じ探索順・上限)
+    private static func nearestView(of node: NSObject) -> UIView? {
+        let containerSelector = NSSelectorFromString("accessibilityContainer")
+        var current: NSObject? = node
+        var hops = 0
+        while let object = current, hops < 20 {
+            if let view = object as? UIView { return view }
+            guard object.responds(to: containerSelector),
+                  let next = object.perform(containerSelector)?.takeUnretainedValue() as? NSObject
+            else { return nil }
+            current = next
+            hops += 1
+        }
+        return nil
+    }
+
+    /// ref 指定の type/clear は、タップ後に実際へ書き込む先(first responder)が **タップした
+    /// 座標に実在すること**を確かめてから進める。確かめずに進めると、対象が入力欄でない・
+    /// タップが効かなかった等で焦点が動かなかった場合に、**直前から焦点のあった別の欄へ書いて
+    /// しまい「入っていないのに ok」を返す**(実害: `type "#btn_input_submit" "Q"` が
+    /// `#field_single` へ書いた)。
+    /// **object identity では比較しない** —— Compose はフォーカスアンカー(AX ノード)と実際の
+    /// insertText 受け口(IntermediateTextInputUIView)が別オブジェクトなので一致し得ない
+    /// (FTInsertTextIntoFirstResponder のコメント参照)。かわりに「タップした座標を現在の受け口が
+    /// 実際に含むか」で判定する(受け口が正しければ、そこへ直前にタップした点の上に物理的に
+    /// 存在するはず)。**受け口が UIView でない(判定不能)ときは許可する**(isReachable と
+    /// 同じ方針)
+    private static func requireFocusMoved(toward point: CGPoint, action: String) throws {
+        guard let receiver = FTCurrentTextReceiver() else {
+            throw InAppError(409, "no focused input field after tapping the target — the ref is"
+                + " probably not a text input (tapping it does not move keyboard focus)."
+                + " \(action) needs a focused field: pass the ref of the input element itself."
+                + " Diagnostics: \(FTFirstResponderDiagnostics())")
+        }
+        guard let view = receiver as? UIView else { return }
+        guard view.convert(view.bounds, to: nil).contains(point) else {
+            throw InAppError(409, "keyboard focus landed on a different field than the one"
+                + " tapped — refusing to \(action) into the wrong field."
+                + " Diagnostics: \(FTFirstResponderDiagnostics())")
+        }
     }
 
     private func handleType(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(TypeRequest.self, body)
-        if req.ref != nil {
+        if let ref = req.ref {
             try performWithSettle(operation: "the tap before typing") { window in
-                let p = try self.resolvePoint(ref: req.ref, x: nil, y: nil)
+                let p = try self.resolvePoint(ref: ref, x: nil, y: nil)
                 FTSynthTap(window, p)
+                try Self.requireFocusMoved(toward: p, action: "type")
             }
         }
         // 末尾の改行1つは本文と分けて **pressEnter と同じ経路**へ流す(「type の末尾改行 = pressEnter」が
@@ -650,10 +802,11 @@ final class FTInAppBridge {
 
     private func handleClear(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(ClearRequest.self, body)
-        if req.ref != nil {
+        if let ref = req.ref {
             try performWithSettle { window in
-                let p = try self.resolvePoint(ref: req.ref, x: nil, y: nil)
+                let p = try self.resolvePoint(ref: ref, x: nil, y: nil)
                 FTSynthTap(window, p)
+                try Self.requireFocusMoved(toward: p, action: "clear")
             }
         }
         var cleared = false

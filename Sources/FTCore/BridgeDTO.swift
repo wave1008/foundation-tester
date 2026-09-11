@@ -330,7 +330,33 @@ public enum BridgeAPI {
     /// `INADDR_ANY` (a physical device on LAN) — until now that listener had no auth and no
     /// origin check, so anyone on the LAN could drive the device and read the screen. A stale
     /// runner keeps accepting unauthenticated requests → bump.
-    public static let bridgeProtocolVersion = 91
+    ///
+    /// 92: bridge fixes for both engines. XCUITest: (a) POST /type with no
+    /// focused field (no ref, or a ref that is not a text input) used to fire `app.typeText`
+    /// unconditionally; when nothing had keyboard focus, XCTest's event synthesis failure tore
+    /// down the test and **killed the runner** while still having reported "ok" — it now checks
+    /// keyboard focus first and returns **422**. (b) that same /type path now also excludes
+    /// secure text fields from the read-back loop (their value is only ever readable as masked
+    /// `•` characters, which used to get resent as literal bullet characters into the field). (c)
+    /// GET /snapshot's screen bounds are now the union of every window snapshot's own frame, not
+    /// just the root element's frame — after tapping into a full-screen banner hosted in a second
+    /// `UIWindow`, the root's reported frame used to shrink to that banner's frame and the entire
+    /// host app fell out of the tree (nothing intersected the wrong "screen" any more). In-app:
+    /// (d) POST /tap with x/y now rejects points outside the screen instead of activating
+    /// whatever stored element frame happened to contain them, and only activates a snapshot
+    /// element for an on-screen point when a live hit-test at that point actually resolves to
+    /// that element (or an ancestor/descendant of it) — this used to let coordinate taps reach
+    /// off-screen elements, elements clipped by a scroll container's viewport, and elements
+    /// hidden under the keyboard or another window; when it does not resolve, the tap is now
+    /// synthesized at the window the hit-test actually found. (e) POST /type and /clear with a
+    /// ref now verify that keyboard focus actually landed on the tapped point before writing —
+    /// tapping a ref that was not a real text input used to silently write into whatever field
+    /// had focus **before** the request (returning ok while a different, unrelated field changed).
+    /// (f) GET /snapshot's `keyboardShown` now tracks keyboard show/hide notifications instead of
+    /// the effects window's frame, which stays full-screen even after the keyboard closes — it
+    /// used to stay stuck at `true` forever after the first time a keyboard appeared. A stale
+    /// runner/dylib keeps all six defects → bump.
+    public static let bridgeProtocolVersion = 94
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -458,6 +484,46 @@ public enum BridgeAPI {
             diff |= a ^ b
         }
         return diff == 0
+    }
+}
+
+/// 座標タップ(in-app)でどの snapshot 要素を activate するか。**ブリッジと共有する純粋関数**
+/// (in-app ブリッジはこのファイルをそのままコンパイルする)。
+/// 候補は **frame が点を含み、かつ見えている範囲(`clips` = 祖先のスクロール容器で切った後)にも
+/// 点が入る要素**で、その中の最小面積を選ぶ。容器で切れた行は frame 上は点を含んでも描かれていない
+/// (SwiftUI では行の AX ノードがホスティング view にしか辿れず、hitTest では見分けられない)ので、
+/// 候補から外さないと見えない要素を撃ち抜く。clips に無い要素(祖先に容器が無い)は frame だけで判定する
+public enum BridgeCoordinateTapTarget {
+    public struct Choice: Equatable {
+        /// activate する要素(無ければ呼び手は点へ合成タッチ)
+        public let ref: Int?
+        /// 点を frame に含むが容器で切れていたため外した要素のうち、**選んだ要素より小さい**もの
+        /// (= 見えていれば撃たれたはずの要素。呼び手が注記で名指しする)。無ければ nil
+        public let clippedRef: Int?
+    }
+
+    /// 端の端数(1/scale pt)で見えている行を落とさないための見逃し幅(pt)
+    static let clipTolerance: CGFloat = 0.5
+
+    public static func choose(point: CGPoint, frames: [Int: CGRect], clips: [Int: CGRect]) -> Choice {
+        var best: (ref: Int, area: CGFloat)?
+        var clipped: (ref: Int, area: CGFloat)?
+        // 同じ面積なら ref の小さい方(辞書の走査順に結果を依存させない)
+        func smaller(_ ref: Int, _ area: CGFloat, than current: (ref: Int, area: CGFloat)?) -> Bool {
+            guard let current else { return true }
+            return area < current.area || (area == current.area && ref < current.ref)
+        }
+        for (ref, frame) in frames where frame.contains(point) {
+            let area = frame.width * frame.height
+            if let clip = clips[ref],
+               !clip.insetBy(dx: -clipTolerance, dy: -clipTolerance).contains(point) {
+                if smaller(ref, area, than: clipped) { clipped = (ref, area) }
+                continue
+            }
+            if smaller(ref, area, than: best) { best = (ref, area) }
+        }
+        let named = clipped.flatMap { c in smaller(c.ref, c.area, than: best) ? c.ref : nil }
+        return Choice(ref: best?.ref, clippedRef: named)
     }
 }
 

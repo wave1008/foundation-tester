@@ -46,6 +46,17 @@ public enum TypeReadback {
         ["textField", "secureTextField", "textView", "searchField"].contains(element.type)
     }
 
+    /// secure 欄(パスワード等)か。**この型だけは読み返しの材料に使ってはいけない** ——
+    /// 中身は常に伏せ字(`•`)でしか読めず、`•` は本文とは無関係な記号なので、`expected`
+    /// (= 入力前の値 + 送る本文)へ混ぜると `plan` が「•」を実際の1文字として resend し、
+    /// 欄へ literal な bullet 文字を打ち込む(実害: `abc`→再フォーカス→`XY` が
+    /// `XY••XY` になった。Android の `InputInjector.applied` はマスク欄を長さ一致だけで見て
+    /// 同じ事故を避けている——`TypeReadbackReformatJavaSyncTests` 参照)。
+    /// 呼び手は secure 欄では読み返しループそのものへ入らないこと(`app.typeText` を1回だけ送る)
+    public static func isMaskedInput(_ element: ElementInfo) -> Bool {
+        element.type == "secureTextField"
+    }
+
     /// スナップショット中の対象要素の値(placeholder 表示・未入力は空文字)。
     /// nil = 検証不能。対象が見つからないだけでなく、**候補が複数あるときも nil**
     /// (別の空欄を「入っていない」と誤読して追送すると、本当のフォーカス欄へ二重入力する。

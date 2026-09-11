@@ -7,7 +7,7 @@
 | 関数 | 説明 |
 |---|---|
 | `tap(sel, holdSeconds: 0, timeout:scroll:maxSwipes:containerInference:)` | セレクタにマッチする最初の要素をタップします。`holdSeconds` を 0 より大きくすると長押しになります(既定 0 = 通常タップ)。タップ前に対象が操作可能になるまで待ちます(後述)。 |
-| `tap(x: Int, y: Int, holdSeconds: 0)` | 座標を直接タップします。座標は snapshot の `screen` と同じ座標系です(iOS = pt / Android = px。dp ではありません)。セレクタで指せるならそちらを優先してください。 |
+| `tap(x: Int, y: Int, holdSeconds: 0)` | 座標を直接タップします。座標は snapshot の `screen` と同じ座標系です(iOS = pt / Android = px。dp ではありません)。セレクタで指せるならそちらを優先してください。iOS の in-app エンジンでは、画面外とソフトキーボードの上の点は失敗になります(in-app はキーを押せません。先に `pressEnter` でキーボードを閉じてください)。スクロール容器で切れて見えていない要素は、frame が点を含んでも押しません。 |
 | `tapWithScrollDown(sel, maxSwipes:)` / `tapWithScrollUp` / `tapWithScrollRight` / `tapWithScrollLeft` | `tap(sel, scroll: .down)` などの糖衣です。その方向へスクロールしながら要素を探索します。詳細は [scroll](./scroll_ja.md) 参照。 |
 | `tapWithoutScroll(sel, timeout:)` | `withScrollDown { }` ブロックの中でも、この1コマンドだけスクロールせずにタップします。 |
 | `tapAppIcon(name?)` | ホーム画面のアプリアイコンをタップします。名前省略時はアプリプロファイルの `appName` が使われます。 |

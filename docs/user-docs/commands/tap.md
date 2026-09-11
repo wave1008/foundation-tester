@@ -7,7 +7,7 @@ Taps an element, or raw coordinates, on the screen.
 | function | description |
 |---|---|
 | `tap(sel, holdSeconds: 0, timeout:scroll:maxSwipes:containerInference:)` | Taps the first element matching the selector. `holdSeconds` greater than 0 makes it a long press (default 0 = normal tap). Waits for the target to become enabled before tapping (see Notes). |
-| `tap(x: Int, y: Int, holdSeconds: 0)` | Taps raw coordinates. Coordinates use the same system as the `screen` frame in a snapshot — iOS = pt, Android = px (not dp). Prefer a selector whenever one is available. |
+| `tap(x: Int, y: Int, holdSeconds: 0)` | Taps raw coordinates. Coordinates use the same system as the `screen` frame in a snapshot — iOS = pt, Android = px (not dp). Prefer a selector whenever one is available. On iOS with the in-app engine, a point off the screen or on the software keyboard fails (the in-app engine cannot press keys — close the keyboard with `pressEnter` first), and an element clipped out of its scroll container is not activated even if its frame contains the point. |
 | `tapWithScrollDown(sel, maxSwipes:)` / `tapWithScrollUp` / `tapWithScrollRight` / `tapWithScrollLeft` | Shorthand for `tap(sel, scroll: .down)` and so on — scrolls in that direction while searching for the element. See [scroll](./scroll.md). |
 | `tapWithoutScroll(sel, timeout:)` | Taps without scrolling, even inside a `withScrollDown { }` block. |
 | `tapAppIcon(name?)` | Taps the app icon on the home screen. Name defaults to the app profile's `appName` when omitted. |

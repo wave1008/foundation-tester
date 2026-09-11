@@ -150,6 +150,24 @@ final class TypeReadbackTests: XCTestCase {
         XCTAssertFalse(TypeReadback.isTextInput(element(ref: 1, type: "staticText")))
     }
 
+    // MARK: - isMaskedInput(secure 欄は読み返しの材料に使わない)
+
+    func testIsMaskedInputCoversOnlySecureTextField() {
+        XCTAssertTrue(TypeReadback.isMaskedInput(element(ref: 1, type: "secureTextField")))
+        for type in ["textField", "textView", "searchField", "button", "staticText"] {
+            XCTAssertFalse(TypeReadback.isMaskedInput(element(ref: 1, type: type)), type)
+        }
+    }
+
+    /// 伏せ字の追送の実害を退行として固定する: secure 欄の伏せ字を expected に混ぜると、`plan` は
+    /// 「•」を実際の1文字として resend してしまう(`isMaskedInput` はこの経路そのものへ
+    /// 入らせないための門なので、door が閉じていることを別途 `isMaskedInput` 側で確認するのが
+    /// 本筋だが、混入した場合に何が起きるかも残しておく)
+    func testMaskedValueMixedIntoExpectedWouldResendTheBulletCharacter() {
+        let expected = "•••" + "XY"   // normalizedValue(secure 欄) + 本文
+        XCTAssertEqual(TypeReadback.plan(expected: expected, actual: "••"), .resend("•XY"))
+    }
+
     // MARK: - 空白だけの入力(2026-08-18 実測: a11y は空白のみの値を返さない)
 
     /// 空欄に見えるからと追送すると、**毎周同じ空白が積まれて欄が壊れる**(実測: 4周で12個)。

@@ -68,7 +68,7 @@ enum InAppWebViewDOM {
     /// **読めなかったときは理由を返す**(呼び出し側が申告に載せる)。
     static func capture(webView: WKWebView, screen: CGRect) -> Result<Captured, Unread> {
         precondition(!Thread.isMainThread,
-                     "capture はメインで呼べない(evaluateJavaScript の完了待ちでデッドロックする)")
+                     "capture must not be called on main (deadlocks waiting for evaluateJavaScript)")
         guard !disabled else { return .failure(.disabled) }
 
         let semaphore = DispatchSemaphore(value: 0)

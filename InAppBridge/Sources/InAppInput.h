@@ -27,6 +27,16 @@ void FTSynthPinch(UIWindow *window, CGPoint center, double startSpan, double end
 /// 現在の first responder が UIKeyInput なら text を挿入する。挿入できたら YES。
 BOOL FTInsertTextIntoFirstResponder(NSString *text);
 
+/// FTInsertTextIntoFirstResponder / FTClearTextInFirstResponder と**同じ探索順**で選ぶ
+/// 「今その文字が実際に書き込まれる先」そのもの(insertText: に応答し isFirstResponder な
+/// view を優先、無ければ従来経路の first responder)。フォーカス無しは nil。
+/// **object identity で ref の対象と比較してはいけない**(Compose はフォーカスアンカー
+/// (AX ノード)と実際の入力受け口(IntermediateTextInputUIView)が別オブジェクト。
+/// FTInsertTextIntoFirstResponder のコメント参照) —— 呼び出し側は frame の重なりで照合する
+/// (タップした ref の場所にこの受け口が実在するか)。type/clear が「ref とは違う、以前から
+/// 焦点のあった欄」へ書いてしまう事故を、書く前に止めるための取得口
+id _Nullable FTCurrentTextReceiver(void);
+
 /// pressEnter 用: insertText: に応答する first responder のうち、**UITextField/UITextView 系
 /// ではないもの**(Compose Multiplatform の入力受け口等)にだけ "\n" を挿入する。Compose は
 /// insertText 呼び出し1回の文字列が "\n" と完全一致するときだけ IME アクションに変換するが、

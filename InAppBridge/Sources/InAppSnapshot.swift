@@ -15,6 +15,9 @@ enum InAppSnapshot {
         var elements: [ElementInfo]
         var frames: [Int: CGRect]
         var nodes: [Int: NSObject]
+        /// ref → 祖先のスクロール容器で切った後に**見えている範囲**(画面座標)。祖先に容器が無い要素は
+        /// 持たない。座標タップが容器で切れた要素を撃ち抜かないための材料(InAppBridge.handleTap)
+        var clips: [Int: CGRect] = [:]
         var truncated: Int
         /// 捨てた候補の内訳(SnapshotResponse.truncatedTiers)
         var truncatedTiers: [String: Int] = [:]
@@ -27,6 +30,7 @@ enum InAppSnapshot {
         var info: ElementInfo
         var frame: CGRect
         var node: NSObject
+        var clip: CGRect?
     }
 
     /// **2パス**: 集めるときは上限で打ち切らず、超過したときだけ優先度順に間引いて ref を振る
@@ -62,7 +66,7 @@ enum InAppSnapshot {
         let ordered = windows.sorted(by: { $0.windowLevel < $1.windowLevel })   // 奥 → 手前
         for (index, window) in ordered.enumerated() {
             collect(window, depth: 0, screen: screen, front: Array(ordered[(index + 1)...]),
-                    visited: &visited, gathered: &gathered)
+                    clip: nil, visited: &visited, gathered: &gathered)
         }
 
         let keptIndices: [Int]
@@ -82,18 +86,20 @@ enum InAppSnapshot {
         var elements: [ElementInfo] = []
         var frames: [Int: CGRect] = [:]
         var nodes: [Int: NSObject] = [:]
+        var clips: [Int: CGRect] = [:]
         for index in keptIndices {
             let ref = elements.count + 1
             var info = gathered[index].info
             info.ref = ref
             frames[ref] = gathered[index].frame
             nodes[ref] = gathered[index].node
+            clips[ref] = gathered[index].clip
             elements.append(info)
         }
         return Result(
             screen: FTRect(x: screen.origin.x, y: screen.origin.y,
                            width: screen.width, height: screen.height),
-            elements: elements, frames: frames, nodes: nodes,
+            elements: elements, frames: frames, nodes: nodes, clips: clips,
             truncated: gathered.count - keptIndices.count,
             truncatedTiers: truncatedTiers, bulkExempt: bulkExempt)
     }
@@ -110,7 +116,11 @@ enum InAppSnapshot {
         return false
     }
 
+    /// `clip` = 祖先のスクロール容器の枠の積(容器が無ければ nil)。容器の外に出た行は frame 上は
+    /// 画面内でも実際には描かれていない(SwiftUI は行の AX ノードがホスティング view にしか辿れず、
+    /// hitTest では見分けられない)ので、見えている範囲を別に運ぶ
     private static func collect(_ node: NSObject, depth: Int, screen: CGRect, front: [UIWindow],
+                                clip: CGRect?,
                                 visited: inout Set<ObjectIdentifier>, gathered: inout [Gathered]) {
         guard visited.insert(ObjectIdentifier(node)).inserted else { return }
         // 非表示サブツリーは丸ごと除外
@@ -127,7 +137,7 @@ enum InAppSnapshot {
            !isCovered(info.frame, by: front) {
             gathered.append(Gathered(
                 info: makeInfo(node, type: type, ref: 0, depth: depth, frame: info.frame),
-                frame: info.frame, node: node))
+                frame: info.frame, node: node, clip: clip))
         }
 
         // WKWebView の内部(WKScrollView/WKContentView)は AX を別プロセスが持つため走査しても
@@ -138,8 +148,10 @@ enum InAppSnapshot {
         // それ以外は accessibilityElements(あれば)を、無ければ subviews を辿る。
         if let view = node as? UIView, view.isAccessibilityElement { return }
         let children = axChildren(node)
+        let childClip = isScrollableContainer(node) == true
+            ? (clip ?? .infinite).intersection(axFrame(node)) : clip
         for child in children {
-            collect(child, depth: depth + 1, screen: screen, front: front,
+            collect(child, depth: depth + 1, screen: screen, front: front, clip: childClip,
                     visited: &visited, gathered: &gathered)
         }
     }
