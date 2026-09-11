@@ -1,0 +1,535 @@
+{
+    "elements": [
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 56,
+                "x": 16,
+                "y": 78
+            },
+            "identifier": "btn_back",
+            "label": "\u623b\u308b",
+            "ref": 1,
+            "type": "button"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 20.33333333333333,
+                "width": 79.66666666666666,
+                "x": 80,
+                "y": 98.83333333333334
+            },
+            "identifier": "txt_screen_title",
+            "label": "\u30b9\u30af\u30ed\u30fc\u30eb",
+            "ref": 2,
+            "type": "staticText"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 20.333333333333343,
+                "width": 83,
+                "x": 16,
+                "y": 172
+            },
+            "identifier": "txt_row_selected",
+            "label": "selected=-",
+            "ref": 3,
+            "type": "staticText"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 72,
+                "x": 16,
+                "y": 200.33333333333331
+            },
+            "identifier": "btn_scroll_top",
+            "label": "\u5148\u982d\u3078",
+            "ref": 4,
+            "type": "button"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 395.3333333333332,
+                "width": 370,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "identifier": "list_rows",
+            "ref": 5,
+            "scrollable": true,
+            "type": "table"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": -11.666666666666686
+            },
+            "identifier": "row_08",
+            "label": "\u884c 08",
+            "ref": 6,
+            "type": "clickable"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 44.333333333333314
+            },
+            "identifier": "row_09",
+            "label": "\u884c 09",
+            "ref": 7,
+            "type": "clickable"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 100.33333333333331
+            },
+            "identifier": "row_10",
+            "label": "\u884c 10",
+            "ref": 8,
+            "type": "clickable"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 156.33333333333331
+            },
+            "identifier": "row_11",
+            "label": "\u884c 11",
+            "ref": 9,
+            "type": "clickable"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 212.33333333333331
+            },
+            "identifier": "row_12",
+            "label": "\u884c 12",
+            "ref": 10,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 36,
+                "y": 212.33333333333331
+            },
+            "label": "\u884c 12",
+            "ref": 11,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 268.3333333333333
+            },
+            "identifier": "row_13",
+            "label": "\u884c 13",
+            "ref": 12,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 36,
+                "y": 268.3333333333333
+            },
+            "label": "\u884c 13",
+            "ref": 13,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 324.3333333333333
+            },
+            "identifier": "row_14",
+            "label": "\u884c 14",
+            "ref": 14,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 36,
+                "y": 324.3333333333333
+            },
+            "label": "\u884c 14",
+            "ref": 15,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 380.3333333333333
+            },
+            "identifier": "row_15",
+            "label": "\u884c 15",
+            "ref": 16,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 36,
+                "y": 380.3333333333333
+            },
+            "label": "\u884c 15",
+            "ref": 17,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 436.3333333333333
+            },
+            "identifier": "row_16",
+            "label": "\u884c 16",
+            "ref": 18,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 36,
+                "y": 436.3333333333333
+            },
+            "label": "\u884c 16",
+            "ref": 19,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 55.99999999999994,
+                "width": 370,
+                "x": 16,
+                "y": 492.3333333333333
+            },
+            "identifier": "row_17",
+            "label": "\u884c 17",
+            "ref": 20,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 55.99999999999994,
+                "width": 330,
+                "x": 36,
+                "y": 492.3333333333333
+            },
+            "label": "\u884c 17",
+            "ref": 21,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 548.3333333333333
+            },
+            "identifier": "row_18",
+            "label": "\u884c 18",
+            "ref": 22,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 36,
+                "y": 548.3333333333333
+            },
+            "label": "\u884c 18",
+            "ref": 23,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 604.3333333333333
+            },
+            "identifier": "row_19",
+            "label": "\u884c 19",
+            "ref": 24,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 36,
+                "y": 604.3333333333333
+            },
+            "label": "\u884c 19",
+            "ref": 25,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 660.3333333333333
+            },
+            "identifier": "row_20",
+            "label": "\u884c 20",
+            "ref": 26,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 36,
+                "y": 660.3333333333333
+            },
+            "label": "\u884c 20",
+            "ref": 27,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 716.3333333333333
+            },
+            "identifier": "row_21",
+            "label": "\u884c 21",
+            "ref": 28,
+            "type": "clickable"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 772.3333333333333
+            },
+            "identifier": "row_22",
+            "label": "\u884c 22",
+            "ref": 29,
+            "type": "clickable"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 828.3333333333333
+            },
+            "identifier": "row_23",
+            "label": "\u884c 23",
+            "ref": 30,
+            "type": "clickable"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 675.6666666666666
+            },
+            "identifier": "carousel_tags",
+            "ref": 31,
+            "scrollable": true,
+            "type": "scrollView"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 78,
+                "x": 37,
+                "y": 672.6666666666666
+            },
+            "identifier": "tag_01",
+            "label": "\u30bf\u30b0 01",
+            "ref": 32,
+            "type": "button"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 80.33333333333331,
+                "x": 164,
+                "y": 672.6666666666666
+            },
+            "identifier": "tag_02",
+            "label": "\u30bf\u30b0 02",
+            "ref": 33,
+            "type": "button"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 80.66666666666663,
+                "x": 291.66666666666663,
+                "y": 672.6666666666666
+            },
+            "identifier": "tag_03",
+            "label": "\u30bf\u30b0 03",
+            "ref": 34,
+            "type": "button"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 20.33333333333337,
+                "width": 42.666666666666664,
+                "x": 16,
+                "y": 741.6666666666667
+            },
+            "identifier": "txt_tag_selected",
+            "label": "tag=-",
+            "ref": 35,
+            "type": "staticText"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 134,
+                "x": 0,
+                "y": 778
+            },
+            "identifier": "tab_home",
+            "label": "\u30db\u30fc\u30e0",
+            "ref": 36,
+            "type": "button"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 134,
+                "x": 134,
+                "y": 778
+            },
+            "identifier": "tab_controls",
+            "label": "\u30b3\u30f3\u30c8\u30ed\u30fc\u30eb",
+            "ref": 37,
+            "type": "button"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 134,
+                "x": 268,
+                "y": 778
+            },
+            "identifier": "tab_about",
+            "label": "\u60c5\u5831",
+            "ref": 38,
+            "type": "button"
+        }
+    ],
+    "screen": {
+        "height": 874,
+        "width": 402,
+        "x": 0,
+        "y": 0
+    },
+    "sessionBundleID": "com.ftester.e2e.ios",
+    "truncatedCount": 0
+}

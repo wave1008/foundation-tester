@@ -155,7 +155,8 @@ extension StepExecutor {
                 }
                 carried = nil
                 if !settled.settled { sawUnsettled = true }
-                unchanged = settled.signature == previous ? unchanged + 1 : 0
+                let contentSignature = Self.edgeSignature(settled.snapshot)
+                unchanged = contentSignature == previous ? unchanged + 1 : 0
                 // ヒント跳躍(WebView): 端までの残り距離が分かるときは長距離ドラッグで寄せる
                 let jump = Self.offscreenEdgeJump(snapshot: settled.snapshot, finger: direction)
                 if unchanged >= Self.unchangedRoundsForEdge(snapshot: settled.snapshot,
@@ -171,7 +172,7 @@ extension StepExecutor {
                         .notFound,
                         Self.scrollFrameFailFastMessage(step, action: "swipe", swipes: sentSwipes)))
                 }
-                previous = settled.signature
+                previous = contentSignature
                 if let jump, let container = Self.webViewContainer(in: settled.snapshot),
                    await hintDrag(jump: jump, container: container,
                                   viewport: settled.snapshot.screen, phase: &phase) {
@@ -192,8 +193,9 @@ extension StepExecutor {
                 if driver.reachedEdgeOnLastSwipe == true {
                     let confirm = try await settledSignature(phase: &phase)
                     if !confirm.settled { sawUnsettled = true }
-                    if confirm.signature == previous { reachedEdge = true; break }
-                    previous = confirm.signature
+                    let confirmed = Self.edgeSignature(confirm.snapshot)
+                    if confirmed == previous { reachedEdge = true; break }
+                    previous = confirmed
                     carried = confirm
                 }
             }

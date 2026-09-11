@@ -555,7 +555,26 @@ extension StepExecutor {
     /// スクロールの整定待ち(6×100ms)と同じオーダーに置く。長くすると失敗の確定が遅れる
     static let screenMatchRetryDelayMs = 600
 
-    /// 画面が静止するまで待ち、そのときの要素配置の署名を返す(scrollToEdge の到達判定)。
+    /// **端の判定(scrollToEdge の「続けて不変」)に使う署名 = 描かれていない残骸を除いた木**。
+    /// XCUITest の木は、容器の外へ出た行のラベルを容器の縁へ寄せて積み(`OcclusionGeometry.stackedRefs`)、
+    /// 容器の外の行も frame ごと残す(`TapTargetGeometry.outsideDeclaredScroller`)。その顔ぶれが撮るたびに
+    /// 1つずつ揺れ、しかも整定の判定の後から遅れて出入りする(実測: E2E-iOS の一覧の先頭に止まったまま
+    /// 63 ↔ 64 要素)ので、素の署名では端に着いても「不変」が成立せず上限まで払い切っていた
+    /// (E2E-iOS の scrollToTop が 17 回中 9 回・1 回約 32 秒)。**整定の判定(`settledSignature`)には
+    /// 使わない** —— あちらは「動いている最中か」を見るので、残骸の動きも動きとして数えてよい
+    static func edgeSignature(_ snapshot: SnapshotResponse) -> String {
+        let stacked = OcclusionGeometry.stackedRefs(snapshot.elements)
+        return snapshot.elements
+            .filter { element in
+                !stacked.contains(element.ref)
+                    && TapTargetGeometry.outsideDeclaredScroller(
+                        element, in: snapshot.elements, screen: snapshot.screen) == nil
+            }
+            .map { "\($0.type)|\($0.frame.x),\($0.frame.y)" }
+            .joined(separator: ",")
+    }
+
+    /// 画面が静止するまで待ち、そのときの要素配置の署名を返す(scrollToEdge の整定待ち。到達判定は `edgeSignature`)。
     /// **横スクロールでは y が動かない**ので x と y の両方を入れる。
     /// ref は取り直しで振り直されるため使わない(型と座標だけで比較する)。
     /// 静止時点のスナップショットも返す(scrollToEdge のヒント跳躍が再利用する。

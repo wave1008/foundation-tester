@@ -1,0 +1,868 @@
+{
+    "elements": [
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 56,
+                "x": 16,
+                "y": 78
+            },
+            "identifier": "btn_back",
+            "label": "\u623b\u308b",
+            "ref": 1,
+            "type": "button"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 20.33333333333333,
+                "width": 79.66666666666666,
+                "x": 80,
+                "y": 98.83333333333334
+            },
+            "identifier": "txt_screen_title",
+            "label": "\u30b9\u30af\u30ed\u30fc\u30eb",
+            "ref": 2,
+            "type": "staticText"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 20.333333333333343,
+                "width": 83,
+                "x": 16,
+                "y": 172
+            },
+            "identifier": "txt_row_selected",
+            "label": "selected=-",
+            "ref": 3,
+            "type": "staticText"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 72,
+                "x": 16,
+                "y": 200.33333333333331
+            },
+            "identifier": "btn_scroll_top",
+            "label": "\u5148\u982d\u3078",
+            "ref": 4,
+            "type": "button"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 395.3333333333333,
+                "width": 370,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "identifier": "list_rows",
+            "ref": 5,
+            "scrollable": true,
+            "type": "table"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "identifier": "row_01",
+            "label": "\u884c 01",
+            "ref": 6,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 36,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 01",
+            "ref": 7,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 326.3333333333333
+            },
+            "identifier": "row_02",
+            "label": "\u884c 02",
+            "ref": 8,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 36,
+                "y": 326.3333333333333
+            },
+            "label": "\u884c 02",
+            "ref": 9,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 382.3333333333333
+            },
+            "identifier": "row_03",
+            "label": "\u884c 03",
+            "ref": 10,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 36,
+                "y": 382.3333333333333
+            },
+            "label": "\u884c 03",
+            "ref": 11,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 438.3333333333333
+            },
+            "identifier": "row_04",
+            "label": "\u884c 04",
+            "ref": 12,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 36,
+                "y": 438.3333333333333
+            },
+            "label": "\u884c 04",
+            "ref": 13,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 55.99999999999994,
+                "width": 370,
+                "x": 16,
+                "y": 494.3333333333333
+            },
+            "identifier": "row_05",
+            "label": "\u884c 05",
+            "ref": 14,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 55.99999999999994,
+                "width": 330,
+                "x": 36,
+                "y": 494.3333333333333
+            },
+            "label": "\u884c 05",
+            "ref": 15,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 550.3333333333333
+            },
+            "identifier": "row_06",
+            "label": "\u884c 06",
+            "ref": 16,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 36,
+                "y": 550.3333333333333
+            },
+            "label": "\u884c 06",
+            "ref": 17,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 606.3333333333333
+            },
+            "identifier": "row_07",
+            "label": "\u884c 07",
+            "ref": 18,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 36,
+                "y": 606.3333333333333
+            },
+            "label": "\u884c 07",
+            "ref": 19,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 662.3333333333333
+            },
+            "identifier": "row_08",
+            "label": "\u884c 08",
+            "ref": 20,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 36,
+                "y": 662.3333333333333
+            },
+            "label": "\u884c 08",
+            "ref": 21,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 718.3333333333333
+            },
+            "identifier": "row_09",
+            "label": "\u884c 09",
+            "ref": 22,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 09",
+            "ref": 23,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 774.3333333333333
+            },
+            "identifier": "row_10",
+            "label": "\u884c 10",
+            "ref": 24,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 10",
+            "ref": 25,
+            "type": "staticText"
+        },
+        {
+            "depth": 7,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 830.3333333333333
+            },
+            "identifier": "row_11",
+            "label": "\u884c 11",
+            "ref": 26,
+            "type": "clickable"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 11",
+            "ref": 27,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 12",
+            "ref": 28,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 13",
+            "ref": 29,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 14",
+            "ref": 30,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 15",
+            "ref": 31,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 16",
+            "ref": 32,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 17",
+            "ref": 33,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 18",
+            "ref": 34,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 19",
+            "ref": 35,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 20",
+            "ref": 36,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 21",
+            "ref": 37,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 22",
+            "ref": 38,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 23",
+            "ref": 39,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 24",
+            "ref": 40,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 25",
+            "ref": 41,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 26",
+            "ref": 42,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 27",
+            "ref": 43,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 28",
+            "ref": 44,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 29",
+            "ref": 45,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 30",
+            "ref": 46,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 31",
+            "ref": 47,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 32",
+            "ref": 48,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 33",
+            "ref": 49,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 34",
+            "ref": 50,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 35",
+            "ref": 51,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 36",
+            "ref": 52,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 37",
+            "ref": 53,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 38",
+            "ref": 54,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 39",
+            "ref": 55,
+            "type": "staticText"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 330,
+                "x": 16,
+                "y": 270.3333333333333
+            },
+            "label": "\u884c 40",
+            "ref": 56,
+            "type": "staticText"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 56,
+                "width": 370,
+                "x": 16,
+                "y": 675.6666666666666
+            },
+            "identifier": "carousel_tags",
+            "ref": 57,
+            "scrollable": true,
+            "type": "scrollView"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 78,
+                "x": 37,
+                "y": 672.6666666666666
+            },
+            "identifier": "tag_01",
+            "label": "\u30bf\u30b0 01",
+            "ref": 58,
+            "type": "button"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 80.33333333333331,
+                "x": 164,
+                "y": 672.6666666666666
+            },
+            "identifier": "tag_02",
+            "label": "\u30bf\u30b0 02",
+            "ref": 59,
+            "type": "button"
+        },
+        {
+            "depth": 8,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 80.66666666666663,
+                "x": 291.66666666666663,
+                "y": 672.6666666666666
+            },
+            "identifier": "tag_03",
+            "label": "\u30bf\u30b0 03",
+            "ref": 60,
+            "type": "button"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 20.33333333333337,
+                "width": 42.666666666666664,
+                "x": 16,
+                "y": 741.6666666666667
+            },
+            "identifier": "txt_tag_selected",
+            "label": "tag=-",
+            "ref": 61,
+            "type": "staticText"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 134,
+                "x": 0,
+                "y": 778
+            },
+            "identifier": "tab_home",
+            "label": "\u30db\u30fc\u30e0",
+            "ref": 62,
+            "type": "button"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 134,
+                "x": 134,
+                "y": 778
+            },
+            "identifier": "tab_controls",
+            "label": "\u30b3\u30f3\u30c8\u30ed\u30fc\u30eb",
+            "ref": 63,
+            "type": "button"
+        },
+        {
+            "depth": 6,
+            "enabled": true,
+            "frame": {
+                "height": 62,
+                "width": 134,
+                "x": 268,
+                "y": 778
+            },
+            "identifier": "tab_about",
+            "label": "\u60c5\u5831",
+            "ref": 64,
+            "type": "button"
+        }
+    ],
+    "screen": {
+        "height": 874,
+        "width": 402,
+        "x": 0,
+        "y": 0
+    },
+    "sessionBundleID": "com.ftester.e2e.ios",
+    "truncatedCount": 0
+}
