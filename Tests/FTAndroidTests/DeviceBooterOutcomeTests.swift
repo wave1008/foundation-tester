@@ -152,7 +152,7 @@ final class StaleAVDLockTests: XCTestCase {
 final class DeviceBooterAlreadyStoppedTests: XCTestCase {
 
     func testAvdNotRunningCountsAsAlreadyStopped() {
-        let error = AndroidDeviceCatalogError.avdNotRunning("avd-1", running: [:])
+        let error = AndroidDeviceCatalogError.avdNotRunning("avd-1", running: [:], revivalFailure: nil)
         XCTAssertTrue(DeviceBooter.isAlreadyStopped(error),
                       "起動していない = 停止済み。停止の失敗にはしない")
     }

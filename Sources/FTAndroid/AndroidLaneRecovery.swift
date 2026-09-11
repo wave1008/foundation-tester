@@ -23,6 +23,19 @@ public enum AndroidLaneRecovery {
     /// `FTCore.LaneGate` が run 開始前エラーへ格上げする。
     static let maxBootAttempts = 3
 
+    /// 撃ち直しても同じ結果になると分かっている FATAL(システムイメージの実体が無い等)。
+    /// **実在した文言だけを載せる**(推測で広げない。決定的でない失敗まで1回で諦めさせると、
+    /// 一過性の起動不良を早々に見捨ててしまう)。 M1Ultra の4台で観測した唯一の実例
+    /// —— `system-images/android-35/google_apis/arm64-v8a/` ディレクトリが丸ごと消えており、
+    /// 3回×4台のブート再試行が全て同じ `FATAL | Broken AVD system path` で終わった
+    static let decisiveFatalMarkers = ["Broken AVD system path"]
+
+    /// `boot` のエラーが `decisiveFatalMarkers` のいずれかを含むか(純粋関数)
+    static func isDecisiveFailure(_ error: Error) -> Bool {
+        let message = error.localizedDescription
+        return decisiveFatalMarkers.contains { message.contains($0) }
+    }
+
     /// 起動していない仮想 Android デバイスを列挙する。**デバイス不要の純粋関数**
     /// (実機は起動の概念が無い/avd 未指定は起動引数を組めないので対象外。入力順を保つ)。
     /// `runningAVDIDs` は `AndroidDeviceCatalog.canonicalAVDID` と同じ正規化形の集合を渡すこと
@@ -81,13 +94,23 @@ public enum AndroidLaneRecovery {
             log("▶️ \(progress) \(device.name): starting")
             var lastError: Error?
             var succeeded = false
+            var decisive = false
+            var attemptsRun = 0
             for attempt in 1...maxBootAttempts {
+                attemptsRun = attempt
                 do {
                     try await effectiveBoot(avdID, device.name)
                     succeeded = true
                     break
                 } catch {
                     lastError = error
+                    // 撃ち直しても同じ結果になると分かっている FATAL は3回払わない
+                    // (例: システムイメージの実体が無い個体を3回×N台リトライして
+                    // run 開始を数分遅らせた 実害)
+                    if isDecisiveFailure(error) {
+                        decisive = true
+                        break
+                    }
                     if attempt < maxBootAttempts {
                         log("⚠️ \(device.name): revive attempt \(attempt)/\(maxBootAttempts) failed"
                             + " — \(error.localizedDescription); retrying")
@@ -96,16 +119,52 @@ public enum AndroidLaneRecovery {
             }
             if succeeded {
                 booted.append(device.name)
+                // 前回のこの AVD の復活失敗の記録は用済み(消さないと、次に成功した後の
+                // 無関係な失敗が古い理由を引き継ぐ)
+                RevivalOutcomeLedger.shared.clearFailure(avdID: avdID)
                 log("✅ \(progress) \(device.name): revived (\(avdID))")
             } else {
                 let error = lastError ?? LaneRecoveryError(
                     message: "\(device.name): no boot attempt ran")
                 failed.append((device.name, error))
-                log("❌ \(progress) \(device.name): could not be revived after \(maxBootAttempts) attempt(s)"
-                    + " — \(error.localizedDescription)")
+                // この AVD の解決がこの後 avdNotRunning で失敗したとき、
+                // 「devices up で起動しろ」ではなく復活失敗の実際の理由を言えるようにする
+                // (呼び出し側 ProfileRunner/ApiRunCommand を経由させず FTAndroid 内で完結させる)
+                RevivalOutcomeLedger.shared.recordFailure(
+                    avdID: avdID, reason: error.localizedDescription)
+                log("❌ \(progress) \(device.name): could not be revived after \(attemptsRun) attempt(s)"
+                    + " — \(error.localizedDescription)"
+                    + (decisive ? " (not retrying — this failure won't resolve on its own)" : ""))
             }
         }
         return (booted, failed)
+    }
+}
+
+/// 復活の失敗理由を、後続の解決失敗(`AndroidDeviceCatalog` の `avdNotRunning`)へ渡すための
+/// プロセス内の受け渡し。**呼び出し側(ProfileRunner/ApiRunCommand)を経由させない** ——
+/// 復活と解決は同じプロセス内で必ず「先に bootMissingDevices・後で resolveSerial」の順に呼ばれるので、
+/// グローバルな受け渡しで足りる。key は `AndroidDeviceCatalog.canonicalAVDID` 後の avd ID
+/// (bootMissingDevices と resolveSerial の両方がこの正規化形を使う)
+final class RevivalOutcomeLedger: @unchecked Sendable {
+    static let shared = RevivalOutcomeLedger()
+
+    private let lock = NSLock()
+    private var failures: [String: String] = [:]
+
+    func recordFailure(avdID: String, reason: String) {
+        lock.lock(); defer { lock.unlock() }
+        failures[avdID] = reason
+    }
+
+    func clearFailure(avdID: String) {
+        lock.lock(); defer { lock.unlock() }
+        failures.removeValue(forKey: avdID)
+    }
+
+    func failureReason(avdID: String) -> String? {
+        lock.lock(); defer { lock.unlock() }
+        return failures[avdID]
     }
 }
 

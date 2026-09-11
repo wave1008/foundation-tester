@@ -34,15 +34,46 @@ public enum EmulatorLog {
         return nil
     }
 
+    /// ログ本文から FATAL/ERROR 行を拾う(emulator 自身の終了理由。`kill -9` 等の外的な終了は
+    /// ログに何も残さないので、ここが空なら「理由は記録されていない」ということ)。純粋関数。
+    /// **見るのは最後の起動の区間だけ** —— ログは起動ごとに `=== <時刻> emulator …` の見出しを付けて
+    /// 追記される(DeviceBooter.startEmulator)ので、全体を見ると何日も前の起動の FATAL を今回の理由として引く。
+    /// DeviceBooter.fatalLines もここへ委ねる(判定を2箇所に持たない)
+    public static func fatalLines(in logText: String, limit: Int = 3) -> [String] {
+        let session = lastSession(of: logText)
+        var matches: [String] = []
+        session.enumerateLines { line, _ in
+            if line.contains("FATAL") || line.contains("ERROR") {
+                matches.append(line.trimmingCharacters(in: .whitespaces))
+            }
+        }
+        return Array(matches.suffix(limit))
+    }
+
+    /// 最後の `=== ` 見出し行以降(見出しが無ければ全体)。純粋関数
+    static func lastSession(of logText: String) -> Substring {
+        if logText.hasPrefix("=== "), !logText.contains("\n=== ") { return logText[...] }
+        guard let range = logText.range(of: "\n=== ", options: .backwards) else { return logText[...] }
+        return logText[range.upperBound...]
+    }
+
     /// 消失したエミュレータの離脱理由に添える導線。**ファイルを名指しできないときは
     /// ディレクトリを案内する** —— 無いパスを名指しすると導線として逆効果だが、置き場所を
-    /// 言わないと DiagnosticReports 側を掘る遠回りになる(受け手報告 2026-08-24)
+    /// 言わないと DiagnosticReports 側を掘る遠回りになる(受け手報告 2026-08-24)。
+    /// **ログに FATAL/ERROR 行が実在するときだけ「qemu FATAL」と断定する** —— `kill -9` 等
+    /// 外部からの強制終了はログに何も書き残さないので、無いのに断定すると無関係な末尾行
+    /// (Metal のエラー等)へ読み手を誘導する(実害)
     public static func dropoutHint(deviceName: String?, in dir: URL? = nil) -> String {
         let base = dir ?? directory
-        if let deviceName, let url = existingURL(deviceName: deviceName, in: base) {
-            return " — the emulator's own exit reason (a qemu FATAL) is at the tail of \(url.path)"
+        guard let deviceName, let url = existingURL(deviceName: deviceName, in: base) else {
+            return " — if the emulator process itself died, its exit reason is at the tail of its log"
+                + " under \(base.path)"
         }
-        return " — if the emulator process itself died, its exit reason is at the tail of its log"
-            + " under \(base.path)"
+        let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        if let lastFatal = fatalLines(in: text).last {
+            return " — the emulator's own exit reason is at the tail of \(url.path): \"\(lastFatal)\""
+        }
+        return " — its log at \(url.path) does not record an exit reason"
+            + " (it may have been killed rather than exited on its own)"
     }
 }

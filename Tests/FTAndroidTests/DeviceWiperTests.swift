@@ -42,4 +42,58 @@ final class DeviceWiperTests: XCTestCase {
             XCTAssertEqual(error as? DeviceWiperError, .unsupportedPlatform("web"))
         }
     }
+
+    // MARK: - SimulatorLocalePreservation(純粋関数だけ。simctl 自体はデバイスが要るので対象外)
+
+    func testParseLanguagesReadsTheOpenStepArray() {
+        let output = "(\n    \"ja-JP\",\n    \"en-US\"\n)\n"
+        XCTAssertEqual(SimulatorLocalePreservation.parseLanguages(output), ["ja-JP", "en-US"])
+    }
+
+    func testParseLanguagesHandlesASingleEntry() {
+        XCTAssertEqual(SimulatorLocalePreservation.parseLanguages("(\n    \"ja-JP\"\n)\n"), ["ja-JP"])
+    }
+
+    // 実際のエラー出力(exit != 0)は readSimulatorLocale が status で弾いてから呼ぶので、
+    // ここが見るのは空出力(未設定)だけでよい
+    func testParseLanguagesReturnsEmptyForEmptyOutput() {
+        XCTAssertEqual(SimulatorLocalePreservation.parseLanguages(""), [])
+    }
+
+    func testParseLocaleReadsTheIdentifier() {
+        XCTAssertEqual(SimulatorLocalePreservation.parseLocale("ja_JP\n"), "ja_JP")
+    }
+
+    func testParseLocaleReturnsNilForEmptyOutput() {
+        XCTAssertNil(SimulatorLocalePreservation.parseLocale(""))
+        XCTAssertNil(SimulatorLocalePreservation.parseLocale("\n"))
+    }
+
+    /// 停止中だった台/読み取り失敗時のフォールバック。**日本語だけにせず英語も残す**
+    /// (言語を1つしか持たないと英語の文言が一切出せなくなる)
+    func testFallbackBuildsFromTheLocaleArgument() {
+        let snapshot = SimulatorLocalePreservation.fallback(locale: "ja_JP")
+        XCTAssertEqual(snapshot.languages, ["ja-JP", "en-US"])
+        XCTAssertEqual(snapshot.locale, "ja_JP")
+    }
+
+    func testReadCommandsTargetTheGlobalDomainOnTheGivenUDID() {
+        XCTAssertEqual(SimulatorLocalePreservation.readLanguagesCommand(udid: "UDID-1"),
+                       ["xcrun", "simctl", "spawn", "UDID-1", "defaults", "read", "-g", "AppleLanguages"])
+        XCTAssertEqual(SimulatorLocalePreservation.readLocaleCommand(udid: "UDID-1"),
+                       ["xcrun", "simctl", "spawn", "UDID-1", "defaults", "read", "-g", "AppleLocale"])
+    }
+
+    /// `defaults write` は1呼び出し1キーなので2本に分かれる。両方とも同じ udid・`-g` を通す
+    func testWriteCommandsCoverBothKeysSeparately() {
+        let snapshot = SimulatorLocalePreservation.Snapshot(languages: ["ja-JP", "en-US"], locale: "ja_JP")
+        let commands = SimulatorLocalePreservation.writeCommands(udid: "UDID-1", snapshot: snapshot)
+        XCTAssertEqual(commands.count, 2)
+        XCTAssertEqual(commands[0],
+                       ["xcrun", "simctl", "spawn", "UDID-1", "defaults", "write", "-g",
+                        "AppleLanguages", "-array", "ja-JP", "en-US"])
+        XCTAssertEqual(commands[1],
+                       ["xcrun", "simctl", "spawn", "UDID-1", "defaults", "write", "-g",
+                        "AppleLocale", "-string", "ja_JP"])
+    }
 }

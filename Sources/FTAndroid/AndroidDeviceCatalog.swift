@@ -6,16 +6,27 @@ import Foundation
 import FTCore
 
 public enum AndroidDeviceCatalogError: Error, LocalizedError {
-    case avdNotRunning(String, running: [String: String])
+    /// `revivalFailure` は復活失敗の理由の受け渡し(`RevivalOutcomeLedger`): この run が開始時に
+    /// この AVD を復活させようとして失敗していれば、その理由をここへ載せる。
+    /// nil のときは復活を試みていない(=そもそも触っていない)ので従来どおり `devices up` を案内する
+    case avdNotRunning(String, running: [String: String], revivalFailure: String?)
     case noIdentifier(name: String)
     /// kind=physical の serial が adb に見えない
     case deviceNotConnected(name: String, serial: String, connected: [String])
 
     public var errorDescription: String? {
         switch self {
-        case .avdNotRunning(let avd, let running):
+        case .avdNotRunning(let avd, let running, let revivalFailure):
             let list = running.isEmpty ? "none"
                 : running.map { "\($0.value)(\($0.key))" }.sorted().joined(separator: ", ")
+            // この run が起動前に自分でこの AVD を復活させようとして失敗していたなら、
+            // その実際の理由を言う ——「devices up で起動しろ」は復活済み・そもそも触っていない
+            // 場合の案内で、復活を試みて失敗した場合には的外れ(投げられるのは最初の解決失敗であって
+            // 復活失敗の理由ではなかった。実害)
+            if let revivalFailure {
+                return "no running emulator for AVD \"\(avd)\" (running: \(list)). "
+                    + "This run tried to revive it before starting and that failed: \(revivalFailure)"
+            }
             return "no running emulator for AVD \"\(avd)\" (running: \(list)). "
                 + "Start one with: fleetest devices up, or emulator -avd <ID>"
         case .noIdentifier(let name):
@@ -188,10 +199,20 @@ public enum AndroidDeviceCatalog {
         let canonical = canonicalAVDID(avd)
         let running = try runningAVDs()
         guard let serial = running.first(where: { $0.value == canonical })?.key else {
-            let label = canonical == avd ? avd : "\(avd)(ID: \(canonical))"
-            throw AndroidDeviceCatalogError.avdNotRunning(label, running: running)
+            throw avdNotRunningError(
+                avd: avd, canonical: canonical, running: running,
+                revivalFailure: RevivalOutcomeLedger.shared.failureReason(avdID: canonical))
         }
         return serial
+    }
+
+    /// `.avdNotRunning` の組み立て(純粋関数。adb を叩かないので `RevivalOutcomeLedger` の
+    /// 読み出し結果込みでテストできる)
+    static func avdNotRunningError(
+        avd: String, canonical: String, running: [String: String], revivalFailure: String?
+    ) -> AndroidDeviceCatalogError {
+        let label = canonical == avd ? avd : "\(avd)(ID: \(canonical))"
+        return .avdNotRunning(label, running: running, revivalFailure: revivalFailure)
     }
 
     /// adb 不安定等で取得できない場合は安全側(未完了=false)を返す

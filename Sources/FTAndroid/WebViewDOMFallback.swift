@@ -87,18 +87,26 @@ enum WebViewDOMFallback {
         return (system, appDebuggableFlag(inDumpsysFlags: String(output[marker.upperBound...])))
     }
 
-    /// `flags=0x...`(ApplicationInfo.flags の16進表示)の行から FLAG_DEBUGGABLE(0x2)ビットを読む。
-    /// grep は `flags=` を含む行を全部返す(`privateFlags=` 等も混じる)ので、**行頭が
-    /// ちょうど `flags=0x` の行だけ**を採る。見つからなければ nil ——
-    /// dumpsys package の書式は Android の版でテキスト羅列(`flags=[ HAS_CODE ... ]`)にも化けるため、
-    /// 読めない版があること自体は普通で断定しない
+    /// `flags=0x...`(ApplicationInfo.flags の16進表示)の行から FLAG_DEBUGGABLE(0x2)ビットを読むか、
+    /// `flags=[ HAS_CODE ... ]`(Android 13 実機で実測。sdk 33 の物理 Pixel 4a はこの形しか出さない)
+    /// の行から `DEBUGGABLE` の語の有無を読む。grep は `flags=` を含む行を全部返す
+    /// (`privateFlags=` 等も混じる)ので、**行頭がちょうど `flags=0x` / `flags=[` の行だけ**を採る
+    /// (`privateFlags=` は "p" で始まるためどちらの prefix にも当たらない)。
+    /// どちらの形でもなければ nil ——読めない版があること自体は普通で断定しない
     static func appDebuggableFlag(inDumpsysFlags text: String) -> Bool? {
         for line in text.split(separator: "\n") {
             let trimmed = String(line).trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("flags=0x") else { continue }
-            let hex = trimmed.dropFirst("flags=0x".count).prefix(while: { $0.isHexDigit })
-            guard !hex.isEmpty, let value = UInt64(hex, radix: 16) else { continue }
-            return (value & 0x2) != 0
+            if trimmed.hasPrefix("flags=0x") {
+                let hex = trimmed.dropFirst("flags=0x".count).prefix(while: { $0.isHexDigit })
+                guard !hex.isEmpty, let value = UInt64(hex, radix: 16) else { continue }
+                return (value & 0x2) != 0
+            }
+            if trimmed.hasPrefix("flags=[") {
+                let words = trimmed.dropFirst("flags=[".count)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "] "))
+                    .split(separator: " ")
+                return words.contains("DEBUGGABLE")
+            }
         }
         return nil
     }

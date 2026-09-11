@@ -596,13 +596,7 @@ public enum DeviceBooter {
     /// ログ本文から FATAL/ERROR 行を拾う(emulator 自身の終了理由。process.terminationStatus は
     /// 数値だけなのでここにしか出ない)。純粋関数。空 = 拾えなかった(該当行なし/ログ未生成)
     static func fatalLines(in logText: String, limit: Int = 3) -> [String] {
-        var matches: [String] = []
-        logText.enumerateLines { line, _ in
-            if line.contains("FATAL") || line.contains("ERROR") {
-                matches.append(line.trimmingCharacters(in: .whitespaces))
-            }
-        }
-        return Array(matches.suffix(limit))
+        EmulatorLog.fatalLines(in: logText, limit: limit)
     }
 
     /// その AVD を握る qemu プロセスが実在するか(`ps` 1回分の走査。判定は

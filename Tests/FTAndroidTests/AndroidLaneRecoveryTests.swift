@@ -152,4 +152,80 @@ final class AndroidLaneRecoveryTests: XCTestCase {
         XCTAssertTrue(result.failed.isEmpty)
         XCTAssertFalse(logged.value)
     }
+
+    // MARK: - decisive FATAL は再試行しない
+
+    private struct MessageError: Error, LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
+    }
+
+    func testIsDecisiveFailureMatchesTheObservedMarker() {
+        XCTAssertTrue(AndroidLaneRecovery.isDecisiveFailure(
+            MessageError(message: "… its own log says: FATAL | Broken AVD system path")))
+        XCTAssertFalse(AndroidLaneRecovery.isDecisiveFailure(MessageError(message: "boom")))
+    }
+
+    /// 決定的な FATAL(システムイメージが無い等)は1回で諦め、3回×N台の無駄な再試行をしない
+    /// (M1Ultra の4台がこれで数分無駄にした)
+    func testDoesNotRetryADecisiveFatalFailure() async {
+        actor Counter {
+            var count = 0
+            func increment() { count += 1 }
+        }
+        let counter = Counter()
+        let d1 = device("decisive-d1")
+        let result = await AndroidLaneRecovery.bootMissingDevices(
+            devices: [d1], locale: "ja_JP", log: { _ in },
+            boot: { _, _ in
+                await counter.increment()
+                throw MessageError(message: "FATAL | Broken AVD system path")
+            })
+        let count = await counter.count
+        XCTAssertEqual(count, 1, "決定的な FATAL は撃ち直しても同じ結果になるので1回で諦める")
+        XCTAssertEqual(result.failed.map(\.name), ["decisive-d1"])
+    }
+
+    /// 決定的でない失敗は引き続き3回まで試す(退行させない対照)
+    func testStillRetriesANonDecisiveFailure() async {
+        actor Counter {
+            var count = 0
+            func increment() { count += 1 }
+        }
+        let counter = Counter()
+        let d1 = device("nondecisive-d1")
+        _ = await AndroidLaneRecovery.bootMissingDevices(
+            devices: [d1], locale: "ja_JP", log: { _ in },
+            boot: { _, _ in
+                await counter.increment()
+                throw MessageError(message: "transient adb hiccup")
+            })
+        let count = await counter.count
+        XCTAssertEqual(count, AndroidLaneRecovery.maxBootAttempts)
+    }
+
+    // MARK: - 復活の失敗理由を RevivalOutcomeLedger へ残す
+
+    /// 復活に失敗した AVD の理由は、後続の avdNotRunning がそのまま引用できるよう記録される
+    /// (呼び出し側 ProfileRunner/ApiRunCommand を経由させず FTAndroid 内で完結させる受け渡し)
+    func testRecordsRevivalFailureReasonForLaterLookup() async {
+        let avdID = "ftlanerecoverytest-ledger-fail"
+        let d1 = device("ledger-fail", avd: avdID)
+        _ = await AndroidLaneRecovery.bootMissingDevices(
+            devices: [d1], locale: "ja_JP", log: { _ in },
+            boot: { _, _ in throw MessageError(message: "boom: Broken AVD system path") })
+        XCTAssertEqual(RevivalOutcomeLedger.shared.failureReason(avdID: avdID),
+                       "boom: Broken AVD system path")
+    }
+
+    /// 復活が成功したら、前回の失敗記録は消す(次の無関係な失敗が古い理由を引き継がない)
+    func testClearsRevivalFailureReasonOnSuccess() async {
+        let avdID = "ftlanerecoverytest-ledger-success"
+        RevivalOutcomeLedger.shared.recordFailure(avdID: avdID, reason: "stale reason")
+        let d1 = device("ledger-success", avd: avdID)
+        _ = await AndroidLaneRecovery.bootMissingDevices(
+            devices: [d1], locale: "ja_JP", log: { _ in },
+            boot: { _, _ in })
+        XCTAssertNil(RevivalOutcomeLedger.shared.failureReason(avdID: avdID))
+    }
 }

@@ -119,11 +119,21 @@ final class WebViewDOMFallbackTests: XCTestCase {
                      "行頭でない一致まで拾っている")
     }
 
-    /// 版によっては16進でなくテキスト羅列(`flags=[ HAS_CODE ... ]`)で来る。読めない形は nil
+    /// (実測、Android 13 の物理 Pixel 4a): 版によっては16進でなくテキスト羅列
+    /// (`flags=[ HAS_CODE ... ]`)でしか来ない。以前はここが nil(不明)に落ち、非 debuggable な
+    /// 物理端末で DOM 未読の警告が一度も出なかった。`DEBUGGABLE` の語の有無で読む
+    func testAppDebuggableFlagReadsTheTextualFormat() {
+        XCTAssertEqual(WebViewDOMFallback.appDebuggableFlag(
+            inDumpsysFlags: "    flags=[ HAS_CODE ALLOW_CLEAR_USER_DATA ]\n"), false,
+            "実測(Android 13, ro.debuggable=0): DEBUGGABLE の語が無い")
+        XCTAssertEqual(WebViewDOMFallback.appDebuggableFlag(
+            inDumpsysFlags: "    flags=[ HAS_CODE DEBUGGABLE ALLOW_CLEAR_USER_DATA ]\n"), true)
+    }
+
+    /// 本当に読めない入力(空・どちらの形でもない)は nil のまま(不明を断定に丸めない)
     func testAppDebuggableFlagReturnsNilForUnrecognizedFormat() {
-        XCTAssertNil(WebViewDOMFallback.appDebuggableFlag(
-            inDumpsysFlags: "    flags=[ HAS_CODE ALLOW_BACKUP ]\n"))
         XCTAssertNil(WebViewDOMFallback.appDebuggableFlag(inDumpsysFlags: ""))
+        XCTAssertNil(WebViewDOMFallback.appDebuggableFlag(inDumpsysFlags: "    something else\n"))
     }
 
     /// `flags=0x` の直後に16進数字が1つも無い行(壊れた/切れた出力)は 0 に丸めず nil
