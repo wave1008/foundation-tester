@@ -41,7 +41,14 @@ final class MCPServer {
     /// 旧 ref [42](戻るボタン)を叩いたら新しい木の [42](静的テキスト「料金:」)に当たった)。
     /// MCP 層で ref にオフセット(`base`)を掛け、セッション内で全世代の ref を一意にする ——
     /// ブリッジには一切触らない。古い順に並び、**直近5世代だけ**保持する(adoptSnapshot 参照)
-    var refGenerations: [String: [(base: Int, snapshot: SnapshotResponse)]] = [:]
+    /// 各世代を採った時点の `sessionActionCounts[key]`(出自判定用。宣言はそちら)
+    var refGenerations: [String: [(base: Int, snapshot: SnapshotResponse, actionCount: Int)]] = [:]
+    /// この engineKey へこのセッションが撃った操作(tap/type/swipe/… — `recordAction` を通った回数)。
+    /// **「このセッションは変えていない」と言ってよいかの唯一の判定材料**:
+    /// `screenChangedUnderRefNote` は木の変化を「アプリ自身・他プロセス・人」のせいだと名指しするが、
+    /// ref を採った世代からこの回数が増えていれば、変化はこのセッション自身の直前の操作で
+    /// 説明がつく可能性が高く、外部要因のせいにしてはいけない
+    var sessionActionCounts: [String: Int] = [:]
     /// 次の新しい世代に割り当てる base。**セッションに1つ**(engineKey ごとではない)・**単調増加のみ**。
     ///
     /// **機ごとに持ってはいけない**(2026-08-13 に実機で踏んだ): engineKey ごとに 0 から始めると
@@ -72,6 +79,12 @@ final class MCPServer {
     /// 以後の snapshot が `com.ftester.e2e.flutter` の木になった)。
     /// **ホスト側で「起動したアプリ」を覚えて突き合わせる**のが唯一の検知経路。
     var launchedBundleIDs: [String: String] = [:]
+    /// `launchedBundleIDs` と対で、そのアプリを起動した**時刻**(engineKey ごと)。
+    /// : Android のクラッシュ帰属(`androidProcessEvidenceForSwitch`)が
+    /// 「直近の launch 以降」に絞るための起点 —— 無いと、数分〜数時間前の別プロセスの
+    /// クラッシュ(adb の crash バッファは時間で絞らない限りずっと残る)を今回の launch の
+    /// せいと誤って引用する
+    var launchTimestamps: [String: Date] = [:]
     /// drivers と同じキーで**最後に ft_install した packagePath**を覚える(engineKey ごと)。
     /// **実機の ft_clear_app_data が使う** —— devicectl には clearAppData の同等手段が無く
     /// (BridgeClient.clearAppData の 501)、代わりに uninstall+install で再現するのに要る
@@ -286,6 +299,11 @@ final class MCPServer {
     /// 経由は "<device name> serial <serial>" と経路ごとに書式が違い、文字列切り出しに頼ると
     /// profile 経由だけ判定から漏れる(2026-08-14 に実際に踏んだ)
     var connectedAndroidSerials: [String: String] = [:]
+    /// **物理 Android を起こす処理(`AndroidPhysicalDevice.prepareForRun`)を済ませた engineKey**
+    /// : run 経路(`ProfileWorkerFactory.preparePhysicalAndroidDevices`)は run の
+    /// 開始前に1回だけ呼ぶので、MCP もそれと同じ粒度(このセッションでその機へ初めて触れたとき
+    /// 1回)にする —— 毎ツール呼び出しに払うと adb 往復が積み上がる。`driver(_:)` が管理する
+    var preparedPhysicalAndroid: Set<String> = []
 
     /// 版ズレの内容(engineKey ごと)。ft_status が「失敗するが理由を返す」ために覚えておく
     var versionSkew: [String: String] = [:]

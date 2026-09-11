@@ -1923,4 +1923,31 @@ extension MCPServer {
     /// DSL の pressEnter(StepExecutor+Actions.swift)と値を共有 — FTCore.FocusWait が唯一の定義元
     static let focusWaitSeconds = FocusWait.waitSeconds
     static let focusPollSeconds = FocusWait.pollSeconds
+
+    /// **座標が画面外なら撃たずに拒否する**(実測)。in-app ブリッジは
+    /// 「その点を含む最小の frame」を撃つだけで、点そのものが画面の中かは見ない
+    /// (`InAppBridge.swift` の tap/press ハンドラ)。木は画面外にも要素を持つことがある
+    /// (折り返しの下・別タブの隠れた行 等)ので、画面外の座標はその**実在する**見えない要素を
+    /// 実際に押してしまう(実測: (201, 900) で画面外の `#nav_diagnostics` が押されて遷移した)。
+    ///
+    /// **screen が分からないときは従来どおり撃つ**(ft_snapshot をまだ撮っていない・
+    /// 旧ブリッジ等)—— 「分からない」を「外れている」と読むと、画面を知らないだけの
+    /// 正常な呼び出しまで拒否することになる。
+    ///
+    /// 呼び手は直近の `lastSnapshots[engineKey].screen` を渡すこと(この関数自体は
+    /// 撮り直さない — 追加の snapshot を払わない)
+    static func offscreenCoordinateError(x: Double, y: Double, screen: FTRect?) -> MCPError? {
+        guard let screen, screen.width > 0, screen.height > 0 else { return nil }
+        guard x >= screen.x, x <= screen.x + screen.width,
+              y >= screen.y, y <= screen.y + screen.height else {
+            return MCPError("(\(x), \(y)) is outside the screen (\(FTSeconds.format(screen.width))"
+                + "x\(FTSeconds.format(screen.height)), origin \(FTSeconds.format(screen.x)),"
+                + "\(FTSeconds.format(screen.y))) — refusing to fire. The in-app engine hit-tests"
+                + " only \"does some frame contain this point\", not \"is this point on screen\","
+                + " so an offscreen coordinate can land on a real, offscreen element (e.g. a tab"
+                + " below the fold, or a row still in the tree from a previous screen). Take a"
+                + " fresh ft_snapshot and pass an in-bounds coordinate, or use a ref instead.")
+        }
+        return nil
+    }
 }

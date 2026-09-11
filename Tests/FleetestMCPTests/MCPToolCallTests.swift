@@ -718,7 +718,7 @@ final class MCPToolCallTests: XCTestCase {
         aliased.lastExplicitIOSTarget = (port: 8138, udid: nil)
         aliased.lastExplicitPlatform = "ios"
         aliased.seenExplicitIOSPorts = [8138]
-        // ref の台帳を作ってから撃つ(実フローと同順。FakeDriver は座標形の press を持たない)
+        // ref の台帳を作ってから撃つ(実フローと同順)
         _ = try await aliased.call(tool: "ft_snapshot", args: [:])
         _ = try await aliased.call(tool: "ft_press", args: ["ref": 1, "holdSeconds": 2.0])
         XCTAssertFalse(seenArgs.isEmpty)

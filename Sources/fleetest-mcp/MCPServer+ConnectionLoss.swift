@@ -251,7 +251,9 @@ extension MCPServer {
         versionSkew[key] = nil
         lastSnapshots[key] = nil
         refGenerations[key] = nil
+        sessionActionCounts[key] = nil
         launchedBundleIDs[key] = nil
+        launchTimestamps[key] = nil
         installedPackagePaths[key] = nil
         lastScreenProbe[key] = nil
         systemAlertProbePending.remove(key)
@@ -260,6 +262,7 @@ extension MCPServer {
         rememberedSnapshotFilters[key] = nil
         sheetRescueFutile[key] = nil
         pendingWarnings[key] = nil
+        preparedPhysicalAndroid.remove(key)
     }
 
     /// 名指しする上限本数(2026-08-12): 実測で17本が1行に並び、読み手が要るのは

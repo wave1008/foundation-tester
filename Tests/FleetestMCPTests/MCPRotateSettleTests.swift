@@ -72,9 +72,13 @@ final class MCPRotateSettleTests: XCTestCase {
         XCTAssertEqual(driver.calls.filter { $0 == "snapshot" }.count, 1, "\(driver.calls)")
     }
 
-    /// **portrait へ戻したときだけ auto-rotate を復元する**(2026-09-05・実機 Pixel 4a の実測:
-    /// MCP 経由で回すと自動回転 OFF が端末に残っていた)。settled == .portrait が合図
-    func testRestoresAutoRotateOnlyWhenSettledToPortrait() async throws {
+    /// **iOS(Android でないドライバ)は portrait へ戻しても復元しない**:
+    /// `restoreOrientationIfNeeded` は Android では「auto-rotate 設定を戻すだけ」で無害だが、
+    /// iOS の `FTBridgeClient.BridgeClient` では「rotate 前の向きへ実際に回転し直す」実装なので、
+    /// 明示的に `ft_rotate portrait` した直後にこれを呼ぶと、その場で(元の向きが landscape なら)
+    /// 横へ戻ってしまう。この経路は Android のときだけ呼ぶ(`FakeDriver` は AndroidDriver では
+    /// ないので、portrait へ戻ってもここでは一度も呼ばれないことを確かめる)
+    func testDoesNotRestoreOrientationForNonAndroidDriversEvenAtPortrait() async throws {
         server.rotationSettleDeadlineSeconds = 0
 
         let landscapeResult = try await server.call(tool: "ft_rotate", args: ["orientation": "landscape"])
@@ -84,9 +88,22 @@ final class MCPRotateSettleTests: XCTestCase {
                        Self.text(landscapeResult))
 
         let portraitResult = try await server.call(tool: "ft_rotate", args: ["orientation": "portrait"])
-        XCTAssertTrue(driver.calls.contains("restoreOrientationIfNeeded"),
-                      "portrait へ戻ったのに復元しなかった: \(driver.calls)")
-        XCTAssertTrue(Self.text(portraitResult).contains("Auto-rotate was restored"),
-                      Self.text(portraitResult))
+        XCTAssertFalse(driver.calls.contains("restoreOrientationIfNeeded"),
+                       "iOS 相当のドライバなのに portrait で戻してしまった(再発): \(driver.calls)")
+        XCTAssertFalse(Self.text(portraitResult).contains("Auto-rotate was restored"),
+                       Self.text(portraitResult))
+    }
+
+    /// **配線の確認**(`AndroidDriver` は FTAndroid 依存で FakeDriver からは模せないので、
+    /// MCPProfilePlatformTests と同じソース走査で守る): portrait への復元呼び出しが
+    /// `rotateDriver is AndroidDriver` を条件に持っていること。これを外す変異(常時呼ぶ形へ戻す)は
+    /// 上のテストが落とすが、「Android だけ」という条件そのものが消えていないかはここで固定する
+    func testRestoreCallIsGatedToAndroidInSource() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/fleetest-mcp/MCPServer+Dispatch.swift")
+        let code = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(code.contains("if settled == .portrait, rotateDriver is AndroidDriver {"),
+                      "ft_rotate の復元呼び出しが Android 限定のままであること")
     }
 }

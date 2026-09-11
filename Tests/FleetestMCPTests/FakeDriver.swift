@@ -10,6 +10,10 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
     private(set) var calls: [String] = []
     /// ここに入れた名前のメソッドは throw する(エラー整形の検証用)
     var failing: Set<String> = []
+    /// **既定実装(AppDriver extension)は常に nil**。テスト用に、次回の `tap(ref:)` が
+    /// 返す `lastActionNote` を差し替えられるようにする(実ブリッジの「activate 不発 → 合成タッチ」を模す)
+    var scriptedActionNote: String?
+    var lastActionNote: String?
 
     var statusResponse = StatusResponse(
         ready: true, device: "iPhone 17", osVersion: "26.0", sessionBundleID: "com.example.app")
@@ -154,7 +158,9 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
     }
 
     func tap(ref: Int) async throws {
+        lastActionNote = nil
         try record("tap(ref:\(ref))", "tap")
+        lastActionNote = scriptedActionNote
     }
 
     func tap(x: Double, y: Double) async throws {
@@ -180,6 +186,12 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
 
     func press(ref: Int, duration: Double) async throws {
         try record("press(ref:\(ref),duration:\(duration))", "press")
+    }
+
+    /// **既定実装(AppDriver extension)は 501 を投げる**ので、上書きしないと座標形の
+    /// ft_long_press(オフスクリーン拒否・書き方の文言)が一切テストできない
+    func press(x: Double, y: Double, duration: Double) async throws {
+        try record("press(x:\(x),y:\(y),duration:\(duration))", "press")
     }
 
     func doubleTap(x: Double, y: Double) async throws {

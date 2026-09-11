@@ -11,11 +11,39 @@ extension MCPServer {
 
     // MARK: - ドライバ
 
+    /// **`driver(_:)` の唯一の呼び口はここ**: 解決(`resolveDriver`)の直後に、物理 Android なら
+    /// 起こす処理を挟む。全ツールが `driver(args)` を通るので、ここ1箇所で全ツールに効く。
+    /// **差し替えドライバ(テスト)では何もしない**(`prepareAndroidDeviceIfNeeded` が
+    /// `makeDriver == nil` を見る)ので、既存のテストの呼び出し列は1つも変わらない
+    func driver(_ args: [String: Any]) async throws -> AppDriver {
+        let resolved = try await resolveDriver(args)
+        await prepareAndroidDeviceIfNeeded(resolved, args: args)
+        return resolved
+    }
+
+    /// **物理 Android の消灯を、操作の前に起こしてから進む**(実測):
+    /// 消灯中は `ft_snapshot` が注記なしで常時表示の木を返し、`ft_tap` は `done` を返し、
+    /// `ft_launch` は「アプリが前面に来なかった」としか言わない —— 消灯そのものには一度も触れない。
+    /// run 経路(`ProfileWorkerFactory.preparePhysicalAndroidDevices` → `AndroidPhysicalDevice.
+    /// prepareForRun`)と**同じ処理を同じ粒度で**呼ぶ(起こす・ロック解除。消灯の抑止は
+    /// 端末の設定のまま変えない——2026-09-05 のユーザー決定はそのまま尊重する)。
+    /// **このセッションでその機へ初めて触れたときだけ**(`preparedPhysicalAndroid`)——
+    /// run が「build の前に1回」なのと同じ粒度で、毎呼び出しに adb 往復を払わない
+    func prepareAndroidDeviceIfNeeded(_ resolved: AppDriver, args: [String: Any]) async {
+        guard resolved is AndroidDriver, makeDriver == nil else { return }
+        let key = Self.engineKey(args)
+        guard !preparedPhysicalAndroid.contains(key),
+              let serial = connectedAndroidSerials[key],
+              DevicePicker.isPhysicalAndroidSerial(serial) else { return }
+        preparedPhysicalAndroid.insert(key)
+        await AndroidPhysicalDevice.prepareForRun(serial: serial, log: Self.logStderr)
+    }
+
     // **実行と同じエンジンで探索する**のが原則(揃えないと snapshot もジェスチャの成否も食い違う)。
     // profile 指定時は resolveProfileTarget が ft_run_scenario と同じデバイスを解決し、iosDriver が
     // プロファイルのエンジンに追従する。profile 無しの iOS は ExploreDriverResolver が
     // 稼働中ブリッジを見て決める(in-app が居れば hybrid を組む・居なければ XCUITest)
-    func driver(_ args: [String: Any]) async throws -> AppDriver {
+    func resolveDriver(_ args: [String: Any]) async throws -> AppDriver {
         if let makeDriver {
             // 差し替えドライバのエンジンは分からない。**助言が出る側(xcuitest)を既定**にする
             // (テストは engines を先に埋めて別のエンジンを名乗れる)
@@ -370,6 +398,22 @@ extension MCPServer {
     /// Android 版の同じ述語(serial)
     static func argsGaveAndroidTarget(_ args: [String: Any]) -> Bool {
         (args["serial"] as? String).flatMap { $0.isEmpty ? nil : $0 } != nil
+    }
+
+    /// **profile と明示の宛先(udid/port/serial)は併用させない**。profile の枝は宛先を
+    /// ft_run_scenario と同じ規則でプロファイルから決め、明示の宛先を1度も見ないので、黙って通すと
+    /// **名指ししていない台**(プロファイルが選ぶ台)を操作する(実測: udid で -08 を名指ししたのに
+    /// プロファイルの -01 でアプリを起動した)。platform は併用してよい(プロファイル内の OS を選ぶ)
+    /// —— ここがシナリオ系の `profileConflict` と違う点。呼ぶのは `call()` の入口(udid を畳む前)。
+    /// 記憶の注入は profile 指定時に働かない
+    /// (`foldInRememberedDevice`)ので、ここに掛かるのは利用者が明示した組み合わせだけ
+    static func profileWithExplicitTargetRefusal(_ args: [String: Any]) -> String? {
+        guard let profile = args["profile"] as? String,
+              argsGaveIOSTarget(args) || argsGaveAndroidTarget(args) else { return nil }
+        return "profile \"\(profile)\" picks its own device (the same one ft_run_scenario would use), so it"
+            + " cannot be combined with udid/port/serial — the call would drive the profile's device, not"
+            + " the one you named. Drop profile to drive the named device (the engine then follows the"
+            + " bridge running on it), or drop udid/port/serial to use the profile's device"
     }
 
     /// **fold が注入した呼び出しかどうかの目印**。foldInRememberedDevice が
@@ -982,7 +1026,10 @@ extension MCPServer {
             if !processEvidence.crashSummary.isEmpty {
                 note += " Last crash in logcat -b crash: "
                     + processEvidence.crashSummary.joined(separator: " / ") + "."
-                    + " ft_logs crashOnly: true shows the full trace."
+                    // **`crashOnly` は ft_logs の引数名ではない**: 実際のスキーマは
+                    // `all`(既定 false = crash バッファのみ)なので、無指定の ft_logs が
+                    // そのまま全文を出す
+                    + " ft_logs shows the full trace."
             }
             return note + " ft_launch \(launched) to start it again.\n"
         }
@@ -992,17 +1039,48 @@ extension MCPServer {
             + " ft_launch \(launched) before trusting these refs\n"
     }
 
-    /// `switchedAppNote` の `processEvidence` 引数を埋める(Android のみ・adb 2往復)。
+    /// `launched` の launch timestamp が分からないときの既定の遡り窓(秒)。ft_logs の既定
+    /// (`sinceSeconds` 省略時 300)と揃える —— このツールが「直近」とみなす幅の唯一の他の定義元
+    static let defaultCrashAttributionWindowSeconds = 300
+
+    /// crash 引用に使う `sinceSeconds` の純関数。**5秒の余裕を足す** —— launch から
+    /// クラッシュまでの実時間+adb 往復のぶんを切り捨てて肝心のクラッシュ行を落とさないため。
+    /// 分からなければ ft_logs と同じ既定(5分)に倒す(無制限には戻さない)
+    static func crashAttributionWindowSeconds(launchedAt: Date?, now: Date) -> Int {
+        guard let launchedAt else { return defaultCrashAttributionWindowSeconds }
+        return max(5, Int(now.timeIntervalSince(launchedAt).rounded(.up)) + 5)
+    }
+
+    /// `switchedAppNote` の `processEvidence` 引数を埋める(Android のみ・adb 2〜3往復)。
     /// **すり替わっていない通常の呼び出しでは adb を払わない**(session == launched ならここで
     /// 抜ける)。serial は明示引数か、このセッションが覚えている宛先(connectedAndroidSerials。
     /// resolveAndroidSerial と違い**曖昧でも例外にしない** —— これは付加情報で、
-    /// 取れなければ nil のまま adb の既定(単一接続時のみ解決)に委ねる
+    /// 取れなければ nil のまま adb の既定(単一接続時のみ解決)に委ねる。
+    ///
+    /// **crashSummary は直近の launch 以降に絞り直す**: `AndroidAppProcessEvidenceQuery
+    /// .query` は `adb logcat -d -b crash` を時間で絞らず丸ごと読むので、素の crashSummary は
+    /// 数分〜数時間前の**別プロセス**のクラッシュも拾う(crash バッファは端末側で自然に消えるまで
+    /// 残り続ける)。`launchTimestamps` を起点に `AndroidLogcat.recent(sinceSeconds:)`
+    /// (ft_logs と同じ時間フィルタ)で撮り直し、その範囲内のブロックだけを名指しする。
+    /// launch を覚えていない(このセッションが ft_launch していない・profile 経由で既存の
+    /// セッションに繋いだ)ときは `defaultCrashAttributionWindowSeconds` へ落ちる
+    /// (無制限に戻すと元の欠陥に戻るので、「分からない」を「無限に遡ってよい」とは読まない)
     func androidProcessEvidenceForSwitch(launched: String?, snapshot: SnapshotResponse,
                                          driver: AppDriver, args: [String: Any])
         -> AndroidAppProcessEvidence? {
         guard driver is AndroidDriver, let launched, let session = snapshot.sessionBundleID,
               session != launched else { return nil }
         let serial = (args["serial"] as? String) ?? connectedAndroidSerials[Self.engineKey(args)]
-        return AndroidAppProcessEvidenceQuery.query(package: launched, serial: serial)
+        guard let evidence = AndroidAppProcessEvidenceQuery.query(package: launched, serial: serial)
+        else { return nil }
+        guard !evidence.running, !evidence.crashSummary.isEmpty else { return evidence }
+        let sinceSeconds = Self.crashAttributionWindowSeconds(
+            launchedAt: launchTimestamps[Self.engineKey(args)], now: Date())
+        guard let scoped = try? AndroidLogcat.recent(serial: serial, packageName: nil, crashOnly: true,
+                                                     sinceSeconds: sinceSeconds, maxLines: 5000)
+        else { return AndroidAppProcessEvidence(running: evidence.running, crashSummary: []) }
+        let scopedSummary = AndroidAppProcessEvidenceQuery.crashSummary(
+            fromCrashLog: scoped.lines.joined(separator: "\n"), package: launched)
+        return AndroidAppProcessEvidence(running: evidence.running, crashSummary: scopedSummary)
     }
 }

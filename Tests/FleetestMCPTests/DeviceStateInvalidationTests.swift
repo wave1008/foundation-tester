@@ -34,9 +34,11 @@ final class DeviceStateInvalidationTests: XCTestCase {
         server.udids[key] = "AAA"
         server.versionSkew[key] = "mismatch"
         server.lastSnapshots[key] = snapshot
-        server.refGenerations[key] = [(base: 100, snapshot: snapshot)]
+        server.refGenerations[key] = [(base: 100, snapshot: snapshot, actionCount: 0)]
+        server.sessionActionCounts[key] = 3
         server.nextRefBase = 200
         server.launchedBundleIDs[key] = "com.example.old"
+        server.launchTimestamps[key] = Date()
         server.uiFrameworkHints[key] = "compose"
         server.lastScreenshots[key] = StaleFrameDetector.Record(imageHash: 1, treeFingerprint: 2)
         server.rememberedSnapshotFilters[key] = ["interactiveOnly": true]
@@ -55,8 +57,12 @@ final class DeviceStateInvalidationTests: XCTestCase {
         XCTAssertNil(server.drivers[key])
         XCTAssertNil(server.lastSnapshots[key], "古い木が残ると ref が別の機の要素へ解決される")
         XCTAssertNil(server.refGenerations[key], "古い ref 世代が残ると番号一致で別要素に当たる")
+        XCTAssertNil(server.sessionActionCounts[key],
+                     "古い操作回数が残ると 出自判定が前の機の実績を引き継ぐ")
         XCTAssertNil(server.launchedBundleIDs[key],
                      "前の機で起動したアプリが残ると ft_open_url がそこへ配送する")
+        XCTAssertNil(server.launchTimestamps[key],
+                     "前の機の launch 時刻が残ると クラッシュ帰属の窓が前の機の時刻で計算される")
         XCTAssertNil(server.udids[key] ?? nil)
         XCTAssertNil(server.engines[key])
         XCTAssertNil(server.versionSkew[key])

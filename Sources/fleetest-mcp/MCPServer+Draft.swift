@@ -152,6 +152,15 @@ extension MCPServer {
         return latest
     }
 
+    /// `interactions.record` の唯一の通し口: 記録と同時に、この engineKey へ
+    /// このセッションが何かを撃った回数(`sessionActionCounts`)も刻む。**素の
+    /// `interactions.record` を直に呼ばない** —— そちらへ戻すと、その手だけ
+    /// `screenChangedUnderRefNote` の出自判定から抜け、木の変化を誤って外部要因のせいにする
+    func recordAction(_ entry: InteractionLog.Entry, args: [String: Any]) {
+        sessionActionCounts[Self.engineKey(args), default: 0] += 1
+        interactions.record(entry)
+    }
+
     func recordInteraction(action: String, resolvedRef: Int?, args: [String: Any],
                            text: String? = nil, direction: String? = nil,
                            coordinate: (x: Double, y: Double)? = nil,
@@ -192,13 +201,13 @@ extension MCPServer {
             step.duration = duration
             step.note = "coordinates — replace with a selector before keeping this;"
                 + " a layout change makes it hit something else"
-            interactions.record(InteractionLog.Entry(step: step, unresolved: nil,
-                                                     summary: described))
+            recordAction(InteractionLog.Entry(step: step, unresolved: nil,
+                                              summary: described), args: args)
             return
         }
         if selector == nil, needsLocator, action != "swipe" {
-            interactions.record(InteractionLog.Entry(step: nil, unresolved: described,
-                                                     summary: "\(described) [no selector]"))
+            recordAction(InteractionLog.Entry(step: nil, unresolved: described,
+                                              summary: "\(described) [no selector]"), args: args)
             return
         }
         var step = FlowStep(action: action)
@@ -220,9 +229,9 @@ extension MCPServer {
         }
         let detail = [selector.map { "\"\($0)\"" }, text.map { "\"\($0)\"" }, direction]
             .compactMap { $0 }.joined(separator: " ")
-        interactions.record(InteractionLog.Entry(
+        recordAction(InteractionLog.Entry(
             step: step, unresolved: nil,
-            summary: detail.isEmpty ? action : "\(action) \(detail)"))
+            summary: detail.isEmpty ? action : "\(action) \(detail)"), args: args)
     }
 
     /// 撮ったスナップショットの `#id` をプロジェクトの台帳へ足す(ft_dry_run が綴り誤りの照合に使う。

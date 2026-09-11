@@ -586,11 +586,17 @@ extension MCPServer {
     /// `target` は clear 前の要素(ref 指定時)—— RefGuard.relocate で同一性追跡する。
     /// ref 無指定(フォーカス任せ)のときは nil を渡し、focused な要素を見る(typedIntoNote と同じ規約)。
     /// `expected` が空文字なら **clear-only**({replace:true, text:"" or 省略})の検証 ——
-    /// 一致すれば "(cleared the field)"、残存していれば警告にする
+    /// 一致すれば "(cleared the field)"、残存していれば警告にする。
+    ///
+    /// **`requestedAs`**: 判定は `ft_type(replace:true)` と `ft_clear_input` の
+    /// 両方が共有するが、**文言は呼び手ごとに持つ**(CLAUDE.md の規律)—— `ft_clear_input` は
+    /// 一度も「replace」を頼んでいないのに、既定の文言のまま使うと「replace requested」と
+    /// 事実と違うことを言う。呼び手が自分の動詞を渡す(既定は従来どおり "replace")
     static func replaceVerificationNote(target: ElementInfo?, expected: String,
-                                        fresh: SnapshotResponse?) -> String {
+                                        fresh: SnapshotResponse?,
+                                        requestedAs: String = "replace") -> String {
         guard let fresh else {
-            return " (replace requested; the field could not be read back)"
+            return " (\(requestedAs) requested; the field could not be read back)"
         }
         let found: ElementInfo?
         if let target {
@@ -605,10 +611,17 @@ extension MCPServer {
             return target == nil
                 ? " (warning: nothing has input focus now, so the text may have gone nowhere"
                     + " — tap the field by ref first)"
-                : " (replace requested; the field could not be read back)"
+                : " (\(requestedAs) requested; the field could not be read back)"
         }
         guard let rawValue = found.value else {
-            return " (replace requested; its value could not be read back)"
+            // **値が無い = 空、であって「読めない」ではない**: Android の空の EditText は
+            // value 属性そのものを省き、iOS も空欄は nil を返す(空文字ではなく nil)。
+            // expected も空(clear-only)ならこれは成功 —— 非空を期待するとき
+            // (実際に置き換える文字列がある)だけ、本当に読めないので保留のまま返す
+            guard expected.isEmpty else {
+                return " (\(requestedAs) requested; its value could not be read back)"
+            }
+            return " (cleared the field)"
         }
         // **正規化してから比較する**: typedIntoNote と同じゼロ幅文字の扱いを
         // expected 側にもかける —— これが無いと、両辺が実質同じ文字列でも不一致の警告が出る
@@ -621,11 +634,11 @@ extension MCPServer {
         // **マスク欄は偽警告にしない**: パスワード欄の読み返しは伏せ字(•/●/*…)なので、
         // 期待値自体がマスク文字でない限り不一致は「違う」ではなく「確かめようがない」
         if Self.looksMasked(value), !Self.looksMasked(normalizedExpected) {
-            return " (replace requested; the field reads back masked, so the result could not be"
+            return " (\(requestedAs) requested; the field reads back masked, so the result could not be"
                 + " verified)"
         }
         if clearOnly {
-            return " (warning: replace was requested to clear the field, but it still reads"
+            return " (warning: \(requestedAs) was requested to clear the field, but it still reads"
                 + " \"\(SnapshotRenderer.truncate(value, 40))\" — the clear may not have taken)"
         }
         if value.hasSuffix(normalizedExpected) {
@@ -633,7 +646,7 @@ extension MCPServer {
                 + " — the old content does not look cleared, so this may have appended instead"
                 + " of replacing it. Call ft_clear_input and retry if so)"
         }
-        return " (warning: replace was requested, but the field now reads"
+        return " (warning: \(requestedAs) was requested, but the field now reads"
             + " \"\(SnapshotRenderer.truncate(value, 40))\" — this does not match what was typed)"
     }
 

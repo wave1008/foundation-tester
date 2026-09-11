@@ -221,6 +221,10 @@ extension MCPServer {
         let tool = Self.canonicalToolName(tool)
         // JSON null の欄は「省略」に畳む(droppingNullArguments 参照)。foldingUDIDIntoPort より前
         let args = Self.droppingNullArguments(args)
+        // profile と udid/port/serial の併用は**畳む前に**断る(udid の畳み込みはブリッジ走査を撃つ)
+        if Self.toolAcceptsDeviceTarget(tool), let refusal = Self.profileWithExplicitTargetRefusal(args) {
+            throw MCPError(refusal)
+        }
         let clock = ContinuousClock()
         let start = clock.now
         // **udid は入口で port へ畳む**。`driver(_:)` は解決後のポートで
@@ -551,6 +555,7 @@ extension MCPServer {
             }
             // 以後の snapshot は「これの木か」を突き合わせられる(switchedAppNote)
             launchedBundleIDs[launchKey] = bundleID
+            launchTimestamps[launchKey] = Date()
             backgroundedByNavigate.remove(launchKey)
             // 次の ft_snapshot で一度だけ system alert を確かめる(systemAlertProbePending 参照)。
             // **springboard 自身への attach では立てない** —— そちらはアラートを読みに行く
@@ -564,11 +569,11 @@ extension MCPServer {
             // **resume は isLaunch を立てない** —— 立てると draft の既定スコープがここから始まり、
             // ScenarioCodeGen は scene 0 の condition に無条件で launchApp() を出すので、
             // 実際には状態を保ったまま activate しただけの手順が「新規起動」に化けて嘘になる
-            interactions.record(InteractionLog.Entry(
+            recordAction(InteractionLog.Entry(
                 step: nil, unresolved: nil, isLaunch: !resumes, bundleID: bundleID,
                 platform: launchDriver is AndroidDriver ? "android" : "ios",
                 summary: resumes ? "activate \(bundleID) (resumed, not relaunched)"
-                                  : "launch \(bundleID)"))
+                                  : "launch \(bundleID)"), args: args)
             return text(resumes ? "Activated: \(bundleID) (resumed without relaunching)"
                                  : "Launched: \(bundleID)")
 
@@ -603,8 +608,8 @@ extension MCPServer {
             systemAlertProbePending.insert(Self.engineKey(args))
             var openStep = FlowStep(action: "openURL")
             openStep.text = url
-            interactions.record(InteractionLog.Entry(step: openStep, unresolved: nil,
-                                                     summary: "openURL \"\(url)\""))
+            recordAction(InteractionLog.Entry(step: openStep, unresolved: nil,
+                                              summary: "openURL \"\(url)\""), args: args)
             return text(Self.openURLSummary(url: url, bundleID: openURLBundleID,
                                             bundleIDWasRemembered: explicitBundleID == nil,
                                             snapshotAfter: args["snapshotAfter"] as? Bool == true,
@@ -678,11 +683,18 @@ extension MCPServer {
                 try await d.tap(ref: nativeRef(target.ref, args: args))
                 recordInteraction(action: "tap", resolvedRef: target.ref, args: args)
                 return text("tap [\(ref)] done.\(target.note)"
+                    // ブリッジの /tap が返す note(例:
+                    // 「activate 不発 → 合成タッチ」— BridgeClient.tap(ref:) の lastActionNote)を
+                    // 捨てない。DSL は同じ note を StepExecutor+Actions.swift の driverFallback へ
+                    // 載せるので、MCP だけがこれを黙って捨てて撃った実体を見せていなかった
+                    + Self.driverFallbackNote(d)
                     + reproductionNote(resolvedRef: target.ref, args: args)
                     + Self.changedHint(args) + waitForWithoutSnapshotAfterNote(args)
                     + (await snapshotAfterBody(args)))
             }
             if let x = args["x"] as? Double, let y = args["y"] as? Double {
+                if let offscreen = Self.offscreenCoordinateError(
+                    x: x, y: y, screen: lastSnapshots[Self.engineKey(args)]?.screen) { throw offscreen }
                 try await d.tap(x: x, y: y)
                 recordInteraction(action: "tap", resolvedRef: nil, args: args, coordinate: (x, y))
                 return text("tap (\(x), \(y)) done" + once("coordinateReproductionNote",
@@ -724,12 +736,21 @@ extension MCPServer {
                 priorValue = priorElement.map(TypeReadback.normalizedValue)
                 // **入力欄でないものへ打とうとしていないか**。判定は DSL と共有
                 // (TapTargetGeometry.nonInputTypeTargetNote。実測と理由はそちらの doc)。
-                // MCP は StepExecutor を経由しない別経路なので、ここにも配線が要る
-                if let priorElement,
-                   let elements = lastSnapshots[Self.engineKey(args)]?.elements,
-                   let warn = TapTargetGeometry.nonInputTypeTargetNote(priorElement, in: elements) {
-                    note = note.isEmpty ? " (warning: \(warn))"
-                        : note + " (warning: \(warn))"
+                // MCP は StepExecutor を経由しない別経路なので、ここにも配線が要る。
+                //
+                // 容器(内側に入力欄がちょうど1つ)は従来どおり警告して
+                // 撃つ(nonInputTypeTargetNote が non-nil)。**そうでない非入力欄(入力欄が0個・
+                // 2個以上)は撃つ前に拒否する** —— 警告のまま撃つと、送信ボタンを押してしまった
+                // 後で読み返しが失敗し(「検索窓が本物の入力欄へ焦点を渡す形かも」という誤誘導)、
+                // in-app エンジンでは焦点のある**別の**欄へ入って黙って成功扱いになる。
+                // 対象そのものが分かっているのだから、ここで一度に断る
+                if let priorElement, let elements = lastSnapshots[Self.engineKey(args)]?.elements {
+                    if let warn = TapTargetGeometry.nonInputTypeTargetNote(priorElement, in: elements) {
+                        note = note.isEmpty ? " (warning: \(warn))"
+                            : note + " (warning: \(warn))"
+                    } else if !TypeReadback.isTextInput(priorElement) {
+                        throw MCPError(Self.notATextFieldRefusal(priorElement, ref: verified.ref))
+                    }
                 }
             }
             // **replace は文字が空でも clear する**: {replace:true, text:""} や
@@ -934,17 +955,17 @@ extension MCPServer {
             // rect は木の中の座標で、セレクタとして再現できないので正直に unresolved で残す
             // (セレクタの無い要素と同じ regime)
             if scrollFrameArg.locator != nil {
-                interactions.record(InteractionLog.Entry(
+                recordAction(InteractionLog.Entry(
                     step: step, unresolved: nil,
-                    summary: "swipe \(direction.rawValue) inside \(containerName)"))
+                    summary: "swipe \(direction.rawValue) inside \(containerName)"), args: args)
             } else {
-                interactions.record(InteractionLog.Entry(
+                recordAction(InteractionLog.Entry(
                     step: nil,
                     unresolved: "swipe \(direction.rawValue) inside \(containerName) — the container"
                         + " was given as a ref, which no selector reproduces; name it with a"
                         + " selector to get a scrollDown/scrollUp/scrollLeft/scrollRight line",
                     summary: "swipe \(direction.rawValue) inside \(containerName)"
-                        + " [no stable DSL reproduction]"))
+                        + " [no stable DSL reproduction]"), args: args)
             }
             let fallbackNote = outcome.driverFallback.map { " (\($0))" } ?? ""
             return text(scrollFrameLabelNote + "swipe \(direction.rawValue) sent inside \(containerName)."
@@ -968,8 +989,8 @@ extension MCPServer {
             let settled = try await rotateDriver.rotate(to: orientation)
             var rotateStep = FlowStep(action: "rotateTo")
             rotateStep.direction = settled.rawValue
-            interactions.record(InteractionLog.Entry(step: rotateStep, unresolved: nil,
-                                                     summary: "rotateTo .\(settled.rawValue)"))
+            recordAction(InteractionLog.Entry(step: rotateStep, unresolved: nil,
+                                              summary: "rotateTo .\(settled.rawValue)"), args: args)
             // **回転はツリーの座標系ごと変える**ので、覚えている木は必ず捨てる
             // (古い ref を残すと、次のタップが回転前の座標で撃たれる)
             //
@@ -1002,9 +1023,17 @@ extension MCPServer {
             // 初回呼び出しで user_rotation / accelerometer_rotation を控え、restoreOrientationIfNeeded
             // が戻す。landscape のままなら控えを保つ = 次に portrait へ戻すまで端末の設定はそのまま)。
             // driver は `drivers[key]` にキャッシュされ同じインスタンスを使い続けるので控えは生きる ——
-            // 接続が切れて再生成されたときだけ戻せない(その場合は次に立ち上げた側の責任)
+            // 接続が切れて再生成されたときだけ戻せない(その場合は次に立ち上げた側の責任)。
+            //
+            // **Android だけに限る**(再現): `restoreOrientationIfNeeded` は
+            // ドライバによって意味が違う。Android(AndroidDriver)は OS の auto-rotate 設定を
+            // 戻すだけ(表示は portrait のまま動かない)だが、iOS(FTBridgeClient.BridgeClient。
+            // in-app / XCUITest 共通)はこのセッションで最初に rotate(to:) を呼ぶ前の向きへ
+            // **実際に回転し直す**実装で、明示的に `ft_rotate portrait` した直後に呼ぶと
+            // その場で(rotate 前の向きが landscape なら)横へ戻ってしまう ——
+            // 利用者が明示した向きを、この経路が黙って取り消していた
             var autoRotateCaveat = ""
-            if settled == .portrait {
+            if settled == .portrait, rotateDriver is AndroidDriver {
                 try await rotateDriver.restoreOrientationIfNeeded()
                 autoRotateCaveat = " Auto-rotate was restored to the device's own setting."
             }
@@ -1118,6 +1147,7 @@ extension MCPServer {
                 // 意図した再インストールなので、以後の別アプリの木は「すり替わり」ではない
                 // (ft_terminate と同じ扱い)
                 launchedBundleIDs[clearAppDataKey] = nil
+                launchTimestamps[clearAppDataKey] = nil
                 systemAlertProbePending.insert(clearAppDataKey)
                 return text("Reinstalled \(bundleID) from \(path) (physical device: app data"
                     + " wiped by uninstall + install; permission grants are reset too)")
@@ -1138,6 +1168,15 @@ extension MCPServer {
                 clearNote = verified.note
                 clearTarget = lastSnapshots[Self.engineKey(args)]?
                     .elements.first { $0.ref == verified.ref }
+                // ft_type と同じ門(そちらの doc 参照)。容器(内側に入力欄がちょうど1つ)は
+                // 警告のうえで撃つが、それ以外の非入力欄は撃つ前に拒否する
+                if let clearTarget, let elements = lastSnapshots[Self.engineKey(args)]?.elements {
+                    if let warn = TapTargetGeometry.nonInputTypeTargetNote(clearTarget, in: elements) {
+                        clearNote += " (warning: \(warn))"
+                    } else if !TypeReadback.isTextInput(clearTarget) {
+                        throw MCPError(Self.notATextFieldRefusal(clearTarget, ref: verified.ref))
+                    }
+                }
             }
             // clearRef はセッション ref。ブリッジへ渡す直前にだけ native へ戻す
             try await clearDriver.clearInput(ref: clearRef.map { nativeRef($0, args: args) })
@@ -1146,9 +1185,11 @@ extension MCPServer {
             // in-app iOS の UIKit 経路は clearInput の成否を検証なしで YES を返すので、値が残っていても
             // 「消した」と言ってしまう。呼び手はこの後 ft_type を撃つので、**残っていると黙って連結される**。
             // 判定は replace の clear-only 検証と同じ関数(空を期待して読み返す)
+            // 文言は「clear」——このツールは一度も replace を頼んでいない
             let clearedVerdict = Self.replaceVerificationNote(
                 target: clearTarget, expected: "",
-                fresh: try? await clearDriver.snapshot(bypassingCache: clearDriver.supportsCacheBypass))
+                fresh: try? await clearDriver.snapshot(bypassingCache: clearDriver.supportsCacheBypass),
+                requestedAs: "clear")
             return text("clearInput sent\(clearNote)\(clearedVerdict)"
                 + (clearRef.map { reproductionNote(resolvedRef: $0, args: args) } ?? ""))
 
@@ -1192,11 +1233,13 @@ extension MCPServer {
                         isAndroid: doubleTapDriver is AndroidDriver) + labelNote
                 doubleTapSelector = reproductionNote(resolvedRef: element.ref, args: args)
             } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
+                if let offscreen = Self.offscreenCoordinateError(
+                    x: x, y: y, screen: lastSnapshots[Self.engineKey(args)]?.screen) { throw offscreen }
                 doubleTapPoint = (x, y)
                 doubleTapWhat = "(\(x), \(y))"
-                doubleTapSelector = once("coordinateReproductionNote",
-                                         full: Self.coordinateReproductionNote,
-                                         short: Self.coordinateReproductionNoteShort)
+                doubleTapSelector = once("doubleTapCoordinateNote",
+                                         full: Self.doubleTapCoordinateNote,
+                                         short: Self.doubleTapCoordinateNoteShort)
             } else {
                 throw MCPError("ref or x/y is required")
             }
@@ -1225,10 +1268,12 @@ extension MCPServer {
                 fromPoint = (element.frame.centerX, element.frame.centerY)
                 dragSelector = reproductionNote(resolvedRef: element.ref, args: args) + labelNote
             } else if let x = args["fromX"] as? Double, let y = args["fromY"] as? Double {
+                if let offscreen = Self.offscreenCoordinateError(
+                    x: x, y: y, screen: lastSnapshots[Self.engineKey(args)]?.screen) { throw offscreen }
                 fromPoint = (x, y)
-                dragSelector = once("coordinateReproductionNote",
-                                    full: Self.coordinateReproductionNote,
-                                    short: Self.coordinateReproductionNoteShort)
+                dragSelector = once("dragCoordinateNote",
+                                    full: Self.dragCoordinateNote,
+                                    short: Self.dragCoordinateNoteShort)
             }
             guard let from = fromPoint else {
                 throw MCPError("fromRef or fromX/fromY is required")
@@ -1349,12 +1394,14 @@ extension MCPServer {
             // MCP からは ref でしか呼べなかった。地図・キャンバスのように a11y 要素が無い点を
             // 長押しする操作(ピンを落とす・住所を出す)が一切書けない状態だった
             if let x = args["x"] as? Double, let y = args["y"] as? Double {
+                if let offscreen = Self.offscreenCoordinateError(
+                    x: x, y: y, screen: lastSnapshots[Self.engineKey(args)]?.screen) { throw offscreen }
                 try await pressDriver.press(x: x, y: y, duration: pressDuration)
                 recordInteraction(action: "press", resolvedRef: nil, args: args, coordinate: (x, y),
                                   duration: pressDuration)
-                return text("press (\(x), \(y)) done." + once("coordinateReproductionNote",
-                    full: Self.coordinateReproductionNote,
-                    short: Self.coordinateReproductionNoteShort)
+                return text("press (\(x), \(y)) done." + once("coordinateHoldReproductionNote",
+                    full: Self.coordinateHoldReproductionNote(holdSeconds: pressDuration),
+                    short: Self.coordinateHoldReproductionNoteShort(holdSeconds: pressDuration))
                     + Self.changedHint(args)
                     + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
             }
@@ -1403,6 +1450,7 @@ extension MCPServer {
             try await driver(args).terminate()
             // 意図して落としたので、以後の別アプリの木は「すり替わり」ではない
             launchedBundleIDs[Self.engineKey(args)] = nil
+            launchTimestamps[Self.engineKey(args)] = nil
             systemAlertProbePending.remove(Self.engineKey(args))
             // 前面が消えたので、覆い探針の記憶(F 節)は使い回さない
             lastScreenProbe[Self.engineKey(args)] = nil
@@ -1568,6 +1616,28 @@ extension MCPServer {
             + " scenario can reproduce that."
     }
 
+    /// ブリッジが操作の応答に載せた注記(`AppDriver.lastActionNote`。
+    /// 今のところ `tap(ref:)` の「activate 不発 → 合成タッチ」だけが立てる)を、MCP の応答にも
+    /// 載せる。DSL は `StepExecutor+Actions.swift` の `driverFallback` へ同じ値を運んでいるので、
+    /// MCP だけが黙って捨てると同じ事実を MCP 経由の探索者だけが見えない
+    static func driverFallbackNote(_ driver: AppDriver) -> String {
+        guard let note = driver.lastActionNote, !note.isEmpty else { return "" }
+        return " (\(note))"
+    }
+
+    /// `ft_type` / `ft_clear_input` が入力欄でない ref(かつ内側に入力欄が
+    /// ちょうど1つある容器でもない)へ撃たれたときの拒否文。`TapTargetGeometry.
+    /// nonInputTypeTargetNote` が nil を返す(= 警告すら出せない)ケースの受け皿 ——
+    /// 0個(そもそも入力の器ではない)・2個以上(どれを指すべきか言えない)のどちらも、
+    /// 黙って撃つと**別の要素を操作してしまう**(ボタンを押す・焦点のある別の欄へ入る)
+    static func notATextFieldRefusal(_ target: ElementInfo, ref: Int) -> String {
+        "[\(ref)] is a \(target.type), not a text field, and it does not contain exactly one text"
+            + " field either — refusing before anything is typed/cleared (typing into it anyway"
+            + " tends to fire whatever it is instead — a button, a link — or land on an unrelated"
+            + " field that currently has focus). Take a fresh ft_snapshot and target the actual"
+            + " input field, or omit ref: to act on whatever currently has focus."
+    }
+
     /// 座標で撃ったときの断り(E-4)。**推測のセレクタを出さない** —— 座標には
     /// 「その点に何があったか」以上の根拠が無い
     /// **2026-08-16 に「書けない」から「書けるが弱い」へ直した**: DSL に `tap(x:y:)` が入ったので
@@ -1580,6 +1650,37 @@ extension MCPServer {
     /// `once` の短縮形(セッション内2回目以降)。**理由の再掲は落とす** —— 1度言えば足りる
     static let coordinateReproductionNoteShort =
         " (writable as tap(x:, y:) — see the first note)"
+
+    /// `ft_double_tap` / `ft_drag` / `ft_long_press` を座標で撃ったときの
+    /// 応答が、`coordinateReproductionNote`(tap 用)をそのまま流用して「writable as tap(x:, y:)」
+    /// と言っていた —— 実際には doubleTap に座標形は無く、drag に対応する DSL コマンドも無く、
+    /// long press は holdSeconds を省くとただの tap に化ける。操作ごとに正しい書き方を言う
+
+    /// `doubleTap` は DSL でセレクタしか取らない(座標形が無い)
+    static let doubleTapCoordinateNote =
+        " (not writable as a DSL step: doubleTap only takes a selector in the DSL, not x/y —"
+        + " target the element with a selector once you have one for it)"
+    static let doubleTapCoordinateNoteShort =
+        " (still no coordinate form for doubleTap — see the first note)"
+
+    /// 座標どうしの drag の DSL の形は `swipePointToPoint`(docs/commands.md)。tap の note を流用すると
+    /// 別の操作(タップ)が書かれる。press(動かす前の静止)は swipePointToPoint に対応が無い
+    static let dragCoordinateNote =
+        " (writable as swipePointToPoint(startX:startY:endX:endY:) — fine while exploring, but replace it"
+        + " with a selector before keeping it in a scenario: a layout change makes it hit something else)"
+    static let dragCoordinateNoteShort =
+        " (writable as swipePointToPoint — see the first note)"
+
+    /// 長押しの座標形は `tap(x:, y:, holdSeconds:)` —— **holdSeconds を省くとただの tap になる**ので、
+    /// tap の note をそのまま出すと holdSeconds が消えたシナリオ行が書かれる
+    static func coordinateHoldReproductionNote(holdSeconds: Double) -> String {
+        " (writable as tap(x:, y:, holdSeconds: \(FTSeconds.format(holdSeconds))) — fine while"
+            + " exploring, but replace it with a selector before keeping it in a scenario:"
+            + " a layout change makes it hit something else)"
+    }
+    static func coordinateHoldReproductionNoteShort(holdSeconds: Double) -> String {
+        " (writable as tap(x:, y:, holdSeconds: \(FTSeconds.format(holdSeconds))) — see the first note)"
+    }
 
     /// 溜まっているプロファイル警告を先頭に付けて1度だけ吐き出す
     func withPendingWarnings(_ body: String, args: [String: Any]) -> String {

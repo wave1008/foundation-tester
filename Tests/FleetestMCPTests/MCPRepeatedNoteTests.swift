@@ -66,7 +66,9 @@ final class MCPRepeatedCoordinateNoteTests: XCTestCase {
         let coordinateDrag = try await server.call(
             tool: "ft_drag", args: ["fromX": 10.0, "fromY": 20.0, "toX": 30.0, "toY": 40.0])
         let text = try XCTUnwrap(coordinateDrag.first?["text"] as? String)
+        // 1回目 = 完全形(短縮形は「see the first note」)
         XCTAssertTrue(text.contains("before keeping it in a scenario"), text)
+        XCTAssertFalse(text.contains("see the first note"), text)
     }
 
     /// 長いラベルの切り詰め注記も同じ規則(2回目以降は短縮形)。ft_snapshot と ft_scroll_to は

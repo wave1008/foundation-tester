@@ -517,8 +517,8 @@ extension MCPServer {
             // なので、記録されるのも解決後のセレクタを持つ step(ref は下書きに書けない)。
             // 失敗した手も記録する: draft には失敗が残っていたほうが「何を試して止まったか」が
             // 追える(InteractionLog は成否を持たず落とさない)
-            interactions.record(InteractionLog.Entry(step: plan.step, unresolved: nil,
-                                                     summary: plan.summary))
+            recordAction(InteractionLog.Entry(step: plan.step, unresolved: nil,
+                                              summary: plan.summary), args: args)
             let refNote = index == 0 ? (refResolutionNote ?? "") : ""
             guard StepExecutor.isSuccess(outcome.status) else {
                 let reason: String

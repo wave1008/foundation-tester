@@ -41,10 +41,11 @@ final class RefScreenProvenanceTests: XCTestCase {
     }
 
     private func note(_ takenFrom: SnapshotResponse?, _ fresh: SnapshotResponse,
-                      isStale: Bool = false) -> String {
+                      isStale: Bool = false, actedSinceTakenFrom: Bool = false) -> String {
         MCPServer.screenChangedUnderRefNote(
             ref: 350, takenFrom: takenFrom, fresh: fresh, isStale: isStale,
-            matched: element(350, id: "btn_back", label: "戻る"))
+            matched: element(350, id: "btn_back", label: "戻る"),
+            actedSinceTakenFrom: actedSinceTakenFrom)
     }
 
     /// **本命**: 木が別物になっていたら言う
@@ -105,6 +106,21 @@ final class RefScreenProvenanceTests: XCTestCase {
         XCTAssertFalse(note(selector, ticked).isEmpty)
     }
 
+    /// このセッション自身が撃った直前の操作で木が変わったのに、
+    /// 「他プロセス/人が動かした」と誤って名指ししない
+    func testDoesNotBlameExternalActorsWhenThisSessionActedSinceTheRefWasTaken() {
+        let message = note(selector, lifecycle, actedSinceTakenFrom: true)
+        XCTAssertTrue(message.contains("this session's own actions"), message)
+        XCTAssertFalse(message.contains("nothing this session did"), message)
+        XCTAssertFalse(message.contains("another process or a person"), message)
+    }
+
+    /// **陰性**: 従来どおり、外部要因の可能性を言う(このセッションが何もしていない形)
+    func testStillBlamesExternalActorsWhenThisSessionDidNotAct() {
+        let message = note(selector, lifecycle, actedSinceTakenFrom: false)
+        XCTAssertTrue(message.contains("nothing this session did"), message)
+    }
+
     // MARK: - 配線(純粋関数が正しくても応答に載らなければ意味が無い)
     //
     // **この形は本プロジェクトで何度も踏んでいる**(AppDriver の既定ディスパッチ・
@@ -141,5 +157,28 @@ final class RefScreenProvenanceTests: XCTestCase {
         let result = try await server.call(tool: "ft_tap", args: ["ref": 350])
         let text = try XCTUnwrap(result.first?["text"] as? String)
         XCTAssertFalse(text.contains("no longer matches"), text)
+    }
+
+    /// このセッション自身が直前に ft_tap で撃ってから木が変わった状態で、
+    /// 別の(古い世代の)ref を撃つと、応答は「このセッション自身の操作が原因かもしれない」と
+    /// 言う ——「他プロセス/人が動かした」とは言わない(実測 5/5)
+    func testTheResponseAttributesTheChangeToThisSessionsOwnPriorTap() async throws {
+        let driver = FakeDriver()
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver },
+                               recordSnapshot: { _, _, _ in })
+        driver.snapshotResponse = selector
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+
+        // このセッション自身の操作(#btn_allow, ref 354)。まだ木は変わっていないので
+        // verifiedRef が撮り直す fresh は同一の木(selector)のまま
+        _ = try await server.call(tool: "ft_tap", args: ["ref": 354])
+
+        // その後、木が変わる(このセッションの外の何かのせいかもしれないし、今の tap の
+        // 結果かもしれない —— ここでは「セッションは何か撃った」ことだけが分かっていればよい)
+        driver.scriptedSnapshots = [lifecycle, lifecycle]
+        let result = try await server.call(tool: "ft_tap", args: ["ref": 350])
+        let text = try XCTUnwrap(result.first?["text"] as? String)
+        XCTAssertTrue(text.contains("this session's own actions"), text)
+        XCTAssertFalse(text.contains("nothing this session did"), text)
     }
 }

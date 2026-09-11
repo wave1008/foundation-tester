@@ -149,9 +149,12 @@ extension MCPServer {
             // (1回目は断るのに、同じ呼び出しをもう一度撃つと通る = 最悪の形)
             if nativeIdentity == lastIdentity,
                last.snapshot.sessionBundleID == native.sessionBundleID {
-                // 同じ木 — base を使い回し、最新世代の内容だけ最新化する(frame/value/focused 等)
+                // 同じ木 — base を使い回し、最新世代の内容だけ最新化する(frame/value/focused 等)。
+                // **actionCount は最初に世代を作ったときの値を保つ**(この呼び出しが記録した
+                // 操作より前の値のまま = 「このスナップショットが撮られた時点」の定義を保つ)
                 let remapped = Self.remapped(native, base: last.base)
-                generations[generations.count - 1] = (base: last.base, snapshot: remapped)
+                generations[generations.count - 1] = (base: last.base, snapshot: remapped,
+                                                       actionCount: last.actionCount)
                 refGenerations[key] = generations
                 lastSnapshots[key] = remapped
                 return remapped
@@ -160,7 +163,8 @@ extension MCPServer {
         let base = nextRefBase
         let remapped = Self.remapped(native, base: base)
         var generations = refGenerations[key] ?? []
-        generations.append((base: base, snapshot: remapped))
+        generations.append((base: base, snapshot: remapped,
+                            actionCount: sessionActionCounts[key] ?? 0))
         if generations.count > Self.maxRefGenerations {
             generations.removeFirst(generations.count - Self.maxRefGenerations)
         }
@@ -232,16 +236,24 @@ extension MCPServer {
     /// どちらも「画面が別物になった」ことを意味しない。
     ///
     /// **断定しない**: 木からは「別の画面か」を決められない(できないことは上の棄却が示している)。
-    /// 事実(木が違う・このセッションの操作では変えていない)だけを述べて撮り直しを勧める。
+    /// 事実(木が違う・このセッションが自分でそれをしたか)だけを述べて撮り直しを勧める。
     /// `isStale` のときは黙る —— あちらの注記が同じことを既に言っており、二重になる
+    ///
+    /// **`actedSinceTakenFrom`**: この ref を採った世代から、このセッションが
+    /// この engineKey へ何か(tap/type/swipe/…)を撃っていれば true。**「他プロセス/人が動かした」と
+    /// 誤って名指ししない** —— 実測(5/5): 直前の自分の ft_tap で遷移した画面に対して
+    /// このセッションの ref を撃つと、木が変わった原因を持たない外部要因のせいにしていた
     static func screenChangedUnderRefNote(ref: Int, takenFrom: SnapshotResponse?,
                                           fresh: SnapshotResponse, isStale: Bool,
-                                          matched: ElementInfo) -> String {
+                                          matched: ElementInfo, actedSinceTakenFrom: Bool) -> String {
         guard !isStale, let taken = takenFrom,
               Self.treeIdentity(taken) != Self.treeIdentity(fresh) else { return "" }
+        let cause = actedSinceTakenFrom
+            ? "this session's own actions since that snapshot are the likely cause"
+            : "nothing this session did changed it — the app itself, another process or a"
+                + " person moved the screen on"
         return " note: [\(ref)] came from a snapshot whose tree no longer matches the current one,"
-            + " and nothing this session did changed it — the app itself, another process or a"
-            + " person moved the screen on. It still matched \(RefGuard.describe(matched)), but that"
+            + " and \(cause). It still matched \(RefGuard.describe(matched)), but that"
             + " can be the same-looking element of a different screen. Take a fresh ft_snapshot."
     }
 
@@ -280,6 +292,14 @@ extension MCPServer {
     func generationSnapshot(containing ref: Int, args: [String: Any]) -> SnapshotResponse? {
         refGenerations[Self.engineKey(args)]?.reversed()
             .first { $0.snapshot.elements.contains { $0.ref == ref } }?.snapshot
+    }
+
+    /// `generationSnapshot` と同じ世代の `actionCount`(この ref を採った時点で、このセッションが
+    /// この engineKey へ撃っていた操作の回数)。出自判定用 — 今の回数と比べて、
+    /// 「このセッションがそれ以来何かを撃ったか」を言う
+    func generationActionCount(containing ref: Int, args: [String: Any]) -> Int? {
+        refGenerations[Self.engineKey(args)]?.reversed()
+            .first { $0.snapshot.elements.contains { $0.ref == ref } }?.actionCount
     }
 
     /// セッション ref → native ref(ブリッジへ渡す番号)。**最新世代の base を引くことでしか
@@ -881,9 +901,11 @@ extension MCPServer {
             ref: ref, takenFrom: takenFrom, fresh: fresh) { throw MCPError(message) }
         // **ref の出所についての注記はまとめて先頭に置く**(何に当たったかより前に言う)。
         // 2つは排他 —— screenChangedUnderRefNote は isStale のとき黙る
+        let actedSinceTakenFrom = (sessionActionCounts[Self.engineKey(args)] ?? 0)
+            > (generationActionCount(containing: ref, args: args) ?? 0)
         let originNote = staleNote + Self.screenChangedUnderRefNote(
             ref: ref, takenFrom: takenFrom, fresh: fresh,
-            isStale: resolved.isStale, matched: target)
+            isStale: resolved.isStale, matched: target, actedSinceTakenFrom: actedSinceTakenFrom)
         // **申告 keyboardFrame はキー面だけ**(サジェストバー・地球儀/Dictate 行を含まない)。
         // 木の chrome で広げ、chrome 自身とその部分木は除外する(KeyboardOcclusion の doc)。
         // DSL 側(StepExecutor+Actions.swift)も同じ型で揃える —— 片方だけ広げると
@@ -1427,8 +1449,8 @@ extension MCPServer {
         // 一覧に**スワイプ方向を出さない**: `direction.swipe` は指の動き(下を読むなら up)で、
         // 読み手が指定した意味方向とは逆になる。一覧は「どの手か」を見分けるためのものなので、
         // 逆向きの語を出すと `drop:` の選択を誤らせる
-        interactions.record(InteractionLog.Entry(
-            step: scrollStep, unresolved: nil, summary: "scrollTo \"\(selectorText)\""))
+        recordAction(InteractionLog.Entry(
+            step: scrollStep, unresolved: nil, summary: "scrollTo \"\(selectorText)\""), args: args)
         // **畳み方は snapshotAfter と同じ規則で継承する**(inheritingSnapshotFilters 参照)
         let (treeArgs, inheritedNote) = inheritingSnapshotFilters(args)
         // **ghostNote と render で畳みの有無を揃える**(ft_snapshot と同じ理由)

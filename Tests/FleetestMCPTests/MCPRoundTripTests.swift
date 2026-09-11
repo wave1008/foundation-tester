@@ -402,8 +402,19 @@ final class MCPDraftAndBulkTests: XCTestCase {
         XCTAssertTrue(text.contains("No interactions recorded yet"), text)
     }
 
-    /// 探索した手が DSL の行になり、**expectation は空の骨格**で出ること(F-5)
+    /// 探索した手が DSL の行になり、**expectation は空の骨格**で出ること(F-5)。
+    /// **要素は textField にする**: FakeDriver の既定(Button)へ ft_type すると
+    /// 「入力欄でない」ため撃つ前に拒否されるようになった —— この一覧は tap→type の連続手が
+    /// 両方とも下書きの行になることだけを見たいので、両方が素直に通る対象(入力欄。
+    /// 入力欄をタップするのも普通の操作なので tap の検証は変わらない)を使う
     func testDraftRendersTheExploredStepsWithAnEmptyExpectation() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [ElementInfo(ref: 1, type: "textField", identifier: "login_btn",
+                                   label: "ログイン", value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 10, y: 20, width: 100, height: 40), depth: 1)],
+            truncatedCount: 0)
         _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.example.app"])
         _ = try await server.call(tool: "ft_snapshot", args: [:])
         _ = try await server.call(tool: "ft_tap", args: ["ref": 1])

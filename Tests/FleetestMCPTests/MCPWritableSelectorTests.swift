@@ -462,8 +462,21 @@ final class MCPReproductionSelectorTests: XCTestCase {
         XCTAssertFalse(text.contains("(selector:"), text)
     }
 
-    /// **ref を受ける操作系すべて**に入る(1つでも漏れると、その道具を使った手だけ書けない)
+    /// **ref を受ける操作系すべて**に入る(1つでも漏れると、その道具を使った手だけ書けない)。
+    /// **要素は textField にする**: FakeDriver の既定(Button)だと
+    /// `ft_type`/`ft_clear_input` は「入力欄でない」ため撃つ前に拒否されるようになった ——
+    /// この一覧は「ref を受ける全道具がセレクタを返すか」だけを見たいので、全道具が素直に
+    /// 通る対象(入力欄)を使う
     func testEveryRefTakingToolNamesASelector() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [
+                ElementInfo(ref: 1, type: "textField", identifier: "login_btn", label: "ログイン",
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 10, y: 20, width: 100, height: 40), depth: 1),
+            ],
+            truncatedCount: 0)
         for (tool, args) in [("ft_tap", ["ref": 1] as [String: Any]),
                              ("ft_long_press", ["ref": 1]),
                              ("ft_double_tap", ["ref": 1]),
