@@ -616,7 +616,7 @@ final class BridgeRouter {
     /// 最後にランナーが死んだ)。
     private func handleType(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(TypeRequest.self, body)
-        let app = try requireLiveApp()
+        let app = try requireForegroundAppForInput()
         let focusBefore = focusBeforeTappingNonInput(app, ref: req.ref)
         var tapped: CGPoint?
         if let ref = req.ref {
@@ -807,7 +807,7 @@ final class BridgeRouter {
     /// hybrid の in-app→XCUITest の再試行はこれまでどおり効く
     private func handleClear(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(ClearRequest.self, body)
-        let app = try requireLiveApp()
+        let app = try requireForegroundAppForInput()
         let focusBefore = focusBeforeTappingNonInput(app, ref: req.ref)
         var tapped: CGPoint?
         if let ref = req.ref {
@@ -892,7 +892,7 @@ final class BridgeRouter {
     /// フォーカスを持つ要素を探し、見つかればそこへ typeText する。見つからない場合(engine=xcuitest
     /// 単独等、in-app がフォーカスを立てていないケース)は従来どおり app 全体へ送る。
     private func handlePressEnter() throws -> BridgeHTTPServer.Response {
-        let app = try requireLiveApp()
+        let app = try requireForegroundAppForInput()
         let focused = app.descendants(matching: .any)
             .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
         if focused.exists {
@@ -1189,19 +1189,50 @@ final class BridgeRouter {
     /// アプリスイッチャーではなくホームに戻る(handleAppSwitcher と同じ座標系)。
     /// シミュレータは press(.home) が確実に効くので変えない(ジェスチャに一本化すると
     /// 既存の全シナリオの前提を実測せずに動かすことになる)
+    /// ホームへ戻す。**押しただけで信じない**: セッションのアプリが前面から外れたことを `app.state` で確かめ、
+    /// 外れなければ押し直す(最大 `homeAttempts` 回)。物理 iPhone SE3 で `press(.home)` が ok を返しながら
+    /// アプリが前面のままの回が 12 回中 8 回あった(2026-09-12。同日の再計測では 12/12 効いた = 間欠)。
+    /// `app.state` は物理 iPhone(SE3 / 13)とも押して 1 秒以内に background を返す(12/12 実測)ので、
+    /// 待ちの上限 `homeSettleSeconds` はその倍。セッションが無い・SpringBoard 自身のときは確かめようが
+    /// 無いので1回だけ送る
+    private static let homeAttempts = 3
+    private static let homeSettleSeconds = 2.0
     private func handleHome() throws -> BridgeHTTPServer.Response {
+        let sb = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let verifiable = app.map { $0.state == .runningForeground && sessionBundleID != "com.apple.springboard" } ?? false
+        for attempt in 1...Self.homeAttempts {
+            sendHome(sb)
+            guard verifiable, let app else { break }
+            let deadline = Date().addingTimeInterval(Self.homeSettleSeconds)
+            var left = false
+            while Date() < deadline {
+                if app.state != .runningForeground { left = true; break }
+                // **Thread.sleep にしない**: XCTest は状態の更新を run loop で受けるので、寝ている間は
+                // `app.state` が前面のまま止まり、期限まで待ち切ってから押し直す形になる(実測 3.3 秒)
+                RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+            }
+            if left { break }
+            if attempt == Self.homeAttempts {
+                throw BridgeError(422, "the home gesture was sent \(attempt) times but \(sessionBundleID ?? "the app")"
+                    + " is still in the foreground (XCUIDevice.press(.home) can be swallowed on physical devices)."
+                    + " Retry, or bring the home screen up by hand")
+            }
+        }
+        return .json(OKResponse())
+    }
+
+    private func sendHome(_ sb: XCUIApplication) {
         #if targetEnvironment(simulator)
         XCUIDevice.shared.press(.home)
         #else
         // **速い短フリック**でないとアプリスイッチャーが開く(実測: 下端から画面の 1/4 強を
         // 0.08 秒で駆け上がるとホーム・ゆっくり長く引くとスイッチャー)。
         // 数値は iPhone 15 Pro / iOS 26.5.2 で確認した値
-        let sb = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         // **ホームボタン機は下端スワイプがコントロールセンター**なので、ここでもジェスチャを
         // 使わずハードウェアボタンを押す(2026-08-28・iPhone SE3 で appswitcher 側の実害を確認)
         if isHomeButtonPhone(sb) {
             XCUIDevice.shared.press(.home)
-            return .json(OKResponse())
+            return
         }
         let start = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.995))
         let end = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.73))
@@ -1209,7 +1240,6 @@ final class BridgeRouter {
         start.press(forDuration: 0.05, thenDragTo: end, withVelocity: XCUIGestureVelocity(2850),
                     thenHoldForDuration: 0.0)
         #endif
-        return .json(OKResponse())
     }
 
     private func handleTerminate() throws -> BridgeHTTPServer.Response {
@@ -1556,6 +1586,22 @@ final class BridgeRouter {
     ///   「セッションはあるが今のこの画面では実行できない」なので 422(handleClear と同じ理由)
     /// - `state` の実測コストは 1.5ms 未満(`/appstate` の HTTP 往復込み)。45 秒とブリッジ喪失に
     ///   対して十分安い。**取得系を外していた元の判断はこのコストだけを見ていた**
+    /// **入力系(/type /clear /pressEnter)専用**の前面確認。ref 無し・入力欄でない ref の経路は
+    /// 焦点のライブクエリ(`focusMark` / `hasKeyboardFocus`)を撃つが、セッションのアプリが背面だと
+    /// そのクエリが刺さって XCTest が Tear Down し**ランナーごと落ちる**(2026-09-11 物理 iPhone 13:
+    /// `ft_navigate home` → `ft_type` で 8151 が消えた)。`requireLiveApp`(死活だけ)では足りない。
+    /// **422** = セッションはあるが今は無理(409 は requireApp 専用。BridgeRouterStatusContractTests)
+    private func requireForegroundAppForInput() throws -> XCUIApplication {
+        let app = try requireLiveApp()
+        guard app.state == .runningForeground else {
+            throw BridgeError(422, "the session's app (\(sessionBundleID ?? "?")) is not in the foreground,"
+                + " so nothing can be typed into it (querying its keyboard focus in this state takes the"
+                + " runner down). Bring it back first (DSL: launchApp / MCP: ft_launch \(sessionBundleID ?? "<bundleId>")"
+                + " — resume: true keeps its state)")
+        }
+        return app
+    }
+
     private func requireForegroundApp() throws -> XCUIApplication {
         let app = try requireApp()
         guard app.state == .runningForeground else {

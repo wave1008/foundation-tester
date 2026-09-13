@@ -375,7 +375,7 @@ public enum BridgeAPI {
     /// v98 (in-app only): (e) passes a ref that wraps exactly one text input again when that input already
     /// holds focus (a second type / replace into a Flutter field wrapped by an id-carrying container was
     /// refused after a 1.5s wait under v97).
-    public static let bridgeProtocolVersion = 99
+    public static let bridgeProtocolVersion = 100
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
