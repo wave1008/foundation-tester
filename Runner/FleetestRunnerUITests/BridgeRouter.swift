@@ -1435,7 +1435,23 @@ final class BridgeRouter {
             // スクロールできる容器か(scrollFrame の空振り検出用)。XCUITest は Android の
             // isScrollable に当たる属性を持たないので**型で判定する**(Shirates の iOS 側と同じ規則)。
             // 自前描画(Compose/Flutter)の容器は Other として出るため申告できない = false は送らない
-            scrollable: Self.scrollableTypes.contains(node.elementType) ? true : nil)
+            scrollable: Self.scrollableTypes.contains(node.elementType) ? true : nil,
+            axClass: Self.axClassName(node))
+    }
+
+    /// 要素のクラス名(ElementInfo.axClass の doc)。**XCTest の非公開辞書**なので、無ければ nil で済ませる
+    /// (Xcode の版で番号や辞書自体が変わっても、落ちずに「不明」へ縮退する)。
+    /// 根の snapshot の各ノードに最初から入っており、ここでは辞書を1回引くだけ
+    private static let axClassAttribute = NSNumber(value: 5004)
+    private static func axClassName(_ node: XCUIElementSnapshot) -> String? {
+        var name: String?
+        _ = FTCatchObjCException({
+            guard let attributes = (node as AnyObject).value(forKey: "additionalAttributes") as? [AnyHashable: Any],
+                  let value = attributes[axClassAttribute] else { return }
+            let text = String(describing: value)
+            if !text.isEmpty { name = text }
+        })
+        return name
     }
 
     private func valueString(_ node: XCUIElementSnapshot) -> String? {

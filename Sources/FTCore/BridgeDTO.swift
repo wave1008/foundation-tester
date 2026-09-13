@@ -375,7 +375,7 @@ public enum BridgeAPI {
     /// v98 (in-app only): (e) passes a ref that wraps exactly one text input again when that input already
     /// holds focus (a second type / replace into a Flutter field wrapped by an id-carrying container was
     /// refused after a 1.5s wait under v97).
-    public static let bridgeProtocolVersion = 98
+    public static let bridgeProtocolVersion = 99
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -985,11 +985,22 @@ public struct ElementInfo: Codable, Sendable {
     /// **iOS はまだ出さない**(XCUIElement.value が `"50%"` を返すので value 側だけは読める)
     public var range: String?
 
+    /// **その要素を実装しているクラス名**(XCUITest ランナーだけが出す。in-app / Android は nil)。
+    /// 取得元は XCTest の非公開辞書 `XCElementSnapshot.additionalAttributes` の属性番号 5004
+    /// (2026-09-12 に反射で確認。根の snapshot から children を辿るだけで全要素に付き、追加の往復は無い)。
+    /// 値はフレームワーク名ではない —— Compose / Flutter の要素は `UIAccessibilityElement`(自前描画の上の
+    /// a11y 要素)、React Native は `UIView`、SwiftUI は `NSObject`、UIKit は実クラス名。読み手は
+    /// `AccessibilityClassHint`(空打ちの第3段)だけ。**非公開属性なので取れなければ nil = 不明**。
+    /// 追加 optional フィールドのみなので bridgeProtocolVersion は据え置き(webViewPath と同じ方針)
+    public var axClass: String?
+
     public init(ref: Int, type: String, identifier: String?, label: String?, value: String?,
                 placeholder: String?, enabled: Bool, frame: FTRect, depth: Int,
                 checked: Bool? = nil, web: Bool? = nil, focused: Bool? = nil,
-                scrollable: Bool? = nil, z: Int? = nil, range: String? = nil) {
+                scrollable: Bool? = nil, z: Int? = nil, range: String? = nil,
+                axClass: String? = nil) {
         self.range = range
+        self.axClass = axClass
         self.scrollable = scrollable
         self.z = z
         self.ref = ref
@@ -1023,6 +1034,7 @@ public struct ElementInfo: Codable, Sendable {
         scrollable = try container.decodeIfPresent(Bool.self, forKey: .scrollable)
         z = try container.decodeIfPresent(Int.self, forKey: .z)
         range = try container.decodeIfPresent(String.self, forKey: .range)
+        axClass = try container.decodeIfPresent(String.self, forKey: .axClass)
     }
 
     /// 先頭 1 文字だけ小文字化する(`StaticText` → `staticText`)。冪等なので二重適用しても安全

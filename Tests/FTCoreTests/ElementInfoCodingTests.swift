@@ -33,7 +33,8 @@ final class ElementInfoCodingTests: XCTestCase {
             focused: true,
             scrollable: true,
             z: 124,
-            range: "0-100")
+            range: "0-100",
+            axClass: "UIAccessibilityElement")
     }
 
     func testEveryFieldSurvivesAnEncodeDecodeRoundTrip() throws {

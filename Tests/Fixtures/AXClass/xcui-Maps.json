@@ -1,0 +1,644 @@
+{
+ "screen": {
+  "height": 874,
+  "width": 402,
+  "y": 0,
+  "x": 0
+ },
+ "elements": [
+  {
+   "enabled": true,
+   "type": "window",
+   "identifier": "Maps.Application.Standard",
+   "frame": {
+    "width": 402,
+    "y": 0,
+    "x": 0,
+    "height": 874
+   },
+   "ref": 1,
+   "depth": 1,
+   "axClass": "UIWindow"
+  },
+  {
+   "enabled": true,
+   "type": "other",
+   "identifier": "VKPointFeature",
+   "frame": {
+    "width": 30,
+    "y": 93.85277982089511,
+    "x": 123.1877122934153,
+    "height": 30
+   },
+   "label": "ハバロフスク",
+   "ref": 2,
+   "depth": 8,
+   "axClass": "UIAccessibilityElement"
+  },
+  {
+   "type": "other",
+   "enabled": true,
+   "identifier": "VKPointFeature",
+   "frame": {
+    "height": 30,
+    "x": 7.863095569946896,
+    "y": 135.44633468880198,
+    "width": 29.999999999999996
+   },
+   "label": "鶴崗市",
+   "ref": 3,
+   "depth": 8,
+   "axClass": "UIAccessibilityElement"
+  },
+  {
+   "type": "other",
+   "enabled": true,
+   "identifier": "VKPointFeature",
+   "frame": {
+    "height": 29.99999999999997,
+    "x": -8.53627423748199,
+    "y": 230.3378575730451,
+    "width": 30
+   },
+   "label": "牡丹江市",
+   "ref": 4,
+   "depth": 8,
+   "axClass": "UIAccessibilityElement"
+  },
+  {
+   "type": "other",
+   "enabled": true,
+   "identifier": "VKPointFeature",
+   "frame": {
+    "height": 30,
+    "x": 46.480966406794586,
+    "y": 279.3375875218548,
+    "width": 29.999999999999993
+   },
+   "label": "ウラジオストク",
+   "ref": 5,
+   "depth": 8,
+   "axClass": "UIAccessibilityElement"
+  },
+  {
+   "type": "other",
+   "enabled": true,
+   "identifier": "VKPointFeature",
+   "frame": {
+    "height": 30,
+    "x": 274.4189895029243,
+    "y": 281.1230027831475,
+    "width": 30
+   },
+   "label": "札幌市",
+   "ref": 6,
+   "depth": 8,
+   "axClass": "UIAccessibilityElement"
+  },
+  {
+   "ref": 7,
+   "type": "other",
+   "label": "清津市",
+   "frame": {
+    "height": 30,
+    "x": -3.9074037141585354,
+    "y": 322.9149451956275,
+    "width": 30
+   },
+   "depth": 8,
+   "axClass": "UIAccessibilityElement",
+   "identifier": "VKPointFeature",
+   "enabled": true
+  },
+  {
+   "ref": 8,
+   "type": "button",
+   "label": "地図モード",
+   "frame": {
+    "height": 48,
+    "x": 332,
+    "y": 368.6666666666667,
+    "width": 48
+   },
+   "depth": 10,
+   "axClass": "UIButton",
+   "identifier": "SettingsButton.Explore",
+   "enabled": true
+  },
+  {
+   "ref": 9,
+   "type": "button",
+   "label": "トラッキング",
+   "value": "オフ",
+   "frame": {
+    "height": 48,
+    "x": 332,
+    "y": 424.6666666666667,
+    "width": 48
+   },
+   "depth": 10,
+   "axClass": "UIButton",
+   "identifier": "UserLocationButton",
+   "enabled": true
+  },
+  {
+   "ref": 10,
+   "type": "other",
+   "depth": 6,
+   "frame": {
+    "height": 426.66666666666674,
+    "x": 0,
+    "y": 62.00000000000003,
+    "width": 402
+   },
+   "axClass": "UIView",
+   "identifier": "IOSCardsOverlay.OverlayVC.OverlayView",
+   "enabled": true
+  },
+  {
+   "ref": 11,
+   "type": "other",
+   "depth": 5,
+   "frame": {
+    "height": 426.66666666666674,
+    "x": 48,
+    "y": 62.00000000000003,
+    "width": 306
+   },
+   "axClass": "UIView",
+   "identifier": "ChromeViewController.Viewport",
+   "enabled": true
+  },
+  {
+   "ref": 12,
+   "type": "button",
+   "label": "カードコントローラ",
+   "value": "ハーフスクリーン",
+   "frame": {
+    "height": 23.044776119402968,
+    "x": 152.9900497512438,
+    "y": 483.84079601990055,
+    "width": 96.01990049751242
+   },
+   "depth": 4,
+   "axClass": "_UIGrabber",
+   "identifier": "Card grabber",
+   "enabled": true
+  },
+  {
+   "ref": 13,
+   "type": "other",
+   "depth": 7,
+   "frame": {
+    "height": 72.9751243781094,
+    "x": 8,
+    "y": 488.64179104477614,
+    "width": 386
+   },
+   "axClass": "UISearchBar",
+   "identifier": "MapsSearchBar",
+   "enabled": true
+  },
+  {
+   "ref": 14,
+   "type": "searchField",
+   "label": "Apple マップ",
+   "frame": {
+    "height": 42.24875621890544,
+    "x": 23.36318407960199,
+    "y": 504.0049751243781,
+    "width": 305.34328358208955
+   },
+   "depth": 9,
+   "axClass": "UISearchBarTextField",
+   "placeholder": "Apple マップ",
+   "identifier": "MapsSearchTextField",
+   "enabled": true
+  },
+  {
+   "ref": 15,
+   "type": "button",
+   "label": "音声入力",
+   "frame": {
+    "height": 21.124378109452778,
+    "x": 296.69983416252074,
+    "y": 514.5671641791045,
+    "width": 16.64344941956881
+   },
+   "depth": 10,
+   "axClass": "UIDictationSearchButton",
+   "identifier": "Dictate",
+   "enabled": true
+  },
+  {
+   "ref": 16,
+   "type": "image",
+   "label": "検索",
+   "frame": {
+    "height": 18.563847429519114,
+    "x": 34.88557213930348,
+    "y": 515.5273631840796,
+    "width": 19.844112769485903
+   },
+   "depth": 10,
+   "axClass": "UIImageView",
+   "identifier": "magnifyingglass",
+   "enabled": true
+  },
+  {
+   "ref": 17,
+   "type": "button",
+   "label": "プロフィール",
+   "frame": {
+    "height": 42.24875621890544,
+    "x": 336.3880597014925,
+    "y": 504.0049751243781,
+    "width": 42.2487562189055
+   },
+   "depth": 7,
+   "axClass": "UIButton",
+   "identifier": "userProfileButton",
+   "enabled": true
+  },
+  {
+   "ref": 18,
+   "type": "other",
+   "depth": 7,
+   "frame": {
+    "height": 377.35820895522386,
+    "x": 8,
+    "y": 488.64179104477614,
+    "width": 386
+   },
+   "axClass": "UIView",
+   "identifier": "HomeView",
+   "enabled": true
+  },
+  {
+   "ref": 19,
+   "type": "collectionView",
+   "label": "場所",
+   "frame": {
+    "height": 377.3582089552239,
+    "x": 8,
+    "y": 488.6417910447761,
+    "width": 386
+   },
+   "depth": 8,
+   "scrollable": true,
+   "axClass": "UICollectionView",
+   "enabled": true
+  },
+  {
+   "axClass": "UICollectionViewListCell",
+   "ref": 20,
+   "type": "clickable",
+   "enabled": true,
+   "frame": {
+    "height": 42.24875621890544,
+    "x": 27.203980099502488,
+    "y": 561.6169154228855,
+    "width": 347.592039800995
+   },
+   "depth": 9
+  },
+  {
+   "ref": 21,
+   "type": "button",
+   "label": "場所",
+   "frame": {
+    "y": 571.2189054726368,
+    "height": 23.044776119402968,
+    "width": 53.13101160862355,
+    "x": 27.203980099502488
+   },
+   "depth": 12,
+   "axClass": "NSObject",
+   "identifier": "SectionHeader",
+   "enabled": true
+  },
+  {
+   "ref": 22,
+   "type": "clickable",
+   "depth": 9,
+   "frame": {
+    "y": 603.8656716417911,
+    "height": 116.18407960198999,
+    "width": 386,
+    "x": 8
+   },
+   "axClass": "UICollectionViewCell",
+   "identifier": "PinnedItemSection",
+   "enabled": true
+  },
+  {
+   "ref": 23,
+   "type": "scrollView",
+   "depth": 12,
+   "frame": {
+    "y": 603.8656716417911,
+    "height": 116.18407960198999,
+    "width": 386,
+    "x": 8
+   },
+   "scrollable": true,
+   "axClass": "UIScrollView",
+   "enabled": true
+  },
+  {
+   "ref": 24,
+   "type": "button",
+   "label": "自宅、追加",
+   "frame": {
+    "y": 603.865671641791,
+    "height": 116.1840796019901,
+    "width": 78.41625207296849,
+    "x": 23.363184079601993
+   },
+   "depth": 17,
+   "axClass": "NSObject",
+   "identifier": "PinnedTile",
+   "enabled": true
+  },
+  {
+   "ref": 25,
+   "type": "button",
+   "label": "自宅、追加",
+   "frame": {
+    "y": 603.865671641791,
+    "height": 116.1840796019901,
+    "width": 78.41625207296849,
+    "x": 23.363184079601993
+   },
+   "depth": 18,
+   "axClass": "NSObject",
+   "identifier": "IconImage-TitleLabel-SubtitleLabel",
+   "enabled": true
+  },
+  {
+   "ref": 26,
+   "type": "image",
+   "depth": 19,
+   "frame": {
+    "y": 603.865671641791,
+    "height": 78.41625207296852,
+    "width": 78.41625207296849,
+    "x": 23.363184079601993
+   },
+   "axClass": "NSObject",
+   "identifier": "IconImage",
+   "enabled": true
+  },
+  {
+   "ref": 27,
+   "type": "staticText",
+   "label": "自宅",
+   "frame": {
+    "y": 689.8034825870647,
+    "height": 15.0431177446103,
+    "width": 23.364842454394697,
+    "x": 50.88888888888889
+   },
+   "depth": 19,
+   "axClass": "NSObject",
+   "identifier": "TitleLabel",
+   "enabled": true
+  },
+  {
+   "ref": 28,
+   "type": "staticText",
+   "label": "追加",
+   "frame": {
+    "y": 704.8466003316748,
+    "height": 15.0431177446103,
+    "width": 23.364842454394697,
+    "x": 50.88888888888889
+   },
+   "depth": 19,
+   "axClass": "NSObject",
+   "identifier": "SubtitleLabel",
+   "enabled": true
+  },
+  {
+   "ref": 29,
+   "enabled": true,
+   "identifier": "PinnedTile",
+   "frame": {
+    "y": 603.865671641791,
+    "height": 116.1840796019901,
+    "width": 78.0961857379768,
+    "x": 109.46102819237147
+   },
+   "type": "button",
+   "axClass": "NSObject",
+   "label": "勤務先、追加",
+   "depth": 17
+  },
+  {
+   "ref": 30,
+   "enabled": true,
+   "identifier": "IconImage-TitleLabel-SubtitleLabel",
+   "frame": {
+    "y": 603.865671641791,
+    "height": 116.1840796019901,
+    "width": 78.0961857379768,
+    "x": 109.46102819237147
+   },
+   "type": "button",
+   "axClass": "NSObject",
+   "label": "勤務先、追加",
+   "depth": 18
+  },
+  {
+   "ref": 31,
+   "enabled": true,
+   "identifier": "IconImage",
+   "frame": {
+    "y": 603.865671641791,
+    "height": 78.41625207296852,
+    "width": 78.41625207296848,
+    "x": 109.46102819237147
+   },
+   "type": "image",
+   "axClass": "NSObject",
+   "depth": 19
+  },
+  {
+   "ref": 32,
+   "enabled": true,
+   "identifier": "TitleLabel",
+   "frame": {
+    "y": 689.8034825870647,
+    "height": 15.0431177446103,
+    "width": 35.20729684908787,
+    "x": 131.06550580431178
+   },
+   "type": "staticText",
+   "axClass": "NSObject",
+   "label": "勤務先",
+   "depth": 19
+  },
+  {
+   "ref": 33,
+   "enabled": true,
+   "identifier": "SubtitleLabel",
+   "frame": {
+    "y": 704.8466003316748,
+    "height": 15.0431177446103,
+    "width": 23.364842454394704,
+    "x": 136.98673300165837
+   },
+   "type": "staticText",
+   "axClass": "NSObject",
+   "label": "追加",
+   "depth": 19
+  },
+  {
+   "ref": 34,
+   "enabled": true,
+   "identifier": "PinnedTile",
+   "frame": {
+    "y": 603.865671641791,
+    "height": 116.1840796019901,
+    "width": 78.41625207296846,
+    "x": 195.23880597014926
+   },
+   "type": "button",
+   "axClass": "NSObject",
+   "label": "追加",
+   "depth": 17
+  },
+  {
+   "ref": 35,
+   "enabled": true,
+   "identifier": "IconImage-TitleLabel",
+   "frame": {
+    "y": 603.865671641791,
+    "height": 116.1840796019901,
+    "width": 78.41625207296846,
+    "x": 195.23880597014926
+   },
+   "type": "button",
+   "axClass": "NSObject",
+   "label": "追加",
+   "depth": 18
+  },
+  {
+   "ref": 36,
+   "enabled": true,
+   "identifier": "IconImage",
+   "frame": {
+    "x": 195.23880597014926,
+    "width": 78.41625207296846,
+    "y": 603.865671641791,
+    "height": 78.41625207296852
+   },
+   "type": "image",
+   "axClass": "NSObject",
+   "label": "追加",
+   "depth": 19
+  },
+  {
+   "ref": 37,
+   "enabled": true,
+   "identifier": "TitleLabel",
+   "frame": {
+    "width": 23.364842454394704,
+    "y": 689.8034825870647,
+    "x": 222.76451077943616,
+    "height": 15.0431177446103
+   },
+   "type": "staticText",
+   "axClass": "NSObject",
+   "label": "追加",
+   "depth": 19
+  },
+  {
+   "enabled": true,
+   "frame": {
+    "x": 27.203980099502488,
+    "width": 347.592039800995,
+    "height": 61.452736318407915,
+    "y": 720.0497512437811
+   },
+   "axClass": "UICollectionViewListCell",
+   "type": "clickable",
+   "depth": 9,
+   "ref": 38
+  },
+  {
+   "ref": 39,
+   "enabled": true,
+   "frame": {
+    "width": 143.06965174129357,
+    "x": 27.203980099502488,
+    "y": 748.8557213930349,
+    "height": 23.044776119402968
+   },
+   "identifier": "SectionHeader",
+   "type": "button",
+   "axClass": "NSObject",
+   "label": "あなたのガイド",
+   "depth": 12
+  },
+  {
+   "ref": 40,
+   "enabled": true,
+   "frame": {
+    "width": 386,
+    "x": 8,
+    "y": 781.5024875621891,
+    "height": 218.9253731343283
+   },
+   "identifier": "UserGuidesSection",
+   "type": "clickable",
+   "axClass": "UICollectionViewCell",
+   "depth": 9
+  },
+  {
+   "ref": 41,
+   "enabled": true,
+   "frame": {
+    "width": 386,
+    "x": 8,
+    "y": 781.5024875621891,
+    "height": 218.9253731343283
+   },
+   "scrollable": true,
+   "type": "scrollView",
+   "axClass": "UIScrollView",
+   "depth": 12
+  },
+  {
+   "ref": 42,
+   "enabled": true,
+   "frame": {
+    "width": 164.1940298507463,
+    "x": 23.363184079601993,
+    "y": 781.502487562189,
+    "height": 218.92537313432842
+   },
+   "identifier": "GuideTile.User",
+   "type": "other",
+   "axClass": "NSObject",
+   "depth": 17
+  },
+  {
+   "ref": 43,
+   "enabled": true,
+   "frame": {
+    "width": 164.1940298507463,
+    "x": 23.363184079601993,
+    "y": 781.502487562189,
+    "height": 218.92537313432842
+   },
+   "identifier": "TitleLabel-SubtitleLabel",
+   "type": "button",
+   "axClass": "NSObject",
+   "label": "よく使う項目、0か所",
+   "depth": 18
+  }
+ ],
+ "sessionBundleID": "com.apple.Maps",
+ "truncatedCount": 0
+}

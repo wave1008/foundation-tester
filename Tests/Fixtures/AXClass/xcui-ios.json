@@ -1,0 +1,266 @@
+{
+ "sessionBundleID": "com.ftester.e2e.ios",
+ "screen": {
+  "height": 874,
+  "width": 402,
+  "y": 0,
+  "x": 0
+ },
+ "elements": [
+  {
+   "frame": {
+    "height": 20.33333333333333,
+    "width": 48,
+    "y": 78,
+    "x": 16
+   },
+   "type": "staticText",
+   "enabled": true,
+   "label": "ホーム",
+   "depth": 6,
+   "axClass": "NSObject",
+   "ref": 1,
+   "identifier": "txt_screen_title"
+  },
+  {
+   "frame": {
+    "height": 663.6666666666666,
+    "width": 402,
+    "y": 114.33333333333333,
+    "x": 0
+   },
+   "scrollable": true,
+   "depth": 6,
+   "enabled": true,
+   "type": "scrollView",
+   "axClass": "UIScrollView",
+   "ref": 2
+  },
+  {
+   "frame": {
+    "height": 20.333333333333343,
+    "x": 16,
+    "y": 130.33333333333331,
+    "width": 81.33333333333333
+   },
+   "type": "staticText",
+   "enabled": true,
+   "label": "E2E ホーム",
+   "depth": 8,
+   "axClass": "NSObject",
+   "ref": 3,
+   "identifier": "txt_home_marker"
+  },
+  {
+   "frame": {
+    "height": 62,
+    "x": 16,
+    "y": 158.66666666666666,
+    "width": 370
+   },
+   "type": "button",
+   "enabled": true,
+   "label": "セレクタ",
+   "depth": 8,
+   "axClass": "NSObject",
+   "ref": 4,
+   "identifier": "nav_selector"
+  },
+  {
+   "frame": {
+    "height": 61.99999999999997,
+    "x": 16,
+    "y": 228.66666666666666,
+    "width": 370
+   },
+   "type": "button",
+   "enabled": true,
+   "label": "テキスト入力",
+   "depth": 8,
+   "axClass": "NSObject",
+   "ref": 5,
+   "identifier": "nav_input"
+  },
+  {
+   "frame": {
+    "height": 62,
+    "x": 16,
+    "y": 298.66666666666663,
+    "width": 370
+   },
+   "type": "button",
+   "enabled": true,
+   "label": "ID なし",
+   "depth": 8,
+   "axClass": "NSObject",
+   "ref": 6,
+   "identifier": "nav_noid"
+  },
+  {
+   "ref": 7,
+   "type": "button",
+   "label": "WebView",
+   "frame": {
+    "height": 62,
+    "x": 16,
+    "y": 368.66666666666663,
+    "width": 370
+   },
+   "depth": 8,
+   "axClass": "NSObject",
+   "identifier": "nav_webview",
+   "enabled": true
+  },
+  {
+   "ref": 8,
+   "type": "button",
+   "label": "ジェスチャ",
+   "frame": {
+    "height": 62,
+    "x": 16,
+    "y": 438.66666666666663,
+    "width": 370
+   },
+   "depth": 8,
+   "axClass": "NSObject",
+   "identifier": "nav_gesture",
+   "enabled": true
+  },
+  {
+   "ref": 9,
+   "type": "button",
+   "label": "スクロール",
+   "frame": {
+    "height": 62,
+    "x": 16,
+    "y": 508.66666666666663,
+    "width": 370
+   },
+   "depth": 8,
+   "axClass": "NSObject",
+   "identifier": "nav_scroll",
+   "enabled": true
+  },
+  {
+   "ref": 10,
+   "type": "button",
+   "label": "非同期表示",
+   "frame": {
+    "height": 62,
+    "x": 16,
+    "y": 578.6666666666666,
+    "width": 370
+   },
+   "depth": 8,
+   "axClass": "NSObject",
+   "identifier": "nav_async",
+   "enabled": true
+  },
+  {
+   "ref": 11,
+   "type": "button",
+   "label": "ダイアログ",
+   "frame": {
+    "height": 62,
+    "x": 16,
+    "y": 648.6666666666666,
+    "width": 370
+   },
+   "depth": 8,
+   "axClass": "NSObject",
+   "identifier": "nav_dialog",
+   "enabled": true
+  },
+  {
+   "ref": 12,
+   "type": "button",
+   "label": "ライフサイクル",
+   "frame": {
+    "height": 62,
+    "x": 16,
+    "y": 718.6666666666666,
+    "width": 370
+   },
+   "depth": 8,
+   "axClass": "NSObject",
+   "identifier": "nav_lifecycle",
+   "enabled": true
+  },
+  {
+   "ref": 13,
+   "type": "button",
+   "label": "自己修復",
+   "frame": {
+    "height": 62,
+    "x": 16,
+    "y": 788.6666666666666,
+    "width": 370
+   },
+   "depth": 8,
+   "axClass": "NSObject",
+   "identifier": "nav_heal",
+   "enabled": true
+  },
+  {
+   "ref": 14,
+   "type": "button",
+   "label": "診断",
+   "frame": {
+    "height": 62,
+    "x": 16,
+    "y": 858.6666666666666,
+    "width": 370
+   },
+   "depth": 8,
+   "axClass": "NSObject",
+   "identifier": "nav_diagnostics",
+   "enabled": true
+  },
+  {
+   "ref": 15,
+   "type": "button",
+   "label": "ホーム",
+   "frame": {
+    "height": 62,
+    "x": 0,
+    "y": 778,
+    "width": 134
+   },
+   "depth": 6,
+   "axClass": "NSObject",
+   "identifier": "tab_home",
+   "enabled": true
+  },
+  {
+   "ref": 16,
+   "type": "button",
+   "label": "コントロール",
+   "frame": {
+    "height": 62,
+    "x": 134,
+    "y": 778,
+    "width": 134
+   },
+   "depth": 6,
+   "axClass": "NSObject",
+   "identifier": "tab_controls",
+   "enabled": true
+  },
+  {
+   "ref": 17,
+   "type": "button",
+   "label": "情報",
+   "frame": {
+    "height": 62,
+    "x": 268,
+    "y": 778,
+    "width": 134
+   },
+   "depth": 6,
+   "axClass": "NSObject",
+   "identifier": "tab_about",
+   "enabled": true
+  }
+ ],
+ "truncatedCount": 0
+}

@@ -627,7 +627,7 @@ extension StepExecutor {
         // 救済が走った 18 件のうち **4 件が失敗**、走らなかった 22 件は **0 件**(p≈0.03)。
         // しかも失敗時の対象は容器のど真ん中(y=519〜534 / 容器 230..692)で座標は正しい。
         // 探索終端と**同じ順序**で肩代わり → 静止 → 掴み直しを行う
-        if ghostSwipes > 0, shouldEmptyDrag, let target = resolved?.0 {
+        if ghostSwipes > 0, let target = resolved?.0, shouldEmptyDrag(for: target) {
             let x = target.frame.centerX
             let y = min(target.frame.centerY,
                         snapshot.screen.y + snapshot.screen.height - Self.bottomUncoveredBand - 1)

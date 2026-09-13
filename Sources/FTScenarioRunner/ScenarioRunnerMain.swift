@@ -427,17 +427,17 @@ struct RunScenario: AsyncParsableCommand {
                 _ = try await driver.status()
             }
             // **不明のまま進むことは黙らない**。自己申告もバンドルのマーカーも
-            // 取れないのは実機で材料(.app / .ipa)も台帳(AppFrameworkLedger)も無いときで、そのとき
-            // shouldEmptyDrag は「不明なら打たない」へ倒れる = Compose / Flutter なら探索直後のタップが
-            // 容器に吸われて赤になる(失敗として見える側)。**run に残す**。stderr は ScenarioHost が
-            // "⚠️ " 付きの log イベントへ変換する
+            // 取れないのは実機で材料(.app / .ipa)も台帳(AppFrameworkLedger)も無いとき。そのとき空打ちは
+            // 掴んだ要素のクラス名(第3段。AccessibilityClassHint)で決め、それも無い(旧ランナー)なら
+            // 撃たない。**run に残す**。stderr は ScenarioHost が "⚠️ " 付きの log イベントへ変換する
             if runPlatform == "ios", uiFrameworkHint == nil {
                 ConsoleOut.err(
                     "could not determine the UI framework of \(appBundleID) (the bridge did not"
                      + " report it, no .app/.ipa was available, and nothing is remembered for this"
-                     + " bundle id), so the relief drag after a scroll search is NOT sent — on Compose"
-                     + " Multiplatform / Flutter the tap right after a scroll can be swallowed. Point"
-                     + " appPath / appPathPhysical at the app package once; the result is remembered")
+                     + " bundle id): the relief drag after a scroll search is decided per element from"
+                     + " the accessibility tree (custom-drawn elements get it; with an older bridge that"
+                     + " does not report element classes it is not sent). Point appPath / appPathPhysical"
+                     + " at the app package once to settle it; the result is remembered")
             }
         }
 

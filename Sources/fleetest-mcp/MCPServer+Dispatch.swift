@@ -290,9 +290,10 @@ extension MCPServer {
         let key = Self.engineKey(args)
         guard uiFrameworkUnknownPending.remove(key) != nil else { return nil }
         return "ℹ️ the UI framework of the app on this physical device is unknown (no .app/.ipa seen for"
-            + " this bundle id yet), so the relief drag after a scroll is not sent — on Compose Multiplatform /"
-            + " Flutter the tap right after a scroll can be swallowed. ft_install it from its .app/.ipa once;"
-            + " the result is remembered for the bundle id"
+            + " this bundle id yet): the relief drag after a scroll is decided per element from the"
+            + " accessibility tree (custom-drawn elements get it; an older bridge that reports no element"
+            + " classes sends none). ft_install it from its .app/.ipa once to settle it; the result is"
+            + " remembered for the bundle id"
     }
 
     /// **この MCP が操作している台に印を置き(run が後回しにする)、run が使用中なら1行で言う**

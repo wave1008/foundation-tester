@@ -503,8 +503,19 @@ public final class StepExecutor {
     /// **nil(不明)は打たない**(2026-09-12 に反転): 打って外れると行やボタンが押されてアプリの状態が
     /// 黙って変わる(取り消せない)が、打たずに外れるとタップが吸われて失敗として見える。不明になるのは
     /// 材料(.app / .ipa)も台帳(AppFrameworkLedger)も無い実機だけ
+    /// **`FT_EMPTY_DRAG=off` は保守者の殺しスイッチ**(空打ちが今も要るかを E2E の規模で測るため。
+    /// `FT_CONTAINER_INFERENCE=off` と同じ位置づけで、利用者向けの口ではない)
     var shouldEmptyDrag: Bool {
-        releasesScrollTouch && (uiFramework == "compose" || uiFramework == "flutter")
+        guard ProcessInfo.processInfo.environment["FT_EMPTY_DRAG"] != "off" else { return false }
+        return releasesScrollTouch && (uiFramework == "compose" || uiFramework == "flutter")
+    }
+
+    /// 掴んだ要素に対して空打ちを撃つか。フレームワークが判っていれば `shouldEmptyDrag`(1・2段目)、
+    /// 不明なら**要素のクラス名**(第3段。`AccessibilityClassHint`)。クラス名も無ければ撃たない
+    func shouldEmptyDrag(for element: ElementInfo) -> Bool {
+        guard ProcessInfo.processInfo.environment["FT_EMPTY_DRAG"] != "off", releasesScrollTouch else { return false }
+        if uiFramework != nil { return shouldEmptyDrag }
+        return AccessibilityClassHint.hostsOwnTouches(element) == true
     }
 
     /// **容器の推測に依存する補正**の既定(実行プロファイルの `containerInference`。既定 true)。

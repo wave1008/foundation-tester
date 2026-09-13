@@ -39,9 +39,10 @@ section wins on conflicts):
 - The tool also reads the app's UI framework from that package (Compose Multiplatform / Flutter /
   everything else) to decide whether a scroll needs a relief gesture before the next tap, and
   remembers the answer per bundle ID. When neither the package nor a remembered answer is at hand
-  (an app installed on a physical device by other means), the relief gesture is not sent and the
-  run says so once — on Compose / Flutter a tap right after a scroll may then be swallowed; point
-  `appPath` / `appPathPhysical` at the package once to settle it.
+  (an app installed on a physical device by other means), the decision is made per element from the
+  accessibility tree (custom-drawn elements, as Compose / Flutter expose them, get the gesture; view-backed
+  ones do not) and the run says so once. Point `appPath` / `appPathPhysical` at the package once to
+  settle it for good.
 - `healthCheckURL` (in `common`, optional): a backend URL checked at the start of a run
   (3-second timeout, warns but does not block).
 

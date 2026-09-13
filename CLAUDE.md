@@ -493,6 +493,14 @@
   失敗モードが沈黙(誤った成功)なら塞ぐ価値がある**(その場合は「再現していない」と明記する)。
   可能なら**同型の再発を落とすテスト**まで足す(`SwipeForScrollForwardingTests` = ソース走査 /
   `BridgeRouterStatusContractTests` = 本数固定 / `AppDriverDefaultDispatchTests` = 宣言の突き合わせ)
+- **空打ち(スクロール探索の終端)を撃つかは3段で決める**: ①パッケージ(.app / .ipa)の目印
+  ②bundle ID ごとの台帳(`AppFrameworkLedger`)③**掴んだ要素のクラス名**(`ElementInfo.axClass` =
+  XCUITest ランナーが XCTest の**非公開**属性 5004 から載せる。Compose / Flutter の要素は
+  `UIAccessibilityElement`、RN は `UIView`、SwiftUI は `NSObject`。`AccessibilityClassHint`)。
+  どれも無ければ撃たない(打って外れると行が押される = 取り消せない側)。**木の形・型の名前から
+  フレームワークを推定しない**(実アプリの 10/22 画面が Compose と同形・RN は Flutter と同形。
+  docs/verification.md)。③は非公開属性なので `Tests/Fixtures/AXClass/` の等号テストで Xcode の版の
+  変化を検出し、取れなければ nil = 撃たない側へ縮退する
 - **`AppDriver` に既定実装を足すときはプロトコル要件にも宣言する**。存在型越しの呼び出しは
   要件でなければ**静的ディスパッチで既定実装に落ち**、ドライバ側の実装が呼ばれないまま黙って
   既定値が返る(ビルドもテストも通る。`snapshot(bypassingCache:)` で実際に踏んだ)。`AppDriverDefaultDispatchTests` が検出する

@@ -2411,6 +2411,20 @@ viewport が画面全体になり**、「見えている」と誤判定して探
    タップもプレスも効かない。クリックにならない 2pt ドラッグでその1回を肩代わりする
 2. **静止待ち**: frame が連続2回同じになるまで待つ(最大 600ms・スワイプした周回だけ)
 
+**空打ちが今も要るかは `FT_EMPTY_DRAG=off` で測る**(保守者の殺しスイッチ。2026-09-12 の計測:
+止めて E2E-CMP / ios-xcuitest を3回回すと `S0080`(`selected=-`・注記 swallowed)と横向きの `S0020` が
+3/3 で赤、E2E-Flutter は 2 回中 1 回 `S0080` が赤。単発の MCP witness(`scrollTo '#row_40'` → tap)では
+吸われないので、**空打ちの要否は E2E の規模で判定する**)。
+
+**木の形・型の名前からフレームワークを推定してはいけない**(同日の計測): Compose の XCUITest の木は「画面全体の
+scrollView + 内側のリストは scroll 印の無い `other`」だが、実アプリのコーパス(iOS 22 画面)の
+**10 画面(Safari の 7 画面・設定・写真・地図の経路)が同じ形**で、Flutter は容器が本物の scrollView
+= UIKit と同じ形なのに空打ちが要る。型の名前も RN が Compose / Flutter と同じ顔ぶれ。誤検知は「行を押す」側に倒れる。
+**使えるのは要素のクラス名だけ**(XCTest の非公開属性 5004 → `ElementInfo.axClass`。Compose / Flutter の要素は
+`UIAccessibilityElement`、RN は `UIView`、SwiftUI は `NSObject`)—— 材料(.app/.ipa)と台帳の後の第3段として
+掴んだ要素単位で使う(`AccessibilityClassHint`)。固定コーパス `Tests/Fixtures/AXClass/` が各フレームワークの値を
+等号で固定する(Xcode の版で属性が変わったら落ちる = そのときは取れない側へ縮退する設計を確かめ直す)。
+
 **iOS の空打ちを Android でやってはいけない**: Android では 2pt ドラッグが**クリックとして発火**し、
 タップしていないのに行が選択される(= 二重実行)。`releasesScrollTouch` が唯一の分岐理由。
 

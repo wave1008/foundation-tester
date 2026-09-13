@@ -381,7 +381,7 @@ extension StepExecutor {
         let y: Double = min(element.frame.y + element.frame.height / 2,
                             snapshot.screen.y + snapshot.screen.height
                                 - Self.bottomUncoveredBand - 1)
-        if shouldEmptyDrag,
+        if shouldEmptyDrag(for: element),
            Self.emptyDragIsSafe(x: x, y: y, of: element,
                                 in: snapshot.elements, screen: snapshot.screen),
            let toX = Self.emptyDragEndX(of: element, from: x, screen: snapshot.screen) {

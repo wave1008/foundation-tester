@@ -1,0 +1,463 @@
+{
+ "screen": {
+  "height": 874,
+  "width": 402,
+  "y": 0,
+  "x": 0
+ },
+ "truncatedCount": 0,
+ "note": "snapshot taken before the screen settled (budget)",
+ "sessionBundleID": "com.ftester.e2e",
+ "elements": [
+  {
+   "frame": {
+    "height": 874,
+    "width": 402,
+    "y": 0,
+    "x": 0
+   },
+   "scrollable": true,
+   "depth": 7,
+   "enabled": true,
+   "type": "scrollView",
+   "axClass": "UIScrollView",
+   "ref": 1
+  },
+  {
+   "frame": {
+    "height": 24.333335876464844,
+    "x": 16,
+    "y": 78,
+    "width": 370
+   },
+   "type": "staticText",
+   "enabled": true,
+   "label": "ホーム",
+   "depth": 10,
+   "axClass": "UIAccessibilityElement",
+   "ref": 2,
+   "identifier": "txt_screen_title"
+  },
+  {
+   "frame": {
+    "height": 24.333328247070312,
+    "x": 16,
+    "y": 134.3333282470703,
+    "width": 84
+   },
+   "type": "staticText",
+   "enabled": true,
+   "label": "E2E ホーム",
+   "depth": 12,
+   "axClass": "UIAccessibilityElement",
+   "ref": 3,
+   "identifier": "txt_home_marker"
+  },
+  {
+   "frame": {
+    "height": 48,
+    "x": 16,
+    "y": 166.6666717529297,
+    "width": 370
+   },
+   "type": "button",
+   "enabled": true,
+   "label": "セレクタ",
+   "depth": 12,
+   "axClass": "UIAccessibilityElement",
+   "ref": 4,
+   "identifier": "nav_selector"
+  },
+  {
+   "frame": {
+    "height": 20.333328247070312,
+    "x": 172.6666717529297,
+    "y": 180.6666717529297,
+    "width": 56.66667175292969
+   },
+   "type": "staticText",
+   "enabled": true,
+   "label": "セレクタ",
+   "depth": 13,
+   "axClass": "UIAccessibilityElement",
+   "ref": 5
+  },
+  {
+   "frame": {
+    "height": 48.00001525878906,
+    "x": 16,
+    "y": 222.6666717529297,
+    "width": 370
+   },
+   "type": "button",
+   "enabled": true,
+   "label": "テキスト入力",
+   "depth": 12,
+   "axClass": "UIAccessibilityElement",
+   "ref": 6,
+   "identifier": "nav_input"
+  },
+  {
+   "ref": 7,
+   "type": "staticText",
+   "label": "テキスト入力",
+   "frame": {
+    "height": 20.333328247070312,
+    "x": 159,
+    "y": 236.6666717529297,
+    "width": 84
+   },
+   "depth": 13,
+   "axClass": "UIAccessibilityElement",
+   "enabled": true
+  },
+  {
+   "ref": 8,
+   "type": "button",
+   "label": "ID なし",
+   "frame": {
+    "height": 48,
+    "x": 16,
+    "y": 278.6666564941406,
+    "width": 370
+   },
+   "depth": 12,
+   "axClass": "UIAccessibilityElement",
+   "identifier": "nav_noid",
+   "enabled": true
+  },
+  {
+   "ref": 9,
+   "type": "staticText",
+   "label": "ID なし",
+   "frame": {
+    "height": 20.333343505859375,
+    "x": 177.6666717529297,
+    "y": 292.6666564941406,
+    "width": 46.66667175292969
+   },
+   "depth": 13,
+   "axClass": "UIAccessibilityElement",
+   "enabled": true
+  },
+  {
+   "ref": 10,
+   "type": "button",
+   "label": "WebView",
+   "frame": {
+    "height": 48,
+    "x": 16,
+    "y": 334.6666564941406,
+    "width": 370
+   },
+   "depth": 12,
+   "axClass": "UIAccessibilityElement",
+   "identifier": "nav_webview",
+   "enabled": true
+  },
+  {
+   "ref": 11,
+   "type": "staticText",
+   "label": "WebView",
+   "frame": {
+    "height": 20,
+    "x": 169.6666717529297,
+    "y": 348.6666564941406,
+    "width": 62.66667175292969
+   },
+   "depth": 13,
+   "axClass": "UIAccessibilityElement",
+   "enabled": true
+  },
+  {
+   "ref": 12,
+   "type": "button",
+   "label": "ジェスチャ",
+   "frame": {
+    "height": 48,
+    "x": 16,
+    "y": 390.6666564941406,
+    "width": 370
+   },
+   "depth": 12,
+   "axClass": "UIAccessibilityElement",
+   "identifier": "nav_gesture",
+   "enabled": true
+  },
+  {
+   "ref": 13,
+   "type": "staticText",
+   "label": "ジェスチャ",
+   "frame": {
+    "height": 20.333343505859375,
+    "x": 166,
+    "y": 404.6666564941406,
+    "width": 70
+   },
+   "depth": 13,
+   "axClass": "UIAccessibilityElement",
+   "enabled": true
+  },
+  {
+   "ref": 14,
+   "type": "button",
+   "label": "スクロール",
+   "frame": {
+    "height": 48,
+    "x": 16,
+    "y": 446.6666564941406,
+    "width": 370
+   },
+   "depth": 12,
+   "axClass": "UIAccessibilityElement",
+   "identifier": "nav_scroll",
+   "enabled": true
+  },
+  {
+   "ref": 15,
+   "type": "staticText",
+   "label": "スクロール",
+   "frame": {
+    "height": 20.333343505859375,
+    "x": 166,
+    "y": 460.6666564941406,
+    "width": 70
+   },
+   "depth": 13,
+   "axClass": "UIAccessibilityElement",
+   "enabled": true
+  },
+  {
+   "ref": 16,
+   "type": "button",
+   "label": "非同期表示",
+   "frame": {
+    "height": 47.999969482421875,
+    "x": 16,
+    "y": 502.6666564941406,
+    "width": 370
+   },
+   "depth": 12,
+   "axClass": "UIAccessibilityElement",
+   "identifier": "nav_async",
+   "enabled": true
+  },
+  {
+   "ref": 17,
+   "type": "staticText",
+   "label": "非同期表示",
+   "frame": {
+    "height": 20.33331298828125,
+    "x": 165.6666717529297,
+    "y": 516.6666870117188,
+    "width": 70.66667175292969
+   },
+   "depth": 13,
+   "axClass": "UIAccessibilityElement",
+   "enabled": true
+  },
+  {
+   "ref": 18,
+   "type": "button",
+   "label": "ダイアログ",
+   "frame": {
+    "height": 48,
+    "x": 16,
+    "y": 558.6666870117188,
+    "width": 370
+   },
+   "depth": 12,
+   "axClass": "UIAccessibilityElement",
+   "identifier": "nav_dialog",
+   "enabled": true
+  },
+  {
+   "ref": 19,
+   "type": "staticText",
+   "label": "ダイアログ",
+   "frame": {
+    "height": 20.33331298828125,
+    "x": 166.6666717529297,
+    "y": 572.6666870117188,
+    "width": 69
+   },
+   "depth": 13,
+   "axClass": "UIAccessibilityElement",
+   "enabled": true
+  },
+  {
+   "ref": 20,
+   "type": "button",
+   "label": "ライフサイクル",
+   "frame": {
+    "height": 48,
+    "x": 16,
+    "y": 614.6666870117188,
+    "width": 370
+   },
+   "depth": 12,
+   "axClass": "UIAccessibilityElement",
+   "identifier": "nav_lifecycle",
+   "enabled": true
+  },
+  {
+   "ref": 21,
+   "type": "staticText",
+   "label": "ライフサイクル",
+   "frame": {
+    "height": 20.33331298828125,
+    "x": 153,
+    "y": 628.6666870117188,
+    "width": 96.33334350585938
+   },
+   "depth": 13,
+   "axClass": "UIAccessibilityElement",
+   "enabled": true
+  },
+  {
+   "ref": 22,
+   "type": "button",
+   "label": "自己修復",
+   "frame": {
+    "height": 48,
+    "x": 16,
+    "y": 670.6666870117188,
+    "width": 370
+   },
+   "depth": 12,
+   "axClass": "UIAccessibilityElement",
+   "identifier": "nav_heal",
+   "enabled": true
+  },
+  {
+   "ref": 23,
+   "type": "staticText",
+   "label": "自己修復",
+   "frame": {
+    "height": 20.33331298828125,
+    "x": 172.6666717529297,
+    "y": 684.6666870117188,
+    "width": 56.66667175292969
+   },
+   "depth": 13,
+   "axClass": "UIAccessibilityElement",
+   "enabled": true
+  },
+  {
+   "ref": 24,
+   "type": "button",
+   "label": "診断",
+   "frame": {
+    "height": 48,
+    "x": 16,
+    "y": 726.6666870117188,
+    "width": 370
+   },
+   "depth": 12,
+   "axClass": "UIAccessibilityElement",
+   "identifier": "nav_diagnostics",
+   "enabled": true
+  },
+  {
+   "ref": 25,
+   "type": "staticText",
+   "label": "診断",
+   "frame": {
+    "height": 20.33331298828125,
+    "x": 187,
+    "y": 740.6666870117188,
+    "width": 28.333328247070312
+   },
+   "depth": 13,
+   "axClass": "UIAccessibilityElement",
+   "enabled": true
+  },
+  {
+   "ref": 26,
+   "type": "button",
+   "label": "ホーム",
+   "frame": {
+    "height": 48,
+    "x": 0,
+    "y": 792,
+    "width": 134
+   },
+   "depth": 10,
+   "axClass": "UIAccessibilityElement",
+   "identifier": "tab_home",
+   "enabled": true
+  },
+  {
+   "ref": 27,
+   "type": "staticText",
+   "label": "ホーム",
+   "frame": {
+    "height": 20.33331298828125,
+    "x": 46.33333206176758,
+    "y": 806,
+    "width": 41.66666793823242
+   },
+   "depth": 11,
+   "axClass": "UIAccessibilityElement",
+   "enabled": true
+  },
+  {
+   "ref": 28,
+   "enabled": true,
+   "identifier": "tab_controls",
+   "frame": {
+    "height": 48,
+    "x": 134,
+    "y": 792,
+    "width": 134
+   },
+   "type": "button",
+   "axClass": "UIAccessibilityElement",
+   "label": "コントロール",
+   "depth": 10
+  },
+  {
+   "ref": 29,
+   "enabled": true,
+   "frame": {
+    "height": 20.33331298828125,
+    "x": 159,
+    "y": 806,
+    "width": 84.33334350585938
+   },
+   "type": "staticText",
+   "axClass": "UIAccessibilityElement",
+   "label": "コントロール",
+   "depth": 11
+  },
+  {
+   "ref": 30,
+   "enabled": true,
+   "identifier": "tab_about",
+   "frame": {
+    "height": 48,
+    "x": 268,
+    "y": 792,
+    "width": 134
+   },
+   "type": "button",
+   "axClass": "UIAccessibilityElement",
+   "label": "情報",
+   "depth": 10
+  },
+  {
+   "ref": 31,
+   "enabled": true,
+   "frame": {
+    "height": 20.33331298828125,
+    "x": 321,
+    "y": 806,
+    "width": 28.333343505859375
+   },
+   "type": "staticText",
+   "axClass": "UIAccessibilityElement",
+   "label": "情報",
+   "depth": 11
+  }
+ ]
+}

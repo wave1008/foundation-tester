@@ -1,0 +1,761 @@
+{
+ "screen": {
+  "y": 0,
+  "width": 402,
+  "x": 0,
+  "height": 874
+ },
+ "truncatedCount": 0,
+ "note": "snapshot taken before the screen settled (budget)",
+ "sessionBundleID": "com.apple.Preferences",
+ "elements": [
+  {
+   "enabled": true,
+   "type": "navigationBar",
+   "identifier": "設定",
+   "frame": {
+    "height": 106,
+    "width": 402,
+    "y": 62,
+    "x": 0
+   },
+   "ref": 1,
+   "depth": 11,
+   "axClass": "UINavigationBar"
+  },
+  {
+   "enabled": true,
+   "type": "staticText",
+   "frame": {
+    "height": 40.66666666666667,
+    "width": 63.66666666666667,
+    "y": 119.66666666666667,
+    "x": 16.000000000000004
+   },
+   "label": "設定",
+   "ref": 2,
+   "depth": 12,
+   "axClass": "UILabel"
+  },
+  {
+   "type": "collectionView",
+   "enabled": true,
+   "identifier": "com.apple.settings.sidebar.collectionView",
+   "frame": {
+    "height": 874,
+    "x": 0,
+    "y": 0,
+    "width": 402
+   },
+   "ref": 3,
+   "depth": 15,
+   "axClass": "UICollectionView",
+   "scrollable": true
+  },
+  {
+   "axClass": "UICollectionViewListCell",
+   "ref": 4,
+   "type": "clickable",
+   "enabled": true,
+   "frame": {
+    "height": 108.33333333333331,
+    "x": 16,
+    "y": 168,
+    "width": 370
+   },
+   "depth": 16
+  },
+  {
+   "type": "button",
+   "enabled": true,
+   "identifier": "com.apple.settings.primaryAppleAccount",
+   "frame": {
+    "y": 168,
+    "width": 370,
+    "height": 108.33333333333331,
+    "x": 16
+   },
+   "label": "Apple Account、iCloudデータ、App Store、Appleのサービス、およびその他にアクセスするにはサインインします。",
+   "ref": 5,
+   "depth": 20,
+   "axClass": "NSObject"
+  },
+  {
+   "type": "staticText",
+   "enabled": true,
+   "frame": {
+    "y": 183,
+    "width": 138.33333333333331,
+    "height": 24,
+    "x": 100
+   },
+   "label": "Apple Account",
+   "ref": 6,
+   "depth": 21,
+   "axClass": "NSObject"
+  },
+  {
+   "type": "image",
+   "enabled": true,
+   "identifier": "apple.id",
+   "frame": {
+    "y": 192.33333333333334,
+    "width": 60,
+    "height": 59.99999999999997,
+    "x": 32
+   },
+   "label": "apple.id",
+   "ref": 7,
+   "depth": 21,
+   "axClass": "NSObject"
+  },
+  {
+   "ref": 8,
+   "type": "staticText",
+   "label": "iCloudデータ、App Store、Appleのサービス、およびその他にアクセスするにはサインインします。",
+   "frame": {
+    "y": 209.66666666666666,
+    "width": 245,
+    "height": 51.66666666666666,
+    "x": 100
+   },
+   "depth": 21,
+   "axClass": "NSObject",
+   "enabled": true
+  },
+  {
+   "ref": 9,
+   "type": "image",
+   "depth": 21,
+   "frame": {
+    "y": 216.33333333333331,
+    "width": 7,
+    "height": 12,
+    "x": 360.6666666666667
+   },
+   "axClass": "NSObject",
+   "identifier": "chevron.forward",
+   "enabled": true
+  },
+  {
+   "axClass": "UICollectionViewListCell",
+   "ref": 10,
+   "type": "clickable",
+   "enabled": true,
+   "frame": {
+    "y": 311.33333333333337,
+    "width": 370,
+    "height": 52.333333333333314,
+    "x": 16
+   },
+   "depth": 16
+  },
+  {
+   "ref": 11,
+   "type": "button",
+   "label": "検索とSiriを最適化中",
+   "frame": {
+    "x": 16,
+    "width": 370,
+    "height": 52.333333333333314,
+    "y": 311.33333333333337
+   },
+   "depth": 20,
+   "axClass": "NSObject",
+   "identifier": "com.apple.settings.spotlightIndexingProgress",
+   "enabled": true
+  },
+  {
+   "ref": 12,
+   "type": "staticText",
+   "label": "検索とSiriを最適化中",
+   "frame": {
+    "x": 30,
+    "width": 197.6666717529297,
+    "height": 28,
+    "y": 323.6666564941406
+   },
+   "depth": 21,
+   "axClass": "NSObject",
+   "enabled": true
+  },
+  {
+   "ref": 13,
+   "type": "image",
+   "depth": 21,
+   "frame": {
+    "x": 360.6666666666667,
+    "width": 7,
+    "height": 11.999999999999943,
+    "y": 331.66666666666674
+   },
+   "axClass": "NSObject",
+   "identifier": "chevron.forward",
+   "enabled": true
+  },
+  {
+   "axClass": "UICollectionViewListCell",
+   "ref": 14,
+   "type": "clickable",
+   "enabled": true,
+   "frame": {
+    "x": 16,
+    "width": 370,
+    "height": 52.333333333333314,
+    "y": 398.66666666666663
+   },
+   "depth": 16
+  },
+  {
+   "ref": 15,
+   "type": "button",
+   "label": "一般",
+   "frame": {
+    "y": 398.66666666666663,
+    "x": 16,
+    "width": 370,
+    "height": 52.333333333333314
+   },
+   "depth": 20,
+   "axClass": "NSObject",
+   "identifier": "com.apple.settings.general",
+   "enabled": true
+  },
+  {
+   "ref": 16,
+   "type": "staticText",
+   "label": "一般",
+   "frame": {
+    "y": 411,
+    "x": 30,
+    "width": 74,
+    "height": 28
+   },
+   "depth": 21,
+   "axClass": "NSObject",
+   "enabled": true
+  },
+  {
+   "ref": 17,
+   "type": "image",
+   "depth": 21,
+   "frame": {
+    "y": 419,
+    "x": 360.6666666666667,
+    "width": 7,
+    "height": 11.999999999999943
+   },
+   "axClass": "NSObject",
+   "identifier": "chevron.forward",
+   "enabled": true
+  },
+  {
+   "axClass": "UICollectionViewListCell",
+   "ref": 18,
+   "type": "clickable",
+   "enabled": true,
+   "frame": {
+    "y": 451,
+    "x": 16,
+    "width": 370,
+    "height": 52.333333333333314
+   },
+   "depth": 16
+  },
+  {
+   "ref": 19,
+   "type": "button",
+   "label": "アクセシビリティ",
+   "frame": {
+    "height": 52.333333333333314,
+    "x": 16,
+    "y": 451,
+    "width": 370
+   },
+   "depth": 20,
+   "axClass": "NSObject",
+   "identifier": "com.apple.settings.accessibility",
+   "enabled": true
+  },
+  {
+   "ref": 20,
+   "type": "staticText",
+   "label": "アクセシビリティ",
+   "frame": {
+    "height": 28,
+    "x": 30,
+    "y": 463.3333435058594,
+    "width": 169.33334350585938
+   },
+   "depth": 21,
+   "axClass": "NSObject",
+   "enabled": true
+  },
+  {
+   "ref": 21,
+   "type": "image",
+   "depth": 21,
+   "frame": {
+    "height": 12,
+    "x": 360.6666666666667,
+    "y": 471.3333333333333,
+    "width": 7
+   },
+   "axClass": "NSObject",
+   "identifier": "chevron.forward",
+   "enabled": true
+  },
+  {
+   "axClass": "UICollectionViewListCell",
+   "ref": 22,
+   "type": "clickable",
+   "enabled": true,
+   "frame": {
+    "height": 52.333333333333314,
+    "x": 16,
+    "y": 503.3333333333333,
+    "width": 370
+   },
+   "depth": 16
+  },
+  {
+   "ref": 23,
+   "type": "button",
+   "label": "Siri",
+   "frame": {
+    "y": 503.3333333333333,
+    "height": 52.333333333333314,
+    "x": 16,
+    "width": 370
+   },
+   "depth": 20,
+   "axClass": "NSObject",
+   "identifier": "com.apple.settings.siri",
+   "enabled": true
+  },
+  {
+   "ref": 24,
+   "type": "staticText",
+   "label": "Siri",
+   "frame": {
+    "y": 515.6666870117188,
+    "height": 28,
+    "x": 30,
+    "width": 66
+   },
+   "depth": 21,
+   "axClass": "NSObject",
+   "enabled": true
+  },
+  {
+   "ref": 25,
+   "type": "image",
+   "depth": 21,
+   "frame": {
+    "y": 523.6666666666666,
+    "height": 12,
+    "x": 360.6666666666667,
+    "width": 7
+   },
+   "axClass": "NSObject",
+   "identifier": "chevron.forward",
+   "enabled": true
+  },
+  {
+   "axClass": "UICollectionViewListCell",
+   "ref": 26,
+   "type": "clickable",
+   "enabled": true,
+   "frame": {
+    "y": 555.6666666666667,
+    "height": 52.33333333333337,
+    "x": 16,
+    "width": 370
+   },
+   "depth": 16
+  },
+  {
+   "ref": 27,
+   "type": "button",
+   "label": "アクションボタン",
+   "frame": {
+    "y": 555.6666666666667,
+    "x": 16,
+    "height": 52.33333333333337,
+    "width": 370
+   },
+   "depth": 20,
+   "axClass": "NSObject",
+   "identifier": "com.apple.settings.actionButton",
+   "enabled": true
+  },
+  {
+   "ref": 28,
+   "type": "staticText",
+   "label": "アクションボタン",
+   "frame": {
+    "y": 568,
+    "x": 30,
+    "height": 28,
+    "width": 169.33334350585938
+   },
+   "depth": 21,
+   "axClass": "NSObject",
+   "enabled": true
+  },
+  {
+   "ref": 29,
+   "type": "image",
+   "depth": 21,
+   "frame": {
+    "y": 576,
+    "x": 360.6666666666667,
+    "height": 12,
+    "width": 7
+   },
+   "axClass": "NSObject",
+   "identifier": "chevron.forward",
+   "enabled": true
+  },
+  {
+   "axClass": "UICollectionViewListCell",
+   "ref": 30,
+   "type": "clickable",
+   "enabled": true,
+   "frame": {
+    "y": 608,
+    "x": 16,
+    "height": 52.33333333333337,
+    "width": 370
+   },
+   "depth": 16
+  },
+  {
+   "ref": 31,
+   "type": "button",
+   "label": "カメラ",
+   "frame": {
+    "y": 608,
+    "x": 16,
+    "height": 52.33333333333337,
+    "width": 370
+   },
+   "depth": 20,
+   "axClass": "NSObject",
+   "identifier": "com.apple.settings.camera",
+   "enabled": true
+  },
+  {
+   "ref": 32,
+   "label": "カメラ",
+   "type": "staticText",
+   "frame": {
+    "x": 30,
+    "width": 90,
+    "height": 28,
+    "y": 620.3333129882812
+   },
+   "depth": 21,
+   "axClass": "NSObject",
+   "enabled": true
+  },
+  {
+   "ref": 33,
+   "type": "image",
+   "depth": 21,
+   "frame": {
+    "x": 360.6666666666667,
+    "width": 7,
+    "height": 12,
+    "y": 628.3333333333333
+   },
+   "axClass": "NSObject",
+   "enabled": true,
+   "identifier": "chevron.forward"
+  },
+  {
+   "enabled": true,
+   "frame": {
+    "x": 16,
+    "width": 370,
+    "height": 52.33333333333337,
+    "y": 660.3333333333333
+   },
+   "axClass": "UICollectionViewListCell",
+   "type": "clickable",
+   "depth": 16,
+   "ref": 34
+  },
+  {
+   "ref": 35,
+   "label": "スタンバイ",
+   "type": "button",
+   "frame": {
+    "height": 52.33333333333337,
+    "x": 16,
+    "width": 370,
+    "y": 660.3333333333333
+   },
+   "depth": 20,
+   "axClass": "NSObject",
+   "enabled": true,
+   "identifier": "com.apple.settings.standBy"
+  },
+  {
+   "ref": 36,
+   "enabled": true,
+   "frame": {
+    "height": 28,
+    "x": 30,
+    "width": 121.66665649414062,
+    "y": 672.6666870117188
+   },
+   "type": "staticText",
+   "axClass": "NSObject",
+   "label": "スタンバイ",
+   "depth": 21
+  },
+  {
+   "ref": 37,
+   "enabled": true,
+   "frame": {
+    "height": 12,
+    "x": 360.6666666666667,
+    "width": 7,
+    "y": 680.6666666666666
+   },
+   "identifier": "chevron.forward",
+   "type": "image",
+   "axClass": "NSObject",
+   "depth": 21
+  },
+  {
+   "enabled": true,
+   "frame": {
+    "height": 52.33333333333337,
+    "x": 16,
+    "width": 370,
+    "y": 712.6666666666666
+   },
+   "axClass": "UICollectionViewListCell",
+   "type": "clickable",
+   "depth": 16,
+   "ref": 38
+  },
+  {
+   "ref": 39,
+   "enabled": true,
+   "frame": {
+    "x": 16,
+    "height": 52.33333333333337,
+    "width": 370,
+    "y": 712.6666666666666
+   },
+   "identifier": "com.apple.settings.homeScreen",
+   "type": "button",
+   "axClass": "NSObject",
+   "label": "ホーム画面とアプリライブラリ",
+   "depth": 20
+  },
+  {
+   "ref": 40,
+   "enabled": true,
+   "frame": {
+    "x": 30,
+    "height": 28,
+    "width": 264.66668701171875,
+    "y": 725
+   },
+   "type": "staticText",
+   "axClass": "NSObject",
+   "label": "ホーム画面とアプリライブラリ",
+   "depth": 21
+  },
+  {
+   "ref": 41,
+   "enabled": true,
+   "frame": {
+    "x": 360.6666666666667,
+    "height": 12,
+    "width": 7,
+    "y": 733
+   },
+   "identifier": "chevron.forward",
+   "type": "image",
+   "axClass": "NSObject",
+   "depth": 21
+  },
+  {
+   "enabled": true,
+   "frame": {
+    "x": 16,
+    "height": 52.33333333333337,
+    "width": 370,
+    "y": 765
+   },
+   "axClass": "UICollectionViewListCell",
+   "type": "clickable",
+   "depth": 16,
+   "ref": 42
+  },
+  {
+   "ref": 43,
+   "enabled": true,
+   "frame": {
+    "x": 16,
+    "y": 765,
+    "width": 370,
+    "height": 52.33333333333337
+   },
+   "identifier": "com.apple.settings.appearance",
+   "type": "button",
+   "axClass": "NSObject",
+   "label": "外観",
+   "depth": 20
+  },
+  {
+   "ref": 44,
+   "enabled": true,
+   "frame": {
+    "x": 30,
+    "y": 777.3333129882812,
+    "width": 74,
+    "height": 28
+   },
+   "type": "staticText",
+   "axClass": "NSObject",
+   "label": "外観",
+   "depth": 21
+  },
+  {
+   "ref": 45,
+   "enabled": true,
+   "frame": {
+    "x": 360.6666666666667,
+    "y": 785.3333333333334,
+    "width": 7,
+    "height": 12
+   },
+   "identifier": "chevron.forward",
+   "type": "image",
+   "axClass": "NSObject",
+   "depth": 21
+  },
+  {
+   "enabled": true,
+   "frame": {
+    "x": 16,
+    "y": 817.3333333333334,
+    "width": 370,
+    "height": 52.33333333333337
+   },
+   "axClass": "UICollectionViewListCell",
+   "type": "clickable",
+   "depth": 16,
+   "ref": 46
+  },
+  {
+   "ref": 47,
+   "enabled": true,
+   "frame": {
+    "width": 370,
+    "y": 817.3333333333334,
+    "x": 16,
+    "height": 52.33333333333337
+   },
+   "identifier": "com.apple.settings.search",
+   "type": "button",
+   "axClass": "NSObject",
+   "label": "検索",
+   "depth": 20
+  },
+  {
+   "ref": 48,
+   "enabled": true,
+   "frame": {
+    "width": 74,
+    "y": 829.6666870117188,
+    "x": 30,
+    "height": 28
+   },
+   "type": "staticText",
+   "axClass": "NSObject",
+   "label": "検索",
+   "depth": 21
+  },
+  {
+   "ref": 49,
+   "enabled": true,
+   "frame": {
+    "width": 7,
+    "y": 837.6666666666667,
+    "x": 360.6666666666667,
+    "height": 12
+   },
+   "identifier": "chevron.forward",
+   "type": "image",
+   "axClass": "NSObject",
+   "depth": 21
+  },
+  {
+   "ref": 50,
+   "enabled": true,
+   "frame": {
+    "width": 402,
+    "y": 0,
+    "x": 0,
+    "height": 874
+   },
+   "identifier": "Toolbar",
+   "type": "toolbar",
+   "axClass": "_UIFloatingBarContainerView",
+   "label": "ツールバー",
+   "depth": 11
+  },
+  {
+   "ref": 51,
+   "depth": 19,
+   "enabled": true,
+   "frame": {
+    "width": 346,
+    "y": 808,
+    "x": 28,
+    "height": 28
+   },
+   "type": "searchField",
+   "axClass": "UISearchBarTextField",
+   "label": "検索",
+   "placeholder": "検索"
+  },
+  {
+   "ref": 52,
+   "enabled": true,
+   "frame": {
+    "width": 17.333333333333314,
+    "y": 811,
+    "x": 341.6666666666667,
+    "height": 22
+   },
+   "identifier": "Dictate",
+   "type": "button",
+   "axClass": "UIDictationSearchButton",
+   "label": "音声入力",
+   "depth": 20
+  },
+  {
+   "ref": 53,
+   "enabled": true,
+   "frame": {
+    "width": 20.66666666666667,
+    "y": 812,
+    "x": 40,
+    "height": 19.33333333333337
+   },
+   "identifier": "magnifyingglass",
+   "type": "image",
+   "axClass": "UIImageView",
+   "label": "検索",
+   "depth": 20
+  }
+ ]
+}

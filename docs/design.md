@@ -2163,7 +2163,11 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   `Frameworks/Flutter.framework`、Compose は実行ファイル(デバッグは `<exe>.debug.dylib`)の中の
   クラス名 `SkikoUIView` —— `compose-resources` フォルダはリソースを使わないアプリに無い)へ落とし、
   判定できたら **bundle ID ごとの台帳**(`AppFrameworkLedger` = `~/.fleetest/app-frameworks/`)に
-  覚える。材料が無いときは台帳、それも無ければ nil = **不明なら打たない**(2026-09-12 に反転):
+  覚える。材料が無いときは台帳、それも無ければ **掴んだ要素のクラス名**(第3段。`AccessibilityClassHint` =
+  XCUITest ランナーが XCTest の非公開辞書 `additionalAttributes[5004]` から `ElementInfo.axClass` に載せる。
+  Compose / Flutter の要素は `UIAccessibilityElement` = ビューを持たずホストが自前でタッチを処理する側、
+  RN は `UIView`・SwiftUI は `NSObject`・UIKit は実クラス名。根の走査に付いてくるので追加の往復は無い。
+  UIKit の実アプリにも少数出る(地図 6/111)ので判定は掴んだ要素単位)、それも無ければ nil = **不明なら打たない**(2026-09-12 に反転):
   打って外れると UIKit / SwiftUI / RN の行が押されてアプリの状態が黙って変わる(物理 iPhone 13 で
   `ft_scroll_to` が診断画面を開いた)が、打たずに外れるとタップが吸われて失敗として見える。
   不明になるのは材料も台帳も無い**物理 iPhone だけ**(端末に入ったアプリの中身は devicectl でも
