@@ -472,8 +472,7 @@ extension StepExecutor {
               systemAlertWatchlist.isWatching, let fb = fallbackDriver else { return status }
         let clock = ContinuousClock()
         var start = clock.now
-        var probe = try? await fb.systemAlert()
-        phase.snapshotMs += Self.ms(clock.now - start)
+        var probe = await probeSystemAlert(fb, phase: &phase)
         guard SystemUIGate.isCovered(probe) else { return status }
 
         // **登録があるなら、まず閉じてみる**。照合せずに失敗へ落とすと、失敗メッセージの
@@ -489,9 +488,7 @@ extension StepExecutor {
             guard await dismissSystemAlert(in: fsnap, via: fb) != nil else { break }
             dismissedAny = true
             noteCodesThisStep.insert(.waitedForSystemUI)
-            start = clock.now
-            probe = try? await fb.systemAlert()
-            phase.snapshotMs += Self.ms(clock.now - start)
+            probe = await probeSystemAlert(fb, phase: &phase)
             if let read = probe?.buttons, !read.isEmpty { actualButtons = read }
         }
         // **覆いの下で出した緑は捨てて判定し直す**: 人手には見えていない画面で下した判定は

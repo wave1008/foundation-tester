@@ -3611,7 +3611,9 @@ targeting = bundletool にしか決められない。feature module を足した
 - ライブ映像は実機だけ **`fleetest-devicepoll`**(スクショのポーリング → MJPEG)を使う。
   `fleetest-simstream` は CoreSimulator 私有 API で iOS 実機に使えず、`fleetest-androidstream`
   (screenrecord)は Android 実機だと静止画面でフレームが流れないため(詳細 docs/verification.md)
-- 実機で成立しない機能は静かに無効化される: iOS の録画(`simctl io recordVideo`)、
+- 実機で成立しない機能は無効化される: iOS の録画(`simctl io recordVideo`。**`record: true` を
+  指定した run はワーカー起動時に名指しで警告し、`recordings/index.json` の `sourcesFailed` に数える**
+  = 黙って録らない形にしない。判定は `VideoRecordingCoordinator.unrecordableReason` の1箇所)、
   Reduce Motion 自動設定、autoInstall の差分スキップ(コンテナを読めないため毎回インストール)。
   Android 実機は録画(`adb screenrecord`)も従来どおり動く
 - `model` / `os` は実機では**表示専用**(登録時に控えるだけで同定には使わない。端末を挿し替えても

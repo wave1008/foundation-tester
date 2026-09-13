@@ -66,6 +66,17 @@ extension MCPServer {
         // **ref の出自がアプリを跨いでいないか**(verifiedRef と同じガード。理由はあちらの doc)
         if resolved != nil, let message = Self.refFromAnotherAppMessage(
             ref: ref, takenFrom: takenFrom, fresh: fresh) { throw MCPError(message) }
+        // **アラートの前面では断る**(`verifiedRef` と同じ門。ここを通る double_tap / drag / pinch だけが
+        // 門の外に居て、XCTest が「許可しない」を押して done と返していた —— 実機 SE3 で実測)
+        let key = Self.engineKey(args)
+        var gateNote = ""
+        if launchedBundleIDs[key] != "com.apple.springboard",
+           let described = resolved?.element ?? fresh.elements.first(where: { $0.ref == ref }) {
+            switch await Self.systemAlertGate(described, driver: driver, engine: engines[key]) {
+            case .refuse(let refusal): throw MCPError(refusal)
+            case .proceed(let note): gateNote = note
+            }
+        }
         guard let target = resolved?.element else {
             // 世代が無かった(ft_snapshot を挟まずに撃たれた)= 撮ったばかりの木から素直に引く。
             // 世代があったのに見つからない(= 直近5世代のどれにも無い番号)なら unknown ref
@@ -77,16 +88,16 @@ extension MCPServer {
             guard let element = fresh.elements.first(where: { $0.ref == ref }) else {
                 throw MCPError("unknown ref [\(ref)]. Take an ft_snapshot first")
             }
-            return (element, "")
+            return (element, gateNote)
         }
         switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
         case .gone:
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
                                                 truncatedCount: fresh.truncatedCount))
         case .ghost(let found):
-            return (found, "")
+            return (found, gateNote)
         case .found(let found, _):
-            return (found, RefGuard.labelChangeNote(old: target.label, new: found.label) ?? "")
+            return (found, gateNote + (RefGuard.labelChangeNote(old: target.label, new: found.label) ?? ""))
         }
     }
 
@@ -1058,8 +1069,11 @@ extension MCPServer {
             }
             recordSnapshot(rotated, rotateDriver is AndroidDriver ? "android" : "ios", args)
             // **portrait へ戻したときだけ auto-rotate を復元する**(Android は rotate(to:) の
-            // 初回呼び出しで user_rotation / accelerometer_rotation を控え、restoreOrientationIfNeeded
-            // が戻す。landscape のままなら控えを保つ = 次に portrait へ戻すまで端末の設定はそのまま)。
+            // 初回呼び出しで user_rotation / accelerometer_rotation を控える。landscape のままなら
+            // 控えを保つ = 次に portrait へ戻すまで端末の設定はそのまま)。
+            // **戻すのは元が auto-rotate だったときだけ**(`restoreAutoRotateIfItWasOn`)—— 元から
+            // 横に固定されていた端末で `restoreOrientationIfNeeded` を呼ぶと、明示された portrait を
+            // 横へ取り消しながら縦の木を返していた(Pixel 3a・§19 R1)。
             // driver は `drivers[key]` にキャッシュされ同じインスタンスを使い続けるので控えは生きる ——
             // 接続が切れて再生成されたときだけ戻せない(その場合は次に立ち上げた側の責任)。
             //
@@ -1071,9 +1085,17 @@ extension MCPServer {
             // その場で(rotate 前の向きが landscape なら)横へ戻ってしまう ——
             // 利用者が明示した向きを、この経路が黙って取り消していた
             var autoRotateCaveat = ""
-            if settled == .portrait, rotateDriver is AndroidDriver {
-                try await rotateDriver.restoreOrientationIfNeeded()
-                autoRotateCaveat = " Auto-rotate was restored to the device's own setting."
+            if settled == .portrait, let android = rotateDriver as? AndroidDriver {
+                switch try await android.restoreAutoRotateIfItWasOn() {
+                case .restored:
+                    autoRotateCaveat = " Auto-rotate was restored to the device's own setting."
+                case .keptExplicitLock:
+                    autoRotateCaveat = " The device had its orientation locked before this session,"
+                        + " so the lock now holds portrait (the earlier lock was not put back —"
+                        + " it would have undone this rotation)."
+                case .nothingToRestore:
+                    break
+                }
             }
             // **未settleを「もう終わった」と嘘をつかない** —— waitForChange の
             // still-changing 注記と同じ立て付け(MCPServer+Snapshot.swift)

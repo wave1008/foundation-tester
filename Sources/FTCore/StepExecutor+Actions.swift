@@ -2022,8 +2022,7 @@ extension StepExecutor {
         guard systemAlertWatchlist.isWatching, let fb = fallbackDriver else { return nil }
         let clock = ContinuousClock()
         var start = clock.now
-        var probe = try? await fb.systemAlert()
-        phase.snapshotMs += Self.ms(clock.now - start)
+        var probe = await probeSystemAlert(fb, phase: &phase)
         guard SystemUIGate.isCovered(probe) else { return nil }
 
         let deadline = clock.now.advanced(by: .seconds(step.timeout ?? FlowStep.defaultWaitSeconds))
@@ -2052,9 +2051,7 @@ extension StepExecutor {
             //    2枚目に覆われたまま撃つことになる
             if await dismissSystemAlert(in: fsnap, via: fb) != nil {
                 noteCodesThisStep.insert(.waitedForSystemUI)
-                start = clock.now
-                probe = try? await fb.systemAlert()
-                phase.snapshotMs += Self.ms(clock.now - start)
+                probe = await probeSystemAlert(fb, phase: &phase)
                 covering = SystemUIGate.describeCovering(probe) ?? covering
                 if let read = probe?.buttons, !read.isEmpty { actualButtons = read }
                 if !SystemUIGate.isCovered(probe) { return nil }
@@ -2064,9 +2061,7 @@ extension StepExecutor {
             start = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - start)
-            start = clock.now
-            probe = try? await fb.systemAlert()
-            phase.snapshotMs += Self.ms(clock.now - start)
+            probe = await probeSystemAlert(fb, phase: &phase)
             covering = SystemUIGate.describeCovering(probe) ?? covering
             if let read = probe?.buttons, !read.isEmpty { actualButtons = read }
             if !SystemUIGate.isCovered(probe) {

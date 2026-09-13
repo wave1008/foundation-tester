@@ -322,10 +322,7 @@ public final class StepExecutor {
     /// **操作は止めない**(閉じるのはシナリオの責務。新しい検知は警告から)
     func unregisteredSystemAlert(phase: inout PhaseAccumulator) async -> SystemAlertProbeResponse? {
         guard !systemAlertWatchlist.isWatching, let fb = fallbackDriver else { return nil }
-        let clock = ContinuousClock()
-        let start = clock.now
-        let probe = try? await fb.systemAlert()
-        phase.snapshotMs += Self.ms(clock.now - start)
+        let probe = await probeSystemAlert(fb, phase: &phase)
         guard SystemUIGate.isCovered(probe) else { return nil }
         noteCodesThisStep.insert(.systemAlertPresent)
         return probe
@@ -336,12 +333,43 @@ public final class StepExecutor {
     func annotatedWithSystemAlert(_ status: StepResult.Status,
                                   phase: inout PhaseAccumulator) async -> StepResult.Status {
         guard case .failed(let message) = status else { return status }
-        guard let probe = await unregisteredSystemAlert(phase: &phase) else { return status }
+        guard let probe = await unregisteredSystemAlert(phase: &phase) else {
+            // 照会が落ちていたら「アラートは無かった」とは言えない —— 確かめられなかったことを添える
+            // (登録がある回は waitOutSystemUI / 検証の門で落ちたぶんが残っている)
+            guard let reason = systemAlertProbeFailure else { return status }
+            return .failed(message + " — " + Self.systemAlertProbeFailedAdvice(reason))
+        }
         let advice = SystemUIGate.unregisteredAdvice(SystemUIGate.describeUnregistered(probe),
                                                       title: probe.title,
                                                       currentAppDisplayName: expectedAppDisplayName)
         return .failed(message + " — " + advice)
     }
+    /// SpringBoard への1問(`GET /systemalert`)の**唯一の口**。**失敗は「アラート無し」ではない** ——
+    /// nil を返して呼び手を「覆われていない」側へ倒すが、注記 `.systemAlertProbeFailed` と理由を残す
+    /// (P2: 登録があるのに照会が落ちると、吸われた操作が注記なしの緑になっていた。実機 SE3)。
+    /// MCP 側の同じ規律は `MCPServer.systemAlertGate`
+    func probeSystemAlert(_ fb: AppDriver, phase: inout PhaseAccumulator) async -> SystemAlertProbeResponse? {
+        let clock = ContinuousClock()
+        let start = clock.now
+        defer { phase.snapshotMs += Self.ms(clock.now - start) }
+        do {
+            return try await fb.systemAlert()
+        } catch {
+            noteCodesThisStep.insert(.systemAlertProbeFailed)
+            systemAlertProbeFailure = error.localizedDescription
+            return nil
+        }
+    }
+
+    /// このステップで照会が落ちた理由(ステップの入口で nil に戻す)。失敗の文言に添える
+    var systemAlertProbeFailure: String?
+
+    static func systemAlertProbeFailedAdvice(_ reason: String) -> String {
+        "the check for a system alert in front of the app failed (\(reason)), so an alert could"
+            + " not be ruled out as the cause; check the bridge (token / LAN) before reading this"
+            + " as a scenario failure"
+    }
+
     /// hybrid 用: type アクションを XCUITest(アプリ attach)で実行する代替ドライバ。inapp が
     /// UIKit 非依存アプリ(Compose 等)で type 不能(409)なときの経路。fallbackDriver(springboard
     /// 参照・システム UI 用)とは別物。
@@ -623,6 +651,7 @@ public final class StepExecutor {
         failureKindThisStep = nil
         elementLimitCeilingLatchedThisStep = false
         systemAlertAdvisoryThisStep = nil
+        systemAlertProbeFailure = nil
         do {
             if let action = step.action {
                 let outcome = try await executeAction(action, step: step, cached: cached,

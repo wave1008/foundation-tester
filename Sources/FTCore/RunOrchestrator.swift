@@ -1164,6 +1164,13 @@ public final class RunOrchestrator {
             await runLeases.acquire(leaseKey)
         }
 
+        // **録れない台(物理 iPhone)は run の頭で名指しして警告する**(`record: true` を指定したのに
+        // 黙って効かない形を作らない。判定は VideoRecordingCoordinator.unrecordableReason の1箇所)
+        if videoRecording != nil,
+           let reason = VideoRecordingCoordinator.unrecordableReason(platform: worker.platform,
+                                                                     connection: worker.connection) {
+            continuation.yield(.workerLog(worker: worker.label, message: reason))
+        }
         // 録画プロセスの起動に成功したときだけ RecordingLease を書く(record:false・adb/udid 不明・
         // プロセス spawn 失敗はいずれも false を返し、lease は書かれない)
         if await videoRecording?.start(worker) == true {

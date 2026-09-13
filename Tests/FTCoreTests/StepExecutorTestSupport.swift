@@ -60,9 +60,13 @@ final class FakeAppDriver: AppDriver {
     var systemAlertFrames: [SystemAlertProbeResponse]?
     private(set) var systemAlertCallCount = 0
 
+    /// 非 nil なら `GET /systemalert` が落ちる(USB の token 無し・待ち受け断の擬似)
+    var systemAlertError: Error?
+
     func systemAlert() async throws -> SystemAlertProbeResponse? {
         systemAlertCallCount += 1
         log.entries.append("\(name).systemAlert")
+        if let systemAlertError { throw systemAlertError }
         guard let frames = systemAlertFrames, !frames.isEmpty else { return nil }
         return frames[min(systemAlertCallCount - 1, frames.count - 1)]
     }

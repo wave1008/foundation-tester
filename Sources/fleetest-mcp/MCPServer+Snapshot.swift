@@ -753,7 +753,7 @@ extension MCPServer {
     /// (静止画面の上に Control Center が出た/消えた、等)は、次に木そのものが変わるまで
     /// 再確認しない。見逃しの範囲はそこまでに限られる —— 木が動けば必ず撮り直す
     ///
-    /// **アラートはここで聞かない**(`verifiedRef` が毎回聞いて断る。`systemAlertTapRefusal` 参照)
+    /// **アラートはここで聞かない**(`verifiedRef` / `verifiedElement` が毎回聞いて断る。`systemAlertGate` 参照)
     func memoizedScreenProbe(_ found: ElementInfo, fresh: SnapshotResponse,
                              driver: AppDriver, args: [String: Any]) async -> String {
         let key = Self.engineKey(args)
@@ -778,7 +778,7 @@ extension MCPServer {
     /// (NoteCoverageTests.testSnapshotBodyEmitsOnlyCatalogNotes がこの形を許容している)。
     ///
     /// **呼び出し元が2つ**: `snapshotBody` は `systemAlertProbePending` が立っているときだけ
-    /// (launch 直後の1回)、ref 操作の経路は `systemAlertTapRefusal` として毎回
+    /// (launch 直後の1回)、ref 操作の経路は `systemAlertGate` として毎回
     /// (費用は MCP の ref 操作だけ)。答えられない(旧ブリッジ・Android。hybrid は XCUITest 側へ
     /// 聞く)/ 出ていないときは黙る
     static func systemAlertNote(driver: AppDriver) async -> String {
@@ -789,15 +789,37 @@ extension MCPServer {
     }
 
     /// **システムアラートが前面にある間、ref の操作は断る**(ref 操作 = ft_tap / ft_type / ft_clear_input /
-    /// ft_long_press / ft_batch の1手目。どれも `verifiedRef` を通る)。警告にとどめないのは、
+    /// ft_long_press / ft_batch の1手目 = `verifiedRef`、ft_double_tap / ft_drag / ft_pinch = `verifiedElement`。
+    /// **ref を座標に畳む経路も同じ門を通す** —— 畳んだ先は座標の操作だが、ref で指した以上アラートの
+    /// 下のアプリの要素が狙いなので、座標形の「アラートそのものを叩く正当な操作」には当たらない)。警告にとどめないのは、
     /// どちらのエンジンでも操作が届き、起きることが取り返しにくいため(実測):
     /// in-app はアプリのプロセス内で activate / 合成タッチを撃つのでアラートを残したまま背面のアプリが反応し、
     /// XCUITest は XCTest 自身の割り込み処理がアラートのボタン(拒否側)を押してから通すので権限を黙って変える。
     /// **断らないもの**: 座標の操作(XCUITest ではアラートそのものに当たる正当な操作)・DSL(`SystemUIGate` の
     /// 2段の規律が別にある)。SpringBoard に attach している間は呼び手が呼ばない(アラートのボタンを押す経路)
-    static func systemAlertTapRefusal(_ target: ElementInfo, driver: AppDriver,
-                                      engine: String?) async -> String? {
-        guard let what = await frontSystemAlert(driver: driver) else { return nil }
+    ///
+    /// **照会そのものが失敗したら断らずに撃つが、確かめていないことを注記に残す**(`.proceed(note:)`)。
+    /// 失敗を「出ていない」と同じ nil に畳むと、USB の token 無し・WiFi の待ち受け断・ランナーの死亡で
+    /// 門が黙って開く(P2 と同型。DSL は `StepExecutor.probeSystemAlert` が同じ規律で注記を立てる)
+    enum SystemAlertGate {
+        case refuse(String)
+        /// note は空か " note: …"(`verifiedRef` の staleNote と同じ形 = 先頭に空白・末尾に余白なし)
+        case proceed(note: String)
+    }
+
+    static func systemAlertGate(_ target: ElementInfo, driver: AppDriver,
+                                engine: String?) async -> SystemAlertGate {
+        let probe: SystemAlertProbeResponse?
+        do {
+            probe = try await driver.systemAlert()
+        } catch {
+            return .proceed(note: " note: the system-alert check before acting on"
+                + " \(RefGuard.describe(target)) failed (\(error.localizedDescription)), so the"
+                + " action went ahead without knowing whether an alert was in front of the app —"
+                + " if the screen did not respond, check for an alert with"
+                + " `ft_launch bundleId: com.apple.springboard`.")
+        }
+        guard let what = Self.describeFrontSystemAlert(probe) else { return .proceed(note: "") }
         let consequence: String
         switch engine {
         case "inapp", "hybrid":
@@ -809,8 +831,8 @@ extension MCPServer {
         default:
             consequence = "what the tool would do to the alert depends on the engine"
         }
-        return "refusing to act on \(RefGuard.describe(target)): \(what) is in front of the app,"
-            + " so a finger would land on the alert — \(consequence). \(handleAlertFirst)."
+        return .refuse("refusing to act on \(RefGuard.describe(target)): \(what) is in front of the app,"
+            + " so a finger would land on the alert — \(consequence). \(handleAlertFirst).")
     }
 
     private static let handleAlertFirst = "Handle the alert first: read it with"
@@ -818,8 +840,11 @@ extension MCPServer {
         + " then `ft_launch` your app again"
 
     private static func frontSystemAlert(driver: AppDriver) async -> String? {
-        guard let probe = try? await driver.systemAlert(), SystemUIGate.isCovered(probe)
-        else { return nil }
+        describeFrontSystemAlert(try? await driver.systemAlert())
+    }
+
+    private static func describeFrontSystemAlert(_ probe: SystemAlertProbeResponse?) -> String? {
+        guard SystemUIGate.isCovered(probe) else { return nil }
         return SystemUIGate.describeUnregistered(probe).map { "a system alert (\($0))" } ?? "a system alert"
     }
 
@@ -929,15 +954,18 @@ extension MCPServer {
         if let message = Self.refFromAnotherAppMessage(
             ref: ref, takenFrom: takenFrom, fresh: fresh) { throw MCPError(message) }
         let key = Self.engineKey(args)
-        if launchedBundleIDs[key] != "com.apple.springboard",
-           let refusal = await Self.systemAlertTapRefusal(target, driver: driver, engine: engines[key]) {
-            throw MCPError(refusal)
+        var probeNote = ""
+        if launchedBundleIDs[key] != "com.apple.springboard" {
+            switch await Self.systemAlertGate(target, driver: driver, engine: engines[key]) {
+            case .refuse(let refusal): throw MCPError(refusal)
+            case .proceed(let note): probeNote = note
+            }
         }
         // **ref の出所についての注記はまとめて先頭に置く**(何に当たったかより前に言う)。
         // 2つは排他 —— screenChangedUnderRefNote は isStale のとき黙る
         let actedSinceTakenFrom = (sessionActionCounts[Self.engineKey(args)] ?? 0)
             > (generationActionCount(containing: ref, args: args) ?? 0)
-        let originNote = staleNote + Self.screenChangedUnderRefNote(
+        let originNote = staleNote + probeNote + Self.screenChangedUnderRefNote(
             ref: ref, takenFrom: takenFrom, fresh: fresh,
             isStale: resolved.isStale, matched: target, actedSinceTakenFrom: actedSinceTakenFrom)
         // **申告 keyboardFrame はキー面だけ**(サジェストバー・地球儀/Dictate 行を含まない)。

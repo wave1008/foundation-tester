@@ -808,6 +808,11 @@ registered for it …」)。**その題名とボタンをそのまま `iosAlertH
 確かめるのは**触る瞬間**なので、要求の直後に非同期で出るアラートと同じ瞬間に触ると「まだ無い」に
 なる —— その場合は次のフェーズの最初の操作か、失敗時の1往復で名指しされる(陽性対照:
 `TestProjects/E2E-iOS/scenarios/_disabled/96_未登録のシステムアラート.swift`)。
+**SpringBoard への照会そのものが失敗した回**(USB の token 無し・WiFi の待ち受け断・ランナーの
+死亡)は「アラート無し」に畳まない —— 登録の有無を問わず操作は進めるが、注記
+`system-alert-probe-failed` を立て、そのステップが失敗したなら文言に理由を添える(「the check for a
+system alert in front of the app failed (…)」)。この注記の率が上がったらブリッジの経路の不調であって
+シナリオの問題ではない。
 **アラートが出る操作の前に呼ぶ**こと
 (`setUp()` に書けば各 `@Test` の前に登録される。`irregularHandler` と同じ寿命 = シナリオ1本)。
 

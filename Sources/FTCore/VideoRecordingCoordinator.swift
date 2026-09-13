@@ -109,6 +109,9 @@ actor VideoRecordingCoordinator {
     /// (2026-08-26 の実害: この Mac の simctl が 0 バイトの .mov を作る状態で、
     /// 「local だけバッジが出ない」ように見えた)
     private var sourcesFailed = 0
+    /// sourcesFailed のうち「録れない台」(物理 iPhone)のぶん。finish の警告文を分けるためだけに持つ
+    /// (index の `sourcesFailed` には含める = 録画タブから消えない側)
+    private var sourcesUnsupported = 0
 
     private var active: [String: ActiveEntry] = [:]  // key = worker.label(物理ワーカー単位)
     /// key = worker.label。superviseWorker の revive で worker.label が変わっても、
@@ -147,6 +150,12 @@ actor VideoRecordingCoordinator {
         // クリップの最終ファイル名(scenarioID 由来)とは別名前空間(ソースは切り出し後に削除される一時物)
         let sourceStem = "src-\(uniqueSourceStem(for: workerID))"
 
+        // **録れない台は起動を試みず、数えて false**(警告は RunOrchestrator がワーカー起動時に出す)
+        if Self.unrecordableReason(platform: worker.platform, connection: worker.connection) != nil {
+            sourcesFailed += 1
+            sourcesUnsupported += 1
+            return false
+        }
         let session: (any DeviceVideoRecorderSession)?
         if let makeSession {
             session = makeSession(worker, recordingsDir, sourceStem)
@@ -161,6 +170,18 @@ actor VideoRecordingCoordinator {
         }
         active[worker.label] = ActiveEntry(session: session, workerID: workerID, platform: worker.platform)
         return true
+    }
+
+    /// **録画できない台の理由**(nil = 録れる)。`record: true` は `--set record=true` でも指定できるので、
+    /// 「指定したのに黙って効かない形を作らない」規律の対象 —— 物理 iPhone で 4 本緑・`recordings/` 無し・
+    /// 警告 0 行だった(SE3・§19 P4)。RunOrchestrator がワーカー起動時にこれを `workerLog` で出し、
+    /// `start` は数えて false を返す。**判定はここ1箇所**(defaultSession の nil と同じ条件)
+    public static func unrecordableReason(platform: String, connection: DriverConnection) -> String? {
+        guard platform == "ios", connection.physical else { return nil }
+        return "[recording] record: true is ignored on this device — video capture uses the"
+            + " simulator's `simctl io recordVideo`, and a physical iPhone has no equivalent"
+            + " (physical Android devices still record via adb screenrecord)."
+            + " No clip will be saved for this worker."
     }
 
     private static func defaultSession(worker: RunWorker, config: VideoRecordingConfig,
@@ -224,10 +245,15 @@ actor VideoRecordingCoordinator {
                 "⚠️ [recording] \(clipsFailed)/\(clipsAttempted) clips could not be extracted"
                  + "\(fallbackNote)")
         }
-        if sourcesFailed > 0 {
+        if sourcesFailed - sourcesUnsupported > 0 {
             ConsoleOut.err(
-                "⚠️ [recording] \(sourcesFailed) device(s) produced no usable recording"
+                "⚠️ [recording] \(sourcesFailed - sourcesUnsupported) device(s) produced no usable recording"
                  + " (the recorder started but nothing readable came out)")
+        }
+        if sourcesUnsupported > 0 {
+            ConsoleOut.err(
+                "⚠️ [recording] \(sourcesUnsupported) device(s) cannot be recorded"
+                 + " (physical iPhone — no simctl recordVideo); no clips were saved for them")
         }
         RecordingIndexIO.write(entries, runDir: config.runDir,
                                clipsAttempted: clipsAttempted, clipsFailed: clipsFailed,

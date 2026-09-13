@@ -1,8 +1,10 @@
-// ref の操作の前にシステムアラートを確かめて断る(`MCPServer.systemAlertTapRefusal`):
+// ref の操作の前にシステムアラートを確かめて断る(`MCPServer.systemAlertGate`):
 // ①SpringBoard の許可アラートはアプリの木を変えずに湧くので、覆いの探針を木の指紋で使い回しても
 //   アラートだけは毎回聞く(使い回すと、権限を要求するボタンを叩いた後の操作で黙る)
 // ②断る。どちらのエンジンでも操作は届き(in-app は背面のアプリが反応・XCUITest は XCTest がアラートの
 //   ボタンを押す)、起きることをエンジンごとに言う ③SpringBoard に attach している間は断らない
+// ④ref を座標へ畳む double_tap / drag / pinch(`verifiedElement`)も同じ門(§19 A4)
+// ⑤照会そのものが失敗したら断らずに撃つが、確かめていないことを注記に残す(P2 の MCP 側)
 
 import XCTest
 import FTCore
@@ -93,6 +95,46 @@ final class SystemAlertTapRefusalTests: XCTestCase {
         let text = await refusal()
         XCTAssertNil(text, text ?? "")
         XCTAssertEqual(taps.count, 1, "\(driver.calls)")
+    }
+
+    /// **ref を座標へ畳む3ツール**(`verifiedElement` 経由)も断る。以前はここだけ門の外で、
+    /// XCTest が「許可しない」を押して done と返していた(実機 SE3)
+    func testDoubleTapDragAndPinchByRefAreRefusedToo() async throws {
+        server.engines[MCPServer.engineKey([:])] = "xcuitest"
+        driver.scriptedSystemAlert = Self.photosAlert
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        for (tool, args) in [("ft_double_tap", ["ref": 1] as [String: Any]),
+                             ("ft_drag", ["fromRef": 1, "dx": 0.0, "dy": -200.0]),
+                             ("ft_pinch", ["ref": 1, "scale": 2.0])] {
+            do {
+                _ = try await server.call(tool: tool, args: args)
+                XCTFail("\(tool) は断られるべき: \(driver.calls)")
+            } catch {
+                XCTAssertTrue(error.localizedDescription.contains("refusing to act on #btn_request_photos"),
+                              "\(tool): \(error.localizedDescription)")
+                XCTAssertTrue(error.localizedDescription.contains("can press one of its buttons"),
+                              "\(tool): \(error.localizedDescription)")
+            }
+        }
+        XCTAssertFalse(driver.calls.contains { $0.hasPrefix("doubleTap") || $0.hasPrefix("drag")
+                                               || $0.hasPrefix("pinch") }, "\(driver.calls)")
+    }
+
+    /// **照会が失敗したら断らずに撃つが、確かめていないことを注記に残す**(黙って「無し」にしない)。
+    /// `verifiedRef`(ft_tap)と `verifiedElement`(ft_double_tap)の両方
+    func testProbeFailureActsButSaysTheCheckCouldNotBeMade() async throws {
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        driver.failing.insert("systemAlert")
+        for tool in ["ft_tap", "ft_double_tap"] {
+            let result = try await server.call(tool: tool, args: ["ref": 1])
+            let text = result.compactMap { $0["text"] as? String }.joined()
+            XCTAssertTrue(text.contains("the system-alert check before acting on #btn_request_photos failed"),
+                          "\(tool): \(text)")
+            XCTAssertTrue(text.contains("without knowing whether an alert was in front of the app"),
+                          "\(tool): \(text)")
+        }
+        XCTAssertEqual(taps.count, 1, "\(driver.calls)")
+        XCTAssertEqual(driver.calls.filter { $0.hasPrefix("doubleTap") }.count, 1, "\(driver.calls)")
     }
 
     /// 座標の操作は断らない(XCUITest ではアラートそのものに当たる正当な操作)

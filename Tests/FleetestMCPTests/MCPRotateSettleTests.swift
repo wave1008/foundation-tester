@@ -103,7 +103,12 @@ final class MCPRotateSettleTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/fleetest-mcp/MCPServer+Dispatch.swift")
         let code = try String(contentsOf: url, encoding: .utf8)
-        XCTAssertTrue(code.contains("if settled == .portrait, rotateDriver is AndroidDriver {"),
+        XCTAssertTrue(code.contains("if settled == .portrait, let android = rotateDriver as? AndroidDriver {"),
                       "ft_rotate の復元呼び出しが Android 限定のままであること")
+        // **元が固定なら戻さない**(R1): 丸ごと戻す restoreOrientationIfNeeded をここで呼ばない
+        XCTAssertTrue(code.contains("switch try await android.restoreAutoRotateIfItWasOn() {"),
+                      "portrait の後は restoreAutoRotateIfItWasOn(元が auto-rotate のときだけ戻す)を通すこと")
+        XCTAssertFalse(code.contains("try await rotateDriver.restoreOrientationIfNeeded()"),
+                       "ft_rotate が丸ごと戻す restoreOrientationIfNeeded を直接呼んでいる(R1 の再発)")
     }
 }

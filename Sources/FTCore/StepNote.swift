@@ -168,6 +168,13 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// **率が上がったら登録漏れ**: 文言に出る題名とボタンをそのまま iosAlertHandler に書ける
     case systemAlertPresent = "system-alert-present"
 
+    /// SpringBoard への1問(`GET /systemalert`)が**失敗した**(USB の token 無し・WiFi の待ち受け断・
+    /// ランナーの死亡)。判定は「アラート無し」と同じ側へ倒れて操作は進むが、**確かめていない**ことを
+    /// ここに残す —— 失敗を nil に畳んで黙ると、`iosAlertHandler` を登録したのにアラートへ吸われた
+    /// 操作が注記なしの緑になる(実機 SE3 で実測)。失敗したステップは文言にも理由が付く。
+    /// **率が上がったら経路の不調**(ブリッジの生存・token・LAN)であってシナリオの問題ではない
+    case systemAlertProbeFailed = "system-alert-probe-failed"
+
     /// launch 直後の occlusion-guard 失敗が launch storyboard(crop が全画素同一)由来と
     /// 判定され、このステップの deadline を一度だけ延ばして待ち直した(`StepExecutor.firstFrameGatePending`。
     /// 一度きりの門なので同じ launch のぶんでは他のステップに重複しない)。
@@ -232,6 +239,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .systemAlertPresent:
             return "a system alert was in front of the app with no iosAlertHandler registered for it,"
                 + " so the app behind it was operated anyway"
+        case .systemAlertProbeFailed:
+            return "the check for a system alert in front of the app failed, so the step went ahead"
+                + " without knowing whether one was there"
         case .firstFramePending:
             return "the screen still looked like the launch storyboard (a uniform, undrawn frame),"
                 + " so this waited once more before treating it as occlusion"

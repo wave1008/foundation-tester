@@ -133,6 +133,53 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         XCTAssertEqual(decoded.recordings.count, 0)
     }
 
+    /// **物理 iPhone は録れない**(simctl recordVideo はシミュレータ専用)—— 理由を名指しし、
+    /// 数えて index を書く(黙って録らない形にしない。§19 P4)。シミュレータ・Android 実機は対象外
+    func testPhysicalIPhoneIsNamedAsUnrecordableAndCounted() async throws {
+        let physicalIOS = DriverConnection(platform: "ios", port: 8150, udid: "00008030-XXXX", physical: true)
+        XCTAssertTrue(VideoRecordingCoordinator.unrecordableReason(platform: "ios", connection: physicalIOS)?
+                          .contains("record: true is ignored on this device") == true)
+        XCTAssertNil(VideoRecordingCoordinator.unrecordableReason(
+            platform: "ios", connection: DriverConnection(platform: "ios", port: 8100, udid: "SIM")))
+        XCTAssertNil(VideoRecordingCoordinator.unrecordableReason(
+            platform: "android", connection: DriverConnection(platform: "android", serial: "93MAY0CY1M",
+                                                              physical: true)))
+
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        var sessionsMade = 0
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp, androidADBPath: nil, failuresOnly: false),
+            makeSession: { _, _, _ in sessionsMade += 1; return DeadSession() })
+        let worker = RunWorker(label: "SE3(ios:8150)", platform: "ios", driver: UnusedDriver(),
+                               connection: physicalIOS, logicalName: "SE3")
+        let started = await coordinator.start(worker)
+        XCTAssertFalse(started)
+        XCTAssertEqual(sessionsMade, 0, "録れない台では録画セッションを起こさない")
+        await registerInterval(coordinator, worker: worker, scenarioID: "T.S0010")
+        await coordinator.finish()
+
+        let indexURL = tmp.appendingPathComponent("recordings/index.json")
+        let decoded = try JSONDecoder().decode(RecordingIndex.self, from: Data(contentsOf: indexURL))
+        XCTAssertEqual(decoded.sourcesFailed, 1, "録れなかった台として数え、録画タブから消さない")
+    }
+
+    /// 配線: ワーカー起動時に理由を `workerLog` で出してから start を呼ぶ(ソース走査)
+    func testOrchestratorWarnsBeforeStartingRecording() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/FTCore/RunOrchestrator.swift")
+        let code = try String(contentsOf: url, encoding: .utf8)
+        guard let warn = code.range(of: "VideoRecordingCoordinator.unrecordableReason(platform: worker.platform"),
+              let start = code.range(of: "if await videoRecording?.start(worker) == true {") else {
+            return XCTFail("録画の警告か起動の呼び出しが見つからない = 走査を見直す")
+        }
+        XCTAssertTrue(warn.lowerBound < start.lowerBound, "警告は start より前")
+        let between = String(code[warn.lowerBound..<start.lowerBound])
+        XCTAssertTrue(between.contains("continuation.yield(.workerLog(worker: worker.label, message: reason))"),
+                      "理由を workerLog で出していない")
+    }
+
     /// ハードウェアエンコーダが期限超過したら、同じクリップをソフトウェアで撮り直し、
     /// この run の残りのクリップもソフトウェアで続行するはず(preferSoftwareEncoder==false
     /// のときだけ無応答にして固着を再現する)

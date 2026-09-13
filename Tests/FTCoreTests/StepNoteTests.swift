@@ -15,6 +15,7 @@ final class StepNoteTests: XCTestCase {
         XCTAssertEqual(StepNote.heldValue.rawValue, "held-value")
         XCTAssertEqual(StepNote.visibilityGuardSkipped.rawValue, "visibility-guard-skipped")
         XCTAssertEqual(StepNote.systemAlertPresent.rawValue, "system-alert-present")
+        XCTAssertEqual(StepNote.systemAlertProbeFailed.rawValue, "system-alert-probe-failed")
         XCTAssertEqual(StepNote.slowSnapshot.rawValue, "slow-snapshot")
     }
 

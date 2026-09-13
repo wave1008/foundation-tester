@@ -788,6 +788,37 @@ public final class AndroidDriver: AppDriver {
                      String(original.accelerometerRotation)])
     }
 
+    /// `restoreAutoRotateIfItWasOn` の判定(純粋。`originalRotationSettings` から決める)
+    public enum AutoRotateRestore: Equatable {
+        /// 元は auto-rotate(accelerometer_rotation=1)= 控えを書き戻して端末の設定へ返した
+        case restored
+        /// 元から向きが固定されていた(accelerometer_rotation=0)= 控えを捨て、要求された向きの固定を残した
+        case keptExplicitLock
+        /// このインスタンスで rotate(to:) を呼んでいない(控えが無い)
+        case nothingToRestore
+    }
+
+    /// **元が auto-rotate のときだけ戻す**。元から固定されていた端末(前の MCP セッションが横のまま
+    /// 切れた後など)で元の `user_rotation` を書き戻すと、**明示された portrait をその場で横へ
+    /// 取り消し**ながら「Rotated to portrait」と答える(Pixel 3a で実測 = R1)。
+    /// 使うのは MCP の `ft_rotate portrait`(明示の向き = 端末の元の固定より優先)。
+    /// シナリオの終わりに端末の状態を丸ごと返す `restoreOrientationIfNeeded` とは意味が違う
+    static func autoRotateRestorePlan(
+        original: (userRotation: Int, accelerometerRotation: Int)?) -> AutoRotateRestore {
+        guard let original else { return .nothingToRestore }
+        return original.accelerometerRotation == 1 ? .restored : .keptExplicitLock
+    }
+
+    public func restoreAutoRotateIfItWasOn() async throws -> AutoRotateRestore {
+        let plan = Self.autoRotateRestorePlan(original: originalRotationSettings)
+        guard plan == .restored else {
+            originalRotationSettings = nil
+            return plan
+        }
+        try await restoreOrientationIfNeeded()
+        return plan
+    }
+
     /// 2点間ドラッグ。ブリッジ経由ではなく gRPC タッチ合成(down→補間 move→up)優先・
     /// adb input swipe フォールバック(どちらも snapshot と同じピクセル座標)。
     /// gRPC はゲスト内 app_process 起動(~300ms/回)が無くステップ列が高速。
