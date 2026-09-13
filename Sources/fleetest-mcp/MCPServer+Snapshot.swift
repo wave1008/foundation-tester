@@ -789,6 +789,20 @@ extension MCPServer {
             + " appears here. \(handleAlertFirst)."
     }
 
+    /// **中心がソフトキーボードの下にある要素への ref 操作は断る**(ユーザー決定 2026-09-14)。
+    /// ghost・重なりは「拒否せず警告して撃つ」だが、キーボード被覆は**結果が確実で副作用がある**:
+    /// XCUITest はキーの上に指が落ちて**焦点の欄に文字が入り**(実機 SE3・`#tab_about` で「o」)、
+    /// in-app は 422 で断る = エンジンで割れていた。判定は ref 形・DSL と同じ `KeyboardOcclusion`
+    /// (chrome 自身とその部分木は除外済み)。**座標形は断らない**(キーを押す意図があり得る。
+    /// `keyboardCoordinateWarning`)。DSL の tap は据え置き(注記のみ)
+    static func keyboardRefusal(_ target: ElementInfo, keyboardOcclusion: KeyboardOcclusion) -> String? {
+        guard let advisory = keyboardOcclusion.advisory(for: target) else { return nil }
+        return "refusing to act on \(RefGuard.describe(target)): \(advisory). On XCUITest the finger"
+            + " would press a key and type into the focused field; the in-app engine rejects it (422)."
+            + " Close the keyboard with ft_type pressEnter: true (iOS) / ft_navigate back (Android), or"
+            + " ft_scroll_to the element, then take a fresh ft_snapshot"
+    }
+
     /// **システムアラートが前面にある間、ref の操作は断る**(ref 操作 = ft_tap / ft_type / ft_clear_input /
     /// ft_long_press / ft_batch の1手目 = `verifiedRef`、ft_double_tap / ft_drag / ft_pinch = `verifiedElement`。
     /// **ref を座標に畳む経路も同じ門を通す** —— 畳んだ先は座標の操作だが、ref で指した以上アラートの
@@ -986,13 +1000,18 @@ extension MCPServer {
                                                 truncatedCount: fresh.truncatedCount))
         case .ghost(let found):
             // **拒否せず警告して撃つ**(2026-08-06 に方針を後退させた。理由は RefGuard の宣言)。
-            // **キーボード被覆は先に言う**(木の遮蔽判定では原理的に拾えない事実なので、
-            // 座標由来の他の警告より確度が高い)
+            // **キーボード被覆だけは断る**(`keyboardRefusal` の doc)
+            if let refusal = Self.keyboardRefusal(found, keyboardOcclusion: keyboardOcclusion) {
+                throw MCPError(refusal)
+            }
             return (found.ref, originNote
                 + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion,
                                         overlayWindows: overlayWindows)
                 + RefGuard.ghostWarning(found: found, in: fresh.elements, screen: fresh.screen))
         case .found(let found, let moved):
+            if let refusal = Self.keyboardRefusal(found, keyboardOcclusion: keyboardOcclusion) {
+                throw MCPError(refusal)
+            }
             // **ラベルが変わっていないかも見る**。moved の大小とは無関係に出す ——
             // 動かずにラベルだけ変わった行も同じ危険(RefGuard.labelChangeNote 参照)
             let labelNote = RefGuard.labelChangeNote(old: target.label, new: found.label) ?? ""

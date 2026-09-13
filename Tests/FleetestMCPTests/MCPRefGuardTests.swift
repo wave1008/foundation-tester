@@ -1056,21 +1056,45 @@ final class MCPRefGuardTests: XCTestCase {
 
     // MARK: - キーボード被覆
 
-    /// **中心がソフトキーボードの下にある要素へのタップは警告する**(拒否はしない)。
-    /// 判定は RefGuard.keyboardWarning → TapTargetGeometry.keyboardCoveredAdvisory への転送
+    /// **中心がソフトキーボードの下にある要素への ref タップは断る**(ユーザー決定 2026-09-14。
+    /// それまでは警告して撃っていた = XCUITest ではキーが押されて焦点の欄に文字が入る。実機 SE3)。
+    /// 判定は KeyboardOcclusion → TapTargetGeometry.keyboardCoveredAdvisory への転送
     /// (SweepHarnessTests が RefGuard 経由で数える規約のため転送を必ず置く)。
     /// 実測(2026-08-08・iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった
     /// (inputView は空葉になり、既存の空葉コンテナ除外で遮蔽候補から漏れる)
-    func testTapWarnsWhenTheCentreIsUnderTheKeyboard() async throws {
+    func testTapIsRefusedWhenTheCentreIsUnderTheKeyboard() async throws {
         var withKeyboard = screen([
             element(ref: 1, id: "suggestion_row", label: "候補", x: 16, y: 620, w: 358, h: 40),
         ])
         withKeyboard.keyboardFrame = FTRect(x: 0, y: 600, width: 390, height: 244)
         driver.snapshotResponse = withKeyboard
         _ = try await server.call(tool: "ft_snapshot", args: [:])
+        for tool in ["ft_tap", "ft_long_press", "ft_double_tap"] {
+            do {
+                _ = try await server.call(tool: tool, args: ["ref": 1])
+                XCTFail("\(tool): キーボード被覆は断ること")
+            } catch {
+                let message = error.localizedDescription
+                XCTAssertTrue(message.contains("refusing to act on #suggestion_row"), "\(tool): \(message)")
+                XCTAssertTrue(message.contains("under the soft keyboard"), "\(tool): \(message)")
+                XCTAssertTrue(message.contains("type into the focused field"), "\(tool): \(message)")
+            }
+        }
+        XCTAssertFalse(actions.contains { $0.hasPrefix("tap") || $0.hasPrefix("press") || $0.hasPrefix("doubleTap") },
+                       "断ったのに撃った: \(actions)")
+    }
+
+    /// 中心がキーボードの外なら従来どおり撃つ(断る境界は中心点)
+    func testTapAboveTheKeyboardStillFires() async throws {
+        var withKeyboard = screen([
+            element(ref: 1, id: "field_single", label: "単一行", x: 16, y: 500, w: 358, h: 40),
+        ])
+        withKeyboard.keyboardFrame = FTRect(x: 0, y: 600, width: 390, height: 244)
+        driver.snapshotResponse = withKeyboard
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
         let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
-        XCTAssertTrue(text.contains("soft keyboard"), "キーボード被覆を警告すること: \(text)")
-        XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "拒否ではなく警告して撃つこと")
+        XCTAssertFalse(text.contains("soft keyboard"), text)
+        XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "\(actions)")
     }
 
     /// **木に出ないオーバーレイ・ウィンドウ**の下を撃とうとしたら警告すること
@@ -1243,9 +1267,12 @@ final class MCPRefGuardTests: XCTestCase {
         withKeyboard.keyboardFrame = FTRect(x: 0, y: 590, width: 390, height: 226)
         driver.snapshotResponse = withKeyboard
         _ = try await server.call(tool: "ft_snapshot", args: [:])
-        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
-        XCTAssertTrue(text.contains("soft keyboard"),
-                      "chrome で広げた実効矩形(546..874)なら中心 579 を拾って警告すること: \(text)")
+        do {
+            _ = try await server.call(tool: "ft_tap", args: ["ref": 1])
+            XCTFail("chrome で広げた実効矩形(546..874)なら中心 579 を拾って断ること")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("soft keyboard"), error.localizedDescription)
+        }
     }
 
     /// `keyboardCoverageNote` の見出し座標と一覧も拡張後の実効矩形を使うこと(判定と表示が

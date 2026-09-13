@@ -1340,10 +1340,15 @@ extension MCPServer {
                 // keyboardFrame は verifiedElement が撮り直した木(lastSnapshots に反映済み)から
                 // 作る(木の chrome で広げ、chrome 自身とその部分木は除外する)
                 let doubleTapSnapshot = lastSnapshots[Self.engineKey(args)]
+                let doubleTapKeyboard = KeyboardOcclusion.resolve(
+                    reported: doubleTapSnapshot?.keyboardFrame,
+                    in: doubleTapSnapshot?.elements ?? [])
+                // ref 形は verifiedRef と同じく断る(keyboardRefusal の doc)
+                if let refusal = Self.keyboardRefusal(element, keyboardOcclusion: doubleTapKeyboard) {
+                    throw MCPError(refusal)
+                }
                 doubleTapNote = RefGuard.preTapWarnings(
-                    element, keyboardOcclusion: KeyboardOcclusion.resolve(
-                        reported: doubleTapSnapshot?.keyboardFrame,
-                        in: doubleTapSnapshot?.elements ?? []),
+                    element, keyboardOcclusion: doubleTapKeyboard,
                     overlayWindows: OverlayWindowOcclusion.resolve(
                         reported: doubleTapSnapshot?.overlayWindowFrames))
                     + RefGuard.overlapWarning(found: element, in: doubleTapSnapshot?

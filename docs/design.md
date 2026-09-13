@@ -3021,6 +3021,12 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
 
     どちらも**拒否せず警告**(ghost と同じ理由)。積み重なりは一覧にも `⚠️scroll-leftover` を出す ——
     利用者から見ると原因も打ち手も ghost と同じなので**印を2種類に割らない**。
+    **例外はキーボード被覆**(ユーザー決定 2026-09-14。`MCPServer.keyboardRefusal`): 中心がソフト
+    キーボードの下にある要素への ref 操作(tap / long_press / type / clear / double_tap・batch の1手目)は
+    **両エンジンとも断る**。ghost と違って結果が確実で副作用がある —— XCUITest はキーの上に指が落ちて
+    焦点の欄に文字が入り(実機 SE3・`#tab_about` で「o」)、in-app は 422 で断っていた = エンジンで
+    割れていた。判定は ref 形・DSL と同じ `KeyboardOcclusion`(chrome 除外済み)。**座標形は断らない**
+    (キーを押す意図があり得る。`keyboardCoordinateWarning` で警告)。**DSL の tap は据え置き**(注記)
     誤検知ゲートの回し方は docs/verification.md(**自前 SUT だけでは足りない** ——
     `Tests/Fixtures/RealAppSnapshots/` の固定コーパスで実アプリにも当てる)。
   - **自分の子孫が中心を横取りする形**(2026-08-09。`TapTargetGeometry.nestedActionCoveringCentre`)。
