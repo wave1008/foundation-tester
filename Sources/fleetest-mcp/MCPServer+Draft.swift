@@ -166,6 +166,8 @@ extension MCPServer {
                            coordinate: (x: Double, y: Double)? = nil,
                            duration: Double? = nil, scale: Double? = nil,
                            replace: Bool = false) {
+        // tap → type の間に別の操作が入ったら「叩いた欄へ入れる」意図ではない(DSL と同じ規律)
+        if action != "tap", action != "type" { lastTapTargets[Self.engineKey(args)] = nil }
         var selector: String?
         var durability: Durability = .stable
         var described = "\(action)"

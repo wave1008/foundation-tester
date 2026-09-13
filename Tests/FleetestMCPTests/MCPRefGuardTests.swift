@@ -565,6 +565,39 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertTrue(text.contains("scrolled to \"#row_40\""), text)
     }
 
+    // MARK: - Android には無い「in-app エンジン」を名指ししない(§19.3 M5)
+
+    /// スクロール容器が1つも申告されない iOS の木では、in-app/XCUITest の差を案内してよい
+    func testScrollAreaHintMentionsTheInAppEngineOnIOS() async throws {
+        driver.snapshotResponse = screen([element(ref: 1, id: "missing_target", label: "無関係",
+                                                  x: 16, y: 100)])
+        do {
+            _ = try await server.call(tool: "ft_scroll_to", args: ["selector": "#no_such_row"])
+            XCTFail("見つからないセレクタは throw するはず")
+        } catch let error as MCPError {
+            XCTAssertTrue(error.localizedDescription.contains("in-app engine"),
+                          error.localizedDescription)
+        }
+    }
+
+    /// 同じ画面が Android(エンジンの選択肢が無い)なら、存在しない切り替え先を示唆しない
+    func testScrollAreaHintDoesNotMentionTheInAppEngineOnAndroid() async throws {
+        driver.snapshotResponse = screen([element(ref: 1, id: "missing_target", label: "無関係",
+                                                  x: 16, y: 100)])
+        do {
+            _ = try await server.call(tool: "ft_scroll_to",
+                                      args: ["selector": "#no_such_row", "platform": "android"])
+            XCTFail("見つからないセレクタは throw するはず")
+        } catch let error as MCPError {
+            XCTAssertFalse(error.localizedDescription.contains("in-app engine"),
+                           "Android の応答に iOS 専用の概念が混ざった: \(error.localizedDescription)")
+            XCTAssertFalse(error.localizedDescription.contains("Compose/Flutter"),
+                           error.localizedDescription)
+            XCTAssertTrue(error.localizedDescription.contains("declares itself scrollable"),
+                          error.localizedDescription)
+        }
+    }
+
     // MARK: - 容器の中でも別の物に当たる2形(2026-08-06 の探索で実測)
 
     /// **容器の中に居るのに下部タブに覆われている**形。`isUntappableGhost` は

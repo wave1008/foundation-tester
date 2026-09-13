@@ -136,13 +136,15 @@ final class MCPSnapshotAfterSettleLiteTests: XCTestCase {
         XCTAssertFalse(text.contains("tree below is the re-read"), text)
     }
 
-    /// 操作前の木を知らない(lastSnapshots が無い)ときは何もしない —— 判断材料が無いので待たない
+    /// 操作前の木を知らない(lastSnapshots が無い)ときは何もしない —— 判断材料が無いので待たない。
+    /// **座標の範囲判定の生読み(tap の前の1枚・§19 M4)は世代を作らない**ので、それを基準に
+    /// 待つこともない(snapshot は範囲判定の1枚 + snapshotAfter の1枚 = 2)
     func testNoPriorSnapshotSkipsSettleLiteEntirely() async throws {
         driver.snapshotResponse = settleSnapshot([settleElement(ref: 1, id: "login_btn")])
         let callsBefore = driver.calls.count
         let text = bodyText(try await server.call(
             tool: "ft_tap", args: ["x": 1.0, "y": 2.0, "snapshotAfter": true]))
-        XCTAssertEqual(snapshotCalls(from: callsBefore), 1, "\(driver.calls)")
+        XCTAssertEqual(snapshotCalls(from: callsBefore), 2, "\(driver.calls)")
         XCTAssertFalse(text.contains("still looked unchanged"), text)
         XCTAssertFalse(text.contains("tree below is the re-read"), text)
     }

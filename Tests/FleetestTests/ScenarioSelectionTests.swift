@@ -175,6 +175,22 @@ final class ScenarioSelectionTests: XCTestCase {
         }
     }
 
+    /// scenarios/ にサブフォルダが無いとき "(available: )" と空括弧を出さない
+    /// (`--folder .` 等で available が空になる実害。docs/bug-audit-2026-09-11.md §19.3)
+    func testUnknownFolderMessageWithNoAvailableFoldersExplainsFolderIsUnusable() {
+        let message = RunScenarios.unknownFolderMessage(unknown: ["."], available: [])
+        XCTAssertTrue(message.contains("."), message)
+        XCTAssertFalse(message.contains("available:"), "空の一覧は出さないこと: \(message)")
+        XCTAssertTrue(message.contains("no subfolders"), message)
+    }
+
+    func testUnknownFolderMessageWithAvailableFoldersListsThem() {
+        let message = RunScenarios.unknownFolderMessage(
+            unknown: ["存在しない"], available: ["ログイン", "設定"])
+        XCTAssertTrue(message.contains("存在しない"), message)
+        XCTAssertTrue(message.contains("available: ログイン, 設定"), message)
+    }
+
     func testKnownFolderWithNoMatchingScenarioReturnsEmptyWithoutThrowing() throws {
         // フォルダ名は正しいが該当シナリオが無い場合は「0件」であってエラーではない
         let dir = try makeScenariosDir(["ログイン": ["LoginTests"], "空": []])

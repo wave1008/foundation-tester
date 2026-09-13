@@ -1633,12 +1633,20 @@ struct RunScenarios: AsyncParsableCommand {
             let available = ScenarioFolders.list(scenariosDir: scenariosDir)
             let unknown = folders.filter { !available.contains($0) }
             if !unknown.isEmpty {
-                throw ValidationError(
-                    "folder not found: \(unknown.joined(separator: ", "))"
-                    + " (available: \(available.joined(separator: ", ")))")
+                throw ValidationError(unknownFolderMessage(unknown: unknown, available: available))
             }
         }
         return filtered
+    }
+
+    /// available が空のとき "(available: )" と空括弧を出さない —— scenarios/ にサブフォルダが
+    /// 無いので --folder という指定自体が使えないことを言う
+    static func unknownFolderMessage(unknown: [String], available: [String]) -> String {
+        let prefix = "folder not found: \(unknown.joined(separator: ", "))"
+        guard !available.isEmpty else {
+            return prefix + " (scenarios/ has no subfolders, so --folder cannot be used)"
+        }
+        return prefix + " (available: \(available.joined(separator: ", ")))"
     }
 
     /// ブリッジの /status(デバイス名)→ 起動中シミュレータの一意な同名から UDID を解決する。

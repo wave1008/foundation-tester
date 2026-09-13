@@ -197,6 +197,27 @@ extension MCPServer {
             }
         }
 
+        // **実デバイスへ触る手前で MCP の台の印を書く**(MCPServer+Dispatch.swift の
+        // markDeviceInUse と同じ印・同じ鍵形式=生の UDID/serial だが、この経路は driver(args) を
+        // 通らず udids[]/connectedAndroidSerials[] に何も記録しないため、resolveProfileTarget/
+        // 直指定で得た `connection` から直接引く。dry-run(NullDriver・上の dryRun 関数)は
+        // ここへ来ない = 実機を掴んでいないので書かない
+        if let stateDir = deviceLeaseStateDir,
+           let deviceKey = connection.udid ?? connection.serial, !deviceKey.isEmpty {
+            let pid = ProcessInfo.processInfo.processIdentifier
+            let warning = MCPDeviceLease.writeAndWarnIfRunHolds(stateDir: stateDir, key: deviceKey, pid: pid)
+            // **args が同じ udid/serial を直接名乗っている呼び出しだけ**は、call() の後処理
+            // (`markDeviceInUse`)が同じ鍵を args から拾って同じ警告をもう一度応答の先頭へ足す
+            // (driver(args) を経由しないこのツールだけが持つ重複経路)。二重に見せないため
+            // そちらに譲る —— profile 経由・省略呼び出し(自動解決)は args に鍵が無いので、
+            // このガードは働かず下で警告する(そここそが今回埋める穴)
+            let sameKeyAlreadySurfacedByCallLayer = (args["udid"] as? String) == deviceKey
+                || (args["serial"] as? String) == deviceKey
+            if let warning, !sameKeyAlreadySurfacedByCallLayer {
+                prologue.append(warning)
+            }
+        }
+
         var lines: [String] = prologue
         var passedCount = 0
         var failedCount = 0

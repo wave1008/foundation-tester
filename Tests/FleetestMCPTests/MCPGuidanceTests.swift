@@ -320,6 +320,23 @@ final class MCPGuidanceTests: XCTestCase {
         XCTAssertTrue(noteWithoutEvidence.contains("Leaving the app"), noteWithoutEvidence)
     }
 
+    /// **§19.3 M2**: ツール自身が ft_clear_app_data/ft_install でアプリを止めたと分かっている
+    /// ときは、たとえ Android の processEvidence が running: false を言っていても
+    /// 「クラッシュしたかも」ではなく「この操作で止めた」と言う(事実のほうが確度が高い)
+    func testSwitchedAppNoteAttributesToTheToolWhenItStoppedTheAppItself() {
+        let snapshot = SnapshotResponse(sessionBundleID: "com.google.android.apps.nexuslauncher",
+                                        screen: FTRect(x: 0, y: 0, width: 1080, height: 2424),
+                                        elements: [], truncatedCount: 0)
+        let evidence = AndroidAppProcessEvidence(running: false, crashSummary: ["should not be quoted"])
+        let note = MCPServer.switchedAppNote(launched: "com.ftester.e2e.android", snapshot: snapshot,
+                                             processEvidence: evidence,
+                                             stoppedByTool: "ft_clear_app_data")
+        XCTAssertFalse(note.contains("may have crashed"), note)
+        XCTAssertFalse(note.contains("should not be quoted"), note)
+        XCTAssertTrue(note.contains("ft_clear_app_data stopped it"), note)
+        XCTAssertTrue(note.contains("not a crash"), note)
+    }
+
     // MARK: - back は空振りし得る / in-app への切替はアプリを起動し直す
 
     /// 「画面が変わった」と断言しない。iOS の back は端の swipe なので、自前ナビの画面では
@@ -390,7 +407,44 @@ final class MCPGuidanceTests: XCTestCase {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },
                                recordSnapshot: { _, _, _ in })
         server.engines[MCPServer.engineKey([:])] = "xcuitest"
-        let hint = server.iosEngineHint("Compose Multiplatform", "double tap", args: [:])
+        let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: "compose",
+                                        "double tap", args: [:])
         XCTAssertTrue(hint.contains("relaunches the app"), hint)
+    }
+
+    /// **フレームワークが判明していて食い違うなら黙る**(§19.3 M9): この助言は `framework`
+    /// 1つに固有の欠陥で、判明した uikit アプリへ Compose 専用の助言を出すのは誤誘導になる
+    func testEngineHintDropsWhenTheKnownFrameworkDoesNotMatch() {
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },
+                               recordSnapshot: { _, _, _ in })
+        let key = MCPServer.engineKey([:])
+        server.engines[key] = "xcuitest"
+        server.uiFrameworkHints[key] = "uikit"
+        let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: "compose",
+                                        "double tap", args: [:])
+        XCTAssertEqual(hint, "", "uikit と判明しているのに Compose 専用の助言を出した: \(hint)")
+    }
+
+    /// フレームワークが判明していて一致するなら、断定形のまま出す(「もしそうなら」で弱めない)
+    func testEngineHintIsUnconditionalWhenTheKnownFrameworkMatches() {
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },
+                               recordSnapshot: { _, _, _ in })
+        let key = MCPServer.engineKey([:])
+        server.engines[key] = "xcuitest"
+        server.uiFrameworkHints[key] = "compose"
+        let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: "compose",
+                                        "double tap", args: [:])
+        XCTAssertTrue(hint.contains("Compose Multiplatform apps do not receive double tap"), hint)
+        XCTAssertFalse(hint.contains("this is a"), "判明しているのに断定を弱めた: \(hint)")
+    }
+
+    /// フレームワーク不明のときは、断定を弱めた「もしこのフレームワークなら」の形で残す
+    func testEngineHintIsConditionalWhenTheFrameworkIsUnknown() {
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },
+                               recordSnapshot: { _, _, _ in })
+        let key = MCPServer.engineKey([:])
+        server.engines[key] = "xcuitest"
+        let hint = server.iosEngineHint("Flutter", frameworkKey: "flutter", "pinch", args: [:])
+        XCTAssertTrue(hint.contains("this is a Flutter app"), hint)
     }
 }

@@ -199,13 +199,16 @@ public enum IOSDeviceTransport {
                 + "On the iPhone, turn on Settings → Privacy & Security → Developer Mode"
         }
         if text.contains("Timed out while enabling automation mode") {
-            // ランナーは起動したが端末側が UI 自動化モードに入らない。ロック(passcode)・
-            // Settings → Developer → UI Automation のオフ・別のテストセッションの残留のどれか
-            // (実測 2026-09-07 の iPhone SE3: ロック解除済み・Developer Mode オンでも出た)
+            // ランナーは起動したが端末側が UI 自動化モードに入らない。実測(iPhone SE3 /
+            // iPhone 13, 2026-09-11・14。2026-09-07 の SE3 はロック解除済み・Developer Mode
+            // オンでも出た)ではロック解除・再起動では直らない —— 効くのは、起動を試みている
+            // 最中に端末へ出る UI 自動化の**承認プロンプトに端末上で答えてから撃ち直す**こと
             return "the device did not enter UI-automation mode (\"Timed out while enabling"
-                + " automation mode\"). On the iPhone, unlock the screen, make sure"
-                + " Settings → Developer → UI Automation is on, and if another test session"
-                + " is still attached to the device, reboot the iPhone"
+                + " automation mode\"). The iPhone shows a UI-automation approval prompt while"
+                + " the bridge start is being attempted: keep the phone unlocked and watch it"
+                + " during the retry, approve the prompt, then retry."
+                + " If no prompt appears, as a last resort check Settings → Developer →"
+                + " UI Automation is on and reboot the iPhone"
         }
         // ここから先は理由を特定できないケース。誤検知を避けるため終端マーカーが出てから判定する
         guard text.contains("** TEST EXECUTE FAILED **")
@@ -300,12 +303,22 @@ public enum IOSDeviceTransport {
     /// (iPhone A の後に iPhone B を同ポートで供給すると、A 宛のトンネルへ繋いだまま気づかない)。
     /// 判定本体は pure な iproxyMatches(command:deviceUDID:) に切り出してテストする
     static func isIproxyRunning(hostPort: UInt16, deviceUDID: String, repoRoot: URL) -> Bool {
-        guard let text = try? String(contentsOf: pidURL(hostPort: hostPort, repoRoot: repoRoot),
-                                     encoding: .utf8),
-              let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)),
-              ProcessLiveness.isAlive(pid),
-              let ps = try? Shell.run(["ps", "-p", String(pid), "-o", "command="]), ps.status == 0
+        let url = pidURL(hostPort: hostPort, repoRoot: repoRoot)
+        guard let text = try? String(contentsOf: url, encoding: .utf8),
+              let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines))
         else {
+            return false
+        }
+        guard ProcessLiveness.isAlive(pid),
+              let ps = try? Shell.run(["ps", "-p", String(pid), "-o", "command="]), ps.status == 0,
+              isIproxy(command: ps.output)
+        else {
+            // 死んだ pid、または pid 再利用で無関係プロセスに化けた台帳は消す
+            // (BridgeProvisioner.StaleLedgerSweep と同じ規律: 台帳はプロセスの実体で掃除する)。
+            // **別 UDID 向けの生きた iproxy はここで消さない** —— startIproxy の stopIproxy が
+            // このファイルを見て止めるので、消すと張り替え時に古いトンネルが残ったまま
+            // 新規起動が同じポートで失敗する
+            try? FileManager.default.removeItem(at: url)
             return false
         }
         return iproxyMatches(command: ps.output, deviceUDID: deviceUDID)

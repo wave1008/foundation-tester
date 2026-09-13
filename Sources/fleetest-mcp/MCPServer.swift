@@ -49,6 +49,15 @@ final class MCPServer {
     /// ref を採った世代からこの回数が増えていれば、変化はこのセッション自身の直前の操作で
     /// 説明がつく可能性が高く、外部要因のせいにしてはいけない
     var sessionActionCounts: [String: Int] = [:]
+    /// **直前の `ft_tap` が叩いた要素**(engineKey ごと)。ref なし `ft_type` が「叩いた欄へ焦点が
+    /// 立たなかった」形を救うための材料(DSL の `StepExecutor.lastTapTarget` と同じ役)。
+    /// tap / type 以外の操作(`recordInteraction`)で消える —— 間に別の操作を挟んだ type は
+    /// 「叩いた欄へ入れる」意図ではない
+    var lastTapTargets: [String: ElementInfo] = [:]
+    /// 座標の操作が範囲判定に使う画面の大きさ(engineKey ごと)。**直近の木が無いときの控え**
+    /// (`coordinateScreen`)—— 生読みで採り、世代(`lastSnapshots` / `refGenerations`)は作らない。
+    /// 作ると settle-lite の「操作前の木」がこの読みになり、呼び手が撮っていない木を基準に待つ
+    var knownScreens: [String: FTRect] = [:]
     /// 次の新しい世代に割り当てる base。**セッションに1つ**(engineKey ごとではない)・**単調増加のみ**。
     ///
     /// **機ごとに持ってはいけない**(2026-08-13 に実機で踏んだ): engineKey ごとに 0 から始めると
@@ -88,6 +97,14 @@ final class MCPServer {
     /// クラッシュ(adb の crash バッファは時間で絞らない限りずっと残る)を今回の launch の
     /// せいと誤って引用する
     var launchTimestamps: [String: Date] = [:]
+    /// **ツール自身がこのアプリを止めた**(ft_clear_app_data の通常経路・ft_install の
+    /// 上書きインストール)ことの記録(engineKey → 止めた操作名。例 "ft_clear_app_data")。
+    /// 値は `launchedBundleIDs[key]` に対する申告 —— 別のアプリが起動されれば ft_launch が
+    /// 消すので、古い記録が別アプリへ誤って付くことはない。
+    /// `switchedAppNote` が「プロセスが無い = クラッシュの疑い」と誤診しないための材料
+    /// (§19.3 M2: 明示的に止めた直後の snapshot が「crashed かも」と言っていた)。
+    /// **ft_launch で消える**(再起動すれば以後の不在は別の原因になり得るため)
+    var toolStoppedBundleIDs: [String: String] = [:]
     /// drivers と同じキーで**最後に ft_install した packagePath**を覚える(engineKey ごと)。
     /// **実機の ft_clear_app_data が使う** —— devicectl には clearAppData の同等手段が無く
     /// (BridgeClient.clearAppData の 501)、代わりに uninstall+install で再現するのに要る

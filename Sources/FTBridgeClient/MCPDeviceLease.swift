@@ -49,6 +49,18 @@ public enum MCPDeviceLease {
         return holders
     }
 
+    /// 印を書き、その台を run(pid 別)が今使用中なら警告文を返す(`MCPServer.markDeviceInUse`
+    /// と同じ文言・同じ判定)。**deviceKey は呼び手が解決済みの UDID/serial をそのまま渡す**
+    /// (driver(args) 経由の記憶(udids[]/connectedAndroidSerials[])に依存しないツール
+    /// 向け——ft_run_scenario は接続を自分で組むのでこちらを使う)
+    public static func writeAndWarnIfRunHolds(stateDir: URL, key: String, pid: Int32) -> String? {
+        write(stateDir: stateDir, key: key, pid: pid)
+        guard let holder = RunLease.holderPID(stateDir: stateDir, key: key), holder != pid else { return nil }
+        return "⚠️ a fleetest run (pid \(holder)) is using this device right now — what you do here and what"
+            + " the run does interfere with each other (screens, input, app state)."
+            + " Wait for the run to finish, or drive another device."
+    }
+
     /// その pid が持つ印を全部消す(MCP の終了時)
     public static func removeAll(stateDir: URL, pid: Int32) {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: stateDir.path) else { return }

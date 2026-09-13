@@ -338,7 +338,8 @@ extension MCPServer {
         let switchedNote = Self.switchedAppNote(
             launched: switchedLaunched, snapshot: snapshot,
             processEvidence: androidProcessEvidenceForSwitch(
-                launched: switchedLaunched, snapshot: snapshot, driver: driver, args: args))
+                launched: switchedLaunched, snapshot: snapshot, driver: driver, args: args),
+            stoppedByTool: toolStoppedBundleIDs[Self.engineKey(args)])
         // **launch 系ツールの直後だけ・一度だけ** system alert を確かめる
         // (systemAlertProbePending 参照。DSL の noteAppLaunched と同じ設計)。
         // **先に鍵を消してから probe する** —— この呼び出し自体が非同期で待つため、
@@ -839,7 +840,9 @@ extension MCPServer {
         + " `ft_launch bundleId: com.apple.springboard`, tap its button by ref,"
         + " then `ft_launch` your app again"
 
-    private static func frontSystemAlert(driver: AppDriver) async -> String? {
+    // **internal**(MCPServer+Dispatch.swift の ft_type ref なし失敗経路も使う。他ファイルの
+    // 拡張から呼ぶので private のままにできない)。一発物の照会 = target 無しで前面のアラートだけ聞く
+    static func frontSystemAlert(driver: AppDriver) async -> String? {
         describeFrontSystemAlert(try? await driver.systemAlert())
     }
 
@@ -1439,7 +1442,7 @@ extension MCPServer {
                 + Self.scrollNotationHint(selectorText, after: after, beforeScroll: beforeScroll,
                                           backDirection: Self.reversedDirection(direction))
                 + Self.similarLabelsHint(selectorText, in: after)
-                + Self.scrollAreaHint(beforeScroll ?? after, args: args))
+                + Self.scrollAreaHint(beforeScroll ?? after, args: args, isAndroid: isAndroid))
         }
         // **成功と言う前に、返す木にそれが居ることを確かめる**(2026-08-06 の探索で外した)。
         // 探索のスワイプは**ボタンを発火させることがある**(SwiftUI の SUT で実測)。
@@ -1456,7 +1459,7 @@ extension MCPServer {
                 + " \(Self.visibleLabelsHint(after))"
                 + " Go back to the screen that has it and retry;"
                 + " scrollFrame: <container> keeps the swipes inside the list."
-                + Self.scrollAreaHint(after, args: args))
+                + Self.scrollAreaHint(after, args: args, isAndroid: isAndroid))
         }
         // **木に居ること ≠ 画面に居ること**: FTCore 側のゲート(runScrollSearch)を通っても、
         // ここは独立した砦として残す。当たった要素が**すべて**中心画面外なら、探索は届いていない
@@ -1474,7 +1477,7 @@ extension MCPServer {
                 + "\(Self.truncationHint(after)). \(Self.visibleLabelsHint(after))"
                 + " Pass scrollFrame: <container> to keep the swipes inside the right scroll area"
                 + " instead of falling back to a whole-screen swipe."
-                + Self.scrollAreaHint(beforeScroll ?? after, args: args))
+                + Self.scrollAreaHint(beforeScroll ?? after, args: args, isAndroid: isAndroid))
         }
         // fallback 一致は成功だが、利用者が書いた式では見つからなかったことを伝える
         // (primary が空振りする式は将来また空振りしうる)
@@ -1506,10 +1509,11 @@ extension MCPServer {
         let switched = Self.switchedAppNote(
             launched: scrollToLaunched, snapshot: after,
             processEvidence: androidProcessEvidenceForSwitch(
-                launched: scrollToLaunched, snapshot: after, driver: scrollDriver, args: args))
+                launched: scrollToLaunched, snapshot: after, driver: scrollDriver, args: args),
+            stoppedByTool: toolStoppedBundleIDs[Self.engineKey(args)])
         // scrollFrame を渡すべき当人なので、複数領域の注記もここに出す(欠陥⑪)
         let scrollAreaNote = args["scrollFrame"] == nil ? (ScrollFrameCandidates.note(after) ?? "")
-            : Self.lineNote(Self.scrollAreaHint(beforeScroll ?? after, args: args))
+            : Self.lineNote(Self.scrollAreaHint(beforeScroll ?? after, args: args, isAndroid: isAndroid))
         // **利用者が渡した式をそのまま残す**(F): 探索はセレクタで書くのが DSL の形なので、
         // ここだけは解決後の要素ではなく渡された式が正しい下書きになる
         var scrollStep = FlowStep(action: "scrollTo", locator: selector.primary)

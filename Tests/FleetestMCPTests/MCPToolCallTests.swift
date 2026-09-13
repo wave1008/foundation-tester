@@ -51,7 +51,8 @@ final class MCPToolCallTests: XCTestCase {
 
     func testDoubleTapAcceptsCoordinates() async throws {
         _ = try await server.call(tool: "ft_double_tap", args: ["x": 10.0, "y": 20.0])
-        XCTAssertEqual(driver.calls, ["doubleTap(x:10.0,y:20.0)"])
+        // 先頭の "snapshot" = 直近の木が無いので画面の範囲を1枚読んでから判定する(§19 M4)
+        XCTAssertEqual(driver.calls, ["snapshot", "doubleTap(x:10.0,y:20.0)"])
     }
 
     func testDoubleTapRequiresRefOrCoordinates() async {
@@ -85,7 +86,7 @@ final class MCPToolCallTests: XCTestCase {
         _ = try await server.call(tool: "ft_drag",
                                   args: ["fromX": 100.0, "fromY": 200.0,
                                          "toX": 40.0, "toY": 150.0, "durationSeconds": 0.8])
-        XCTAssertEqual(driver.calls, ["drag(100.0,200.0->40.0,150.0,duration:0.8)"])
+        XCTAssertEqual(driver.calls, ["snapshot", "drag(100.0,200.0->40.0,150.0,duration:0.8)"])
     }
 
     /// **無反応だったときの切り分けを応答に載せる**(XCUITest では Compose のダブルタップと
@@ -219,6 +220,53 @@ final class MCPToolCallTests: XCTestCase {
     func testClearAppDataRequiresABundleID() async {
         await assertThrows("ft_clear_app_data", [:])
         XCTAssertEqual(driver.calls, [])
+    }
+
+    /// **§19.3 M2**: ft_clear_app_data の直後、木がまだ別画面(ホーム/ランチャ)を指している
+    /// snapshot は「アプリが落ちたかも」ではなく「この呼び出しで止めた」と言うこと
+    /// (ツール自身が撃った操作なので、クラッシュを疑う理由が無い)
+    func testSnapshotAfterClearAppDataDoesNotSuspectACrash() async throws {
+        _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.example.app"])
+        _ = try await server.call(tool: "ft_clear_app_data", args: ["bundleId": "com.example.app"])
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.other.launcher",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844), elements: [], truncatedCount: 0)
+
+        let result = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = try XCTUnwrap(result.first?["text"] as? String)
+
+        XCTAssertFalse(text.contains("may have crashed"), text)
+        XCTAssertTrue(text.contains("ft_clear_app_data stopped it"), text)
+    }
+
+    /// 同じ規律を ft_install(上書きインストール)にも適用する
+    func testSnapshotAfterReinstallDoesNotSuspectACrash() async throws {
+        _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.example.app"])
+        _ = try await server.call(tool: "ft_install", args: ["packagePath": "/tmp/App.app"])
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.other.launcher",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844), elements: [], truncatedCount: 0)
+
+        let result = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = try XCTUnwrap(result.first?["text"] as? String)
+
+        XCTAssertFalse(text.contains("may have crashed"), text)
+        XCTAssertTrue(text.contains("ft_install stopped it"), text)
+    }
+
+    /// **ft_launch すれば以後の不在は再起動より後の話**(古い帰属を引きずらない)
+    func testRelaunchingClearsTheToolStoppedAttribution() async throws {
+        _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.example.app"])
+        _ = try await server.call(tool: "ft_clear_app_data", args: ["bundleId": "com.example.app"])
+        _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.example.app"])
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.other.launcher",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844), elements: [], truncatedCount: 0)
+
+        let result = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = try XCTUnwrap(result.first?["text"] as? String)
+
+        XCTAssertFalse(text.contains("ft_clear_app_data stopped it"), text)
     }
 
     // MARK: - 統合したツール(ft_navigate / ft_clear_input / ft_type の pressEnter)
@@ -435,7 +483,7 @@ final class MCPToolCallTests: XCTestCase {
 
     func testTapByCoordinates() async throws {
         _ = try await server.call(tool: "ft_tap", args: ["x": 12.5, "y": 34.0])
-        XCTAssertEqual(driver.calls, ["tap(x:12.5,y:34.0)"])
+        XCTAssertEqual(driver.calls, ["snapshot", "tap(x:12.5,y:34.0)"])
     }
 
     /// ref と x/y の両方が来たら ref を優先する(座標は snapshot 依存で古くなりうる)
@@ -603,8 +651,23 @@ final class MCPToolCallTests: XCTestCase {
     }
 
     func testTerminate() async throws {
-        _ = try await server.call(tool: "ft_terminate", args: [:])
+        _ = try await server.call(tool: "ft_terminate", args: ["bundleId": "com.example.app"])
         XCTAssertEqual(driver.calls, ["terminate"])
+    }
+
+    /// **§19.3 M3**: 対象が分からない(bundleId も無く、このセッションで ft_launch もしていない)
+    /// ときは黙って何もしないのではなく throw する。答えを「Terminated the app」で嘘つかない
+    func testTerminateWithNoKnownTargetRefuses() async {
+        await assertThrows("ft_terminate", [:])
+        XCTAssertEqual(driver.calls, [], "対象不明のまま撃ってはいけない")
+    }
+
+    /// 直前の ft_launch を既定の対象にする(明示 bundleId が無くても撃てる)
+    func testTerminateDefaultsToTheLastLaunchedBundleID() async throws {
+        _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.example.app"])
+        let result = try await server.call(tool: "ft_terminate", args: [:])
+        let text = try XCTUnwrap(result.first?["text"] as? String)
+        XCTAssertTrue(text.contains("com.example.app"), text)
     }
 
     // MARK: - 必須引数の欠落・不正値

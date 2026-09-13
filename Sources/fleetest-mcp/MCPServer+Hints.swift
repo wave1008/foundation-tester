@@ -500,7 +500,11 @@ extension MCPServer {
             : " Scrollable areas here: \(real)."
     }
 
-    static func scrollAreaHint(_ snapshot: SnapshotResponse, args: [String: Any]) -> String {
+    /// `isAndroid`: 「in-app エンジンだけが Compose/Flutter の申告を見られる」は iOS の話
+    /// (in-app vs XCUITest エンジンの差)。Android にエンジンの選択肢は無いので、そのまま出すと
+    /// 存在しない切り替え先を示唆する
+    static func scrollAreaHint(_ snapshot: SnapshotResponse, args: [String: Any],
+                               isAndroid: Bool) -> String {
         // **渡した scrollFrame が複数に当たっているなら、それを先に言う**。`matchDetailed` は
         // 添字が無ければ `matches[0]` を黙って採るので、同名の容器が並ぶ画面では
         // preorder 先頭(たいてい横カルーセル)を掴んだまま「見つからない」で終わる。
@@ -539,11 +543,12 @@ extension MCPServer {
         // 依然として出ない。黙ると「scrollFrame を渡せ」というツール説明だけが残り、
         // 渡す候補が無いことに気づけない
         if !snapshot.elements.contains(where: { $0.scrollable == true }) {
-            return " No element in this tree declares itself scrollable (with Compose/Flutter,"
-                + " only the in-app engine can see scroll containers), so the search swiped the"
-                + " whole screen. If the target sits in a horizontal row, scroll the row with"
-                + " ft_drag inside its bounds; a container that has a #id (testTag) can still be"
-                + " passed as scrollFrame:."
+            let engineCaveat = isAndroid ? "" : " (with Compose/Flutter, only the in-app engine"
+                + " can see scroll containers)"
+            return " No element in this tree declares itself scrollable\(engineCaveat), so the"
+                + " search swiped the whole screen. If the target sits in a horizontal row, scroll"
+                + " the row with ft_drag inside its bounds; a container that has a #id (testTag)"
+                + " can still be passed as scrollFrame:."
         }
         guard let note = ScrollFrameCandidates.note(snapshot) else { return "" }
         return " " + note.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1930,24 +1935,52 @@ extension MCPServer {
     /// (折り返しの下・別タブの隠れた行 等)ので、画面外の座標はその**実在する**見えない要素を
     /// 実際に押してしまう(実測: (201, 900) で画面外の `#nav_diagnostics` が押されて遷移した)。
     ///
-    /// **screen が分からないときは従来どおり撃つ**(ft_snapshot をまだ撮っていない・
-    /// 旧ブリッジ等)—— 「分からない」を「外れている」と読むと、画面を知らないだけの
-    /// 正常な呼び出しまで拒否することになる。
+    /// **screen が分からないときは撃つ**(旧ブリッジ等で screen が 0 の形)—— 「分からない」を
+    /// 「外れている」と読むと、画面を知らないだけの正常な呼び出しまで拒否することになる。
+    /// ただし**「まだ ft_snapshot を撮っていない」は分からないうちに入れない**: 呼び手は
+    /// `coordinateScreen` で直近の木の screen を採り、無ければ1枚読んでから判定する
+    /// (snapshot 前の `tap (5000, -20)` が done になっていた = §19 M4)。
     ///
-    /// 呼び手は直近の `lastSnapshots[engineKey].screen` を渡すこと(この関数自体は
-    /// 撮り直さない — 追加の snapshot を払わない)
-    static func offscreenCoordinateError(x: Double, y: Double, screen: FTRect?) -> MCPError? {
+    /// **縁は外**(`<`): 幅 1080 の画面で x=1080 は画素の外(0…1079)。iOS の pt も同じ。
+    /// 含み側にすると `(1080, 2220)` が done になる(§19 M4・担当)
+    /// `engine`: "in-app ブリッジは frame だけを見る" という理由づけは in-app/hybrid だけの実態
+    /// (InAppBridge.swift)なので、他のエンジン(xcuitest/android/不明)にそのまま言うと
+    /// 存在しない仕組みの説明になる。理由は畳んでも警告そのものは残す(木は画面外にも要素を持つ
+    /// ことがある、という事実は engine を問わず有効)
+    static func offscreenCoordinateError(x: Double, y: Double, screen: FTRect?,
+                                         engine: String?) -> MCPError? {
         guard let screen, screen.width > 0, screen.height > 0 else { return nil }
-        guard x >= screen.x, x <= screen.x + screen.width,
-              y >= screen.y, y <= screen.y + screen.height else {
+        guard x >= screen.x, x < screen.x + screen.width,
+              y >= screen.y, y < screen.y + screen.height else {
+            let reason: String
+            switch engine {
+            case "inapp", "hybrid":
+                reason = "The in-app engine hit-tests only \"does some frame contain this point\","
+                    + " not \"is this point on screen\", so"
+            default:
+                reason = "The tree can include elements that are off-screen, so"
+            }
             return MCPError("(\(x), \(y)) is outside the screen (\(FTSeconds.format(screen.width))"
                 + "x\(FTSeconds.format(screen.height)), origin \(FTSeconds.format(screen.x)),"
-                + "\(FTSeconds.format(screen.y))) — refusing to fire. The in-app engine hit-tests"
-                + " only \"does some frame contain this point\", not \"is this point on screen\","
-                + " so an offscreen coordinate can land on a real, offscreen element (e.g. a tab"
-                + " below the fold, or a row still in the tree from a previous screen). Take a"
-                + " fresh ft_snapshot and pass an in-bounds coordinate, or use a ref instead.")
+                + "\(FTSeconds.format(screen.y))) — refusing to fire. \(reason) an offscreen"
+                + " coordinate can land on a real, offscreen element (e.g. a tab below the fold,"
+                + " or a row still in the tree from a previous screen). Take a fresh ft_snapshot"
+                + " and pass an in-bounds coordinate, or use a ref instead.")
         }
         return nil
+    }
+
+    /// 座標の操作が画面の範囲を知るための screen。直近の木があればそれ(追加の読みは払わない)、
+    /// 無ければ控え(`knownScreens`)、それも無ければ**1枚生読みして控える**(セッション最初の
+    /// 座標操作だけ。読めなければ nil = 撃つ側)。**生読み = 世代を作らない**(knownScreens の doc)。
+    /// 回転は ft_rotate が木を記録するので lastSnapshots 側が勝つ
+    func coordinateScreen(_ driver: AppDriver, args: [String: Any]) async -> FTRect? {
+        let key = Self.engineKey(args)
+        if let screen = lastSnapshots[key]?.screen { return screen }
+        if let screen = knownScreens[key] { return screen }
+        guard let screen = (try? await driver.snapshot(bypassingCache: driver.supportsCacheBypass))?.screen
+        else { return nil }
+        knownScreens[key] = screen
+        return screen
     }
 }

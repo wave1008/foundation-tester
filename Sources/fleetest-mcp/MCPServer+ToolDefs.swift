@@ -514,7 +514,11 @@ extension MCPServer {
             "fullSize": ["type": "boolean", "description": "Return the original PNG at full "
                 + "resolution instead, for when fine detail matters"],
         ]),
-        tool("ft_terminate", "Terminate the running app", [:]),
+        tool("ft_terminate", "Terminate the running app. Fails if no target is known (neither "
+            + "bundleId nor a prior ft_launch in this session) instead of silently doing nothing", [
+            "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android). "
+                + "Defaults to the bundle ID of the last ft_launch"],
+        ]),
         tool("ft_list_scenarios", "List the Swift DSL scenarios (TestProjects/<name>/scenarios/). Builds automatically; compile errors are returned as-is", [
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
             "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],

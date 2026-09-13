@@ -220,4 +220,26 @@ final class CrashLogsTests: XCTestCase {
         XCTAssertFalse(text.contains("Devices and Simulators"), text)
         XCTAssertTrue(text.contains("bundleID"), text)
     }
+
+    // MARK: - Android のヘッダ文言(§19.3 M1・純関数なので adb 不要)
+
+    /// `crashOnly` は ft_logs の引数名ではない(実際は `all`)。ヘッダに内部変数名を
+    /// 出さず、渡せる引数の言葉(`all: true`)で言い換えること
+    func testAndroidLogHeaderNamesTheActualArgumentNotTheInternalFlag() {
+        let withCrashOnly = CrashLogs.androidLogHeader(shownCount: 10, allCount: 10, crashOnly: true)
+        XCTAssertFalse(withCrashOnly.contains("crashOnly"), withCrashOnly)
+        XCTAssertTrue(withCrashOnly.contains("crash buffer only"), withCrashOnly)
+
+        let withAll = CrashLogs.androidLogHeader(shownCount: 10, allCount: 10, crashOnly: false)
+        XCTAssertFalse(withAll.contains("crashOnly"), withAll)
+        XCTAssertTrue(withAll.contains("all: true"), withAll)
+    }
+
+    func testAndroidLogHeaderMentionsTruncationOnlyWhenLinesWereDropped() {
+        let truncated = CrashLogs.androidLogHeader(shownCount: 5, allCount: 20, crashOnly: true)
+        XCTAssertTrue(truncated.hasPrefix("Showing the last 5 of 20 line(s)"), truncated)
+
+        let full = CrashLogs.androidLogHeader(shownCount: 5, allCount: 5, crashOnly: true)
+        XCTAssertTrue(full.hasPrefix("5 line(s)"), full)
+    }
 }

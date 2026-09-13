@@ -724,14 +724,28 @@ extension MCPServer {
     /// **1文に圧縮**: UIKit アプリでも xcuitest エンジンなら毎回この助言が出ており、
     /// 長文の苦情があった。「in-app は起動し直る」制約(dylib は起動時にしか差し込めない。
     /// 2026-08-06 に実際に踏んだ: マップ画面で double tap → ホームから `#nav_scroll` が開いた)
-    /// は末尾に畳み込む
-    func iosEngineHint(_ framework: String, _ gesture: String, args: [String: Any]) -> String {
+    /// は末尾に畳み込む。
+    /// **`frameworkKey` が判明していて一致しなければ黙る**(この助言は `framework` 1つに
+    /// 固有の欠陥で、他のフレームワーク(判明した uikit や、もう一方の compose/flutter)には
+    /// 効かない誤誘導になる)。**不明なら従来どおり出すが「もしこのフレームワークなら」に弱める**
+    /// (uiFrameworkHints は profile 経由でしか埋まらないので、profile 無しの xcuitest は毎回不明側)
+    func iosEngineHint(_ framework: String, frameworkKey: String, _ gesture: String,
+                      args: [String: Any]) -> String {
         guard engines[Self.engineKey(args)] == "xcuitest" else { return "" }
         // `fleetest bridge up --engine inapp` と案内しない —— そのフラグは存在しない
         // (in-app ブリッジは in-app/hybrid の実行プロファイル経由でだけ立つ。2026-08-08 に確認)
-        return " If nothing changed on iOS: \(framework) apps do not receive \(gesture) on the"
-            + " XCUITest engine — pass profile: naming an in-app/hybrid run profile, which starts"
+        let advice = " pass profile: naming an in-app/hybrid run profile, which starts"
             + " an in-app bridge (this relaunches the app — re-navigate before retrying)."
+        switch uiFrameworkHints[Self.engineKey(args)] {
+        case .some(let known) where known != frameworkKey:
+            return ""
+        case .some:
+            return " If nothing changed on iOS: \(framework) apps do not receive \(gesture) on the"
+                + " XCUITest engine —" + advice
+        case .none:
+            return " If nothing changed on iOS and this is a \(framework) app: it would not receive"
+                + " \(gesture) on the XCUITest engine —" + advice
+        }
     }
 
     /// **launch する前に**確かめる。未インストールのまま `XCUIApplication.launch()` を撃つと、
@@ -744,13 +758,37 @@ extension MCPServer {
     /// のでホストが確かめる。**確かめられないときは nil = 素通し**(実機・同名デバイス複数・
     /// simctl/adb 不調。断定しない側に倒す)。iOS のシステムアプリ(springboard/Safari)も
     /// get_app_container が runtime のパスを返すので誤って弾かない(2026-08-06 実測)
-    func installedState(bundleID: String, driver: AppDriver) async -> Bool? {
+    func installedState(bundleID: String, driver: AppDriver, args: [String: Any]) async -> Bool? {
         // 差し替えドライバ(テスト)ではデバイスを照会しない = simctl/adb を撃たない
         guard makeDriver == nil else { return nil }
         if let android = driver as? AndroidDriver {
             let installed = android.isInstalled(bundleID: bundleID)
             if installed == nil { Self.logStderr(Self.uncheckedNote(bundleID: bundleID, reason: "adb")) }
             return installed
+        }
+        // **実機は simctl ではなく devicectl**(§19.3 M8。ft_list_apps の同型判定と揃える —
+        // MCPServer+Dispatch.swift の ft_list_apps 参照): 実機の udid を simulatorInstallVerdict
+        // へ渡すと、udid の形が同じシミュレータ名(既定は機種名なので実機と同名になりやすい)を
+        // 誤って照会し、別デバイスの在否を答える。候補は3段(ft_list_apps と同じ優先順)
+        let key = Self.engineKey(args)
+        let candidateUDID = (args["udid"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            ?? udids[key].flatMap { $0 }
+            ?? connectedPorts[key].flatMap { port in
+                (try? RepoRoot.find()).flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }
+            }
+        // **シミュレータの UDID(UUID 形)では devicectl を撃たない** —— 毎 ft_launch に 1 秒級の
+        // `devicectl list devices` を払わせない。実機の UDID は `00008110-…`(8-16)で UUID にならない
+        if let candidateUDID, UUID(uuidString: candidateUDID) == nil,
+           let physicalDevices = try? IOSPhysicalDeviceCatalog.devices(),
+           physicalDevices.contains(where: {
+               $0.udid == candidateUDID || $0.deviceCtlIdentifier == candidateUDID
+           }) {
+            guard let apps = try? IOSPhysicalAppCatalog.apps(udid: candidateUDID) else {
+                Self.logStderr(Self.uncheckedNote(bundleID: bundleID, reason: "devicectl could not"
+                    + " list installed apps"))
+                return nil
+            }
+            return apps.contains { $0.id == bundleID }
         }
         guard let device = try? await driver.status().device else {
             Self.logStderr(Self.uncheckedNote(bundleID: bundleID, reason: "the bridge did not report a device"))
@@ -1009,9 +1047,13 @@ extension MCPServer {
     /// `processEvidence`(Android のみ・呼び出し側が adb で引く)が `running == false` を
     /// 言っているときは、原因を「操作でアプリを離れた」から「プロセスが無い(クラッシュの疑い)」
     /// へ差し替える —— 2026-09-05・実機 Pixel 4a で実測: #btn_crash_confirm でプロセスを落とすと、
-    /// 通常文言は launcher へ迷い込んだとしか言わず、実際に落ちたことを伝えられない
+    /// 通常文言は launcher へ迷い込んだとしか言わず、実際に落ちたことを伝えられない。
+    /// **`stoppedByTool` はさらに確度が高い事実**(推測ではなく、ツール自身が撃った操作)なので
+    /// processEvidence より先に見る —— 明示 ft_clear_app_data / ft_install の直後は
+    /// 「クラッシュしたかも」ではなく「この操作で止めた」と言う(§19.3 M2)
     static func switchedAppNote(launched: String?, snapshot: SnapshotResponse,
-                                processEvidence: AndroidAppProcessEvidence? = nil) -> String {
+                                processEvidence: AndroidAppProcessEvidence? = nil,
+                                stoppedByTool: String? = nil) -> String {
         guard let launched, let session = snapshot.sessionBundleID, session != launched else {
             return ""
         }
@@ -1028,6 +1070,11 @@ extension MCPServer {
                 + " (e.g. a permission prompt), not the app itself. Operate the dialog"
                 + " (tap its buttons, or back) to get back to \(launched) — ft_launch restarts"
                 + " the app and leaves the dialog on screen, so you would loop without progress.\n"
+        }
+        if let stoppedByTool {
+            return "⚠️ This tree belongs to \(session), NOT the app you launched (\(launched))"
+                + " — \(launched) is not running because \(stoppedByTool) stopped it just now"
+                + " (not a crash). ft_launch \(launched) to start it again.\n"
         }
         if let processEvidence, !processEvidence.running {
             var note = "⚠️ This tree belongs to \(session), NOT the app you launched (\(launched))"

@@ -208,15 +208,16 @@ final class IOSPhysicalDeviceTests: XCTestCase {
     }
 
     /// 「automation mode を有効化できずタイムアウト」はランナーが起動してから端末側で落ちる形。
-    /// 実測(2026-09-07 iPhone SE3): ロック解除済み・Developer Mode オンでも出るので、
-    /// ロック/UI Automation 設定/残留セッションの3つを人に案内する
+    /// 実測(iPhone SE3 / iPhone 13, 2026-09-11・14)ではロック解除・再起動では直らず、
+    /// 起動試行中に端末へ出る承認プロンプトに答えてから撃ち直すことだけが効くので、
+    /// それを先に案内する
     func testRunnerFailureReasonExplainsAutomationModeTimeout() throws {
         let log = "FleetestRunnerUITests-Runner[5616:3824101] [Default] Failed to initialize for UI testing:"
             + " Error Domain=com.apple.dt.XCTest.XCTFuture Code=1000 \"Timed out while enabling automation mode.\"\r\n"
             + "Testing failed:\r\n** TEST EXECUTE FAILED **\r\n"
         let reason = try XCTUnwrap(IOSDeviceTransport.runnerFailureReason(inLog: log))
-        XCTAssertTrue(reason.contains("UI Automation"), reason)
-        XCTAssertTrue(reason.contains("reboot"), reason)
+        XCTAssertTrue(reason.contains("approve"), reason)
+        XCTAssertTrue(reason.contains("retry"), reason)
     }
 
     /// waitUntilReady は「セッションが終わった」を見つけたら、総称の timedOut を投げる前に

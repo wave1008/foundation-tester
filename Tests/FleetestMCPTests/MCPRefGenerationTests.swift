@@ -111,6 +111,22 @@ final class MCPRefGenerationTests: XCTestCase {
         XCTAssertFalse(text.contains("older snapshot"), text)
     }
 
+    /// 4.5(§19.3 M6): `ft_type(ref:)` は内部で verifiedRef → freshSnapshot を1回払うが、
+    /// 木が変わっていなければ adoptSnapshot は世代を進めない(同一性が一致すれば base を
+    /// 使い回す)ので、同じスナップショットから採った**別の** ref はこの後も stale にならない
+    /// はず——という回帰ガード。読み返し等の内部検証は raw snapshot(adoptSnapshot を通さない)
+    /// なので、そちらが世代を進めることも無い
+    func testTypeWithRefDoesNotStaleOtherRefsFromTheSameSnapshot() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "textField", id: "field_a", label: nil),
+            element(ref: 2, id: "btn_b", label: "OK"),
+        ])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        _ = try await server.call(tool: "ft_type", args: ["ref": 1, "text": "hello"])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 2]))
+        XCTAssertFalse(text.contains("older snapshot"), text)
+    }
+
     /// 5. どの世代にも無い ref で ft_tap(世代列はある)→ 「unknown ref」の throw。
     /// 世代が無いとき(ft_snapshot を1度も挟んでいないとき)は素通しする既存の不変条件と対比する
     func testTapWithARefFromNoGenerationThrowsUnknownRef() async throws {

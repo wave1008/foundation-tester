@@ -317,12 +317,9 @@ extension MCPServer {
         guard let stateDir = deviceLeaseStateDir,
               let deviceKey = recorded ?? (args["udid"] as? String) ?? (args["serial"] as? String),
               !deviceKey.isEmpty else { return nil }
-        let pid = ProcessInfo.processInfo.processIdentifier
-        MCPDeviceLease.write(stateDir: stateDir, key: deviceKey, pid: pid)
-        guard let holder = RunLease.holderPID(stateDir: stateDir, key: deviceKey), holder != pid else { return nil }
-        return "⚠️ a fleetest run (pid \(holder)) is using this device right now — what you do here and what"
-            + " the run does interfere with each other (screens, input, app state)."
-            + " Wait for the run to finish, or drive another device."
+        // 印と文言は MCPDeviceLease の1箇所(ft_run_scenario も同じ口を使う)
+        return MCPDeviceLease.writeAndWarnIfRunHolds(
+            stateDir: stateDir, key: deviceKey, pid: ProcessInfo.processInfo.processIdentifier)
     }
 
     /// ios/android 分岐の共通尾部(2026-08-12 の掃討・2026-08-12 曖昧化対応で拡張):
@@ -578,6 +575,12 @@ extension MCPServer {
             installedPackagePaths[installKey] = packagePath
             // インストール直後の初回起動で権限アラートが出ることがある(systemAlertProbePending 参照)
             systemAlertProbePending.insert(installKey)
+            // **既に起動していたアプリの上書きインストールは、たいてい実行中のプロセスを止める**
+            // (§19.3 M2)。次の snapshot が switchedAppNote 経由で「クラッシュしたかも」と
+            // 誤診しないよう、原因をこの操作へ帰属させておく(ft_launch で消える)
+            if launchedBundleIDs[installKey] != nil {
+                toolStoppedBundleIDs[installKey] = "ft_install"
+            }
             return text("Installed: \(packagePath)")
 
         case "ft_launch":
@@ -594,7 +597,7 @@ extension MCPServer {
                     + " launch. Drop resume: true, or attach with the xcuitest engine.")
             }
             // **撃つ前に弾く**(ランナー死の予防。installedState のコメント参照)
-            if await installedState(bundleID: bundleID, driver: launchDriver) == false {
+            if await installedState(bundleID: bundleID, driver: launchDriver, args: args) == false {
                 throw MCPError(Self.notInstalledMessage(bundleID: bundleID))
             }
             if resumes {
@@ -605,6 +608,8 @@ extension MCPServer {
             // 以後の snapshot は「これの木か」を突き合わせられる(switchedAppNote)
             launchedBundleIDs[launchKey] = bundleID
             launchTimestamps[launchKey] = Date()
+            // 再起動した以上、以後の不在は今回の ft_clear_app_data/ft_install のせいではない
+            toolStoppedBundleIDs[launchKey] = nil
             backgroundedByNavigate.remove(launchKey)
             // 次の ft_snapshot で一度だけ system alert を確かめる(systemAlertProbePending 参照)。
             // **springboard 自身への attach では立てない** —— そちらはアラートを読みに行く
@@ -662,7 +667,8 @@ extension MCPServer {
             return text(Self.openURLSummary(url: url, bundleID: openURLBundleID,
                                             bundleIDWasRemembered: explicitBundleID == nil,
                                             snapshotAfter: args["snapshotAfter"] as? Bool == true,
-                                            waitedForLanding: wantsLandingWait)
+                                            waitFor: args["waitFor"] as? String,
+                                            waitForChangeExplicit: args["waitForChange"] as? Bool)
                 + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(openURLArgs)))
 
         case "ft_snapshot":
@@ -731,6 +737,9 @@ extension MCPServer {
                 // 撃つ直前にだけ nativeRef で戻す(応答・記録には引き続きセッション ref を使う)
                 try await d.tap(ref: nativeRef(target.ref, args: args))
                 recordInteraction(action: "tap", resolvedRef: target.ref, args: args)
+                // 次の ref なし ft_type の救済材料(verifiedRef が撮り直した木から引く)
+                lastTapTargets[Self.engineKey(args)] = lastSnapshots[Self.engineKey(args)]?
+                    .elements.first { $0.ref == target.ref }
                 return text("tap [\(ref)] done.\(target.note)"
                     // ブリッジの /tap が返す note(例:
                     // 「activate 不発 → 合成タッチ」— BridgeClient.tap(ref:) の lastActionNote)を
@@ -743,9 +752,11 @@ extension MCPServer {
             }
             if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 if let offscreen = Self.offscreenCoordinateError(
-                    x: x, y: y, screen: lastSnapshots[Self.engineKey(args)]?.screen) { throw offscreen }
+                    x: x, y: y, screen: await coordinateScreen(d, args: args),
+                    engine: engines[Self.engineKey(args)]) { throw offscreen }
                 try await d.tap(x: x, y: y)
                 recordInteraction(action: "tap", resolvedRef: nil, args: args, coordinate: (x, y))
+                lastTapTargets[Self.engineKey(args)] = nil
                 return text("tap (\(x), \(y)) done" + once("coordinateReproductionNote",
                     full: Self.coordinateReproductionNote,
                     short: Self.coordinateReproductionNoteShort)
@@ -837,19 +848,61 @@ extension MCPServer {
                 return lastSnapshots[Self.engineKey(args)]
             }
             if let content, !content.isEmpty {
+                // **`ft_tap(容器)` → ref なし `ft_type` を成立させる**(DSL の `retypeTargetIfUnfocused` と
+                // 同じ規律・判定は `InputFocusRescue` を共有)。Android は容器を叩いても前の欄の焦点を
+                // 外さないので、ref なし type は**前の欄へ入って「Typed」とだけ返していた**
+                // (Pixel 3a・§19 F13 の MCP 版)。払うのは tap の直後の1枚だけ。
+                // **生読み**(adoptSnapshot を通さない)= 返る ref は native なのでそのまま撃てる。
+                // 入れ先が一意に決まらなければ従来どおり焦点の欄へ送るが、**焦点が叩いた欄の外に
+                // あることは警告に出す**(typedIntoNote の「どこへ入ったか」と対で読める)
+                var rescuedNativeRef: Int?
+                if targetRef == nil, !content.contains("\n"),
+                   let tapped = lastTapTargets[Self.engineKey(args)],
+                   let fresh = try? await typeDriver.snapshot(bypassingCache: typeDriver.supportsCacheBypass),
+                   InputFocusRescue.focusIsElsewhere(from: tapped, in: fresh.elements) {
+                    let focusedName = fresh.elements.first { $0.focused == true }.map(RefGuard.describe)
+                    if let field = InputFocusRescue.fieldToType(after: tapped, in: fresh.elements) {
+                        rescuedNativeRef = field.ref
+                        note += " (tapping \(RefGuard.describe(tapped)) left input focus"
+                            + (focusedName.map { " on \($0)" } ?? " nowhere")
+                            + ", so the text was sent to the input field inside it,"
+                            + " \(RefGuard.describe(field)))"
+                    } else {
+                        note += " (warning: tapping \(RefGuard.describe(tapped)) left input focus"
+                            + (focusedName.map { " on \($0)" } ?? " nowhere")
+                            + ", and no single input field inside the tapped element could be chosen"
+                            + " — the text went to whichever field has focus; pass the field's ref)"
+                    }
+                }
                 // targetRef はセッション ref。ブリッジへ渡す直前にだけ native へ戻す
-                try await typeDriver.type(ref: targetRef.map { nativeRef($0, args: args) }, text: content)
+                let resolvedTypeRef = rescuedNativeRef ?? targetRef.map { nativeRef($0, args: args) }
+                do {
+                    try await typeDriver.type(ref: resolvedTypeRef, text: content)
+                } catch {
+                    // **ref なしで撃った失敗だけ**、前面の SpringBoard アラートを名指しする
+                    // 一発物の照会を添える(SystemUIGate の申告は木に載らないので、素の失敗は
+                    // 「焦点が無い」としか言えず、原因がアラートだと気づけないまま撃ち直しがちになる)。
+                    // target が無い形なので systemAlertGate(要素前提)ではなく frontSystemAlert を使う
+                    if resolvedTypeRef == nil, let alert = await Self.frontSystemAlert(driver: typeDriver) {
+                        throw MCPError(error.localizedDescription + " — \(alert) is in front of the"
+                            + " app, which likely explains the missing focus. Handle it first with"
+                            + " `ft_launch bundleId: com.apple.springboard`, tap its button by ref,"
+                            + " then `ft_launch` your app again.")
+                    }
+                    throw error
+                }
                 // **ref を渡したときだけ読み返しで検証される**。iOS の XCUITest ランナーは
                 // ref から対象を引けたときだけ TypeReadback の resend/deleteExcess を回し、
                 // 引けない(= ref なし)ときは無検証の `typeText` へ落ちて OK を返す。
                 // Android は焦点ノードを読み返すので ref なしでも検証される。
                 // **replace のときはここでは読み返さない** —— 下の replaceVerificationNote が
                 // 同じ理由(生読み・settle-lite 基準を壊さない)で改めて読むので、二重に払わない
-                if targetRef == nil, !(typeDriver is AndroidDriver), !wantsReplace {
+                if targetRef == nil, !wantsReplace {
                     // **注意書きで済ませず、ここで確かめる**: iOS の XCUITest ランナーは ref から
                     // 対象を引けたときだけ TypeReadback を回すので、ref なしは無検証で OK が返る。
-                    // 木は `focused` を持っているのだから、撮り直して**どこへ入ったか**を名指しできる
-                    // (Android は焦点ノードを読み返すのでこの1枚は払わない)。
+                    // 木は `focused` を持っているのだから、撮り直して**どこへ入ったか**を名指しできる。
+                    // **Android も払う**(以前は焦点ノードの読み返しを理由に省いていたが、読み返しは
+                    // 「焦点のある欄に入った」しか言わず、**それが別の欄だった**ことを言えない = F13)。
                     // **生読み(adoptSnapshot を通さない)**: この読みは入力という操作の**後**に
                     // 撮っているので、freshSnapshot 経由だと lastSnapshots[key] を上書きし、
                     // 続く snapshotAfterBody の settle-lite 基準(操作前の木のつもり)が
@@ -1214,6 +1267,11 @@ extension MCPServer {
             }
             // 次の ft_launch が初回起動と同じ扱いになる(systemAlertProbePending 参照)
             systemAlertProbePending.insert(clearAppDataKey)
+            // この呼び出しでアプリを止めた事実を記録する(§19.3 M2)。launchedBundleIDs は
+            // ここでは消さない(再インストール分岐と違い bundleID はまだ同じアプリのまま —
+            // 次の ft_launch は「初回起動」ではなく「再起動」)。switchedAppNote がこれを見て
+            // 「クラッシュしたかも」ではなく「この操作で止めた」と言う
+            toolStoppedBundleIDs[clearAppDataKey] = "ft_clear_app_data"
             return text("Cleared the data of \(bundleID). The app is stopped — ft_launch to continue")
 
         case "ft_clear_input":
@@ -1294,7 +1352,8 @@ extension MCPServer {
                 doubleTapSelector = reproductionNote(resolvedRef: element.ref, args: args)
             } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 if let offscreen = Self.offscreenCoordinateError(
-                    x: x, y: y, screen: lastSnapshots[Self.engineKey(args)]?.screen) { throw offscreen }
+                    x: x, y: y, screen: await coordinateScreen(doubleTapDriver, args: args),
+                    engine: engines[Self.engineKey(args)]) { throw offscreen }
                 doubleTapPoint = (x, y)
                 doubleTapWhat = "(\(x), \(y))"
                 doubleTapSelector = once("doubleTapCoordinateNote",
@@ -1308,7 +1367,7 @@ extension MCPServer {
                               coordinate: doubleTapResolvedRef == nil ? doubleTapPoint : nil)
             return text("double tap \(doubleTapWhat) done.\(doubleTapNote)\(doubleTapSelector)"
                 + Self.changedHint(args)
-                + iosEngineHint("Compose Multiplatform", "double tap", args: args)
+                + iosEngineHint("Compose Multiplatform", frameworkKey: "compose", "double tap", args: args)
                 + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
 
         case "ft_drag":
@@ -1328,8 +1387,13 @@ extension MCPServer {
                 fromPoint = (element.frame.centerX, element.frame.centerY)
                 dragSelector = reproductionNote(resolvedRef: element.ref, args: args) + labelNote
             } else if let x = args["fromX"] as? Double, let y = args["fromY"] as? Double {
+                // 宛先の無い呼び出しは木を読む前に断る(引数の検査はデバイスに触らない)
+                guard args["toX"] != nil || args["toY"] != nil || args["dx"] != nil || args["dy"] != nil else {
+                    throw MCPError("the drag does not move: pass toX/toY, or dx/dy")
+                }
                 if let offscreen = Self.offscreenCoordinateError(
-                    x: x, y: y, screen: lastSnapshots[Self.engineKey(args)]?.screen) { throw offscreen }
+                    x: x, y: y, screen: await coordinateScreen(dragDriver, args: args),
+                    engine: engines[Self.engineKey(args)]) { throw offscreen }
                 fromPoint = (x, y)
                 dragSelector = once("dragCoordinateNote",
                                     full: Self.dragCoordinateNote,
@@ -1424,7 +1488,7 @@ extension MCPServer {
                 // **同じ逃げ道を2度書かない**(2026-08-08 に長文の苦情があった箇所)。
                 // 領域が無視されたときの文は engine も remedy も言い切っているので、
                 // 汎用の Flutter 助言はそこでは畳む
-                + (areaIgnored ? "" : iosEngineHint("Flutter", "pinch", args: args))
+                + (areaIgnored ? "" : iosEngineHint("Flutter", frameworkKey: "flutter", "pinch", args: args))
                 + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
 
         // 旧名 `ft_press` は call() の toolAliases が現名へ畳む(ここに並べると記憶の適用から漏れる)
@@ -1455,7 +1519,8 @@ extension MCPServer {
             // 長押しする操作(ピンを落とす・住所を出す)が一切書けない状態だった
             if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 if let offscreen = Self.offscreenCoordinateError(
-                    x: x, y: y, screen: lastSnapshots[Self.engineKey(args)]?.screen) { throw offscreen }
+                    x: x, y: y, screen: await coordinateScreen(pressDriver, args: args),
+                    engine: engines[Self.engineKey(args)]) { throw offscreen }
                 try await pressDriver.press(x: x, y: y, duration: pressDuration)
                 recordInteraction(action: "press", resolvedRef: nil, args: args, coordinate: (x, y),
                                   duration: pressDuration)
@@ -1507,14 +1572,39 @@ extension MCPServer {
                                   "mimeType": "image/jpeg"]]
 
         case "ft_terminate":
+            // **対象が分からなければ黙って何もしないのではなく、名指しで断る**(§19.3 M3):
+            // ドライバの terminate() は Android では currentPackage が無いと何も撃たずに
+            // 戻る(AndroidDriver.terminate)。target を知らずに「Terminated the app」と
+            // 答えると、何も終了させていないのに成功したと誤解させる
+            // **ドライバの terminate() は名指しできない**(attach 中のアプリを止めるだけ)。明示の
+            // bundleId が起動中のアプリと違えば断り、起動していない台への明示指定は「送った」まで
+            // しか言わない(Android は currentPackage が無ければ何も撃たない)
+            let terminateKey = Self.engineKey(args)
+            let explicitBundleID = args["bundleId"] as? String
+            guard let terminateBundleID = explicitBundleID ?? launchedBundleIDs[terminateKey]
+            else {
+                throw MCPError("no known target to terminate — nothing was launched in this"
+                    + " session and no bundleId was given. Pass bundleId, or ft_launch first.")
+            }
+            if let explicitBundleID, let launched = launchedBundleIDs[terminateKey],
+               explicitBundleID != launched {
+                throw MCPError("this session launched \(launched), and ft_terminate can only stop the"
+                    + " app it is attached to — omit bundleId (or pass \(launched)) to stop that app")
+            }
+            let terminateUnverified = explicitBundleID != nil && launchedBundleIDs[terminateKey] == nil
             try await driver(args).terminate()
             // 意図して落としたので、以後の別アプリの木は「すり替わり」ではない
-            launchedBundleIDs[Self.engineKey(args)] = nil
-            launchTimestamps[Self.engineKey(args)] = nil
-            systemAlertProbePending.remove(Self.engineKey(args))
+            launchedBundleIDs[terminateKey] = nil
+            launchTimestamps[terminateKey] = nil
+            toolStoppedBundleIDs[terminateKey] = nil
+            systemAlertProbePending.remove(terminateKey)
             // 前面が消えたので、覆い探針の記憶(F 節)は使い回さない
-            lastScreenProbe[Self.engineKey(args)] = nil
-            return text("Terminated the app")
+            lastScreenProbe[terminateKey] = nil
+            return text(terminateUnverified
+                ? "Terminate sent for \(terminateBundleID) (nothing was launched in this session, so the"
+                    + " driver stopped whichever app it is attached to — on Android nothing is stopped"
+                    + " without a prior ft_launch; nothing about the result is checked)"
+                : "Terminated \(terminateBundleID)")
 
         case "ft_list_scenarios":
             return try listScenarios(args)
@@ -1557,11 +1647,14 @@ extension MCPServer {
     /// しかも Android では bundleID が intent の宛先そのものなので、その間に別アプリへ
     /// 移っていれば**裏に居るアプリが叩き起こされる**。断らずに済ませる代わりに、
     /// 何を根拠に選んだかを必ず添える
-    /// `waitedForLanding`: 着地待ち(waitForChange)を実際に適用したか。**要約は実際にやったことを
-    /// 言う** —— `waitForChange: false` を渡した相手に「待って読んだ」と書くと、返ってきた木が
-    /// 前の画面でも読み手は待った結果だと信じる(2026-08-16 に変異テストの境界を締めて露見)
+    /// `waitFor`/`waitForChangeExplicit`: **要約は実際に何を待つかを言う** —— 呼び手が
+    /// `waitFor` を渡しているのに(snapshotAfterBody 側では効いている)要約だけが
+    /// 「waitForChange: false」を名乗ると、渡していない引数を渡したことにされる(§19.3 M4)。
+    /// `waitForChangeExplicit` は `args["waitForChange"] as? Bool`(渡していなければ nil)。
+    /// 優先順: waitFor > 明示 false > それ以外(暗黙の着地待ち・明示 true)は汎用文言
     static func openURLSummary(url: String, bundleID: String?, bundleIDWasRemembered: Bool,
-                               snapshotAfter: Bool, waitedForLanding: Bool = true) -> String {
+                               snapshotAfter: Bool, waitFor: String? = nil,
+                               waitForChangeExplicit: Bool? = nil) -> String {
         let target = bundleID.map {
             " to \($0)" + (bundleIDWasRemembered
                 ? " (not given — this session's last ft_launch on this device;"
@@ -1571,9 +1664,13 @@ extension MCPServer {
         let delivered = "Delivered \(url)" + target + "."
         let asynchronous = " Delivery is asynchronous (the app has to receive and handle it)"
         guard !snapshotAfter else {
+            if let waitFor {
+                return delivered + asynchronous + " — the tree below was read after waiting for"
+                    + " \"\(waitFor)\" to appear"
+            }
             // **既定は「待つ」**(配送直後に読むと前の画面が返り得る)。
             // 待っても着地しなかったことは waitForChange の注記が言う
-            guard waitedForLanding else {
+            if waitForChangeExplicit == false {
                 return delivered + asynchronous + " — the tree below was read right after delivery"
                     + " (waitForChange: false), so it can still be the previous screen"
             }

@@ -144,4 +144,60 @@ final class SystemAlertTapRefusalTests: XCTestCase {
         _ = try await server.call(tool: "ft_tap", args: ["x": 100.0, "y": 300.0])
         XCTAssertEqual(taps.count, 1, "\(driver.calls)")
     }
+
+    // MARK: - ref なし ft_type が「焦点が無い」で失敗したとき(§19.3 M10)
+
+    /// **本命**: ref を渡さない ft_type がドライバの失敗(=「焦点が無い」相当)で落ちたとき、
+    /// 前面にシステムアラートが出ていれば、それを可能性の高い原因として名指しする
+    /// (SystemUIGate の申告は木に載らないので、素の失敗文は「焦点が無い」としか言えない)
+    func testRefLessTypeFailureNamesTheSystemAlertAsTheLikelyCause() async {
+        driver.scriptedSystemAlert = Self.photosAlert
+        driver.failing.insert("type")
+        do {
+            _ = try await server.call(tool: "ft_type", args: ["text": "hello"])
+            XCTFail("ドライバが失敗しているのに ft_type が成功した")
+        } catch {
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("system alert"), message)
+            XCTAssertTrue(message.contains(Self.photosAlert.title!), message)
+            XCTAssertTrue(message.contains("ft_launch bundleId: com.apple.springboard"), message)
+        }
+    }
+
+    /// アラートが無ければ、素のドライバのエラーをそのまま投げる(でっち上げない)
+    func testRefLessTypeFailureWithoutAnAlertPropagatesThePlainError() async {
+        driver.failing.insert("type")
+        do {
+            _ = try await server.call(tool: "ft_type", args: ["text": "hello"])
+            XCTFail("ドライバが失敗しているのに ft_type が成功した")
+        } catch {
+            let message = error.localizedDescription
+            XCTAssertFalse(message.contains("system alert"), message)
+        }
+    }
+
+    /// ref を渡した ft_type の失敗には、この一発物の照会を足さない(既にターゲット前提の
+    /// systemAlertGate を通っている経路であり、ここでの二重の照会は要らない)
+    func testTypeFailureWithARefDoesNotAddTheOneShotProbe() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [ElementInfo(ref: 1, type: "textField", identifier: "field_a",
+                                   label: nil, value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 16, y: 168, width: 370, height: 48), depth: 2)],
+            truncatedCount: 0)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        // **verifiedRef の時点ではアラート無し**(alert が出ていれば systemAlertGate が
+        // ref 操作そのものを別の理由で断り、ここで確かめたい「ref 形は一発物の照会を
+        // 足さない」ことを検証できなくなる)。type() 自体の失敗だけを起こす
+        driver.failing.insert("type")
+        do {
+            _ = try await server.call(tool: "ft_type", args: ["ref": 1, "text": "hello"])
+            XCTFail("ドライバが失敗しているのに ft_type が成功した")
+        } catch {
+            let message = error.localizedDescription
+            XCTAssertFalse(message.contains("likely explains the missing focus"), message)
+            XCTAssertFalse(message.contains("system alert"), message)
+        }
+    }
 }

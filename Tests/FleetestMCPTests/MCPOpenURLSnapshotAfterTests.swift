@@ -95,6 +95,44 @@ final class MCPOpenURLSummaryTests: XCTestCase {
                       "要約が実際にやったことを言っていない: \(text)")
     }
 
+    /// **§19.3 M4**: `waitFor` を渡したら要約はそれを名指しする ——
+    /// 渡していない `waitForChange: false` を名乗ってはいけない(waitFor は下の
+    /// snapshotAfterBody 側で別途効いているので、要約だけが実態と食い違っていた)
+    func testWaitForIsNamedInsteadOfClaimingWaitForChangeFalse() {
+        let summary = MCPServer.openURLSummary(url: "myapp://x", bundleID: "com.example.app",
+                                               bundleIDWasRemembered: false,
+                                               snapshotAfter: true, waitFor: "検索結果")
+        XCTAssertTrue(summary.contains("waiting for \"検索結果\" to appear"), summary)
+        XCTAssertFalse(summary.contains("waitForChange: false"), summary)
+    }
+
+    /// waitFor を渡さず明示 `waitForChange: false` のときだけ、その文言を名乗る
+    func testWaitForChangeFalseIsNamedOnlyWhenExplicitlyPassed() {
+        let summary = MCPServer.openURLSummary(url: "myapp://x", bundleID: "com.example.app",
+                                               bundleIDWasRemembered: false,
+                                               snapshotAfter: true, waitForChangeExplicit: false)
+        XCTAssertTrue(summary.contains("waitForChange: false"), summary)
+    }
+
+    /// 統合経路: `waitFor` を渡した ft_open_url の応答1行目に「waitForChange: false」が出ないこと
+    func testOpenURLWithWaitForDoesNotClaimWaitForChangeFalseInSummary() async throws {
+        let driver = FakeDriver()
+        driver.scriptedSnapshots = [Self.screen("before"), Self.screen("before"),
+                                    Self.screen("after")]
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver },
+                               recordSnapshot: { _, _, _ in })
+        server.settleWaitSeconds = 0.01
+
+        let text = (try await server.call(
+            tool: "ft_open_url",
+            args: ["url": "myapp://x", "snapshotAfter": true, "waitFor": "after"]))
+            .compactMap { $0["text"] as? String }.joined(separator: "\n")
+
+        XCTAssertFalse(text.contains("waitForChange: false"),
+                       "waitFor を渡したのに要約が waitForChange: false を名乗った: \(text)")
+        XCTAssertTrue(text.contains("waiting for \"after\" to appear"), text)
+    }
+
     private static func screen(_ label: String) -> SnapshotResponse {
         SnapshotResponse(sessionBundleID: nil,
                          screen: FTRect(x: 0, y: 0, width: 400, height: 800),

@@ -252,8 +252,11 @@ extension MCPServer {
         lastSnapshots[key] = nil
         refGenerations[key] = nil
         sessionActionCounts[key] = nil
+        lastTapTargets[key] = nil
+        knownScreens[key] = nil
         launchedBundleIDs[key] = nil
         launchTimestamps[key] = nil
+        toolStoppedBundleIDs[key] = nil
         installedPackagePaths[key] = nil
         lastScreenProbe[key] = nil
         systemAlertProbePending.remove(key)

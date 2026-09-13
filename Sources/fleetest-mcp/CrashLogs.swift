@@ -130,6 +130,16 @@ enum CrashLogs {
     /// 言うには切り詰め前の総数が要るため
     private static let androidFetchUpperBound = 5000
 
+    /// 先頭行の言い回し(純関数・adb 不要でテストできる)。**ft_logs の実引数は `all`
+    /// (既定 false)であって `crashOnly` ではない**(MCPServer+ToolDefs.swift のスキーマ参照)ので、
+    /// 内部変数名をそのまま出さず、渡せる引数名で言い換える
+    static func androidLogHeader(shownCount: Int, allCount: Int, crashOnly: Bool) -> String {
+        let scopeDesc = crashOnly ? "crash buffer only" : "main+crash buffers (all: true)"
+        return shownCount < allCount
+            ? "Showing the last \(shownCount) of \(allCount) line(s) (\(scopeDesc))"
+            : "\(shownCount) line(s) (\(scopeDesc))"
+    }
+
     static func androidText(serial: String?, bundleID: String?, withinSeconds: Int,
                             maxLines: Int, crashOnly: Bool) -> String {
         let cap = min(maxLines > 0 ? maxLines : hardMaxLines, hardMaxLines)
@@ -148,9 +158,7 @@ enum CrashLogs {
             return "No log lines\(scope) in the last \(withinSeconds)s (\(buffer))."
         }
         let shown = Array(all.suffix(cap))
-        var header = shown.count < all.count
-            ? "Showing the last \(shown.count) of \(all.count) line(s) (crashOnly=\(crashOnly))"
-            : "\(shown.count) line(s) (crashOnly=\(crashOnly))"
+        var header = androidLogHeader(shownCount: shown.count, allCount: all.count, crashOnly: crashOnly)
         if let bundleID, !output.scopedToPackage {
             // 絞れなかったことを黙ると、他アプリのクラッシュを対象アプリのものと読む
             header += ". \(bundleID) is not running, so these lines could not be scoped to it"

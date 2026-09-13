@@ -32,7 +32,7 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
             return driver
         }, recordSnapshot: { _, _, _ in })
         server.lastExplicitIOSTarget = (port: 8123, udid: nil)
-        _ = try await server.call(tool: "ft_terminate", args: [:])
+        _ = try await server.call(tool: "ft_terminate", args: ["bundleId": "com.example.app"])
         XCTAssertEqual(seenArgs.count, 1)
         XCTAssertEqual(seenArgs.first?["port"] as? Int, 8123,
                        "省略呼び出しへ記憶した port が畳み込まれていない: \(seenArgs)")
@@ -47,7 +47,7 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
             return driver
         }, recordSnapshot: { _, _, _ in })
         server.lastExplicitIOSTarget = (port: 8123, udid: nil)
-        _ = try await server.call(tool: "ft_terminate", args: ["port": 9999])
+        _ = try await server.call(tool: "ft_terminate", args: ["port": 9999, "bundleId": "com.example.app"])
         XCTAssertEqual(seenArgs.first?["port"] as? Int, 9999)
     }
 
@@ -62,7 +62,7 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
             return driver
         }, recordSnapshot: { _, _, _ in })
         server.lastExplicitIOSTarget = (port: 8123, udid: "AAAA-BBBB")
-        _ = try await server.call(tool: "ft_terminate", args: [:])
+        _ = try await server.call(tool: "ft_terminate", args: ["bundleId": "com.example.app"])
         XCTAssertEqual(seenArgs.first?["port"] as? Int, 8123)
         XCTAssertNil(seenArgs.first?["udid"], "fold が udid を注入した: \(seenArgs)")
     }
@@ -93,7 +93,7 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
             return driver
         }, recordSnapshot: { _, _, _ in })
         server.lastExplicitIOSTarget = (port: 8123, udid: nil)
-        _ = try await server.call(tool: "ft_terminate", args: ["serial": "emulator-5554"])
+        _ = try await server.call(tool: "ft_terminate", args: ["serial": "emulator-5554", "bundleId": "com.example.app"])
         XCTAssertNil(seenArgs.first?["port"], "serial 明示の呼び出しに iOS の記憶(port)が注入された")
     }
 
@@ -108,7 +108,7 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
         }, recordSnapshot: { _, _, _ in })
         server.lastExplicitAndroidSerial = "emulator-5554"
         server.lastExplicitPlatform = "android"
-        _ = try await server.call(tool: "ft_terminate", args: [:])
+        _ = try await server.call(tool: "ft_terminate", args: ["bundleId": "com.example.app"])
         XCTAssertEqual(seenArgs.first?["serial"] as? String, "emulator-5554")
         XCTAssertEqual(seenArgs.first?["platform"] as? String, "android")
     }
@@ -125,7 +125,7 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
         server.lastExplicitAndroidSerial = "emulator-5554"
         server.lastExplicitPlatform = "android"
         server.lastExplicitIOSTarget = (port: 8123, udid: nil)
-        _ = try await server.call(tool: "ft_terminate", args: ["platform": "ios"])
+        _ = try await server.call(tool: "ft_terminate", args: ["platform": "ios", "bundleId": "com.example.app"])
         XCTAssertEqual(seenArgs.first?["port"] as? Int, 8123)
         XCTAssertNil(seenArgs.first?["serial"])
     }
