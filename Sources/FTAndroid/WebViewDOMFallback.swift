@@ -156,14 +156,47 @@ enum WebViewDOMFallback {
         diagnosed.insert(Key(serial: serial, package: package))
     }
 
+    /// 結論の理由を控える(`markDiagnosed` の後)。**stderr の警告は1回でも、木の申告は毎回**要る ——
+    /// snapshot ごとに `webViewPath = dom-unread` と note を載せるのに、診断をやり直さず引く
+    /// (F25: 警告が stderr だけで MCP の応答・結果 JSON に残らなかった)
+    static func rememberReason(_ reason: Reason, serial: String, package: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        reasons[Key(serial: serial, package: package)] = reason
+    }
+
+    /// 診断済みで、端末の事実として DOM が読めない (serial, package) の理由。過渡・未診断は nil
+    static func recordedReason(serial: String, package: String) -> Reason? {
+        lock.lock()
+        defer { lock.unlock() }
+        return reasons[Key(serial: serial, package: package)]
+    }
+
+    /// snapshot に載せる短い理由(`SnapshotResponse.note`。StepExecutor の失敗文言と MCP の注記が
+    /// そのまま引用する)。長文の対処法は stderr の `warning` に任せる
+    static func snapshotNote(packageID: String, reason: Reason) -> String {
+        switch reason {
+        case .structurallyClosed:
+            return "\(packageID)'s WebView content could not be read: the devtools socket never opens"
+                + " because neither the system (ro.debuggable=0) nor the app is debuggable"
+                + " (use a userdebug image, a debuggable build, or setWebContentsDebuggingEnabled(true))"
+        case .ambiguousSockets(let names):
+            return "\(packageID)'s WebView content could not be read: several processes expose a"
+                + " devtools socket (\(names.joined(separator: ", "))) and fleetest does not guess"
+                + " (close the extra processes or restart the app)"
+        }
+    }
+
     /// テスト専用: プロセス内メモを空にする
     static func resetDiagnosisMemoForTesting() {
         lock.lock()
         defer { lock.unlock() }
         diagnosed.removeAll()
+        reasons.removeAll()
     }
 
     private struct Key: Hashable { let serial: String; let package: String }
     private static let lock = NSLock()
     private static var diagnosed = Set<Key>()
+    private static var reasons: [Key: Reason] = [:]
 }

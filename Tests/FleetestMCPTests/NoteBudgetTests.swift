@@ -29,7 +29,11 @@ final class NoteBudgetTests: XCTestCase {
     // docs/mcp-audit-rounds.md の当該ラウンド ⒝ —— ブラウザで DOM が黙って a11y へ落ちても、
     // **粒度と命名を揃えた結果、木の中身では見分けられない**。監査中は ref の穴という
     // 偶然の痕跡でしか判別できなかった)
-    static let budget = 18
+    // 19 本目 = `webViewUnreadNote`(2026-09-14・F25)。根拠は「実機の witness + 固定コーパス全数で
+    // 誤検知0」の側 —— 申告 `webViewPath == dom-unread` でしか出ず、盤面(HTML の配信)では作れない
+    // 形(非 debuggable の Android 実機 = Pixel 4a・E2E-RN release で発火を確認)。DSL 側は同じ事実を
+    // 注記 `webview-unread` と失敗文言で既に言っており、MCP だけが黙っていた
+    static let budget = 19
 
     /// **等号**で照合する。`<=` にすると「上限に余裕があるうちは黙って増やせる」ことになり、
     /// ラチェットとして機能しない(`knownSilent` を等号で照合しているのと同じ理由 ——
@@ -53,6 +57,9 @@ final class NoteBudgetTests: XCTestCase {
             "keyboardCoverageNote", "missingPageContentNote", "scrollFrameCandidates",
             "sliverNote", "truncatedLabelNote", "truncationNote", "unlabeledClickablesNote",
             "urlishLabelsNote", "webViewGapNote",
+            // 2026-09-14 F25: 申告(dom-unread)由来。コーパスの木は全部 DOM が読めた回なので
+            // NoteCoverageTests.knownSilent に理由付きで登録(理由はそちら)
+            "webViewUnreadNote",
         ]
         let actual = Set(NoteCatalog.snapshotNotes.map(\.key))
         XCTAssertEqual(

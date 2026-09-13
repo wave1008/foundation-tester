@@ -247,6 +247,16 @@ extension StepExecutorTests {
         XCTAssertTrue(delegated.contains("XCUITest"), delegated)
         XCTAssertFalse(delegated.contains("無反応"), "委譲側は合成タッチを使わないので警告しない")
 
+        // dom-unread: 申告した本人の note を引く(Android の WebViewDOMFallback の文・iOS の鍵)。
+        // note が無ければ iOS の鍵の読み方を出す
+        var unread = snapshot("dom-unread")
+        unread.note = "com.a's WebView content could not be read: the devtools socket never opens"
+        let unreadHint = StepExecutor.webViewPathHint(unread)
+        XCTAssertTrue(unreadHint.contains("The bridge note says: com.a's WebView content could not be read"), unreadHint)
+        XCTAssertFalse(unreadHint.contains("webview-loading"), "note があるときは鍵の凡例を出さない: \(unreadHint)")
+        let unreadNoNote = StepExecutor.webViewPathHint(snapshot("dom-unread"))
+        XCTAssertTrue(unreadNoNote.contains("webview-loading"), unreadNoNote)
+
         // dom-interop: DOM は読めるが操作は実タッチ(XCUITest)で行う第三のモード。
         // "dom" と違い DOM-tap の無反応な成功記録という弱点を持たないので、その警告は出さない
         let domInterop = StepExecutor.webViewPathHint(snapshot("dom-interop"))

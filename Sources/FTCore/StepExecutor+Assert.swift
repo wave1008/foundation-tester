@@ -434,10 +434,16 @@ extension StepExecutor {
                 + " content had not been published to accessibility yet\". Give the screen more time"
                 + " (a preceding exist() on a known element waits for it), or check the page loaded.)"
         case WebViewPath.domUnread:
+            // **理由は申告した本人の note を引く**(iOS in-app は webview-loading 等の短い鍵、
+            // Android は WebViewDOMFallback.snapshotNote の文)。無ければ iOS の鍵の読み方を出す
+            let why = snapshot?.note.map { !$0.isEmpty ? " The bridge note says: \($0)." : "" } ?? ""
+            let legend = why.isEmpty
+                ? " The bridge note names why (webview-loading = still loading, webview-eval-timeout ="
+                    + " the main thread did not run the DOM read in time, webview-not-readable,"
+                    + " webview-dom-off)."
+                : why
             return " (the WebView contents could not be read at all, so this tree holds only the native"
-                + " elements — a web element that is really on screen cannot be found in it. The bridge"
-                + " note names why (webview-loading = still loading, webview-eval-timeout = the main"
-                + " thread did not run the DOM read in time, webview-not-readable, webview-dom-off).)"
+                + " elements — a web element that is really on screen cannot be found in it.\(legend))"
         case WebViewPath.dom:
             return " (WebView contents were read through the DOM path. Taps are synthesized onto DOM rects, so "
                 + "a WebView embedded through interop **records success even when nothing responds**. "

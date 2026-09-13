@@ -12,6 +12,27 @@ final class WebViewDOMFallbackTests: XCTestCase {
         WebViewDOMFallback.resetDiagnosisMemoForTesting()
     }
 
+    // MARK: - 申告(snapshot に載せる理由。F25)
+
+    /// 診断の結論を控えると、以後の snapshot が診断をやり直さずに理由を引ける。過渡・未診断は nil
+    func testRememberedReasonIsRecalledPerDeviceAndPackage() {
+        XCTAssertNil(WebViewDOMFallback.recordedReason(serial: "s1", package: "com.a"))
+        WebViewDOMFallback.rememberReason(.structurallyClosed, serial: "s1", package: "com.a")
+        XCTAssertEqual(WebViewDOMFallback.recordedReason(serial: "s1", package: "com.a"), .structurallyClosed)
+        XCTAssertNil(WebViewDOMFallback.recordedReason(serial: "s1", package: "com.b"), "別パッケージには効かない")
+        XCTAssertNil(WebViewDOMFallback.recordedReason(serial: "s2", package: "com.a"), "別端末には効かない")
+    }
+
+    /// 木に載せる文は短く、理由と対処の要点だけ(長文は stderr の warning)
+    func testSnapshotNoteNamesTheReason() {
+        let closed = WebViewDOMFallback.snapshotNote(packageID: "com.a", reason: .structurallyClosed)
+        XCTAssertTrue(closed.contains("com.a's WebView content could not be read"), closed)
+        XCTAssertTrue(closed.contains("ro.debuggable=0"), closed)
+        let ambiguous = WebViewDOMFallback.snapshotNote(packageID: "com.a",
+                                                        reason: .ambiguousSockets(["p1", "p2"]))
+        XCTAssertTrue(ambiguous.contains("p1, p2"), ambiguous)
+    }
+
     // MARK: - 判定(端末の事実で決まるときだけ言う。過渡では黙る)
 
     func testNoSocketWithBothNonDebuggableIsStructurallyClosed() {

@@ -757,7 +757,8 @@ extension MCPServer {
                 try await d.tap(x: x, y: y)
                 recordInteraction(action: "tap", resolvedRef: nil, args: args, coordinate: (x, y))
                 lastTapTargets[Self.engineKey(args)] = nil
-                return text("tap (\(x), \(y)) done" + once("coordinateReproductionNote",
+                return text("tap (\(x), \(y)) done" + keyboardCoordinateWarning(x: x, y: y, args: args)
+                    + once("coordinateReproductionNote",
                     full: Self.coordinateReproductionNote,
                     short: Self.coordinateReproductionNoteShort)
                     + waitForWithoutSnapshotAfterNote(args)
@@ -1356,6 +1357,7 @@ extension MCPServer {
                     engine: engines[Self.engineKey(args)]) { throw offscreen }
                 doubleTapPoint = (x, y)
                 doubleTapWhat = "(\(x), \(y))"
+                doubleTapNote = keyboardCoordinateWarning(x: x, y: y, args: args)
                 doubleTapSelector = once("doubleTapCoordinateNote",
                                          full: Self.doubleTapCoordinateNote,
                                          short: Self.doubleTapCoordinateNoteShort)
@@ -1524,7 +1526,8 @@ extension MCPServer {
                 try await pressDriver.press(x: x, y: y, duration: pressDuration)
                 recordInteraction(action: "press", resolvedRef: nil, args: args, coordinate: (x, y),
                                   duration: pressDuration)
-                return text("press (\(x), \(y)) done." + once("coordinateHoldReproductionNote",
+                return text("press (\(x), \(y)) done." + keyboardCoordinateWarning(x: x, y: y, args: args)
+                    + once("coordinateHoldReproductionNote",
                     full: Self.coordinateHoldReproductionNote(holdSeconds: pressDuration),
                     short: Self.coordinateHoldReproductionNoteShort(holdSeconds: pressDuration))
                     + Self.changedHint(args)

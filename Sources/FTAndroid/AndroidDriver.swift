@@ -444,6 +444,14 @@ public final class AndroidDriver: AppDriver {
                     // 理由の名指しは warnWebViewDOMFallbackOnce。ブラウザ経路は対象外
                     // (今回観測したのはアプリ内 WebView の release/debuggable の組み合わせだけ)
                     warnWebViewDOMFallbackOnce(package: package)
+                    // **stderr の警告は1回でも、木には毎回申告する**(iOS の in-app と同じ
+                    // `dom-unread` + note。DSL は注記 webview-unread と失敗文言、MCP は
+                    // webViewUnreadNote で引用する = F25)。過渡(未診断)では申告しない
+                    if let reason = WebViewDOMFallback.recordedReason(serial: serial ?? "default",
+                                                                      package: package) {
+                        snapshot.webViewPath = WebViewPath.domUnread
+                        snapshot.note = WebViewDOMFallback.snapshotNote(packageID: package, reason: reason)
+                    }
                 }
             }
         }
@@ -964,6 +972,7 @@ public final class AndroidDriver: AppDriver {
         }
         guard let reason = WebViewDOMFallback.reason(
             resolution: resolution, systemDebuggable: system, appDebuggable: app) else { return }
+        WebViewDOMFallback.rememberReason(reason, serial: serial, package: package)
         let text = WebViewDOMFallback.warning(serial: serial, packageID: package, reason: reason)
         ConsoleOut.err(text)
     }

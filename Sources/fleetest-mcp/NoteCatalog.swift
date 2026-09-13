@@ -98,6 +98,11 @@ enum NoteCatalog {
         Entry(key: "webViewGapNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
             MCPServer.webViewGapNote(input.snapshot)
         },
+        // 申告(webViewPath = dom-unread)由来。webViewGapNote の「空白がある」より強い事実
+        // (中身を1つも読めていない)なので直後に置く
+        Entry(key: "webViewUnreadNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
+            MCPServer.webViewUnreadNote(input.snapshot)
+        },
         // webViewGapNote は「どこかに空白がある」としか言わないので、格子の形と見出し欠落を
         // 名指しするこちらを直後に置く
         Entry(key: "gridWithoutHeaderNote", contexts: [.snapshot, .scrollTo], abbreviates: true) { input, abbreviated in

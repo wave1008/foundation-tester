@@ -4610,6 +4610,10 @@ DOM 由来が1件も無ければ `browserA11yFallbackNote` が「a11y から来�
 **Android の自作アプリで DOM が読めなかったときは黙らない**(2026-09-03): `route` が `.appWebView`
 なのに `AndroidWebViewDOM.read` が nil のとき、`WebViewDOMFallback` が stderr へ理由を言う
 (`warnBlankCaptureOnce` と同じく判定・文言は純粋関数、メモは static)。
+**stderr の警告は 1 回でも、木には毎回申告する**(2026-09-14・F25): 結論の理由を (serial, package) ごとに控え、
+以後の snapshot に iOS in-app と同じ `webViewPath = dom-unread` + `note`(短い理由)を載せる。DSL は注記
+`webview-unread` と失敗文言(申告の note を引く)、MCP は目録の `webViewUnreadNote` で引用する —— stderr だけだと
+MCP の応答にも結果 JSON にも残らない。
 実測の起点: E2E-RN の `placeholder=` 検査が **local(`android-35/google_apis` = userdebug・
 `ro.debuggable=1`)では緑・ランナー(`google_apis_playstore` = user・`ro.debuggable=0`)では決定的に
 赤**で、APK も WebView 版も同一だった。SUT は release ビルド(非 debuggable)なので Chromium は

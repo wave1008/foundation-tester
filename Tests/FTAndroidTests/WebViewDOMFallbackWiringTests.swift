@@ -27,6 +27,13 @@ final class WebViewDOMFallbackWiringTests: XCTestCase {
                       "DOM が読めなかったときに appWebView route だけを見分けていない")
         XCTAssertTrue(code.contains("warnWebViewDOMFallbackOnce(package: package)"),
                       "DOM が読めなかった経路が警告を呼んでいない")
+        // **木にも毎回申告する**(F25: stderr だけだと MCP の応答・結果 JSON に残らない)
+        XCTAssertTrue(code.contains("snapshot.webViewPath = WebViewPath.domUnread"),
+                      "DOM が読めなかった木に dom-unread を申告していない")
+        XCTAssertTrue(code.contains("snapshot.note = WebViewDOMFallback.snapshotNote(packageID: package, reason: reason)"),
+                      "理由を note に載せていない")
+        XCTAssertTrue(code.contains("WebViewDOMFallback.rememberReason(reason, serial: serial, package: package)"),
+                      "結論の理由を控えていない(2枚目以降の snapshot が申告できない)")
     }
 
     /// 子プロセスの stderr を中継する ScenarioHost が、ドライバ自身が ⚠️ を付けた行に

@@ -811,6 +811,17 @@ extension MCPServer {
     /// **常に空を返す** —— 目録から外すと鍵の集合が変わるので、まず黙らせて次のラウンドで消す
     static func browserA11yFallbackNote(_ snapshot: SnapshotResponse) -> String { "" }
 
+    /// **WebView の中身を1つも読めなかった木**(申告 `webViewPath == dom-unread`。iOS in-app と
+    /// Android の自作アプリ経路の両方が出す)。理由は申告した本人の `note` を引く —— 推測しない。
+    /// 木が画面を代表していない事実なので、webViewGapNote と同じ棚(上流)に置く(F25)
+    static func webViewUnreadNote(_ snapshot: SnapshotResponse) -> String {
+        guard snapshot.webViewPath == WebViewPath.domUnread else { return "" }
+        let why = (snapshot.note ?? "").isEmpty ? "" : " Why: \(snapshot.note!)."
+        return "note: the WebView contents could not be read, so this tree holds only native elements"
+            + " — a web element that is on screen cannot be found in it, and its absence here proves"
+            + " nothing.\(why) Verify with ft_screenshot.\n"
+    }
+
     /// 旧実装(既定が DOM だった頃)。**復活させるなら根拠を台帳へ**
     static func browserA11yFallbackNoteLegacy(_ snapshot: SnapshotResponse) -> String {
         guard let id = snapshot.sessionBundleID, WebViewDOM.knownBrowserIDs.contains(id) else { return "" }
@@ -1968,6 +1979,22 @@ extension MCPServer {
                 + " and pass an in-bounds coordinate, or use a ref instead.")
         }
         return nil
+    }
+
+    /// **座標がソフトキーボードの中にある**ときの警告(ft_tap / ft_double_tap / ft_long_press の座標形)。
+    /// ref 形は RefGuard.keyboardWarning が言うのに、座標形は無警告で done と返し、実機 Pixel 3a では
+    /// 欄にスペースが入った(§19 担当報告の再現)。**拒否はしない**(キーそのものを押す意図があり得る)。
+    /// 判定は直近の木の申告(`KeyboardOcclusion` = ref 形・DSL と同じ型)。木が無ければ黙る
+    func keyboardCoordinateWarning(x: Double, y: Double, args: [String: Any]) -> String {
+        guard let snapshot = lastSnapshots[Self.engineKey(args)] else { return "" }
+        let occlusion = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame, in: snapshot.elements)
+        guard let frame = occlusion.frame,
+              x >= frame.x, x < frame.x + frame.width, y >= frame.y, y < frame.y + frame.height
+        else { return "" }
+        return " (warning: (\(FTSeconds.format(x)), \(FTSeconds.format(y))) is inside the soft keyboard"
+            + " (\(FTSeconds.format(frame.x)),\(FTSeconds.format(frame.y)) \(FTSeconds.format(frame.width))x"
+            + "\(FTSeconds.format(frame.height))) — this presses a key, not the app behind it. Dismiss the"
+            + " keyboard first (pressEnter, or ft_navigate back on Android) unless a key was meant)"
     }
 
     /// 座標の操作が画面の範囲を知るための screen。直近の木があればそれ(追加の読みは払わない)、

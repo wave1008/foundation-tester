@@ -270,6 +270,11 @@ final class NoteCoverageTests: XCTestCase {
         // 判定そのものは `guard snapshot.elements.isEmpty` の1行なので、
         // EmptyTreeNoteTests の合成木で両方向を固定してある
         "emptyTreeNote",
+        // **申告(`webViewPath == dom-unread`)でしか出ない**: コーパスの全枚は DOM が読めた回か
+        // 申告の無いブリッジで採ったもので、木の形からは決まらない(推測しない設計)。
+        // 発火する木は非 debuggable の Android 実機でしか作れない(Pixel 4a・E2E-RN release)。
+        // 両方向は WebViewUnreadNoteTests の合成木で固定
+        "webViewUnreadNote",
     ]
 
     /// 1画面ぶんの注記の合計バイトの上限。**エージェントは木を読みに来ているのであって
@@ -451,6 +456,8 @@ final class NoteCoverageTests: XCTestCase {
             "emptyTreeNote", "missingPageContentNote", "ghostNote", "duplicateRegionNote",
             "truncationNote", "webViewGapNote", "gridWithoutHeaderNote", "urlishLabelsNote",
             "ambiguousLabelsNote", "duplicateIDsNote", "keyboardCoverageNote", "sliverNote",
+            // 「この一覧をそのまま報告してよいか」の側(WebView の中身を1つも読めていない事実)
+            "webViewUnreadNote",
             "truncatedLabelNote", "browserA11yFallbackNote",
         ])
     }
