@@ -33,7 +33,16 @@ public struct BridgeLauncher {
     /// 指定しないと Xcode は既定の DerivedData に起動ごとの新しいフォルダ
     /// (`FleetestRunner-<hash>/Logs/Test/*.xcresult`)を作り、終わらない UI テストの結果を
     /// 誰も読まないまま積む(実測 100 個・1.8 GB・1 日約 50 個)
-    var resultBundlePath: URL { stateDir.appendingPathComponent("xcresult/bridge-\(port).xcresult") }
+    var resultBundleDirectory: URL { stateDir.appendingPathComponent("xcresult") }
+    /// **起動ごとに別名**(`bridge-<port>-<起動時刻ms>.xcresult`)。同名を使い回すと、前回の束が
+    /// 残っていた/消した直後に書き戻された回に xcodebuild が `Existing file at -resultBundlePath` で
+    /// 1 秒で死ぬ(2026-09-14 に 2 台で実測。台帳 §19.25)。古い束は startDetached が同じポートの
+    /// ぶんを掃く(`staleResultBundles`)ので溜まらない
+    func resultBundlePath(stamp: String) -> URL {
+        resultBundleDirectory.appendingPathComponent("bridge-\(port)-\(stamp).xcresult")
+    }
+    /// 起動ごとに1つ(起動時刻 ms)。startDetached が採り、xcodebuild の引数と掃除の除外が同じ値を見る
+    static func launchStamp() -> String { String(Int(Date().timeIntervalSince1970 * 1000)) }
     var projectPath: URL { repoRoot.appendingPathComponent("Runner/FleetestRunner.xcodeproj") }
 
     /// --device には名前("iPhone 17")と UDID のどちらも渡せる(シミュレータのみ。実機は UDID 必須)
@@ -284,15 +293,20 @@ public struct BridgeLauncher {
 
         FileManager.default.createFile(atPath: logPath.path, contents: nil)
         let logHandle = try FileHandle(forWritingTo: logPath)
-        // xcodebuild は既存の束があると起動を拒むので、前回分を消してから渡す。前回のブリッジは
-        // 上の killOrphanRunners と呼び手の停止で既に居ない(同じポートに2本は立たない)
-        try FileManager.default.createDirectory(
-            at: resultBundlePath.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? FileManager.default.removeItem(at: resultBundlePath)
+        // xcodebuild は既存の束があると起動を拒むので、今回は別名を使い(resultBundlePath)、前回までの
+        // 同じポートの束を掃く。**消せなくても起動は止めない**(別名なので衝突しない)が、理由は残す
+        let resultBundle = resultBundlePath(stamp: Self.launchStamp())
+        try FileManager.default.createDirectory(at: resultBundleDirectory, withIntermediateDirectories: true)
+        for stale in Self.staleResultBundles(in: resultBundleDirectory, port: port, keeping: resultBundle) {
+            do { try FileManager.default.removeItem(at: stale) } catch {
+                ConsoleOut.err("→ could not remove the previous result bundle \(stale.lastPathComponent)"
+                    + " (\(error.localizedDescription)); starting with a fresh one")
+            }
+        }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcodebuild")
-        process.arguments = testWithoutBuildingArguments(xctestrun: xctestrun)
+        process.arguments = testWithoutBuildingArguments(xctestrun: xctestrun, resultBundle: resultBundle)
         process.currentDirectoryURL = repoRoot
         process.standardOutput = logHandle
         process.standardError = logHandle
@@ -302,12 +316,12 @@ public struct BridgeLauncher {
 
     /// ブリッジを起こす `xcodebuild` の引数。**結果の束と作業フォルダの置き場を必ず渡す**
     /// (`BridgeLauncherCaptureSettingsTests` が固定)
-    func testWithoutBuildingArguments(xctestrun: URL) -> [String] {
+    func testWithoutBuildingArguments(xctestrun: URL, resultBundle: URL? = nil) -> [String] {
         [
             "test-without-building",
             "-xctestrun", xctestrun.path,
             "-destination", destination,
-            "-resultBundlePath", resultBundlePath.path,
+            "-resultBundlePath", (resultBundle ?? resultBundlePath(stamp: Self.launchStamp())).path,
             // 指定しないと、束を外へ出しても既定の DerivedData に空のフォルダを起動ごとに1つ作る
             // (ビルドと同じ置き場を渡せば、起動のたびに同じ場所を使い回す)
             "-derivedDataPath", derivedDataPath.path,
@@ -572,6 +586,31 @@ public struct BridgeLauncher {
         try? FileManager.default.removeItem(at: pidPath)
     }
 
+    /// 同じポートの結果の束のうち `keeping` 以外(前回までの起動ぶん)。名前は `bridge-<port>-<stamp>.xcresult`
+    /// と、別名化より前の `bridge-<port>.xcresult`。**他のポートの束には触らない**(並列に起動している
+    /// 隣のランナーの束を消すと、そちらが `Existing file` と同じ型で落ちる)
+    static func staleResultBundles(in directory: URL, port: UInt16, keeping: URL) -> [URL] {
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil) else { return [] }
+        return entries.filter { Self.isResultBundle($0.lastPathComponent, port: port) }
+            .filter { $0.lastPathComponent != keeping.lastPathComponent }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    static func isResultBundle(_ name: String, port: UInt16) -> Bool {
+        guard name.hasSuffix(".xcresult") else { return false }
+        let stem = String(name.dropLast(".xcresult".count))
+        return stem == "bridge-\(port)" || stem.hasPrefix("bridge-\(port)-")
+    }
+
+    /// 起動ログが最後に伸びてからの秒数(測れなければ nil)。引き取り判定(StartingRunnerVerdict)が
+    /// 「起動側はまだ諦めていない」を知るための口
+    public func logQuietFor() -> TimeInterval? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: logPath.path),
+              let modified = attributes[.modificationDate] as? Date else { return nil }
+        return Date().timeIntervalSince(modified)
+    }
+
     /// pid ファイルが指すプロセスの経過時間(秒)。pid ファイルが無い/プロセスが既に居ない/
     /// ps が読めないときは nil(unknown。呼び手は「待つ」側に倒す)。単一 pid の照会なので
     /// portsMatching の「ps は1回だけ」規律(複数 pid をまとめて引く)は適用されない
@@ -796,7 +835,9 @@ public struct BridgeLauncher {
         return nil
     }
 
-    /// ブリッジ起動の締切(秒)。実機の解除待ち(IOSPhysicalDeviceLock)もこの予算を使う
+    /// ブリッジ起動の予算(秒)。**無音に対する締切**で、xcodebuild のログが伸びている間は延びる
+    /// (BridgeStartupWait。再起動直後の冷えた起動は 180 秒を跨ぐ)。実機の解除待ち
+    /// (IOSPhysicalDeviceLock)もこの予算を使う
     /// —— あちらは「起動を始めてよい状態になるまで」で、待った分だけ deviceprep の
     /// 無情報な待ちが減る(猶予の上乗せではない)
     public static let startupTimeoutSeconds: TimeInterval = 180
@@ -808,7 +849,12 @@ public struct BridgeLauncher {
                                endpoint: BridgeEndpoint? = nil,
                                log: @escaping (String) -> Void = { _ in }) async throws {
         let client = BridgeClient(endpoint: endpoint ?? BridgeEndpoint(port: port))
-        let deadline = Date().addingTimeInterval(timeout)
+        // 締切は固定でなく進み具合で延びる(BridgeStartupWait)。伸びる根拠はログのサイズ
+        let launchedAt = Date()
+        var lastProgressAt: Date?
+        var suiteStartedAt: Date?
+        var lastLogSize: UInt64 = 0
+        var announcedExtension = false
         var lastError: Error?
         var blocker: String?
         /// 実機の診断。LAN は宛先解決(waitForAnnouncedAddress)側でも同じ判定をするが、
@@ -825,7 +871,9 @@ public struct BridgeLauncher {
             }
             return IOSDeviceTransport.blockingCondition(inLog: text)
         }
-        while Date() < deadline {
+        while BridgeStartupWait.shouldKeepWaiting(now: Date(), launchedAt: launchedAt,
+                                                  lastProgressAt: lastProgressAt,
+                                                  suiteStartedAt: suiteStartedAt, budget: timeout) {
             // キャンセルで抜ける(IOSDeviceTransport.waitForAnnouncedAddress と同じ理由)
             try Task.checkCancellation()
             do {
@@ -837,9 +885,9 @@ public struct BridgeLauncher {
             } catch {
                 lastError = error
             }
+            let text = try? String(contentsOf: logPath, encoding: .utf8)
             // **終わったセッションを待たない**(理由は runnerSessionEnded)
-            if let text = try? String(contentsOf: logPath, encoding: .utf8),
-               let marker = Self.runnerSessionEnded(inLog: text) {
+            if let text, let marker = Self.runnerSessionEnded(inLog: text) {
                 // **理由が分かる終わり方は名指しで落とす**(証明書未信頼・Developer Mode・
                 // automation mode のタイムアウト = IOSDeviceTransport.runnerFailureReason)。
                 // 先に総称の「session already ended」を投げると、ログに理由が書いてあるのに
@@ -847,6 +895,28 @@ public struct BridgeLauncher {
                 _ = try physicalDiagnosis()
                 throw LauncherError.timedOut("the test session already ended (\(marker))",
                                              logPath.path)
+            }
+            // **死んだランナーを待たない**: xcodebuild が起動直後に落ちる形(`Existing file at
+            // -resultBundlePath` 等)は締切まで待っても上がらない。理由はログの末尾にある
+            if let pid = Self.runnerPid(at: pidPath), !ProcessLiveness.isAlive(pid) {
+                _ = try physicalDiagnosis()
+                throw LauncherError.timedOut(
+                    "the runner process (pid \(pid)) exited before the bridge became ready"
+                        + (Self.lastLogLine(in: text).map { " — last log line: \($0)" } ?? ""),
+                    logPath.path)
+            }
+            // 進み具合: ログが伸びた時刻と、テスト本体が始まった印
+            if let text {
+                let size = UInt64(text.utf8.count)
+                if size > lastLogSize { lastLogSize = size; lastProgressAt = Date() }
+                if suiteStartedAt == nil, text.contains(BridgeStartupWait.suiteStartedMarker) {
+                    suiteStartedAt = Date()
+                }
+            }
+            if !announcedExtension, Date().timeIntervalSince(launchedAt) >= timeout {
+                announcedExtension = true
+                log("⏳ still starting after \(Int(timeout))s — xcodebuild is still making progress"
+                    + " (cold start), so waiting while its log keeps growing")
             }
             // startDetached が logPath を毎回空で作り直す(createFile)ため、ここで見つかる
             // bindFailed は必ず今回の起動試行のもの。180 秒待たずに fail-fast する
@@ -869,6 +939,18 @@ public struct BridgeLauncher {
                 port: port, logPath: logPath.path, blocker: blocker)
         }
         throw LauncherError.timedOut(lastError.map { "\($0)" } ?? "no response", logPath.path)
+    }
+
+    static func runnerPid(at pidPath: URL) -> Int32? {
+        guard let pidString = try? String(contentsOf: pidPath, encoding: .utf8) else { return nil }
+        return Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// ログの最後の空でない行(失敗の理由は xcodebuild が最後に書く)
+    static func lastLogLine(in text: String?) -> String? {
+        guard let text else { return nil }
+        return text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            .last { !$0.isEmpty }
     }
 
     /// 検知文字列 "bindFailed(" は Runner/FleetestRunnerUITests/BridgeHTTPServer.swift の

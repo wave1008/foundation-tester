@@ -776,10 +776,12 @@ public struct BridgeProvisioner {
                     preinstallAppPath: preinstallAppPath, claimed: claimed, log: log)
             }
             let elapsed = launcher.runnerElapsed()
-            // .restart は elapsed != nil のときしか返らない(decide 参照)ので force unwrap は安全
-            if StartingRunnerVerdict.decide(elapsed: elapsed, budget: BridgeLauncher.startupTimeoutSeconds) == .restart {
+            // .restart は elapsed != nil のときしか返らない(decide 参照)ので force unwrap は安全。
+            // ログが伸びている間は起動側もまだ待っている(BridgeStartupWait)ので引き取る側も待つ
+            if StartingRunnerVerdict.decide(elapsed: elapsed, quietFor: launcher.logQuietFor(),
+                                            budget: BridgeLauncher.startupTimeoutSeconds) == .restart {
                 log("⚠️ \(name): the bridge on port \(port) has been alive for \(Int(elapsed!))s"
-                    + " without answering (past the \(Int(BridgeLauncher.startupTimeoutSeconds))s"
+                    + " without answering or logging (past the \(Int(BridgeLauncher.startupTimeoutSeconds))s"
                     + " allowed for it to become ready) — stopping and restarting it")
                 return try await stopAndRelaunch()
             }

@@ -34,8 +34,8 @@ final class StaleBridgeRestartMessageTests: XCTestCase {
 
     func testRestartLogStillNamesTheBudgetAndAction() throws {
         let code = try Self.source()
-        XCTAssertTrue(code.contains("without answering (past the"),
-                      "無応答であること・予算超過であることは事実として残す")
+        XCTAssertTrue(code.contains("without answering or logging (past the"),
+                      "無応答であること・無音であること・予算超過であることは事実として残す")
         XCTAssertTrue(code.contains("stopping and restarting it"))
     }
 }

@@ -71,15 +71,17 @@ final class BridgeLauncherCaptureSettingsTests: XCTestCase {
 
     /// 結果の束と作業フォルダを**固定の場所**に渡す。渡さないと Xcode が既定の DerivedData に
     /// 起動ごとの新しいフォルダを作り、誰も読まない結果の束を積む(実測 100 個・1.8 GB)
-    func testLaunchPinsTheResultBundleAndDerivedDataPerPort() {
+    func testLaunchPinsTheResultBundleAndDerivedDataPerPort() throws {
         let launcher = BridgeLauncher(repoRoot: root, device: "iPhone 17", port: 8914, physical: false)
         let args = launcher.testWithoutBuildingArguments(xctestrun: root.appendingPathComponent("x.xctestrun"))
         func value(after flag: String) -> String? {
             args.firstIndex(of: flag).flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
         }
-        XCTAssertEqual(value(after: "-resultBundlePath"),
-                       root.appendingPathComponent(".fleetest/xcresult/bridge-8914.xcresult").path,
-                       "結果の束が既定の場所へ積まれる")
+        // 置き場はポートごとの固定フォルダ、名前は起動ごと(bridge-<port>-<stamp>.xcresult。
+        // 同名の使い回しは `Existing file at -resultBundlePath` で落ちる。台帳 §19.25)
+        let bundle = try XCTUnwrap(value(after: "-resultBundlePath"), "結果の束が既定の場所へ積まれる")
+        XCTAssertTrue(bundle.hasPrefix(root.appendingPathComponent(".fleetest/xcresult/bridge-8914-").path), bundle)
+        XCTAssertTrue(bundle.hasSuffix(".xcresult"), bundle)
         XCTAssertEqual(value(after: "-derivedDataPath"), launcher.derivedDataPath.path,
                        "既定の DerivedData に空のフォルダが起動ごとに増える")
     }

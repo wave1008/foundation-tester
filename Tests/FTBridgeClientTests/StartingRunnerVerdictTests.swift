@@ -50,4 +50,22 @@ final class StartingRunnerVerdictTests: XCTestCase {
     func testWellOverBudgetRestarts() {
         XCTAssertEqual(StartingRunnerVerdict.decide(elapsed: 900, budget: 180), .restart)
     }
+
+    // MARK: - 進み具合(quietFor)。起動側が BridgeStartupWait で待っている間は引き取る側も待つ
+
+    func testOverBudgetButStillLoggingWaits() {
+        XCTAssertEqual(StartingRunnerVerdict.decide(elapsed: 300, quietFor: 10, budget: 180), .wait)
+    }
+
+    func testOverBudgetAndQuietForABudgetRestarts() {
+        XCTAssertEqual(StartingRunnerVerdict.decide(elapsed: 300, quietFor: 180, budget: 180), .restart)
+    }
+
+    func testUnderBudgetWaitsEvenIfQuiet() {
+        XCTAssertEqual(StartingRunnerVerdict.decide(elapsed: 100, quietFor: 900, budget: 180), .wait)
+    }
+
+    func testUnknownQuietFallsBackToElapsedOnly() {
+        XCTAssertEqual(StartingRunnerVerdict.decide(elapsed: 181, quietFor: nil, budget: 180), .restart)
+    }
 }
