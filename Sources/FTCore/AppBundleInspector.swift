@@ -1,24 +1,9 @@
-// .app / .ipa のマーカーから UI フレームワークを決める規則(材料を読むだけ)。**問い合わせの口は
-// AppUIFrameworkQuery**(材料の選び方・台帳・ブリッジの自己申告との順序はそちらが持つ)。
-// マーカー規則は InAppBridge.uiFramework(InAppBridge/Sources/InAppBridge.swift)の自己申告と対だが、
-// ブリッジ側は `compose-resources` しか見ない(SkikoUIView を見ない)—— だから問い合わせは静的を先に置く。
+// .app / .ipa を読んで UI フレームワークを決める(材料を読むだけ。規則そのものは UIFrameworkMarkers =
+// in-app ブリッジと共有)。**問い合わせの口は AppUIFrameworkQuery**(材料の選び方・台帳・順序はそちら)。
 
 import Foundation
 
 public enum AppBundleInspector {
-    /// Compose Multiplatform の実行ファイル(デバッグでは `<exe>.debug.dylib`)に必ず入る ObjC クラス名
-    /// (Skiko の描画ビュー。実行時に名前で登録されるので記号を削っても残る)。
-    /// `compose-resources` フォルダはリソースの仕組みが作るもので、リソースを使わないアプリには無い
-    static let composeBinaryMarker = "SkikoUIView"
-
-    /// バンドル直下のマーカー実在から判定する純粋関数(単体テスト対象。プロセス起動は分離)。
-    /// 優先順位は InAppBridge と同じ(compose を先に見る)
-    public static func uiFramework(composeResourcesExists: Bool, flutterFrameworkExists: Bool) -> AppUIFramework {
-        if composeResourcesExists { return .compose }
-        if flutterFrameworkExists { return .flutter }
-        return .uikit
-    }
-
     /// ビルド済みの .app / .ipa から直接判定する(サブプロセスは .ipa の unzip だけ)。
     /// パス未指定・実在しないパスは nil
     public static func detect(appPath: String?) -> AppUIFramework? {
@@ -27,19 +12,9 @@ public enum AppBundleInspector {
     }
 
     static func detect(in reader: AppPackageReader) -> AppUIFramework {
-        let compose = reader.exists("compose-resources") || composeMarkerPresent(in: reader)
-        return uiFramework(composeResourcesExists: compose,
-                           flutterFrameworkExists: reader.exists("Frameworks/Flutter.framework"))
-    }
-
-    /// 実行ファイルと `*.debug.dylib`(Xcode のデバッグビルドは本体をこちらに置く)のどれかに
-    /// Compose のクラス名があるか
-    static func composeMarkerPresent(in reader: AppPackageReader) -> Bool {
-        var candidates = reader.rootEntries().filter { $0.hasSuffix(".debug.dylib") }
-        if let executable = reader.infoPlist?["CFBundleExecutable"] as? String, !executable.isEmpty {
-            candidates.insert(executable, at: 0)
-        }
-        return candidates.contains { reader.contains(composeBinaryMarker, in: $0) == true }
+        UIFrameworkMarkers.iosFramework(executable: reader.infoPlist?["CFBundleExecutable"] as? String,
+                                        rootEntries: reader.rootEntries(),
+                                        exists: reader.exists, contents: reader.contents)
     }
 
     /// Info.plist の `CFBundleSupportedPlatforms` から「実機用ビルドか」を返す純粋関数。

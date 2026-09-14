@@ -6,12 +6,14 @@
 
 import XCTest
 @testable import FTBridgeClient
-import FTCore
+@testable import FTCore
 
 private final class FakeAppDriver: AppDriver {
     private(set) var activateCalls: [String] = []
     private(set) var snapshotCallCount = 0
     private(set) var tapRefCallCount = 0
+    var snapshotBundleID: String?
+    var snapshotElements: [ElementInfo] = []
 
     /// 呼び出し順ごとの成否(true=409 を throw)。尽きたら最後の値を繰り返す
     var snapshotShouldFail: [Bool] = []
@@ -34,9 +36,9 @@ private final class FakeAppDriver: AppDriver {
     func snapshot() async throws -> SnapshotResponse {
         defer { snapshotCallCount += 1 }
         if shouldFail(snapshotShouldFail, callCount: snapshotCallCount) { throw Self.sessionLost }
-        return SnapshotResponse(sessionBundleID: nil,
+        return SnapshotResponse(sessionBundleID: snapshotBundleID,
                                 screen: FTRect(x: 0, y: 0, width: 100, height: 100),
-                                elements: [], truncatedCount: 0)
+                                elements: snapshotElements, truncatedCount: 0)
     }
 
     func tap(ref: Int) async throws {
@@ -183,5 +185,37 @@ final class SessionRecoveryDriverTests: XCTestCase {
 
         XCTAssertEqual(fake.activateCalls, ["com.example.app"], "回復の発火は1回だけ")
         XCTAssertEqual(fake.snapshotCallCount, 2, "初回+再試行の2回で打ち切り")
+    }
+
+    /// RN のラッパー分離を畳むのは、自前描画(compose / flutter)と判っていないアプリだけ
+    /// (判らないアプリには従来どおり畳む)。答えは同じプロセスの静的な控えから引く
+    func testWrapperMergeIsSkippedOnlyForAppsKnownToBeSelfRendered() async throws {
+        let frame = FTRect(x: 16, y: 251, width: 370, height: 431)
+        let wrapper = ElementInfo(ref: 1, type: "Other", identifier: "list_rows", label: nil, value: nil,
+                                  placeholder: nil, enabled: true, frame: frame, depth: 1)
+        let scroll = ElementInfo(ref: 2, type: "ScrollView", identifier: nil, label: nil, value: nil,
+                                 placeholder: nil, enabled: true, frame: frame, depth: 1, scrollable: true)
+        let app = FileManager.default.temporaryDirectory.appendingPathComponent("SRD-\(UUID().uuidString).app")
+        try FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: app) }
+        let bundleID = "com.example.selfrendered-\(UUID().uuidString)"
+        try PropertyListSerialization.data(fromPropertyList: ["CFBundleExecutable": "App", "CFBundleIdentifier": bundleID],
+                                           format: .binary, options: 0).write(to: app.appendingPathComponent("Info.plist"))
+        try Data("…SkikoUIView…".utf8).write(to: app.appendingPathComponent("App"))
+        XCTAssertEqual(AppUIFrameworkQuery.staticAnswer(for: .init(platform: "ios", bundleID: bundleID,
+                                                                   appPath: app.path, udid: nil, physical: true)).framework,
+                       .compose)
+
+        let fake = FakeAppDriver()
+        fake.snapshotElements = [wrapper, scroll]
+        fake.snapshotBundleID = bundleID
+        let selfRendered = try await SessionRecoveryDriver(base: fake).snapshot()
+        XCTAssertEqual(selfRendered.elements.count, 2, "自前描画と判っているアプリの木を畳んだ")
+        fake.snapshotBundleID = "com.example.unknown-\(UUID().uuidString)"
+        let unknown = try await SessionRecoveryDriver(base: fake).snapshot()
+        XCTAssertEqual(unknown.elements.count, 1, "判らないアプリには従来どおり畳む")
+        fake.snapshotBundleID = nil
+        let noBundle = try await SessionRecoveryDriver(base: fake).snapshot()
+        XCTAssertEqual(noBundle.elements.count, 1)
     }
 }

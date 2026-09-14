@@ -592,16 +592,22 @@
 
 ### 判定は1箇所に置く
 
-- **アプリの UI フレームワーク(iOS: compose / flutter / uikit)は `FTCore.AppUIFrameworkQuery` だけで
-  決める**。順は**静的(.app / .ipa のマーカー → シミュレータに入っているバンドル → bundle ID ごとの台帳
-  `AppFrameworkLedger`)→ 動的(in-app ブリッジの自己申告)→ `.unknown`**。静的を先に置くのは
-  自己申告の規則(`InAppBridge.uiFramework`)が `compose-resources` しか見ないため。守る規律4つ:
-  **①不明を既定値で埋めない**(呼び手が安全側を選ぶ)/ **②パッケージは宣言した bundle ID が対象と
-  一致するときだけ使う**(プロファイルのアプリとシナリオの対象アプリは別になりうる)/
+- **アプリの UI フレームワークは `FTCore.AppUIFrameworkQuery` だけで決める**(語彙 `AppUIFramework` =
+  iOS: compose / flutter / reactNative / swiftUI / uikit、Android: compose / flutter / reactNative / androidView)。
+  順は**静的(.app / .ipa / .apk の目印 → iOS シミュレータに入っているバンドル → 台帳 `AppFrameworkLedger`)→
+  動的(in-app ブリッジの自己申告)→ `.unknown`**。**iOS の目印の規則は `UIFrameworkMarkers` の1ファイルを
+  ホストと in-app ブリッジが共有する**(build.sh の SWIFT_SOURCES と BridgeSourceSet に入っている =
+  触ったらブリッジの版を上げる。別々に持っていた頃はホストだけ SkikoUIView を見るようになり答えが割れた)。
+  Android は `AndroidPackageInspector`(ブリッジは申告しない)。守る規律5つ:
+  **①不明を既定値で埋めない**(呼び手が安全側を選ぶ)/ **②パッケージは宣言した bundle ID(パッケージ名)が
+  対象と一致するときだけ使う**(プロファイルのアプリとシナリオの対象アプリは別になりうる)/
   **③自己申告は `bridgeReport(_:about:)` を通し、対象アプリ自身の申告のときだけ使う**・
   台帳にもプロセス内の控えにも入れない(`AppUIFrameworkQueryWiringTests` が `StatusResponse.uiFramework` の
-  直読みをソース走査で落とす)/ **④Android は判定しない**(`.unknown`)。
-  **RN・SwiftUI は uikit に入る**(語彙を足すなら uikit で分岐している呼び手を全部見る)
+  直読みをソース走査で落とす)/ **④目印・順序を変えたら規則の版(`rulesVersion`)を上げる**(台帳は版の違う
+  控えを使わない)/ **⑤台帳と控えは OS で分ける**(CMP は iOS の bundle ID と Android のパッケージ名が同じ)。
+  **呼び手は「自前描画か」(`isSelfRendered`)で分岐する** —— 個別の値(`== .uikit` 等)で分けると語彙を
+  足した日に黙って外れる(RN / SwiftUI を uikit から分けたとき、in-app の木の正規化はそれらにも掛け続ける必要があった)。
+  Android の compose は「Compose を含む」であって全画面が Compose とは限らない(View/XML に混ぜた E2EAppAndroid もこちら)
 
 - **判定は MCP と DSL で共有する**。「手前かどうか」は `FTCore.PaintOrder`、「撃つと別の物に
   当たるか」は `FTCore.TapTargetGeometry`(合成チェーンは `occlusionAdvisory`)と

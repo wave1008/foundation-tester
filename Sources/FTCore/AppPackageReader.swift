@@ -1,5 +1,5 @@
-// アプリのパッケージ(.app ディレクトリ / .ipa)の中身を同じ口で読む。
-// 読み手は3つ(AppBundleInspector の UI フレームワーク判定・実機用ビルドかの判定・アイコン名の候補)。
+// アプリのパッケージ(.app ディレクトリ / .ipa / .apk)の中身を同じ口で読む。
+// 読み手は AppBundleInspector(UI フレームワーク・実機用ビルドか・アイコン名の候補)と AndroidPackageInspector。
 // **.ipa は展開しない**: 一覧は `unzip -Z1`、個々のファイルは `unzip -p`(stdout)で取り出す。
 // 実機(devicectl)は .ipa をそのまま入れられるので、appPathPhysical に .ipa を書く受け手が居る。
 
@@ -8,7 +8,7 @@ import Foundation
 public struct AppPackageReader {
     enum Package {
         case bundle(String)
-        /// appPrefix = "Payload/<Name>.app/"
+        /// zip(.ipa / .apk)。appPrefix = "Payload/<Name>.app/"(.ipa)/ ""(.apk)
         case ipa(path: String, appPrefix: String, entries: [String])
     }
 
@@ -20,11 +20,13 @@ public struct AppPackageReader {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return nil }
         if isDirectory.boolValue { return AppPackageReader(package: .bundle(path)) }
-        guard (path as NSString).pathExtension.lowercased() == "ipa",
+        let ext = (path as NSString).pathExtension.lowercased()
+        guard ext == "ipa" || ext == "apk",
               let listing = try? Shell.run(["unzip", "-Z1", path], timeout: 60), listing.status == 0
         else { return nil }
         let entries = listing.output.split(whereSeparator: \.isNewline).map(String.init)
-        guard let prefix = Self.appPrefix(entries: entries) else { return nil }
+        // .apk は zip の直下がそのままパッケージの直下
+        guard let prefix = ext == "apk" ? "" : Self.appPrefix(entries: entries) else { return nil }
         return AppPackageReader(package: .ipa(path: path, appPrefix: prefix, entries: entries))
     }
 

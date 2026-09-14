@@ -150,9 +150,15 @@ public final class SessionRecoveryDriver: AppDriver {
     }
 
     /// RN の ScrollView/FlatList ラッパー分離を畳む(SnapshotDedupe.wrapperScrollMerge 参照)。
-    /// uiFramework の判定手段が無いので無条件適用(パターンが狭いので他 SUT では実質 no-op のはず。
-    /// フル E2E で検証する)
+    /// **自前描画(compose / flutter)と判っているアプリには掛けない**(InAppDriver と同じ扱い)。
+    /// 判らなければ掛ける(パターンが狭く、ビューを持つ系以外では実質 no-op)。問い合わせは静的な控え
+    /// (同じプロセスで run / MCP が先に解いた答え・台帳)だけ —— udid を渡さないので simctl は撃たない
     private func normalizedWrapperScroll(_ response: SnapshotResponse) -> SnapshotResponse {
+        if let bundleID = response.sessionBundleID,
+           AppUIFrameworkQuery.staticAnswer(for: .init(platform: "ios", bundleID: bundleID, appPath: nil,
+                                                       udid: nil, physical: false)).framework?.isSelfRendered == true {
+            return response
+        }
         var response = response
         response.elements = SnapshotDedupe.wrapperScrollMerge(response.elements)
         return response

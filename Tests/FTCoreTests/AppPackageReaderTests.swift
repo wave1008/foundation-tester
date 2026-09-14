@@ -147,10 +147,11 @@ final class AppPackageReaderTests: XCTestCase {
     func testRememberedResultIsReusedOnlyForTheSameFile() throws {
         let app = try makeApp("Rel", executable: "…SkikoUIView…")
         XCTAssertEqual(query(app, "com.example.c"), .compose)
-        let stored = try XCTUnwrap(AppFrameworkLedger.load(bundleID: "com.example.c"))
+        let stored = try XCTUnwrap(AppFrameworkLedger.load(bundleID: "com.example.c", platform: "ios"))
         XCTAssertEqual(stored.sourcePath, app)
         XCTAssertNotNil(stored.sourceModified)
         XCTAssertEqual(stored.sourceBundleID, "com.example.c")
+        XCTAssertEqual(stored.rules, UIFrameworkMarkers.rulesVersion)
         // 同じ場所にビルドし直したら読み直す(Info.plist の大きさで気づく)
         try PropertyListSerialization.data(fromPropertyList: ["CFBundleExecutable": "Rel", "K": "v"],
                                            format: .binary, options: 0)

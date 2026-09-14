@@ -375,7 +375,10 @@ public enum BridgeAPI {
     /// v98 (in-app only): (e) passes a ref that wraps exactly one text input again when that input already
     /// holds focus (a second type / replace into a Flutter field wrapped by an id-carrying container was
     /// refused after a 1.5s wait under v97).
-    public static let bridgeProtocolVersion = 101
+    /// v102 (in-app only): /status `uiFramework` follows the host's rules (UIFrameworkMarkers, shared source):
+    /// a Compose app without compose-resources is "compose" (was "uikit"), and React Native / SwiftUI-lifecycle
+    /// apps report "reactNative" / "swiftUI" (were "uikit").
+    public static let bridgeProtocolVersion = 102
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -841,8 +844,9 @@ public struct StatusResponse: Codable, Sendable {
     /// UIApplication.applicationState の文字列化("active"/"inactive"/"background")。
     /// inapp 専用診断(背面 suspend でハングしていないかの申告)。xcuitest ブリッジは返さない → nil 許容。
     public var applicationState: String?
-    /// inapp ブリッジが自己申告する UI フレームワーク("compose"/"uikit")。判定は InAppBridge の
-    /// compose-resources 実在チェック。xcuitest/Android ブリッジは返さない → nil 許容。
+    /// inapp ブリッジが自己申告する UI フレームワーク(AppUIFramework の rawValue。規則は UIFrameworkMarkers)。
+    /// xcuitest/Android ブリッジは返さない → nil 許容。**直接読まない** —— AppUIFrameworkQuery.bridgeReport(_:about:)
+    /// を通す(申告は注入先アプリのもの)
     public var uiFramework: String?
     /// **最後に画面が進んでからの秒数**(iOS=CADisplayLink / Android=Choreographer の tick)。
     /// **ホストは凍結判定に使わない。採り直さないこと** —— 本物の wedge でも拍動は回り続ける

@@ -1,4 +1,5 @@
-// UI フレームワークの判定結果を bundle ID ごとに覚える台帳(~/.fleetest/app-frameworks/<bundleID>.json)。
+// UI フレームワークの判定結果を bundle ID ごとに覚える台帳(~/.fleetest/app-frameworks/<bundleID>.json。
+// Android は android/<パッケージ名>.json)。
 // 読み書きは AppUIFrameworkQuery だけが行う(静的な答えだけを書く。ブリッジの自己申告は書かない)。
 //
 // 判定の材料(.app / .ipa)が**手元に無い**ときの唯一の答え —— 物理 iPhone は端末に入ったアプリの
@@ -22,6 +23,9 @@ public enum AppFrameworkLedger {
         /// 材料がこの bundle ID のものだと確かめた印。**無い控えは指紋が合っても使わない** ——
         /// 確かめずに書いた版は、プロファイルのアプリの判定をシナリオの対象アプリ(別の bundle ID)の名で残した
         public let sourceBundleID: String?
+        /// 判定規則の版(iOS = UIFrameworkMarkers.rulesVersion / Android = AndroidPackageInspector.rulesVersion)。
+        /// **違う版の控えは使わない**(古い規則の答え = RN を uikit と言っていた頃の答えを返さない)
+        public let rules: Int?
     }
 
     static let directoryOverrideKey = "FT_APP_FRAMEWORK_DIR"
@@ -34,10 +38,13 @@ public enum AppFrameworkLedger {
             .appendingPathComponent(".fleetest/app-frameworks", isDirectory: true)
     }
 
-    static func fileURL(bundleID: String) -> URL {
+    /// iOS は直下、Android は `android/` の下(**OS で分ける** —— CMP は iOS の bundle ID と Android の
+    /// パッケージ名が同じ `com.ftester.e2e` で、同じ名前に両方の答えを書くと互いに上書きする)
+    static func fileURL(bundleID: String, platform: String) -> URL {
         // bundle ID は "." と英数と "-" だけ(それ以外が来ても1ファイル名に収める)
         let safe = bundleID.map { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_" ? $0 : "_" }
-        return directory.appendingPathComponent(String(safe) + ".json")
+        let base = platform == "android" ? directory.appendingPathComponent("android", isDirectory: true) : directory
+        return base.appendingPathComponent(String(safe) + ".json")
     }
 
     static var writesPermitted: Bool {
@@ -46,15 +53,17 @@ public enum AppFrameworkLedger {
         return ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
     }
 
-    public static func load(bundleID: String) -> Entry? {
-        guard let data = FileManager.default.contents(atPath: fileURL(bundleID: bundleID).path) else { return nil }
+    public static func load(bundleID: String, platform: String) -> Entry? {
+        let url = fileURL(bundleID: bundleID, platform: platform)
+        guard let data = FileManager.default.contents(atPath: url.path) else { return nil }
         return try? JSONDecoder().decode(Entry.self, from: data)
     }
 
-    public static func store(bundleID: String, entry: Entry) {
+    public static func store(bundleID: String, platform: String, entry: Entry) {
         guard writesPermitted, let data = try? JSONEncoder().encode(entry) else { return }
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? data.write(to: fileURL(bundleID: bundleID), options: .atomic)
+        let url = fileURL(bundleID: bundleID, platform: platform)
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: url, options: .atomic)
     }
 
     /// 材料の指紋(無ければ nil = 照合できない)。.ipa はそのファイル、.app はディレクトリの mtime と

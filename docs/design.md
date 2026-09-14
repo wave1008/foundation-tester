@@ -2158,15 +2158,15 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   「不明なら打つ」へ倒れ、RN では横抜き 4pt が `pressRetentionOffset`(既定20pt)に収まって
   `onPress` が成立する = **`scrollTo` しただけで行が選択される**(E2E-RN S0100 を
   プローブ無応答で回して再現。`selected=row_40`)。アプリのフレームワークは
-  **`AppUIFrameworkQuery` が静的な材料を先に見る**:**パッケージのマーカー**(`AppBundleInspector` =
-  デバイスの応答が要らない。材料は .app / .ipa の両方 = `AppPackageReader`。**宣言した bundle ID が
-  対象と一致するときだけ**。Flutter は
+  **`AppUIFrameworkQuery` が静的な材料を先に見る**:**パッケージの目印**(規則は `UIFrameworkMarkers` =
+  in-app ブリッジの自己申告と同じファイル。デバイスの応答が要らない。材料は .app / .ipa の両方 = `AppPackageReader`。
+  **宣言した bundle ID が対象と一致するときだけ**。Flutter は
   `Frameworks/Flutter.framework`、Compose は実行ファイル(デバッグは `<exe>.debug.dylib`)の中の
-  クラス名 `SkikoUIView` —— `compose-resources` フォルダはリソースを使わないアプリに無い)→
+  クラス名 `SkikoUIView` —— `compose-resources` フォルダはリソースを使わないアプリに無い。
+  RN は React / hermes(vm) の framework か `RCTBridge`、SwiftUI は `App.main()` の呼び出し)→
   シミュレータに入っているバンドル(simctl。置き場と指紋を台帳に控え、同じ台なら2回目から撃たない)→
-  **bundle ID ごとの台帳**(`AppFrameworkLedger` = `~/.fleetest/app-frameworks/`)。静的に決まらなければ
-  in-app ブリッジの自己申告(対象アプリ自身の申告のときだけ。規則が `compose-resources` しか見ないので
-  最後に置く)、それも無ければ **掴んだ要素のクラス名**(第3段。`AccessibilityClassHint` =
+  **bundle ID ごとの台帳**(`AppFrameworkLedger` = `~/.fleetest/app-frameworks/`。規則の版が違う控えは使わない)。
+  静的に決まらなければ in-app ブリッジの自己申告(対象アプリ自身の申告のときだけ)、それも無ければ **掴んだ要素のクラス名**(第3段。`AccessibilityClassHint` =
   XCUITest ランナーが XCTest の非公開辞書 `additionalAttributes[5004]` から `ElementInfo.axClass` に載せる。
   Compose / Flutter の要素は `UIAccessibilityElement` = ビューを持たずホストが自前でタッチを処理する側、
   RN は `UIView`・SwiftUI は `NSObject`・UIKit は実クラス名。根の走査に付いてくるので追加の往復は無い。

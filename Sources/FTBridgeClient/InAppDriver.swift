@@ -144,11 +144,11 @@ public final class InAppDriver: AppDriver {
 
     /// RN 等 UIKit の in-app ツリーはラッパー分離(testID 付き容器 + 別ノードの実スクロール要素)と
     /// テキスト2重化(id 付き + 同枠同ラベルの匿名ノード)を起こす(2026-08-08 実測)。
-    /// uiFramework=="uikit" のときだけ両方を畳む。compose/flutter は scrollable を申告できず
+    /// ビューを持つ系(uikit / swiftUI / reactNative)と判ったときだけ両方を畳む。compose/flutter は scrollable を申告できず
     /// wrapperScrollMerge が実質発火しないとしても、既存 SUT の序数を動かさないため明示的に触らない
     private func normalizedSnapshot(_ fetch: () async throws -> SnapshotResponse) async throws -> SnapshotResponse {
         var response = try await withCrashContext(fetch)
-        guard await cachedUIFramework() == .uikit else { return response }
+        guard let framework = await cachedUIFramework(), !framework.isSelfRendered else { return response }
         let merged = SnapshotDedupe.wrapperScrollMerge(response.elements)
         var emitted: [ElementInfo] = []
         response.elements = merged.filter { element in

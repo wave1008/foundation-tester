@@ -31,18 +31,18 @@ final class FTInAppBridge {
     /// 直近 snapshot で入力欄だった ref(`TypeReadback.isTextInput`)。frames と同じ時点で差し替える
     private var textInputRefs: Set<Int> = []
     private let nodes = NSMapTable<NSNumber, AnyObject>(keyOptions: .strongMemory, valueOptions: .weakMemory)
-    // compose-resources = Compose Multiplatform のリソースバンドル(2026-07-20 実バンドルで検証済みマーカー)。
-    // Frameworks/Flutter.framework = Flutter アプリのマーカー。type ルーティング判定(StepExecutor)に使う
+    // 自分のバンドルをホストと同じ規則(UIFrameworkMarkers = 共有ソース)で読む。実行ファイルは写像で読む
+    // (数十 MB を複製しない)。値は AppUIFramework の rawValue
     private lazy var uiFramework: String = {
-        let bundle = Bundle.main.bundlePath as NSString
-        if FileManager.default.fileExists(atPath: bundle.appendingPathComponent("compose-resources")) {
-            return "compose"
-        }
-        if FileManager.default.fileExists(
-            atPath: bundle.appendingPathComponent("Frameworks/Flutter.framework")) {
-            return "flutter"
-        }
-        return "uikit"
+        let root = Bundle.main.bundlePath as NSString
+        let fm = FileManager.default
+        return UIFrameworkMarkers.iosFramework(
+            executable: Bundle.main.infoDictionary?["CFBundleExecutable"] as? String,
+            rootEntries: (try? fm.contentsOfDirectory(atPath: root as String)) ?? [],
+            exists: { fm.fileExists(atPath: root.appendingPathComponent($0)) },
+            contents: { try? Data(contentsOf: URL(fileURLWithPath: root.appendingPathComponent($0)),
+                                  options: .alwaysMapped) }
+        ).rawValue
     }()
 
     func start() {

@@ -23,6 +23,7 @@ SWIFT_SOURCES=(
   "$ROOT/Sources/FTCore/BridgeDTO.swift"
   "$ROOT/Sources/FTCore/WebViewDOMSnapshot.swift"
   "$ROOT/Sources/FTCore/TypeReadback.swift"
+  "$ROOT/Sources/FTCore/UIFrameworkMarkers.swift"
   Sources/InAppHTTPServer.swift
   Sources/InAppWebViewDOM.swift
   Sources/InAppSnapshot.swift
