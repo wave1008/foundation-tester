@@ -196,3 +196,17 @@ final class RegionTextTests: XCTestCase {
         XCTAssertTrue(RegionText.readable(expected: "ログイン", lines: reading.lines))
     }
 }
+
+// 言語補正は日本語モデルを載せる集合でだけ掛ける(字形の取り違え「単」→「单」を直す。
+// ASCII では切ったまま = 欠けを推測で埋めさせない)。理由は RegionText.usesLanguageCorrection の doc
+final class RegionTextLanguageCorrectionTests: XCTestCase {
+    func testCorrectionFollowsTheLanguageSet() {
+        XCTAssertTrue(RegionText.usesLanguageCorrection(for: ["ja-JP", "en-US"]))
+        XCTAssertTrue(RegionText.usesLanguageCorrection(for: ["ja-JP"]))
+        XCTAssertFalse(RegionText.usesLanguageCorrection(for: ["en-US"]))
+        XCTAssertFalse(RegionText.usesLanguageCorrection(for: []))
+        // 本番の 2 つの集合(languages(for:))と対応していること
+        XCTAssertFalse(RegionText.usesLanguageCorrection(for: RegionText.languages(for: "swipe=down")))
+        XCTAssertTrue(RegionText.usesLanguageCorrection(for: RegionText.languages(for: "単一行")))
+    }
+}

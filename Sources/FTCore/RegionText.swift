@@ -424,6 +424,18 @@ public enum RegionText {
 
     public static let defaultLanguages = ["ja-JP", "en-US"]
 
+    /// 言語補正を掛けるのは**日本語モデルを載せる集合だけ**。
+    /// - ASCII(en-US だけ)では切る: 欠けを推測で埋めさせない(補正は「丸ごと読めた」の意味を弱める。
+    ///   固定コーパスの `swipe=down` / `selected=row_40` は補正なしで等倍から読める)
+    /// - 日本語では入れる(2026-09-15 実測): en ロケールのシミュレータは「単」(U+5358)を中国語フォントの
+    ///   字形で描き、補正なしだと Vision も FM も「单」(U+5355)と読んで 3 文字の placeholder「単一行」が
+    ///   誤った赤になった。補正ありなら「単一行」と読む。合成コーパス(ja 79 要素)で補正ありは
+    ///   見えている 76→78/79 が読め、空白・全面の覆い・別の文字で読めた回は 0 のまま
+    ///   (= 覆われた語を補完しない)。`キーポード`→`キーボード`・`Appleseea`→`Appleseed` も直る
+    public static func usesLanguageCorrection(for languages: [String]) -> Bool {
+        languages.contains("ja-JP")
+    }
+
     /// 読ませる言語は**期待文字列から決める**。日本語モデルを載せると 1 回あたり p50 91→208ms
     /// になるので、期待文字列が ASCII だけのときは英語だけにする(実測: ASCII の期待値では
     /// 読み取り結果が両者で完全に一致する)。非 ASCII(かな・漢字など)を含むときだけ日本語を足す。
@@ -460,8 +472,7 @@ public enum RegionText {
         var request = RecognizeTextRequest()
         // 実測 p50 33ms なので速度のために fast へ落とさない(欠けを取りこぼすほうが高くつく)。
         request.recognitionLevel = .accurate
-        // 欠けを推測で埋めさせない(言語補正は「読めた」の意味を弱める)。
-        request.usesLanguageCorrection = false
+        request.usesLanguageCorrection = usesLanguageCorrection(for: languages)
         request.recognitionLanguages = languages.map { Locale.Language(identifier: $0) }
         if computeChoice(environment: ProcessInfo.processInfo.environment) == .avoidNeuralEngine {
             for (stage, candidates) in request.supportedComputeStageDevices {

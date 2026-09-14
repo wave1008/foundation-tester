@@ -57,9 +57,10 @@ final class OcclusionTranscriptTests: XCTestCase {
         XCTAssertTrue(body.contains("TranscriptMatch.isNearMiss("), "惜しい転写の OCR 確認が無い")
         XCTAssertTrue(body.contains("case .read(readable: true, let reading) = await RegionText.resolveWithinBudget("),
                       "OCR の読みが「丸ごと読めた」ときだけに絞られていない")
-        XCTAssertTrue(body.contains("verdict = TranscriptMatch.Verdict(visible: true, state: .fullyVisible"),
+        let ocrBranch = try XCTUnwrap(Self.balancedBody(after: "case .read(readable: true, let reading) = await RegionText.resolveWithinBudget(", in: body))
+        XCTAssertTrue(ocrBranch.contains("TranscriptMatch.Verdict(visible: true, state: .fullyVisible"),
                       "OCR で読めた回が visible へ倒れていない")
-        XCTAssertFalse(body.contains("visible: false, state: .textMismatch") || body.contains("readable: false"),
+        XCTAssertFalse(ocrBranch.contains("visible: false") || body.contains("readable: false"),
                        "OCR の読めなかったことを反転の根拠にしている")
     }
 
@@ -94,7 +95,7 @@ final class OcclusionTranscriptTests: XCTestCase {
         return String(source[start.upperBound..<end.lowerBound])
     }
 
-    private static func balancedBody(after needle: String, in source: String) -> String? {
+    static func balancedBody(after needle: String, in source: String) -> String? {
         guard let found = source.range(of: needle),
               let open = source[found.upperBound...].firstIndex(of: "{") else { return nil }
         var depth = 0

@@ -1,5 +1,5 @@
 {
-  "note": "occlusion-guard Tier-2(RegionText)の固定コーパス。実 run(E2E-CMP / E2E-iOS)で FM の段に届いた crop。値は 2026-09-07 実測(docs/poc-fm-occlusion-guard.md §5.17) **認識器は ANE を避けて CPU に載せる**(RegionText.recognize。2026-09-10: 最初の実 crop で ANE 向けコンパイルが 21.8 秒かかり、ステップの締め切りを食っていた)。装置を変えると読みが変わる —— selected-row40 の ja+en ×3 は ANE では読めたが CPU では selectea のまま(言語規則の経路は両装置で同じ)",
+  "note": "occlusion-guard Tier-2(RegionText)の固定コーパス。実 run(E2E-CMP / E2E-iOS)で FM の段に届いた crop。値は 2026-09-07 実測(docs/poc-fm-occlusion-guard.md §5.17) **認識器は ANE を避けて CPU に載せる**(RegionText.recognize。2026-09-10: 最初の実 crop で ANE 向けコンパイルが 21.8 秒かかり、ステップの締め切りを食っていた)。装置を変えると読みが変わる —— selected-row40 の ja+en ×3 は ANE では読めたが CPU では selectea のまま(言語規則の経路は両装置で同じ) **2026-09-15: 日本語の集合には言語補正を掛ける**(字形「単」→「单」の取り違えを直す。swipe-down は ja+en でも等倍で読めるようになった)",
   "crops": [
     {
       "file": "swipe-down.png",
@@ -7,11 +7,11 @@
       "readableWithLanguageRule": true,
       "ladderAttemptsWithRule": 1,
       "readableAtWithJapanese": {
-        "1": false,
+        "1": true,
         "2": true,
         "3": true
       },
-      "why": "日本語モデルを載せると d を a と読む(swipe=aown)。期待文字列が ASCII なら英語だけにする規則で等倍から読める = 言語規則が効いている証拠"
+      "why": "日本語モデルを載せても言語補正あり(2026-09-15 から。RegionText.usesLanguageCorrection)なら等倍で読める(補正なしでは swipe=aown)。production は ASCII なら英語だけ(補正なし)で等倍から読める = 言語規則は速度(2.3 倍)のために残す"
     },
     {
       "file": "selected-row40.png",
@@ -19,11 +19,11 @@
       "readableWithLanguageRule": true,
       "ladderAttemptsWithRule": 1,
       "readableAtWithJapanese": {
-        "1": false,
-        "2": false,
+        "1": true,
+        "2": true,
         "3": false
       },
-      "why": "同じ誤読(selectea)。日本語込みだと CPU では ×3 まで上げても読めない(ANE では ×3 で読めた)= 言語規則が無いと救えない証拠。production は言語規則で英語だけ・等倍で読める"
+      "why": "補正なしの日本語込みでは CPU で ×3 まで上げても selectea のままだったが、言語補正あり(2026-09-15 から)なら等倍・×2 で読める(×3 は拡大で selectea に戻る = 拡大は文字を作らない)。production は ASCII なら英語だけ・等倍で読める = 言語規則は速度(2.3 倍)のために残す"
     },
     {
       "file": "offscreen-text.png",

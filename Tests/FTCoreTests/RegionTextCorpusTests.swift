@@ -48,9 +48,10 @@ final class RegionTextCorpusTests: XCTestCase {
         return (data, FTRect(x: 0, y: 0, width: Double(image.width), height: Double(image.height)))
     }
 
-    /// **言語規則の効き目**を等号で固定する —— 日本語モデルを載せると ASCII の期待文字列を
-    /// 誤読する(`swipe=down`→`swipe=aown`)。段ごとの表はその誤読と、はしごが安全網として
-    /// どこで効くかを示す。ここが動いたら言語規則・拡大の段・一致規則・Vision の版のどれかが変わっている
+    /// 日本語モデルを載せた集合(= 言語補正あり)での読みを段ごとに等号で固定する。
+    /// 補正なしの頃は ASCII を誤読した(`swipe=aown` / `selectea`)が、2026-09-15 の言語補正で
+    /// 日本語込みでも等倍で読める。言語規則(ASCII は英語だけ)は速度(2.3 倍)のために残す。
+    /// ここが動いたら言語補正・拡大の段・一致規則・Vision の版のどれかが変わっている
     func testJapaneseModelMisreadsAsciiAndTheLadderRescuesIt() async throws {
         for crop in try manifest().crops {
             let (data, rect) = try png(crop.file)
@@ -81,8 +82,8 @@ final class RegionTextCorpusTests: XCTestCase {
         }
     }
 
-    /// 呼び手が言語を明示したらそれを使う。日本語モデル込みだと `swipe=down` は等倍で誤読するので、
-    /// **はしごが 2 段目で拾う**(安全網として効いていることの witness)
+    /// 呼び手が言語を明示したらそれを使う。日本語モデル込み(= 言語補正あり)でも `swipe=down` は
+    /// 等倍で読める(補正なしの頃は ×2 で拾っていた = はしごの witness だったが、補正で不要になった)
     func testResolveUsesTheLanguagesGivenByTheCaller() async throws {
         let crop = try XCTUnwrap(try manifest().crops.first { $0.file == "swipe-down.png" })
         let (data, rect) = try png(crop.file)
@@ -91,6 +92,6 @@ final class RegionTextCorpusTests: XCTestCase {
                                                    languages: RegionText.defaultLanguages)
         let resolved = try XCTUnwrap(resolvedRaw)
         XCTAssertTrue(resolved.readable, "読めた行 \(resolved.reading.lines)")
-        XCTAssertEqual(resolved.reading.attempts, 2)
+        XCTAssertEqual(resolved.reading.attempts, 1)
     }
 }
