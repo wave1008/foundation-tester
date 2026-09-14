@@ -561,7 +561,7 @@ final class BridgeRouter {
 
     private func handleTap(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(TapRequest.self, body)
-        let app = try requireLiveApp()
+        let app = try requireForegroundAppForGesture()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
         // 計測: `tap()` は「イベント合成」と「暗黙の quiescence 待ち」の両方を含む1呼び出しで、
         // ホスト側の actionMs からは分解できない。quiescence 側だけ swizzle 経由で数え、
@@ -925,7 +925,7 @@ final class BridgeRouter {
 
     private func handleSwipe(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
-        let app = try requireLiveApp()
+        let app = try requireForegroundAppForGesture()
         // velocity(points/sec)はホストが用途に応じて送る(scrollToEdge だけ。契約は
         // FTCore/BridgeDTO の FTSwipeIntent)。**`?? .default` で4分岐に畳まないこと**:
         // XCUIGestureVelocityDefault の実体は -10 というセンチネル値で、実速度は XCTest 内部が
@@ -1020,7 +1020,7 @@ final class BridgeRouter {
     /// velocity=距離÷移動時間で「ゆっくりドラッグ(慣性なし)〜フリック」を再現する
     private func handleDrag(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(DragRequest.self, body)
-        return performDrag(req, in: try requireLiveApp())
+        return performDrag(req, in: try requireForegroundAppForGesture())
     }
 
     /// ドラッグの実体。**`/systemui/drag` と共有する**(原点にするアプリだけが違う)
@@ -1056,7 +1056,7 @@ final class BridgeRouter {
     /// SwiftUI/UIKit・Flutter・Android は問題ない。詳細と回避策は docs/commands.md
     private func handleDoubleTap(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(TapRequest.self, body)
-        let app = try requireLiveApp()
+        let app = try requireForegroundAppForGesture()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
         try FastInput.with(req.fast) {
             coordinate(app, point).doubleTap()
@@ -1073,7 +1073,7 @@ final class BridgeRouter {
     /// scale と所要時間から導出する(ホストからは受け取らない = 不整合を作れなくする)。
     private func handlePinch(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(PinchRequest.self, body)
-        let app = try requireLiveApp()
+        let app = try requireForegroundAppForGesture()
         guard req.scale > 0, req.scale != 1, req.scale.isFinite else {
             throw BridgeError(400, "scale must be positive, finite and not 1 (got \(req.scale))")
         }
@@ -1130,7 +1130,7 @@ final class BridgeRouter {
 
     private func handlePress(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(PressRequest.self, body)
-        let app = try requireLiveApp()
+        let app = try requireForegroundAppForGesture()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
         try FastInput.with(req.fast) {
             coordinate(app, point).press(forDuration: req.duration)
@@ -1598,6 +1598,24 @@ final class BridgeRouter {
                 + " so nothing can be typed into it (querying its keyboard focus in this state takes the"
                 + " runner down). Bring it back first (DSL: launchApp / MCP: ft_launch \(sessionBundleID ?? "<bundleId>")"
                 + " — resume: true keeps its state)")
+        }
+        return app
+    }
+
+    /// **ジェスチャ系(/tap /swipe /drag /doubleTap /pinch /press)専用**の前面確認(§3.1 の残件。
+    /// 2026-09-14 物理 SE3: `ft_navigate home` → 座標 `ft_tap` でランナーが落ちた)。座標ジェスチャは
+    /// `app.coordinate(...)` が **Find the Application** を撃ち、ref 形は要素のライブクエリを撃つ ——
+    /// どちらもセッションのアプリが背面だと刺さって XCTest が Tear Down し**ランナーごと落ちる**。
+    /// 入力系(`requireForegroundAppForInput`)と同じ 422(セッションはあるが今は無理)。
+    /// **`/systemui/drag` は通らない**(SpringBoard を原点にする = 常に前面)
+    private func requireForegroundAppForGesture() throws -> XCUIApplication {
+        let app = try requireLiveApp()
+        guard app.state == .runningForeground else {
+            throw BridgeError(422, "the session's app (\(sessionBundleID ?? "?")) is not in the foreground,"
+                + " so the gesture cannot be sent to it (locating its window in this state takes the"
+                + " runner down). Bring it back first (DSL: launchApp / MCP: ft_launch \(sessionBundleID ?? "<bundleId>")"
+                + " — resume: true keeps its state), or point the session at what IS in front"
+                + " (MCP: ft_launch com.apple.springboard for the home screen)")
         }
         return app
     }
