@@ -657,6 +657,7 @@ final class BridgeRouter {
         var stagnantRounds = 0
         var rounds = 0
         var retypes = 0
+        var retypeAbandoned = false
         let deadline = Date().addingTimeInterval(Self.typeBudgetSeconds)
         loop: while true {
             app.typeText(pending)
@@ -664,7 +665,11 @@ final class BridgeRouter {
             // 読めない・曖昧 = 検証不能なので受理する(TypeReadback.value 参照)
             guard let actual = try awaitCommit(app, target: target,
                                                expected: expected, deadline: deadline) else { break }
-            switch TypeReadback.plan(expected: expected, actual: actual) {
+            // 目標は撃つ前の値 + 本文が既定で、ヒントが value に載る欄では本文だけへ採り直す
+            // (規則はホストと共有 = TypeReadback.readbackTarget。採り直さないと `.retype` が
+            // ヒント文字列ごと打ち込む)
+            let readbackTarget = TypeReadback.readbackTarget(expected: expected, typedOnly: main, actual: actual)
+            switch TypeReadback.plan(expected: readbackTarget, actual: actual) {
             case .done, .unverifiable:
                 break loop
             case .resend(let missing):
@@ -672,10 +677,12 @@ final class BridgeRouter {
             case .deleteExcess(let count):
                 pending = String(repeating: XCUIKeyboardKey.delete.rawValue, count: count)
             case .retype where retypes >= TypeReadback.maxRetypes:
-                break loop   // 打ち直しても同じ形 = アプリ側の加工。TypeReadback.maxRetypes
+                // 打ち直しても同じ形 = アプリ側の加工。v104 より前と同じく受理する(TypeReadback.maxRetypes)
+                retypeAbandoned = true
+                break loop
             case .retype:
                 // 中央の欠落 = 消してから全文を打ち直す(.deleteExcess と同じ機構。TypeReadback.Plan.retype)
-                pending = String(repeating: XCUIKeyboardKey.delete.rawValue, count: actual.count) + expected
+                pending = String(repeating: XCUIKeyboardKey.delete.rawValue, count: actual.count) + readbackTarget
                 retypes += 1
             }
             stagnantRounds = (actual == previous) ? stagnantRounds + 1 : 0
@@ -692,8 +699,16 @@ final class BridgeRouter {
         // ランナーごと落ちうる)
         if hasTrailingNewline { app.typeText("\n") }
         // 打ち直した事実は注記で返す(ホストは driverFallback へ載せる = 緑の run で何回起きたかを数える口)
-        return .json(OKResponse(note: retypes > 0
-            ? "retyped the whole text \(retypes) time(s) after a keystroke was dropped mid-string" : nil))
+        let note: String?
+        if retypeAbandoned {
+            note = "retyped the whole text once, but the field still lost the same characters;"
+                + " accepted as input the app transforms"
+        } else if retypes > 0 {
+            note = "retyped the whole text \(retypes) time(s) after a keystroke was dropped mid-string"
+        } else {
+            note = nil
+        }
+        return .json(OKResponse(note: note))
     }
 
     /// 入力の打ち切り時間(秒)と、値が変わらない周回の許容数。handleClear と同じ設計・同じ値

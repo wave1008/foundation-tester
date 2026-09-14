@@ -145,6 +145,10 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// **率を見たい注記**: 緑の run で増えるなら誤検知(本当は加工された入力を打ち直している)を疑う
     case typeRetyped = "type-retyped"
 
+    /// 打ち直しても同じ形で欠けた(`TypeReadback.maxRetypes`)ので、アプリ側の加工とみなして受理した。
+    /// `typeRetyped` と対で立つ。**これが立つ欄は打鍵の落ちではない** —— `textIs` で値を別途確かめる
+    case typeRetypeAbandoned = "type-retype-abandoned"
+
     /// OS のシステム UI(権限アラート等)がアプリを覆っていたので、**消えるまで待ってから**
     /// 操作した(`SystemUIGate`)。**率を見たい注記**: 増えているなら、そのシナリオは
     /// 権限を事前付与するか `iosAlertHandler` を登録するべき画面を通っている
@@ -240,6 +244,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
             return "system UI was covering the app, so this waited for it to go away before acting"
         case .typeRetyped:
             return "a keystroke was dropped mid-string, so the text was cleared and retyped"
+        case .typeRetypeAbandoned:
+            return "the field still lost the same characters after retyping, so the value was accepted"
+                + " as input the app transforms"
         case .typeFocusRecovered:
             return "the preceding tap did not put a field in focus, so the text went to the"
                 + " field it resolved to"

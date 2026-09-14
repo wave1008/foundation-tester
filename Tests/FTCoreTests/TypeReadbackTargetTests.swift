@@ -80,6 +80,36 @@ final class TypeReadbackTargetTests: XCTestCase {
         XCTAssertTrue(StepExecutor.isSuccess(outcome.status), "\(outcome.status)")
         XCTAssertEqual(driver.clears, TypeReadback.maxRetypes)
         XCTAssertEqual(driver.typedTexts.count, TypeReadback.maxRetypes + 1)
+        // 諦めた事実は打ち直した事実と別の注記で残す(読む側が打鍵の落ちと誤帰属しない)
+        XCTAssertTrue(outcome.notes.contains(.typeRetypeAbandoned), "\(outcome.notes)")
+        XCTAssertTrue(outcome.notes.contains(.typeRetyped), "\(outcome.notes)")
+    }
+
+    /// 収束した打ち直しには「諦めた」注記が立たない(逆向き)
+    func testConvergedRetypeIsNotMarkedAbandoned() async {
+        let driver = ReadbackSequenceDriver(values: ["", "hllo123", "hello123"])
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(
+            FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hello123"))
+        XCTAssertFalse(outcome.notes.contains(.typeRetypeAbandoned), "\(outcome.notes)")
+    }
+
+    /// **ランナーと共有する純粋関数**(正規化なし)の順序: ヒント欄では本文だけへ採り直し、
+    /// 両方が .retype なら expected、どちらでもなければ expected
+    func testSharedReadbackTargetOrdering() {
+        XCTAssertEqual(TypeReadback.readbackTarget(expected: "hinthello", typedOnly: "hello", actual: "hello"), "hello")
+        XCTAssertEqual(TypeReadback.readbackTarget(expected: "hinthello123", typedOnly: "hello123", actual: "hello"), "hello123")
+        XCTAssertEqual(TypeReadback.readbackTarget(expected: "abcabc", typedOnly: "abc", actual: "abc"), "abcabc")
+        XCTAssertEqual(TypeReadback.readbackTarget(expected: "zzabc", typedOnly: "abc", actual: "ac"), "zzabc")
+        XCTAssertEqual(TypeReadback.readbackTarget(expected: "ab", typedOnly: "hello", actual: "hllo"), "hello")
+        XCTAssertEqual(TypeReadback.readbackTarget(expected: "単一行12345", typedOnly: "12345", actual: "1-2345"), "単一行12345")
+        XCTAssertEqual(TypeReadback.readbackTarget(expected: "abc", typedOnly: "abc", actual: "ab"), "abc")
+    }
+
+    /// ホスト側の包みは正規化だけを足す(共有関数を素通しする)—— ゼロ幅文字入りでも同じ答え
+    func testHostWrapperOnlyAddsNormalization() {
+        XCTAssertEqual(
+            StepExecutor.readbackTarget(expected: "hint\u{200B}hello", typedOnly: "hello", actual: "hel\u{200B}lo"),
+            TypeReadback.readbackTarget(expected: "hinthello", typedOnly: "hello", actual: "hello"))
     }
 
     /// `maxRetypes` の既定をリテラルで固定する(他のテストが定数経由で書くと既定を1度も通らない)

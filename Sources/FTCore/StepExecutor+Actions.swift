@@ -1108,10 +1108,11 @@ extension StepExecutor {
             let nonInputNote = TapTargetGeometry.nonInputTypeTargetNote(element, in: snapshot.elements)
             if let td = typeDriver, preferTypeDriver || text.contains("\n"),
                try await typeViaTypeDriver(td, step: step, phase: &phase) {
+                // ランナーの打ち直しの申告(OKResponse.note)はこの経路でも拾う(下の主経路と同じ)
                 return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache,
                                    healedByFingerprint: healedByFingerprint,
-                                   driverFallback: Self.joinNotes(replaceFallbackNote, existingValueNote,
-                                                                  nonInputNote))
+                                   driverFallback: Self.joinNotes(td.lastActionNote, replaceFallbackNote,
+                                                                  existingValueNote, nonInputNote))
             }
             do {
                 start = clock.now
@@ -1140,8 +1141,8 @@ extension StepExecutor {
                 guard try await typeViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                 // セレクタは正しくドライバが変わっただけ = .passedViaFallback(ロケータ用)は立てない
                 // (typeDriver = xcuitest が自前で読み返し済みなので、ここでも読み返さない)
-                driverFallback = Self.joinNotes("fell back to XCUITest", replaceFallbackNote,
-                                                existingValueNote, nonInputNote)
+                driverFallback = Self.joinNotes("fell back to XCUITest", td.lastActionNote,
+                                                replaceFallbackNote, existingValueNote, nonInputNote)
             }
         case "clearInput":
             if let td = typeDriver, preferTypeDriver,
@@ -1320,7 +1321,8 @@ extension StepExecutor {
                 return nil   // 読めない/曖昧 = 検証不能なので受理する(TypeReadback.value 参照)
             }
             let target = Self.readbackTarget(expected: expected, typedOnly: typedOnly, actual: actual)
-            switch TypeReadback.plan(expected: target, actual: actual) {
+            let plan = TypeReadback.plan(expected: target, actual: actual)
+            switch plan {
             case .done, .unverifiable:
                 return nil
             case .resend(let missing):
@@ -1332,13 +1334,15 @@ extension StepExecutor {
                 try await driver.type(ref: element.ref, text: missing)
                 phase.actionMs += Self.ms(clock.now - start)
             case .retype where retypes >= TypeReadback.maxRetypes:
-                return nil   // 打ち直しても同じ形 = アプリ側の加工。TypeReadback.maxRetypes
+                // 打ち直しても同じ形 = アプリ側の加工。v104 より前と同じく受理する(TypeReadback.maxRetypes)
+                noteCodesThisStep.insert(.typeRetypeAbandoned)
+                return nil
             case .deleteExcess, .retype:
                 // in-app はバックスペースを送れないので、丸ごとクリアしてから全文を打ち直す
                 // (handleClear と同じ 422 系の判断。clearInput のケースの既存実装と同じ API 形)。
                 // target は正規化済み(上と同じ理由で受け入れる)。**.retype は数える**(緑の run で
                 // 打ち直しが起きた回数 = 誤検知の監視。TypeReadback.Plan.retype)
-                if case .retype = TypeReadback.plan(expected: target, actual: actual) {
+                if case .retype = plan {
                     retypes += 1
                     noteCodesThisStep.insert(.typeRetyped)
                 }
@@ -1398,54 +1402,25 @@ extension StepExecutor {
         }
     }
 
-    /// 読み返しが目標にする値。**既定は `expected`(撃つ前の値 + 本文)**で、
-    /// それが `.unverifiable`(前方一致でも超過でもない = 追送も削除も効かない)のときだけ
-    /// 「撃った文字だけ」を目標に採り直す。
-    ///
-    /// **なぜ要るか**: 空欄のヒント文字列を `value` に載せ `placeholder` を出さないアプリでは
-    /// 撃つ前の値が実在の内容ではないので、`expected` が最初から偽になる。すると plan は必ず
-    /// `.unverifiable` に落ち、**追送も打ち直しも走らないまま受理される** —— 読み返しという砦が
-    /// 丸ごと外れる。
+    /// 読み返しが目標にする値(順序の規則と理由は `TypeReadback.readbackTarget`)。
     ///
     /// **この退化は再現していない**(2026-08-13 時点)。値にヒントが載る盤面として確かめられたのは
     /// **Android の E2E-CMP `#field_single`**(value="単一行" / placeholder なし。同じシナリオの
     /// `textIs "#txt_echo_length" == "len=8"` が通るので "単一行hello123" は偽)と
     /// **Google メッセージの宛先欄**の2つで、どちらも `verifiesTypedText == true` の
-    /// ドライバなのでこの関数は通らない。iOS の in-app(唯一の `false`)で当たる盤面はまだ無い ——
-    /// `#field_single` は iOS では placeholder を**ラベル**として出すので `priorValue` が空になる。
-    /// **失敗モードが沈黙(検証を諦めたことを誰にも言わない)なので、witness が無くても塞ぐ**。
-    ///
-    /// **順序を入れ替えないこと**: `typedOnly` を先に見ると、撃つ前の値と本文が同じ欄
-    /// (prior="abc" に "abc" を追記)で**追記が届かなかった失敗**が `.done` に見える。
-    /// 採り直しは「今なら諦めていた」場合だけに限る = 既存の検査を弱めない
+    /// ドライバなのでこの関数は通らない(ランナー側は同じ規則を自前で通す)。iOS の in-app(唯一の
+    /// `false`)で当たる盤面はまだ無い —— `#field_single` は iOS では placeholder を**ラベル**として
+    /// 出すので `priorValue` が空になる。**失敗モードが沈黙(検証を諦めたことを誰にも言わない)なので、
+    /// witness が無くても塞ぐ**
     static func readbackTarget(expected: String, typedOnly: String, actual: String) -> String {
         // 不可視文字を正規化してから比較する(2026-08-15。MCP の
         // replaceVerificationNote/appendVerificationNote と同じ規律)。self-contained にする
         // (呼び出し側での正規化に依存しない) —— これが無いと、ゼロ幅文字が expected/typedOnly/actual
-        // のどれか1つにだけ混じった時点で .unverifiable に落ち、追送も打ち直しも走らず受理される
-        let expected = FlowMatchMode.normalizeInvisibleCharacters(expected)
-        let typedOnly = FlowMatchMode.normalizeInvisibleCharacters(typedOnly)
-        let actual = FlowMatchMode.normalizeInvisibleCharacters(actual)
-        guard expected != typedOnly else { return expected }
-        // **前方一致の説明(.done/.resend/.deleteExcess)は部分列の説明(.retype)に勝つ**。
-        // ヒントが value に載る欄では `expected = ヒント + 本文` で、撃った文字だけの `actual` は
-        // ヒント付きの `expected` の部分列にもなる(`hello` ⊂ `単一行hello123`)—— ここで
-        // `expected` を目標にすると**ヒント文字列を欄へ打ち込む**。両方が .retype のときは既定の
-        // `expected`(撃つ前の値が実在だった形 = `old`+`new` が `onew` になった)を採る
-        let byExpected = TypeReadback.plan(expected: expected, actual: actual)
-        if Self.explainsByPrefix(byExpected) { return expected }
-        let byTypedOnly = TypeReadback.plan(expected: typedOnly, actual: actual)
-        if Self.explainsByPrefix(byTypedOnly) { return typedOnly }
-        if case .retype = byExpected { return expected }
-        if case .retype = byTypedOnly { return typedOnly }
-        return expected
-    }
-
-    private static func explainsByPrefix(_ plan: TypeReadback.Plan) -> Bool {
-        switch plan {
-        case .done, .resend, .deleteExcess: return true
-        case .retype, .unverifiable: return false
-        }
+        // のどれか1つにだけ混じった時点で .unverifiable に落ち、追送も打ち直しも走らず受理される。
+        // 順序の規則は TypeReadback.readbackTarget(ランナーと共有)
+        TypeReadback.readbackTarget(expected: FlowMatchMode.normalizeInvisibleCharacters(expected),
+                                    typedOnly: FlowMatchMode.normalizeInvisibleCharacters(typedOnly),
+                                    actual: FlowMatchMode.normalizeInvisibleCharacters(actual))
     }
 
     /// 読み返しの打ち切り時間・停滞許容周回数・安定待ち。BridgeRouter.handleType の

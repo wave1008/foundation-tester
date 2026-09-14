@@ -27,6 +27,14 @@ public enum TypeReadback {
         /// どちらでもない = 入力が加工されている(自動修正・書式付け・マスク欄の伏せ字)。
         /// 追送でも delete でも直せないので検証を諦めて受理する
         case unverifiable
+
+        /// 前方一致で説明できる(追送・削除・完了)。部分列の説明(`.retype`)より確度が高い
+        public var explainsByPrefix: Bool {
+            switch self {
+            case .done, .resend, .deleteExcess: return true
+            case .retype, .unverifiable: return false
+            }
+        }
     }
 
     public static func plan(expected: String, actual: String) -> Plan {
@@ -54,6 +62,32 @@ public enum TypeReadback {
     /// (数字だけ通す欄が英字を捨てる等)。2回目以降は v104 より前と同じく検証を諦めて受理する ——
     /// 上限が無いと加工する欄で「消す→打つ→同じ値」が停滞に達し、緑だった step が 422 になる
     public static let maxRetypes = 1
+
+    /// 読み返しが目標にする値。**既定は `expected`(撃つ前の値 + 本文)**で、それが前方一致で説明できない
+    /// ときだけ「撃った文字だけ」(`typedOnly`)を候補にする。ホスト(`StepExecutor.readbackTarget`)と
+    /// XCUITest ランナー(`BridgeRouter.handleType`)が共有する = 同じ欄で判断が食い違わない。
+    ///
+    /// **なぜ要るか**: 空欄のヒント文字列を `value` に載せ `placeholder` を出さない欄では、撃つ前の値が
+    /// 実在の内容ではないので `expected` が最初から偽になる(`単一行hello123`)。撃った文字だけの
+    /// `actual` はヒント付きの `expected` の**部分列にもなる**ので、`expected` を目標に `.retype` へ
+    /// 落とすと**ヒント文字列ごと欄へ打ち込む**。
+    ///
+    /// 順序(入れ替えないこと): ①`expected` が前方一致(.done/.resend/.deleteExcess)で説明できる →
+    /// `expected`(撃つ前の値と本文が同じ欄で、追記が届かなかった失敗を `.done` に見せない)
+    /// ②`typedOnly` が前方一致で説明できる → `typedOnly` ③`expected` が `.retype` → `expected`
+    /// (撃つ前の値が実在で追記の途中が落ちた形 = `old`+`new` が `onew`)④`typedOnly` が `.retype` →
+    /// `typedOnly` ⑤どちらでもない → `expected`(今までどおり諦める)。
+    /// 呼び手が不可視文字を正規化してから渡す(このファイルは正規化を持たない)
+    public static func readbackTarget(expected: String, typedOnly: String, actual: String) -> String {
+        guard expected != typedOnly else { return expected }
+        let byExpected = plan(expected: expected, actual: actual)
+        if byExpected.explainsByPrefix { return expected }
+        let byTypedOnly = plan(expected: typedOnly, actual: actual)
+        if byTypedOnly.explainsByPrefix { return typedOnly }
+        if case .retype = byExpected { return expected }
+        if case .retype = byTypedOnly { return typedOnly }
+        return expected
+    }
 
     /// `actual` が `expected` の順序を保った真部分列で、落ちた文字に空白でないものが含まれるか
     public static func isSubsequenceDroppingVisibleCharacters(_ actual: String, of expected: String) -> Bool {

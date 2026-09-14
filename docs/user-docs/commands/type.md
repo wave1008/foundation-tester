@@ -47,7 +47,8 @@ type("#note", "new contents", replace: true)
   trimmed, and **a character dropped mid-string (`hello123` → `hllo123`) clears the field and
   retypes the whole text** (note `type-retyped`). It retypes at most once — if the same
   characters go missing again, the app itself is transforming the input (a digits-only field
-  discarding letters, for example), so verification is abandoned and the value is accepted.
+  discarding letters, for example), so verification is abandoned and the value is accepted
+  (note `type-retype-abandoned`; check the value separately with `textIs`).
 
 ### Link
 - [index](../index.md)
