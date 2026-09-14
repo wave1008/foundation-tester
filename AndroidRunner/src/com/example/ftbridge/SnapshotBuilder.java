@@ -561,6 +561,10 @@ final class SnapshotBuilder {
         if (node.offscreen) return false;
 
         String type = mappedType(node);
+        // **スクロールできる容器は id が無くても・画面の大半を覆っていても残す**(M9): 落とすと
+        // `scrollable` の申告が木から消え、scrollFrame の候補にも容器推定にも使えない。
+        // 全画面のリストは普通の形(iOS の全画面 scrollView と同じ扱い)
+        if (node.scrollable) return true;
         // 画面の大半を覆うコンテナは除外(FM の誤タップ誘発対策)。WebView は全画面が普通で、
         // かつスコープ起点として要るので対象外にする
         if (!node.clickable && screen.width() > 0 && !type.equals("WebView")) {

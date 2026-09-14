@@ -87,7 +87,7 @@ test("curl 形: WORK_DIR/Package.swift が宣言する既存 TOOL_ROOT を既定
   const customToolRoot = path.join(dir, "custom-tool-root");
   mkdirSync(workDir, { recursive: true });
   makeCloneMarker(customToolRoot);
-  // 相対パス宣言(実際の install.sh が書く形と同じ)。既定の隣(dir/foundation-tester)は作らない。
+  // 相対パス宣言(実際の install.sh が書く形と同じ)。既定の隣は作らない。
   writeFileSync(path.join(workDir, "Package.swift"), '.package(path: "../custom-tool-root")\n');
 
   const resolved = resolveCurlForm({ workDir });

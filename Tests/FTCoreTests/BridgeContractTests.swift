@@ -155,7 +155,7 @@ final class BridgeContractTests: XCTestCase {
             "AndroidRunner/src/com/example/ftbridge/DisplayHeartbeat.java": "34c91b37e01829307897825e7104d250c8662f00ce9734512f3c41da8bccd956",
             "AndroidRunner/src/com/example/ftbridge/InputInjector.java": "34381b3799318a9768ff65d01e7b23b73d79e16afb87d7f0a6910f618b5e912b",
             "AndroidRunner/src/com/example/ftbridge/QuietWaiter.java": "b939eb89d48c6a3591a78b8457b31f851cd95c0f188fffdaa1668f557153347d",
-            "AndroidRunner/src/com/example/ftbridge/SnapshotBuilder.java": "00fc8edb5f4456daee41bc25107e5f1d530eb86ae108e02210fbd56d4efa9fdd",
+            "AndroidRunner/src/com/example/ftbridge/SnapshotBuilder.java": "881becd77854aebdc360182970a17c40604f54e7cae93bdf95308d6f8a46d796",
         ],
     ]
 
