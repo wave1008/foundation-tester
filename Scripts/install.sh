@@ -279,10 +279,26 @@ if [ -f "${BASH_SOURCE[0]:-}" ]; then
   fi
 fi
 
+# WORK_DIR が既に外部構成として導入済み(Package.swift が clone 先を宣言済み)なら、
+# curl 形の再実行(SELF_ROOT は取れない。$0 がファイルではないため)でもその宣言を既定の隣より
+# 優先する(preflight.sh/update.sh/toolRootResolve.ts と同じ規則)。ここが無いと、
+# `--tool-root <custom>` で導入した受け手が引数無しで curl 形を再実行したときに既定の隣を
+# 見てしまい、既存のクローンを無視して別の場所へ新しく clone しようとする
+DECLARED_ROOT=""
+if [ -z "$TOOL_ROOT_ARG" ] && [ -z "$SELF_ROOT" ] && [ -f "$WORK_DIR/Package.swift" ]; then
+  declared="$(sed -n 's/.*\.package(path: *"\([^"]*\)".*/\1/p' "$WORK_DIR/Package.swift" 2>/dev/null | awk 'NR==1')"
+  if [ -n "$declared" ]; then
+    case "$declared" in /*) : ;; *) declared="$WORK_DIR/$declared" ;; esac
+    [ -d "$declared/Sources/FTScenarioRunner" ] && DECLARED_ROOT="$declared"
+  fi
+fi
+
 if [ -n "$TOOL_ROOT_ARG" ]; then
   TOOL_ROOT_RAW="$TOOL_ROOT_ARG"
 elif [ -n "$SELF_ROOT" ]; then
   TOOL_ROOT_RAW="$SELF_ROOT"
+elif [ -n "$DECLARED_ROOT" ]; then
+  TOOL_ROOT_RAW="$DECLARED_ROOT"
 else
   TOOL_ROOT_RAW="$WORK_DIR/../foundation-tester"
 fi

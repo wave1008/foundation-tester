@@ -1239,8 +1239,12 @@ export function applyFrame(message) {
     return; // devices サイクルより先に届いた場合は無視する(次の devices で改めて反映される)
   }
   entry.frameSrc = 'data:image/jpeg;base64,' + message.jpegBase64;
-  // mjpeg フォールバック復帰(codecError 後は host が mjpeg に切替え以後 frame のみ届く)。
-  if (entry.usingH264) {
+  // mjpeg フォールバック復帰(codecError 後は host が mjpeg に切替え以後 frame のみ届く)は
+  // message.stream(mjpeg ストリーミングヘルパー由来)で見分ける。stream の無い定期ポーリングは
+  // h264 が健全な間も安全弁として遅れて1枚だけ届き得るため(monitorDeviceStreamController.ts
+  // 冒頭コメント「受信後の安全弁として残る」)、それだけでは破棄しない —— 破棄すると次の
+  // キーフレーム到達まで表示が止まる(これが毎サイクル起き得ていた)。
+  if (entry.usingH264 && message.stream) {
     disposeH264(entry);
   }
   // message.width/height はここでは使わない(アスペクト比は img の load で実寸から決める)。

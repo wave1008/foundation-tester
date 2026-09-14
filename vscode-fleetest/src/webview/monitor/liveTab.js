@@ -379,11 +379,18 @@ function frameToDisplayRect(frame, screen, display) {
 }
 
 function applySnapshot(message) {
-  disposeLiveH264(); // snapshot は jpeg 一枚絵。h264 ストリーム中でも img 表示に戻す
   lastScreen = message.screen;
   lastElements = message.elements;
   autoSnapshotRequested = false;
   selectedRef = null;
+  // h264 映像が健全な間はここで静止画へ切り替えない —— 切り替えるとデコーダを作り直すことになり、
+  // 次のキーフレーム到達まで表示が止まる(タップ/ドラッグのたびに毎回起きていた)。要素一覧・
+  // ホバー枠(showHover)は lastScreen/lastElements の更新だけで動くので、表示は継続してよい。
+  if (liveUsingH264) {
+    renderElements();
+    return;
+  }
+  disposeLiveH264(); // snapshot は jpeg 一枚絵。h264 未使用中はここで確実に片付けてから表示する
   screenshot.src = 'data:image/jpeg;base64,' + message.image;
   screenshot.classList.add('visible');
   screenshotPlaceholder.style.display = 'none';

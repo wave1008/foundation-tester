@@ -1,11 +1,17 @@
-// TOOL_ROOT(ツール本体のクローン)解決規則の4実装ドリフト検出。
-// 実装は Scripts/preflight.sh / Scripts/update.sh / Scripts/update-check.sh /
-// src/toolRootResolve.ts の4箇所にあり、CLAUDE.md が「片方だけ変えない」と定めている。
+// TOOL_ROOT(ツール本体のクローン)解決規則の5実装ドリフト検出。
+// 実装は Scripts/preflight.sh / Scripts/update.sh / Scripts/update-check.sh / Scripts/install.sh /
+// src/toolRootResolve.ts の5箇所にあり、CLAUDE.md が「片方だけ変えない」と定めている。
 // 規則そのもの(clone 構成 = カレント / 外部構成 = Package.swift の .package(path:) →
 // 無ければ既定の隣 ../foundation-tester / クローン判別は Sources/FTScenarioRunner の有無)を
 // 構成する 3 つの語が全実装に出ることを見る。
 //
-// 意図的に浅い検査にしている: 4実装は言語も文脈も違うので、規則の等価性を機械的に証明することは
+// install.sh は curl 形(SELF_ROOT が採れない = $0 がファイルではない)のときだけ
+// Package.swift の宣言を見る(--tool-root 明示・on-disk 実行の SELF_ROOT が優先。詳細は
+// install.sh 冒頭のコメント)。これが無いと、`--tool-root <custom>` で導入済みの受け手が
+// 引数無しで curl 形を再実行したとき、既定の隣を見て別の場所へ新しく clone しようとしていた
+// (2026-09 実害。docs/bug-audit-2026-09-06.md §3)。
+//
+// 意図的に浅い検査にしている: 5実装は言語も文脈も違うので、規則の等価性を機械的に証明することは
 // できない。判別マーカーや既定の隣を1箇所で変えたときに落ちれば、目的(片側だけの変更の検出)は足りる。
 //
 // process.cwd() は npm test 実行時に vscode-fleetest ルート(protocolVersion.test.mjs と同じ前提)。
@@ -31,6 +37,7 @@ const IMPLEMENTATIONS = [
   "Scripts/preflight.sh",
   "Scripts/update.sh",
   "Scripts/update-check.sh",
+  "Scripts/install.sh",
   "vscode-fleetest/src/toolRootResolve.ts",
 ];
 
@@ -41,7 +48,7 @@ for (const impl of IMPLEMENTATIONS) {
       assert.ok(
         token.test(source),
         `${impl} に「${label}」(${token})がありません。TOOL_ROOT の解決規則は ` +
-          `${IMPLEMENTATIONS.join(" / ")} の4箇所にあり、片方だけ変えると受け手の導入・更新が壊れます`,
+          `${IMPLEMENTATIONS.join(" / ")} の5箇所にあり、片方だけ変えると受け手の導入・更新が壊れます`,
       );
     }
   });
