@@ -916,6 +916,31 @@ final class CommandDispatchTests: XCTestCase {
         XCTAssertTrue(core.finalRecord.passed)
     }
 
+    /// url ありの launchApp は**配送の前に木を撮って**最初の画面を待つ(LaunchURLReadiness)。
+    /// url なしは撮らない(「url が nil のときの挙動は1バイトも変えない」契約)
+    func testLaunchAppWithURLLooksAtTheTreeBeforeDelivering() {
+        let driver = RecordingDriver()
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action { launchApp() }
+            }
+        }
+        XCTAssertEqual(driver.snapshotCount, 0, "url なしは木を撮らない")
+
+        scenario {
+            scene(2, "s") {
+                action { launchApp(url: "fte2e://screen/detail") }
+            }
+        }
+        XCTAssertGreaterThanOrEqual(driver.snapshotCount, 1, "配送の前に最初の画面を待つ")
+        XCTAssertEqual(driver.openURLCalls.count, 1)
+        XCTAssertTrue(core.finalRecord.passed)
+    }
+
     /// bundleID を明示したときは launch/openURL の両方がその bundleID を使うこと(既定 app とは別物)
     func testLaunchAppWithBundleIDAndURLUsesGivenBundleForBoth() {
         let driver = RecordingDriver()

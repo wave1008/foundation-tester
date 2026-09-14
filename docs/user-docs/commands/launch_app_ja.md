@@ -6,7 +6,7 @@
 
 | 関数 | 説明 |
 |---|---|
-| `launchApp(bundleID?, url:?)` | 起動中なら終了してから、あらためて起動します(エントリー画面から始まります)。`url:` を渡すと起動直後にその URL を配送します(配送の詳細は下の `openURL` 参照)。`bundleID` 省略時は既定アプリになります(後述)。 |
+| `launchApp(bundleID?, url:?)` | 起動中なら終了してから、あらためて起動します(エントリー画面から始まります)。`url:` を渡すと起動直後にその URL を配送します(配送の詳細は下の `openURL` 参照)。配送は最初の画面が描かれてから(タップできる要素が現れるまで既定の待ち時間だけ待ちます。React Native などは画面が出る前に届いた URL を捨てるためです。現れないまま配送したときは注記 `launch-url-before-interactive-ui` が付きます)。`bundleID` 省略時は既定アプリになります(後述)。 |
 | `openURL(url)` | 起動済みのアプリへ URL(ディープリンク)を配送します(**アプリを再起動しません** = warm 配送)。今の画面の上に遷移が積まれます。カスタムスキーム前提です。Universal Links / App Links(`https://`)は AASA/assetlinks.json の取得状態に左右され、シミュレータでは Safari に流れることがあります。 |
 | `restartApp(bundleID?)` | 終了してから起動し直します(プロセス内状態のリセットに)。`bundleID` 省略時の解決は `launchApp()` と同じです。 |
 | `terminateApp()` | アプリを終了します。 |

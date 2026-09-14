@@ -47,6 +47,25 @@ extension StepExecutor {
         return false
     }
 
+    /// `launchApp(url:)` が URL を配送する前に、最初の画面が描かれる(利用者が触れる要素が木に載る)
+    /// まで待つ(規則は LaunchURLReadiness)。戻り値 false = `timeoutMs` 内に載らなかった(呼び手は
+    /// 配送はしたうえで注記 `launch-url-before-interactive-ui` を残す —— 触れる要素の無い最初の画面も
+    /// 正当にあり得るので失敗にはしない)。周期は整定ポーリングと同じ規則(settleSleepMs)
+    public func awaitInteractiveUI(timeoutMs: Int) async throws -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now + .milliseconds(timeoutMs)
+        var lastSnapshotMs = 0
+        while true {
+            let start = clock.now
+            let snapshot = try await driver.snapshot(bypassingCache: bypassesCache(.afterOwnMove))
+            lastSnapshotMs = Self.ms(clock.now - start)
+            if LaunchURLReadiness.hasInteractiveElement(snapshot.elements) { return true }
+            if clock.now >= deadline { return false }
+            try await Task.sleep(for: .milliseconds(
+                Self.settleSleepMs(afterSnapshotMs: lastSnapshotMs, bypassing: bypassesCache(.afterOwnMove))))
+        }
+    }
+
     /// スクロール探索終端の空打ちドラッグを (x,y) に打ってよいか。打たない条件は2つ
     /// (どちらも「空打ちが別の UI に渡って画面が変わる」実害の再発防止):
     /// 1. 対象より手前の要素が点を取る(タブバー等。pointIsTakenByFrontElement)

@@ -9,17 +9,23 @@ import FTCore
 // MARK: - アプリ制御
 
 /// アプリを起動する(引数省略時は @TestClass の app)。url を渡すと「起動 → URL 配送」を
-/// 1ステップで行う(driver.openURL が再起動直後の warm な状態へそのまま届く)
+/// 1ステップで行う(driver.openURL が再起動直後の warm な状態へそのまま届く)。
+/// **配送は最初の画面が描かれてから**(`StepExecutor.awaitInteractiveUI` / LaunchURLReadiness): in-app の
+/// launch はブリッジが答えた時点で返るので、JS が listener を登録する前に撃つと React Native は URL を捨てる
 public func launchApp(_ bundleID: String? = nil, url: String? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "launchApp")
     let bundle = bundleID ?? core.appBundleID
     let driver = core.driver
     let description = url.map { "launch \(bundle) and open \($0)" } ?? "launch \(bundle)"
+    var deliveredBeforeUI = false
     core.performCustom(description: description, command: "launchApp", file: file, line: line,
-                       launchTiming: { driver.lastLaunchTiming }) {
+                       launchTiming: { driver.lastLaunchTiming },
+                       note: { deliveredBeforeUI ? .launchURLBeforeInteractiveUI : nil }) {
         try await driver.launch(bundleID: bundle)
         if let url {
+            deliveredBeforeUI = try await !core.executor.awaitInteractiveUI(
+                timeoutMs: Int(core.defaultTimeout * 1000))
             try await driver.openURL(url, bundleID: bundle)
         }
     }

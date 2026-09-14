@@ -149,6 +149,11 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// `typeRetyped` と対で立つ。**これが立つ欄は打鍵の落ちではない** —— `textIs` で値を別途確かめる
     case typeRetypeAbandoned = "type-retype-abandoned"
 
+    /// `launchApp(url:)` が、既定の待ち時間のあいだ**利用者が触れる要素が木に載らないまま** URL を配送した
+    /// (LaunchURLReadiness)。触れる要素の無い最初の画面もあり得るので失敗にはしないが、React Native の
+    /// ように JS が listener を登録するまで URL を捨てるアプリでは、この注記の付いた配送は届いていない疑いがある
+    case launchURLBeforeInteractiveUI = "launch-url-before-interactive-ui"
+
     /// OS のシステム UI(権限アラート等)がアプリを覆っていたので、**消えるまで待ってから**
     /// 操作した(`SystemUIGate`)。**率を見たい注記**: 増えているなら、そのシナリオは
     /// 権限を事前付与するか `iosAlertHandler` を登録するべき画面を通っている
@@ -247,6 +252,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .typeRetypeAbandoned:
             return "the field still lost the same characters after retyping, so the value was accepted"
                 + " as input the app transforms"
+        case .launchURLBeforeInteractiveUI:
+            return "the URL was delivered before any tappable element appeared, so the app may not"
+                + " have been listening yet"
         case .typeFocusRecovered:
             return "the preceding tap did not put a field in focus, so the text went to the"
                 + " field it resolved to"
