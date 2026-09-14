@@ -13,6 +13,7 @@ final class OcclusionTranscriptTests: XCTestCase {
     func testBudgetsArePinned() {
         XCTAssertEqual(OcclusionVerifier.transcriptResponseTokens, 120)
         XCTAssertEqual(OcclusionVerifier.enlargedRetryFactor, 2)
+        XCTAssertEqual(OcclusionVerifier.nearMissOCRBudget, .seconds(60))
     }
 
     /// prompt は定数(補間が無い)で、instructions と合わせて "expected" という語を含まない。
@@ -57,6 +58,8 @@ final class OcclusionTranscriptTests: XCTestCase {
         XCTAssertTrue(body.contains("TranscriptMatch.isNearMiss("), "惜しい転写の OCR 確認が無い")
         XCTAssertTrue(body.contains("case .read(readable: true, let reading) = await RegionText.resolveWithinBudget("),
                       "OCR の読みが「丸ごと読めた」ときだけに絞られていない")
+        XCTAssertTrue(body.contains("budget: Self.nearMissOCRBudget"),
+                      "惜しい転写の確認が近道と同じ 1.3 秒で諦めている(コールドの初回で誤った赤になる)")
         let ocrBranch = try XCTUnwrap(Self.balancedBody(after: "case .read(readable: true, let reading) = await RegionText.resolveWithinBudget(", in: body))
         XCTAssertTrue(ocrBranch.contains("TranscriptMatch.Verdict(visible: true, state: .fullyVisible"),
                       "OCR で読めた回が visible へ倒れていない")

@@ -57,6 +57,12 @@ public struct OcclusionVerifier {
     /// 見逃しは増えない。等倍で 1 文字誤読した小さな文字を救う(実測は TranscriptMatch 冒頭)
     static let enlargedRetryFactor = 2
 
+    /// 惜しい転写のときの OCR 確認に許す時間。Tier-2 の近道(1.3 秒)と違い、ここで諦めると**誤った赤**に
+    /// なるので、Vision の初回コンパイル(実測 25〜47 秒。RegionText.prewarmIfNeeded の doc)を待ち切れる
+    /// 長さにする。払うのは「プロセスで最初の読みが惜しい転写だった回」だけ(align 直後の最初の
+    /// シナリオで実際に踏んだ。2026-09-15・E2E-RN M1Max)。暖まっていれば数百 ms で返る
+    static let nearMissOCRBudget: Duration = .seconds(60)
+
     /// 暖機(`prewarmVisibilityCheck`)の殺しスイッチ。`FT_FM_OCCLUSION_PREWARM=0` で撃たない
     static func prewarmEnabled(environment: [String: String]) -> Bool {
         environment["FT_FM_OCCLUSION_PREWARM"] != "0"
@@ -120,7 +126,7 @@ public struct OcclusionVerifier {
             || TranscriptMatch.isNearMiss(transcript: observed, expected: expectedText),
            case .read(readable: true, let reading) = await RegionText.resolveWithinBudget(
                 expected: expectedText, pngData: screenshotPNG, frame: frame, screen: screen,
-                cropPadding: cropPadding) {
+                cropPadding: cropPadding, budget: Self.nearMissOCRBudget) {
             verdict = TranscriptMatch.Verdict(visible: true, state: .fullyVisible, reason: "")
             observed = reading.lines.joined(separator: " ")
         }
