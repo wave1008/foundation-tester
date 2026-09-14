@@ -39,8 +39,13 @@ public enum StartingRunnerVerdict: Equatable {
     /// - quietFor: 起動ログが最後に伸びてからの秒数。**起動した側は進み具合で待つ**
     ///   (BridgeStartupWait)ので、ログが伸びている間は起動側もまだ諦めていない = 引き取る側も待つ。
     ///   測れなければ elapsed だけで決める(旧挙動)
+    /// - simulatorBooted: 対象がシミュレータで Shutdown なら、ランナーが起動中であるはずがない(xcodebuild は
+    ///   ブートを待つ側で、落とされた台に張り付いたランナーは二度と announce しない)。**待たずに建て直す**
+    ///   (実測 2026-09-14: 落とした台の引き取りが 180 秒待ってから建て直していた。台帳 §19.25)
     public static func decide(elapsed: TimeInterval?, quietFor: TimeInterval? = nil,
+                              simulatorBooted: Bool = true,
                               budget: TimeInterval) -> StartingRunnerVerdict {
+        guard simulatorBooted else { return .restart }
         guard let elapsed, elapsed >= budget else { return .wait }
         // ちょうど budget と同値は「起動側の待ちが既に尽きた」ので restart
         guard let quietFor else { return .restart }

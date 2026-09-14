@@ -68,4 +68,16 @@ final class StartingRunnerVerdictTests: XCTestCase {
     func testUnknownQuietFallsBackToElapsedOnly() {
         XCTAssertEqual(StartingRunnerVerdict.decide(elapsed: 181, quietFor: nil, budget: 180), .restart)
     }
+
+    // MARK: - Shutdown のシミュレータ(ランナーが起動中であるはずがない)
+
+    func testShutDownSimulatorRestartsWithoutWaiting() {
+        XCTAssertEqual(StartingRunnerVerdict.decide(elapsed: 5, quietFor: 1, simulatorBooted: false, budget: 180), .restart)
+        XCTAssertEqual(StartingRunnerVerdict.decide(elapsed: nil, quietFor: nil, simulatorBooted: false, budget: 180), .restart,
+                       "生存時間が測れなくても、台が落ちていれば待つ理由が無い")
+    }
+
+    func testBootedSimulatorKeepsTheElapsedRule() {
+        XCTAssertEqual(StartingRunnerVerdict.decide(elapsed: 5, quietFor: 1, simulatorBooted: true, budget: 180), .wait)
+    }
 }

@@ -845,10 +845,18 @@ public struct BridgeProvisioner {
                     name: name, sim: sim, bundleID: bundleID,
                     preinstallAppPath: preinstallAppPath, claimed: claimed, log: log)
             }
+            // **Shutdown のシミュレータに張り付いたランナーは待たない**(decide の simulatorBooted)
+            let simulatorBooted = sim.physical || sim.booted
+            if !simulatorBooted {
+                log("⚠️ \(name): the bridge on port \(port) belongs to a simulator that is shut down, so its"
+                    + " runner cannot be starting — stopping and restarting it (the boot is waited for first)")
+                return try await stopAndRelaunch()
+            }
             let elapsed = launcher.runnerElapsed()
             // .restart は elapsed != nil のときしか返らない(decide 参照)ので force unwrap は安全。
             // ログが伸びている間は起動側もまだ待っている(BridgeStartupWait)ので引き取る側も待つ
             if StartingRunnerVerdict.decide(elapsed: elapsed, quietFor: launcher.logQuietFor(),
+                                            simulatorBooted: simulatorBooted,
                                             budget: BridgeLauncher.startupTimeoutSeconds) == .restart {
                 log("⚠️ \(name): the bridge on port \(port) has been alive for \(Int(elapsed!))s"
                     + " without answering or logging (past the \(Int(BridgeLauncher.startupTimeoutSeconds))s"
