@@ -7,6 +7,25 @@ import XCTest
 
 final class AdbInstallVerifierTests: XCTestCase {
 
+    // 端末単位の錠(withDeviceLock)は既定で `~/.fleetest` を触るため、テストは自分専用の
+    // 一時ディレクトリへ差し替える(FMLock の lockDirectoryForTesting と同じ規律)。
+    // メソッドはこのクラス内で直列に走る前提(CLAUDE.md: 並列はプロセスを分ける)なので
+    // static var の差し替えで足りる
+    private var lockDir: URL!
+
+    override func setUp() {
+        super.setUp()
+        lockDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AdbInstallVerifierTests-\(UUID().uuidString)", isDirectory: true)
+        AdbInstallVerifier.lockDirectoryForTesting = lockDir
+    }
+
+    override func tearDown() {
+        AdbInstallVerifier.lockDirectoryForTesting = nil
+        if let lockDir { try? FileManager.default.removeItem(at: lockDir) }
+        super.tearDown()
+    }
+
     /// 未設定("null")は put で "null" を書かず delete で既定へ戻す
     func testRestoreDeletesTheKeyWhenItWasUnset() {
         XCTAssertEqual(AdbInstallVerifier.restoreArguments(original: "null\n"),
@@ -31,6 +50,7 @@ final class AdbInstallVerifierTests: XCTestCase {
         struct Boom: Error {}
         XCTAssertThrowsError(try AdbInstallVerifier.withVerificationOff(adb: adb) { throw Boom() })
         XCTAssertEqual(calls, [
+            ["get-serialno"],
             AdbInstallVerifier.readArguments,
             AdbInstallVerifier.disableArguments,
             AdbInstallVerifier.restoreArguments(original: "null"),
@@ -44,7 +64,7 @@ final class AdbInstallVerifierTests: XCTestCase {
             calls.append(args); return Shell.Result(status: 0, output: "0\n")
         }) { 42 }
         XCTAssertEqual(value, 42)
-        XCTAssertEqual(calls, [AdbInstallVerifier.readArguments])
+        XCTAssertEqual(calls, [["get-serialno"], AdbInstallVerifier.readArguments])
     }
 
     /// 読めなければ切らずに body だけ(設定を壊す側に倒さない)
@@ -53,7 +73,83 @@ final class AdbInstallVerifierTests: XCTestCase {
         _ = try AdbInstallVerifier.withVerificationOff(adb: { args in
             calls.append(args); return Shell.Result(status: 1, output: "")
         }) { () }
-        XCTAssertEqual(calls, [AdbInstallVerifier.readArguments])
+        XCTAssertEqual(calls, [["get-serialno"], AdbInstallVerifier.readArguments])
+    }
+
+    /// Wi-Fi 接続の serial(`:` を含む)はファイル名に安全な形へ潰す
+    func testSanitizedForLockFilenameEscapesPathLikeCharacters() {
+        XCTAssertEqual(AdbInstallVerifier.sanitizedForLockFilename("192.168.1.23:5555"), "192.168.1.23_5555")
+        XCTAssertEqual(AdbInstallVerifier.sanitizedForLockFilename("emulator-5554"), "emulator-5554")
+    }
+
+    /// `get-serialno` が失敗/空を返しても丸めた1本の鍵に倒す(取り違えて競合を許すより安全)
+    func testDeviceLockKeyFallsBackWhenSerialCannotBeRead() {
+        XCTAssertEqual(AdbInstallVerifier.deviceLockKey(run: { _ in (1, "") }), "unknown-device")
+        XCTAssertEqual(AdbInstallVerifier.deviceLockKey(run: { _ in (0, "  \n") }), "unknown-device")
+        XCTAssertEqual(AdbInstallVerifier.deviceLockKey(run: { _ in (0, "ABC123\n") }), "ABC123")
+    }
+
+    /// **本題の回帰**: 同じ端末(同じ get-serialno)への2つの install が重ならず直列化される。
+    /// 錠が無いと、片方の restore がもう片方の install の途中で発火して検証を再び有効化しうる
+    /// (§3 要調査の実害)。この検知は「body の実行区間が重ならない」で行う ——
+    /// 錠が効いていなければ DispatchQueue.global() の2並列でほぼ確実に重なる
+    func testConcurrentInstallsOnTheSameDeviceAreSerialized() {
+        final class Overlap: @unchecked Sendable {
+            private let lock = NSLock()
+            private var inside = false
+            private(set) var sawOverlap = false
+            func enter() { lock.lock(); if inside { sawOverlap = true }; inside = true; lock.unlock() }
+            func exit() { lock.lock(); inside = false; lock.unlock() }
+        }
+        let overlap = Overlap()
+        let group = DispatchGroup()
+        for _ in 0..<2 {
+            group.enter()
+            DispatchQueue.global().async {
+                _ = try? AdbInstallVerifier.withVerificationOff(run: { args in
+                    if args == ["get-serialno"] { return (0, "same-device\n") }
+                    if args == AdbInstallVerifier.readArguments { return (0, "1\n") }
+                    return (0, "")
+                }) {
+                    overlap.enter()
+                    Thread.sleep(forTimeInterval: 0.05)
+                    overlap.exit()
+                }
+                group.leave()
+            }
+        }
+        group.wait()
+        XCTAssertFalse(overlap.sawOverlap, "同じ端末への2つの install の body が重なった(直列化できていない)")
+    }
+
+    /// 別の端末(別 serial)は互いを待たない ——  端末単位であって全体を1本に潰していないことの確認
+    func testDifferentDevicesAreNotSerializedAgainstEachOther() {
+        final class Overlap: @unchecked Sendable {
+            private let lock = NSLock()
+            private var count = 0
+            private(set) var sawBothInsideAtOnce = false
+            func enter() { lock.lock(); count += 1; if count == 2 { sawBothInsideAtOnce = true }; lock.unlock() }
+            func exit() { lock.lock(); count -= 1; lock.unlock() }
+        }
+        let overlap = Overlap()
+        let group = DispatchGroup()
+        for serial in ["device-a", "device-b"] {
+            group.enter()
+            DispatchQueue.global().async {
+                _ = try? AdbInstallVerifier.withVerificationOff(run: { args in
+                    if args == ["get-serialno"] { return (0, "\(serial)\n") }
+                    if args == AdbInstallVerifier.readArguments { return (0, "1\n") }
+                    return (0, "")
+                }) {
+                    overlap.enter()
+                    Thread.sleep(forTimeInterval: 0.2)
+                    overlap.exit()
+                }
+                group.leave()
+            }
+        }
+        group.wait()
+        XCTAssertTrue(overlap.sawBothInsideAtOnce, "別々の端末なのに直列化されてしまっている(鍵が端末単位になっていない)")
     }
 
     /// キルスイッチ(FT_PLAY_PROTECT_BYPASS=0)は端末に1バイトも書かない。未設定・"1" はバイパスする

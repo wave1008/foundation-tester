@@ -118,6 +118,13 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
         return true
     }
 
+    // **stop() との排他は actor の直列実行だけに頼る**(明示のロックが無い)。成立条件:
+    // このメソッドと spawnNextSegment() の中に**真の suspension が無い**こと(Process.run() は
+    // 同期・Task { } の生成も中断しない)。この前提が崩れる(内部に await を足す)と、
+    // currentProcess が nil の間に stop() が割り込めてしまい、再 spawn 後のプロセスを
+    // 止め忘れて孤児 screenrecord を残す。stop() は先頭で同期的に stopRequested = true を
+    // 書くので、actor が先にどちらのジョブ(このメソッド呼び出し列 / stop())を実行しても、
+    // spawnNextSegment() 入口の guard がその時点の stopRequested を見て再 spawn を止められる
     private func handleSegmentExited(remotePath: String, startedAt: Date) async {
         let localURL = workDir.appendingPathComponent("\(fileStem)-part\(segmentIndex).mp4")
         if pullSegment(remotePath: remotePath, to: localURL) {

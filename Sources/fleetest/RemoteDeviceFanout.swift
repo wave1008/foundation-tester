@@ -187,6 +187,9 @@ enum RemoteDeviceFanout {
         process.standardOutput = pipe
         process.standardError = FileHandle.standardError
 
+        // waitUntilExit() は RunLoop 通知に依存し、Thread 上では終了通知を取りこぼして
+        // 永久ハングし得る(Shell.swift の ProcessExitWait 宣言参照)
+        let waitForExit = ProcessExitWait.prepareBlocking(process)  // 契約: run() より前に設定
         do {
             try process.run()
         } catch {
@@ -213,7 +216,7 @@ enum RemoteDeviceFanout {
                     }
                     if eof { break }
                 }
-                process.waitUntilExit()
+                waitForExit()
                 continuation.resume()
             }
             thread.start()

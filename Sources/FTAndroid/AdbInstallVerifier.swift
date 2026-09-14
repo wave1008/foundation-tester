@@ -18,6 +18,22 @@
 //
 // **設定は install の間だけ切り、元の値へ戻す**(端末の設定を書き換えたまま残さない =
 // 71bae1ba と同じ規律)。途中で殺されて 0 が残る側は「送らない」なので安全側。
+//
+// **同じ端末への2プロセス同時 install は端末単位の flock で直列化する**(並列ワーカー・
+// MCP + run 等)。直列化しないと、片方の restore がもう片方の install の途中で発火して
+// 検証を再び有効化しうる(Play Protect の照会が再び出て無期限に止まる)。**restore は
+// 読んだ値が非ゼロだったときにしか登録しない**(`isAlreadyOff` の早期 return。既に 0 と
+// 読めた側は自分の disable/restore を一切持たないので、後から 0 を書き戻して固定する
+// 経路は無い)ので、閉じるべき穴は「直列化していないこと」だけ。
+// **鍵は端末の serial**(`run`/`adb` 閉包へ `get-serialno` を1回投げて引く —— 閉包が
+// 内部でどう serial を持っているか(AndroidDriver.rawAdb は内蔵・AndroidWebViewUpdate は
+// 呼び出しごとに明示)を AdbInstallVerifier 側は知らなくてよい)。
+// 引けなければ1本の鍵に丸める(別々の端末を同じ鍵に押し込んで無関係に足止めする側の誤りは、
+// 逆向き(取り違えて競合を許す)より安全)。
+// **flock はブロッキング**(タイムアウト無し) —— 相手は install が終われば必ず手放す
+// (プロセスが死んでも OS が自動で外す。RetentionSweepLock と同じ理由)ので待てば必ず開く。
+// ロックファイルを開けない/作れない場合は fail open(検証を壊さず動くことを優先する
+// 既存方針を踏襲)。
 
 import FTCore
 import Foundation
@@ -77,18 +93,66 @@ public enum AdbInstallVerifier {
 
     /// 検証を切って `body` を実行し、必ず元へ戻す。読めなければ(adb 失敗)切らずにそのまま実行
     /// (黙って検証を残す側 = 止まるのは従来どおりで、設定を壊す側には倒さない)。
-    /// **キルスイッチ(`bypassEnabled` = false)のときは端末に1バイトも書かず body だけ**。
+    /// **キルスイッチ(`bypassEnabled` = false)のときは端末に1バイトも書かず body だけ**
+    /// (この経路では端末単位の錠も取らない = get-serialno すら撃たない)。
+    /// **同じ端末への呼び出しは錠で直列化する**(`withDeviceLock` の宣言参照)。
     /// `run` は adb 引数列 → (status, output)
     public static func withVerificationOff<T>(run: ([String]) throws -> (status: Int32, output: String),
                                               body: () throws -> T,
                                               environment: [String: String] = ProcessInfo.processInfo.environment
     ) rethrows -> T {
         guard bypassEnabled(environment: environment) else { return try body() }
-        guard let read = try? run(readArguments), read.status == 0 else { return try body() }
-        let original = read.output
-        if isAlreadyOff(rawValue: original) { return try body() }
-        guard (try? run(disableArguments))?.status == 0 else { return try body() }
-        defer { _ = try? run(restoreArguments(original: original)) }
+        return try withDeviceLock(run: run) {
+            guard let read = try? run(readArguments), read.status == 0 else { return try body() }
+            let original = read.output
+            if isAlreadyOff(rawValue: original) { return try body() }
+            guard (try? run(disableArguments))?.status == 0 else { return try body() }
+            defer { _ = try? run(restoreArguments(original: original)) }
+            return try body()
+        }
+    }
+
+    /// テストだけが使う差し替え口。**production は常に nil**(既定の `~/.fleetest` を使う)。
+    /// 実 `~/.fleetest` を触ると並列に走る他のテスト・実運用の錠と衝突するため、
+    /// テストは自分専用の一時ディレクトリを指すこと(FMLock の `lockDirectoryForTesting` と同じ規律)
+    static var lockDirectoryForTesting: URL?
+
+    static var lockDirectory: URL {
+        lockDirectoryForTesting ?? RetentionSweepLock.defaultDirectory
+    }
+
+    /// `run`/`adb` 閉包が向いている1台の識別子。**`get-serialno` を1回投げて引く** ——
+    /// 閉包が serial をどう内蔵しているか(AndroidDriver.rawAdb は内部で `-s` を足す・
+    /// AndroidWebViewUpdate は呼ぶたびに明示で足す)を知らなくても、閉包そのものに
+    /// 訊けば向いている端末の実 serial が返る(serial 未指定 = 接続1台だけの adb の意味論も
+    /// そのまま乗る)。引けなければ丸めた1本の鍵にする(冒頭コメント参照)
+    static func deviceLockKey(run: ([String]) throws -> (status: Int32, output: String)) -> String {
+        guard let result = try? run(["get-serialno"]), result.status == 0 else { return "unknown-device" }
+        let trimmed = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "unknown-device" : sanitizedForLockFilename(trimmed)
+    }
+
+    /// 端末 serial → ファイル名に安全な形(純粋)。Wi-Fi 接続の serial は `192.168.1.23:5555` の
+    /// ように `:` を含むため、パス区切りに化けうる文字は `_` に潰す
+    static func sanitizedForLockFilename(_ raw: String) -> String {
+        let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
+        return String(raw.map { allowed.contains($0) ? $0 : "_" })
+    }
+
+    /// 端末単位の直列化。**`flock` はブロッキング**(冒頭コメント参照: 相手は install が
+    /// 終われば必ず手放す・プロセス死でも OS が自動で外す)。
+    /// ロックファイルを開けない/作れないときは fail open(取れないより動くことを優先)
+    private static func withDeviceLock<T>(run: ([String]) throws -> (status: Int32, output: String),
+                                          _ body: () throws -> T) rethrows -> T {
+        let key = deviceLockKey(run: run)
+        let directory = lockDirectory
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("adb-install-verifier-\(key).lock")
+        let fd = open(url.path, O_RDWR | O_CREAT, 0o644)
+        guard fd >= 0 else { return try body() }
+        defer { close(fd) }
+        _ = flock(fd, LOCK_EX)
+        defer { flock(fd, LOCK_UN) }
         return try body()
     }
 

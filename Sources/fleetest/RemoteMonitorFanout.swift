@@ -215,11 +215,17 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         let stdout = Pipe()
         let stderr = Pipe()
         let stdin = Pipe()
+        // **子が先に死んだ後の forwardControl の write が SIGPIPE で親ごと落ちない**ように
+        // (`try?` は EPIPE の例外しか受けない。SIGPIPE の既定は即死 = Shell.swift と同じ手当て)
+        _ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
         process.standardOutput = stdout
         process.standardError = stderr
         // 子は stdin の EOF を終了指示として扱う。親が死ねばパイプが閉じて向こうも畳まれる
         process.standardInput = stdin
 
+        // waitUntilExit() は RunLoop 通知に依存し、Thread/協調スレッド上では終了通知を
+        // 取りこぼして永久ハングし得る(Shell.swift の ProcessExitWait 宣言参照)
+        let waitForExit = ProcessExitWait.prepareBlocking(process)  // 契約: run() より前に設定
         do {
             try process.run()
         } catch {
@@ -241,7 +247,7 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         stderrThread.start()
 
         Self.forEachLine(of: stdout) { [weak self] line in self?.ingest(line: line, machine: machine) }
-        process.waitUntilExit()
+        waitForExit()
     }
 
     /// 子の stdout 1行。devices は保持し、それ以外(frame/error)は行のまま中継する。

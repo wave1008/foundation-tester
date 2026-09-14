@@ -1211,7 +1211,7 @@ struct RunScenarios: AsyncParsableCommand {
                 performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                 remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                 quiet: quiet, junit: junit,
-                broadcast: broadcast)
+                broadcast: broadcast, failed: failed, reportDir: reportDir)
             if exitCode != 0 { throw ExitCode(exitCode) }
             return
         }

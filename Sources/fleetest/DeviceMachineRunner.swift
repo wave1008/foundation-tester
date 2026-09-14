@@ -59,13 +59,24 @@ enum DeviceMachineRunner {
     }
 
     /// マシンごとのサブ実行を並行に走らせ、1画面の集計を出す。戻り値 = 各サブ実行の非0の最大
+    ///
+    /// **`failed`/`reportDir` は Fleetest.swift の単機経路(`run()`)と同じ意味の
+    /// `--failed`/`--report-dir` をこの分割経路にも適用するためのもの**(欠陥: 以前はここへ
+    /// 渡されておらず、複数機械にまたがるプロファイルでは黙って無視されていた)。
+    /// **`--failed` は子へ転送しない** —— ここで `selected` を絞ってから機械へ配るので、
+    /// 判定はこのマシンの `.fleetest/last-results/` の1回きりで済む(子へ `--failed` も渡すと、
+    /// リモート子は**そのランナー自身の last-results**で再判定してしまい、機械ごとに結果がバラつく)。
+    /// **`--report-dir` はローカル子だけへ転送する**(`childArgs` 参照。リモート子は
+    /// `fleetest run --runner <host>` を経由し、そちらの `dispatchToRemoteHost` が
+    /// `--report-dir` を明示的に拒否するため渡すと即 ValidationError で落ちる)
     static func run(
         project: TestProject, profileName: String, groups: [Group],
         scenarios: [String], folders: [String],
         setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
         performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?,
-        quiet: Bool, junit: String?, broadcast: Bool = false
+        quiet: Bool, junit: String?, broadcast: Bool = false,
+        failed: Bool = false, reportDir: String? = nil
     ) async throws -> Int32 {
         let junitTempDir = try FleetRunner.makeJUnitTempDir(requested: junit)
         defer { if let junitTempDir { try? FileManager.default.removeItem(at: junitTempDir) } }
@@ -90,6 +101,17 @@ enum DeviceMachineRunner {
         }
         guard !selected.isEmpty else {
             throw ValidationError("no scenarios to run after filtering")
+        }
+        if failed {
+            // Fleetest.swift の単機経路と同じ判定・同じ文言(LastResultsStore.failedIDs は
+            // (project, profile) 単位。この分割経路もここでしか failed を見ないので1回だけ絞る)
+            let failedSet = LastResultsStore.failedIDs(project: project, profile: profileName)
+            selected = selected.filter { failedSet.contains($0.id) }
+            guard !selected.isEmpty else {
+                FleetRunner.log("No scenarios failed last time (everything passed, or nothing has run)")
+                return 0
+            }
+            FleetRunner.log("→ Re-running the \(selected.count) scenario(s) that failed last time")
         }
 
         let active: [(Int, Group, [String])]
@@ -132,7 +154,7 @@ enum DeviceMachineRunner {
         let outcomes = await withTaskGroup(of: (Int, FleetEntryOutcome).self) { taskGroup in
             for (index, group, ids) in active {
                 taskGroup.addTask {
-                    let args = FleetRunner.buildArgs(
+                    let args = childArgs(
                         project: project.name, host: group.machineLabel, profile: profileName,
                         deviceNames: group.deviceNames, deviceMachine: group.machineLabel,
                         scenarios: ids, folders: [],
@@ -141,7 +163,7 @@ enum DeviceMachineRunner {
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                         quiet: quiet,
                         junitPath: FleetRunner.entryJUnitPath(tempDir: junitTempDir, index: index),
-                        broadcast: broadcast, runGroup: runGroup)
+                        broadcast: broadcast, runGroup: runGroup, reportDir: reportDir)
                     let start = Date()
                     let exitCode = await FleetRunner.runEntry(
                         binary: binary, args: args, hostLabel: group.machineLabel)
@@ -164,6 +186,40 @@ enum DeviceMachineRunner {
                 entries: active.map { (host: $0.1.machineLabel, index: $0.0) })
         }
         return FleetProfile.aggregateExitCode(outcomes.map(\.exitCode))
+    }
+
+    /// マシン別サブ実行1本分の引数(純粋関数。単体テスト対象)。`FleetRunner.buildArgs`
+    /// (--fleet と共有するヘルパー。--fleet は `--report-dir`/`--skip-build` と併用不可なので
+    /// これらをそちらへは足さない)に、この分割経路だけが必要とする2つを追加する:
+    /// **`--skip-build`(ローカル子だけ)** —— `run()` が呼び出し元で1回だけローカルビルド済み
+    /// (`ScenarioHost.build`)なので、ローカル子に省略させないと同じビルドを2回払う。リモート子は
+    /// 別マシンなので自分でビルドさせる(常に省略しない)。
+    /// **`--report-dir`(ローカル子だけ)** —— リモート子は `dispatchToRemoteHost` を経由し、
+    /// そちらは `--report-dir` を明示的に拒否する(Fleetest.swift の RemoteDispatchFlagPolicy)。
+    /// 渡すとリモート枠のサブ実行が ValidationError で即落ちるので、ローカル子にしか渡さない
+    static func childArgs(
+        project: String, host: String, profile: String,
+        deviceNames: [String] = [], deviceMachine: String? = nil,
+        scenarios: [String], folders: [String],
+        setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
+        performanceMode: Bool,
+        forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?,
+        quiet: Bool, junitPath: String?, broadcast: Bool = false, runGroup: String? = nil,
+        reportDir: String? = nil
+    ) -> [String] {
+        var args = FleetRunner.buildArgs(
+            project: project, host: host, profile: profile,
+            deviceNames: deviceNames, deviceMachine: deviceMachine,
+            scenarios: scenarios, folders: folders,
+            setOverrides: setOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+            performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
+            remoteDir: remoteDir, remoteTimeout: remoteTimeout,
+            quiet: quiet, junitPath: junitPath, broadcast: broadcast, runGroup: runGroup)
+        if host == "local" {
+            args += ["--skip-build"]
+            if let reportDir { args += ["--report-dir", reportDir] }
+        }
+        return args
     }
 
     // MARK: - 割り当て

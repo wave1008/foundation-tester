@@ -54,6 +54,21 @@ struct RemoteRunDispatcher {
         let (layout, session) = try resolveLayout()
         try checkCompatibility(layout: layout)
 
+        // **ロック取得の前から観測を張る**(中断があっても、これから登録する
+        // `defer { releaseDispatchLock }` を必ず走らせるため)。ここから下は Shell.run 越しの
+        // 短い ssh 照会・rsync 転送・回収コマンドが続くが、どれも InterruptRelay に登録された
+        // Process ではないので、登録が1つも無いままだと SIGINT は既定動作(即終了)のままで
+        // defer が飛ばされ、リモートの dispatch.lock が握られたまま残る
+        // (bug-audit-2026-09-06.md §3)。**何もしない observer で構わない** ——
+        // 登録そのもの(signal(SIGINT, SIG_IGN))が defer の実行を保証する。実行中の ssh
+        // セッションへの中断転送は runInherited/runInheritedWithLineRewrite 自身の Process
+        // relay が別途行う(forwardToAll は登録された全ターゲットを呼ぶので共存しても害はない)。
+        // **中断そのものは止めない** —— いま動いている ssh 照会/転送は自分の完了/タイムアウト
+        // まで動き、そのあと通常どおり関数末尾まで進んで defer が走る。
+        // defer は宣言と逆順に走るので、この stop() より先に releaseDispatchLock を宣言する
+        // (release の実行中もまだ観測が生きているように)
+        let lockHeldRelay = InterruptRelay.observing {}
+        defer { lockHeldRelay.stop() }
         try acquireDispatchLock(layout: layout)
         defer { releaseDispatchLock(layout: layout) }
         reapOrphanedHooksAcrossIssuers(layout: layout)
@@ -122,6 +137,9 @@ struct RemoteRunDispatcher {
         let (layout, session) = try resolveLayout()
         try checkCompatibility(layout: layout)
 
+        // 中断があっても解放の defer を必ず走らせる(理由・順序は dispatch() のコメント参照)
+        let lockHeldRelay = InterruptRelay.observing {}
+        defer { lockHeldRelay.stop() }
         try acquireDispatchLock(layout: layout)
         defer { releaseDispatchLock(layout: layout) }
         reapOrphanedHooksAcrossIssuers(layout: layout)
@@ -174,9 +192,11 @@ struct RemoteRunDispatcher {
     /// ログインチェックだけスキップした経路)では nil になり、saveHostFacts は既存値を保持する
     private func resolveLayout() throws -> (layout: RemoteLayout, session: RemoteSessionInfo?) {
         log("==> checking compatibility with \(host.sshTarget)")
+        // 期限なしだと刺さった ssh で永久に待つ(sshCapture と同じ 120 秒)
         let result = try Shell.run(
             sshBase + [host.sshTarget, "echo $HOME; \(RemoteProbe.consoleUserCommand); id -un; "
-                + "sysctl -n machdep.cpu.brand_string 2>/dev/null; sysctl -n hw.ncpu 2>/dev/null"])
+                + "sysctl -n machdep.cpu.brand_string 2>/dev/null; sysctl -n hw.ncpu 2>/dev/null"],
+            timeout: Self.sshCaptureTimeoutSeconds)
         guard result.status == 0 else {
             throw RemoteDispatchError.remoteSetupFailed(
                 "cannot reach \(host.sshTarget) over ssh (status \(result.status))"

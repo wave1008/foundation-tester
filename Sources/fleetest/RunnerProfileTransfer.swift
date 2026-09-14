@@ -57,12 +57,16 @@ enum RunnerProfileTransfer {
             process.arguments = args
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.standardError
+            // waitUntilExit() は RunLoop 通知に依存し、呼び手(dispatch/dispatchApi)が async
+            // 関数の協調スレッド上でこれを呼ぶと終了通知を取りこぼして永久ハングし得る
+            // (Shell.swift の ProcessExitWait 宣言参照。RemoteRunDispatcher.runInherited と同じ形)
+            let waitForExit = ProcessExitWait.prepareBlocking(process)  // 契約: run() より前に設定
             do {
                 try process.run()
-                process.waitUntilExit()
             } catch {
                 return "rsync (localized profiles) failed to start: \(error.localizedDescription)"
             }
+            waitForExit()
             guard process.terminationStatus == 0 else {
                 return "rsync (localized profiles) exited with \(process.terminationStatus)"
             }
