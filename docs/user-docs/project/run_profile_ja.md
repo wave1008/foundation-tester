@@ -18,7 +18,7 @@
 |---|---|---|---|
 | `app` | string | — | 使用する `apps/<name>.json` プロファイル名 |
 | `devices` | array | — | 実行するデバイス名(解決済みマシンプロファイルから引く。同じ配列に iOS/Android を混在可) |
-| `fm` | bool | `true` | FM(Foundation Models)機能全体の親スイッチ。FM は experimental で 2026 年内は英語のみ([environments_ja.md](../overview/environments_ja.md))。`false` にすると、下記の個別トグルに関わらず自己修復・`falsePositiveCheck`・`screenLooksLike`・失敗時トリアージが一切実行されない |
+| `fm` | bool | `true` | FM(Foundation Models)機能全体の親スイッチ。FM は experimental([environments_ja.md](../overview/environments_ja.md))。`false` にすると、下記の個別トグルに関わらず自己修復・`falsePositiveCheck`・`screenLooksLike`・失敗時トリアージが一切実行されない |
 | `heal` | bool | `true` | FM によるロケータ自己修復を許可する([self_healing_ja.md](../running/self_healing_ja.md)参照) |
 | `falsePositiveCheck` | bool | `true` | `exist`/`textIs` 等の偽陽性検証(occlusion guard)を有効にする。木では一致したが実際には見えていない「誤った緑」を検出する |
 | `triage` | bool | `true` | 失敗時のトリアージ(分類・要約・次の一手)を有効にする。**合否は変えない助言**なので、切っても検証の強度は落ちない(失敗のたびに数秒の FM 呼び出しが走るのを避けたいときに `false`) |

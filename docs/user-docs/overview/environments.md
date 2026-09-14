@@ -34,10 +34,10 @@ switches to the cloud.
 
 ### Limitations
 
-- **English-only for now.** Apple's on-device model does not support Japanese during 2026;
-  Japanese support is expected in 2027. To use it, **the Mac's system language must be English
-  (United States)**, and `screenLooksLike` descriptions must be written in English. Behaviour
-  against a Japanese-language app UI cannot be vouched for in the meantime.
+- **Experimental.** The on-device model covers the languages Apple Intelligence supports,
+  Japanese included, and the Mac's system language can stay Japanese (confirmed on macOS 27.0).
+  Accuracy against Japanese-language app UIs and Japanese `screenLooksLike` descriptions has not
+  been measured yet.
 - On macOS 26, only visual verification (`screenLooksLike` and the false-positive check) is
   unavailable, because image input requires macOS 27+. It is disabled automatically; everything
   else works without restriction.

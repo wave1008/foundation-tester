@@ -15,9 +15,8 @@ The agent drives the clone and the build, so there is little to do by hand.
 | If you test Android | Android SDK (adb), emulator or physical device |
 | Extension build | Node.js v24 or newer, npm v11 or newer |
 
-To use the Foundation Models features such as self-healing and visual verification, **the Mac's
-system language must be English** (the model is English-only for now). Visual verification also
-requires macOS 27+. Details in [Requirements](overview/environments.md).
+The Foundation Models features such as self-healing and visual verification are experimental, and
+visual verification requires macOS 27+. Details in [Requirements](overview/environments.md).
 
 ## 2. Before you start
 

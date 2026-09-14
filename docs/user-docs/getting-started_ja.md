@@ -15,9 +15,8 @@ clone からビルドまではエージェントが進めるので、手で行�
 | Android をテストするなら | Android SDK(adb)、エミュレータまたは実機 |
 | 拡張ビルド | Node.js v24 以降、npm v11 以降 |
 
-自己修復や視覚検証といった Foundation Models の機能を使うには、**Mac のシステム言語を英語に
-する必要があります**(現時点では英語のみ対応)。視覚検証は macOS 27+ が必要です。詳細は
-[必要環境](overview/environments_ja.md)。
+自己修復や視覚検証といった Foundation Models の機能は experimental で、視覚検証は macOS 27+ が
+必要です。詳細は [必要環境](overview/environments_ja.md)。
 
 ## 2. 事前準備
 

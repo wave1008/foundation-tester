@@ -18,10 +18,8 @@ expectation {
 
 ## Notes
 
-- **Experimental, and English-only for now.** Write the description in English: Apple's
-  on-device model does not support Japanese during 2026 (2027 is expected), and the Mac's system
-  language has to be English for FM to work at all. See
-  [environments.md](../overview/environments.md).
+- **Experimental.** The description can be written in Japanese too, but accuracy with Japanese
+  descriptions has not been measured yet. See [environments.md](../overview/environments.md).
 - Requires **macOS 27+** — on macOS 26 this check is automatically skipped. Check current
   availability with `fleetest doctor`.
 - Unlike Shirates(Classic)'s `screenIs`, there is no screen-nickname mechanism — you always

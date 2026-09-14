@@ -42,9 +42,9 @@
 > macOS 26 では FM(Foundation Model) の**視覚検証だけ**が使えない(画像入力 API が macOS 27+)。
 > occlusion-guard(偽陽性チェック)と `screenLooksLike` は自動で無効になり、他は制限なく動く。
 >
-> **FM の機能は experimental で、2026 年内は英語でしか使えない**(日本語サポートは 2027 年の
-> 見込み)。**Mac のシステム言語が英語である必要があり**、`ja-JP` だと呼び出しが全て失敗する。
-> `availability` は available を返したまま失敗するので、実際に推論する
+> **FM の機能は experimental**。モデルは日本語にも対応し、システム言語は日本語のままでよい
+> (macOS 27.0 で確認)。日本語 UI に対する判定精度は未計測。`availability` は available を
+> 返したまま全呼び出しが失敗することがあるので、実際に推論する
 > `fleetest doctor --fm-only` で確認する。詳細は
 > [docs/user-docs/overview/environments_ja.md](docs/user-docs/overview/environments_ja.md)。
 

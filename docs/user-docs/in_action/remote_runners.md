@@ -50,7 +50,7 @@ remote runner is entirely self-contained under `~/fleetest-runner/`.
 | Homebrew recent enough to know this macOS | `brew --version` runs |
 | Git can reach GitHub directly (no stale proxy config) | `git config --global --get-regexp '^https?\.'` is empty |
 | Android SDK and AVDs (only if running Android) | `fleetest doctor` |
-| English system language + Apple Intelligence enabled (only for `screenLooksLike`/self-healing) | `fleetest doctor --fm-only` |
+| Apple Intelligence enabled (only for `screenLooksLike`/self-healing) | `fleetest doctor --fm-only` |
 
 ## Setup flow
 

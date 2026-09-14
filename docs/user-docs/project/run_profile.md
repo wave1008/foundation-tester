@@ -18,7 +18,7 @@ selects one.
 |---|---|---|---|
 | `app` | string | — | Name of the `apps/<name>.json` profile to use |
 | `devices` | array | — | Device names to run on (from the resolved machine profile; iOS/Android can mix in the same list) |
-| `fm` | bool | `true` | Master switch for all FM (Foundation Models) features. FM is experimental and English-only during 2026 — see [environments.md](../overview/environments.md). `false` disables self-healing, `falsePositiveCheck`, `screenLooksLike` and failure triage entirely, regardless of the individual toggles below |
+| `fm` | bool | `true` | Master switch for all FM (Foundation Models) features. FM is experimental — see [environments.md](../overview/environments.md). `false` disables self-healing, `falsePositiveCheck`, `screenLooksLike` and failure triage entirely, regardless of the individual toggles below |
 | `heal` | bool | `true` | Allow FM-based locator self-healing (see [self_healing.md](../running/self_healing.md)) |
 | `falsePositiveCheck` | bool | `true` | Occlusion-guard verification on `exist`/`textIs` etc. — catches a "false green" that matched in the tree but is not actually visible |
 | `triage` | bool | `true` | Failure triage (classification, summary, suggested fix). **Advisory only — it never changes pass/fail**, so turning it off costs no verification strength (set `false` to avoid a few seconds of FM per failure) |

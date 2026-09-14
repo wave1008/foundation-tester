@@ -86,8 +86,6 @@ pipeline {
 ベアメタルで有効化する場合の条件と罠:
 
 - Apple silicon + macOS 26+。**screenLooksLike・偽陽性検証(画像入力)は macOS 27+**
-- **システム言語が日本語だと Apple Intelligence 自体が出現しない**(macOS 27 beta 実測)。
-  CI 機のシステム言語は英語にする
 - 有効化は GUI で1回(システム設定 → Apple Intelligence と Siri。ヘッドレス機は画面共有経由。
   モデルのダウンロードが走る)。**EC2 Mac は素の AMI から再作成すると設定が消える**ので、
   有効化後にカスタム AMI を焼くか、プロビジョニングに有効化を含める
