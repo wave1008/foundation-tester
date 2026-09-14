@@ -82,9 +82,11 @@ delete × 実際値の文字数 + 期待値 / ホストは clearInput + type)。
   載る欄(`expected = 単一行hello123`)では撃った文字だけの `hello` がヒント付きの期待値の部分列にも
   なり、`expected` を目標にすると**ヒント文字列ごと欄へ打ち込む**(`TypeReadbackTargetTests` が固定)
 
-**誤検知の監視**: 打ち直しが起きた事実は緑でも残る(DSL の注記 `type-retyped` / XCUITest ランナーの
-`OKResponse.note` → `driverFallback` / MCP の返答)。**フル E2E の緑の run で打ち直しが 0 回**であることを
-確かめてから印を通す(2026-09-14 の確認結果は docs/bug-audit-2026-09-11.md §19.23)。
+**誤検知の監視**: 打ち直しが起きた事実は緑でも残る(DSL の注記 `type-retyped` / 諦めた回は
+`type-retype-abandoned` / XCUITest ランナーの `OKResponse.note` → `driverFallback` / MCP の返答)。
+印(`.fleetest/<engine>-e2e-verified`)は e2e.sh が全緑で自動的に書き、打ち直しの回数は門ではない ——
+**印が付いた後で結果 JSON から打ち直しを数え、真陽性(打った本文の中央が欠けた形)だけであることを
+確かめる**(2026-09-14 の結果は docs/bug-audit-2026-09-11.md §19.23)。
 
 **2本を `_disabled/` へ退避して印を通す案は採らなかった** —— この2本が**打鍵の中抜けを検出できる
 唯一の場所**で、消すと検出器を失う。**記録条件を緩める案も採らない** —— 「既知の失敗」を表現する
