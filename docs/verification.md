@@ -1608,9 +1608,9 @@ launchApp / appIs / removeApp / installApp / clearAppData すべてが実行プ�
 (`Tests/Fixtures/OcclusionCrops/` の 3 枚 + `manifest.json`。`RegionTextCorpusTests` が
 `swift test` で毎回走る):
 
-- 固定するのは**言語規則の効き目**(日本語モデルを載せると ASCII を誤読する)・**段ごとの読み取り**・
-  **はしごが撃つ回数**の3つ。認識レベルを fast に落とす / 言語補正を効かせる / 拡大を止める /
-  言語規則を壊す、のいずれの変異もこの 3 枚が落とす
+- 固定するのは**言語集合ごとの読み取り**(日本語の集合には言語補正あり。2026-09-15 から)・**段ごとの
+  読み取り**・**はしごが撃つ回数**の3つ。認識レベルを fast に落とす / 日本語の集合で言語補正を切る /
+  拡大を止める / 言語規則を壊す、のいずれの変異もこの 3 枚が落とす
 - **合成画像では代表できない**(6pt の合成文字は拡大すると悪化した = 実機の描画とは別物)。
   crop は実 run の measure モード(`FT_OCCLUSION_OCR=measure`)から採る
 - Vision の**版は固定していない**ので、OS 更新で読みが変わればこのテストが落ちる(それが役目)
@@ -2656,9 +2656,9 @@ Scripts/fm-verify.sh                    # 既定 TestProjects/E2E-CMP・プロ�
   Button 版では guard が 6ms で素通りし FM 呼び出しは 0 だった(これも実測)。
   陽性対照は `TestProjects/E2E-iOS/scenarios/_disabled/96_遮蔽の反転.swift`
   (`falsePositiveCheck: true` のプロファイルで回す。**S0010 は落ちるのが正常**)。
-  実測では失敗文言に reason と crop が付き、`fm.byKind.occlusion.calls` が**2**(選別 + 詳細)
-  になることまで確認した。**2段構えを触るときは、この対照とコーパスの両方で照合すること**
-  (docs/performance-tuning.md §3.5.1)
+  実測では失敗文言に reason と crop が付き、`fm.byKind.occlusion.calls` が**2**(等倍の転写 +
+  2 倍の読み直し)になることまで確認した。**FM 段の形を触るときは、この対照とコーパスの両方で照合すること**
+  (docs/poc-fm-occlusion-guard.md §5.18)
 - **occlusion-guard は長期間 死んだままでも E2E は緑になる**。実績値では
   6066 呼び出し中 5673 失敗(**93.5%**)で、成功を含む run は 582 中 58 だけだった。
   つまり**「緑」は基本的にツリー一致の緑**で、視覚検証を含むとは限らない
@@ -2723,9 +2723,9 @@ FM は**ホスト全体で共有される資源**。2026-07-22 時点の実測�
   失敗時のみ)ため、flake 調査や負荷試験で意図的に FM を鳴らしたいときはこれを使う
   (詳細と実測は performance-tuning.md §3.5)
 - **A/B 計測の殺しスイッチ**: `FT_FM_SERIALIZE=0` で無効化(acquire が常に true = 素通り)
-- **occlusion の2段化の殺しスイッチ**: `FT_FM_OCCLUSION_TWO_STAGE=0` で従来の1回呼び出しへ戻す
-  (1段目 = `reason` を作らせない選別・2段目 = 反転した回だけ従来と同じ4欄。
-  実測と照合の作り方は docs/performance-tuning.md §3.5.1)
+- **occlusion の FM 段は転写だけ**(2026-09-15。期待文字列を FM に渡さず `TranscriptMatch` が照合する)。
+  2 段化の殺しスイッチ `FT_FM_OCCLUSION_TWO_STAGE` は撤去した。方式と実測は
+  docs/poc-fm-occlusion-guard.md §5.18
 
   ```bash
   FT_FM_SERIALIZE=0 Scripts/e2e.sh   # 直列化なし

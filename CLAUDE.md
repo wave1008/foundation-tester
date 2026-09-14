@@ -618,6 +618,11 @@
   `RefGuard`/MCP は転送する。別々に持つと**同じ画面で MCP と DSL の判断が食い違う**
   (実例は maintainer-notes §5)。移設したときは**掃討ゲート(`SweepHarnessTests`)が
   実アプリのコーパスで等価性を検証する**
+- **occlusion-guard の FM 段には期待文字列を渡さない**(2026-09-15)。FM に訊くのは「何が描かれているか」
+  (転写 1 欄・prompt は定数)だけで、可否は `FTCore.TranscriptMatch` が期待文字列と突き合わせて決める。
+  期待文字列を prompt に入れて「見えるか」を訊くと、空白・別の文字の crop でも期待文字列を写して
+  visible=true と答える(おうむ返し。空白 20〜23% / 別の文字 33〜56% の見逃し)。欄順を変えても直らない。
+  `OcclusionTranscriptTests` がソース走査で守る → maintainer-notes §19
 - **occlusion-guard の OCR 段(`FTCore.RegionText`)は「素通りの根拠」にしかしない** —— 期待テキストが
   **丸ごと**読めた回だけ FM を省く(既定 on。**利用者の口は実行プロファイルの
   `ocrFalsePositiveCheck`**(親スイッチ `ocr` の配下。拡張のプロファイルタブ
@@ -627,7 +632,9 @@
   反転の判定は必ず FM。**一致は語境界つきの完全含有**(素の部分一致だと `exist("OK")` が
   覆いの「Cookieの設定」に当たって素通りする)。
   **読ませる言語は期待文字列から決める**(`languages(for:)`。ASCII の期待値に日本語モデルを
-  載せると `swipe=down`→`swipe=aown` と誤読し、所要も 2.3 倍になる)。読めなければ crop を
+  載せると所要が 2.3 倍になる)。**言語補正は日本語の集合でだけ掛ける**(`usesLanguageCorrection(for:)`。
+  en ロケールの端末は「単」を中国語フォントの字形で描き、補正なしだと Vision も FM も「单」と読む。
+  ASCII は切ったまま = 欠けを推測で埋めさせない)。読めなければ crop を
   拡大して読み直す(`upscaleLadder = [1,2,3]`。×4 で悪化するので上げ続けない。**1行も読めない
   crop は段を上げない** = 覆いを待つ poll 周回で毎周3回払わない)。**Vision の版は固定しない**
   (OS の既定に従う)—— 版・認識レベル・言語補正・言語規則が動いたことの検出は、実 crop の固定
