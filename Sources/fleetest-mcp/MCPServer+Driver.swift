@@ -1019,8 +1019,20 @@ extension MCPServer {
     /// **名指しは対象アプリ**: 背面化中の読みは SpringBoard を参照するので snapshot の
     /// sessionBundleID は com.apple.springboard になっている。呼び手は launch したアプリの ID を渡し、
     /// それが無いときも springboard を「戻すべきアプリ」と言わない
-    static func sentToBackgroundNote(_ sessionBundleID: String?) -> String {
+    /// **`treeIsAppsOwn`**: 木の sessionBundleID がそのアプリのまま(XCUITest のセッションは背面化
+    /// してもアプリに付いたままで、**アプリ自身の木**を返し続ける)なら「今の画面」とは言わない ——
+    /// 実機 iPhone 13 では appSwitcher の直後に「the tree below is whatever is actually on screen」と
+    /// 言いながらアプリの木を返していた(§19.3 担当報告の再現)。hybrid の背面化読み(SpringBoard を
+    /// 参照 = sessionBundleID が springboard)のときだけ従来の「今そこにあるもの」
+    static func sentToBackgroundNote(_ sessionBundleID: String?, treeIsAppsOwn: Bool) -> String {
         let app = sessionBundleID.flatMap { $0 == "com.apple.springboard" ? nil : $0 } ?? "the app"
+        if treeIsAppsOwn {
+            return "⚠️ This session sent home/appSwitcher and has not brought \(app) back:"
+                + " the tree below is still \(app)'s own tree (the session stays attached to it),"
+                + " NOT what is on screen now (home screen / app switcher / a system screen) —"
+                + " a tap by ref here lands on whatever is drawn there instead."
+                + " Check with ft_screenshot, and ft_launch \(app) to return.\n"
+        }
         return "⚠️ This session sent home/appSwitcher and has not brought \(app) back:"
             + " the tree below is whatever is actually on screen now (home screen / app switcher /"
             + " a system screen), not \(app)'s. Check with ft_screenshot, and ft_launch to return.\n"

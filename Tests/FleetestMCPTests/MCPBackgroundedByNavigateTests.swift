@@ -12,15 +12,34 @@ import FTCore
 final class MCPBackgroundedByNavigateTests: XCTestCase {
 
     func testTheNoteNamesTheAppAndBothWaysOut() {
-        let note = MCPServer.sentToBackgroundNote("com.apple.mobilesafari")
+        let note = MCPServer.sentToBackgroundNote("com.apple.mobilesafari", treeIsAppsOwn: false)
         XCTAssertTrue(note.contains("com.apple.mobilesafari"), note)
+        XCTAssertTrue(note.contains("whatever is actually on screen now"), note)
         XCTAssertTrue(note.contains("ft_screenshot"), note)
         XCTAssertTrue(note.contains("ft_launch"), note)
     }
 
+    /// **木がアプリ自身のもの**(XCUITest のセッションはアプリに付いたまま)なら「今の画面」と
+    /// 言わない —— 実機 iPhone 13 では appSwitcher の直後にアプリの木を返しながらそう言っていた
+    func testTheNoteSaysTheTreeIsStillTheAppsOwnWhenTheSessionStaysAttached() {
+        let note = MCPServer.sentToBackgroundNote("com.ftester.e2e.ios", treeIsAppsOwn: true)
+        XCTAssertTrue(note.contains("still com.ftester.e2e.ios's own tree"), note)
+        XCTAssertTrue(note.contains("NOT what is on screen now"), note)
+        XCTAssertFalse(note.contains("whatever is actually on screen now"), note)
+        XCTAssertTrue(note.contains("ft_launch com.ftester.e2e.ios"), note)
+    }
+
     /// session を名乗らない木でも文章として成立すること(nil で落ちない)
     func testTheNoteToleratesAnUnnamedSession() {
-        XCTAssertTrue(MCPServer.sentToBackgroundNote(nil).contains("ft_launch"))
+        XCTAssertTrue(MCPServer.sentToBackgroundNote(nil, treeIsAppsOwn: false).contains("ft_launch"))
+    }
+
+    /// 配線: 木の sessionBundleID が launch したアプリのままなら treeIsAppsOwn、springboard なら false
+    func testSnapshotBodyPassesWhoseTreeItIs() throws {
+        let source = try MCPServerSourceText.combined()
+        XCTAssertTrue(compact(source).contains(compact(
+            "treeIsAppsOwn: snapshot.sessionBundleID != nil && snapshot.sessionBundleID != \"com.apple.springboard\" && (launched == nil || snapshot.sessionBundleID == launched)")),
+                      "snapshotBody が木の持ち主を渡していない")
     }
 
     // MARK: - 配線(ソース走査)

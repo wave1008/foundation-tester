@@ -32,7 +32,12 @@ public final class BridgeClient: AppDriver {
     /// argv は `ps -E` で見え、拡張の孤児掃除(orphanSweep)や LocalStreamHolder が実際に
     /// `ps -E` を撃って出力をログへ流す経路がある。台帳ファイル(.fleetest/bridge-<port>.endpoint)
     /// 経由なら露出面が増えない
-    let token: String?
+    private(set) var token: String?
+    /// **401 を受けたときに台帳の token を読み直す口**(既定 = `.fleetest/bridge-<port>.endpoint`)。
+    /// ブリッジを建て直すと token が変わり、init で固定した値のままでは以後すべて 401 で
+    /// 「接続断」とも扱われず戻れなかった(実機 iPhone 13・§19.3)。読み直して**1 回だけ**撃ち直す。
+    /// テストは差し替えて注入する
+    var tokenReloader: () -> String? = { nil }
     /// リクエストに載せる値(未使用時はキーごと省略 → 旧ランナーと byte 互換)。
     ///
     /// **探索のスワイプだけ quiescence を飛ばす案は不採用**(2026-08-04 実測)。
@@ -134,6 +139,9 @@ public final class BridgeClient: AppDriver {
         self.physicalUDID = physicalUDID
         self.simulatorUDID = simulatorUDID
         self.token = token
+        self.tokenReloader = {
+            (try? RepoRoot.find()).flatMap { BridgeEndpoint.load(port: port, repoRoot: $0).token }
+        }
         // 高速入力(quiescence スキップ)はプロセス単位の環境変数で有効化する
         // (実行プロファイル iosFastInput / CLI `--set iosFastInput=true` を `FTCore.RunEnvironment` が
         //  FT_FAST_INPUT=1 へ注入。BridgeClient は hybrid のフォールバック経路でも生成されるため
@@ -998,6 +1006,25 @@ public final class BridgeClient: AppDriver {
         if let token {
             req.setValue(token, forHTTPHeaderField: BridgeAPI.bridgeTokenHeader)
         }
+        let (data, response) = try await send(req)
+        guard (response as? HTTPURLResponse)?.statusCode == 401 else { return (data, response) }
+        // **401 = token が合わない**(ブリッジの建て直しで変わった形が典型)。台帳を読み直して
+        // 値が変わっていれば 1 回だけ撃ち直す。**同じ値・読めない**ならそのまま断る ——
+        // 繰り返すと台帳が別のブリッジのものだったときに永久に回る
+        if let fresh = tokenReloader(), fresh != token {
+            token = fresh
+            req.setValue(fresh, forHTTPHeaderField: BridgeAPI.bridgeTokenHeader)
+            let retried = try await send(req)
+            guard (retried.1 as? HTTPURLResponse)?.statusCode == 401 else { return retried }
+        }
+        throw DriverError.badResponse(status: 401, body: "unauthorized: the bridge on port \(port)"
+            + " rejected this session's token. A restarted bridge (fleetest bridge up) issues a new"
+            + " token; the session re-read .fleetest/bridge-\(port).endpoint and retried once, so the"
+            + " ledger is stale or belongs to another bridge — run fleetest bridge up --port \(port)"
+            + " and retry")
+    }
+
+    private func send(_ req: URLRequest) async throws -> (Data, URLResponse) {
         do {
             if let collector = HTTPTimingCollector.shared {
                 return try await session.data(for: req, delegate: collector)
