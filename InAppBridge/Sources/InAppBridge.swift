@@ -31,9 +31,23 @@ final class FTInAppBridge {
     /// 直近 snapshot で入力欄だった ref(`TypeReadback.isTextInput`)。frames と同じ時点で差し替える
     private var textInputRefs: Set<Int> = []
     private let nodes = NSMapTable<NSNumber, AnyObject>(keyOptions: .strongMemory, valueOptions: .weakMemory)
-    // 自分のバンドルをホストと同じ規則(UIFrameworkMarkers = 共有ソース)で読む。実行ファイルは写像で読む
-    // (数十 MB を複製しない)。値は AppUIFramework の rawValue
-    private lazy var uiFramework: String = {
+    // 自分のバンドルをホストと同じ規則(UIFrameworkMarkers = 共有ソース)で読む。値は AppUIFramework の rawValue。
+    // 目印の無い大きな UIKit アプリは実行ファイルの全走査に数十 ms かかるので、start() で裏から先に解き
+    // 最初の /status(起動直後のホストの待ち)に乗せない。裏の計算と accept ループの読みが同時に来るので、
+    // 1 回だけ計算して錠の内側に置く(計算中の読みは錠で待つ)
+    private let uiFrameworkLock = NSLock()
+    private var uiFrameworkValue: String?
+    private var uiFramework: String {
+        uiFrameworkLock.lock()
+        defer { uiFrameworkLock.unlock() }
+        if let value = uiFrameworkValue { return value }
+        let value = Self.detectUIFramework()
+        uiFrameworkValue = value
+        return value
+    }
+
+    /// 実行ファイルは写像で読む(数十 MB を複製しない)
+    private static func detectUIFramework() -> String {
         let root = Bundle.main.bundlePath as NSString
         let fm = FileManager.default
         return UIFrameworkMarkers.iosFramework(
@@ -43,7 +57,7 @@ final class FTInAppBridge {
             contents: { try? Data(contentsOf: URL(fileURLWithPath: root.appendingPathComponent($0)),
                                   options: .alwaysMapped) }
         ).rawValue
-    }()
+    }
 
     func start() {
         let port = UInt16(ProcessInfo.processInfo.environment["FT_PORT"] ?? "")
@@ -60,6 +74,7 @@ final class FTInAppBridge {
         // 画面が進んでいるかの計器(/status の displayIdleSeconds)。
         // **ホストは凍結判定に使わない** —— 理由は DisplayHeartbeat の説明を参照
         DisplayHeartbeat.shared.start()
+        DispatchQueue.global(qos: .utility).async { [weak self] in _ = self?.uiFramework }
         do {
             try server.start()
             self.server = server

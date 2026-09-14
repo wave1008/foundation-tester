@@ -378,7 +378,9 @@ public enum BridgeAPI {
     /// v102 (in-app only): /status `uiFramework` follows the host's rules (UIFrameworkMarkers, shared source):
     /// a Compose app without compose-resources is "compose" (was "uikit"), and React Native / SwiftUI-lifecycle
     /// apps report "reactNative" / "swiftUI" (were "uikit").
-    public static let bridgeProtocolVersion = 102
+    /// v103 (in-app only): the executable scan behind `uiFramework` searches its markers in parallel and starts
+    /// in the background when the bridge starts, so the first /status after a relaunch no longer waits for it.
+    public static let bridgeProtocolVersion = 103
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///

@@ -41,24 +41,42 @@ public enum UIFrameworkMarkers {
     /// `SwiftUI.App.main()` の mangled 名(`$s` を除く)。呼び出し側は外部シンボルとして名前を持つ
     static let swiftUIAppEntrySymbol = "7SwiftUI3AppPAAE4mainyyFZ"
 
+    static let binaryNeedles = [composeBinaryClass, reactBinaryClass, swiftUIAppEntrySymbol]
+
     /// executable: Info.plist の CFBundleExecutable / rootEntries: バンドル直下の名前 /
     /// exists: バンドル直下からの相対パスの実在 / contents: 相対パスの中身(実行ファイルを読むのは要るときだけ・各1回)
     public static func iosFramework(executable: String?, rootEntries: [String],
                                     exists: (String) -> Bool, contents: (String) -> Data?) -> AppUIFramework {
-        var binaries: [Data]?
+        var present: Set<String>?
         func binaryContains(_ needle: String) -> Bool {
-            if binaries == nil {
+            if present == nil {
                 var names = rootEntries.filter { $0.hasSuffix(".debug.dylib") }.sorted()
                 if let executable, !executable.isEmpty { names.insert(executable, at: 0) }
-                binaries = names.compactMap(contents)
+                present = presentNeedles(binaryNeedles, in: names.compactMap(contents))
             }
-            let pattern = Data(needle.utf8)
-            return binaries!.contains { $0.range(of: pattern) != nil }
+            return present!.contains(needle)
         }
         if exists(composeResources) || binaryContains(composeBinaryClass) { return .compose }
         if exists(flutterFramework) { return .flutter }
         if reactFrameworks.contains(where: exists) || binaryContains(reactBinaryClass) { return .reactNative }
         if binaryContains(swiftUIAppEntrySymbol) { return .swiftUI }
         return .uikit
+    }
+
+    /// 目印を**1 語 1 スレッドで並列に**探す(目印の無い UIKit アプリは 3 語とも全走査になる)。
+    /// 実測(2026-09-14・release・7 回の中央値): 実物の Mach-O(swift-frontend 173 MB)で逐次 142 ms → 並列 66 ms、
+    /// E2E-RN の実行ファイル 6 MB で 4.3 → 2.0 ms。1 回の走査で 3 語を照合する形は 129 ms で縮まない
+    /// (Data.range(of:) の走査のほうが Swift のバイト単位ループより速い)
+    static func presentNeedles(_ needles: [String], in binaries: [Data]) -> Set<String> {
+        var hits = [Bool](repeating: false, count: needles.count)
+        let lock = NSLock()
+        DispatchQueue.concurrentPerform(iterations: needles.count) { index in
+            let pattern = Data(needles[index].utf8)
+            let hit = binaries.contains { $0.range(of: pattern) != nil }
+            lock.lock()
+            hits[index] = hit
+            lock.unlock()
+        }
+        return Set(needles.indices.filter { hits[$0] }.map { needles[$0] })
     }
 }
