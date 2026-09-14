@@ -715,29 +715,45 @@ public struct BridgeProvisioner {
     private func executeDevice(plan: DevicePlan, bundleID: String?, preinstallAppPath: String?,
                                claimBarrier: PortClaimBarrier,
                                log: @escaping (String) -> Void) async throws -> ProvisionedIOSDevice {
-        var ports: [UInt16] = []
-        for bridge in plan.bridges {
+        var portsByEngine: [String: UInt16] = [:]
+        // **XCUITest ランナーを先に、in-app を後に**(Self.executionOrder): ランナーの建て直し
+        // (劣化・旧版)は XCTest の teardown が対象アプリを終了させ、そのプロセスに住む in-app
+        // ブリッジを道連れにする。in-app を先に「再利用」と決めてしまうと、ワーカーが合流した直後に
+        // 落ちて revive(数十秒)へ回る。後に回せば in-app 側の再利用判定が死んだブリッジに気付いて
+        // 数秒で建て直せる
+        for index in Self.executionOrder(of: plan.bridges.map(\.engine)) {
+            let bridge = plan.bridges[index]
             // **成否を問わず必ず 1 回通す**(撃ち漏らすと ProvisionLock が解放されない)。
             // executeBridge の中でも確保直後に撃つが、経路の取りこぼしをここで埋める
             let claim = ClaimOnce(barrier: claimBarrier)
             do {
-                ports.append(try await executeBridge(
+                portsByEngine[bridge.engine] = try await executeBridge(
                     engine: bridge.engine, plan: bridge.plan, name: plan.name, sim: plan.sim,
                     bundleID: bundleID, preinstallAppPath: preinstallAppPath,
-                    claimed: { await claim.fire() }, log: log))
+                    claimed: { await claim.fire() }, log: log)
                 await claim.fire()
             } catch {
                 await claim.fire()
                 throw error
             }
         }
+        // 主ブリッジは plan の先頭(hybrid = in-app / 単独 = そのエンジン)。実行順とは無関係
+        let primary = portsByEngine[plan.bridges[0].engine]!
         return ProvisionedIOSDevice(
             name: plan.name, udid: plan.sim.udid, simulatorName: plan.sim.name,
-            port: ports[0], engine: plan.engine,
-            xcuiPort: ports.count > 1 ? ports[1] : nil,
+            port: primary, engine: plan.engine,
+            xcuiPort: plan.bridges.count > 1 ? portsByEngine["xcuitest"] : nil,
             physical: plan.sim.physical,
             // 再利用(.reuse)経路でも宛先を復元できるよう記録ファイルを唯一の正にする
-            host: BridgeEndpoint.load(port: ports[0], repoRoot: repoRoot).host)
+            host: BridgeEndpoint.load(port: primary, repoRoot: repoRoot).host)
+    }
+
+    /// 1 台のブリッジを実行する順(plan の添字)。xcuitest を in-app より先に(理由は executeDevice)。
+    /// 同じエンジン同士は plan の順を保つ
+    static func executionOrder(of engines: [String]) -> [Int] {
+        let xcuitest = engines.indices.filter { engines[$0] == "xcuitest" }
+        let others = engines.indices.filter { engines[$0] != "xcuitest" }
+        return xcuitest + others
     }
 
     /// 1 ブリッジ分のプラン実行(ポート採番・再利用判定はプランニングで確定済み)
@@ -750,6 +766,44 @@ public struct BridgeProvisioner {
                                log: @escaping (String) -> Void) async throws -> UInt16 {
         switch plan {
         case .reuse(let port):
+            // **再利用する XCUITest ランナーは 1 問だけ測ってから使う**(RunnerAccessibilityHealth):
+            // 長く生きたランナーが SpringBoard の remote element を引けなくなった後も参照し続け、
+            // 照会のたびに約 3.7 秒待つ状態に落ちる。run のすべての照会に乗るので建て直したほうが安い
+            if engine == "xcuitest" {
+                let injected = RunnerAccessibilityHealth.injectedSlowPorts().contains(port)
+                var probeSeconds: TimeInterval?
+                if !injected {
+                    let client = BridgeClient(endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot))
+                    let started = Date()
+                    if (try? await client.systemAlert()) != nil { probeSeconds = Date().timeIntervalSince(started) }
+                }
+                if injected || RunnerAccessibilityHealth.isDegraded(probeSeconds: probeSeconds) {
+                    log(RunnerAccessibilityHealth.restartMessage(name: name, port: port,
+                                                                 probeSeconds: probeSeconds, injected: injected))
+                    let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
+                                                  physical: sim.physical)
+                    try? await launcher.stopAndWait()
+                    return try await executeBridge(
+                        engine: engine,
+                        plan: .launch(port: port, needsInstall: false, stopStalePort: nil, reclaimInApp: false),
+                        name: name, sim: sim, bundleID: bundleID,
+                        preinstallAppPath: preinstallAppPath, claimed: claimed, log: log)
+                }
+            }
+            // **in-app の再利用は /status を 1 回引いてから**: 直前に同じ台の XCUITest ランナーを建て直した
+            // 回は、対象アプリごと落ちてブリッジが居ない(接続拒否)。**無応答は死と読まない**
+            // (背面に回ったアプリは TCP を受けて答えない = InAppDriver.openURL と同じ規律)
+            if engine == "inapp", bundleID != nil {
+                let client = BridgeClient(endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot))
+                do { _ = try await client.status(timeout: 3) } catch DriverError.bridgeConnectionRefused {
+                    log("→ \(name): the inapp bridge on port \(port) is gone (its app was terminated) — relaunching it")
+                    return try await executeBridge(
+                        engine: engine,
+                        plan: .launch(port: port, needsInstall: false, stopStalePort: nil, reclaimInApp: false),
+                        name: name, sim: sim, bundleID: bundleID,
+                        preinstallAppPath: preinstallAppPath, claimed: claimed, log: log)
+                } catch {}
+            }
             await claimed()
             log("✅ \(name): reusing the running \(engine) bridge (port \(port), \(sim.name))")
             return port
