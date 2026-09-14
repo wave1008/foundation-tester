@@ -393,7 +393,17 @@ public struct BridgeProvisioner {
                 return false
             }
         }
-        let launchWidth = launchesInApp ? 2 : plans.count
+        // **冷えたシミュレータ(Shutdown)を起こす起動も同時 2 台**: 8 台同時のブートは in-app の
+        // 8 台同時注入と同じ「複数台同時描画」で、再起動直後の全滅の条件だった(台帳 §19.25)
+        let launchesColdSimulator = plans.contains { plan in
+            !plan.sim.physical && !plan.sim.booted && plan.bridges.contains { bridge in
+                if case .launch = bridge.plan { return true }
+                return false
+            }
+        }
+        let launchWidth = Self.launchWidth(launchesInApp: launchesInApp,
+                                           launchesColdSimulator: launchesColdSimulator,
+                                           deviceCount: plans.count)
         let outcomes = await withTaskGroup(
             of: (Int, Result<ProvisionedIOSDevice, Error>).self,
             returning: [Int: Result<ProvisionedIOSDevice, Error>].self) { group in
@@ -748,6 +758,12 @@ public struct BridgeProvisioner {
             host: BridgeEndpoint.load(port: primary, repoRoot: repoRoot).host)
     }
 
+    /// 同時に起動する台数。in-app の新規注入か冷えたシミュレータのブートを含むときだけ 2
+    /// (device-up-two-at-a-time と同じ理屈)。再利用・引き取りだけなら全並列
+    static func launchWidth(launchesInApp: Bool, launchesColdSimulator: Bool, deviceCount: Int) -> Int {
+        (launchesInApp || launchesColdSimulator) ? 2 : deviceCount
+    }
+
     /// 1 台のブリッジを実行する順(plan の添字)。xcuitest を in-app より先に(理由は executeDevice)。
     /// 同じエンジン同士は plan の順を保つ
     static func executionOrder(of engines: [String]) -> [Int] {
@@ -980,6 +996,17 @@ public struct BridgeProvisioner {
                         throw BridgeProvisionerError.deviceLocked(
                             name: name, waited: BridgeLauncher.startupTimeoutSeconds)
                     }
+                }
+                // **ブートはランナーの起動予算の外で待ち切る**(SimulatorBoot)。xcodebuild に任せると
+                // 再起動直後の 8 台同時ブートがランナーの 180 秒に混ざり、何も書かないまま全滅する
+                if !sim.physical {
+                    if !sim.booted {
+                        log("→ \(name): booting the simulator before starting the xcuitest runner"
+                            + " (the boot is not counted against the runner's start-up budget)")
+                    }
+                    try await Task.detached(priority: .userInitiated) {
+                        try SimulatorBoot.ensureBooted(udid: sim.udid)
+                    }.value
                 }
                 // xctestrun の存在は prepareSharedBuilds が保証済み(不在なら xctestrunNotFound が
                 // そのまま届く。ここで buildForTesting はしない=並列で二重ビルドさせない)

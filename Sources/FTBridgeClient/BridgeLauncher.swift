@@ -854,6 +854,7 @@ public struct BridgeLauncher {
         var lastProgressAt: Date?
         var suiteStartedAt: Date?
         var lastLogSize: UInt64 = 0
+        var runnerAppSeen = false
         var announcedExtension = false
         var lastError: Error?
         var blocker: String?
@@ -905,13 +906,20 @@ public struct BridgeLauncher {
                         + (Self.lastLogLine(in: text).map { " — last log line: \($0)" } ?? ""),
                     logPath.path)
             }
-            // 進み具合: ログが伸びた時刻と、テスト本体が始まった印
+            // 進み具合: ログが伸びた時刻・**ランナーアプリがシミュレータで起動した**(xcodebuild は
+            // 設定を書き出した後、テスト本体が始まるまで何も書かない。冷えた起動ではその無音が
+            // 2 分を超えるので、ログだけでは進みが見えない)・テスト本体が始まった印
             if let text {
                 let size = UInt64(text.utf8.count)
                 if size > lastLogSize { lastLogSize = size; lastProgressAt = Date() }
                 if suiteStartedAt == nil, text.contains(BridgeStartupWait.suiteStartedMarker) {
                     suiteStartedAt = Date()
                 }
+            }
+            if !runnerAppSeen, !physical, Self.runnerAppIsRunning(udid: device) {
+                runnerAppSeen = true
+                lastProgressAt = Date()
+                log("→ the runner app is up in the simulator; waiting for its test to start")
             }
             if !announcedExtension, Date().timeIntervalSince(launchedAt) >= timeout {
                 announcedExtension = true
@@ -939,6 +947,18 @@ public struct BridgeLauncher {
                 port: port, logPath: logPath.path, blocker: blocker)
         }
         throw LauncherError.timedOut(lastError.map { "\($0)" } ?? "no response", logPath.path)
+    }
+
+    /// ランナーアプリ(xctest の host app)がそのシミュレータで動いているか。ps の 1 行が
+    /// `…/Devices/<udid>/…/FleetestRunnerUITests-Runner.app/FleetestRunnerUITests-Runner` を含む
+    static func runnerAppIsRunning(udid: String) -> Bool {
+        guard let ps = try? Shell.run(["ps", "-axo", "command="]), ps.status == 0 else { return false }
+        return ps.output.split(separator: "\n").contains { Self.isRunnerAppProcess(command: String($0), udid: udid) }
+    }
+
+    static func isRunnerAppProcess(command: String, udid: String) -> Bool {
+        command.contains("/Devices/\(udid)/")
+            && command.contains("FleetestRunnerUITests-Runner.app/FleetestRunnerUITests-Runner")
     }
 
     static func runnerPid(at pidPath: URL) -> Int32? {

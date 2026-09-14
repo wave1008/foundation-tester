@@ -80,9 +80,8 @@ public struct InAppLauncher {
     /// プロビジョニング時のみ呼ぶ。relaunch には入れない=シナリオ毎の launch を遅くしない)。
     /// XCUITest 経路は xcodebuild が自動ブートするが、simctl launch はブート済みが前提。
     public func ensureBooted() throws {
-        let result = try Shell.run(["xcrun", "simctl", "bootstatus", udid, "-b"])
-        guard result.status == 0 else {
-            throw InAppLauncherError.bootFailed(result.tail)
+        do { try SimulatorBoot.ensureBooted(udid: udid) } catch SimulatorBoot.Error.failed(_, let detail) {
+            throw InAppLauncherError.bootFailed(detail)
         }
     }
 

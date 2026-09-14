@@ -38,6 +38,26 @@ final class BridgeStartupWaitTests: XCTestCase {
         XCTAssertEqual(BridgeStartupWait.suiteStartedMarker, "Test Suite 'All tests' started")
     }
 
+    // MARK: - ランナーアプリの起動(ログが無音の間の進み)
+
+    func testRunnerAppProcessIsRecognisedOnlyForTheSameSimulator() {
+        let udid = "E38DCA93-95F2-4DDF-B1FE-29527205D3EE"
+        let line = "/Users/x/Library/Developer/CoreSimulator/Devices/\(udid)/data/Containers/Bundle/Application/8A5A/FleetestRunnerUITests-Runner.app/FleetestRunnerUITests-Runner"
+        XCTAssertTrue(BridgeLauncher.isRunnerAppProcess(command: line, udid: udid))
+        XCTAssertFalse(BridgeLauncher.isRunnerAppProcess(command: line, udid: "C96A69C4-FE49-42EE-8C7F-ED5F603C346B"), "隣の台のランナー")
+        XCTAssertFalse(BridgeLauncher.isRunnerAppProcess(
+            command: "/Users/x/Library/Developer/CoreSimulator/Devices/\(udid)/data/Containers/Bundle/Application/1/FTE2ERN.app/FTE2ERN", udid: udid),
+            "対象アプリはランナーではない")
+    }
+
+    // MARK: - 同時起動の台数(BridgeProvisioner.launchWidth)
+
+    func testColdSimulatorBootsTwoAtATime() {
+        XCTAssertEqual(BridgeProvisioner.launchWidth(launchesInApp: false, launchesColdSimulator: true, deviceCount: 8), 2)
+        XCTAssertEqual(BridgeProvisioner.launchWidth(launchesInApp: true, launchesColdSimulator: false, deviceCount: 8), 2)
+        XCTAssertEqual(BridgeProvisioner.launchWidth(launchesInApp: false, launchesColdSimulator: false, deviceCount: 8), 8)
+    }
+
     // MARK: - 結果の束
 
     func testResultBundleNamesForAPort() {
