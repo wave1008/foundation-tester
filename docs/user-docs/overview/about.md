@@ -54,8 +54,9 @@ On an iOS simulator, Fleetest keeps two bridges up at once and picks one for eac
 
 - **In-app bridge (primary)** — Injected into the app's process when the app launches, it reads
   the screen and performs taps and text entry from inside the app. With no cross-process round
-  trip it is faster, and app launch is shorter too (in Fleetest's own E2E runs, the median launch
-  dropped from 4.8–5.6 s with XCUITest alone to about 3.3 s).
+  trip it is faster: in Fleetest's own E2E runs (a Compose Multiplatform app, 40 scenarios,
+  8 devices in parallel), the total scenario time dropped from 394 s with XCUITest alone to
+  254 s — about 36% shorter.
 - **XCUITest bridge (fallback)** — The OS's automation, running outside the app. Only operations
   the in-app bridge fundamentally cannot reach are routed here.
 
