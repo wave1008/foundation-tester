@@ -48,10 +48,59 @@ any of them becomes the same `.swift` file and can be run from any of them.
 | **CLI** `fleetest` | Scheduled CI / regression runs |
 | **Swift DSL** | The test asset itself: `TestProjects/<name>/scenarios/*.swift` |
 
+## iOS runs on a hybrid engine
+
+On an iOS simulator, Fleetest keeps two bridges up at once and picks one for each operation.
+
+- **In-app bridge (primary)** — Injected into the app's process when the app launches, it reads
+  the screen and performs taps and text entry from inside the app. With no cross-process round
+  trip it is faster, and app launch is shorter too (in Fleetest's own E2E runs, the median launch
+  dropped from 4.8–5.6 s with XCUITest alone to about 3.3 s).
+- **XCUITest bridge (fallback)** — The OS's automation, running outside the app. Only operations
+  the in-app bridge fundamentally cannot reach are routed here.
+
+| When | Path used |
+|---|---|
+| Taps, text entry, reading the screen | in-app |
+| Home screen, app switcher | XCUITest |
+| When another app (home screen, Settings, …) is opened | XCUITest (back to in-app when you return to your app) |
+| OS system alerts (`iosAlertHandler`) | XCUITest |
+| Gestures the in-app bridge cannot perform on Compose / Flutter screens, such as long press | XCUITest |
+| A WebView inside Compose / Flutter | Read in-app; taps are real XCUITest touches |
+
+### Why it matters
+
+- **No paths in your scenarios** — Test tools that have both an inside-the-app path and an
+  outside-the-app path usually leave the choice to the test author, who writes it out through
+  separate APIs or context switches. In Fleetest, the tool decides at run time whether an
+  operation can be done in-app. Only operations the bridge has declared "not possible for this
+  app", or that actually answer "not possible", are routed to XCUITest. Which operations the
+  in-app bridge can perform depends on the app's UI framework (SwiftUI, UIKit, Compose
+  Multiplatform, Flutter, React Native), but your scenarios never have to spell that difference
+  out.
+- **No changes to your app** — The in-app bridge is injected at launch, so there is no test
+  library to link into the app and no test-only build to produce. Your usual simulator build
+  (`.app`) works as is.
+- **Never fired twice across paths** — Only operations known to be fundamentally impossible
+  in-app are rerouted. An operation that may or may not have landed is never re-fired through the
+  other path (so that a send or a purchase cannot happen twice).
+- **Exploration and tests see the same thing** — The MCP server (agent-driven exploration) runs
+  with the same engine setup as the run profile, so "it worked while exploring but the scenario
+  fails" is much less likely.
+
+### Scope
+
+- The hybrid engine is used only on iOS simulators. A physical iOS device cannot take the injected
+  bridge, so it runs on XCUITest alone.
+- Android has no engine choice (it runs on a single bridge over adb).
+- To run on XCUITest alone, set `iosInappEngine` to `false` in the run profile
+  (see [Run profile settings](../project/run_profile.md)).
+
 ## How it works
 
-Devices are driven through resident bridges of our own. On iOS it talks over HTTP to an XCUITest
-process inside the simulator; on Android it talks to a bridge over adb. There is no dependency on
+Devices are driven through resident bridges of our own. On iOS it talks over HTTP to two of them —
+an in-app bridge injected into the app and an XCUITest process inside the simulator (the hybrid
+engine above); on Android it talks to a bridge over adb. There is no dependency on
 Appium or any other external driver.
 
 Platform differences end at the driver layer — the replay engine and the Foundation Models calls

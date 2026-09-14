@@ -12,7 +12,10 @@ Shirates-style Swift DSL and replayed deterministically — ordinary playback us
 Foundation Models (on-device) are used only for a few specific features: self-healing of broken
 selectors, visual verification with `screenLooksLike`, and triage when a step fails. Tests can
 be authored by an agent (MCP), recorded from the VSCode extension, or written by hand — all
-three produce the same `.swift` scenarios.
+three produce the same `.swift` scenarios. On iOS it runs on a **hybrid engine**: a bridge
+injected into the app drives it fast, and only operations that can be reached solely from outside
+the app are routed to XCUITest automatically — so your scenarios never name a path and your app
+needs no changes ([details](overview/about.md)).
 
 ## Repository
 
