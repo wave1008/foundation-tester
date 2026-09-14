@@ -43,5 +43,11 @@ type("#note", "new contents", replace: true)
   recover (the field is ambiguous), write the selector form instead —
   `type(sel, "some text")` resolves, focuses, and reads the value back in one step.
 
+- **The typed value is read back and repaired.** A missing tail is re-sent, a doubled value is
+  trimmed, and **a character dropped mid-string (`hello123` → `hllo123`) clears the field and
+  retypes the whole text** (note `type-retyped`). It retypes at most once — if the same
+  characters go missing again, the app itself is transforming the input (a digits-only field
+  discarding letters, for example), so verification is abandoned and the value is accepted.
+
 ### Link
 - [index](../index.md)

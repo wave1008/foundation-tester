@@ -25,8 +25,66 @@ final class TypeReadbackTargetTests: XCTestCase {
                                                  actual: "hello")
         XCTAssertEqual(target, "hello123")
         XCTAssertEqual(TypeReadback.plan(expected: target, actual: "hello"), .resend("123"))
-        // 採り直さないと諦めていたこと(退行したら落ちる)
-        XCTAssertEqual(TypeReadback.plan(expected: "単一行hello123", actual: "hello"), .unverifiable)
+        // 採り直さないとどうなるか(v104 から `.retype` = **ヒント文字列ごと打ち込む**側に倒れる。
+        // だから readbackTarget は前方一致の説明を部分列の説明より先に採る)
+        XCTAssertEqual(TypeReadback.plan(expected: "単一行hello123", actual: "hello"), .retype)
+    }
+
+    /// **前方一致の説明は部分列(.retype)の説明に勝つ**: 撃った文字が丸ごと入っている
+    /// (`typedOnly` で `.done`)のに、ヒント付きの `expected` の部分列でもある形
+    func testPrefersThePrefixExplanationOverARetype() {
+        XCTAssertEqual(
+            StepExecutor.readbackTarget(expected: "hinthello", typedOnly: "hello", actual: "hello"),
+            "hello")
+        XCTAssertEqual(TypeReadback.plan(expected: "hinthello", actual: "hello"), .retype,
+                       "前提: expected 側は .retype になる(ならないならこのテストは何も判別していない)")
+    }
+
+    /// 両方が `.retype` なら既定の `expected`(撃つ前の値が実在で、追記の途中が落ちた形)
+    func testKeepsExpectedWhenBothTargetsNeedARetype() {
+        XCTAssertEqual(
+            StepExecutor.readbackTarget(expected: "zzabc", typedOnly: "abc", actual: "ac"),
+            "zzabc")
+    }
+
+    /// `expected` では説明できず `typedOnly` の部分列にはなる形は `typedOnly` を打ち直す
+    func testFallsBackToTypedOnlyRetypeWhenExpectedCannotExplainTheValue() {
+        XCTAssertEqual(
+            StepExecutor.readbackTarget(expected: "単一行hello", typedOnly: "hello", actual: "hlloX"),
+            "単一行hello", "どちらも説明できないなら expected のまま")
+        XCTAssertEqual(
+            StepExecutor.readbackTarget(expected: "ab", typedOnly: "hello", actual: "hllo"),
+            "hello")
+    }
+
+    // ---- 打ち直し(.retype)の実経路 ----
+
+    /// **witness**: E2E-RN の `hello123` → `hllo123`。中央の欠落は clearInput + 全文打ち直しで
+    /// 埋まり、ステップは緑・注記 `type-retyped` が立つ
+    func testTypeStepRetypesAfterAMidStringDrop() async {
+        let driver = ReadbackSequenceDriver(values: ["", "hllo123", "hello123"])
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(
+            FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hello123"))
+        XCTAssertTrue(StepExecutor.isSuccess(outcome.status), "\(outcome.status)")
+        XCTAssertTrue(outcome.notes.contains(.typeRetyped), "\(outcome.notes)")
+        XCTAssertEqual(driver.clears, 1)
+        XCTAssertEqual(driver.typedTexts, ["hello123", "hello123"])
+    }
+
+    /// **上限(`TypeReadback.maxRetypes`)**: 打ち直しても同じ形で欠ける欄(英字を捨てる数字欄)は
+    /// アプリ側の加工なので、1回打ち直したら v104 より前と同じく受理する(停滞 → 失敗にしない)
+    func testTypeStepStopsRetypingWhenTheFieldKeepsDroppingTheSameCharacters() async {
+        let driver = ReadbackSequenceDriver(values: ["", "12", "12", "12", "12", "12"])
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(
+            FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "a1b2"))
+        XCTAssertTrue(StepExecutor.isSuccess(outcome.status), "\(outcome.status)")
+        XCTAssertEqual(driver.clears, TypeReadback.maxRetypes)
+        XCTAssertEqual(driver.typedTexts.count, TypeReadback.maxRetypes + 1)
+    }
+
+    /// `maxRetypes` の既定をリテラルで固定する(他のテストが定数経由で書くと既定を1度も通らない)
+    func testMaxRetypesIsPinned() {
+        XCTAssertEqual(TypeReadback.maxRetypes, 1)
     }
 
     /// 本当に値が入っていた欄では `expected` のまま(連結は正しい)
@@ -178,6 +236,44 @@ private final class ReadbackStubDriver: AppDriver {
     func tap(ref: Int) async throws {}
     func tap(x: Double, y: Double) async throws {}
     func type(ref: Int?, text: String) async throws { typed = true }
+    func swipe(_ direction: FTSwipeDirection) async throws {}
+    func press(ref: Int, duration: Double) async throws {}
+    func screenshot() async throws -> Data { Data() }
+    func terminate() async throws {}
+}
+
+/// `type` / `clearInput` のたびに次の値へ進む欄。`values[0]` は撃つ前、以後は type 1回ごとに1つ進む
+/// (clearInput は進めない = in-app の clear が値を消しても読み返しは次の type の後にしか撮らない)
+private final class ReadbackSequenceDriver: AppDriver {
+    private let values: [String]
+    private var index = 0
+    private(set) var clears = 0
+    private(set) var typedTexts: [String] = []
+    init(values: [String]) { self.values = values }
+
+    private var response: SnapshotResponse {
+        SnapshotResponse(sessionBundleID: nil,
+                         screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                         elements: [ElementInfo(ref: 1, type: "textField", identifier: "field",
+                                                label: nil, value: values[min(index, values.count - 1)],
+                                                placeholder: nil, enabled: true,
+                                                frame: FTRect(x: 0, y: 0, width: 100, height: 40),
+                                                depth: 1)],
+                         truncatedCount: 0)
+    }
+    func status() async throws -> StatusResponse {
+        StatusResponse(ready: true, device: "stub", osVersion: "-", sessionBundleID: nil)
+    }
+    func install(packagePath: String) async throws {}
+    func uninstall(bundleID: String) async throws {}
+    func isAppForeground(bundleID: String) async throws -> Bool { false }
+    func foregroundAppID() async throws -> String? { nil }
+    func launch(bundleID: String) async throws {}
+    func snapshot() async throws -> SnapshotResponse { response }
+    func tap(ref: Int) async throws {}
+    func tap(x: Double, y: Double) async throws {}
+    func type(ref: Int?, text: String) async throws { typedTexts.append(text); index += 1 }
+    func clearInput(ref: Int?) async throws { clears += 1 }
     func swipe(_ direction: FTSwipeDirection) async throws {}
     func press(ref: Int, duration: Double) async throws {}
     func screenshot() async throws -> Data { Data() }

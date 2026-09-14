@@ -140,6 +140,11 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// `#id` が容器を指している(セレクタを取る `type` へ寄せる判断材料になる)
     case typeFocusRecovered = "type-focus-recovered"
 
+    /// 読み返しで**中央の文字が落ちていた**(`TypeReadback.Plan.retype`)ので、消してから全文を打ち直した
+    /// (in-app 経路。XCUITest ランナーの打ち直しは OKResponse.note → driverFallback に出る)。
+    /// **率を見たい注記**: 緑の run で増えるなら誤検知(本当は加工された入力を打ち直している)を疑う
+    case typeRetyped = "type-retyped"
+
     /// OS のシステム UI(権限アラート等)がアプリを覆っていたので、**消えるまで待ってから**
     /// 操作した(`SystemUIGate`)。**率を見たい注記**: 増えているなら、そのシナリオは
     /// 権限を事前付与するか `iosAlertHandler` を登録するべき画面を通っている
@@ -233,6 +238,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
             return "the target was still disabled, so the tap waited for it to become enabled"
         case .waitedForSystemUI:
             return "system UI was covering the app, so this waited for it to go away before acting"
+        case .typeRetyped:
+            return "a keystroke was dropped mid-string, so the text was cleared and retyped"
         case .typeFocusRecovered:
             return "the preceding tap did not put a field in focus, so the text went to the"
                 + " field it resolved to"

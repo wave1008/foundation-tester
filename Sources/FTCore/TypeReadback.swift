@@ -20,6 +20,10 @@ public enum TypeReadback {
         case resend(String)
         /// 二重入力(実際値が期待値を含んで長い)。この文字数だけ delete を打つ
         case deleteExcess(Int)
+        /// **中央の欠落**(実際値が期待値の順序を保った部分列で、落ちた文字に可視文字を含む)=
+        /// 打鍵の落ち。追送では埋められない位置なので**全文を打ち直す**(ランナー = delete × 実際値の
+        /// 文字数 + 期待値 / ホスト = clearInput + type)。実データ: `hello123`→`hllo123` / `persist99`→`prsist99`
+        case retype
         /// どちらでもない = 入力が加工されている(自動修正・書式付け・マスク欄の伏せ字)。
         /// 追送でも delete でも直せないので検証を諦めて受理する
         case unverifiable
@@ -38,7 +42,33 @@ public enum TypeReadback {
         }
         if expected.hasPrefix(actual) { return .resend(String(expected.dropFirst(actual.count))) }
         if actual.hasPrefix(expected) { return .deleteExcess(actual.count - expected.count) }
+        // **前方一致の後にしか置けない**: `hel` は `hello123` の部分列でもあり、先に見ると
+        // 今自己修復できている「末尾の欠落 → 追送」を全文打ち直しに変えてしまう。
+        // 落ちた文字が空白だけなら読めない空白(上の規則)と区別できないので諦める
+        if isSubsequenceDroppingVisibleCharacters(actual, of: expected) { return .retype }
         return .unverifiable
+    }
+
+    /// 1回の type で全文を打ち直す上限(ランナー・ホストの両消費者が共有)。
+    /// **1 = 打ち直しても同じ形で欠けるなら、それは打鍵の落ちではなくアプリ側の加工**
+    /// (数字だけ通す欄が英字を捨てる等)。2回目以降は v104 より前と同じく検証を諦めて受理する ——
+    /// 上限が無いと加工する欄で「消す→打つ→同じ値」が停滞に達し、緑だった step が 422 になる
+    public static let maxRetypes = 1
+
+    /// `actual` が `expected` の順序を保った真部分列で、落ちた文字に空白でないものが含まれるか
+    public static func isSubsequenceDroppingVisibleCharacters(_ actual: String, of expected: String) -> Bool {
+        guard actual.count < expected.count else { return false }
+        var dropped: [Character] = []
+        var index = actual.startIndex
+        for ch in expected {
+            if index < actual.endIndex, actual[index] == ch {
+                index = actual.index(after: index)
+            } else {
+                dropped.append(ch)
+            }
+        }
+        guard index == actual.endIndex else { return false }
+        return dropped.contains { !$0.isWhitespace && !$0.isNewline }
     }
 
     /// 読み返しの対象になる型(値がテキストとして読める要素)。ここに無い型は検証せず素通しする

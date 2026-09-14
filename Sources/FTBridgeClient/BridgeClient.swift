@@ -744,8 +744,11 @@ public final class BridgeClient: AppDriver {
     }
 
     public func type(ref: Int?, text: String) async throws {
-        let _: OKResponse = try await post("/type", body: TypeRequest(ref: ref, text: text),
-                                           timeout: interactionTimeout)
+        lastActionNote = nil
+        let res: OKResponse = try await post("/type", body: TypeRequest(ref: ref, text: text),
+                                             timeout: interactionTimeout)
+        // ランナーの打ち直し(TypeReadback.Plan.retype)の申告。tap と同じく driverFallback へ運ぶ
+        lastActionNote = res.note
     }
 
     public func pressEnter() async throws {

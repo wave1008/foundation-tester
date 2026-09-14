@@ -28,6 +28,39 @@ final class TypeReadbackTests: XCTestCase {
         XCTAssertEqual(TypeReadback.plan(expected: "abc", actual: "abcabc"), .deleteExcess(3))
     }
 
+    // MARK: - 中央の欠落(2026-08-25 の実データ・判別軸 R2 = 部分列 かつ 落ちた文字が空白だけではない)
+
+    /// 実データ 2 件: `e` が中央で落ちる。前方一致にならないので追送では埋まらず、全文を打ち直す
+    func testPlanRetypesWhenACharacterWasDroppedInTheMiddle() {
+        XCTAssertEqual(TypeReadback.plan(expected: "hello123", actual: "hllo123"), .retype)
+        XCTAssertEqual(TypeReadback.plan(expected: "persist99", actual: "prsist99"), .retype)
+        // 複数文字が別々の位置で落ちても順序が保たれていれば同じ
+        XCTAssertEqual(TypeReadback.plan(expected: "a1b2c3", actual: "abc"), .retype)
+    }
+
+    /// **末尾の欠落は今までどおり追送**(`hel` は `hello123` の部分列でもある —— 順序を入れ替えると
+    /// 自己修復できていた形を打ち直しに変えてしまう)
+    func testPrefixDropsStillResendRatherThanRetype() {
+        XCTAssertEqual(TypeReadback.plan(expected: "hello123", actual: "hel"), .resend("lo123"))
+    }
+
+    /// 盤面の残り: マスク欄・書式付け・自動修正(順序が変わる)・**空白だけの欠落**は打ち直さない
+    func testRetypeDoesNotFireOnTransformedOrWhitespaceOnlyDrops() {
+        XCTAssertEqual(TypeReadback.plan(expected: "secret42", actual: "••••••••"), .unverifiable)
+        XCTAssertEqual(TypeReadback.plan(expected: "5551234", actual: "555-1234"), .unverifiable)
+        XCTAssertEqual(TypeReadback.plan(expected: "teh", actual: "the"), .unverifiable)
+        XCTAssertEqual(TypeReadback.plan(expected: "1 2 3", actual: "123"), .unverifiable)
+        XCTAssertEqual(TypeReadback.plan(expected: "a b", actual: "ab"), .unverifiable)
+    }
+
+    func testSubsequenceHelperBoundaries() {
+        XCTAssertTrue(TypeReadback.isSubsequenceDroppingVisibleCharacters("hllo", of: "hello"))
+        XCTAssertFalse(TypeReadback.isSubsequenceDroppingVisibleCharacters("hello", of: "hello"), "同じ長さは部分列扱いしない")
+        XCTAssertFalse(TypeReadback.isSubsequenceDroppingVisibleCharacters("olleh", of: "hello"), "順序が違う")
+        XCTAssertFalse(TypeReadback.isSubsequenceDroppingVisibleCharacters("ab", of: "a b"), "落ちたのが空白だけ")
+        XCTAssertTrue(TypeReadback.isSubsequenceDroppingVisibleCharacters("", of: "a") == true)
+    }
+
     func testPlanGivesUpWhenInputWasTransformed() {
         // 自動修正・書式付け・マスク欄(•••)は前方一致にならない → 追送すると値を壊す
         XCTAssertEqual(TypeReadback.plan(expected: "secret42", actual: "••••••••"), .unverifiable)

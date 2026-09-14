@@ -879,6 +879,8 @@ extension MCPServer {
                 let resolvedTypeRef = rescuedNativeRef ?? targetRef.map { nativeRef($0, args: args) }
                 do {
                     try await typeDriver.type(ref: resolvedTypeRef, text: content)
+                    // XCUITest ランナーが打ち直した事実(OKResponse.note)を返答に載せる
+                    note += Self.driverFallbackNote(typeDriver)
                 } catch {
                     // **ref なしで撃った失敗だけ**、前面の SpringBoard アラートを名指しする
                     // 一発物の照会を添える(SystemUIGate の申告は木に載らないので、素の失敗は
@@ -1797,7 +1799,7 @@ extension MCPServer {
     }
 
     /// ブリッジが操作の応答に載せた注記(`AppDriver.lastActionNote`。
-    /// 今のところ `tap(ref:)` の「activate 不発 → 合成タッチ」だけが立てる)を、MCP の応答にも
+    /// `tap(ref:)` の「activate 不発 → 合成タッチ」と `type` の打ち直しが立てる)を、MCP の応答にも
     /// 載せる。DSL は `StepExecutor+Actions.swift` の `driverFallback` へ同じ値を運んでいるので、
     /// MCP だけが黙って捨てると同じ事実を MCP 経由の探索者だけが見えない
     static func driverFallbackNote(_ driver: AppDriver) -> String {

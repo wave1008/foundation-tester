@@ -1116,6 +1116,8 @@ extension StepExecutor {
             do {
                 start = clock.now
                 try await actingDriver.type(ref: element.ref, text: step.text ?? "")
+                // ランナーの打ち直しの申告(TypeReadback.Plan.retype → OKResponse.note)。tap と同じく合流
+                driverFallback = Self.joinNotes(driverFallback, actingDriver.lastActionNote)
                 phase.actionMs += Self.ms(clock.now - start)
                 driverFallback = Self.joinNotes(driverFallback, replaceFallbackNote, existingValueNote,
                                                 nonInputNote)
@@ -1295,6 +1297,7 @@ extension StepExecutor {
         var rounds = 0
         var stagnantRounds = 0
         var previous: String?
+        var retypes = 0
         // 不可視文字を正規化する: MCP の replaceVerificationNote/appendVerificationNote
         // と同じ規律。実データが混入させるゼロ幅文字(Flow.swift 参照)だけで、実質同じ文字列が
         // `TypeReadback.plan` の前方一致から外れる。**壊れ方は混入位置で2つに割れる**:
@@ -1328,10 +1331,17 @@ extension StepExecutor {
                 let start = clock.now
                 try await driver.type(ref: element.ref, text: missing)
                 phase.actionMs += Self.ms(clock.now - start)
-            case .deleteExcess:
+            case .retype where retypes >= TypeReadback.maxRetypes:
+                return nil   // 打ち直しても同じ形 = アプリ側の加工。TypeReadback.maxRetypes
+            case .deleteExcess, .retype:
                 // in-app はバックスペースを送れないので、丸ごとクリアしてから全文を打ち直す
                 // (handleClear と同じ 422 系の判断。clearInput のケースの既存実装と同じ API 形)。
-                // target は正規化済み(上と同じ理由で受け入れる)
+                // target は正規化済み(上と同じ理由で受け入れる)。**.retype は数える**(緑の run で
+                // 打ち直しが起きた回数 = 誤検知の監視。TypeReadback.Plan.retype)
+                if case .retype = TypeReadback.plan(expected: target, actual: actual) {
+                    retypes += 1
+                    noteCodesThisStep.insert(.typeRetyped)
+                }
                 let start = clock.now
                 try await driver.clearInput(ref: element.ref)
                 try await driver.type(ref: element.ref, text: target)
@@ -1417,13 +1427,25 @@ extension StepExecutor {
         let typedOnly = FlowMatchMode.normalizeInvisibleCharacters(typedOnly)
         let actual = FlowMatchMode.normalizeInvisibleCharacters(actual)
         guard expected != typedOnly else { return expected }
-        guard case .unverifiable = TypeReadback.plan(expected: expected, actual: actual) else {
-            return expected
+        // **前方一致の説明(.done/.resend/.deleteExcess)は部分列の説明(.retype)に勝つ**。
+        // ヒントが value に載る欄では `expected = ヒント + 本文` で、撃った文字だけの `actual` は
+        // ヒント付きの `expected` の部分列にもなる(`hello` ⊂ `単一行hello123`)—— ここで
+        // `expected` を目標にすると**ヒント文字列を欄へ打ち込む**。両方が .retype のときは既定の
+        // `expected`(撃つ前の値が実在だった形 = `old`+`new` が `onew` になった)を採る
+        let byExpected = TypeReadback.plan(expected: expected, actual: actual)
+        if Self.explainsByPrefix(byExpected) { return expected }
+        let byTypedOnly = TypeReadback.plan(expected: typedOnly, actual: actual)
+        if Self.explainsByPrefix(byTypedOnly) { return typedOnly }
+        if case .retype = byExpected { return expected }
+        if case .retype = byTypedOnly { return typedOnly }
+        return expected
+    }
+
+    private static func explainsByPrefix(_ plan: TypeReadback.Plan) -> Bool {
+        switch plan {
+        case .done, .resend, .deleteExcess: return true
+        case .retype, .unverifiable: return false
         }
-        if case .unverifiable = TypeReadback.plan(expected: typedOnly, actual: actual) {
-            return expected
-        }
-        return typedOnly
     }
 
     /// 読み返しの打ち切り時間・停滞許容周回数・安定待ち。BridgeRouter.handleType の
