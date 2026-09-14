@@ -29,6 +29,11 @@ public enum TranscriptMatch {
         public let visible: Bool
         public let state: State
         public let reason: String
+        public init(visible: Bool, state: State, reason: String) {
+            self.visible = visible
+            self.state = state
+            self.reason = reason
+        }
     }
 
     /// 切り詰めとして認める転写の最短長(正規化後の文字数)。1 文字だけの一致は偶然が多すぎる
@@ -74,6 +79,18 @@ public enum TranscriptMatch {
         }
         return Verdict(visible: false, state: .textMismatch,
                        reason: "the text drawn there reads \"\(transcript)\", not the expected text")
+    }
+
+    /// `judge` が退けた転写のうち、**誤読の可能性が残る**もの(1 文字、または len÷5 文字までの差。
+    /// 先頭の文字・長さの条件は問わない)。呼び手はこのときだけ OCR に読ませ、期待文字列が丸ごと
+    /// 読めれば見えている側へ倒す(OCR は素通りの根拠にしかしない = RegionText の規律)。
+    /// 実測(2026-09-15・E2E-RN M1Max): 入力欄の placeholder「単一行」を FM が簡体字で「单一行」と転写し、
+    /// 3 文字で許容 0 → 誤った赤。旧字体「擴張」も同型。OCR はどちらも正しく読める
+    public static func isNearMiss(transcript: String, expected: String) -> Bool {
+        let o = RegionText.normalize(transcript)
+        let e = RegionText.normalize(expected)
+        guard !o.isEmpty, !e.isEmpty else { return false }
+        return approximateSubstringDistance(haystack: o, needle: e) <= max(1, e.count / misreadDivisor)
     }
 
     /// 期待文字列と、転写の任意の部分文字列との最小編集距離(開始・終了は自由)。転写に前後の

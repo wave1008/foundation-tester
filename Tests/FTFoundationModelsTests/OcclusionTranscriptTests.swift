@@ -50,6 +50,19 @@ final class OcclusionTranscriptTests: XCTestCase {
         XCTAssertEqual(body.components(separatedBy: "FMGate.enter()").count - 1, 1)
     }
 
+    /// 惜しい転写(字体の取り違え)は OCR に確かめさせるが、**OCR は素通りの根拠にしかしない**:
+    /// 読めたときだけ visible へ倒し、読めなかったことで反転しない(RegionText の規律)
+    func testOCRConfirmationOnlyPasses() throws {
+        let body = try XCTUnwrap(Self.functionBody(named: "verifyCropped", in: Self.verifierSource()))
+        XCTAssertTrue(body.contains("TranscriptMatch.isNearMiss("), "惜しい転写の OCR 確認が無い")
+        XCTAssertTrue(body.contains("case .read(readable: true, let reading) = await RegionText.resolveWithinBudget("),
+                      "OCR の読みが「丸ごと読めた」ときだけに絞られていない")
+        XCTAssertTrue(body.contains("verdict = TranscriptMatch.Verdict(visible: true, state: .fullyVisible"),
+                      "OCR で読めた回が visible へ倒れていない")
+        XCTAssertFalse(body.contains("visible: false, state: .textMismatch") || body.contains("readable: false"),
+                       "OCR の読めなかったことを反転の根拠にしている")
+    }
+
     /// 転写の成功・失敗を FMHealth へ計上すること(結果 JSON の fm.calls とブレーカの根拠)
     func testTranscribeIsAccounted() throws {
         let body = try XCTUnwrap(Self.functionBody(named: "transcribe", in: Self.verifierSource()))

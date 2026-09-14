@@ -84,6 +84,19 @@ final class TranscriptMatchTests: XCTestCase {
         XCTAssertFalse(TranscriptMatch.judge(transcript: "", expected: "…").visible)
     }
 
+    /// 退けた転写のうち OCR に確かめさせる「惜しい」もの: 字体の取り違え(1 文字)は該当、
+    /// 空・無関係・2 文字以上ずれた短い語は該当しない
+    func testNearMissCoversGlyphVariantsOnly() {
+        XCTAssertTrue(TranscriptMatch.isNearMiss(transcript: "单一行", expected: "単一行"))
+        XCTAssertTrue(TranscriptMatch.isNearMiss(transcript: "擴張", expected: "拡張"))
+        XCTAssertTrue(TranscriptMatch.isNearMiss(transcript: "ff", expected: "Off"))   // OCR が「Off」を読めなければ覆いのまま
+        XCTAssertFalse(TranscriptMatch.isNearMiss(transcript: "", expected: "拡張"))
+        XCTAssertFalse(TranscriptMatch.isNearMiss(transcript: "ピン留め", expected: "概要"))
+        XCTAssertFalse(TranscriptMatch.isNearMiss(transcript: "ホーム", expected: "検定"))
+        // 惜しさの判定は緩い(1 文字差は全部拾う)。可否は OCR が丸ごと読めたかで決まる
+        XCTAssertTrue(TranscriptMatch.isNearMiss(transcript: "検索設定", expected: "検定"))
+    }
+
     func testApproximateSubstringDistance() {
         XCTAssertEqual(TranscriptMatch.approximateSubstringDistance(haystack: "abcdef", needle: "abcdef"), 0)
         XCTAssertEqual(TranscriptMatch.approximateSubstringDistance(haystack: "xxabcdyfxx", needle: "abcdef"), 1)

@@ -109,6 +109,20 @@ public struct OcclusionVerifier {
                 }
             }
         }
+        // FM の転写が期待文字列に**惜しい**(1 文字の差)ときだけ、同じ crop を OCR にも読ませる。
+        // FM は CJK の字体を取り違える(「単一行」→「单一行」・「拡張」→「擴張」)が、OCR は読める。
+        // **OCR は素通りの根拠にしかしない**(読めなければ判定は FM の転写のまま = 規律どおり)。
+        // 通常はここへ来る前に Tier-2 の OCR が同じ crop を読んで FM を省いているので、ここに
+        // 届くのは OCR が暖まっていない・予算切れの回だけ
+        if !verdict.visible,
+           TranscriptMatch.isNearMiss(transcript: first, expected: expectedText)
+            || TranscriptMatch.isNearMiss(transcript: observed, expected: expectedText),
+           case .read(readable: true, let reading) = await RegionText.resolveWithinBudget(
+                expected: expectedText, pngData: screenshotPNG, frame: frame, screen: screen,
+                cropPadding: cropPadding) {
+            verdict = TranscriptMatch.Verdict(visible: true, state: .fullyVisible, reason: "")
+            observed = reading.lines.joined(separator: " ")
+        }
         var reason = verdict.reason
         // 反転(不可視判定)したときだけ、**FM が実際に見た crop** を保存する。
         // レポートの失敗時スクショは poll が尽きた後の別撮りで、FM の入力ではない。
