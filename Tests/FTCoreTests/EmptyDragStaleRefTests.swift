@@ -92,7 +92,7 @@ final class EmptyDragStaleRefTests: XCTestCase {
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"))
 
         let result = await StepExecutor(driver: driver, releasesScrollTouch: true, isAndroid: false,
-                                    uiFramework: "compose")
+                                    uiFramework: .compose)
             .execute(step)
 
         XCTAssertGreaterThan(driver.moves, 0, "ghost の掴み直しが発火していない = この経路を通っていない")
@@ -112,7 +112,7 @@ final class EmptyDragStaleRefTests: XCTestCase {
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"))
 
         let result = await StepExecutor(driver: driver, releasesScrollTouch: true, isAndroid: false,
-                                    uiFramework: "compose")
+                                    uiFramework: .compose)
             .execute(step)
 
         XCTAssertEqual(driver.emptyDrags, 1, "空打ちが撃たれていない = この経路を通っていない")

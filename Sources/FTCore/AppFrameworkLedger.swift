@@ -1,4 +1,5 @@
 // UI フレームワークの判定結果を bundle ID ごとに覚える台帳(~/.fleetest/app-frameworks/<bundleID>.json)。
+// 読み書きは AppUIFrameworkQuery だけが行う(静的な答えだけを書く。ブリッジの自己申告は書かない)。
 //
 // 判定の材料(.app / .ipa)が**手元に無い**ときの唯一の答え —— 物理 iPhone は端末に入ったアプリの
 // 中身をホストからもランナーからも読めない(2026-09-12 実測: devicectl にバンドルの領域は無く、
@@ -18,6 +19,9 @@ public enum AppFrameworkLedger {
         public let sourcePath: String?
         public let sourceModified: Double?
         public let sourceSize: Int?
+        /// 材料がこの bundle ID のものだと確かめた印。**無い控えは指紋が合っても使わない** ——
+        /// 確かめずに書いた版は、プロファイルのアプリの判定をシナリオの対象アプリ(別の bundle ID)の名で残した
+        public let sourceBundleID: String?
     }
 
     static let directoryOverrideKey = "FT_APP_FRAMEWORK_DIR"

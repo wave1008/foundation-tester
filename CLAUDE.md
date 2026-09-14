@@ -493,8 +493,8 @@
   失敗モードが沈黙(誤った成功)なら塞ぐ価値がある**(その場合は「再現していない」と明記する)。
   可能なら**同型の再発を落とすテスト**まで足す(`SwipeForScrollForwardingTests` = ソース走査 /
   `BridgeRouterStatusContractTests` = 本数固定 / `AppDriverDefaultDispatchTests` = 宣言の突き合わせ)
-- **空打ち(スクロール探索の終端)を撃つかは3段で決める**: ①パッケージ(.app / .ipa)の目印
-  ②bundle ID ごとの台帳(`AppFrameworkLedger`)③**掴んだ要素のクラス名**(`ElementInfo.axClass` =
+- **空打ち(スクロール探索の終端)を撃つかは、アプリの UI フレームワーク(`AppUIFrameworkQuery`)→
+  掴んだ要素のクラス名の順で決める**(後者は `ElementInfo.axClass` =
   XCUITest ランナーが XCTest の**非公開**属性 5004 から載せる。Compose / Flutter の要素は
   `UIAccessibilityElement`、RN は `UIView`、SwiftUI は `NSObject`。`AccessibilityClassHint`)。
   どれも無ければ撃たない(打って外れると行が押される = 取り消せない側)。**木の形・型の名前から
@@ -591,6 +591,17 @@
   (`lptDefaultSync.test.mjs` が検出)
 
 ### 判定は1箇所に置く
+
+- **アプリの UI フレームワーク(iOS: compose / flutter / uikit)は `FTCore.AppUIFrameworkQuery` だけで
+  決める**。順は**静的(.app / .ipa のマーカー → シミュレータに入っているバンドル → bundle ID ごとの台帳
+  `AppFrameworkLedger`)→ 動的(in-app ブリッジの自己申告)→ `.unknown`**。静的を先に置くのは
+  自己申告の規則(`InAppBridge.uiFramework`)が `compose-resources` しか見ないため。守る規律4つ:
+  **①不明を既定値で埋めない**(呼び手が安全側を選ぶ)/ **②パッケージは宣言した bundle ID が対象と
+  一致するときだけ使う**(プロファイルのアプリとシナリオの対象アプリは別になりうる)/
+  **③自己申告は `bridgeReport(_:about:)` を通し、対象アプリ自身の申告のときだけ使う**・
+  台帳にもプロセス内の控えにも入れない(`AppUIFrameworkQueryWiringTests` が `StatusResponse.uiFramework` の
+  直読みをソース走査で落とす)/ **④Android は判定しない**(`.unknown`)。
+  **RN・SwiftUI は uikit に入る**(語彙を足すなら uikit で分岐している呼び手を全部見る)
 
 - **判定は MCP と DSL で共有する**。「手前かどうか」は `FTCore.PaintOrder`、「撃つと別の物に
   当たるか」は `FTCore.TapTargetGeometry`(合成チェーンは `occlusionAdvisory`)と

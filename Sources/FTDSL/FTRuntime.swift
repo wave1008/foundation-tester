@@ -427,9 +427,9 @@ public final class FTDriveCore {
                 deviceName: String? = nil,
                 deviceIdentifier: String? = nil,
                 physical: Bool = false,
-                // StepExecutor の空打ちゲート(shouldEmptyDrag)へ渡すヒント。呼び出し側
-                // (ScenarioRunnerMain)が engine ごとに解決する。nil は「不明」= 従来どおり
-                uiFramework: String? = nil,
+                // StepExecutor の空打ちゲート(shouldEmptyDrag)へ渡す答え。呼び出し側
+                // (ScenarioRunnerMain)が AppUIFrameworkQuery で解決する。nil = 不明(撃たない側)
+                uiFramework: AppUIFramework? = nil,
                 emit: @escaping (ScenarioEvent) -> Void) {
         self.driver = driver
         self.platform = platform

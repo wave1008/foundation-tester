@@ -407,7 +407,7 @@ final class MCPGuidanceTests: XCTestCase {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },
                                recordSnapshot: { _, _, _ in })
         server.engines[MCPServer.engineKey([:])] = "xcuitest"
-        let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: "compose",
+        let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: .compose,
                                         "double tap", args: [:])
         XCTAssertTrue(hint.contains("relaunches the app"), hint)
     }
@@ -419,8 +419,8 @@ final class MCPGuidanceTests: XCTestCase {
                                recordSnapshot: { _, _, _ in })
         let key = MCPServer.engineKey([:])
         server.engines[key] = "xcuitest"
-        server.uiFrameworkHints[key] = "uikit"
-        let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: "compose",
+        server.uiFrameworkHints[key] = .uikit
+        let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: .compose,
                                         "double tap", args: [:])
         XCTAssertEqual(hint, "", "uikit と判明しているのに Compose 専用の助言を出した: \(hint)")
     }
@@ -431,8 +431,8 @@ final class MCPGuidanceTests: XCTestCase {
                                recordSnapshot: { _, _, _ in })
         let key = MCPServer.engineKey([:])
         server.engines[key] = "xcuitest"
-        server.uiFrameworkHints[key] = "compose"
-        let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: "compose",
+        server.uiFrameworkHints[key] = .compose
+        let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: .compose,
                                         "double tap", args: [:])
         XCTAssertTrue(hint.contains("Compose Multiplatform apps do not receive double tap"), hint)
         XCTAssertFalse(hint.contains("this is a"), "判明しているのに断定を弱めた: \(hint)")
@@ -444,7 +444,7 @@ final class MCPGuidanceTests: XCTestCase {
                                recordSnapshot: { _, _, _ in })
         let key = MCPServer.engineKey([:])
         server.engines[key] = "xcuitest"
-        let hint = server.iosEngineHint("Flutter", frameworkKey: "flutter", "pinch", args: [:])
+        let hint = server.iosEngineHint("Flutter", frameworkKey: .flutter, "pinch", args: [:])
         XCTAssertTrue(hint.contains("this is a Flutter app"), hint)
     }
 }

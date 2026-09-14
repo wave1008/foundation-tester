@@ -21,14 +21,14 @@ final class EmptyDragKillSwitchTests: XCTestCase {
     func testOffDisablesTheReliefDragEvenForCompose() {
         setenv("FT_EMPTY_DRAG", "off", 1)
         let executor = StepExecutor(driver: FakeAppDriver(name: "p", log: CallLog()),
-                                    releasesScrollTouch: true, isAndroid: false, uiFramework: "compose")
+                                    releasesScrollTouch: true, isAndroid: false, uiFramework: .compose)
         XCTAssertFalse(executor.shouldEmptyDrag)
     }
 
     func testUnsetKeepsTheDefault() {
         unsetenv("FT_EMPTY_DRAG")
         let executor = StepExecutor(driver: FakeAppDriver(name: "p", log: CallLog()),
-                                    releasesScrollTouch: true, isAndroid: false, uiFramework: "compose")
+                                    releasesScrollTouch: true, isAndroid: false, uiFramework: .compose)
         XCTAssertTrue(executor.shouldEmptyDrag)
     }
 }

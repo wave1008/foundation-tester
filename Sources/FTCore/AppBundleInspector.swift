@@ -1,13 +1,7 @@
-// engine=xcuitest ではブリッジが uiFramework を自己申告しない(InAppBridge だけが持つ /status
-// フィールド)ため、ホスト側がパッケージのマーカーから同じ判定をする。マーカー規則は
-// InAppBridge.uiFramework(InAppBridge/Sources/InAppBridge.swift:32-42)と同一 — 片方だけ変えない。
-// in-app/hybrid は probe の自己申告(probeStatus?.uiFramework)をそのまま使うのでここを呼ばない。
-//
-// 判定の材料は .app / .ipa(AppPackageReader)。**材料が無いときは台帳**(AppFrameworkLedger =
-// 以前に同じ bundle ID を判定した結果)、それも無ければ nil(不明)。不明のとき呼び手
-// (StepExecutor.shouldEmptyDrag)は**空打ちを撃たない** —— 打って外れると行やボタンが押されて
-// アプリの状態が黙って変わるが、打たずに外れるとタップが吸われて失敗として見える。
-// 2026-09-12 に既定を反転した(それまでは「不明なら打つ」)。
+// .app / .ipa のマーカーから UI フレームワークを決める規則(材料を読むだけ)。**問い合わせの口は
+// AppUIFrameworkQuery**(材料の選び方・台帳・ブリッジの自己申告との順序はそちらが持つ)。
+// マーカー規則は InAppBridge.uiFramework(InAppBridge/Sources/InAppBridge.swift)の自己申告と対だが、
+// ブリッジ側は `compose-resources` しか見ない(SkikoUIView を見ない)—— だから問い合わせは静的を先に置く。
 
 import Foundation
 
@@ -19,20 +13,20 @@ public enum AppBundleInspector {
 
     /// バンドル直下のマーカー実在から判定する純粋関数(単体テスト対象。プロセス起動は分離)。
     /// 優先順位は InAppBridge と同じ(compose を先に見る)
-    public static func uiFramework(composeResourcesExists: Bool, flutterFrameworkExists: Bool) -> String {
-        if composeResourcesExists { return "compose" }
-        if flutterFrameworkExists { return "flutter" }
-        return "uikit"
+    public static func uiFramework(composeResourcesExists: Bool, flutterFrameworkExists: Bool) -> AppUIFramework {
+        if composeResourcesExists { return .compose }
+        if flutterFrameworkExists { return .flutter }
+        return .uikit
     }
 
     /// ビルド済みの .app / .ipa から直接判定する(サブプロセスは .ipa の unzip だけ)。
     /// パス未指定・実在しないパスは nil
-    public static func detect(appPath: String?) -> String? {
+    public static func detect(appPath: String?) -> AppUIFramework? {
         guard let reader = AppPackageReader.open(path: appPath) else { return nil }
         return detect(in: reader)
     }
 
-    static func detect(in reader: AppPackageReader) -> String {
+    static func detect(in reader: AppPackageReader) -> AppUIFramework {
         let compose = reader.exists("compose-resources") || composeMarkerPresent(in: reader)
         return uiFramework(composeResourcesExists: compose,
                            flutterFrameworkExists: reader.exists("Frameworks/Flutter.framework"))
@@ -112,51 +106,5 @@ public enum AppBundleInspector {
             + " a name looks for appName on the home screen, and a system alert whose title does not"
             + " name appName is reported as possibly left over from an earlier run."
             + " Set \(platform).appName to the name under the icon"
-    }
-
-    /// 判定できる手段を**安い順に**当て、判定できたら台帳へ覚える(AppFrameworkLedger)。
-    ///   ① appPath(.app / .ipa)—— 台帳に同じ材料(パス・mtime・大きさ)の控えがあれば読まずに使う
-    ///   ② シミュレータに入っているバンドル(simctl。実機は不可)
-    ///   ③ 台帳(以前に同じ bundle ID を判定した結果。材料が手元に無い実機の唯一の答え)
-    ///   どれも無ければ nil = 不明(呼び手は空打ちを撃たない)。
-    ///
-    /// **ブリッジの自己申告が取れなかったときの受け皿**として使うこと。
-    /// in-app/hybrid は起動時プローブの `uiFramework` を使うが、あの締切(4秒)は
-    /// 「suspend したアプリは TCP を受けても答えない」を素早く諦めるための値で、
-    /// **実機の冷えたブリッジが収まる保証は無い**。パッケージのマーカーはデバイスの応答を
-    /// 必要としないので、締切に判断を預けずに済む
-    public static func detect(appPath: String?, udid: String?, bundleID: String,
-                              physical: Bool) -> String? {
-        if let appPath, let reader = AppPackageReader.open(path: appPath) {
-            let fingerprint = AppFrameworkLedger.fingerprint(path: appPath)
-            if let cached = AppFrameworkLedger.load(bundleID: bundleID),
-               let fingerprint, cached.sourcePath == appPath,
-               cached.sourceModified == fingerprint.modified, cached.sourceSize == fingerprint.size {
-                return cached.framework
-            }
-            let framework = detect(in: reader)
-            AppFrameworkLedger.store(bundleID: bundleID, entry: .init(
-                framework: framework, sourcePath: appPath,
-                sourceModified: fingerprint?.modified, sourceSize: fingerprint?.size))
-            return framework
-        }
-        if let framework = detect(udid: udid, bundleID: bundleID, physical: physical) {
-            AppFrameworkLedger.store(bundleID: bundleID, entry: .init(
-                framework: framework, sourcePath: nil, sourceModified: nil, sourceSize: nil))
-            return framework
-        }
-        return AppFrameworkLedger.load(bundleID: bundleID)?.framework
-    }
-
-    /// Simulator 上のインストール済みアプリのバンドルを調べて uiFramework を返す。
-    /// **コマンド失敗・実機・udid 不明は nil**(呼び出し側は「不明」として扱う)
-    public static func detect(udid: String?, bundleID: String, physical: Bool) -> String? {
-        guard !physical, let udid, !udid.isEmpty else { return nil }
-        guard let result = try? Shell.run(
-            ["xcrun", "simctl", "get_app_container", udid, bundleID, "app"], timeout: 10),
-            result.status == 0 else { return nil }
-        let path = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !path.isEmpty, let reader = AppPackageReader.open(path: path) else { return nil }
-        return detect(in: reader)
     }
 }

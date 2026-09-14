@@ -1374,7 +1374,7 @@ extension MCPServer {
                               coordinate: doubleTapResolvedRef == nil ? doubleTapPoint : nil)
             return text("double tap \(doubleTapWhat) done.\(doubleTapNote)\(doubleTapSelector)"
                 + Self.changedHint(args)
-                + iosEngineHint("Compose Multiplatform", frameworkKey: "compose", "double tap", args: args)
+                + iosEngineHint("Compose Multiplatform", frameworkKey: .compose, "double tap", args: args)
                 + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
 
         case "ft_drag":
@@ -1510,7 +1510,7 @@ extension MCPServer {
                 // **同じ逃げ道を2度書かない**(2026-08-08 に長文の苦情があった箇所)。
                 // 領域が無視されたときの文は engine も remedy も言い切っているので、
                 // 汎用の Flutter 助言はそこでは畳む
-                + (areaIgnored ? "" : iosEngineHint("Flutter", frameworkKey: "flutter", "pinch", args: args))
+                + (areaIgnored ? "" : iosEngineHint("Flutter", frameworkKey: .flutter, "pinch", args: args))
                 + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
 
         // 旧名 `ft_press` は call() の toolAliases が現名へ畳む(ここに並べると記憶の適用から漏れる)

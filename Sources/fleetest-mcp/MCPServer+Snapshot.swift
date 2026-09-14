@@ -1151,40 +1151,34 @@ extension MCPServer {
     /// uiFramework)。**scrollTo と ft_batch が共有する**(2つ目の判定を作らない) ——
     /// releasesScrollTouch は **iOS だけ true**(Android では 2pt のドラッグがクリックとして
     /// 発火する。StepExecutor の宣言参照)。ここを取り違えると探索直後に行が勝手に選択される。
-    /// uiFramework ヒント: xcuitest は profile 経由ならドライバ生成時にバンドルマーカーで
-    /// 判定済み(uiFrameworkHints)。in-app/hybrid は自己申告(status)を engineKey ごとに
-    /// 1回だけ取得して使い回す。Android は releasesScrollTouch=false で無関係。
-    /// **残穴は profile 無しの xcuitest だけ**(任意の前面アプリを駆動するため対象 bundleID が
-    /// 無くマーカー判定もできない → nil = 空打ちは従来どおり打たれる)
+    /// uiFramework: profile 経由ならドライバ生成時に静的に判定済み(uiFrameworkHints)。
+    /// 無ければ attach 中のアプリ(status.sessionBundleID)を AppUIFrameworkQuery に問う(成功だけ記憶)——
+    /// 材料は ft_install で入れたパッケージ(installedPackagePaths)→ シミュレータのバンドル → 台帳 →
+    /// in-app の自己申告。Android は releasesScrollTouch=false で無関係。
+    /// **実機は simctl を撃たない**(udid の形が同じなので `Invalid device` で失敗するだけ。
+    /// 実機かどうかは `.fleetest/bridge-<port>.device`)
     func resolveExecutorHints(_ driver: AppDriver, args: [String: Any]) async
-        -> (isAndroid: Bool, uiFrameworkHint: String?) {
+        -> (isAndroid: Bool, uiFrameworkHint: AppUIFramework?) {
         let key = Self.engineKey(args)
-        let engineForKey = engines[key]
-        let isAndroid = engineForKey == "android" || driver is AndroidDriver
+        let isAndroid = engines[key] == "android" || driver is AndroidDriver
         guard !isAndroid else { return (true, nil) }
         if let cached = uiFrameworkHints[key] { return (false, cached) }
-        if engineForKey == "xcuitest" {
-            // profile 無しでも、attach 中のアプリ(status.sessionBundleID)なら判定できる(成功だけ記憶):
-            // 材料は ft_install で入れたパッケージ(installedPackagePaths)→ シミュレータのバンドル →
-            // 台帳(以前に判定した bundle ID)。**実機は simctl を撃たない**(udid の形が同じなので
-            // `Invalid device` で失敗するだけ。実機かどうかは `.fleetest/bridge-<port>.device`)
-            if let bundleID = (try? await driver.status())?.sessionBundleID {
-                let physical = connectedPorts[key].flatMap { port in
-                    (try? RepoRoot.find()).flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }
-                } != nil
-                if let hint = AppBundleInspector.detect(appPath: installedPackagePaths[key],
-                                                        udid: udids[key] ?? nil, bundleID: bundleID,
-                                                        physical: physical) {
-                    uiFrameworkHints[key] = hint
-                    return (false, hint)
-                }
-                if physical { uiFrameworkUnknownPending.insert(key) }
-            }
-            return (false, nil)
+        let status = try? await driver.status()
+        guard let bundleID = status?.sessionBundleID else { return (false, nil) }
+        let physical = connectedPorts[key].flatMap { port in
+            (try? RepoRoot.find()).flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }
+        } != nil
+        let subject = AppUIFrameworkQuery.Subject(platform: "ios", bundleID: bundleID,
+                                                  appPath: installedPackagePaths[key],
+                                                  udid: udids[key] ?? nil, physical: physical)
+        if let framework = await AppUIFrameworkQuery.resolve(subject, bridgeReport: {
+            AppUIFrameworkQuery.bridgeReport(status, about: bundleID)
+        }).framework {
+            uiFrameworkHints[key] = framework
+            return (false, framework)
         }
-        let hint = (try? await driver.status())?.uiFramework
-        if let hint { uiFrameworkHints[key] = hint }
-        return (false, hint)
+        if physical { uiFrameworkUnknownPending.insert(key) }
+        return (false, nil)
     }
 
     /// **セレクタ解決の唯一の実装**(FTSelector.parse → [primary]+fallbacks →

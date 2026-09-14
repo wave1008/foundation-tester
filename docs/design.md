@@ -2157,13 +2157,16 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   冷えた実機ブリッジが収まる保証は無い。外れて `uiFramework` が nil になると
   「不明なら打つ」へ倒れ、RN では横抜き 4pt が `pressRetentionOffset`(既定20pt)に収まって
   `onPress` が成立する = **`scrollTo` しただけで行が選択される**(E2E-RN S0100 を
-  プローブ無応答で回して再現。`selected=row_40`)。自己申告が取れなければ
-  **パッケージのマーカー**(`AppBundleInspector.detect(appPath:udid:bundleID:physical:)` =
-  デバイスの応答が要らない。材料は .app / .ipa の両方 = `AppPackageReader`。Flutter は
+  プローブ無応答で回して再現。`selected=row_40`)。アプリのフレームワークは
+  **`AppUIFrameworkQuery` が静的な材料を先に見る**:**パッケージのマーカー**(`AppBundleInspector` =
+  デバイスの応答が要らない。材料は .app / .ipa の両方 = `AppPackageReader`。**宣言した bundle ID が
+  対象と一致するときだけ**。Flutter は
   `Frameworks/Flutter.framework`、Compose は実行ファイル(デバッグは `<exe>.debug.dylib`)の中の
-  クラス名 `SkikoUIView` —— `compose-resources` フォルダはリソースを使わないアプリに無い)へ落とし、
-  判定できたら **bundle ID ごとの台帳**(`AppFrameworkLedger` = `~/.fleetest/app-frameworks/`)に
-  覚える。材料が無いときは台帳、それも無ければ **掴んだ要素のクラス名**(第3段。`AccessibilityClassHint` =
+  クラス名 `SkikoUIView` —— `compose-resources` フォルダはリソースを使わないアプリに無い)→
+  シミュレータに入っているバンドル(simctl。置き場と指紋を台帳に控え、同じ台なら2回目から撃たない)→
+  **bundle ID ごとの台帳**(`AppFrameworkLedger` = `~/.fleetest/app-frameworks/`)。静的に決まらなければ
+  in-app ブリッジの自己申告(対象アプリ自身の申告のときだけ。規則が `compose-resources` しか見ないので
+  最後に置く)、それも無ければ **掴んだ要素のクラス名**(第3段。`AccessibilityClassHint` =
   XCUITest ランナーが XCTest の非公開辞書 `additionalAttributes[5004]` から `ElementInfo.axClass` に載せる。
   Compose / Flutter の要素は `UIAccessibilityElement` = ビューを持たずホストが自前でタッチを処理する側、
   RN は `UIView`・SwiftUI は `NSObject`・UIKit は実クラス名。根の走査に付いてくるので追加の往復は無い。

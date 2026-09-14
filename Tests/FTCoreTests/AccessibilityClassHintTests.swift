@@ -31,7 +31,7 @@ final class AccessibilityClassHintTests: XCTestCase {
 
     // MARK: - StepExecutor の配線(探索終端の空打ち)
 
-    private func dragCount(uiFramework: String?, axClass: String?) async -> Int {
+    private func dragCount(uiFramework: AppUIFramework?, axClass: String?) async -> Int {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[], [], [row(axClass: axClass)]])
         let executor = StepExecutor(driver: primary, releasesScrollTouch: true, isAndroid: false,
@@ -56,10 +56,10 @@ final class AccessibilityClassHintTests: XCTestCase {
 
     func testKnownFrameworkWinsOverTheClassName() async {
         // RN(uikit)と判っていれば、要素が UIAccessibilityElement でも撃たない
-        let uikit = await dragCount(uiFramework: "uikit", axClass: "UIAccessibilityElement")
+        let uikit = await dragCount(uiFramework: .uikit, axClass: "UIAccessibilityElement")
         XCTAssertEqual(uikit, 0)
         // Compose と判っていれば、クラス名が無くても撃つ
-        let compose = await dragCount(uiFramework: "compose", axClass: nil)
+        let compose = await dragCount(uiFramework: .compose, axClass: nil)
         XCTAssertEqual(compose, 1)
     }
 

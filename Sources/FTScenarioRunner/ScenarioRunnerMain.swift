@@ -267,11 +267,12 @@ struct RunScenario: AsyncParsableCommand {
         // (tap/type は通る。実験で確定済み)。probe の uiFramework=="compose" 検出時のみ true
         // (probe 不達なら false のまま=StepExecutor の事後 409 安全網に委ねる)
         var typeDriverGestures: Set<String> = []
-        // StepExecutor の空打ちゲート(shouldEmptyDrag)へ渡すヒント。in-app/hybrid は probe の
-        // 自己申告(uiFramework)をそのまま使い、engine=xcuitest はブリッジが自己申告を持たないため
-        // AppBundleInspector でバンドルのマーカーから判定する。Android は releasesScrollTouch=false
-        // で影響しないので nil のまま(判定コスト自体を払わない)
-        var uiFrameworkHint: String?
+        // StepExecutor の空打ちゲート(shouldEmptyDrag)へ渡す答え。**AppUIFrameworkQuery だけで決める**
+        // (静的な材料 → in-app の自己申告 → 不明)。Android は releasesScrollTouch=false で影響しないので
+        // nil のまま(判定コスト自体を払わない)
+        var uiFrameworkHint: AppUIFramework?
+        let uiFrameworkSubject = AppUIFrameworkQuery.Subject(
+            platform: runPlatform, bundleID: appBundleID, appPath: appPath, udid: udid, physical: physical)
         if dryRun {
             driver = NullDriver()  // dry-run はデバイスに触れない
         } else {
@@ -291,25 +292,19 @@ struct RunScenario: AsyncParsableCommand {
                     // relaunch で bridge を張り直す)、別アプリ(Preferences 等)なら mismatch=XCUITest
                     // へ正しく分岐する。inappApp を使わず nil を「不明」扱いにすると、suspend 中の
                     // 別アプリシナリオを in-app 経路へ誤ルーティングして破綻する(実際に回帰した)。
-                    // 締切は 30 秒(ユーザー指示)。**短くしない**: 実機は LAN/USB 越しで
-                    // 冷えたブリッジの初回応答が数秒に収まる保証が無く、外れると「注入先が分からない」
-                    // まま進む。代わりに suspend 中のアプリ(TCP は受理するが答えない)では
-                    // ここで最大 30 秒待つ —— 判断の正しさを待ち時間で買っている。
-                    // **uiFramework をこの締切に預けない**のは下の受け皿参照(外れても判断は変わらない)
+                    // 締切は injectedAppProbeTimeout(**短くしない**。理由はその宣言)。
+                    // **uiFramework をこの締切に預けない**のは下の問い合わせ参照(外れても判断は変わらない)
                     let probe = BridgeClient(port: port, timeoutSeconds: Self.injectedAppProbeTimeout,
                                              host: bridgeHost ?? BridgeEndpoint.loopbackHost,
                                              physicalUDID: physical ? udid : nil,
                                              simulatorUDID: physical ? nil : udid)
                     let probeStatus = try? await probe.status(timeout: Self.injectedAppProbeTimeout)
-                    // in-app/hybrid はブリッジの自己申告を使うが、**プローブの締切に判断を
-                    // 預けない**: この 4 秒は「suspend したアプリは答えない」を
-                    // 素早く諦めるための値で、実機の冷えたブリッジが収まる保証は無い。
-                    // 外れて nil のまま進むと shouldEmptyDrag が「不明なら打つ」へ倒れ、
-                    // RN では scrollTo しただけで行が選ばれる(AppBundleInspector.detect 参照)。
-                    // バンドルのマーカーはデバイスの応答が要らないので受け皿にできる
-                    uiFrameworkHint = probeStatus?.uiFramework
-                        ?? AppBundleInspector.detect(appPath: appPath, udid: udid,
-                                                     bundleID: appBundleID, physical: physical)
+                    // 静的な材料を先に見る(デバイスの応答が要らない = プローブの締切に判断を預けない)。
+                    // 自己申告は**対象アプリ自身の申告のときだけ**使う —— 注入先が別アプリなら
+                    // bridgeReport(_:about:) が捨てるので、下の別アプリ分岐で判定し直す必要は無い
+                    uiFrameworkHint = await AppUIFrameworkQuery.resolve(uiFrameworkSubject) {
+                        AppUIFrameworkQuery.bridgeReport(probeStatus, about: appBundleID)
+                    }.framework
                     let injected = probeStatus?.sessionBundleID ?? inappApp
                     if let injected, injected != appBundleID {
                         guard engine == "hybrid", let xcuiPort else {
@@ -324,10 +319,6 @@ struct RunScenario: AsyncParsableCommand {
                                                   physicalUDID: physical ? udid : nil,
                                                   simulatorUDID: physical ? nil : udid)
                         driver = udid.map { LaunchPreflightDriver(base: client, udid: $0) } ?? client
-                        // 上で採った自己申告は**注入先アプリ**のもの。ここは別アプリを XCUITest で
-                        // 駆動する分岐なので、対象アプリのマーカーで判定し直す(取れなければ不明)
-                        uiFrameworkHint = AppBundleInspector.detect(
-                            appPath: appPath, udid: udid, bundleID: appBundleID, physical: physical)
                     } else {
                         // in-app は launch=simctl 再起動+dylib 注入(自己再起動できないため)
                         let repoRoot = try RepoRoot.find()
@@ -399,12 +390,8 @@ struct RunScenario: AsyncParsableCommand {
                                                   sharesPrimarySession: true)
                     homeScreenDriver = systemUI
                     fallbackDriver = systemUI
-                    // xcuitest はブリッジの自己申告が無いため、バンドルのマーカーで判定する。
-                    // --app-path があれば FileManager だけで判定できる(simctl の ~0.5s を
-                    // シナリオプロセスごとに払わない)。無ければ simctl へ落ちる
-                    // (コマンド失敗・実機・udid 不明は nil のまま = 従来どおり空打ちを打つ)
-                    uiFrameworkHint = AppBundleInspector.detect(
-                        appPath: appPath, udid: udid, bundleID: appBundleID, physical: physical)
+                    // xcuitest はブリッジの自己申告が無いので静的な材料だけ
+                    uiFrameworkHint = AppUIFrameworkQuery.staticAnswer(for: uiFrameworkSubject).framework
                 }
             case "android":
                 // **実機はシナリオごとに画面の状態を見て、消灯・ロック中なら起こす**(子プロセス = シナリオ

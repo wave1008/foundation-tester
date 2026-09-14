@@ -15,9 +15,11 @@ final class AppPackageReaderTests: XCTestCase {
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         savedLedgerDir = ProcessInfo.processInfo.environment[AppFrameworkLedger.directoryOverrideKey]
         setenv(AppFrameworkLedger.directoryOverrideKey, tempDir.appendingPathComponent("ledger").path, 1)
+        AppUIFrameworkQuery.forgetRememberedAnswers()
     }
 
     override func tearDownWithError() throws {
+        AppUIFrameworkQuery.forgetRememberedAnswers()
         if let savedLedgerDir { setenv(AppFrameworkLedger.directoryOverrideKey, savedLedgerDir, 1) }
         else { unsetenv(AppFrameworkLedger.directoryOverrideKey) }
         try? FileManager.default.removeItem(at: tempDir)
@@ -105,25 +107,25 @@ final class AppPackageReaderTests: XCTestCase {
 
     func testFlutterIsDetectedByTheEngineFramework() throws {
         let app = try makeApp("Fl", flutter: true)
-        XCTAssertEqual(AppBundleInspector.detect(appPath: app), "flutter")
-        XCTAssertEqual(AppBundleInspector.detect(appPath: try makeIPA(from: app)), "flutter")
+        XCTAssertEqual(AppBundleInspector.detect(appPath: app), .flutter)
+        XCTAssertEqual(AppBundleInspector.detect(appPath: try makeIPA(from: app)), .flutter)
     }
 
     /// Compose の目印は実行ファイルの中のクラス名。デバッグビルドは本体が `<exe>.debug.dylib` に居る
     func testComposeIsDetectedByTheBinaryMarkerInEitherPlace() throws {
         let release = try makeApp("Rel", executable: "…SkikoUIView…")
-        XCTAssertEqual(AppBundleInspector.detect(appPath: release), "compose")
-        XCTAssertEqual(AppBundleInspector.detect(appPath: try makeIPA(from: release)), "compose")
+        XCTAssertEqual(AppBundleInspector.detect(appPath: release), .compose)
+        XCTAssertEqual(AppBundleInspector.detect(appPath: try makeIPA(from: release)), .compose)
 
         let debug = try makeApp("Dbg", executable: "tiny stub", debugDylib: "…SkikoUIView…")
-        XCTAssertEqual(AppBundleInspector.detect(appPath: debug), "compose")
-        XCTAssertEqual(AppBundleInspector.detect(appPath: try makeIPA(from: debug)), "compose")
+        XCTAssertEqual(AppBundleInspector.detect(appPath: debug), .compose)
+        XCTAssertEqual(AppBundleInspector.detect(appPath: try makeIPA(from: debug)), .compose)
     }
 
     func testNoMarkerIsUIKitNotUnknown() throws {
         let app = try makeApp("Plain")
-        XCTAssertEqual(AppBundleInspector.detect(appPath: app), "uikit")
-        XCTAssertEqual(AppBundleInspector.detect(appPath: try makeIPA(from: app)), "uikit")
+        XCTAssertEqual(AppBundleInspector.detect(appPath: app), .uikit)
+        XCTAssertEqual(AppBundleInspector.detect(appPath: try makeIPA(from: app)), .uikit)
     }
 
     func testDevicePlatformIsReadFromAnIPA() throws {
@@ -135,28 +137,38 @@ final class AppPackageReaderTests: XCTestCase {
 
     func testDetectionIsRememberedByBundleIDAndUsedWithoutTheFile() throws {
         let app = try makeApp("Fl", flutter: true)
-        XCTAssertEqual(AppBundleInspector.detect(appPath: app, udid: nil, bundleID: "com.example.fl", physical: true),
-                       "flutter")
+        XCTAssertEqual(query(app, "com.example.fl"), .flutter)
+        AppUIFrameworkQuery.forgetRememberedAnswers()
         // 材料も udid も無い実機: 台帳だけで答える
-        XCTAssertEqual(AppBundleInspector.detect(appPath: nil, udid: nil, bundleID: "com.example.fl", physical: true),
-                       "flutter")
-        XCTAssertNil(AppBundleInspector.detect(appPath: nil, udid: nil, bundleID: "com.example.other", physical: true),
-                     "見たことのない bundle ID は不明のまま")
+        XCTAssertEqual(query(nil, "com.example.fl"), .flutter)
+        XCTAssertNil(query(nil, "com.example.other"), "見たことのない bundle ID は不明のまま")
     }
 
     func testRememberedResultIsReusedOnlyForTheSameFile() throws {
         let app = try makeApp("Rel", executable: "…SkikoUIView…")
-        XCTAssertEqual(AppBundleInspector.detect(appPath: app, udid: nil, bundleID: "com.example.c", physical: true),
-                       "compose")
+        XCTAssertEqual(query(app, "com.example.c"), .compose)
         let stored = try XCTUnwrap(AppFrameworkLedger.load(bundleID: "com.example.c"))
         XCTAssertEqual(stored.sourcePath, app)
         XCTAssertNotNil(stored.sourceModified)
+        XCTAssertEqual(stored.sourceBundleID, "com.example.c")
         // 同じ場所にビルドし直したら読み直す(Info.plist の大きさで気づく)
         try PropertyListSerialization.data(fromPropertyList: ["CFBundleExecutable": "Rel", "K": "v"],
                                            format: .binary, options: 0)
             .write(to: URL(fileURLWithPath: app).appendingPathComponent("Info.plist"))
         try Data("plain now".utf8).write(to: URL(fileURLWithPath: app).appendingPathComponent("Rel"))
-        XCTAssertEqual(AppBundleInspector.detect(appPath: app, udid: nil, bundleID: "com.example.c", physical: true),
-                       "uikit")
+        XCTAssertEqual(query(app, "com.example.c"), .uikit)
+    }
+
+    /// .ipa でも同じ(台帳の控えは開く前に照合する)
+    func testIPAIsJudgedAndRemembered() throws {
+        let ipa = try makeIPA(from: try makeApp("Fl", flutter: true))
+        XCTAssertEqual(query(ipa, "com.example.ipa"), .flutter)
+        XCTAssertEqual(query(ipa, "com.example.ipa"), .flutter)
+    }
+
+    /// 物理端末(simctl を撃たない)で材料を渡して問い合わせる
+    private func query(_ appPath: String?, _ bundleID: String) -> AppUIFramework? {
+        AppUIFrameworkQuery.staticAnswer(for: .init(platform: "ios", bundleID: bundleID, appPath: appPath,
+                                                    udid: nil, physical: true)).framework
     }
 }

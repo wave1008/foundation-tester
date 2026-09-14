@@ -39,7 +39,7 @@ final class DeviceStateInvalidationTests: XCTestCase {
         server.nextRefBase = 200
         server.launchedBundleIDs[key] = "com.example.old"
         server.launchTimestamps[key] = Date()
-        server.uiFrameworkHints[key] = "compose"
+        server.uiFrameworkHints[key] = .compose
         server.lastScreenshots[key] = StaleFrameDetector.Record(imageHash: 1, treeFingerprint: 2)
         server.rememberedSnapshotFilters[key] = ["interactiveOnly": true]
         server.sheetRescueFutile[key] = ["fingerprint"]

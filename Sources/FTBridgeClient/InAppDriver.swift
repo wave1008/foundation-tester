@@ -8,6 +8,8 @@ import FTCore
 public final class InAppDriver: AppDriver {
     private let client: BridgeClient
     private let launcher: InAppLauncher
+    /// "booted" は nil(AppUIFrameworkQuery の simctl の宛先にしない)
+    private let simulatorUDID: String?
     // terminate() は bundleID を取らないため、直近 launch のものを使う
     private var lastBundleID: String?
     private var lastLaunchTimingValue: LaunchTiming?
@@ -18,7 +20,9 @@ public final class InAppDriver: AppDriver {
     /// (受け手報告 2026-08-23: シナリオ先頭の removeApp が同じ台で連続して driver-unreachable)。
     /// "booted" は UDID ではないので渡さない(台が複数 booted だと simctl の宛先として曖昧)
     public init(repoRoot: URL, udid: String, port: UInt16) {
-        self.client = BridgeClient(port: port, simulatorUDID: udid == "booted" ? nil : udid)
+        let simulatorUDID = udid == "booted" ? nil : udid
+        self.simulatorUDID = simulatorUDID
+        self.client = BridgeClient(port: port, simulatorUDID: simulatorUDID)
         self.launcher = InAppLauncher(repoRoot: repoRoot, udid: udid, port: port)
     }
 
@@ -116,16 +120,24 @@ public final class InAppDriver: AppDriver {
         try await normalizedSnapshot { try await self.client.snapshot(bypassingCache: bypassingCache) }
     }
 
-    /// 初回 snapshot でだけ /status を叩いて uiFramework を確定し、以降は使い回す
-    /// (スナップショットのたびに /status を打ち直さない)。**成功だけをキャッシュする**:
-    /// 失敗を覚えると、コールドラウンチ直後の1回のタイムアウトで正規化が run 全体で無効のまま
-    /// 固定される。timeout を短く切るのは suspend 中のアプリが TCP を受けたまま応答しない
-    /// 既知の形(BridgeClient.status(timeout:) のコメント)で 45 秒待たないため
-    private var uiFrameworkCache: String?
+    /// 初回 snapshot でだけ AppUIFrameworkQuery に問い合わせて確定し、以降は使い回す。
+    /// **成功だけをキャッシュする**: 失敗を覚えると、コールドラウンチ直後の1回のタイムアウトで
+    /// 正規化が run 全体で無効のまま固定される。/status の timeout を短く切るのは suspend 中の
+    /// アプリが TCP を受けたまま応答しない既知の形(BridgeClient.status(timeout:) のコメント)で
+    /// 45 秒待たないため。launch 済みなら bundle ID が分かるので、静的に決まる回は /status を打たない
+    private var uiFrameworkCache: AppUIFramework?
 
-    private func cachedUIFramework() async -> String? {
+    private func cachedUIFramework() async -> AppUIFramework? {
         if let cached = uiFrameworkCache { return cached }
-        let framework = (try? await client.status(timeout: 4))?.uiFramework
+        let status = lastBundleID == nil ? (try? await client.status(timeout: 4)) : nil
+        let bundleID = lastBundleID ?? status?.sessionBundleID
+        let subject = AppUIFrameworkQuery.Subject(platform: "ios", bundleID: bundleID, appPath: nil,
+                                                  udid: simulatorUDID, physical: false)
+        let framework = await AppUIFrameworkQuery.resolve(subject) { [client] in
+            var reported = status
+            if reported == nil { reported = try? await client.status(timeout: 4) }
+            return AppUIFrameworkQuery.bridgeReport(reported, about: bundleID)
+        }.framework
         uiFrameworkCache = framework
         return framework
     }
@@ -136,7 +148,7 @@ public final class InAppDriver: AppDriver {
     /// wrapperScrollMerge が実質発火しないとしても、既存 SUT の序数を動かさないため明示的に触らない
     private func normalizedSnapshot(_ fetch: () async throws -> SnapshotResponse) async throws -> SnapshotResponse {
         var response = try await withCrashContext(fetch)
-        guard await cachedUIFramework() == "uikit" else { return response }
+        guard await cachedUIFramework() == .uikit else { return response }
         let merged = SnapshotDedupe.wrapperScrollMerge(response.elements)
         var emitted: [ElementInfo] = []
         response.elements = merged.filter { element in

@@ -147,16 +147,15 @@ extension MCPServer {
             if case .android(let serial, _) = target {
                 connectedAndroidSerials[key] = serial
             }
-            // engine=xcuitest はブリッジが uiFramework を申告しないが、profile 経由なら
-            // 対象 bundleID が分かるのでバンドルのマーカーで判定して覚える(scroll_to の
-            // 空打ちゲート用。DSL の xcuitest 経路と同じ判定 = AppBundleInspector)
-            // 実機は appPathPhysical(.app / .ipa)か台帳(AppFrameworkLedger)で答える
-            if case .ios(let provisioned, let iosApp) = target,
-               engines[key] == "xcuitest", let bundleID = iosApp?.bundleID,
-               let hint = AppBundleInspector.detect(
+            // profile 経由なら対象 bundleID が分かるので、engine を問わず静的に判定して覚える
+            // (DSL と同じ AppUIFrameworkQuery。静的に決まらなければ resolveExecutorHints が
+            // in-app の自己申告まで問う)。実機は appPathPhysical(.app / .ipa)か台帳で答える
+            if case .ios(let provisioned, let iosApp) = target, let bundleID = iosApp?.bundleID,
+               let framework = AppUIFrameworkQuery.staticAnswer(for: .init(
+                   platform: "ios", bundleID: bundleID,
                    appPath: iosApp?.packagePath(physical: provisioned.physical),
-                   udid: provisioned.udid, bundleID: bundleID, physical: provisioned.physical) {
-                uiFrameworkHints[key] = hint
+                   udid: provisioned.udid, physical: provisioned.physical)).framework {
+                uiFrameworkHints[key] = framework
             }
             // **profile 経由でも宛先を記録する**。ここが空だと ft_status が
             // 「どこに繋がっているか」を出せず、**同名のデバイスが並ぶフリートでどの1台か
@@ -728,8 +727,8 @@ extension MCPServer {
     /// **`frameworkKey` が判明していて一致しなければ黙る**(この助言は `framework` 1つに
     /// 固有の欠陥で、他のフレームワーク(判明した uikit や、もう一方の compose/flutter)には
     /// 効かない誤誘導になる)。**不明なら従来どおり出すが「もしこのフレームワークなら」に弱める**
-    /// (uiFrameworkHints は profile 経由でしか埋まらないので、profile 無しの xcuitest は毎回不明側)
-    func iosEngineHint(_ framework: String, frameworkKey: String, _ gesture: String,
+    /// (uiFrameworkHints は判定に成功した回しか埋まらないので、まだ問い合わせていない接続は不明側)
+    func iosEngineHint(_ framework: String, frameworkKey: AppUIFramework, _ gesture: String,
                       args: [String: Any]) -> String {
         guard engines[Self.engineKey(args)] == "xcuitest" else { return "" }
         // `fleetest bridge up --engine inapp` と案内しない —— そのフラグは存在しない

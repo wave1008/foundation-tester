@@ -425,7 +425,7 @@ extension StepExecutorTests {
             [container, inside1, inside2, ghost],    // 掴み直し1回目: まだ ghost(= ここで救済が走る)
             [container, inside1, inside2, settled],  // 救済後: 容器の中
         ])
-        let executor = StepExecutor(driver: primary, releasesScrollTouch: true, isAndroid: false, uiFramework: "compose")
+        let executor = StepExecutor(driver: primary, releasesScrollTouch: true, isAndroid: false, uiFramework: .compose)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "row_30"),
                             direction: "up", maxSwipes: 2)
 
@@ -612,7 +612,7 @@ extension StepExecutorTests {
         primary.dragError = DriverError.badResponse(status: 501, body: "未対応")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log)
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver,
-                                    releasesScrollTouch: true, isAndroid: false, uiFramework: "compose")
+                                    releasesScrollTouch: true, isAndroid: false, uiFramework: .compose)
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_40"), maxSwipes: 2)
 
         guard case .passed = await executor.execute(step).status else {
@@ -632,7 +632,7 @@ extension StepExecutorTests {
         let row = framed(ref: 1, id: "row_40", x: 16, y: 300, width: 370, height: 56)
         // 1周目は静止確認で2枚撮ってからスワイプで見つける(既存 testEmptyDragFallsBack... と同じ台本)
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[], [], [row]])
-        let executor = StepExecutor(driver: primary, releasesScrollTouch: true, isAndroid: false, uiFramework: "uikit")
+        let executor = StepExecutor(driver: primary, releasesScrollTouch: true, isAndroid: false, uiFramework: .uikit)
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_40"), maxSwipes: 2)
 
         guard case .passed = await executor.execute(step).status else {
@@ -645,7 +645,7 @@ extension StepExecutorTests {
     /// uiFramework が "compose" / "flutter" のときだけ空打ちを撃つこと(自前描画のスクロール容器が
     /// 次の1タッチを消費するのはこの2つ)
     func testEmptyDragFiresForComposeAndFlutter() async throws {
-        let frameworks: [String?] = ["compose", "flutter"]
+        let frameworks: [AppUIFramework?] = [.compose, .flutter]
         for framework in frameworks {
             let log = CallLog()
             let row = framed(ref: 1, id: "row_40", x: 16, y: 300, width: 370, height: 56)

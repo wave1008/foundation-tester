@@ -517,10 +517,9 @@ public final class StepExecutor {
     /// **既定値を置かない**(呼び忘れをコンパイルで止める。overlayWindows: と同じ規律)
     let isAndroid: Bool
 
-    /// in-app ブリッジの自己申告(/status の uiFramework)、または engine=xcuitest では
-    /// `AppBundleInspector` がバンドルのマーカーから判定した値。"compose" / "flutter" / "uikit" / nil(不明)。
+    /// 対象アプリの UI フレームワーク(`AppUIFrameworkQuery` の答え。nil = 不明)。
     /// **空打ちの発火条件だけに使う**(shouldEmptyDrag)。他の判定には持ち込まない
-    let uiFramework: String?
+    let uiFramework: AppUIFramework?
 
     /// 空打ちを撃ってよいか。releasesScrollTouch(iOS)に加え、uiFramework が判明していれば
     /// Compose/Flutter だけに絞る —— タッチ消費はそれらの自前描画スクロール容器に固有で、
@@ -530,20 +529,19 @@ public final class StepExecutor {
     /// 持たず releasesScrollTouch=false で対象外なのと同型の理由。
     /// **nil(不明)は打たない**(2026-09-12 に反転): 打って外れると行やボタンが押されてアプリの状態が
     /// 黙って変わる(取り消せない)が、打たずに外れるとタップが吸われて失敗として見える。不明になるのは
-    /// 材料(.app / .ipa)も台帳(AppFrameworkLedger)も無い実機だけ
+    /// 材料(.app / .ipa)も台帳も in-app の自己申告も無い物理端末だけ
     /// **`FT_EMPTY_DRAG=off` は保守者の殺しスイッチ**(空打ちが今も要るかを E2E の規模で測るため。
     /// `FT_CONTAINER_INFERENCE=off` と同じ位置づけで、利用者向けの口ではない)
     var shouldEmptyDrag: Bool {
         guard ProcessInfo.processInfo.environment["FT_EMPTY_DRAG"] != "off" else { return false }
-        return releasesScrollTouch && (uiFramework == "compose" || uiFramework == "flutter")
+        return releasesScrollTouch && uiFramework?.isSelfRendered == true
     }
 
-    /// 掴んだ要素に対して空打ちを撃つか。フレームワークが判っていれば `shouldEmptyDrag`(1・2段目)、
-    /// 不明なら**要素のクラス名**(第3段。`AccessibilityClassHint`)。クラス名も無ければ撃たない
+    /// 掴んだ要素に対して空打ちを撃つか。アプリのフレームワークが判っていればそれ、
+    /// 不明なら**要素のクラス名**(`AppUIFrameworkQuery.hostsOwnTouches`)。どちらも無ければ撃たない
     func shouldEmptyDrag(for element: ElementInfo) -> Bool {
         guard ProcessInfo.processInfo.environment["FT_EMPTY_DRAG"] != "off", releasesScrollTouch else { return false }
-        if uiFramework != nil { return shouldEmptyDrag }
-        return AccessibilityClassHint.hostsOwnTouches(element) == true
+        return AppUIFrameworkQuery.hostsOwnTouches(element, app: uiFramework) == true
     }
 
     /// **容器の推測に依存する補正**の既定(実行プロファイルの `containerInference`。既定 true)。
@@ -595,7 +593,7 @@ public final class StepExecutor {
                 occlusionGuardEnabled: Bool = true, screenLooksLikeEnabled: Bool = true,
                 releasesScrollTouch: Bool = false,
                 isAndroid: Bool,
-                uiFramework: String? = nil,
+                uiFramework: AppUIFramework? = nil,
                 containerInference: Bool = true,
                 defersPartialSheetRecovery: Bool = false,
                 commandTimeoutSeconds: TimeInterval? = nil) {
