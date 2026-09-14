@@ -139,4 +139,30 @@ final class ClippingContainerScrollableTests: XCTestCase {
                        FTRect(x: 360, y: 432, width: 164, height: 199),
                        "手前の部分木や後ろの区画の scrollable を祖先と取り違えている")
     }
+
+    /// 深さの規則が候補を出せない木(可視域に兄弟が 1 つしか居ない)でも、申告する祖先があれば
+    /// それが容器。E2E-iOS in-app の #txt_offscreen の木そのもの(2026-09-15 実測): 700pt の余白の
+    /// 後ろの最後の要素が容器の下端 778 を 18pt はみ出して見つかり、viewport が画面全体に落ちて
+    /// 「見えている」で探索が止まっていた(実際はタブバーの裏で 2pt しか描かれていない)
+    func testLoneElementUnderADeclaredScrollerUsesTheScroller() {
+        let tree = [
+            el(1, "button", 4, 16, 78, 56, 62, label: "戻る"),
+            el(2, "staticText", 4, 80, 99, 64, 20, label: "セレクタ"),
+            el(3, "other", 4, 0, 156, 402, 622, scrollable: true),
+            el(4, "button", 6, 16, -24, 104, 38, label: "別名ボタン"),
+            el(5, "button", 6, 16, 22, 104, 38, label: "結果クリア"),
+            el(6, "staticText", 6, 16, 776, 111, 20, label: "画面外テキスト"),
+            el(7, "button", 4, 0, 778, 134, 62, label: "ホーム"),
+        ]
+        let target = tree[5]
+        let container = StepExecutor.clippingContainer(of: target, in: tree, inferring: true)
+        XCTAssertEqual(container, FTRect(x: 0, y: 156, width: 402, height: 622))
+        // その容器で見れば下端の見切れ = 探索は寄せの分岐に入る(画面基準では見えている扱いだった)
+        XCTAssertTrue(StepExecutor.isClippedByViewport(target, screen: container!))
+        XCTAssertFalse(StepExecutor.isClippedByViewport(target, screen: screen))
+        // 申告が無ければ従来どおり nil
+        var undeclared = tree
+        undeclared[2] = el(3, "other", 4, 0, 156, 402, 622)
+        XCTAssertNil(StepExecutor.clippingContainer(of: undeclared[5], in: undeclared, inferring: true))
+    }
 }

@@ -130,7 +130,16 @@ extension StepExecutor {
         // 倒れる。代償として、位置的に無関係な候補を退ける力は失う(実アプリのコーパス
         // `and-browser_weather_weekly` の ghost 1件。2026-08-23 以前の基準値へ戻る)——
         // スクロール探索が別の行を撃つ実害と、警告レベルの検知1件を秤にかけた判断
-        if let tight, let scroller = nearestScrollableAncestor(of: element, at: index, in: elements),
+        guard let tight else {
+            // 深さの規則が候補を出せない木でも、scrollable を申告する祖先があればそれが clip 元。
+            // 2026-09-15 実測(E2E-iOS in-app・#txt_offscreen): 700pt の余白の後ろの最後の要素は
+            // 可視域に兄弟が 1 つしか居ないので nil に落ち、viewport が画面全体へ広がって
+            // 容器の下端(778)を 18pt はみ出した要素(776..796)が「見えている」で探索を止めていた。
+            // 実際にはタブバーの裏で 2pt しか描かれておらず、FM の転写が正しく反転する = 探索側の穴。
+            // 申告が無い木は従来どおり nil(下流は nil と画面全体を別物として扱う)
+            return nearestScrollableAncestor(of: element, at: index, in: elements)?.frame
+        }
+        if let scroller = nearestScrollableAncestor(of: element, at: index, in: elements),
            let clipped = ScrollGeometry.intersection(tight, scroller.frame),
            !canHold(clipped, element.frame) {
             return scroller.frame

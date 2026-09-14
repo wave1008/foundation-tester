@@ -44,10 +44,9 @@ final class OcclusionReproSyncTests: XCTestCase {
     }
 
     /// 欄の集合と @Guide の文言。**スキーマ本文はプロンプトに入るので、欄が違えば別物を測る**
-    /// (2欄に削った版は実データで反転を 106/147 取りこぼした。docs/performance-tuning.md §3.5.1)
     func testGeneratedFieldsAndGuidesMatch() throws {
         let (production, script) = try sources()
-        for type in ["VisibilityVerdict", "VisibilityScreening"] {
+        for type in ["DrawnTextTranscript"] {
             let p = try XCTUnwrap(Self.guides(of: type, in: production), "production に \(type) が無い")
             let s = try XCTUnwrap(Self.guides(of: type, in: script), "ツールに \(type) が無い")
             XCTAssertEqual(p, s, "\(type) の欄または @Guide の文言がズレている")
@@ -57,10 +56,8 @@ final class OcclusionReproSyncTests: XCTestCase {
     func testResponseTokenBudgetsMatch() throws {
         let (_, script) = try sources()
         // ツールは単体 .swift で定数を共有できないため、production の値が書かれていることを見る
-        XCTAssertTrue(script.contains("maximumResponseTokens: \(OcclusionVerifier.screeningResponseTokens)"),
-                      "1段目の出力上限が production と違う")
-        XCTAssertTrue(script.contains("maximumResponseTokens: \(OcclusionVerifier.detailResponseTokens)"),
-                      "2段目の出力上限が production と違う")
+        XCTAssertTrue(script.contains("maximumResponseTokens: \(OcclusionVerifier.transcriptResponseTokens)"),
+                      "転写の出力上限が production と違う")
     }
 
     // MARK: - 切り出し
@@ -68,10 +65,10 @@ final class OcclusionReproSyncTests: XCTestCase {
     /// `let instructions = """ … """` / `let instructions = """` 相当のブロックを、
     /// 行頭の空白を落として返す(production は関数内で字下げされている)
     static func instructionsBlock(in source: String) -> String? {
-        guard let start = source.range(of: "You visually verify UI tests."),
+        guard let start = source.range(of: "You read text in screenshots of mobile apps"),
               let end = source.range(of: "\"\"\"", range: start.upperBound..<source.endIndex)
         else { return nil }
-        let body = "You visually verify UI tests." + source[start.upperBound..<end.lowerBound]
+        let body = "You read text in screenshots of mobile apps" + source[start.upperBound..<end.lowerBound]
         return body.split(separator: "\n", omittingEmptySubsequences: false)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
@@ -79,7 +76,7 @@ final class OcclusionReproSyncTests: XCTestCase {
     }
 
     static func promptLine(in source: String) -> String? {
-        guard let start = source.range(of: "\"Expected text (may be truncated") else { return nil }
+        guard let start = source.range(of: "\"What text is drawn in this image?") else { return nil }
         let rest = source[start.lowerBound...]
         // 文字列リテラルの終端まで(\" は含みうるので、行末の `"` ではなく次の生の `"` を探す)
         var result = "\""

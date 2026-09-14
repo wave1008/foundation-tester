@@ -1,6 +1,6 @@
 // occlusion の暖機(prewarm)の契約。**FM を実際に暖める部分は単体テストで踏まない**
 // (ホスト共有資源。効果と害は実 run の A/B で見る。docs/performance-tuning.md §3.5.1)。
-// ここで固定するのは殺しスイッチ・スロットの受け渡し規則・1段目がスロットを使うこと。
+// ここで固定するのは殺しスイッチ・スロットの受け渡し規則・等倍の転写がスロットを使うこと。
 
 import XCTest
 @testable import FTFoundationModels
@@ -41,10 +41,10 @@ final class OcclusionPrewarmTests: XCTestCase {
         let delegate = try String(
             contentsOf: root.appendingPathComponent("Sources/FTFoundationModels/ReplayAssist.swift"),
             encoding: .utf8)
-        XCTAssertTrue(verifier.contains("respond(instructions: Self.instructions"),
+        XCTAssertTrue(verifier.contains("transcribe(crop, instructions: Self.instructions, prewarmed: true)"),
                       "本番の呼び出しが共有の instructions 定数を使っていない")
         XCTAssertTrue(verifier.contains("OcclusionPrewarm.take(matching: instructions)"),
-                      "1段目が暖機済みセッションを引いていない(暖機が無駄になる)")
+                      "転写が暖機済みセッションを引いていない(暖機が無駄になる)")
         XCTAssertTrue(delegate.contains("OcclusionPrewarm.prewarm(instructions: OcclusionVerifier.instructions)"),
                       "暖機が共有の instructions 定数で撃たれていない")
     }

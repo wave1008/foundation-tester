@@ -190,7 +190,7 @@ public enum RegionText {
     static let maxUpscaledPixels = 4_000_000
 
     /// crop を整数倍に拡大する(補間は high)。倍率 1 と、上限を超える大きさなら元の画像を返す
-    static func enlarged(_ image: CGImage, by factor: Int) -> CGImage {
+    public static func enlarged(_ image: CGImage, by factor: Int) -> CGImage {
         guard factor > 1, image.width * image.height * factor * factor <= maxUpscaledPixels
         else { return image }
         let width = image.width * factor, height = image.height * factor
