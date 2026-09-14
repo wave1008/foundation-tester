@@ -193,6 +193,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | profile | String? | 実行プロファイル名 |
 | host | String | **実行マシンのホスト名**(`FT_MACHINE` > hostname を sanitize したもの)。**LPT の同一マシン判定はこれ**。**マシン名(設定タブで付けたローカルエイリアス)は記録しない** —— エイリアスは頻繁に変わりうるので記録の鍵にしない(2026-08-26 ユーザー決定。用語は docs/remote-runner.md §0)。**旧キー `machine` の記録も読める** |
 | trigger | String | `"api"`(拡張)/ `"cli"` |
+| pid | Int? | run を書いたプロセスの pid(`fleetest run` / `api run` 自身)。**同じ `host` でだけ意味を持つ**。insights の `unfinishedRuns` は、finishedAt の無い run のうち **同じ機械で pid がまだ生きているものを「実行中」として数えない**(2026-09-14 より前の記録には無く、その run は従来どおり未完了として数える) |
 | startedAt / finishedAt | String / String? | ISO8601。**finishedAt が無い = 未完了**(クラッシュ検出。`interrupted`/`abortReason` が付いた run は finishedAt を持つので、この判定には掛からない) |
 | total / passed / failed | Int? | 実行完了まで nil |
 | workerAnomalies | [WorkerAnomalyRecord]? | ワーカー異常の構造化記録(下記)。**機械的な除外はここを見る** |

@@ -573,12 +573,9 @@ struct RemoteCommand: AsyncParsableCommand {
                 }
             }
 
+            /// 形は `api remote-machines` と同一(ApiRemoteHostsCommand.emit の1口)
             private static func emitJSON(_ entries: [RemoteHostEntry]) {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-                guard let data = try? encoder.encode(MachinesListJSON(machines: entries)),
-                      let line = String(data: data, encoding: .utf8) else { return }
-                ConsoleOut.out(line)
+                ApiRemoteHostsCommand.emit(entries)
             }
         }
 
@@ -653,10 +650,6 @@ struct RemoteCommand: AsyncParsableCommand {
 }
 
 /// `fleetest remote machines list --json` の出力全体
-private struct MachinesListJSON: Encodable {
-    let machines: [RemoteHostEntry]
-}
-
 // MARK: - issuer resolution (choke point for every RemoteLayout construction; §18.2)
 
 /// プロセス内で1回だけ、既定 issuer(USER@hostname フォールバック)を使った旨を stderr へ警告する

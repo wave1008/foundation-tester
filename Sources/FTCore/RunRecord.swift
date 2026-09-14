@@ -70,7 +70,7 @@ public struct FMSettingsRecord: Codable, Sendable, Equatable {
 public struct RunMetaRecord: Codable, Sendable {
     /// 旧キー "machine"(2026-08-26 以前の記録)も読む。書きは "host" だけ
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, runID, project, profile, host, machine, trigger, startedAt, finishedAt
+        case schemaVersion, runID, project, profile, host, machine, trigger, startedAt, finishedAt, pid
         case total, passed, failed, degradedWorkers, freezeRetries, blankRepairs, blankExclusions
         case measurementInvalid, measurementInvalidReasons, workerAnomalies, issuer, runGroup
         case performanceMode, fmDead, fmDeadReason
@@ -89,6 +89,7 @@ public struct RunMetaRecord: Codable, Sendable {
         trigger = try c.decode(String.self, forKey: .trigger)
         startedAt = try c.decode(String.self, forKey: .startedAt)
         finishedAt = try c.decodeIfPresent(String.self, forKey: .finishedAt)
+        pid = try c.decodeIfPresent(Int.self, forKey: .pid)
         total = try c.decodeIfPresent(Int.self, forKey: .total)
         passed = try c.decodeIfPresent(Int.self, forKey: .passed)
         failed = try c.decodeIfPresent(Int.self, forKey: .failed)
@@ -123,6 +124,7 @@ public struct RunMetaRecord: Codable, Sendable {
         try c.encode(trigger, forKey: .trigger)
         try c.encode(startedAt, forKey: .startedAt)
         try c.encodeIfPresent(finishedAt, forKey: .finishedAt)
+        try c.encodeIfPresent(pid, forKey: .pid)
         try c.encodeIfPresent(total, forKey: .total)
         try c.encodeIfPresent(passed, forKey: .passed)
         try c.encodeIfPresent(failed, forKey: .failed)
@@ -160,6 +162,10 @@ public struct RunMetaRecord: Codable, Sendable {
     public var trigger: String
     public var startedAt: String
     public var finishedAt: String?
+    /// **run を書いているプロセスの pid**(`fleetest run` / `api run` 自身。同じ `host` でだけ意味を持つ)。
+    /// `finishedAt` が無い run を「クラッシュ」と数える前に、**同じ機械で pid がまだ生きていれば
+    /// 「実行中」**と読み分けるための欄(insights の unfinishedRuns。2026-09-14 より前の記録には無い)
+    public var pid: Int?
     public var total: Int?
     public var passed: Int?
     public var failed: Int?
@@ -237,7 +243,7 @@ public struct RunMetaRecord: Codable, Sendable {
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, host: String, trigger: String, startedAt: String,
-                finishedAt: String? = nil, total: Int? = nil, passed: Int? = nil,
+                finishedAt: String? = nil, pid: Int? = nil, total: Int? = nil, passed: Int? = nil,
                 failed: Int? = nil, degradedWorkers: [String]? = nil,
                 freezeRetries: [String]? = nil,
                 blankRepairs: [String]? = nil, blankExclusions: [String]? = nil,
@@ -258,6 +264,7 @@ public struct RunMetaRecord: Codable, Sendable {
         self.trigger = trigger
         self.startedAt = startedAt
         self.finishedAt = finishedAt
+        self.pid = pid
         self.total = total
         self.passed = passed
         self.failed = failed

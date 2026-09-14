@@ -40,7 +40,10 @@ class EnterキーでIMEアクションが発火すること {
             }
             scene(3, "一括 type の末尾改行も IME アクションになる") {
                 condition {
-                    // クリアは ime=0 にも戻す。発火後のフォーカスは SUT ごとに違うので tap し直す
+                    // クリアは ime=0 にも戻す。発火後のフォーカスは SUT ごとに違うので tap し直す。
+                    // **Android は先にキーボードを閉じる**: 小さい実機(Pixel 4a・851dp)では窓が縮み
+                    // `#btn_input_clear` が木から消える(03_テキスト入力 と同じ規律)
+                    android { hideKeyboard() }
                     tap("#btn_input_clear")
                 }.action {
                     tap("#field_single")
@@ -53,6 +56,7 @@ class EnterキーでIMEアクションが発火すること {
             }
             scene(4, "ロケータ無しの type でも末尾改行が IME アクションになる") {
                 condition {
+                    android { hideKeyboard() }
                     tap("#btn_input_clear")
                 }.action {
                     // ロケータ無し = フォーカス中の要素へ入力。iOS はここも XCUITest 経路へ回る

@@ -436,8 +436,12 @@ public enum RunResultsQuery {
     /// キー。_disabled/ は除外される)。渡すと「消えたシナリオ」を日数の推測ではなく確実に判定できる。
     /// nil または空 = 供給されていない(走査に失敗した等)ので日数だけで判定する ——
     /// **空集合を「全部消えた」と読まない**(全シナリオが retired になり、検知が丸ごと黙る)
+    /// `currentHost` / `isAlive`: 未完了の run を「この機械でまだ実行中」と読み分けるための差し替え口
+    /// (既定 = 記録時と同じ規則のホスト名・実プロセスの生死。テストが注入する)
     public static func insights(records: [ScenarioRunRecord], runs: [RunMetaRecord],
-                                definedClasses: Set<String>? = nil) -> [InsightRow] {
+                                definedClasses: Set<String>? = nil,
+                                currentHost: String = RunRecorder.currentMachine(),
+                                isAlive: (Int32) -> Bool = ProcessLiveness.isAlive) -> [InsightRow] {
         var rows: [InsightRow] = []
         // **実行されなくなったシナリオを先に外す**。--since の窓に古い記録が残るかぎり、
         // 削除・_disabled 化されたシナリオの「末尾の失敗」は永久に critical を出し続け、
@@ -489,11 +493,20 @@ public enum RunResultsQuery {
                 count: retiredIDs.count, deltaPct: nil))
         }
 
-        let unfinishedCount = runs.filter { $0.finishedAt == nil }.count
+        // **実行中の run を「クラッシュの可能性」と数えない**(§18 の残件): 同じ機械で pid がまだ
+        // 生きていれば実行中。pid の無い古い記録・別の機械の記録は従来どおり未完了として数える
+        // (別の機械の生死はここからは分からない = 断定しない側)
+        let unfinished = runs.filter { $0.finishedAt == nil }
+        let stillRunning = unfinished.filter { run in
+            run.host == currentHost && run.pid.map { isAlive(Int32($0)) } == true
+        }
+        let unfinishedCount = unfinished.count - stillRunning.count
         if unfinishedCount >= unfinishedRunsMinCount {
+            let runningNote = stillRunning.isEmpty ? ""
+                : "; \(stillRunning.count) more still running on this machine (not counted)"
             rows.append(InsightRow(
                 kind: "unfinishedRuns", severity: "info", scenarioID: nil, platform: nil, worker: nil,
-                message: "\(unfinishedCount) incomplete run(s) (possible crash or force-quit)",
+                message: "\(unfinishedCount) incomplete run(s) (possible crash or force-quit)\(runningNote)",
                 count: unfinishedCount, deltaPct: nil))
         }
 

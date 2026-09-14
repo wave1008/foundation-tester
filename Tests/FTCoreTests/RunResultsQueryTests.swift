@@ -773,6 +773,29 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertEqual(row?.count, 1)
     }
 
+    /// **同じ機械で pid が生きている未完了 run は「実行中」= 数えない**(§18 の残件: insights が
+    /// 実行中の run も crash と言っていた)。別の機械の pid・pid の無い旧記録は従来どおり数える
+    func testInsightsUnfinishedRunsSkipsRunsStillAliveOnThisMachine() {
+        var running = makeMeta(runID: "20260101-000000Z-m-0001", finishedAt: nil, host: "here")
+        running.pid = 4242
+        var dead = makeMeta(runID: "20260101-000100Z-m-0002", finishedAt: nil, host: "here")
+        dead.pid = 4243
+        var elsewhere = makeMeta(runID: "20260101-000200Z-m-0003", finishedAt: nil, host: "there")
+        elsewhere.pid = 4242
+        let legacy = makeMeta(runID: "20260101-000300Z-m-0004", finishedAt: nil, host: "here")
+        let alive: (Int32) -> Bool = { $0 == 4242 }
+
+        let rows = RunResultsQuery.insights(records: [], runs: [running, dead, elsewhere, legacy],
+                                            currentHost: "here", isAlive: alive)
+        let row = try? XCTUnwrap(rows.first { $0.kind == "unfinishedRuns" })
+        XCTAssertEqual(row?.count, 3, "実行中の 1 本だけ除く(死んだ pid・別の機械・pid 無しは数える)")
+        XCTAssertTrue(row?.message.contains("1 more still running on this machine") == true, row?.message ?? "")
+
+        let onlyRunning = RunResultsQuery.insights(records: [], runs: [running],
+                                                   currentHost: "here", isAlive: alive)
+        XCTAssertFalse(onlyRunning.contains { $0.kind == "unfinishedRuns" }, "実行中だけなら行を出さない")
+    }
+
     func testInsightsNoUnfinishedRunsWhenAllFinished() {
         let runs = [makeMeta(runID: "20260101-000000Z-m-0001", finishedAt: "2026-01-01T00:10:00Z")]
         let rows = RunResultsQuery.insights(records: [], runs: runs)

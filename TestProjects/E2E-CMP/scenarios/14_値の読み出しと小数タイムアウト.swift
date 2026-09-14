@@ -47,6 +47,8 @@ class 掴んだ要素の値を読んで後段で使えること {
             }
             scene(3, "読み出した値を加工して別要素の期待値に使う") {
                 action {
+                    // 小さい実機(Pixel 4a)ではキーボードで窓が縮み送信ボタンが木から消える(03 と同じ規律)
+                    android { hideKeyboard() }
                     tap("#btn_input_submit")
                 }.expectation {
                     select("#txt_input_submitted").textIs("submitted=readback123")   // 先に確定させる

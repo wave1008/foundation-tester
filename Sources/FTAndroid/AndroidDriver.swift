@@ -102,6 +102,23 @@ public final class AndroidDriver: AppDriver {
         return density
     }
 
+    /// **ScaleGestureDetector が拡大縮小を認める最小の指の間隔**(px)。Android の
+    /// `ViewConfiguration.getScaledMinimumScalingSpan()` = **27 mm** を density から px に換算する
+    /// (440 dpi の Pixel 3a で 468 px)。これを下回る間隔の 2 本指は、どれだけ開いても
+    /// ズームにならない(実測: 既定半径 238 px = 最大間隔 428 px で `zoom=-`、450 px で `zoom=in`)。
+    /// 読めなければ nil(呼び手は従来の既定のまま)
+    public func minimumScalingSpanPx() -> Double? {
+        guard let out = try? adb(["shell", "wm", "density"]).output,
+              let density = Self.parseDisplayDensity(out) else { return nil }
+        return Self.minimumScalingSpanPx(densityPxPerDp: density)
+    }
+
+    /// 27 mm(`ViewConfiguration.MINIMUM_SCALING_SPAN`)× dpi / 25.4。dpi = density × 160
+    static let minimumScalingSpanMillimetres = 27.0
+    static func minimumScalingSpanPx(densityPxPerDp: Double) -> Double {
+        minimumScalingSpanMillimetres * (densityPxPerDp * 160) / 25.4
+    }
+
     /// `adb shell wm density` の出力 → **dp あたりの px**。
     /// **最後の density 行**を採る(`Override density` があればそれが実効値)。
     /// 160 は dp の定義そのもの(1dp = 1/160 inch)なので調整値ではない。

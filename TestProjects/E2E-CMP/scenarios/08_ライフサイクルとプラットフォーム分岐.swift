@@ -111,6 +111,8 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     tap("#nav_input")
                     tap("#field_single")
                     type("#field_single", "persist99")
+                    // 小さい実機(Pixel 4a)ではキーボードで窓が縮み送信ボタンが木から消える(03 と同じ規律)
+                    android { hideKeyboard() }
                     tap("#btn_input_submit")
                 }.expectation {
                     select("#txt_input_submitted").textIs("submitted=persist99")

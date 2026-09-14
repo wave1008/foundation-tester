@@ -96,7 +96,10 @@ public final class RunRecorder: @unchecked Sendable {
 
         let meta = RunMetaRecord(
             runID: runID, project: project.name, profile: profile, host: machine,
-            trigger: trigger, startedAt: startedAt, issuer: issuer, runGroup: runGroup)
+            trigger: trigger, startedAt: startedAt,
+            // 未完了の run を「実行中」と「クラッシュ」に読み分けるための pid(RunMetaRecord.pid)
+            pid: Int(ProcessInfo.processInfo.processIdentifier),
+            issuer: issuer, runGroup: runGroup)
         RunResultsStore.writeMeta(meta, runDir: runDir)
         return recorder
     }

@@ -1461,8 +1461,23 @@ extension MCPServer {
                 // **地図は 1px も動かずシートが全画面に展開した**。逃げ道が無かったので、
                 // ft_tap / ft_long_press / ft_drag と同じく座標を受ける
                 pinchCoordinate = (x, y)
-                frame = Self.pinchArea(x: x, y: y, radius: args["radius"] as? Double,
-                                       screen: lastSnapshots[Self.engineKey(args)]?.screen)
+                let pinchScreen = lastSnapshots[Self.engineKey(args)]?.screen
+                var pinchRadius = args["radius"] as? Double
+                // Android は最小スケール距離(27 mm)に届く半径まで既定を広げる(pinchRadiusHonouringMinimumSpan の doc)
+                if pinchRadius == nil, let android = pinchDriver as? AndroidDriver,
+                   let minimumSpan = android.minimumScalingSpanPx() {
+                    let defaultRadius = pinchScreen.map { min($0.width, $0.height) * Self.pinchRadiusScreenRatio }
+                        ?? Self.pinchRadiusFallback
+                    let widened = Self.pinchRadiusHonouringMinimumSpan(defaultRadius: defaultRadius,
+                                                                      minimumSpan: minimumSpan)
+                    if widened > defaultRadius {
+                        pinchRadius = widened
+                        pinchSelector += " (radius widened to \(Int(widened)) px so the fingers exceed"
+                            + " Android's minimum scaling span of \(Int(minimumSpan)) px — pass radius"
+                            + " to override)"
+                    }
+                }
+                frame = Self.pinchArea(x: x, y: y, radius: pinchRadius, screen: pinchScreen)
                 // **XCUITest は領域を受け取れない**(`PinchRequest.frame` を読むのは Android と
                 // in-app だけ。XCTest のピンチは XCUIElement にしか生えておらず、座標版が無い)。
                 // 黙って全画面へ退化させると、狙った場所を撃ったつもりで**手前のシートを掴む**

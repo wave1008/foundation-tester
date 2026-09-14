@@ -1920,6 +1920,19 @@ extension MCPServer {
     static let pinchRadiusScreenRatio = 0.22
     static let pinchRadiusFallback: Double = 100
 
+    /// **Android の座標ピンチの既定半径は、指の最大間隔が最小スケール距離を超えるように広げる**
+    /// (§19 M5: 既定 238 px = 間隔 428 px は 440 dpi の 27 mm = 468 px を下回り、一切ズームしない)。
+    /// ブリッジは領域の短辺 × 0.9 を最大間隔にする(AndroidRunner BridgeRouter.handlePinch)ので、
+    /// 間隔が `minimumSpan × headroom` に届く半径 = `minimumSpan × headroom / (2 × 0.9)`。
+    /// headroom は「超えた分だけがスケールとして数えられる」ための余裕(1.25 = 25%)。
+    /// 明示の `radius` には触らない(呼び手の指定を黙って変えない)
+    static let pinchSpanHeadroom = 1.25
+    static let bridgePinchSpanRatio = 0.9
+    static func pinchRadiusHonouringMinimumSpan(defaultRadius: Double, minimumSpan: Double?) -> Double {
+        guard let minimumSpan, minimumSpan > 0 else { return defaultRadius }
+        return max(defaultRadius, (minimumSpan * pinchSpanHeadroom / (2 * bridgePinchSpanRatio)).rounded(.up))
+    }
+
     /// (x,y) を中心にした正方形の対象領域。**画面が分かるなら内側へ収める** ——
     /// 画面外へはみ出した指はタッチとして届かず、要求より小さいズームになる。
     /// 収め方は**中心を動かさず半径を縮める**(中心を寄せるとズームの支点が変わり、

@@ -93,7 +93,9 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
         }
     }
 
-    private static func emit(_ entries: [RemoteHostEntry]) {
+    /// **登録簿の JSON はこの1形だけ**(`remote machines list --json` も同じ口を通す。以前は
+    /// `{"machines":[…]}` の別形を持っていて、拡張が読む契約と食い違っていた = §18 の残件)
+    static func emit(_ entries: [RemoteHostEntry]) {
         let config = LocalConfig.load()
         let output = ApiRemoteHostsOutput(
             hosts: entries.map(ApiRemoteHostEntry.init),
