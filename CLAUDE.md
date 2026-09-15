@@ -706,7 +706,9 @@
   直った行の鍵が刈られ、次の run で赤に戻る)・**触れた0件の run では刈らない**・
   **接頭辞で自分のシナリオのぶんだけ**(部分実行で他を巻き込まない)。
   **`heal=false` は指紋照合(= 自己修復)を止める**(門は `StepExecutor.execute` の入口1箇所)。
-  **`fm=false` では止めない**(FM を使わないので配下に置かない。ユーザー決定 2026-09-15)
+  **`fm=false` では止めない**(FM を使わないので配下に置かない。ユーザー決定 2026-09-15)。
+  **緑の run では1度も実行されない**ので、自己修復を触ったらデバイスの陽性対照
+  `Scripts/heal-verify.sh`(v1 で採取 → v2 で2周 → `heal=false` で赤。1台に固定)を回す
 - **セレクタ文法(`FTSelector`)・コマンド索引(`CommandIndex`)・コード生成(`ScenarioCodeGen`)は
   FTCore に居る**(写像先の `FlowLocator` が FTCore の型で、DSL ランタイムには依存しない)。
   利用者からの見え方は `Descriptors.swift` の `@_exported import FTCore` が保っている。

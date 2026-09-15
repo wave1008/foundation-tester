@@ -118,6 +118,9 @@ E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:
 **`_disabled/` は SPM のビルド対象外**(`Package.swift` の `exclude`)。回すときは
 `scenarios/` 直下へ移動 → `swift build --product fleetest-scenarios-E2E-CMP` → 実行 → 元に戻す。
 
+- `94_指紋照合.swift` / `95_指紋照合の前提切替.swift` — 自己修復(ロケータの指紋照合)の witness と、
+  その前提(id スキーマ)を切り替える補助。run を跨いで初めて意味を持つので、`Scripts/heal-verify.sh` で
+  1台に固定して順に回す(個別に回しても何も検証しない)。
 - `91_クラッシュ検知.swift` — アプリを実際にクラッシュさせる破壊的シナリオ。**`ios-inapp` で回すこと**
   (クラッシュレポート添付は inapp 固有。xcuitest はブリッジが別プロセスなので切断しない)。
   **2026-07-22 検証済み**: エラー行に `.ips` のパスと終了理由が付くことを確認。

@@ -2703,6 +2703,34 @@ Scripts/fm-verify.sh                    # 既定 TestProjects/E2E-CMP・プロ�
   (`log` は shell 関数に食われることがあるので**絶対パスで叩く**。自分の述語文字列が
   `log` プロセス自身のログに出て**偽の成功行**に見えるので、プロセス名まで確認すること)
 
+### 自己修復(指紋照合)の検証は `Scripts/heal-verify.sh`(2026-09-15)
+
+指紋照合は**失敗経路でしか動かない**ので、緑の run では1度も実行されない = フル E2E を何度回しても
+守られない。そこで witness(`TestProjects/E2E-CMP/scenarios/_disabled/94_指紋照合.swift`)と
+前提を切り替える補助(`95_指紋照合の前提切替.swift`)を一時的に有効化し、**同じ台**で順に回して判定する
+(1コマンド。既定は `ios-heal` プロファイルの先頭の台):
+
+```
+Scripts/heal-verify.sh                  # 既定 TestProjects/E2E-CMP・プロファイル ios-heal
+Scripts/heal-verify.sh --profile android-heal
+```
+
+| 段 | 期待 |
+|---|---|
+| schema=v1 → 94 | 緑・修復なし(プライマリで解決して**指紋を採る**) |
+| schema=v2 → 94 を2周 | 2周とも緑・`heal-fingerprint-match`・修正提案 `#btn_heal_v1` → `#btn_heal_v2`・FM 0 回 |
+| `--set heal=false` → 94 | 赤(`cannot resolve the locator: id=btn_heal_v1`)・指紋を使わない |
+| schema=v1 へ戻す | 緑(途中で落ちても trap で戻す) |
+
+- **2周目が要る**: 1周だけだと「指紋で直った行の鍵が、その run の終わりに刈られて3周目に赤へ戻る」
+  不具合(2026-09-15 に直した。`LocatorFingerprintCache` の失効)を踏まない
+- **全段を `--device` で1台に固定**する(schema は台ごとのアプリデータ・指紋はホスト側のファイル)
+- 指紋の控え(`<project>/.fleetest/locator-fingerprints.json`)は退避して空から回し、最後に戻す
+- run の特定は実行前後の `results/runs/` の差で行う。`fm-verify.sh` と**同時に回さない**
+  (どちらも `_disabled/` のシナリオを出し入れする)
+- 自己修復(`StepExecutor` の解決分岐・`LocatorFingerprint`・`LocatorFingerprintCache`・`heal` の配線)を
+  触ったら回す。実測(2026-09-15): iPhone 17 Pro Simulator で約 70 秒(シナリオのビルド込み)・Pixel 9 Emulator(`--profile android-heal`)で約 40 秒。どちらも全段が期待どおり
+
 ## FM 呼び出しの許可枠(FMLock)
 
 FM は**ホスト全体で共有される資源**。2026-07-22 時点の実測ではスループットは並列度によらず
