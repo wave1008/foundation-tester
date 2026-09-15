@@ -738,7 +738,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             performanceMode: performanceMode,
             degradedWorkers: outcome.degradedWorkers, blankExclusions: outcome.blankExclusions)
         // fmSettings は上(do/catch より前)で計算済み —— 供給段の abort 記録もここを使うため
-        recorder?.finish(total: selected.count, passed: outcome.passed, failed: outcome.failed,
+        let slowWorkers = recorder?.finish(total: selected.count, passed: outcome.passed, failed: outcome.failed,
                          degradedWorkers: outcome.degradedWorkers,
                          freezeRetries: outcome.freezeRetries,
                          blankRepairs: outcome.blankRepairs,
@@ -749,11 +749,13 @@ struct ApiRunCommand: AsyncParsableCommand {
                          performanceMode: performanceMode,
                          fmSettings: fmSettings,
                          setOverrides: profileOverrides.mapValues(\.token),
-                         interrupted: outcome.interrupted)
+                         interrupted: outcome.interrupted) ?? []
         if !outcome.degradedWorkers.isEmpty {
             logStderr("⚠️ Degraded or dropped workers (\(outcome.degradedWorkers.count)):")
             for entry in outcome.degradedWorkers { logStderr("   - \(entry)") }
         }
+        // 台そのものが遅いことの観測(SlowWorkerDetector)。自動では何もしない・除外もしない
+        for finding in slowWorkers { logStderr(finding.consoleWarning) }
         if !outcome.freezeRetries.isEmpty {
             logStderr("🔁 Results discarded and requeued (\(outcome.freezeRetries.count)):")
             for entry in outcome.freezeRetries { logStderr("   - \(entry)") }

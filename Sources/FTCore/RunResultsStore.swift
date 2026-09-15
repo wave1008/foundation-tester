@@ -440,20 +440,46 @@ public enum RunResultsStore {
     /// かかり(2026-09-01 実測)、ヒットの意味が無くなる。E2E-iOS 1,092 run で数十 ms。
     /// **呼ぶ順序は「指紋 → 走査」**: 指紋の後に届いた記録は走査に混ざっても次回の指紋が変わる
     /// (ミス側に倒れる)。逆順だと走査後に届いた記録が指紋に入り、無い記録の出力を有効と見なす
+    ///
+    /// **進行中の run は中身を鍵に入れない**(2026-09-15。進行中の run は `scenarios/` が
+    /// シナリオ完了のたびに mtime を更新するので、中身を鍵に含めると誰かが実行中の間は
+    /// 一度もキャッシュに命中しない = E2E-CMP 3,687 run で毎回 15〜19 秒の走査を払っていた)。
+    /// 「進行中」の判定は `scenarios/` の mtime が `run.json` の mtime より新しいことだけで行う
+    /// (finish() は run.json を最後に上書きするので、完了した run は run.json のほうが新しい)。
+    /// 進行中と見た run は鍵に **存在だけ**(mtime/size 抜き)を入れる —— 完了すると finish() の
+    /// 上書きで run.json が scenarios/ より新しくなり印が反転、鍵が変わってキャッシュは作り直される。
+    /// **出力の意味**: 進行中 run の scenarios は、キャッシュが作られた時点までのぶんだけ
+    /// 含まれ得る(完了時にまとめて反映)。
+    /// rsync で回収したリモート run は書き込み順序が保証されず、誤って「進行中」と見ることが
+    /// ある(scenarios/ のほうが新しく転送された場合)が、回収後に中身が変わることは無いので
+    /// 「鍵に入れない」のと同じ意味になるだけで安全(その run が変化しても鍵は動かないが、
+    /// 変化しないのだから動かなくてよい)
     public static func scanFingerprint(resultsDir: URL, since: Date? = nil, until: Date? = nil) -> String {
         var hasher = SHA256()
         var lines = ""
-        func stamp(_ path: String) -> String {
+        struct Stat { let exists: Bool; let sec: Int; let nsec: Int; let size: Int }
+        func statOf(_ path: String) -> Stat {
             var status = stat()
-            guard stat(path, &status) == 0 else { return "-" }
+            guard stat(path, &status) == 0 else { return Stat(exists: false, sec: 0, nsec: 0, size: 0) }
             let mtime = status.st_mtimespec
-            return "\(mtime.tv_sec).\(mtime.tv_nsec) \(status.st_size)"
+            return Stat(exists: true, sec: Int(mtime.tv_sec), nsec: Int(mtime.tv_nsec), size: Int(status.st_size))
+        }
+        func render(_ entry: Stat) -> String {
+            entry.exists ? "\(entry.sec).\(entry.nsec) \(entry.size)" : "-"
         }
         for monthDir in relevantMonthDirs(resultsDir: resultsDir, since: since, until: until) {
             lines += "month \(monthDir.lastPathComponent)\n"
             for runDir in runDirs(in: monthDir) {
                 let base = runDir.path
-                lines += "run \(runDir.lastPathComponent) \(stamp(base + "/run.json")) \(stamp(base + "/scenarios"))\n"
+                let metaStat = statOf(base + "/run.json")
+                let scenariosStat = statOf(base + "/scenarios")
+                let inProgress = metaStat.exists && scenariosStat.exists
+                    && (scenariosStat.sec, scenariosStat.nsec) > (metaStat.sec, metaStat.nsec)
+                if inProgress {
+                    lines += "run \(runDir.lastPathComponent) in-progress\n"
+                } else {
+                    lines += "run \(runDir.lastPathComponent) \(render(metaStat)) \(render(scenariosStat))\n"
+                }
             }
         }
         hasher.update(data: Data(lines.utf8))

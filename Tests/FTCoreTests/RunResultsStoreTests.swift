@@ -272,34 +272,99 @@ final class RunResultsStoreTests: XCTestCase {
 
     // MARK: - scanFingerprint(ResultsOutputCache の鍵)
 
-    func testFingerprintIsStableUntilTheInputSetChanges() {
+    /// 実時間の粒度(同一 tick 内の連続書き込み)に判定を委ねない —— 「完了」「進行中」の
+    /// 順序は明示的に mtime を貼り替えて作る。future/past は現実の書き込み(このテストの
+    /// 実行時間・1970年以降)を跨がない距離を取ってあるので、以降の実 API 呼び出しが
+    /// 付ける mtime と衝突しない
+    private func setModificationDate(_ date: Date, at url: URL) throws {
+        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: url.path)
+    }
+
+    private func markRunCompleted(_ runDir: URL) throws {
+        // run.json を十分未来にして、以降このテスト内で scenarios/ に何を書いても
+        // 「run.json のほうが新しい」= 完了、の判定を保つ
+        try setModificationDate(Date().addingTimeInterval(3600), at: runDir.appendingPathComponent("run.json"))
+    }
+
+    private func markRunInProgress(_ runDir: URL) throws {
+        // run.json を十分過去にして、以降 scenarios/ に何を書いても
+        // 「scenarios/ のほうが新しい」= 進行中、の判定を保つ
+        try setModificationDate(Date(timeIntervalSince1970: 0), at: runDir.appendingPathComponent("run.json"))
+    }
+
+    /// ① 完了 run(run.json が scenarios/ より新しい)は、記録を足すと鍵が変わる(従来どおり)
+    func testCompletedRunFingerprintChangesWhenARecordIsAdded() throws {
         let runID = "20260201-000000Z-mach-0021"
         let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
         RunResultsStore.writeMeta(makeMeta(runID: runID, startedAt: "2026-02-01T00:00:00Z"), runDir: runDir)
         RunResultsStore.writeScenario(makeScenarioRecord(scenarioID: "Foo.a", runID: runID), runDir: runDir, fileName: "Foo.a")
+        try markRunCompleted(runDir)
+
         let initial = RunResultsStore.scanFingerprint(resultsDir: resultsDir)
         XCTAssertEqual(initial, RunResultsStore.scanFingerprint(resultsDir: resultsDir), "no change → same digest")
 
-        // 記録の追加(atomic 書き = rename)で変わる
         RunResultsStore.writeScenario(makeScenarioRecord(scenarioID: "Foo.b", runID: runID), runDir: runDir, fileName: "Foo.b")
         let afterAdd = RunResultsStore.scanFingerprint(resultsDir: resultsDir)
-        XCTAssertNotEqual(initial, afterAdd)
+        XCTAssertNotEqual(initial, afterAdd, "完了 run は scenarios/ の変化がそのまま鍵に効く")
 
-        // 記録の削除で変わる
         RunResultsStore.removeScenario(runDir: runDir, fileName: "Foo.b")
         let afterRemove = RunResultsStore.scanFingerprint(resultsDir: resultsDir)
         XCTAssertNotEqual(afterAdd, afterRemove)
+    }
 
-        // run.json の書き直し(finish)で変わる
+    /// ② 進行中 run(scenarios/ が run.json より新しい)は、記録を足しても鍵が変わらない
+    /// (これが今回の変更の目的 —— 進行中の run が回っている間はキャッシュに命中させる)
+    func testInProgressRunFingerprintIsUnaffectedByNewRecords() throws {
+        let runID = "20260201-000000Z-mach-0022"
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
         RunResultsStore.writeMeta(makeMeta(runID: runID, startedAt: "2026-02-01T00:00:00Z"), runDir: runDir)
-        let afterFinish = RunResultsStore.scanFingerprint(resultsDir: resultsDir)
-        XCTAssertNotEqual(afterRemove, afterFinish)
+        RunResultsStore.writeScenario(makeScenarioRecord(scenarioID: "Foo.a", runID: runID), runDir: runDir, fileName: "Foo.a")
+        try markRunInProgress(runDir)
 
-        // 新しい run ディレクトリで変わる
-        let other = "20260201-010000Z-mach-0022"
-        RunResultsStore.writeMeta(makeMeta(runID: other, startedAt: "2026-02-01T01:00:00Z"),
-                                  runDir: RunResultsStore.runDir(resultsDir: resultsDir, runID: other))
-        XCTAssertNotEqual(afterFinish, RunResultsStore.scanFingerprint(resultsDir: resultsDir))
+        let initial = RunResultsStore.scanFingerprint(resultsDir: resultsDir)
+        RunResultsStore.writeScenario(makeScenarioRecord(scenarioID: "Foo.b", runID: runID), runDir: runDir, fileName: "Foo.b")
+        XCTAssertEqual(initial, RunResultsStore.scanFingerprint(resultsDir: resultsDir),
+                      "進行中 run(scenarios/ が新しい)は記録の追加で鍵を動かさない")
+
+        RunResultsStore.removeScenario(runDir: runDir, fileName: "Foo.b")
+        XCTAssertEqual(initial, RunResultsStore.scanFingerprint(resultsDir: resultsDir),
+                      "進行中 run は記録の削除でも鍵を動かさない")
+    }
+
+    /// ③ 進行中 run が完了する(run.json が finish() で上書きされ scenarios/ より新しくなる)と
+    /// 印が反転し、鍵が変わる
+    func testFinishingAnInProgressRunChangesTheFingerprint() throws {
+        let runID = "20260201-000000Z-mach-0023"
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
+        RunResultsStore.writeMeta(makeMeta(runID: runID, startedAt: "2026-02-01T00:00:00Z"), runDir: runDir)
+        RunResultsStore.writeScenario(makeScenarioRecord(scenarioID: "Foo.a", runID: runID), runDir: runDir, fileName: "Foo.a")
+        try markRunInProgress(runDir)
+        let whileInProgress = RunResultsStore.scanFingerprint(resultsDir: resultsDir)
+
+        // finish() 相当: run.json を上書きし、scenarios/ より新しくする
+        RunResultsStore.writeMeta(makeMeta(runID: runID, startedAt: "2026-02-01T00:00:00Z"), runDir: runDir)
+        try markRunCompleted(runDir)
+        XCTAssertNotEqual(whileInProgress, RunResultsStore.scanFingerprint(resultsDir: resultsDir),
+                          "完了への遷移で鍵が変わり、キャッシュが作り直される")
+    }
+
+    /// ④ run ディレクトリ自体の追加・削除は、完了/進行中の別に関わらず従来どおり鍵を動かす
+    func testFingerprintChangesWhenARunDirectoryIsAddedOrRemoved() throws {
+        let runID = "20260201-000000Z-mach-0024"
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
+        RunResultsStore.writeMeta(makeMeta(runID: runID, startedAt: "2026-02-01T00:00:00Z"), runDir: runDir)
+        let before = RunResultsStore.scanFingerprint(resultsDir: resultsDir)
+
+        let other = "20260201-010000Z-mach-0025"
+        let otherDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: other)
+        RunResultsStore.writeMeta(makeMeta(runID: other, startedAt: "2026-02-01T01:00:00Z"), runDir: otherDir)
+        let afterAdd = RunResultsStore.scanFingerprint(resultsDir: resultsDir)
+        XCTAssertNotEqual(before, afterAdd)
+
+        try FileManager.default.removeItem(at: otherDir)
+        let afterRemove = RunResultsStore.scanFingerprint(resultsDir: resultsDir)
+        XCTAssertNotEqual(afterAdd, afterRemove)
+        XCTAssertEqual(before, afterRemove)
     }
 
     func testFingerprintIgnoresMonthsOutsideTheWindow() throws {

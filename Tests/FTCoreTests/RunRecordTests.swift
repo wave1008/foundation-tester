@@ -694,6 +694,57 @@ final class RunRecordTests: XCTestCase {
         XCTAssertNil(meta.guardStaleFrame)
     }
 
+    // MARK: - RunRecorder: 台そのものが遅いことの観測(SlowWorkerDetector)
+
+    private func timeline(snapshotSamples: [Int]) -> [TimelineStepRecord] {
+        snapshotSamples.enumerated().map { index, ms in
+            TimelineStepRecord(index: index, description: "tap", status: "passed", snapshotMs: ms)
+        }
+    }
+
+    /// finish() は引数を足さず、自分が書いた scenarios/*.json を読み直して遅い台を検出する
+    /// (`fleetest run`/`api run` の渡し忘れを作らないため)。run.json と戻り値の両方に載る
+    func testFinishRecordsSlowWorkersWhenOneLaneIsSlow() throws {
+        let (recorder, cleanup) = try runRecorder()
+        defer { cleanup() }
+        recorder.record(ScenarioRunRecord(
+            scenarioID: "Foo.slow", platform: "ios", worker: "ios:iPhone 17 Pro-04", passed: true,
+            startedAt: "2026-09-15T00:00:00.000Z", durationMs: 0,
+            steps: StepCountsRecord(total: 41, passed: 41),
+            timeline: timeline(snapshotSamples: Array(repeating: 4300, count: 41))))
+        recorder.record(ScenarioRunRecord(
+            scenarioID: "Foo.fast", platform: "ios", worker: "ios:iPhone 17 Pro-01", passed: true,
+            startedAt: "2026-09-15T00:00:00.000Z", durationMs: 0,
+            steps: StepCountsRecord(total: 12, passed: 12),
+            timeline: timeline(snapshotSamples: [4, 6, 8, 10, 12, 14, 16, 18, 20, 12, 10, 8])))
+
+        let returned = recorder.finish(total: 2, passed: 2, failed: 0, performanceMode: false,
+                                       fmSettings: testFMSettings, setOverrides: nil)
+        XCTAssertEqual(returned.map(\.worker), ["ios:iPhone 17 Pro-04"], "戻り値にも同じ観測が乗る")
+
+        let meta = try readMeta(recorder)
+        let slowWorkers = try XCTUnwrap(meta.slowWorkers)
+        XCTAssertEqual(slowWorkers.count, 1)
+        XCTAssertTrue(slowWorkers[0].contains("ios:iPhone 17 Pro-04"))
+        XCTAssertTrue(slowWorkers[0].contains("4300ms"))
+    }
+
+    /// 遅い台が無ければ欄そのものを省略する(degradedWorkers と同じ「事実が無ければ省く」規律。
+    /// 空配列を書かない)
+    func testFinishOmitsSlowWorkersWhenNoneAreSlow() throws {
+        let (recorder, cleanup) = try runRecorder()
+        defer { cleanup() }
+        recorder.record(ScenarioRunRecord(
+            scenarioID: "Foo.normal", platform: "ios", worker: "ios:iPhone 17 Pro-01", passed: true,
+            startedAt: "2026-09-15T00:00:00.000Z", durationMs: 0,
+            steps: StepCountsRecord(total: 1, passed: 1)))
+
+        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false,
+                        fmSettings: testFMSettings, setOverrides: nil)
+        let meta = try readMeta(recorder)
+        XCTAssertNil(meta.slowWorkers, "他ワーカーが居ない/遅い台が居ないrunでは欄を書かない")
+    }
+
     // MARK: - run.json は `--set` の上書きを記録する
 
     /// 戻すと落ちる根拠: revert すると setOverrides を渡していない run.json でも

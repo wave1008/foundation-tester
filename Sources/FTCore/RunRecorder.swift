@@ -194,6 +194,11 @@ public final class RunRecorder: @unchecked Sendable {
     /// - fmSettings: その run で実際に効いていた FM 設定(実効値)。**既定値を置かない** ——
     ///   `fleetest run` / `fleetest api run` は別実装で、既定値があると片方の呼び出し元が
     ///   渡し忘れてもコンパイルが通ってしまう(OverlayWindowOcclusion と同じ規律)
+    /// - Returns: `FTCore.SlowWorkerDetector` が検出した遅い台(除外・自動修復はしない観測のみ)。
+    ///   **引数では受け取らない** —— 呼び出し元(`fleetest run`/`api run`)に集計を渡させると
+    ///   片方が渡し忘れる型を作る。ここで書き終えた scenarios/*.json を読み直して自己完結させ、
+    ///   呼び出し元は戻り値を「1台でも居れば警告を出す」ためだけに使う
+    @discardableResult
     public func finish(total: Int, passed: Int, failed: Int, degradedWorkers: [String] = [],
                        freezeRetries: [String] = [],
                        blankRepairs: [String] = [], blankExclusions: [String] = [],
@@ -214,7 +219,7 @@ public final class RunRecorder: @unchecked Sendable {
                        // run は中断も中断以外の異常終了もしないので、省略時の false/nil がそのまま
                        // 正しい事実になる)
                        interrupted: Bool = false,
-                       abortReason: String? = nil) {
+                       abortReason: String? = nil) -> [SlowWorkerFinding] {
         hostMetrics?.stop()
         // FM の死活は**引数で受け取らない** —— 機械グローバルな事実(FMLiveness)なので、
         // 呼び出し元が run のたびに集めて渡す形にすると経路ごとに渡し忘れが出る
@@ -232,6 +237,11 @@ public final class RunRecorder: @unchecked Sendable {
         let guardedValue: Int? = guardedSum > 0 ? guardedSum : nil
         let guardSkippedValue: Int? = guardedSum > 0 ? guardSkippedSum : nil
         let guardStaleFrameValue: Int? = guardedSum > 0 ? guardStaleFrameSum : nil
+        // 台そのものが遅いことの観測(SlowWorkerDetector.swift の doc 参照)。write(_:) で
+        // 既に scenarios/*.json へ書き終えた記録を読み直す(discardLast で取り消した分は
+        // 既にファイルが消えているので二重に数えない)。**除外・自動修復はしない**
+        let slowFindings = SlowWorkerDetector.detect(records: RunResultsStore.records(runDir: runDir))
+        let slowWorkerSummaries = slowFindings.map(\.summary)
         let meta = RunMetaRecord(
             runID: runID, project: projectName, profile: profile, host: machine,
             trigger: trigger, startedAt: startedAt,
@@ -261,8 +271,10 @@ public final class RunRecorder: @unchecked Sendable {
             setOverrides: (setOverrides?.isEmpty ?? true) ? nil : setOverrides,
             // false/nil は書かない(既存レコードと同じ形。他の Bool 欄と同じ流儀)
             interrupted: interrupted ? true : nil,
-            abortReason: abortReason)
+            abortReason: abortReason,
+            slowWorkers: slowWorkerSummaries.isEmpty ? nil : slowWorkerSummaries)
         RunResultsStore.writeMeta(meta, runDir: runDir)
+        return slowFindings
     }
 
     /// 台帳(FMLiveness)の観測が古い/無い経路だけ、開いたサーキットブレーカの事実で dead を補う。

@@ -1390,7 +1390,7 @@ struct RunScenarios: AsyncParsableCommand {
             // (対象外の件数は ProfileRunner が「Skipped N scenario(s) …」で出している)
             let notApplicable = broadcast ? 0 : items.count - ranCount
             PhaseLog.mark("profile-run-done")
-            recorder.finish(total: ranCount, passed: ranCount - failedCount, failed: failedCount,
+            let slowWorkers = recorder.finish(total: ranCount, passed: ranCount - failedCount, failed: failedCount,
                             degradedWorkers: runSummary.degradedWorkers,
                             freezeRetries: runSummary.freezeRetries,
                             blankRepairs: runSummary.blankRepairs,
@@ -1435,6 +1435,8 @@ struct RunScenarios: AsyncParsableCommand {
                     + " Read this run's result with that in mind"
                     + " (confirm with: fleetest doctor --fm-only)")
             }
+            // 台そのものが遅いことの観測(SlowWorkerDetector)。自動では何もしない・除外もしない
+            for finding in slowWorkers { ConsoleOut.out(finding.consoleWarning) }
             if failedCount > 0 { throw ExitCode(1) }
             return
         }
@@ -1494,7 +1496,7 @@ struct RunScenarios: AsyncParsableCommand {
         // --profile 無しの経路(runSequential/runParallel)は `--set` の上書きを当てた既定
         // ドキュメントの実効値(noProfileSettings)をそのまま使う(--profile 経路と同じ
         // DeviceIndependentRunSettings を通す。ProfileResolver.resolve の宣言参照)
-        recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount,
+        let slowWorkers = recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount,
                         // --performance は --profile 専用(ヘルプ参照)。この経路は素通りするので false
                         performanceMode: false,
                         fmSettings: noProfileFMSettings,
@@ -1506,6 +1508,8 @@ struct RunScenarios: AsyncParsableCommand {
         ConsoleOut.out(failedCount == 0
               ? "✅ All \(items.count) scenario(s) passed"
               : "❌ \(failedCount) of \(items.count) scenario(s) failed")
+        // 台そのものが遅いことの観測(SlowWorkerDetector)。自動では何もしない・除外もしない
+        for finding in slowWorkers { ConsoleOut.out(finding.consoleWarning) }
         if failedCount > 0 {
             throw ExitCode(1)
         }

@@ -75,7 +75,7 @@ public struct RunMetaRecord: Codable, Sendable {
         case measurementInvalid, measurementInvalidReasons, workerAnomalies, issuer, runGroup
         case performanceMode, fmDead, fmDeadReason
         case guarded, guardSkipped, guardStaleFrame, fmSettings, setOverrides
-        case interrupted, abortReason
+        case interrupted, abortReason, slowWorkers
     }
 
     public init(from decoder: Decoder) throws {
@@ -112,6 +112,7 @@ public struct RunMetaRecord: Codable, Sendable {
         setOverrides = try c.decodeIfPresent([String: String].self, forKey: .setOverrides)
         interrupted = try c.decodeIfPresent(Bool.self, forKey: .interrupted)
         abortReason = try c.decodeIfPresent(String.self, forKey: .abortReason)
+        slowWorkers = try c.decodeIfPresent([String].self, forKey: .slowWorkers)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -147,6 +148,7 @@ public struct RunMetaRecord: Codable, Sendable {
         try c.encodeIfPresent(setOverrides, forKey: .setOverrides)
         try c.encodeIfPresent(interrupted, forKey: .interrupted)
         try c.encodeIfPresent(abortReason, forKey: .abortReason)
+        try c.encodeIfPresent(slowWorkers, forKey: .slowWorkers)
     }
 
     public var schemaVersion: Int
@@ -240,6 +242,12 @@ public struct RunMetaRecord: Codable, Sendable {
     /// 正常終了・中断(interrupted)のときは nil。**finishedAt はこの場合も必ず書く**
     /// (この欄が唯一の追加情報 —— 無いと理由がログにしか残らない)
     public var abortReason: String?
+    /// **台そのものが遅い**ことの観測(`FTCore.SlowWorkerDetector`。`SlowWorkerFinding.summary`
+    /// の配列)。**除外も自動修復もしない・警告のみ** —— 既存の劣化検知(XCUITestランナーの
+    /// 建て直し・凍結トリアージ)はこの帯(ステップtimeout未満の遅さ)を原理的に見ないため、
+    /// この欄だけが痕跡になる。空/未観測は nil(degradedWorkers と同じ規律)。
+    /// **他ワーカーが居ない(1台の)runでは常に nil**(相対比較ができない)
+    public var slowWorkers: [String]?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, host: String, trigger: String, startedAt: String,
@@ -255,7 +263,8 @@ public struct RunMetaRecord: Codable, Sendable {
                 guarded: Int? = nil, guardSkipped: Int? = nil, guardStaleFrame: Int? = nil,
                 fmSettings: FMSettingsRecord? = nil,
                 setOverrides: [String: String]? = nil,
-                interrupted: Bool? = nil, abortReason: String? = nil) {
+                interrupted: Bool? = nil, abortReason: String? = nil,
+                slowWorkers: [String]? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.project = project
@@ -287,6 +296,7 @@ public struct RunMetaRecord: Codable, Sendable {
         self.setOverrides = setOverrides
         self.interrupted = interrupted
         self.abortReason = abortReason
+        self.slowWorkers = slowWorkers
     }
 }
 
