@@ -1,6 +1,6 @@
-// avdmanager に渡す Java の解決(AndroidSDKLocator.javaForSDKTools / avdManagerCommand)。
-// ランナー機(ssh の非対話シェル・システムに JDK 無し・Android Studio だけ入っている)で
-// 「Unable to locate a Java Runtime」になった形を、同梱の Java へ倒して吸収する。
+// avdmanager/sdkmanager に渡す Java の解決(AndroidSDKLocator.javaForSDKTools / sdkToolCommand /
+// avdManagerCommand)。ランナー機(ssh の非対話シェル・システムに JDK 無し・Android Studio だけ
+// 入っている)で「Unable to locate a Java Runtime」になった形を、同梱の Java へ倒して吸収する。
 
 import XCTest
 @testable import FTAndroid
@@ -74,9 +74,10 @@ final class AVDManagerJavaTests: XCTestCase {
         XCTAssertEqual(resolve(listings: ["/Applications": ["Android Studio.app"]]), .missing)
     }
 
-    // MARK: - avdManagerCommand
+    // MARK: - sdkToolCommand / avdManagerCommand
 
     private let avdmanager = URL(fileURLWithPath: "/sdk/cmdline-tools/latest/bin/avdmanager")
+    private let sdkmanager = URL(fileURLWithPath: "/sdk/cmdline-tools/latest/bin/sdkmanager")
 
     func testPrefixesJavaHomeOnlyForTheBundledJava() {
         XCTAssertEqual(
@@ -90,6 +91,21 @@ final class AVDManagerJavaTests: XCTestCase {
                        ["/sdk/cmdline-tools/latest/bin/avdmanager", "list", "device"])
     }
 
+    /// avdManagerCommand は sdkToolCommand の別名。sdkmanager 側でも同じ規則が効くことを直接確かめる
+    func testSdkToolCommandPrefixesJavaHomeOnlyForTheBundledJava() {
+        XCTAssertEqual(
+            AndroidSDKLocator.sdkToolCommand(sdkmanager, ["--install", "system-images;android-36;google_apis;arm64-v8a"],
+                                             java: .bundled("/Applications/Android Studio.app/Contents/jbr/Contents/Home")),
+            ["/usr/bin/env", "JAVA_HOME=/Applications/Android Studio.app/Contents/jbr/Contents/Home",
+             "/sdk/cmdline-tools/latest/bin/sdkmanager", "--install", "system-images;android-36;google_apis;arm64-v8a"])
+        XCTAssertEqual(
+            AndroidSDKLocator.sdkToolCommand(sdkmanager, ["--install", "x"], java: .inherited),
+            ["/sdk/cmdline-tools/latest/bin/sdkmanager", "--install", "x"])
+        XCTAssertEqual(
+            AndroidSDKLocator.sdkToolCommand(sdkmanager, ["--install", "x"], java: .missing),
+            ["/sdk/cmdline-tools/latest/bin/sdkmanager", "--install", "x"])
+    }
+
     // MARK: - 迂回の固定
 
     private var sourcesRoot: URL {
@@ -98,9 +114,10 @@ final class AVDManagerJavaTests: XCTestCase {
             .appendingPathComponent("Sources")
     }
 
-    /// avdmanager を撃つ `Shell.run` はすべて `avdManagerCommand` を通す。素で撃つと、ランナー機
-    /// (JDK 無し)でその経路だけ「Unable to locate a Java Runtime」に戻る。撃つ場所は5つ
-    /// (導入直後の確認・一覧・作成・削除・作り直し前の削除)で、増減したらここを見直す
+    /// avdmanager/sdkmanager を撃つ `Shell.run` はすべて `avdManagerCommand`/`sdkToolCommand` を
+    /// 通す。素で撃つと、ランナー機(JDK 無し)でその経路だけ「Unable to locate a Java Runtime」に
+    /// 戻る。撃つ場所は6つ(avdmanager: 導入直後の確認・一覧・作成・削除・作り直し前の削除 /
+    /// sdkmanager: システムイメージ導入)で、増減したらここを見直す
     func testEveryAVDManagerCallGoesThroughTheJavaResolution() throws {
         let enumerator = FileManager.default.enumerator(at: sourcesRoot, includingPropertiesForKeys: nil)!
         var bypasses: [String] = []
@@ -113,13 +130,19 @@ final class AVDManagerJavaTests: XCTestCase {
                 .joined(separator: "\n")
             for call in code.components(separatedBy: "Shell.run(").dropFirst() {
                 let arguments = Self.argumentsOfCall(call)
-                guard arguments.contains("avdmanager") else { continue }
-                if arguments.contains("avdManagerCommand(") { routed += 1 } else { bypasses.append(url.lastPathComponent) }
+                guard arguments.contains("avdmanager") || arguments.contains("sdkmanager") else { continue }
+                if arguments.contains("avdManagerCommand(") || arguments.contains("sdkToolCommand(") {
+                    routed += 1
+                } else {
+                    bypasses.append(url.lastPathComponent)
+                }
             }
-            if code.contains("command[0] = avdmanager") { bypasses.append(url.lastPathComponent) }
+            if code.contains("command[0] = avdmanager") || code.contains("command[0] = sdkmanager") {
+                bypasses.append(url.lastPathComponent)
+            }
         }
-        XCTAssertEqual(bypasses, [], "avdmanager を avdManagerCommand を通さずに撃っている")
-        XCTAssertEqual(routed, 5, "avdmanager を撃つ場所が増減した(走査が届いていない可能性もある)")
+        XCTAssertEqual(bypasses, [], "avdmanager/sdkmanager を avdManagerCommand/sdkToolCommand を通さずに撃っている")
+        XCTAssertEqual(routed, 6, "avdmanager/sdkmanager を撃つ場所が増減した(走査が届いていない可能性もある)")
     }
 
     /// `Shell.run(` の直後から、対応する `)` までの引数の文字列(近くの別のコードを拾わない)

@@ -229,6 +229,21 @@ export const webviewMonitorAStrings = {
   },
   "wvMonitor.deviceAdd.createFailed": { ja: "デバイスの作成に失敗しました。", en: "Failed to create the device." },
   "wvMonitor.deviceAdd.creating": { ja: "作成中...", en: "Creating..." },
+  // ダウンロードが要る OS バージョンを選んで OK を押したときのボタン表示(導入+作成の一連の処理中)。
+  "wvMonitor.deviceAdd.installingAndCreating": { ja: "導入して作成中...", en: "Installing and creating..." },
+  // OS バージョンのドロップダウンをグループ分けするときの見出し(インストール済み/未のとき優先だけ)。
+  // downloadableSystemImages が空なら従来どおりグループ分けせず出す(片方だけの環境で見た目を変えない)。
+  "wvMonitor.deviceAdd.installedGroupLabel": { ja: "インストール済み", en: "Installed" },
+  "wvMonitor.deviceAdd.downloadGroupLabel": { ja: "ダウンロードが必要", en: "Download required" },
+  // ダウンロードが要る OS の option ラベルに付くサイズの接尾辞。sizeBytes が読めなければ付けない
+  // (「不明」を断定しない)。
+  "wvMonitor.deviceAdd.downloadableOptionSizeSuffix": { ja: " — 約 {size}", en: " — about {size}" },
+  // ダウンロードが要る OS を選んだときの案内(info。エラーではないので dlg-error の .info 表示を使う)。
+  "wvMonitor.deviceAdd.downloadableInfo": {
+    ja: "このOSバージョンはダウンロードが必要です{sizeNote}。OK を押すとライセンスの確認のあとで導入し、そのまま作成します。",
+    en: "This OS version needs to be downloaded{sizeNote}. Pressing OK installs it (after a license confirmation) and then creates the device.",
+  },
+  "wvMonitor.deviceAdd.downloadableInfoSizeNote": { ja: "(約 {size})", en: " (about {size})" },
 
   // #device-pick-overlay 内のマシン選択(#device-pick-machine-select・devicePickMachine.js)。
   // モーダルを開いている間、どのマシンから取得しているかを常時表示するバッジにも使う

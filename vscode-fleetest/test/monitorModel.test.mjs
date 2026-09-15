@@ -26,6 +26,7 @@ import {
   filterMonitorDevices,
   deleteDeviceApiArgs,
   hasDeviceLifecycleJobFor,
+  installSystemImageApiArgs,
   isCreateDeviceEvent,
   isDeleteDeviceEvent,
   isDeviceCatalogJson,
@@ -33,6 +34,7 @@ import {
   isDeviceOpEvent,
   isDevicesRestartEvent,
   isDevicesUpEvent,
+  isInstallSystemImageEvent,
   isInstalledDevicesJson,
   isMonitorEvent,
   isMonitorFromWebviewMessage,
@@ -385,6 +387,80 @@ test("isMonitorFromWebviewMessage: batchCreateDevices は names を検証する(
   assert.equal(isMonitorFromWebviewMessage({ ...base, model: "" }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, os: "" }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, machine: "" }), false);
+});
+
+test("isMonitorFromWebviewMessage: batchCreateDevices の installSystemImage は省略可・型が合えば true", () => {
+  const base = {
+    type: "batchCreateDevices",
+    machine: "M1",
+    platform: "android",
+    names: ["dev00"],
+    model: "pixel_9",
+    os: "system-images;android-36;google_apis;arm64-v8a",
+    overwriteNames: [],
+    source: { kind: "local" },
+  };
+  assert.equal(isMonitorFromWebviewMessage(base), true, "省略は従来どおり true");
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      ...base,
+      installSystemImage: { package: "system-images;android-36;google_apis;arm64-v8a", sizeBytes: 1900000000, license: "android-sdk-arm-dbt-license" },
+    }),
+    true,
+  );
+  // sizeBytes/license は null を許容する(不明を断定しない)
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      ...base,
+      installSystemImage: { package: "pkg", sizeBytes: null, license: null },
+    }),
+    true,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({ ...base, installSystemImage: { package: "", sizeBytes: null, license: null } }),
+    false,
+    "package は空文字を受けない",
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({ ...base, installSystemImage: { package: "pkg", sizeBytes: "1", license: null } }),
+    false,
+    "sizeBytes は number|null のみ",
+  );
+});
+
+test("isMonitorFromWebviewMessage: createDevice の installSystemImage は省略可・型が合えば true", () => {
+  const base = {
+    type: "createDevice",
+    machine: "M1",
+    platform: "android",
+    name: "dev00",
+    model: "pixel_9",
+    os: "system-images;android-36;google_apis;arm64-v8a",
+    register: true,
+    source: { kind: "local" },
+  };
+  assert.equal(isMonitorFromWebviewMessage(base), true, "省略は従来どおり true");
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      ...base,
+      installSystemImage: { package: "system-images;android-36;google_apis;arm64-v8a", sizeBytes: 1900000000, license: "android-sdk-arm-dbt-license" },
+    }),
+    true,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({ ...base, installSystemImage: { package: "pkg", sizeBytes: null, license: null } }),
+    true,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({ ...base, installSystemImage: { package: "pkg", sizeBytes: null, license: 1 } }),
+    false,
+    "license は string|null のみ",
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({ ...base, installSystemImage: {} }),
+    false,
+    "package 欠落は不正",
+  );
 });
 
 test("isMonitorFromWebviewMessage: 未知の type や不正値は false", () => {
@@ -3653,6 +3729,54 @@ test("isDeviceCatalogJson: available が boolean でない、error が string/nu
   assert.equal(isDeviceCatalogJson(badError), false);
 });
 
+test("isDeviceCatalogJson: downloadableSystemImages/downloadableError は旧 CLI 互換で省略可", () => {
+  // 欠落(旧 CLI)は従来どおり true
+  assert.equal(isDeviceCatalogJson(VALID_DEVICE_CATALOG), true);
+
+  const withDownloadable = structuredClone(VALID_DEVICE_CATALOG);
+  withDownloadable.android.downloadableSystemImages = [
+    {
+      abi: "arm64-v8a", apiLevel: 36, license: "android-sdk-arm-dbt-license",
+      package: "system-images;android-36;google_apis;arm64-v8a",
+      sizeBytes: 1900000000, tag: "google_apis", versionName: "Android 16",
+    },
+  ];
+  withDownloadable.android.downloadableError = null;
+  assert.equal(isDeviceCatalogJson(withDownloadable), true);
+
+  // license/sizeBytes は null を許容する(読めなかった=不明。断定しない)
+  const unknownSizeAndLicense = structuredClone(withDownloadable);
+  unknownSizeAndLicense.android.downloadableSystemImages[0].license = null;
+  unknownSizeAndLicense.android.downloadableSystemImages[0].sizeBytes = null;
+  assert.equal(isDeviceCatalogJson(unknownSizeAndLicense), true);
+
+  const withError = structuredClone(VALID_DEVICE_CATALOG);
+  withError.android.downloadableError = "sdkmanager --list に失敗しました";
+  assert.equal(isDeviceCatalogJson(withError), true);
+});
+
+test("isDeviceCatalogJson: downloadableSystemImages の要素の型不正は全体を false にする", () => {
+  const badAbi = structuredClone(VALID_DEVICE_CATALOG);
+  badAbi.android.downloadableSystemImages = [{
+    abi: 1, apiLevel: 36, license: null,
+    package: "system-images;android-36;google_apis;arm64-v8a",
+    sizeBytes: null, tag: "google_apis", versionName: "Android 16",
+  }];
+  assert.equal(isDeviceCatalogJson(badAbi), false);
+
+  const badSizeBytes = structuredClone(VALID_DEVICE_CATALOG);
+  badSizeBytes.android.downloadableSystemImages = [{
+    abi: "arm64-v8a", apiLevel: 36, license: null,
+    package: "system-images;android-36;google_apis;arm64-v8a",
+    sizeBytes: "1900000000", tag: "google_apis", versionName: "Android 16",
+  }];
+  assert.equal(isDeviceCatalogJson(badSizeBytes), false);
+
+  const badDownloadableError = structuredClone(VALID_DEVICE_CATALOG);
+  badDownloadableError.android.downloadableError = 123;
+  assert.equal(isDeviceCatalogJson(badDownloadableError), false);
+});
+
 // ---- isInstalledDevicesJson ----
 // `fleetest api installed-devices` の stdout(「+既存から選択」モーダルが使う)。
 
@@ -3744,6 +3868,38 @@ test("isCreateDeviceEvent: 未知のkind・フィールド欠落/型不一致は
     false, // name 欠落
   );
   assert.equal(isCreateDeviceEvent(null), false);
+});
+
+// ---- isInstallSystemImageEvent ----
+
+test("isInstallSystemImageEvent: log/finished(ok:true/false)の正常な値を true と判定する", () => {
+  assert.equal(isInstallSystemImageEvent({ kind: "log", message: "ダウンロード中..." }), true);
+  assert.equal(isInstallSystemImageEvent({ kind: "finished", ok: true, error: null }), true);
+  assert.equal(isInstallSystemImageEvent({ kind: "finished", ok: false, error: "失敗しました" }), true);
+});
+
+test("isInstallSystemImageEvent: create-device と違い device フィールドは無い契約(あっても無視して true)", () => {
+  assert.equal(
+    isInstallSystemImageEvent({ kind: "finished", ok: true, error: null, device: { avd: null, udid: null } }),
+    true,
+  );
+});
+
+test("isInstallSystemImageEvent: 未知のkind・フィールド欠落/型不一致は false", () => {
+  assert.equal(isInstallSystemImageEvent({ kind: "unknown" }), false);
+  assert.equal(isInstallSystemImageEvent({ kind: "log", message: 123 }), false);
+  assert.equal(isInstallSystemImageEvent({ kind: "finished", ok: "true", error: null }), false);
+  assert.equal(isInstallSystemImageEvent({ kind: "finished", ok: true, error: 123 }), false);
+  assert.equal(isInstallSystemImageEvent(null), false);
+});
+
+// ---- installSystemImageApiArgs ----
+
+test("installSystemImageApiArgs: --package と --accept-licenses を渡す", () => {
+  assert.deepEqual(
+    installSystemImageApiArgs("system-images;android-36;google_apis;arm64-v8a"),
+    ["api", "install-system-image", "--package", "system-images;android-36;google_apis;arm64-v8a", "--accept-licenses"],
+  );
 });
 
 // ---- deleteDeviceApiArgs ----

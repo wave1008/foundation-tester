@@ -400,3 +400,156 @@ test("選べない OS 種別の「+」は、使える側へ倒れる(カタロ�
   applyCatalog(window, catalog);
   assert.equal(document.getElementById("dlg-platform-ios").checked, true, "iOS へ倒れる");
 });
+
+// ---- ダウンロードが要る Android システムイメージ(fleetest api install-system-image) ----
+
+/** インストール済み(google_apis の API 36)とダウンロード候補(google_apis の API 37)が混在するカタログ。 */
+function catalogWithDownloadable() {
+  const catalog = readyCatalog();
+  catalog.android.downloadableSystemImages = [
+    {
+      abi: "arm64-v8a", apiLevel: 37, license: "android-sdk-arm-dbt-license",
+      package: "system-images;android-37;google_apis;arm64-v8a",
+      sizeBytes: 1900000000, tag: "google_apis", versionName: "Android 17",
+    },
+  ];
+  catalog.android.downloadableError = null;
+  return catalog;
+}
+
+test("ダウンロード候補があるときだけ optgroup で分ける(インストール済み/ダウンロードが必要)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithDownloadable());
+  switchTo(window, document, "android");
+
+  const select = document.getElementById("dlg-os");
+  const groups = [...select.querySelectorAll("optgroup")];
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].label, "インストール済み");
+  assert.equal(groups[1].label, "ダウンロードが必要");
+  // readyCatalog() の google_apis タグは API36/API35 の2件(既存テストと同じ fixture)
+  assert.deepEqual([...groups[0].querySelectorAll("option")].map((o) => o.textContent),
+    ["Android 16(API 36) / arm64-v8a", "Android 15(API 35) / arm64-v8a"]);
+  assert.deepEqual([...groups[1].querySelectorAll("option")].map((o) => o.textContent),
+    ["Android 17(API 37) / arm64-v8a — 約 1.8 GB"]);
+  // select.options は optgroup を跨いでフラットに読める(既存の optionLabels ヘルパーが使う経路)
+  assert.deepEqual(optionLabels(document, "dlg-os"), [
+    "Android 16(API 36) / arm64-v8a",
+    "Android 15(API 35) / arm64-v8a",
+    "Android 17(API 37) / arm64-v8a — 約 1.8 GB",
+  ]);
+});
+
+test("ダウンロード候補が無ければ従来どおりフラット(optgroup を出さない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, readyCatalog());
+  switchTo(window, document, "android");
+
+  assert.equal(document.getElementById("dlg-os").querySelectorAll("optgroup").length, 0);
+});
+
+test("ダウンロード候補を選ぶと info 行を出す(エラーではなく info)。インストール済みへ戻すと消える", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithDownloadable());
+  switchTo(window, document, "android");
+
+  // 既定選択(先頭 = インストール済み)では info は出ない
+  const dlgError = document.getElementById("dlg-error");
+  assert.equal(dlgError.textContent, "");
+  assert.equal(dlgError.classList.contains("info"), false);
+
+  const os = document.getElementById("dlg-os");
+  os.value = "system-images;android-37;google_apis;arm64-v8a";
+  os.dispatchEvent(new window.Event("change", { bubbles: true }));
+
+  assert.match(dlgError.textContent, /ダウンロードが必要/);
+  assert.match(dlgError.textContent, /約 1\.8 GB/);
+  assert.equal(dlgError.classList.contains("info"), true, "エラーではなく info クラス");
+  assert.equal(document.getElementById("dlg-ok").disabled, false, "info はブロックしない");
+
+  os.value = "system-images;android-36;google_apis;arm64-v8a";
+  os.dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.equal(dlgError.textContent, "");
+  assert.equal(dlgError.classList.contains("info"), false);
+});
+
+test("OK: インストール済みを選んでいるときは installSystemImage を送らない", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithDownloadable());
+  switchTo(window, document, "android");
+
+  document.getElementById("dlg-ok").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  const create = posted.find((m) => m.type === "createDevice");
+  assert.ok(create, "createDevice を送る");
+  assert.equal("installSystemImage" in create, false);
+});
+
+test("OK: ダウンロード候補を選ぶと installSystemImage(package/sizeBytes/license)を送り、ボタン文言も変わる", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithDownloadable());
+  switchTo(window, document, "android");
+
+  const os = document.getElementById("dlg-os");
+  os.value = "system-images;android-37;google_apis;arm64-v8a";
+  os.dispatchEvent(new window.Event("change", { bubbles: true }));
+
+  document.getElementById("dlg-ok").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(document.getElementById("dlg-ok").textContent, "導入して作成中...",
+    "「作成中...」ではなく導入も含む文言にする");
+  const create = posted.find((m) => m.type === "createDevice");
+  assert.ok(create, "createDevice を送る");
+  // webview(jsdom)側の realm で作られたオブジェクトなので、素のオブジェクトへ写してから比べる
+  assert.deepEqual({ ...create.installSystemImage }, {
+    package: "system-images;android-37;google_apis;arm64-v8a",
+    sizeBytes: 1900000000,
+    license: "android-sdk-arm-dbt-license",
+  });
+});
+
+test("自動生成名はダウンロード候補の容量接尾辞を含まない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithDownloadable());
+  switchTo(window, document, "android");
+
+  const os = document.getElementById("dlg-os");
+  os.value = "system-images;android-37;google_apis;arm64-v8a";
+  os.dispatchEvent(new window.Event("change", { bubbles: true }));
+
+  assert.equal(document.getElementById("dlg-name").value, "Pixel 9(Android 17(API 37) / arm64-v8a)");
+  assert.doesNotMatch(document.getElementById("dlg-name").value, /GB/);
+});
+
+test("インストール済みの一覧が空で downloadableError があれば、それを理由として出す(『置いていない』と断定しない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  const catalog = catalogWithoutAndroidModels();
+  // avdmanager 自体は動いている(side.error 無し)。既定サービス(google_apis)の systemImages が
+  // 無く、ダウンロード候補の取得も失敗した、という状況
+  catalog.android.error = null;
+  catalog.android.errorCode = null;
+  catalog.android.models = [{ id: "pixel_9", name: "Pixel 9" }];
+  catalog.android.systemImages = catalog.android.systemImages.filter((s) => s.tag === "google_apis_playstore");
+  catalog.android.downloadableError = "sdkmanager --list に失敗しました(ネットワーク不通)";
+  applyCatalog(window, catalog);
+  switchTo(window, document, "android");
+
+  assert.equal(document.getElementById("dlg-os").options.length, 0);
+  assert.equal(document.getElementById("dlg-error").textContent,
+    "sdkmanager --list に失敗しました(ネットワーク不通)");
+  assert.equal(document.getElementById("dlg-ok").disabled, true);
+});

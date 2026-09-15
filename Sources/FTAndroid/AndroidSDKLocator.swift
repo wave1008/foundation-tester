@@ -48,12 +48,18 @@ public enum AndroidSDKLocator {
     public static let avdManagerInstallHint =
         "they can be installed with `fleetest api install-cmdline-tools`"
 
-    /// cmdline-tools/latest → cmdline-tools/*(名前順)→ tools(旧レイアウト)の順
-    public static func findAVDManager() -> URL? {
+    /// findSDKManager() が nil のときに利用者へ出す理由文(avdManagerMissingMessage と対)。
+    /// install-system-image で使う
+    public static let sdkManagerMissingMessage =
+        "sdkmanager not found (the Android SDK Command-line Tools are not installed)"
+
+    /// cmdline-tools/latest → cmdline-tools/*(名前順)→ tools(旧レイアウト)の順。
+    /// avdmanager/sdkmanager は同じディレクトリに同居するのでこの探索順を共有する
+    private static func findCmdlineTool(named name: String) -> URL? {
         guard let sdkRoot = findSDKRoot() else { return nil }
         let fm = FileManager.default
 
-        let latest = sdkRoot.appendingPathComponent("cmdline-tools/latest/bin/avdmanager")
+        let latest = sdkRoot.appendingPathComponent("cmdline-tools/latest/bin/\(name)")
         if fm.isExecutableFile(atPath: latest.path) { return latest }
 
         let cmdlineToolsDir = sdkRoot.appendingPathComponent("cmdline-tools")
@@ -61,16 +67,21 @@ public enum AndroidSDKLocator {
             at: cmdlineToolsDir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
             let candidate = entries
                 .sorted { $0.lastPathComponent < $1.lastPathComponent }
-                .map { $0.appendingPathComponent("bin/avdmanager") }
+                .map { $0.appendingPathComponent("bin/\(name)") }
                 .first { fm.isExecutableFile(atPath: $0.path) }
             if let candidate { return candidate }
         }
 
-        let legacy = sdkRoot.appendingPathComponent("tools/bin/avdmanager")
+        let legacy = sdkRoot.appendingPathComponent("tools/bin/\(name)")
         if fm.isExecutableFile(atPath: legacy.path) { return legacy }
 
         return nil
     }
+
+    public static func findAVDManager() -> URL? { findCmdlineTool(named: "avdmanager") }
+
+    /// システムイメージの導入(`sdkmanager --install`)に使う。探索順は findAVDManager と同じ
+    public static func findSDKManager() -> URL? { findCmdlineTool(named: "sdkmanager") }
 
     // MARK: - avdmanager が要る Java
 
@@ -130,15 +141,24 @@ public enum AndroidSDKLocator {
         (try? Shell.run(["/usr/libexec/java_home"], timeout: 5))?.status == 0
     }
 
-    /// avdmanager を撃つ引数列。**avdmanager は必ずこれを通して撃つ**(素の `Shell.run([avdmanager…])` は
-    /// `AVDManagerJavaTests` のソース走査が落とす)。同梱の Java が要るときは `/usr/bin/env JAVA_HOME=…` を前置する
+    /// sdkmanager/avdmanager を撃つ引数列。**sdkmanager/avdmanager は必ずこれを通して撃つ**
+    /// (素の `Shell.run([avdmanager/sdkmanager…])` は `AVDManagerJavaTests` のソース走査が落とす)。
+    /// 同梱の Java が要るときは `/usr/bin/env JAVA_HOME=…` を前置する
+    public static func sdkToolCommand(
+        _ tool: URL, _ arguments: [String], java: JavaForSDKTools = javaForSDKTools()
+    ) -> [String] {
+        if case .bundled(let home) = java {
+            return ["/usr/bin/env", "JAVA_HOME=\(home)", tool.path] + arguments
+        }
+        return [tool.path] + arguments
+    }
+
+    /// avdManagerCommand は sdkToolCommand の別名(既存呼び出し元の記名を変えないため残す)。
+    /// 挙動は完全に同じ
     public static func avdManagerCommand(
         _ avdmanager: URL, _ arguments: [String], java: JavaForSDKTools = javaForSDKTools()
     ) -> [String] {
-        if case .bundled(let home) = java {
-            return ["/usr/bin/env", "JAVA_HOME=\(home)", avdmanager.path] + arguments
-        }
-        return [avdmanager.path] + arguments
+        sdkToolCommand(avdmanager, arguments, java: java)
     }
 
     /// avdmanager が Java 不在で落ちたときに添える案内(`.missing` のときだけ)

@@ -15,8 +15,8 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
             + " definitions/system images) and print it as JSON on stdout (diagnostics on stderr only)")
 
     func run() async throws {
-        let output = ApiDeviceCatalogOutput(
-            android: Self.androidCatalog(), ios: Self.iosCatalog())
+        let android = await Self.androidCatalog()
+        let output = ApiDeviceCatalogOutput(android: android, ios: Self.iosCatalog())
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(output)
@@ -106,17 +106,22 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
 
     // MARK: - Android
 
-    private static func androidCatalog() -> ApiAndroidCatalog {
+    private static func androidCatalog() async -> ApiAndroidCatalog {
         guard let sdkRoot = AndroidSDKLocator.findSDKRoot() else {
             return ApiAndroidCatalog(
                 available: false,
                 error: "Android SDK not found (check ANDROID_HOME / ANDROID_SDK_ROOT)",
                 errorCode: "sdk-missing",
-                models: [], systemImages: [])
+                models: [], systemImages: [], downloadableSystemImages: [], downloadableError: nil)
         }
 
         // システムイメージはディレクトリ走査のみで済むため avdmanager の有無に関わらず取得する
         let systemImages = Self.systemImages(sdkRoot: sdkRoot)
+        // ダウンロード可能な一覧も avdmanager 不要(ネットワーク + 既存ディレクトリの突合だけ)。
+        // インストール済みの除外鍵は上のディレクトリ走査が作る package 文字列と同じ書式
+        let (downloadable, downloadableError) = await SystemImageRepository.fetchDownloadable(
+            installedPackages: Set(systemImages.map(\.package)))
+        let downloadableSystemImages = downloadable.map(ApiAndroidDownloadableSystemImage.init)
 
         guard let avdmanagerURL = AndroidSDKLocator.findAVDManager() else {
             return ApiAndroidCatalog(
@@ -127,7 +132,8 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
                 // (拡張はローカルなら導入ボタン、リモートなら remote exec の案内を出す)
                 error: AndroidSDKLocator.avdManagerMissingMessage,
                 errorCode: "avdmanager-missing",
-                models: [], systemImages: systemImages)
+                models: [], systemImages: systemImages,
+                downloadableSystemImages: downloadableSystemImages, downloadableError: downloadableError)
         }
 
         let result: Shell.Result
@@ -136,17 +142,23 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
         } catch {
             return ApiAndroidCatalog(available: true, error: error.localizedDescription,
                                      errorCode: "avdmanager-failed",
-                                     models: [], systemImages: systemImages)
+                                     models: [], systemImages: systemImages,
+                                     downloadableSystemImages: downloadableSystemImages,
+                                     downloadableError: downloadableError)
         }
         guard result.status == 0 else {
             return ApiAndroidCatalog(available: true, error: result.tail,
                                      errorCode: "avdmanager-failed",
-                                     models: [], systemImages: systemImages)
+                                     models: [], systemImages: systemImages,
+                                     downloadableSystemImages: downloadableSystemImages,
+                                     downloadableError: downloadableError)
         }
 
         let models = Self.parseDeviceDefinitions(result.output)
         return ApiAndroidCatalog(available: true, error: nil, errorCode: nil, models: models,
-                                 systemImages: systemImages)
+                                 systemImages: systemImages,
+                                 downloadableSystemImages: downloadableSystemImages,
+                                 downloadableError: downloadableError)
     }
 
     /// avdmanager list device の出力(ブロック形式)をパースする:
@@ -267,14 +279,8 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
         return lhs.abi < rhs.abi
     }
 
-    static func tagRank(_ tag: String) -> Int {
-        switch tag {
-        case "google_apis": return 0
-        case "google_apis_playstore": return 1
-        case "default": return 2
-        default: return 3
-        }
-    }
+    /// ダウンロード可能な一覧(SystemImageRepository)と同じ優先順を使う(並びが食い違わないよう1箇所)
+    static func tagRank(_ tag: String) -> Int { SystemImageRepository.tagRank(tag) }
 }
 
 // MARK: - 出力モデル
@@ -329,9 +335,16 @@ private struct ApiAndroidCatalog: Encodable {
     let errorCode: String?
     let models: [ApiAndroidModel]
     let systemImages: [ApiAndroidSystemImage]
+    /// まだ入っていないがダウンロードして入れられるシステムイメージ(SystemImageRepository)。
+    /// SDK ルートが無いとき([])以外は avdmanager の有無に関わらず取得を試みる
+    let downloadableSystemImages: [ApiAndroidDownloadableSystemImage]
+    /// downloadableSystemImages の取得で一部/全部が失敗した理由(取れた分は entries に残す)。
+    /// 省略可能フィールドとして明示的に null を encode する
+    let downloadableError: String?
 
     private enum CodingKeys: String, CodingKey {
         case available, error, errorCode, models, systemImages
+        case downloadableSystemImages, downloadableError
     }
 
     func encode(to encoder: Encoder) throws {
@@ -341,6 +354,8 @@ private struct ApiAndroidCatalog: Encodable {
         try container.encode(errorCode, forKey: .errorCode)
         try container.encode(models, forKey: .models)
         try container.encode(systemImages, forKey: .systemImages)
+        try container.encode(downloadableSystemImages, forKey: .downloadableSystemImages)
+        try container.encode(downloadableError, forKey: .downloadableError)
     }
 }
 
@@ -355,4 +370,41 @@ struct ApiAndroidSystemImage: Encodable {
     let package: String
     let tag: String
     let versionName: String
+}
+
+/// SystemImageRepository.Entry の出力形。license/sizeBytes は XML に欠けていることがあるため
+/// 省略可能フィールドとして明示的に null を encode する(ApiAndroidCatalog.error と同方針)
+struct ApiAndroidDownloadableSystemImage: Encodable {
+    let abi: String
+    let apiLevel: Int
+    let license: String?
+    let package: String
+    let sizeBytes: Int?
+    let tag: String
+    let versionName: String
+
+    init(_ entry: SystemImageRepository.Entry) {
+        abi = entry.abi
+        apiLevel = entry.apiLevel
+        license = entry.license
+        package = entry.package
+        sizeBytes = entry.sizeBytes
+        tag = entry.tag
+        versionName = entry.versionName
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case abi, apiLevel, license, package, sizeBytes, tag, versionName
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(abi, forKey: .abi)
+        try container.encode(apiLevel, forKey: .apiLevel)
+        try container.encode(license, forKey: .license)
+        try container.encode(package, forKey: .package)
+        try container.encode(sizeBytes, forKey: .sizeBytes)
+        try container.encode(tag, forKey: .tag)
+        try container.encode(versionName, forKey: .versionName)
+    }
 }

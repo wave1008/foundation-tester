@@ -708,6 +708,18 @@ export interface AndroidCatalogSystemImage {
   readonly versionName: string;
 }
 
+/** インストール済みでない(ダウンロードが要る)Android システムイメージ1件。license/sizeBytes は
+ * CLI 側が読めなければ null(表示側は「不明」として扱い、断定しない)。 */
+export interface AndroidCatalogDownloadableSystemImage {
+  readonly abi: string;
+  readonly apiLevel: number;
+  readonly license: string | null;
+  readonly package: string;
+  readonly sizeBytes: number | null;
+  readonly tag: string;
+  readonly versionName: string;
+}
+
 /** Sources/fleetest/ApiDeviceCatalogCommand.swift の ApiAndroidCatalog.errorCode と対。
  * 文言ではなくこれで分岐する(webview は avdmanager-missing のときだけ導入ボタンを出す)。 */
 export type AndroidCatalogErrorCode = "sdk-missing" | "avdmanager-missing" | "avdmanager-failed";
@@ -719,6 +731,11 @@ export interface AndroidCatalog {
   readonly errorCode?: AndroidCatalogErrorCode | null;
   readonly models: readonly AndroidCatalogModel[];
   readonly systemImages: readonly AndroidCatalogSystemImage[];
+  /** ダウンロードして導入できるシステムイメージ(既にインストール済みのものは含まない)。
+   * 旧 CLI は送ってこないため省略可(その場合「デバイスを追加」は従来どおり systemImages だけを見せる)。 */
+  readonly downloadableSystemImages?: readonly AndroidCatalogDownloadableSystemImage[];
+  /** ダウンロード候補の取得自体が失敗した理由(英語。枠だけ i18n)。旧 CLI は送ってこないため省略可。 */
+  readonly downloadableError?: string | null;
 }
 
 export interface IosCatalogDeviceType {
@@ -761,6 +778,19 @@ function isAndroidCatalogSystemImage(value: unknown): value is AndroidCatalogSys
   );
 }
 
+function isAndroidCatalogDownloadableSystemImage(value: unknown): value is AndroidCatalogDownloadableSystemImage {
+  return (
+    isRecord(value) &&
+    typeof value.abi === "string" &&
+    typeof value.apiLevel === "number" &&
+    (value.license === null || typeof value.license === "string") &&
+    typeof value.package === "string" &&
+    (value.sizeBytes === null || typeof value.sizeBytes === "number") &&
+    typeof value.tag === "string" &&
+    typeof value.versionName === "string"
+  );
+}
+
 function isIosCatalogDeviceType(value: unknown): value is IosCatalogDeviceType {
   return (
     isRecord(value) &&
@@ -789,7 +819,13 @@ function isAndroidCatalog(value: unknown): value is AndroidCatalog {
     Array.isArray(value.models) &&
     value.models.every(isAndroidCatalogModel) &&
     Array.isArray(value.systemImages) &&
-    value.systemImages.every(isAndroidCatalogSystemImage)
+    value.systemImages.every(isAndroidCatalogSystemImage) &&
+    // 旧 CLI は送ってこないため欠落を許容する(欠落時は webview が従来どおり動く)
+    (value.downloadableSystemImages === undefined ||
+      (Array.isArray(value.downloadableSystemImages) &&
+        value.downloadableSystemImages.every(isAndroidCatalogDownloadableSystemImage))) &&
+    (value.downloadableError === undefined || value.downloadableError === null ||
+      typeof value.downloadableError === "string")
   );
 }
 
@@ -988,6 +1024,45 @@ export function isCreateDeviceEvent(value: unknown): value is CreateDeviceEvent 
     default:
       return false;
   }
+}
+
+export interface InstallSystemImageLogEvent {
+  readonly kind: "log";
+  readonly message: string;
+}
+
+export interface InstallSystemImageFinishedEvent {
+  readonly kind: "finished";
+  readonly ok: boolean;
+  readonly error: string | null;
+}
+
+/** `fleetest api install-system-image` の NDJSON 1行分のイベント(create-device と違い作成物を
+ * 持たないので device フィールドが無い。isCreateDeviceEvent と同じ判定方針)。 */
+export type InstallSystemImageEvent = InstallSystemImageLogEvent | InstallSystemImageFinishedEvent;
+
+export function isInstallSystemImageEvent(value: unknown): value is InstallSystemImageEvent {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+  switch (value.kind) {
+    case "log":
+      return typeof value.message === "string";
+    case "finished":
+      return typeof value.ok === "boolean" && (value.error === null || typeof value.error === "string");
+    default:
+      return false;
+  }
+}
+
+/**
+ * `fleetest api install-system-image` の CLI 引数を組み立てる純粋関数(deviceCommandArgs と組み合わせて
+ * 使う。deleteDeviceApiArgs と同じくテスト分離のために公開する)。**`--accept-licenses` は必ず付ける**
+ * —— これが無いと CLI は導入を拒否する契約(ライセンス同意はこの呼び出しの直前にホスト側の
+ * confirm モーダルで得ている)。
+ */
+export function installSystemImageApiArgs(pkg: string): string[] {
+  return ["api", "install-system-image", "--package", pkg, "--accept-licenses"];
 }
 
 /**

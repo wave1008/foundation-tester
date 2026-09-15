@@ -15,7 +15,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { MonitorDeviceOps, firstLine, signingGuidance, stderrDetailLine } from "../src/monitorDeviceOps";
+import {
+  MonitorDeviceOps,
+  firstLine,
+  installSystemImageBatchConfirmMessage,
+  installSystemImageConfirmMessage,
+  signingGuidance,
+  stderrDetailLine,
+} from "../src/monitorDeviceOps";
 
 // resolveProjectName は TestProjects/ に実在しない名前を採用しない(missing)ので、
 // workspaceRoot は候補ディレクトリを持つ専用の一時ディレクトリにする(共有の /tmp 直下には作らない)。
@@ -714,6 +721,47 @@ test("signingGuidance: 全部知らない種別なら null(CLI の文言に譲�
   assert.equal(signingGuidance(["somethingNew"], "/tmp/x.log", false), null);
   // 一部でも知っていれば組み立てる(知らないぶんの事実行だけ欠ける)
   assert.match(signingGuidance(["somethingNew", "noAccount"], undefined, false), /検出:/);
+});
+
+// ---- installSystemImageConfirmMessage / installSystemImageBatchConfirmMessage ----
+// confirmAndInstallThenCreate/runBatchCreateDevices の確認メッセージ組み立て(vscode 非依存の
+// 純粋関数)。ホスト側の確認フロー自体(vscode.window.showWarningMessage を await する経路)は
+// このリポジトリの他の confirm フロー(runCreateDevice の上書き確認・runWipeDevices 等)と同様、
+// テストの vscode スタブ(esbuild.mjs の vscodeStubPlugin)が Promise を解決しないため
+// end-to-end では検証できない。メッセージ組み立てだけをここで固定する。
+
+test("installSystemImageConfirmMessage: サイズ・ライセンスが分かっているときは両方を注記する", () => {
+  const message = installSystemImageConfirmMessage({
+    machine: "M1",
+    name: "dev00",
+    packageName: "system-images;android-36;google_apis;arm64-v8a",
+    sizeBytes: 1900000000,
+    license: "android-sdk-arm-dbt-license",
+  });
+  assert.match(message, /M1/);
+  assert.match(message, /system-images;android-36;google_apis;arm64-v8a/);
+  assert.match(message, /1\.8 GB/, "formatBytesAuto の GB 表記が乗る");
+  assert.match(message, /android-sdk-arm-dbt-license/);
+  assert.match(message, /dev00/);
+});
+
+test("installSystemImageConfirmMessage: サイズ/ライセンスが null なら該当の注記を落とす(不明を断定しない)", () => {
+  const message = installSystemImageConfirmMessage({
+    machine: "M1", name: "dev00", packageName: "pkg", sizeBytes: null, license: null,
+  });
+  assert.doesNotMatch(message, /GB|MB/);
+  assert.doesNotMatch(message, /\(\)/,  "空の括弧を残さない");
+});
+
+test("installSystemImageBatchConfirmMessage: 台数・先頭/末尾の名前を運ぶ", () => {
+  const message = installSystemImageBatchConfirmMessage({
+    machine: "M1", count: 3, first: "dev-01", last: "dev-03",
+    packageName: "pkg", sizeBytes: null, license: "android-sdk-license",
+  });
+  assert.match(message, /3/);
+  assert.match(message, /dev-01/);
+  assert.match(message, /dev-03/);
+  assert.match(message, /android-sdk-license/);
 });
 
 test("署名の案内は全文がバナーへ渡る", async () => {

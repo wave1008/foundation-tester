@@ -578,6 +578,15 @@ export type MonitorFromWebviewMessage =
       /** 同名の実体が既にあるとき、消してから作り直す(`api create-device --overwrite`)。
        * 破壊的なので webview では決めず、ホスト側のモーダル確認を通ってから true になる。 */
       readonly overwrite?: boolean;
+      /** 選んだ OS バージョンがダウンロードが要る(インストール済みでない)Android システムイメージの
+       * ときだけ載る。ホストは1枚の確認モーダル(ライセンス同意)を挟んでから
+       * `api install-system-image` → 成功後に通常の create-device という順で実行する
+       * (2枚のモーダルを続けて出さない。§13/2026-08-25 の規律と同じ)。 */
+      readonly installSystemImage?: {
+        readonly package: string;
+        readonly sizeBytes: number | null;
+        readonly license: string | null;
+      };
       readonly source: DeviceCommandSource;
     }
   // 「デバイスを追加」左下の「バッチ作成」。names は webview が「デバイス名-連番2桁(-01 始まり)」で
@@ -594,6 +603,14 @@ export type MonitorFromWebviewMessage =
       readonly model: string;
       readonly os: string;
       readonly overwriteNames: readonly string[];
+      /** バッチ全体で共有する OS バージョンがダウンロードが要るときだけ載る(createDevice の
+       * installSystemImage と同じ形・同じ扱い)。バッチは全台が同じ model/os で作られるため、
+       * 導入は1回だけ行い、成功後に台ごとの create-device ループへ進む。 */
+      readonly installSystemImage?: {
+        readonly package: string;
+        readonly sizeBytes: number | null;
+        readonly license: string | null;
+      };
       readonly source: DeviceCommandSource;
     }
   // 「+既存から選択」モーダル(#device-pick-overlay)が開いた直後に送る、
@@ -843,6 +860,20 @@ function isAppProfileIOSFieldsLike(value: unknown): value is AppProfileIOSFields
   return isRecord(value) && isAppProfilePlatformFieldsLike(value) && typeof value.appPathPhysical === "string";
 }
 
+/** createDevice/batchCreateDevices の installSystemImage の検証。package は非空文字列必須、
+ * sizeBytes/license は number|null / string|null(欠落は不可 —— 「不明」は明示的に null で送る契約)。 */
+function isInstallSystemImageRequestLike(
+  value: unknown,
+): value is { package: string; sizeBytes: number | null; license: string | null } {
+  return (
+    isRecord(value) &&
+    typeof value.package === "string" &&
+    value.package !== "" &&
+    (value.sizeBytes === null || typeof value.sizeBytes === "number") &&
+    (value.license === null || typeof value.license === "string")
+  );
+}
+
 /** deviceRestartGpu / devicesRestartGpu の1台ぶん(name 必須・machine は省略か非空文字列)。 */
 function isGpuRestartTarget(value: unknown): value is { name: string; machine?: string } {
   if (typeof value !== "object" || value === null) {
@@ -933,6 +964,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.os === "string" &&
         value.os !== "" &&
         typeof value.register === "boolean" &&
+        (value.installSystemImage === undefined || isInstallSystemImageRequestLike(value.installSystemImage)) &&
         isDeviceCommandSourceLike(value.source)
       );
     case "batchCreateDevices":
@@ -950,6 +982,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         value.os !== "" &&
         Array.isArray(value.overwriteNames) &&
         value.overwriteNames.every((name) => typeof name === "string" && name !== "") &&
+        (value.installSystemImage === undefined || isInstallSystemImageRequestLike(value.installSystemImage)) &&
         isDeviceCommandSourceLike(value.source)
       );
     case "machineDevicesSync":

@@ -21,6 +21,7 @@ import {
   deviceLifecycleStatusFor,
   enqueueDeviceLifecycleJob,
   hasDeviceLifecycleJobFor,
+  installSystemImageApiArgs,
   isCreateDeviceEvent,
   isDeleteDeviceEvent,
   isDeviceCatalogJson,
@@ -28,6 +29,7 @@ import {
   isDeviceOpEvent,
   isDevicesRestartEvent,
   isDevicesUpEvent,
+  isInstallSystemImageEvent,
   removeQueuedBulkUpJob,
   isInstalledDevicesJson,
   type MonitorDevice,
@@ -37,6 +39,7 @@ import {
 import { isConfirmedHeld } from "./machineLockModel";
 import { NdjsonParser } from "./ndjson";
 import type { MonitorPanelDeps } from "./monitorPanel";
+import { formatBytesAuto } from "./retentionModel";
 import { type DeviceCommandSource, deviceCommandArgs } from "./remoteRunArgs";
 
 /** stdin=ignore, stdout/stderr=pipe で spawn したプロセスの型(cli.ts の FleetestProcess と同じ形)。 */
@@ -203,6 +206,59 @@ export function firstLine(message: string, limit = 200): string {
     }
   }
   return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
+/** ダウンロードが要る Android システムイメージの容量注記("(約 1.9 GB)")。sizeBytes が読めなければ
+ * 空文字(「不明」を断定しない。テンプレート側は空文字を許容する形で書く)。 */
+function installSystemImageSizeNote(sizeBytes: number | null): string {
+  return sizeBytes === null ? "" : t("deviceOps.installSystemImageSizeNote", { size: formatBytesAuto(sizeBytes) });
+}
+
+/** 同上のライセンス識別子注記("(android-sdk-arm-dbt-license)")。license が読めなければ空文字。 */
+function installSystemImageLicenseNote(license: string | null): string {
+  return license === null ? "" : t("deviceOps.installSystemImageLicenseNote", { license });
+}
+
+/**
+ * confirmAndInstallThenCreate(単発作成)の確認メッセージ。vscode 非依存の純粋関数として切り出し、
+ * 組み立てをテストできるようにする(firstLine/signingGuidance と同じ方針)。
+ */
+export function installSystemImageConfirmMessage(params: {
+  readonly machine: string;
+  readonly name: string;
+  readonly packageName: string;
+  readonly sizeBytes: number | null;
+  readonly license: string | null;
+}): string {
+  return t("deviceOps.installSystemImageConfirmMessage", {
+    machine: params.machine,
+    package: params.packageName,
+    sizeNote: installSystemImageSizeNote(params.sizeBytes),
+    name: params.name,
+    licenseNote: installSystemImageLicenseNote(params.license),
+  });
+}
+
+/** runBatchCreateDevices の同名確認メッセージ(バッチ版。count/first/last は既存の
+ * batchConfirmMessage と同じ組み立て方)。 */
+export function installSystemImageBatchConfirmMessage(params: {
+  readonly machine: string;
+  readonly count: number;
+  readonly first: string;
+  readonly last: string;
+  readonly packageName: string;
+  readonly sizeBytes: number | null;
+  readonly license: string | null;
+}): string {
+  return t("deviceOps.installSystemImageBatchConfirmMessage", {
+    machine: params.machine,
+    package: params.packageName,
+    sizeNote: installSystemImageSizeNote(params.sizeBytes),
+    count: String(params.count),
+    first: params.first,
+    last: params.last,
+    licenseNote: installSystemImageLicenseNote(params.license),
+  });
 }
 
 /** デバイスライフサイクルの直列キューおよび device-catalog/installed-devices/create-device の
@@ -1470,6 +1526,12 @@ export class MonitorDeviceOps {
       return;
     }
     this.creatingDevice = true;
+    // ダウンロードが要る OS バージョンを選んだ場合は、上書き/リモートの確認とは統合した
+    // 1枚のモーダル(ライセンス同意)だけを出す(2枚続けて出さない。§13/2026-08-25 の規律と同じ)。
+    if (msg.installSystemImage) {
+      void this.confirmAndInstallThenCreate(msg, msg.installSystemImage);
+      return;
+    }
     // 上書き(既存の実体を消して作り直す)は破壊的なので、ローカル・リモートを問わず確認する。
     // リモートの確認文はマシン名も出す(どの機械の実体を消すかが要点)
     if (msg.overwrite) {
@@ -1517,33 +1579,56 @@ export class MonitorDeviceOps {
       // 検証(isMonitorFromWebviewMessage)で names.length > 0 は保証済み。?? は型のためだけ
       const first = msg.names[0] ?? "";
       const last = msg.names[msg.names.length - 1] ?? "";
-      // **確認は1回だけ**(2026-08-25 指示)。上書きが要るときは同じ文面に書き足し、
-      // ボタンの文言を「削除して作り直す」に変える —— 2枚に分けると、
-      // 2枚目を断ったときに**衝突していないぶんまで巻き添えで中止**になり、
-      // 「どこまで作られたのか」が押した人にも分からない
-      const overwriteNote = msg.overwriteNames.length > 0
-        ? t("deviceOps.batchOverwriteNote", {
-            machine,
-            count: String(msg.overwriteNames.length),
-            names: msg.overwriteNames.join(", "),
-          })
-        : "";
-      const confirmLabel = msg.overwriteNames.length > 0
-        ? t("deviceOps.batchOverwriteConfirmButton")
-        : t("deviceOps.batchConfirmButton");
-      const choice = await vscode.window.showWarningMessage(
-        t("deviceOps.batchConfirmMessage", {
-          machine,
-          count: String(msg.names.length),
-          first,
-          last,
-        }) + overwriteNote,
-        { modal: true },
-        confirmLabel,
-      );
+      const install = msg.installSystemImage;
+      // **確認は1回だけ**(2026-08-25 指示)。上書き・ダウンロード導入が要るときは同じ文面(または
+      // installSystemImageBatchConfirmMessage)に書き足す —— 2枚に分けると、2枚目を断ったときに
+      // **衝突していないぶんまで巻き添えで中止**になり、「どこまで作られたのか」が押した人にも分からない
+      let message: string;
+      let confirmLabel: string;
+      let detail: string | undefined;
+      if (install) {
+        message = installSystemImageBatchConfirmMessage({
+          machine, count: msg.names.length, first, last,
+          packageName: install.package, sizeBytes: install.sizeBytes, license: install.license,
+        });
+        const detailLines = [
+          msg.overwriteNames.length > 0
+            ? t("deviceOps.installSystemImageBatchOverwriteNote", {
+                machine, count: String(msg.overwriteNames.length), names: msg.overwriteNames.join(", "),
+              })
+            : undefined,
+          msg.source.kind === "remote" ? this.occupancyDetail(msg.source.machine) : undefined,
+          t("deviceOps.installSystemImageLicenseHint"),
+        ].filter((line): line is string => line !== undefined);
+        detail = detailLines.join("\n\n");
+        confirmLabel = t("deviceOps.installSystemImageConfirmButton");
+      } else {
+        const overwriteNote = msg.overwriteNames.length > 0
+          ? t("deviceOps.batchOverwriteNote", {
+              machine,
+              count: String(msg.overwriteNames.length),
+              names: msg.overwriteNames.join(", "),
+            })
+          : "";
+        message = t("deviceOps.batchConfirmMessage", { machine, count: String(msg.names.length), first, last })
+          + overwriteNote;
+        confirmLabel = msg.overwriteNames.length > 0
+          ? t("deviceOps.batchOverwriteConfirmButton")
+          : t("deviceOps.batchConfirmButton");
+      }
+      const choice = await vscode.window.showWarningMessage(message, { modal: true, detail }, confirmLabel);
       if (choice !== confirmLabel) {
         abort(t("deviceOps.createCancelled"));
         return;
+      }
+      if (install) {
+        const installOutcome = await new Promise<{ ok: boolean; error: string | null }>((resolve) => {
+          this.spawnInstallSystemImage(install.package, msg.source, (ok, error) => resolve({ ok, error }));
+        });
+        if (!installOutcome.ok) {
+          abort(installOutcome.error ?? t("deviceOps.installSystemImageFailedGeneric"));
+          return;
+        }
       }
       this.deps.post({ type: "batchCreateStarted", names: msg.names });
       const overwrite = new Set(msg.overwriteNames);
@@ -1615,6 +1700,66 @@ export class MonitorDeviceOps {
       return;
     }
     this.spawnCreateDevice(msg);
+  }
+
+  /**
+   * ダウンロードが要る Android OS バージョンを選んだときの「デバイスを追加」OK(runCreateDevice から)。
+   * **確認は1枚だけ**(上書き・リモートの確認とは統合する。confirmAndSpawnCreateDevice を分岐で
+   * 使い分けない — 2枚続けて聞かない §13/2026-08-25 の規律)。同意を得てから
+   * `install-system-image` を実行し、成功したときだけ通常の spawnCreateDevice へ進む。
+   */
+  private async confirmAndInstallThenCreate(
+    msg: CreateDeviceMessage,
+    install: NonNullable<CreateDeviceMessage["installSystemImage"]>,
+  ): Promise<void> {
+    const machine = msg.source.kind === "remote" ? msg.source.machine : null;
+    const where = machine ?? t("deviceOps.createOverwriteLocalMachine");
+    const message = installSystemImageConfirmMessage({
+      machine: where,
+      name: msg.name,
+      packageName: install.package,
+      sizeBytes: install.sizeBytes,
+      license: install.license,
+    });
+    const detailLines = [
+      msg.overwrite
+        ? t("deviceOps.installSystemImageOverwriteNote", { machine: where, name: msg.name })
+        : undefined,
+      this.occupancyDetail(machine),
+      t("deviceOps.installSystemImageLicenseHint"),
+    ].filter((line): line is string => line !== undefined);
+    const confirmLabel = t("deviceOps.installSystemImageConfirmButton");
+    const choice = await vscode.window.showWarningMessage(
+      message,
+      { modal: true, detail: detailLines.join("\n\n") },
+      confirmLabel,
+    );
+    if (choice !== confirmLabel) {
+      this.creatingDevice = false;
+      this.deps.post({
+        type: "createDeviceResult",
+        ok: false,
+        name: msg.name,
+        error: t("deviceOps.createCancelled"),
+        device: null,
+      });
+      return;
+    }
+    this.spawnInstallSystemImage(install.package, msg.source, (ok, error) => {
+      if (!ok) {
+        this.creatingDevice = false;
+        this.deps.post({
+          type: "createDeviceResult",
+          ok: false,
+          name: msg.name,
+          error: error ?? t("deviceOps.installSystemImageFailedGeneric"),
+          device: null,
+        });
+        return;
+      }
+      // creatingDevice の解除は spawnCreateDevice 側の respond(onResult 省略時)に任せる
+      this.spawnCreateDevice(msg);
+    });
   }
 
   /**
@@ -1780,6 +1925,104 @@ export class MonitorDeviceOps {
       const detail = lastStderr.length > 0 ? `${t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) })}: ${lastStderr}` : t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) });
       const staleRemote = exitCode === 64 && source.kind === "remote";
       respond(false, staleRemote ? t("deviceOps.remoteCliTooOld", { machine: source.machine, detail: lastStderr }) : detail, null);
+    });
+  }
+
+  /**
+   * `fleetest api install-system-image --package <pkg> --accept-licenses` を実行する
+   * (confirmAndInstallThenCreate/runBatchCreateDevices からの実処理)。ダウンロードは数分かかりうる
+   * ため timeout は設けない(runInstallCmdlineTools と同じ方針)。作成物を持たないコマンドなので
+   * spawnCreateDevice と違い device は返さない —— 結果は (ok, error) だけの callback で渡す。
+   */
+  private spawnInstallSystemImage(
+    pkg: string,
+    source: DeviceCommandSource,
+    onResult: (ok: boolean, error: string | null) => void,
+  ): void {
+    const config = this.deps.getConfig();
+    const args = deviceCommandArgs(source, installSystemImageApiArgs(pkg));
+
+    let responded = false;
+    const respond = (ok: boolean, error: string | null): void => {
+      if (responded) {
+        return;
+      }
+      responded = true;
+      onResult(ok, error ? withSourceContext(error, source) : error);
+    };
+
+    let proc: PipeProcess;
+    try {
+      proc = spawn(config.binaryPath, args, {
+        cwd: this.deps.workspaceRoot,
+        shell: false,
+        env: childEnv(),
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      this.deps.outputChannel.appendLine(
+        t("deviceOps.log.installSystemImageStartFailed", { package: pkg, error: String(error) }),
+      );
+      respond(false, String(error));
+      return;
+    }
+
+    const stdoutParser = new NdjsonParser(
+      (value) => {
+        if (!isInstallSystemImageEvent(value)) {
+          this.deps.outputChannel.appendLine(
+            t("deviceOps.log.unknownLine", { label: `install-system-image ${pkg}`, value: JSON.stringify(value) }),
+          );
+          return;
+        }
+        if (value.kind === "log") {
+          this.deps.outputChannel.appendLine(`[install-system-image ${pkg}] ${value.message}`);
+        } else {
+          if (!value.ok) {
+            this.deps.outputChannel.appendLine(
+              t("deviceOps.log.installSystemImageFailed", {
+                package: pkg,
+                error: value.error ?? t("deviceOps.detailUnknown"),
+              }),
+            );
+          }
+          respond(value.ok, value.error);
+        }
+      },
+      (line) => this.deps.outputChannel.appendLine(`[install-system-image ${pkg} stdout] ${line}`),
+    );
+    // finished を経由せず落ちた場合の唯一の手掛かり(spawnCreateDevice の lastStderr と同じ理由)。
+    let lastStderr = "";
+    const stderrParser = new NdjsonParser(
+      (value) => this.deps.outputChannel.appendLine(`[install-system-image ${pkg} stderr] ${JSON.stringify(value)}`),
+      (line) => {
+        const trimmed = line.trim();
+        if (trimmed.length > 0) {
+          lastStderr = trimmed;
+        }
+        this.deps.outputChannel.appendLine(`[install-system-image ${pkg} stderr] ${line}`);
+      },
+    );
+
+    proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
+
+    proc.on("error", (error) => {
+      this.deps.outputChannel.appendLine(
+        t("deviceOps.log.installSystemImageRuntimeError", { package: pkg, error: error.message }),
+      );
+      respond(false, error.message);
+    });
+    proc.on("close", (exitCode) => {
+      stdoutParser.end();
+      stderrParser.end();
+      this.deps.outputChannel.appendLine(
+        t("deviceOps.log.installSystemImageClosed", { package: pkg, exitCode: String(exitCode) }),
+      );
+      const detail = lastStderr.length > 0
+        ? `${t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) })}: ${lastStderr}`
+        : t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) });
+      respond(false, detail);
     });
   }
 

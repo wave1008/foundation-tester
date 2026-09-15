@@ -268,6 +268,53 @@ export const deviceOpsStrings = {
     en: "\n\n{count} of them already exist on {machine} ({names}) and will be deleted and recreated (cannot be undone).",
   },
   "deviceOps.batchOverwriteConfirmButton": { ja: "削除して作り直す", en: "Delete and recreate" },
+  // ---- ダウンロードが要る Android システムイメージの導入 + 作成(confirmAndInstallThenCreate) ----
+  // **確認は1回だけ**(上書き確認・リモート確認とは統合する。batchConfirmMessage と同じ規律)。
+  // 導入するパッケージ名・容量・ライセンス識別子を message に出し、detail には上書き注記・
+  // 占有中の注記・ライセンス全文の在り処だけを足す(手順は書かない規律と同じで、識別子だけ言う)。
+  "deviceOps.installSystemImageSizeNote": { ja: "(約 {size})", en: " (about {size})" },
+  "deviceOps.installSystemImageLicenseNote": { ja: "({license})", en: " ({license})" },
+  "deviceOps.installSystemImageConfirmMessage": {
+    ja: "{machine} に {package}{sizeNote}をダウンロードして導入し、「{name}」を作成します。導入には Android SDK のライセンス{licenseNote}への同意が必要です。",
+    en: "This downloads and installs {package}{sizeNote} on {machine}, then creates \"{name}\". Installing requires accepting the Android SDK license{licenseNote}.",
+  },
+  "deviceOps.installSystemImageBatchConfirmMessage": {
+    ja: "{machine} に {package}{sizeNote}をダウンロードして導入し、{count} 台のデバイスを作成します({first} 〜 {last})。導入には Android SDK のライセンス{licenseNote}への同意が必要です。",
+    en: "This downloads and installs {package}{sizeNote} on {machine}, then creates {count} devices ({first} - {last}). Installing requires accepting the Android SDK license{licenseNote}.",
+  },
+  "deviceOps.installSystemImageConfirmButton": { ja: "ライセンスに同意して導入", en: "Accept License and Install" },
+  "deviceOps.installSystemImageOverwriteNote": {
+    ja: "{machine} の「{name}」は既に存在します。削除して作り直します(元に戻せません)。",
+    en: "\"{name}\" already exists on {machine} and will be deleted and recreated (cannot be undone).",
+  },
+  "deviceOps.installSystemImageBatchOverwriteNote": {
+    ja: "{machine} のうち {count} 台は既に存在します({names})。削除して作り直します(元に戻せません)。",
+    en: "{count} of them already exist on {machine} ({names}) and will be deleted and recreated (cannot be undone).",
+  },
+  "deviceOps.installSystemImageLicenseHint": {
+    ja: "ライセンスの全文は Android Studio の SDK Manager、または `sdkmanager --licenses` で確認できます。",
+    en: "The full license text is available in Android Studio's SDK Manager, or via `sdkmanager --licenses`.",
+  },
+  "deviceOps.installSystemImageFailedGeneric": {
+    ja: "システムイメージの導入に失敗しました。",
+    en: "Failed to install the system image.",
+  },
+  "deviceOps.log.installSystemImageStartFailed": {
+    ja: "[fleetest] install-system-image({package})の起動に失敗しました: {error}",
+    en: "[fleetest] Failed to start install-system-image({package}): {error}",
+  },
+  "deviceOps.log.installSystemImageFailed": {
+    ja: "[fleetest] install-system-image({package})が失敗しました: {error}",
+    en: "[fleetest] install-system-image({package}) failed: {error}",
+  },
+  "deviceOps.log.installSystemImageRuntimeError": {
+    ja: "[fleetest] install-system-image({package})の実行でエラーが発生しました: {error}",
+    en: "[fleetest] An error occurred while running install-system-image({package}): {error}",
+  },
+  "deviceOps.log.installSystemImageClosed": {
+    ja: "[fleetest] install-system-image({package})が終了しました(exit code: {exitCode})",
+    en: "[fleetest] install-system-image({package}) finished (exit code: {exitCode})",
+  },
   "deviceOps.batchAlreadyRunning": {
     ja: "デバイスの作成が実行中です。",
     en: "A create operation is already in progress.",

@@ -476,3 +476,76 @@ test("外したチェックも再描画で戻らない(両方向に効く)", (t)
   const after = document.querySelector("#device-pick-ios-body .device-pick-row input[type=checkbox]");
   assert.equal(after.checked, false, "再描画で ON に戻らない");
 });
+
+// ---- ダウンロードが要る Android システムイメージのバッチ作成 ----
+
+const CATALOG_WITH_DOWNLOADABLE = {
+  android: {
+    available: true,
+    error: null,
+    errorCode: null,
+    models: [{ id: "pixel_9", name: "Pixel 9" }],
+    systemImages: [],
+    downloadableSystemImages: [{
+      abi: "arm64-v8a", apiLevel: 36, license: "android-sdk-arm-dbt-license",
+      package: "system-images;android-36;google_apis;arm64-v8a",
+      sizeBytes: 1900000000, tag: "google_apis", versionName: "Android 16",
+    }],
+    downloadableError: null,
+  },
+  ios: READY_CATALOG.ios,
+};
+
+test("バッチ作成: ダウンロードが要る OS を選ぶと installSystemImage を1件だけ載せる", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+
+  post(window, { type: "machineProfileInfo", machines: [{ name: "M1", devices: [] }], current: "M1", error: null });
+  click(window, document.getElementById("btn-device-add-existing"));
+  post(window, installedDevices([]));
+  click(window, document.getElementById("device-pick-android-add-new"));
+  post(window, { type: "deviceCatalog", ok: true, catalog: CATALOG_WITH_DOWNLOADABLE, error: null });
+
+  assert.equal(document.getElementById("dlg-os").value,
+    "system-images;android-36;google_apis;arm64-v8a", "インストール済みが無いのでダウンロード候補が既定選択になる");
+
+  click(window, document.getElementById("dlg-batch"));
+
+  const message = posted.find((m) => m.type === "batchCreateDevices");
+  assert.ok(message, "batchCreateDevices を送る");
+  // webview(jsdom)側の realm で作られたオブジェクトなので、素のオブジェクトへ写してから比べる
+  assert.deepEqual({ ...message.installSystemImage }, {
+    package: "system-images;android-36;google_apis;arm64-v8a",
+    sizeBytes: 1900000000,
+    license: "android-sdk-arm-dbt-license",
+  });
+});
+
+test("バッチ作成: インストール済みの OS を選んだままなら installSystemImage を送らない", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+
+  const catalog = structuredClone(CATALOG_WITH_DOWNLOADABLE);
+  catalog.android.systemImages = [{
+    abi: "arm64-v8a", apiLevel: 35, package: "system-images;android-35;google_apis;arm64-v8a",
+    tag: "google_apis", versionName: "Android 15",
+  }];
+
+  post(window, { type: "machineProfileInfo", machines: [{ name: "M1", devices: [] }], current: "M1", error: null });
+  click(window, document.getElementById("btn-device-add-existing"));
+  post(window, installedDevices([]));
+  click(window, document.getElementById("device-pick-android-add-new"));
+  post(window, { type: "deviceCatalog", ok: true, catalog, error: null });
+
+  // 既定選択はインストール済み(グループの先頭)
+  assert.equal(document.getElementById("dlg-os").value,
+    "system-images;android-35;google_apis;arm64-v8a");
+
+  click(window, document.getElementById("dlg-batch"));
+
+  const message = posted.find((m) => m.type === "batchCreateDevices");
+  assert.ok(message, "batchCreateDevices を送る");
+  assert.equal("installSystemImage" in message, false);
+});

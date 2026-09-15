@@ -7,6 +7,7 @@ import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
 import { cachePhysicalDeviceInfo } from './physicalDeviceCache.js';
 import { clampMenuPosition } from './menu.js';
+import { formatBytesAuto } from '../../retentionModel';
 import { selectedMachine, findMachine, allDeviceNamesForSelectedMachine, btnDeviceAddExisting, refreshSelectedDeviceEditor } from './machineProfilesTab.js';
 import { currentDeviceSource, refreshDeviceAddBadge, resetDevicePickMachine } from './devicePickMachine.js';
 
@@ -95,6 +96,34 @@ function fillSelect(select, options) {
   }
 }
 
+/** fillSelect のグループ付き版。downloadable が空なら**従来どおりフラット**に描く(optgroup を
+ * 出さない = ダウンロード候補を返さない旧 CLI・iOS では見た目が1バイトも変わらない)。
+ * downloadable が非空のときだけ「インストール済み」/「ダウンロードが必要」の2 optgroup に分ける
+ * (installed が空でも見出しごと出さない = 空グループを見せない)。 */
+function fillSelectGrouped(select, installed, downloadable) {
+  if (downloadable.length === 0) {
+    fillSelect(select, installed);
+    return;
+  }
+  select.textContent = '';
+  const appendGroup = (label, options) => {
+    if (options.length === 0) {
+      return;
+    }
+    const group = document.createElement('optgroup');
+    group.label = label;
+    for (const opt of options) {
+      const el = document.createElement('option');
+      el.value = opt.value;
+      el.textContent = opt.label;
+      group.appendChild(el);
+    }
+    select.appendChild(group);
+  };
+  appendGroup(t('wvMonitor.deviceAdd.installedGroupLabel'), installed);
+  appendGroup(t('wvMonitor.deviceAdd.downloadGroupLabel'), downloadable);
+}
+
 function modelOptionsFor(platform) {
   if (!deviceCatalog) {
     return [];
@@ -104,8 +133,38 @@ function modelOptionsFor(platform) {
     : deviceCatalog.android.models.map((m) => ({ value: m.id, label: m.name }));
 }
 
-// Android の OS バージョンは「サービス」(system-images のタグ)で絞る。タグはラベルから外す
-// (選択済みの値と重複するため)。
+// Android のインストール済み OS バージョンは「サービス」(system-images のタグ)で絞る。タグは
+// ラベルから外す(選択済みの値と重複するため)。
+function androidOsLabel(image) {
+  return image.versionName + '(API ' + image.apiLevel + ') / ' + image.abi;
+}
+
+function androidInstalledOsOptions() {
+  if (!deviceCatalog) {
+    return [];
+  }
+  return deviceCatalog.android.systemImages
+    .filter((s) => s.tag === dlgService.value)
+    .map((s) => ({ value: s.package, label: androidOsLabel(s) }));
+}
+
+// ダウンロードが要る(インストール済みでない)Android システムイメージ。size/license は
+// カタログの値をそのまま持たせる(OK 押下時に installSystemImage を組み立てるのに使う。
+// ラベルの文字列を後から解析して判定はしない)。
+function androidDownloadableOsOptions() {
+  if (!deviceCatalog) {
+    return [];
+  }
+  return (deviceCatalog.android.downloadableSystemImages || [])
+    .filter((s) => s.tag === dlgService.value)
+    .map((s) => ({
+      value: s.package,
+      label: androidOsLabel(s),
+      sizeBytes: s.sizeBytes ?? null,
+      license: s.license ?? null,
+    }));
+}
+
 function osOptionsFor(platform) {
   if (!deviceCatalog) {
     return [];
@@ -113,12 +172,13 @@ function osOptionsFor(platform) {
   if (platform === 'ios') {
     return deviceCatalog.ios.runtimes.map((r) => ({ value: r.identifier, label: r.name }));
   }
-  return deviceCatalog.android.systemImages
-    .filter((s) => s.tag === dlgService.value)
-    .map((s) => ({
-      value: s.package,
-      label: s.versionName + '(API ' + s.apiLevel + ') / ' + s.abi,
-    }));
+  return [...androidInstalledOsOptions(), ...androidDownloadableOsOptions()];
+}
+
+function downloadableSizeSuffix(sizeBytes) {
+  return sizeBytes === null
+    ? ''
+    : t('wvMonitor.deviceAdd.downloadableOptionSizeSuffix', { size: formatBytesAuto(sizeBytes) });
 }
 
 // カタログは ok:true のままプラットフォーム単位で部分的に欠ける(例: Android は system-images だけ
@@ -143,13 +203,21 @@ function platformIssue(platform) {
   const remedy = side.errorCode === 'avdmanager-missing' && source.kind === 'remote'
     ? ' ' + t('wvMonitor.deviceAdd.installCmdlineToolsOnRemote', { machine: source.machine })
     : '';
+  // インストール済みがこのサービスで空、かつダウンロード候補の取得自体が失敗しているなら
+  // (downloadableError あり)、「置いていない」と断定せず理由を出す(取得に失敗しているだけで
+  // 実際には有るかもしれない)。avdmanager-missing 等(side.error)のほうが優先(既に確定した理由)。
+  const installedEmptyForService = platform === 'android' && androidInstalledOsOptions().length === 0;
+  const downloadableError = platform === 'android' ? (deviceCatalog.android.downloadableError ?? null) : null;
+  const message = side.error
+    ? side.error + remedy
+    : (blocked
+      ? (installedEmptyForService && downloadableError
+        ? downloadableError
+        : t(serviceOnly ? 'wvMonitor.deviceAdd.noImageForService' : 'wvMonitor.deviceAdd.catalogEmpty'))
+      : '');
   return {
     blocked,
-    message: side.error
-      ? side.error + remedy
-      : (blocked
-        ? t(serviceOnly ? 'wvMonitor.deviceAdd.noImageForService' : 'wvMonitor.deviceAdd.catalogEmpty')
-        : ''),
+    message,
     // 導入で解消できる欠け方のときだけボタンを出す(文言では分岐しない)。導入は常にローカルで
     // 実行するため(installCmdlineToolsRequest はホストセレクタの対象外)、ホストがリモートの
     // ときは出さない — 出すと「別マシンの欠けを手元に導入するボタン」という誤動作になる。
@@ -180,13 +248,21 @@ function selectedOptionLabel(select) {
   return opt ? opt.textContent : '';
 }
 
+// dlgOs の現在の選択肢の「素のラベル」(ダウンロード候補の容量接尾辞を含まない)。値→ラベルの対応
+// (refreshModelAndOsOptions が張り直す)。自動生成名にサイズ表記が混ざるのを防ぐため、
+// autoDeviceName はここを見る(select の textContent は容量接尾辞つきのことがある)。
+let osLabelByValue = new Map();
+// dlgOs の値(package)→ダウンロード候補の情報({sizeBytes, license})。ここに載っている値を選んで
+// いる間だけ、OK/バッチ作成の送信に installSystemImage を足す(ラベル文字列は解析しない)。
+let downloadableByPackage = new Map();
+
 // iOS = "モデル名(ランタイム名)"、Android = "モデル名(versionName)"(モデル未選択なら空文字)。
 function autoDeviceName() {
   const modelLabel = selectedOptionLabel(dlgModel);
   if (!modelLabel) {
     return '';
   }
-  const osLabel = selectedOptionLabel(dlgOs);
+  const osLabel = osLabelByValue.get(dlgOs.value) ?? selectedOptionLabel(dlgOs);
   return osLabel ? modelLabel + '(' + osLabel + ')' : modelLabel;
 }
 
@@ -209,19 +285,70 @@ function applyPlatformAvailability() {
   }
 }
 
+// エラー(catalogEmpty 等)が無いとき、選んでいる OS がダウンロード候補ならその旨を info として
+// 出す(エラーではないので .info。「ライセンス確認のあとで導入し、そのまま作成する」ことを
+// あらかじめ伝える)。dlgOs の選択を変えるたびに呼び直すこと。
+function downloadableInfoText() {
+  const info = downloadableByPackage.get(dlgOs.value);
+  if (!info) {
+    return '';
+  }
+  const sizeNote = info.sizeBytes === null
+    ? ''
+    : t('wvMonitor.deviceAdd.downloadableInfoSizeNote', { size: formatBytesAuto(info.sizeBytes) });
+  return t('wvMonitor.deviceAdd.downloadableInfo', { sizeNote });
+}
+
+// dlg-error(エラー文言 or ダウンロード候補の info)と OK 可否を1箇所で同期する。issue.message が
+// 優先(ブロックする理由があるならそちらを見せる)、無ければ選択中 OS のダウンロード info を見せる。
+function refreshErrorOrInfo(platform) {
+  const issue = platformIssue(platform);
+  if (issue.message) {
+    dlgError.classList.remove('info');
+    dlgError.textContent = issue.message;
+  } else {
+    const info = downloadableInfoText();
+    dlgError.classList.toggle('info', info !== '');
+    dlgError.textContent = info;
+  }
+  dlgOk.disabled = issue.blocked;
+  dlgInstallRow.hidden = !issue.installable;
+}
+
 // 選択中プラットフォームの選択肢とエラー表示・OK 可否を1箇所で同期する(プラットフォーム切替でも
 // カタログ受信直後でも同じ結果になるよう、呼び出し側で dlgError/dlgOk を触らない)。
 function refreshModelAndOsOptions() {
   const platform = getDialogPlatform();
   dlgServiceRow.hidden = platform !== 'android';
   fillSelect(dlgModel, modelOptionsFor(platform));
-  fillSelect(dlgOs, osOptionsFor(platform));
+
+  osLabelByValue = new Map();
+  downloadableByPackage = new Map();
+  if (platform === 'android') {
+    const installed = androidInstalledOsOptions();
+    const downloadable = androidDownloadableOsOptions();
+    for (const opt of installed) {
+      osLabelByValue.set(opt.value, opt.label);
+    }
+    for (const opt of downloadable) {
+      osLabelByValue.set(opt.value, opt.label);
+      downloadableByPackage.set(opt.value, { sizeBytes: opt.sizeBytes, license: opt.license });
+    }
+    fillSelectGrouped(
+      dlgOs,
+      installed,
+      downloadable.map((opt) => ({ value: opt.value, label: opt.label + downloadableSizeSuffix(opt.sizeBytes) })),
+    );
+  } else {
+    const options = osOptionsFor(platform);
+    for (const opt of options) {
+      osLabelByValue.set(opt.value, opt.label);
+    }
+    fillSelect(dlgOs, options);
+  }
+
   refreshAutoName();
-  const issue = platformIssue(platform);
-  dlgError.classList.remove('info');
-  dlgError.textContent = issue.message;
-  dlgOk.disabled = issue.blocked;
-  dlgInstallRow.hidden = !issue.installable;
+  refreshErrorOrInfo(platform);
 }
 
 dlgPlatformIos.addEventListener('change', () => refreshModelAndOsOptions());
@@ -230,7 +357,12 @@ dlgPlatformAndroid.addEventListener('change', () => refreshModelAndOsOptions());
 // 理由表示と OK 可否も refreshModelAndOsOptions が面倒を見る)
 dlgService.addEventListener('change', () => refreshModelAndOsOptions());
 dlgModel.addEventListener('change', () => refreshAutoName());
-dlgOs.addEventListener('change', () => refreshAutoName());
+// OS バージョンの選択を変えるたびに、名前の自動生成だけでなくダウンロード info も更新する
+// (ダウンロード候補を選ぶ/外すで info の出/消えが切り替わるため)。
+dlgOs.addEventListener('change', () => {
+  refreshAutoName();
+  refreshErrorOrInfo(getDialogPlatform());
+});
 dlgName.addEventListener('input', () => {
   if (dlgName.value.trim().length === 0) {
     // 空にした = 自動生成への追従を再開する
@@ -404,11 +536,17 @@ dlgOk.addEventListener('click', () => {
   // 上書き = 実体を消して作り直す + 古い登録を新しい実体で置き換える。
   // 確認ダイアログはホスト側(webview の window.confirm は効かない)。
   const overwrite = nameClashesOnCurrentMachine(name, getDialogPlatform(), source);
+  // 選んでいる OS バージョンがダウンロード候補なら、ホスト側の確認(ライセンス同意)+導入+作成の
+  // 一連を1メッセージで依頼する(2枚モーダルを避けるため。値は package/sizeBytes/license のみ ——
+  // ラベル文字列は運ばない)。
+  const install = downloadableByPackage.get(dlgOs.value);
   deviceAddCreating = true;
   setDialogControlsEnabled(false);
   dlgOk.disabled = true;
   dlgCancel.disabled = true;
-  dlgOk.textContent = t('wvMonitor.deviceAdd.creating');
+  dlgOk.textContent = install
+    ? t('wvMonitor.deviceAdd.installingAndCreating')
+    : t('wvMonitor.deviceAdd.creating');
   dlgError.textContent = '';
   vscode.postMessage({
     type: 'createDevice',
@@ -421,6 +559,7 @@ dlgOk.addEventListener('click', () => {
     // source が remote のときはホスト側が register によらず --no-register を強制する(§13)。
     register: !deviceAddFromPicker,
     overwrite: overwrite,
+    ...(install ? { installSystemImage: { package: dlgOs.value, sizeBytes: install.sizeBytes, license: install.license } } : {}),
     source: currentDeviceSource(),
   });
 });
@@ -512,6 +651,9 @@ dlgBatch.addEventListener('click', () => {
   // 上書きの確認はホスト側(webview の window.confirm は効かない)。衝突の判定はこちら ――
   // 一覧(登録済み+実体)を持っているのは webview だけ。単発 OK と同じ規則を名前ごとに当てる
   const overwriteNames = names.filter((name) => nameClashesOnCurrentMachine(name, platform, source));
+  // バッチ全体が同じ OS バージョンで作られるため、ダウンロード候補なら1件だけ installSystemImage を
+  // 載せる(単発 OK と同じ判定・同じ形)。
+  const install = downloadableByPackage.get(dlgOs.value);
   // 確認中も追加ダイアログを固める(Enter 連打・×での取り消しを止める)。
   // 開始できなければ batchCreateFinished(started:false)で元に戻す
   deviceAddCreating = true;
@@ -527,6 +669,7 @@ dlgBatch.addEventListener('click', () => {
     model: dlgModel.value,
     os: dlgOs.value,
     overwriteNames: overwriteNames,
+    ...(install ? { installSystemImage: { package: dlgOs.value, sizeBytes: install.sizeBytes, license: install.license } } : {}),
     source: source,
   });
 });
