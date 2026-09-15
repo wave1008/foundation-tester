@@ -73,6 +73,10 @@
     {
       "machine": "M1Ultra",
       "name": "iPhone 17 Pro(iOS 27.0)-06"
+    },
+    {
+      "machine": "M1mini",
+      "name": "iPhone 17 Pro(iOS 27.0)-01"
     }
   ],
   "heal": true,
