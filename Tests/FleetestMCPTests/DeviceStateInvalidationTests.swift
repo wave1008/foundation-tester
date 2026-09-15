@@ -95,6 +95,17 @@ final class DeviceStateInvalidationTests: XCTestCase {
     }
 
     /// **「分からない」を「変わった」と読まない** —— udid を採れない構成で毎回記憶が飛ぶ
+    /// 実機のポートをシミュレータのブリッジが奪った形(2026-09-15 の F8b)。実機のランナーは udid を
+    /// 申告しないが、奪った側(シミュレータ上の in-app / XCUITest)は申告するので、前の実機の udid が返る
+    /// = 呼び出しを断る。「実機ではガードが no-op」と読み違えて別の守りを足さないための固定
+    func testASimulatorBridgeAnsweringOnAPhysicalDevicesPortIsAChange() {
+        XCTAssertEqual(MCPServer.keyChangedDevice(previous: "00008110-000260242EEB801E",
+                                                  now: "E38DCA93-95F2-4DDF-B1FE-29527205D3EE"),
+                       "00008110-000260242EEB801E")
+        // 実機のランナー自身が答えている(申告なし)なら何もしない
+        XCTAssertNil(MCPServer.keyChangedDevice(previous: "00008110-000260242EEB801E", now: nil))
+    }
+
     func testUnknownUDIDOnEitherSideIsNotTreatedAsAChange() {
         XCTAssertNil(MCPServer.keyChangedDevice(previous: nil, now: "BBB"),
                      "初回(前の udid が無い)を機の入れ替わりと読んだ")

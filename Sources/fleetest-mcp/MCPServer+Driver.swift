@@ -503,10 +503,14 @@ extension MCPServer {
         // 実機の lan トランスポート(ランナーを 0.0.0.0 に bind してデバイスの LAN IP へ直接 HTTP)
         // ではデバイスに届かず、同じポート番号で loopback に応答した**別の機**の udid を読んでしまう
         // (BridgeDiscovery.isBound/scan・ExploreDriverResolver と同じ解決点に揃える)。
-        // **実機のブリッジは /status に udid を申告しないので status().udid は常に nil になり、
-        // このガードは実機では実質 no-op**(誤って拒否することは無いが、保護もされない)。
-        // `.fleetest/bridge-<port>.device` の記録で補える余地はあるが、今回は広げない
-        // (no-op のままなら実害は無く、広げると誤拒否の側にリスクが移る)
+        // **udid を申告するのはシミュレータ上のブリッジだけ**(in-app・XCUITest とも SIMULATOR_UDID)。
+        // 実機のランナーは申告しない(nil)ので、実機のポートを実機のランナー自身が答えている間は
+        // 何もしない。**実機のポートをシミュレータのブリッジが奪った形は now = シミュレータの udid に
+        // なるので捕まる**(2026-09-15 の負荷テストで DSL 側に起きた F8b の形。DSL は
+        // FTCore.BridgeIdentityCheck が同じ udid 比較を持つ)。黙るのは**実機同士の入れ替わり**
+        // (両方 nil)だけで、奪う側の採番・kill は PortHolder の ownerUDID / 生きた iproxy の除外で
+        // 源から止めてある。`.fleetest/bridge-<port>.device` で補う余地はあるが広げない
+        // (広げると誤拒否の側にリスクが移る)
         let endpoint = (try? RepoRoot.find()).map { BridgeEndpoint.load(port: port, repoRoot: $0) }
             ?? BridgeEndpoint(port: port)
         guard let now = try? await BridgeClient(endpoint: endpoint, timeoutSeconds: 5).status().udid,
