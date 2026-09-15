@@ -22,7 +22,7 @@
 # その変異を殺せていない = テストを境界へ寄せるか、変異の置き場所を疑う)。
 # SURVIVED か適用エラーが1件でもあれば exit 1。
 #
-# 環境変数: MUT_JOBS(同時実行数。既定 3)/ MUT_WORKTREE_ROOT(worktree の置き場。
+# 環境変数: MUT_JOBS(同時実行数。既定 4 = 用意した worktree の本数。swift build 1 本で全コアを使うので増やしても総所要はほぼ変わらない・2026-09-15 実測)/ MUT_WORKTREE_ROOT(worktree の置き場。
 # 既定はリポジトリの隣の <repo名>-mutwt)
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -59,7 +59,7 @@ if os.environ.get("MUT_ALLOW_DURING_RUN") != "1":
 repo = os.getcwd()
 name = os.path.basename(repo)
 root = os.environ.get("MUT_WORKTREE_ROOT", os.path.join(os.path.dirname(repo), f"{name}-mutwt"))
-jobs = int(os.environ.get("MUT_JOBS", "3"))
+jobs = int(os.environ.get("MUT_JOBS", "4"))
 log_dir = os.path.join(repo, ".fleetest", "mutation", datetime.now().strftime("%Y%m%d-%H%M%S"))
 os.makedirs(log_dir, exist_ok=True)
 
