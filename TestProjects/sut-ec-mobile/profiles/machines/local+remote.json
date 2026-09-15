@@ -156,6 +156,20 @@
         "os": "26.6",
         "udid": "00008110-000260242EEB801E",
         "model": "iPhone SE (3rd generation)"
+      },
+      {
+        "machine": "M1mini",
+        "name": "iPhone 18 Pro(iOS 27.0)-01",
+        "simulator": "iPhone 18 Pro(iOS 27.0)-01",
+        "os": "27.0",
+        "udid": "74142385-7E8D-460E-AE3B-8C9611445792"
+      },
+      {
+        "machine": "M1mini",
+        "name": "iPhone 18 Pro(iOS 27.0)-02",
+        "simulator": "iPhone 18 Pro(iOS 27.0)-02",
+        "os": "27.0",
+        "udid": "022A6809-EA60-40B2-A2B0-66EB771FC73A"
       }
     ]
   },
