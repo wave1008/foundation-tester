@@ -65,14 +65,6 @@
     {
       "machine": "M1Ultra",
       "name": "Pixel 9(Android 15)-06"
-    },
-    {
-      "machine": "M1mini",
-      "name": "Pixel 9(Android 15)-01"
-    },
-    {
-      "machine": "M1mini",
-      "name": "Pixel 9(Android 15)-02"
     }
   ],
   "heal": true,
