@@ -9,8 +9,8 @@ import XCTest
 final class RunProfileSetOverrideParseTests: XCTestCase {
 
     func testParsesMultipleValidTokens() throws {
-        let overrides = try RunProfileSetOverride.parse(["heal=true", "falsePositiveCheck=false"])
-        XCTAssertEqual(overrides, ["heal": true, "falsePositiveCheck": false])
+        let overrides = try RunProfileSetOverride.parse(["heal=true", "textVisualCheck=false"])
+        XCTAssertEqual(overrides, ["heal": true, "textVisualCheck": false])
     }
 
     func testLaterDuplicateKeyWins() throws {
@@ -271,12 +271,10 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
     /// 二重管理になるが、こちらは「反映されたか」を機械的に確かめるだけなので許容する)
     private func fieldValue(_ doc: RunProfileDocument, _ key: String) -> RunProfileSetValue? {
         switch key {
-        case "fm": return doc.fm.map(RunProfileSetValue.bool)
         case "heal": return doc.heal.map(RunProfileSetValue.bool)
-        case "falsePositiveCheck": return doc.falsePositiveCheck.map(RunProfileSetValue.bool)
+        case "textVisualCheck": return doc.textVisualCheck.map(RunProfileSetValue.bool)
         case "screenLooksLike": return doc.screenLooksLike.map(RunProfileSetValue.bool)
-        case "ocr": return doc.ocr.map(RunProfileSetValue.bool)
-        case "ocrFalsePositiveCheck": return doc.ocrFalsePositiveCheck.map(RunProfileSetValue.bool)
+        case "ocrTextVisualCheck": return doc.ocrTextVisualCheck.map(RunProfileSetValue.bool)
         case "iosInappEngine": return doc.iosInappEngine.map(RunProfileSetValue.bool)
         case "iosFastInput": return doc.iosFastInput.map(RunProfileSetValue.bool)
         case "iosPreActionWarmup": return doc.iosPreActionWarmup.map(RunProfileSetValue.bool)
@@ -307,8 +305,8 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
     /// キーごとの見本値(型はキーの宣言型に一致させる)。`RunProfileSetOverride.parse` を通して
     /// 作るので、値の型は本体の宣言型マップと自動的に一致する(このテストが型を手で二重管理しない)
     private static let sampleRawValues: [String: String] = [
-        "fm": "false", "heal": "false", "falsePositiveCheck": "false",
-        "screenLooksLike": "false", "ocr": "false", "ocrFalsePositiveCheck": "false",
+        "heal": "false", "textVisualCheck": "false",
+        "screenLooksLike": "false", "ocrTextVisualCheck": "false",
         "iosInappEngine": "false", "iosFastInput": "true", "iosPreActionWarmup": "false",
         "containerInference": "false", "enableAnimations": "true", "homeOnStart": "false",
         "playProtectBypass": "false", "updateWebView": "false", "wipeDataOnBloat": "false",
@@ -324,7 +322,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         XCTAssertEqual(doc.applyingOverrides([:]), doc)
     }
 
-    /// 受け付ける全キー(Bool 20 + スカラー8)が実際に反映されること。壊れたキーだけ
+    /// 受け付ける全キー(Bool 17 + スカラー8)が実際に反映されること。壊れたキーだけ
     /// このテストで機械的に検知する(1件でも switch 分岐から漏れる/型を取り違えると落ちる)
     func testOverridesEachSupportedKey() throws {
         let tokens = RunProfileDocument.overridableKeys.sorted().map { key -> String in
@@ -362,7 +360,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
 
 final class DeviceIndependentRunSettingsTests: XCTestCase {
 
-    /// **profile-less の基底はリテラルで固定する**。プロファイルの既定(heal/falsePositiveCheck
+    /// **profile-less の基底はリテラルで固定する**。プロファイルの既定(heal/textVisualCheck
     /// はどちらも true)をそのまま使うと、素の `fleetest run` で occlusion-guard が走り始めて
     /// **既に緑だった run が赤に反転しうる**(2026-09-08 に実際に入れた退行)。homeOnStart も
     /// 同じで、既に建っているブリッジへ繋ぐだけの経路で手元の画面を Home で流してしまう。
@@ -371,15 +369,14 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
     func testProfileLessBasePinsTheThreeDeliberateDifferences() {
         let base = DeviceIndependentRunSettings.profileLessBase
         XCTAssertEqual(base.heal, false, "profile-less の heal は OFF")
-        XCTAssertEqual(base.falsePositiveCheck, false, "profile-less の偽陽性検証は OFF")
+        XCTAssertEqual(base.textVisualCheck, false, "profile-less のテキストの視覚検証は OFF")
         XCTAssertEqual(base.homeOnStart, false, "profile-less はデバイスに触らない")
 
         // 残りはプロファイルの既定と同じであること(3つ以外を勝手に倒していない)
         let settings = DeviceIndependentRunSettings.resolve(base)
         XCTAssertTrue(settings.fm.enabled)
         XCTAssertTrue(settings.fm.screenLooksLike)
-        XCTAssertTrue(settings.ocr)
-        XCTAssertTrue(settings.ocrFalsePositiveCheck)
+        XCTAssertTrue(settings.ocrTextVisualCheck)
         XCTAssertTrue(settings.containerInference)
         XCTAssertFalse(settings.record)
     }
@@ -389,17 +386,16 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
         let settings = DeviceIndependentRunSettings.resolve(
             DeviceIndependentRunSettings.profileLessBase.applyingOverrides(["heal": true]))
         XCTAssertTrue(settings.heal, "--set heal=true は基底を上書きするはず")
-        XCTAssertFalse(settings.fm.falsePositiveCheck, "触っていない欄は基底のまま")
+        XCTAssertFalse(settings.fm.textVisualCheck, "触っていない欄は基底のまま")
     }
 
 
     func testDefaultsMatchTheRunProfileDocumentDefaults() {
         let settings = DeviceIndependentRunSettings.resolve(RunProfileDocument())
-        XCTAssertEqual(settings.fm, FMConfig(enabled: true, falsePositiveCheck: true,
+        XCTAssertEqual(settings.fm, FMConfig(enabled: true, textVisualCheck: true,
                                              screenLooksLike: true))
         XCTAssertTrue(settings.heal)
-        XCTAssertTrue(settings.ocr)
-        XCTAssertTrue(settings.ocrFalsePositiveCheck)
+        XCTAssertTrue(settings.ocrTextVisualCheck)
         XCTAssertFalse(settings.iosFastInput)
         XCTAssertTrue(settings.iosPreActionWarmup)
         XCTAssertTrue(settings.containerInference)
@@ -446,24 +442,48 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
         XCTAssertEqual(settings.recordBitrateKbps, 4000)
     }
 
-    /// fm:false は falsePositiveCheck/screenLooksLike を無条件に false へ落とすが、**heal は落とさない**
-    /// (heal は FM を使わないので `fm` の配下ではない。`--set fm=false` で修復まで黙って止めない)
-    func testFmFalseGatesTheOtherFMTogglesEvenWhenTheyAreExplicitlyTrue() {
+    /// FM を使うかは親スイッチではなく子トグルから導く。両方 false のときだけ無効
+    /// (`textVisualCheck || screenLooksLike`)
+    func testFMConfigEnabledIsFalseOnlyWhenBothChildTogglesAreFalse() {
         let doc = RunProfileDocument().applyingOverrides(
-            ["fm": false, "heal": true, "falsePositiveCheck": true, "screenLooksLike": true])
+            ["textVisualCheck": false, "screenLooksLike": false])
         let settings = DeviceIndependentRunSettings.resolve(doc)
         XCTAssertFalse(settings.fm.enabled)
-        XCTAssertFalse(settings.fm.falsePositiveCheck)
+        XCTAssertFalse(settings.fm.textVisualCheck)
         XCTAssertFalse(settings.fm.screenLooksLike)
-        XCTAssertTrue(settings.heal, "fm:false でも heal は落ちない")
     }
 
-    /// ocr:false は ocrFalsePositiveCheck を無条件に false へ落とす(fm と同じ契約)
-    func testOcrFalseGatesOcrFalsePositiveCheck() {
-        let doc = RunProfileDocument().applyingOverrides(["ocr": false, "ocrFalsePositiveCheck": true])
-        let settings = DeviceIndependentRunSettings.resolve(doc)
-        XCTAssertFalse(settings.ocr)
-        XCTAssertFalse(settings.ocrFalsePositiveCheck)
+    func testFMConfigEnabledIsTrueWhenEitherChildToggleIsTrue() {
+        let onlyTextVisualCheck = DeviceIndependentRunSettings.resolve(
+            RunProfileDocument().applyingOverrides(
+                ["textVisualCheck": true, "screenLooksLike": false]))
+        XCTAssertTrue(onlyTextVisualCheck.fm.enabled)
+
+        let onlyScreenLooksLike = DeviceIndependentRunSettings.resolve(
+            RunProfileDocument().applyingOverrides(
+                ["textVisualCheck": false, "screenLooksLike": true]))
+        XCTAssertTrue(onlyScreenLooksLike.fm.enabled)
+    }
+
+    /// `ocrTextVisualCheck` は親ゲートを持たない独立のキー(既定 true)
+    func testOcrTextVisualCheckHasNoParentGate() {
+        XCTAssertTrue(DeviceIndependentRunSettings.resolve(RunProfileDocument()).ocrTextVisualCheck)
+
+        let explicitFalse = DeviceIndependentRunSettings.resolve(
+            RunProfileDocument().applyingOverrides(["ocrTextVisualCheck": false]))
+        XCTAssertFalse(explicitFalse.ocrTextVisualCheck)
+    }
+
+    /// `fm`/`ocr` は実行プロファイルのキーではない(`--set` は汎用の未知キーエラーで断る)
+    func testFmAndOcrAreRejectedAsUnknownSetKeys() {
+        for key in ["fm", "ocr"] {
+            XCTAssertThrowsError(try RunProfileSetOverride.parse(["\(key)=true"])) { error in
+                guard case RunProfileSetOverrideError.unknownKey(let reportedKey, _) = error else {
+                    return XCTFail("expected unknownKey for \(key), got \(error)")
+                }
+                XCTAssertEqual(reportedKey, key)
+            }
+        }
     }
 }
 

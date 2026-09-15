@@ -38,29 +38,19 @@
         }
       }
     },
-    "fm": {
-      "type": "boolean",
-      "description": "FM(Foundation Model)の機能を使用するか。false で偽陽性検証・screenLooksLike を含む FM 呼び出しを行わない(既定 true)。自己修復(heal)はロケータの指紋照合で FM を使わないため、この設定とは独立。",
-      "default": true
-    },
     "heal": {
       "type": "boolean",
-      "description": "ロケータの指紋照合による自己修復(同じ type + label の要素を1件だけ探して当てる)を許可するか。FM は使わず、fm の設定とは独立(既定 true)。",
+      "description": "セレクタの自己修復(指紋照合方式。同じ type + label の要素を1件だけ探して当てる)を許可するか。FM は使わない(既定 true)。",
       "default": true
     },
-    "falsePositiveCheck": {
+    "textVisualCheck": {
       "type": "boolean",
-      "description": "FM による偽陽性検証(occlusion guard)を有効にするか(既定 true)。",
+      "description": "FM によるテキストの視覚検証(occlusion guard)を有効にするか(既定 true)。",
       "default": true
     },
-    "ocr": {
+    "ocrTextVisualCheck": {
       "type": "boolean",
-      "description": "OCR 機能全体の親スイッチ(既定 true)。false にすると下の個別トグルに関わらず OCR を使わない。",
-      "default": true
-    },
-    "ocrFalsePositiveCheck": {
-      "type": "boolean",
-      "description": "OCR を使ったテキストの偽陽性検証(occlusion guard の前段。既定 true)。false で従来どおり FM だけで判定する。ocr が false なら値に関わらず無効。falsePositiveCheck が false の run では guard 自体が走らないため効かない。",
+      "description": "OCR を使ったテキストの視覚検証(occlusion guard の前段。既定 true)。false で従来どおり FM だけで判定する。textVisualCheck が false の run では guard 自体が走らないため効かない。",
       "default": true
     },
     "screenLooksLike": {

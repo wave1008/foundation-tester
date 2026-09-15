@@ -23,5 +23,5 @@
   "iosInappEngine": true,
   "scenarioTimeout": 900,
   "wipeDataOnBloat": true,
-  "falsePositiveCheck": true
+  "textVisualCheck": true
 }

@@ -6,8 +6,8 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     public var fm: FMConfig
     /// ロケータ自己修復(指紋照合)。FM を使わないので `fm` の外に置く
     public var heal: Bool
-    /// **親スイッチ `ocr` を掛けた後の実効値**(プロファイルの `ocrFalsePositiveCheck`)であって
-    /// 親スイッチそのものではない。OCR の用途が増えたらこの Bool を再利用せず欄を足す
+    /// OCR を使ったテキストの視覚検証の実効値(プロファイルの `ocrTextVisualCheck`)。
+    /// OCR の用途が増えたらこの Bool を再利用せず欄を足す
     public var occlusionOCR: Bool
     public var containerInference: Bool
     public var defaultTimeout: Double?
@@ -34,13 +34,13 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     }
 
     public init(_ settings: DeviceIndependentRunSettings) {
-        self.init(fm: settings.fm, heal: settings.heal, occlusionOCR: settings.ocrFalsePositiveCheck,
+        self.init(fm: settings.fm, heal: settings.heal, occlusionOCR: settings.ocrTextVisualCheck,
                   containerInference: settings.containerInference,
                   defaultTimeout: settings.defaultTimeout, scenarioTimeout: settings.scenarioTimeout)
     }
 
     public init(_ resolved: ResolvedProfile) {
-        self.init(fm: resolved.fm, heal: resolved.heal, occlusionOCR: resolved.ocrFalsePositiveCheck,
+        self.init(fm: resolved.fm, heal: resolved.heal, occlusionOCR: resolved.ocrTextVisualCheck,
                   containerInference: resolved.containerInference,
                   defaultTimeout: resolved.defaultTimeout, scenarioTimeout: resolved.scenarioTimeout,
                   profileName: resolved.runName)

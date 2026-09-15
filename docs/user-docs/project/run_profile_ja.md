@@ -8,7 +8,7 @@
 ```json
 { "app": "sampleapp",
   "devices": [ { "name": "simulator1" }, { "name": "simulator2" }, { "name": "emulator1" } ],
-  "fm": true, "heal": true, "reportDir": "reports", "defaultTimeout": 5,
+  "heal": true, "reportDir": "reports", "defaultTimeout": 5,
   "wipeDataOnBloat": true, "wipeDataThresholdGB": 8 }
 ```
 
@@ -18,12 +18,10 @@
 |---|---|---|---|
 | `app` | string | — | 使用する `apps/<name>.json` プロファイル名 |
 | `devices` | array | — | 実行するデバイス名(解決済みマシンプロファイルから引く。同じ配列に iOS/Android を混在可) |
-| `fm` | bool | `true` | FM(Foundation Models)機能(`falsePositiveCheck`・`screenLooksLike`)の親スイッチ。FM は experimental([environments_ja.md](../overview/environments_ja.md))。`false` にすると、下記の個別トグルに関わらず両方とも実行されない。`heal` とは独立(自己修復はもう FM を使わない) |
-| `heal` | bool | `--profile` 実行は `true`・プロファイル無しの素の `fleetest run` は `false` | ロケータ自己修復(ロケータの指紋照合)を許可する([self_healing_ja.md](../running/self_healing_ja.md)参照)。`fm` とは独立 |
-| `falsePositiveCheck` | bool | `true` | `exist`/`textIs` 等の偽陽性検証(occlusion guard)を有効にする。木では一致したが実際には見えていない「誤った緑」を検出する |
+| `heal` | bool | `--profile` 実行は `true`・プロファイル無しの素の `fleetest run` は `false` | セレクタの自己修復(指紋照合方式)を許可する([self_healing_ja.md](../running/self_healing_ja.md)参照)。下記の FM・OCR 系のトグルとは独立(自己修復は FM を使わない) |
+| `textVisualCheck` | bool | `true` | `exist`/`textIs` 等のテキストの視覚検証(occlusion guard)を有効にする。木では一致したが実際には見えていない「誤った緑」を検出する。FM(Foundation Models。experimental — [environments_ja.md](../overview/environments_ja.md))が呼ばれるのは、これか `screenLooksLike` が `true` のときだけ |
 | `screenLooksLike` | bool | `true` | `screenLooksLike`(FM 視覚検証)を有効にする。`false` のときは該当ステップが失敗ではなく skip になる |
-| `ocr` | bool | `true` | OCR 機能全体の親スイッチ。`false` にすると下記の個別トグルに関わらず OCR を使わない |
-| `ocrFalsePositiveCheck` | bool | `true` | occlusion guard が FM に訊く前に、端末の OCR(Vision)で要素を読む。期待テキストが丸ごと読めた回は FM を呼ばずに通り、読めなければ従来どおり FM が判定する(切ると同じ検査が遅くなるだけ)。`falsePositiveCheck` が `false` の run では guard 自体が走らないので効かない |
+| `ocrTextVisualCheck` | bool | `true` | occlusion guard が FM に訊く前に、端末の OCR(Vision)で要素を読む。期待テキストが丸ごと読めた回は FM を呼ばずに通り、読めなければ従来どおり FM が判定する(切ると同じ検査が遅くなるだけ)。`textVisualCheck` が `false` の run では guard 自体が走らないので効かない |
 | `reportDir` | string | `"reports"` | Markdown レポートの出力先(プロジェクトルート相対) |
 | `defaultTimeout` | number(秒) | DSL 側の既定値 | `timeout:` を取る DSL コマンドの既定タイムアウト |
 | `scenarioTimeout` | int(秒) | `90` | シナリオ単位のホスト側 watchdog(壁時計タイムアウト)。個々のコマンド待ちを縛る `defaultTimeout` とは別物 |
@@ -46,24 +44,26 @@
 | `recordFullResolution` | bool | `false` | `record: true` のとき、半分解像度化をスキップする |
 | `remoteControl` | object | — | リモート実行のワークスペース宣言(`{ "workspace": "<path>" }`)。[remote_runners_ja.md](../in_action/remote_runners_ja.md) 参照 |
 
-## FM トグルの親子関係
+## FM の使われ方
 
-`fm` は `falsePositiveCheck` / `screenLooksLike` の親スイッチで、どちらも既定
-`true` です(`falsePositiveCheck` は 2026-09-03 に既定オフから変更しました)。`fm` が `false` なら
-両トグルとも無効になります。`heal` はこの親子関係に含まれません —— 自己修復はもう FM を
-使わないため、自分自身のキーだけで制御されます。自己修復が既定でオンかどうかは
-実行方法に依存します。**`--profile` を使う実行は `heal` の既定が ON**、プロファイルを使わない
-素の `fleetest run` は既定 OFF です。
+FM(Foundation Models)が呼ばれるのは `textVisualCheck` か `screenLooksLike` が `true` の
+ときだけです。どちらも既定 `true`(`textVisualCheck` は 2026-09-03 に既定オフから変更しました)。
+両方 `false` の run では FM は一切呼ばれません(FM を一切呼ばせたくない run では両方を `false` に
+します)。`ocrTextVisualCheck` は occlusion guard の前段なので、`textVisualCheck` が `true` の
+run でだけ効きます。`heal` は FM を使わないため、自分自身のキーだけで制御されます。
+自己修復が既定でオンかどうかは実行方法に依存します。**`--profile` を使う実行は `heal` の既定が
+ON**、プロファイルを使わない素の `fleetest run` は既定 OFF です。
 `fleetest run --profile <name> --set <キー>=<値>` は、プロファイルを書き換えずに1回の
 実行だけこの表のほぼどのキーも上書きできます(例: `--set heal=false`・
-`--set falsePositiveCheck=false`・`--set reportDir=/tmp/out`・`--set defaultTimeout=8`。
+`--set textVisualCheck=false`・`--set reportDir=/tmp/out`・`--set defaultTimeout=8`。
 `--set` については [running_scenarios_ja.md](../running/running_scenarios_ja.md) 参照。
 値は上表に示したキーの型と一致させる)。`--profile` の有無を問わず効きます —— 例外は実行
 プロファイルの devices 一覧・供給工程が要るキー(`iosInappEngine`・`updateWebView`・
 `wipeDataOnBloat`・`recoverCpuFallbackToGpu`・`app`・`machine`・`locale`・
 `wipeDataThresholdGB`)で、これらは `--profile` が必須です。`devices`/`remoteControl` は
 配列・オブジェクトなので `<キー>=<値>` の形では指定できません(この2つはプロファイル JSON を
-直接編集してください)。未知のキーはエラーになります。
+直接編集してください)。`--set` に未知のキーを渡すとエラーになります(プロファイル JSON の中の
+未知のキーは警告を出して無視されます)。
 
 ## iOS エンジン
 

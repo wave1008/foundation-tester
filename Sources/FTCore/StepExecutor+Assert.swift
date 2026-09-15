@@ -52,7 +52,7 @@ extension StepExecutor {
 
     /// 可視性照合(`requireVisible`)がこのステップで効くか。ステップ指定(DSL の requireVisible)
     /// 優先、無ければ executor 既定。`occlusionGuardEnabled` はどちらより上位の実行プロファイル由来
-    /// マスタースイッチ(`falsePositiveCheck`)。**FM の有無は含めない** —— 幾何の Tier-0 は FM 無しで
+    /// マスタースイッチ(`textVisualCheck`)。**FM の有無は含めない** —— 幾何の Tier-0 は FM 無しで
     /// 効くので、FTRuntime の保持値の高速経路もこれを見て「照合が走る設定なら実機を見に行く」と決める
     /// (FM 前提の条件で判定すると、FM の無いホストで幾何の照合が静かに1つ消える)
     public func visibilityGuardActive(perStepGuard: Bool?) -> Bool {

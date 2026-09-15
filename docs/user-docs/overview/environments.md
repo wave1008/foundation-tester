@@ -38,7 +38,7 @@ switches to the cloud.
   Japanese included, and the Mac's system language can stay Japanese (confirmed on macOS 27.0).
   Accuracy against Japanese-language app UIs and Japanese `screenLooksLike` descriptions has not
   been measured yet.
-- On macOS 26, only visual verification (`screenLooksLike` and the false-positive check) is
+- On macOS 26, only visual verification (`screenLooksLike` and text visual verification) is
   unavailable, because image input requires macOS 27+. It is disabled automatically; everything
   else works without restriction.
 - When FM is unavailable, these two features are **skipped**, not failed. The run stays green with

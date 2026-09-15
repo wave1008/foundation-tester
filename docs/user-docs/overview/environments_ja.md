@@ -36,7 +36,7 @@ Apple Intelligence の有無に関わらず同じように動きます。)
 - **experimental です。** オンデバイスモデルは Apple Intelligence の対応言語(日本語を含む)で
   動き、Mac のシステム言語は日本語のままで使えます(macOS 27.0 で確認)。日本語 UI のアプリや
   日本語で書いた `screenLooksLike` の説明文に対する判定精度は、まだ計測していません。
-- macOS 26 では視覚検証(`screenLooksLike` と偽陽性チェック)だけが使えません。画像入力が
+- macOS 26 では視覚検証(`screenLooksLike` とテキストの視覚検証)だけが使えません。画像入力が
   macOS 27+ 必須のためで、自動で無効になり、他の機能は制限なく動きます。
 - FM が使えない環境では、この2つの機能は失敗ではなく**スキップ**されます。run は緑のまま、
   機能だけが黙って無効になるので、実際に使えているかは `fleetest doctor --fm-only` で確認して

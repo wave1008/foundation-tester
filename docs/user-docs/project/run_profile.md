@@ -8,7 +8,7 @@ selects one.
 ```json
 { "app": "sampleapp",
   "devices": [ { "name": "simulator1" }, { "name": "simulator2" }, { "name": "emulator1" } ],
-  "fm": true, "heal": true, "reportDir": "reports", "defaultTimeout": 5,
+  "heal": true, "reportDir": "reports", "defaultTimeout": 5,
   "wipeDataOnBloat": true, "wipeDataThresholdGB": 8 }
 ```
 
@@ -18,12 +18,10 @@ selects one.
 |---|---|---|---|
 | `app` | string | — | Name of the `apps/<name>.json` profile to use |
 | `devices` | array | — | Device names to run on (from the resolved machine profile; iOS/Android can mix in the same list) |
-| `fm` | bool | `true` | Master switch for all FM (Foundation Models) features: `falsePositiveCheck` and `screenLooksLike`. FM is experimental — see [environments.md](../overview/environments.md). `false` disables both, regardless of the individual toggles below. Independent of `heal` — self-healing no longer uses FM |
-| `heal` | bool | `true` for `--profile` runs, `false` for a plain `fleetest run` | Allow locator self-healing (locator fingerprint matching; see [self_healing.md](../running/self_healing.md)). Independent of `fm` |
-| `falsePositiveCheck` | bool | `true` | Occlusion-guard verification on `exist`/`textIs` etc. — catches a "false green" that matched in the tree but is not actually visible |
+| `heal` | bool | `true` for `--profile` runs, `false` for a plain `fleetest run` | Allow selector self-healing (fingerprint matching; see [self_healing.md](../running/self_healing.md)). Independent of the FM- and OCR-based toggles below — self-healing does not use FM |
+| `textVisualCheck` | bool | `true` | Text visual verification (occlusion guard) on `exist`/`textIs` etc. — catches a "false green" that matched in the tree but is not actually visible. FM (Foundation Models, experimental — see [environments.md](../overview/environments.md)) is called only when this or `screenLooksLike` is `true` |
 | `screenLooksLike` | bool | `true` | Enable `screenLooksLike` (FM visual verification). When `false`, those steps are skipped rather than failing |
-| `ocr` | bool | `true` | Master switch for all OCR features. `false` disables them regardless of the individual toggles below |
-| `ocrFalsePositiveCheck` | bool | `true` | Let the occlusion guard read the element with on-device OCR (Vision) before asking FM. When the expected text is read in full the step passes without an FM call; anything else still goes to FM, so turning this off only makes the same check slower. It has no effect when `falsePositiveCheck` is `false`, because the guard itself does not run |
+| `ocrTextVisualCheck` | bool | `true` | Let the occlusion guard read the element with on-device OCR (Vision) before asking FM. When the expected text is read in full the step passes without an FM call; anything else still goes to FM, so turning this off only makes the same check slower. It has no effect when `textVisualCheck` is `false`, because the guard itself does not run |
 | `reportDir` | string | `"reports"` | Where to write Markdown reports (relative to the project root) |
 | `defaultTimeout` | number (seconds) | DSL's own default | Default timeout for DSL commands that take `timeout:` |
 | `scenarioTimeout` | int (seconds) | `90` | Host-side wall-clock timeout per scenario (watchdog). Distinct from `defaultTimeout`, which only bounds individual command waits |
@@ -46,23 +44,25 @@ selects one.
 | `recordFullResolution` | bool | `false` | With `record: true`, skip the half-resolution re-encode |
 | `remoteControl` | object | — | Workspace declaration for remote execution (`{ "workspace": "<path>" }`); see [remote_runners.md](../in_action/remote_runners.md) |
 
-## FM toggle hierarchy
+## FM usage
 
-`fm` is the parent switch for `falsePositiveCheck` and `screenLooksLike`, both of which default to
-`true` (`falsePositiveCheck` changed from opt-in on 2026-09-03). If `fm` is `false`, both toggles
-have no effect. `heal` is not part of this hierarchy — self-healing no longer uses FM, so it is
-governed only by its own key. Whether self-healing is on by default depends on how you invoke the
-run: **a `--profile` run defaults `heal` to ON**, while a plain `fleetest run` (no profile)
-defaults it to OFF.
+FM (Foundation Models) is called only when `textVisualCheck` or `screenLooksLike` is `true`;
+both default to `true` (`textVisualCheck` changed from opt-in on 2026-09-03). When both are
+`false`, FM is never called for that run — set both to `false` to keep a run from calling FM at
+all. `ocrTextVisualCheck` is a stage of the occlusion guard, so it only takes effect while
+`textVisualCheck` is `true`. `heal` does not use FM, so it is governed only by its own key.
+Whether self-healing is on by default depends on how you invoke the run: **a `--profile` run
+defaults `heal` to ON**, while a plain `fleetest run` (no profile) defaults it to OFF.
 `fleetest run --profile <name> --set <key>=<value>` overrides almost any key on this table for one
-run without editing the profile file — e.g. `--set heal=false`, `--set falsePositiveCheck=false`,
+run without editing the profile file — e.g. `--set heal=false`, `--set textVisualCheck=false`,
 `--set reportDir=/tmp/out`, `--set defaultTimeout=8` (see
 [running_scenarios.md](../running/running_scenarios.md) for `--set`; the value must match the
 key's type shown above). It works with or without `--profile` — except the keys that need a run
 profile's device list or supply pipeline (`iosInappEngine`, `updateWebView`, `wipeDataOnBloat`,
 `recoverCpuFallbackToGpu`, `app`, `machine`, `locale`, `wipeDataThresholdGB`), which require
 `--profile`. `devices` and `remoteControl` are a list and an object and cannot be expressed as
-`<key>=<value>`; edit the profile JSON for those. Unknown keys are rejected.
+`<key>=<value>`; edit the profile JSON for those. An unknown key passed to `--set` is an error
+(an unknown key inside the profile JSON only prints a warning and is ignored).
 
 ## iOS engine
 

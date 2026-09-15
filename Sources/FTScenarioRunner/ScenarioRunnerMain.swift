@@ -155,11 +155,11 @@ struct RunScenario: AsyncParsableCommand {
     @Flag(help: "Allow locator self-healing by locator fingerprint (does not use FM)")
     var heal = false
 
-    @Flag(name: .customLong("no-fm"), help: "Do not use any FM feature (false-positive check / screenLooksLike)")
+    @Flag(name: .customLong("no-fm"), help: "Do not use any FM feature (text visual verification / screenLooksLike)")
     var noFM = false
 
-    @Flag(name: .customLong("no-false-positive-check"), help: "Disable the false-positive check (occlusion guard)")
-    var noFalsePositiveCheck = false
+    @Flag(name: .customLong("no-text-visual-check"), help: "Disable text visual verification (occlusion guard)")
+    var noTextVisualCheck = false
 
     @Flag(name: .customLong("no-screen-looks-like"), help: "Disable screenLooksLike (screenMatches)")
     var noScreenLooksLike = false
@@ -466,7 +466,7 @@ struct RunScenario: AsyncParsableCommand {
         let core = FTDriveCore(driver: driver, platform: runPlatform, app: appBundleID,
                                scenarioID: scenarioID, scenarioTitle: descriptor.title,
                                delegate: delegate, healingEnabled: heal,
-                               falsePositiveCheckEnabled: !noFalsePositiveCheck,
+                               textVisualCheckEnabled: !noTextVisualCheck,
                                screenLooksLikeEnabled: !noScreenLooksLike,
                                containerInference: !noContainerInference,
                                occlusionOCREnabled: !noOcclusionOCR, dryRun: dryRun,

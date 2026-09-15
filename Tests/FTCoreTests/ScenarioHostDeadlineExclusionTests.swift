@@ -12,7 +12,7 @@ import XCTest
 @testable import FTCore
 
 private let testFMSettings = FMSettingsRecord(
-    fm: true, heal: false, falsePositiveCheck: false, screenLooksLike: true, ocr: true, ocrFalsePositiveCheck: true)
+    heal: false, textVisualCheck: false, screenLooksLike: true, ocrTextVisualCheck: true)
 
 final class ScenarioHostDeadlineExclusionTests: XCTestCase {
 

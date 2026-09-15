@@ -61,7 +61,7 @@ final class FMDegradedWarningTests: XCTestCase {
             try inject(text: .alive, vision: .dead)
         }
         let lines = await warnings(fm: FMConfig(enabled: true,
-                                                falsePositiveCheck: true, screenLooksLike: true))
+                                                textVisualCheck: true, screenLooksLike: true))
         XCTAssertEqual(lines.count, 1, "1経路の死に1行。\(lines)")
         let line = try XCTUnwrap(lines.first)
         XCTAssertTrue(line.contains("vision path"), line)
@@ -78,7 +78,7 @@ final class FMDegradedWarningTests: XCTestCase {
             try inject(text: .dead, vision: .alive)
         }
         let lines = await warnings(fm: FMConfig(enabled: true,
-                                                falsePositiveCheck: true, screenLooksLike: true))
+                                                textVisualCheck: true, screenLooksLike: true))
         XCTAssertEqual(lines, [], "\(lines)")
     }
 
@@ -88,7 +88,7 @@ final class FMDegradedWarningTests: XCTestCase {
             try inject(text: .dead, vision: .dead)
         }
         let lines = await warnings(fm: FMConfig(enabled: true,
-                                                falsePositiveCheck: true, screenLooksLike: true))
+                                                textVisualCheck: true, screenLooksLike: true))
         XCTAssertEqual(lines.count, 1, "\(lines)")
         XCTAssertTrue(lines.contains { $0.contains("vision path") }, "\(lines)")
         XCTAssertFalse(lines.contains { $0.contains("text path") }, "\(lines)")
@@ -100,7 +100,7 @@ final class FMDegradedWarningTests: XCTestCase {
             try inject(text: .alive, vision: .dead)
         }
         let lines = await warnings(fm: FMConfig(enabled: true,
-                                                falsePositiveCheck: false, screenLooksLike: false))
+                                                textVisualCheck: false, screenLooksLike: false))
         XCTAssertEqual(lines, [], "\(lines)")
     }
 
@@ -115,7 +115,7 @@ final class FMDegradedWarningTests: XCTestCase {
             try inject(text: .alive, vision: .alive)
         }
         let lines = await warnings(fm: FMConfig(enabled: true,
-                                                falsePositiveCheck: true, screenLooksLike: true))
+                                                textVisualCheck: true, screenLooksLike: true))
         XCTAssertEqual(lines, [], "\(lines)")
     }
 
@@ -123,8 +123,8 @@ final class FMDegradedWarningTests: XCTestCase {
     /// 既定の `FMLivenessProbe.refresh` は台帳が古いと FM を実際に呼ぶ(0.7〜4.7 秒・FMLock を取る)ので、
     /// 結果を捨てる run で払わせない。FM ごと切った run も同じ
     func testRunsThatDoNotUseVisionNeverReadTheLiveness() async {
-        for fm in [FMConfig(enabled: true, falsePositiveCheck: false, screenLooksLike: false),
-                   FMConfig(enabled: false, falsePositiveCheck: true, screenLooksLike: true)] {
+        for fm in [FMConfig(enabled: true, textVisualCheck: false, screenLooksLike: false),
+                   FMConfig(enabled: false, textVisualCheck: true, screenLooksLike: true)] {
             var reads = 0
             var lines: [String] = []
             await ProfileRunner.warnIfFMDegraded(fm: fm, readLiveness: {
@@ -137,7 +137,7 @@ final class FMDegradedWarningTests: XCTestCase {
         // 陽性対照: 視覚系を使う run では読む(macOS 26 では視覚非対応の警告で先に抜ける)
         var reads = 0
         await ProfileRunner.warnIfFMDegraded(
-            fm: FMConfig(enabled: true, falsePositiveCheck: true, screenLooksLike: false),
+            fm: FMConfig(enabled: true, textVisualCheck: true, screenLooksLike: false),
             readLiveness: { reads += 1; return FMLiveness.Reading(text: nil, vision: nil) }) { _ in }
         XCTAssertEqual(reads, FMVisionSupport.isSupported ? 1 : 0)
     }
@@ -149,7 +149,7 @@ final class FMDegradedWarningTests: XCTestCase {
             try inject(text: .dead, vision: .dead)
         }
         let lines = await warnings(fm: FMConfig(enabled: false,
-                                                falsePositiveCheck: true, screenLooksLike: true))
+                                                textVisualCheck: true, screenLooksLike: true))
         XCTAssertEqual(lines, [], "\(lines)")
     }
 }

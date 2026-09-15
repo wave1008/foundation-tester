@@ -1172,17 +1172,17 @@ final class ProfileResolverTests: XCTestCase {
                       "原本も複製も読めなければ従来どおり鳴らす: \(resolved.warnings)")
     }
 
-    // MARK: - FM トグル(fm/heal/falsePositiveCheck/screenLooksLike)
+    // MARK: - FM トグル(heal/textVisualCheck/screenLooksLike)
 
     func testFMTogglesDefaultsWhenUnspecified() throws {
-        try writeStandardFixture()  // "all" は heal:true 明示。fm/falsePositiveCheck/screenLooksLike は未指定
+        try writeStandardFixture()  // "all" は heal:true 明示。textVisualCheck/screenLooksLike は未指定
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "all", machineName: "M1 Max(64GB)")
         XCTAssertTrue(resolved.fm.enabled)
         XCTAssertTrue(resolved.heal, "heal 明示 true")
         // **2026-09-03 にオプトインをやめた**(ユーザー決定)。3箇所(ここ / JSON スキーマ /
         // 拡張のフォーム)で既定が一致していないと、GUI で作ったプロファイルと CLI の挙動がずれる
-        XCTAssertTrue(resolved.fm.falsePositiveCheck, "偽陽性検証の既定は true")
+        XCTAssertTrue(resolved.fm.textVisualCheck, "テキストの視覚検証の既定は true")
         XCTAssertTrue(resolved.fm.screenLooksLike, "省略時は既定 true のはず")
     }
 
@@ -1198,24 +1198,40 @@ final class ProfileResolverTests: XCTestCase {
         let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
         XCTAssertTrue(resolved.fm.enabled)
         XCTAssertTrue(resolved.heal, "heal の既定は true")
-        XCTAssertTrue(resolved.fm.falsePositiveCheck, "偽陽性検証の既定は true(2026-09-03 に変更)")
+        XCTAssertTrue(resolved.fm.textVisualCheck, "テキストの視覚検証の既定は true(2026-09-03 に変更)")
         XCTAssertTrue(resolved.fm.screenLooksLike)
     }
 
-    /// `fm:false` は FM のトグルだけを落とす。**`heal` は FM を使わないので配下ではなく、落ちない**
-    /// (FM を切った機械でも、FM を使わない修復まで黙って止めない)
-    func testFMFalseDisablesAllSubFlagsEvenIfExplicitlyTrue() throws {
+    /// FMConfig.enabled は textVisualCheck/screenLooksLike のどちらかが true のときだけ true
+    /// (両方 false のとき、実行バイナリへ --no-fm が渡って FM を一切呼ばない。親スイッチは無い)
+    func testFMEnabledIsFalseOnlyWhenBothSubFlagsAreFalse() throws {
         try writeStandardFixture()
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
-          "fm": false, "heal": true, "falsePositiveCheck": true, "screenLooksLike": true }
-        """, to: project.runsDir, name: "fmoff")
-        let resolved = try ProfileResolver.resolve(
-            project: project, runName: "fmoff", machineName: "M1 Max(64GB)")
-        XCTAssertFalse(resolved.fm.enabled)
-        XCTAssertTrue(resolved.heal, "heal は fm の配下ではない(fm:false でも heal:true のまま)")
-        XCTAssertFalse(resolved.fm.falsePositiveCheck)
-        XCTAssertFalse(resolved.fm.screenLooksLike)
+          "heal": true, "textVisualCheck": false, "screenLooksLike": false }
+        """, to: project.runsDir, name: "bothoff")
+        let bothOff = try ProfileResolver.resolve(
+            project: project, runName: "bothoff", machineName: "M1 Max(64GB)")
+        XCTAssertFalse(bothOff.fm.enabled)
+        XCTAssertTrue(bothOff.heal, "heal は FM の配下ではない(両方 false でも heal:true のまま)")
+        XCTAssertFalse(bothOff.fm.textVisualCheck)
+        XCTAssertFalse(bothOff.fm.screenLooksLike)
+
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
+          "textVisualCheck": true, "screenLooksLike": false }
+        """, to: project.runsDir, name: "fpconly")
+        let fpcOnly = try ProfileResolver.resolve(
+            project: project, runName: "fpconly", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(fpcOnly.fm.enabled, "片方だけでも true なら enabled")
+
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
+          "textVisualCheck": false, "screenLooksLike": true }
+        """, to: project.runsDir, name: "sllonly")
+        let sllOnly = try ProfileResolver.resolve(
+            project: project, runName: "sllonly", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(sllOnly.fm.enabled, "片方だけでも true なら enabled")
     }
 
     /// 撤去した `triage` キー(FM の失敗トリアージ。maintainer-notes §21)が残ったプロファイルも
@@ -1229,23 +1245,23 @@ final class ProfileResolverTests: XCTestCase {
             project: project, runName: "leftover", machineName: "M1 Max(64GB)")
         XCTAssertTrue(resolved.fm.enabled)
         XCTAssertTrue(resolved.heal)
-        XCTAssertTrue(resolved.fm.falsePositiveCheck)
+        XCTAssertTrue(resolved.fm.textVisualCheck)
         XCTAssertTrue(resolved.fm.screenLooksLike)
         XCTAssertEqual(resolved.warnings, ["runs/leftover.json: unknown key \"triage\" is ignored"])
     }
 
     func testIndividualSubFlagsFollowExplicitValues() throws {
         try writeStandardFixture()
-        // 既定と逆向きの明示指定(heal/screenLooksLike=OFF・falsePositiveCheck=ON)が個別に効くこと
+        // 既定と逆向きの明示指定(heal/screenLooksLike=OFF・textVisualCheck=ON)が個別に効くこと
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
-          "heal": false, "falsePositiveCheck": true, "screenLooksLike": false }
+          "heal": false, "textVisualCheck": true, "screenLooksLike": false }
         """, to: project.runsDir, name: "subsoff")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "subsoff", machineName: "M1 Max(64GB)")
         XCTAssertTrue(resolved.fm.enabled, "fm 自体は既定 true のまま")
         XCTAssertFalse(resolved.heal)
-        XCTAssertTrue(resolved.fm.falsePositiveCheck, "明示 true で有効化できること")
+        XCTAssertTrue(resolved.fm.textVisualCheck, "明示 true で有効化できること")
         XCTAssertFalse(resolved.fm.screenLooksLike)
     }
 
@@ -1283,71 +1299,52 @@ final class ProfileResolverTests: XCTestCase {
             project: project, runName: "all", machineName: "M1 Max(64GB)")
         XCTAssertTrue(onByDefault.containerInference, "省略時は既定 true のはず")
 
-        // fm:false に巻き込まれない(FM のサブフラグではない)ことも同時に見る
+        // FM が実質無効(両トグル false)でも巻き込まれない(FM のサブフラグではない)ことも同時に見る
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
-          "fm": false, "containerInference": false }
+          "textVisualCheck": false, "screenLooksLike": false, "containerInference": false }
         """, to: project.runsDir, name: "ciofffmoff")
         let off = try ProfileResolver.resolve(
             project: project, runName: "ciofffmoff", machineName: "M1 Max(64GB)")
         XCTAssertFalse(off.containerInference)
 
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "fm": false }
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
+          "textVisualCheck": false, "screenLooksLike": false }
         """, to: project.runsDir, name: "fmoffonly")
         let fmOffOnly = try ProfileResolver.resolve(
             project: project, runName: "fmoffonly", machineName: "M1 Max(64GB)")
-        XCTAssertTrue(fmOffOnly.containerInference, "fm:false でも補正は止まらない")
+        XCTAssertTrue(fmOffOnly.containerInference, "FM が無効でも補正は止まらない")
         XCTAssertTrue(fmOffOnly.warnings.isEmpty, "containerInference は既知キー: \(fmOffOnly.warnings)")
     }
 
-    // MARK: - ocr(occlusion guard 前段の Vision OCR 事前判定。fm の兄弟キー。既定 true)
+    // MARK: - ocrTextVisualCheck(occlusion guard 前段の Vision OCR 事前判定。既定 true。親スイッチは無い)
 
-    func testOcrDefaultsToTrueAndIsKnown() throws {
+    func testOcrTextVisualCheckDefaultsToTrueAndFollowsExplicitValue() throws {
         try writeStandardFixture()
         let onByDefault = try ProfileResolver.resolve(
             project: project, runName: "all", machineName: "M1 Max(64GB)")
-        XCTAssertTrue(onByDefault.ocr, "省略時は既定 true のはず")
+        XCTAssertTrue(onByDefault.ocrTextVisualCheck, "省略時は既定 true のはず")
 
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "ocr": false }
-        """, to: project.runsDir, name: "ocroff")
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "ocrTextVisualCheck": false }
+        """, to: project.runsDir, name: "ocrfpcoff")
         let off = try ProfileResolver.resolve(
-            project: project, runName: "ocroff", machineName: "M1 Max(64GB)")
-        XCTAssertFalse(off.ocr)
-        XCTAssertFalse(off.warnings.contains { $0.contains("ocr") }, "ocr は既知キー: \(off.warnings)")
+            project: project, runName: "ocrfpcoff", machineName: "M1 Max(64GB)")
+        XCTAssertFalse(off.ocrTextVisualCheck)
+        XCTAssertFalse(off.warnings.contains { $0.contains("ocrTextVisualCheck") },
+                       "ocrTextVisualCheck は既知キー: \(off.warnings)")
 
-        // fm/falsePositiveCheck が off でも resolve 層では巻き込まれない(ゲートは downstream の
+        // textVisualCheck(FM 側)が off でも resolve 層では巻き込まれない(ゲートは downstream の
         // occlusion guard 実行有無であって、ここではない)ことを同時に見る
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "fm": false }
-        """, to: project.runsDir, name: "ocrfmoffonly")
-        let fmOffOnly = try ProfileResolver.resolve(
-            project: project, runName: "ocrfmoffonly", machineName: "M1 Max(64GB)")
-        XCTAssertTrue(fmOffOnly.ocr, "fm:false でも ocr は既定のまま(downstream でしか無効化されない)")
-        XCTAssertFalse(fmOffOnly.fm.enabled)
-
-        try write("""
-        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "falsePositiveCheck": false }
-        """, to: project.runsDir, name: "ocrfpcoffonly")
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "textVisualCheck": false }
+        """, to: project.runsDir, name: "ocrfpcfmoffonly")
         let fpcOffOnly = try ProfileResolver.resolve(
-            project: project, runName: "ocrfpcoffonly", machineName: "M1 Max(64GB)")
-        XCTAssertTrue(fpcOffOnly.ocr, "falsePositiveCheck:false でも ocr は既定のまま")
-        XCTAssertFalse(fpcOffOnly.fm.falsePositiveCheck)
-
-        // 親スイッチ `ocr` は配下の実効値へ掛かる(FMConfig が fm を掛けているのと同じ契約)
-        XCTAssertTrue(onByDefault.ocrFalsePositiveCheck, "省略時は既定 true のはず")
-        XCTAssertFalse(off.ocrFalsePositiveCheck, "親が off なら配下も off")
-
-        try write("""
-        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "ocrFalsePositiveCheck": false }
-        """, to: project.runsDir, name: "ocrfpconly")
-        let ocrFpcOff = try ProfileResolver.resolve(
-            project: project, runName: "ocrfpconly", machineName: "M1 Max(64GB)")
-        XCTAssertTrue(ocrFpcOff.ocr, "親は既定のまま")
-        XCTAssertFalse(ocrFpcOff.ocrFalsePositiveCheck, "個別トグルだけ off にできる")
-        XCTAssertFalse(ocrFpcOff.warnings.contains { $0.contains("ocrFalsePositiveCheck") },
-                       "既知キーのはず: \(ocrFpcOff.warnings)")
+            project: project, runName: "ocrfpcfmoffonly", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(fpcOffOnly.ocrTextVisualCheck,
+                      "textVisualCheck:false でも ocrTextVisualCheck は既定のまま")
+        XCTAssertFalse(fpcOffOnly.fm.textVisualCheck)
     }
 
     func testValidateMachineProfileReportsPhysicalErrors() throws {

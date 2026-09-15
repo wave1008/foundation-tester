@@ -7,7 +7,7 @@
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     }
   ],
-  "falsePositiveCheck": true,
+  "textVisualCheck": true,
   "heal": true,
   "iosInappEngine": true,
   "scenarioTimeout": 180,

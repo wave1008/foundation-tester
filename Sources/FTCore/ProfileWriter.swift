@@ -89,7 +89,7 @@ public enum ProfileWriter {
         var profile: [String: Any] = [
             "app": appRef,
             "devices": deviceNames.map { ["name": $0] },
-            "falsePositiveCheck": true,
+            "textVisualCheck": true,
             "heal": true,
         ]
         if let machine { profile["machine"] = machine }

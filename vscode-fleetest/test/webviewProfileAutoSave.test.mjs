@@ -88,13 +88,11 @@ const RUN_FIELDS = {
   machine: "M1",
   app: "sampleapp",
   devices: [{ name: "シミュ1" }],
-  fm: true,
   heal: true,
-  falsePositiveCheck: true,
+  textVisualCheck: true,
   screenLooksLike: true,
   containerInference: true,
-  ocr: true,
-  ocrFalsePositiveCheck: true,
+  ocrTextVisualCheck: true,
   iosInappEngine: true,
   iosFastInput: false,
   iosPreActionWarmup: true,
@@ -143,34 +141,28 @@ test("確定・キャンセルのボタンは3セクションとも無い", (t) 
   }
 });
 
-test("heal は FM のサブオプションではない: #run-profile-fm-options の外にあり、FM を切っても表示・値とも変わらない", (t) => {
-  const { window, document, posted } = loadedRunProfile(t);
-  const heal = document.getElementById("run-profile-heal");
-  const fmOptions = document.getElementById("run-profile-fm-options");
-  const fmSubOption = document.getElementById("run-profile-screen-looks-like");
-  // 要素自身の display は親が非表示でも "none" にならないので、祖先を辿って見る。辿るのは FM 欄の
-  // セクションの親(自己修復欄と共通の親)まで —— その上のパネルは jsdom ではタブが非表示のまま
-  const root = document.getElementById("run-profile-fm").closest(".run-profile-section-group").parentElement;
-  const hiddenByAncestor = (el) => {
-    for (let node = el; node && node !== root; node = node.parentElement) {
-      if (window.getComputedStyle(node).display === "none") return true;
-    }
-    return false;
-  };
-  assert.ok(root.contains(heal), "前提: 自己修復欄は FM 欄と同じ親の下にある");
-  assert.equal(fmOptions.contains(heal), false);
-  assert.equal(hiddenByAncestor(heal), false);
-  assert.equal(heal.checked, true);
+test("Advanced Features セクションは heal を先頭に4トグルがフラットに並び、旧親チェックボックス(#run-profile-fm/#run-profile-ocr)は無い", (t) => {
+  const { document } = loadedRunProfile(t);
+  assert.equal(document.getElementById("run-profile-fm"), null);
+  assert.equal(document.getElementById("run-profile-fm-options"), null);
+  assert.equal(document.getElementById("run-profile-ocr"), null);
+  assert.equal(document.getElementById("run-profile-ocr-options"), null);
 
-  document.getElementById("run-profile-fm").click();
-  // 前提: FM を切ると配下のサブオプションは実際に隠れる(この判定が効くことの陽性対照)
-  assert.equal(hiddenByAncestor(fmSubOption), true);
-  assert.equal(hiddenByAncestor(heal), false);
-  assert.equal(heal.checked, true);
-  const sent = saves(posted);
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].fields.fm, false);
-  assert.equal(sent[0].fields.heal, true);
+  const ids = [
+    "run-profile-heal",
+    "run-profile-ocr-text-visual-check",
+    "run-profile-text-visual-check",
+    "run-profile-screen-looks-like",
+  ];
+  const section = document.getElementById(ids[0]).closest(".run-profile-section-group");
+  // 4行とも字下げラッパーの中ではなく、セクション直下の modal-row として並ぶ(フラット)。
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    assert.equal(el.parentElement.classList.contains("profile-checkbox-row"), true);
+    assert.equal(el.parentElement.parentElement, section);
+  }
+  const order = [...section.querySelectorAll("input[type=checkbox]")].map((el) => el.id);
+  assert.deepEqual(order, ids);
 });
 
 test("チェックボックスは切り替えた時点で保存する(以前は購読漏れで dirty にならなかった欄も)", (t) => {

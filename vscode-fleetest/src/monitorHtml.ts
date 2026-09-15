@@ -351,40 +351,6 @@ function renderRunProfileSection(): string {
             <div id="run-profile-devices" class="run-profile-devices"></div>
           </div>
           <div class="run-profile-section-group">
-            <div class="run-profile-section-title">${t("panels.runProfile.healSectionTitle")}</div>
-            <div class="modal-row profile-checkbox-row">
-              <input type="checkbox" id="run-profile-heal">
-              <label for="run-profile-heal">${t("panels.runProfile.healLabel")}</label>
-            </div>
-          </div>
-          <div class="run-profile-section-group">
-            <div class="run-profile-section-title">${t("panels.runProfile.fmSectionTitle")}</div>
-            <div class="modal-row profile-checkbox-row">
-              <input type="checkbox" id="run-profile-fm">
-              <label for="run-profile-fm">${t("panels.runProfile.fmLabel")}</label>
-            </div>
-            <div id="run-profile-fm-options" class="run-profile-fm-options" style="display: none;">
-              <div class="modal-row profile-checkbox-row">
-                <input type="checkbox" id="run-profile-screen-looks-like">
-                <label for="run-profile-screen-looks-like">${t("panels.runProfile.screenLooksLikeLabel")}</label>
-              </div>
-              <div class="modal-row profile-checkbox-row">
-                <input type="checkbox" id="run-profile-false-positive-check">
-                <label for="run-profile-false-positive-check">${t("panels.runProfile.falsePositiveCheckLabel")}</label>
-              </div>
-            </div>
-            <div class="modal-row profile-checkbox-row">
-              <input type="checkbox" id="run-profile-ocr">
-              <label for="run-profile-ocr">${t("panels.runProfile.ocrLabel")}</label>
-            </div>
-            <div id="run-profile-ocr-options" class="run-profile-fm-options" style="display: none;">
-              <div class="modal-row profile-checkbox-row">
-                <input type="checkbox" id="run-profile-ocr-false-positive-check">
-                <label for="run-profile-ocr-false-positive-check">${t("panels.runProfile.ocrFalsePositiveCheckLabel")}</label>
-              </div>
-            </div>
-          </div>
-          <div class="run-profile-section-group">
             <div class="run-profile-section-title">${t("panels.runProfile.recordSectionTitle")}</div>
             <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-record">
@@ -483,6 +449,25 @@ function renderRunProfileSection(): string {
               <label for="run-profile-report-dir">reportDir</label>
               <!-- 透かしは未指定時の既定(Sources/FTCore/RunProfile.swift の runDoc.reportDir ?? "reports"。runProfilePlaceholderSync.test.mjs) -->
               <input type="text" id="run-profile-report-dir" placeholder="reports">
+            </div>
+          </div>
+          <div class="run-profile-section-group">
+            <div class="run-profile-section-title">${t("panels.runProfile.advancedSectionTitle")}</div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-heal">
+              <label for="run-profile-heal">${t("panels.runProfile.healLabel")}</label>
+            </div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-ocr-text-visual-check">
+              <label for="run-profile-ocr-text-visual-check">${t("panels.runProfile.ocrTextVisualCheckLabel")}</label>
+            </div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-text-visual-check">
+              <label for="run-profile-text-visual-check">${t("panels.runProfile.textVisualCheckLabel")}</label>
+            </div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-screen-looks-like">
+              <label for="run-profile-screen-looks-like">${t("panels.runProfile.screenLooksLikeLabel")}</label>
             </div>
           </div>
         </div>

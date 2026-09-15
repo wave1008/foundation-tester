@@ -516,10 +516,10 @@ E2E(local)でガード 54 件中 43 件が近道・予算切れ 0・guardMs 最�
 
 ### 既定と殺しスイッチ
 
-**利用者の口は実行プロファイルの `ocrFalsePositiveCheck`**(既定 true。拡張のプロファイルタブ
-「FM(Foundation Model)/OCR」セクションの「OCRの機能を使用する」配下)。親スイッチ `ocr` を
-false にしても同じく止まる(`fm` と配下のトグルと同じ契約)。`false` にすると `--no-occlusion-ocr` がランナーへ渡り、
-**環境変数より優先**して OCR を止める(従来どおり FM だけで判定)。`falsePositiveCheck` が false の
+**利用者の口は実行プロファイルの `ocrTextVisualCheck`**(既定 true。拡張のプロファイルタブ
+「Advanced Features(Experimental)」セクションの「OCRを使用したテキストの視覚検証を有効にする」)。
+他のキーを経由せずこの値がそのまま効く。`false` にすると `--no-occlusion-ocr` がランナーへ渡り、
+**環境変数より優先**して OCR を止める(従来どおり FM だけで判定)。`textVisualCheck` が false の
 run では guard 自体が走らないのでこの値は効かない。
 
 環境変数は保守者用の口:

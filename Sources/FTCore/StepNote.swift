@@ -136,7 +136,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 到達待ちの書き方(`waitForDisplay` の対象)を見直す材料になる
     case waitedForEnabled = "waited-for-enabled"
 
-    /// 可視性照合(`requireVisible`。実行プロファイル `falsePositiveCheck` で有効)が **FM まで
+    /// 可視性照合(`requireVisible`。実行プロファイル `textVisualCheck` で有効)が **FM まで
     /// 到達したのに判定が返らなかった**(実呼び出しの失敗・ブレーカ開・直列化待ちの期限切れ・
     /// 画像の不正)。このステップは幾何の Tier-0(中心が画面外でないこと)だけで通っている。
     /// **立てるのは FM に訊いた回だけ** —— マスタースイッチ OFF・macOS 26・インクゲートで

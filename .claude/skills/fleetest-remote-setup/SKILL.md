@@ -122,9 +122,11 @@ fleetest remote exec <宛先> -- api installed-devices
 - `"machine"` に上のマシン名(**実行プロファイルに `host` は書かない**。マシン経由で決まる)
 - `"devices"` はまず**1台**にする(検証を速く回すため)
 - `"heal"` は既定のままでよい(自己修復はロケータの指紋照合で FM を使わないため、
-  ランナー機の Apple Intelligence の有無に影響されない)。**`"fm": false`** にするのは
-  ランナー機で Apple Intelligence が無効なことが多い場合(`screenLooksLike` 等のみ止まる。
-  有効なら `true` でよい)
+  ランナー機の Apple Intelligence の有無に影響されない)。`"textVisualCheck"` /
+  `"screenLooksLike"` も既定の `true` のままでよい(ランナー機で Apple Intelligence が無効でも
+  FM の段は自動で素通りになり、run は止まらない)。**`textVisualCheck` を `false` にすると
+  FM を使わない幾何の確認(画面外の判定)も含めて occlusion guard ごと止まる**ので、FM が無い
+  という理由だけで切らない
 
 ### 5. アプリをランナー機へ置く
 

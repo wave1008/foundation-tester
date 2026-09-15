@@ -99,7 +99,7 @@ final class ProfileWriterTests: XCTestCase {
         XCTAssertEqual(run["app"] as? String, "myapp")
         XCTAssertEqual((run["devices"] as? [[String: String]])?.first?["name"], "simulator1")
         XCTAssertEqual(run["heal"] as? Bool, true)
-        XCTAssertEqual(run["falsePositiveCheck"] as? Bool, true)
+        XCTAssertEqual(run["textVisualCheck"] as? Bool, true)
         XCTAssertNil(run["reportDir"], "既定(reports)は書かない = フォームで空欄+透かしになる")
         XCTAssertNil(run["machine"], "指定が無ければ書かない(登録名での解決に任せる)")
     }

@@ -43,7 +43,7 @@ Tier-0 幾何 = 収まる軸の中心が画面外なら不可視(`TapTargetGeome
 **文言は呼び手ごと**)→ Tier-1〜 FM。iOS の木は画面外の要素も frame ごと残し、FM 側は crop が
 画像の外に落ちると nil(素通り)なので、**通り過ぎた要素への exist は FM が生きていても FM では
 塞がらなかった**(2026-08-20 受け手報告・横スクロール区画)。幾何の段は FM の有無に依らず
-`falsePositiveCheck` の下で効く(`StepExecutor.visibilityGuardActive` が唯一の入口。FTRuntime の
+`textVisualCheck` の下で効く(`StepExecutor.visibilityGuardActive` が唯一の入口。FTRuntime の
 保持値の高速経路もこれを見る)。
 **Tier-2 は Vision OCR**(2026-09-07): インク足切りを通って「FM に訊く」と決まった crop に、まず
 `FTCore.RegionText` が OCR を当て、**期待文字列が丸ごと読めたら可視として素通り**させる
@@ -2031,7 +2031,7 @@ select(.id("txt_result")).textIs("dialog=none")   // 検証はセレクタを取
   `checkIsOFF` の誤用警告が消える)、`screenMatches` / `keyboard*`(要素の値を見ていない)
 - **可視性照合が走る設定では高速経路に入らない**(`visibilityWouldBeChecked`)。条件は
   `occlusionFlip` の入口のうちステップ非依存の部分と同じものを見る。飛ばすと
-  falsePositiveCheck 有効の run で誤った緑の検出が**静かに1つ消える**
+  textVisualCheck 有効の run で誤った緑の検出が**静かに1つ消える**
 - 記録は通常どおり1ステップだが、説明に `(from the grabbed value)` を付ける
   (レポートで「取り直していない判定」を見分けられるようにするため。durationMs は 0)
 - **残る危険は「古い値が偶然期待に一致して待たずに通る」向き**。`textIs` は本来
@@ -2092,7 +2092,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
 - **`enabledIsTrue` / `enabledIsFalse`** は `ElementInfo.enabled`(3 ブリッジとも埋めている)を見る。
   タイムアウトまで状態変化を待つ。「見つからない」と「状態が違う」を別メッセージで返す
 - **`countIs`** は**ツリー上の**候補の個数。**可視性は見ない**(覆われた要素も折り返しの下の
-  要素も1件に数える)。`exist` が(偽陽性検証を有効にした run で)可視性まで確認するのと
+  要素も1件に数える)。`exist` が(テキストの視覚検証を有効にした run で)可視性まで確認するのと
   **意図的に違う**: 件数ぶん FM を
   呼ぶことになり(FM は許可枠で制限される共有資源。performance-tuning.md §3.5)、
   リスト検証が実用的な速度でなくなるため。
@@ -2541,7 +2541,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
 ### 自己修復(ロケータの指紋照合のみ。2026-09-15 に FM 版とヒールキャッシュを撤去)
 
 現在の解決順は **プライマリ → フォールバック → 指紋照合**(FM は呼ばない)。ソース位置付きの
-修正提案をレポートに出し続け、ソース自動書換はしない。`heal` は `fm` から独立(自己修復はもう
+修正提案をレポートに出し続け、ソース自動書換はしない。`heal` は他のトグルから独立(自己修復は
 FM 機能ではないため。ユーザー決定 2026-09-15)。
 
 **経緯**: YAML 時代の healedFlow 書き戻しに代わり、当初は解決順を
@@ -2574,7 +2574,7 @@ FM が採用した修復だけがキャッシュへ書かれ、2回目以降は�
   以後は注記無しで解決されて気付けなくなる。修正提案は毎回出す(提案と固定化は別)
 - 注記 `heal-fingerprint-match` を必ず立てる(結果 JSON に出て run 横断で数えられる)
 - **`heal=false` は指紋照合を止める**(ユーザー決定 2026-09-15)。門は `StepExecutor.execute`
-  の入口1箇所。`fm` とは独立 —— 自己修復はもう FM 機能ではないので `fm=false` は効かない。
+  の入口1箇所。他のトグルとは独立 —— 自己修復は FM 機能ではない。
   **記録(採取)は heal=false でも続ける** —— 修復ではなく観測なので、heal を戻した日に
   控えが古びていない
 - **型だけの指紋(label も placeholder も空白だけ)は記録も照合もしない**(`isIdentifying`)。
@@ -3466,7 +3466,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
   ルートの子孫ではないため効かず、**ダイアログ内だけ `#id` が全滅する**(ラベルは引ける)。
   アプリ側でダイアログにも `Modifier.semantics { testTagsAsResourceId = true }` を再適用させる。
   iOS は testTag が自動で accessibilityIdentifier になるため起きない(Android 固有)
-- **偽陽性検証の run(実行プロファイル `falsePositiveCheck`。**既定 true**。2026-09-03 にオプトインをやめた)では、
+- **テキストの視覚検証の run(実行プロファイル `textVisualCheck`。**既定 true**。2026-09-03 にオプトインをやめた)では、
   `exist`/`textIs` は既定 `requireVisible: true` のため、ソフトキーボードに覆われた要素は
   「`false positive (occlusion)`」で失敗する**。入力を伴う画面では検証対象・操作対象を入力欄より**上**に置く
   (TestProjects/E2E-CMP のテキスト入力画面がこの配置。2026-07-22 実測)
@@ -3654,23 +3654,21 @@ machines/ が1つのときだけ自動採用)。
 ```json
 { "app": "sampleapp",
   "devices": [ { "name": "simulator1" }, { "name": "simulator2" }, { "name": "emulator1" } ],
-  "fm": true, "heal": true, "reportDir": "reports", "defaultTimeout": 5,
+  "heal": true, "reportDir": "reports", "defaultTimeout": 5,
   "wipeDataOnBloat": true, "wipeDataThresholdGB": 8 }
 ```
 
-`fm`(既定 true)は FM(Foundation Models)機能の親スイッチ。false にすると
-偽陽性検証(exist 等の FM 視覚照合)・`screenLooksLike` を含む FM 呼び出しを一切行わない
-(子ランナーへは `--no-fm` 等で伝搬し、delegate 自体を作らない)。個別トグルは
-**`falsePositiveCheck` / `screenLooksLike` の2つで、いずれも既定 true**
-(`falsePositiveCheck` は 2026-09-03 にオプトインをやめた)。
-親が false なら個別指定に関わらず全て無効。screenLooksLike を無効にした run では該当ステップは
-skip(素通り)になり、FM 利用不可時と同じ扱い。子への伝搬も同じ3段(プロファイル → 子 → 実行時)を
-通ることは `FMToggleWiringTests` が固定する。UI は「テスト実行」タブの実行プロファイル設定
-「FM(Foundation Model)」セクション(親チェックボックス ON のときだけ個別トグルを表示)。
-**`heal`(既定は `--profile` 実行 true / プロファイル無し false)は 2026-09-15 にこの親子関係から
-独立した**(自己修復はもう FM 機能ではない。ユーザー決定 → maintainer-notes §22)。UI でも
-「FM(Foundation Model)」セクションの外に単独のチェックボックスとして置く。`fm=false` でも
-`heal` は無効にならない。
+FM(Foundation Models)を使うのは `textVisualCheck`(occlusion-guard 全体のスイッチ。
+FM を呼ぶのはその視覚照合の段)・`screenLooksLike` のどちらかが true のときだけで、いずれも既定 true
+(`textVisualCheck` は 2026-09-03 にオプトインをやめた)。両方 false の run では FM 呼び出しを
+一切行わない(子ランナーへも伝搬し、delegate 自体を作らない)。screenLooksLike を無効にした
+run では該当ステップは skip(素通り)になり、FM 利用不可時と同じ扱い。子への伝搬(プロファイル →
+子 → 実行時)は `FMToggleWiringTests` が固定する。UI は「プロファイル」タブの実行プロファイル設定
+「Advanced Features(Experimental)」セクションに、親チェックボックスの無いフラットな4行
+(セレクタの自己修復(`heal`)・OCR の視覚検証・FM の視覚検証・FM の
+`screenLooksLike`)で並ぶ。`heal`(既定は `--profile` 実行 true / プロファイル無し false)は
+同じセクションに並ぶが他のトグルから独立している(自己修復は FM 機能ではない。
+ユーザー決定 → maintainer-notes §22)。
 
 `wipeDataOnBloat`(既定 true)は実行開始時に Android AVD の wipe 対象
 (userdata/cache/snapshots)合計が `wipeDataThresholdGB`(既定 8。**Play イメージは wipe 直後の
@@ -3708,7 +3706,7 @@ run 開始時の自動 Wipe と**同じタイル表示**へ流す。
 (AndroidGpuRecovery.swift。`dumpsys SurfaceFlinger` で現に CPU の個体だけが対象、1台ずつ直列)。
 GPU モードは emulator の**起動引数で固定**されるためプロセス再起動が必須で、該当機1台につき
 run 開始が約1分延びる(ゲスト再起動では戻らない)。戻した先で再び凍結すればモニターの watchdog が
-また CPU に落とす(§12.4 の既知トレードオフ)。UI は「テスト実行」タブの実行プロファイル設定
+また CPU に落とす(§12.4 の既知トレードオフ)。UI は「プロファイル」タブの実行プロファイル設定
 「CPUフォールバックをGPUに回復する」。拡張側の記憶(`MonitorDeviceOps.cpuRenderNames`)は
 モニターが再検出した renderMode を見て `syncCpuRenderNames` が落とす(run 側の復帰は拡張の外で
 起きるため、これが無いと次の個別 `start-device` が再び swiftshader で起こしてしまう)。
@@ -3746,7 +3744,7 @@ Android 実機はグローバル設定が**永続的に**書き換わるので�
 (`ProfileWorkerFactory.pressHomeOnStart`)。一斉に launch した直後の端末は「描画要求が無いだけ」で
 画面が黒いまま止まることがあり、そのままだと凍結と見分けが付かない(2026-08-11 実測: 黒かった5台の
 うち4台は入力で戻った)。予防として1回だけ入力を入れる。**デバイスあたり1回**なので実行時間への
-影響はほぼゼロ。UI は「テスト実行」タブの実行プロファイル設定。
+影響はほぼゼロ。UI は「プロファイル」タブの実行プロファイル設定。
 
 `iosFastInput`(既定 false)を true にすると **iOS xcuitest ブリッジの入力で quiescence 待ちを
 飛ばす**(`FT_FAST_INPUT=1` を実行環境へ注入し、`BridgeClient.fastInput` が受ける。CLI は

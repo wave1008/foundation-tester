@@ -1328,18 +1328,11 @@ button.profile-jump-link:hover:not(:disabled) {
   background-image: linear-gradient(rgba(128, 128, 128, 0.26), rgba(128, 128, 128, 0.26));
   clip-path: polygon(0 0, 100% 0, calc(100% - 26px) 100%, 0 100%);
 }
-.run-profile-record-options,
-.run-profile-fm-options {
+.run-profile-record-options {
   padding-left: 20px;
 }
-.run-profile-record-options .modal-row:last-child,
-.run-profile-fm-options .modal-row:last-child {
+.run-profile-record-options .modal-row:last-child {
   margin-bottom: 0;
-}
-/* 字下げされたサブオプション群の直後に来る**同じ階層**のトグル(OCR)。行間 10px のままだと
-   最後のサブオプションと地続きに見え、FM の子だと誤読されるので、1行ぶん余白を足す。 */
-.run-profile-fm-options + .profile-checkbox-row {
-  margin-top: 10px;
 }
 /* .tile-name は白文字前提のため、背景色を必ず持たせる(中立色)。 */
 .tile-name-unknown {

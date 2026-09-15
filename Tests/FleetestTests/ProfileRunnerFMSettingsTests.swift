@@ -45,7 +45,7 @@ final class ProfileRunnerFMSettingsTests: XCTestCase {
         // determineMachine の優先順位: 実行プロファイルの明示 > FT_MACHINE > machines/ が1つ)
         try write("""
         { "app": "sampleapp", "machine": "M1", "devices": [ { "name": "メイン機" } ],
-          "fm": false, "ocr": false }
+          "textVisualCheck": false, "screenLooksLike": false, "ocrTextVisualCheck": false }
         """, to: project.runsDir, name: "iosOnly")
 
         let androidOnly = ScenarioRunItem(info: ScenarioInfo(id: "A.S0010", title: "S0010", platform: "android"))
@@ -55,9 +55,10 @@ final class ProfileRunnerFMSettingsTests: XCTestCase {
 
         XCTAssertEqual(summary.total, 0)
         XCTAssertEqual(summary.failed, 0)
-        // fm:false/ocr:false が実際にプロファイルから読まれた値であることも確認する
+        // 値が実際にプロファイルから読まれたことも確認する
         // (既定 true のまま素通りしていないか = ProfileResolver.resolve と同じ経路を通った証拠)
-        XCTAssertFalse(fmSettings.fm)
-        XCTAssertFalse(fmSettings.ocr)
+        XCTAssertFalse(fmSettings.textVisualCheck)
+        XCTAssertFalse(fmSettings.screenLooksLike)
+        XCTAssertFalse(fmSettings.ocrTextVisualCheck)
     }
 }

@@ -11,7 +11,7 @@
   (実体が macOS VM のため FM が使えず、動作検証もしていない)
 - **ログイン済みの GUI セッションのユーザーで実行する**(シミュレータ実行の一般則。
   LaunchDaemon や ssh 直のヘッドレス実行はシミュレータが不安定になる)
-- **Apple Intelligence は不要**。CI に無くても screenLooksLike・偽陽性検証が自動スキップされるだけで、
+- **Apple Intelligence は不要**。CI に無くても screenLooksLike・テキストの視覚検証が自動スキップされるだけで、
   決定的実行(タップ・検証)と自己修復(ロケータの指紋照合。FM を使わない)は全機能動く
   (`fleetest run` が起動時に ⚠️ を1行出す)。
   **ただし `screenLooksLike`・`requireVisible` を使うシナリオは、FM 無しでは検証されずに素通り(pass)になる**
@@ -81,12 +81,12 @@ pipeline {
 | ランナー | FM の可否 |
 |---|---|
 | 物理 Mac(Jenkins 常駐機等) | ✅ 可(本プロジェクトの開発機で実証済み) |
-| AWS EC2 Mac(ベアメタル) | 原理的に可のはず(未検証)。macOS 27 の画像入力(screenLooksLike・偽陽性検証)は GA 版 AMI 提供後 |
+| AWS EC2 Mac(ベアメタル) | 原理的に可のはず(未検証)。macOS 27 の画像入力(screenLooksLike・テキストの視覚検証)は GA 版 AMI 提供後 |
 | macOS VM(Tart/Anka 等の VM 構成。サポート外の GitHub ホストランナーも同類) | ❌ 不可の公算大(ANE 非公開)。FM 系は自動スキップで走る |
 
 ベアメタルで有効化する場合の条件と罠:
 
-- Apple silicon + macOS 26+。**screenLooksLike・偽陽性検証(画像入力)は macOS 27+**
+- Apple silicon + macOS 26+。**screenLooksLike・テキストの視覚検証(画像入力)は macOS 27+**
 - 有効化は GUI で1回(システム設定 → Apple Intelligence と Siri。ヘッドレス機は画面共有経由。
   モデルのダウンロードが走る)。**EC2 Mac は素の AMI から再作成すると設定が消える**ので、
   有効化後にカスタム AMI を焼くか、プロビジョニングに有効化を含める

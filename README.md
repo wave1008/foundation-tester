@@ -40,7 +40,7 @@
 > **iOS / Android は両方揃える必要はない**。テストする側だけ用意すればよく、少なくとも片方があればよい。
 
 > macOS 26 では FM(Foundation Model) の**視覚検証だけ**が使えない(画像入力 API が macOS 27+)。
-> occlusion-guard(偽陽性チェック)と `screenLooksLike` は自動で無効になり、他は制限なく動く。
+> occlusion-guard(テキストの視覚検証)と `screenLooksLike` は自動で無効になり、他は制限なく動く。
 >
 > **FM の機能は experimental**。モデルは日本語にも対応し、システム言語は日本語のままでよい
 > (macOS 27.0 で確認)。日本語 UI に対する判定精度は未計測。`availability` は available を
@@ -235,11 +235,12 @@ TestProjects/SampleApp/
 
 ```jsonc
 // profiles/runs/all.json
-// FM 機能のトグル: fm(親スイッチ)/ falsePositiveCheck(偽陽性検証)/ screenLooksLike は
-// いずれも既定 true(詳細は docs/design.md §11.2)。heal(自己修復)は fm から独立した既定 true
+// FM 機能のトグル: textVisualCheck(テキストの視覚検証)/ screenLooksLike は
+// いずれも既定 true(詳細は docs/design.md §11.2)。FM が呼ばれるのはどちらかが true のときだけ。
+// heal(自己修復)はこれらから独立した既定 true
 { "app": "sampleapp",
   "devices": [ { "name": "simulator1" }, { "name": "simulator2" }, { "name": "emulator1" } ],
-  "fm": true, "heal": true, "reportDir": "reports", "defaultTimeout": 5 }
+  "heal": true, "reportDir": "reports", "defaultTimeout": 5 }
 
 // profiles/machines/M2Ultra.json — マシン毎に UDID/AVD などの実体を書く
 // (avd は AVD の ID と表示名のどちらでも可)
@@ -473,7 +474,7 @@ condition {
 - レポートは成否問わず `TestProjects/<name>/reports/scenario-*.md` に出力(scene → CAE → ステップ階層、
   失敗時の要素一覧、失敗スクリーンショット、**修正提案**)
 - **自己修復(ロケータの指紋照合)**: 自己修復が有効な実行(**`--profile` 実行では実行プロファイルの
-  `heal` が既定 ON** / **プロファイルを使わない `fleetest run` は既定 OFF**。`fm` とは独立。
+  `heal` が既定 ON** / **プロファイルを使わない `fleetest run` は既定 OFF**。FM・OCR 系のトグルとは独立。
   CLI からは `--heal` で ON・`--no-heal` で OFF に上書きできる。両方の同時指定はエラー)では、
   壊れたセレクタは、その要素の型+ラベル(入力欄はプレースホルダも)の指紋が現在の画面で
   **ちょうど1件だけ**一致すれば FM なしで決定的に解決して続行する(指紋は

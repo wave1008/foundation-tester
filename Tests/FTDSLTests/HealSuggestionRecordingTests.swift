@@ -49,7 +49,7 @@ final class HealSuggestionRecordingTests: XCTestCase {
             driver: ScreenDriver(id: id), platform: "ios", app: "com.example.app",
             scenarioID: "Heal.S0010", scenarioTitle: "t",
             delegate: nil, healingEnabled: true,
-            falsePositiveCheckEnabled: false, dryRun: false,
+            textVisualCheckEnabled: false, dryRun: false,
             fingerprintCacheURL: fingerprints,
             emit: emit)
     }

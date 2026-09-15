@@ -60,11 +60,9 @@ export function buildRunProfileTemplate(
   }
   template.app = app;
   template.devices = devices;
-  template.fm = true;
   template.heal = true;
-  template.falsePositiveCheck = true;
-  template.ocr = true;
-  template.ocrFalsePositiveCheck = true;
+  template.textVisualCheck = true;
+  template.ocrTextVisualCheck = true;
   template.screenLooksLike = true;
   template.iosInappEngine = true;
   template.updateWebView = true;   // 既定 ON(WebView の版差でシナリオが端末ごとに落ちるため)
@@ -131,17 +129,18 @@ export function validateNewProjectName(name: string, existing: readonly string[]
 }
 
 // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム -----------------------------
-// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム22フィールド変換の純粋関数
+// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム20フィールド変換の純粋関数
 // (未知キー保持のイミュータブルな方針。updateDeviceInMachineProfile と同じ)。
 
-/** 実行プロファイル設定フォームの23フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
+/** 実行プロファイル設定フォームの21フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
  * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、
- * falsePositiveCheck/screenLooksLike は「FM」セクション、iosFastInput / iosPreActionWarmup は「iOS」セクションのサブオプション
+ * iosFastInput / iosPreActionWarmup は「iOS」セクションのサブオプション
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
- * runProfilesTab.js の責務)。containerInference/ocr は独立トグル(FM とは無関係。ocr は
- * occlusion guard の Vision OCR 事前判定段。falsePositiveCheck が false の run では guard 自体が
- * 走らないため効かない)。heal はロケータの指紋照合による自己修復のトグルで、FM を使わない独立セクション
- * (親チェックボックスは無い)。 */
+ * runProfilesTab.js の責務)。textVisualCheck/screenLooksLike/ocrTextVisualCheck は
+ * 「Advanced Features」セクションの独立トグル(親チェックボックスは無い。ocrTextVisualCheck は
+ * occlusion guard の Vision OCR 事前判定段で、textVisualCheck が false の run では guard 自体が
+ * 走らないため効かない)。containerInference は misc セクションの独立トグル。heal はロケータの指紋照合による自己修復の
+ * トグルで、「Advanced Features」セクションの先頭に並ぶ独立トグル(FM を使わない)。 */
 /** 実行プロファイルのデバイス参照。**一意なのは (machine, name)** なので machine も持つ
  * (Sources/FTCore/RunProfile.swift の RunDeviceRef と同形。省略=手元)。
  * **JSON キーは "machine"**(2026-08-26 改名。旧 "host" も読む)。 */
@@ -154,14 +153,13 @@ export interface RunProfileFormFields {
   readonly machine: string;
   readonly app: string;
   readonly devices: readonly RunProfileDeviceRef[];
-  readonly fm: boolean;
   readonly heal: boolean;
-  readonly falsePositiveCheck: boolean;
+  readonly textVisualCheck: boolean;
   readonly screenLooksLike: boolean;
   readonly containerInference: boolean;
-  readonly ocr: boolean;
-  /** OCR の配下(親 `ocr` の状態に関わらず保持・保存する。FM のサブオプションと同じ方針) */
-  readonly ocrFalsePositiveCheck: boolean;
+  /** occlusion guard の Vision OCR 事前判定段(独立トグル。textVisualCheck が false の run では
+   * guard 自体が走らないため効かない)。 */
+  readonly ocrTextVisualCheck: boolean;
   readonly iosInappEngine: boolean;
   readonly iosFastInput: boolean;
   /// **既定 true**。domInterop の委譲イベント直前にランナーへ1回問い合わせてから撃つ
@@ -189,15 +187,15 @@ export interface RunProfileFormFields {
 }
 
 /**
- * runs/<name>.json のトップレベルから、フォームの22フィールドを許容的に読み取る(トップレベルが
+ * runs/<name>.json のトップレベルから、フォームの20フィールドを許容的に読み取る(トップレベルが
  * 非オブジェクトなら null)。各キーは欠落・型不正を「読めなければ空/既定値」で許容し、スキーマ
  * 妥当性検証はしない(保存時 updateRunProfileInObject・CLI 側 ProfileResolver.validate に委ねる)。
  * defaultTimeout/wipeDataThresholdGB/recordBitrateKbps は number ならそのまま String() 化する
  * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。record/recordFailuresOnly/
  * recordFullResolution/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
- * fm/heal/screenLooksLike/falsePositiveCheck/containerInference/homeOnStart/playProtectBypass は
- * スキーマ既定と合わせ既定 true(heal は fm と無関係に既定 true)
- * (falsePositiveCheck は 2026-09-03 に false から変更)。
+ * heal/screenLooksLike/textVisualCheck/ocrTextVisualCheck/containerInference/homeOnStart/
+ * playProtectBypass はスキーマ既定と合わせ既定 true
+ * (textVisualCheck は 2026-09-03 に false から変更)。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {
   // 配列も typeof "object" だが、トップレベルとしては不正なので弾く(他の同様関数と同じ判定)。
@@ -209,12 +207,10 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const app = typeof source.app === "string" ? source.app : "";
   const reportDir = typeof source.reportDir === "string" ? source.reportDir : "";
   const locale = typeof source.locale === "string" ? source.locale : "";
-  const fm = typeof source.fm === "boolean" ? source.fm : true;
   const heal = typeof source.heal === "boolean" ? source.heal : true;
-  const falsePositiveCheck = typeof source.falsePositiveCheck === "boolean" ? source.falsePositiveCheck : true;
-  const ocr = typeof source.ocr === "boolean" ? source.ocr : true;
-  const ocrFalsePositiveCheck =
-    typeof source.ocrFalsePositiveCheck === "boolean" ? source.ocrFalsePositiveCheck : true;
+  const textVisualCheck = typeof source.textVisualCheck === "boolean" ? source.textVisualCheck : true;
+  const ocrTextVisualCheck =
+    typeof source.ocrTextVisualCheck === "boolean" ? source.ocrTextVisualCheck : true;
   // screenIs は改名前の旧キー。新キーが無いときだけ読む(Sources/FTCore/RunProfile.swift の
   // effectiveScreenLooksLike と同じ優先順。保存時は updateRunProfileInObject が旧キーを落とす)
   const screenLooksLike = typeof source.screenLooksLike === "boolean"
@@ -266,13 +262,11 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     machine,
     app,
     devices,
-    fm,
     heal,
-    falsePositiveCheck,
+    textVisualCheck,
     screenLooksLike,
     containerInference,
-    ocr,
-    ocrFalsePositiveCheck,
+    ocrTextVisualCheck,
     iosInappEngine,
     iosFastInput,
     iosPreActionWarmup,
@@ -299,7 +293,7 @@ export type RunProfileUpdateResult =
   | { readonly ok: false; readonly error: string };
 
 /**
- * runs/<name>.json を、フォームの22フィールドの内容で更新した新オブジェクトを組み立てる
+ * runs/<name>.json を、フォームの20フィールドの内容で更新した新オブジェクトを組み立てる
  * (未知キー保持のイミュータブルな方針。profileObject が非オブジェクトなら ok:false)。
  * defaultTimeout は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
  * wipeDataThresholdGB は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
@@ -330,17 +324,18 @@ export function updateRunProfileInObject(
     }
   }
 
-  result.fm = fields.fm;
   result.heal = fields.heal;
-  result.falsePositiveCheck = fields.falsePositiveCheck;
+  result.textVisualCheck = fields.textVisualCheck;
   result.screenLooksLike = fields.screenLooksLike;
   delete result.screenIs;  // 旧キーを残すと同じ設定が2つのキーに現れ、片方だけ直す事故になる
-  // 撤去したキー(FM の失敗トリアージ)。旧テンプレートが必ず書いていたので、残すと GUI で作った
-  // プロファイルが run のたびに unknown-key 警告を出し続ける(docs/maintainer-notes.md §21)
+  // 撤去したキー(FM/OCR の親スイッチ、FM の失敗トリアージ)。旧テンプレートが必ず書いていたので、
+  // 残すと GUI で作ったプロファイルが run のたびに unknown-key 警告を出し続ける
+  // (docs/maintainer-notes.md §21)
+  delete result.fm;
+  delete result.ocr;
   delete result.triage;
   result.containerInference = fields.containerInference;
-  result.ocr = fields.ocr;
-  result.ocrFalsePositiveCheck = fields.ocrFalsePositiveCheck;  // 同上(既定 true 側。containerInference と同じ理由で常に書く)
+  result.ocrTextVisualCheck = fields.ocrTextVisualCheck;  // 同上(既定 true 側。containerInference と同じ理由で常に書く)
   result.iosInappEngine = fields.iosInappEngine;
   result.updateWebView = fields.updateWebView;
   result.wipeDataOnBloat = fields.wipeDataOnBloat;

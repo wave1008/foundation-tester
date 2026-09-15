@@ -135,7 +135,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `checkIsON` / `checkIsOFF` | `checkIsON()` / `checkIsOFF()` | ✅ 2026-08-04 同名で踏襲(旧 `isChecked`/`isNotChecked` から改名) |
 | `enabledIs(expected:)` / `checkedIs(expected:)`(生文字列の親形) | — | ➖ **持たない**。生値比較は OS 依存(checked は Android "true"/"false"・iOS "1"/"")で、fleetest が持つ正規化済み Bool と衝突する。糖衣形(`enabledIsTrue/False`・`checkIsON/OFF`)は OS 差を吸収済みで正規化と一致する。Shirates 自身も `checkIsON/OFF` の中でこの OS 差を吸収している。**再提案しない** |
 | `selectedIs(True/False)` | — | ➖ iOS の selected trait は `checked` に写像している |
-| `displayedIs` | `requireVisible:` + `falsePositiveCheck` | 🟡 |
+| `displayedIs` | `requireVisible:` + `textVisualCheck` | 🟡 |
 | `classIs(Not)` | セレクタの `.型` で絞る | 🟡 |
 | `attributeIs(Not)` / `buttonIsActive(Not)` | — | ➖ **木が持つ属性は固定集合**(2026-08-21 判定)。`ElementInfo` にある物は専用の検証(`textIs`/`valueIs`/`enabledIs*`/`checkIs*`)で表明でき、無い属性は**任意名で聞かれてもブリッジが答えられない**。新しい属性が要るなら、まず供給側(ブリッジ)に足す話になる |
 

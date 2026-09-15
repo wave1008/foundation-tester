@@ -364,24 +364,24 @@ public struct RunDeviceRef: Codable, Sendable, Equatable {
     }
 }
 
-/// FM 機能の実行時トグル(実行プロファイル由来の実効値)。enabled=false のとき他フラグも
-/// resolve 側で false に落とす(利用側は個別フラグだけ見ればよい)
+/// FM 機能の実行時トグル(実行プロファイル由来の実効値)。プロファイル経路の `enabled` は
+/// `textVisualCheck || screenLooksLike` から導く(`DeviceIndependentRunSettings.resolve`)
 public struct FMConfig: Sendable, Equatable {
-    /// FM を使用するか(false = 偽陽性検証/screenLooksLike を一切呼ばない)
+    /// FM を使用するか(false = 実行バイナリへ --no-fm。MCP・dry-run は明示的に false を渡す)
     public var enabled: Bool
-    /// 偽陽性検証(occlusion guard)= 誤った緑(木では一致したが実際には見えていない)の検査。
+    /// テキストの視覚検証(occlusion guard)= 誤った緑(木では一致したが実際には見えていない)の検査。
     /// **実行プロファイルの既定は true**(2026-09-03 ユーザー決定。それ以前はオプトインだった)
-    public var falsePositiveCheck: Bool
+    public var textVisualCheck: Bool
     public var screenLooksLike: Bool
 
     /// **この既定値は実行プロファイルの既定とは別物**。プロファイル由来の値は
-    /// `ResolvedProfile.fm`(RunProfileDocument の `falsePositiveCheck ?? true` 等)が組み立てる。
+    /// `ResolvedProfile.fm`(RunProfileDocument の `textVisualCheck ?? true` 等)が組み立てる。
     /// ここの既定は「プロファイルを通らない呼び出し」(MCP のシナリオ実行・dry-run 等)向けで、
     /// **FM を積極的に使わない側**に倒してある
     public init(enabled: Bool = true,
-                falsePositiveCheck: Bool = false, screenLooksLike: Bool = true) {
+                textVisualCheck: Bool = false, screenLooksLike: Bool = true) {
         self.enabled = enabled
-        self.falsePositiveCheck = falsePositiveCheck
+        self.textVisualCheck = textVisualCheck
         self.screenLooksLike = screenLooksLike
     }
 }
@@ -415,23 +415,17 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var app: String?
     /// 実行に使うデバイス(name 参照。iOS/Android 混在可 = 両OS同時実行)
     public var devices: [RunDeviceRef]?
-    /// FM 機能を使用するか(既定 true)。false なら偽陽性検証/screenLooksLike を一切呼ばない
-    /// (`heal` は FM を使わないので配下ではない)
-    public var fm: Bool?
-    /// ロケータ自己修復(指紋照合)を許可するか(既定 true)。FM は使わず、`fm` の配下でもない
+    /// ロケータ自己修復(指紋照合)を許可するか(既定 true)。FM は使わない
     public var heal: Bool?
-    /// 偽陽性検証(occlusion guard)を有効にするか(**既定 true**。2026-09-03 ユーザー決定で
+    /// テキストの視覚検証(occlusion guard)を有効にするか(**既定 true**。2026-09-03 ユーザー決定で
     /// オプトインをやめた)= 誤った緑(木では一致したが実際には見えていない)の検査
-    public var falsePositiveCheck: Bool?
+    public var textVisualCheck: Bool?
     /// screenLooksLike(screenMatches)を有効にするか(既定 true。無効時は該当ステップを skip)
     public var screenLooksLike: Bool?
-    /// OCR 機能全体の親スイッチ(既定 true)。**`fm` の配下ではなく独立の兄弟キー**
-    /// (FMConfig に持たせない)。false にすると下の個別トグルに関わらず OCR を一切使わない
-    public var ocr: Bool?
-    /// OCR を使ったテキストの偽陽性検証(occlusion guard 前段の事前判定。既定 true)。
-    /// **`ocr` が false なら値に関わらず無効**。`falsePositiveCheck` が false のときは
-    /// guard 自体が走らないのでこの値は無意味になる(ここでの追加ゲートは無い)
-    public var ocrFalsePositiveCheck: Bool?
+    /// OCR を使ったテキストの視覚検証(occlusion guard 前段の事前判定。既定 true)。
+    /// `textVisualCheck` が false のときは guard 自体が走らないのでこの値は無意味になる
+    /// (ここでの追加ゲートは無い)
+    public var ocrTextVisualCheck: Bool?
     /// 旧名 `screenIs` の受け口(コマンドの改名前に書かれた受け手のプロファイルが動き続けるため)。
     /// **読むのは screenLooksLike が未指定のときだけ**(effectiveScreenLooksLike)。書き出す側は
     /// 新キーだけを書く。この欄を消すと既存のプロファイルが黙って既定値に戻る
@@ -526,9 +520,9 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// ワークスペース(ファイル同期)宣言。省略可(既定 = リポジトリルート基準の従来挙動)
     public var remoteControl: RemoteControlSection?
 
-    public init(app: String? = nil, devices: [RunDeviceRef]? = nil, fm: Bool? = nil,
-                heal: Bool? = nil, falsePositiveCheck: Bool? = nil, screenLooksLike: Bool? = nil,
-                ocr: Bool? = nil, ocrFalsePositiveCheck: Bool? = nil,
+    public init(app: String? = nil, devices: [RunDeviceRef]? = nil,
+                heal: Bool? = nil, textVisualCheck: Bool? = nil, screenLooksLike: Bool? = nil,
+                ocrTextVisualCheck: Bool? = nil,
                 screenIs: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
                 machine: String? = nil, iosInappEngine: Bool? = nil,
@@ -543,12 +537,10 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 recordFullResolution: Bool? = nil, remoteControl: RemoteControlSection? = nil) {
         self.app = app
         self.devices = devices
-        self.fm = fm
         self.heal = heal
-        self.falsePositiveCheck = falsePositiveCheck
+        self.textVisualCheck = textVisualCheck
         self.screenLooksLike = screenLooksLike
-        self.ocr = ocr
-        self.ocrFalsePositiveCheck = ocrFalsePositiveCheck
+        self.ocrTextVisualCheck = ocrTextVisualCheck
         self.screenIs = screenIs
         self.reportDir = reportDir
         self.defaultTimeout = defaultTimeout
@@ -577,7 +569,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var effectiveScreenLooksLike: Bool { screenLooksLike ?? screenIs ?? true }
 
     static let knownKeys: Set<String> = [
-        "app", "devices", "fm", "heal", "falsePositiveCheck", "screenLooksLike", "ocr", "ocrFalsePositiveCheck",
+        "app", "devices", "heal", "textVisualCheck", "screenLooksLike", "ocrTextVisualCheck",
         "screenIs",  // 旧名。effectiveScreenLooksLike が拾う(未知キー警告を出さないため残す)
         "reportDir", "defaultTimeout", "scenarioTimeout",
         "machine", "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
@@ -610,8 +602,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// ここと `applyingOverrides` の switch 分岐の両方に追記する(`RunProfileSetOverrideKeysTests` が
     /// Mirror で等号を固定する)
     fileprivate static let overridableKeyKinds: [String: ValueKind] = [
-        "fm": .bool, "heal": .bool, "falsePositiveCheck": .bool,
-        "screenLooksLike": .bool, "ocr": .bool, "ocrFalsePositiveCheck": .bool,
+        "heal": .bool, "textVisualCheck": .bool,
+        "screenLooksLike": .bool, "ocrTextVisualCheck": .bool,
         "iosInappEngine": .bool, "iosFastInput": .bool, "iosPreActionWarmup": .bool,
         "containerInference": .bool, "enableAnimations": .bool, "homeOnStart": .bool,
         "playProtectBypass": .bool, "updateWebView": .bool, "wipeDataOnBloat": .bool,
@@ -626,7 +618,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     fileprivate static let arrayOrObjectKeys: Set<String> = ["devices", "remoteControl"]
 
     /// `fleetest run --set <key>=<value>` / `fleetest api run --set` が受け付けるキー全部
-    /// (Bool 20 + スカラー8。キー名はプロファイル JSON のキーそのもの ——
+    /// (Bool 17 + スカラー8。キー名はプロファイル JSON のキーそのもの ——
     /// kebab 変換をしない)。**`RunProfileDocument` の Bool/String/Int/Double 欄の全部から
     /// `screenIs`(旧名の受け口で `screenLooksLike` に一本化済み)・`devices`・`remoteControl`
     /// (配列・オブジェクトで `key=value` を持たない)を除いたもの**。
@@ -643,12 +635,10 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         var copy = self
         for (key, value) in overrides {
             switch (key, value) {
-            case ("fm", .bool(let v)): copy.fm = v
             case ("heal", .bool(let v)): copy.heal = v
-            case ("falsePositiveCheck", .bool(let v)): copy.falsePositiveCheck = v
+            case ("textVisualCheck", .bool(let v)): copy.textVisualCheck = v
             case ("screenLooksLike", .bool(let v)): copy.screenLooksLike = v
-            case ("ocr", .bool(let v)): copy.ocr = v
-            case ("ocrFalsePositiveCheck", .bool(let v)): copy.ocrFalsePositiveCheck = v
+            case ("ocrTextVisualCheck", .bool(let v)): copy.ocrTextVisualCheck = v
             case ("iosInappEngine", .bool(let v)): copy.iosInappEngine = v
             case ("iosFastInput", .bool(let v)): copy.iosFastInput = v
             case ("iosPreActionWarmup", .bool(let v)): copy.iosPreActionWarmup = v
@@ -839,15 +829,13 @@ extension RunProfileDocument {
 
 /// `RunProfileDocument` のうち**デバイス一覧を経由せず決まる**実効設定。`ProfileResolver.resolve`
 /// (デバイスあり)と `--profile` 無しの直接実行(`RunScenarios`/`ApiRunCommand` の profile-less パス)の
-/// **両方がこれを呼ぶ** —— fm/ocr の親子ゲートを二重に書かない。デバイス依存の欄
+/// **両方がこれを呼ぶ** —— FM の子トグルからの合成を二重に書かない。デバイス依存の欄
 /// (`RunProfileDocument.profileOnlyKeys`)はここに無い
 public struct DeviceIndependentRunSettings: Sendable, Equatable {
     public let fm: FMConfig
     /// ロケータ自己修復(指紋照合)。**`fm` の配下ではない**(FM を使わないので、FM を切っても止めない)
     public let heal: Bool
-    public let ocr: Bool
-    /// **親スイッチ `ocr` を掛けた後の実効値**(FMConfig が fm を掛けているのと同じ形)
-    public let ocrFalsePositiveCheck: Bool
+    public let ocrTextVisualCheck: Bool
     public let iosFastInput: Bool
     public let iosPreActionWarmup: Bool
     public let containerInference: Bool
@@ -875,7 +863,7 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
 
     /// `--profile` を使わない実行(`--port`/`--serial` 直指定)の基底。**プロファイルの既定を
     /// そのまま使わない** —— 3つだけ意図的に違う:
-    ///   `falsePositiveCheck` … profile-less は **FM を積極的に使わない側**へ倒す
+    ///   `textVisualCheck` … profile-less は **FM を積極的に使わない側**へ倒す
     ///     (`FMConfig.init` の既定と同じ。プロファイルの既定 true を当てると、既に緑だった
     ///      素の run で `exist`/`textIs` が occlusion-guard を通り**緑が赤に反転しうる**)
     ///   `heal` … profile-less は**修復しない**(`ScenarioExecutionSettings.init` の既定と同じ。
@@ -886,21 +874,20 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
     /// **`--set` はこの基底の上に当てる**ので、`--set heal=true` は従来どおり効く。
     /// 既定はリテラルで固定するテストを置くこと(`DeviceIndependentRunSettingsTests`)
     public static let profileLessBase = RunProfileDocument(
-        heal: false, falsePositiveCheck: false, homeOnStart: false)
+        heal: false, textVisualCheck: false, homeOnStart: false)
 
     public static func resolve(_ doc: RunProfileDocument) -> DeviceIndependentRunSettings {
-        // fm:false / ocr:false は配下のトグルを無条件に false へ落とす(利用側は個別フラグだけ
-        // 見ればよい契約。FMConfig の doc コメント参照)
-        let fmEnabled = doc.fm ?? true
-        let ocrEnabled = doc.ocr ?? true
+        // FM を使うかは子トグルから導く(親スイッチは無い)。両方 false なら
+        // 実行バイナリへ --no-fm が渡る(ScenarioHost の既存分岐。FMConfig の doc コメント参照)
+        let textVisualCheck = doc.textVisualCheck ?? true
+        let screenLooksLike = doc.effectiveScreenLooksLike
         return DeviceIndependentRunSettings(
             fm: FMConfig(
-                enabled: fmEnabled,
-                falsePositiveCheck: fmEnabled && (doc.falsePositiveCheck ?? true),
-                screenLooksLike: fmEnabled && doc.effectiveScreenLooksLike),
+                enabled: textVisualCheck || screenLooksLike,
+                textVisualCheck: textVisualCheck,
+                screenLooksLike: screenLooksLike),
             heal: doc.heal ?? true,
-            ocr: ocrEnabled,
-            ocrFalsePositiveCheck: ocrEnabled && (doc.ocrFalsePositiveCheck ?? true),
+            ocrTextVisualCheck: doc.ocrTextVisualCheck ?? true,
             iosFastInput: doc.iosFastInput ?? false,
             iosPreActionWarmup: doc.iosPreActionWarmup ?? true,
             containerInference: doc.containerInference ?? true,
@@ -1026,7 +1013,7 @@ public struct ResolvedProfile: Sendable {
     public let apps: [String: ResolvedAppTarget]
     /// 実行に使うデバイス。**limitingDevices が本数に合わせて絞る**ので var
     public var devices: [ResolvedDevice]
-    /// FM 機能の実効設定(RunProfileDocument の fm/falsePositiveCheck/screenLooksLike を合成)
+    /// FM 機能の実効設定(RunProfileDocument の textVisualCheck/screenLooksLike を合成)
     public let fm: FMConfig
     /// ロケータ自己修復(指紋照合)を許可するか。**`fm` の配下ではない**
     public let heal: Bool
@@ -1053,11 +1040,8 @@ public struct ResolvedProfile: Sendable {
     public let iosPreActionWarmup: Bool
     /// 容器の推測に依存する補正(RunProfileDocument.containerInference。**既定 true**)
     public let containerInference: Bool
-    /// OCR 機能全体の親スイッチ(RunProfileDocument.ocr。**既定 true**)
-    public let ocr: Bool
-    /// OCR を使ったテキストの偽陽性検証の実効値(**親スイッチ `ocr` を掛けた後**。
-    /// 利用側はこれだけを見ればよい契約 —— FMConfig が fm を掛けているのと同じ形)
-    public let ocrFalsePositiveCheck: Bool
+    /// OCR を使ったテキストの視覚検証の実効値(RunProfileDocument.ocrTextVisualCheck。既定 true)
+    public let ocrTextVisualCheck: Bool
     /// アプリのアニメーションを残すか(RunProfileDocument.enableAnimations。既定 false=無効化)
     public let enableAnimations: Bool
     /// run 開始時に各デバイスへ home() を撃つか(RunProfileDocument.homeOnStart。**既定 true**)
@@ -1749,7 +1733,7 @@ public enum ProfileResolver {
             throw ProfileError.invalidLocale(run: runName)
         }
 
-        // デバイスに依存しない実効設定(fm/ocr の親子ゲート含む)は `--profile` 無しの直接実行
+        // デバイスに依存しない実効設定(FM の子トグルからの合成含む)は `--profile` 無しの直接実行
         // (`fleetest run`/`fleetest api run` の profile-less パス)と1つの関数を共有する
         // (DeviceIndependentRunSettings.resolve)。ここでしか決まらないデバイス依存の欄
         // (iosInappEngine 等。RunProfileDocument.profileOnlyKeys)だけ runDoc から直接読む
@@ -1776,8 +1760,7 @@ public enum ProfileResolver {
             iosFastInput: settings.iosFastInput,
             iosPreActionWarmup: settings.iosPreActionWarmup,
             containerInference: settings.containerInference,
-            ocr: settings.ocr,
-            ocrFalsePositiveCheck: settings.ocrFalsePositiveCheck,
+            ocrTextVisualCheck: settings.ocrTextVisualCheck,
             enableAnimations: settings.enableAnimations,
             homeOnStart: settings.homeOnStart,
             playProtectBypass: settings.playProtectBypass,

@@ -28,8 +28,7 @@
     }
   ],
   "containerInference": true,
-  "falsePositiveCheck": false,
-  "fm": true,
+  "textVisualCheck": false,
   "heal": false,
   "homeOnStart": true,
   "iosInappEngine": true,

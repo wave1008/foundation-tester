@@ -343,7 +343,7 @@ public final class StepExecutor {
     public var delegate: ReplayDelegate?
     /// 自己修復(指紋照合)を許す(`execute` の入口で畳む)。FM は使わない
     public var healingEnabled: Bool
-    /// 実行プロファイルの falsePositiveCheck に対応するマスタースイッチ(既定 true)。false なら
+    /// 実行プロファイルの textVisualCheck に対応するマスタースイッチ(既定 true)。false なら
     /// occlusionGuard/perStepGuard の値に関わらず occlusion-guard 自体を無効化する
     public var occlusionGuardEnabled: Bool
     /// 実行プロファイルの screenLooksLike に対応するマスタースイッチ(既定 true)。false なら

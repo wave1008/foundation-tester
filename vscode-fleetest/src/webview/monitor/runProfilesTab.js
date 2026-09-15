@@ -26,14 +26,10 @@ const runProfileEditor = document.getElementById('run-profile-editor');
 const runProfileMachine = document.getElementById('run-profile-machine');
 const runProfileApp = document.getElementById('run-profile-app');
 const runProfileDevices = document.getElementById('run-profile-devices');
-const runProfileFm = document.getElementById('run-profile-fm');
-const runProfileFmOptions = document.getElementById('run-profile-fm-options');
 const runProfileHeal = document.getElementById('run-profile-heal');
-const runProfileFalsePositiveCheck = document.getElementById('run-profile-false-positive-check');
+const runProfileTextVisualCheck = document.getElementById('run-profile-text-visual-check');
 const runProfileScreenLooksLike = document.getElementById('run-profile-screen-looks-like');
-const runProfileOcr = document.getElementById('run-profile-ocr');
-const runProfileOcrOptions = document.getElementById('run-profile-ocr-options');
-const runProfileOcrFalsePositiveCheck = document.getElementById('run-profile-ocr-false-positive-check');
+const runProfileOcrTextVisualCheck = document.getElementById('run-profile-ocr-text-visual-check');
 const runProfileContainerInference = document.getElementById('run-profile-container-inference');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
 const runProfileIosFastInput = document.getElementById('run-profile-ios-fast-input');
@@ -239,14 +235,10 @@ function renderRunProfileEditor(fields) {
   renderRunProfileAppSelect(fields.app);
   runProfileCheckedRefs = fields.devices.map((d) => ({ name: d.name, machine: d.machine }));
   renderRunProfileDevices();
-  runProfileFm.checked = fields.fm;
   runProfileHeal.checked = fields.heal;
-  runProfileFalsePositiveCheck.checked = fields.falsePositiveCheck;
+  runProfileTextVisualCheck.checked = fields.textVisualCheck;
   runProfileScreenLooksLike.checked = fields.screenLooksLike;
-  runProfileOcr.checked = fields.ocr;
-  runProfileOcrFalsePositiveCheck.checked = fields.ocrFalsePositiveCheck;
-  updateFmOptionsVisibility();
-  updateOcrOptionsVisibility();
+  runProfileOcrTextVisualCheck.checked = fields.ocrTextVisualCheck;
   updateInappOptionsVisibility();
   runProfileIosInappEngine.checked = fields.iosInappEngine;
   runProfileIosFastInput.checked = fields.iosFastInput;
@@ -415,25 +407,9 @@ function onRunProfileDeviceToggle() {
 runProfileMachine.addEventListener('change', () => {
   renderRunProfileDevices();
 });
-// fm ON のときだけ配下のサブオプション(falsePositiveCheck/screenLooksLike)を表示する
-// (値そのものは fm の状態に関わらず保持・保存する。heal は fm のサブオプションではないので
-// 別セクション扱い = この表示切替の対象外)。
-function updateFmOptionsVisibility() {
-  runProfileFmOptions.style.display = runProfileFm.checked ? '' : 'none';
-}
-runProfileFm.addEventListener('change', () => {
-  updateFmOptionsVisibility();
-});
-// ocr ON のときだけ配下のサブオプションを表示する(値は親の状態に関わらず保持・保存する)
-function updateOcrOptionsVisibility() {
-  runProfileOcrOptions.style.display = runProfileOcr.checked ? '' : 'none';
-}
-runProfileOcr.addEventListener('change', () => {
-  updateOcrOptionsVisibility();
-});
 // inapp エンジン ON のときだけ配下のサブオプション(iosPreActionWarmup)を表示する
 // (暖機は hybrid の domInterop 経路にしか無い = xcuitest エンジンでは効果が無いため。
-//  値そのものはエンジンの状態に関わらず保持・保存する = FM サブオプションと同じ方針)。
+//  値そのものはエンジンの状態に関わらず保持・保存する)。
 function updateInappOptionsVisibility() {
   runProfileInappOptions.style.display = runProfileIosInappEngine.checked ? '' : 'none';
 }
@@ -477,12 +453,10 @@ function runProfileValuesEqual(fields) {
     runProfileMachine.value === fields.machine &&
     runProfileApp.value === fields.app &&
     runProfileDevicesEqual(runProfileCheckedRefs, fields.devices) &&
-    runProfileFm.checked === fields.fm &&
     runProfileHeal.checked === fields.heal &&
-    runProfileFalsePositiveCheck.checked === fields.falsePositiveCheck &&
+    runProfileTextVisualCheck.checked === fields.textVisualCheck &&
     runProfileScreenLooksLike.checked === fields.screenLooksLike &&
-    runProfileOcr.checked === fields.ocr &&
-    runProfileOcrFalsePositiveCheck.checked === fields.ocrFalsePositiveCheck &&
+    runProfileOcrTextVisualCheck.checked === fields.ocrTextVisualCheck &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosFastInput.checked === fields.iosFastInput &&
     runProfileIosPreActionWarmup.checked === fields.iosPreActionWarmup &&
@@ -592,12 +566,10 @@ function collectRunProfileFields() {
     machine: runProfileMachine.value.trim(),
     app: runProfileApp.value.trim(),
     devices: runProfileCheckedRefs.map((r) => (r.machine ? { name: r.name, machine: r.machine } : { name: r.name })),
-    fm: runProfileFm.checked,
     heal: runProfileHeal.checked,
-    falsePositiveCheck: runProfileFalsePositiveCheck.checked,
+    textVisualCheck: runProfileTextVisualCheck.checked,
     screenLooksLike: runProfileScreenLooksLike.checked,
-    ocr: runProfileOcr.checked,
-    ocrFalsePositiveCheck: runProfileOcrFalsePositiveCheck.checked,
+    ocrTextVisualCheck: runProfileOcrTextVisualCheck.checked,
     iosInappEngine: runProfileIosInappEngine.checked,
     iosFastInput: runProfileIosFastInput.checked,
     iosPreActionWarmup: runProfileIosPreActionWarmup.checked,

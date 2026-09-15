@@ -54,12 +54,12 @@ Element lookups retry until a timeout instead of failing on the first miss:
 Both accept an explicit `timeout:` (fractional seconds allowed, e.g. `timeout: 1.2`) to
 override the default for a single call.
 
-## Visibility and false-positive checks
+## Visibility and text visual verification
 
 `requireVisible: false` skips the covered/off-screen check that normally backs `exist`
 (where it flips a match to failure) and `select` (where it returns an empty element). This
 extra visibility pass only actually runs on runs where the run profile has
-`falsePositiveCheck: true` — on other runs the flag has nothing to skip.
+`textVisualCheck: true` — on other runs the flag has nothing to skip.
 
 ### Link
 - [index](../index.md)

@@ -418,7 +418,7 @@ public enum ScenarioHost {
                     "--project-dir", project.rootURL.path]
         if settings.heal { args.append("--heal") }
         if !fm.enabled { args.append("--no-fm") }
-        if !fm.falsePositiveCheck { args.append("--no-false-positive-check") }
+        if !fm.textVisualCheck { args.append("--no-text-visual-check") }
         if !fm.screenLooksLike { args.append("--no-screen-looks-like") }
         if dryRun { args.append("--dry-run") }
         if let port = connection.port { args += ["--port", String(port)] }
@@ -433,7 +433,7 @@ public enum ScenarioHost {
         if let defaultTimeout { args += ["--default-timeout", FTSeconds.format(defaultTimeout)] }
         // **FM とは無関係**(幾何ヒューリスティックの既定)なので FMConfig には入れない
         if !containerInference { args.append("--no-container-inference") }
-        // occlusion guard の OCR 事前判定(FMConfig の外。falsePositiveCheck が off なら guard 自体が
+        // occlusion guard の OCR 事前判定(FMConfig の外。textVisualCheck が off なら guard 自体が
         // 走らないためこの値は無意味 —— 別ゲートは追加しない)
         if !occlusionOCR { args.append("--no-occlusion-ocr") }
         if let debug {

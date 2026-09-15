@@ -6,7 +6,7 @@ FM(Foundation Models)による見た目の画面検証です。スクリーン�
 
 | 関数 | 説明 |
 |---|---|
-| `screenLooksLike("説明文")` | 現在の画面が説明文と一致するかを FM に判定させます。実行プロファイルで `fm: false` または `screenLooksLike: false` の場合はスキップ(素通り)します。 |
+| `screenLooksLike("説明文")` | 現在の画面が説明文と一致するかを FM に判定させます。実行プロファイルで `screenLooksLike: false` の場合はスキップ(素通り)します。 |
 
 ## 例
 

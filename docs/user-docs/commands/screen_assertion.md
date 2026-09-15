@@ -6,7 +6,7 @@ Visual screen check by Foundation Models: matches a screenshot against a descrip
 
 | function | description |
 |---|---|
-| `screenLooksLike("description")` | Asks Foundation Models whether the current screen matches the description. Skipped (passes through) when the run profile has `fm: false` or `screenLooksLike: false`. |
+| `screenLooksLike("description")` | Asks Foundation Models whether the current screen matches the description. Skipped (passes through) when the run profile has `screenLooksLike: false`. |
 
 ## Example
 

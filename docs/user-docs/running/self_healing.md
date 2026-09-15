@@ -11,7 +11,7 @@ for a stand-in element in the following order before failing the scenario:
    neither a label nor a placeholder are never remembered (the type alone does not identify an
    element), and a match with more than one element is never used.
 
-Self-healing today is fingerprint matching only — it no longer calls FM (Foundation Models).
+Self-healing is fingerprint matching only — it does not call FM (Foundation Models).
 
 ## Enabling it
 
@@ -19,10 +19,9 @@ Self-healing today is fingerprint matching only — it no longer calls FM (Found
   to OFF. `fleetest run --profile <name> --set heal=<true|false>` overrides either default for
   one run without editing the profile file (see [running_scenarios.md](./running_scenarios.md)
   for `--set`).
-- In the run profile itself, `heal` (default `true`) is its own toggle, independent of `fm` — see
-  [run_profile.md](../project/run_profile.md). `fm` now governs only FM-based features
-  (occlusion-guard's false-positive check and `screenLooksLike`); it no longer affects
-  self-healing.
+- In the run profile itself, `heal` (default `true`) is its own toggle, independent of the FM- and
+  OCR-based toggles (`textVisualCheck`, `screenLooksLike`, `ocrTextVisualCheck`) — see
+  [run_profile.md](../project/run_profile.md).
 - In the VS Code extension, the `fleetest.heal` setting appends `--set heal=true` to Test
   Explorer's "Run" and "Debug" actions (not "Run (dry-run)", since dry-run never touches a
   device). When `fleetest.heal` is `false` (the default) and you're using `fleetest.profile`,

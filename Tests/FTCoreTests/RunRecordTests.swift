@@ -4,7 +4,7 @@ import XCTest
 
 /// この種のテストが finish() へ渡す fmSettings は値そのものを検査しないので固定の1値でよい
 private let testFMSettings = FMSettingsRecord(
-    fm: true, heal: false, falsePositiveCheck: false, screenLooksLike: true, ocr: true, ocrFalsePositiveCheck: true)
+    heal: false, textVisualCheck: false, screenLooksLike: true, ocrTextVisualCheck: true)
 
 final class RunRecordTests: XCTestCase {
 
@@ -186,10 +186,10 @@ final class RunRecordTests: XCTestCase {
 
     // MARK: - fmSettings(実効 FM 設定)
 
-    /// **7つとも常に明示的に書く**(true/false のどちらも省略しない)。JSONSerialization で
+    /// **4つとも常に明示的に書く**(true/false のどちらも省略しない)。JSONSerialization で
     /// 生の鍵の集合を数えることで、将来 encodeIfPresent 化されて false 値の欄が落ちる退行を
     /// (JSONDecoder 経由の丸め込みではなく)ここで検出する
-    func testFmSettingsWritesAllSevenKeysExplicitlyIncludingFalseValues() throws {
+    func testFmSettingsWritesAllFourKeysExplicitlyIncludingFalseValues() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("fleetest-runrecord-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -197,19 +197,17 @@ final class RunRecordTests: XCTestCase {
         let recorder = RunRecorder.begin(project: TestProject(name: "P", rootURL: root),
                                          profile: "p", trigger: "cli", captureHostMetrics: false)
         let settings = FMSettingsRecord(
-            fm: true, heal: false, falsePositiveCheck: true, screenLooksLike: false, ocr: false, ocrFalsePositiveCheck: true)
+            heal: false, textVisualCheck: true, screenLooksLike: false, ocrTextVisualCheck: true)
         recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: settings, setOverrides: nil)
 
         let data = try Data(contentsOf: recorder.runDir.appendingPathComponent("run.json"))
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         let fmSettingsJSON = try XCTUnwrap(json["fmSettings"] as? [String: Any])
-        XCTAssertEqual(fmSettingsJSON.count, 6, "6つの欄すべてが書かれること(欠落は退行): \(fmSettingsJSON)")
-        XCTAssertEqual(fmSettingsJSON["fm"] as? Bool, true)
+        XCTAssertEqual(fmSettingsJSON.count, 4, "4つの欄すべてが書かれること(欠落は退行): \(fmSettingsJSON)")
         XCTAssertEqual(fmSettingsJSON["heal"] as? Bool, false)
-        XCTAssertEqual(fmSettingsJSON["falsePositiveCheck"] as? Bool, true)
+        XCTAssertEqual(fmSettingsJSON["textVisualCheck"] as? Bool, true)
         XCTAssertEqual(fmSettingsJSON["screenLooksLike"] as? Bool, false)
-        XCTAssertEqual(fmSettingsJSON["ocr"] as? Bool, false)
-        XCTAssertEqual(fmSettingsJSON["ocrFalsePositiveCheck"] as? Bool, true)
+        XCTAssertEqual(fmSettingsJSON["ocrTextVisualCheck"] as? Bool, true)
 
         let meta = try JSONDecoder().decode(RunMetaRecord.self, from: data)
         XCTAssertEqual(meta.fmSettings, settings, "型付きの往復でも同じ値が読める")
@@ -222,6 +220,18 @@ final class RunRecordTests: XCTestCase {
             + "\"trigger\":\"cli\",\"startedAt\":\"2026-01-01T00:00:00Z\"}"
         let decoded = try XCTUnwrap(try? JSONDecoder().decode(RunMetaRecord.self, from: Data(raw.utf8)))
         XCTAssertNil(decoded.fmSettings)
+    }
+
+    /// 2026-09-15 以前の記録は旧キー(falsePositiveCheck / ocrFalsePositiveCheck)で書かれている。
+    /// 欄が非 Optional なので、旧キーを読めないと run.json 全体が読めなくなる
+    func testRunMetaRecordDecodesLegacyFmSettingsKeys() throws {
+        let raw = "{\"schemaVersion\":1,\"runID\":\"x\",\"project\":\"SampleApp\",\"host\":\"m\","
+            + "\"trigger\":\"cli\",\"startedAt\":\"2026-01-01T00:00:00Z\","
+            + "\"fmSettings\":{\"fm\":true,\"heal\":true,\"falsePositiveCheck\":false,"
+            + "\"screenLooksLike\":true,\"ocr\":true,\"ocrFalsePositiveCheck\":false}}"
+        let decoded = try JSONDecoder().decode(RunMetaRecord.self, from: Data(raw.utf8))
+        XCTAssertEqual(decoded.fmSettings, FMSettingsRecord(
+            heal: true, textVisualCheck: false, screenLooksLike: true, ocrTextVisualCheck: false))
     }
 
     func testFailedScenarioCollectsStepsScenesAndFailures() throws {

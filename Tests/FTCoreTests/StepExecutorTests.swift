@@ -483,7 +483,7 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
     }
 
-    /// occlusionGuardEnabled=false(実行プロファイルの falsePositiveCheck:false)は per-step の
+    /// occlusionGuardEnabled=false(実行プロファイルの textVisualCheck:false)は per-step の
     /// occlusionGuard:true より優先して occlusion-guard 自体を止める(FM を呼ばず pass)
     func testOcclusionGuardMasterSwitchOffSkipsGuard() async throws {
         let log = CallLog()

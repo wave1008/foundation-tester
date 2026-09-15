@@ -39,28 +39,50 @@ public struct WorkerAnomalyRecord: Codable, Sendable {
 }
 
 /// その run で実際に効いていた FM 設定(`FTCore.ResolvedProfile` の実効値。CLI の
-/// `--set`(fm/heal/falsePositiveCheck/screenLooksLike/ocr/ocrFalsePositiveCheck)による
+/// `--set`(heal/textVisualCheck/screenLooksLike/ocrTextVisualCheck)による
 /// 上書きを反映した後の値)。
-/// **6つとも常に明示的に書く**(true/false のどちらも省略しない) —— 省略を許すと
+/// **4つとも常に明示的に書く**(true/false のどちらも省略しない) —— 省略を許すと
 /// RunMetaRecord.fmSettings が nil(旧レコード)なのか、この構造体の中の1欄だけが
-/// 省略されたのか区別できなくなる。`heal` / `ocr` / `ocrFalsePositiveCheck` は `FMConfig` の外
+/// 省略されたのか区別できなくなる。`heal` / `ocrTextVisualCheck` は `FMConfig` の外
 /// (`RunProfileDocument` の独立の兄弟キー。heal は FM を使わない)だが、記録上はここへまとめる
 public struct FMSettingsRecord: Codable, Sendable, Equatable {
-    public var fm: Bool
     public var heal: Bool
-    public var falsePositiveCheck: Bool
+    public var textVisualCheck: Bool
     public var screenLooksLike: Bool
-    public var ocr: Bool
-    public var ocrFalsePositiveCheck: Bool
+    public var ocrTextVisualCheck: Bool
 
-    public init(fm: Bool, heal: Bool, falsePositiveCheck: Bool, screenLooksLike: Bool,
-                ocr: Bool, ocrFalsePositiveCheck: Bool) {
-        self.fm = fm
+    public init(heal: Bool, textVisualCheck: Bool, screenLooksLike: Bool,
+                ocrTextVisualCheck: Bool) {
         self.heal = heal
-        self.falsePositiveCheck = falsePositiveCheck
+        self.textVisualCheck = textVisualCheck
         self.screenLooksLike = screenLooksLike
-        self.ocr = ocr
-        self.ocrFalsePositiveCheck = ocrFalsePositiveCheck
+        self.ocrTextVisualCheck = ocrTextVisualCheck
+    }
+
+    /// 旧キー "falsePositiveCheck" / "ocrFalsePositiveCheck"(2026-09-15 以前の記録)も読む。
+    /// 書きは新キーだけ。**読めないと run.json 全体が読めなくなる**(欄が非 Optional のため)
+    private enum CodingKeys: String, CodingKey {
+        case heal, textVisualCheck, screenLooksLike, ocrTextVisualCheck
+        case legacyTextVisualCheck = "falsePositiveCheck"
+        case legacyOcrTextVisualCheck = "ocrFalsePositiveCheck"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        heal = try c.decode(Bool.self, forKey: .heal)
+        screenLooksLike = try c.decode(Bool.self, forKey: .screenLooksLike)
+        textVisualCheck = try c.decodeIfPresent(Bool.self, forKey: .textVisualCheck)
+            ?? c.decode(Bool.self, forKey: .legacyTextVisualCheck)
+        ocrTextVisualCheck = try c.decodeIfPresent(Bool.self, forKey: .ocrTextVisualCheck)
+            ?? c.decode(Bool.self, forKey: .legacyOcrTextVisualCheck)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(heal, forKey: .heal)
+        try c.encode(textVisualCheck, forKey: .textVisualCheck)
+        try c.encode(screenLooksLike, forKey: .screenLooksLike)
+        try c.encode(ocrTextVisualCheck, forKey: .ocrTextVisualCheck)
     }
 }
 

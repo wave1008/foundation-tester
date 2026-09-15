@@ -2,7 +2,7 @@
 // (FTDriveCore)では executor 既定の occlusionGuard が常に false なので、StepExecutor.init の
 // 暖機ゲート(executor 既定でガードが効くときだけ撃つ)は実質発火しない —— ステップ指定
 // (exist の requireVisible 既定 true)でガードが立つのが通常形のため。だから FTDriveCore.init が
-// 実行プロファイルのマスタースイッチ(falsePositiveCheckEnabled)だけを見て別に暖機を頼む
+// 実行プロファイルのマスタースイッチ(textVisualCheckEnabled)だけを見て別に暖機を頼む
 // (StepExecutorPrewarmTests と対の配線テスト)。
 
 import FTCore
@@ -40,19 +40,19 @@ final class FTDriveCorePrewarmWiringTests: XCTestCase {
         _ = FTDriveCore(driver: SilentDriver(), platform: "ios", app: "com.example.app",
                         scenarioID: "T.S0010", scenarioTitle: "t",
                         delegate: nil, healingEnabled: false,
-                        falsePositiveCheckEnabled: true, emit: { _ in })
+                        textVisualCheckEnabled: true, emit: { _ in })
         XCTAssertEqual(RegionText.prewarmRequestCount, before + 1,
                        "DSL のシナリオ開始時に暖機を始めていない")
     }
 
-    /// マスタースイッチ(実行プロファイルの falsePositiveCheck)が off の run では撃たない
+    /// マスタースイッチ(実行プロファイルの textVisualCheck)が off の run では撃たない
     /// (occlusionGuardEnabled が false = どのステップでもガードは走らないので Vision は要らない)
     func testDoesNotPrewarmWhenTheMasterSwitchIsOff() {
         let before = RegionText.prewarmRequestCount
         _ = FTDriveCore(driver: SilentDriver(), platform: "ios", app: "com.example.app",
                         scenarioID: "T.S0010", scenarioTitle: "t",
                         delegate: nil, healingEnabled: false,
-                        falsePositiveCheckEnabled: false, emit: { _ in })
+                        textVisualCheckEnabled: false, emit: { _ in })
         XCTAssertEqual(RegionText.prewarmRequestCount, before)
     }
 
@@ -62,7 +62,7 @@ final class FTDriveCorePrewarmWiringTests: XCTestCase {
         _ = FTDriveCore(driver: SilentDriver(), platform: "ios", app: "com.example.app",
                         scenarioID: "T.S0010", scenarioTitle: "t",
                         delegate: nil, healingEnabled: false,
-                        falsePositiveCheckEnabled: true, occlusionOCREnabled: false, emit: { _ in })
+                        textVisualCheckEnabled: true, occlusionOCREnabled: false, emit: { _ in })
         XCTAssertEqual(RegionText.prewarmRequestCount, before)
     }
 }

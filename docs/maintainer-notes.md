@@ -508,6 +508,7 @@ scenario`)—— 受け手に検知と判定の語彙を教える必要は無く
 reports/(.gitignore 済みの生成物と Apple へ提出済みの資料)だけ**。
 
 → 新しい混入は `Tests/FTCoreTests/VocabularyPolarityTests.swift` が落とす。
+(2026-09-15、利用者向けの名前を「テキストの視覚検証」に統一し、`falsePositiveCheck` のラベルの例外も撤去した)
 **規則を定義している2ファイル(CLAUDE.md・この文書)だけは走査の対象外** —— 禁止語を書けないと
 規則そのものが書けないため。この2ファイルは人間の規律で守る。
 
@@ -945,8 +946,37 @@ heal 無効」警告(§21 で heal 有効時だけに絞ったばかりだった
 `fm=false` でも `heal` は無効にならない。run.json の `fmSettings` は引き続き6欄
 (`fm`/`heal`/`falsePositiveCheck`/`screenLooksLike`/`ocr`/`ocrFalsePositiveCheck`)を保つ ——
 `ocr`/`ocrFalsePositiveCheck` と同じ扱いで、FM 機能ではないが記録上はここにまとめてある。
+(同日、親スイッチ `fm`/`ocr` の撤去で4欄になった → §23)
 残る自己修復の注記は `heal-fingerprint-match`(指紋照合で解決)と `heal-unwritable`
 (一致したが一意に書けるセレクタが無い)の2つだけになった。
 
 **戻すなら**: §21 と同じ測り方(本線と同じ instructions/本文/画像経路で新旧の出力を並べ、
 同じ標本で詰めてから別の標本で確かめる)で誤り率を測り直してから。
+
+## 23. FM / OCR の親スイッチは子トグルと同じことを二重に言っていた(2026-09-15)
+
+**何が起きていたか**: 実行プロファイルに親スイッチ `fm` / `ocr` があり、拡張では親チェックボックスを
+入れたときだけ配下の個別トグルが見える形だった。§21・§22 で triage と heal が FM から抜けた結果、
+`fm` の配下は `falsePositiveCheck` と `screenLooksLike` の2つ、`ocr` の配下は `ocrFalsePositiveCheck`
+の1つだけになった。**親を切ることは子を全部切ることと同じ意味**で、状態が2か所にあった
+(親 OFF・子 ON のプロファイルは「子は ON に見えるが効かない」)。
+
+**決めたこと**(ユーザー決定): 親スイッチをキーごと撤去した。FM を呼ぶかは
+`FMConfig.enabled = falsePositiveCheck || screenLooksLike` で導く(両方 false なら実行バイナリへ
+`--no-fm`。以前の `fm: false` と同じ挙動)。`ocrFalsePositiveCheck` は単独で効く。run.json の
+`fmSettings` は4欄になった(古い記録の `fm`/`ocr` は読み込み時に無視されるだけ)。
+
+**残ったプロファイルの扱い**: 旧テンプレートは `fm`/`ocr` を必ず書いていたので、残ったキーは
+汎用の unknown-key 警告で走り、拡張で保存し直すと消える(`updateRunProfileInObject`。triage と同じ)。
+撤去の時点でこの Mac 上の `fm`/`ocr` は全部 `true`(= 消しても挙動は変わらない)で、受け手パッケージの
+プロファイルもキーを消して移行した。**`false` の読み替えは置いていない** —— 未公開のため互換を持たない
+方針。`fm: false` が残っていれば FM が有効に戻るが、警告がキーを名指しする。
+
+**戻すなら**: 親を戻す理由は「子が3つ以上に増え、まとめて切る需要が実測で出た」ときだけ。
+そのときも親と子の状態を2か所に持たない形(子の合成で親を導く)を先に検討する。
+
+**同日の改名**(ユーザー決定): 利用者向けの名前を「テキストの視覚検証」に統一したのに合わせ、キー
+`falsePositiveCheck` / `ocrFalsePositiveCheck` を `textVisualCheck` / `ocrTextVisualCheck` に改名した
+(`--set`・run.json の `fmSettings`・拡張の欄・実行バイナリの `--no-text-visual-check` とも)。
+**run.json だけは旧キーも読む**(記録は受け手の資産で、読めないと run.json 全体が読めなくなる)。
+プロファイルは読み替えない(未公開)—— この Mac 上のプロファイルは TestProjects・受け手パッケージとも移行済み。

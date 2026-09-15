@@ -10,7 +10,7 @@
    ラベルもプレースホルダも無い要素は控えません(型だけでは要素を特定できないため)。複数の要素に
    一致したときも使いません。
 
-自己修復は現在、ロケータの指紋照合だけです。FM(Foundation Models)は呼びません。
+自己修復はロケータの指紋照合だけです。FM(Foundation Models)は呼びません。
 
 ## 有効にする
 
@@ -18,9 +18,9 @@
   `fleetest run` は既定 OFF です。`fleetest run --profile <name> --set heal=<true|false>` で、
   プロファイルを書き換えずに1回の実行だけどちらの既定も上書きできます(`--set` については
   [running_scenarios_ja.md](./running_scenarios_ja.md)参照)。
-- 実行プロファイル自体では、`heal`(既定 `true`)は `fm` から独立した単独のトグルです
-  ([run_profile_ja.md](../project/run_profile_ja.md)参照)。`fm` は FM を使う機能
-  (occlusion-guard の誤検知チェックと `screenLooksLike`)だけを制御し、自己修復には影響しません。
+- 実行プロファイル自体では、`heal`(既定 `true`)は FM・OCR 系のトグル
+  (`textVisualCheck`・`screenLooksLike`・`ocrTextVisualCheck`)から独立した単独のトグルです
+  ([run_profile_ja.md](../project/run_profile_ja.md)参照)。
 - VSCode 拡張では、設定 `fleetest.heal` が Test Explorer の「実行」「デバッグ」の呼び出しに
   `--set heal=true` を付与します(「実行 (dry-run)」には付与されません。dry-run はデバイスに
   触れないため)。`fleetest.heal` が `false`(既定)で `fleetest.profile` を使っている場合は、

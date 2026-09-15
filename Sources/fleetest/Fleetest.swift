@@ -928,7 +928,7 @@ struct RunScenarios: AsyncParsableCommand {
     @Option(name: .customLong("set"),
             help: ArgumentHelp("Override one field of the run profile document for this run only "
                 + "(repeatable): <key>=<value>, where <key> is exactly the run profile JSON key and "
-                + "<value> matches that key's type (e.g. --set falsePositiveCheck=false "
+                + "<value> matches that key's type (e.g. --set textVisualCheck=false "
                 + "--set reportDir=/tmp/out). Keys that need a run profile's device list/supply "
                 + "pipeline (iosInappEngine, updateWebView, wipeDataOnBloat, recoverCpuFallbackToGpu, "
                 + "app, machine, locale, wipeDataThresholdGB) need --profile. The run profile keys "
@@ -1371,11 +1371,10 @@ struct RunScenarios: AsyncParsableCommand {
                 recorder.finish(total: items.count, passed: 0, failed: items.count,
                                 performanceMode: performanceMode,
                                 fmSettings: FMSettingsRecord(
-                                    fm: noProfileSettings.fm.enabled, heal: noProfileSettings.heal,
-                                    falsePositiveCheck: noProfileSettings.fm.falsePositiveCheck,
+                                    heal: noProfileSettings.heal,
+                                    textVisualCheck: noProfileSettings.fm.textVisualCheck,
                                     screenLooksLike: noProfileSettings.fm.screenLooksLike,
-                                    ocr: noProfileSettings.ocr,
-                                    ocrFalsePositiveCheck: noProfileSettings.ocrFalsePositiveCheck),
+                                    ocrTextVisualCheck: noProfileSettings.ocrTextVisualCheck),
                                 setOverrides: profileOverrides.mapValues(\.token),
                                 abortReason: error.localizedDescription)
                 throw error
@@ -1462,10 +1461,10 @@ struct RunScenarios: AsyncParsableCommand {
         // 供給段の例外(AndroidDriver 初期化等)は run.json を完了させずに投げていた。
         // fmSettings は下の finish 呼び出しと同じ noProfileSettings 由来の値なので先に計算する
         let noProfileFMSettings = FMSettingsRecord(
-            fm: noProfileSettings.fm.enabled, heal: noProfileSettings.heal,
-            falsePositiveCheck: noProfileSettings.fm.falsePositiveCheck,
+            heal: noProfileSettings.heal,
+            textVisualCheck: noProfileSettings.fm.textVisualCheck,
             screenLooksLike: noProfileSettings.fm.screenLooksLike,
-            ocr: noProfileSettings.ocr, ocrFalsePositiveCheck: noProfileSettings.ocrFalsePositiveCheck)
+            ocrTextVisualCheck: noProfileSettings.ocrTextVisualCheck)
         let failedCount: Int
         let interrupted: Bool
         do {

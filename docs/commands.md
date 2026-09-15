@@ -15,7 +15,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | 引数 | 意味 |
 |---|---|
 | `timeout: 秒` | ロケータ解決の再試行上限。**小数可**(`timeout: 1.2`)。**操作系の省略時は約 0.7 秒**、**`select` と検証系の省略時は 5 秒**(実行プロファイルの `defaultTimeout` で変更可。これも小数可)。`0` = 初回スナップショットのみ(出るか不定な要素を `ifCanSelect` で見るときの空振り短縮に) |
-| `requireVisible: false` | 可視性確認を省く。**`exist` は見えていないと失敗へ反転し、`select` は空要素を返す**(意味が違う)。既定 true。確認が実際に走るのは実行プロファイルの `falsePositiveCheck`(**既定 true**。2026-09-03 にオプトインをやめた)が有効な run。確認は2段: **①幾何(FM 不要・決定的)** — 木に居ても**収まる軸の中心が画面外**なら不可視(iOS の木は画面外の要素も frame ごと残すので、通り過ぎた要素への `exist` がこれで止まる。`scroll:` 探索の「見つかった」判定と同じ述語)/ **②視覚照合** — 端末の OCR(Vision)が期待テキストを丸ごと読めれば通り、読めなければ FM が**描かれている文字を転写**し、期待テキストと突き合わせる(FM に期待テキストは渡さない。覆い・空白・別の文字はここで赤になる)。FM が判定を返さなかったステップ(実呼び出しの失敗・ブレーカ開)は①だけで通り、結果 JSON の `notes` に **`visibility-guard-skipped`** が残る(「検証したつもりで検証していない緑」を run 横断で拾える。macOS 26 / `fm:false` の静的に無効な構成では出ない)。**`launchApp` / `restartApp` の直後だけ猶予がある** —— 画面がまだ launch storyboard(全画素同一の未描画フレーム)なら、この待ち時間を**もう一度だけ**払って待ち直し `first-frame-pending` を残す(スプラッシュのあるアプリで起動直後の `exist` が赤くならないため)。それでも一様色のままなら赤にして `first-frame-timeout` を添える |
+| `requireVisible: false` | 可視性確認を省く。**`exist` は見えていないと失敗へ反転し、`select` は空要素を返す**(意味が違う)。既定 true。確認が実際に走るのは実行プロファイルの `textVisualCheck`(**既定 true**。2026-09-03 にオプトインをやめた)が有効な run。確認は2段: **①幾何(FM 不要・決定的)** — 木に居ても**収まる軸の中心が画面外**なら不可視(iOS の木は画面外の要素も frame ごと残すので、通り過ぎた要素への `exist` がこれで止まる。`scroll:` 探索の「見つかった」判定と同じ述語)/ **②視覚照合** — 端末の OCR(Vision)が期待テキストを丸ごと読めれば通り、読めなければ FM が**描かれている文字を転写**し、期待テキストと突き合わせる(FM に期待テキストは渡さない。覆い・空白・別の文字はここで赤になる)。FM が判定を返さなかったステップ(実呼び出しの失敗・ブレーカ開)は①だけで通り、結果 JSON の `notes` に **`visibility-guard-skipped`** が残る(「検証したつもりで検証していない緑」を run 横断で拾える。macOS 26 / `textVisualCheck:false` の静的に無効な構成では出ない)。**`launchApp` / `restartApp` の直後だけ猶予がある** —— 画面がまだ launch storyboard(全画素同一の未描画フレーム)なら、この待ち時間を**もう一度だけ**払って待ち直し `first-frame-pending` を残す(スプラッシュのあるアプリで起動直後の `exist` が赤くならないため)。それでも一様色のままなら赤にして `first-frame-timeout` を添える |
 | `scroll: .down` / `maxSwipes:` | 実行前に**その方向へスクロールしながら要素を探す**(後述「スクロール」)。省略時は現在画面のみ |
 
 - **要素が見つからなければ失敗**(シナリオ中断)。**唯一の例外は `select`** で、掴めなければ
@@ -323,7 +323,7 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 
 | コマンド | 説明 |
 |---|---|
-| `exist(sel, timeout:requireVisible:scroll:maxSwipes:)` | 存在検証。偽陽性検証を有効にした run(実行プロファイル `falsePositiveCheck: true`)では**実際に見えていること**も確認する(幾何 → FM の2段。§共通の引数 `requireVisible`)。戻り値にチェーン可(後述) |
+| `exist(sel, timeout:requireVisible:scroll:maxSwipes:)` | 存在検証。テキストの視覚検証を有効にした run(実行プロファイル `textVisualCheck: true`)では**実際に見えていること**も確認する(幾何 → FM の2段。§共通の引数 `requireVisible`)。戻り値にチェーン可(後述) |
 | `waitForDisplay(sel, waitSeconds: 15)` | 要素が表示されるまで待つ(**スクロールしない**)。戻り値は `FTElement`(`exist` と同様チェーン可)。見つからなければ失敗しシナリオ中断。**判定は `exist` と同じ可視性込み**(コマンド名 displayed の意味に沿わせている)で、**`exist` の `requireVisible: false` に当たる逃げ道は無い** — 覆われ検出を外したいなら `exist(sel, requireVisible: false, timeout: 15)` を使う |
 | `waitForClose(sel, waitSeconds: 15)` | 要素が消えるまで待つ(**スクロールしない**)。`sel` は省略不可(Shirates の直前セレクタ再利用の省略形は無い。`lastElement` はあるが、待ち対象がソース上で読めなくなるため引数は必須のまま) |
 | `notExist(sel, timeout:scroll:maxSwipes:)` | **消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じた確認に。`scroll:` 指定時は**その方向へスクロールしながら探し、見つかった時点で不在検証を失敗させる**(`exist(scroll:)` の裏返し。見つからなければ従来どおり現在のビューポートでの消滅待ちに進む) |
@@ -331,12 +331,12 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 | `enabledIsTrue()` / `enabledIsFalse()` | 有効/無効の検証(タイムアウトまで状態変化を待つ)。**対象は直前に掴んだ要素**(`select("#btn").enabledIsTrue()`) |
 | `checkIsON()` / `checkIsOFF()` | チェック状態の検証。**対象は直前に掴んだ要素**。iOS はアプリの実装により checked が取れないことがある(取れないままだと run 終了時に警告が出る)。**Android は `isChecked` と `isSelected` の両方を見る**(2026-08-07) — タブや選択行は `isChecked` を立てず `isSelected` だけで選択状態を出すため、以前はこの種の要素で永久に通らなかった |
 | `keyboardIsShown(timeout:)` / `keyboardIsNotShown(timeout:)` | ソフトキーボードの表示/非表示の検証。開閉はアニメーションを伴うためタイムアウトまでポーリングする。**「非表示」を確定できるのは iOS in-app と Android だけ** — iOS の xcuitest エンジンは「キーボードを見た/不明」しか言えないため、`keyboardIsNotShown` は失敗する(キーボードが見えていれば「keyboard is still shown」、見ていなければ「cannot determine the keyboard state」。不明を非表示と読んで嘘の成功にしない設計) |
-| `screenLooksLike("画面の説明文")` | FM による**見た目の**画面検証(スクリーンショットと説明文の照合)。実行プロファイルで `fm:false` / `screenLooksLike:false` の場合はスキップ(素通り) |
+| `screenLooksLike("画面の説明文")` | FM による**見た目の**画面検証(スクリーンショットと説明文の照合)。実行プロファイルで `screenLooksLike:false` の場合はスキップ(素通り) |
 | `appIs(id, waitSeconds: 15)` | フォアグラウンドのアプリが `id`(iOS=bundle ID / Android=package 名)と一致することの検証。**ニックネーム機構は無く ID を直接書く**(Shirates 準拠だが引数の意味だけ異なる)。`waitSeconds` までポーリング。**Android は失敗時に actual の package 名をメッセージへ含める**(iOS は前面 bundle ID を取得する手段が無いため含まれない) |
 
-> `screenLooksLike` と偽陽性検証の FM 段(`requireVisible` / `falsePositiveCheck`)は FM に画像を渡すため
+> `screenLooksLike` とテキストの視覚検証の FM 段(`requireVisible` / `textVisualCheck`)は FM に画像を渡すため
 > **macOS 27+ が必要**。macOS 26 では自動でスキップ/素通りになる(現在の可否は `fleetest doctor`)。
-> 偽陽性検証の**幾何の段(中心が画面外の一致を可視と呼ばない)は FM 無しでも効く**。
+> テキストの視覚検証の**幾何の段(中心が画面外の一致を可視と呼ばない)は FM 無しでも効く**。
 
 > **`screenLooksLike` は厳密な合否ゲートに使わないこと**(2026-09-03 実測)。判定は
 > ①**文言に強く依存し、言語では決まらない**(同じ入力画面で日本語3案が 0/3・英語案が 3/3、
@@ -469,7 +469,7 @@ lastElement.textIs("1,500")           // 掴んだ値は古い → 取り直し�
   掴んでいない状態で暗黙形を書くと空要素 + 警告になり、検証は落ちます
 - **`checkIsON` / `checkIsOFF` は対象外**です（「checked を実際に観測したか」の追跡が
   デバイス経路にあり、飛ばすと *状態を持たない要素を指している* 誤用警告が出なくなるため）
-- **可視性照合が走る run（実行プロファイルの `falsePositiveCheck: true`）では対象外**です
+- **可視性照合が走る run（実行プロファイルの `textVisualCheck: true`）では対象外**です
   （見えているかは掴んだ値から言えないので、覆われ検出が静かに消えないようデバイスを見ます）
 - **注意**: 掴んでから時間が空くほど「古い値のまま通る」向きの誤りが増えます。とくに
   `lastElement` は掴んだ場所から離れるほど危険です（`textIs` は *期待どおりになるまで待つ* 検証なので、

@@ -633,13 +633,13 @@
 - **FM によるロケータ自己修復(FM ヒール)とヒールキャッシュは置かない**(ユーザー決定 2026-09-15)。採用門
   (自己申告 confidence == "high")が実測で1度も開かず(日英 272 件で high 0 件・E2E の witness は全 run で却下)、
   confidence は正誤と相関しない(正解に low・誤答に medium/high)ので門の置き場が無い。典型的なドリフト(id だけ
-  変わりラベル不変)は指紋照合が決定的に拾う。**`heal` は指紋照合だけのスイッチで、FM を使わないので `fm` の配下に
-  置かない**(ユーザー決定)。`FMHealRemovedTests` が Sources への再混入を落とす。
+  変わりラベル不変)は指紋照合が決定的に拾う。**`heal` は指紋照合だけのスイッチで、FM を使わないので FM の
+  トグルと独立**(ユーザー決定)。`FMHealRemovedTests` が Sources への再混入を落とす。
   **戻すなら §21 の測り方で誤りの率を測ってから** → maintainer-notes §22
 - **occlusion-guard の OCR 段(`FTCore.RegionText`)は「素通りの根拠」にしかしない** —— 期待テキストが
   **丸ごと**読めた回だけ FM を省く(既定 on。**利用者の口は実行プロファイルの
-  `ocrFalsePositiveCheck`**(親スイッチ `ocr` の配下。拡張のプロファイルタブ
-  「FM(Foundation Model)/OCR」)。保守者の口は `FT_OCCLUSION_OCR=0` の
+  `ocrTextVisualCheck`**(拡張のプロファイルタブ
+  「Advanced Features(Experimental)」)。保守者の口は `FT_OCCLUSION_OCR=0` の
   殺しスイッチと `measure` のコーパス採取で、**プロファイルの false が環境変数に勝つ**)。**読めなかったことを反転の根拠にしない** —— 日本語モデルを載せた版では実測で
   29% が可視なテキストの1文字誤読(`swipe=down`→`swipe=aown`)で、反転に使うと誤った赤になる。
   反転の判定は必ず FM。**一致は語境界つきの完全含有**(素の部分一致だと `exist("OK")` が
@@ -706,7 +706,7 @@
   直った行の鍵が刈られ、次の run で赤に戻る)・**触れた0件の run では刈らない**・
   **接頭辞で自分のシナリオのぶんだけ**(部分実行で他を巻き込まない)。
   **`heal=false` は指紋照合(= 自己修復)を止める**(門は `StepExecutor.execute` の入口1箇所)。
-  **`fm=false` では止めない**(FM を使わないので配下に置かない。ユーザー決定 2026-09-15)。
+  **FM のトグル(`textVisualCheck` / `screenLooksLike`)では止めない**(FM を使わないので。ユーザー決定 2026-09-15)。
   **緑の run では1度も実行されない**ので、自己修復を触ったらデバイスの陽性対照
   `Scripts/heal-verify.sh`(v1 で採取 → v2 で2周 → `heal=false` で赤。1台に固定)を回す
 - **セレクタ文法(`FTSelector`)・コマンド索引(`CommandIndex`)・コード生成(`ScenarioCodeGen`)は
@@ -736,7 +736,7 @@
   「セッション消失」と読んで activate を撃つ。「セッションはあるが今は無理」は **422** を使う
   (`BridgeRouterStatusContractTests` が 409/503/501 の本数を数えて守る)。in-app ブリッジは逆に
   409 を一時的競合へ広く使ってよい(あちらは包まれない)
-- **実行時設定は継ぎ目で解かない**。`fm` / `heal` / `occlusionOCR` / `containerInference` / timeouts は
+- **実行時設定は継ぎ目で解かない**。`fm`(`FMConfig`)/ `heal` / `occlusionOCR` / `containerInference` / timeouts は
   `FTCore.ScenarioExecutionSettings` 1つに束ね、`runSequential`/`runParallel` → `RunOrchestrator` →
   `ScenarioRunner.runOne` → `ScenarioHost.run` をそのまま通す。**既定値はこの型の init 1箇所だけ**
   —— 層ごとに引数へ解くと、その層の既定が**渡し忘れを合法にする**(コンパイルでも実行でも
@@ -745,8 +745,12 @@
   `ScenarioExecutionSettingsTests` の `Mirror` 走査が落とす。
   **走査テストは型の効かない継ぎ目にだけ置く**(`OCRToggleWiringTests` に残すのは子プロセス境界の
   3本。型で守れる区間の走査は、リファクタのたびに走査だけが落ちる)。
-  **`occlusionOCR` は親スイッチ `ocr` ではない** —— プロファイルの `ocrFalsePositiveCheck`
-  (親を掛けた後の実効値)なので、**OCR の用途が増えてもこの Bool を再利用せず欄を足す**
+  **`occlusionOCR` は OCR 全体のスイッチではない** —— プロファイルの `ocrTextVisualCheck`
+  (視覚検証の OCR 段だけ)なので、**OCR の用途が増えてもこの Bool を再利用せず欄を足す**。
+  **FM / OCR の親スイッチ(`fm` / `ocr`)は置かない**(ユーザー決定 2026-09-15。キーも
+  チェックボックスも無い)—— FM を呼ぶかは `FMConfig.enabled = textVisualCheck || screenLooksLike`
+  で導く(両方 false なら実行バイナリへ `--no-fm`)。親と子で同じ状態を2か所に持っていた
+  → maintainer-notes §23
 
 ### 個別の規律
 
@@ -1000,8 +1004,9 @@
 幾何の原理的限界は「取りこぼし」)/ **誤った緑・誤った赤**(判定そのものの誤り)/
 **誤反転**(occlusion-guard が可視な要素を反転)。**`偽陽性`・`偽陰性` は書かない**
 (`VocabularyPolarityTests` がソース走査で落とす)。**陽性対照**は1語の固有名詞として残す
-(単独の「陽性」は書かない)。**例外は `falsePositiveCheck` の名前だけ** —— 受け手のプロファイル
-JSON の鍵なので改名せず、ラベルとしての「偽陽性検証/偽陽性チェック」も据え置く(意味は
-「誤った緑の検査」)。**走査は受け手向けの面(docs/user-docs/・拡張の i18n 文字列)も含む** ——
+(単独の「陽性」は書かない)。**例外は置かない** —— occlusion guard の利用者向けの名前は
+**「テキストの視覚検証」**(英語 "text visual verification")、キーは **`textVisualCheck` /
+`ocrTextVisualCheck`**(ユーザー決定 2026-09-15。拡張のチェックボックス・キー・CLI フラグ
+`--no-text-visual-check`・docs・コメントとも。OCR 段は「OCR を使ったテキストの視覚検証」)。**走査は受け手向けの面(docs/user-docs/・拡張の i18n 文字列)も含む** ——
 どちらも対の英語があるので、直すときは ja/en を同時に直す。**対象外は TestProjects/(ユーザー資産)と
 reports/(.gitignore 済み。Apple へ提出済みの資料)だけ** → maintainer-notes §11

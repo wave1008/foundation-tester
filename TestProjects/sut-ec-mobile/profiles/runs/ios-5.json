@@ -23,8 +23,7 @@
       "name": "iPhone 17 Pro(iOS 27.0)-05"
     }
   ],
-  "falsePositiveCheck": false,
-  "fm": true,
+  "textVisualCheck": false,
   "heal": false,
   "iosInappEngine": true,
   "record": true,

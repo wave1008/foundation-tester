@@ -15,15 +15,15 @@ enum ProfileRunner {
     /// ワーカー復帰待ちの上限。監視側の再起動やデバイス自己回復を待つ
     private static let REVIVE_TIMEOUT: TimeInterval = 90
 
-    /// 実行プロファイルの実効 FM 設定を、`ResolvedProfile.fm`/`ocr`/`ocrFalsePositiveCheck` から
+    /// 実行プロファイルの実効 FM 設定を、`ResolvedProfile.fm`/`ocrTextVisualCheck` から
     /// そのまま写す(**上書きは `--set` が `ProfileResolver.resolve(overrides:)` で当て済み**なので、
     /// ここで CLI 由来の override を二重に適用しない)
     static func fmSettingsRecord(resolved: ResolvedProfile) -> FMSettingsRecord {
         FMSettingsRecord(
-            fm: resolved.fm.enabled, heal: resolved.heal,
-            falsePositiveCheck: resolved.fm.falsePositiveCheck,
+            heal: resolved.heal,
+            textVisualCheck: resolved.fm.textVisualCheck,
             screenLooksLike: resolved.fm.screenLooksLike,
-            ocr: resolved.ocr, ocrFalsePositiveCheck: resolved.ocrFalsePositiveCheck)
+            ocrTextVisualCheck: resolved.ocrTextVisualCheck)
     }
 
     /// この run が使おうとしている台の run-lease(`.fleetest/run-<key>.lease`)に、
@@ -203,7 +203,7 @@ enum ProfileRunner {
                 "\(scope) matched no device in run profile \(profileName)"
                 + " (available: \(resolvedAll.devices.map(\.name).joined(separator: ", ")))")
         }
-        // **filteringDevices/limitingDevices/broadcast は fm/ocr に触れない**ので、devices を
+        // **filteringDevices/limitingDevices/broadcast は FM 設定に触れない**ので、devices を
         // 絞る前のこの時点で計算して 0 件早期リターン・本編の両方で使う
         let fm = full.fm
         let fmSettings = Self.fmSettingsRecord(resolved: full)
@@ -652,7 +652,7 @@ enum ProfileRunner {
         // 視覚系(occlusion-guard / screenLooksLike)を使う run だけが vision の死に影響を受ける。
         // **使わない run では台帳を引く前に返る** —— refresh は台帳が古いと FM を実際に呼ぶ
         // (0.7〜4.7 秒・FMLock を取る)ので、結果を捨てる run で払わない
-        let usesVision = fm.falsePositiveCheck || fm.screenLooksLike
+        let usesVision = fm.textVisualCheck || fm.screenLooksLike
         guard fm.enabled, usesVision else { return }
         guard FMVisionSupport.isSupported else {
             log("⚠️ \(FMVisionSupport.requirement): occlusion-guard and screenLooksLike are disabled for this run")

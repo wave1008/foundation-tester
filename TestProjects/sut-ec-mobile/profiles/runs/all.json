@@ -116,8 +116,7 @@
     }
   ],
   "containerInference": true,
-  "falsePositiveCheck": false,
-  "fm": true,
+  "textVisualCheck": false,
   "heal": false,
   "homeOnStart": true,
   "iosInappEngine": true,
@@ -127,7 +126,6 @@
   "wipeDataOnBloat": true,
   "screenLooksLike": true,
   "iosPreActionWarmup": true,
-  "ocr": true,
-  "ocrFalsePositiveCheck": true,
+  "ocrTextVisualCheck": true,
   "playProtectBypass": true
 }

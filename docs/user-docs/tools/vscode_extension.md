@@ -95,7 +95,7 @@ flaky scenarios, device/worker breakdowns, a daily trend, slow scenarios, and ot
 ## Self-Healing Review
 
 Setting `fleetest.heal` to `true` adds `--set heal=true` to Run (not Run (dry-run)) and Debug, enabling
-locator self-healing. If the run reports fix suggestions, a confirmation panel opens
+selector self-healing (fingerprint matching). If the run reports fix suggestions, a confirmation panel opens
 automatically afterward: each candidate shows the file/line, the old and new selector (the new
 one is editable), an optional description, and a live diff preview. Approving applies the change
 directly to the scenario source; a candidate whose target line no longer matches the recorded old

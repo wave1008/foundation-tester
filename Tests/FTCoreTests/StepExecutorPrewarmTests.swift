@@ -18,7 +18,7 @@ final class StepExecutorPrewarmTests: XCTestCase {
                        "ガードが効く executor で暖機を始めていない")
     }
 
-    /// マスタースイッチ(実行プロファイルの falsePositiveCheck)が off の run では撃たない
+    /// マスタースイッチ(実行プロファイルの textVisualCheck)が off の run では撃たない
     func testDoesNotPrewarmWhenTheMasterSwitchIsOff() {
         let before = RegionText.prewarmRequestCount
         _ = StepExecutor(driver: SilentDriver(), occlusionGuard: true,

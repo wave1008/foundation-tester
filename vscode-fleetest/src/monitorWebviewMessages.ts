@@ -1045,13 +1045,11 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
             typeof ref.name === "string" &&
             (ref.machine === undefined || typeof ref.machine === "string"),
         ) &&
-        typeof value.fields.fm === "boolean" &&
         typeof value.fields.heal === "boolean" &&
-        typeof value.fields.falsePositiveCheck === "boolean" &&
+        typeof value.fields.textVisualCheck === "boolean" &&
         typeof value.fields.screenLooksLike === "boolean" &&
         typeof value.fields.containerInference === "boolean" &&
-        typeof value.fields.ocr === "boolean" &&
-        typeof value.fields.ocrFalsePositiveCheck === "boolean" &&
+        typeof value.fields.ocrTextVisualCheck === "boolean" &&
         typeof value.fields.iosInappEngine === "boolean" &&
         typeof value.fields.iosFastInput === "boolean" &&
         typeof value.fields.iosPreActionWarmup === "boolean" &&

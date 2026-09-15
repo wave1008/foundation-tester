@@ -27,8 +27,7 @@
       "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02"
     }
   ],
-  "falsePositiveCheck": false,
-  "fm": true,
+  "textVisualCheck": false,
   "heal": false,
   "iosInappEngine": true,
   "record": true,

@@ -254,7 +254,7 @@ production の FM 呼び出しは全て `FMGate.enter()` → `FMLock.acquire()` 
 M1Max 10コア/16コア ANE が 3.51 で、コア数比にも ANE 比にも対応しない)。
 新世代で膝が動いた疑いが出たら、同じ掃引をやり直してこの表を更新すること。
 
-**枠数は掃引だけでは決まらない**。実 run(E2E-CMP・local 8レーン・`falsePositiveCheck` ON)で
+**枠数は掃引だけでは決まらない**。実 run(E2E-CMP・local 8レーン・`textVisualCheck` ON)で
 **「ゲート待ち + FM 実働」= レーンが FM で止まった総時間**を測る:
 
 | 枠 | ゲート待ち | FM 実働 | 和 | 壁時計 |
@@ -287,7 +287,7 @@ M1Max 10コア/16コア ANE が 3.51 で、コア数比にも ANE 比にも対�
 iOS レーン稼働846秒の6.4%。`occlusionInkThreshold` と `OcclusionEligibility` の足切りがよく
 効いており、「アサーション毎に発火」は起きない。FM は失敗シナリオと長時間シナリオに偏る。
 
-- 偽陽性検証(occlusion-guard)は 2026-07-28 から**実行プロファイル既定 OFF**
+- テキストの視覚検証(occlusion-guard)は 2026-07-28 から**実行プロファイル既定 OFF**
   だったが、**2026-09-03 に既定 ON へ変更**(ユーザー決定)。発火が増えて律速になったら:
   `occlusionInkThreshold` を上げる(per-step の逃げ道は `requireVisible: false`)
 - **失敗シナリオを直すと FM コストも自動的に減る**(発生源が偏っているため)
@@ -345,7 +345,7 @@ screenLooksLike 51 回 / heal 34 回)。**occlusion 一択**。
   `OcclusionVerifier.cropRect` と同じ規則(適応余白 min(24, 辺/3))で切り出し、
   期待テキスト = そのラベルとして撃つ(台本は scratchpad の `fm-positive-check.swift`)
 - **実 run での確認(M1Max・E2E-CMP `スクロールで折り返し下の要素に到達できること`・
-  `falsePositiveCheck: true`・交互に撃つ)**。殺しスイッチで同じ機械・同じシナリオを A/B した:
+  `textVisualCheck: true`・交互に撃つ)**。殺しスイッチで同じ機械・同じシナリオを A/B した:
 
   | | 1呼び出しあたり(中央値) | run ごとの FM 総時間(中央値) | 対の差 |
   |---|---|---|---|

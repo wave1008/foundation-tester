@@ -88,24 +88,19 @@ export const panelsStrings = {
   // panels.common.{app,machine}Profile を再利用するので、語を変えるときは片方だけ直さない
   "panels.runProfile.machineLabel": { ja: "参照する{link}", en: "{link} to reference" },
   "panels.runProfile.appLabel": { ja: "参照する{link}", en: "{link} to reference" },
-  "panels.runProfile.healSectionTitle": { ja: "自己修復", en: "Self-healing" },
-  "panels.runProfile.healLabel": { ja: "自己修復(heal)を有効にする", en: "Enable self-heal" },
-  "panels.runProfile.fmSectionTitle": { ja: "FM(Foundation Model)/OCR", en: "FM (Foundation Model) / OCR" },
-  "panels.runProfile.fmLabel": { ja: "FMの機能を使用する", en: "Use FM features" },
-  // 鍵 `falsePositiveCheck` を指すラベルなので「偽陽性検証」は据え置き(CLAUDE.md §用語)。
-  // 何をするのかが名前から読めないので、括弧で平たく言い添える
-  "panels.runProfile.falsePositiveCheckLabel": {
-    ja: "visionを使用したテキストの偽陽性検証を有効にする(macOS 27+)",
-    en: "Enable vision-based false-positive verification for text (macOS 27+)",
+  "panels.runProfile.healLabel": { ja: "セレクタの自己修復を有効にする(指紋照合方式)", en: "Enable selector self-healing (fingerprint matching)" },
+  "panels.runProfile.advancedSectionTitle": { ja: "Advanced Features(Experimental)", en: "Advanced Features (Experimental)" },
+  "panels.runProfile.textVisualCheckLabel": {
+    ja: "FMを使用したテキストの視覚検証を有効にする(macOS 27+)",
+    en: "Enable FM-based visual verification for text (macOS 27+)",
   },
   "panels.runProfile.screenLooksLikeLabel": {
-    ja: "visionを使用したscreenLooksLikeを有効にする(macOS 27+)",
-    en: "Enable vision-based screenLooksLike (macOS 27+)",
+    ja: "FMを使用したscreenLooksLikeを有効にする(macOS 27+)",
+    en: "Enable FM-based screenLooksLike (macOS 27+)",
   },
-  "panels.runProfile.ocrLabel": { ja: "OCRの機能を使用する", en: "Use OCR features" },
-  "panels.runProfile.ocrFalsePositiveCheckLabel": {
-    ja: "OCRを使用したテキストの偽陽性検証を有効にする",
-    en: "Enable OCR-based false-positive verification for text",
+  "panels.runProfile.ocrTextVisualCheckLabel": {
+    ja: "OCRを使用したテキストの視覚検証を有効にする",
+    en: "Enable OCR-based visual verification for text",
   },
   "panels.runProfile.iosSectionTitle": { ja: "iOS", en: "iOS" },
   "panels.runProfile.inappEngineLabel": {

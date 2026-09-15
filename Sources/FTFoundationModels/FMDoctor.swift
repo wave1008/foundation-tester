@@ -76,7 +76,7 @@ public enum FMDoctor {
             ? Report(available: true, detail: "FM visual verification (image input): available")
             : Report(available: false,
                      detail: "FM visual verification (image input): unavailable (\(FMVisionSupport.requirement))"
-                         + ". occlusion-guard (false-positive check) and screenLooksLike are disabled"
+                         + ". occlusion-guard (text visual verification) and screenLooksLike are disabled"
                          + " (scenario drafting and naming keep working — they are text-only)")
     }
 

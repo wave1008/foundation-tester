@@ -579,7 +579,7 @@ public enum ProjectScaffold {
           "machine": "\(machine)",
           "app": "\(app)",
           "devices": [],
-          "falsePositiveCheck": true,
+          "textVisualCheck": true,
           "heal": true
         }
         """

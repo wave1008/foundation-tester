@@ -42,7 +42,7 @@ present, and what only fleetest has.
 | `pressHome` | `home()` | works on both OS |
 | `irregularHandler { }` (lambda registration) | `irregularHandler(sel, dismiss:, maxDismissals:)` | declared by selector rather than by registering a lambda; auto-dismisses an in-app modal whenever it appears |
 | `goPreviousApp` | `appSwitcher()` | opens the app switcher only; it doesn't select the previous app for you |
-| `displayedIs` | `requireVisible:` argument + a run profile's `falsePositiveCheck` | visibility checking is a parameter on the relevant command rather than its own assertion |
+| `displayedIs` | `requireVisible:` argument + a run profile's `textVisualCheck` | visibility checking is a parameter on the relevant command rather than its own assertion |
 
 ## Not present — write it this way instead
 

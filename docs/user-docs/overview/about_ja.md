@@ -29,7 +29,7 @@ Fleetest は iOS / Android アプリの E2E テストツールです。macOS 上
 速く、安定していて、CI 向きです。
 
 **AI を使うのは限定された機能だけです。** `screenLooksLike` による画面の視覚検証と、
-occlusion-guard の誤検知チェック。これらはすべて Apple の
+occlusion-guard によるテキストの視覚検証。これらはすべて Apple の
 オンデバイスモデル(Foundation Models)で動くので、アプリの画面情報が Mac の外に出ることは
 ありません。**Apple のクラウド(Private Cloud Compute)は使いません**
 ([必要環境](environments_ja.md))。壊れたセレクタの自己修復(ロケータの指紋照合)は決定的で、

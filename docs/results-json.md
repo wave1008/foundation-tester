@@ -210,7 +210,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | guardSkipped | Int? | `guarded` のうち、FM が判定を返せず(死活・ブレーカ・直列化待ち)素通りした回(`visibility-guard-skipped`)。**`guarded` が1件以上ある run では、0件でも必ず書く**(欄が無い=観測なし、0=観測したが起きなかった、を混ぜない)。`guarded` が省略された run では同じく省略 |
 | guardStaleFrame | Int? | `guarded` のうち、絵が古いまま撮り直しても stale で素通りした回(`stale-screenshot`)。`guardSkipped` と同じ 0/nil の規律 |
 | runGroup | String? | **同じ実行から分かれた run を束ねる鍵**。デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run(別 runID・別 machine・リモートは向こうの時計)になるので、`profile` と開始時刻では同じ実行かどうか決められない。ファンアウトの親が1回だけ発行し、手元の子にもリモートの子にも同じ値が入る。**単機の run と 2026-08-26 より前の記録では欠落**(束ねる相手が居ない) |
-| fmSettings | FMSettingsRecord? | **その run で実際に効いていた FM 設定**(プロファイルの値そのものではなく、`--set heal=…`/`--set falsePositiveCheck=…` 等の CLI 上書きを反映した後の実効値)。下記の6フィールドを常に持つ。**欄が無い = この版より前の記録**であって、FM が無効だった意味ではない(fmDead 等と同じく「無い」と「false」を混ぜない) |
+| fmSettings | FMSettingsRecord? | **その run で実際に効いていた FM 設定**(プロファイルの値そのものではなく、`--set heal=…`/`--set textVisualCheck=…` 等の CLI 上書きを反映した後の実効値)。下記の4フィールドを常に持つ。**欄が無い = この版より前の記録**であって、FM が無効だった意味ではない(fmDead 等と同じく「無い」と「false」を混ぜない) |
 | setOverrides | [String: String]? | **この run に効いた `--set <key>=<value>` の上書き**(キーは実行プロファイル JSON のキーそのもの、値は型を問わず文字列化したもの。例 `{"scenarioTimeout": "3", "iosInappEngine": "false"}`)。上書きが無い run では省略(空辞書ではなく無し)。**打ち切り run(`--set scenarioTimeout=…` で短くした run 等)を insights/flaky の集計から機械的に外すための欄** —— この欄が無い記録では、`--set` で打ち切った run と通常の失敗が見分けられない(この版より前の記録は全て欄が無い) |
 | interrupted | Bool? | **この run が SIGINT/SIGTERM(拡張の「テストを中断」・端末の Ctrl-C・`kill <pid>` 等)を受けたか**。true の run は途中で打ち切られており、残っていたシナリオは `"the run was interrupted (SIGINT/SIGTERM) before this scenario started"` という理由で failed に数えられる。false は書かない(既存レコードと同じ形)。**始まらなかったシナリオは `skipKind: "interrupted"` で記録され、`results insights` と flaky の判定からは外れる**(中断のたびに回帰の疑いを並べない)。2026-09-11 より前の記録には無い(それより前は中断で finishedAt 自体が欠落していた) |
 | abortReason | String? | **供給段(ワーカー構築・レーン検査等)の例外で run 全体が始まる前に終わったときの理由**(英語、人間可読)。この欄がある run は `total` 分すべて未実行(`passed:0`)。正常終了・`interrupted` の run では省略。**この欄が無いと理由はログにしか残らず、`results insights` の「クラッシュか強制終了」に紛れる**。2026-09-11 より前の記録には無い |
@@ -218,16 +218,17 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 
 ### fmSettings(`FMSettingsRecord`)
 
-**6つのフィールドは常に明示的に書く**(true/false のどちらも省略しない)。`ocr`/`ocrFalsePositiveCheck` は `FMConfig` の外(実行プロファイルの独立した兄弟キー)だが、記録上はここへまとめてある。`heal` も同様 —— FM を使わず `fm` 配下でもないが、記録上はここにまとめてある。
+**4つのフィールドは常に明示的に書く**(true/false のどちらも省略しない)。**旧キー
+`falsePositiveCheck` / `ocrFalsePositiveCheck`(2026-09-15 以前の記録)も読める**(書くのは新キーだけ)。`ocrTextVisualCheck` は `FMConfig` の外(実行プロファイルの独立したキー)だが、記録上はここへまとめてある。`heal` も同様 —— FM を使わないが、記録上はここにまとめてある。
 
 | フィールド | 型 | 意味 |
 |---|---|---|
-| fm | Bool | FM 機能全体の親スイッチの実効値 |
-| heal | Bool | ロケータ自己修復(指紋照合)の実効値。FM は使わず `fm` の配下でもない(`fm=false` でも false にはならない) |
-| falsePositiveCheck | Bool | occlusion-guard(偽陽性検証)の実効値 |
+| heal | Bool | ロケータ自己修復(指紋照合)の実効値。FM は使わない(他のトグルとは独立) |
+| textVisualCheck | Bool | occlusion-guard(テキストの視覚検証)の実効値 |
 | screenLooksLike | Bool | `screenLooksLike` の実効値 |
-| ocr | Bool | OCR 機能全体の親スイッチの実効値 |
-| ocrFalsePositiveCheck | Bool | OCR を使ったテキストの偽陽性検証の実効値(`ocr` を掛けた後の値) |
+| ocrTextVisualCheck | Bool | OCR を使ったテキストの視覚検証の値(プロファイル + `--set` を反映した値)。`textVisualCheck` が false の run では guard 自体が走らないので、true でも OCR は使われていない |
+
+FM を呼ぶ構成だったかは `textVisualCheck || screenLooksLike` で判定する(両方 false の run では FM を一切呼ばない)。
 
 ### host-metrics.ndjson の FM/OCR 欄
 
