@@ -1430,11 +1430,22 @@ appPath の絶対パス(リポジトリルート基準)がランナー機に存�
 **設計は「原本 → ステージング(apps/) → (必要なら)ミラー → リモートのインストール」の一本道**。
 appPath の相対パスは**常にリポジトリルート基準で解決する**(= アプリの原本の場所。ワークスペースの
 既定/明示のどちらでも基準を変えない)。**ワークスペースは常に有効**(§既定と配置)—— 実行時に
-appPath の原本をワークスペースの `apps/<原本のファイル名>` へコピー(ステージング)し、
+appPath の原本をワークスペースの `apps/<名前空間>/<原本のファイル名>` へコピー(ステージング)し、
 **インストールに使うパスだけ**をそちらへ切り替える。手元でもリモートでも同じ規則(「無ければ原本を
 見る」のような存在チェックによる分岐は無い)。以前の版は宣言時に appPath の相対パス解決の基準
 そのものをワークスペースへ切り替えていたが、原本の置き場所とインストールに使う場所を混同していた
 (利用者はプロファイルの `appPath` をワークスペース配下の構造に合わせて書き直す必要があった)。
+
+**名前空間(`<名前空間>`)はプロファイル JSON に書かれた宣言文字列(declared。resolvePath で
+絶対化する前)から SHA-256 の先頭12桁で決定的に導く**(`WorkspaceAppStaging.installPath`)。
+基準を basename だけにすると、同じプロジェクトの別アプリプロファイルが同名の別ビルドを指す
+場合(例: `dist/ios-simulator/X.app` と `dist/ios-device/X.app` を別々のアプリプロファイルで
+appPath に書く)、並走する2つの run が同じ `apps/X.app` を交互に上書きし合う
+(実測: 実機の run がシミュレータ build を install して 0xe8008014 で落ちた)。名前空間の元に
+**絶対パス(source/sourcePath)を使わない** —— repoRoot がローカルとリモートの子で異なるため、
+同じ宣言でもホストごとに違う名前空間になり、リモートの子が自分で resolve() し直したときに
+手元がステージしたファイルを見失う。declared はプロジェクトの JSON ファイル自体を通じて
+両ホストへ同じ文字列で届くので、ここから導けば常に一致する。
 
 ### 既定と配置
 
@@ -1463,15 +1474,19 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   同期相手: `vscode-fleetest/schemas/run-profile.schema.json` と拡張のプロファイルフォーム
 - **`ResolvedAppTarget` は原本とインストール先を別々に持つ**(`Sources/FTCore/RunProfile.swift`):
   `sourcePath` = リポジトリルート基準で解決した原本の絶対パス(常に不変)/
-  `appPath` = インストールに実際に使う絶対パス(常に `"<workspaceRoot>/apps/<sourcePath の
-  ファイル名>"`。既定/明示を問わない)。既存の呼び出し側(`InstallPathResolver`・
-  `ProfileWorkerFactory`・`installApp()` の RPC フォールバック等)は従来どおり `appPath` だけを
-  見ればよい ―― ステージングが済んでいれば自動的に正しい場所を指す
-- **インストール先の規則は1箇所**: `WorkspaceAppStaging.installPath(source:workspaceRoot:)`
+  `appPath` = インストールに実際に使う絶対パス(常に `"<workspaceRoot>/apps/[physical/]<declared
+  のハッシュ12桁>/<declared のファイル名>"`。既定/明示を問わない)。既存の呼び出し側
+  (`InstallPathResolver`・`ProfileWorkerFactory`・`installApp()` の RPC フォールバック等)は
+  従来どおり `appPath` だけを見ればよい ―― ステージングが済んでいれば自動的に正しい場所を指す
+- **インストール先の規則は1箇所**: `WorkspaceAppStaging.installPath(declared:workspaceRoot:physical:)`
   (`Sources/FTCore/WorkspaceAppStaging.swift`)。`ProfileResolver.resolve`(`ResolvedAppTarget.appPath`
-  の計算)と `RemoteRunDispatcher`(ミラー直前のステージング先)の両方がここを呼ぶ。
-  絶対パスの appPath でも**常に**この規則で apps/ 配下へ切り替わる(相対/絶対で分岐しない ――
-  分岐すると「絶対パスで書いたプロファイルだけリモートで見つからない」という同種の不具合が残る)
+  の計算。`section.appPath`/`section.appPathPhysical` の生文字列をそのまま渡す)と
+  `RemoteRunDispatcher`(ミラー直前のステージング先。`ProfileResolver.declaredAppPaths` が返す
+  `DeclaredAppPathEntry.declared` を渡す)の両方がここを呼ぶ。**`declared` には必ず宣言の生文字列
+  (resolvePath で絶対化する前)を渡す** —— 絶対パスを渡すと repoRoot の違いでローカル/リモートの
+  名前空間がずれる(上記)。絶対パスの appPath でも**常に**この規則で apps/ 配下へ切り替わる
+  (相対/絶対で分岐しない —— 分岐すると「絶対パスで書いたプロファイルだけリモートで
+  見つからない」という同種の不具合が残る)
 - **ステージング**(`WorkspaceAppStaging.stageApp(source:dest:)`): 原本をインストール先へ
   実際にコピーする I/O。**冪等・差分のみ** —— フィンガープリント(バイト数+自分自身の更新日時。
   中身は読まない)が一致すればコピーを飛ばす。115MB の .app 全体を毎回ハッシュすると
@@ -1496,7 +1511,8 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   `ApiRunCommand`(自分自身の `resolved.apps` を `WorkspaceAppStaging.stageWorkspaceApps` で揃える)、
   および `RemoteRunDispatcher.prepareWorkspace`(project の rsync 直前、ローカル側の
   ワークスペースへ揃える。マシン/デバイス解決を経由しない軽量読み `ProfileResolver.
-  declaredAppPaths` で原本パスだけ取得する)。同じコードパスがリモートの子(ssh 越しに
+  declaredAppPaths` で原本パス(`source`)と宣言の生文字列(`declared`)の両方を取得する ——
+  installPath の名前空間には必ず `declared` を渡す)。同じコードパスがリモートの子(ssh 越しに
   実行される `fleetest run`/`api run` 自身)でも走るが、そちらは原本を持たないため
   上記の「dest があれば無視」で無害化される
 - **ミラー(プロジェクト外を指したときだけ)**: `--runner` ディスパッチ時、`TestProjects/<project>/`

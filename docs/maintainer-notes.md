@@ -817,3 +817,34 @@ en ロケールの端末が「単」を中国語フォントで描くと、補�
 後段のプロファイルがコンパイルエラーで落ちる(Flutter / RN の xcuitest 段が走らなかった)。
 「E2E 中に `swift build` を打たない」は**編集も含む**。
 
+## 20. 同じ Mac で実機とシミュレータの run を並走させたら、実機の緑が別の台で成立していた(2026-09-15)
+
+3 時間の負荷テスト(3 機フリートの仮想 26 台 + 実機 SE3 / Pixel 4a / Pixel 3a を並走)で拾った同居の事故。
+台帳は memory `load-test-20260915-ledger`(F1〜F27)。
+
+- **ポートの奪取**(F8): シミュレータ供給の `scanRunningBridges` は /status に 2 秒で答えないブリッジを
+  「無い」と見る。ステップ実行中の XCUITest ランナー(実機 SE3)は答えないので、その port が採番に
+  出て、`PortHolder.stopIfOwnedBridge` が実機の iproxy を「自分の残骸」として kill した。
+  → 採番は生きた `iproxy-<port>.pid` を除外し、iproxy を止めるのは台帳 `.device` の UDID が
+  供給中の台と一致するときだけ(`PortHolder.classifyIproxy`)。
+- **別デバイスで緑**(F8b): 奪った port にシミュレータの in-app ブリッジ(同じ bundle ID)が立ち、
+  実機レーンのクライアントはそのまま撃ち続け、1 シナリオがシミュレータ上で PASS した。露呈したのは
+  システム UI 探りへの 409 だけ。→ シナリオ実行プロセスの事前確認とホスト側の再プローブの両方が
+  `BridgeIdentityCheck`(udid / engine)を通し、別の台なら `BridgeProbeOutcome.hijacked` = 接続不能扱い。
+  **bundle ID が同じなら見分けられない**ので、同一性は /status の申告で確かめる。
+- **ステージ先の衝突**(F6): 同じプロジェクトの別アプリプロファイルが同名 .app を
+  `workspace/apps/<basename>` へ上書きし合い、実機の run がシミュレータ build を install した(0xe8008014)。
+  → ステージ先は宣言文字列(declared)の SHA-256 で名前空間を分ける。絶対パスから導かない
+  (repoRoot がローカルとリモートで違う)。
+- **install 失敗の握りつぶし**(F5): `(try? await installIfNeeded(...)) ?? workers` は全員失敗の throw を
+  飲んで失敗前の一覧に戻し、「dropped out」と言った直後に同じ台が古いアプリで走った。
+  → `try?` で戻さない(走査テスト `InstallIfNeededTryOptionalSourceScanTests`)。
+- **ガードの 1 フレーム誤反転**(F22): FM の直列化待ち + 推論(6.2 秒)がアサーションの timeout(5 秒)を
+  超え、1 枚目の古い描画で反転が確定した(木は更新済み・失敗時の絵は正しい)。→ 1 回目のガード評価が
+  締切を跨いだときだけ 1 度延長して撮り直す(`guard-retaken`)。**FM が死んでいる機械では出ない**
+  (素通りになる)ので、FM が生きている機械ほど出る型。
+- **無応答ランナーを「起動途中」と見て 180 秒待つ**(F24): 直前の run で健全だった長寿ランナーが
+  /status 無応答になると起動予算を満額待った。→ pid ファイルが startupTimeout より古ければ
+  起動予算ではなくウェッジ確定の刻み(`BridgeLivenessBudget.logSilenceSeconds`)で待つ。
+  即座に建て直さないのは、ログが伸び続けている正当な冷えた起動を殺さないため。
+

@@ -759,6 +759,19 @@
   (`profileOnlyKeys`)—— 「配線が無いだけ」のキーをここへ入れない(実際 `record` 系と
   `homeOnStart` は配線するだけで profile-less でも動いた)。**指定したのに黙って効かない形を
   作らない** = 効かせられないなら名指しでエラーにする。経緯は maintainer-notes §16
+- **同じ Mac で実機とシミュレータの run が同居する前提でポートを扱う**(2026-09-15 の負荷テスト。
+  経緯は maintainer-notes §20): ①採番は `.pid` に加えて**生きた `iproxy-<port>.pid`** を除外する
+  ②`PortHolder.stopIfOwnedBridge` が iproxy を止めるのは台帳 `.device` の UDID が供給中の台と
+  一致するときだけ(`ownerUDID:` を必ず渡す。渡さなければ `.foreign`)③**接続先の同一性は
+  `FTCore.BridgeIdentityCheck` で確かめる**(シナリオ実行プロセスの事前確認と、ホストの
+  `bridgeUnreachable` 再プローブ = `BridgeProbeOutcome.hijacked` の 2 箇所。bundle ID が同じ別の台は
+  /status の udid / engine でしか見分けられない)④ワークスペースのステージ先は
+  `WorkspaceAppStaging.installPath(declared:)` = 宣言文字列の名前空間(絶対パスから導かない)
+- **iOS 供給の `installIfNeeded` を `try?` で戻さない**(全員失敗の throw を飲むと失敗前の一覧に
+  戻り、古いアプリのまま走る。`InstallIfNeededTryOptionalSourceScanTests`)
+- **occlusion-guard の反転は、1 回目のガード評価が締切を跨いだ回だけ 1 度延長して撮り直す**
+  (`guard-retaken`。FM 待ちはアプリの応答ではないので待ち予算から引かない。同じ絵は
+  `VisibilityVerdictMemo` が同じ verdict を返すので、テストでは撮り直しごとに違う絵を渡す)
 - **PCC(Private Cloud Compute)は完全に禁止**(ユーザー決定 2026-09-07)。FM で使ってよいのは
   **オンデバイスの `SystemLanguageModel` だけ** —— `PrivateCloudComputeLanguageModel` を使うと
   アプリの画面情報が Mac の外へ出る。受け手向けドキュメント(docs/user-docs/overview/

@@ -199,7 +199,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | workerAnomalies | [WorkerAnomalyRecord]? | ワーカー異常の構造化記録(下記)。**機械的な除外はここを見る** |
 | degradedWorkers | [String]? | 劣化・離脱したワーカー(「label: 理由」)。表示用 |
 | freezeRetries | [String]? | 結果取り消し+振り直しの監査記録。表示用 |
-| blankRepairs / blankExclusions | [String]? | run 前の blank 判定で修復した / 除外したワーカー |
+| blankRepairs / blankExclusions | [String]? | run 前の blank/凍結判定で修復した / 除外したワーカー(Android の修復と iOS のシミュレータ再起動の両方。`BlankWorkerTriage.Result.repaired`) |
 | measurementInvalid | Bool? | `--performance` の run でレーン数が変わり所要時間が計測に使えない |
 | measurementInvalidReasons | [String]? | 同上の理由(英語) |
 | performanceMode | Bool? | `--performance` の run だけ true(false は書かない)。有効な計測 run = これが true かつ measurementInvalid が無い run。2026-09-01 より前の記録には無い |
