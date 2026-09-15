@@ -172,6 +172,7 @@ fleetest run --project <プロジェクト> --profile <実行プロファイル>
 | `git revision mismatch` | 手元とランナー機の版が違う | 手元をコミット&push してから `fleetest remote setup <宛先>` を流し直す(align が合わせる)。**手元の未コミットの変更は届かない** |
 | `toolchain mismatch` | Xcode / macOS の版が違う | **`remote setup` では直らない**(Xcode の導入は GUI と sudo が要る)。🧑 に両機を同じ版へ揃えてもらう。どちらを動かすかは人の判断 —— 片方を更新した時点で**全ディスパッチが止まる**ので、フリートでは1台だけ更新して検証してから残りへ広げる |
 | `is sitting at the login window` | ランナー機がログイン画面 | 🧑 に解錠+ログインを依頼(画面共有で可) |
+| `Cannot code-sign the bridge runner for a physical device` / `the login keychain is locked in this session` | 実機 iPhone をランナー機で使うとき、ssh セッションのログインキーチェーンがロックされている(空パスワードの自動 unlock が効かない) | 🧑 に依頼: ランナー機のログインキーチェーンのパスワードをログインパスワードと揃えて自動ロックを切る(`security set-keychain-settings`)か、実機の run は GUI セッションから起こす。シミュレータだけなら無関係 |
 | `Couldn't fetch updates from remote repositories` / `Recv failure: Operation timed out` | 回線が細く SPM の依存取得が落ちた | **再実行する**(取得済みは残るので数回で通る)。ランナー機で `cd ~/fleetest-runner/users/<issuerId>/work && swift package resolve` を先に通しても良い |
 
 これ以外は docs/remote-runner-setup.md の「うまくいかないとき」を読む。

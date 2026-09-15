@@ -140,6 +140,8 @@ fleetest remote setup mac2 --project <プロジェクト名>
   この間は配信を畳んだまま観測だけ続く
 
 **実機をランナー機に繋ぐ場合**、端末と手元の経路は無関係(ランナー機の LAN の話)。
+**iPhone を繋ぐなら、ランナー機のログインキーチェーンが ssh セッションで使えること**も前提になる
+(XCUITest ランナーの codesign が要る。詳細は「うまくいかないとき」の `the login keychain is locked` の行)。
 USB なら何も要らない。LAN 経由の iPhone は**端末が listen し Mac が繋ぎに行く**ので Mac 側の
 ファイアウォール設定は不要だが、**ランナー機と端末が同じサブネットに居ること**と、
 **AP のクライアント隔離(プライバシーセパレータ)が切ってあること**が要る。
@@ -683,6 +685,7 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | `another dispatch is already running on this remote host` | 別のディスパッチ(他の人・別ターミナル)が実行中、または自分のディスパッチが死んでロックが残った | 待つ(`--wait-lock <秒>`)。保持者が自分で死んでいるなら `fleetest remote unlock --runner <ランナー>`。他の人のもので確認できたときだけ `--force-lock` |
 | `toolchain mismatch` | Xcode / macOS が違う | 両機を同じ版に |
 | `fleetest binary not found on remote` | ビルドされていない | ランナー機で `swift build --product fleetest` |
+| `Cannot code-sign the bridge runner for a physical device on this Mac` / `the login keychain is locked in this session` | **実機 iOS をランナー機で回すとき**。ssh セッションはログインキーチェーンがロックされたまま始まるので、XCUITest ランナーの codesign が署名鍵を使えない。fleetest は空パスワードでの unlock を試みるが、キーチェーンにパスワードがあると効かない | ランナー機のログインキーチェーンをその ssh セッションで使える状態にする: 最も簡単なのは**ランナー機のログインパスワードとログインキーチェーンのパスワードを揃え、`security set-keychain-settings`(引数なし)で自動ロックを切る**こと。それが許されない運用なら、実機 iOS の run はランナー機の GUI セッション(画面共有)から起こす。シミュレータだけのランナーには無関係(署名しない) |
 | `unknown package` | クローンのディレクトリ名を変えた | `~/fleetest-runner/foundation-tester` に戻す |
 | `no running emulator for AVD …` | Android のエミュレータが未起動 | ステップ6 の `devices up` |
 | `no runner workspace at …`(exit 91) | あなたの issuerId の作業場所がまだ無い(未 setup / issuerId が変わった) | `fleetest remote setup <ランナー>` を1回。issuerId は明示設定にする(「複数人でフリートを共有する」) |

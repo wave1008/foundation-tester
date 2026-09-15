@@ -214,6 +214,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | setOverrides | [String: String]? | **この run に効いた `--set <key>=<value>` の上書き**(キーは実行プロファイル JSON のキーそのもの、値は型を問わず文字列化したもの。例 `{"scenarioTimeout": "3", "iosInappEngine": "false"}`)。上書きが無い run では省略(空辞書ではなく無し)。**打ち切り run(`--set scenarioTimeout=…` で短くした run 等)を insights/flaky の集計から機械的に外すための欄** —— この欄が無い記録では、`--set` で打ち切った run と通常の失敗が見分けられない(この版より前の記録は全て欄が無い) |
 | interrupted | Bool? | **この run が SIGINT/SIGTERM(拡張の「テストを中断」・端末の Ctrl-C・`kill <pid>` 等)を受けたか**。true の run は途中で打ち切られており、残っていたシナリオは `"the run was interrupted (SIGINT/SIGTERM) before this scenario started"` という理由で failed に数えられる。false は書かない(既存レコードと同じ形)。**始まらなかったシナリオは `skipKind: "interrupted"` で記録され、`results insights` と flaky の判定からは外れる**(中断のたびに回帰の疑いを並べない)。2026-09-11 より前の記録には無い(それより前は中断で finishedAt 自体が欠落していた) |
 | abortReason | String? | **供給段(ワーカー構築・レーン検査等)の例外で run 全体が始まる前に終わったときの理由**(英語、人間可読)。この欄がある run は `total` 分すべて未実行(`passed:0`)。正常終了・`interrupted` の run では省略。**この欄が無いと理由はログにしか残らず、`results insights` の「クラッシュか強制終了」に紛れる**。2026-09-11 より前の記録には無い |
+| slowWorkers | [String]? | **台そのものが遅いことの観測**(`FTCore.SlowWorkerDetector`。`worker: median snapshot <N>ms over <M> samples (other lanes <K>ms)` の1行×台)。ワーカーごとの in-app snapshot 所要(`scenarios/*.json` の `timeline[].snapshotMs`)の中央値が、標本8件以上かつ**同じ run の他ワーカー全体の中央値の10倍以上・かつ絶対値1,000ms以上**のときだけ載る(相対だけだとホスト負荷で全台が遅い run を1台のせいにし、絶対だけだと元から遅い環境で毎回鳴るため、両方を要求する)。**警告のみで除外・自動修復はしない** —— 既存の劣化検知(XCUITestランナーの遅いa11y照会での建て直し・凍結トリアージ)は原理的にこの帯(ステップtimeout未満の遅さ)を見ないので、これが唯一の痕跡になる。**他ワーカーが1台も無い(単機の)runでは常に省略**(相対比較ができない)。CLI/`api run` はこの配列が1件でもあれば末尾に `⚠️ slow lane: …` を追加で出す(既存の劣化警告とは別行) |
 
 ### fmSettings(`FMSettingsRecord`)
 
@@ -400,6 +401,13 @@ snapshot/action/wait のどれにも計上されない時間だった実測。
   頼らない)+ 入力の指紋(**`results/` 側**。走査する run ごとに `run.json` と `scenarios/` ディレクトリの
   stat 2回。記録の追加・削除・finish の上書き・rsync 回収はどれもエントリの作成/rename/削除なので
   必ず動く)。**捕まえないのは rename 無しの in-place 書き換えだけ**(記録の規律の外)。
+  **進行中の run は存在だけを鍵に入れる**(`scenarios/` の mtime が `run.json` より新しい run =
+  finish() の上書きがまだ無い run。中身の stat を鍵に入れると、何かが走っている間はシナリオが
+  終わるたびに鍵が変わり一度も命中しない —— 3,687 run のプロジェクトで毎回 15 秒払っていた)。
+  だから**進行中 run の途中経過はキャッシュに反映されない**: その run の scenarios はキャッシュが
+  作られた時点までのぶんだけ含まれ、完了(run.json の上書き)で鍵が変わってまとめて反映される。
+  rsync で回収した run は転送順で「進行中」に見えることがあるが、回収後に中身は変わらないので
+  鍵に入れないのと同義で害は無い。
   **シナリオソースの指紋が要る理由(C1)**: `insights` の `retiredScenarios` は結果 DB ではなく
   **ソース**(`definedScenarioClasses(of:)` → `classFileMap` の走査)で「今もあるシナリオか」を
   決めるので、上の「入力の指紋」(results/ の走査)だけではシナリオの削除・改名を検知できず、
