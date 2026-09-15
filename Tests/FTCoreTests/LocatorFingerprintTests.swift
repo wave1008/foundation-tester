@@ -50,14 +50,30 @@ final class LocatorFingerprintTests: XCTestCase {
         XCTAssertEqual(fp.resolve(in: [target, differentType])?.ref, 1)
     }
 
-    /// label が nil の指紋は、label も nil の要素とだけ一致し得る(nil==nil を「一致」として扱う。
-    /// 一意性ゲートがあるので複数あれば結局不採用になる)
-    func testNilLabelFingerprintMatchesOnlyNilLabelElement() {
+    /// **型だけの指紋(label も placeholder も無い・空白だけ)は、一意に一致する要素があっても
+    /// 解決しない**。`nil == nil` で一致させると、ラベル無しのアイコンボタンが消えた回帰で
+    /// 画面に残った別のラベル無しボタンを叩いて緑にする。「常に解決する」変異はここで落ちる
+    func testTypeOnlyFingerprintDoesNotResolveEvenWhenUnique() {
         let noLabel = element(1, type: "cell", label: nil)
         let withLabel = element(2, type: "cell", label: "何か")
-        let fp = LocatorFingerprint(type: "cell", label: nil, placeholder: nil)
+        for fp in [LocatorFingerprint(type: "cell", label: nil, placeholder: nil),
+                   LocatorFingerprint(type: "cell", label: "", placeholder: nil),
+                   LocatorFingerprint(type: "cell", label: " \n", placeholder: "  ")] {
+            XCTAssertFalse(fp.isIdentifying, "\(fp)")
+            XCTAssertNil(fp.resolve(in: [noLabel, withLabel]),
+                         "型だけの指紋で要素を名指ししてはいけない: \(fp)")
+        }
+    }
 
-        XCTAssertEqual(fp.resolve(in: [noLabel, withLabel])?.ref, 1)
+    /// label が無くても placeholder があれば名指しになる(入力欄の典型)。
+    /// 「決して解決しない」側の変異(isIdentifying を常に false)はここで落ちる
+    func testPlaceholderOnlyFingerprintResolves() {
+        let field = element(1, type: "textField", label: nil, placeholder: "検索")
+        let other = element(2, type: "textField", label: nil, placeholder: "メール")
+        let fp = LocatorFingerprint(type: "textField", label: nil, placeholder: "検索")
+
+        XCTAssertTrue(fp.isIdentifying)
+        XCTAssertEqual(fp.resolve(in: [field, other])?.ref, 1)
     }
 
     /// placeholder は**非 nil のときだけ**照合に加える。指紋が placeholder を持たなければ

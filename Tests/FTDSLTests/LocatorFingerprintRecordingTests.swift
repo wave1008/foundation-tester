@@ -235,10 +235,11 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
         // healCache は空の別ファイルにする(cache 層を経由させず指紋層だけを踏ませるため)
         let run2HealCacheURL = tempURL("fp-no-healcache-run2-heal")
         var run2Events: [ScenarioEvent] = []
+        // healingEnabled=true(heal=false は指紋照合も止める)。delegate nil = FM ヒールは通らない
         let core2 = FTDriveCore(
             driver: DriftedScreenDriver(), platform: "ios", app: "com.example.app",
             scenarioID: "Fingerprint.S0040", scenarioTitle: "t",
-            delegate: nil, healingEnabled: false, dryRun: false,
+            delegate: nil, healingEnabled: true, dryRun: false,
             healCacheURL: run2HealCacheURL,
             fingerprintCacheURL: fingerprintURL,
             emit: { run2Events.append($0) })
@@ -409,5 +410,81 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
         let entries = readEntries(fingerprintURL)
         XCTAssertEqual(entries.count, 1, "実配線でも触れなかった鍵は刈られるはず")
         XCTAssertEqual(entries.values.first?.label, "P")
+    }
+
+    /// 固定の要素だけを返すドライバ(下の3周テスト用)
+    private final class FixedElementsDriver: AppDriver {
+        let elements: [ElementInfo]
+        init(_ elements: [ElementInfo]) { self.elements = elements }
+        func status() async throws -> StatusResponse {
+            StatusResponse(ready: true, device: "stub", osVersion: "-", sessionBundleID: nil)
+        }
+        func install(packagePath: String) async throws {}
+        func uninstall(bundleID: String) async throws {}
+        func isAppForeground(bundleID: String) async throws -> Bool { false }
+        func foregroundAppID() async throws -> String? { nil }
+        func launch(bundleID: String) async throws {}
+        func snapshot() async throws -> SnapshotResponse {
+            SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                             elements: elements, truncatedCount: 0)
+        }
+        func tap(ref: Int) async throws {}
+        func tap(x: Double, y: Double) async throws {}
+        func type(ref: Int?, text: String) async throws {}
+        func swipe(_ direction: FTSwipeDirection) async throws {}
+        func press(ref: Int, duration: Double) async throws {}
+        func screenshot() async throws -> Data { Data() }
+        func terminate() async throws {}
+    }
+
+    private func button(_ ref: Int, id: String, label: String) -> ElementInfo {
+        ElementInfo(ref: ref, type: "button", identifier: id, label: label, value: nil, placeholder: nil,
+                    enabled: true, frame: FTRect(x: 0, y: Double(ref) * 60, width: 100, height: 40), depth: 0)
+    }
+
+    /// 3周とも同じソース行から呼ぶ(鍵に file:line が入るため。runTapOnIDSeed と同じ理由)
+    private func tapSeedLine() { tap("#id_seed") }
+    private func runPThenSeed() {
+        scenario { scene(1, "s") { action { tapWiringP(); tapSeedLine() } } }
+    }
+
+    /// **一部のステップだけが指紋で直ったシナリオでも、その指紋は次の run へ残る**。
+    /// 旧実装は「record された鍵 = 触れた鍵」だったので、指紋で直ったステップ(record しない)の鍵が
+    /// 同じシナリオの別ステップ(プライマリで通って record する)と並ぶと、通った run の終わりに
+    /// 刈られていた —— run2 は緑、run3 で指紋を失って赤に戻る。「lookup を触れたに数えない」変異は
+    /// run3 の healed が失敗に変わって落ちる
+    func testFingerprintHealedKeySurvivesAlongsidePrimaryStepsAcrossRuns() {
+        let fingerprintURL = tempURL("partial-heal-3runs")
+        let scenarioID = "Fingerprint.PartialHeal"
+        func run(_ elements: [ElementInfo], _ label: String) -> [ScenarioEvent] {
+            var events: [ScenarioEvent] = []
+            let core = FTDriveCore(
+                driver: FixedElementsDriver(elements), platform: "ios", app: "com.example.app",
+                scenarioID: scenarioID, scenarioTitle: "t",
+                delegate: nil, healingEnabled: true, dryRun: false,
+                healCacheURL: tempURL("partial-heal-\(label)-heal"),
+                fingerprintCacheURL: fingerprintURL,
+                emit: { events.append($0) })
+            FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+            defer { FTRuntime.tearDown() }
+            runPThenSeed()
+            XCTAssertTrue(core.finalRecord.passed, "\(label) が失敗している")
+            core.flushLocatorFingerprints()
+            return events
+        }
+
+        // run1: 両方プライマリで解決 → 指紋2件
+        _ = run([button(1, id: "btn_p", label: "P"), button(2, id: "id_seed", label: "修復対象")], "run1")
+        XCTAssertEqual(readEntries(fingerprintURL).count, 2, "前提が崩れている: run1 で2件記録できていない")
+
+        // run2 / run3: `#id_seed` だけがドリフト。`#btn_p` はプライマリで通り続ける
+        let drifted = [button(1, id: "btn_p", label: "P"), button(2, id: "id_drifted", label: "修復対象")]
+        for label in ["run2", "run3"] {
+            let events = run(drifted, label)
+            XCTAssertEqual(events.first { $0.kind == "fixSuggestion" }?.newSelector, "#id_drifted",
+                           "\(label): 指紋で直っていない(指紋の鍵が前の run の終わりに刈られた)")
+            XCTAssertEqual(readEntries(fingerprintURL).count, 2,
+                           "\(label): 指紋で直った行の鍵が刈られている")
+        }
     }
 }

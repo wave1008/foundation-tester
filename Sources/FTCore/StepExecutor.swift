@@ -378,7 +378,12 @@ public final class StepExecutor {
     /// スワイプ化し、バウンス由来の flake を持ち込む(typeDriverGestures の注意書きと同じ理由)
     var dragFallbackLatched = false
     public var delegate: ReplayDelegate?
+    /// 自己修復の3層(ヒールキャッシュ・指紋照合・FM ヒール)をまとめて許す(`execute` の入口で畳む)
     public var healingEnabled: Bool
+    /// FM ヒールの採用門(confidence == "high")を注入で開けるか(`HealConfidenceInjection`)。
+    /// **保守者の試験専用**。本番の門は実測で1度も開かない(0/272)ため、これが無いと採用より先の
+    /// 経路(ヒールキャッシュ・修正提案)をデバイスで1度も通せない
+    public var healConfidenceGateInjected = HealConfidenceInjection.isActive()
     /// 実行プロファイルの falsePositiveCheck に対応するマスタースイッチ(既定 true)。false なら
     /// occlusionGuard/perStepGuard の値に関わらず occlusion-guard 自体を無効化する
     public var occlusionGuardEnabled: Bool
@@ -616,8 +621,13 @@ public final class StepExecutor {
     /// cached: ヒールキャッシュ由来のロケータ連鎖。fingerprint: 前回このロケータが解決できた
     /// 要素の指紋(`LocatorFingerprint`)。解決順は
     /// プライマリ → フォールバック → キャッシュ → 指紋照合 → FM ヒール(アクションのみ)
-    public func execute(_ original: FlowStep, cached: [FlowLocator] = [],
-                        fingerprint: LocatorFingerprint? = nil) async -> StepOutcome {
+    public func execute(_ original: FlowStep, cached rawCached: [FlowLocator] = [],
+                        fingerprint rawFingerprint: LocatorFingerprint? = nil) async -> StepOutcome {
+        // **`heal=false` はキャッシュ・指紋・FM の3層すべてを止める**。
+        // FM だけを止めると、利用者が切ったつもりの自己修復が指紋とキャッシュで黙って続く。
+        // 入口の1箇所で落とす —— 下流の分岐ごとに見ると、層を足した日に門の掛け忘れが起きる
+        let cached = healingEnabled ? rawCached : []
+        let fingerprint = healingEnabled ? rawFingerprint : nil
         // **入口で1回だけ実効値へ畳む**(下流は `step.containerInference` だけを見る)。
         // 優先順位: 環境変数の殺しスイッチ > ステップ指定 > 実行プロファイル既定
         var step = original

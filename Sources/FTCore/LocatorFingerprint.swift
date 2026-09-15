@@ -30,9 +30,20 @@ public struct LocatorFingerprint: Codable, Equatable, Sendable {
         self.init(type: element.type, label: element.label, placeholder: element.placeholder)
     }
 
+    /// label か placeholder の少なくとも片方が空白以外の文字を持つ。**型だけの指紋は要素を名指し
+    /// していない** —— `nil == nil` で一致するので、ラベル無しのアイコンボタンが消える回帰でも、
+    /// 画面に残った別のラベル無しボタンが「ちょうど1件」になれば叩いて緑にしてしまう。記録も照合もしない
+    public var isIdentifying: Bool {
+        func hasText(_ s: String?) -> Bool {
+            !(s ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return hasText(label) || hasText(placeholder)
+    }
+
     /// 現在の木から、控えた全属性に一致する要素を探す。**ちょうど1件のときだけ**返す
-    /// (0件・複数件は nil = 不採用)
+    /// (0件・複数件は nil = 不採用。`isIdentifying` でない指紋も nil —— 古い版が書いた控えを含む)
     public func resolve(in elements: [ElementInfo]) -> ElementInfo? {
+        guard isIdentifying else { return nil }
         let matches = elements.filter {
             $0.type == type && $0.label == label
                 && (placeholder == nil || $0.placeholder == placeholder)

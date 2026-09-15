@@ -19,7 +19,7 @@ selects one.
 | `app` | string | — | Name of the `apps/<name>.json` profile to use |
 | `devices` | array | — | Device names to run on (from the resolved machine profile; iOS/Android can mix in the same list) |
 | `fm` | bool | `true` | Master switch for all FM (Foundation Models) features. FM is experimental — see [environments.md](../overview/environments.md). `false` disables self-healing, `falsePositiveCheck` and `screenLooksLike` entirely, regardless of the individual toggles below |
-| `heal` | bool | `true` | Allow FM-based locator self-healing (see [self_healing.md](../running/self_healing.md)) |
+| `heal` | bool | `true` | Allow locator self-healing — heal cache, locator fingerprint and FM; `false` turns off all three (see [self_healing.md](../running/self_healing.md)) |
 | `falsePositiveCheck` | bool | `true` | Occlusion-guard verification on `exist`/`textIs` etc. — catches a "false green" that matched in the tree but is not actually visible |
 | `screenLooksLike` | bool | `true` | Enable `screenLooksLike` (FM visual verification). When `false`, those steps are skipped rather than failing |
 | `ocr` | bool | `true` | Master switch for all OCR features. `false` disables them regardless of the individual toggles below |

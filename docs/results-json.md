@@ -223,7 +223,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | フィールド | 型 | 意味 |
 |---|---|---|
 | fm | Bool | FM 機能全体の親スイッチの実効値 |
-| heal | Bool | FM によるロケータ自己修復の実効値 |
+| heal | Bool | ロケータ自己修復(ヒールキャッシュ・指紋照合・FM の3層。false で3つとも止まる)の実効値 |
 | falsePositiveCheck | Bool | occlusion-guard(偽陽性検証)の実効値 |
 | screenLooksLike | Bool | `screenLooksLike` の実効値 |
 | ocr | Bool | OCR 機能全体の親スイッチの実効値 |
@@ -319,7 +319,7 @@ screenLooksLike がこの回数ぶん静かに素通りしたことを事後に�
 | description | String | 人間可読なステップ説明(group の前置・注記の括弧書きを含む) |
 | command | String? | DSL のコマンド名。**`description` を割って作らないこと** |
 | failureKind | String? | 上表 |
-| notes | [String]? | `StepNote` の rawValue(`interruption-dismissed` / `settle-capped` / `visibility-guard-skipped` / `system-alert-present` 等。全部の定義は `Sources/FTCore/StepNote.swift`。occlusion-guard・OCR の近道に関わる `guard-retaken` / `ocr-budget-exhausted` / `ocr-warmup-waited` / `ocr-warmup-capped` / `ocr-shortcut-not-warm` / `ocr-shortcut-busy` の読み方は下の §TimelineStepRecord(`guardMs` / `ocrMs` の段)) |
+| notes | [String]? | `StepNote` の rawValue(`interruption-dismissed` / `settle-capped` / `visibility-guard-skipped` / `system-alert-present` 等。全部の定義は `Sources/FTCore/StepNote.swift`。occlusion-guard・OCR の近道に関わる `guard-retaken` / `ocr-budget-exhausted` / `ocr-warmup-waited` / `ocr-warmup-capped` / `ocr-shortcut-not-warm` / `ocr-shortcut-busy` の読み方は下の §TimelineStepRecord(`guardMs` / `ocrMs` の段)。`heal-confidence-injected` は保守者の試験用注入口(`FT_FAKE_HEAL_CONFIDENCE_HIGH`)で FM ヒールの採用門を開けた印で、本番の run には出ない) |
 | detail | String? | 失敗理由(英語・人間可読) |
 | file / line | String? / Int? | ソース位置 |
 | durationMs | Int? | 所要 |

@@ -127,6 +127,11 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// **率を見たい注記**: 増えているなら、その画面は id のリネーム(ドリフト)が起きている
     case healFingerprintMatch = "heal-fingerprint-match"
 
+    /// FM ヒールの提案を、confidence が `high` でないのに**注入口で採用した**
+    /// (`HealConfidenceInjection` / `FT_FAKE_HEAL_CONFIDENCE_HIGH=1`)。保守者の試験専用で、
+    /// 本番の run には出ない。出ていたら注入を消し忘れている
+    case healConfidenceInjected = "heal-confidence-injected"
+
     /// このステップの途中で**宣言済みの割り込み**(`irregularHandler`)を実際に閉じた。
     /// 失敗の読み解きに要る事実 —— 割り込みは直前に送った操作を吸うことがあるので、
     /// 「閉じたステップが落ちた」と「もともと落ちるステップだった」を読み手が分けられる。
@@ -320,6 +325,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .healFingerprintMatch:
             return "self-heal matched the previously-resolved element by its type and label" +
                 " (locator fingerprint), with no FM call"
+        case .healConfidenceInjected:
+            return "self-heal adopted a proposal whose confidence was not \"high\" because"
+                + " FT_FAKE_HEAL_CONFIDENCE_HIGH=1 is set (maintainer test injection)"
         case .guardRetaken:
             return "the occlusion check itself used up this step's wait budget on the first look,"
                 + " so this waited once more and the retaken frame passed"

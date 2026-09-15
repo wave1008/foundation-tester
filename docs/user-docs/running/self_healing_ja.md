@@ -1,10 +1,22 @@
 # 自己修復
 
-自己修復が有効な状態でデバイス実行中にセレクタが解決できなくなると、シナリオをそのまま
-失敗させる代わりに、FM(Foundation Models)がその場でロケータを修復して実行を続けます。
-FM が使える状態である必要があります(`fleetest doctor` で確認できます)。
+自己修復が有効な状態でデバイス実行中にセレクタが解決できなくなると、シナリオを失敗させる前に、
+次の順で代わりの要素を探します。
+
+1. **ヒールキャッシュ** — 以前の修復で採用したセレクタ(`.fleetest/heal-cache.json`)。
+2. **ロケータの指紋** — そのセレクタが前回解決できた要素の型とラベル(入力欄はプレースホルダも)を
+   控えておき、今の画面で**ちょうど1件だけ**一致すればその要素を使います。「id だけが変わって
+   ラベルは同じ」という典型的な変化に、FM を使わずに追従します。ラベルもプレースホルダも無い要素は
+   控えません(型だけでは要素を特定できないため)。複数の要素に一致したときも使いません。
+3. **FM(Foundation Models)** — 画面の要素一覧から代わりを選ばせます。FM が使える状態である
+   必要があります(`fleetest doctor` で確認できます)。**FM の提案は、FM 自身が確信度を「high」と
+   答えたときだけ採用します。** 届かなかった提案は採用せず、FM が何を提案したかを失敗メッセージに
+   添えます(セレクタを直す手掛かりになります)。
 
 FM の機能は **experimental** です。詳細は [environments_ja.md](../overview/environments_ja.md)。
+現状の計測では FM の提案が「high」に届くことはほとんどなく、実際の修復はおもにロケータの指紋が担います。
+
+`heal` を false にすると3つとも止まります(ヒールキャッシュもロケータの指紋も使いません)。
 
 ## 有効にする
 
@@ -12,8 +24,9 @@ FM の機能は **experimental** です。詳細は [environments_ja.md](../over
   `fleetest run` は既定 OFF です。`fleetest run --profile <name> --set heal=<true|false>` で、
   プロファイルを書き換えずに1回の実行だけどちらの既定も上書きできます(`--set` については
   [running_scenarios_ja.md](./running_scenarios_ja.md)参照)。
-- 実行プロファイル自体では、`heal`(既定 `true`)は親スイッチ `fm` 配下の FM トグルの1つです
-  ([run_profile_ja.md](../project/run_profile_ja.md)参照)。
+- 実行プロファイル自体では、`heal`(既定 `true`)は親スイッチ `fm` 配下のトグルの1つです
+  ([run_profile_ja.md](../project/run_profile_ja.md)参照)。`fm` を false にしたときも、
+  自己修復は3つとも止まります。
 - VSCode 拡張では、設定 `fleetest.heal` が Test Explorer の「実行」「デバッグ」の呼び出しに
   `--set heal=true` を付与します(「実行 (dry-run)」には付与されません。dry-run はデバイスに
   触れないため)。`fleetest.heal` が `false`(既定)で `fleetest.profile` を使っている場合は、
@@ -21,10 +34,13 @@ FM の機能は **experimental** です。詳細は [environments_ja.md](../over
 
 ## 修復が起きたときの挙動
 
-- 修復されたセレクタは、ソース位置をキーとしてプロジェクトごとに
+- FM が修復したセレクタは、ソース位置をキーとしてプロジェクトごとに
   `TestProjects/<name>/.fleetest/heal-cache.json` へキャッシュされます。**2回目以降は同じ
   ステップがキャッシュから決定的に通過し**、周辺のソースが変わらない限り FM は再度呼ばれません
   (キーが変わればキャッシュは自然に無効化されます)。
+- ロケータの指紋で修復した回はヒールキャッシュへ書きません(毎回、指紋で照合し直します)。
+  指紋は `TestProjects/<name>/.fleetest/locator-fingerprints.json` に置かれ、そのステップの
+  セレクタがそのまま解決できた実行のたびに更新されます。
 - ソースを直すまでの間、シナリオレポート(`reports/scenario-*.md`)にはソース位置付きの
   修正提案が出続けます。例:
 

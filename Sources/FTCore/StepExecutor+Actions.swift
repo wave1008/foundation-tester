@@ -819,7 +819,14 @@ extension StepExecutor {
                             + Self.unresolvedHealAnswerHint(rawAnswer)),
                     driverFallback: driverFallback)
             case .proposed(let proposal):
-                if proposal.confidence == "high" {
+                // 門を注入で開けた回(HealConfidenceInjection)。注記と rationale の印を必ず残す
+                let gateInjected = proposal.confidence != "high" && healConfidenceGateInjected
+                if gateInjected {
+                    var notes: [String] = []
+                    note(.healConfidenceInjected, into: &notes)
+                    driverFallback = Self.joinNotes(driverFallback, notes.joined(separator: " / "))
+                }
+                if proposal.confidence == "high" || gateInjected {
                     // 自己修復: 新しいロケータ連鎖に置き換えたステップを返す(永続化は呼び出し側 →
                     // `fleetest api apply-heal` が利用者の .swift ソースへ直接書き込む経路がある)。
                     // **書けるセレクタは `SelectorNaming` にだけ決めさせる**(2026-08-15。旧実装
@@ -841,7 +848,13 @@ extension StepExecutor {
                         healed.fallbacks = parsed.fallbacks.isEmpty ? nil : parsed.fallbacks
                         // **indexed(位置依存)は書き込む前に必ず言う**(Durability.caution が文言を持つ)
                         // —— 兄弟の増減で別要素を指すようになるセレクタを、黙って利用者のソースへ書かない
-                        healed.note = (step.note.map { $0 + " / " } ?? "") + "self-healed: \(proposal.rationale)"
+                        // 注入で採用した回は rationale に印を残す(FTRuntime が "self-healed: " 以降を
+                        // ヒールキャッシュと修正提案へ写す = run を跨いでも注入由来だと読める)
+                        let injectedMark = gateInjected
+                            ? "[confidence \(proposal.confidence), adopted by \(HealConfidenceInjection.environmentKey)] "
+                            : ""
+                        healed.note = (step.note.map { $0 + " / " } ?? "")
+                            + "self-healed: \(injectedMark)\(proposal.rationale)"
                             + graded.durability.caution
                         healedStep = healed
                         status = .healed(parsed.primary)

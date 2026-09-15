@@ -130,8 +130,8 @@ final class LocatorFingerprintExpiryTests: XCTestCase {
         XCTAssertNotNil(entries[keyB])
     }
 
-    /// 条件2 のガード: このシナリオで1件も record() していない run(全ステップがキャッシュ/指紋/
-    /// FM ヒールで解決した)は、通っていても刈らない。このガードを外すと「1件も触れていない」を
+    /// 条件2 のガード: このシナリオの鍵に1件も触れていない(lookup も record もしていない)run は、
+    /// 通っていても刈らない。このガードを外すと「1件も触れていない」を
     /// 「全部古い」と誤読し、そのシナリオの鍵を全部消してしまう(現役の指紋を根こそぎ失う退化)。
     /// 「常に刈る」変異が入っていたら keyA・keyB が両方消えて落ちる
     func testZeroRecordedThisRunDoesNotPrune() {
@@ -148,8 +148,7 @@ final class LocatorFingerprintExpiryTests: XCTestCase {
         }
         XCTAssertEqual(readEntries(url).count, 2, "前提が崩れている")
 
-        // run2: このシナリオの鍵を1件も record() しない(全ステップが指紋/ヒールで解決した想定)。
-        // 通った run なので scenarioPassed は true
+        // run2: このシナリオの鍵に1件も触れない。通った run なので scenarioPassed は true
         do {
             let cache = LocatorFingerprintCache(url: url)
             cache.flush(scenarioID: scenarioID, scenarioPassed: true)
@@ -159,5 +158,63 @@ final class LocatorFingerprintExpiryTests: XCTestCase {
         XCTAssertEqual(entries.count, 2, "1件も記録していない run で刈ってはいけない")
         XCTAssertNotNil(entries[keyA])
         XCTAssertNotNil(entries[keyB])
+    }
+
+    /// **引かれた鍵は刈らない**(record されていなくても)。指紋で直ったステップは record しないので、
+    /// lookup を「触れた」に数えないと、同じシナリオに record するステップが1つでもあれば
+    /// 通った run の終わりに刈られ、次の run で指紋を失う。「lookup を数えない」変異は keyB が消えて落ちる
+    func testLookedUpKeyIsNotPruned() {
+        let url = tempURL("prune-lookup")
+        let scenarioID = "Fingerprint.Prune.Lookup"
+        let keyA = "\(scenarioID)|s.swift:10|#btn_a"
+        let keyB = "\(scenarioID)|s.swift:11|#btn_b"
+        let keyC = "\(scenarioID)|s.swift:12|#btn_c"
+
+        do {
+            let cache = LocatorFingerprintCache(url: url)
+            cache.record(keyA, fingerprint: fp("A"))
+            cache.record(keyB, fingerprint: fp("B"))
+            cache.record(keyC, fingerprint: fp("C"))
+            cache.flush(scenarioID: scenarioID, scenarioPassed: true)
+        }
+
+        // run2: keyA はプライマリで通って record、keyB は引いただけ(指紋で直った想定)、keyC の行は消えた
+        do {
+            let cache = LocatorFingerprintCache(url: url)
+            XCTAssertEqual(cache.lookup(keyA), fp("A"))
+            cache.record(keyA, fingerprint: fp("A"))
+            XCTAssertEqual(cache.lookup(keyB), fp("B"))
+            cache.flush(scenarioID: scenarioID, scenarioPassed: true)
+        }
+
+        let entries = readEntries(url)
+        XCTAssertNotNil(entries[keyA])
+        XCTAssertNotNil(entries[keyB], "引かれた鍵(その行は今も在る)を刈ってはいけない")
+        XCTAssertNil(entries[keyC], "引かれもしなかった鍵は従来どおり刈る")
+    }
+
+    /// **名指しになっていない指紋(型だけ)は控えず、同じ鍵の古い控えも消す**。
+    /// 要素がラベルを失ったのに古いラベルの控えを残すと、次のドリフトで別の要素へ解決し得る
+    func testNonIdentifyingRecordIsNotStoredAndDropsPreviousEntry() {
+        let url = tempURL("non-identifying")
+        let scenarioID = "Fingerprint.NonIdentifying"
+        let keyA = "\(scenarioID)|s.swift:10|#btn_a"
+        let keyB = "\(scenarioID)|s.swift:11|#btn_b"
+        let typeOnly = LocatorFingerprint(type: "button", label: nil, placeholder: nil)
+
+        do {
+            let cache = LocatorFingerprintCache(url: url)
+            cache.record(keyA, fingerprint: fp("A"))
+            cache.record(keyB, fingerprint: typeOnly)
+            cache.flush(scenarioID: scenarioID, scenarioPassed: true)
+        }
+        XCTAssertEqual(Set(readEntries(url).keys), [keyA], "型だけの指紋を控えてはいけない")
+
+        do {
+            let cache = LocatorFingerprintCache(url: url)
+            cache.record(keyA, fingerprint: typeOnly)
+            cache.flush(scenarioID: scenarioID, scenarioPassed: true)
+        }
+        XCTAssertTrue(readEntries(url).isEmpty, "ラベルを失った要素の古い控えは消えるはず")
     }
 }

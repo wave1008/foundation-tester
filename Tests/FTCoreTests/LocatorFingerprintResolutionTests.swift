@@ -138,13 +138,17 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
     /// (id 無し・ラベル無し・一意な祖先も無し)`healedStep` は立てない。だが**操作は続く**
     /// (`.passed` のまま失敗にしない)。healUnwritable も併せて立つ
     func testUnwritableFingerprintMatchDoesNotHealButStillPasses() async {
-        // id もラベルも無い単独要素(SelectorNaming が書けるセレクタを一切作れない形)
-        let snap = snapshot([element(1, type: "cell", id: nil, label: nil)])
+        // id もラベルも無く placeholder だけを持つ入力欄(指紋は名指しになるが、SelectorNaming は
+        // placeholder を候補にしないので書けるセレクタを作れない形)
+        let field = ElementInfo(ref: 1, type: "textField", identifier: nil, label: nil, value: nil,
+                                placeholder: "検索", enabled: true,
+                                frame: FTRect(x: 0, y: 0, width: 100, height: 40), depth: 0)
+        let snap = snapshot([field])
         let driver = StubDriver(snap)
         let executor = StepExecutor(driver: driver, delegate: MustNotBeCalledHealer(),
                                     healingEnabled: true, isAndroid: false)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
-        let fp = LocatorFingerprint(type: "cell", label: nil, placeholder: nil)
+        let fp = LocatorFingerprint(type: "textField", label: nil, placeholder: "検索")
 
         let outcome = await executor.execute(step, fingerprint: fp)
 
@@ -173,6 +177,48 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
                        "select は指紋照合より先に空要素で返るはず: \(outcome.notes)")
         guard case .skipped = outcome.status else {
             return XCTFail("select は従来どおり skipped のはず: \(outcome.status)")
+        }
+    }
+
+    /// **`heal=false` は指紋照合も止める**(ユーザー決定 2026-09-15)。指紋が一意に解決できる画面でも
+    /// 注記を立てず、ロケータ未解決の失敗のまま返す。対になる陽性は
+    /// `testUniqueFingerprintMatchHealsWithoutCallingFM`(同じ画面・同じ指紋で healingEnabled=true)
+    func testHealingDisabledIgnoresFingerprint() async {
+        let snap = snapshot([element(1, id: "btn_new", label: "修復対象")])
+        let executor = StepExecutor(driver: StubDriver(snap), delegate: MustNotBeCalledHealer(),
+                                    healingEnabled: false, isAndroid: false)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
+        let fp = LocatorFingerprint(type: "button", label: "修復対象", placeholder: nil)
+
+        let outcome = await executor.execute(step, fingerprint: fp)
+
+        XCTAssertFalse(outcome.notes.contains(.healFingerprintMatch), "\(outcome.notes)")
+        XCTAssertFalse(outcome.healedByFingerprint)
+        XCTAssertNil(outcome.healedStep)
+        guard case .failed = outcome.status else {
+            return XCTFail("heal=false では指紋で解決せず失敗のはず: \(outcome.status)")
+        }
+    }
+
+    /// **`heal=false` はヒールキャッシュも止める**。同じキャッシュが healingEnabled=true では
+    /// 解決することを先に確かめてから(陽性対照)、false で解決しないことを見る
+    func testHealingDisabledIgnoresHealCache() async {
+        let snap = snapshot([element(1, id: "btn_new", label: "修復対象")])
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
+        let cached = [FlowLocator(id: "btn_new")]
+
+        let enabled = StepExecutor(driver: StubDriver(snap), delegate: MustNotBeCalledHealer(),
+                                   healingEnabled: true, isAndroid: false)
+        let healed = await enabled.execute(step, cached: cached)
+        XCTAssertTrue(healed.healedByCache, "前提が崩れている: キャッシュが効いていない: \(healed.status)")
+
+        let disabled = StepExecutor(driver: StubDriver(snap), delegate: MustNotBeCalledHealer(),
+                                    healingEnabled: false, isAndroid: false)
+        let outcome = await disabled.execute(step, cached: cached)
+        XCTAssertFalse(outcome.healedByCache)
+        XCTAssertNil(outcome.healedStep)
+        guard case .failed = outcome.status else {
+            return XCTFail("heal=false ではキャッシュで解決せず失敗のはず: \(outcome.status)")
         }
     }
 }

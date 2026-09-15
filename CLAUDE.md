@@ -693,9 +693,15 @@
   **④ヒールキャッシュへ書かない**(毎回再導出できるので得られるのは速度だけ。一方で
   誤りが永続化して注記が消える。FM ヒールは confidence の門を通るが指紋にその門は無い)。
   **控えるのは `type` + `label` だけ** —— `id` はドリフトで変わる当のもの、`value` は毎回変わる。
+  **型だけの指紋(label も placeholder も無い)は記録も照合もしない**(`isIdentifying`)。
   **失効はシナリオ単位の置き換え**(時間の定数を使わない): 通った run で、その `scenarioID` の
-  鍵のうち触れなかったものを刈る。**記録0件の run では刈らない**(全ステップが `.healed` の回に
-  根こそぎ消える)・**接頭辞で自分のシナリオのぶんだけ**(部分実行で他を巻き込まない)
+  鍵のうち触れなかったものを刈る。**「触れた」= lookup または record**(record だけだと指紋で
+  直った行の鍵が刈られ、次の run で赤に戻る)・**触れた0件の run では刈らない**・
+  **接頭辞で自分のシナリオのぶんだけ**(部分実行で他を巻き込まない)。
+  **`heal=false`(`fm=false` を含む)はヒールキャッシュ・指紋・FM の3層すべてを止める**
+  (ユーザー決定 2026-09-15。門は `StepExecutor.execute` の入口1箇所)。
+  **FM ヒールの採用門は本番では実測で開かない**ので、門の先は注入口
+  `FT_FAKE_HEAL_CONFIDENCE_HIGH=1`(`HealConfidenceInjection`)を掛けた `Scripts/fm-verify.sh` で通す
 - **セレクタ文法(`FTSelector`)・コマンド索引(`CommandIndex`)・コード生成(`ScenarioCodeGen`)は
   FTCore に居る**(写像先の `FlowLocator` が FTCore の型で、DSL ランタイムには依存しない)。
   利用者からの見え方は `Descriptors.swift` の `@_exported import FTCore` が保っている。
