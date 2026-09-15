@@ -3,6 +3,7 @@
 // (探索順を変えるときはそちらとの整合も確認する)。
 
 import Foundation
+import FTCore
 
 public enum AndroidSDKLocator {
 
@@ -70,4 +71,77 @@ public enum AndroidSDKLocator {
 
         return nil
     }
+
+    // MARK: - avdmanager が要る Java
+
+    /// avdmanager は Java を要る。Android Studio 標準の導入ではシステムに JDK が入らず
+    /// (`/usr/libexec/java_home` が失敗)、`JAVA_HOME` を書いた `~/.zshrc` は ssh の非対話シェルでは
+    /// 読まれない —— ランナー機ではこの形で「Unable to locate a Java Runtime」になる。
+    /// そのときだけ Android Studio 同梱の Java を渡す(利用者が用意した Java を上書きしない)
+    public enum JavaForSDKTools: Equatable {
+        /// `JAVA_HOME` かシステムの Java がそのまま使える(何も渡さない)
+        case inherited
+        /// Android Studio 同梱の Java(`JAVA_HOME` に渡す Home のパス)
+        case bundled(String)
+        /// どれも無い
+        case missing
+    }
+
+    /// Android Studio の中の Java Home。新しい版は jbr、古い版は jre(さらに古い版は jre/jdk)
+    static let bundledJavaHomeSubpaths = [
+        "Contents/jbr/Contents/Home", "Contents/jre/Contents/Home", "Contents/jre/jdk/Contents/Home",
+    ]
+
+    /// 順: 有効な `JAVA_HOME` → システムの Java → Android Studio 同梱。同梱は `Android Studio.app` を
+    /// 先に、次に `Android Studio*.app`(Preview 等)を名前順で見る
+    public static func javaForSDKTools(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        hasSystemJava: () -> Bool = systemJavaAvailable,
+        applicationDirectories: [URL] = defaultApplicationDirectories,
+        listDirectory: (URL) -> [String] = { (try? FileManager.default.contentsOfDirectory(atPath: $0.path)) ?? [] },
+        isExecutable: (String) -> Bool = FileManager.default.isExecutableFile(atPath:)
+    ) -> JavaForSDKTools {
+        if let home = environment["JAVA_HOME"], !home.isEmpty, isExecutable(home + "/bin/java") {
+            return .inherited
+        }
+        if hasSystemJava() { return .inherited }
+        for directory in applicationDirectories {
+            let studios = listDirectory(directory)
+                .filter { $0.hasPrefix("Android Studio") && $0.hasSuffix(".app") }
+                .sorted { ($0 == "Android Studio.app" ? 0 : 1, $0) < ($1 == "Android Studio.app" ? 0 : 1, $1) }
+            for studio in studios {
+                for subpath in bundledJavaHomeSubpaths {
+                    let home = directory.appendingPathComponent(studio).appendingPathComponent(subpath).path
+                    if isExecutable(home + "/bin/java") { return .bundled(home) }
+                }
+            }
+        }
+        return .missing
+    }
+
+    public static var defaultApplicationDirectories: [URL] {
+        [URL(fileURLWithPath: "/Applications"),
+         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications")]
+    }
+
+    /// `/usr/libexec/java_home` は JDK が1つも無いと非0で終わる。上限 5 秒 = 手元のファイルを見るだけの
+    /// コマンドで、尽きたら「無い」扱い(同梱の Java を探しに行く)
+    public static func systemJavaAvailable() -> Bool {
+        (try? Shell.run(["/usr/libexec/java_home"], timeout: 5))?.status == 0
+    }
+
+    /// avdmanager を撃つ引数列。**avdmanager は必ずこれを通して撃つ**(素の `Shell.run([avdmanager…])` は
+    /// `AVDManagerJavaTests` のソース走査が落とす)。同梱の Java が要るときは `/usr/bin/env JAVA_HOME=…` を前置する
+    public static func avdManagerCommand(
+        _ avdmanager: URL, _ arguments: [String], java: JavaForSDKTools = javaForSDKTools()
+    ) -> [String] {
+        if case .bundled(let home) = java {
+            return ["/usr/bin/env", "JAVA_HOME=\(home)", avdmanager.path] + arguments
+        }
+        return [avdmanager.path] + arguments
+    }
+
+    /// avdmanager が Java 不在で落ちたときに添える案内(`.missing` のときだけ)
+    public static let javaMissingHint =
+        "no Java runtime was found: install Android Studio (it bundles one) or a JDK, or set JAVA_HOME"
 }

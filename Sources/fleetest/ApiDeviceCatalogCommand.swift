@@ -132,7 +132,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
 
         let result: Shell.Result
         do {
-            result = try Shell.run([avdmanagerURL.path, "list", "device"])
+            result = try Shell.run(AndroidSDKLocator.avdManagerCommand(avdmanagerURL, ["list", "device"]))
         } catch {
             return ApiAndroidCatalog(available: true, error: error.localizedDescription,
                                      errorCode: "avdmanager-failed",

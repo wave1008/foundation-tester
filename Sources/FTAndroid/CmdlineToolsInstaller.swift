@@ -257,11 +257,11 @@ public enum CmdlineToolsInstaller {
     /// 導入直後に1回だけ実際に動かす。avdmanager は java を要求するため、
     /// 「置けたが動かない」を導入成功として返さない
     private static func verifyAVDManager(at avdmanager: URL) throws {
-        let result = try Shell.run([avdmanager.path, "list", "device"])
+        let java = AndroidSDKLocator.javaForSDKTools()
+        let result = try Shell.run(AndroidSDKLocator.avdManagerCommand(avdmanager, ["list", "device"], java: java))
         guard result.status == 0 else {
-            let java = (try? Shell.run(["/usr/bin/which", "java"]))?.status == 0
             throw InstallError("cannot run avdmanager: \(result.tail)"
-                + (java ? "" : " (java is not on PATH; install a JDK)"))
+                + (java == .missing ? " (\(AndroidSDKLocator.javaMissingHint))" : ""))
         }
     }
 

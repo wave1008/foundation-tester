@@ -266,9 +266,8 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
             throw CreateDeviceError("cannot overwrite \(avdID): \(reason)")
         }
         emitLog("Deleting the existing AVD before recreating it: \(avdID)...")
-        var command = DeviceDeletion.androidCommand(avd: avdID)
-        command[0] = avdmanagerPath
-        let result = try Shell.run(command)
+        let result = try Shell.run(AndroidSDKLocator.avdManagerCommand(
+            URL(fileURLWithPath: avdmanagerPath), Array(DeviceDeletion.androidCommand(avd: avdID).dropFirst())))
         guard result.status == 0 else {
             throw CreateDeviceError("avdmanager delete avd failed: \(result.tail)")
         }
@@ -330,7 +329,8 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         let result: Shell.Result
         do {
             result = try Shell.run(
-                [avdmanagerPath, "create", "avd", "-n", avdID, "-k", package, "-d", deviceID],
+                AndroidSDKLocator.avdManagerCommand(
+                    URL(fileURLWithPath: avdmanagerPath), ["create", "avd", "-n", avdID, "-k", package, "-d", deviceID]),
                 timeout: avdManagerCreateTimeoutSeconds, stdin: Data("no\n".utf8))
         } catch let error as ShellError {
             throw CreateDeviceError(

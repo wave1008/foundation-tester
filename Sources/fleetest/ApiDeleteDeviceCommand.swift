@@ -111,9 +111,8 @@ struct ApiDeleteDeviceCommand: AsyncParsableCommand {
         }
 
         emitLog("Deleting the AVD: \(avd)...")
-        var command = DeviceDeletion.androidCommand(avd: avd)
-        command[0] = avdmanagerURL.path
-        let result = try Shell.run(command)
+        let result = try Shell.run(AndroidSDKLocator.avdManagerCommand(
+            avdmanagerURL, Array(DeviceDeletion.androidCommand(avd: avd).dropFirst())))
         guard result.status == 0 else {
             throw DeleteDeviceError("avdmanager delete avd failed: \(result.tail)")
         }
