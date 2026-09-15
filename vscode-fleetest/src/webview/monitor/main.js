@@ -57,6 +57,7 @@ import {
 import {
   applyDeviceCatalog,
   applyInstallCmdlineToolsResult,
+  applyDeviceAddProgress,
   applyCreateDeviceResult,
   applyBatchCreateStarted,
   applyBatchCreateProgress,
@@ -175,6 +176,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'installCmdlineToolsResult':
       applyInstallCmdlineToolsResult(message);
+      break;
+    case 'deviceAddProgress':
+      applyDeviceAddProgress(message);
       break;
     case 'createDeviceResult':
       applyCreateDeviceResult(message);

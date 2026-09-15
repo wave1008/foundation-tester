@@ -35,6 +35,8 @@ const dlgService = document.getElementById('dlg-service');
 const dlgOs = document.getElementById('dlg-os');
 const dlgName = document.getElementById('dlg-name');
 const dlgError = document.getElementById('dlg-error');
+const dlgProgress = document.getElementById('dlg-progress');
+const dlgProgressText = document.getElementById('dlg-progress-text');
 const dlgCancel = document.getElementById('dlg-cancel');
 const dlgOk = document.getElementById('dlg-ok');
 const dlgInstallRow = document.getElementById('dlg-install-row');
@@ -391,9 +393,28 @@ function openDeviceAddModal(platform) {
   dlgService.value = DEFAULT_ANDROID_SERVICE;
   refreshDeviceAddBadge();
   requestDeviceCatalog();
+  hideDeviceAddProgress();
   dlgOk.textContent = 'OK';
   dlgCancel.disabled = false;
   deviceAddOverlay.classList.add('visible');
+}
+
+// システムイメージの導入 → 作成の間だけ出すスピナー。出すのはホストの deviceAddProgress を受けたとき
+// だけ(OK を押した時点で出すと、ライセンス確認を待っている間も「ダウンロード中」に見える)。
+// 消すのは結果(createDeviceResult / batchCreateStarted / batchCreateFinished)と開き直し
+function hideDeviceAddProgress() {
+  dlgProgress.hidden = true;
+  dlgProgressText.textContent = '';
+}
+
+export function applyDeviceAddProgress(message) {
+  if (!deviceAddOpen) {
+    return;
+  }
+  dlgProgressText.textContent = message.phase === 'creating'
+    ? t('wvMonitor.deviceAdd.progressCreating')
+    : t('wvMonitor.deviceAdd.progressInstalling');
+  dlgProgress.hidden = false;
 }
 
 // カタログ取得中の見た目(モーダルを開いた直後と、cmdline-tools 導入成功後の再取得で共通)
@@ -476,6 +497,7 @@ export function applyCreateDeviceResult(message) {
   if (!deviceAddOpen) {
     return;
   }
+  hideDeviceAddProgress();
   deviceAddCreating = false;
   dlgCancel.disabled = false;
   dlgOk.textContent = 'OK';
@@ -620,6 +642,7 @@ function openBatchModal(names) {
 
 /** 追加ダイアログを操作できる状態へ戻す(確認をキャンセルされた・多重実行で弾かれた場合)。 */
 function restoreDeviceAddAfterBatch(error) {
+  hideDeviceAddProgress();
   deviceAddCreating = false;
   setDialogControlsEnabled(true);
   applyPlatformAvailability();
@@ -675,6 +698,7 @@ dlgBatch.addEventListener('click', () => {
 });
 
 export function applyBatchCreateStarted(message) {
+  hideDeviceAddProgress();
   // 「デバイスを追加」を閉じ、代わりに進行窓を出す。deviceAddCreating を先に下ろさないと閉じられない
   deviceAddCreating = false;
   closeDeviceAddModal();

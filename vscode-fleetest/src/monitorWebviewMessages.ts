@@ -165,6 +165,13 @@ export type MonitorToWebviewMessage =
       readonly ok: boolean;
       readonly error: string | null;
     }
+  // 「デバイスを追加」でシステムイメージを導入してから作るときの進み具合(スピナーの文言を切り替える)。
+  // installing はライセンス確認に同意した後にだけ送る —— 確認待ちの間に「ダウンロード中」と出さない。
+  // 終わりは createDeviceResult / batchCreateStarted / batchCreateFinished が兼ねる
+  | {
+      readonly type: "deviceAddProgress";
+      readonly phase: "installing" | "creating";
+    }
   | {
       readonly type: "createDeviceResult";
       readonly ok: boolean;

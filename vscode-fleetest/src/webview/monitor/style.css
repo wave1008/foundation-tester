@@ -2339,6 +2339,11 @@ input[type="search"]::placeholder {
   border-top-color: var(--vscode-charts-blue, #3794ff);
   animation: ft-placeholder-spin 1s linear infinite;
 }
+/* 「デバイスを追加」のシステムイメージ導入・作成中の表示(device-pick-loading と同じ見た目)。
+   .device-pick-loading の display:inline-flex は UA の [hidden]{display:none} に勝つので明示する */
+#dlg-progress[hidden] {
+  display: none;
+}
 /* タブバーの「更新する」も実行中はスピナーを持つ(設定タブを見ていなくても進行が分かる)。 */
 #tabbar .tabbar-update.busy::before {
   content: '';

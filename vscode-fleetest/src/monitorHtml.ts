@@ -916,6 +916,10 @@ function renderDeviceAddOverlay(): string {
         <label for="dlg-name">${t("panels.deviceAdd.nameLabel")}</label>
         <input type="text" id="dlg-name">
       </div>
+      <!-- 空の #dlg-error(min-height + margin)より後ろに置くとその分だけ下がりボタンに貼り付くので前に置く -->
+      <div id="dlg-progress" class="device-pick-loading" hidden>
+        <span class="device-pick-spinner"></span><span id="dlg-progress-text"></span>
+      </div>
       <div id="dlg-error" class="modal-error"></div>
       <!-- avdmanager 不在(errorCode: "avdmanager-missing")のときだけ JS が表示する導入ボタン。
            数分かかるので押下後はラベルを進行中に変え、詳細な進捗は OUTPUT へ出す。 -->

@@ -1622,6 +1622,7 @@ export class MonitorDeviceOps {
         return;
       }
       if (install) {
+        this.deps.post({ type: "deviceAddProgress", phase: "installing" });
         const installOutcome = await new Promise<{ ok: boolean; error: string | null }>((resolve) => {
           this.spawnInstallSystemImage(install.package, msg.source, (ok, error) => resolve({ ok, error }));
         });
@@ -1745,6 +1746,7 @@ export class MonitorDeviceOps {
       });
       return;
     }
+    this.deps.post({ type: "deviceAddProgress", phase: "installing" });
     this.spawnInstallSystemImage(install.package, msg.source, (ok, error) => {
       if (!ok) {
         this.creatingDevice = false;
@@ -1757,6 +1759,7 @@ export class MonitorDeviceOps {
         });
         return;
       }
+      this.deps.post({ type: "deviceAddProgress", phase: "creating" });
       // creatingDevice の解除は spawnCreateDevice 側の respond(onResult 省略時)に任せる
       this.spawnCreateDevice(msg);
     });

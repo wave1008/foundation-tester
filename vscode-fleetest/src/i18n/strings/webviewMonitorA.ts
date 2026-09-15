@@ -231,6 +231,12 @@ export const webviewMonitorAStrings = {
   "wvMonitor.deviceAdd.creating": { ja: "作成中...", en: "Creating..." },
   // ダウンロードが要る OS バージョンを選んで OK を押したときのボタン表示(導入+作成の一連の処理中)。
   "wvMonitor.deviceAdd.installingAndCreating": { ja: "導入して作成中...", en: "Installing and creating..." },
+  // #dlg-progress(スピナーの横)の文言。ホストの deviceAddProgress.phase で切り替える
+  "wvMonitor.deviceAdd.progressInstalling": {
+    ja: "システムイメージをダウンロードして導入しています(数分かかります)...",
+    en: "Downloading and installing the system image (this can take several minutes)...",
+  },
+  "wvMonitor.deviceAdd.progressCreating": { ja: "デバイスを作成しています...", en: "Creating the device..." },
   // OS バージョンのドロップダウンをグループ分けするときの見出し(インストール済み/未のとき優先だけ)。
   // downloadableSystemImages が空なら従来どおりグループ分けせず出す(片方だけの環境で見た目を変えない)。
   "wvMonitor.deviceAdd.installedGroupLabel": { ja: "インストール済み", en: "Installed" },

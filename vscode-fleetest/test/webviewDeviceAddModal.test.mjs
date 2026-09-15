@@ -553,3 +553,56 @@ test("インストール済みの一覧が空で downloadableError があれば�
     "sdkmanager --list に失敗しました(ネットワーク不通)");
   assert.equal(document.getElementById("dlg-ok").disabled, true);
 });
+
+// ---- 導入 → 作成中のスピナー(#dlg-progress) --------------------------------------------
+
+function selectDownloadable(window, document) {
+  const os = document.getElementById("dlg-os");
+  os.value = "system-images;android-37;google_apis;arm64-v8a";
+  os.dispatchEvent(new window.Event("change", { bubbles: true }));
+}
+
+test("スピナーはホストの deviceAddProgress を受けてから出す(OK だけでは出さない)。creating で文言が変わり、結果で消える", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithDownloadable());
+  switchTo(window, document, "android");
+  selectDownloadable(window, document);
+  const progress = document.getElementById("dlg-progress");
+  const text = document.getElementById("dlg-progress-text");
+
+  document.getElementById("dlg-ok").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(progress.hidden, true, "ライセンス確認を待っている間は「ダウンロード中」と出さない");
+
+  post(window, { type: "deviceAddProgress", phase: "installing" });
+  assert.equal(progress.hidden, false);
+  assert.equal(text.textContent, "システムイメージをダウンロードして導入しています(数分かかります)...");
+
+  post(window, { type: "deviceAddProgress", phase: "creating" });
+  assert.equal(progress.hidden, false);
+  assert.equal(text.textContent, "デバイスを作成しています...");
+
+  post(window, { type: "createDeviceResult", ok: false, name: "x", error: "失敗しました", device: null });
+  assert.equal(progress.hidden, true, "結果が届いたら消す");
+});
+
+test("バッチ作成: 導入中のスピナーは作成開始(進行窓へ切り替え)と開始前の中止で消える", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithDownloadable());
+  switchTo(window, document, "android");
+  selectDownloadable(window, document);
+  const progress = document.getElementById("dlg-progress");
+
+  post(window, { type: "deviceAddProgress", phase: "installing" });
+  assert.equal(progress.hidden, false);
+  post(window, { type: "batchCreateFinished", started: false, created: [], failed: [], error: "導入に失敗しました" });
+  assert.equal(progress.hidden, true, "開始前に中止されたら消す");
+
+  post(window, { type: "deviceAddProgress", phase: "installing" });
+  assert.equal(progress.hidden, false);
+  post(window, { type: "batchCreateStarted", names: ["dev-01"] });
+  assert.equal(progress.hidden, true, "進行窓へ切り替わったら消す");
+});
