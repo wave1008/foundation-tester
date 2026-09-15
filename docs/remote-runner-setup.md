@@ -48,11 +48,10 @@ fleetest run --runner mac2 …             ~/fleetest-runner/               ← 
 | ログイン | **コンソールにログイン済み**(いわゆる Aqua セッションが立っている) | `stat -f%Su /dev/console` がランナーのユーザー名 |
 | 電源 | システムスリープ無効(ディスプレイスリープと画面ロックは可) | `pmset -g \| grep " sleep"` |
 | ネットワーク | リモートログイン ON・鍵で入れる。画面共有 ON を推奨。**開けるのは発行側 → ランナー機の SSH 1本だけ**(手元の Mac に着信は要らない。転送も成果物回収もライブ映像もこの接続の中を通る) | 下のステップ1 |
-| ファイアウォール | macOS の**「すべての着信接続をブロック」が OFF** であること(ON にすると sshd ごと落ちる。ファイアウォール自体は ON のままでよい) | `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getblockall` が `disabled` |
-| Homebrew | **その macOS を知っている版であること**(古い brew は `unknown or unsupported macOS version` で**起動自体が失敗**し、`xcodegen` を入れられない) | `brew --version` が動くこと |
-| ネットワーク | git が GitHub へ直接出られること(社内プロキシ設定が残っていると clone で数十秒待たされて失敗する) | `git config --global --get-regexp '^https?\.'` が空 |
+| ファイアウォール | **ファイアウォールが OFF なら何もしなくてよい**。ON なら**「すべての着信接続をブロック」が OFF** であること(ON にすると sshd ごと落ちる。ファイアウォール自体は ON のままでよい) | `/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate` が `disabled` ならここまで。`enabled` なら同 `--getblockall` が `disabled` |
+| Homebrew | **入っていて**、**その macOS を知っている版であること**(無いと `xcodegen` を入れられない。古い brew は `unknown or unsupported macOS version` で**起動自体が失敗**し、`xcodegen` を入れられない) | `brew --version` が動くこと |
+| ネットワーク | git が GitHub へ出られること(使っていない社内プロキシの設定が残っていると clone で数十秒待たされて失敗する。プロキシを設定したことが無ければ対象外) | `git config --global --get-regexp proxy` が空(出たものが今のネットワークで使うプロキシなら可) |
 | Android | Android SDK と AVD(Android を回すときだけ)。SDK は `~/Library/Android/sdk` か `ANDROID_HOME` で見つける(**シェルの rc は読まれない** —— ディスパッチは非対話 ssh なので `~/.zshrc` の PATH/ANDROID_SDK_ROOT は効かない。ツールは adb・emulator・bundletool の `--adb` を自力で解決するので、標準の場所にある限り設定は要らない) | `fleetest doctor` |
-| FM | Apple Intelligence 有効(`screenLooksLike` や occlusion-guard(`textVisualCheck`)を使うときだけ。自己修復は FM を使わないので対象外) | `fleetest doctor --fm-only` |
 
 **画面ロックはかけたままでよい**(セッションは消えない)。消えるのは再起動と電源断だけで、
 そのときは人が1回ログインし直す必要がある(画面共有でよい)。
@@ -64,20 +63,29 @@ sudo や GUI が要るものはインストーラでは行わない(無人機に
 **何が足りないかは機械で確認できる** —— ランナー機で `bash Scripts/preflight.sh --runner`
 (または手元から `fleetest remote setup <ランナー>`)を実行すると、残っている項目だけが列挙される。
 
-1. **リモートログインを ON**: システム設定 → 一般 → 共有 → リモートログイン。あわせて**ファイアウォールの「すべての着信接続をブロック」を OFF に**する
-   (ON だと sshd も遮断される。ファイアウォール自体は ON のままでよい):
-   `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getblockall` が `disabled` であること
+1. **リモートログインを ON**: システム設定 → 一般 → 共有 → リモートログイン。あわせてファイアウォールを確認する。
+   **ファイアウォールが OFF なら何もしなくてよい**。ON なら**「すべての着信接続をブロック」を OFF に**する
+   (システム設定 → ネットワーク → ファイアウォール → オプション。ON だと sshd も遮断される。ファイアウォール自体は ON のままでよい):
+   `/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate` が `disabled` ならここまで。
+   `enabled` なら同 `--getblockall` が `disabled` であること
 2. **画面共有を ON**(強く推奨。再起動後のログインを手元からやるため)
 3. **システムスリープを無効化**: `sudo pmset -a sleep 0`
 4. **Xcode を導入**し、1回起動してライセンスに同意(`sudo xcodebuild -license accept` /
-   `sudo xcodebuild -runFirstLaunch`)。**版は発行側と揃える**
-5. **Homebrew** — `brew --version` が通ること。**しばらく更新していない機械は要注意**:
+   `sudo xcodebuild -runFirstLaunch`)。**版は発行側と揃える**。
+   ダウンロードは <https://developer.apple.com/jp/download/>
+5. **Homebrew** — `xcodegen` を入れるのに要る。**一度も入れていなければ**
+   `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`
+   (<https://brew.sh/ja/>。途中でログインパスワードを聞かれる。終わったら表示される「Next steps」の
+   コマンドを実行する)。入っていれば `brew --version` が通ること。**しばらく更新していない機械は要注意**:
    古い brew は新しい macOS を知らず、コマンドが1つも動かない。その場合は
    `git -C /opt/homebrew fetch origin && git -C /opt/homebrew reset --hard origin/master` で更新する
    (`brew update` 自体が動かないため git で入れ替える)。`xcodegen` は install.sh が入れる
-6. **git のプロキシ設定を確認** — `git config --global --get-regexp '^https?\.'` に
-   使われていないプロキシが残っていると clone が失敗する（不要なら `--unset-all` で消す）
-7. 必要なら Android SDK・AVD、FM を使うなら Apple Intelligence を有効化
+6. **git のプロキシ設定を確認**(git にプロキシを設定したことがある機械だけ。無ければ何もしなくてよい)
+   — `git config --global --get-regexp proxy` が何か出し、それが**いまのネットワークで使われていない**
+   なら clone が失敗するので `git config --global --unset-all http.proxy`(`https.proxy` も)で消す。
+   いまのネットワークがプロキシ必須なら消さない
+7. 必要なら Android SDK・AVD(Android Studio は <https://developer.android.com/studio>。SDK は既定の
+   `~/Library/Android/sdk` に置く = ssh 越しでは `~/.zshrc` の `ANDROID_HOME` が読まれない)
 8. **ログインしたままにする**(ログアウトしない。ロックはしてよい)
 
 ## ステップ1(発行側): 鍵で入れるようにする
@@ -224,9 +232,13 @@ TestProjects/<プロジェクト>/profiles/runs/<名前>.json       # "machine":
 
 ### 用語: machine(マシン名)と host(ホスト名 / IP)
 
-- **host** = ホスト名または IP アドレス(`user@192.168.20.101` など。実体)
+- **host** = ホスト名または IP アドレス(`<user@192.168.xxx.xxx>` など。実体)
 - **machine** = その host に付ける**このマシンだけの名前(エイリアス)**。設定タブの「マシン」列で
   付ける名前で、プロファイルに書くのはこちらです
+
+**名前の登録は別の手順**(`remote setup` は登録しない):
+`fleetest remote machines add <マシン名> --host <ユーザー>@<ホスト>`、またはモニターの「設定」タブ。
+詳しくは下の「ホストに名前を付ける・複数台へ一斉に流す」。
 
 エイリアスはいつでも変えられます。**変えて困らないように、記録(結果 JSON・実測キャッシュ)は
 ホスト名で残り、リモートへ送るファイルや引数にもエイリアスは出ません**。
@@ -247,11 +259,11 @@ TestProjects/<プロジェクト>/profiles/runs/<名前>.json       # "machine":
 fleetest run --profile <実行プロファイル>   # --runner は要らない。マシンの登録先へ自動で飛ぶ
 ```
 
-- **書けるのはマシン名(エイリアス)だけ**(`user@192.168.20.101` のような ssh の実体は書けない)。
+- **書けるのはマシン名(エイリアス)だけ**(`<user@192.168.xxx.xxx>` のような ssh の実体は書けない)。
   プロファイルはプロジェクト資産で、リポジトリに接続先を混ぜないため。実体は
   `~/.config/fleetest/config.json`(登録簿)にだけ置く
 - **`--runner <マシン名>` を明示すればそちらが勝つ**(ホスト名や IP を直接指定したいときは
-  `--runner user@192.168.20.101`)。マシン側が別のリモートを指していれば警告が出る
+  `--runner <user@192.168.xxx.xxx>`)。マシン側が別のリモートを指していれば警告が出る
   (黙って別の機械へ送らない)。`--runner local` は「今回は手元で走らせる」の明示指定
 - **手元のデバイスには `"machine": "local"` と書く**(省略しない。理由は次の節)
 - **旧キー `"host"` のプロファイルもそのまま読めます**(2026-08-26 に `machine` へ改名。
@@ -281,8 +293,8 @@ fleetest run --profile <実行プロファイル>   # --runner は要らない�
   配ります(10台の機械には10台ぶん)。出力は `[ホスト] ` 付き、`--junit` は1ファイルに結合、
   終了コードは非0の最大です
 - **`--runner` を明示すると分散しません**(その機械だけで走ります)
-- **モニターの実行ボタンからは回せません**(CLI 専用)。混在プロファイルを選んで実行すると、
-  その旨のエラーで止まります(一部の台だけ走って「全部通った」に見えるのを防ぐため)
+- **VSCode 拡張から実行しても同じように分かれます**(拡張が起こす `fleetest api run` も
+  マシン別のサブ実行に分けて1本の結果にまとめます)
 
 ランナー機の状態は**手元から照会できる**(個別に ssh しなくてよい):
 
@@ -291,16 +303,11 @@ fleetest remote exec <ランナー> -- api installed-devices # 実在するデ�
 fleetest remote exec <ランナー> -- doctor --fm-only      # FM が使えるか
 ```
 
-**アプリのバイナリは転送されない。** アプリプロファイルの `appPath` は、ランナー機で解決できる
-パスにしておく。**相対パスの基準は「リポジトリルート」= ランナー機では自分の WORK_DIR
-(`<base>/users/<issuerId>/work`)** で、
-**クローン(`<base>/foundation-tester`)の中は見ない**。
-
-> ここは手元とランナー機で意味が変わる箇所。手元がツールのクローンで作業する構成
-> (クローン = 作業ディレクトリ)だと `E2EAppIOS/dist/...` のような相対パスがリポジトリ内を
-> 指すが、**ランナー機は外部構成**(クローンと作業ディレクトリが別)なので同じ文字列が
-> `<base>/users/<issuerId>/work/E2EAppIOS/dist/...` に解決される。ビルド済みのアプリは
-> **自分の WORK_DIR から見た位置**に置く(rsync/scp で置くか、ランナー機でビルドしてそこへ出す)。
+**アプリのバイナリは手元から自動で運ばれる。** 実行のたびに、アプリプロファイルの `appPath` が
+指す手元のアプリをワークスペース(既定 `TestProjects/<プロジェクト>/workspace`)の `apps/` へ
+コピーし、ワークスペースごとランナー機へ転送してそこからインストールする。`appPath` は
+**手元のパス**のまま書けばよく、ランナー機でアプリをビルド・配置する必要はない
+(手元にアプリが無いと `app package not found at …` で止まる)。
 
 ## ステップ5: 疎通を確認する
 
@@ -359,7 +366,7 @@ fleetest run --runner <ユーザー>@<ホスト> --profile <実行プロファ�
 `~/.config/fleetest/config.json`。リポジトリの設定からは触れない):
 
 ```bash
-fleetest remote machines add M1Max --host <ユーザー>@192.168.20.101
+fleetest remote machines add M1Max --host <user@192.168.xxx.xxx>
 fleetest remote machines                   # 一覧
 fleetest run --runner M1Max --profile <実行プロファイル>
 ```
@@ -368,7 +375,7 @@ fleetest run --runner M1Max --profile <実行プロファイル>
 照合していましたが、登録名そのものを廃止しました)。
 
 登録簿は**モニターの「設定」タブからも編集できます**(同じファイルを読み書きします)。
-登録した名前は、そのまま**マシンプロファイルの `host`**(ステップ4)とフリート定義に書けます。
+登録した名前は、そのまま**マシンプロファイルの `machine`**(ステップ4)とフリート定義の `host` に書けます。
 
 **フリート** = 複数の実行先へ一斉に流す定義。`TestProjects/<プロジェクト>/profiles/fleets/<名前>.json`:
 
@@ -430,10 +437,12 @@ fleetest run --project <プロジェクト> --fleet <名前> --split --junit rep
 **実行先を選ぶ UI は無い。**「どのマシンプロファイルを使うか」= 実行プロファイルの選択が、
 そのままホストの選択になる(ステップ4)。拡張がやることは2つだけ。
 
-### 1. ホストを登録する(モニターの「設定」タブ)
+### 1. マシンを登録する(モニターの「設定」タブ)
 
-「ホストを追加」で行を足し、`名前 / ホスト / 作業ベースディレクトリ` を入れて**行の「確定」**を
-押す(押すまで反映されない)。`作業ベースディレクトリ` 空欄 = `~/fleetest-runner`。
+「マシン」表の「リモートホストを追加」で行を足し、`user@host`・`マシン(任意のエイリアス)`・
+`FM 並列枠`・`作業ベースディレクトリ` を入れて**行の「確定」**を押す(押すまで反映されない。
+`user@host` が空の間は押せない)。`マシン` 空欄 = `user@host` から `user@` を除いた部分、
+`作業ベースディレクトリ` 空欄 = `~/fleetest-runner`。
 
 **これは VSCode の設定ではなく CLI の登録簿**(`~/.config/fleetest/config.json`)を読み書きしている
 (`fleetest api remote-machines`)ので、`fleetest remote machines add` で足したものと同じ表に出る。
@@ -441,15 +450,15 @@ fleetest run --project <プロジェクト> --fleet <名前> --split --junit rep
 
 リモート実行の録画・run ログは常に手元へ回収するので、回収に関する設定はありません。
 
-### 2. マシンプロファイルにホストとデバイスを入れる(「プロファイル」タブ)
+### 2. マシンプロファイルにマシンとデバイスを入れる(「プロファイル」タブ)
 
 マシンプロファイルの **「デバイスを追加」の ＋** を押すと「デバイスを選択」ダイアログが開く。
-その上部に**ホスト**の選択がある。
+その上部に**マシン**の選択がある。
 
-- ホストを切り替えると、**その機械に実在するデバイス**の一覧に切り替わる
+- マシンを切り替えると、**その機械に実在するデバイス**の一覧に切り替わる
   (読み込み中は前の一覧を残したまま「読み込み中...」を出す)
-- **選んだホストが、そのマシンプロファイルの `host` になる**。ローカルを選べば `host` は消える
-- **選んだホスト上に新しいデバイスを作れる** —— ダイアログ内の **＋(デバイスを作成)**。
+- **選んだマシン名が、追加するデバイスの `machine` になる**。手元を選べば `"local"`(省略しない)
+- **選んだマシン上に新しいデバイスを作れる** —— ダイアログ内の **＋(デバイスを作成)**。
   作られた実体はそのホストに、登録は**手元のマシンプロファイル**に入る(プロファイルの正は常に手元)
 - デバイス行を**右クリック → 削除**で、**シミュレータ/AVD の実体を削除**できる(元に戻せない)。
   **起動中のデバイスは削除しない**(先に停止する)。マシンプロファイルから参照されている
@@ -677,6 +686,7 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | `must not contain ':'` / 非標準ポートを指定できない | 宛先にポートを書いた(`host:2222`) | `~/.ssh/config` の Host エイリアスに畳んで、そのエイリアスを宛先にする(「別のネットワーク(ルーター越し)のランナー」) |
 | `remote setup` が preflight で warn 終了(exit 2) | ランナー機に人手の項目が残っている | 出力に列挙された操作を行い、同じコマンドを再実行(冪等) |
 | `Failed to connect to <名前> port 8080`(clone が75秒待って失敗) | ランナー機の git に古いプロキシ設定が残っている | `git config --global --unset-all http.proxy` / 同 `https.proxy`（必要な環境ならプロキシ側を直す） |
+| `neither xcodegen nor Homebrew is available` | ランナー機に Homebrew が入っていない | ステップ0の5で Homebrew を入れてから `remote setup` を再実行 |
 | `unknown or unsupported macOS version` / `brew install xcodegen failed` | Homebrew がその macOS を知らない古い版（brew が1つも動かない） | `git -C /opt/homebrew fetch origin && git -C /opt/homebrew reset --hard origin/master` |
 | `cannot resolve the local project` | 手元にプロジェクトが複数 | `--project <名前>` を付ける |
 | `is sitting at the login window` | ランナー機がログイン画面 | 解錠してログイン(画面共有) |
@@ -690,13 +700,13 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | `no running emulator for AVD …` | Android のエミュレータが未起動 | ステップ6 の `devices up` |
 | `no runner workspace at …`(exit 91) | あなたの issuerId の作業場所がまだ無い(未 setup / issuerId が変わった) | `fleetest remote setup <ランナー>` を1回。issuerId は明示設定にする(「複数人でフリートを共有する」) |
 | シナリオが0本 / 見つからない | プロジェクト名が手元と違う | ステップ2 の `--name` を手元と揃える |
-| アプリのインストールに失敗する | `appPath` がランナー機で解決できない | ステップ4（相対パスは自分の WORK_DIR = `<base>/users/<issuerId>/work` 基準。バイナリは転送されない） |
+| `app package not found at …` | 手元の `appPath` にアプリが無い(未ビルド・パス違い) | 手元でアプリをビルドするか `appPath` を直す(ステップ4。アプリは手元から運ばれる) |
 | `.apks` のインストールで `needs bundletool` | ランナー機に bundletool が無い | ランナー機で `brew install bundletool`（`.apks` を使うときだけ要る。単一 `.apk` なら不要） |
 | `Couldn't fetch updates from remote repositories` / `Recv failure: Operation timed out` | ランナー機の回線が細く SPM の依存取得が落ちた | 再実行する（取得済みは残るので数回で通る）。事前に `swift package resolve` を通しておくと確実 |
 | `Foundation Models unavailable` の警告 | ランナー機で Apple Intelligence が無効 | `screenLooksLike` / occlusion-guard(`textVisualCheck`)を使わないなら無視してよい（実行は続く。自己修復は FM を使わないので影響しない）。使うなら Apple Intelligence を有効化 |
 | `--port is not supported with --runner` 等 | 併用できない指定 | ステップ6 の一覧 |
-| 手元で走ってほしいのにリモートへ飛ぶ / その逆 | 実行プロファイルが指す**マシンプロファイルの `host`** が効いている | ステップ4。今回だけ変えるなら `--runner local` / `--runner <名前>`(明示が勝つ) |
-| `--runner … overrides the machine profile's host …` | `--runner` とマシン側の `host` が違う機械を指している | 警告どおり `--runner` が使われる。意図と違えばどちらかを直す |
+| 手元で走ってほしいのにリモートへ飛ぶ / その逆 | 実行プロファイルが指す**マシンプロファイルの `machine`** が効いている | ステップ4。今回だけ変えるなら `--runner local` / `--runner <名前>`(明示が勝つ) |
+| `--runner … overrides the machine profile's machine …` | `--runner` とマシン側の `machine` が違う機械を指している | 警告どおり `--runner` が使われる。意図と違えばどちらかを直す |
 | `the device is currently running — stop it first` | 起動中のデバイスは削除できない | `fleetest devices down` で停止してから削除する |
 | `no such simulator/AVD` | 既に削除済み / 識別子が違う | 一覧を取り直す(ダイアログのホストを選び直す) |
 | タイルが「<マシン> に届いていません」のまま | その機械の fleetest が古い(`Unknown option '--device-machine'` が OUTPUT に出る)/ ssh が通らない | ステップ3 で版を揃えてから、モニターの「モニター再起動」(諦めた接続はここでやり直す) |

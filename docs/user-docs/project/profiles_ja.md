@@ -71,9 +71,10 @@
   OS に拒否されて実行が止まります。ロックされた状態で始めようとした場合は、その旨を名指しして
   止めます(自動での解除は原理的にできません。端末へ入力する手段がその端末上のランナー自身で、
   ランナーが動いていない状態では何も送れないためです)。
-- デバイスの `host` に登録済みのリモートマシン名を書くと、その台は SSH 経由でそのマシンへ
-  ディスパッチされます([remote_runners_ja.md](../in_action/remote_runners_ja.md)参照)。
-  未指定は「このマシン」を意味します。
+- デバイスの `machine` に登録済みのマシン名(`fleetest remote machines add` で付けた名前)を書くと、
+  その台は SSH 経由でそのマシンへディスパッチされます([remote_runners_ja.md](../in_action/remote_runners_ja.md)参照)。
+  手元の台は `"machine": "local"` と書きます。省略するとファイル直下の `machine` を継ぎ、そこにも
+  無ければ「このマシン」になります。
 
 `fleetest profile setup --auto-device` はデバイスを自動選定します。iOS は最新 OS の既存シミュレータ
 (iPad を除く)、Android は既存 AVD のうち API レベルが最大のものを選びます。

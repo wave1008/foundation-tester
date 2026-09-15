@@ -30,6 +30,7 @@ function canonicalSlug() {
 // 新しい依存を足して落ちたら、上流だと確認してから足す —— 素通しにすると
 // 「引っ越しで取り残された自分の座標」と区別が付かなくなる。
 const UPSTREAM_SLUGS = new Set([
+  "Homebrew/install",
   "apple/swift-argument-parser",
   "apple/swift-protobuf",
   "borisyankov/DefinitelyTyped",

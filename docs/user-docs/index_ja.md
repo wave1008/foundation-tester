@@ -123,6 +123,7 @@ FM を使いません。テストはエージェント(MCP)に
 - [壊れにくいシナリオの書き方](in_action/writing_robust_scenarios_ja.md)
 - [CI で回す](in_action/ci_ja.md)
 - [リモートランナー](in_action/remote_runners_ja.md)
+- [リモートランナーのセットアップ](in_action/remote_runner_setup_ja.md)
 - [ネットワークの露出とセキュリティ](in_action/network_security_ja.md)
 - [トラブルシューティング](in_action/troubleshooting_ja.md)
 

@@ -74,9 +74,11 @@ this machine can use, under `ios` and `android`:
   the OS refuses every later app launch and the run stops. Starting against a locked device is
   refused by name (unlocking it automatically is impossible: the only thing that can send input
   to the device is the runner on that device, and it is not running yet).
-- A device's `host` can name a registered remote machine, so the run is dispatched to it over
-  SSH instead of running locally (see [remote_runners.md](../in_action/remote_runners.md)).
-  Leaving `host` unset means "this machine".
+- A device's `machine` can name a registered machine (the name given with
+  `fleetest remote machines add`), so the run is dispatched to it over SSH instead of running
+  locally (see [remote_runners.md](../in_action/remote_runners.md)). Write `"machine": "local"` for
+  devices on this Mac. Leaving it out inherits the file's top-level `machine`, and without that
+  it means "this machine".
 
 `fleetest profile setup --auto-device` picks a device automatically: for iOS, the newest-OS
 existing simulator (excluding iPads); for Android, the existing AVD with the highest API level.

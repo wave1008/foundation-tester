@@ -124,6 +124,7 @@ needs no changes ([details](overview/about.md)).
 - [Writing robust scenarios](in_action/writing_robust_scenarios.md)
 - [Running on CI](in_action/ci.md)
 - [Remote runners](in_action/remote_runners.md)
+- [Setting up a remote runner](in_action/remote_runner_setup.md)
 - [Network exposure and security](in_action/network_security.md)
 - [Troubleshooting](in_action/troubleshooting.md)
 

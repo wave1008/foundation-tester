@@ -85,14 +85,18 @@ fleetest remote setup <宛先> --project <プロジェクト>
 代表的なもの(すべて sudo か GUI が要るので代行しない):
 
 - リモートログイン ON(システム設定 → 一般 → 共有)・画面共有 ON(推奨)
-- **ファイアウォールの「すべての着信接続をブロック」を OFF に**する(ON だと sshd も遮断される。
-  ファイアウォール自体は ON のままでよい。確認は
-  `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getblockall` が `disabled`)
+- ファイアウォールを確認する。**ファイアウォールが OFF なら何もしなくてよい**。ON なら
+  **「すべての着信接続をブロック」を OFF に**する(ON だと sshd も遮断される。ファイアウォール自体は
+  ON のままでよい)。確認は `/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate` が
+  `disabled` ならここまで、`enabled` なら同 `--getblockall` が `disabled`)
 - `sudo pmset -a sleep 0`(システムスリープ無効。ディスプレイスリープと画面ロックは可)
 - **コンソールにログインしたままにする**(ログイン画面のままだとディスパッチは
   「loginwindow で待機中」で止まる。**画面ロックは可**)
 - Xcode を手元と同じ版にし、`sudo xcodebuild -license accept` / `xcodebuild -runFirstLaunch`
-- Homebrew が**その macOS を知っている版**であること(古いと brew が1つも動かない)
+- Homebrew が**入っていて**、**その macOS を知っている版**であること(無いと xcodegen を入れられない。
+  古いと brew が1つも動かない)。未導入なら
+  `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"` を
+  ランナー機で人が実行する(パスワード入力があるので代行しない)
 
 済んだらステップ2を再実行する。
 
@@ -128,11 +132,12 @@ fleetest remote exec <宛先> -- api installed-devices
   FM を使わない幾何の確認(画面外の判定)も含めて occlusion guard ごと止まる**ので、FM が無い
   という理由だけで切らない
 
-### 5. アプリをランナー機へ置く
+### 5. アプリは手元でビルドしておく
 
-**アプリのバイナリは転送されない。** アプリプロファイルの `appPath` は、
-**相対パスなら自分の WORK_DIR(`<ベースディレクトリ>/users/<issuerId>/work`)からの位置**に解決される(クローンの中は見ない)。
-ランナー機のその位置にビルド済みのアプリを置く(`rsync`/`scp` で送るか、ランナー機でビルドする)。
+**アプリのバイナリは手元から自動で運ばれる。** 実行のたびに、アプリプロファイルの `appPath` が指す
+手元のアプリがワークスペースの `apps/` へコピーされ、ワークスペースごとランナー機へ転送される。
+`appPath` は手元のパスのままでよく、ランナー機へアプリを置く作業は要らない。
+手元にアプリが無いと `app package not found at …` で止まるので、その場合は手元でビルドする。
 
 ### 6. 実ディスパッチ1本で検証する(ここが成功の定義)
 
