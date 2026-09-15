@@ -52,7 +52,7 @@ fleetest run --runner mac2 …             ~/fleetest-runner/               ← 
 | Homebrew | **その macOS を知っている版であること**(古い brew は `unknown or unsupported macOS version` で**起動自体が失敗**し、`xcodegen` を入れられない) | `brew --version` が動くこと |
 | ネットワーク | git が GitHub へ直接出られること(社内プロキシ設定が残っていると clone で数十秒待たされて失敗する) | `git config --global --get-regexp '^https?\.'` が空 |
 | Android | Android SDK と AVD(Android を回すときだけ)。SDK は `~/Library/Android/sdk` か `ANDROID_HOME` で見つける(**シェルの rc は読まれない** —— ディスパッチは非対話 ssh なので `~/.zshrc` の PATH/ANDROID_SDK_ROOT は効かない。ツールは adb・emulator・bundletool の `--adb` を自力で解決するので、標準の場所にある限り設定は要らない) | `fleetest doctor` |
-| FM | Apple Intelligence 有効(`screenLooksLike` や自己修復を使うときだけ) | `fleetest doctor --fm-only` |
+| FM | Apple Intelligence 有効(`screenLooksLike` や occlusion-guard(`falsePositiveCheck`)を使うときだけ。自己修復は FM を使わないので対象外) | `fleetest doctor --fm-only` |
 
 **画面ロックはかけたままでよい**(セッションは消えない)。消えるのは再起動と電源断だけで、
 そのときは人が1回ログインし直す必要がある(画面共有でよい)。
@@ -693,7 +693,7 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | アプリのインストールに失敗する | `appPath` がランナー機で解決できない | ステップ4（相対パスは自分の WORK_DIR = `<base>/users/<issuerId>/work` 基準。バイナリは転送されない） |
 | `.apks` のインストールで `needs bundletool` | ランナー機に bundletool が無い | ランナー機で `brew install bundletool`（`.apks` を使うときだけ要る。単一 `.apk` なら不要） |
 | `Couldn't fetch updates from remote repositories` / `Recv failure: Operation timed out` | ランナー機の回線が細く SPM の依存取得が落ちた | 再実行する（取得済みは残るので数回で通る）。事前に `swift package resolve` を通しておくと確実 |
-| `Foundation Models unavailable` の警告 | ランナー機で Apple Intelligence が無効 | heal / screenLooksLike / トリアージを使わないなら無視してよい（実行は続く）。使うなら Apple Intelligence を有効化 |
+| `Foundation Models unavailable` の警告 | ランナー機で Apple Intelligence が無効 | `screenLooksLike` / occlusion-guard(`falsePositiveCheck`)を使わないなら無視してよい（実行は続く。自己修復は FM を使わないので影響しない）。使うなら Apple Intelligence を有効化 |
 | `--port is not supported with --runner` 等 | 併用できない指定 | ステップ6 の一覧 |
 | 手元で走ってほしいのにリモートへ飛ぶ / その逆 | 実行プロファイルが指す**マシンプロファイルの `host`** が効いている | ステップ4。今回だけ変えるなら `--runner local` / `--runner <名前>`(明示が勝つ) |
 | `--runner … overrides the machine profile's host …` | `--runner` とマシン側の `host` が違う機械を指している | 警告どおり `--runner` が使われる。意図と違えばどちらかを直す |

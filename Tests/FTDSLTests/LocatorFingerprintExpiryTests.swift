@@ -3,7 +3,7 @@ import XCTest
 import FTCore
 
 /// `LocatorFingerprintCache.flush(scenarioID:scenarioPassed:)` の失効規則(古い鍵の刈り取り)。
-/// 鍵の実文字列(`HealCache.key` の形)は生成せず手で組む —— ここで検証したいのは
+/// 鍵の実文字列(`LocatorFingerprintCache.key` の形)は生成せず手で組む —— ここで検証したいのは
 /// キャッシュ層の刈り取り条件そのもので、鍵の生成規則は既存の他テストが担う。
 /// FTDriveCore 経由の実配線確認(record() → flush() の一気通貫)は
 /// LocatorFingerprintRecordingTests.testPassedScenarioPrunesUntouchedKeyThroughFTDriveCore を参照。

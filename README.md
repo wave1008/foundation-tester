@@ -33,7 +33,7 @@
 
 | 対象 | 要件 |
 |---|---|
-| 共通 | macOS 26+。Apple Intelligence(Foundation Models)は**任意** — heal・FM 視覚検証・シナリオ生成に使う。後から有効化すればそのまま使える |
+| 共通 | macOS 26+。Apple Intelligence(Foundation Models)は**任意** — FM 視覚検証・シナリオ生成に使う(自己修復は使わない)。後から有効化すればそのまま使える |
 | iOS(テストするなら) | Xcode 26+、iOS シミュレータ、xcodegen |
 | Android(テストするなら) | Android SDK(adb)、エミュレータまたは実機 |
 
@@ -227,7 +227,7 @@ TestProjects/SampleApp/
 │   └── runs/ios.json              # 実行プロファイル(アプリ+デバイス名リスト+実行時設定)
 ├── scenarios/                     # Swift DSL(_Main.swift / Generated/ / _disabled/)
 ├── reports/                       # 実行レポート(プロジェクト別)
-└── .fleetest/heal-cache.json       # ヒールキャッシュ(プロジェクト別)
+└── .fleetest/locator-fingerprints.json  # ロケータの指紋(プロジェクト別)
 ```
 
 **実行プロファイル**はアプリとデバイスの組み合わせ。デバイスはマシンプロファイルの `name` で参照し、
@@ -235,8 +235,8 @@ TestProjects/SampleApp/
 
 ```jsonc
 // profiles/runs/all.json
-// FM 機能のトグル: fm(親スイッチ)/ heal / falsePositiveCheck(偽陽性検証)/
-// screenLooksLike はいずれも既定 true(詳細は docs/design.md §11.2)
+// FM 機能のトグル: fm(親スイッチ)/ falsePositiveCheck(偽陽性検証)/ screenLooksLike は
+// いずれも既定 true(詳細は docs/design.md §11.2)。heal(自己修復)は fm から独立した既定 true
 { "app": "sampleapp",
   "devices": [ { "name": "simulator1" }, { "name": "simulator2" }, { "name": "emulator1" } ],
   "fm": true, "heal": true, "reportDir": "reports", "defaultTimeout": 5 }
@@ -287,8 +287,9 @@ swift run fleetest bridge down --all              # 全ブリッジ停止
   自動で行うが、それでも落ちる場合は `bridge up` 後に一度 `launch`+`snapshot` してから実行する
 - VSCode 拡張(`vscode-fleetest/`)でも実行プロファイル(`fleetest.profile`)経由で同じ並列実行が
   できる(詳細は [vscode-fleetest/README.md](vscode-fleetest/README.md) の「並列実行とログレーン」)
-- 決定的再生は FM を呼ばないため並列スケールする。screenMatches・自己修復は
-  オンデバイス FM(マシンに1本)に律速される点に注意
+- 決定的再生は FM を呼ばないため並列スケールする。自己修復(ロケータの指紋照合)も FM を
+  呼ばないため同様にスケールする。`screenMatches`(screenLooksLike)はオンデバイス FM
+  (マシンに1本)に律速される点に注意
 
 ### Android
 
@@ -471,14 +472,15 @@ condition {
   ブロック内の生 Swift コードはスキップされないため、失敗後に走らせたくない処理は `procedure { }` に包む
 - レポートは成否問わず `TestProjects/<name>/reports/scenario-*.md` に出力(scene → CAE → ステップ階層、
   失敗時の要素一覧、失敗スクリーンショット、**修正提案**)
-- **自己修復とヒールキャッシュ**: 自己修復が有効な実行(**`--profile` 実行では実行プロファイルの
-  `heal` が既定 ON** / **プロファイルを使わない `fleetest run` は既定 OFF**。CLI からは
-  `--heal` で ON・`--no-heal` で OFF に上書きできる。両方の同時指定はエラー)では、
-  壊れたセレクタは FM が修復して続行し、
-  結果は `TestProjects/<name>/.fleetest/heal-cache.json` に保存される。**2回目以降は FM なしで決定的に通過**し、
-  レポートに「`TestProjects/SampleApp/scenarios/LoginTest.swift:17` — セレクタ "#email_input" を
-  "#email||.textField[0]" に変更してください」のようなソース位置付き修正提案を出し続ける
-  (ソースの自動書換はしない。人がソースを直すとキー不一致でキャッシュは自然に無効化される)
+- **自己修復(ロケータの指紋照合)**: 自己修復が有効な実行(**`--profile` 実行では実行プロファイルの
+  `heal` が既定 ON** / **プロファイルを使わない `fleetest run` は既定 OFF**。`fm` とは独立。
+  CLI からは `--heal` で ON・`--no-heal` で OFF に上書きできる。両方の同時指定はエラー)では、
+  壊れたセレクタは、その要素の型+ラベル(入力欄はプレースホルダも)の指紋が現在の画面で
+  **ちょうど1件だけ**一致すれば FM なしで決定的に解決して続行する(指紋は
+  `TestProjects/<name>/.fleetest/locator-fingerprints.json` に保存)。
+  レポートに「`TestProjects/SampleApp/scenarios/LoginTest.swift:17` — ロケータの指紋照合で通過。
+  セレクタ "#email_input" を "#email||.textField[0]" に変更してください」のようなソース位置付き
+  修正提案を出し続ける(ソースの自動書換はしない)
 - **dry-run**: `fleetest run --dry-run`(Shirates の No-Load-Run 相当)。**デバイスにも FM にも
   触れず**、セレクタの構文誤り・到達しない scene・アサーション0の `expectation`・
   **撮った画面に実在しない `#id`** を数秒で落とす(実測: 76 シナリオで 3.4 秒)。
@@ -527,7 +529,7 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 | ツール | 内容 |
 |---|---|
 | `ft_status` | 接続確認。**宛先**(どのシミュレータ/エミュレータか。Android は serial と AVD 名)と、**session のアプリが今も前面か**まで返す(session はブリッジが掴んでいるアプリで、ホームへ戻っても変わらない)。Android で `serial` を省略して複数台つながっているときは、失敗せず**全台を一覧**で返す(読み取り専用なので。操作系は従来どおり曖昧なら断る) |
-| `ft_doctor` | FM 可用性。使えないときは**止まる機能(self-healing / screenLooksLike / occlusion-guard)と代わりの書き方**まで返す |
+| `ft_doctor` | FM 可用性。使えないときは**止まる機能(screenLooksLike / occlusion-guard)と代わりの書き方**まで返す(自己修復は FM を使わないため対象外) |
 | `ft_launch` / `ft_terminate` | アプリ起動・終了 |
 | `ft_install` | アプリをパッケージファイルからインストールする(iOS: `.app` バンドル / Android: `.apk`) |
 | `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式)。**`waitFor` を渡すと出るまでホスト側で待つ**(セレクタ記法は DSL と同じ。既定 5 秒)。**対象アプリが前面に居なければ先頭で警告する**(XCUITest の木はセッションのアプリに閉じているので、別アプリが前面でも同じ木を返してしまう。**iOS 実機では OS が前面状態を正しく申告しないため警告は出ない**)。**スクロール容器の外に取り残された要素(ghost)は先頭と各行で名指しする**(`⚠️scroll-leftover`) —— 一覧の見た目は普通の行と同じだが、その座標には別のものが描かれていることがある。**スクロール容器の行には `scroll` を付ける**(`scrollFrame:` に指定できる領域。**2つ以上あるときだけ**先頭でも名指しする)—— ただし**印が無い = スクロールしない、ではない**(Compose / Flutter の in-app は自前描画で申告できない)。撮った `#id` は `<プロジェクト>/.fleetest/selector-inventory.json` に貯まり、`ft_dry_run` の綴り誤り照合に使われる。**同じ id の大群(地図の POI など。非操作の葉が20件以上)は1行に畳む** —— 見出しに続けて「ラベル[ref]」の索引が出るので ref では撃てる。frame まで要るときは `expandBulk: true`。**上限で要素が落ちたときは先頭で言う**(何件・何が落ちたか。内訳は iOS のブリッジが申告する) —— 落ちた要素は木から消えているので `waitFor` も `ft_scroll_to` も一生見つけられない。**ラベルも id も無い clickable には `#容器 >> .clickable[n]` を添える**(id を持つ祖先があるときだけ。無ければ従来どおり「ref か座標しかない」)。**同じラベルが複数に当たるときは「代わりに書けるセレクタ」を一致ごとに出す**(`#id` > 一意ラベル > `#容器 >> .型[n]`。書けないものは「—」で明示する = 無言のケースを作らない。**勧める前にサーバ自身が引いて当人が返ることを確かめている**)。**打ち切ったときは枠を食っている id 群まで名指しする**(`#VKPointFeature が 119 件中 87 件` のように)—— 読み手にできる手は「それを描いている物を畳む」なので、原因を当てさせない。**`interactiveOnly: true` でレイアウト専用の行を隠す**(ラベルも値も持たず、操作もスクロールもしない要素。密な画面では半分以上が消える)—— ref も frame も変わらず、隠れた行も ref では撃てる |
@@ -602,13 +604,13 @@ TestProjects/          テストプロジェクト(コミットして資産化�
       Generated/       ライブ操作の録画(gen-scenario)が生成したシナリオ
       _disabled/       コンパイル対象外の退避場所(並列デモ・生成失敗コードの隔離先)
     reports/         実行レポート(プロジェクト別)
-    .fleetest/        ヒールキャッシュ等(プロジェクト別)
+    .fleetest/        ロケータの指紋等(プロジェクト別)
 Sources/
   fleetest/         CLI(swift-argument-parser。project/machine/profile コマンド含む)
   fleetest-mcp/     MCP サーバ(stdio / JSON-RPC、自前実装)
   fleetest-simstream/     iOS シミュレータ画面のヘッドレス映像ストリーミング(変化駆動で JPEG を stdout 配信)
   fleetest-androidstream/ Android 画面のヘッドレス映像ストリーミング(iOS 版とフレームプロトコル互換)
-  FTDSL/           Swift DSL 本体(コマンド・セレクタ式・発見・レポート・コード生成・ヒールキャッシュ)
+  FTDSL/           Swift DSL 本体(コマンド・セレクタ式・発見・レポート・コード生成・ロケータの指紋)
   FTDSLMacros/     @TestClass / @Test マクロ実装(swift-syntax はここに閉じる)
   FTScenarioRunner/ fleetest-scenarios-<project> の CLI 実装(list / run・NDJSON イベント)
   FTCore/          ステップモデル / AppDriver / StepExecutor / プロジェクト・プロファイルモデル(FM 非依存・外部依存ゼロ)

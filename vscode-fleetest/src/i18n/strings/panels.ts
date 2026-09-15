@@ -88,9 +88,10 @@ export const panelsStrings = {
   // panels.common.{app,machine}Profile を再利用するので、語を変えるときは片方だけ直さない
   "panels.runProfile.machineLabel": { ja: "参照する{link}", en: "{link} to reference" },
   "panels.runProfile.appLabel": { ja: "参照する{link}", en: "{link} to reference" },
+  "panels.runProfile.healSectionTitle": { ja: "自己修復", en: "Self-healing" },
+  "panels.runProfile.healLabel": { ja: "自己修復(heal)を有効にする", en: "Enable self-heal" },
   "panels.runProfile.fmSectionTitle": { ja: "FM(Foundation Model)/OCR", en: "FM (Foundation Model) / OCR" },
   "panels.runProfile.fmLabel": { ja: "FMの機能を使用する", en: "Use FM features" },
-  "panels.runProfile.healLabel": { ja: "自己修復(heal)を有効にする", en: "Enable self-heal" },
   // 鍵 `falsePositiveCheck` を指すラベルなので「偽陽性検証」は据え置き(CLAUDE.md §用語)。
   // 何をするのかが名前から読めないので、括弧で平たく言い添える
   "panels.runProfile.falsePositiveCheckLabel": {

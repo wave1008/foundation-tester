@@ -906,3 +906,47 @@ XCTest のエラーを「アプリがエラーを返した」、画面の読み�
 (トリアージが heal と無関係に text 経路を使ったため)。撤去後に run の中で text 経路を使うのは heal だけなので、
 **heal が有効な run でだけ言う**ようにした(失われる機能が無いのに「無効」と言わない)。vision の死は従来どおり
 視覚系が有効な run でだけ言う。
+
+## 22. FM ヒールは採用門が1度も開かず、指紋で足りていた(2026-09-15)
+
+**測定**: 2026-09-14 実施の日英実アプリ計測で、FM ヒールの採用門(自己申告 confidence ==
+"high")は**272 件中 0 件**しか開かなかった(iOS 標準アプリ、日本語/英語)。E2E witness
+`_disabled/90_自己修復.swift`(5 SUT)は 2026-09-02 以降の全 run で `heal-proposal-rejected` に
+終わっていた —— **提案そのものは正解**(`#btn_heal_v2` を毎回指した)にもかかわらず、である。
+
+**confidence は両方向に外れていた**(design.md §10 の表): 正解の提案を low と自己申告する一方、
+誤った提案(NavigationBar 等の無関係な要素)を medium/high と自己申告することがあった。閾値を
+どちらへ動かしても解けない —— `medium` まで緩めると誤答が通り、`low` まで緩めると何でも通る。
+自己較正は3Bモデルが最も苦手とする能力で、それを採否の唯一の門にする設計そのものが無理だった。
+
+**典型的なドリフト(id が変わりラベルは変わらない)は決定的に足りていた**: ロケータの指紋
+(type + label〈+ placeholder〉の一致。2026-09-02 実装。§10「ロケータの指紋」)は同じ状況を
+FM 抜きで解決できる。開かない門を残すコストだけが残っていた —— 失敗するたびに FM 呼び出し
+1回(秒オーダー・ホスト単位で直列化される資源。§ FM 呼び出しの許可枠)を払い、採用されることは
+無かった。加えて、誤った採用はヒールキャッシュへ永続化され、`apply-heal` で利用者の `.swift` へ
+書き戻され得た(修正提案そのものの正誤も id 変更で 50〜63%・ラベル言い換えで 85〜90% でしか
+なかった)。§21 の FM トリアージ撤去と同じ理由の系列 —— 照合相手の無い確信度に事実の重みを
+持たせていた。
+
+**撤去したもの**: FM ヒールの出力型(`LocatorRepairSuggestion`)と呼び出し口(`FMReplayDelegate`
+の修復フック)/ ヒールキャッシュ(`.fleetest/heal-cache.json`。FM ヒールだけが書き手だった。
+既存ファイルは放置で無害 —— 現行コードはもう読み書きしない)/ 試験用の採用門注入口
+`FT_FAKE_HEAL_CONFIDENCE_HIGH`(`HealConfidenceInjection`)/ 注記
+`heal-proposal-rejected` / `heal-answer-unresolved` / `heal-no-replacement` /
+`heal-confidence-injected` の4つ / FM へ渡す木の文字数の上限 `FMPromptBudget`(heal だけが使っていた)/ E2E witness `_disabled/90_自己修復.swift`(5 SUT 全部)と
+`_disabled/93_存在しない要素.swift`(E2E-CMP。§21 で triage から改名し自己修復の「代わりは
+無い」経路の実測元として残していたもの)/ `Scripts/fm-verify.sh` の heal 関連チェック
+(screenLooksLike・occlusion の2つだけになった) / run 前の「FM の text 経路が死んでいる →
+heal 無効」警告(§21 で heal 有効時だけに絞ったばかりだったが、heal 自体が text 経路を
+呼ばなくなったので警告ごと無くなった。**FM の text 経路はもう実行時機能を1つも持たない**
+—— シナリオ下書き・命名コマンドは実行時ではない)。
+
+**`heal` を `fm` から独立させた**(ユーザー決定)。自己修復はもう FM 機能ではないので、
+`fm=false` でも `heal` は無効にならない。run.json の `fmSettings` は引き続き6欄
+(`fm`/`heal`/`falsePositiveCheck`/`screenLooksLike`/`ocr`/`ocrFalsePositiveCheck`)を保つ ——
+`ocr`/`ocrFalsePositiveCheck` と同じ扱いで、FM 機能ではないが記録上はここにまとめてある。
+残る自己修復の注記は `heal-fingerprint-match`(指紋照合で解決)と `heal-unwritable`
+(一致したが一意に書けるセレクタが無い)の2つだけになった。
+
+**戻すなら**: §21 と同じ測り方(本線と同じ instructions/本文/画像経路で新旧の出力を並べ、
+同じ標本で詰めてから別の標本で確かめる)で誤り率を測り直してから。

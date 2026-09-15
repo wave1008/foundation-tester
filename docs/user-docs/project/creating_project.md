@@ -18,7 +18,7 @@ TestProjects/SampleApp/
 │                                   # failures and anything you want to keep out of the build)
 ├── reports/                       # per-scenario Markdown reports
 ├── results/                       # run-results JSON database (see results_analysis.md)
-└── .fleetest/                      # heal cache and other per-project state
+└── .fleetest/                      # locator fingerprints and other per-project state
 ```
 
 Each project maps to its own SPM target `fleetest-scenarios-<name>`, so a compile error in one

@@ -1,14 +1,13 @@
 // StepExecutor.swift
 // 単一 FlowStep の決定的実行エンジン(Swift DSL のコマンドは全てここを通る)。
 // 実証済みのセマンティクス:
-// - ロケータ解決失敗は指数バックオフ(100→200→400ms、計3回)で再試行してからヒールへ
-//   (UI 遷移直後対策。ヒール発動までの総待機は計700ms)。step.timeout 指定時はアクションも
+// - ロケータ解決失敗は指数バックオフ(100→200→400ms、計3回)で再試行してから指紋照合へ
+//   (UI 遷移直後対策。指紋照合までの総待機は計700ms)。step.timeout 指定時はアクションも
 //   その秒数を予算にリトライ(0 = リトライなし。省略時=nilは従来の3回固定のまま)
 // - アサーションでは type+index のみのフォールバックを使わない(別画面要素への誤った緑防止)。
 //   ただしスコープ付き(`#list >> .Cell[2]`)は容器に錨があるので除外しない(FlowLocator.isWeakForAssert)
 // - **要素未発見で失敗しない唯一のアクションは `select`**(空要素を返す契約。DSL の
 //   `FTElement.isEmpty` が真になる)。自己修復の対象にもしない。他は全て失敗=シナリオ中断
-// - 自己修復は delegate 提案の confidence == "high" のみ採用
 // - 操作後の整定待ちはドライバ側に委譲(Android: ブリッジの a11y 静穏検知 / iOS: XCUITest の
 //   暗黙 quiescence)。
 //   exists/valueEquals/textEquals はタイムアウトまでポーリング(間隔は PollBackoff の
@@ -18,40 +17,8 @@ import Foundation
 
 // MARK: - FM フックと結果型(FTCore は FoundationModels に依存しない)
 
-public struct HealProposal: Sendable {
-    public let element: ElementInfo
-    /// high / medium / low
-    public let confidence: String
-    public let rationale: String
-
-    public init(element: ElementInfo, confidence: String, rationale: String) {
-        self.element = element
-        self.confidence = confidence
-        self.rationale = rationale
-    }
-}
-
-/// `healLocator` が実際に FM を呼べた結果。**nil を返してよいのは呼べなかった/エラーだったときだけ**
-/// (資源ゲート待ちタイムアウト・session の例外)。FM が答えを返した回は必ずこの3ケースのどれかで
-/// 運ぶ —— 「要素へ引き戻せなかった」を nil に潰すと、2026-09-02 に実際に踏んだ「黙る経路」
-/// (`cannot resolve the locator` としか出ず、モデルが何を返したか一切見えない)に戻る。
-public enum HealAttempt: Sendable {
-    /// 要素へ引き戻せた(採用するかは confidence 次第。StepExecutor+Actions 側の判定)
-    case proposed(HealProposal)
-    /// FM は答えたが、その生テキストが木のどの要素にも一致しなかった(`resolveByText` が nil)。
-    /// 呼び出し側が失敗文言・注記へ流すため、答えは整形せずそのまま運ぶ
-    case unresolved(rawAnswer: String)
-    /// FM は一覧を見たうえで**「妥当な代わりが無い」と判断した**(`LocatorRepairSuggestion.elementText`
-    /// が nil)。`.unresolved`(モデルは何かを名指ししたが木のどの要素にも一致しなかった=答えの質の
-    /// 問題)とは意味が違う正常な結論 —— 要素が本当に消えている場合はこれが正解(2026-09-02 実測:
-    /// 存在しない要素をわざと叩く陽性対照シナリオで、選択肢を与えない設計のせいでモデルが無関係な
-    /// 要素を medium confidence で提案していた)
-    case noReplacement(rationale: String)
-}
-
-/// FM フック。実装は FTFoundationModels 側(失敗時のみ呼ばれる: 自己修復・画面検証・トリアージ)。
+/// FM フック。実装は FTFoundationModels 側(画面検証・occlusion-guard)。
 public protocol ReplayDelegate: AnyObject {
-    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt?
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)?
     /// [PoC occlusion-guard] ツリー上は一致した要素が、実際にスクショ上で覆われず/切れず/
     /// 明瞭に描画されているかを FM に照合させる。visible=false なら assert を誤った緑として反転する。
@@ -168,14 +135,11 @@ public struct StepTiming: Sendable, Equatable {
     }
 }
 
-/// 1 ステップの実行結果。自己修復が発生した場合は差し替え済みステップを返す(永続化は呼び出し側の判断)
+/// 1 ステップの実行結果。自己修復(指紋照合)が発生した場合は差し替え済みステップを返す(修正提案は呼び出し側)
 public struct StepOutcome: Sendable {
     public let status: StepResult.Status
     public let healedStep: FlowStep?
-    /// true = ヒールキャッシュで解決(FM 不使用)。false で healedStep あり = FM 自己修復
-    public let healedByCache: Bool
-    /// true = ロケータ指紋(前回解決できた要素の type+label)で決定的に解決(FM 不使用)。
-    /// healedByCache/healedByFingerprint とも false で healedStep あり = FM 自己修復
+    /// true = ロケータ指紋(前回解決できた要素の type+label)で決定的に解決した
     public let healedByFingerprint: Bool
     /// ステップの所要時間内訳。action も assert もない(空)ステップの場合のみ nil
     /// (実行エラー時も catch 節でこの時点までの計測値を積んで返す)
@@ -185,14 +149,14 @@ public struct StepOutcome: Sendable {
     /// ロケータのフォールバック(.passedViaFallback)とは別物で、セレクタ更新の提案は出さない。
     public let driverFallback: String?
     /// driverFallback のうち **run を跨いで数えたい注記**の機械可読コード(StepNote)。
-    /// `execute(_:cached:)` が per-step の累積器から詰めるので、**内側の return では空のまま**でよい
+    /// `execute(_:fingerprint:)` が per-step の累積器から詰めるので、**内側の return では空のまま**でよい
     /// (外側で組み直される)。表示文言との同期は `StepExecutor.note(_:into:)` が担保する
     public let notes: [StepNote]
     /// [occlusion-guard] このステップが `occlusionFlip` の `visibilityGuardActive` 判定を通ったか
     /// (guardEnteredThisStep から詰める)。集計の分母 —— `ScenarioRecordBuilder` はこれが true の
     /// ステップだけを occlusion-guard の母数に数える
     public let guardEntered: Bool
-    /// このステップの結果が確定した壁時計時刻(ISO8601+ミリ秒)。execute(_:cached:) が
+    /// このステップの結果が確定した壁時計時刻(ISO8601+ミリ秒)。execute(_:fingerprint:) が
     /// 返す直前に都度 Date() から採る(failed 以外にも付くが、永続化するのは失敗ステップのみ。
     /// ScenarioEvent.at / FailedStepRecord.at 参照)
     public let at: String
@@ -212,7 +176,7 @@ public struct StepOutcome: Sendable {
     /// notes と同じ累積器方式(`failureKindThisStep`)で内側から立て、`execute` の出口で載せる
     public let failureKind: StepFailureKind?
 
-    public init(status: StepResult.Status, healedStep: FlowStep? = nil, healedByCache: Bool = false,
+    public init(status: StepResult.Status, healedStep: FlowStep? = nil,
                healedByFingerprint: Bool = false,
                timing: StepTiming? = nil, driverFallback: String? = nil,
                notes: [StepNote] = [], guardEntered: Bool = false,
@@ -226,7 +190,6 @@ public struct StepOutcome: Sendable {
         self.scrollSwipes = scrollSwipes
         self.status = status
         self.healedStep = healedStep
-        self.healedByCache = healedByCache
         self.healedByFingerprint = healedByFingerprint
         self.timing = timing
         self.driverFallback = driverFallback
@@ -378,12 +341,8 @@ public final class StepExecutor {
     /// スワイプ化し、バウンス由来の flake を持ち込む(typeDriverGestures の注意書きと同じ理由)
     var dragFallbackLatched = false
     public var delegate: ReplayDelegate?
-    /// 自己修復の3層(ヒールキャッシュ・指紋照合・FM ヒール)をまとめて許す(`execute` の入口で畳む)
+    /// 自己修復(指紋照合)を許す(`execute` の入口で畳む)。FM は使わない
     public var healingEnabled: Bool
-    /// FM ヒールの採用門(confidence == "high")を注入で開けるか(`HealConfidenceInjection`)。
-    /// **保守者の試験専用**。本番の門は実測で1度も開かない(0/272)ため、これが無いと採用より先の
-    /// 経路(ヒールキャッシュ・修正提案)をデバイスで1度も通せない
-    public var healConfidenceGateInjected = HealConfidenceInjection.isActive()
     /// 実行プロファイルの falsePositiveCheck に対応するマスタースイッチ(既定 true)。false なら
     /// occlusionGuard/perStepGuard の値に関わらず occlusion-guard 自体を無効化する
     public var occlusionGuardEnabled: Bool
@@ -618,15 +577,12 @@ public final class StepExecutor {
         }
     }
 
-    /// cached: ヒールキャッシュ由来のロケータ連鎖。fingerprint: 前回このロケータが解決できた
-    /// 要素の指紋(`LocatorFingerprint`)。解決順は
-    /// プライマリ → フォールバック → キャッシュ → 指紋照合 → FM ヒール(アクションのみ)
-    public func execute(_ original: FlowStep, cached rawCached: [FlowLocator] = [],
+    /// fingerprint: 前回このロケータが解決できた要素の指紋(`LocatorFingerprint`)。解決順は
+    /// プライマリ → フォールバック → 指紋照合(アクションのみ)
+    public func execute(_ original: FlowStep,
                         fingerprint rawFingerprint: LocatorFingerprint? = nil) async -> StepOutcome {
-        // **`heal=false` はキャッシュ・指紋・FM の3層すべてを止める**。
-        // FM だけを止めると、利用者が切ったつもりの自己修復が指紋とキャッシュで黙って続く。
-        // 入口の1箇所で落とす —— 下流の分岐ごとに見ると、層を足した日に門の掛け忘れが起きる
-        let cached = healingEnabled ? rawCached : []
+        // **`heal=false` は指紋照合(= 自己修復)を止める**。入口の1箇所で落とす ——
+        // 下流の分岐ごとに見ると、修復の層を足した日に門の掛け忘れが起きる
         let fingerprint = healingEnabled ? rawFingerprint : nil
         // **入口で1回だけ実効値へ畳む**(下流は `step.containerInference` だけを見る)。
         // 優先順位: 環境変数の殺しスイッチ > ステップ指定 > 実行プロファイル既定
@@ -650,12 +606,11 @@ public final class StepExecutor {
         systemAlertProbeFailure = nil
         do {
             if let action = step.action {
-                let outcome = try await executeAction(action, step: step, cached: cached,
+                let outcome = try await executeAction(action, step: step,
                                                       fingerprint: fingerprint, phase: &phase)
                 // 失敗したなら、登録の無いシステムアラートが前面に無いかを1回だけ聞いて文言に添える
                 let status = await annotatedWithSystemAlert(outcome.status, phase: &phase)
                 return StepOutcome(status: status, healedStep: outcome.healedStep,
-                                   healedByCache: outcome.healedByCache,
                                    healedByFingerprint: outcome.healedByFingerprint,
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
@@ -754,7 +709,7 @@ public final class StepExecutor {
         noteCodesThisStep.sorted { $0.rawValue < $1.rawValue }
     }
 
-    /// execute(_:cached:) 1 回分の snapshot/action/wait 所要時間(ミリ秒)の積算値。
+    /// execute(_:fingerprint:) 1 回分の snapshot/action/wait 所要時間(ミリ秒)の積算値。
     /// 呼び出しの中だけで閉じるローカル値のため、並行アクセスの心配はない。
     /// StepExecutor+Assert.swift の executeAssert 系のシグネチャにも使うため internal。
     struct PhaseAccumulator {
@@ -816,7 +771,7 @@ public final class StepExecutor {
     /// 天井の撮り直しで対象を拾ったステップの**後続読み**も天井にする per-step ラッチ。
     /// 立てるのは StepExecutor+Actions.swift の撮り直し呼び出し箇所だけ(Assert のループは
     /// ループ内 var で完結し、後続読みが無いので立てない)。寿命はステップ
-    /// (execute(_:cached:) の入口で false に戻す)。
+    /// (execute(_:fingerprint:) の入口で false に戻す)。
     /// `AppDriver.raiseElementLimitOnNextSnapshot` は次の1回だけ効く one-shot なので、
     /// 立っている間は `freshSnapshot(_:)` および StepExecutor+Actions.swift の直呼び読みが
     /// **呼ぶたびに** arm し直す。StepExecutor+Actions.swift からも立てるため internal

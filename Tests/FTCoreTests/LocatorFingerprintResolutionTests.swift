@@ -1,10 +1,10 @@
 import XCTest
 @testable import FTCore
 
-/// `StepExecutor+Actions.swift` の解決分岐に足したロケータ指紋の階層(matchCached の後・
-/// select の特例の後・FM ヒールより前)を、`executor.execute(step, fingerprint:)` 経由で
-/// end-to-end に確かめる。プライマリ/フォールバック/キャッシュがどれも解決できない失敗経路
-/// だけで効く機構なので、ここでは常にプライマリが解決できない `FlowLocator` を渡す。
+/// `StepExecutor+Actions.swift` の解決分岐にあるロケータ指紋の階層(select の特例の後)を、
+/// `executor.execute(step, fingerprint:)` 経由で end-to-end に確かめる。プライマリ/フォールバックが
+/// どちらも解決できない失敗経路だけで効く機構なので、ここでは常にプライマリが解決できない
+/// `FlowLocator` を渡す。
 final class LocatorFingerprintResolutionTests: XCTestCase {
 
     private final class StubDriver: AppDriver {
@@ -28,23 +28,6 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
         func terminate() async throws {}
     }
 
-    /// 呼ばれたら即失敗させる delegate。「指紋が一意に解決した回は FM を呼ばない」ことを
-    /// 確かめるのに使う(呼ばれてしまえばテストがすぐ落ちる)
-    private final class MustNotBeCalledHealer: ReplayDelegate {
-        func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? {
-            XCTFail("指紋が一意に解決できたのに FM を呼んではいけない")
-            return nil
-        }
-        func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-    }
-
-    private final class ScriptedAttemptHealer: ReplayDelegate {
-        let attempt: HealAttempt
-        init(_ attempt: HealAttempt) { self.attempt = attempt }
-        func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { attempt }
-        func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-    }
-
     private func element(_ ref: Int, type: String = "button", id: String? = nil,
                          label: String? = nil, depth: Int = 0) -> ElementInfo {
         ElementInfo(ref: ref, type: type, identifier: id, label: label, value: nil,
@@ -64,12 +47,11 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
 
     /// **本題**: id がドリフトした(`#btn_old` → `#btn_new`)が type+label は不変。指紋がちょうど
     /// 1件に決定的に解決し、書けるセレクタ(`#btn_new` が画面で一意な id)があるので healedStep が
-    /// 立って `.healed` になる。FM は呼ばれない(healingEnabled=true でも delegate が呼ばれたら落ちる)
-    func testUniqueFingerprintMatchHealsWithoutCallingFM() async {
+    /// 立って `.healed` になる
+    func testUniqueFingerprintMatchHeals() async {
         let snap = snapshot([element(1, id: "btn_new", label: "修復対象")])
         let driver = StubDriver(snap)
-        let executor = StepExecutor(driver: driver, delegate: MustNotBeCalledHealer(),
-                                    healingEnabled: true, isAndroid: false)
+        let executor = StepExecutor(driver: driver, healingEnabled: true, isAndroid: false)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
         let fp = LocatorFingerprint(type: "button", label: "修復対象", placeholder: nil)
 
@@ -77,7 +59,6 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
 
         XCTAssertTrue(outcome.notes.contains(.healFingerprintMatch), "\(outcome.notes)")
         XCTAssertTrue(outcome.healedByFingerprint)
-        XCTAssertFalse(outcome.healedByCache)
         guard case .healed(let locator) = outcome.status else {
             return XCTFail("一意な指紋一致は healed のはず: \(outcome.status)")
         }
@@ -85,18 +66,12 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
         XCTAssertEqual(outcome.healedStep?.locator?.id, "btn_new")
     }
 
-    /// **最重要の陰性テスト**: 型+ラベルが同じ要素が2つあるとき、指紋は不採用のまま従来の
-    /// FM ヒールへ委ねる(別要素へ静かに解決してはいけない)。「常に解決する」変異が入っていたら、
-    /// この回だけ MustNotBeCalledHealer が呼ばれてテストが落ちる
-    func testAmbiguousFingerprintFallsThroughToFM() async {
-        let a = element(1, id: "row_a", label: "修復対象")
-        let b = element(2, id: "row_b", label: "修復対象")
-        let snap = snapshot([a, b])
-        let driver = StubDriver(snap)
-        let proposal = HealProposal(element: a, confidence: "high", rationale: "fm chose a")
-        let executor = StepExecutor(driver: driver,
-                                    delegate: ScriptedAttemptHealer(.proposed(proposal)),
-                                    healingEnabled: true, isAndroid: false)
+    /// **最重要の陰性テスト**: 型+ラベルが同じ要素が2つあるとき、指紋は不採用(別要素へ静かに
+    /// 解決してはいけない)で、ロケータ未解決の失敗になる。「常に解決する」変異はここで落ちる
+    func testAmbiguousFingerprintIsNotAdopted() async {
+        let snap = snapshot([element(1, id: "row_a", label: "修復対象"),
+                             element(2, id: "row_b", label: "修復対象")])
+        let executor = StepExecutor(driver: StubDriver(snap), healingEnabled: true, isAndroid: false)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
         let fp = LocatorFingerprint(type: "button", label: "修復対象", placeholder: nil)
 
@@ -105,23 +80,15 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
         XCTAssertFalse(outcome.notes.contains(.healFingerprintMatch),
                        "複数一致では指紋の注記を立ててはいけない: \(outcome.notes)")
         XCTAssertFalse(outcome.healedByFingerprint)
-        // FM 側(ScriptedAttemptHealer)が実際に採用されたことで、指紋を素通りして
-        // FM ヒールまで落ちたことを確認する
-        guard case .healed(let locator) = outcome.status else {
-            return XCTFail("FM ヒールで解決したはず: \(outcome.status)")
+        guard case .failed = outcome.status else {
+            return XCTFail("複数一致はロケータ未解決の失敗のはず: \(outcome.status)")
         }
-        XCTAssertEqual(locator.id, "row_a")
     }
 
-    /// 0件一致でも同じく FM ヒールへ委ねる(型が違う=1件も一致しない)
-    func testNoFingerprintMatchFallsThroughToFM() async {
+    /// 0件一致でも同じく不採用(型が違う=1件も一致しない)
+    func testNoFingerprintMatchIsNotAdopted() async {
         let snap = snapshot([element(1, type: "cell", id: "btn_new", label: "修復対象")])
-        let driver = StubDriver(snap)
-        let target = element(1, type: "cell", id: "btn_new", label: "修復対象")
-        let proposal = HealProposal(element: target, confidence: "high", rationale: "fm chose it")
-        let executor = StepExecutor(driver: driver,
-                                    delegate: ScriptedAttemptHealer(.proposed(proposal)),
-                                    healingEnabled: true, isAndroid: false)
+        let executor = StepExecutor(driver: StubDriver(snap), healingEnabled: true, isAndroid: false)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
         // 指紋の type は "button" だが現在の要素は "cell" = 0件一致
         let fp = LocatorFingerprint(type: "button", label: "修復対象", placeholder: nil)
@@ -129,8 +96,8 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
         let outcome = await executor.execute(step, fingerprint: fp)
 
         XCTAssertFalse(outcome.notes.contains(.healFingerprintMatch), "\(outcome.notes)")
-        guard case .healed = outcome.status else {
-            return XCTFail("0件一致は FM ヒールへ落ちるはず: \(outcome.status)")
+        guard case .failed = outcome.status else {
+            return XCTFail("0件一致はロケータ未解決の失敗のはず: \(outcome.status)")
         }
     }
 
@@ -145,8 +112,7 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
                                 frame: FTRect(x: 0, y: 0, width: 100, height: 40), depth: 0)
         let snap = snapshot([field])
         let driver = StubDriver(snap)
-        let executor = StepExecutor(driver: driver, delegate: MustNotBeCalledHealer(),
-                                    healingEnabled: true, isAndroid: false)
+        let executor = StepExecutor(driver: driver, healingEnabled: true, isAndroid: false)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
         let fp = LocatorFingerprint(type: "textField", label: nil, placeholder: "検索")
 
@@ -166,8 +132,7 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
     func testSelectIsNotResolvedByFingerprint() async {
         let snap = snapshot([element(1, id: "btn_new", label: "修復対象")])
         let driver = StubDriver(snap)
-        let executor = StepExecutor(driver: driver, delegate: MustNotBeCalledHealer(),
-                                    healingEnabled: true, isAndroid: false)
+        let executor = StepExecutor(driver: driver, healingEnabled: true, isAndroid: false)
         let step = FlowStep(action: "select", locator: FlowLocator(id: "btn_old"))
         let fp = LocatorFingerprint(type: "button", label: "修復対象", placeholder: nil)
 
@@ -180,13 +145,12 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
         }
     }
 
-    /// **`heal=false` は指紋照合も止める**(ユーザー決定 2026-09-15)。指紋が一意に解決できる画面でも
+    /// **`heal=false` は指紋照合(= 自己修復)を止める**。指紋が一意に解決できる画面でも
     /// 注記を立てず、ロケータ未解決の失敗のまま返す。対になる陽性は
-    /// `testUniqueFingerprintMatchHealsWithoutCallingFM`(同じ画面・同じ指紋で healingEnabled=true)
+    /// `testUniqueFingerprintMatchHeals`(同じ画面・同じ指紋で healingEnabled=true)
     func testHealingDisabledIgnoresFingerprint() async {
         let snap = snapshot([element(1, id: "btn_new", label: "修復対象")])
-        let executor = StepExecutor(driver: StubDriver(snap), delegate: MustNotBeCalledHealer(),
-                                    healingEnabled: false, isAndroid: false)
+        let executor = StepExecutor(driver: StubDriver(snap), healingEnabled: false, isAndroid: false)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
         let fp = LocatorFingerprint(type: "button", label: "修復対象", placeholder: nil)
 
@@ -197,28 +161,6 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
         XCTAssertNil(outcome.healedStep)
         guard case .failed = outcome.status else {
             return XCTFail("heal=false では指紋で解決せず失敗のはず: \(outcome.status)")
-        }
-    }
-
-    /// **`heal=false` はヒールキャッシュも止める**。同じキャッシュが healingEnabled=true では
-    /// 解決することを先に確かめてから(陽性対照)、false で解決しないことを見る
-    func testHealingDisabledIgnoresHealCache() async {
-        let snap = snapshot([element(1, id: "btn_new", label: "修復対象")])
-        let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
-        let cached = [FlowLocator(id: "btn_new")]
-
-        let enabled = StepExecutor(driver: StubDriver(snap), delegate: MustNotBeCalledHealer(),
-                                   healingEnabled: true, isAndroid: false)
-        let healed = await enabled.execute(step, cached: cached)
-        XCTAssertTrue(healed.healedByCache, "前提が崩れている: キャッシュが効いていない: \(healed.status)")
-
-        let disabled = StepExecutor(driver: StubDriver(snap), delegate: MustNotBeCalledHealer(),
-                                    healingEnabled: false, isAndroid: false)
-        let outcome = await disabled.execute(step, cached: cached)
-        XCTAssertFalse(outcome.healedByCache)
-        XCTAssertNil(outcome.healedStep)
-        guard case .failed = outcome.status else {
-            return XCTFail("heal=false ではキャッシュで解決せず失敗のはず: \(outcome.status)")
         }
     }
 }

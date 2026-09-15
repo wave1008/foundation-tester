@@ -145,25 +145,4 @@ final class HealFixApplierTests: XCTestCase {
         XCTAssertEqual(result.applied.count, 2)
         XCTAssertTrue(result.failures.isEmpty)
     }
-
-    func testRemovingAppliedKeysFromCache() {
-        let dict: [String: Any] = [
-            "ログインテスト.S0010|scenarios/Login.swift:14|#old_login_btn": ["newSelector": "x"],
-            "他のキー": ["newSelector": "y"],
-        ]
-        let result = HealFixApplier.removingAppliedKeys(
-            ["ログインテスト.S0010|scenarios/Login.swift:14|#old_login_btn"], from: dict)
-
-        XCTAssertTrue(result.changed)
-        XCTAssertNil(result.dict["ログインテスト.S0010|scenarios/Login.swift:14|#old_login_btn"])
-        XCTAssertNotNil(result.dict["他のキー"])
-    }
-
-    func testRemovingAppliedKeysNoMatchIsNoop() {
-        let dict: [String: Any] = ["既存キー": ["newSelector": "x"]]
-        let result = HealFixApplier.removingAppliedKeys(["存在しないキー"], from: dict)
-
-        XCTAssertFalse(result.changed)
-        XCTAssertEqual(result.dict.count, 1)
-    }
 }

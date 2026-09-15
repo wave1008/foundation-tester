@@ -367,22 +367,20 @@ public struct RunDeviceRef: Codable, Sendable, Equatable {
 /// FM 機能の実行時トグル(実行プロファイル由来の実効値)。enabled=false のとき他フラグも
 /// resolve 側で false に落とす(利用側は個別フラグだけ見ればよい)
 public struct FMConfig: Sendable, Equatable {
-    /// FM を使用するか(false = heal/偽陽性検証/screenLooksLike を一切呼ばない)
+    /// FM を使用するか(false = 偽陽性検証/screenLooksLike を一切呼ばない)
     public var enabled: Bool
-    public var heal: Bool
     /// 偽陽性検証(occlusion guard)= 誤った緑(木では一致したが実際には見えていない)の検査。
     /// **実行プロファイルの既定は true**(2026-09-03 ユーザー決定。それ以前はオプトインだった)
     public var falsePositiveCheck: Bool
     public var screenLooksLike: Bool
 
     /// **この既定値は実行プロファイルの既定とは別物**。プロファイル由来の値は
-    /// `ResolvedProfile.fm`(RunProfileDocument の `heal ?? true` 等)が組み立てる。
+    /// `ResolvedProfile.fm`(RunProfileDocument の `falsePositiveCheck ?? true` 等)が組み立てる。
     /// ここの既定は「プロファイルを通らない呼び出し」(MCP のシナリオ実行・dry-run 等)向けで、
     /// **FM を積極的に使わない側**に倒してある
-    public init(enabled: Bool = true, heal: Bool = false,
+    public init(enabled: Bool = true,
                 falsePositiveCheck: Bool = false, screenLooksLike: Bool = true) {
         self.enabled = enabled
-        self.heal = heal
         self.falsePositiveCheck = falsePositiveCheck
         self.screenLooksLike = screenLooksLike
     }
@@ -417,9 +415,10 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var app: String?
     /// 実行に使うデバイス(name 参照。iOS/Android 混在可 = 両OS同時実行)
     public var devices: [RunDeviceRef]?
-    /// FM 機能を使用するか(既定 true)。false なら heal/偽陽性検証/screenLooksLike を一切呼ばない
+    /// FM 機能を使用するか(既定 true)。false なら偽陽性検証/screenLooksLike を一切呼ばない
+    /// (`heal` は FM を使わないので配下ではない)
     public var fm: Bool?
-    /// FM によるロケータ自己修復を許可するか(既定 true)
+    /// ロケータ自己修復(指紋照合)を許可するか(既定 true)。FM は使わず、`fm` の配下でもない
     public var heal: Bool?
     /// 偽陽性検証(occlusion guard)を有効にするか(**既定 true**。2026-09-03 ユーザー決定で
     /// オプトインをやめた)= 誤った緑(木では一致したが実際には見えていない)の検査
@@ -844,6 +843,8 @@ extension RunProfileDocument {
 /// (`RunProfileDocument.profileOnlyKeys`)はここに無い
 public struct DeviceIndependentRunSettings: Sendable, Equatable {
     public let fm: FMConfig
+    /// ロケータ自己修復(指紋照合)。**`fm` の配下ではない**(FM を使わないので、FM を切っても止めない)
+    public let heal: Bool
     public let ocr: Bool
     /// **親スイッチ `ocr` を掛けた後の実効値**(FMConfig が fm を掛けているのと同じ形)
     public let ocrFalsePositiveCheck: Bool
@@ -874,9 +875,11 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
 
     /// `--profile` を使わない実行(`--port`/`--serial` 直指定)の基底。**プロファイルの既定を
     /// そのまま使わない** —— 3つだけ意図的に違う:
-    ///   `heal` / `falsePositiveCheck` … profile-less は **FM を積極的に使わない側**へ倒す
+    ///   `falsePositiveCheck` … profile-less は **FM を積極的に使わない側**へ倒す
     ///     (`FMConfig.init` の既定と同じ。プロファイルの既定 true を当てると、既に緑だった
     ///      素の run で `exist`/`textIs` が occlusion-guard を通り**緑が赤に反転しうる**)
+    ///   `heal` … profile-less は**修復しない**(`ScenarioExecutionSettings.init` の既定と同じ。
+    ///     素の run で壊れたセレクタを黙って別要素へ解決させない)
     ///   `homeOnStart` … profile-less は**デバイスに触らない**。この設定は一斉起動直後の
     ///     黒画面を防ぐためのもので、既に建っているブリッジへ繋ぐだけの経路では、手で用意した
     ///     画面を Home で流してしまう
@@ -893,9 +896,9 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
         return DeviceIndependentRunSettings(
             fm: FMConfig(
                 enabled: fmEnabled,
-                heal: fmEnabled && (doc.heal ?? true),
                 falsePositiveCheck: fmEnabled && (doc.falsePositiveCheck ?? true),
                 screenLooksLike: fmEnabled && doc.effectiveScreenLooksLike),
+            heal: doc.heal ?? true,
             ocr: ocrEnabled,
             ocrFalsePositiveCheck: ocrEnabled && (doc.ocrFalsePositiveCheck ?? true),
             iosFastInput: doc.iosFastInput ?? false,
@@ -1023,10 +1026,10 @@ public struct ResolvedProfile: Sendable {
     public let apps: [String: ResolvedAppTarget]
     /// 実行に使うデバイス。**limitingDevices が本数に合わせて絞る**ので var
     public var devices: [ResolvedDevice]
-    /// FM 機能の実効設定(RunProfileDocument の fm/heal/falsePositiveCheck/screenLooksLike を合成)
+    /// FM 機能の実効設定(RunProfileDocument の fm/falsePositiveCheck/screenLooksLike を合成)
     public let fm: FMConfig
-    /// FM によるロケータ自己修復を許可するか(fm.heal のエイリアス。既存呼び出し互換のため維持)
-    public var heal: Bool { fm.heal }
+    /// ロケータ自己修復(指紋照合)を許可するか。**`fm` の配下ではない**
+    public let heal: Bool
     /// 絶対パス解決済み
     public let reportDir: URL
     public let defaultTimeout: Double?
@@ -1761,6 +1764,7 @@ public enum ProfileResolver {
             apps: apps,
             devices: devices,
             fm: settings.fm,
+            heal: settings.heal,
             reportDir: reportDir,
             defaultTimeout: runDoc.defaultTimeout,
             scenarioTimeout: runDoc.scenarioTimeout,

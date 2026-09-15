@@ -143,6 +143,36 @@ test("確定・キャンセルのボタンは3セクションとも無い", (t) 
   }
 });
 
+test("heal は FM のサブオプションではない: #run-profile-fm-options の外にあり、FM を切っても表示・値とも変わらない", (t) => {
+  const { window, document, posted } = loadedRunProfile(t);
+  const heal = document.getElementById("run-profile-heal");
+  const fmOptions = document.getElementById("run-profile-fm-options");
+  const fmSubOption = document.getElementById("run-profile-screen-looks-like");
+  // 要素自身の display は親が非表示でも "none" にならないので、祖先を辿って見る。辿るのは FM 欄の
+  // セクションの親(自己修復欄と共通の親)まで —— その上のパネルは jsdom ではタブが非表示のまま
+  const root = document.getElementById("run-profile-fm").closest(".run-profile-section-group").parentElement;
+  const hiddenByAncestor = (el) => {
+    for (let node = el; node && node !== root; node = node.parentElement) {
+      if (window.getComputedStyle(node).display === "none") return true;
+    }
+    return false;
+  };
+  assert.ok(root.contains(heal), "前提: 自己修復欄は FM 欄と同じ親の下にある");
+  assert.equal(fmOptions.contains(heal), false);
+  assert.equal(hiddenByAncestor(heal), false);
+  assert.equal(heal.checked, true);
+
+  document.getElementById("run-profile-fm").click();
+  // 前提: FM を切ると配下のサブオプションは実際に隠れる(この判定が効くことの陽性対照)
+  assert.equal(hiddenByAncestor(fmSubOption), true);
+  assert.equal(hiddenByAncestor(heal), false);
+  assert.equal(heal.checked, true);
+  const sent = saves(posted);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].fields.fm, false);
+  assert.equal(sent[0].fields.heal, true);
+});
+
 test("チェックボックスは切り替えた時点で保存する(以前は購読漏れで dirty にならなかった欄も)", (t) => {
   const { document, posted } = loadedRunProfile(t);
   // homeOnStart / playProtectBypass / updateWebView は欄ごとの購読から漏れていた3つ

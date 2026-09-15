@@ -152,10 +152,10 @@ struct RunScenario: AsyncParsableCommand {
             help: "Host of the iOS bridge (default 127.0.0.1; for physical devices use the LAN IP or the iproxy loopback)")
     var bridgeHost: String?
 
-    @Flag(help: "Allow FM-based locator self-healing")
+    @Flag(help: "Allow locator self-healing by locator fingerprint (does not use FM)")
     var heal = false
 
-    @Flag(name: .customLong("no-fm"), help: "Do not use any FM feature (heal / false-positive check / screenLooksLike)")
+    @Flag(name: .customLong("no-fm"), help: "Do not use any FM feature (false-positive check / screenLooksLike)")
     var noFM = false
 
     @Flag(name: .customLong("no-false-positive-check"), help: "Disable the false-positive check (occlusion guard)")
@@ -177,7 +177,7 @@ struct RunScenario: AsyncParsableCommand {
     var reportDir: String = "reports"
 
     @Option(name: .customLong("project-dir"),
-            help: "Root of the test project (where state such as the heal cache is stored; defaults to the current directory)")
+            help: "Root of the test project (where state such as locator fingerprints is stored; defaults to the current directory)")
     var projectDir: String?
 
     @Option(name: .customLong("default-timeout"),
@@ -439,7 +439,7 @@ struct RunScenario: AsyncParsableCommand {
             }
         }
 
-        // noFM: delegate を nil にすると heal/screenLooksLike/occlusion-guard は
+        // noFM: delegate を nil にすると screenLooksLike/occlusion-guard は
         // ReplayDelegate 既定実装(nil)に落ち、揃って無効化される(LazyFMDelegate class doc 参照)
         let delegate: ReplayDelegate? = noFM ? nil : LazyFMDelegate()
 
@@ -454,9 +454,6 @@ struct RunScenario: AsyncParsableCommand {
         started.title = descriptor.title
         emit(started)
 
-        let healCacheURL = projectDir.map {
-            URL(fileURLWithPath: $0).appendingPathComponent(".fleetest/heal-cache.json")
-        }
         let fingerprintCacheURL = projectDir.map {
             URL(fileURLWithPath: $0).appendingPathComponent(".fleetest/locator-fingerprints.json")
         }
@@ -468,12 +465,11 @@ struct RunScenario: AsyncParsableCommand {
         let deviceIdentifier = runPlatform == "android" ? serial : udid
         let core = FTDriveCore(driver: driver, platform: runPlatform, app: appBundleID,
                                scenarioID: scenarioID, scenarioTitle: descriptor.title,
-                               delegate: delegate, healingEnabled: heal && !noFM,
+                               delegate: delegate, healingEnabled: heal,
                                falsePositiveCheckEnabled: !noFalsePositiveCheck,
                                screenLooksLikeEnabled: !noScreenLooksLike,
                                containerInference: !noContainerInference,
                                occlusionOCREnabled: !noOcclusionOCR, dryRun: dryRun,
-                               healCacheURL: healCacheURL,
                                fingerprintCacheURL: fingerprintCacheURL,
                                selectorInventoryURL: selectorInventoryURL,
                                defaultTimeout: defaultTimeout,
@@ -489,7 +485,7 @@ struct RunScenario: AsyncParsableCommand {
         // `core` が生きている間のどの経路で `run()` を抜けても(シナリオ失敗の
         // `throw ExitCode(1)`・将来 core 生成後に足される try 呼び出し等)必ず1回実行される。
         // 「書き忘れた1経路」のせいで、その run で採れた指紋がまるごと消えて次回使えなくなる
-        // (次回も指紋なしで FM ヒールへ戻るだけなので実害は軽いが、防げるなら防ぐ)
+        // (次回はその行が指紋なしで解決を試みるだけなので実害は軽いが、防げるなら防ぐ)
         defer { core.flushLocatorFingerprints() }
         // --host-install のときの appPath は**バンドルの在処**でしかない(インストールは親が行う)。
         // ここで採るとホストと子の二重インストールになる
@@ -619,7 +615,7 @@ struct RunScenario: AsyncParsableCommand {
 // MARK: - FM 遅延初期化デリゲート
 
 /// FoundationModels のロードはシナリオ実行より重いことがあるため、
-/// heal / screenLooksLike / occlusion-guard が実際に必要になった初回にのみ FMReplayDelegate を作る
+/// screenLooksLike / occlusion-guard が実際に必要になった初回にのみ FMReplayDelegate を作る
 final class LazyFMDelegate: ReplayDelegate {
     private var underlying: ReplayDelegate?
     private var checked = false
@@ -632,10 +628,6 @@ final class LazyFMDelegate: ReplayDelegate {
             }
         }
         return underlying
-    }
-
-    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? {
-        await resolve()?.healLocator(step: step, snapshot: snapshot)
     }
 
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? {

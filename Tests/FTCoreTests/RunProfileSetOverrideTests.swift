@@ -388,15 +388,16 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
     func testSetOverrideAppliesOnTopOfTheProfileLessBase() {
         let settings = DeviceIndependentRunSettings.resolve(
             DeviceIndependentRunSettings.profileLessBase.applyingOverrides(["heal": true]))
-        XCTAssertTrue(settings.fm.heal, "--set heal=true は基底を上書きするはず")
+        XCTAssertTrue(settings.heal, "--set heal=true は基底を上書きするはず")
         XCTAssertFalse(settings.fm.falsePositiveCheck, "触っていない欄は基底のまま")
     }
 
 
     func testDefaultsMatchTheRunProfileDocumentDefaults() {
         let settings = DeviceIndependentRunSettings.resolve(RunProfileDocument())
-        XCTAssertEqual(settings.fm, FMConfig(enabled: true, heal: true, falsePositiveCheck: true,
+        XCTAssertEqual(settings.fm, FMConfig(enabled: true, falsePositiveCheck: true,
                                              screenLooksLike: true))
+        XCTAssertTrue(settings.heal)
         XCTAssertTrue(settings.ocr)
         XCTAssertTrue(settings.ocrFalsePositiveCheck)
         XCTAssertFalse(settings.iosFastInput)
@@ -445,13 +446,16 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
         XCTAssertEqual(settings.recordBitrateKbps, 4000)
     }
 
-    /// fm:false は heal/falsePositiveCheck/screenLooksLike を無条件に false へ落とす
-    /// (`--set fm=false --set heal=true` としても heal は立たない)
+    /// fm:false は falsePositiveCheck/screenLooksLike を無条件に false へ落とすが、**heal は落とさない**
+    /// (heal は FM を使わないので `fm` の配下ではない。`--set fm=false` で修復まで黙って止めない)
     func testFmFalseGatesTheOtherFMTogglesEvenWhenTheyAreExplicitlyTrue() {
-        let doc = RunProfileDocument().applyingOverrides(["fm": false, "heal": true])
+        let doc = RunProfileDocument().applyingOverrides(
+            ["fm": false, "heal": true, "falsePositiveCheck": true, "screenLooksLike": true])
         let settings = DeviceIndependentRunSettings.resolve(doc)
         XCTAssertFalse(settings.fm.enabled)
-        XCTAssertFalse(settings.fm.heal, "fm:false のときは heal:true を指定しても立たない")
+        XCTAssertFalse(settings.fm.falsePositiveCheck)
+        XCTAssertFalse(settings.fm.screenLooksLike)
+        XCTAssertTrue(settings.heal, "fm:false でも heal は落ちない")
     }
 
     /// ocr:false は ocrFalsePositiveCheck を無条件に false へ落とす(fm と同じ契約)

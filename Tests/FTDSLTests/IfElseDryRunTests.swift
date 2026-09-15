@@ -41,7 +41,7 @@ final class IfElseDryRunTests: XCTestCase {
         FTDriveCore(driver: StubDriver(), platform: "ios", app: "com.example.app",
                     scenarioID: "T.S0010", scenarioTitle: "t",
                     delegate: nil, healingEnabled: false, dryRun: dryRun,
-                    healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                    fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-ifelse-dryrun-test.json"),
                     emit: { _ in })
     }

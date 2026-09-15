@@ -106,7 +106,7 @@ final class CommandDispatchTests: XCTestCase {
         FTDriveCore(driver: driver, platform: platform, app: "com.example.app",
                     scenarioID: "T.S0010", scenarioTitle: "t",
                     delegate: nil, healingEnabled: false, dryRun: false,
-                    healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                    fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-dispatch-test.json"),
                     fallbackDriver: fallbackDriver, typeDriver: typeDriver,
                     emit: emit)
@@ -196,7 +196,7 @@ final class CommandDispatchTests: XCTestCase {
         XCTAssertTrue(core.finalRecord.passed)
     }
 
-    /// 型付きセレクタはレポート・ヒールキャッシュのキーとして**記法の文字列**に戻る
+    /// 型付きセレクタはレポート・指紋の鍵として**記法の文字列**に戻る
     func testTypedSelectorIsRecordedAsExpression() {
         let core = makeCore(driver: RecordingDriver())
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)

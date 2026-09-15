@@ -1,13 +1,11 @@
 // HealFixApplier.swift
-// 自己修復(FM ロケータ自己修復)の確定反映ロジック。CLI(fleetest api apply-heal)が使う
-// 副作用を持たない純粋ロジック。
-// ファイル I/O(ソースの読み書き・ヒールキャッシュファイルの読み書き)は呼び出し側の責務とし、
-// ここではソース文字列の変換とヒールキャッシュ(JSONSerialization の辞書)のキー削除だけを扱う
+// 自己修復(ロケータ指紋)の修正提案をソースへ確定反映するロジック。CLI(fleetest api apply-heal)が使う
+// 副作用を持たない純粋ロジック。ファイル I/O は呼び出し側の責務とし、ここではソース文字列の変換だけを扱う
 // (テスト容易性のため)。
 
 import Foundation
 
-/// 修復候補 1 件。id はヒールキャッシュのキー形式(HealCache.key)と
+/// 修復候補 1 件。id は指紋の鍵(FTDSL の `LocatorFingerprintCache.key`)と
 /// 同一("scenarioID|file:line|oldSelector")
 public struct HealFixInput: Sendable, Equatable {
     public let scenarioID: String
@@ -78,19 +76,5 @@ public enum HealFixApplier {
             }
         }
         return (source, applied, failures)
-    }
-
-    /// ヒールキャッシュ(JSONSerialization で読み込んだ辞書)から、適用成功した fix の id を
-    /// キーとして削除する(存在しないキーは黙って無視)。
-    /// 戻り値: (削除後の辞書, 1 件でも削除したか。呼び出し側は changed のときだけ書き戻せばよい)
-    public static func removingAppliedKeys(
-        _ ids: [String], from dict: [String: Any]
-    ) -> (dict: [String: Any], changed: Bool) {
-        var dict = dict
-        var changed = false
-        for id in ids where dict.removeValue(forKey: id) != nil {
-            changed = true
-        }
-        return (dict, changed)
     }
 }

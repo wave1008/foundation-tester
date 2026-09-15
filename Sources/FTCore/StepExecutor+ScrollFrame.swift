@@ -315,14 +315,4 @@ extension StepExecutor {
     public static let containerInferenceEnabled =
         ProcessInfo.processInfo.environment["FT_CONTAINER_INFERENCE"] != "off"
 
-    /// ヒールキャッシュのロケータ連鎖を順に照合する
-    func matchCached(_ cached: [FlowLocator],
-                             in snapshot: SnapshotResponse) -> (ElementInfo, FlowLocator)? {
-        for locator in cached {
-            if let element = Self.match(locator, in: snapshot) {
-                return (element, locator)
-            }
-        }
-        return nil
-    }
 }

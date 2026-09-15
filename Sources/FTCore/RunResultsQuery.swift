@@ -385,7 +385,7 @@ public enum RunResultsQuery {
     /// 毎 run 同じ件数を出す(実測: 2118 run で 2107 件 = 1件/run が2週間一定)
     private static let selectorDecayRisePct = 30.0
     /// healReliance: 同じセレクタの修正提案が何 run 続いたら警告するか。
-    /// **提案が出るのは自己修復かヒールキャッシュで「通った」ときだけ**なので、これは
+    /// **強い提案が出るのは自己修復(指紋照合)で「通った」ときだけ**なので、これは
     /// 「緑だがセレクタは壊れている」状態が続いている run 数そのもの
     private static let healRelianceMinRuns = 3
     /// retiredScenarios: 最新の記録からこの日数より前にしか記録が無いシナリオは
@@ -1093,11 +1093,10 @@ public enum RunResultsQuery {
             count: total, deltaPct: deltaPct)
     }
 
-    /// **ヒールキャッシュ/自己修復に寄りかかったまま緑が続いている**セレクタ。
+    /// **自己修復(指紋照合)に寄りかかったまま緑が続いている**セレクタ。
     ///
-    /// 修正提案は毎 run 出るが、放置しても何も起きない —— キャッシュは
-    /// `.fleetest/heal-cache.json` に残り、2 回目以降は FM すら呼ばずに通る。
-    /// 速度のための仕組みが「壊れたセレクタを永久に緑にする装置」になっていないかを、
+    /// 修正提案は毎 run 出るが、放置しても何も起きない —— 指紋は毎 run 照合し直して通る。
+    /// 修復の仕組みが「壊れたセレクタを永久に緑にする装置」になっていないかを、
     /// **提案が何 run 続いたか**で見る(1 run だけなら直せばよい。続いているなら放置されている)。
     private static func healRelianceInsights(scenarioID: String, platform: String,
                                              group: [ScenarioRunRecord]) -> [InsightRow] {
@@ -1114,7 +1113,7 @@ public enum RunResultsQuery {
                 InsightRow(
                     kind: "healReliance", severity: "warn", scenarioID: scenarioID, platform: platform, worker: nil,
                     message: "\(scenarioLabel(scenarioID, platform)): \"\(selector)\" has been passing"
-                        + " only via self-heal/cache for \(runs) run(s) — apply the suggested selector",
+                        + " only via self-heal for \(runs) run(s) — apply the suggested selector",
                     count: runs, deltaPct: nil)
             }
     }

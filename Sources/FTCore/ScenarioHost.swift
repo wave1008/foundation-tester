@@ -416,7 +416,7 @@ public enum ScenarioHost {
                     "--platform", connection.platform,
                     "--report-dir", reportDir, "--json",
                     "--project-dir", project.rootURL.path]
-        if fm.heal { args.append("--heal") }
+        if settings.heal { args.append("--heal") }
         if !fm.enabled { args.append("--no-fm") }
         if !fm.falsePositiveCheck { args.append("--no-false-positive-check") }
         if !fm.screenLooksLike { args.append("--no-screen-looks-like") }
@@ -643,7 +643,7 @@ public enum ScenarioHost {
                                connection: DriverConnection(platform: "ios"),
                                // **`enabled: false`**(デバイスも画面も無いので FM を引く経路をまとめて止める。
                                // 個別に切ると残った経路が FM の直列化待ちを払う)
-                               settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false, heal: false)),
+                               settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
                                reportDir: tempDir.path,
                                dryRun: true) { events.append($0) }
         guard passed else {

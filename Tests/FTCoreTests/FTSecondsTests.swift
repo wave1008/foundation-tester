@@ -23,7 +23,7 @@ final class FTSecondsTests: XCTestCase {
         XCTAssertEqual(decoded.timeout, 1.2)
     }
 
-    /// 既存プロファイル/ヒールキャッシュ由来の整数 JSON("timeout": 5)がそのまま Double へデコードできること
+    /// 既存プロファイル由来の整数 JSON("timeout": 5)がそのまま Double へデコードできること
     /// (Double 化で既存データを壊さない回帰ガード)
     func testFlowStepDecodesLegacyIntegerTimeoutJSON() throws {
         let json = """

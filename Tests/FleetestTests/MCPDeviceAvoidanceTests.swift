@@ -30,7 +30,7 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
         ResolvedProfile(
             project: TestProject(name: "dummy", rootURL: URL(fileURLWithPath: "/tmp/dummy")),
             runName: "r", machineName: "m", appName: "app", apps: [:],
-            devices: devices, fm: FMConfig(),
+            devices: devices, fm: FMConfig(), heal: false,
             reportDir: URL(fileURLWithPath: "/tmp/dummy/reports"),
             defaultTimeout: nil, scenarioTimeout: nil, wipeDataOnBloat: true, updateWebView: false,
             wipeDataThresholdGB: 8, recoverCpuFallbackToGpu: false, locale: "ja_JP",

@@ -54,8 +54,9 @@ fleetest bridge down --all              # 全ブリッジ停止
   ([vscode-fleetest/README.md](../../../vscode-fleetest/README.md)の「並列実行とログレーン」参照)。
 - LPT 順序付け(実績時間の長い順に投入)は直近の実行履歴でワーカー間の負荷を均します。
   `--no-lpt`/`--lpt-history-runs` で制御できます([running_scenarios_ja.md](./running_scenarios_ja.md)参照)。
-- 決定的再生は FM を呼ばないため並列にスケールします。`screenLooksLike` と自己修復は
-  オンデバイス FM(マシンに1本)を呼ぶため、デバイス台数に関わらずそこで律速されます。
+- 決定的再生は FM を呼ばないため並列にスケールします。自己修復(ロケータの指紋照合)も FM を
+  呼ばないため同様にスケールします。`screenLooksLike` はオンデバイス FM(マシンに1本)を呼ぶため、
+  デバイス台数に関わらずそこで律速されます。
 
 ### Link
 - [index](../index_ja.md)

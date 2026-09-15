@@ -32,7 +32,7 @@ final class ValueAssertionOptionalTests: XCTestCase {
         let core = FTDriveCore(driver: StubDriver(), platform: "ios", app: "com.example.app",
                                scenarioID: "T.S0010", scenarioTitle: "t",
                                delegate: nil, healingEnabled: false, dryRun: false,
-                               healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                               fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                                    .appendingPathComponent("ft-value-optional-\(UUID().uuidString).json"),
                                emit: { _ in })
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)

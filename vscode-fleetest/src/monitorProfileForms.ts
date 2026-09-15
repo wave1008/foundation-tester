@@ -135,12 +135,13 @@ export function validateNewProjectName(name: string, existing: readonly string[]
 // (未知キー保持のイミュータブルな方針。updateDeviceInMachineProfile と同じ)。
 
 /** 実行プロファイル設定フォームの23フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
- * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、heal/
+ * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、
  * falsePositiveCheck/screenLooksLike は「FM」セクション、iosFastInput / iosPreActionWarmup は「iOS」セクションのサブオプション
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
  * runProfilesTab.js の責務)。containerInference/ocr は独立トグル(FM とは無関係。ocr は
  * occlusion guard の Vision OCR 事前判定段。falsePositiveCheck が false の run では guard 自体が
- * 走らないため効かない)。 */
+ * 走らないため効かない)。heal はロケータの指紋照合による自己修復のトグルで、FM を使わない独立セクション
+ * (親チェックボックスは無い)。 */
 /** 実行プロファイルのデバイス参照。**一意なのは (machine, name)** なので machine も持つ
  * (Sources/FTCore/RunProfile.swift の RunDeviceRef と同形。省略=手元)。
  * **JSON キーは "machine"**(2026-08-26 改名。旧 "host" も読む)。 */
@@ -195,7 +196,7 @@ export interface RunProfileFormFields {
  * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。record/recordFailuresOnly/
  * recordFullResolution/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
  * fm/heal/screenLooksLike/falsePositiveCheck/containerInference/homeOnStart/playProtectBypass は
- * スキーマ既定と合わせ既定 true
+ * スキーマ既定と合わせ既定 true(heal は fm と無関係に既定 true)
  * (falsePositiveCheck は 2026-09-03 に false から変更)。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {

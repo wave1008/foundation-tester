@@ -655,14 +655,14 @@ struct ApiRunCommand: AsyncParsableCommand {
         if let resolvedProfile {
             let fm = resolvedProfile.fm
             fmSettings = FMSettingsRecord(
-                fm: fm.enabled, heal: fm.heal, falsePositiveCheck: fm.falsePositiveCheck,
+                fm: fm.enabled, heal: resolvedProfile.heal, falsePositiveCheck: fm.falsePositiveCheck,
                 screenLooksLike: fm.screenLooksLike,
                 ocr: resolvedProfile.ocr, ocrFalsePositiveCheck: resolvedProfile.ocrFalsePositiveCheck)
         } else {
             // runDirect と同じ設定(DeviceIndependentRunSettings)
             let fm = noProfileSettings.fm
             fmSettings = FMSettingsRecord(
-                fm: fm.enabled, heal: fm.heal, falsePositiveCheck: fm.falsePositiveCheck,
+                fm: fm.enabled, heal: noProfileSettings.heal, falsePositiveCheck: fm.falsePositiveCheck,
                 screenLooksLike: fm.screenLooksLike,
                 ocr: noProfileSettings.ocr, ocrFalsePositiveCheck: noProfileSettings.ocrFalsePositiveCheck)
         }
@@ -1847,7 +1847,7 @@ enum ApiRun {
                              dryRun: Bool) -> ScenarioExecutionSettings {
         guard dryRun else { return settings }
         var out = settings
-        out.fm = FMConfig(enabled: false, heal: false)
+        out.fm = FMConfig(enabled: false)
         return out
     }
 }

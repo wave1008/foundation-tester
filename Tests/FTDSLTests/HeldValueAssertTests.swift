@@ -52,7 +52,6 @@ final class HeldValueAssertTests: XCTestCase {
     /// occlusion-guard(falsePositiveCheck)が実際に走る条件を作るための delegate。
     /// 「見えている」と答えるので、ガードは通るが**走ったこと自体**は snapshot 回数に出る
     private final class VisibleDelegate: ReplayDelegate {
-        func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
         func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
         func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
                                   screenshotPNG: Data) async
@@ -68,7 +67,7 @@ final class HeldValueAssertTests: XCTestCase {
                                scenarioID: "T.S0010", scenarioTitle: "t",
                                delegate: delegate, healingEnabled: false,
                                falsePositiveCheckEnabled: falsePositiveCheck, dryRun: false,
-                               healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                               fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                                    .appendingPathComponent("ft-held-assert-test.json"),
                                emit: { _ in })
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)
@@ -90,7 +89,7 @@ final class HeldValueAssertTests: XCTestCase {
                                scenarioID: "T.S0010", scenarioTitle: "t",
                                delegate: nil, healingEnabled: false,
                                falsePositiveCheckEnabled: false, dryRun: false,
-                               healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                               fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                                    .appendingPathComponent("ft-held-assert-notes-test.json"),
                                emit: { events.append($0) })
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)

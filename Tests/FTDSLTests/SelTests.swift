@@ -77,7 +77,7 @@ final class SelTests: XCTestCase {
         assertSame(.text("通知").right(.button).nth(2), "通知:rightButton(2)")
     }
 
-    /// 表示テキストは再パース可能な正規形(レポート表示とヒールキャッシュのキーになる)
+    /// 表示テキストは再パース可能な正規形(レポート表示と指紋の鍵になる)
     func testTextIsReparseableCanonicalForm() {
         let cases: [Sel] = [
             .id("login_btn"),
@@ -242,7 +242,7 @@ final class SelScrollVariantDispatchTests: XCTestCase {
         FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
                     scenarioID: "T.S0030", scenarioTitle: "t",
                     delegate: nil, healingEnabled: false, dryRun: false,
-                    healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                    fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-sel-scroll-test.json"),
                     emit: { _ in })
     }

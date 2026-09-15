@@ -320,7 +320,7 @@ final class RunRecordTests: XCTestCase {
         XCTAssertEqual(record.scenes[0].durationMs, 10, "sceneFinished に durationMs が無ければ step 合計を使う")
     }
 
-    /// **修正提案は成否によらず残す**。強い提案が出るのは自己修復かヒールキャッシュで
+    /// **修正提案は成否によらず残す**。強い提案が出るのは自己修復(指紋照合)で
     /// **通ったとき**なので、passed で捨てると「緑だがセレクタは壊れている」という
     /// 一番知りたい状態の記録が1件も残らない(実測: 89,025 記録すべてで空だった)
     func testPassedScenarioKeepsItsFixSuggestions() throws {

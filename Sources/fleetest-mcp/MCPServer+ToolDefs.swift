@@ -542,7 +542,7 @@ extension MCPServer {
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
             "profile": ["type": "string", "description": "Run profile name (profiles/runs/; resolves the connection, heal and report destination). "
                 + "Cannot be combined with platform/port/serial/udid — the profile picks the device"],
-            "heal": ["type": "boolean", "description": "Override for locator self-healing (defaults to the profile setting, or false without a profile; ineffective when the profile has fm:false)"],
+            "heal": ["type": "boolean", "description": "Override for locator self-healing by locator fingerprint (defaults to the profile setting, or false without a profile; independent of fm)"],
             "port": ["type": "integer", "description": "iOS bridge port (default: the running bridge)"],
             "serial": ["type": "string", "description": "Android device serial (default: the connected device)"],
             "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],

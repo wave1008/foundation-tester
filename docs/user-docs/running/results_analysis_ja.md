@@ -45,7 +45,7 @@ results/runs/<YYYY-MM>/<runID>/
 | `consecutiveFailures` | critical | シナリオが複数 run 連続で落ちている |
 | `infraFailures` | warn | アサーション以外の**署名**を持つ失敗が繰り返している —— 下の注記を参照 |
 | `selectorDecay` | warn | そのシナリオの自己修復・フォールバック依存が増えている |
-| `healReliance` | warn | 1つのセレクタが自己修復・キャッシュ経由でしか通っていない(提案されたセレクタを適用する) |
+| `healReliance` | warn | 1つのセレクタが自己修復(ロケータの指紋照合)経由でしか通っていない(提案されたセレクタを適用する) |
 | `unsettledSteps` | warn | 画面がまだ動いている間にステップが進んだ(flake の先行指標) |
 | `deviceBias` | warn | 失敗が特定のワーカー/デバイスに偏っている |
 | `durationRegression` | warn | シナリオの所要時間が自身の過去実績に対して伸びた |

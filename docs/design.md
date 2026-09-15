@@ -31,8 +31,9 @@ iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装
 実際に1回推論する `FMDoctor.checkLive()` を使う(`fleetest doctor` / MCP の `ft_doctor` が採用)。
 同期の `FMDoctor.check()` はホットパス用で**可否を保証しない**。
 
-**FM 失敗は握りつぶされる**: occlusion-guard・heal・screenLooksLike はいずれも FM 失敗時に nil を返して
-素通りする契約なので、FM が全滅してもテストは緑のまま**機能だけ無効**になる。
+**FM 失敗は握りつぶされる**: occlusion-guard・screenLooksLike はいずれも FM 失敗時に nil を返して
+素通りする契約なので、FM が全滅してもテストは緑のまま**機能だけ無効**になる(自己修復は
+2026-09-15 に指紋照合のみとなり FM を呼ばないため、この契約の対象から外れた → maintainer-notes §22)。
 **ただし黙らない**(2026-08-23): occlusion-guard(`exist` の既定 `requireVisible`)は **FM に訊いたのに
 判定が返らなかったステップ**に `StepNote.visibilityGuardSkipped`(`visibility-guard-skipped`)を立て、
 結果 JSON の `notes` から run 横断で数えられる(立てるのは FM まで到達した回だけ。マスタースイッチ OFF・
@@ -155,11 +156,11 @@ FoundationModels はモデル型を2つ持ち、**`PrivateCloudComputeLanguageMo
 判断ミスが蓄積する。本ツールは **ハイブリッド型** を採る:
 
 1. **実行モード**: 保存済みシナリオ(Swift DSL。§10)を FM なしで決定的に再生。
-   高速・安定で CI 向き。
-2. **失敗時のみ FM が介入**: ロケータ自己修復。
+   高速・安定で CI 向き。失敗時のロケータ自己修復も指紋照合のみで FM を呼ばない(§10「ロケータの指紋」)。
 
 (M2 で計画していた、FM がアプリを自律探索してシナリオを自動生成する explore モード
-[`fleetest explore` / ExplorerProfile] は廃止済み)
+[`fleetest explore` / ExplorerProfile] は廃止済み。ロケータ自己修復に FM を使う設計も
+2026-09-15 に撤去 → maintainer-notes §22)
 
 コンテキスト対策の原則:
 - アクセシビリティツリーは **圧縮テキスト(set-of-mark 形式)** にして 1 画面ずつ渡す
@@ -175,9 +176,9 @@ FoundationModels はモデル型を2つ持ち、**`PrivateCloudComputeLanguageMo
 │  fleetest CLI / MCP サーバ / VSCode 拡張(拡張は fleetest api を呼ぶ。   │
 │  MCP サーバは FTCore/FTBridgeClient を直接リンクし fleetest api を経由しない) │
 │  ├─ FTFoundationModels        : FoundationModels エージェント層               │
-│  │   ├─ ReplayAssist      (ロケータ修復・画面検証)     │
+│  │   ├─ ReplayAssist      (画面検証。ロケータ修復は撤去済み §10) │
 │  │   └─ OcclusionVerifier / FMDoctor / ScenarioNamer / TestbaseDrafter │
-│  ├─ FTDSL          : Swift DSL(§10)/ セレクタ式 / ヒールキャッシュ │
+│  ├─ FTDSL          : Swift DSL(§10)/ セレクタ式 / ロケータの指紋 │
 │  ├─ FTCore          : AppDriver プロトコル / StepExecutor(実行機) │
 │  ├─ FTBridgeClient  : iOS ブリッジへの HTTP クライアント・起動管理  │
 │  └─ FTAndroid        : AndroidDriver + Android ブリッジ管理        │
@@ -264,7 +265,7 @@ foundation-tester/
 │       ├── scenarios/             #   Swift DSL シナリオ(SPM ターゲットの path)
 │       ├── docs/testbases/        #   テスト設計の元資料(仕様・観点)。シナリオの根拠
 │       ├── reports/               #   実行レポート出力先(プロジェクト別)
-│       └── .fleetest/              #   ヒールキャッシュ等(プロジェクト別)
+│       └── .fleetest/              #   ロケータの指紋等(プロジェクト別)
 ├── Scripts/bench.swift            # 計測基盤(§9。詳細は docs/performance-tuning.md)
 ├── E2EAppCMP/                     # 自己 E2E の SUT: Compose Multiplatform(→ TestProjects/E2E-CMP)
 │   └── docs/ui-contract.md        #   **全 SUT 共通の画面・#id・ラベル契約(唯一の正)**
@@ -996,21 +997,15 @@ inapp の ref タップも座標フォールバックに落ち、同じ壊れた
 
 ### 5.2 主要な @Generable 型
 
-```swift
-// Sources/FTFoundationModels/ReplayAssist.swift(抜粋。@Guide の全文はソース参照)
-@Generable
-struct LocatorRepairSuggestion {   // 自己修復: 壊れたロケータの代替案
-    var elementText: String        // 現在の要素一覧から label か id= 値を逐語コピー
-    var confidence: RepairConfidence  // high / medium / low
-    var rationale: String          // 英語1文
-}
-```
+`LocatorRepairSuggestion`(壊れたロケータの代替案を FM に提案させる型)は 2026-09-15 に撤去した
+(自己修復は指紋照合のみになり FM を呼ばないため。§10「ロケータの指紋」・maintainer-notes §22)。
+残る `@Generable` 型はスクリーンショットの画面検証(`ScreenVerdict`)等、FM を呼ぶ他の機能のもの。
 
 ### 5.3 実装(Sources/FTFoundationModels/ の5ファイル)
 
 | 実装 | 役割 |
 |---|---|
-| `ReplayAssist.swift`(`FMReplayDelegate`) | 再生失敗時のみ呼ばれるフック群: ロケータ自己修復(`LocatorRepairSuggestion`)・スクリーンショットの画面検証(`ScreenVerdict`。**マルチモーダル**) |
+| `ReplayAssist.swift`(`FMReplayDelegate`) | 再生失敗時のみ呼ばれるフック群: スクリーンショットの画面検証(`ScreenVerdict`。**マルチモーダル**)。ロケータ自己修復のフック(`LocatorRepairSuggestion`)は 2026-09-15 に撤去(§10・maintainer-notes §22) |
 | `OcclusionVerifier.swift` | アサーションがツリー通過した直後の、遮蔽による誤った緑の排除(マルチモーダル。要素 frame にクロップして渡す) |
 | `FMDoctor.swift` | FM 可用性判定。`check()` は同期・可否を保証しない / `checkLive()` は実際に1回推論する(§1.1 の罠) |
 | `ScenarioNamer.swift` | 記録操作(ライブ操作タブ)からのシナリオ名生成 |
@@ -1069,7 +1064,7 @@ MCP には届かず、同じ処理の2つ目の実装が育つ)。
 |---|---|---|---|
 | **M1** | ブリッジ + 手動駆動 | CLI から SampleApp を起動し、curl 相当で tap/type/snapshot/screenshot が通る | 達成済み |
 | **M2** | FM 探索によるシナリオ自動生成(`fleetest explore`) | — | 廃止済み(§1.2) |
-| **M3** | 決定的再生 + 自己修復 + トリアージ | id 変更を仕込んだ SampleApp でシナリオが自己修復され、意図的バグで TriageReport が出る | 自己修復は指紋照合で達成(§10「ロケータの指紋」)。**FM ヒールの採用は本番の門(confidence == high)では実測で起きない**ため、採用より先の経路は注入口 `FT_FAKE_HEAL_CONFIDENCE_HIGH` を掛けた `Scripts/fm-verify.sh` で通す。FM トリアージは 2026-09-15 に撤去 → maintainer-notes §21 |
+| **M3** | 決定的再生 + 自己修復 + トリアージ | id 変更を仕込んだ SampleApp でシナリオが自己修復され、意図的バグで TriageReport が出る | 自己修復は指紋照合で達成(§10「ロケータの指紋」)。**FM ヒール(採用門 confidence == high)は本番で実測 0/272 しか開かず、2026-09-15 にヒールキャッシュごと撤去**(§10・maintainer-notes §22)。FM トリアージは同日撤去 → maintainer-notes §21 |
 | **M4** | Android ブリッジ + ドライバ | `AndroidDriver` で FTFoundationModels/FTCore を無変更のまま Android アプリのシナリオを再生する(実装は自作 instrumentation ブリッジ。UIAutomator2/Appium は不採用。§4.5, §8.7) | 達成済み |
 
 M1・M3・M4 は達成済み(M2 の FM 探索機能は後に廃止。§1.2)。2026-07 には固定 sleep をブリッジ内蔵の a11y 静穏検知に置き換える高速化を実施し、
@@ -1108,8 +1103,10 @@ FM がアプリを自律探索してシナリオを生成する explore モー�
   スクリーンショットから正しく判定し、不一致時は理由(エラーメッセージの存在)も説明できた
 - **アサーションに type+index フォールバックは危険**(実測で誤った緑が発生): 別画面の無関係な要素に
   マッチする。再生器は assert 解決時に id/label を持たないフォールバックを除外する
-- **自己修復は elementText 方式で安定**: 壊れた `id=login_btn` に対し「サインイン」ボタンを
-  high confidence で提案・修復できた。修復フローは `dirty: true` + note に修復理由を残す
+- **(歴史的経緯)自己修復の FM 版は elementText 方式で安定**していた: 壊れた `id=login_btn` に対し
+  「サインイン」ボタンを high confidence で提案・修復できた。修復フローは `dirty: true` + note に
+  修復理由を残す設計だったが、本番の採用門(confidence == high)は実測で 0/272 しか開かず、
+  2026-09-15 に FM 版を撤去して指紋照合のみに一本化した(§10・maintainer-notes §22)
 
 ## 8.7 M4実装で得た知見(Android)
 
@@ -1444,7 +1441,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   丸められる**)。`waitSeconds: 0` = 即時1回判定の契約は不変
 - `tap(holdSeconds:)` は長押し秒数(既定 `FlowStep.defaultTapHoldSeconds` = 0 = 通常タップ。
   Shirates 準拠)。`holdSeconds` が 0 より大きいときだけ StepExecutor がブリッジの `/press` へ回す。
-  既定値と同じときは `FlowStep.duration` を nil のままにする(生成コード・ヒールキャッシュを
+  既定値と同じときは `FlowStep.duration` を nil のままにする(生成コードを
   既定ケースで太らせない)
 - **要素の出現待ちは暗黙**: `tap` はロケータ解決を再試行(省略時 約0.7秒)し、
   `exist`/`textIs`/`valueIs` は既定タイムアウト(5秒・`--default-timeout` で上書き)まで
@@ -1961,8 +1958,8 @@ select(.id("txt_result")).textIs("dialog=none")   // 検証はセレクタを取
   相対ステップより前なら基準(アンカー)、後ならそのステップの対象。`nth` も同様に、
   相対ステップの後では ordinal(近い順)になる
 - `exact` は match モードを**持たせない**(文字列版 `parseNamedFilter` と同じ正規化)。
-  揃えないと同じ意味のセレクタが型付き版だけ別構造になり、比較・往復・ヒールキャッシュが割れる
-- 表示テキスト(レポート・ヒールキャッシュのキー)は `FTSelector.serialize` で**記法へ戻す**。
+  揃えないと同じ意味のセレクタが型付き版だけ別構造になり、比較・往復・ロケータの指紋のキーが割れる
+- 表示テキスト(レポート・ロケータの指紋のキー)は `FTSelector.serialize` で**記法へ戻す**。
   `FlowLocator.summary` は表示用で型が `.button` ではなく `button`(=ラベル)に化けるため使わない
 - 型付き経路は `FTSelector.structured` が立ち、実行時の構文検証を**通さない**
   (綴りはコンパイラが保証済み。かつラベルに `>>` 等の予約文字が入っても再パースで別物にならない)
@@ -2541,45 +2538,50 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   - `_runfile/` は実行の前後で消す。SIGKILL 等で残った場合は次の run-file の開始時掃除まで
     そのプロジェクトの通常 run にも混ざる(.gitignore 済み)
 
-### 自己修復の再設計(ヒールキャッシュ)
+### 自己修復(ロケータの指紋照合のみ。2026-09-15 に FM 版とヒールキャッシュを撤去)
 
-YAML 時代の healedFlow 書き戻しに代わり、解決順を
-**プライマリ → フォールバック → キャッシュ(.fleetest/heal-cache.json)→ 指紋照合 → FM ヒール**
-とした。キー = シナリオID + file:line + 旧セレクタ文字列。2回目以降は FM なしで決定的に通過し、
-ソース位置付きの修正提案をレポートに出し続ける(ソース自動書換はしない。
-人がソースを直すとキー不一致でキャッシュは自然に無効化)。
+現在の解決順は **プライマリ → フォールバック → 指紋照合**(FM は呼ばない)。ソース位置付きの
+修正提案をレポートに出し続け、ソース自動書換はしない。`heal` は `fm` から独立(自己修復はもう
+FM 機能ではないため。ユーザー決定 2026-09-15)。
 
-### ロケータの指紋(2026-09-02)
+**経緯**: YAML 時代の healedFlow 書き戻しに代わり、当初は解決順を
+**プライマリ → フォールバック → ヒールキャッシュ(.fleetest/heal-cache.json)→ 指紋照合 →
+FM ヒール**(5段)としていた。キー = シナリオID + file:line + 旧セレクタ文字列で、
+FM が採用した修復だけがキャッシュへ書かれ、2回目以降はそこから FM なしで決定的に通過する
+設計だった。**FM ヒールの採用門(confidence == high)が本番で実測 0/272 しか開かず**
+(詳細は本節末尾および maintainer-notes §22)、ヒールキャッシュは FM 版だけが書き手だったため
+2026-09-15 に両方撤去し、指紋照合だけの1層構成にした。
+
+### ロケータの指紋(2026-09-02。2026-09-15 に自己修復の唯一の層になった)
 
 **FM を採否の判断から外す層**(`FTCore.LocatorFingerprint` / `FTDSL.LocatorFingerprintCache`)。
 「id が変わってラベルは不変」という典型的なドリフトを、推測なしで解決する。
 下の知見にあるとおり **confidence は信号を持たない**ので、FM に採否を委ねると
 正しい提案まで却下される —— その判断を決定的な照合へ移す。
 
-- **効くのは失敗経路だけ**(プライマリ・フォールバック・キャッシュがすべて外れたとき)。
+- **効くのは失敗経路だけ**(プライマリ・フォールバックがすべて外れたとき)。
   **今緑のステップの挙動は変えられない**ので、リスクがこの1箇所に閉じる
 - **控えるのは `type` + `label`**(+ 非 nil のときだけ `placeholder`)。**`id` は控えない**
   —— ドリフトで変わるのがまさに id。**`value` も控えない** —— 実行ごとに変わる
-- **ちょうど1件一致のときだけ採用**。0件・複数件は従来どおり FM へ落ちる。
+- **ちょうど1件一致のときだけ採用**。0件・複数件は解決失敗としてステップを落とす
+  (2026-09-15 に FM ヒールを撤去したので、これ以上のフォールバック層は無い)。
   **スコアも距離も重み付けも作らない**(根拠のない定数を置かない)——
   複数件を「もっとも近い」で選ぶと別要素へ静かに解決し、誤った緑を作る
-- **記録するのはプライマリ/フォールバックで素直に解決できた回だけ**。指紋・ヒール・FM で
-  解決した回を記録すると、誤った解決が指紋として固定化され再生産される
-- **ヒールキャッシュへは書かない**。指紋は決定的で毎回再導出できるので、キャッシュしても
+- **記録するのはプライマリ/フォールバックで素直に解決できた回だけ**。指紋照合で解決した回を
+  記録すると、誤った解決が指紋として固定化され再生産される
+- **指紋照合の結果はキャッシュしない**。決定的で毎回再導出できるので、キャッシュしても
   得られるのは速度だけ。一方、一意に一致したが実は別要素だった場合に誤りが永続化し、
-  以後 `healedByCache` として解決されて注記が消える。**FM ヒールは confidence の門を
-  通ってからキャッシュに入るが、指紋にその門は無い**。修正提案は出す(提案と固定化は別)
+  以後は注記無しで解決されて気付けなくなる。修正提案は毎回出す(提案と固定化は別)
 - 注記 `heal-fingerprint-match` を必ず立てる(結果 JSON に出て run 横断で数えられる)
-- **`heal=false`(`fm=false` を含む)はヒールキャッシュ・指紋・FM の3層すべてを止める**
-  (ユーザー決定 2026-09-15)。門は `StepExecutor.execute` の入口1箇所(`cached` / `fingerprint` を
-  そこで落とす)。FM だけを止めていた版は、利用者が切ったつもりの自己修復が指紋とキャッシュで
-  黙って続いていた。**記録(採取)は heal=false でも続ける** —— 修復ではなく観測なので、
-  heal を戻した日に控えが古びていない
+- **`heal=false` は指紋照合を止める**(ユーザー決定 2026-09-15)。門は `StepExecutor.execute`
+  の入口1箇所。`fm` とは独立 —— 自己修復はもう FM 機能ではないので `fm=false` は効かない。
+  **記録(採取)は heal=false でも続ける** —— 修復ではなく観測なので、heal を戻した日に
+  控えが古びていない
 - **型だけの指紋(label も placeholder も空白だけ)は記録も照合もしない**(`isIdentifying`)。
   `nil == nil` で一致するので、ラベル無しのアイコンボタンが消える回帰でも、画面に残った
   別のラベル無しボタンが「ちょうど1件」になれば叩いて緑にしていた。記録時は同じ鍵の古い控えも消す
   (要素がラベルを失ったのに古いラベルの控えを残すと別要素へ解決し得る)
-- 書き出しはメモリに溜めて `defer` で1回だけ(`HealCache.store` の毎ステップ I/O を払わない)
+- 書き出しはメモリに溜めて `defer` で1回だけ(`LocatorFingerprintCache.record` はメモリへ溜めるだけ。毎ステップのファイル書き直しを払わない)
 - **失効はシナリオ単位の置き換え**(時間の定数は使わない)。鍵が `file:line` とセレクタを含む
   以上、利用者が**行を足す/消す・セレクタを直す**たびに古い鍵が生まれ、二度と lookup されない
   まま永久に残る(実測: 1 run で 90 エントリ / 19.6KB)。シナリオが**通った**とき、その
@@ -2595,17 +2597,48 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   **③接頭辞 `"<scenarioID>|"` で自分のぶんだけ**
   (`--scenario` の部分実行で他シナリオの指紋を巻き込まない)
 
-**witness は `TestProjects/E2E-CMP/scenarios/_disabled/94_指紋照合.swift`**。
-`90_自己修復` は scene 1 で必ず v2 へ切り替えてから撃つので**対象行が一度も成功せず**、
-指紋の witness にならない(あちらは cold state からの FM 修復を見るもの)。94 は
-「同じ行が一度成功し、次にドリフトする」状況を作る。**状態(schema)の制御はシナリオの外**に
+**witness は `TestProjects/E2E-CMP/scenarios/_disabled/94_指紋照合.swift`**(唯一の witness。
+FM 版の witness だった `90_自己修復` は5 SUT とも 2026-09-15 に撤去 → maintainer-notes §22)。
+94 は「同じ行が一度成功し、次にドリフトする」状況を作る。**状態(schema)の制御はシナリオの外**に
 置く —— 中に入れると失敗中断時に後始末の scene へ到達できず回復しない。
 **schema は台ごとのアプリデータ**なので両周を同じ `--device` に固定すること
 (指紋はホスト側のファイルなので、台を跨ぐと指紋だけが引き継がれて噛み合わない)。
 
 実測(2026-09-02): ドリフトした `#btn_heal_v1` が `#btn_heal_v2` へ **FM 呼び出し無し**で解決し、
-アプリ側の記録が `tapped=v2`(正しい要素を叩いた証拠)、`heal-cache.json` は生成されない。
-フル E2E 231 シナリオで採取 304 件・`workerAnomalies` 0 件。
+アプリ側の記録が `tapped=v2`(正しい要素を叩いた証拠)。フル E2E 231 シナリオで採取 304 件・
+`workerAnomalies` 0 件。
+
+### (歴史的経緯)FM ヒールの実装で得た知見・撤去理由
+
+2026-09-15 に撤去した FM ヒール(`LocatorRepairSuggestion` / ヒールキャッシュ /
+`FT_FAKE_HEAL_CONFIDENCE_HIGH`)の実装で得た知見を圧縮して残す。撤去そのものの理由・
+測り方は maintainer-notes §22。
+
+- **confidence は採否の根拠に使えなかった**(2026-09-02・`Scripts/fm-verify.sh` を5周。
+  `sampling: .greedy` で全周同一出力)。誤要素(NavigationBar 等)を高確信で選ぶことがある一方、
+  正解も低確信になることがあり、**信号が両方向に外れていた**:
+
+  | シナリオ(撤去済み) | 提案 | 正誤 | 自己申告 |
+  |---|---|---|---|
+  | `90_自己修復` | `#btn_heal_v2` | **正解** | low(5/5) |
+  | `93_triage` | `#nav_selector` → `#nav_input` | **誤り** | medium→low(5/5) |
+
+  (`93_triage` と FM トリアージ機能は同じ理由で 2026-09-15 に撤去 → maintainer-notes §21)。
+  閾値の調整では解けない(`medium` へ下げると誤答が通り、`low` へ下げると何でも通る)——
+  自己較正は小さいモデルが最も苦手とする能力で、確信度を採否の唯一の門にする設計自体が
+  無理だった。一方「一覧から役割の同じ要素を選ぶ」こと自体は実測で足りていた(正解を 5/5 で
+  指した)ので、採否をロケータの指紋という決定的な根拠へ移した(前項)
+- **本番の門は実測で1度も開かなかった**(2026-09-15 時点: 日英 272 件で high 0 件・E2E の
+  `90_自己修復` は 9/2 以降の全 run が `heal-proposal-rejected`。提案そのものは正解だった)。
+  デバイスで1度も通らない経路を検証するため、陽性対照の注入口
+  `FT_FAKE_HEAL_CONFIDENCE_HIGH=1`(`FTCore.HealConfidenceInjection`。`FrozenInjection` と
+  同じ規律)を置いていたが、これも撤去した(採用門ごと消えたため)
+- ヒールが黙って諦める経路(セレクタが書けない/confidence 不足/答えを木へ引き戻せない)
+  それぞれに注記(`heal-unwritable` は現存、`heal-proposal-rejected` /
+  `heal-answer-unresolved` / `heal-confidence-injected` は撤去)を置いていた設計だった。
+  `heal-unwritable` は指紋照合でも意味が同じなので残した(§10「ロケータの指紋」)
+- プロンプトに壊れたロケータを名指しして「それを答えにするな」と書く工夫(`healPrompt`)や、
+  `FMReplayDelegate.healAttempt` の非オプショナル設計などは、フック自体の撤去に伴い不要になった
 
 ### 実装で得た知見
 
@@ -2617,53 +2650,6 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
 - **`.macro` ターゲットには Package.swift 冒頭の `import CompilerPluginSupport` が必要**
 - iOS 27 のパスワード保存シートはタップ時にアニメーション中で座標がずれることがある →
   シナリオ側で `wait(1)` を挟むのが確実(コードで書けるようになった利点)
-- 3B FM のヒールは誤要素(NavigationBar 等)を高確信で選ぶことがある。キャッシュは誤ヒールも
-  固定化するため、修正提案を人がレビューしてソースを直すループが前提
-- **confidence は採否の根拠に使えない**(2026-09-02・`Scripts/fm-verify.sh` を5周。
-  `sampling: .greedy` なので全周で完全に同一の出力)。上の「誤要素を高確信で」と合わせると、
-  **信号が両方向に外れる = 情報を持たない**:
-
-  | シナリオ | 提案 | 正誤 | 自己申告(案1 前 → 後) |
-  |---|---|---|---|
-  | `90_自己修復` | `#btn_heal_v2` | **正解** | low → **low**(各 5/5) |
-  | `93_triage` | `#nav_selector` → `#nav_input` | **誤り** | medium → **low**(各 5/5) |
-
-  (`93_triage` シナリオと FM トリアージ機能は 2026-09-15 に撤去 → maintainer-notes §21)
-
-  「案1 後」= `elementText` を省略可能にして「代わりが無ければ挙げるな」と `@Guide` に
-  書いた後。**逆相関(誤答に高い確信)は消えたが、今度は正解も誤答も low で区別が付かない**。
-  なお**モデルは省略の逃げ道を一度も使わなかった**(`heal-no-replacement` の発火 0/5)——
-  何かを名指しする傾向はスキーマの制約ではなく**モデルの性質**。
-  ただし誤答の確信が下がったこと自体は誤検知を減らす方向なので変更は残す。
-
-  **閾値の調整では解けない** —— `medium` へ下げると誤答が通り、`low` へ下げると何でも通る。
-  自己較正は小さいモデルが最も苦手とする能力で、**現行設計はそこを採否の唯一の門にしている**。
-  一方で「一覧から役割の同じ要素を選ぶ」ほうは実測で足りている(正解を 5/5 で指した)。
-  採否を confidence 以外の決定的な根拠へ移す案は **2026-09-02 に実装した**
-  (このすぐ上の「ロケータの指紋」)。懸念していた「古い指紋で静かに誤った要素へ解決する」は、
-  **一意一致のときだけ採用**・**失敗経路でしか動かない**・**注記を必ず立てる**の3つで抑えている
-- **本番の門は実測で1度も開かない**(2026-09-15: 日英 272 件で high 0 件・E2E の `90_自己修復` は
-  9/2 以降の全 run が `heal-proposal-rejected`。提案そのものは正解の `#btn_heal_v2`)。門の先
-  (採用 → `SelectorNaming` → ヒールキャッシュ → 修正提案 → 2周目のキャッシュ通過)がデバイスで
-  1度も通らないので、**陽性対照の注入口 `FT_FAKE_HEAL_CONFIDENCE_HIGH=1`**
-  (`FTCore.HealConfidenceInjection`。`FrozenInjection` と同じ規律)を置いた。**開けるのは門だけ**で、
-  提案(FM が選んだ要素)は本物のまま使う = 選択が誤っていれば `tapped=v2` が落ちる。
-  注入で採用した回は注記 `heal-confidence-injected` と rationale の印(`[confidence low, adopted by …]`。
-  ヒールキャッシュと修正提案に写る)を必ず残す。`.noReplacement` / `.unresolved` には効かない。
-  回すのは `Scripts/fm-verify.sh`(①注入で修復して緑 ②注入なしの2周目がキャッシュから通り FM 0 回)。
-  **受け手向けの口にしない**
-- **ヒールが黙って諦める経路は3つあり、全部に注記を置いてある**(2026-09-02。それ以前は
-  どれも `cannot resolve the locator` としか出ず、`fm.byKind.heal` に呼び出しが記録されている
-  のに何が起きたのか一切分からなかった): 一意に指せるセレクタが無い(`heal-unwritable`)/
-  confidence が `high` に届かない(`heal-proposal-rejected`)/ 答えを木へ引き戻せない
-  (`heal-answer-unresolved`)。**FM の応答後の写像は `FMReplayDelegate.healAttempt` に
-  切り出してあり(FM もデバイスも要らない純粋関数)、戻り値は非オプショナル** ——
-  `nil` は「FM を呼べなかった」だけを意味する。ここを `HealAttempt?` に戻すと
-  「黙って nil」が再び書けるようになる(実際に変異テストがその退行を1件も落とせなかった)
-- **プロンプトには壊れたロケータを名指しし「それを答えにするな」と書く**(2026-09-02)。
-  書く前は**モデルが壊れたロケータをそのままオウム返し**していた(`btn_heal_v1` を提案 →
-  木に無いので不一致)。同じ木から triage は正解を出せていたので木の問題ではない。
-  名指ししてからは 5/5 で正解の要素を選ぶ。組み立ては `FMReplayDelegate.healPrompt`(純粋関数)
 - **xcuitest の `launchApp` も既定で simctl 化**(FastLaunchDriver・2026-07-21)。
   XCUIApplication.launch()(約4.6s)の代わりに simctl terminate+launch+activate 接続(約2.4s)で
   再起動する(シナリオ wall −14〜19%)。`FT_NO_FAST_LAUNCH=1` で従来動作へ戻せる。
@@ -3670,15 +3656,19 @@ machines/ が1つのときだけ自動採用)。
   "wipeDataOnBloat": true, "wipeDataThresholdGB": 8 }
 ```
 
-`fm`(既定 true)は FM(Foundation Models)機能の親スイッチ。false にすると自己修復(heal)・
+`fm`(既定 true)は FM(Foundation Models)機能の親スイッチ。false にすると
 偽陽性検証(exist 等の FM 視覚照合)・`screenLooksLike` を含む FM 呼び出しを一切行わない
 (子ランナーへは `--no-fm` 等で伝搬し、delegate 自体を作らない)。個別トグルは
-**`heal` / `falsePositiveCheck` / `screenLooksLike` の3つで、いずれも既定 true**
+**`falsePositiveCheck` / `screenLooksLike` の2つで、いずれも既定 true**
 (`falsePositiveCheck` は 2026-09-03 にオプトインをやめた)。
 親が false なら個別指定に関わらず全て無効。screenLooksLike を無効にした run では該当ステップは
 skip(素通り)になり、FM 利用不可時と同じ扱い。子への伝搬も同じ3段(プロファイル → 子 → 実行時)を
 通ることは `FMToggleWiringTests` が固定する。UI は「テスト実行」タブの実行プロファイル設定
 「FM(Foundation Model)」セクション(親チェックボックス ON のときだけ個別トグルを表示)。
+**`heal`(既定は `--profile` 実行 true / プロファイル無し false)は 2026-09-15 にこの親子関係から
+独立した**(自己修復はもう FM 機能ではない。ユーザー決定 → maintainer-notes §22)。UI でも
+「FM(Foundation Model)」セクションの外に単独のチェックボックスとして置く。`fm=false` でも
+`heal` は無効にならない。
 
 `wipeDataOnBloat`(既定 true)は実行開始時に Android AVD の wipe 対象
 (userdata/cache/snapshots)合計が `wipeDataThresholdGB`(既定 8。**Play イメージは wipe 直後の
@@ -3872,7 +3862,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
    **ライブ操作(記録開始)の install も同じ差分判定**を通す(`ApiLiveServe`。無条件に入れ直すと
    記録のたびにアプリが終了し、状態が消える)
 5. RunOrchestrator で並列実行。ワーカーラベル=デバイスの論理名。レポートは
-   `TestProjects/<P>/reports/`、ヒールキャッシュは `--project-dir` 経由で `TestProjects/<P>/.fleetest/` に分離
+   `TestProjects/<P>/reports/`、ロケータの指紋は `--project-dir` 経由で `TestProjects/<P>/.fleetest/` に分離
    - **シナリオの振り分けは platform 別の静的分配**(ワークスティールではない)。
      `ProfileRunner` は iOS デバイスが1台でもあれば既定 platform を `ios` にし、
      `RunOrchestrator` は `@TestClass` の `platform:` **未指定**シナリオをその既定 platform の
@@ -3908,8 +3898,9 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
 
 - 旧 `scenarios/` は `TestProjects/SampleApp/scenarios/` へ git mv(同一コミットでアトミック移行。
   レガシーレイアウトのランタイムサポートは持たない)
-- ルート `reports/` の既存成果物は履歴として残置。旧 `.fleetest/heal-cache.json` も放置で無害
-  (キー不一致なら FM が再ヒールするだけ)
+- ルート `reports/` の既存成果物は履歴として残置。旧 `.fleetest/heal-cache.json`(2026-09-15 に
+  ヒールキャッシュ機構ごと撤去 → maintainer-notes §22)は放置で無害 —— 現行コードはもう読み書き
+  しないので、残っていれば消してよい
 
 ---
 

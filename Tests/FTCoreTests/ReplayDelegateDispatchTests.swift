@@ -74,8 +74,8 @@ final class ReplayDelegateDispatchTests: XCTestCase {
             in: try XCTUnwrap(block(after: "public protocol ReplayDelegate", in: core)))
         let forwarded = functionNames(
             in: try XCTUnwrap(block(after: "final class LazyFMDelegate", in: runner)))
-        XCTAssertGreaterThanOrEqual(requirements.count, 4,
-                                    "要件が4つ未満しか見えていない = 走査が壊れている")
+        XCTAssertGreaterThanOrEqual(requirements.count, 3,
+                                    "要件が3つ未満しか見えていない = 走査が壊れている")
         XCTAssertTrue(requirements.isSubset(of: forwarded),
                       "LazyFMDelegate が転送していない要件 \(requirements.subtracting(forwarded).sorted()) —— "
                       + "既定実装(nil / no-op)に落ちて、その機能だけが黙って無効になる")

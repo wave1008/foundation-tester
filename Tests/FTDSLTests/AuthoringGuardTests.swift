@@ -44,7 +44,7 @@ final class AuthoringGuardTests: XCTestCase {
                     scenarioID: "T.S0010", scenarioTitle: "t",
                     delegate: nil, healingEnabled: false,
                     screenLooksLikeEnabled: screenLooksLikeEnabled, dryRun: dryRun,
-                    healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                    fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-authoring-guard-test.json"),
                     selectorInventoryURL: inventoryURL,
                     emit: { _ in })

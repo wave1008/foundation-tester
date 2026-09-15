@@ -85,7 +85,7 @@ extension MCPServer {
                 connection: DriverConnection(platform: info.platform ?? fallbackPlatform),
                 // **`enabled: false`(= 子へ --no-fm)**。dry-run にはデバイスも画面も無いので、
                 // FM を引く経路をまとめて止める(個別に切ると残った経路が FM の直列化待ちを払う)
-                settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false, heal: false)),
+                settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
                 reportDir: tempDir.path,
                 dryRun: true) { event in
                     lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
@@ -139,7 +139,7 @@ extension MCPServer {
             throw MCPError(error.localizedDescription)
         }
 
-        var exec = ScenarioExecutionSettings(fm: FMConfig(heal: args["heal"] as? Bool ?? false))
+        var exec = ScenarioExecutionSettings(heal: args["heal"] as? Bool ?? false)
         var reportDir = project.reportsDir.path
         var connection: DriverConnection
         var prologue: [String] = []
@@ -160,9 +160,9 @@ extension MCPServer {
                 platformArg: infos.first?.platform, prologue: &prologue)
             // **プロファイルの実行設定は丸ごと通す**(欄ごとに拾うと、足した欄が黙って落ちる)
             exec = ScenarioExecutionSettings(resolved)
-            // heal 引数は master(fm.enabled)が有効な場合のみ ON にする override(未指定は resolved のまま)
+            // heal 引数は override(未指定は resolved のまま)。FM を使わないので fm.enabled は見ない
             if let healArg = args["heal"] as? Bool {
-                exec.fm.heal = healArg && exec.fm.enabled
+                exec.heal = healArg
             }
             reportDir = resolved.reportDir.path
             switch target {

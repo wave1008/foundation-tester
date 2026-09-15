@@ -45,7 +45,7 @@ several runs. Ten checks, each emitted as one row with a severity:
 | `consecutiveFailures` | critical | A scenario has failed several runs in a row |
 | `infraFailures` | warn | Repeated failures whose *signature* is not an assertion — see the note below |
 | `selectorDecay` | warn | Reliance on self-healing/fallback is growing for a scenario |
-| `healReliance` | warn | One selector has passed only via self-heal/cache for several runs — apply the suggestion |
+| `healReliance` | warn | One selector has passed only via self-healing (locator fingerprint matching) for several runs — apply the suggestion |
 | `unsettledSteps` | warn | Steps went ahead while the screen was still moving (a leading indicator of flakiness) |
 | `deviceBias` | warn | Failures cluster on one worker/device rather than spreading evenly |
 | `durationRegression` | warn | A scenario's duration grew against its own earlier history |

@@ -43,7 +43,7 @@ public enum FMLiveness {
 
     /// FM の経路。**独立に死ぬ**ので独立に持つ(ファイル冒頭 ②)
     public enum Path: String, Codable, Sendable {
-        /// テキストのみの呼び出し。heal / シナリオ命名
+        /// テキストのみの呼び出し。シナリオの下書き・命名(run の中では使わない)
         case text
         /// 画像入力(Attachment)を伴う呼び出し。occlusion-guard / screenLooksLike
         case vision

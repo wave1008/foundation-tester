@@ -40,12 +40,12 @@
     },
     "fm": {
       "type": "boolean",
-      "description": "FM(Foundation Model)の機能を使用するか。false で自己修復・偽陽性検証・screenLooksLike・失敗時トリアージを含む FM 呼び出しを行わない(既定 true)。",
+      "description": "FM(Foundation Model)の機能を使用するか。false で偽陽性検証・screenLooksLike を含む FM 呼び出しを行わない(既定 true)。自己修復(heal)はロケータの指紋照合で FM を使わないため、この設定とは独立。",
       "default": true
     },
     "heal": {
       "type": "boolean",
-      "description": "FM によるロケータ自己修復を許可するか(既定 true)。",
+      "description": "ロケータの指紋照合による自己修復(同じ type + label の要素を1件だけ探して当てる)を許可するか。FM は使わず、fm の設定とは独立(既定 true)。",
       "default": true
     },
     "falsePositiveCheck": {

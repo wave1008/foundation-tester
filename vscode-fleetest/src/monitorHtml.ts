@@ -351,16 +351,19 @@ function renderRunProfileSection(): string {
             <div id="run-profile-devices" class="run-profile-devices"></div>
           </div>
           <div class="run-profile-section-group">
+            <div class="run-profile-section-title">${t("panels.runProfile.healSectionTitle")}</div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-heal">
+              <label for="run-profile-heal">${t("panels.runProfile.healLabel")}</label>
+            </div>
+          </div>
+          <div class="run-profile-section-group">
             <div class="run-profile-section-title">${t("panels.runProfile.fmSectionTitle")}</div>
             <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-fm">
               <label for="run-profile-fm">${t("panels.runProfile.fmLabel")}</label>
             </div>
             <div id="run-profile-fm-options" class="run-profile-fm-options" style="display: none;">
-              <div class="modal-row profile-checkbox-row">
-                <input type="checkbox" id="run-profile-heal">
-                <label for="run-profile-heal">${t("panels.runProfile.healLabel")}</label>
-              </div>
               <div class="modal-row profile-checkbox-row">
                 <input type="checkbox" id="run-profile-screen-looks-like">
                 <label for="run-profile-screen-looks-like">${t("panels.runProfile.screenLooksLikeLabel")}</label>

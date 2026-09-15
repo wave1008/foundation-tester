@@ -1179,7 +1179,7 @@ final class ProfileResolverTests: XCTestCase {
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "all", machineName: "M1 Max(64GB)")
         XCTAssertTrue(resolved.fm.enabled)
-        XCTAssertTrue(resolved.fm.heal, "heal 明示 true")
+        XCTAssertTrue(resolved.heal, "heal 明示 true")
         // **2026-09-03 にオプトインをやめた**(ユーザー決定)。3箇所(ここ / JSON スキーマ /
         // 拡張のフォーム)で既定が一致していないと、GUI で作ったプロファイルと CLI の挙動がずれる
         XCTAssertTrue(resolved.fm.falsePositiveCheck, "偽陽性検証の既定は true")
@@ -1197,12 +1197,13 @@ final class ProfileResolverTests: XCTestCase {
                   to: project.runsDir, name: "r")
         let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
         XCTAssertTrue(resolved.fm.enabled)
-        XCTAssertTrue(resolved.fm.heal, "heal の既定は true(既定 false→true への変更)")
+        XCTAssertTrue(resolved.heal, "heal の既定は true")
         XCTAssertTrue(resolved.fm.falsePositiveCheck, "偽陽性検証の既定は true(2026-09-03 に変更)")
         XCTAssertTrue(resolved.fm.screenLooksLike)
-        XCTAssertTrue(resolved.heal, "heal エイリアスも同じ値を返す")
     }
 
+    /// `fm:false` は FM のトグルだけを落とす。**`heal` は FM を使わないので配下ではなく、落ちない**
+    /// (FM を切った機械でも、FM を使わない修復まで黙って止めない)
     func testFMFalseDisablesAllSubFlagsEvenIfExplicitlyTrue() throws {
         try writeStandardFixture()
         try write("""
@@ -1212,7 +1213,7 @@ final class ProfileResolverTests: XCTestCase {
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "fmoff", machineName: "M1 Max(64GB)")
         XCTAssertFalse(resolved.fm.enabled)
-        XCTAssertFalse(resolved.fm.heal, "fm:false は個別の heal:true より優先される")
+        XCTAssertTrue(resolved.heal, "heal は fm の配下ではない(fm:false でも heal:true のまま)")
         XCTAssertFalse(resolved.fm.falsePositiveCheck)
         XCTAssertFalse(resolved.fm.screenLooksLike)
     }
@@ -1227,7 +1228,7 @@ final class ProfileResolverTests: XCTestCase {
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "leftover", machineName: "M1 Max(64GB)")
         XCTAssertTrue(resolved.fm.enabled)
-        XCTAssertTrue(resolved.fm.heal)
+        XCTAssertTrue(resolved.heal)
         XCTAssertTrue(resolved.fm.falsePositiveCheck)
         XCTAssertTrue(resolved.fm.screenLooksLike)
         XCTAssertEqual(resolved.warnings, ["runs/leftover.json: unknown key \"triage\" is ignored"])
@@ -1243,7 +1244,7 @@ final class ProfileResolverTests: XCTestCase {
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "subsoff", machineName: "M1 Max(64GB)")
         XCTAssertTrue(resolved.fm.enabled, "fm 自体は既定 true のまま")
-        XCTAssertFalse(resolved.fm.heal)
+        XCTAssertFalse(resolved.heal)
         XCTAssertTrue(resolved.fm.falsePositiveCheck, "明示 true で有効化できること")
         XCTAssertFalse(resolved.fm.screenLooksLike)
     }

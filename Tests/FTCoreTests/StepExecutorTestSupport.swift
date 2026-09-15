@@ -272,7 +272,6 @@ final class FakeVisibilityDelegate: ReplayDelegate {
     var answersNothing = false
     private(set) var visibleCalls = 0
     init(visible: Bool) { self.visible = visible }
-    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
     func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
                               screenshotPNG: Data) async
@@ -287,7 +286,6 @@ final class FakeVisibilityDelegate: ReplayDelegate {
 /// `verifyElementVisible` は nil を返す = 実装(ReplayAssist)が FM 失敗時に返す形そのもの
 final class NoVerdictVisibilityDelegate: ReplayDelegate {
     private(set) var visibleCalls = 0
-    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
     func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
                               screenshotPNG: Data) async
@@ -303,7 +301,6 @@ final class SequenceVisibilityDelegate: ReplayDelegate {
     private let results: [Bool]
     private(set) var calls = 0
     init(_ results: [Bool]) { self.results = results }
-    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
     func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
                               screenshotPNG: Data) async
@@ -325,7 +322,6 @@ final class SlowSequenceVisibilityDelegate: ReplayDelegate {
         self.results = results
         self.delayMs = delayMs
     }
-    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
     func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
                               screenshotPNG: Data) async
@@ -343,7 +339,6 @@ final class ScriptedScreenDelegate: ReplayDelegate {
     private(set) var verifyScreenCalls = 0
     private let verdicts: [Bool]
     init(_ verdicts: [Bool]) { self.verdicts = verdicts }
-    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? {
         let pass = verdicts[min(verifyScreenCalls, verdicts.count - 1)]
         verifyScreenCalls += 1
@@ -355,7 +350,6 @@ final class ScriptedScreenDelegate: ReplayDelegate {
 /// (screenLooksLikeEnabled=false で呼ばれないことの検証用)
 final class CountingScreenDelegate: ReplayDelegate {
     private(set) var verifyScreenCalls = 0
-    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? {
         verifyScreenCalls += 1
         return (true, "ok")

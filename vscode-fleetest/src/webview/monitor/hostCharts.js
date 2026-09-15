@@ -79,8 +79,9 @@ function hmMakeEntry(rowEl, metric, colorKey, countScale = false) {
   };
 }
 
-// failures は FM 死活の検知用。FM 失敗は呼び出し側(occlusion-guard/heal/screenLooksLike)が
-// 握りつぶして素通りする契約なので、ここで可視化しないと全滅が正常時と区別できない。
+// failures は FM 死活の検知用。FM 失敗は呼び出し側(occlusion-guard/screenLooksLike)が
+// 握りつぶして素通りする契約なので、ここで可視化しないと全滅が正常時と区別できない
+// (heal はロケータの指紋照合だけで FM を呼ばないため対象外)。
 // OCR の failures は死活の軸を持たない(OCR の失敗はその回の判定が FM へ回るだけで判定能力は
 // 落ちないため) —— ツールチップの事実としてだけ出す。
 function hmMakeRow(rowEl, machine) {

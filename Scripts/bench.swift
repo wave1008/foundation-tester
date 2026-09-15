@@ -278,7 +278,7 @@ struct HostMetricsSummary {
     var anePeak: Double?
     var memUsedMeanBytes: Double?
     var memUsedPeakBytes: Double?
-    /// ane > 1% のサンプル数(healed が 0 件でも FM が動いていた形跡があるかの判定に使う)
+    /// ane > 1% のサンプル数(FM が動いていた形跡があるかの判定に使う)
     var aneActiveSamples = 0
 }
 
@@ -500,10 +500,9 @@ md += "- ANE: 平均 \(percentText(hostSummary.aneMean)) / ピーク \(percentTe
 md += "- メモリ使用: 平均 \(gigabytesText(hostSummary.memUsedMeanBytes))"
     + " / ピーク \(gigabytesText(hostSummary.memUsedPeakBytes))\n"
 
-if hostSummary.aneActiveSamples > 0 && aggregator.healedCount == 0 {
-    md += "\n⚠️ 注意: 実行中に ANE 活動(> 1%)が \(hostSummary.aneActiveSamples) サンプル検知されましたが、"
-        + "heal イベントは 0 件でした。healLocator 以外の用途(screenLooksLike の画面検証や失敗時の"
-        + "トリアージ等)で Foundation Models が稼働した可能性があります(FM介入検知)。\n"
+if hostSummary.aneActiveSamples > 0 {
+    md += "\n⚠️ 注意: 実行中に ANE 活動(> 1%)が \(hostSummary.aneActiveSamples) サンプル検知されました。"
+        + "occlusion-guard・screenLooksLike 等で Foundation Models が稼働した可能性があります(FM介入検知)。\n"
 }
 
 let summaryURL = outDir.appendingPathComponent("summary.md")

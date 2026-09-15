@@ -65,7 +65,7 @@ public enum FMDoctor {
             available: false,
             detail: "FM visual verification (image input): a live call failed."
                 + " occlusion-guard (the default requireVisible of exist) and screenLooksLike are"
-                + " disabled — heal keeps working (it is text-only)"
+                + " disabled — scenario drafting and naming keep working (they are text-only)"
                 + "\n   Error: \(verdict.error ?? "unknown")")
     }
 
@@ -77,17 +77,17 @@ public enum FMDoctor {
             : Report(available: false,
                      detail: "FM visual verification (image input): unavailable (\(FMVisionSupport.requirement))"
                          + ". occlusion-guard (false-positive check) and screenLooksLike are disabled"
-                         + " (heal and scenario naming keep working — they are text-only)")
+                         + " (scenario drafting and naming keep working — they are text-only)")
     }
 
     /// FM 本体が使えないときに**何が止まり、代わりに何を書くか**。
     /// 「unavailable」だけでは、シナリオの書き方をどう変えればよいか分からない
     /// (外部フィードバック 2026-08-06)。visionReport が視覚系について同じことをしている。
     public static let unavailableImpact =
-        "Disabled: self-healing (heal), screenLooksLike, and the occlusion-guard"
-        + " (the requireVisible check of exist). Everything deterministic keeps working —"
-        + " write textIs / valueIs / exist assertions instead of screenLooksLike, and pin elements"
-        + " by #id rather than relying on healing."
+        "Disabled: screenLooksLike, the occlusion-guard (the requireVisible check of exist), and"
+        + " FM-based scenario drafting and naming. Everything deterministic keeps working (self-healing"
+        + " by locator fingerprint does not use FM) — write textIs / valueIs / exist assertions instead"
+        + " of screenLooksLike."
 
     static func describe(_ reason: SystemLanguageModel.Availability.UnavailableReason) -> String {
         switch reason {

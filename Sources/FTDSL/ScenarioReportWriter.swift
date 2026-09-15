@@ -94,7 +94,7 @@ public enum ScenarioReportWriter {
             for suggestion in record.fixSuggestions {
                 md += "- \(suggestion.isStrong ? "💡" : "・") \(suggestion.message)\n"
             }
-            md += "\n(Sources are not rewritten automatically. Applying the above removes the dependency on the heal cache.)\n"
+            md += "\n(Sources are not rewritten automatically. Applying the above removes the dependency on self-healing.)\n"
         }
 
         for (name, data) in screenshots {

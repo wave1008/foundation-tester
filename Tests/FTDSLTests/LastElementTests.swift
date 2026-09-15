@@ -47,7 +47,7 @@ final class LastElementTests: XCTestCase {
         FTDriveCore(driver: TwoElementDriver(), platform: "ios", app: "com.example.app",
                     scenarioID: "T.S0010", scenarioTitle: "t",
                     delegate: nil, healingEnabled: false, dryRun: false,
-                    healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                    fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-last-element-test.json"),
                     emit: { _ in })
     }

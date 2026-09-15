@@ -56,7 +56,7 @@ struct ProjectCommand: AsyncParsableCommand {
 
     struct Copy: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Duplicate a test project under a new name (excludes reports/results/heal cache)")
+            abstract: "Duplicate a test project under a new name (excludes reports/results/.fleetest state)")
 
         @Argument(help: "Name of the project to copy")
         var source: String

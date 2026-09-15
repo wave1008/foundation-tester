@@ -30,12 +30,12 @@ Setting `record: true` in the run profile records each device for the whole run 
 out one clip per scenario into `<runDir>/recordings/`. A failing run doesn't lose the video
 — recording failures don't fail the run itself.
 
-## Self-healing cache
+## Locator fingerprints
 
-When self-healing is on, `TestProjects/<project>/.fleetest/heal-cache.json` stores selectors
-that were repaired at runtime, so the second run onward is deterministic (no AI needed) even
-though the source still has the old selector. See
-[Self-healing](../running/self_healing.md).
+When self-healing is on, `TestProjects/<project>/.fleetest/locator-fingerprints.json` stores the
+type/label (and placeholder, for input fields) each selector last resolved to directly, so a
+later run can match a renamed selector by fingerprint even though the source still has the old
+one. See [Self-healing](../running/self_healing.md).
 
 ## Last-run results (for `--failed`)
 

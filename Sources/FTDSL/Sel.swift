@@ -66,7 +66,7 @@ public struct Sel: Sendable, Equatable {
     }
 
     /// DSL コマンドへ渡す形。text は**文字列版の記法へ戻したもの**(FTSelector.serialize)で、
-    /// レポート表示とヒールキャッシュのキーになる。ここで summary を使うと型が `.button` ではなく
+    /// レポート表示と指紋の鍵になる。ここで summary を使うと型が `.button` ではなく
     /// `button`(=ラベル)に化け、レポートからコピーしたセレクタが別物になる
     var ftSelector: FTSelector {
         FTSelector(text: FTSelector.serialize(primary: primary, fallbacks: fallbacks),

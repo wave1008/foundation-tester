@@ -22,7 +22,7 @@ struct RunFileCommand: AsyncParsableCommand {
     @Argument(help: "Scenario .swift file (pass several and they are compiled together as helpers)")
     var files: [String]
 
-    @Option(help: "Test project to borrow profiles, reports and the heal cache from (defaults to the default project)")
+    @Option(help: "Test project to borrow profiles, reports and locator fingerprints from (defaults to the default project)")
     var project: String?
 
     @Option(help: "Run profile name (profiles/runs/<name>.json)")

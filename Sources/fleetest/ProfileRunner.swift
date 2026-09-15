@@ -20,7 +20,7 @@ enum ProfileRunner {
     /// ここで CLI 由来の override を二重に適用しない)
     static func fmSettingsRecord(resolved: ResolvedProfile) -> FMSettingsRecord {
         FMSettingsRecord(
-            fm: resolved.fm.enabled, heal: resolved.fm.heal,
+            fm: resolved.fm.enabled, heal: resolved.heal,
             falsePositiveCheck: resolved.fm.falsePositiveCheck,
             screenLooksLike: resolved.fm.screenLooksLike,
             ocr: resolved.ocr, ocrFalsePositiveCheck: resolved.ocrFalsePositiveCheck)
@@ -635,30 +635,31 @@ enum ProfileRunner {
 
     /// FM を使う run の開始前に、FM が**本当に呼べるか**を確かめて警告する。
     ///
-    /// **経路ごとに、その経路を使う機能が有効な run でだけ言う** —— text の死は heal、vision の死は
-    /// occlusion-guard(exist の既定 requireVisible)・screenLooksLike。heal だけで判定すると
-    /// 「FM が死んだまま緑になった run」の大半(視覚系は heal を切っていても FM を引く)で開始前に
-    /// 何も言わないことになる(2026-09-03 までそうなっていた)。availability は嘘をつく
+    /// **その経路を使う機能が有効な run でだけ言う** —— run の中で FM を使うのは vision 経路だけ
+    /// (occlusion-guard = exist の既定 requireVisible・screenLooksLike)。**text 経路は run の中で
+    /// 使わない**ので、その死は言わない(失われる機能が無いのに「無効」と言わない)。availability は嘘をつく
     /// (available のまま実呼び出しが全滅する実測 2026-07-22)ので、台帳(FMLiveness)の実観測を使う。
     ///
     /// **台帳が新しければ1回も呼ばない** —— モニターが動いていれば既に埋まっている
     /// (FMLivenessProbe.refresh の門①)。埋まっていないときだけ 1〜2 秒払う。
-    /// **text と vision を別に見る**: 片方だけ死ぬのが常態で、無効になる機能が違う。
     /// ApiRunCommand と共用。
-    static func warnIfFMDegraded(fm: FMConfig, log: (String) -> Void) async {
-        guard fm.enabled else { return }
-        let reading = await FMLivenessProbe.refresh()
-        // 視覚系(occlusion-guard / screenLooksLike)を使う run だけが vision の死に影響を受ける
+    /// `readLiveness` はテストの差し替え口(既定は `FMLivenessProbe.refresh` = 台帳が古いと FM を実際に呼ぶ)
+    static func warnIfFMDegraded(
+        fm: FMConfig,
+        readLiveness: () async -> FMLiveness.Reading = { await FMLivenessProbe.refresh() },
+        log: (String) -> Void
+    ) async {
+        // 視覚系(occlusion-guard / screenLooksLike)を使う run だけが vision の死に影響を受ける。
+        // **使わない run では台帳を引く前に返る** —— refresh は台帳が古いと FM を実際に呼ぶ
+        // (0.7〜4.7 秒・FMLock を取る)ので、結果を捨てる run で払わない
         let usesVision = fm.falsePositiveCheck || fm.screenLooksLike
-        if fm.heal, let text = reading.text, text.state == .dead {
-            log("⚠️ FM is dead on this machine (text path): self-healing is"
-                + " disabled for this run — a green result is not a guarded green."
-                + reasonSuffix(text))
+        guard fm.enabled, usesVision else { return }
+        guard FMVisionSupport.isSupported else {
+            log("⚠️ \(FMVisionSupport.requirement): occlusion-guard and screenLooksLike are disabled for this run")
+            return
         }
-        if usesVision, !FMVisionSupport.isSupported {
-            log("⚠️ \(FMVisionSupport.requirement): occlusion-guard and screenLooksLike are disabled for this run"
-                + " (self-healing stays enabled)")
-        } else if usesVision, let vision = reading.vision, vision.state == .dead {
+        let reading = await readLiveness()
+        if let vision = reading.vision, vision.state == .dead {
             log("⚠️ FM is dead on this machine (vision path): the occlusion-guard"
                 + " (the default requireVisible of exist) and screenLooksLike are disabled for this run"
                 + " — a green result is not a guarded green." + reasonSuffix(vision))

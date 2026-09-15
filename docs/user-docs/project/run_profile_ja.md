@@ -18,8 +18,8 @@
 |---|---|---|---|
 | `app` | string | — | 使用する `apps/<name>.json` プロファイル名 |
 | `devices` | array | — | 実行するデバイス名(解決済みマシンプロファイルから引く。同じ配列に iOS/Android を混在可) |
-| `fm` | bool | `true` | FM(Foundation Models)機能全体の親スイッチ。FM は experimental([environments_ja.md](../overview/environments_ja.md))。`false` にすると、下記の個別トグルに関わらず自己修復・`falsePositiveCheck`・`screenLooksLike` が一切実行されない |
-| `heal` | bool | `true` | ロケータ自己修復(ヒールキャッシュ・ロケータの指紋・FM)を許可する。`false` で3つとも止まる([self_healing_ja.md](../running/self_healing_ja.md)参照) |
+| `fm` | bool | `true` | FM(Foundation Models)機能(`falsePositiveCheck`・`screenLooksLike`)の親スイッチ。FM は experimental([environments_ja.md](../overview/environments_ja.md))。`false` にすると、下記の個別トグルに関わらず両方とも実行されない。`heal` とは独立(自己修復はもう FM を使わない) |
+| `heal` | bool | `--profile` 実行は `true`・プロファイル無しの素の `fleetest run` は `false` | ロケータ自己修復(ロケータの指紋照合)を許可する([self_healing_ja.md](../running/self_healing_ja.md)参照)。`fm` とは独立 |
 | `falsePositiveCheck` | bool | `true` | `exist`/`textIs` 等の偽陽性検証(occlusion guard)を有効にする。木では一致したが実際には見えていない「誤った緑」を検出する |
 | `screenLooksLike` | bool | `true` | `screenLooksLike`(FM 視覚検証)を有効にする。`false` のときは該当ステップが失敗ではなく skip になる |
 | `ocr` | bool | `true` | OCR 機能全体の親スイッチ。`false` にすると下記の個別トグルに関わらず OCR を使わない |
@@ -48,10 +48,11 @@
 
 ## FM トグルの親子関係
 
-`fm` が親スイッチで、`heal` / `falsePositiveCheck` / `screenLooksLike` はすべて既定
+`fm` は `falsePositiveCheck` / `screenLooksLike` の親スイッチで、どちらも既定
 `true` です(`falsePositiveCheck` は 2026-09-03 に既定オフから変更しました)。`fm` が `false` なら
-個別トグルは無効になります。自己修復が既定でオンかどうかは
-実行方法にも依存します。**`--profile` を使う実行は `heal` の既定が ON**、プロファイルを使わない
+両トグルとも無効になります。`heal` はこの親子関係に含まれません —— 自己修復はもう FM を
+使わないため、自分自身のキーだけで制御されます。自己修復が既定でオンかどうかは
+実行方法に依存します。**`--profile` を使う実行は `heal` の既定が ON**、プロファイルを使わない
 素の `fleetest run` は既定 OFF です。
 `fleetest run --profile <name> --set <キー>=<値>` は、プロファイルを書き換えずに1回の
 実行だけこの表のほぼどのキーも上書きできます(例: `--set heal=false`・

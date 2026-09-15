@@ -415,8 +415,9 @@ function onRunProfileDeviceToggle() {
 runProfileMachine.addEventListener('change', () => {
   renderRunProfileDevices();
 });
-// fm ON のときだけ配下のサブオプション(heal/falsePositiveCheck/screenLooksLike)を表示する
-// (値そのものは fm の状態に関わらず保持・保存する)。
+// fm ON のときだけ配下のサブオプション(falsePositiveCheck/screenLooksLike)を表示する
+// (値そのものは fm の状態に関わらず保持・保存する。heal は fm のサブオプションではないので
+// 別セクション扱い = この表示切替の対象外)。
 function updateFmOptionsVisibility() {
   runProfileFmOptions.style.display = runProfileFm.checked ? '' : 'none';
 }

@@ -16,15 +16,16 @@ Xcode, xcodegen, simulators, and adb.
 
 ## Apple Intelligence (optional)
 
-Fleetest works without Apple Intelligence (Foundation Models), but enabling it unlocks three
+Fleetest works without Apple Intelligence (Foundation Models), but enabling it unlocks two
 things. If you enable it later, they just start working.
 
-- **Self-healing** — when a selector breaks, the model repairs it so the scenario can keep going.
-  The fix is cached, so later runs don't call the model at all.
 - **`screenLooksLike`** — visual verification of the screen against a natural-language
   description.
 - **Occlusion guard** — the `requireVisible` check of `exist`, which keeps an element that is in
   the tree but covered by something else from passing as "visible".
+
+(Self-healing does not use FM — see [Self-healing](../running/self_healing.md) — so it works the
+same with or without Apple Intelligence.)
 
 All of it runs on-device; screen data from your app never leaves your Mac.
 **Apple's cloud (Private Cloud Compute) is never used.** Foundation Models also offers a
@@ -40,7 +41,7 @@ switches to the cloud.
 - On macOS 26, only visual verification (`screenLooksLike` and the false-positive check) is
   unavailable, because image input requires macOS 27+. It is disabled automatically; everything
   else works without restriction.
-- When FM is unavailable, these features are **skipped**, not failed. The run stays green with
+- When FM is unavailable, these two features are **skipped**, not failed. The run stays green with
   the features silently off, so confirm they actually work with `fleetest doctor --fm-only`,
   which performs one real inference on each of the text and vision paths and exits 1 when
   either is dead. Details in

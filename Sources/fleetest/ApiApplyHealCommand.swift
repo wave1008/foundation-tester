@@ -1,6 +1,6 @@
 // VSCode拡張向け: 自己修復の修復候補を stdin から受け取り、ソースへ確定反映する
 // (fleetest api apply-heal)。確定反映のロジックは FTCore.HealFixApplier に切り出し済みで、
-// このコマンドは stdin/stdout の橋渡しとヒールキャッシュ更新のみを担う。
+// このコマンドは stdin/stdout の橋渡しだけを担う。
 // stdout には結果 1 行の JSON だけを出す(診断は stderr のみ。ApiCommands.swift と同じ流儀)。
 
 import ArgumentParser
@@ -10,14 +10,15 @@ import FTCore
 struct ApiApplyHeal: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "apply-heal",
-        abstract: "Apply a self-heal candidate (JSON on stdin) to the scenario source for good and remove"
-            + " the matching key from the heal cache (result as one line of JSON on stdout; diagnostics on stderr only)")
+        abstract: "Apply a self-heal candidate (JSON on stdin) to the scenario source for good"
+            + " (result as one line of JSON on stdout; diagnostics on stderr only)")
 
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     func run() async throws {
-        let testProject = try ScenarioHost.project(named: project)
+        // プロジェクト名の検証だけ(存在しない名前はここで断る)
+        _ = try ScenarioHost.project(named: project)
         guard let packageRoot = ScenarioHost.packageRoot() else {
             throw ValidationError("cannot determine the repository root (run this inside the repository)")
         }
@@ -64,10 +65,6 @@ struct ApiApplyHeal: AsyncParsableCommand {
             }
         }
 
-        if !appliedAll.isEmpty {
-            removeFromHealCache(appliedAll.map(\.id), project: testProject)
-        }
-
         let output = ApiApplyHealOutput(
             applied: appliedAll.map(\.id),
             failures: failures.map { ApiApplyHealFailureOutput(id: $0.id, message: $0.message) })
@@ -75,23 +72,6 @@ struct ApiApplyHeal: AsyncParsableCommand {
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(output)
         ConsoleOut.out(String(data: data, encoding: .utf8)!)
-    }
-
-    /// 反映済みの fix をヒールキャッシュ(.fleetest/heal-cache.json)からも削除する。
-    /// ファイル・キーが無ければ黙ってスキップする(取りこぼしがあっても後続の反映を妨げない方針)
-    private func removeFromHealCache(_ ids: [String], project: TestProject) {
-        let cacheURL = project.stateDir.appendingPathComponent("heal-cache.json")
-        guard let data = try? Data(contentsOf: cacheURL),
-              let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            return
-        }
-        let result = HealFixApplier.removingAppliedKeys(ids, from: dict)
-        guard result.changed,
-              let output = try? JSONSerialization.data(
-                withJSONObject: result.dict, options: [.prettyPrinted, .sortedKeys]) else {
-            return
-        }
-        try? output.write(to: cacheURL, options: .atomic)
     }
 }
 

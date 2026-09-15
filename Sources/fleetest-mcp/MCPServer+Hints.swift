@@ -170,11 +170,13 @@ extension MCPServer {
     static func fmLivenessNote() async -> String {
         let reading = await FMLivenessProbe.refresh()
         guard let reason = reading.deadSummary(limit: 200) else { return "" }
+        // text 経路を使うのはシナリオの下書き・命名だけ(run の中では使わない)
         let disabled = reading.deadPaths == ["vision"]
             ? "the occlusion-guard and screenLooksLike are silently disabled"
             : reading.deadPaths == ["text"]
-                ? "self-healing is silently disabled"
-                : "the occlusion-guard, self-healing and screenLooksLike are silently disabled"
+                ? "FM-based scenario drafting and naming (draft-scenario / gen-scenario) are unavailable"
+                : "the occlusion-guard and screenLooksLike are silently disabled, and FM-based"
+                    + " scenario drafting and naming (draft-scenario / gen-scenario) are unavailable"
         return "\n⚠️ FM is dead on this machine (\(reading.deadPaths.joined(separator: " + "))):"
             + " \(disabled). \(reason)"
     }

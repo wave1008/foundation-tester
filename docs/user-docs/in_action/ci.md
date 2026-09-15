@@ -11,9 +11,10 @@ CI; see [docs/ci.md](../../ci.md) for the full write-up.
   run inside a macOS VM, which cannot use Apple Intelligence, and this path is not verified there.
 - **Run as a logged-in GUI session user** — the general rule for driving simulators. A headless
   `LaunchDaemon` or a bare `ssh` session makes simulators unstable.
-- **Apple Intelligence is not required.** Without it, self-healing / `screenLooksLike` / false-
-  positive checks are automatically skipped (a `⚠️` line is printed at startup) while deterministic
-  execution — tapping, asserting — runs unaffected. A scenario that uses `screenLooksLike` or
+- **Apple Intelligence is not required.** Without it, `screenLooksLike` / false-positive checks
+  are automatically skipped (a `⚠️` line is printed at startup) while deterministic execution —
+  tapping, asserting, and self-healing (locator fingerprint matching, which does not use FM) —
+  runs unaffected. A scenario that uses `screenLooksLike` or
   `requireVisible` passes without actually being checked in that case (the FM warning at the end
   of the run says so). See "Using Apple Intelligence in CI" in [docs/ci.md](../../ci.md) if you
   need visual checks enforced.

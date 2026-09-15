@@ -211,7 +211,7 @@ private func tapImpl(_ selector: FTSelector, holdSeconds: Double, timeout: Doubl
                         fallbacks: selector.stepFallbacks,
                         direction: scroll?.swipe.rawValue,
                         timeout: timeout, maxSwipes: scroll == nil ? nil : maxSwipes,
-                        // 既定(0 = 通常タップ)は載せない(生成コード・ヒールキャッシュを太らせない)
+                        // 既定(0 = 通常タップ)は載せない(生成コードを太らせない)
                         duration: holdSeconds == FlowStep.defaultTapHoldSeconds ? nil : holdSeconds,
                         containerInference: core.effectiveContainerInference(containerInference),
                         scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))

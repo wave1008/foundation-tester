@@ -3,7 +3,7 @@ import XCTest
 import FTCore
 
 /// `FTDriveCore.perform` の指紋の記録条件: **プライマリ/フォールバックで素直に解決できた回だけ
-/// 記録する**。指紋やヒール(キャッシュ・FM)で解決した回まで記録すると、誤った解決が指紋として
+/// 記録する**。指紋で解決した回まで記録すると、誤った解決が指紋として
 /// 固定化され、以後ずっと同じ誤りを再生産する。デバイスを使わず、DSL → FTDriveCore.perform →
 /// LocatorFingerprintCache.flush() の永続化ファイルを直接読んで確かめる(鍵の正確な文字列は
 /// 知らなくてよい —— ファイルの有無・件数・中身だけを見る)。
@@ -37,45 +37,6 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
         func terminate() async throws {}
     }
 
-    /// `#new_id` だけが在る画面(シナリオは `#old_id` を指すので素では解決できず FM ヒールが動く)。
-    /// HealSuggestionRecordingTests.RenamedScreenDriver と同じ形
-    private final class RenamedScreenDriver: AppDriver {
-        func status() async throws -> StatusResponse {
-            StatusResponse(ready: true, device: "stub", osVersion: "-", sessionBundleID: nil)
-        }
-        func install(packagePath: String) async throws {}
-        func uninstall(bundleID: String) async throws {}
-        func isAppForeground(bundleID: String) async throws -> Bool { false }
-        func foregroundAppID() async throws -> String? { nil }
-        func launch(bundleID: String) async throws {}
-        func snapshot() async throws -> SnapshotResponse {
-            SnapshotResponse(
-                sessionBundleID: nil,
-                screen: FTRect(x: 0, y: 0, width: 400, height: 800),
-                elements: [ElementInfo(ref: 1, type: "button", identifier: "new_id", label: "OK",
-                                       value: nil, placeholder: nil, enabled: true,
-                                       frame: FTRect(x: 0, y: 0, width: 100, height: 40), depth: 0)],
-                truncatedCount: 0)
-        }
-        func tap(ref: Int) async throws {}
-        func tap(x: Double, y: Double) async throws {}
-        func type(ref: Int?, text: String) async throws {}
-        func swipe(_ direction: FTSwipeDirection) async throws {}
-        func press(ref: Int, duration: Double) async throws {}
-        func screenshot() async throws -> Data { Data() }
-        func terminate() async throws {}
-    }
-
-    /// 改名先を必ず提案する delegate(FM の代わり)。HealSuggestionRecordingTests.RenamingHealer と同じ
-    private final class RenamingHealer: ReplayDelegate {
-        func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? {
-            snapshot.elements.first.map {
-                .proposed(HealProposal(element: $0, confidence: "high", rationale: "id renamed"))
-            }
-        }
-        func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-    }
-
     /// `#id_seed` だけが在る画面(指紋を録る側の run)
     private final class SeedScreenDriver: AppDriver {
         func status() async throws -> StatusResponse {
@@ -104,8 +65,10 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
         func terminate() async throws {}
     }
 
-    /// `#id_seed` は消え、同じ type+label の `#id_drifted` だけが在る画面(2本目の run)。
-    /// FM もヒールキャッシュも使わせず、**指紋だけ**で解決させる
+    /// `#id_seed` は消え、同じ type+label の `#id_drifted` だけが在る画面(2本目の run)。**指紋だけ**で
+    /// 解決させる。placeholder は種の画面に無い値を持たせてある —— 指紋は placeholder を控えていない
+    /// (nil = 照合しない)ので一致は変わらず、**この要素から指紋を採り直すと placeholder が入る** =
+    /// 再記録したかどうかを控えの中身で見分けられる
     private final class DriftedScreenDriver: AppDriver {
         func status() async throws -> StatusResponse {
             StatusResponse(ready: true, device: "stub", osVersion: "-", sessionBundleID: nil)
@@ -120,7 +83,7 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
                 sessionBundleID: nil,
                 screen: FTRect(x: 0, y: 0, width: 400, height: 800),
                 elements: [ElementInfo(ref: 1, type: "button", identifier: "id_drifted", label: "修復対象",
-                                       value: nil, placeholder: nil, enabled: true,
+                                       value: nil, placeholder: "drifted", enabled: true,
                                        frame: FTRect(x: 0, y: 0, width: 100, height: 40), depth: 0)],
                 truncatedCount: 0)
         }
@@ -134,7 +97,7 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
     }
 
     /// 両 run で**同じソース行**から呼ぶための共有ヘルパー。DSL コマンドは呼び出し側の
-    /// `#file`/`#line` を鍵に含めるので(`HealCache.key`/`LocatorFingerprintCache` と共有)、
+    /// `#file`/`#line` を鍵に含めるので(`LocatorFingerprintCache.key`)、
     /// 2つのテストメソッドへ書き分けると別の鍵になってしまい、run1 で録った指紋が
     /// run2 で引けなくなる
     private func runTapOnIDSeed() {
@@ -160,7 +123,6 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
             driver: PlainScreenDriver(), platform: "ios", app: "com.example.app",
             scenarioID: "Fingerprint.S0010", scenarioTitle: "t",
             delegate: nil, healingEnabled: false, dryRun: false,
-            healCacheURL: tempURL("primary-heal"),
             fingerprintCacheURL: fingerprintURL,
             emit: { _ in })
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)
@@ -176,44 +138,11 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
         XCTAssertEqual(entries.values.first?.label, "修復対象")
     }
 
-    /// **最重要の陰性テスト**: FM 自己修復(ヒール)で解決したステップは記録**しない**。
-    /// 記録してしまうと、誤ったヒール結果がそのまま指紋として固定化され、以後ずっと
-    /// 同じ誤りを再生産する。「常に記録する」変異が入っていたら、ここでファイルが作られて落ちる
-    func testHealedResolutionDoesNotRecordFingerprint() {
-        var events: [ScenarioEvent] = []
-        let fingerprintURL = tempURL("healed")
-        let core = FTDriveCore(
-            driver: RenamedScreenDriver(), platform: "ios", app: "com.example.app",
-            scenarioID: "Fingerprint.S0020", scenarioTitle: "t",
-            delegate: RenamingHealer(), healingEnabled: true,
-            falsePositiveCheckEnabled: false, dryRun: false,
-            healCacheURL: tempURL("healed-heal"),
-            fingerprintCacheURL: fingerprintURL,
-            emit: { events.append($0) })
-        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
-        defer { FTRuntime.tearDown() }
-
-        scenario { scene(1, "s") { action { tap("#old_id") } } }
-        // ヒールが実際に発火したことを確認してからでないと、この陰性テストは何も検証していない
-        // ことになる(FTDSLTests/HealSuggestionRecordingTests.swift と同じ確認)
-        XCTAssertNotNil(events.first { $0.kind == "fixSuggestion" },
-                        "前提が崩れている: ヒールが発火していない")
-        core.flushLocatorFingerprints()
-
-        XCTAssertFalse(FileManager.default.fileExists(atPath: fingerprintURL.path),
-                       "ヒールで解決した回を記録すると誤った解決が固定化される —— 書き出しすら発生しないはず")
-        XCTAssertTrue(readEntries(fingerprintURL).isEmpty)
-    }
-
-    /// **問題1の回帰ガード**: 指紋で解決したステップは `heal-cache.json` へ書かない。
-    /// 指紋照合は決定的で毎回同じコストで再導出できるので、キャッシュしても速度以外は増えない一方、
-    /// 一致が実は別要素だった誤りをキャッシュへ書くと次回以降 `healedByCache` の枝に落ちて
-    /// `heal-fingerprint-match` の注記ごと消え、指紋由来だったことが分からなくなる。
-    /// FM ヒールは confidence=="high" の門を通ってからキャッシュに入るが、指紋照合にはその門が無い ——
-    /// 門の無いものを固定化しない(docs/design.md §10)。「常に heal-cache へ書く」変異が入っていたら、
-    /// run2 の heal-cache.json にエントリが現れて落ちる
-    func testFingerprintResolutionDoesNotWriteToHealCache() {
-        let fingerprintURL = tempURL("fp-no-healcache")
+    /// **最重要の陰性テスト**: 指紋で解決したステップ(`.healed`)は指紋を**記録し直さない**。
+    /// 記録すると、誤った一致がそのまま指紋として固定化され、以後ずっと同じ誤りを再生産する。
+    /// 「healed でも記録する」変異が入っていたら、控えの placeholder が "drifted" に書き換わって落ちる
+    func testFingerprintHealedStepDoesNotRerecordItsFingerprint() {
+        let fingerprintURL = tempURL("fp-no-rerecord")
 
         // run1: `#id_seed` がプライマリで解決できる画面 → 指紋が録られ、flush でディスクへ出る
         do {
@@ -221,7 +150,6 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
                 driver: SeedScreenDriver(), platform: "ios", app: "com.example.app",
                 scenarioID: "Fingerprint.S0040", scenarioTitle: "t",
                 delegate: nil, healingEnabled: false, dryRun: false,
-                healCacheURL: tempURL("fp-no-healcache-run1-heal"),
                 fingerprintCacheURL: fingerprintURL,
                 emit: { _ in })
             FTRuntime.bootstrap(core: core, dslThread: Thread.current)
@@ -230,31 +158,31 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
             core.flushLocatorFingerprints()
         }
         XCTAssertEqual(readEntries(fingerprintURL).count, 1, "前提が崩れている: run1 で指紋が録れていない")
+        XCTAssertNil(readEntries(fingerprintURL).values.first?.placeholder)
 
-        // run2: `#id_seed` は消え、同じ type+label の `#id_drifted` だけが在る。
-        // healCache は空の別ファイルにする(cache 層を経由させず指紋層だけを踏ませるため)
-        let run2HealCacheURL = tempURL("fp-no-healcache-run2-heal")
+        // run2: `#id_seed` は消え、同じ type+label の `#id_drifted` だけが在る
         var run2Events: [ScenarioEvent] = []
-        // healingEnabled=true(heal=false は指紋照合も止める)。delegate nil = FM ヒールは通らない
         let core2 = FTDriveCore(
             driver: DriftedScreenDriver(), platform: "ios", app: "com.example.app",
             scenarioID: "Fingerprint.S0040", scenarioTitle: "t",
             delegate: nil, healingEnabled: true, dryRun: false,
-            healCacheURL: run2HealCacheURL,
             fingerprintCacheURL: fingerprintURL,
             emit: { run2Events.append($0) })
         FTRuntime.bootstrap(core: core2, dslThread: Thread.current)
         defer { FTRuntime.tearDown() }
         runTapOnIDSeed()
+        core2.flushLocatorFingerprints()
 
         // 前提: 指紋照合が実際に発火して healed になっていること(でなければ何も検証していない)
         let suggestion = run2Events.first { $0.kind == "fixSuggestion" }
         XCTAssertNotNil(suggestion, "前提が崩れている: 指紋照合が発火していない")
         XCTAssertEqual(suggestion?.newSelector, "#id_drifted")
 
-        // **本題**: heal-cache.json は作られない(FM 由来の rationale「FM self-heal」も出ない)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: run2HealCacheURL.path),
-                       "指紋で解決した回はヒールキャッシュへ書いてはいけない")
+        // **本題**: 控えは run1 のまま(drifted 要素から採り直していない)
+        let entries = readEntries(fingerprintURL)
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertNil(entries.values.first?.placeholder,
+                     "指紋で解決した要素から指紋を採り直してはいけない(誤りの固定化)")
     }
 
     /// **問題3の回帰ガード**: シナリオが途中の失敗で中断しても、**それより前に成功したステップの
@@ -268,7 +196,6 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
             driver: PlainScreenDriver(), platform: "ios", app: "com.example.app",
             scenarioID: "Fingerprint.S0050", scenarioTitle: "t",
             delegate: nil, healingEnabled: false, dryRun: false,
-            healCacheURL: tempURL("aborted-heal"),
             fingerprintCacheURL: fingerprintURL,
             emit: { _ in })
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)
@@ -357,7 +284,7 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
     }
 
     /// `tap("#btn_p")`/`tap("#btn_q")` を固定のソース行に置く共有ヘルパー。両 run が同じ行を
-    /// 呼ぶことで、file:line を含む鍵(`HealCache.key`)が run を跨いで一致する
+    /// 呼ぶことで、file:line を含む鍵(`LocatorFingerprintCache.key`)が run を跨いで一致する
     /// (runTapOnIDSeed と同じ理由)
     private func tapWiringP() { tap("#btn_p") }
     private func tapWiringQ() { tap("#btn_q") }
@@ -381,7 +308,6 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
                 driver: WiringTwoButtonDriver(), platform: "ios", app: "com.example.app",
                 scenarioID: "Fingerprint.ExpiryWiring", scenarioTitle: "t",
                 delegate: nil, healingEnabled: false, dryRun: false,
-                healCacheURL: tempURL("expiry-wiring-run1-heal"),
                 fingerprintCacheURL: fingerprintURL,
                 emit: { _ in })
             FTRuntime.bootstrap(core: core, dslThread: Thread.current)
@@ -397,7 +323,6 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
             driver: WiringOneButtonDriver(), platform: "ios", app: "com.example.app",
             scenarioID: "Fingerprint.ExpiryWiring", scenarioTitle: "t",
             delegate: nil, healingEnabled: false, dryRun: false,
-            healCacheURL: tempURL("expiry-wiring-run2-heal"),
             fingerprintCacheURL: fingerprintURL,
             emit: { _ in })
         FTRuntime.bootstrap(core: core2, dslThread: Thread.current)
@@ -462,7 +387,6 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
                 driver: FixedElementsDriver(elements), platform: "ios", app: "com.example.app",
                 scenarioID: scenarioID, scenarioTitle: "t",
                 delegate: nil, healingEnabled: true, dryRun: false,
-                healCacheURL: tempURL("partial-heal-\(label)-heal"),
                 fingerprintCacheURL: fingerprintURL,
                 emit: { events.append($0) })
             FTRuntime.bootstrap(core: core, dslThread: Thread.current)

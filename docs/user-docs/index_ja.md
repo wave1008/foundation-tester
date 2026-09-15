@@ -9,8 +9,9 @@
 
 fleetest は macOS 上で動く iOS / Android アプリの E2E テストツールです。シナリオは Shirates 風の
 Swift DSL で書き、決定的に再生します —— 通常の操作再生には LLM を使いません。
-Foundation Models(オンデバイス)を使うのは、壊れたセレクタの自己修復・`screenLooksLike` に
-よる視覚検証といった限定された機能だけです。テストはエージェント(MCP)に
+Foundation Models(オンデバイス)を使うのは、`screenLooksLike` による視覚検証と occlusion-guard の
+誤検知チェックといった限定された機能だけです。壊れたセレクタの自己修復は決定的(ロケータの指紋照合)で
+FM を使いません。テストはエージェント(MCP)に
 作らせる・VSCode 拡張で録画する・手書きする、の3通りで作れ、どれも同じ `.swift` シナリオに
 なります。iOS は**ハイブリッドエンジン**で動きます —— アプリに注入したブリッジで速く操作し、
 アプリの外からしか届かない操作だけを XCUITest へ自動で回すので、シナリオに経路を書く必要も、
@@ -106,7 +107,7 @@ Foundation Models(オンデバイス)を使うのは、壊れたセレクタの�
 
 - [シナリオの実行(fleetest run)](running/running_scenarios_ja.md)
 - [dry-run(No-Load-Run)](running/dry_run_ja.md)
-- [自己修復とヒールキャッシュ](running/self_healing_ja.md)
+- [自己修復](running/self_healing_ja.md)
 - [並列実行](running/parallel_execution_ja.md)
 - [結果の分析(fleetest results・ダッシュボード)](running/results_analysis_ja.md)
 

@@ -50,7 +50,7 @@ fleetest run --runner mac2 …             ~/fleetest-runner/               ← 
 | その macOS を知っている版の Homebrew | `brew --version` が動くこと |
 | git が GitHub へ直接出られる(古いプロキシ設定が残っていない) | `git config --global --get-regexp '^https?\.'` が空 |
 | Android SDK と AVD(Android を回すときだけ) | `fleetest doctor` |
-| Apple Intelligence 有効(`screenLooksLike`・自己修復を使うときだけ) | `fleetest doctor --fm-only` |
+| Apple Intelligence 有効(`screenLooksLike`・遮蔽チェックを使うときだけ) | `fleetest doctor --fm-only` |
 
 ## セットアップの流れ
 

@@ -64,7 +64,7 @@ export interface FleetestLaunchRequestArguments extends DebugProtocol.LaunchRequ
   dryRun?: boolean;
   stopOnEntry?: boolean;
   skipBuild?: boolean;
-  /** FM によるロケータ自己修復(`--set heal=true`)を有効にする。 */
+  /** ロケータの指紋照合による自己修復(`--set heal=true`)を有効にする。 */
   heal?: boolean;
   /** 実行プロファイル名。platform/port/serial との組合せ規則は startDebuggee 参照。 */
   profile?: string;

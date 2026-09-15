@@ -77,7 +77,7 @@ final class ScenarioHostRegisterChildProcessTests: XCTestCase {
         let passed = await ScenarioHost.run(
             project: project, scenarioID: "Login.S0010",
             connection: DriverConnection(platform: "ios"),
-            settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false, heal: false)),
+            settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
             reportDir: root.appendingPathComponent("reports").path,
             recording: ScenarioRecording(recorder: recorder),
             registerChildProcess: { registration.register($0) }) { _ in }
@@ -103,7 +103,7 @@ final class ScenarioHostRegisterChildProcessTests: XCTestCase {
         let passed = await ScenarioHost.run(
             project: project, scenarioID: "Login.S0010",
             connection: DriverConnection(platform: "ios"),
-            settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false, heal: false)),
+            settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
             reportDir: root.appendingPathComponent("reports").path,
             recording: ScenarioRecording(recorder: recorder),
             registerChildProcess: { registration.register($0) }) { _ in }

@@ -37,7 +37,7 @@ public struct DSLStepRecord: Sendable {
     }
 }
 
-/// セレクタの修正提案(自己修復・キャッシュ命中・フォールバック通過から導出)
+/// セレクタの修正提案(自己修復(指紋照合)・フォールバック通過から導出)
 public struct FixSuggestion: Sendable {
     /// 強い提案(healed)か弱い提案(passedViaFallback)か
     public let isStrong: Bool
@@ -194,8 +194,7 @@ public final class FTDriveCore {
     let scenarioID: String
     let scenarioTitle: String
     let emit: (ScenarioEvent) -> Void
-    let healCache: HealCache
-    /// ロケータ指紋(HealCache.swift 冒頭コメント参照。失敗経路でだけ参照する決定的なドリフト解決)。
+    /// ロケータ指紋(LocatorFingerprint.swift 冒頭コメント参照。失敗経路でだけ参照する決定的なドリフト解決)。
     /// **flush() を1度呼ぶまでディスクへは書かない**(LocatorFingerprintCache.swift 参照)
     let fingerprintCache: LocatorFingerprintCache
     /// 検証コマンド(exist/textIs 等)の既定タイムアウト秒(実行プロファイルで変更可)。
@@ -409,7 +408,6 @@ public final class FTDriveCore {
                 // プロファイルの明示 off が環境変数に勝つ
                 occlusionOCREnabled: Bool = true,
                 dryRun: Bool = false,
-                healCacheURL: URL? = nil,
                 fingerprintCacheURL: URL? = nil,
                 selectorInventoryURL: URL? = nil,
                 defaultTimeout: Double? = nil,
@@ -452,8 +450,6 @@ public final class FTDriveCore {
         self.scenarioID = scenarioID
         self.scenarioTitle = scenarioTitle
         self.dryRun = dryRun
-        self.healCache = HealCache(
-            url: healCacheURL ?? URL(fileURLWithPath: ".fleetest/heal-cache.json"))
         self.fingerprintCache = LocatorFingerprintCache(
             url: fingerprintCacheURL ?? URL(fileURLWithPath: ".fleetest/locator-fingerprints.json"))
         // 台帳の照合は dry-run 専用(実行なら解決の成否が答えを出すので、二重に言う意味が無い)
@@ -666,7 +662,7 @@ public final class FTDriveCore {
 
     // MARK: - ステップ実行
 
-    /// コマンドの共通実行経路。selectorText はヒールキャッシュのキーと修正提案の表示に使う。
+    /// コマンドの共通実行経路。selectorText は指紋の鍵と修正提案の表示に使う。
     /// 戻り値は status に加え**照合済み要素**も運ぶ(FTElement.text/value/id の元。
     /// exist 系の呼び出し元だけが element を読み、他は捨てる)
     @discardableResult
@@ -757,20 +753,17 @@ public final class FTDriveCore {
             return PerformResult(status: .passed, element: heldElement)
         }
 
-        // 解決順: プライマリ → フォールバック → キャッシュ → 指紋照合 → FM ヒール(StepExecutor 内)
+        // 解決順: プライマリ → フォールバック → 指紋照合(StepExecutor 内)
         var cacheKey: String?
-        var cachedEntry: HealCache.Entry?
         var cachedFingerprint: LocatorFingerprint?
         if let selectorText {
-            let key = HealCache.key(scenarioID: scenarioID, file: filePath,
-                                    line: Int(line), selector: selectorText)
+            let key = LocatorFingerprintCache.key(scenarioID: scenarioID, file: filePath,
+                                                  line: Int(line), selector: selectorText)
             cacheKey = key
-            cachedEntry = healCache.lookup(key)
             cachedFingerprint = fingerprintCache.lookup(key)
         }
 
         let executor = self.executor
-        let cachedLocators = cachedEntry?.locators ?? []
         // 打ち切られた回は outcome が nil = StepExecutor の計時ごと失われるので、**ホスト側でも測る**。
         // ここを測らないと、いちばん高いステップ(コマンド上限まるごと)だけが結果 JSON に
         // 時間ゼロで載り、scenes[].durationMs もその分を落とす(2026-09-09 に results DB で確認:
@@ -787,7 +780,7 @@ public final class FTDriveCore {
         let stallStart = StallMeter.shared.threadStallMilliseconds
         let poolStallStart = StallMeter.shared.poolStallMilliseconds
         let outcome = FTSync.run(scheduleDelay: scheduleDelay) {
-            await executor.execute(step, cached: cachedLocators, fingerprint: cachedFingerprint)
+            await executor.execute(step, fingerprint: cachedFingerprint)
         }
         let cpuMs = ProcessCPUTime.delta(from: cpuStart, to: ProcessCPUTime.milliseconds())
         // **プロセス全体の値**(cpuMs と同じ)。1レーンが書けずに詰まると協調スレッドプールごと
@@ -829,51 +822,21 @@ public final class FTDriveCore {
                    notes: outcome?.notes ?? [], guarded: outcome?.guardEntered ?? false,
                    command: command, failureKind: failureKind)
 
-        // 修正提案とヒールキャッシュの更新
+        // 修正提案。修復は指紋照合だけなので、`healedStep` は指紋で掴んだ要素を書けるセレクタへ
+        // 写したもの。**永続化はしない**(指紋は毎回再導出でき、誤った一致を固定すると注記ごと消える)
         if let outcome, let selectorText {
             if let healed = outcome.healedStep, let primary = healed.locator {
-                let chain = [primary] + (healed.fallbacks ?? [])
                 let newSelector = FTSelector.serialize(primary: primary,
                                                        fallbacks: healed.fallbacks ?? [])
-                let rationale: String
-                if outcome.healedByCache {
-                    rationale = cachedEntry?.rationale ?? "previous self-heal result (cache)"
-                } else if outcome.healedByFingerprint {
-                    // **ヒールキャッシュへは書かない**: 指紋照合は決定的で毎回同じコストで
-                    // 再導出できるので、キャッシュしても「木を1回フィルタする」分の速度しか
-                    // 得られない。一方、一致が実は別要素だった誤りをキャッシュへ書くと
-                    // 次回以降 healedByCache 側の枝に落ちて heal-fingerprint-match の注記が
-                    // 消え、指紋由来だったことが分からなくなる。FM ヒールは confidence=="high"
-                    // の門を通ってからキャッシュに入るが、指紋照合にはその門が無い ——
-                    // 門の無いものを固定化しない(docs/design.md §10)。
-                    // rationale も healed.note の文字列分割に頼らず直接組む(こちらも
-                    // 「FM self-heal」への誤った帰属を作らないため)
-                    rationale = "matched by locator fingerprint (type+label), no FM call"
-                } else {
-                    rationale = healed.note?.components(separatedBy: "self-healed: ").last
-                        ?? "FM self-heal"
-                    if let cacheKey {
-                        healCache.store(cacheKey, locators: chain,
-                                        newSelector: newSelector, rationale: rationale)
-                    }
-                }
-                let via: String
-                if outcome.healedByCache {
-                    via = "passed via the heal cache"
-                } else if outcome.healedByFingerprint {
-                    via = "passed via locator fingerprint matching"
-                } else {
-                    via = "passed via FM self-healing"
-                }
-                let resolvedNewSelector = cachedEntry?.newSelector ?? newSelector
                 addSuggestion(FixSuggestion(
                     isStrong: true,
                     message: "\(filePath):\(line) — change the selector \"\(selectorText)\" to "
-                        + "\"\(resolvedNewSelector)\""
-                        + " (\(via); reason: \(rationale))"),
+                        + "\"\(newSelector)\""
+                        + " (passed via locator fingerprint matching; reason: matched by locator"
+                        + " fingerprint (type+label))"),
                     emitEvent: true, description: description,
                     file: filePath, line: Int(line),
-                    oldSelector: selectorText, newSelector: resolvedNewSelector)
+                    oldSelector: selectorText, newSelector: newSelector)
             } else if case .passedViaFallback(let locator) = status {
                 // 弱い提案(フォールバックは設計上の通常経路なのでレポートのみ)
                 addSuggestion(FixSuggestion(
@@ -1001,8 +964,7 @@ public final class FTDriveCore {
     }
 
     /// シナリオ終了時に1回だけ呼ぶ(warnAbout* と同じ位置)。LocatorFingerprintCache.record は
-    /// メモリへ溜めるだけなので、ここで初めてディスクへ書く(HealCache.store と違い毎ステップの
-    /// I/O を払わないための設計)。「通ったか」は ScenarioRunnerMain の `passed` 判定
+    /// メモリへ溜めるだけなので、ここで初めてディスクへ書く(毎ステップの I/O を払わないための設計)。「通ったか」は ScenarioRunnerMain の `passed` 判定
     /// (`record.passed && !stoppedByUser`)と同じ式で決める ── デバッグ停止で中断した run を
     /// 「通った」として古い鍵を刈らないため
     public func flushLocatorFingerprints() {

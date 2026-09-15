@@ -41,7 +41,7 @@ public struct SelectorInventory: Codable, Sendable {
         self.platforms = platforms
     }
 
-    /// 台帳の置き場所。ヒールキャッシュ(`.fleetest/heal-cache.json`)と同じディレクトリ
+    /// 台帳の置き場所。指紋の控え(`.fleetest/locator-fingerprints.json`)と同じディレクトリ
     public static func url(projectRoot: URL) -> URL {
         projectRoot.appendingPathComponent(".fleetest/selector-inventory.json")
     }

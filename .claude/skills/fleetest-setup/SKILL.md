@@ -237,15 +237,15 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETE
 （テキストと画像入力の2経路）**exit code で返す**（両方使える=0／どちらかでも使えない=1）。
 `SystemLanguageModel.default.availability` は `.available` のまま全呼び出しが失敗することがあるので
 見ていない。
-**FM は必須ではない** — 使うのは heal（自己修復）・FM 視覚検証（`screenLooksLike` 等）・シナリオ生成/探索
-（`/fleetest-scenario` の頭脳）だけで、決定的なシナリオ実行・VSCode 拡張・MCP のデバイス操作・dry-run は
-FM 無しで動く。**人間に「有効か」を聞かない**：
+**FM は必須ではない** — 使うのは FM 視覚検証（`screenLooksLike` 等）・シナリオ生成/探索
+（`/fleetest-scenario` の頭脳）だけで、決定的なシナリオ実行・自己修復（ロケータの指紋照合。FM を
+使わない）・VSCode 拡張・MCP のデバイス操作・dry-run は FM 無しで動く。**人間に「有効か」を聞かない**：
 
 - **exit 0**（`✅ 利用可能`）→ 次へ。
 - **exit 1**（無効／ダウンロード中／対象外）→ **セットアップは中断せず続行する**。有効化のための
   停止・待機・質問はしない。理由を控えておき、ステップ9の完了報告に
   「Apple Intelligence 要有効化（FM 機能を使う場合）」として残す：後から System 設定 →
-  Apple Intelligence & Siri でオンにし、`fleetest doctor --fm-only` が ✅ になれば heal・視覚検証・
+  Apple Intelligence & Siri でオンにし、`fleetest doctor --fm-only` が ✅ になれば視覚検証・
   シナリオ生成がそのまま使えるようになる（セットアップのやり直しは不要）。
 
 ### 3. 環境検証ゲート

@@ -1028,7 +1028,7 @@ machine 名付きで並ぶ)。「マージの実装」は要らなかった。
 | ネットワーク | リモートログイン ON・発行側からの鍵認証(BatchMode)・**画面共有 ON**(モード A の再起動後の解錠に使う。モード B では任意だが復旧用に推奨) | 必須 | 到達性プローブ(実装済み)+ ポート応答 |
 | ツール本体 | **専用ベースディレクトリ配下**(`<base>/tool` = クローン・`<base>/work` = WORK_DIR)に導入済みで `swift build` 済み。CLI のみ(拡張・MCP・モニター不要 = CI ランナーと同型)。**マシン自身のローカルインストールとは別物**(§12) | 必須 | `test -x <base>/tool/.build/debug/fleetest` |
 | Android | Android SDK + AVD | レーン使用時 | 既存 preflight 流用 |
-| FM | Apple Intelligence 有効化 | screenLooksLike/heal 使用時 | `doctor --fm-only`(実呼び出し) |
+| FM | Apple Intelligence 有効化 | screenLooksLike/occlusion-guard 使用時(自己修復は FM を使わないので対象外) | `doctor --fm-only`(実呼び出し) |
 
 **旧版からの変更(2026-07-31 セキュリティレビュー)**: 「自動ログイン+ロック無効」を
 無条件必須から外し、**モード A/B の選択+Aqua セッション在否の実測**に置き換えた(§5)。

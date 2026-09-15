@@ -75,7 +75,7 @@ final class UnregisteredSystemAlertPhaseTests: XCTestCase {
                                scenarioID: "T.S0010", scenarioTitle: "t",
                                delegate: nil, healingEnabled: false,
                                falsePositiveCheckEnabled: false, dryRun: false,
-                               healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                               fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                                    .appendingPathComponent("ft-unregistered-alert-phase-test.json"),
                                fallbackDriver: fallback,
                                emit: { events.append($0) })

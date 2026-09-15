@@ -58,7 +58,7 @@ final class BuildAndroidWorkersPartialFailureTests: XCTestCase {
             appName: "app",
             apps: [:],
             devices: devices,
-            fm: FMConfig(),
+            fm: FMConfig(), heal: false,
             reportDir: URL(fileURLWithPath: "/tmp/dummy/reports"),
             defaultTimeout: nil,
             scenarioTimeout: nil,

@@ -242,9 +242,9 @@
   ときだけ(`FMLivenessProbe.refresh` の門①②③。FMLock は 1 秒で諦める = 実仕事を待たせない)。
   プローブ間隔 60 秒の根拠は `Scripts/fm-flap-monitor.swift` と同じ刻み。
   読み手は4つ: モニターの FM 行(NDJSON の `fmTextState`/`fmVisionState`/`fmDeadReason`/
-  `fmCheckedAt`)/ run 開始前の警告(`ProfileRunner.warnIfFMDegraded`。**経路ごとに、その経路を
-  使う機能が有効な run でだけ言う** —— text の死は heal、vision の死は occlusion-guard・screenLooksLike。
-  heal だけで出し分けると、heal を切った run の視覚系の死を黙る)/
+  `fmCheckedAt`)/ run 開始前の警告(`ProfileRunner.warnIfFMDegraded`。**run の中で FM を使うのは
+  vision 経路(occlusion-guard・screenLooksLike)だけ**なので、言うのは vision の死を、その機能が有効な
+  run でだけ。**text 経路はシナリオの下書き・命名だけが使う** = text の死で run が失う機能は無い)/
   run.json の `fmDead`・`fmDeadReason` / `ft_status`・`ft_doctor`・`fleetest doctor --fm-only`
   (**doctor は text と vision を両方 実呼び出しで確かめ、どちらが死んでも exit 1**)
 - リモート実行(`run --runner` の SSH ディスパッチ):
@@ -424,7 +424,7 @@
 ### e2e.sh を回す条件
 
 - **DSL コマンド・`StepExecutor`・ドライバ・ブリッジ(`InAppBridge`/`Runner`/`AndroidRunner`)・
-  セレクタ/スナップショット/ヒール(`FTFoundationModels`)を変えたら `Scripts/e2e.sh`**
+  セレクタ/スナップショット/自己修復(指紋照合)/FM 呼び出し(`FTFoundationModels`)を変えたら `Scripts/e2e.sh`**
   (ユニットテストはデバイス境界のバグを1つも捕まえない)。**ブリッジのスナップショット/型写像と、
   StepExecutor の操作合成(タップ/ドラッグ/スクロール探索の終端処理)を触ったら SUT を絞らず全部**
   回す(フレームワーク差の退行は SUT を跨がないと出ない)→ maintainer-notes §4.4.1
@@ -630,6 +630,12 @@
   分けること自体、ツールには判定できない(失敗の記録に分類を置かないのと同じ理由)。起きたことはレポートに
   事実として並ぶ(失敗文言・要素一覧・スクリーンショット)。`FMTriageRemovedTests` が Sources への再混入を落とす。
   **戻すなら §21 の測り方で誤りの率を測ってから** → maintainer-notes §21
+- **FM によるロケータ自己修復(FM ヒール)とヒールキャッシュは置かない**(ユーザー決定 2026-09-15)。採用門
+  (自己申告 confidence == "high")が実測で1度も開かず(日英 272 件で high 0 件・E2E の witness は全 run で却下)、
+  confidence は正誤と相関しない(正解に low・誤答に medium/high)ので門の置き場が無い。典型的なドリフト(id だけ
+  変わりラベル不変)は指紋照合が決定的に拾う。**`heal` は指紋照合だけのスイッチで、FM を使わないので `fm` の配下に
+  置かない**(ユーザー決定)。`FMHealRemovedTests` が Sources への再混入を落とす。
+  **戻すなら §21 の測り方で誤りの率を測ってから** → maintainer-notes §22
 - **occlusion-guard の OCR 段(`FTCore.RegionText`)は「素通りの根拠」にしかしない** —— 期待テキストが
   **丸ごと**読めた回だけ FM を省く(既定 on。**利用者の口は実行プロファイルの
   `ocrFalsePositiveCheck`**(親スイッチ `ocr` の配下。拡張のプロファイルタブ
@@ -678,30 +684,29 @@
   (`TreeCoverageTests` / `DuplicateRegionTests`)
 - **要素上限の撮り直しは肯定側にも要る**。`retakenAtElementLimitCeiling` は notExists/count
   (誤った成功)だけを塞いでいたが、操作側は**実在する要素で赤くなる**。操作側は**ドライバ切替と
-  FM ヒールより前**に置く —— 切り詰められた木で FM に代わりを探させると、実在する本命が候補に
-  無いまま別の要素へ「修復」し、それが `fleetest api apply-heal` で利用者の .swift へ書き戻される
+  指紋照合より前**に置く —— 切り詰められた木で指紋を照合すると、実在する本命が候補に無いまま
+  同じ型+ラベルの別要素が「ちょうど1件」になり、修正提案が `fleetest api apply-heal` で利用者の
+  .swift へ書き戻される
 - **「書けるセレクタ」の規則は `FTCore.SelectorNaming` の1箇所**(一意性(`picksOnlyOne`)・
-  祖先スコープ・記法のエスケープ・耐久性の格付け)。**ヒール(自己修復)もここを通す**。
+  祖先スコープ・記法のエスケープ・耐久性の格付け)。**自己修復(指紋照合)の書き戻しもここを通す**。
   (→ maintainer-notes §8)。書けるセレクタが無いときは**操作は続けて修復だけ成立させない**(`StepNote.healUnwritable`)——
   掴んだ要素は手元にあるので叩くのは正しく、書き戻せないという理由で緑の run を赤にしない
 - **ロケータの指紋(`FTCore.LocatorFingerprint`)の規律4つ**(詳細は docs/design.md §10
-  「ロケータの指紋」): **①効くのは失敗経路だけ**(プライマリ・フォールバック・キャッシュが
-  すべて外れたとき。今緑のステップの挙動は変えられないので、リスクがこの1箇所に閉じる)/
+  「ロケータの指紋」): **①効くのは失敗経路だけ**(プライマリ・フォールバックが
+  どちらも外れたとき。今緑のステップの挙動は変えられないので、リスクがこの1箇所に閉じる)/
   **②ちょうど1件一致のときだけ採用**(スコアも距離も作らない。複数件を「もっとも近い」で
   選ぶと別要素へ静かに解決し誤った緑を作る)/ **③記録するのはプライマリ/フォールバックで
-  解決した回だけ**(指紋・ヒール・FM の回を記録すると誤った解決が固定化され再生産される)/
-  **④ヒールキャッシュへ書かない**(毎回再導出できるので得られるのは速度だけ。一方で
-  誤りが永続化して注記が消える。FM ヒールは confidence の門を通るが指紋にその門は無い)。
+  解決した回だけ**(指紋で解決した回を記録すると誤った解決が固定化され再生産される)/
+  **④修復結果を永続化しない**(指紋は毎回再導出できるので得られるのは速度だけ。一方で
+  誤りが永続化して注記が消える)。
   **控えるのは `type` + `label` だけ** —— `id` はドリフトで変わる当のもの、`value` は毎回変わる。
   **型だけの指紋(label も placeholder も無い)は記録も照合もしない**(`isIdentifying`)。
   **失効はシナリオ単位の置き換え**(時間の定数を使わない): 通った run で、その `scenarioID` の
   鍵のうち触れなかったものを刈る。**「触れた」= lookup または record**(record だけだと指紋で
   直った行の鍵が刈られ、次の run で赤に戻る)・**触れた0件の run では刈らない**・
   **接頭辞で自分のシナリオのぶんだけ**(部分実行で他を巻き込まない)。
-  **`heal=false`(`fm=false` を含む)はヒールキャッシュ・指紋・FM の3層すべてを止める**
-  (ユーザー決定 2026-09-15。門は `StepExecutor.execute` の入口1箇所)。
-  **FM ヒールの採用門は本番では実測で開かない**ので、門の先は注入口
-  `FT_FAKE_HEAL_CONFIDENCE_HIGH=1`(`HealConfidenceInjection`)を掛けた `Scripts/fm-verify.sh` で通す
+  **`heal=false` は指紋照合(= 自己修復)を止める**(門は `StepExecutor.execute` の入口1箇所)。
+  **`fm=false` では止めない**(FM を使わないので配下に置かない。ユーザー決定 2026-09-15)
 - **セレクタ文法(`FTSelector`)・コマンド索引(`CommandIndex`)・コード生成(`ScenarioCodeGen`)は
   FTCore に居る**(写像先の `FlowLocator` が FTCore の型で、DSL ランタイムには依存しない)。
   利用者からの見え方は `Descriptors.swift` の `@_exported import FTCore` が保っている。
@@ -729,7 +734,7 @@
   「セッション消失」と読んで activate を撃つ。「セッションはあるが今は無理」は **422** を使う
   (`BridgeRouterStatusContractTests` が 409/503/501 の本数を数えて守る)。in-app ブリッジは逆に
   409 を一時的競合へ広く使ってよい(あちらは包まれない)
-- **実行時設定は継ぎ目で解かない**。`fm` / `occlusionOCR` / `containerInference` / timeouts は
+- **実行時設定は継ぎ目で解かない**。`fm` / `heal` / `occlusionOCR` / `containerInference` / timeouts は
   `FTCore.ScenarioExecutionSettings` 1つに束ね、`runSequential`/`runParallel` → `RunOrchestrator` →
   `ScenarioRunner.runOne` → `ScenarioHost.run` をそのまま通す。**既定値はこの型の init 1箇所だけ**
   —— 層ごとに引数へ解くと、その層の既定が**渡し忘れを合法にする**(コンパイルでも実行でも

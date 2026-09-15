@@ -41,10 +41,10 @@ public struct WorkerAnomalyRecord: Codable, Sendable {
 /// その run で実際に効いていた FM 設定(`FTCore.ResolvedProfile` の実効値。CLI の
 /// `--set`(fm/heal/falsePositiveCheck/screenLooksLike/ocr/ocrFalsePositiveCheck)による
 /// 上書きを反映した後の値)。
-/// **7つとも常に明示的に書く**(true/false のどちらも省略しない) —— 省略を許すと
+/// **6つとも常に明示的に書く**(true/false のどちらも省略しない) —— 省略を許すと
 /// RunMetaRecord.fmSettings が nil(旧レコード)なのか、この構造体の中の1欄だけが
-/// 省略されたのか区別できなくなる。`ocr`/`ocrFalsePositiveCheck` は `FMConfig` の外
-/// (`RunProfileDocument` の独立の兄弟キー)だが、記録上はここへまとめる
+/// 省略されたのか区別できなくなる。`heal` / `ocr` / `ocrFalsePositiveCheck` は `FMConfig` の外
+/// (`RunProfileDocument` の独立の兄弟キー。heal は FM を使わない)だが、記録上はここへまとめる
 public struct FMSettingsRecord: Codable, Sendable, Equatable {
     public var fm: Bool
     public var heal: Bool
@@ -207,7 +207,7 @@ public struct RunMetaRecord: Codable, Sendable {
     /// 生きていた・不明なら nil。**run 全体の状態ではない** —— 途中で死んで戻った run はここに
     /// 出ない(シナリオごとの実測は scenarios/*.json の fm.failures / fm.firstError)。
     /// **緑の run を後から仕分けるための欄** —— FM が死んだ run の緑は「守りが効いた緑」ではなく、
-    /// occlusion-guard・自己修復・screenLooksLike が素通りしただけかもしれない
+    /// occlusion-guard・screenLooksLike が素通りしただけかもしれない(text 経路は run の中で使わない)
     public var fmDead: [String]?
     /// fmDead の理由(`text: … / vision: …`)。fmDead が無ければ nil
     public var fmDeadReason: String?
@@ -779,8 +779,8 @@ public struct ScenarioRecordBuilder {
             durationMs: durationMs, scenes: scenes, steps: steps,
             reportPath: Self.relativize(reportPath, packageRoot: packageRoot),
             failedSteps: passed ? nil : (failedSteps.isEmpty ? nil : failedSteps),
-            // **修正提案は成否によらず残す**(fm と同じ理由)。強い提案が出るのは自己修復か
-            // ヒールキャッシュで**通ったとき**なので、passed で捨てると
+            // **修正提案は成否によらず残す**(fm と同じ理由)。強い提案が出るのは自己修復(指紋照合)で
+            // **通ったとき**なので、passed で捨てると
             // 「緑だがセレクタは壊れている」という一番知りたい状態の記録が1件も残らない
             // (実測: 89,025 記録すべてで fixSuggestions が空だった)
             fixSuggestions: fixSuggestions.isEmpty ? nil : fixSuggestions,

@@ -882,7 +882,7 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertTrue(rows.contains { $0.kind == "consecutiveFailures" })
     }
 
-    // MARK: - insights: healReliance(ヒールキャッシュ依存)
+    // MARK: - insights: healReliance(自己修復依存)
 
     /// 同じセレクタの修正提案が続いている = **緑だがセレクタは壊れている**状態が放置されている
     func testInsightsHealRelianceWhenTheSameSelectorKeepsBeingSuggested() {

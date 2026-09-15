@@ -7,7 +7,6 @@ import Foundation
 extension StepExecutor {
 
     func executeAction(_ action: String, step: FlowStep,
-                               cached: [FlowLocator] = [],
                                fingerprint: LocatorFingerprint? = nil,
                                phase: inout PhaseAccumulator) async throws -> StepOutcome {
         let clock = ContinuousClock()
@@ -673,8 +672,8 @@ extension StepExecutor {
         // **解決できないのは上限で間引かれたからかもしれない**。否定アサーションと
         // 同じ retake を操作側にも入れる —— こちらは誤った成功ではなく**実在する要素での赤**
         // (flake)になる形だが、直す手段は同じ。
-        // **ドライバ切替と FM ヒールより前**に置く: 切り詰められた木で FM に代わりを探させると、
-        // 実在する本命が候補に無いまま別の要素へ「修復」し、それが利用者の .swift へ書き戻される。
+        // **ドライバ切替と指紋照合より前**に置く: 切り詰められた木で指紋を照合すると、実在する本命が
+        // 候補に無いまま同じ型+ラベルの別要素が「ちょうど1件」になり、修正提案が利用者の .swift へ書き戻される。
         // **`select` も対象にする**(下のドライバ切替は select を除外するが、あちらの理由は
         // fallbackDriver が springboard セッションを張ってアプリ attach を潰すことで、
         // ここには当てはまらない)。`ifCanSelect` が切り詰められた木で「無い」側の枝を選ぶのは
@@ -723,7 +722,6 @@ extension StepExecutor {
 
         var status: StepResult.Status = .passed
         var healedStep: FlowStep?
-        var healedByCache = false
         var healedByFingerprint = false
         // ロケータのフォールバック(.passedViaFallback)とは別物。ドライバ切替の注記のみで、
         // FTRuntime の修正提案(セレクタ更新)は誘発しない
@@ -733,15 +731,6 @@ extension StepExecutor {
         if let (found, usedFallback) = resolved {
             element = found
             if let fallback = usedFallback { status = .passedViaFallback(fallback) }
-        } else if let (found, locator) = matchCached(cached, in: snapshot) {
-            // ヒールキャッシュ命中: FM なしで決定的に解決(healed 扱いで記録し、提案を出し続ける)
-            element = found
-            var healed = step
-            healed.locator = locator
-            healed.fallbacks = cached.count > 1 ? cached.filter { $0 != locator } : nil
-            healedStep = healed
-            healedByCache = true
-            status = .healed(locator)
         } else if action == "select" {
             // **select だけは掴めなくても失敗させない**(空要素を返して呼び出し側に .isEmpty で
             // 分岐させる契約)。自己修復の対象にもしない — 掴めないことが答えになり得るコマンドで
@@ -753,14 +742,16 @@ extension StepExecutor {
                                                   inferring: step.containerInference ?? true)
                   }) {
             // ロケータ指紋: 前回このロケータが解決できた要素の type+label が現在の木に
-            // **ちょうど1件**だけ一致したので、FM を呼ばず決定的に解決する。0件・複数件のときは
-            // `resolve(in:)` が nil を返し、下の FM ヒールへそのまま落ちる(採否は二値のみ)
+            // **ちょうど1件**だけ一致したので、決定的に解決する。0件・複数件のときは
+            // `resolve(in:)` が nil を返し、下の「見つからない」へそのまま落ちる(採否は二値のみ)
             element = found
             var notes: [String] = []
             note(.healFingerprintMatch, into: &notes)
             if let graded = SelectorNaming(snapshot).graded(for: found, in: snapshot) {
-                // 書けるセレクタは既存の修正提案・ヒールキャッシュの機構にそのまま乗せる
-                // (FTRuntime.perform の healedByCache==false 枝。durability の注意書きも同じ形)
+                // 書けるセレクタは修正提案(FTRuntime.perform)に乗せる。**書けるセレクタは
+                // `SelectorNaming` にだけ決めさせる**(一意性を見ずに id/label を採ると、同じ id を
+                // 複数持つ画面で書いたセレクタが別要素に解決する)。indexed(位置依存)は
+                // `Durability.caution` で必ず言う
                 let parsed = FTSelector.parse(graded.selector)
                 var healed = step
                 healed.locator = parsed.primary
@@ -778,110 +769,6 @@ extension StepExecutor {
                 note(.healUnwritable, into: &notes)
             }
             driverFallback = Self.joinNotes(driverFallback, notes.joined(separator: " / "))
-        } else if healingEnabled, let delegate,
-                  let attempt = await delegate.healLocator(step: step, snapshot: snapshot) {
-            switch attempt {
-            case .noReplacement(let rationale):
-                // FM は一覧を見たうえで「妥当な代わりが無い」と判断した(elementText が nil)。
-                // `.unresolved`(答えはあったが要素に一致しなかった)とは別の注記にする —— こちらは
-                // モデルが一覧を検討したうえで出した正常な結論で、要素が本当に消えている場合は
-                // これが正解(2026-09-02 実測: 存在しない要素を叩く陽性対照でモデルが選択肢を
-                // 与えられず無関係な要素を提案していた実害の直し)
-                var notes: [String] = []
-                note(.healNoReplacement, into: &notes)
-                driverFallback = Self.joinNotes(driverFallback, notes.joined(separator: " / "))
-                let hint = Self.candidateHint(for: step, in: snapshot)
-                return StepOutcome(
-                    status: failed(
-                        .notFound,
-                        "cannot resolve the locator: \(step.locatorSummary)" + (hint.map { ". \($0)" } ?? "")
-                            + Self.truncationHint(snapshot)
-                            + Self.keyboardResizedHint(snapshot)
-                            + Self.webViewPathHint(snapshot)
-                            + Self.noReplacementHint(rationale)),
-                    driverFallback: driverFallback)
-            case .unresolved(let rawAnswer):
-                // FM は呼べて答えも返したが、**その生テキストが木のどの要素にも一致しなかった**
-                // (resolveByText が nil)。confidence 判定より手前の失敗なので healProposalRejected
-                // とは別の注記にする。黙ると原因が推測でしか語れない(2026-09-02 実測)ため、
-                // 生の答えをそのまま失敗文言へ添える
-                var notes: [String] = []
-                note(.healAnswerUnresolved, into: &notes)
-                driverFallback = Self.joinNotes(driverFallback, notes.joined(separator: " / "))
-                let hint = Self.candidateHint(for: step, in: snapshot)
-                return StepOutcome(
-                    status: failed(
-                        .notFound,
-                        "cannot resolve the locator: \(step.locatorSummary)" + (hint.map { ". \($0)" } ?? "")
-                            + Self.truncationHint(snapshot)
-                            + Self.keyboardResizedHint(snapshot)
-                            + Self.webViewPathHint(snapshot)
-                            + Self.unresolvedHealAnswerHint(rawAnswer)),
-                    driverFallback: driverFallback)
-            case .proposed(let proposal):
-                // 門を注入で開けた回(HealConfidenceInjection)。注記と rationale の印を必ず残す
-                let gateInjected = proposal.confidence != "high" && healConfidenceGateInjected
-                if gateInjected {
-                    var notes: [String] = []
-                    note(.healConfidenceInjected, into: &notes)
-                    driverFallback = Self.joinNotes(driverFallback, notes.joined(separator: " / "))
-                }
-                if proposal.confidence == "high" || gateInjected {
-                    // 自己修復: 新しいロケータ連鎖に置き換えたステップを返す(永続化は呼び出し側 →
-                    // `fleetest api apply-heal` が利用者の .swift ソースへ直接書き込む経路がある)。
-                    // **書けるセレクタは `SelectorNaming` にだけ決めさせる**(2026-08-15。旧実装
-                    // `FlowLocatorBuilder.chain` は一意性を見ずに id/label をそのまま採っていたため、
-                    // 同じ id を複数持つ画面では書いたセレクタが別要素に解決していた)。
-                    element = proposal.element
-                    // **`graded` が nil = この画面でその要素を一意に指せる書き方が無い**。
-                    // **操作は続け、修復だけ成立させない**。掴んだ要素は手元にあるので
-                    // 叩くこと自体は正しく、ここで失敗させるとシナリオ全体が中断する = 書き戻せない
-                    // という理由だけで緑の run を赤にすることになる。塞ぎたい欠陥は「壊れたセレクタが
-                    // 利用者の資産へ書かれる」ことなので、`healedStep` を立てない(= 修正提案も
-                    // ヒールキャッシュも作らない)だけで足りる。**黙らない** —— 毎回 FM を呼び直す
-                    // 状態が続くので、率が上がったら id/ラベルの一意性を疑う手掛かりとして数える
-                    if let graded = SelectorNaming(snapshot).graded(for: proposal.element, in: snapshot) {
-                        // 得たセレクタは `FTSelector.parse` で往復させ、綴りと意味の唯一の写像を通す
-                        let parsed = FTSelector.parse(graded.selector)
-                        var healed = step
-                        healed.locator = parsed.primary
-                        healed.fallbacks = parsed.fallbacks.isEmpty ? nil : parsed.fallbacks
-                        // **indexed(位置依存)は書き込む前に必ず言う**(Durability.caution が文言を持つ)
-                        // —— 兄弟の増減で別要素を指すようになるセレクタを、黙って利用者のソースへ書かない
-                        // 注入で採用した回は rationale に印を残す(FTRuntime が "self-healed: " 以降を
-                        // ヒールキャッシュと修正提案へ写す = run を跨いでも注入由来だと読める)
-                        let injectedMark = gateInjected
-                            ? "[confidence \(proposal.confidence), adopted by \(HealConfidenceInjection.environmentKey)] "
-                            : ""
-                        healed.note = (step.note.map { $0 + " / " } ?? "")
-                            + "self-healed: \(injectedMark)\(proposal.rationale)"
-                            + graded.durability.caution
-                        healedStep = healed
-                        status = .healed(parsed.primary)
-                    } else {
-                        var notes: [String] = []
-                        note(.healUnwritable, into: &notes)
-                        driverFallback = Self.joinNotes(driverFallback, notes.joined(separator: " / "))
-                    }
-                } else {
-                    // FM は答えを返したが**採用基準(confidence == "high")に届かなかった**。
-                    // 採用基準は変えない —— ここは最終 else の「見つからない」と外から見分けが
-                    // 付かなくなる(=FM が黙って捨てた)ことだけを塞ぐ。StepNote.healProposalRejected 参照
-                    var notes: [String] = []
-                    note(.healProposalRejected, into: &notes)
-                    driverFallback = Self.joinNotes(driverFallback, notes.joined(separator: " / "))
-                    let hint = Self.candidateHint(for: step, in: snapshot)
-                    return StepOutcome(
-                        status: failed(
-                            .notFound,
-                            "cannot resolve the locator: \(step.locatorSummary)" + (hint.map { ". \($0)" } ?? "")
-                                + Self.truncationHint(snapshot)
-                                + Self.keyboardResizedHint(snapshot)
-                                + Self.webViewPathHint(snapshot)
-                                + Self.rejectedProposalHint(proposal)),
-                        driverFallback: driverFallback)
-                }
-            }
         } else {
             // 惜しい候補を添える。これが無いと直すために snapshot を取り直す往復が必要になる
             // (レポート側の全要素一覧は ScenarioReportWriter が別途出す)
@@ -1015,7 +902,6 @@ extension StepExecutor {
                 if typeDriverGestures.contains("press") || gestureFallbackLatched, let td = typeDriver,
                    try await pressViaTypeDriver(td, step: step, phase: &phase) {
                     return StepOutcome(status: .passed, healedStep: healedStep,
-                                       healedByCache: healedByCache,
                                        healedByFingerprint: healedByFingerprint,
                                        driverFallback: Self.joinNotes(driverFallback,
                                                                       "fell back to XCUITest"))
@@ -1126,7 +1012,7 @@ extension StepExecutor {
             if let td = typeDriver, preferTypeDriver || text.contains("\n"),
                try await typeViaTypeDriver(td, step: step, phase: &phase) {
                 // ランナーの打ち直しの申告(OKResponse.note)はこの経路でも拾う(下の主経路と同じ)
-                return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache,
+                return StepOutcome(status: .passed, healedStep: healedStep,
                                    healedByFingerprint: healedByFingerprint,
                                    driverFallback: Self.joinNotes(td.lastActionNote, replaceFallbackNote,
                                                                   existingValueNote, nonInputNote))
@@ -1164,7 +1050,7 @@ extension StepExecutor {
         case "clearInput":
             if let td = typeDriver, preferTypeDriver,
                try await clearViaTypeDriver(td, step: step, phase: &phase) {
-                return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache,
+                return StepOutcome(status: .passed, healedStep: healedStep,
                                    healedByFingerprint: healedByFingerprint)
             }
             switch try await performClearInput(element: element, step: step,
@@ -1246,7 +1132,7 @@ extension StepExecutor {
         default:
             return StepOutcome(status: .skipped("unknown action: \(action)"))
         }
-        return StepOutcome(status: status, healedStep: healedStep, healedByCache: healedByCache,
+        return StepOutcome(status: status, healedStep: healedStep,
                            healedByFingerprint: healedByFingerprint,
                            driverFallback: Self.joinNotes(Self.joinNotes(driverFallback, ghostNote),
                                                           straddleNote))
@@ -1743,57 +1629,6 @@ extension StepExecutor {
         return "the tree lists this row twice ([\(duplicate.firstRef)] and"
             + " [\(duplicate.secondRef)], \(duplicate.length) elements each);"
             + " one copy is a leftover from horizontal scrolling"
-    }
-
-    /// 却下された自己修復の提案があったことを失敗文言に添える。**この一文が無いと、
-    /// 「FM が探して見つからなかった」と「FM は答えを持っていたが confidence 不足で
-    /// 使わなかった」が読み手から区別できない**(StepNote.healProposalRejected と同じ事実を
-    /// 文言側で運ぶだけで、採用基準そのもの(confidence == "high")はここでは変えない)。
-    ///
-    /// **具体的な貼れるセレクタ連鎖(`元のロケータ||提案セレクタ`)を組み立てない。
-    /// 機構(フォールバックが書けること)だけを教え、どの要素を使うかは読み手に委ねる。**
-    /// これは書き忘れではなく意図的な設計判断 —— 一度 `SelectorNaming` + `FTSelector.serialize`
-    /// で具体的な連鎖を組み立てて出す版を実装したが、2026-09-02 のデバイス実行
-    /// (`Scripts/fm-verify.sh`)で撤回した。**存在しない要素をわざと叩く**シナリオで
-    /// FM が無関係な要素を提案し、それがそのまま貼れる形の助言 `"#btn_triage_check_does_not_exist
-    /// ||#nav_input"` として出た実例がある。**confidence は信号を持たない**(正解にも誤答にも
-    /// "low" が付くことが実測で確定済み。docs/design.md §10)ため、提案が正しいか誤りかを
-    /// この関数(ひいてはツール側)は判定できない。判定できない以上、**貼れる形で出すこと自体が
-    /// 危険**になる —— 利用者がそのまま貼ると誤った提案がテストを緑にしたまま別の要素を
-    /// 叩き続ける(検証されずに使われる、誤った緑)。**次にここを読んで「候補は分かっているの
-    /// だから `A||B` の形で出せばいい」と思っても、それが上記の理由で一度撤回された変更である
-    /// ことを踏まえること**。FM が何を提案したかは直前の一文
-    /// (`self-heal proposed <type> #<id> "<label>" ...`)が既に見せているので、
-    /// 読み手はそれを見て自分で判断できる —— 失うのは「貼れる形」だけで、それが危険な部分だった
-    static func rejectedProposalHint(_ proposal: HealProposal) -> String {
-        var parts = [proposal.element.type]
-        if let id = proposal.element.identifier, !id.isEmpty { parts.append("#\(id)") }
-        if let label = proposal.element.label, !label.isEmpty {
-            parts.append("\"\(SnapshotRenderer.truncate(label, 24))\"")
-        }
-        return " (self-heal proposed \(parts.joined(separator: " ")) but its confidence was"
-            + " \"\(proposal.confidence)\", not \"high\", so it was not used: \(proposal.rationale))"
-            + " To survive similar drift, write the locator with a fallback"
-            + " (\"primary||fallback\" tries fallback only if primary fails to resolve)."
-    }
-
-    /// FM は答えを返したが、その生テキストが木のどの要素にも一致しなかったとき、**答えをそのまま**
-    /// 失敗文言へ添える。`rejectedProposalHint` と同じ理由 —— 黙ると「探して見つからなかった」と
-    /// 「答えはあったが要素に一致しなかった」が読み手から区別できない。上限は300文字で真因が途中で
-    /// 切れて特定できなかった実例(`FMHealth.record` の `firstError` 参照)に倣い800文字にする
-    /// (切り詰めすぎて原因の手掛かりを潰さないため)
-    static func unresolvedHealAnswerHint(_ rawAnswer: String) -> String {
-        " (self-heal answered \"\(SnapshotRenderer.truncate(rawAnswer, 800))\" but no element in the"
-            + " tree matched that text)"
-    }
-
-    /// FM が一覧を見たうえで「妥当な代わりが無い」と判断したことを失敗文言に添える。
-    /// `rejectedProposalHint` / `unresolvedHealAnswerHint` と同じ理由で分ける —— こちらは
-    /// モデルが候補を検討したうえで出した結論なので、利用者にとっては「要素が本当に無くなっている」
-    /// ことをツールが確認した、という意味で読める文言にする(不在の裏付けであって捜索の失敗ではない)
-    static func noReplacementHint(_ rationale: String) -> String {
-        " (self-heal looked at the element list but found no valid replacement" +
-            " (reason: \(rationale)); the element appears to be genuinely gone)"
     }
 
     /// 注記の合流(どちらか片方だけのことが多いので nil を潰して " / " で繋ぐ)

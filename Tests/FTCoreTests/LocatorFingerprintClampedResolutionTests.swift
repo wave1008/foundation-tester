@@ -28,13 +28,6 @@ final class LocatorFingerprintClampedResolutionTests: XCTestCase {
         func terminate() async throws {}
     }
 
-    private final class ScriptedAttemptHealer: ReplayDelegate {
-        let attempt: HealAttempt
-        init(_ attempt: HealAttempt) { self.attempt = attempt }
-        func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { attempt }
-        func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-    }
-
     private func snapshot(_ elements: [ElementInfo]) -> SnapshotResponse {
         SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 400, height: 800),
                          elements: elements, truncatedCount: 0)
@@ -44,7 +37,7 @@ final class LocatorFingerprintClampedResolutionTests: XCTestCase {
     /// 重なっている(`hasClampedCoordinates` の閾値3を満たす)。そのうち1件("行 15")は
     /// type+label の raw 一致が**ちょうど1件**なので、除外せずに resolve すると指紋が
     /// この幽霊へ解決してしまう。`candidates` と同じ除外を通せば、この行は候補から落ち、
-    /// FM ヒール(ここでは実在する行 "行 16" を返すよう仕込む)へ委ねられるはず
+    /// ロケータ未解決の失敗になるはず。同じ画面で実在する行("行 16")の指紋は解決する(陽性対照)
     func testFingerprintDoesNotResolveToClampedGhost() async {
         let container = ElementInfo(ref: 0, type: "other", identifier: "list_rows", label: nil,
                                     value: nil, placeholder: nil, enabled: true,
@@ -58,23 +51,22 @@ final class LocatorFingerprintClampedResolutionTests: XCTestCase {
                                   placeholder: nil, enabled: true,
                                   frame: FTRect(x: 16, y: 326, width: 330, height: 56), depth: 1)
         let snap = snapshot([container] + clampedRows + [realRow])
-        let driver = StubDriver(snap)
-        let proposal = HealProposal(element: realRow, confidence: "high", rationale: "fm chose the real row")
-        let executor = StepExecutor(driver: driver,
-                                    delegate: ScriptedAttemptHealer(.proposed(proposal)),
-                                    healingEnabled: true, isAndroid: false)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
-        // raw では type+label の一致がちょうど1件("行 15")だが、その要素はクランプされた幽霊
-        let fp = LocatorFingerprint(type: "cell", label: "行 15", placeholder: nil)
 
-        let outcome = await executor.execute(step, fingerprint: fp)
+        // 陽性対照: 実在する行の指紋はこの画面で解決する(除外が行き過ぎていない)
+        let control = await StepExecutor(driver: StubDriver(snap), healingEnabled: true, isAndroid: false)
+            .execute(step, fingerprint: LocatorFingerprint(type: "cell", label: "行 16", placeholder: nil))
+        XCTAssertTrue(control.notes.contains(.healFingerprintMatch), "前提: 実在する行で指紋が効いていない")
+
+        // raw では type+label の一致がちょうど1件("行 15")だが、その要素はクランプされた幽霊
+        let outcome = await StepExecutor(driver: StubDriver(snap), healingEnabled: true, isAndroid: false)
+            .execute(step, fingerprint: LocatorFingerprint(type: "cell", label: "行 15", placeholder: nil))
 
         XCTAssertFalse(outcome.notes.contains(.healFingerprintMatch),
                        "クランプされた幽霊要素で指紋を成立させてはいけない: \(outcome.notes)")
         XCTAssertFalse(outcome.healedByFingerprint)
-        guard case .healed(let locator) = outcome.status else {
-            return XCTFail("指紋が不採用になり FM ヒールへ落ちて解決したはず: \(outcome.status)")
+        guard case .failed = outcome.status else {
+            return XCTFail("指紋が不採用ならロケータ未解決の失敗のはず: \(outcome.status)")
         }
-        XCTAssertEqual(locator.label, "行 16", "幽霊(行15)ではなく実在する行(行16)へ解決したはず")
     }
 }

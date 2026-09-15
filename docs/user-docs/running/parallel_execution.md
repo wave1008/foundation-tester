@@ -58,9 +58,10 @@ by their `worker` field, since the same `scenarioID` appears once per device (se
 - LPT ordering (longest-past-runtime-first dispatch) balances the queue across workers using
   recent run history; `--no-lpt`/`--lpt-history-runs` control it (see
   [running_scenarios.md](./running_scenarios.md)).
-- Deterministic replay does not call FM, so it scales with parallelism. `screenLooksLike` and
-  self-healing do call an on-device FM (one instance per machine), so they are bottlenecked by
-  that regardless of how many devices you run.
+- Deterministic replay does not call FM, so it scales with parallelism. Self-healing (locator
+  fingerprint matching) does not call FM either, so it scales the same way. `screenLooksLike` does
+  call an on-device FM (one instance per machine), so it is bottlenecked by that regardless of how
+  many devices you run.
 
 ### Link
 - [index](../index.md)

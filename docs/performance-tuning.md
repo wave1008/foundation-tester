@@ -282,10 +282,10 @@ M1Max 10コア/16コア ANE が 3.51 で、コア数比にも ANE 比にも対�
 当時この頭打ちを FM の性質と読んだが、**門の有無を記録していないため切り分けられない**。
 
 ただし**実運用では律速になっていない**。SampleApp 76シナリオの実行(2026-07-22)で FM は
-**8本/14回・計53.9秒**(occlusion 10回33.5秒 / heal 4回20.4秒)にとどまり、iOS レーン稼働846秒の
-6.4%。`occlusionInkThreshold` と `OcclusionEligibility` の足切りがよく効いており、
-「アサーション毎に発火」は起きない。FM は失敗シナリオと長時間シナリオに偏る
-(heal は失敗時のみ走るため)。
+**8本/14回・計53.9秒**(occlusion 10回33.5秒 / heal 4回20.4秒。**heal は 2026-09-15 に FM 版を
+撤去し指紋照合のみになったため、この内訳は当時の記録 → maintainer-notes §22**)にとどまり、
+iOS レーン稼働846秒の6.4%。`occlusionInkThreshold` と `OcclusionEligibility` の足切りがよく
+効いており、「アサーション毎に発火」は起きない。FM は失敗シナリオと長時間シナリオに偏る。
 
 - 偽陽性検証(occlusion-guard)は 2026-07-28 から**実行プロファイル既定 OFF**
   だったが、**2026-09-03 に既定 ON へ変更**(ユーザー決定)。発火が増えて律速になったら:
@@ -302,7 +302,8 @@ M1Max 10コア/16コア ANE が 3.51 で、コア数比にも ANE 比にも対�
 総 17,460 秒のうち **occlusion が 6,804 回 / 15,567 秒(89%)**(triage 278 回・平均 6,121ms /
 screenLooksLike 51 回 / heal 34 回)。**occlusion 一択**。
 (**FM トリアージは 2026-09-15 に撤去**したので、以下 triage への言及はすべてそれ以前の
-測定記録 → maintainer-notes §21)
+測定記録 → maintainer-notes §21。**同日、FM ヒール〈自己修復〉も撤去し指紋照合のみになった**
+ので、以下の heal への言及(施策表を含む)も同様にそれ以前の測定記録 → maintainer-notes §22)
 
 | 施策 | 実測 | 採否 |
 |---|---|---|
@@ -369,9 +370,10 @@ screenLooksLike 51 回 / heal 34 回)。**occlusion 一択**。
   (記録すると fm.calls とレートが実態より多く見える)。
   Tier-1 のインク足切りで FM を省く回は空振りになるが、暖機に生成が無いぶん
   「効く回に効かせる」を採った
-- **③が不採用な理由**(再提案しないこと): heal は実績で 34 回 = FM 総時間の 0.5% で、
+- **③が不採用な理由**(歴史的経緯。heal は 2026-09-15 に FM 版を撤去し指紋照合のみになったので
+  この施策自体が対象を失った → maintainer-notes §22): heal は実績で 34 回 = FM 総時間の 0.5% で、
   occlusion の 6,804 回とは桁が違う。かつ `rationale` は**修復した回に必ず読まれる**
-  (ステップの注記 `self-healed: …` / 採用しなかった回の失敗文言 / ヒールキャッシュ)ので、
+  (ステップの注記 / 採用しなかった回の失敗文言 / ヒールキャッシュ)ので、
   occlusion のような2段化(読まれる回だけ2段目)にしても節約にならない。
   **投資に見合わないというユーザー決定**。
 - **⑥が不採用な理由**: 木を削ると分類が変わる。`locatorDrift`(「同じ役割の要素が別名で存在する」)は
@@ -379,8 +381,10 @@ screenLooksLike 51 回 / heal 34 回)。**occlusion 一択**。
   triage の値打ちそのものが消える。
 - **⑦は速さの話ではなく正しさの修正**: モデルの文脈長は **4,096 トークン**で、超えると
   `Content contains N tokens, which exceeds the maximum allowed context size of 4096` で
-  **呼び出しごと失敗**する。heal も triage も失敗は **nil = 黙って素通り**なので、密な画面では
-  「自己修復もトリアージも一度も効かない」が無警告で起きていた。自前 SUT の画面は小さく
+  **呼び出しごと失敗**する。FM 呼び出しの失敗は **nil = 黙って素通り**なので、密な画面では
+  「occlusion-guard もトリアージも一度も効かない」が無警告で起きていた(当時は heal も同じ
+  仕組みだったが、2026-09-15 に FM 版を撤去したので今は対象外 → maintainer-notes §22)。
+  自前 SUT の画面は小さく
   1度も踏まなかったが、実アプリのコーパス(`Tests/Fixtures/RealAppSnapshots`)では
   234 行 / 11,771 文字の木が 7,957 トークンになり実際に溢れた。
   `FMPromptBudget`(木は 3,600 文字まで。実測 **1.40〜1.48 文字/トークン**)で
@@ -1441,7 +1445,8 @@ python3 Scripts/stream_vs_poll_bench.py --boot-ios-name シミュ1 --boot-androi
 ### 4.2 FM 呼び出しの実測(回数・レイテンシ)
 
 FM はホスト全体で共有される資源で許可枠に制限される(§3.5)ので、コストは**回数と時間**で測る。
-`FMHealth`(Sources/FTCore/FMHealth.swift)が用途別(occlusion / heal / screenLooksLike)に計上し、
+`FMHealth`(Sources/FTCore/FMHealth.swift)が用途別(occlusion / screenLooksLike。自己修復は
+2026-09-15 に FM を呼ばなくなったので対象外 → maintainer-notes §22)に計上し、
 シナリオ毎の結果 JSON の `fm` に載る。実行中は各シナリオ終了時に stderr へも1行出る。
 
 ```bash
@@ -1458,8 +1463,9 @@ print('呼び出し', sum(f['calls'] for f in fs), '合計秒', sum(f['totalMs']
   そのまま実行時間の下限に近づく。これが壁時計に近づくほど FM 律速で、**デバイスを増やしても
   縮まない**(枠はホスト単位のため)
 - モニターパネルの **FM グラフ**(数値=累計回数、線=tick 毎の増分)でも実行中に見える
-- FM が全滅すると occlusion-guard・heal・screenLooksLike は**握りつぶされて素通り**する(テストは緑のまま
-  機能だけ無効になる)。`FMHealth` が失敗を数えて実行後に警告するので、これを見逃さないこと
+- FM が全滅すると occlusion-guard・screenLooksLike は**握りつぶされて素通り**する(テストは緑のまま
+  機能だけ無効になる。自己修復は 2026-09-15 に FM を呼ばなくなったため対象外 → maintainer-notes §22)。
+  `FMHealth` が失敗を数えて実行後に警告するので、これを見逃さないこと
 
 ### 4.3 in-app dylib の内側を測る(整定ループ等)
 

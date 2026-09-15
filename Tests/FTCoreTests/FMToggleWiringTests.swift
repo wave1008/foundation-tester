@@ -20,7 +20,7 @@ final class FMToggleWiringTests: XCTestCase {
     }
 
     /// FMConfig の各トグルは、無効のとき**子ランナーへフラグとして伝わる**こと。
-    /// `heal` だけは逆向き(有効のとき `--heal` を足す)なので別に見る
+    /// `heal`(FMConfig の外・`settings.heal`)だけは逆向き(有効のとき `--heal` を足す)なので別に見る
     func testEveryFMToggleIsForwardedToTheChildRunner() throws {
         let host = try source("Sources/FTCore/ScenarioHost.swift")
         for (property, flag) in [("fm.enabled", "--no-fm"),
@@ -29,7 +29,7 @@ final class FMToggleWiringTests: XCTestCase {
             XCTAssertTrue(host.contains("if !\(property) { args.append(\"\(flag)\") }"),
                           "\(property) が子へ伝わっていない(切っても子は知らないまま走る)")
         }
-        XCTAssertTrue(host.contains("if fm.heal { args.append(\"--heal\") }"),
+        XCTAssertTrue(host.contains("if settings.heal { args.append(\"--heal\") }"),
                       "heal は有効のときに渡す向き")
     }
 

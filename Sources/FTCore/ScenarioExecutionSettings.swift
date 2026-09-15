@@ -4,6 +4,8 @@
 // 渡し忘れがコンパイルでも実行でも見えないまま**その層の既定へ静かに落ちる**。
 public struct ScenarioExecutionSettings: Sendable, Equatable {
     public var fm: FMConfig
+    /// ロケータ自己修復(指紋照合)。FM を使わないので `fm` の外に置く
+    public var heal: Bool
     /// **親スイッチ `ocr` を掛けた後の実効値**(プロファイルの `ocrFalsePositiveCheck`)であって
     /// 親スイッチそのものではない。OCR の用途が増えたらこの Bool を再利用せず欄を足す
     public var occlusionOCR: Bool
@@ -19,10 +21,11 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
 
     /// 既定値はこの1箇所だけに置く。他の層(ScenarioHost/RunOrchestrator/CLI)に既定を書かない。
     /// `homeOnStart` はデバイスに触る工程の設定なのでここには入れない
-    public init(fm: FMConfig = FMConfig(), occlusionOCR: Bool = true,
+    public init(fm: FMConfig = FMConfig(), heal: Bool = false, occlusionOCR: Bool = true,
                 containerInference: Bool = true, defaultTimeout: Double? = nil,
                 scenarioTimeout: Int? = nil, profileName: String? = nil) {
         self.fm = fm
+        self.heal = heal
         self.occlusionOCR = occlusionOCR
         self.containerInference = containerInference
         self.defaultTimeout = defaultTimeout
@@ -31,13 +34,13 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     }
 
     public init(_ settings: DeviceIndependentRunSettings) {
-        self.init(fm: settings.fm, occlusionOCR: settings.ocrFalsePositiveCheck,
+        self.init(fm: settings.fm, heal: settings.heal, occlusionOCR: settings.ocrFalsePositiveCheck,
                   containerInference: settings.containerInference,
                   defaultTimeout: settings.defaultTimeout, scenarioTimeout: settings.scenarioTimeout)
     }
 
     public init(_ resolved: ResolvedProfile) {
-        self.init(fm: resolved.fm, occlusionOCR: resolved.ocrFalsePositiveCheck,
+        self.init(fm: resolved.fm, heal: resolved.heal, occlusionOCR: resolved.ocrFalsePositiveCheck,
                   containerInference: resolved.containerInference,
                   defaultTimeout: resolved.defaultTimeout, scenarioTimeout: resolved.scenarioTimeout,
                   profileName: resolved.runName)

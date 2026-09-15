@@ -1371,7 +1371,7 @@ struct RunScenarios: AsyncParsableCommand {
                 recorder.finish(total: items.count, passed: 0, failed: items.count,
                                 performanceMode: performanceMode,
                                 fmSettings: FMSettingsRecord(
-                                    fm: noProfileSettings.fm.enabled, heal: noProfileSettings.fm.heal,
+                                    fm: noProfileSettings.fm.enabled, heal: noProfileSettings.heal,
                                     falsePositiveCheck: noProfileSettings.fm.falsePositiveCheck,
                                     screenLooksLike: noProfileSettings.fm.screenLooksLike,
                                     ocr: noProfileSettings.ocr,
@@ -1413,8 +1413,9 @@ struct RunScenarios: AsyncParsableCommand {
             ConsoleOut.out(failedCount == 0
                   ? "✅ All \(ranCount) \(unit) passed\(skippedSuffix)"
                   : "❌ \(failedCount) of \(ranCount) \(unit) failed\(skippedSuffix)")
-            // **合否は変えず、劣化だけ伝える**。FM が死んでいると occlusion-guard・
-            // 自己修復・screenLooksLike が黙って素通りするので、緑は「守りが効いた緑」ではない。
+            // **合否は変えず、劣化だけ伝える**。FM(vision 経路)が死んでいると occlusion-guard・
+            // screenLooksLike が黙って素通りするので、緑は「守りが効いた緑」ではない。
+            // **text 経路の死は言わない** —— run の中で text 経路を使う機能は無い
             // 赤のときも、切り分けの出発点として先に知りたい情報(自分の変更か FM か)
             //
             // 2つ出すのは根拠が別だから: 台帳(FMLiveness)は**この機械の FM の生死**で、
@@ -1422,15 +1423,15 @@ struct RunScenarios: AsyncParsableCommand {
             // シナリオ数**。前者だけだと「死んでいたが今回の run は FM を引かなかった」が
             // 同じ文になり、後者だけだと**ブレーカが落ちて1回も呼ばずに素通りした run で沈黙する**
             let fmReading = FMLiveness.current()
-            if let reason = fmReading.deadSummary() {
+            if fmReading.deadPaths.contains("vision"), let reason = fmReading.deadSummary() {
                 ConsoleOut.out("⚠️ FM is dead on this machine (\(fmReading.deadPaths.joined(separator: " + "))):"
-                    + " a green here is not a guarded green — the occlusion-guard, self-healing and"
+                    + " a green here is not a guarded green — the occlusion-guard and"
                     + " screenLooksLike passed through silently."
                     + "\n   \(reason)")
             }
             if runSummary.fmUnavailableScenarios > 0 {
                 ConsoleOut.out("⚠️ FM unavailable: \(runSummary.fmUnavailableScenarios) scenario(s) ran"
-                    + " with occlusion-guard / self-healing / screenLooksLike silently disabled."
+                    + " with occlusion-guard / screenLooksLike silently disabled."
                     + " Read this run's result with that in mind"
                     + " (confirm with: fleetest doctor --fm-only)")
             }
@@ -1461,7 +1462,7 @@ struct RunScenarios: AsyncParsableCommand {
         // 供給段の例外(AndroidDriver 初期化等)は run.json を完了させずに投げていた。
         // fmSettings は下の finish 呼び出しと同じ noProfileSettings 由来の値なので先に計算する
         let noProfileFMSettings = FMSettingsRecord(
-            fm: noProfileSettings.fm.enabled, heal: noProfileSettings.fm.heal,
+            fm: noProfileSettings.fm.enabled, heal: noProfileSettings.heal,
             falsePositiveCheck: noProfileSettings.fm.falsePositiveCheck,
             screenLooksLike: noProfileSettings.fm.screenLooksLike,
             ocr: noProfileSettings.ocr, ocrFalsePositiveCheck: noProfileSettings.ocrFalsePositiveCheck)
@@ -1703,7 +1704,7 @@ struct RunScenarios: AsyncParsableCommand {
                 connection: DriverConnection(platform: platform),
                 // **`enabled: false`(= 子へ --no-fm)**。デバイスも画面も無いので FM を引く経路を
                 // まとめて止める(個別に切ると残った経路が FM の直列化待ちを払う)
-                settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false, heal: false)),
+                settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
                 reportDir: tempDir.path,
                 dryRun: true, appBundleID: appID) { event in
                 let lines = ScenarioLogFormatter.lines(for: event)

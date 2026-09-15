@@ -18,8 +18,8 @@ selects one.
 |---|---|---|---|
 | `app` | string | — | Name of the `apps/<name>.json` profile to use |
 | `devices` | array | — | Device names to run on (from the resolved machine profile; iOS/Android can mix in the same list) |
-| `fm` | bool | `true` | Master switch for all FM (Foundation Models) features. FM is experimental — see [environments.md](../overview/environments.md). `false` disables self-healing, `falsePositiveCheck` and `screenLooksLike` entirely, regardless of the individual toggles below |
-| `heal` | bool | `true` | Allow locator self-healing — heal cache, locator fingerprint and FM; `false` turns off all three (see [self_healing.md](../running/self_healing.md)) |
+| `fm` | bool | `true` | Master switch for all FM (Foundation Models) features: `falsePositiveCheck` and `screenLooksLike`. FM is experimental — see [environments.md](../overview/environments.md). `false` disables both, regardless of the individual toggles below. Independent of `heal` — self-healing no longer uses FM |
+| `heal` | bool | `true` for `--profile` runs, `false` for a plain `fleetest run` | Allow locator self-healing (locator fingerprint matching; see [self_healing.md](../running/self_healing.md)). Independent of `fm` |
 | `falsePositiveCheck` | bool | `true` | Occlusion-guard verification on `exist`/`textIs` etc. — catches a "false green" that matched in the tree but is not actually visible |
 | `screenLooksLike` | bool | `true` | Enable `screenLooksLike` (FM visual verification). When `false`, those steps are skipped rather than failing |
 | `ocr` | bool | `true` | Master switch for all OCR features. `false` disables them regardless of the individual toggles below |
@@ -48,11 +48,12 @@ selects one.
 
 ## FM toggle hierarchy
 
-`fm` is the parent switch; `heal`, `falsePositiveCheck` and `screenLooksLike` all
-default to `true` (`falsePositiveCheck` changed from opt-in on 2026-09-03). If `fm` is `false`,
-the individual toggles have no effect. Whether
-self-healing is on by default also depends on how you invoke the run: **a `--profile` run
-defaults `heal` to ON**, while a plain `fleetest run` (no profile) defaults it to OFF.
+`fm` is the parent switch for `falsePositiveCheck` and `screenLooksLike`, both of which default to
+`true` (`falsePositiveCheck` changed from opt-in on 2026-09-03). If `fm` is `false`, both toggles
+have no effect. `heal` is not part of this hierarchy — self-healing no longer uses FM, so it is
+governed only by its own key. Whether self-healing is on by default depends on how you invoke the
+run: **a `--profile` run defaults `heal` to ON**, while a plain `fleetest run` (no profile)
+defaults it to OFF.
 `fleetest run --profile <name> --set <key>=<value>` overrides almost any key on this table for one
 run without editing the profile file — e.g. `--set heal=false`, `--set falsePositiveCheck=false`,
 `--set reportDir=/tmp/out`, `--set defaultTimeout=8` (see

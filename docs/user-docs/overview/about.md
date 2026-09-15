@@ -30,11 +30,12 @@ the same Swift scenario.
 **Code replays it.** Scenarios run deterministically; ordinary playback uses no LLM. Fast,
 stable, and CI-friendly.
 
-**AI is used only for a few specific features.** Self-healing of broken selectors and visual
-verification of the screen with `screenLooksLike`.
+**AI is used only for a few specific features.** Visual verification of the screen with
+`screenLooksLike`, and the occlusion guard's false-positive check.
 All of it runs on Apple's on-device model (Foundation Models), so screen data from your app
 never leaves your Mac. **Apple's cloud (Private Cloud Compute) is never used**
-(see [Requirements](environments.md)).
+(see [Requirements](environments.md)). Self-healing of broken selectors (locator fingerprint
+matching) is deterministic and does not use FM.
 
 ## Four entry points
 

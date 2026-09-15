@@ -2,7 +2,7 @@
 // FM(Foundation Models)の画像判定を要するため通常実行(scenarios/ 直下)には載せず _disabled/ に置く。
 // **既定スイートに入れてはいけない**: screenLooksLike は FM の非決定的な判定なので、
 // 生きた FM で回すとフレーク源になる(FM が死んでいる間は skip されるので緑のまま気付けない)。
-// 実行は `Scripts/fm-verify.sh`(90_自己修復 と一緒に一時的に有効化して ios-fm プロファイルで回す)。
+// 実行は `Scripts/fm-verify.sh`(一時的に有効化して ios-fm プロファイルで回す)。
 //
 // fleetest 機能: screenLooksLike(スクリーンショットと自然言語記述の FM 照合)。
 // 記述は「文字が読めるか」ではなく**画面の構造**を書く(語句の一致に依存させるとアプリの

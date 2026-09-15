@@ -17,7 +17,7 @@ TestProjects/SampleApp/
 │   └── _disabled/                 # コンパイル対象外の退避場所(生成失敗コードの隔離先など)
 ├── reports/                       # シナリオごとの Markdown レポート
 ├── results/                       # 実行結果の JSON データベース(results_analysis_ja.md 参照)
-└── .fleetest/                      # ヒールキャッシュ等(プロジェクト別の状態)
+└── .fleetest/                      # ロケータの指紋等(プロジェクト別の状態)
 ```
 
 プロジェクトごとに SPM ターゲット `fleetest-scenarios-<name>` が対応するため、あるプロジェクトの

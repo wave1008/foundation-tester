@@ -1,7 +1,7 @@
 # シナリオの実行
 
-`fleetest run` は Swift DSL シナリオを決定的に実行します(ステップが失敗し自己修復が
-有効なとき以外は FM を呼びません)。このページでは CLI オプションを説明します。`--dry-run` は
+`fleetest run` は Swift DSL シナリオを決定的に実行します(通常の再生も自己修復
+(ロケータの指紋照合)も FM を呼びません)。このページでは CLI オプションを説明します。`--dry-run` は
 [dry_run_ja.md](./dry_run_ja.md)、`--set` による自己修復の有効化は
 [self_healing_ja.md](./self_healing_ja.md) を参照してください。
 
