@@ -34,10 +34,16 @@ final class OCRToggleWiringTests: XCTestCase {
     func testFTRuntimeGatesTheEnvVarWithTheProfileToggle() throws {
         let runtime = try source("Sources/FTDSL/FTRuntime.swift")
             .components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
+        // 実効モードは 1 つのローカルに解いて executor とシナリオ開始時の暖機の両方へ渡す
+        // (別々に解くと片方だけ環境変数を読む形が戻る)
         XCTAssertTrue(
             runtime.contains(
-                "occlusionOCRMode: occlusionOCREnabled "
+                "let occlusionOCRResolvedMode: RegionTextGateMode = occlusionOCREnabled "
                 + "? RegionText.mode(environment: ProcessInfo.processInfo.environment) : .off"),
             "occlusionOCREnabled=false のとき FT_OCCLUSION_OCR を読んでしまう(プロファイルが環境変数に負ける)")
+        XCTAssertTrue(runtime.contains("occlusionOCRMode: occlusionOCRResolvedMode,"),
+                      "executor へ解いた実効モードを渡していない")
+        XCTAssertTrue(runtime.contains("RegionText.prewarmIfNeeded(mode: occlusionOCRResolvedMode)"),
+                      "シナリオ開始時の暖機が実効モードを使っていない(OCR を切った run でも Vision を読む)")
     }
 }

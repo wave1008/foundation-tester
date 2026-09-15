@@ -1,11 +1,15 @@
 // ScenarioEvent.swift
 // fleetest-scenarios(サブプロセス)とホスト(CLI/MCP)の間で交わす NDJSON イベントの DTO。
 // Foundation 以外に依存しないこと(ホスト側の軽量パースを保つ)。
-// kind: scenarioStarted / sceneStarted / step / sceneFinished / fixSuggestion / scenarioFinished / log / deviceFrozen / installRequest
+// kind: scenarioStarted / sceneStarted / step / sceneFinished / fixSuggestion / scenarioFinished / log / deviceFrozen / installRequest / deadlineExclusion
 // step は tap/exist 等 1 操作の結果(既存 StepResult と同語彙)。
 // installRequest は installApp() の子→親 RPC 専用(ScenarioInstall.swift)。ScenarioHost.run が
 // 横取りして stdin へ応答を書き、呼び出し側の emit へは渡さない — **fleetest api の NDJSON 契約には
 // 現れない**(ProtocolVersion の対象外)。
+// deadlineExclusion は DeadlineExclusion(FTDriveCore が observer で橋渡し)の子→親通知専用。
+// status に "began"/"ended"、durationMs に began なら上限 ms・ended なら実測 ms を積む。
+// ScenarioHost.run が横取りして watchdog の延長分(WatchdogExtension)へ積み、emit へは渡さない
+// — installRequest と同じく **fleetest api の NDJSON 契約には現れない**。
 
 import Foundation
 

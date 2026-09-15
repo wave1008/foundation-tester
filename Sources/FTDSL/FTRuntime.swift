@@ -437,13 +437,18 @@ public final class FTDriveCore {
         self.triageEnabled = triageEnabled
         self.appBundleID = app
         self.homeScreenDriverOverride = homeScreenDriver
+        // executor 既定の occlusionGuard(StepExecutor.init 引数)は渡さない = 常に false。
+        // 実際にガードが効くかはステップ指定(exist の requireVisible 既定 true)次第なので、
+        // StepExecutor.init 内の暖機開始(executor 既定でガードが効くときだけ撃つ)は DSL の経路では
+        // ほぼ素通りする。ここで実行プロファイルのマスタースイッチだけを見て別に頼む(下)
+        let occlusionOCRResolvedMode: RegionTextGateMode = occlusionOCREnabled
+            ? RegionText.mode(environment: ProcessInfo.processInfo.environment)
+            : .off
         self.executor = StepExecutor(driver: driver, fallbackDriver: fallbackDriver,
                                      typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                      typeDriverGestures: typeDriverGestures,
                                      delegate: delegate, healingEnabled: healingEnabled,
-                                     occlusionOCRMode: occlusionOCREnabled
-                                         ? RegionText.mode(environment: ProcessInfo.processInfo.environment)
-                                         : .off,
+                                     occlusionOCRMode: occlusionOCRResolvedMode,
                                      occlusionGuardEnabled: falsePositiveCheckEnabled,
                                      screenLooksLikeEnabled: screenLooksLikeEnabled,
                                      releasesScrollTouch: platform == "ios",
@@ -468,6 +473,29 @@ public final class FTDriveCore {
                                          app: app, platform: platform,
                                          deviceName: deviceName, deviceIdentifier: deviceIdentifier)
         self.executor.onDeviceFrozen = { [weak self] in self?.markDeviceFrozen() }
+        // **シナリオ開始時に暖機を始める**(Vision のモデル初回ロードはプロセスに1回・数十秒
+        // かかる)。StepExecutor.init の既定ゲート(executor 既定でガードが効くときだけ撃つ)は
+        // DSL の経路では実質発火しない(executor 既定の occlusionGuard は常に false)ため、
+        // ここで実行プロファイルのマスタースイッチだけを見て頼む。off のときは prewarmIfNeeded
+        // 自身が no-op(occlusionOCRResolvedMode の doc)
+        if falsePositiveCheckEnabled {
+            RegionText.prewarmIfNeeded(mode: occlusionOCRResolvedMode)
+        }
+        // 暖機待ち(RegionText.awaitPrewarm)が締め切りから差し引かれるよう、子→親へ知らせる。
+        // **1 プロセス 1 シナリオ**なので observer は process 全体で1個のままでよい。
+        // ScenarioHost はこの kind を emit へ渡さず横取りする(ScenarioEvent.swift のコメント参照)
+        DeadlineExclusion.observer = { change in
+            var event = ScenarioEvent(kind: "deadlineExclusion")
+            switch change {
+            case .began(let capMs):
+                event.status = "began"
+                event.durationMs = capMs
+            case .ended(let ms):
+                event.status = "ended"
+                event.durationMs = ms
+            }
+            emit(event)
+        }
         // 自動押下は権限という後に響く状態を変えるので、必ず run ログに残す
         // (installApp の再注入の注記と同じ ℹ️ 経路)
         self.executor.onSystemAlertDismissed = { [weak self] message in

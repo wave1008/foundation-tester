@@ -1,3 +1,4 @@
+import FTCore
 import XCTest
 
 @testable import FTDSL
@@ -67,5 +68,42 @@ final class FTSyncTests: XCTestCase {
             return XCTFail("throw が failure として返っていない: \(String(describing: result))")
         }
         XCTAssertTrue(error is Boom)
+    }
+}
+
+/// `DeadlineExclusion` に積まれた時間(OCR 暖機待ち等)を締め切りから差し引く。
+/// **延長できるのは実際に差し引かれた分だけ**(打ち切りの意味は変えない)
+final class FTSyncDeadlineExclusionTests: XCTestCase {
+
+    /// timeout(0.2s)より長い差し引き区間(0.6s)を op が持てば、打ち切られずに区間の終わりまで待つ
+    func testExtendsTheWaitByWhatWasExcluded() {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let result: Int? = FTSync.run(timeout: 0.2) {
+            let token = DeadlineExclusion.begin(cap: .seconds(2))
+            try? await Task.sleep(for: .milliseconds(600))
+            DeadlineExclusion.end(token)
+            return 1
+        }
+        let elapsed = clock.now - start
+        XCTAssertEqual(result, 1, "差し引き区間があるのに打ち切られている")
+        XCTAssertGreaterThanOrEqual(elapsed, .milliseconds(550), "差し引き区間の終わりを待たずに返っている(所要 \(elapsed))")
+        XCTAssertLessThan(elapsed, .seconds(2), "差し引き分を超えて延ばしている(所要 \(elapsed))")
+    }
+
+    /// 差し引きが無ければ、同じ 0.6 秒の op でも既定どおり timeout(0.2s)で打ち切る
+    func testWithoutExclusionTheOriginalTimeoutStillCutsOff() {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let opFinished = DispatchSemaphore(value: 0)
+        let result: Int? = FTSync.run(timeout: 0.2) {
+            try? await Task.sleep(for: .milliseconds(600))
+            opFinished.signal()
+            return 1
+        }
+        let elapsed = clock.now - start
+        XCTAssertNil(result, "差し引きが無いのに打ち切られていない")
+        XCTAssertLessThan(elapsed, .milliseconds(500), "0.2 秒の timeout なのに待ちすぎている(所要 \(elapsed))")
+        _ = opFinished.wait(timeout: .now() + 2.0)  // 後始末(諦めた op を回収してから次のテストへ)
     }
 }

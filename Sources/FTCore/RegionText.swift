@@ -66,6 +66,10 @@ public enum RegionText {
         // コンパイルすると 8 レーンぶんが同じモデルを同時に焼いて CPU を奪い合い、自分の分は
         // プロセスが先に死んでコミットされない(OCRWarmupLock の冒頭)
         let thread = Thread {
+            // **「終わった」を必ず立てる**(読めた/読めない/画像不正のどの return 経路でも)。
+            // `awaitPrewarm` の待ち手はこれが立つまで戻らない。lock の close より先に宣言する
+            // (defer は LIFO なので、待ち手が起きる時点で flock は既に閉じている)
+            defer { prewarmFinishSignal.markFinished() }
             let lock = OCRWarmupLock.acquire(processName: ProcessInfo.processInfo.processName)
             defer { try? lock?.close() }
             // 空の画像では認識器が言語モデルまで読み込まないことがあるので、文字を描いて読ませる
@@ -101,6 +105,94 @@ public enum RegionText {
     private static var warm = false
     /// 同期関数に閉じ込める(async 文脈で lock/unlock を直に書くと Swift 6 で診断が出る)
     private static func markWarm() { warmLock.lock(); warm = true; warmLock.unlock() }
+
+    /// 暖機が「終わった」(成否を問わない)ことを async の待ち手へ知らせる信号。**待ち手は複数
+    /// 許す**(occlusionFlip が並行に複数走っても壊れないため)。同期関数に閉じ込める
+    /// (markWarm と同じ理由 — async 文脈で lock を直に触らない)
+    private final class PrewarmFinishSignal: @unchecked Sendable {
+        private let lock = NSLock()
+        private var finished = false
+        private var waiters: [CheckedContinuation<Void, Never>] = []
+
+        func markFinished() {
+            lock.lock()
+            finished = true
+            let toResume = waiters
+            waiters = []
+            lock.unlock()
+            for continuation in toResume { continuation.resume() }
+        }
+
+        /// 既に終わっていれば即 resume。**継続を2回 resume しない**(finished かどうかの判定と
+        /// waiters への追加を同じロックの中で行う)
+        /// 暖機が(読めたか否かに関わらず)もう終わっているか。終わっていれば待つ必要が無い
+        var isFinished: Bool { lock.lock(); defer { lock.unlock() }; return finished }
+
+        func waitUntilFinished() async {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                lock.lock()
+                if finished {
+                    lock.unlock()
+                    continuation.resume()
+                    return
+                }
+                waiters.append(continuation)
+                lock.unlock()
+            }
+        }
+    }
+
+    private static let prewarmFinishSignal = PrewarmFinishSignal()
+
+    /// `awaitPrewarm` が待つ本体をテストが差し替えるための口(production では nil)。設定されて
+    /// いれば実際の `prewarmFinishSignal` を待たず、この関数の完了をそのまま待ち対象にする ——
+    /// 実 Vision を積む本物の暖機は「進行中」を狙った時刻に作れないため。**既定が nil であること
+    /// 自体は `RegionTextAwaitPrewarmTests` が固定する**(`warmOverrideForTesting` と同じ規律)
+    public static var prewarmFinishOverrideForTesting: (@Sendable () async -> Void)?
+
+    /// `awaitPrewarm` の戻り値。呼び手(occlusionFlip)は `waited` を締め切りの計上に使う
+    public enum WarmWaitOutcome: Sendable, Equatable {
+        /// 呼んだ時点で既に暖まっていた(待っていない)
+        case alreadyWarm
+        /// 待って暖まった
+        case warmed(waited: Duration)
+        /// 待ったが暖機が終わっても読めなかった(Vision が劣化している状態。RegionText.warmedUp の doc)
+        case finishedCold(waited: Duration)
+        /// `cap` を使い切っても終わらなかった
+        case capped(waited: Duration)
+    }
+
+    /// `awaitPrewarm` の待ちの上限。**根拠**: 暖機が正当にかかった実測の最大 108 秒
+    /// (2026-09-10、建て直し直後の Espresso コンパイル)に余裕 1 割。これを超えて戻らないのは
+    /// ANE のコンパイルがハングした形(過去に 352〜1080 秒の実測 = fm-flap-ane-load-failure)。
+    /// **尽きたら待つのをやめて FM に回す**(occlusionFlip の既存の見送り経路。止めない)
+    public static let prewarmWaitCap: Duration = .seconds(120)
+
+    /// occlusion-guard の OCR 近道を実際に撃つ直前に呼ぶ。**暖機が終わるまで待つ**
+    /// (ユーザー決定 2026-09-15: run の開始時には待たない・近道を呼ぶ時点でだけ待つ)。
+    /// 既に暖まっていれば待たない(`.alreadyWarm`)。まだ始まっていなければここで始める
+    /// (`prewarmIfNeeded`)。**mode が off のときは呼ばない**(呼び手の責任。off の run に
+    /// Vision を読ませない契約は prewarmIfNeeded と同じ)。待った時間は
+    /// `DeadlineExclusion` へ計上する(締め切りの計算からこの待ちを差し引くため)
+    public static func awaitPrewarm(mode: RegionTextGateMode,
+                                    cap: Duration = prewarmWaitCap) async -> WarmWaitOutcome {
+        if isWarm { return .alreadyWarm }
+        // 暖機が終わったのに読めない(Vision が空を返す)状態では、ガードのたびに差し引きの窓を開けない
+        // (待つものが無いのに子→親の deadlineExclusion を毎ステップ 2 行ずつ流すことになる)
+        if prewarmFinishOverrideForTesting == nil, prewarmFinishSignal.isFinished { return .finishedCold(waited: .zero) }
+        prewarmIfNeeded(mode: mode)
+        let clock = ContinuousClock()
+        let start = clock.now
+        let token = DeadlineExclusion.begin(cap: cap)
+        let waitBody = prewarmFinishOverrideForTesting ?? { await prewarmFinishSignal.waitUntilFinished() }
+        let outcome = await TaskBudget.run(cap) { await waitBody() }
+        DeadlineExclusion.end(token)
+        let waited = clock.now - start
+        switch outcome {
+        case .exhausted: return .capped(waited: waited)
+        case .value: return isWarm ? .warmed(waited: waited) : .finishedCold(waited: waited)
+        }
+    }
 
     /// **コンパイル結果をキャッシュへコミットさせる**ための暖機(待つ版)。
     ///

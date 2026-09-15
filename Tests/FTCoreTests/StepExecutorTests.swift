@@ -169,12 +169,15 @@ final class StepExecutorTests: XCTestCase {
         }
     }
 
-    /// スクショ再利用: 操作を挟まない連続ガードでは 1 回のスクショを使い回す
+    /// スクショ再利用: 操作を挟まない連続ガードでは 1 回のスクショを使い回す。
+    /// **OCR は切る**: 再利用の窓(200ms)は OCR と無関係で、OCR が有効だと最初のガードが本物の Vision の
+    /// 暖機を待つ(RegionText.awaitPrewarm)ぶん窓を越え、機械の Vision の状態でこのテストが揺れる
     func testGuardReusesScreenshotAcrossConsecutiveAsserts() async throws {
         let log = CallLog()
         let el = textElement(id: "msg", label: "こんにちは")
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[el]])
-        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true), isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true),
+                                    occlusionOCRMode: .off, isAndroid: false)
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 

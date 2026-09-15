@@ -210,3 +210,73 @@ final class RegionTextLanguageCorrectionTests: XCTestCase {
         XCTAssertTrue(RegionText.usesLanguageCorrection(for: RegionText.languages(for: "単一行")))
     }
 }
+
+/// 差し替え口(`prewarmFinishOverrideForTesting`)だけになると「暖機の待ちを一度も通らない」
+/// 変更が緑のまま通るので、**production の既定**をここで固定する(warmOverrideForTesting と同じ規律)
+final class RegionTextAwaitPrewarmOverrideDefaultTests: XCTestCase {
+    func testOverrideIsNotSetInProduction() {
+        XCTAssertNil(RegionText.prewarmFinishOverrideForTesting,
+                     "差し替え口が残っている(テストが後始末していない)")
+    }
+}
+
+/// `RegionText.awaitPrewarm` — 暖機の完了を async から待つ。実 Vision の所要は制御できないので、
+/// `prewarmFinishOverrideForTesting` で「進行中の時間」を作って測る(warmOverrideForTesting と
+/// 組み合わせて warmed/finishedCold を作り分ける)
+final class RegionTextAwaitPrewarmTests: XCTestCase {
+
+    override func tearDown() {
+        RegionText.warmOverrideForTesting = nil
+        RegionText.prewarmFinishOverrideForTesting = nil
+        super.tearDown()
+    }
+
+    func testAlreadyWarmReturnsImmediatelyWithoutWaiting() async {
+        RegionText.warmOverrideForTesting = true
+        let clock = ContinuousClock()
+        let start = clock.now
+        let outcome = await RegionText.awaitPrewarm(mode: .on, cap: .seconds(5))
+        let elapsed = clock.now - start
+        XCTAssertEqual(outcome, .alreadyWarm)
+        XCTAssertLessThan(elapsed, .milliseconds(50), "既に暖まっているのに待っている(所要 \(elapsed))")
+    }
+
+    func testWaitsForAnInProgressWarmupThenReportsWarmed() async {
+        RegionText.warmOverrideForTesting = false
+        RegionText.prewarmFinishOverrideForTesting = {
+            try? await Task.sleep(for: .milliseconds(150))
+            RegionText.warmOverrideForTesting = true  // 暖機が成功して読めた体
+        }
+        let outcome = await RegionText.awaitPrewarm(mode: .on, cap: .seconds(5))
+        guard case .warmed(let waited) = outcome else { return XCTFail("warmed を返していない: \(outcome)") }
+        XCTAssertGreaterThanOrEqual(waited, .milliseconds(130),
+                                    "進行中の完了を待たずに返っている(所要 \(waited))")
+    }
+
+    func testWaitsForAnInProgressWarmupThenReportsFinishedColdWhenStillNotReadable() async {
+        RegionText.warmOverrideForTesting = false
+        RegionText.prewarmFinishOverrideForTesting = {
+            try? await Task.sleep(for: .milliseconds(150))
+            // warmOverrideForTesting は false のまま = 終わったが読めなかった(Vision 劣化)体
+        }
+        let outcome = await RegionText.awaitPrewarm(mode: .on, cap: .seconds(5))
+        guard case .finishedCold(let waited) = outcome else { return XCTFail("finishedCold を返していない: \(outcome)") }
+        XCTAssertGreaterThanOrEqual(waited, .milliseconds(130))
+    }
+
+    /// **所要を直接測る**(戻り値の内訳を信じず、実際にかかった壁時計時間で確かめる)。
+    /// cap を短く渡し、戻るまでの時間が cap 付近であること
+    func testCapsTheWaitAtTheLimit() async {
+        RegionText.warmOverrideForTesting = false
+        RegionText.prewarmFinishOverrideForTesting = {
+            try? await Task.sleep(for: .seconds(5))  // cap より十分長い(TaskBudget は仕事を止めない)
+        }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let outcome = await RegionText.awaitPrewarm(mode: .on, cap: .milliseconds(150))
+        let elapsed = clock.now - start
+        guard case .capped = outcome else { return XCTFail("capped を返していない: \(outcome)") }
+        XCTAssertGreaterThanOrEqual(elapsed, .milliseconds(150), "上限より早く諦めている(所要 \(elapsed))")
+        XCTAssertLessThan(elapsed, .seconds(2), "上限を大きく超えて待っている(所要 \(elapsed))")
+    }
+}

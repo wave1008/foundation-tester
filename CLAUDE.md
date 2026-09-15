@@ -804,11 +804,20 @@
   ときだけ。経緯と壊れ方は maintainer-notes §4.5.1)
   **座標ドラッグは `StepExecutor.dragWithFallback` だけから撃つ**(in-app は drag が 501。
   `driver.drag` を直に呼ぶと hybrid で黙って不発になる)
-- **occlusion-guard の OCR 近道はステップの予算で初期化を払わない**(2026-09-10。経緯は
-  maintainer-notes §18): 認識器(Espresso)のコンパイルキャッシュは**プロセス名とバイナリの素性ごと・
-  コンパイルがプロセスの生存中に終わったときだけコミット**。**シナリオを実際に走らせる経路は
-  `ScenarioHost.listForRun`**(run / api run / 機械分担の 3 箇所。`OCRWarmupWiringTests` が等号で固定)で
-  同じプロセス名の待てる子 `warm-ocr` を背景で起こす。一覧だけの経路(dry-run / MCP / codegen)は `list`。
+- **occlusion-guard の OCR 近道は、暖機が終わっていなければ終わるまで待ってから撃つ**(ユーザー決定
+  2026-09-15。**run の開始時には待たない**。経緯は maintainer-notes §18・§20): 認識器(Espresso)の
+  コンパイルキャッシュは**プロセス名とバイナリの素性ごと・コンパイルがプロセスの生存中に終わったときだけ
+  コミット**。**シナリオを実際に走らせる経路は `ScenarioHost.listForRun`**(run / api run / 機械分担の
+  3 箇所。`OCRWarmupWiringTests` が等号で固定)で同じプロセス名の待てる子 `warm-ocr` を背景で起こす。
+  一覧だけの経路(dry-run / MCP / codegen)は `list`。**プロセス内の暖機(探り)は DSL ではシナリオ開始時に
+  FTRuntime が始める**(executor の既定ガードは off でステップごとに効かせるので、`StepExecutor.init` の
+  条件だけに頼ると最初のガードの中で初めて始まり、全シナリオの最初のガードが近道を逃していた)。
+  近道の直前で `RegionText.awaitPrewarm(cap:)` を待ち(上限 `prewarmWaitCap` 120 秒 = 正当な暖機の
+  実測最大 108 秒 + 1 割。超えたら ANE のハングと見て FM へ・注記 `ocr-warmup-capped`)、
+  **待った時間はステップ(FTSync 120 秒)とシナリオ(scenarioTimeout)の締め切りから差し引く**
+  (`DeadlineExclusion`。子→親の `deadlineExclusion` イベントはホストが横取りし api の NDJSON には出さない)。
+  暖機の待ちはアプリの応答ではないので待ち予算に数えない(9/10 の「初期化をステップの予算で払って
+  締め切りに当たる」事故を、待たないことではなく差し引くことで防ぐ)。
   近道を撃つのは **warm(探りが 1 行以上読めた)かつ 詰まった読みが無い**ときだけ(`shouldTakeShortcut`。
   純粋関数・配線は走査で固定)、予算 1.3 秒 = 置き換える相手の実測下限、**諦めても読みは止めない**。
   認識器は ANE を避ける(定常の所要は同じ・装置で読みが変わる分はコーパスに固定)。

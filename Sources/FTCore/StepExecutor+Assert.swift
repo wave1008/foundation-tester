@@ -158,11 +158,22 @@ extension StepExecutor {
         // コメントと docs/poc-fm-occlusion-guard.md §5.17。off のときはこの if を通らない
         var ocrReading: RegionText.Reading?
         var ocrReadable = false
-        // 暖機は executor を作った時点で始めてある(StepExecutor.init)。ここで頼むのは、
-        // ステップ指定の requireVisible だけでガードが立つ(executor 既定は off)経路のため
-        RegionText.prewarmIfNeeded(mode: occlusionOCRMode)
-        // **モデルが載るまで近道は撃たない** —— 撃つと 1 ステップにつき予算を丸ごと捨てる
-        // (実測 2026-09-10: 最初にガードへ入った1ステップが 36〜108 秒を払っていた)
+        // **近道を実際に撃つ時点で暖機が終わっていなければ、終わるまで待つ**(ユーザー決定
+        // 2026-09-15。run の開始時には待たない)。諦めた読みが走っている間は待たない
+        // (shouldTakeShortcut と同じ理由 — 詰まった読みの後ろに積み増さない)。待った時間は
+        // DeadlineExclusion 経由で締め切り(FTSync/scenarioTimeout)から差し引かれるので、
+        // ここで払っても呼び出し元のステップ/シナリオが不当に打ち切られない
+        if occlusionOCRMode != .off, RegionText.abandonedInFlight == 0, !RegionText.isWarm {
+            let waitStart = clock.now
+            let waitOutcome = await RegionText.awaitPrewarm(mode: occlusionOCRMode)
+            let waitedMs = Self.ms(clock.now - waitStart)
+            if waitedMs > 0 {
+                phase.guardMs += waitedMs
+                phase.ocrMs += waitedMs
+                noteCodesThisStep.insert(.ocrWarmupWaited)
+            }
+            if case .capped = waitOutcome { noteCodesThisStep.insert(.ocrWarmupCapped) }
+        }
         if RegionText.shouldTakeShortcut(mode: occlusionOCRMode, warm: RegionText.isWarm,
                                          abandonedInFlight: RegionText.abandonedInFlight) {
             // **この段は guardMs に計上する** —— スクショ(actionMs)と違いどの内訳にも入って

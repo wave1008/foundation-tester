@@ -224,6 +224,16 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     case ocrShortcutNotWarm = "ocr-shortcut-not-warm"
     case ocrShortcutBusy = "ocr-shortcut-busy"
 
+    /// 近道を撃つ前に暖機の完了を待った(ユーザー決定 2026-09-15: run の開始時には待たない・
+    /// 近道を呼ぶ時点でだけ待つ)。待った時間は `DeadlineExclusion` 経由で締め切りから差し引かれる
+    /// ので判定は変えない。**率が上がったら暖機の開始(FTDriveCore.init)が間に合っていない**
+    /// (実行プロファイルのマスタースイッチが効いているのに最初のガードより前に終わらない)
+    case ocrWarmupWaited = "ocr-warmup-waited"
+    /// 暖機の待ちが `RegionText.prewarmWaitCap`(120 秒)を使い切っても終わらなかった。
+    /// **判定は変えない**(読めなかったのと同じ扱いで FM へ)。**率が上がったら Vision の
+    /// コンパイルがハングしている**(ANE を避けていてもこの型は起こりうる。fm-flap-ane-load-failure)
+    case ocrWarmupCapped = "ocr-warmup-capped"
+
     /// 1番目の occlusion-guard 評価だけで、ガード自身の所要(FM の直列化待ち+推論)が
     /// このステップの待ち予算を食い潰し、1回もポーリングできないまま反転が確定しかけたので、
     /// deadline を一度だけ延ばして撮り直したところ通った(2026-09-15 実測: guardMs 6.3s >
@@ -239,6 +249,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .ocrBudgetExhausted: return "the OCR shortcut ran out of budget (asked FM instead)"
         case .ocrShortcutNotWarm: return "the OCR shortcut was skipped: the recognizer was not warm yet (asked FM instead)"
         case .ocrShortcutBusy: return "the OCR shortcut was skipped: an earlier OCR read was still running past its budget (asked FM instead)"
+        case .ocrWarmupWaited: return "the OCR shortcut waited for the recognizer to finish loading before using it"
+        case .ocrWarmupCapped: return "the wait for the OCR recognizer to finish loading ran out (asked FM instead)"
         case .settleCapped: return "the screen did not settle (poll limit)"
         case .heldValue: return "from the grabbed value"
         case .scrollFrameMissing: return "the scrollFrame did not resolve, so the search stopped early"

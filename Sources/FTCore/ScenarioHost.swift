@@ -478,14 +478,33 @@ public enum ScenarioHost {
         let watchdogSeconds: Int? = (debug == nil)
             ? (scenarioTimeout ?? defaultScenarioTimeout) : nil
         let timeoutGuard = TimeoutGuard()
+        // 子の deadlineExclusion(OCR 暖機待ち等)を集計する。watchdog が無い(--debug)ときも
+        // 作る ——読み取りループ側は watchdogSeconds の有無を見ずに素通りさせるだけなので、
+        // ここで nil 分岐を持たせるより単純
+        let extensionTracker = WatchdogExtensionTracker()
         var killer: Task<Void, Never>?
         if let watchdogSeconds {
             killer = Task {
+                let clock = ContinuousClock()
                 // 旧実装の `UInt64(watchdogSeconds) * 1_000_000_000` は負値で `UInt64(negative)` が
                 // trap し、桁の大きい値では乗算が overflow して trap した。入口検証
                 // (`RunProfileSetOverride`/`api validate-profile`/`ApiRunCommand.validate`)が
                 // 本来の弾き役だが、ここは最後の安全網として watchdogDuration で二重に守る
-                try? await Task.sleep(for: Self.watchdogDuration(seconds: watchdogSeconds))
+                var deadline = clock.now + Self.watchdogDuration(seconds: watchdogSeconds)
+                var grantedExtraMs = 0
+                // 締め切りに達するたびに deadlineExclusion の差し引き分を見直す。**延長できるのは
+                // 差し引かれた分だけ**(打ち切りの意味は変えない) —— 見直しても増えていなければ
+                // 本当のタイムアウトとして抜ける
+                while !Task.isCancelled {
+                    let now = clock.now
+                    guard now < deadline else { break }
+                    try? await Task.sleep(for: deadline - now)
+                    guard !Task.isCancelled else { return }
+                    let extraMs = Self.continuousClockMs(await extensionTracker.extra)
+                    guard extraMs > grantedExtraMs else { break }
+                    deadline += .milliseconds(extraMs - grantedExtraMs)
+                    grantedExtraMs = extraMs
+                }
                 guard !Task.isCancelled, await timeoutGuard.claim() else { return }
                 process.terminate()  // SIGTERM
                 try? await Task.sleep(nanoseconds: 2_000_000_000)  // 2s 猶予
@@ -521,6 +540,10 @@ public enum ScenarioHost {
             if let event = ScenarioEvent.decode(line: line) {
                 if event.kind == "installRequest" {
                     await handleInstallRequest(event, installHandler: installHandler, stdinPipe: stdinPipe)
+                    continue
+                }
+                if event.kind == "deadlineExclusion" {
+                    await extensionTracker.apply(status: event.status, durationMs: event.durationMs)
                     continue
                 }
                 if event.kind == "scenarioFinished" { passed = event.passed }
@@ -749,6 +772,36 @@ private actor TimeoutGuard {
         claimed = true
         return true
     }
+}
+
+/// 子の `deadlineExclusion` イベント(began/ended)から watchdog に足すべき延長分を計算する
+/// 純粋関数。**began だけ**(まだ ended が来ていない)= 上限(capMs)ぶんを仮に見込む。
+/// **ended** = 仮の見込みを消して実測(ms)へ置き換える。複数回の begin/end も正しく合計する
+/// (1 プロセスで暖機が複数回走ることは今のところ無いが、限定はしない)。internal にしてあるのは
+/// `@testable import` から直接固定するため
+struct WatchdogExtension: Sendable, Equatable {
+    private var completedMs = 0
+    private var pendingCapMs = 0
+
+    mutating func apply(status: String?, durationMs: Int?) {
+        guard let status, let durationMs else { return }
+        switch status {
+        case "began": pendingCapMs = max(0, durationMs)
+        case "ended": completedMs += max(0, durationMs); pendingCapMs = 0
+        default: break
+        }
+    }
+
+    /// killer タスクが締め切りへ足す時間
+    var extra: Duration { .milliseconds(completedMs + pendingCapMs) }
+}
+
+/// `WatchdogExtension` を直列化して持つ。NDJSON 読み取りループ(deadlineExclusion イベントを
+/// apply する)と killer タスク(extra を読む)の両方から触るため actor にする
+private actor WatchdogExtensionTracker {
+    private var state = WatchdogExtension()
+    func apply(status: String?, durationMs: Int?) { state.apply(status: status, durationMs: durationMs) }
+    var extra: Duration { state.extra }
 }
 
 public extension ScenarioEvent {

@@ -23,6 +23,8 @@ final class StepNoteTests: XCTestCase {
         XCTAssertEqual(StepNote.guardRetaken.rawValue, "guard-retaken")
         XCTAssertEqual(StepNote.ocrShortcutNotWarm.rawValue, "ocr-shortcut-not-warm")
         XCTAssertEqual(StepNote.ocrShortcutBusy.rawValue, "ocr-shortcut-busy")
+        XCTAssertEqual(StepNote.ocrWarmupWaited.rawValue, "ocr-warmup-waited")
+        XCTAssertEqual(StepNote.ocrWarmupCapped.rawValue, "ocr-warmup-capped")
     }
 
     // MARK: - 永続化(results/ まで運ばれるか)

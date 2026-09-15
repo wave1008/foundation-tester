@@ -3,6 +3,7 @@
 // このスレッドを必要としないためデッドロックしない。万一のハングに備え待機に上限タイムアウトを設ける。
 
 import Foundation
+import FTCore
 
 enum FTSync {
     /// コマンド 1 回の上限待機秒数
@@ -28,13 +29,19 @@ enum FTSync {
     /// tap/snapshot が**後続ステップの最中にブリッジへ着弾**し、記録に残らないまま画面を動かす
     /// (原因不明の一発ずれになる)。cancel は届く: 通信は cancel 対応の `URLSession.data(for:)`、
     /// 待ちは `Task.sleep`(cancel で throw)なので、掴んだままのループも巻き戻る。
-    /// 相手が cancel を見ない処理(Process 実行等)では従来どおり走り切るだけで、悪化はしない
+    /// 相手が cancel を見ない処理(Process 実行等)では従来どおり走り切るだけで、悪化はしない。
+    ///
+    /// **`DeadlineExclusion` に積まれた分だけ締め切りを延ばす**(OCR 近道の暖機待ち等、
+    /// ツールの都合で払った時間を締め切りから外すため)。延長できるのは実際に差し引かれた分だけ
+    /// —— 打ち切りの意味は変えない。`op` を始める前に基準点(snapshot)を取り、タイムアウトの
+    /// たびに「そこから新たに差し引かれた分」だけ待ちを継ぎ足す(継ぎ足しが 0 なら本当のタイムアウト)
     static func run<T>(timeout: TimeInterval = FTSync.commandTimeout,
                        scheduleDelay: ScheduleDelay? = nil,
                        _ op: @escaping () async -> T) -> T? {
         let semaphore = DispatchSemaphore(value: 0)
         let box = Box<T>()
         let queuedAt = ContinuousClock().now
+        let exclusionSnapshot = DeadlineExclusion.snapshot()
         let task = Task.detached(priority: .userInitiated) {
             if let scheduleDelay {
                 // **最初の1命令が走った時刻**。ここまでの差は「順番待ち」で、ステップは1命令も
@@ -45,11 +52,27 @@ enum FTSync {
             box.value = await op()
             semaphore.signal()
         }
-        guard semaphore.wait(timeout: .now() + timeout) == .success else {
-            task.cancel()
-            return nil
+        var remaining = timeout
+        var grantedExtraSeconds: TimeInterval = 0
+        while true {
+            guard semaphore.wait(timeout: .now() + max(0, remaining)) == .success else {
+                let excludedSeconds = seconds(DeadlineExclusion.excluded(since: exclusionSnapshot))
+                let newExtra = excludedSeconds - grantedExtraSeconds
+                guard newExtra > 0 else {
+                    task.cancel()
+                    return nil
+                }
+                grantedExtraSeconds = excludedSeconds
+                remaining = newExtra
+                continue
+            }
+            return box.value
         }
-        return box.value
+    }
+
+    private static func seconds(_ duration: Duration) -> TimeInterval {
+        let (wholeSeconds, attoseconds) = duration.components
+        return Double(wholeSeconds) + Double(attoseconds) / 1e18
     }
 
     /// throwing 版(タイムアウト時は nil)

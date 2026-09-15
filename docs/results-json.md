@@ -320,7 +320,7 @@ screenLooksLike がこの回数ぶん静かに素通りしたことを事後に�
 | description | String | 人間可読なステップ説明(group の前置・注記の括弧書きを含む) |
 | command | String? | DSL のコマンド名。**`description` を割って作らないこと** |
 | failureKind | String? | 上表 |
-| notes | [String]? | `StepNote` の rawValue(`interruption-dismissed` / `settle-capped` / `visibility-guard-skipped` / `system-alert-present` 等。全部の定義は `Sources/FTCore/StepNote.swift`。occlusion-guard・OCR の近道に関わる `guard-retaken` / `ocr-budget-exhausted` / `ocr-shortcut-not-warm` / `ocr-shortcut-busy` の読み方は下の §TimelineStepRecord(`guardMs` / `ocrMs` の段)) |
+| notes | [String]? | `StepNote` の rawValue(`interruption-dismissed` / `settle-capped` / `visibility-guard-skipped` / `system-alert-present` 等。全部の定義は `Sources/FTCore/StepNote.swift`。occlusion-guard・OCR の近道に関わる `guard-retaken` / `ocr-budget-exhausted` / `ocr-warmup-waited` / `ocr-warmup-capped` / `ocr-shortcut-not-warm` / `ocr-shortcut-busy` の読み方は下の §TimelineStepRecord(`guardMs` / `ocrMs` の段)) |
 | detail | String? | 失敗理由(英語・人間可読) |
 | file / line | String? / Int? | ソース位置 |
 | durationMs | Int? | 所要 |
@@ -367,10 +367,18 @@ snapshot/action/wait のどれにも計上されない時間だった実測。
 (`RegionText.occlusionBudget` = 1.3 秒 = 置き換える相手である FM 照合の実測下限)を持たせ、
 超えたら FM へ落として注記 `ocr-budget-exhausted` を残す(設計は docs/design.md §Tier-2 の続き)。
 **`ocr-budget-exhausted` の率が上がったら Vision が劣化している**(モデルが載っていない・OS 側の不調)。
-近道を**撃たなかった**回は理由を分けて残す: `ocr-shortcut-not-warm`(②のゲート = モデルがまだ載っていない)/
-`ocr-shortcut-busy`(③のゲート = 予算切れで諦めた読みがまだ走っている)。どちらも「FM に訊いた」事実であって
-失敗ではない。**OCR が効くはずの薄いテキストで反転したら、まずこの 2 つの有無を見る**(近道が走っていれば
-`ocrMs > 0`、走っていなければこのどちらかが立つ。OCR を実行プロファイルで切った run には付かない)。
+**暖機が終わっていなければ、近道の直前で終わるまで待つ**(2026-09-15 のユーザー決定。run の開始時には
+待たない)。待った回は `ocr-warmup-waited`(待った時間は `ocrMs` と `guardMs` に入る。**ステップと
+シナリオの締め切りからは差し引かれる** = 待ちで赤にならない)、上限(120 秒。正当な暖機の実測最大 108 秒
++ 1 割)に達した回は `ocr-warmup-capped`(認識器のコンパイルがハングした形。FM に回る)。
+待った後も近道を**撃たなかった**回は理由を分けて残す: `ocr-shortcut-not-warm`(暖機は終わったが読めない =
+Vision が空を返す状態、または上限に達した)/ `ocr-shortcut-busy`(③のゲート = 予算切れで諦めた読みが
+まだ走っている。こちらは待たない)。どちらも「FM に訊いた」事実であって失敗ではない。
+**OCR が効くはずの薄いテキストで反転したら、まずこの 4 つの有無を見る**(近道が走っていれば `ocrMs > 0`。
+OCR を実行プロファイルで切った run にはどれも付かない)。
+**建て直した直後の初回 run は `ocr-warmup-waited` が多く、所要が延びる**(認識器のコンパイルは実行ファイル
+ごと。warm-ocr のコミットを最初のガードが待つ)。2 回目以降は各シナリオの暖機(0.2〜0.3 秒)が最初の
+ガードまでに終わるので、ほぼ付かない。
 
 **occlusion-guard の撮り直し(`guard-retaken`)**: 1 回目のガード評価(FM の直列化待ち + 推論)がステップの
 timeout を跨いだまま「見えていない」と出たときだけ、締切を 1 度だけ延ばして**新しいスクリーンショット**で
