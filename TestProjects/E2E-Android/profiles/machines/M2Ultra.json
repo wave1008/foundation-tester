@@ -164,6 +164,16 @@
         "avd": "Pixel_9_Android_15_-02"
       },
       {
+        "machine": "M1Max",
+        "name": "Pixel 9(Android 15)-03",
+        "avd": "Pixel_9_Android_15_-03"
+      },
+      {
+        "machine": "M1Max",
+        "name": "Pixel 9(Android 15)-04",
+        "avd": "Pixel_9_Android_15_-04"
+      },
+      {
         "machine": "M1Ultra",
         "name": "Pixel 9(Android 15)-01",
         "avd": "Pixel_9_Android_15_-01"
@@ -182,6 +192,26 @@
         "machine": "M1Ultra",
         "name": "Pixel 9(Android 15)-04",
         "avd": "Pixel_9_Android_15_-04"
+      },
+      {
+        "machine": "M1Ultra",
+        "name": "Pixel 9(Android 15)-05",
+        "avd": "Pixel_9_Android_15_-05"
+      },
+      {
+        "machine": "M1Ultra",
+        "name": "Pixel 9(Android 15)-06",
+        "avd": "Pixel_9_Android_15_-06"
+      },
+      {
+        "machine": "M1mini",
+        "name": "Pixel 9(Android 15)-01",
+        "avd": "Pixel_9_Android_15_-01"
+      },
+      {
+        "machine": "M1mini",
+        "name": "Pixel 9(Android 15)-02",
+        "avd": "Pixel_9_Android_15_-02"
       }
     ]
   }

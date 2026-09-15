@@ -147,6 +147,20 @@
         "os": "27.0",
         "simulator": "iPhone 17 Pro(iOS 27.0)-06",
         "udid": "6C7ADCB9-B221-4377-85BA-5258DEC86C69"
+      },
+      {
+        "machine": "M1mini",
+        "name": "iPhone 17 Pro(iOS 27.0)-01",
+        "os": "27.0",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-01",
+        "udid": "A10076A6-6ED1-4A96-AA61-2514434BA0CA"
+      },
+      {
+        "machine": "M1mini",
+        "name": "iPhone 17 Pro(iOS 27.0)-02",
+        "os": "27.0",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-02",
+        "udid": "5E95BF7A-A29C-4244-B5F9-9C8611124AAD"
       }
     ]
   },
@@ -259,6 +273,16 @@
         "machine": "M1Ultra",
         "name": "Pixel 9(Android 15)-06",
         "avd": "Pixel_9_Android_15_-06"
+      },
+      {
+        "machine": "M1mini",
+        "name": "Pixel 9(Android 15)-01",
+        "avd": "Pixel_9_Android_15_-01"
+      },
+      {
+        "machine": "M1mini",
+        "name": "Pixel 9(Android 15)-02",
+        "avd": "Pixel_9_Android_15_-02"
       }
     ]
   }
