@@ -178,7 +178,10 @@ actor LiveBridgeAutoStarter {
             let stateDir = repoRoot.appendingPathComponent(".fleetest")
             switch PortHolder.stopIfOwnedBridge(
                 port: port, stateDir: stateDir,
-                derivedDataPath: stateDir.appendingPathComponent("DerivedData")) {
+                derivedDataPath: stateDir.appendingPathComponent("DerivedData"),
+                // 実機の自分の iproxy(台帳 .device が同じ UDID)だけを残骸として止める。
+                // 別の実機のトンネルは .foreign(下)で名指しして諦める
+                ownerUDID: physical ? udid : nil) {
             case .stopped:
                 break
             case .notFound:

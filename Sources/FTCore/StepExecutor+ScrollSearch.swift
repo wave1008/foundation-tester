@@ -3,6 +3,42 @@
 
 import Foundation
 
+/// 半開きボトムシートの幾何判定の唯一の定義元。**判定は1箇所** —— `scrollFrame` 明示時
+/// (対象の容器そのもの)と未指定時(申告された scrollable 要素からの推測)のどちらもここを通す。
+///
+/// 旧判定(容器の高さが画面の 15〜80%)は**位置を見ない**ため、下端が画面下端から離れた
+/// 固定高リストや、シートの無い通常画面の容器にも同じ高さ比のものがあり誤って発火した
+/// (2026-09-15 実測: 逆走査で見つかった探索・シートの無いホーム画面の `tap` の両方に
+/// `sheet-collapsed` が付いた)。ボトムシートは「下端が画面下端に接し、上端が画面の上のほうに
+/// 無い」という**位置**が本質なので、これを主判定にする
+public enum SheetGeometry {
+    /// 下端が画面下端からこれ以上離れていたら「別の chrome(タブバー等)が下に居る」とみなし
+    /// 対象外にする(pt/dp)。根拠: iOS のホームインジケータの標準セーフエリアが 34pt
+    /// (`BridgeDTO.bottomChromeClearance` の内訳と同じ実測系列)—— これを超える隙間は
+    /// 「シートが画面下端まで伸びていない」ことの印であって、量子化の揺らぎではない
+    public static let bottomEdgeTolerance: Double = 34
+    /// 上端がこの比率より上(画面の上のほう)にあれば全画面寄りの容器とみなし対象外にする。
+    /// 半開きシートは画面下半分から現れるものなので、上から 1/4 より上に上端があるなら
+    /// 「シートというより本文そのもの」と判定する
+    public static let topMinRatioOfScreen: Double = 0.25
+
+    /// 1つの矩形が半開きボトムシートの幾何に合うか
+    public static func looksLikeBottomSheet(frame: FTRect, screen: FTRect) -> Bool {
+        guard screen.height > 0 else { return false }
+        let bottomGap = (screen.y + screen.height) - (frame.y + frame.height)
+        guard bottomGap <= bottomEdgeTolerance else { return false }
+        return (frame.y - screen.y) > screen.height * topMinRatioOfScreen
+    }
+
+    /// `scrollFrame` 未指定のときの、**申告された(scrollable)容器だけ**からの判定
+    /// (推測まで混ぜると全画面リストでも鳴る)
+    public static func declaredSheetExists(in snapshot: SnapshotResponse) -> Bool {
+        snapshot.elements.contains {
+            $0.scrollable == true && looksLikeBottomSheet(frame: $0.frame, screen: snapshot.screen)
+        }
+    }
+}
+
 extension StepExecutor {
 
     struct ScrollSearchResult {
@@ -68,8 +104,12 @@ extension StepExecutor {
         if result.settleCapped { noteCodesThisStep.insert(.settleCapped) }
         if result.scrollFrameMissing { noteCodesThisStep.insert(.scrollFrameMissing) }
         // 文言側のシート展開ヒント(scrollNotFoundMessage)と**同じ条件**を機械可読で出す。
-        // 片方だけ変えない —— MCP はこのコードで自動展開へ分岐する
-        if result.stoppedUnmoving, result.containerIsPartialHeight {
+        // 片方だけ変えない —— MCP はこのコードで自動展開へ分岐する。
+        // [F7b] **見つかった回には出さない** —— 端で一度 stoppedUnmoving になっても、その後の
+        // 逆走査(reverseSweep)で見つかれば `result.found` が立つが `stoppedUnmoving` /
+        // `containerIsPartialHeight` は立てたまま返る(このファイル下方の reverseSweep 経路参照)。
+        // 通った探索に「シートを広げろ」を付けると読み手を誤誘導する
+        if !result.found, result.stoppedUnmoving, result.containerIsPartialHeight {
             noteCodesThisStep.insert(.sheetCollapsed)
         }
         // **見つかった回には出さない**: 打ち切りが害になるのは「不在」と読まれる回だけで、
@@ -588,17 +628,20 @@ extension StepExecutor {
                             contentEverMoved = true
                             continue
                         }
-                        // シート展開ヒントは**対象の容器が画面の大半を占めない**ときだけ
-                        // (全画面リストの末尾到達で毎回シートを探しに行かせないためのゲート。2026-08-08)。
+                        // シート展開ヒントは**対象の容器がボトムシートの幾何に合う**ときだけ
+                        // (全画面リストの末尾到達・シートの無い画面で毎回誤って出すのを防ぐゲート。
+                        // 2026-08-08 / [F7b] 2026-09-15: 「画面の大半を占めない」だけでは、
+                        // 下端が画面下端から離れた固定高リストやシートの無いホーム画面の容器にも
+                        // 中〜広い高さ比のものがあり誤って鳴った。判定は `SheetGeometry` に一本化)。
                         // **scrollFrame 未指定でも判定する**: 半開きシートの中で
                         // 止まる形は指定の有無に関係なく起きるのに、指定したときにしかヒントが
                         // 出ていなかった —— 実測(Apple マップの経路手順)では、未指定の1回目が
                         // 「動かなくなった」としか言わず、同じ画面で scrollFrame を渡した2回目に
                         // だけ「シートを広げろ」が出て、そこで初めて解けた
-                        let containerIsPartialHeight = snapshot.screen.height > 0
-                            && (scrollContainer(step: step, in: snapshot, vertical: vertical)
-                                .map { $0.height < snapshot.screen.height * 0.8 }
-                                ?? Self.partialHeightSheetExists(in: snapshot))
+                        let containerIsPartialHeight = scrollContainer(
+                            step: step, in: snapshot, vertical: vertical)
+                            .map { SheetGeometry.looksLikeBottomSheet(frame: $0, screen: snapshot.screen) }
+                            ?? SheetGeometry.declaredSheetExists(in: snapshot)
                         // 打ち切り確定時点(confirmed)で引き直す —— ループ先頭の effectiveKeyboard は
                         // この settledSignature 呼び出しより前の木の情報なので使い回さない
                         let stoppedKeyboard = KeyboardOcclusion.resolve(

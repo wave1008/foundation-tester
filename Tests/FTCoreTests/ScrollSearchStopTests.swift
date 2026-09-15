@@ -257,6 +257,45 @@ final class ScrollSearchStopTests: XCTestCase {
         XCTAssertFalse(StepExecutor.partialHeightSheetExists(in: snapshot([plain])))
     }
 
+    // MARK: - [F7b] SheetGeometry(位置ベースの幾何判定。runScrollSearch が実際に呼ぶ側)
+    //
+    // 上の `partialHeightSheetExists`(高さ比だけ)は、下端が画面下端から離れた固定高リストや
+    // シートの無い通常画面の容器にも中〜広い高さ比のものがあり誤って発火した
+    // (2026-09-15 実測: 見つかった `scrollTo`/`tap` と、リストもシートも無いホーム画面の `tap`
+    // の両方に sheet-collapsed が付いた)。StepExecutor+ScrollSearch.swift は
+    // `SheetGeometry.looksLikeBottomSheet` / `declaredSheetExists` に置き換え済み ——
+    // 同じ4つの実測フィクスチャで判定が一致することもここで確かめる
+
+    func testLooksLikeBottomSheetAcceptsAHalfOpenSheet() {
+        // 実測(Apple マップ): #TransitDirectionsListView。下端 865 は画面下端 874 の 9pt 手前
+        XCTAssertTrue(SheetGeometry.looksLikeBottomSheet(
+            frame: FTRect(x: 0, y: 676, width: 402, height: 189),
+            screen: FTRect(x: 0, y: 0, width: 402, height: 874)))
+    }
+
+    /// 下端が画面下端から離れている(下に別の chrome が居る)固定高リストは対象外
+    func testLooksLikeBottomSheetRejectsAContainerNotTouchingTheBottomEdge() {
+        // 下端 674 は画面下端 874 から 200pt 離れている
+        XCTAssertFalse(SheetGeometry.looksLikeBottomSheet(
+            frame: FTRect(x: 0, y: 300, width: 402, height: 374),
+            screen: FTRect(x: 0, y: 0, width: 402, height: 874)))
+    }
+
+    /// 下端は接していても、上端が画面の上のほうにある全画面寄りの容器は対象外
+    func testLooksLikeBottomSheetRejectsAFullScreenContainer() {
+        XCTAssertFalse(SheetGeometry.looksLikeBottomSheet(
+            frame: FTRect(x: 0, y: 0, width: 402, height: 866),
+            screen: FTRect(x: 0, y: 0, width: 402, height: 874)))
+    }
+
+    func testDeclaredSheetExistsUsesTheSameGeometryAsTheSingleFramePredicate() {
+        XCTAssertTrue(SheetGeometry.declaredSheetExists(
+            in: snapshot([scroller(1, y: 676, height: 189)])))
+        XCTAssertFalse(SheetGeometry.declaredSheetExists(
+            in: snapshot([scroller(1, y: 300, height: 374)])),
+            "下端が画面下端から離れた容器はシートと判定しないはず")
+    }
+
     /// 打ち切られていない(上限まで振った/探索が続いている)ときはシートの話は出さない
     func testStillGoingMessageDoesNotMentionTheSheet() {
         let step = scrollTo("missing", maxSwipes: 8)

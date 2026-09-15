@@ -406,7 +406,16 @@ private let MAX_FREEZE_RETRIES = 1
 /// 失敗後ブリッジチェックの観察窓と、ログ静止によるウェッジ確定時間(秒)。
 /// AX 飽和(健全だが数十秒無応答)を「接続不能」と誤検知しないための値(bridgeUnreachable 参照)
 private let BRIDGE_PROBE_OBSERVE_SECONDS: TimeInterval = 60
-private let BRIDGE_PROBE_LOG_SILENCE_SECONDS: TimeInterval = 15
+private let BRIDGE_PROBE_LOG_SILENCE_SECONDS: TimeInterval = BridgeLivenessBudget.logSilenceSeconds
+
+/// ブリッジ(XCUITest ランナー)の「ログが静止したらウェッジ」の刻み。bridgeUnreachable(失敗後の
+/// 再プローブ)と BridgeProvisioner(起動中と名乗る古い pid の引き取り)が同じ値を使う ——
+/// 別々に持つと同じランナーを片方は健全・片方はウェッジと読む
+public enum BridgeLivenessBudget {
+    /// /status 無応答のままランナーログが伸びない時間(秒)。AX 処理中のランナーは数秒おきに
+    /// ログへ書くので、15 秒の完全な静止は処理中ではなくウェッジの印(実測系列は bridgeUnreachable の doc)
+    public static let logSilenceSeconds: TimeInterval = 15
+}
 
 /// 失敗後ブリッジプローブ 1 回分の結果(probeBridge 注入クロージャの戻り値)
 public enum BridgeProbeOutcome: Sendable {
@@ -415,6 +424,10 @@ public enum BridgeProbeOutcome: Sendable {
     case refused
     /// 期限内無応答(busy かウェッジかはこれだけでは未確定)
     case silent
+    /// 応答はあるが**別のデバイスのブリッジ**が答えた(同じポートを別の台が奪った。
+    /// 同じ bundle ID のアプリが載っていると /status 以外では見分けられない = 放置すると
+    /// このレーンのシナリオが別の台で緑になる)。detail は BridgeIdentityCheck の文言
+    case hijacked(detail: String)
 }
 
 /// ワーカー・サーキットブレーカ: 同一ワーカーで通常失敗(凍結/消失に該当しない)が連続でこの回数に
@@ -832,7 +845,17 @@ public final class RunOrchestrator {
     private func probeBridgeOnce(_ worker: RunWorker) async -> BridgeProbeOutcome {
         if let probeBridge { return await probeBridge(worker) }
         let result = await withDeadline(seconds: 5) { () -> BridgeProbeOutcome in
-            do { _ = try await worker.driver.status(); return .ok }
+            do {
+                let status = try await worker.driver.status()
+                // 到達できても相手が別の台なら「接続不能」と同じ扱い(奪った側は健全に答える)
+                if worker.platform == "ios", let port = worker.connection.port,
+                   case .mismatch(let detail) = BridgeIdentityCheck.verdict(
+                       expected: BridgeIdentityCheck.expected(for: worker.connection, probedPort: port),
+                       status: status) {
+                    return .hijacked(detail: detail)
+                }
+                return .ok
+            }
             catch DriverError.bridgeConnectionRefused { return .refused }
             catch { return .silent }
         }
@@ -846,7 +869,12 @@ public final class RunOrchestrator {
     /// - xcuitest はランナーログが AX 処理中も成長し続ける=生存の傍証(bridgeLogSize 注入)。
     ///   /status 無応答のままログが 15s 静止したらウェッジ確定(窓の残りを待たない)。
     ///   窓を使い切ってもログが成長し続けていれば busy(健全)扱いで接続不能にしない
+    /// 直近の bridgeUnreachable が「別の台が答えた」で true を返したときの詳細(離脱理由に写す)。
+    /// 読んだら nil に戻す(次の判定に持ち越さない)
+    private var lastBridgeIdentityMismatch: String?
+
     private func bridgeUnreachable(_ worker: RunWorker) async -> Bool {
+        lastBridgeIdentityMismatch = nil
         let deadline = Date().addingTimeInterval(BRIDGE_PROBE_OBSERVE_SECONDS)
         var lastSize = bridgeLogSize?(worker)
         let hasLogSignal = lastSize != nil  // in-app 等ホスト側ログが無い場合は窓いっぱい /status のみで判定
@@ -855,6 +883,9 @@ public final class RunOrchestrator {
             switch await probeBridgeOnce(worker) {
             case .ok: return false
             case .refused: return true
+            case .hijacked(let detail):
+                lastBridgeIdentityMismatch = detail
+                return true
             case .silent: break
             }
             if hasLogSignal, let size = bridgeLogSize?(worker) {
@@ -1254,7 +1285,9 @@ public final class RunOrchestrator {
             }
             if unusableReason == nil, outcome == .failed, worker.platform == "ios",
                await bridgeUnreachable(worker) {
-                unusableReason = "an unreachable bridge"
+                unusableReason = lastBridgeIdentityMismatch.map {
+                    "a bridge that now belongs to another device (\($0))"
+                } ?? "an unreachable bridge"
             }
             // サーキットブレーカ: 凍結/消失に当てはまらなくても連続失敗が閾値に達し、その間に別の
             // レーンが通っていれば不調ワーカーとして離脱。誰も通っていなければ残す(全レーンが同時に

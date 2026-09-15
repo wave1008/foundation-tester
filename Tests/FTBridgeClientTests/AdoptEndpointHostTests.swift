@@ -34,7 +34,7 @@ final class AdoptEndpointHostTests: XCTestCase {
         let block = String(source[start.upperBound..<end.lowerBound])
         let collapsed = block.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         XCTAssertTrue(
-            collapsed.contains("waitUntilReady( endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot)"),
+            collapsed.contains("waitUntilReady( timeout: readyBudget, endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot)"),
             "adopt の ready 待ちは記録ファイルの endpoint(host + token)を丸ごと使うこと: \(collapsed)")
         XCTAssertFalse(collapsed.contains("host: BridgeEndpoint.load(port: port, repoRoot: repoRoot).host"),
                        "host だけを取り出す形へ戻さない(usb トンネルの token を落とす)")

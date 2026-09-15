@@ -302,9 +302,9 @@ extension RemoteCommand {
                 try summarizeAndExit()
             }
             if let statusResult = try? Shell.run(["git", "-C", repoRoot.path, "status", "--porcelain"]),
-               !statusResult.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                say("⚠️ local uncommitted changes will NOT reach the remote (aligning to the last commit, "
-                    + "\(localRevision.prefix(7)))")
+               RemoteRunDispatcher.hasUncommittedToolChanges(porcelain: statusResult.output) {
+                say("⚠️ uncommitted changes to the tool itself (outside TestProjects/) will NOT reach"
+                    + " the remote (aligning to the last commit, \(localRevision.prefix(7)))")
             }
             // push 前だと checkout が exit 128 で落ちるだけで理由が読めない。ssh を張る前に落とす
             if !revisionIsPublished(repoRoot: repoRoot, revision: localRevision) {
@@ -460,9 +460,9 @@ extension RemoteCommand {
             }
             try RemoteSetupPlan.validateRevision(localRevision)
             if let statusResult = try? Shell.run(["git", "-C", repoRoot.path, "status", "--porcelain"]),
-               !statusResult.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                say("⚠️ local uncommitted changes will NOT reach the remote (aligning to the last commit, "
-                    + "\(localRevision.prefix(7)))")
+               RemoteRunDispatcher.hasUncommittedToolChanges(porcelain: statusResult.output) {
+                say("⚠️ uncommitted changes to the tool itself (outside TestProjects/) will NOT reach"
+                    + " the remote (aligning to the last commit, \(localRevision.prefix(7)))")
             }
             // push 前だと checkout が exit 128 で落ちるだけで理由が読めない。ssh を張る前に落とす
             // (RemoteSetupCommand.Setup の align ステップと同じ規律)

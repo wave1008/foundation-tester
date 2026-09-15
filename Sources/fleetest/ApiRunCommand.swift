@@ -533,7 +533,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
                 workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { logSupply($0) }
                 workers = triage.workers
-                triageBox.set(repaired: triage.repaired, excluded: triage.excluded)
+                triageBox.add(repaired: triage.repaired, excluded: triage.excluded)
                 workers = try await ProfileWorkerFactory.installIfNeeded(
                     apps: resolved.apps, workers: workers,
                     forceAndroidInstall: !wipedAndroid.isEmpty) { logSupply($0) }
@@ -555,13 +555,16 @@ struct ApiRunCommand: AsyncParsableCommand {
                             leaseStateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest"))
                         supplyLease?.hold(
                             keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
-                        workers = (try? await ProfileWorkerFactory.installIfNeeded(
+                        // install 全滅の throw は握りつぶさない(F5) —— `try?` で受けると失敗前
+                        // (=古いアプリのまま)の workers へ静かに戻る。投げれば下の catch が
+                        // 「このレーンは空」の既定の扱いに落とす
+                        workers = try await ProfileWorkerFactory.installIfNeeded(
                             apps: resolved.apps, workers: workers,
-                            forceAndroidInstall: false) { logSupply($0) }) ?? workers
+                            forceAndroidInstall: false) { logSupply($0) }
                         // 画面だけ死んだシミュレータを**投入前に**弾く(BlankWorkerTriage 参照)。
                         // Android は buildAndroidWorkers 直後に同等の処理(修復つき)を通している
                         let repoRoot = try RepoRoot.find()
-                        workers = await BlankWorkerTriage.excludeBlankScreenWorkers(
+                        let iosTriage = await BlankWorkerTriage.excludeBlankScreenWorkers(
                             workers,
                             recover: { @Sendable frozen, currentWorkers in
                                 await ProfileWorkerFactory.recoverFrozenIOSWorkers(
@@ -573,7 +576,10 @@ struct ApiRunCommand: AsyncParsableCommand {
                             stateDir: repoRoot.appendingPathComponent(".fleetest"),
                             nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
                                 await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
-                            log: { logSupply($0) }).workers
+                            log: { logSupply($0) })
+                        workers = iosTriage.workers
+                        // F10: iOS の回復も android task と合流させる(add は上書きしない)
+                        triageBox.add(repaired: iosTriage.repaired, excluded: iosTriage.excluded)
                         await ProfileWorkerFactory.prepareDevicesOnStart(
                             workers, homeOnStart: resolved.homeOnStart) { logSupply($0) }
                         logSupply("🚀 \(workers.count) iOS worker(s) joined")
@@ -999,7 +1005,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             workers = iosTriage.workers
             await ProfileWorkerFactory.prepareDevicesOnStart(
                 workers, homeOnStart: resolved.homeOnStart) { logSupply($0) }
-            blankTriage = (triage.repaired, triage.excluded + iosTriage.excluded)
+            blankTriage = (triage.repaired + iosTriage.repaired, triage.excluded + iosTriage.excluded)
             workers = try await ProfileWorkerFactory.installIfNeeded(
                 apps: resolved.apps, workers: workers,
                 forceAndroidInstall: !wipedAndroid.isEmpty) { logSupply($0) }
@@ -1192,11 +1198,17 @@ struct ApiRunCommand: AsyncParsableCommand {
                     // physicalUDID も渡す —— usb トンネルは host がループバックのままでも
                     // token を要求するため、host だけでは実機の判別に使えない
                     // (ProfileWorkerFactory.warnOnResidualSystemAlerts と同じ規律)
-                    _ = try await BridgeClient(
+                    let status = try await BridgeClient(
                         port: port,
                         host: worker.connection.host ?? BridgeEndpoint.loopbackHost,
                         physicalUDID: worker.connection.physical ? worker.connection.udid : nil)
                         .status(timeout: 5)
+                    // 答えたのが別の台のブリッジなら接続不能と同じ扱い(BridgeProbeOutcome.hijacked)
+                    if case .mismatch(let detail) = BridgeIdentityCheck.verdict(
+                        expected: BridgeIdentityCheck.expected(for: worker.connection, probedPort: port),
+                        status: status) {
+                        return .hijacked(detail: detail)
+                    }
                     return .ok
                 } catch DriverError.bridgeConnectionRefused {
                     return .refused
@@ -1239,13 +1251,21 @@ struct ApiRunCommand: AsyncParsableCommand {
                 while Date() < deadline {
                     if let w = await ProfileWorkerFactory.buildWorker(forLogicalName: name, resolved: resolved,
                                                                        repoRoot: repoRoot, log: { logStderr($0) }) {
-                        let installed = (try? await ProfileWorkerFactory.installIfNeeded(
-                            apps: resolved.apps, workers: [w], forceAndroidInstall: false) { logStderr($0) }) ?? [w]
-                        let revived = installed.first ?? w
-                        // revive でブリッジポートが変わると label も変わる。stable id 変換表へ登録しないと
-                        // 以後の step/log 等の NDJSON worker が workersReady の id と不一致になる(lateWorkers と同処理)。
-                        workerID.merge([revived])
-                        return revived
+                        do {
+                            let installed = try await ProfileWorkerFactory.installIfNeeded(
+                                apps: resolved.apps, workers: [w], forceAndroidInstall: false) { logStderr($0) }
+                            guard let revived = installed.first else { return nil }
+                            // revive でブリッジポートが変わると label も変わる。stable id 変換表へ登録しないと
+                            // 以後の step/log 等の NDJSON worker が workersReady の id と不一致になる(lateWorkers と同処理)。
+                            workerID.merge([revived])
+                            return revived
+                        } catch {
+                            // install に失敗した個体を古いアプリのまま参加させない(F5)。
+                            // workerID にも登録しない(使わない worker の id を残さない)
+                            logStderr("❌ \(w.label): dropped out after an install failure — "
+                                + error.localizedDescription)
+                            return nil
+                        }
                     }
                     try? await Task.sleep(nanoseconds: 5_000_000_000)
                 }
@@ -1692,14 +1712,16 @@ struct RunOutcome {
 }
 
 /// 並列ワーカー構築 Task から blank triage を run() へ運ぶ入れ物
-/// (--debug の DebugControlBox と同じ受け渡しパターン。書き手は android task のみ)
+/// (--debug の DebugControlBox と同じ受け渡しパターン)。**android task と iOS task の両方が
+/// `add` で書く**(android / iOS の 2 つの Task が別々に書くので、上書き(set)だと後から
+/// 書いた側だけが run.json の blankRepairs に残る)
 final class BlankTriageBox: @unchecked Sendable {
     private let lock = NSLock()
     private var repaired: [String] = []
     private var excluded: [String] = []
-    func set(repaired: [String], excluded: [String]) {
+    func add(repaired: [String], excluded: [String]) {
         lock.lock(); defer { lock.unlock() }
-        self.repaired = repaired; self.excluded = excluded
+        self.repaired += repaired; self.excluded += excluded
     }
     func get() -> (repaired: [String], excluded: [String]) {
         lock.lock(); defer { lock.unlock() }

@@ -109,7 +109,8 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
         guard let repoRoot,
               let result = try? Shell.run(["git", "-C", repoRoot.path, "status", "--porcelain"]),
               result.status == 0 else { return false }
-        return !result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // TestProjects/ 配下だけの変更は rsync で届くので dirty に数えない(判定は 1 箇所)
+        return RemoteRunDispatcher.hasUncommittedToolChanges(porcelain: result.output)
     }
 
     /// 判定不能(repoRoot/revision が採れない)なら published 扱い(revisionIsPublished と同じ

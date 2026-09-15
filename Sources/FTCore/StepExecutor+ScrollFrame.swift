@@ -93,22 +93,10 @@ extension StepExecutor {
     /// 静止した木にも残る。iOS(Compose)は id 集合も frame も変わらないことがあり、
     /// `changedContentContainer` / `movedContentContainer` がどちらも nil になる
     /// 半開きシートらしいスクロール容器が画面に居るか(`scrollFrame` 未指定のときの
-    /// シート展開ヒントのゲート)。**申告された容器だけ**を見る —— 推測まで混ぜると
-    /// 全画面リストの末尾到達でも鳴る。
-    ///
-    /// 高さの帯 15〜80% が要点: 上端はチップ行・横カルーセル(実測 5%前後)を落とし、
-    /// 下端は全画面リストを落とす。実測でヒントが要った容器は
-    /// `#TransitDirectionsListView`(189/874 = 22%)と `#directions_group_list`(871/2361 = 37%)
-    static let sheetHeightBand = (low: 0.15, high: 0.8)
-
+    /// シート展開ヒントのゲート)。判定は `SheetGeometry` の 1 箇所(下端が画面下端に接し、
+    /// 上端が画面の上 1/4 より下。申告された scrollable 容器だけを見る)
     static func partialHeightSheetExists(in snapshot: SnapshotResponse) -> Bool {
-        let height = snapshot.screen.height
-        guard height > 0 else { return false }
-        return snapshot.elements.contains {
-            $0.scrollable == true
-                && $0.frame.height > height * sheetHeightBand.low
-                && $0.frame.height < height * sheetHeightBand.high
-        }
+        SheetGeometry.declaredSheetExists(in: snapshot)
     }
 
     static func overflowingContainer(in snapshot: SnapshotResponse) -> FTRect? {

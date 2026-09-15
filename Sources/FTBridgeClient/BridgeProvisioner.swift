@@ -164,6 +164,28 @@ enum StaleLedgerSweep {
         }
         return stale
     }
+
+    /// `.fleetest/iproxy-<port>.pid`(実機 USB トンネル。IOSDeviceTransport.startIproxy が書く)の
+    /// 掃除。**bridge-<port>.* とは別の台帳**で、上の decide/ここまでのループには乗らない —— 生死を
+    /// 確かめる呼び手(IOSDeviceTransport.isIproxyRunning)は実際にそのポート・UDID を使う run
+    /// でしか呼ばれないため、物理デバイスを使わない run を挟むと死んだ pid がいつまでも残る
+    /// (F27 実測: iproxy-8136/8138/8150.pid が死んだ pid のまま残留)。**UDID は見ない**
+    /// (どの UDID 向けだったかに関わらず死んでいれば消す。生きていれば別 UDID 向けでも
+    /// 触らない = isIproxyRunning が実際に使う際の張り替えに任せる)。生存判定は pid だけ
+    /// (ProcessLiveness.isAlive。素の kill(pid,0) は禁止)
+    static func sweepIproxyPidFiles(stateDir: URL) {
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: stateDir, includingPropertiesForKeys: nil) else { return }
+        for entry in entries where entry.lastPathComponent.hasPrefix("iproxy-")
+            && entry.pathExtension == "pid" {
+            guard let text = try? String(contentsOf: entry, encoding: .utf8),
+                  let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  ProcessLiveness.isAlive(pid) else {
+                try? FileManager.default.removeItem(at: entry)
+                continue
+            }
+        }
+    }
 }
 
 /// **ポート確保(pid ファイル/記録の書き込み)まで**を数える関門。全ブリッジが「確保済み or 失敗」に
@@ -471,12 +493,14 @@ public struct BridgeProvisioner {
 
     /// .pid はこれまでどおり BridgeLauncher.sweepStalePidFiles(TTL 自主終了の ps 照合)に委ねる。
     /// ここではそれに加えて、対応する実体が消えた .inapp(LISTEN 実体なし)・.endpoint/.device
-    /// (対になる .pid が無い = 実機ランナー不在)を掃除する。.pid の掃除を先に済ませてから
-    /// 残った台帳を見るので、StaleLedgerSweep.decide への pidAlive は「.pid が今も存在するか」で
-    /// 代用できる(死んだ分は直前の sweepStalePidFiles で既に消えている)
+    /// (対になる .pid が無い = 実機ランナー不在)・iproxy-<port>.pid(死んだ実機トンネル)を
+    /// 掃除する。.pid の掃除を先に済ませてから残った台帳を見るので、StaleLedgerSweep.decide への
+    /// pidAlive は「.pid が今も存在するか」で代用できる(死んだ分は直前の sweepStalePidFiles で
+    /// 既に消えている)
     static func sweepStaleLedgers(repoRoot: URL) {
         let stateDir = repoRoot.appendingPathComponent(".fleetest")
         BridgeLauncher.sweepStalePidFiles(repoRoot: repoRoot)
+        StaleLedgerSweep.sweepIproxyPidFiles(stateDir: stateDir)
 
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: stateDir, includingPropertiesForKeys: nil) else { return }
@@ -852,6 +876,22 @@ public struct BridgeProvisioner {
                     + " runner cannot be starting — stopping and restarting it (the boot is waited for first)")
                 return try await stopAndRelaunch()
             }
+            // **起動中の最大寿命(startupTimeoutSeconds)を超えた pid は「起動中」ではあり得ない**
+            // (StartingBridgeAge)。すぐ下の decide の quietFor(起動ログの mtime)は、複数 run に
+            // またがって生き続けた長寿ランナーが直前の run でもログへ出力するため「最近書かれた」と
+            // 誤読し .wait を返す —— pid ファイルの年齢はログの書き込み頻度に引きずられないので
+            // ここで見分ける。ただし**即座には建て直さない**: 古い pid でも起動ログが伸び続けている間は
+            // 進行中とみなす(waitUntilReady は無音に対する締切)。予算を起動用の 180 秒から
+            // ウェッジ確定の刻み(BridgeLivenessBudget.logSilenceSeconds)へ縮めるだけ
+            var readyBudget = BridgeLauncher.startupTimeoutSeconds
+            if let pidFileModified = launcher.pidFileModified(),
+               !StartingBridgeAge.isStillStarting(pidFileModified: pidFileModified,
+                                                  startupTimeout: BridgeLauncher.startupTimeoutSeconds) {
+                readyBudget = BridgeLivenessBudget.logSilenceSeconds
+                log("⚠️ \(name): the bridge on port \(port) has a pid older than the"
+                    + " \(Int(BridgeLauncher.startupTimeoutSeconds))s allowed to start, so it is not starting"
+                    + " — waiting only \(Int(readyBudget))s of log silence before restarting it")
+            }
             let elapsed = launcher.runnerElapsed()
             // .restart は elapsed != nil のときしか返らない(decide 参照)ので force unwrap は安全。
             // ログが伸びている間は起動側もまだ待っている(BridgeStartupWait)ので引き取る側も待つ
@@ -869,6 +909,7 @@ public struct BridgeProvisioner {
                 // endpoint ごと渡さないと host だけでは再現できない。仮想デバイスは記録が無く
                 // load がループバック・token 無しを返す)
                 try await launcher.waitUntilReady(
+                    timeout: readyBudget,
                     endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot),
                     log: { log("\(name): \($0)") })
                 log("✅ \(name): took over the \(engine) bridge that was starting (port \(port))")
@@ -907,7 +948,8 @@ public struct BridgeProvisioner {
                 case .stopPortHolder:
                     switch PortHolder.stopIfOwnedBridge(
                         port: stopStalePort, stateDir: stateDir,
-                        derivedDataPath: stateDir.appendingPathComponent("DerivedData")) {
+                        derivedDataPath: stateDir.appendingPathComponent("DerivedData"),
+                        ownerUDID: sim.udid) {
                     case .stopped(let holder):
                         log("🔧 \(name): stopped an untracked bridge from an older build on port \(stopStalePort) (\(holder))")
                     case .notFound:
@@ -927,7 +969,8 @@ public struct BridgeProvisioner {
             // (記録どおりに blind に terminate すると同アプリの別ポートの現役ブリッジを誤殺する実害あり)
             switch PortHolder.stopIfOwnedBridge(
                 port: port, stateDir: stateDir,
-                derivedDataPath: stateDir.appendingPathComponent("DerivedData")) {
+                derivedDataPath: stateDir.appendingPathComponent("DerivedData"),
+                ownerUDID: sim.udid) {
             case .stopped(let holder):
                 log("🔧 \(name): stopped a leftover bridge holding port \(port) (\(holder))")
             case .notFound:
@@ -1053,7 +1096,7 @@ public struct BridgeProvisioner {
                     try? launcher.stop()
                     let outcome = PortHolder.stopIfOwnedBridge(
                         port: port, stateDir: repoRoot.appendingPathComponent(".fleetest"),
-                        derivedDataPath: launcher.derivedDataPath)
+                        derivedDataPath: launcher.derivedDataPath, ownerUDID: sim.udid)
                     let description: String
                     switch outcome {
                     case .stopped(let d):
@@ -1108,7 +1151,7 @@ public struct BridgeProvisioner {
                   let state = InAppBridgeState.read(at: entry), state.udid == udid else { continue }
             if case .stopped(let holder) = PortHolder.stopIfOwnedBridge(
                 port: orphanPort, stateDir: stateDir,
-                derivedDataPath: stateDir.appendingPathComponent("DerivedData")) {
+                derivedDataPath: stateDir.appendingPathComponent("DerivedData"), ownerUDID: udid) {
                 log("🔧 \(name): stopped a leftover in-app bridge on the same device (port \(orphanPort)) (\(holder))")
             }
             try? FileManager.default.removeItem(at: entry)
@@ -1231,25 +1274,36 @@ public struct BridgeProvisioner {
                 || !FileManager.default.fileExists(
                     atPath: repoRoot.appendingPathComponent(".fleetest/bridge-\(port).pid").path)
         }
+        // 実機の USB トンネル(iproxy-<port>.pid)が生きているポートも使用中とみなす。**別の台帳**
+        // なので isPidFree(bridge-<port>.pid の存在)では見えない —— F27 前は掃除もされないので
+        // 存在チェックでは代用できず生死そのものを見る必要がある(F8 実測 2026-09-15: 実機の
+        // トンネルが生きたまま別デバイスのポートとして採番され、後段の PortHolder が誤って
+        // kill する事故につながった)。ignoringPidFileFor と同じ「このポートは今回停止して
+        // 使い直す」バイパスを揃える
+        func isIproxyFree(_ port: UInt16) -> Bool {
+            port == ignoringPidFileFor
+                || !IOSDeviceTransport.isPortHeldByIproxy(hostPort: port, repoRoot: repoRoot)
+        }
         func hasInApp(_ port: UInt16) -> Bool {
             FileManager.default.fileExists(atPath: InAppBridgeState.url(
                 stateDir: repoRoot.appendingPathComponent(".fleetest"), port: port).path)
         }
         // preferred も pid ファイル(=別ブリッジ稼働/stale)があれば honor しない(自動採番と同じ空き判定)。
         // .inapp のみは 2nd パス同様に許可(呼び出し元 planBridge が reclaimInApp で回収する)。
-        if let preferred, !used.contains(preferred), isPidFree(preferred) {
+        if let preferred, !used.contains(preferred), isPidFree(preferred), isIproxyFree(preferred) {
             used.insert(preferred)
             return preferred
         }
         // 1st パス: .pid も .inapp も無いポートを優先
-        for port in portRange where !used.contains(port) && isPidFree(port) && !hasInApp(port) {
+        for port in portRange
+        where !used.contains(port) && isPidFree(port) && isIproxyFree(port) && !hasInApp(port) {
             used.insert(port)
             return port
         }
         // 2nd パス: .inapp のみ残るポートを許可(呼び出し元 planBridge が起動前に回収する)。
         // 「.inapp の存在=予約」にはしない: ウェッジした in-app ブリッジが採番範囲全部に
         // 残ることが実際にあり、予約扱いだと即 noFreePort で枯渇するため後回しにするだけに留める
-        for port in portRange where !used.contains(port) && isPidFree(port) {
+        for port in portRange where !used.contains(port) && isPidFree(port) && isIproxyFree(port) {
             used.insert(port)
             return port
         }

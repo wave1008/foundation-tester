@@ -952,6 +952,19 @@ public struct DeclaredAppPath: Hashable, Sendable {
     }
 }
 
+/// `declaredAppPaths` の値。`source` はステージング(実コピー)の入力、`declared` は
+/// `WorkspaceAppStaging.installPath` の名前空間の入力 —— 別々に持つのは、`source` が
+/// repoRoot 込みの絶対パス(ホストごとに違う)なのに対し、`declared` はプロファイル JSON の
+/// 生の文字列(ローカル・リモートの子で常に同じ)だから。installPath は必ず `declared` を使う
+public struct DeclaredAppPathEntry: Sendable, Equatable {
+    public let source: String
+    public let declared: String
+    public init(source: String, declared: String) {
+        self.source = source
+        self.declared = declared
+    }
+}
+
 public struct ResolvedAppTarget: Sendable, Hashable {
     public let bundleID: String
     /// アプリの原本の絶対パス(常にリポジトリルート基準で解決済み。nil = appPath 未指定。
@@ -1450,10 +1463,10 @@ public enum ProfileResolver {
 
     /// ステージング対象(appPath の原本)だけを軽量に読む。マシン/デバイス解決を経由しない
     /// (declaredWorkspace と同じ理由 —— RemoteRunDispatcher はミラー直前にここだけ要る)。
-    /// 戻り値: platform("ios"/"android") → リポジトリルート基準で解決した原本の絶対パス
+    /// 戻り値: platform("ios"/"android") → (原本の絶対パス, 生の宣言文字列)
     /// (appPath 未指定の platform は含まない)。プロファイル/アプリ定義が読めなければ空を返す
     public static func declaredAppPaths(project: TestProject,
-                                        runName: String) -> [DeclaredAppPath: String] {
+                                        runName: String) -> [DeclaredAppPath: DeclaredAppPathEntry] {
         guard let runData = try? Data(
                 contentsOf: project.runsDir.appendingPathComponent("\(runName).json")),
               let runDoc = try? JSONDecoder().decode(RunProfileDocument.self, from: runData),
@@ -1462,19 +1475,19 @@ public enum ProfileResolver {
                 contentsOf: project.appsDir.appendingPathComponent("\(appRef).json")),
               let appProfile = try? JSONDecoder().decode(AppProfile.self, from: appData) else { return [:] }
         let repoRoot = project.rootURL.deletingLastPathComponent().deletingLastPathComponent()
-        var result: [DeclaredAppPath: String] = [:]
+        var result: [DeclaredAppPath: DeclaredAppPathEntry] = [:]
         for platform in ["ios", "android"] {
             let section = appProfile.section(for: platform)
             if let raw = section.appPath {
                 result[DeclaredAppPath(platform: platform, physical: false)] =
-                    resolvePath(raw, base: repoRoot)
+                    DeclaredAppPathEntry(source: resolvePath(raw, base: repoRoot), declared: raw)
             }
             // **この経路はデバイスを解決しない**(マシンプロファイルを読まない軽量読み)ので
             // 「そのランナーに実機が居るか」を知らない。居る場合に運び忘れると向こうで
             // 仮想デバイス用ビルドを実機へ入れて 0xe8008014 で落ちるため、宣言があれば運ぶ
             if let raw = section.appPathPhysical {
                 result[DeclaredAppPath(platform: platform, physical: true)] =
-                    resolvePath(raw, base: repoRoot)
+                    DeclaredAppPathEntry(source: resolvePath(raw, base: repoRoot), declared: raw)
             }
         }
         return result
@@ -1674,12 +1687,15 @@ public enum ProfileResolver {
                 throw ProfileError.missingBundleID(platform: platform, appProfile: appRef)
             }
             let sourcePath = section.appPath.map { resolvePath($0, base: repoRoot) }
-            let installPath = sourcePath.map { source in
-                WorkspaceAppStaging.installPath(source: source, workspaceRoot: workspaceRoot)
+            // installPath の名前空間は section.appPath(生の宣言文字列)から作る —— resolvePath 後の
+            // 絶対パス(sourcePath)は repoRoot 込みでホストごとに違うため、そこから作ると
+            // ローカルとリモートの子で違うステージ先になってしまう(WorkspaceAppStaging.installPath の doc)
+            let installPath = section.appPath.map { declared in
+                WorkspaceAppStaging.installPath(declared: declared, workspaceRoot: workspaceRoot)
             }
             let physicalSource = section.appPathPhysical.map { resolvePath($0, base: repoRoot) }
-            let physicalInstallPath = physicalSource.map { source in
-                WorkspaceAppStaging.installPath(source: source, workspaceRoot: workspaceRoot,
+            let physicalInstallPath = section.appPathPhysical.map { declared in
+                WorkspaceAppStaging.installPath(declared: declared, workspaceRoot: workspaceRoot,
                                                 physical: true)
             }
             apps[platform] = ResolvedAppTarget(
@@ -1697,9 +1713,14 @@ public enum ProfileResolver {
             // **iOS の実機にシミュレータ用ビルドは入らない**(未署名 = 0xe8008014)。
             // インストールの失敗は run の途中(ブリッジ供給の後)に出るので、
             // ここで先に言う。止めはしない。**appPath 自体が実機用ビルドなら鳴らさない**
-            // (Info.plist の CFBundleSupportedPlatforms で判る。読めなければ従来どおり鳴らす)
+            // (Info.plist の CFBundleSupportedPlatforms で判る)。**原本(sourcePath)が読めなければ
+            // ステージ済みの複製(installPath)を読む** —— リモートの子は原本を持たず
+            // ステージ先の複製だけを持つため、sourcePath だけを見ると常に nil(判らない)になり
+            // 実機用ビルドが appPath に入っている場合でも誤って警告が鳴る。両方読めないときだけ
+            // 従来どおり鳴らす(安全側)
             if platform == "ios", section.appPathPhysical == nil, section.appPath != nil,
-               AppBundleInspector.declaresDevicePlatform(appPath: sourcePath) != true,
+               (AppBundleInspector.declaresDevicePlatform(appPath: sourcePath)
+                   ?? AppBundleInspector.declaresDevicePlatform(appPath: installPath)) != true,
                devices.contains(where: { $0.platform == "ios" && $0.spec.isPhysical }) {
                 warnings.append(
                     "the run includes a physical iOS device but apps/\(appRef).json has no"

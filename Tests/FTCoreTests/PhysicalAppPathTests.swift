@@ -27,13 +27,15 @@ final class PhysicalAppPathTests: XCTestCase {
     /// 置くと上書きし合い、片方の端末に必ず誤ったビルドが入る
     func testStagingDestinationsDoNotCollide() {
         let root = URL(fileURLWithPath: "/w")
-        let sim = WorkspaceAppStaging.installPath(source: "/b/ios-simulator/X.app",
+        let sim = WorkspaceAppStaging.installPath(declared: "/b/ios-simulator/X.app",
                                                   workspaceRoot: root)
-        let dev = WorkspaceAppStaging.installPath(source: "/b/ios-device/X.app",
+        let dev = WorkspaceAppStaging.installPath(declared: "/b/ios-device/X.app",
                                                   workspaceRoot: root, physical: true)
         XCTAssertNotEqual(sim, dev)
-        XCTAssertEqual(sim, "/w/apps/X.app")
-        XCTAssertEqual(dev, "/w/apps/physical/X.app")
+        XCTAssertTrue(sim.hasPrefix("/w/apps/"))
+        XCTAssertTrue(sim.hasSuffix("/X.app"))
+        XCTAssertTrue(dev.hasPrefix("/w/apps/physical/"))
+        XCTAssertTrue(dev.hasSuffix("/X.app"))
     }
 
     /// installApp() の親側解決(RPC)も同じ規則を通る

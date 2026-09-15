@@ -122,7 +122,9 @@ final class RemoteControlWorkspaceTests: XCTestCase {
         XCTAssertEqual(resolved.apps["ios"]?.sourcePath,
                        tempDir.appendingPathComponent("apps/SampleApp.app").path)
         XCTAssertEqual(resolved.apps["ios"]?.appPath,
-                       project.rootURL.appendingPathComponent("workspace/apps/SampleApp.app").path)
+                       WorkspaceAppStaging.installPath(
+                           declared: "apps/SampleApp.app",
+                           workspaceRoot: project.rootURL.appendingPathComponent("workspace")))
     }
 
     // MARK: - ProfileResolver.resolveWorkspaceRoot(純粋関数。優先順位の3段: override > declared > 既定)
@@ -198,9 +200,11 @@ final class RemoteControlWorkspaceTests: XCTestCase {
         // 原本は宣言前と同じくリポジトリルート基準のまま(ここが今回の契約変更の核)
         XCTAssertEqual(resolved.apps["ios"]?.sourcePath,
                        tempDir.appendingPathComponent("apps/SampleApp.app").path)
-        // インストールに使うパスだけが "<workspace>/apps/<原本のファイル名>" になる
+        // インストールに使うパスだけが "<workspace>/apps/<名前空間>/<原本のファイル名>" になる
+        // (名前空間は宣言文字列(declared)から決定的に導く。WorkspaceAppStaging.installPath)
         XCTAssertEqual(resolved.apps["ios"]?.appPath,
-                       expectedWorkspace.appendingPathComponent("apps/SampleApp.app").path)
+                       WorkspaceAppStaging.installPath(
+                           declared: "apps/SampleApp.app", workspaceRoot: expectedWorkspace))
     }
 
     func testDeclaredWorkspaceAbsoluteAlsoUsesAppsSubdirectory() throws {
@@ -212,7 +216,10 @@ final class RemoteControlWorkspaceTests: XCTestCase {
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
         XCTAssertEqual(resolved.workspaceRoot?.path, "/Volumes/shared/ws")
-        XCTAssertEqual(resolved.apps["ios"]?.appPath, "/Volumes/shared/ws/apps/SampleApp.app")
+        XCTAssertEqual(resolved.apps["ios"]?.appPath,
+                       WorkspaceAppStaging.installPath(
+                           declared: "apps/SampleApp.app",
+                           workspaceRoot: URL(fileURLWithPath: "/Volumes/shared/ws")))
     }
 
     /// appPath 自体が絶対パスでも、ワークスペース宣言時はインストール先が
@@ -231,7 +238,8 @@ final class RemoteControlWorkspaceTests: XCTestCase {
         XCTAssertEqual(resolved.apps["ios"]?.sourcePath, "/opt/builds/SampleApp.app")
         let expectedWorkspace = tempDir.deletingLastPathComponent().appendingPathComponent("ws")
         XCTAssertEqual(resolved.apps["ios"]?.appPath,
-                       expectedWorkspace.appendingPathComponent("apps/SampleApp.app").path)
+                       WorkspaceAppStaging.installPath(
+                           declared: "/opt/builds/SampleApp.app", workspaceRoot: expectedWorkspace))
     }
 
     // MARK: - resolve(): --workspace(workspaceOverride)がプロファイルの宣言を上書きする
@@ -249,7 +257,10 @@ final class RemoteControlWorkspaceTests: XCTestCase {
         XCTAssertEqual(resolved.workspaceRoot?.path,
                        "/Users/ci/fleetest-runner/work/workspace/SampleApp")
         XCTAssertEqual(resolved.apps["ios"]?.appPath,
-                       "/Users/ci/fleetest-runner/work/workspace/SampleApp/apps/SampleApp.app")
+                       WorkspaceAppStaging.installPath(
+                           declared: "apps/SampleApp.app",
+                           workspaceRoot: URL(
+                               fileURLWithPath: "/Users/ci/fleetest-runner/work/workspace/SampleApp")))
         XCTAssertEqual(resolved.apps["ios"]?.sourcePath,
                        tempDir.appendingPathComponent("apps/SampleApp.app").path)
     }
@@ -263,8 +274,11 @@ final class RemoteControlWorkspaceTests: XCTestCase {
         """, to: project.runsDir, name: "r")
 
         let paths = ProfileResolver.declaredAppPaths(project: project, runName: "r")
-        XCTAssertEqual(paths[DeclaredAppPath(platform: "ios", physical: false)],
+        XCTAssertEqual(paths[DeclaredAppPath(platform: "ios", physical: false)]?.source,
                        tempDir.appendingPathComponent("apps/SampleApp.app").path)
+        // declared は resolvePath 前の生文字列(installPath の名前空間の入力。両ホストで一致する)
+        XCTAssertEqual(paths[DeclaredAppPath(platform: "ios", physical: false)]?.declared,
+                       "apps/SampleApp.app")
         XCTAssertNil(paths[DeclaredAppPath(platform: "android", physical: false)])
         // appPathPhysical を書いていないので実機用の宣言は無い(= 運ばない)
         XCTAssertNil(paths[DeclaredAppPath(platform: "ios", physical: true)])
@@ -281,8 +295,10 @@ final class RemoteControlWorkspaceTests: XCTestCase {
         """, to: project.runsDir, name: "r")
 
         let paths = ProfileResolver.declaredAppPaths(project: project, runName: "r")
-        XCTAssertEqual(paths[DeclaredAppPath(platform: "ios", physical: true)],
+        XCTAssertEqual(paths[DeclaredAppPath(platform: "ios", physical: true)]?.source,
                        tempDir.appendingPathComponent("apps/device/SampleApp.app").path)
+        XCTAssertEqual(paths[DeclaredAppPath(platform: "ios", physical: true)]?.declared,
+                       "apps/device/SampleApp.app")
     }
 
     func testDeclaredAppPathsEmptyWhenAppOrProfileMissing() {

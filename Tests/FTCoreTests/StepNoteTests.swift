@@ -20,6 +20,7 @@ final class StepNoteTests: XCTestCase {
         XCTAssertEqual(StepNote.typeRetypeAbandoned.rawValue, "type-retype-abandoned")
         XCTAssertEqual(StepNote.launchURLBeforeInteractiveUI.rawValue, "launch-url-before-interactive-ui")
         XCTAssertEqual(StepNote.slowSnapshot.rawValue, "slow-snapshot")
+        XCTAssertEqual(StepNote.guardRetaken.rawValue, "guard-retaken")
     }
 
     // MARK: - 永続化(results/ まで運ばれるか)

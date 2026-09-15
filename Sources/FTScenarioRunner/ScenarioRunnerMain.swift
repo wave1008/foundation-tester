@@ -411,7 +411,21 @@ struct RunScenario: AsyncParsableCommand {
             // WebViewDelegatingDriver は status を in-app へ流すので同じ理由で外す(包んだ途端に
             // suspend ハングが復活する)
             if !(driver is InAppDriver) && !(driver is WebViewDelegatingDriver) {
-                _ = try await driver.status()
+                let preflightStatus = try await driver.status()
+                // F8b: 接続不能だけでなく「別デバイスに繋がっていないか」も確かめる —— 供給が
+                // このポートを別デバイスのブリッジへ差し替えても、そちらも /status には正しく
+                // 応答するため疎通確認だけでは見逃す(ホスト側 RunOrchestrator.bridgeUnreachable も
+                // 同じ理由で見逃す。BridgeIdentityCheck の doc 参照)。Android には engine/udid の
+                // 自己申告が無く判定材料が原理的に無いため iOS のみ
+                if runPlatform == "ios" {
+                    let expected = BridgeIdentityCheck.Expected(
+                        port: port, udid: udid, physical: physical, engine: engine,
+                        deviceName: deviceName)
+                    if case .mismatch(let detail) = BridgeIdentityCheck.verdict(
+                        expected: expected, status: preflightStatus) {
+                        throw DriverError.bridgeIdentityMismatch(detail)
+                    }
+                }
             }
             // **不明のまま進むことは黙らない**。自己申告もバンドルのマーカーも
             // 取れないのは実機で材料(.app / .ipa)も台帳(AppFrameworkLedger)も無いとき。そのとき空打ちは

@@ -261,6 +261,20 @@ public enum IOSDeviceTransport {
         repoRoot.appendingPathComponent(".fleetest/iproxy-\(hostPort).pid")
     }
 
+    /// このホストポートを今、実機の USB トンネル(iproxy)が握っているか。**UDID を問わない** ——
+    /// isIproxyRunning は「このデバイス向けか」まで見るが、採番(BridgeProvisioner.assignPort /
+    /// XCUIBridgeResolver.freePort)はどのデバイス向けでも同じホストポートを再利用できない
+    /// (全シミュレータ/実機はホストの loopback を共有する)。生死は ProcessLiveness.isAlive
+    /// (素の kill(pid,0) は禁止)。pid 再利用で無関係プロセスに化けていたら isIproxy(pid:) が
+    /// 弾いて false(=空き)を返す
+    static func isPortHeldByIproxy(hostPort: UInt16, repoRoot: URL) -> Bool {
+        guard let text = try? String(contentsOf: pidURL(hostPort: hostPort, repoRoot: repoRoot),
+                                     encoding: .utf8),
+              let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)),
+              ProcessLiveness.isAlive(pid) else { return false }
+        return isIproxy(pid: pid)
+    }
+
     /// 既存トンネルが生きていれば再利用、無ければ起動して pid を残す。
     /// 既存トンネルが**別 UDID**向けなら(前回この host port を使ったデバイスの残骸)、
     /// 再利用せず止めてから張り直す(そうしないと iPhone B の供給が iPhone A 宛のトンネルを

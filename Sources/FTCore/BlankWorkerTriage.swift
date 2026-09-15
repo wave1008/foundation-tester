@@ -20,13 +20,16 @@ import Foundation
 
 public enum BlankWorkerTriage {
 
-    /// 判定結果。excluded はワーカー label(呼び出し側がログ・監査に使う)
+    /// 判定結果。excluded/repaired はワーカー label(呼び出し側がログ・監査に使う)。
+    /// repaired = 開始時に凍結していて `recover` で戻った台(run.json の blankRepairs へ渡す)
     public struct Result {
         public let workers: [RunWorker]
         public let excluded: [String]
-        public init(workers: [RunWorker], excluded: [String]) {
+        public let repaired: [String]
+        public init(workers: [RunWorker], excluded: [String], repaired: [String] = []) {
             self.workers = workers
             self.excluded = excluded
+            self.repaired = repaired
         }
     }
 
@@ -211,6 +214,9 @@ public enum BlankWorkerTriage {
         var blankLabels = verdicts
             .filter { $0.value.isFrozen && !$0.value.isInjectedOnly }.keys.sorted()
         guard !blankLabels.isEmpty else { return Result(workers: current, excluded: []) }
+        // **deviceKey(udid/serial)で追跡する** —— 回復するとブリッジを張り直すので label(ポート)が
+        // 変わりうる。label のまま差分を取ると回復した機を「別の未知の機」として見失う
+        let originalBlankKeys = deviceKeys(for: blankLabels, in: current)
 
         if let recover {
             for attempt in 1...recoveryAttempts {
@@ -226,7 +232,9 @@ public enum BlankWorkerTriage {
                     .filter { $0.value.isFrozen && !$0.value.isInjectedOnly }.keys.sorted()
                 if blankLabels.isEmpty {
                     log("✅ every frozen device recovered — starting with all lanes")
-                    return Result(workers: current, excluded: [])
+                    return Result(workers: current, excluded: [],
+                                  repaired: repairedLabels(originalBlankKeys: originalBlankKeys,
+                                                           stillBlankLabels: [], in: current))
                 }
             }
         }
@@ -238,7 +246,29 @@ public enum BlankWorkerTriage {
                 + " do not land) — could not recover it, so it is excluded from dispatch."
                 + " Recover it with: xcrun simctl shutdown <udid> && xcrun simctl boot <udid>")
         }
-        return exclude(current, blankByLabel: Dictionary(
+        let repaired = repairedLabels(originalBlankKeys: originalBlankKeys,
+                                      stillBlankLabels: blankLabels, in: current)
+        let outcome = exclude(current, blankByLabel: Dictionary(
             uniqueKeysWithValues: blankLabels.map { ($0, true) }))
+        return Result(workers: outcome.workers, excluded: outcome.excluded, repaired: repaired)
+    }
+
+    /// label → deviceKey(udid/serial)。回復で label が変わっても同一デバイスを追跡するための対応表
+    private static func deviceKeys(for labels: [String], in workers: [RunWorker]) -> Set<String> {
+        var keysByLabel: [String: String] = [:]
+        for worker in workers { if let key = deviceKey(worker) { keysByLabel[worker.label] = key } }
+        return Set(labels.compactMap { keysByLabel[$0] })
+    }
+
+    /// 開始時に凍結していて終了時に凍結していない台を「回復した」と数える(deviceKey で照合。
+    /// label の単純な差し引きはしない —— 回復でポートが変わり label が変わるため)
+    private static func repairedLabels(originalBlankKeys: Set<String>, stillBlankLabels: [String],
+                                       in workers: [RunWorker]) -> [String] {
+        guard !originalBlankKeys.isEmpty else { return [] }
+        let stillBlankKeys = deviceKeys(for: stillBlankLabels, in: workers)
+        let repairedKeys = originalBlankKeys.subtracting(stillBlankKeys)
+        guard !repairedKeys.isEmpty else { return [] }
+        return workers.filter { deviceKey($0).map(repairedKeys.contains) == true }
+            .map(\.label).sorted()
     }
 }

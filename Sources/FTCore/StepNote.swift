@@ -220,6 +220,15 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 載っていない(プロセス初回)か、Vision 自体が劣化している(`RegionText.occlusionBudget`)
     case ocrBudgetExhausted = "ocr-budget-exhausted"
 
+    /// 1番目の occlusion-guard 評価だけで、ガード自身の所要(FM の直列化待ち+推論)が
+    /// このステップの待ち予算を食い潰し、1回もポーリングできないまま反転が確定しかけたので、
+    /// deadline を一度だけ延ばして撮り直したところ通った(2026-09-15 実測: guardMs 6.3s >
+    /// 既定 timeout 5s で1フレームだけ古い描画を反転として確定させた欠陥)。
+    /// **立つのは撮り直しが通った回だけ** —— 撮り直しても覆われたままなら本物の occlusion
+    /// なので通常の失敗文言に譲り、この注記は立てない。
+    /// **率が上がったらガードの所要(gateWait+推論)がステップの既定 timeout に対して重い**
+    case guardRetaken = "guard-retaken"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -293,6 +302,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .healFingerprintMatch:
             return "self-heal matched the previously-resolved element by its type and label" +
                 " (locator fingerprint), with no FM call"
+        case .guardRetaken:
+            return "the occlusion check itself used up this step's wait budget on the first look,"
+                + " so this waited once more and the retaken frame passed"
         }
     }
 }

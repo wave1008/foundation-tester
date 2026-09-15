@@ -145,7 +145,8 @@ public enum XCUIBridgeResolver {
             }
             switch PortHolder.stopIfOwnedBridge(
                 port: candidate, stateDir: stateDir,
-                derivedDataPath: stateDir.appendingPathComponent("DerivedData")) {
+                derivedDataPath: stateDir.appendingPathComponent("DerivedData"),
+                ownerUDID: booted[0].udid) {
             case .stopped(let holder):
                 logger("port \(candidate) was held by a leftover bridge (\(holder)) — stopped it")
                 port = candidate
@@ -209,14 +210,17 @@ public enum XCUIBridgeResolver {
         return Resolution(endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot), note: note)
     }
 
-    /// 空きポートを小さい順に。**pid ファイルと稼働中ポートの両方**で弾く:
+    /// 空きポートを小さい順に。**pid ファイル・稼働中ポート・実機の USB トンネルの3つ**で弾く:
     /// in-app ブリッジは pid ファイルを持たない(dylib 注入)ため、pid だけ見ると
-    /// in-app が待受中のポートを空きと誤判定してポート衝突を起こす
-    private static func freePort(repoRoot: URL, occupied: Set<UInt16>) -> UInt16? {
+    /// in-app が待受中のポートを空きと誤判定してポート衝突を起こす。iproxy-<port>.pid は
+    /// bridge-<port>.pid とは別の台帳なので、生きていれば別途弾く(F8: 見ずに空き扱いすると
+    /// 後段の PortHolder.stopIfOwnedBridge が実機のトンネルを巻き込む前提の穴を作る)
+    static func freePort(repoRoot: URL, occupied: Set<UInt16>) -> UInt16? {
         portRange.first { port in
             !occupied.contains(port)
                 && !FileManager.default.fileExists(
                     atPath: repoRoot.appendingPathComponent(".fleetest/bridge-\(port).pid").path)
+                && !IOSDeviceTransport.isPortHeldByIproxy(hostPort: port, repoRoot: repoRoot)
         }
     }
 }

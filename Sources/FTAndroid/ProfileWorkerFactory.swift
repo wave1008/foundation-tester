@@ -806,8 +806,17 @@ public enum ProfileWorkerFactory {
         }
         guard var rebuilt = try? await buildIOSWorkers(resolved: resolved, repoRoot: repoRoot,
                                                        log: log) else { return nil }
-        rebuilt = (try? await installIfNeeded(apps: apps, workers: rebuilt,
-                                              forceAndroidInstall: false, log: log)) ?? rebuilt
+        do {
+            rebuilt = try await installIfNeeded(apps: apps, workers: rebuilt,
+                                                forceAndroidInstall: false, log: log)
+        } catch {
+            // install 全滅なら回復そのものを不成立にする(F5)。ここで古いアプリのまま
+            // rebuilt を使い続けると、シミュレータは戻ったのに中身は古いままレーンへ復帰する。
+            // nil を返すと BlankWorkerTriage 側が「回復できなかった」として通常の除外へ進む
+            log("❌ recovered iOS device(s) dropped out after an install failure — "
+                + error.localizedDescription)
+            return nil
+        }
         return mergeRecoveredIOS(into: workers, rebuiltIOS: rebuilt)
     }
 

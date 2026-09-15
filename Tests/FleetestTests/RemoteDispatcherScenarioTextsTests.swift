@@ -77,6 +77,37 @@ final class RemoteDispatcherScenarioTextsTests: XCTestCase {
         XCTAssertTrue(texts.isEmpty)
     }
 
+    // MARK: - hasUncommittedToolChanges(F18: TestProjects/<project>/ は run のたびに rsync で
+    // 届くので、そこだけの変更を「リモートへ届かない」と警告するのは誤誘導)
+
+    func testHasUncommittedToolChangesFalseWhenEmpty() {
+        XCTAssertFalse(RemoteRunDispatcher.hasUncommittedToolChanges(porcelain: nil))
+        XCTAssertFalse(RemoteRunDispatcher.hasUncommittedToolChanges(porcelain: ""))
+        XCTAssertFalse(RemoteRunDispatcher.hasUncommittedToolChanges(porcelain: "   \n  "))
+    }
+
+    /// TestProjects/ 配下だけの変更は rsync で届くので鳴らさない
+    func testHasUncommittedToolChangesFalseWhenOnlyTestProjectsLines() {
+        let porcelain = " M TestProjects/E2E-iOS/profiles/runs/all.json\n"
+            + "?? TestProjects/E2E-Android/workspace/data/notes.txt"
+        XCTAssertFalse(RemoteRunDispatcher.hasUncommittedToolChanges(porcelain: porcelain))
+    }
+
+    /// ツール本体(Sources/ 等)の変更は届かないので鳴らす
+    func testHasUncommittedToolChangesTrueWhenSourcesLinePresent() {
+        let porcelain = " M TestProjects/E2E-iOS/profiles/runs/all.json\n"
+            + " M Sources/FTCore/RunProfile.swift"
+        XCTAssertTrue(RemoteRunDispatcher.hasUncommittedToolChanges(porcelain: porcelain))
+    }
+
+    /// rename 行は新パス側で判定する(旧パスがツール本体でも新パスが TestProjects 配下なら届く)
+    func testHasUncommittedToolChangesUsesTheDestinationOfARename() {
+        let toTestProjects = "R  Sources/scratch.swift -> TestProjects/E2E-iOS/notes.txt"
+        XCTAssertFalse(RemoteRunDispatcher.hasUncommittedToolChanges(porcelain: toTestProjects))
+        let toSources = "R  TestProjects/E2E-iOS/notes.txt -> Sources/scratch.swift"
+        XCTAssertTrue(RemoteRunDispatcher.hasUncommittedToolChanges(porcelain: toSources))
+    }
+
     // MARK: - recordedBoolField
 
     func testRecordedBoolFieldReadsTrueAndFalse() {

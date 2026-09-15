@@ -320,6 +320,31 @@ final class SequenceVisibilityDelegate: ReplayDelegate {
     }
 }
 
+/// [F22] verifyElementVisible が**指定の遅延を払ってから**列の結果を返す(尽きたら最後を繰り返す)。
+/// ガード自身の所要(FM の直列化待ち+推論)が単独でステップの待ち予算を食い潰す退行の再現用 ——
+/// `delayMs` をステップの `timeout` より長くすると、1回目の評価だけで deadline を跨がせられる
+final class SlowSequenceVisibilityDelegate: ReplayDelegate {
+    private let results: [Bool]
+    private let delayMs: UInt64
+    private(set) var calls = 0
+    init(results: [Bool], delayMs: UInt64) {
+        self.results = results
+        self.delayMs = delayMs
+    }
+    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
+    func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
+    func triage(goal: String?, stepDescription: String, failureReason: String,
+                snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
+    func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
+                              screenshotPNG: Data) async
+        -> (visible: Bool, state: String, reason: String, observedText: String)? {
+        try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
+        let v = calls < results.count ? results[calls] : (results.last ?? true)
+        calls += 1
+        return (v, v ? "fullyVisible" : "textMismatch", "test", v ? expectedText : "-")
+    }
+}
+
 /// screenMatches の撮り直し検証用: verdict を順番に返し、呼び出し回数を数える
 /// (列を使い切ったら最後の verdict を返し続ける)
 final class ScriptedScreenDelegate: ReplayDelegate {

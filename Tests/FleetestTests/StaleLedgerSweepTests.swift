@@ -50,4 +50,63 @@ final class StaleLedgerSweepTests: XCTestCase {
     func testNothingPresentStaysEmpty() {
         XCTAssertEqual(StaleLedgerSweep.decide(inputs()), [])
     }
+
+    // MARK: - StaleLedgerSweep.sweepIproxyPidFiles(stateDir:)
+    //
+    // F27 実測: .fleetest/iproxy-<port>.pid(実機 USB トンネル)は bridge-<port>.* とは別の台帳で、
+    // 上の .decide が回る bridge- プレフィックスのループには乗らない。物理デバイスを使わない run を
+    // 挟むと、死んだ pid のまま消されず残り続けた。
+
+    private func makeStateDir() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ft-stale-iproxy-\(UUID().uuidString)/.fleetest")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    func testDeadIproxyPidFileIsRemoved() throws {
+        let stateDir = try makeStateDir()
+        defer { try? FileManager.default.removeItem(at: stateDir.deletingLastPathComponent()) }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try process.run()
+        process.waitUntilExit()
+
+        let url = stateDir.appendingPathComponent("iproxy-8136.pid")
+        try String(process.processIdentifier).write(to: url, atomically: true, encoding: .utf8)
+
+        StaleLedgerSweep.sweepIproxyPidFiles(stateDir: stateDir)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path),
+                       "死んだ iproxy pid ファイルは消えること")
+    }
+
+    func testLiveIproxyPidFileIsKept() throws {
+        let stateDir = try makeStateDir()
+        defer { try? FileManager.default.removeItem(at: stateDir.deletingLastPathComponent()) }
+
+        let livePid = ProcessInfo.processInfo.processIdentifier
+        let url = stateDir.appendingPathComponent("iproxy-8138.pid")
+        try String(livePid).write(to: url, atomically: true, encoding: .utf8)
+
+        StaleLedgerSweep.sweepIproxyPidFiles(stateDir: stateDir)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path),
+                      "生きている iproxy pid ファイルは残すこと")
+    }
+
+    func testUnrelatedPidFilesAreUntouched() throws {
+        let stateDir = try makeStateDir()
+        defer { try? FileManager.default.removeItem(at: stateDir.deletingLastPathComponent()) }
+
+        // bridge-<port>.pid は別の掃除経路(sweepStalePidFiles)の担当。ここでは触らない
+        let bridgePid = stateDir.appendingPathComponent("bridge-8150.pid")
+        try "99999999".write(to: bridgePid, atomically: true, encoding: .utf8)
+
+        StaleLedgerSweep.sweepIproxyPidFiles(stateDir: stateDir)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: bridgePid.path),
+                      "bridge-<port>.pid はこのスイープの対象外")
+    }
 }

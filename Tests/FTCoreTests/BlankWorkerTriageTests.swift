@@ -260,6 +260,9 @@ final class BlankWorkerRecoveryTests: XCTestCase {
         XCTAssertEqual(recoverCalls.value, 1)
         XCTAssertTrue(result.excluded.isEmpty, "回復したのに外している: \(result.excluded)")
         XCTAssertEqual(result.workers.count, 2)
+        // F10: 回復した台の label が run.json の blankRepairs に乗る欄(repaired)へ出ること。
+        // 最初から健全だった "b" は含めない
+        XCTAssertEqual(result.repaired, ["a"], "回復した台が repaired に出ていない")
     }
 
     /// **戻らない個体だけ外す**(レーンに凍結機を残さない)。上限まで試すこと
@@ -279,6 +282,8 @@ final class BlankWorkerRecoveryTests: XCTestCase {
                        "上限まで試していない")
         XCTAssertEqual(result.excluded, ["dead"])
         XCTAssertEqual(result.workers.map(\.label), ["ok"], "健全機まで巻き込んで外している")
+        // F10: 戻らなかった台を回復扱いにしない(excluded と repaired の両方に出てはいけない)
+        XCTAssertTrue(result.repaired.isEmpty, "戻らなかった台を repaired に出している")
     }
 
     /// 回復手段が無い(nil)なら**即座に外す**(無駄な再試行をしない)
@@ -323,6 +328,27 @@ final class BlankWorkerRecoveryTests: XCTestCase {
         XCTAssertEqual(seen.value.first, ["dead(ios:8100)"], "1回目は元の一覧")
         XCTAssertEqual(seen.value.dropFirst().first, ["dead(ios:8210)"],
                        "2回目は**張り直し後**の一覧でなければ label を引けない")
+    }
+
+    /// F10: 回復で label(ポート)が変わっても、同じ udid の台は同じ1台として repaired に数える。
+    /// label をそのまま差し引く実装だと、回復した機は「別の未知の機」として見失われ
+    /// run.json の blankRepairs に一度も乗らない(実害: M1Ultra の -02 が blankRepairs: null のまま)
+    func testRepairedTrackingSurvivesALabelChangeFromRecovery() async {
+        func w(_ label: String, port: UInt16, frozen: Bool) -> RunWorker {
+            RunWorker(label: label, platform: "ios", driver: SwitchableDriver(frozen: frozen),
+                      connection: DriverConnection(platform: "ios", port: port, serial: nil,
+                                                   udid: "UDID-fixed"))
+        }
+        let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
+            [w("dead(ios:8100)", port: 8100, frozen: true)],
+            recover: { _, _ in
+                // 回復でポートが変わる(= label が変わる)が udid(実体)は同じ
+                [w("dead(ios:8210)", port: 8210, frozen: false)]
+            },
+            log: { _ in })
+        XCTAssertTrue(result.excluded.isEmpty)
+        XCTAssertEqual(result.repaired, ["dead(ios:8210)"],
+                       "回復後の label(実際に run で使う方)で報告すること")
     }
 
     /// 回復を渡さない呼び出しは**従来どおり弾くだけ**(既存の呼び出し元を壊さない)

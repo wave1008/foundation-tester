@@ -351,6 +351,9 @@ enum ProfileRunner {
         await ProfileWorkerFactory.prepareDevicesOnStart(
             workers, homeOnStart: resolved.homeOnStart) { ConsoleOut.out($0) }
         let iosDevicesExist = !resolved.iosDevices.isEmpty
+        // buildIOSLane(eager / lateWorkers のどちらから呼ばれても)が回復させた iOS の label を
+        // ここへ運ぶ(F10)。android 分の `triage.repaired` とはここで合流させる
+        let iosBlankRepairBox = IOSBlankRepairBox()
 
         // performanceMode では iOS の late join をやめて開始前に建てる。**理由は計測の歪みではなく
         // ゲートの可視性** —— late join だと iOS ワーカーは run 開始後に建つので、「iOS のレーンが
@@ -362,7 +365,8 @@ enum ProfileRunner {
         var eagerIOSWorkers: [RunWorker] = []
         if performanceMode, iosDevicesExist {
             eagerIOSWorkers = await buildIOSLane(
-                resolved: resolved, repoRoot: repoRoot, supplyLease: supplyLease)
+                resolved: resolved, repoRoot: repoRoot, supplyLease: supplyLease,
+                blankRepairBox: iosBlankRepairBox)
             ConsoleOut.out("🚀 \(eagerIOSWorkers.count) iOS worker(s) joined")
         }
         let hasLateIOS = iosDevicesExist && !performanceMode
@@ -451,11 +455,17 @@ enum ProfileRunner {
                     // physicalUDID も渡す —— usb トンネルは host がループバックのままでも
                     // token を要求するため、host だけでは実機の判別に使えない
                     // (ProfileWorkerFactory.warnOnResidualSystemAlerts と同じ規律)
-                    _ = try await BridgeClient(
+                    let status = try await BridgeClient(
                         port: port,
                         host: worker.connection.host ?? BridgeEndpoint.loopbackHost,
                         physicalUDID: worker.connection.physical ? worker.connection.udid : nil)
                         .status(timeout: 5)
+                    // 答えたのが別の台のブリッジなら接続不能と同じ扱い(BridgeProbeOutcome.hijacked)
+                    if case .mismatch(let detail) = BridgeIdentityCheck.verdict(
+                        expected: BridgeIdentityCheck.expected(for: worker.connection, probedPort: port),
+                        status: status) {
+                        return .hijacked(detail: detail)
+                    }
                     return .ok
                 } catch DriverError.bridgeConnectionRefused {
                     return .refused
@@ -498,16 +508,26 @@ enum ProfileRunner {
                 while Date() < deadline {
                     if let w = await ProfileWorkerFactory.buildWorker(forLogicalName: name, resolved: resolved,
                                                                        repoRoot: repoRoot, log: { ConsoleOut.out($0) }) {
-                        let installed = (try? await ProfileWorkerFactory.installIfNeeded(
-                            apps: resolved.apps, workers: [w], forceAndroidInstall: false) { ConsoleOut.out($0) }) ?? [w]
-                        return installed.first ?? w
+                        do {
+                            let installed = try await ProfileWorkerFactory.installIfNeeded(
+                                apps: resolved.apps, workers: [w], forceAndroidInstall: false) { ConsoleOut.out($0) }
+                            return installed.first
+                        } catch {
+                            // install に失敗した個体を古いアプリのまま参加させない(F5)。
+                            // この呼び出しでは復帰させない(呼び出し元が MAX_WORKER_REVIVES の
+                            // 範囲で reviveWorker を再度呼ぶ)
+                            ConsoleOut.out("❌ \(w.label): dropped out after an install failure — "
+                                + error.localizedDescription)
+                            return nil
+                        }
                     }
                     try? await Task.sleep(nanoseconds: 5_000_000_000)
                 }
                 return nil
             },
             lateWorkers: hasLateIOS ? (platforms: Set(["ios"]), provider: { @Sendable in
-                let ws = await buildIOSLane(resolved: resolved, repoRoot: repoRoot, supplyLease: supplyLease)
+                let ws = await buildIOSLane(resolved: resolved, repoRoot: repoRoot, supplyLease: supplyLease,
+                                            blankRepairBox: iosBlankRepairBox)
                 ConsoleOut.out("🚀 \(ws.count) iOS worker(s) joined")
                 return ws
             }) : nil,
@@ -601,7 +621,8 @@ enum ProfileRunner {
         let resultSummary = RunSummary(total: finalSummary.total, failed: finalSummary.failed,
                                        degradedWorkers: finalSummary.degradedWorkers,
                                  freezeRetries: finalSummary.freezeRetries,
-                                 blankRepairs: triage.repaired, blankExclusions: triage.excluded,
+                                 blankRepairs: triage.repaired + iosBlankRepairBox.get(),
+                                 blankExclusions: triage.excluded,
                                  measurementInvalid: validity.invalid,
                                  measurementInvalidReasons: validity.reasons,
                                  fmUnavailableScenarios: finalSummary.fmUnavailableScenarios,
@@ -653,6 +674,17 @@ enum ProfileRunner {
             + (verdict.error.map { ": \($0)" } ?? "")
     }
 
+    /// buildIOSLane が回復させたワーカーの label を run() へ運ぶ入れ物
+    /// (ApiRunCommand.BlankTriageBox と同じ受け渡しパターン)。eager 呼び出しと
+    /// lateWorkers.provider 呼び出しはどちらか一方しか起きないが、後者は RunOrchestrator が
+    /// 別 Task から呼ぶため、素の var の直接キャプチャは @Sendable 境界で弾かれる
+    private final class IOSBlankRepairBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var labels: [String] = []
+        func add(_ new: [String]) { lock.lock(); defer { lock.unlock() }; labels += new }
+        func get() -> [String] { lock.lock(); defer { lock.unlock() }; return labels }
+    }
+
     /// iOS レーンの構築(供給→インストール→凍結 triage→home)。**通常は `lateWorkers` provider
     /// として run 開始後に呼ばれる**(iOS のブリッジ供給は数十秒かかりうるため、Android の
     /// 開始をそれで待たせない)。`performanceMode` のときだけ run 開始前に同じ関数を呼ぶ
@@ -662,7 +694,8 @@ enum ProfileRunner {
     /// 供給失敗は run 全体を落とさない(iOS シナリオはワーカー不在ドレインで失敗確定させる。
     /// performanceMode では空配列が返ることで後段の LaneGate が run 開始前エラーへ格上げする)
     private static func buildIOSLane(
-        resolved: ResolvedProfile, repoRoot: URL, supplyLease: SupplyLeaseHolder?
+        resolved: ResolvedProfile, repoRoot: URL, supplyLease: SupplyLeaseHolder?,
+        blankRepairBox: IOSBlankRepairBox
     ) async -> [RunWorker] {
         do {
             PhaseLog.mark("ios-workers-start")
@@ -675,8 +708,11 @@ enum ProfileRunner {
             try rejectIfDeviceLeased(
                 workers: ws, leaseStateDir: repoRoot.appendingPathComponent(".fleetest"))
             supplyLease?.hold(keys: ws.compactMap { $0.connection.serial ?? $0.connection.udid })
-            ws = (try? await ProfileWorkerFactory.installIfNeeded(
-                apps: resolved.apps, workers: ws, forceAndroidInstall: false) { ConsoleOut.out($0) }) ?? ws
+            // install 全滅の throw は握りつぶさない(F5) —— `try?` で受けると失敗前(=古いアプリ
+            // のまま)の ws へ静かに戻ってしまう。ここで投げれば下の catch が「レーンを空にする」
+            // 既定の扱いに落とす
+            ws = try await ProfileWorkerFactory.installIfNeeded(
+                apps: resolved.apps, workers: ws, forceAndroidInstall: false) { ConsoleOut.out($0) }
             PhaseLog.mark("ios-workers-installed")
             // 画面だけ死んだシミュレータを**投入前に回復させる**(BlankWorkerTriage 参照)。
             // 回復は simctl shutdown→boot で、**ブリッジごと死ぬ**ので張り直しまでが1セット。
@@ -693,8 +729,11 @@ enum ProfileRunner {
                 stateDir: repoRoot.appendingPathComponent(".fleetest"),
                     nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
                         await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
-                log: { ConsoleOut.out($0) }).workers
-            ws = recovered
+                log: { ConsoleOut.out($0) })
+            // run.json の blankRepairs へ渡す(F10)。buildIOSLane は eager / lateWorkers.provider の
+            // どちらから呼ばれても run() 側で読めるよう、箱経由で運ぶ(戻り値の型は変えない)
+            blankRepairBox.add(recovered.repaired)
+            ws = recovered.workers
             await ProfileWorkerFactory.prepareDevicesOnStart(
                 ws, homeOnStart: resolved.homeOnStart) { ConsoleOut.out($0) }
             return ws

@@ -35,14 +35,41 @@ public enum PortHolder {
         return (pid, ps.output.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
+    /// iproxy がこのポートの USB トンネルを表しているか(コマンド文字列だけで判定。純粋関数)。
+    /// iproxy は `<hostPort> <devicePort> -u <UDID>` の形で起動する(IOSDeviceTransport.startIproxy)。
+    /// 第1引数がこのポートのものだけ「このポートのトンネル」とみなす(別ポート向けは無関係)
+    static func commandIsIproxyForPort(_ command: String, port: UInt16) -> Bool {
+        command.contains("iproxy")
+            && command.split(separator: " ").dropFirst().first.flatMap({ UInt16($0) }) == port
+    }
+
+    enum IproxyOwnership: Equatable { case owned, foreign }
+
+    /// iproxy 分岐の所有判定(純粋関数。lsof/kill を伴う stopIfOwnedBridge から切り出してテストする)。
+    /// **台帳(bridge-<port>.device)の UDID が ownerUDID(呼び手が今回供給しようとしているデバイス)
+    /// と一致するときだけ** .owned。記録が無い・不一致・ownerUDID 不明(呼び手が対象デバイスを
+    /// 渡していない)はすべて .foreign —— **F8 実測 2026-09-15**: 「第1引数がポート一致なら
+    /// 自分の資産」とだけ判定していたため、別プロセスが実機へ張った iproxy を誤って kill し、
+    /// 跡地に立てたシミュレータの in-app ブリッジが実機向けシナリオを代わりに実行して
+    /// 誤った PASS を作った(実機レーンは "Cannot reach the driver" で全滅)。
+    static func classifyIproxy(recordedDeviceUDID: String?, ownerUDID: String?) -> IproxyOwnership {
+        guard let recordedDeviceUDID, let ownerUDID, recordedDeviceUDID == ownerUDID else { return .foreign }
+        return .owned
+    }
+
     /// port を LISTEN しているプロセスを特定し、以下のどちらかに一致する場合だけ後始末する:
     /// - シミュレータ内アプリ(コマンドパスが CoreSimulator/Devices と data/Containers/Bundle を
     ///   両方含む)。同ポートの .inapp があれば simctl terminate(in-app ブリッジの正しい後始末。
     ///   プロセス kill だけだと XCUITest/シミュレータ側の整合が崩れる)、無ければ SIGTERM→SIGKILL
     /// - このポート専用の xctestrun を引数に持つ xcodebuild(残骸ランナー)。SIGTERM→SIGKILL
+    /// - 実機の USB トンネル(iproxy)。**ownerUDID と台帳の UDID が一致するときだけ**(classifyIproxy)
     /// それ以外(.foreign)は kill しない。
+    /// - ownerUDID: 呼び手が「今回このポートに供給しようとしているデバイス」の UDID を分かって
+    ///   いれば渡す。既定 nil = iproxy 分岐は常に .foreign(確認できない資産は殺さない安全側)。
+    ///   in-app/xcodebuild 分岐の判定には使わない(記録済みの .inapp/xctestrun パス一致で足りる)
     public static func stopIfOwnedBridge(port: UInt16, stateDir: URL,
-                                         derivedDataPath: URL) -> PortHolderOutcome {
+                                         derivedDataPath: URL,
+                                         ownerUDID: String? = nil) -> PortHolderOutcome {
         guard let (pid, command) = lookup(port: port) else { return .notFound }
         let description = "pid \(pid): \(command)"
 
@@ -67,13 +94,19 @@ public enum PortHolder {
             return waitForRelease(port: port, description: description)
         }
 
-        // 実機の USB トンネル(iproxy <hostPort> ...)。第1引数が対象ポートのものだけ自分の資産と
-        // みなす(別ポートのトンネルを巻き添えで殺さない)。LAN モードではそもそも
-        // ホスト側に LISTEN が無いのでここに来ない
-        if command.contains("iproxy"),
-           command.split(separator: " ").dropFirst().first.flatMap({ UInt16($0) }) == port {
-            terminateThenKill(pid: pid)
-            return waitForRelease(port: port, description: description)
+        // 実機の USB トンネル(iproxy <hostPort> ...)。LAN モードではそもそもホスト側に
+        // LISTEN が無いのでここに来ない
+        if commandIsIproxyForPort(command, port: port) {
+            // stateDir は常に "<repoRoot>/.fleetest"(全呼び出し元が repoRoot.appendingPathComponent
+            // (".fleetest") で渡す契約)なので、1つ上が repoRoot
+            let recordedUDID = BridgeDeviceRecord.load(
+                port: port, repoRoot: stateDir.deletingLastPathComponent())
+            if classifyIproxy(recordedDeviceUDID: recordedUDID, ownerUDID: ownerUDID) == .owned {
+                terminateThenKill(pid: pid)
+                return waitForRelease(port: port, description: description)
+            }
+            let named = recordedUDID.map { "a physical device's USB tunnel (udid \($0))" } ?? description
+            return .foreign(description: named)
         }
 
         return .foreign(description: description)

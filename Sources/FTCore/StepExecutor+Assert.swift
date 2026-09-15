@@ -567,6 +567,16 @@ extension StepExecutor {
         var needsCeiling = false
         // launch storyboard 猶予(firstFrameBlankObserved)の deadline 延長は1ステップにつき1回だけ
         var firstFrameExtended = false
+        // [F22] ガード自身の所要(FM の直列化待ち+推論、実測 6s 級)が単独でこのステップの
+        // 待ち予算を食い潰し、1回もポーリングできないまま「1フレームだけの古い描画」で
+        // 反転が確定するのを防ぐ猶予。**ガードの所要はアプリの応答ではなく FM の待ちなので
+        // アサーションの待ち予算から引いてはいけない**。効くのは1番目のガード評価だけ
+        // (`guardEvalCount`。while の周回数ではなく occlusionFlip を呼んだ回数 —— 要素が
+        // 最初の周では未解決で2周目に初めてガードへ入る形でも「1回目」と数える)。
+        // 延長幅は firstFrameExtended と同じ式(1予算ぶん)・延長は1ステップにつき1回だけ(ラッチ)。
+        // timeout==0(初回1回だけの意味)は延長しない
+        var guardCostExtended = false
+        var guardEvalCount = 0
         // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
         while true {
             var start = clock.now
@@ -596,6 +606,7 @@ extension StepExecutor {
             // アサーションでは type+index のみのフォールバックを使わない。
             // 別画面の無関係な要素にマッチして誤った緑になる(実測済み)
             if let d = resolvedDetail {
+                guardEvalCount += 1
                 if let flip = try await occlusionFlip(
                     element: d.element, expectedText: d.element.label ?? step.locator?.label ?? "",
                     elements: snapshot.elements, screen: snapshot.screen,
@@ -606,6 +617,7 @@ extension StepExecutor {
                     lastOcclusion = flip   // 覆われている: 可視化を待つ(下の sleep へ)
                 } else {
                     resolvedElementThisStep = d.element
+                    if guardCostExtended { noteCodesThisStep.insert(.guardRetaken) }
                     if let fallback = d.usedFallback { return .passedViaFallback(fallback) }
                     return .passed
                 }
@@ -654,6 +666,21 @@ extension StepExecutor {
                     noteCodesThisStep.insert(.firstFramePending)
                     continue
                 }
+                // [F22] 1番目のガード評価がまだ覆っている(flip)まま deadline を跨いだ場合、
+                // それがガード自身の所要(FM 待ち)のせいで初回ポーリングを1周もできなかったのと
+                // 区別が付かない。timeout==0 は「初回1回だけ」の意味を壊さないので延長しない
+                if !guardCostExtended, guardEvalCount == 1, lastOcclusion != nil,
+                   (step.timeout ?? FlowStep.defaultWaitSeconds) > 0,
+                   SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
+                                                lastSnapshotMs: lastSnapshotMs,
+                                                commandTimeoutMs: commandTimeoutMs) {
+                    guardCostExtended = true
+                    deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+                    // 撮り直しが目的なので直近スクショの再利用を切る(sleep を経ないため下の
+                    // `cachedScreenshot = nil` を通らない。切らないと同じ絵に同じ verdict が出る)
+                    cachedScreenshot = nil
+                    continue
+                }
                 break
             }
             start = clock.now
@@ -699,6 +726,10 @@ extension StepExecutor {
         var needsCeiling = false
         // launch storyboard 猶予(firstFrameBlankObserved)の deadline 延長は1ステップにつき1回だけ
         var firstFrameExtended = false
+        // [F22] ガード自身の所要が単独でこのステップの待ち予算を食い潰すのを防ぐ猶予
+        // (詳細は executeAssertExists の同名変数のコメント参照。exists と同契約)
+        var guardCostExtended = false
+        var guardEvalCount = 0
         // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
         while true {
             var start = clock.now
@@ -761,6 +792,7 @@ extension StepExecutor {
                         if let fallback { return .passedViaFallback(fallback) }
                         return .passed
                     }
+                    guardEvalCount += 1
                     if let flip = try await occlusionFlip(
                         element: element, expectedText: expectedForGuard,
                         elements: snapshot.elements, screen: snapshot.screen,
@@ -769,6 +801,7 @@ extension StepExecutor {
                         lastOcclusion = flip   // 覆われている: 可視化を待つ
                     } else {
                         resolvedElementThisStep = element
+                        if guardCostExtended { noteCodesThisStep.insert(.guardRetaken) }
                         if let fallback { return .passedViaFallback(fallback) }
                         return .passed
                     }
@@ -796,6 +829,19 @@ extension StepExecutor {
                     firstFrameExtended = true
                     deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
                     noteCodesThisStep.insert(.firstFramePending)
+                    continue
+                }
+                // [F22] 詳細は executeAssertExists の同名の分岐コメント参照(exists と同契約)
+                if !guardCostExtended, guardEvalCount == 1, lastOcclusion != nil,
+                   (step.timeout ?? FlowStep.defaultWaitSeconds) > 0,
+                   SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
+                                                lastSnapshotMs: lastSnapshotMs,
+                                                commandTimeoutMs: commandTimeoutMs) {
+                    guardCostExtended = true
+                    deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+                    // 撮り直しが目的なので直近スクショの再利用を切る(sleep を経ないため下の
+                    // `cachedScreenshot = nil` を通らない。切らないと同じ絵に同じ verdict が出る)
+                    cachedScreenshot = nil
                     continue
                 }
                 break

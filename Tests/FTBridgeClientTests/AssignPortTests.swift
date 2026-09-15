@@ -125,6 +125,52 @@ final class AssignPortTests: XCTestCase {
         XCTAssertEqual(try provisioner.assignPort(preferred: nil, used: &used), 8124)
     }
 
+    // MARK: - iproxy(実機 USB トンネル)台帳の生死。F8: bridge-<port>.pid とは別の台帳なので
+    // 存在チェックでは代用できず、assignPort 自身が生死を見る必要がある
+
+    /// sh が自分を exec で置き換えると ps の command から引数が消える(IOSPhysicalDeviceTests の
+    /// testPortsMatchingFindsBridgeByUDIDInProcessArguments と同じ罠)。`;` で2コマンドにして
+    /// sh 自身の argv(= ps の command)にマーカー文字列を残す(BridgeLauncherPidReuseTests と同じ手口)
+    private func spawnFakeCommandLine(_ commandLine: String) throws -> Process {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "sleep 30; : \(commandLine)"]
+        try process.run()
+        return process
+    }
+
+    func testLiveIproxyPidExcludesPort() throws {
+        // 実機 UDID 向けに張られた iproxy(IOSDeviceTransport.startIproxy と同じ argv 形)。
+        // bridge-8123.pid は無い(=このポートの xcodebuild ランナーは知らない)のに、
+        // このポートは実機の USB トンネルとして使用中 —— F8 実測そのもの
+        let process = try spawnFakeCommandLine("iproxy 8123 8123 -u fake-physical-udid")
+        defer { process.terminate() }
+
+        try String(process.processIdentifier).write(
+            to: IOSDeviceTransport.pidURL(hostPort: 8123, repoRoot: repoRoot),
+            atomically: true, encoding: .utf8)
+
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        var used: Set<UInt16> = []
+        XCTAssertEqual(try provisioner.assignPort(preferred: nil, used: &used), 8124,
+                       "生きている実機トンネルのポート 8123 は飛ばして次の空きへ")
+    }
+
+    func testDeadIproxyPidFileDoesNotExcludePort() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try process.run()
+        process.waitUntilExit()
+
+        try String(process.processIdentifier).write(
+            to: IOSDeviceTransport.pidURL(hostPort: 8123, repoRoot: repoRoot),
+            atomically: true, encoding: .utf8)
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        var used: Set<UInt16> = []
+        XCTAssertEqual(try provisioner.assignPort(preferred: nil, used: &used), 8123,
+                       "死んだ iproxy pid ファイルは空き扱い")
+    }
+
     func testStopIfOwnedBridgeNotFoundForUnusedPort() throws {
         // 誰も LISTEN していない高番ポート。lsof が見つけられなければ .notFound
         let outcome = PortHolder.stopIfOwnedBridge(

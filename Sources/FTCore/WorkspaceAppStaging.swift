@@ -7,6 +7,7 @@
 //   - RemoteRunDispatcher: ミラー rsync 直前にローカルのワークスペースへ揃える(installPath 単体)
 // docs/remote-runner.md §17。
 
+import CryptoKit
 import Foundation
 
 public enum WorkspaceAppStagingError: Error, LocalizedError {
@@ -25,18 +26,43 @@ public enum WorkspaceAppStagingError: Error, LocalizedError {
 
 public enum WorkspaceAppStaging {
 
-    /// インストール先の唯一の規則: "<workspaceRoot>/apps/<原本のファイル名>"、
-    /// **実機用は "<workspaceRoot>/apps/physical/<原本のファイル名>"**。
+    /// インストール先の唯一の規則:
+    /// "<workspaceRoot>/apps/[physical/]<declared のハッシュ12桁>/<declared のファイル名>"。
     /// ProfileResolver.resolve(ResolvedAppTarget.appPath の計算)とここ(実コピー先)の両方が
     /// この関数を呼ぶ ―― 定義がずれると「ローカルでは動くがリモートでは見つからない」が起きる。
-    /// **実機用を別ディレクトリに置くのは名前が衝突するから** —— 同じアプリの2つのビルドは
-    /// ふつう同名(dist/ios-simulator/X.app と dist/ios-device/X.app)で、同じ apps/ へ
-    /// 置くと後からステージングした方が相手を上書きし、**片方の端末に必ず誤ったビルドが入る**
-    public static func installPath(source: String, workspaceRoot: URL,
+    ///
+    /// **`declared` はプロファイル JSON に書かれた生の文字列(resolvePath で絶対化する前)を渡す**。
+    /// 絶対パス(source/sourcePath)から名前空間を作らないのは、絶対パスの前置き(repoRoot)が
+    /// ローカルとリモートの子で異なるため ―― 同じ宣言でもホストごとに違うステージ先になり、
+    /// リモートの子が自分で resolve() し直したときに手元がステージしたファイルを見失う
+    /// (ワークスペースは rsync で丸ごと運ばれる複製で、リモートは中身を読むだけ。
+    /// docs/remote-runner.md §17)。`declared` はプロジェクトの JSON ファイル自体を通じて
+    /// 両ホストへ届くので、文字列としては常に一致する。
+    ///
+    /// **名前空間を挟むのは、declared のファイル名(basename)だけでは衝突するから** ——
+    /// 同じプロジェクトの別アプリプロファイルが `E2EAppIOS/dist/ios-simulator/X.app` と
+    /// `E2EAppIOS/dist/ios-device/X.app` のように**同名の別ビルド**を指すのは珍しくなく、
+    /// basename だけをステージ先にすると並走する2つの run が交互に上書きし合う
+    /// (実測: 実機の run がシミュレータ build を install して 0xe8008014 で落ちた)。
+    /// 名前空間は SHA-256(declared) の先頭12桁 ―― パス区切り・記号を気にせず
+    /// ディレクトリ名にでき、declared が同じなら常に同じ、違えば(ほぼ確実に)別になる。
+    ///
+    /// **実機用を別ディレクトリに置くのは appPathPhysical の意味を変えないため**
+    /// (物理端末とシミュレータ/仮想デバイスで appPath が同名でも運用上は別物として扱う既存の規則)
+    public static func installPath(declared: String, workspaceRoot: URL,
                                    physical: Bool = false) -> String {
         workspaceRoot.appendingPathComponent("apps")
             .appendingPathComponent(physical ? "physical" : "")
-            .appendingPathComponent((source as NSString).lastPathComponent).path
+            .appendingPathComponent(declaredPathNamespace(declared))
+            .appendingPathComponent((declared as NSString).lastPathComponent).path
+    }
+
+    /// `declared`(プロファイル JSON の生の相対/絶対文字列)から決定的に導くディレクトリ名。
+    /// SHA-256 の先頭12桁の hex ―― 衝突を実質無視できる長さで、パス区切り・空白等の
+    /// 記号を含む declared 文字列でも安全にディレクトリ名へ落とせる
+    private static func declaredPathNamespace(_ declared: String) -> String {
+        let digest = SHA256.hash(data: Data(declared.utf8))
+        return String(digest.map { String(format: "%02x", $0) }.joined().prefix(12))
     }
 
     /// resolved.apps の全 platform について、sourcePath と appPath(インストール先)が

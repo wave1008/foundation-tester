@@ -21,11 +21,61 @@ final class WorkspaceAppStagingTests: XCTestCase {
 
     // MARK: - installPath(唯一のインストール先規則。ProfileResolver.resolve と共有)
 
-    func testInstallPathIsWorkspaceRootAppsPlusBasename() {
+    func testInstallPathEndsWithTheDeclaredBasename() {
         let workspace = tempDir.appendingPathComponent("ws")
-        XCTAssertEqual(
-            WorkspaceAppStaging.installPath(source: "/builds/SampleApp.app", workspaceRoot: workspace),
-            workspace.appendingPathComponent("apps/SampleApp.app").path)
+        let path = WorkspaceAppStaging.installPath(
+            declared: "/builds/SampleApp.app", workspaceRoot: workspace)
+        XCTAssertTrue(path.hasPrefix(workspace.appendingPathComponent("apps").path + "/"), path)
+        XCTAssertTrue(path.hasSuffix("/SampleApp.app"), path)
+    }
+
+    /// F6: 同じプロジェクトの別アプリプロファイルが同名の .app を指すと(例:
+    /// dist/ios-simulator/X.app と dist/ios-device/X.app)、basename だけをステージ先にすると
+    /// 並走する2つの run が交互に上書きし合う。**declared(宣言の生文字列)が違えば別のステージ先**
+    /// になること(physical フラグに頼らない衝突回避)を固定する
+    func testInstallPathNamespacesByDeclaredPathNotJustBasename() {
+        let workspace = tempDir.appendingPathComponent("ws")
+        let sim = WorkspaceAppStaging.installPath(
+            declared: "E2EAppIOS/dist/ios-simulator/FTE2EIOS.app", workspaceRoot: workspace)
+        let device = WorkspaceAppStaging.installPath(
+            declared: "E2EAppIOS/dist/ios-device/FTE2EIOS.app", workspaceRoot: workspace)
+        XCTAssertNotEqual(sim, device, "宣言が違えば basename が同じでもステージ先は分かれる")
+        XCTAssertTrue(sim.hasSuffix("/FTE2EIOS.app"))
+        XCTAssertTrue(device.hasSuffix("/FTE2EIOS.app"))
+    }
+
+    /// 同じ declared 文字列なら、常に同じ相対ステージ先を返す(冪等・決定的)
+    func testInstallPathIsDeterministicForTheSameDeclaredPath() {
+        let workspace = tempDir.appendingPathComponent("ws")
+        let first = WorkspaceAppStaging.installPath(
+            declared: "apps/SampleApp.app", workspaceRoot: workspace)
+        let second = WorkspaceAppStaging.installPath(
+            declared: "apps/SampleApp.app", workspaceRoot: workspace)
+        XCTAssertEqual(first, second)
+    }
+
+    /// **repoRoot(workspaceRoot の絶対パスの前置き)が違っても、同じ declared 文字列なら
+    /// 同じ相対ステージ先になる** —— ワークスペースは rsync でホスト間を丸ごと運ばれる複製で、
+    /// リモートの子はローカルとは違う repoRoot から自分自身の workspaceRoot を組み立てる
+    /// (docs/remote-runner.md §17)。名前空間が絶対パス由来だとここで食い違う
+    func testInstallPathRelativeSuffixIsStableAcrossDifferentWorkspaceRoots() {
+        let localWorkspace = URL(fileURLWithPath: "/Users/local/github/foundation-tester/TestProjects/E2E-iOS/workspace")
+        let remoteWorkspace = URL(fileURLWithPath: "/Users/runner/fleetest-runner/work/TestProjects/E2E-iOS/workspace")
+        let declared = "E2EAppIOS/dist/ios-simulator/FTE2EIOS.app"
+        let local = WorkspaceAppStaging.installPath(declared: declared, workspaceRoot: localWorkspace)
+        let remote = WorkspaceAppStaging.installPath(declared: declared, workspaceRoot: remoteWorkspace)
+        let localSuffix = String(local.dropFirst(localWorkspace.path.count))
+        let remoteSuffix = String(remote.dropFirst(remoteWorkspace.path.count))
+        XCTAssertEqual(localSuffix, remoteSuffix,
+                       "workspaceRoot の絶対パスが違っても apps/ 配下の相対先は同じでなければならない")
+    }
+
+    /// 実機用(physical: true)は従来どおり別ディレクトリへ分かれる(名前空間の導入後も維持)
+    func testInstallPathPhysicalStaysUnderItsOwnSubdirectory() {
+        let workspace = tempDir.appendingPathComponent("ws")
+        let path = WorkspaceAppStaging.installPath(
+            declared: "apps/SampleApp.app", workspaceRoot: workspace, physical: true)
+        XCTAssertTrue(path.hasPrefix(workspace.appendingPathComponent("apps/physical").path + "/"), path)
     }
 
     // MARK: - stageApp: ファイル

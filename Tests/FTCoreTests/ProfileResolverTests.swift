@@ -68,7 +68,9 @@ final class ProfileResolverTests: XCTestCase {
                        tempDir.appendingPathComponent("builds/SampleApp.app").path,
                        "appPath 相対はリポジトリルート(<repoRoot>/TestProjects/<name> の 2 階層上)基準")
         XCTAssertEqual(ios.appPath,
-                       project.rootURL.appendingPathComponent("workspace/apps/SampleApp.app").path,
+                       WorkspaceAppStaging.installPath(
+                           declared: "builds/SampleApp.app",
+                           workspaceRoot: project.rootURL.appendingPathComponent("workspace")),
                        "インストール元は既定ワークスペースのステージ先")
         XCTAssertTrue(ios.autoInstall, "common の autoInstall: true が両 platform に効く")
         let android = try XCTUnwrap(resolved.apps["android"])
@@ -77,7 +79,9 @@ final class ProfileResolverTests: XCTestCase {
                        tempDir.appendingPathComponent("builds/app-debug.apk").path,
                        "android の appPath 相対もリポジトリルート基準")
         XCTAssertEqual(android.appPath,
-                       project.rootURL.appendingPathComponent("workspace/apps/app-debug.apk").path,
+                       WorkspaceAppStaging.installPath(
+                           declared: "builds/app-debug.apk",
+                           workspaceRoot: project.rootURL.appendingPathComponent("workspace")),
                        "android のインストール元も既定ワークスペースのステージ先")
         XCTAssertTrue(android.autoInstall, "common の autoInstall: true が両 platform に効く")
 
@@ -1121,6 +1125,51 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertEqual(resolved.iosDevices[0].spec.model, "iPhone 15 Pro")
         XCTAssertEqual(resolved.iosDevices[0].spec.os, "26.5.2")
         XCTAssertTrue(resolved.warnings.isEmpty, "model は既知キー: \(resolved.warnings)")
+    }
+
+    // MARK: - appPathPhysical 未指定の警告(F2: リモートの子は原本を持たずステージ済みの
+    // 複製(installPath)だけを持つ。sourcePath だけを見ると常に nil になり誤って鳴っていた)
+
+    private func writePhysicalWithoutAppPathPhysicalFixture() throws {
+        try write("""
+        { "ios": { "app": "com.example.app", "appPath": "builds/SampleApp.app" } }
+        """, to: project.appsDir, name: "app")
+        try write("""
+        { "ios": { "devices": [
+              { "name": "実機", "kind": "physical", "udid": "00008130-AAAA" } ] } }
+        """, to: project.machinesDir, name: "m")
+        try write("""
+        { "app": "app", "devices": [ { "name": "実機" } ] }
+        """, to: project.runsDir, name: "r")
+    }
+
+    private func writeDeviceBuildInfoPlist(at appBundle: URL) throws {
+        try FileManager.default.createDirectory(at: appBundle, withIntermediateDirectories: true)
+        let plist: [String: Any] = ["CFBundleSupportedPlatforms": ["iPhoneOS"]]
+        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        try data.write(to: appBundle.appendingPathComponent("Info.plist"))
+    }
+
+    /// 原本(sourcePath)が読めなくても、ステージ済みの複製(installPath)が実機用ビルドなら鳴らさない
+    func testPhysicalDeviceWarningFallsBackToStagedInstallPathWhenSourceIsMissing() throws {
+        try writePhysicalWithoutAppPathPhysicalFixture()
+        // 原本は作らない(リモートの子を模す)。ステージ済みの複製だけを実機用ビルドとして用意する
+        let workspaceRoot = project.rootURL.appendingPathComponent("workspace")
+        let installPath = WorkspaceAppStaging.installPath(
+            declared: "builds/SampleApp.app", workspaceRoot: workspaceRoot)
+        try writeDeviceBuildInfoPlist(at: URL(fileURLWithPath: installPath))
+
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        XCTAssertTrue(resolved.warnings.isEmpty,
+                      "複製が実機用ビルドなら appPathPhysical 未指定の警告は鳴らさない: \(resolved.warnings)")
+    }
+
+    /// 原本もステージ済みの複製も読めなければ、従来どおり(安全側に倒して)鳴らす
+    func testPhysicalDeviceWarningFiresWhenNeitherSourceNorInstallPathIsReadable() throws {
+        try writePhysicalWithoutAppPathPhysicalFixture()
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        XCTAssertTrue(resolved.warnings.contains { $0.contains("appPathPhysical") },
+                      "原本も複製も読めなければ従来どおり鳴らす: \(resolved.warnings)")
     }
 
     // MARK: - FM トグル(fm/heal/falsePositiveCheck/screenLooksLike)

@@ -1940,6 +1940,109 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertFalse(outcome2.notes.contains(.firstFrameTimeout), "\(outcome2.notes)")
     }
 
+    // MARK: - [F22] ガード自身の所要による deadline 延長(guardCostExtended)
+
+    /// ガード自身の所要(FM の直列化待ち+推論)だけでステップの待ち予算を使い切り、
+    /// 1回もポーリングできないまま反転が確定するのを防ぐ。1番目の評価が deadline を跨いでいたら
+    /// 一度だけ延ばして撮り直し、2番目の評価で可視と分かれば通る
+    /// (2026-09-15 実測の再現: guardMs 6.3s > 既定 timeout 5s で1フレームだけの古い描画が
+    /// 反転を確定させ、`select→textIs` の形で誤った赤になった)
+    func testGuardCostExtendsDeadlineOnceAndPassesOnRetake() async throws {
+        let log = CallLog()
+        // 撮り直しごとに**違う絵**を返す(同じ絵は VisibilityVerdictMemo が前回の verdict を再利用し
+        // FM を呼ばない = 描画が更新された実機の形にならない)
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
+                                    screenshots: (0..<8).map { Data("frame-\($0)".utf8) })
+        // 1回の評価が 150ms かかる。ステップの timeout(50ms)を優に超えるので、
+        // 1回目の評価だけで deadline を跨ぐ
+        let delegate = SlowSequenceVisibilityDelegate(results: [false, true], delayMs: 150)
+        let executor = StepExecutor(driver: primary, delegate: delegate,
+                                    occlusionInkThreshold: 0, occlusionOCRMode: .off, isAndroid: false)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 0.05, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("撮り直しで可視と分かったので通るはず: \(outcome.status)"); return
+        }
+        XCTAssertEqual(delegate.calls, 2, "1回目の反転を撮り直して2回目で確かめているはず")
+        XCTAssertTrue(outcome.notes.contains(.guardRetaken), "\(outcome.notes)")
+    }
+
+    /// 撮り直しても覆われたままなら本物の occlusion。延長は1回だけ(2回で打ち切る)で、
+    /// 通らなかった回には `guardRetaken` は立たない(注記は撮り直しが通った事実の記録)
+    func testGuardCostExtensionIsUsedOnceThenFailsNormally() async throws {
+        let log = CallLog()
+        // 撮り直しごとに**違う絵**を返す(同じ絵は VisibilityVerdictMemo が前回の verdict を再利用し
+        // FM を呼ばない = 描画が更新された実機の形にならない)
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
+                                    screenshots: (0..<8).map { Data("frame-\($0)".utf8) })
+        let delegate = SlowSequenceVisibilityDelegate(results: [false, false], delayMs: 150)
+        let executor = StepExecutor(driver: primary, delegate: delegate,
+                                    occlusionInkThreshold: 0, occlusionOCRMode: .off, isAndroid: false)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 0.05, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let msg) = outcome.status else {
+            XCTFail("撮り直しても覆われ続ければ失敗するはず: \(outcome.status)"); return
+        }
+        XCTAssertTrue(msg.contains("occlusion"), msg)
+        XCTAssertEqual(delegate.calls, 2, "延長は1回だけなので2回で打ち切るはず")
+        XCTAssertFalse(outcome.notes.contains(.guardRetaken),
+                       "撮り直しても通らなければ注記は立たないはず: \(outcome.notes)")
+    }
+
+    /// timeout==0(初回1回だけの意味)はガード所要による延長の対象外
+    func testGuardCostExtensionDoesNotApplyWhenTimeoutIsZero() async throws {
+        let log = CallLog()
+        // 撮り直しごとに**違う絵**を返す(同じ絵は VisibilityVerdictMemo が前回の verdict を再利用し
+        // FM を呼ばない = 描画が更新された実機の形にならない)
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
+                                    screenshots: (0..<8).map { Data("frame-\($0)".utf8) })
+        let delegate = SlowSequenceVisibilityDelegate(results: [false, true], delayMs: 50)
+        let executor = StepExecutor(driver: primary, delegate: delegate,
+                                    occlusionInkThreshold: 0, occlusionOCRMode: .off, isAndroid: false)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 0, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed = outcome.status else {
+            XCTFail("timeout==0 は延長せず初回1回だけで失敗するはず: \(outcome.status)"); return
+        }
+        XCTAssertEqual(delegate.calls, 1, "timeout==0 は延長しないので1回で終わるはず")
+        XCTAssertFalse(outcome.notes.contains(.guardRetaken), "\(outcome.notes)")
+    }
+
+    /// textEquals 側(executeAssertTextComparison)も exists と同じ延長を持つ
+    func testGuardCostExtendsDeadlineOnceForTextEqualsToo() async throws {
+        let log = CallLog()
+        // 撮り直しごとに**違う絵**を返す(同じ絵は VisibilityVerdictMemo が前回の verdict を再利用し
+        // FM を呼ばない = 描画が更新された実機の形にならない)
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
+                                    screenshots: (0..<8).map { Data("frame-\($0)".utf8) })
+        let delegate = SlowSequenceVisibilityDelegate(results: [false, true], delayMs: 150)
+        let executor = StepExecutor(driver: primary, delegate: delegate,
+                                    occlusionInkThreshold: 0, occlusionOCRMode: .off, isAndroid: false)
+        let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "msg"),
+                            expected: "こんにちは", timeout: 0.05, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("撮り直しで可視と分かったので通るはず: \(outcome.status)"); return
+        }
+        XCTAssertEqual(delegate.calls, 2)
+        XCTAssertTrue(outcome.notes.contains(.guardRetaken), "\(outcome.notes)")
+    }
+
     /// exists のフォールバック照会は 2・4・6…回目の primary ミスでのみ発生する(間引き契約。
     /// StepExecutor+Assert.swift executeAssert "exists" 参照)
     func testExistsThrottlesFallbackQuery() async throws {

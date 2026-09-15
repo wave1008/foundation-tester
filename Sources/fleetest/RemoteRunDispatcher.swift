@@ -235,11 +235,37 @@ struct RemoteRunDispatcher {
 
     // MARK: - 1. 適合チェック
 
+    /// `git status --porcelain`(未フィルタ)の出力から、`TestProjects/` 配下**以外**
+    /// (= ツール本体)に変更があるかを判定する。`TestProjects/<project>/` は run のたびに
+    /// rsync で運ばれる(§13)ので、そこだけの変更を「リモートへ届かない」と警告するのは誤誘導 ——
+    /// 未追跡のプロファイル JSON 等、受け手が日常的に持つ差分で毎回鳴っていた。
+    /// **rename 行("R  old -> new")は新パスで判定する**(旧パスがツール本体でも、置き場所が
+    /// 最終的に TestProjects 配下なら rsync で届く)。空・空白のみは false
+    static func hasUncommittedToolChanges(porcelain: String?) -> Bool {
+        guard let porcelain else { return false }
+        for rawLine in porcelain.split(separator: "\n", omittingEmptySubsequences: true) {
+            var path = String(rawLine.dropFirst(min(3, rawLine.count)))
+            if let arrowRange = path.range(of: " -> ") {
+                path = String(path[arrowRange.upperBound...])
+            }
+            path = path.trimmingCharacters(in: .whitespaces)
+            if path.hasPrefix("\""), path.hasSuffix("\""), path.count >= 2 {
+                path = String(path.dropFirst().dropLast())
+            }
+            guard !path.isEmpty else { continue }
+            if !path.hasPrefix("TestProjects/") { return true }
+        }
+        return false
+    }
+
     private func checkCompatibility(layout: RemoteLayout) throws {
         let localRevision = localCapture(["git", "-C", localRepoRoot.path, "rev-parse", "HEAD"])
-        if let status = localCapture(["git", "-C", localRepoRoot.path, "status", "--porcelain"]),
-           !status.isEmpty {
-            log("warning: uncommitted local changes will NOT reach the remote")
+        // TestProjects/<project>/ は run のたびに rsync で届く(§13)ので、そこだけの変更
+        // (未追跡のプロファイル JSON 等)で鳴らすのは誤誘導 —— 判定は hasUncommittedToolChanges の1箇所
+        let status = localCapture(["git", "-C", localRepoRoot.path, "status", "--porcelain"])
+        if Self.hasUncommittedToolChanges(porcelain: status) {
+            log("warning: uncommitted changes to the tool itself (outside TestProjects/)"
+                + " will NOT reach the remote")
         }
 
         let revisionProbe = probeRemote("git revision") {
@@ -520,14 +546,17 @@ struct RemoteRunDispatcher {
         }
         // マシン/デバイス解決を経由しない軽量読み(declaredWorkspace と同じ理由)。
         // インストール先の規則は WorkspaceAppStaging.installPath 1箇所と共有する
-        // (ProfileResolver.resolve が ResolvedAppTarget.appPath を計算するのと同じ規則)
-        for (key, source) in ProfileResolver.declaredAppPaths(project: project, runName: profile)
+        // (ProfileResolver.resolve が ResolvedAppTarget.appPath を計算するのと同じ規則)。
+        // installPath には entry.declared(宣言の生文字列)を渡す —— entry.source(絶対パス)は
+        // このホストの repoRoot を含むため、リモートの子が自分自身で resolve() し直したときと
+        // 名前空間がずれてしまう(WorkspaceAppStaging.installPath の doc)
+        for (key, entry) in ProfileResolver.declaredAppPaths(project: project, runName: profile)
             .sorted(by: { ($0.key.platform, $0.key.physical ? 1 : 0)
                           < ($1.key.platform, $1.key.physical ? 1 : 0) }) {
-            let dest = WorkspaceAppStaging.installPath(source: source,
+            let dest = WorkspaceAppStaging.installPath(declared: entry.declared,
                                                        workspaceRoot: localWorkspaceURL,
                                                        physical: key.physical)
-            if try WorkspaceAppStaging.stageApp(source: source, dest: dest) {
+            if try WorkspaceAppStaging.stageApp(source: entry.source, dest: dest) {
                 log("==> staged \(key.platform)\(key.physical ? " physical-device" : "")"
                     + " app package into the workspace")
             }

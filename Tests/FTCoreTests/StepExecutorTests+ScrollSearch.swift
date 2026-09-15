@@ -472,14 +472,15 @@ extension StepExecutorTests {
     private func partialSheetStallScript() -> [[ElementInfo]] {
         func tree(offset: Double) -> [ElementInfo] {
             // 移動後も**2つ以上の行が容器の中に残る**こと(clippingContainer の推測条件)。
-            // 残りが1つだと容器が特定できず、逆走査の前段で黙って諦めてしまい台本にならない
+            // 残りが1つだと容器が特定できず、逆走査の前段で黙って諦めてしまい台本にならない。
+            // 容器は画面下端(800)に接する = 半開きボトムシートの幾何(SheetGeometry.looksLikeBottomSheet)
             [ElementInfo(ref: 1, type: "scrollView", identifier: "sheet_list", label: nil,
                          value: nil, placeholder: nil, enabled: true,
-                         frame: FTRect(x: 0, y: 500, width: 400, height: 250), depth: 0,
+                         frame: FTRect(x: 0, y: 550, width: 400, height: 250), depth: 0,
                          scrollable: true),
-             framed(ref: 2, id: "row_a", x: 16, y: 520 - offset, width: 368, height: 40, depth: 1),
-             framed(ref: 3, id: "row_b", x: 16, y: 590 - offset, width: 368, height: 40, depth: 1),
-             framed(ref: 4, id: "row_c", x: 16, y: 660 - offset, width: 368, height: 40, depth: 1)]
+             framed(ref: 2, id: "row_a", x: 16, y: 570 - offset, width: 368, height: 40, depth: 1),
+             framed(ref: 3, id: "row_b", x: 16, y: 640 - offset, width: 368, height: 40, depth: 1),
+             framed(ref: 4, id: "row_c", x: 16, y: 710 - offset, width: 368, height: 40, depth: 1)]
         }
         return [tree(offset: 0), tree(offset: 0), tree(offset: 60)]
     }
@@ -560,6 +561,24 @@ extension StepExecutorTests {
         stopped.containerIsPartialHeight = false
 
         _ = executor.recordedScrollSearchNote(stopped)
+
+        XCTAssertFalse(executor.noteCodesThisStep.contains(.sheetCollapsed))
+    }
+
+    /// [F7b] **見つかった回には出さない**: 端で一度 stoppedUnmoving になっても、その後の
+    /// 逆走査(reverseSweep)で見つかれば `found` が立つが、`stoppedUnmoving` /
+    /// `containerIsPartialHeight` は構築時のまま残る(runScrollSearch の reverseSweep 経路参照)。
+    /// 通った探索に「シートを広げろ」を付けて読み手を誤誘導しないための固定
+    /// (2026-09-15 実測: `scrollTo "#jrow_05"(found by sweeping back after overshoot)` /
+    /// `tap "#row_30"(同)` の両方に sheet-collapsed が付いていた)
+    func testSheetCollapsedCodeIsNotSetWhenTheSearchEventuallyFound() {
+        let executor = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()), isAndroid: false)
+        var found = StepExecutor.ScrollSearchResult(found: true, fallback: nil,
+                                                     viaXCUITest: false, hintJumps: 0)
+        found.stoppedUnmoving = true
+        found.containerIsPartialHeight = true
+
+        _ = executor.recordedScrollSearchNote(found)
 
         XCTAssertFalse(executor.noteCodesThisStep.contains(.sheetCollapsed))
     }

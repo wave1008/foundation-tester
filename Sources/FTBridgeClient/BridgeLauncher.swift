@@ -611,6 +611,14 @@ public struct BridgeLauncher {
         return Date().timeIntervalSince(modified)
     }
 
+    /// pid ファイルの mtime。startDetached が起動時に一度だけ書き、以後 stop まで触らない
+    /// (ログファイルと違って稼働中に書き換わらない)ので、「この pid がいつ生まれたか」を
+    /// ps etime より素直に表す。測れなければ nil(pid ファイル無し = 起動記録なし)。
+    /// StartingBridgeAge.isStillStarting が使う
+    public func pidFileModified() -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: pidPath.path))?[.modificationDate] as? Date
+    }
+
     /// pid ファイルが指すプロセスの経過時間(秒)。pid ファイルが無い/プロセスが既に居ない/
     /// ps が読めないときは nil(unknown。呼び手は「待つ」側に倒す)。単一 pid の照会なので
     /// portsMatching の「ps は1回だけ」規律(複数 pid をまとめて引く)は適用されない

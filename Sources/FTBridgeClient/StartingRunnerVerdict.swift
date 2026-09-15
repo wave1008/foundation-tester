@@ -52,3 +52,19 @@ public enum StartingRunnerVerdict: Equatable {
         return quietFor >= budget ? .restart : .wait
     }
 }
+
+/// pid ファイルの年齢だけで「起動中ではあり得ない」ことを言う(純粋関数)。**decide の quietFor
+/// (起動ログの mtime)を信用できない場面がある** —— 複数 run にまたがって生き続ける長寿ランナーは
+/// run のたびにログへ出力するため、無応答になった直後でも「最近書かれた」と読めてしまい、
+/// decide が .wait を返して waitUntilReady が満額 startupTimeoutSeconds を無駄に待つ
+/// (実測 2026-09-15 M1Ultra: 直前2 run で健全だった長寿ブリッジが無応答化 →
+/// 「起動中」に分類され 180 秒待ってから建て直した)。
+/// pid ファイルは起動時に一度だけ書かれる(BridgeLauncher.startDetached)ので寿命の起点として
+/// ぶれない。起動が正当にかかる時間は startupTimeoutSeconds を超えないので、それより古い pid は
+/// 「起動中」であるはずがない —— 別の定数を作らず BridgeLauncher.startupTimeoutSeconds を共有する
+public enum StartingBridgeAge {
+    public static func isStillStarting(pidFileModified: Date, now: Date = Date(),
+                                       startupTimeout: TimeInterval) -> Bool {
+        now.timeIntervalSince(pidFileModified) < startupTimeout
+    }
+}

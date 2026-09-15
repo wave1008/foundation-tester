@@ -207,10 +207,11 @@ public protocol AppDriver {
 }
 
 extension DriverError: StepFailureKindProviding {
-    /// 到達できなかった(接続拒否・応答なし・アプリのプロセス死)/ 到達したがエラー応答、の2つ
+    /// 到達できなかった(接続拒否・応答なし・アプリのプロセス死・別デバイスへの奪取)/
+    /// 到達したがエラー応答、の2つ
     public var stepFailureKind: StepFailureKind? {
         switch self {
-        case .bridgeUnreachable, .bridgeConnectionRefused: return .driverUnreachable
+        case .bridgeUnreachable, .bridgeConnectionRefused, .bridgeIdentityMismatch: return .driverUnreachable
         case .badResponse: return .driverError
         }
     }
@@ -222,6 +223,10 @@ public enum DriverError: Error, LocalizedError {
     /// (接続拒否・接続断など)。Android ブリッジの自動再プロビジョン判定に使う
     case bridgeConnectionRefused(String)
     case badResponse(status: Int, body: String)
+    /// F8b: 事前確認の /status がドライバ自体には届いたが、接続先が期待したデバイスと違った
+    /// (ポートが別デバイスのブリッジに奪われた)。detail は BridgeIdentityCheck.verdict が
+    /// 組み立てる、事実だけの完成文(呼び出し元で追加の前置きをしない)
+    case bridgeIdentityMismatch(String)
 
     public var errorDescription: String? {
         switch self {
@@ -235,6 +240,8 @@ public enum DriverError: Error, LocalizedError {
             return "Connection to the driver was refused (nothing listening on the port). If this happened mid-run, the app under test most likely exited or crashed (on iOS inapp the bridge lives inside the app, so it becomes unreachable the moment the app dies). If the app has not been started yet, check iOS: fleetest bridge up / Android: adb devices. Detail: \(detail)"
         case .badResponse(let status, let body):
             return "The driver returned an error (\(status)): \(body)"
+        case .bridgeIdentityMismatch(let detail):
+            return detail
         }
     }
 
