@@ -5,8 +5,8 @@
 
 import Foundation
 
-/// 修復候補 1 件。id は指紋の鍵(FTDSL の `LocatorFingerprintCache.key`)と
-/// 同一("scenarioID|file:line|oldSelector")
+/// 修復候補 1 件。id は "scenarioID|file:line|oldSelector"(拡張の修復確認パネルとの対応付け用。
+/// 指紋の鍵 `LocatorFingerprintCache.key` とは別物で、OS を含まない)
 public struct HealFixInput: Sendable, Equatable {
     public let scenarioID: String
     /// ファイルパス(絶対 or 相対。解決・実際の読み書きは呼び出し側の責務。id にはそのまま使う)

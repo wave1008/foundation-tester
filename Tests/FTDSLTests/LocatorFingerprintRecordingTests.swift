@@ -138,6 +138,47 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
         XCTAssertEqual(entries.values.first?.label, "修復対象")
     }
 
+    /// **指紋は OS ごとに分かれる**(鍵に platform が入る)。Android で採った指紋は、同じシナリオ・
+    /// 同じ行でも iOS では引かれない(型名が OS で違うので、混ぜると上書きし合って直らない)。
+    /// 「鍵に OS を入れない」変異は iOS の run が Android の指紋で直ってしまって落ちる
+    func testFingerprintsAreKeptPerPlatform() {
+        let fingerprintURL = tempURL("per-platform")
+        func core(_ driver: AppDriver, platform: String, emit: @escaping (ScenarioEvent) -> Void) -> FTDriveCore {
+            FTDriveCore(driver: driver, platform: platform, app: "com.example.app",
+                        scenarioID: "Fingerprint.PerPlatform", scenarioTitle: "t",
+                        delegate: nil, healingEnabled: true, dryRun: false,
+                        fingerprintCacheURL: fingerprintURL, emit: emit)
+        }
+
+        // Android でプライマリ解決 → Android の鍵で指紋を採る
+        do {
+            let c = core(SeedScreenDriver(), platform: "android", emit: { _ in })
+            FTRuntime.bootstrap(core: c, dslThread: Thread.current)
+            defer { FTRuntime.tearDown() }
+            runTapOnIDSeed()
+            c.flushLocatorFingerprints()
+        }
+
+        // iOS でドリフトした画面: iOS の鍵には指紋が無いので直らない(赤)
+        do {
+            var events: [ScenarioEvent] = []
+            let c = core(DriftedScreenDriver(), platform: "ios", emit: { events.append($0) })
+            FTRuntime.bootstrap(core: c, dslThread: Thread.current)
+            defer { FTRuntime.tearDown() }
+            runTapOnIDSeed()
+            XCTAssertNil(events.first { $0.kind == "fixSuggestion" }, "Android の指紋で iOS が直った")
+            XCTAssertFalse(c.finalRecord.passed)
+        }
+
+        // 陽性対照: 同じドリフトを Android で回すと Android の指紋で直る
+        var events: [ScenarioEvent] = []
+        let c = core(DriftedScreenDriver(), platform: "android", emit: { events.append($0) })
+        FTRuntime.bootstrap(core: c, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+        runTapOnIDSeed()
+        XCTAssertEqual(events.first { $0.kind == "fixSuggestion" }?.newSelector, "#id_drifted")
+    }
+
     /// **最重要の陰性テスト**: 指紋で解決したステップ(`.healed`)は指紋を**記録し直さない**。
     /// 記録すると、誤った一致がそのまま指紋として固定化され、以後ずっと同じ誤りを再生産する。
     /// 「healed でも記録する」変異が入っていたら、控えの placeholder が "drifted" に書き換わって落ちる

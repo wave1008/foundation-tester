@@ -1,7 +1,8 @@
 // ロケータ指紋(前回そのロケータが解決できた要素の type+label)を
-// .fleetest/locator-fingerprints.json へ永続化する。鍵は `key(...)`(シナリオID+file:line+セレクタ)
-// なので、利用者がソースを直せば鍵が変わり自然に失効する。**同じ形を修正提案の id
-// (`HealFixInput.id`)と拡張の修復確認パネルも使う**(片方だけ変えない)。
+// .fleetest/locator-fingerprints.json へ永続化する。鍵は `key(...)`(シナリオID+OS+file:line+セレクタ)
+// なので、利用者がソースを直せば鍵が変わり自然に失効する。**OS を鍵に含める**: iOS と Android で回す共通の
+// シナリオは同じ行を共有するが、型名が OS で違う(CMP のボタンは iOS `button` / Android `Cell`)ので、
+// OS を跨いで上書きし合うと直前にもう一方で採った指紋と一致せず直らない。
 //
 // **record() はメモリへ溜めるだけで毎回 save() しない**。指紋はステップが解決に成功するたび
 // 更新され得るので、成功のたびにファイル全体を書き直すと I/O がステップ数に比例する。
@@ -32,8 +33,13 @@ final class LocatorFingerprintCache {
         }
     }
 
-    static func key(scenarioID: String, file: String, line: Int, selector: String) -> String {
-        "\(scenarioID)|\(file):\(line)|\(selector)"
+    static func key(scenarioID: String, platform: String, file: String, line: Int, selector: String) -> String {
+        scope(scenarioID: scenarioID, platform: platform) + "\(file):\(line)|\(selector)"
+    }
+
+    /// 1つのシナリオ・1つの OS の鍵が共有する接頭辞(`key` と `flush` の刈り取り範囲の唯一の定義元)
+    static func scope(scenarioID: String, platform: String) -> String {
+        "\(scenarioID)|\(platform)|"
     }
 
     func lookup(_ key: String) -> LocatorFingerprint? {
@@ -54,9 +60,9 @@ final class LocatorFingerprintCache {
         }
     }
 
-    /// シナリオ終了時に1回だけ呼ぶ。`scenarioID` に属する鍵のうち、今回の run で
+    /// シナリオ終了時に1回だけ呼ぶ。`scenarioID` と `platform` に属する鍵のうち、今回の run で
     /// 触れなかった(= lookup() も record() もされなかった)ものを刈ってから書き出す。
-    /// 鍵は `key(...)` の形 `"<scenarioID>|<file>:<line>|<selector>"` なので、
+    /// 鍵は `key(...)` の形 `"<scenarioID>|<platform>|<file>:<line>|<selector>"` なので、
     /// 利用者がソースの行を足す/消す・セレクタを直すと鍵が変わり、古い鍵は二度と
     /// lookup されないまま永久に残る(90 エントリ/19.6KB 規模の実測あり)。失効規則は3条件を守る:
     ///
@@ -66,11 +72,12 @@ final class LocatorFingerprintCache {
     ///    シナリオの鍵が1つも無ければ何もしない)。触れた集合が空の run(鍵を引く経路を
     ///    1度も通らなかった)で刈ると「1件も触れていない」を「全部古い」と誤読し、そのシナリオの鍵を
     ///    まるごと消してしまう(まだ現役の指紋を根こそぎ失う退化 —— 消してはいけないガード)
-    /// 3. **他のシナリオの鍵には触れない**。鍵の接頭辞 `"<scenarioID>|"` で自分のぶんだけを
-    ///    対象にする。部分実行(`--scenario` 指定)でも他シナリオの指紋を巻き込まない
-    func flush(scenarioID: String, scenarioPassed: Bool) {
+    /// 3. **他のシナリオ・他の OS の鍵には触れない**。接頭辞 `scope(...)` で自分のぶんだけを
+    ///    対象にする。部分実行(`--scenario` 指定)でも他シナリオの指紋を巻き込まず、iOS の run が
+    ///    同じシナリオの Android の指紋を刈らない(交互に回すと互いに消し合う)
+    func flush(scenarioID: String, platform: String, scenarioPassed: Bool) {
         if scenarioPassed {
-            let prefix = scenarioID + "|"
+            let prefix = Self.scope(scenarioID: scenarioID, platform: platform)
             let recordedThisRun = touchedThisRun.contains { $0.hasPrefix(prefix) }
             if recordedThisRun {
                 let staleKeys = entries.keys.filter {

@@ -756,8 +756,8 @@ public final class FTDriveCore {
         var cacheKey: String?
         var cachedFingerprint: LocatorFingerprint?
         if let selectorText {
-            let key = LocatorFingerprintCache.key(scenarioID: scenarioID, file: filePath,
-                                                  line: Int(line), selector: selectorText)
+            let key = LocatorFingerprintCache.key(scenarioID: scenarioID, platform: platform,
+                                                  file: filePath, line: Int(line), selector: selectorText)
             cacheKey = key
             cachedFingerprint = fingerprintCache.lookup(key)
         }
@@ -968,7 +968,7 @@ public final class FTDriveCore {
     /// 「通った」として古い鍵を刈らないため
     public func flushLocatorFingerprints() {
         let scenarioPassed = finalRecord.passed && !stoppedByUser
-        fingerprintCache.flush(scenarioID: scenarioID, scenarioPassed: scenarioPassed)
+        fingerprintCache.flush(scenarioID: scenarioID, platform: platform, scenarioPassed: scenarioPassed)
     }
 
     /// **台帳(ft_snapshot が貯めた実在 id)に無い `#id`** を dry-run で警告する。

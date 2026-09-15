@@ -2,7 +2,7 @@ import XCTest
 @testable import FTDSL
 import FTCore
 
-/// `LocatorFingerprintCache.flush(scenarioID:scenarioPassed:)` の失効規則(古い鍵の刈り取り)。
+/// `LocatorFingerprintCache.flush(scenarioID:platform:scenarioPassed:)` の失効規則(古い鍵の刈り取り)。
 /// 鍵の実文字列(`LocatorFingerprintCache.key` の形)は生成せず手で組む —— ここで検証したいのは
 /// キャッシュ層の刈り取り条件そのもので、鍵の生成規則は既存の他テストが担う。
 /// FTDriveCore 経由の実配線確認(record() → flush() の一気通貫)は
@@ -32,15 +32,15 @@ final class LocatorFingerprintExpiryTests: XCTestCase {
     func testPassedRunPrunesUntouchedKeysButKeepsTouched() {
         let url = tempURL("prune-basic")
         let scenarioID = "Fingerprint.Prune.Basic"
-        let keyA = "\(scenarioID)|s.swift:10|#btn_a"
-        let keyB = "\(scenarioID)|s.swift:11|#btn_b"
+        let keyA = "\(scenarioID)|ios|s.swift:10|#btn_a"
+        let keyB = "\(scenarioID)|ios|s.swift:11|#btn_b"
 
         // run1: 両方記録して flush(通った)
         do {
             let cache = LocatorFingerprintCache(url: url)
             cache.record(keyA, fingerprint: fp("Label A"))
             cache.record(keyB, fingerprint: fp("Label B"))
-            cache.flush(scenarioID: scenarioID, scenarioPassed: true)
+            cache.flush(scenarioID: scenarioID, platform: "ios", scenarioPassed: true)
         }
         XCTAssertEqual(readEntries(url).count, 2, "前提が崩れている: run1 で2件記録できていない")
 
@@ -48,7 +48,7 @@ final class LocatorFingerprintExpiryTests: XCTestCase {
         do {
             let cache = LocatorFingerprintCache(url: url)
             cache.record(keyA, fingerprint: fp("Label A"))
-            cache.flush(scenarioID: scenarioID, scenarioPassed: true)
+            cache.flush(scenarioID: scenarioID, platform: "ios", scenarioPassed: true)
         }
         let entries = readEntries(url)
         XCTAssertEqual(entries.count, 1,
@@ -57,30 +57,68 @@ final class LocatorFingerprintExpiryTests: XCTestCase {
         XCTAssertNil(entries[keyB], "触れなかった鍵(古いソース配置の残骸)は消えなければいけない")
     }
 
+    /// **同じシナリオでも他の OS の鍵には触れない**。iOS と Android で交互に回す共通シナリオで、
+    /// iOS の run が Android の指紋を刈る(逆も)と、互いに消し合って指紋が1度も効かなくなる。
+    /// 「刈る範囲を OS で絞らない」変異は android の鍵が消えて落ちる
+    func testDoesNotTouchTheSameScenarioOnAnotherPlatform() {
+        let url = tempURL("prune-other-platform")
+        let scenarioID = "Fingerprint.Prune.OtherPlatform"
+        let iosKey = LocatorFingerprintCache.key(scenarioID: scenarioID, platform: "ios",
+                                                 file: "s.swift", line: 10, selector: "#btn_a")
+        let androidKey = LocatorFingerprintCache.key(scenarioID: scenarioID, platform: "android",
+                                                     file: "s.swift", line: 10, selector: "#btn_a")
+        XCTAssertNotEqual(iosKey, androidKey, "前提: 同じ行・同じセレクタでも OS で鍵が分かれる")
+
+        do {
+            let cache = LocatorFingerprintCache(url: url)
+            cache.record(androidKey, fingerprint: LocatorFingerprint(type: "Cell", label: "A", placeholder: nil))
+            cache.flush(scenarioID: scenarioID, platform: "android", scenarioPassed: true)
+        }
+        // iOS の run: 同じ行を iOS の鍵で記録して通る。android の鍵には触れていない
+        do {
+            let cache = LocatorFingerprintCache(url: url)
+            cache.record(iosKey, fingerprint: LocatorFingerprint(type: "button", label: "A", placeholder: nil))
+            cache.flush(scenarioID: scenarioID, platform: "ios", scenarioPassed: true)
+        }
+
+        let entries = readEntries(url)
+        XCTAssertEqual(entries[androidKey]?.type, "Cell", "iOS の run が Android の指紋を刈った・上書きした")
+        XCTAssertEqual(entries[iosKey]?.type, "button")
+    }
+
+    /// 鍵の形はリテラルで固定する(`scope` と `key` がずれると刈り取りが自分の鍵を外す)
+    func testKeyShapeIsPinned() {
+        XCTAssertEqual(LocatorFingerprintCache.key(scenarioID: "C.S0010", platform: "ios",
+                                                   file: "a.swift", line: 7, selector: "#x"),
+                       "C.S0010|ios|a.swift:7|#x")
+        XCTAssertEqual(LocatorFingerprintCache.scope(scenarioID: "C.S0010", platform: "android"),
+                       "C.S0010|android|")
+    }
+
     /// **最重要**: 他のシナリオの鍵には触れない。部分実行(`--scenario` 指定)で
     /// 無関係シナリオの指紋を巻き込んで消す退行を落とす
     func testDoesNotTouchOtherScenarioKeys() {
         let url = tempURL("prune-other-scenario")
         let scenarioA = "Fingerprint.Prune.Other.A"
         let scenarioB = "Fingerprint.Prune.Other.B"
-        let keyA1 = "\(scenarioA)|s.swift:10|#btn_a"
-        let keyA2 = "\(scenarioA)|s.swift:11|#btn_b"
-        let keyB1 = "\(scenarioB)|s.swift:20|#btn_c"
-        let keyB2 = "\(scenarioB)|s.swift:21|#btn_d"
+        let keyA1 = "\(scenarioA)|ios|s.swift:10|#btn_a"
+        let keyA2 = "\(scenarioA)|ios|s.swift:11|#btn_b"
+        let keyB1 = "\(scenarioB)|ios|s.swift:20|#btn_c"
+        let keyB2 = "\(scenarioB)|ios|s.swift:21|#btn_d"
 
         // シナリオ A の run(2件記録・通った)
         do {
             let cache = LocatorFingerprintCache(url: url)
             cache.record(keyA1, fingerprint: fp("A1"))
             cache.record(keyA2, fingerprint: fp("A2"))
-            cache.flush(scenarioID: scenarioA, scenarioPassed: true)
+            cache.flush(scenarioID: scenarioA, platform: "ios", scenarioPassed: true)
         }
         // シナリオ B の run(2件記録・通った)。同じファイルへ相乗りする
         do {
             let cache = LocatorFingerprintCache(url: url)
             cache.record(keyB1, fingerprint: fp("B1"))
             cache.record(keyB2, fingerprint: fp("B2"))
-            cache.flush(scenarioID: scenarioB, scenarioPassed: true)
+            cache.flush(scenarioID: scenarioB, platform: "ios", scenarioPassed: true)
         }
         XCTAssertEqual(readEntries(url).count, 4, "前提が崩れている: 2シナリオぶんの4件が揃っていない")
 
@@ -89,7 +127,7 @@ final class LocatorFingerprintExpiryTests: XCTestCase {
         do {
             let cache = LocatorFingerprintCache(url: url)
             cache.record(keyB1, fingerprint: fp("B1"))
-            cache.flush(scenarioID: scenarioB, scenarioPassed: true)
+            cache.flush(scenarioID: scenarioB, platform: "ios", scenarioPassed: true)
         }
 
         let entries = readEntries(url)
@@ -106,14 +144,14 @@ final class LocatorFingerprintExpiryTests: XCTestCase {
     func testFailedRunDoesNotPrune() {
         let url = tempURL("prune-failed")
         let scenarioID = "Fingerprint.Prune.Failed"
-        let keyA = "\(scenarioID)|s.swift:10|#btn_a"
-        let keyB = "\(scenarioID)|s.swift:11|#btn_b"
+        let keyA = "\(scenarioID)|ios|s.swift:10|#btn_a"
+        let keyB = "\(scenarioID)|ios|s.swift:11|#btn_b"
 
         do {
             let cache = LocatorFingerprintCache(url: url)
             cache.record(keyA, fingerprint: fp("A"))
             cache.record(keyB, fingerprint: fp("B"))
-            cache.flush(scenarioID: scenarioID, scenarioPassed: true)
+            cache.flush(scenarioID: scenarioID, platform: "ios", scenarioPassed: true)
         }
         XCTAssertEqual(readEntries(url).count, 2, "前提が崩れている")
 
@@ -121,7 +159,7 @@ final class LocatorFingerprintExpiryTests: XCTestCase {
         do {
             let cache = LocatorFingerprintCache(url: url)
             cache.record(keyA, fingerprint: fp("A"))
-            cache.flush(scenarioID: scenarioID, scenarioPassed: false)
+            cache.flush(scenarioID: scenarioID, platform: "ios", scenarioPassed: false)
         }
 
         let entries = readEntries(url)
@@ -137,21 +175,21 @@ final class LocatorFingerprintExpiryTests: XCTestCase {
     func testZeroRecordedThisRunDoesNotPrune() {
         let url = tempURL("prune-zero-recorded")
         let scenarioID = "Fingerprint.Prune.ZeroRecorded"
-        let keyA = "\(scenarioID)|s.swift:10|#btn_a"
-        let keyB = "\(scenarioID)|s.swift:11|#btn_b"
+        let keyA = "\(scenarioID)|ios|s.swift:10|#btn_a"
+        let keyB = "\(scenarioID)|ios|s.swift:11|#btn_b"
 
         do {
             let cache = LocatorFingerprintCache(url: url)
             cache.record(keyA, fingerprint: fp("A"))
             cache.record(keyB, fingerprint: fp("B"))
-            cache.flush(scenarioID: scenarioID, scenarioPassed: true)
+            cache.flush(scenarioID: scenarioID, platform: "ios", scenarioPassed: true)
         }
         XCTAssertEqual(readEntries(url).count, 2, "前提が崩れている")
 
         // run2: このシナリオの鍵に1件も触れない。通った run なので scenarioPassed は true
         do {
             let cache = LocatorFingerprintCache(url: url)
-            cache.flush(scenarioID: scenarioID, scenarioPassed: true)
+            cache.flush(scenarioID: scenarioID, platform: "ios", scenarioPassed: true)
         }
 
         let entries = readEntries(url)
@@ -166,16 +204,16 @@ final class LocatorFingerprintExpiryTests: XCTestCase {
     func testLookedUpKeyIsNotPruned() {
         let url = tempURL("prune-lookup")
         let scenarioID = "Fingerprint.Prune.Lookup"
-        let keyA = "\(scenarioID)|s.swift:10|#btn_a"
-        let keyB = "\(scenarioID)|s.swift:11|#btn_b"
-        let keyC = "\(scenarioID)|s.swift:12|#btn_c"
+        let keyA = "\(scenarioID)|ios|s.swift:10|#btn_a"
+        let keyB = "\(scenarioID)|ios|s.swift:11|#btn_b"
+        let keyC = "\(scenarioID)|ios|s.swift:12|#btn_c"
 
         do {
             let cache = LocatorFingerprintCache(url: url)
             cache.record(keyA, fingerprint: fp("A"))
             cache.record(keyB, fingerprint: fp("B"))
             cache.record(keyC, fingerprint: fp("C"))
-            cache.flush(scenarioID: scenarioID, scenarioPassed: true)
+            cache.flush(scenarioID: scenarioID, platform: "ios", scenarioPassed: true)
         }
 
         // run2: keyA はプライマリで通って record、keyB は引いただけ(指紋で直った想定)、keyC の行は消えた
@@ -184,7 +222,7 @@ final class LocatorFingerprintExpiryTests: XCTestCase {
             XCTAssertEqual(cache.lookup(keyA), fp("A"))
             cache.record(keyA, fingerprint: fp("A"))
             XCTAssertEqual(cache.lookup(keyB), fp("B"))
-            cache.flush(scenarioID: scenarioID, scenarioPassed: true)
+            cache.flush(scenarioID: scenarioID, platform: "ios", scenarioPassed: true)
         }
 
         let entries = readEntries(url)
@@ -198,22 +236,22 @@ final class LocatorFingerprintExpiryTests: XCTestCase {
     func testNonIdentifyingRecordIsNotStoredAndDropsPreviousEntry() {
         let url = tempURL("non-identifying")
         let scenarioID = "Fingerprint.NonIdentifying"
-        let keyA = "\(scenarioID)|s.swift:10|#btn_a"
-        let keyB = "\(scenarioID)|s.swift:11|#btn_b"
+        let keyA = "\(scenarioID)|ios|s.swift:10|#btn_a"
+        let keyB = "\(scenarioID)|ios|s.swift:11|#btn_b"
         let typeOnly = LocatorFingerprint(type: "button", label: nil, placeholder: nil)
 
         do {
             let cache = LocatorFingerprintCache(url: url)
             cache.record(keyA, fingerprint: fp("A"))
             cache.record(keyB, fingerprint: typeOnly)
-            cache.flush(scenarioID: scenarioID, scenarioPassed: true)
+            cache.flush(scenarioID: scenarioID, platform: "ios", scenarioPassed: true)
         }
         XCTAssertEqual(Set(readEntries(url).keys), [keyA], "型だけの指紋を控えてはいけない")
 
         do {
             let cache = LocatorFingerprintCache(url: url)
             cache.record(keyA, fingerprint: typeOnly)
-            cache.flush(scenarioID: scenarioID, scenarioPassed: true)
+            cache.flush(scenarioID: scenarioID, platform: "ios", scenarioPassed: true)
         }
         XCTAssertTrue(readEntries(url).isEmpty, "ラベルを失った要素の古い控えは消えるはず")
     }
