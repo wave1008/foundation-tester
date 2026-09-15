@@ -78,6 +78,7 @@ results/runs/<YYYY-MM>/<runID>/
 | そのステップで何が起きていたか | `failedSteps[].notes`(`interruption-dismissed` 等) |
 | ステップに到達すらしなかったか | `failedSteps` が空 —— `errorLogs` / `skipKind` を見る |
 | run 中にデバイスが飛んだか | `run.json` の `workerAnomalies` |
+| 1 台だけ遅かったか | `run.json` の `slowWorkers`(その台の画面取得の中央値が他の台の 10 倍以上かつ 1 秒以上。**警告だけで除外はしない**・台が 1 台の run には出ない) |
 
 `failureKind` の値: `selector-syntax`(デバイスに触れる前の検証で落とした)、`not-found`
 (スクロール探索を含めてロケータが解決できなかった)、`assertion`(値・状態が期待と違った)、

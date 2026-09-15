@@ -320,7 +320,7 @@ screenLooksLike がこの回数ぶん静かに素通りしたことを事後に�
 | description | String | 人間可読なステップ説明(group の前置・注記の括弧書きを含む) |
 | command | String? | DSL のコマンド名。**`description` を割って作らないこと** |
 | failureKind | String? | 上表 |
-| notes | [String]? | `StepNote` の rawValue(`interruption-dismissed` / `settle-capped` / `visibility-guard-skipped` / `system-alert-present` 等。全部の定義は `Sources/FTCore/StepNote.swift`) |
+| notes | [String]? | `StepNote` の rawValue(`interruption-dismissed` / `settle-capped` / `visibility-guard-skipped` / `system-alert-present` 等。全部の定義は `Sources/FTCore/StepNote.swift`。occlusion-guard・OCR の近道に関わる `guard-retaken` / `ocr-budget-exhausted` / `ocr-shortcut-not-warm` / `ocr-shortcut-busy` の読み方は下の §TimelineStepRecord(`guardMs` / `ocrMs` の段)) |
 | detail | String? | 失敗理由(英語・人間可読) |
 | file / line | String? / Int? | ソース位置 |
 | durationMs | Int? | 所要 |
@@ -367,6 +367,17 @@ snapshot/action/wait のどれにも計上されない時間だった実測。
 (`RegionText.occlusionBudget` = 1.3 秒 = 置き換える相手である FM 照合の実測下限)を持たせ、
 超えたら FM へ落として注記 `ocr-budget-exhausted` を残す(設計は docs/design.md §Tier-2 の続き)。
 **`ocr-budget-exhausted` の率が上がったら Vision が劣化している**(モデルが載っていない・OS 側の不調)。
+近道を**撃たなかった**回は理由を分けて残す: `ocr-shortcut-not-warm`(②のゲート = モデルがまだ載っていない)/
+`ocr-shortcut-busy`(③のゲート = 予算切れで諦めた読みがまだ走っている)。どちらも「FM に訊いた」事実であって
+失敗ではない。**OCR が効くはずの薄いテキストで反転したら、まずこの 2 つの有無を見る**(近道が走っていれば
+`ocrMs > 0`、走っていなければこのどちらかが立つ。OCR を実行プロファイルで切った run には付かない)。
+
+**occlusion-guard の撮り直し(`guard-retaken`)**: 1 回目のガード評価(FM の直列化待ち + 推論)がステップの
+timeout を跨いだまま「見えていない」と出たときだけ、締切を 1 度だけ延ばして**新しいスクリーンショット**で
+評価し直す。付くのは**撮り直しで見えていると分かって通った**ステップだけ(2 回目も見えなければ従来どおりの
+反転の失敗で、注記は付かない)。ガードの所要はアプリの応答ではなく FM の待ちなので、アサーションの待ち予算から
+引かない、という規則(描画が木の更新に数百 ms 遅れる WebView で、1 枚目の古い絵が反転を確定させていた)。
+**率が高いなら FM の直列化待ち(`fm.gateWait*`)が膨らんでいる**。timeout 0 のステップは延ばさない。
 
 **36〜108 秒の正体(同日に確定)**: Vision の認識器の実体(Espresso)のコンパイルキャッシュは
 **プロセス名とバイナリの素性ごと**(`~/Library/Caches/<プロセス名>/com.apple.e5rt.e5bundlecache`。再ビルドでコールドに戻る)で、コンパイル

@@ -78,6 +78,7 @@ The tool records only observable facts — it does not guess whether a failure w
 | What was happening at that step | `failedSteps[].notes` (e.g. `interruption-dismissed`) |
 | Whether the scenario never even reached a step | `failedSteps` is empty — check `errorLogs` / `skipKind` |
 | Whether devices dropped out during the run | `run.json`'s `workerAnomalies` |
+| Whether one device was slow | `run.json`'s `slowWorkers` (that device's median screen read was at least 10× the other devices' and over 1 second. **A warning only — the device is not excluded**; never set for a single-device run) |
 
 `failureKind` values: `selector-syntax` (caught before touching a device), `not-found` (locator
 never resolved, even after scroll search), `assertion` (value/state mismatch), `driver-unreachable`
