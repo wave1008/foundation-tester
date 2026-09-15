@@ -43,7 +43,7 @@ fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml
   通常のステップと混在する場合は passed の `<testcase>` に埋もれる
   (気付く経路は実行ログ・Markdown レポートの ❓ と修正提案)
 - **失敗の調査**: `TestProjects/<name>/reports/` に Markdown レポート(失敗時の要素一覧・
-  スクリーンショット・FM トリアージ)が出る。**artifact に上げておく**と JUnit の
+  スクリーンショット・自己修復の提案)が出る。**artifact に上げておく**と JUnit の
   `report:` 行から辿れる
 
 ## Jenkins の例
@@ -80,7 +80,7 @@ pipeline {
 | ランナー | FM の可否 |
 |---|---|
 | 物理 Mac(Jenkins 常駐機等) | ✅ 可(本プロジェクトの開発機で実証済み) |
-| AWS EC2 Mac(ベアメタル) | 原理的に可のはず(未検証)。macOS 27 の画像入力は GA 版 AMI 提供後。macOS 26 AMI ならテキスト系(heal・トリアージ)まで |
+| AWS EC2 Mac(ベアメタル) | 原理的に可のはず(未検証)。macOS 27 の画像入力は GA 版 AMI 提供後。macOS 26 AMI ならテキスト系(heal)まで |
 | macOS VM(Tart/Anka 等の VM 構成。サポート外の GitHub ホストランナーも同類) | ❌ 不可の公算大(ANE 非公開)。FM 系は自動スキップで走る |
 
 ベアメタルで有効化する場合の条件と罠:

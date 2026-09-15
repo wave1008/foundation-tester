@@ -18,10 +18,9 @@ selects one.
 |---|---|---|---|
 | `app` | string | — | Name of the `apps/<name>.json` profile to use |
 | `devices` | array | — | Device names to run on (from the resolved machine profile; iOS/Android can mix in the same list) |
-| `fm` | bool | `true` | Master switch for all FM (Foundation Models) features. FM is experimental — see [environments.md](../overview/environments.md). `false` disables self-healing, `falsePositiveCheck`, `screenLooksLike` and failure triage entirely, regardless of the individual toggles below |
+| `fm` | bool | `true` | Master switch for all FM (Foundation Models) features. FM is experimental — see [environments.md](../overview/environments.md). `false` disables self-healing, `falsePositiveCheck` and `screenLooksLike` entirely, regardless of the individual toggles below |
 | `heal` | bool | `true` | Allow FM-based locator self-healing (see [self_healing.md](../running/self_healing.md)) |
 | `falsePositiveCheck` | bool | `true` | Occlusion-guard verification on `exist`/`textIs` etc. — catches a "false green" that matched in the tree but is not actually visible |
-| `triage` | bool | `true` | Failure triage (classification, summary, suggested fix). **Advisory only — it never changes pass/fail**, so turning it off costs no verification strength (set `false` to avoid a few seconds of FM per failure) |
 | `screenLooksLike` | bool | `true` | Enable `screenLooksLike` (FM visual verification). When `false`, those steps are skipped rather than failing |
 | `ocr` | bool | `true` | Master switch for all OCR features. `false` disables them regardless of the individual toggles below |
 | `ocrFalsePositiveCheck` | bool | `true` | Let the occlusion guard read the element with on-device OCR (Vision) before asking FM. When the expected text is read in full the step passes without an FM call; anything else still goes to FM, so turning this off only makes the same check slower. It has no effect when `falsePositiveCheck` is `false`, because the guard itself does not run |
@@ -49,7 +48,7 @@ selects one.
 
 ## FM toggle hierarchy
 
-`fm` is the parent switch; `heal`, `falsePositiveCheck`, `screenLooksLike` and `triage` all
+`fm` is the parent switch; `heal`, `falsePositiveCheck` and `screenLooksLike` all
 default to `true` (`falsePositiveCheck` changed from opt-in on 2026-09-03). If `fm` is `false`,
 the individual toggles have no effect. Whether
 self-healing is on by default also depends on how you invoke the run: **a `--profile` run

@@ -95,7 +95,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// ここは観測できる形にするためだけの注記)。**黙ると「FM が探して見つからなかった」と
     /// 「FM は答えを持っていたが使わなかった」が失敗文言の上で見分けられなくなる**
     /// (2026-09-02 実測: medium の提案が正解の #id を出していたのに `cannot resolve the locator`
-    /// としか出ず、triage を読まない限り気付けなかった)。
+    /// としか出ず、提案の中身は失敗文言のどこにも残らなかった)。
     /// **率が上がったら閾値を疑うのではなく提案の質(木の情報量・instructions)を疑う**
     case healProposalRejected = "heal-proposal-rejected"
 

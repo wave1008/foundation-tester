@@ -92,7 +92,6 @@ const RUN_FIELDS = {
   heal: true,
   falsePositiveCheck: true,
   screenLooksLike: true,
-  triage: true,
   containerInference: true,
   ocr: true,
   ocrFalsePositiveCheck: true,
@@ -235,7 +234,7 @@ test("送信中の変更は並行に送らず、応答の後に最新の値で1�
   document.getElementById("run-profile-heal").click();
   assert.equal(saves(posted).length, 1);
 
-  document.getElementById("run-profile-triage").click();
+  document.getElementById("run-profile-screen-looks-like").click();
   typeAndCommit(window, document.getElementById("run-profile-report-dir"), "out");
   assert.equal(saves(posted).length, 1, "応答を待たずに2本目を送っている(後の保存が先に着くと古い値で上書きされる)");
 
@@ -243,7 +242,7 @@ test("送信中の変更は並行に送らず、応答の後に最新の値で1�
   const sent = saves(posted);
   assert.equal(sent.length, 2);
   assert.equal(sent[1].fields.heal, false);
-  assert.equal(sent[1].fields.triage, false);
+  assert.equal(sent[1].fields.screenLooksLike, false);
   assert.equal(sent[1].fields.reportDir, "out");
 
   send({ type: "runProfileSaveResult", profile: "ios", ok: true, error: null });

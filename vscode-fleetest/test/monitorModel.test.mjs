@@ -1035,7 +1035,6 @@ test("buildRunProfileTemplate: apps/devices 候補ありなら先頭のappと全
     ocr: true,
     ocrFalsePositiveCheck: true,
     screenLooksLike: true,
-    triage: true,
     iosInappEngine: true,
     updateWebView: true,
     wipeDataOnBloat: true,
@@ -1055,7 +1054,6 @@ test("buildRunProfileTemplate: 候補が無ければ app は空文字、devices 
     ocr: true,
     ocrFalsePositiveCheck: true,
     screenLooksLike: true,
-    triage: true,
     iosInappEngine: true,
     updateWebView: true,
     wipeDataOnBloat: true,
@@ -1075,7 +1073,6 @@ test("buildRunProfileTemplate: machine が空文字なら machine キー自体�
     ocr: true,
     ocrFalsePositiveCheck: true,
     screenLooksLike: true,
-    triage: true,
     iosInappEngine: true,
     updateWebView: true,
     wipeDataOnBloat: true,
@@ -2824,7 +2821,6 @@ test("parseRunProfileForForm: 正常な値は26フィールドをそのまま読
     heal: true,
     falsePositiveCheck: false,
     screenLooksLike: false,
-    triage: false,
     containerInference: false,
     ocr: false,
     ocrFalsePositiveCheck: false,
@@ -2855,7 +2851,6 @@ test("parseRunProfileForForm: 正常な値は26フィールドをそのまま読
     heal: true,
     falsePositiveCheck: false,
     screenLooksLike: false,
-    triage: false,
     containerInference: false,
     ocr: false,
     ocrFalsePositiveCheck: false,
@@ -2880,7 +2875,7 @@ test("parseRunProfileForForm: 正常な値は26フィールドをそのまま読
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、fm/heal/screenLooksLike/falsePositiveCheck/triage/containerInference/ocr=true、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionWarmup=true)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、fm/heal/screenLooksLike/falsePositiveCheck/containerInference/ocr=true、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionWarmup=true)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     machine: "",
@@ -2889,7 +2884,6 @@ test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/loc
     fm: true,
     heal: true,
     falsePositiveCheck: true,
-    triage: true,
     screenLooksLike: true,
     containerInference: true,
     ocr: true,
@@ -2948,7 +2942,6 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     fm: true,
     heal: true,
     falsePositiveCheck: true,
-    triage: true,
     screenLooksLike: true,
     containerInference: true,
     ocr: true,
@@ -2990,6 +2983,15 @@ test("updateRunProfileInObject: 保存すると旧キー screenIs は消える(�
   assert.equal(saved.ok, true);
   assert.equal(saved.object.screenLooksLike, true);
   assert.ok(!("screenIs" in saved.object), `旧キーが残っている: ${JSON.stringify(saved.object)}`);
+});
+
+test("updateRunProfileInObject: 保存すると撤去したキー triage は消える(旧テンプレートが必ず書いていた)", () => {
+  const saved = updateRunProfileInObject(
+    { triage: true, app: "a", customKey: 1 },
+    { ...BASE_RUN_PROFILE_FIELDS });
+  assert.equal(saved.ok, true);
+  assert.ok(!("triage" in saved.object), `撤去したキーが残っている: ${JSON.stringify(saved.object)}`);
+  assert.equal(saved.object.customKey, 1, "他の未知のキーは引き継ぐ");
 });
 
 test("parseRunProfileForForm: remoteControl はネストしたオブジェクトから読む(欠落/非オブジェクト/非文字列 は既定値'')", () => {

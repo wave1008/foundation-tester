@@ -1,4 +1,4 @@
-// 再生失敗時のみ呼ばれる FM フック群(Healer/Verifier/Triager、各セクションは下記 MARK 参照)。
+// 再生失敗時のみ呼ばれる FM フック群(Healer/Verifier、各セクションは下記 MARK 参照)。
 //
 // **セッションに `model:` を渡さない**(省略 = オンデバイス固定。PCC は禁止。FTCore/FMGate.swift 冒頭)。
 
@@ -38,26 +38,6 @@ struct ScreenVerdict {
     var reason: String
 }
 
-@Generable
-enum FailureClass {
-    case appBug
-    case flakiness
-    case locatorDrift
-    case envIssue
-}
-
-@Generable
-struct TriageSuggestion {
-    @Guide(description: "Failure class. App defect=appBug, timing-related=flakiness, locator stale after a UI change=locatorDrift, environment problem=envIssue")
-    var failureClass: FailureClass
-
-    @Guide(description: "What happened, in one or two English sentences")
-    var summary: String
-
-    @Guide(description: "The next action to fix it, in one English sentence")
-    var suggestedFix: String
-}
-
 // MARK: - ReplayDelegate 実装
 
 public final class FMReplayDelegate: ReplayDelegate {
@@ -88,9 +68,8 @@ public final class FMReplayDelegate: ReplayDelegate {
         let rendered = FMPromptBudget.fit(SnapshotRenderer.render(snapshot))
         // プロンプト構築自体は純粋関数(healPrompt)へ切り出してある(FM 呼び出し・デバイスが
         // 要らない。単体テストは Tests/FTFoundationModelsTests/HealPromptTests.swift)。
-        // 2026-09-02 の実測: モデルが壊れたロケータをそのままオウム返ししていた(triage は
-        // 同じ木から正解を出せていたので木の問題ではなくプロンプトの問題)。壊れたロケータの
-        // 文字列を名指しし、それを答えにするなと明示する
+        // モデルは壊れたロケータをそのままオウム返しする(2026-09-02 実測。木ではなくプロンプトの
+        // 問題)。壊れたロケータの文字列を名指しし、それを答えにするなと明示する
         let prompt = Self.healPrompt(step: step, renderedElements: rendered)
         let healStartedAt = Date()
         do {
@@ -236,107 +215,7 @@ public final class FMReplayDelegate: ReplayDelegate {
         return (r.visible, r.state, r.reason, r.observedText)
     }
 
-    // MARK: Triager
-
-    public func triage(goal: String?, stepDescription: String, failureReason: String,
-                       snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? {
-        // heal と同じ理由で上限を掛ける(FMPromptBudget)。実アプリの密な画面では
-        // full tree + スクショ + 300tok が 4,096 トークンを超え、triage が1度も返らない
-        let rendered = snapshot.map { FMPromptBudget.fit(SnapshotRenderer.render($0)) } ?? "(not available)"
-        // **出力言語を決めるのは instructions ではなく @Guide の description**(2026-07-30 実測)。
-        // instructions を英語にしても @Guide に「日本語で1文」が残っている間は日本語で返り続けた。
-        // 出力言語を変えるときは TriageSuggestion / ScreenVerdict / LocatorRepairSuggestion の
-        // @Guide も直すこと
-        let instructions = """
-        You triage UI test failures.
-        From the failed step and the current screen, classify the failure and suggest a fix.
-        Answer in English.
-        Classification guide:
-        - An error message is shown on screen, or the interaction succeeded but the app did
-          not move to the expected screen -> appBug
-        - An element that seems to play the same role exists under a different name -> locatorDrift
-        - The element is present but the wait looks too short -> flakiness
-        """
-        let text = """
-        \(goal.map { "Test goal: \($0)\n" } ?? "")Failed step: \(stepDescription)
-        Failure reason: \(failureReason)
-
-        Elements on screen at the moment of failure:
-        \(rendered)
-
-        Analyse this failure.
-        """
-        // FM はホスト全体で直列化される資源(FMLock 参照)。マルチモーダル→テキストの
-        // 2 回分をまとめて 1 回の取得で回す(間で他ワーカーに割り込ませない)
-        guard await FMGate.enter() else { return nil }
-        defer { FMGate.leave() }
-        // マルチモーダル失敗時のフォールバックとしてテキストのみでも再試行する
-        // (Attachment は macOS 27+。26 では常にテキストのみの経路を通る)
-        //
-        // **試行ごとに FMHealth へ記録する**(heal / screenLooksLike と同じ規約)。記録は失敗率の分母と
-        // FMBreaker の両方を養う(FMHealth.record → FMBreaker.recordSuccess/Failure)ので、
-        // 記録を欠くと ①結果 JSON の fm に triage が出ず「呼ばれていない」と誤読され
-        // ②triage の失敗がブレーカを進めないため、FM が死んだホストで失敗するシナリオが
-        // 毎回 2 試行ぶんの時間を捨て続ける。画像経路とテキスト経路は別の FM 呼び出しなので
-        // それぞれ 1 件として数える(画像が死んでテキストだけ生きている状態が失敗率に出る)。
-        if #available(macOS 27, *), let png = screenshotPNG, let cgImage = Self.cgImage(fromPNG: png) {
-            let imageStartedAt = Date()
-            do {
-                let suggestion = try await LanguageModelSession(instructions: instructions).respond(
-                    generating: TriageSuggestion.self,
-                    options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 300)
-                ) {
-                    text
-                    "Screenshot at the moment of failure:"
-                    Attachment(cgImage)
-                }.content
-                FMHealth.record(kind: "triage", path: .vision, ms: OcclusionVerifier.elapsedMs(imageStartedAt), ok: true)
-                return Self.info(from: suggestion)
-            } catch {
-                // ここでは return しない(下のテキストのみ経路で再試行する)
-                FMHealth.record(kind: "triage", path: .vision, ms: OcclusionVerifier.elapsedMs(imageStartedAt),
-                                ok: false, error: "triage(image): \(FMHealth.describe(error))")
-            }
-        }
-        let textSession = LanguageModelSession(instructions: instructions)
-        textSession.prewarm()   // 効き方は healLocator のコメント参照(テキスト経路だけに入れる)
-        let textStartedAt = Date()
-        do {
-            let suggestion = try await textSession.respond(
-                to: text,
-                generating: TriageSuggestion.self,
-                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 300)
-            ).content
-            FMHealth.record(kind: "triage", path: .text, ms: OcclusionVerifier.elapsedMs(textStartedAt), ok: true)
-            return Self.info(from: suggestion)
-        } catch {
-            FMHealth.record(kind: "triage", path: .text, ms: OcclusionVerifier.elapsedMs(textStartedAt),
-                            ok: false, error: "triage: \(FMHealth.describe(error))")
-            return nil
-        }
-    }
-
     // MARK: - Helpers
-
-    static func info(from suggestion: TriageSuggestion) -> TriageInfo {
-        let name: String
-        switch suggestion.failureClass {
-        case .appBug: name = "appBug"
-        case .flakiness: name = "flakiness"
-        case .locatorDrift: name = "locatorDrift"
-        case .envIssue: name = "envIssue"
-        }
-        // 縮退ループの繰り返し文対策: ガイドで指定した文数で強制的に切る
-        return TriageInfo(failureClass: name,
-                          summary: String(firstSentences(suggestion.summary, 2).prefix(300)),
-                          suggestedFix: String(firstSentences(suggestion.suggestedFix, 1).prefix(300)))
-    }
-
-    static func firstSentences(_ text: String, _ count: Int) -> String {
-        let parts = text.split(separator: "。", omittingEmptySubsequences: true)
-        guard !parts.isEmpty else { return text }
-        return parts.prefix(count).joined(separator: "。") + "。"
-    }
 
     /// elementText→要素解決(テキスト一致で要素を引く簡易版)。
     /// モデルはこのリポジトリのセレクタ記法(`#id`)につられて id を `#` 付きで返したり、

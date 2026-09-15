@@ -117,11 +117,11 @@ public enum FMHealth {
     private static var skipped = 0
     private static var gateWaitMs: [Double] = []
 
-    /// FM 呼び出し1件を記録する。kind は "occlusion" / "heal" / "screenLooksLike" / "triage"。
+    /// FM 呼び出し1件を記録する。kind は "occlusion" / "heal" / "screenLooksLike" 等。
     ///
     /// `path` に**既定値は置かない** —— 新しい呼び出し元が経路を言い忘れたらコンパイルで止める。
-    /// kind から導出しないのは triage が**同じ kind で画像経路とテキスト経路の両方を撃つ**ため
-    /// (導出にすると、画像だけ死んでいる機械で vision を text の生死で塗り潰す)。
+    /// kind から導出しないのは、**1つの kind が画像経路とテキスト経路の両方を撃つ**呼び出しで
+    /// 導出が壊れるため(画像だけ死んでいる機械で vision を text の生死で塗り潰す)。
     /// 経路を分けて持つ理由は FMLiveness.swift 冒頭 ②
     public static func record(kind: String, path: FMLiveness.Path,
                               ms: Double, ok: Bool, error: String? = nil) {

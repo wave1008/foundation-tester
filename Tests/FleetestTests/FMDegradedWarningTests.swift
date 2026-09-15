@@ -71,19 +71,23 @@ final class FMDegradedWarningTests: XCTestCase {
         XCTAssertTrue(line.contains("vision boom"), "理由まで出す。\(line)")
     }
 
-    /// text だけ死。**heal を切っていても出す** —— triage は heal と無関係に FM を引く。
-    /// 2026-09-03 まで「--heal のときだけ」だったので、この形の run は開始前に何も言わなかった
-    func testTextDeathIsReportedEvenWhenHealIsOff() async throws {
+    /// text だけ死。run の中で text の経路を使うのは heal だけなので、heal が有効なら言い、
+    /// 切っていれば黙る(無効になる機能が無いのに「無効」と言わない)
+    func testTextDeathIsReportedOnlyWhenHealIsOn() async throws {
         try SharedResource.hostCaches.locked {
             try inject(text: .dead, vision: .alive)
         }
-        let lines = await warnings(fm: FMConfig(enabled: true, heal: false,
+        let lines = await warnings(fm: FMConfig(enabled: true, heal: true,
                                                 falsePositiveCheck: false, screenLooksLike: false))
         XCTAssertEqual(lines.count, 1, "\(lines)")
         let line = try XCTUnwrap(lines.first)
         XCTAssertTrue(line.contains("text path"), line)
         XCTAssertTrue(line.contains("self-healing"), line)
         XCTAssertTrue(line.contains("text boom"), line)
+
+        let healOff = await warnings(fm: FMConfig(enabled: true, heal: false,
+                                                  falsePositiveCheck: false, screenLooksLike: false))
+        XCTAssertEqual(healOff, [], "heal を切った run では text の死で失われる機能が無い")
     }
 
     /// 両方死んだら両方言う(無効になる機能の集合が違うので1行に畳まない)

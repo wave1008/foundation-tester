@@ -11,8 +11,7 @@ import XCTest
 @testable import FTCore
 
 private let testFMSettings = FMSettingsRecord(
-    fm: true, heal: false, falsePositiveCheck: false, screenLooksLike: true, triage: true,
-    ocr: true, ocrFalsePositiveCheck: true)
+    fm: true, heal: false, falsePositiveCheck: false, screenLooksLike: true, ocr: true, ocrFalsePositiveCheck: true)
 
 final class ScenarioHostRegisterChildProcessTests: XCTestCase {
 

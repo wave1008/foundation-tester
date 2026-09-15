@@ -48,7 +48,6 @@ public struct SceneRecordData: Sendable {
     public let number: Int
     public let title: String
     public var steps: [DSLStepRecord] = []
-    public var triage: TriageInfo?
     public var failureScreenshot: Data?
     /// 失敗時証跡スクショが白フレームでエビデンス無効。ScenarioReportWriter が警告表示する。
     public var evidenceBlank: Bool = false
@@ -190,9 +189,6 @@ public final class FTDriveCore {
     /// 実機か。白フレーム=画面凍結の推定はエミュレータ固有の病理(GPU 合成バッファ固着)なので、
     /// 実機では「画面が消灯しているだけ」を凍結と誤断しないためにこれで抑止する
     public let physical: Bool
-    /// 失敗時のトリアージを行うか(実行プロファイルの `triage` / ランナーの `--no-triage`)。
-    /// **合否は変えない助言**なので、切っても検証の強度は落ちない
-    let triageEnabled: Bool
     let appBundleID: String
     let executor: StepExecutor
     let scenarioID: String
@@ -405,8 +401,6 @@ public final class FTDriveCore {
                 scenarioID: String, scenarioTitle: String,
                 delegate: ReplayDelegate?, healingEnabled: Bool,
                 falsePositiveCheckEnabled: Bool = true, screenLooksLikeEnabled: Bool = true,
-                // 失敗時のトリアージ(合否は変えない助言)。切ると FM 呼び出しを1回省く
-                triageEnabled: Bool = true,
                 // 容器の推測に依存する補正の既定(実行プロファイル由来。**FM とは無関係**)
                 containerInference: Bool = true,
                 // occlusion guard 前段の Vision OCR 事前判定。**親スイッチ `ocr` を掛けた後の
@@ -434,7 +428,6 @@ public final class FTDriveCore {
         self.driver = driver
         self.platform = platform
         self.physical = physical
-        self.triageEnabled = triageEnabled
         self.appBundleID = app
         self.homeScreenDriverOverride = homeScreenDriver
         // executor 既定の occlusionGuard(StepExecutor.init 引数)は渡さない = 常に false。
@@ -1444,8 +1437,6 @@ public final class FTDriveCore {
         // 証跡が無効になり得るため、blank を検知したら最大3回撮り直して回復を待つ。
         // トリアージは白のままでも変わらず実行する(証跡としては evidenceBlank で無効マークするのみ)。
         let driver = self.driver
-        let delegate = executor.delegate
-        let goal = scenarioTitle.isEmpty ? scenarioID : scenarioTitle
         // 白フレーム=画面凍結の推定を行うか。**仮想デバイスなら OS を問わず行う**。
         // **実機だけ外す**理由は「画面が消灯しているだけ」を凍結と誤断するため。
         //
@@ -1457,7 +1448,7 @@ public final class FTDriveCore {
         // 画素をサンプルする BlankFrameDetector が唯一の判定手段。
         // これを外していたため、環境起因の全滅が「テストの失敗」として無警告で記録されていた
         let inferFrozenFromBlankFrame = !physical
-        let context = FTSync.run { () async -> (Data?, TriageInfo?, Bool, String?) in
+        let context = FTSync.run { () async -> (Data?, Bool, String?) in
             let snapshot = try? await driver.snapshot()
             let elementsText = snapshot.map { SnapshotRenderer.render($0) }
             var screenshot = try? await driver.screenshot()
@@ -1475,23 +1466,12 @@ public final class FTDriveCore {
                     }
                 }
             }
-            // トリアージは**合否を変えない助言**なので、切られていれば呼ばない
-            // (実行プロファイルの `triage` / ランナーの `--no-triage`。失敗のたびに
-            // 平均 6 秒の FM 呼び出しが走るため、重さを避けたい run では切れるようにしてある)
-            let triage = self.triageEnabled
-                ? await delegate?.triage(goal: goal,
-                                         stepDescription: stepDescription,
-                                         failureReason: reason,
-                                         snapshot: snapshot,
-                                         screenshotPNG: screenshot)
-                : nil
-            return (screenshot, triage, evidenceBlank, elementsText)
+            return (screenshot, evidenceBlank, elementsText)
         }
-        if let (screenshot, triage, evidenceBlank, elementsText) = context {
+        if let (screenshot, evidenceBlank, elementsText) = context {
             withState {
                 guard let index = currentSceneIndex else { return }
                 record.scenes[index].failureScreenshot = screenshot
-                record.scenes[index].triage = triage
                 record.scenes[index].evidenceBlank = evidenceBlank
                 record.scenes[index].failureUnderSystemAlert = systemAlertPresent
                 record.scenes[index].failureElements = elementsText

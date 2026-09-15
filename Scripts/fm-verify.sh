@@ -6,15 +6,15 @@
 #   - occlusion-guard(誤った緑の検査)は既定 ON だが、疑いが立った画面でしか発火しない
 #   - heal は失敗しないと呼ばれない上、ヒールキャッシュが命中すると FM なしで解決する
 #   - screenLooksLike は使うシナリオが _disabled(生きた FM は非決定的でフレーク源になるため)
-#   - triage は失敗しないと呼ばれない
 # どれも**死んでいても素通りして緑になる**(結果 JSON の fm フィールドだけが手がかり)。
 #
 # そこで FM 専用シナリオ(_disabled/)を一時的に有効化し、FM を全部 ON にした
-# ios-fm プロファイルで回して、結果 JSON の fm.byKind に4種が出ることを確かめる。
+# ios-fm プロファイルで回して、結果 JSON の fm.byKind に heal と screenLooksLike が出ることを確かめる
+# (occlusion は疑いが立ったときだけなので警告に留める)。
 #
 # 使い方: Scripts/fm-verify.sh [--project <名前>] [--profile <名前>]
 #
-# **93_triage は意図的に失敗する**(それが正常)。この失敗はスクリプトの合否には数えない。
+# **93_存在しない要素 は意図的に失敗する**(それが正常)。この失敗はスクリプトの合否には数えない。
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
@@ -36,7 +36,7 @@ done
 SCEN_DIR="$ROOT/TestProjects/$PROJECT/scenarios"
 DISABLED="$SCEN_DIR/_disabled"
 # FM を要するシナリオ(_disabled にある = 既定スイートには載らない)
-FM_FILES=(90_自己修復.swift 92_screenLooksLike.swift 93_triage.swift)
+FM_FILES=(90_自己修復.swift 92_screenLooksLike.swift 93_存在しない要素.swift)
 HEAL_CACHE="$ROOT/TestProjects/$PROJECT/.fleetest/heal-cache.json"
 
 restore() {  # 途中で落ちても必ず元へ戻す(_disabled から出したまま = 既定スイートを汚す)
@@ -63,18 +63,24 @@ echo "═══ $PROJECT / $PROFILE(FM 経路の検証)═══"
   --scenario 画面全体をFMで検証できること \
   --scenario スクロールで折り返し下の要素に到達できること \
   --scenario ジェスチャが正しく検出されること
-echo "--- 意図的に失敗させて triage を発火させる(失敗が正常)---"
+echo "--- 存在しない要素を叩き、自己修復が置き換えないことを通す(失敗が正常)---"
 "$FLEETEST" run --project "$PROJECT" --profile "$PROFILE" --skip-build \
-  --scenario triage経路を検証できること || true
+  --scenario 存在しない要素を自己修復で置き換えないこと || true
 
 restore
 trap - EXIT
 
 python3 - "$ROOT/TestProjects/$PROJECT" <<'PY'
-import glob, json, os, sys
+import glob, json, os, sys, unicodedata
 
 # 直近2 run(上の2回)の fm を kind 別に合算する
 runs = sorted(glob.glob(os.path.join(sys.argv[1], "results/runs/*/*/")), key=os.path.getmtime)[-2:]
+
+def scenario_results(prefix):
+    """scenarioID が prefix で始まる結果。**ファイル名は NFC に揃えてから比べる** —— ディスク上は
+    分解形(NFD)なので、濁点・半濁点を含む名前は glob の文字列と一致しない"""
+    return [json.load(open(f)) for r in runs for f in sorted(glob.glob(os.path.join(r, "scenarios/*.json")))
+            if unicodedata.normalize("NFC", os.path.basename(f)).startswith(prefix)]
 agg = {}
 for r in runs:
     for f in glob.glob(os.path.join(r, "scenarios/*.json")):
@@ -101,11 +107,10 @@ if not agg:
 # そのままオウム返ししていた。プロンプトで直したが、**モデルの応答が再び壊れたことを
 # 検出できるのはここだけ**(HealPromptTests はプロンプト文字列しか見ない)。
 heal_detail = ""
-for r in runs:
-    for f in glob.glob(os.path.join(r, "scenarios/自己修復*.json")):
-        for st in (json.load(open(f)) or {}).get("failedSteps") or []:
-            if "self-heal" in (st.get("detail") or ""):
-                heal_detail = st["detail"]
+for s in scenario_results("自己修復でid変更を追従できること"):
+    for st in (s or {}).get("failedSteps") or []:
+        if "self-heal" in (st.get("detail") or ""):
+            heal_detail = st["detail"]
 proposal_ok = "#btn_heal_v2" in heal_detail
 if heal_detail and not proposal_ok:
     print("\n❌ 自己修復の提案が誤っている(#btn_heal_v2 を選んでいない):")
@@ -114,8 +119,26 @@ elif not heal_detail:
     print("\n⚠️ 自己修復の提案を確認できなかった(90_自己修復 が失敗していない、"
           "または文言が変わった)—— 提案の正しさは未検証")
 
-# heal / screenLooksLike / triage は決定的に発火する。occlusion は疑いが立った時だけなので警告に留める
-required = ["heal", "screenLooksLike", "triage"]
+# **93_存在しない要素 は「狙いの tap で失敗し、自己修復で解決したステップが 0」で正常**。
+# 緑になった・healed が立った = 自己修復が存在しない要素を別の要素へ置き換えた(誤った緑の元)。
+# 別のステップで落ちた(launch 等)なら、自己修復の「代わりは無い」経路は通っていない
+no_replace_problem = ""
+no_replace = scenario_results("存在しない要素を自己修復で置き換えないこと")
+if not no_replace:
+    no_replace_problem = "93_存在しない要素 の結果が無い(実行されていない)"
+else:
+    s = no_replace[-1]
+    healed = (s.get("steps") or {}).get("healed", 0)
+    details = " ".join((st.get("detail") or "") for st in (s.get("failedSteps") or []))
+    if s.get("passed") or healed:
+        no_replace_problem = f"自己修復が存在しない要素を別の要素へ置き換えた(passed={s.get('passed')} healed={healed})"
+    elif "id=btn_triage_check_does_not_exist" not in details:
+        no_replace_problem = f"狙いの tap より前で落ちた(自己修復の経路を通っていない): {details[:200]}"
+if no_replace_problem:
+    print(f"\n❌ {no_replace_problem}")
+
+# heal / screenLooksLike は決定的に発火する。occlusion は疑いが立った時だけなので警告に留める
+required = ["heal", "screenLooksLike"]
 missing = [k for k in required if k not in agg]
 failed = {k: v["failures"] for k, v in agg.items() if v["failures"]}
 if "occlusion" not in agg:
@@ -124,7 +147,7 @@ if missing:
     print(f"\n❌ 呼ばれていない経路: {', '.join(missing)}")
 if failed:
     print(f"\n❌ 失敗した経路: {failed}(FM の状態を doctor で確認する)")
-sys.exit(1 if missing or failed or (heal_detail and not proposal_ok) else 0)
+sys.exit(1 if missing or failed or (heal_detail and not proposal_ok) or no_replace_problem else 0)
 PY
 STATUS=$?
 [ "$STATUS" = 0 ] && echo "✅ FM の実行時経路は生きています"

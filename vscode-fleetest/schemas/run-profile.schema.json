@@ -63,11 +63,6 @@
       "description": "OCR を使ったテキストの偽陽性検証(occlusion guard の前段。既定 true)。false で従来どおり FM だけで判定する。ocr が false なら値に関わらず無効。falsePositiveCheck が false の run では guard 自体が走らないため効かない。",
       "default": true
     },
-    "triage": {
-      "type": "boolean",
-      "description": "失敗時のトリアージ(分類・要約・次の一手)を有効にするか(既定 true)。合否は変えない助言なので、切っても検証の強度は落ちない。",
-      "default": true
-    },
     "screenLooksLike": {
       "type": "boolean",
       "description": "screenLooksLike コマンド(FM による画面判定)を有効にするか(既定 true)。",

@@ -274,7 +274,6 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         case "fm": return doc.fm.map(RunProfileSetValue.bool)
         case "heal": return doc.heal.map(RunProfileSetValue.bool)
         case "falsePositiveCheck": return doc.falsePositiveCheck.map(RunProfileSetValue.bool)
-        case "triage": return doc.triage.map(RunProfileSetValue.bool)
         case "screenLooksLike": return doc.screenLooksLike.map(RunProfileSetValue.bool)
         case "ocr": return doc.ocr.map(RunProfileSetValue.bool)
         case "ocrFalsePositiveCheck": return doc.ocrFalsePositiveCheck.map(RunProfileSetValue.bool)
@@ -308,7 +307,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
     /// キーごとの見本値(型はキーの宣言型に一致させる)。`RunProfileSetOverride.parse` を通して
     /// 作るので、値の型は本体の宣言型マップと自動的に一致する(このテストが型を手で二重管理しない)
     private static let sampleRawValues: [String: String] = [
-        "fm": "false", "heal": "false", "falsePositiveCheck": "false", "triage": "false",
+        "fm": "false", "heal": "false", "falsePositiveCheck": "false",
         "screenLooksLike": "false", "ocr": "false", "ocrFalsePositiveCheck": "false",
         "iosInappEngine": "false", "iosFastInput": "true", "iosPreActionWarmup": "false",
         "containerInference": "false", "enableAnimations": "true", "homeOnStart": "false",
@@ -379,7 +378,6 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
         let settings = DeviceIndependentRunSettings.resolve(base)
         XCTAssertTrue(settings.fm.enabled)
         XCTAssertTrue(settings.fm.screenLooksLike)
-        XCTAssertTrue(settings.fm.triage)
         XCTAssertTrue(settings.ocr)
         XCTAssertTrue(settings.ocrFalsePositiveCheck)
         XCTAssertTrue(settings.containerInference)
@@ -398,7 +396,7 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
     func testDefaultsMatchTheRunProfileDocumentDefaults() {
         let settings = DeviceIndependentRunSettings.resolve(RunProfileDocument())
         XCTAssertEqual(settings.fm, FMConfig(enabled: true, heal: true, falsePositiveCheck: true,
-                                             screenLooksLike: true, triage: true))
+                                             screenLooksLike: true))
         XCTAssertTrue(settings.ocr)
         XCTAssertTrue(settings.ocrFalsePositiveCheck)
         XCTAssertFalse(settings.iosFastInput)
@@ -447,7 +445,7 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
         XCTAssertEqual(settings.recordBitrateKbps, 4000)
     }
 
-    /// fm:false は heal/falsePositiveCheck/screenLooksLike/triage を無条件に false へ落とす
+    /// fm:false は heal/falsePositiveCheck/screenLooksLike を無条件に false へ落とす
     /// (`--set fm=false --set heal=true` としても heal は立たない)
     func testFmFalseGatesTheOtherFMTogglesEvenWhenTheyAreExplicitlyTrue() {
         let doc = RunProfileDocument().applyingOverrides(["fm": false, "heal": true])

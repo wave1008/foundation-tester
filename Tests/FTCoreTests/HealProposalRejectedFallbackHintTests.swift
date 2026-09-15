@@ -7,7 +7,7 @@ import XCTest
 /// **具体的な貼れるセレクタ連鎖を組み立てないことが本題**。一度
 /// `SelectorNaming` + `FTSelector.serialize` で「元のロケータ||提案セレクタ」の具体的な連鎖を
 /// 組み立てて出す版を実装したが、2026-09-02 のデバイス実行(`Scripts/fm-verify.sh`)で撤回した:
-/// 93_triage(存在しない要素をわざと叩く陽性対照)で FM が無関係な要素を提案し、それが
+/// 93_存在しない要素(存在しない要素をわざと叩く陽性対照)で FM が無関係な要素を提案し、それが
 /// `"#btn_triage_check_does_not_exist||#nav_input"` というそのまま貼れる形の助言になった。
 /// confidence は信号を持たない(正解にも誤答にも "low" が付く。docs/design.md §10)ため、
 /// ツール側は提案の正しさを判定できず、貼れる形にすると誤った提案が「誤った緑」(別要素を
@@ -46,8 +46,6 @@ final class HealProposalRejectedFallbackHintTests: XCTestCase {
         init(_ attempt: HealAttempt) { self.attempt = attempt }
         func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { attempt }
         func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-        func triage(goal: String?, stepDescription: String, failureReason: String,
-                    snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
     }
 
     private func element(_ ref: Int, type: String = "clickable", id: String? = nil,
@@ -117,7 +115,7 @@ final class HealProposalRejectedFallbackHintTests: XCTestCase {
     }
 
     /// **陰性(同型)**: 対象が存在しない要素へのタップで、FM が無関係な要素を提案した
-    /// 実測の型(93_triage)を模した回でも、連鎖は組み立てられない。
+    /// 実測の型(93_存在しない要素)を模した回でも、連鎖は組み立てられない。
     /// 「常に連鎖を組み立てる」変異が入っていたら、ここが落ちる
     func testRejectedProposalForUnrelatedElementDoesNotAssembleAChainEither() async throws {
         let unrelated = element(1, type: "button", id: "nav_input", label: "ナビゲーション入力", depth: 1)

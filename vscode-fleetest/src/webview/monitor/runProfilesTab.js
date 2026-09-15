@@ -30,7 +30,6 @@ const runProfileFm = document.getElementById('run-profile-fm');
 const runProfileFmOptions = document.getElementById('run-profile-fm-options');
 const runProfileHeal = document.getElementById('run-profile-heal');
 const runProfileFalsePositiveCheck = document.getElementById('run-profile-false-positive-check');
-const runProfileTriage = document.getElementById('run-profile-triage');
 const runProfileScreenLooksLike = document.getElementById('run-profile-screen-looks-like');
 const runProfileOcr = document.getElementById('run-profile-ocr');
 const runProfileOcrOptions = document.getElementById('run-profile-ocr-options');
@@ -243,7 +242,6 @@ function renderRunProfileEditor(fields) {
   runProfileFm.checked = fields.fm;
   runProfileHeal.checked = fields.heal;
   runProfileFalsePositiveCheck.checked = fields.falsePositiveCheck;
-  runProfileTriage.checked = fields.triage;
   runProfileScreenLooksLike.checked = fields.screenLooksLike;
   runProfileOcr.checked = fields.ocr;
   runProfileOcrFalsePositiveCheck.checked = fields.ocrFalsePositiveCheck;
@@ -481,7 +479,6 @@ function runProfileValuesEqual(fields) {
     runProfileFm.checked === fields.fm &&
     runProfileHeal.checked === fields.heal &&
     runProfileFalsePositiveCheck.checked === fields.falsePositiveCheck &&
-    runProfileTriage.checked === fields.triage &&
     runProfileScreenLooksLike.checked === fields.screenLooksLike &&
     runProfileOcr.checked === fields.ocr &&
     runProfileOcrFalsePositiveCheck.checked === fields.ocrFalsePositiveCheck &&
@@ -597,7 +594,6 @@ function collectRunProfileFields() {
     fm: runProfileFm.checked,
     heal: runProfileHeal.checked,
     falsePositiveCheck: runProfileFalsePositiveCheck.checked,
-    triage: runProfileTriage.checked,
     screenLooksLike: runProfileScreenLooksLike.checked,
     ocr: runProfileOcr.checked,
     ocrFalsePositiveCheck: runProfileOcrFalsePositiveCheck.checked,

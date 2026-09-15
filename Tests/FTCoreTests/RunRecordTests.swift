@@ -4,8 +4,7 @@ import XCTest
 
 /// この種のテストが finish() へ渡す fmSettings は値そのものを検査しないので固定の1値でよい
 private let testFMSettings = FMSettingsRecord(
-    fm: true, heal: false, falsePositiveCheck: false, screenLooksLike: true, triage: true,
-    ocr: true, ocrFalsePositiveCheck: true)
+    fm: true, heal: false, falsePositiveCheck: false, screenLooksLike: true, ocr: true, ocrFalsePositiveCheck: true)
 
 final class RunRecordTests: XCTestCase {
 
@@ -198,19 +197,17 @@ final class RunRecordTests: XCTestCase {
         let recorder = RunRecorder.begin(project: TestProject(name: "P", rootURL: root),
                                          profile: "p", trigger: "cli", captureHostMetrics: false)
         let settings = FMSettingsRecord(
-            fm: true, heal: false, falsePositiveCheck: true, screenLooksLike: false,
-            triage: true, ocr: false, ocrFalsePositiveCheck: true)
+            fm: true, heal: false, falsePositiveCheck: true, screenLooksLike: false, ocr: false, ocrFalsePositiveCheck: true)
         recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: settings, setOverrides: nil)
 
         let data = try Data(contentsOf: recorder.runDir.appendingPathComponent("run.json"))
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         let fmSettingsJSON = try XCTUnwrap(json["fmSettings"] as? [String: Any])
-        XCTAssertEqual(fmSettingsJSON.count, 7, "7つの欄すべてが書かれること(欠落は退行): \(fmSettingsJSON)")
+        XCTAssertEqual(fmSettingsJSON.count, 6, "6つの欄すべてが書かれること(欠落は退行): \(fmSettingsJSON)")
         XCTAssertEqual(fmSettingsJSON["fm"] as? Bool, true)
         XCTAssertEqual(fmSettingsJSON["heal"] as? Bool, false)
         XCTAssertEqual(fmSettingsJSON["falsePositiveCheck"] as? Bool, true)
         XCTAssertEqual(fmSettingsJSON["screenLooksLike"] as? Bool, false)
-        XCTAssertEqual(fmSettingsJSON["triage"] as? Bool, true)
         XCTAssertEqual(fmSettingsJSON["ocr"] as? Bool, false)
         XCTAssertEqual(fmSettingsJSON["ocrFalsePositiveCheck"] as? Bool, true)
 

@@ -155,7 +155,7 @@ struct RunScenario: AsyncParsableCommand {
     @Flag(help: "Allow FM-based locator self-healing")
     var heal = false
 
-    @Flag(name: .customLong("no-fm"), help: "Do not use any FM feature (heal / false-positive check / screenLooksLike / triage)")
+    @Flag(name: .customLong("no-fm"), help: "Do not use any FM feature (heal / false-positive check / screenLooksLike)")
     var noFM = false
 
     @Flag(name: .customLong("no-false-positive-check"), help: "Disable the false-positive check (occlusion guard)")
@@ -163,9 +163,6 @@ struct RunScenario: AsyncParsableCommand {
 
     @Flag(name: .customLong("no-screen-looks-like"), help: "Disable screenLooksLike (screenMatches)")
     var noScreenLooksLike = false
-
-    @Flag(name: .customLong("no-triage"), help: "Disable failure triage (classification and suggested fix; advisory only)")
-    var noTriage = false
 
     /// **FM とは無関係**の幾何ヒューリスティック。実行プロファイルの containerInference 由来で、
     /// シナリオ側は `tap(..., containerInference:)` で1コマンド単位に上書きできる
@@ -442,7 +439,7 @@ struct RunScenario: AsyncParsableCommand {
             }
         }
 
-        // noFM: delegate を nil にすると heal/screenLooksLike/occlusion-guard/triage は
+        // noFM: delegate を nil にすると heal/screenLooksLike/occlusion-guard は
         // ReplayDelegate 既定実装(nil)に落ち、揃って無効化される(LazyFMDelegate class doc 参照)
         let delegate: ReplayDelegate? = noFM ? nil : LazyFMDelegate()
 
@@ -474,7 +471,6 @@ struct RunScenario: AsyncParsableCommand {
                                delegate: delegate, healingEnabled: heal && !noFM,
                                falsePositiveCheckEnabled: !noFalsePositiveCheck,
                                screenLooksLikeEnabled: !noScreenLooksLike,
-                               triageEnabled: !noTriage,
                                containerInference: !noContainerInference,
                                occlusionOCREnabled: !noOcclusionOCR, dryRun: dryRun,
                                healCacheURL: healCacheURL,
@@ -623,7 +619,7 @@ struct RunScenario: AsyncParsableCommand {
 // MARK: - FM 遅延初期化デリゲート
 
 /// FoundationModels のロードはシナリオ実行より重いことがあるため、
-/// heal / screenLooksLike / triage が実際に必要になった初回にのみ FMReplayDelegate を作る
+/// heal / screenLooksLike / occlusion-guard が実際に必要になった初回にのみ FMReplayDelegate を作る
 final class LazyFMDelegate: ReplayDelegate {
     private var underlying: ReplayDelegate?
     private var checked = false
@@ -644,13 +640,6 @@ final class LazyFMDelegate: ReplayDelegate {
 
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? {
         await resolve()?.verifyScreen(expected: expected, screenshotPNG: screenshotPNG)
-    }
-
-    func triage(goal: String?, stepDescription: String, failureReason: String,
-                snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? {
-        await resolve()?.triage(goal: goal, stepDescription: stepDescription,
-                                failureReason: failureReason,
-                                snapshot: snapshot, screenshotPNG: screenshotPNG)
     }
 
     // occlusion-guard の暖機。**転送を忘れると既定実装(no-op)に落ち、暖機だけが黙って

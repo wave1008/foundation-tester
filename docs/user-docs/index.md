@@ -10,7 +10,7 @@ and per-run API billing. See [What is fleetest?](overview/about.md).
 fleetest is an E2E test tool for iOS / Android apps on macOS. Scenarios are written in a
 Shirates-style Swift DSL and replayed deterministically — ordinary playback uses no LLM.
 Foundation Models (on-device) are used only for a few specific features: self-healing of broken
-selectors, visual verification with `screenLooksLike`, and triage when a step fails. Tests can
+selectors and visual verification with `screenLooksLike`. Tests can
 be authored by an agent (MCP), recorded from the VSCode extension, or written by hand — all
 three produce the same `.swift` scenarios. On iOS it runs on a **hybrid engine**: a bridge
 injected into the app drives it fast, and only operations that can be reached solely from outside

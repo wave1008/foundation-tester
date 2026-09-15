@@ -45,8 +45,6 @@ final class HealSuggestionRecordingTests: XCTestCase {
             }
         }
         func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-        func triage(goal: String?, stepDescription: String, failureReason: String,
-                    snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
     }
 
     func testHealSuggestionSurvivesIntoThePassingRunRecord() throws {

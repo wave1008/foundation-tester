@@ -172,7 +172,7 @@ public enum RunEvent: Sendable {
     /// stdout へ出すため、ここで運ばないと拡張(モニターの FM グラフ)まで届かない
     /// (結果 JSON は ScenarioHost 内の builder が別経路で受けるので落ちない)
     case flowFinished(worker: String, flowURL: URL, passed: Bool,
-                      triage: TriageInfo?, reportURL: URL?, fm: FMUsageRecord?)
+                      reportURL: URL?, fm: FMUsageRecord?)
     /// 担当ワーカー不在などで実行できなかった(失敗として数える)
     case flowSkipped(flowURL: URL, reason: String)
     /// もうどのワーカーもシナリオを実行しておらず、残りは録画のクリップ切り出しと後始末だけになった
@@ -580,7 +580,7 @@ public enum ScenarioRunner {
         let outcome = Self.outcome(passed: passed, frozen: frozen,
                                    environmentFault: environmentFault)
         onEvent(.flowFinished(worker: worker.label, flowURL: item.url, passed: frozen ? false : passed,
-                              triage: nil, reportURL: reportURL, fm: fmUsage))
+                              reportURL: reportURL, fm: fmUsage))
         return outcome
     }
 
@@ -1238,7 +1238,7 @@ public final class RunOrchestrator {
                     // **FM 全滅のまま走ったシナリオを数える**(合否は変えない。summary の
                     // fmUnavailableScenarios。ここで数えるのは、実行結果に FM の可否が
                     // 現れないため —— 失敗は各呼び出し箇所が握って素通りさせる契約)
-                    if case .flowFinished(_, _, _, _, _, let fm) = event,
+                    if case .flowFinished(_, _, _, _, let fm) = event,
                        RunSummary.fmUnavailable(fm) {
                         Task { await fmCounter.increment() }
                     }
@@ -1380,14 +1380,11 @@ public enum RunLogFormatter {
             return ["  🔧 Updated the flow with healed locators (dirty: true — needs review)"]
         case .fixSuggestion:
             return []
-        case .flowFinished(_, _, let passed, let triage, let reportURL, _):
+        case .flowFinished(_, _, let passed, let reportURL, _):
             var lines: [String] = []
             if passed {
                 lines.append("  → ✅ passed")
             } else {
-                if let triage {
-                    lines.append("  → 🔍 Triage: [\(triage.failureClass)] \(triage.summary)")
-                }
                 if let reportURL {
                     lines.append("  → ❌ failed — report: \(reportURL.path)")
                 } else {

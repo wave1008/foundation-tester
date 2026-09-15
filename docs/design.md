@@ -19,8 +19,8 @@ iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装
 | 新オンデバイスモデル (AFM 3) | ロジック・tool calling が大幅改善、Vision(画像入力)対応 | エージェントの頭脳 |
 | Guided Generation (`@Generable`) | constrained decoding による型安全な構造化出力。パース失敗が原理的に起きない | 全ての LLM 出力(修復案、レポート) |
 | Tool calling (`Tool` プロトコル) | 並列/直列の呼び出しグラフを framework が自動処理 | 画面詳細のオンデマンド取得など補助的に使用 |
-| マルチモーダル | 画像+テキスト入力(NSImage/CGImage/CVPixelBuffer/URL) | スクリーンショットの視覚検証・トリアージ |
-| Dynamic Profiles | セッション中にモデル・ツール・instructions を切替 | verifier / triager の役割切替 |
+| マルチモーダル | 画像+テキスト入力(NSImage/CGImage/CVPixelBuffer/URL) | スクリーンショットの視覚検証 |
+| Dynamic Profiles | セッション中にモデル・ツール・instructions を切替 | verifier の役割切替 |
 | `LanguageModel` プロトコル | オンデバイス / PCC(32K ctx) / Claude / Gemini / MLX を同一 Session API で差替 | **使わない**。PCC は完全に禁止(下記)、外部 LLM も同様 |
 | 制約: コンテキスト ~4K トークン級 | TN3193 参照。プロンプト+応答で共有 | **設計全体を規定する最重要制約** |
 | 制約: ホスト全体で共有される資源 | 許可枠(既定5、環境変数で上書き可)で制限される。並列度が枠を超えるとレイテンシが伸びる(performance-tuning.md §3.5) | 並列実行では FM 呼び出し数と枠が実行時間の下限に効く(performance-tuning.md §3.5) |
@@ -156,8 +156,7 @@ FoundationModels はモデル型を2つ持ち、**`PrivateCloudComputeLanguageMo
 
 1. **実行モード**: 保存済みシナリオ(Swift DSL。§10)を FM なしで決定的に再生。
    高速・安定で CI 向き。
-2. **失敗時のみ FM が介入**: ロケータ自己修復、スクリーンショット+ツリー差分の
-   トリアージ、自然言語バグレポート生成。
+2. **失敗時のみ FM が介入**: ロケータ自己修復。
 
 (M2 で計画していた、FM がアプリを自律探索してシナリオを自動生成する explore モード
 [`fleetest explore` / ExplorerProfile] は廃止済み)
@@ -176,7 +175,7 @@ FoundationModels はモデル型を2つ持ち、**`PrivateCloudComputeLanguageMo
 │  fleetest CLI / MCP サーバ / VSCode 拡張(拡張は fleetest api を呼ぶ。   │
 │  MCP サーバは FTCore/FTBridgeClient を直接リンクし fleetest api を経由しない) │
 │  ├─ FTFoundationModels        : FoundationModels エージェント層               │
-│  │   ├─ ReplayAssist      (ロケータ修復・画面検証・トリアージ)     │
+│  │   ├─ ReplayAssist      (ロケータ修復・画面検証)     │
 │  │   └─ OcclusionVerifier / FMDoctor / ScenarioNamer / TestbaseDrafter │
 │  ├─ FTDSL          : Swift DSL(§10)/ セレクタ式 / ヒールキャッシュ │
 │  ├─ FTCore          : AppDriver プロトコル / StepExecutor(実行機) │
@@ -1005,20 +1004,13 @@ struct LocatorRepairSuggestion {   // 自己修復: 壊れたロケータの代�
     var confidence: RepairConfidence  // high / medium / low
     var rationale: String          // 英語1文
 }
-
-@Generable
-struct TriageSuggestion {          // 失敗トリアージ
-    var failureClass: FailureClass    // appBug, flakiness, locatorDrift, envIssue
-    var summary: String               // 英語1〜2文
-    var suggestedFix: String          // 英語1文
-}
 ```
 
 ### 5.3 実装(Sources/FTFoundationModels/ の5ファイル)
 
 | 実装 | 役割 |
 |---|---|
-| `ReplayAssist.swift`(`FMReplayDelegate`) | 再生失敗時のみ呼ばれるフック群: ロケータ自己修復(`LocatorRepairSuggestion`)・スクリーンショットの画面検証(`ScreenVerdict`。**マルチモーダル**)・失敗トリアージ(`TriageSuggestion`) |
+| `ReplayAssist.swift`(`FMReplayDelegate`) | 再生失敗時のみ呼ばれるフック群: ロケータ自己修復(`LocatorRepairSuggestion`)・スクリーンショットの画面検証(`ScreenVerdict`。**マルチモーダル**) |
 | `OcclusionVerifier.swift` | アサーションがツリー通過した直後の、遮蔽による誤った緑の排除(マルチモーダル。要素 frame にクロップして渡す) |
 | `FMDoctor.swift` | FM 可用性判定。`check()` は同期・可否を保証しない / `checkLive()` は実際に1回推論する(§1.1 の罠) |
 | `ScenarioNamer.swift` | 記録操作(ライブ操作タブ)からのシナリオ名生成 |
@@ -1077,7 +1069,7 @@ MCP には届かず、同じ処理の2つ目の実装が育つ)。
 |---|---|---|---|
 | **M1** | ブリッジ + 手動駆動 | CLI から SampleApp を起動し、curl 相当で tap/type/snapshot/screenshot が通る | 達成済み |
 | **M2** | FM 探索によるシナリオ自動生成(`fleetest explore`) | — | 廃止済み(§1.2) |
-| **M3** | 決定的再生 + 自己修復 + トリアージ | id 変更を仕込んだ SampleApp でシナリオが自己修復され、意図的バグで TriageReport が出る | 達成済み |
+| **M3** | 決定的再生 + 自己修復 + トリアージ | id 変更を仕込んだ SampleApp でシナリオが自己修復され、意図的バグで TriageReport が出る | 達成済み(FM トリアージは 2026-09-15 に撤去 → maintainer-notes §21) |
 | **M4** | Android ブリッジ + ドライバ | `AndroidDriver` で FTFoundationModels/FTCore を無変更のまま Android アプリのシナリオを再生する(実装は自作 instrumentation ブリッジ。UIAutomator2/Appium は不採用。§4.5, §8.7) | 達成済み |
 
 M1・M3・M4 は達成済み(M2 の FM 探索機能は後に廃止。§1.2)。2026-07 には固定 sleep をブリッジ内蔵の a11y 静穏検知に置き換える高速化を実施し、
@@ -1111,16 +1103,13 @@ FM がアプリを自律探索してシナリオを生成する explore モー�
   **Attachment だけが macOS 27+ で、FM 本体(テキスト・`@Generable`)は macOS 26+**。Package の最低は
   macOS 26 に置き、視覚系(occlusion-guard / screenLooksLike)を実行時に落とす:
   判定の単一点は `FTCore/FMVisionSupport.swift`(StepExecutor が呼ぶ前に skip/素通りへ)で、
-  実 API 側は `FTFoundationModels` の `#available(macOS 27, *)` が保険。triage はテキストのみで継続する
+  実 API 側は `FTFoundationModels` の `#available(macOS 27, *)` が保険
 - **screenMatches(視覚検証)は実用レベル**: 「果物の商品名と価格が並ぶリスト」の一致/不一致を
   スクリーンショットから正しく判定し、不一致時は理由(エラーメッセージの存在)も説明できた
 - **アサーションに type+index フォールバックは危険**(実測で誤った緑が発生): 別画面の無関係な要素に
   マッチする。再生器は assert 解決時に id/label を持たないフォールバックを除外する
 - **自己修復は elementText 方式で安定**: 壊れた `id=login_btn` に対し「サインイン」ボタンを
   high confidence で提案・修復できた。修復フローは `dirty: true` + note に修復理由を残す
-- **トリアージは分類の目安を instructions に明記する**: 「エラーメッセージが見える→appBug」等の
-  ヒントがないと locatorDrift に誤分類しがち。また縮退ループ対策として要約・修正案は
-  文数で強制的に切る(summary 2文、suggestedFix 1文)
 
 ## 8.7 M4実装で得た知見(Android)
 
@@ -1379,6 +1368,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
 2. M1: `fleetest bridge up` → `curl localhost:8123/snapshot` で圧縮ツリーが返る
 3. M3: SampleApp の identifier を 1 つ改名 → `fleetest run --set heal=true` で修復・成功。
    意図的にログインを失敗させるビルド → TriageReport が `appBug` と分類する
+   (FM トリアージは 2026-09-15 に撤去 → maintainer-notes §21)
 4. 性能の検証・回帰比較は `Scripts/bench.swift` の計測基盤で行う。壁時計中央値・
    シナリオ/ステップ内訳・成功率・ホスト CPU/GPU/MEM を `summary.md` に出力し、
    変更前後を比較する。手順・指標の読み方は
@@ -1425,7 +1415,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   **DSL スレッド外(Task / 別スレッド)からの呼び出しは fatalError にしない**(2026-07-29)。
   1プロセス=1シナリオなので落とすと**レポートごと消える**。`FTDriveCore.recordThreadViolation` が
   失敗ステップを**1 run につき1回だけ**記録してシナリオを中断し、以降は既存の skip 経路へ乗せる
-  (`handleFailure` は呼ばない = スクショ・FM トリアージを別スレッドから走らせない)。
+  (`handleFailure` は呼ばない = スクショ撮影を別スレッドから走らせない)。
   **core 未初期化だけは fatalError のまま**(記録先そのものが無くレポートを残す手段がない)
 - **上と対になるロックが2つある**(どちらも「落とさずレポートを残す」ための最低条件。
   排他しないと `record.scenes` の append と `record.scenes[last]` への代入が競って
@@ -2624,6 +2614,8 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   | `90_自己修復` | `#btn_heal_v2` | **正解** | low → **low**(各 5/5) |
   | `93_triage` | `#nav_selector` → `#nav_input` | **誤り** | medium → **low**(各 5/5) |
 
+  (`93_triage` シナリオと FM トリアージ機能は 2026-09-15 に撤去 → maintainer-notes §21)
+
   「案1 後」= `elementText` を省略可能にして「代わりが無ければ挙げるな」と `@Guide` に
   書いた後。**逆相関(誤答に高い確信)は消えたが、今度は正解も誤答も low で区別が付かない**。
   なお**モデルは省略の逃げ道を一度も使わなかった**(`heal-no-replacement` の発火 0/5)——
@@ -3655,15 +3647,13 @@ machines/ が1つのときだけ自動採用)。
 ```
 
 `fm`(既定 true)は FM(Foundation Models)機能の親スイッチ。false にすると自己修復(heal)・
-偽陽性検証(exist 等の FM 視覚照合)・`screenLooksLike`・失敗時トリアージを含む FM 呼び出しを一切行わない
+偽陽性検証(exist 等の FM 視覚照合)・`screenLooksLike` を含む FM 呼び出しを一切行わない
 (子ランナーへは `--no-fm` 等で伝搬し、delegate 自体を作らない)。個別トグルは
-**`heal` / `falsePositiveCheck` / `screenLooksLike` / `triage` の4つで、いずれも既定 true**
-(`falsePositiveCheck` は 2026-09-03 にオプトインをやめた。`triage` は同日に追加)。
+**`heal` / `falsePositiveCheck` / `screenLooksLike` の3つで、いずれも既定 true**
+(`falsePositiveCheck` は 2026-09-03 にオプトインをやめた)。
 親が false なら個別指定に関わらず全て無効。screenLooksLike を無効にした run では該当ステップは
-skip(素通り)になり、FM 利用不可時と同じ扱い。**`triage` は合否を変えない助言**なので、
-切っても検証の強度は落ちない(失敗のたびに平均6秒の FM 呼び出しが走るのを避けたいときに切る)。
-子への伝搬は `ScenarioHost` が `--no-triage` 等を渡す形で、3段(プロファイル → 子 → 実行時)が
-つながっていることは `FMToggleWiringTests` が固定する。UI は「テスト実行」タブの実行プロファイル設定
+skip(素通り)になり、FM 利用不可時と同じ扱い。子への伝搬も同じ3段(プロファイル → 子 → 実行時)を
+通ることは `FMToggleWiringTests` が固定する。UI は「テスト実行」タブの実行プロファイル設定
 「FM(Foundation Model)」セクション(親チェックボックス ON のときだけ個別トグルを表示)。
 
 `wipeDataOnBloat`(既定 true)は実行開始時に Android AVD の wipe 対象

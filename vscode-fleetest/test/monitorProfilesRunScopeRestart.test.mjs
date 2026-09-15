@@ -29,7 +29,6 @@ const FORM_FIELDS = {
   fm: true,
   heal: true,
   falsePositiveCheck: true,
-  triage: true,
   screenLooksLike: true,
   ocr: true,
   ocrFalsePositiveCheck: true,

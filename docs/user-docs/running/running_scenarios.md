@@ -1,7 +1,7 @@
 # Running Scenarios
 
 `fleetest run` executes Swift DSL scenarios deterministically (no FM involved unless a step
-fails and self-healing or triage is enabled). This page covers the CLI options; see
+fails and self-healing is enabled). This page covers the CLI options; see
 [dry_run.md](./dry_run.md) for `--dry-run` and [self_healing.md](./self_healing.md) for
 enabling self-healing with `--set`.
 

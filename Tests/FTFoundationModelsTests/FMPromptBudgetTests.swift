@@ -1,6 +1,6 @@
 // FM へ渡す木の上限(FMPromptBudget)の契約。
-// **収まる木は1バイトも変えない**のが最重要 —— 木を削ると分類が変わる(実測: 40 行に切り詰めた
-// triage は 36 件中 11 件で failureClass が変わり、locatorDrift は 7 件 → 0 件になった)。
+// **収まる木は1バイトも変えない**のが最重要 —— 木を削ると FM の答えが変わる(実測: 撤去済みの
+// 失敗トリアージで、40 行に切り詰めると 36 件中 11 件で分類が変わり、locatorDrift は 7 件 → 0 件になった)。
 // 切るのは「今日どのみち呼び出しごと失敗する」溢れた木だけ。
 
 import XCTest
@@ -53,7 +53,7 @@ final class FMPromptBudgetTests: XCTestCase {
             encoding: .utf8)
         let renders = source.components(separatedBy: "SnapshotRenderer.render(").count - 1
         let fitted = source.components(separatedBy: "FMPromptBudget.fit(SnapshotRenderer.render(").count - 1
-        XCTAssertGreaterThanOrEqual(renders, 2, "木を渡す経路が2つ未満しか見えていない = 走査が壊れている")
+        XCTAssertGreaterThanOrEqual(renders, 1, "木を渡す経路が1つも見えていない = 走査が壊れている")
         XCTAssertEqual(fitted, renders,
                        "SnapshotRenderer.render の結果を上限に通さず FM へ渡している経路がある")
     }

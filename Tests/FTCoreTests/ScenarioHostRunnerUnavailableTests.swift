@@ -11,8 +11,7 @@ import XCTest
 
 /// この種のテストが finish() へ渡す fmSettings は値そのものを検査しないので固定の1値でよい
 private let testFMSettings = FMSettingsRecord(
-    fm: true, heal: false, falsePositiveCheck: false, screenLooksLike: true, triage: true,
-    ocr: true, ocrFalsePositiveCheck: true)
+    fm: true, heal: false, falsePositiveCheck: false, screenLooksLike: true, ocr: true, ocrFalsePositiveCheck: true)
 
 final class ScenarioHostRunnerUnavailableTests: XCTestCase {
 

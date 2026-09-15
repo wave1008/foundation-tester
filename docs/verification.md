@@ -2597,12 +2597,13 @@ run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 
   **空振りする**(実害: セレクタ画面・テキスト入力のシナリオで2回続けて空振りし、検証したつもりになった)。
   実測で FM 呼び出しが最も多いのは `ジェスチャが正しく検出されること`。
   確認は結果 JSON の `fm` フィールドで行う(警告が出ない = 成功、ではない。**呼ばれていない**かもしれない)
-- **実行時の FM 経路は `FMHealth.record` を必ず呼ぶ**(occlusion / heal / screenLooksLike / triage)。記録は
+- **実行時の FM 経路は `FMHealth.record` を必ず呼ぶ**(occlusion / heal / screenLooksLike。**FM トリアージは
+  2026-09-15 に撤去** → maintainer-notes §21)。記録は
   `fm` フィールドと `FMBreaker` の両方を養うので、欠けると①`fm` に出ず「呼ばれていない」と誤読され
-  ②失敗がブレーカを進めず、死んだホストで時間を捨て続ける。実害: **triage が記録を欠いていた**
+  ②失敗がブレーカを進めず、死んだホストで時間を捨て続ける。実害(当時): **triage が記録を欠いていた**
   (2026-07-30 修正。`fm.calls` に一切現れず、動作確認はレポートの「トリアージ」節でしか取れなかった)。
   監査は `FMAccountingAuditTests`(**関数単位**。ファイル単位だと同一ファイルの heal / screenLooksLike に
-  一致して triage の欠落を見逃す。判定前にコメントを落とすのも必須 —
+  一致して欠落を見逃す。判定前にコメントを落とすのも必須 —
   記録の必要性を説明したコメント自身に一致して一度素通りした)。
   作成時の経路(FMDoctor / ScenarioNamer / TestbaseDrafter)は run の実績ではないので免除リスト
 - **ヒールキャッシュが FM を肩代わりする**。`TestProjects/<p>/.fleetest/heal-cache.json` が命中すると
@@ -2612,7 +2613,7 @@ run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 
 ### FM が全滅している間の E2E は「弱い緑」(2026-08-03)
 
 FM(オンデバイスモデル)が死んでいると、**occlusion-guard(`exist` の既定 `requireVisible`)・
-自己修復・`screenLooksLike`・triage が実質無効のまま緑になる**(失敗は飲み込まれて pass 扱い)。
+自己修復・`screenLooksLike` が実質無効のまま緑になる**(失敗は飲み込まれて pass 扱い)。
 run のログに `Every FM call failed` が出ていたら、その run は**誤った緑(覆われているのに exist が
 通る)を検出できていない**と読むこと。`fleetest doctor` の「On-device model」で確認できる。
 
@@ -2626,21 +2627,29 @@ availability は available と嘘をつく。**`SystemLanguageModel(guardrails:
 
 上記の空振り要因(既定 OFF・失敗しないと呼ばれない・キャッシュ命中・既定スイートに無い)を
 まとめて潰す。**FM 専用シナリオを一時的に有効化 → FM 全 ON の `ios-fm` プロファイルで実行 →
-結果 JSON の `fm.byKind` に4種が出たかを判定**する(1コマンド)。
+結果 JSON の `fm.byKind` に必要な種類が出たかを判定**する(1コマンド)。
 
 ```
 Scripts/fm-verify.sh                    # 既定 TestProjects/E2E-CMP・プロファイル ios-fm
 ```
 
 - FM 専用シナリオは `TestProjects/E2E-CMP/scenarios/_disabled/` に置く(`90_自己修復` = heal /
-  `92_screenLooksLike` = screenLooksLike / `93_triage` = **意図的に失敗**して triage を発火)。
+  `92_screenLooksLike` = screenLooksLike / `93_存在しない要素` = **意図的に失敗**する陽性対照。
+  自己修復が壊れたロケータを誤って置き換えないことを確かめる)。
   **既定スイートに入れない**: 生きた FM の判定は非決定的でフレーク源になり、
   かつ FM が死んでいる間は skip されるので緑のまま気付けない
 - スクリプトは `trap` で必ず `_disabled/` へ戻し、退避したヒールキャッシュも復元する
   (出したままだと既定スイートを汚す)
-- `heal` / `screenLooksLike` / `triage` の欠落は失敗扱い。**`occlusion` は疑いが立った時だけ発火する**ので
-  警告に留める(呼ばれないことと FM の死を区別できない)
-- 実測(2026-07-30・再起動直後): occlusion 13 / heal 2 / screenLooksLike 2 / triage 1 呼び出し・失敗 0。
+- `heal` / `screenLooksLike` の欠落は失敗扱い。**`occlusion` は疑いが立った時だけ発火する**ので
+  警告に留める(呼ばれないことと FM の死を区別できない)。**FM トリアージは 2026-09-15 に撤去**した
+  ので、`fm.byKind` に必要な種類はこの2つだけになった(→ maintainer-notes §21)
+- **`93_存在しない要素` は結果まで判定する**: 狙いの tap(`#btn_triage_check_does_not_exist`)で失敗し、
+  `steps.healed` が 0 であること。緑・healed あり(= 自己修復が別の要素へ置き換えた)・別のステップで失敗
+  (= 自己修復の経路を通っていない)・結果が無い、のどれも赤。**結果ファイルは scenarioID を NFC に揃えてから
+  探す** —— ディスク上の名前は分解形(NFD)で、濁点を含む名前は glob の文字列と一致しない(一致しないと
+  「結果が無い」になり、判定そのものが黙って外れる)
+- 実測(2026-07-30・再起動直後・当時は triage も必須だった): occlusion 13 / heal 2 /
+  screenLooksLike 2 / triage 1 呼び出し・失敗 0。
   **occlusion は `ジェスチャが正しく検出されること` が大半**(docs の「最も呼ばれる」の裏取り)
 - **occlusion の「FM に訊いて反転する」経路は、自前 SUT では踏めない**(2026-09-03 に実機で確認)。
   試した2形はどちらも **FM を1回も呼ばずに緑**になった(結果 JSON の `fm` が null):
@@ -2708,7 +2717,7 @@ FM は**ホスト全体で共有される資源**。2026-07-22 時点の実測�
 ~/Library/Caches/fleetest/fm.lock.<0..<枠数> への flock)。
 
 - **リポジトリ単位ではなくホスト単位**。別リポジトリの fleetest とも枠を共有する
-- **全ての FM 呼び出しがこのロックを通る**のが不変条件(occlusion / heal / screenLooksLike / triage /
+- **全ての FM 呼び出しがこのロックを通る**のが不変条件(occlusion / heal / screenLooksLike /
   ScenarioNamer / TestbaseDrafter)。新しい FM 呼び出しを足すときは必ず通すこと。
   監査は `grep -n "LanguageModelSession" Sources/FTFoundationModels/*.swift`(FMDoctor は可用性判定なので対象外)
 - **取れなければ FM をスキップする**(既定 20 秒)。全ワーカーが並ぶと最後尾の待ちが積み上がり
@@ -2716,7 +2725,7 @@ FM は**ホスト全体で共有される資源**。2026-07-22 時点の実測�
   数える**(`FMHealth.recordSkip`。失敗率の分母を汚さない)
 - **FM に狙って負荷をかけたいだけなら `fleetest doctor --fm-load`**(既定
   `--fm-load-seconds 30 --fm-load-concurrency 5`。**この口だけは FMGate/FMLock を通さない**
-  ので実行中の run と容量を奪い合う点に注意)。経路は2つ: 既定はテキスト経路(heal/triage 相当)、
+  ので実行中の run と容量を奪い合う点に注意)。経路は2つ: 既定はテキスト経路(heal 相当)、
   `--fm-load-vision` は画像入力経路(occlusion-guard 相当)。**text と vision は独立に死ぬ**ので
   両方確かめたいときは両方回す。記録は `FMHealth.record(kind: "loadtest")` を通るので監視の
   FM 行にも出る。E2E ではほぼ FM が焚けない(occlusion-guard は実行プロファイル既定 OFF・heal は

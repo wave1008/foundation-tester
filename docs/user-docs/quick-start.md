@@ -88,8 +88,8 @@ From VSCode, open the **Test Explorer**, pick the scenario, and click **Run**.
 ## 5. Read the results
 
 Every run writes a Markdown report per scenario to `TestProjects/<project>/reports/`, pass or
-fail. It contains the result of each step with screenshots, and on failure a triage of the
-cause and any self-healing suggestions.
+fail. It contains the result of each step with screenshots, and on failure the failure message,
+the element list at the point of failure, and any self-healing suggestions.
 
 In VSCode, the Test Explorer shows pass/fail on each test, and you can open the report from
 there.

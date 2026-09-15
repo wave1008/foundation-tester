@@ -33,8 +33,6 @@ final class LocatorFingerprintClampedResolutionTests: XCTestCase {
         init(_ attempt: HealAttempt) { self.attempt = attempt }
         func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { attempt }
         func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-        func triage(goal: String?, stepDescription: String, failureReason: String,
-                    snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
     }
 
     private func snapshot(_ elements: [ElementInfo]) -> SnapshotResponse {

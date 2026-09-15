@@ -38,8 +38,8 @@ fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml
   passing `<testcase>` instead (visible in the run log and the Markdown report's ❓ marker and fix
   suggestion).
 - **Investigating a failure**: `TestProjects/<name>/reports/` holds a Markdown report per failure
-  (element list, screenshot, FM triage). Archive it as a build artifact so the JUnit `report:` line
-  can be followed back to it.
+  (element list, screenshot, self-healing suggestions). Archive it as a build artifact so the
+  JUnit `report:` line can be followed back to it.
 
 ## Jenkins example
 

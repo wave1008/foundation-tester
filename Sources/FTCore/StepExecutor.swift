@@ -18,19 +18,6 @@ import Foundation
 
 // MARK: - FM フックと結果型(FTCore は FoundationModels に依存しない)
 
-public struct TriageInfo: Sendable {
-    /// appBug / flakiness / locatorDrift / envIssue
-    public let failureClass: String
-    public let summary: String
-    public let suggestedFix: String
-
-    public init(failureClass: String, summary: String, suggestedFix: String) {
-        self.failureClass = failureClass
-        self.summary = summary
-        self.suggestedFix = suggestedFix
-    }
-}
-
 public struct HealProposal: Sendable {
     public let element: ElementInfo
     /// high / medium / low
@@ -66,8 +53,6 @@ public enum HealAttempt: Sendable {
 public protocol ReplayDelegate: AnyObject {
     func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt?
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)?
-    func triage(goal: String?, stepDescription: String, failureReason: String,
-                snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo?
     /// [PoC occlusion-guard] ツリー上は一致した要素が、実際にスクショ上で覆われず/切れず/
     /// 明瞭に描画されているかを FM に照合させる。visible=false なら assert を誤った緑として反転する。
     /// 戻り nil = 判定不能(FM 不可・画像不正)で、この場合ガードは何もしない(従来どおり pass)。

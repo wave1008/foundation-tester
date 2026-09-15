@@ -52,7 +52,7 @@ cwd(受け手パッケージ)とは別物です。
 | ツール | 内容 |
 |---|---|
 | `ft_status` | 接続確認 — 宛先デバイスと、session のアプリが今も前面かを返す |
-| `ft_doctor` | FM(Foundation Models)可用性。使えないときは無効になる機能(自己修復・トリアージ・`screenLooksLike`・遮蔽チェック)を返す |
+| `ft_doctor` | FM(Foundation Models)可用性。使えないときは無効になる機能(自己修復・`screenLooksLike`・遮蔽チェック)を返す |
 | `ft_launch` / `ft_terminate` | アプリの起動・終了 |
 | `ft_install` | パッケージファイルからアプリをインストール(iOS: `.app` / Android: `.apk` または分割バンドルの `.apks`) |
 | `ft_snapshot` | 画面要素一覧のスナップショット(圧縮された set-of-mark 形式)。`waitFor` でセレクタが出るまで待つ |

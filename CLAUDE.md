@@ -242,8 +242,9 @@
   ときだけ(`FMLivenessProbe.refresh` の門①②③。FMLock は 1 秒で諦める = 実仕事を待たせない)。
   プローブ間隔 60 秒の根拠は `Scripts/fm-flap-monitor.swift` と同じ刻み。
   読み手は4つ: モニターの FM 行(NDJSON の `fmTextState`/`fmVisionState`/`fmDeadReason`/
-  `fmCheckedAt`)/ run 開始前の警告(`ProfileRunner.warnIfFMDegraded`。**heal の有無で
-  出し分けない** —— occlusion-guard・screenLooksLike・triage は heal を切っていても FM を引く)/
+  `fmCheckedAt`)/ run 開始前の警告(`ProfileRunner.warnIfFMDegraded`。**経路ごとに、その経路を
+  使う機能が有効な run でだけ言う** —— text の死は heal、vision の死は occlusion-guard・screenLooksLike。
+  heal だけで出し分けると、heal を切った run の視覚系の死を黙る)/
   run.json の `fmDead`・`fmDeadReason` / `ft_status`・`ft_doctor`・`fleetest doctor --fm-only`
   (**doctor は text と vision を両方 実呼び出しで確かめ、どちらが死んでも exit 1**)
 - リモート実行(`run --runner` の SSH ディスパッチ):
@@ -623,6 +624,12 @@
   期待文字列を prompt に入れて「見えるか」を訊くと、空白・別の文字の crop でも期待文字列を写して
   visible=true と答える(おうむ返し。空白 20〜23% / 別の文字 33〜56% の見逃し)。欄順を変えても直らない。
   `OcclusionTranscriptTests` がソース走査で守る → maintainer-notes §19
+- **FM の失敗トリアージ(分類・要約・修正案)は置かない**(ユーザー決定 2026-09-15)。照合相手の無い自由文で、
+  実レポート 30 件のうち要約 13 件が事実を誤り(数の向き・引用・帰属)、分類は環境の問題を `appBug` にし
+  (ブリッジ不達 5/6・a11y 無効 3/3)、修正案は別要素への差し替えを勧めた。「環境の問題」と「アプリの不具合」を
+  分けること自体、ツールには判定できない(失敗の記録に分類を置かないのと同じ理由)。起きたことはレポートに
+  事実として並ぶ(失敗文言・要素一覧・スクリーンショット)。`FMTriageRemovedTests` が Sources への再混入を落とす。
+  **戻すなら §21 の測り方で誤りの率を測ってから** → maintainer-notes §21
 - **occlusion-guard の OCR 段(`FTCore.RegionText`)は「素通りの根拠」にしかしない** —— 期待テキストが
   **丸ごと**読めた回だけ FM を省く(既定 on。**利用者の口は実行プロファイルの
   `ocrFalsePositiveCheck`**(親スイッチ `ocr` の配下。拡張のプロファイルタブ

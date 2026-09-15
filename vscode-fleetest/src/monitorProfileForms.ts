@@ -66,7 +66,6 @@ export function buildRunProfileTemplate(
   template.ocr = true;
   template.ocrFalsePositiveCheck = true;
   template.screenLooksLike = true;
-  template.triage = true;
   template.iosInappEngine = true;
   template.updateWebView = true;   // 既定 ON(WebView の版差でシナリオが端末ごとに落ちるため)
   template.wipeDataOnBloat = true;
@@ -137,7 +136,7 @@ export function validateNewProjectName(name: string, existing: readonly string[]
 
 /** 実行プロファイル設定フォームの23フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
  * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、heal/
- * falsePositiveCheck/screenLooksLike/triage は「FM」セクション、iosFastInput / iosPreActionWarmup は「iOS」セクションのサブオプション
+ * falsePositiveCheck/screenLooksLike は「FM」セクション、iosFastInput / iosPreActionWarmup は「iOS」セクションのサブオプション
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
  * runProfilesTab.js の責務)。containerInference/ocr は独立トグル(FM とは無関係。ocr は
  * occlusion guard の Vision OCR 事前判定段。falsePositiveCheck が false の run では guard 自体が
@@ -158,7 +157,6 @@ export interface RunProfileFormFields {
   readonly heal: boolean;
   readonly falsePositiveCheck: boolean;
   readonly screenLooksLike: boolean;
-  readonly triage: boolean;
   readonly containerInference: boolean;
   readonly ocr: boolean;
   /** OCR の配下(親 `ocr` の状態に関わらず保持・保存する。FM のサブオプションと同じ方針) */
@@ -196,7 +194,7 @@ export interface RunProfileFormFields {
  * defaultTimeout/wipeDataThresholdGB/recordBitrateKbps は number ならそのまま String() 化する
  * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。record/recordFailuresOnly/
  * recordFullResolution/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
- * fm/heal/screenLooksLike/falsePositiveCheck/triage/containerInference/homeOnStart/playProtectBypass は
+ * fm/heal/screenLooksLike/falsePositiveCheck/containerInference/homeOnStart/playProtectBypass は
  * スキーマ既定と合わせ既定 true
  * (falsePositiveCheck は 2026-09-03 に false から変更)。
  */
@@ -216,7 +214,6 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const ocr = typeof source.ocr === "boolean" ? source.ocr : true;
   const ocrFalsePositiveCheck =
     typeof source.ocrFalsePositiveCheck === "boolean" ? source.ocrFalsePositiveCheck : true;
-  const triage = typeof source.triage === "boolean" ? source.triage : true;
   // screenIs は改名前の旧キー。新キーが無いときだけ読む(Sources/FTCore/RunProfile.swift の
   // effectiveScreenLooksLike と同じ優先順。保存時は updateRunProfileInObject が旧キーを落とす)
   const screenLooksLike = typeof source.screenLooksLike === "boolean"
@@ -272,7 +269,6 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     heal,
     falsePositiveCheck,
     screenLooksLike,
-    triage,
     containerInference,
     ocr,
     ocrFalsePositiveCheck,
@@ -337,8 +333,10 @@ export function updateRunProfileInObject(
   result.heal = fields.heal;
   result.falsePositiveCheck = fields.falsePositiveCheck;
   result.screenLooksLike = fields.screenLooksLike;
-  result.triage = fields.triage;
   delete result.screenIs;  // 旧キーを残すと同じ設定が2つのキーに現れ、片方だけ直す事故になる
+  // 撤去したキー(FM の失敗トリアージ)。旧テンプレートが必ず書いていたので、残すと GUI で作った
+  // プロファイルが run のたびに unknown-key 警告を出し続ける(docs/maintainer-notes.md §21)
+  delete result.triage;
   result.containerInference = fields.containerInference;
   result.ocr = fields.ocr;
   result.ocrFalsePositiveCheck = fields.ocrFalsePositiveCheck;  // 同上(既定 true 側。containerInference と同じ理由で常に書く)

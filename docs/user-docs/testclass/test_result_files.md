@@ -8,8 +8,9 @@ where to find them; see [Results analysis](../running/results_analysis.md) and
 
 `TestProjects/<project>/reports/scenario-*.md` — one report per scenario run, written
 regardless of outcome. It has the same hierarchy as the code:
-`scene → condition/action/expectation → step`, plus a triage summary, a screenshot of the
-point of failure (if any), and fix suggestions for a broken selector when self-healing ran.
+`scene → condition/action/expectation → step`, plus the failure message and element list at the
+point of failure, a screenshot of the point of failure (if any), and fix suggestions for a broken
+selector when self-healing ran.
 
 ## Result JSON
 

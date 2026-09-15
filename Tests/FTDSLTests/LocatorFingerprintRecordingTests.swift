@@ -74,8 +74,6 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
             }
         }
         func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-        func triage(goal: String?, stepDescription: String, failureReason: String,
-                    snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
     }
 
     /// `#id_seed` だけが在る画面(指紋を録る側の run)

@@ -173,8 +173,8 @@ extension MCPServer {
         let disabled = reading.deadPaths == ["vision"]
             ? "the occlusion-guard and screenLooksLike are silently disabled"
             : reading.deadPaths == ["text"]
-                ? "self-healing and failure triage are silently disabled"
-                : "the occlusion-guard, self-healing, screenLooksLike and triage are silently disabled"
+                ? "self-healing is silently disabled"
+                : "the occlusion-guard, self-healing and screenLooksLike are silently disabled"
         return "\n⚠️ FM is dead on this machine (\(reading.deadPaths.joined(separator: " + "))):"
             + " \(disabled). \(reason)"
     }

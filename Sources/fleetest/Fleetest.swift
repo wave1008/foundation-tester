@@ -1374,7 +1374,6 @@ struct RunScenarios: AsyncParsableCommand {
                                     fm: noProfileSettings.fm.enabled, heal: noProfileSettings.fm.heal,
                                     falsePositiveCheck: noProfileSettings.fm.falsePositiveCheck,
                                     screenLooksLike: noProfileSettings.fm.screenLooksLike,
-                                    triage: noProfileSettings.fm.triage,
                                     ocr: noProfileSettings.ocr,
                                     ocrFalsePositiveCheck: noProfileSettings.ocrFalsePositiveCheck),
                                 setOverrides: profileOverrides.mapValues(\.token),
@@ -1465,7 +1464,6 @@ struct RunScenarios: AsyncParsableCommand {
             fm: noProfileSettings.fm.enabled, heal: noProfileSettings.fm.heal,
             falsePositiveCheck: noProfileSettings.fm.falsePositiveCheck,
             screenLooksLike: noProfileSettings.fm.screenLooksLike,
-            triage: noProfileSettings.fm.triage,
             ocr: noProfileSettings.ocr, ocrFalsePositiveCheck: noProfileSettings.ocrFalsePositiveCheck)
         let failedCount: Int
         let interrupted: Bool
@@ -1703,8 +1701,8 @@ struct RunScenarios: AsyncParsableCommand {
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: item.info.id,
                 connection: DriverConnection(platform: platform),
-                // **`enabled: false`(= 子へ --no-fm)**。heal だけ切ると失敗のたびに triage が
-                // 走り、デバイスも画面も無いのに FM の直列化待ちを払う(数秒。実測で確認)
+                // **`enabled: false`(= 子へ --no-fm)**。デバイスも画面も無いので FM を引く経路を
+                // まとめて止める(個別に切ると残った経路が FM の直列化待ちを払う)
                 settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false, heal: false)),
                 reportDir: tempDir.path,
                 dryRun: true, appBundleID: appID) { event in
@@ -1877,7 +1875,7 @@ struct RunScenarios: AsyncParsableCommand {
                 buffers[url, default: []].append(contentsOf: lines)
             case .step(_, let url, _), .flowHealed(_, let url):
                 buffers[url, default: []].append(contentsOf: lines)
-            case .flowFinished(_, let url, let passed, _, _, _):
+            case .flowFinished(_, let url, let passed, _, _):
                 let all = (buffers.removeValue(forKey: url) ?? []) + lines
                 if quiet {
                     ConsoleOut.out(passed ? "✅ \(names[url] ?? url.lastPathComponent)"

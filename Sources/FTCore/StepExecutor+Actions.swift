@@ -1741,7 +1741,7 @@ extension StepExecutor {
     /// 機構(フォールバックが書けること)だけを教え、どの要素を使うかは読み手に委ねる。**
     /// これは書き忘れではなく意図的な設計判断 —— 一度 `SelectorNaming` + `FTSelector.serialize`
     /// で具体的な連鎖を組み立てて出す版を実装したが、2026-09-02 のデバイス実行
-    /// (`Scripts/fm-verify.sh`)で撤回した。93_triage(**存在しない要素をわざと叩く**陽性対照)で
+    /// (`Scripts/fm-verify.sh`)で撤回した。**存在しない要素をわざと叩く**シナリオで
     /// FM が無関係な要素を提案し、それがそのまま貼れる形の助言 `"#btn_triage_check_does_not_exist
     /// ||#nav_input"` として出た実例がある。**confidence は信号を持たない**(正解にも誤答にも
     /// "low" が付くことが実測で確定済み。docs/design.md §10)ため、提案が正しいか誤りかを

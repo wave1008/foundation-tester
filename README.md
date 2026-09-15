@@ -236,7 +236,7 @@ TestProjects/SampleApp/
 ```jsonc
 // profiles/runs/all.json
 // FM 機能のトグル: fm(親スイッチ)/ heal / falsePositiveCheck(偽陽性検証)/
-// screenLooksLike / triage はいずれも既定 true(詳細は docs/design.md §11.2)
+// screenLooksLike はいずれも既定 true(詳細は docs/design.md §11.2)
 { "app": "sampleapp",
   "devices": [ { "name": "simulator1" }, { "name": "simulator2" }, { "name": "emulator1" } ],
   "fm": true, "heal": true, "reportDir": "reports", "defaultTimeout": 5 }
@@ -287,7 +287,7 @@ swift run fleetest bridge down --all              # 全ブリッジ停止
   自動で行うが、それでも落ちる場合は `bridge up` 後に一度 `launch`+`snapshot` してから実行する
 - VSCode 拡張(`vscode-fleetest/`)でも実行プロファイル(`fleetest.profile`)経由で同じ並列実行が
   できる(詳細は [vscode-fleetest/README.md](vscode-fleetest/README.md) の「並列実行とログレーン」)
-- 決定的再生は FM を呼ばないため並列スケールする。screenMatches・トリアージは
+- 決定的再生は FM を呼ばないため並列スケールする。screenMatches・自己修復は
   オンデバイス FM(マシンに1本)に律速される点に注意
 
 ### Android
@@ -470,7 +470,7 @@ condition {
   tearDown だけは失敗後でも実行される)。
   ブロック内の生 Swift コードはスキップされないため、失敗後に走らせたくない処理は `procedure { }` に包む
 - レポートは成否問わず `TestProjects/<name>/reports/scenario-*.md` に出力(scene → CAE → ステップ階層、
-  トリアージ、失敗スクリーンショット、**修正提案**)
+  失敗時の要素一覧、失敗スクリーンショット、**修正提案**)
 - **自己修復とヒールキャッシュ**: 自己修復が有効な実行(**`--profile` 実行では実行プロファイルの
   `heal` が既定 ON** / **プロファイルを使わない `fleetest run` は既定 OFF**。CLI からは
   `--heal` で ON・`--no-heal` で OFF に上書きできる。両方の同時指定はエラー)では、
@@ -527,7 +527,7 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 | ツール | 内容 |
 |---|---|
 | `ft_status` | 接続確認。**宛先**(どのシミュレータ/エミュレータか。Android は serial と AVD 名)と、**session のアプリが今も前面か**まで返す(session はブリッジが掴んでいるアプリで、ホームへ戻っても変わらない)。Android で `serial` を省略して複数台つながっているときは、失敗せず**全台を一覧**で返す(読み取り専用なので。操作系は従来どおり曖昧なら断る) |
-| `ft_doctor` | FM 可用性。使えないときは**止まる機能(self-healing / triage / screenLooksLike / occlusion-guard)と代わりの書き方**まで返す |
+| `ft_doctor` | FM 可用性。使えないときは**止まる機能(self-healing / screenLooksLike / occlusion-guard)と代わりの書き方**まで返す |
 | `ft_launch` / `ft_terminate` | アプリ起動・終了 |
 | `ft_install` | アプリをパッケージファイルからインストールする(iOS: `.app` バンドル / Android: `.apk`) |
 | `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式)。**`waitFor` を渡すと出るまでホスト側で待つ**(セレクタ記法は DSL と同じ。既定 5 秒)。**対象アプリが前面に居なければ先頭で警告する**(XCUITest の木はセッションのアプリに閉じているので、別アプリが前面でも同じ木を返してしまう。**iOS 実機では OS が前面状態を正しく申告しないため警告は出ない**)。**スクロール容器の外に取り残された要素(ghost)は先頭と各行で名指しする**(`⚠️scroll-leftover`) —— 一覧の見た目は普通の行と同じだが、その座標には別のものが描かれていることがある。**スクロール容器の行には `scroll` を付ける**(`scrollFrame:` に指定できる領域。**2つ以上あるときだけ**先頭でも名指しする)—— ただし**印が無い = スクロールしない、ではない**(Compose / Flutter の in-app は自前描画で申告できない)。撮った `#id` は `<プロジェクト>/.fleetest/selector-inventory.json` に貯まり、`ft_dry_run` の綴り誤り照合に使われる。**同じ id の大群(地図の POI など。非操作の葉が20件以上)は1行に畳む** —— 見出しに続けて「ラベル[ref]」の索引が出るので ref では撃てる。frame まで要るときは `expandBulk: true`。**上限で要素が落ちたときは先頭で言う**(何件・何が落ちたか。内訳は iOS のブリッジが申告する) —— 落ちた要素は木から消えているので `waitFor` も `ft_scroll_to` も一生見つけられない。**ラベルも id も無い clickable には `#容器 >> .clickable[n]` を添える**(id を持つ祖先があるときだけ。無ければ従来どおり「ref か座標しかない」)。**同じラベルが複数に当たるときは「代わりに書けるセレクタ」を一致ごとに出す**(`#id` > 一意ラベル > `#容器 >> .型[n]`。書けないものは「—」で明示する = 無言のケースを作らない。**勧める前にサーバ自身が引いて当人が返ることを確かめている**)。**打ち切ったときは枠を食っている id 群まで名指しする**(`#VKPointFeature が 119 件中 87 件` のように)—— 読み手にできる手は「それを描いている物を畳む」なので、原因を当てさせない。**`interactiveOnly: true` でレイアウト専用の行を隠す**(ラベルも値も持たず、操作もスクロールもしない要素。密な画面では半分以上が消える)—— ref も frame も変わらず、隠れた行も ref では撃てる |
@@ -575,7 +575,7 @@ XCUITest ブリッジ側へ寄る**(読みが少し遅くなるだけで止ま�
 ```
 fleetest CLI / MCP ──(サブプロセス)──▶ fleetest-scenarios-<project>(プロジェクトのシナリオを発見・実行)
       │                                        │  FTDSL   (Swift DSL: @TestClass/@Test マクロ・コマンド・レポート)
-      │                                        │  FTFoundationModels (FoundationModels: 視覚検証 / 修復 / トリアージ)
+      │                                        │  FTFoundationModels (FoundationModels: 視覚検証 / 修復)
       │                                        │  FTCore  (ステップモデル / AppDriver 抽象 / StepExecutor)
       │                                        ▼
       ├─ HTTP (localhost:8123) ──▶ iOS シミュレータ内の常駐 XCUITest
@@ -612,7 +612,7 @@ Sources/
   FTDSLMacros/     @TestClass / @Test マクロ実装(swift-syntax はここに閉じる)
   FTScenarioRunner/ fleetest-scenarios-<project> の CLI 実装(list / run・NDJSON イベント)
   FTCore/          ステップモデル / AppDriver / StepExecutor / プロジェクト・プロファイルモデル(FM 非依存・外部依存ゼロ)
-  FTFoundationModels/ FM 呼び出し(失敗時の Healer / Verifier / Triager・occlusion-guard・下書き生成・命名)
+  FTFoundationModels/ FM 呼び出し(失敗時の Healer / Verifier・occlusion-guard・下書き生成・命名)
   FTBridgeClient/  iOS ブリッジの HTTP クライアントと起動管理・SimulatorCatalog・BridgeProvisioner
   FTAndroid/       Android ドライバ(常駐ブリッジ)・AndroidDeviceCatalog・ProfileWorkerFactory
 Runner/            xcodegen 定義 + ブリッジ本体(HTTP サーバ内蔵 UI テスト)
@@ -646,7 +646,7 @@ Jenkins の例と flaky の扱いは [docs/ci.md](docs/ci.md)。
 
 - `swift run fleetest ...` は毎回 SwiftPM のチェックで **約1.6秒** 上乗せされる。
   連続実行するときは `.build/debug/fleetest ...` を直接叩くと速い(MCP は常駐なので無関係)
-- FM の応答時間: screenMatches(視覚検証)数秒、修復・トリアージ数秒(すべてオンデバイス・無料)
+- FM の応答時間: screenMatches(視覚検証)数秒、修復数秒(すべてオンデバイス・無料)
 - 計測手順・調整ノブ・設計原則(不採用の施策含む)は
   [パフォーマンスチューニングガイド](docs/performance-tuning.md)を参照
 

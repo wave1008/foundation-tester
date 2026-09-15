@@ -2,8 +2,8 @@
 //
 // **モデルの文脈長は 4,096 トークンで、超えると呼び出しごと失敗する**
 // (2026-09-03 実測: `Content contains 7957 tokens, which exceeds the maximum allowed
-// context size of 4096`)。heal も triage も**失敗は nil = 黙って素通り**なので、
-// 密な画面では「自己修復もトリアージも一度も効かない」が無警告で起きる。
+// context size of 4096`)。heal は**失敗が nil = 黙って素通り**なので、
+// 密な画面では「自己修復が一度も効かない」が無警告で起きる。
 // 自前 SUT の画面は小さく1度も踏まなかったが、実アプリのスナップショット
 // (`Tests/Fixtures/RealAppSnapshots`)では 234 行 / 11,771 文字の木が実際に溢れた。
 //
@@ -17,8 +17,8 @@
 // (理由と門は FTCore/FMGate.swift 冒頭)。溢れる画面は下の fit で切り詰めて解く。
 //
 // **切るのは溢れるときだけ**。budget 以内の木は1バイトも変えない —— 木を削ると分類が変わる
-// ことが実測で分かっている(40 行に切り詰めた triage は 36 件中 11 件で failureClass が変わり、
-// `locatorDrift` は 7 件 → 0 件になった。docs/performance-tuning.md §3.5.1)。
+// ことが実測で分かっている(撤去済みの失敗トリアージで、40 行に切り詰めると 36 件中 11 件で
+// 分類が変わり、`locatorDrift` は 7 件 → 0 件になった。docs/performance-tuning.md §3.5.1)。
 // 溢れる画面では今日どのみち**判定が1つも返っていない**ので、切ってでも答えを得るほうがよい。
 
 import Foundation

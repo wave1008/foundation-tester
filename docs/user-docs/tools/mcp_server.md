@@ -53,7 +53,7 @@ these; naming a second device requires future calls to be explicit again.
 | Tool | Description |
 |---|---|
 | `ft_status` | Connection check — reports the target device and whether the app session is still in the foreground |
-| `ft_doctor` | Foundation Models (FM) availability; when unavailable, lists which features are disabled (self-healing, triage, `screenLooksLike`, occlusion checks) |
+| `ft_doctor` | Foundation Models (FM) availability; when unavailable, lists which features are disabled (self-healing, `screenLooksLike`, occlusion checks) |
 | `ft_launch` / `ft_terminate` | Launch or terminate the app |
 | `ft_install` | Install the app from a package file (`.app` on iOS, `.apk` or a split `.apks` bundle on Android) |
 | `ft_snapshot` | Element list snapshot (compressed, set-of-mark style); `waitFor` waits for a selector to appear |

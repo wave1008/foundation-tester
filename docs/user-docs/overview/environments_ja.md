@@ -16,13 +16,12 @@ Xcode・xcodegen・シミュレータ・adb。
 
 ## Apple Intelligence(任意)
 
-Apple Intelligence(Foundation Models)は無くても動きますが、有効にすると次の4つが使えます。
+Apple Intelligence(Foundation Models)は無くても動きますが、有効にすると次の3つが使えます。
 後から有効化しても、そのまま使えるようになります。
 
 - **自己修復** —— セレクタが壊れたときにモデルが修復し、シナリオを続行させます。修復結果は
   キャッシュされ、2回目以降の実行ではモデルを呼びません。
 - **`screenLooksLike`** —— 画面と自然文の説明を照合する視覚検証です。
-- **失敗時のトリアージ** —— 失敗原因の要約と修正案をレポートに残します。
 - **遮蔽チェック(occlusion-guard)** —— `exist` の `requireVisible` 判定で、木には在るが
   別のものに覆われている要素を「見えている」と誤って緑にしないための確認です。
 

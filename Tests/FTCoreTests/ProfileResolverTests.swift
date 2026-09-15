@@ -1184,7 +1184,6 @@ final class ProfileResolverTests: XCTestCase {
         // 拡張のフォーム)で既定が一致していないと、GUI で作ったプロファイルと CLI の挙動がずれる
         XCTAssertTrue(resolved.fm.falsePositiveCheck, "偽陽性検証の既定は true")
         XCTAssertTrue(resolved.fm.screenLooksLike, "省略時は既定 true のはず")
-        XCTAssertTrue(resolved.fm.triage, "トリアージの既定は true")
     }
 
     func testHealDefaultsToTrueWhenFullyUnspecified() throws {
@@ -1201,7 +1200,6 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertTrue(resolved.fm.heal, "heal の既定は true(既定 false→true への変更)")
         XCTAssertTrue(resolved.fm.falsePositiveCheck, "偽陽性検証の既定は true(2026-09-03 に変更)")
         XCTAssertTrue(resolved.fm.screenLooksLike)
-        XCTAssertTrue(resolved.fm.triage, "トリアージの既定は true")
         XCTAssertTrue(resolved.heal, "heal エイリアスも同じ値を返す")
     }
 
@@ -1209,8 +1207,7 @@ final class ProfileResolverTests: XCTestCase {
         try writeStandardFixture()
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
-          "fm": false, "heal": true, "falsePositiveCheck": true, "screenLooksLike": true,
-          "triage": true }
+          "fm": false, "heal": true, "falsePositiveCheck": true, "screenLooksLike": true }
         """, to: project.runsDir, name: "fmoff")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "fmoff", machineName: "M1 Max(64GB)")
@@ -1218,24 +1215,22 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertFalse(resolved.fm.heal, "fm:false は個別の heal:true より優先される")
         XCTAssertFalse(resolved.fm.falsePositiveCheck)
         XCTAssertFalse(resolved.fm.screenLooksLike)
-        XCTAssertFalse(resolved.fm.triage, "fm:false は triage:true より優先される")
     }
 
-    /// トリアージだけを切れること(**合否は変えない助言**なので、重さを避けたい run で切る)。
-    /// 他の3つは巻き添えにしない
-    func testTriageCanBeDisabledAlone() throws {
+    /// 撤去した `triage` キー(FM の失敗トリアージ。maintainer-notes §21)が残ったプロファイルも
+    /// 解決でき、run を止めずに「無視する」とだけ言う。他の FM トグルは巻き添えにしない
+    func testLeftoverTriageKeyIsIgnoredWithAWarning() throws {
         try writeStandardFixture()
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "triage": false }
-        """, to: project.runsDir, name: "notriage")
+        """, to: project.runsDir, name: "leftover")
         let resolved = try ProfileResolver.resolve(
-            project: project, runName: "notriage", machineName: "M1 Max(64GB)")
-        XCTAssertFalse(resolved.fm.triage)
+            project: project, runName: "leftover", machineName: "M1 Max(64GB)")
         XCTAssertTrue(resolved.fm.enabled)
         XCTAssertTrue(resolved.fm.heal)
         XCTAssertTrue(resolved.fm.falsePositiveCheck)
         XCTAssertTrue(resolved.fm.screenLooksLike)
-        XCTAssertTrue(resolved.warnings.isEmpty, "triage は既知キー: \(resolved.warnings)")
+        XCTAssertEqual(resolved.warnings, ["runs/leftover.json: unknown key \"triage\" is ignored"])
     }
 
     func testIndividualSubFlagsFollowExplicitValues() throws {

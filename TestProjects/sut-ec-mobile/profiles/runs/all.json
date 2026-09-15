@@ -127,7 +127,6 @@
   "wipeDataOnBloat": true,
   "screenLooksLike": true,
   "iosPreActionWarmup": true,
-  "triage": true,
   "ocr": true,
   "ocrFalsePositiveCheck": true,
   "playProtectBypass": true

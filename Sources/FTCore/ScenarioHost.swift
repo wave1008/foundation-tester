@@ -420,7 +420,6 @@ public enum ScenarioHost {
         if !fm.enabled { args.append("--no-fm") }
         if !fm.falsePositiveCheck { args.append("--no-false-positive-check") }
         if !fm.screenLooksLike { args.append("--no-screen-looks-like") }
-        if !fm.triage { args.append("--no-triage") }
         if dryRun { args.append("--dry-run") }
         if let port = connection.port { args += ["--port", String(port)] }
         if let serial = connection.serial { args += ["--serial", serial] }
@@ -642,8 +641,8 @@ public enum ScenarioHost {
         // dry-run は NullDriver 固定のため接続情報は使われない(platform はダミー)
         let passed = await run(project: project, scenarioID: scenarioID,
                                connection: DriverConnection(platform: "ios"),
-                               // **`enabled: false`**(heal だけ切ると失敗のたびに triage が走り、
-                               // デバイスも画面も無いのに FM の直列化待ちを数秒払う。2026-08-12 実測)
+                               // **`enabled: false`**(デバイスも画面も無いので FM を引く経路をまとめて止める。
+                               // 個別に切ると残った経路が FM の直列化待ちを払う)
                                settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false, heal: false)),
                                reportDir: tempDir.path,
                                dryRun: true) { events.append($0) }

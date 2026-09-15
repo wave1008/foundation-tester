@@ -49,8 +49,6 @@ final class HealSilentDropTests: XCTestCase {
                 .map { .proposed(HealProposal(element: $0, confidence: confidence, rationale: "test heal")) }
         }
         func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-        func triage(goal: String?, stepDescription: String, failureReason: String,
-                    snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
     }
 
     private func element(_ ref: Int, type: String = "clickable", id: String? = nil,

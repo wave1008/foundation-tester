@@ -89,7 +89,7 @@ flaky scenarios, device/worker breakdowns, a daily trend, slow scenarios, and ot
 
 - **"Rerun Failed Tests"** re-runs only the scenarios that failed last time.
 - **"Open Report"** opens the Markdown report for a scenario's last run (element list,
-  screenshot, and — when available — FM triage).
+  screenshot, and — when available — self-healing suggestions).
 - The Test Explorer toolbar's **"Show Failed Tests Only"** filter narrows the tree to failed tests.
 
 ## Self-Healing Review

@@ -274,8 +274,6 @@ final class FakeVisibilityDelegate: ReplayDelegate {
     init(visible: Bool) { self.visible = visible }
     func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-    func triage(goal: String?, stepDescription: String, failureReason: String,
-                snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
     func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
                               screenshotPNG: Data) async
         -> (visible: Bool, state: String, reason: String, observedText: String)? {
@@ -291,8 +289,6 @@ final class NoVerdictVisibilityDelegate: ReplayDelegate {
     private(set) var visibleCalls = 0
     func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-    func triage(goal: String?, stepDescription: String, failureReason: String,
-                snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
     func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
                               screenshotPNG: Data) async
         -> (visible: Bool, state: String, reason: String, observedText: String)? {
@@ -309,8 +305,6 @@ final class SequenceVisibilityDelegate: ReplayDelegate {
     init(_ results: [Bool]) { self.results = results }
     func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-    func triage(goal: String?, stepDescription: String, failureReason: String,
-                snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
     func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
                               screenshotPNG: Data) async
         -> (visible: Bool, state: String, reason: String, observedText: String)? {
@@ -333,8 +327,6 @@ final class SlowSequenceVisibilityDelegate: ReplayDelegate {
     }
     func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-    func triage(goal: String?, stepDescription: String, failureReason: String,
-                snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
     func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
                               screenshotPNG: Data) async
         -> (visible: Bool, state: String, reason: String, observedText: String)? {
@@ -357,8 +349,6 @@ final class ScriptedScreenDelegate: ReplayDelegate {
         verifyScreenCalls += 1
         return (pass, pass ? "ok" : "mismatch")
     }
-    func triage(goal: String?, stepDescription: String, failureReason: String,
-                snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
 }
 
 /// screenMatches 検証用: verifyScreen が常に pass を返し、呼び出し回数を数える
@@ -370,7 +360,5 @@ final class CountingScreenDelegate: ReplayDelegate {
         verifyScreenCalls += 1
         return (true, "ok")
     }
-    func triage(goal: String?, stepDescription: String, failureReason: String,
-                snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
 }
 

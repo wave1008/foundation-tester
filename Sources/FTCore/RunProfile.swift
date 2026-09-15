@@ -367,29 +367,24 @@ public struct RunDeviceRef: Codable, Sendable, Equatable {
 /// FM 機能の実行時トグル(実行プロファイル由来の実効値)。enabled=false のとき他フラグも
 /// resolve 側で false に落とす(利用側は個別フラグだけ見ればよい)
 public struct FMConfig: Sendable, Equatable {
-    /// FM を使用するか(false = heal/偽陽性検証/screenLooksLike/triage を一切呼ばない)
+    /// FM を使用するか(false = heal/偽陽性検証/screenLooksLike を一切呼ばない)
     public var enabled: Bool
     public var heal: Bool
     /// 偽陽性検証(occlusion guard)= 誤った緑(木では一致したが実際には見えていない)の検査。
     /// **実行プロファイルの既定は true**(2026-09-03 ユーザー決定。それ以前はオプトインだった)
     public var falsePositiveCheck: Bool
     public var screenLooksLike: Bool
-    /// 失敗時のトリアージ(分類・要約・次の一手)。**合否は変えない助言**なので、
-    /// 切っても検証の強度は落ちない。実行プロファイルの既定は true
-    public var triage: Bool
 
     /// **この既定値は実行プロファイルの既定とは別物**。プロファイル由来の値は
     /// `ResolvedProfile.fm`(RunProfileDocument の `heal ?? true` 等)が組み立てる。
     /// ここの既定は「プロファイルを通らない呼び出し」(MCP のシナリオ実行・dry-run 等)向けで、
     /// **FM を積極的に使わない側**に倒してある
     public init(enabled: Bool = true, heal: Bool = false,
-                falsePositiveCheck: Bool = false, screenLooksLike: Bool = true,
-                triage: Bool = true) {
+                falsePositiveCheck: Bool = false, screenLooksLike: Bool = true) {
         self.enabled = enabled
         self.heal = heal
         self.falsePositiveCheck = falsePositiveCheck
         self.screenLooksLike = screenLooksLike
-        self.triage = triage
     }
 }
 
@@ -422,16 +417,13 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var app: String?
     /// 実行に使うデバイス(name 参照。iOS/Android 混在可 = 両OS同時実行)
     public var devices: [RunDeviceRef]?
-    /// FM 機能を使用するか(既定 true)。false なら heal/偽陽性検証/screenLooksLike/triage を一切呼ばない
+    /// FM 機能を使用するか(既定 true)。false なら heal/偽陽性検証/screenLooksLike を一切呼ばない
     public var fm: Bool?
     /// FM によるロケータ自己修復を許可するか(既定 true)
     public var heal: Bool?
     /// 偽陽性検証(occlusion guard)を有効にするか(**既定 true**。2026-09-03 ユーザー決定で
     /// オプトインをやめた)= 誤った緑(木では一致したが実際には見えていない)の検査
     public var falsePositiveCheck: Bool?
-    /// 失敗時のトリアージ(分類・要約・次の一手)を有効にするか(既定 true)。
-    /// **合否は変えない助言**なので、切っても検証の強度は落ちない(重いのを避けたいときに切る)
-    public var triage: Bool?
     /// screenLooksLike(screenMatches)を有効にするか(既定 true。無効時は該当ステップを skip)
     public var screenLooksLike: Bool?
     /// OCR 機能全体の親スイッチ(既定 true)。**`fm` の配下ではなく独立の兄弟キー**
@@ -538,7 +530,6 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public init(app: String? = nil, devices: [RunDeviceRef]? = nil, fm: Bool? = nil,
                 heal: Bool? = nil, falsePositiveCheck: Bool? = nil, screenLooksLike: Bool? = nil,
                 ocr: Bool? = nil, ocrFalsePositiveCheck: Bool? = nil,
-                triage: Bool? = nil,
                 screenIs: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
                 machine: String? = nil, iosInappEngine: Bool? = nil,
@@ -556,7 +547,6 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.fm = fm
         self.heal = heal
         self.falsePositiveCheck = falsePositiveCheck
-        self.triage = triage
         self.screenLooksLike = screenLooksLike
         self.ocr = ocr
         self.ocrFalsePositiveCheck = ocrFalsePositiveCheck
@@ -588,7 +578,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var effectiveScreenLooksLike: Bool { screenLooksLike ?? screenIs ?? true }
 
     static let knownKeys: Set<String> = [
-        "app", "devices", "fm", "heal", "falsePositiveCheck", "screenLooksLike", "ocr", "ocrFalsePositiveCheck", "triage",
+        "app", "devices", "fm", "heal", "falsePositiveCheck", "screenLooksLike", "ocr", "ocrFalsePositiveCheck",
         "screenIs",  // 旧名。effectiveScreenLooksLike が拾う(未知キー警告を出さないため残す)
         "reportDir", "defaultTimeout", "scenarioTimeout",
         "machine", "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
@@ -621,7 +611,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// ここと `applyingOverrides` の switch 分岐の両方に追記する(`RunProfileSetOverrideKeysTests` が
     /// Mirror で等号を固定する)
     fileprivate static let overridableKeyKinds: [String: ValueKind] = [
-        "fm": .bool, "heal": .bool, "falsePositiveCheck": .bool, "triage": .bool,
+        "fm": .bool, "heal": .bool, "falsePositiveCheck": .bool,
         "screenLooksLike": .bool, "ocr": .bool, "ocrFalsePositiveCheck": .bool,
         "iosInappEngine": .bool, "iosFastInput": .bool, "iosPreActionWarmup": .bool,
         "containerInference": .bool, "enableAnimations": .bool, "homeOnStart": .bool,
@@ -657,7 +647,6 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
             case ("fm", .bool(let v)): copy.fm = v
             case ("heal", .bool(let v)): copy.heal = v
             case ("falsePositiveCheck", .bool(let v)): copy.falsePositiveCheck = v
-            case ("triage", .bool(let v)): copy.triage = v
             case ("screenLooksLike", .bool(let v)): copy.screenLooksLike = v
             case ("ocr", .bool(let v)): copy.ocr = v
             case ("ocrFalsePositiveCheck", .bool(let v)): copy.ocrFalsePositiveCheck = v
@@ -906,8 +895,7 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
                 enabled: fmEnabled,
                 heal: fmEnabled && (doc.heal ?? true),
                 falsePositiveCheck: fmEnabled && (doc.falsePositiveCheck ?? true),
-                screenLooksLike: fmEnabled && doc.effectiveScreenLooksLike,
-                triage: fmEnabled && (doc.triage ?? true)),
+                screenLooksLike: fmEnabled && doc.effectiveScreenLooksLike),
             ocr: ocrEnabled,
             ocrFalsePositiveCheck: ocrEnabled && (doc.ocrFalsePositiveCheck ?? true),
             iosFastInput: doc.iosFastInput ?? false,

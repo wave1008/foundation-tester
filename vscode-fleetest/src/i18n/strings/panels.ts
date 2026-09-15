@@ -97,7 +97,6 @@ export const panelsStrings = {
     ja: "visionを使用したテキストの偽陽性検証を有効にする(macOS 27+)",
     en: "Enable vision-based false-positive verification for text (macOS 27+)",
   },
-  "panels.runProfile.triageLabel": { ja: "失敗時のトリアージを有効にする", en: "Enable failure triage" },
   "panels.runProfile.screenLooksLikeLabel": {
     ja: "visionを使用したscreenLooksLikeを有効にする(macOS 27+)",
     en: "Enable vision-based screenLooksLike (macOS 27+)",

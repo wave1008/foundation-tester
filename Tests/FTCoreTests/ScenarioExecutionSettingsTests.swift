@@ -40,7 +40,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
     func testDeviceIndependentRunSettingsMappingCarriesEveryField() {
         let nonDefault = DeviceIndependentRunSettings(
             fm: FMConfig(enabled: false, heal: true, falsePositiveCheck: true,
-                        screenLooksLike: false, triage: false),
+                        screenLooksLike: false),
             ocr: true,
             ocrFalsePositiveCheck: false,
             iosFastInput: true,
@@ -78,7 +78,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
             runName: "run", machineName: "machine", appName: "app", apps: [:],
             devices: [],
             fm: FMConfig(enabled: false, heal: true, falsePositiveCheck: true,
-                        screenLooksLike: false, triage: false),
+                        screenLooksLike: false),
             reportDir: URL(fileURLWithPath: "/tmp/dummy/reports"),
             defaultTimeout: 12.5, scenarioTimeout: 42, wipeDataOnBloat: true, updateWebView: false,
             wipeDataThresholdGB: 8, recoverCpuFallbackToGpu: false, locale: "ja_JP",

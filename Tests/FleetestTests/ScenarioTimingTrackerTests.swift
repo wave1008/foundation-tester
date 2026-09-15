@@ -57,9 +57,9 @@ final class ScenarioTimingTrackerTests: XCTestCase {
         tracker.record(.flowStarted(worker: "ios:2", flowURL: b.url, flowName: b.info.id, isDirty: false))
         Thread.sleep(forTimeInterval: 0.05)
         tracker.record(.flowFinished(worker: "ios:1", flowURL: a.url, passed: true,
-                                     triage: nil, reportURL: nil, fm: nil))
+                                     reportURL: nil, fm: nil))
         tracker.record(.flowFinished(worker: "ios:2", flowURL: b.url, passed: true,
-                                     triage: nil, reportURL: nil, fm: nil))
+                                     reportURL: nil, fm: nil))
 
         let wall = try? XCTUnwrap(tracker.testSeconds)
         let total = try? XCTUnwrap(tracker.scenarioTotalSeconds)
@@ -74,7 +74,7 @@ final class ScenarioTimingTrackerTests: XCTestCase {
         var tracker = ScenarioTimingTracker()
         let a = item("A.S0010")
         tracker.record(.flowFinished(worker: "ios:1", flowURL: a.url, passed: false,
-                                     triage: nil, reportURL: nil, fm: nil))
+                                     reportURL: nil, fm: nil))
         // 開始を観測していないので「1本も計測していない」= nil(0 秒ではない)
         XCTAssertNil(tracker.scenarioTotalSeconds)
         XCTAssertNil(tracker.testSeconds)
@@ -96,7 +96,7 @@ final class ScenarioTimingTrackerTests: XCTestCase {
             tracker.record(.flowStarted(worker: "ios:1", flowURL: a.url,
                                         flowName: a.info.id, isDirty: false))
             tracker.record(.flowFinished(worker: "ios:1", flowURL: a.url, passed: true,
-                                         triage: nil, reportURL: nil, fm: nil))
+                                         reportURL: nil, fm: nil))
         }
         XCTAssertNotNil(tracker.scenarioTotalSeconds)
     }
@@ -110,7 +110,7 @@ final class ScenarioTimingTrackerTests: XCTestCase {
         tracker.record(.flowStarted(worker: "ios:2", flowURL: b.url, flowName: b.info.id, isDirty: false))
         Thread.sleep(forTimeInterval: 0.08)
         tracker.record(.flowFinished(worker: "ios:2", flowURL: b.url, passed: true,
-                                     triage: nil, reportURL: nil, fm: nil))
+                                     reportURL: nil, fm: nil))
 
         XCTAssertGreaterThan(tracker.testSeconds ?? 0, 0.14,
                              "1本目の開始から数えること(2本目で上書きすると約半分になる)")
@@ -123,12 +123,12 @@ final class ScenarioTimingTrackerTests: XCTestCase {
         tracker.record(.flowStarted(worker: "ios:1", flowURL: a.url, flowName: a.info.id, isDirty: false))
         Thread.sleep(forTimeInterval: 0.08)
         tracker.record(.flowFinished(worker: "ios:1", flowURL: a.url, passed: true,
-                                     triage: nil, reportURL: nil, fm: nil))
+                                     reportURL: nil, fm: nil))
         let afterFirst = try? XCTUnwrap(tracker.scenarioTotalSeconds)
 
         Thread.sleep(forTimeInterval: 0.08)
         tracker.record(.flowFinished(worker: "ios:1", flowURL: a.url, passed: true,
-                                     triage: nil, reportURL: nil, fm: nil))
+                                     reportURL: nil, fm: nil))
 
         XCTAssertEqual(tracker.scenarioTotalSeconds ?? 0, afterFirst ?? 0, accuracy: 0.001,
                        "開始を伴わない2回目の終了は加算しない")

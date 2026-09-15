@@ -86,7 +86,6 @@
   "containerInference": true,
   "updateWebView": true,
   "homeOnStart": true,
-  "triage": true,
   "ocr": true,
   "ocrFalsePositiveCheck": true,
   "iosPreActionWarmup": true,

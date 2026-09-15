@@ -59,7 +59,7 @@ by their `worker` field, since the same `scenarioID` appears once per device (se
   recent run history; `--no-lpt`/`--lpt-history-runs` control it (see
   [running_scenarios.md](./running_scenarios.md)).
 - Deterministic replay does not call FM, so it scales with parallelism. `screenLooksLike` and
-  failure triage do call an on-device FM (one instance per machine), so they are bottlenecked by
+  self-healing do call an on-device FM (one instance per machine), so they are bottlenecked by
   that regardless of how many devices you run.
 
 ### Link

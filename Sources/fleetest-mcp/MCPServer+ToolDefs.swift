@@ -534,7 +534,7 @@ extension MCPServer {
                             + "ios { } / android { } branch and which #id ledger the dry-run checks "
                             + "(default ios)"],
         ], required: ["id"], scope: .project),
-        tool("ft_run_scenario", "Run a scenario deterministically. On failure, returns the triage and the report path. Builds automatically. "
+        tool("ft_run_scenario", "Run a scenario deterministically. On failure, returns the failing step's error and the report path. Builds automatically. "
             + "A class name runs every scenario of the class except @Deleted/@Draft (same as fleetest run). "
             + "Unlike fleetest run it does not run the profile's setup/teardown scripts, install or update the app, "
             + "send the device home first, or record into results/ — use fleetest run for a full run", [

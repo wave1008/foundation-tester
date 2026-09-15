@@ -1,7 +1,7 @@
 import XCTest
 @testable import FTCore
 
-/// 2026-09-02 の実測(TestProjects/E2E-CMP/scenarios/_disabled/93_triage.swift、5周で完全再現):
+/// 2026-09-02 の実測(TestProjects/E2E-CMP/scenarios/_disabled/93_存在しない要素.swift、5周で完全再現):
 /// 存在しない要素をわざと叩く陽性対照シナリオ(正解は「代わりは無い」)で、モデルが5周とも
 /// 無関係な `#nav_selector` を medium confidence で提案した。真因は
 /// `LocatorRepairSuggestion.elementText` が非オプショナルで、モデルに「代わりは無い」と
@@ -44,8 +44,6 @@ final class HealNoReplacementTests: XCTestCase {
         init(_ attempt: HealAttempt) { self.attempt = attempt }
         func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { attempt }
         func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-        func triage(goal: String?, stepDescription: String, failureReason: String,
-                    snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
     }
 
     private func element(_ ref: Int, type: String = "clickable", id: String? = nil,

@@ -16,14 +16,13 @@ Xcode, xcodegen, simulators, and adb.
 
 ## Apple Intelligence (optional)
 
-Fleetest works without Apple Intelligence (Foundation Models), but enabling it unlocks four
+Fleetest works without Apple Intelligence (Foundation Models), but enabling it unlocks three
 things. If you enable it later, they just start working.
 
 - **Self-healing** — when a selector breaks, the model repairs it so the scenario can keep going.
   The fix is cached, so later runs don't call the model at all.
 - **`screenLooksLike`** — visual verification of the screen against a natural-language
   description.
-- **Failure triage** — a summary of the cause and a suggested fix, written into the report.
 - **Occlusion guard** — the `requireVisible` check of `exist`, which keeps an element that is in
   the tree but covered by something else from passing as "visible".
 

@@ -656,14 +656,14 @@ struct ApiRunCommand: AsyncParsableCommand {
             let fm = resolvedProfile.fm
             fmSettings = FMSettingsRecord(
                 fm: fm.enabled, heal: fm.heal, falsePositiveCheck: fm.falsePositiveCheck,
-                screenLooksLike: fm.screenLooksLike, triage: fm.triage,
+                screenLooksLike: fm.screenLooksLike,
                 ocr: resolvedProfile.ocr, ocrFalsePositiveCheck: resolvedProfile.ocrFalsePositiveCheck)
         } else {
             // runDirect と同じ設定(DeviceIndependentRunSettings)
             let fm = noProfileSettings.fm
             fmSettings = FMSettingsRecord(
                 fm: fm.enabled, heal: fm.heal, falsePositiveCheck: fm.falsePositiveCheck,
-                screenLooksLike: fm.screenLooksLike, triage: fm.triage,
+                screenLooksLike: fm.screenLooksLike,
                 ocr: noProfileSettings.ocr, ocrFalsePositiveCheck: noProfileSettings.ocrFalsePositiveCheck)
         }
 
@@ -1469,7 +1469,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             suggestion.detail = message
             return [suggestion.encodedLine()]
 
-        case .flowFinished(let worker, let flowURL, let passed, _, let reportURL, let fm):
+        case .flowFinished(let worker, let flowURL, let passed, let reportURL, let fm):
             var finished = ScenarioEvent(kind: "scenarioFinished")
             finished.worker = workerID.id(for: worker)
             finished.scenario = itemByURL[flowURL]?.info.id
@@ -1780,7 +1780,7 @@ struct ScenarioTimingTracker {
             firstStart = min(firstStart ?? now, now)
             startedAt[flowURL] = (now, worker)
             hasScenario = true
-        case .flowFinished(let worker, let flowURL, _, _, _, _):
+        case .flowFinished(let worker, let flowURL, _, _, _):
             lastFinish = max(lastFinish ?? now, now)
             let platform = Self.platform(ofWorker: worker)
             lastFinishByPlatform[platform] = max(lastFinishByPlatform[platform] ?? now, now)
@@ -1842,7 +1842,7 @@ enum ApiRun {
     }
 
     /// dry-run は FM を丸ごと切る(`fleetest run --dry-run` / `ft_dry_run` と同じ)。
-    /// heal だけ切ると失敗のたびに triage が走り、デバイスも画面も無いのに FM の直列化待ちを払う
+    /// デバイスも画面も無いので、FM を引く経路をまとめて止める(個別に切ると残った経路が FM の直列化待ちを払う)
     static func withDryRunFM(_ settings: ScenarioExecutionSettings,
                              dryRun: Bool) -> ScenarioExecutionSettings {
         guard dryRun else { return settings }

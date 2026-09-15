@@ -2,8 +2,8 @@ import XCTest
 import FTCore
 @testable import FTFoundationModels
 
-/// `FMReplayDelegate.resolveByText` は heal/triage の応答文字列(`elementText` / triage の
-/// summary 中の指し示し)から要素を引く。モデルはこのリポジトリのセレクタ記法(`#id`)や
+/// `FMReplayDelegate.resolveByText` は heal の応答文字列(`elementText`)から要素を引く。
+/// モデルはこのリポジトリのセレクタ記法(`#id`)や
 /// @Guide の「the quoted string」指示につられて、SnapshotRenderer が実際には描かない表記
 /// (`#btn_x` / 引用符で囲んだラベル)を返すことがある(2026-09-02 実測: `#btn_heal_v2` を
 /// 剥がせず nil を返し、正しい修復候補を黙って捨てていた)。表記のゆれを剥がすだけで、
@@ -21,7 +21,7 @@ final class ResolveByTextTests: XCTestCase {
                           elements: elements, truncatedCount: 0)
     }
 
-    /// 実測ケース: triage が id を `#` 付きで返す
+    /// 実測ケース: モデルが id を `#` 付きで返す
     func testStripsLeadingHashFromId() {
         let snap = snapshot([element(ref: 1, id: "btn_heal_v2", label: "修復対象")])
         let resolved = FMReplayDelegate.resolveByText("#btn_heal_v2", in: snap)

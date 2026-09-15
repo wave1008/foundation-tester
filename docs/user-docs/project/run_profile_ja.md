@@ -18,10 +18,9 @@
 |---|---|---|---|
 | `app` | string | — | 使用する `apps/<name>.json` プロファイル名 |
 | `devices` | array | — | 実行するデバイス名(解決済みマシンプロファイルから引く。同じ配列に iOS/Android を混在可) |
-| `fm` | bool | `true` | FM(Foundation Models)機能全体の親スイッチ。FM は experimental([environments_ja.md](../overview/environments_ja.md))。`false` にすると、下記の個別トグルに関わらず自己修復・`falsePositiveCheck`・`screenLooksLike`・失敗時トリアージが一切実行されない |
+| `fm` | bool | `true` | FM(Foundation Models)機能全体の親スイッチ。FM は experimental([environments_ja.md](../overview/environments_ja.md))。`false` にすると、下記の個別トグルに関わらず自己修復・`falsePositiveCheck`・`screenLooksLike` が一切実行されない |
 | `heal` | bool | `true` | FM によるロケータ自己修復を許可する([self_healing_ja.md](../running/self_healing_ja.md)参照) |
 | `falsePositiveCheck` | bool | `true` | `exist`/`textIs` 等の偽陽性検証(occlusion guard)を有効にする。木では一致したが実際には見えていない「誤った緑」を検出する |
-| `triage` | bool | `true` | 失敗時のトリアージ(分類・要約・次の一手)を有効にする。**合否は変えない助言**なので、切っても検証の強度は落ちない(失敗のたびに数秒の FM 呼び出しが走るのを避けたいときに `false`) |
 | `screenLooksLike` | bool | `true` | `screenLooksLike`(FM 視覚検証)を有効にする。`false` のときは該当ステップが失敗ではなく skip になる |
 | `ocr` | bool | `true` | OCR 機能全体の親スイッチ。`false` にすると下記の個別トグルに関わらず OCR を使わない |
 | `ocrFalsePositiveCheck` | bool | `true` | occlusion guard が FM に訊く前に、端末の OCR(Vision)で要素を読む。期待テキストが丸ごと読めた回は FM を呼ばずに通り、読めなければ従来どおり FM が判定する(切ると同じ検査が遅くなるだけ)。`falsePositiveCheck` が `false` の run では guard 自体が走らないので効かない |
@@ -49,7 +48,7 @@
 
 ## FM トグルの親子関係
 
-`fm` が親スイッチで、`heal` / `falsePositiveCheck` / `screenLooksLike` / `triage` はすべて既定
+`fm` が親スイッチで、`heal` / `falsePositiveCheck` / `screenLooksLike` はすべて既定
 `true` です(`falsePositiveCheck` は 2026-09-03 に既定オフから変更しました)。`fm` が `false` なら
 個別トグルは無効になります。自己修復が既定でオンかどうかは
 実行方法にも依存します。**`--profile` を使う実行は `heal` の既定が ON**、プロファイルを使わない

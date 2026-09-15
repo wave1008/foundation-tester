@@ -37,7 +37,7 @@ fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml
   が inconclusive のときだけ `<skipped>` になり、通常のステップと混在する場合は passed の
   `<testcase>` に埋もれます(実行ログと Markdown レポートの ❓ と修正提案で気付けます)。
 - **失敗の調査**: `TestProjects/<name>/reports/` に失敗ごとの Markdown レポート(要素一覧・
-  スクリーンショット・FM トリアージ)が出ます。ビルド成果物として保存しておくと、JUnit の
+  スクリーンショット・自己修復の提案)が出ます。ビルド成果物として保存しておくと、JUnit の
   `report:` 行から辿れます。
 
 ## Jenkins の例

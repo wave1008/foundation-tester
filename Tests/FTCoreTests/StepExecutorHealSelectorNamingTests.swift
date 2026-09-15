@@ -44,8 +44,6 @@ final class StepExecutorHealSelectorNamingTests: XCTestCase {
                 .map { .proposed(HealProposal(element: $0, confidence: "high", rationale: "test heal")) }
         }
         func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-        func triage(goal: String?, stepDescription: String, failureReason: String,
-                    snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
     }
 
     /// MCPWritableSelectorTests と同じ既定(同じ y にすると contains の同一矩形判定が通り、

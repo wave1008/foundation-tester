@@ -1,5 +1,5 @@
 // `fleetest api run --dry-run` は FM を丸ごと切る(`fleetest run --dry-run` / `ft_dry_run` と同じ)。
-// 以前は resolved の fm をそのまま通しており、失敗ステップごとに triage の FM 直列化待ちを払っていた。
+// 以前は resolved の fm をそのまま通しており、失敗ステップごとに FM の直列化待ちを払っていた。
 
 import XCTest
 import FTCore

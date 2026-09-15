@@ -19,7 +19,7 @@ final class LaneUtilizationTests: XCTestCase {
         tracker.record(.flowStarted(worker: worker, flowURL: url(id), flowName: id, isDirty: false),
                        at: at(from))
         tracker.record(.flowFinished(worker: worker, flowURL: url(id), passed: true,
-                                     triage: nil, reportURL: nil, fm: nil), at: at(to))
+                                     reportURL: nil, fm: nil), at: at(to))
     }
 
     // MARK: - 集計
@@ -102,7 +102,7 @@ final class LaneUtilizationTests: XCTestCase {
         tracker.record(.flowStarted(worker: "android:emulator-5554", flowURL: url("A"),
                                     flowName: "A", isDirty: false), at: at(0))
         tracker.record(.flowFinished(worker: "android:emulator-5556", flowURL: url("A"),
-                                     passed: true, triage: nil, reportURL: nil, fm: nil), at: at(30))
+                                     passed: true, reportURL: nil, fm: nil), at: at(30))
 
         let stats = tracker.laneUtilizations
         XCTAssertEqual(stats.count, 1)

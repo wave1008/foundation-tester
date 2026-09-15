@@ -54,8 +54,6 @@ final class HeldValueAssertTests: XCTestCase {
     private final class VisibleDelegate: ReplayDelegate {
         func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealAttempt? { nil }
         func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
-        func triage(goal: String?, stepDescription: String, failureReason: String,
-                    snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
         func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
                                   screenshotPNG: Data) async
             -> (visible: Bool, state: String, reason: String, observedText: String)? {

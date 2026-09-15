@@ -74,8 +74,7 @@ final class RunEventNDJSONTests: XCTestCase {
     func testFlowFinishedCarriesPassedReportPathAndFM() throws {
         let fm = FMUsageRecord(calls: 4, failures: 1, totalMs: 4200, p50Ms: 900, maxMs: 1800, byKind: [:])
         let event = try single(.flowFinished(
-            worker: workerLabel, flowURL: flowURL, passed: true, triage: nil,
-            reportURL: URL(fileURLWithPath: "/tmp/report.json"), fm: fm))
+            worker: workerLabel, flowURL: flowURL, passed: true, reportURL: URL(fileURLWithPath: "/tmp/report.json"), fm: fm))
 
         XCTAssertEqual(event["kind"] as? String, "scenarioFinished")
         XCTAssertEqual(event["passed"] as? Bool, true)
