@@ -219,6 +219,10 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// **判定は変えない** —— 読めなかったのと同じ扱い。率が上がったら Vision のモデルが
     /// 載っていない(プロセス初回)か、Vision 自体が劣化している(`RegionText.occlusionBudget`)
     case ocrBudgetExhausted = "ocr-budget-exhausted"
+    /// OCR の近道を撃たなかった理由。「近道が効くはず」の witness(薄いテキスト)が FM に落ちて
+    /// 反転したとき、理由が残らないと 1 回で切れない(2026-09-15 の負荷テスト F29)
+    case ocrShortcutNotWarm = "ocr-shortcut-not-warm"
+    case ocrShortcutBusy = "ocr-shortcut-busy"
 
     /// 1番目の occlusion-guard 評価だけで、ガード自身の所要(FM の直列化待ち+推論)が
     /// このステップの待ち予算を食い潰し、1回もポーリングできないまま反転が確定しかけたので、
@@ -233,6 +237,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     public var text: String {
         switch self {
         case .ocrBudgetExhausted: return "the OCR shortcut ran out of budget (asked FM instead)"
+        case .ocrShortcutNotWarm: return "the OCR shortcut was skipped: the recognizer was not warm yet (asked FM instead)"
+        case .ocrShortcutBusy: return "the OCR shortcut was skipped: an earlier OCR read was still running past its budget (asked FM instead)"
         case .settleCapped: return "the screen did not settle (poll limit)"
         case .heldValue: return "from the grabbed value"
         case .scrollFrameMissing: return "the scrollFrame did not resolve, so the search stopped early"

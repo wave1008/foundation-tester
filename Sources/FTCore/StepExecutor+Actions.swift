@@ -480,7 +480,11 @@ extension StepExecutor {
 
         // ロケータ解決の再試行(ファイル冒頭のセマンティクス参照: 最大3回、計700ms)
         var start = clock.now
-        var snapshot = try await freshSnapshot(.afterSearch(swiped: searchSwiped))
+        // 直前のステップが画面を動かしていたら、この 1 枚はキャッシュを迂回する(previousStepMovedContent の doc)
+        let freshness: SnapshotFreshness = previousStepMovedContent
+            ? .afterOwnMove : .afterSearch(swiped: searchSwiped)
+        previousStepMovedContent = false
+        var snapshot = try await freshSnapshot(freshness)
         phase.snapshotMs += Self.ms(clock.now - start)
         // 宣言された割り込み(アプリ内メッセージ等)が出ていれば先に閉じる。**解決を試みる前**に
         // 行う: 覆われているだけで要素自体は解決できてしまい、タップが吸われる形があるため

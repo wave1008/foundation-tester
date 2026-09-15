@@ -21,6 +21,8 @@ final class StepNoteTests: XCTestCase {
         XCTAssertEqual(StepNote.launchURLBeforeInteractiveUI.rawValue, "launch-url-before-interactive-ui")
         XCTAssertEqual(StepNote.slowSnapshot.rawValue, "slow-snapshot")
         XCTAssertEqual(StepNote.guardRetaken.rawValue, "guard-retaken")
+        XCTAssertEqual(StepNote.ocrShortcutNotWarm.rawValue, "ocr-shortcut-not-warm")
+        XCTAssertEqual(StepNote.ocrShortcutBusy.rawValue, "ocr-shortcut-busy")
     }
 
     // MARK: - 永続化(results/ まで運ばれるか)

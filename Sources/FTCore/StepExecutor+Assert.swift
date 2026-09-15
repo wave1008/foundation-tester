@@ -185,6 +185,10 @@ extension StepExecutor {
             if occlusionOCRMode == .on, ocrReadable {
                 return nil
             }
+        } else if occlusionOCRMode != .off {
+            // 近道を見送った**理由**を残す(見送り自体は正しい判断。薄いテキストの witness が FM に
+            // 落ちて反転した回に、未 warm か予算切れの読みが残っていたかを後から切り分けるため)
+            noteCodesThisStep.insert(RegionText.isWarm ? .ocrShortcutBusy : .ocrShortcutNotWarm)
         }
         // 同じスクショ(バイト同一)・同じ frame・同じ期待文字列なら FM に訊き直さない
         // (VisibilityVerdictMemo。答えは同じで、払うのは FM の数秒だけ)

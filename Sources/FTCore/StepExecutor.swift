@@ -893,6 +893,14 @@ public final class StepExecutor {
     /// 直前の操作(tap / 長押し)の記録。**読むのは失敗文言の組み立てだけ**。
     /// StepExecutor+Assert.swift の各失敗経路から読むため internal
     var lastInteraction: LastInteraction?
+    /// **直前のステップが画面を動かした**(スワイプ・スクロール・端送り・探索・ドラッグ =
+    /// settledSignature を通った)まま、次のロケータ操作がまだ木を撮っていない。
+    /// 立っている間は、次の操作の対象解決の 1 枚だけ **キャッシュを迂回して撮る**(`.afterOwnMove`)。
+    /// 整定は新鮮な木で「止まった」を確かめるが、続く操作の解決は探索が無ければ素取得 =
+    /// Android の a11y キャッシュに残った**スクロール前の座標**を叩く(Pixel 3a 実測: scrollToTop →
+    /// exist ×2 → tap が 212px ずれた位置に当たる。12 run 中 2 回)。exist / textIs は座標を
+    /// 使わないので消費しない(scroll → exist → tap の並びで tap まで持ち越す)
+    var previousStepMovedContent = false
     /// **直前のアクションが tap だったときの対象**(`type`(セレクタ無し)の焦点救済に使う)。
     /// `lastInteraction` は次のアクションの入口で捨てられるので流用できない。
     /// tap 以外のアクションが走ったら捨てる = 「直前」の意味を保つ(`executeAction` の入口)
