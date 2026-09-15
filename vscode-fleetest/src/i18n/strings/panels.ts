@@ -179,10 +179,6 @@ export const panelsStrings = {
   "panels.appProfile.commonGroupTitle": { ja: "共通", en: "Common" },
   "panels.appProfile.displayNameLabel": { ja: "表示名", en: "Display Name" },
   "panels.appProfile.autoInstallLabel": { ja: "自動インストールを有効にする", en: "Enable auto install" },
-  "panels.appProfile.autoInstallHint": {
-    ja: "パッケージパスがあれば既定で有効(中身が変わったときだけ入れ直す)。切ると入れ直しません",
-    en: "On by default when a package path is set (reinstalls only when the build changed). Uncheck to never reinstall.",
-  },
   "panels.appProfile.appIdLabel": { ja: "アプリID", en: "App ID" },
   "panels.appProfile.packagePathLabel": { ja: "パッケージパス", en: "Package Path" },
   "panels.appProfile.packagePathPhysicalLabel": { ja: "実機用パッケージパス", en: "Package Path (Physical Device)" },

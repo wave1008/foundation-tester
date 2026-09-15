@@ -501,7 +501,6 @@ function renderAppProfileSection(): string {
             <input type="checkbox" id="app-profile-common-auto-install">
             <label for="app-profile-common-auto-install">${t("panels.appProfile.autoInstallLabel")}</label>
           </div>
-          <div class="modal-row profile-hint">${t("panels.appProfile.autoInstallHint")}</div>
 
           <div class="app-profile-group-title app-profile-group-title-ios">iOS</div>
           <div class="modal-row">
