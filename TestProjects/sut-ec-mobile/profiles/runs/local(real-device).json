@@ -28,8 +28,8 @@
     }
   ],
   "containerInference": true,
-  "textVisualCheck": false,
-  "heal": false,
+  "textVisualCheck": true,
+  "heal": true,
   "homeOnStart": true,
   "iosInappEngine": true,
   "record": true,

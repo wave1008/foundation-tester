@@ -862,10 +862,8 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
     public let recordBitrateKbps: Int?
 
     /// `--profile` を使わない実行(`--port`/`--serial` 直指定)の基底。**プロファイルの既定を
-    /// そのまま使わない** —— 3つだけ意図的に違う:
-    ///   `textVisualCheck` … profile-less は **FM を積極的に使わない側**へ倒す
-    ///     (`FMConfig.init` の既定と同じ。プロファイルの既定 true を当てると、既に緑だった
-    ///      素の run で `exist`/`textIs` が occlusion-guard を通り**緑が赤に反転しうる**)
+    /// そのまま使わない** —— 2つだけ意図的に違う(`textVisualCheck` はプロファイルと同じ既定 true。
+    /// ユーザー決定 2026-09-15):
     ///   `heal` … profile-less は**修復しない**(`ScenarioExecutionSettings.init` の既定と同じ。
     ///     素の run で壊れたセレクタを黙って別要素へ解決させない)
     ///   `homeOnStart` … profile-less は**デバイスに触らない**。この設定は一斉起動直後の
@@ -874,7 +872,7 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
     /// **`--set` はこの基底の上に当てる**ので、`--set heal=true` は従来どおり効く。
     /// 既定はリテラルで固定するテストを置くこと(`DeviceIndependentRunSettingsTests`)
     public static let profileLessBase = RunProfileDocument(
-        heal: false, textVisualCheck: false, homeOnStart: false)
+        heal: false, homeOnStart: false)
 
     public static func resolve(_ doc: RunProfileDocument) -> DeviceIndependentRunSettings {
         // FM を使うかは子トグルから導く(親スイッチは無い)。両方 false なら

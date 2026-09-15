@@ -20,7 +20,7 @@
     }
   ],
   "containerInference": true,
-  "textVisualCheck": false,
+  "textVisualCheck": true,
   "heal": true,
   "iosInappEngine": true,
   "recoverCpuFallbackToGpu": true,

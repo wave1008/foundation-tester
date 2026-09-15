@@ -27,8 +27,8 @@
       "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02"
     }
   ],
-  "textVisualCheck": false,
-  "heal": false,
+  "textVisualCheck": true,
+  "heal": true,
   "iosInappEngine": true,
   "record": true,
   "recoverCpuFallbackToGpu": true,

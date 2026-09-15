@@ -7,7 +7,7 @@
       "name": "iPhone SE3(実機)"
     }
   ],
-  "heal": false,
+  "heal": true,
   "iosInappEngine": false,
   "scenarioTimeout": 180
 }

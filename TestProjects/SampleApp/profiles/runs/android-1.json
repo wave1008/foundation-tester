@@ -7,7 +7,7 @@
       "name": "Pixel 9(Android 15)-01"
     }
   ],
-  "heal": false,
+  "heal": true,
   "iosInappEngine": true,
   "wipeDataOnBloat": true
 }

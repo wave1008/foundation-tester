@@ -23,7 +23,7 @@
       "name": "Pixel 9(Android 15)-05"
     }
   ],
-  "heal": false,
+  "heal": true,
   "iosInappEngine": true,
   "record": true,
   "recoverCpuFallbackToGpu": true,

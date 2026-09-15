@@ -23,7 +23,7 @@
       "name": "iPhone 17 Pro(iOS 27.0)-05"
     }
   ],
-  "heal": false,
+  "heal": true,
   "iosInappEngine": false,
   "record": true,
   "recoverCpuFallbackToGpu": true,

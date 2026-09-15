@@ -3,5 +3,5 @@
   "devices": [
     { "name": "simulator1" }
   ],
-  "heal": false
+  "heal": true
 }

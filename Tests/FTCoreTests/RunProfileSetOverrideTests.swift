@@ -360,20 +360,20 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
 
 final class DeviceIndependentRunSettingsTests: XCTestCase {
 
-    /// **profile-less の基底はリテラルで固定する**。プロファイルの既定(heal/textVisualCheck
-    /// はどちらも true)をそのまま使うと、素の `fleetest run` で occlusion-guard が走り始めて
-    /// **既に緑だった run が赤に反転しうる**(2026-09-08 に実際に入れた退行)。homeOnStart も
-    /// 同じで、既に建っているブリッジへ繋ぐだけの経路で手元の画面を Home で流してしまう。
+    /// **profile-less の基底はリテラルで固定する**。heal をプロファイルの既定(true)のまま使うと、
+    /// 素の `fleetest run` で壊れたセレクタを黙って別要素へ解決しうる。homeOnStart も同じで、
+    /// 既に建っているブリッジへ繋ぐだけの経路で手元の画面を Home で流してしまう。
+    /// テキストの視覚検証はプロファイルと同じ ON(ユーザー決定 2026-09-15)。
     /// **`RunProfileDocument` の既定を参照して書かない** —— production の定数で期待値を書くと
     /// 両方が同時に動いたときに素通りする
-    func testProfileLessBasePinsTheThreeDeliberateDifferences() {
+    func testProfileLessBasePinsTheTwoDeliberateDifferences() {
         let base = DeviceIndependentRunSettings.profileLessBase
         XCTAssertEqual(base.heal, false, "profile-less の heal は OFF")
-        XCTAssertEqual(base.textVisualCheck, false, "profile-less のテキストの視覚検証は OFF")
         XCTAssertEqual(base.homeOnStart, false, "profile-less はデバイスに触らない")
 
-        // 残りはプロファイルの既定と同じであること(3つ以外を勝手に倒していない)
+        // 残りはプロファイルの既定と同じであること(2つ以外を勝手に倒していない)
         let settings = DeviceIndependentRunSettings.resolve(base)
+        XCTAssertTrue(settings.fm.textVisualCheck, "profile-less でもテキストの視覚検証は ON")
         XCTAssertTrue(settings.fm.enabled)
         XCTAssertTrue(settings.fm.screenLooksLike)
         XCTAssertTrue(settings.ocrTextVisualCheck)
@@ -386,7 +386,7 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
         let settings = DeviceIndependentRunSettings.resolve(
             DeviceIndependentRunSettings.profileLessBase.applyingOverrides(["heal": true]))
         XCTAssertTrue(settings.heal, "--set heal=true は基底を上書きするはず")
-        XCTAssertFalse(settings.fm.textVisualCheck, "触っていない欄は基底のまま")
+        XCTAssertFalse(settings.homeOnStart, "触っていない欄は基底のまま")
     }
 
 

@@ -3,5 +3,5 @@
   "devices": [
     { "name": "emulator1" }
   ],
-  "heal": false
+  "heal": true
 }
