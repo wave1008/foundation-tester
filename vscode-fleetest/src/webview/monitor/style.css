@@ -2541,10 +2541,28 @@ button.settings-remote-hosts-color-swatch:focus-visible {
   align-items: center;
   gap: 8px;
 }
+/* 帯・並び・ボタンはダッシュボードの .dash-toolbar / #panel-dashboard button(dashboard/style.css)と
+   同じ値。負の margin は #recordings-list-view の padding(10px 12px)を打ち消す(変えたら両方直す) */
+.recordings-toolbar {
+  margin: -10px -12px 0 -12px;
+  padding: 6px 12px;
+  background-color: var(--vscode-editor-background);
+  background-image: linear-gradient(rgba(128, 128, 128, 0.18), rgba(128, 128, 128, 0.18));
+}
 .recordings-toolbar-title {
   font-weight: 600;
-  margin-right: auto;
 }
+#recordings-refresh {
+  font-family: inherit;
+  font-size: inherit;
+  padding: 4px 10px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  cursor: pointer;
+}
+#recordings-refresh:hover:not(:disabled) { background-color: var(--vscode-button-hoverBackground); }
 .recordings-empty {
   padding: 16px 4px;
   color: var(--vscode-descriptionForeground);

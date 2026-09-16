@@ -133,12 +133,16 @@ function runDirFor(workspaceRoot: string, project: string, runID: string): strin
   return path.join(runsDir, month, runID);
 }
 
-/** recordings/index.json のある run を新しい順(runID 降順)に列挙する。上限 SESSION_LIMIT 件。 */
-export async function listRecordingSessions(workspaceRoot: string): Promise<RecordingSessionSummary[]> {
+/** recordings/index.json のある run を新しい順(runID 降順)に列挙する。上限 SESSION_LIMIT 件。
+ *  onlyProject を渡すとそのプロジェクトだけ(上限はそのプロジェクト内で数える)。省略で全プロジェクト横断。 */
+export async function listRecordingSessions(
+  workspaceRoot: string, onlyProject?: string,
+): Promise<RecordingSessionSummary[]> {
   const aliases = await readMachineAliases(workspaceRoot);
   const projectsDir = path.join(workspaceRoot, "TestProjects");
   const sessions: RecordingSessionSummary[] = [];
-  for (const project of await listDirNames(projectsDir)) {
+  const projects = onlyProject === undefined ? await listDirNames(projectsDir) : [onlyProject];
+  for (const project of projects) {
     const runsDir = path.join(projectsDir, project, "results", "runs");
     for (const month of await listDirNames(runsDir)) {
       const monthDir = path.join(runsDir, month);

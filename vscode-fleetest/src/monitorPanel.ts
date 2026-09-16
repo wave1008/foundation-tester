@@ -319,7 +319,10 @@ export class MonitorPanelController implements vscode.Disposable {
     this.processManager = new MonitorProcessManager(this.deps);
     this.profiles = new MonitorProfilesController(this.deps);
     this.deviceOps = new MonitorDeviceOps(this.deps);
-    this.recordings = new MonitorRecordingsController(this.deps);
+    this.recordings = new MonitorRecordingsController(this.deps, {
+      get: () => workspaceState.get<boolean>("monitor.recordingsAllProjects", false),
+      set: (value) => void workspaceState.update("monitor.recordingsAllProjects", value),
+    });
     this.update = new MonitorUpdateController({
       workspaceRoot: this.workspaceRoot,
       outputChannel: this.outputChannel,
@@ -377,6 +380,10 @@ export class MonitorPanelController implements vscode.Disposable {
       // まま、に見える(2026-09-01 実害。旧 dashboardPanel.ts から移設)。
       if (event.affectsConfiguration("fleetest.project")) {
         this.dashboard.onProjectSettingChanged();
+        this.recordings.onProjectSettingChanged();
+        if (this.panel) {
+          void this.recordings.refreshSessions();
+        }
       }
     });
   }
@@ -1038,6 +1045,9 @@ export class MonitorPanelController implements vscode.Disposable {
         break;
       case "recordingsRefresh":
         void this.recordings.refreshSessions();
+        break;
+      case "recordingsSelectProject":
+        void this.recordings.selectProject(message.project);
         break;
       case "recordingsOpen":
         void this.recordings.openSession(message.project, message.runID);

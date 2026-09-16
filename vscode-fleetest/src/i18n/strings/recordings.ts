@@ -7,6 +7,11 @@ import type { MessageDict } from "../core";
 export const recordingsStrings = {
   "recordings.sessions.empty": { ja: "録画セッションがありません。", en: "No recording sessions." },
   "recordings.sessions.loading": { ja: "読み込み中...", en: "Loading..." },
+  "recordings.sessions.allProjects": { ja: "(すべて)", en: "(All)" },
+  "recordings.sessions.noProject": {
+    ja: "テストプロジェクトを選択してください。",
+    en: "Select a test project.",
+  },
   "recordings.sessions.passedFailed": {
     ja: "{passed} 成功 / {failed} 失敗", en: "{passed} passed / {failed} failed",
   },

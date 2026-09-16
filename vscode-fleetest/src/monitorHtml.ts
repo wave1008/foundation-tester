@@ -561,8 +561,10 @@ function renderRecordingsPanel(): string {
   return `<div id="panel-recordings" class="tab-panel" role="tabpanel" aria-labelledby="tab-recordings" style="display: none;">
     <div id="recordings-list-view" class="recordings-list-view">
       <div class="recordings-toolbar">
-        <span class="recordings-toolbar-title">${t("panels.recordings.sessionsTitle")}</span>
-        <button id="recordings-refresh" class="secondary" type="button">${t("panels.recordings.refresh")}</button>
+        <span class="recordings-toolbar-title">${t("panels.common.testProject")}</span>
+        <!-- 並び・見た目はダッシュボードの #dash-toolbar と揃える(選択 → 更新。select.dash-project を共用) -->
+        <select id="recordings-project-select" class="dash-project" title="${t("exploreHeal.dashboard.projectSelectTitle")}"></select>
+        <button id="recordings-refresh" type="button">${t("panels.recordings.refresh")}</button>
       </div>
       <div id="recordings-empty" class="recordings-empty" style="display: none;"></div>
       <div id="recordings-sessions" class="recordings-sessions"></div>

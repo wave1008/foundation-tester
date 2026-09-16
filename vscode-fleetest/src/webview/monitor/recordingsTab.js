@@ -17,6 +17,7 @@ const playerView = document.getElementById('recordings-player-view');
 const sessionsEmpty = document.getElementById('recordings-empty');
 const sessionsList = document.getElementById('recordings-sessions');
 const refreshBtn = document.getElementById('recordings-refresh');
+const projectSelect = document.getElementById('recordings-project-select');
 const backBtn = document.getElementById('recordings-back');
 const sessionTitle = document.getElementById('recordings-session-title');
 const sessionMachine = document.getElementById('recordings-session-machine');
@@ -247,7 +248,45 @@ function renderSessions(sessions) {
   }
 }
 
+// 「(すべて)」の option 値。プロジェクト名(TestProjects/ のディレクトリ名)と衝突しない値
+const ALL_PROJECTS_VALUE = '*';
+
+// ダッシュボードの applyProjects(dashboardTab.js)と同じ形 + 先頭に「(すべて)」。
+// current '' = 未解決で、選べば復帰する
+function applyProjects(projects, current, all) {
+  projectSelect.textContent = '';
+  const allOption = document.createElement('option');
+  allOption.value = ALL_PROJECTS_VALUE;
+  allOption.textContent = t('recordings.sessions.allProjects');
+  projectSelect.appendChild(allOption);
+  if (current === '' && !all) {
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    placeholder.textContent = t('wvDashboard.main.projectPlaceholder');
+    projectSelect.appendChild(placeholder);
+  }
+  for (const name of projects) {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name;
+    projectSelect.appendChild(option);
+  }
+  projectSelect.value = all ? ALL_PROJECTS_VALUE : current;
+}
+
 export function applyRecordingsSessions(message) {
+  if (Array.isArray(message.projects) && typeof message.current === 'string') {
+    const all = message.all === true;
+    applyProjects(message.projects, message.current, all);
+    if (message.current === '' && !all) {
+      sessionsList.textContent = '';
+      sessionsEmpty.textContent = t('recordings.sessions.noProject');
+      sessionsEmpty.style.display = 'flex';
+      return;
+    }
+  }
   renderSessions(message.sessions);
 }
 
@@ -961,6 +1000,14 @@ export function requestSessionsRefresh() {
 }
 
 refreshBtn.addEventListener('click', requestSessionsRefresh);
+projectSelect.addEventListener('change', () => {
+  if (projectSelect.value !== '') {
+    sessionsEmpty.textContent = t('recordings.sessions.loading');
+    sessionsEmpty.style.display = 'flex';
+    const project = projectSelect.value === ALL_PROJECTS_VALUE ? null : projectSelect.value;
+    vscode.postMessage({ type: 'recordingsSelectProject', project });
+  }
+});
 backBtn.addEventListener('click', () => {
   showListView();
   requestSessionsRefresh();

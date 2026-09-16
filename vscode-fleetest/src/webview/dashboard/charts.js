@@ -22,9 +22,12 @@ const AXIS_LABEL_GAP = 4; // 棒の下端からラベルまで / ラベル下の
 const Y_TICKS = [0, 25, 50, 75, 100];
 const Y_AXIS_GAP = 4; // 目盛りラベルと棒領域の間 / 軸名と目盛りラベルの間(css px)
 
+// 良/注意/悪 は彩度を抑えた状態色(OKLCH C≈0.108)。色相を保ったまま明度で離してあり、
+// 3色とも全ペアで dataviz の validate_palette(--pairs all)を通した値。明度を寄せると赤⇔緑が色覚差で潰れる。
+// ダークは明度帯が狭く通常視の差 13.4(<15)止まり = 値は棒の高さとツールチップが担い、色は補助
 const CHART_COLORS = {
-  dark: { good: '#2f9e63', warn: '#b8891f', bad: '#f2555a', empty: 'rgba(127, 127, 127, 0.25)', axis: 'rgba(255, 255, 255, 0.5)', grid: 'rgba(255, 255, 255, 0.12)' },
-  light: { good: '#30a46c', warn: '#e6a700', bad: '#e5484d', empty: 'rgba(127, 127, 127, 0.25)', axis: 'rgba(0, 0, 0, 0.5)', grid: 'rgba(0, 0, 0, 0.12)' },
+  dark: { good: '#5ba26b', warn: '#a27327', bad: '#944540', empty: 'rgba(127, 127, 127, 0.25)', axis: 'rgba(255, 255, 255, 0.5)', grid: 'rgba(255, 255, 255, 0.12)' },
+  light: { good: '#468c57', warn: '#d9a75e', bad: '#843633', empty: 'rgba(127, 127, 127, 0.25)', axis: 'rgba(0, 0, 0, 0.5)', grid: 'rgba(0, 0, 0, 0.12)' },
 };
 
 let currentDaily = [];

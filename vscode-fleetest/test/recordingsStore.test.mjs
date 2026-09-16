@@ -89,6 +89,24 @@ test("listRecordingSessions: 複数プロジェクトを横断し runID 降順(�
   }
 });
 
+test("listRecordingSessions: onlyProject を渡すとそのプロジェクトの run だけを返す", async () => {
+  const root = makeWorkspace();
+  try {
+    writeJson(path.join(runDir(root, "AppA", "20260701-000000"), "recordings", "index.json"), SAMPLE_INDEX);
+    writeJson(path.join(runDir(root, "AppB", "20260710-000000"), "recordings", "index.json"), SAMPLE_INDEX);
+    writeJson(path.join(runDir(root, "AppA", "20260705-000000"), "recordings", "index.json"), SAMPLE_INDEX);
+
+    const sessions = await listRecordingSessions(root, "AppA");
+    assert.deepEqual(
+      sessions.map((s) => `${s.project}/${s.runID}`),
+      ["AppA/20260705-000000", "AppA/20260701-000000"],
+    );
+    assert.deepEqual(await listRecordingSessions(root, "Missing"), []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("listRecordingSessions: run.json が欠けていても passed/failed は null で一覧に含める", async () => {
   const root = makeWorkspace();
   try {

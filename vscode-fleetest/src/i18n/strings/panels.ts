@@ -11,7 +11,6 @@ export const panelsStrings = {
   "panels.tabs.recordings": { ja: "録画セッション", en: "Recording Sessions" },
   "panels.tabs.settings": { ja: "設定", en: "Settings" },
 
-  "panels.recordings.sessionsTitle": { ja: "録画セッション", en: "Recording Sessions" },
   "panels.recordings.refresh": { ja: "更新", en: "Refresh" },
   "panels.recordings.backTitle": { ja: "セッション一覧に戻る", en: "Back to session list" },
   "panels.recordings.playPauseTitle": { ja: "再生 / 一時停止", en: "Play / Pause" },

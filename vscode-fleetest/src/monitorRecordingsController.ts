@@ -5,6 +5,7 @@
 // 直接参照しない方針。monitorPanel.ts 冒頭参照)。
 
 import * as path from "node:path";
+import { listProjectCandidates, resolveProjectName } from "./config";
 import {
   buildRecordingErrorEntries,
   buildRecordingTree,
@@ -20,16 +21,60 @@ import {
 } from "./recordingsModel";
 import { listRecordingSessions, loadRecordingSessionDetail, resolveSessionRunIDs } from "./recordingsStore";
 import type { MonitorPanelDeps } from "./monitorPanel";
+import { selectWorkspaceProject } from "./projectSelection";
 import type { MonitorToWebviewMessage } from "./monitorWebviewMessages";
 
 type RecordingsSessionMessage = Extract<MonitorToWebviewMessage, { type: "recordingsSession" }>;
 
-export class MonitorRecordingsController {
-  constructor(private readonly deps: MonitorPanelDeps) {}
+/** 「(すべて)」選択の保存先(monitorPanel.ts が workspaceState "monitor.recordingsAllProjects" で渡す)。 */
+export interface RecordingsAllProjectsStore {
+  get(): boolean;
+  set(value: boolean): void;
+}
 
+export class MonitorRecordingsController {
+  constructor(
+    private readonly deps: MonitorPanelDeps,
+    private readonly allProjects: RecordingsAllProjectsStore = { get: () => false, set: () => {} },
+  ) {}
+
+  /** 一覧は選択中のプロジェクト(fleetest.project の解決結果)だけ。未解決なら空で、選択から復帰させる。
+   *  「(すべて)」選択中は全プロジェクト横断。 */
   async refreshSessions(): Promise<void> {
-    const sessions = await listRecordingSessions(this.deps.workspaceRoot);
-    this.deps.post({ type: "recordingsSessions", sessions });
+    const projects = listProjectCandidates(this.deps.workspaceRoot);
+    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
+    const current = resolution.kind === "resolved" ? resolution.project : "";
+    const all = this.allProjects.get();
+    const sessions = all
+      ? await listRecordingSessions(this.deps.workspaceRoot)
+      : current === "" ? [] : await listRecordingSessions(this.deps.workspaceRoot, current);
+    this.deps.post({ type: "recordingsSessions", sessions, projects, current, all });
+  }
+
+  /** 設定 fleetest.project の変更(どのタブから変えても)は「(すべて)」を解除して追従する。
+   *  一覧の取り直しは呼び手(monitorPanel.ts)がパネル表示中だけ行う。 */
+  onProjectSettingChanged(): void {
+    this.allProjects.set(false);
+  }
+
+  /** null = 「(すべて)」。名前を選んだときは設定を書き換え、取り直しは設定変更の購読に任せる ——
+   *  ただし設定が既にその値なら購読が発火しないので、ここで取り直す。 */
+  async selectProject(project: string | null): Promise<void> {
+    if (project === null) {
+      this.allProjects.set(true);
+      await this.refreshSessions();
+      return;
+    }
+    const wasAll = this.allProjects.get();
+    this.allProjects.set(false);
+    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
+    if (resolution.kind === "resolved" && resolution.project === project) {
+      if (wasAll) {
+        await this.refreshSessions();
+      }
+      return;
+    }
+    await selectWorkspaceProject(this.deps.workspaceRoot, this.deps.getConfig(), project);
   }
 
   async openSession(project: string, runID: string): Promise<void> {

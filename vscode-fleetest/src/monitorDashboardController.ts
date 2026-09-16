@@ -25,6 +25,7 @@ import {
   isApiResultsRunPayload,
 } from "./dashboardModel";
 import { type OneShotResult, type PipeProcess, runOneShot } from "./oneShotCli";
+import { selectWorkspaceProject } from "./projectSelection";
 
 const RESULTS_SINCE = "90d";
 const RESULTS_MIN_RUNS = 3;
@@ -121,21 +122,9 @@ export class MonitorDashboardController {
     }
   }
 
-  /** webview のドロップダウンからのプロジェクト切替。fleetest.selectProject コマンドと同じく
-   * 設定 fleetest.project を書き換えるだけ —— refresh は monitorPanel.ts の
-   * onDidChangeConfiguration 購読(onProjectSettingChanged 経由)が行う(2経路から refresh すると
-   * 二重 spawn になる)。 */
+  /** webview のドロップダウンからのプロジェクト切替(refresh は onProjectSettingChanged 経由)。 */
   private async handleSelectProject(project: string): Promise<void> {
-    if (!listProjectCandidates(this.deps.workspaceRoot).includes(project)) {
-      return;
-    }
-    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
-    if (resolution.kind === "resolved" && resolution.project === project) {
-      return;
-    }
-    await vscode.workspace
-      .getConfiguration("fleetest")
-      .update("project", project, vscode.ConfigurationTarget.Workspace);
+    await selectWorkspaceProject(this.deps.workspaceRoot, this.deps.getConfig(), project);
   }
 
   /** runOneShot の子プロセスを activeChildren へ登録し、完了後に取り除く共通ラッパ。 */

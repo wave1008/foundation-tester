@@ -385,9 +385,17 @@ export type MonitorToWebviewMessage =
       readonly phase: "stopping" | "rebooting" | "done" | "failed";
     }
   // ---- 録画タブ ---------------------------------------------------------------------------
-  // セッション一覧(recordingsStore.ts が TestProjects/*/results/runs/*/*/recordings/index.json を
-  // 列挙。新しい順・最大50件)。recordingsRefresh 受信時に post する。
-  | { readonly type: "recordingsSessions"; readonly sessions: readonly RecordingSessionSummary[] }
+  // セッション一覧(recordingsStore.ts が TestProjects/<current>/results/runs/*/*/recordings/index.json を
+  // 列挙。新しい順・最大50件)。recordingsRefresh 受信時に post する。projects/current はプロジェクト
+  // 選択の中身(ダッシュボードの "projects" と同じ意味。current "" = 未解決で sessions は空)。
+  // all = 「(すべて)」選択中(全プロジェクト横断。current は fleetest.project の解決結果のまま)
+  | {
+      readonly type: "recordingsSessions";
+      readonly sessions: readonly RecordingSessionSummary[];
+      readonly projects: readonly string[];
+      readonly current: string;
+      readonly all: boolean;
+    }
   // recordingsOpen への応答。ok:false は index.json 未検出等(webview は一覧ビューのまま)。
   // videos は scenarioID→動画 webview URI(MonitorPanelDeps.videoWebviewUri で変換済み。1エントリ=
   // 1シナリオのクリップ契約なので worker タブは無い)。errors は動画内オフセット計算済み
@@ -744,6 +752,9 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "streamStall"; readonly scope?: "tile" | "live"; readonly device?: string }
   // ---- 録画タブ ---------------------------------------------------------------------------
   | { readonly type: "recordingsRefresh" }
+  // project = 名前: 「(すべて)」を解除して設定 fleetest.project を書き換える。
+  // null = 「(すべて)」(録画タブだけの表示。fleetest.project は変えない)
+  | { readonly type: "recordingsSelectProject"; readonly project: string | null }
   | { readonly type: "recordingsOpen"; readonly project: string; readonly runID: string }
   // ---- ダッシュボードタブ -------------------------------------------------------------------
   // dashboardModel.ts の DashboardFromWebviewMessage をそのまま運ぶ封筒(上の
@@ -1089,6 +1100,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return value.scope === "live" || (typeof value.device === "string" && value.device !== "");
     case "recordingsRefresh":
       return true;
+    case "recordingsSelectProject":
+      return value.project === null || (typeof value.project === "string" && value.project !== "");
     case "recordingsOpen":
       return typeof value.project === "string" && value.project !== "" && typeof value.runID === "string" && value.runID !== "";
     case "dashboard":

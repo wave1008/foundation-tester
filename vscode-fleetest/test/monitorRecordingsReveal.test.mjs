@@ -85,3 +85,60 @@ test("openSession: 利用者が開いた応答には reveal を付けない(見�
   assert.equal(posts[1].ok, false);
   assert.equal(posts[1].reveal, undefined);
 });
+
+// ---- 一覧のプロジェクト絞り込みと「(すべて)」(refreshSessions / selectProject) ----
+
+function makeListController(t, { all = false } = {}) {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-recordings-list-test-"));
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }));
+  writeJson(path.join(runDir(workspaceRoot, "AppA", "20260911-010000"), "recordings", "index.json"), INDEX);
+  writeJson(path.join(runDir(workspaceRoot, "AppB", "20260911-020000"), "recordings", "index.json"), INDEX);
+  const posts = [];
+  const stored = { value: all };
+  const controller = new MonitorRecordingsController(
+    {
+      workspaceRoot,
+      getConfig: () => ({ project: "AppA" }),
+      post: (message) => posts.push(message),
+      videoWebviewUri: (filePath) => `https://localhost${filePath}`,
+    },
+    { get: () => stored.value, set: (value) => { stored.value = value; } },
+  );
+  const listed = () => posts.at(-1).sessions.map((s) => `${s.project}/${s.runID}`);
+  return { controller, posts, stored, listed };
+}
+
+test("refreshSessions: 既定は fleetest.project のプロジェクトだけを送る", async (t) => {
+  const { controller, posts, listed } = makeListController(t);
+  await controller.refreshSessions();
+  assert.deepEqual(listed(), ["AppA/20260911-010000"]);
+  assert.equal(posts.at(-1).current, "AppA");
+  assert.equal(posts.at(-1).all, false);
+  assert.deepEqual(posts.at(-1).projects, ["AppA", "AppB"]);
+});
+
+test("selectProject(null): 「(すべて)」を保存して全プロジェクトを送る(current は設定のまま)", async (t) => {
+  const { controller, posts, stored, listed } = makeListController(t);
+  await controller.selectProject(null);
+  assert.equal(stored.value, true);
+  assert.deepEqual(listed(), ["AppB/20260911-020000", "AppA/20260911-010000"]);
+  assert.equal(posts.at(-1).all, true);
+  assert.equal(posts.at(-1).current, "AppA");
+});
+
+test("selectProject: 「(すべて)」から設定と同じプロジェクトへ戻すと、設定変更が起きないので自分で取り直す", async (t) => {
+  const { controller, posts, stored, listed } = makeListController(t, { all: true });
+  await controller.selectProject("AppA");
+  assert.equal(stored.value, false);
+  assert.equal(posts.length, 1);
+  assert.deepEqual(listed(), ["AppA/20260911-010000"]);
+});
+
+test("onProjectSettingChanged: 他のタブでプロジェクトが変わったら「(すべて)」を解除し、次の一覧は設定のプロジェクトだけ", async (t) => {
+  const { controller, posts, stored, listed } = makeListController(t, { all: true });
+  controller.onProjectSettingChanged();
+  assert.equal(stored.value, false);
+  await controller.refreshSessions();
+  assert.equal(posts.at(-1).all, false);
+  assert.deepEqual(listed(), ["AppA/20260911-010000"]);
+});

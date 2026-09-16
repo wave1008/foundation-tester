@@ -449,3 +449,76 @@ test("recordingsFinalizing: テスト実行ボタンの右に「録画を編集�
   sendToWebview({ type: "recordingsFinalizing", active: false });
   assert.equal(note.hidden, true);
 });
+
+// プロジェクト選択(ダッシュボードと同じ形。対向: monitorRecordingsController.ts の refreshSessions)
+
+test("一覧: projects/current でプロジェクト選択を作り、選ぶと recordingsSelectProject を送る", (t) => {
+  const { window, posts, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({
+    type: "recordingsSessions",
+    sessions: [
+      { project: "AppA", runID: "20260817-000001", startedAt: "2026-08-17T00:00:01Z", passed: 1, failed: 0 },
+    ],
+    projects: ["AppA", "AppB"],
+    current: "AppA",
+    all: false,
+  });
+  const select = window.document.getElementById("recordings-project-select");
+  assert.deepEqual([...select.options].map((o) => o.value), ["*", "AppA", "AppB"]);
+  assert.equal(select.value, "AppA");
+  assert.equal(window.document.querySelectorAll(".recordings-session-item").length, 1);
+
+  select.value = "AppB";
+  select.dispatchEvent(new window.Event("change"));
+  // posts は jsdom 側の realm のオブジェクトなので JSON で比べる
+  assert.equal(
+    JSON.stringify(posts.filter((m) => m.type === "recordingsSelectProject")),
+    JSON.stringify([{ type: "recordingsSelectProject", project: "AppB" }]),
+  );
+});
+
+test("一覧: current が空(未解決)ならプレースホルダを選び、一覧の代わりに選択を促す", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({ type: "recordingsSessions", sessions: [], projects: ["AppA", "AppB"], current: "", all: false });
+  const select = window.document.getElementById("recordings-project-select");
+  assert.deepEqual([...select.options].map((o) => o.value), ["*", "", "AppA", "AppB"]);
+  assert.equal(select.value, "");
+  const empty = window.document.getElementById("recordings-empty");
+  assert.equal(empty.style.display, "flex");
+  assert.notEqual(empty.textContent, "");
+  assert.equal(window.document.querySelectorAll(".recordings-session-item").length, 0);
+});
+
+test("一覧: 「(すべて)」は先頭に出し、選ぶと project:null を送る。all 中は未解決でも一覧を出す", (t) => {
+  const { window, posts, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({
+    type: "recordingsSessions",
+    sessions: [
+      { project: "AppA", runID: "20260817-000001", startedAt: "2026-08-17T00:00:01Z", passed: 1, failed: 0 },
+      { project: "AppB", runID: "20260817-000002", startedAt: "2026-08-17T00:00:02Z", passed: 1, failed: 0 },
+    ],
+    projects: ["AppA", "AppB"],
+    current: "",
+    all: true,
+  });
+  const select = window.document.getElementById("recordings-project-select");
+  assert.deepEqual([...select.options].map((o) => o.value), ["*", "AppA", "AppB"]);
+  assert.equal(select.value, "*");
+  assert.notEqual(select.options[0].textContent, "");
+  assert.equal(window.document.querySelectorAll(".recordings-session-item").length, 2);
+
+  select.value = "AppB";
+  select.dispatchEvent(new window.Event("change"));
+  select.value = "*";
+  select.dispatchEvent(new window.Event("change"));
+  assert.equal(
+    JSON.stringify(posts.filter((m) => m.type === "recordingsSelectProject")),
+    JSON.stringify([
+      { type: "recordingsSelectProject", project: "AppB" },
+      { type: "recordingsSelectProject", project: null },
+    ]),
+  );
+});

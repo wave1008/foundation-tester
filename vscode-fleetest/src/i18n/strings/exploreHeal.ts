@@ -124,8 +124,8 @@ export const exploreHealStrings = {
     en: "Comparison with Previous Measurement",
   },
   "exploreHeal.dashboard.colWallClock": {
-    ja: "壁時計",
-    en: "Wall Clock",
+    ja: "経過時間",
+    en: "Elapsed Time",
   },
   "exploreHeal.dashboard.colTestTime": {
     ja: "テスト時間",
@@ -136,8 +136,8 @@ export const exploreHealStrings = {
     en: "All Scenarios Total",
   },
   "exploreHeal.dashboard.colLaneCount": {
-    ja: "レーン",
-    en: "Lanes",
+    ja: "レーン数",
+    en: "Lane Count",
   },
   "exploreHeal.dashboard.colLaneUtilisation": {
     ja: "稼働率",
