@@ -108,10 +108,15 @@ public enum DeviceBooter {
     /// 生き続けるので、出すと拡張のタイルが「停止した」と一瞬表示してから次の観測で「接続中」に
     /// 戻りちらつく(旧 stopPhysicalBridgeOnly の doc)。実機も outcomes には含める
     /// (試みた台の母数に入れる)。**戻り値は台ごとの成否**(BootOutcomeSummarizer が要約する)。
+    /// **台ごとに run-lease を確認する**(規律④「他人の run を殺す操作はロックを読む」)—— 拒否された
+    /// 台は stopOne を呼ばずに失敗として数え、残りの台は続行する(1台の拒否で全体を止めない)。
     @discardableResult
     public static func shutdownAll(
         machine: MachineProfile,
         repoRoot: URL?,
+        force: Bool = false,
+        /// テスト注入用。nil なら `(try? RepoRoot.find())?.appendingPathComponent(".fleetest")`
+        leaseStateDir: URL? = nil,
         log: @escaping @Sendable (String) -> Void,
         deviceStopping: @Sendable (String, String) -> Void = { _, _ in },
         deviceFinished: @Sendable (String, String) -> Void = { _, _ in },
@@ -122,6 +127,7 @@ public enum DeviceBooter {
         let entries: [(spec: DeviceSpec, platform: String)] =
             (machine.ios?.devices ?? []).map { ($0, "ios") } +
             (machine.android?.devices ?? []).map { ($0, "android") }
+        let selfPID = ProcessInfo.processInfo.processIdentifier
         var outcomes: [BootOutcome] = []
         for entry in entries {
             let spec = entry.spec
@@ -130,16 +136,25 @@ public enum DeviceBooter {
                 deviceStopping(spec.name, platform)
             }
             var failure: String?
-            do {
-                if let stopOne {
-                    try await stopOne(spec, platform)
-                } else {
-                    try await shutdownOne(spec: spec, platform: platform,
-                                          repoRoot: platform == "ios" ? repoRoot : nil, log: log)
+            if let refusal = stopRefusal(
+                deviceName: spec.name, key: leaseKey(spec: spec, platform: platform),
+                selfPID: selfPID, force: force,
+                holderPID: { key in leaseHolderPID(leaseStateDir: leaseStateDir, key: key) }) {
+                log("❌ \(spec.name): \(refusal)")
+                failure = refusal
+            } else {
+                do {
+                    if let stopOne {
+                        try await stopOne(spec, platform)
+                    } else {
+                        try await shutdownOne(spec: spec, platform: platform,
+                                              repoRoot: platform == "ios" ? repoRoot : nil,
+                                              force: force, leaseStateDir: leaseStateDir, log: log)
+                    }
+                } catch {
+                    log("❌ \(spec.name): \(error.localizedDescription)")
+                    failure = error.localizedDescription
                 }
-            } catch {
-                log("❌ \(spec.name): \(error.localizedDescription)")
-                failure = error.localizedDescription
             }
             if !spec.isPhysical {
                 deviceFinished(spec.name, platform)
@@ -147,6 +162,39 @@ public enum DeviceBooter {
             outcomes.append(BootOutcome(name: spec.name, platform: platform, failure: failure))
         }
         return outcomes
+    }
+
+    /// **他人の run を殺さない**(docs/remote-runner.md §18.7 規律④「他人の run を殺す操作は
+    /// ロックを読む」)。`key` は run 側の lease 鍵と同じ値(`leaseKey(spec:platform:)`)。
+    /// force / 鍵が引けない(素通り=安全側)/ 保持者が居ない / 保持者が自分自身、のいずれかなら
+    /// nil(止めてよい)。それ以外は台名と保持者 pid を名指しした拒否文言を返す
+    static func stopRefusal(
+        deviceName: String, key: String?, selfPID: Int32, force: Bool,
+        holderPID: (String) -> Int32?
+    ) -> String? {
+        guard !force, let key, let pid = holderPID(key), pid != selfPID else { return nil }
+        return "refusing to stop: \(deviceName) is in use by a running fleetest run"
+            + " (held by pid \(pid)). Wait for that run to finish, or pass --force to stop it anyway."
+    }
+
+    /// run-lease の鍵(`ProfileRunner.leaseKeysByDevice` と同じ規則の唯一の定義元)。
+    /// Android=serial(実機は宣言済み `spec.serial`・仮想は起動中 AVD と照合済みの serial)/
+    /// iOS=UDID(実機は宣言済み `spec.udid`・仮想は `SimulatorCatalog` の解決済み UDID)。
+    /// 引けなければ nil(呼び出し元は素通りする=安全側。停止済み/未登録の台に居るはずの lease は無い)
+    static func leaseKey(spec: DeviceSpec, platform: String) -> String? {
+        if spec.isPhysical {
+            return platform == "ios" ? spec.udid : spec.serial
+        }
+        if platform == "ios" {
+            return (try? SimulatorCatalog.resolve(spec: spec, in: SimulatorCatalog.devices()))?.udid
+        }
+        return try? AndroidDeviceCatalog.resolveSerial(spec: spec)
+    }
+
+    private static func leaseHolderPID(leaseStateDir: URL?, key: String) -> Int32? {
+        let dir = leaseStateDir ?? (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
+        guard let dir else { return nil }
+        return RunLease.holderPID(stateDir: dir, key: key)
     }
 
     struct BootItem: Sendable {
@@ -404,9 +452,20 @@ public enum DeviceBooter {
     /// 未起動なら何もしない。repoRoot 指定時(iOSのみ)は simctl shutdown 前に稼働ブリッジを探して
     /// 停止する(放置するとブリッジプロセス/pidファイルがゾンビ化しポート採番がずれていく)。
     /// iOS の exit code 不信任リトライの理由は下記コメント参照。
+    /// **実際に止める前に run-lease を確認する**(規律④。`shutdownAll` が別途同じ判定をしていても、
+    /// ここ単独で呼ばれる経路(`api stop-device` の --name/--udid/--serial・`restart-devices`・
+    /// `DeviceWiper` の erase 前停止)を素通りさせない)。拒否は throw で既存の失敗経路に乗せる
     public static func shutdownOne(spec: DeviceSpec, platform: String,
                                    repoRoot: URL? = nil,
+                                   force: Bool = false,
+                                   leaseStateDir: URL? = nil,
                                    log: @escaping @Sendable (String) -> Void) async throws {
+        if let refusal = stopRefusal(
+            deviceName: spec.name, key: leaseKey(spec: spec, platform: platform),
+            selfPID: ProcessInfo.processInfo.processIdentifier, force: force,
+            holderPID: { key in leaseHolderPID(leaseStateDir: leaseStateDir, key: key) }) {
+            throw DeviceBooterError.commandFailed(refusal)
+        }
         // 実機は停止しない(ユーザーの端末を勝手に落とさない)。ブリッジだけ止める。
         // Android の adb emu kill は実機に存在せず、serial 消失待ちで毎回 15s 空振りする
         if spec.isPhysical {

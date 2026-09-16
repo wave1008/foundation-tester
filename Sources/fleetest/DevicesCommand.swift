@@ -89,6 +89,11 @@ struct DevicesCommand: AsyncParsableCommand {
             + " to a runner: remote exec <name> -- ... --device-machine <name>"))
         var deviceMachine: String?
 
+        @Flag(help: ArgumentHelp(
+            "With --profile, stop even devices a fleetest run is currently using (kills that"
+            + " run's device access). Has no effect on the full sweep (no --profile)"))
+        var force = false
+
         func run() async throws {
             if let profile {
                 try await shutdownProfile(profile)
@@ -188,7 +193,7 @@ struct DevicesCommand: AsyncParsableCommand {
             // 未検出時はブリッジ停止をスキップし simctl shutdown のみ行う(ApiStopAllDevicesCommand と同じ)
             let repoRoot = try? RepoRoot.find()
             let outcomes = await DeviceBooter.shutdownAll(
-                machine: filtered, repoRoot: repoRoot, log: { ConsoleOut.out($0) })
+                machine: filtered, repoRoot: repoRoot, force: force, log: { ConsoleOut.out($0) })
             let summary = DeviceBooter.BootOutcomeSummarizer.summarize(outcomes)
             if summary.failedNames.isEmpty {
                 ConsoleOut.out("✅ Device shutdown complete")

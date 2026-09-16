@@ -60,6 +60,60 @@ public enum RegionText {
     private static let prewarmLock = NSLock()
     private static var prewarmRequests = 0
 
+    /// 探りの撃ち直しに使ってよい合計時間の上限。**根拠**(2026-09-16 実測、`FT_OCR_HANG_SAMPLE=1`
+    /// 採取): 探り 1 回の所要は 130〜235ms(空で返る回のほうが速い)。手元のフリート実行 26 プロセス中
+    /// 15 本が探り1回だけで空を引いて warm にならず、その run は OCR 使用率 0%(FM が死んでいれば
+    /// 視覚検証が丸ごと素通りする)。置き換える相手(FM 段)の実測下限は 1.3 秒/回で、ガードは
+    /// 1 シナリオに数十回入るので、この上限を使い切っても最大 FM 1〜2 回分のコストで済む。
+    /// **尽きても従来どおり**(warm にならず `ocr-shortcut-not-warm` の注記で FM へ)
+    public static let prewarmRetryBudget: Duration = .seconds(2)
+
+    /// 撃ち直しの間隔。**根拠**: 探り自体が 130〜235ms かかるので、間隔を空けずに連打すると
+    /// `prewarmRetryBudget` を読みの所要だけでほぼ使い切り、撃ち直しの機会が実質 1 回で終わる。
+    /// 50ms は探りの所要の下限より短く、2 秒の予算内で複数回の撃ち直しを確保する
+    public static let prewarmRetryInterval: Duration = .milliseconds(50)
+
+    /// 暖機の探りが使う認識器。**テストは `recognizeOverrideForTesting` で差し替え、Vision を
+    /// 実際に叩かない**。探りは常に `renderedProbe()` の ASCII 文字列("fleetest")なので、
+    /// `languages(for:)` の言語判定は通さず `defaultLanguages` 固定でよい
+    static func recognizeForPrewarm(_ image: CGImage) async throws -> [String] {
+        if let override = recognizeOverrideForTesting { return try await override(image) }
+        return try await recognize(image, languages: defaultLanguages)
+    }
+
+    /// テストが Vision を実際に叩かずに探りの結果を制御するための差し替え口(production では nil)。
+    /// **既定が nil であること自体は `RegionTextRecognizeOverrideDefaultTests` が固定する**
+    /// (`warmOverrideForTesting` と同じ規律)
+    public static var recognizeOverrideForTesting: (@Sendable (CGImage) async throws -> [String])?
+
+    /// 探りを撃ち、空(またはエラー)なら `interval` だけ待って `budget` を使い切るまで撃ち直す。
+    /// **少なくとも 1 回は撃つ**(budget が 0 でも最初の 1 回は必ず走る)。読めた時点で即終了。
+    /// テストが直接 await できるよう async 関数として独立させてある —— production の呼び手
+    /// (`prewarmOnce`)は専用スレッドから DispatchSemaphore でこの完了を待つだけ
+    static func probeWithRetry(image: CGImage, budget: Duration = RegionText.prewarmRetryBudget,
+                               interval: Duration = RegionText.prewarmRetryInterval)
+        async -> (lines: [String]?, error: String?, attempts: Int) {
+        let clock = ContinuousClock()
+        let deadline = clock.now + budget
+        var attempts = 0
+        var lastLines: [String]?
+        var lastError: String?
+        while true {
+            attempts += 1
+            do {
+                let lines = try await recognizeForPrewarm(image)
+                lastLines = lines
+                lastError = nil
+                if warmedUp(probe: lines) { return (lines, nil, attempts) }
+            } catch {
+                lastLines = nil
+                lastError = "\(error)"
+            }
+            guard clock.now < deadline else { return (lastLines, lastError, attempts) }
+            try? await Task.sleep(for: interval)
+        }
+    }
+
     private static let prewarmOnce: Void = {
         // **専用スレッド**(協調スレッドプールに載せない): 下の flock はブロックする。
         // 別の暖機(`warm-ocr`)がコンパイル中ならその完了を待ってから読む —— 待たずに自分でも
@@ -73,18 +127,22 @@ public enum RegionText {
             let lock = OCRWarmupLock.acquire(processName: ProcessInfo.processInfo.processName)
             defer { try? lock?.close() }
             // 空の画像では認識器が言語モデルまで読み込まないことがあるので、文字を描いて読ませる
-            guard let image = renderedProbe() else { recordPrewarmOutcome(lines: nil, error: "no probe image"); return }
+            guard let image = renderedProbe() else {
+                recordPrewarmOutcome(lines: nil, error: "no probe image", attempts: 0)
+                return
+            }
             let started = Date()
             let done = DispatchSemaphore(value: 0)
             let box = ProbeBox()
             Task.detached(priority: .userInitiated) {
-                do { box.set(try await recognize(image, languages: defaultLanguages), nil) }
-                catch { box.set(nil, "\(error)") }
+                let (lines, error, attempts) = await probeWithRetry(image: image)
+                box.set(lines, error, attempts: attempts)
                 done.signal()
             }
             done.wait()
-            let (read, failure) = box.get()
-            recordPrewarmOutcome(lines: read, error: failure, ms: Int(Date().timeIntervalSince(started) * 1000))
+            let (read, failure, attempts) = box.get()
+            recordPrewarmOutcome(lines: read, error: failure,
+                                 ms: Int(Date().timeIntervalSince(started) * 1000), attempts: attempts)
             guard warmedUp(probe: read) else { return }
             markWarm()
         }
@@ -97,8 +155,13 @@ public enum RegionText {
         private let lock = NSLock()
         private var lines: [String]?
         private var error: String?
-        func set(_ l: [String]?, _ e: String?) { lock.lock(); lines = l; error = e; lock.unlock() }
-        func get() -> ([String]?, String?) { lock.lock(); defer { lock.unlock() }; return (lines, error) }
+        private var attempts: Int = 0
+        func set(_ l: [String]?, _ e: String?, attempts a: Int) {
+            lock.lock(); lines = l; error = e; attempts = a; lock.unlock()
+        }
+        func get() -> ([String]?, String?, Int) {
+            lock.lock(); defer { lock.unlock() }; return (lines, error, attempts)
+        }
     }
 
     private static let warmLock = NSLock()
@@ -395,14 +458,15 @@ public enum RegionText {
         var hasReturned: Bool { lock.lock(); defer { lock.unlock() }; return returned }
     }
 
-    /// 暖機の探りの顛末(FT_OCR_HANG_SAMPLE=1 のとき)。**warm にならない理由**はここにしか出ない
-    static func recordPrewarmOutcome(lines: [String]?, error: String?, ms: Int = 0) {
+    /// 暖機の探りの顛末(FT_OCR_HANG_SAMPLE=1 のとき)。**warm にならない理由**はここにしか出ない。
+    /// `attempts` = 撃った回数(撃ち直し込み。画像不正で 1 回も撃てなければ 0)
+    static func recordPrewarmOutcome(lines: [String]?, error: String?, ms: Int = 0, attempts: Int = 1) {
         guard hangSamplingEnabled(environment: ProcessInfo.processInfo.environment) else { return }
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".fleetest/ocr-late", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let pid = ProcessInfo.processInfo.processIdentifier
-        let entry: [String: Any] = ["pid": pid, "prewarm": true, "ms": ms,
+        let entry: [String: Any] = ["pid": pid, "prewarm": true, "ms": ms, "attempts": attempts,
                                     "lines": lines ?? [], "error": error ?? "", "warm": warmedUp(probe: lines)]
         if let data = try? JSONSerialization.data(withJSONObject: entry) {
             try? data.write(to: dir.appendingPathComponent("prewarm-\(pid).json"))

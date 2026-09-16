@@ -151,6 +151,9 @@ enum DeviceMachineRunner {
         // 機械ごとに別々の run になるので、ここで1回だけ束ね鍵を発行して全員へ配る
         // (FTCore.RunMetaRecord.runGroup。子が自分で作ると束にならない)
         let runGroup = RunRecorder.makeRunGroupID()
+        // サブ実行のクラッシュ検出(reportMissingResults)が「この run で書かれた記録」を
+        // 走査の窓で絞るための開始時刻。子の起動より前に捕まえる(子の書き込みは必ずこの後)
+        let dispatchStart = Date()
         let outcomes = await withTaskGroup(of: (Int, FleetEntryOutcome).self) { taskGroup in
             for (index, group, ids) in active {
                 taskGroup.addTask {
@@ -178,6 +181,12 @@ enum DeviceMachineRunner {
         }
 
         printSummary(profileName: profileName, outcomes: outcomes)
+        // **broadcast はここを呼ばない** —— 同じ ID を台数ぶん走らせるので、1台でも記録が
+        // あれば「走った」であり「欠落」の意味が変わる(呼び手で分岐。実装を分けない)
+        if !broadcast {
+            reportMissingResults(project: project, profileName: profileName, runGroup: runGroup,
+                                 since: dispatchStart, active: active, outcomes: outcomes)
+        }
         // ディスパッチした(= --junit を渡した)ぶんだけ結合する。0本で見送ったホストを混ぜると
         // 「出力が無い」合成失敗になり、走らせてもいないものが赤くなる(FleetRunner と同じ規律)
         if let junit, let junitTempDir {
@@ -326,6 +335,77 @@ enum DeviceMachineRunner {
             concurrentDevices: localDeviceCount ?? existing?.concurrentDevices,
             updatedAt: ISO8601DateFormatter().string(from: Date()))
         RemoteHostFactsStore.save(facts, dir: dir, host: localHost)
+    }
+
+    // MARK: - 結果の無いシナリオ(サブ実行のクラッシュ)
+
+    /// サブ実行がクラッシュ/強制終了すると、担当していたシナリオの一部が結果を1件も残さないまま
+    /// 終わることがある(実測: `run --runner local` を SIGKILL → 11 本中 9 本が run.json に
+    /// finishedAt 無し・scenarios は 2 件だけ)。**`--failed` の記録は回収できたシナリオ JSON
+    /// からしか書かれない**(`RemoteRunDispatcher.writeLastResults` と同じ口)ので、結果の無い分は
+    /// 前回(緑)の記録のまま残り、黙って再実行の対象から外れる。ここで欠落を1行で知らせた上で
+    /// `LastResultsStore` へ失敗として記録し、次回の `--failed` が拾えるようにする
+    private static func reportMissingResults(
+        project: TestProject, profileName: String, runGroup: String, since: Date,
+        active: [(Int, Group, [String])], outcomes: [FleetEntryOutcome]
+    ) {
+        let recorded = recordedScenarioIDs(project: project, runGroup: runGroup, since: since)
+        // **順序ではなく machineLabel で引く**: outcomes は今は active と同じ順序で作られているが、
+        // その保証は run() の集計の実装詳細なので、崩れたときに「別の機械の exit code」を
+        // 名指しする形にしない(引けなければ exit code 不明として 0 以外を意味する -1)
+        let exitCodes = Dictionary(outcomes.map { ($0.host, $0.exitCode) }, uniquingKeysWith: { first, _ in first })
+        for (_, group, ids) in active {
+            let missing = unrecordedScenarioIDs(assigned: ids, recorded: recorded)
+            guard !missing.isEmpty else { continue }
+            FleetRunner.log(missingResultsLine(
+                machineLabel: group.machineLabel, exitCode: exitCodes[group.machineLabel] ?? -1,
+                ids: missing))
+            for id in missing {
+                LastResultsStore.record(project: project, scenarioID: id, passed: false, profile: profileName)
+            }
+        }
+    }
+
+    /// scanRuns の `since` はその run の `startedAt`(その機械自身の時計)と直接比較される。
+    /// リモート機の時計がこの機械よりわずかに遅れていると、実際にはこの run の子が書いた
+    /// run.json が `since` 未満に見えて丸ごと除外され、その機械の全シナリオが「欠落」と
+    /// 誤判定されかねない。**判定の実体は runGroup の一致**(ほぼ確実に一意な発番)なので、
+    /// `since` は走査量を絞るための粗い窓でよく、NTP 未同期でも通常収まる範囲としてマージンを取る
+    /// (これを超えるズレは `FTAndroid.AndroidHealthProbe.issueClockSkew` が別途検知する領域)
+    private static let clockSkewMargin: TimeInterval = 5 * 60
+
+    /// この run(runGroup)に属する run ディレクトリの `scenarios/*.json` から scenarioID を集める。
+    /// **ファイル名でなく JSON の中身で照合する**(日本語ファイル名は NFD 保存で glob・文字列一致が
+    /// 静かに外れる実害あり)
+    static func recordedScenarioIDs(project: TestProject, runGroup: String, since: Date) -> Set<String> {
+        let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
+        let metas = RunResultsStore.scanRuns(resultsDir: resultsDir,
+                                             since: since.addingTimeInterval(-clockSkewMargin))
+            .filter { $0.runGroup == runGroup }
+        var ids: Set<String> = []
+        for meta in metas {
+            let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: meta.runID)
+            for record in RunResultsStore.records(runDir: runDir) {
+                ids.insert(record.scenarioID)
+            }
+        }
+        return ids
+    }
+
+    /// `assigned` のうち `recorded` に無い ID(順序は assigned のまま)。純粋関数(単体テスト対象)
+    static func unrecordedScenarioIDs(assigned: [String], recorded: Set<String>) -> [String] {
+        assigned.filter { !recorded.contains($0) }
+    }
+
+    /// 「結果が1件も無かった」ことを知らせる1行(純粋関数。単体テスト対象)。
+    /// 5件を超えたら先頭5件 + "…" に切る(負荷テストの実測で1機に11本の割り当ては普通に起きる。
+    /// 全件出すとログが埋まる。件数自体は先頭の "N scenario(s)" に必ず出る)
+    static func missingResultsLine(machineLabel: String, exitCode: Int32, ids: [String]) -> String {
+        let maxListed = 5
+        let listed = ids.prefix(maxListed).joined(separator: ", ")
+        let suffix = ids.count > maxListed ? ", …" : ""
+        return "⚠️ \(machineLabel): \(ids.count) scenario(s) produced no result"
+            + " (sub-run exited \(exitCode)): \(listed)\(suffix)"
     }
 
     private static func estimateText(_ estimatedMs: Double, devices: Int) -> String {

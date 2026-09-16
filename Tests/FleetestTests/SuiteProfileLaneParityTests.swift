@@ -8,12 +8,14 @@ import XCTest
 final class SuiteProfileLaneParityTests: XCTestCase {
     private static let iosLanes: Set<String> =
         Set((1...8).map { String(format: "local|iPhone 17 Pro(iOS 27.0)-%02d", $0) })
-        .union((1...2).map { String(format: "M1Max|iPhone 17 Pro(iOS 27.0)-%02d", $0) })
-        .union((1...4).map { String(format: "M1Ultra|iPhone 17 Pro(iOS 27.0)-%02d", $0) })
+        .union((1...4).map { String(format: "M1Max|iPhone 17 Pro(iOS 27.0)-%02d", $0) })
+        .union((1...6).map { String(format: "M1Ultra|iPhone 17 Pro(iOS 27.0)-%02d", $0) })
+        .union(["M1mini|iPhone 17 Pro(iOS 27.0)-01"])
     private static let androidLanes: Set<String> =
         Set((1...6).map { String(format: "local|Pixel 9(Android 15)-%02d", $0) })
-        .union((1...2).map { String(format: "M1Max|Pixel 9(Android 15)-%02d", $0) })
-        .union((1...4).map { String(format: "M1Ultra|Pixel 9(Android 15)-%02d", $0) })
+        .union((1...4).map { String(format: "M1Max|Pixel 9(Android 15)-%02d", $0) })
+        .union((1...6).map { String(format: "M1Ultra|Pixel 9(Android 15)-%02d", $0) })
+        .union(["M1mini|Pixel 9(Android 15)-01"])
 
     /// project -> このプロジェクトが持つ suite プロファイル(存在しない組は書かない)
     private static let suiteProfiles: [String: [String: Set<String>]] = [

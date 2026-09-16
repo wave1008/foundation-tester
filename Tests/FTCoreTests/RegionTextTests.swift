@@ -280,3 +280,124 @@ final class RegionTextAwaitPrewarmTests: XCTestCase {
         XCTAssertLessThan(elapsed, .seconds(2), "上限を大きく超えて待っている(所要 \(elapsed))")
     }
 }
+
+/// 差し替え口(`recognizeOverrideForTesting`)だけになると「探りの撃ち直しを一度も通らない」
+/// 変更が緑のまま通るので、production の既定をここで固定する(warmOverrideForTesting と同じ規律)
+final class RegionTextRecognizeOverrideDefaultTests: XCTestCase {
+    func testOverrideIsNotSetInProduction() {
+        XCTAssertNil(RegionText.recognizeOverrideForTesting,
+                     "差し替え口が残っている(テストが後始末していない)")
+    }
+}
+
+private enum RegionTextProbeTestError: Error { case boom }
+
+/// テストからスレッドセーフに呼び出し回数を数えるだけの最小ヘルパー
+private final class LockedCallCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var n = 0
+    var value: Int { lock.lock(); defer { lock.unlock() }; return n }
+    @discardableResult
+    func incrementAndGet() -> Int { lock.lock(); n += 1; defer { lock.unlock() }; return n }
+}
+
+/// `RegionText.probeWithRetry` — 暖機の探りが空(またはエラー)を返しても撃ち直すことの担保。
+/// 実測(2026-09-16、`FT_OCR_HANG_SAMPLE=1` 採取): 手元のフリート実行 26 プロセス中 15 本が
+/// 探り 1 回だけで空を引いて warm にならず、その run は OCR 使用率 0% になった。
+/// Vision を実際に叩かず `recognizeOverrideForTesting` で結果を制御する
+final class RegionTextProbeWithRetryTests: XCTestCase {
+
+    override func tearDown() {
+        RegionText.recognizeOverrideForTesting = nil
+        super.tearDown()
+    }
+
+    private func dummyImage() -> CGImage {
+        let ctx = CGContext(data: nil, width: 4, height: 4, bitsPerComponent: 8,
+                            bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        return ctx.makeImage()!
+    }
+
+    /// 1 回目が空・2 回目で読める → warm になる(= 撃ち直しが効いている)
+    func testRetriesUntilReadable() async {
+        let callCount = LockedCallCount()
+        RegionText.recognizeOverrideForTesting = { _ in
+            callCount.incrementAndGet() == 1 ? [] : ["fleetest"]
+        }
+        let (lines, error, attempts) = await RegionText.probeWithRetry(
+            image: dummyImage(), budget: .milliseconds(500), interval: .milliseconds(20))
+        XCTAssertEqual(lines, ["fleetest"])
+        XCTAssertNil(error)
+        XCTAssertEqual(attempts, 2, "撃ち直した回数が記録されていない")
+        XCTAssertEqual(callCount.value, 2)
+        XCTAssertTrue(RegionText.warmedUp(probe: lines))
+    }
+
+    /// 常に空 → 予算内で止まる(無限ループしない)・warm にならない。
+    /// 所要は戻り値でなく**実測(経過時間)**で確かめる
+    func testStopsWithinBudgetWhenAlwaysEmpty() async {
+        RegionText.recognizeOverrideForTesting = { _ in [] }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let (lines, _, attempts) = await RegionText.probeWithRetry(
+            image: dummyImage(), budget: .milliseconds(300), interval: .milliseconds(50))
+        let elapsed = clock.now - start
+        XCTAssertFalse(RegionText.warmedUp(probe: lines))
+        XCTAssertGreaterThan(attempts, 1, "撃ち直していない")
+        XCTAssertGreaterThanOrEqual(elapsed, .milliseconds(300), "予算より早く諦めている(所要 \(elapsed))")
+        XCTAssertLessThan(elapsed, .milliseconds(600), "予算を大きく超えて撃ち続けている(所要 \(elapsed))")
+    }
+
+    /// 1 回目で読める → 撃ち直さない(呼び出し回数と所要の両方で確かめる)
+    func testDoesNotRetryWhenFirstAttemptReads() async {
+        let callCount = LockedCallCount()
+        RegionText.recognizeOverrideForTesting = { _ in
+            callCount.incrementAndGet()
+            return ["fleetest"]
+        }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let (lines, _, attempts) = await RegionText.probeWithRetry(
+            image: dummyImage(), budget: .seconds(5), interval: .milliseconds(500))
+        let elapsed = clock.now - start
+        XCTAssertEqual(lines, ["fleetest"])
+        XCTAssertEqual(attempts, 1)
+        XCTAssertEqual(callCount.value, 1)
+        XCTAssertLessThan(elapsed, .milliseconds(200), "撃ち直している(所要 \(elapsed))")
+    }
+
+    /// **既定値(production が実際に使う値)をリテラルで固定する**。他のテストが budget/interval を
+    /// 明示して呼ぶので、これが無いと既定を 0 に落とす変更(= 撃ち直しが production で1度も
+    /// 起きない)が緑のまま通る(2026-09-16 の変異チェックで実際に生き残った)
+    func testDefaultRetryBudgetAndIntervalArePinned() {
+        XCTAssertEqual(RegionText.prewarmRetryBudget, .seconds(2))
+        XCTAssertEqual(RegionText.prewarmRetryInterval, .milliseconds(50))
+    }
+
+    /// **引数を省いた呼び出し(= production と同じ形)でも撃ち直す**。既定値の固定と対で、
+    /// 「既定は残っているが引数の既定が使われていない」型の変更も落とす
+    func testRetriesWithTheProductionDefaults() async {
+        let callCount = LockedCallCount()
+        RegionText.recognizeOverrideForTesting = { _ in
+            callCount.incrementAndGet() == 1 ? [] : ["fleetest"]
+        }
+        let (lines, _, attempts) = await RegionText.probeWithRetry(image: dummyImage())
+        XCTAssertEqual(lines, ["fleetest"])
+        XCTAssertEqual(attempts, 2, "既定の予算で撃ち直していない")
+    }
+
+    /// エラーで返っても空と同じく撃ち直す
+    func testRetriesAfterAnError() async {
+        let callCount = LockedCallCount()
+        RegionText.recognizeOverrideForTesting = { _ in
+            if callCount.incrementAndGet() == 1 { throw RegionTextProbeTestError.boom }
+            return ["fleetest"]
+        }
+        let (lines, error, attempts) = await RegionText.probeWithRetry(
+            image: dummyImage(), budget: .milliseconds(500), interval: .milliseconds(20))
+        XCTAssertEqual(lines, ["fleetest"])
+        XCTAssertNil(error)
+        XCTAssertEqual(attempts, 2)
+    }
+}

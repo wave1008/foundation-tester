@@ -59,6 +59,26 @@ final class CrossLayerTerminationTests: XCTestCase {
             "子は ParentDeathWatch の発話を残して終わるはず。stderr:\n\(stderr)")
     }
 
+    // MARK: - ① 親の異常終了(FIFO 経路)
+
+    /// 上のテストは stdout/stderr を**ファイル**へ流すので、子の書き込みは常に成功し
+    /// (親が死んでも読み手はファイルシステムのまま)、「読み手が消えて write が失敗する」経路
+    /// (本番のパイプと同じ形)を1度も踏まない。ここは stdout+stderr を1本の FIFO へまとめ、
+    /// spawner 自身が `exec cat` で読み手になる(pid を保ったまま)ことで、spawner の SIGKILL が
+    /// 読み手の消失 = 子の write の EPIPE を再現する
+    /// (`ParentDeathWatch.writeNotice` の abort/SIGPIPE バグはこの経路でしか踏めなかった)
+    func testKillingTheSpawnerTakesDownFleetestAndItsScenarioRunnerWhenOnlyTheParentReadsTheOutput() throws {
+        let chain = try launchChain(outputMode: .fifo)
+        defer { tearDown(chain) }
+
+        kill(chain.spawner.processIdentifier, SIGKILL)
+        chain.spawner.waitUntilExit()
+
+        // FIFO の読み手は spawner と共に消えるので、文言照合はできない(既存のファイル経路の
+        // テストが担う)。ここで確かめるのは「両層が時限の SIGKILL 無しで消えること」だけ
+        try assertBothLayersExit(chain, within: Self.exitTimeout)
+    }
+
     // MARK: - ② 正常キャンセル
 
     func testSigtermToFleetestTakesDownTheScenarioRunnerToo() throws {
@@ -74,7 +94,15 @@ final class CrossLayerTerminationTests: XCTestCase {
 
     // MARK: - 組み立て
 
-    private func launchChain() throws -> Chain {
+    private enum OutputMode {
+        /// 通常経路: stdout/stderr を別ファイルへ。readiness は stdout の `paused` を読んで判定
+        case files
+        /// ①FIFO 経路: stdout+stderr を1本の FIFO へまとめ、spawner 自身が `exec cat` で読み手になる。
+        /// FIFO の中身は読み捨てるので readiness は孫プロセスの出現+安定で判定し、stderr の文言も読めない
+        case fifo
+    }
+
+    private func launchChain(outputMode: OutputMode = .files) throws -> Chain {
         let root = repoRoot()
         let fleetest = root.appendingPathComponent(".build/debug/fleetest")
         let runner = root.appendingPathComponent(".build/debug/fleetest-scenarios-E2E-CMP")
@@ -91,42 +119,77 @@ final class CrossLayerTerminationTests: XCTestCase {
             .appendingPathComponent("ft-crosslayer-\(UUID().uuidString)")
         let reportDir = tempDir.appendingPathComponent("reports")
         try FileManager.default.createDirectory(at: reportDir, withIntermediateDirectories: true)
-        let stdoutURL = tempDir.appendingPathComponent("out.ndjson")
-        let stderrURL = tempDir.appendingPathComponent("err.log")
 
-        // `$0` = fleetest / `$1` = シナリオ / `$2` = report-dir / `$3` = stdout / `$4` = stderr。
-        // `&` の子は非対話シェルでは stdin が /dev/null にされるので、拡張と同じく開いたままにするため
-        // fd 3 経由で明示的に継がせる。`exec sleep` で pid を保ったまま居座る(= 拡張ホストの役)
-        let script = """
-        exec 3<&0
-        FT_PARENT_PID=$$ "$0" api run --project E2E-CMP --skip-build --dry-run --debug --pause-on-start \
-          --scenario "$1" --report-dir "$2" <&3 >"$3" 2>"$4" &
-        echo $!
-        exec sleep 600
-        """
         let spawner = Process()
         spawner.executableURL = URL(fileURLWithPath: "/bin/sh")
-        spawner.arguments = ["-c", script, fleetest.path, Self.scenarioID,
-                             reportDir.path, stdoutURL.path, stderrURL.path]
         spawner.currentDirectoryURL = root  // --project は cwd のパッケージから解決する
         let spawnerStdin = Pipe()
         spawner.standardInput = spawnerStdin
         let pidPipe = Pipe()
         spawner.standardOutput = pidPipe
         spawner.standardError = FileHandle.nullDevice
-        try spawner.run()
 
-        let childPID = try readPIDLine(from: pidPipe.fileHandleForReading)
+        switch outputMode {
+        case .files:
+            let stdoutURL = tempDir.appendingPathComponent("out.ndjson")
+            let stderrURL = tempDir.appendingPathComponent("err.log")
+            // `$0` = fleetest / `$1` = シナリオ / `$2` = report-dir / `$3` = stdout / `$4` = stderr。
+            // `&` の子は非対話シェルでは stdin が /dev/null にされるので、拡張と同じく開いたままにする
+            // ため fd 3 経由で明示的に継がせる。`exec sleep` で pid を保ったまま居座る(= 拡張ホストの役)
+            let script = """
+            exec 3<&0
+            FT_PARENT_PID=$$ "$0" api run --project E2E-CMP --skip-build --dry-run --debug --pause-on-start \
+              --scenario "$1" --report-dir "$2" <&3 >"$3" 2>"$4" &
+            echo $!
+            exec sleep 600
+            """
+            spawner.arguments = ["-c", script, fleetest.path, Self.scenarioID,
+                                 reportDir.path, stdoutURL.path, stderrURL.path]
+            try spawner.run()
+            let childPID = try readPIDLine(from: pidPipe.fileHandleForReading)
+            try waitForPausedOutput(spawner: spawner, childPID: childPID,
+                                    stdoutURL: stdoutURL, stderrURL: stderrURL)
+            let grandchildPID = try findGrandchild(parent: childPID)
+            return Chain(spawner: spawner, spawnerStdin: spawnerStdin, childPID: childPID,
+                         grandchildPID: grandchildPID, stderrURL: stderrURL, tempDir: tempDir)
 
-        // 孫が最初のステップの手前で止まった(= 3層が揃って長生きしている)ことを、
-        // 子の stdout に `paused` が出ることで確かめる。先に子が死んだら理由ごと赤にする
+        case .fifo:
+            let fifoURL = tempDir.appendingPathComponent("out.fifo")
+            // `$0` = fleetest / `$1` = シナリオ / `$2` = report-dir / `$3` = FIFO。
+            // `exec cat` は pid を保ったまま読み手になる(= 拡張ホストの役)ので、spawner を殺すと
+            // 読み手が消え、子の write は(ファイル経路と違って)EPIPE になる
+            let script = """
+            exec 3<&0
+            mkfifo "$3"
+            FT_PARENT_PID=$$ "$0" api run --project E2E-CMP --skip-build --dry-run --debug --pause-on-start \
+              --scenario "$1" --report-dir "$2" <&3 >"$3" 2>&1 &
+            echo $!
+            exec cat "$3" >/dev/null
+            """
+            spawner.arguments = ["-c", script, fleetest.path, Self.scenarioID,
+                                 reportDir.path, fifoURL.path]
+            try spawner.run()
+            let childPID = try readPIDLine(from: pidPipe.fileHandleForReading)
+            let grandchildPID = try waitForStableGrandchild(spawner: spawner, childPID: childPID,
+                                                             timeout: Self.readyTimeout)
+            // このモードでは stderr を読めない(FIFO の読み手は spawner の死と共に消える)。
+            // 存在しないパスにしておけば、失敗時のメッセージ組み立て(`try? String(contentsOf:)`)が
+            // FIFO を開いてブロックすることなく空文字へ落ちる
+            let unreadableStderrURL = tempDir.appendingPathComponent("stderr-not-captured")
+            return Chain(spawner: spawner, spawnerStdin: spawnerStdin, childPID: childPID,
+                         grandchildPID: grandchildPID, stderrURL: unreadableStderrURL, tempDir: tempDir)
+        }
+    }
+
+    /// 孫が最初のステップの手前で止まった(= 3層が揃って長生きしている)ことを、
+    /// 子の stdout に `paused` が出ることで確かめる。先に子が死んだら理由ごと赤にする
+    private func waitForPausedOutput(spawner: Process, childPID: pid_t,
+                                     stdoutURL: URL, stderrURL: URL) throws {
         let deadline = Date().addingTimeInterval(Self.readyTimeout)
-        var paused = false
         while Date() < deadline {
             if let out = try? String(contentsOf: stdoutURL, encoding: .utf8),
                out.contains("\"kind\":\"paused\"") {
-                paused = true
-                break
+                return
             }
             guard ProcessLiveness.isAlive(childPID) else {
                 let err = (try? String(contentsOf: stderrURL, encoding: .utf8)) ?? ""
@@ -136,16 +199,36 @@ final class CrossLayerTerminationTests: XCTestCase {
             }
             usleep(100_000)
         }
-        guard paused else {
-            kill(childPID, SIGKILL)
-            kill(spawner.processIdentifier, SIGKILL)
-            XCTFail("\(Self.readyTimeout) 秒待っても孫が paused にならない")
-            throw XCTSkip("chain did not come up")
-        }
+        kill(childPID, SIGKILL)
+        kill(spawner.processIdentifier, SIGKILL)
+        XCTFail("\(Self.readyTimeout) 秒待っても孫が paused にならない")
+        throw XCTSkip("chain did not come up")
+    }
 
-        let grandchildPID = try findGrandchild(parent: childPID)
-        return Chain(spawner: spawner, spawnerStdin: spawnerStdin, childPID: childPID,
-                     grandchildPID: grandchildPID, stderrURL: stderrURL, tempDir: tempDir)
+    /// FIFO 経路用: `paused` の文言が読めない代わりに、孫プロセスが現れて**見つかった後も
+    /// 生き続ける**ことで readiness を判定する(見つかった直後にたまたま終了していた、という
+    /// 誤検知を避けるための安定待ち)
+    private func waitForStableGrandchild(spawner: Process, childPID: pid_t,
+                                         timeout: TimeInterval) throws -> pid_t {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            guard ProcessLiveness.isAlive(childPID) else {
+                kill(spawner.processIdentifier, SIGKILL)
+                XCTFail("fleetest api run が孫を起こす前に終わった")
+                throw XCTSkip("chain did not come up")
+            }
+            if let pid = try grandchildIfPresent(parent: childPID) {
+                usleep(300_000)
+                if ProcessLiveness.isAlive(pid) {
+                    return pid
+                }
+            }
+            usleep(100_000)
+        }
+        kill(childPID, SIGKILL)
+        kill(spawner.processIdentifier, SIGKILL)
+        XCTFail("\(timeout) 秒待っても孫が安定して現れない")
+        throw XCTSkip("chain did not come up")
     }
 
     private func readPIDLine(from handle: FileHandle) throws -> pid_t {
@@ -163,13 +246,23 @@ final class CrossLayerTerminationTests: XCTestCase {
         return pid
     }
 
-    /// 子の直下に居るシナリオ実行バイナリの pid(`pgrep -P <子> -f <runner>`)
-    private func findGrandchild(parent: pid_t) throws -> pid_t {
+    /// 子の直下に居るシナリオ実行バイナリの pid(`pgrep -P <子> -f <runner>`)。
+    /// **0 件は「まだ起こしていないだけ」であって失敗ではない**ので nil を返す(呼び手がポーリングで
+    /// 使う)。複数件は取り違えなので即座に失敗させる
+    private func grandchildIfPresent(parent: pid_t) throws -> pid_t? {
         let result = try Shell.run(["/usr/bin/pgrep", "-P", String(parent), "-f", "fleetest-scenarios-E2E-CMP"])
         let pids = result.output
             .split(separator: "\n").compactMap { pid_t($0.trimmingCharacters(in: .whitespaces)) }
-        guard pids.count == 1, let pid = pids.first else {
-            XCTFail("孫のシナリオ実行バイナリが子 \(parent) の直下にちょうど1本居るはず: \(pids)")
+        if pids.count > 1 {
+            XCTFail("孫のシナリオ実行バイナリが子 \(parent) の直下に複数居る: \(pids)")
+            throw XCTSkip("ambiguous grandchild")
+        }
+        return pids.first
+    }
+
+    private func findGrandchild(parent: pid_t) throws -> pid_t {
+        guard let pid = try grandchildIfPresent(parent: parent) else {
+            XCTFail("孫のシナリオ実行バイナリが子 \(parent) の直下にちょうど1本居るはず")
             throw XCTSkip("grandchild not found")
         }
         return pid

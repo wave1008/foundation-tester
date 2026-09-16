@@ -471,6 +471,11 @@ public enum ScenarioOutcome: Sendable, Equatable {
     case passed, failed, frozen
     /// **デバイス側の一過性の故障**でテストが落ちた(コードの失敗ではない)。振り直す
     case environmentFault
+    /// 失敗ステップの `failureKind` が `driverUnreachable`(ブリッジ不達)だった。
+    /// **OS で扱いが割れる** —— Android は environmentFault と同じ振り直し対象(runWorker 側の
+    /// `requeuesWithoutRetiring`)。iOS は `.failed` と同じ経路(bridgeUnreachable プローブ→
+    /// ワーカー離脱→復帰)へそのまま流す(ここで早期に振り直すと建て直しが起きなくなる)
+    case driverUnreachable
 }
 
 /// 「テストではなくデバイスが壊れていた」と機械的に言い切れる失敗のしるし。
@@ -516,6 +521,7 @@ public enum ScenarioRunner {
         var fmUsage: FMUsageRecord?
         var frozen = false
         var environmentFault = false
+        var driverUnreachableFailure = false
         let passed = await ScenarioHost.run(
             project: project, scenarioID: item.info.id, connection: worker.connection,
             settings: settings, reportDir: reportDir.path,
@@ -534,6 +540,12 @@ public enum ScenarioRunner {
                 // **デバイス基盤の一過性エラーは「テストの失敗」として数えない**(振り直す)
                 if event.status == "failed", EnvironmentFault.matches(event.detail) {
                     environmentFault = true
+                }
+                // ドライバ(ブリッジ)不達。文言の一致ではなく `StepFailureKind`(DriverError の
+                // case で仕分け済み)で判定する
+                if event.status == "failed",
+                   event.failureKind == StepFailureKind.driverUnreachable.rawValue {
+                    driverUnreachableFailure = true
                 }
                 onEvent(.step(worker: worker.label, flowURL: item.url,
                               result: stepResult(from: event)))
@@ -578,7 +590,8 @@ public enum ScenarioRunner {
         }
 
         let outcome = Self.outcome(passed: passed, frozen: frozen,
-                                   environmentFault: environmentFault)
+                                   environmentFault: environmentFault,
+                                   driverUnreachable: driverUnreachableFailure)
         onEvent(.flowFinished(worker: worker.label, flowURL: item.url, passed: frozen ? false : passed,
                               reportURL: reportURL, fm: fmUsage))
         return outcome
@@ -590,13 +603,35 @@ public enum ScenarioRunner {
         "\(worker.platform):\(worker.logicalName ?? worker.label)"
     }
 
-    /// 実行結果の確定(純粋関数)。**優先順位に意味がある**: 画面凍結 > 環境の一過性エラー >
-    /// テストの合否。凍結はワーカーごと使えないので先に判定し、環境エラーは合格を上書きしない
-    /// (途中のステップが環境エラーでも、最終的に通ったならテストとしては合格)
-    static func outcome(passed: Bool, frozen: Bool, environmentFault: Bool) -> ScenarioOutcome {
+    /// 実行結果の確定(純粋関数)。**優先順位に意味がある**: 画面凍結 > 合否 > 環境の一過性エラー >
+    /// ドライバ不達。凍結はワーカーごと使えないので先に判定し、合否は環境エラー/ドライバ不達で
+    /// 上書きしない(途中のステップがそれらでも、最終的に通ったならテストとしては合格)
+    static func outcome(passed: Bool, frozen: Bool, environmentFault: Bool,
+                        driverUnreachable: Bool) -> ScenarioOutcome {
         if frozen { return .frozen }
         if passed { return .passed }
-        return environmentFault ? .environmentFault : .failed
+        if environmentFault { return .environmentFault }
+        return driverUnreachable ? .driverUnreachable : .failed
+    }
+
+    /// **失敗を結果ごと捨てて振り直し、ワーカーは離脱させない**か(純粋関数)。
+    /// **driverUnreachable の呼び出しは事後プローブ(消失・凍結)の後** —— 台が生きていると
+    /// 分かってから訊く(台が消えた形も同じ failureKind で来るため。呼び出し側のコメント参照)。
+    /// environmentFault は OS 問わず対象(既存)。driverUnreachable は **Android だけ**対象 —— Android のブリッジは
+    /// 次の要求で黙って張り直されるため事後プローブ(deviceUnreachable/deviceFrozen)では拾えず、
+    /// 落ちたシナリオが赤のまま残っていた(実測: adb kill-server 等で5本・force-stop で1本・
+    /// device offline で1本・実機再起動で1本)。**iOS はここで拾わない** —— 下流の
+    /// bridgeUnreachable プローブ→ワーカー離脱→復帰→再キューの経路(既存)をそのまま通す必要があり、
+    /// ここで早期に振り直すとブリッジの建て直しが起きなくなる
+    static func requeuesWithoutRetiring(outcome: ScenarioOutcome, platform: String) -> Bool {
+        switch outcome {
+        case .environmentFault:
+            return true
+        case .driverUnreachable:
+            return platform == "android"
+        case .passed, .failed, .frozen:
+            return false
+        }
     }
 
     /// ScenarioEvent(step)→ StepResult。scene/sceneTitle/section は構造化フィールドのまま写す。
@@ -1251,10 +1286,14 @@ public final class RunOrchestrator {
                 await runPasses.increment()
                 continue
             }
-            // **デバイス基盤の一過性エラー**(kAXErrorAPIDisabled 等)は結果を捨てて振り直す。
+            // **デバイス基盤の一過性エラー**(kAXErrorAPIDisabled 等。全 OS)は結果を捨てて振り直す。
             // **ワーカーは離脱させない** —— 個体は健全で、ブリッジを作り直しても同じ確率で踏む
             // (実測でも再実行で必ず消えた)。連続失敗の数にも入れない = サーキットブレーカを
-            // 環境ノイズで作動させない
+            // 環境ノイズで作動させない。
+            // **ドライバ不達(driverUnreachable)はここでは判定しない** —— 台が消えた/凍った形も
+            // 同じ failureKind で来る(実測: エミュレータの qemu を kill すると driver-unreachable →
+            // 消失)ので、下の事後プローブ(消失・凍結)を先に通してからでないと、**死んだレーンを
+            // 離脱させずに振り直し続ける**ことになる
             if outcome == .environmentFault {
                 let requeued = await discardAndRequeue(item, worker: worker, queue: queue,
                                                        reason: "a transient accessibility fault")
@@ -1267,7 +1306,8 @@ public final class RunOrchestrator {
             // iOS はブリッジ /status の生存確認(ブリッジのウェッジ=シナリオ途中から全ステップが
             // 接続エラーになる実害があり、Android のプローブでは拾えない)。
             var unusableReason: String? = outcome == .frozen ? "a frozen screen" : nil
-            if unusableReason == nil, outcome == .failed, worker.platform == "android",
+            if unusableReason == nil, outcome == .failed || outcome == .driverUnreachable,
+               worker.platform == "android",
                let serial = worker.connection.serial {
                 if await deviceUnreachable(serial) {
                     // 消失判定(adb devices)は実機でも有効。USB 抜け・WiFi 断の検知に使える。
@@ -1283,11 +1323,29 @@ public final class RunOrchestrator {
                     unusableReason = "a frozen screen"
                 }
             }
-            if unusableReason == nil, outcome == .failed, worker.platform == "ios",
+            // **iOS はドライバ不達(driverUnreachable)も .failed と同じ経路を通す**
+            // (振り直しは上の requeuesWithoutRetiring が Android だけに絞っている。ここを .failed
+            // だけに限ると、driverUnreachable を名乗った失敗だけブリッジ生存プローブを飛ばして
+            // しまい、iOS の既存挙動 —— 建て直し→復活→再キュー —— が起きなくなる)
+            if unusableReason == nil, outcome == .failed || outcome == .driverUnreachable,
+               worker.platform == "ios",
                await bridgeUnreachable(worker) {
                 unusableReason = lastBridgeIdentityMismatch.map {
                     "a bridge that now belongs to another device (\($0))"
                 } ?? "an unreachable bridge"
+            }
+            // **Android のドライバ不達で、台は生きている**(消失でも凍結でもない)= ブリッジだけが
+            // 一過性に切れた形(adb kill-server・ブリッジの force-stop・adb: device offline・実機の
+            // 再起動で実測)。Android のブリッジは次の要求で黙って張り直されるので事後プローブでは
+            // 健全に見え、落ちたシナリオが赤のまま残っていた。**ここまで来た = 台は生きている**ので、
+            // 結果を捨てて振り直し、ワーカーは残す(iOS は上の bridgeUnreachable プローブが
+            // 離脱→建て直し→再キューを担うので、この分岐には入らない)
+            if unusableReason == nil, outcome == .driverUnreachable,
+               ScenarioRunner.requeuesWithoutRetiring(outcome: outcome, platform: worker.platform) {
+                let requeued = await discardAndRequeue(item, worker: worker, queue: queue,
+                                                       reason: "an unreachable bridge")
+                if !requeued { failed += 1 }
+                continue
             }
             // サーキットブレーカ: 凍結/消失に当てはまらなくても連続失敗が閾値に達し、その間に別の
             // レーンが通っていれば不調ワーカーとして離脱。誰も通っていなければ残す(全レーンが同時に

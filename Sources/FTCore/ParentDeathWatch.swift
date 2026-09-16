@@ -34,9 +34,29 @@ public enum ParentDeathWatch {
         arm(parentPID: parentPID) {
             // kqueue コールバック文脈から呼ばれうるので ConsoleOut のロックを取らせない
             // (シグナル安全性に近い制約。生の write のまま残す)
-            FileHandle.standardError.write(
-                Data("⚠️ parent process \(parentPID) exited — stopping (FT_PARENT_PID)\n".utf8))
+            writeNotice("⚠️ parent process \(parentPID) exited — stopping (FT_PARENT_PID)\n",
+                        to: FileHandle.standardError.fileDescriptor)
             kill(getpid(), SIGTERM)
+        }
+    }
+
+    /// 親が死んだ直後は stderr の読み手(親)が既に居ないのが通常形。`FileHandle.write` は書き込み
+    /// 失敗を ObjC 例外で投げるため、EPIPE を Swift の catch で受けられず abort する(実測クラッシュ:
+    /// `-[NSConcreteFileHandle writeData:]` からの SIGABRT)。生の write(2) に fd 単位の
+    /// SIGPIPE 抑止(F_SETNOSIGPIPE)を添えて呼び、失敗は種別を問わず黙って諦める
+    /// (`kill(getpid(), SIGTERM)` に必ず到達させることが目的で、この行の成否は後始末を左右しない)
+    static func writeNotice(_ text: String, to fd: Int32) {
+        _ = fcntl(fd, F_SETNOSIGPIPE, 1)
+        let data = Data(text.utf8)
+        data.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) in
+            guard let base = buffer.baseAddress else { return }
+            var offset = 0
+            while offset < buffer.count {
+                let n = Foundation.write(fd, base.advanced(by: offset), buffer.count - offset)
+                if n < 0 && errno == EINTR { continue }
+                guard n > 0 else { return }
+                offset += n
+            }
         }
     }
 

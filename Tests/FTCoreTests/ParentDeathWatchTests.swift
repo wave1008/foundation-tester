@@ -59,4 +59,33 @@ final class ParentDeathWatchTests: XCTestCase {
         XCTAssertFalse(source.contains("_exit("), "時限の _exit を持たない(後始末を外側から打ち切らない)")
         XCTAssertFalse(source.contains("SIGKILL"), "自分を SIGKILL しない(同上)")
     }
+
+    /// 実測(負荷テスト): 読み手の居ないパイプへ `FileHandle.write` で書くと、EPIPE を ObjC 例外で
+    /// 投げるため abort する。`writeNotice` はそれをしないことを確かめる(read 端を閉じた pipe の
+    /// write 端へ書いて、戻ってくることだけを見る。落ちるなら test process ごと死ぬので落ちない)
+    func testWriteNoticeDoesNotCrashWhenTheReadEndIsClosed() {
+        let pipe = Pipe()
+        pipe.fileHandleForReading.closeFile()
+        ParentDeathWatch.writeNotice("⚠️ parent process 1 exited — stopping (FT_PARENT_PID)\n",
+                                     to: pipe.fileHandleForWriting.fileDescriptor)
+        pipe.fileHandleForWriting.closeFile()
+    }
+
+    /// 何もしない実装(常に return するだけ)でも上のテストは通ってしまうので、正常な fd には
+    /// 中身が欠けずそのまま入ることも確かめる(両方向の変異に耐える)
+    func testWriteNoticeWritesTheFullTextToAWritableFD() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("parent-death-watch-write-notice-\(UUID().uuidString).txt")
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: url)
+        defer {
+            try? handle.close()
+            try? FileManager.default.removeItem(at: url)
+        }
+        let text = "⚠️ parent process 12345 exited — stopping (FT_PARENT_PID)\n"
+        ParentDeathWatch.writeNotice(text, to: handle.fileDescriptor)
+        try handle.synchronizeFile()
+        let written = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertEqual(written, text)
+    }
 }

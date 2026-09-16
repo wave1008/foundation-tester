@@ -157,6 +157,9 @@ struct ApiWipeDeviceCommand: AsyncParsableCommand {
     @Option(help: "Android AVD id (required with --platform android)")
     var avd: String?
 
+    @Flag(help: "Wipe even if a fleetest run is currently using this device (kills that run's device access)")
+    var force = false
+
     func run() async throws {
         setvbuf(stdout, nil, _IOLBF, 0)
         let log: @Sendable (String) -> Void = { message in
@@ -169,7 +172,7 @@ struct ApiWipeDeviceCommand: AsyncParsableCommand {
             // iOS はブリッジの停止・再供給に repoRoot が要る(stop-device / start-device と同じ)
             let repoRoot = target.platform == "ios" ? try? RepoRoot.find() : nil
             try await DeviceWiper.wipeOne(
-                spec: spec, platform: target.platform, repoRoot: repoRoot,
+                spec: spec, platform: target.platform, repoRoot: repoRoot, force: force,
                 status: { phase in
                     ApiDeviceEventEmitter.emit(ApiDeviceWipeStatusEvent(phase: phase))
                 },
@@ -347,6 +350,9 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
         + " Default: the devices with no host (this machine)"))
     var deviceMachine: String?
 
+    @Flag(help: "Restart even if a fleetest run is currently using the device (kills that run's device access)")
+    var force = false
+
     func run() async throws {
         setvbuf(stdout, nil, _IOLBF, 0)
         guard !name.isEmpty else {
@@ -385,7 +391,7 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
                 for _ in 0..<min(2, items.count) {
                     group.addTask {
                         while let item = await queue.next() {
-                            let failure = await Self.restartOne(item, repoRoot: repoRoot)
+                            let failure = await Self.restartOne(item, repoRoot: repoRoot, force: force)
                             await outcomes.record(DeviceBooter.BootOutcome(
                                 name: item.spec.name, platform: item.platform, failure: failure))
                         }
@@ -421,7 +427,7 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
     /// いずれかが失敗しても deviceFinished は必ず送出する(呼び出し側 VSCode 拡張の再スキャン契約。
     /// ApiStartAllDevicesCommand の deviceFinished 契約と同じ)
     /// 戻り値は失敗の理由(nil = 成功)
-    private static func restartOne(_ item: RestartItem, repoRoot: URL?) async -> String? {
+    private static func restartOne(_ item: RestartItem, repoRoot: URL?, force: Bool) async -> String? {
         let spec = item.spec
         let platform = item.platform
         let log: @Sendable (String) -> Void = { message in
@@ -434,7 +440,7 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
         do {
             try await DeviceBooter.shutdownOne(
                 spec: spec, platform: platform,
-                repoRoot: platform == "ios" ? repoRoot : nil, log: log)
+                repoRoot: platform == "ios" ? repoRoot : nil, force: force, log: log)
             ApiDeviceEventEmitter.emit(
                 ApiDevicesUpLifecycleEvent(kind: "deviceStarting", name: spec.name, platform: platform,
                                            machine: spec.machine))
@@ -487,6 +493,9 @@ struct ApiStopAllDevicesCommand: AsyncParsableCommand {
         + " to a runner: remote exec <name> -- ... --device-machine <name>"))
     var deviceMachine: String?
 
+    @Flag(help: "Stop even devices a fleetest run is currently using (kills that run's device access)")
+    var force = false
+
     func run() async throws {
         setvbuf(stdout, nil, _IOLBF, 0)
         do {
@@ -500,13 +509,14 @@ struct ApiStopAllDevicesCommand: AsyncParsableCommand {
                 project: project, profile: profile, deviceMachine: deviceMachine)
             async let fanout: Void = RemoteDeviceFanout.dispatch(
                 subcommand: "stop-all-devices", machines: machines, project: project, profile: profile,
+                extraArgs: force ? ["--force"] : [],
                 relay: { ApiDeviceEventEmitter.emitRaw($0) })
 
             // deviceStopping/deviceFinished は shutdownAll のループから直列に呼ばれる(並行実行は無い)。
             // iOS のみブリッジ停止のため repoRoot を渡す(shutdownAll が android には nil を渡す)。
             let repoRoot = try? RepoRoot.find()
             let outcomes = await DeviceBooter.shutdownAll(
-                machine: machineProfile, repoRoot: repoRoot,
+                machine: machineProfile, repoRoot: repoRoot, force: force,
                 log: { message in ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message)) },
                 deviceStopping: { name, platform in
                     ApiDeviceEventEmitter.emit(
@@ -577,6 +587,9 @@ struct ApiStopDeviceCommand: AsyncParsableCommand {
             help: "Only match devices assigned to this machine (\"local\" or a registered host name). Set by the caller on the other end of ssh")
     var deviceMachine: String?
 
+    @Flag(help: "Stop even if a fleetest run is currently using this device (kills that run's device access)")
+    var force = false
+
     func run() async throws {
         switch try ApiDeviceDownDirectTarget.resolve(name: name, udid: udid, serial: serial) {
         case .name(let name):
@@ -588,19 +601,19 @@ struct ApiStopDeviceCommand: AsyncParsableCommand {
                 // 渡しブリッジ停止をスキップして simctl shutdown のみ行う
                 let repoRoot = platform == "ios" ? try? RepoRoot.find() : nil
                 try await DeviceBooter.shutdownOne(
-                    spec: spec, platform: platform, repoRoot: repoRoot, log: log)
+                    spec: spec, platform: platform, repoRoot: repoRoot, force: force, log: log)
             }
         case .udid(let udid):
             let simCatalog = (try? SimulatorCatalog.devices()) ?? []
             let spec = ApiDeviceDownDirectSpec.iosSpec(udid: udid, simCatalog: simCatalog)
-            try await Self.runDirect(spec: spec, platform: "ios", repoRoot: try? RepoRoot.find())
+            try await Self.runDirect(spec: spec, platform: "ios", repoRoot: try? RepoRoot.find(), force: force)
         case .serial(let serial):
             let runningAVDs = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
             let connected = Set((try? AndroidDeviceCatalog.connectedSerials()) ?? [])
             switch ApiDeviceDownDirectSpec.androidSpec(
                 serial: serial, runningAVDs: runningAVDs, connectedSerials: connected) {
             case .success(let spec):
-                try await Self.runDirect(spec: spec, platform: "android", repoRoot: nil)
+                try await Self.runDirect(spec: spec, platform: "android", repoRoot: nil, force: force)
             case .failure(let message):
                 try Self.emitDirectFailure(message)
             }
@@ -608,14 +621,17 @@ struct ApiStopDeviceCommand: AsyncParsableCommand {
     }
 
     /// 直指定モード(--udid/--serial)の1台停止。プロジェクト・マシンプロファイル解決を経ないため
-    /// ApiDeviceOperation.run を通らず、NDJSON の log*/finished 出力だけをここで組み立てる
-    private static func runDirect(spec: DeviceSpec, platform: String, repoRoot: URL?) async throws {
+    /// ApiDeviceOperation.run を通らず、NDJSON の log*/finished 出力だけをここで組み立てる。
+    /// **`--serial` は repoRoot: nil で呼ぶ**(iOS ブリッジ停止に使うだけの引数)が、lease の
+    /// state dir は `DeviceBooter.shutdownOne` が別途 `RepoRoot.find()` で解決するので影響しない
+    private static func runDirect(spec: DeviceSpec, platform: String, repoRoot: URL?, force: Bool) async throws {
         setvbuf(stdout, nil, _IOLBF, 0)
         let log: @Sendable (String) -> Void = { message in
             ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message))
         }
         do {
-            try await DeviceBooter.shutdownOne(spec: spec, platform: platform, repoRoot: repoRoot, log: log)
+            try await DeviceBooter.shutdownOne(
+                spec: spec, platform: platform, repoRoot: repoRoot, force: force, log: log)
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
         } catch {
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent.failure(error))

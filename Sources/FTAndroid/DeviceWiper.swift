@@ -115,6 +115,7 @@ public enum DeviceWiper {
     public static func wipeOne(
         spec: DeviceSpec, platform: String, repoRoot: URL?,
         locale: String = DeviceBooter.defaultLocale,
+        force: Bool = false,
         status: (@Sendable (String) -> Void)? = nil,
         log: @escaping @Sendable (String) -> Void
     ) async throws {
@@ -126,7 +127,7 @@ public enum DeviceWiper {
                 deviceName: spec.name, avd: avd, locale: locale, status: status, log: log)
         case .ios:
             try await eraseSimulator(
-                spec: spec, repoRoot: repoRoot, locale: locale, status: status, log: log)
+                spec: spec, repoRoot: repoRoot, locale: locale, force: force, status: status, log: log)
         }
     }
 
@@ -135,7 +136,8 @@ public enum DeviceWiper {
     /// 稼働中だった台は、消す前に `AppleLanguages`/`AppleLocale` を読んでおき、
     /// erase 後の再起動で書き戻す(`SimulatorLocalePreservation`)
     private static func eraseSimulator(
-        spec: DeviceSpec, repoRoot: URL?, locale: String, status: (@Sendable (String) -> Void)?,
+        spec: DeviceSpec, repoRoot: URL?, locale: String, force: Bool,
+        status: (@Sendable (String) -> Void)?,
         log: @escaping @Sendable (String) -> Void
     ) async throws {
         let sim = try SimulatorCatalog.resolve(spec: spec, in: SimulatorCatalog.devices())
@@ -149,7 +151,7 @@ public enum DeviceWiper {
             log("🧹 \(spec.name): wiping data (1/1) — stopping the simulator...")
             status?("stopping")
             try await DeviceBooter.shutdownOne(
-                spec: spec, platform: "ios", repoRoot: repoRoot, log: log)
+                spec: spec, platform: "ios", repoRoot: repoRoot, force: force, log: log)
 
             // erase は初回ブートの再構築を伴わない代わりに、コンテナの削除で数十秒かかることがある
             let result = try Shell.run(["xcrun", "simctl", "erase", sim.udid], timeout: 300)
@@ -168,7 +170,7 @@ public enum DeviceWiper {
                 // spawn は稼働中の台にしか使えないため確認できていない。要デバイス確認)
                 writeSimulatorLocale(udid: sim.udid, snapshot: preservedLocale, log: log)
                 try await DeviceBooter.shutdownOne(
-                    spec: spec, platform: "ios", repoRoot: repoRoot, log: log)
+                    spec: spec, platform: "ios", repoRoot: repoRoot, force: force, log: log)
                 try await DeviceBooter.bootOne(spec: spec, platform: "ios", log: log)
                 // 起動と同じ扱いにする(供給しないと画面が取れず「起動済み(ブリッジ未接続)」で止まる。
                 // ApiDeviceUp と同じ理由)。repoRoot が無ければ供給できないので飛ばす

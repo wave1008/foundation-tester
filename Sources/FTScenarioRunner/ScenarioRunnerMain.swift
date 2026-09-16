@@ -14,6 +14,10 @@ import FTDSL
 
 public enum ScenarioRunnerMain {
     public static func main() async {
+        // 読み手(親)が先に消えると出力の write が SIGPIPE でこのプロセスごと落ちる。
+        // 理由・fd 単位で止める根拠は Sources/fleetest/Fleetest.swift の同じ手当てのコメント参照
+        _ = fcntl(FileHandle.standardOutput.fileDescriptor, F_SETNOSIGPIPE, 1)
+        _ = fcntl(FileHandle.standardError.fileDescriptor, F_SETNOSIGPIPE, 1)
         // ScenarioHost.run が `FT_PARENT_PID` を渡したときだけ武装(親 kill -9 で孤児化しない)
         ParentDeathWatch.armIfRequested()
         LedgerWriteRole.enableForProduction()

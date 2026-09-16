@@ -34,24 +34,74 @@ final class EnvironmentFaultTests: XCTestCase {
 
     /// **優先順位**: 凍結 > 環境 > 合否。凍結はワーカーごと使えないので先に決まる
     func testFrozenWinsOverEverything() {
-        XCTAssertEqual(ScenarioRunner.outcome(passed: false, frozen: true, environmentFault: true),
+        XCTAssertEqual(ScenarioRunner.outcome(passed: false, frozen: true, environmentFault: true,
+                                              driverUnreachable: true),
                        .frozen)
-        XCTAssertEqual(ScenarioRunner.outcome(passed: true, frozen: true, environmentFault: false),
+        XCTAssertEqual(ScenarioRunner.outcome(passed: true, frozen: true, environmentFault: false,
+                                              driverUnreachable: false),
                        .frozen)
     }
 
-    /// **合格は環境エラーで上書きしない**。途中のステップが環境エラーでも、
+    /// **合格は環境エラー/ドライバ不達で上書きしない**。途中のステップがそれらでも、
     /// 最終的に通ったならテストとしては合格(振り直す理由がない)
     func testPassedIsNotDowngradedByATransientFault() {
-        XCTAssertEqual(ScenarioRunner.outcome(passed: true, frozen: false, environmentFault: true),
+        XCTAssertEqual(ScenarioRunner.outcome(passed: true, frozen: false, environmentFault: true,
+                                              driverUnreachable: false),
+                       .passed)
+        XCTAssertEqual(ScenarioRunner.outcome(passed: true, frozen: false, environmentFault: false,
+                                              driverUnreachable: true),
                        .passed)
     }
 
     /// 失敗かつ環境エラーのときだけ振り直しの対象になる
     func testFailureWithTheMarkerBecomesAnEnvironmentFault() {
-        XCTAssertEqual(ScenarioRunner.outcome(passed: false, frozen: false, environmentFault: true),
+        XCTAssertEqual(ScenarioRunner.outcome(passed: false, frozen: false, environmentFault: true,
+                                              driverUnreachable: false),
                        .environmentFault)
-        XCTAssertEqual(ScenarioRunner.outcome(passed: false, frozen: false, environmentFault: false),
+        XCTAssertEqual(ScenarioRunner.outcome(passed: false, frozen: false, environmentFault: false,
+                                              driverUnreachable: false),
                        .failed)
+    }
+
+    /// **driverUnreachable は environmentFault より下位の優先度**(両方 true でも environmentFault
+    /// が勝つ)が、単独では .driverUnreachable になる(CLAUDE.md: failureKind は DriverError の
+    /// case で仕分ける。ここは失敗ステップの failureKind から立てたフラグを写すだけの純粋関数)
+    func testDriverUnreachableMarkerBecomesItsOwnOutcome() {
+        XCTAssertEqual(ScenarioRunner.outcome(passed: false, frozen: false, environmentFault: false,
+                                              driverUnreachable: true),
+                       .driverUnreachable)
+        XCTAssertEqual(ScenarioRunner.outcome(passed: false, frozen: false, environmentFault: true,
+                                              driverUnreachable: true),
+                       .environmentFault)
+    }
+
+    /// **振り分けは OS で割れる**(バグ修正の核心): environmentFault は OS 問わず振り直し対象。
+    /// driverUnreachable は **Android だけ** —— iOS はここで拾わず、既存のブリッジ生存プローブ
+    /// (bridgeUnreachable)→ワーカー離脱→復帰→再キューの経路をそのまま通す(修正前は iOS だけが
+    /// この経路で緑に戻り、Android は事後プローブで拾えず赤のまま残っていた)
+    func testOnlyAndroidRequeuesDriverUnreachableWithoutRetiring() {
+        XCTAssertTrue(ScenarioRunner.requeuesWithoutRetiring(outcome: .driverUnreachable,
+                                                             platform: "android"))
+        XCTAssertFalse(ScenarioRunner.requeuesWithoutRetiring(outcome: .driverUnreachable,
+                                                              platform: "ios"))
+    }
+
+    /// environmentFault は既存どおり OS 問わず振り直し対象(この規律を壊していないことの固定)
+    func testEnvironmentFaultRequeuesOnBothPlatforms() {
+        for platform in ["ios", "android"] {
+            XCTAssertTrue(ScenarioRunner.requeuesWithoutRetiring(outcome: .environmentFault,
+                                                                 platform: platform))
+        }
+    }
+
+    /// passed/failed/frozen はどの OS でも振り直し対象にならない(この関数が触ってよいのは
+    /// environmentFault と driverUnreachable の2ケースだけ)
+    func testOtherOutcomesNeverRequeueWithoutRetiring() {
+        for outcome in [ScenarioOutcome.passed, .failed, .frozen] {
+            for platform in ["ios", "android"] {
+                XCTAssertFalse(ScenarioRunner.requeuesWithoutRetiring(outcome: outcome,
+                                                                      platform: platform))
+            }
+        }
     }
 }
