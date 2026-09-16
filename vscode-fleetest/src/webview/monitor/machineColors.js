@@ -12,6 +12,10 @@
 let palette = [];            // [{key, color}, ...] 表示順 = 配列順。古い CLI からは空のまま
 let paletteByKey = new Map(); // key -> color(hex)
 let hexByMachine = new Map(); // machine -> color(hex)。鍵が不明(パレット未受信・未知の鍵)なら持たない
+// 設定タブのマシン一覧の並び(手元 "local" → hosts[] の順。settingsTab.js の applyRemoteConfig と同じ)。
+// バッジを複数並べる箇所が orderMachinesLikeSettings で使う
+let machineRank = new Map([['local', 0]]); // machine -> 並び順
+const machineOrderListeners = [];
 
 /** remoteConfig 受信のたびに呼ぶ。パレットと machine→色の対応を作り直し、既に描かれている
  *  バッジ(data-machine を持つもの)を塗り直す。machineColors が配列でなければパレットは空
@@ -25,6 +29,12 @@ export function applyMachineColors(message) {
 
   hexByMachine = new Map();
   const hosts = Array.isArray(message.hosts) ? message.hosts : [];
+  machineRank = new Map([['local', 0]]);
+  for (const host of hosts) {
+    if (typeof host.machine === 'string' && host.machine !== '' && !machineRank.has(host.machine)) {
+      machineRank.set(host.machine, machineRank.size);
+    }
+  }
   for (const host of hosts) {
     if (typeof host.machine !== 'string' || host.machine === '' || typeof host.color !== 'string') {
       continue;
@@ -35,6 +45,23 @@ export function applyMachineColors(message) {
     }
   }
   repaintMachineBadges();
+  for (const listener of machineOrderListeners) {
+    listener();
+  }
+}
+
+/** 設定タブのマシン一覧の順に並べ替えたコピー。一覧に無いマシンは後ろに、受け取った順のまま置く。 */
+export function orderMachinesLikeSettings(machines) {
+  const rank = (m) => (machineRank.has(m) ? machineRank.get(m) : Number.MAX_SAFE_INTEGER);
+  return machines
+    .map((machine, index) => ({ machine, index }))
+    .sort((a, b) => rank(a.machine) - rank(b.machine) || a.index - b.index)
+    .map((entry) => entry.machine);
+}
+
+/** remoteConfig を受けるたび(並びが変わりうる)に呼ぶ。描いた並びを作り直す箇所が登録する。 */
+export function onMachineOrderChanged(listener) {
+  machineOrderListeners.push(listener);
 }
 
 /** バッジ1つを machine の色で塗る。machine が無ければ**既定へ戻す**(dataset.machine を消し、

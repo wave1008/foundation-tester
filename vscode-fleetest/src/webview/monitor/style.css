@@ -2571,19 +2571,19 @@ button.settings-remote-hosts-color-swatch:focus-visible {
   padding: 16px 4px;
   color: var(--vscode-descriptionForeground);
 }
-/* 3カラム(run 名・日時 / 実行マシン / 成否・録画の欠落)。列幅は一覧の側で決め、各行は subgrid で
-   それに乗る = 1・2列目は全行で最も長い中身の幅になり、列の開始位置が全行で揃う(固定幅だと短い名前で
-   余白が空きすぎる)。ペインが狭いとき縮むのは1列目(run 名は ellipsis)だけ —— 2・3列目も縮めると
-   3列目(fr)に幅が回らず、文字が1字ずつ折り返して行が縦に伸びる */
+/* 5カラム(run 名 / 日時 / 実行マシン / 成否 / 録画の欠落)。列幅は一覧の側で決め、各行は subgrid で
+   それに乗る = 各列は全行で最も長い中身の幅になり、列の開始位置が全行で揃う(固定幅だと短い名前で
+   余白が空きすぎる)。ペインが狭いとき縮むのは1列目(run 名は ellipsis)だけ —— 他の列も縮めると
+   最後の列(fr)に幅が回らず、文字が1字ずつ折り返して行が縦に伸びる */
 .recordings-sessions {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: minmax(0, max-content) max-content minmax(max-content, 1fr);
+  grid-template-columns: minmax(0, max-content) max-content max-content max-content minmax(max-content, 1fr);
   align-content: start;
   row-gap: 4px;
-  column-gap: 16px;
+  column-gap: 24px;
 }
 .recordings-session-item {
   grid-column: 1 / -1;
@@ -2602,19 +2602,17 @@ button.settings-remote-hosts-color-swatch:focus-visible {
 }
 .recordings-session-main {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
 }
 .recordings-session-runid {
-  font-weight: 600;
+  display: block; /* ellipsis はブロックでないと効かない(列の外へはみ出して隣の列に重なる) */
+  font-size: 11px; /* .recordings-session-started と揃える */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .recordings-session-started {
   font-size: 11px;
-  color: var(--vscode-descriptionForeground);
+  color: var(--vscode-foreground);
 }
 .recordings-session-machine-col {
   min-width: 0;
@@ -2625,14 +2623,15 @@ button.settings-remote-hosts-color-swatch:focus-visible {
   gap: 4px;
   flex-wrap: wrap;
 }
-/* 2・3列目の間だけ広げる(column-gap 16px + 16px。マシン名のバッジと成否が近すぎて読みにくい) */
+/* マシン名と成否の間だけ広げる(column-gap 24px + 16px。バッジと成否が近すぎて読みにくい) */
 .recordings-session-status {
+  margin-left: 16px;
+}
+.recordings-session-failures {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  min-width: 0;
-  margin-left: 16px;
 }
 .recordings-session-counts {
   flex: 0 0 auto;

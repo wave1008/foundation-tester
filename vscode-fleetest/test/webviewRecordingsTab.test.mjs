@@ -523,14 +523,14 @@ test("一覧: 「(すべて)」は先頭に出し、選ぶと project:null を�
   );
 });
 
-test("一覧: 3カラム(run 名・日時 / 実行マシン / 成否・録画の欠落)。中身が無い行にも列を置く(全行で位置を揃える)", (t) => {
+test("一覧: 5カラム(run 名 / 日時 / 実行マシン / 成否 / 録画の欠落)。中身が無い行にも列を置く(全行で位置を揃える)", (t) => {
   const { window, sendToWebview } = createWebview();
   t.after(() => window.close());
   sendToWebview({
     type: "recordingsSessions",
     sessions: [
       { project: "SampleApp", runID: "20260817-000001", startedAt: "2026-08-17T00:00:01Z",
-        passed: 20, failed: 1, clipsAttempted: 5, clipsFailed: 0, sourcesFailed: 2, encoderFallback: false,
+        passed: 20, failed: 1, clipsAttempted: 5, clipsFailed: 1, sourcesFailed: 2, encoderFallback: false,
         machine: "M1Max", machines: ["M1Max"] },
       { project: "SampleApp", runID: "20260817-000002", startedAt: "2026-08-17T00:00:02Z",
         machine: null, machines: [], passed: null, failed: null, clipsAttempted: null, clipsFailed: null, sourcesFailed: null, encoderFallback: false },
@@ -538,20 +538,26 @@ test("一覧: 3カラム(run 名・日時 / 実行マシン / 成否・録画の
   });
   const rows = [...window.document.querySelectorAll(".recordings-session-item")];
   for (const row of rows) {
-    assert.deepEqual([...row.children].map((el) => el.className),
-      ["recordings-session-main", "recordings-session-machine-col", "recordings-session-status"]);
+    assert.deepEqual([...row.children].map((el) => el.className), [
+      "recordings-session-main", "recordings-session-started", "recordings-session-machine-col",
+      "recordings-session-status", "recordings-session-failures",
+    ]);
   }
+  assert.deepEqual(
+    [...rows[0].querySelector(".recordings-session-main").children].map((el) => el.className),
+    ["recordings-session-runid"],
+  );
+  assert.notEqual(rows[0].querySelector(".recordings-session-started").textContent, "");
   assert.deepEqual(
     [...rows[0].querySelectorAll(".recordings-session-machine-col .badge-remote")].map((b) => b.textContent),
     ["M1Max"],
   );
-  assert.equal(rows[1].querySelector(".recordings-session-machine-col").childElementCount, 0);
-  assert.deepEqual(
-    [...rows[0].querySelector(".recordings-session-main").children].map((el) => el.className),
-    ["recordings-session-runid", "recordings-session-started"],
-  );
-  assert.equal(rows[0].querySelectorAll(".recordings-session-status .recordings-session-counts").length, 2);
-  assert.equal(rows[1].querySelector(".recordings-session-status").childElementCount, 0);
+  assert.equal(rows[0].querySelector(".recordings-session-status").children.length, 1, "成否だけ");
+  assert.equal(rows[0].querySelectorAll(".recordings-session-failures .recordings-session-counts-failed").length, 2,
+    "クリップ失敗と録画失敗は最後の列");
+  for (const cls of ["machine-col", "status", "failures"]) {
+    assert.equal(rows[1].querySelector(`.recordings-session-${cls}`).childElementCount, 0);
+  }
 });
 
 test("一覧: 成功は1件以上で緑・失敗は1件以上で赤・区切りの / はグレー(0件は色を付けない)", (t) => {

@@ -191,6 +191,34 @@ test("束ねたセッションの行にはマシンが全部出る", (t) => {
   assert.equal(meta.querySelector(".tile-name"), null, "束ねても行に台は出さない");
 });
 
+test("束ねたセッションのバッジは設定タブのマシン一覧の順(local → 登録簿の順)。設定が後から届いても並べ直す", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  const badges = () => [...sessionRows(window)[0].querySelectorAll(".recordings-session-meta .badge-remote")]
+    .map((b) => b.textContent);
+  sendToWebview({
+    type: "recordingsSessions",
+    sessions: [session({
+      runIDs: ["20260724-000000", "20260724-000012", "20260724-000020", "20260724-000030"],
+      machines: ["Unknown", "M1Ultra", "M1Max", "local"],
+    })],
+  });
+  // 設定が未着: local だけ先頭、他は受け取った順
+  assert.deepEqual(badges(), ["local", "Unknown", "M1Ultra", "M1Max"]);
+
+  sendToWebview({
+    type: "remoteConfig",
+    local: { machine: "local", host: "me@here", fmConcurrency: 1 },
+    hosts: [
+      { machine: "M1Max", host: "u@m1max", dir: "", color: "rose" },
+      { machine: "M1Ultra", host: "u@m1ultra", dir: "", color: "rose" },
+    ],
+    machineColors: [],
+  });
+  // 一覧に無いマシン(Unknown)は後ろ
+  assert.deepEqual(badges(), ["local", "M1Max", "M1Ultra", "Unknown"]);
+});
+
 test("束ねたセッションの再生ビューは見出しに全マシン、再生中の台にその機械名を出す", (t) => {
   const { window, sendToWebview } = createWebview();
   t.after(() => window.close());
@@ -213,6 +241,25 @@ test("束ねたセッションの再生ビューは見出しに全マシン、�
   window.document.getElementById("recordings-next-test").click();
   assert.equal(deviceEl.querySelector(".badge-remote").textContent, "M1Max",
                "別の機械の動画に切り替わったらマシン名も変わる");
+});
+
+test("再生ビューの見出しのマシンも設定タブの順に並べ、設定が後から届いたら並べ直す", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({ ...SESSION_DETAIL, machine: "M1Ultra", machines: ["M1Ultra", "local", "M1Max"] });
+  const header = () => [...window.document.getElementById("recordings-session-machine")
+    .querySelectorAll(".badge-remote")].map((b) => b.textContent);
+  assert.deepEqual(header(), ["local", "M1Ultra", "M1Max"]);
+  sendToWebview({
+    type: "remoteConfig",
+    local: { machine: "local", host: "me@here", fmConcurrency: 1 },
+    hosts: [
+      { machine: "M1Max", host: "u@m1max", dir: "", color: "rose" },
+      { machine: "M1Ultra", host: "u@m1ultra", dir: "", color: "rose" },
+    ],
+    machineColors: [],
+  });
+  assert.deepEqual(header(), ["local", "M1Max", "M1Ultra"]);
 });
 
 test("マシンが1台のセッションでは再生中の台にマシン名を足さない(従来の見た目)", (t) => {

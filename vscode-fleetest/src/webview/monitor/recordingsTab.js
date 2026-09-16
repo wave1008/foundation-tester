@@ -10,7 +10,7 @@
 
 import { vscode, persistedState } from './vscodeApi.js';
 import { formatDateTime, t } from '../i18n.js';
-import { paintMachineBadge } from './machineColors.js';
+import { onMachineOrderChanged, orderMachinesLikeSettings, paintMachineBadge } from './machineColors.js';
 
 const listView = document.getElementById('recordings-list-view');
 const playerView = document.getElementById('recordings-player-view');
@@ -86,6 +86,7 @@ function showListView() {
   clearNowPlayingDevice();
   sessionMachine.textContent = '';
   sessionMachine.style.display = 'none';
+  detailMachinesSource = null;
   resetVideoAvailability();
 }
 
@@ -154,15 +155,16 @@ function machineBadge(machine) {
 }
 
 /** 一覧・再生ビューが出すマシン名。**束ねたセッションでは複数**(machines)で、
- *  古い応答(machines 欠落)は machine 1件に退化する。 */
+ *  古い応答(machines 欠落)は machine 1件に退化する。並びは設定タブのマシン一覧の順
+ *  (手元 "local" が先頭。machineColors.js の orderMachinesLikeSettings)。 */
 function sessionMachines(message) {
   if (Array.isArray(message.machines) && message.machines.length > 0) {
-    return message.machines.filter((m) => typeof m === 'string' && m !== '');
+    return orderMachinesLikeSettings(message.machines.filter((m) => typeof m === 'string' && m !== ''));
   }
   return typeof message.machine === 'string' && message.machine !== '' ? [message.machine] : [];
 }
 
-/** セッション行の2カラム目「実行マシン」のバッジ群。**台は出さない**(2026-08-26 ユーザー指示)——
+/** セッション行の3カラム目「実行マシン」のバッジ群。**台は出さない**(2026-08-26 ユーザー指示)——
  *  台は動画ごとに違うので、行では機械だけを見せて中身は再生ビューで見る。
  *  マシンが読めない古い記録では null(段を作らない)。 */
 function buildSessionMeta(session) {
@@ -178,7 +180,11 @@ function buildSessionMeta(session) {
   return meta;
 }
 
+// 設定(マシンの並び)が後から届いたときに描き直すための控え。null = 一覧を描いていない
+let renderedSessions = null;
+
 function renderSessions(sessions) {
+  renderedSessions = sessions;
   sessionsList.textContent = '';
   if (sessions.length === 0) {
     sessionsEmpty.textContent = t('recordings.sessions.empty');
@@ -198,14 +204,15 @@ function renderSessions(sessions) {
     runIdSpan.className = 'recordings-session-runid';
     runIdSpan.textContent = `${session.project} / ${session.runID}`;
     main.appendChild(runIdSpan);
-    const startedSpan = document.createElement('span');
-    startedSpan.className = 'recordings-session-started';
-    startedSpan.textContent = formatDateTime(session.startedAt);
-    main.appendChild(startedSpan);
     row.appendChild(main);
 
-    // 2カラム目 = 実行マシン、3カラム目 = 成否・録画の欠落(左詰めで縦に並べる)。
+    // 5カラム: run 名 / 日時 / 実行マシン / 成否 / 録画の欠落(各列の中は左詰めで縦に並べる)。
     // 中身が無くても列は置く = 全行で各カラムの位置が揃う(style.css の .recordings-session-item)
+    const startedCol = document.createElement('div');
+    startedCol.className = 'recordings-session-started';
+    startedCol.textContent = formatDateTime(session.startedAt);
+    row.appendChild(startedCol);
+
     const machinesCol = document.createElement('div');
     machinesCol.className = 'recordings-session-machine-col';
     const meta = buildSessionMeta(session);
@@ -234,12 +241,15 @@ function renderSessions(sessions) {
       counts.append(passed, separator, failed);
       status.appendChild(counts);
     }
+    row.appendChild(status);
 
+    const failures = document.createElement('div');
+    failures.className = 'recordings-session-failures';
     if (session.clipsFailed !== null && session.clipsFailed > 0) {
       const clipsFailed = document.createElement('span');
       clipsFailed.className = 'recordings-session-counts recordings-session-counts-failed';
       clipsFailed.textContent = t('recordings.sessions.clipsFailed', { count: session.clipsFailed });
-      status.appendChild(clipsFailed);
+      failures.appendChild(clipsFailed);
     }
 
     // **録画そのものが取れなかった台**(切り出し失敗とは別物)。これを出さないと、
@@ -248,9 +258,9 @@ function renderSessions(sessions) {
       const sourcesFailed = document.createElement('span');
       sourcesFailed.className = 'recordings-session-counts recordings-session-counts-failed';
       sourcesFailed.textContent = t('recordings.sessions.sourcesFailed', { count: session.sourcesFailed });
-      status.appendChild(sourcesFailed);
+      failures.appendChild(sourcesFailed);
     }
-    row.appendChild(status);
+    row.appendChild(failures);
 
     const open = () => vscode.postMessage({ type: 'recordingsOpen', project: session.project, runID: session.runID });
     row.addEventListener('click', open);
@@ -300,6 +310,7 @@ export function applyRecordingsSessions(message) {
     applyProjects(message.projects, message.current, all);
     if (message.current === '' && !all) {
       sessionsList.textContent = '';
+      renderedSessions = null;
       sessionsEmpty.textContent = t('recordings.sessions.noProject');
       sessionsEmpty.style.display = 'flex';
       return;
@@ -308,6 +319,7 @@ export function applyRecordingsSessions(message) {
   if (message.refreshing === true && message.sessions.length === 0) {
     // 前回0件でも「ありません」とは言わない(読み込み中)
     sessionsList.textContent = '';
+    renderedSessions = null;
     sessionsEmpty.textContent = t('recordings.sessions.loading');
     sessionsEmpty.style.display = 'flex';
     return;
@@ -899,6 +911,29 @@ function goToNextTest() {
 document.getElementById('recordings-prev-test').addEventListener('click', goToPreviousTest);
 document.getElementById('recordings-next-test').addEventListener('click', goToNextTest);
 
+// 再生ビューの見出しのマシン(設定が後から届いたときに並べ直す元)。null = 再生ビューを開いていない
+let detailMachinesSource = null;
+
+// 束ねたセッションでは全マシンを並べる(1つなら従来と同じ見た目)
+function renderSessionMachinesHeader(machines) {
+  sessionMachine.textContent = '';
+  for (const machine of machines) {
+    sessionMachine.appendChild(machineBadge(machine));
+  }
+  sessionMachine.style.display = machines.length === 0 ? 'none' : 'flex';
+}
+
+onMachineOrderChanged(() => {
+  if (renderedSessions !== null) {
+    renderSessions(renderedSessions);
+  }
+  if (detailMachinesSource !== null && currentDetail !== null) {
+    const machines = sessionMachines(detailMachinesSource);
+    currentDetail.machines = machines;
+    renderSessionMachinesHeader(machines);
+  }
+});
+
 export function applyRecordingsSession(message) {
   if (!message.ok) {
     showListView();
@@ -910,6 +945,7 @@ export function applyRecordingsSession(message) {
   const clipsFailed = typeof message.clipsFailed === 'number' ? message.clipsFailed : null;
   const sourcesFailed = typeof message.sourcesFailed === 'number' ? message.sourcesFailed : null;
   const machines = sessionMachines(message);
+  detailMachinesSource = message;
   currentDetail = {
     videosByScenario: new Map(videos.map((v) => [v.scenarioID, v.videoUri])),
     // scenarioID → 撮った台(録画のあるシナリオのぶんだけ。無い記録では空)
@@ -920,12 +956,7 @@ export function applyRecordingsSession(message) {
     errors: message.errors || [],
   };
   sessionTitle.textContent = `${message.project} / ${message.runID}`;
-  // 束ねたセッションでは全マシンを並べる(1つなら従来と同じ見た目)
-  sessionMachine.textContent = '';
-  for (const machine of machines) {
-    sessionMachine.appendChild(machineBadge(machine));
-  }
-  sessionMachine.style.display = machines.length === 0 ? 'none' : 'flex';
+  renderSessionMachinesHeader(machines);
   clearNowPlayingDevice();
   setErrorFilter(null);
   renderTree(message.tree || []);
