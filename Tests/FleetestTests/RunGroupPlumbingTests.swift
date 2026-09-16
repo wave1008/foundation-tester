@@ -1,6 +1,6 @@
 // 機械ごとに分かれた run を束ねる鍵(FTCore.RunMetaRecord.runGroup)の中継。
 // **発行はファンアウトの親だけ**で、子(手元・リモート)は受け取った値をそのまま run.json に書く。
-// 落ちると症状は「録画セッションが Mac ごとにバラバラのまま」= 静かな退行なので、
+// 落ちると症状は「テストセッションが Mac ごとにバラバラのまま」= 静かな退行なので、
 // 両方の親(CLI の DeviceMachineRunner / api の ApiRunMachineFanout)の引数組み立てを等号で固定する。
 // リモートへの中継は FTCoreTests.RemoteDispatchTests の testRemoteRunArgsRelaysTheRunGroup。
 

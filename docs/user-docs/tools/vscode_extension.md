@@ -46,9 +46,9 @@ is unavailable.
   Device operations run one at a time through a shared queue, so queued tiles show a
   "Waiting..." badge.
 - Toolbar buttons start/stop every device in view and restart the monitor process.
-- The **Recording Sessions** tab opens runs that were recorded (run profile `record: true`) and shows each
+- The **Test Sessions** tab opens runs that were recorded (run profile `record: true`) and shows each
   scenario's video, a step tree, and the error list. **If the Test Run tab is showing when a run
-  finishes**, the monitor switches to the Recording Sessions tab and opens that run's recording as soon as
+  finishes**, the monitor switches to the Test Sessions tab and opens that run's recording as soon as
   it is ready (it does not switch while another tab is showing, nor for runs without recordings or
   cancelled runs).
   Between the last scenario finishing and the switch, "Editing recordings..." is shown to the right

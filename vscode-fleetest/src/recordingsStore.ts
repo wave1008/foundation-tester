@@ -1,5 +1,5 @@
 // recordingsStore.ts
-// 録画セッション(recordings/index.json のある run)の列挙・読み込み。fs 直読みのみで vscode 非依存
+// テストセッション(同名タブの一覧。recordings/index.json のある run)の列挙・読み込み。fs 直読みのみで vscode 非依存
 // (monitorRecordingsController.ts から呼ぶ。テストは test/recordingsStore.test.mjs)。
 //
 // レイアウト: <workspaceRoot>/TestProjects/<project>/results/runs/<YYYY-MM>/<runID>/

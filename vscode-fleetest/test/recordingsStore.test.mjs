@@ -383,7 +383,7 @@ test("loadRecordingSessionDetail: machine を run.json から読む(欠落は nu
 });
 
 // ---- 機械ごとに分かれた run を束ねる(runGroup。docs/results-json.md) ----
-// デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run になる。束ねないと録画セッションが
+// デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run になる。束ねないとテストセッションが
 // Mac ごとに並ぶ(利用者報告)。**鍵を持たない run は束ねない**(推測で混ぜない)。
 
 /** 1機械ぶんの run を書く。worker は "<platform>:<台名>"。 */

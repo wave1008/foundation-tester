@@ -86,7 +86,7 @@ function sessionStartedText(window) {
   return window.document.querySelector("#recordings-sessions .recordings-session-started").textContent;
 }
 
-test("録画セッション一覧の日時: 日本語 UI は日本語書式", (t) => {
+test("テストセッション一覧の日時: 日本語 UI は日本語書式", (t) => {
   const { window, sendToWebview } = createWebview("ja");
   t.after(() => window.close());
   sendToWebview({ type: "recordingsSessions", sessions: [SESSION] });
@@ -95,7 +95,7 @@ test("録画セッション一覧の日時: 日本語 UI は日本語書式", (t
   assert.match(text, /^\d{4}\/\d{1,2}\/\d{1,2} \d{1,2}:\d{2}:\d{2}$/, `ja 書式でない: ${text}`);
 });
 
-test("録画セッション一覧の日時: 英語 UI は英語書式", (t) => {
+test("テストセッション一覧の日時: 英語 UI は英語書式", (t) => {
   const { window, sendToWebview } = createWebview("en");
   t.after(() => window.close());
   sendToWebview({ type: "recordingsSessions", sessions: [SESSION] });

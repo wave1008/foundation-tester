@@ -8,7 +8,7 @@ export const panelsStrings = {
   "panels.tabs.testRun": { ja: "テスト実行", en: "Test Run" },
   "panels.tabs.profiles": { ja: "プロファイル", en: "Profiles" },
   "panels.tabs.processes": { ja: "プロセス", en: "Processes" },
-  "panels.tabs.recordings": { ja: "録画セッション", en: "Recording Sessions" },
+  "panels.tabs.recordings": { ja: "テストセッション", en: "Test Sessions" },
   "panels.tabs.settings": { ja: "設定", en: "Settings" },
 
   "panels.recordings.refresh": { ja: "更新", en: "Refresh" },
