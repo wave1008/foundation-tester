@@ -388,10 +388,11 @@ export function readAppProfileDetail(
 
 /**
  * 実行プロファイル(profiles/runs/<name>.json)の devices[] 1件分。name/platform が必須(machine は
- * 省略=手元)。simulator/os/udid/port は iOS 用、avd/serial は Android 用(未知キーは無視)。
- * kind="physical" は実機で、識別子は iOS=udid / Android=serial(Sources/FTCore/RunProfile.swift)。
- * enabled は「プロジェクトのデバイスカタログ」1件としては意味を持たない(profile ごとの
- * 採否は各実行プロファイルが個別に持つ)ため、ここでは扱わない。
+ * 省略=手元)。osVersion/udid/port は iOS 用、avd/serial は Android 用(未知キーは無視)。
+ * iOS シミュレータは name がそのままシミュレータ名(Xcode "Name")。kind="physical" は実機で、
+ * 識別子は iOS=udid / Android=serial(Sources/FTCore/RunProfile.swift)。enabled は「プロジェクトの
+ * デバイスカタログ」1件としては意味を持たない(profile ごとの採否は各実行プロファイルが個別に持つ)
+ * ため、ここでは扱わない。
  */
 export interface MachineDeviceEntry {
   readonly name: string;
@@ -400,13 +401,14 @@ export interface MachineDeviceEntry {
    * (Sources/FTCore/DeviceMachineGrouping.swift)。**JSON キーは "machine"**(常に明示で書かれる)。 */
   readonly machine?: string;
   readonly kind?: "virtual" | "physical";
-  readonly simulator?: string;
-  readonly os?: string;
+  /** Xcode / 端末が示す OS Version(プラットフォーム接頭辞つき。例 "iOS 27.0" / "Android 13")。 */
+  readonly osVersion?: string;
   readonly udid?: string;
   readonly port?: number;
   readonly avd?: string;
   readonly serial?: string;
-  /** 実機の機種名(表示専用。同定には使わない)。 */
+  /** デバイスの機種名(表示専用。同定には使わない)。iOS シミュレータは Xcode の Model
+   * (デバイスタイプ名)、iOS 実機は marketingName、Android は ro.product.model。 */
   readonly model?: string;
 }
 
@@ -417,14 +419,11 @@ function toRunProfileDeviceEntry(value: unknown): MachineDeviceEntry | undefined
     return undefined;
   }
   const record = value as Record<string, unknown>;
-  const { platform, name, kind, simulator, os: osVersion, udid, port, avd, serial, model, machine } = record;
+  const { platform, name, kind, osVersion, udid, port, avd, serial, model, machine } = record;
   if (platform !== "ios" && platform !== "android") {
     return undefined;
   }
   if (typeof name !== "string") {
-    return undefined;
-  }
-  if (simulator !== undefined && typeof simulator !== "string") {
     return undefined;
   }
   if (osVersion !== undefined && typeof osVersion !== "string") {
@@ -460,8 +459,7 @@ function toRunProfileDeviceEntry(value: unknown): MachineDeviceEntry | undefined
     platform,
     machine: machineTrimmed === "" || machineTrimmed === "local" ? undefined : machineTrimmed,
     kind: kind as "virtual" | "physical" | undefined,
-    simulator: simulator as string | undefined,
-    os: osVersion as string | undefined,
+    osVersion: osVersion as string | undefined,
     udid: udid as string | undefined,
     port: port as number | undefined,
     avd: avd as string | undefined,

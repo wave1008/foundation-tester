@@ -100,18 +100,18 @@ final class MachineInventoryTests: XCTestCase {
         let merged = MachineInventory.merge(
             sources: [
                 source("a.json", ios: [DeviceSpec(name: "sim-01", udid: "AAA")]),
-                source("b.json", ios: [DeviceSpec(name: "sim-01", os: "27.0", udid: "AAA")]),
+                source("b.json", ios: [DeviceSpec(name: "sim-01", osVersion: "27.0", udid: "AAA")]),
             ],
             registry: [], existsLocally: nil)
         XCTAssertEqual(merged.conflicts, [])
     }
 
     func testALedgerThatNamesNoIdentityIsNotAConflict() {
-        // 片方が名前だけ(または simulator/os だけ)なのは同じ台の粗い記述 —— 誤検知を出さない
+        // 片方が名前だけ(または model/os だけ)なのは同じ台の粗い記述 —— 誤検知を出さない
         let merged = MachineInventory.merge(
             sources: [
                 source("a.json", ios: [DeviceSpec(name: "sim-01", udid: "AAA")]),
-                source("b.json", ios: [DeviceSpec(name: "sim-01", simulator: "iPhone 17 Pro", os: "27.0")]),
+                source("b.json", ios: [DeviceSpec(name: "sim-01", osVersion: "27.0", model: "iPhone 17 Pro")]),
             ],
             registry: [], existsLocally: nil)
         XCTAssertEqual(merged.conflicts, [])

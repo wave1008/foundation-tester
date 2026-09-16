@@ -127,14 +127,13 @@ export type MonitorToWebviewMessage =
         readonly machine?: string;
         /** 一覧2行目の表示文字列(machineDeviceDetail で組み立て済み)。 */
         readonly detail: string;
-        // 右ペインの編集フォーム用の生フィールド(MachineDeviceEntry と同形)。undefined は
+        // 右ペインの詳細表示用の生フィールド(MachineDeviceEntry と同形)。undefined は
         // postMessage の JSON 化で自然に省略される。
-        readonly simulator?: string;
-        readonly os?: string;
+        readonly osVersion?: string;
         readonly udid?: string;
         readonly port?: number;
         readonly avd?: string;
-        /** 実機なら "physical"(一覧・編集フォームのバッジ表示に使う)。省略=virtual。 */
+        /** 実機なら "physical"(一覧・詳細表示のバッジ表示に使う)。省略=virtual。 */
         readonly kind?: "virtual" | "physical";
         readonly serial?: string;
         readonly model?: string;
@@ -223,15 +222,6 @@ export type MonitorToWebviewMessage =
       readonly type: "runProfileDevicesSyncResult";
       readonly ok: boolean;
       readonly added: number;
-      readonly error: string | null;
-    }
-  // 右ペイン編集フォームの自動保存(runProfileDeviceUpdate)への応答。この編集は同じ
-  // (platform, machine, name) を持つ**全実行プロファイル**へ伝播する。
-  | {
-      readonly type: "runProfileDeviceUpdateResult";
-      readonly ok: boolean;
-      /** ok:true なら更新後(リネーム後)の名前。ok:false なら originalName をそのまま返す。 */
-      readonly name: string;
       readonly error: string | null;
     }
   // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム ---------------------------
@@ -650,28 +640,10 @@ export type MonitorFromWebviewMessage =
       readonly name: string;
       readonly source: DeviceCommandSource;
     }
-  // 実行プロファイル節の右ペイン編集フォームの自動保存。同じ (platform, machine, originalName) を
-  // 持つ**全実行プロファイル**へ伝播する。fields はクライアント側で trim 済み(空文字=未入力/対象外)。
-  | {
-      readonly type: "runProfileDeviceUpdate";
-      readonly platform: MonitorPlatform;
-      /** 対象が居る機械(省略=手元)。引き当ては (platform, machine, originalName)。 */
-      readonly machine?: string;
-      readonly originalName: string;
-      readonly fields: {
-        readonly name: string;
-        readonly simulator: string;
-        readonly os: string;
-        readonly udid: string;
-        readonly port: string;
-        readonly avd: string;
-        readonly serial: string;
-      };
-    }
   // 実行プロファイル設定フォームの選択変更・初回表示時のロード要求。profile の空文字は
   // profileCopy 等と同じ理由で不正として弾く。
   | { readonly type: "runProfileLoad"; readonly profile: string }
-  // 同フォームの自動保存。fields はクライアント側 trim 済み(runProfileDeviceUpdate と同じ方針)。
+  // 同フォームの自動保存。fields はクライアント側 trim 済み。
   // app はクライアント側で必須検証済みの想定だが、型検証自体は空文字も許容する。
   | {
       readonly type: "runProfileSave";
@@ -780,8 +752,7 @@ export type MonitorFromWebviewMessage =
 
 /**
  * runProfileDevicesSync の add[] 1件(RunProfileDeviceAddEntry)の検証。name の空文字は不正。
- * simulator/os/udid/avd は省略可(runProfileDeviceUpdate の fields と違い空文字は無意味なため
- * undefined か非空 string のみ許容)。
+ * osVersion/udid/avd/model は省略可(空文字は無意味なため undefined か非空 string のみ許容)。
  */
 function isRunProfileDeviceAddEntryLike(value: unknown): value is RunProfileDeviceAddEntry {
   return (
@@ -789,8 +760,7 @@ function isRunProfileDeviceAddEntryLike(value: unknown): value is RunProfileDevi
     (value.platform === "ios" || value.platform === "android") &&
     typeof value.name === "string" &&
     value.name !== "" &&
-    (value.simulator === undefined || typeof value.simulator === "string") &&
-    (value.os === undefined || typeof value.os === "string") &&
+    (value.osVersion === undefined || typeof value.osVersion === "string") &&
     (value.udid === undefined || typeof value.udid === "string") &&
     (value.avd === undefined || typeof value.avd === "string") &&
     (value.serial === undefined || typeof value.serial === "string") &&
@@ -1006,21 +976,6 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.name === "string" &&
         value.name !== "" &&
         isDeviceCommandSourceLike(value.source)
-      );
-    case "runProfileDeviceUpdate":
-      return (
-        (value.platform === "ios" || value.platform === "android") &&
-        (value.machine === undefined || (typeof value.machine === "string" && value.machine !== "")) &&
-        typeof value.originalName === "string" &&
-        value.originalName !== "" &&
-        isRecord(value.fields) &&
-        typeof value.fields.name === "string" &&
-        typeof value.fields.simulator === "string" &&
-        typeof value.fields.os === "string" &&
-        typeof value.fields.udid === "string" &&
-        typeof value.fields.port === "string" &&
-        typeof value.fields.avd === "string" &&
-        typeof value.fields.serial === "string"
       );
     case "runProfileLoad":
       return typeof value.profile === "string" && value.profile !== "";

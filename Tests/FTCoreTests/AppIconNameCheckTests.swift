@@ -130,8 +130,7 @@ final class AppIconNameCheckTests: XCTestCase {
                    "autoInstall": false } }
         """.data(using: .utf8)!.write(to: project.appsDir.appendingPathComponent("app.json"))
         try """
-        { "app": "app", "devices": [ { "platform": "ios", "machine": "local", "name": "機1",
-                                       "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ] }
+        { "app": "app", "devices": [ { "platform": "ios", "machine": "local", "name": "機1", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ] }
         """.data(using: .utf8)!.write(to: project.runsDir.appendingPathComponent("r.json"))
         return try ProfileResolver.resolve(project: project, runName: "r")
     }

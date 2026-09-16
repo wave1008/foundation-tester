@@ -110,7 +110,7 @@ fleetest remote exec <宛先> -- api installed-devices
 ```
 
 の結果から、実行プロファイル(`profiles/runs/<名前>.json`)の `devices` へ、そのマシンの
-デバイスを1台ずつ足す(iOS は `platform`/`name`/`simulator`/`os`/`udid`、Android は
+デバイスを1台ずつ足す(iOS は `platform`/`name`/`osVersion`/`udid`、Android は
 `platform`/`name`/`avd`)。**プロファイルは手元の資産で、実行のたびに転送される**ので、
 編集は常に手元だけで行う。マシンプロファイルという別ファイルは無い ——
 デバイスが自分の居場所を直接持つ。

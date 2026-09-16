@@ -22,7 +22,7 @@ final class MCPProfilePlatformTests: XCTestCase {
         try "// swift-tools-version:5.9\n".write(
             to: root.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
         let emu = #"{"platform":"android","machine":"local","name":"Emu","avd":"Pixel_9"}"#
-        let sim = #"{"platform":"ios","machine":"local","name":"Sim","simulator":"iPhone 17"}"#
+        let sim = #"{"platform":"ios","machine":"local","name":"Sim","osVersion": "iOS 27.0"}"#
         try #"{"app":"app","devices":[\#(emu)]}"#
             .write(to: profiles.appendingPathComponent("runs/android-run.json"), atomically: true, encoding: .utf8)
         // 無効の台は先頭でも数えない(実際に走る最初の台の platform)

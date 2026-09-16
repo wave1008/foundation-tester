@@ -21,16 +21,13 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @Option(help: "Target platform: ios / android / both")
     var platform: String
 
-    @Option(help: "Device name (defaults to ios=simulator1 / android=emulator1)")
+    @Option(help: "Device name (iOS simulator: the simulator's own name, as shown in Xcode; defaults to ios=simulator1 / android=emulator1)")
     var deviceName: String?
 
-    @Option(help: "iOS: simulator model name (e.g. \"iPhone 17 Pro\")")
-    var simulator: String?
-
-    @Option(help: "iOS: OS version (e.g. 27.0)")
+    @Option(help: "iOS: OS version (e.g. \"iOS 27.0\"; \"27.0\" is also accepted)")
     var os: String?
 
-    @Option(help: "iOS: UDID of a simulator or physical device (takes precedence over the model name)")
+    @Option(help: "iOS: UDID of a simulator or physical device (takes precedence over the name)")
     var udid: String?
 
     @Option(help: "Android: AVD ID")
@@ -105,28 +102,22 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @discardableResult
     private func setUp(platform: String) async throws -> [String: Any] {
         let testProject = try ScenarioHost.project(named: project)
-        let deviceName = self.deviceName ?? ProfileWriter.defaultDeviceName(platform: platform)
+        var deviceName = self.deviceName ?? ProfileWriter.defaultDeviceName(platform: platform)
         let appRef = self.appRef ?? testProject.name.lowercased()
         let runName = run ?? platform
         let fm = FileManager.default
         var deviceDetail = ""
 
         var device = Self.deviceEntry(platform: platform, name: deviceName,
-                                      simulator: simulator, os: os, udid: udid,
-                                      avd: avd, serial: serial)
+                                      osVersion: os, udid: udid, avd: avd, serial: serial)
         // 実体が1つも指定されていないときだけ自動選定する。**キー数では判定しない**
         // (platform/machine/name は常に入っている。ProfileWriter.hasDeviceBody の宣言を参照)
         if !ProfileWriter.hasDeviceBody(device), autoDevice {
             if platform == "ios" {
                 let picked = try Self.pickSimulator()
-                device["simulator"] = picked.name
-                // プロファイルの os は接頭辞なし("27.0")が規約。SimDeviceInfo.os は "iOS 27.0"
-                // 形式なので剥がして書く(表示側とリゾルバが "iOS " を付けるため、
-                // そのまま書くと「iOS iOS 27.0」と二重表示になる。2026-08-19 の実害)
-                let os = ApiInstalledDevicesCommand.normalizeOS(picked.os)
-                device["os"] = os
-                device["udid"] = picked.udid
-                ConsoleOut.out("   Auto-picked (ios): \(picked.name) / \(os) / \(picked.udid)")
+                Self.stampSimulator(picked, model: SimulatorCatalog.modelNamesByUDID()[picked.udid],
+                                    into: &device)
+                ConsoleOut.out("   Auto-picked (ios): \(picked.name) / \(device["osVersion"] ?? "") / \(picked.udid)")
             } else {
                 let picked = try Self.pickAVD()
                 device["avd"] = picked
@@ -143,6 +134,22 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         if platform == "android", let serial, DevicePicker.isPhysicalAndroidSerial(serial) {
             device["kind"] = "physical"
         }
+        // iOS シミュレータは name をシミュレータ自身の名前に揃え、機種名(model)を控える。
+        // udid 指定ならその台、名前指定なら名前(+ os)で引く。見つからなければ下の登録済み検索へ落ちる
+        if platform == "ios", device["kind"] == nil, udid != nil || self.deviceName != nil,
+           let simulators = try? SimulatorCatalog.devices().filter({ !$0.physical }) {
+            let match: SimDeviceInfo?
+            if let udid {
+                match = simulators.first { $0.udid == udid }
+            } else {
+                match = try? SimulatorCatalog.resolve(spec: DeviceSpec(name: deviceName, osVersion: os), in: simulators)
+            }
+            if let match {
+                Self.stampSimulator(match, model: SimulatorCatalog.modelNamesByUDID()[match.udid],
+                                    into: &device)
+            }
+        }
+        deviceName = (device["name"] as? String) ?? deviceName
 
         // 実体の指定が無い場合は「他の実行プロファイルに登録済みの手元の台を使う」意味にする
         // (create-device が追記した直後など。無ければどう作ればよいか分からないのでエラー)
@@ -200,14 +207,15 @@ struct ProfileSetupCommand: AsyncParsableCommand {
 
     /// 実行プロファイルの devices[] へ書く1件を組み立てる(I/O 無し。自動選定と kind の判定は呼び出し側)。
     /// machine は必ず書く(手元なら "local")
-    static func deviceEntry(platform: String, name: String, simulator: String?, os: String?,
+    static func deviceEntry(platform: String, name: String, osVersion: String?,
                             udid: String?, avd: String?, serial: String?) -> [String: Any] {
         var device: [String: Any] = [
             "platform": platform, "machine": DeviceMachineGrouping.localDisplayName, "name": name,
         ]
         if platform == "ios" {
-            if let simulator { device["simulator"] = simulator }
-            if let os { device["os"] = os }
+            if let osVersion {
+                device["osVersion"] = osVersion.hasPrefix("iOS") ? osVersion : "iOS \(osVersion)"
+            }
             if let udid { device["udid"] = udid }
         } else {
             if let avd { device["avd"] = avd }
@@ -216,14 +224,22 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         return device
     }
 
+    /// シミュレータの実体を1件へ書き込む(name = シミュレータの名前・osVersion・udid・model)。
+    /// osVersion は Xcode の OS Version と同じ表記("iOS 27.0")= SimDeviceInfo.os をそのまま書く
+    static func stampSimulator(_ simulator: SimDeviceInfo, model: String?, into device: inout [String: Any]) {
+        device["name"] = simulator.name
+        device["osVersion"] = simulator.os
+        device["udid"] = simulator.udid
+        if let model { device["model"] = model }
+    }
+
     /// 登録済みの台(spec)を devices[] の1要素へ戻す(手元の台だけを渡すこと)
     static func entryObject(platform: String, spec: DeviceSpec) -> [String: Any] {
         var object: [String: Any] = [
             "platform": platform, "machine": DeviceMachineGrouping.localDisplayName, "name": spec.name,
         ]
         if let kind = spec.kind { object["kind"] = kind.rawValue }
-        if let simulator = spec.simulator { object["simulator"] = simulator }
-        if let os = spec.os { object["os"] = os }
+        if let osVersion = spec.osVersion { object["osVersion"] = osVersion }
         if let udid = spec.udid { object["udid"] = udid }
         if let port = spec.port { object["port"] = Int(port) }
         if let engine = spec.engine { object["engine"] = engine }

@@ -1,12 +1,11 @@
 // monitorProfilesDeviceMachineScope.test.mjs
-// MonitorProfilesController の runProfileDeviceUpdate 配線が (platform, machine, name) で
+// MonitorProfilesController の unregisterDeletedDevice が (platform, machine, name) で
 // 引き当てることの回帰テスト(monitorDeviceOps.test.mjs と同じ fake-deps パターン。vscode は
 // esbuild のスタブ)。
 //
 // 同じ機械に別マシンの同名デバイスが並ぶのは通常(プロジェクトのデバイスカタログ = 全実行
-// プロファイルの devices[] の和集合)。ここが名前だけで引くと、webview で M1Max の行を編集
-// したのに手元(または別マシン)のエントリが書き換わる。純粋関数側の規則は
-// monitorModel.test.mjs の updateDeviceInRunProfile 群が固定している。
+// プロファイルの devices[] の和集合)。ここが名前だけで引くと、実体を削除したのに手元
+// (または別マシン)のエントリが登録から外れる。
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -18,8 +17,8 @@ import { MonitorProfilesController } from "../src/monitorProfilesController";
 const RUN_PROFILE_SAME_NAME_ON_TWO_MACHINES = {
   app: "sampleapp",
   devices: [
-    { platform: "ios", machine: "local", name: "シミュ1", simulator: "iPhone 16", os: "18.0", udid: "UDID-LOCAL" },
-    { platform: "ios", machine: "M1Max", name: "シミュ1", simulator: "iPhone 16", os: "18.0", udid: "UDID-M1MAX" },
+    { platform: "ios", machine: "local", name: "シミュ1", model: "iPhone 16", osVersion: "iOS 18.0", udid: "UDID-LOCAL" },
+    { platform: "ios", machine: "M1Max", name: "シミュ1", model: "iPhone 16", osVersion: "iOS 18.0", udid: "UDID-M1MAX" },
   ],
 };
 
@@ -45,38 +44,6 @@ function makeController() {
   const readDevices = () => JSON.parse(fs.readFileSync(runPath, "utf8")).devices;
   return { controller, posts, readDevices };
 }
-
-function updateMessage(machine, fields) {
-  return {
-    type: "runProfileDeviceUpdate",
-    platform: "ios",
-    originalName: "シミュ1",
-    ...(machine === undefined ? {} : { machine }),
-    fields: { name: "シミュ1", simulator: "iPhone 16", os: "18.0", udid: "", port: "", avd: "", serial: "", ...fields },
-  };
-}
-
-test("runProfileDeviceUpdate: machine 付きは、その機械のエントリだけを書き換える", () => {
-  const { controller, posts, readDevices } = makeController();
-  controller.handleRunProfileDeviceUpdate(updateMessage("M1Max", { name: "シミュ1-改", udid: "UDID-M1MAX" }));
-
-  assert.equal(posts.find((m) => m.type === "runProfileDeviceUpdateResult").ok, true);
-  const devices = readDevices();
-  assert.equal(devices[0].name, "シミュ1", "手元のエントリが巻き添えで書き換わっている");
-  assert.equal(devices[0].udid, "UDID-LOCAL");
-  assert.equal(devices[1].name, "シミュ1-改");
-  assert.equal(devices[1].udid, "UDID-M1MAX");
-});
-
-test("runProfileDeviceUpdate: machine 省略は手元のエントリを書き換える", () => {
-  const { controller, readDevices } = makeController();
-  controller.handleRunProfileDeviceUpdate(updateMessage(undefined, { name: "シミュ1-改", udid: "UDID-LOCAL" }));
-
-  const devices = readDevices();
-  assert.equal(devices[0].name, "シミュ1-改");
-  assert.equal(devices[0].udid, "UDID-LOCAL");
-  assert.equal(devices[1].name, "シミュ1", "別マシンのエントリが巻き添えで書き換わっている");
-});
 
 // ---- 実体を消したあとの登録外し(unregisterDeletedDevice) ----
 // **引数の machine(その台が居る機械)と実行プロファイル名を取り違えない**。

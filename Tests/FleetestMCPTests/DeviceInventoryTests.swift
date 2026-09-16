@@ -72,15 +72,15 @@ final class DeviceInventoryTests: XCTestCase {
 
     // MARK: - iosRow (純粋関数)
 
-    private func spec(name: String, kind: DeviceKind? = nil, simulator: String? = nil,
+    private func spec(name: String, kind: DeviceKind? = nil,
                       os: String? = nil, udid: String? = nil) -> DeviceSpec {
-        DeviceSpec(name: name, kind: kind, simulator: simulator, os: os, udid: udid)
+        DeviceSpec(name: name, kind: kind, osVersion: os, udid: udid)
     }
 
     func testIOSRowMatchesBootedSimulatorByNameAndCarriesItsPort() {
         let device = SimDeviceInfo(udid: "SIM-1", name: "iPhone 17 Pro", os: "iOS 26.0", booted: true)
         let row = DeviceInventory.iosRow(
-            spec: spec(name: "primary", simulator: "iPhone 17 Pro"),
+            spec: spec(name: "iPhone 17 Pro"),
             simDevices: [device], physicalDevices: [],
             liveBridges: DeviceInventory.LiveBridges(
                 byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8124, engine: nil)]],
@@ -101,14 +101,14 @@ final class DeviceInventoryTests: XCTestCase {
             byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 9999, engine: nil)]],
             byUDID: ["SIM-2": [DeviceInventory.Row.Bridge(port: 8124, engine: nil)]])
         let row = DeviceInventory.iosRow(
-            spec: spec(name: "primary", simulator: "iPhone 17 Pro"),
+            spec: spec(name: "iPhone 17 Pro"),
             simDevices: [device], physicalDevices: [], liveBridges: live)
         XCTAssertEqual(row.bridges.map(\.port), [8124, 9999], "udid 一致と名前一致が両方出ること")
     }
 
     func testIOSRowWithNoMatchIsNotRunningAndKeepsSpecUDID() {
         let row = DeviceInventory.iosRow(
-            spec: spec(name: "stale", simulator: "iPad Pro", udid: "GHOST-UDID"),
+            spec: spec(name: "iPad Pro", udid: "GHOST-UDID"),
             simDevices: [], physicalDevices: [])
         XCTAssertFalse(row.running)
         XCTAssertEqual(row.identifier, "GHOST-UDID")

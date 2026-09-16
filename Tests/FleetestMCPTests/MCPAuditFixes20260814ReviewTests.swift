@@ -138,9 +138,9 @@ final class MCPAuditFixes20260814ReviewTests: XCTestCase {
 
     // MARK: - 欠陥③ ft_list_devices: udid 一致と名前一致の和集合
 
-    private func spec(name: String, kind: DeviceKind? = nil, simulator: String? = nil,
+    private func spec(name: String, kind: DeviceKind? = nil,
                       os: String? = nil, udid: String? = nil) -> DeviceSpec {
-        DeviceSpec(name: name, kind: kind, simulator: simulator, os: os, udid: udid)
+        DeviceSpec(name: name, kind: kind, osVersion: os, udid: udid)
     }
 
     /// **実測した実害の再現**: udid を申告する新しいブリッジと、申告しない旧ブリッジが同じ端末に
@@ -156,7 +156,7 @@ final class MCPAuditFixes20260814ReviewTests: XCTestCase {
             byName: ["iPhone 17 Pro": [modernBridge, legacyBridge]],
             byUDID: ["SIM-9": [modernBridge]])
         let row = DeviceInventory.iosRow(
-            spec: spec(name: "primary", simulator: "iPhone 17 Pro"),
+            spec: spec(name: "iPhone 17 Pro"),
             simDevices: [device], physicalDevices: [], liveBridges: live)
 
         XCTAssertEqual(row.bridges.map(\.port), [8140, 8144],
@@ -171,7 +171,7 @@ final class MCPAuditFixes20260814ReviewTests: XCTestCase {
         let live = DeviceInventory.LiveBridges(
             byName: ["iPhone 17 Pro": [bridge]], byUDID: ["SIM-9": [bridge]])
         let row = DeviceInventory.iosRow(
-            spec: spec(name: "primary", simulator: "iPhone 17 Pro"),
+            spec: spec(name: "iPhone 17 Pro"),
             simDevices: [device], physicalDevices: [], liveBridges: live)
         XCTAssertEqual(row.bridges, [bridge])
     }

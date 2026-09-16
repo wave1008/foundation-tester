@@ -200,7 +200,7 @@ swift run fleetest run --profile ios           # 実行プロファイル(ブリ
 | `results list / summary / flaky / trend / devices / slow / insights` | 実行結果の集約・分析(reports/ を横断) |
 | `draft-scenario` | テストベース(`docs/testbases/*.md`)からシナリオの下書きを生成(`--testbase`、`--app-id`、`--platform`、`--no-fm` で FM 不使用、`--dry-run`) |
 | `init` | 外部パッケージ構成の scaffold(`--platform` で作る run 雛形を絞る)(受け手ディレクトリを fleetest テストパッケージ化。スキル入口 `/fleetest-setup` の既定経路) |
-| `profile setup` | アプリ/実行プロファイルを整合させて作成(冪等。`--platform`、`--device-name`、`--simulator`/`--avd`、`--app-id`、`--auto-device` は既存デバイスから自動選定(iOS は iPad を除外)) |
+| `profile setup` | アプリ/実行プロファイルを整合させて作成(冪等。`--platform`、`--device-name`(iOS はシミュレータ自身の名前)/`--avd`、`--app-id`、`--auto-device` は既存デバイスから自動選定(iOS は iPad を除外)) |
 | `profile list` | 実行プロファイルの一覧とそのデバイスの解決チェック |
 | `install <パッケージパス>` | .app / .apk のインストール |
 | `launch / terminate <bundle-id>` | アプリの起動・終了 |
@@ -240,8 +240,8 @@ TestProjects/SampleApp/
 // avd は AVD の ID と表示名のどちらでも可
 { "app": "sampleapp",
   "devices": [
-    { "platform": "ios", "machine": "local", "name": "simulator1", "simulator": "iPhone 17 Pro", "os": "27.0" },
-    { "platform": "ios", "machine": "local", "name": "simulator2", "simulator": "iPhone 17 Pro Max", "os": "27.0" },
+    { "platform": "ios", "machine": "local", "name": "iPhone 17 Pro", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" },
+    { "platform": "ios", "machine": "local", "name": "iPhone 17 Pro Max", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro Max" },
     { "platform": "android", "machine": "M2Ultra", "name": "emulator1", "avd": "Pixel 9(Android 16)" }
   ],
   "heal": true, "reportDir": "reports", "defaultTimeout": 5 }

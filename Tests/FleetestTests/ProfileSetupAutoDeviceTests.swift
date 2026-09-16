@@ -15,15 +15,16 @@
 import XCTest
 @testable import fleetest
 @testable import FTCore
+import FTBridgeClient
 
 final class ProfileSetupAutoDeviceTests: XCTestCase {
 
-    private func entry(platform: String, simulator: String? = nil, os: String? = nil,
+    private func entry(platform: String, os: String? = nil,
                        udid: String? = nil, avd: String? = nil, serial: String? = nil)
         -> [String: Any] {
         ProfileSetupCommand.deviceEntry(
             platform: platform, name: ProfileWriter.defaultDeviceName(platform: platform),
-            simulator: simulator, os: os, udid: udid, avd: avd, serial: serial)
+            osVersion: os, udid: udid, avd: avd, serial: serial)
     }
 
     /// **本丸**: 何も指定しなければ実体は空 = `--auto-device` が発火する
@@ -41,7 +42,7 @@ final class ProfileSetupAutoDeviceTests: XCTestCase {
 
     /// 実体を明示したら自動選定に入らない(利用者の指定を上書きしない)
     func testExplicitDeviceIsABody() {
-        XCTAssertTrue(ProfileWriter.hasDeviceBody(entry(platform: "ios", simulator: "iPhone 17 Pro")))
+        XCTAssertTrue(ProfileWriter.hasDeviceBody(entry(platform: "ios", os: "27.0")))
         XCTAssertTrue(ProfileWriter.hasDeviceBody(entry(platform: "ios", udid: "XXXX-XXXX")))
         XCTAssertTrue(ProfileWriter.hasDeviceBody(entry(platform: "android", avd: "Pixel_9")))
         XCTAssertTrue(ProfileWriter.hasDeviceBody(entry(platform: "android", serial: "emulator-5554")))
@@ -50,7 +51,7 @@ final class ProfileSetupAutoDeviceTests: XCTestCase {
     /// プラットフォーム違いのオプションは無視する(iOS に --avd を渡しても実体にはならない)
     func testOptionsOfTheOtherPlatformAreIgnored() {
         XCTAssertFalse(ProfileWriter.hasDeviceBody(entry(platform: "ios", avd: "Pixel_9")))
-        XCTAssertFalse(ProfileWriter.hasDeviceBody(entry(platform: "android", simulator: "iPhone 17 Pro")))
+        XCTAssertFalse(ProfileWriter.hasDeviceBody(entry(platform: "android", os: "27.0")))
     }
 
     /// 番兵をキー数へ戻させない。判定ロジックは変異で守れるが、**恒真の番兵**は
@@ -67,18 +68,32 @@ final class ProfileSetupAutoDeviceTests: XCTestCase {
         XCTAssertFalse(code.contains("device.count"),
                        "実体の有無は ProfileWriter.hasDeviceBody で判定する"
                        + "(platform/machine/name が常に入るのでキー数の比較は恒真になる)")
-        // プロファイルの os は接頭辞なし("27.0")が規約。SimDeviceInfo.os("iOS 27.0")を
-        // 生のまま書くと表示側が「iOS iOS 27.0」と二重に出す(2026-08-19 の実害)
-        XCTAssertTrue(code.contains("normalizeOS(picked.os)"),
-                      "auto-pick の os は ApiInstalledDevicesCommand.normalizeOS を通して書く")
     }
 
     /// 自動選定の結果を入れた後は実体あり = 実行プロファイルへ書く分岐に入る
     func testAutoPickedValuesBecomeABody() {
         var device = entry(platform: "ios")
-        device["simulator"] = "iPhone 17 Pro"
-        device["os"] = "27.0"
-        device["udid"] = "AAAA-BBBB"
+        let picked = SimDeviceInfo(udid: "AAAA-BBBB", name: "私の iPhone", os: "iOS 27.0", booted: false)
+        ProfileSetupCommand.stampSimulator(picked, model: "iPhone 17 Pro", into: &device)
         XCTAssertTrue(ProfileWriter.hasDeviceBody(device))
+        // name はシミュレータ自身の名前・osVersion は Xcode と同じ表記・機種名は model
+        XCTAssertEqual(device["name"] as? String, "私の iPhone")
+        XCTAssertEqual(device["osVersion"] as? String, "iOS 27.0")
+        XCTAssertNil(device["os"])
+        XCTAssertEqual(device["udid"] as? String, "AAAA-BBBB")
+        XCTAssertEqual(device["model"] as? String, "iPhone 17 Pro")
+        XCTAssertNil(device["simulator"])
+    }
+}
+
+extension ProfileSetupAutoDeviceTests {
+    /// `--os 27.0` の接頭辞なしも受け、書くときは Xcode の表記("iOS 27.0")に揃える
+    func testOSVersionOptionIsWrittenWithThePlatformPrefix() {
+        let bare = ProfileSetupCommand.deviceEntry(platform: "ios", name: "s", osVersion: "27.0",
+                                                   udid: nil, avd: nil, serial: nil)
+        XCTAssertEqual(bare["osVersion"] as? String, "iOS 27.0")
+        let prefixed = ProfileSetupCommand.deviceEntry(platform: "ios", name: "s", osVersion: "iOS 26.2",
+                                                       udid: nil, avd: nil, serial: nil)
+        XCTAssertEqual(prefixed["osVersion"] as? String, "iOS 26.2")
     }
 }

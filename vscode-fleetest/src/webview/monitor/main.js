@@ -34,10 +34,7 @@ import {
 import { applyLaneAction, applyLaneHydrate, updateLaneVisibility, updateLanesPlaceholder } from './laneLog.js';
 import { applyProjectInfo } from './projectsTab.js';
 import { applyHostMetrics, setHostMetricMachines, setMachineLock } from './hostCharts.js';
-import {
-  applyProjectDeviceCatalog,
-  applyRunProfileDeviceUpdateResult,
-} from './runProfileDevicesTab.js';
+import { applyProjectDeviceCatalog } from './runProfileDevicesTab.js';
 import {
   applyAppProfileInfo,
   applyAppProfileSelected,
@@ -195,9 +192,6 @@ window.addEventListener('message', (event) => {
       break;
     case 'runProfileDevicesSyncResult':
       applyRunProfileDevicesSyncResult(message);
-      break;
-    case 'runProfileDeviceUpdateResult':
-      applyRunProfileDeviceUpdateResult(message);
       break;
     case 'runProfileSelected':
       applyRunProfileSelected(message);

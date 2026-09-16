@@ -319,8 +319,8 @@ enum DeviceInventory {
         if let udid = spec.udid, !udid.isEmpty {
             match = simDevices.first { $0.udid == udid }
         } else {
-            let name = spec.simulator ?? "iPhone 17 Pro"
-            let os = spec.os.map { $0.hasPrefix("iOS") ? $0 : "iOS \($0)" }
+            let name = spec.name
+            let os = spec.osVersion.map { $0.hasPrefix("iOS") ? $0 : "iOS \($0)" }
             match = simDevices.first { $0.name == name && (os == nil || $0.os == os) }
         }
         let running = match?.booted ?? false

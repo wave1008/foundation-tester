@@ -105,7 +105,7 @@ export const monitorStrings = {
     en: 'Test project "{name}" already exists.',
   },
 
-  // ---- monitorModel.ts: validateNewDeviceName / updateDeviceInRunProfile ----
+  // ---- monitorModel.ts: validateNewDeviceName ----
   "monitor.device.nameRequired": {
     ja: "デバイス名を入力してください。",
     en: "Enter a device name.",
@@ -113,22 +113,6 @@ export const monitorStrings = {
   "monitor.validation.nameAlreadyExists": {
     ja: "「{name}」は既に存在します。",
     en: '"{name}" already exists.',
-  },
-  "monitor.device.notFound": {
-    ja: "デバイス「{name}」が見つかりませんでした。",
-    en: 'Device "{name}" was not found.',
-  },
-  "monitor.device.portInvalid": {
-    ja: "port は 0〜65535 の整数で入力してください。",
-    en: "Enter port as an integer between 0 and 65535.",
-  },
-  "monitor.device.physicalUdidRequired": {
-    ja: "実機には udid が必要です(xcrun devicectl list devices で確認できます)。",
-    en: "A physical device requires udid (see: xcrun devicectl list devices).",
-  },
-  "monitor.device.physicalSerialRequired": {
-    ja: "実機には serial が必要です(adb devices の左列です)。",
-    en: "A physical device requires serial (the left column of: adb devices).",
   },
   "monitor.device.physicalBadge": {
     ja: "実機",

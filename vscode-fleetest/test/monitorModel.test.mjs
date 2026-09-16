@@ -16,7 +16,6 @@ import {
   addDevicesToRunProfile,
   buildRunProfileTemplate,
   bulkLifecycleOp,
-  catalogHasDeviceNameClash,
   createDeviceLifecycleQueueState,
   finishDeviceLifecycleJob,
   deviceLifecycleJobNeedsMonitorPause,
@@ -50,13 +49,11 @@ import {
   runProfileDeviceRefKey,
   toWebviewMessage,
   updateAppProfileInObject,
-  updateDeviceInRunProfile,
   updateRunProfileInObject,
   validateNewAppProfileName,
   validateNewDeviceName,
   validateNewProjectName,
   validateNewRunProfileName,
-  validateRunProfileDeviceEditFields,
 } from "../src/monitorModel";
 
 // esbuild がこのテストを out-test/ にバンドルするため、import.meta.url はバンドル後の
@@ -1288,9 +1285,9 @@ test("isMonitorFromWebviewMessage: runProfileDeviceRemove は devices 空配列�
 const VALID_SYNC_ADD_IOS_ENTRY = {
   platform: "ios",
   name: "iPhone 17 Pro",
-  simulator: "iPhone 17 Pro",
-  os: "27.0",
+  osVersion: "iOS 27.0",
   udid: "1C86FAKE-0000-0000-0000-000000000000",
+  model: "iPhone 17 Pro",
 };
 
 const VALID_SYNC_ADD_ANDROID_ENTRY = {
@@ -1311,7 +1308,7 @@ test("isMonitorFromWebviewMessage: runProfileDevicesSync は profile 非空・ad
     }),
     true,
   );
-  // オプショナルフィールド(simulator/os/udid/avd)は省略可。
+  // オプショナルフィールド(osVersion/udid/avd/model)は省略可。
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "runProfileDevicesSync",
@@ -1408,63 +1405,6 @@ test("isMonitorFromWebviewMessage: runProfileDevicesSync は add 要素が不正
       source: LOCAL_SOURCE,
     }),
     false, // オプショナルフィールドの型不正
-  );
-});
-
-// ---- isMonitorFromWebviewMessage: runProfileDeviceUpdate(プロファイルタブ右ペインの編集フォーム) ----
-
-const VALID_RUN_PROFILE_DEVICE_UPDATE = {
-  type: "runProfileDeviceUpdate",
-  platform: "ios",
-  originalName: "シミュ1",
-  fields: { name: "シミュ1", simulator: "iPhone 17 Pro", os: "27.0", udid: "", port: "", avd: "", serial: "" },
-};
-
-test("isMonitorFromWebviewMessage: runProfileDeviceUpdate は originalName 非空・platform ios|android・fields7項目 string なら true", () => {
-  assert.equal(isMonitorFromWebviewMessage(VALID_RUN_PROFILE_DEVICE_UPDATE), true);
-  assert.equal(
-    isMonitorFromWebviewMessage({
-      ...VALID_RUN_PROFILE_DEVICE_UPDATE,
-      platform: "android",
-      fields: { name: "エミュ1", simulator: "", os: "", udid: "", port: "", avd: "Pixel 9(Android 16)", serial: "" },
-    }),
-    true,
-  );
-  // machine は省略可(=手元)。指定があれば非空文字列。
-  assert.equal(
-    isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_DEVICE_UPDATE, machine: "M1Max" }),
-    true,
-  );
-});
-
-test("isMonitorFromWebviewMessage: runProfileDeviceUpdate は fields の空文字を許容する(createDevice と違い name 以外は空文字が正常値)", () => {
-  assert.equal(
-    isMonitorFromWebviewMessage({
-      ...VALID_RUN_PROFILE_DEVICE_UPDATE,
-      fields: { name: "シミュ1", simulator: "", os: "", udid: "", port: "", avd: "", serial: "" },
-    }),
-    true,
-  );
-});
-
-test("isMonitorFromWebviewMessage: runProfileDeviceUpdate は originalName 空文字・machine空文字・不正 platform・fields欠落/型不正なら false", () => {
-  assert.equal(isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_DEVICE_UPDATE, originalName: "" }), false);
-  assert.equal(isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_DEVICE_UPDATE, machine: "" }), false);
-  assert.equal(isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_DEVICE_UPDATE, platform: "windows" }), false);
-  assert.equal(isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_DEVICE_UPDATE, fields: null }), false);
-  assert.equal(
-    isMonitorFromWebviewMessage({
-      ...VALID_RUN_PROFILE_DEVICE_UPDATE,
-      fields: { name: "シミュ1", simulator: "", os: "", udid: "", avd: "", serial: "" }, // port 欠落
-    }),
-    false,
-  );
-  assert.equal(
-    isMonitorFromWebviewMessage({
-      ...VALID_RUN_PROFILE_DEVICE_UPDATE,
-      fields: { name: "シミュ1", simulator: "", os: "", udid: "", port: 0, avd: "", serial: "" }, // port が number
-    }),
-    false,
   );
 });
 
@@ -1831,21 +1771,53 @@ test("isMonitorFromWebviewMessage: appProfileSave は profile 空文字・fields
 
 // ---- machineDeviceDetail ----
 
-test("machineDeviceDetail: iOS は simulator と os を ' / iOS ' で連結する", () => {
+test("machineDeviceDetail: iOS は model と osVersion を ' / ' で連結する(シミュレータ)", () => {
   assert.equal(
-    machineDeviceDetail({ name: "シミュ1", platform: "ios", simulator: "iPhone 17 Pro", os: "27.0" }),
+    machineDeviceDetail({ name: "シミュ1", platform: "ios", model: "iPhone 17 Pro", osVersion: "iOS 27.0" }),
     "iPhone 17 Pro / iOS 27.0",
   );
 });
 
-test("machineDeviceDetail: iOS は os が無ければ simulator のみ", () => {
+test("machineDeviceDetail: iOS は model と osVersion を ' / ' で連結する(実機)", () => {
   assert.equal(
-    machineDeviceDetail({ name: "シミュ1", platform: "ios", simulator: "iPhone 17 Pro" }),
+    machineDeviceDetail({ name: "実機", platform: "ios", kind: "physical", model: "iPhone 17 Pro", osVersion: "iOS 18.2", udid: "U1" }),
+    "iPhone 17 Pro / iOS 18.2",
+  );
+});
+
+test("machineDeviceDetail: iOS は model が無ければ osVersion だけ('iOS' の接頭辞は付け足さない)", () => {
+  assert.equal(
+    machineDeviceDetail({ name: "シミュ1", platform: "ios", osVersion: "iOS 27.0" }),
+    "iOS 27.0",
+  );
+});
+
+test("machineDeviceDetail: iOS は osVersion が無ければ model だけ出す(udid は出さない)", () => {
+  assert.equal(
+    machineDeviceDetail({ name: "シミュ1", platform: "ios", model: "iPhone 17 Pro", udid: "ABCDEFGH-1234-5678" }),
     "iPhone 17 Pro",
   );
 });
 
-test("machineDeviceDetail: Android 実機は avd が無いので serial を出す", () => {
+test("machineDeviceDetail: iOS は model も osVersion も無ければ 'iOS'", () => {
+  assert.equal(machineDeviceDetail({ name: "シミュ1", platform: "ios" }), "iOS");
+});
+
+test("machineDeviceDetail: Android 実機は model があれば '<model> / <osVersion>'", () => {
+  assert.equal(
+    machineDeviceDetail({ name: "実機", platform: "android", kind: "physical", model: "Pixel 8", osVersion: "Android 15", serial: "14141JEC204922" }),
+    "Pixel 8 / Android 15",
+  );
+});
+
+test("machineDeviceDetail: Android 実機は osVersion が無ければ model のみ", () => {
+  assert.equal(
+    machineDeviceDetail({ name: "実機", platform: "android", kind: "physical", model: "Pixel 8", serial: "14141JEC204922" }),
+    "Pixel 8",
+  );
+});
+
+test("machineDeviceDetail: Android 実機は model が無いので serial を出す", () => {
   // 実機は AVD を持たない。従来は "Android" としか出ず、どの端末か分からなかった
   assert.equal(
     machineDeviceDetail({ name: "実機", platform: "android", kind: "physical", serial: "14141JEC204922" }),
@@ -1853,22 +1825,11 @@ test("machineDeviceDetail: Android 実機は avd が無いので serial を出�
   );
 });
 
-test("machineDeviceDetail: Android は avd/serial とも無ければ 'Android'", () => {
+test("machineDeviceDetail: Android は avd/serial/model とも無ければ 'Android'", () => {
   assert.equal(machineDeviceDetail({ name: "謎", platform: "android" }), "Android");
 });
 
-test("machineDeviceDetail: iOS は simulator が無ければ udid の先頭8文字", () => {
-  assert.equal(
-    machineDeviceDetail({ name: "シミュ1", platform: "ios", udid: "ABCDEFGH-1234-5678" }),
-    "ABCDEFGH",
-  );
-});
-
-test("machineDeviceDetail: iOS は simulator も udid も無ければ 'iOS'", () => {
-  assert.equal(machineDeviceDetail({ name: "シミュ1", platform: "ios" }), "iOS");
-});
-
-test("machineDeviceDetail: Android は avd があれば 'AVD: ' + avd", () => {
+test("machineDeviceDetail: Android は avd があれば 'AVD: ' + avd(model があっても優先しない)", () => {
   assert.equal(
     machineDeviceDetail({ name: "エミュ1", platform: "android", avd: "Pixel 9(Android 16)" }),
     "AVD: Pixel 9(Android 16)",
@@ -1983,9 +1944,9 @@ test("runProfileDeviceRefKey: (platform, machine, name) を1本のキーに畳�
 
 test("orderedDeviceEntry: キー順は platform, machine, name, enabled、残りはアルファベット順", () => {
   const entry = orderedDeviceEntry({
-    platform: "ios", name: "n", enabled: false, udid: "U", simulator: "S", os: "27.0", port: 8100,
+    platform: "ios", name: "n", enabled: false, udid: "U", model: "M", osVersion: "iOS 27.0", port: 8100,
   });
-  assert.deepEqual(Object.keys(entry), ["platform", "machine", "name", "enabled", "os", "port", "simulator", "udid"]);
+  assert.deepEqual(Object.keys(entry), ["platform", "machine", "name", "enabled", "model", "osVersion", "port", "udid"]);
   assert.equal(entry.machine, "local", "手元も明示で書く");
 });
 
@@ -1994,99 +1955,13 @@ test("orderedDeviceEntry: enabled=true のときは enabled キーを書かな�
   assert.deepEqual(Object.keys(entry), ["platform", "machine", "name", "avd"]);
 });
 
-// ---- catalogHasDeviceNameClash ----
-
-test("catalogHasDeviceNameClash: 同じ machine 内の別デバイスと同名なら衝突(ios/android 横断)", () => {
-  const catalog = [
-    { platform: "ios", name: "A" },
-    { platform: "android", name: "B" },
-  ];
-  assert.equal(catalogHasDeviceNameClash(catalog, { platform: "ios", name: "A" }, "B"), true);
-  assert.equal(catalogHasDeviceNameClash(catalog, { platform: "ios", name: "A" }, "C"), false);
-});
-
-test("catalogHasDeviceNameClash: 別の machine の同名は衝突ではない", () => {
-  const catalog = [{ platform: "ios", machine: "M1Max", name: "A" }];
-  assert.equal(catalogHasDeviceNameClash(catalog, { platform: "ios", name: "A" }, "A"), false);
-});
-
-test("catalogHasDeviceNameClash: 自分自身(同じキー)は除外する", () => {
-  const catalog = [{ platform: "ios", name: "A" }];
-  assert.equal(catalogHasDeviceNameClash(catalog, { platform: "ios", name: "A" }, "A"), false);
-});
-
-// ---- validateRunProfileDeviceEditFields ----
-
-test("validateRunProfileDeviceEditFields: name 必須", () => {
-  assert.notEqual(
-    validateRunProfileDeviceEditFields("ios", undefined, { name: "", simulator: "", os: "", udid: "", port: "", avd: "", serial: "" }),
-    null,
-  );
-});
-
-test("validateRunProfileDeviceEditFields: iOS の port は 0〜65535 の整数", () => {
-  const base = { name: "n", simulator: "", os: "", udid: "", avd: "", serial: "" };
-  assert.equal(validateRunProfileDeviceEditFields("ios", undefined, { ...base, port: "" }), null);
-  assert.equal(validateRunProfileDeviceEditFields("ios", undefined, { ...base, port: "8100" }), null);
-  assert.notEqual(validateRunProfileDeviceEditFields("ios", undefined, { ...base, port: "99999" }), null);
-  assert.notEqual(validateRunProfileDeviceEditFields("ios", undefined, { ...base, port: "abc" }), null);
-});
-
-test("validateRunProfileDeviceEditFields: 実機は iOS=udid / Android=serial が必須", () => {
-  const base = { name: "n", simulator: "", os: "", port: "", avd: "" };
-  assert.notEqual(validateRunProfileDeviceEditFields("ios", "physical", { ...base, udid: "", serial: "" }), null);
-  assert.equal(validateRunProfileDeviceEditFields("ios", "physical", { ...base, udid: "UDID-1", serial: "" }), null);
-  assert.notEqual(validateRunProfileDeviceEditFields("android", "physical", { ...base, udid: "", serial: "" }), null);
-  assert.equal(validateRunProfileDeviceEditFields("android", "physical", { ...base, udid: "", serial: "S-1" }), null);
-});
-
-// ---- updateDeviceInRunProfile ----
-
-test("updateDeviceInRunProfile: (platform, machine, name) 一致のエントリを fields で更新する(未知キー保持)", () => {
-  const profile = {
-    devices: [
-      { platform: "ios", machine: "local", name: "旧名", simulator: "iPhone 17 Pro", os: "27.0", customKey: "keep-me" },
-    ],
-  };
-  const result = updateDeviceInRunProfile(
-    profile,
-    { platform: "ios", name: "旧名" },
-    { name: "新名", simulator: "iPhone 17 Pro", os: "27.0", udid: "", port: "8100", avd: "", serial: "" },
-  );
-  assert.equal(result.matched, true);
-  assert.deepEqual(result.object.devices[0], {
-    platform: "ios", machine: "local", name: "新名", simulator: "iPhone 17 Pro", os: "27.0",
-    customKey: "keep-me", port: 8100,
-  });
-});
-
-test("updateDeviceInRunProfile: 一致しないプロファイルは matched:false でそのまま返す", () => {
-  const profile = { devices: [{ platform: "ios", machine: "local", name: "別の台" }] };
-  const result = updateDeviceInRunProfile(profile, { platform: "ios", name: "旧名" }, {
-    name: "新名", simulator: "", os: "", udid: "", port: "", avd: "", serial: "",
-  });
-  assert.equal(result.matched, false);
-  assert.deepEqual(result.object, profile);
-});
-
-test("updateDeviceInRunProfile: Android は avd/serial だけを触り iOS 側のフィールドは変えない", () => {
-  const profile = { devices: [{ platform: "android", name: "旧名", avd: "Pixel_9", port: 8100 }] };
-  const result = updateDeviceInRunProfile(
-    profile,
-    { platform: "android", name: "旧名" },
-    { name: "新名", simulator: "", os: "", udid: "", port: "", avd: "Pixel_9", serial: "" },
-  );
-  assert.equal(result.matched, true);
-  assert.deepEqual(result.object.devices[0], { platform: "android", name: "新名", avd: "Pixel_9", port: 8100 });
-});
-
 // ---- addDevicesToRunProfile ----
 
 test("addDevicesToRunProfile: entries を devices[] 末尾に追記する(未知キー保持)", () => {
   const profile = { app: "sut", devices: [{ platform: "ios", machine: "local", name: "既存" }] };
   const result = addDevicesToRunProfile(
     profile,
-    [{ platform: "ios", name: "新規", simulator: "新規", os: "27.0", udid: "U-1" }],
+    [{ platform: "ios", name: "新規", osVersion: "iOS 27.0", udid: "U-1", model: "iPhone 17 Pro" }],
     [],
   );
   assert.equal(result.ok, true);

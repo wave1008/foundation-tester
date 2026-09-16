@@ -33,8 +33,8 @@ final class ProfileResolverTests: XCTestCase {
         try write("""
         { "app": "sampleapp",
           "devices": [
-            { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" },
-            { "platform": "ios", "machine": "local", "name": "サブ機", "simulator": "iPhone Air" },
+            { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" },
+            { "platform": "ios", "machine": "local", "name": "サブ機", "osVersion": "iOS 27.0" },
             { "platform": "android", "machine": "local", "name": "エミュ1", "avd": "Pixel_9" },
             { "platform": "android", "machine": "local", "name": "エミュ2", "enabled": false, "avd": "Pixel 8(Android 14)" } ],
           "heal": true, "reportDir": "reports", "defaultTimeout": 8, "scenarioTimeout": 60 }
@@ -97,7 +97,7 @@ final class ProfileResolverTests: XCTestCase {
             project: project, runName: "all")
         XCTAssertTrue(byDefault.playProtectBypass)
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "playProtectBypass": false }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "playProtectBypass": false }
         """, to: project.runsDir, name: "killswitch")
         let killed = try ProfileResolver.resolve(
             project: project, runName: "killswitch")
@@ -108,7 +108,7 @@ final class ProfileResolverTests: XCTestCase {
     func testResolveAcceptsFractionalDefaultTimeout() throws {
         try writeStandardFixture()
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "defaultTimeout": 1.5 }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "defaultTimeout": 1.5 }
         """, to: project.runsDir, name: "fractional")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "fractional")
@@ -153,7 +153,7 @@ final class ProfileResolverTests: XCTestCase {
         { "common": { "app": "com.example.common" },
           "ios":    { "appPath": "a.app" } }
         """, to: project.appsDir, name: "app2")
-        try write(#"{ "app": "app2", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "simulator": "iPhone Air" } ] }"#,
+        try write(#"{ "app": "app2", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
                   to: project.runsDir, name: "r")
 
         XCTAssertThrowsError(try ProfileResolver.resolve(
@@ -169,7 +169,7 @@ final class ProfileResolverTests: XCTestCase {
         try write("""
         { "common": { "app": "com.example.common" } }
         """, to: project.appsDir, name: "app2")
-        try write(#"{ "app": "app2", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "simulator": "iPhone Air" } ] }"#,
+        try write(#"{ "app": "app2", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
                   to: project.runsDir, name: "r")
 
         XCTAssertThrowsError(try ProfileResolver.resolve(
@@ -185,7 +185,7 @@ final class ProfileResolverTests: XCTestCase {
         { "common": { "appPath": "common/x.app" },
           "ios":    { "app": "com.example.app" } }
         """, to: project.appsDir, name: "app2")
-        try write(#"{ "app": "app2", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "simulator": "iPhone Air" } ] }"#,
+        try write(#"{ "app": "app2", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
                   to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
@@ -255,7 +255,7 @@ final class ProfileResolverTests: XCTestCase {
         { "common": { "autoInstall": true },
           "ios":    { "app": "com.example.app", "appPath": "a.app" } }
         """, to: project.appsDir, name: "app3")
-        try write(#"{ "app": "app3", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "simulator": "iPhone Air" } ] }"#,
+        try write(#"{ "app": "app3", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
                   to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
@@ -267,7 +267,7 @@ final class ProfileResolverTests: XCTestCase {
         { "common": { "autoInstall": false },
           "ios":    { "app": "com.example.app", "appPath": "a.app" } }
         """, to: project.appsDir, name: "app3")
-        try write(#"{ "app": "app3", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "simulator": "iPhone Air" } ] }"#,
+        try write(#"{ "app": "app3", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
                   to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
@@ -279,7 +279,7 @@ final class ProfileResolverTests: XCTestCase {
         try write("""
         { "ios": { "app": "com.example.app", "appPath": "a.app" } }
         """, to: project.appsDir, name: "app3")
-        try write(#"{ "app": "app3", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "simulator": "iPhone Air" } ] }"#,
+        try write(#"{ "app": "app3", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
                   to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
@@ -293,7 +293,7 @@ final class ProfileResolverTests: XCTestCase {
         try write("""
         { "ios": { "app": "com.example.app", "appPath": "a.app", "autoInstall": false } }
         """, to: project.appsDir, name: "app3")
-        try write(#"{ "app": "app3", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "simulator": "iPhone Air" } ] }"#,
+        try write(#"{ "app": "app3", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
                   to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
@@ -306,7 +306,7 @@ final class ProfileResolverTests: XCTestCase {
         { "common": { "autoInstall": false },
           "ios":    { "app": "com.example.app", "appPath": "a.app", "autoInstall": true } }
         """, to: project.appsDir, name: "app3")
-        try write(#"{ "app": "app3", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "simulator": "iPhone Air" } ] }"#,
+        try write(#"{ "app": "app3", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
                   to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
@@ -341,7 +341,7 @@ final class ProfileResolverTests: XCTestCase {
         { "common": { "appName": "共通表示名" },
           "ios":    { "app": "com.example.app" } }
         """, to: project.appsDir, name: "app5")
-        try write(#"{ "app": "app5", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "simulator": "iPhone Air" } ] }"#,
+        try write(#"{ "app": "app5", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
                   to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
@@ -400,7 +400,7 @@ final class ProfileResolverTests: XCTestCase {
     func testUnknownKeysProduceWarnings() throws {
         try writeStandardFixture()
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "maxParallel": 4 }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "maxParallel": 4 }
         """, to: project.runsDir, name: "typo")
 
         let resolved = try ProfileResolver.resolve(
@@ -418,7 +418,7 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertFalse(defaulted.enableAnimations)
 
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "enableAnimations": true }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "enableAnimations": true }
         """, to: project.runsDir, name: "animated")
         let enabled = try ProfileResolver.resolve(
             project: project, runName: "animated")
@@ -431,7 +431,7 @@ final class ProfileResolverTests: XCTestCase {
     func testTopLevelMachineKeyIsAnUnknownKey() throws {
         try writeStandardFixture()
         try write("""
-        { "app": "sampleapp", "machine": "M1", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ] }
+        { "app": "sampleapp", "machine": "M1", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ] }
         """, to: project.runsDir, name: "legacy")
         let resolved = try ProfileResolver.resolve(project: project, runName: "legacy")
         XCTAssertTrue(resolved.warnings.contains { $0.contains("unknown key \"machine\"") },
@@ -453,7 +453,7 @@ final class ProfileResolverTests: XCTestCase {
         try writeStandardFixture()
         try write("""
         { "app": "sampleapp", "devices": [
-          { "platform": "ios", "machine": "local", "name": "同名", "simulator": "iPhone Air" },
+          { "platform": "ios", "machine": "local", "name": "同名", "osVersion": "iOS 27.0" },
           { "platform": "android", "machine": "local", "name": "同名", "avd": "Pixel_9", "enabled": false } ] }
         """, to: project.runsDir, name: "r")
 
@@ -525,7 +525,7 @@ final class ProfileResolverTests: XCTestCase {
         }
         // apps 参照切れ
         try write("""
-        { "app": "ghost", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ] }
+        { "app": "ghost", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ] }
         """, to: project.runsDir, name: "badapp")
         XCTAssertThrowsError(try ProfileResolver.resolve(
             project: project, runName: "badapp")) { error in
@@ -540,7 +540,7 @@ final class ProfileResolverTests: XCTestCase {
         { "ios": { "appPath": "a.app" } }
         """, to: project.appsDir, name: "noid")
         try write("""
-        { "app": "noid", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "simulator": "iPhone Air" } ] }
+        { "app": "noid", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }
         """, to: project.runsDir, name: "r")
 
         XCTAssertThrowsError(try ProfileResolver.resolve(
@@ -554,7 +554,7 @@ final class ProfileResolverTests: XCTestCase {
 
     func testRunProfileWithoutAppOrDevicesFails() throws {
         try writeStandardFixture()
-        try write(#"{ "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ] }"#, to: project.runsDir, name: "noapp")
+        try write(#"{ "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ] }"#, to: project.runsDir, name: "noapp")
         XCTAssertThrowsError(try ProfileResolver.resolve(
             project: project, runName: "noapp")) { error in
             guard case ProfileError.missingAppReference = error else {
@@ -584,7 +584,7 @@ final class ProfileResolverTests: XCTestCase {
     func testIosInappEngineFalseUsesXcuitest() throws {
         try writeStandardFixture()
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" }, { "platform": "ios", "machine": "local", "name": "サブ機", "simulator": "iPhone Air" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" }, { "platform": "ios", "machine": "local", "name": "サブ機", "osVersion": "iOS 27.0" } ],
           "iosInappEngine": false }
         """, to: project.runsDir, name: "xc")
         let resolved = try ProfileResolver.resolve(
@@ -600,7 +600,7 @@ final class ProfileResolverTests: XCTestCase {
         // フラグ OFF(xcuitest 既定)でも engine 明示の "注入機" は inapp のまま、
         // 明示なしの "素機" はフラグどおり xcuitest。
         try write("""
-        { "app": "app4", "devices": [ { "platform": "ios", "machine": "local", "name": "注入機", "simulator": "iPhone 17 Pro", "engine": "inapp" }, { "platform": "ios", "machine": "local", "name": "素機", "simulator": "iPhone Air" } ],
+        { "app": "app4", "devices": [ { "platform": "ios", "machine": "local", "name": "注入機", "osVersion": "iOS 27.0", "engine": "inapp" }, { "platform": "ios", "machine": "local", "name": "素機", "osVersion": "iOS 27.0" } ],
           "iosInappEngine": false }
         """, to: project.runsDir, name: "r")
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
@@ -618,7 +618,7 @@ final class ProfileResolverTests: XCTestCase {
         { "ios": { "app": "com.example.app" } }
         """, to: project.appsDir, name: "app5")
         try write("""
-        { "app": "app5", "devices": [ { "platform": "ios", "machine": "local", "name": "注入機", "simulator": "iPhone 17 Pro", "engine": "inapp" } ] }
+        { "app": "app5", "devices": [ { "platform": "ios", "machine": "local", "name": "注入機", "osVersion": "iOS 27.0", "engine": "inapp" } ] }
         """, to: project.runsDir, name: "r")
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
         XCTAssertFalse(resolved.warnings.contains { $0.contains("適用されません") },
@@ -638,7 +638,7 @@ final class ProfileResolverTests: XCTestCase {
     func testWipeDataExplicitValuesAreReflected() throws {
         try writeStandardFixture()
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ],
           "wipeDataOnBloat": false, "wipeDataThresholdGB": 3.5 }
         """, to: project.runsDir, name: "wipe")
         let resolved = try ProfileResolver.resolve(
@@ -650,7 +650,7 @@ final class ProfileResolverTests: XCTestCase {
     func testWipeDataThresholdZeroOrLessFails() throws {
         try writeStandardFixture()
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "wipeDataThresholdGB": 0 }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "wipeDataThresholdGB": 0 }
         """, to: project.runsDir, name: "badThreshold")
         XCTAssertThrowsError(try ProfileResolver.resolve(
             project: project, runName: "badThreshold")) { error in
@@ -661,7 +661,7 @@ final class ProfileResolverTests: XCTestCase {
         }
 
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "wipeDataThresholdGB": -2 }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "wipeDataThresholdGB": -2 }
         """, to: project.runsDir, name: "negativeThreshold")
         XCTAssertThrowsError(try ProfileResolver.resolve(
             project: project, runName: "negativeThreshold")) { error in
@@ -674,7 +674,7 @@ final class ProfileResolverTests: XCTestCase {
     func testValidateRunWipeDataThresholdZeroOrLessErrors() throws {
         try writeStandardFixture()
         let data = #"""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "wipeDataThresholdGB": 0 }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "wipeDataThresholdGB": 0 }
         """#.data(using: .utf8)!
 
         let (errors, _) = ProfileResolver.validate(
@@ -689,7 +689,7 @@ final class ProfileResolverTests: XCTestCase {
     func testValidateRunScenarioTimeoutZeroOrNegativeErrors() throws {
         try writeStandardFixture()
         for bad in ["0", "-5"] {
-            let data = #"{ "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "scenarioTimeout": \#(bad) }"#
+            let data = #"{ "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "scenarioTimeout": \#(bad) }"#
                 .data(using: .utf8)!
             let (errors, _) = ProfileResolver.validate(
                 kind: .run, data: data, context: "runs/badScenarioTimeout.json")
@@ -701,7 +701,7 @@ final class ProfileResolverTests: XCTestCase {
     func testValidateRunScenarioTimeoutPositiveIsFine() throws {
         try writeStandardFixture()
         let data = #"""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "scenarioTimeout": 45 }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "scenarioTimeout": 45 }
         """#.data(using: .utf8)!
         let (errors, _) = ProfileResolver.validate(
             kind: .run, data: data, context: "runs/goodScenarioTimeout.json")
@@ -712,13 +712,13 @@ final class ProfileResolverTests: XCTestCase {
     /// 側のテストで確認する)。ここでは負値だけを見る。**0 は正当**(初回スナップショットだけ)
     func testValidateRunDefaultTimeoutNegativeErrorsButZeroIsAccepted() throws {
         try writeStandardFixture()
-        let zero = #"{ "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "defaultTimeout": 0 }"#
+        let zero = #"{ "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "defaultTimeout": 0 }"#
             .data(using: .utf8)!
         let (zeroErrors, _) = ProfileResolver.validate(
             kind: .run, data: zero, context: "runs/zeroDefaultTimeout.json")
         XCTAssertFalse(zeroErrors.contains { $0.contains("defaultTimeout") }, "\(zeroErrors)")
         for bad in ["-1.5"] {
-            let data = #"{ "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "defaultTimeout": \#(bad) }"#
+            let data = #"{ "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "defaultTimeout": \#(bad) }"#
                 .data(using: .utf8)!
             let (errors, _) = ProfileResolver.validate(
                 kind: .run, data: data, context: "runs/badDefaultTimeout.json")
@@ -739,7 +739,7 @@ final class ProfileResolverTests: XCTestCase {
     func testRecordExplicitTrueIsReflected() throws {
         try writeStandardFixture()
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "record": true }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "record": true }
         """, to: project.runsDir, name: "record")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "record")
@@ -758,7 +758,7 @@ final class ProfileResolverTests: XCTestCase {
     func testRecordOptionsExplicitValuesAreReflected() throws {
         try writeStandardFixture()
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "record": true,
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "record": true,
           "recordFailuresOnly": true, "recordBitrateKbps": 3000, "recordFullResolution": true }
         """, to: project.runsDir, name: "recordOptions")
         let resolved = try ProfileResolver.resolve(
@@ -771,7 +771,7 @@ final class ProfileResolverTests: XCTestCase {
     func testRecordBitrateKbpsNonPositiveFallsBackToDefault() throws {
         try writeStandardFixture()
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "recordBitrateKbps": 0 }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "recordBitrateKbps": 0 }
         """, to: project.runsDir, name: "recordBadBitrate")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "recordBadBitrate")
@@ -790,7 +790,7 @@ final class ProfileResolverTests: XCTestCase {
     func testLocaleExplicitValueIsReflected() throws {
         try writeStandardFixture()
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "locale": "en-US" }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "locale": "en-US" }
         """, to: project.runsDir, name: "locale")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "locale")
@@ -802,7 +802,7 @@ final class ProfileResolverTests: XCTestCase {
         for (name, value) in [("badLocaleSpace", "ja JP"), ("badLocaleEmpty", ""),
                                ("badLocaleNonAscii", "日本語")] {
             try write("""
-            { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "locale": "\(value)" }
+            { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "locale": "\(value)" }
             """, to: project.runsDir, name: name)
             XCTAssertThrowsError(try ProfileResolver.resolve(
                 project: project, runName: name)) { error in
@@ -817,7 +817,7 @@ final class ProfileResolverTests: XCTestCase {
     func testValidateRunLocaleInvalidFormatErrors() throws {
         try writeStandardFixture()
         let data = #"""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "locale": "ja JP" }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "locale": "ja JP" }
         """#.data(using: .utf8)!
 
         let (errors, _) = ProfileResolver.validate(
@@ -896,23 +896,23 @@ final class ProfileResolverTests: XCTestCase {
         { "ios": { "app": "com.example.app" } }
         """, to: project.appsDir, name: "app")
         try write("""
-        { "app": "app", "devices": [ { "platform": "ios", "machine": "local", "name": "シミュ", "simulator": "iPhone 17 Pro" }, { "platform": "ios", "machine": "local", "name": "壊れた実機", "enabled": false, "kind": "physical" } ] }
+        { "app": "app", "devices": [ { "platform": "ios", "machine": "local", "name": "シミュ", "osVersion": "iOS 27.0" }, { "platform": "ios", "machine": "local", "name": "壊れた実機", "enabled": false, "kind": "physical" } ] }
         """, to: project.runsDir, name: "r")
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
         XCTAssertEqual(resolved.devices.map(\.name), ["シミュ"])
     }
 
     func testPhysicalDeviceKeepsDisplayOnlyModelAndOS() throws {
-        // model/os は表示専用(同定には使わない)。未知キー警告を出さず素通しすること
+        // model/osVersion は表示専用(同定には使わない)。未知キー警告を出さず素通しすること
         try write("""
         { "ios": { "app": "com.example.app" } }
         """, to: project.appsDir, name: "app")
         try write("""
-        { "app": "app", "devices": [ { "platform": "ios", "machine": "local", "name": "実機", "kind": "physical", "udid": "00008130-AAAA", "model": "iPhone 15 Pro", "os": "26.5.2" } ] }
+        { "app": "app", "devices": [ { "platform": "ios", "machine": "local", "name": "実機", "kind": "physical", "udid": "00008130-AAAA", "model": "iPhone 15 Pro", "osVersion": "iOS 26.5.2" } ] }
         """, to: project.runsDir, name: "r")
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
         XCTAssertEqual(resolved.iosDevices[0].spec.model, "iPhone 15 Pro")
-        XCTAssertEqual(resolved.iosDevices[0].spec.os, "26.5.2")
+        XCTAssertEqual(resolved.iosDevices[0].spec.osVersion, "iOS 26.5.2")
         XCTAssertTrue(resolved.warnings.isEmpty, "model は既知キー: \(resolved.warnings)")
     }
 
@@ -975,7 +975,7 @@ final class ProfileResolverTests: XCTestCase {
         try write("""
         { "ios": { "app": "com.example.app" } }
         """, to: project.appsDir, name: "app6")
-        try write(#"{ "app": "app6", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "simulator": "iPhone Air" } ] }"#,
+        try write(#"{ "app": "app6", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
                   to: project.runsDir, name: "r")
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
         XCTAssertTrue(resolved.fm.enabled)
@@ -989,7 +989,7 @@ final class ProfileResolverTests: XCTestCase {
     func testFMEnabledIsFalseOnlyWhenBothSubFlagsAreFalse() throws {
         try writeStandardFixture()
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ],
           "heal": true, "textVisualCheck": false, "screenLooksLike": false }
         """, to: project.runsDir, name: "bothoff")
         let bothOff = try ProfileResolver.resolve(
@@ -1000,7 +1000,7 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertFalse(bothOff.fm.screenLooksLike)
 
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ],
           "textVisualCheck": true, "screenLooksLike": false }
         """, to: project.runsDir, name: "fpconly")
         let fpcOnly = try ProfileResolver.resolve(
@@ -1008,7 +1008,7 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertTrue(fpcOnly.fm.enabled, "片方だけでも true なら enabled")
 
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ],
           "textVisualCheck": false, "screenLooksLike": true }
         """, to: project.runsDir, name: "sllonly")
         let sllOnly = try ProfileResolver.resolve(
@@ -1021,7 +1021,7 @@ final class ProfileResolverTests: XCTestCase {
     func testLeftoverTriageKeyIsIgnoredWithAWarning() throws {
         try writeStandardFixture()
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "triage": false }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "triage": false }
         """, to: project.runsDir, name: "leftover")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "leftover")
@@ -1036,7 +1036,7 @@ final class ProfileResolverTests: XCTestCase {
         try writeStandardFixture()
         // 既定と逆向きの明示指定(heal/screenLooksLike=OFF・textVisualCheck=ON)が個別に効くこと
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ],
           "heal": false, "textVisualCheck": true, "screenLooksLike": false }
         """, to: project.runsDir, name: "subsoff")
         let resolved = try ProfileResolver.resolve(
@@ -1052,7 +1052,7 @@ final class ProfileResolverTests: XCTestCase {
     func testLegacyScreenIsKeyStillDisablesScreenLooksLike() throws {
         try writeStandardFixture()
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "screenIs": false }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "screenIs": false }
         """, to: project.runsDir, name: "legacykey")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "legacykey")
@@ -1065,7 +1065,7 @@ final class ProfileResolverTests: XCTestCase {
     func testNewKeyWinsOverLegacyScreenIsKey() throws {
         try writeStandardFixture()
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ],
           "screenLooksLike": true, "screenIs": false }
         """, to: project.runsDir, name: "bothkeys")
         let resolved = try ProfileResolver.resolve(
@@ -1083,7 +1083,7 @@ final class ProfileResolverTests: XCTestCase {
 
         // FM が実質無効(両トグル false)でも巻き込まれない(FM のサブフラグではない)ことも同時に見る
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ],
           "textVisualCheck": false, "screenLooksLike": false, "containerInference": false }
         """, to: project.runsDir, name: "ciofffmoff")
         let off = try ProfileResolver.resolve(
@@ -1091,7 +1091,7 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertFalse(off.containerInference)
 
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ],
           "textVisualCheck": false, "screenLooksLike": false }
         """, to: project.runsDir, name: "fmoffonly")
         let fmOffOnly = try ProfileResolver.resolve(
@@ -1109,7 +1109,7 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertTrue(onByDefault.ocrTextVisualCheck, "省略時は既定 true のはず")
 
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "ocrTextVisualCheck": false }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "ocrTextVisualCheck": false }
         """, to: project.runsDir, name: "ocrfpcoff")
         let off = try ProfileResolver.resolve(
             project: project, runName: "ocrfpcoff")
@@ -1120,7 +1120,7 @@ final class ProfileResolverTests: XCTestCase {
         // textVisualCheck(FM 側)が off でも resolve 層では巻き込まれない(ゲートは downstream の
         // occlusion guard 実行有無であって、ここではない)ことを同時に見る
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0", "udid": "AAAA-1111" } ], "textVisualCheck": false }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "textVisualCheck": false }
         """, to: project.runsDir, name: "ocrfpcfmoffonly")
         let fpcOffOnly = try ProfileResolver.resolve(
             project: project, runName: "ocrfpcfmoffonly")

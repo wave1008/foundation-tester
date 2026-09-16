@@ -299,7 +299,7 @@ fleetest profile setup --project <ProjectName> --platform <ios|android|both> --a
 
 `--auto-device` が既存デバイスを選び（iOS=最新 OS の中で "Pro" 優先・**iPad は除外** / Android=API 最大の AVD）、
 この Mac(`"machine": "local"`)の台として apps/runs を同じ論理名で書いて解決まで検証する。
-機種を指定したいときだけ `--simulator "<機種名>" --os <version>` / `--avd <avdID>` を明示する。
+機種を指定したいときだけ `--device-name "<シミュレータ名>" --os <version>` / `--avd <avdID>` を明示する。
 利用可能なデバイスが **0 台のときだけ** 🧑 停止し、Xcode / Android Studio での導入を依頼する。
 
 ### 6. アプリのパス（appPath）と未確定の bundle ID は後から設定する

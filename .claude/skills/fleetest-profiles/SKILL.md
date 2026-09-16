@@ -95,7 +95,7 @@ fleetest profile setup --project <プロジェクト> --platform <ios|android|bo
   **Android = config.ini の API レベルが最大の既存 AVD**。0台なら作成方法を示してエラーになる。
 - `--platform both` で iOS と Android を1回で作る(論理名は simulator1 / emulator1)。
 - 機種/OS をユーザーが指定した場合だけ `--auto-device` を外し、実体を明示する
-  (iOS: `--simulator "<機種名>" --os <version>` か `--udid`、Android: `--avd <avdID>` か `--serial`)。
+  (iOS: `--device-name "<シミュレータ名>" --os <version>` か `--udid`、Android: `--avd <avdID>` か `--serial`)。
 - 仮想デバイスを**新規作成**する必要があるとき(0台・指定に合うものが無い)は
   `fleetest api create-device`(→ 下の 4-b)で作ってから、`profile setup --device-name <作った名前>` を呼ぶ。
 - `--app-path` は入力があったときだけ渡す(渡すと `autoInstall` が有効になる)。

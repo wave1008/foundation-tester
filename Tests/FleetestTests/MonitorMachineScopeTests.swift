@@ -17,7 +17,7 @@ import XCTest
 final class MonitorMachineScopeTests: XCTestCase {
 
     private func target(_ name: String, host: String?, platform: String = "ios") -> MonitorTarget {
-        var spec = DeviceSpec(name: name, os: "27.0")
+        var spec = DeviceSpec(name: name, osVersion: "27.0")
         spec.machine = host
         return MonitorTarget(platform: platform, spec: spec)
     }

@@ -18,7 +18,7 @@ import XCTest
 final class ApiDeviceLookupHostTests: XCTestCase {
 
     private func spec(_ name: String, host: String?) -> DeviceSpec {
-        var spec = DeviceSpec(name: name, os: "27.0")
+        var spec = DeviceSpec(name: name, osVersion: "27.0")
         spec.machine = host
         return spec
     }

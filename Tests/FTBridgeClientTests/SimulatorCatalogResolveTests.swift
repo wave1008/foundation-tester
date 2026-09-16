@@ -14,7 +14,7 @@ final class SimulatorCatalogResolveTests: XCTestCase {
     }
 
     private func spec(_ name: String, os: String? = nil) -> DeviceSpec {
-        DeviceSpec(name: name, simulator: name, os: os)
+        DeviceSpec(name: name, osVersion: os)
     }
 
     /// **本命**: 同名・同じ OS・どちらも停止中 = 規則で決まらないので断り、両方の UDID を名指しする
@@ -50,5 +50,30 @@ final class SimulatorCatalogResolveTests: XCTestCase {
         let devices = [sim("0113A6C1", "iPhone 17"), sim("6109860E", "iPhone 17")]
         let byUDID = DeviceSpec(name: "iPhone 17", udid: "6109860E")
         XCTAssertEqual(try SimulatorCatalog.resolve(spec: byUDID, in: devices).udid, "6109860E")
+    }
+
+    // MARK: - modelNames(simctlJSON:)
+
+    /// UDID → Xcode の Model(device type 名)。型の分からない台・型表に無い台は載せない
+    func testModelNamesMapUDIDsToDeviceTypeNames() {
+        let json: [String: Any] = [
+            "devicetypes": [
+                ["identifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro", "name": "iPhone 18 Pro"],
+                ["identifier": "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-5th-generation",
+                 "name": "iPad Pro (11-inch) (5th generation)"],
+            ],
+            "devices": [
+                "com.apple.CoreSimulator.SimRuntime.iOS-27-0": [
+                    ["udid": "A", "name": "私の iPhone",
+                     "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro"],
+                    ["udid": "B", "name": "iPad",
+                     "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-5th-generation"],
+                    ["udid": "C", "name": "不明", "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.Gone"],
+                    ["udid": "D", "name": "型なし"],
+                ],
+            ],
+        ]
+        XCTAssertEqual(SimulatorCatalog.modelNames(simctlJSON: json),
+                       ["A": "iPhone 18 Pro", "B": "iPad Pro (11-inch) (5th generation)"])
     }
 }

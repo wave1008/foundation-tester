@@ -48,8 +48,10 @@ struct ApiInstalledDevicesCommand: AsyncParsableCommand {
             if $0.name != $1.name { return $0.name < $1.name }
             return $0.os > $1.os
         }
+        let models = SimulatorCatalog.modelNamesByUDID()
         let entries = sorted.map {
-            ApiInstalledIOSDevice(name: $0.name, os: Self.normalizeOS($0.os), udid: $0.udid)
+            ApiInstalledIOSDevice(name: $0.name, os: Self.normalizeOS($0.os), udid: $0.udid,
+                                  model: models[$0.udid])
         }
         return ApiInstalledIOSCatalog(available: true, error: nil, devices: entries,
                                       physicalDevices: iosPhysicalDevices())
@@ -155,6 +157,18 @@ private struct ApiInstalledIOSDevice: Encodable {
     /// "27.0" のようなバージョン番号のみ("iOS " prefix なし)
     let os: String
     let udid: String
+    /// Xcode の Model(device type 名)。読めなければ null(同期相手: vscode-fleetest/src/monitorProfileForms.ts)
+    let model: String?
+
+    private enum CodingKeys: String, CodingKey { case name, os, udid, model }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(os, forKey: .os)
+        try container.encode(udid, forKey: .udid)
+        try container.encode(model, forKey: .model)
+    }
 }
 
 /// Android カタログ。error は省略可能フィールドとして明示的に null を encode する

@@ -74,15 +74,15 @@ const PROFILE_INFO = {
   project: "SampleApp",
   projectDir: "TestProjects/SampleApp",
   devices: [
-    { platform: "ios", name: "シミュ1", detail: "d", simulator: "iPhone 16", os: "18.0", udid: "U1" },
-    { platform: "ios", name: "シミュ2", detail: "d", simulator: "iPhone 16", os: "18.0", udid: "U2" },
+    { platform: "ios", name: "シミュ1", detail: "d", model: "iPhone 16", osVersion: "iOS 18.0", udid: "U1" },
+    { platform: "ios", name: "シミュ2", detail: "d", model: "iPhone 16", osVersion: "iOS 18.0", udid: "U2" },
   ],
 };
 
 // parseRunProfileForForm が返す全欄(monitorProfileForms.ts の RunProfileFormFields)。
 const RUN_FIELDS = {
   app: "sampleapp",
-  devices: [{ platform: "ios", name: "シミュ1", enabled: true, simulator: "iPhone 16", os: "18.0", udid: "U1" }],
+  devices: [{ platform: "ios", name: "シミュ1", enabled: true, model: "iPhone 16", osVersion: "iOS 18.0", udid: "U1" }],
   heal: true,
   textVisualCheck: true,
   screenLooksLike: true,
@@ -285,61 +285,4 @@ test("Esc は未保存の編集を捨てて読み直す", (t) => {
   typeAndCommit(window, timeout, "abc");
   timeout.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   assert.ok(posted.some((m) => m.type === "runProfileLoad" && m.profile === "ios"));
-});
-
-// ---- 実行プロファイル節のデバイス編集フォーム(runProfileDevicesTab.js) --------------------
-// 選択の引き戻し・改名途中の追随を (platform, machine, name) キーのフォームで確認する。
-
-function deviceRows(document) {
-  return [...document.querySelectorAll("#run-profile-devices .run-profile-device-row-item")];
-}
-
-test("実行プロファイルのデバイス編集: 名前を変えて別の行へ移ったら、保存の応答で選択を引き戻さない", (t) => {
-  const { window, document, posted, send } = createWebview(t);
-  send(PROFILE_INFO);
-  send(runProfileData({
-    ...RUN_FIELDS,
-    devices: [
-      { platform: "ios", name: "シミュ1", enabled: true, simulator: "iPhone 16", os: "18.0", udid: "U1" },
-      { platform: "ios", name: "シミュ2", enabled: true, simulator: "iPhone 16", os: "18.0", udid: "U2" },
-    ],
-  }));
-  deviceRows(document)[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-
-  // blur で change → 保存 → そのまま2行目をクリック(自動保存の普通の流れ)。
-  typeAndCommit(window, document.getElementById("run-profile-device-name-input"), "シミュ1-改");
-  assert.equal(posted.filter((m) => m.type === "runProfileDeviceUpdate").length, 1);
-  deviceRows(document)[1].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  // 選択した行の値がフォームに載っていること(別の行に居る旨のクリックは送信中でも即座に反映する)。
-  assert.equal(document.getElementById("run-profile-device-udid").textContent, "U2");
-
-  send({ type: "runProfileDeviceUpdateResult", ok: true, name: "シミュ1-改", error: null });
-  // ホストは成功後に続けて profileInfo/runProfileData を再送する(実際の配線と同じ)。
-  send(PROFILE_INFO);
-  send(runProfileData({
-    ...RUN_FIELDS,
-    devices: [
-      { platform: "ios", name: "シミュ1-改", enabled: true, simulator: "iPhone 16", os: "18.0", udid: "U1" },
-      { platform: "ios", name: "シミュ2", enabled: true, simulator: "iPhone 16", os: "18.0", udid: "U2" },
-    ],
-  }));
-  assert.equal(document.getElementById("run-profile-device-udid").textContent, "U2", "選択が保存した行へ引き戻された");
-  assert.equal(deviceRows(document)[1].classList.contains("selected"), true);
-});
-
-test("実行プロファイルのデバイス編集: 改名の保存中に確定した変更は、新しい名前で引き当てて送る", (t) => {
-  const { window, document, posted, send } = createWebview(t);
-  send(PROFILE_INFO);
-  send(runProfileData(RUN_FIELDS));
-  deviceRows(document)[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-
-  typeAndCommit(window, document.getElementById("run-profile-device-name-input"), "シミュ1-改");
-  typeAndCommit(window, document.getElementById("run-profile-device-port"), "8200");
-  const updates = () => posted.filter((m) => m.type === "runProfileDeviceUpdate");
-  assert.equal(updates().length, 1);
-
-  send({ type: "runProfileDeviceUpdateResult", ok: true, name: "シミュ1-改", error: null });
-  assert.equal(updates().length, 2);
-  assert.equal(updates()[1].originalName, "シミュ1-改", "旧名で引くとホストが見つけられない");
-  assert.equal(updates()[1].fields.port, "8200");
 });

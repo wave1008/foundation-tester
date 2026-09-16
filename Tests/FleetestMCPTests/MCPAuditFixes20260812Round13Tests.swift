@@ -95,7 +95,7 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
     func testIOSRowCarriesEveryLiveBridgeForTheMatchedDevice() {
         let device = SimDeviceInfo(udid: "SIM-1", name: "iPhone 17 Pro", os: "iOS 26.0", booted: true)
         let row = DeviceInventory.iosRow(
-            spec: DeviceSpec(name: "primary", simulator: "iPhone 17 Pro"),
+            spec: DeviceSpec(name: "iPhone 17 Pro"),
             simDevices: [device], physicalDevices: [],
             liveBridges: DeviceInventory.LiveBridges(
                 byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8143, engine: "inapp"),
@@ -110,7 +110,7 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
     /// 情報を誤って持たせない)
     func testIOSRowIgnoresLiveBridgesWhenNotRunning() {
         let row = DeviceInventory.iosRow(
-            spec: DeviceSpec(name: "stopped", simulator: "iPad Pro"),
+            spec: DeviceSpec(name: "iPad Pro"),
             simDevices: [], physicalDevices: [],
             liveBridges: DeviceInventory.LiveBridges(
                 byName: ["iPad Pro": [DeviceInventory.Row.Bridge(port: 8143, engine: "inapp")]],

@@ -41,7 +41,7 @@ final class ProfileRunnerFMSettingsTests: XCTestCase {
         // "machine" を明示する(ambient な FT_MACHINE に左右されず決定的にするため。
         // determineMachine の優先順位: 実行プロファイルの明示 > FT_MACHINE > machines/ が1つ)
         try write("""
-        { "app": "sampleapp", "machine": "M1", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro" } ],
+        { "app": "sampleapp", "machine": "M1", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0" } ],
           "textVisualCheck": false, "screenLooksLike": false, "ocrTextVisualCheck": false }
         """, to: project.runsDir, name: "iosOnly")
 

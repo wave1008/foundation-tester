@@ -115,7 +115,9 @@ public enum DeviceKind: String, Codable, Sendable, Hashable {
 
 /// デバイス 1 台の実体定義(実行プロファイルの devices[] 1要素から platform/enabled を除いたもの)
 public struct DeviceSpec: Codable, Sendable, Hashable {
-    /// ユーザーがデバイスを識別するための名前。
+    /// デバイスの名前。**iOS シミュレータではシミュレータ自身の名前**(Xcode の Name = simctl の名前)と
+    /// 一致させる —— udid が無いときはこの名前(+ os)でシミュレータを探す。拡張の編集フォームでは
+    /// iOS シミュレータの名前を変えさせない(変えるとシミュレータ側とずれる)。
     /// **一意なのは name 単体ではなく (machine, name)** —— 別のホストに同名のデバイスが居てよい
     /// (フリートの各機が同じ命名規則でシミュレータを作るため、同名は例外ではなく通常)
     public var name: String
@@ -126,12 +128,11 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     public var machine: String?
     /// 実体種別(省略時 virtual)。実機の識別子は iOS=udid / Android=serial
     public var kind: DeviceKind?
-    /// iOS: シミュレータのデバイス名(例 "iPhone 17 Pro"。実機では未使用)
-    public var simulator: String?
-    /// OS バージョン(例 "27.0")。iOS シミュレータでは実体解決に使う(省略時は名前一致の最新)。
-    /// 実機では**表示専用**(model と同じく登録時に控えるだけ)
-    public var os: String?
-    /// iOS: UDID。kind=virtual ならシミュレータ UDID(simulator/os より優先)、
+    /// OS バージョン(Xcode の OS Version と同じ表記。例 "iOS 27.0" / Android 実機は "Android 13")。
+    /// **JSON キーは "osVersion"**。iOS シミュレータでは udid が無いときの実体解決に使う
+    /// (省略時は名前一致の最新)。実機では**表示専用**(model と同じく登録時に控えるだけ)
+    public var osVersion: String?
+    /// iOS: UDID。kind=virtual ならシミュレータ UDID(name/os より優先)、
     /// kind=physical なら実機の識別子(必須)。`xcrun devicectl list devices` の Identifier 列と
     /// ハードウェア UDID("00008130-..." 形式)のどちらでも解決する(内部では常に後者に正規化。
     /// xcodebuild の -destination id= が受け付けるのは後者だけのため)
@@ -146,19 +147,19 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     /// Android 実機: adb シリアル(USB は "14141JEC204922"、WiFi は "192.168.1.23:5555")。
     /// kind=physical のとき必須。エミュレータには使わない(avd から解決するため)
     public var serial: String?
-    /// 実機の機種名(iOS は marketingName、Android は ro.product.model)。**表示専用**で
-    /// 同定には使わない(登録時に控えるだけ。端末を挿し替えても値は追随しない)
+    /// 機種名(iOS シミュレータは Xcode の Model = device type 名、iOS 実機は marketingName、
+    /// Android は AVD の機種 / ro.product.model)。**表示専用**で同定には使わない
+    /// (登録時に控えるだけ。端末を挿し替えても値は追随しない)
     public var model: String?
 
     public init(name: String, machine: String? = nil, kind: DeviceKind? = nil,
-                simulator: String? = nil, os: String? = nil,
+                osVersion: String? = nil,
                 udid: String? = nil, port: UInt16? = nil, engine: String? = nil,
                 avd: String? = nil, serial: String? = nil, model: String? = nil) {
         self.name = name
         self.machine = machine
         self.kind = kind
-        self.simulator = simulator
-        self.os = os
+        self.osVersion = osVersion
         self.udid = udid
         self.port = port
         self.engine = engine
@@ -170,21 +171,21 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     /// 実機か(kind 省略時は virtual)。デバイス種別の分岐はすべてこれを見ること
     public var isPhysical: Bool { kind == .physical }
 
-    /// 「どの台か」が1つも書かれていない(name と host だけの登録)。iOS はこの状態でも
-    /// SimulatorCatalog の既定名に落ちるので**黙って別の台で走る**(Android は起動時に落ちる)。
+    /// 「どの台か」が名前以外に1つも書かれていない登録。iOS は name だけで探しに行くが、
+    /// 雛形の論理名(simulator1 等)は実在しないので起動時に落ちる。
     /// 見るキーは ProfileWriter.deviceBodyKeys と同集合(ProfileWriterTests が照合)
     public var lacksConcreteTarget: Bool {
-        simulator == nil && os == nil && udid == nil && avd == nil && serial == nil
+        osVersion == nil && udid == nil && avd == nil && serial == nil
     }
 
     /// 旧キー "host" は読めるので既知扱いにする(未知キー検査で弾かない)
     static let knownKeys: Set<String> = [
-        "name", "machine", "host", "kind", "simulator", "os", "udid", "port", "engine", "avd",
+        "name", "machine", "host", "kind", "osVersion", "udid", "port", "engine", "avd",
         "serial", "model",
     ]
 
     private enum CodingKeys: String, CodingKey {
-        case name, machine, host, kind, simulator, os, udid, port, engine, avd, serial, model
+        case name, machine, host, kind, osVersion, udid, port, engine, avd, serial, model
     }
 
     /// **読みは machine > 旧 host**、書きは machine だけ(改名の互換はこの1箇所)
@@ -194,8 +195,7 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
         machine = try container.decodeIfPresent(String.self, forKey: .machine)
             ?? container.decodeIfPresent(String.self, forKey: .host)
         kind = try container.decodeIfPresent(DeviceKind.self, forKey: .kind)
-        simulator = try container.decodeIfPresent(String.self, forKey: .simulator)
-        os = try container.decodeIfPresent(String.self, forKey: .os)
+        osVersion = try container.decodeIfPresent(String.self, forKey: .osVersion)
         udid = try container.decodeIfPresent(String.self, forKey: .udid)
         port = try container.decodeIfPresent(UInt16.self, forKey: .port)
         engine = try container.decodeIfPresent(String.self, forKey: .engine)
@@ -209,8 +209,7 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
         try container.encode(name, forKey: .name)
         try container.encodeIfPresent(machine, forKey: .machine)
         try container.encodeIfPresent(kind, forKey: .kind)
-        try container.encodeIfPresent(simulator, forKey: .simulator)
-        try container.encodeIfPresent(os, forKey: .os)
+        try container.encodeIfPresent(osVersion, forKey: .osVersion)
         try container.encodeIfPresent(udid, forKey: .udid)
         try container.encodeIfPresent(port, forKey: .port)
         try container.encodeIfPresent(engine, forKey: .engine)
@@ -1355,7 +1354,7 @@ public enum ProfileResolver {
             if entry.spec.lacksConcreteTarget {
                 warnings.append(
                     "device \"\(entry.name)\" on machine \(DeviceMachineGrouping.display(entry.machine))"
-                    + " has no concrete target (ios: simulator/udid, android: avd/serial)"
+                    + " has no concrete target (ios: udid/osVersion, android: avd/serial)"
                     + " — re-run `fleetest profile setup --auto-device`,"
                     + " or fill it in in profiles/runs/\(runName).json")
             }

@@ -1,5 +1,5 @@
 // simctl list devices -j のパースと、実行プロファイルのデバイス指定
-// (simulator 名+OS / UDID)→ シミュレータ実体(UDID)の解決。
+// (デバイス名+OS / UDID)→ シミュレータ実体(UDID)の解決。
 // CLI(BridgeProvisioner)から使う。
 
 import Foundation
@@ -117,6 +117,37 @@ public enum SimulatorCatalog {
         return sorted(found)
     }
 
+    /// UDID → 機種名(Xcode の Model = device type 名)。登録時に `model` を控えるためだけに使う
+    /// (simctl を2表ぶん読むので、監視の周期経路からは呼ばない)。読めなければ空
+    public static func modelNamesByUDID() -> [String: String] {
+        guard let result = try? Shell.run(["xcrun", "simctl", "list", "-j", "devicetypes", "devices"],
+                                          timeout: simctlTimeoutSeconds),
+              result.status == 0,
+              let data = result.output.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return modelNames(simctlJSON: json)
+    }
+
+    /// modelNamesByUDID の解析部(純粋関数)
+    static func modelNames(simctlJSON json: [String: Any]) -> [String: String] {
+        var typeNames: [String: String] = [:]
+        for type in (json["devicetypes"] as? [[String: Any]]) ?? [] {
+            if let id = type["identifier"] as? String, let name = type["name"] as? String {
+                typeNames[id] = name
+            }
+        }
+        var result: [String: String] = [:]
+        for list in ((json["devices"] as? [String: [[String: Any]]]) ?? [:]).values {
+            for device in list {
+                guard let udid = device["udid"] as? String,
+                      let typeID = device["deviceTypeIdentifier"] as? String,
+                      let name = typeNames[typeID] else { continue }
+                result[udid] = name
+            }
+        }
+        return result
+    }
+
     /// 起動中 → OS 降順 → 名前順(resolve が「先頭=最良候補」に依存する契約)
     private static func sorted(_ devices: [SimDeviceInfo]) -> [SimDeviceInfo] {
         devices.sorted {
@@ -126,7 +157,7 @@ public enum SimulatorCatalog {
         }
     }
 
-    /// UDID 指定が最優先、次に simulator 名+OS(候補複数なら起動中→OS降順の先頭)。
+    /// UDID 指定が最優先、次に name(= シミュレータの名前)+OS(候補複数なら起動中→OS降順の先頭)。
     /// kind=physical は devices(シミュレータ一覧)を見ず devicectl 側へ委譲する
     /// (呼び出し側は分岐を書かずに済む。実機は「常に booted」として扱う)
     public static func resolve(spec: DeviceSpec,
@@ -144,9 +175,9 @@ public enum SimulatorCatalog {
             }
             return device
         }
-        let name = spec.simulator ?? "iPhone 17 Pro"
-        // "27.0" → "iOS 27.0" に正規化(プロファイルではどちらでも書ける)
-        let os = spec.os.map { $0.hasPrefix("iOS") ? $0 : "iOS \($0)" }
+        let name = spec.name
+        // simctl の表記("iOS 27.0")で比べる。CLI の `--os 27.0` のような接頭辞なしも受ける
+        let os = spec.osVersion.map { $0.hasPrefix("iOS") ? $0 : "iOS \($0)" }
         let candidates = devices.filter { device in
             device.name == name && (os == nil || device.os == os)
         }

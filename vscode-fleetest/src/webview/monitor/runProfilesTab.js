@@ -1,6 +1,6 @@
 // runProfilesTab.js
 // 「プロファイル」タブの実行プロファイル節(選択/追加/コピー/削除/名前変更・設定フォーム)を担う。
-// デバイス一覧(チェックボックス・右ペイン編集・右クリックメニュー)は runProfileDevicesTab.js に
+// デバイス一覧(チェックボックス・右ペイン詳細表示・右クリックメニュー)は runProfileDevicesTab.js に
 // 分離してある(**この 2 ファイルは互いに import しない**。片方向依存 = このファイルが
 // runProfileDevicesTab.js を読むだけ。相互 import が esbuild のバンドル評価順を崩す実害は
 // physicalDeviceCache.js 冒頭コメント参照)。selectedRunProfile はここでは読み取り専用で

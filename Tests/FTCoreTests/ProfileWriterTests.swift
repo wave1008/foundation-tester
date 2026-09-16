@@ -57,12 +57,12 @@ final class ProfileWriterTests: XCTestCase {
 
     func testRunProfileCarriesTheDeviceEntities() {
         let device: [String: Any] = ["platform": "ios", "machine": "local", "name": "simulator1",
-                                     "simulator": "iPhone 17 Pro"]
+                                     "model": "iPhone 17 Pro"]
         let run = ProfileWriter.runProfile(appRef: "myapp", devices: [device])
         XCTAssertEqual(run["app"] as? String, "myapp")
         let devices = run["devices"] as? [[String: Any]]
         XCTAssertEqual(devices?.first?["name"] as? String, "simulator1")
-        XCTAssertEqual(devices?.first?["simulator"] as? String, "iPhone 17 Pro")
+        XCTAssertEqual(devices?.first?["model"] as? String, "iPhone 17 Pro")
         XCTAssertEqual(run["heal"] as? Bool, true)
         XCTAssertEqual(run["textVisualCheck"] as? Bool, true)
         XCTAssertNil(run["reportDir"], "既定(reports)は書かない = フォームで空欄+透かしになる")
@@ -72,11 +72,11 @@ final class ProfileWriterTests: XCTestCase {
     /// 書き出しのキー順: platform → machine → name → enabled → 残りはアルファベット順
     func testRunProfileJSONPutsDeviceIdentityFirst() throws {
         let run = ProfileWriter.runProfile(appRef: "myapp", devices: [
-            ["udid": "U", "name": "s", "enabled": false, "machine": "local", "platform": "ios", "os": "27.0"],
+            ["udid": "U", "name": "s", "enabled": false, "machine": "local", "platform": "ios", "osVersion": "iOS 27.0"],
         ])
         let text = String(decoding: try ProfileWriter.json(run), as: UTF8.self)
         let keys = ["\"app\"", "\"devices\"", "\"platform\"", "\"machine\"", "\"name\"",
-                    "\"enabled\"", "\"os\"", "\"udid\""]
+                    "\"enabled\"", "\"osVersion\"", "\"udid\""]
         let positions = keys.compactMap { text.range(of: $0)?.lowerBound }
         XCTAssertEqual(positions.count, keys.count, text)
         XCTAssertEqual(positions, positions.sorted(), text)
@@ -110,8 +110,7 @@ final class ProfileWriterTests: XCTestCase {
         XCTAssertTrue(DeviceSpec(name: "d", machine: "local", port: 8100, engine: "inapp")
             .lacksConcreteTarget, "port/engine は実体ではない")
         let specs: [String: DeviceSpec] = [
-            "simulator": DeviceSpec(name: "d", simulator: "iPhone 17 Pro"),
-            "os": DeviceSpec(name: "d", os: "27.0"),
+            "osVersion": DeviceSpec(name: "d", osVersion: "iOS 27.0"),
             "udid": DeviceSpec(name: "d", udid: "XXXX"),
             "avd": DeviceSpec(name: "d", avd: "Pixel_9"),
             "serial": DeviceSpec(name: "d", serial: "emulator-5554"),
@@ -123,7 +122,7 @@ final class ProfileWriterTests: XCTestCase {
     }
 
     func testConcreteDeviceIsADeviceBody() {
-        for body in [["simulator": "iPhone 17 Pro"], ["os": "27.0"], ["udid": "XXXX"],
+        for body in [["osVersion": "iOS 27.0"], ["udid": "XXXX"],
                      ["avd": "Pixel_9"], ["serial": "emulator-5554"]] {
             var device: [String: Any] = ["platform": "ios", "machine": "local", "name": "device1"]
             for (key, value) in body { device[key] = value }

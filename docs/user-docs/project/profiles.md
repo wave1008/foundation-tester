@@ -56,7 +56,7 @@ list and every run-time setting.
 ```json
 { "app": "myapp",
   "devices": [
-    { "platform": "ios", "machine": "local", "name": "simulator1", "simulator": "iPhone 17 Pro" },
+    { "platform": "ios", "machine": "local", "name": "iPhone 17 Pro", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" },
     { "platform": "android", "machine": "M1Max", "name": "emulator1", "avd": "Pixel 9(Android 16)" },
     { "platform": "android", "machine": "local", "name": "emulator2", "enabled": false, "avd": "Pixel_8_Android_14" }
   ],
@@ -66,6 +66,10 @@ list and every run-time setting.
 - `machine` is `"local"` for a device on this Mac, or the name of a machine registered with
   `fleetest remote machines add`, which dispatches that device's run over SSH instead of running
   it locally (see [remote_runners.md](../in_action/remote_runners.md)).
+- For an iOS simulator, `name` is the simulator's own name (Xcode's **Name**, i.e. the simctl
+  name) and `osVersion` is Xcode's **OS Version** (e.g. `"iOS 27.0"`) — together they are how fleetest finds
+  the simulator when `udid` is absent. `model` (Xcode's **Model**) is display-only. See
+  [run_profile.md](./run_profile.md) for the full key list.
 - A physical device sets `"kind": "physical"` and an identifier instead of a simulator/AVD
   reference — iOS uses `udid` (from `xcrun devicectl list devices`, the `hardwareProperties.udid`
   form), Android uses `serial` (the left column of `adb devices`):

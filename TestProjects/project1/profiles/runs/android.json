@@ -4,10 +4,10 @@
     {
       "platform": "ios",
       "machine": "local",
-      "name": "メイン機",
+      "name": "iPhone 17 Pro(iOS 27.0)",
       "enabled": false,
-      "os": "27.0",
-      "simulator": "iPhone 17 Pro(iOS 27.0)",
+      "model": "iPhone 17 Pro",
+      "osVersion": "iOS 27.0",
       "udid": "A012ADD8-EEA0-4F0C-B8BC-65E748F5906F"
     },
     {

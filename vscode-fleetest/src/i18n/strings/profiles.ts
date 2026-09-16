@@ -235,10 +235,6 @@ export const profilesStrings = {
     ja: "指定のデバイスがどの実行プロファイルにも見つかりませんでした。",
     en: "The specified device was not found in any run profile.",
   },
-  "profiles.log.runProfileDeviceUpdated": {
-    ja: "[fleetest] デバイス「{device}」を更新しました(実行プロファイル: {profiles})。",
-    en: "[fleetest] Updated device \"{device}\" (run profile(s): {profiles}).",
-  },
   "profiles.log.runProfileDevicesAdded": {
     ja: "[fleetest] 実行プロファイル「{name}」にデバイスを追加しました: {added}",
     en: "[fleetest] Added device(s) to run profile \"{name}\": {added}",

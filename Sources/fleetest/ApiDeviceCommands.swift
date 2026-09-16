@@ -123,7 +123,7 @@ enum ApiDeviceUpDirectSpec {
             throw IOSPhysicalDeviceCatalogError.notConnected(udid: device.udid, name: device.name,
                                                              transport: device.transport)
         }
-        return DeviceSpec(name: device.name, kind: .physical, os: device.os, udid: device.udid,
+        return DeviceSpec(name: device.name, kind: .physical, osVersion: "iOS \(ApiInstalledDevicesCommand.normalizeOS(device.os))", udid: device.udid,
                           engine: "xcuitest")
     }
 }

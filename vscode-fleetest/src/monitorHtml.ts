@@ -345,16 +345,20 @@ function renderRunProfileSection(): string {
                   <!-- 実機バッジはデバイス名の左(ピッカー・一覧・タイルと同じ並び) -->
                   <span id="run-profile-device-header-kind" class="editor-kind-badge" style="display: none;">${t("monitor.device.physicalBadge")}</span>
                   <span id="run-profile-device-header-name" class="tile-name"></span>
-                  <span id="run-profile-device-header-platform" class="editor-platform-label"></span>
                 </div>
-                <!-- 機種/OS/UDID/AVDは実体を指す属性でAPIでは変更不可(除去→作り直しが必要)なため
-                     inputではなくlabel表示(inputイベントを発火しないのでdirty判定にも入らない)。
-                     名前/ポートは編集可(編集は同じキーを持つ全実行プロファイルへ伝播する)。 -->
+                <!-- 名前・機種/OS/UDID/AVD はすべて実体を指す属性で API では変更不可
+                     (除去→作り直しが必要)なため、全種別で表示専用の label にする(runProfileDevicesTab.js
+                     の renderEditor が値を差し込む)。名前の右には行一覧と同じ順で machine バッジ・
+                     実機バッジを並べる(machineColors.js の paintMachineBadge を共用)。 -->
                 <div class="modal-row">
-                  <label for="run-profile-device-name-input">${t("panels.runProfile.deviceNameLabel")}</label>
-                  <input type="text" id="run-profile-device-name-input">
+                  <label>${t("panels.runProfile.deviceNameLabel")}</label>
+                  <span id="run-profile-device-name-static" class="editor-readonly-value"></span>
+                  <span id="run-profile-device-name-machine-badge" class="badge badge-remote" style="display: none;"></span>
+                  <span id="run-profile-device-name-kind-badge" class="badge badge-kind" style="display: none;">${t("monitor.device.physicalBadge")}</span>
                 </div>
-                <!-- 実機の機種/OS。登録時に控えた表示専用の値(model/os)で、実体の同定には使わない。
+                <!-- 機種/OS。iOS シミュレータ・実機・Android 実機で共用する表示専用の値(model/os)で、
+                     実体の同定には使わない(iOS シミュレータの model だけは実体を指す属性そのもの
+                     ——tooltip は renderEditor が由来ごとに出し分ける)。
                      platform セクションの外に置き iOS/Android 共通で使う -->
                 <div id="run-profile-device-physical-fields" style="display: none;">
                   <div class="modal-row" id="run-profile-device-model-row">
@@ -362,26 +366,18 @@ function renderRunProfileSection(): string {
                     <span id="run-profile-device-model" class="editor-readonly-value" title="${t("panels.runProfile.devicePhysicalInfoReadonlyTitle")}"></span>
                   </div>
                   <div class="modal-row" id="run-profile-device-physical-os-row">
-                    <label>OS</label>
+                    <label>${t("panels.runProfile.deviceOsVersionLabel")}</label>
                     <span id="run-profile-device-physical-os" class="editor-readonly-value" title="${t("panels.runProfile.devicePhysicalInfoReadonlyTitle")}"></span>
                   </div>
                 </div>
                 <div id="run-profile-device-ios-fields">
-                  <div class="modal-row" id="run-profile-device-simulator-row">
-                    <label>${t("panels.runProfile.deviceModelLabel")}</label>
-                    <span id="run-profile-device-simulator" class="editor-readonly-value" title="${t("panels.runProfile.deviceModelReadonlyTitle")}"></span>
-                  </div>
                   <div class="modal-row" id="run-profile-device-os-row">
-                    <label>OS</label>
+                    <label>${t("panels.runProfile.deviceOsVersionLabel")}</label>
                     <span id="run-profile-device-os" class="editor-readonly-value" title="${t("panels.runProfile.deviceOsReadonlyTitle")}"></span>
                   </div>
                   <div class="modal-row">
                     <label>UDID</label>
                     <span id="run-profile-device-udid" class="editor-readonly-value" title="${t("panels.runProfile.deviceUdidReadonlyTitle")}"></span>
-                  </div>
-                  <div class="modal-row">
-                    <label for="run-profile-device-port">${t("panels.common.port")}</label>
-                    <input type="text" id="run-profile-device-port">
                   </div>
                 </div>
                 <div id="run-profile-device-android-fields">
@@ -391,11 +387,10 @@ function renderRunProfileSection(): string {
                   </div>
                   <!-- 実機のみ。AVD と同じく実体を指す属性なので readonly 表示 -->
                   <div class="modal-row" id="run-profile-device-serial-row" style="display: none;">
-                    <label>serial</label>
+                    <label>Serial</label>
                     <span id="run-profile-device-serial" class="editor-readonly-value" title="${t("panels.runProfile.deviceSerialReadonlyTitle")}"></span>
                   </div>
                 </div>
-                <div id="run-profile-device-error" class="modal-error"></div>
               </div>
             </div>
           </div>

@@ -67,22 +67,6 @@ export const webviewMonitorBStrings = {
     ja: "{count}台選択中",
     en: "{count} selected",
   },
-  "wvMonitor2.runProfileDevice.validation.nameRequired": {
-    ja: "デバイス名を入力してください。",
-    en: "Enter a device name.",
-  },
-  "wvMonitor2.runProfileDevice.validation.nameExists": {
-    ja: "「{name}」は既に存在します。",
-    en: "\"{name}\" already exists.",
-  },
-  "wvMonitor2.runProfileDevice.validation.portInvalid": {
-    ja: "port は 0〜65535 の整数で入力してください。",
-    en: "Enter port as an integer between 0 and 65535.",
-  },
-  "wvMonitor2.runProfileDevice.updateFailed": {
-    ja: "デバイスの更新に失敗しました。",
-    en: "Failed to update the device.",
-  },
   "wvMonitor2.runProfileDevice.removeSelectedCount": {
     ja: "選択した{count}台を除去",
     en: "Remove {count} selected",
@@ -91,6 +75,14 @@ export const webviewMonitorBStrings = {
   "wvMonitor2.runProfileDevice.wipeSelectedCount": {
     ja: "選択した{count}台を Wipe Data",
     en: "Wipe Data on {count} selected",
+  },
+  "wvMonitor2.runProfileDevice.simulatorNameReadonlyTitle": {
+    ja: "シミュレータの名前は変更できません(Xcode で改名してから登録し直してください)",
+    en: "Cannot rename a simulator here (rename it in Xcode, then remove and re-register it)",
+  },
+  "wvMonitor2.runProfileDevice.modelReadonlyTitle": {
+    ja: "機種は変更できません(変更するにはデバイスを除去して作り直してください)",
+    en: "Model cannot be changed (remove and recreate the device to change it)",
   },
 
   // projectsTab.js

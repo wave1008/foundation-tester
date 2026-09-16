@@ -218,7 +218,7 @@ automatically on every run. You never need to edit files on the runner.
    ```jsonc
    { "devices": [
        { "platform": "ios", "machine": "M1Max", "name": "iPhone 17 Pro-01",
-         "simulator": "iPhone 17 Pro", "udid": "<UDID>" } ] }
+         "osVersion": "iOS 27.0", "model": "iPhone 17 Pro", "udid": "<UDID>" } ] }
    ```
 
 ### Things to keep in mind

@@ -10,7 +10,7 @@ final class RunProfileDeviceEditorTests: XCTestCase {
     func testAddingDeviceAppendsToTheEnd() throws {
         let object: [String: Any] = [
             "app": "a",
-            "devices": [["platform": "ios", "machine": "local", "name": "シミュ1", "simulator": "iPhone 17 Pro"]],
+            "devices": [["platform": "ios", "machine": "local", "name": "シミュ1", "model": "iPhone 17 Pro"]],
         ]
         let updated = try RunProfileDeviceEditor.addingDevice(
             toRunProfileObject: object,

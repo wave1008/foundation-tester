@@ -17,7 +17,7 @@ import XCTest
 final class ResolvedProfileDeviceScopeTests: XCTestCase {
 
     private func device(_ name: String, host: String?, platform: String = "ios") -> ResolvedDevice {
-        var spec = DeviceSpec(name: name, os: "27.0")
+        var spec = DeviceSpec(name: name, osVersion: "27.0")
         spec.machine = host
         return ResolvedDevice(platform: platform, spec: spec)
     }

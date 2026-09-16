@@ -38,7 +38,7 @@
           },
           "name": {
             "type": "string",
-            "description": "デバイス識別名。一意なのは (platform, machine, name)。",
+            "description": "デバイス識別名。一意なのは (platform, machine, name)。iOS シミュレータでは Xcode 上のシミュレータ名(simctl の name)そのもの。udid が無いときはこの名前でシミュレータを探す。",
             "minLength": 1
           },
           "enabled": {
@@ -51,17 +51,13 @@
             "enum": ["virtual", "physical"],
             "description": "デバイスの実体種別(省略時 virtual)。virtual = iOS シミュレータ / Android エミュレータ。physical = 実機(iOS は udid、Android は serial が必須。iOS 実機は engine=xcuitest 固定)。"
           },
-          "simulator": {
+          "osVersion": {
             "type": "string",
-            "description": "iOS: シミュレータのデバイス名(例 \"iPhone 17 Pro\")。実機では未使用。"
-          },
-          "os": {
-            "type": "string",
-            "description": "iOS: OS バージョン(例 \"27.0\"。省略時は名前一致の最新)。実機では未使用。"
+            "description": "OS Version as shown by Xcode / the device, with the platform prefix (e.g. \"iOS 27.0\", \"Android 13\"). iOS simulators use it (with name) to find the simulator when udid is absent; display-only otherwise."
           },
           "udid": {
             "type": "string",
-            "description": "iOS: UDID。kind=virtual ならシミュレータ UDID(simulator/os より優先)、kind=physical なら実機 UDID(xcrun devicectl list devices の Identifier。必須)。"
+            "description": "iOS: UDID。kind=virtual ならシミュレータ UDID(name/os より優先)、kind=physical なら実機 UDID(xcrun devicectl list devices の Identifier。必須)。"
           },
           "port": {
             "type": "integer",
@@ -84,7 +80,7 @@
           },
           "model": {
             "type": "string",
-            "description": "実機の機種名(iOS は marketingName、Android は ro.product.model)。表示専用で同定には使わない(登録時に控えるだけ)。"
+            "description": "デバイスの機種名。表示専用で同定には使わない(登録時に控えるだけ)。iOS シミュレータは Xcode の Model(デバイスタイプ名。例 \"iPhone 17 Pro\")、iOS 実機は marketingName、Android は ro.product.model。"
           }
         }
       }

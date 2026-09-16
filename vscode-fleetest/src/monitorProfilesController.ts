@@ -19,7 +19,6 @@ import {
   addDevicesToRunProfile,
   type AppProfileFormFields,
   buildRunProfileTemplate,
-  catalogHasDeviceNameClash,
   machineDeviceDetail,
   type MonitorFromWebviewMessage,
   parseAppProfileForForm,
@@ -27,14 +26,11 @@ import {
   removeDeviceFromRunProfile,
   RUNNING_DEVICES_PROFILE_VALUE,
   type RunProfileFormFields,
-  runProfileDeviceRefKey,
   updateAppProfileInObject,
-  updateDeviceInRunProfile,
   updateRunProfileInObject,
   validateNewAppProfileName,
   validateNewProjectName,
   validateNewRunProfileName,
-  validateRunProfileDeviceEditFields,
 } from "./monitorModel";
 import { type HookScaffoldResult, resolveWorkspaceDir, writeHookScriptTemplates } from "./runHookScaffold";
 import type { MonitorPanelDeps } from "./monitorPanel";
@@ -45,7 +41,6 @@ import {
   runProfileScopeKey,
 } from "./monitorScopeFiles";
 
-type RunProfileDeviceUpdateMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileDeviceUpdate" }>;
 type RunProfileDevicesSyncMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileDevicesSync" }>;
 type RunProfileSaveMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileSave" }>;
 type RunProfileHookScaffoldMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileHookScaffold" }>;
@@ -215,14 +210,13 @@ export class MonitorProfilesController {
         platform: device.platform,
         machine: device.machine,
         detail: machineDeviceDetail(device),
-        // 右ペインの編集フォーム用の生フィールド。undefined は postMessage の JSON化で
+        // 右ペインの詳細表示用の生フィールド。undefined は postMessage の JSON化で
         // 自然に省略される。
-        simulator: device.simulator,
-        os: device.os,
+        osVersion: device.osVersion,
         udid: device.udid,
         port: device.port,
         avd: device.avd,
-        // 実機の識別(バッジ表示)と編集フォームの serial 行に必要
+        // 実機の識別(バッジ表示)と詳細表示の serial 行に必要
         kind: device.kind,
         serial: device.serial,
         model: device.model,
@@ -1046,80 +1040,9 @@ export class MonitorProfilesController {
   }
 
   /**
-   * 実行プロファイル節の右ペイン編集フォームの自動保存: 同じ (platform, machine, originalName) を
-   * 持つ**全実行プロファイル**の devices[] を更新する。フォームがクライアント側検証済みでも
-   * fields はここで(1回だけ)再検証し、通れば全プロファイルへ同じ内容を書く。
-   * プロジェクト未解決時もフォームのエラー表示に載せたいため resolveProjectName を直接呼ぶ
-   * (resolveProjectOrWarn の vscode.window 警告は使わない)。
-   */
-  handleRunProfileDeviceUpdate(message: RunProfileDeviceUpdateMessage): void {
-    const sendResult = (ok: boolean, name: string, error: string | null) => {
-      this.deps.post({ type: "runProfileDeviceUpdateResult", ok, name, error });
-    };
-
-    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
-    if (resolution.kind !== "resolved") {
-      sendResult(false, message.originalName, t("profiles.error.projectUnresolved"));
-      return;
-    }
-    const project = resolution.project;
-    const key = { platform: message.platform, machine: message.machine, name: message.originalName };
-    const catalog = this.deviceCatalog(project);
-    const target = catalog.find((entry) => runProfileDeviceRefKey(entry) === runProfileDeviceRefKey(key));
-    if (!target) {
-      sendResult(false, message.originalName, t("monitor.device.notFound", { name: message.originalName }));
-      return;
-    }
-
-    const validationError = validateRunProfileDeviceEditFields(message.platform, target.kind, message.fields);
-    if (validationError) {
-      sendResult(false, message.originalName, validationError);
-      return;
-    }
-    const newName = message.fields.name.trim();
-    if (
-      newName !== message.originalName &&
-      catalogHasDeviceNameClash(catalog, key, newName)
-    ) {
-      sendResult(false, message.originalName, t("monitor.validation.nameAlreadyExists", { name: newName }));
-      return;
-    }
-
-    const updatedRuns: string[] = [];
-    for (const run of listRunProfileNames(this.deps.workspaceRoot, project)) {
-      const runPath = path.join(this.runsDir(project), `${run}.json`);
-      try {
-        const parsed: unknown = JSON.parse(fs.readFileSync(runPath, "utf8"));
-        const result = updateDeviceInRunProfile(parsed, key, message.fields);
-        if (!result || !result.matched) {
-          continue;
-        }
-        fs.writeFileSync(runPath, `${JSON.stringify(result.object, null, 2)}\n`, "utf8");
-        updatedRuns.push(run);
-      } catch (error) {
-        this.deps.outputChannel.appendLine(
-          t("profiles.log.runProfileLoadFailed", { name: run, error: String(error) }),
-        );
-      }
-    }
-    if (updatedRuns.length === 0) {
-      sendResult(false, message.originalName, t("monitor.device.notFound", { name: message.originalName }));
-      return;
-    }
-
-    this.deps.outputChannel.appendLine(
-      t("profiles.log.runProfileDeviceUpdated", { device: message.originalName, profiles: updatedRuns.join("、") }),
-    );
-    sendResult(true, newName, null);
-    // FileSystemWatcher(onDidChange)経由でも postProfileInfo() が呼ばれるが、反映を待たせないよう
-    // ここでも明示的に呼ぶ(冪等)。
-    this.postProfileInfo();
-  }
-
-  /**
    * 「+既存から選択」モーダルの OK: 新たにチェックしたデバイスを、選択中の実行プロファイルの
-   * devices[] へ追加する。handleRunProfileDeviceUpdate と同じ理由でモーダル確認なし・
-   * resolveProjectName 直接呼びとする。
+   * devices[] へ追加する。モーダル確認なし・resolveProjectName 直接呼びとする
+   * (プロジェクト未解決時もフォームのエラー表示に載せたいため)。
    */
   handleRunProfileDevicesSync(message: RunProfileDevicesSyncMessage): void {
     const sendResult = (ok: boolean, added: number, error: string | null) => {
@@ -1173,7 +1096,7 @@ export class MonitorProfilesController {
 
   // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム(runProfileLoad/runProfileSave) ----
   // クライアント検証済みでも updateRunProfileInObject 側の防御的検証(defaultTimeout の型)に
-  // 引っかかりうるため、結果は runProfileDeviceUpdate と同じくモーダル確認なしに即座に返す。
+  // 引っかかりうるため、結果はモーダル確認なしに即座に返す。
 
   /**
    * ロード要求への応答。対象プロジェクトが解決できない/読み込み失敗/JSON解析失敗/非オブジェクトの

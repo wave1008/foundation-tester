@@ -9,7 +9,7 @@ import { cachePhysicalDeviceInfo } from './physicalDeviceCache.js';
 import { clampMenuPosition } from './menu.js';
 import { formatBytesAuto } from '../../retentionModel';
 import { selectedRunProfile } from './runProfilesTab.js';
-import { btnDeviceAddExisting, catalogEntries, catalogNamesForMachine, refreshSelectedDeviceEditor } from './runProfileDevicesTab.js';
+import { btnDeviceAddExisting, catalogEntries, catalogNamesForMachine, prefixedOsVersion, refreshSelectedDeviceEditor } from './runProfileDevicesTab.js';
 import { currentDeviceSource, refreshDeviceAddBadge, resetDevicePickMachine } from './devicePickMachine.js';
 
 // ---- デバイス追加モーダル ---------------------------------------------------
@@ -1530,16 +1530,18 @@ devicePickOk.addEventListener('click', () => {
   const add = [];
   for (const row of devicePickIosRows) {
     if (row.checkbox.checked && !row.initialChecked) {
-      // 実機は simulator/os を持たない(実体を指すのは udid だけ)
+      // 実機は udid だけが実体を指す(model/osVersion は表示専用で控えるだけ)。installed-devices の
+      // os には接頭辞が無いので、devices[].osVersion の形式(例 "iOS 27.0")へ prefixedOsVersion で揃える。
       add.push(row.physical
         ? { platform: 'ios', kind: 'physical', name: row.device.name, udid: row.device.udid,
-            model: row.device.model, os: row.device.os }
+            model: row.device.model, osVersion: prefixedOsVersion('ios', row.device.os) }
         : {
             platform: 'ios',
             name: row.device.name,
-            simulator: row.device.name,
-            os: row.device.os,
+            osVersion: prefixedOsVersion('ios', row.device.os),
             udid: row.device.udid,
+            // model は null(取得できず)のことがあるので、その場合はキー自体を落とす
+            ...(row.device.model != null ? { model: row.device.model } : {}),
           });
     }
   }
@@ -1548,7 +1550,8 @@ devicePickOk.addEventListener('click', () => {
       add.push(row.physical
         ? { platform: 'android', kind: 'physical', name: row.physicalDevice.model,
             serial: row.physicalDevice.serial,
-            model: row.physicalDevice.model, os: row.physicalDevice.os }
+            model: row.physicalDevice.model,
+            ...(row.physicalDevice.os ? { osVersion: prefixedOsVersion('android', row.physicalDevice.os) } : {}) }
         : { platform: 'android', name: row.avd.displayName, avd: row.avd.id });
     }
   }

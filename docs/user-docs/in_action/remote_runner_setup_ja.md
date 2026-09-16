@@ -120,7 +120,7 @@ swift run fleetest remote setup <マシン名> --project project1
    ```jsonc
    { "devices": [
        { "platform": "ios", "machine": "M1Max", "name": "iPhone 17 Pro-01",
-         "simulator": "iPhone 17 Pro", "udid": "<UDID>" } ] }
+         "osVersion": "iOS 27.0", "model": "iPhone 17 Pro", "udid": "<UDID>" } ] }
    ```
 
 ### プロファイルを作るときの注意

@@ -1140,10 +1140,6 @@ html.select-all-guard * {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.editor-platform-label {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-}
 
 /* 実機バッジ(タイルのデバイス名の右・ピッカーの詳細行の左)。他バッジと同じ .badge を土台にする。
    配色は既存と衝突させない: 青=実行中 / 黄=キュー待ち / 赤=録画中 / 橙=CPU描画 が使用済みなので紫。
@@ -1247,7 +1243,7 @@ html.select-all-guard * {
 .run-profile-devices-row {
   align-items: flex-start;
 }
-/* チェックボックス一覧 + 右ペイン編集フォームの二枠。コンテンツに応じて伸びる(内部スクロールは
+/* チェックボックス一覧 + 右ペイン詳細表示の二枠。コンテンツに応じて伸びる(内部スクロールは
    持たない)。0件時に潰れないよう最小高さを確保。 */
 .run-profile-devices-pane {
   min-height: 180px;
@@ -1467,6 +1463,14 @@ input[type="search"]::placeholder {
 .modal-row > input {
   flex: 1 1 auto;
   min-width: 0;
+}
+/* 参照するアプリプロファイル: 行いっぱいに伸ばさず中身(プロファイル名)の幅に合わせる。
+   上限はプロファイルタブの狭い幅でもはみ出さない程度 */
+.modal-row > select#run-profile-app {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 12em;
+  max-width: 24em;
 }
 /* 上の .modal-row > input の flex:1 1 auto を打ち消し左寄せ(margin-right:auto で
    残り幅を右側の余白にする)。寸法・配色はグローバルの input[type="checkbox"] に任せる。 */

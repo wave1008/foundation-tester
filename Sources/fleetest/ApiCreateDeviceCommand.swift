@@ -219,7 +219,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         // 既定がリモートのプロファイルだと手元で作った実体が別の機械のものとして扱われる
         let deviceEntry: [String: Any] = [
             "platform": "ios", "machine": DeviceMachineGrouping.localDisplayName,
-            "name": name, "simulator": deviceTypeName, "os": runtimeVersion, "udid": udid,
+            "name": name, "model": deviceTypeName, "osVersion": "iOS \(runtimeVersion)", "udid": udid,
         ]
         let resultEntry = ApiCreateDeviceEntry(avd: nil, name: name, udid: udid)
         return (deviceEntry, resultEntry)

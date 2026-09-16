@@ -79,7 +79,7 @@ Each device in a run profile names its own machine in `machine`:
 // profiles/runs/ios-m1max.json
 { "app": "myapp",
   "devices": [
-    { "platform": "ios", "machine": "M1Max", "name": "simulator1", "simulator": "iPhone 17 Pro" }
+    { "platform": "ios", "machine": "M1Max", "name": "iPhone 17 Pro", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" }
   ] }
 ```
 

@@ -724,7 +724,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             let name = (nameCounts[sim.name] ?? 0) > 1
                 ? "\(sim.name) [\(sim.udid.prefix(8))]" : sim.name
             let target = MonitorTarget(
-                platform: "ios", spec: DeviceSpec(name: name, os: sim.os, udid: sim.udid),
+                platform: "ios", spec: DeviceSpec(name: name, osVersion: sim.os, udid: sim.udid),
                 registered: false)
             guard !usedIds.contains(target.id) else {
                 skipped.append("[monitor] Skipped an unregistered simulator due to an id collision: \(target.id)")
@@ -775,7 +775,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         for device in physicalIOS where !registeredIosUdids.contains(device.udid) {
             let target = MonitorTarget(
                 platform: "ios",
-                spec: DeviceSpec(name: device.name, kind: .physical, os: device.os, udid: device.udid),
+                spec: DeviceSpec(name: device.name, kind: .physical, osVersion: "iOS \(ApiInstalledDevicesCommand.normalizeOS(device.os))", udid: device.udid),
                 registered: false)
             guard !usedIds.contains(target.id) else {
                 skipped.append("[monitor] Skipped an unregistered iPhone due to an id collision: \(target.id)")

@@ -613,7 +613,6 @@ struct Bridge: AsyncParsableCommand {
             let spec = DeviceSpec(
                 name: device,
                 kind: physical ? .physical : nil,
-                simulator: isUDID ? nil : device,
                 udid: isUDID ? device : nil,
                 port: driverOptions.resolvedPort,
                 engine: "xcuitest")

@@ -52,7 +52,7 @@
 ```json
 { "app": "myapp",
   "devices": [
-    { "platform": "ios", "machine": "local", "name": "simulator1", "simulator": "iPhone 17 Pro" },
+    { "platform": "ios", "machine": "local", "name": "iPhone 17 Pro", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" },
     { "platform": "android", "machine": "M1Max", "name": "emulator1", "avd": "Pixel 9(Android 16)" },
     { "platform": "android", "machine": "local", "name": "emulator2", "enabled": false, "avd": "Pixel_8_Android_14" }
   ],
@@ -61,6 +61,10 @@
 
 - `machine` は、手元の Mac なら `"local"`、`fleetest remote machines add` で登録したマシン名なら
   そのデバイスの実行を SSH 経由でそのマシンへディスパッチします([remote_runners_ja.md](../in_action/remote_runners_ja.md)参照)。
+- iOS シミュレータは `name` をシミュレータ自身の名前(Xcode の **Name** = simctl の名前)にし、
+  `osVersion` を Xcode の **OS Version**(例 `"iOS 27.0"`)にします —— `udid` が無いときはこの2つで
+  シミュレータを探します。`model`(Xcode の **Model**)は表示専用です。全キーの一覧は
+  [run_profile_ja.md](./run_profile_ja.md) を参照してください。
 - 実機は `"kind": "physical"` と、シミュレータ/AVD 参照の代わりに識別子を書きます。
   iOS は `udid`(`xcrun devicectl list devices` の `hardwareProperties.udid` の形式)、
   Android は `serial`(`adb devices` の左列)です:

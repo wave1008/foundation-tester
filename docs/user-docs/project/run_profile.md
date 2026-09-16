@@ -8,7 +8,7 @@ for how `--profile` selects one.
 ```json
 { "app": "myapp",
   "devices": [
-    { "platform": "ios", "machine": "local", "name": "simulator1", "simulator": "iPhone 17 Pro" },
+    { "platform": "ios", "machine": "local", "name": "iPhone 17 Pro", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" },
     { "platform": "android", "machine": "local", "name": "emulator1", "avd": "Pixel 9(Android 16)" }
   ],
   "heal": true, "reportDir": "reports", "defaultTimeout": 5,
@@ -20,7 +20,7 @@ for how `--profile` selects one.
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `app` | string | — | Name of the `apps/<name>.json` profile to use |
-| `devices` | array | — | Device entities to run (iOS/Android can mix in the same list). Each entry: `platform` (`"ios"`/`"android"`, required), `machine` (the machine it lives on — `"local"` for this Mac, or a name registered with `fleetest remote machines add`), `name` (required; unique together with `machine`), `enabled` (`false` keeps it listed but does not run it; default = run it), plus the device's own body keys (`simulator`/`os`/`udid`/`avd`/`serial`/`kind`/`port`/`engine`/`model` — see [profiles.md](./profiles.md)) |
+| `devices` | array | — | Device entities to run (iOS/Android can mix in the same list). Each entry: `platform` (`"ios"`/`"android"`, required), `machine` (the machine it lives on — `"local"` for this Mac, or a name registered with `fleetest remote machines add`), `name` (required; unique together with `machine`; for an iOS simulator this is the simulator's own name), `enabled` (`false` keeps it listed but does not run it; default = run it), plus the device's own body keys (`osVersion`/`udid`/`avd`/`serial`/`kind`/`port`/`engine`/`model` — see [profiles.md](./profiles.md)) |
 | `heal` | bool | `true` for `--profile` runs, `false` for a plain `fleetest run` | Allow selector self-healing (fingerprint matching; see [self_healing.md](../running/self_healing.md)). Independent of the FM- and OCR-based toggles below — self-healing does not use FM |
 | `textVisualCheck` | bool | `true` | Text visual verification (occlusion guard) on `exist`/`textIs` etc. — catches a "false green" that matched in the tree but is not actually visible. FM (Foundation Models, experimental — see [environments.md](../overview/environments.md)) is called only when this or `screenLooksLike` is `true` |
 | `screenLooksLike` | bool | `true` | Enable `screenLooksLike` (FM visual verification). When `false`, those steps are skipped rather than failing |

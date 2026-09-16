@@ -117,7 +117,7 @@ export function validateNewProjectName(name: string, existing: readonly string[]
 
 // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム -----------------------------
 // handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム20フィールド変換の純粋関数
-// (未知キー保持のイミュータブルな方針。updateDeviceInRunProfile と同じ)。
+// (未知キー保持のイミュータブルな方針。addDevicesToRunProfile と同じ)。
 
 /** 実行プロファイル設定フォームの21フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
  * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、
@@ -139,8 +139,8 @@ export interface RunProfileDeviceEntry {
   /** 省略/true = 実行する。false = 一覧には残すが実行しない。 */
   readonly enabled: boolean;
   readonly kind?: "virtual" | "physical";
-  readonly simulator?: string;
-  readonly os?: string;
+  /** Xcode / 端末が示す OS Version(プラットフォーム接頭辞つき。例 "iOS 27.0" / "Android 13")。 */
+  readonly osVersion?: string;
   readonly udid?: string;
   readonly port?: number;
   readonly avd?: string;
@@ -247,8 +247,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
             ...(machine !== undefined ? { machine } : {}),
             ...(typeof device.kind === "string" && (device.kind === "virtual" || device.kind === "physical")
               ? { kind: device.kind } : {}),
-            ...(typeof device.simulator === "string" ? { simulator: device.simulator } : {}),
-            ...(typeof device.os === "string" ? { os: device.os } : {}),
+            ...(typeof device.osVersion === "string" ? { osVersion: device.osVersion } : {}),
             ...(typeof device.udid === "string" ? { udid: device.udid } : {}),
             ...(typeof device.port === "number" ? { port: device.port } : {}),
             ...(typeof device.avd === "string" ? { avd: device.avd } : {}),
@@ -419,7 +418,7 @@ export function updateRunProfileInObject(
   // 既存エントリの未知キーは保つ。**引き当ては (platform, machine, name)** —— 名前だけだと、
   // 同名が別の機械/別 OS に並ぶ台で別のエントリの未知キーを持ってきてしまう。
   // チェックボックスの操作は enabled の有無・machine の正規化だけに触れ、それ以外の欄
-  // (右ペインの編集フォーム由来のキー)は素通しする(runProfileDeviceRefKey/orderedDeviceEntry を
+  // (名前・機種/OS/UDID/AVD 等)は素通しする(runProfileDeviceRefKey/orderedDeviceEntry を
   // addDeviceRefsToRunProfile と共有)。
   const existingDevices = Array.isArray(source.devices) ? source.devices : [];
   const existingByRef = new Map<string, Record<string, unknown>>();
@@ -479,8 +478,7 @@ export function orderedDeviceEntry(entry: {
   readonly name: string;
   readonly enabled: boolean;
   readonly kind?: "virtual" | "physical";
-  readonly simulator?: string;
-  readonly os?: string;
+  readonly osVersion?: string;
   readonly udid?: string;
   readonly port?: number;
   readonly avd?: string;
@@ -499,10 +497,9 @@ export function orderedDeviceEntry(entry: {
     ["avd", entry.avd],
     ["kind", entry.kind],
     ["model", entry.model],
-    ["os", entry.os],
+    ["osVersion", entry.osVersion],
     ["port", entry.port],
     ["serial", entry.serial],
-    ["simulator", entry.simulator],
     ["udid", entry.udid],
   ];
   for (const [key, value] of rest) {
@@ -738,26 +735,28 @@ export interface MachineDeviceEntry {
   /** 実体種別。省略=virtual(シミュレータ/エミュレータ)。physical は実機で、
    * 識別子は iOS=udid / Android=serial(Sources/FTCore/RunProfile.swift の DeviceKind と同期)。 */
   readonly kind?: "virtual" | "physical";
-  readonly simulator?: string;
-  readonly os?: string;
+  /** Xcode / 端末が示す OS Version(プラットフォーム接頭辞つき。例 "iOS 27.0" / "Android 13")。 */
+  readonly osVersion?: string;
   readonly udid?: string;
   readonly port?: number;
   readonly avd?: string;
   /** Android 実機の adb シリアル(kind=physical のとき必須)。 */
   readonly serial?: string;
-  /** 実機の機種名(表示専用。同定には使わない)。 */
+  /** デバイスの機種名(表示専用。同定には使わない)。iOS シミュレータは Xcode の Model、
+   * iOS 実機は marketingName、Android は ro.product.model。 */
   readonly model?: string;
 }
 
 /**
  * runProfileDevicesSync(webview→host)メッセージの add[] 1件分。「+既存から選択」モーダルで
  * 新たにチェックした(カタログに未登録だった)iOS シミュレータ/Android AVD 1件を表す
- * (MachineDeviceEntry と違い、追加前なので port は持たない — ポートは追加後に右ペインの
- * 編集フォームで設定する)。
- * - iOS: { platform:"ios", name:<シミュレータ名>, simulator:<シミュレータ名>, os:<os>, udid:<udid> }
+ * (MachineDeviceEntry と違い、port は持たない — port は画面から設定できず、
+ * JSON を直接編集したときだけ乗る値)。
+ * - iOS: { platform:"ios", name:<シミュレータ名>, osVersion:<osVersion>, udid:<udid>, model?:<機種> }
  * - Android: { platform:"android", name:<displayName>, avd:<id> }
- * 実機は kind:"physical" 付きで、実体を指すのは iOS=udid / Android=serial のみ
- * (simulator/os/avd は持たない)。
+ * 実機は kind:"physical" 付きで、実体を指すのは iOS=udid / Android=serial のみ(avd は持たない)。
+ * osVersion は installed-devices の素の os(接頭辞なし)にプラットフォーム接頭辞を足した値
+ * (webview の prefixedOsVersion。「+既存から選択」の OK 時にだけ組み立てる)。
  */
 export interface RunProfileDeviceAddEntry {
   readonly platform: MonitorPlatform;
@@ -765,12 +764,11 @@ export interface RunProfileDeviceAddEntry {
   /** 追加先の機械(devicePickHost の選択。省略=手元)。JSON にも "machine" で書く。 */
   readonly machine?: string;
   readonly kind?: "virtual" | "physical";
-  readonly simulator?: string;
-  readonly os?: string;
+  readonly osVersion?: string;
   readonly udid?: string;
   readonly avd?: string;
   readonly serial?: string;
-  /** 実機の機種名(表示専用)。 */
+  /** デバイスの機種名(表示専用)。 */
   readonly model?: string;
 }
 
@@ -961,6 +959,9 @@ export interface InstalledIosDevice {
   readonly name: string;
   readonly os: string;
   readonly udid: string;
+  /** Xcode の Model(デバイスタイプ名。例 "iPhone 17 Pro")。旧 CLI は返さないため省略可、
+   * 取得できなければ null。 */
+  readonly model?: string | null;
 }
 
 /** 接続中の iOS 実機(installed-devices の ios.physicalDevices)。 */
@@ -1006,7 +1007,9 @@ function isInstalledIosDevice(value: unknown): value is InstalledIosDevice {
     isRecord(value) &&
     typeof value.name === "string" &&
     typeof value.os === "string" &&
-    typeof value.udid === "string"
+    typeof value.udid === "string" &&
+    // 旧 CLI は返さないため省略可。取得できなければ null(取得できずと空文字を混同しない)
+    (value.model === undefined || value.model === null || typeof value.model === "string")
   );
 }
 
@@ -1207,24 +1210,27 @@ export function isDeleteDeviceEvent(value: unknown): value is DeleteDeviceEvent 
 }
 
 /**
- * プロジェクトのデバイスカタログの一覧2行目の詳細文字列。iOS: simulator優先(os があれば併記)、
- * 無ければ udid 先頭8文字、それも無ければ "iOS"。Android: avd があれば "AVD: "+avd、
- * 実機(avd を持たない)は serial、どちらも無ければ "Android"。
+ * プロジェクトのデバイスカタログの一覧2行目の詳細文字列。**osVersion には既にプラットフォーム
+ * 接頭辞が付いている**(例 "iOS 27.0" / "Android 13")ので、ここでは付け足さない。
+ * iOS(シミュレータ/実機とも): osVersion があれば "<model> / <osVersion>"(model 欠落は
+ * osVersion のみ)、osVersion も無ければ "iOS"(**udid は出さない**)。
+ * Android: avd があれば "AVD: "+avd(エミュレータ)、実機は model があれば "<model> / <osVersion>"
+ * (osVersion 欠落は model のみ)、model も無ければ serial、どちらも無ければ "Android"。
  */
 export function machineDeviceDetail(entry: MachineDeviceEntry): string {
   if (entry.platform === "ios") {
-    if (entry.simulator) {
-      return entry.os ? `${entry.simulator} / iOS ${entry.os}` : entry.simulator;
+    if (entry.osVersion) {
+      return entry.model ? `${entry.model} / ${entry.osVersion}` : entry.osVersion;
     }
-    if (entry.udid) {
-      return entry.udid.slice(0, 8);
-    }
-    return "iOS";
+    return entry.model ?? "iOS";
   }
   if (entry.avd) {
     return `AVD: ${entry.avd}`;
   }
-  // 実機は AVD を持たない。serial が唯一の同定手段なのでそれを出す
+  // 実機は AVD を持たない。model(表示専用)が控えてあればそれを、無ければ serial を出す
+  if (entry.model) {
+    return entry.osVersion ? `${entry.model} / ${entry.osVersion}` : entry.model;
+  }
   return entry.serial ?? "Android";
 }
 
@@ -1294,135 +1300,6 @@ export function removeDeviceFromRunProfile(
   return { object: { ...source, devices: filtered }, removed: devices.length - filtered.length };
 }
 
-// ---- プロファイルタブ右ペインの編集フォームの自動保存(runProfileDeviceUpdate) --------------------
-// handleRunProfileDeviceUpdate(monitorProfilesController.ts)が使う純粋関数。fields はここで
-// validateRunProfileDeviceEditFields により一度だけ検証し、通れば対象の実行プロファイルすべてへ
-// updateDeviceInRunProfile を順に適用する(ファイル I/O・全プロファイルの走査は呼び出し側)。
-
-/** 編集フォームから送られる、trim 済み文字列のみのフィールド一式(空文字は「未入力/対象外」)。 */
-export interface RunProfileDeviceEditFields {
-  readonly name: string;
-  readonly simulator: string;
-  readonly os: string;
-  readonly udid: string;
-  readonly port: string;
-  readonly avd: string;
-  /** Android 実機の adb シリアル(kind=physical のみ意味を持つ)。 */
-  readonly serial: string;
-}
-
-/**
- * 保存前のクライアント/ホスト共通検証(fields はどの実行プロファイルへ書いても同じ結果になるため
- * 1回だけ行う)。name 必須、port は 0〜65535 の整数文字列(空は「未設定」で許容)、実機は
- * udid(iOS)/serial(Android)が必須。
- */
-export function validateRunProfileDeviceEditFields(
-  platform: MonitorPlatform,
-  kind: "virtual" | "physical" | undefined,
-  fields: RunProfileDeviceEditFields,
-): string | null {
-  if (fields.name.trim().length === 0) {
-    return t("monitor.device.nameRequired");
-  }
-  if (platform === "ios") {
-    const portTrimmed = fields.port.trim();
-    if (portTrimmed.length > 0 && (!/^\d+$/.test(portTrimmed) || Number(portTrimmed) > 65535)) {
-      return t("monitor.device.portInvalid");
-    }
-    // 実機は udid が唯一の同定手段(simulator/os は使わない)。空のまま保存すると
-    // run で「kind=physical ですが udid がありません」と落ちるので手前で止める
-    if (kind === "physical" && fields.udid.trim().length === 0) {
-      return t("monitor.device.physicalUdidRequired");
-    }
-  } else if (kind === "physical" && fields.serial.trim().length === 0) {
-    return t("monitor.device.physicalSerialRequired");
-  }
-  return null;
-}
-
-/**
- * runs/<name>.json の devices[] 内、(platform, machine, name) が key と一致する最初のエントリを
- * fields で更新した新オブジェクトを返す(未知キー保持)。呼び出し前に
- * validateRunProfileDeviceEditFields を通した fields を渡すこと(ここでは再検証しない)。
- * profileObject 非オブジェクトなら null。該当エントリが無ければ matched:false でそのまま返す
- * (対象の実行プロファイル全部に同じ台が居るとは限らない)。反対プラットフォームのフィールドには
- * 触れない(iOS の port と Android の avd/serial は独立に持つ)。
- */
-export function updateDeviceInRunProfile(
-  profileObject: unknown,
-  key: { readonly platform: MonitorPlatform; readonly machine?: string; readonly name: string },
-  fields: RunProfileDeviceEditFields,
-): { readonly object: Record<string, unknown>; readonly matched: boolean } | null {
-  if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
-    return null;
-  }
-  const source = profileObject as Record<string, unknown>;
-  const devices = source.devices;
-  if (!Array.isArray(devices)) {
-    return { object: { ...source }, matched: false };
-  }
-  const targetKey = runProfileDeviceRefKey(key);
-  const index = devices.findIndex((device) => {
-    const ref = readDeviceRef(device);
-    return ref !== undefined && runProfileDeviceRefKey(ref) === targetKey;
-  });
-  if (index === -1) {
-    return { object: { ...source }, matched: false };
-  }
-  const target = devices[index] as Record<string, unknown>;
-  const newName = fields.name.trim();
-  const newEntry: Record<string, unknown> = { ...target, name: newName };
-  if (key.platform === "ios") {
-    // port は iOS 分岐内でのみ設定/削除する(反対プラットフォームには触れない方針)。Android は
-    // port を持たず常に空文字を送るため、分岐の外で処理すると avd 編集で port キーが黙って消える。
-    const portTrimmed = fields.port.trim();
-    if (portTrimmed.length === 0) {
-      delete newEntry.port;
-    } else {
-      newEntry.port = Number(portTrimmed);
-    }
-    for (const k of ["simulator", "os", "udid"] as const) {
-      const value = fields[k].trim();
-      if (value.length === 0) {
-        delete newEntry[k];
-      } else {
-        newEntry[k] = value;
-      }
-    }
-  } else {
-    for (const k of ["avd", "serial"] as const) {
-      const value = (fields[k] ?? "").trim();
-      if (value.length === 0) {
-        delete newEntry[k];
-      } else {
-        newEntry[k] = value;
-      }
-    }
-  }
-  const newDevices = devices.slice();
-  newDevices[index] = newEntry;
-  return { object: { ...source, devices: newDevices }, matched: true };
-}
-
-/**
- * プロジェクトのデバイスカタログに newName が(key 自身を除いて)既に存在するか。**重複判定は
- * 同じ machine の中だけで見る**(一意なのは (machine, name)。ios/android 横断 —— 別プラットフォーム
- * でも同じ機械なら重複とみなす)。
- */
-export function catalogHasDeviceNameClash(
-  catalog: readonly MachineDeviceEntry[],
-  self: { readonly platform: MonitorPlatform; readonly machine?: string; readonly name: string },
-  newName: string,
-): boolean {
-  const selfKey = runProfileDeviceRefKey(self);
-  return catalog.some(
-    (entry) =>
-      runProfileDeviceRefKey(entry) !== selfKey &&
-      (entry.machine ?? undefined) === (self.machine ?? undefined) &&
-      entry.name === newName,
-  );
-}
-
 // ---- 「+既存から選択」モーダル(#device-pick-overlay)の OK(runProfileDevicesSync) ---------------
 // handleRunProfileDevicesSync(monitorProfilesController.ts)が使う純粋関数(ファイル I/O は呼び出し側)。
 // 追加先は「現在選択中の実行プロファイル」1つだけ(除去はプロファイルタブのチェックボックス/
@@ -1438,7 +1315,7 @@ export type AddDevicesToRunProfileResult =
  * 名前衝突は catalog(プロジェクトのデバイスカタログ)+ このプロファイルの既存分 + 同一バッチ内で
  * 判定し、"名前 (2)"、"名前 (3)" ... と自動採番で解決する(チェック時点では衝突が無くても
  * 追加までの間にファイルが変わりうるため、エラーにせず救済する)。**判定は同じ machine の中だけ**
- * (catalogHasDeviceNameClash と同じ規則)。added は entries と同じ順序で最終的に使われた名前を返す。
+ * (一意なのは (machine, name))。added は entries と同じ順序で最終的に使われた名前を返す。
  */
 export function addDevicesToRunProfile(
   profileObject: unknown,

@@ -22,7 +22,7 @@ public enum ProfileWriter {
     /// 一度も発火しないまま実体の無い simulator1 / emulator1 が受け手のプロファイルへ
     /// 書かれた(しかも既に実体付きで登録されていた同名デバイスを実体なしで上書きした)。
     /// engine / port のような**実体を指さないキー**が増えても false のままであること
-    public static let deviceBodyKeys: Set<String> = ["simulator", "os", "udid", "avd", "serial"]
+    public static let deviceBodyKeys: Set<String> = ["osVersion", "udid", "avd", "serial"]
 
     /// デバイスの実体(機種/OS/UDID/AVD/シリアル)が1つでも入っているか
     public static func hasDeviceBody(_ device: [String: Any]) -> Bool {

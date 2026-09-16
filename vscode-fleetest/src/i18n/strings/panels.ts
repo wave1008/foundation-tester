@@ -194,8 +194,10 @@ export const panelsStrings = {
     ja: "デバイスを選択すると内容を表示します",
     en: "Select a device to view details",
   },
-  "panels.runProfile.deviceNameLabel": { ja: "名前", en: "Name" },
-  "panels.runProfile.deviceModelLabel": { ja: "機種", en: "Model" },
+  // ja も英語表記(Xcode の作成ダイアログの項目名に合わせる)
+  "panels.runProfile.deviceNameLabel": { ja: "Name", en: "Name" },
+  "panels.runProfile.deviceModelLabel": { ja: "Model", en: "Model" },
+  "panels.runProfile.deviceOsVersionLabel": { ja: "OS Version", en: "OS Version" },
   "panels.runProfile.deviceModelReadonlyTitle": {
     ja: "機種は変更できません(変更するにはデバイスを除去して作り直してください)",
     en: "Model cannot be changed (remove and recreate the device to change it)",

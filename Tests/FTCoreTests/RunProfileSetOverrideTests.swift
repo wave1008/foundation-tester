@@ -525,7 +525,7 @@ final class ProfileResolverOverridesIntegrationTests: XCTestCase {
         { "ios": { "app": "com.example.sampleapp" } }
         """.data(using: .utf8)!.write(to: project.appsDir.appendingPathComponent("sampleapp.json"))
         try """
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro" } ], "heal": true }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0" } ], "heal": true }
         """.data(using: .utf8)!.write(to: project.runsDir.appendingPathComponent("r.json"))
     }
 

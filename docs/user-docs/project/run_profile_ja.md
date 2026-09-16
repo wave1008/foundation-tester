@@ -8,7 +8,7 @@
 ```json
 { "app": "myapp",
   "devices": [
-    { "platform": "ios", "machine": "local", "name": "simulator1", "simulator": "iPhone 17 Pro" },
+    { "platform": "ios", "machine": "local", "name": "iPhone 17 Pro", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" },
     { "platform": "android", "machine": "local", "name": "emulator1", "avd": "Pixel 9(Android 16)" }
   ],
   "heal": true, "reportDir": "reports", "defaultTimeout": 5,
@@ -20,7 +20,7 @@
 | キー | 型 | 既定値 | 意味 |
 |---|---|---|---|
 | `app` | string | — | 使用する `apps/<name>.json` プロファイル名 |
-| `devices` | array | — | 実行するデバイスの実体(同じ配列に iOS/Android を混在可)。各要素: `platform`(`"ios"`/`"android"`、必須)、`machine`(そのデバイスが居るマシン。手元は `"local"`、`fleetest remote machines add` で登録した名前も書ける)、`name`(必須。`machine` と組み合わせて一意)、`enabled`(`false` なら一覧に残すが走らせない。省略 = 走らせる)、そのデバイス自身の実体キー(`simulator`/`os`/`udid`/`avd`/`serial`/`kind`/`port`/`engine`/`model`。詳細は [profiles_ja.md](./profiles_ja.md)) |
+| `devices` | array | — | 実行するデバイスの実体(同じ配列に iOS/Android を混在可)。各要素: `platform`(`"ios"`/`"android"`、必須)、`machine`(そのデバイスが居るマシン。手元は `"local"`、`fleetest remote machines add` で登録した名前も書ける)、`name`(必須。`machine` と組み合わせて一意。iOS シミュレータではシミュレータ自身の名前)、`enabled`(`false` なら一覧に残すが走らせない。省略 = 走らせる)、そのデバイス自身の実体キー(`osVersion`/`udid`/`avd`/`serial`/`kind`/`port`/`engine`/`model`。詳細は [profiles_ja.md](./profiles_ja.md)) |
 | `heal` | bool | `--profile` 実行は `true`・プロファイル無しの素の `fleetest run` は `false` | セレクタの自己修復(指紋照合方式)を許可する([self_healing_ja.md](../running/self_healing_ja.md)参照)。下記の FM・OCR 系のトグルとは独立(自己修復は FM を使わない) |
 | `textVisualCheck` | bool | `true` | `exist`/`textIs` 等のテキストの視覚検証(occlusion guard)を有効にする。木では一致したが実際には見えていない「誤った緑」を検出する。FM(Foundation Models。experimental — [environments_ja.md](../overview/environments_ja.md))が呼ばれるのは、これか `screenLooksLike` が `true` のときだけ |
 | `screenLooksLike` | bool | `true` | `screenLooksLike`(FM 視覚検証)を有効にする。`false` のときは該当ステップが失敗ではなく skip になる |

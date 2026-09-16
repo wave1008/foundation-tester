@@ -247,7 +247,7 @@ TestProjects/<プロジェクト>/profiles/runs/<名前>.json   # devices の各
 // TestProjects/<プロジェクト>/profiles/runs/ios-m1max.json
 { "app": "myapp",
   "devices": [
-    { "platform": "ios", "machine": "M1Max", "name": "simulator1", "simulator": "iPhone 17 Pro" }
+    { "platform": "ios", "machine": "M1Max", "name": "iPhone 17 Pro", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" }
   ] }
 ```
 

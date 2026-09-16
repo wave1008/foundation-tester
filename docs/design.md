@@ -3626,8 +3626,8 @@ targeting = bundletool にしか決められない。feature module を足した
   = 黙って録らない形にしない。判定は `VideoRecordingCoordinator.unrecordableReason` の1箇所)、
   Reduce Motion 自動設定、autoInstall の差分スキップ(コンテナを読めないため毎回インストール)。
   Android 実機は録画(`adb screenrecord`)も従来どおり動く
-- `model` / `os` は実機では**表示専用**(登録時に控えるだけで同定には使わない。端末を挿し替えても
-  追随しない)。iOS シミュレータの `simulator`/`os` だけは実体解決に使う値なので意味が違う
+- `model` / `osVersion` は実機では**表示専用**(登録時に控えるだけで同定には使わない。端末を挿し替えても
+  追随しない)。iOS シミュレータの `name`/`osVersion` だけは実体解決に使う値なので意味が違う
 - 実機の要件と罠(iOS の署名・LAN/USB 経路、Android の画面ロック)は docs/verification.md
 
 **実行プロファイル** `runs/<name>.json` — アプリ+デバイス+実行時設定。
@@ -3642,7 +3642,8 @@ targeting = bundletool にしか決められない。feature module を足した
 - `name`(必須): デバイスの名前。**一意なのは (machine, name)** なので、別の機械に同名の
   デバイスが居てよい(1つの実行プロファイルで手元とリモートを同時に回せる)
 - `enabled`: `false` なら一覧に残すが走らせない(拡張のチェックボックス)。省略 = 走らせる
-- 実体: iOS は `simulator` 名+`os`(または `udid` 直指定。`port` で固定も可)、
+- 実体: iOS は `name`(シミュレータ自身の名前 = Xcode の Name)+`osVersion`(Xcode の OS Version。
+  または `udid` 直指定。`port` で固定も可)、`model`(Xcode の Model)は表示専用。
   Android は `avd`(AVD の ID と表示名(config.ini の avd.ini.displayname)のどちらでも可。
   起動中エミュレータの AVD 名と照合して adb serial に解決。未起動はヒント付きエラー。
   **エミュレータの** serial 直指定は廃止 —— serial は起動順で変わるためプロファイルに書かない)。
@@ -3654,8 +3655,8 @@ targeting = bundletool にしか決められない。feature module を足した
 ```json
 { "app": "sampleapp",
   "devices": [
-    { "platform": "ios", "machine": "local", "name": "simulator1", "simulator": "iPhone 17 Pro" },
-    { "platform": "ios", "machine": "local", "name": "simulator2", "simulator": "iPhone 17 Pro" },
+    { "platform": "ios", "machine": "local", "name": "iPhone 17 Pro-01", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" },
+    { "platform": "ios", "machine": "local", "name": "iPhone 17 Pro-02", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" },
     { "platform": "android", "machine": "local", "name": "emulator1", "avd": "Pixel_9" }
   ],
   "heal": true, "reportDir": "reports", "defaultTimeout": 5,
@@ -3665,7 +3666,7 @@ targeting = bundletool にしか決められない。feature module を足した
 `fleetest profile setup --auto-device` の選定規則(`DevicePicker`)— iOS は**最新 OS の
 既存シミュレータ**(名前に "Pro" を含むものを優先)、Android は config.ini の **API レベルが
 最大の既存 AVD**。**iOS は iPad を候補から除外する**(除外しないと "Pro" 優先が iPad Pro を
-掴む)。除外が効くのは自動選定だけで、`--simulator`/`--udid` や `api create-device` で
+掴む)。除外が効くのは自動選定だけで、`--device-name`/`--udid` や `api create-device` で
 iPad を明示指定する経路は従来どおり通る。
 
 FM(Foundation Models)を使うのは `textVisualCheck`(occlusion-guard 全体のスイッチ。
@@ -3825,7 +3826,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
 ### 11.3 解決規則(ProfileResolver)
 
 1. **デバイス解決**: 実行プロファイルの `devices` のうち enabled なエントリをそのまま使う ——
-   各エントリが `platform`/`machine`/実体(`simulator`/`udid`/`avd`/`serial` 等)を直接持つので、
+   各エントリが `platform`/`machine`/実体(`name`/`osVersion`/`udid`/`avd`/`serial` 等)を直接持つので、
    「これは現在のマシンの台か」で絞り込む工程は無い。**どのマシンへ実行を送るかは別の層が
    決める**(`FTRemote.RemoteDispatch` / `DeviceMachineGrouping` がホストごとのサブ実行に分ける。
    §13)。enabled なエントリが1つも無ければエラー(`noEnabledDevices`)。(machine, name) の
