@@ -1280,6 +1280,10 @@ struct ApiRunCommand: AsyncParsableCommand {
                 }
                 return nil
             },
+            recheckRunner: { worker, maxStepSnapshotMs, log in
+                await RunnerMidRunRecheck.recheck(worker: worker, maxStepSnapshotMs: maxStepSnapshotMs,
+                                                  repoRoot: repoRoot, log: log)
+            },
             lateWorkers: iosWorkersTask.map { task in
                 (platforms: Set(["ios"]), provider: { @Sendable in
                     let ws = await task.value

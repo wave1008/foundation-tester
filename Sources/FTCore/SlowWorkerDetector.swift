@@ -2,8 +2,9 @@
 // 「台そのものが遅い」ことの**観測だけ**を行う純粋関数(自動修復・除外はしない)。
 // 根拠(2026-09-15 の3時間負荷テスト): シミュレータ1台だけが3 run連続で in-app snapshot
 // 4.3〜4.4秒に張り付いた(通常は数十ms。他7台は15ラウンドで2秒超が3回以下)。ホストCPUでは
-// 説明が付かず(中央値56%・前後のラウンドと同等)、XCUITestランナーを建て直しても直らなかった
-// (遅いのはランナーではなく台)。4.4秒はステップtimeout(`FTCore.DefaultWait.seconds`=5秒)未満
+// 説明が付かず(中央値56%・前後のラウンドと同等)、XCUITestランナーを建て直しても直らなかった。
+// **これはその1件の帰属であって、この検知が導けることではない**(consoleWarning の宣言参照)。
+// 4.4秒はステップtimeout(`FTCore.DefaultWait.seconds`=5秒)未満
 // なので既存の `slow-snapshot` 注記(timeout超過)は立たず、所要以外に痕跡が残らない。
 //
 // 2026-09-16 の負荷テストで2つ目の形が見つかった: **中央値は正常なのに一部の照会だけ遅い**台
@@ -55,18 +56,23 @@ public struct SlowWorkerFinding: Sendable, Equatable {
     }
 
     /// CLI 末尾の警告1行(英語)。**FrozenVerdict とは別の観測であること**と
-    /// **自動では何もしないこと**を含める(受け手が誤って「ツールが直した」と読まないため)
+    /// **自動では何もしないこと**を含める(受け手が誤って「ツールが直した」と読まないため)。
+    /// **遅さの帰属(台かランナーか)は書かない** —— 入力はワーカーごとの snapshotMs だけで
+    /// 区別が付かない。2026-09-16 に実際に逆を書いていた: 同じ台が in-app のフル E2E では
+    /// 1 度も鳴らず xcuitest でだけ鳴り、**同じ run の供給時プローブは「ランナーの stale remote
+    /// element」と名指しして建て直していた**(`RunnerAccessibilityHealth`)ので、
+    /// 2 つの検知が同じ台について正反対の帰属を出した
     public var consoleWarning: String {
         switch kind {
         case let .median(medianMs, fleetMedianMs):
             return "⚠️ slow lane: \(worker) answered snapshots in \(medianMs)ms (median of \(samples))"
-                + " while other lanes took \(fleetMedianMs)ms — the simulator itself is slow"
-                + " (not the runner); consider rebooting it"
+                + " while other lanes took \(fleetMedianMs)ms"
+                + " — an observation only; nothing was excluded or restarted because of it"
         case let .intermittent(slowSamples, p90Ms, fleetSlowSamples, fleetSamples):
             return "⚠️ intermittent slow lane: \(worker) had \(slowSamples) of \(samples) snapshots take"
                 + " \(SlowWorkerDetector.intermittentFloorMs)ms+ (p90 \(p90Ms)ms) while other lanes had"
-                + " \(fleetSlowSamples) of \(fleetSamples) — the simulator itself is intermittently slow"
-                + " (not the runner); consider rebooting it"
+                + " \(fleetSlowSamples) of \(fleetSamples)"
+                + " — an observation only; nothing was excluded or restarted because of it"
         }
     }
 }

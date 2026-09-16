@@ -298,6 +298,26 @@ private actor DeadlineGuard {
 /// (この箱を置いた目的が消える)ため、**先に来た cancel を覚えて後から来た task に適用する**。
 /// `@unchecked Sendable` の根拠は lock(素の可変参照ではない)。
 /// 同型の RecordingSupport.raceWithDeadline は前方参照を持たない = この箱が要らない
+/// 1 シナリオの間にステップが報告した snapshot 所要の最大(runWorker の測り直しの門の材料)。
+/// onEvent は同期の @Sendable クロージャで、runOne が返る前に全ステップを配り終えるので
+/// actor + Task だと読む時点で書き込みが済んでいる保証が無い。`@unchecked Sendable` の根拠は lock
+final class SlowestStepSnapshot: @unchecked Sendable {
+    private let lock = NSLock()
+    private var maxMs: Int?
+
+    func note(_ ms: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        maxMs = Swift.max(maxMs ?? ms, ms)
+    }
+
+    var value: Int? {
+        lock.lock()
+        defer { lock.unlock() }
+        return maxMs
+    }
+}
+
 final class DeadlineTaskBox: @unchecked Sendable {
     private let lock = NSLock()
     private var task: Task<Void, Never>?
@@ -743,6 +763,15 @@ public final class RunOrchestrator {
     /// retired ワーカーの論理デバイス復帰。nil(未注入)なら復帰を試みず即ギブアップ
     /// (呼び出し側がプロファイル経由の場合のみ注入。--port 等の非プロファイル経路では nil)
     private let reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)?
+    /// 緑で終わったシナリオの直後に、そのレーンの XCUITest ランナーを測り直す(劣化していれば同じポートで
+    /// 建て直す)。引数 = worker・そのシナリオのステップ snapshot 所要の最大(ms。無ければ nil)・
+    /// そのレーンへ 1 行出す口。測るか・どう建て直すかは FTBridgeClient 側の知識なので
+    /// isDeviceFrozen と同じ理由で注入。**未注入は合法なので配線漏れはコンパイルで止まらない**
+    /// (`RunnerMidRunRecheckTests` が 2 経路を固定)。
+    /// 供給時の再利用でしか測っていなかった頃は、run の途中で劣化したレーンが最後まで 1 問 3.7 秒を払った
+    private let recheckRunner: RunnerRecheck?
+    public typealias RunnerRecheck =
+        @Sendable (RunWorker, Int?, @escaping @Sendable (String) -> Void) async -> Void
     /// 遅延参加ワーカー(iOS ブリッジ供給待ち)。platforms は「後から必ず来る platform」の宣言で、
     /// これが無いと初期ワーカーに iOS が居ない時点で iOS シナリオが「担当ワーカーなし」で即失敗する。
     /// provider は供給完了時にワーカー群を返す(失敗時は空配列。キューに残った分は run 末尾の
@@ -814,6 +843,7 @@ public final class RunOrchestrator {
                 removeRecordingLease: (@Sendable (String) -> Void)? = nil,
                 cleanupRetiredWorker: (@Sendable (RunWorker) async -> Void)? = nil,
                 reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)? = nil,
+                recheckRunner: RunnerRecheck? = nil,
                 lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])? = nil,
                 installHandler: (@Sendable (RunWorker, String?) async
                                   -> (ok: Bool, message: String))? = nil,
@@ -838,6 +868,7 @@ public final class RunOrchestrator {
         self.hasLeaseWriters = writeRunLease != nil || writeRecordingLease != nil
         self.cleanupRetiredWorker = cleanupRetiredWorker
         self.reviveWorker = reviveWorker
+        self.recheckRunner = recheckRunner
         self.lateWorkers = lateWorkers
         self.installHandler = installHandler
         self.appName = appName
@@ -1278,6 +1309,7 @@ public final class RunOrchestrator {
             // ワーカーの録画プロセス自体は起動しっぱなしで、ここでは区間だけ記録する
             await videoRecording?.scenarioStarted(
                 workerLabel: worker.label, scenarioID: item.info.id, at: Date())
+            let slowestStep = SlowestStepSnapshot()
             let outcome = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker,
                 settings: settings, reportDir: reportDir,
@@ -1295,6 +1327,9 @@ public final class RunOrchestrator {
                        RunSummary.fmUnavailable(fm) {
                         Task { await fmCounter.increment() }
                     }
+                    if case .step(_, _, let result) = event, let ms = result.timing?.snapshotMs {
+                        slowestStep.note(ms)
+                    }
                     continuation.yield(event)
                 })
             await videoRecording?.scenarioFinished(
@@ -1302,6 +1337,14 @@ public final class RunOrchestrator {
             if outcome == .passed {
                 breaker.recordPass()
                 await runPasses.increment()
+                // **レーンが空いている今だけ測り直す**(次の 1 件をまだ取っていない)。
+                // 失敗の経路は除く —— 離脱すれば revive が供給を通り、そこで同じ 1 問が測る。
+                // 中断中・残りが無いときは撃たない(建て直しは数十秒かかり、次の run の再利用が測る)
+                if let recheckRunner, await !interruptRequested.isRequested(), await queue.hasItems() {
+                    await recheckRunner(worker, slowestStep.value) { [continuation] message in
+                        continuation.yield(.workerLog(worker: worker.label, message: message))
+                    }
+                }
                 continue
             }
             // **デバイス基盤の一過性エラー**(kAXErrorAPIDisabled 等。全 OS)は結果を捨てて振り直す。

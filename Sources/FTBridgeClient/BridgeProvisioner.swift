@@ -800,6 +800,97 @@ public struct BridgeProvisioner {
     /// - claimed: **ポートを確保した(pid ファイル/記録を書いた)直後**に撃つ。これで
     ///   ProvisionLock が解け、ready 待ちは他ワーカーと並行になる。再利用・引き取りは新しく
     ///   確保しないので即座に撃つ
+    /// 劣化した XCUITest ランナーを止めて**同じポートで**起動し直す。供給時の再利用と run 中の
+    /// 測り直し(`recheckRunner`)の共通手順 —— 片方だけ直すと同じ劣化に 2 通りの直し方ができる。
+    /// xcuitest の起動枝は bundleID / preinstallAppPath を使わない(in-app の枝だけが使う)。
+    /// **建て直した直後にもう 1 問測る** —— 新しいランナーでも遅ければ遅さはランナーのプロセスに無く、
+    /// 建て直しは空振り(1 回約 10 秒)なので、その台はこのプロセスでもう建て直さない(RunnerRestartFutility)
+    private func restartRunner(name: String, sim: SimDeviceInfo, port: UInt16,
+                               claimed: @escaping @Sendable () async -> Void,
+                               log: @escaping (String) -> Void) async throws
+        -> (port: UInt16, helped: Bool, afterSeconds: TimeInterval?) {
+        let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
+                                      physical: sim.physical)
+        try? await launcher.stopAndWait()
+        let restarted = try await executeBridge(
+            engine: "xcuitest",
+            plan: .launch(port: port, needsInstall: false, stopStalePort: nil, reclaimInApp: false),
+            name: name, sim: sim, bundleID: nil, preinstallAppPath: nil, claimed: claimed, log: log)
+        let after = await RunnerAccessibilityHealth.probe(port: restarted, repoRoot: repoRoot)
+        guard let after, RunnerAccessibilityHealth.isDegraded(probeSeconds: after) else {
+            return (restarted, true, after)
+        }
+        RunnerRestartFutility.shared.mark(udid: sim.udid)
+        log(RunnerAccessibilityHealth.restartDidNotHelpMessage(name: name, port: restarted, afterSeconds: after))
+        return (restarted, false, after)
+    }
+
+    public enum RunnerRecheckOutcome: Sendable, Equatable {
+        /// 1 問に閾値未満で答えた
+        case healthy
+        /// 1 問に答えなかった(不明 = 建て直しの根拠にしない)
+        case unmeasured
+        /// 建て直し、直後の 1 問が閾値未満(または測れなかった)
+        case restarted(afterSeconds: TimeInterval?)
+        /// 建て直したが新しいランナーでも遅い(1 行は restartRunner が出し済み)
+        case restartDidNotHelp
+        /// 以前に建て直しても直らなかった台なので測らなかった
+        case skipped
+        case restartFailed(String)
+    }
+
+    /// run の最中に、**空いているレーン**の XCUITest ランナー(シミュレータ)を 1 問だけ測り、劣化していれば
+    /// 同じポートで建て直す。判定・手順は供給時の再利用と同じ(`RunnerAccessibilityHealth.probe` /
+    /// `restartRunner`)。ポートが変わらないので呼び手は RunWorker を作り直さなくてよい。
+    /// **建て直すときだけ ProvisionLock を取る** —— 止めてから pid ファイルを書き直すまでの隙に、
+    /// 同じ Mac の別の run の採番がこのポートを空きと読まないため。ready 待ちは供給と同じく
+    /// ロックの外(ポート確保 = `claimed` の時点で解く)。健全なら 1 問だけでロックに触れない
+    public func recheckRunner(name: String, udid: String, port: UInt16, injected: Bool,
+                              log: @escaping (String) -> Void) async
+        -> (outcome: RunnerRecheckOutcome, probeSeconds: TimeInterval?) {
+        // 直らなかった台は測りもしない(劣化した台の 1 問は約 3 秒 = 緑のたびに払うことになる)
+        guard !RunnerRestartFutility.shared.contains(udid: udid) else { return (.skipped, nil) }
+        let probeSeconds = injected ? nil : await RunnerAccessibilityHealth.probe(port: port, repoRoot: repoRoot)
+        guard injected || RunnerAccessibilityHealth.isDegraded(probeSeconds: probeSeconds) else {
+            return (probeSeconds == nil ? .unmeasured : .healthy, probeSeconds)
+        }
+        let sim: SimDeviceInfo
+        let provisionLock: ProvisionLock
+        do {
+            guard let found = try SimulatorCatalog.devices().first(where: { $0.udid == udid }) else {
+                RunnerRestartFutility.shared.mark(udid: udid)
+                return (.restartFailed("the simulator \(udid) is no longer listed by simctl"), probeSeconds)
+            }
+            sim = found
+            provisionLock = try ProvisionLock(stateDir: repoRoot.appendingPathComponent(".fleetest"))
+        } catch {
+            return (.restartFailed(error.localizedDescription), probeSeconds)
+        }
+        await provisionLock.acquire()
+        defer { provisionLock.release() }
+        let claimBarrier = PortClaimBarrier(expected: 1)
+        let earlyRelease = Task {
+            await claimBarrier.waitAll()
+            provisionLock.release()  // 冪等。defer と二重に呼ばれてよい
+        }
+        defer { earlyRelease.cancel() }
+        let claim = ClaimOnce(barrier: claimBarrier)
+        log(RunnerAccessibilityHealth.restartMessage(name: name, port: port,
+                                                     probeSeconds: probeSeconds, injected: injected))
+        do {
+            let result = try await restartRunner(name: name, sim: sim, port: port,
+                                                 claimed: { await claim.fire() }, log: log)
+            await claim.fire()
+            return (result.helped ? .restarted(afterSeconds: result.afterSeconds) : .restartDidNotHelp,
+                    probeSeconds)
+        } catch {
+            await claim.fire()
+            // 建て直しに失敗した台を緑のたびに撃ち直さない(レーンは既存の事後プローブが見る)
+            RunnerRestartFutility.shared.mark(udid: udid)
+            return (.restartFailed(error.localizedDescription), probeSeconds)
+        }
+    }
+
     private func executeBridge(engine: String, plan: EnginePlan, name: String, sim: SimDeviceInfo,
                                bundleID: String?, preinstallAppPath: String?,
                                claimed: @escaping @Sendable () async -> Void,
@@ -811,23 +902,19 @@ public struct BridgeProvisioner {
             // 照会のたびに約 3.7 秒待つ状態に落ちる。run のすべての照会に乗るので建て直したほうが安い
             if engine == "xcuitest" {
                 let injected = RunnerAccessibilityHealth.injectedSlowPorts().contains(port)
-                var probeSeconds: TimeInterval?
-                if !injected {
-                    let client = BridgeClient(endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot))
-                    let started = Date()
-                    if (try? await client.systemAlert()) != nil { probeSeconds = Date().timeIntervalSince(started) }
-                }
+                let probeSeconds = injected
+                    ? nil : await RunnerAccessibilityHealth.probe(port: port, repoRoot: repoRoot)
                 if injected || RunnerAccessibilityHealth.isDegraded(probeSeconds: probeSeconds) {
-                    log(RunnerAccessibilityHealth.restartMessage(name: name, port: port,
-                                                                 probeSeconds: probeSeconds, injected: injected))
-                    let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
-                                                  physical: sim.physical)
-                    try? await launcher.stopAndWait()
-                    return try await executeBridge(
-                        engine: engine,
-                        plan: .launch(port: port, needsInstall: false, stopStalePort: nil, reclaimInApp: false),
-                        name: name, sim: sim, bundleID: bundleID,
-                        preinstallAppPath: preinstallAppPath, claimed: claimed, log: log)
+                    if RunnerRestartFutility.shared.contains(udid: sim.udid) {
+                        log(RunnerAccessibilityHealth.keptSlowRunnerMessage(name: name, port: port))
+                    } else {
+                        log(RunnerAccessibilityHealth.restartMessage(name: name, port: port,
+                                                                     probeSeconds: probeSeconds, injected: injected))
+                        return try await restartRunner(name: name, sim: sim, port: port,
+                                                       claimed: claimed, log: log).port
+                    }
+                } else if probeSeconds != nil {
+                    RunnerRestartFutility.shared.clear(udid: sim.udid)
                 }
             }
             // **in-app の再利用は /status を 1 回引いてから**: 直前に同じ台の XCUITest ランナーを建て直した

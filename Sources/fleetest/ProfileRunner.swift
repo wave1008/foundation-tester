@@ -551,6 +551,10 @@ enum ProfileRunner {
                 }
                 return nil
             },
+            recheckRunner: { worker, maxStepSnapshotMs, log in
+                await RunnerMidRunRecheck.recheck(worker: worker, maxStepSnapshotMs: maxStepSnapshotMs,
+                                                  repoRoot: repoRoot, log: log)
+            },
             lateWorkers: hasLateIOS ? (platforms: Set(["ios"]), provider: { @Sendable in
                 let ws = await buildIOSLane(resolved: resolved, repoRoot: repoRoot, supplyLease: supplyLease,
                                             blankRepairBox: iosBlankRepairBox)

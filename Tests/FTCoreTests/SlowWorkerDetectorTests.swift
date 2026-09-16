@@ -221,4 +221,31 @@ final class SlowWorkerDetectorTests: XCTestCase {
         XCTAssertTrue(SlowWorkerDetector.detect(records: [lane, others]).isEmpty,
                       "標本9本中2本の遅延は間欠判定の最小本数(5)未満なので立たない")
     }
+
+    /// **警告は遅さの帰属(台かランナーか)を書かない**。入力はワーカーごとの snapshotMs だけで
+    /// 区別が付かず、2026-09-16 には同じ台について供給時プローブが「ランナーの stale remote
+    /// element」と名指ししている run でこの警告が「ランナーではない」と言っていた。
+    /// 両 Kind に掛ける(片方だけ直すと残った側から戻る)
+    func testConsoleWarningStatesFactsWithoutAttributingTheCause() {
+        let median = SlowWorkerFinding(worker: "ios:iPhone 17 Pro-04", samples: 41,
+                                       kind: .median(medianMs: 4300, fleetMedianMs: 11))
+        let intermittent = SlowWorkerFinding(
+            worker: "ios:iPhone 17 Pro-01", samples: 91,
+            kind: .intermittent(slowSamples: 22, p90Ms: 3312, fleetSlowSamples: 2, fleetSamples: 389))
+
+        for finding in [median, intermittent] {
+            let warning = finding.consoleWarning
+            for claim in ["not the runner", "the simulator itself", "consider rebooting"] {
+                XCTAssertFalse(warning.contains(claim),
+                               "帰属・処方を断定しない(\(claim) が \(warning) に出ている)")
+            }
+            XCTAssertTrue(warning.contains(finding.worker), "どのレーンかは名指しする")
+            XCTAssertTrue(warning.contains("nothing was excluded or restarted because of it"),
+                          "自動では何もしないことを言う")
+        }
+        XCTAssertTrue(median.consoleWarning.contains("4300ms")
+                      && median.consoleWarning.contains("11ms"), "数字は両方出す")
+        XCTAssertTrue(intermittent.consoleWarning.contains("22 of 91")
+                      && intermittent.consoleWarning.contains("2 of 389"), "数字は両方出す")
+    }
 }
