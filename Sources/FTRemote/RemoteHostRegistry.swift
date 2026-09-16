@@ -6,13 +6,17 @@
 import Foundation
 import FTCore
 
-public enum RemoteHostRegistryError: Error, LocalizedError {
+public enum RemoteHostRegistryError: Error, LocalizedError, Equatable {
     case invalidName(String)
+    case hostAlreadyRegistered(host: String, machine: String)
 
     public var errorDescription: String? {
         switch self {
         case .invalidName(let detail):
             return "invalid machine name: \(detail)"
+        case .hostAlreadyRegistered(let host, let machine):
+            return "\(host) is already registered as machine \"\(machine)\""
+                + " (dispatching to both fights over the same devices; docs/remote-runner.md §13)"
         }
     }
 }
@@ -101,6 +105,19 @@ public enum RemoteHostRegistry {
 
     public static func remove(machine: String, from entries: [RemoteHostEntry]) -> [RemoteHostEntry] {
         entries.filter { $0.machine != machine }
+    }
+
+    /// **登録口の一意性の門**(設定タブの --import と `remote machines add`)。entry.host を
+    /// 別のマシン名で既に登録していれば拒否する。同名は upsert の置き換え対象なので数えない
+    /// (マシン名の一意性は upsert が構造で持つ)。既に重複している登録簿を読むだけの経路は
+    /// `duplicateTargets` で警告に留める —— ここで拒否すると直す手段まで塞ぐ
+    public static func validateUniqueHost(_ entry: RemoteHostEntry, in entries: [RemoteHostEntry]) throws {
+        let host = entry.host.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let other = entries.first(where: {
+            $0.machine != entry.machine && $0.host.trimmingCharacters(in: .whitespacesAndNewlines) == host
+        }) {
+            throw RemoteHostRegistryError.hostAlreadyRegistered(host: host, machine: other.machine)
+        }
     }
 
     /// 同じ ssh 宛先を指す登録が複数あるとき、その宛先を返す(名前順。§13 のガードの土台

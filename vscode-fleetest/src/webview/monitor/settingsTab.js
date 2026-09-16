@@ -200,7 +200,81 @@ function currentHostsPayload() {
     }));
 }
 
+// ---- 保存前の一意性(user@host とマシン名) --------------------------------------------------
+// マシン名は送る時点の値(空欄なら host から採る)で比べる。この機械の行(machine "local")も
+// 数える。**重複があれば何も送らない** —— payload は表の全体なので、直すまで保留した削除・編集も
+// 直した時点の送信にまとめて載る。CLI 側にも宛先の門がある(RemoteHostRegistry.validateUniqueHost)
+function effectiveMachine(row) {
+  return row.machineInput.value.trim() || defaultMachineForHost(row.hostInput.value);
+}
+
+function uniquenessProblems(rows) {
+  const hostCounts = new Map();
+  const machineCounts = new Map();
+  const bump = (map, key) => { if (key) { map.set(key, (map.get(key) || 0) + 1); } };
+  if (localRow) {
+    bump(hostCounts, localRow.host.trim());
+    bump(machineCounts, 'local');
+  }
+  for (const row of rows) {
+    bump(hostCounts, row.hostInput.value.trim());
+    bump(machineCounts, effectiveMachine(row));
+  }
+  const dups = (map) => new Set([...map].filter(([, n]) => n > 1).map(([k]) => k));
+  return { hosts: dups(hostCounts), machines: dups(machineCounts) };
+}
+
+function hasProblems(problems) {
+  return problems.hosts.size > 0 || problems.machines.size > 0;
+}
+
+/** 表の全行(未確定も含む)に重複の印を付け直す。印は見た目だけで、送るかどうかは呼び手が決める */
+function markDuplicates() {
+  const problems = uniquenessProblems(hostRows.filter(rowIsFillable));
+  for (const row of hostRows) {
+    const host = row.hostInput.value.trim();
+    row.hostInput.classList.toggle('settings-remote-hosts-input-invalid',
+      host !== '' && problems.hosts.has(host));
+    row.machineInput.classList.toggle('settings-remote-hosts-input-invalid',
+      rowIsFillable(row) && problems.machines.has(effectiveMachine(row)));
+  }
+  return problems;
+}
+
+function showDuplicateError(problems) {
+  const items = [
+    ...[...problems.hosts].map((value) => t('wvMonitor2.remote.duplicateHost', { value })),
+    ...[...problems.machines].map((value) => t('wvMonitor2.remote.duplicateMachine', { value })),
+  ];
+  remoteHostsError.textContent = t('wvMonitor2.remote.duplicate', {
+    items: items.join(t('wvMonitor2.remote.duplicateSeparator')),
+  });
+  remoteHostsError.dataset.duplicate = '1';
+  remoteHostsError.hidden = false;
+}
+
+function clearDuplicateError() {
+  if (remoteHostsError.dataset.duplicate === '1') {
+    delete remoteHostsError.dataset.duplicate;
+    remoteHostsError.hidden = true;
+  }
+}
+
+/** 入力のたびに印を付け直し、重複が解けたら理由の表示を下げる */
+function refreshDuplicateState() {
+  if (!hasProblems(markDuplicates())) {
+    clearDuplicateError();
+  }
+}
+
 function sendRemoteConfig() {
+  markDuplicates();
+  const problems = uniquenessProblems(hostRows.filter((row) => row.confirmed));
+  if (hasProblems(problems)) {
+    showDuplicateError(problems);
+    return;
+  }
+  delete remoteHostsError.dataset.duplicate;
   remoteHostsError.hidden = true;
   vscode.postMessage({
     type: 'setRemoteConfig',
@@ -348,6 +422,12 @@ function confirmHostRow(id) {
   if (!row || row.confirmed || !rowIsFillable(row)) {
     return;
   }
+  markDuplicates();
+  const problems = uniquenessProblems(hostRows.filter((r) => r.confirmed || r === row));
+  if (hasProblems(problems)) {
+    showDuplicateError(problems);
+    return;
+  }
   row.confirmed = true;
   row.confirmButton.remove();
   row.confirmButton = null;
@@ -384,6 +464,7 @@ function addHostRow(host, confirmed) {
       if (!row.confirmed && row.confirmButton) {
         row.confirmButton.disabled = !rowIsFillable(row);
       }
+      refreshDuplicateState();
     });
     td.appendChild(input);
     tr.appendChild(td);
@@ -448,9 +529,16 @@ function addHostRow(host, confirmed) {
   removeButton.className = 'secondary settings-remote-hosts-remove';
   removeButton.textContent = '−';
   removeButton.title = t('wvMonitor2.remote.removeTitle');
-  // 削除は破壊的操作だが、ホスト登録は再入力が容易な小データなので modal 確認は不要
-  // (プロファイル削除の modal 方式はここには適用しない)。
-  removeButton.addEventListener('click', () => removeHostRow(id));
+  // 登録済みの行はホスト側のモーダルで確認してから消す(webview では window.confirm が効かない。
+  // 応答は remoteHostRemoveConfirmed)。未確定の行はまだ登録簿に無いので確認せずに消す
+  removeButton.addEventListener('click', () => {
+    if (!row.confirmed) {
+      removeHostRow(id);
+      return;
+    }
+    const machine = row.machineInput.value.trim() || defaultMachineForHost(row.hostInput.value);
+    vscode.postMessage({ type: 'requestRemoveRemoteHost', rowId: id, machine });
+  });
   actionsTd.appendChild(removeButton);
   tr.appendChild(actionsTd);
 
@@ -495,11 +583,15 @@ function applyRemoteConfig(message) {
     hostRows.push(row);
   }
   if (typeof message.error === 'string' && message.error !== '') {
+    delete remoteHostsError.dataset.duplicate;
     remoteHostsError.textContent = t('wvMonitor2.remote.syncFailed', { reason: message.error });
     remoteHostsError.hidden = false;
   } else {
+    delete remoteHostsError.dataset.duplicate;
     remoteHostsError.hidden = true;
   }
+  // 作り直した行と、退避して戻した未確定の行の印を付け直す(表示だけ)
+  markDuplicates();
 }
 
 updateCheckButton.addEventListener('click', () => {
@@ -741,6 +833,10 @@ export function applySettings(message) {
     languageSelect.value = message.value;
   } else if (message.type === 'remoteConfig') {
     applyRemoteConfig(message);
+  } else if (message.type === 'remoteHostRemoveConfirmed') {
+    // 行 id は使い捨てで振り直さない(nextRowId は単調増加)ので、確認中に表が作り直されて
+    // 行が消えていれば何もしない = 別の行を消すことは無い
+    removeHostRow(message.rowId);
   } else if (message.type === 'updateStatus') {
     applyUpdateStatus(message);
   } else if (message.type === 'retention') {

@@ -2355,6 +2355,10 @@ button.settings-remote-hosts-color-swatch:focus-visible {
 .settings-remote-hosts-row-pending {
   background: var(--vscode-list-inactiveSelectionBackground, rgba(128, 128, 128, 0.08));
 }
+/* 保存前の一意性チェックで重複した欄(settingsTab.js の markDuplicates) */
+.settings-remote-hosts-input.settings-remote-hosts-input-invalid {
+  border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+}
 .settings-remote-hosts-error {
   color: var(--vscode-errorForeground, #f14c4c);
 }

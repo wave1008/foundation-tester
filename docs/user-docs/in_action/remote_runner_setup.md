@@ -125,6 +125,7 @@ fleetest remote machines        # check the registration
 - A machine name may contain only letters, digits, `_`, `.` and `-`. `local` means your own Mac,
   so it cannot be used.
 - Running `add` again with the same name updates the registration.
+- A destination that is already registered under another machine name is rejected.
 - To remove it, run `fleetest remote machines remove M1Max`.
 
 ### Register in the VS Code extension
@@ -146,7 +147,10 @@ fleetest remote machines        # check the registration
 - The button in the "Badge color" column opens a palette to choose the badge color. If you
   do not choose one, a color not used by other machines is assigned automatically. The color is
   used for the machine name badges in the Device Monitor.
-- The "−" at the right end of a row removes the registration (there is no confirmation).
+- The "−" at the right end of a row removes the registration after you confirm it in a dialog.
+- "user@host" and the machine name must be unique (a blank machine name counts as the name taken
+  from "user@host", and `local` is taken by your own Mac). If they collide, nothing is saved: the
+  fields are outlined and the reason appears under the table.
 - If saving fails, the reason appears under the table as "Failed to save the machine registry".
 
 The CLI and the extension read and write the same registry (`~/.config/fleetest/config.json`),

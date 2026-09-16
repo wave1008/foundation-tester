@@ -209,6 +209,14 @@ export const webviewMonitorBStrings = {
     ja: "省略可(ホスト名 / IP)",
     en: "optional (host name / IP)",
   },
+  // 保存前の一意性チェック(settingsTab.js の showDuplicateError)。items は下の2つを区切りで並べたもの
+  "wvMonitor2.remote.duplicate": {
+    ja: "重複があるため保存していません: {items}",
+    en: "Not saved because of duplicates: {items}",
+  },
+  "wvMonitor2.remote.duplicateHost": { ja: "user@host「{value}」", en: "user@host \"{value}\"" },
+  "wvMonitor2.remote.duplicateMachine": { ja: "マシン「{value}」", en: "machine \"{value}\"" },
+  "wvMonitor2.remote.duplicateSeparator": { ja: "、", en: ", " },
   "wvMonitor2.remote.syncFailed": {
     ja: "マシン登録簿への反映に失敗しました: {reason}",
     en: "Failed to save the machine registry: {reason}",

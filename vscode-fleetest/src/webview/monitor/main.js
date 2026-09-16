@@ -249,6 +249,9 @@ window.addEventListener('message', (event) => {
     // 「既存から選択」ダイアログのホスト選択も初期化されない。
     // **applyMachineColors を先に呼ぶ** —— settingsTab.js のスウォッチ描画(applySettings 内)が
     // machineColorPalette()/hexForColorKey() を読むため、パレットを先に更新しておく必要がある。
+    case 'remoteHostRemoveConfirmed':
+      applySettings(message);
+      break;
     case 'remoteConfig':
       applyMachineColors(message);
       applySettings(message);

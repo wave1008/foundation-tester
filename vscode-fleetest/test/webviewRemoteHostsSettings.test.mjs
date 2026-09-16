@@ -711,3 +711,107 @@ test("バッジ色ボタンはマシン名入りのバッジとして描かれ�
   fill(window, pending.querySelectorAll("input")[HOST], "user@m1max.local");
   assert.equal(pendingSwatch.textContent, "m1max.local", "ホストの入力にも追従する");
 });
+
+// 登録済みの行の削除はホスト側のモーダルで確認してから(webview では window.confirm が効かない)。
+// 押しただけでは消さず、確認の応答(remoteHostRemoveConfirmed)で初めて消して同期する
+test("登録済みの行の削除は確認を求め、確認の応答で初めて消える", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((m) => posted.push(m));
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig",
+    hosts: [{ machine: "", host: "user@m1u", dir: "" }, { machine: "M1Max", host: "user@m1max", dir: "" }] });
+  const rows = () => [...document.querySelectorAll("#settings-remote-hosts-body tr")];
+  click(window, rows()[0].querySelector(".settings-remote-hosts-remove"));
+
+  const request = posted.find((m) => m.type === "requestRemoveRemoteHost");
+  assert.ok(request, "確認を求める");
+  assert.ok(isMonitorFromWebviewMessage(request), "拡張側のゲートを通る");
+  assert.equal(request.machine, "m1u", "空欄のマシン名は host から採った名前で聞く");
+  assert.equal(rows().length, 2, "押しただけでは消さない");
+  assert.equal(posted.filter((m) => m.type === "setRemoteConfig").length, 0, "確認前は同期しない");
+
+  post(window, { type: "remoteHostRemoveConfirmed", rowId: request.rowId + 1000 });
+  assert.equal(rows().length, 2, "知らない行 id の応答では何も消さない");
+
+  post(window, { type: "remoteHostRemoveConfirmed", rowId: request.rowId });
+  assert.equal(rows().length, 1);
+  assert.equal(rows()[0].querySelectorAll("input")[MACHINE].value, "M1Max", "押した行だけが消える");
+  const sync = posted.filter((m) => m.type === "setRemoteConfig").at(-1);
+  assert.equal(JSON.stringify(sync.hosts.map((h) => h.machine)), JSON.stringify(["M1Max"]));
+});
+
+test("未確定の行は確認せずに消える(まだ登録簿に無い)", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((m) => posted.push(m));
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig", hosts: [] });
+  click(window, document.getElementById("settings-remote-hosts-add"));
+  const row = document.querySelector("#settings-remote-hosts-body tr");
+  click(window, row.querySelector(".settings-remote-hosts-remove"));
+  assert.equal(document.querySelectorAll("#settings-remote-hosts-body tr").length, 0);
+  assert.equal(posted.filter((m) => m.type === "requestRemoveRemoteHost").length, 0);
+});
+
+// 保存前の一意性チェック。user@host とマシン名(空欄なら host から採る。この機械の "local" も
+// 数える)が重複していたら何も送らず、欄に印を付けて理由を出す
+test("未確定の行が既存と重複していたら確定せず、理由と印を出す", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((m) => posted.push(m));
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig",
+    hosts: [{ machine: "M1Max", host: "user@m1max", dir: "" }],
+    local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0 } });
+  click(window, document.getElementById("settings-remote-hosts-add"));
+  const rows = () => [...document.querySelectorAll("#settings-remote-hosts-body tr")];
+  const pending = rows()[2];
+  const inputs = pending.querySelectorAll("input");
+  const error = document.getElementById("settings-remote-hosts-error");
+
+  fill(window, inputs[HOST], "user@m1max");
+  assert.ok(inputs[HOST].classList.contains("settings-remote-hosts-input-invalid"), "入力の時点で印");
+  click(window, pending.querySelector(".settings-remote-hosts-confirm"));
+  assert.equal(posted.filter((m) => m.type === "setRemoteConfig").length, 0, "宛先の重複は送らない");
+  assert.equal(error.hidden, false);
+  assert.match(error.textContent, /user@m1max/);
+  assert.ok(pending.querySelector(".settings-remote-hosts-confirm"), "未確定のまま");
+
+  fill(window, inputs[HOST], "user@m1ultra");
+  assert.equal(error.hidden, true, "重複が解けたら理由を下げる");
+  fill(window, inputs[MACHINE], "M1Max");
+  click(window, pending.querySelector(".settings-remote-hosts-confirm"));
+  assert.equal(posted.filter((m) => m.type === "setRemoteConfig").length, 0, "マシン名の重複も送らない");
+  assert.match(error.textContent, /M1Max/);
+
+  fill(window, inputs[MACHINE], "local");
+  click(window, pending.querySelector(".settings-remote-hosts-confirm"));
+  assert.equal(posted.filter((m) => m.type === "setRemoteConfig").length, 0, "この機械の名前とも重複させない");
+
+  fill(window, inputs[MACHINE], "");
+  click(window, pending.querySelector(".settings-remote-hosts-confirm"));
+  const sent = posted.filter((m) => m.type === "setRemoteConfig");
+  assert.equal(sent.length, 1, "重複が無ければ確定して送る");
+  assert.equal(JSON.stringify(sent[0].hosts.map((h) => h.machine)), JSON.stringify(["local", "M1Max", "m1ultra"]));
+  assert.equal(error.hidden, true);
+});
+
+test("登録済みの行を編集して重複させたら送らず、直したら送る", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((m) => posted.push(m));
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig",
+    hosts: [{ machine: "A", host: "user@a", dir: "" }, { machine: "B", host: "user@b", dir: "" }] });
+  const rowB = document.querySelectorAll("#settings-remote-hosts-body tr")[1];
+  const machineB = rowB.querySelectorAll("input")[MACHINE];
+  fillAndCommit(window, machineB, "A");
+  assert.equal(posted.filter((m) => m.type === "setRemoteConfig").length, 0);
+  assert.ok(machineB.classList.contains("settings-remote-hosts-input-invalid"));
+  fillAndCommit(window, machineB, "B2");
+  const sent = posted.filter((m) => m.type === "setRemoteConfig");
+  assert.equal(sent.length, 1);
+  assert.equal(JSON.stringify(sent[0].hosts.map((h) => h.machine)), JSON.stringify(["A", "B2"]));
+  assert.equal(machineB.classList.contains("settings-remote-hosts-input-invalid"), false);
+});

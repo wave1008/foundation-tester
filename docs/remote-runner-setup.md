@@ -447,6 +447,9 @@ fleetest run --project <プロジェクト> --fleet <名前> --split --junit rep
 `FM 並列枠`・`作業ベースディレクトリ` を入れて**行の「確定」**を押す(押すまで反映されない。
 `user@host` が空の間は押せない)。`マシン` 空欄 = `user@host` から `user@` を除いた部分、
 `作業ベースディレクトリ` 空欄 = `~/fleetest-runner`。
+`user@host` とマシン名(空欄なら導出した名前・この機械の `local` を含む)は保存前に重複を見て、
+重複していれば送らない(CLI 側も `--import` / `remote machines add` で別名の同じ宛先を拒否する =
+`RemoteHostRegistry.validateUniqueHost`)。行の削除はホスト側のモーダルで確認する。
 「バッジ色」列のボタンでバッジの色をパレットから選べる(未選択なら他のマシンと重ならない色が
 自動で付く。docs/remote-runner.md §20)。
 

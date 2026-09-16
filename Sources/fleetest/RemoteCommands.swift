@@ -646,6 +646,8 @@ struct RemoteCommand: AsyncParsableCommand {
                     throw ValidationError("unknown color \"\(color)\" (known: \(known))")
                 }
                 var config = LocalConfig.load()
+                try RemoteHostRegistry.validateUniqueHost(
+                    RemoteHostEntry(machine: machine, host: host), in: config.remoteHosts ?? [])
                 // **省略したら既存の値を保つ**。upsert なので「指定なし = nil で上書き」にすると、
                 // 別件で add を打ち直した瞬間に設定が黙って消える。消すのは --clear-fm-concurrency だけ
                 let existing = (config.remoteHosts ?? []).first { $0.machine == machine }?.fmConcurrency
@@ -657,10 +659,6 @@ struct RemoteCommand: AsyncParsableCommand {
                 try config.save()
                 let slotsNote = slots.map { " (FM concurrency \($0))" } ?? ""
                 ConsoleOut.out("✅ Registered machine \"\(machine)\" → \(host)\(slotsNote)")
-                for target in RemoteHostRegistry.duplicateTargets(config.remoteHosts ?? []) where target == host {
-                    ConsoleOut.out("⚠️ another entry already points at \(target)"
-                        + " (dispatching to both fights over the same devices; docs/remote-runner.md §13)")
-                }
             }
         }
 

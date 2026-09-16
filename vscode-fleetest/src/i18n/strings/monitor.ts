@@ -266,6 +266,16 @@ export const monitorStrings = {
     ja: "ポーリングへ戻します。",
     en: "Falling back to polling.",
   },
+  // 設定タブのマシン削除の確認(モーダル)。webview では confirm が効かないのでホスト側で出す。
+  "monitor.remoteHosts.removeConfirm": {
+    ja: "マシン「{machine}」の登録を削除しますか?",
+    en: "Remove the machine \"{machine}\"?",
+  },
+  "monitor.remoteHosts.removeConfirmDetail": {
+    ja: "この Mac のマシン登録簿から外します。ランナー機の上のファイルやデバイスは変更しません。",
+    en: "It is removed from this Mac's machine registry. Files and devices on the runner are not changed.",
+  },
+  "monitor.remoteHosts.removeButton": { ja: "削除", en: "Remove" },
   // 設定タブ「更新する」の確認(モーダル)。webview では confirm が効かないのでホスト側で出す。
   "monitor.update.confirmMessage": {
     ja: "fleetest を更新します。git pull・再ビルド・拡張の再インストールを行い、数分かかります。続けますか?",

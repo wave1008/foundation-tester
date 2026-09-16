@@ -187,6 +187,26 @@ final class RemoteHostRegistryTests: XCTestCase {
         XCTAssertEqual(RemoteHostRegistry.duplicateTargets(entries), ["shared@host"])
     }
 
+    // MARK: - validateUniqueHost
+
+    func testValidateUniqueHostRejectsHostOfAnotherMachine() {
+        let entries = [RemoteHostEntry(machine: "a", host: "shared@host")]
+        XCTAssertThrowsError(try RemoteHostRegistry.validateUniqueHost(
+            RemoteHostEntry(machine: "b", host: " shared@host "), in: entries)) { error in
+            XCTAssertEqual(error as? RemoteHostRegistryError,
+                           .hostAlreadyRegistered(host: "shared@host", machine: "a"))
+        }
+    }
+
+    /// 同名は upsert の置き換え対象なので、自分自身の宛先は重複に数えない
+    func testValidateUniqueHostAllowsSameMachine() {
+        let entries = [RemoteHostEntry(machine: "a", host: "shared@host")]
+        XCTAssertNoThrow(try RemoteHostRegistry.validateUniqueHost(
+            RemoteHostEntry(machine: "a", host: "shared@host"), in: entries))
+        XCTAssertNoThrow(try RemoteHostRegistry.validateUniqueHost(
+            RemoteHostEntry(machine: "b", host: "other@host"), in: entries))
+    }
+
     // MARK: - LocalConfig round-trip / back-compat
 
     func testLocalConfigRoundTripsRemoteHosts() throws {

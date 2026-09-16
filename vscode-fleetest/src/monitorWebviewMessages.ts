@@ -339,6 +339,9 @@ export type MonitorToWebviewMessage =
        * 画面に出す。成功時・ready 直後の初回配信では undefined。 */
       readonly error?: string;
     }
+  // 設定タブのマシン表の削除の確認結果(requestRemoveRemoteHost への応答。確認されたときだけ送る)。
+  // webview 側は settingsTab.js の removeHostRow。rowId は webview の使い捨ての行 id
+  | { readonly type: "remoteHostRemoveConfirmed"; readonly rowId: number }
   // 設定タブ「更新」セクションの状態。パネル ready 直後と checkUpdate/runUpdate の前後に送る。
   // 判定そのものは Scripts/update-check.sh(拡張は解釈するだけ)。対向: settingsTab.js の applyUpdate。
   // **実行ログは webview に送らない**(VSCode の OUTPUT へ出す。monitorUpdateController.ts 冒頭)。
@@ -746,6 +749,9 @@ export type MonitorFromWebviewMessage =
       readonly type: "setRemoteConfig";
       readonly hosts: readonly RemoteHostEntry[];
     }
+  // 設定タブのマシン表の削除ボタン(登録済みの行)。**確認はホスト側のモーダル**(webview では
+  // window.confirm が効かない)。確認されたら remoteHostRemoveConfirmed を返す
+  | { readonly type: "requestRemoveRemoteHost"; readonly rowId: number; readonly machine: string }
   // 設定タブ「ログ・録画」のクリーンアップ欄の欄変更(settingsTab.js)。**渡した鍵だけ**を CLI へ送り、
   // null はその鍵を既定へ戻す(空欄・不正値のとき)。0 は「保持しない」の有効な指定。
   | { readonly type: "setRetention"; readonly patch: RetentionPatch }
@@ -1138,6 +1144,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return value.value === "auto" || value.value === "ja" || value.value === "en";
     case "setRemoteConfig":
       return Array.isArray(value.hosts) && value.hosts.every(isRemoteHostEntryLike);
+    case "requestRemoveRemoteHost":
+      return typeof value.rowId === "number" && typeof value.machine === "string";
     case "devicesTabVisible":
       return typeof value.visible === "boolean";
     case "setRetention":

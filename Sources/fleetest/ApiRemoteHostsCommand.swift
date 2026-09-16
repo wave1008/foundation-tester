@@ -47,6 +47,7 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
                 try RemoteHostRegistry.validateName(entry.machine)
                 _ = try RemoteHostSpec.parse(entry.host)
                 if let dir = entry.dir { try RemoteLayout.validateBase(dir) }
+                try RemoteHostRegistry.validateUniqueHost(entry, in: config.remoteHosts ?? [])
                 let merged = Self.mergingFMConcurrency(entry, sentKey: raw.fmConcurrency != nil,
                                                        from: config.remoteHosts ?? [])
                 config.remoteHosts = RemoteHostRegistry.upsert(merged, into: config.remoteHosts ?? [])

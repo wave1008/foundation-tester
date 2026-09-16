@@ -555,6 +555,20 @@ export class MonitorPanelController implements vscode.Disposable {
                 machineColors: this.lastKnownMachineColors });
   }
 
+  /** 設定タブのマシン削除の確認(webview の window.confirm は効かないのでホスト側で出す)。
+   *  削除そのものは webview が行を消して setRemoteConfig で送る(差分計算を1経路に保つ)。 */
+  private async confirmRemoveRemoteHost(rowId: number, machine: string): Promise<void> {
+    const removeLabel = t("monitor.remoteHosts.removeButton");
+    const choice = await vscode.window.showWarningMessage(
+      t("monitor.remoteHosts.removeConfirm", { machine }),
+      { modal: true, detail: t("monitor.remoteHosts.removeConfirmDetail") },
+      removeLabel,
+    );
+    if (choice === removeLabel) {
+      this.post({ type: "remoteHostRemoveConfirmed", rowId });
+    }
+  }
+
   /** CLI 応答のうち **hosts[] 以外の欄**(この機械の固定行・既定の FM 枠)を控え直す。
    *  **書き込み系(import/remove)の応答からも必ず通す** —— 読み取り時にしか控えないと、
    *  直後に webview へ送り返す `local` が古いままになり、固定行に打った値が
@@ -999,6 +1013,9 @@ export class MonitorPanelController implements vscode.Disposable {
         void this.syncRemoteHostsFromWebview(message.hosts);
         break;
       }
+      case "requestRemoveRemoteHost":
+        void this.confirmRemoveRemoteHost(message.rowId, message.machine);
+        break;
       case "setTilePaneHeight":
         this.tilePaneHeight = message.value;
         void this.workspaceState.update("monitor.tilePaneHeight", message.value);
