@@ -859,6 +859,41 @@ public final class StepExecutor {
     /// tap 以外のアクションが走ったら捨てる = 「直前」の意味を保つ(`executeAction` の入口)
     var lastTapTarget: ElementInfo?
 
+    /// `type` の直前(実際に打つ直前)に撮ってあった木の `keyboardFrame`。
+    /// **`pendingTypeKeyboardCheck` が立っている間だけ意味を持つ**(消費側が「打つ前」として読む)
+    var keyboardFrameBeforeType: FTRect?
+
+    /// 直前の `type` の成否に関わらず、**次のロケータ操作(tap 等)の解決で1回だけ**
+    /// 「打つ前後でキーボードが動いたか」を確かめる印。`case "type"` と `tap(入力欄)`→`type` の
+    /// 焦点救済の両方が、成功した type の直後にこれを立てる。
+    ///
+    /// **「打った後」の観測は読み返し(`verifyTypedText`)に頼らない** —— 読み返しが走るのは
+    /// `AppDriver.verifiesTypedText == false`(in-app エンジン)のときだけで、実機(xcuitest
+    /// エンジン)は `verifiesTypedText == true` なので読み返し自体を通らない
+    /// (CLAUDE.md「type の読み返しの有無はドライバの能力」)。
+    /// 実測したバグは iPhone 13 実機(xcuitest エンジン)で起きており、読み返しの木に頼る旧実装は
+    /// **この経路では1度も発火しなかった**。**「打った後」は次のステップが解決のために
+    /// どのみち撮る最初の `freshSnapshot` に譲る**ことで、読み返しの有無・エンジンに依存しない
+    /// (StepExecutor+Actions.swift の消費側 doc 参照)。
+    /// **previousStepMovedContent と同じ「1回で消費」規律**。立っていても、その1枚で
+    /// キーボードが動いていなければ**追加コストはゼロ**(比較だけ)——動いていたときだけ
+    /// `settledSignature(phase:)` で収束を待つ。iOS 実機を LAN(往復48ms)で回した実測
+    /// (2026-09-16): WebView の `type` → 116〜134pt の押し上げの最中に次の `tap` が解決し、
+    /// 押し上げ前の座標を撃って別要素に当たった(E2E-iOS S0010・11 本中 5 本)
+    var pendingTypeKeyboardCheck = false
+
+    /// キーボードが「新しく出た」「矩形が動いた」「消えた」のいずれかで true(純粋関数)。
+    /// 同一(nil→nil 含む)なら false。type の前後の `snapshot.keyboardFrame` を比べるためだけに使う
+    static func keyboardShifted(before: FTRect?, after: FTRect?) -> Bool {
+        before != after
+    }
+
+    /// `tap(入力欄)` → `type(文字列)` の焦点救済(`retypeTargetIfUnfocused`)が内部で撮った
+    /// snapshot の keyboardFrame(= 打つ前の状態)。戻り値の型(`ElementInfo?`)を変えずに
+    /// 呼び出し元(`keyboardFrameBeforeType` の書き手)へ渡す橋渡し。呼び出し元は救済が
+    /// 非 nil を返した直後にだけ読む
+    var retypeRescueKeyboardFrame: FTRect?
+
     /// 容器の外に居る要素を可視域へ戻すのに必要な移動量(`hintDrag` の jump 規約 = 正なら指を上へ)。
     /// 収まっている/測れないときは nil。
     ///

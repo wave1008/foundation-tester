@@ -215,6 +215,13 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// **率が上がったらガードの所要(gateWait+推論)がステップの既定 timeout に対して重い**
     case guardRetaken = "guard-retaken"
 
+    /// `type` がソフトキーボードを出した/動かした直後、次のロケータ操作の解決を
+    /// `settledSignature` で押し上げアニメーションの収束まで待ったところ、**待っている間に
+    /// 実際に木が変わった**(= 待たなければ古い座標を掴んでいた)。`StepExecutor.pendingTypeKeyboardCheck`
+    /// の doc 参照。**立つのは救えた回だけ**(最初から静止していれば立てない。guard-retaken と同じ思想)。
+    /// **率が上がったらキーボードの押し上げが大きい/遅い画面**(WebView 等)を通っている
+    case settledAfterKeyboard = "settled-after-keyboard"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -286,6 +293,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .guardRetaken:
             return "the occlusion check itself used up this step's wait budget on the first look,"
                 + " so this waited once more and the retaken frame passed"
+        case .settledAfterKeyboard:
+            return "the preceding type shifted the on-screen layout (keyboard), so this waited for"
+                + " it to settle before resolving the target"
         }
     }
 }

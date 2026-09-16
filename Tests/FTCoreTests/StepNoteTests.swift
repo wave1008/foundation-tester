@@ -25,6 +25,7 @@ final class StepNoteTests: XCTestCase {
         XCTAssertEqual(StepNote.ocrShortcutBusy.rawValue, "ocr-shortcut-busy")
         XCTAssertEqual(StepNote.ocrWarmupWaited.rawValue, "ocr-warmup-waited")
         XCTAssertEqual(StepNote.ocrWarmupCapped.rawValue, "ocr-warmup-capped")
+        XCTAssertEqual(StepNote.settledAfterKeyboard.rawValue, "settled-after-keyboard")
     }
 
     // MARK: - 永続化(results/ まで運ばれるか)

@@ -622,9 +622,12 @@ extension StepExecutor {
     /// 戻り値の `settled` は false = **ポーリング上限で打ち切った**(静止を確認できていない)。
     /// 呼び出し側は note にして可視化する。黙って返すと「毎回上限を使い切っているのに緑」が
     /// 続き、実際そうなっていた(ラベル振れによる非収束。2026-07-31 修正)
+    /// `changed` = 収束するまでの間に**少なくとも1回**署名が変わったか(= 待った甲斐があったか)。
+    /// 最初の2枚が既に一致していれば false。type 後のキーボード押し上げ待ちのように
+    /// 「実際に救えた回だけ」を注記したい呼び出し側が使う(guard-retaken と同じ思想)
     func settledSignature(
         phase: inout PhaseAccumulator) async throws
-        -> (signature: String, snapshot: SnapshotResponse, settled: Bool) {
+        -> (signature: String, snapshot: SnapshotResponse, settled: Bool, changed: Bool) {
         func signature(_ snapshot: SnapshotResponse) -> String {
             snapshot.elements
                 .map { "\($0.type)|\($0.frame.x),\($0.frame.y)" }
@@ -656,7 +659,7 @@ extension StepExecutor {
             let current = signature(last)
             lastSnapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += lastSnapshotMs
-            if current == previous { return (current, last, true) }
+            if current == previous { return (current, last, true, !motion.isEmpty) }
             motion.append(SettleMotion.displacement(from: previousElements, to: last.elements))
             previous = current
             previousElements = last.elements
@@ -664,7 +667,7 @@ extension StepExecutor {
             // 横ばい・増加は等速のアニメーションで、待っても止まらない
             if poll + 1 >= Self.scrollSettleMaxPolls, !SettleMotion.isDecelerating(motion) { break }
         }
-        return (previous, last, false)
+        return (previous, last, false, !motion.isEmpty)
     }
 
 

@@ -32,9 +32,12 @@ final class SlowWorkerDetectorTests: XCTestCase {
         XCTAssertEqual(findings.count, 1, "遅いのは1台だけであること")
         let finding = try! XCTUnwrap(findings.first)
         XCTAssertEqual(finding.worker, "ios:iPhone 17 Pro-04")
-        XCTAssertEqual(finding.medianMs, 4300)
         XCTAssertEqual(finding.samples, 41)
-        XCTAssertEqual(finding.fleetMedianMs, 11, "他7台をプールした中央値(fastSamples の中央値)")
+        guard case let .median(medianMs, fleetMedianMs) = finding.kind else {
+            return XCTFail("median 判定であること")
+        }
+        XCTAssertEqual(medianMs, 4300)
+        XCTAssertEqual(fleetMedianMs, 11, "他7台をプールした中央値(fastSamples の中央値)")
         XCTAssertEqual(finding.summary,
                       "ios:iPhone 17 Pro-04: median snapshot 4300ms over 41 samples (other lanes 11ms)")
     }
@@ -96,5 +99,126 @@ final class SlowWorkerDetectorTests: XCTestCase {
         let others = record(worker: "ios:iPhone 17 Pro-01", snapshotSamples: [4, 6, 8, 10])
 
         XCTAssertTrue(SlowWorkerDetector.detect(records: [noTimeline, others]).isEmpty)
+    }
+
+    // MARK: - 間欠的な劣化(中央値は正常域でも一部の照会だけ遅い台)
+
+    /// 実測の再現1(2026-09-16 負荷テスト・M1Max -04・21:55 ios-inapp run): 中央値は8msで
+    /// 正常域なのに20/46の照会だけ3579ms(p90)に張り付く。他レーン(4台・計180標本)は
+    /// 2秒超0件なので間欠判定が立つ。中央値判定は workerMedian(8ms)が絶対条件(1,000ms)未満で
+    /// そもそも不成立 —— 中央値判定では原理的に拾えない形であることも合わせて確認する
+    func testDetectsIntermittentSlowLaneInAppRun() {
+        let slowSamples = Array(repeating: 8, count: 26) + Array(repeating: 3579, count: 20)
+        let slow = record(worker: "ios:iPhone 17 Pro-04", snapshotSamples: slowSamples)
+        let others = [1, 2, 3, 5].map { lane in
+            record(worker: "ios:iPhone 17 Pro-0\(lane)", scenarioID: "Foo.other\(lane)",
+                  snapshotSamples: Array(repeating: 6, count: 45))
+        }
+
+        let findings = SlowWorkerDetector.detect(records: [slow] + others)
+
+        XCTAssertEqual(findings.count, 1, "遅いのは1台だけであること")
+        let finding = try! XCTUnwrap(findings.first)
+        XCTAssertEqual(finding.worker, "ios:iPhone 17 Pro-04")
+        XCTAssertEqual(finding.samples, 46)
+        guard case let .intermittent(slowCount, p90Ms, fleetSlowCount, fleetSamples) = finding.kind else {
+            return XCTFail("intermittent 判定であること")
+        }
+        XCTAssertEqual(slowCount, 20)
+        XCTAssertEqual(p90Ms, 3579)
+        XCTAssertEqual(fleetSlowCount, 0)
+        XCTAssertEqual(fleetSamples, 180)
+        XCTAssertEqual(finding.summary,
+                      "ios:iPhone 17 Pro-04: 20 of 46 snapshots took 2000ms+ (p90 3579ms, other lanes 0 of 180)")
+    }
+
+    /// 実測の再現2(21:53 ios-xcuitest run・40標本): 2秒超が16/40(40%)・p90 3741ms
+    func testDetectsIntermittentSlowLaneXcuitestRun40Samples() {
+        let slowSamples = Array(repeating: 293, count: 24) + Array(repeating: 3741, count: 16)
+        let slow = record(worker: "ios:iPhone 17 Pro-04", snapshotSamples: slowSamples)
+        let others = (1...3).map { lane in
+            record(worker: "ios:iPhone 17 Pro-0\(lane)", scenarioID: "Foo.other\(lane)",
+                  snapshotSamples: Array(repeating: 68, count: 30))
+        }
+
+        let findings = SlowWorkerDetector.detect(records: [slow] + others)
+
+        XCTAssertEqual(findings.count, 1)
+        let finding = try! XCTUnwrap(findings.first)
+        XCTAssertEqual(finding.samples, 40)
+        guard case let .intermittent(slowCount, p90Ms, fleetSlowCount, fleetSamples) = finding.kind else {
+            return XCTFail("intermittent 判定であること")
+        }
+        XCTAssertEqual(slowCount, 16)
+        XCTAssertEqual(p90Ms, 3741)
+        XCTAssertEqual(fleetSlowCount, 0)
+        XCTAssertEqual(fleetSamples, 90)
+        XCTAssertEqual(finding.summary,
+                      "ios:iPhone 17 Pro-04: 16 of 40 snapshots took 2000ms+ (p90 3741ms, other lanes 0 of 90)")
+    }
+
+    /// 実測の再現3(21:50 ios-xcuitest run・91標本): 2秒超が24/91(約26%)・p90 3437ms
+    func testDetectsIntermittentSlowLaneXcuitestRun91Samples() {
+        let slowSamples = Array(repeating: 167, count: 67) + Array(repeating: 3437, count: 24)
+        let slow = record(worker: "ios:iPhone 17 Pro-04", snapshotSamples: slowSamples)
+        let others = (1...3).map { lane in
+            record(worker: "ios:iPhone 17 Pro-0\(lane)", scenarioID: "Foo.other\(lane)",
+                  snapshotSamples: Array(repeating: 62, count: 60))
+        }
+
+        let findings = SlowWorkerDetector.detect(records: [slow] + others)
+
+        XCTAssertEqual(findings.count, 1)
+        let finding = try! XCTUnwrap(findings.first)
+        XCTAssertEqual(finding.samples, 91)
+        guard case let .intermittent(slowCount, p90Ms, fleetSlowCount, fleetSamples) = finding.kind else {
+            return XCTFail("intermittent 判定であること")
+        }
+        XCTAssertEqual(slowCount, 24)
+        XCTAssertEqual(p90Ms, 3437)
+        XCTAssertEqual(fleetSlowCount, 0)
+        XCTAssertEqual(fleetSamples, 180)
+        XCTAssertEqual(finding.summary,
+                      "ios:iPhone 17 Pro-04: 24 of 91 snapshots took 2000ms+ (p90 3437ms, other lanes 0 of 180)")
+    }
+
+    /// 健全な run(2026-09-16 全緑フル E2E・127レーンの最大値): 22標本中2本が2100msでも、
+    /// 遅い照会が intermittentMinSlowSamples(5本)未満なので間欠判定は立たない
+    func testHealthyRunWithOccasionalSlowSnapshotDoesNotFire() {
+        let healthySamples = Array(repeating: 50, count: 20) + [2100, 2100]
+        let lane = record(worker: "ios:iPhone 17 Pro-01", snapshotSamples: healthySamples)
+        let others = (2...3).map { n in
+            record(worker: "ios:iPhone 17 Pro-0\(n)", scenarioID: "Foo.other\(n)",
+                  snapshotSamples: healthySamples)
+        }
+
+        XCTAssertTrue(SlowWorkerDetector.detect(records: [lane] + others).isEmpty,
+                      "健全なレーンの稀な2秒超(2/22)は間欠判定の最小本数(5)未満なので立たない")
+    }
+
+    /// ホスト全体が遅い run(全レーンが同じ割合で2秒超)は、間欠判定の相対条件
+    /// (他レーン全体の割合がこのレーンの1/10以下)を満たさないので1台のせいにしない ——
+    /// 既存の中央値判定と同じ思想
+    func testHostWideSlowRunDoesNotFireIntermittent() {
+        let laneSamples = Array(repeating: 50, count: 14) + Array(repeating: 3000, count: 6)
+        let records = (1...8).map { lane in
+            record(worker: "ios:iPhone 17 Pro-0\(lane)", scenarioID: "Foo.host\(lane)",
+                  snapshotSamples: laneSamples)
+        }
+
+        XCTAssertTrue(SlowWorkerDetector.detect(records: records).isEmpty,
+                      "全レーンが同じ割合で2秒超なら1台のせいにしない")
+    }
+
+    /// 標本不足(9標本中2本が2500ms。負荷テスト中の健全なレーンと同じ形)は、遅い照会が
+    /// intermittentMinSlowSamples(5本)未満なので間欠判定は立たない
+    func testInsufficientSlowSamplesDoesNotFireIntermittent() {
+        let samples = Array(repeating: 50, count: 7) + [2500, 2500]
+        let lane = record(worker: "ios:iPhone 17 Pro-01", snapshotSamples: samples)
+        let others = record(worker: "ios:iPhone 17 Pro-02", scenarioID: "Foo.other2",
+                            snapshotSamples: Array(repeating: 40, count: 12))
+
+        XCTAssertTrue(SlowWorkerDetector.detect(records: [lane, others]).isEmpty,
+                      "標本9本中2本の遅延は間欠判定の最小本数(5)未満なので立たない")
     }
 }

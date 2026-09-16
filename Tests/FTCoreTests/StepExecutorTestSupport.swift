@@ -38,8 +38,13 @@ final class FakeAppDriver: AppDriver {
     var swipeError: Error?
     var pressError: Error?
     /// SnapshotResponse.keyboardFrame(全 snapshot() 呼び出しに一律で乗せる。
-    /// キーボード遮蔽の配線テスト専用。既定 nil = 従来どおりキーボード非表示扱い)
+    /// キーボード遮蔽の配線テスト専用。既定 nil = 従来どおりキーボード非表示扱い)。
+    /// **keyboardFrames(呼び出し回数ぶんの列)が設定されていればそちらを優先する**
     var keyboardFrame: FTRect?
+    /// snapshotElements と同じ「呼び出し回数ぶんの列(尽きたら最後を繰り返す)」規約で
+    /// keyboardFrame を呼び出しごとに変える(type 前後で押し上げる/動く形の検証用)。
+    /// nil のままなら keyboardFrame(単一値)を使う
+    var keyboardFrames: [FTRect?]?
     /// SnapshotResponse.overlayWindowFrames(木に出ないオーバーレイ・ウィンドウの申告。
     /// keyboardFrame と同じく全 snapshot() 呼び出しに一律で乗せる)
     var overlayWindowFrames: [FTRect]?
@@ -105,10 +110,16 @@ final class FakeAppDriver: AppDriver {
         } else {
             keyboardShown = nil
         }
+        let effectiveKeyboardFrame: FTRect?
+        if let frames = keyboardFrames, !frames.isEmpty {
+            effectiveKeyboardFrame = frames[min(snapshotCallCount - 1, frames.count - 1)]
+        } else {
+            effectiveKeyboardFrame = keyboardFrame
+        }
         return SnapshotResponse(sessionBundleID: nil,
                                 screen: FTRect(x: 0, y: 0, width: 400, height: 800),
                                 elements: elements, truncatedCount: 0, keyboardShown: keyboardShown,
-                                keyboardFrame: keyboardFrame,
+                                keyboardFrame: effectiveKeyboardFrame,
                                 overlayWindowFrames: overlayWindowFrames)
     }
 

@@ -144,9 +144,9 @@ extension StepExecutor {
             var sentSwipes = 0
             // ドライバの端申告を確かめた読みは**次の周回の読みとして使い回す**
             // (捨てて撮り直すと、端の確定のために木を1周ぶん余計に読む)
-            var carried: (signature: String, snapshot: SnapshotResponse, settled: Bool)?
+            var carried: (signature: String, snapshot: SnapshotResponse, settled: Bool, changed: Bool)?
             for _ in 0..<limit {
-                let settled: (signature: String, snapshot: SnapshotResponse, settled: Bool)
+                let settled: (signature: String, snapshot: SnapshotResponse, settled: Bool, changed: Bool)
                 if let carried {
                     settled = carried
                 } else {
@@ -362,6 +362,9 @@ extension StepExecutor {
             // 改行入りは typeDriver(XCUITest)へ回す経路があり ref の体系が別なので触らない
             if let tapped = lastTapTarget, !text.contains("\n"),
                let recovered = try await retypeTargetIfUnfocused(after: tapped, phase: &phase) {
+                // retypeTargetIfUnfocused が撮った撮り直し後の snapshot の keyboardFrame
+                // (= 打つ前の状態。retypeRescueKeyboardFrame の doc)
+                let keyboardBefore = retypeRescueKeyboardFrame
                 let start = clock.now
                 try await driver.type(ref: recovered.ref, text: text)
                 phase.actionMs += Self.ms(clock.now - start)
@@ -382,6 +385,11 @@ extension StepExecutor {
                         return StepOutcome(status: .failed(failure))
                     }
                 }
+                // ロケータ有り type(case "type")と同じ判定(keyboardFrameBeforeType の doc)。
+                // 「打った後」はここでは読まない —— 次のロケータ操作が解決のために撮る最初の
+                // 木で比べる(エンジンに依存しない)
+                keyboardFrameBeforeType = keyboardBefore
+                pendingTypeKeyboardCheck = true
                 return StepOutcome(status: .passed,
                                    driverFallback: Self.joinNotes(replaceFallbackNote,
                                        "typed into \(TapTargetGeometry.describe(recovered))"
@@ -485,6 +493,22 @@ extension StepExecutor {
         previousStepMovedContent = false
         var snapshot = try await freshSnapshot(freshness)
         phase.snapshotMs += Self.ms(clock.now - start)
+        // **直前の type が「打つ前後」でキーボードを動かしたか、ここで初めて確かめる**
+        // (pendingTypeKeyboardCheck の doc)。上の freshSnapshot は元々撮る1枚なので、
+        // 動いていなければ比較だけで追加コストはゼロ。動いていたときだけ収束を待って撮り直す。
+        // **読み返し(verifiesTypedText)の有無やエンジンに依存しない** —— type を実行した
+        // ドライバが何であれ、ここで木を見て比べる
+        if pendingTypeKeyboardCheck {
+            pendingTypeKeyboardCheck = false
+            if Self.keyboardShifted(before: keyboardFrameBeforeType, after: snapshot.keyboardFrame) {
+                // **settledSignature が自分で phase へ計上する**ので、ここでは足さない
+                // (足すと待ち時間を snapshotMs へ二重計上する)
+                let settled = try await settledSignature(phase: &phase)
+                snapshot = settled.snapshot
+                // **待っている間に実際に木が変わった回だけ**数える(settledAfterKeyboard の doc)
+                if settled.changed { noteCodesThisStep.insert(.settledAfterKeyboard) }
+            }
+        }
         // 宣言された割り込み(アプリ内メッセージ等)が出ていれば先に閉じる。**解決を試みる前**に
         // 行う: 覆われているだけで要素自体は解決できてしまい、タップが吸われる形があるため
         // (層3 の coveringHint と同じ事象。あちらは診断、こちらは宣言があるときの自動処理)
@@ -1009,8 +1033,14 @@ extension StepExecutor {
             // **入力欄でないものへ打とうとしていないか**(2026-08-14。TypeReadback の doc に実測)。
             // 検証は両側とも空になる経路なので、せめて内側の欄を名指しして知らせる
             let nonInputNote = TapTargetGeometry.nonInputTypeTargetNote(element, in: snapshot.elements)
+            // **押し上げ検知の「打つ前」の基準**(keyboardFrameBeforeType の doc)。以下のどの経路
+            // (typeDriver 優先/通常/409フォールバック)で打っても、成功したら等しく次のロケータ
+            // 操作へ引き継ぐ —— エンジンで挙動を変えない(読み返しの有無に依存しない)
+            let keyboardBefore = snapshot.keyboardFrame
             if let td = typeDriver, preferTypeDriver || text.contains("\n"),
                try await typeViaTypeDriver(td, step: step, phase: &phase) {
+                keyboardFrameBeforeType = keyboardBefore
+                pendingTypeKeyboardCheck = true
                 // ランナーの打ち直しの申告(OKResponse.note)はこの経路でも拾う(下の主経路と同じ)
                 return StepOutcome(status: .passed, healedStep: healedStep,
                                    healedByFingerprint: healedByFingerprint,
@@ -1047,6 +1077,10 @@ extension StepExecutor {
                 driverFallback = Self.joinNotes("fell back to XCUITest", td.lastActionNote,
                                                 replaceFallbackNote, existingValueNote, nonInputNote)
             }
+            // **打った(do 成功/409フォールバックのどちらでも)ので、次のロケータ操作の解決で
+            // 打つ前後のキーボードを比べる**(keyboardFrameBeforeType の doc)
+            keyboardFrameBeforeType = keyboardBefore
+            pendingTypeKeyboardCheck = true
         case "clearInput":
             if let td = typeDriver, preferTypeDriver,
                try await clearViaTypeDriver(td, step: step, phase: &phase) {
@@ -1996,7 +2030,11 @@ extension StepExecutor {
         // (閉じずに入れ先を選ぶと、覆いの下の欄を名指しして ref で撃つことになる)
         try await dismissInterruption(in: &snapshot, phase: &phase)
         guard InputFocusRescue.focusIsElsewhere(from: tapped, in: snapshot.elements) else { return nil }
-        return InputFocusRescue.fieldToType(after: tapped, in: snapshot.elements)
+        guard let field = InputFocusRescue.fieldToType(after: tapped, in: snapshot.elements) else { return nil }
+        // 呼び出し元(type のキーボード押し上げ検知)へ「打つ前」の状態を渡す橋渡し
+        // (retypeRescueKeyboardFrame の doc。戻り値の型は変えない)
+        retypeRescueKeyboardFrame = snapshot.keyboardFrame
+        return field
     }
 
 }
