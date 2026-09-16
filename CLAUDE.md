@@ -581,6 +581,8 @@
   `BridgeLauncherCaptureSettingsTests` がリテラルで固定。**旧形式の xctestrun(トップレベルに対象)も通す**
   —— 実際のビルドが書くのは旧形式)。**ブリッジの `xcodebuild` には `-resultBundlePath` と
   `-derivedDataPath` を必ず渡す**(渡さないと既定の DerivedData に起動ごとのフォルダを積む)。
+  **生きたランナーの居ないポートの束は供給の入口で消す**(`BridgeLauncher.sweepOrphanResultBundles`。
+  起動時の掃除は同じポートで起動し直したときしか消さず、復活でポートが変わると残った = 4.1GB)。
   **掃除が見る場所は2つ**(`RetentionSweeper.Roots` = パッケージ / ツール。1つの値で兼ねない ——
   受け手の外部構成では別の場所で、兼ねると受け手の録画・レポートを1度も掃除しなかった。
   **保守者のクローン構成では一致するので手元の実データでは出ない** = テストは必ず別の一時フォルダで)

@@ -1338,6 +1338,13 @@ ssh を `-tt`(擬似 TTY 強制割り当て)で起動し、切断時に SIGHUP �
   包みの後はリモートの run が SIGHUP で中断の経路を通って終わり(`interrupted: true`)、次のディスパッチが
   ロックを自動回収する(2026-09-11 に M1Max で確認)
 
+- **中断したら、回収へ入る前にロックを外す**(2026-09-16)。回収(とくに録画の rsync)は数十秒かかり、
+  その間に中断の猶予が尽きて SIGKILL されると `defer` に届かずロックが残る(3 機とも
+  `collecting recordings` の最中に刺されて残った)。外すのは**このディスパッチの run がランナーに居ない**と
+  1 往復で確かめられたときだけ(`RemoteDispatchLock.releaseIfRunEndedCommand`)—— ssh は中断で先に
+  切れうるので、向こうの run がまだ後始末中なら外さず、従来どおり末尾の `defer` に任せる。
+  出るのは `==> released the dispatch lock before collecting (the run was interrupted)`
+
 取りこぼした孤児は 16.4 の `remote clean`(+ 終了スクリプトは `hooks reap`)で掃除する。
 **自分の死んだディスパッチが残したロックだけ**は `fleetest remote unlock --runner <h>` で外す
 (下記「二重ディスパッチのロック」)。
