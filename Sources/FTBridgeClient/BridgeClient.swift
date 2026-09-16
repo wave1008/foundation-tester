@@ -1035,10 +1035,15 @@ public final class BridgeClient: AppDriver {
             return try await session.data(for: req)
         } catch {
             let detail = error.localizedDescription + Self.lanTransportAdvice(baseURL: baseURL)
+            // BridgeClient は元々 XCUITest ランナー向けのクライアント(このクラスの doc 冒頭
+            // 参照)なので、自分の宛先が in-app/Android に化けていることを知らない。
+            // InAppDriver.withCrashContext / AndroidDriver.withBridge が境界で正しい
+            // context へ付け替えて再 throw する(DriverErrorContext の doc 参照)
+            let context = DriverErrorContext(engine: .iosXCUITest, physicalDevice: physicalUDID != nil)
             if DriverError.isDefiniteDeliveryFailure(error) {
-                throw DriverError.bridgeConnectionRefused(detail)
+                throw DriverError.bridgeConnectionRefused(context: context, detail: detail)
             }
-            throw DriverError.bridgeUnreachable(detail)
+            throw DriverError.bridgeUnreachable(context: context, detail: detail)
         }
     }
 

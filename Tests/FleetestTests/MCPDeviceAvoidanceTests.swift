@@ -139,4 +139,52 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
         XCTAssertEqual(resolved.devices.map(\.name), ["A", "B"])
         XCTAssertTrue(warnings.isEmpty, "\(warnings)")
     }
+
+    // MARK: - 理由文(事実ベース。実測 9/16: 空きが1台あっても「no other device was free」と
+    // 出ていた。真の理由は「本数+予備1台に足りない」ことなので数で言う)
+
+    func testShortageReasonNamesTheRealNumbers() {
+        XCTAssertEqual(
+            ProfileRunner.shortageReason(needed: 3, scenarios: 2, free: 1),
+            "needed 3 lanes (2 scenarios + 1 spare) but only 1 device was free")
+    }
+
+    func testShortageReasonSingularizes() {
+        XCTAssertEqual(
+            ProfileRunner.shortageReason(needed: 1, scenarios: 1, free: 0),
+            "needed 1 lane (1 scenario + 1 spare) but only 0 devices were free")
+    }
+
+    /// scenarios == 0(本数不明)は数で言えないので、従来の言い方のまま
+    func testShortageReasonFallsBackWhenScenarioCountIsUnknown() {
+        XCTAssertEqual(ProfileRunner.shortageReason(needed: 2, scenarios: 0, free: 0),
+                       "no other device was free")
+    }
+
+    /// 実測(06:39): 空いている台(1台)があっても、必要レーン数(本数+予備1台=3)に
+    /// 足りないと MCP の台を2台とも使う。文言は「空きが無い」ではなく数で言う
+    func testRunNamesTheRealShortageInTheWarning() {
+        MCPDeviceLease.write(stateDir: stateDir, key: "UA", pid: otherLivePID)
+        MCPDeviceLease.write(stateDir: stateDir, key: "UD", pid: otherLivePID)
+        let (resolved, warnings) = ProfileRunner.limitingDevicesAvoidingMCP(
+            profile([phone("A", udid: "UA"), phone("D", udid: "UD"), phone("B", udid: "UB")]),
+            iosScenarios: 2, androidScenarios: 0, trim: true, leaseStateDir: stateDir)
+        XCTAssertEqual(Set(resolved.devices.map(\.name)), ["A", "B", "D"])
+        XCTAssertEqual(warnings.count, 2, "\(warnings)")
+        for warning in warnings {
+            XCTAssertTrue(
+                warning.contains("needed 3 lanes (2 scenarios + 1 spare) but only 1 device was free"),
+                warning)
+        }
+    }
+
+    /// `--broadcast`(trim: false)の文言は変えない
+    func testBroadcastReasonUnchanged() {
+        MCPDeviceLease.write(stateDir: stateDir, key: "UA", pid: otherLivePID)
+        let (_, warnings) = ProfileRunner.limitingDevicesAvoidingMCP(
+            profile([phone("A", udid: "UA"), phone("B", udid: "UB")]),
+            iosScenarios: 1, androidScenarios: 0, trim: false, leaseStateDir: stateDir)
+        XCTAssertEqual(warnings.count, 1, "\(warnings)")
+        XCTAssertTrue((warnings.first ?? "").contains("--broadcast runs on every device"), "\(warnings)")
+    }
 }

@@ -217,11 +217,83 @@ extension DriverError: StepFailureKindProviding {
     }
 }
 
+/// この失敗が起きた構成(プラットフォーム込みのエンジン・実機か)。`DriverError.bridgeUnreachable`/
+/// `.bridgeConnectionRefused` の必須の同伴データにする(**既定値を置かない** —— 新しい throw
+/// サイトが文脈を渡し忘れたらコンパイルで止める。`OverlayWindowOcclusion` と同じ規律)。
+///
+/// **`BridgeClient`(iOS xcuitest 用クライアント)は in-app・Android にも使い回されるため、
+/// 自分の宛先が3つのどれかを知らない**(BridgeClient.send 参照)。in-app は `InAppDriver`、
+/// Android は `AndroidDriver.withBridge` が、境界で正しい context へ付け替えて再 throw する。
+public struct DriverErrorContext: Sendable, Equatable {
+    public enum Engine: Sendable, Equatable {
+        case iosInApp
+        case iosXCUITest
+        case android
+    }
+    public let engine: Engine
+    public let physicalDevice: Bool
+    public init(engine: Engine, physicalDevice: Bool) {
+        self.engine = engine
+        self.physicalDevice = physicalDevice
+    }
+}
+
+/// `DriverError.errorDescription` の文言組み立て(純粋関数。`DriverErrorMessageTests` が
+/// 構成ごとの文面を等号固定する)。**構成ごとに、その構成で実際に起こりうる原因だけを並べる**
+/// —— 2026-09-16 の負荷テストで、Android の一時的な adb 断に iOS inapp/hybrid 向けの案内
+/// (「シミュレータ専用」)が付き、iOS xcuitest ランナーを外から殺した接続拒否で
+/// 「アプリが落ちた」が第一容疑にされていた(xcuitest はアプリと別プロセスなので的外れ)
+public enum DriverErrorMessage {
+    public static func unreachable(context: DriverErrorContext, detail: String) -> String {
+        let base = "Cannot reach the driver (not running, or slow to respond)."
+        let hint: String
+        switch context.engine {
+        case .iosInApp:
+            hint = " In hybrid/mixed runs the backgrounded app can be suspended, so TCP is accepted"
+                + " but no HTTP response comes back. The inapp/hybrid engines are simulator-only"
+                + " (injection is impossible on physical devices — use an xcuitest profile)."
+                + " Check: fleetest bridge up."
+        case .iosXCUITest:
+            hint = " Check: fleetest bridge up."
+        case .android:
+            hint = " Check: adb devices, `fleetest doctor`, or try `fleetest bridge up --platform android`."
+        }
+        return detail.isEmpty ? "\(base)\(hint)" : "\(base)\(hint) \(detail)"
+    }
+
+    public static func connectionRefused(context: DriverErrorContext, detail: String) -> String {
+        let base = "Connection to the driver was refused (nothing listening on the port)."
+        let suspect: String
+        switch context.engine {
+        case .iosInApp:
+            suspect = " If this happened mid-run, the app under test most likely exited or crashed"
+                + " (on iOS inapp the bridge lives inside the app, so it becomes unreachable the"
+                + " moment the app dies)."
+        case .iosXCUITest:
+            suspect = context.physicalDevice
+                ? " If this happened mid-run, the XCUITest runner most likely stopped, or the"
+                    + " physical device disconnected (USB/Wi-Fi) — on xcuitest the bridge runs in a"
+                    + " separate process from the app under test, so a crashed app alone would not"
+                    + " explain this."
+                : " If this happened mid-run, the XCUITest runner most likely stopped (on xcuitest"
+                    + " the bridge runs in a separate process from the app under test, so a crashed"
+                    + " app alone would not explain this)."
+        case .android:
+            suspect = " If this happened mid-run, the Android bridge (a separate instrumentation"
+                + " process) most likely stopped — it does not live inside the app under test."
+        }
+        let checkHint = context.engine == .android
+            ? " If the app has not been started yet, check: adb devices."
+            : " If the app has not been started yet, check: fleetest bridge up."
+        return "\(base)\(suspect)\(checkHint) Detail: \(detail)"
+    }
+}
+
 public enum DriverError: Error, LocalizedError {
-    case bridgeUnreachable(String)
+    case bridgeUnreachable(context: DriverErrorContext, detail: String)
     /// URLSession レベルで「リクエストがサーバに届いていないことが確実」なエラー
     /// (接続拒否・接続断など)。Android ブリッジの自動再プロビジョン判定に使う
-    case bridgeConnectionRefused(String)
+    case bridgeConnectionRefused(context: DriverErrorContext, detail: String)
     case badResponse(status: Int, body: String)
     /// F8b: 事前確認の /status がドライバ自体には届いたが、接続先が期待したデバイスと違った
     /// (ポートが別デバイスのブリッジに奪われた)。detail は BridgeIdentityCheck.verdict が
@@ -230,14 +302,10 @@ public enum DriverError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .bridgeUnreachable(let detail):
-            // ハイブリッド/混在実行では背面アプリが suspend され、TCP は受理されても
-            // HTTP 応答が返らずタイムアウトになることがある(この case で観測される)。
-            return "Cannot reach the driver (bridge not running, slow response, or — in hybrid/mixed runs — the backgrounded app is suspended so TCP is accepted but no HTTP response comes back. Check iOS: fleetest bridge up / Android: adb devices). The inapp/hybrid engines are simulator-only (injection is impossible on physical devices — use an xcuitest profile): \(detail)"
-        case .bridgeConnectionRefused(let detail):
-            // 接続拒否=ポートで誰も待受していない。実行途中なら対象アプリのプロセス死が最有力
-            // (iOS inapp はブリッジがアプリ内常駐のため、アプリが落ちると即接続不能になる)。
-            return "Connection to the driver was refused (nothing listening on the port). If this happened mid-run, the app under test most likely exited or crashed (on iOS inapp the bridge lives inside the app, so it becomes unreachable the moment the app dies). If the app has not been started yet, check iOS: fleetest bridge up / Android: adb devices. Detail: \(detail)"
+        case .bridgeUnreachable(let context, let detail):
+            return DriverErrorMessage.unreachable(context: context, detail: detail)
+        case .bridgeConnectionRefused(let context, let detail):
+            return DriverErrorMessage.connectionRefused(context: context, detail: detail)
         case .badResponse(let status, let body):
             return "The driver returned an error (\(status)): \(body)"
         case .bridgeIdentityMismatch(let detail):

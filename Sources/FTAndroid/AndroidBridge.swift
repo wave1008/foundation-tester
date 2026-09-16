@@ -38,6 +38,20 @@ extension AndroidDriver {
 
     var bridgeKey: String { serial ?? "default" }
 
+    /// 実機かどうか(nil serial は「不明」ではなく「実機ではない」扱い ——
+    /// noticePersistentSettingsOnPhysicalDevice と同じ規則)
+    private var isPhysicalAndroidDevice: Bool {
+        serial.map(DevicePicker.isPhysicalAndroidSerial) ?? false
+    }
+
+    /// この接続が Android であることを表す context。**DriverError.bridgeUnreachable/
+    /// .bridgeConnectionRefused を投げる/付け替える箇所は必ずこれを通す**(直書きで
+    /// physicalDevice を書き漏らすと iOS 向けの案内が Android の失敗に付いたときと
+    /// 同じ事故が起きる)
+    private func androidContext() -> DriverErrorContext {
+        DriverErrorContext(engine: .android, physicalDevice: isPhysicalAndroidDevice)
+    }
+
     // MARK: - 状態機械
 
     /// .active なら(/status 往復せず)即返す。初回・無効化後は forward確認→probe→必要なら起動。
@@ -48,7 +62,7 @@ extension AndroidDriver {
             return client
         case .unavailable(let retryAfter, let detail):
             guard Date() >= retryAfter else {
-                throw Self.unreachableError(detail: detail,
+                throw Self.unreachableError(detail: detail, physicalDevice: isPhysicalAndroidDevice,
                                             cachedSecondsRemaining: retryAfter.timeIntervalSinceNow)
             }
             // 期限切れ → 下の再セットアップへ
@@ -64,18 +78,35 @@ extension AndroidDriver {
                 Self.setRegistry(key, .active(client))
                 return client
             } catch {
-                let message = (error as? LocalizedError)?.errorDescription ?? "\(error)"
                 Self.setRegistry(key, .unavailable(
                     retryAfter: Date().addingTimeInterval(Self.unavailableRetryInterval),
-                    detail: message))
+                    detail: Self.rawFailureDetail(error)))
                 throw error
             }
         }
         do {
             return try await setup.value
         } catch {
-            let message = (error as? LocalizedError)?.errorDescription ?? "\(error)"
-            throw Self.unreachableError(detail: message)
+            throw Self.unreachableError(detail: Self.rawFailureDetail(error),
+                                        physicalDevice: isPhysicalAndroidDevice)
+        }
+    }
+
+    /// エラーから「一次情報だけ」を取り出す。`.unavailable` のキャッシュに格納する値と、
+    /// `unreachableError` の `detail` はここを通す ——
+    /// **既に組み立て済みの DriverError 説明文(errorDescription)を渡すと、
+    /// unreachableError がもう一度包んで二重表示になる**(2026-09-16 の負荷テストで実際に踏んだ:
+    /// 固定文が2回出て一次情報が括弧の奥に埋もれた)。DriverError.bridgeUnreachable/
+    /// .bridgeConnectionRefused は raw な一次情報を運んでいるので、その `detail` だけを使い
+    /// context は捨てる(ここで確定させ直す)。それ以外のエラーは errorDescription/文字列化へ後退する
+    static func rawFailureDetail(_ error: Error) -> String {
+        guard let driverError = error as? DriverError else {
+            return (error as? LocalizedError)?.errorDescription ?? "\(error)"
+        }
+        switch driverError {
+        case .bridgeUnreachable(_, let detail): return detail
+        case .bridgeConnectionRefused(_, let detail): return detail
+        default: return driverError.errorDescription ?? "\(driverError)"
         }
     }
 
@@ -102,6 +133,12 @@ extension AndroidDriver {
         bridgeLock.lock(); bridgeSetup[key] = nil; bridgeLock.unlock()
     }
 
+    /// - `detail`: **一次情報の文字列だけを渡すこと**(adb の生の失敗文言等)。
+    ///   `DriverError.errorDescription` 経由で既に組み立て済みの説明文を渡すと、
+    ///   この関数が組み立てる文の中でもう一度包まれて二重表示になる(2026-09-16 に実際に踏んだ。
+    ///   `rawFailureDetail` がこの規律を守る唯一の抽出口)
+    /// - `physicalDevice`: 実機かエミュレータか。呼び出し元は `isPhysicalAndroidDevice`/
+    ///   `androidContext()` から渡す(既定値を置かない ——渡し忘れをコンパイルで止める)
     /// - `cachedSecondsRemaining`: 失敗キャッシュ(`.unavailable`)を再生しているときだけ非 nil。
     ///   **キャッシュだと名乗らせる**: 再生された文はライブの失敗と1バイトも
     ///   違わなかったので、読み手は「今まさに adb forward が落ちた」と読む。実際、手で
@@ -109,10 +146,8 @@ extension AndroidDriver {
     ///   返し続ける状況で、原因をブリッジ側だと誤認して調査に数分溶かした(2026-08-13 に実際に踏んだ)。
     ///   嵐防止としてのキャッシュ自体は残す価値がある(失敗1回は probe 2s + 起動待ち最大 10s)
     ///   ので、消さずに**残り時間と抜け道**を添える
-    static func unreachableError(detail: String?,
+    static func unreachableError(detail: String?, physicalDevice: Bool,
                                  cachedSecondsRemaining: TimeInterval? = nil) -> DriverError {
-        let base = "cannot reach the Android bridge. Check the environment with `fleetest doctor`, "
-            + "or try `fleetest bridge up --platform android`"
         // **他プロセスで直しても、この文が消えるのは期限後**(2026-08-13 のレビュー指摘):
         // `.unavailable` はプロセスごとの static なので、CLI の `bridge up` が成功しても
         // **この長寿命プロセス(fleetest-mcp / monitor)の記憶は消えない**。
@@ -123,20 +158,35 @@ extension AndroidDriver {
                 + " Fixing the device now (e.g. `fleetest bridge up --platform android`) does NOT"
                 + " clear this: the cache is per-process, so this same text replays until then]"
         } ?? ""
-        return .bridgeUnreachable((detail.map { "\(base)(\($0))" } ?? base) + cached)
+        return .bridgeUnreachable(
+            context: DriverErrorContext(engine: .android, physicalDevice: physicalDevice),
+            detail: (detail ?? "") + cached)
     }
 
     /// bridgeConnectionRefused(リクエストが届いていないと確実な場合)だけレジストリを無効化して
-    /// 1回だけ再プロビジョン+リトライする。それ以外のエラー(HTTPエラー応答等)はそのまま投げる
+    /// 1回だけ再プロビジョン+リトライする。それ以外のエラー(HTTPエラー応答等)はそのまま投げる。
+    ///
+    /// **ここを抜ける bridgeUnreachable/bridgeConnectionRefused は必ず android の context へ
+    /// 付け替える**: `BridgeClient`(operation の中身)は自分が iOS xcuitest 向けか Android 向けか
+    /// を知らず、既定で iosXCUITest の context を付けて投げる(BridgeClient.send 参照)。
+    /// 付け替えないと Android の一時的な adb 断に xcuitest/inapp 向けの案内が付く
+    /// (2026-09-16 の負荷テストで実際に踏んだ)
     func withBridge<T>(_ operation: (BridgeClient) async throws -> T) async throws -> T {
         let client = try await ensureBridge()
         do {
             return try await operation(client)
         } catch DriverError.bridgeConnectionRefused {
             Self.setRegistry(bridgeKey, nil)
-            let retried = try await ensureBridge()
-            return try await operation(retried)
-        } catch DriverError.bridgeUnreachable(let detail) {
+            do {
+                let retried = try await ensureBridge()
+                return try await operation(retried)
+            } catch DriverError.bridgeConnectionRefused(_, let retryDetail) {
+                throw DriverError.bridgeConnectionRefused(context: androidContext(), detail: retryDetail)
+            } catch DriverError.bridgeUnreachable(_, let retryDetail) {
+                Self.setRegistry(bridgeKey, nil)
+                throw DriverError.bridgeUnreachable(context: androidContext(), detail: retryDetail)
+            }
+        } catch DriverError.bridgeUnreachable(_, let detail) {
             // **接続が確立してから切れた**(instrumentation の死。コールドブート直後の
             // 起動ストームで頻発する。実測 2026-08-01: 起動17s→21s で死亡)。
             // 同じ操作は自動再試行しない — 届いた可能性があり tap/type の二重実行になる。
@@ -144,7 +194,7 @@ extension AndroidDriver {
             // 死んだクライアントを握ったままだと以後の全操作と worker の revive が
             // 同じ死体に当たり続け、二度と復帰しない(復帰しなかった実害の根因)
             Self.setRegistry(bridgeKey, nil)
-            throw DriverError.bridgeUnreachable(detail)
+            throw DriverError.bridgeUnreachable(context: androidContext(), detail: detail)
         }
     }
 
@@ -188,7 +238,8 @@ extension AndroidDriver {
         if let probe = try? adb(["shell", "settings", "get", "global", "window_animation_scale"]),
            let marker = AndroidGuestReadiness.systemServerStartingMarker(in: probe.output) {
             throw DriverError.bridgeUnreachable(
-                AndroidGuestReadiness.stillStartingMessage(marker: marker, serial: serial ?? "?"))
+                context: androidContext(),
+                detail: AndroidGuestReadiness.stillStartingMessage(marker: marker, serial: serial ?? "?"))
         }
 
         noticePersistentSettingsOnPhysicalDevice()
@@ -217,7 +268,8 @@ extension AndroidDriver {
             try await Task.sleep(nanoseconds: 200_000_000)
         }
         throw DriverError.bridgeUnreachable(
-            "the Android bridge will not start (check adb logcat -s FTBridge)")
+            context: androidContext(),
+            detail: "the Android bridge will not start (check adb logcat -s FTBridge)")
     }
 
     /// 実機に対する設定変更は端末のグローバル設定を**永続的に**書き換える(使い捨ての
@@ -309,7 +361,7 @@ extension AndroidDriver {
         if let existing = findExistingForward() { return existing }
         let created = try adb(["forward", "tcp:0", "tcp:\(Self.bridgeDevicePort)"])
         guard let hostPort = UInt16(created.output.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            throw DriverError.bridgeUnreachable("adb forward failed: \(created.tail)")
+            throw DriverError.bridgeUnreachable(context: androidContext(), detail: "adb forward failed: \(created.tail)")
         }
         return hostPort
     }
@@ -466,7 +518,8 @@ extension AndroidDriver {
             // 30行のスタックトレースでなく理由を名指しする
             if let marker = AndroidGuestReadiness.systemServerStartingMarker(in: result.output) {
                 throw DriverError.bridgeUnreachable(
-                    AndroidGuestReadiness.stillStartingMessage(marker: marker, serial: serial ?? "?"))
+                    context: androidContext(),
+                    detail: AndroidGuestReadiness.stillStartingMessage(marker: marker, serial: serial ?? "?"))
             }
             throw DriverError.badResponse(status: Int(result.status),
                 body: "failed to install the bridge APK: \(result.tail)")
@@ -526,7 +579,11 @@ extension AndroidDriver {
         if fm.isReadableFile(atPath: cache.path) {
             return cache
         }
-        throw DriverError.bridgeUnreachable("""
+        // static(serial 不明・実機/エミュレータどちらもあり得る)。android の文言は
+        // physicalDevice で分岐しないのでここでは無害
+        throw DriverError.bridgeUnreachable(
+            context: DriverErrorContext(engine: .android, physicalDevice: false),
+            detail: """
             ブリッジ APK(ftbridge.apk)が見つかりません。
             リポジトリの AndroidRunner/prebuilt/ftbridge.apk か、
             FT_ANDROID_BRIDGE_APK=<APKパス> を設定してください(再生成: AndroidRunner/build.sh)

@@ -90,7 +90,10 @@ public final class AndroidDriver: AppDriver {
         for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
             return path
         }
-        throw DriverError.bridgeUnreachable("adb not found (set ANDROID_HOME)")
+        // static(serial 選定より前)。android の文言は physicalDevice で分岐しないのでここでは無害
+        throw DriverError.bridgeUnreachable(
+            context: DriverErrorContext(engine: .android, physicalDevice: false),
+            detail: "adb not found (set ANDROID_HOME)")
     }
 
     // MARK: - adb helpers

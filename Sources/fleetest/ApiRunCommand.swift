@@ -537,9 +537,9 @@ struct ApiRunCommand: AsyncParsableCommand {
                 workers = try await ProfileWorkerFactory.installIfNeeded(
                     apps: resolved.apps, workers: workers,
                     forceAndroidInstall: !wipedAndroid.isEmpty) { logSupply($0) }
-                if !workers.isEmpty {
-                    logSupply("🚀 Starting with \(workers.count) Android worker(s) (iOS joins once bridge provisioning finishes)")
-                }
+                // "🚀 Starting with…" は iOS の合流有無が分かってから1回だけ出す(下の
+                // RunStartLine.text 呼び出し。ここで固定文言を出すと iOS 0 台のプロファイルでも
+                // 「iOS joins…」と言ってしまう。RunStartLine の宣言参照)
                 return workers
             }
             if !resolved.iosDevices.isEmpty {
@@ -705,6 +705,13 @@ struct ApiRunCommand: AsyncParsableCommand {
                                     + "or turn performanceMode off to run on the remaining lanes.")
                         }
                     }
+                    // ProfileRunner.run と同じ関数(RunStartLine)で組み立てる。iOS が居ない
+                    // プロファイルで「iOS joins…」と言ったり、Android 0 台で Android の行を
+                    // 出したりしない(CLAUDE.md「2 実装の差」対策)
+                    let hasLateIOS = !resolvedProfile.iosDevices.isEmpty && !performanceMode
+                    logSupply(RunStartLine.text(
+                        androidWorkers: androidWorkers.count, eagerIOSWorkers: eagerIOSWorkers.count,
+                        hasLateIOS: hasLateIOS))
                     outcome = try await runWithProfileParallel(
                         resolved: resolvedProfile, project: testProject, selected: selected,
                         workers: androidWorkers + eagerIOSWorkers, iosWorkersTask: effectiveIosWorkersTask,

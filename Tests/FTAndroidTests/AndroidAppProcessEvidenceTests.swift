@@ -62,4 +62,55 @@ final class AndroidAppProcessEvidenceTests: XCTestCase {
                                                                    package: "com.other.app")
         XCTAssertEqual(summary, [])
     }
+
+    // MARK: - processAbsence(status:output:) — adb 自体の失敗と「本当に居ない」を区別する
+    // (2026-09-16 の負荷テストで M1Ultra のエミュレータで実際に踏んだ: 一瞬の adb 断
+    // 「adb: device offline」を「プロセスが居ない(クラッシュの疑い)」と誤記録した。
+    // logcat ではアプリもブリッジも生きていた)
+
+    /// adb 自体が失敗した出力(3系統のうちの1つ)は **nil**(判定できない)——
+    /// これが (1) の直接の回帰ゲート
+    func testProcessAbsenceIsNilWhenADBItselfFails() {
+        let adbFailures = [
+            "adb: device offline",
+            "error: device 'emulator-5554' not found",
+            "error: no devices/emulators found",
+            "error: device unauthorized",
+        ]
+        for output in adbFailures {
+            XCTAssertNil(AndroidAppProcessEvidenceQuery.processAbsence(status: 1, output: output),
+                        "adb 自体の失敗を「判定できる」と読んだ: \(output)")
+        }
+    }
+
+    /// pidof が空を返した(2系統目)= 本当に居ない → true
+    func testProcessAbsenceIsTrueWhenPidofReturnsNothing() {
+        XCTAssertEqual(AndroidAppProcessEvidenceQuery.processAbsence(status: 1, output: ""), true)
+        XCTAssertEqual(AndroidAppProcessEvidenceQuery.processAbsence(status: 1, output: "\n"), true)
+    }
+
+    /// pidof が pid を返した(3系統目)= 居る → false
+    func testProcessAbsenceIsFalseWhenPidofReturnsAPid() {
+        XCTAssertEqual(AndroidAppProcessEvidenceQuery.processAbsence(status: 0, output: "13561\n"), false)
+        XCTAssertEqual(AndroidAppProcessEvidenceQuery.processAbsence(status: 0, output: "13561 13562\n"),
+                       false)
+    }
+
+    /// **nil のとき呼び出し元が何も書かない**ことも固定する。実際の配線は
+    /// `Sources/FTScenarioRunner/ScenarioRunnerMain.swift` の `core.appProcessEvidence` クロージャ
+    /// (`guard let evidence = AndroidAppProcessEvidenceQuery.query(...), !evidence.running else
+    /// { return [] }`)。ここではその guard パターンだけを模して、`query` が nil を返す回
+    /// (= adb 自体の失敗)に何も出ないことを確かめる
+    func testCallerProducesNoEvidenceStringsWhenQueryReturnsNil() {
+        func evidenceStrings(_ evidence: AndroidAppProcessEvidence?) -> [String] {
+            guard let evidence, !evidence.running else { return [] }
+            return ["process not running"] + evidence.crashSummary
+        }
+        XCTAssertEqual(evidenceStrings(nil), [],
+                       "query が nil(adb 自体の失敗)を返したのに何か書いてしまった")
+        XCTAssertEqual(evidenceStrings(AndroidAppProcessEvidence(running: true, crashSummary: [])), [])
+        XCTAssertEqual(
+            evidenceStrings(AndroidAppProcessEvidence(running: false, crashSummary: ["reason"])),
+            ["process not running", "reason"])
+    }
 }

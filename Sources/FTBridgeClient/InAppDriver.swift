@@ -253,12 +253,20 @@ public final class InAppDriver: AppDriver {
     private func withCrashContext<T>(_ op: () async throws -> T) async throws -> T {
         do {
             return try await op()
-        } catch let DriverError.bridgeConnectionRefused(detail) {
-            throw DriverError.bridgeConnectionRefused(await crashAnnotated(detail))
-        } catch let DriverError.bridgeUnreachable(detail) {
-            throw DriverError.bridgeUnreachable(await crashAnnotated(detail))
+        } catch let DriverError.bridgeConnectionRefused(_, detail) {
+            throw DriverError.bridgeConnectionRefused(context: Self.context,
+                                                       detail: await crashAnnotated(detail))
+        } catch let DriverError.bridgeUnreachable(_, detail) {
+            throw DriverError.bridgeUnreachable(context: Self.context,
+                                                 detail: await crashAnnotated(detail))
         }
     }
+
+    /// in-app は常にシミュレータ(実機への注入は不可能。CLAUDE.md 決定)なので physicalDevice は
+    /// 固定 false。**client(BridgeClient)は xcuitest 向けの context を既定に持つので、必ず
+    /// `withCrashContext` で in-app へ付け替える**(DriverErrorContext の doc 参照。
+    /// 付け替えないと Android と同じ理由で誤った構成の案内が付く)
+    private static let context = DriverErrorContext(engine: .iosInApp, physicalDevice: false)
 
     /// クラッシュ検知時の注記。**.ips は落ちてから遅れて書かれる**(実測: ブリッジ切断の
     /// 約 2 秒後。TestProjects/E2E-iOS の 91_クラッシュ検知 で確認)。切断直後に1回だけ探すと

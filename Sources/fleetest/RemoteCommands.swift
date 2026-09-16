@@ -407,18 +407,36 @@ struct RemoteCommand: AsyncParsableCommand {
             if failures > 0 { throw ExitCode(1) }
         }
 
+        /// dry-run のプレビュー行(純粋関数。テストは `RemoteDestructiveGuard.Decision` を直接
+        /// 注入する = ssh を呼ばない)。**本番と同じ `RemoteDestructiveGuard.decide` の結果を渡す**
+        /// —— 別の判定を持つと dry-run だけ楽観的になる事故が起きる(cleanOne 側のコメント参照)
+        static func devicesPreviewLines(decision: RemoteDestructiveGuard.Decision) -> [String] {
+            switch decision {
+            case .proceed:
+                return ["→ would stop bridges and shut down simulators/emulators (skipped: --dry-run)"]
+            case .proceedWithWarning(let message):
+                return ["warning: \(message)",
+                        "→ would stop bridges and shut down simulators/emulators (skipped: --dry-run)"]
+            case .refuse(let reason):
+                return ["→ the real run would refuse to clean this host: \(reason) (skipped: --dry-run)"]
+            }
+        }
+
         private func cleanOne(_ raw: String) throws {
             let resolved = try RemoteHostResolver.resolve(rawHost: raw, remoteDirOverride: remoteDir)
             resolved.announce()
             let target = resolved.hostSpec.sshTarget
             let layout = try Self.resolveLayout(target: target, remoteDirRaw: resolved.remoteDirRaw)
 
+            // **走っている run を殺さない**(docs/remote-runner.md §18.1 #6)。共有フリートでは
+            // 掃除の相手が他人の実行中の環境でありうるので、デバイスに触る前に占有を見る。
+            // **dry-run でも読む**(読むだけ・解放や変更はしない) —— 読まずに素通しすると、
+            // 本番なら refuse する台でも dry-run だけ「掃除する」と予告してしまう
+            // (実測 2026-09-16: ランナーが run 中でも dry-run は rc=0 で予告していた)
+            let decision = RemoteDestructiveGuard.decide(
+                probe: probeLock(target: target, layout: layout), ignoreLock: ignoreLock)
             if RemoteCleanPlan.stopsDevices(dryRun: dryRun) {
-                // **走っている run を殺さない**(docs/remote-runner.md §18.1 #6)。共有フリートでは
-                // 掃除の相手が他人の実行中の環境でありうるので、デバイスに触る前に占有を見る。
-                // dry-run は何も止めないのでこのゲートを通さない(preview が実害を出さない契約)
-                switch RemoteDestructiveGuard.decide(probe: probeLock(target: target, layout: layout),
-                                                     ignoreLock: ignoreLock) {
+                switch decision {
                 case .proceed:
                     break
                 case .proceedWithWarning(let message):
@@ -441,7 +459,7 @@ struct RemoteCommand: AsyncParsableCommand {
                     ConsoleOut.out("warning: `devices down` exited with status \(downResult.status)\n\(downResult.tail)")
                 }
             } else {
-                ConsoleOut.out("→ would stop bridges and shut down simulators/emulators (skipped: --dry-run)")
+                for line in Self.devicesPreviewLines(decision: decision) { ConsoleOut.out(line) }
             }
 
             var totalEntries = 0

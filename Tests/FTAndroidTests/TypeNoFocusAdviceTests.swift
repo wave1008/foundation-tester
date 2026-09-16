@@ -37,6 +37,8 @@ final class TypeNoFocusAdviceTests: XCTestCase {
         XCTAssertNil(AndroidDriver.typeNoFocusAdvice(
             after: .badResponse(status: 500, body: "set-text rejected"), hadRef: false))
         XCTAssertNil(AndroidDriver.typeNoFocusAdvice(
-            after: .bridgeUnreachable("x"), hadRef: false))
+            after: .bridgeUnreachable(
+                context: DriverErrorContext(engine: .android, physicalDevice: false), detail: "x"),
+            hadRef: false))
     }
 }

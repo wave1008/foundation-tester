@@ -69,7 +69,8 @@ extension StepExecutorTests {
             DriverError.badResponse(status: 404, body: "参照番号 [3] は未知です")))
         XCTAssertFalse(DriverError.isEngineIncapable(
             DriverError.badResponse(status: 409, body: "キーウィンドウがありません")))
-        XCTAssertFalse(DriverError.isEngineIncapable(DriverError.bridgeUnreachable("timeout")))
+        XCTAssertFalse(DriverError.isEngineIncapable(DriverError.bridgeUnreachable(
+            context: DriverErrorContext(engine: .iosXCUITest, physicalDevice: false), detail: "timeout")))
     }
 
     /// 画面下端の a11y 空白帯(タブ frame の下〜画面下端)では空打ちしない。
@@ -522,6 +523,92 @@ extension StepExecutorTests {
                        "既定では逆走査のドラッグで拾い直しに行くこと(DSL の唯一の救済)")
     }
 
+    // MARK: - 逆走査は失敗しても「画面を動かしたか」を報告する(2026-09-16 実測)
+
+    /// 順方向のスワイプ(swipe)では絶対に動かないが、逆走査の drag を1回でも受けたら
+    /// 別の位置へ切り替わる偽ドライバ。目的の要素("row_target")は最後まで存在しない ——
+    /// 「探索の開始位置が既にこの向きの端だった」を再現する。
+    /// **内容は「drag が来たか」だけで決める**(snapshot の呼び出し回数を数えなくてよい) ——
+    /// settledSignature の内部ポーリング回数に依存する台本(スクリプト配列 + 呼び出し回数)は、
+    /// その回数が変わるたびにテストが壊れる脆さを持つため避ける。
+    /// row_ghost は容器(list)の外に常駐させる —— overflowingContainer が逆走査の容器を
+    /// 特定するための材料(clippingContainer の推測条件 = 同深さの子を2つ以上容器内に持つこと)
+    private final class ReverseSweepMovesButNeverFindsDriver: AppDriver {
+        private let screen: FTRect
+        private(set) var drags = 0
+
+        init(screen: FTRect) { self.screen = screen }
+
+        func status() async throws -> StatusResponse {
+            StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
+        }
+        func install(packagePath: String) async throws {}
+        func uninstall(bundleID: String) async throws {}
+        func launch(bundleID: String) async throws {}
+        func isAppForeground(bundleID: String) async throws -> Bool { true }
+        func foregroundAppID() async throws -> String? { nil }
+        func terminate() async throws {}
+        func screenshot() async throws -> Data { Data() }
+        func type(ref: Int?, text: String) async throws {}
+        func tap(ref: Int) async throws {}
+        func tap(x: Double, y: Double) async throws {}
+        func press(ref: Int, duration: Double) async throws {}
+        func swipe(_ direction: FTSwipeDirection) async throws {}
+        func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
+                  pressSeconds: Double, durationSeconds: Double) async throws { drags += 1 }
+
+        func snapshot() async throws -> SnapshotResponse {
+            let offset: Double = drags == 0 ? 0 : 60
+            let elements = [
+                ElementInfo(ref: 1, type: "scrollView", identifier: "list", label: nil, value: nil,
+                           placeholder: nil, enabled: true,
+                           frame: FTRect(x: 0, y: 0, width: 400, height: 800), depth: 0,
+                           scrollable: true),
+                ElementInfo(ref: 2, type: "button", identifier: "row_01", label: nil, value: nil,
+                           placeholder: nil, enabled: true,
+                           frame: FTRect(x: 16, y: 40 - offset, width: 368, height: 56), depth: 1),
+                ElementInfo(ref: 3, type: "button", identifier: "row_02", label: nil, value: nil,
+                           placeholder: nil, enabled: true,
+                           frame: FTRect(x: 16, y: 120 - offset, width: 368, height: 56), depth: 1),
+                ElementInfo(ref: 4, type: "button", identifier: "row_ghost", label: nil, value: nil,
+                           placeholder: nil, enabled: true,
+                           frame: FTRect(x: 16, y: -1000, width: 368, height: 56), depth: 1)
+            ]
+            return SnapshotResponse(sessionBundleID: nil, screen: screen, elements: elements,
+                                    truncatedCount: 0)
+        }
+    }
+
+    /// **逆走査が見つけられなくても、画面を動かしたなら「1度も動かなかった」と言わない**
+    /// (実測バグ: リストを下端まで送った後の scrollTo が、逆走査で先頭付近まで戻しているのに
+    /// 「スワイプがスクロール領域に届いていない」と言っていた —— ツール自身が逆走査でその領域を
+    /// 動かしているのに、届いていないと誤って断定していた)。順方向は端で止まったまま
+    /// (`contentEverMoved=false`)だが、逆走査は画面を動かした(`reverseSweepMoved=true`)ので
+    /// この区別が要る(StepExecutor+ScrollSearch.swift の ScrollSearchResult.reverseSweepMoved)
+    func testReverseSweepReportsMovementEvenWhenItDoesNotFindTheElement() async throws {
+        let driver = ReverseSweepMovesButNeverFindsDriver(
+            screen: FTRect(x: 0, y: 0, width: 400, height: 800))
+        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_target"),
+                            direction: "up", maxSwipes: 6)
+        var phase = StepExecutor.PhaseAccumulator()
+
+        let result = try await executor.runScrollSearch(step: step, phase: &phase)
+
+        XCTAssertFalse(result.found, "存在しない要素なので見つからないはず")
+        XCTAssertTrue(result.stoppedUnmoving)
+        XCTAssertFalse(result.contentEverMoved, "順方向は1度も動いていないはず")
+        XCTAssertEqual(result.reverseSweeps, 0, "見つかっていないので reverseSweeps は増やさないはず")
+        XCTAssertGreaterThan(driver.drags, 0, "逆走査のドラッグが1本も出ていない(経路に入っていない)")
+        XCTAssertTrue(result.reverseSweepMoved,
+                      "逆走査が画面を動かしたのに reverseSweepMoved が立っていない")
+
+        let message = StepExecutor.scrollNotFoundMessage(step, result)
+        XCTAssertFalse(message.contains("not reaching a scrolling area"), message)
+        XCTAssertFalse(message.contains("reached its end"), message)
+        XCTAssertTrue(message.contains("this element is not on this screen"), message)
+    }
+
     /// 探索の打ち切りは文言が別(「after the search」)でも同じコードで数えること
     func testScrollSearchNoteRecordsTheSameCode() {
         let executor = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()), isAndroid: false)
@@ -711,7 +798,9 @@ extension StepExecutorTests {
     func testUnreachableDriverIsMarkedDriverUnreachable() async throws {
         let primary = FakeAppDriver(name: "primary", log: CallLog(),
                                     snapshotElements: [[element(ref: 1, id: "btn")]])
-        primary.swipeError = DriverError.bridgeUnreachable("connection reset")
+        primary.swipeError = DriverError.bridgeUnreachable(
+            context: DriverErrorContext(engine: .iosXCUITest, physicalDevice: false),
+            detail: "connection reset")
         let executor = StepExecutor(driver: primary, isAndroid: false)
         let step = FlowStep(action: "swipe", direction: "up")
 

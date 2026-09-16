@@ -3,7 +3,10 @@
 // #btn_crash_confirm から実測)。このとき ft_snapshot は前面へ移った launcher の木しか見せず
 // 「別のアプリが前面」としか言えないため、クラッシュを利用者の操作と誤解される。
 // adb が無い・失敗したときは nil で黙る(AndroidLogcat/AndroidForegroundWindows と同じ規律 —
-// 判定材料が無いのに「落ちていない」と断定しない)。
+// 判定材料が無いのに「落ちていない」と断定しない)。**pidof 自体が「見つからない」で返す
+// 非 0 終了と、adb 自体の断(device offline 等)は別物**(2026-09-16 の負荷テストで
+// M1Ultra のエミュレータで実際に踏んだ: 一瞬の adb 断を「プロセスが居ない」と誤記録した。
+// logcat ではアプリもブリッジも生きていた)。区別は `processAbsence` の1箇所だけに置く。
 
 import FTCore
 import Foundation
@@ -31,8 +34,11 @@ public enum AndroidAppProcessEvidenceQuery {
         if let serial { pidofArgs += ["-s", serial] }
         pidofArgs += ["shell", "pidof", package]
         guard let pidofResult = try? Shell.run(pidofArgs, timeout: 5) else { return nil }
-        let running = pidofResult.status == 0
-            && !pidofResult.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // adb 自体が失敗した回(device offline 等)は「判定できない」= 何も言わない。
+        // exit ≠ 0 を一律「プロセスが居ない」と読まない(processAbsence 参照)
+        guard let absent = processAbsence(status: pidofResult.status, output: pidofResult.output)
+        else { return nil }
+        let running = !absent
 
         var logcatArgs = [adb]
         if let serial { logcatArgs += ["-s", serial] }
@@ -45,6 +51,41 @@ public enum AndroidAppProcessEvidenceQuery {
         return AndroidAppProcessEvidence(
             running: running,
             crashSummary: crashSummary(fromCrashLog: logcatResult.output, package: package))
+    }
+
+    /// `adb shell pidof <pkg>` の生出力から「アプリのプロセスが居ないか」を判定する純粋関数。
+    /// - `true`: 居ない(pidof が空を返した = 本当に居ない)
+    /// - `false`: 居る(pidof が pid を1件以上返した)
+    /// - `nil`: **判定できない**(adb 自体が失敗した。device offline 等)。
+    ///   ここが唯一の判定点 —— exit ≠ 0 を一律「プロセスが居ない」と読むと、adb 自体の断
+    ///   (device offline / not found / unauthorized / daemon 起動失敗)を「クラッシュの疑い」と
+    ///   誤記録する(2026-09-16 の負荷テストで M1Ultra のエミュレータで実際に踏んだ:
+    ///   一瞬の `adb: device offline` が「プロセスが居ない」と記録された。logcat ではアプリも
+    ///   ブリッジも生きていた)。**言えないときは欄ごと省く**(失敗の記録の規律。呼び出し元は
+    ///   `query` 経由で nil を受け取り、`core.appProcessEvidence` は空配列を返す)
+    /// `status` は呼び出し元(`Shell.Result`)とシグネチャを揃えるために受け取るが、判定には
+    /// 使わない —— `adb shell pidof` の exit code は「pidof が見つけられなかった」(通常の
+    /// 非 0 終了)と「adb 自体が失敗した」を区別しない。区別できるのは出力の中身だけ
+    /// (adb は自分のエラーを `output` へ書く。`looksLikeADBFailure` 参照)
+    static func processAbsence(status: Int32, output: String) -> Bool? {
+        _ = status
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        if looksLikeADBFailure(trimmed) { return nil }
+        return trimmed.isEmpty
+    }
+
+    /// adb 自体の失敗を示す既知の接頭辞・部分文字列。**規則はここ1箇所だけに置く**
+    /// (実測した文言だけを列挙する。書式が変わっても気付けないので推測で広げない)。
+    /// `Shell.run` は stdout/stderr を1本の `output` へ混合する(既定 mergeStderr: true)ため、
+    /// adb がエラーを stderr へ書いても `output` に乗る
+    private static func looksLikeADBFailure(_ trimmed: String) -> Bool {
+        let markers = [
+            "adb: ", "error: device", "error: no devices", "device offline",
+            "device unauthorized", "device not found", "daemon not running",
+            "daemon still not running", "no devices/emulators found",
+        ]
+        let lower = trimmed.lowercased()
+        return markers.contains { lower.contains($0.lowercased()) }
     }
 
     /// `adb logcat -b crash` の生テキストから、**この package の最後の** `FATAL EXCEPTION`

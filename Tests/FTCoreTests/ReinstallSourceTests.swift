@@ -55,7 +55,9 @@ final class ReinstallSourceTests: XCTestCase {
             DriverError.badResponse(status: 500, body: "simulator-only")),
             "本文が一致しても 5xx の別状態は回さない")
         XCTAssertFalse(ReinstallSource.isClearAppDataUnsupported(
-            DriverError.bridgeConnectionRefused("nothing listening")))
+            DriverError.bridgeConnectionRefused(
+                context: DriverErrorContext(engine: .iosXCUITest, physicalDevice: false),
+                detail: "nothing listening")))
         XCTAssertFalse(ReinstallSource.isClearAppDataUnsupported(
             NSError(domain: "x", code: 1)))
     }

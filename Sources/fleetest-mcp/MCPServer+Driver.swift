@@ -346,13 +346,96 @@ extension MCPServer {
     /// `udid` / `port` から iOS の宛先ポートを決める(H-2)。**両方渡されたら port を優先**し、
     /// **食い違うなら明示的に失敗する** —— 黙ってどちらかを採ると、読み手は指したつもりの
     /// デバイスと別の機を操作したことに最後まで気付けない。
-    /// どちらも無ければ nil(従来どおり resolveIOSPort が既定ポート → 探索の順で決める)
+    /// どちらも無ければ nil(従来どおり resolveIOSPort が既定ポート → 探索の順で決める)。
+    /// **udidPorts が空のときだけ追加調査(IO)を払う** —— 応答が1本でもあれば従来どおり素通り
     static func portForIOS(_ args: [String: Any]) async throws -> UInt16? {
         let port = try Self.portArgument(args)
         guard let udid = (args["udid"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) else {
             return port
         }
-        return try reconcilePort(port, udid: udid, udidPorts: await bridgePorts(forUDID: udid))
+        let udidPorts = await bridgePorts(forUDID: udid)
+        let diagnosis = udidPorts.isEmpty ? await Self.udidBridgeDiagnosis(udid: udid) : .unknown
+        return try reconcilePort(port, udid: udid, udidPorts: udidPorts, diagnosis: diagnosis)
+    }
+
+    /// `reconcilePort` が「応答したポートが1本も無い」ときに使う追加事実。**IO は呼び出し側
+    /// (`udidBridgeDiagnosis`)が集め、ここへは値として渡す** —— reconcilePort 自体は
+    /// 走査を伴わない純粋関数のまま保つ(2026-08-09 の変異テストが踏んだ理由と同じ)
+    struct UDIDBridgeDiagnosis: Equatable {
+        /// `/status` には答えなかったが LISTEN している(= 生きているが busy の根拠)。
+        /// 空なら「本当に居ない」
+        let listeningButUnresponsive: [UInt16]
+        /// その udid を今使っている run の pid(`RunLease.holderPID`。`markDeviceInUse` と
+        /// 同じ台帳・同じ鍵)。分かれば文面に添える
+        let heldByRunPID: Int32?
+        /// `bridge up` の完成コマンドを組むための実体判定(`SimulatorCatalog.isPhysical(udid:)`
+        /// = ft_list_devices と同じ経路)。nil = シミュレータ・実機のどちらとも認識できない
+        let isPhysical: Bool?
+
+        static let unknown = UDIDBridgeDiagnosis(
+            listeningButUnresponsive: [], heldByRunPID: nil, isPhysical: nil)
+    }
+
+    /// `udidBridgeDiagnosis` が確かめる候補ポートの上限。**2026-09-16 実機実測**: 旧実装は全ポート
+    /// 範囲(最大32本)へ `PortHolder.describe`(`lsof` を毎回起こす同期ブロッキング)を
+    /// `withTaskGroup` で同時に起こしており、Swift の協調スレッドプールのワーカーを synchronous な
+    /// `DispatchSemaphore.wait`(`Shell.run` → `ProcessExitWait.prepareTimed`)で埋め尽くし、
+    /// `ft_status` を含む MCP プロセス全体が200秒以上前進できなくなった
+    /// (CLAUDE.md「協調スレッドプールにブロッキングを載せない」— `PipeLinePump`/専用スレッドの
+    /// 規律と同じ話)。**新しい実装は lsof を一切起こさず**、候補ポートは台帳から絞る
+    /// (`candidatePorts`)。台帳が壊れて候補が異常に多くても、確かめるのはここまで
+    /// (`BridgeDiscovery.isBound` 1回 300ms 上限 × この件数で worst case を秒単位に収める)
+    static let maxUDIDBridgeCandidatePorts = 4
+
+    /// `udidPorts` が空だったときの追加調査(IO)。**lsof は一切起こさない**(上の doc 参照)。
+    /// 候補ポートは台帳から絞り(`candidatePorts`。プロセスを起こすのは中の `ps` 1回だけ)、
+    /// LISTEN の確認は `BridgeDiscovery.isBound`(lsof ではなく生ソケットの connect+poll。
+    /// `iosConnectionLostHint` の busy 判定と同じ部品で 300ms 上限)だけで行う。
+    /// run の使用中は `RunLease.holderPID`(`markDeviceInUse` と同じ台帳)、
+    /// 実体判定は `SimulatorCatalog.isPhysical(udid:)`(ft_list_devices と同じ経路)をそのまま使う
+    static func udidBridgeDiagnosis(udid: String) async -> UDIDBridgeDiagnosis {
+        let repoRoot = try? RepoRoot.find()
+        let candidates = Self.cappedCandidatePorts(
+            Array(Self.candidatePorts(forUDID: udid, repoRoot: repoRoot)))
+        let listening = candidates.filter { BridgeDiscovery.isBound(port: $0, repoRoot: repoRoot) }
+        let heldByRunPID = repoRoot.flatMap {
+            RunLease.holderPID(stateDir: $0.appendingPathComponent(".fleetest"), key: udid)
+        }
+        return UDIDBridgeDiagnosis(listeningButUnresponsive: listening, heldByRunPID: heldByRunPID,
+                                   isPhysical: SimulatorCatalog.isPhysical(udid: udid))
+    }
+
+    /// `candidatePorts` の結果に上限を掛ける(純粋関数・テスト用)。昇順にしてから切るので
+    /// **上限を超えたときに確かめるのは常にポート番号の小さい側**(呼び出しごとに違う集合を
+    /// 拾って結果が揺れるのを避ける)
+    static func cappedCandidatePorts(_ candidates: [UInt16]) -> [UInt16] {
+        Array(candidates.sorted().prefix(maxUDIDBridgeCandidatePorts))
+    }
+
+    /// この udid に紐づく可能性のあるポート(台帳由来)。**プロセスを起こすのは
+    /// `BridgeLauncher.portsByUDID` の中の `ps` 1回だけ**(ポート数ぶん起こさない。lsof は
+    /// 起こさない)。
+    /// - xcuitest(実機も含む。実機も xcodebuild が `-destination id=<UDID>` を渡すので同じ経路):
+    ///   `.pid` 台帳 + `ps` の照合(provision の「同一デバイスに2本目を立てない」判定と同じ経路)。
+    /// - in-app: dylib 注入で別プロセス管理をしないため `.pid` を持たない。`.inapp` 台帳を直接読む
+    ///   (`InAppBridgeState.write` の契約 = 「udid bundleID [digest]」を1行・空白区切り、の先頭語)。
+    ///   `read` は FTBridgeClient 内部専用で fleetest-mcp からは呼べないため、ここでは udid の
+    ///   1語だけを自前で取り出す(読むだけで FTBridgeClient は変更しない)
+    static func candidatePorts(forUDID udid: String, repoRoot: URL?) -> Set<UInt16> {
+        guard let repoRoot else { return [] }
+        var ports = Set(BridgeLauncher.portsByUDID([udid], repoRoot: repoRoot)[udid] ?? [])
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: stateDir, includingPropertiesForKeys: nil) else { return ports }
+        for entry in entries where entry.lastPathComponent.hasPrefix("bridge-")
+            && entry.pathExtension == "inapp" {
+            guard let port = UInt16(entry.deletingPathExtension().lastPathComponent
+                    .replacingOccurrences(of: "bridge-", with: "")),
+                  let content = try? String(contentsOf: entry, encoding: .utf8),
+                  content.split(separator: " ").first.map(String.init) == udid else { continue }
+            ports.insert(port)
+        }
+        return ports
     }
 
     /// `port` と `udid` の突き合わせ。**走査から切り離した純粋関数** —— 実ブリッジが要ると
@@ -361,11 +444,10 @@ extension MCPServer {
     /// **udid 側は複数ポートを許す**: 同じシミュレータに in-app / XCUITest の
     /// 2本が立つのが常態で、先頭の1本とだけ比べると正しい併記(udid + その in-app port)を
     /// 「別デバイス」と誤って拒否する(Simulator で 3/3 再現)
-    static func reconcilePort(_ port: UInt16?, udid: String, udidPorts: [UInt16]) throws -> UInt16? {
+    static func reconcilePort(_ port: UInt16?, udid: String, udidPorts: [UInt16],
+                              diagnosis: UDIDBridgeDiagnosis = .unknown) throws -> UInt16? {
         guard !udidPorts.isEmpty else {
-            throw MCPError("no running bridge is on udid \(udid)."
-                + " ft_list_devices shows which devices have one; start it with"
-                + " `fleetest bridge up` (a device without a bridge cannot be driven from MCP)")
+            throw MCPError(Self.noResponsiveBridgeMessage(udid: udid, diagnosis: diagnosis))
         }
         guard let port else { return udidPorts.first }
         guard udidPorts.contains(port) else {
@@ -381,6 +463,55 @@ extension MCPServer {
                 + " port \(list). Pass only one of port/udid, or use one of those ports")
         }
         return port
+    }
+
+    /// `reconcilePort` が応答ポート0本のときに組む文面(純粋関数・3形固定):
+    /// ①LISTEN もしていない(本当に居ない・実体を名前引きできた) ②同①だが実体を判定できない
+    /// ③LISTEN しているが `/status` 無応答(= busy。「居ない」とは言わない)
+    static func noResponsiveBridgeMessage(udid: String, diagnosis: UDIDBridgeDiagnosis) -> String {
+        guard diagnosis.listeningButUnresponsive.isEmpty else {
+            return Self.bridgeBusyOnUDIDMessage(udid: udid, diagnosis: diagnosis)
+        }
+        return "no running bridge is on udid \(udid). ft_list_devices shows which devices have one;"
+            + " \(Self.bridgeUpSuggestion(udid: udid, isPhysical: diagnosis.isPhysical))"
+            + " (a device without a bridge cannot be driven from MCP)"
+    }
+
+    /// `bridge up` の完成コマンド(純粋関数)。**udid は名前より優先して解決される**
+    /// (`SimulatorCatalog.resolve` — シミュレータなら `--device "<udid>"` がそのまま通り、
+    /// 名前引き・同名複数台の曖昧さを迂回できる)。**実機は `--physical` を明示しないと
+    /// 通らない** —— 実機 UDID は `bridge up` の「36 文字・ダッシュ5分割」形状判定に一致しない
+    /// ため、`--physical` を付けなければシミュレータ名の文字列として名前引きされ必ず失敗する。
+    /// **判定できないとき(SimulatorCatalog.isPhysical が nil)は嘘のコマンドを書かない** ——
+    /// virtual/physical のどちらを付けるべきか断定できないので、確認の手順だけを返す
+    static func bridgeUpSuggestion(udid: String, isPhysical: Bool?) -> String {
+        guard let isPhysical else {
+            return "no exact start command can be offered (that udid is not currently listed as"
+                + " either a simulator or a physical device) — check ft_list_devices for its current"
+                + " udid, then run `fleetest bridge up --device \"<udid>\"` for a simulator, or add"
+                + " `--physical` for a physical device"
+        }
+        let flag = isPhysical ? " --physical" : ""
+        return "start it with `fleetest bridge up --device \"\(udid)\"\(flag)`"
+    }
+
+    /// LISTEN はしているが `/status` に答えなかったときの文面(純粋関数)。**「居ない」とは
+    /// 言わない**(`BridgeDiscovery.busyMessage` と同じ立場。あちらは port 指定済みの再接続
+    /// 専用なので、udid 解決の入口にはこちらが要る)。**`bridge up` は勧めない** ——
+    /// 本当にどこにも居ないと確かめられたときだけの案内なので、ここで勧めると同じ機に
+    /// 2本目を起動させる
+    static func bridgeBusyOnUDIDMessage(udid: String, diagnosis: UDIDBridgeDiagnosis) -> String {
+        let ports = diagnosis.listeningButUnresponsive.map { "port \($0)" }.joined(separator: ", ")
+        var message = "a bridge for udid \(udid) is listening on \(ports) but did not answer"
+            + " /status within the scan window — it may be busy with another request (XCUITest can"
+            + " block the bridge for tens of seconds while waiting for the screen to settle)."
+        if let heldByRunPID = diagnosis.heldByRunPID {
+            message += " A fleetest run (pid \(heldByRunPID)) is using this device right now, which"
+                + " is the likely cause."
+        }
+        message += " Retry in a moment; `fleetest bridge up` is for a device with no bridge at all"
+            + " and would start a second one on this device."
+        return message
     }
 
     /// udid を申告している稼働中ブリッジのポート(走査順・全部)。**申告が無いブリッジ(旧版)は

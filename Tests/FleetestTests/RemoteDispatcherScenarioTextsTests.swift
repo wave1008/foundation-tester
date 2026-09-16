@@ -108,6 +108,21 @@ final class RemoteDispatcherScenarioTextsTests: XCTestCase {
         XCTAssertTrue(RemoteRunDispatcher.hasUncommittedToolChanges(porcelain: toSources))
     }
 
+    // MARK: - reportsMissingNote(中断と失敗を混同しない。実測 9/16: api run の 4機ファンアウトへ
+    // SIGTERM を送った中断でも、回収した reports が0件だと「the run failed」と出ていた)
+
+    func testReportsMissingNoteSaysFailedWhenNotInterrupted() {
+        XCTAssertEqual(
+            RemoteRunDispatcher.reportsMissingNote(interrupted: false),
+            "note: the remote produced no reports (the run failed before writing any)")
+    }
+
+    func testReportsMissingNoteSaysInterruptedWhenWeStoppedIt() {
+        XCTAssertEqual(
+            RemoteRunDispatcher.reportsMissingNote(interrupted: true),
+            "note: the remote produced no reports (the run was interrupted before writing any)")
+    }
+
     // MARK: - recordedBoolField
 
     func testRecordedBoolFieldReadsTrueAndFalse() {

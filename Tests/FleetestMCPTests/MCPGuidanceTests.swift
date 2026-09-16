@@ -97,7 +97,9 @@ final class MCPGuidanceTests: XCTestCase {
         XCTAssertEqual(MCPServer.springboardHint(
             DriverError.badResponse(status: 404, body: "unknown ref"), engine: "xcuitest"), "")
         XCTAssertEqual(MCPServer.springboardHint(
-            DriverError.bridgeUnreachable("refused"), engine: "xcuitest"), "")
+            DriverError.bridgeUnreachable(
+                context: DriverErrorContext(engine: .iosXCUITest, physicalDevice: false),
+                detail: "refused"), engine: "xcuitest"), "")
         XCTAssertEqual(MCPServer.springboardHint(
             DriverError.badResponse(status: 500, body: "something else"), engine: "xcuitest"), "")
     }

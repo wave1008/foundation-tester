@@ -16,6 +16,24 @@ enum RemoteDispatchMode {
     case apiRun
 }
 
+/// このディスパッチが自分から中断された(SIGINT/SIGTERM を受けて `InterruptRelay` が
+/// 実行中の ssh へ SIGTERM を回した)かどうかの印。**参照型が要る** —— `dispatch()`/
+/// `dispatchApi()` は struct(`RemoteRunDispatcher`)の非 mutating メソッドで、
+/// `InterruptRelay.observing` へ渡すクロージャからは struct 自身を書けない。
+/// シグナルハンドラ用スレッドと読み出し側(collectReports 呼び出し)が別スレッドなので lock で守る
+private final class DispatchInterruptFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _interrupted = false
+    var interrupted: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return _interrupted
+    }
+    func mark() {
+        lock.lock(); defer { lock.unlock() }
+        _interrupted = true
+    }
+}
+
 struct RemoteRunDispatcher {
     /// `sshCapture` の timeout(秒)。ここを通るのは git/mkdir/xcodebuild -version 等の短い
     /// 照会だけで実測は数秒 —— timeout 無しだと向こうが刺さったとき手元の run が永久に待つ。
@@ -66,8 +84,10 @@ struct RemoteRunDispatcher {
         // **中断そのものは止めない** —— いま動いている ssh 照会/転送は自分の完了/タイムアウト
         // まで動き、そのあと通常どおり関数末尾まで進んで defer が走る。
         // defer は宣言と逆順に走るので、この stop() より先に releaseDispatchLock を宣言する
-        // (release の実行中もまだ観測が生きているように)
-        let lockHeldRelay = InterruptRelay.observing {}
+        // (release の実行中もまだ観測が生きているように)。同じ observer で「自分から中断した」
+        // 印も立てる(interruptFlag。collectReports の missingNote が「失敗」と断定しないため)
+        let interruptFlag = DispatchInterruptFlag()
+        let lockHeldRelay = InterruptRelay.observing { interruptFlag.mark() }
         defer { lockHeldRelay.stop() }
         try acquireDispatchLock(layout: layout)
         defer { releaseDispatchLock(layout: layout) }
@@ -99,7 +119,8 @@ struct RemoteRunDispatcher {
             fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds,
             stamp: stamp, project: project.name)
 
-        collectReports(project: project, remoteReportDir: remoteReportDir)
+        collectReports(project: project, remoteReportDir: remoteReportDir,
+                      interrupted: interruptFlag.interrupted)
         if let localJUnitPath, let remoteJUnitPath {
             collectJUnit(remotePath: remoteJUnitPath, localPath: localJUnitPath, layout: layout,
                         stamp: stamp, project: project.name)
@@ -137,8 +158,10 @@ struct RemoteRunDispatcher {
         let (layout, session) = try resolveLayout()
         try checkCompatibility(layout: layout)
 
-        // 中断があっても解放の defer を必ず走らせる(理由・順序は dispatch() のコメント参照)
-        let lockHeldRelay = InterruptRelay.observing {}
+        // 中断があっても解放の defer を必ず走らせる(理由・順序は dispatch() のコメント参照)。
+        // interruptFlag の理由も dispatch() と同じ
+        let interruptFlag = DispatchInterruptFlag()
+        let lockHeldRelay = InterruptRelay.observing { interruptFlag.mark() }
         defer { lockHeldRelay.stop() }
         try acquireDispatchLock(layout: layout)
         defer { releaseDispatchLock(layout: layout) }
@@ -165,7 +188,8 @@ struct RemoteRunDispatcher {
             fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds,
             stamp: stamp, project: project.name)
 
-        collectReports(project: project, remoteReportDir: remoteReportDir)
+        collectReports(project: project, remoteReportDir: remoteReportDir,
+                      interrupted: interruptFlag.interrupted)
         let transferredScenarioPaths = collectArtifacts(project: project, layout: layout)
         // 理由は dispatch() と同じ(読むのは今回転送された分だけ・結果は1回だけ作って共有)
         let texts = collectedScenarioTexts(
@@ -639,16 +663,18 @@ struct RemoteRunDispatcher {
     /// 回収の失敗は run 全体の成否を変えない(実行結果は既に確定している。
     /// writeJUnitIfRequested と同じ規律)。ディスパッチ単位の reportDir だけを引く
     /// (--delete は付けない = リモートの reports/ 丸ごとは触らない。同じマシンで走る
-    /// ローカル実行のレポート・録画と混ざらない)
-    private func collectReports(project: TestProject, remoteReportDir: String) {
+    /// ローカル実行のレポート・録画と混ざらない)。
+    /// **interrupted**: このディスパッチが自分から中断した(SIGINT/SIGTERM)かどうか。
+    /// 中断は正常に閉じて0件なだけで「失敗」ではない(実測 2026-09-16: 4機ファンアウトへの
+    /// SIGTERM 中断でも「the run failed」と出ていた。reportsMissingNote の宣言参照)
+    private func collectReports(project: TestProject, remoteReportDir: String, interrupted: Bool) {
         log("==> collecting reports")
         let localReports = project.reportsDir
         try? FileManager.default.createDirectory(at: localReports, withIntermediateDirectories: true)
         let remoteReports = "\(host.sshTarget):\(remoteReportDir)/"
         // --safe-links の理由は RemoteArtifactCollection.rsyncArgs のコメント(回収は共有ディレクトリからの入力)
         collectRsync(["rsync", "-az", "--safe-links", remoteReports, localReports.path + "/"],
-                     what: "reports",
-                     missingNote: "note: the remote produced no reports (the run failed before writing any)")
+                     what: "reports", missingNote: Self.reportsMissingNote(interrupted: interrupted))
     }
 
     /// 実績 JSON(run.json/scenarios/*.json/host-metrics.ndjson)と録画を含め results/ を
@@ -801,6 +827,16 @@ struct RemoteRunDispatcher {
             LastResultsStore.record(project: project, scenarioID: scenarioID, passed: passed,
                                     profile: Self.recordedField(in: text, key: "profile"))
         }
+    }
+
+    /// reports が1件も回収できなかったときの注記(純粋関数)。**中断(こちらから
+    /// SIGINT/SIGTERM で止めた)と本当の失敗(何も書く前に落ちた)を混同しない** —— 中断は
+    /// 正常に閉じて0件なだけで「失敗」ではない
+    // internal(not private): tested directly (RemoteDispatcherScenarioTextsTests)
+    static func reportsMissingNote(interrupted: Bool) -> String {
+        interrupted
+            ? "note: the remote produced no reports (the run was interrupted before writing any)"
+            : "note: the remote produced no reports (the run failed before writing any)"
     }
 
     /// scenario JSON の `"<key>": true|false` の値を取り出す(`recordedField` は引用符付きの

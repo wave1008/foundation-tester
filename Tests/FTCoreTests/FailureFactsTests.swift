@@ -98,9 +98,10 @@ final class FailureFactsTests: XCTestCase {
 
     /// **エラーの型だけ**で仕分ける。文言一致で分けると、文言を直した瞬間に静かに壊れる
     func testThrownErrorsAreClassifiedByType() {
-        XCTAssertEqual(StepExecutor.failureKind(thrown: DriverError.bridgeUnreachable("x")),
+        let context = DriverErrorContext(engine: .iosXCUITest, physicalDevice: false)
+        XCTAssertEqual(StepExecutor.failureKind(thrown: DriverError.bridgeUnreachable(context: context, detail: "x")),
                        .driverUnreachable)
-        XCTAssertEqual(StepExecutor.failureKind(thrown: DriverError.bridgeConnectionRefused("x")),
+        XCTAssertEqual(StepExecutor.failureKind(thrown: DriverError.bridgeConnectionRefused(context: context, detail: "x")),
                        .driverUnreachable)
         XCTAssertEqual(StepExecutor.failureKind(thrown: DriverError.badResponse(status: 500, body: "x")),
                        .driverError)

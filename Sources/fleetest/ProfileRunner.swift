@@ -131,14 +131,35 @@ enum ProfileRunner {
             ? full.limitingDevices(iosScenarios: iosScenarios, androidScenarios: androidScenarios,
                                    avoiding: { heldBy[$0] != nil })
             : full
-        let why = trim ? "no other device was free" : "--broadcast runs on every device"
-        let warnings = resolved.devices.compactMap { device in
-            heldBy[device].map { pid in
-                "\(device.name) is being driven by an MCP session (pid \(pid)) — this run takes it over"
-                    + " (\(why)); the session will see the run's screens"
-            }
+        // trim の理由は数で言う(「空きが無かった」は実測で誤り: 実際は「空きはあったが、
+        // 本数+予備1台に足りなかった」ことが起きる。ResolvedProfile.limitingDevices の
+        // deviceKeepCount と同じ計算を、プラットフォームごとに読み直す)
+        func reason(for platform: String, scenarios: Int) -> String {
+            guard trim else { return "--broadcast runs on every device" }
+            let list = platform == "ios" ? full.iosDevices : full.androidDevices
+            let free = list.filter { heldBy[$0] == nil }.count
+            let needed = ResolvedProfile.deviceKeepCount(available: list.count, scenarios: scenarios)
+            return Self.shortageReason(needed: needed, scenarios: scenarios, free: free)
+        }
+        let warnings = resolved.devices.compactMap { device -> String? in
+            guard let pid = heldBy[device] else { return nil }
+            let why = reason(for: device.platform,
+                             scenarios: device.platform == "ios" ? iosScenarios : androidScenarios)
+            return "\(device.name) is being driven by an MCP session (pid \(pid)) — this run takes it over"
+                + " (\(why)); the session will see the run's screens"
         }
         return (resolved, warnings)
+    }
+
+    /// 台が足りず MCP の台を使うときの理由を事実で組み立てる(純粋関数)。
+    /// `scenarios == 0` はレーン数を数で言えない(本数不明 = 絞りの計算に使わない)ときの
+    /// 従来の言い方のまま。`scenarios > 0` は必要レーン数(本数+予備1台)と空き台数を数で言う
+    static func shortageReason(needed: Int, scenarios: Int, free: Int) -> String {
+        guard scenarios > 0 else { return "no other device was free" }
+        func plural(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
+        let freeClause = free == 1 ? "only 1 device was free" : "only \(free) devices were free"
+        return "needed \(plural(needed, "lane")) (\(plural(scenarios, "scenario")) + 1 spare)"
+            + " but \(freeClause)"
     }
 
     /// 戻り値: 実行サマリ(失敗数+劣化ワーカー)+ この run で実際に効いていた FM 設定。
@@ -396,9 +417,9 @@ enum ProfileRunner {
         // 長いシナリオを先に流すと末尾の遊休が減る(実績は platform 別。--no-lpt で従来の ID 順)
         items = LPTOrdering.apply(items, project: project, defaultPlatform: defaultPlatform,
                                   enabled: lpt, historyRuns: lptHistoryRuns, log: { ConsoleOut.out($0) })
-        ConsoleOut.out("🚀 Starting with \(workers.count) Android worker(s)"
-            + (hasLateIOS ? " (iOS joins once bridge provisioning finishes)"
-                          : (eagerIOSWorkers.isEmpty ? "" : " + \(eagerIOSWorkers.count) iOS worker(s)"))
+        // ApiRunCommand.run と同じ関数(RunStartLine)で組み立てる(CLAUDE.md「2 実装の差」対策)
+        ConsoleOut.out(RunStartLine.text(
+            androidWorkers: workers.count, eagerIOSWorkers: eagerIOSWorkers.count, hasLateIOS: hasLateIOS)
             + "\n")
 
         // record:true のときだけ VideoRecordingConfig を注入(runDir が無ければ録画自体しない)

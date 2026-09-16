@@ -62,6 +62,20 @@ extension StepExecutor {
         /// **この区別が無いと「stopped early」としか言えず**、末尾に着いただけの回を
         /// 「途中で諦めた」と読ませて maxSwipes の引き上げを繰り返させる
         var contentEverMoved: Bool = false
+        /// **逆走査(reverseSweep)が、見つけられなかった場合でも画面を動かしたか**。
+        ///
+        /// `contentEverMoved` は**順方向の比較でしか立たない**(reverseSweep は逆向きの
+        /// 独立したドラッグ+比較ループを持ち、その結果を呼び手へ返す手段が `found` の
+        /// 成否しか無かった)。探索の開始位置が既にその向きの端だった回は、順方向は1度も
+        /// 動かせず `contentEverMoved=false` のまま確定するが、その直後の逆走査は画面を
+        /// 動かして(見つけられずに)戻ってくることがある。ここを見ずに `contentEverMoved`
+        /// だけで文言を分岐すると「スワイプがスクロール領域に届いていない」と誤って
+        /// 断定する(2026-09-16 実測: 逆走査でリストを先頭まで戻しているのに、その文言が出た)。
+        /// **`contentEverMoved` を流用しない** —— 「順方向で動いて端に着いた」と
+        /// 「開始位置が既に端で、逆走査でも見つからなかった」は次の一手が違う
+        /// (前者は maxSwipes を上げても無駄、後者はそもそもこの画面に無い)ので
+        /// 文言を分ける必要があり、同じ Bool には畳めない
+        var reverseSweepMoved: Bool = false
         /// 端まで来ても見つからず、**逆向きの細刻みで拾い直した**回数(0 か 1。注記に載せる)
         var reverseSweeps: Int = 0
         /// 拾い直しに使った容器を**そのまま書けるセレクタ**にしたもの(nil = 名指しできない)。
@@ -83,7 +97,8 @@ extension StepExecutor {
         /// 1回はこの警告が出ないままだった
         var maxTruncatedDuringSearch: Int = 0
         /// `stoppedUnmoving` 判定時点の実効キーボード矩形(chrome 込み。`KeyboardOcclusion`)。
-        /// nil = キーボード非表示。**`!contentEverMoved` のときだけ** scrollNotFoundMessage が読む ——
+        /// nil = キーボード非表示。**`!contentEverMoved && !reverseSweepMoved` のときだけ**
+        /// scrollNotFoundMessage が読む ——
         /// ソフトキーボードの上でスワイプすると始点がキー面に乗って「1度も動かなかった」に
         /// 見えるため(ScrollGeometry.viewport 参照)、その主因を名指しする
         var keyboardFrame: FTRect? = nil
@@ -160,14 +175,25 @@ extension StepExecutor {
         // **「stopped early」と言わない**。旧文言は「途中で諦めた」としか
         // 読めず、実際には**リストの末尾に着いていた**回(iOS の設定アプリで実測)を欠陥と
         // 受け取らせ、maxSwipes を上げた再試行を誘っていた。上げても結果は変わらないので明言する。
-        // 2形を分けるのは `contentEverMoved` —— 動いた末の停止と、1度も動かなかったのとでは次の手が違う
+        // **3形を分ける**(2026-09-16 に3形目を追加): `contentEverMoved`(順方向)が
+        // 「動いた末の停止」か「1度も動かなかった」かをまず分け、後者はさらに
+        // `reverseSweepMoved`(逆走査が画面を動かしたか)で分ける ——
+        // 逆走査が動かしていたなら**探索側は実際にスワイプを届かせている**ので、
+        // 「スワイプが届いていない」は事実に反する(ツール自身が逆走査でその領域を動かしている)。
+        // この形は maxSwipes を上げても scrollFrame を書いても解決しない(開始位置が既に端で、
+        // その画面にこの要素が無いだけ)ので、どちらの助言も出さない
         let stopped: String
         if result?.stoppedUnmoving == true {
-            stopped = result?.contentEverMoved == true
-                ? " (the scroll area reached its end — the content stopped moving,"
+            if result?.contentEverMoved == true {
+                stopped = " (the scroll area reached its end — the content stopped moving,"
                     + " so raising maxSwipes will not help)"
-                : " (nothing moved at all during the search — the swipes are not reaching a"
+            } else if result?.reverseSweepMoved == true {
+                stopped = " (the scroll area was already at its end when the search started"
+                    + " — sweeping back did not find it either, so this element is not on this screen)"
+            } else {
+                stopped = " (nothing moved at all during the search — the swipes are not reaching a"
                     + " scrolling area, so raising maxSwipes will not help)"
+            }
         } else {
             stopped = ""
         }
@@ -193,11 +219,11 @@ extension StepExecutor {
         } ?? ""
         // **キーボードが主因の可能性を名指しする**: swipe の始点は画面全体の固定比率で作られるため、
         // ソフトキーボードの上で振ると始点がキー面に乗って何も動かない(キーボードは常にタッチを
-        // 飲む)。**1度も動かなかった回にだけ出す**(`!contentEverMoved`) —— 末尾に着いた回は
-        // キーボードと無関係
+        // 飲む)。**1度も動かなかった回にだけ出す**(`!contentEverMoved && !reverseSweepMoved`)——
+        // 末尾に着いた回・逆走査が画面を動かせた回はキーボードと無関係
         var keyboardHint = ""
         if result?.stoppedUnmoving == true, result?.contentEverMoved == false,
-           let kb = result?.keyboardFrame {
+           result?.reverseSweepMoved != true, let kb = result?.keyboardFrame {
             keyboardHint = ": the soft keyboard covers (\(Int(kb.x)),\(Int(kb.y))"
                 + " \(Int(kb.width))x\(Int(kb.height))); pass scrollFrame or close the keyboard"
         }
@@ -685,6 +711,13 @@ extension StepExecutor {
                             // 座標で名乗っても `scrollFrame:` には書けない)
                             result.suggestedScrollFrame = ScrollFrameCandidates.selector(
                                 matching: container, in: snapshot)
+                        } else {
+                            // **見つからなくても、画面を動かしたかは別に確かめる**
+                            // (ScrollSearchResult.reverseSweepMoved の doc)。reverseSweep は
+                            // found/not-found しか返さないので、直後に撮り直して比較する
+                            let after = try await freshSnapshot(.afterOwnMove)
+                            result.reverseSweepMoved = Self.contentSignature(after.elements)
+                                != Self.contentSignature(snapshot.elements)
                         }
                         return result
                     }
@@ -720,23 +753,32 @@ extension StepExecutor {
         // 揺れ、「2周連続不変」の端判定に到達しないまま maxSwipes を使い切る形が RN の
         // 横カルーセルで 2/10 残った。既に通り過ぎている公算が高い局面で、失敗経路限定なので
         // 正常系のコストはゼロ。ゲートは stoppedUnmoving 側の逆走査と同じ)
+        // **見つからなくても画面を動かしたかは別に確かめる**(mid-loop 側の reverseSweepMoved と
+        // 同じ理由。ScrollSearchResult.reverseSweepMoved の doc)。ガード(recoverOnMiss 等)で
+        // reverseSweep 自体を撃たなかった回は false のまま = 従来どおり「1度も動かなかった」に読める
+        var reverseSweepMoved = false
         if recoverOnMiss, step.containerInference ?? true,
            let latest = previousSnapshot,
            let container = (scrolledContainer ?? Self.overflowingContainer(in: latest))
-               .flatMap({ ScrollGeometry.intersection($0, latest.screen) }),
-           let recovered = try await reverseSweep(step: step, container: container,
-                                                  searching: direction, phase: &phase) {
-            var result = ScrollSearchResult(found: true, fallback: recovered,
-                                            viaXCUITest: viaXCUITest,
-                                            hintJumps: hintJumps, swipes: swipes,
-                                            maxTruncatedDuringSearch: truncatedDuringSearch)
-            result.reverseSweeps = 1
-            result.suggestedScrollFrame = ScrollFrameCandidates.selector(matching: container,
-                                                                         in: latest)
-            return result
+               .flatMap({ ScrollGeometry.intersection($0, latest.screen) }) {
+            if let recovered = try await reverseSweep(step: step, container: container,
+                                                       searching: direction, phase: &phase) {
+                var result = ScrollSearchResult(found: true, fallback: recovered,
+                                                viaXCUITest: viaXCUITest,
+                                                hintJumps: hintJumps, swipes: swipes,
+                                                maxTruncatedDuringSearch: truncatedDuringSearch)
+                result.reverseSweeps = 1
+                result.suggestedScrollFrame = ScrollFrameCandidates.selector(matching: container,
+                                                                             in: latest)
+                return result
+            }
+            let after = try await freshSnapshot(.afterOwnMove)
+            reverseSweepMoved = Self.contentSignature(after.elements)
+                != Self.contentSignature(latest.elements)
         }
         var exhausted = ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
                                            hintJumps: hintJumps, swipes: swipes,
+                                           reverseSweepMoved: reverseSweepMoved,
                                            maxTruncatedDuringSearch: truncatedDuringSearch)
         if step.scrollFrame == nil, let latest = previousSnapshot {
             exhausted.directionMatchedScrollFrameCandidate =

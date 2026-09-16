@@ -26,7 +26,8 @@ final class AndroidBridgeFailureCacheMessageTests: XCTestCase {
 
     /// ライブの失敗は従来どおり(キャッシュの断りが付かない)
     func testLiveFailureIsNotLabelledAsCached() {
-        let text = message(AndroidDriver.unreachableError(detail: "adb forward failed"))
+        let text = message(AndroidDriver.unreachableError(detail: "adb forward failed",
+                                                           physicalDevice: false))
         XCTAssertTrue(text.contains("adb forward failed"), text)
         XCTAssertFalse(text.contains("cached"),
                        "ライブの失敗にキャッシュの断りが付いた: \(text)")
@@ -35,7 +36,8 @@ final class AndroidBridgeFailureCacheMessageTests: XCTestCase {
     /// 再生は「再生である」と名乗り、原因(初回の detail)は引き継ぐ
     func testCachedReplayNamesItselfAndKeepsTheOriginalCause() {
         let text = message(AndroidDriver.unreachableError(
-            detail: "adb forward failed: adb: device offline", cachedSecondsRemaining: 42))
+            detail: "adb forward failed: adb: device offline", physicalDevice: false,
+            cachedSecondsRemaining: 42))
         XCTAssertTrue(text.contains("cached"), text)
         XCTAssertTrue(text.contains("adb forward failed: adb: device offline"),
                       "初回の原因が落ちている: \(text)")
@@ -43,14 +45,16 @@ final class AndroidBridgeFailureCacheMessageTests: XCTestCase {
 
     /// **残り時間を出す** —— 「待てば直る」のか「環境を直すべき」なのかが読み手の次の一手を変える
     func testCachedReplayStatesHowLongUntilTheNextRealAttempt() {
-        let text = message(AndroidDriver.unreachableError(detail: nil, cachedSecondsRemaining: 42))
+        let text = message(AndroidDriver.unreachableError(detail: nil, physicalDevice: false,
+                                                           cachedSecondsRemaining: 42))
         XCTAssertTrue(text.contains("42s"), text)
     }
 
     /// 端数は切り上げる。**0s とは言わない** —— 0 は「もう再試行される」と読めるが、
     /// この文が出ている以上まだ期限内なので、待っても無駄だと誤読させる
     func testSubSecondRemainderIsRoundedUpAndNeverZero() {
-        let text = message(AndroidDriver.unreachableError(detail: nil, cachedSecondsRemaining: 0.2))
+        let text = message(AndroidDriver.unreachableError(detail: nil, physicalDevice: false,
+                                                           cachedSecondsRemaining: 0.2))
         XCTAssertTrue(text.contains("1s"), text)
         XCTAssertFalse(text.contains("0s"), text)
     }
@@ -59,7 +63,8 @@ final class AndroidBridgeFailureCacheMessageTests: XCTestCase {
     /// static なので、CLI の `bridge up` が成功しても**この長寿命プロセスの記憶は消えない**。
     /// 「すぐ再試行できる」と書くと、直したのに同じ文が返る次の混乱を作る
     func testCachedReplaySaysFixingTheDeviceDoesNotClearIt() {
-        let text = message(AndroidDriver.unreachableError(detail: nil, cachedSecondsRemaining: 5))
+        let text = message(AndroidDriver.unreachableError(detail: nil, physicalDevice: false,
+                                                           cachedSecondsRemaining: 5))
         guard let clause = cachedClause(text) else {
             return XCTFail("キャッシュの断りが出ていない: \(text)")
         }
@@ -68,5 +73,33 @@ final class AndroidBridgeFailureCacheMessageTests: XCTestCase {
         XCTAssertTrue(clause.contains("per-process"), clause)
         XCTAssertFalse(clause.contains("retries immediately"),
                        "この文言はプロセスを跨いで効くと誤読させる: \(clause)")
+    }
+
+    /// **二重包み防止(3)の本体**: `ensureBridge()` パイプラインが使う `rawFailureDetail` は、
+    /// DriverError から「まだ組み立てていない一次情報」だけを取り出す(`.errorDescription` を
+    /// 経由しない)。2026-09-16 に実際に踏んだ二重包みは、この抽出をせず `.errorDescription`
+    /// (固定文つきの完成文)をそのまま次の呼び出しの `detail` へ流していたのが原因 ——
+    /// `unreachableError` が組み立てる `.bridgeUnreachable` の**保存側の `detail` は
+    /// 常に生のまま**(固定文は `errorDescription` が読まれた瞬間にしか乗らない)ことを固定する
+    func testRawFailureDetailExtractsTheStoredDetailNotTheRenderedDescription() {
+        let original = AndroidDriver.unreachableError(detail: "adb forward failed: adb: device offline",
+                                                       physicalDevice: false)
+        XCTAssertTrue((original.errorDescription ?? "").contains("Cannot reach the driver"),
+                      "前提が崩れている(errorDescription に固定文が無い): \(String(describing: original.errorDescription))")
+        XCTAssertEqual(AndroidDriver.rawFailureDetail(original), "adb forward failed: adb: device offline")
+    }
+
+    /// 上の抽出を経由すれば、**実際のキャッシュ再生パイプラインでも固定文は1回しか出ない**
+    /// (`ensureBridge()` の catch → `.unavailable` へ格納 → 期限内の再生、という実経路を模す)
+    func testCachedReplayThroughTheRealPipelineNeverDoubleWraps() {
+        let firstFailure = AndroidDriver.unreachableError(detail: "adb forward failed: adb: device offline",
+                                                           physicalDevice: false)
+        let raw = AndroidDriver.rawFailureDetail(firstFailure)
+        let replayed = AndroidDriver.unreachableError(detail: raw, physicalDevice: false,
+                                                       cachedSecondsRemaining: 42)
+        let text = message(replayed)
+        let occurrences = text.components(separatedBy: "Cannot reach the driver").count - 1
+        XCTAssertEqual(occurrences, 1, "固定文が複数回出た(二重包み): \(text)")
+        XCTAssertTrue(text.contains("adb forward failed: adb: device offline"), text)
     }
 }
