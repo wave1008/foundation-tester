@@ -615,6 +615,12 @@
   足した日に黙って外れる(RN / SwiftUI を uikit から分けたとき、in-app の木の正規化はそれらにも掛け続ける必要があった)。
   Android の compose は「Compose を含む」であって全画面が Compose とは限らない(View/XML に混ぜた E2EAppAndroid もこちら)
 
+- **失敗の文言は構成(OS・エンジン・実機か)を知っている必要がある**(`FTCore.DriverErrorContext` を
+  `DriverError` の同伴データに必須で持たせる。既定値を置かない = 新しい経路が渡し忘れたらコンパイルで止まる)。
+  **detail に渡すのは一次情報だけ**(完成した説明文を渡すと固定文が二重に出る)→ maintainer-notes §27
+- **診断のために外部コマンドを撃つ経路も、協調スレッドプールにブロッキングを載せない**
+  (ft_status の udid 診断が全ポートへ `lsof` を同時に撃ってプールを塞ぎ、200 秒返らなくなった。
+  台帳から候補を絞る → `ps` 1 回 + `isBound` 数本で 1.2 秒)→ maintainer-notes §27
 - **判定は MCP と DSL で共有する**。「手前かどうか」は `FTCore.PaintOrder`、「撃つと別の物に
   当たるか」は `FTCore.TapTargetGeometry`(合成チェーンは `occlusionAdvisory`)と
   `FTCore.OcclusionGeometry`(中心を覆う最前面の名指し。`OcclusionSuspicion.covering` とは
