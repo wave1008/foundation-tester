@@ -1430,7 +1430,6 @@ const VALID_RUN_PROFILE_SAVE = {
     homeOnStart: true,
     enableAnimations: false,
     reportDir: "reports",
-    defaultTimeout: "10",
     updateWebView: true,
     wipeDataOnBloat: true,
     wipeDataThresholdGB: "1",
@@ -1460,7 +1459,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields21�
     isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_SAVE, fields: { ...VALID_RUN_PROFILE_SAVE.fields, devices: [] } }),
     true,
   );
-  // app/reportDir/defaultTimeout/wipeDataThresholdGB/locale は空文字も(型としては)許容する。
+  // app/reportDir/wipeDataThresholdGB/locale は空文字も(型としては)許容する。
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
@@ -1478,7 +1477,6 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields21�
         homeOnStart: true,
         enableAnimations: true,
         reportDir: "",
-        defaultTimeout: "",
         updateWebView: true,
         wipeDataOnBloat: false,
         wipeDataThresholdGB: "",
@@ -1566,13 +1564,6 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 空文字・fields
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
       fields: { ...VALID_RUN_PROFILE_SAVE.fields, iosFastInput: "true" }, // boolean でない
-    }),
-    false,
-  );
-  assert.equal(
-    isMonitorFromWebviewMessage({
-      ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, defaultTimeout: 10 }, // number(string でない)
     }),
     false,
   );
@@ -1771,73 +1762,47 @@ test("isMonitorFromWebviewMessage: appProfileSave は profile 空文字・fields
 
 // ---- machineDeviceDetail ----
 
-test("machineDeviceDetail: iOS は model と osVersion を ' / ' で連結する(シミュレータ)", () => {
+test("machineDeviceDetail: iOS は Model / OS Version / UDID(シミュレータ・実機とも)", () => {
   assert.equal(
-    machineDeviceDetail({ name: "シミュ1", platform: "ios", model: "iPhone 17 Pro", osVersion: "iOS 27.0" }),
-    "iPhone 17 Pro / iOS 27.0",
+    machineDeviceDetail({ name: "シミュ1", platform: "ios", model: "iPhone 17 Pro", osVersion: "iOS 27.0", udid: "U0" }),
+    "iPhone 17 Pro / iOS 27.0 / U0",
+  );
+  assert.equal(
+    machineDeviceDetail({ name: "実機", platform: "ios", kind: "physical", model: "iPhone 17 Pro", osVersion: "iOS 18.2", udid: "00008110-001" }),
+    "iPhone 17 Pro / iOS 18.2 / 00008110-001",
   );
 });
 
-test("machineDeviceDetail: iOS は model と osVersion を ' / ' で連結する(実機)", () => {
-  assert.equal(
-    machineDeviceDetail({ name: "実機", platform: "ios", kind: "physical", model: "iPhone 17 Pro", osVersion: "iOS 18.2", udid: "U1" }),
-    "iPhone 17 Pro / iOS 18.2",
-  );
+test("machineDeviceDetail: 欠けた要素は飛ばして連結する(接頭辞を足さない)", () => {
+  assert.equal(machineDeviceDetail({ name: "s", platform: "ios", osVersion: "iOS 27.0" }), "iOS 27.0");
+  assert.equal(machineDeviceDetail({ name: "s", platform: "ios", model: "iPhone 17 Pro", udid: "U" }), "iPhone 17 Pro / U");
+  assert.equal(machineDeviceDetail({ name: "s", platform: "ios", udid: "U" }), "U");
 });
 
-test("machineDeviceDetail: iOS は model が無ければ osVersion だけ('iOS' の接頭辞は付け足さない)", () => {
-  assert.equal(
-    machineDeviceDetail({ name: "シミュ1", platform: "ios", osVersion: "iOS 27.0" }),
-    "iOS 27.0",
-  );
-});
-
-test("machineDeviceDetail: iOS は osVersion が無ければ model だけ出す(udid は出さない)", () => {
-  assert.equal(
-    machineDeviceDetail({ name: "シミュ1", platform: "ios", model: "iPhone 17 Pro", udid: "ABCDEFGH-1234-5678" }),
-    "iPhone 17 Pro",
-  );
-});
-
-test("machineDeviceDetail: iOS は model も osVersion も無ければ 'iOS'", () => {
+test("machineDeviceDetail: iOS は全部無ければ 'iOS'", () => {
   assert.equal(machineDeviceDetail({ name: "シミュ1", platform: "ios" }), "iOS");
 });
 
-test("machineDeviceDetail: Android 実機は model があれば '<model> / <osVersion>'", () => {
+test("machineDeviceDetail: Android 実機は Model / OS Version / Serial", () => {
   assert.equal(
     machineDeviceDetail({ name: "実機", platform: "android", kind: "physical", model: "Pixel 8", osVersion: "Android 15", serial: "14141JEC204922" }),
-    "Pixel 8 / Android 15",
+    "Pixel 8 / Android 15 / 14141JEC204922",
   );
-});
-
-test("machineDeviceDetail: Android 実機は osVersion が無ければ model のみ", () => {
-  assert.equal(
-    machineDeviceDetail({ name: "実機", platform: "android", kind: "physical", model: "Pixel 8", serial: "14141JEC204922" }),
-    "Pixel 8",
-  );
-});
-
-test("machineDeviceDetail: Android 実機は model が無いので serial を出す", () => {
-  // 実機は AVD を持たない。従来は "Android" としか出ず、どの端末か分からなかった
   assert.equal(
     machineDeviceDetail({ name: "実機", platform: "android", kind: "physical", serial: "14141JEC204922" }),
     "14141JEC204922",
   );
 });
 
-test("machineDeviceDetail: Android は avd/serial/model とも無ければ 'Android'", () => {
-  assert.equal(machineDeviceDetail({ name: "謎", platform: "android" }), "Android");
-});
-
 test("machineDeviceDetail: Android は avd があれば 'AVD: ' + avd(model があっても優先しない)", () => {
   assert.equal(
-    machineDeviceDetail({ name: "エミュ1", platform: "android", avd: "Pixel 9(Android 16)" }),
+    machineDeviceDetail({ name: "エミュ1", platform: "android", avd: "Pixel 9(Android 16)", model: "Pixel 9" }),
     "AVD: Pixel 9(Android 16)",
   );
 });
 
-test("machineDeviceDetail: Android は avd が無ければ 'Android'", () => {
-  assert.equal(machineDeviceDetail({ name: "エミュ1", platform: "android" }), "Android");
+test("machineDeviceDetail: Android は avd/serial/model とも無ければ 'Android'", () => {
+  assert.equal(machineDeviceDetail({ name: "謎", platform: "android" }), "Android");
 });
 
 // ---- validateNewDeviceName ----
@@ -2000,7 +1965,7 @@ test("addDevicesToRunProfile: 非オブジェクトなら ok:false", () => {
 
 // ---- parseRunProfileForForm ----
 
-test("parseRunProfileForForm: 正常な値は23フィールドをそのまま読み取る", () => {
+test("parseRunProfileForForm: 正常な値は各フィールドをそのまま読み取る", () => {
   const parsed = parseRunProfileForForm({
     app: "sampleapp",
     devices: [
@@ -2019,7 +1984,6 @@ test("parseRunProfileForForm: 正常な値は23フィールドをそのまま読
     playProtectBypass: false,
     enableAnimations: true,
     reportDir: "reports",
-    defaultTimeout: 10,
     updateWebView: true,
     wipeDataOnBloat: false,
     wipeDataThresholdGB: 1.5,
@@ -2049,7 +2013,6 @@ test("parseRunProfileForForm: 正常な値は23フィールドをそのまま読
     playProtectBypass: false,
     enableAnimations: true,
     reportDir: "reports",
-    defaultTimeout: "10",
     updateWebView: true,
     wipeDataOnBloat: false,
     wipeDataThresholdGB: "1.5",
@@ -2063,7 +2026,7 @@ test("parseRunProfileForForm: 正常な値は23フィールドをそのまま読
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、heal/screenLooksLike/textVisualCheck/containerInference=true、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionWarmup=true)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、heal/screenLooksLike/textVisualCheck/containerInference=true、iosInappEngine=true、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionWarmup=true)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     app: "",
@@ -2080,7 +2043,6 @@ test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/reco
     playProtectBypass: true,
     enableAnimations: false,
     reportDir: "",
-    defaultTimeout: "",
     updateWebView: true,
     wipeDataOnBloat: true,
     wipeDataThresholdGB: "",
@@ -2106,7 +2068,6 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     iosInappEngine: "false",
     iosFastInput: "true",
     reportDir: false,
-    defaultTimeout: {},
     wipeDataOnBloat: "false",
     wipeDataThresholdGB: {},
     recoverCpuFallbackToGpu: "true",
@@ -2132,7 +2093,6 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     playProtectBypass: true,
     enableAnimations: false,
     reportDir: "",
-    defaultTimeout: "",
     updateWebView: true,
     wipeDataOnBloat: true,
     wipeDataThresholdGB: "",
@@ -2276,11 +2236,6 @@ test("parseRunProfileForForm: devices の enabled は false のときだけ fals
     ],
   });
   assert.deepEqual(parsed.devices.map((d) => d.enabled), [false, true, true, true]);
-});
-
-test("parseRunProfileForForm: defaultTimeout が string ならそのまま返す(整数化しない)", () => {
-  const parsed = parseRunProfileForForm({ defaultTimeout: "10.5" });
-  assert.equal(parsed.defaultTimeout, "10.5");
 });
 
 test("parseRunProfileForForm: wipeDataThresholdGB は number なら String() 化、string ならそのまま返す", () => {
@@ -2435,7 +2390,6 @@ const BASE_RUN_PROFILE_FIELDS = {
   homeOnStart: true,
   enableAnimations: false,
   reportDir: "reports",
-  defaultTimeout: "10",
   updateWebView: true,
   wipeDataOnBloat: true,
   wipeDataThresholdGB: "1",
@@ -2447,7 +2401,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   workspace: "",
 };
 
-test("updateRunProfileInObject: 基本更新(app/heal/textVisualCheck/screenLooksLike/containerInference/iosInappEngine/wipeDataOnBloat/reportDir/defaultTimeout)", () => {
+test("updateRunProfileInObject: 基本更新(app/heal/textVisualCheck/screenLooksLike/containerInference/iosInappEngine/wipeDataOnBloat/reportDir)", () => {
   const result = updateRunProfileInObject({ app: "old", devices: [], heal: false, reportDir: "old" }, BASE_RUN_PROFILE_FIELDS);
   assert.equal(result.ok, true);
   assert.equal(result.object.app, "sampleapp");
@@ -2459,7 +2413,6 @@ test("updateRunProfileInObject: 基本更新(app/heal/textVisualCheck/screenLook
   assert.equal(result.object.wipeDataOnBloat, true);
   assert.equal(result.object.wipeDataThresholdGB, 1);
   assert.equal(result.object.reportDir, "reports");
-  assert.equal(result.object.defaultTimeout, 10);
   assert.equal(result.object.locale, "ja_JP");
   // machine は常に書く(手元は "local")。既存に無い(=新規)エントリなので platform 順に組み立てられる
   assert.deepEqual(result.object.devices, [
@@ -2604,37 +2557,16 @@ test("updateRunProfileInObject: app/reportDir は空文字ならキー削除す�
   assert.equal("reportDir" in result.object, false);
 });
 
-test("updateRunProfileInObject: defaultTimeout は空文字でキー削除、0 以上の数文字列(小数可)で number 化、不正値でエラー", () => {
-  const removed = updateRunProfileInObject(
-    { defaultTimeout: 10 },
-    { ...BASE_RUN_PROFILE_FIELDS, defaultTimeout: "" },
-  );
-  assert.equal(removed.ok, true);
-  assert.equal("defaultTimeout" in removed.object, false);
+// defaultTimeout は GUI のフォーム欄を持たない(RunProfileFormFields に無い)。result は
+// `{ ...source }` から始まるため、既存 JSON の値はフォーム保存で一切変更されず保たれる。
+test("updateRunProfileInObject: defaultTimeout はフォームに欄が無いため、既存の値をそのまま保つ", () => {
+  const preserved = updateRunProfileInObject({ defaultTimeout: 8 }, BASE_RUN_PROFILE_FIELDS);
+  assert.equal(preserved.ok, true);
+  assert.equal(preserved.object.defaultTimeout, 8);
 
-  const added = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, defaultTimeout: "30" });
-  assert.equal(added.ok, true);
-  assert.equal(added.object.defaultTimeout, 30);
-  assert.equal(typeof added.object.defaultTimeout, "number");
-
-  // 小数は正当な値(DSL の timeout が Double。1.2 秒のような待ちを書ける)
-  const fractional = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, defaultTimeout: "1.5" });
-  assert.equal(fractional.ok, true);
-  assert.equal(fractional.object.defaultTimeout, 1.5);
-  assert.equal(typeof fractional.object.defaultTimeout, "number");
-
-  // 0 は正当(初回スナップショットだけ。CLI の --set defaultTimeout=0 と同じ規則)
-  for (const zeroText of ["0", "0.0"]) {
-    const zero = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, defaultTimeout: zeroText });
-    assert.equal(zero.ok, true, `defaultTimeout=${zeroText} は正当な値`);
-    assert.equal(zero.object.defaultTimeout, 0);
-  }
-
-  for (const invalid of ["-1", "1.2.3", "1e3", ".5", "abc"]) {
-    const result = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, defaultTimeout: invalid });
-    assert.equal(result.ok, false, `defaultTimeout=${invalid} は不正値としてエラーになるべき`);
-    assert.match(result.error, /defaultTimeout/);
-  }
+  const untouched = updateRunProfileInObject({}, BASE_RUN_PROFILE_FIELDS);
+  assert.equal(untouched.ok, true);
+  assert.equal("defaultTimeout" in untouched.object, false);
 });
 
 test("updateRunProfileInObject: devices は既存の同名エントリ(未知キー込み)を再利用し、新規名は orderedDeviceEntry で追加する", () => {

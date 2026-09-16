@@ -1,9 +1,9 @@
 // runProfilesTab.js
 // 「プロファイル」タブの実行プロファイル節(選択/追加/コピー/削除/名前変更・設定フォーム)を担う。
-// デバイス一覧(チェックボックス・右ペイン詳細表示・右クリックメニュー)は runProfileDevicesTab.js に
+// デバイス一覧(チェックボックス・行選択・右クリックメニュー)は runProfileDevicesTab.js に
 // 分離してある(**この 2 ファイルは互いに import しない**。片方向依存 = このファイルが
 // runProfileDevicesTab.js を読むだけ。相互 import が esbuild のバンドル評価順を崩す実害は
-// physicalDeviceCache.js 冒頭コメント参照)。selectedRunProfile はここでは読み取り専用で
+// runProfileDevicesTab.js 冒頭コメント参照)。selectedRunProfile はここでは読み取り専用で
 // modals.js から参照される。
 
 import { vscode } from './vscodeApi.js';
@@ -56,12 +56,11 @@ const runProfileLocale = document.getElementById('run-profile-locale');
 const runProfileWorkspace = document.getElementById('run-profile-workspace');
 const btnRunProfileHookScaffold = document.getElementById('btn-run-profile-hook-scaffold');
 const runProfileReportDir = document.getElementById('run-profile-report-dir');
-const runProfileDefaultTimeout = document.getElementById('run-profile-default-timeout');
 const runProfileError = document.getElementById('run-profile-error');
 // 保存時に前後の空白を落として書き戻す欄(送る値と画面の値を一致させ、保存後に dirty が残らないように)
 const runProfileTextInputs = [
   runProfileRecordBitrate, runProfileWipeThreshold, runProfileLocale,
-  runProfileWorkspace, runProfileReportDir, runProfileDefaultTimeout,
+  runProfileWorkspace, runProfileReportDir,
 ];
 
 // 直近受信の一覧(profileInfo 由来)。
@@ -267,7 +266,6 @@ function renderRunProfileEditor(fields) {
   runProfileLocale.value = fields.locale;
   runProfileWorkspace.value = fields.workspace;
   runProfileReportDir.value = fields.reportDir;
-  runProfileDefaultTimeout.value = fields.defaultTimeout;
 
   runProfilePlaceholder.style.display = 'none';
   runProfileEditor.style.display = '';
@@ -369,8 +367,7 @@ function runProfileValuesEqual(fields) {
     runProfileWipeThreshold.value === fields.wipeDataThresholdGB &&
     runProfileLocale.value === fields.locale &&
     runProfileWorkspace.value === fields.workspace &&
-    runProfileReportDir.value === fields.reportDir &&
-    runProfileDefaultTimeout.value === fields.defaultTimeout
+    runProfileReportDir.value === fields.reportDir
   );
 }
 
@@ -390,10 +387,6 @@ function validateRunProfileFields() {
   }
   if (currentDeviceEntries().filter((d) => d.enabled).length === 0) {
     return t('wvMonitor2.runProfile.validation.deviceRequired');
-  }
-  const timeout = runProfileDefaultTimeout.value.trim();
-  if (timeout !== '' && (!/^\d+(\.\d+)?$/.test(timeout) || Number(timeout) <= 0)) {
-    return t('wvMonitor2.runProfile.validation.timeoutInvalid');
   }
   const threshold = runProfileWipeThreshold.value.trim();
   if (threshold !== '' && (!/^\d+(\.\d+)?$/.test(threshold) || Number(threshold) <= 0)) {
@@ -467,7 +460,6 @@ function collectRunProfileFields() {
     locale: runProfileLocale.value.trim(),
     workspace: runProfileWorkspace.value.trim(),
     reportDir: runProfileReportDir.value.trim(),
-    defaultTimeout: runProfileDefaultTimeout.value.trim(),
   };
 }
 
@@ -475,8 +467,7 @@ function collectRunProfileFields() {
 // 保存されない。実際に homeOnStart/playProtectBypass/updateWebView が漏れていた)。各欄の固有の
 // リスナー(表示切替・デバイス一覧の作り直し)は target で先に走るので、ここは確定後の値を見る。
 // 保存の契機は change だけ —— input(打鍵ごと)では送らない = 入力途中の値を検証してエラーを
-// 出したり書き込んだりしない。デバイス編集フォーム(#run-profile-device-editor)の change は
-// runProfileDevicesTab.js が stopPropagation するのでここには来ない(別経路で保存するため)。
+// 出したり書き込んだりしない。
 runProfileEditor.addEventListener('input', onRunProfileFormInput);
 runProfileEditor.addEventListener('change', () => {
   onRunProfileFormInput();

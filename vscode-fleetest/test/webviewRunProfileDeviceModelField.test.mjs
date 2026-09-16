@@ -1,14 +1,15 @@
 // webviewRunProfileDeviceModelField.test.mjs
-// devices[] の "simulator" キー廃止後の3点を実 HTML+実バンドルで確認する DOM テスト
-// (harness は webviewDevicePickMachine.test.mjs / webviewRunProfileDeviceMachineScope.test.mjs と同じ)。
+// devices[] の "simulator" キー廃止後の登録内容と、デバイス一覧行の表示を実 HTML+実バンドルで
+// 確認する DOM テスト(harness は webviewDevicePickMachine.test.mjs /
+// webviewRunProfileDeviceMachineScope.test.mjs と同じ)。
 //
 // ①「+既存から選択」の登録(runProfileDevicesSync の add[])は iOS シミュレータに simulator キーを
 //   書かず、name/osVersion/udid と(取得できていれば)model を書く。model が null なら省く。
 //   osVersion は installed-devices の素の os(接頭辞なし)にプラットフォーム接頭辞を足した値。
-// ②右ペイン編集フォームの名前欄は iOS シミュレータ(kind !== "physical")だけ読み取り専用。
-//   iOS 実機・Android(実機/エミュレータ)は編集可のまま。
-// ③一覧2行目の詳細文字列(deviceDetail)は monitorProfileForms.ts の machineDeviceDetail と
+// ②一覧2行目の詳細文字列(deviceDetail)は monitorProfileForms.ts の machineDeviceDetail と
 //   同じ規則で出る(片方だけ変えない)。
+// ③行のクリックは選択状態にするだけで、詳細ペイン(#run-profile-device-editor)は存在しない
+//   (廃止済み)。
 
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -182,7 +183,7 @@ test("「+既存から選択」の登録: Android 実機は installed-devices �
   assert.equal(entry.osVersion, "Android 13");
 });
 
-// ---- ② 名前欄はどの種別も表示専用ラベル(実体を指す属性で API では改名不可) -------------------
+// ---- ② 一覧の詳細文字列: iOS/Android は machineDeviceDetail と同じ規則で出る ---------------
 
 const PROFILE_INFO_FOR_EDITOR = {
   type: "profileInfo",
@@ -204,114 +205,8 @@ function selectDeviceByName(document, window, name) {
   const rows = [...document.querySelectorAll("#run-profile-devices .run-profile-device-row-item")];
   const row = rows.find((r) => r.querySelector(".tile-name").textContent === name);
   row.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  return row;
 }
-
-test("名前欄: iOS シミュレータ・iOS実機・Androidエミュレータ・Android実機のすべてで #run-profile-device-name-static に名前が出て、入力欄は存在しない", (t) => {
-  const { window, document } = createWebview();
-  t.after(() => window.close());
-  post(window, PROFILE_INFO_FOR_EDITOR);
-  post(window, runProfileDataWithDevices([
-    { platform: "ios", name: "シミュ1", enabled: true, model: "iPhone 16", osVersion: "iOS 18.0", udid: "U1" },
-    { platform: "ios", name: "実機1", enabled: true, machine: "M1Max", kind: "physical", model: "iPhone 15", osVersion: "iOS 18.0", udid: "U2" },
-    { platform: "android", name: "エミュ1", enabled: true, avd: "Pixel_9" },
-    { platform: "android", name: "実機2", enabled: true, kind: "physical", model: "Pixel 8", osVersion: "Android 15", serial: "S1" },
-  ]));
-
-  assert.equal(document.getElementById("run-profile-device-name-input"), null, "入力欄はもう無い");
-  assert.equal(document.querySelectorAll("#run-profile-device-editor input").length, 0, "詳細ペインに input は1つも無い");
-
-  for (const name of ["シミュ1", "実機1", "エミュ1", "実機2"]) {
-    selectDeviceByName(document, window, name);
-    const nameStatic = document.getElementById("run-profile-device-name-static");
-    assert.notEqual(nameStatic.style.display, "none", `${name} は表示される`);
-    assert.equal(nameStatic.textContent, name);
-    assert.equal(nameStatic.className, "editor-readonly-value");
-  }
-});
-
-test("名前欄のツールチップ: 改名不可の理由が出るのは iOS シミュレータだけ", (t) => {
-  const { window, document } = createWebview();
-  t.after(() => window.close());
-  post(window, PROFILE_INFO_FOR_EDITOR);
-  post(window, runProfileDataWithDevices([
-    { platform: "ios", name: "シミュ1", enabled: true, model: "iPhone 16", osVersion: "iOS 18.0", udid: "U1" },
-    { platform: "ios", name: "実機1", enabled: true, machine: "M1Max", kind: "physical", model: "iPhone 15", osVersion: "iOS 18.0", udid: "U2" },
-    { platform: "android", name: "エミュ1", enabled: true, avd: "Pixel_9" },
-    { platform: "android", name: "実機2", enabled: true, kind: "physical", model: "Pixel 8", osVersion: "Android 15", serial: "S1" },
-  ]));
-
-  selectDeviceByName(document, window, "シミュ1");
-  assert.notEqual(document.getElementById("run-profile-device-name-static").title, "", "理由を示すツールチップを持つ");
-
-  for (const name of ["実機1", "エミュ1", "実機2"]) {
-    selectDeviceByName(document, window, name);
-    assert.equal(document.getElementById("run-profile-device-name-static").title, "", `${name} にはツールチップが無い`);
-  }
-});
-
-test("名前の右のバッジ: iOS実機(machine M1Max)は [名前, machine バッジ, 実機バッジ] の順で出て、手元のエミュレータはどちらも出ない", (t) => {
-  const { window, document } = createWebview();
-  t.after(() => window.close());
-  post(window, PROFILE_INFO_FOR_EDITOR);
-  post(window, runProfileDataWithDevices([
-    { platform: "ios", name: "実機1", enabled: true, machine: "M1Max", kind: "physical", model: "iPhone 15", osVersion: "iOS 18.0", udid: "U2" },
-    { platform: "android", name: "エミュ1", enabled: true, avd: "Pixel_9" },
-  ]));
-
-  selectDeviceByName(document, window, "実機1");
-  const nameRow = document.getElementById("run-profile-device-name-static").parentElement;
-  const visibleIds = [...nameRow.children]
-    .filter((el) => el.tagName !== "LABEL" && el.style.display !== "none")
-    .map((el) => el.id);
-  assert.deepEqual(visibleIds, [
-    "run-profile-device-name-static",
-    "run-profile-device-name-machine-badge",
-    "run-profile-device-name-kind-badge",
-  ]);
-  assert.equal(document.getElementById("run-profile-device-name-machine-badge").textContent, "M1Max");
-  assert.equal(document.getElementById("run-profile-device-name-kind-badge").textContent, "実機");
-
-  selectDeviceByName(document, window, "エミュ1");
-  assert.equal(document.getElementById("run-profile-device-name-machine-badge").style.display, "none");
-  assert.equal(document.getElementById("run-profile-device-name-kind-badge").style.display, "none");
-});
-
-// ---- ③ Model 行の表示・一覧の詳細文字列 -------------------------------------------------
-
-test("Model 行: iOS シミュレータの model を表示し、無ければ隠す", (t) => {
-  const { window, document } = createWebview();
-  t.after(() => window.close());
-  post(window, PROFILE_INFO_FOR_EDITOR);
-  post(window, runProfileDataWithDevices([
-    { platform: "ios", name: "シミュ1", enabled: true, model: "iPhone 16", osVersion: "iOS 18.0", udid: "U1" },
-    { platform: "ios", name: "シミュ2", enabled: true, osVersion: "iOS 18.0", udid: "U3" }, // model 無し
-  ]));
-
-  selectDeviceByName(document, window, "シミュ1");
-  assert.equal(document.getElementById("run-profile-device-model-row").style.display, "");
-  assert.equal(document.getElementById("run-profile-device-model").textContent, "iPhone 16");
-
-  selectDeviceByName(document, window, "シミュ2");
-  assert.equal(document.getElementById("run-profile-device-model-row").style.display, "none");
-});
-
-test("編集フォームの行ラベル: 機種/OS は英語表記の \"Model\" / \"OS Version\"", (t) => {
-  const { window, document } = createWebview();
-  t.after(() => window.close());
-  post(window, PROFILE_INFO_FOR_EDITOR);
-  post(window, runProfileDataWithDevices([
-    { platform: "ios", name: "シミュ1", enabled: true, model: "iPhone 16", osVersion: "iOS 18.0", udid: "U1" },
-    { platform: "android", name: "実機2", enabled: true, kind: "physical", model: "Pixel 8", osVersion: "Android 15", serial: "S1" },
-  ]));
-
-  selectDeviceByName(document, window, "シミュ1");
-  assert.equal(document.querySelector("#run-profile-device-os-row label").textContent, "OS Version");
-
-  selectDeviceByName(document, window, "実機2");
-  assert.equal(document.querySelector("#run-profile-device-model-row label").textContent, "Model");
-  assert.equal(document.querySelector("#run-profile-device-physical-os-row label").textContent, "OS Version");
-  assert.equal(document.querySelector("#run-profile-device-serial-row label").textContent, "Serial");
-});
 
 test("一覧の詳細文字列: iOS/Android は machineDeviceDetail と同じ規則で出る", (t) => {
   const { window, document } = createWebview();
@@ -327,8 +222,23 @@ test("一覧の詳細文字列: iOS/Android は machineDeviceDetail と同じ規
     const row = rows.find((r) => r.querySelector(".tile-name").textContent === name);
     return row.querySelector(".run-profile-device-detail").textContent;
   };
-  assert.equal(detailFor("シミュ1"), "iPhone 16 / iOS 18.0");
-  assert.equal(detailFor("実機1"), "iPhone 15 / iOS 18.0");
+  assert.equal(detailFor("シミュ1"), "iPhone 16 / iOS 18.0 / U1");
+  assert.equal(detailFor("実機1"), "iPhone 15 / iOS 18.0 / U2");
   assert.equal(detailFor("エミュ1"), "AVD: Pixel_9");
-  assert.equal(detailFor("実機2"), "Pixel 8 / Android 15");
+  assert.equal(detailFor("実機2"), "Pixel 8 / Android 15 / S1");
+});
+
+// ---- ③ 行のクリックは選択状態にするだけ(詳細ペインは廃止済み) --------------------------
+
+test("行をクリックすると選択状態になり、詳細ペイン(#run-profile-device-editor)は DOM に存在しない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, PROFILE_INFO_FOR_EDITOR);
+  post(window, runProfileDataWithDevices(PROFILE_INFO_FOR_EDITOR.devices.map((d) => ({ ...d, enabled: true }))));
+
+  assert.equal(document.getElementById("run-profile-device-editor"), null);
+  assert.equal(document.getElementById("run-profile-device-placeholder"), null);
+
+  const row = selectDeviceByName(document, window, "シミュ1");
+  assert.equal(row.classList.contains("selected"), true);
 });

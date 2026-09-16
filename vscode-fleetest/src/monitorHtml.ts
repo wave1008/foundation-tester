@@ -332,67 +332,12 @@ function renderRunProfileSection(): string {
             <select id="run-profile-app"></select>
           </div>
           <div class="modal-row run-profile-devices-row">
-            <label>${t("panels.common.devices")}</label>
+            <label>${t("panels.runProfile.devicesInUseLabel")}</label>
             <span class="profile-actions-label">${t("panels.runProfile.addDevicesLabel")}</span>
             <button id="btn-run-profile-device-add-existing" class="icon-button" title="${t("panels.runProfile.addExistingTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
           </div>
           <div class="profile-body run-profile-devices-pane">
             <div id="run-profile-devices" class="run-profile-device-list"></div>
-            <div class="run-profile-device-detail-pane">
-              <div id="run-profile-device-placeholder" class="profile-detail-placeholder">${t("panels.runProfile.deviceSelectPrompt")}</div>
-              <div id="run-profile-device-editor" class="run-profile-device-editor" style="display: none;">
-                <div class="run-profile-device-editor-header">
-                  <!-- 実機バッジはデバイス名の左(ピッカー・一覧・タイルと同じ並び) -->
-                  <span id="run-profile-device-header-kind" class="editor-kind-badge" style="display: none;">${t("monitor.device.physicalBadge")}</span>
-                  <span id="run-profile-device-header-name" class="tile-name"></span>
-                </div>
-                <!-- 名前・機種/OS/UDID/AVD はすべて実体を指す属性で API では変更不可
-                     (除去→作り直しが必要)なため、全種別で表示専用の label にする(runProfileDevicesTab.js
-                     の renderEditor が値を差し込む)。名前の右には行一覧と同じ順で machine バッジ・
-                     実機バッジを並べる(machineColors.js の paintMachineBadge を共用)。 -->
-                <div class="modal-row">
-                  <label>${t("panels.runProfile.deviceNameLabel")}</label>
-                  <span id="run-profile-device-name-static" class="editor-readonly-value"></span>
-                  <span id="run-profile-device-name-machine-badge" class="badge badge-remote" style="display: none;"></span>
-                  <span id="run-profile-device-name-kind-badge" class="badge badge-kind" style="display: none;">${t("monitor.device.physicalBadge")}</span>
-                </div>
-                <!-- 機種/OS。iOS シミュレータ・実機・Android 実機で共用する表示専用の値(model/os)で、
-                     実体の同定には使わない(iOS シミュレータの model だけは実体を指す属性そのもの
-                     ——tooltip は renderEditor が由来ごとに出し分ける)。
-                     platform セクションの外に置き iOS/Android 共通で使う -->
-                <div id="run-profile-device-physical-fields" style="display: none;">
-                  <div class="modal-row" id="run-profile-device-model-row">
-                    <label>${t("panels.runProfile.deviceModelLabel")}</label>
-                    <span id="run-profile-device-model" class="editor-readonly-value" title="${t("panels.runProfile.devicePhysicalInfoReadonlyTitle")}"></span>
-                  </div>
-                  <div class="modal-row" id="run-profile-device-physical-os-row">
-                    <label>${t("panels.runProfile.deviceOsVersionLabel")}</label>
-                    <span id="run-profile-device-physical-os" class="editor-readonly-value" title="${t("panels.runProfile.devicePhysicalInfoReadonlyTitle")}"></span>
-                  </div>
-                </div>
-                <div id="run-profile-device-ios-fields">
-                  <div class="modal-row" id="run-profile-device-os-row">
-                    <label>${t("panels.runProfile.deviceOsVersionLabel")}</label>
-                    <span id="run-profile-device-os" class="editor-readonly-value" title="${t("panels.runProfile.deviceOsReadonlyTitle")}"></span>
-                  </div>
-                  <div class="modal-row">
-                    <label>UDID</label>
-                    <span id="run-profile-device-udid" class="editor-readonly-value" title="${t("panels.runProfile.deviceUdidReadonlyTitle")}"></span>
-                  </div>
-                </div>
-                <div id="run-profile-device-android-fields">
-                  <div class="modal-row" id="run-profile-device-avd-row">
-                    <label>AVD</label>
-                    <span id="run-profile-device-avd" class="editor-readonly-value" title="${t("panels.runProfile.deviceAvdReadonlyTitle")}"></span>
-                  </div>
-                  <!-- 実機のみ。AVD と同じく実体を指す属性なので readonly 表示 -->
-                  <div class="modal-row" id="run-profile-device-serial-row" style="display: none;">
-                    <label>Serial</label>
-                    <span id="run-profile-device-serial" class="editor-readonly-value" title="${t("panels.runProfile.deviceSerialReadonlyTitle")}"></span>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
           <div class="run-profile-section-group">
             <div class="run-profile-section-title">${t("panels.runProfile.recordSectionTitle")}</div>
@@ -485,12 +430,7 @@ function renderRunProfileSection(): string {
               <label for="run-profile-container-inference">${t("panels.runProfile.containerInferenceLabel")}</label>
             </div>
             <div class="modal-row">
-              <label for="run-profile-default-timeout">${t("panels.runProfile.defaultTimeoutLabel")}</label>
-              <!-- 透かしは未指定時の既定(Sources/FTCore/DefaultWait.swift の seconds。runProfilePlaceholderSync.test.mjs) -->
-              <input type="text" id="run-profile-default-timeout" class="run-profile-number-input" placeholder="5">
-            </div>
-            <div class="modal-row">
-              <label for="run-profile-report-dir">reportDir</label>
+              <label for="run-profile-report-dir">${t("panels.runProfile.reportDirLabel")}</label>
               <!-- 透かしは未指定時の既定(Sources/FTCore/RunProfile.swift の runDoc.reportDir ?? "reports"。runProfilePlaceholderSync.test.mjs) -->
               <input type="text" id="run-profile-report-dir" placeholder="reports">
             </div>

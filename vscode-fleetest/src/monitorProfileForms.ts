@@ -116,10 +116,10 @@ export function validateNewProjectName(name: string, existing: readonly string[]
 }
 
 // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム -----------------------------
-// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム20フィールド変換の純粋関数
+// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォームの各フィールド変換の純粋関数
 // (未知キー保持のイミュータブルな方針。addDevicesToRunProfile と同じ)。
 
-/** 実行プロファイル設定フォームの21フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
+/** 実行プロファイル設定フォームのフィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
  * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、
  * iosFastInput / iosPreActionWarmup は「iOS」セクションのサブオプション
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
@@ -169,7 +169,6 @@ export interface RunProfileFormFields {
   readonly playProtectBypass: boolean;
   readonly enableAnimations: boolean;
   readonly reportDir: string;
-  readonly defaultTimeout: string;
   readonly updateWebView: boolean;
   readonly wipeDataOnBloat: boolean;
   readonly wipeDataThresholdGB: string;
@@ -185,11 +184,13 @@ export interface RunProfileFormFields {
 }
 
 /**
- * runs/<name>.json のトップレベルから、フォームの20フィールドを許容的に読み取る(トップレベルが
+ * runs/<name>.json のトップレベルから、フォームのフィールドを許容的に読み取る(トップレベルが
  * 非オブジェクトなら null)。各キーは欠落・型不正を「読めなければ空/既定値」で許容し、スキーマ
  * 妥当性検証はしない(保存時 updateRunProfileInObject・CLI 側 ProfileResolver.validate に委ねる)。
- * defaultTimeout/wipeDataThresholdGB/recordBitrateKbps は number ならそのまま String() 化する
- * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。record/recordFailuresOnly/
+ * wipeDataThresholdGB/recordBitrateKbps は number ならそのまま String() 化する
+ * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。defaultTimeout は GUI のフォーム欄では
+ * 扱わない(CLI `--set defaultTimeout=` と手編集のためにキーとしては有効なまま。
+ * updateRunProfileInObject の `{ ...source }` がそのまま保つ)。record/recordFailuresOnly/
  * recordFullResolution/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
  * heal/screenLooksLike/textVisualCheck/ocrTextVisualCheck/containerInference/homeOnStart/
  * playProtectBypass はスキーマ既定と合わせ既定 true
@@ -258,9 +259,6 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
         })
         .filter((ref): ref is RunProfileDeviceEntry => ref !== undefined)
     : [];
-  const rawTimeout = source.defaultTimeout;
-  const defaultTimeout =
-    typeof rawTimeout === "number" ? String(rawTimeout) : typeof rawTimeout === "string" ? rawTimeout : "";
   const rawThreshold = source.wipeDataThresholdGB;
   const wipeDataThresholdGB =
     typeof rawThreshold === "number" ? String(rawThreshold) : typeof rawThreshold === "string" ? rawThreshold : "";
@@ -286,7 +284,6 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     playProtectBypass,
     enableAnimations,
     reportDir,
-    defaultTimeout,
     updateWebView,
     wipeDataOnBloat,
     wipeDataThresholdGB,
@@ -305,9 +302,10 @@ export type RunProfileUpdateResult =
   | { readonly ok: false; readonly error: string };
 
 /**
- * runs/<name>.json を、フォームの20フィールドの内容で更新した新オブジェクトを組み立てる
+ * runs/<name>.json を、フォームのフィールドの内容で更新した新オブジェクトを組み立てる
  * (未知キー保持のイミュータブルな方針。profileObject が非オブジェクトなら ok:false)。
- * defaultTimeout は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
+ * defaultTimeout はフォーム欄を持たない。result は `{ ...source }` から始まるため、
+ * 既存 JSON の defaultTimeout はそのまま(未検証で)保たれる。
  * wipeDataThresholdGB は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
  * recordBitrateKbps は空文字ならキー削除、正の整数文字列以外はエラー。
  * devices は fields.devices の順に並べ直し、既存 devices 配列の同名エントリ(未知キー込み)を
@@ -364,16 +362,6 @@ export function updateRunProfileInObject(
     } else {
       delete result[key];
     }
-  }
-
-  const timeoutTrimmed = fields.defaultTimeout.trim();
-  if (timeoutTrimmed.length === 0) {
-    delete result.defaultTimeout;
-  } else if (!/^\d+(\.\d+)?$/.test(timeoutTrimmed)) {
-    // 0 は正当(初回スナップショットだけを見る。CLI の --set defaultTimeout= と同じ規則)
-    return { ok: false, error: t("monitor.runProfile.defaultTimeoutInvalid") };
-  } else {
-    result.defaultTimeout = Number(timeoutTrimmed);
   }
 
   const thresholdTrimmed = fields.wipeDataThresholdGB.trim();
@@ -1210,28 +1198,18 @@ export function isDeleteDeviceEvent(value: unknown): value is DeleteDeviceEvent 
 }
 
 /**
- * プロジェクトのデバイスカタログの一覧2行目の詳細文字列。**osVersion には既にプラットフォーム
- * 接頭辞が付いている**(例 "iOS 27.0" / "Android 13")ので、ここでは付け足さない。
- * iOS(シミュレータ/実機とも): osVersion があれば "<model> / <osVersion>"(model 欠落は
- * osVersion のみ)、osVersion も無ければ "iOS"(**udid は出さない**)。
- * Android: avd があれば "AVD: "+avd(エミュレータ)、実機は model があれば "<model> / <osVersion>"
- * (osVersion 欠落は model のみ)、model も無ければ serial、どちらも無ければ "Android"。
+ * デバイス一覧の詳細文字列(webview の runProfileDevicesTab.js の deviceDetail と同じ規則)。
+ * Android エミュレータ: "AVD: <avd>"。それ以外は "<model> / <osVersion> / <識別子>" を
+ * 欠けた要素を飛ばして連結する(識別子は iOS = udid・Android 実機 = serial)。
+ * 全部欠けていれば "iOS" / "Android"。
  */
 export function machineDeviceDetail(entry: MachineDeviceEntry): string {
-  if (entry.platform === "ios") {
-    if (entry.osVersion) {
-      return entry.model ? `${entry.model} / ${entry.osVersion}` : entry.osVersion;
-    }
-    return entry.model ?? "iOS";
-  }
-  if (entry.avd) {
+  if (entry.platform === "android" && entry.avd) {
     return `AVD: ${entry.avd}`;
   }
-  // 実機は AVD を持たない。model(表示専用)が控えてあればそれを、無ければ serial を出す
-  if (entry.model) {
-    return entry.osVersion ? `${entry.model} / ${entry.osVersion}` : entry.model;
-  }
-  return entry.serial ?? "Android";
+  const id = entry.platform === "ios" ? entry.udid : entry.serial;
+  const parts = [entry.model, entry.osVersion, id].filter((part): part is string => !!part);
+  return parts.length > 0 ? parts.join(" / ") : (entry.platform === "ios" ? "iOS" : "Android");
 }
 
 /** デバイス追加モーダルの新規デバイス名検証(webview 内の複製版が入力中の検証にも使う)。 */

@@ -48,7 +48,6 @@ const FORM_FIELDS = {
   locale: "",
   workspace: "",
   reportDir: "reports",
-  defaultTimeout: "",
 };
 
 function makeController() {
@@ -117,12 +116,15 @@ test("手編集はスコープが同じでも再起動し、その後の最初�
   save({ heal: false });
   assert.equal(controller.runProfileChangeNeedsRestart(runPath), false);
 
+  // defaultTimeout は GUI のフォーム欄を持たないため、手編集でしか変えられない値の例として使う。
   const handEdited = { ...JSON.parse(fs.readFileSync(runPath, "utf8")), defaultTimeout: "abc" };
   fs.writeFileSync(runPath, `${JSON.stringify(handEdited, null, 2)}\n`, "utf8");
   assert.equal(controller.runProfileChangeNeedsRestart(runPath), true, "手編集で再起動しない");
 
-  save({ heal: true, defaultTimeout: "5" });
+  save({ heal: true });
   assert.equal(controller.runProfileChangeNeedsRestart(runPath), true, "手編集で落ちたモニターをフォームで直しても戻らない");
-  save({ heal: false, defaultTimeout: "5" });
+  save({ heal: false });
   assert.equal(controller.runProfileChangeNeedsRestart(runPath), false, "以降のフォーム保存はスコープで絞る");
+  // フォーム保存は defaultTimeout に触れないので、手編集の値がそのまま残り続ける。
+  assert.equal(JSON.parse(fs.readFileSync(runPath, "utf8")).defaultTimeout, "abc");
 });

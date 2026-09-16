@@ -5,7 +5,7 @@
 //
 // 同じ実行プロファイルに別マシンの同名デバイスが並ぶのは通常(各機が同じ命名規則でシミュレータを
 // 作る)。名前だけで持つと、①クリックした行と別マシンの同名行が選択状態になり、②右クリック
-// メニューの除去・編集フォームの確定が別の機械のエントリへ飛ぶ。
+// メニューの除去が別の機械のエントリへ飛ぶ。
 
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -80,7 +80,7 @@ function runProfileData(devices) {
       iosInappEngine: true, iosFastInput: false, iosPreActionWarmup: true, homeOnStart: true,
       playProtectBypass: true, enableAnimations: false, containerInference: true, updateWebView: true,
       wipeDataOnBloat: true, recoverCpuFallbackToGpu: false, record: false, recordFailuresOnly: false,
-      recordBitrateKbps: "", recordFullResolution: false, defaultTimeout: "", wipeDataThresholdGB: "",
+      recordBitrateKbps: "", recordFullResolution: false, wipeDataThresholdGB: "",
       locale: "", workspace: "", reportDir: "",
     },
   };
@@ -135,20 +135,6 @@ test("右クリック→除去は、その行のマシンを載せて送る", (t
   assert.equal(localRemove.devices[0].machine, undefined, "手元のデバイスに machine は載せない(省略=手元)");
 });
 
-test("右ペインの詳細表示は、選択した行のマシンの値を表示する(別マシンの同名を掴んでいない witness)", (t) => {
-  const { window, document } = createWebview();
-  t.after(() => window.close());
-
-  postDevices(window, DEVICES_WITH_SAME_NAME_ON_TWO_MACHINES);
-  const rows = deviceRows(document);
-
-  rows[1].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  assert.equal(document.getElementById("run-profile-device-udid").textContent, "UDID-M1MAX");
-
-  rows[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  assert.equal(document.getElementById("run-profile-device-udid").textContent, "UDID-LOCAL");
-});
-
 // 表示順は OS(iOS → Android)→ machine(手元が先頭・以降は昇順)→ 仮想デバイス → 実機。
 // 並べ替えるのは表示だけで、保存(currentDeviceEntries)はファイルの記述順のまま。
 // 実機バッジは machine バッジの右に置く。
@@ -184,4 +170,37 @@ test("デバイス行は OS・machine・実機の順に並び、実機バッジ�
   const saved = posted.filter((m) => m.type === "runProfileSave").pop();
   assert.ok(saved, "チェックの切り替えで保存が送られる");
   assert.deepEqual([...saved.fields.devices].map((d) => String(d.name)), devices.map((d) => d.name));
+});
+
+test("行の文字を選択したあとの click では行の選択を切り替えない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  postDevices(window, DEVICES_WITH_SAME_NAME_ON_TWO_MACHINES);
+  const rows = deviceRows(document);
+  const detail = rows[0].querySelector(".run-profile-device-detail");
+  window.getSelection().selectAllChildren(detail);
+  rows[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(rows[0].classList.contains("selected"), false, "文字の選択が行の選択に化けている");
+
+  window.getSelection().removeAllRanges();
+  rows[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(rows[0].classList.contains("selected"), true, "選択が無ければ従来どおり行を選ぶ");
+});
+
+test("修飾キー付きの押下は文字の範囲選択を始めない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  postDevices(window, DEVICES_WITH_SAME_NAME_ON_TWO_MACHINES);
+  const [row] = deviceRows(document);
+  const press = (init) => {
+    const event = new window.MouseEvent("mousedown", { bubbles: true, cancelable: true, ...init });
+    row.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  assert.equal(press({ shiftKey: true }), true);
+  assert.equal(press({ metaKey: true }), true);
+  assert.equal(press({ ctrlKey: true }), true);
+  assert.equal(press({}), false, "素の押下は文字選択を許す");
 });

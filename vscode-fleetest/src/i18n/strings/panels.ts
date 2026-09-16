@@ -35,7 +35,7 @@ export const panelsStrings = {
   "panels.common.testProject": { ja: "テストプロジェクト", en: "Test Project" },
   "panels.common.runProfile": { ja: "実行プロファイル", en: "Run Profile" },
   "panels.common.appProfile": { ja: "アプリプロファイル", en: "App Profile" },
-  "panels.common.devices": { ja: "デバイス", en: "Devices" },
+  "panels.runProfile.devicesInUseLabel": { ja: "使用するデバイス", en: "Devices to use" },
   "panels.common.deviceLabelColon": { ja: "デバイス:", en: "Device:" },
   "panels.common.refreshDeviceList": { ja: "デバイス一覧を更新", en: "Refresh Device List" },
   "panels.common.cancel": { ja: "キャンセル", en: "Cancel" },
@@ -150,7 +150,7 @@ export const panelsStrings = {
     en: "Don't keep recordings of tests that passed",
   },
   "panels.runProfile.recordBitrateLabel": { ja: "ビットレート(kbps)", en: "Bitrate (kbps)" },
-  "panels.runProfile.defaultTimeoutLabel": { ja: "defaultTimeout(sec)", en: "defaultTimeout(sec)" },
+  "panels.runProfile.reportDirLabel": { ja: "レポートディレクトリ", en: "Report directory" },
   "panels.runProfile.recordFullResolutionLabel": {
     ja: "フル解像度で保存(画質はビットレート次第)",
     en: "Save at full resolution (quality depends on bitrate)",
@@ -189,38 +189,6 @@ export const panelsStrings = {
   "panels.runProfile.addExistingTitle": {
     ja: "インストール済みのシミュレータ/AVD・接続中の実機からこの実行プロファイルに追加",
     en: "Add from installed simulators/AVDs or connected physical devices to this run profile",
-  },
-  "panels.runProfile.deviceSelectPrompt": {
-    ja: "デバイスを選択すると内容を表示します",
-    en: "Select a device to view details",
-  },
-  // ja も英語表記(Xcode の作成ダイアログの項目名に合わせる)
-  "panels.runProfile.deviceNameLabel": { ja: "Name", en: "Name" },
-  "panels.runProfile.deviceModelLabel": { ja: "Model", en: "Model" },
-  "panels.runProfile.deviceOsVersionLabel": { ja: "OS Version", en: "OS Version" },
-  "panels.runProfile.deviceModelReadonlyTitle": {
-    ja: "機種は変更できません(変更するにはデバイスを除去して作り直してください)",
-    en: "Model cannot be changed (remove and recreate the device to change it)",
-  },
-  "panels.runProfile.deviceOsReadonlyTitle": {
-    ja: "OSは変更できません(変更するにはデバイスを除去して作り直してください)",
-    en: "OS cannot be changed (remove and recreate the device to change it)",
-  },
-  "panels.runProfile.deviceUdidReadonlyTitle": {
-    ja: "UDIDは作成時に決まる識別子のため変更できません",
-    en: "UDID is fixed at creation time and cannot be changed",
-  },
-  "panels.runProfile.deviceAvdReadonlyTitle": {
-    ja: "AVDは変更できません(変更するにはデバイスを除去して作り直してください)",
-    en: "AVD cannot be changed (remove and recreate the device to change it)",
-  },
-  "panels.runProfile.devicePhysicalInfoReadonlyTitle": {
-    ja: "登録時に控えた実機の情報(表示専用)。同定には使いません",
-    en: "Device info captured at registration (display only). It is not used to identify the device.",
-  },
-  "panels.runProfile.deviceSerialReadonlyTitle": {
-    ja: "実機の adb シリアル。実体を指すため変更できません(登録し直してください)",
-    en: "The adb serial of the physical device. It identifies the device and cannot be changed (re-register instead).",
   },
 
   "panels.processes.title": { ja: "常駐プロセス", en: "Resident Processes" },

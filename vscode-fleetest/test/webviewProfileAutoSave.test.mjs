@@ -95,7 +95,6 @@ const RUN_FIELDS = {
   playProtectBypass: true,
   enableAnimations: false,
   reportDir: "reports",
-  defaultTimeout: "5",
   updateWebView: true,
   wipeDataOnBloat: true,
   wipeDataThresholdGB: "",
@@ -211,25 +210,25 @@ test("テキストは打鍵ごとには送らず、入力を終えたとき(chan
 
 test("Enter でもテキストの入力を終えて保存する", (t) => {
   const { window, document, posted } = loadedRunProfile(t);
-  const timeout = document.getElementById("run-profile-default-timeout");
-  timeout.value = "8";
-  timeout.dispatchEvent(new window.Event("input", { bubbles: true }));
-  timeout.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  const threshold = document.getElementById("run-profile-wipe-threshold");
+  threshold.value = "8";
+  threshold.dispatchEvent(new window.Event("input", { bubbles: true }));
+  threshold.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
   const sent = saves(posted);
   assert.equal(sent.length, 1);
-  assert.equal(sent[0].fields.defaultTimeout, "8");
+  assert.equal(sent[0].fields.wipeDataThresholdGB, "8");
 });
 
 test("検証で弾かれる値は保存せずエラーを出し、直すと保存する", (t) => {
   const { window, document, posted } = loadedRunProfile(t);
-  const timeout = document.getElementById("run-profile-default-timeout");
-  typeAndCommit(window, timeout, "abc");
+  const threshold = document.getElementById("run-profile-wipe-threshold");
+  typeAndCommit(window, threshold, "abc");
   assert.equal(saves(posted).length, 0);
   assert.notEqual(document.getElementById("run-profile-error").textContent, "");
 
-  typeAndCommit(window, timeout, "10");
+  typeAndCommit(window, threshold, "10");
   assert.equal(saves(posted).length, 1);
-  assert.equal(saves(posted)[0].fields.defaultTimeout, "10");
+  assert.equal(saves(posted)[0].fields.wipeDataThresholdGB, "10");
   assert.equal(document.getElementById("run-profile-error").textContent, "");
 });
 
@@ -281,8 +280,8 @@ test("保存に失敗したらエラーを出し、値は画面に残す", (t) =
 
 test("Esc は未保存の編集を捨てて読み直す", (t) => {
   const { window, document, posted } = loadedRunProfile(t);
-  const timeout = document.getElementById("run-profile-default-timeout");
-  typeAndCommit(window, timeout, "abc");
-  timeout.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  const threshold = document.getElementById("run-profile-wipe-threshold");
+  typeAndCommit(window, threshold, "abc");
+  threshold.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   assert.ok(posted.some((m) => m.type === "runProfileLoad" && m.profile === "ios"));
 });

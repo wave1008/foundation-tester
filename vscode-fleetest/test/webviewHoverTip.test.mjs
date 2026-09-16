@@ -1,6 +1,5 @@
 // webviewHoverTip.test.mjs
-// hoverTip.js(0.2 秒ホバーで全文を出す自前ツールチップ)と、実行プロファイルのデバイス
-// 編集フォームの機種/OS 取得要求の DOM テスト。実 HTML+実バンドルで
+// hoverTip.js(0.2 秒ホバーで全文を出す自前ツールチップ)の DOM テスト。実 HTML+実バンドルで
 // 動かす方式は webviewRecordingsTab.test.mjs と同じ(そちらの createWebview のコメント参照)。
 //
 // 自前実装にした理由はネイティブ title が遅延を指定できないこと。よって
@@ -12,7 +11,6 @@
 // - ホバー 199ms では非表示、200ms で全文が表示される
 // - マウス離脱・スクロールで消える
 // - 遅延中に要素が DOM から外れても表示しない(タイル再描画との競合)
-// - 機種/OS が取れないデバイスでも installedDevicesRequest が1回で止まる(無限 spawn 防止)
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -166,68 +164,4 @@ test("遅延中に要素が DOM から外れたら出さない", async (t) => {
   nameEl.remove();
   await new Promise((r) => setTimeout(r, 260));
   assert.equal(tipVisible(document), false);
-});
-
-// ---- 実行プロファイルのデバイス編集フォーム: 機種/OS の取得要求 --------------------
-// installedDevicesRequest は毎回 `fleetest api installed-devices` を spawn する(devicectl +
-// adb getprop で数秒)。値が埋まらないデバイスで応答→再描画→再要求のループに入ると
-// CLI を叩き続けるため、**1デバイス1回**に絞れていることを回帰として固定する。
-
-/** 機種/OS を持たない Android 実機 1 台だけの実行プロファイルを webview に流し込み、
- * その 1 台を選択して編集フォームを開く(=機種/OS が空なので取得要求が出る状態)。 */
-function openEditorForUnknownInfoDevice(window, document) {
-  window.dispatchEvent(new window.MessageEvent("message", {
-    data: {
-      type: "profileInfo",
-      projects: ["P"], profiles: ["all"], current: "all", filter: "all", apps: [],
-      project: "P", projectDir: "TestProjects/P",
-      devices: [{ name: "Pixel 4a", platform: "android", kind: "physical", serial: "SERIAL1", detail: "SERIAL1" }],
-    },
-  }));
-  window.dispatchEvent(new window.MessageEvent("message", {
-    data: {
-      type: "runProfileData", profile: "all", ok: true, error: null,
-      fields: {
-        app: "", devices: [{ platform: "android", name: "Pixel 4a", kind: "physical", serial: "SERIAL1", enabled: true }],
-        heal: true, textVisualCheck: true, screenLooksLike: true, ocrTextVisualCheck: true,
-        iosInappEngine: true, iosFastInput: false, iosPreActionWarmup: true, homeOnStart: true,
-        playProtectBypass: true, enableAnimations: false, containerInference: true, updateWebView: true,
-        wipeDataOnBloat: true, recoverCpuFallbackToGpu: false, record: false, recordFailuresOnly: false,
-        recordBitrateKbps: "", recordFullResolution: false, defaultTimeout: "", wipeDataThresholdGB: "",
-        locale: "", workspace: "", reportDir: "",
-      },
-    },
-  }));
-  document.querySelector(".run-profile-device-row-item").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-}
-
-test("機種/OS が取れないデバイスでも installed-devices の取得要求は1回だけ", async (t) => {
-  const posts = [];
-  const dom = new JSDOM(panelHtml, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://localhost/" });
-  const { window } = dom;
-  const document = window.document;
-  t.after(() => window.close());
-  window.acquireVsCodeApi = () => ({
-    postMessage: (m) => posts.push(m), setState: () => {}, getState: () => undefined,
-  });
-  window.HTMLElement.prototype.scrollIntoView = () => {};
-  window.eval(webviewBundle);
-
-  openEditorForUnknownInfoDevice(window, document);
-  const countRequests = () => posts.filter((m) => m.type === "installedDevicesRequest").length;
-  assert.equal(countRequests(), 1, "フォームを開いたら1回要求する");
-
-  // 実機が未接続で physicalDevices が空の応答。これで再描画されても再要求してはいけない
-  for (let i = 0; i < 3; i++) {
-    window.dispatchEvent(new window.MessageEvent("message", {
-      data: {
-        type: "installedDevices", ok: true, error: null,
-        data: {
-          ios: { available: true, error: null, devices: [], physicalDevices: [] },
-          android: { available: true, error: null, avds: [], physicalDevices: [] },
-        },
-      },
-    }));
-  }
-  assert.equal(countRequests(), 1, "空応答が繰り返し届いても要求は増えない(無限ループ防止)");
 });

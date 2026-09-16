@@ -111,7 +111,6 @@ const RUN_PROFILE_FIELDS = {
   homeOnStart: true,
   enableAnimations: false,
   reportDir: "reports",
-  defaultTimeout: "",
   updateWebView: true,
   wipeDataOnBloat: true,
   wipeDataThresholdGB: "",

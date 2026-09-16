@@ -42,10 +42,6 @@ export const monitorStrings = {
     ja: "実行プロファイルの形式が不正です。",
     en: "The run profile format is invalid.",
   },
-  "monitor.runProfile.defaultTimeoutInvalid": {
-    ja: "defaultTimeout は 0 以上の数(秒)で入力してください。",
-    en: "Enter defaultTimeout as a number of seconds, 0 or more.",
-  },
   "monitor.runProfile.wipeThresholdInvalid": {
     ja: "wipeDataThresholdGB は正の数(GB)で入力してください。",
     en: "Enter wipeDataThresholdGB as a positive number (GB).",
@@ -113,10 +109,6 @@ export const monitorStrings = {
   "monitor.validation.nameAlreadyExists": {
     ja: "「{name}」は既に存在します。",
     en: '"{name}" already exists.',
-  },
-  "monitor.device.physicalBadge": {
-    ja: "実機",
-    en: "Device",
   },
 
   // ---- monitorPanel.ts ----

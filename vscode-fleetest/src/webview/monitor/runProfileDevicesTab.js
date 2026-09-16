@@ -1,22 +1,24 @@
 // runProfileDevicesTab.js
 // 「プロファイル」タブの実行プロファイル節にある「デバイス」一覧(#run-profile-devices)を担う。
 // projectDeviceCatalog(プロジェクトのデバイスカタログ。全実行プロファイルの devices[] の和集合)・
-// 選択中デバイス・行の描画・右ペイン詳細表示・右クリックメニューの書き込みはこのモジュールのみで
+// 選択中デバイス・行の描画・右クリックメニューの書き込みはこのモジュールのみで
 // 行う。runProfilesTab.js・modals.js からは projectDeviceCatalog/findCatalogEntry を読み取り専用で参照する。
 //
 // 1つの行が2つの役目を持つ: チェックボックスは「このデバイスが
-// 選択中の実行プロファイルに含まれる(かつ enabled)か」、行本体のクリックは右ペイン詳細表示の
-// 選択。チェックボックスのクリックは行選択に波及させない(クリック領域を分ける)。
+// 選択中の実行プロファイルに含まれる(かつ enabled)か」、行本体のクリックは選択
+// (右クリックメニューの除去・Wipe Data の対象)。チェックボックスのクリックは行選択に
+// 波及させない(クリック領域を分ける)。
 
 import { vscode } from './vscodeApi.js';
 import { clampMenuPosition } from './menu.js';
 import { t } from '../i18n.js';
-import { physicalDeviceInfo } from './physicalDeviceCache.js';
 import { paintMachineBadge } from './machineColors.js';
 
-// **runProfilesTab.js からは import しない**(片方向依存を保つ。相互 import が esbuild の
-// バンドル評価順を崩す実害は physicalDeviceCache.js 冒頭コメント参照)。選択中の実行プロファイルは
-// renderDeviceRows/clearDeviceRows の呼び分けで暗黙に表す(呼ぶのは常に runProfilesTab.js)。
+// **runProfilesTab.js からは import しない**(片方向依存を保つ。modals.js との相互 import も
+// 同様に避ける —— 循環にすると esbuild のバンドル評価順が入れ替わり、modals.js 側の
+// `btnDeviceAddExisting.addEventListener` が undefined を触って webview 全体が初期化に失敗する
+// [実害。2026-07-25]。選択中の実行プロファイルは renderDeviceRows/clearDeviceRows の呼び分けで
+// 暗黙に表す(呼ぶのは常に runProfilesTab.js)。
 
 // ---- プロジェクトのデバイスカタログ(profileInfo.devices) -----------------------------
 
@@ -62,30 +64,6 @@ export function prefixedOsVersion(platform, os) {
 
 export const btnDeviceAddExisting = document.getElementById('btn-run-profile-device-add-existing');
 const deviceList = document.getElementById('run-profile-devices');
-const detailPlaceholder = document.getElementById('run-profile-device-placeholder');
-const deviceEditor = document.getElementById('run-profile-device-editor');
-const headerKind = document.getElementById('run-profile-device-header-kind');
-const headerName = document.getElementById('run-profile-device-header-name');
-const iosFields = document.getElementById('run-profile-device-ios-fields');
-const androidFields = document.getElementById('run-profile-device-android-fields');
-const nameStatic = document.getElementById('run-profile-device-name-static');
-const nameMachineBadge = document.getElementById('run-profile-device-name-machine-badge');
-const nameKindBadge = document.getElementById('run-profile-device-name-kind-badge');
-const osRow = document.getElementById('run-profile-device-os-row');
-const physicalFields = document.getElementById('run-profile-device-physical-fields');
-const modelValue = document.getElementById('run-profile-device-model');
-const modelRow = document.getElementById('run-profile-device-model-row');
-// HTML の既定 title(devicePhysicalInfoReadonlyTitle)を捕まえておく。iOS シミュレータの Model 行
-// だけ意味が違う(実体を指す属性そのもの)ので renderEditor で出し分ける。
-const MODEL_READONLY_TITLE_DEFAULT = modelValue.title;
-const physicalOsValue = document.getElementById('run-profile-device-physical-os');
-const physicalOsRow = document.getElementById('run-profile-device-physical-os-row');
-const osValue = document.getElementById('run-profile-device-os');
-const udidValue = document.getElementById('run-profile-device-udid');
-const avdValue = document.getElementById('run-profile-device-avd');
-const avdRow = document.getElementById('run-profile-device-avd-row');
-const serialValue = document.getElementById('run-profile-device-serial');
-const serialRow = document.getElementById('run-profile-device-serial-row');
 const deviceMenu = document.getElementById('run-profile-device-menu');
 const deviceMenuItemBtn = document.getElementById('run-profile-device-menu-item');
 const deviceMenuWipeBtn = document.getElementById('run-profile-device-menu-wipe');
@@ -136,7 +114,6 @@ export function renderDeviceRows(devices) {
     selectionAnchor = null;
   }
   renderRows();
-  refreshEditorForSelection();
   btnDeviceAddExisting.disabled = false;
 }
 
@@ -149,7 +126,6 @@ export function clearDeviceRows() {
   rowElements = new Map();
   deviceList.textContent = '';
   closeDeviceMenu();
-  clearEditor();
   btnDeviceAddExisting.disabled = true;
 }
 
@@ -177,20 +153,14 @@ export function currentDeviceEntries() {
 // iOS はシミュレータ/実機とも osVersion があれば "<model> / <osVersion>"(model 欠落は
 // osVersion のみ)、osVersion も無ければ "iOS"(udid は出さない)。Android は avd があれば
 // "AVD: "+avd、実機は model があれば "<model> / <osVersion>"、無ければ serial、どちらも無ければ "Android"。
+// 規則は monitorProfileForms.ts の machineDeviceDetail と同じ(片方だけ変えない)
 function deviceDetail(entry) {
-  if (entry.platform === 'ios') {
-    if (entry.osVersion) {
-      return entry.model ? `${entry.model} / ${entry.osVersion}` : entry.osVersion;
-    }
-    return entry.model || 'iOS';
-  }
-  if (entry.avd) {
+  if (entry.platform === 'android' && entry.avd) {
     return `AVD: ${entry.avd}`;
   }
-  if (entry.model) {
-    return entry.osVersion ? `${entry.model} / ${entry.osVersion}` : entry.model;
-  }
-  return entry.serial || 'Android';
+  const id = entry.platform === 'ios' ? entry.udid : entry.serial;
+  const parts = [entry.model, entry.osVersion, id].filter((part) => part);
+  return parts.length > 0 ? parts.join(' / ') : (entry.platform === 'ios' ? 'iOS' : 'Android');
 }
 
 function toggleRowSelection(key, event) {
@@ -217,7 +187,6 @@ function toggleRowSelection(key, event) {
     selectionAnchor = key;
   }
   updateSelectionUi();
-  refreshEditorForSelection();
 }
 
 function updateSelectionUi() {
@@ -295,7 +264,16 @@ function renderRows() {
     textCol.className = 'run-profile-device-text';
     textCol.append(nameLine);
     rowEl.append(checkbox, textCol);
-    rowEl.addEventListener('click', (event) => toggleRowSelection(row.key, event));
+    // 修飾キー付きの押下は行の選択操作なので、文字の範囲選択を始めさせない(click は消えない)
+    rowEl.addEventListener('mousedown', (event) => {
+      if (event.shiftKey || event.metaKey || event.ctrlKey) event.preventDefault();
+    });
+    rowEl.addEventListener('click', (event) => {
+      // 文字をドラッグで選び終えた mouseup の click は行の選択を切り替えない(選んだ文字が消える)
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed && rowEl.contains(selection.anchorNode)) return;
+      toggleRowSelection(row.key, event);
+    });
     rowEl.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -313,133 +291,6 @@ function renderRows() {
     deviceList.appendChild(rowEl);
   }
   updateSelectionUi();
-}
-
-// ---- 右ペインの詳細表示(全欄が表示専用ラベル。実体を指す属性は API で変更不可) --------------
-
-// 機種/OS取得のために installedDevicesRequest を出したキー(無限要求ループ防止。
-// 実機が未接続・AVD の config.ini に hw.device.name が無い等で値が埋まらないケースでは、
-// 応答→再描画→再要求が永久ループになり CLI を叩き続けるため、1デバイス1回に絞る)。
-const deviceInfoRequested = new Set();
-
-function deviceFieldValues(entry) {
-  return {
-    name: entry.name,
-    osVersion: entry.osVersion || deviceInfoFallback(entry).osVersion,
-    udid: entry.udid || '',
-    avd: entry.avd || '',
-    serial: entry.serial || '',
-    model: entry.model || deviceInfoFallback(entry).model,
-  };
-}
-
-// physicalDeviceInfo は installed-devices のキャッシュ(cachePhysicalDeviceInfo)。あちらの os は
-// プラットフォーム接頭辞を付けずに控えているため、ここで osVersion へ足す(devicePickOk と同じ
-// prefixedOsVersion。この表示は entry.osVersion 側の代わりに出すフォールバックなので、
-// ここにだけ接頭辞が必要)。
-function deviceInfoFallback(entry) {
-  const key = entry.kind === 'physical'
-    ? (entry.platform === 'ios' ? entry.udid : entry.serial)
-    : (entry.platform === 'android' ? entry.avd : undefined);
-  const info = physicalDeviceInfo(key) || { model: '', os: '' };
-  return { model: info.model, osVersion: info.os ? prefixedOsVersion(entry.platform, info.os) : '' };
-}
-
-// **手元(machine 省略/"local")は machine バッジを出さない**(一覧行と同じ規則。
-// compareDeviceRowsForDisplay の判定式を共用)。
-function isRemoteMachine(machine) {
-  return !!machine && machine !== 'local';
-}
-
-function renderEditor(row) {
-  const entry = row.body;
-  const values = deviceFieldValues(entry);
-  headerName.className = 'tile-name tile-name-' + row.platform;
-  headerName.textContent = row.name;
-  nameStatic.textContent = values.name;
-  osValue.textContent = values.osVersion;
-  udidValue.textContent = values.udid;
-  avdValue.textContent = values.avd;
-  serialValue.textContent = values.serial;
-  iosFields.style.display = row.platform === 'ios' ? '' : 'none';
-  androidFields.style.display = row.platform === 'android' ? '' : 'none';
-  const physical = entry.kind === 'physical';
-  headerKind.style.display = physical ? '' : 'none';
-  avdRow.style.display = physical ? 'none' : '';
-  serialRow.style.display = physical ? '' : 'none';
-  // iOS シミュレータの名前は simctl 上の実体を指すため改名不可(ユーザー決定)。
-  // ツールチップでその理由を示すのはこの種別だけ。
-  const isIosSimulator = row.platform === 'ios' && !physical;
-  nameStatic.title = isIosSimulator ? t('wvMonitor2.runProfileDevice.simulatorNameReadonlyTitle') : '';
-  osRow.style.display = isIosSimulator ? '' : 'none';
-
-  // 名前の右に一覧行と同じ順(machine バッジ → 実機バッジ)で並べる
-  // (machineColors.js の paintMachineBadge を共用)。
-  if (isRemoteMachine(row.machine)) {
-    nameMachineBadge.textContent = row.machine;
-    paintMachineBadge(nameMachineBadge, row.machine);
-    nameMachineBadge.style.display = '';
-  } else {
-    nameMachineBadge.style.display = 'none';
-  }
-  nameKindBadge.style.display = physical ? '' : 'none';
-
-  // Model 行は iOS(シミュレータ/実機とも)・実機一般で共用する(かつては iOS シミュレータだけ
-  // 専用の行[simulator]を持っていた)。ツールチップは由来で出し分ける:
-  // シミュレータの機種は実体を指す属性そのもの(改名と同じ理由で変更不可)、
-  // 実機/AVD の機種は登録時に控えた表示専用の情報(同定には使わない)。
-  const hasModel = !!values.model;
-  const hasOs = !isIosSimulator && !!values.osVersion;
-  modelValue.textContent = values.model;
-  modelValue.title = isIosSimulator ? t('wvMonitor2.runProfileDevice.modelReadonlyTitle') : MODEL_READONLY_TITLE_DEFAULT;
-  physicalOsValue.textContent = values.osVersion;
-  modelRow.style.display = hasModel ? '' : 'none';
-  physicalOsRow.style.display = hasOs ? '' : 'none';
-  physicalFields.style.display = hasModel || hasOs ? '' : 'none';
-  const infoKey = row.key;
-  if (!isIosSimulator && !hasModel && !hasOs && !deviceInfoRequested.has(infoKey)) {
-    deviceInfoRequested.add(infoKey);
-    vscode.postMessage({ type: 'installedDevicesRequest', source: { kind: 'local' } });
-  }
-  detailPlaceholder.style.display = 'none';
-  deviceEditor.style.display = '';
-}
-
-const PLACEHOLDER_DEFAULT_TEXT = detailPlaceholder.textContent;
-
-function clearEditor(text) {
-  deviceEditor.style.display = 'none';
-  detailPlaceholder.style.display = '';
-  detailPlaceholder.textContent = text !== undefined ? text : PLACEHOLDER_DEFAULT_TEXT;
-}
-
-function singleSelectedRow() {
-  if (selectedKeys.size !== 1) {
-    return null;
-  }
-  const [key] = selectedKeys;
-  return rows.find((r) => r.key === key) || null;
-}
-
-/** installedDevices 応答が届いたら、開いている詳細表示を埋め直す(modals.js から呼ぶ)。 */
-export function refreshSelectedDeviceEditor() {
-  const row = singleSelectedRow();
-  if (row) {
-    renderEditor(row);
-  }
-}
-
-function refreshEditorForSelection() {
-  if (selectedKeys.size >= 2) {
-    clearEditor(t('wvMonitor2.runProfileDevice.multiSelected', { count: selectedKeys.size }));
-    return;
-  }
-  const row = singleSelectedRow();
-  if (!row) {
-    clearEditor();
-    return;
-  }
-  renderEditor(row);
 }
 
 // ---- 行の右クリックメニュー(除去・Wipe Data) -----------------------------------------

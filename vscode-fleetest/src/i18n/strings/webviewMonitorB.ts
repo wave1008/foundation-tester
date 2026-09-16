@@ -26,10 +26,6 @@ export const webviewMonitorBStrings = {
     ja: "デバイスを1台以上選択してください。",
     en: "Select at least one device.",
   },
-  "wvMonitor2.runProfile.validation.timeoutInvalid": {
-    ja: "defaultTimeout は正の数(秒)で入力してください。",
-    en: "Enter defaultTimeout as a positive number (seconds).",
-  },
   "wvMonitor2.runProfile.validation.wipeThresholdInvalid": {
     ja: "Wipe Data しきい値は正の数(GB)で入力してください。",
     en: "Enter the Wipe Data threshold as a positive number (GB).",
@@ -63,10 +59,6 @@ export const webviewMonitorBStrings = {
     ja: "デバイスがありません。上のボタンから追加できます。",
     en: "No devices. You can add one from the button above.",
   },
-  "wvMonitor2.runProfileDevice.multiSelected": {
-    ja: "{count}台選択中",
-    en: "{count} selected",
-  },
   "wvMonitor2.runProfileDevice.removeSelectedCount": {
     ja: "選択した{count}台を除去",
     en: "Remove {count} selected",
@@ -75,14 +67,6 @@ export const webviewMonitorBStrings = {
   "wvMonitor2.runProfileDevice.wipeSelectedCount": {
     ja: "選択した{count}台を Wipe Data",
     en: "Wipe Data on {count} selected",
-  },
-  "wvMonitor2.runProfileDevice.simulatorNameReadonlyTitle": {
-    ja: "シミュレータの名前は変更できません(Xcode で改名してから登録し直してください)",
-    en: "Cannot rename a simulator here (rename it in Xcode, then remove and re-register it)",
-  },
-  "wvMonitor2.runProfileDevice.modelReadonlyTitle": {
-    ja: "機種は変更できません(変更するにはデバイスを除去して作り直してください)",
-    en: "Model cannot be changed (remove and recreate the device to change it)",
   },
 
   // projectsTab.js

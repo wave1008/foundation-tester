@@ -1012,7 +1012,6 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.homeOnStart === "boolean" &&
         typeof value.fields.enableAnimations === "boolean" &&
         typeof value.fields.reportDir === "string" &&
-        typeof value.fields.defaultTimeout === "string" &&
         typeof value.fields.wipeDataOnBloat === "boolean" &&
         typeof value.fields.wipeDataThresholdGB === "string" &&
         typeof value.fields.recoverCpuFallbackToGpu === "boolean" &&

@@ -1095,7 +1095,7 @@ export class MonitorProfilesController {
   }
 
   // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム(runProfileLoad/runProfileSave) ----
-  // クライアント検証済みでも updateRunProfileInObject 側の防御的検証(defaultTimeout の型)に
+  // クライアント検証済みでも updateRunProfileInObject 側の防御的検証(wipeDataThresholdGB 等の型)に
   // 引っかかりうるため、結果はモーダル確認なしに即座に返す。
 
   /**

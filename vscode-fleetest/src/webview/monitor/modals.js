@@ -5,11 +5,10 @@
 
 import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
-import { cachePhysicalDeviceInfo } from './physicalDeviceCache.js';
 import { clampMenuPosition } from './menu.js';
 import { formatBytesAuto } from '../../retentionModel';
 import { selectedRunProfile } from './runProfilesTab.js';
-import { btnDeviceAddExisting, catalogEntries, catalogNamesForMachine, prefixedOsVersion, refreshSelectedDeviceEditor } from './runProfileDevicesTab.js';
+import { btnDeviceAddExisting, catalogEntries, catalogNamesForMachine, prefixedOsVersion } from './runProfileDevicesTab.js';
 import { currentDeviceSource, refreshDeviceAddBadge, resetDevicePickMachine } from './devicePickMachine.js';
 
 // ---- デバイス追加モーダル ---------------------------------------------------
@@ -1388,11 +1387,6 @@ function closeDevicePickModal() {
 
 export function applyInstalledDevices(message) {
   endDevicePickLoading();
-  if (message.ok && message.data) {
-    // モーダルが閉じていてもキャッシュだけは更新する(編集フォームが使うため)
-    cachePhysicalDeviceInfo(message.data);
-    refreshSelectedDeviceEditor();
-  }
   if (!devicePickOpen) {
     return; // モーダルを閉じた後に届いた応答は無視する(applyDeviceCatalog と同じ方針)
   }

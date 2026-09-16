@@ -110,7 +110,6 @@ const RUN_PROFILE_DATA = {
     recordFailuresOnly: false,
     recordBitrateKbps: "",
     recordFullResolution: false,
-    defaultTimeout: "20",
     wipeDataThresholdGB: "",
     locale: "",
     workspace: "",

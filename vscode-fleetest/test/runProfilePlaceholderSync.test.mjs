@@ -3,7 +3,6 @@
 // (表示も実行も成功するので気付けない)。
 //
 // 同期相手:
-//   defaultTimeout … Sources/FTCore/DefaultWait.swift の seconds(FTRuntime が未指定時に使う)
 //   reportDir      … Sources/FTCore/RunProfile.swift の `runDoc.reportDir ?? "reports"`
 //
 // process.cwd() は npm test 実行時に vscode-fleetest ルート。
@@ -22,13 +21,6 @@ function placeholderOf(id) {
   assert.ok(match, `monitorHtml.ts の #${id} に placeholder がありません`);
   return match[1];
 }
-
-test("defaultTimeout の透かしは DSL の既定待ち秒(DefaultWait.seconds)と一致する", () => {
-  const swift = readFileSync(path.join(REPO, "Sources/FTCore/DefaultWait.swift"), "utf8");
-  const match = swift.match(/static let seconds:\s*Double\s*=\s*([\d.]+)/);
-  assert.ok(match, "DefaultWait.swift から seconds を抽出できません");
-  assert.equal(Number(placeholderOf("run-profile-default-timeout")), Number(match[1]));
-});
 
 test("reportDir の透かしは未指定時の出力先と一致する", () => {
   const swift = readFileSync(path.join(REPO, "Sources/FTCore/RunProfile.swift"), "utf8");
