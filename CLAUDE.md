@@ -285,7 +285,11 @@
   同じ判定が走り、同じ利用者の2ウィンドウも止まる**。`FT_PARENT_PID` は運ばない)が自分と違えば
   `streamedByOther`。保持者は両方のウィンドウが同じ答えを出す規則で1本に決める)/ **④他人の run を殺す操作はロックを読む**(`remote clean` は中止・
   `--ignore-lock` で押し切る。**読めないときは通す** = 掃除が永久にできなくなるほうが害が大きい)。
-  **奪う口(`--force-lock`)を GUI に出さない**。
+  **台を止める操作も同じ**(`DeviceBooter.shutdownOne` / `shutdownAll` が実際に止める前に
+  `stopRefusal` = run-lease の保持者を読む。`api stop-device` / `stop-all-devices` / `restart-devices` /
+  `wipe-device` / `devices down --profile` の全部がここを通る。押し切るのは CLI の `--force` だけ)
+  → maintainer-notes §25。
+  **奪う口(`--force-lock` / `--force`)を GUI に出さない**。
   **ssh 越しのコマンドにグロブを書かない**(相手は zsh。`for w in <マッチ無し>` は**シェルごと
   落ちて後続の文が全部消える**)—— 一覧は `find … 2>/dev/null` で作る → maintainer-notes §3.5
 - **リモート制御(実行プロファイルの `remoteControl`)**: ワークスペース(資材の置き場)+
@@ -882,7 +886,13 @@
   SIGTERM → 2 秒で `_exit`。**opt-in** = 端末のシェルから `fleetest run &` した親が閉じても run を
   巻き込まない。`Process()` で `fleetest` / `fleetest-scenarios` を起こす経路を足したら
   `ParentDeathWatch.childEnvironment()` を渡す —— `ParentDeathWatchWiringTests` が集合を等号で固定。
-  **例外は `warm-ocr` と背景の掃除(`RunCompletionSweep`)の2つ**: どちらも親の死を生き延びないと目的を果たせない(コンパイルのコミット / 親の run は掃除より先に必ず終わる)。有限で自分で終わる)
+  **例外は `warm-ocr` と背景の掃除(`RunCompletionSweep`)の2つ**: どちらも親の死を生き延びないと目的を果たせない(コンパイルのコミット / 親の run は掃除より先に必ず終わる)。有限で自分で終わる。
+  **親の死を知らせる発話は投げない API で書く**(`ParentDeathWatch.writeNotice` = fd に `F_SETNOSIGPIPE` を
+  掛けた生の `write(2)`。失敗は黙って諦める)—— 親が死んだ瞬間の stderr は**読み手の居ないパイプ**で、
+  `FileHandle.write` は EPIPE を ObjC 例外にするので abort し、**SIGTERM に到達せず後始末が1つも走らない**
+  (2026-09-16 の負荷テストで実測。9/05 以来ずっとこの形だった)。**この経路のテストは子の出力を
+  パイプ/FIFO にする** —— ファイルへリダイレクトすると write が失敗せず、砦が1度も踏まない
+  → maintainer-notes §24)
   ③**台帳(`.fleetest/bridge-<port>.pid/.inapp/.endpoint/.device`)はプロセスの実体で掃除する**
   (`StaleLedgerSweep` = provision の入口。`.inapp` は LISTEN 実体の有無、`.endpoint/.device` は
   対の `.pid` の生死。**`/status` 応答で生死を決めない**)。採番は `ProvisionLock` の内側でだけ行う

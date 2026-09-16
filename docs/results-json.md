@@ -198,7 +198,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | total / passed / failed | Int? | 実行完了まで nil |
 | workerAnomalies | [WorkerAnomalyRecord]? | ワーカー異常の構造化記録(下記)。**機械的な除外はここを見る** |
 | degradedWorkers | [String]? | 劣化・離脱したワーカー(「label: 理由」)。表示用 |
-| freezeRetries | [String]? | 結果取り消し+振り直しの監査記録。表示用 |
+| freezeRetries | [String]? | 結果取り消し+振り直しの監査記録。表示用。**Android のドライバ不達(ブリッジ断)もここに載る**(2026-09-16 より。ワーカーは離脱させない) |
 | blankRepairs / blankExclusions | [String]? | run 前の blank/凍結判定で修復した / 除外したワーカー(Android の修復と iOS のシミュレータ再起動の両方。`BlankWorkerTriage.Result.repaired`) |
 | measurementInvalid | Bool? | `--performance` の run でレーン数が変わり所要時間が計測に使えない |
 | measurementInvalidReasons | [String]? | 同上の理由(英語) |
@@ -251,7 +251,7 @@ FM を呼ぶ構成だったかは `textVisualCheck || screenLooksLike` で判定
 
 | フィールド | 型 | 意味 |
 |---|---|---|
-| kind | String | `degraded`(劣化・離脱)/ `requeued`(振り直し。その回の `scenarios/*.json` は消える)/ `retryLimit`(上限到達。**最後の失敗記録はそのまま残る** —— `failedSteps` / `errorLogs` / `timeline` を持つ実物で、合成の skipped 記録には置き換えない)/ `circuitHeld`(連続失敗が閾値に達したが、その間に他のレーンが1本も通っていないので離脱させなかった。streak ごとに1件) |
+| kind | String | `degraded`(劣化・離脱)/ `requeued`(振り直し。その回の `scenarios/*.json` は消える。**Android のドライバ不達(ブリッジ断)も 2026-09-16 よりここに入る**)/ `retryLimit`(上限到達。**最後の失敗記録はそのまま残る** —— `failedSteps` / `errorLogs` / `timeline` を持つ実物で、合成の skipped 記録には置き換えない)/ `circuitHeld`(連続失敗が閾値に達したが、その間に他のレーンが1本も通っていないので離脱させなかった。streak ごとに1件) |
 | worker | String? | `"<platform>:<デバイス論理名>"`。**`scenarios/*.json` の `worker` と同じ規則 = join できる** |
 | label | String | 表示用の識別子(`degradedWorkers` の1行と同一) |
 | scenarioID | String? | `requeued` / `retryLimit` の対象 |

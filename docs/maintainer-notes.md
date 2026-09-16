@@ -980,3 +980,46 @@ heal 無効」警告(§21 で heal 有効時だけに絞ったばかりだった
 (`--set`・run.json の `fmSettings`・拡張の欄・実行バイナリの `--no-text-visual-check` とも)。
 **run.json だけは旧キーも読む**(記録は受け手の資産で、読めないと run.json 全体が読めなくなる)。
 プロファイルは読み替えない(未公開)—— この Mac 上のプロファイルは TestProjects・受け手パッケージとも移行済み。
+
+## 24. 親の死を知らせる1行が、親の死のたびに子を abort させていた(2026-09-16)
+
+3 時間の負荷テスト(仮想 26 台 + 実機 4 台 + MCP 常駐)で、フリートの親を `kill -9` したら
+機械ごとの子が **8 秒後に SIGABRT** で死んだ(`~/Library/Logs/DiagnosticReports/fleetest-*.ips`)。
+落ちた場所は `ParentDeathWatch.swift:37` の `FileHandle.standardError.write(_:)`。
+
+**機構**: 子の stderr は親が読むパイプ。親が死ぬと読み手が居なくなり、`Fleetest.main` が掛けた
+`F_SETNOSIGPIPE` のおかげで write は SIGPIPE ではなく **EPIPE** を返す。ところが旧 API の
+`FileHandle.write(_:)` は失敗を **ObjC 例外**で投げるので Swift では捕まらず abort する。
+**次の行の `kill(getpid(), SIGTERM)` に到達しない** = InterruptRelay も defer も走らず、
+dispatch.lock の解放・結果の回収・run.json の完了・終了スクリプトが全部飛ぶ。
+`fleetest-scenarios` 側は `F_SETNOSIGPIPE` すら無いので同じ write で SIGPIPE 即死だった。
+**2026-09-05 に発話を足して以来、親の死で子が後始末する経路は一度も働いていなかった**。
+
+**砦が踏まなかった理由**: `CrossLayerTerminationTests` は子の stdout/stderr を**ファイルへ
+リダイレクト**していた。ファイルは読み手が要らないので write が原理的に失敗せず、本番
+(拡張・機械ファンアウトの**パイプ**)だけが踏む形だった。**この種のテストは出力をパイプ/FIFO にする**。
+
+**直し**: `ParentDeathWatch.writeNotice`(fd に `F_SETNOSIGPIPE` を掛けた生の `write(2)`・失敗は
+黙って諦める)+ `ScenarioRunnerMain` にも `F_SETNOSIGPIPE`。テストは FIFO を `exec cat` で読む
+spawner(= 親だけが読み手)を足した。**陽性対照**: 同じ形で親を SIGKILL → クラッシュレポート 0・
+リモート 3 機の dispatch.lock は子自身が解放(修正前は次の run の自動回収待ちだった)。
+
+## 25. 同じ負荷テストで出た、後始末と検知の穴4つ(2026-09-16)
+
+- **使用中の台を `api stop-device` が黙って止めた**。規律④「他人の run を殺す操作はロックを読む」は
+  `remote clean` にしか無かった。判定を `DeviceBooter.stopRefusal` の1箇所に置き、`shutdownOne` /
+  `shutdownAll` が止める前に通す(= stop-device / stop-all-devices / restart-devices / wipe-device /
+  `devices down --profile` が全部通る)。押し切る `--force` は CLI だけ(GUI に出さない)。
+- **機械ごと落ちた run の未実行シナリオが消えた**。`fleetest run` のファンアウトは exit code しか
+  出さず、`--failed` の記録は回収できた JSON からしか書かれないので、走らなかった 9 本が
+  「前回緑」のまま再実行から外れていた(`api run` 側には合成があり、2 実装の差だった)。
+  runGroup に属する記録を走査して欠落を名指しし、`LastResultsStore` へ失敗として書く。
+- **一過性のブリッジ断が OS で緑にも赤にもなっていた**。失敗後の事後プローブは iOS だけブリッジを見る。
+  Android は `adb kill-server`・`am force-stop`・`adb: device offline`・実機の再起動のどれでも赤のまま
+  残っていた(いずれも次のシナリオからは自動で回復している)。`StepFailureKind.driverUnreachable` を
+  独立した outcome にし、**消失・凍結のプローブを先に通してから**(台が生きていると分かってから)
+  Android だけ振り直す —— 先に振り直すと、qemu ごと消えた台を離脱させずに回し続けてしまう。
+- **OCR の近道がプロセスごとに黙って死んでいた**。暖機の探り(合成画像)を 1 回撃って空なら、その
+  シナリオは最後まで OCR を使わない。実測で 26 プロセス中 15 本が空(空は 130〜170ms・読めた回は
+  190〜235ms)で、手元のフリートの E2E-Flutter/android は 5 ラウンド全部 OCR 使用率 0% だった。
+  時間予算(2 秒)つきの撃ち直しにして **0% → 100%**(19 本中 2 本が 3 回目・9 回目で読めた)。
