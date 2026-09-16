@@ -11,6 +11,13 @@
 // lsof を一切起こさず、候補ポートを台帳(`candidatePorts`)から絞ってから `BridgeDiscovery.isBound`
 // (生ソケットの connect+poll。300ms 上限)だけで確かめる。
 //
+// 4件目(コードレビュー指摘): 3件目の作り直しでも `udidBridgeDiagnosis` 自体は素の async 関数の
+// 本体に `ps`/`simctl`/`devicectl` という同期ブロッキングをそのまま書いていた —— 並列に起こして
+// いなくても、`Shell.run` の完了待ち(`DispatchSemaphore.wait`)は協調スレッドプールのワーカーを
+// 直列に最大 devicectl の timeout(30秒)ぶん占有する。同じ型の事故が本数だけ減って残っていた。
+// `udidBridgeDiagnosisBlocking`(同期本体)を専用 Thread(`runOffCooperativePool`)へ逃がし、
+// `budgeted` で全体に `udidBridgeDiagnosisBudget`(3秒)の上限を掛けるよう作り直した。
+//
 // ここでは文面を組み立てる純粋関数(`bridgeUpSuggestion`/`noResponsiveBridgeMessage`/
 // `bridgeBusyOnUDIDMessage`)と、走査の広さを決める純粋関数(`cappedCandidatePorts`)、
 // 台帳の絞り込み(`candidatePorts`。実デバイス・実ブリッジは使わず、注入した台帳ファイルだけで
@@ -18,8 +25,11 @@
 // `udidBridgeDiagnosis` 自体(`BridgeDiscovery.isBound`/`RunLease.holderPID`/
 // `SimulatorCatalog.isPhysical` という既存の・既にテスト済みの部品を束ねるだけの IO 層)は
 // 実ブリッジが無いと材料が作れないためここではテストしない。lsof を撃つテストは書かない。
+// **上限の仕組み(`budgeted`/`runOffCooperativePool`)だけは時間のかかるダミー work を注入して
+// テストする**(実際の ps/simctl/devicectl は起こさない。下部の MARK 参照)。
 
 import XCTest
+import Foundation
 import FTCore
 import FTBridgeClient
 @testable import fleetest_mcp
@@ -216,5 +226,60 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
 
         XCTAssertEqual(MCPServer.candidatePorts(forUDID: "SIM-1234", repoRoot: root),
                       Set<UInt16>([8140, 8141]))
+    }
+
+    // MARK: - budgeted / runOffCooperativePool(協調スレッドプールを塞がない上限)
+    //
+    // `udidBridgeDiagnosis` 本体(ps/simctl/devicectl)は実ブリッジ無しでは材料が作れないので
+    // ここではテストしない(ファイル冒頭の方針どおり)。代わりに、production の
+    // `udidBridgeDiagnosis` が実際に組んでいる「専用 Thread + 上限」の機構(`budgeted` /
+    // `runOffCooperativePool`)そのものへ、時間のかかるダミーの同期処理(`Thread.sleep`)を注入して
+    // 固定する。実 IO は一切起こさない。
+
+    /// 上限の秒数をリテラルで固定する。変異(数字を動かす)で落ちる契約
+    func testUDIDBridgeDiagnosisBudgetIsThreeSeconds() {
+        XCTAssertEqual(MCPServer.udidBridgeDiagnosisBudget, .seconds(3))
+    }
+
+    /// 上限を大きく超えて刺さり続けるダミーの同期処理を注入すると、`budgeted` は work の全長
+    /// (2秒)を待たずに fallback へ落ちて先に返る。
+    /// **所要は戻り値でなく経過時間で測る**(CLAUDE.md「予算のテストは所要を測る」): 戻り値だけを
+    /// 見るテストは、`budgeted` が結局 work の完了を待ってから fallback へすり替えるだけの実装
+    /// (= 協調プールを塞いだまま)でも通ってしまう
+    func testBudgetedFallsBackWithoutWaitingForSlowWorkToFinish() async {
+        let budget = Duration.milliseconds(150)
+        let clock = ContinuousClock()
+
+        let start = clock.now
+        let result = await MCPServer.budgeted(budget, fallback: -1) {
+            Thread.sleep(forTimeInterval: 2)
+            return 99
+        }
+        let elapsed = clock.now - start
+
+        XCTAssertEqual(result, -1, "must fall back to the default, not the slow work's value")
+        XCTAssertLessThan(elapsed, .seconds(1),
+                          "must return near the budget (150ms), not near the slow work (2s): \(elapsed)")
+    }
+
+    /// 逆方向: 予算内に終わる work はそのまま値を返す(fallback にすり替わらない)。
+    /// 両方向を掛けないと、「常に fallback を返す」実装を上のテストが素通しする
+    /// (CLAUDE.md「検知の類は両方向に掛ける」)
+    func testBudgetedReturnsTheRealValueWhenWorkFinishesInTime() async {
+        let result = await MCPServer.budgeted(.seconds(3), fallback: -1) { 99 }
+        XCTAssertEqual(result, 99)
+    }
+
+    /// `udidBridgeDiagnosis` は上限超過時に既存の既定値(`UDIDBridgeDiagnosis.unknown` =
+    /// 「判定できない」。listeningButUnresponsive 空・heldByRunPID nil・isPhysical nil)へ落ちる
+    /// ことを、`budgeted` を直接使って固定する(型を `UDIDBridgeDiagnosis` に揃えるだけで、
+    /// `udidBridgeDiagnosis` 自身と同じ fallback を経路含めて確認する)
+    func testBudgetedFallsBackToUDIDBridgeDiagnosisUnknownOnTimeout() async {
+        let result = await MCPServer.budgeted(.milliseconds(150), fallback: .unknown) {
+            () -> MCPServer.UDIDBridgeDiagnosis in
+            Thread.sleep(forTimeInterval: 2)
+            return .init(listeningButUnresponsive: [8130], heldByRunPID: 4242, isPhysical: true)
+        }
+        XCTAssertEqual(result, .unknown)
     }
 }

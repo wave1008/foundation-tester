@@ -68,9 +68,12 @@ public enum AndroidAppProcessEvidenceQuery {
     /// 非 0 終了)と「adb 自体が失敗した」を区別しない。区別できるのは出力の中身だけ
     /// (adb は自分のエラーを `output` へ書く。`looksLikeADBFailure` 参照)
     static func processAbsence(status: Int32, output: String) -> Bool? {
-        _ = status
         let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
         if looksLikeADBFailure(trimmed) { return nil }
+        // **非 0 終了で何か書いている = adb 側の失敗**(pidof は「居ない」を非 0 + 空で返す)。
+        // 文言の一覧に無いエラー(`error: protocol fault` 等)をここで拾う ——
+        // 一覧だけに頼ると、知らない文言の失敗を「居る」と読んでしまう
+        if status != 0, !trimmed.isEmpty { return nil }
         return trimmed.isEmpty
     }
 

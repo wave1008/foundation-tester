@@ -112,22 +112,40 @@ public enum DeviceWiper {
     /// 1台を初期化する。**稼働中だった台だけ起こし直す**(止まっていた台を勝手に起動しない)。
     /// status のフェーズ集合は AndroidDataWiper と同じ("stopping"/"rebooting"/"done"/"failed")——
     /// 拡張はどちらの経路でも同じタイル表示を使う。
+    /// **消す前に run-lease を確認する**(規律④「他人の run を殺す操作はロックを読む」。Wipe は
+    /// 不可逆なので stop より重い)。iOS は `eraseSimulator` → `DeviceBooter.shutdownOne` が
+    /// 判定を通るが、Android は削除の本体(`AndroidDataWiper.wipeOne`)に lease 判定が無いので、
+    /// ここで呼ぶ前に同じ判定(`DeviceBooter.stopRefusal`)へ通す。拒否は iOS 経路と同じ
+    /// `DeviceBooterError.commandFailed` で throw する。
     public static func wipeOne(
         spec: DeviceSpec, platform: String, repoRoot: URL?,
         locale: String = DeviceBooter.defaultLocale,
         force: Bool = false,
+        /// テスト注入用。nil なら `(try? RepoRoot.find())?.appendingPathComponent(".fleetest")`
+        leaseStateDir: URL? = nil,
+        /// テスト注入用(Android の lease 鍵解決)。nil なら `DeviceBooter.leaseKey`
+        /// (= 起動中 AVD と照合した adb serial。adb を叩く)を使う
+        androidLeaseKey: (() -> String?)? = nil,
         status: (@Sendable (String) -> Void)? = nil,
         log: @escaping @Sendable (String) -> Void
     ) async throws {
         switch try target(spec: spec, platform: platform) {
         case .android(let avd):
+            let key = androidLeaseKey?() ?? DeviceBooter.leaseKey(spec: spec, platform: platform)
+            if let refusal = DeviceBooter.stopRefusal(
+                deviceName: spec.name, key: key,
+                selfPID: ProcessInfo.processInfo.processIdentifier, force: force,
+                holderPID: { k in DeviceBooter.leaseHolderPID(leaseStateDir: leaseStateDir, key: k) }) {
+                throw DeviceBooterError.commandFailed(refusal)
+            }
             // **戻り値で成否を返させない**(`_ =` で捨てると「消えていないのに成功」になる。
             // 2026-08-29 に実際に起きた)。失敗は throw で上がってくる
             try await AndroidDataWiper.wipeOne(
                 deviceName: spec.name, avd: avd, locale: locale, status: status, log: log)
         case .ios:
             try await eraseSimulator(
-                spec: spec, repoRoot: repoRoot, locale: locale, force: force, status: status, log: log)
+                spec: spec, repoRoot: repoRoot, locale: locale, force: force,
+                leaseStateDir: leaseStateDir, status: status, log: log)
         }
     }
 
@@ -137,6 +155,7 @@ public enum DeviceWiper {
     /// erase 後の再起動で書き戻す(`SimulatorLocalePreservation`)
     private static func eraseSimulator(
         spec: DeviceSpec, repoRoot: URL?, locale: String, force: Bool,
+        leaseStateDir: URL?,
         status: (@Sendable (String) -> Void)?,
         log: @escaping @Sendable (String) -> Void
     ) async throws {
@@ -151,7 +170,8 @@ public enum DeviceWiper {
             log("🧹 \(spec.name): wiping data (1/1) — stopping the simulator...")
             status?("stopping")
             try await DeviceBooter.shutdownOne(
-                spec: spec, platform: "ios", repoRoot: repoRoot, force: force, log: log)
+                spec: spec, platform: "ios", repoRoot: repoRoot, force: force,
+                leaseStateDir: leaseStateDir, log: log)
 
             // erase は初回ブートの再構築を伴わない代わりに、コンテナの削除で数十秒かかることがある
             let result = try Shell.run(["xcrun", "simctl", "erase", sim.udid], timeout: 300)
@@ -170,7 +190,8 @@ public enum DeviceWiper {
                 // spawn は稼働中の台にしか使えないため確認できていない。要デバイス確認)
                 writeSimulatorLocale(udid: sim.udid, snapshot: preservedLocale, log: log)
                 try await DeviceBooter.shutdownOne(
-                    spec: spec, platform: "ios", repoRoot: repoRoot, force: force, log: log)
+                    spec: spec, platform: "ios", repoRoot: repoRoot, force: force,
+                    leaseStateDir: leaseStateDir, log: log)
                 try await DeviceBooter.bootOne(spec: spec, platform: "ios", log: log)
                 // 起動と同じ扱いにする(供給しないと画面が取れず「起動済み(ブリッジ未接続)」で止まる。
                 // ApiDeviceUp と同じ理由)。repoRoot が無ければ供給できないので飛ばす

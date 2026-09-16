@@ -634,6 +634,24 @@ public enum ScenarioRunner {
         }
     }
 
+    /// ブリッジ不達で振り直す台の扱い(純粋関数)。**連続失敗がブレーカの閾値に達したら振り直さない**
+    /// —— ブリッジを二度と張り直せない台(adb には見えていて凍結もしていない形)が離脱せずに残ると、
+    /// 後続のシナリオの再キュー枠(1本につき1回)を1つずつ焼き潰す。`held`(その streak の間に
+    /// 他のレーンが1本も通っていない = 台ではなく run の問題)は離脱させない既存の規律どおり
+    enum UnreachableLaneAction: Equatable {
+        case requeue
+        case retire(reason: String)
+    }
+
+    static func unreachableLaneAction(verdict: WorkerCircuitBreaker.Verdict) -> UnreachableLaneAction {
+        switch verdict {
+        case .trip(let consecutive):
+            return .retire(reason: "\(consecutive) consecutive worker failures")
+        case .keep, .held:
+            return .requeue
+        }
+    }
+
     /// ScenarioEvent(step)→ StepResult。scene/sceneTitle/section は構造化フィールドのまま写す。
     /// passedViaFallback/healed の detail の扱いは FlowLocator.raw(Flow.swift)参照
     static func stepResult(from event: ScenarioEvent) -> StepResult {
@@ -1340,12 +1358,23 @@ public final class RunOrchestrator {
             // 健全に見え、落ちたシナリオが赤のまま残っていた。**ここまで来た = 台は生きている**ので、
             // 結果を捨てて振り直し、ワーカーは残す(iOS は上の bridgeUnreachable プローブが
             // 離脱→建て直し→再キューを担うので、この分岐には入らない)
+            // **ただし連続失敗はブレーカに数える** —— 数えないと、ブリッジを二度と張り直せない台
+            // (adb には見えていて凍結もしていない形)が離脱もせずに残り、後続のシナリオの
+            // 再キュー枠(1本につき1回)を1つずつ焼き潰す。ここで `.trip` したら振り直さずに
+            // 下の離脱経路へ落とす(`environmentFault` は数えないまま = あちらは台ではなく
+            // 環境ノイズという実測に基づく既存の判断)
             if unusableReason == nil, outcome == .driverUnreachable,
                ScenarioRunner.requeuesWithoutRetiring(outcome: outcome, platform: worker.platform) {
-                let requeued = await discardAndRequeue(item, worker: worker, queue: queue,
-                                                       reason: "an unreachable bridge")
-                if !requeued { failed += 1 }
-                continue
+                let verdict = breaker.recordFailure(runPasses: await runPasses.snapshot())
+                switch ScenarioRunner.unreachableLaneAction(verdict: verdict) {
+                case .retire(let reason):
+                    unusableReason = reason
+                case .requeue:
+                    let requeued = await discardAndRequeue(item, worker: worker, queue: queue,
+                                                           reason: "an unreachable bridge")
+                    if !requeued { failed += 1 }
+                    continue
+                }
             }
             // サーキットブレーカ: 凍結/消失に当てはまらなくても連続失敗が閾値に達し、その間に別の
             // レーンが通っていれば不調ワーカーとして離脱。誰も通っていなければ残す(全レーンが同時に

@@ -361,7 +361,7 @@ extension MCPServer {
     /// `reconcilePort` が「応答したポートが1本も無い」ときに使う追加事実。**IO は呼び出し側
     /// (`udidBridgeDiagnosis`)が集め、ここへは値として渡す** —— reconcilePort 自体は
     /// 走査を伴わない純粋関数のまま保つ(2026-08-09 の変異テストが踏んだ理由と同じ)
-    struct UDIDBridgeDiagnosis: Equatable {
+    struct UDIDBridgeDiagnosis: Equatable, Sendable {
         /// `/status` には答えなかったが LISTEN している(= 生きているが busy の根拠)。
         /// 空なら「本当に居ない」
         let listeningButUnresponsive: [UInt16]
@@ -387,13 +387,41 @@ extension MCPServer {
     /// (`BridgeDiscovery.isBound` 1回 300ms 上限 × この件数で worst case を秒単位に収める)
     static let maxUDIDBridgeCandidatePorts = 4
 
+    /// `udidBridgeDiagnosis` の全体(`ps` / `simctl` / 必要なら `devicectl` / `isBound`)に掛ける
+    /// 上限。根拠: `candidatePorts` 内の `ps` は数十 ms、`isBound` は候補上限
+    /// (`maxUDIDBridgeCandidatePorts`)× 300ms で worst case 1.2 秒、`SimulatorCatalog.isPhysical`
+    /// は通常 `xcrun simctl list` の数百 ms で終わるが、udid がシミュレータ一覧に無いと
+    /// `IOSPhysicalDeviceCatalog.devices()` = `xcrun devicectl list devices`(timeout 30 秒)まで
+    /// 引く。**この 30 秒をそのまま `ft_status`(対話的な口)へ持ち込まない** —— 尽きたら
+    /// `UDIDBridgeDiagnosis.unknown`(既定 = 判定できない)へ落とす。診断自体は打ち切らず
+    /// 専用スレッドの上で走り続ける(`TaskBudget.run` と同じ立場: 諦めるのは待つことだけ)
+    static let udidBridgeDiagnosisBudget: Duration = .seconds(3)
+
     /// `udidPorts` が空だったときの追加調査(IO)。**lsof は一切起こさない**(上の doc 参照)。
     /// 候補ポートは台帳から絞り(`candidatePorts`。プロセスを起こすのは中の `ps` 1回だけ)、
     /// LISTEN の確認は `BridgeDiscovery.isBound`(lsof ではなく生ソケットの connect+poll。
     /// `iosConnectionLostHint` の busy 判定と同じ部品で 300ms 上限)だけで行う。
     /// run の使用中は `RunLease.holderPID`(`markDeviceInUse` と同じ台帳)、
-    /// 実体判定は `SimulatorCatalog.isPhysical(udid:)`(ft_list_devices と同じ経路)をそのまま使う
+    /// 実体判定は `SimulatorCatalog.isPhysical(udid:)`(ft_list_devices と同じ経路)をそのまま使う。
+    ///
+    /// **`udidBridgeDiagnosisBlocking` は丸ごと同期**(`await` を1つも持たない) ——
+    /// これを async 関数の本体に直に書くと、`Shell.run` の完了待ち(`DispatchSemaphore.wait`。
+    /// 真のスレッドブロッキング)が Swift の協調スレッドプールのワーカーをそのまま占有する
+    /// (`withTaskGroup` で並列に起こしていなくても、直列でも同じ型の事故 —— 2026-09-16 に
+    /// 一度この関数で lsof の並列版を踏んでいる。同じ関数がもう一度、本数が減っただけで
+    /// 同じ性質を持っていた)。`runOffCooperativePool` が専用 Thread(協調プールの外)へ実体を
+    /// 逃がし、`budgeted` が `udidBridgeDiagnosisBudget` で上限を掛ける
+    /// (CLAUDE.md「協調スレッドプールにブロッキングを載せない」)
     static func udidBridgeDiagnosis(udid: String) async -> UDIDBridgeDiagnosis {
+        await Self.budgeted(Self.udidBridgeDiagnosisBudget, fallback: .unknown) {
+            Self.udidBridgeDiagnosisBlocking(udid: udid)
+        }
+    }
+
+    /// `udidBridgeDiagnosis` の同期本体。**`await` を書かない** —— 1つでも足すと、
+    /// `runOffCooperativePool` が用意した専用 Thread の上で async ランタイムを再び挟むことになり、
+    /// 「協調プールの外で動く」という前提が壊れる
+    private static func udidBridgeDiagnosisBlocking(udid: String) -> UDIDBridgeDiagnosis {
         let repoRoot = try? RepoRoot.find()
         let candidates = Self.cappedCandidatePorts(
             Array(Self.candidatePorts(forUDID: udid, repoRoot: repoRoot)))
@@ -403,6 +431,37 @@ extension MCPServer {
         }
         return UDIDBridgeDiagnosis(listeningButUnresponsive: listening, heldByRunPID: heldByRunPID,
                                    isPhysical: SimulatorCatalog.isPhysical(udid: udid))
+    }
+
+    /// 同期の仕事(`work`)を専用 Thread で実行し、`budget` 以内に返らなければ `fallback` を返す。
+    /// **仕事はそのまま走り続ける**(打ち切らない・キャンセルしない) —— `FTCore.TaskBudget` と
+    /// 同じ立場で、諦めた後に本当に終わるまでの時間を測り直す機構は持たない。
+    /// **`udidBridgeDiagnosis` のテストはここへ時間のかかるダミー work を注入する**:
+    /// 実際の `ps`/`simctl`/`devicectl` を1つも起こさずに「上限超過 → 既定へ落ちる」を固定できる
+    static func budgeted<T: Sendable>(
+        _ budget: Duration, fallback: T, _ work: @escaping @Sendable () -> T
+    ) async -> T {
+        let outcome = await TaskBudget.run(budget) {
+            await Self.runOffCooperativePool(name: "fleetest-mcp-budgeted-diagnosis", work)
+        }
+        guard case .value(let value) = outcome else { return fallback }
+        return value
+    }
+
+    /// 協調スレッドプールを塞がない同期実行の器。**専用 Thread**(`FTCore.RegionText
+    /// .prewarmOnce` / `HostMetricsSampler` / `ParentDeathWatch.arm` と同じ作法)を起こし、
+    /// `work` の戻り値を継続で1回だけ渡す。`work` は真にブロッキングな同期処理(`Shell.run` 等)を
+    /// 置いてよい場所 —— ここより外(呼び出し元の async 文脈)では絶対に直呼びしない
+    static func runOffCooperativePool<T: Sendable>(
+        name: String, _ work: @escaping @Sendable () -> T
+    ) async -> T {
+        await withCheckedContinuation { (continuation: CheckedContinuation<T, Never>) in
+            let thread = Thread {
+                continuation.resume(returning: work())
+            }
+            thread.name = name
+            thread.start()
+        }
     }
 
     /// `candidatePorts` の結果に上限を掛ける(純粋関数・テスト用)。昇順にしてから切るので

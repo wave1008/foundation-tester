@@ -110,6 +110,9 @@ public enum DeviceBooter {
     /// (試みた台の母数に入れる)。**戻り値は台ごとの成否**(BootOutcomeSummarizer が要約する)。
     /// **台ごとに run-lease を確認する**(規律④「他人の run を殺す操作はロックを読む」)—— 拒否された
     /// 台は stopOne を呼ばずに失敗として数え、残りの台は続行する(1台の拒否で全体を止めない)。
+    /// **実機 iOS は宣言値+解決後 UDID の両方を見る**(shutdownOne と同じ理由)。devicectl は
+    /// プロファイル全体で1回だけ呼んで使い回す(台数ぶん呼ばない。台ごとに shutdownOne へも
+    /// その結果を渡すので、内部でも再取得しない)。
     @discardableResult
     public static func shutdownAll(
         machine: MachineProfile,
@@ -117,6 +120,8 @@ public enum DeviceBooter {
         force: Bool = false,
         /// テスト注入用。nil なら `(try? RepoRoot.find())?.appendingPathComponent(".fleetest")`
         leaseStateDir: URL? = nil,
+        /// テスト注入用。nil かつ実機 iOS が1台以上・repoRoot ありのときだけ devicectl を実際に呼ぶ
+        physicalIOSDevices: [IOSPhysicalDeviceInfo]? = nil,
         log: @escaping @Sendable (String) -> Void,
         deviceStopping: @Sendable (String, String) -> Void = { _, _ in },
         deviceFinished: @Sendable (String, String) -> Void = { _, _ in },
@@ -128,6 +133,9 @@ public enum DeviceBooter {
             (machine.ios?.devices ?? []).map { ($0, "ios") } +
             (machine.android?.devices ?? []).map { ($0, "android") }
         let selfPID = ProcessInfo.processInfo.processIdentifier
+        let hasPhysicalIOS = entries.contains { $0.spec.isPhysical && $0.platform == "ios" }
+        let resolvedPhysicalIOSDevices: [IOSPhysicalDeviceInfo] = physicalIOSDevices
+            ?? ((hasPhysicalIOS && repoRoot != nil) ? ((try? IOSPhysicalDeviceCatalog.devices()) ?? []) : [])
         var outcomes: [BootOutcome] = []
         for entry in entries {
             let spec = entry.spec
@@ -135,9 +143,15 @@ public enum DeviceBooter {
             if !spec.isPhysical {
                 deviceStopping(spec.name, platform)
             }
+            var leaseKeys = [leaseKey(spec: spec, platform: platform)].compactMap { $0 }
+            if spec.isPhysical, platform == "ios",
+               let resolved = resolvedPhysicalIOSUDID(spec: spec, in: resolvedPhysicalIOSDevices),
+               !leaseKeys.contains(resolved) {
+                leaseKeys.append(resolved)
+            }
             var failure: String?
             if let refusal = stopRefusal(
-                deviceName: spec.name, key: leaseKey(spec: spec, platform: platform),
+                deviceName: spec.name, keys: leaseKeys,
                 selfPID: selfPID, force: force,
                 holderPID: { key in leaseHolderPID(leaseStateDir: leaseStateDir, key: key) }) {
                 log("❌ \(spec.name): \(refusal)")
@@ -149,7 +163,10 @@ public enum DeviceBooter {
                     } else {
                         try await shutdownOne(spec: spec, platform: platform,
                                               repoRoot: platform == "ios" ? repoRoot : nil,
-                                              force: force, leaseStateDir: leaseStateDir, log: log)
+                                              force: force, leaseStateDir: leaseStateDir,
+                                              physicalIOSDevices: platform == "ios"
+                                                  ? resolvedPhysicalIOSDevices : nil,
+                                              log: log)
                     }
                 } catch {
                     log("❌ \(spec.name): \(error.localizedDescription)")
@@ -177,10 +194,29 @@ public enum DeviceBooter {
             + " (held by pid \(pid)). Wait for that run to finish, or pass --force to stop it anyway."
     }
 
+    /// 複数候補の鍵(例: 実機 iOS の「宣言値」と「解決後 UDID」)のうち**どれか1つでも**
+    /// 生きた lease を握っていれば拒否する。1台に2種類の lease 鍵がありうるのは、run 側が
+    /// 供給前(宣言値)と供給後(解決後の実体)で別々の鍵を書くため(shutdownOne のコメント参照)
+    static func stopRefusal(
+        deviceName: String, keys: [String], selfPID: Int32, force: Bool,
+        holderPID: (String) -> Int32?
+    ) -> String? {
+        for key in keys {
+            if let refusal = stopRefusal(
+                deviceName: deviceName, key: key, selfPID: selfPID, force: force, holderPID: holderPID) {
+                return refusal
+            }
+        }
+        return nil
+    }
+
     /// run-lease の鍵(`ProfileRunner.leaseKeysByDevice` と同じ規則の唯一の定義元)。
     /// Android=serial(実機は宣言済み `spec.serial`・仮想は起動中 AVD と照合済みの serial)/
     /// iOS=UDID(実機は宣言済み `spec.udid`・仮想は `SimulatorCatalog` の解決済み UDID)。
-    /// 引けなければ nil(呼び出し元は素通りする=安全側。停止済み/未登録の台に居るはずの lease は無い)
+    /// 引けなければ nil(呼び出し元は素通りする=安全側。停止済み/未登録の台に居るはずの lease は無い)。
+    /// **実機 iOS はここでは宣言値しか返さない** —— `SupplyLeaseHolder.hold(keys:)` は解決後の
+    /// ハードウェア UDID で書くため、両方を見る必要がある呼び手(shutdownOne/shutdownAll)は
+    /// `resolvedPhysicalIOSUDID` を別途足して `stopRefusal(keys:)` へ渡す
     static func leaseKey(spec: DeviceSpec, platform: String) -> String? {
         if spec.isPhysical {
             return platform == "ios" ? spec.udid : spec.serial
@@ -191,7 +227,17 @@ public enum DeviceBooter {
         return try? AndroidDeviceCatalog.resolveSerial(spec: spec)
     }
 
-    private static func leaseHolderPID(leaseStateDir: URL?, key: String) -> Int32? {
+    /// 実機 iOS の「解決後」UDID を devicectl の一覧から引く(宣言値が devicectl の Identifier
+    /// (別 UUID)のときに一致させるため)。**到達性は問わない** —— 停止/lease 判定は接続の有無に
+    /// 関係なく行うべきなので、`IOSPhysicalDeviceCatalog.resolve` の probe(devicectl 追加1回)は
+    /// 呼ばない。一致しなければ nil。純粋関数(devices は呼び出し側が集めた一覧を渡す)
+    static func resolvedPhysicalIOSUDID(spec: DeviceSpec, in devices: [IOSPhysicalDeviceInfo]) -> String? {
+        let declared = spec.udid ?? ""
+        guard !declared.isEmpty else { return nil }
+        return devices.first(where: { $0.udid == declared || $0.deviceCtlIdentifier == declared })?.udid
+    }
+
+    static func leaseHolderPID(leaseStateDir: URL?, key: String) -> Int32? {
         let dir = leaseStateDir ?? (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
         guard let dir else { return nil }
         return RunLease.holderPID(stateDir: dir, key: key)
@@ -454,14 +500,31 @@ public enum DeviceBooter {
     /// iOS の exit code 不信任リトライの理由は下記コメント参照。
     /// **実際に止める前に run-lease を確認する**(規律④。`shutdownAll` が別途同じ判定をしていても、
     /// ここ単独で呼ばれる経路(`api stop-device` の --name/--udid/--serial・`restart-devices`・
-    /// `DeviceWiper` の erase 前停止)を素通りさせない)。拒否は throw で既存の失敗経路に乗せる
+    /// `DeviceWiper` の erase 前停止)を素通りさせない)。拒否は throw で既存の失敗経路に乗せる。
+    /// **実機 iOS は宣言値と解決後 UDID の両方を見る**(`SupplyLeaseHolder.hold(keys:)` は解決後の
+    /// ハードウェア UDID で書くため、宣言値だけでは走行中の run の lease を見つけられないことがある)。
+    /// 解決は1回だけ行い、下のブリッジ停止と使い回す(devicectl を2回叩かない)。
     public static func shutdownOne(spec: DeviceSpec, platform: String,
                                    repoRoot: URL? = nil,
                                    force: Bool = false,
                                    leaseStateDir: URL? = nil,
+                                   /// テスト注入用 & shutdownAll の使い回し用。nil なら repoRoot が
+                                   /// あるときだけ実際に devicectl を1回呼ぶ(従来のブリッジ停止と同じ条件)。
+                                   /// 非 nil ならその一覧を使い devicectl を呼ばない
+                                   physicalIOSDevices: [IOSPhysicalDeviceInfo]? = nil,
                                    log: @escaping @Sendable (String) -> Void) async throws {
+        var resolvedPhysicalIOSUDIDValue: String?
+        var leaseKeys = [leaseKey(spec: spec, platform: platform)].compactMap { $0 }
+        if spec.isPhysical, platform == "ios" {
+            let devices = physicalIOSDevices
+                ?? (repoRoot != nil ? ((try? IOSPhysicalDeviceCatalog.devices()) ?? []) : [])
+            resolvedPhysicalIOSUDIDValue = resolvedPhysicalIOSUDID(spec: spec, in: devices)
+            if let resolved = resolvedPhysicalIOSUDIDValue, !leaseKeys.contains(resolved) {
+                leaseKeys.append(resolved)
+            }
+        }
         if let refusal = stopRefusal(
-            deviceName: spec.name, key: leaseKey(spec: spec, platform: platform),
+            deviceName: spec.name, keys: leaseKeys,
             selfPID: ProcessInfo.processInfo.processIdentifier, force: force,
             holderPID: { key in leaseHolderPID(leaseStateDir: leaseStateDir, key: key) }) {
             throw DeviceBooterError.commandFailed(refusal)
@@ -472,9 +535,8 @@ public enum DeviceBooter {
             if platform == "ios", let repoRoot {
                 // ランナープロセスの -destination に載るのは**解決後のハードウェア UDID**。
                 // プロファイルには devicectl の Identifier(別 UUID)も書けるので、
-                // spec.udid をそのまま照合すると一致せずブリッジが残る
-                let udid = (try? IOSPhysicalDeviceCatalog.resolve(
-                    spec: spec, in: IOSPhysicalDeviceCatalog.devices()))?.udid ?? spec.udid
+                // spec.udid をそのまま照合すると一致せずブリッジが残る(上の lease 判定と同じ解決を使い回す)
+                let udid = resolvedPhysicalIOSUDIDValue ?? spec.udid
                 for port in (udid.map { BridgeLauncher.stopMatching(udid: $0, repoRoot: repoRoot) } ?? []) {
                     log("→ \(spec.name): stopping the bridge (port \(port))")
                 }

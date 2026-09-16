@@ -158,8 +158,13 @@ enum ProfileRunner {
         guard scenarios > 0 else { return "no other device was free" }
         func plural(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
         let freeClause = free == 1 ? "only 1 device was free" : "only \(free) devices were free"
-        return "needed \(plural(needed, "lane")) (\(plural(scenarios, "scenario")) + 1 spare)"
-            + " but \(freeClause)"
+        // **導出は成り立つときだけ書く**: `deviceKeepCount` は台数でクランプされる
+        // (min(available, scenarios + 1))ので、本数より台が少ない run では
+        // 「(N scenarios + 1 spare)」が needed を生まない。そのときは数の内訳を出さない
+        let derivation = needed == scenarios + 1
+            ? " (\(plural(scenarios, "scenario")) + 1 spare)"
+            : " (every device this profile has on this machine)"
+        return "needed \(plural(needed, "lane"))" + derivation + " but \(freeClause)"
     }
 
     /// 戻り値: 実行サマリ(失敗数+劣化ワーカー)+ この run で実際に効いていた FM 設定。

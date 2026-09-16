@@ -151,8 +151,19 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
 
     func testShortageReasonSingularizes() {
         XCTAssertEqual(
-            ProfileRunner.shortageReason(needed: 1, scenarios: 1, free: 0),
-            "needed 1 lane (1 scenario + 1 spare) but only 0 devices were free")
+            ProfileRunner.shortageReason(needed: 2, scenarios: 1, free: 1),
+            "needed 2 lanes (1 scenario + 1 spare) but only 1 device was free")
+    }
+
+    /// **導出が成り立たない形では内訳を書かない**: `deviceKeepCount` は台数でクランプされる
+    /// (min(available, scenarios + 1))ので、本数より台が少ない run では needed が
+    /// 「本数 + 予備1台」にならない。そこで括弧に「scenarios + 1 spare」と書くと嘘になる
+    func testShortageReasonDoesNotDeriveWhenTheKeepCountIsClamped() {
+        let text = ProfileRunner.shortageReason(needed: 3, scenarios: 10, free: 2)
+        XCTAssertEqual(text,
+                       "needed 3 lanes (every device this profile has on this machine)"
+                       + " but only 2 devices were free")
+        XCTAssertFalse(text.contains("spare"), "クランプされた形で内訳を書いている: \(text)")
     }
 
     /// scenarios == 0(本数不明)は数で言えないので、従来の言い方のまま

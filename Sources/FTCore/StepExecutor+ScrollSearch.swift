@@ -772,9 +772,11 @@ extension StepExecutor {
                                                                              in: latest)
                 return result
             }
-            let after = try await freshSnapshot(.afterOwnMove)
-            reverseSweepMoved = Self.contentSignature(after.elements)
-                != Self.contentSignature(latest.elements)
+            // **ここでは移動を測らない**: この経路(maxSwipes を使い切った弾切れ)の結果は
+            // `stoppedUnmoving` が false なので、`scrollNotFoundMessage` の3分岐(どれも
+            // `stoppedUnmoving` が前提)はどれも `reverseSweepMoved` を読まない。測っても
+            // 誰にも届かず、失敗経路で木を1枚余計に読むだけになる
+            // (端に着いて打ち切った側では上のループ内で測っている)
         }
         var exhausted = ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
                                            hintJumps: hintJumps, swipes: swipes,

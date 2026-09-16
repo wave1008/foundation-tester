@@ -114,3 +114,23 @@ final class AndroidAppProcessEvidenceTests: XCTestCase {
             ["process not running", "reason"])
     }
 }
+
+/// **文言の一覧に無い adb の失敗**も「判定できない」に倒す(2026-09-16 のレビュー指摘)。
+/// `pidof` は「居ない」を非 0 + 空で返すので、**非 0 + 非空は adb 側の失敗**と言い切れる ——
+/// 一覧(`looksLikeADBFailure`)だけに頼ると、知らない文言のエラーを「居る」と読んでしまう
+final class AndroidAppProcessEvidenceUnknownFailureTests: XCTestCase {
+
+    func testUnknownADBErrorWithNonZeroStatusIsUndecidable() {
+        XCTAssertNil(AndroidAppProcessEvidenceQuery.processAbsence(
+            status: 1, output: "protocol fault (couldn't read status): connection reset"))
+    }
+
+    func testNonZeroStatusWithEmptyOutputStillMeansAbsent() {
+        // pidof が「居ない」を返す形(非 0 + 空)は従来どおり「居ない」
+        XCTAssertEqual(AndroidAppProcessEvidenceQuery.processAbsence(status: 1, output: "  \n"), true)
+    }
+
+    func testZeroStatusWithPidMeansRunning() {
+        XCTAssertEqual(AndroidAppProcessEvidenceQuery.processAbsence(status: 0, output: "22725"), false)
+    }
+}

@@ -105,3 +105,24 @@ final class EnvironmentFaultTests: XCTestCase {
         }
     }
 }
+
+/// ブリッジ不達で振り直す台の扱い(`ScenarioRunner.unreachableLaneAction`)。
+/// **振り直しはブレーカの数え上げを飛ばさない** —— 飛ばすと、張り直せない台が離脱せずに残り、
+/// 後続シナリオの再キュー枠を焼き潰す(2026-09-16 のレビュー指摘)
+final class UnreachableLaneActionTests: XCTestCase {
+
+    func testKeepRequeues() {
+        XCTAssertEqual(ScenarioRunner.unreachableLaneAction(verdict: .keep), .requeue)
+    }
+
+    func testHeldRequeues() {
+        // 他のレーンが1本も通っていない streak = 台ではなく run の問題なので離脱させない
+        XCTAssertEqual(ScenarioRunner.unreachableLaneAction(verdict: .held(consecutive: 3, announce: true)),
+                       .requeue)
+    }
+
+    func testTripRetiresInsteadOfRequeueing() {
+        XCTAssertEqual(ScenarioRunner.unreachableLaneAction(verdict: .trip(consecutive: 4)),
+                       .retire(reason: "4 consecutive worker failures"))
+    }
+}

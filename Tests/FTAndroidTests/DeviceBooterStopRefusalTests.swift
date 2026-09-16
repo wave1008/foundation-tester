@@ -44,6 +44,140 @@ final class DeviceBooterStopRefusalTests: XCTestCase {
         XCTAssertNil(DeviceBooter.stopRefusal(
             deviceName: "d", key: nil, selfPID: 100, force: false, holderPID: { _ in 4242 }))
     }
+
+    // MARK: - 複数鍵版(実機 iOS の「宣言値」+「解決後 UDID」)
+
+    // 候補の2番目の鍵だけが保持されていても拒否する(先頭が素通りでも全体が素通りにならない)
+    func testMultiKeyRefusesWhenOnlyTheSecondKeyIsHeld() {
+        let message = DeviceBooter.stopRefusal(
+            deviceName: "d", keys: ["declared", "resolved"], selfPID: 100, force: false,
+            holderPID: { key in key == "resolved" ? 4242 : nil })
+        XCTAssertNotNil(message)
+        XCTAssertTrue(message!.contains("4242"))
+    }
+
+    func testMultiKeyDoesNotRefuseWhenNoKeyIsHeld() {
+        XCTAssertNil(DeviceBooter.stopRefusal(
+            deviceName: "d", keys: ["declared", "resolved"], selfPID: 100, force: false,
+            holderPID: { _ in nil }))
+    }
+
+    func testMultiKeyForceBypassesEvenIfHeld() {
+        XCTAssertNil(DeviceBooter.stopRefusal(
+            deviceName: "d", keys: ["declared", "resolved"], selfPID: 100, force: true,
+            holderPID: { _ in 4242 }))
+    }
+}
+
+/// 実機 iOS の解決後 UDID(devicectl の一覧との照合。到達性は問わない・純粋関数)
+final class DeviceBooterResolvedPhysicalIOSUDIDTests: XCTestCase {
+
+    func testMatchesByDeclaredIdentifier() {
+        let device = IOSPhysicalDeviceInfo(
+            udid: "HW-UDID-1", name: "iPhone 15 Pro", os: "iOS 18.5", connected: true,
+            transport: "wired", deviceCtlIdentifier: "DEVICECTL-IDENTIFIER-1")
+        let spec = DeviceSpec(name: "iPhone", kind: .physical, udid: "DEVICECTL-IDENTIFIER-1")
+        XCTAssertEqual(DeviceBooter.resolvedPhysicalIOSUDID(spec: spec, in: [device]), "HW-UDID-1")
+    }
+
+    func testMatchesByDeclaredHardwareUDIDToo() {
+        let device = IOSPhysicalDeviceInfo(
+            udid: "HW-UDID-1", name: "iPhone 15 Pro", os: "iOS 18.5", connected: true,
+            transport: "wired", deviceCtlIdentifier: "DEVICECTL-IDENTIFIER-1")
+        let spec = DeviceSpec(name: "iPhone", kind: .physical, udid: "HW-UDID-1")
+        XCTAssertEqual(DeviceBooter.resolvedPhysicalIOSUDID(spec: spec, in: [device]), "HW-UDID-1")
+    }
+
+    func testNoMatchReturnsNil() {
+        let spec = DeviceSpec(name: "iPhone", kind: .physical, udid: "UNKNOWN")
+        XCTAssertNil(DeviceBooter.resolvedPhysicalIOSUDID(spec: spec, in: []))
+    }
+
+    func testNilDeclaredUDIDReturnsNil() {
+        let spec = DeviceSpec(name: "iPhone", kind: .physical)
+        XCTAssertNil(DeviceBooter.resolvedPhysicalIOSUDID(spec: spec, in: []))
+    }
+}
+
+/// shutdownOne 単体: 実機 iOS で「宣言値では引けないが解決後 UDID なら引ける」lease を見落とさない
+/// ことを固定する。devicectl は叩かない(`physicalIOSDevices` へ注入した一覧をそのまま使う)。
+final class DeviceBooterShutdownOnePhysicalIOSDualKeyTests: XCTestCase {
+
+    private func makeStateDir() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    }
+
+    // 戻すと落ちる根拠: shutdownOne が leaseKey(=宣言値のみ)しか見ていなければ、この lease
+    // (解決後 UDID にしか無い)を見落として素通りし、拒否せず成功で返ってしまう
+    func testRefusesWhenOnlyTheResolvedUDIDHoldsALease() async {
+        let dir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let holder = getppid()
+        let resolvedUDID = "HW-UDID-1"
+        RunLease.write(stateDir: dir, key: resolvedUDID, pid: holder)
+        let spec = DeviceSpec(name: "iPhone-DeclaredIdentifier", kind: .physical,
+                              udid: "DEVICECTL-IDENTIFIER-1")
+        let fakeDevice = IOSPhysicalDeviceInfo(
+            udid: resolvedUDID, name: "iPhone 15 Pro", os: "iOS 18.5", connected: true,
+            transport: "wired", deviceCtlIdentifier: "DEVICECTL-IDENTIFIER-1")
+
+        do {
+            try await DeviceBooter.shutdownOne(
+                spec: spec, platform: "ios", repoRoot: nil, leaseStateDir: dir,
+                physicalIOSDevices: [fakeDevice], log: { _ in })
+            XCTFail("解決後 UDID にある lease を見落として素通りしてはいけない")
+        } catch let error as DeviceBooterError {
+            guard case .commandFailed(let message) = error else {
+                XCTFail("expected .commandFailed, got \(error)")
+                return
+            }
+            XCTAssertTrue(message.contains("iPhone-DeclaredIdentifier"), "台名を名指しする")
+            XCTAssertTrue(message.contains("\(holder)"), "保持者 pid を名指しする")
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+    }
+
+    // 宣言値と解決後 UDID が一致する(通常の)構成では、これまでどおり1つの鍵として扱われる
+    func testRefusesWhenTheDeclaredUDIDHoldsALeaseAndNoResolutionIsNeeded() async {
+        let dir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let holder = getppid()
+        RunLease.write(stateDir: dir, key: "HW-UDID-2", pid: holder)
+        let spec = DeviceSpec(name: "iPhone-Direct", kind: .physical, udid: "HW-UDID-2")
+
+        do {
+            try await DeviceBooter.shutdownOne(
+                spec: spec, platform: "ios", repoRoot: nil, leaseStateDir: dir,
+                physicalIOSDevices: [], log: { _ in })
+            XCTFail("宣言値の lease は従来どおり拒否されるはず")
+        } catch let error as DeviceBooterError {
+            guard case .commandFailed = error else {
+                XCTFail("expected .commandFailed, got \(error)")
+                return
+            }
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+    }
+
+    func testForceBypassesEvenTheResolvedUDIDLease() async throws {
+        let dir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let resolvedUDID = "HW-UDID-3"
+        RunLease.write(stateDir: dir, key: resolvedUDID, pid: getppid())
+        let spec = DeviceSpec(name: "iPhone-DeclaredIdentifier", kind: .physical,
+                              udid: "DEVICECTL-IDENTIFIER-3")
+        let fakeDevice = IOSPhysicalDeviceInfo(
+            udid: resolvedUDID, name: "iPhone 15 Pro", os: "iOS 18.5", connected: true,
+            transport: "wired", deviceCtlIdentifier: "DEVICECTL-IDENTIFIER-3")
+
+        // repoRoot が無いのでブリッジ停止は行わず、実機は「ブリッジだけ停止」で成功して返る
+        // (拒否さえ起きなければここまで到達することの確認)
+        try await DeviceBooter.shutdownOne(
+            spec: spec, platform: "ios", repoRoot: nil, force: true, leaseStateDir: dir,
+            physicalIOSDevices: [fakeDevice], log: { _ in })
+    }
 }
 
 final class DeviceBooterShutdownAllLeaseRefusalTests: XCTestCase {
@@ -101,5 +235,35 @@ final class DeviceBooterShutdownAllLeaseRefusalTests: XCTestCase {
 
         XCTAssertEqual(stopped.value, ["iPhone-Held"])
         XCTAssertEqual(outcomes.first?.succeeded, true)
+    }
+
+    // 実機 iOS の宣言値(devicectl の Identifier)では lease が引けず、解決後のハードウェア UDID
+    // でしか引けない構成。`physicalIOSDevices` を注入するので devicectl は叩かない
+    // (nil のままだと `repoRoot: nil` でも呼ばれない設計だが、注入して呼ばれ得ないことを明示する)。
+    // 戻すと落ちる根拠: shutdownAll が宣言値の鍵しか見ていなければ、この lease を見落として
+    // stopOne を呼んでしまう
+    func testResolvedUDIDOnlyLeaseIsRefusedEvenWhenDeclaredUDIDDiffers() async throws {
+        let dir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let holder = getppid()
+        let resolvedUDID = "HW-UDID-9"
+        RunLease.write(stateDir: dir, key: resolvedUDID, pid: holder)
+
+        let profile = MachineProfile(ios: MachineDeviceList(devices: [
+            DeviceSpec(name: "iPhone-Declared", kind: .physical, udid: "DEVICECTL-IDENTIFIER-9"),
+        ]))
+        let fakeDevice = IOSPhysicalDeviceInfo(
+            udid: resolvedUDID, name: "iPhone 15 Pro", os: "iOS 18.5", connected: true,
+            transport: "wired", deviceCtlIdentifier: "DEVICECTL-IDENTIFIER-9")
+        let stopped = LockedBox([String]())
+        let outcomes = await DeviceBooter.shutdownAll(
+            machine: profile, repoRoot: nil, leaseStateDir: dir,
+            physicalIOSDevices: [fakeDevice], log: { _ in },
+            stopOne: { spec, _ in stopped.mutate { $0.append(spec.name) } })
+
+        XCTAssertTrue(stopped.value.isEmpty, "解決後 UDID の lease を見落として stopOne を呼んではいけない")
+        XCTAssertEqual(outcomes.first?.succeeded, false)
+        XCTAssertTrue(outcomes.first?.failure?.contains("iPhone-Declared") ?? false)
+        XCTAssertTrue(outcomes.first?.failure?.contains("\(holder)") ?? false)
     }
 }

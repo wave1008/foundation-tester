@@ -5,6 +5,7 @@
 // **停止する前に**弾く。
 
 import XCTest
+import FTBridgeClient
 import FTCore
 @testable import FTAndroid
 
@@ -95,5 +96,85 @@ final class DeviceWiperTests: XCTestCase {
         XCTAssertEqual(commands[1],
                        ["xcrun", "simctl", "spawn", "UDID-1", "defaults", "write", "-g",
                         "AppleLocale", "-string", "ja_JP"])
+    }
+
+    // MARK: - Android の run-lease 判定(消す前に他人の run を殺さない。docs/remote-runner.md
+    // §18.7 規律④)。simctl/adb/実エミュレータには触れず、一時ディレクトリの RunLease.write で
+    // 偽の保持者を作って確かめる(DeviceBooterStopRefusalTests と同じ作法)。
+
+    private func makeStateDir() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    }
+
+    // 戻すと落ちる根拠: 変更前は Android 経路が DeviceBooter.stopRefusal を1度も通らず、
+    // lease 保持中でも待たずに wipe が進んでいた(AndroidDataWiper.wipeOne まで到達し、
+    // このテストでは avdDirectoryNotFound で「拒否ではない別の理由」で失敗してしまう)。
+    func testAndroidWipeRefusesWhileALeaseIsHeld() async {
+        let dir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let holder = getppid()  // 生きた別プロセスと同じ形(生存確認だけが要件)
+        RunLease.write(stateDir: dir, key: "emulator-5554", pid: holder)
+        let spec = DeviceSpec(name: "エミュ1", avd: "Pixel_8")
+
+        do {
+            try await DeviceWiper.wipeOne(
+                spec: spec, platform: "android", repoRoot: nil,
+                leaseStateDir: dir, androidLeaseKey: { "emulator-5554" }, log: { _ in })
+            XCTFail("lease 保持中は拒否されるはず")
+        } catch let error as DeviceBooterError {
+            guard case .commandFailed(let message) = error else {
+                XCTFail("expected .commandFailed, got \(error)")
+                return
+            }
+            XCTAssertTrue(message.contains("エミュ1"), "台名を名指しする")
+            XCTAssertTrue(message.contains("\(holder)"), "保持者 pid を名指しする")
+            XCTAssertTrue(message.contains("--force"), "押し切る手段を添える")
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+    }
+
+    // --force は「押し切って AndroidDataWiper.wipeOne まで進む」ことで確かめる。実 AVD が無いので
+    // そこは avdDirectoryNotFound で失敗するが、それは拒否ではなく「先へ進んだ」証拠になる。
+    func testAndroidWipeForceBypassesTheLeaseRefusal() async {
+        let dir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        RunLease.write(stateDir: dir, key: "emulator-5554", pid: getppid())
+        let spec = DeviceSpec(name: "エミュ1", avd: "Pixel_8_nonexistent_\(UUID().uuidString)")
+
+        do {
+            try await DeviceWiper.wipeOne(
+                spec: spec, platform: "android", repoRoot: nil, force: true,
+                leaseStateDir: dir, androidLeaseKey: { "emulator-5554" }, log: { _ in })
+            XCTFail("実在しない AVD なので avdDirectoryNotFound で失敗するはず")
+        } catch let error as AndroidDataWiperError {
+            guard case .avdDirectoryNotFound = error else {
+                XCTFail("unexpected AndroidDataWiperError: \(error)")
+                return
+            }
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+    }
+
+    // 保持者が居なければ(force 無しでも)拒否されず先へ進む
+    func testAndroidWipeProceedsWhenNoLeaseIsHeld() async {
+        let dir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let spec = DeviceSpec(name: "エミュ1", avd: "Pixel_8_nonexistent_\(UUID().uuidString)")
+
+        do {
+            try await DeviceWiper.wipeOne(
+                spec: spec, platform: "android", repoRoot: nil,
+                leaseStateDir: dir, androidLeaseKey: { "emulator-5554" }, log: { _ in })
+            XCTFail("実在しない AVD なので avdDirectoryNotFound で失敗するはず")
+        } catch let error as AndroidDataWiperError {
+            guard case .avdDirectoryNotFound = error else {
+                XCTFail("unexpected AndroidDataWiperError: \(error)")
+                return
+            }
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
     }
 }
