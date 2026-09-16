@@ -3,6 +3,7 @@
 import { vscode } from './vscodeApi.js';
 import { machineProfiles, findMachine } from './machineProfilesTab.js';
 import { t } from '../i18n.js';
+import { paintMachineBadge } from './machineColors.js';
 
 // 選択は「編集対象」であり、「テスト実行」タブの実行プロファイル選択(fleetest.profile)とは独立。
 // 自動保存(確定ボタンは無い): チェック/選択は change で即、テキストは change(= blur か Enter で
@@ -366,6 +367,7 @@ function renderRunProfileDevices() {
       const badge = document.createElement('span');
       badge.className = 'badge badge-remote';
       badge.textContent = machine;
+      paintMachineBadge(badge, machine);
       row.appendChild(badge);
     }
     if (missing) {

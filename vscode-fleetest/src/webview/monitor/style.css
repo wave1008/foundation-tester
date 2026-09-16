@@ -1193,15 +1193,18 @@ button.profile-jump-link:hover:not(:disabled) {
 }
 
 /* リモートのデバイス(マシンプロファイルの一覧行)。行の右端へ寄せる。
-   薄いグレー地に黒字(2026-08-17 指示)。**テーマ変数を使わない** —— 前景と背景の
-   組み合わせを固定したいので、ここだけはリテラル色にする(ダークテーマでも
-   薄いグレー地に黒字のまま。他のバッジは意味ごとの色を持つので変数のまま) */
+   既定は薄いグレー地に黒字(2026-08-17 指示)。**テーマ変数を使わない** —— 前景と背景の
+   組み合わせを固定したいので、ここだけはリテラル色にする。**背景は machineColors.js が
+   マシンごとに(remoteConfig の machineColors[]・hosts[].color から)インラインで上書きする**
+   —— ここに書いているのは色パレット未設定/未受信のときの既定だけ。文字色は上書きしない
+   (パレットは全て黒字が読めるパステルという前提。machineColors.js 冒頭のコメント参照) */
 .badge-remote {
   flex: 0 0 auto;
   /* 名前ピルのすぐ右に置く(margin-left: auto で行の右端へ飛ばすと、名前との間が
      行幅ぶん空いて「どのデバイスの札か」が読み取りにくい。2026-08-17 指示)。
      間隔は .machine-device-name-line の gap(6px)に任せる */
-  background-color: #d4d4d4;
+  --badge-remote-bg: #d4d4d4;
+  background-color: var(--badge-remote-bg);
   color: #1f1f1f;
   font-weight: 600;
 }
@@ -2270,6 +2273,63 @@ input[type="search"]::placeholder {
 }
 .settings-remote-hosts-machine .settings-remote-hosts-input {
   min-width: 0;
+}
+/* バッジ色の列。見出しの幅まで縮め、スウォッチを中央に置く */
+.settings-remote-hosts-table th.settings-remote-hosts-color,
+.settings-remote-hosts-table td.settings-remote-hosts-color {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+}
+/* バッジ色ボタン = テスト実行タブのバッジのプレビュー(見た目は .badge .badge-remote)。
+   グローバルな button の枠・余白・ホバー色を打ち消す —— button:hover の背景は
+   .badge-remote より詳細度が高く、未設定の行がホバーで別の色に化ける */
+button.settings-remote-hosts-color-swatch {
+  font-size: 11px;
+  padding: 1px 6px;
+  border: none;
+  border-radius: 10px;
+  line-height: normal;
+  vertical-align: middle;
+}
+button.settings-remote-hosts-color-swatch:hover:not(:disabled) {
+  background-color: var(--badge-remote-bg);
+  filter: brightness(0.92);
+}
+button.settings-remote-hosts-color-swatch:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+/* パレットのグリッド(スウォッチ押下で開く)。body 直下に1個だけ作り position:fixed で
+   ボタンの直下に出す(settingsTab.js の openColorPicker)。 */
+.settings-remote-hosts-color-popover {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  grid-template-columns: repeat(6, 20px);
+  gap: 4px;
+  padding: 6px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.4));
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+/* display:grid は UA の [hidden]{display:none} に勝つ。消すとパレットが閉じなくなる */
+.settings-remote-hosts-color-popover[hidden] {
+  display: none;
+}
+.settings-remote-hosts-color-option {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  padding: 0;
+  cursor: pointer;
+}
+/* 現在の色のスウォッチを枠線で強調する */
+.settings-remote-hosts-color-option-selected {
+  outline: 2px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: 1px;
 }
 /* FM の入力欄は .settings-number(「直近 N 件までの履歴を使用する」と同じ)。
    .settings-remote-hosts-input(width:100% / min-width:90px)は当てない —— 当てると

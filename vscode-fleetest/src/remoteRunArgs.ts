@@ -25,6 +25,9 @@ export interface RemoteHostEntry {
   /// FM 並列枠。**0 = 未設定**(dir の "" に相当。CLI 側の契約はファイル冒頭)。
   /// 機械によっては FM を2並列以上で呼ぶと壊れるため機械ごとに絞る(docs/remote-runner.md §19)
   readonly fmConcurrency?: number;
+  /** バッジ色パレットの鍵(machineColors[] の key)。**""  = 未設定**(dir/fmConcurrency と同じ
+   * 「常にキーがあり空は未設定」の契約)。パレットの定義自体は持たない(CLI 側)。 */
+  readonly color?: string;
 }
 
 /** マシンプロファイルタブ「デバイス候補のマシン」(§13 段2)。machine は登録簿のマシン名
@@ -90,7 +93,8 @@ export function normalizeRemoteHosts(raw: unknown): RemoteHostEntry[] {
     // その欄だけの編集が「変更なし」と判定されて CLI へ届かなくなる(打った値が消える)
     const fm = record.fmConcurrency;
     const fmConcurrency = typeof fm === "number" && fm > 0 ? fm : 0;
-    result.push({ machine, host, dir, fmConcurrency });
+    const color = typeof record.color === "string" ? record.color : "";
+    result.push({ machine, host, dir, fmConcurrency, color });
   }
   return result;
 }
@@ -139,6 +143,44 @@ export function parseDefaultFMConcurrency(json: unknown): number | undefined {
   return typeof value === "number" && value > 0 ? value : undefined;
 }
 
+/** バッジ色パレットの1色(`fleetest api remote-machines` の `machineColors[]`)。表示順は配列順。 */
+export interface MachineColor {
+  readonly key: string;
+  readonly color: string;
+}
+
+const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * `fleetest api remote-machines` の `machineColors`(パレットの定義そのもの。**拡張は定数を
+ * 持たない** —— FM 枠の既定値と同じ規律)。配列でなければ undefined(**古い CLI では欠落しうる**。
+ * 呼び出し側は色機能を黙って無効にする=ボタンを disabled にし、バッジは既定色のままにする)。
+ * key/color が非空文字列でない要素・color が `#rrggbb` 形式でない要素は捨てる
+ * (webview の `style.backgroundColor` へそのまま入れるためここで検証する)。
+ */
+export function parseMachineColors(json: unknown): MachineColor[] | undefined {
+  if (typeof json !== "object" || json === null) {
+    return undefined;
+  }
+  const raw = (json as Record<string, unknown>).machineColors;
+  if (!Array.isArray(raw)) {
+    return undefined;
+  }
+  const result: MachineColor[] = [];
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) {
+      continue;
+    }
+    const record = item as Record<string, unknown>;
+    const key = typeof record.key === "string" ? record.key : "";
+    const color = typeof record.color === "string" ? record.color : "";
+    if (key.length > 0 && HEX_COLOR_PATTERN.test(color)) {
+      result.push({ key, color });
+    }
+  }
+  return result;
+}
+
 export function parseRemoteHostsResponse(json: unknown): RemoteHostEntry[] | undefined {
   if (typeof json !== "object" || json === null) {
     return undefined;
@@ -173,7 +215,8 @@ export function diffRemoteHostsForSync(
     // 判定されて CLI へ届かず、直後に届く remoteConfig が入力を古い値へ戻す
     // (= 打った値が消える)。欄を足したらここも足す
     return !prev || prev.host !== h.host || prev.dir !== h.dir
-      || (prev.fmConcurrency ?? 0) !== (h.fmConcurrency ?? 0);
+      || (prev.fmConcurrency ?? 0) !== (h.fmConcurrency ?? 0)
+      || (prev.color ?? "") !== (h.color ?? "");
   });
   return { removedNames, upserts };
 }
@@ -183,6 +226,8 @@ export function diffRemoteHostsForSync(
 export interface RemoteHostsSideFields {
   readonly defaultFMConcurrency?: number;
   readonly local?: LocalMachineEntry;
+  /** バッジ色パレット(表示順 = 配列順)。古い CLI からの応答では undefined。 */
+  readonly machineColors?: readonly MachineColor[];
 }
 
 /**
@@ -201,5 +246,6 @@ export function mergeRemoteHostsSideFields(
   return {
     defaultFMConcurrency: result.defaultFMConcurrency ?? previous.defaultFMConcurrency,
     local: result.local ?? previous.local,
+    machineColors: result.machineColors ?? previous.machineColors,
   };
 }

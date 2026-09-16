@@ -10,6 +10,7 @@ import {
   diffRemoteHostsForSync,
   mergeRemoteHostsSideFields,
   normalizeRemoteHosts,
+  parseMachineColors,
   parseRemoteHostsResponse,
 } from "../src/remoteRunArgs";
 
@@ -29,35 +30,35 @@ test("normalizeRemoteHosts: 配列でない/不正要素は除去", () => {
 test("normalizeRemoteHosts: machine 空なら host のホスト部を流用", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "", host: "user@mac-01", dir: "" }]),
-    [{ machine: "mac-01", host: "user@mac-01", dir: "", fmConcurrency: 0 }],
+    [{ machine: "mac-01", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "" }],
   );
 });
 
 test("normalizeRemoteHosts: host 空でも machine があれば残す(壊れた登録として設定タブにそのまま出す)", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "broken", host: "", dir: "" }]),
-    [{ machine: "broken", host: "", dir: "", fmConcurrency: 0 }],
+    [{ machine: "broken", host: "", dir: "", fmConcurrency: 0, color: "" }],
   );
 });
 
 test("normalizeRemoteHosts: 型不正フィールドは空文字扱い(dir/host が string でない)", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "x", host: 123, dir: null }]),
-    [{ machine: "x", host: "", dir: "", fmConcurrency: 0 }],
+    [{ machine: "x", host: "", dir: "", fmConcurrency: 0, color: "" }],
   );
 });
 
 test("normalizeRemoteHosts: machine は CLI 契約どおり保持する(§13 のキャッシュ)", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "mac-02", host: "mac-02", dir: "" }]),
-    [{ machine: "mac-02", host: "mac-02", dir: "", fmConcurrency: 0 }],
+    [{ machine: "mac-02", host: "mac-02", dir: "", fmConcurrency: 0, color: "" }],
   );
 });
 
 test("parseRemoteHostsResponse: {hosts:[…]} を正規化して返す", () => {
   assert.deepEqual(
     parseRemoteHostsResponse({ hosts: [{ machine: "mac-01", host: "user@mac-01", dir: "" }] }),
-    [{ machine: "mac-01", host: "user@mac-01", dir: "", fmConcurrency: 0 }],
+    [{ machine: "mac-01", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "" }],
   );
 });
 
@@ -127,11 +128,11 @@ test("deviceCommandArgs: remote は apiArgs を変更しない(呼び出し側�
 test("normalizeRemoteHosts: 旧キー name も読む(machine が優先)", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ name: "M1Ultra", host: "user@mac-01", dir: "" }]),
-    [{ machine: "M1Ultra", host: "user@mac-01", dir: "", fmConcurrency: 0 }],
+    [{ machine: "M1Ultra", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "" }],
   );
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "new", name: "old", host: "h", dir: "" }]),
-    [{ machine: "new", host: "h", dir: "", fmConcurrency: 0 }],
+    [{ machine: "new", host: "h", dir: "", fmConcurrency: 0, color: "" }],
   );
 });
 
@@ -175,4 +176,65 @@ test("mergeRemoteHostsSideFields: 応答の欄で更新し、無い欄は据え�
   const failed = mergeRemoteHostsSideFields(previous, {});
   assert.equal(failed.local.fmConcurrency, 0);
   assert.equal(failed.defaultFMConcurrency, 5);
+});
+
+// ---- バッジ色パレット(machineColors[])。パレットの定義自体は CLI が持つ(拡張は定数を持たない) ----
+
+// normalizeRemoteHosts が color を落とすと、diff の previous 側が常に未設定になり、色だけの
+// 編集が「変更なし」と判定されて CLI へ届かない(fmConcurrency で実際に踏んだのと同じ型)
+test("normalizeRemoteHosts: color を読み、欠落は空文字(未設定)", () => {
+  const [withColor] = normalizeRemoteHosts([{ machine: "M1Ultra", host: "user@h", dir: "", color: "rose" }]);
+  assert.equal(withColor.color, "rose");
+  const [unset] = normalizeRemoteHosts([{ machine: "M1Max", host: "user@h", dir: "" }]);
+  assert.equal(unset.color, "", "未設定は空文字");
+  const [nonString] = normalizeRemoteHosts([{ machine: "M1Max", host: "user@h", dir: "", color: 42 }]);
+  assert.equal(nonString.color, "", "非文字列は空文字扱い");
+});
+
+test("diffRemoteHostsForSync: 色だけの変更も upsert 対象", () => {
+  const previous = [{ machine: "M1Ultra", host: "user@h", dir: "", fmConcurrency: 0, color: "" }];
+  const next = [{ machine: "M1Ultra", host: "user@h", dir: "", fmConcurrency: 0, color: "rose" }];
+  const { upserts, removedNames } = diffRemoteHostsForSync(previous, next);
+  assert.equal(removedNames.length, 0);
+  assert.deepEqual(upserts.map((h) => h.color), ["rose"]);
+});
+
+test("diffRemoteHostsForSync: 色を含め何も変わっていなければ upsert しない", () => {
+  const same = [{ machine: "M1Ultra", host: "user@h", dir: "", fmConcurrency: 1, color: "sky" }];
+  assert.equal(diffRemoteHostsForSync(same, same).upserts.length, 0);
+});
+
+test("parseMachineColors: 配列を key/color で採り、不正 hex・空鍵は捨てる", () => {
+  assert.deepEqual(
+    parseMachineColors({
+      machineColors: [
+        { key: "rose", color: "#f6c1cc" },
+        { key: "sky", color: "#BCD6F5" },       // 大文字 hex も許容
+        { key: "bad-hex", color: "not-a-color" }, // 捨てる
+        { key: "", color: "#ffffff" },            // 鍵が空 → 捨てる
+        { key: "short", color: "#fff" },          // 3桁 hex は不可 → 捨てる
+        "not-an-object",
+        null,
+      ],
+    }),
+    [{ key: "rose", color: "#f6c1cc" }, { key: "sky", color: "#BCD6F5" }],
+  );
+});
+
+test("parseMachineColors: 配列でない/欠落は undefined(古い CLI は色機能を黙って無効にする)", () => {
+  assert.equal(parseMachineColors({}), undefined);
+  assert.equal(parseMachineColors({ machineColors: "not-an-array" }), undefined);
+  assert.equal(parseMachineColors(null), undefined);
+});
+
+test("mergeRemoteHostsSideFields: machineColors も応答で更新し、無ければ据え置く", () => {
+  const previous = { machineColors: [{ key: "rose", color: "#f6c1cc" }] };
+  const written = mergeRemoteHostsSideFields(previous, {
+    machineColors: [{ key: "sky", color: "#bcd6f5" }],
+  });
+  assert.deepEqual(written.machineColors, [{ key: "sky", color: "#bcd6f5" }]);
+
+  // 古い CLI・失敗応答(欄が無い)では据え置く —— 消すとパレットが不安定に消えたり戻ったりする
+  const kept = mergeRemoteHostsSideFields(previous, {});
+  assert.deepEqual(kept.machineColors, [{ key: "rose", color: "#f6c1cc" }]);
 });

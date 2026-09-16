@@ -15,7 +15,7 @@ import type {
   RecordingTreeClass,
 } from "./recordingsModel";
 import type { RecordingSessionSummary } from "./recordingsStore";
-import type { DeviceCommandSource, RemoteHostEntry } from "./remoteRunArgs";
+import type { DeviceCommandSource, MachineColor, RemoteHostEntry } from "./remoteRunArgs";
 import { isRetentionPatch, type RetentionPatch, type RetentionUsage, type RetentionValues } from "./retentionModel";
 import type { ResidentProcess } from "./residentProcesses";
 import { isRecord, type MonitorDevice, type MonitorEvent, type MonitorPlatform } from "./monitorDeviceModel";
@@ -332,6 +332,9 @@ export type MonitorToWebviewMessage =
       readonly defaultFMConcurrency?: number;
       /** この機械の固定行(消せない。FM 枠だけ編集できる)。settingsTab.js が先頭に描く */
       readonly local?: { readonly machine: "local"; readonly host: string; readonly fmConcurrency: number };
+      /** バッジ色パレット(表示順 = 配列順)。**拡張は色の一覧を持たない** —— CLI からそのまま配る。
+       *  古い CLI(欠落)では undefined = settingsTab.js/machineColors.js が色機能を黙って無効にする。 */
+      readonly machineColors?: readonly MachineColor[];
       /** 直前の setRemoteConfig(追加・削除)が CLI 側で失敗したときの理由。settingsTab.js が
        * 画面に出す。成功時・ready 直後の初回配信では undefined。 */
       readonly error?: string;
@@ -841,7 +844,8 @@ function isRemoteHostEntryLike(value: unknown): value is RemoteHostEntry {
     isRecord(value) &&
     typeof value.machine === "string" &&
     typeof value.host === "string" &&
-    typeof value.dir === "string"
+    typeof value.dir === "string" &&
+    (value.color === undefined || typeof value.color === "string")
   );
 }
 

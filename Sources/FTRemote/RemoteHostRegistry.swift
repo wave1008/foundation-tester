@@ -75,10 +75,27 @@ public enum RemoteHostRegistry {
         return .rawTarget(trimmed)
     }
 
-    /// 同名は置き換え、無ければ追加。マシン名順で安定に並べる(出力が実行のたびに揺れない)
+    /// 同名は置き換え、無ければ追加。マシン名順で安定に並べる(出力が実行のたびに揺れない)。
+    /// **色の唯一の決定点**: entry.color が nil なら既存(同名)の色を保つ・既存も無ければ
+    /// 他のマシンと重ならない色を自動割り当てする(色を省略した upsert で色が消えないように —
+    /// upsert は丸ごと置き換えなので、ここで保たないと別件の add で色が消える)。
+    /// entry.color が非 nil ならそのまま使う
     public static func upsert(_ entry: RemoteHostEntry, into entries: [RemoteHostEntry]) -> [RemoteHostEntry] {
-        var result = entries.filter { $0.machine != entry.machine }
-        result.append(entry)
+        let others = entries.filter { $0.machine != entry.machine }
+        let color: String
+        if let explicit = entry.color {
+            color = explicit
+        } else if let existing = entries.first(where: { $0.machine == entry.machine })?.color {
+            color = existing
+        } else {
+            color = MachineBadgeColor.autoAssign(usedBy: others.map(\.color))
+        }
+        let resolved = entry.color == color
+            ? entry
+            : RemoteHostEntry(machine: entry.machine, host: entry.host, dir: entry.dir,
+                              fmConcurrency: entry.fmConcurrency, color: color)
+        var result = others
+        result.append(resolved)
         return result.sorted { $0.machine < $1.machine }
     }
 

@@ -80,23 +80,27 @@ function fillAndCommit(window, input, value) {
 
 // 列の並び(monitorHtml.ts の thead と settingsTab.js の td 生成順が対)。
 // **必須のホストが先、任意のマシン名がその右**。下のテストが見出しと入力欄の両方で固定する
+// 入力欄の並び(バッジ色の列は入力欄を持たないので、列の位置とは別に持つ)
 const [HOST, MACHINE, FM, DIR] = [0, 1, 2, 3];
+// 列(見出し・td)の並び
+const [COL_HOST, COL_MACHINE, COL_COLOR, COL_FM, COL_DIR] = [0, 1, 2, 3, 4];
 
 const REMOTE_CONFIG = {
   type: "remoteConfig",
   hosts: [{ machine: "M1Max", host: "user@m1max", dir: "" }],
 };
 
-test("列の並びはホスト → マシン(任意) → 作業ベースディレクトリ", (t) => {
+test("列の並びはホスト → マシン(任意) → バッジ色 → FM → 作業ベースディレクトリ", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
   const headers = [...document.querySelectorAll(".settings-remote-hosts-table thead th")]
     .map((th) => th.textContent.trim());
-  assert.match(headers[HOST], /user@host/);
-  assert.match(headers[MACHINE], /マシン|Machine/);
-  assert.match(headers[FM], /FM/);
-  assert.match(headers[DIR], /ディレクトリ|directory/);
+  assert.match(headers[COL_HOST], /user@host/);
+  assert.match(headers[COL_MACHINE], /マシン|Machine/);
+  assert.match(headers[COL_COLOR], /バッジ色|Badge color/);
+  assert.match(headers[COL_FM], /FM/);
+  assert.match(headers[COL_DIR], /ディレクトリ|directory/);
 
   // 入力欄の並びも見出しと同じであること(td の生成順がズレると値が別の列に入る)
   post(window, REMOTE_CONFIG);
@@ -165,7 +169,7 @@ test("マシン名を空のまま確定すると、host のホスト部が machi
   const message = JSON.parse(JSON.stringify(posted.filter((m) => m.type === "setRemoteConfig").at(-1)));
   const added = message.hosts.find((h) => h.host === "user@m1ultra.local");
   assert.deepEqual(added,
-    { machine: "m1ultra.local", host: "user@m1ultra.local", dir: "", fmConcurrency: 0 });
+    { machine: "m1ultra.local", host: "user@m1ultra.local", dir: "", fmConcurrency: 0, color: "" });
   assert.ok(isMonitorFromWebviewMessage(message), "拡張側のゲートを通る");
 });
 
@@ -297,7 +301,7 @@ test("列幅のクラスが見出し・可変行・固定行の3箇所に付い�
     local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0 } });
 
   // 幅は CSS が列ごとのクラスで決める。**見出しとセルの両方に要る**(片方だけだと効かない)
-  const widthClass = [[HOST, "host"], [MACHINE, "machine"], [FM, "fm"], [DIR, "dir"]];
+  const widthClass = [[COL_HOST, "host"], [COL_MACHINE, "machine"], [COL_COLOR, "color"], [COL_FM, "fm"], [COL_DIR, "dir"]];
   const th = [...document.querySelectorAll(".settings-remote-hosts-table thead th")];
   for (const [col, name] of widthClass) {
     assert.ok(th[col].classList.contains(`settings-remote-hosts-${name}`), `見出し(${name})`);
@@ -463,10 +467,11 @@ test("列の並びが見出し・可変行・固定行で一致する", (t) => {
 
   const headers = [...document.querySelectorAll(".settings-remote-hosts-table thead th")]
     .map((th) => th.textContent.trim());
-  assert.match(headers[HOST], /user@host/);
-  assert.match(headers[MACHINE], /マシン|Machine/);
-  assert.match(headers[FM], /FM/);
-  assert.match(headers[DIR], /ディレクトリ|directory/);
+  assert.match(headers[COL_HOST], /user@host/);
+  assert.match(headers[COL_MACHINE], /マシン|Machine/);
+  assert.match(headers[COL_COLOR], /バッジ色|Badge color/);
+  assert.match(headers[COL_FM], /FM/);
+  assert.match(headers[COL_DIR], /ディレクトリ|directory/);
 
   const rows = document.querySelectorAll("#settings-remote-hosts-body tr");
   const fixed = [...rows[0].querySelectorAll("input")].map((i) => i.value);
@@ -524,4 +529,185 @@ test("未設定の FM 並列枠に既定値と同じ数字を打てば明示値�
   fillAndCommit(window, fm, "5");
   const sent = posted.filter((m) => m.type === "setRemoteConfig").at(-1);
   assert.equal(sent.hosts.find((h) => h.machine === "local").fmConcurrency, 5);
+});
+
+// ---- バッジ色スウォッチ(パレットの定義は CLI 側 machineColors[]。片方だけ変えると
+// パレット未受信の判定が壊れる) --------------------------------------------------------
+
+const PALETTE = [{ key: "rose", color: "#f6c1cc" }, { key: "sky", color: "#bcd6f5" }];
+
+function colorCell(row) {
+  return row.querySelector("td.settings-remote-hosts-color");
+}
+
+test("パレット未受信(古い CLI)の間はスウォッチが disabled で、固定行のバッジ色セルは空", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig",
+    hosts: [{ machine: "M1Ultra", host: "user@m1u", dir: "" }],
+    local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0 } });
+
+  const rows = document.querySelectorAll("#settings-remote-hosts-body tr");
+  const swatch = colorCell(rows[1]).querySelector(".settings-remote-hosts-color-swatch");
+  assert.ok(swatch, "スウォッチのボタン自体は常に描かれる");
+  assert.equal(swatch.disabled, true, "パレット未受信では押せない");
+  assert.equal(swatch.tagName, "BUTTON");
+
+  const localColor = colorCell(rows[0]);
+  assert.ok(localColor, "固定行も列数を揃えるためにバッジ色のセルを持つ");
+  assert.equal(localColor.children.length, 0, "固定行は色を選べない");
+  assert.equal(rows[0].children.length, rows[1].children.length, "固定行と可変行の列数が揃う");
+});
+
+test("パレット受信で行のスウォッチが有効になり、行の色を反映する", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig",
+    hosts: [{ machine: "M1Ultra", host: "user@m1u", dir: "", color: "rose" }],
+    machineColors: PALETTE });
+
+  const swatch = document.querySelector("#settings-remote-hosts-body tr .settings-remote-hosts-color-swatch");
+  assert.equal(swatch.disabled, false, "パレット受信済みなら押せる");
+  assert.notEqual(swatch.style.backgroundColor, "", "行の色がスウォッチ自身に出る");
+});
+
+test("スウォッチを押すとパレットのグリッドが開き、選択すると setRemoteConfig に色が乗って閉じる", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((m) => posted.push(m));
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig",
+    hosts: [{ machine: "M1Ultra", host: "user@m1u", dir: "" }],
+    machineColors: PALETTE });
+
+  const swatch = document.querySelector("#settings-remote-hosts-body tr .settings-remote-hosts-color-swatch");
+  click(window, swatch);
+  const popover = document.querySelector(".settings-remote-hosts-color-popover");
+  assert.ok(popover && !popover.hidden, "ポップオーバーが開く");
+  const options = [...popover.querySelectorAll(".settings-remote-hosts-color-option")];
+  assert.equal(options.length, PALETTE.length, "パレットの全色が並ぶ");
+  assert.equal(options[0].title, "rose", "title は鍵そのもの(色名の辞書は持たない)");
+
+  click(window, options[1]); // sky
+  assert.equal(popover.hidden, true, "選択すると閉じる");
+
+  const sent = posted.filter((m) => m.type === "setRemoteConfig").at(-1);
+  assert.equal(sent.hosts.find((h) => h.machine === "M1Ultra").color, "sky");
+});
+
+test("現在の色のスウォッチには選択中の枠が付く", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig",
+    hosts: [{ machine: "M1Ultra", host: "user@m1u", dir: "", color: "sky" }],
+    machineColors: PALETTE });
+
+  click(window, document.querySelector(".settings-remote-hosts-color-swatch"));
+  const selected = document.querySelector(".settings-remote-hosts-color-option-selected");
+  assert.ok(selected, "選択中の枠がある");
+  assert.equal(selected.title, "sky");
+});
+
+test("Escape でポップオーバーが閉じる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig",
+    hosts: [{ machine: "M1Ultra", host: "user@m1u", dir: "" }], machineColors: PALETTE });
+  click(window, document.querySelector(".settings-remote-hosts-color-swatch"));
+  assert.equal(document.querySelector(".settings-remote-hosts-color-popover").hidden, false);
+
+  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  assert.equal(document.querySelector(".settings-remote-hosts-color-popover").hidden, true);
+});
+
+test("外側をクリックするとポップオーバーが閉じる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig",
+    hosts: [{ machine: "M1Ultra", host: "user@m1u", dir: "" }], machineColors: PALETTE });
+  click(window, document.querySelector(".settings-remote-hosts-color-swatch"));
+  assert.equal(document.querySelector(".settings-remote-hosts-color-popover").hidden, false);
+
+  document.body.dispatchEvent(new window.Event("pointerdown", { bubbles: true }));
+  assert.equal(document.querySelector(".settings-remote-hosts-color-popover").hidden, true);
+});
+
+// 未確定行(「追加」直後、まだ確定していない行)でも色は選べるが、確定するまで CLI へ送らない
+// (currentHostsPayload が未確定行を除外するのと同じ規律)
+test("未確定行の色は保持されるだけで、確定したときに送られる", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((m) => posted.push(m));
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig", hosts: [], machineColors: PALETTE });
+  click(window, document.getElementById("settings-remote-hosts-add"));
+  const pendingRow = document.querySelector("#settings-remote-hosts-body tr.settings-remote-hosts-row-pending");
+
+  click(window, pendingRow.querySelector(".settings-remote-hosts-color-swatch"));
+  const popover = document.querySelector(".settings-remote-hosts-color-popover");
+  click(window, popover.querySelector(".settings-remote-hosts-color-option"));
+  assert.equal(posted.filter((m) => m.type === "setRemoteConfig").length, 0, "未確定の間は送らない");
+
+  fill(window, pendingRow.querySelectorAll("input")[HOST], "user@m1ultra.local");
+  click(window, pendingRow.querySelector(".settings-remote-hosts-confirm"));
+  const sent = posted.filter((m) => m.type === "setRemoteConfig").at(-1);
+  assert.equal(sent.hosts.find((h) => h.host === "user@m1ultra.local").color, "rose");
+});
+
+// 行を作り直す(remoteConfig の再受信)たびにスウォッチのボタンも作り直されるため、開いていた
+// ポップオーバーは古い行を指したまま残ってしまう —— 描き直しの前に必ず閉じる
+test("remoteConfig を再受信すると開いていたポップオーバーが閉じる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig",
+    hosts: [{ machine: "M1Ultra", host: "user@m1u", dir: "" }], machineColors: PALETTE });
+  click(window, document.querySelector(".settings-remote-hosts-color-swatch"));
+  assert.equal(document.querySelector(".settings-remote-hosts-color-popover").hidden, false);
+
+  post(window, { type: "remoteConfig",
+    hosts: [{ machine: "M1Ultra", host: "user@m1u", dir: "" }], machineColors: PALETTE });
+  assert.equal(document.querySelector(".settings-remote-hosts-color-popover").hidden, true);
+});
+
+// jsdom の上のテストは hidden 属性しか見ないので、CSS の display が UA の [hidden] に勝って
+// 実画面でパレットが閉じない形を捕まえられない。打ち消しの規則そのものを固定する
+test("color popover: the stylesheet lets [hidden] win over its display:grid", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const css = await readFile(path.join(import.meta.dirname, "../src/webview/monitor/style.css"), "utf8");
+  assert.match(css, /\.settings-remote-hosts-color-popover\[hidden\]\s*\{\s*display:\s*none;?\s*\}/);
+});
+
+// バッジ色ボタンはテスト実行タブのバッジのプレビュー。文字は送る時点のマシン名
+// (空欄なら host から採る)で、入力に追従する
+test("バッジ色ボタンはマシン名入りのバッジとして描かれ、入力に追従する", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig", machineColors: PALETTE,
+    hosts: [{ machine: "M1Ultra", host: "user@m1u", dir: "", color: "sky" }] });
+  const row = document.querySelector("#settings-remote-hosts-body tr");
+  const swatch = colorCell(row).querySelector("button");
+  assert.ok(swatch.classList.contains("badge") && swatch.classList.contains("badge-remote"),
+    "タブのバッジと同じクラスを持つ");
+  assert.equal(swatch.textContent, "M1Ultra");
+  assert.equal(swatch.style.backgroundColor, "rgb(188, 214, 245)");
+
+  const inputs = row.querySelectorAll("input");
+  fill(window, inputs[MACHINE], "Studio");
+  assert.equal(swatch.textContent, "Studio", "マシン名の入力に追従する");
+  fill(window, inputs[MACHINE], "");
+  assert.equal(swatch.textContent, "m1u", "空欄なら host から採った名前");
+
+  click(window, document.getElementById("settings-remote-hosts-add"));
+  const pending = document.querySelectorAll("#settings-remote-hosts-body tr")[1];
+  const pendingSwatch = colorCell(pending).querySelector("button");
+  assert.match(pendingSwatch.textContent, /マシン名|machine/, "名前もホストも空なら仮の文字");
+  fill(window, pending.querySelectorAll("input")[HOST], "user@m1max.local");
+  assert.equal(pendingSwatch.textContent, "m1max.local", "ホストの入力にも追従する");
 });

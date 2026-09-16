@@ -447,6 +447,8 @@ fleetest run --project <プロジェクト> --fleet <名前> --split --junit rep
 `FM 並列枠`・`作業ベースディレクトリ` を入れて**行の「確定」**を押す(押すまで反映されない。
 `user@host` が空の間は押せない)。`マシン` 空欄 = `user@host` から `user@` を除いた部分、
 `作業ベースディレクトリ` 空欄 = `~/fleetest-runner`。
+「バッジ色」列のボタンでバッジの色をパレットから選べる(未選択なら他のマシンと重ならない色が
+自動で付く。docs/remote-runner.md §20)。
 
 **これは VSCode の設定ではなく CLI の登録簿**(`~/.config/fleetest/config.json`)を読み書きしている
 (`fleetest api remote-machines`)ので、`fleetest remote machines add` で足したものと同じ表に出る。

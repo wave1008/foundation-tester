@@ -143,6 +143,9 @@ fleetest remote machines        # check the registration
    nothing is registered until you press it.
 
 - Editing a registered row saves the change right away.
+- The button in the "Badge color" column opens a palette to choose the badge color. If you
+  do not choose one, a color not used by other machines is assigned automatically. The color is
+  used for the machine name badges in the Device Monitor.
 - The "−" at the right end of a row removes the registration (there is no confirmation).
 - If saving fails, the reason appears under the table as "Failed to save the machine registry".
 

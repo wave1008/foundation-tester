@@ -281,6 +281,7 @@ export const panelsStrings = {
   // 見出しに ssh 宛先の書式をそのまま出す(説明文を置かない代わり。ja/en 共通の文字列)
   "panels.settings.remoteHostsColHost": { ja: "user@host", en: "user@host" },
   "panels.settings.remoteHostsColDir": { ja: "作業ベースディレクトリ", en: "Base directory" },
+  "panels.settings.remoteHostsColColor": { ja: "バッジ色", en: "Badge color" },
   "panels.settings.remoteHostsColFMConcurrency": { ja: "FM 並列枠", en: "FM concurrency" },
   "panels.settings.remoteHostsAdd": { ja: "リモートホストを追加", en: "Add remote host" },
 

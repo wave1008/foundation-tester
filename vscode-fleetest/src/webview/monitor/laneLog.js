@@ -7,6 +7,7 @@ import { tiles, selectedDeviceIds, attachDeviceMirror, detachDeviceMirror } from
 import { t } from '../i18n.js';
 import { setHoverTip } from './hoverTip.js';
 import { computePreviewGrid } from './previewGridModel.js';
+import { paintMachineBadge } from './machineColors.js';
 
 // レーン id(worker id、または OVERALL_LANE_ID) -> DOM 要素・自動スクロール状態
 const lanes = new Map();
@@ -61,6 +62,7 @@ function setLaneHeader(headerEl, name, platform, machine) {
     const host = document.createElement('span');
     host.className = 'badge badge-remote lane-host';
     host.textContent = machine;
+    paintMachineBadge(host, machine);
     headerEl.appendChild(host);
   }
 }

@@ -63,7 +63,8 @@ import {
   type RemoteHostsCliDeps,
   type RemoteHostsCliOutcome,
 } from "./remoteHostsController";
-import { diffRemoteHostsForSync, mergeRemoteHostsSideFields, type RemoteHostEntry } from "./remoteRunArgs";
+import { diffRemoteHostsForSync, mergeRemoteHostsSideFields,
+  type MachineColor, type RemoteHostEntry } from "./remoteRunArgs";
 import {
   fetchRetention,
   fetchRetentionUsage,
@@ -255,6 +256,9 @@ export class MonitorPanelController implements vscode.Disposable {
   /** 未設定時の FM 枠(CLI が返す既定)。**拡張は値を持たず、読めたものをそのまま配る** */
   private lastKnownDefaultFMConcurrency: number | undefined;
   private lastKnownLocalMachine: { machine: "local"; host: string; fmConcurrency: number } | undefined;
+  /** バッジ色パレット(CLI 側の唯一の定義元)。**拡張は色の一覧を持たず、読めたものをそのまま配る**。
+   *  古い CLI では undefined のまま(webview 側が色機能を黙って無効にする)。 */
+  private lastKnownMachineColors: readonly MachineColor[] | undefined;
 
   constructor(
     private readonly workspaceRoot: string,
@@ -547,7 +551,8 @@ export class MonitorPanelController implements vscode.Disposable {
     // CLI が返した確定形(書き込めなかった行の除外・machine の実値を含む)で webview を必ず作り直す。
     this.post({ type: "remoteConfig", hosts: finalHosts, error,
                 defaultFMConcurrency: this.lastKnownDefaultFMConcurrency,
-                local: this.lastKnownLocalMachine });
+                local: this.lastKnownLocalMachine,
+                machineColors: this.lastKnownMachineColors });
   }
 
   /** CLI 応答のうち **hosts[] 以外の欄**(この機械の固定行・既定の FM 枠)を控え直す。
@@ -557,11 +562,13 @@ export class MonitorPanelController implements vscode.Disposable {
    *  応答に欄が無いときは**消さずに据え置く**(失敗応答で行ごと消さない)。 */
   private noteRemoteHostsOutcome(result: RemoteHostsCliOutcome): void {
     const merged = mergeRemoteHostsSideFields(
-      { defaultFMConcurrency: this.lastKnownDefaultFMConcurrency, local: this.lastKnownLocalMachine },
+      { defaultFMConcurrency: this.lastKnownDefaultFMConcurrency, local: this.lastKnownLocalMachine,
+        machineColors: this.lastKnownMachineColors },
       result,
     );
     this.lastKnownDefaultFMConcurrency = merged.defaultFMConcurrency;
     this.lastKnownLocalMachine = merged.local;
+    this.lastKnownMachineColors = merged.machineColors;
   }
 
   /** クリーンアップ設定の CLI 呼び出しも、リモートホスト登録簿と同じ短命ワンショット
@@ -1112,7 +1119,8 @@ export class MonitorPanelController implements vscode.Disposable {
         this.noteRemoteHostsOutcome(result);
         this.post({ type: "remoteConfig", hosts: this.lastKnownRemoteHosts,
                     defaultFMConcurrency: this.lastKnownDefaultFMConcurrency,
-                local: this.lastKnownLocalMachine });
+                local: this.lastKnownLocalMachine,
+                machineColors: this.lastKnownMachineColors });
       });
     }
     // 設定タブ「ログ・録画」のクリーンアップ欄。**保持ポリシーの正は CLI 側のマシン設定**で、拡張は既定値を

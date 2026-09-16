@@ -7,6 +7,7 @@ import { vscode } from './vscodeApi.js';
 import { clampMenuPosition } from './menu.js';
 import { t } from '../i18n.js';
 import { physicalDeviceInfo } from './physicalDeviceCache.js';
+import { paintMachineBadge } from './machineColors.js';
 
 // ---- プロファイルタブ: マシンプロファイル ---------------------------------------
 
@@ -278,6 +279,7 @@ function renderMachineProfileBody(error) {
         const remote = document.createElement('span');
         remote.className = 'badge badge-remote';
         remote.textContent = device.machine;
+        paintMachineBadge(remote, device.machine);
         nameLine.appendChild(remote);
       }
       const detail = document.createElement('div');

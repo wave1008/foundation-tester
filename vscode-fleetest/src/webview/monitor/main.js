@@ -69,6 +69,7 @@ import {
 } from './modals.js';
 import { applySettings } from './settingsTab.js';
 import { applyDevicePickMachines } from './devicePickMachine.js';
+import { applyMachineColors } from './machineColors.js';
 import { applyResidentMessage } from './processesTab.js';
 import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
 import { activateTab, currentTab, TAB_IDS, switchTab } from './tabs.js';
@@ -246,7 +247,10 @@ window.addEventListener('message', (event) => {
     // 購読する(settingsTab.js の hostRows とは別モジュールの別コピー)。この case が無いと
     // remoteConfig は default で握り潰され、設定タブのリモートホスト一覧も
     // 「既存から選択」ダイアログのホスト選択も初期化されない。
+    // **applyMachineColors を先に呼ぶ** —— settingsTab.js のスウォッチ描画(applySettings 内)が
+    // machineColorPalette()/hexForColorKey() を読むため、パレットを先に更新しておく必要がある。
     case 'remoteConfig':
+      applyMachineColors(message);
       applySettings(message);
       applyDevicePickMachines(message);
       break;

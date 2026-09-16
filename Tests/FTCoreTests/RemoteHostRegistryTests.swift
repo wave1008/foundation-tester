@@ -100,17 +100,47 @@ final class RemoteHostRegistryTests: XCTestCase {
 
     // MARK: - upsert
 
+    /// 色を省略した新規エントリは自動割り当てされる(他に誰もいなければパレット先頭)
     func testUpsertAddsNewEntry() {
         let result = RemoteHostRegistry.upsert(
             RemoteHostEntry(machine: "M1Ultra", host: "a@host"), into: [])
-        XCTAssertEqual(result, [RemoteHostEntry(machine: "M1Ultra", host: "a@host")])
+        XCTAssertEqual(result, [RemoteHostEntry(machine: "M1Ultra", host: "a@host", color: "gray")])
     }
 
+    /// 色を省略した置き換えは既存(色未設定)の代わりに新規割り当てが起きる
+    /// (置き換え対象が色を持っていなかったので保つものが無い)
     func testUpsertReplacesSameName() {
         let existing = [RemoteHostEntry(machine: "M1Ultra", host: "old@host", dir: "~/old")]
         let result = RemoteHostRegistry.upsert(
             RemoteHostEntry(machine: "M1Ultra", host: "new@host", dir: "~/new"), into: existing)
-        XCTAssertEqual(result, [RemoteHostEntry(machine: "M1Ultra", host: "new@host", dir: "~/new")])
+        XCTAssertEqual(result,
+            [RemoteHostEntry(machine: "M1Ultra", host: "new@host", dir: "~/new", color: "gray")])
+    }
+
+    // MARK: - upsert color
+
+    /// 色を省略し、既存に色があれば保つ(丸ごと置き換えで色が消えないように)
+    func testUpsertOmittedColorKeepsExistingColor() {
+        let existing = [RemoteHostEntry(machine: "M1Ultra", host: "old@host", color: "mint")]
+        let result = RemoteHostRegistry.upsert(
+            RemoteHostEntry(machine: "M1Ultra", host: "new@host"), into: existing)
+        XCTAssertEqual(result.first?.color, "mint")
+    }
+
+    /// 明示した色はそのまま使う(上書き)
+    func testUpsertExplicitColorOverrides() {
+        let existing = [RemoteHostEntry(machine: "M1Ultra", host: "old@host", color: "mint")]
+        let result = RemoteHostRegistry.upsert(
+            RemoteHostEntry(machine: "M1Ultra", host: "new@host", color: "sky"), into: existing)
+        XCTAssertEqual(result.first?.color, "sky")
+    }
+
+    /// 新規マシンには他のマシンと重ならない色が割り当たる
+    func testUpsertNewMachineAvoidsColorsUsedByOthers() {
+        let existing = [RemoteHostEntry(machine: "a", host: "a@host", color: "gray")]
+        let result = RemoteHostRegistry.upsert(
+            RemoteHostEntry(machine: "b", host: "b@host"), into: existing)
+        XCTAssertEqual(result.first { $0.machine == "b" }?.color, "rose")
     }
 
     /// 出力が実行のたびに揺れないよう、名前順で安定に並べる

@@ -1919,6 +1919,21 @@ Mac Studio M1 Ultra(Mac13,2 / macOS 26A5425a)で、occlusion guard を有効に�
 上の実測でも skip が 6 件出た(絞る前は 13 件なので改善はしている)。**`fm.skipped` で必ず
 確認すること**(docs/results-json.md)。
 
+## 20. マシンのバッジ色(`color`)
+
+モニターのマシン名バッジ(`.badge-remote`)の地色。登録簿の `RemoteHostEntry.color` に
+**パレットの鍵**(`gray` / `rose` / …)で置く。**パレットと割り当て規則の唯一の定義元は
+`FTCore.MachineBadgeColor`** —— 拡張は定数を持たず、`api remote-machines` の `machineColors` を写す。
+
+- **決まるのは `RemoteHostRegistry.upsert` の1箇所**: 色を省略した upsert は既存の色を保つ /
+  新規のマシンには**他のマシンの使用数が最も少ない色**(同数ならパレット順)を割り当てる。
+  設定タブ・`remote machines add`・`remote setup` のどの経路で足しても同じ規則になる
+- 色を選ぶ口は設定タブの「バッジ色」列のボタン(パレット)と `remote machines add --color <鍵>`。
+  未知の鍵は拒否する(`--import` / `--color`)。ファイルに未知の鍵があれば未設定として読む
+- 出力の `hosts[].color` は常にキーを出し、未設定は `""`。古い CLI(`machineColors` 欠落)では
+  拡張は色の機能を黙って無効にする
+- マシン名を変えても色はついて行く(設定タブは改名を remove + import で送り、行の色を載せる)
+
 ## 関連
 
 - CI 前提・FM の可否表: [ci.md](ci.md)

@@ -74,4 +74,43 @@ final class ApiRemoteHostsImportTests: XCTestCase {
             cleared.entry, sentKey: cleared.fmConcurrency != nil, from: existing).fmConcurrency,
                      "空欄(0)は解除")
     }
+
+    // MARK: - color
+
+    func testDecodeReadsColorKey() throws {
+        let entries = try ApiRemoteHostsCommand.decodeImportEntries(
+            #"[{"machine":"M1Max","host":"user@h","color":"mint"}]"#)
+        XCTAssertEqual(entries.first?.entry.color, "mint")
+    }
+
+    /// "" と欠落は未設定(upsert が保つ/割り当てる)
+    func testEmptyOrMissingColorIsNil() throws {
+        let entries = try ApiRemoteHostsCommand.decodeImportEntries(
+            #"[{"machine":"a","host":"h1","color":""},{"machine":"b","host":"h2"}]"#)
+        XCTAssertNil(entries[0].entry.color)
+        XCTAssertNil(entries[1].entry.color)
+    }
+
+    func testValidateColorAcceptsKnownKey() {
+        XCTAssertNoThrow(try ApiRemoteHostsCommand.validateColor("rose"))
+    }
+
+    func testValidateColorAcceptsNilAndEmpty() {
+        XCTAssertNoThrow(try ApiRemoteHostsCommand.validateColor(nil))
+        XCTAssertNoThrow(try ApiRemoteHostsCommand.validateColor(""))
+    }
+
+    /// 非空の未知色は --import 全体を拒否する
+    func testValidateColorRejectsUnknownKey() {
+        XCTAssertThrowsError(try ApiRemoteHostsCommand.validateColor("chartreuse"))
+    }
+
+    /// mergingFMConcurrency が color を作り直しで落とさない
+    func testMergingFMConcurrencyKeepsColor() throws {
+        let incoming = try XCTUnwrap(ApiRemoteHostsCommand.decodeImportEntries(
+            #"[{"machine":"M1Ultra","host":"user@h","color":"mint"}]"#).first)
+        let merged = ApiRemoteHostsCommand.mergingFMConcurrency(
+            incoming.entry, sentKey: false, from: [])
+        XCTAssertEqual(merged.color, "mint")
+    }
 }

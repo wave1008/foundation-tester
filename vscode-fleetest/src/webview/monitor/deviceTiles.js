@@ -13,6 +13,7 @@ import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
 import { setHoverTip, flashTip } from './hoverTip.js';
 import { isDragDistance, marqueeRect, idsInMarquee, mergeMarqueeSelection, rectContains, autoScrollVelocity, autoScrollStep } from './marqueeModel.js';
+import { paintMachineBadge } from './machineColors.js';
 
 // bridgeWatch(拡張ホストの自動修復ウォッチドッグ、契約は main.js の 'bridgeWatch' ケース参照)の
 // phase→footer表示。'ok'はここに含めず通常表示へフォールバックさせる。
@@ -684,8 +685,10 @@ function renderMeta(entry) {
   if (entry.device.machine) {
     entry.remoteBadgeEl.textContent = entry.device.machine;
     entry.remoteBadgeEl.style.display = 'inline-block';
+    paintMachineBadge(entry.remoteBadgeEl, entry.device.machine);
   } else {
     entry.remoteBadgeEl.style.display = 'none';
+    paintMachineBadge(entry.remoteBadgeEl, undefined);
   }
   renderUnregisteredBadge(entry);
   renderRenderBadge(entry);

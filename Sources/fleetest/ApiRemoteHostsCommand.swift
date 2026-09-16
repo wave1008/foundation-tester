@@ -42,6 +42,7 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
                     config.fmConcurrency = (raw.fmConcurrency ?? 0) > 0 ? raw.fmConcurrency : nil
                     continue
                 }
+                try Self.validateColor(raw.color)
                 let entry = raw.entry
                 try RemoteHostRegistry.validateName(entry.machine)
                 _ = try RemoteHostSpec.parse(entry.host)
@@ -73,7 +74,17 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
         guard !sentKey else { return entry }
         let kept = existing.first { $0.machine == entry.machine }?.fmConcurrency
         return RemoteHostEntry(machine: entry.machine, host: entry.host,
-                               dir: entry.dir, fmConcurrency: kept)
+                               dir: entry.dir, fmConcurrency: kept, color: entry.color)
+    }
+
+    /// 非空で未知の色は `--import` 全体を拒否する(既知の鍵一覧をメッセージに出す)。
+    /// "" と欠落(nil)は通す(upsert が保つ/割り当てる)
+    static func validateColor(_ raw: String?) throws {
+        guard let raw, !raw.isEmpty else { return }
+        guard MachineBadgeColor.isKnown(raw) else {
+            let known = MachineBadgeColor.palette.map(\.key).joined(separator: ", ")
+            throw ValidationError("unknown machine badge color \"\(raw)\" (known: \(known))")
+        }
     }
 
     static func decodeImport(_ json: String) throws -> [RemoteHostEntry] {
@@ -101,7 +112,8 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
             hosts: entries.map(ApiRemoteHostEntry.init),
             defaultFMConcurrency: FMLock.defaultConcurrency,
             local: ApiLocalEntry(host: "\(NSUserName())@localhost",
-                                 fmConcurrency: config.fmConcurrency ?? 0))
+                                 fmConcurrency: config.fmConcurrency ?? 0),
+            machineColors: MachineBadgeColor.palette.map { ApiMachineColor(key: $0.key, color: $0.hex) })
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(output), let line = String(data: data, encoding: .utf8) else { return }
@@ -123,13 +135,17 @@ struct ApiRemoteHostImportEntry: Decodable {
     /// 0 を「解除」として扱う必要があり、キーごと無い場合(他のクライアント)は既存値を保つ。
     /// nil = キーが無い / 0 以下 = 解除 / 正の値 = その枠数
     let fmConcurrency: Int?
+    /// バッジ色の鍵。"" と欠落は未設定(upsert が保つ/割り当てる)。非空の未知鍵は
+    /// `validateColor` が --import 全体を拒否するので、ここに来る時点で既知か未設定
+    let color: String?
 
     var entry: RemoteHostEntry {
         let given = (machine ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let resolved = given.isEmpty ? RemoteHostRegistry.defaultMachine(forHost: host) : given
         return RemoteHostEntry(machine: resolved, host: host,
                                dir: dir.flatMap { $0.isEmpty ? nil : $0 },
-                               fmConcurrency: fmConcurrency.flatMap { $0 > 0 ? $0 : nil })
+                               fmConcurrency: fmConcurrency.flatMap { $0 > 0 ? $0 : nil },
+                               color: color.flatMap { $0.isEmpty ? nil : $0 })
     }
 }
 
@@ -142,12 +158,15 @@ private struct ApiRemoteHostEntry: Encodable {
     /// dir と同じ流儀で**常にキーを出す**。未設定は 0(dir の "" に相当) —— 設定タブが
     /// 空欄として描けるようにするため。null は使わない(ファイル冒頭の契約)
     let fmConcurrency: Int
+    /// dir と同じ流儀で常にキーを出す。未設定は ""(パレットに無い鍵は decode 時点で nil に落ちる)
+    let color: String
 
     init(_ entry: RemoteHostEntry) {
         machine = entry.machine
         host = entry.host
         dir = entry.dir ?? ""
         fmConcurrency = entry.fmConcurrency ?? 0
+        color = entry.color ?? ""
     }
 }
 
@@ -160,6 +179,14 @@ private struct ApiRemoteHostsOutput: Encodable {
     /// "local" は予約名で、値は `LocalConfig.fmConcurrency` に置く。
     /// host は表示用に組み立てた文字列で、ssh には使わない
     let local: ApiLocalEntry
+    /// バッジ色パレット(パレット順)。**拡張はパレットを持たない**
+    /// (定数の二重管理を避ける。唯一の定義元は MachineBadgeColor)
+    let machineColors: [ApiMachineColor]
+}
+
+private struct ApiMachineColor: Encodable {
+    let key: String
+    let color: String
 }
 
 /// 設定タブの固定行。編集できるのは fmConcurrency だけ(host/machine は表示専用)

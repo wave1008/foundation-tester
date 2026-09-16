@@ -20,15 +20,20 @@ public struct RemoteHostEntry: Codable, Equatable, Sendable {
     /// **機械によっては 2 並列以上で FM が壊れる**(実測と経緯は docs/remote-runner.md)。
     /// ディスパッチが `FT_FM_CONCURRENCY` として運ぶ(FTRemote/RemoteDispatch.remoteRunCommand)
     public let fmConcurrency: Int?
+    /// 設定タブのバッジ色(`MachineBadgeColor.palette` の鍵)。**唯一の決定点は
+    /// `RemoteHostRegistry.upsert`**(新規は自動割り当て・省略は既存を保つ)
+    public let color: String?
 
-    public init(machine: String, host: String, dir: String? = nil, fmConcurrency: Int? = nil) {
+    public init(machine: String, host: String, dir: String? = nil, fmConcurrency: Int? = nil,
+                color: String? = nil) {
         self.machine = machine
         self.host = host
         self.dir = dir
         self.fmConcurrency = fmConcurrency
+        self.color = color
     }
 
-    private enum CodingKeys: String, CodingKey { case machine, name, host, dir, fmConcurrency }
+    private enum CodingKeys: String, CodingKey { case machine, name, host, dir, fmConcurrency, color }
 
     /// 読みは machine > 旧 name、書きは machine だけ(改名の互換はこの1箇所)
     public init(from decoder: Decoder) throws {
@@ -44,6 +49,9 @@ public struct RemoteHostEntry: Codable, Equatable, Sendable {
         // —— この欄は性能・安定性の調整であって、実行の可否を決める設定ではない
         let slots = try container.decodeIfPresent(Int.self, forKey: .fmConcurrency)
         fmConcurrency = (slots ?? 0) > 0 ? slots : nil
+        // パレットに無い鍵・空文字は nil へ倒す(壊れた設定で止めない。fmConcurrency と同じ方針)
+        let rawColor = try container.decodeIfPresent(String.self, forKey: .color)
+        color = (rawColor.map { !$0.isEmpty && MachineBadgeColor.isKnown($0) } ?? false) ? rawColor : nil
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -52,5 +60,6 @@ public struct RemoteHostEntry: Codable, Equatable, Sendable {
         try container.encode(host, forKey: .host)
         try container.encodeIfPresent(dir, forKey: .dir)
         try container.encodeIfPresent(fmConcurrency, forKey: .fmConcurrency)
+        try container.encodeIfPresent(color, forKey: .color)
     }
 }

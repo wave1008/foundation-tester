@@ -15,8 +15,8 @@
 import type * as vscode from "vscode";
 import type { FleetestConfig } from "./config";
 import { type PipeProcess, runOneShot } from "./oneShotCli";
-import { parseDefaultFMConcurrency, parseLocalMachine, parseRemoteHostsResponse,
-  type LocalMachineEntry, type RemoteHostEntry } from "./remoteRunArgs";
+import { parseDefaultFMConcurrency, parseLocalMachine, parseMachineColors, parseRemoteHostsResponse,
+  type LocalMachineEntry, type MachineColor, type RemoteHostEntry } from "./remoteRunArgs";
 
 export interface RemoteHostsCliDeps {
   readonly workspaceRoot: string;
@@ -34,6 +34,8 @@ export interface RemoteHostsCliOutcome {
   readonly defaultFMConcurrency?: number;
   /** この機械の固定行(設定タブが消せない行として出す) */
   readonly local?: LocalMachineEntry;
+  /** バッジ色パレット(古い CLI では undefined。GUI は色機能を黙って無効にする) */
+  readonly machineColors?: MachineColor[];
 }
 
 async function runRemoteHostsCli(deps: RemoteHostsCliDeps, args: readonly string[]): Promise<RemoteHostsCliOutcome> {
@@ -56,11 +58,12 @@ async function runRemoteHostsCli(deps: RemoteHostsCliDeps, args: readonly string
   const hosts = parseRemoteHostsResponse(result.json);
   const defaultFMConcurrency = parseDefaultFMConcurrency(result.json);
   const local = parseLocalMachine(result.json);
+  const machineColors = parseMachineColors(result.json);
   if (hosts === undefined) {
     deps.outputChannel.appendLine(`[remote-machines] ${args.join(" ")}: unexpected output shape`);
     return { error: "unexpected output shape" };
   }
-  return { hosts, defaultFMConcurrency, local };
+  return { hosts, defaultFMConcurrency, local, machineColors };
 }
 
 /** `fleetest api remote-machines` で登録簿全体を読む。失敗時は error(呼び出し側でログ済み)。 */

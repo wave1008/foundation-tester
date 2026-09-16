@@ -10,6 +10,7 @@
 
 import { vscode, persistedState } from './vscodeApi.js';
 import { formatDateTime, t } from '../i18n.js';
+import { paintMachineBadge } from './machineColors.js';
 
 const listView = document.getElementById('recordings-list-view');
 const playerView = document.getElementById('recordings-player-view');
@@ -146,6 +147,7 @@ function machineBadge(machine) {
   badge.className = 'badge badge-remote';
   badge.textContent = machine;
   badge.title = t('recordings.meta.machineTitle');
+  paintMachineBadge(badge, machine);
   return badge;
 }
 

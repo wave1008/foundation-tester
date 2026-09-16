@@ -827,6 +827,7 @@ function renderSettingsPanel(): string {
             <tr>
               <th class="settings-remote-hosts-host">${t("panels.settings.remoteHostsColHost")}</th>
               <th class="settings-remote-hosts-machine">${t("panels.settings.remoteHostsColMachine")}</th>
+              <th class="settings-remote-hosts-color">${t("panels.settings.remoteHostsColColor")}</th>
               <th class="settings-remote-hosts-fm">${t("panels.settings.remoteHostsColFMConcurrency")}</th>
             <th class="settings-remote-hosts-dir">${t("panels.settings.remoteHostsColDir")}</th>
               <th></th>

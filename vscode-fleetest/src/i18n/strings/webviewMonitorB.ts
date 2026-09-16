@@ -213,6 +213,10 @@ export const webviewMonitorBStrings = {
     ja: "マシン登録簿への反映に失敗しました: {reason}",
     en: "Failed to save the machine registry: {reason}",
   },
+  // バッジ色スウォッチ(パレットの定義は CLI 側 machineColors[]。古い CLI では未受信のため disabled)
+  "wvMonitor2.remote.colorTitle": { ja: "バッジの色を選ぶ", en: "Choose badge color" },
+  // バッジ色ボタン(バッジのプレビュー)の文字。マシン名もホストもまだ空の行でだけ出す
+  "wvMonitor2.remote.colorPreviewEmpty": { ja: "マシン名", en: "machine" },
 
   // 設定タブ「ログ・録画」のクリーンアップ欄の動的表示(settingsTab.js)。値の正は CLI 側のマシン設定で、
   // 使用量も掃除の結果も CLI が返したバイト数を写すだけ({size} は "870.2 GB" の形)。

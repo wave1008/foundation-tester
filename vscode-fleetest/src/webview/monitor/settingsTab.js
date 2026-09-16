@@ -10,6 +10,7 @@
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
 import { defaultMachineForHost } from '../../remoteRunArgs';
+import { hexForColorKey, machineColorPalette } from './machineColors.js';
 import {
   RETENTION_FIELDS,
   RETENTION_SWEEP_KEY,
@@ -79,7 +80,8 @@ languageSelect.addEventListener('change', () => {
 // 同じ既定を持つが、拡張は差分計算(diffRemoteHosts)を machine で行うため、送る時点で
 // 埋めておく)。入力欄には「これになる」名前をウォーターマークで出す。
 const remoteHostsError = document.getElementById('settings-remote-hosts-error');
-let hostRows = []; // { id, tr, machineInput, hostInput, dirInput, fmInput, confirmed, confirmButton }
+let hostRows = []; // { id, tr, machineInput, hostInput, dirInput, fmInput, confirmed, confirmButton,
+                    //   color, colorSwatch }
 let nextRowId = 0;
 // 未設定時の FM 枠。**CLI が返す値をそのまま使う**(拡張は定数を持たない —— 二重管理にすると
 // 片方だけ変わったときにウォーターマークが嘘になる)。未受信のうちは空欄のまま
@@ -109,9 +111,13 @@ function renderLocalRow(tbody, local) {
     td.appendChild(input);
     tr.appendChild(td);
   };
-  // **列の並びは可変行と揃える**(user@host → マシン → FM 並列枠 → 作業ベースディレクトリ)
+  // **列の並びは可変行と揃える**(user@host → マシン → バッジ色 → FM 並列枠 → 作業ベースディレクトリ)
   fixedCell(local.host, 'settings-remote-hosts-host');
   fixedCell(local.machine, 'settings-remote-hosts-machine');
+  // この機械にはリモートのバッジが出ないので色は持たない(空のセルで列数だけ揃える)
+  const colorTd = document.createElement('td');
+  colorTd.className = 'settings-remote-hosts-color';
+  tr.appendChild(colorTd);
   const fmTd = document.createElement('td');
   fmTd.className = 'settings-remote-hosts-fm';
   const input = makeFMConcurrencyInput(local.fmConcurrency);
@@ -189,6 +195,7 @@ function currentHostsPayload() {
       return {
         machine: machine || defaultMachineForHost(host), host, dir: row.dirInput.value.trim(),
         fmConcurrency: fmConcurrencyValue(row.fmInput),
+        color: row.color || '',
       };
     }));
 }
@@ -212,6 +219,9 @@ function removeHostRow(id) {
   }
   const [row] = hostRows.splice(index, 1);
   row.tr.remove();
+  if (colorPopoverRow === row) {
+    closeColorPopover();
+  }
   // 未確定行はまだ CLI へ送っていないので、消すだけで同期は要らない。
   if (row.confirmed) {
     onHostsChanged();
@@ -228,6 +238,109 @@ function rowIsFillable(row) {
 function updateMachinePlaceholder(row) {
   const derived = defaultMachineForHost(row.hostInput.value);
   row.machineInput.placeholder = derived || t('wvMonitor2.remote.machinePlaceholder');
+}
+
+// ---- バッジ色スウォッチ(パレットの定義は machineColors.js 経由で CLI が持つ) --------------
+// ポップオーバーは body 直下に1個だけ作り、開くたびに中身を作り直す(行ごとに持たない)。
+let colorPopover;
+let colorPopoverRow;
+
+/** ボタンはテスト実行タブのバッジ(.badge .badge-remote)のプレビュー。文字は送る時点で決まる
+ *  マシン名(currentHostsPayload と同じ規則: 空欄なら host から採る)。 */
+function updateSwatchLabel(row) {
+  const machine = row.machineInput.value.trim() || defaultMachineForHost(row.hostInput.value);
+  row.colorSwatch.textContent = machine || t('wvMonitor2.remote.colorPreviewEmpty');
+}
+
+/** 行のスウォッチボタン自身の色を、row.color(パレットの鍵)から塗り直す。未設定・未知の鍵は
+ *  既定(CSS 側のグレー)のまま。 */
+function paintSwatch(row) {
+  const hex = row.color ? hexForColorKey(row.color) : undefined;
+  if (hex) {
+    row.colorSwatch.style.backgroundColor = hex;
+  } else {
+    row.colorSwatch.style.removeProperty('background-color');
+  }
+}
+
+function closeColorPopover() {
+  if (colorPopover) {
+    colorPopover.hidden = true;
+  }
+  colorPopoverRow = undefined;
+}
+
+function ensureColorPopover() {
+  if (colorPopover) {
+    return colorPopover;
+  }
+  colorPopover = document.createElement('div');
+  colorPopover.className = 'settings-remote-hosts-color-popover';
+  colorPopover.hidden = true;
+  document.body.appendChild(colorPopover);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeColorPopover();
+    }
+  });
+  // ポップオーバーの外側(スウォッチボタン自身を除く)のクリックで閉じる。タブ切替も
+  // 「外側のクリック」の一種なのでここで一緒に拾える。
+  document.addEventListener('pointerdown', (event) => {
+    if (colorPopover.hidden) {
+      return;
+    }
+    if (colorPopover.contains(event.target)) {
+      return;
+    }
+    if (colorPopoverRow && colorPopoverRow.colorSwatch === event.target) {
+      return;
+    }
+    closeColorPopover();
+  });
+  window.addEventListener('scroll', () => closeColorPopover(), true);
+  return colorPopover;
+}
+
+function selectColor(row, key) {
+  row.color = key;
+  paintSwatch(row);
+  closeColorPopover();
+  if (row.confirmed) {
+    onHostsChanged();
+  }
+}
+
+/** row のスウォッチボタンの直下にパレットのグリッドを開く。パレットが空(古い CLI)なら
+ *  ボタン自体が disabled なのでここは呼ばれない。 */
+function openColorPicker(row) {
+  const palette = machineColorPalette();
+  if (palette.length === 0) {
+    return;
+  }
+  const popover = ensureColorPopover();
+  popover.textContent = '';
+  for (const entry of palette) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'settings-remote-hosts-color-option';
+    option.style.backgroundColor = entry.color;
+    // 色名の辞書は持たない(パレットの二重管理を避ける) —— title は鍵そのもの
+    option.title = entry.key;
+    option.setAttribute('aria-label', entry.key);
+    if (entry.key === row.color) {
+      option.classList.add('settings-remote-hosts-color-option-selected');
+    }
+    option.addEventListener('click', () => selectColor(row, entry.key));
+    popover.appendChild(option);
+  }
+  popover.hidden = false;
+  const rect = row.colorSwatch.getBoundingClientRect();
+  // 画面右端・下端からのはみ出しを補正する
+  const maxLeft = Math.max(8, window.innerWidth - popover.offsetWidth - 8);
+  const maxTop = Math.max(8, window.innerHeight - popover.offsetHeight - 8);
+  popover.style.left = `${Math.min(rect.left, maxLeft)}px`;
+  popover.style.top = `${Math.min(rect.bottom + 4, maxTop)}px`;
+  colorPopoverRow = row;
 }
 
 function confirmHostRow(id) {
@@ -277,10 +390,28 @@ function addHostRow(host, confirmed) {
     return input;
   };
 
-  // **列の並び = makeTextCell を呼ぶ順**(td を順に append する)。ホスト → マシン → ディレクトリ。
+  // **列の並び = td を append する順**。ホスト → マシン → バッジ色 → FM → ディレクトリ。
   // 必須の host を先に置き、任意のマシン名をその右に置く(見出しは monitorHtml.ts と対)
   row.hostInput = makeTextCell(host ? host.host : '', 'user@host', 'settings-remote-hosts-host');
+  row.color = host ? (host.color || '') : '';
   row.machineInput = makeTextCell(host ? host.machine : '', '', 'settings-remote-hosts-machine');
+  // バッジ色(マシン名の右の列。見出しは monitorHtml.ts と対)
+  const colorTd = document.createElement('td');
+  colorTd.className = 'settings-remote-hosts-color';
+  const swatchButton = document.createElement('button');
+  swatchButton.type = 'button';
+  swatchButton.className = 'badge badge-remote settings-remote-hosts-color-swatch';
+  swatchButton.title = t('wvMonitor2.remote.colorTitle');
+  swatchButton.setAttribute('aria-label', t('wvMonitor2.remote.colorTitle'));
+  // パレット未受信(古い CLI)の間は色機能を黙って無効にする
+  swatchButton.disabled = machineColorPalette().length === 0;
+  swatchButton.addEventListener('click', () => openColorPicker(row));
+  row.colorSwatch = swatchButton;
+  paintSwatch(row);
+  updateSwatchLabel(row);
+  row.machineInput.addEventListener('input', () => updateSwatchLabel(row));
+  colorTd.appendChild(swatchButton);
+  tr.appendChild(colorTd);
   // FM 並列枠。**空欄 = 未設定**(ランナー側の既定に任せる)。0 を送ると CLI 側が解除として扱う。
   // 機械によっては FM を2並列以上で呼ぶと壊れるため機械ごとに絞れる(docs/remote-runner.md §19)
   const fmTd = document.createElement('td');
@@ -291,7 +422,10 @@ function addHostRow(host, confirmed) {
   tr.appendChild(fmTd);
   row.dirInput = makeTextCell(host ? host.dir : '', '~/fleetest-runner', 'settings-remote-hosts-dir');
   // ホストを打つたびにマシン名のウォーターマークを追従させる(何になるかを先に見せる)
-  row.hostInput.addEventListener('input', () => updateMachinePlaceholder(row));
+  row.hostInput.addEventListener('input', () => {
+    updateMachinePlaceholder(row);
+    updateSwatchLabel(row);
+  });
   updateMachinePlaceholder(row);
 
   const actionsTd = document.createElement('td');
@@ -335,6 +469,9 @@ function applyRemoteConfig(message) {
   if (typeof message.defaultFMConcurrency === 'number' && message.defaultFMConcurrency > 0) {
     defaultFMConcurrency = message.defaultFMConcurrency;
   }
+  // 行を作り直すとスウォッチのボタン要素も作り直されるため、開いていたポップオーバーは
+  // 古い行を指したまま残ってしまう —— 描き直しの前に必ず閉じる
+  closeColorPopover();
   const pending = hostRows.filter((row) => !row.confirmed);
   for (const row of hostRows) {
     if (row.confirmed) {
