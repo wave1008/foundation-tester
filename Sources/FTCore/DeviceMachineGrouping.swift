@@ -1,12 +1,9 @@
-// マシンプロファイルのデバイスを「どの機械に居るか」で解決・分類する純粋ロジック。
+// 実行プロファイルのデバイスを「どの機械に居るか」で分類する純粋ロジック。
 // **一意なのは name 単体ではなく (machine, name)** —— フリートの各機は同じ命名規則で
 // シミュレータを作るため、別マシンの同名は例外ではなく通常。
 //
 // 用語(docs/remote-runner.md §0): machine = 登録簿のマシン名(この Mac だけのエイリアス)。
 // ホスト名 / IP は host で、この型は一切扱わない。
-//
-// 実行プロファイルの参照(RunDeviceRef)は name だけでも書けるが、同名が複数のマシンに居るときは
-// **候補を挙げて中止する**(片方を黙って選ばない = 別の機械のデバイスを操作しない)。
 // マシン名の正規化(nil・""・"local" → nil)は MachineDispatch.normalize が唯一の定義元。
 
 import Foundation
@@ -43,8 +40,7 @@ public enum DeviceMachineGrouping {
         return "\(platform):\(machine)/\(name)"
     }
 
-    /// マシンプロファイル1件ぶんのデバイス。spec.machine には**実効マシン**(デバイス指定 →
-    /// マシンプロファイルの既定 → ローカル、を正規化した値)が入っている
+    /// 台帳1件ぶんのデバイス。spec.machine には**実効マシン**(正規化済み。nil = 手元)が入っている
     public struct CatalogEntry: Equatable, Sendable {
         public let platform: String
         public let spec: DeviceSpec
@@ -58,23 +54,23 @@ public enum DeviceMachineGrouping {
         public var name: String { spec.name }
     }
 
-    /// デバイスの実効マシン。デバイス指定 > マシンプロファイルの既定 > ローカル(nil)。
-    /// **デバイス側の "local" は「手元」の明示指定で、プロファイル既定より強い** —— normalize は
-    /// "local" を nil に畳むので、素の `normalize(device.machine) ?? normalize(profileMachine)` だと
-    /// 未指定と区別が付かず既定(リモート)へ落ちる。空文字は未指定として既定へ落とす
-    public static func effectiveMachine(device: DeviceSpec, profileMachine: String?) -> String? {
-        if MachineDispatch.isExplicitLocal(device.machine) { return nil }
-        return MachineDispatch.normalize(device.machine) ?? MachineDispatch.normalize(profileMachine)
+    /// 実行プロファイルの devices を平坦化する(記述順。実効マシンを spec.machine へ焼き込むので、
+    /// これ以降は spec.machine だけ見ればよい)。enabledOnly = 実行対象(enabled != false)だけ
+    public static func entries(runDevices: [RunDeviceEntry], enabledOnly: Bool) -> [CatalogEntry] {
+        runDevices.filter { !enabledOnly || $0.isEnabled }.map { device in
+            var resolved = device.spec
+            resolved.machine = MachineDispatch.normalize(device.spec.machine)
+            return CatalogEntry(platform: device.platform, spec: resolved)
+        }
     }
 
-    /// マシンプロファイルを ios → android の順に平坦化する(実効マシンを spec.machine へ書き戻すので、
-    /// これ以降は spec.machine だけ見ればよい)
-    public static func entries(machine: MachineProfile) -> [CatalogEntry] {
+    /// メモリ上の台帳を ios → android の順に平坦化する(spec.machine は正規化して焼き込む)
+    public static func entries(roster: DeviceRoster) -> [CatalogEntry] {
         var result: [CatalogEntry] = []
-        for (platform, list) in [("ios", machine.ios), ("android", machine.android)] {
+        for (platform, list) in [("ios", roster.ios), ("android", roster.android)] {
             for spec in list?.devices ?? [] {
                 var resolved = spec
-                resolved.machine = effectiveMachine(device: spec, profileMachine: machine.machine)
+                resolved.machine = MachineDispatch.normalize(spec.machine)
                 result.append(CatalogEntry(platform: platform, spec: resolved))
             }
         }
@@ -92,30 +88,6 @@ public enum DeviceMachineGrouping {
             }
         }
         return nil
-    }
-
-    public enum Resolution: Equatable {
-        case found(CatalogEntry)
-        /// このマシンプロファイルに無い(従来どおり警告してスキップする)
-        case missing
-        /// 同名が複数のマシンに居て、参照が machine を書いていない。候補は表示名(ローカルは "local")
-        case ambiguous(machines: [String])
-    }
-
-    /// 実行プロファイルの参照1件を解決する。ref.machine を書いていればそのマシンのものだけを見る
-    public static func resolve(_ ref: RunDeviceRef, in entries: [CatalogEntry]) -> Resolution {
-        let byName = entries.filter { $0.name == ref.name }
-        guard !byName.isEmpty else { return .missing }
-
-        if let wanted = MachineDispatch.normalize(ref.machine) {
-            return byName.first { $0.machine == wanted }.map { .found($0) } ?? .missing
-        }
-        // ref が "local" を明示していれば、ローカルのものだけを見る(未指定とは区別する)
-        if MachineDispatch.isExplicitLocal(ref.machine) {
-            return byName.first { $0.machine == nil }.map { .found($0) } ?? .missing
-        }
-        if byName.count == 1 { return .found(byName[0]) }
-        return .ambiguous(machines: byName.map { display($0.machine) })
     }
 
     /// 解決済みデバイスをマシンごとに束ねる。**順序は最初に現れたマシン順**(実行の割り当てと

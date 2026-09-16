@@ -54,7 +54,7 @@ function makeDeps(binaryPath) {
     outputChannel: { appendLine() {} },
     post: (message) => posts.push(message),
     writeMonitorControl: () => {},
-    notifyMachineProfilesChanged: () => {},
+    notifyProjectDeviceCatalogChanged: () => {},
     stopDeviceStreams: (name) => stopDeviceStreamsCalls.push(name),
     stopAllStreams: () => stopAllStreamsCalls.push(true),
   };
@@ -400,7 +400,7 @@ test("同じ台に別の操作が載っている間は wipe を積まない(戻�
 });
 
 // --- 別の機械のデバイスの単体操作 ---------------------------------------------------------
-// 実害の形(2026-08-17 のレビュー): `api start-device --name X` は**手元の**マシンプロファイルを
+// 実害の形(2026-08-17 のレビュー): `api start-device --name X` は**手元の**登録を
 // 名前だけで引く(ApiDeviceOperation.findDevice)。同名の台が別の機械にも居るのは通常なので、
 // リモートのタイルから起動すると**別の機械の設定でこの Mac にシミュレータが1台できる**
 // (simctl は無ければ作る)。一括起動が RemoteDeviceFanout で分散するのと同じ規律に揃える。
@@ -823,7 +823,7 @@ test("NDJSON を出さずに落ちたら stderr の理由をバナーへ出す",
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-deviceops-nondjson-"));
   const binaryPath = path.join(dir, "fleetest");
   fs.writeFileSync(binaryPath,
-    "#!/bin/sh\nprintf '%s\\n' '→ resolving' 'machine profile not found: local+remote' >&2\nexit 1\n");
+    "#!/bin/sh\nprintf '%s\\n' '→ resolving' 'run profile not found: local+remote' >&2\nexit 1\n");
   fs.chmodSync(binaryPath, 0o755);
   const { deps, posts } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
@@ -832,7 +832,7 @@ test("NDJSON を出さずに落ちたら stderr の理由をバナーへ出す",
     await waitUntilIdle(deviceOps);
     const failed = posts.filter((m) => m.type === "deviceOpFailed").at(-1);
     assert.ok(failed, "deviceOpFailed が送られる");
-    assert.equal(failed.message, "machine profile not found: local+remote", "stderr の最後の実質行");
+    assert.equal(failed.message, "run profile not found: local+remote", "stderr の最後の実質行");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

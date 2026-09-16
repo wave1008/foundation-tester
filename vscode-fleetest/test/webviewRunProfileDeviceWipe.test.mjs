@@ -1,6 +1,6 @@
-// webviewMachineDeviceWipe.test.mjs
-// マシンプロファイルのデバイス行右クリック「Wipe Data」(machineProfilesTab.js)の DOM テスト。
-// 実 HTML+実バンドルで動かす方式は webviewMachineDeviceMachineScope.test.mjs と同じ。
+// webviewRunProfileDeviceWipe.test.mjs
+// 実行プロファイル節のデバイス行右クリック「Wipe Data」(runProfileDevicesTab.js)の DOM テスト。
+// 実 HTML+実バンドルで動かす方式は webviewRunProfileDeviceMachineScope.test.mjs と同じ。
 //
 // 守りたいのは3つ: ①**実機の行には出さない**(端末を初期化する操作は持たない。1台でも実機が
 // 混ざる選択でも出さない —— 一部だけ実行すると何が消えたのか分からなくなる)
@@ -60,28 +60,44 @@ function createWebview(onPost = () => {}) {
 }
 
 // 仮想デバイス2台(手元/M1Max。同名)+ 実機1台。
-const MACHINE = {
-  name: "M1",
-  devices: [
-    { name: "エミュ1", platform: "android", detail: "Pixel 8", avd: "Pixel_8_LOCAL" },
-    { name: "エミュ1", platform: "android", machine: "M1Max", detail: "Pixel 8", avd: "Pixel_8_M1MAX" },
-    { name: "iPhone実機", platform: "ios", kind: "physical", detail: "iPhone 16", udid: "UDID-PHYS" },
-    // avd 未設定 = 撃つ宛先が無い(そもそも wipe できない)
-    { name: "エミュ(avd未設定)", platform: "android", detail: "Pixel 3a" },
-    { name: "シミュ1", platform: "ios", detail: "iPhone 17 Pro", udid: "UDID-SIM1" },
-  ],
+const DEVICES = [
+  { platform: "android", name: "エミュ1", avd: "Pixel_8_LOCAL", enabled: true },
+  { platform: "android", name: "エミュ1", machine: "M1Max", avd: "Pixel_8_M1MAX", enabled: true },
+  { platform: "ios", name: "iPhone実機", kind: "physical", udid: "UDID-PHYS", enabled: true },
+  // avd 未設定 = 撃つ宛先が無い(そもそも wipe できない)
+  { platform: "android", name: "エミュ(avd未設定)", enabled: true },
+  { platform: "ios", name: "シミュ1", udid: "UDID-SIM1", enabled: true },
+];
+
+const PROFILE_INFO = {
+  type: "profileInfo",
+  projects: ["P"], profiles: ["all"], current: "all", filter: "all", apps: [],
+  project: "P", projectDir: "TestProjects/P",
+  devices: DEVICES.map((d) => ({ ...d, detail: "d" })),
 };
 
-function postMachine(window, machine) {
-  window.dispatchEvent(
-    new window.MessageEvent("message", {
-      data: { type: "machineProfileInfo", machines: [machine], current: machine.name, error: null },
-    }),
-  );
+function runProfileData(devices) {
+  return {
+    type: "runProfileData", profile: "all", ok: true, error: null,
+    fields: {
+      app: "", devices,
+      heal: true, textVisualCheck: true, screenLooksLike: true, ocrTextVisualCheck: true,
+      iosInappEngine: true, iosFastInput: false, iosPreActionWarmup: true, homeOnStart: true,
+      playProtectBypass: true, enableAnimations: false, containerInference: true, updateWebView: true,
+      wipeDataOnBloat: true, recoverCpuFallbackToGpu: false, record: false, recordFailuresOnly: false,
+      recordBitrateKbps: "", recordFullResolution: false, defaultTimeout: "", wipeDataThresholdGB: "",
+      locale: "", workspace: "", reportDir: "",
+    },
+  };
+}
+
+function postDevices(window) {
+  window.dispatchEvent(new window.MessageEvent("message", { data: PROFILE_INFO }));
+  window.dispatchEvent(new window.MessageEvent("message", { data: runProfileData(DEVICES) }));
 }
 
 function deviceRows(document) {
-  return [...document.querySelectorAll("#machine-device-list .machine-device-row")];
+  return [...document.querySelectorAll("#run-profile-devices .run-profile-device-row-item")];
 }
 
 function openMenuOn(window, row) {
@@ -93,14 +109,14 @@ test("仮想デバイスの行には Wipe Data を出し、その行のマシン
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
 
-  postMachine(window, MACHINE);
+  postDevices(window);
   const rows = deviceRows(document);
-  const wipeItem = document.getElementById("machine-device-menu-wipe");
+  const wipeItem = document.getElementById("run-profile-device-menu-wipe");
 
   openMenuOn(window, rows[1]);
   assert.notEqual(wipeItem.style.display, "none", "仮想デバイスの行で Wipe Data が隠れている");
   wipeItem.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  const remote = posted.filter((m) => m.type === "machineDeviceWipe").pop();
+  const remote = posted.filter((m) => m.type === "runProfileDeviceWipe").pop();
   assert.equal(remote.devices.length, 1);
   assert.equal(remote.devices[0].platform, "android");
   assert.equal(remote.devices[0].identifier, "Pixel_8_M1MAX", "その行の avd を送る(同名でも別の台)");
@@ -108,7 +124,7 @@ test("仮想デバイスの行には Wipe Data を出し、その行のマシン
 
   openMenuOn(window, rows[0]);
   wipeItem.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  const local = posted.filter((m) => m.type === "machineDeviceWipe").pop();
+  const local = posted.filter((m) => m.type === "runProfileDeviceWipe").pop();
   assert.equal(local.devices.length, 1);
   assert.equal(local.devices[0].identifier, "Pixel_8_LOCAL");
   assert.equal(local.devices[0].machine, undefined, "手元のデバイスに machine は載せない(省略=手元)");
@@ -119,11 +135,11 @@ test("iOS の行は udid を送る", (t) => {
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
 
-  postMachine(window, MACHINE);
+  postDevices(window);
   const rows = deviceRows(document);
   openMenuOn(window, rows[4]);
-  document.getElementById("machine-device-menu-wipe").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  const sent = posted.filter((m) => m.type === "machineDeviceWipe").pop();
+  document.getElementById("run-profile-device-menu-wipe").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  const sent = posted.filter((m) => m.type === "runProfileDeviceWipe").pop();
   assert.equal(sent.devices[0].platform, "ios");
   assert.equal(sent.devices[0].identifier, "UDID-SIM1");
 });
@@ -132,31 +148,31 @@ test("識別子(avd/udid)を持たない行では Wipe Data を出さない", (t
   const { window, document } = createWebview();
   t.after(() => window.close());
 
-  postMachine(window, MACHINE);
+  postDevices(window);
   const rows = deviceRows(document);
   openMenuOn(window, rows[3]);
-  assert.equal(document.getElementById("machine-device-menu-wipe").style.display, "none");
+  assert.equal(document.getElementById("run-profile-device-menu-wipe").style.display, "none");
 });
 
 test("実機の行では Wipe Data を出さない", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
-  postMachine(window, MACHINE);
+  postDevices(window);
   const rows = deviceRows(document);
   openMenuOn(window, rows[2]);
-  assert.equal(document.getElementById("machine-device-menu-wipe").style.display, "none");
+  assert.equal(document.getElementById("run-profile-device-menu-wipe").style.display, "none");
   // 「除去」は実機でも出る(登録から外すだけで端末には触らない)
-  assert.notEqual(document.getElementById("machine-device-menu-item").style.display, "none");
+  assert.notEqual(document.getElementById("run-profile-device-menu-item").style.display, "none");
 });
 
 test("実機が1台でも混ざる複数選択では Wipe Data を出さない", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
-  postMachine(window, MACHINE);
+  postDevices(window);
   const rows = deviceRows(document);
-  const wipeItem = document.getElementById("machine-device-menu-wipe");
+  const wipeItem = document.getElementById("run-profile-device-menu-wipe");
 
   // 仮想2台だけの複数選択では出る
   rows[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));

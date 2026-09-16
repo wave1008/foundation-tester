@@ -2,7 +2,7 @@
   "name": "vscode-fleetest",
   "displayName": "fleetest mobile",
   "description": "%fleetest.extension.description%",
-  "version": "0.0.923",
+  "version": "0.0.924",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -431,10 +431,6 @@
       {
         "fileMatch": "**/TestProjects/*/profiles/apps/*.json",
         "url": "./schemas/app-profile.schema.json"
-      },
-      {
-        "fileMatch": "**/TestProjects/*/profiles/machines/*.json",
-        "url": "./schemas/machine-profile.schema.json"
       }
     ]
   },

@@ -1,9 +1,14 @@
-// machineProfiles/findMachine(machineProfilesTab.js の状態)はここでは読み取り専用。
+// runProfilesTab.js
+// 「プロファイル」タブの実行プロファイル節(選択/追加/コピー/削除/名前変更・設定フォーム)を担う。
+// デバイス一覧(チェックボックス・右ペイン編集・右クリックメニュー)は runProfileDevicesTab.js に
+// 分離してある(**この 2 ファイルは互いに import しない**。片方向依存 = このファイルが
+// runProfileDevicesTab.js を読むだけ。相互 import が esbuild のバンドル評価順を崩す実害は
+// physicalDeviceCache.js 冒頭コメント参照)。selectedRunProfile はここでは読み取り専用で
+// modals.js から参照される。
 
 import { vscode } from './vscodeApi.js';
-import { machineProfiles, findMachine } from './machineProfilesTab.js';
 import { t } from '../i18n.js';
-import { paintMachineBadge } from './machineColors.js';
+import { clearDeviceRows, currentDeviceEntries, renderDeviceRows } from './runProfileDevicesTab.js';
 
 // 選択は「編集対象」であり、「テスト実行」タブの実行プロファイル選択(fleetest.profile)とは独立。
 // 自動保存(確定ボタンは無い): チェック/選択は change で即、テキストは change(= blur か Enter で
@@ -13,7 +18,8 @@ import { paintMachineBadge } from './machineColors.js';
 //   途切れる)。送信中に確定した変更は runProfileSaveQueued に積み、結果の到着後にもう1回送る
 //   (並行に2本送らない = 後の保存が先に着いて古い値で上書きされる順序逆転を作らない)。
 // - 選択変更(明示操作)と Esc は未保存の編集を破棄して再ロード。
-// - profileInfo/machineProfileInfo 再受信時: 編集中なら保持、未編集なら再ロード(消失時はcurrent→先頭)。
+// - profileInfo 再受信時: 編集中なら保持、未編集なら再ロード(消失時はcurrent→先頭。devices の
+//   変化 = プロジェクトのデバイスカタログの変化もこの再ロードで拾う)。
 // - runProfileFileChanged(外部編集・自分の保存の反響)は同名 && 未編集のときのみ再ロード。
 
 const runProfileSelect = document.getElementById('run-profile-select');
@@ -24,9 +30,7 @@ const btnRunProfileRemove = document.getElementById('btn-run-profile-remove');
 const btnRunProfileRename = document.getElementById('btn-run-profile-rename');
 const runProfilePlaceholder = document.getElementById('run-profile-placeholder');
 const runProfileEditor = document.getElementById('run-profile-editor');
-const runProfileMachine = document.getElementById('run-profile-machine');
 const runProfileApp = document.getElementById('run-profile-app');
-const runProfileDevices = document.getElementById('run-profile-devices');
 const runProfileHeal = document.getElementById('run-profile-heal');
 const runProfileTextVisualCheck = document.getElementById('run-profile-text-visual-check');
 const runProfileScreenLooksLike = document.getElementById('run-profile-screen-looks-like');
@@ -63,13 +67,10 @@ const runProfileTextInputs = [
 // 直近受信の一覧(profileInfo 由来)。
 let runProfileNames = [];
 let runProfileApps = [];
-// 編集対象の実行プロファイル名(一覧が0件なら null)。
-let selectedRunProfile = null;
-// 直近ロード(runProfileData ok:true)時点の20フィールド値。null の間はフォーム非表示。
+// 編集対象の実行プロファイル名(一覧が0件なら null)。modals.js が読み取り専用で参照する。
+export let selectedRunProfile = null;
+// 直近ロード(runProfileData ok:true)時点のフィールド値。null の間はフォーム非表示。
 let runProfileOriginalFields = null;
-// 現在チェック済みのデバイス参照 { name, machine }(表示順。チェックボックス操作・machine 切替の
-// 引き継ぎの正)。**一意なのは (machine, name)** なので名前だけでは持てない
-let runProfileCheckedRefs = [];
 let runProfileDirty = false;
 let runProfileSubmitting = false;
 // 送信中(runProfileSubmitting)の保存要求が送った値。成功したらこれが新しい runProfileOriginalFields。
@@ -92,20 +93,33 @@ function showRunProfilePlaceholder(text) {
   runProfileEditor.style.display = 'none';
   runProfilePlaceholder.style.display = '';
   runProfilePlaceholder.textContent = text;
+  clearDeviceRows();
   setRunProfileDirty(false);
 }
 
-function requestRunProfileLoad() {
+/**
+ * silent=true: 同じプロファイルの背景更新(devices カタログが**他の**実行プロファイルの編集で
+ * 変わったときの profileInfo 再送等)。プレースホルダへ差し替えない —— 差し替えると
+ * runProfileDevicesTab.js の選択・編集ペインが全消去され、無関係な編集のたびにデバイス編集中の
+ * 画面が点滅して選択も失われる(2026-09-16 の実害)。応答(runProfileData)は
+ * applyRunProfileData の「値が同じなら作り直さない」判定に委ねる。
+ * silent=false(既定): プロファイル切替・新規作成・Esc破棄等、**別の状態を表示する**遷移。
+ * 応答が来るまでプレースホルダで編集をブロックする(レース防止。ローカル読みなので一瞬で置き換わる)。
+ */
+function requestRunProfileLoad(silent) {
   if (!selectedRunProfile) {
     showRunProfilePlaceholder(t('wvMonitor2.runProfile.none'));
     return;
   }
-  // 応答(runProfileData)が来るまで編集させない(レース防止。ローカル読みなので一瞬で置き換わる)。
-  showRunProfilePlaceholder(t('wvMonitor2.common.loading'));
+  if (!silent) {
+    showRunProfilePlaceholder(t('wvMonitor2.common.loading'));
+  }
   vscode.postMessage({ type: 'runProfileLoad', profile: selectedRunProfile });
 }
 
 // profileInfo 受信(applyProfileInfo と独立)。選択の維持/フォールバックと再ロードを行う。
+// devices(プロジェクトのデバイスカタログ)は main.js が applyProjectDeviceCatalog を先に
+// 呼んでから applyRunProfileInfo を呼ぶので、ここでの再ロードは常に最新のカタログを反映する。
 export function applyRunProfileInfo(message) {
   runProfileNames = Array.isArray(message.profiles) ? message.profiles : [];
   // apps は後方互換(古いホストからは届かない)のため配列でなければ空扱い。
@@ -136,9 +150,11 @@ export function applyRunProfileInfo(message) {
     requestRunProfileLoad();
     return;
   }
-  // 未編集なら再ロードして最新化(apps一覧の変化もここで反映される)。
+  // 未編集なら再ロードして最新化(apps一覧・デバイスカタログの変化もここで反映される)。
+  // **silent** —— 同じプロファイルのままの背景更新でプレースホルダへ差し替えない
+  // (デバイス編集フォームの選択・入力中の内容を消さないため)。
   if (selectedRunProfile !== null && !runProfileEditing()) {
-    requestRunProfileLoad();
+    requestRunProfileLoad(true);
   } else if (selectedRunProfile === null) {
     showRunProfilePlaceholder(t('wvMonitor2.runProfile.none'));
   }
@@ -195,13 +211,6 @@ export function applyRunProfileSelected(message) {
   requestRunProfileLoad();
 }
 
-// main.js の machineProfileInfo 受信時に呼ばれる。未編集ならマシン/デバイス一覧の変化を反映して再描画。
-export function rerenderRunProfileFormIfClean() {
-  if (runProfileOriginalFields !== null && !runProfileEditing()) {
-    renderRunProfileEditor(runProfileOriginalFields);
-  }
-}
-
 // 選択変更直後に届く「前の選択」への応答を無視するガード(profile一致チェック)。
 export function applyRunProfileData(message) {
   if (message.profile !== selectedRunProfile) {
@@ -224,7 +233,7 @@ export function applyRunProfileData(message) {
   renderRunProfileEditor(message.fields);
 }
 
-// ロード済みの20フィールド値でフォームを作り直す(編集途中の値は破棄する)。
+// ロード済みのフィールド値でフォームを作り直す(編集途中の値は破棄する)。
 function renderRunProfileEditor(fields) {
   runProfileOriginalFields = fields;
   runProfileSubmitting = false;
@@ -232,10 +241,8 @@ function renderRunProfileEditor(fields) {
   runProfileSaveQueued = false;
   runProfileError.textContent = '';
 
-  renderRunProfileMachineSelect(fields.machine);
   renderRunProfileAppSelect(fields.app);
-  runProfileCheckedRefs = fields.devices.map((d) => ({ name: d.name, machine: d.machine }));
-  renderRunProfileDevices();
+  renderDeviceRows(fields.devices);
   runProfileHeal.checked = fields.heal;
   runProfileTextVisualCheck.checked = fields.textVisualCheck;
   runProfileScreenLooksLike.checked = fields.screenLooksLike;
@@ -267,32 +274,6 @@ function renderRunProfileEditor(fields) {
   setRunProfileDirty(false);
 }
 
-// 選択肢=machineProfilesの名前。未指定("")/一覧に無い値は「(未指定)」を先頭に、非空の未知値は
-// オプション補完で表示する(unknownOptionパターン、deviceTiles.applyProfileInfoと同じ)。
-function renderRunProfileMachineSelect(value) {
-  runProfileMachine.textContent = '';
-  const names = machineProfiles.map((m) => m.name);
-  if (value === '' || !names.includes(value)) {
-    const unspecified = document.createElement('option');
-    unspecified.value = '';
-    unspecified.textContent = t('wvMonitor2.common.unspecified');
-    runProfileMachine.appendChild(unspecified);
-  }
-  for (const name of names) {
-    const option = document.createElement('option');
-    option.value = name;
-    option.textContent = name;
-    runProfileMachine.appendChild(option);
-  }
-  if (value !== '' && !names.includes(value)) {
-    const unknown = document.createElement('option');
-    unknown.value = value;
-    unknown.textContent = value;
-    runProfileMachine.appendChild(unknown);
-  }
-  runProfileMachine.value = value;
-}
-
 // 「アプリ」select。選択肢 = profileInfo.apps。現在値が一覧に無ければオプション補完する。
 function renderRunProfileAppSelect(value) {
   runProfileApp.textContent = '';
@@ -320,95 +301,6 @@ function renderRunProfileAppSelect(value) {
   runProfileApp.value = value;
 }
 
-// 選択肢=フォーム内選択中マシンのデバイス。checkedNamesにあるがマシンに無い名前は注記付きで
-// 末尾表示(チェックを外せば保存時に除去される)。マシン未指定("")の間は案内のみ表示。
-function renderRunProfileDevices() {
-  runProfileDevices.textContent = '';
-  const machineName = runProfileMachine.value;
-  if (machineName === '') {
-    const note = document.createElement('div');
-    note.className = 'run-profile-device-note';
-    note.textContent = t('wvMonitor2.runProfile.selectMachineFirst');
-    runProfileDevices.appendChild(note);
-    return;
-  }
-  const machine = findMachine(machineName);
-  // 並び順はマシンプロファイルと同じ(config.ts の listMachineProfiles が
-  // 手元 → ホスト名順、その中で名前順に並べたもの)。ここでは並べ替えない
-  const machineDevices = machine ? machine.devices : [];
-  const appendRow = (name, machine, platform, kind, missing) => {
-    const row = document.createElement('label');
-    row.className = 'run-profile-device-row';
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = runProfileCheckedRefs.some((r) => refKey(r) === refKey({ name, machine }));
-    checkbox.dataset.deviceName = name;
-    // **参照は (machine, name)**。名前だけを保存すると、同名が別マシンに並ぶプロファイルで
-    // どちらのデバイスか決まらない(run が候補を挙げて止まる)
-    if (machine) {
-      checkbox.dataset.deviceMachine = machine;
-    }
-    checkbox.addEventListener('change', onRunProfileDeviceToggle);
-    const pill = document.createElement('span');
-    // タイル/レーンと同じ配色ピル。マシンに無い名前は不明色(tile-name-unknown)。
-    pill.className = 'tile-name ' + (platform ? 'tile-name-' + platform : 'tile-name-unknown');
-    pill.textContent = name;
-    row.append(checkbox);
-    // 実機バッジはデバイス名の左(マシンプロファイル一覧・ピッカー・タイルと同じ配色 .badge-kind)
-    if (kind === 'physical') {
-      const kindBadge = document.createElement('span');
-      kindBadge.className = 'badge badge-kind';
-      kindBadge.textContent = t('wvMonitor.tile.physicalBadge');
-      row.appendChild(kindBadge);
-    }
-    row.appendChild(pill);
-    // 手元でないデバイスは名前の右にマシン名(マシンプロファイルの一覧と同じバッジ)
-    if (machine) {
-      const badge = document.createElement('span');
-      badge.className = 'badge badge-remote';
-      badge.textContent = machine;
-      paintMachineBadge(badge, machine);
-      row.appendChild(badge);
-    }
-    if (missing) {
-      const note = document.createElement('span');
-      note.className = 'run-profile-device-note';
-      note.textContent = t('wvMonitor2.runProfile.deviceMissingFromMachine');
-      row.appendChild(note);
-    }
-    runProfileDevices.appendChild(row);
-  };
-  const machineKeys = new Set(machineDevices.map((d) => refKey({ name: d.name, machine: d.machine })));
-  for (const device of machineDevices) {
-    appendRow(device.name, device.machine, device.platform, device.kind, false);
-  }
-  for (const ref of runProfileCheckedRefs) {
-    if (!machineKeys.has(refKey(ref))) {
-      appendRow(ref.name, ref.machine, null, null, true);
-    }
-  }
-}
-
-// デバイス参照の同一性。**一意なのは (machine, name)**(machine 省略=手元)
-function refKey(ref) {
-  return `${ref.machine ?? ''}\t${ref.name}`;
-}
-
-// チェックボックス操作: DOM の表示順(マシンのデバイス順+欠落分)で checked を集め直す。
-function onRunProfileDeviceToggle() {
-  const checked = [];
-  for (const checkbox of runProfileDevices.querySelectorAll('input[type="checkbox"]')) {
-    if (checkbox.checked) {
-      checked.push({ name: checkbox.dataset.deviceName, machine: checkbox.dataset.deviceMachine });
-    }
-  }
-  runProfileCheckedRefs = checked;
-}
-
-// マシン切替: チェック状態(runProfileCheckedRefs)は (machine, name) で引き継いだまま一覧を作り直す。
-runProfileMachine.addEventListener('change', () => {
-  renderRunProfileDevices();
-});
 // inapp エンジン ON のときだけ配下のサブオプション(iosPreActionWarmup)を表示する
 // (暖機は hybrid の domInterop 経路にしか無い = xcuitest エンジンでは効果が無いため。
 //  値そのものはエンジンの状態に関わらず保持・保存する)。
@@ -440,21 +332,22 @@ btnRunProfileHookScaffold.addEventListener('click', () => {
   });
 });
 
-// devicesは集合比較(順序無視)。マシンのデバイス順とプロファイル記載順は独立なため、配列比較だと
-// チェック操作なしでdirtyになってしまう。
+// devices は (platform, machine, name, enabled) の集合比較(順序無視)。
+function deviceSetKey(ref) {
+  return `${ref.platform}\t${ref.machine ?? ''}\t${ref.name}\t${ref.enabled}`;
+}
 function runProfileDevicesEqual(a, b) {
   if (a.length !== b.length) {
     return false;
   }
-  const setB = new Set(b.map(refKey));
-  return a.every((ref) => setB.has(refKey(ref)));
+  const setB = new Set(b.map(deviceSetKey));
+  return a.every((ref) => setB.has(deviceSetKey(ref)));
 }
 
 function runProfileValuesEqual(fields) {
   return (
-    runProfileMachine.value === fields.machine &&
     runProfileApp.value === fields.app &&
-    runProfileDevicesEqual(runProfileCheckedRefs, fields.devices) &&
+    runProfileDevicesEqual(currentDeviceEntries(), fields.devices) &&
     runProfileHeal.checked === fields.heal &&
     runProfileTextVisualCheck.checked === fields.textVisualCheck &&
     runProfileScreenLooksLike.checked === fields.screenLooksLike &&
@@ -492,26 +385,11 @@ function onRunProfileFormInput() {
 
 // クライアント検証(保存前)。問題なければ null。
 function validateRunProfileFields() {
-  const machine = runProfileMachine.value.trim();
-  if (machine === '') {
-    return t('wvMonitor2.runProfile.validation.machineRequired');
-  }
-  if (!findMachine(machine)) {
-    return t('wvMonitor2.runProfile.validation.machineNotFound', { machine });
-  }
   if (runProfileApp.value.trim() === '') {
     return t('wvMonitor2.runProfile.validation.appRequired');
   }
-  if (runProfileCheckedRefs.length === 0) {
+  if (currentDeviceEntries().filter((d) => d.enabled).length === 0) {
     return t('wvMonitor2.runProfile.validation.deviceRequired');
-  }
-  // 1台もこのマシンに無い参照は保存しない: `api monitor` / run が noDevicesInMachineProfile で落ちる
-  // (Sources/FTCore/RunProfileScope.swift)。**マシンを切り替えた直後は前のマシンの参照が残る**ので、
-  // 自動保存だとこれが無いと切り替えた瞬間に壊れたプロファイルを書く。一部だけ無いのは許す
-  // (monitor/run は警告して続行する。「マシンに無い」の注記と同じ判定)
-  const machineKeys = new Set(findMachine(machine).devices.map((d) => refKey({ name: d.name, machine: d.machine })));
-  if (!runProfileCheckedRefs.some((ref) => machineKeys.has(refKey(ref)))) {
-    return t('wvMonitor2.runProfile.validation.noDeviceOnMachine', { machine });
   }
   const timeout = runProfileDefaultTimeout.value.trim();
   if (timeout !== '' && (!/^\d+(\.\d+)?$/.test(timeout) || Number(timeout) <= 0)) {
@@ -565,9 +443,8 @@ function saveRunProfileIfDirty() {
 // runProfileSave の fields(monitorWebviewMessages.ts の検証と対)。text 系は trim 済み。
 function collectRunProfileFields() {
   return {
-    machine: runProfileMachine.value.trim(),
     app: runProfileApp.value.trim(),
-    devices: runProfileCheckedRefs.map((r) => (r.machine ? { name: r.name, machine: r.machine } : { name: r.name })),
+    devices: currentDeviceEntries(),
     heal: runProfileHeal.checked,
     textVisualCheck: runProfileTextVisualCheck.checked,
     screenLooksLike: runProfileScreenLooksLike.checked,
@@ -598,7 +475,8 @@ function collectRunProfileFields() {
 // 保存されない。実際に homeOnStart/playProtectBypass/updateWebView が漏れていた)。各欄の固有の
 // リスナー(表示切替・デバイス一覧の作り直し)は target で先に走るので、ここは確定後の値を見る。
 // 保存の契機は change だけ —— input(打鍵ごと)では送らない = 入力途中の値を検証してエラーを
-// 出したり書き込んだりしない。
+// 出したり書き込んだりしない。デバイス編集フォーム(#run-profile-device-editor)の change は
+// runProfileDevicesTab.js が stopPropagation するのでここには来ない(別経路で保存するため)。
 runProfileEditor.addEventListener('input', onRunProfileFormInput);
 runProfileEditor.addEventListener('change', () => {
   onRunProfileFormInput();

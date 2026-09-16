@@ -30,6 +30,7 @@ final class SuiteProfileLaneParityTests: XCTestCase {
         struct Ref: Decodable {
             let machine: String?
             let name: String
+            let enabled: Bool?
         }
         let devices: [Ref]
     }
@@ -48,7 +49,8 @@ final class SuiteProfileLaneParityTests: XCTestCase {
                     "TestProjects/\(project)/profiles/runs/\(profile).json")
                 let doc = try JSONDecoder().decode(RunProfileDevices.self,
                                                    from: Data(contentsOf: url))
-                let actual = Set(doc.devices.map { "\($0.machine ?? "local")|\($0.name)" })
+                let actual = Set(doc.devices.filter { $0.enabled != false }
+                    .map { "\($0.machine ?? "local")|\($0.name)" })
                 XCTAssertEqual(actual, expected,
                     "\(project)/\(profile) のレーンが共通集合とズレています(変えるなら全プロジェクト+この期待値を一緒に)")
             }

@@ -137,16 +137,12 @@ extension MCPServer {
 
     /// 実行プロファイルの**最初の台**の platform。resolveProfileTarget が使う
     /// `resolved.devices.first?.platform` と同じ順序(ProfileResolver.runDeviceMachines は resolve()
-    /// と同じ ref 順で解決し、無い台を同じく飛ばす)を、アプリ解決・provision 抜きで読む。
-    /// プロジェクト/プロファイル/マシンが読めなければ nil
+    /// と同じ devices の記述順で enabled の台を返す)を、アプリ解決・provision 抜きで読む。
+    /// プロジェクト/プロファイルが読めなければ nil
     static func profilePlatform(profile: String, project projectName: String?) -> String? {
-        guard let project = try? ScenarioHost.project(named: projectName),
-              let machine = try? ProfileResolver.determineMachine(
-                  project: project, runProfileName: profile),
-              let devices = try? ProfileResolver.runDeviceMachines(
-                  project: project, runProfileName: profile, machineName: machine.name)
-        else { return nil }
-        return devices.first?.platform
+        guard let project = try? ScenarioHost.project(named: projectName) else { return nil }
+        return ProfileResolver.runDeviceMachines(project: project, runProfileName: profile)
+            .first?.platform
     }
 
     /// ft_logs の bundleId 既定。ログはブリッジを通らないので engineKey が launch 時と
@@ -176,11 +172,7 @@ extension MCPServer {
     func resolveProfileTarget(
         project: TestProject, profileName: String, platformArg: String?, prologue: inout [String]
     ) async throws -> (platform: String, resolved: ResolvedProfile, target: ResolvedDriverTarget) {
-        let machine = try ProfileResolver.determineMachine(
-            project: project,
-            runProfileName: profileName)
-        let resolved = try ProfileResolver.resolve(
-            project: project, runName: profileName, machineName: machine.name)
+        let resolved = try ProfileResolver.resolve(project: project, runName: profileName)
         prologue.append(contentsOf: resolved.warnings.map { "⚠️ \($0)" })
         // CLI の profile 経路(ProfileRunner/ApiRunCommand)と同じ1箇所(FTCore.RunEnvironment)を
         // 通す —— Play Protect のキルスイッチだけでなく iosFastInput/iosPreActionWarmup/

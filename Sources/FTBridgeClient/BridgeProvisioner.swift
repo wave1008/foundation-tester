@@ -6,7 +6,7 @@ import Foundation
 import FTCore
 
 public struct ProvisionedIOSDevice: Sendable {
-    /// マシンプロファイル上の論理名(例: simulator1)
+    /// 実行プロファイル上のデバイス名(例: simulator1)
     public let name: String
     public let udid: String
     public let simulatorName: String
@@ -89,7 +89,7 @@ public final class ProvisionLock {
     private var released = false
 
     /// stateDir/<lockName> を flock 対象にする。既定は provision.lock(ブリッジ供給用)。
-    /// 別用途(例: マシンプロファイル追記)は別 lockName を渡して独立させる。
+    /// 別用途(例: 実行プロファイルへのデバイス追記)は別 lockName を渡して独立させる。
     public init(stateDir: URL, lockName: String = "provision.lock") throws {
         try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
         let path = stateDir.appendingPathComponent(lockName).path

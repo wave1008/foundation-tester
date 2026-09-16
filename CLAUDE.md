@@ -802,7 +802,7 @@
   **同じ意味の専用フラグ(`--report-dir` / `--default-timeout` / `--scenario-timeout`)と
   併用したらエラー**(片方を黙って勝たせない)。**`--app-id` / `--runner` は衝突させない** ——
   CLI のそれらは「既定アプリの bundle ID」「リモートディスパッチ先」で、プロファイルのキー
-  `app`(アプリプロファイル名)・`machine`(マシンプロファイル名)とは**別物**。
+  `app`(アプリプロファイル名)・`devices[].machine`(デバイスが居るマシン名)とは**別物**。
   **`--profile` を要求してよいのは、プロファイルの devices 一覧・供給工程が要るキーだけ**
   (`profileOnlyKeys`)—— 「配線が無いだけ」のキーをここへ入れない(実際 `record` 系と
   `homeOnStart` は配線するだけで profile-less でも動いた)。**指定したのに黙って効かない形を

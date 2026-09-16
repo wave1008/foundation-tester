@@ -24,16 +24,15 @@ final class ApiDeviceLookupHostTests: XCTestCase {
     }
 
     /// 同名の iPhone が3機に、Android は M1Max にだけ、という実物と同じ形
-    private func machine() -> MachineProfile {
-        MachineProfile(
-            machine: nil,
-            ios: MachineDeviceList(devices: [
+    private func machine() -> DeviceRoster {
+        DeviceRoster(
+            ios: DeviceRosterList(devices: [
                 spec("iPhone-01", host: "local"),
                 spec("iPhone-01", host: "M1Max"),
                 spec("iPhone-01", host: "M1Ultra"),
                 spec("iPhone-99", host: nil),
             ]),
-            android: MachineDeviceList(devices: [spec("Pixel-01", host: "M1Max")]))
+            android: DeviceRosterList(devices: [spec("Pixel-01", host: "M1Max")]))
     }
 
     func testHostGivenPicksThatMachinesDevice() {

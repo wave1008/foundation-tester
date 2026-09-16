@@ -1,10 +1,22 @@
 {
-  "machine": "M1Max",
   "app": "ft_e2e_ios",
   "devices": [
     {
+      "platform": "ios",
       "machine": "M1Max",
-      "name": "iPhone 17 Pro(iOS 27.0)-01"
+      "name": "iPhone 17 Pro(iOS 27.0)-01",
+      "os": "27.0",
+      "simulator": "iPhone 17 Pro(iOS 27.0)-01",
+      "udid": "02113547-FF1A-4AFC-A6DD-86C6660C82B0"
+    },
+    {
+      "platform": "ios",
+      "machine": "M1Max",
+      "name": "iPhone 17 Pro(iOS 27.0)-02",
+      "enabled": false,
+      "os": "27.0",
+      "simulator": "iPhone 17 Pro(iOS 27.0)-02",
+      "udid": "73FA356F-831B-4F0B-A0AE-E4CD31CB8848"
     }
   ],
   "heal": true,

@@ -14,10 +14,10 @@ final class DeviceBooterShutdownAllTests: XCTestCase {
         var errorDescription: String? { label }
     }
 
-    private func machine(ios: [DeviceSpec] = [], android: [DeviceSpec] = []) -> MachineProfile {
-        MachineProfile(
-            ios: ios.isEmpty ? nil : MachineDeviceList(devices: ios),
-            android: android.isEmpty ? nil : MachineDeviceList(devices: android))
+    private func machine(ios: [DeviceSpec] = [], android: [DeviceSpec] = []) -> DeviceRoster {
+        DeviceRoster(
+            ios: ios.isEmpty ? nil : DeviceRosterList(devices: ios),
+            android: android.isEmpty ? nil : DeviceRosterList(devices: android))
     }
 
     func testAllDevicesStoppingSucceedsReportsNoFailures() async {

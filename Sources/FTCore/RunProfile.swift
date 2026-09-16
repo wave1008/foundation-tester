@@ -1,11 +1,12 @@
 // RunProfile.swift
 // 実行プロファイルの組み合わせ型モデル。
 //   apps/<name>.json     … アプリケーションプロファイル(common/ios/android セクション)
-//   machines/<マシン名>.json … マシンプロファイル(ios/android セクションに name 付きデバイス)
-//   runs/<name>.json     … 実行プロファイル(app 参照+デバイス name リスト+実行時設定)
-// ProfileResolver が 3 つを合成して ResolvedProfile(検証済み)を作る。
+//   runs/<name>.json     … 実行プロファイル(app 参照+デバイスの実体リスト+実行時設定)
+// ProfileResolver が 2 つを合成して ResolvedProfile(検証済み)を作る。
 // 実行コード(CLI/MCP)は ResolvedProfile のみを参照する。
-// JSON 形式は vscode-fleetest/schemas/{app,machine,run}-profile.schema.json と同期を要する
+// **デバイスの台帳は実行プロファイルの devices だけ**(同じ台が複数の実行プロファイルに載る。
+// 編集・削除は同じ (platform, machine, name) を持つ全ファイルへ伝播する = RunProfileDeviceEditor)。
+// JSON 形式は vscode-fleetest/schemas/{app,run}-profile.schema.json と同期を要する
 // (knownKeys・必須/任意フィールドを変更したらスキーマ側も更新する)。
 
 import Foundation
@@ -112,14 +113,14 @@ public enum DeviceKind: String, Codable, Sendable, Hashable {
     case physical
 }
 
-/// マシンプロファイル内の 1 デバイス定義
+/// デバイス 1 台の実体定義(実行プロファイルの devices[] 1要素から platform/enabled を除いたもの)
 public struct DeviceSpec: Codable, Sendable, Hashable {
-    /// ユーザーがデバイスを識別するための名前(実行プロファイルからの参照キー)。
-    /// **一意なのは name 単体ではなく (host, name)** —— 別のホストに同名のデバイスが居てよい
+    /// ユーザーがデバイスを識別するための名前。
+    /// **一意なのは name 単体ではなく (machine, name)** —— 別のホストに同名のデバイスが居てよい
     /// (フリートの各機が同じ命名規則でシミュレータを作るため、同名は例外ではなく通常)
     public var name: String
-    /// このデバイスが居る機械。省略時はマシンプロファイルの machine(そちらも省略なら手元)。
-    /// 書けるのは**登録名**だけ(ssh の実体は書けない。MachineProfile.machine と同じ規律)。
+    /// このデバイスが居る機械。省略時は手元(ツールは常に明示して書く)。
+    /// 書けるのは**登録名**だけ(ssh の実体は書けない = プロファイルはプロジェクト資産)。
     /// 解決規則は DeviceMachineGrouping、正規化は MachineDispatch.normalize。
     /// **JSON キーは "machine"**(2026-08-26 改名)。旧キー "host" も読む(既存プロファイルは無改修)
     public var machine: String?
@@ -219,74 +220,52 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     }
 }
 
-public struct MachineDeviceList: Codable, Sendable, Equatable {
+public struct DeviceRosterList: Codable, Sendable, Equatable {
     public var devices: [DeviceSpec]?
 
     public init(devices: [DeviceSpec]? = nil) { self.devices = devices }
-
-    static let knownKeys: Set<String> = ["devices"]
 }
 
-/// マシンプロファイル(profiles/machines/<マシン名>.json)。ファイル名がマシン名
-public struct MachineProfile: Codable, Sendable, Equatable {
-    /// このマシンの実行先。省略/"local" = このマシンでローカル実行(**既存プロファイルは
-    /// 無改修で動く**)。それ以外は `fleetest remote machines` の登録名でなければならない
-    /// (生の ssh 宛先は書けない — プロファイルはプロジェクト資産で、ssh の実体はローカル設定
-    /// = LocalConfig.remoteHosts にだけ置く規律。フリート定義と同じ)。優先順位・食い違いの扱いは
-    /// MachineDispatch、登録簿引きは Sources/fleetest/RemoteCommands.swift。
-    /// **JSON キーは "machine"**(2026-08-26 改名)。旧キー "host" も読む
-    public var machine: String?
-    public var ios: MachineDeviceList?
-    public var android: MachineDeviceList?
+/// プラットフォーム別のデバイス一覧(**メモリ上の台帳。ファイルではない**)。
+/// 実行プロファイルの devices から作る(`DeviceRoster(entries:)`)。spec.machine は実効値
+/// (手元 = nil)を焼き込んだものを渡すこと(DeviceMachineGrouping.entries が前提にする)
+public struct DeviceRoster: Codable, Sendable, Equatable {
+    public var ios: DeviceRosterList?
+    public var android: DeviceRosterList?
 
-    public init(machine: String? = nil, ios: MachineDeviceList? = nil,
-                android: MachineDeviceList? = nil) {
-        self.machine = machine
+    public init(ios: DeviceRosterList? = nil, android: DeviceRosterList? = nil) {
         self.ios = ios
         self.android = android
     }
 
-    /// 旧キー "host" は読めるので既知扱い(DeviceSpec.knownKeys と同じ規律)
-    static let knownKeys: Set<String> = ["machine", "host", "ios", "android"]
-
-    private enum CodingKeys: String, CodingKey { case machine, host, ios, android }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        machine = try container.decodeIfPresent(String.self, forKey: .machine)
-            ?? container.decodeIfPresent(String.self, forKey: .host)
-        ios = try container.decodeIfPresent(MachineDeviceList.self, forKey: .ios)
-        android = try container.decodeIfPresent(MachineDeviceList.self, forKey: .android)
+    /// 並びは入力順を platform ごとに保つ(ios → android)
+    public init(entries: [DeviceMachineGrouping.CatalogEntry]) {
+        let ios = entries.filter { $0.platform == "ios" }.map(\.spec)
+        let android = entries.filter { $0.platform == "android" }.map(\.spec)
+        self.init(ios: ios.isEmpty ? nil : DeviceRosterList(devices: ios),
+                  android: android.isEmpty ? nil : DeviceRosterList(devices: android))
     }
 
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encodeIfPresent(machine, forKey: .machine)
-        try container.encodeIfPresent(ios, forKey: .ios)
-        try container.encodeIfPresent(android, forKey: .android)
+    public var isEmpty: Bool {
+        (ios?.devices ?? []).isEmpty && (android?.devices ?? []).isEmpty
     }
 }
 
-/// `MachineProfile.host` と `--runner`(CLI 明示)の優先順位を1箇所に固定する純粋関数。
-/// マシンプロファイルに host を持たせたことで、実行プロファイル経由で間接的にリモートホストを
-/// 指定できるようにした(ユーザー決定)。呼び出し側(Sources/fleetest/RemoteCommands.swift)は
-/// ここが返す名前を、由来に応じて登録簿引きするだけで if を散らさない。
+/// `--runner`(CLI 明示)からディスパッチ先を決める純粋関数。プロファイル側には機械の既定を
+/// 持たない(台ごとの machine はマシン別サブ実行 = DeviceMachineGrouping で配る)。
+/// 呼び出し側(Sources/fleetest/RemoteCommands.swift)はここが返す名前を登録簿引きするだけ。
 public enum MachineDispatch {
     public struct Decision: Equatable {
         /// 実際のディスパッチ先(nil = ローカル実行)。**マシン名(エイリアス)か、`--runner` で
         /// 直接書かれたホスト名 / IP のどちらか** —— 呼び出し側が登録簿で解決する
         public let target: String?
-        /// 明示の宛先とプロファイルの machine が両方非ローカルで食い違うときの1行注記。無ければ nil
-        /// (黙って別のマシンへ送らない。既存の ResolvedRemoteHost.announce と同じ規律)
-        public let mismatchWarning: String?
 
-        public init(target: String? = nil, mismatchWarning: String? = nil) {
+        public init(target: String? = nil) {
             self.target = target
-            self.mismatchWarning = mismatchWarning
         }
     }
 
-    /// nil・空文字・trim 後 "local" は「ローカル」(nil に正規化)。MachineProfile.machine と
+    /// nil・空文字・trim 後 "local" は「ローカル」(nil に正規化)。devices[].machine と
     /// --runner にもこの規則を適用する
     public static func normalize(_ raw: String?) -> String? {
         guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -294,73 +273,63 @@ public enum MachineDispatch {
         return trimmed
     }
 
-    /// **明示の宛先(`--runner`)が常に勝つ**。プロファイルの machine が別のリモートを
-    /// 指していれば `mismatchWarning` を返す(黙って上書きしない)。明示が無ければプロファイル側の
-    /// 値をそのまま自動採用する。
-    ///
-    /// **明示 `--runner local` は「ここで走らせる」の指定であって「未指定」ではない**(欠陥3・
-    /// 2026-08-17)。`normalize` は "local" を nil に畳むため、素の `normalize(explicitTarget)` だけで
-    /// 分岐すると "local" が「未指定」と区別できず、プロファイル側の machine へ自動ディスパッチして
-    /// しまう(`FleetRunner` の "local" エントリが実際にはリモートへ飛ぶ実害があった)。ここでだけ
-    /// 生の explicitTarget を見て先に判定する。プロファイル側が別のリモートを指していれば、通常の
-    /// 食い違いと同じ規律で mismatchWarning を返す(黙って上書きしない)
-    public static func resolve(explicitTarget: String?, profileMachine: String?) -> Decision {
-        let profileMachine = normalize(profileMachine)
-        if isExplicitLocal(explicitTarget) {
-            guard let profileMachine else { return Decision(target: nil) }
-            return Decision(target: nil, mismatchWarning:
-                "--runner local overrides the machine profile's machine \"\(profileMachine)\""
-                + " (the run stays local)")
-        }
-        guard let explicit = normalize(explicitTarget) else {
-            return Decision(target: profileMachine)
-        }
-        guard let profileMachine, profileMachine != explicit else {
-            return Decision(target: explicit)
-        }
-        return Decision(target: explicit, mismatchWarning:
-            "--runner \(explicit) overrides the machine profile's machine \"\(profileMachine)\""
-            + " (they differ; the run continues on \(explicit))")
+    /// **明示 `--runner local` は「ここで走らせる」の指定**(normalize が nil に畳むのと同じ結果)
+    public static func resolve(explicitTarget: String?) -> Decision {
+        if isExplicitLocal(explicitTarget) { return Decision(target: nil) }
+        return Decision(target: normalize(explicitTarget))
     }
 
     /// 生の(trim 前の)値が文字どおり "local" か。normalize 後の nil(= 未指定)とは区別する。
-    /// `--runner local` と実行プロファイルの `"host": "local"` の両方が「ここで走らせる」の明示指定で、
-    /// 判定を写すと片方だけズレるのでここが唯一の定義元(呼び出し側は DeviceMachineGrouping.resolve)
+    /// `--runner local` と devices[].machine の "local" の両方が「ここで走らせる」の明示指定で、
+    /// 判定を写すと片方だけズレるのでここが唯一の定義元
     public static func isExplicitLocal(_ raw: String?) -> Bool {
         guard let raw else { return false }
         return raw.trimmingCharacters(in: .whitespacesAndNewlines) == "local"
     }
 }
 
-/// 実行プロファイルのデバイス参照(name でマシンプロファイルを引く)
-public struct RunDeviceRef: Codable, Sendable, Equatable {
-    public var name: String
-    /// 同名のデバイスが複数の機械に居るときの指定(省略可)。省略した参照が複数に当たると
-    /// **候補を挙げて中止する**(どちらか一方を黙って選ばない。解決規則は DeviceMachineGrouping)。
-    /// **JSON キーは "machine"**(2026-08-26 改名)。旧キー "host" も読む
-    public var machine: String?
+/// 実行プロファイルの devices[] 1要素。JSON は**平ら**
+/// (`{"platform", "machine", "name", "enabled"?, <DeviceSpec の実体キー>}`)。
+/// 拡張の書き手は vscode-fleetest/src/monitorProfileForms.ts(キー集合を揃える)
+public struct RunDeviceEntry: Codable, Sendable, Equatable {
+    /// "ios" / "android"
+    public var platform: String
+    /// false = 一覧(拡張のチェックボックス)には残すが実行対象にしない。省略・true = 対象。
+    /// **false の台も台帳には載る**(プロファイルを選んでいないときの監視・起動の対象)
+    public var enabled: Bool?
+    public var spec: DeviceSpec
 
-    public init(name: String, machine: String? = nil) {
-        self.name = name
-        self.machine = machine
+    public init(platform: String, spec: DeviceSpec, enabled: Bool? = nil) {
+        self.platform = platform
+        self.spec = spec
+        self.enabled = enabled
     }
 
-    /// 旧キー "host" は読めるので既知扱い(DeviceSpec.knownKeys と同じ規律)
-    static let knownKeys: Set<String> = ["name", "machine", "host"]
+    public var isEnabled: Bool { enabled != false }
 
-    private enum CodingKeys: String, CodingKey { case name, machine, host }
+    public static let supportedPlatforms: Set<String> = ["ios", "android"]
+
+    static let knownKeys: Set<String> = DeviceSpec.knownKeys.union(["platform", "enabled"])
+
+    private enum CodingKeys: String, CodingKey { case platform, enabled }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        name = try container.decode(String.self, forKey: .name)
-        machine = try container.decodeIfPresent(String.self, forKey: .machine)
-            ?? container.decodeIfPresent(String.self, forKey: .host)
+        platform = try container.decode(String.self, forKey: .platform)
+        guard Self.supportedPlatforms.contains(platform) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .platform, in: container,
+                debugDescription: "platform must be \"ios\" or \"android\" (got \"\(platform)\")")
+        }
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled)
+        spec = try DeviceSpec(from: decoder)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(name, forKey: .name)
-        try container.encodeIfPresent(machine, forKey: .machine)
+        try container.encode(platform, forKey: .platform)
+        try container.encodeIfPresent(enabled, forKey: .enabled)
+        try spec.encode(to: encoder)
     }
 }
 
@@ -413,8 +382,8 @@ public struct RemoteControlSection: Codable, Sendable, Equatable {
 public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// apps/<app>.json への参照
     public var app: String?
-    /// 実行に使うデバイス(name 参照。iOS/Android 混在可 = 両OS同時実行)
-    public var devices: [RunDeviceRef]?
+    /// デバイスの実体(iOS/Android 混在可 = 両OS同時実行)。enabled=false の台は走らせない
+    public var devices: [RunDeviceEntry]?
     /// ロケータ自己修復(指紋照合)を許可するか(既定 true)。FM は使わない
     public var heal: Bool?
     /// テキストの視覚検証(occlusion guard)を有効にするか(**既定 true**。2026-09-03 ユーザー決定で
@@ -437,13 +406,9 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。子には渡さない。省略時 90)。
     /// defaultTimeout(子内部の検証待ち)とは別物
     public var scenarioTimeout: Int?
-    /// devices を解決するマシンプロファイル名の明示指定(machines/<machine>.json)。
-    /// 省略可(既存プロファイルとの後方互換のため必須にしない)。優先順位は
-    /// ProfileResolver.determineMachine 参照
-    public var machine: String?
     /// iOS の高速な in-app エンジン(ハイブリッド)を使うか(既定 true=ON)。
     /// true → iOS デバイスの実効エンジンを "hybrid"(in-app 主+XCUITest フォールバック)、
-    /// false → "xcuitest" にする。マシンプロファイルでデバイスに engine を明示している場合は
+    /// false → "xcuitest" にする。devices[] の台に engine を明示している場合は
     /// そちらが優先(resolve 参照)。Android には影響しない。
     public var iosInappEngine: Bool?
     /// 実行開始時に Android AVD の肥大化(wipe 対象ファイル合計サイズ)を検査し超過分を
@@ -520,12 +485,12 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// ワークスペース(ファイル同期)宣言。省略可(既定 = リポジトリルート基準の従来挙動)
     public var remoteControl: RemoteControlSection?
 
-    public init(app: String? = nil, devices: [RunDeviceRef]? = nil,
+    public init(app: String? = nil, devices: [RunDeviceEntry]? = nil,
                 heal: Bool? = nil, textVisualCheck: Bool? = nil, screenLooksLike: Bool? = nil,
                 ocrTextVisualCheck: Bool? = nil,
                 screenIs: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
-                machine: String? = nil, iosInappEngine: Bool? = nil,
+                iosInappEngine: Bool? = nil,
                 wipeDataOnBloat: Bool? = nil, updateWebView: Bool? = nil,
                 wipeDataThresholdGB: Double? = nil,
                 recoverCpuFallbackToGpu: Bool? = nil,
@@ -545,7 +510,6 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.reportDir = reportDir
         self.defaultTimeout = defaultTimeout
         self.scenarioTimeout = scenarioTimeout
-        self.machine = machine
         self.iosInappEngine = iosInappEngine
         self.wipeDataOnBloat = wipeDataOnBloat
         self.updateWebView = updateWebView
@@ -572,7 +536,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "app", "devices", "heal", "textVisualCheck", "screenLooksLike", "ocrTextVisualCheck",
         "screenIs",  // 旧名。effectiveScreenLooksLike が拾う(未知キー警告を出さないため残す)
         "reportDir", "defaultTimeout", "scenarioTimeout",
-        "machine", "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
+        "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
         // iosSystemAlertButtons はもう読まない(→ シナリオの iosAlertHandler)。
         // knownKeys に残すのは、一般の unknown-key 警告ではなく resolve の専用警告で案内するため
@@ -610,7 +574,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "recoverCpuFallbackToGpu": .bool, "record": .bool, "recordFailuresOnly": .bool,
         "recordFullResolution": .bool,
         "reportDir": .string, "defaultTimeout": .double, "scenarioTimeout": .int,
-        "recordBitrateKbps": .int, "app": .string, "machine": .string, "locale": .string,
+        "recordBitrateKbps": .int, "app": .string, "locale": .string,
         "wipeDataThresholdGB": .double,
     ]
 
@@ -657,7 +621,6 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
             case ("scenarioTimeout", .int(let v)): copy.scenarioTimeout = v
             case ("recordBitrateKbps", .int(let v)): copy.recordBitrateKbps = v
             case ("app", .string(let v)): copy.app = v
-            case ("machine", .string(let v)): copy.machine = v
             case ("locale", .string(let v)): copy.locale = v
             case ("wipeDataThresholdGB", .double(let v)): copy.wipeDataThresholdGB = v
             default: break
@@ -788,12 +751,12 @@ extension RunProfileDocument {
     /// 同じ経路で効く(`record`/`recordFailuresOnly`/`recordFullResolution`/`homeOnStart`/`reportDir`/
     /// `defaultTimeout`/`scenarioTimeout`/`recordBitrateKbps` も含む —— これらは devices への
     /// 前処理ではなく単に workers/レポート出力先に対して働くだけなので profile-less でも配線できる)。
-    /// **`app`/`machine` は「他のプロファイルを名指して読み込む」キーそのもの**(プロファイル無しでは
+    /// **`app` は「他のプロファイルを名指して読み込む」キーそのもの**(プロファイル無しでは
     /// 意味を持たない)。**`locale`/`wipeDataThresholdGB`** は Android の供給工程(wipe data)でしか
     /// 使わない(`wipeDataOnBloat` と同じ理由)
     public static let profileOnlyKeys: Set<String> = [
         "iosInappEngine", "updateWebView", "wipeDataOnBloat", "recoverCpuFallbackToGpu",
-        "app", "machine", "locale", "wipeDataThresholdGB",
+        "app", "locale", "wipeDataThresholdGB",
     ]
 
     /// `record:true` は devices 一覧に依存しない(`profileOnlyKeys` に無い)が、録画の
@@ -817,8 +780,8 @@ extension RunProfileDocument {
     /// 拒否メッセージ(`nil` = 衝突なし)。**黙ってどちらかを勝たせない** ——
     /// `fleetest run`(reportDir)/`fleetest api run`(reportDir/defaultTimeout/scenarioTimeout)が
     /// それぞれ自分の持つ専用フラグの分だけ呼ぶ。**`--app-id`/`--runner` はここでは扱わない** ——
-    /// CLI の `--app-id`/`--runner` とプロファイルキー `app`/`machine` は別物(前者は
-    /// `@TestClass(app:)` 省略時の既定アプリ/ディスパッチ先、後者はアプリ/マシン**プロファイル名**)
+    /// CLI の `--app-id`/`--runner` とプロファイルキー `app` は別物(前者は
+    /// `@TestClass(app:)` 省略時の既定アプリ/ディスパッチ先、後者はアプリ**プロファイル名**)
     public static func flagOverrideCollision(
         flag: String, key: String, flagIsSet: Bool, overrides: [String: RunProfileSetValue]
     ) -> String? {
@@ -904,7 +867,7 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
 
 // MARK: - 解決済みモデル
 
-/// マシンプロファイルから解決されたデバイス(所属プラットフォーム確定)
+/// 実行プロファイルから解決されたデバイス(所属プラットフォーム確定)
 public struct ResolvedDevice: Sendable, Hashable {
     public let platform: String  // "ios" / "android"
     public let spec: DeviceSpec
@@ -995,16 +958,6 @@ public struct ResolvedAppTarget: Sendable, Hashable {
 public struct ResolvedProfile: Sendable {
     public let project: TestProject
     public let runName: String
-    public let machineName: String
-    /// マシンプロファイルの host(MachineDispatch.normalize 済み。nil = ローカル実行)。
-    /// 表示用途(`fleetest profile list`)。実際のディスパッチ判定・登録簿引きは呼び出し側
-    /// (Sources/fleetest/RemoteCommands.swift)が `--runner` と突き合わせて行う。
-    /// **`var` にする**(memberwise init を直に呼ぶ既存テスト
-    /// (Tests/FTAndroidTests/BuildAndroidWorkersPartialFailureTests.swift 等)が
-    /// この引数を知らないため既定値が要る。**既定値付きの `let` は memberwise init から
-    /// 除外されて渡せなくなる** —— `var` なら既定引数として残る(RemoteRunDispatcher.mode と同じ罠)。
-    /// 省略時 nil = ローカル扱いは仕様どおり)
-    public var machine: String? = nil
     /// アプリの表示名(apps/<name>.json の appName。無ければファイル名)
     public let appName: String
     /// platform("ios"/"android")→ アプリ情報(デバイスがある platform のみ)
@@ -1138,13 +1091,12 @@ public struct ResolvedProfile: Sendable {
 
 /// プロファイルファイルの種別(profiles/ 配下のサブディレクトリと対応)
 public enum ProfileFileKind: String, CaseIterable, Sendable {
-    case app, machine, run
+    case app, run
 
     /// profiles/ 配下のサブディレクトリ名
     public var directoryName: String {
         switch self {
         case .app: return "apps"
-        case .machine: return "machines"
         case .run: return "runs"
         }
     }
@@ -1152,7 +1104,6 @@ public enum ProfileFileKind: String, CaseIterable, Sendable {
     public var label: String {
         switch self {
         case .app: return "app"
-        case .machine: return "machine"
         case .run: return "run"
         }
     }
@@ -1163,31 +1114,20 @@ public enum ProfileFileKind: String, CaseIterable, Sendable {
 public enum ProfileError: Error, LocalizedError {
     case runProfileNotFound(name: String, available: [String])
     case appProfileNotFound(name: String, available: [String])
-    case machineProfileNotFound(machine: String, available: [String])
-    /// 実行プロファイルが明示指定した machine が machines/ に存在しない
-    /// (CLI/env で決定した machineProfileNotFound と区別し、原因が実行プロファイル側の
-    /// 指定であることをメッセージで明確にする)
-    case runSpecifiedMachineNotFound(run: String, machine: String, available: [String])
-    case machineUndetermined(available: [String])
     case decodeFailed(URL, detail: String)
     case missingAppReference(run: String)
     case missingDevices(run: String)
-    /// 同じ (machine, name) が2つある。**別マシンの同名は重複ではない**(DeviceMachineGrouping)。
-    /// deviceMachine = その台が居る機械、machine = マシンプロファイル名(別物)
-    case duplicateDeviceName(name: String, deviceMachine: String?, machine: String)
-    /// 実行プロファイルの参照が machine を書いておらず、同名が複数のマシンに居る
-    case ambiguousDeviceRef(name: String, machines: [String], run: String, machine: String)
-    case noDevicesResolved(run: String, machine: String, requested: [String], available: [String])
-    /// `RunProfileScope.filteredMachineProfile` が絞り込んだ結果、デバイスが1台も残らない
-    /// (noDevicesResolved と文言が違う別 case。流用しない)
-    case noDevicesInMachineProfile(run: String, requested: [String], machine: String)
+    /// devices はあるが全台が enabled: false
+    case noEnabledDevices(run: String)
+    /// 同じ (platform 横断で machine, name) が2つある。**別マシンの同名は重複ではない**(DeviceMachineGrouping)
+    case duplicateDeviceName(name: String, deviceMachine: String?, run: String)
     case missingBundleID(platform: String, appProfile: String)
     case invalidWipeDataThreshold(run: String)
     case invalidLocale(run: String)
     /// kind=physical なのに同定に必要な識別子(iOS=udid / Android=serial)が無い
-    case physicalDeviceMissingIdentifier(name: String, platform: String, machine: String)
+    case physicalDeviceMissingIdentifier(name: String, platform: String, run: String)
     /// kind=physical に dylib 注入エンジンが指定された(実機は注入不可)
-    case physicalDeviceUnsupportedEngine(name: String, engine: String, machine: String)
+    case physicalDeviceUnsupportedEngine(name: String, engine: String, run: String)
 
     public var errorDescription: String? {
         switch self {
@@ -1197,44 +1137,18 @@ public enum ProfileError: Error, LocalizedError {
         case .appProfileNotFound(let name, let available):
             return "app profile not found: \(name)"
                 + availableHint(available, empty: "profiles/apps/ is empty")
-        case .machineProfileNotFound(let machine, let available):
-            return "machine profile not found: \(machine)"
-                + availableHint(available, empty: "profiles/machines/ is empty")
-        case .runSpecifiedMachineNotFound(let run, let machine, let available):
-            return "the machine profile \"\(machine)\" referenced by run profile \(run) was not found"
-                + availableHint(available, empty: "profiles/machines/ is empty")
-        case .machineUndetermined(let available):
-            // 0 件と複数件で直し方が違う(「複数ある」と言いながら空、と食い違わせない)
-            guard !available.isEmpty else {
-                return "cannot tell which machine profile to use: profiles/machines/ is empty."
-                    + " Create one (`fleetest profile setup`) and set \"machine\": \"<name>\" in the run profile"
-            }
-            return "cannot tell which machine profile to use: the run profile does not set "
-                + "\"machine\" and profiles/machines/ holds more than one. Add \"machine\": "
-                + "\"<name>\" to the run profile (or set FT_MACHINE for a one-off run)"
-                + availableHint(available, empty: "profiles/machines/ is empty")
         case .decodeFailed(let url, let detail):
             return "cannot load the profile: \(url.path)\n\(detail)"
         case .missingAppReference(let run):
             return "run profile \(run) has no \"app\" (a reference into apps/)"
         case .missingDevices(let run):
             return "run profile \(run) has no \"devices\""
-        case .duplicateDeviceName(let name, let deviceMachine, let machine):
-            return "duplicate device name in machine profile \(machine): \(name)"
+        case .noEnabledDevices(let run):
+            return "run profile \(run) has no enabled devices (every entry in \"devices\" has \"enabled\": false)"
+        case .duplicateDeviceName(let name, let deviceMachine, let run):
+            return "duplicate device name in run profile \(run): \(name)"
                 + " on machine \(DeviceMachineGrouping.display(deviceMachine))"
                 + " (names must be unique per machine, across ios and android)"
-        case .ambiguousDeviceRef(let name, let machines, let run, let machine):
-            return "device \"\(name)\" in run profile \(run) is ambiguous on machine \(machine):"
-                + " it exists on \(machines.joined(separator: ", "))."
-                + " Add \"machine\" to the device entry in the run profile to say which one"
-        case .noDevicesResolved(let run, let machine, let requested, let available):
-            return "none of the devices in run profile \(run) resolve on machine \(machine)"
-                + " (requested: \(requested.joined(separator: ", ")) / "
-                + "defined: \(available.isEmpty ? "none" : available.joined(separator: ", ")))"
-        case .noDevicesInMachineProfile(let run, let requested, let machine):
-            return "none of the devices referenced by run profile \(run) " +
-                "(\(requested.joined(separator: ", "))) " +
-                "exist in machine profile \(machine)"
         case .missingBundleID(let platform, let appProfile):
             // common の app は廃止(merging 参照)のため、案内は platform セクション限定
             return "app profile \(appProfile) has no \"app\" (bundle ID / package name) for \(platform)"
@@ -1243,15 +1157,15 @@ public enum ProfileError: Error, LocalizedError {
             return "wipeDataThresholdGB in run profile \(run) must be a positive number (GB)"
         case .invalidLocale(let run):
             return "locale in run profile \(run) must look like ja_JP"
-        case .physicalDeviceMissingIdentifier(let name, let platform, let machine):
+        case .physicalDeviceMissingIdentifier(let name, let platform, let run):
             let field = platform == "ios" ? "udid" : "serial"
             let how = platform == "ios"
                 ? "the Identifier column of xcrun devicectl list devices, or the UDID"
                 : "the left column of adb devices"
-            return "device \"\(name)\" in machine profile \(machine) is kind=physical but has no "
+            return "device \"\(name)\" in run profile \(run) is kind=physical but has no "
                 + "\"\(field)\" (set it to \(how))"
-        case .physicalDeviceUnsupportedEngine(let name, let engine, let machine):
-            return "device \"\(name)\" in machine profile \(machine) is kind=physical, so "
+        case .physicalDeviceUnsupportedEngine(let name, let engine, let run):
+            return "device \"\(name)\" in run profile \(run) is kind=physical, so "
                 + "engine=\(engine) cannot be used (dylib injection is impossible on physical devices; "
                 + "omit engine or set it to \"xcuitest\")"
         }
@@ -1271,141 +1185,23 @@ public enum ProfileResolver {
         jsonNames(in: project.runsDir)
     }
 
-    /// profiles/machines/ のマシン名一覧
-    public static func machineNames(project: TestProject) -> [String] {
-        jsonNames(in: project.machinesDir)
-    }
-
     /// profiles/apps/ のアプリケーションプロファイル名一覧
     public static func appProfileNames(project: TestProject) -> [String] {
         jsonNames(in: project.appsDir)
     }
 
-    /// マシン決定: 実行プロファイル自身の machine 指定 > FT_MACHINE > 登録名 >
-    /// machines/ が 1 ファイルならそれ > エラー。
-    /// runProfileName を渡すと、そのプロファイルが machine(trim 後非空)を明示指定している場合に
-    /// 最優先でそれを使う(未登録・複数マシンの環境でも実行プロファイルの明示指定だけで解決できる
-    /// ようにするため)。ファイルが無い/デコード不能/machine 未指定はここでは無視し、
-    /// 通常どおり resolve() 側の runProfileNotFound/decodeFailed/missingDevices 等に委ねる。
-    /// 明示指定された machine が machines/ に存在しない場合のみ、ここで
-    /// runSpecifiedMachineNotFound を投げる(resolve() を経由しない呼び出し側でも
-    /// 同じ明確なエラーになるようにするため)。
-    /// 戻り値 auto = 自動採用だったか(呼び出し側がログ表示に使う。明示指定/FT_MACHINE は false)
-    ///
-    /// **「この Mac の登録名」は見ない**(ユーザー決定)。「複数ある machines/*.json のうち
-    /// この機械を表すのはどれか」は登録名なしで決まる —— ①ツールが書く実行プロファイルには
-    /// 必ず machine が入る(42本中 machine 未指定は3本)②デバイス側が host を持つので
-    /// 「どの機械のデバイスか」はプロファイル内で表現できる。**登録名を復活させない** ——
-    /// 名前1つに2つの意味が載ると「マシンプロファイルを改名したらこの Mac の身元が変わる」
-    /// (実際に project1 の解決が壊れた)
-    ///
-    /// `overrides`(`--set machine=...`)は `runProfileName` が有るときだけ意味を持つ
-    /// (`explicitMachine` へそのまま渡す。呼び出し側にディスパッチ判定より前に `--set` が
-    /// 見えているとき(`fleetest run`/`api run` の profile 経路)だけ渡せばよい ——
-    /// 渡さない呼び出し元(デバイス一覧・profile setup 等。`--set` を持たない)は既定の
-    /// 空辞書のまま従来どおり動く)
-    public static func determineMachine(
-        project: TestProject,
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        runProfileName: String? = nil,
-        overrides: [String: RunProfileSetValue] = [:]
-    ) throws -> (name: String, auto: Bool) {
-        if let runProfileName,
-           let explicit = explicitMachine(project: project, runProfileName: runProfileName, overrides: overrides) {
-            let machineURL = project.machinesDir.appendingPathComponent("\(explicit).json")
-            guard FileManager.default.fileExists(atPath: machineURL.path) else {
-                throw ProfileError.runSpecifiedMachineNotFound(
-                    run: runProfileName, machine: explicit, available: machineNames(project: project))
-            }
-            return (explicit, false)
-        }
-        if let env = environment["FT_MACHINE"], !env.isEmpty { return (env, false) }
-        let machines = machineNames(project: project)
-        if machines.count == 1 { return (machines[0], true) }
-        throw ProfileError.machineUndetermined(available: machines)
-    }
-
-    /// マシンプロファイルの `host` だけを読む(実行前のディスパッチ判定用)。フルの resolve() は
-    /// デバイス解決まで行い重いので、host だけ知りたいホスト解決の前段はこちらを使う
-    /// (Sources/fleetest/RemoteCommands.swift の EffectiveDispatchTarget 解決)。
-    /// 戻り値は MachineDispatch.normalize 済み(nil = ローカル)
-    public static func defaultMachine(project: TestProject, machineName: String) throws -> String? {
-        let machineURL = project.machinesDir.appendingPathComponent("\(machineName).json")
-        guard FileManager.default.fileExists(atPath: machineURL.path) else {
-            throw ProfileError.machineProfileNotFound(
-                machine: machineName, available: machineNames(project: project))
-        }
-        let data: Data
-        do {
-            data = try Data(contentsOf: machineURL)
-        } catch {
-            throw ProfileError.decodeFailed(machineURL, detail: error.localizedDescription)
-        }
-        do {
-            let machine = try JSONDecoder().decode(MachineProfile.self, from: data)
-            return MachineDispatch.normalize(machine.machine)
-        } catch {
-            throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
-        }
-    }
-
-    /// 実行プロファイルが使うデバイスを「どの機械に居るか」付きで返す(ディスパッチ判定用。
-    /// フルの resolve() はアプリ解決まで行い、host を決める前に落ちうるのでこちらを使う)。
-    /// 解決できない参照は**黙って落とす** —— 警告と中止は resolve() が受け持ち、ここは
-    /// 「実際に走るデバイスがどの機械にあるか」だけを答える。曖昧な参照だけは resolve() を
-    /// 待たずに投げる(どのホストへ配るかがここで決まってしまうため)
-    public static func runDeviceMachines(project: TestProject, runProfileName: String,
-                                      machineName: String) throws -> [RunDeviceMachine] {
+    /// 実行プロファイルが使う(enabled の)デバイスを「どの機械に居るか」付きで返す(ディスパッチ判定用。
+    /// フルの resolve() はアプリ解決まで行い、machine を決める前に落ちうるのでこちらを使う)。
+    /// 読めなければ空(警告と中止は resolve() が受け持つ)
+    public static func runDeviceMachines(project: TestProject,
+                                         runProfileName: String) -> [RunDeviceMachine] {
         let runURL = project.runsDir.appendingPathComponent("\(runProfileName).json")
         guard let runData = try? Data(contentsOf: runURL),
-              let runDoc = try? JSONDecoder().decode(RunProfileDocument.self, from: runData),
-              let refs = runDoc.devices else {
+              let runDoc = try? JSONDecoder().decode(RunProfileDocument.self, from: runData) else {
             return []
         }
-        let machineURL = project.machinesDir.appendingPathComponent("\(machineName).json")
-        guard let machineData = try? Data(contentsOf: machineURL),
-              let machine = try? JSONDecoder().decode(MachineProfile.self, from: machineData) else {
-            return []
-        }
-        let entries = DeviceMachineGrouping.entries(machine: machine)
-        var result: [RunDeviceMachine] = []
-        for ref in refs {
-            switch DeviceMachineGrouping.resolve(ref, in: entries) {
-            case .found(let entry):
-                result.append(RunDeviceMachine(machine: entry.machine, name: entry.name,
-                                               platform: entry.platform))
-            case .missing:
-                continue
-            case .ambiguous(let machines):
-                throw ProfileError.ambiguousDeviceRef(
-                    name: ref.name, machines: machines, run: runProfileName, machine: machineName)
-            }
-        }
-        return result
-    }
-
-    /// runProfileName の実行プロファイルが指定する machine(trim 後非空)を返す。**`overrides`
-    /// (`--set machine=...`)は `resolve()` と同じ場所(読み込み直後)で当てる** —— ここで
-    /// 当てずに生ファイルの値だけを見ると、`resolve()` は上書き後の machine でデバイスを解決するのに
-    /// ここ(ディスパッチ先・機械別サブ実行の分岐)は元の machine のままになり、「別マシンの
-    /// デバイスを解決しつつ実行は元マシン」で "no simulator with that UDID" に落ちる(欠陥②)。
-    /// ファイルが無い/デコード不能/未指定・空文字列なら nil(呼び出し側は fallback を使う。
-    /// ファイル自体の欠落・型不一致は resolve() 側で改めて明確なエラーにする)
-    private static func explicitMachine(
-        project: TestProject, runProfileName: String,
-        overrides: [String: RunProfileSetValue] = [:]
-    ) -> String? {
-        let runURL = project.runsDir.appendingPathComponent("\(runProfileName).json")
-        guard let data = try? Data(contentsOf: runURL),
-              let loaded = try? JSONDecoder().decode(RunProfileDocument.self, from: data) else {
-            return nil
-        }
-        let doc = loaded.applyingOverrides(overrides)
-        guard let machine = doc.machine?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !machine.isEmpty else {
-            return nil
-        }
-        return machine
+        return DeviceMachineGrouping.entries(runDevices: runDoc.devices ?? [], enabledOnly: true)
+            .map { RunDeviceMachine(machine: $0.machine, name: $0.name, platform: $0.platform) }
     }
 
     /// runProfileName の実行プロファイルが宣言する `remoteControl.workspace`(trim 後非空)を返す。
@@ -1455,7 +1251,7 @@ public enum ProfileResolver {
                 result[DeclaredAppPath(platform: platform, physical: false)] =
                     DeclaredAppPathEntry(source: resolvePath(raw, base: repoRoot), declared: raw)
             }
-            // **この経路はデバイスを解決しない**(マシンプロファイルを読まない軽量読み)ので
+            // **この経路はデバイスを解決しない**(devices を読まない軽量読み)ので
             // 「そのランナーに実機が居るか」を知らない。居る場合に運び忘れると向こうで
             // 仮想デバイス用ビルドを実機へ入れて 0xe8008014 で落ちるため、宣言があれば運ぶ
             if let raw = section.appPathPhysical {
@@ -1500,7 +1296,6 @@ public enum ProfileResolver {
     ///   (RemoteRunDispatcher が必ず渡す。渡さないと子は自分のリポジトリルート基準で appPath を
     ///   解決し、リモートに転送されていない絶対パスを見に行く)
     public static func resolve(project: TestProject, runName: String,
-                               machineName: String,
                                workspaceOverride: String? = nil,
                                overrides: [String: RunProfileSetValue] = [:]) throws -> ResolvedProfile {
         var warnings: [String] = []
@@ -1513,7 +1308,7 @@ public enum ProfileResolver {
         }
         let loadedRunDoc: RunProfileDocument = try load(runURL, warnings: &warnings) { json in
             checkKeys(json, allowed: RunProfileDocument.knownKeys, context: "runs/\(runName).json")
-                + checkDeviceRefKeys(json, context: "runs/\(runName).json")
+                + checkDeviceEntryKeys(json, context: "runs/\(runName).json")
                 + checkRemoteControlKeys(json, context: "runs/\(runName).json")
                 + legacyKeyWarnings(json, context: "runs/\(runName).json")
         }
@@ -1537,91 +1332,56 @@ public enum ProfileResolver {
             checkAppProfileKeys(json, context: "apps/\(appRef).json")
         }
 
-        // 3. マシンプロファイル → name → デバイスのカタログ
-        // runDoc.machine の明示指定は引数 machineName(determineMachine の結果)より優先。
-        // 食い違っていても警告は出さない(明示指定が勝つ、で一貫させる)
-        var machineName = machineName
-        let explicitMachine = runDoc.machine?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let explicitMachine, !explicitMachine.isEmpty {
-            machineName = explicitMachine
-        }
-        let machineURL = project.machinesDir.appendingPathComponent("\(machineName).json")
-        guard FileManager.default.fileExists(atPath: machineURL.path) else {
-            if let explicitMachine, !explicitMachine.isEmpty {
-                throw ProfileError.runSpecifiedMachineNotFound(
-                    run: runName, machine: explicitMachine, available: machineNames(project: project))
-            }
-            throw ProfileError.machineProfileNotFound(
-                machine: machineName, available: machineNames(project: project))
-        }
-        let machine: MachineProfile = try load(machineURL, warnings: &warnings) { json in
-            checkMachineProfileKeys(json, context: "machines/\(machineName).json")
-        }
-
-        // 一意なのは (machine, name)。別マシンの同名は許す(DeviceMachineGrouping にすべての規則がある)
-        let catalogEntries = DeviceMachineGrouping.entries(machine: machine)
-        if let duplicate = DeviceMachineGrouping.firstDuplicate(in: catalogEntries) {
+        // 3. デバイス(enabled の台だけ)。一意なのは (machine, name)。別マシンの同名は許す
+        // (DeviceMachineGrouping にすべての規則がある)。重複は無効の台も含めて見る(台帳として壊れている)
+        if let duplicate = DeviceMachineGrouping.firstDuplicate(
+            in: DeviceMachineGrouping.entries(runDevices: deviceRefs, enabledOnly: false)) {
             throw ProfileError.duplicateDeviceName(
-                name: duplicate.name, deviceMachine: duplicate.machine, machine: machineName)
+                name: duplicate.name, deviceMachine: duplicate.machine, run: runName)
         }
-        let catalogOrder = catalogEntries.map(\.name)
+        let enabledEntries = DeviceMachineGrouping.entries(runDevices: deviceRefs, enabledOnly: true)
+        guard !enabledEntries.isEmpty else {
+            throw ProfileError.noEnabledDevices(run: runName)
+        }
 
-        // 4. デバイス解決(このマシンに無い name はスキップ+警告)。
-        // iOS 実効エンジン: 実行プロファイルの iosInappEngine(既定 true)で決める。
+        // 4. iOS 実効エンジン: 実行プロファイルの iosInappEngine(既定 true)で決める。
         // true → "hybrid"(高速な in-app 主+XCUITest フォールバック)、false → "xcuitest"。
-        // ただしマシンプロファイルでデバイスに engine を明示していればそちらが優先(上書きしない)。
+        // ただし台に engine を明示していればそちらが優先(上書きしない)。
         let iosEngine = (runDoc.iosInappEngine ?? true) ? "hybrid" : "xcuitest"
         var devices: [ResolvedDevice] = []
-        for ref in deviceRefs {
-            switch DeviceMachineGrouping.resolve(ref, in: catalogEntries) {
-            case .ambiguous(let machines):
-                // 片方を黙って選ぶと「別の機械のデバイスを操作した」になる。候補を挙げて止める
-                throw ProfileError.ambiguousDeviceRef(
-                    name: ref.name, machines: machines, run: runName, machine: machineName)
-            case .found(let entry):
-                // 実体の無い登録は走る前に言う(iOS は既定名へ落ちて別の台で黙って走る)。
-                // 止めはしない —— 既定に頼っている既存プロファイルを赤にしない
-                if entry.spec.lacksConcreteTarget {
-                    warnings.append(
-                        "device \"\(ref.name)\" on machine \(machineName) has no concrete target"
-                        + " (ios: simulator/udid, android: avd/serial)"
-                        + " — re-run `fleetest profile setup --auto-device`,"
-                        + " or fill it in in profiles/machines/\(machineName).json")
-                }
-                let device = ResolvedDevice(platform: entry.platform, spec: entry.spec)
-                try validatePhysical(device, machine: machineName)
-                if device.spec.isPhysical, device.platform == "ios" {
-                    // 実機は dylib 注入不可。iosInappEngine の既定(hybrid)を無視して固定する
-                    // (ここで潰さないと provision が inapp 経路に入り実行時に落ちる)
-                    var spec = device.spec
-                    spec.engine = "xcuitest"
-                    devices.append(ResolvedDevice(platform: "ios", spec: spec))
-                } else if device.platform == "ios", device.spec.engine == nil {
-                    var spec = device.spec
-                    spec.engine = iosEngine
-                    devices.append(ResolvedDevice(platform: "ios", spec: spec))
-                } else {
-                    // フラグを明示指定したのにデバイス側 engine が勝つ組み合わせは
-                    // GUI のチェックボックスが「効かない」ように見えるため警告で知らせる
-                    if device.platform == "ios", runDoc.iosInappEngine != nil,
-                       let explicit = device.spec.engine {
-                        warnings.append(
-                            "device \"\(ref.name)\" explicitly sets engine=\(explicit) in the machine profile, "
-                            + "so the iosInappEngine setting does not apply to it")
-                    }
-                    devices.append(device)
-                }
-            case .missing:
-                let onHost = ref.machine.map { " on host \($0)" } ?? ""
+        for entry in enabledEntries {
+            // 実体の無い登録は走る前に言う(iOS は既定名へ落ちて別の台で黙って走る)。
+            // 止めはしない —— 既定に頼っている既存プロファイルを赤にしない
+            if entry.spec.lacksConcreteTarget {
                 warnings.append(
-                    "device \"\(ref.name)\"\(onHost) is not defined on machine \(machineName)"
-                    + " — skipping it")
+                    "device \"\(entry.name)\" on machine \(DeviceMachineGrouping.display(entry.machine))"
+                    + " has no concrete target (ios: simulator/udid, android: avd/serial)"
+                    + " — re-run `fleetest profile setup --auto-device`,"
+                    + " or fill it in in profiles/runs/\(runName).json")
             }
-        }
-        guard !devices.isEmpty else {
-            throw ProfileError.noDevicesResolved(
-                run: runName, machine: machineName,
-                requested: deviceRefs.map(\.name), available: catalogOrder)
+            let device = ResolvedDevice(platform: entry.platform, spec: entry.spec)
+            try validatePhysical(device, run: runName)
+            if device.spec.isPhysical, device.platform == "ios" {
+                // 実機は dylib 注入不可。iosInappEngine の既定(hybrid)を無視して固定する
+                // (ここで潰さないと provision が inapp 経路に入り実行時に落ちる)
+                var spec = device.spec
+                spec.engine = "xcuitest"
+                devices.append(ResolvedDevice(platform: "ios", spec: spec))
+            } else if device.platform == "ios", device.spec.engine == nil {
+                var spec = device.spec
+                spec.engine = iosEngine
+                devices.append(ResolvedDevice(platform: "ios", spec: spec))
+            } else {
+                // フラグを明示指定したのにデバイス側 engine が勝つ組み合わせは
+                // GUI のチェックボックスが「効かない」ように見えるため警告で知らせる
+                if device.platform == "ios", runDoc.iosInappEngine != nil,
+                   let explicit = device.spec.engine {
+                    warnings.append(
+                        "device \"\(entry.name)\" explicitly sets engine=\(explicit), "
+                        + "so the iosInappEngine setting does not apply to it")
+                }
+                devices.append(device)
+            }
         }
 
         // 5. アプリ解決(デバイスのある platform ごと。合成規則は AppProfileSection.merging 参照)
@@ -1740,8 +1500,6 @@ public enum ProfileResolver {
         return ResolvedProfile(
             project: project,
             runName: runName,
-            machineName: machineName,
-            machine: MachineDispatch.normalize(machine.machine),
             appName: appProfile.resolvedAppName ?? appRef,
             apps: apps,
             devices: devices,
@@ -1772,19 +1530,19 @@ public enum ProfileResolver {
             warnings: warnings)
     }
 
-    /// 実機デバイスの整合検査。実行プロファイルから参照されたデバイスにのみ適用する
-    /// (マシンプロファイル全体に掛けると、無関係なデバイス定義の不備で run が止まる)
-    private static func validatePhysical(_ device: ResolvedDevice, machine: String) throws {
+    /// 実機デバイスの整合検査。enabled の台にのみ適用する
+    /// (無効の台の不備で run を止めない)
+    private static func validatePhysical(_ device: ResolvedDevice, run: String) throws {
         guard device.spec.isPhysical else { return }
         let identifier = device.platform == "ios" ? device.spec.udid : device.spec.serial
         guard let identifier, !identifier.trimmingCharacters(in: .whitespaces).isEmpty else {
             throw ProfileError.physicalDeviceMissingIdentifier(
-                name: device.name, platform: device.platform, machine: machine)
+                name: device.name, platform: device.platform, run: run)
         }
         if device.platform == "ios", let engine = device.spec.engine,
            engine != "xcuitest" {
             throw ProfileError.physicalDeviceUnsupportedEngine(
-                name: device.name, engine: engine, machine: machine)
+                name: device.name, engine: engine, run: run)
         }
     }
 
@@ -1829,10 +1587,9 @@ public enum ProfileResolver {
     // MARK: - 単一ファイル検証(プロファイルエディタ用)
 
     /// プロファイルファイル 1 つの検証。戻り値: (エラー, 警告)。
-    /// エラー = デコード不能・必須欠落・name 重複、警告 = 未知キー(タイポ検出)。
-    /// project は .run の machine フィールド検証(参照先の machines/ 存在チェック)にのみ使う
+    /// エラー = デコード不能・必須欠落・name 重複、警告 = 未知キー(タイポ検出)
     public static func validate(
-        kind: ProfileFileKind, data: Data, context: String, project: TestProject
+        kind: ProfileFileKind, data: Data, context: String
     ) -> (errors: [String], warnings: [String]) {
         guard let parsed = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else {
             return (["cannot parse as JSON (syntax error)"], [])
@@ -1851,33 +1608,23 @@ public enum ProfileResolver {
             }
             warnings += checkAppProfileKeys(json, context: context)
             warnings += checkDeprecatedSectionKeys(json, context: context)
-        case .machine:
-            if let machine = try? decoder.decode(MachineProfile.self, from: data) {
-                // **一意なのは (host, name)**(別の機械の同名は重複ではない)。判定は
+        case .run:
+            if let doc = try? decoder.decode(RunProfileDocument.self, from: data) {
+                if doc.app == nil { errors.append("no \"app\" (a reference into apps/)") }
+                let devices = doc.devices ?? []
+                if devices.isEmpty { errors.append("no \"devices\"") }
+                // **一意なのは (machine, name)**(別の機械の同名は重複ではない)。判定は
                 // DeviceMachineGrouping で resolve() と共有する —— 片方だけ厳しいと
                 // 「保存できるのに検証が赤い」(その逆も)になる
                 if let duplicate = DeviceMachineGrouping.firstDuplicate(
-                    in: DeviceMachineGrouping.entries(machine: machine)) {
+                    in: DeviceMachineGrouping.entries(runDevices: devices, enabledOnly: false)) {
                     errors.append("duplicate device name: \(duplicate.name)"
                                   + " on machine \(DeviceMachineGrouping.display(duplicate.machine))"
                                   + " (names must be unique per machine, across ios and android)")
                 }
-                for (platform, list) in [("ios", machine.ios), ("android", machine.android)] {
-                    for spec in list?.devices ?? [] {
-                        errors += physicalDeviceErrors(spec, platform: platform)
-                    }
+                for entry in devices where entry.isEnabled {
+                    errors += physicalDeviceErrors(entry.spec, platform: entry.platform)
                 }
-            } else {
-                let reason: String
-                do { _ = try decoder.decode(MachineProfile.self, from: data); reason = "" }
-                catch { reason = describeDecodingError(error) }
-                errors.append("cannot load as a machine profile (\(reason))")
-            }
-            warnings += checkMachineProfileKeys(json, context: context)
-        case .run:
-            if let doc = try? decoder.decode(RunProfileDocument.self, from: data) {
-                if doc.app == nil { errors.append("no \"app\" (a reference into apps/)") }
-                if (doc.devices ?? []).isEmpty { errors.append("no \"devices\"") }
                 if let threshold = doc.wipeDataThresholdGB, threshold <= 0 {
                     errors.append("\"wipeDataThresholdGB\" must be a positive number (GB)")
                 }
@@ -1901,12 +1648,9 @@ public enum ProfileResolver {
                 errors.append("cannot load as a run profile (\(reason))")
             }
             warnings += checkKeys(json, allowed: RunProfileDocument.knownKeys, context: context)
-            warnings += checkDeviceRefKeys(json, context: context)
+            warnings += checkDeviceEntryKeys(json, context: context)
             warnings += checkRemoteControlKeys(json, context: context)
             warnings += legacyKeyWarnings(json, context: context)
-            let (machineErrors, machineWarnings) = checkRunMachineField(json, project: project)
-            errors += machineErrors
-            warnings += machineWarnings
         }
         return (errors, warnings)
     }
@@ -1979,40 +1723,16 @@ public enum ProfileResolver {
         }
     }
 
-    private static func checkDeviceRefKeys(_ json: [String: Any], context: String) -> [String] {
+    private static func checkDeviceEntryKeys(_ json: [String: Any], context: String) -> [String] {
         guard let devices = json["devices"] as? [[String: Any]] else { return [] }
         return devices.flatMap {
-            checkKeys($0, allowed: RunDeviceRef.knownKeys, context: "\(context) devices")
+            checkKeys($0, allowed: RunDeviceEntry.knownKeys, context: "\(context) devices")
         }
     }
 
     private static func checkRemoteControlKeys(_ json: [String: Any], context: String) -> [String] {
         guard let section = json["remoteControl"] as? [String: Any] else { return [] }
         return checkKeys(section, allowed: RemoteControlSection.knownKeys, context: "\(context) remoteControl")
-    }
-
-    /// 実行プロファイルの machine フィールドの検証(型・参照先の存在・未指定)。
-    /// - 存在して string 型でない(JSON null は「未指定」と同義に扱う) → エラー
-    /// - 非空文字列だが machines/<machine>.json が無い → エラー(明示指定なので明確に伝える)
-    /// - 未指定/空文字列 → 警告(既存プロファイルを壊さないための後方互換。エラーにはしない)
-    private static func checkRunMachineField(
-        _ json: [String: Any], project: TestProject
-    ) -> (errors: [String], warnings: [String]) {
-        let unspecifiedWarning = "machine is not specified (explicitly naming the machine profile is recommended)"
-        guard let raw = json["machine"], !(raw is NSNull) else {
-            return ([], [unspecifiedWarning])
-        }
-        guard let machineName = raw as? String else {
-            return (["\"machine\" must be a string"], [])
-        }
-        let trimmed = machineName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return ([], [unspecifiedWarning])
-        }
-        guard machineNames(project: project).contains(trimmed) else {
-            return (["the machine profile \"\(trimmed)\" referenced by \"machine\" was not found"], [])
-        }
-        return ([], [])
     }
 
     /// セクション別に廃止されたキーの検査(廃止の理由は AppProfileSection.merging 参照)。
@@ -2043,21 +1763,6 @@ public enum ProfileResolver {
             let allowed = key == "common"
                 ? AppProfileSection.commonKnownKeys : AppProfileSection.platformKnownKeys
             warnings += checkKeys(section, allowed: allowed, context: "\(context) \(key)")
-        }
-        return warnings
-    }
-
-    private static func checkMachineProfileKeys(_ json: [String: Any],
-                                                context: String) -> [String] {
-        var warnings = checkKeys(json, allowed: MachineProfile.knownKeys, context: context)
-        for key in MachineProfile.knownKeys {
-            guard let section = json[key] as? [String: Any] else { continue }
-            warnings += checkKeys(section, allowed: MachineDeviceList.knownKeys,
-                                  context: "\(context) \(key)")
-            for device in (section["devices"] as? [[String: Any]]) ?? [] {
-                warnings += checkKeys(device, allowed: DeviceSpec.knownKeys,
-                                      context: "\(context) \(key) devices")
-            }
         }
         return warnings
     }

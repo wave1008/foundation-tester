@@ -27,7 +27,7 @@ export const hookScaffoldStrings = {
 #   FT_WORKSPACE        このワークスペースの絶対パス(カレントディレクトリでもある)
 #   FT_PROJECT          テストプロジェクト名
 #   FT_PROFILE          実行プロファイル名
-#   FT_MACHINE          マシンプロファイル名
+#   FT_MACHINE          実行対象のマシン名(登録簿のエイリアス。手元は local)
 #   FT_REPORT_DIR       レポート出力先の絶対パス
 #   FT_IOS_DEVICES      この run が使うデバイス名(空白区切り。空のこともある)
 #   FT_ANDROID_DEVICES  同上、Android のぶん
@@ -73,7 +73,7 @@ set -eu
 #   FT_WORKSPACE        absolute path of this workspace (also the working directory)
 #   FT_PROJECT          test project name
 #   FT_PROFILE          run profile name
-#   FT_MACHINE          machine profile name
+#   FT_MACHINE          the target machine's registered alias ("local" for this Mac)
 #   FT_REPORT_DIR       absolute path of the report directory
 #   FT_IOS_DEVICES      device names this run will use, space separated (may be empty)
 #   FT_ANDROID_DEVICES  same, for Android

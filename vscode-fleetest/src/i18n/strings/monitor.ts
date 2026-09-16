@@ -105,7 +105,7 @@ export const monitorStrings = {
     en: 'Test project "{name}" already exists.',
   },
 
-  // ---- monitorModel.ts: validateNewDeviceName / updateDeviceInMachineProfile ----
+  // ---- monitorModel.ts: validateNewDeviceName / updateDeviceInRunProfile ----
   "monitor.device.nameRequired": {
     ja: "デバイス名を入力してください。",
     en: "Enter a device name.",
@@ -133,32 +133,6 @@ export const monitorStrings = {
   "monitor.device.physicalBadge": {
     ja: "実機",
     en: "Device",
-  },
-
-  // ---- monitorModel.ts: validateNewMachineProfileName / addDevicesToMachineProfile 等 ----
-  "monitor.machineProfile.nameNoSpaces": {
-    ja: "マシンプロファイル名の前後に空白を含めることはできません。",
-    en: "The machine profile name cannot have leading or trailing spaces.",
-  },
-  "monitor.machineProfile.nameRequired": {
-    ja: "マシンプロファイル名を入力してください。",
-    en: "Enter a machine profile name.",
-  },
-  "monitor.machineProfile.nameNoSlash": {
-    ja: 'マシンプロファイル名に "/" や "\\" は使えません。',
-    en: 'The machine profile name cannot contain "/" or "\\".',
-  },
-  "monitor.machineProfile.nameNoDotStart": {
-    ja: 'マシンプロファイル名を "." で始めることはできません。',
-    en: 'The machine profile name cannot start with ".".',
-  },
-  "monitor.machineProfile.nameExists": {
-    ja: "マシンプロファイル「{name}」は既に存在します。",
-    en: 'Machine profile "{name}" already exists.',
-  },
-  "monitor.machineProfile.invalidFormat": {
-    ja: "マシンプロファイルの形式が不正です。",
-    en: "The machine profile format is invalid.",
   },
 
   // ---- monitorPanel.ts ----

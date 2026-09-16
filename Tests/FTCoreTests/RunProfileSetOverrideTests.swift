@@ -76,13 +76,13 @@ final class RunProfileSetOverrideParseTests: XCTestCase {
     func testParsesScalarKeysOfEachDeclaredType() throws {
         let overrides = try RunProfileSetOverride.parse([
             "reportDir=/tmp/out", "defaultTimeout=7.5", "scenarioTimeout=45",
-            "recordBitrateKbps=2000", "app=sample-app", "machine=m1",
+            "recordBitrateKbps=2000", "app=sample-app",
             "locale=en_US", "wipeDataThresholdGB=4",
         ])
         XCTAssertEqual(overrides, [
             "reportDir": .string("/tmp/out"), "defaultTimeout": .double(7.5),
             "scenarioTimeout": .int(45), "recordBitrateKbps": .int(2000),
-            "app": .string("sample-app"), "machine": .string("m1"),
+            "app": .string("sample-app"),
             "locale": .string("en_US"), "wipeDataThresholdGB": .double(4),
         ])
     }
@@ -235,7 +235,7 @@ final class RunProfileSetOverrideKeysTests: XCTestCase {
         XCTAssertTrue(RunProfileDocument.profileOnlyKeys.isSubset(of: RunProfileDocument.overridableKeys))
         XCTAssertEqual(RunProfileDocument.profileOnlyKeys, [
             "iosInappEngine", "updateWebView", "wipeDataOnBloat", "recoverCpuFallbackToGpu",
-            "app", "machine", "locale", "wipeDataThresholdGB",
+            "app", "locale", "wipeDataThresholdGB",
         ])
     }
 
@@ -293,7 +293,6 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         case "scenarioTimeout": return doc.scenarioTimeout.map(RunProfileSetValue.int)
         case "recordBitrateKbps": return doc.recordBitrateKbps.map(RunProfileSetValue.int)
         case "app": return doc.app.map(RunProfileSetValue.string)
-        case "machine": return doc.machine.map(RunProfileSetValue.string)
         case "locale": return doc.locale.map(RunProfileSetValue.string)
         case "wipeDataThresholdGB": return doc.wipeDataThresholdGB.map(RunProfileSetValue.double)
         default:
@@ -313,16 +312,16 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         "recoverCpuFallbackToGpu": "true", "record": "true", "recordFailuresOnly": "true",
         "recordFullResolution": "true",
         "reportDir": "/tmp/out", "defaultTimeout": "12.5", "scenarioTimeout": "45",
-        "recordBitrateKbps": "2000", "app": "sample-app", "machine": "m1",
+        "recordBitrateKbps": "2000", "app": "sample-app",
         "locale": "en_US", "wipeDataThresholdGB": "4.5",
     ]
 
     func testEmptyOverridesReturnsTheSameValues() {
-        let doc = RunProfileDocument(app: "a", devices: [RunDeviceRef(name: "d")], heal: true)
+        let doc = RunProfileDocument(app: "a", devices: [RunDeviceEntry(platform: "ios", spec: DeviceSpec(name: "d"))], heal: true)
         XCTAssertEqual(doc.applyingOverrides([:]), doc)
     }
 
-    /// 受け付ける全キー(Bool 17 + スカラー8)が実際に反映されること。壊れたキーだけ
+    /// 受け付ける全キー(Bool 17 + スカラー7)が実際に反映されること。壊れたキーだけ
     /// このテストで機械的に検知する(1件でも switch 分岐から漏れる/型を取り違えると落ちる)
     func testOverridesEachSupportedKey() throws {
         let tokens = RunProfileDocument.overridableKeys.sorted().map { key -> String in
@@ -334,7 +333,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         }
         let overrides = try RunProfileSetOverride.parse(tokens)
         XCTAssertEqual(Set(overrides.keys), RunProfileDocument.overridableKeys)
-        let applied = RunProfileDocument(app: "a", devices: [RunDeviceRef(name: "d")])
+        let applied = RunProfileDocument(app: "a", devices: [RunDeviceEntry(platform: "ios", spec: DeviceSpec(name: "d"))])
             .applyingOverrides(overrides)
         for (key, value) in overrides {
             XCTAssertEqual(fieldValue(applied, key), value, "\(key) が上書きされていない")
@@ -343,7 +342,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
 
     /// 未知キーは(CLI 側で既に弾いている前提のもと)防御的に無視するだけで落ちない
     func testUnknownKeyIsIgnoredDefensively() {
-        let doc = RunProfileDocument(app: "a", devices: [RunDeviceRef(name: "d")])
+        let doc = RunProfileDocument(app: "a", devices: [RunDeviceEntry(platform: "ios", spec: DeviceSpec(name: "d"))])
         let applied = doc.applyingOverrides(["notAKey": true])
         XCTAssertEqual(applied, doc)
     }
@@ -352,7 +351,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
     /// 起こらない)も防御的に無視する —— 本体の switch はタプルパターン `(key, .kind(v))` で
     /// マッチするので、型が合わなければどの case にも当たらず default で無視される
     func testWrongTypedValueIsIgnoredDefensively() {
-        let doc = RunProfileDocument(app: "a", devices: [RunDeviceRef(name: "d")])
+        let doc = RunProfileDocument(app: "a", devices: [RunDeviceEntry(platform: "ios", spec: DeviceSpec(name: "d"))])
         let applied = doc.applyingOverrides(["heal": .string("true")])
         XCTAssertNil(applied.heal)
     }
@@ -519,17 +518,14 @@ final class ProfileResolverOverridesIntegrationTests: XCTestCase {
             .appendingPathComponent("FTCoreTests-\(UUID().uuidString)")
         let root = tempDir.appendingPathComponent("TestProjects/SampleApp")
         project = TestProject(name: "SampleApp", rootURL: root)
-        for dir in [project.appsDir, project.machinesDir, project.runsDir] {
+        for dir in [project.appsDir, project.runsDir] {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
         try """
         { "ios": { "app": "com.example.sampleapp" } }
         """.data(using: .utf8)!.write(to: project.appsDir.appendingPathComponent("sampleapp.json"))
         try """
-        { "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro" } ] } }
-        """.data(using: .utf8)!.write(to: project.machinesDir.appendingPathComponent("m.json"))
-        try """
-        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "heal": true }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro" } ], "heal": true }
         """.data(using: .utf8)!.write(to: project.runsDir.appendingPathComponent("r.json"))
     }
 
@@ -540,7 +536,7 @@ final class ProfileResolverOverridesIntegrationTests: XCTestCase {
     /// プロファイルが明示 `heal: true` でも `--set heal=false` が勝つ
     func testSetOverrideBeatsTheProfilesOwnValue() throws {
         let resolved = try ProfileResolver.resolve(
-            project: project, runName: "r", machineName: "m", overrides: ["heal": false])
+            project: project, runName: "r", overrides: ["heal": false])
         XCTAssertFalse(resolved.heal)
     }
 
@@ -548,13 +544,13 @@ final class ProfileResolverOverridesIntegrationTests: XCTestCase {
     /// playProtectBypass を明示的に切る)
     func testSetOverrideAppliesToAKeyTheProfileDoesNotMention() throws {
         let resolved = try ProfileResolver.resolve(
-            project: project, runName: "r", machineName: "m", overrides: ["playProtectBypass": false])
+            project: project, runName: "r", overrides: ["playProtectBypass": false])
         XCTAssertFalse(resolved.playProtectBypass)
     }
 
     /// overrides を渡さなければ従来どおり(後方互換。呼び出しのほとんどが該当する)
     func testOmittingOverridesKeepsThePreviousBehaviour() throws {
-        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
         XCTAssertTrue(resolved.heal)
     }
 
@@ -563,7 +559,7 @@ final class ProfileResolverOverridesIntegrationTests: XCTestCase {
     /// 経路でも同じ関数を通る)
     func testSetOverrideAppliesToRecordAndHomeOnStartWithAProfile() throws {
         let resolved = try ProfileResolver.resolve(
-            project: project, runName: "r", machineName: "m",
+            project: project, runName: "r",
             overrides: ["record": true, "homeOnStart": false])
         XCTAssertTrue(resolved.record)
         XCTAssertFalse(resolved.homeOnStart)
@@ -574,7 +570,7 @@ final class ProfileResolverOverridesIntegrationTests: XCTestCase {
     /// 経由しない4欄なので別に固定する)
     func testSetOverrideAppliesToScalarKeysWithAProfile() throws {
         let resolved = try ProfileResolver.resolve(
-            project: project, runName: "r", machineName: "m",
+            project: project, runName: "r",
             overrides: [
                 "reportDir": .string("/tmp/custom-report"), "defaultTimeout": .double(9.5),
                 "scenarioTimeout": .int(30), "recordBitrateKbps": .int(4000),
@@ -585,11 +581,11 @@ final class ProfileResolverOverridesIntegrationTests: XCTestCase {
         XCTAssertEqual(resolved.recordBitrateKbps, 4000)
     }
 
-    /// `--profile` が要るスカラーキー(app/machine/locale/wipeDataThresholdGB)も、
+    /// `--profile` が要るスカラーキー(app/locale/wipeDataThresholdGB)も、
     /// --profile がある経路では devices に依存する他のキーと同じ関数を通って反映される
     func testSetOverrideAppliesToProfileOnlyScalarKeysWithAProfile() throws {
         let resolved = try ProfileResolver.resolve(
-            project: project, runName: "r", machineName: "m",
+            project: project, runName: "r",
             overrides: ["locale": .string("en_US"), "wipeDataThresholdGB": .double(4)])
         XCTAssertEqual(resolved.locale, "en_US")
         XCTAssertEqual(resolved.wipeDataThresholdGB, 4)

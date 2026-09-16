@@ -1028,7 +1028,7 @@ struct RunScenarios: AsyncParsableCommand {
 
     @Option(name: .customLong("device"), parsing: .upToNextOption,
             help: ArgumentHelp("Run on only these devices of the run profile (device names as written in "
-                + "the machine profile). Repeatable; defaults to every device the run profile lists. "
+                + "the run profile). Repeatable; defaults to every device the run profile lists. "
                 + "Used by the per-host sub-runs when one run profile spans devices on several machines "
                 + "(docs/remote-runner.md §13)"))
     var devices: [String] = []
@@ -1141,7 +1141,7 @@ struct RunScenarios: AsyncParsableCommand {
             throw ValidationError("--performance requires --profile or --fleet")
         }
         // 明示 --runner("local" を除く)は --profile が無いと dispatchToRemoteHost の冒頭で
-        // 必ず落ちる。マシンプロファイル経由の自動ディスパッチは --profile がある側でしか
+        // 必ず落ちる。台の machine による自動ディスパッチは --profile がある側でしか
         // 見ないので、ここは引数だけから決まる(ファイル I/O が要らない = validate() に置ける)。
         // **api run と同じ規則・同じ文言**(RunRejectionParityTests が両者の一致を固定する)
         if profile == nil, fleet == nil, let target = runner, !MachineDispatch.isExplicitLocal(target) {
@@ -1193,17 +1193,15 @@ struct RunScenarios: AsyncParsableCommand {
         RunEnvironment.apply(noProfileSettings)
         // リモート実行はここで打ち切る(以降はローカル実行の段取り。フラグはコマンドラインごと
         // リモートへ中継されるので、向こう側の fleetest が同じ env を自分で立てる)。
-        // dry-run だけは送らない(--runner 明示・マシンプロファイルの host 自動のどちらも。
-        // 理由と罠は RemoteDispatchGate の宣言。優先順位・食い違いは resolveEffectiveDispatchTarget
-        // → FTCore.MachineDispatch に委譲。ユーザー決定: マシンプロファイルで
-        // host を持たせることで、実行プロファイル経由で間接的にリモートを指定できるようにした)
+        // dry-run だけは送らない(--runner 明示・全台がリモートのプロファイルの自動のどちらも。
+        // 理由と罠は RemoteDispatchGate の宣言。判定は resolveEffectiveDispatchTarget)
         // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとのサブ実行へ分ける
         // (単一ディスパッチでは「そのホストに無いデバイス」が解決できない)。--runner 明示や
         // 全台が同じ機械なら nil が返り、従来の経路をそのまま通る
         if !dryRun, fleet == nil, let profile,
            let groups = try DeviceMachineRunner.plan(
                project: try ScenarioHost.project(named: project), profileName: profile,
-               explicitHost: runner, deviceFilter: devices, overrides: profileOverrides) {
+               explicitHost: runner, deviceFilter: devices) {
             let exitCode = try await DeviceMachineRunner.run(
                 project: try ScenarioHost.project(named: project), profileName: profile,
                 groups: groups, scenarios: scenarios, folders: folders,
@@ -1217,8 +1215,7 @@ struct RunScenarios: AsyncParsableCommand {
         }
         if !dryRun, let dispatch = try resolveEffectiveDispatchTarget(
         explicitTarget: runner, profile: profile, project: project,
-            requireProfileMachine: true, warn: { ConsoleOut.out("⚠️ \($0)") },
-            overrides: profileOverrides) {
+            requireProfileMachine: true) {
             try await dispatchToRemoteHost(dispatch)
             return
         }
@@ -1343,8 +1340,7 @@ struct RunScenarios: AsyncParsableCommand {
             if deviceMachine == nil, MachineDispatch.isExplicitLocal(runner) {
                 (effectiveDeviceFilter, effectiveDeviceHost) = try machineScopedDeviceFilter(
                     project: testProject, profile: profile,
-                    targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices,
-                    overrides: profileOverrides)
+                    targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices)
             }
             let runSummary: RunSummary
             let fmSettings: FMSettingsRecord
@@ -1513,7 +1509,7 @@ struct RunScenarios: AsyncParsableCommand {
         }
     }
 
-    /// `--runner` または(自動)マシンプロファイルの `host`: ローカルビルド・実行をせず、対等ピア
+    /// `--runner` または(自動)全台が居るリモートの機械: ローカルビルド・実行をせず、対等ピア
     /// (SSH 到達可能な foundation-tester clone)に丸ごとディスパッチする
     /// (docs/remote-runner.md §3・§7・Phase 1)。デバイス割当競合を避けるためリモート1本での
     /// 実行のみサポートし、ローカル専用オプションは併用不可にする
@@ -1521,11 +1517,10 @@ struct RunScenarios: AsyncParsableCommand {
         guard let profile else {
             throw ValidationError("--runner requires --profile")
         }
-        // machineScopedDeviceFilter と dispatcher.dispatch の両方が同じ上書きを見る必要がある
-        // (欠陥②。片方だけに通すと別マシンのデバイスを解決しつつ元マシンへ中継する)
+        // `--set` は向こうの子へそのまま中継する
         let dispatchOverrides = try RunProfileSetOverride.parse(setOverrides)
         // 拒否 or 注記の分岐は FTRemote.RemoteDispatchFlagPolicy に委譲(欠陥1)。origin が
-        // 自動ディスパッチ(マシンプロファイルの host)なら --skip-build は注記のみで無視する
+        // 自動ディスパッチ(全台がリモート)なら --skip-build は注記のみで無視する
         // (リモートは常に自前でビルドする)。他の3つは自動でも意味を持たせられないため拒否のまま
         let origin = dispatch.origin
         if !ports.isEmpty {
@@ -1553,7 +1548,7 @@ struct RunScenarios: AsyncParsableCommand {
         if deviceMachine == nil {
             (scopedDevices, scopedDeviceHost) = try machineScopedDeviceFilter(
                 project: testProject, profile: profile, targetMachine: dispatch.rawTarget,
-                requestedDevices: devices, overrides: dispatchOverrides)
+                requestedDevices: devices)
         }
         let exitCode = try await dispatcher.dispatch(
             project: testProject, profile: profile, scenarios: scenarios, folders: folders,

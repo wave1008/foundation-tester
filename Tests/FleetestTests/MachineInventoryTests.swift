@@ -1,17 +1,15 @@
 // MachineInventory(実行プロファイル未選択のときの監視対象)の単体テスト。
-// 実害の再現: マシンプロファイルが2つある案件で「(プロファイルなし)」を選ぶと1台も出なかった
-// (台帳を1つに決められず「今動いている台」だけに縮退していた)。
+// 台帳 = 全実行プロファイルの devices。1つに決められないという理由で「今動いている台」だけに
+// 縮退すると、未起動の台が1台も出ない(実害 2026-08-28)。
 
 import XCTest
 @testable import FTCore
 
 final class MachineInventoryTests: XCTestCase {
 
-    private func profile(machine: String? = nil,
-                         ios: [DeviceSpec] = [], android: [DeviceSpec] = []) -> MachineProfile {
-        MachineProfile(machine: machine,
-                       ios: MachineDeviceList(devices: ios),
-                       android: MachineDeviceList(devices: android))
+    private func profile(ios: [DeviceSpec] = [], android: [DeviceSpec] = []) -> DeviceRoster {
+        DeviceRoster(ios: DeviceRosterList(devices: ios),
+                     android: DeviceRosterList(devices: android))
     }
 
     private func names(_ entries: [DeviceMachineGrouping.CatalogEntry]) -> [String] {
@@ -37,8 +35,8 @@ final class MachineInventoryTests: XCTestCase {
         XCTAssertEqual(names(entries), ["ios:local/here", "ios:M1Max/runner"])
     }
 
-    func testMergesEveryMachineProfileAndDropsDuplicates() {
-        // 手元の台は両方の台帳に居るのが普通(構成の使い分け)。重複はエラーではなく1件に畳む
+    func testMergesEveryRunProfileAndDropsDuplicates() {
+        // 同じ台は複数の実行プロファイルに居るのが普通。重複はエラーではなく1件に畳む
         let onlyLocal = profile(ios: [DeviceSpec(name: "A"), DeviceSpec(name: "B")])
         let withRunners = profile(ios: [
             DeviceSpec(name: "A"),
@@ -59,27 +57,13 @@ final class MachineInventoryTests: XCTestCase {
         XCTAssertEqual(names(entries), ["ios:local/X", "android:local/X"])
     }
 
-    func testProfileDefaultMachineIsAppliedBeforeFiltering() {
-        // 台帳ごと "machine" を持つ形(全台がそのマシンに居る)。デバイス側に machine が無くても
-        // 実効マシンで判定する
+    /// "local"・空文字は手元に畳む(登録簿に無くても残る)
+    func testExplicitLocalAndEmptyMachineAreLocal() {
         let entries = MachineInventory.observableEntries(
-            profiles: [profile(machine: "M1Ultra", ios: [DeviceSpec(name: "A")])],
-            registry: ["M1Ultra"])
-        XCTAssertEqual(names(entries), ["ios:M1Ultra/A"])
-
-        let dropped = MachineInventory.observableEntries(
-            profiles: [profile(machine: "M1Ultra", ios: [DeviceSpec(name: "A")])],
+            profiles: [profile(ios: [DeviceSpec(name: "A", machine: "local"),
+                                     DeviceSpec(name: "B", machine: " ")])],
             registry: [])
-        XCTAssertTrue(dropped.isEmpty, "登録簿に無いマシンの台帳は丸ごと落ちる")
-    }
-
-    func testExplicitLocalBeatsTheProfileDefault() {
-        // デバイス側の "local" は「手元」の明示指定で、台帳既定より強い
-        // (DeviceMachineGrouping.effectiveMachine の規律をここでも守る)
-        let entries = MachineInventory.observableEntries(
-            profiles: [profile(machine: "M1Ultra", ios: [DeviceSpec(name: "A", machine: "local")])],
-            registry: [])
-        XCTAssertEqual(names(entries), ["ios:local/A"])
+        XCTAssertEqual(names(entries), ["ios:local/A", "ios:local/B"])
     }
 
     // MARK: - identity の食い違い
@@ -89,9 +73,9 @@ final class MachineInventoryTests: XCTestCase {
     // シミュレータは「未登録の起動中デバイス」として合成され、id 衝突で毎周期落ちていた
     // (= 起動中の台が監視から消える)。
 
-    private func source(_ name: String, machine: String? = nil,
+    private func source(_ name: String,
                         ios: [DeviceSpec] = [], android: [DeviceSpec] = []) -> MachineInventory.Source {
-        MachineInventory.Source(name: name, profile: profile(machine: machine, ios: ios, android: android))
+        MachineInventory.Source(name: name, profile: profile(ios: ios, android: android))
     }
 
     func testDisagreeingIdentitiesAreReportedWithBothLedgersNamed() {
@@ -184,7 +168,7 @@ final class MachineInventoryTests: XCTestCase {
         // **決着した行は警告ではなく事実の報告**として読めること(決着できなかった下の行と別物)
         XCTAssertEqual(
             merged.conflicts.first?.message,
-            "machine profiles disagree about ios:local/sim-01:"
+            "run profiles disagree about ios:local/sim-01:"
             + " M2Ultra.json says udid REAL, M1Ultra.json says udid PHANTOM."
             + " Using M2Ultra.json — that device exists on this machine,"
             + " the one M1Ultra.json describes does not.")
@@ -226,7 +210,7 @@ final class MachineInventoryTests: XCTestCase {
         XCTAssertEqual(merged.conflicts.first?.resolvedByLocalPresence, false)
         XCTAssertEqual(
             merged.conflicts.first?.message,
-            "machine profiles disagree about ios:local/sim-01:"
+            "run profiles disagree about ios:local/sim-01:"
             + " M1Ultra.json says udid AAA, M2Ultra.json says udid BBB."
             + " Using M1Ultra.json — the device M2Ultra.json describes is not listed."
             + " Is one of them written from another machine's point of view"
@@ -253,14 +237,14 @@ final class MachineInventoryTests: XCTestCase {
     }
 
     func testLoadAllNamedCarriesTheFileNameForTheWarning() throws {
-        let project = try projectWithMachines([
-            "M1Ultra": #"{"ios":{"devices":[{"name":"sim-01","udid":"AAA"}]}}"#,
-            "M2Ultra": #"{"ios":{"devices":[{"name":"sim-01","udid":"BBB"}]}}"#,
+        let project = try projectWithRuns([
+            "M1Ultra": #"{"devices":[{"platform":"ios","name":"sim-01","udid":"AAA"}]}"#,
+            "M2Ultra": #"{"devices":[{"platform":"ios","name":"sim-01","udid":"BBB","enabled":false}]}"#,
         ])
         let sources = MachineInventory.loadAllNamed(project: project) { _ in
             XCTFail("読める台帳で警告は出ない")
         }
-        XCTAssertEqual(sources.map(\.name), ["M1Ultra.json", "M2Ultra.json"])
+        XCTAssertEqual(sources.map(\.name), ["runs/M1Ultra.json", "runs/M2Ultra.json"])
         let merged = MachineInventory.merge(sources: sources, registry: [], existsLocally: nil)
         XCTAssertEqual(merged.conflicts.count, 1)
         XCTAssertTrue(merged.conflicts.first?.message.contains("M2Ultra.json") == true,
@@ -279,11 +263,11 @@ final class MachineInventoryTests: XCTestCase {
         XCTAssertFalse(projects.isEmpty, "TestProjects/ が読めない: \(projectsDir.path)")
         for name in projects.sorted() {
             let project = TestProject(name: name, rootURL: projectsDir.appendingPathComponent(name))
-            guard FileManager.default.fileExists(atPath: project.machinesDir.path) else { continue }
+            guard FileManager.default.fileExists(atPath: project.runsDir.path) else { continue }
             let sources = MachineInventory.loadAllNamed(project: project) { _ in }
             // 登録簿は案件ごとに違うので、**全マシンを観測できる**前提で当てる(いちばん広い集合)
             let registry = sources.flatMap { source in
-                DeviceMachineGrouping.entries(machine: source.profile).compactMap(\.machine)
+                DeviceMachineGrouping.entries(roster: source.profile).compactMap(\.machine)
             }
             let conflicts = MachineInventory.merge(
                 sources: sources, registry: registry, existsLocally: nil).conflicts
@@ -296,36 +280,38 @@ final class MachineInventoryTests: XCTestCase {
     // 「(プロファイルなし)」で**タイルからブリッジを起動できる**ことを支える2つ
     // (ApiDeviceOperation.run が台帳を1つに決められず落ちていた。実害 2026-08-29)。
 
-    private func projectWithMachines(_ files: [String: String]) throws -> TestProject {
+    private func projectWithRuns(_ files: [String: String]) throws -> TestProject {
         let root = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("fleetest-machine-inventory-\(UUID().uuidString)")
-        let machines = root.appendingPathComponent("profiles/machines")
-        try FileManager.default.createDirectory(at: machines, withIntermediateDirectories: true)
+        let project = TestProject(name: "p", rootURL: root)
+        try FileManager.default.createDirectory(at: project.runsDir, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         for (name, body) in files {
-            try body.write(to: machines.appendingPathComponent("\(name).json"),
+            try body.write(to: project.runsDir.appendingPathComponent("\(name).json"),
                            atomically: true, encoding: .utf8)
         }
-        return TestProject(name: "p", rootURL: root)
+        return project
     }
 
     func testLoadAllReadsEveryLedgerInFileNameOrder() throws {
-        // **並びが結果を決める**(observableEntries の重複解決は入力順で先頭を採る)ので固定する
-        let project = try projectWithMachines([
-            "zzz": #"{"ios":{"devices":[{"name":"Z"}]}}"#,
-            "aaa": #"{"ios":{"devices":[{"name":"A"}]}}"#,
+        // **並びが結果を決める**(observableEntries の重複解決は入力順で先頭を採る)ので固定する。
+        // enabled: false の台も台帳に載る(プロファイルを選んでいないときの監視・起動の対象)
+        let project = try projectWithRuns([
+            "zzz": #"{"devices":[{"platform":"ios","name":"Z"}]}"#,
+            "aaa": #"{"devices":[{"platform":"ios","machine":"M1","name":"A","enabled":false}]}"#,
         ])
         let loaded = MachineInventory.loadAll(project: project) { _ in
             XCTFail("読める台帳で警告は出ない")
         }
         XCTAssertEqual(loaded.map { $0.ios?.devices?.first?.name }, ["A", "Z"])
+        XCTAssertEqual(loaded.map { $0.ios?.devices?.first?.machine }, ["M1", nil], "machine は正規化して焼き込む")
     }
 
     func testABrokenLedgerIsSkippedWithAWarningInsteadOfStoppingEverything() throws {
         // 1枚壊れていても残りは見せる —— ここは「見えるものを見せる」経路
-        let project = try projectWithMachines([
+        let project = try projectWithRuns([
             "broken": "{ not json",
-            "good": #"{"ios":{"devices":[{"name":"A"}]}}"#,
+            "good": #"{"devices":[{"platform":"ios","name":"A"}]}"#,
         ])
         var warnings: [String] = []
         let loaded = MachineInventory.loadAll(project: project) { warnings.append($0) }
@@ -339,14 +325,12 @@ final class MachineInventoryTests: XCTestCase {
 
     func testMergedProfileSplitsByPlatformAndKeepsTheMachineOnEachDevice() {
         let entries = MachineInventory.observableEntries(
-            profiles: [profile(machine: "M1Max", ios: [DeviceSpec(name: "A")],
-                               android: [DeviceSpec(name: "B")]),
+            profiles: [profile(ios: [DeviceSpec(name: "A", machine: "M1Max")],
+                               android: [DeviceSpec(name: "B", machine: "M1Max")]),
                        profile(ios: [DeviceSpec(name: "C")])],
             registry: ["M1Max"])
         let merged = MachineInventory.mergedProfile(entries)
-        // 台帳既定は持たない —— **マシンは各デバイスに焼き込む**。既定を残すと、
-        // 手元の台まで M1Max の台と読まれて別の機械へ回る
-        XCTAssertNil(merged.machine)
+        // **マシンは各デバイスに焼き込む**
         XCTAssertEqual(merged.ios?.devices?.map { "\($0.name)@\($0.machine ?? "-")" }, ["A@M1Max", "C@-"])
         XCTAssertEqual(merged.android?.devices?.map { "\($0.name)@\($0.machine ?? "-")" }, ["B@M1Max"])
     }

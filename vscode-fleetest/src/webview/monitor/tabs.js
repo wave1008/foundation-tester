@@ -1,10 +1,10 @@
-// switchTabはcloseDeviceOpMenu(deviceTiles.js)・closeMachineDeviceMenu(machineProfilesTab.js)・
+// switchTabはcloseDeviceOpMenu(deviceTiles.js)・closeDeviceMenu(runProfileDevicesTab.js)・
 // reapplyTilePaneHeight(splitter.js)のimportに依存する。
 
 import { vscode } from './vscodeApi.js';
 import { devicesPanel } from './domRefs.js';
 import { closeDeviceOpMenu } from './deviceTiles.js';
-import { closeMachineDeviceMenu } from './machineProfilesTab.js';
+import { closeDeviceMenu as closeRunProfileDeviceMenu } from './runProfileDevicesTab.js';
 import { reapplyTilePaneHeight } from './splitter.js';
 
 export const TAB_IDS = ['dashboard', 'devices', 'recordings', 'profiles', 'processes', 'settings'];
@@ -40,7 +40,7 @@ export function switchTab(tab) {
   currentTabId = tab;
   // タブ切替中に前のタブで開いていた右クリックメニューを残さない。
   closeDeviceOpMenu();
-  closeMachineDeviceMenu();
+  closeRunProfileDeviceMenu();
   for (const id of TAB_IDS) {
     const isActive = id === tab;
     tabButtons[id].classList.toggle('active', isActive);

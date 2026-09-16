@@ -32,7 +32,6 @@ public struct TestProject: Sendable, Hashable, Identifiable {
     public var disabledDir: URL { scenariosDir.appendingPathComponent("_disabled") }
     public var profilesDir: URL { rootURL.appendingPathComponent("profiles") }
     public var appsDir: URL { profilesDir.appendingPathComponent("apps") }
-    public var machinesDir: URL { profilesDir.appendingPathComponent("machines") }
     public var runsDir: URL { profilesDir.appendingPathComponent("runs") }
     public var reportsDir: URL { rootURL.appendingPathComponent("reports") }
     public var docsDir: URL { rootURL.appendingPathComponent("docs") }

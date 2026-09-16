@@ -10,36 +10,33 @@ import XCTest
 final class MCPProfilePlatformTests: XCTestCase {
     private var root: URL!
     private var savedRoot: String?
-    private var savedMachine: String?
 
     override func setUpWithError() throws {
         root = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("MCPProfilePlatformTests-\(UUID().uuidString)")
         let profiles = root.appendingPathComponent("TestProjects/p/profiles")
-        for sub in ["runs", "machines", "apps"] {
+        for sub in ["runs", "apps"] {
             try FileManager.default.createDirectory(
                 at: profiles.appendingPathComponent(sub), withIntermediateDirectories: true)
         }
         try "// swift-tools-version:5.9\n".write(
             to: root.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
-        try #"{"android":{"devices":[{"name":"Emu","avd":"Pixel_9"}]},"ios":{"devices":[{"name":"Sim","simulator":"iPhone 17"}]}}"#
-            .write(to: profiles.appendingPathComponent("machines/local.json"), atomically: true, encoding: .utf8)
-        try #"{"app":"app","machine":"local","devices":[{"name":"Emu"}]}"#
+        let emu = #"{"platform":"android","machine":"local","name":"Emu","avd":"Pixel_9"}"#
+        let sim = #"{"platform":"ios","machine":"local","name":"Sim","simulator":"iPhone 17"}"#
+        try #"{"app":"app","devices":[\#(emu)]}"#
             .write(to: profiles.appendingPathComponent("runs/android-run.json"), atomically: true, encoding: .utf8)
-        try #"{"app":"app","machine":"local","devices":[{"name":"Sim"}]}"#
+        // 無効の台は先頭でも数えない(実際に走る最初の台の platform)
+        try #"{"app":"app","devices":[{"platform":"android","machine":"local","name":"Off","enabled":false},\#(sim)]}"#
             .write(to: profiles.appendingPathComponent("runs/ios-run.json"), atomically: true, encoding: .utf8)
-        try #"{"app":"app","machine":"local","devices":[{"name":"Emu"},{"name":"Sim"}]}"#
+        try #"{"app":"app","devices":[\#(emu),\#(sim)]}"#
             .write(to: profiles.appendingPathComponent("runs/mixed-run.json"), atomically: true, encoding: .utf8)
 
         savedRoot = ProcessInfo.processInfo.environment["FT_PACKAGE_ROOT"]
-        savedMachine = ProcessInfo.processInfo.environment["FT_MACHINE"]
         setenv("FT_PACKAGE_ROOT", root.path, 1)
-        unsetenv("FT_MACHINE")
     }
 
     override func tearDownWithError() throws {
         if let savedRoot { setenv("FT_PACKAGE_ROOT", savedRoot, 1) } else { unsetenv("FT_PACKAGE_ROOT") }
-        if let savedMachine { setenv("FT_MACHINE", savedMachine, 1) }
         try? FileManager.default.removeItem(at: root)
     }
 

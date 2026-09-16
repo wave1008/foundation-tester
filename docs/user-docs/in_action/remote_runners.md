@@ -71,25 +71,29 @@ tab (see Step 2 of [Setting Up a Remote Runner](remote_runner_setup.md)).
 Renaming a machine later causes no trouble. Records such as result JSON keep the host name, and
 the machine name never appears in the files or arguments sent to the runner.
 
-## Machine profiles decide where a run goes
+## A run profile's devices decide where a run goes
 
-In a machine profile, each device names its machine in `machine`:
+Each device in a run profile names its own machine in `machine`:
 
 ```jsonc
-// profiles/machines/M1Max.json
-{ "machine": "M1Max",
-  "ios": { "devices": [ { "machine": "M1Max", "name": "simulator1", "simulator": "iPhone 17 Pro" } ] } }
+// profiles/runs/ios-m1max.json
+{ "app": "myapp",
+  "devices": [
+    { "platform": "ios", "machine": "M1Max", "name": "simulator1", "simulator": "iPhone 17 Pro" }
+  ] }
 ```
 
-A run profile names the machine profile it uses. So **choosing a run profile also chooses which
-machine runs it**, and you normally do not need `--runner`.
+So **choosing a run profile also chooses which machine runs it**, and you normally do not need
+`--runner`. If a run profile's enabled devices all live on one remote machine, the run
+automatically dispatches there. If they span several machines (some `"local"`, some remote), the
+run splits per machine and each portion runs against its own devices there.
 
-- Write `"machine": "local"` for devices on your own Mac. If you leave it out, the device takes
-  the file's top-level `machine`. That makes a difference once one file mixes local and remote
-  devices, so do not leave it out.
-- `--runner <name>` on the command line takes priority over the profile. Besides a machine
-  name, `--runner` also accepts a host name or IP address directly.
-- Profiles written with the old key `"host"` are still read (renamed to `machine` on 2026-08-26).
+- Write `"machine": "local"` for devices on your own Mac — always write it explicitly, since
+  there is no profile-level default to fall back on.
+- `--runner <name>` on the command line takes priority over the profile (pass `--runner local` to
+  force a run to stay on your Mac). Besides a machine name, `--runner` also accepts a host name
+  or IP address directly.
+- Devices written with the old key `"host"` are still read (renamed to `machine` on 2026-08-26).
 
 ## `run --runner` and `--fleet`
 
@@ -141,17 +145,18 @@ You do need both of the following:
 
 ## Using it from the VS Code extension
 
-The extension has no "choose where to run" screen. When you choose a run profile, its machine
-profile's `machine` decides where the run goes.
+The extension has no "choose where to run" screen. When you choose a run profile, the `machine`
+its devices name decides where the run goes.
 
 The extension can do the following (for the steps, see
 [Setting Up a Remote Runner](remote_runner_setup.md)):
 
 - **Register machines**: in the "Machines" table of the Device Monitor's Settings tab. It reads
   and writes the same registry as the CLI's `fleetest remote machines`.
-- **Add devices to a machine profile**: switching "Machine:" in "Select Devices" lists the
-  devices on that machine. You can also create a new device right there. Each added device gets
-  the chosen machine name written as its `machine` (`"local"` for your own Mac).
+- **Add devices to a run profile**: the run profile section's "Add device" button opens "Select
+  Devices"; switching "Machine:" there lists the devices on that machine. You can also create a
+  new device right there. Each added device gets the chosen machine name written as its `machine`
+  (`"local"` for your own Mac).
 - **Align versions before a run**: before a run starts, it checks whether the runner's fleetest
   is on the same version as your Mac. If not, "Update and run" brings it in line.
 

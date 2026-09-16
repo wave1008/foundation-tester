@@ -53,7 +53,7 @@ public enum StreamLease {
     }
 
     /// デバイス1台の鍵。**`api device-stream` と `api monitor` が同じ綴りを作る契約**
-    /// (片方だけ変えると二重配信が黙って復活する)。マシンプロファイル上の名前は空白・
+    /// (片方だけ変えると二重配信が黙って復活する)。実行プロファイル上の名前は空白・
     /// 括弧・"/" を含むので、安全な文字以外を %XX へ畳む(**衝突しない** = 別の台を
     /// 同じ鍵にして互いに配信を止め合うことが無い)
     public static func key(platform: String, name: String) -> String {

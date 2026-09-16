@@ -1,7 +1,7 @@
 // fleetest profile setup
-// マシン/アプリ/実行の3プロファイルを**1コマンドで整合させて**書く。
-// エージェントに JSON を手書きさせると、machines の device 名と runs の参照名がずれる・
-// 指示していないプラットフォームの run が残る、という不整合が実際に起きた。
+// アプリ/実行の2プロファイルを**1コマンドで整合させて**書く(デバイスの実体は実行プロファイルの devices)。
+// エージェントに JSON を手書きさせると、指示していないプラットフォームの run が残る等の
+// 不整合が実際に起きた。
 // 書き込みロジックは FTCore.ProfileWriter に集約し、ここは引数の解決とファイル I/O だけ。
 
 import ArgumentParser
@@ -13,7 +13,7 @@ import FTCore
 struct ProfileSetupCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "setup",
-        abstract: "Create machine, app and run profiles consistently (idempotent)")
+        abstract: "Create app and run profiles consistently (idempotent)")
 
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
@@ -21,10 +21,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @Option(help: "Target platform: ios / android / both")
     var platform: String
 
-    @Option(help: "Machine profile name (defaults to the registered name, or the only entry in machines/)")
-    var machine: String?
-
-    @Option(help: "Logical device name (defaults to ios=simulator1 / android=emulator1)")
+    @Option(help: "Device name (defaults to ios=simulator1 / android=emulator1)")
     var deviceName: String?
 
     @Option(help: "iOS: simulator model name (e.g. \"iPhone 17 Pro\")")
@@ -82,50 +79,43 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         default: throw ValidationError("--platform must be one of ios / android / both: \(platform)")
         }
         // 1回の呼び出しで両方作れるようにする(承認回数を減らすため。値は各プラットフォームで解決)
-        var deviceNames: [String] = []
+        var devices: [[String: Any]] = []
         for target in platforms {
-            deviceNames.append(try await setUp(platform: target))
+            devices.append(try await setUp(platform: target))
         }
-        // 古い雛形が作った all.json は machine もデバイスの実在も知らないまま残る。
-        // 両方作ったときはここで揃える(拡張の編集画面で「(未指定)」にならないように)。
-        // **無ければ作らない** —— 今の雛形は all.json を置かない(ユーザー決定)
+        // 古い雛形が作った all.json はデバイスの実在を知らないまま残る。
+        // 両方作ったときはここで揃える。**無ければ作らない** —— 今の雛形は all.json を置かない(ユーザー決定)
         if platforms.count > 1 {
             let testProject = try ScenarioHost.project(named: project)
             let allURL = testProject.runsDir.appendingPathComponent("all.json")
             if FileManager.default.fileExists(atPath: allURL.path) {
-                let machineName = try resolveMachineName(project: testProject)
-                try ProfileWriter.json(ProfileWriter.runProfile(
-                    appRef: appRef ?? testProject.name.lowercased(),
-                    deviceNames: deviceNames, machine: machineName))
-                    .write(to: allURL, options: .atomic)
-                ConsoleOut.out("   Run:     profiles/runs/all.json … devices=[\(deviceNames.joined(separator: ", "))]")
+                var object = try readObject(allURL)
+                object["app"] = appRef ?? testProject.name.lowercased()
+                for device in devices {
+                    object = try RunProfileDeviceEditor.upsertingDevice(inRunProfileObject: object, device: device)
+                }
+                try ProfileWriter.json(object).write(to: allURL, options: .atomic)
+                let names = devices.compactMap { $0["name"] as? String }
+                ConsoleOut.out("   Run:     profiles/runs/all.json … devices=[\(names.joined(separator: ", "))]")
             }
         }
     }
 
-    /// 作成/更新したデバイスの論理名を返す(all.json をまとめるのに使う)
+    /// 書いた devices[] の1要素を返す(all.json をまとめるのに使う)
     @discardableResult
-    private func setUp(platform: String) async throws -> String {
+    private func setUp(platform: String) async throws -> [String: Any] {
         let testProject = try ScenarioHost.project(named: project)
-        let machineName = try resolveMachineName(project: testProject)
         let deviceName = self.deviceName ?? ProfileWriter.defaultDeviceName(platform: platform)
         let appRef = self.appRef ?? testProject.name.lowercased()
         let runName = run ?? platform
         let fm = FileManager.default
-        var machineDetail = ""
-
-        // ---- マシンプロファイル(デバイスの実体) ----
-        // 実体の指定が無い場合は「既に登録済みのデバイスを使う」意味にする
-        // (create-device が追記した直後など。無ければどう作ればよいか分からないのでエラー)
-        try fm.createDirectory(at: testProject.machinesDir, withIntermediateDirectories: true)
-        let machineURL = testProject.machinesDir.appendingPathComponent("\(machineName).json")
-        let machineObject = try readObject(machineURL)
+        var deviceDetail = ""
 
         var device = Self.deviceEntry(platform: platform, name: deviceName,
                                       simulator: simulator, os: os, udid: udid,
                                       avd: avd, serial: serial)
         // 実体が1つも指定されていないときだけ自動選定する。**キー数では判定しない**
-        // (host/name は常に入っている。ProfileWriter.hasDeviceBody の宣言を参照)
+        // (platform/machine/name は常に入っている。ProfileWriter.hasDeviceBody の宣言を参照)
         if !ProfileWriter.hasDeviceBody(device), autoDevice {
             if platform == "ios" {
                 let picked = try Self.pickSimulator()
@@ -154,20 +144,22 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             device["kind"] = "physical"
         }
 
+        // 実体の指定が無い場合は「他の実行プロファイルに登録済みの手元の台を使う」意味にする
+        // (create-device が追記した直後など。無ければどう作ればよいか分からないのでエラー)
         if ProfileWriter.hasDeviceBody(device) {
-            let updatedMachine = try ProfileWriter.upsertingDevice(
-                inProfileObject: machineObject, platform: platform, device: device)
-            try ProfileWriter.json(updatedMachine).write(to: machineURL, options: .atomic)
-            machineDetail = "registered \(deviceName) under \(platform)"
+            deviceDetail = "registered \(deviceName) (\(platform))"
         } else {
-            guard MachineProfileEditor.deviceNames(inProfileObject: machineObject)
-                .contains(deviceName) else {
+            let known = MachineInventory.loadAll(project: testProject) { _ in }
+                .flatMap { DeviceMachineGrouping.entries(roster: $0) }
+                .first { $0.platform == platform && $0.machine == nil && $0.name == deviceName }
+            guard let known else {
                 throw ValidationError(
-                    "device \(deviceName) is not in machines/\(machineName).json. "
+                    "device \(deviceName) (\(platform)) is not in any run profile. "
                     + "Point at a concrete device (iOS: --simulator/--udid, Android: --avd/--serial), "
                     + "or create one first with fleetest api create-device")
             }
-            machineDetail = "\(deviceName) is already registered (unchanged)"
+            device = Self.entryObject(platform: platform, spec: known.spec)
+            deviceDetail = "\(deviceName) is already registered (copied as is)"
         }
 
         // ---- アプリプロファイル ----
@@ -178,37 +170,40 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             appName: appName ?? testProject.name, appID: appID, appPath: appPath)
         try ProfileWriter.json(updatedApp).write(to: appURL, options: .atomic)
 
-        // ---- 実行プロファイル(マシン側の論理名をそのまま参照する) ----
+        // ---- 実行プロファイル(デバイスの実体を持つ。既存なら app を揃えて台を upsert) ----
         try fm.createDirectory(at: testProject.runsDir, withIntermediateDirectories: true)
         let runURL = testProject.runsDir.appendingPathComponent("\(runName).json")
-        try ProfileWriter.json(ProfileWriter.runProfile(
-            appRef: appRef, deviceNames: [deviceName], machine: machineName))
-            .write(to: runURL, options: .atomic)
+        let runObject: [String: Any]
+        if fm.fileExists(atPath: runURL.path) {
+            var existing = try readObject(runURL)
+            existing["app"] = appRef
+            runObject = try RunProfileDeviceEditor.upsertingDevice(inRunProfileObject: existing, device: device)
+        } else {
+            runObject = ProfileWriter.runProfile(appRef: appRef, devices: [device])
+        }
+        try ProfileWriter.json(runObject).write(to: runURL, options: .atomic)
 
         ConsoleOut.out("✅ Created the profiles (project \(testProject.name))")
-        ConsoleOut.out("   Machine: profiles/machines/\(machineName).json … \(machineDetail)")
         ConsoleOut.out("   App:     profiles/apps/\(appRef).json … \(appID)")
-        ConsoleOut.out("   Run:     profiles/runs/\(runName).json … app=\(appRef) devices=[\(deviceName)]")
+        ConsoleOut.out("   Run:     profiles/runs/\(runName).json … app=\(appRef) / \(deviceDetail)")
 
         // 検証ゲート: 書いた実行プロファイルが実際に解決できることまで確認する
-        let resolved = try ProfileResolver.resolve(
-            project: testProject, runName: runName, machineName: machineName)
+        let resolved = try ProfileResolver.resolve(project: testProject, runName: runName)
         for warning in resolved.warnings {
             ConsoleOut.out("⚠️ \(warning)")
         }
         let devices = resolved.devices.map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-        ConsoleOut.out("   Resolved: \(resolved.appName) @ \(machineName) / \(devices)")
+        ConsoleOut.out("   Resolved: \(resolved.appName) / \(devices)")
         ConsoleOut.out("   To run: fleetest run --project \(testProject.name) --profile \(runName)")
-        return deviceName
+        return device
     }
 
-    /// マシンプロファイルへ書く1件を組み立てる(I/O 無し。自動選定と kind の判定は呼び出し側)。
-    /// host は必ず書く(手元なら "local"。省略はプロファイル直下の既定を継ぐ意味になり、
-    /// 既定がリモートのプロファイルでは手元のデバイスが別の機械のもの扱いになる)
+    /// 実行プロファイルの devices[] へ書く1件を組み立てる(I/O 無し。自動選定と kind の判定は呼び出し側)。
+    /// machine は必ず書く(手元なら "local")
     static func deviceEntry(platform: String, name: String, simulator: String?, os: String?,
                             udid: String?, avd: String?, serial: String?) -> [String: Any] {
         var device: [String: Any] = [
-            "host": DeviceMachineGrouping.localDisplayName, "name": name,
+            "platform": platform, "machine": DeviceMachineGrouping.localDisplayName, "name": name,
         ]
         if platform == "ios" {
             if let simulator { device["simulator"] = simulator }
@@ -219,6 +214,23 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             if let serial { device["serial"] = serial }
         }
         return device
+    }
+
+    /// 登録済みの台(spec)を devices[] の1要素へ戻す(手元の台だけを渡すこと)
+    static func entryObject(platform: String, spec: DeviceSpec) -> [String: Any] {
+        var object: [String: Any] = [
+            "platform": platform, "machine": DeviceMachineGrouping.localDisplayName, "name": spec.name,
+        ]
+        if let kind = spec.kind { object["kind"] = kind.rawValue }
+        if let simulator = spec.simulator { object["simulator"] = simulator }
+        if let os = spec.os { object["os"] = os }
+        if let udid = spec.udid { object["udid"] = udid }
+        if let port = spec.port { object["port"] = Int(port) }
+        if let engine = spec.engine { object["engine"] = engine }
+        if let avd = spec.avd { object["avd"] = avd }
+        if let serial = spec.serial { object["serial"] = serial }
+        if let model = spec.model { object["model"] = model }
+        return object
     }
 
     private func readObject(_ url: URL) throws -> [String: Any] {
@@ -266,15 +278,5 @@ struct ProfileSetupCommand: AsyncParsableCommand {
                 + " (create one in Android Studio, or with fleetest api create-device)")
         }
         return picked
-    }
-
-    /// --machine が指定されていればそれ。無ければ通常の決定規則(実行プロファイルの machine >
-    /// FT_MACHINE > machines/ が1つ)。**「この Mac の登録名」は見ない**
-    /// (理由は ProfileResolver.determineMachine の宣言)
-    private func resolveMachineName(project: TestProject) throws -> String {
-        if let machine, !machine.isEmpty {
-            return machine
-        }
-        return try ProfileResolver.determineMachine(project: project).name
     }
 }

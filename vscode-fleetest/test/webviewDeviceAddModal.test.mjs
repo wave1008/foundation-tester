@@ -66,12 +66,11 @@ function post(window, data) {
 /** モーダルは #device-pick-overlay のグループ見出しの「+」からしか開かないので、その導線をたどる */
 function openDeviceAddModal(window, document, platform = "ios") {
   post(window, {
-    type: "machineProfileInfo",
-    machines: [{ name: "M1", devices: [] }],
-    current: "M1",
-    error: null,
+    type: "profileInfo",
+    projects: ["P"], profiles: ["all"], current: "all", filter: "all", apps: [],
+    project: "P", projectDir: "TestProjects/P", devices: [],
   });
-  document.getElementById("btn-device-add-existing").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  document.getElementById("btn-run-profile-device-add-existing").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   document.getElementById(`device-pick-${platform}-add-new`)
     .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 }

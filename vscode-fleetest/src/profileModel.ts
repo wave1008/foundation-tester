@@ -4,16 +4,17 @@
 // (profileDiagnostics.ts と test/profileModel.test.mjs の両方から使うため)。
 //
 // stdout 1行JSON contract:
-//   {"machine":"M2 Ultra"|null,"project":"SampleApp","results":[
-//     {"kind":"apps"|"machines"|"runs","name":"sampleapp","path":"/絶対/パス.json",
+//   {"project":"SampleApp","results":[
+//     {"kind":"apps"|"runs","name":"sampleapp","path":"/絶対/パス.json",
 //      "errors":["..."],"warnings":["..."]}, ...
 //   ]}
 // 検証エラーがあっても exit 0(errors 非空 = そのファイルにエラーあり、の意味)。
 
-/** ProfileFileKind.directoryName(Sources/FTCore/RunProfile.swift)と同じ語彙。 */
-export type ProfileKind = "apps" | "machines" | "runs";
+/** ProfileFileKind.directoryName(Sources/FTCore/RunProfile.swift)と同じ語彙。
+ */
+export type ProfileKind = "apps" | "runs";
 
-const PROFILE_KINDS: ReadonlySet<string> = new Set<ProfileKind>(["apps", "machines", "runs"]);
+const PROFILE_KINDS: ReadonlySet<string> = new Set<ProfileKind>(["apps", "runs"]);
 
 export interface ValidateProfileResult {
   readonly kind: ProfileKind;
@@ -26,8 +27,6 @@ export interface ValidateProfileResult {
 
 export interface ValidateProfileOutput {
   readonly project: string;
-  /** 現在マシンが未登録の場合は null。 */
-  readonly machine: string | null;
   readonly results: readonly ValidateProfileResult[];
 }
 
@@ -59,7 +58,6 @@ export function isValidateProfileOutput(value: unknown): value is ValidateProfil
   }
   return (
     typeof value.project === "string" &&
-    (value.machine === null || typeof value.machine === "string") &&
     Array.isArray(value.results) &&
     value.results.every(isValidateProfileResult)
   );
@@ -91,7 +89,7 @@ function normalizePath(value: string): string {
 }
 
 /**
- * `TestProjects/<project>/profiles/{apps,machines,runs}/<name>.json` の形に一致する場合だけ
+ * `TestProjects/<project>/profiles/{apps,runs}/<name>.json` の形に一致する場合だけ
  * project/kind/name を抽出する(--project/--kind/--name 絞り込み呼び出しの引数を組み立てるため)。
  * filePath は workspaceRoot 配下の絶対パス・相対パスのどちらでも受け付ける。
  */

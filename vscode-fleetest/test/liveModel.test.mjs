@@ -42,7 +42,6 @@ import {
 test("isListDevicesResult: 正常な値(iOS/Android混在)を true と判定する", () => {
   const value = {
     project: "SampleApp",
-    machine: "M1 Max",
     devices: [
       { name: "シミュ1", platform: "ios", state: "connected", detail: "port 8127", port: 8127, serial: null, udid: "11111111-2222-3333-4444-555555555555" },
       { name: "エミュ1", platform: "android", state: "offline", detail: "", port: null, serial: null, udid: null },
@@ -59,7 +58,6 @@ test("isListDevicesResult: 正常な値(iOS/Android混在)を true と判定す�
 test("isListDevicesResult: kind=physical(実機)を保持する", () => {
   const value = {
     project: "SampleApp",
-    machine: "M1 Max",
     devices: [
       { name: "iPhone 実機", platform: "ios", state: "connected", detail: "port 8140", port: 8140, serial: null, udid: "00008130-001819863E60001C", kind: "physical" },
       { name: "Pixel 実機", platform: "android", state: "connected", detail: "14141JEC204922", port: null, serial: "14141JEC204922", udid: null, kind: "physical" },
@@ -72,7 +70,6 @@ test("isListDevicesResult: kind=physical(実機)を保持する", () => {
 test("isListDevicesResult: kind が未知の値なら false", () => {
   const value = {
     project: "SampleApp",
-    machine: "M1 Max",
     devices: [
       { name: "シミュ1", platform: "ios", state: "connected", detail: "", port: 8127, serial: null, udid: null, kind: "emulator" },
     ],
@@ -83,7 +80,6 @@ test("isListDevicesResult: kind が未知の値なら false", () => {
 test("isListDevicesResult: 接続済みAndroid(serial あり)も true", () => {
   const value = {
     project: "SampleApp",
-    machine: "M1 Max",
     devices: [
       { name: "エミュ1", platform: "android", state: "connected", detail: "接続済み", port: null, serial: "emulator-5554", udid: null },
     ],
@@ -95,8 +91,9 @@ test("isListDevicesResult: トップレベルのフィールド欠落/型不一�
   assert.equal(isListDevicesResult(null), false);
   assert.equal(isListDevicesResult("not an object"), false);
   assert.equal(isListDevicesResult({}), false);
-  assert.equal(isListDevicesResult({ project: "P", devices: [] }), false); // machine 欠落
-  assert.equal(isListDevicesResult({ project: "P", machine: "M", devices: "not-array" }), false);
+  assert.equal(isListDevicesResult({ project: "P", devices: [] }), true); // machine は含まない
+  assert.equal(isListDevicesResult({ devices: [] }), false); // project 欠落
+  assert.equal(isListDevicesResult({ project: "P", devices: "not-array" }), false);
 });
 
 test("isListDevicesResult: devices 要素の platform/state が不正なら false", () => {
@@ -104,7 +101,6 @@ test("isListDevicesResult: devices 要素の platform/state が不正なら fals
   assert.equal(
     isListDevicesResult({
       project: "P",
-      machine: "M",
       devices: [{ ...base, platform: "windows", state: "connected" }],
     }),
     false,
@@ -112,7 +108,6 @@ test("isListDevicesResult: devices 要素の platform/state が不正なら fals
   assert.equal(
     isListDevicesResult({
       project: "P",
-      machine: "M",
       devices: [{ ...base, platform: "ios", state: "notBooted" }],
     }),
     false,
@@ -123,12 +118,12 @@ test("isListDevicesResult: devices 要素の platform/state が不正なら fals
 test("isListDevicesResult: devices 要素の udid が欠落/数値なら false", () => {
   const base = { name: "d", platform: "ios", state: "connected", detail: "", port: null, serial: null };
   assert.equal(
-    isListDevicesResult({ project: "P", machine: "M", devices: [base] }),
+    isListDevicesResult({ project: "P", devices: [base] }),
     false,
     "udid 欠落は不正",
   );
   assert.equal(
-    isListDevicesResult({ project: "P", machine: "M", devices: [{ ...base, udid: 12345 }] }),
+    isListDevicesResult({ project: "P", devices: [{ ...base, udid: 12345 }] }),
     false,
     "udid が数値は不正(string | null のみ許容)",
   );

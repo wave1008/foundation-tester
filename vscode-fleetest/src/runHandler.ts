@@ -757,7 +757,7 @@ async function executeRun(
   // あれば最優先で使う(上のライブパネル連携)。無ければ既存どおり: profile が非空のときはそちらだけ、
   // 空なら platform/port/serial を渡す。**liveTarget は profile 空のときだけ立つ**(上の連動ガード。
   // ここの前提が実装から抜けていて、プロファイルが黙って捨てられていた時期がある)。
-  // リモートディスパッチの要否は CLI 側がマシンプロファイルの host フィールドから判定する
+  // リモートディスパッチの要否は CLI 側が実行プロファイルの devices[].machine から判定する
   // (拡張は --runner 等を組み立てない)。
   if (liveTarget) {
     args.push("--platform", liveTarget.platform);

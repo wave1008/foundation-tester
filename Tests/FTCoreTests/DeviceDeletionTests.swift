@@ -85,48 +85,54 @@ final class DeviceDeletionTests: XCTestCase {
 
     // MARK: - referencedBy
 
-    func testReferencedByFindsIOSMatchByUDID() {
-        let udid = "12345678-1234-1234-1234-123456789012"
-        let machines: [(name: String, profile: MachineProfile)] = [
-            ("M1", MachineProfile(ios: MachineDeviceList(devices: [
-                DeviceSpec(name: "シミュ1", udid: udid),
-            ]))),
-            ("M2", MachineProfile(ios: MachineDeviceList(devices: [
-                DeviceSpec(name: "シミュ2", udid: "00000000-0000-0000-0000-000000000000"),
-            ]))),
-        ]
-        XCTAssertEqual(DeviceDeletion.referencedBy(machineProfiles: machines, identifier: udid), ["M1"])
+    private func run(_ entries: RunDeviceEntry...) -> RunProfileDocument {
+        RunProfileDocument(app: "a", devices: entries)
     }
 
-    func testReferencedByFindsAndroidMatchByAVD() {
-        let machines: [(name: String, profile: MachineProfile)] = [
-            ("M1", MachineProfile(android: MachineDeviceList(devices: [
-                DeviceSpec(name: "エミュ1", avd: "Pixel_9"),
-            ]))),
-            ("M2", MachineProfile(android: MachineDeviceList(devices: [
-                DeviceSpec(name: "エミュ2", avd: "Pixel_9"),
-            ]))),
+    func testReferencedByFindsIOSMatchByUDID() {
+        let udid = "12345678-1234-1234-1234-123456789012"
+        let runs: [(name: String, profile: RunProfileDocument)] = [
+            ("ios", run(RunDeviceEntry(platform: "ios", spec: DeviceSpec(name: "シミュ1", udid: udid)))),
+            ("other", run(RunDeviceEntry(platform: "ios", spec: DeviceSpec(
+                name: "シミュ2", udid: "00000000-0000-0000-0000-000000000000")))),
+        ]
+        XCTAssertEqual(DeviceDeletion.referencedBy(runProfiles: runs, identifier: udid), ["ios"])
+    }
+
+    func testReferencedByFindsAndroidMatchByAVDIncludingDisabled() {
+        let runs: [(name: String, profile: RunProfileDocument)] = [
+            ("a", run(RunDeviceEntry(platform: "android", spec: DeviceSpec(name: "エミュ1", avd: "Pixel_9")))),
+            ("b", run(RunDeviceEntry(platform: "android", spec: DeviceSpec(name: "エミュ2", avd: "Pixel_9"),
+                                     enabled: false))),
         ]
         XCTAssertEqual(
-            DeviceDeletion.referencedBy(machineProfiles: machines, identifier: "Pixel_9"), ["M1", "M2"])
+            DeviceDeletion.referencedBy(runProfiles: runs, identifier: "Pixel_9"), ["a", "b"])
+    }
+
+    /// 識別子は platform ごとに見る(iOS の udid 欄と Android の avd 欄を混ぜない)
+    func testReferencedByDoesNotCrossPlatforms() {
+        let runs: [(name: String, profile: RunProfileDocument)] = [
+            ("a", run(RunDeviceEntry(platform: "android", spec: DeviceSpec(name: "e", udid: "X")))),
+            ("b", run(RunDeviceEntry(platform: "ios", spec: DeviceSpec(name: "s", avd: "X")))),
+        ]
+        XCTAssertEqual(DeviceDeletion.referencedBy(runProfiles: runs, identifier: "X"), [])
     }
 
     func testReferencedByEmptyWhenNoMatch() {
-        let machines: [(name: String, profile: MachineProfile)] = [
-            ("M1", MachineProfile(ios: MachineDeviceList(devices: [
-                DeviceSpec(name: "シミュ1", udid: "00000000-0000-0000-0000-000000000000"),
-            ]))),
+        let runs: [(name: String, profile: RunProfileDocument)] = [
+            ("a", run(RunDeviceEntry(platform: "ios", spec: DeviceSpec(
+                name: "シミュ1", udid: "00000000-0000-0000-0000-000000000000")))),
         ]
         XCTAssertEqual(
-            DeviceDeletion.referencedBy(machineProfiles: machines, identifier: "no-such-id"), [])
+            DeviceDeletion.referencedBy(runProfiles: runs, identifier: "no-such-id"), [])
     }
 
     func testReferencedByPreservesInputOrder() {
-        let machines: [(name: String, profile: MachineProfile)] = [
-            ("Zeta", MachineProfile(android: MachineDeviceList(devices: [DeviceSpec(name: "e", avd: "X")]))),
-            ("Alpha", MachineProfile(android: MachineDeviceList(devices: [DeviceSpec(name: "e", avd: "X")]))),
+        let runs: [(name: String, profile: RunProfileDocument)] = [
+            ("Zeta", run(RunDeviceEntry(platform: "android", spec: DeviceSpec(name: "e", avd: "X")))),
+            ("Alpha", run(RunDeviceEntry(platform: "android", spec: DeviceSpec(name: "e", avd: "X")))),
         ]
         XCTAssertEqual(
-            DeviceDeletion.referencedBy(machineProfiles: machines, identifier: "X"), ["Zeta", "Alpha"])
+            DeviceDeletion.referencedBy(runProfiles: runs, identifier: "X"), ["Zeta", "Alpha"])
     }
 }

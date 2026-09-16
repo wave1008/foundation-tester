@@ -121,18 +121,20 @@ export interface MonitorPanelDeps {
    * monitorDeviceStreamController.ts がストリーミング開始を抑止しポーリングへフォールバックする
    * (workspaceState の "monitor.pollingMode" を共有する livePanel.ts/monitorLiveController.ts も同様)。 */
   isPollingMode(): boolean;
-  /** MonitorProfilesController.postMachineProfileInfoへの委譲。MonitorDeviceOps.runCreateDevice成功時に呼ぶ。 */
-  notifyMachineProfilesChanged(): void;
+  /** MonitorProfilesController.postProfileInfoへの委譲。MonitorDeviceOps.runCreateDevice成功時に呼ぶ。 */
+  notifyProjectDeviceCatalogChanged(): void;
   /** MonitorProcessManager.restartMonitorProcessへの委譲(パネル未生成時は no-op)。
-   * MonitorProfilesController が監視対象ファイル(machines/*.json・選択中の runs/<profile>.json)の
-   * 変化で呼ぶ。 */
+   * MonitorProfilesController が監視対象ファイル(選択中の runs/<profile>.json。未選択時は
+   * 全実行プロファイル)の変化で呼ぶ。 */
   restartMonitor(): void;
   /** MonitorProfilesController.unregisterDeletedDeviceへの委譲。実体を消したあと、その実体を
-   * 参照しているマシンプロファイルから登録も外す(delete-device 成功時)。書き戻せた名前を返す。 */
+   * 参照している実行プロファイルから登録も外す(delete-device 成功時)。書き換えた実行プロファイル
+   * 名を返す。 */
   unregisterDeletedDevice(
+    platform: "ios" | "android",
     name: string,
-    host: string | undefined,
-  ): { readonly machines: readonly string[]; readonly runs: readonly string[] };
+    machine: string | undefined,
+  ): { readonly runs: readonly string[] };
   /** MonitorDeviceStreamController.disposeForDeviceNameへの委譲。MonitorDeviceOpsのstop-deviceジョブが
    * 実行を開始する時点(simctl/adbで実際に殺す前)で呼び、タイルを即座に切断表示へ倒す。 */
   stopDeviceStreams(name: string, machine?: string): void;
@@ -283,13 +285,14 @@ export class MonitorPanelController implements vscode.Disposable {
       post: (message) => this.post(message),
       isPanelActive: () => this.panel !== undefined,
       writeMonitorControl: (cmd) => this.processManager.writeMonitorControl(cmd),
-      notifyMachineProfilesChanged: () => this.profiles.postMachineProfileInfo(),
+      notifyProjectDeviceCatalogChanged: () => this.profiles.postProfileInfo(),
       restartMonitor: () => {
         if (this.panel) {
           this.processManager.restartMonitorProcess();
         }
       },
-      unregisterDeletedDevice: (name, host) => this.profiles.unregisterDeletedDevice(name, host),
+      unregisterDeletedDevice: (platform, name, machine) =>
+        this.profiles.unregisterDeletedDevice(platform, name, machine),
       openGeneratedDocument: (filePath) => this.openGeneratedDocument(filePath),
       isDeviceStreaming: (deviceId) => this.deviceStream.isStreaming(deviceId),
       getStreamingDeviceIds: () => this.deviceStream.streamingIds(),
@@ -358,10 +361,10 @@ export class MonitorPanelController implements vscode.Disposable {
     this.unsubscribeBus = eventBus.subscribe((message) => this.handleBusMessage(message));
     this.configChangeSubscription = vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("fleetest.profile") || event.affectsConfiguration("fleetest.project")) {
+        // fleetest.project の変更は対象プロジェクトのデバイスカタログにも影響するため、
+        // postProfileInfo() が両方を1回で最新化する。
         this.profiles.postProfileInfo();
         this.restartMonitorIfScopeChanged();
-        // fleetest.project の変更は対象マシンプロファイル一覧にも影響するため、こちらも最新化する。
-        this.profiles.postMachineProfileInfo();
       }
       // 表示フィルタの変更は監視スコープを変えない(モニター再起動なしで即時反映する)。
       // 「起動中のデバイス」選択時は profile と 2 設定同時に変わるため、両分岐が走る。
@@ -897,21 +900,6 @@ export class MonitorPanelController implements vscode.Disposable {
       case "profileRename":
         void this.profiles.handleProfileRename(message.profile);
         break;
-      case "machineProfileRefresh":
-        this.profiles.postMachineProfileInfo();
-        break;
-      case "machineProfileAdd":
-        void this.profiles.handleMachineProfileAdd();
-        break;
-      case "machineProfileCopy":
-        void this.profiles.handleMachineProfileCopy(message.machine);
-        break;
-      case "machineProfileDelete":
-        void this.profiles.handleMachineProfileDelete(message.machine);
-        break;
-      case "machineProfileRename":
-        void this.profiles.handleMachineProfileRename(message.machine);
-        break;
       case "deviceCatalogRequest":
         this.deviceOps.runDeviceCatalog(message.source);
         break;
@@ -930,17 +918,17 @@ export class MonitorPanelController implements vscode.Disposable {
       case "devicePickDeviceDelete":
         void this.deviceOps.runDeleteDevice(message);
         break;
-      case "machineDevicesSync":
-        this.profiles.handleMachineDevicesSync(message);
+      case "runProfileDevicesSync":
+        this.profiles.handleRunProfileDevicesSync(message);
         break;
-      case "machineDeviceRemove":
-        void this.profiles.handleMachineDeviceRemove(message.machine, message.devices);
+      case "runProfileDeviceRemove":
+        void this.profiles.handleRunProfileDeviceRemove(message.devices);
         break;
-      case "machineDeviceWipe":
+      case "runProfileDeviceWipe":
         void this.deviceOps.runWipeDevices(message.devices);
         break;
-      case "machineDeviceUpdate":
-        this.profiles.handleMachineDeviceUpdate(message);
+      case "runProfileDeviceUpdate":
+        this.profiles.handleRunProfileDeviceUpdate(message);
         break;
       case "runProfileLoad":
         this.profiles.handleRunProfileLoad(message.profile);
@@ -1105,7 +1093,7 @@ export class MonitorPanelController implements vscode.Disposable {
   private sendInitialState(): void {
     this.hydrateLaneUi();
     this.profiles.postProfileInfo();
-    this.profiles.postMachineProfileInfo();
+    this.profiles.postProfileInfo();
     // webview再読込がジョブ実行中に起きた場合にボタン無効状態・タイルのバッジを復元するため。
     this.deviceOps.resendQueueStatus();
     // webview 再読込でホストグラフの行(手元 + リモート機)が消えるので配り直す

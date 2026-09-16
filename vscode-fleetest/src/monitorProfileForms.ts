@@ -1,12 +1,11 @@
 // monitorProfileForms.ts
-// プロファイルタブ(実行プロファイル・アプリプロファイル・マシンプロファイル)の名前検証、
+// プロファイルタブ(実行プロファイル・アプリプロファイル)の名前検証、
 // JSON⇔フォーム変換、デバイスカタログ/インストール済みデバイス一覧の型と検証を持つ純粋関数群。
 // vscode に依存しない(monitorPanel.ts と test/monitorModel.test.mjs の両方から使うため)。
 // I/O(ファイル読み書き・CLI 呼び出し)は monitorPanel.ts/monitorProfilesController.ts 側の責務。
 
 import { t } from "./i18n";
 import { isRecord, type MonitorPlatform } from "./monitorDeviceModel";
-import type { DeviceCommandSource } from "./remoteRunArgs";
 
 // ---- 実行プロファイルの追加/コピー(名前検証・テンプレート生成) ------------------------------
 // monitorPanel.ts の profileAdd/profileCopy ハンドラが使う純粋ロジック(ファイル I/O は呼び出し側)。
@@ -42,24 +41,13 @@ export function validateNewRunProfileName(name: string, existing: readonly strin
 
 /**
  * 新規実行プロファイル(runs/<name>.json)の初期内容(整形済みJSON、末尾改行あり)を作る。
- * machine が空文字ならキー自体を省略する(必須項目だが自動生成時点では決まらないことがあるため)。
+ * devices は空配列(デバイスはプロファイルタブの「デバイスを追加」/チェックボックスで足す)。
  */
-export function buildRunProfileTemplate(
-  machine: string,
-  appNames: readonly string[],
-  machineDeviceNames: readonly string[],
-): string {
+export function buildRunProfileTemplate(appNames: readonly string[]): string {
   const app = appNames[0] ?? "";
-  const devices =
-    machineDeviceNames.length > 0
-      ? machineDeviceNames.map((name) => ({ name }))
-      : [{ name: "" }];
   const template: Record<string, unknown> = {};
-  if (machine !== "") {
-    template.machine = machine;
-  }
   template.app = app;
-  template.devices = devices;
+  template.devices = [];
   template.heal = true;
   template.textVisualCheck = true;
   template.ocrTextVisualCheck = true;
@@ -77,8 +65,7 @@ export function buildRunProfileTemplate(
 /**
  * アプリプロファイル名(apps/<name>.json の <name>)の妥当性検証。validateNewRunProfileName と
  * 同一ロジック(前後空白・空文字・"/" "\" ・"." 始まり・重複、大文字小文字を区別)。
- * マシンプロファイルと違いローカルマシン登録名との整合が不要なため、大文字小文字無視の重複判定
- * (validateNewMachineProfileName)は行わない。
+ * 大文字小文字を無視する重複判定は行わない(プロジェクト名・デバイス名の規則とは別)。
  */
 export function validateNewAppProfileName(name: string, existing: readonly string[]): string | null {
   if (name !== name.trim()) {
@@ -130,7 +117,7 @@ export function validateNewProjectName(name: string, existing: readonly string[]
 
 // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム -----------------------------
 // handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム20フィールド変換の純粋関数
-// (未知キー保持のイミュータブルな方針。updateDeviceInMachineProfile と同じ)。
+// (未知キー保持のイミュータブルな方針。updateDeviceInRunProfile と同じ)。
 
 /** 実行プロファイル設定フォームの21フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
  * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、
@@ -141,18 +128,29 @@ export function validateNewProjectName(name: string, existing: readonly string[]
  * occlusion guard の Vision OCR 事前判定段で、textVisualCheck が false の run では guard 自体が
  * 走らないため効かない)。containerInference は misc セクションの独立トグル。heal はロケータの指紋照合による自己修復の
  * トグルで、「Advanced Features」セクションの先頭に並ぶ独立トグル(FM を使わない)。 */
-/** 実行プロファイルのデバイス参照。**一意なのは (machine, name)** なので machine も持つ
- * (Sources/FTCore/RunProfile.swift の RunDeviceRef と同形。省略=手元)。
- * **JSON キーは "machine"**(2026-08-26 改名。旧 "host" も読む)。 */
-export interface RunProfileDeviceRef {
-  readonly name: string;
+/** 実行プロファイルの devices[] 1件(プロジェクトのデバイスカタログと同じ形 +
+ * `enabled`)。**一意なのは (platform, machine, name)**(machine 省略=手元。
+ * Sources/FTCore/RunProfile.swift の DeviceSpec と同形)。enabled=false は「一覧には載るが
+ * 実行しない」(RunDeviceRef.enabled)。**JSON キーは "machine"**(常に明示で書く)。 */
+export interface RunProfileDeviceEntry {
+  readonly platform: MonitorPlatform;
   readonly machine?: string;
+  readonly name: string;
+  /** 省略/true = 実行する。false = 一覧には残すが実行しない。 */
+  readonly enabled: boolean;
+  readonly kind?: "virtual" | "physical";
+  readonly simulator?: string;
+  readonly os?: string;
+  readonly udid?: string;
+  readonly port?: number;
+  readonly avd?: string;
+  readonly serial?: string;
+  readonly model?: string;
 }
 
 export interface RunProfileFormFields {
-  readonly machine: string;
   readonly app: string;
-  readonly devices: readonly RunProfileDeviceRef[];
+  readonly devices: readonly RunProfileDeviceEntry[];
   readonly heal: boolean;
   readonly textVisualCheck: boolean;
   readonly screenLooksLike: boolean;
@@ -203,7 +201,6 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     return null;
   }
   const source = profileObject as Record<string, unknown>;
-  const machine = typeof source.machine === "string" ? source.machine : "";
   const app = typeof source.app === "string" ? source.app : "";
   const reportDir = typeof source.reportDir === "string" ? source.reportDir : "";
   const locale = typeof source.locale === "string" ? source.locale : "";
@@ -230,20 +227,37 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const record = typeof source.record === "boolean" ? source.record : false;
   const recordFailuresOnly = typeof source.recordFailuresOnly === "boolean" ? source.recordFailuresOnly : false;
   const recordFullResolution = typeof source.recordFullResolution === "boolean" ? source.recordFullResolution : false;
-  const devices: RunProfileDeviceRef[] = Array.isArray(source.devices)
+  const devices: RunProfileDeviceEntry[] = Array.isArray(source.devices)
     ? source.devices
         .map((device) => {
           if (!isRecord(device) || typeof device.name !== "string") {
             return undefined;
           }
+          if (device.platform !== "ios" && device.platform !== "android") {
+            return undefined;
+          }
           // 内部表現は「手元 = undefined」。ファイル側の "local"(明示)と "" と省略は同じ意味。
-          // 旧キー "host" も読む(改名の互換。Swift の RunDeviceRef.init(from:) と同じ規律)
-          const rawMachine = device.machine ?? device.host;
-          const raw = typeof rawMachine === "string" ? rawMachine.trim() : "";
+          const raw = typeof device.machine === "string" ? device.machine.trim() : "";
           const machine = raw === "" || raw === "local" ? undefined : raw;
-          return machine === undefined ? { name: device.name } : { name: device.name, machine };
+          const enabled = device.enabled !== false;
+          const entry: RunProfileDeviceEntry = {
+            platform: device.platform,
+            name: device.name,
+            enabled,
+            ...(machine !== undefined ? { machine } : {}),
+            ...(typeof device.kind === "string" && (device.kind === "virtual" || device.kind === "physical")
+              ? { kind: device.kind } : {}),
+            ...(typeof device.simulator === "string" ? { simulator: device.simulator } : {}),
+            ...(typeof device.os === "string" ? { os: device.os } : {}),
+            ...(typeof device.udid === "string" ? { udid: device.udid } : {}),
+            ...(typeof device.port === "number" ? { port: device.port } : {}),
+            ...(typeof device.avd === "string" ? { avd: device.avd } : {}),
+            ...(typeof device.serial === "string" ? { serial: device.serial } : {}),
+            ...(typeof device.model === "string" ? { model: device.model } : {}),
+          };
+          return entry;
         })
-        .filter((ref): ref is RunProfileDeviceRef => ref !== undefined)
+        .filter((ref): ref is RunProfileDeviceEntry => ref !== undefined)
     : [];
   const rawTimeout = source.defaultTimeout;
   const defaultTimeout =
@@ -259,7 +273,6 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const remoteControl = isRecord(source.remoteControl) ? source.remoteControl : {};
   const workspace = typeof remoteControl.workspace === "string" ? remoteControl.workspace : "";
   return {
-    machine,
     app,
     devices,
     heal,
@@ -315,7 +328,7 @@ export function updateRunProfileInObject(
   const source = profileObject as Record<string, unknown>;
   const result: Record<string, unknown> = { ...source };
 
-  for (const key of ["machine", "app", "reportDir"] as const) {
+  for (const key of ["app", "reportDir"] as const) {
     const value = fields[key].trim();
     if (value.length === 0) {
       delete result[key];
@@ -403,37 +416,101 @@ export function updateRunProfileInObject(
     result.locale = localeTrimmed;
   }
 
-  // 既存エントリの未知キーは保つ。**引き当ては (machine, name)** —— 名前だけだと、同名が別の機械に
-  // 並ぶプロファイルで別のエントリの未知キーを持ってきてしまう
-  const refKey = (ref: RunProfileDeviceRef): string => `${ref.machine ?? ""}\t${ref.name}`;
+  // 既存エントリの未知キーは保つ。**引き当ては (platform, machine, name)** —— 名前だけだと、
+  // 同名が別の機械/別 OS に並ぶ台で別のエントリの未知キーを持ってきてしまう。
+  // チェックボックスの操作は enabled の有無・machine の正規化だけに触れ、それ以外の欄
+  // (右ペインの編集フォーム由来のキー)は素通しする(runProfileDeviceRefKey/orderedDeviceEntry を
+  // addDeviceRefsToRunProfile と共有)。
   const existingDevices = Array.isArray(source.devices) ? source.devices : [];
   const existingByRef = new Map<string, Record<string, unknown>>();
   for (const device of existingDevices) {
     if (!isRecord(device) || typeof device.name !== "string") {
       continue;
     }
-    const existingMachine = device.machine ?? device.host;
-    const key = refKey({
+    if (device.platform !== "ios" && device.platform !== "android") {
+      continue;
+    }
+    const rawMachine = typeof device.machine === "string" ? device.machine.trim() : "";
+    const key = runProfileDeviceRefKey({
+      platform: device.platform,
       name: device.name,
-      machine: typeof existingMachine === "string" && existingMachine.trim() !== ""
-        ? existingMachine : undefined,
+      machine: rawMachine === "" || rawMachine === "local" ? undefined : rawMachine,
     });
     if (!existingByRef.has(key)) {
       existingByRef.set(key, device);
     }
   }
-  result.devices = fields.devices.map((ref) => {
-    const existing = existingByRef.get(refKey(ref));
-    if (existing) {
-      return existing;
+  result.devices = fields.devices.map((entry) => {
+    const existing = existingByRef.get(runProfileDeviceRefKey(entry));
+    if (!existing) {
+      return orderedDeviceEntry(entry);
     }
+    const merged: Record<string, unknown> = { ...existing };
     // **machine は省略しない**(手元なら "local")。省略した参照は、同名が複数の機械に居ると
-    // 実行時に「どちらか決められない」で止まる(FTCore の ambiguousDeviceRef)。
-    // マシンプロファイル側の「"local" も明示する」規律と揃える
-    return { machine: ref.machine ?? "local", name: ref.name };
+    // 実行時に「どちらか決められない」で止まる(FTCore の ambiguousDeviceRef)
+    merged.machine = entry.machine ?? "local";
+    if (entry.enabled) {
+      delete merged.enabled;
+    } else {
+      merged.enabled = false;
+    }
+    return merged;
   });
 
   return { ok: true, object: result };
+}
+
+/** devices[] エントリの同一性の鍵(**(platform, machine, name)**。machine 省略=手元)。
+ * updateRunProfileInObject / addDeviceRefsToRunProfile が共有する。 */
+export function runProfileDeviceRefKey(ref: {
+  readonly platform: string;
+  readonly machine?: string;
+  readonly name: string;
+}): string {
+  return `${ref.platform}\t${ref.machine ?? ""}\t${ref.name}`;
+}
+
+/** runs/<name>.json の devices[] へ書く1件分を、鍵の順(platform, machine, name, enabled、
+ * 残りはアルファベット順。Sources/FTCore/OrderedProfileJSON.swift と同期)で組み立てる。
+ * カタログから新規に持ち込む(=このプロファイルにまだ無い)エントリの生成に使う。 */
+export function orderedDeviceEntry(entry: {
+  readonly platform: MonitorPlatform;
+  readonly machine?: string;
+  readonly name: string;
+  readonly enabled: boolean;
+  readonly kind?: "virtual" | "physical";
+  readonly simulator?: string;
+  readonly os?: string;
+  readonly udid?: string;
+  readonly port?: number;
+  readonly avd?: string;
+  readonly serial?: string;
+  readonly model?: string;
+}): Record<string, unknown> {
+  const result: Record<string, unknown> = {
+    platform: entry.platform,
+    machine: entry.machine ?? "local",
+    name: entry.name,
+  };
+  if (!entry.enabled) {
+    result.enabled = false;
+  }
+  const rest: readonly (readonly [string, unknown])[] = [
+    ["avd", entry.avd],
+    ["kind", entry.kind],
+    ["model", entry.model],
+    ["os", entry.os],
+    ["port", entry.port],
+    ["serial", entry.serial],
+    ["simulator", entry.simulator],
+    ["udid", entry.udid],
+  ];
+  for (const [key, value] of rest) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result;
 }
 
 // ---- プロファイルタブ中段: アプリプロファイルの設定フォーム -------------------------------
@@ -635,26 +712,27 @@ export function updateAppProfileInObject(
   return { ok: true, object: result };
 }
 
-// ---- マシンプロファイル(プロファイルタブ): 一覧表示・デバイスカタログ・デバイス追加 ------------------
+// ---- プロファイルタブ: プロジェクトのデバイスカタログ・デバイス追加 ------------------
 // 契約:
 //   `fleetest api device-catalog`(引数なし): stdout に単発 JSON 1行(DeviceCatalog の形。各配列は
-//   表示順=先頭がドロップダウンの既定値)。「+新規作成」が使う。
-//   `fleetest api create-device --project <P> --machine <M> --platform ios|android --name <名>
-//   --model <id> --os <id> [--no-register]`: stdout に NDJSON({"kind":"log",...} × n →
-//   {"kind":"finished","ok":bool,"error":string|null,"device":{...}|null})。--no-register は
-//   物理作成のみ行いマシンプロファイルへの追記をスキップする(#device-pick-overlay の「+」から
-//   開いた新規作成モーダルが使う)。
+//   表示順=先頭がドロップダウンの既定値)。「デバイスを追加」内の新規作成が使う。
+//   `fleetest api create-device --project <P> --platform ios|android --name <名>
+//   --model <id> --os <id> [--profile <実行プロファイル名>] [--no-register]`: stdout に NDJSON
+//   ({"kind":"log",...} × n → {"kind":"finished","ok":bool,"error":string|null,"device":{...}|null})。
+//   --no-register は物理作成のみ行い実行プロファイルへの追記をスキップする(#device-pick-overlay の
+//   「+」から開いた新規作成モーダルは常にこちら。登録は #device-pick-overlay の OK が行う)。
 //   `fleetest api installed-devices`(引数なし): stdout に単発 JSON 1行(InstalledDevices の形。
 //   インストール済み実機一覧)。「+既存から選択」が追加候補として使う。device-catalog(新規作成用
 //   カタログ)とは別物 — こちらは「既に作成済みの実体」の一覧。
 
-/** machines/<name>.json の devices[] 1件分。config.ts の MachineDeviceEntry と構造的に同一だが、
- * vscode 非依存を保つため独立定義する(型のためだけに config.ts を import させない方針)。 */
+/** プロジェクトのデバイスカタログ(全実行プロファイルの devices[] の和集合)1件分。config.ts の
+ * MachineDeviceEntry と構造的に同一だが、vscode 非依存を保つため独立定義する(型のためだけに
+ * config.ts を import させない方針)。 */
 export interface MachineDeviceEntry {
   readonly name: string;
   readonly platform: MonitorPlatform;
-  /** このデバイスが居る機械(登録名 = マシンのエイリアス。省略=プロファイル直下の machine、
-   * それも無ければ手元)。一意なのは (machine, name) で、別マシンの同名は重複ではない
+  /** このデバイスが居る機械(登録名 = マシンのエイリアス。省略=手元)。一意なのは
+   * (platform, machine, name) で、別マシンの同名は重複ではない
    * (Sources/FTCore/DeviceMachineGrouping.swift)。 */
   readonly machine?: string;
   /** 実体種別。省略=virtual(シミュレータ/エミュレータ)。physical は実機で、
@@ -672,15 +750,16 @@ export interface MachineDeviceEntry {
 }
 
 /**
- * machineDevicesSync(webview→host)メッセージの add[] 1件分。「+既存から選択」モーダルで
- * 新たにチェックした(未登録だった)iOS シミュレータ/Android AVD 1件を表す(MachineDeviceEntry
- * と違い、追加前なので port は持たない — ポートは追加後に右ペインの編集フォームで設定する)。
+ * runProfileDevicesSync(webview→host)メッセージの add[] 1件分。「+既存から選択」モーダルで
+ * 新たにチェックした(カタログに未登録だった)iOS シミュレータ/Android AVD 1件を表す
+ * (MachineDeviceEntry と違い、追加前なので port は持たない — ポートは追加後に右ペインの
+ * 編集フォームで設定する)。
  * - iOS: { platform:"ios", name:<シミュレータ名>, simulator:<シミュレータ名>, os:<os>, udid:<udid> }
  * - Android: { platform:"android", name:<displayName>, avd:<id> }
  * 実機は kind:"physical" 付きで、実体を指すのは iOS=udid / Android=serial のみ
  * (simulator/os/avd は持たない)。
  */
-export interface MachineDeviceAddEntry {
+export interface RunProfileDeviceAddEntry {
   readonly platform: MonitorPlatform;
   readonly name: string;
   /** 追加先の機械(devicePickHost の選択。省略=手元)。JSON にも "machine" で書く。 */
@@ -866,7 +945,7 @@ export interface InstalledAndroidPhysicalDevice {
   readonly model: string;
   /** ro.build.version.release(例 "13")。旧 CLI は返さないため省略可。 */
   readonly os?: string;
-  /** マシンプロファイルの serial にそのまま書ける値。 */
+  /** プロジェクトのデバイスカタログの serial にそのまま書ける値。 */
   readonly serial: string;
 }
 
@@ -888,7 +967,7 @@ export interface InstalledIosDevice {
 export interface InstalledIosPhysicalDevice {
   readonly name: string;
   readonly os: string;
-  /** ハードウェア UDID。マシンプロファイルの udid にそのまま書ける値
+  /** ハードウェア UDID。プロジェクトのデバイスカタログの udid にそのまま書ける値
    * (devicectl の Identifier 列とは別物。IOSPhysicalDeviceCatalog 参照)。 */
   readonly udid: string;
   /** "wired" / "localNetwork" 等。 */
@@ -1068,8 +1147,8 @@ export function installSystemImageApiArgs(pkg: string): string[] {
 /**
  * `fleetest api delete-device` の CLI 引数を組み立てる(deviceCommandArgs と組み合わせて使う純粋関数。
  * monitorDeviceOps.ts の spawnDeleteDevice からテスト分離のために公開する)。iOS は --udid、
- * Android は --avd(いずれも識別子1本。マシンプロファイル・プロジェクトは参照しない —— この操作は
- * ホスト上の実体[シミュレータ/AVD]を直接消すだけで、どのマシンプロファイルが参照しているかは
+ * Android は --avd(いずれも識別子1本。実行プロファイル・プロジェクトは参照しない —— この操作は
+ * ホスト上の実体[シミュレータ/AVD]を直接消すだけで、どの実行プロファイルが参照しているかは
  * finished イベントの referencedBy で返ってくる)。
  */
 export function deleteDeviceApiArgs(
@@ -1097,7 +1176,7 @@ export interface DeleteDeviceFinishedEvent {
   readonly kind: "finished";
   readonly ok: boolean;
   readonly error: string | null;
-  /** 削除した識別子を参照しているマシンプロファイル名。省略時は空扱い(古い CLI 互換)。 */
+  /** 削除した識別子を参照している実行プロファイル名。省略時は空扱い(古い CLI 互換)。 */
   readonly referencedBy?: readonly string[];
 }
 
@@ -1128,28 +1207,10 @@ export function isDeleteDeviceEvent(value: unknown): value is DeleteDeviceEvent 
 }
 
 /**
- * マシンプロファイルのデバイス一覧2行目の詳細文字列。iOS: simulator優先(os があれば併記)、
+ * プロジェクトのデバイスカタログの一覧2行目の詳細文字列。iOS: simulator優先(os があれば併記)、
  * 無ければ udid 先頭8文字、それも無ければ "iOS"。Android: avd があれば "AVD: "+avd、
  * 実機(avd を持たない)は serial、どちらも無ければ "Android"。
  */
-/** デバイスの実効マシン(デバイス指定 > プロファイル直下の既定 > 手元)。手元は undefined。
- * **判定は Sources/FTCore/DeviceMachineGrouping.effectiveHost と同じ規則**(空文字=未指定で既定へ、
- * "local"=手元の明示で既定より強い)。片方だけ変えると、拡張の重複判定と CLI の解決がズレて
- * 「UI では足せるのに run で解決できない」になる。 */
-export function effectiveDeviceMachine(
-  deviceMachine: string | undefined, profileDefaultMachine: string | undefined,
-): string | undefined {
-  const device = (deviceMachine ?? "").trim();
-  if (device === "local") {
-    return undefined;
-  }
-  if (device !== "") {
-    return device;
-  }
-  const fallback = (profileDefaultMachine ?? "").trim();
-  return fallback === "" || fallback === "local" ? undefined : fallback;
-}
-
 export function machineDeviceDetail(entry: MachineDeviceEntry): string {
   if (entry.platform === "ios") {
     if (entry.simulator) {
@@ -1179,108 +1240,40 @@ export function validateNewDeviceName(name: string, existing: readonly string[])
   return null;
 }
 
-// ---- マシンプロファイル自体の追加/名前変更(マシン名横の [+]/[✏] アイコンボタン) ----------------
-// monitorPanel.ts の handleMachineProfileAdd/handleMachineProfileRename が使う純粋ロジック
-// (ファイル I/O は呼び出し側)。
+// ---- デバイス行の右クリックメニュー「除去」(プロファイルタブ・run 単位) -----------------------
+// handleRunProfileDeviceRemove(monitorProfilesController.ts)が全実行プロファイルへ順に適用する
+// 純粋関数(ファイル I/O・全プロファイルの走査は呼び出し側)。
 
-/**
- * マシンプロファイル名(machines/<name>.json の <name>)の妥当性検証(validateNewRunProfileName と
- * 同様の検証項目)。ただし重複チェックは大文字小文字を無視する(macOS の既定ファイルシステムは
- * 大文字小文字を区別しないため、大文字違いの名前が同一ファイルを指してしまうのを防ぐ)。
- */
-export function validateNewMachineProfileName(name: string, existing: readonly string[]): string | null {
-  if (name !== name.trim()) {
-    return t("monitor.machineProfile.nameNoSpaces");
-  }
-  if (name.length === 0) {
-    return t("monitor.machineProfile.nameRequired");
-  }
-  if (name.includes("/") || name.includes("\\")) {
-    return t("monitor.machineProfile.nameNoSlash");
-  }
-  if (name.startsWith(".")) {
-    return t("monitor.machineProfile.nameNoDotStart");
-  }
-  const lowerName = name.toLowerCase();
-  if (existing.some((item) => item.toLowerCase() === lowerName)) {
-    return t("monitor.machineProfile.nameExists", { name });
-  }
-  return null;
+/** value がデバイスエントリ(オブジェクト、配列でない)として扱ってよいか。 */
+function isDeviceEntryLike(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// ---- デバイス行の右クリックメニュー「削除」(プロファイルタブ) -----------------------------
-// handleMachineDeviceRemove(monitorPanel.ts)が使う純粋関数(ファイル I/O は呼び出し側)。
-
-/**
- * machines/<name>.json から ios/android 両セクションの devices[] を走査し、name に一致するエントリを
- * 全て取り除いた新オブジェクトを返す(未知キー保持)。profileObject が非オブジェクトなら null
- * (「不正なファイル」)。removed は1件も取り除けなければ false(「対象が見つからなかった」の判定に使う。
- * null とは別のケースなので注意)。
- */
-export function removeDeviceFromMachineProfile(
-  profileObject: unknown,
-  name: string,
-  machine?: string,
-): { readonly object: Record<string, unknown>; readonly removed: boolean } | null {
-  if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
-    return null;
+/** devices[] エントリの platform/machine/name を読む(型不正・欠落は undefined)。machine は
+ * "local"/"" を手元(undefined)に正規化する。 */
+function readDeviceRef(
+  value: unknown,
+): { readonly platform: MonitorPlatform; readonly machine?: string; readonly name: string } | undefined {
+  if (!isDeviceEntryLike(value) || typeof value.name !== "string") {
+    return undefined;
   }
-  const source = profileObject as Record<string, unknown>;
-  const result: Record<string, unknown> = { ...source };
-  let removed = false;
-
-  for (const platform of ["ios", "android"] as const) {
-    const section = source[platform];
-    if (typeof section !== "object" || section === null || Array.isArray(section)) {
-      continue;
-    }
-    const sectionRecord = section as Record<string, unknown>;
-    const devices = sectionRecord.devices;
-    if (!Array.isArray(devices)) {
-      continue;
-    }
-    const filtered = devices.filter((device) => {
-      if (typeof device !== "object" || device === null || Array.isArray(device)) {
-        return true; // 型不正の要素はこの操作の対象外として保持する
-      }
-      const record = device as Record<string, unknown>;
-      if (record.name !== name) {
-        return true;
-      }
-      // **マシンを渡されたらそのマシンのぶんだけ消す**。名前は (machine, name) でしか一意でないので、
-      // 名前だけで消すと別の機械の同名デバイスが巻き添えになる(mixed プロファイルでは同名が普通)
-      if (machine === undefined) {
-        return false;
-      }
-      const effective = effectiveDeviceMachine(
-        typeof (record.machine ?? record.host) === "string"
-          ? (record.machine ?? record.host) as string : undefined,
-        typeof (source.machine ?? source.host) === "string"
-          ? (source.machine ?? source.host) as string : undefined);
-      return (effective ?? "local") !== machine;
-    });
-    if (filtered.length !== devices.length) {
-      removed = true;
-      result[platform] = { ...sectionRecord, devices: filtered };
-    }
+  if (value.platform !== "ios" && value.platform !== "android") {
+    return undefined;
   }
-
-  return { object: result, removed };
+  const raw = typeof value.machine === "string" ? value.machine.trim() : "";
+  return { platform: value.platform, name: value.name, machine: raw === "" || raw === "local" ? undefined : raw };
 }
 
 /**
- * runs/<name>.json の devices[] から (machine, name) が一致するエントリを取り除いた新オブジェクトを
- * 返す(未知キー保持)。**実体を消したあとの後始末専用** —— 実行プロファイルが指す台が消えると
- * run はその台を起動できずに落ちるので、台帳から外す。
- *
- * マシンプロファイルと形が違う: 実行プロファイルの devices は ios/android で分かれておらず
- * 平らな配列で、machine は各エントリが持つ(省略は "local")。そのため専用の関数にする。
- * 非オブジェクトなら null(「不正なファイル」)、removed は取り除いた件数。
+ * runs/<name>.json の devices[] から (platform, machine, name) が一致するエントリを取り除いた
+ * 新オブジェクトを返す(未知キー保持)。**実体を消したあとの後始末**(delete-device 成功時)と
+ * **プロファイルタブの「除去」**(利用者操作)の両方から、対象の実行プロファイルすべてへ
+ * 順に適用する。非オブジェクトなら null(「不正なファイル」)、removed は取り除いた件数
+ * (通常 0 か 1。同じ鍵の重複エントリがあれば全部取り除く)。
  */
 export function removeDeviceFromRunProfile(
   profileObject: unknown,
-  name: string,
-  machine: string,
+  key: { readonly platform: MonitorPlatform; readonly machine?: string; readonly name: string },
 ): { readonly object: Record<string, unknown>; readonly removed: number } | null {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
     return null;
@@ -1290,18 +1283,10 @@ export function removeDeviceFromRunProfile(
   if (!Array.isArray(devices)) {
     return { object: { ...source }, removed: 0 };
   }
+  const targetKey = runProfileDeviceRefKey(key);
   const filtered = devices.filter((device) => {
-    if (typeof device !== "object" || device === null || Array.isArray(device)) {
-      return true; // 型不正の要素はこの操作の対象外として保持する
-    }
-    const record = device as Record<string, unknown>;
-    if (record.name !== name) {
-      return true;
-    }
-    const rawEntryMachine = record.machine ?? record.host;  // 旧キー "host" も読む
-    const entryMachine = typeof rawEntryMachine === "string" && rawEntryMachine !== ""
-      ? rawEntryMachine : "local";
-    return entryMachine !== machine;
+    const ref = readDeviceRef(device);
+    return ref === undefined || runProfileDeviceRefKey(ref) !== targetKey;
   });
   if (filtered.length === devices.length) {
     return { object: { ...source }, removed: 0 };
@@ -1309,66 +1294,13 @@ export function removeDeviceFromRunProfile(
   return { object: { ...source, devices: filtered }, removed: devices.length - filtered.length };
 }
 
-/**
- * `machine` を使う実行プロファイルからだけ devices の (machine, name) 一致を取り除く
- * (machine が違えば removed:0 でそのまま返す)。**マシンプロファイルの登録を外す前に呼ぶ** ——
- * 参照する側から外さないと「マシンに居ない台を指す実行プロファイル」が残る。
- * 非オブジェクトなら null(「不正なファイル」)。
- */
-export function removeDevicesFromRunProfileOfMachine(
-  profileObject: unknown,
-  machine: string,
-  devices: readonly { readonly name: string; readonly machine?: string }[],
-): { readonly object: unknown; readonly removed: number } | null {
-  if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
-    return null;
-  }
-  if ((profileObject as Record<string, unknown>).machine !== machine) {
-    return { object: profileObject, removed: 0 };
-  }
-  let current: unknown = profileObject;
-  let removed = 0;
-  for (const device of devices) {
-    const result = removeDeviceFromRunProfile(current, device.name, device.machine ?? "local");
-    if (!result) {
-      return null;
-    }
-    current = result.object;
-    removed += result.removed;
-  }
-  return { object: current, removed };
-}
-
-/**
- * removeDeviceFromMachineProfile を devices へ順次適用し、1つの新オブジェクトにまとめる
- * (handleMachineDeviceRemove の本体。ファイル I/O は呼び出し側)。**引き当ては (machine, name)**
- * —— machine 省略は手元("local")として引く。名前だけで消すと別の機械の同名デバイスが巻き添えになる。
- * 途中で不正形式に当たったら null(呼び出し側は書き戻さない)。removed は実際に取り除けた件数。
- */
-export function removeDevicesFromMachineProfile(
-  profileObject: unknown,
-  devices: readonly { readonly name: string; readonly machine?: string }[],
-): { readonly object: unknown; readonly removed: number } | null {
-  let current: unknown = profileObject;
-  let removed = 0;
-  for (const device of devices) {
-    const result = removeDeviceFromMachineProfile(current, device.name, device.machine ?? "local");
-    if (!result) {
-      return null;
-    }
-    current = result.object;
-    if (result.removed) {
-      removed += 1;
-    }
-  }
-  return { object: current, removed };
-}
-
-// ---- プロファイルタブ右ペインの編集フォームの自動保存(machineDeviceUpdate) -----------------------
-// handleMachineDeviceUpdate(monitorPanel.ts)が使う純粋関数(ファイル I/O は呼び出し側)。
+// ---- プロファイルタブ右ペインの編集フォームの自動保存(runProfileDeviceUpdate) --------------------
+// handleRunProfileDeviceUpdate(monitorProfilesController.ts)が使う純粋関数。fields はここで
+// validateRunProfileDeviceEditFields により一度だけ検証し、通れば対象の実行プロファイルすべてへ
+// updateDeviceInRunProfile を順に適用する(ファイル I/O・全プロファイルの走査は呼び出し側)。
 
 /** 編集フォームから送られる、trim 済み文字列のみのフィールド一式(空文字は「未入力/対象外」)。 */
-export interface MachineDeviceUpdateFields {
+export interface RunProfileDeviceEditFields {
   readonly name: string;
   readonly simulator: string;
   readonly os: string;
@@ -1379,192 +1311,160 @@ export interface MachineDeviceUpdateFields {
   readonly serial: string;
 }
 
-export type MachineDeviceUpdateResult =
-  | { readonly ok: true; readonly object: Record<string, unknown>; readonly name: string }
-  | { readonly ok: false; readonly error: string };
-
-/** value がデバイスエントリ(オブジェクト、配列でない)として扱ってよいか。 */
-function isDeviceEntryLike(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+/**
+ * 保存前のクライアント/ホスト共通検証(fields はどの実行プロファイルへ書いても同じ結果になるため
+ * 1回だけ行う)。name 必須、port は 0〜65535 の整数文字列(空は「未設定」で許容)、実機は
+ * udid(iOS)/serial(Android)が必須。
+ */
+export function validateRunProfileDeviceEditFields(
+  platform: MonitorPlatform,
+  kind: "virtual" | "physical" | undefined,
+  fields: RunProfileDeviceEditFields,
+): string | null {
+  if (fields.name.trim().length === 0) {
+    return t("monitor.device.nameRequired");
+  }
+  if (platform === "ios") {
+    const portTrimmed = fields.port.trim();
+    if (portTrimmed.length > 0 && (!/^\d+$/.test(portTrimmed) || Number(portTrimmed) > 65535)) {
+      return t("monitor.device.portInvalid");
+    }
+    // 実機は udid が唯一の同定手段(simulator/os は使わない)。空のまま保存すると
+    // run で「kind=physical ですが udid がありません」と落ちるので手前で止める
+    if (kind === "physical" && fields.udid.trim().length === 0) {
+      return t("monitor.device.physicalUdidRequired");
+    }
+  } else if (kind === "physical" && fields.serial.trim().length === 0) {
+    return t("monitor.device.physicalSerialRequired");
+  }
+  return null;
 }
 
 /**
- * machines/<name>.json の platform セクション内 name===originalName の最初のエントリを fields で
- * 更新した新オブジェクトを返す(未知キー保持)。profileObject 非オブジェクト、対象セクション/
- * devices[]/該当エントリ無し、新名が空、新名が他デバイス(対象自身除く)と重複、のいずれかで ok:false。
- * port は 0〜65535 の整数文字列以外はエラー。反対プラットフォームのフィールドには触れない(理由は
- * 下の port 処理コメント参照)。
- *
- * **machine を渡すとその機械のぶんだけを対象にする**(手元は "local")。一意なのは (machine, name)
- * で、別の機械の同名デバイスは別物 —— 引き当ても重複判定もマシンで絞らないと、別の機械のエントリを
- * 書き換える/正当なリネームを重複として弾く。省略時は名前だけで引く(全マシン横断)。
+ * runs/<name>.json の devices[] 内、(platform, machine, name) が key と一致する最初のエントリを
+ * fields で更新した新オブジェクトを返す(未知キー保持)。呼び出し前に
+ * validateRunProfileDeviceEditFields を通した fields を渡すこと(ここでは再検証しない)。
+ * profileObject 非オブジェクトなら null。該当エントリが無ければ matched:false でそのまま返す
+ * (対象の実行プロファイル全部に同じ台が居るとは限らない)。反対プラットフォームのフィールドには
+ * 触れない(iOS の port と Android の avd/serial は独立に持つ)。
  */
-export function updateDeviceInMachineProfile(
+export function updateDeviceInRunProfile(
   profileObject: unknown,
-  platform: MonitorPlatform,
-  originalName: string,
-  fields: MachineDeviceUpdateFields,
-  machine?: string,
-): MachineDeviceUpdateResult {
+  key: { readonly platform: MonitorPlatform; readonly machine?: string; readonly name: string },
+  fields: RunProfileDeviceEditFields,
+): { readonly object: Record<string, unknown>; readonly matched: boolean } | null {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
-    return { ok: false, error: t("monitor.machineProfile.invalidFormat") };
+    return null;
   }
   const source = profileObject as Record<string, unknown>;
-  const notFoundError = {
-    ok: false as const,
-    error: t("monitor.device.notFound", { name: originalName }),
-  };
-
-  const section = source[platform];
-  if (!isDeviceEntryLike(section)) {
-    return notFoundError;
-  }
-  const devices = section.devices;
+  const devices = source.devices;
   if (!Array.isArray(devices)) {
-    return notFoundError;
+    return { object: { ...source }, matched: false };
   }
-  // エントリの実効マシン(デバイス指定 > プロファイル直下の既定 > 手元)。machine 引数と同じ土俵に乗せる。
-  const entryMachine = (device: Record<string, unknown>): string =>
-    effectiveDeviceMachine(
-      typeof (device.machine ?? device.host) === "string"
-        ? (device.machine ?? device.host) as string : undefined,
-      typeof (source.machine ?? source.host) === "string"
-        ? (source.machine ?? source.host) as string : undefined,
-    ) ?? "local";
-  const machineMatches = (device: Record<string, unknown>): boolean =>
-    machine === undefined || entryMachine(device) === machine;
-  const index = devices.findIndex(
-    (device) => isDeviceEntryLike(device) && device.name === originalName && machineMatches(device),
-  );
+  const targetKey = runProfileDeviceRefKey(key);
+  const index = devices.findIndex((device) => {
+    const ref = readDeviceRef(device);
+    return ref !== undefined && runProfileDeviceRefKey(ref) === targetKey;
+  });
   if (index === -1) {
-    return notFoundError;
+    return { object: { ...source }, matched: false };
   }
   const target = devices[index] as Record<string, unknown>;
-
   const newName = fields.name.trim();
-  if (newName.length === 0) {
-    return { ok: false, error: t("monitor.device.nameRequired") };
-  }
-  for (const p of ["ios", "android"] as const) {
-    const otherSection = source[p];
-    if (!isDeviceEntryLike(otherSection) || !Array.isArray(otherSection.devices)) {
-      continue;
-    }
-    for (const device of otherSection.devices) {
-      if (device === target || !isDeviceEntryLike(device)) {
-        continue; // 対象エントリ自身は重複チェックから除く
-      }
-      if (!machineMatches(device)) {
-        continue; // 別の機械の同名は重複ではない
-      }
-      if (device.name === newName) {
-        return { ok: false, error: t("monitor.validation.nameAlreadyExists", { name: newName }) };
-      }
-    }
-  }
-
   const newEntry: Record<string, unknown> = { ...target, name: newName };
-  if (platform === "ios") {
+  if (key.platform === "ios") {
     // port は iOS 分岐内でのみ設定/削除する(反対プラットフォームには触れない方針)。Android は
     // port を持たず常に空文字を送るため、分岐の外で処理すると avd 編集で port キーが黙って消える。
     const portTrimmed = fields.port.trim();
     if (portTrimmed.length === 0) {
       delete newEntry.port;
     } else {
-      if (!/^\d+$/.test(portTrimmed) || Number(portTrimmed) > 65535) {
-        return { ok: false, error: t("monitor.device.portInvalid") };
-      }
       newEntry.port = Number(portTrimmed);
     }
-    for (const key of ["simulator", "os", "udid"] as const) {
-      const value = fields[key].trim();
+    for (const k of ["simulator", "os", "udid"] as const) {
+      const value = fields[k].trim();
       if (value.length === 0) {
-        delete newEntry[key];
+        delete newEntry[k];
       } else {
-        newEntry[key] = value;
+        newEntry[k] = value;
       }
-    }
-    // 実機は udid が唯一の同定手段(simulator/os は使わない)。空のまま保存すると
-    // run で「kind=physical ですが udid がありません」と落ちるので手前で止める
-    if (newEntry.kind === "physical" && typeof newEntry.udid !== "string") {
-      return { ok: false, error: t("monitor.device.physicalUdidRequired") };
     }
   } else {
-    for (const key of ["avd", "serial"] as const) {
-      // serial は後から追加したフィールド。拡張と webview のバンドルは別々に更新されうるので
-      // 欠落しても落ちないようにする(欠落=未入力として扱う)
-      const value = (fields[key] ?? "").trim();
+    for (const k of ["avd", "serial"] as const) {
+      const value = (fields[k] ?? "").trim();
       if (value.length === 0) {
-        delete newEntry[key];
+        delete newEntry[k];
       } else {
-        newEntry[key] = value;
+        newEntry[k] = value;
       }
     }
-    if (newEntry.kind === "physical" && typeof newEntry.serial !== "string") {
-      return { ok: false, error: t("monitor.device.physicalSerialRequired") };
-    }
   }
-
   const newDevices = devices.slice();
   newDevices[index] = newEntry;
-  const newObject: Record<string, unknown> = {
-    ...source,
-    [platform]: { ...section, devices: newDevices },
-  };
-  return { ok: true, object: newObject, name: newName };
+  return { object: { ...source, devices: newDevices }, matched: true };
 }
 
-// ---- 「+既存から選択」モーダル(#device-pick-overlay)の OK(machineDevicesSync) -----------------
-// handleMachineDevicesSync(monitorPanel.ts)が使う純粋関数(ファイル I/O は呼び出し側)。
-// syncDevicesInMachineProfile が addDevicesToMachineProfile と removeDeviceFromMachineProfile を
-// 合成し、add/remove(差分)を1つのプロファイル更新にまとめる。
+/**
+ * プロジェクトのデバイスカタログに newName が(key 自身を除いて)既に存在するか。**重複判定は
+ * 同じ machine の中だけで見る**(一意なのは (machine, name)。ios/android 横断 —— 別プラットフォーム
+ * でも同じ機械なら重複とみなす)。
+ */
+export function catalogHasDeviceNameClash(
+  catalog: readonly MachineDeviceEntry[],
+  self: { readonly platform: MonitorPlatform; readonly machine?: string; readonly name: string },
+  newName: string,
+): boolean {
+  const selfKey = runProfileDeviceRefKey(self);
+  return catalog.some(
+    (entry) =>
+      runProfileDeviceRefKey(entry) !== selfKey &&
+      (entry.machine ?? undefined) === (self.machine ?? undefined) &&
+      entry.name === newName,
+  );
+}
 
-export type AddDevicesToMachineProfileResult =
+// ---- 「+既存から選択」モーダル(#device-pick-overlay)の OK(runProfileDevicesSync) ---------------
+// handleRunProfileDevicesSync(monitorProfilesController.ts)が使う純粋関数(ファイル I/O は呼び出し側)。
+// 追加先は「現在選択中の実行プロファイル」1つだけ(除去はプロファイルタブのチェックボックス/
+// 右クリック「除去」が別に持つ)。
+
+export type AddDevicesToRunProfileResult =
   | { readonly ok: true; readonly object: Record<string, unknown>; readonly added: readonly string[] }
   | { readonly ok: false; readonly error: string };
 
 /**
- * machines/<name>.json へ entries(machineDevicesSync の add)を ios/android 両セクション末尾に
- * 追記した新オブジェクトを返す(未知キー保持)。profileObject 非オブジェクトなら ok:false。
- * 名前衝突(既存デバイス名 or 同一バッチ内)は "名前 (2)"、"名前 (3)" ... と自動採番で解決する
- * (チェック時点では衝突が無くても追加までの間にファイルが変わりうるため、エラーにせず救済する)。
- * added は entries と同じ順序で最終的に使われた名前を返す。
+ * 選択中の実行プロファイルの devices[] 末尾へ entries(runProfileDevicesSync の add)を追記した
+ * 新オブジェクトを返す(未知キー保持)。profileObject 非オブジェクトなら ok:false。
+ * 名前衝突は catalog(プロジェクトのデバイスカタログ)+ このプロファイルの既存分 + 同一バッチ内で
+ * 判定し、"名前 (2)"、"名前 (3)" ... と自動採番で解決する(チェック時点では衝突が無くても
+ * 追加までの間にファイルが変わりうるため、エラーにせず救済する)。**判定は同じ machine の中だけ**
+ * (catalogHasDeviceNameClash と同じ規則)。added は entries と同じ順序で最終的に使われた名前を返す。
  */
-export function addDevicesToMachineProfile(
+export function addDevicesToRunProfile(
   profileObject: unknown,
-  entries: readonly MachineDeviceAddEntry[],
-): AddDevicesToMachineProfileResult {
+  entries: readonly RunProfileDeviceAddEntry[],
+  catalog: readonly MachineDeviceEntry[],
+): AddDevicesToRunProfileResult {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
-    return { ok: false, error: t("monitor.machineProfile.invalidFormat") };
+    return { ok: false, error: t("monitor.runProfile.invalidFormat") };
   }
   const source = profileObject as Record<string, unknown>;
-  const result: Record<string, unknown> = { ...source };
+  const existingDevices = Array.isArray(source.devices) ? source.devices : [];
 
-  // 既存デバイス名を **(machine, name)** で集める(ios/android 横断。同一バッチ内で確定した
-  // 名前も随時追加し、バッチ内衝突も検出する)。**別の機械の同名は衝突ではない** ——
-  // 各機が同じ命名規則でシミュレータを作るので同名が普通で、ここを name だけで見ると
-  // リモートを足すたびに " (2)" が付く(2026-08-17 の実害。Sources/FTCore/DeviceMachineGrouping.swift)。
-  const rawDefault = source.machine ?? source.host;  // 直下の既定も新旧キーを読む
-  const profileDefault = typeof rawDefault === "string" ? rawDefault : undefined;
-  const nameKey = (machine: string | undefined, name: string) =>
-    `${effectiveDeviceMachine(machine, profileDefault) ?? "local"}\t${name}`;
+  const nameKey = (machine: string | undefined, name: string): string => `${machine ?? ""}\t${name}`;
   const existingNames = new Set<string>();
-  for (const platform of ["ios", "android"] as const) {
-    const section = source[platform];
-    if (isDeviceEntryLike(section) && Array.isArray(section.devices)) {
-      for (const device of section.devices) {
-        if (isDeviceEntryLike(device) && typeof device.name === "string") {
-          existingNames.add(nameKey(
-            typeof (device.machine ?? device.host) === "string"
-              ? (device.machine ?? device.host) as string : undefined, device.name));
-        }
-      }
+  for (const entry of catalog) {
+    existingNames.add(nameKey(entry.machine, entry.name));
+  }
+  for (const device of existingDevices) {
+    const ref = readDeviceRef(device);
+    if (ref) {
+      existingNames.add(nameKey(ref.machine, ref.name));
     }
   }
 
   const added: string[] = [];
-  const newEntriesByPlatform: Record<MonitorPlatform, Record<string, unknown>[]> = { ios: [], android: [] };
-
+  const newEntries: Record<string, unknown>[] = [];
   for (const entry of entries) {
     let name = entry.name;
     let suffix = 2;
@@ -1574,101 +1474,8 @@ export function addDevicesToMachineProfile(
     }
     existingNames.add(nameKey(entry.machine, name));
     added.push(name);
-
-    // **キー順は machine → name → その他**(2026-08-17 指示。JSON.stringify は挿入順で出す)。
-    // machine は常に書く("local" も省略しない) —— 省略は「直下の既定を継ぐ」の意味なので、
-    // 既定がリモートのプロファイルでは黙って別の機械のデバイス扱いになる
-    const deviceEntry: Record<string, unknown> = { machine: entry.machine ?? "local", name };
-    // kind は physical のときだけ書く(未指定=virtual が既定。既存プロファイルにノイズを足さない)
-    if (entry.kind === "physical") {
-      deviceEntry.kind = "physical";
-    }
-    if (entry.simulator) {
-      deviceEntry.simulator = entry.simulator;
-    }
-    if (entry.os) {
-      deviceEntry.os = entry.os;
-    }
-    if (entry.udid) {
-      deviceEntry.udid = entry.udid;
-    }
-    if (entry.avd) {
-      deviceEntry.avd = entry.avd;
-    }
-    if (entry.serial) {
-      deviceEntry.serial = entry.serial;
-    }
-    if (entry.model) {
-      deviceEntry.model = entry.model;
-    }
-    newEntriesByPlatform[entry.platform].push(deviceEntry);
+    newEntries.push(orderedDeviceEntry({ ...entry, name, enabled: true }));
   }
 
-  for (const platform of ["ios", "android"] as const) {
-    const newEntries = newEntriesByPlatform[platform];
-    if (newEntries.length === 0) {
-      continue;
-    }
-    const section = source[platform];
-    const sectionRecord = isDeviceEntryLike(section) ? section : {};
-    const existingDevices = Array.isArray(sectionRecord.devices) ? sectionRecord.devices : [];
-    result[platform] = { ...sectionRecord, devices: [...existingDevices, ...newEntries] };
-  }
-
-  return { ok: true, object: result, added };
-}
-
-export type SyncDevicesInMachineProfileResult =
-  | {
-      readonly ok: true;
-      readonly object: Record<string, unknown>;
-      readonly added: readonly string[];
-      readonly removed: number;
-    }
-  | { readonly ok: false; readonly error: string };
-
-/**
- * remove の各名前を順次除去(見つからない名前はスキップ、removed は実際に除去できた数のみ)し、
- * その結果へ add を追記する。削除→追加の順序が重要(名前衝突の自動サフィックスは除去後の状態を
- * 基準に判定されるため、外して同名で付け直すケースが成立する)。profileObject 非オブジェクトなら
- * ok:false。
- */
-export function syncDevicesInMachineProfile(
-  profileObject: unknown,
-  add: readonly MachineDeviceAddEntry[],
-  remove: readonly string[],
-  source?: DeviceCommandSource,
-): SyncDevicesInMachineProfileResult {
-  if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
-    return { ok: false, error: t("monitor.machineProfile.invalidFormat") };
-  }
-  let current: unknown = profileObject;
-  let removedCount = 0;
-  for (const name of remove) {
-    const result = removeDeviceFromMachineProfile(
-      current, name, source?.kind === "remote" ? source.machine : (source ? "local" : undefined));
-    if (!result) {
-      // removeDeviceFromMachineProfile は object 入力に対し常に非null を返すため実際には到達しないが、
-      // 型上 null を返しうるための防御(削除しない)。
-      return { ok: false, error: t("monitor.machineProfile.invalidFormat") };
-    }
-    current = result.object;
-    if (result.removed) {
-      removedCount += 1;
-    }
-  }
-  // 契約: 追加したデバイス1台ずつに、それが居る機械を**必ず**書く(手元なら "local"。
-  // Sources/FTCore/DeviceMachineGrouping.swift。一意なのは (machine, name) なので、ローカルと
-  // リモートに同名のデバイスが並んでよい)。省略すると「プロファイル直下の既定を継ぐ」に
-  // なるため、既定がリモートのプロファイルでは手元のデバイスが別の機械のものとして扱われる。
-  // **プロファイル直下の machine は触らない**(あちらは既定で、デバイス側の指定が優先)。
-  const stamped = add.map((entry) => {
-    const machine = source?.kind === "remote" ? source.machine : "local";
-    return entry.machine === machine ? entry : { ...entry, machine };
-  });
-  const addResult = addDevicesToMachineProfile(current, stamped);
-  if (!addResult.ok) {
-    return addResult;
-  }
-  return { ok: true, object: addResult.object, added: addResult.added, removed: removedCount };
+  return { ok: true, object: { ...source, devices: [...existingDevices, ...newEntries] }, added };
 }

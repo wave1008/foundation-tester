@@ -91,9 +91,9 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
         ConsoleOut.out(String(data: data, encoding: .utf8)!)
     }
 
-    /// この実行プロファイルが使うリモートホストのラベル一覧(登録名。docs/remote-runner.md §13 —
-    /// マシンプロファイルの host は登録名でしか書けない契約)。ホストが2機以上にまたがっていれば
-    /// DeviceMachineRunner の分割計画から、単一機械の自動ディスパッチならそちらの host から取る
+    /// この実行プロファイルが使うリモートマシンのラベル一覧(登録名。docs/remote-runner.md §13 —
+    /// devices[].machine は登録名でしか書けない契約)。機械が2つ以上にまたがっていれば
+    /// DeviceMachineRunner の分割計画から、単一機械の自動ディスパッチならその機械を取る
     private static func remoteHostNames(project: TestProject, profile: String) throws -> [String] {
         if let groups = try DeviceMachineRunner.plan(
             project: project, profileName: profile, explicitHost: nil, deviceFilter: []) {
@@ -101,7 +101,7 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
         }
         let dispatch = try? resolveEffectiveDispatchTarget(
         explicitTarget: nil, profile: profile, project: project.name,
-            requireProfileMachine: true, warn: { _ in })
+            requireProfileMachine: true)
         return ApiRemoteCompat.remoteMachineLabels(planGroups: nil, autoDispatchMachine: dispatch?.rawTarget)
     }
 

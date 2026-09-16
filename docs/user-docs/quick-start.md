@@ -6,9 +6,9 @@ work folder with `TestProjects/` yet, run `/fleetest:fleetest-setup` from
 
 ## 1. Prepare the profiles
 
-A run needs three profiles — an app profile for the target app, a machine profile for the
-devices, and a run profile that combines the two. Use `/fleetest:fleetest-profiles` in your
-agent, or create them directly with a command:
+A run needs two profiles — an app profile for the target app, and a run profile that lists the
+devices to use. Use `/fleetest:fleetest-profiles` in your agent, or create them directly with a
+command:
 
 ```bash
 fleetest profile setup --platform ios --app-id com.example.myapp --auto-device

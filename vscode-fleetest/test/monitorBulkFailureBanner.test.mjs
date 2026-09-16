@@ -12,19 +12,19 @@ import { isDevicesUpEvent } from "../src/monitorDeviceLifecycle";
 test("一括起動が即失敗したらバナーに出す(ログだけにしない)", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ft-bulkfail-"));
   const binaryPath = path.join(dir, "fleetest");
-  fs.writeFileSync(binaryPath, `#!/bin/sh\necho '{"kind":"finished","ok":false,"error":"cannot tell which machine profile to use"}'\nexit 1\n`);
+  fs.writeFileSync(binaryPath, `#!/bin/sh\necho '{"kind":"finished","ok":false,"error":"run profile not found: local+remote"}'\nexit 1\n`);
   fs.chmodSync(binaryPath, 0o755);
   const posts = [];
   const ops = new MonitorDeviceOps({ workspaceRoot: "/tmp",
     getConfig: () => ({ binaryPath, project: "P", profile: "" }),
     outputChannel: { appendLine() {} }, post: (m) => posts.push(m), writeMonitorControl: () => {},
-    notifyMachineProfilesChanged: () => {}, stopDeviceStreams: () => {}, stopAllStreams: () => {} });
+    notifyProjectDeviceCatalogChanged: () => {}, stopDeviceStreams: () => {}, stopAllStreams: () => {} });
   ops.bulkUpWithRestarts([]);
   const t0 = Date.now();
   while (ops.isQueueBusy()) { if (Date.now() - t0 > 5000) throw new Error("timeout"); await new Promise((r) => setTimeout(r, 10)); }
   const banner = posts.find((m) => m.type === "deviceError");
   assert.ok(banner, "バナーが出ていない: " + JSON.stringify(posts.map((m) => m.type)));
-  assert.match(banner.message, /machine profile/);
+  assert.match(banner.message, /run profile not found/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -45,7 +45,7 @@ exit 0
   const ops = new MonitorDeviceOps({ workspaceRoot: "/tmp",
     getConfig: () => ({ binaryPath, project: "P", profile: "" }),
     outputChannel: { appendLine() {} }, post: (m) => posts.push(m), writeMonitorControl: () => {},
-    notifyMachineProfilesChanged: () => {}, stopDeviceStreams: () => {}, stopAllStreams: () => {} });
+    notifyProjectDeviceCatalogChanged: () => {}, stopDeviceStreams: () => {}, stopAllStreams: () => {} });
   ops.bulkUpWithRestarts([]);
   const t0 = Date.now();
   while (ops.isQueueBusy()) { if (Date.now() - t0 > 5000) throw new Error("timeout"); await new Promise((r) => setTimeout(r, 10)); }

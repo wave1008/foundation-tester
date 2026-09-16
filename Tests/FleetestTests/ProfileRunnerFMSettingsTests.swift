@@ -18,7 +18,7 @@ final class ProfileRunnerFMSettingsTests: XCTestCase {
             .appendingPathComponent("FleetestTests-\(UUID().uuidString)")
         let root = tempDir.appendingPathComponent("TestProjects/SampleApp")
         project = TestProject(name: "SampleApp", rootURL: root)
-        for dir in [project.appsDir, project.machinesDir, project.runsDir] {
+        for dir in [project.appsDir, project.runsDir] {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
     }
@@ -38,13 +38,10 @@ final class ProfileRunnerFMSettingsTests: XCTestCase {
         try write("""
         { "ios": { "app": "com.example.sampleapp" } }
         """, to: project.appsDir, name: "sampleapp")
-        try write("""
-        { "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro" } ] } }
-        """, to: project.machinesDir, name: "M1")
         // "machine" を明示する(ambient な FT_MACHINE に左右されず決定的にするため。
         // determineMachine の優先順位: 実行プロファイルの明示 > FT_MACHINE > machines/ が1つ)
         try write("""
-        { "app": "sampleapp", "machine": "M1", "devices": [ { "name": "メイン機" } ],
+        { "app": "sampleapp", "machine": "M1", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "simulator": "iPhone 17 Pro" } ],
           "textVisualCheck": false, "screenLooksLike": false, "ocrTextVisualCheck": false }
         """, to: project.runsDir, name: "iosOnly")
 

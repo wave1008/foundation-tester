@@ -36,15 +36,12 @@ extension MCPServer {
         guard !projects.isEmpty else {
             return text("No projects (create one with: fleetest project create <name>)")
         }
-        // 「この機械の登録名」は持たないので出さない(ProfileResolver.determineMachine の宣言)。
-        // 使うマシンプロファイルは実行プロファイルの machine が決めるため、下の一覧で足りる
+        // 「この機械の登録名」は持たないので出さない(デバイスは実行プロファイルが持つ)
         var lines: [String] = []
         for project in projects {
             let runs = ProfileResolver.runProfileNames(project: project)
-            let machines = ProfileResolver.machineNames(project: project)
             lines.append("\(project.name)"
-                + " — run profiles: \(runs.isEmpty ? "none" : runs.joined(separator: ", "))"
-                + " / machines: \(machines.isEmpty ? "none" : machines.joined(separator: ", "))")
+                + " — run profiles: \(runs.isEmpty ? "none" : runs.joined(separator: ", "))")
         }
         return text(lines.joined(separator: "\n"))
     }

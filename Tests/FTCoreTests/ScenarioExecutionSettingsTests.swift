@@ -75,7 +75,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
     func testResolvedProfileMappingCarriesEveryField() {
         let profile = ResolvedProfile(
             project: TestProject(name: "dummy", rootURL: URL(fileURLWithPath: "/tmp/dummy")),
-            runName: "run", machineName: "machine", appName: "app", apps: [:],
+            runName: "run", appName: "app", apps: [:],
             devices: [],
             fm: FMConfig(enabled: false, textVisualCheck: true,
                         screenLooksLike: false),

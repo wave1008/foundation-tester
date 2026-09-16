@@ -9,34 +9,32 @@ import * as vscode from "vscode";
 import { t, type MessageKey } from "./i18n";
 import {
   listAppProfileNames,
-  listMachineProfiles,
   listProjectCandidates,
+  listProjectDeviceCatalog,
   listRunProfileNames,
-  type MachineProfileSummary,
-  readMachineDeviceNames,
+  type MachineDeviceEntry,
   resolveProjectName,
 } from "./config";
 import {
+  addDevicesToRunProfile,
   type AppProfileFormFields,
   buildRunProfileTemplate,
-  effectiveDeviceMachine,
+  catalogHasDeviceNameClash,
   machineDeviceDetail,
   type MonitorFromWebviewMessage,
   parseAppProfileForForm,
   parseRunProfileForForm,
-  removeDevicesFromMachineProfile,
   removeDeviceFromRunProfile,
-  removeDevicesFromRunProfileOfMachine,
   RUNNING_DEVICES_PROFILE_VALUE,
-  syncDevicesInMachineProfile,
   type RunProfileFormFields,
+  runProfileDeviceRefKey,
   updateAppProfileInObject,
-  updateDeviceInMachineProfile,
+  updateDeviceInRunProfile,
   updateRunProfileInObject,
   validateNewAppProfileName,
-  validateNewMachineProfileName,
   validateNewProjectName,
   validateNewRunProfileName,
+  validateRunProfileDeviceEditFields,
 } from "./monitorModel";
 import { type HookScaffoldResult, resolveWorkspaceDir, writeHookScriptTemplates } from "./runHookScaffold";
 import type { MonitorPanelDeps } from "./monitorPanel";
@@ -45,18 +43,17 @@ import {
   monitorRestartNeeded,
   runProfileNeedsRestart,
   runProfileScopeKey,
-  type ScopeFileKind,
 } from "./monitorScopeFiles";
 
-type MachineDeviceUpdateMessage = Extract<MonitorFromWebviewMessage, { type: "machineDeviceUpdate" }>;
-type MachineDevicesSyncMessage = Extract<MonitorFromWebviewMessage, { type: "machineDevicesSync" }>;
+type RunProfileDeviceUpdateMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileDeviceUpdate" }>;
+type RunProfileDevicesSyncMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileDevicesSync" }>;
 type RunProfileSaveMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileSave" }>;
 type RunProfileHookScaffoldMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileHookScaffold" }>;
 type AppProfileSaveMessage = Extract<MonitorFromWebviewMessage, { type: "appProfileSave" }>;
 
 /**
- * 「プロファイル」タブ(実行/アプリ/マシンプロファイル)のCRUD・フォーム・名前入力モーダルを担う。
- * モニター再起動の要否判定は monitorPanel.ts 側が行う。
+ * 「プロファイル」タブ(実行/アプリプロファイル、および実行プロファイルに統合されたデバイス)の
+ * CRUD・フォーム・名前入力モーダルを担う。モニター再起動の要否判定は monitorPanel.ts 側が行う。
  */
 export class MonitorProfilesController {
   /**
@@ -66,12 +63,6 @@ export class MonitorProfilesController {
    * runProfileFileChanged を送って外部編集をフォームへ反映させる(編集中かの判定は webview 側)。
    */
   private readonly profileFileWatcher: vscode.FileSystemWatcher;
-  /**
-   * profiles/machines/*.json を監視し、マシンプロファイル一覧を最新化する。profileFileWatcher と
-   * 異なり Change も購読する — デバイス追記(create-device 成功後や手動編集)が既存ファイルの
-   * 内容変更として届くため。
-   */
-  private readonly machineFileWatcher: vscode.FileSystemWatcher;
   /**
    * profiles/apps/*.json を監視する(profileFileWatcher と同方針)。作成・削除は postProfileInfo()、
    * 変更は編集対象と同名であれば appProfileFileChanged を送り外部編集を反映させる。
@@ -108,30 +99,19 @@ export class MonitorProfilesController {
       this.runFormWrites.delete(path.resolve(uri.fsPath));
       this.runEditedOutside.delete(path.resolve(uri.fsPath));
       this.postProfileInfo();
-      this.scheduleMonitorRestart("run", uri);
+      this.scheduleMonitorRestart(uri);
     });
     this.profileFileWatcher.onDidChange((uri) => {
       this.deps.post({ type: "runProfileFileChanged", name: path.basename(uri.fsPath, ".json") });
+      // **devices の変化はどの実行プロファイルでも一覧を最新化する**(2026-08-31 指示を踏襲: `api
+      // monitor` は台帳を起動時に1回しか読まないので、外した台は再起動するまでタイルに残る)。
+      // プロジェクトのデバイスカタログは全実行プロファイルの devices[] の和集合なので、選択中で
+      // ないプロファイルの編集(チェックボックス・行の編集/除去/追加)もここで拾う必要がある。
+      this.postProfileInfo();
       if (this.runProfileChangeNeedsRestart(uri.fsPath)) {
-        this.scheduleMonitorRestart("run", uri);
+        this.scheduleMonitorRestart(uri);
       }
     });
-    this.machineFileWatcher = vscode.workspace.createFileSystemWatcher(
-      new vscode.RelativePattern(deps.workspaceRoot, "TestProjects/*/profiles/machines/*.json"),
-    );
-    // **マシンプロファイルの変化はモニターの再起動まで行う**。`api monitor` は台帳を起動時に
-    // 1回しか読まないので、外した台は再起動するまでタイルに残る(2026-08-31 指示:
-    // フリートに出す台はマシンプロファイルに登録されているものだけ)
-    for (const event of [
-      this.machineFileWatcher.onDidCreate,
-      this.machineFileWatcher.onDidDelete,
-      this.machineFileWatcher.onDidChange,
-    ]) {
-      event((uri) => {
-        this.postMachineProfileInfo();
-        this.scheduleMonitorRestart("machine", uri);
-      });
-    }
     this.appsFileWatcher = vscode.workspace.createFileSystemWatcher(
       new vscode.RelativePattern(deps.workspaceRoot, "TestProjects/*/profiles/apps/*.json"),
     );
@@ -151,8 +131,8 @@ export class MonitorProfilesController {
     }
   }
 
-  private scheduleMonitorRestart(kind: ScopeFileKind, uri: vscode.Uri): void {
-    if (!monitorRestartNeeded(kind, path.basename(uri.fsPath, ".json"), this.deps.getConfig().profile)) {
+  private scheduleMonitorRestart(uri: vscode.Uri): void {
+    if (!monitorRestartNeeded(path.basename(uri.fsPath, ".json"), this.deps.getConfig().profile)) {
       return;
     }
     if (this.monitorRestartTimer) {
@@ -202,14 +182,15 @@ export class MonitorProfilesController {
       this.monitorRestartTimer = undefined;
     }
     this.profileFileWatcher.dispose();
-    this.machineFileWatcher.dispose();
     this.appsFileWatcher.dispose();
   }
 
   /**
    * 実行プロファイル選択ドロップダウン(一覧+現在値)を webview へ送る。対象プロジェクトが
-   * 解決できない場合は一覧のみ空にする(current は設定の生値をそのまま送る)。
+   * 解決できない場合は一覧・カタログとも空にする(current は設定の生値をそのまま送る)。
    * apps(アプリプロファイル名一覧)は実行プロファイル設定フォームのアプリ選択が使う。
+   * devices(プロジェクトのデバイスカタログ)は実行プロファイルの devices 節のチェックボックス
+   * 一覧・「デバイスを追加」の重複判定・「未登録」バッジの判定に使う。
    */
   postProfileInfo(): void {
     const config = this.deps.getConfig();
@@ -218,6 +199,8 @@ export class MonitorProfilesController {
       resolution.kind === "resolved" ? listRunProfileNames(this.deps.workspaceRoot, resolution.project) : [];
     const apps =
       resolution.kind === "resolved" ? listAppProfileNames(this.deps.workspaceRoot, resolution.project) : [];
+    const devices =
+      resolution.kind === "resolved" ? this.deviceCatalog(resolution.project) : [];
     this.deps.post({
       type: "profileInfo",
       projects: listProjectCandidates(this.deps.workspaceRoot),
@@ -227,47 +210,10 @@ export class MonitorProfilesController {
       apps,
       project: resolution.kind === "resolved" ? resolution.project : "",
       projectDir: resolution.kind === "resolved" ? this.projectDir(resolution.project) : "",
-    });
-  }
-
-  /**
-   * 初期選択にするマシンプロファイル名(postMachineProfileInfo・handleProfileAdd 共通)。
-   * **1件のときだけ**選ぶ(あいまいな場合は選ばない。readMachineDeviceNames と同じ方針 —
-   * 変更時は両方揃える)。**「この Mac の登録名」は見ない**(その概念は持たない。
-   * Sources/FTCore/RunProfile.swift の determineMachine)。
-   */
-  private resolveCurrentMachineName(summaries: readonly MachineProfileSummary[]): string | null {
-    return summaries.length === 1 ? summaries[0]!.name : null;
-  }
-
-  /**
-   * マシンプロファイル一覧(+現在のマシン)を webview へ送る。対象プロジェクトが解決できない場合は
-   * machines を空にしエラーメッセージを添える(webview はエラー表示に切り替える)。
-   * 現在のマシンの決定は resolveCurrentMachineName を参照。
-   */
-  postMachineProfileInfo(): void {
-    const config = this.deps.getConfig();
-    const resolution = resolveProjectName(this.deps.workspaceRoot, config);
-    if (resolution.kind !== "resolved") {
-      this.deps.post({
-        type: "machineProfileInfo",
-        machines: [],
-        current: null,
-        error: t("profiles.error.projectUnresolved"),
-      });
-      return;
-    }
-    const summaries = listMachineProfiles(this.deps.workspaceRoot, resolution.project);
-    const current = this.resolveCurrentMachineName(summaries);
-    const machines = summaries.map((summary) => ({
-      name: summary.name,
-      machine: summary.host,
-      devices: summary.devices.map((device) => ({
+      devices: devices.map((device) => ({
         name: device.name,
         platform: device.platform,
-        // 実効マシン(デバイス指定 > プロファイル直下の既定 > 手元)。同名は (machine, name) で
-        // 区別されるので、重複判定と表示の両方がこれを見る
-        machine: effectiveDeviceMachine(device.machine, summary.host),
+        machine: device.machine,
         detail: machineDeviceDetail(device),
         // 右ペインの編集フォーム用の生フィールド。undefined は postMessage の JSON化で
         // 自然に省略される。
@@ -281,8 +227,13 @@ export class MonitorProfilesController {
         serial: device.serial,
         model: device.model,
       })),
-    }));
-    this.deps.post({ type: "machineProfileInfo", machines, current, error: null });
+    });
+  }
+
+  /** プロジェクトのデバイスカタログ(config.ts の listProjectDeviceCatalog)。postProfileInfo と
+   * デバイス追加/編集/除去の各ハンドラが共有する。 */
+  private deviceCatalog(project: string): readonly MachineDeviceEntry[] {
+    return listProjectDeviceCatalog(this.deps.workspaceRoot, project);
   }
 
   /**
@@ -456,12 +407,7 @@ export class MonitorProfilesController {
     const runsDir = this.runsDir(project);
     try {
       fs.mkdirSync(runsDir, { recursive: true });
-      const machine = this.resolveCurrentMachineName(listMachineProfiles(this.deps.workspaceRoot, project)) ?? "";
-      const template = buildRunProfileTemplate(
-        machine,
-        listAppProfileNames(this.deps.workspaceRoot, project),
-        readMachineDeviceNames(this.deps.workspaceRoot, project),
-      );
+      const template = buildRunProfileTemplate(listAppProfileNames(this.deps.workspaceRoot, project));
       fs.writeFileSync(path.join(runsDir, `${name}.json`), template, "utf8");
       this.deps.outputChannel.appendLine(t("profiles.log.runProfileAdded", { name }));
       this.postProfileInfo();
@@ -777,7 +723,7 @@ export class MonitorProfilesController {
   }
 
   // ---- プロジェクト自体の追加/コピー/名前変更/削除(プロファイルタブ先頭のアイコンボタン) --------
-  // 実行/アプリ/マシンプロファイルと違い fs を直に触らず、Package.swift を書き換える
+  // 実行/アプリプロファイルと違い fs を直に触らず、Package.swift を書き換える
   // `fleetest project ...` を deps.runFleetestCli 経由(CLI キュー)で呼ぶ(list-scenarios の
   // ビルドと同時に走らせないため。直接 spawn しない)。
 
@@ -830,7 +776,6 @@ export class MonitorProfilesController {
         this.reportProjectCliFailure("profiles.log.projectAddFailed", "profiles.msg.projectAddFailed", { name }, outcome);
       }
       this.postProfileInfo();
-      this.postMachineProfileInfo();
     } finally {
       this.projectOpBusy = false;
     }
@@ -876,7 +821,6 @@ export class MonitorProfilesController {
         this.reportProjectCliFailure("profiles.log.projectCopyFailed", "profiles.msg.projectCopyFailed", { name }, outcome);
       }
       this.postProfileInfo();
-      this.postMachineProfileInfo();
     } finally {
       this.projectOpBusy = false;
     }
@@ -937,7 +881,6 @@ export class MonitorProfilesController {
         );
       }
       this.postProfileInfo();
-      this.postMachineProfileInfo();
     } finally {
       this.projectOpBusy = false;
     }
@@ -981,266 +924,40 @@ export class MonitorProfilesController {
         );
       }
       this.postProfileInfo();
-      this.postMachineProfileInfo();
     } finally {
       this.projectOpBusy = false;
     }
   }
 
-  /** TestProjects/<project>/profiles/machines ディレクトリの絶対パス。 */
-  private machinesDir(project: string): string {
-    return path.join(this.deps.workspaceRoot, "TestProjects", project, "profiles", "machines");
-  }
-
-  // ---- マシンプロファイル自体の追加/削除/名前変更(マシン名横の [+][−][✏] ボタン) -----------------
-  // 追加/名前変更の直後は machineProfileSelected で選択を新プロファイルへ移す
-  // (削除後の選択の付け替えは webview 側の既存フォールバックに任せるので送らない)。
-
-  /** マシン名横「+」ボタン: 新しい名前を入力させ、空のスケルトンで machines/<name>.json を作る。 */
-  async handleMachineProfileAdd(): Promise<void> {
-    const project = this.resolveProjectOrWarn();
-    if (!project) {
-      return;
-    }
-    const existing = listMachineProfiles(this.deps.workspaceRoot, project).map((summary) => summary.name);
-    const input = await this.promptName({
-      title: t("profiles.title.newMachineProfile"),
-      value: "",
-      noun: t("profiles.noun.machineProfileName"),
-      dupLabel: t("profiles.label.machineProfile"),
-      existing,
-      caseInsensitiveDup: true,
-    });
-    if (input === undefined) {
-      return;
-    }
-    const name = input.trim();
-    // webview側検証をすり抜けた場合の防御的な再検証。
-    const nameError = validateNewMachineProfileName(name, existing);
-    if (nameError) {
-      void vscode.window.showWarningMessage(`fleetest: ${nameError}`);
-      return;
-    }
-    const machinesDir = this.machinesDir(project);
-    try {
-      fs.mkdirSync(machinesDir, { recursive: true });
-      const skeleton = { android: { devices: [] }, ios: { devices: [] } };
-      fs.writeFileSync(path.join(machinesDir, `${name}.json`), `${JSON.stringify(skeleton, null, 2)}\n`, "utf8");
-      this.deps.outputChannel.appendLine(t("profiles.log.machineProfileAdded", { name }));
-      this.postMachineProfileInfo();
-      this.deps.post({ type: "machineProfileSelected", name });
-    } catch (error) {
-      this.deps.outputChannel.appendLine(t("profiles.log.machineProfileAddFailed", { name, error: String(error) }));
-      void vscode.window.showErrorMessage(`fleetest: ${t("profiles.msg.machineProfileAddFailed", { name })}`);
-    }
-  }
-
-  /** マシン名横「コピー」ボタン: コピー元の内容をそのまま新しい名前で複製し、選択状態にする。 */
-  async handleMachineProfileCopy(machine: string): Promise<void> {
-    const project = this.resolveProjectOrWarn();
-    if (!project) {
-      return;
-    }
-    const machinesDir = this.machinesDir(project);
-    const sourcePath = path.join(machinesDir, `${machine}.json`);
-    if (!fs.existsSync(sourcePath)) {
-      void vscode.window.showWarningMessage(`fleetest: ${t("profiles.msg.machineProfileNotFound", { name: machine })}`);
-      this.postMachineProfileInfo();
-      return;
-    }
-    const existing = listMachineProfiles(this.deps.workspaceRoot, project).map((summary) => summary.name);
-    const input = await this.promptName({
-      title: t("profiles.title.copyMachineProfile", { name: machine }),
-      value: `${machine}-copy`,
-      noun: t("profiles.noun.machineProfileName"),
-      dupLabel: t("profiles.label.machineProfile"),
-      existing,
-      caseInsensitiveDup: true,
-    });
-    if (input === undefined) {
-      return;
-    }
-    const name = input.trim();
-    // webview側検証をすり抜けた場合の防御的な再検証。
-    const nameError = validateNewMachineProfileName(name, existing);
-    if (nameError) {
-      void vscode.window.showWarningMessage(`fleetest: ${nameError}`);
-      return;
-    }
-    try {
-      fs.copyFileSync(sourcePath, path.join(machinesDir, `${name}.json`));
-      this.deps.outputChannel.appendLine(t("profiles.log.machineProfileCopied", { machine, name }));
-      this.postMachineProfileInfo();
-      this.deps.post({ type: "machineProfileSelected", name });
-    } catch (error) {
-      this.deps.outputChannel.appendLine(t("profiles.log.machineProfileCopyFailed", { name, error: String(error) }));
-      void vscode.window.showErrorMessage(`fleetest: ${t("profiles.msg.machineProfileCopyFailed", { name })}`);
-    }
-  }
-
   /**
-   * マシン名横「✏」ボタン: machines/<machine>.json をリネームする。CLI 側の登録名
-   * (~/.config/fleetest/config.json の machineName)が旧名と一致していれば
-   * 追随して書き換える(一致させないと postMachineProfileInfo の current 決定が崩れる)。
-   */
-  async handleMachineProfileRename(machine: string): Promise<void> {
-    const project = this.resolveProjectOrWarn();
-    if (!project) {
-      return;
-    }
-    const machinesDir = this.machinesDir(project);
-    const oldPath = path.join(machinesDir, `${machine}.json`);
-    if (!fs.existsSync(oldPath)) {
-      void vscode.window.showWarningMessage(`fleetest: ${t("profiles.msg.machineProfileNotFound", { name: machine })}`);
-      this.postMachineProfileInfo();
-      return;
-    }
-    // 重複チェックは自分自身を除いた一覧に対して行う(handleProfileRename と同じ方針)。
-    const existing = listMachineProfiles(this.deps.workspaceRoot, project)
-      .map((summary) => summary.name)
-      .filter((name) => name !== machine);
-    const input = await this.promptName({
-      title: t("profiles.title.renameMachineProfile", { name: machine }),
-      value: machine,
-      noun: t("profiles.noun.machineProfileName"),
-      dupLabel: t("profiles.label.machineProfile"),
-      existing,
-      caseInsensitiveDup: true,
-    });
-    if (input === undefined) {
-      return;
-    }
-    const newName = input.trim();
-    // webview側検証をすり抜けた場合の防御的な再検証。
-    const nameError = validateNewMachineProfileName(newName, existing);
-    if (nameError) {
-      void vscode.window.showWarningMessage(`fleetest: ${nameError}`);
-      return;
-    }
-    if (newName === machine) {
-      return;
-    }
-    try {
-      fs.renameSync(oldPath, path.join(machinesDir, `${newName}.json`));
-      this.deps.outputChannel.appendLine(t("profiles.log.machineProfileRenamed", { oldName: machine, newName }));
-      this.postMachineProfileInfo();
-      this.deps.post({ type: "machineProfileSelected", name: newName });
-    } catch (error) {
-      this.deps.outputChannel.appendLine(
-        t("profiles.log.machineProfileRenameFailed", { name: machine, error: String(error) }),
-      );
-      void vscode.window.showErrorMessage(
-        `fleetest: ${t("profiles.msg.machineProfileRenameFailed", { name: machine })}`,
-      );
-    }
-  }
-
-  /**
-   * マシン名横「−」ボタン: モーダル確認の上、machines/<machine>.json を削除する
-   * (シミュレータ/AVD 本体は操作しない)。選択の付け替えは webview 側の既存フォールバックに
-   * 任せるので、ここから machineProfileSelected は送らない。
-   */
-  async handleMachineProfileDelete(machine: string): Promise<void> {
-    const project = this.resolveProjectOrWarn();
-    if (!project) {
-      return;
-    }
-    const deleteLabel = t("profiles.button.delete");
-    const choice = await vscode.window.showWarningMessage(
-      t("profiles.confirm.deleteMachineProfile", { name: machine }),
-      { modal: true },
-      deleteLabel,
-    );
-    if (choice !== deleteLabel) {
-      return;
-    }
-    try {
-      fs.unlinkSync(path.join(this.machinesDir(project), `${machine}.json`));
-      this.deps.outputChannel.appendLine(t("profiles.log.machineProfileDeleted", { name: machine }));
-      this.postMachineProfileInfo();
-    } catch (error) {
-      this.deps.outputChannel.appendLine(
-        t("profiles.log.machineProfileDeleteFailed", { name: machine, error: String(error) }),
-      );
-      void vscode.window.showErrorMessage(`fleetest: ${t("profiles.msg.machineProfileDeleteFailed", { name: machine })}`);
-    }
-  }
-
-  /**
-   * デバイス行右クリック「除去」: machines/<machine>.json から devices に一致するデバイスを
-   * プロファイル上だけ取り除く(シミュレータ/AVD 本体は操作しない)。ユーザー可視文言は
-   * この操作に限り「削除」ではなく「除去」を使う(仮想マシン本体を消す「削除」と紛らわしいため)。
-   * removeDevicesFromMachineProfile へ渡し1回の書き戻しにまとめる。1件も除去
-   * できなければ書き戻さない。**引き当ては (machine, name)**(machine 省略=手元) —— 名前だけで消すと
-   * 別の機械の同名デバイスが巻き添えになる(mixed プロファイルでは同名が普通)。
-   */
-  /**
-   * 実体(シミュレータ/AVD)を消したあとの後始末: **その実体を参照しているマシンプロファイルから
-   * 登録も外す**(`fleetest api delete-device` の finished.referencedBy が対象の一覧)。
+   * 実体(シミュレータ/AVD)を消したあとの後始末: **その実体を参照している実行プロファイルから
+   * 登録も外す**(`fleetest api delete-device` 成功時)。
    *
-   * **確認は聞かない** —— 削除そのものを確認済みで、ここは実体が消えた事実に台帳を合わせるだけ。
-   * 聞かずに残すと「デバイスを選択」でキャンセルした場合に**実体の無い登録が残り**、
-   * 次の run が「その台が無い」で落ちるまで気付けない(2026-08-25 の報告)。
-   * OK 側の同期(machineDevicesSync)には乗らない = キャンセルでも必ず消える、が要点。
+   * **確認は聞かない** —— 削除そのものを確認済みで、ここは実体が消えた事実にプロファイルを
+   * 合わせるだけ。聞かずに残すと**実体の無い登録が残り**、次の run が「その台が無い」で落ちるまで
+   * 気付けない(2026-08-25 の報告)。「+既存から選択」の OK 側の同期(runProfileDevicesSync)には
+   * 乗らない = キャンセルでも必ず消える、が要点。
    *
-   * **引き当ては (machine, name)**(machine 省略=手元)。名前だけで消すと別の機械の同名が巻き添えになる。
-   * 書き戻せた名前を返す(呼び出し側が通知に使う)。
+   * **引き当ては (platform, machine, name)**(machine 省略=手元)。名前だけで消すと別の機械の
+   * 同名が巻き添えになる。書き換えた実行プロファイル名を返す(呼び出し側が通知に使う)。
    */
-  /**
-   * `machine` を使う実行プロファイル(runs/<name>.json の machine が一致するもの)から、
-   * devices の (machine, name) 一致を取り除く。**マシンプロファイルより先に呼ぶ** ——
-   * 参照する側から外さないと、途中で失敗したときに「マシンに居ない台を指す実行プロファイル」
-   * が残る。書き換えた実行プロファイル名を返す(ログ用)。
-   */
-  private removeDevicesFromRunProfilesOfMachine(
-    project: string,
-    machine: string,
-    devices: readonly { readonly name: string; readonly machine?: string }[],
-  ): readonly string[] {
-    const updated: string[] = [];
-    for (const run of listRunProfileNames(this.deps.workspaceRoot, project)) {
-      const runPath = path.join(this.runsDir(project), `${run}.json`);
-      try {
-        const parsed: unknown = JSON.parse(fs.readFileSync(runPath, "utf8"));
-        const removal = removeDevicesFromRunProfileOfMachine(parsed, machine, devices);
-        if (!removal || removal.removed === 0) {
-          continue;
-        }
-        fs.writeFileSync(runPath, `${JSON.stringify(removal.object, null, 2)}\n`, "utf8");
-        updated.push(run);
-      } catch (error) {
-        // 1つ失敗しても残りは続ける(N 個中1個の失敗を致命にしない)。理由は OUTPUT へ
-        this.deps.outputChannel.appendLine(
-          t("profiles.log.runProfileLoadFailed", { name: run, error: String(error) }),
-        );
-      }
-    }
-    return updated;
-  }
-
   unregisterDeletedDevice(
+    platform: "ios" | "android",
     name: string,
     machine: string | undefined,
-  ): { readonly machines: readonly string[]; readonly runs: readonly string[] } {
+  ): { readonly runs: readonly string[] } {
     const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
     if (resolution.kind !== "resolved") {
-      return { machines: [], runs: [] };
+      return { runs: [] };
     }
     const project = resolution.project;
-    const effectiveMachine = machine ?? "local";
-    // **全件を自分で走査する**。`delete-device` の finished.referencedBy には頼らない ——
-    // あれはマシンプロファイルしか見ず、しかも CLI 側のプロジェクト解決が外れると黙って空になる。
-    // 実体が消えた以上、(machine, name) が一致する登録はどれも宙ぶらりんなので全部外す
-    // **順番は「参照する側」から**(2026-08-25 指示)。実行プロファイルはマシンプロファイルの台を
-    // 指すので、先にマシン側を消すと、途中で失敗したときに**実体もマシン登録も無い台を指す
-    // 実行プロファイル**が残る。参照する側から外せば、途中で止まっても残るのは
-    // 「マシンには居るがどこからも使われていない台」で害が小さい
+    const key = { platform, name, machine };
     const updatedRuns: string[] = [];
     for (const run of listRunProfileNames(this.deps.workspaceRoot, project)) {
       const runPath = path.join(this.runsDir(project), `${run}.json`);
       try {
         const parsed: unknown = JSON.parse(fs.readFileSync(runPath, "utf8"));
-        const removal = removeDeviceFromRunProfile(parsed, name, effectiveMachine);
+        const removal = removeDeviceFromRunProfile(parsed, key);
         if (!removal || removal.removed === 0) {
           continue;
         }
@@ -1253,34 +970,20 @@ export class MonitorProfilesController {
         );
       }
     }
-    const updatedMachines: string[] = [];
-    // **ループ変数は machine と名付けない** —— 引数の machine(その台が居る機械)を隠して
-    // マシンプロファイル名で引き当てることになり、登録が1件も外れなくなる
-    for (const profileName of listMachineProfiles(this.deps.workspaceRoot, project).map((s) => s.name)) {
-      const machinePath = path.join(this.machinesDir(project), `${profileName}.json`);
-      try {
-        const parsed: unknown = JSON.parse(fs.readFileSync(machinePath, "utf8"));
-        const removal = removeDevicesFromMachineProfile(parsed, [{ name, machine }]);
-        if (!removal || removal.removed === 0) {
-          continue;
-        }
-        fs.writeFileSync(machinePath, `${JSON.stringify(removal.object, null, 2)}\n`, "utf8");
-        updatedMachines.push(profileName);
-      } catch (error) {
-        this.deps.outputChannel.appendLine(
-          t("profiles.log.machineProfileLoadFailed", { name: profileName, error: String(error) }),
-        );
-      }
+    if (updatedRuns.length > 0) {
+      this.postProfileInfo();
     }
-    if (updatedMachines.length > 0) {
-      this.postMachineProfileInfo();
-    }
-    return { machines: updatedMachines, runs: updatedRuns };
+    return { runs: updatedRuns };
   }
 
-  async handleMachineDeviceRemove(
-    machine: string,
-    devices: readonly { readonly name: string; readonly machine?: string }[],
+  /**
+   * 実行プロファイル節のデバイス一覧、右クリック「除去」: 同じ (platform, machine, name) を持つ
+   * **全実行プロファイル**の devices[] から取り除く(仮想デバイス/実機の実体は操作しない)。
+   * ユーザー可視文言はこの操作に限り「削除」ではなく「除去」を使う(実体を消す「削除」と
+   * 紛らわしいため)。
+   */
+  async handleRunProfileDeviceRemove(
+    devices: readonly { readonly platform: "ios" | "android"; readonly machine?: string; readonly name: string }[],
   ): Promise<void> {
     // **ログには必ずマシンを添える**(同名の台が別の機械に並ぶのは通常で、どの Mac の台かを
     // 名前だけからは決められない)。確認ダイアログは選択そのものを指すので名指ししない。
@@ -1303,84 +1006,55 @@ export class MonitorProfilesController {
     if (choice !== removeLabel) {
       return;
     }
-    // **先に実行プロファイルから外す**(2026-08-25 指示)。実行プロファイルはマシンプロファイルの
-    // 台を指すので、マシン側を先に消すと「マシンに居ない台を指す実行プロファイル」が生まれ、
-    // 次の run が落ちるまで気付けない。対象は**このマシンプロファイルを使う実行プロファイルだけ**
-    // (別のマシンプロファイルにも同じ台が居る構成があるため、machine 一致で絞る)
-    const removedFromRuns = this.removeDevicesFromRunProfilesOfMachine(project, machine, devices);
-    const machinePath = path.join(this.machinesDir(project), `${machine}.json`);
-    try {
-      let parsed: unknown;
+    const updatedRuns: string[] = [];
+    for (const run of listRunProfileNames(this.deps.workspaceRoot, project)) {
+      const runPath = path.join(this.runsDir(project), `${run}.json`);
       try {
-        parsed = JSON.parse(fs.readFileSync(machinePath, "utf8"));
+        let current: unknown = JSON.parse(fs.readFileSync(runPath, "utf8"));
+        let removedHere = 0;
+        for (const device of devices) {
+          const removal = removeDeviceFromRunProfile(current, device);
+          if (!removal) {
+            current = undefined;
+            break;
+          }
+          current = removal.object;
+          removedHere += removal.removed;
+        }
+        if (current === undefined || removedHere === 0) {
+          continue;
+        }
+        fs.writeFileSync(runPath, `${JSON.stringify(current, null, 2)}\n`, "utf8");
+        updatedRuns.push(run);
       } catch (error) {
         this.deps.outputChannel.appendLine(
-          t("profiles.log.machineProfileLoadFailed", { name: machine, error: String(error) }),
-        );
-        void vscode.window.showWarningMessage(
-          `fleetest: ${t("profiles.msg.machineProfileLoadFailed", { name: machine })}`,
-        );
-        return;
-      }
-      const removal = removeDevicesFromMachineProfile(parsed, devices);
-      if (!removal) {
-        this.deps.outputChannel.appendLine(
-          t("profiles.log.machineProfileInvalidFormatRemoveAborted", { name: machine }),
-        );
-        void vscode.window.showWarningMessage(
-          `fleetest: ${t("profiles.msg.machineProfileLoadFailed", { name: machine })}`,
-        );
-        return;
-      }
-      const current = removal.object;
-      const removedCount = removal.removed;
-      if (removedCount === 0) {
-        this.deps.outputChannel.appendLine(
-          t("profiles.log.machineProfileDeviceNotFoundRemoveFailed", { name: machine }),
-        );
-        void vscode.window.showWarningMessage(
-          `fleetest: ${t("profiles.msg.machineProfileDeviceNotFound", { name: machine })}`,
-        );
-        return;
-      }
-      fs.writeFileSync(machinePath, `${JSON.stringify(current, null, 2)}\n`, "utf8");
-      this.deps.outputChannel.appendLine(
-        t("profiles.log.machineProfileDevicesRemoved", {
-          name: machine,
-          count: removedCount,
-          names: names.join("、"),
-        }),
-      );
-      if (removedFromRuns.length > 0) {
-        this.deps.outputChannel.appendLine(
-          t("profiles.log.runProfileDevicesRemoved", {
-            names: names.join("、"),
-            profiles: removedFromRuns.join("、"),
-          }),
+          t("profiles.log.runProfileLoadFailed", { name: run, error: String(error) }),
         );
       }
-      // FileSystemWatcher(onDidChange)経由でも postMachineProfileInfo() が呼ばれるが、
-      // 反映を待たせないようここでも明示的に呼ぶ(冪等)。
-      this.postMachineProfileInfo();
-    } catch (error) {
-      this.deps.outputChannel.appendLine(
-        t("profiles.log.machineProfileDeviceRemoveFailed", { name: machine, error: String(error) }),
-      );
-      void vscode.window.showErrorMessage(
-        `fleetest: ${t("profiles.msg.machineProfileDeviceRemoveFailed", { name: machine })}`,
-      );
     }
+    if (updatedRuns.length === 0) {
+      this.deps.outputChannel.appendLine(t("profiles.log.runProfileDeviceNotFoundRemoveFailed"));
+      void vscode.window.showWarningMessage(`fleetest: ${t("profiles.msg.runProfileDeviceNotFound")}`);
+      return;
+    }
+    this.deps.outputChannel.appendLine(
+      t("profiles.log.runProfileDevicesRemoved", { names: names.join("、"), profiles: updatedRuns.join("、") }),
+    );
+    // FileSystemWatcher(onDidChange)経由でも postProfileInfo() が呼ばれるが、反映を待たせないよう
+    // ここでも明示的に呼ぶ(冪等)。
+    this.postProfileInfo();
   }
 
   /**
-   * 右ペイン編集フォームの自動保存: machines/<machine>.json の対象デバイスを更新する。フォームが
-   * クライアント側検証済みのため確認ダイアログは無く、結果は machineDeviceUpdateResult で即返す。
+   * 実行プロファイル節の右ペイン編集フォームの自動保存: 同じ (platform, machine, originalName) を
+   * 持つ**全実行プロファイル**の devices[] を更新する。フォームがクライアント側検証済みでも
+   * fields はここで(1回だけ)再検証し、通れば全プロファイルへ同じ内容を書く。
    * プロジェクト未解決時もフォームのエラー表示に載せたいため resolveProjectName を直接呼ぶ
    * (resolveProjectOrWarn の vscode.window 警告は使わない)。
    */
-  handleMachineDeviceUpdate(message: MachineDeviceUpdateMessage): void {
+  handleRunProfileDeviceUpdate(message: RunProfileDeviceUpdateMessage): void {
     const sendResult = (ok: boolean, name: string, error: string | null) => {
-      this.deps.post({ type: "machineDeviceUpdateResult", ok, name, error });
+      this.deps.post({ type: "runProfileDeviceUpdateResult", ok, name, error });
     };
 
     const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
@@ -1388,138 +1062,118 @@ export class MonitorProfilesController {
       sendResult(false, message.originalName, t("profiles.error.projectUnresolved"));
       return;
     }
-
-    const machinePath = path.join(this.machinesDir(resolution.project), `${message.machine}.json`);
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(fs.readFileSync(machinePath, "utf8"));
-    } catch (error) {
-      this.deps.outputChannel.appendLine(
-        t("profiles.log.machineProfileLoadFailed", { name: message.machine, error: String(error) }),
-      );
-      sendResult(false, message.originalName, t("profiles.msg.machineProfileLoadFailed", { name: message.machine }));
+    const project = resolution.project;
+    const key = { platform: message.platform, machine: message.machine, name: message.originalName };
+    const catalog = this.deviceCatalog(project);
+    const target = catalog.find((entry) => runProfileDeviceRefKey(entry) === runProfileDeviceRefKey(key));
+    if (!target) {
+      sendResult(false, message.originalName, t("monitor.device.notFound", { name: message.originalName }));
       return;
     }
 
-    const result = updateDeviceInMachineProfile(
-      parsed,
-      message.platform,
-      message.originalName,
-      message.fields,
-      message.deviceMachine ?? "local",
-    );
-    if (!result.ok) {
-      sendResult(false, message.originalName, result.error);
+    const validationError = validateRunProfileDeviceEditFields(message.platform, target.kind, message.fields);
+    if (validationError) {
+      sendResult(false, message.originalName, validationError);
+      return;
+    }
+    const newName = message.fields.name.trim();
+    if (
+      newName !== message.originalName &&
+      catalogHasDeviceNameClash(catalog, key, newName)
+    ) {
+      sendResult(false, message.originalName, t("monitor.validation.nameAlreadyExists", { name: newName }));
       return;
     }
 
-    try {
-      fs.writeFileSync(machinePath, `${JSON.stringify(result.object, null, 2)}\n`, "utf8");
-    } catch (error) {
-      this.deps.outputChannel.appendLine(
-        t("profiles.log.machineProfileDeviceUpdateFailed", {
-          machine: message.machine,
-          device: message.originalName,
-          error: String(error),
-        }),
-      );
-      sendResult(false, message.originalName, t("profiles.msg.machineProfileWriteFailed", { name: message.machine }));
+    const updatedRuns: string[] = [];
+    for (const run of listRunProfileNames(this.deps.workspaceRoot, project)) {
+      const runPath = path.join(this.runsDir(project), `${run}.json`);
+      try {
+        const parsed: unknown = JSON.parse(fs.readFileSync(runPath, "utf8"));
+        const result = updateDeviceInRunProfile(parsed, key, message.fields);
+        if (!result || !result.matched) {
+          continue;
+        }
+        fs.writeFileSync(runPath, `${JSON.stringify(result.object, null, 2)}\n`, "utf8");
+        updatedRuns.push(run);
+      } catch (error) {
+        this.deps.outputChannel.appendLine(
+          t("profiles.log.runProfileLoadFailed", { name: run, error: String(error) }),
+        );
+      }
+    }
+    if (updatedRuns.length === 0) {
+      sendResult(false, message.originalName, t("monitor.device.notFound", { name: message.originalName }));
       return;
     }
 
     this.deps.outputChannel.appendLine(
-      t("profiles.log.machineProfileDeviceUpdated", { machine: message.machine, device: message.originalName }),
+      t("profiles.log.runProfileDeviceUpdated", { device: message.originalName, profiles: updatedRuns.join("、") }),
     );
-    sendResult(true, result.name, null);
-    // FileSystemWatcher(onDidChange)経由でも postMachineProfileInfo() が呼ばれるが、
-    // handleMachineDeviceRemove と同じく反映を待たせないようここでも明示的に呼ぶ(冪等)。
-    this.postMachineProfileInfo();
+    sendResult(true, newName, null);
+    // FileSystemWatcher(onDidChange)経由でも postProfileInfo() が呼ばれるが、反映を待たせないよう
+    // ここでも明示的に呼ぶ(冪等)。
+    this.postProfileInfo();
   }
 
   /**
-   * 「+既存から選択」モーダルの OK: チェックの差分(追加/登録解除)をまとめて
-   * machines/<machine>.json へ適用する。handleMachineDeviceUpdate と同じ理由でモーダル確認なし・
+   * 「+既存から選択」モーダルの OK: 新たにチェックしたデバイスを、選択中の実行プロファイルの
+   * devices[] へ追加する。handleRunProfileDeviceUpdate と同じ理由でモーダル確認なし・
    * resolveProjectName 直接呼びとする。
    */
-  handleMachineDevicesSync(message: MachineDevicesSyncMessage): void {
-    const sendResult = (ok: boolean, added: number, removed: number, error: string | null) => {
-      this.deps.post({ type: "machineDevicesSyncResult", ok, added, removed, error });
+  handleRunProfileDevicesSync(message: RunProfileDevicesSyncMessage): void {
+    const sendResult = (ok: boolean, added: number, error: string | null) => {
+      this.deps.post({ type: "runProfileDevicesSyncResult", ok, added, error });
     };
 
     const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
     if (resolution.kind !== "resolved") {
-      sendResult(false, 0, 0, t("profiles.error.projectUnresolved"));
+      sendResult(false, 0, t("profiles.error.projectUnresolved"));
       return;
     }
-
-    const machinePath = path.join(this.machinesDir(resolution.project), `${message.machine}.json`);
+    const runPath = path.join(this.runsDir(resolution.project), `${message.profile}.json`);
     let parsed: unknown;
     try {
-      parsed = JSON.parse(fs.readFileSync(machinePath, "utf8"));
+      parsed = JSON.parse(fs.readFileSync(runPath, "utf8"));
     } catch (error) {
       this.deps.outputChannel.appendLine(
-        t("profiles.log.machineProfileLoadFailed", { name: message.machine, error: String(error) }),
+        t("profiles.log.runProfileLoadFailed", { name: message.profile, error: String(error) }),
       );
-      sendResult(false, 0, 0, t("profiles.msg.machineProfileLoadFailed", { name: message.machine }));
+      sendResult(false, 0, t("profiles.msg.runProfileLoadFailed", { name: message.profile }));
       return;
     }
 
-    const result = syncDevicesInMachineProfile(parsed, message.add, message.remove, message.source);
+    // 契約: 追加するデバイス1台ずつに、それが居る機械を**必ず**書く(手元なら "local".
+    // 一意なのは (platform, machine, name))。
+    const machine = message.source.kind === "remote" ? message.source.machine : "local";
+    const stamped = message.add.map((entry) => (entry.machine === machine ? entry : { ...entry, machine }));
+    const result = addDevicesToRunProfile(parsed, stamped, this.deviceCatalog(resolution.project));
     if (!result.ok) {
-      sendResult(false, 0, 0, result.error);
+      sendResult(false, 0, result.error);
       return;
     }
-
-    // **登録を外す台は、先に実行プロファイルからも外す**(2026-08-25 指示)。
-    // マシン側を先に書くと「マシンに居ない台を指す実行プロファイル」が生まれ、
-    // 次の run が落ちるまで気付けない(handleMachineDeviceRemove と同じ規律)。
-    // 対象はこのマシンプロファイルを使う実行プロファイルだけ
-    const removedMachine = message.source.kind === "remote" ? message.source.machine : "local";
-    const removedFromRuns = message.remove.length > 0
-      ? this.removeDevicesFromRunProfilesOfMachine(
-          resolution.project,
-          message.machine,
-          message.remove.map((name) => ({ name, machine: removedMachine })),
-        )
-      : [];
 
     try {
-      fs.writeFileSync(machinePath, `${JSON.stringify(result.object, null, 2)}\n`, "utf8");
+      fs.writeFileSync(runPath, `${JSON.stringify(result.object, null, 2)}\n`, "utf8");
     } catch (error) {
       this.deps.outputChannel.appendLine(
-        t("profiles.log.machineProfileDevicesSyncWriteFailed", { machine: message.machine, error: String(error) }),
+        t("profiles.log.runProfileWriteFailed", { name: message.profile, error: String(error) }),
       );
-      sendResult(false, 0, 0, t("profiles.msg.machineProfileWriteFailed", { name: message.machine }));
+      sendResult(false, 0, t("profiles.msg.runProfileWriteFailed", { name: message.profile }));
       return;
     }
 
-    const noneLabel = t("profiles.label.none");
     this.deps.outputChannel.appendLine(
-      t("profiles.log.machineProfileDevicesSynced", {
-        machine: message.machine,
-        added: result.added.length,
-        removed: result.removed,
-        addedList: result.added.length > 0 ? result.added.join("、") : noneLabel,
-        removeList: message.remove.length > 0 ? message.remove.join("、") : noneLabel,
-      }),
+      t("profiles.log.runProfileDevicesAdded", { name: message.profile, added: result.added.join("、") }),
     );
-    if (removedFromRuns.length > 0) {
-      this.deps.outputChannel.appendLine(
-        t("profiles.log.runProfileDevicesRemoved", {
-          names: message.remove.join("、"),
-          profiles: removedFromRuns.join("、"),
-        }),
-      );
-    }
-    sendResult(true, result.added.length, result.removed, null);
-    // FileSystemWatcher 経由でも呼ばれるが、反映を待たせないようここでも明示的に呼ぶ
-    // (handleMachineDeviceRemove と同じ理由)。
-    this.postMachineProfileInfo();
+    sendResult(true, result.added.length, null);
+    // FileSystemWatcher 経由でも呼ばれるが、反映を待たせないようここでも明示的に呼ぶ(冪等)。
+    this.postProfileInfo();
   }
 
   // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム(runProfileLoad/runProfileSave) ----
   // クライアント検証済みでも updateRunProfileInObject 側の防御的検証(defaultTimeout の型)に
-  // 引っかかりうるため、結果は machineDeviceUpdate と同じくモーダル確認なしに即座に返す。
+  // 引っかかりうるため、結果は runProfileDeviceUpdate と同じくモーダル確認なしに即座に返す。
 
   /**
    * ロード要求への応答。対象プロジェクトが解決できない/読み込み失敗/JSON解析失敗/非オブジェクトの

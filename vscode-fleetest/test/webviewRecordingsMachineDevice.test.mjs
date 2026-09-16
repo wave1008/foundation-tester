@@ -5,7 +5,7 @@
 //
 // 供給元: recordingsSessions の machine/devices(run.json + recordings/index.json。recordingsStore.ts)と
 // recordingsSession の machine/devices(scenarioID ごと。monitorRecordingsController.ts)。
-// マシンはホスト名なのでタイル/マシンプロファイルと同じ .badge-remote、台は同じ配色ピル .tile-name。
+// マシンはホスト名なのでタイル/デバイス一覧と同じ .badge-remote、台は同じ配色ピル .tile-name。
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";

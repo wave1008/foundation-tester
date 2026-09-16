@@ -1,4 +1,4 @@
-// simctl list devices -j のパースと、マシンプロファイルのデバイス指定
+// simctl list devices -j のパースと、実行プロファイルのデバイス指定
 // (simulator 名+OS / UDID)→ シミュレータ実体(UDID)の解決。
 // CLI(BridgeProvisioner)から使う。
 

@@ -1,6 +1,6 @@
 // profileSchema.test.mjs
-// schemas/{app,machine,run}-profile.schema.json が実在の
-// TestProjects/SampleApp/profiles/{apps,machines,runs}/*.json 全ファイルを受理することを確認する。
+// schemas/{app,run}-profile.schema.json が実在の
+// TestProjects/SampleApp/profiles/{apps,runs}/*.json 全ファイルを受理することを確認する。
 //
 // ajv 等の外部ライブラリは devDependency に追加できない制約があるため、このテストのためだけの
 // 最小限の JSON Schema サブセット評価器(type/required/properties/items/minItems/minLength/
@@ -23,7 +23,6 @@ const PROFILES_DIR = path.join(REPO_ROOT, "TestProjects", "SampleApp", "profiles
 
 const SCHEMA_FILE_BY_KIND = {
   apps: "app-profile.schema.json",
-  machines: "machine-profile.schema.json",
   runs: "run-profile.schema.json",
 };
 

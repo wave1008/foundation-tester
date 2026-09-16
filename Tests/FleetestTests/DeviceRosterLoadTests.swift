@@ -1,47 +1,44 @@
 // 一括起動・停止(`api start-all-devices` / `stop-all-devices` / `restart-devices`)が読む台帳の決め方。
 //
-// 実害(2026-08-29): マシンプロファイルが2つある案件で**実行プロファイルを選んでいない**
-// (「(プロファイルなし)」)まま「デバイスを全て起動」を押すと、`determineMachine` が
-// `cannot tell which machine profile to use` で落ち、**画面には何も起きなかった**
-// (失敗は OUTPUT にしか出ていなかった)。監視(ApiMonitorCommand)とタイルの単体操作
-// (ApiDeviceOperation)は既に「台帳を1つに決めず machines/ を畳む」規律へ移っていたのに、
-// 一括だけ取り残されていた —— 同型の掃討漏れ。
+// 実行プロファイルを選んでいない(「(プロファイルなし)」)ときは台帳を1つに決めず、
+// 全実行プロファイルの devices を畳む(監視 = ApiMonitorCommand・タイルの単体操作 =
+// ApiDeviceOperation と同じ規律)。決められないという理由で落とすと、「デバイスを全て起動」を
+// 押しても画面には何も起きない(実害 2026-08-29)。
 
 import XCTest
 import FTCore
 @testable import fleetest
 
-final class MachineProfileLoadTests: XCTestCase {
+final class DeviceRosterLoadTests: XCTestCase {
 
-    private func projectWithMachines(_ files: [String: String]) throws -> TestProject {
+    private func projectWithRuns(_ files: [String: String]) throws -> TestProject {
         let root = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("fleetest-machine-load-\(UUID().uuidString)")
-        let machines = root.appendingPathComponent("profiles/machines")
-        try FileManager.default.createDirectory(at: machines, withIntermediateDirectories: true)
+            .appendingPathComponent("fleetest-roster-load-\(UUID().uuidString)")
+        let project = TestProject(name: "p", rootURL: root)
+        try FileManager.default.createDirectory(at: project.runsDir, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         for (name, body) in files {
-            try body.write(to: machines.appendingPathComponent("\(name).json"),
+            try body.write(to: project.runsDir.appendingPathComponent("\(name).json"),
                            atomically: true, encoding: .utf8)
         }
-        return TestProject(name: "p", rootURL: root)
+        return project
     }
 
     private func load(_ project: TestProject, profile: String? = nil,
                       registry: [String] = [],
-                      foreign: MachineProfileLoad.ForeignDevices = .notHandled,
-                      warn: @escaping (String) -> Void = { _ in }) throws -> MachineProfile {
-        try MachineProfileLoad.load(project: project, profile: profile, deviceMachine: nil,
-                                    registry: registry, foreign: foreign,
-                                    noteAutoMachine: { _ in }, warn: warn)
+                      foreign: DeviceRosterLoad.ForeignDevices = .notHandled,
+                      warn: @escaping (String) -> Void = { _ in }) throws -> DeviceRoster {
+        try DeviceRosterLoad.load(project: project, profile: profile, deviceMachine: nil,
+                                    registry: registry, foreign: foreign, warn: warn)
     }
 
     /// **分散する経路では「その機械で起動してください」と案内しない**。
     /// 実害 2026-08-30: 一括起動のログで、この案内の 2 秒後に fan-out が同じ台を起動していた
     /// (利用者には「分散していない」ように読める)
     func testDispatchingCallersDoNotTellTheUserToStartThemManually() throws {
-        let project = try projectWithMachines([
-            "local": #"{"ios":{"devices":[{"name":"A"}]}}"#,
-            "M1Max": #"{"machine":"M1Max","ios":{"devices":[{"name":"R"}]}}"#,
+        let project = try projectWithRuns([
+            "local": #"{"devices":[{"platform":"ios","machine":"local","name":"A"}]}"#,
+            "M1Max": #"{"devices":[{"platform":"ios","machine":"M1Max","name":"R"}]}"#,
         ])
         var lines: [String] = []
         _ = try load(project, registry: ["M1Max"], foreign: .dispatchedByCaller) { lines.append($0) }
@@ -74,9 +71,9 @@ final class MachineProfileLoadTests: XCTestCase {
     /// 分散しない経路(`devices up` など)では従来どおり手動の案内を出す ——
     /// 上のテストが「常に案内を消す」実装を通してしまわないための対照
     func testNonDispatchingCallersStillTellTheUserHowToStartThem() throws {
-        let project = try projectWithMachines([
-            "local": #"{"ios":{"devices":[{"name":"A"}]}}"#,
-            "M1Max": #"{"machine":"M1Max","ios":{"devices":[{"name":"R"}]}}"#,
+        let project = try projectWithRuns([
+            "local": #"{"devices":[{"platform":"ios","machine":"local","name":"A"}]}"#,
+            "M1Max": #"{"devices":[{"platform":"ios","machine":"M1Max","name":"R"}]}"#,
         ])
         var lines: [String] = []
         _ = try load(project, registry: ["M1Max"], foreign: .notHandled) { lines.append($0) }
@@ -85,22 +82,23 @@ final class MachineProfileLoadTests: XCTestCase {
                       "誰も起動しない経路では起動方法を案内する: \(lines)")
     }
 
-    /// 台帳が2つあっても、プロファイル未選択なら**落とさずに畳む**(押した操作を断らない)
-    func testWithoutARunProfileTwoLedgersAreMergedInsteadOfFailing() throws {
-        let project = try projectWithMachines([
-            "aaa": #"{"ios":{"devices":[{"name":"A"}]}}"#,
-            "zzz": #"{"android":{"devices":[{"name":"B","avd":"AVD_B"}]}}"#,
+    /// 実行プロファイルが2つあっても、プロファイル未選択なら**落とさずに畳む**(押した操作を断らない)。
+    /// enabled: false の台も台帳に載る
+    func testWithoutARunProfileEveryRunProfileIsMerged() throws {
+        let project = try projectWithRuns([
+            "aaa": #"{"devices":[{"platform":"ios","machine":"local","name":"A"}]}"#,
+            "zzz": #"{"devices":[{"platform":"android","machine":"local","name":"B","avd":"AVD_B","enabled":false},{"platform":"ios","machine":"local","name":"A"}]}"#,
         ])
         let merged = try load(project)
-        XCTAssertEqual(merged.ios?.devices?.map(\.name), ["A"])
+        XCTAssertEqual(merged.ios?.devices?.map(\.name), ["A"], "同じ台は1件に畳む")
         XCTAssertEqual(merged.android?.devices?.map(\.name), ["B"])
     }
 
     /// 畳んだあとも「この機械が扱える台だけ」に絞る(別の機械の台へ simctl/adb は撃てない)。
     /// 登録簿に居るリモートの台は fan-out がその機械で起こす
     func testRemoteDevicesAreLeftToTheirOwnMachine() throws {
-        let project = try projectWithMachines([
-            "one": #"{"ios":{"devices":[{"name":"L"},{"name":"R","machine":"M1Max"}]}}"#,
+        let project = try projectWithRuns([
+            "one": #"{"devices":[{"platform":"ios","name":"L"},{"platform":"ios","name":"R","machine":"M1Max"}]}"#,
         ])
         let merged = try load(project, registry: ["M1Max"])
         XCTAssertEqual(merged.ios?.devices?.map(\.name), ["L"], "手元の台だけ残す")
@@ -108,20 +106,21 @@ final class MachineProfileLoadTests: XCTestCase {
 
     /// 登録簿に無い機械の台は畳んだ時点で落ちる(観測も操作もできない台を並べない)
     func testDevicesOfUnregisteredMachinesAreDropped() throws {
-        let project = try projectWithMachines([
-            "one": #"{"ios":{"devices":[{"name":"L"},{"name":"R","machine":"Ghost"}]}}"#,
+        let project = try projectWithRuns([
+            "one": #"{"devices":[{"platform":"ios","name":"L"},{"platform":"ios","name":"R","machine":"Ghost"}]}"#,
         ])
         let merged = try load(project, registry: [])
         XCTAssertEqual(merged.ios?.devices?.map(\.name), ["L"])
     }
 
-    /// **選んでいるときは従来どおり**(その台帳だけを使い、実行プロファイルの参照で絞る)。
+    /// **選んでいるときはその実行プロファイルの enabled の台だけ**。
     /// 存在しない実行プロファイル名なら落ちる = 畳む経路へすり替わっていないことの witness
-    func testWithARunProfileTheLedgerIsStillResolvedTheOldWay() throws {
-        let project = try projectWithMachines([
-            "aaa": #"{"ios":{"devices":[{"name":"A"}]}}"#,
-            "zzz": #"{"ios":{"devices":[{"name":"Z"}]}}"#,
+    func testWithARunProfileOnlyItsEnabledDevicesAreUsed() throws {
+        let project = try projectWithRuns([
+            "aaa": #"{"devices":[{"platform":"ios","machine":"local","name":"A"},{"platform":"ios","machine":"local","name":"OFF","enabled":false}]}"#,
+            "zzz": #"{"devices":[{"platform":"ios","machine":"local","name":"Z"}]}"#,
         ])
+        XCTAssertEqual(try load(project, profile: "aaa").ios?.devices?.map(\.name), ["A"])
         XCTAssertThrowsError(try load(project, profile: "no-such-run-profile"))
     }
 }

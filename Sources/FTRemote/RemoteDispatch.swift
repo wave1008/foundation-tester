@@ -151,7 +151,6 @@ public enum RemoteCompat {
     ///
     /// **照合するのは rev と toolchain の2つだけ**。「送り先が想定の機械か」は ssh の宛先
     /// (とホスト鍵)が保証するので、リモートの登録名は見ない
-    /// (ProfileResolver.determineMachine の宣言)
     public static func mismatches(
         localRevision: String?, remoteRevision: String?,
         localToolchain: String?, remoteToolchain: String?
@@ -502,12 +501,12 @@ public enum RemoteDispatchGate {
     }
 }
 
-/// `--runner` が明示指定か、実行プロファイルのマシン `host` 経由の自動ディスパッチかを表す
+/// `--runner` が明示指定か、実行プロファイルの全台が居る機械への自動ディスパッチかを表す
 /// (欠陥1・2026-08-17)。ローカル専用フラグとの併用可否・拒否理由の文言はこれで分岐する
-/// (RemoteDispatchFlagPolicy 参照)。machine/host は自動ディスパッチのときの文言合成専用
+/// (RemoteDispatchFlagPolicy 参照)。machine は自動ディスパッチのときの文言合成専用
 public enum RemoteDispatchOrigin: Equatable, Sendable {
     case explicitHost
-    case autoDispatch(machine: String, host: String)
+    case autoDispatch(machine: String)
 }
 
 /// `--runner`(明示または自動)と併用できないローカル専用フラグの扱い。origin で「拒否」と
@@ -522,7 +521,7 @@ public enum RemoteDispatchFlagPolicy {
 
     /// `--skip-build`: リモートは常に自前でビルドするため、ローカルのビルド抑止指定はそもそも
     /// 意味を持たない。**自動ディスパッチでは黙って無視する**(拡張の `buildBeforeRun: false` は
-    /// 常に `--skip-build` を送るため、host を持つマシンで実行すると利用者が打っていないフラグを
+    /// 常に `--skip-build` を送るため、全台がリモートのプロファイルで実行すると利用者が打っていないフラグを
     /// 理由に必ず落ちていた)。`--runner` 明示は従来どおり拒否のまま(利用者が意識して付けたフラグ
     /// なので、効かないことを黙認せず気づかせる)
     public static func skipBuild(origin: RemoteDispatchOrigin) -> Decision {
@@ -537,7 +536,7 @@ public enum RemoteDispatchFlagPolicy {
 
     /// `--force-lock`(dispatch.lock を奪う)を受け付けてよいか。**リモートへ行きうる指定が
     /// 1つでもあれば受け付ける** —— `--runner` / `--fleet` だけを条件にすると、
-    /// **マシンプロファイル経由で自動ディスパッチする実行プロファイル**(`--runner` を打たない)や
+    /// **全台がリモートに居て自動ディスパッチする実行プロファイル**(`--runner` を打たない)や
     /// **デバイスが複数の機械にまたがるプロファイル**(ホスト別の子へ分かれる)で使えず、
     /// 中断した run が残したロックを解除する手段が `remote clean`(デバイスも止まる)か
     /// 手動削除しか無くなる(2026-08-18 に実際に詰まった。子への転送自体は
@@ -573,9 +572,9 @@ public enum RemoteDispatchFlagPolicy {
         switch origin {
         case .explicitHost:
             return .rejected("\(flag) is not supported with --runner")
-        case .autoDispatch(let machine, let host):
+        case .autoDispatch(let machine):
             return .rejected("\(flag) cannot be used: this profile automatically dispatches to"
-                + " machine \"\(machine)\"'s host \"\(host)\" — pass --runner local to run it here instead")
+                + " machine \"\(machine)\" (all its devices live there) — pass --runner local to run it here instead")
         }
     }
 }
@@ -620,13 +619,12 @@ public enum RemoteRunArgs {
                              reportDir: String?, workspace: String? = nil,
                              runGroup: String? = nil) -> [String] {
         // **リモート側は必ず「ここで走らせる」**(--runner local)。省略すると、向こうの fleetest が
-        // 転送されたマシンプロファイルの host(= 自分のはずのホスト名)を読んで**もう一度
-        // ディスパッチしようとする** —— 登録簿に無ければ「未登録のホスト」で落ち、あれば
-        // 自分自身へ ssh する。"local" は MachineDispatch.resolve が明示指定として止める
+        // 転送された実行プロファイルの台の machine を読んで**もう一度ディスパッチしようとする**
+        // 余地を残す。"local" は MachineDispatch.resolve が明示指定として止める
         // (FleetRunner が "local" エントリに --runner local を渡すのと同じ理由)
         var args = ["run", "--project", project, "--profile", profile, "--quiet", "--runner", "local"]
         if let reportDir { args += ["--report-dir", reportDir] }
-        // **デバイスの絞り込みは中継しないと効かない** —— 向こうは同じマシンプロファイルを
+        // **デバイスの絞り込みは中継しないと効かない** —— 向こうは同じ実行プロファイルを
         // 受け取るので、渡さないと**全ホストぶんの台**を自分のものとして解決しようとする
         // (同名は別の機械にも居るのが通常。2026-08-17 に実走で確認)。
         // **値は常に "local"** —— 転送したプロファイルは RunnerProfileTransfer が

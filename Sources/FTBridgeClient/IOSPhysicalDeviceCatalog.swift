@@ -11,7 +11,7 @@ import Foundation
 import FTCore
 
 public struct IOSPhysicalDeviceInfo: Sendable, Hashable, Identifiable {
-    /// ハードウェア UDID("00008130-001819863E60001C" 形式)。マシンプロファイルの udid に書く値。
+    /// ハードウェア UDID("00008130-001819863E60001C" 形式)。実行プロファイルの udid に書く値。
     /// **devicectl の identifier(別の UUID)ではない**: xcodebuild の -destination id= が
     /// 受け付けるのはこちらだけ(devicectl --device はどちらでも通る。2026-07-25 実機で確認)
     public let udid: String
@@ -190,7 +190,7 @@ public enum IOSPhysicalDeviceCatalog {
         device.connected || probe(device.udid)
     }
 
-    /// マシンプロファイルの udid → 実機。到達できない端末はエラー(この先の xcodebuild が必ず
+    /// 実行プロファイルの udid → 実機。到達できない端末はエラー(この先の xcodebuild が必ず
     /// 失敗するため、分かりやすい段階で止める)。
     /// probe を渡さなければ実際の devicectl 問い合わせ(probeReachable)を使う
     public static func resolve(spec: DeviceSpec,

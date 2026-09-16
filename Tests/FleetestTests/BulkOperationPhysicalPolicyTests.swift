@@ -44,14 +44,14 @@ final class BulkOperationPhysicalPolicyTests: XCTestCase {
 
     // MARK: - DeviceBooter.buildBootQueue(一括起動は実機を専用レーンで含む)
 
-    private func mixedMachine() -> MachineProfile {
-        MachineProfile(
-            ios: MachineDeviceList(devices: [
+    private func mixedMachine() -> DeviceRoster {
+        DeviceRoster(
+            ios: DeviceRosterList(devices: [
                 DeviceSpec(name: "iPhone-B", kind: .virtual),
                 DeviceSpec(name: "iPhone-A", kind: .virtual),
                 DeviceSpec(name: "iPhone-Real", kind: .physical, udid: "00008130-AAAA"),
             ]),
-            android: MachineDeviceList(devices: [
+            android: DeviceRosterList(devices: [
                 DeviceSpec(name: "Pixel-B", kind: .virtual, avd: "pixel_b"),
                 DeviceSpec(name: "Pixel-A", kind: .virtual, avd: "pixel_a"),
                 DeviceSpec(name: "Pixel-Real", kind: .physical, serial: "R3CN123"),

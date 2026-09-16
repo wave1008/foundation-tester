@@ -119,8 +119,7 @@ test("startHostMetricsProcess は `api host-metrics --interval 1` で spawnFn �
 // モニターが死んだときのバナー。**CLI が言っている理由を捨てない** ——
 // 実害(2026-08-17): 設定の project(E2E-Android)と profile(local+remote)が食い違い、CLI は
 // 「run profile not found: local+remote (available: android, android-device)」と正しく言っていたのに、
-// 拡張は exit code だけを見て「マシンプロファイル未設定の可能性があります」と表示し、
-// 見当違いの場所(profiles/machines/)を調べさせた。
+// 拡張は exit code だけを見て見当違いの推測案内を表示していた。
 test("異常終了のバナーは give-up 時だけ・CLI の Error 行をそのまま載せる", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
   const posts = [];
@@ -135,7 +134,7 @@ test("異常終了のバナーは give-up 時だけ・CLI の Error 行をその
   for (let i = 0; i < 3; i += 1) {
     // 起動直後(10秒未満)に同じ理由で死に続ける(設定誤り等の再現)
     t.mock.timers.tick(1000);
-    current.stderr.emit("data", Buffer.from("→ Using machine profile M2Ultra automatically\n"));
+    current.stderr.emit("data", Buffer.from("→ Resolving project automatically\n"));
     current.stderr.emit("data", Buffer.from("Error: run profile not found: local+remote (available: android)\n"));
     // ArgumentParser は Error の**後ろ**に usage を出す。最後の1行を拾う実装だとこれを理由にする
     current.stderr.emit("data", Buffer.from("  See 'fleetest api monitor --help' for more information.\n"));
@@ -152,8 +151,8 @@ test("異常終了のバナーは give-up 時だけ・CLI の Error 行をその
   assert.ok(down, "give-up でバナーが送られる");
   assert.match(down.message, /自動再起動を停止/, "諦めたことを言う");
   assert.match(down.message, /run profile not found: local\+remote/, "理由をそのまま出す");
-  assert.doesNotMatch(down.message, /マシンプロファイル未設定/, "推測の案内で上書きしない");
-  assert.doesNotMatch(down.message, /Using machine profile/, "進行ログは理由ではない");
+  assert.doesNotMatch(down.message, /devices 設定が不正な可能性/, "推測の案内で上書きしない");
+  assert.doesNotMatch(down.message, /Resolving project/, "進行ログは理由ではない");
 });
 
 test("CLI が何も言わずに落ち続けたときは従来の案内へ戻る(give-up バナー)", (t) => {
@@ -174,7 +173,7 @@ test("CLI が何も言わずに落ち続けたときは従来の案内へ戻る(
   }
 
   const down = posts.filter((m) => m.type === "processDown").at(-1);
-  assert.match(down.message, /マシンプロファイル未設定/);
+  assert.match(down.message, /devices 設定が不正な可能性/);
 });
 
 // ---- monitor の自動再起動(2026-08-24 追加。host-metrics と同型の give-up 付き) ----

@@ -126,7 +126,7 @@ final class MCPAuditFixes20260812Tests: XCTestCase {
         let short = DeviceInventory.fallbackHeader(reason: reason, abbreviated: true)
         XCTAssertTrue(full.contains(reason), "初回は理由を満額で出すこと: \(full)")
         XCTAssertFalse(short.contains(reason), "2回目以降は理由を畳むこと: \(short)")
-        XCTAssertTrue(short.contains("Not using a machine profile"), short)
+        XCTAssertTrue(short.contains("Not using the run profiles' devices"), short)
         XCTAssertLessThan(short.count, full.count)
     }
 

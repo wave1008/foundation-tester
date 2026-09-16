@@ -11,12 +11,14 @@ import Foundation
 
 public enum OrderedProfileJSON {
     /// 先頭に出すキー。**この順序自体が契約**(profiles/*.json を読む人の期待)。
-    /// 先頭2つの理由: machine = どの機械の話か(ローカルエイリアス)、
-    /// name = 実行プロファイルからの参照キー。ここに無いキーはアルファベット順で後ろに付く
+    /// 先頭の理由(devices[] の1要素): platform = 何の台か、machine = どの機械の話か
+    /// (ローカルエイリアス)、name = 台の名前、enabled = 実行対象か。
+    /// ここに無いキーはアルファベット順で後ろに付く。
+    /// 同期相手: vscode-fleetest/src/monitorProfileForms.ts の書き出し順
     public static let preferredKeyOrder = [
-        "machine", "name", "host", "app", "appName",
+        "platform", "machine", "name", "enabled", "host", "app", "appName",
         // セクションはアルファベット順(android → ios)ではなく、読み手の期待どおり ios → android
-        "common", "ios", "android", "devices", "kind", "platform",
+        "common", "ios", "android", "devices", "kind",
     ]
 
     /// 人が読む前提のファイル向けの整形(末尾改行あり)。JSONSerialization の

@@ -3,16 +3,16 @@
 // `fleetest api validate-profile` を模したダミー実行スクリプト。cli.ts(FleetestCli)経由で
 // profileModel.ts / profileDiagnostics.ts の配線を検証するためのフィクスチャ(実バイナリは使わない)。
 //
-// 使い方: node mock-validate-profile.mjs [--project <P>] [--kind apps|machines|runs] [--name <n>]
+// 使い方: node mock-validate-profile.mjs [--project <P>] [--kind apps|runs] [--name <n>]
 //   [--pattern <name>]
 //   pattern:
-//     mixed(既定): apps 1件(問題なし) / machines 1件(重複デバイス名でエラー) /
+//     mixed(既定): apps 1件(問題なし) /
 //                  runs 2件(1件は未知キー警告のみ、1件は app 参照欠落でエラー) の
-//                  計4件を返す(--kind/--name が指定されていればそれで絞り込む)。
+//                  計3件を返す(--kind/--name が指定されていればそれで絞り込む)。
 //
 // 契約(Sources/fleetest/ApiValidateProfileCommand.swift と同じ):
-//   stdout(1行JSON): {"machine":"M1 Max"|null,"project":"<P>","results":[
-//     {"kind":"apps"|"machines"|"runs","name":"..","path":"..","errors":[..],"warnings":[..]}, ...
+//   stdout(1行JSON): {"project":"<P>","results":[
+//     {"kind":"apps"|"runs","name":"..","path":"..","errors":[..],"warnings":[..]}, ...
 //   ]}
 // 検証エラーがあっても exit 0(実物と同じ)。診断は stderr のみ。
 //
@@ -48,13 +48,6 @@ const ALL_RESULTS = [
     warnings: [],
   },
   {
-    kind: "machines",
-    name: "M1 Max",
-    path: "/repo/TestProjects/SampleApp/profiles/machines/M1 Max.json",
-    errors: ["デバイス名が重複しています: エミュ1(name は ios/android 横断で一意にしてください)"],
-    warnings: [],
-  },
-  {
     kind: "runs",
     name: "sampleapp_all",
     path: "/repo/TestProjects/SampleApp/profiles/runs/sampleapp_all.json",
@@ -78,7 +71,7 @@ function runMixed() {
   if (name !== undefined) {
     results = results.filter((result) => result.name === name);
   }
-  emit({ machine: "M1 Max", project, results });
+  emit({ project, results });
 }
 
 switch (pattern) {

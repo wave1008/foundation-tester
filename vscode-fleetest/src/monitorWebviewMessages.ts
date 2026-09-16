@@ -27,7 +27,7 @@ import type {
   AppProfilePlatformFields,
   DeviceCatalog,
   InstalledDevices,
-  MachineDeviceAddEntry,
+  RunProfileDeviceAddEntry,
   RunProfileFormFields,
 } from "./monitorProfileForms";
 
@@ -116,40 +116,29 @@ export type MonitorToWebviewMessage =
       /** 対象プロジェクトのディレクトリ(ワークスペースルート基準の相対パス。解決できなければ "")。
        * プロファイルタブの「プロジェクトディレクトリ」欄が参照専用で出すだけで、入力としては使わない。 */
       readonly projectDir: string;
-    }
-  | {
-      readonly type: "machineProfileInfo";
-      /** 対象プロジェクトのマシンプロファイル一覧(config.ts の listMachineProfiles の要約形)。 */
-      readonly machines: readonly {
+      /** プロジェクトのデバイスカタログ(config.ts の listProjectDeviceCatalog。全実行プロファイルの
+       * devices[] の和集合、enabled:false のものも含む)。実行プロファイルの devices 節の
+       * チェックボックス一覧・「デバイスを追加」の重複判定・「未登録」バッジの判定に使う。 */
+      readonly devices: readonly {
         readonly name: string;
-        /** 登録済みのマシン名(config.ts の MachineProfileSummary.host。未設定=ローカル)。
-         * device-pick ダイアログのマシン選択の初期値に使う。 */
+        readonly platform: MonitorPlatform;
+        /** このデバイスが居る機械(undefined=手元)。**一意なのは (platform, machine, name)**
+         * (Sources/FTCore/DeviceMachineGrouping.swift)。 */
         readonly machine?: string;
-        readonly devices: readonly {
-          readonly name: string;
-          readonly platform: MonitorPlatform;
-          /** このデバイスが居る機械(実効値。undefined=手元)。**一意なのは (machine, name)** なので、
-           * 重複判定はマシンごとに行う(Sources/FTCore/DeviceMachineGrouping.swift)。 */
-          readonly machine?: string;
-          /** 一覧2行目の表示文字列(machineDeviceDetail で組み立て済み)。 */
-          readonly detail: string;
-          // 右ペインの編集フォーム用の生フィールド(MachineDeviceEntry と同形)。undefined は
-          // postMessage の JSON 化で自然に省略される。
-          readonly simulator?: string;
-          readonly os?: string;
-          readonly udid?: string;
-          readonly port?: number;
-          readonly avd?: string;
-          /** 実機なら "physical"(一覧・編集フォームのバッジ表示に使う)。省略=virtual。 */
-          readonly kind?: "virtual" | "physical";
-          readonly serial?: string;
-          readonly model?: string;
-        }[];
+        /** 一覧2行目の表示文字列(machineDeviceDetail で組み立て済み)。 */
+        readonly detail: string;
+        // 右ペインの編集フォーム用の生フィールド(MachineDeviceEntry と同形)。undefined は
+        // postMessage の JSON 化で自然に省略される。
+        readonly simulator?: string;
+        readonly os?: string;
+        readonly udid?: string;
+        readonly port?: number;
+        readonly avd?: string;
+        /** 実機なら "physical"(一覧・編集フォームのバッジ表示に使う)。省略=virtual。 */
+        readonly kind?: "virtual" | "physical";
+        readonly serial?: string;
+        readonly model?: string;
       }[];
-      /** 現在選択中とみなすマシン名(machines に無ければ null)。 */
-      readonly current: string | null;
-      /** 対象プロジェクトが解決できない場合のエラーメッセージ(問題なければ null)。 */
-      readonly error: string | null;
     }
   | {
       readonly type: "deviceCatalog";
@@ -228,28 +217,25 @@ export type MonitorToWebviewMessage =
       readonly error: string | null;
       readonly referencedBy: readonly string[];
     }
-  // 同モーダルの OK(machineDevicesSync)への応答。added は追記できた件数(サフィックス適用後)、
-  // removed は実際に登録解除できた件数(存在しない名前は黙ってスキップし数に含めない)。
-  // ok:true ならモーダルは閉じ、一覧は直後の machineProfileInfo 再送で最新化される。
+  // #device-pick-overlay の OK(runProfileDevicesSync)への応答。added は追記できた件数
+  // (サフィックス適用後)。ok:true ならモーダルは閉じ、一覧は直後の profileInfo 再送で最新化される。
   | {
-      readonly type: "machineDevicesSyncResult";
+      readonly type: "runProfileDevicesSyncResult";
       readonly ok: boolean;
       readonly added: number;
-      readonly removed: number;
       readonly error: string | null;
     }
+  // 右ペイン編集フォームの自動保存(runProfileDeviceUpdate)への応答。この編集は同じ
+  // (platform, machine, name) を持つ**全実行プロファイル**へ伝播する。
   | {
-      readonly type: "machineDeviceUpdateResult";
+      readonly type: "runProfileDeviceUpdateResult";
       readonly ok: boolean;
       /** ok:true なら更新後(リネーム後)の名前。ok:false なら originalName をそのまま返す。 */
       readonly name: string;
       readonly error: string | null;
     }
-  // machineProfileAdd/Rename 直後に webview の選択を新プロファイルへ移す通知。
-  // machineProfileDelete 後は webview 既存フォールバック(current→先頭)任せなので送らない。
-  | { readonly type: "machineProfileSelected"; readonly name: string }
   // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム ---------------------------
-  // profileAdd/Copy/Rename 直後に選択を新プロファイルへ移す通知(machineProfileSelected と同趣旨)。
+  // profileAdd/Copy/Rename 直後に選択を新プロファイルへ移す通知。
   // profileDelete 後は既存フォールバック(current→先頭)任せなので送らない。
   | { readonly type: "runProfileSelected"; readonly name: string }
   // runProfileLoad(webview→host)への応答。fields は ok:true のときのみ非 null
@@ -506,13 +492,13 @@ export type MonitorFromWebviewMessage =
   // エラーバナーの「コピー」: text をホスト側で vscode.env.clipboard へ書く(webview の
   // navigator.clipboard はフォーカス条件で失敗しうる)。対向: deviceTiles.js showBanner
   | { readonly type: "copyText"; readonly text: string }
-  // udid/serial/registered: 未登録(マシンプロファイル未記載)デバイスの直指定用。registered:false の
+  // udid/serial/registered: 未登録(どの実行プロファイルにも記載の無い)デバイスの直指定用。registered:false の
   // ときだけ deviceTiles.js が iOS udid / Android serial のどちらかを載せる(--name で引けないため)。
   // 対向: monitorDeviceOps.ts executeDeviceOpJob(stop-device --udid/--serial の直指定モード)。
   | {
       readonly type: "deviceOp";
       readonly name: string;
-      // タイルが撃つのは起動/停止だけ(Wipe Data はプロファイルタブの machineDeviceWipe)。
+      // タイルが撃つのは起動/停止だけ(Wipe Data はプロファイルタブの runProfileDeviceWipe)。
       // 型でも絞る = 検証(isMonitorFromWebviewMessage)と同じ集合にする
       readonly op: "up" | "down";
       // machine: そのデバイスが居る機械(手元は省略)。一意なのは (machine, name) なので、
@@ -541,7 +527,7 @@ export type MonitorFromWebviewMessage =
   // どちらも fleetest.project 設定を書き換えるだけ(実行プロファイルの追随は
   // extension.ts の reconciledProfileForProject が行う)。
   | { readonly type: "selectProject"; readonly project: string }
-  // 実行プロファイルの追加/コピー/名前変更/削除(マシンプロファイルの追加/コピー/削除/名前変更と
+  // 実行プロファイルの追加/コピー/名前変更/削除(アプリプロファイルの追加/コピー/削除/名前変更と
   // 同じ構成)。コピー/名前変更/削除の対象 profile の空文字は「対象なし」として検証で弾く。
   | { readonly type: "profileAdd" }
   | { readonly type: "profileCopy"; readonly profile: string }
@@ -554,16 +540,8 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "projectCopy"; readonly project: string }
   | { readonly type: "projectRename"; readonly project: string }
   | { readonly type: "projectDelete"; readonly project: string }
-  // マシンプロファイルの手動再取得リクエスト(machines/*.json の FileSystemWatcher とは別経路)。
-  | { readonly type: "machineProfileRefresh" }
-  // マシンプロファイル自体の追加/コピー/削除/名前変更。追加は対象を指さないため引数なし。
-  // コピー/削除/名前変更の machine の空文字は profileCopy 等と同じ理由で不正として弾く。
-  | { readonly type: "machineProfileAdd" }
-  | { readonly type: "machineProfileCopy"; readonly machine: string }
-  | { readonly type: "machineProfileDelete"; readonly machine: string }
-  | { readonly type: "machineProfileRename"; readonly machine: string }
   // デバイス追加モーダルを開いた直後に送る、`fleetest api device-catalog` の再取得リクエスト。
-  // source: マシンプロファイルタブの「デバイス候補のホスト」セレクタの選択(§13 段2)。
+  // source: 「+既存から選択」モーダルの「デバイス候補のホスト」セレクタの選択(§13 段2)。
   // remote なら monitorDeviceOps.ts が deviceCommandArgs で `remote exec <machine> -- api device-catalog`
   // に組み立てる(docs/remote-runner.md §13「プロファイルのリモート対応」)。
   | { readonly type: "deviceCatalogRequest"; readonly source: DeviceCommandSource }
@@ -575,18 +553,15 @@ export type MonitorFromWebviewMessage =
   // selectProfile と違い非空文字列を必須として検証する。
   | {
       readonly type: "createDevice";
-      readonly machine: string;
       readonly platform: MonitorPlatform;
       readonly name: string;
       readonly model: string;
       readonly os: string;
-      // true: 物理作成+即登録。false: 物理作成のみ(ホストが --no-register 付与)、登録は
-      // #device-pick-overlay の「+」経由なら呼び出し側が machineDevicesSync で別途行う(OK 押下時に
-      // 登録するため)。.profile-actions の「+新規作成」なら register:true を送る。
-      // source が remote のときはホスト側が register の値によらず --no-register を強制する
-      // (§13。リモート側のプロファイルは次回ディスパッチの rsync --delete で消えるため、
-      // 正はローカル。作成した1台は #device-pick-overlay の再取得→チェック→OK[machineDevicesSync]
-      // という既存の register:false 経路にそのまま乗せる)。
+      // このダイアログは常に #device-pick-overlay の「+」からしか開かない(register:false = 物理
+      // 作成のみ・ホストが --no-register 付与)。登録は #device-pick-overlay の OK
+      // (runProfileDevicesSync)が別途行う。source が remote のときはホスト側が --no-register を
+      // 強制する(§13。リモート側のプロファイルは次回ディスパッチの rsync --delete で消えるため、
+      // 正はローカル)。
       readonly register: boolean;
       /** 同名の実体が既にあるとき、消してから作り直す(`api create-device --overwrite`)。
        * 破壊的なので webview では決めず、ホスト側のモーダル確認を通ってから true になる。 */
@@ -607,10 +582,9 @@ export type MonitorFromWebviewMessage =
   // overwriteNames は names のうち現ホストで衝突しているぶん(判定は webview 側 ――
   // 一覧を持っているのはあちら。ホストは「消して作り直してよいか」を聞くのに使う)。
   // register は送らない: このダイアログはピッカーからしか開かないので常に物理作成のみで、
-  // 登録はピッカーの OK(machineDevicesSync)が行う。
+  // 登録はピッカーの OK(runProfileDevicesSync)が行う。
   | {
       readonly type: "batchCreateDevices";
-      readonly machine: string;
       readonly platform: MonitorPlatform;
       readonly names: readonly string[];
       readonly model: string;
@@ -629,33 +603,31 @@ export type MonitorFromWebviewMessage =
   // 「+既存から選択」モーダル(#device-pick-overlay)が開いた直後に送る、
   // `fleetest api installed-devices` の再取得リクエスト(deviceCatalogRequest と同じ趣旨)。
   | { readonly type: "installedDevicesRequest"; readonly source: DeviceCommandSource }
-  // 同モーダルの OK クリック。チェックボックスは「登録状態そのもの」を表すため、送るのは全件では
-  // なく初期状態からの差分のみ: add は新たにチェックした(未登録だった)デバイス、remove は
-  // チェックを外した(登録済みだった)デバイスのマシンプロファイル上の名前。add/remove は片方が
-  // 空配列でもよいが、両方空は不正として弾く(webview は差分無しで OK を無効化する設計だが防御的に検証)。
+  // 同モーダルの OK クリック: 新たにチェックした(プロジェクトのデバイスカタログに未登録だった)
+  // デバイスを、選択中の実行プロファイルへ追加する(除去はこのモーダルの役目ではない ——
+  // プロファイルタブの実行プロファイル節のチェックボックス/右クリック「除去」が別に持つ)。
+  // add が空は不正として弾く(webview は差分無しで OK を無効化する設計だが防御的に検証)。
   | {
-      readonly type: "machineDevicesSync";
-      readonly machine: string;
-      readonly add: readonly MachineDeviceAddEntry[];
-      readonly remove: readonly string[];
-      /** OK 押下時点でダイアログ内ホスト選択(devicePickHost.js)が指していたホスト。add が非空かつ
-       * remote のときだけ monitorProfileForms.ts がマシンプロファイルの machine キーへ書き込む。 */
+      readonly type: "runProfileDevicesSync";
+      readonly profile: string;
+      readonly add: readonly RunProfileDeviceAddEntry[];
+      /** OK 押下時点でダイアログ内ホスト選択(devicePickMachine.js)が指していたホスト。
+       * add の各エントリの machine キーへ書き込む。 */
       readonly source: DeviceCommandSource;
     }
-  // デバイス行の右クリック「削除」。devices は複数選択の一括削除に対応する配列(単一削除も1件配列)。
-  // 空配列は「対象なし」として不正扱い。**参照は (machine, name)**(machine 省略=手元) —— 名前だけだと
-  // 別の機械の同名デバイスまで巻き添えで消える。
+  // 実行プロファイル節のデバイス一覧、右クリック「除去」。devices は複数選択の一括除去に対応する
+  // 配列(単一も1件配列)。空配列は「対象なし」として不正扱い。同じ (platform, machine, name) を
+  // 持つ**全実行プロファイル**から取り除く(仮想デバイス/実機の登録本体は操作しない)。
   | {
-      readonly type: "machineDeviceRemove";
-      readonly machine: string;
-      readonly devices: readonly { readonly name: string; readonly machine?: string }[];
+      readonly type: "runProfileDeviceRemove";
+      readonly devices: readonly { readonly platform: MonitorPlatform; readonly machine?: string; readonly name: string }[];
     }
-  // デバイス行の右クリック「Wipe Data」: 仮想デバイスの中身を初期化する(マシンプロファイルからの
-  // 除去[machineDeviceRemove]・実体の削除[devicePickDeviceDelete]とは別物。デバイスは残る)。
-  // devices は複数選択に対応する配列(単一も1件配列)。**参照は (machine, name)**(machine 省略=手元)。
-  // **実機は webview 側で項目を出さない**(CLI 側も DeviceWiper が拒否する)。
+  // 同デバイス一覧、右クリック「Wipe Data」: 仮想デバイスの中身を初期化する(実行プロファイルからの
+  // 除去[runProfileDeviceRemove]・実体の削除[devicePickDeviceDelete]とは別物。デバイスは残る)。
+  // devices は複数選択に対応する配列(単一も1件配列)。**実機は webview 側で項目を出さない**
+  // (CLI 側も DeviceWiper が拒否する)。
   | {
-      readonly type: "machineDeviceWipe";
+      readonly type: "runProfileDeviceWipe";
       // **identifier で撃つ**(iOS = シミュレータの UDID / Android = AVD id)。CLI は
       // `api wipe-device --platform … --udid/--avd` でプロファイルを一切参照しない
       // (delete-device と同じ契約)。name は確認・ログ・タイル表示のためだけに運ぶ。
@@ -667,7 +639,7 @@ export type MonitorFromWebviewMessage =
         readonly identifier: string;
       }[];
     }
-  // #device-pick-overlay の行右クリック「削除」: マシンプロファイルからの除去(machineDeviceRemove)
+  // #device-pick-overlay の行右クリック「削除」: 実行プロファイルからの除去(runProfileDeviceRemove)
   // とは別に、ホスト上の実体(シミュレータ/AVD)そのものを `fleetest api delete-device` で消す。
   // identifier は iOS=udid/Android=avd id(実機行にはこのメニュー自体を出さない)。name は確認
   // ダイアログ・失敗表示に使う表示名。source は OK 押下時と同じダイアログ内ホスト選択。
@@ -678,16 +650,14 @@ export type MonitorFromWebviewMessage =
       readonly name: string;
       readonly source: DeviceCommandSource;
     }
-  // プロファイルタブ右ペインの編集フォームの自動保存。fields はクライアント側で trim 済み(空文字=
-  // 未入力/対象外)。createDevice と違い machine/originalName 以外は空文字を許容する。
+  // 実行プロファイル節の右ペイン編集フォームの自動保存。同じ (platform, machine, originalName) を
+  // 持つ**全実行プロファイル**へ伝播する。fields はクライアント側で trim 済み(空文字=未入力/対象外)。
   | {
-      readonly type: "machineDeviceUpdate";
-      readonly machine: string;
+      readonly type: "runProfileDeviceUpdate";
       readonly platform: MonitorPlatform;
+      /** 対象が居る機械(省略=手元)。引き当ては (platform, machine, originalName)。 */
+      readonly machine?: string;
       readonly originalName: string;
-      /** 対象が居る機械(省略=手元)。引き当ては (deviceMachine, originalName) —— 名前だけだと
-       * 別の機械の同名デバイスを書き換える。**`machine`(= マシンプロファイル名)とは別物**。 */
-      readonly deviceMachine?: string;
       readonly fields: {
         readonly name: string;
         readonly simulator: string;
@@ -695,15 +665,14 @@ export type MonitorFromWebviewMessage =
         readonly udid: string;
         readonly port: string;
         readonly avd: string;
-        /** Android 実機の adb シリアル。旧 webview は送らないため受信側で "" に補う。 */
         readonly serial: string;
       };
     }
   // 実行プロファイル設定フォームの選択変更・初回表示時のロード要求。profile の空文字は
   // profileCopy 等と同じ理由で不正として弾く。
   | { readonly type: "runProfileLoad"; readonly profile: string }
-  // 同フォームの自動保存。fields はクライアント側 trim 済み(machineDeviceUpdate と同じ方針)。
-  // machine/app はクライアント側で必須検証済みの想定だが、型検証自体は空文字も許容する。
+  // 同フォームの自動保存。fields はクライアント側 trim 済み(runProfileDeviceUpdate と同じ方針)。
+  // app はクライアント側で必須検証済みの想定だが、型検証自体は空文字も許容する。
   | {
       readonly type: "runProfileSave";
       readonly profile: string;
@@ -810,11 +779,11 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "dashboard"; readonly message: DashboardFromWebviewMessage };
 
 /**
- * machineDevicesSync の add[] 1件(MachineDeviceAddEntry)の検証。name の空文字は不正。
- * simulator/os/udid/avd は省略可(machineDeviceUpdate の fields と違い空文字は無意味なため
+ * runProfileDevicesSync の add[] 1件(RunProfileDeviceAddEntry)の検証。name の空文字は不正。
+ * simulator/os/udid/avd は省略可(runProfileDeviceUpdate の fields と違い空文字は無意味なため
  * undefined か非空 string のみ許容)。
  */
-function isMachineDeviceAddEntryLike(value: unknown): value is MachineDeviceAddEntry {
+function isRunProfileDeviceAddEntryLike(value: unknown): value is RunProfileDeviceAddEntry {
   return (
     isRecord(value) &&
     (value.platform === "ios" || value.platform === "android") &&
@@ -958,21 +927,13 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "projectRename":
     case "projectDelete":
       return typeof value.project === "string" && value.project !== "";
-    case "machineProfileRefresh":
     case "installCmdlineToolsRequest":
-    case "machineProfileAdd":
       return true;
     case "deviceCatalogRequest":
     case "installedDevicesRequest":
       return isDeviceCommandSourceLike(value.source);
-    case "machineProfileCopy":
-    case "machineProfileDelete":
-    case "machineProfileRename":
-      return typeof value.machine === "string" && value.machine !== "";
     case "createDevice":
       return (
-        typeof value.machine === "string" &&
-        value.machine !== "" &&
         (value.platform === "ios" || value.platform === "android") &&
         typeof value.name === "string" &&
         value.name !== "" &&
@@ -986,8 +947,6 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       );
     case "batchCreateDevices":
       return (
-        typeof value.machine === "string" &&
-        value.machine !== "" &&
         (value.platform === "ios" || value.platform === "android") &&
         Array.isArray(value.names) &&
         value.names.length > 0 &&
@@ -1002,32 +961,29 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         (value.installSystemImage === undefined || isInstallSystemImageRequestLike(value.installSystemImage)) &&
         isDeviceCommandSourceLike(value.source)
       );
-    case "machineDevicesSync":
+    case "runProfileDevicesSync":
       return (
-        typeof value.machine === "string" &&
-        value.machine !== "" &&
+        typeof value.profile === "string" &&
+        value.profile !== "" &&
         Array.isArray(value.add) &&
-        value.add.every(isMachineDeviceAddEntryLike) &&
-        Array.isArray(value.remove) &&
-        value.remove.every((name) => typeof name === "string" && name !== "") &&
-        (value.add.length > 0 || value.remove.length > 0) &&
+        value.add.length > 0 &&
+        value.add.every(isRunProfileDeviceAddEntryLike) &&
         isDeviceCommandSourceLike(value.source)
       );
-    case "machineDeviceRemove":
+    case "runProfileDeviceRemove":
       return (
-        typeof value.machine === "string" &&
-        value.machine !== "" &&
         Array.isArray(value.devices) &&
         value.devices.length > 0 &&
         value.devices.every(
           (device) =>
             isRecord(device) &&
+            (device.platform === "ios" || device.platform === "android") &&
             typeof device.name === "string" &&
             device.name !== "" &&
             (device.machine === undefined || (typeof device.machine === "string" && device.machine !== "")),
         )
       );
-    case "machineDeviceWipe":
+    case "runProfileDeviceWipe":
       return (
         Array.isArray(value.devices) &&
         value.devices.length > 0 &&
@@ -1051,15 +1007,12 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         value.name !== "" &&
         isDeviceCommandSourceLike(value.source)
       );
-    case "machineDeviceUpdate":
+    case "runProfileDeviceUpdate":
       return (
-        typeof value.machine === "string" &&
-        value.machine !== "" &&
         (value.platform === "ios" || value.platform === "android") &&
+        (value.machine === undefined || (typeof value.machine === "string" && value.machine !== "")) &&
         typeof value.originalName === "string" &&
         value.originalName !== "" &&
-        (value.deviceMachine === undefined ||
-          (typeof value.deviceMachine === "string" && value.deviceMachine !== "")) &&
         isRecord(value.fields) &&
         typeof value.fields.name === "string" &&
         typeof value.fields.simulator === "string" &&
@@ -1067,10 +1020,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.udid === "string" &&
         typeof value.fields.port === "string" &&
         typeof value.fields.avd === "string" &&
-        // serial は後から追加したフィールド。欠落は "" に補う(旧 webview との混在を弾かない)
-        (value.fields.serial === undefined
-          ? ((value.fields as Record<string, unknown>).serial = "") === ""
-          : typeof value.fields.serial === "string")
+        typeof value.fields.serial === "string"
       );
     case "runProfileLoad":
       return typeof value.profile === "string" && value.profile !== "";
@@ -1083,16 +1033,17 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.profile === "string" &&
         value.profile !== "" &&
         isRecord(value.fields) &&
-        typeof value.fields.machine === "string" &&
         typeof value.fields.app === "string" &&
         Array.isArray(value.fields.devices) &&
-        // 参照は { name, machine? }(一意なのは (machine, name))。**文字列だった頃の形は
-        // 受け取らない** —— 素通しすると machine の無い参照として保存され、同名が別マシンに
-        // 居ると run で曖昧になる
+        // devices はプロジェクトのデバイスカタログと同形 + enabled(一意なのは (platform, machine,
+        // name))。**素通ししない** —— machine の無い参照を保存すると同名が別マシンに居るとき
+        // run で曖昧になる
         value.fields.devices.every(
           (ref) =>
             isRecord(ref) &&
+            (ref.platform === "ios" || ref.platform === "android") &&
             typeof ref.name === "string" &&
+            typeof ref.enabled === "boolean" &&
             (ref.machine === undefined || typeof ref.machine === "string"),
         ) &&
         typeof value.fields.heal === "boolean" &&

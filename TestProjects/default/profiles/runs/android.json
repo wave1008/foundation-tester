@@ -1,7 +1,11 @@
 {
   "app": "default",
   "devices": [
-    { "name": "emulator1" }
+    {
+      "platform": "android",
+      "machine": "local",
+      "name": "emulator1"
+    }
   ],
   "heal": true
 }

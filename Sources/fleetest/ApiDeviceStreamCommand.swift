@@ -35,7 +35,7 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
-    @Option(help: "Run profile name (scopes the machine profile the same way `api monitor --profile` does)")
+    @Option(help: "Run profile name (scopes the devices the same way `api monitor --profile` does)")
     var profile: String?
 
     @Option(name: .customLong("device-machine"),
@@ -45,7 +45,7 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
     @Option(help: "Platform of the device to stream (ios or android)")
     var platform: String
 
-    @Option(help: "Device name exactly as written in the machine profile")
+    @Option(help: "Device name exactly as written in the run profile")
     var name: String
 
     @Option(help: "Frames per second the helper should aim for")
@@ -66,18 +66,18 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
         }
         // **解決の間も生存を知らせる**(実測 2026-09-09): 拡張は 15 秒 1 バイトも来なければ
         // 配信が固まったと見て kill→再起動する。ヘルパー自身はアタッチ中も ping を流すが、
-        // **ここ(ssh 越しの解決 = MachineProfileLoad + determineStates)は exec より前**で、
+        // **ここ(ssh 越しの解決 = DeviceRosterLoad + determineStates)は exec より前**で、
         // 起動ストームの最中は determineStates が十数秒かかる(実測: ヘルパーが起きる前に
         // 15 秒の期限が切れ、健全な配信が繰り返し殺されていた。M1Ultra の6台)。
         // v1(mjpeg)には ping レコードが無いので h264 のときだけ。
         let resolvePing = codec == "h264" ? StreamResolvePing() : nil
         resolvePing?.start()
         defer { resolvePing?.stop() }
-        let machineProfile = try MachineProfileLoad.load(
+        let machineProfile = try DeviceRosterLoad.load(
             project: project, profile: profile, deviceMachine: deviceMachine,
             foreign: .notHandled,  // 1台ぶんの配信。警告は捨てているので表示は変わらない
-            noteAutoMachine: { _ in }, warn: { _ in })
-        let targets = DeviceMachineGrouping.entries(machine: machineProfile).map {
+            warn: { _ in })
+        let targets = DeviceMachineGrouping.entries(roster: machineProfile).map {
             MonitorTarget(platform: $0.platform, spec: $0.spec)
         }
         guard let target = targets.first(where: { $0.platform == platform && $0.name == name }) else {

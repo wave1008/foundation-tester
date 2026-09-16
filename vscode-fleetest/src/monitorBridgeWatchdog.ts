@@ -83,8 +83,9 @@ export class MonitorBridgeWatchdog {
 
   observe(devices: readonly MonitorDevice[]): void {
     for (const device of devices) {
-      // 未登録(マシンプロファイル未記載)は対象外: start-device はデバイス名でマシンプロファイルを
-      // 引くため、未登録の名前で修復ジョブを積んでも成立しない(monitorHealthWatchdog と同じガード)
+      // 未登録(どの実行プロファイルにも記載の無い)は対象外: start-device はデバイス名で実行
+      // プロファイルの devices を引くため、未登録の名前で修復ジョブを積んでも成立しない
+      // (monitorHealthWatchdog と同じガード)
       if (device.registered === false) {
         continue;
       }

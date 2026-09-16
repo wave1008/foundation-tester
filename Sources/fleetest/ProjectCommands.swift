@@ -273,7 +273,7 @@ struct ProjectCommand: AsyncParsableCommand {
 struct ProfileCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "profile",
-        abstract: "Create, list and validate profiles (apps/machines/runs)",
+        abstract: "Create, list and validate profiles (apps/runs)",
         subcommands: [ProfileSetupCommand.self, List.self])
 
     struct List: AsyncParsableCommand {
@@ -287,7 +287,6 @@ struct ProfileCommand: AsyncParsableCommand {
             let testProject = try ScenarioHost.project(named: project)
             ConsoleOut.out("Project: \(testProject.name)")
             ConsoleOut.out("Apps:     \(list(ProfileResolver.appProfileNames(project: testProject)))")
-            ConsoleOut.out("Machines: \(list(ProfileResolver.machineNames(project: testProject)))")
 
             let runs = ProfileResolver.runProfileNames(project: testProject)
             guard !runs.isEmpty else {
@@ -295,36 +294,19 @@ struct ProfileCommand: AsyncParsableCommand {
                 return
             }
 
-            let ambientMachine = try? ProfileResolver.determineMachine(
-                project: testProject)
-            if let ambientMachine {
-                ConsoleOut.out("Machine name: \(ambientMachine.name)\(ambientMachine.auto ? " (picked automatically)" : "")")
-            } else {
-                ConsoleOut.out("Machine name: undecided (resolution checks are skipped for run profiles without an "
-                    + "explicit machine. Set machine in the run profile, or keep a single "
-                    + "profiles/machines/*.json so it is picked automatically)")
-            }
-
             ConsoleOut.out("Run profiles:")
             for run in runs {
                 do {
-                    // 実行プロファイル自身の machine 指定があれば最優先する(determineMachine の
-                    // runProfileName 引数。ambientMachine が未決定でもこちらは解決できることがある)
-                    let machine = try ProfileResolver.determineMachine(
-                        project: testProject,
-                        runProfileName: run)
-                    let resolved = try ProfileResolver.resolve(
-                        project: testProject, runName: run, machineName: machine.name)
+                    let resolved = try ProfileResolver.resolve(project: testProject, runName: run)
+                    // 手元の台は名前だけ、他の機械の台は machine/name で出す
                     let devices = resolved.devices
-                        .map { "\($0.name)(\($0.platform))" }
+                        .map { device -> String in
+                            let machine = MachineDispatch.normalize(device.spec.machine)
+                            return "\(machine.map { "\($0)/" } ?? "")\(device.name)(\(device.platform))"
+                        }
                         .joined(separator: ", ")
-                    // マシンプロファイルの host はローカルのときだけ黙る(2026-08-17。ユーザー決定:
-                    // マシンプロファイルで実行プロファイル経由のリモートホスト指定を表せるようにした)
-                    let hostSuffix = resolved.machine.map { " (\($0))" } ?? ""
-                    ConsoleOut.out("・ \(run) — \(resolved.appName) / \(devices) @ \(resolved.machineName)\(hostSuffix)")
+                    ConsoleOut.out("・ \(run) — \(resolved.appName) / \(devices)")
                     for warning in resolved.warnings { ConsoleOut.out("    ⚠️ \(warning)") }
-                } catch ProfileError.machineUndetermined {
-                    ConsoleOut.out("・ \(run) — skipped the resolution check because the machine name is undecided")
                 } catch {
                     ConsoleOut.out("・ \(run) — ❌ \(error.localizedDescription)")
                 }

@@ -1,10 +1,36 @@
 {
-  "machine": "M2Ultra",
   "app": "sampleapp_ios",
   "devices": [
     {
+      "platform": "ios",
       "machine": "local",
-      "name": "Pixel 9(Android 15)-01"
+      "name": "iPhone 17 Pro(iOS 27.0)",
+      "enabled": false,
+      "os": "27.0",
+      "simulator": "iPhone 17 Pro(iOS 27.0)",
+      "udid": "A012ADD8-EEA0-4F0C-B8BC-65E748F5906F"
+    },
+    {
+      "platform": "ios",
+      "machine": "local",
+      "name": "iPhone 17(iOS 27.0)",
+      "enabled": false,
+      "os": "27.0",
+      "simulator": "iPhone 17(iOS 27.0)",
+      "udid": "6109860E-93CE-47E1-9989-5DCD16186434"
+    },
+    {
+      "platform": "android",
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-01",
+      "avd": "Pixel_9_Android_15_-01"
+    },
+    {
+      "platform": "android",
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-02",
+      "enabled": false,
+      "avd": "Pixel_9_Android_15_-02"
     }
   ],
   "heal": true,

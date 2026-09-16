@@ -1,93 +1,60 @@
-// (host, name) を一意キーにするデバイス解決の規則を固定する。
-// 「別ホストの同名を許す」ことと「host を書いていない曖昧な参照は止める」ことが対で、
-// 片方だけ壊れると別の機械のデバイスを黙って操作する形になるため、両方向を等号で押さえる。
+// (machine, name) を一意キーにするデバイス分類の規則を固定する。
+// 「別の機械の同名を許す」ことと「同じ機械の同名は重複」が対で、片方だけ壊れると
+// 別の機械のデバイスを黙って操作する形になるため、両方向を等号で押さえる。
 
 import XCTest
 @testable import FTCore
 
 final class DeviceMachineGroupingTests: XCTestCase {
-    private func machine(host: String? = nil,
-                         ios: [DeviceSpec] = [], android: [DeviceSpec] = []) -> MachineProfile {
-        MachineProfile(machine: host,
-                       ios: ios.isEmpty ? nil : MachineDeviceList(devices: ios),
-                       android: android.isEmpty ? nil : MachineDeviceList(devices: android))
+    private func entry(_ platform: String, _ name: String, machine: String? = nil,
+                       udid: String? = nil, enabled: Bool? = nil) -> RunDeviceEntry {
+        RunDeviceEntry(platform: platform, spec: DeviceSpec(name: name, machine: machine, udid: udid),
+                       enabled: enabled)
     }
 
-    func testDeviceHostFallsBackToTheMachineProfileHost() {
-        let entries = DeviceMachineGrouping.entries(machine: machine(
-            host: "M1Ultra",
-            ios: [DeviceSpec(name: "a"), DeviceSpec(name: "b", machine: "M2Ultra"),
-                  DeviceSpec(name: "c", machine: "local")]))
-        XCTAssertEqual(entries.map(\.machine), ["M1Ultra", "M2Ultra", nil])
+    /// 空文字・"local"(前後の空白込み)は手元(nil)に畳む。リモートは名前のまま
+    func testMachineIsNormalizedPerDevice() {
+        let entries = DeviceMachineGrouping.entries(runDevices: [
+            entry("ios", "a"), entry("ios", "b", machine: "M2Ultra"),
+            entry("ios", "c", machine: " local "), entry("ios", "d", machine: ""),
+        ], enabledOnly: false)
+        XCTAssertEqual(entries.map(\.machine), [nil, "M2Ultra", nil, nil])
     }
 
-    /// 空文字は「未指定」= マシン既定へ落ちる / "local" は「手元」の明示でマシン既定より強い。
-    /// 同一視すると、リモート既定のプロファイルに手元のデバイスを1台混ぜられなくなる
-    func testEmptyMeansUnsetButLocalOverridesTheMachineDefault() {
-        let entries = DeviceMachineGrouping.entries(machine: machine(
-            host: "M1Ultra",
-            ios: [DeviceSpec(name: "a", machine: ""), DeviceSpec(name: "b", machine: " local ")]))
-        XCTAssertEqual(entries.map(\.machine), ["M1Ultra", nil])
+    func testEnabledOnlyDropsDisabledEntriesAndKeepsOrder() {
+        let devices = [entry("ios", "a"), entry("android", "b", enabled: false),
+                       entry("android", "c", enabled: true), entry("ios", "d")]
+        XCTAssertEqual(DeviceMachineGrouping.entries(runDevices: devices, enabledOnly: true).map(\.name),
+                       ["a", "c", "d"])
+        XCTAssertEqual(DeviceMachineGrouping.entries(runDevices: devices, enabledOnly: false).map(\.name),
+                       ["a", "b", "c", "d"])
+        XCTAssertEqual(DeviceMachineGrouping.entries(runDevices: devices, enabledOnly: false).map(\.platform),
+                       ["ios", "android", "android", "ios"])
     }
 
-    func testSameNameOnDifferentHostsIsNotADuplicate() {
-        let entries = DeviceMachineGrouping.entries(machine: machine(
-            ios: [DeviceSpec(name: "iPhone-01"), DeviceSpec(name: "iPhone-01", machine: "M1Ultra")]))
+    func testRosterEntriesAreIOSThenAndroid() {
+        let roster = DeviceRoster(entries: DeviceMachineGrouping.entries(runDevices: [
+            entry("android", "e1"), entry("ios", "s1", machine: "local"), entry("ios", "s2", machine: "M1"),
+        ], enabledOnly: false))
+        let entries = DeviceMachineGrouping.entries(roster: roster)
+        XCTAssertEqual(entries.map(\.name), ["s1", "s2", "e1"])
+        XCTAssertEqual(entries.map(\.machine), [nil, "M1", nil])
+    }
+
+    func testSameNameOnDifferentMachinesIsNotADuplicate() {
+        let entries = DeviceMachineGrouping.entries(runDevices: [
+            entry("ios", "iPhone-01"), entry("ios", "iPhone-01", machine: "M1Ultra"),
+        ], enabledOnly: false)
         XCTAssertNil(DeviceMachineGrouping.firstDuplicate(in: entries))
     }
 
-    func testSameNameOnTheSameHostIsADuplicate() {
-        let entries = DeviceMachineGrouping.entries(machine: machine(
-            host: "M1Ultra",
-            ios: [DeviceSpec(name: "iPhone-01")],
-            android: [DeviceSpec(name: "iPhone-01", machine: "M1Ultra")]))
+    /// platform を跨いでも同じ機械の同名は重複。無効の台も数える
+    func testSameNameOnTheSameMachineIsADuplicateAcrossPlatforms() {
+        let entries = DeviceMachineGrouping.entries(runDevices: [
+            entry("ios", "iPhone-01", machine: "M1Ultra"),
+            entry("android", "iPhone-01", machine: "M1Ultra", enabled: false),
+        ], enabledOnly: false)
         XCTAssertEqual(DeviceMachineGrouping.firstDuplicate(in: entries)?.name, "iPhone-01")
-    }
-
-    func testUnqualifiedRefResolvesWhenTheNameIsUnique() {
-        let entries = DeviceMachineGrouping.entries(machine: machine(ios: [DeviceSpec(name: "a")]))
-        guard case .found(let entry) = DeviceMachineGrouping.resolve(RunDeviceRef(name: "a"),
-                                                                 in: entries) else {
-            return XCTFail("expected .found")
-        }
-        XCTAssertNil(entry.machine)
-    }
-
-    func testUnqualifiedRefIsAmbiguousWhenTheNameExistsOnTwoHosts() {
-        let entries = DeviceMachineGrouping.entries(machine: machine(
-            ios: [DeviceSpec(name: "a"), DeviceSpec(name: "a", machine: "M1Ultra")]))
-        XCTAssertEqual(DeviceMachineGrouping.resolve(RunDeviceRef(name: "a"), in: entries),
-                       .ambiguous(machines: ["local", "M1Ultra"]))
-    }
-
-    func testQualifiedRefPicksTheDeviceOnThatHost() {
-        let entries = DeviceMachineGrouping.entries(machine: machine(
-            ios: [DeviceSpec(name: "a", udid: "LOCAL"),
-                  DeviceSpec(name: "a", machine: "M1Ultra", udid: "REMOTE")]))
-        guard case .found(let entry) = DeviceMachineGrouping.resolve(
-            RunDeviceRef(name: "a", machine: "M1Ultra"), in: entries) else {
-            return XCTFail("expected .found")
-        }
-        XCTAssertEqual(entry.spec.udid, "REMOTE")
-    }
-
-    /// `"host": "local"` は「未指定」ではなく「手元のもの」の明示指定。ここを normalize 後の
-    /// nil と同一視すると、同名が2台あるときに曖昧扱いになって手元指定が書けなくなる
-    func testExplicitLocalRefPicksTheLocalDeviceInsteadOfBeingAmbiguous() {
-        let entries = DeviceMachineGrouping.entries(machine: machine(
-            ios: [DeviceSpec(name: "a", udid: "LOCAL"),
-                  DeviceSpec(name: "a", machine: "M1Ultra", udid: "REMOTE")]))
-        guard case .found(let entry) = DeviceMachineGrouping.resolve(
-            RunDeviceRef(name: "a", machine: "local"), in: entries) else {
-            return XCTFail("expected .found")
-        }
-        XCTAssertEqual(entry.spec.udid, "LOCAL")
-    }
-
-    func testQualifiedRefForAHostThatDoesNotHaveItIsMissing() {
-        let entries = DeviceMachineGrouping.entries(machine: machine(ios: [DeviceSpec(name: "a")]))
-        XCTAssertEqual(DeviceMachineGrouping.resolve(RunDeviceRef(name: "a", machine: "M1Ultra"),
-                                                  in: entries), .missing)
     }
 
     // MARK: - workerID(ApiMonitorCommand.MonitorTarget.id / ApiRunMachineFanout が共有する規則)
@@ -105,9 +72,10 @@ final class DeviceMachineGroupingTests: XCTestCase {
     }
 
     func testGroupsKeepFirstAppearanceOrderAndSeparateLocalFromRemote() {
-        let entries = DeviceMachineGrouping.entries(machine: machine(
-            ios: [DeviceSpec(name: "r1", machine: "M1Ultra"), DeviceSpec(name: "l1"),
-                  DeviceSpec(name: "r2", machine: "M1Ultra"), DeviceSpec(name: "l2")]))
+        let entries = DeviceMachineGrouping.entries(runDevices: [
+            entry("ios", "r1", machine: "M1Ultra"), entry("ios", "l1"),
+            entry("ios", "r2", machine: "M1Ultra"), entry("ios", "l2"),
+        ], enabledOnly: true)
         let groups = DeviceMachineGrouping.groups(entries) { $0.machine }
         XCTAssertEqual(groups.map(\.machine), ["M1Ultra", nil])
         XCTAssertEqual(groups.map { $0.devices.map(\.name) }, [["r1", "r2"], ["l1", "l2"]])

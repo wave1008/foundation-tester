@@ -70,7 +70,7 @@ fleetest run --platform android
 
 | コマンド | 説明 |
 |---|---|
-| `fleetest devices up` / `devices down` | マシンプロファイルの全デバイスを起動・停止する(`--profile` を付けるとそのプロファイルのデバイスだけ) |
+| `fleetest devices up` / `devices down` | 全実行プロファイルのデバイスの和集合を起動・停止する(`--profile` を付けるとそのプロファイルのデバイスだけ) |
 | `fleetest bridge up` / `bridge down` / `bridge status` | 常駐ブリッジ(iOS: XCUITest ランナー / Android: 端末常駐サーバ)を管理する |
 
 ### Link

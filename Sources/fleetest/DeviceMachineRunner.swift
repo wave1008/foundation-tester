@@ -1,6 +1,6 @@
 // DeviceMachineRunner.swift
 // **1つの実行プロファイルのデバイスが複数の機械にまたがるとき**の実行(docs/remote-runner.md §13)。
-// マシンプロファイルのデバイスは1台ずつ host を持てるので、「ローカル10台 + M1Ultra 10台」のような
+// 実行プロファイルのデバイスは1台ずつ machine を持てるので、「ローカル10台 + M1Ultra 10台」のような
 // 混在が書ける。run はマシンごとのサブ実行(この fleetest 自身の子プロセス)へ分け、シナリオを
 // 台数で重み付けして配り、出力・JUnit・終了コードを1つに束ねる。
 //
@@ -9,7 +9,7 @@
 // JUnit 結合・集計は FleetRunner の同じヘルパを共有する(prefix や中継の実装を二重に持たない)。
 //
 // 子には `--device <名前…>` と `--runner <ホスト|local>` を渡す。--runner を必ず渡すのは、
-// 子が自分でマシンプロファイルの host を読んで再ディスパッチするのを止めるため(FleetRunner と同じ)。
+// 子が自分で台の machine を読んで再ディスパッチするのを止めるため(FleetRunner と同じ)。
 
 import ArgumentParser
 import FTCore
@@ -32,19 +32,10 @@ enum DeviceMachineRunner {
     ///
     /// **`--runner` を明示したときは常に nil** —— 明示指定は「今回はこの機械で走らせる」の意味で、
     /// 分散より強い(MachineDispatch と同じ「明示が勝つ」規律)。
-    ///
-    /// `overrides`(`--set machine=...`)は `determineMachine` へそのまま渡す —— 渡さないと
-    /// ここで見る machine と `resolve()` が最終的に使う machine(上書き後)がズレて、別マシンの
-    /// デバイスを解決しつつ実行は元マシンのままになる(欠陥②)
     static func plan(project: TestProject, profileName: String,
-                     explicitHost: String?, deviceFilter: [String],
-                     overrides: [String: RunProfileSetValue] = [:]) throws -> [Group]? {
+                     explicitHost: String?, deviceFilter: [String]) throws -> [Group]? {
         if explicitHost != nil { return nil }
-        let machine = try ProfileResolver.determineMachine(
-            project: project,
-            runProfileName: profileName, overrides: overrides)
-        var devices = try ProfileResolver.runDeviceMachines(
-            project: project, runProfileName: profileName, machineName: machine.name)
+        var devices = ProfileResolver.runDeviceMachines(project: project, runProfileName: profileName)
         if !deviceFilter.isEmpty {
             let wanted = Set(deviceFilter)
             devices = devices.filter { wanted.contains($0.name) }

@@ -9,8 +9,7 @@
 TestProjects/SampleApp/
 ├── profiles/
 │   ├── apps/sampleapp.json        # アプリプロファイル(既定名 = プロジェクト名の小文字。中に ios/android の節を持つ)
-│   ├── machines/M2Ultra.json      # マシン別デバイス定義(ファイル名 = マシン名)
-│   └── runs/ios.json              # 実行プロファイル(アプリ+デバイス名リスト+実行時設定)
+│   └── runs/ios.json              # 実行プロファイル(アプリ+各自マシンを名乗るデバイス一覧+実行時設定)
 ├── scenarios/                     # Swift DSL
 │   ├── _Main.swift                # ランナーへの委譲(編集不要)
 │   ├── Generated/                 # ライブ操作の録画が生成したシナリオ

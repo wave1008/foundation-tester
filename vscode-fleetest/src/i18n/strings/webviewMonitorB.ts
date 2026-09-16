@@ -1,5 +1,5 @@
 // バッチJ 辞書(webview 側)。namespace: wvMonitor2.
-// 対象ソース: webview/monitor/{runProfilesTab,processesTab,machineProfilesTab,appProfilesTab,
+// 対象ソース: webview/monitor/{runProfilesTab,runProfileDevicesTab,processesTab,appProfilesTab,
 //   projectsTab,laneLog,hostCharts,splitter,h264Decoder,main,menu,tabs,settingsTab}.js,
 //   webview/live/main.js
 // webview バンドルから import される。**vscode 非依存**を保つこと。
@@ -18,22 +18,6 @@ export const webviewMonitorBStrings = {
     ja: "実行プロファイルを読み込めませんでした。",
     en: "Failed to load the run profile.",
   },
-  "wvMonitor2.runProfile.selectMachineFirst": {
-    ja: "マシンプロファイルを指定するとデバイスを選択できます",
-    en: "Specify a machine profile to select devices",
-  },
-  "wvMonitor2.runProfile.deviceMissingFromMachine": {
-    ja: "(マシンプロファイルにありません)",
-    en: "(Not in the machine profile)",
-  },
-  "wvMonitor2.runProfile.validation.machineRequired": {
-    ja: "参照するマシンプロファイルを指定してください。",
-    en: "Specify the machine profile to reference.",
-  },
-  "wvMonitor2.runProfile.validation.machineNotFound": {
-    ja: "マシンプロファイル「{machine}」が見つかりません。",
-    en: "Machine profile \"{machine}\" was not found.",
-  },
   "wvMonitor2.runProfile.validation.appRequired": {
     ja: "参照するアプリプロファイルを指定してください。",
     en: "Specify the app profile to reference.",
@@ -41,10 +25,6 @@ export const webviewMonitorBStrings = {
   "wvMonitor2.runProfile.validation.deviceRequired": {
     ja: "デバイスを1台以上選択してください。",
     en: "Select at least one device.",
-  },
-  "wvMonitor2.runProfile.validation.noDeviceOnMachine": {
-    ja: "選択中のデバイスはマシンプロファイル {machine} に1台もありません。このマシンのデバイスを選んでください。",
-    en: "None of the selected devices are in machine profile {machine}. Select devices from this machine.",
   },
   "wvMonitor2.runProfile.validation.timeoutInvalid": {
     ja: "defaultTimeout は正の数(秒)で入力してください。",
@@ -77,39 +57,38 @@ export const webviewMonitorBStrings = {
   "wvMonitor2.process.pendingLaunch": { ja: "(遅延起動)", en: "(Deferred launch)" },
   "wvMonitor2.process.lastUpdated": { ja: "前回更新: {time}", en: "Last updated: {time}" },
 
-  // machineProfilesTab.js
+  // runProfileDevicesTab.js
   "wvMonitor2.common.remove": { ja: "除去", en: "Remove" },
-  "wvMonitor2.machine.none": { ja: "(マシンプロファイルなし)", en: "(No machine profiles)" },
-  "wvMonitor2.machine.deviceEmpty": {
+  "wvMonitor2.runProfileDevice.empty": {
     ja: "デバイスがありません。上のボタンから追加できます。",
     en: "No devices. You can add one from the button above.",
   },
-  "wvMonitor2.machine.multiSelected": {
+  "wvMonitor2.runProfileDevice.multiSelected": {
     ja: "{count}台選択中",
     en: "{count} selected",
   },
-  "wvMonitor2.machine.validation.nameRequired": {
+  "wvMonitor2.runProfileDevice.validation.nameRequired": {
     ja: "デバイス名を入力してください。",
     en: "Enter a device name.",
   },
-  "wvMonitor2.machine.validation.nameExists": {
+  "wvMonitor2.runProfileDevice.validation.nameExists": {
     ja: "「{name}」は既に存在します。",
     en: "\"{name}\" already exists.",
   },
-  "wvMonitor2.machine.validation.portInvalid": {
+  "wvMonitor2.runProfileDevice.validation.portInvalid": {
     ja: "port は 0〜65535 の整数で入力してください。",
     en: "Enter port as an integer between 0 and 65535.",
   },
-  "wvMonitor2.machine.updateFailed": {
+  "wvMonitor2.runProfileDevice.updateFailed": {
     ja: "デバイスの更新に失敗しました。",
     en: "Failed to update the device.",
   },
-  "wvMonitor2.machine.removeSelectedCount": {
+  "wvMonitor2.runProfileDevice.removeSelectedCount": {
     ja: "選択した{count}台を除去",
     en: "Remove {count} selected",
   },
-  "wvMonitor2.machine.wipeData": { ja: "Wipe Data", en: "Wipe Data" },
-  "wvMonitor2.machine.wipeSelectedCount": {
+  "wvMonitor2.runProfileDevice.wipeData": { ja: "Wipe Data", en: "Wipe Data" },
+  "wvMonitor2.runProfileDevice.wipeSelectedCount": {
     ja: "選択した{count}台を Wipe Data",
     en: "Wipe Data on {count} selected",
   },

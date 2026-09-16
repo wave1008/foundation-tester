@@ -85,7 +85,7 @@ test("異常なしの観測では何も post しない", () => {
   assert.deepEqual(h.wifiCalls, []);
 });
 
-test("未登録(registered=false)は異常があっても一切 observe しない(マシンプロファイル前提の修復が成立しないため)", () => {
+test("未登録(registered=false)は異常があっても一切 observe しない(実行プロファイル前提の修復が成立しないため)", () => {
   const h = createHarness();
   h.watchdog.observe([
     device("野良エミュ", "connected", ["wifi-disabled"], "emulator-5554", false, false),

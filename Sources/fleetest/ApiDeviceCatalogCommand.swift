@@ -256,7 +256,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
                         abi: abi, apiLevel: apiLevel,
                         package: "system-images;android-\(apiLevel);\(tag);\(abi)",
                         tag: tag,
-                        versionName: MachineProfileEditor.androidVersionName(apiLevel: apiLevel)))
+                        versionName: RunProfileDeviceEditor.androidVersionName(apiLevel: apiLevel)))
                 }
             }
         }

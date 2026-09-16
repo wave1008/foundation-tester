@@ -1,30 +1,11 @@
 // MachineDispatchTests.swift
-// マシンプロファイルの host(自動リモートディスパッチ、ユーザー決定)まわりの
-// 破ったら落ちるテスト: JSON 後方互換・正規化・--runner との優先順位(純粋関数)・
-// ProfileResolver 経由の読み取り。
+// `--runner` の正規化と、実行プロファイルの台が「どの機械に居るか」の読み取り
+// (ディスパッチ判定の材料。ProfileResolver.runDeviceMachines)の破ったら落ちるテスト。
 
 import XCTest
 @testable import FTCore
 
 final class MachineDispatchTests: XCTestCase {
-
-    // MARK: - MachineProfile.host の JSON 後方互換
-
-    func testMachineProfileDecodesWithoutHostField() throws {
-        let json = """
-        { "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro" } ] } }
-        """.data(using: .utf8)!
-        let machine = try JSONDecoder().decode(MachineProfile.self, from: json)
-        XCTAssertNil(machine.machine, "host を書いていない既存プロファイルは無改修で動く")
-    }
-
-    func testMachineProfileDecodesWithHostField() throws {
-        let json = """
-        { "host": "M1Max", "ios": { "devices": [] } }
-        """.data(using: .utf8)!
-        let machine = try JSONDecoder().decode(MachineProfile.self, from: json)
-        XCTAssertEqual(machine.machine, "M1Max")
-    }
 
     // MARK: - MachineDispatch.normalize
 
@@ -42,72 +23,26 @@ final class MachineDispatchTests: XCTestCase {
         XCTAssertEqual(MachineDispatch.normalize("user@host"), "user@host")
     }
 
-    // MARK: - MachineDispatch.resolve(優先順位・食い違い)
+    // MARK: - MachineDispatch.resolve
 
-    func testResolveBothLocalStaysLocal() {
-        let decision = MachineDispatch.resolve(explicitTarget: nil, profileMachine: nil)
-        XCTAssertNil(decision.target)
-        XCTAssertNil(decision.mismatchWarning)
+    func testResolveUnsetStaysLocal() {
+        XCTAssertNil(MachineDispatch.resolve(explicitTarget: nil).target)
     }
 
-    func testResolveMachineHostAloneAutoDispatches() {
-        let decision = MachineDispatch.resolve(explicitTarget: nil, profileMachine: "runner1")
-        XCTAssertEqual(decision.target, "runner1", "実行プロファイル経由の間接指定(--runner 未指定)")
-        XCTAssertNil(decision.mismatchWarning)
+    func testResolveExplicitTargetIsUsed() {
+        XCTAssertEqual(MachineDispatch.resolve(explicitTarget: "user@cli-host").target, "user@cli-host")
+        XCTAssertEqual(MachineDispatch.resolve(explicitTarget: " runner1 ").target, "runner1")
     }
 
-    func testResolveExplicitHostAloneWins() {
-        let decision = MachineDispatch.resolve(explicitTarget: "user@cli-host", profileMachine: nil)
-        XCTAssertEqual(decision.target, "user@cli-host")
-        XCTAssertNil(decision.mismatchWarning)
-    }
-
-    func testResolveExplicitAndMachineAgreeNoWarning() {
-        let decision = MachineDispatch.resolve(explicitTarget: "runner1", profileMachine: "runner1")
-        XCTAssertEqual(decision.target, "runner1")
-        XCTAssertNil(decision.mismatchWarning, "一致しているときは注記しない")
-    }
-
-    func testResolveExplicitWinsOverDifferingMachineHostWithWarning() {
-        let decision = MachineDispatch.resolve(explicitTarget: "cliHost", profileMachine: "machine")
-        XCTAssertEqual(decision.target, "cliHost", "--runner が常に勝つ")
-        guard let warning = decision.mismatchWarning else {
-            return XCTFail("expected a mismatch warning when --runner and the machine profile disagree")
-        }
-        XCTAssertTrue(warning.contains("cliHost"))
-        XCTAssertTrue(warning.contains("machine"))
-    }
-
-    func testResolveExplicitLocalOverridesMachineHostAndWarns() {
-        // 欠陥3: "--runner local" は「ここで走らせる」の明示指定であり、
-        // 「未指定」ではない。マシン側が別のリモートを指していても黙って上書きせず、
-        // 通常の食い違いと同じ規律で warn したうえでローカルに留まる
-        // (以前は normalize の畳み込みだけで判定しており、この組み合わせだけ
-        // マシン側の host へ自動ディスパッチしてしまっていた)
-        let decision = MachineDispatch.resolve(explicitTarget: "local", profileMachine: "runner1")
-        XCTAssertNil(decision.target, "--runner local は常にローカルに留まる")
-        guard let warning = decision.mismatchWarning else {
-            return XCTFail("expected a mismatch warning when --runner local overrides the machine host")
-        }
-        XCTAssertTrue(warning.contains("runner1"))
-    }
-
-    func testResolveExplicitLocalAndNoMachineHostStaysLocal() {
-        let decision = MachineDispatch.resolve(explicitTarget: "local", profileMachine: nil)
-        XCTAssertNil(decision.target)
-        XCTAssertNil(decision.mismatchWarning, "食い違いが無ければ注記しない")
-    }
-
-    func testResolveExplicitLocalWithWhitespaceStillCountsAsLocal() {
-        let decision = MachineDispatch.resolve(explicitTarget: "  local  ", profileMachine: "runner1")
-        XCTAssertNil(decision.target, "前後空白は trim してから比較する")
-        XCTAssertNotNil(decision.mismatchWarning)
+    func testResolveExplicitLocalStaysLocal() {
+        XCTAssertNil(MachineDispatch.resolve(explicitTarget: "local").target)
+        XCTAssertNil(MachineDispatch.resolve(explicitTarget: "  local  ").target, "前後空白は trim してから比較する")
     }
 }
 
-// MARK: - ProfileResolver.machine / ResolvedProfile.machine(読み取り経路)
+// MARK: - ProfileResolver.runDeviceMachines(ディスパッチ判定の読み取り経路)
 
-final class ProfileResolverMachineHostTests: XCTestCase {
+final class ProfileResolverRunDeviceMachinesTests: XCTestCase {
     var tempDir: URL!
     var project: TestProject!
 
@@ -116,82 +51,39 @@ final class ProfileResolverMachineHostTests: XCTestCase {
             .appendingPathComponent("FTCoreTests-\(UUID().uuidString)")
         let root = tempDir.appendingPathComponent("TestProjects/SampleApp")
         project = TestProject(name: "SampleApp", rootURL: root)
-        for dir in [project.appsDir, project.machinesDir, project.runsDir] {
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        }
+        try FileManager.default.createDirectory(at: project.runsDir, withIntermediateDirectories: true)
     }
 
     override func tearDownWithError() throws {
         try? FileManager.default.removeItem(at: tempDir)
     }
 
-    private func write(_ json: String, to dir: URL, name: String) throws {
-        try json.data(using: .utf8)!.write(to: dir.appendingPathComponent("\(name).json"))
+    private func writeRun(_ json: String, name: String) throws {
+        try json.data(using: .utf8)!.write(to: project.runsDir.appendingPathComponent("\(name).json"))
     }
 
-    func testMachineHostReadsNormalizedValue() throws {
-        try write("""
-        { "host": "  runner1  ", "ios": { "devices": [] } }
-        """, to: project.machinesDir, name: "M1Max")
-        let host = try ProfileResolver.defaultMachine(project: project, machineName: "M1Max")
-        XCTAssertEqual(host, "runner1", "trim 済みで返る")
+    /// enabled の台だけを、記述順・正規化済みの machine で返す
+    func testReturnsEnabledDevicesWithNormalizedMachines() throws {
+        try writeRun("""
+        { "app": "a", "devices": [
+          { "platform": "ios", "machine": " runner1 ", "name": "r" },
+          { "platform": "android", "machine": "local", "name": "l" },
+          { "platform": "ios", "machine": "M2", "name": "off", "enabled": false },
+          { "platform": "android", "name": "implicit" }
+        ] }
+        """, name: "all")
+        let devices = ProfileResolver.runDeviceMachines(project: project, runProfileName: "all")
+        XCTAssertEqual(devices, [
+            RunDeviceMachine(machine: "runner1", name: "r", platform: "ios"),
+            RunDeviceMachine(machine: nil, name: "l", platform: "android"),
+            RunDeviceMachine(machine: nil, name: "implicit", platform: "android"),
+        ])
     }
 
-    func testMachineHostAbsentIsNilNotError() throws {
-        try write("""
-        { "ios": { "devices": [] } }
-        """, to: project.machinesDir, name: "M1Max")
-        let host = try ProfileResolver.defaultMachine(project: project, machineName: "M1Max")
-        XCTAssertNil(host, "既存プロファイル(host 省略)は無改修でローカル扱い")
-    }
-
-    func testMachineHostLocalIsNil() throws {
-        try write("""
-        { "host": "local", "ios": { "devices": [] } }
-        """, to: project.machinesDir, name: "M1Max")
-        let host = try ProfileResolver.defaultMachine(project: project, machineName: "M1Max")
-        XCTAssertNil(host)
-    }
-
-    func testMachineHostUnknownMachineThrows() {
-        XCTAssertThrowsError(
-            try ProfileResolver.defaultMachine(project: project, machineName: "does-not-exist")
-        ) { error in
-            guard case ProfileError.machineProfileNotFound(let machine, _) = error else {
-                return XCTFail("expected machineProfileNotFound, got \(error)")
-            }
-            XCTAssertEqual(machine, "does-not-exist")
-        }
-    }
-
-    func testResolvedProfileCarriesNormalizedMachineHost() throws {
-        try write("""
-        { "ios": { "appName": "サンプル", "app": "com.example.sampleapp" } }
-        """, to: project.appsDir, name: "sampleapp")
-        try write("""
-        { "host": "runner1",
-          "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro" } ] } }
-        """, to: project.machinesDir, name: "M1Max")
-        try write("""
-        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ] }
-        """, to: project.runsDir, name: "all")
-
-        let resolved = try ProfileResolver.resolve(project: project, runName: "all", machineName: "M1Max")
-        XCTAssertEqual(resolved.machine, "runner1")
-    }
-
-    func testResolvedProfileMachineHostIsNilWhenOmitted() throws {
-        try write("""
-        { "ios": { "appName": "サンプル", "app": "com.example.sampleapp" } }
-        """, to: project.appsDir, name: "sampleapp")
-        try write("""
-        { "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro" } ] } }
-        """, to: project.machinesDir, name: "M1Max")
-        try write("""
-        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ] }
-        """, to: project.runsDir, name: "all")
-
-        let resolved = try ProfileResolver.resolve(project: project, runName: "all", machineName: "M1Max")
-        XCTAssertNil(resolved.machine, "host 省略の既存マシンプロファイルはローカル扱いのまま")
+    func testUnreadableProfileYieldsEmpty() throws {
+        XCTAssertEqual(ProfileResolver.runDeviceMachines(project: project, runProfileName: "missing"), [])
+        try writeRun("{ \"devices\": [ { \"name\": \"no-platform\" } ] }", name: "broken")
+        XCTAssertEqual(ProfileResolver.runDeviceMachines(project: project, runProfileName: "broken"), [],
+                       "platform の無い要素はデコードできない = 読めない扱い(resolve() が名指しで落とす)")
     }
 }

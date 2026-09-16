@@ -1,4 +1,4 @@
-// 右クリックメニューの画面端クランプ。deviceTiles.js/machineProfilesTab.js/liveTab.js で共用。
+// 右クリックメニューの画面端クランプ。deviceTiles.js/runProfileDevicesTab.js/liveTab.js で共用。
 
 export function clampMenuPosition(menuEl, clientX, clientY) {
   const rect = menuEl.getBoundingClientRect();

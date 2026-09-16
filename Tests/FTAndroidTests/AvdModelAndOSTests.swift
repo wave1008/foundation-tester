@@ -34,7 +34,7 @@ final class AvdModelAndOSTests: XCTestCase {
         """)
         let info = AndroidDeviceCatalog.avdModelAndOS(id: "Pixel_9")
         XCTAssertEqual(info.model, "pixel_9")
-        // API 35 → Android 15(33 以降は apiLevel-20。MachineProfileEditor 参照)
+        // API 35 → Android 15(33 以降は apiLevel-20。RunProfileDeviceEditor 参照)
         XCTAssertEqual(info.os, "Android 15")
     }
 

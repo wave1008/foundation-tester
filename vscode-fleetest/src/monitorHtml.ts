@@ -55,7 +55,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 
   ${renderDeviceOpMenu()}
 
-  ${renderMachineDeviceMenu()}
+  ${renderRunProfileDeviceMenu()}
 
   ${renderDevicePickDeleteMenu()}
 
@@ -287,7 +287,7 @@ function profileJumpLink(targetId: string, label: string): string {
 }
 
 /** プロジェクトは TestProjects/<name>/ ディレクトリのみで名前以外の設定値を持たないため、
- * 実行/アプリ/マシンプロファイルと違い編集フォーム本体を持たない(ツールバー1行のみ)。 */
+ * 実行/アプリプロファイルと違い編集フォーム本体を持たない(ツールバー1行のみ)。 */
 function renderProjectSection(): string {
   return `<div id="project-section" class="profile-section">
       <div class="profile-toolbar">
@@ -340,15 +340,73 @@ function renderRunProfileSection(): string {
             })}</label>
             <select id="run-profile-app"></select>
           </div>
-          <div class="modal-row">
-            <label for="run-profile-machine">${t("panels.runProfile.machineLabel", {
-              link: profileJumpLink("machine-profile-section", t("panels.common.machineProfile")),
-            })}</label>
-            <select id="run-profile-machine"></select>
-          </div>
           <div class="modal-row run-profile-devices-row">
             <label>${t("panels.common.devices")}</label>
-            <div id="run-profile-devices" class="run-profile-devices"></div>
+            <span class="profile-actions-label">${t("panels.runProfile.addDevicesLabel")}</span>
+            <button id="btn-run-profile-device-add-existing" class="icon-button" title="${t("panels.runProfile.addExistingTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
+          </div>
+          <div class="profile-body run-profile-devices-pane">
+            <div id="run-profile-devices" class="run-profile-device-list"></div>
+            <div class="run-profile-device-detail-pane">
+              <div id="run-profile-device-placeholder" class="profile-detail-placeholder">${t("panels.runProfile.deviceSelectPrompt")}</div>
+              <div id="run-profile-device-editor" class="run-profile-device-editor" style="display: none;">
+                <div class="run-profile-device-editor-header">
+                  <!-- 実機バッジはデバイス名の左(ピッカー・一覧・タイルと同じ並び) -->
+                  <span id="run-profile-device-header-kind" class="editor-kind-badge" style="display: none;">${t("monitor.device.physicalBadge")}</span>
+                  <span id="run-profile-device-header-name" class="tile-name"></span>
+                  <span id="run-profile-device-header-platform" class="editor-platform-label"></span>
+                </div>
+                <!-- 機種/OS/UDID/AVDは実体を指す属性でAPIでは変更不可(除去→作り直しが必要)なため
+                     inputではなくlabel表示(inputイベントを発火しないのでdirty判定にも入らない)。
+                     名前/ポートは編集可(編集は同じキーを持つ全実行プロファイルへ伝播する)。 -->
+                <div class="modal-row">
+                  <label for="run-profile-device-name-input">${t("panels.runProfile.deviceNameLabel")}</label>
+                  <input type="text" id="run-profile-device-name-input">
+                </div>
+                <!-- 実機の機種/OS。登録時に控えた表示専用の値(model/os)で、実体の同定には使わない。
+                     platform セクションの外に置き iOS/Android 共通で使う -->
+                <div id="run-profile-device-physical-fields" style="display: none;">
+                  <div class="modal-row" id="run-profile-device-model-row">
+                    <label>${t("panels.runProfile.deviceModelLabel")}</label>
+                    <span id="run-profile-device-model" class="editor-readonly-value" title="${t("panels.runProfile.devicePhysicalInfoReadonlyTitle")}"></span>
+                  </div>
+                  <div class="modal-row" id="run-profile-device-physical-os-row">
+                    <label>OS</label>
+                    <span id="run-profile-device-physical-os" class="editor-readonly-value" title="${t("panels.runProfile.devicePhysicalInfoReadonlyTitle")}"></span>
+                  </div>
+                </div>
+                <div id="run-profile-device-ios-fields">
+                  <div class="modal-row" id="run-profile-device-simulator-row">
+                    <label>${t("panels.runProfile.deviceModelLabel")}</label>
+                    <span id="run-profile-device-simulator" class="editor-readonly-value" title="${t("panels.runProfile.deviceModelReadonlyTitle")}"></span>
+                  </div>
+                  <div class="modal-row" id="run-profile-device-os-row">
+                    <label>OS</label>
+                    <span id="run-profile-device-os" class="editor-readonly-value" title="${t("panels.runProfile.deviceOsReadonlyTitle")}"></span>
+                  </div>
+                  <div class="modal-row">
+                    <label>UDID</label>
+                    <span id="run-profile-device-udid" class="editor-readonly-value" title="${t("panels.runProfile.deviceUdidReadonlyTitle")}"></span>
+                  </div>
+                  <div class="modal-row">
+                    <label for="run-profile-device-port">${t("panels.common.port")}</label>
+                    <input type="text" id="run-profile-device-port">
+                  </div>
+                </div>
+                <div id="run-profile-device-android-fields">
+                  <div class="modal-row" id="run-profile-device-avd-row">
+                    <label>AVD</label>
+                    <span id="run-profile-device-avd" class="editor-readonly-value" title="${t("panels.runProfile.deviceAvdReadonlyTitle")}"></span>
+                  </div>
+                  <!-- 実機のみ。AVD と同じく実体を指す属性なので readonly 表示 -->
+                  <div class="modal-row" id="run-profile-device-serial-row" style="display: none;">
+                    <label>serial</label>
+                    <span id="run-profile-device-serial" class="editor-readonly-value" title="${t("panels.runProfile.deviceSerialReadonlyTitle")}"></span>
+                  </div>
+                </div>
+                <div id="run-profile-device-error" class="modal-error"></div>
+              </div>
+            </div>
           </div>
           <div class="run-profile-section-group">
             <div class="run-profile-section-title">${t("panels.runProfile.recordSectionTitle")}</div>
@@ -543,98 +601,11 @@ function renderAppProfileSection(): string {
     </div>`;
 }
 
-function renderMachineProfileSection(): string {
-  return `<div id="machine-profile-section" class="profile-section">
-      <div class="profile-toolbar">
-        <span class="profile-toolbar-title">${t("panels.common.machineProfile")}</span>
-        <select id="machine-select" style="display: none;"></select>
-        <span id="machine-name-static" class="machine-name-static" style="display: none;"></span>
-        <button id="btn-machine-add" class="icon-button" title="${t("panels.machineProfile.addTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
-        <button id="btn-machine-copy" class="icon-button" title="${t("panels.machineProfile.copyTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 4l1-1h5.414L14 6.586V14l-1 1H5l-1-1V4zm9 3l-3-3H5v10h8V7zM3 1L2 2v10l1 1V2h6.414l-1-1H3z"/></svg></button>
-        <button id="btn-machine-remove" class="icon-button" title="${t("panels.machineProfile.removeTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8H1V7h14v1z"/></svg></button>
-        <button id="btn-machine-rename" class="icon-button" title="${t("panels.machineProfile.renameTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"/></svg></button>
-        <div class="profile-toolbar-buttons">
-          <span id="editor-error" class="modal-error profile-toolbar-error"></span>
-        </div>
-      </div>
-      <div class="profile-actions">
-        <!-- 「+新規作成」ボタンは廃止済み。新規作成は#device-pick-overlayの各グループ見出しの「+」から行う。 -->
-        <span class="profile-actions-label">${t("panels.machineProfile.addDevicesLabel")}</span>
-        <button id="btn-device-add-existing" class="icon-button" title="${t("panels.machineProfile.addExistingTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
-      </div>
-      <div id="machine-profile-error" class="profile-error" style="display: none;"></div>
-      <div id="machine-profile-body" class="profile-body">
-        <div id="machine-device-list" class="machine-device-list"></div>
-        <div id="machine-device-detail-pane" class="machine-device-detail-pane">
-          <div id="profile-detail-placeholder" class="profile-detail-placeholder">${t("panels.machineProfile.selectPrompt")}</div>
-          <div id="machine-device-editor" class="machine-device-editor" style="display: none;">
-            <div class="machine-device-editor-header">
-              <!-- 実機バッジはデバイス名の左(ピッカー・一覧・タイルと同じ並び) -->
-              <span id="editor-device-kind" class="editor-kind-badge" style="display: none;">${t("monitor.device.physicalBadge")}</span>
-              <span id="editor-device-name" class="tile-name"></span>
-              <span id="editor-device-platform" class="editor-platform-label"></span>
-            </div>
-            <!-- 機種/OS/UDID/AVDは実体を指す属性でAPIでは変更不可(除去→作り直しが必要)なため
-                 inputではなくlabel表示(inputイベントを発火しないのでdirty判定にも入らない)。
-                 名前/ポートはプロファイル側設定値なので編集可。 -->
-            <div class="modal-row">
-              <label for="editor-name">${t("panels.machineProfile.nameLabel")}</label>
-              <input type="text" id="editor-name">
-            </div>
-            <!-- 実機の機種/OS。登録時に控えた表示専用の値(model/os)で、実体の同定には使わない。
-                 platform セクションの外に置き iOS/Android 共通で使う -->
-            <div id="editor-physical-fields" style="display: none;">
-              <div class="modal-row" id="editor-model-row">
-                <label>${t("panels.machineProfile.modelLabel")}</label>
-                <span id="editor-model" class="editor-readonly-value" title="${t("panels.machineProfile.physicalInfoReadonlyTitle")}"></span>
-              </div>
-              <div class="modal-row" id="editor-physical-os-row">
-                <label>OS</label>
-                <span id="editor-physical-os" class="editor-readonly-value" title="${t("panels.machineProfile.physicalInfoReadonlyTitle")}"></span>
-              </div>
-            </div>
-            <div id="editor-ios-fields">
-              <div class="modal-row" id="editor-simulator-row">
-                <label>${t("panels.machineProfile.modelLabel")}</label>
-                <span id="editor-simulator" class="editor-readonly-value" title="${t("panels.machineProfile.modelReadonlyTitle")}"></span>
-              </div>
-              <div class="modal-row" id="editor-os-row">
-                <label>OS</label>
-                <span id="editor-os" class="editor-readonly-value" title="${t("panels.machineProfile.osReadonlyTitle")}"></span>
-              </div>
-              <div class="modal-row">
-                <label>UDID</label>
-                <span id="editor-udid" class="editor-readonly-value" title="${t("panels.machineProfile.udidReadonlyTitle")}"></span>
-              </div>
-              <div class="modal-row">
-                <label for="editor-port">${t("panels.common.port")}</label>
-                <input type="text" id="editor-port">
-              </div>
-            </div>
-            <div id="editor-android-fields">
-              <div class="modal-row" id="editor-avd-row">
-                <label>AVD</label>
-                <span id="editor-avd" class="editor-readonly-value" title="${t("panels.machineProfile.avdReadonlyTitle")}"></span>
-              </div>
-              <!-- 実機のみ。AVD と同じく実体を指す属性なので readonly 表示 -->
-              <div class="modal-row" id="editor-serial-row" style="display: none;">
-                <label>serial</label>
-                <span id="editor-serial" class="editor-readonly-value" title="${t("panels.machineProfile.serialReadonlyTitle")}"></span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>`;
-}
-
 function renderProfilesPanel(): string {
   return `<div id="panel-profiles" class="tab-panel" role="tabpanel" aria-labelledby="tab-profiles" style="display: none;">
     ${renderProjectSection()}
 
     ${renderAppProfileSection()}
-
-    ${renderMachineProfileSection()}
 
     ${renderRunProfileSection()}
   </div>`;
@@ -860,19 +831,21 @@ function renderDeviceOpMenu(): string {
   </div>`;
 }
 
-function renderMachineDeviceMenu(): string {
-  return `<!-- #device-op-menuとスタイルのみ共用する別要素。「除去」はプロファイルから外すだけで本体は削除しない。
-       「Wipe Data」はデバイスの中身だけを初期化する(登録も本体も残る)。実機の行では隠す。 -->
-  <div id="machine-device-menu" class="device-op-menu" role="menu">
-    <button id="machine-device-menu-item" class="device-op-menu-item" type="button" role="menuitem">${t("panels.deviceMenu.remove")}</button>
-    <button id="machine-device-menu-wipe" class="device-op-menu-item" type="button" role="menuitem">${t("panels.deviceMenu.wipeData")}</button>
+function renderRunProfileDeviceMenu(): string {
+  return `<!-- #device-op-menuとスタイルのみ共用する別要素。「除去」は同じ (platform, machine, name) を
+       持つ全実行プロファイルから外すだけで本体は削除しない。「Wipe Data」はデバイスの中身だけを
+       初期化する(登録も本体も残る)。実機の行では隠す。 -->
+  <div id="run-profile-device-menu" class="device-op-menu" role="menu">
+    <button id="run-profile-device-menu-item" class="device-op-menu-item" type="button" role="menuitem">${t("panels.deviceMenu.remove")}</button>
+    <button id="run-profile-device-menu-wipe" class="device-op-menu-item" type="button" role="menuitem">${t("panels.deviceMenu.wipeData")}</button>
   </div>`;
 }
 
 function renderDevicePickDeleteMenu(): string {
   return `<!-- #device-op-menuとスタイルのみ共用する別要素。#device-pick-overlay の行専用。
-       machineDeviceMenu の「除去」(プロファイルから外すだけ)と違い、ホスト上の実体(シミュレータ/AVD)
-       そのものを fleetest api delete-device で消す(modals.js が実機行にはこのメニューを出さない)。 -->
+       run-profile-device-menu の「除去」(実行プロファイルから外すだけ)と違い、ホスト上の実体
+       (シミュレータ/AVD)そのものを fleetest api delete-device で消す(modals.js が実機行には
+       このメニューを出さない)。 -->
   <div id="device-pick-delete-menu" class="device-op-menu" role="menu">
     <button id="device-pick-delete-menu-item" class="device-op-menu-item" type="button" role="menuitem">${t("panels.deviceMenu.delete")}</button>
   </div>`;
@@ -961,7 +934,7 @@ function renderDeviceBatchOverlay(): string {
 }
 
 function renderNameInputOverlay(): string {
-  return `<!-- 実行/アプリ/マシンプロファイルの追加・コピー・名前変更で共通利用(showInputBox相当)。
+  return `<!-- 実行/アプリプロファイルの追加・コピー・名前変更で共通利用(showInputBox相当)。
        拡張側nameInputOpenでtitle/初期値/検証パラメータ(noun/dupLabel/existing/caseInsensitiveDup)を
        受け取り、OK/キャンセルはnameInputConfirm/nameInputCancelをid付きで返す(拡張側pendingNameInputと突合)。 -->
   <div id="name-input-overlay" class="modal-overlay">
@@ -981,17 +954,17 @@ function renderNameInputOverlay(): string {
 
 function renderDevicePickOverlay(): string {
   return `<!-- 中身(#device-pick-ios-body/-android-body)はJSがinstalledDevices受信時に組み立てる。
-       チェックボックスは「選択」ではなく登録状態そのもの(登録済み=初期チェック、disabled化しない)。
-       OKは初期状態からの差分がある間だけ有効(JS側)。各グループ見出しの右端の「+」
-       (device-pick-ios-add-new / -android-add-new)はこのモーダルを閉じずに
+       チェックボックスは「プロジェクトのデバイスカタログに既にあるか」を表す(既にある行は
+       チェック済み・disabled = このダイアログでは外せない。除去は実行プロファイル節のデバイス
+       一覧が別に持つ)。OKは新たにチェックした行がある間だけ有効(JS側)。各グループ見出しの
+       右端の「+」(device-pick-ios-add-new / -android-add-new)はこのモーダルを閉じずに
        #device-add-overlayを重ねて開く(z-indexは#device-add-overlayのCSSルール参照)。
        **押した見出しのOS種別で開く** — 一覧のどちら側を増やしたいかは見出しで表明済みなので、
        ダイアログでもう一度選ばせない。
        #device-pick-machine-select はこのダイアログのデバイス候補のマシン(ローカル/登録済みの
        リモートマシン)。選択肢は devicePickMachine.js が remoteConfig(設定タブと同じメッセージ)を
-       購読して組み立てる。初期値はダイアログを開いたときの編集対象マシンプロファイルの machine
-       フィールド(未設定ならローカル)。変更すると installed-devices を選び直したマシンから
-       再取得する(modals.js の change リスナー)。 -->
+       購読して組み立てる。初期値は常にローカル(変更すると installed-devices を選び直した
+       マシンから再取得する。modals.js の change リスナー)。 -->
   <div id="device-pick-overlay" class="modal-overlay">
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="device-pick-title">
       <div class="modal-title device-pick-title-row">

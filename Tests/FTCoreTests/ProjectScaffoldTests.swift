@@ -144,11 +144,12 @@ final class ProjectScaffoldTests: XCTestCase {
     }
 
     private func runNames(_ project: TestProject) throws -> [String] {
-        try FileManager.default.contentsOfDirectory(atPath: project.runsDir.path).sorted()
+        try FileManager.default.contentsOfDirectory(atPath: project.runsDir.path)
+            .filter { $0.hasSuffix(".json") }.sorted()
     }
 
-    /// iOS だけ指示したのに android/all の run が残ると、マシンプロファイルに無いデバイスを
-    /// 参照して profile list が赤くなる(受け手の環境で実際に起きた)
+    /// iOS だけ指示したのに android/all の run が残ると、実体の無いデバイスで
+    /// profile list が赤くなる(受け手の環境で実際に起きた)
     func testOnlyRequestedPlatformRunsAreCreated() throws {
         let project = makeProject()
         try ProjectScaffold.create(project: project, app: "com.example.myapp", platforms: ["ios"])
@@ -163,29 +164,26 @@ final class ProjectScaffoldTests: XCTestCase {
         XCTAssertEqual(try runNames(project), ["android.json", "ios.json"])
     }
 
-    /// マシンプロファイルは固定名 local.json を空で作る(ユーザー決定)。**登録済みのマシン名では
-    /// 作らない** —— 以前それをやって、あとから別名でも作られ machines/ に2つ並ぶ事故があった。
-    /// 固定名なら run が machine で名指しできるので、2つ目が増えても解決は揺れない
-    func testMachineProfileIsScaffoldedAsEmptyLocal() throws {
+    /// machines/ は作らない(デバイスは実行プロファイルが持つ)。runs/ に書式の README を置く
+    func testNoMachinesFolderAndARunsReadme() throws {
         let project = makeProject()
         try ProjectScaffold.create(project: project, app: "com.example.myapp", platforms: ["ios"])
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: project.profilesDir.appendingPathComponent("machines").path))
         XCTAssertEqual(
-            try FileManager.default.contentsOfDirectory(atPath: project.machinesDir.path).sorted(),
-            ["README.md", "local.json"])
-        let data = try Data(contentsOf: project.machinesDir.appendingPathComponent("local.json"))
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertTrue(object.isEmpty, "中身は空(デバイスは受け手が足す)")
+            try FileManager.default.contentsOfDirectory(atPath: project.runsDir.path).sorted(),
+            ["README.md", "ios.json"])
     }
 
-    /// run の machine は雛形のマシンプロファイル名を指す(片方だけ変えると解決できなくなる)
-    func testRunProfilesReferenceTheScaffoldedMachine() throws {
+    /// run にトップレベルの machine を書かない(台ごとに持つ)
+    func testRunProfilesHaveNoTopLevelMachine() throws {
         let project = makeProject()
         try ProjectScaffold.create(project: project, app: "com.example.myapp",
                                    platforms: ["ios", "android"])
         for file in ["ios.json", "android.json"] {
             let data = try Data(contentsOf: project.runsDir.appendingPathComponent(file))
             let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-            XCTAssertEqual(object["machine"] as? String, "local", file)
+            XCTAssertNil(object["machine"], file)
         }
     }
 

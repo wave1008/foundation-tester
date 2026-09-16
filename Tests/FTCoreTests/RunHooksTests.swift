@@ -38,20 +38,19 @@ final class RunHookEnvironmentTests: XCTestCase {
             teardown: "/ws/scripts/teardown.sh", workspace: "/ws", startedAt: "2026-08-18T00:00:00Z")
         let env = RunHookEnvironment.variables(orphan: info)
         // 回収経路は run の文脈を持たないが、キーを落とすと利用者の `set -u` が落ちる
-        for key in ["FT_HOOK", "FT_WORKSPACE", "FT_PROJECT", "FT_PROFILE", "FT_MACHINE",
-                    "FT_REPORT_DIR", "FT_IOS_DEVICES", "FT_ANDROID_DEVICES"] {
-            XCTAssertNotNil(env[key], key)
-        }
+        XCTAssertEqual(Set(env.keys), ["FT_HOOK", "FT_WORKSPACE", "FT_PROJECT", "FT_PROFILE",
+                                        "FT_REPORT_DIR", "FT_IOS_DEVICES", "FT_ANDROID_DEVICES"],
+                       "利用者のスクリプトが読む契約(docs/remote-runner.md §17)")
         XCTAssertEqual(env["FT_HOOK"], "teardown")
         XCTAssertEqual(env["FT_WORKSPACE"], "/ws")
         XCTAssertEqual(env["FT_PROFILE"], "android-1")
-        XCTAssertEqual(env["FT_MACHINE"], "")
+        XCTAssertEqual(env["FT_REPORT_DIR"], "")
     }
 
     func testDeviceNamesAreSpaceSeparated() {
         let env = RunHookEnvironment.variables(
             kind: .setup, workspace: URL(fileURLWithPath: "/ws"), project: "P", profile: "r",
-            machine: "m", reportDir: URL(fileURLWithPath: "/ws/reports"),
+            reportDir: URL(fileURLWithPath: "/ws/reports"),
             iosDevices: ["sim1", "sim2"], androidDevices: ["emu1"])
         XCTAssertEqual(env["FT_IOS_DEVICES"], "sim1 sim2")
         XCTAssertEqual(env["FT_ANDROID_DEVICES"], "emu1")

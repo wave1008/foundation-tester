@@ -4,7 +4,7 @@
 //
 // 契約(Sources/fleetest/ApiListDevicesCommand.swift・ApiLiveCommand.swift):
 //   `fleetest api list-devices --project <p>`: 成功時は stdout 1行JSON、失敗時
-//   (マシンプロファイル未設定等)は stdout 出力なし・非0終了(診断は stderr のみ)。
+//   (実行プロファイルの devices 未設定等)は stdout 出力なし・非0終了(診断は stderr のみ)。
 //   各デバイスの udid: iOS は解決済み UDID(シミュレータ/実機とも)、Android・解決失敗は null
 //   (ApiListDevicesCommand.swift 参照。live serve --udid の自動起動判定に使う)。
 //   kind: "virtual"(シミュレータ/エミュレータ)/ "physical"(実機)。実機は録画・画面配信が
@@ -47,7 +47,6 @@ export interface LiveDevice {
 
 export interface ListDevicesResult {
   readonly project: string;
-  readonly machine: string;
   readonly devices: readonly LiveDevice[];
 }
 
@@ -76,7 +75,6 @@ export function isListDevicesResult(value: unknown): value is ListDevicesResult 
   }
   return (
     typeof value.project === "string" &&
-    typeof value.machine === "string" &&
     Array.isArray(value.devices) &&
     value.devices.every(isLiveDevice)
   );

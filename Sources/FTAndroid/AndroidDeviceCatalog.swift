@@ -1,4 +1,4 @@
-// マシンプロファイルの Android デバイス指定(avd)→ adb シリアルの解決。
+// 実行プロファイルの Android デバイス指定(avd)→ adb シリアルの解決。
 // avd は AVD の ID("Pixel_9_Android_16")と表示名("Pixel 9(Android 16)"、config.ini の
 // avd.ini.displayname)のどちらでも書け、起動中エミュレータの AVD ID と照合して serial に解決する。
 
@@ -30,7 +30,7 @@ public enum AndroidDeviceCatalogError: Error, LocalizedError {
             return "no running emulator for AVD \"\(avd)\" (running: \(list)). "
                 + "Start one with: fleetest devices up, or emulator -avd <ID>"
         case .noIdentifier(let name):
-            return "device \"\(name)\" has no avd (add it to the machine profile)"
+            return "device \"\(name)\" has no avd (add it to the device in the run profile)"
         case .deviceNotConnected(let name, let serial, let connected):
             let list = connected.isEmpty ? "none" : connected.joined(separator: ", ")
             return "physical device \"\(name)\" (serial: \(serial)) is not visible to adb (connected: \(list)). "
@@ -133,7 +133,7 @@ public enum AndroidDeviceCatalog {
                     .first { $0.hasPrefix("android-") }
                     .flatMap { Int($0.dropFirst("android-".count)) }
             }
-        return (model, api.map { MachineProfileEditor.androidVersionName(apiLevel: $0) })
+        return (model, api.map { RunProfileDeviceEditor.androidVersionName(apiLevel: $0) })
     }
 
     public static func installedAVDs() -> [(id: String, displayName: String?)] {

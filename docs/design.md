@@ -3269,10 +3269,12 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     iOS は**任意の前面 bundle ID を取れない**(`foregroundAppID` は nil を返す)ので、
     「session のアプリが前面か」だけを言う
   - **棚卸し・診断・スクリーンショットの3点**(2026-08-09。他ツールの MCP との比較で出た穴):
-    `ft_list_devices` は**マシンプロファイルを前提にしない**(`/fleetest-mcp` の受け手は machines/ を
-    一つも持たない)。解決できなければ素のカタログ(`SimulatorCatalog` / `AndroidSerialResolver`)へ
-    落ちるが、**落ちた理由を必ず本文に書く** —— 黙って代替すると、登録マシン名とプロファイル名の
-    不一致(実在した)を受け手が永久に発見できない /
+    `ft_list_devices` は実行プロファイルの `devices` から台帳を組む(`--profile` 指定時はその
+    実行プロファイルの enabled な devices、無指定ならプロジェクト内**全実行プロファイルの和**
+    ——`FTCore.MachineInventory`)。`/fleetest-mcp` の受け手のように runs/ に一つもデバイスを
+    持たないプロジェクトもある。解決できなければ素のカタログ(`SimulatorCatalog` /
+    `AndroidSerialResolver`)へ落ちるが、**落ちた理由を必ず本文に書く** —— 黙って代替すると、
+    登録マシン名とプロファイル名の不一致(実在した)を受け手が永久に発見できない /
     `ft_logs` は**ブリッジを一切通らない**(要る場面はアプリが落ちてブリッジごと消えた直後)。
     iOS はホストの DiagnosticReports、Android は adb だけを見る。ここで踏んだ罠が2つ:
     **①クラッシュ直後はまだ .ips が無い**(ReportCrash の書き込みは非同期。見つからないときだけ
@@ -3508,7 +3510,7 @@ executableTarget `fleetest-scenarios-<name>`(path: `TestProjects/<name>/scenario
 - CLI: `fleetest project create <name> [--app-id <bundleID>]` / `project list` / `project sync`
   (手動コピーや git pull 後の TestProjects/ ↔ マーカー区間の再整合)
 
-### 11.2 プロファイルは 3 種の組み合わせ
+### 11.2 プロファイルは 2 種の組み合わせ
 
 `TestProjects/<name>/profiles/` 配下。共通設定の継承ではなく**部品の参照合成**で表現する。
 
@@ -3558,35 +3560,15 @@ targeting = bundletool にしか決められない。feature module を足した
 アプリが非同期処理でクラッシュし「Application is not running」で全滅して原因が見えにくいため
 (2026-07-21 実害)、入口で気づけるようにする。
 
-**マシンプロファイル** `machines/<マシン名>.json` — ファイル名がマシン名(`M2 Ultra(192GB).json` 等)。
-1 ファイルに ios / android セクションを書き、そのマシンで使えるデバイスを `name` 付きで列挙。
-マシン別ファイルなので UDID / AVD などマシン固有の実体をそのまま書ける:
-
-```json
-{ "ios":     { "devices": [ { "name": "simulator1", "simulator": "iPhone 17 Pro", "os": "27.0" } ] },
-  "android": { "devices": [ { "name": "emulator1", "avd": "Pixel_9" },
-                            { "name": "emulator2", "avd": "Pixel 8(Android 14)" } ] } }
-```
-
-- デバイス名は 1 ファイル内(ios+android 横断)で一意(重複はロード時エラー)
-- iOS: `simulator` 名+`os`(または `udid` 直指定。`port` で固定も可)
-- Android: `avd`(AVD の ID と表示名(config.ini の avd.ini.displayname)のどちらでも可。
-  起動中エミュレータの AVD 名と照合して adb serial に解決。未起動はヒント付きエラー。
-  **エミュレータの** serial 直指定は廃止 — serial は起動順で変わるためプロファイルに書かない)
-- `fleetest profile setup --auto-device` の選定規則(`DevicePicker`)— iOS は**最新 OS の
-  既存シミュレータ**(名前に "Pro" を含むものを優先)、Android は config.ini の **API レベルが
-  最大の既存 AVD**。**iOS は iPad を候補から除外する**(除外しないと "Pro" 優先が iPad Pro を
-  掴む)。除外が効くのは自動選定だけで、`--simulator`/`--udid` や `api create-device` で
-  iPad を明示指定する経路は従来どおり通る
-
 **実機**(`kind: "physical"`。省略時は `"virtual"` = シミュレータ/エミュレータ)。
 識別子は iOS が `udid`、Android が `serial`(実機の serial は起動順で変わらないので直接書く):
 
 ```json
-{ "ios":     { "devices": [ { "name": "iPhone 実機", "kind": "physical",
-                              "udid": "00008130-000A1B2C3D4E5678" } ] },
-  "android": { "devices": [ { "name": "Pixel 実機", "kind": "physical",
-                              "serial": "14141JEC204922" } ] } }
+{ "devices": [
+    { "platform": "ios", "machine": "local", "name": "iPhone 実機", "kind": "physical",
+      "udid": "00008130-000A1B2C3D4E5678" },
+    { "platform": "android", "machine": "local", "name": "Pixel 実機", "kind": "physical",
+      "serial": "14141JEC204922" } ] }
 ```
 
 - iOS 実機の `udid` は `xcrun devicectl list devices` の **`hardwareProperties.udid`**
@@ -3648,20 +3630,43 @@ targeting = bundletool にしか決められない。feature module を足した
   追随しない)。iOS シミュレータの `simulator`/`os` だけは実体解決に使う値なので意味が違う
 - 実機の要件と罠(iOS の署名・LAN/USB 経路、Android の画面ロック)は docs/verification.md
 
-**実行プロファイル** `runs/<name>.json` — アプリ+デバイス名リスト+実行時設定。
-platform フィールドは持たず、**iOS/Android のデバイス名を混在させれば両OS同時実行**になる。
-`machine` は使うマシンプロファイル名の明示指定(未指定なら FT_MACHINE、それも無ければ
-machines/ が1つのときだけ自動採用)。
-**`fleetest profile setup` は書いたときのマシン名を必ず残す** — 拡張の実行プロファイル編集は
-`machine` が無いと「(未指定)」になりデバイスを選べないため。別マシンへ持ち出すときは
-同名の `machines/<名>.json` を用意するか、この行を消して登録名解決に戻す:
+**実行プロファイル** `runs/<name>.json` — アプリ+デバイス+実行時設定。
+実行プロファイル自体は platform フィールドを持たず、**devices の各要素が `platform`
+(`"ios"` / `"android"`)を直接持つ** —— iOS/Android のデバイスを混在させれば両OS同時実行になる。
+
+`devices` の1要素:
+- `platform`(必須): `"ios"` / `"android"`
+- `machine`: **そのデバイスがある機械**(ホスト名ではなく `fleetest remote machines` の
+  マシン名 = このマシンだけのエイリアス)。手元は `"local"`(ツールは常に明示して書く。
+  既定は無い)。書けるのはマシン名だけ(ssh の宛先は書けない)
+- `name`(必須): デバイスの名前。**一意なのは (machine, name)** なので、別の機械に同名の
+  デバイスが居てよい(1つの実行プロファイルで手元とリモートを同時に回せる)
+- `enabled`: `false` なら一覧に残すが走らせない(拡張のチェックボックス)。省略 = 走らせる
+- 実体: iOS は `simulator` 名+`os`(または `udid` 直指定。`port` で固定も可)、
+  Android は `avd`(AVD の ID と表示名(config.ini の avd.ini.displayname)のどちらでも可。
+  起動中エミュレータの AVD 名と照合して adb serial に解決。未起動はヒント付きエラー。
+  **エミュレータの** serial 直指定は廃止 —— serial は起動順で変わるためプロファイルに書かない)。
+  実機は `kind: "physical"` + iOS なら `udid`、Android なら `serial`
+
+**同じデバイスは複数の実行プロファイルに載る**。拡張で名前などを直すと、同じ
+(platform, machine, name) を持つ全ての実行プロファイルへ反映される。手で直すときは全部を揃える。
 
 ```json
 { "app": "sampleapp",
-  "devices": [ { "name": "simulator1" }, { "name": "simulator2" }, { "name": "emulator1" } ],
+  "devices": [
+    { "platform": "ios", "machine": "local", "name": "simulator1", "simulator": "iPhone 17 Pro" },
+    { "platform": "ios", "machine": "local", "name": "simulator2", "simulator": "iPhone 17 Pro" },
+    { "platform": "android", "machine": "local", "name": "emulator1", "avd": "Pixel_9" }
+  ],
   "heal": true, "reportDir": "reports", "defaultTimeout": 5,
   "wipeDataOnBloat": true, "wipeDataThresholdGB": 8 }
 ```
+
+`fleetest profile setup --auto-device` の選定規則(`DevicePicker`)— iOS は**最新 OS の
+既存シミュレータ**(名前に "Pro" を含むものを優先)、Android は config.ini の **API レベルが
+最大の既存 AVD**。**iOS は iPad を候補から除外する**(除外しないと "Pro" 優先が iPad Pro を
+掴む)。除外が効くのは自動選定だけで、`--simulator`/`--udid` や `api create-device` で
+iPad を明示指定する経路は従来どおり通る。
 
 FM(Foundation Models)を使うのは `textVisualCheck`(occlusion-guard 全体のスイッチ。
 FM を呼ぶのはその視覚照合の段)・`screenLooksLike` のどちらかが true のときだけで、いずれも既定 true
@@ -3684,7 +3689,7 @@ run では該当ステップは skip(素通り)になり、FM 利用不可時と
 手動の Wipe Data はプロファイルタブの**デバイス行の右クリック**から撃つ(Android =
 `fleetest api wipe-device --platform android --avd <ID>` = 上と同じファイル集合の削除、
 iOS = `--platform ios --udid <UDID>` = `simctl erase`。リモートは `remote exec <機械> --` で回す)。
-**識別子だけで撃ち、プロジェクトもマシンプロファイルも参照しない**(`api delete-device` と同じ契約)
+**識別子だけで撃ち、プロジェクトも実行プロファイルも参照しない**(`api delete-device` と同じ契約)
 —— 名前で引くと、リモートではランナー側の複製が古いときに `device not found` で必ず失敗し
 (複製の更新はモニターの fan-out 開始時だけ)、操作のたびにプロジェクトを送り直す羽目になる。
 **実機には項目を出さない**(識別子から作る spec は必ず仮想デバイスなので原理的に来ないが、
@@ -3819,29 +3824,31 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
 
 ### 11.3 解決規則(ProfileResolver)
 
-1. **マシン決定**: 実行プロファイルの `machine` > `FT_MACHINE` 環境変数 > (旧: 登録名。廃止済み、
-   `~/.config/fleetest/config.json`)> machines/ が 1 ファイルならそれを自動採用 > エラー。
-   設定を UserDefaults にしないのは CLI/MCP/VSCode 拡張(内部で `fleetest api` を呼ぶ)の
-   複数プロセスでドメインを揃えて共有するため
-2. **デバイス解決**: 実行プロファイルの各 name を現在マシンのマシンプロファイル(ios→android の順)
-   から引く。このマシンに無い name は**スキップ+警告**(実行プロファイルをマシン非依存で使い回すため)。
-   1 台も解決できなければエラー。Android は `AndroidDeviceCatalog.resolveSerial` が
-   **AVD ID 完全一致**でのみ serial を引き、不一致は throw(代役フォールバック無し)。
+1. **デバイス解決**: 実行プロファイルの `devices` のうち enabled なエントリをそのまま使う ——
+   各エントリが `platform`/`machine`/実体(`simulator`/`udid`/`avd`/`serial` 等)を直接持つので、
+   「これは現在のマシンの台か」で絞り込む工程は無い。**どのマシンへ実行を送るかは別の層が
+   決める**(`FTRemote.RemoteDispatch` / `DeviceMachineGrouping` がホストごとのサブ実行に分ける。
+   §13)。enabled なエントリが1つも無ければエラー(`noEnabledDevices`)。(machine, name) の
+   重複はエラー(`DeviceMachineGrouping.firstDuplicate`。別マシンの同名は許す)。実体を持たない
+   エントリ(`DeviceSpec.lacksConcreteTarget`)は**止めずに警告**する(iOS は名前解決の既定へ
+   落ちて別の台で黙って走ることがあるため。既定に頼っている既存プロファイルを赤にしないための
+   選択)。Android の serial 解決(`AndroidDeviceCatalog.resolveSerial`。**AVD ID 完全一致**での
+   み serial を引き、不一致は throw)はこのあとのデバイス供給の段(§11.4 手順3)で行う ——
    → **profile 外のはぐれエミュレータは profile 実行には一切混入しない**(ワーカー0件)。
    ただし serial 未指定の対話コマンド(`ft_status`/`ft_snapshot` 等)は接続中デバイスが
    **1台のときだけ**それを自動採用する(2026-08-06。複数なら AVD 名付きで列挙してエラー)。
    はぐれ Android 機が1台混ざっていると、それが唯一の候補になって診断画面がそれになりうるので、
    規模ランの調査前に `adb -s <serial> emu kill` で掃除する(2026-07-16)
-3. **アプリ解決**: common → デバイスの platform セクションの後勝ちマージ。`app`(bundle ID)必須
-4. **並列数 = 解決後のデバイス数**(maxParallel は存在しない)。プラットフォーム毎にワーカーを立て、
+2. **アプリ解決**: common → デバイスの platform セクションの後勝ちマージ。`app`(bundle ID)必須
+3. **並列数 = 解決後のデバイス数**(maxParallel は存在しない)。プラットフォーム毎にワーカーを立て、
    RunOrchestrator の platform 別キューで両OS同時並列実行
-5. platform 未指定(@TestClass / @Test 両対応)のシナリオは iOS ワーカーがいれば ios キューへ。
+4. platform 未指定(@TestClass / @Test 両対応)のシナリオは iOS ワーカーがいれば ios キューへ。
    **platform を宣言していて、この run がその OS を回さないシナリオはキューに入れず skipped**
    (`PlatformApplicability`。ProfileRunner / `api run` の profile 経路だけ。
    `--port` / `--serial` 直指定は回す OS の集合を宣言しないので対象外)
-6. 未知キーは警告(タイポ検出)。相対パスのチルダ展開あり。基準は用途で異なる:
+5. 未知キーは警告(タイポ検出)。相対パスのチルダ展開あり。基準は用途で異なる:
    `appPath` はリポジトリルート基準、`reportDir` はプロジェクトルート基準(RunProfile.resolve)
-7. 合成後は必須検証済みの `ResolvedProfile` になり、実行コードはこれだけを見る
+6. 合成後は必須検証済みの `ResolvedProfile` になり、実行コードはこれだけを見る
 
 ### 11.4 実行フロー(fleetest run --project P --profile ios)
 
@@ -4142,7 +4149,7 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     (実在しない UDID を渡す = デバイス不要で「アタッチ前に ping が出る」を固定)。
     **リモートの台には手前にもう1段ある**(実測 2026-09-09): 拡張は
     `remote exec <host> -- api device-stream` を起こし、そのコマンドが向こうで宛先を解決してから
-    ヘルパーへ exec する。解決(`MachineProfileLoad` + `ApiMonitorCommand.determineStates`)は
+    ヘルパーへ exec する。解決(`DeviceRosterLoad` + `ApiMonitorCommand.determineStates`)は
     起動ストームの最中に十数秒かかり、**ヘルパーが起きる前に 15 秒の期限が切れていた**
     (ヘルパー側の ping では届かない —— 実測: wedge の 19 秒後にヘルパーが
     「attaching took 15.3s」を出した)。同じ ping を解決の間も流す(`StreamResolvePing`)

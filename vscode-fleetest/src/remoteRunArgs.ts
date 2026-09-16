@@ -7,7 +7,7 @@
 //     デバイス候補(device-catalog/installed-devices/create-device)を取得するときに使う。
 //
 // run のディスパッチ(その run がリモートへ出るかどうか)はここには一切関わらない ——
-// 今は CLI がマシンプロファイルの `machine` フィールドから判定する(拡張側は関与しない)。
+// 今は CLI が実行プロファイルの devices[].machine から判定する(拡張側は関与しない)。
 //
 // vscode 非依存の純粋関数(config.ts/remoteHostsController.ts から呼ぶ。テストは runHandler.ts を
 // 経由せず直接 import する — runHandler.ts は testTree.ts 経由でトップレベル `new vscode.TestTag` を
@@ -30,7 +30,7 @@ export interface RemoteHostEntry {
   readonly color?: string;
 }
 
-/** マシンプロファイルタブ「デバイス候補のマシン」(§13 段2)。machine は登録簿のマシン名
+/** 「+既存から選択」ダイアログ「デバイス候補のマシン」(§13 段2)。machine は登録簿のマシン名
  * (= この Mac だけのエイリアス。`remote exec <machine>` の第1引数で、raw な ssh 宛先ではなく
  * 登録名を渡す契約)。**ホスト名/IP ではない**(用語は docs/remote-runner.md §0)。 */
 export type DeviceCommandSource =

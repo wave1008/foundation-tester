@@ -1,8 +1,8 @@
 // デバイスの機種/OS(表示専用)のキャッシュ。キーは iOS の udid / Android 実機の serial /
-// AVD の id。マシンプロファイルは機種/OS を持たない(または古い登録で欠けている)ため、
+// AVD の id。プロジェクトのデバイスカタログは機種/OS を持たない(または古い登録で欠けている)ため、
 // 編集フォームはここから埋める。書き込みは installedDevices 応答を受ける modals.js のみ。
 //
-// **独立モジュールにしている理由**: machineProfilesTab.js ⇄ modals.js の相互 import は循環になり、
+// **独立モジュールにしている理由**: runProfileDevicesTab.js ⇄ modals.js の相互 import は循環になり、
 // バンドル後の評価順が入れ替わって modals.js 側の `btnDeviceAddExisting.addEventListener` が
 // undefined を触って webview 全体が初期化に失敗する(実害。2026-07-25)。片方向依存を保つこと。
 

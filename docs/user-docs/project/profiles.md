@@ -1,13 +1,12 @@
 # Profiles
 
-A run is configured from three kinds of JSON profile under `TestProjects/<name>/profiles/`,
+A run is configured from two kinds of JSON profile under `TestProjects/<name>/profiles/`,
 combined by reference rather than by inheritance:
 
 | Kind | File | Purpose |
 |---|---|---|
 | App profile | `apps/<name>.json` | The app under test (bundle ID / package, build path) |
-| Machine profile | `machines/<machine name>.json` | The devices available on one machine |
-| Run profile | `runs/<name>.json` | Which app + which devices + run-time settings (see [run_profile.md](./run_profile.md)) |
+| Run profile | `runs/<name>.json` | Which app + which devices (each naming the machine it lives on) + run-time settings (see [run_profile.md](./run_profile.md)) |
 
 ## App profiles
 
@@ -46,26 +45,34 @@ section wins on conflicts):
 - `healthCheckURL` (in `common`, optional): a backend URL checked at the start of a run
   (3-second timeout, warns but does not block).
 
-## Machine profiles
+## Devices
 
-`machines/<machine name>.json` — the file name is the machine name. One file lists every device
-this machine can use, under `ios` and `android`:
+A run profile's `devices` array lists the device entities the run uses. Each entry says which
+machine it lives on and gives it a name that is unique together with that machine, so the same
+name can exist on different machines and the same device can appear — independently toggled with
+`enabled` — in more than one run profile. See [run_profile.md](./run_profile.md) for the full key
+list and every run-time setting.
 
 ```json
-{ "ios":     { "devices": [ { "name": "simulator1", "simulator": "iPhone 17 Pro", "os": "27.0" } ] },
-  "android": { "devices": [ { "name": "emulator1", "avd": "Pixel 9(Android 16)" } ] } }
+{ "app": "myapp",
+  "devices": [
+    { "platform": "ios", "machine": "local", "name": "simulator1", "simulator": "iPhone 17 Pro" },
+    { "platform": "android", "machine": "M1Max", "name": "emulator1", "avd": "Pixel 9(Android 16)" },
+    { "platform": "android", "machine": "local", "name": "emulator2", "enabled": false, "avd": "Pixel_8_Android_14" }
+  ],
+  "heal": true }
 ```
 
-- Device names must be unique within one file (across both `ios` and `android`).
+- `machine` is `"local"` for a device on this Mac, or the name of a machine registered with
+  `fleetest remote machines add`, which dispatches that device's run over SSH instead of running
+  it locally (see [remote_runners.md](../in_action/remote_runners.md)).
 - A physical device sets `"kind": "physical"` and an identifier instead of a simulator/AVD
   reference — iOS uses `udid` (from `xcrun devicectl list devices`, the `hardwareProperties.udid`
   form), Android uses `serial` (the left column of `adb devices`):
 
 ```json
-{ "ios":     { "devices": [ { "name": "iPhone (physical)", "kind": "physical",
-                              "udid": "00008130-000A1B2C3D4E5678" } ] },
-  "android": { "devices": [ { "name": "Pixel (physical)", "kind": "physical",
-                              "serial": "14141JEC204922" } ] } }
+{ "platform": "ios", "machine": "local", "name": "iPhone (physical)", "kind": "physical",
+  "udid": "00008130-000A1B2C3D4E5678" }
 ```
 
 - **Turn auto-lock off on physical devices.** On iOS: Settings → Display & Brightness →
@@ -74,39 +81,24 @@ this machine can use, under `ios` and `android`:
   the OS refuses every later app launch and the run stops. Starting against a locked device is
   refused by name (unlocking it automatically is impossible: the only thing that can send input
   to the device is the runner on that device, and it is not running yet).
-- A device's `machine` can name a registered machine (the name given with
-  `fleetest remote machines add`), so the run is dispatched to it over SSH instead of running
-  locally (see [remote_runners.md](../in_action/remote_runners.md)). Write `"machine": "local"` for
-  devices on this Mac. Leaving it out inherits the file's top-level `machine`, and without that
-  it means "this machine".
 
 `fleetest profile setup --auto-device` picks a device automatically: for iOS, the newest-OS
 existing simulator (excluding iPads); for Android, the existing AVD with the highest API level.
-
-## Machine resolution order
-
-1. The run profile's `machine` key.
-2. The `FT_MACHINE` environment variable.
-3. If `machines/` has exactly one file, that one.
-4. Otherwise, an error listing the candidate machine names.
-
-A device `name` listed in a run profile but not defined on the current machine is skipped with a
-warning, rather than failing the run — this is what lets one run profile be reused across
-machines.
 
 ## Commands
 
 | Command | Description |
 |---|---|
-| `fleetest profile setup --platform <ios\|android\|both> --app-id <id> [--auto-device] [...]` | Create/refresh the app, machine and run profiles together (idempotent) |
-| `fleetest profile list` | List run profiles and show how they resolve on this machine |
+| `fleetest profile setup --platform <ios\|android\|both> --app-id <id> [--auto-device] [...]` | Create/refresh the app and run profiles together (idempotent) |
+| `fleetest profile list` | List run profiles and their devices |
 
 ## Editing in VS Code
 
-The VS Code extension's Profiles tab lets you edit run/app/machine profiles interactively, and
-`profiles/{apps,machines,runs}/*.json` get a JSON schema (`schemas/*.schema.json`) contributed by
-the extension for completion, hover and structural validation while editing by hand. See
-the "実行プロファイルの編集支援" section of
+The VS Code extension's Profiles tab lets you edit run/app profiles interactively — the run
+profile section shows the union of every run profile's devices, with checkboxes selecting which
+ones this run profile runs — and `profiles/{apps,runs}/*.json` get a JSON schema
+(`schemas/*.schema.json`) contributed by the extension for completion, hover and structural
+validation while editing by hand. See the "実行プロファイルの編集支援" section of
 [vscode-fleetest/README.md](../../../vscode-fleetest/README.md) (Japanese).
 
 ### Link

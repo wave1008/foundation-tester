@@ -2043,7 +2043,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        上記ルーティングで XCUITest が担う)。
      - 使い方(推奨): **run プロファイルの `iosInappEngine`(既定 true=ON。GUI「高速なinappエンジンを
        使用する(iOS)」チェックボックス)で選ぶ**。ON → iOS デバイスの実効エンジンを "hybrid"、OFF →
-       "xcuitest"(`ProfileResolver.resolve`)。マシンプロファイルの device に `engine` を明示していれば
+       "xcuitest"(`ProfileResolver.resolve`)。`devices[]` のその device に `engine` を明示していれば
        そちらが優先(上書きしない=pure "inapp" 固定などの逃げ道)。`engine=inapp` 同様 bundleID 必須
        (新規 in-app 起動に要る。`inAppNeedsBundleID`)。**既定 ON なので engine 無指定の iOS デバイスは
        ハイブリッドで走る**(従来 XCUITest だった `ios.json` 等も高速化。XCUITest に戻すには OFF)。

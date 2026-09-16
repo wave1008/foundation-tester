@@ -1,6 +1,6 @@
 // ProjectScaffold.swift
 // fleetest project create のテストプロジェクト雛形生成。
-// scenarios/(_Main.swift・Generated/・_disabled/)、profiles/(apps/machines/runs)、reports/ を作る。
+// scenarios/(_Main.swift・Generated/・_disabled/)、profiles/(apps/runs)、reports/ を作る。
 
 import Foundation
 
@@ -247,7 +247,7 @@ public enum ProjectScaffold {
         return """
         ---
         name: fleetest-setup
-        description: この fleetest テストパッケージのセットアップを仕上げて実行できる状態にする。環境検証(doctor)・この Mac のデバイス定義(マシンプロファイル)・デバイス不要の動作確認までを、検証ゲートと人間チェックポイント付きで行う。「セットアップして」「動かせるようにして」「テストを実行できるようにして」等の依頼で使う。
+        description: この fleetest テストパッケージのセットアップを仕上げて実行できる状態にする。環境検証(doctor)・使うデバイスの定義(実行プロファイル)・デバイス不要の動作確認までを、検証ゲートと人間チェックポイント付きで行う。「セットアップして」「動かせるようにして」「テストを実行できるようにして」等の依頼で使う。
         ---
 
         # fleetest セットアップ(このパッケージ)
@@ -283,7 +283,7 @@ public enum ProjectScaffold {
           (画像入力は macOS 27+)。他の機能は制限なく動く
 
         セットアップ値は 🧑 に冒頭の1回でまとめて質問する(以降のステップで再質問しない):
-        - 使うシミュレータ名、マシン名
+        - 使うシミュレータ名
           → **これらは人間に聞く。他リポジトリを勝手に探索して埋めない**(バージョン・パスの推測は事故のもと)。
 
         **対象アプリ(.app / .apk)のパスは聞かない**(→ステップ3。後から設定できる)。
@@ -291,12 +291,12 @@ public enum ProjectScaffold {
         ### 1. 環境検証
         `fleetest doctor` を実行し、結果を要約して見せる。赤(未導入・無効)が残る項目は 0 に戻って対処を依頼。
 
-        ### 2. マシンプロファイル(この Mac のデバイス定義)
-        - `xcrun simctl list devices available` で使えるシミュレータ名を採取
-        - 🧑 `TestProjects/\(name)/profiles/machines/<マシン名>.json` に使うデバイスを列挙(雛形は同ディレクトリの README.md):
+        ### 2. 実行プロファイルのデバイス
+        - `fleetest profile setup --auto-device` で使えるデバイスを選んで書く(手で書くときは下の形)
+        - 🧑 `TestProjects/\(name)/profiles/runs/<名前>.json` の `devices` に列挙(書式は同ディレクトリの README.md):
 
         ```json
-        { "ios": { "devices": [ { "name": "simulator1", "simulator": "iPhone 17 Pro" } ] } }
+        { "devices": [ { "platform": "ios", "machine": "local", "name": "simulator1", "simulator": "iPhone 17 Pro" } ] }
         ```
 
         ### 3. 対象アプリのパス(appPath)は設定しない
@@ -370,7 +370,7 @@ public enum ProjectScaffold {
                               platforms: [String] = ["ios", "android"]) throws {
         let fm = FileManager.default
         for dir in [project.generatedDir, project.disabledDir,
-                    project.appsDir, project.machinesDir, project.runsDir,
+                    project.appsDir, project.runsDir,
                     project.reportsDir, project.testbasesDir] {
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
         }
@@ -384,18 +384,12 @@ public enum ProjectScaffold {
         try disabledReadme.write(
             to: project.disabledDir.appendingPathComponent("README.md"),
             atomically: true, encoding: .utf8)
-        try machinesReadme.write(
-            to: project.machinesDir.appendingPathComponent("README.md"),
+        try runsReadme.write(
+            to: project.runsDir.appendingPathComponent("README.md"),
             atomically: true, encoding: .utf8)
         try testbasesReadme.write(
             to: project.testbasesDir.appendingPathComponent("README.md"),
             atomically: true, encoding: .utf8)
-
-        // 中身は空。デバイスは受け手が拡張の「テスト実行」タブか `fleetest profile setup` で足す。
-        // **名前を固定するのが肝** —— 実行プロファイルが machine で名指しするので、
-        // あとから別名のマシンプロファイルが増えても determineMachine が迷わない
-        try "{}\n".write(to: project.machinesDir.appendingPathComponent("\(scaffoldMachineName).json"),
-                         atomically: true, encoding: .utf8)
 
         try demoScenario(app: app).write(
             to: project.scenariosDir.appendingPathComponent("\(demoScenarioFileName).swift"),
@@ -406,7 +400,7 @@ public enum ProjectScaffold {
             to: project.appsDir.appendingPathComponent("\(appRef).json"),
             atomically: true, encoding: .utf8)
         for platform in platforms where knownPlatforms.contains(platform) {
-            try runProfileTemplate(app: appRef, machine: scaffoldMachineName).write(
+            try runProfileTemplate(app: appRef).write(
                 to: project.runsDir.appendingPathComponent("\(platform).json"),
                 atomically: true, encoding: .utf8)
         }
@@ -415,10 +409,6 @@ public enum ProjectScaffold {
     /// run を作る対象。これ以外の値は無視する(呼び出し側の platforms は検証済みだが、
     /// 未知の名前で runs/<名前>.json ができると解決できないプロファイルが残る)
     static let knownPlatforms: Set<String> = ["ios", "android"]
-
-    /// 雛形が置くマシンプロファイルの名前。**ファイル名と実行プロファイルの `machine` の
-    /// 両方がこれを指す**ので、片方だけ変えると解決できなくなる
-    public static let scaffoldMachineName = "local"
 
     /// 雛形が置くデモシナリオのファイル名(拡張子なし)
     public static let demoScenarioFileName = "sample_test"
@@ -505,46 +495,37 @@ public enum ProjectScaffold {
     ここのドキュメントを根拠に scenarios/ のシナリオを書く。
     """
 
-    public static let machinesReadme = """
-    # profiles/machines
+    public static let runsReadme = """
+    # profiles/runs
 
-    マシンプロファイル(ファイル名 = マシン名。例: `M2 Ultra(192GB).json`)。
-    このマシンで使えるデバイスを ios / android セクションに `name` 付きで列挙する。
-    実行プロファイル(runs/)はデバイスを `name` で参照するため、name は ios/android 横断で一意にすること。
+    実行プロファイル(ファイル名 = プロファイル名)。使うアプリ(`app` = apps/ のファイル名)と、
+    走らせるデバイスの実体(`devices`)と、実行時の設定を持つ。
+
+    `devices` の1要素:
+    - `platform`(必須): `"ios"` / `"android"`
+    - `machine`: **そのデバイスがある機械**(ホスト名ではなく `fleetest remote machines` の
+      マシン名 = このマシンだけのエイリアス)。手元は `"local"`(ツールは常に明示して書く)。
+      書けるのはマシン名だけ(ssh の宛先は書けない)
+    - `name`(必須): デバイスの名前。**一意なのは (machine, name)** なので、別の機械に同名の
+      デバイスが居てよく、1つの実行プロファイルで手元とリモートを同時に回せる
+    - `enabled`: `false` なら一覧に残すが走らせない(拡張のチェックボックス)。省略 = 走らせる
+    - 実体: iOS は `simulator` / `os` / `udid`、Android は `avd` / 実機なら `kind: "physical"` と `serial`
+
+    **同じデバイスは複数の実行プロファイルに載る**。拡張で名前などを直すと、同じ
+    (platform, machine, name) を持つ全ての実行プロファイルへ反映される。手で直すときは全部を揃える。
     Android の `avd` は AVD の ID("Pixel_9_Android_16")と表示名("Pixel 9(Android 16)")の
-    どちらでも書ける。
-
-    実行時のマシン選択: 実行プロファイルの `machine` > FT_MACHINE 環境変数 >
-    ここに .json が 1 つだけならそれを自動採用。
-
-    `"machine"` は**そのデバイスがある機械**(ホスト名ではなく `fleetest remote machines` の
-    マシン名 = このマシンだけのエイリアス)。**手元でも省略せず `"local"` と書く**(省略は
-    「直下の既定を継ぐ」の意味になり、既定がリモートのときに別の機械のデバイス扱いになる)。
-    ツールが書き出すときは常に `machine` → `name` の順で先頭に置く。
-    別の Mac(リモートランナー)を指すときも書けるのはマシン名だけ(ssh の宛先は書けない)。
-    `machine` を書いておくと `--runner` を付けなくてもその機械へディスパッチされる。
-    **トップレベルにも devices の各要素にも書ける** —— トップレベルは既定で、デバイス側が優先。
-    **一意なのは (machine, name)** なので、別の機械に同名のデバイスが居てよく、
-    1つの実行プロファイルで手元とリモートを同時に回せる(docs/remote-runner-setup.md)。
-    **旧キー `"host"` のプロファイルもそのまま読める**(2026-08-26 に改名)。
-
-    iOS の `os`(例 `"26.0"`)は任意。**書かなければ名前一致の最新ランタイム**に解決されるので、
-    複数ランタイムを使い分けるとき以外は省略する(このマシンに無い版を書くと解決不能になる)。
+    どちらでも書ける。iOS の `os`(例 `"26.0"`)は任意で、**書かなければ名前一致の最新ランタイム**に
+    解決される(このマシンに無い版を書くと解決不能になる)。
 
     ```json
     {
-      "ios": {
-        "devices": [
-          { "machine": "local", "name": "simulator1", "simulator": "iPhone 17 Pro" },
-          { "machine": "local", "name": "simulator2", "simulator": "iPhone Air", "udid": "XXXX-XXXX" }
-        ]
-      },
-      "android": {
-        "devices": [
-          { "machine": "local", "name": "emulator1", "avd": "Pixel 9(Android 16)" },
-          { "machine": "local", "name": "emulator2", "avd": "Pixel_8_Android_14" }
-        ]
-      }
+      "app": "myapp",
+      "devices": [
+        { "platform": "ios", "machine": "local", "name": "simulator1", "simulator": "iPhone 17 Pro" },
+        { "platform": "android", "machine": "local", "name": "emulator1", "avd": "Pixel 9(Android 16)" },
+        { "platform": "android", "machine": "local", "name": "emulator2", "enabled": false, "avd": "Pixel_8_Android_14" }
+      ],
+      "heal": true
     }
     ```
     """
@@ -569,14 +550,12 @@ public enum ProjectScaffold {
     // os は書かない(名前一致の最新ランタイムに解決される)。版を固定するとホストの Xcode に
     // 無いランタイムを指して解決不能になる(macOS/Xcode の世代差で実際に起きる)
 
-    /// **devices は空**(ユーザー決定)。雛形のマシンプロファイルも空なので、実体の無い論理名を
-    /// 置くと最初の `profile list` が「そのデバイスが解決できない」で赤くなり、
-    /// 本当にやるべきこと(デバイスの登録)が読み取りにくくなる
-    public static func runProfileTemplate(app: String, machine: String) -> String {
-        // キー順は ProfileWriter.runProfile と揃える(machine → app → devices → …)
+    /// **devices は空**(ユーザー決定)。実体の無い論理名を置くと最初の `profile list` が
+    /// 「そのデバイスが解決できない」で赤くなり、本当にやるべきこと(デバイスの登録)が読み取りにくくなる
+    public static func runProfileTemplate(app: String) -> String {
+        // キー順は ProfileWriter.runProfile と揃える(app → devices → …)
         return """
         {
-          "machine": "\(machine)",
           "app": "\(app)",
           "devices": [],
           "textVisualCheck": true,

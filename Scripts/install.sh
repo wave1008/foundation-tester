@@ -11,7 +11,7 @@
 #           **冪等**(済んだ手順は skip)。
 #           規約位置を用意するのは Claude Code だけ(他のエージェントは MCP 登録と
 #           SKILL.md 直読みで使う。docs/user-docs/tools/other_agents.md)。
-#           --machine と --app-name があればプロファイル作成(profile setup --auto-device)も。
+#           --app-name があればプロファイル作成(profile setup --auto-device)も。
 # やらないこと: appPath や bundle ID の探索
 #           (値は引数で受けるだけ。スキルの「探索禁止」原則と対)。
 #
@@ -42,7 +42,6 @@ TOOL_ROOT_ARG=""
 PROJECT_NAME=""
 APP_ID=""
 APP_NAME=""
-MACHINE=""
 PLATFORM="both"
 DO_EXTENSION=1
 DO_PROJECT=1
@@ -63,8 +62,7 @@ Usage: install.sh [options]
   --name <name>      Project name to create (letters, digits, _ and -; derived from the directory name when omitted)
   --app-id <id>      Bundle ID / package name of the app under test (optional, can be changed later)
   --platform <p>     Which run profiles to scaffold: ios / android / both (default both)
-  --app-name <name>  Display name of the app. Together with --machine, profiles are created too
-  --machine <name>   This machine's name (machines/<name>.json; registered if not yet)
+  --app-name <name>  Display name of the app. When given, profiles (apps/ + runs/) are created too
   --tool-root <dir>  Location of the foundation-tester clone (default: <work-dir>/../foundation-tester)
   --no-clone         Do not clone when missing (an existing clone is required)
   --no-pull          Do not update an existing clone (to pin a version, or while developing the tool)
@@ -80,7 +78,7 @@ Usage: install.sh [options]
 
 What it does: clone (git pull if it exists; in the external layout local changes are auto-discarded) /
          swift build / project creation / .gitignore upkeep / VSCode extension / MCP registration /
-         the CLAUDE.md entry point / verification gates. **With --machine and --app-name it also creates profiles (--auto-device)**
+         the CLAUDE.md entry point / verification gates. **With --app-name it also creates profiles (--auto-device)**
          (idempotent; finished steps are skipped)
 Exit codes: 0=done / 2=only optional steps incomplete (CLI and MCP work) / 1=stopped at a required step
          (on stop, the [fail] line shows the cause and the number of the manual step to complete)
@@ -97,7 +95,6 @@ while [ $# -gt 0 ]; do
     --app-id) APP_ID="${2:?--app-id requires a value}"; shift 2 ;;
     --platform) PLATFORM="${2:?--platform requires a value}"; shift 2 ;;
     --app-name) APP_NAME="${2:?--app-name requires a value}"; shift 2 ;;
-    --machine) MACHINE="${2:?--machine requires a value}"; shift 2 ;;
     --tool-root) TOOL_ROOT_ARG="${2:?--tool-root requires a value}"; shift 2 ;;
     --no-clone) ALLOW_CLONE=0; shift ;;
     --no-pull) ALLOW_PULL=0; shift ;;
@@ -769,19 +766,19 @@ else
   fi
 fi
 
-# ---- 5. プロファイル(SKILL ステップ5。--machine と --app-name があるときだけ) ----------
+# ---- 5. プロファイル(SKILL ステップ5。--app-name があるときだけ) ----------
 # デバイス選定は profile setup --auto-device に任せる(エージェントが simctl / emulator を
 # 個別に叩くと承認回数が増える)。失敗しても導入自体は完了しているので warn 止まり
 if [ "$DO_PROJECT" = "0" ]; then
   record "profiles" skip "--skip-project"
-elif [ -z "$MACHINE" ] || [ -z "$APP_NAME" ]; then
-  record "profiles" skip "not created without --machine and --app-name (use /fleetest-profiles)"
+elif [ -z "$APP_NAME" ]; then
+  record "profiles" skip "not created without --app-name (use /fleetest-profiles)"
 else
   echo "==> fleetest profile setup (--auto-device)"
   if ( cd "$WORK_DIR" && "$FT" profile setup --platform "$PLATFORM" --auto-device \
-        --machine "$MACHINE" --app-name "$APP_NAME" \
+        --app-name "$APP_NAME" \
         ${PROJECT_NAME:+--project "$PROJECT_NAME"} --app-id "${APP_ID:-com.example.myapp}" ); then
-    record "profiles" ok "machines/$MACHINE.json + apps + runs ($PLATFORM)"
+    record "profiles" ok "apps + runs ($PLATFORM)"
   else
     soft_fail "profiles" "profile setup failed (no devices etc.; /fleetest-profiles can redo it)" 5
   fi

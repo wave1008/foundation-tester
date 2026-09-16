@@ -32,9 +32,8 @@ function makeOutputChannel() {
 
 // ---- isValidateProfileOutput: 正常値 ----
 
-test("isValidateProfileOutput: results 複数件・machine あり の正常な値を true と判定する", () => {
+test("isValidateProfileOutput: results 複数件の正常な値を true と判定する", () => {
   const value = {
-    machine: "M1 Max",
     project: "SampleApp",
     results: [
       {
@@ -56,13 +55,8 @@ test("isValidateProfileOutput: results 複数件・machine あり の正常な�
   assert.equal(isValidateProfileOutput(value), true);
 });
 
-test("isValidateProfileOutput: machine が null(現在マシン未登録)でも true", () => {
-  const value = { machine: null, project: "SampleApp", results: [] };
-  assert.equal(isValidateProfileOutput(value), true);
-});
-
 test("isValidateProfileOutput: results が空配列でも true(--kind/--name に一致するファイルが無い場合)", () => {
-  const value = { machine: "M1 Max", project: "SampleApp", results: [] };
+  const value = { project: "SampleApp", results: [] };
   assert.equal(isValidateProfileOutput(value), true);
 });
 
@@ -72,17 +66,15 @@ test("isValidateProfileOutput: トップレベルのフィールド欠落/型不
   assert.equal(isValidateProfileOutput(null), false);
   assert.equal(isValidateProfileOutput("not an object"), false);
   assert.equal(isValidateProfileOutput({}), false);
-  assert.equal(isValidateProfileOutput({ project: "P", results: [] }), false); // machine 欠落
-  assert.equal(isValidateProfileOutput({ machine: 123, project: "P", results: [] }), false); // machine が数値
-  assert.equal(isValidateProfileOutput({ machine: null, project: 123, results: [] }), false); // project が数値
-  assert.equal(isValidateProfileOutput({ machine: null, project: "P", results: "not-an-array" }), false);
+  assert.equal(isValidateProfileOutput({ results: [] }), false); // project 欠落
+  assert.equal(isValidateProfileOutput({ project: 123, results: [] }), false); // project が数値
+  assert.equal(isValidateProfileOutput({ project: "P", results: "not-an-array" }), false);
 });
 
-test("isValidateProfileOutput: results 要素の kind が apps/machines/runs 以外なら false", () => {
+test("isValidateProfileOutput: results 要素の kind が apps/runs 以外なら false", () => {
   const value = {
-    machine: null,
     project: "P",
-    results: [{ kind: "unknown", name: "n", path: "/p", errors: [], warnings: [] }],
+    results: [{ kind: "machines", name: "n", path: "/p", errors: [], warnings: [] }],
   };
   assert.equal(isValidateProfileOutput(value), false);
 });
@@ -91,7 +83,6 @@ test("isValidateProfileOutput: results 要素の errors/warnings が文字列配
   const base = { kind: "runs", name: "n", path: "/p" };
   assert.equal(
     isValidateProfileOutput({
-      machine: null,
       project: "P",
       results: [{ ...base, errors: "not-an-array", warnings: [] }],
     }),
@@ -99,7 +90,6 @@ test("isValidateProfileOutput: results 要素の errors/warnings が文字列配
   );
   assert.equal(
     isValidateProfileOutput({
-      machine: null,
       project: "P",
       results: [{ ...base, errors: [1, 2], warnings: [] }],
     }),
@@ -107,7 +97,6 @@ test("isValidateProfileOutput: results 要素の errors/warnings が文字列配
   );
   assert.equal(
     isValidateProfileOutput({
-      machine: null,
       project: "P",
       results: [{ ...base, errors: [], warnings: undefined }],
     }),
@@ -118,7 +107,6 @@ test("isValidateProfileOutput: results 要素の errors/warnings が文字列配
 test("isValidateProfileOutput: results 要素の name/path が欠落していれば false", () => {
   assert.equal(
     isValidateProfileOutput({
-      machine: null,
       project: "P",
       results: [{ kind: "runs", path: "/p", errors: [], warnings: [] }],
     }),
@@ -126,7 +114,6 @@ test("isValidateProfileOutput: results 要素の name/path が欠落していれ
   );
   assert.equal(
     isValidateProfileOutput({
-      machine: null,
       project: "P",
       results: [{ kind: "runs", name: "n", errors: [], warnings: [] }],
     }),
@@ -138,7 +125,6 @@ test("isValidateProfileOutput: results 要素の name/path が欠落していれ
 
 test("toDiagnosticsByPath: results を path キーの Map に変換し、errors/warnings をそのまま引き継ぐ", () => {
   const output = {
-    machine: "M1 Max",
     project: "SampleApp",
     results: [
       {
@@ -170,7 +156,7 @@ test("toDiagnosticsByPath: results を path キーの Map に変換し、errors/
 });
 
 test("toDiagnosticsByPath: results が空なら空の Map を返す", () => {
-  const map = toDiagnosticsByPath({ machine: null, project: "P", results: [] });
+  const map = toDiagnosticsByPath({ project: "P", results: [] });
   assert.equal(map.size, 0);
 });
 
@@ -184,15 +170,18 @@ test("parseProfileFilePath: workspaceRoot 配下の絶対パスから project/ki
   assert.deepEqual(location, { project: "SampleApp", kind: "runs", name: "sampleapp_all" });
 });
 
-test("parseProfileFilePath: apps/machines も同様に抽出する", () => {
+test("parseProfileFilePath: apps も同様に抽出する", () => {
   assert.deepEqual(parseProfileFilePath("/repo", "/repo/TestProjects/SampleApp/profiles/apps/sampleapp.json"), {
     project: "SampleApp",
     kind: "apps",
     name: "sampleapp",
   });
-  assert.deepEqual(
+});
+
+test("parseProfileFilePath: apps/runs 以外のディレクトリ(machines)は undefined", () => {
+  assert.equal(
     parseProfileFilePath("/repo", "/repo/TestProjects/SampleApp/profiles/machines/M1 Max.json"),
-    { project: "SampleApp", kind: "machines", name: "M1 Max" },
+    undefined,
   );
 });
 
@@ -216,7 +205,7 @@ test("parseProfileFilePath: profiles/ 配下以外のパスは undefined", () =>
   );
 });
 
-test("parseProfileFilePath: 種別ディレクトリが apps/machines/runs 以外なら undefined", () => {
+test("parseProfileFilePath: 種別ディレクトリが apps/runs 以外なら undefined", () => {
   assert.equal(
     parseProfileFilePath("/repo", "/repo/TestProjects/SampleApp/profiles/unknown/foo.json"),
     undefined,
@@ -249,16 +238,14 @@ test("統合: mock-validate-profile.mjs(mixed パターン)の出力を Fleetest
 
   const output = result.json;
   assert.equal(output.project, "SampleApp");
-  assert.equal(output.machine, "M1 Max");
-  assert.equal(output.results.length, 4);
+  assert.equal(output.results.length, 3);
 
   const byPath = toDiagnosticsByPath(output);
-  assert.equal(byPath.size, 4);
+  assert.equal(byPath.size, 3);
   assert.deepEqual(byPath.get("/repo/TestProjects/SampleApp/profiles/apps/sampleapp.json"), {
     errors: [],
     warnings: [],
   });
-  assert.equal(byPath.get("/repo/TestProjects/SampleApp/profiles/machines/M1 Max.json").errors.length, 1);
   assert.equal(byPath.get("/repo/TestProjects/SampleApp/profiles/runs/sampleapp_all.json").warnings.length, 1);
   assert.equal(byPath.get("/repo/TestProjects/SampleApp/profiles/runs/broken.json").errors.length, 1);
 });
@@ -306,7 +293,7 @@ test(
     const byPath = toDiagnosticsByPath(output);
     assert.equal(byPath.size, output.results.length);
     for (const fileResult of output.results) {
-      assert.ok(["apps", "machines", "runs"].includes(fileResult.kind));
+      assert.ok(["apps", "runs"].includes(fileResult.kind));
       assert.ok(fileResult.path.length > 0);
     }
   },

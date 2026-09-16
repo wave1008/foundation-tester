@@ -15,7 +15,7 @@
 //     `fleetest api run` と CLI の `fleetest run` の両方が書く(ProfileRunner.writeRunLease)ため
 //     どちらか使用中なら true。null 化されないが読み手は欠落/非bool を false とみなす)
 //     ("registered":bool は ApiMonitorCommand.determineStates(includeUnregistered:) が合成した
-//     マシンプロファイル未記載の起動中デバイスなら false。欠落/非boolは true とみなす)
+//     どの実行プロファイルにも記載が無い起動中デバイスなら false。欠落/非boolは true とみなす)
 //   {"kind":"monitorFrame","device":"..","jpegBase64":"..","width":480,"height":1040}
 //     … connected デバイスのみ、約interval秒毎
 //   {"kind":"monitorError","device":"..","message":".."}         … device は省略されうる。
@@ -78,7 +78,7 @@ export interface MonitorDevice {
   /** このデバイスが画面録画中か。inRun と同じ契約(Swift は常に true/false を送るが、
    * 欠落・非 bool は false として扱う=isMonitorDevice が正規化。旧バイナリとの互換のため)。 */
   readonly recording?: boolean;
-  /** マシンプロファイルに実在するか。false は ApiMonitorCommand.determineStates(includeUnregistered:)
+  /** どれかの実行プロファイルの devices に実在するか。false は ApiMonitorCommand.determineStates(includeUnregistered:)
    * が合成した起動中デバイス(未登録)。欠落・非 bool は true に正規化する(旧 CLI 互換。
    * kind と同じ「欠落は従来どおりの表示に寄せる」方針)。 */
   readonly registered?: boolean;
@@ -180,7 +180,7 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
   }
   if (value.registered !== true && value.registered !== false) {
     // 欠落/null/型不正を「登録済み」に寄せる(旧 CLI は registered を送らない=全デバイスが
-    // マシンプロファイル記載のみだった挙動を保つ)。
+    // 実行プロファイル記載のみだった挙動を保つ)。
     value.registered = true;
   }
   if (value.frozen !== true && value.frozen !== false) {
@@ -265,8 +265,7 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
  * デバイス一覧をプロファイルタブの表示順に整列する:
  * **ios→android → 手元が先 → ホスト名順 → name 順**。
  * プラットフォームが外側なのは、プロファイルタブが ios/android の別セクションを持ち、
- * ホストでのまとまりはその中にあるため(config.ts の listMachineProfiles と同じ規則 —
- * 変更時は両方揃える)。タイルは1列なので、外側=左右のかたまりになる。
+ * ホストでのまとまりはその中にあるため。タイルは1列なので、外側=左右のかたまりになる。
  * monitorProcessManager.ts が monitorDevices 受信時に適用し、以降の全消費側
  * (「テスト実行」タブのタイル)はこの順で受け取る。
  */
@@ -298,12 +297,12 @@ export const RUNNING_DEVICES_PROFILE_VALUE = "@running";
  * 未登録デバイス(registered===false)は定義上「起動中」なので running では素通りする。
  * **"all" は何も落とさない**(元の順序のまま素通し)。
  *
- * 以前の "all" は registered===false を落としていた(マシンプロファイルタブの一覧と揃える意図)。
- * **これが「(プロファイルなし)で1台も出ない」の正体**(実害 2026-08-28): マシンプロファイルが
- * 2つ以上ある案件では `--profile` 無しの `api monitor` はマシンを決められず、
+ * 以前の "all" は registered===false を落としていた(実行プロファイルの一覧と揃える意図)。
+ * **これが「(プロファイルなし)で1台も出ない」の正体**(実害 2026-08-28): 実行プロファイルが
+ * 2つ以上ある案件では `--profile` 無しの `api monitor` は対象デバイスの一覧を1つに決められず、
  * 「起動中のデバイスだけを見る」に縮退して**全台を registered:false で出す**
  * (ApiMonitorCommand の includeUnregistered)。それを丸ごと落としていたので 0 件になっていた。
- * マシンプロファイルが複数あるとき「登録済みの台の一覧」は一意に決まらないので、
+ * 実行プロファイルが複数あるとき「登録済みの台の一覧」は一意に決まらないので、
  * 縮退そのものは正しい —— 落とす側が間違っていた。
  *
  * **ブリッジ不在の iOS 実機(state==="booted")も出す**(2026-08-26 に方針変更)。以前は

@@ -187,15 +187,15 @@ The exit code tells you how it ended:
 | `2` | The required checks passed, but some items still need a person | Fix the listed items and run the same command again |
 | `1` | Failed | Read the message and fix it (see "Troubleshooting" below) |
 
-## Step 4: Add the runner's devices to your profiles (on your Mac)
+## Step 4: Add the runner's devices to your run profile (on your Mac)
 
-Which devices run your tests is decided by the machine profile and the run profile. You edit
-profiles on your Mac; they are sent to the runner automatically on every run. You never need to
-edit files on the runner.
+Which devices run your tests is decided by the run profile's `devices` list — each device names
+its own machine directly. You edit profiles on your Mac; they are sent to the runner
+automatically on every run. You never need to edit files on the runner.
 
 ### Add them in the VS Code extension
 
-1. In the Device Monitor's "Profiles" tab, open the machine profile that should hold the runner's
+1. In the Device Monitor's "Profiles" tab, open the run profile that should use the runner's
    devices.
 2. Press the "+" next to "Add devices". "Select Devices" opens.
 3. Choose `M1Max` in "Machine:" at the top. The list switches to the devices on the runner
@@ -203,8 +203,9 @@ edit files on the runner.
 4. Check the devices you want to use. If the device you want does not exist, you can create it
    on the runner with the "+" next to "Create device". Before creating it, you are asked
    "This creates "<device name>" on M1Max. Continue?"; press "Create".
-5. Press "OK". Devices with `"machine": "M1Max"` are added to the machine profile on your Mac.
-6. Open the run profile and check the added devices under "Devices".
+5. Press "OK". Devices with `"machine": "M1Max"` are added to the run profile's `devices` on
+   your Mac.
+6. Check the added devices under "Devices" in the run profile.
 
 ### Add them with the CLI
 
@@ -212,15 +213,12 @@ edit files on the runner.
    ```bash
    fleetest remote exec M1Max -- api installed-devices
    ```
-2. Write the devices, with `machine`, into the machine profile
-   (`TestProjects/<project>/profiles/machines/<name>.json`):
+2. Add them, with `machine`, to the `devices` of the run profile
+   (`TestProjects/<project>/profiles/runs/<name>.json`):
    ```jsonc
-   { "ios": { "devices": [
-       { "machine": "M1Max", "name": "iPhone 17 Pro-01", "simulator": "iPhone 17 Pro", "udid": "<UDID>" } ] } }
-   ```
-3. Add them to the `devices` of the run profile (`TestProjects/<project>/profiles/runs/<name>.json`):
-   ```jsonc
-   { "devices": [ { "machine": "M1Max", "name": "iPhone 17 Pro-01" } ] }
+   { "devices": [
+       { "platform": "ios", "machine": "M1Max", "name": "iPhone 17 Pro-01",
+         "simulator": "iPhone 17 Pro", "udid": "<UDID>" } ] }
    ```
 
 ### Things to keep in mind

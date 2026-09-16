@@ -1,7 +1,7 @@
-// VSCode拡張向け: プロファイルJSON(profiles/apps・machines・runs)を検証し、結果をJSONで
+// VSCode拡張向け: プロファイルJSON(profiles/apps・runs)を検証し、結果をJSONで
 // stdoutに出力する(fleetest api validate-profile)。
-// 検証基準: ProfileResolver.validate(kind:data:context:project:) に加え、runs は machine 指定
-// (無ければ現在マシン)での参照解決チェック(ProfileResolver.resolve)も行う。
+// 検証基準: ProfileResolver.validate(kind:data:context:) に加え、runs は参照解決チェック
+// (ProfileResolver.resolve)も行う。
 // 検証エラーがあっても結果は JSON で運ぶため exit 0。
 // ファイル I/O 等の運用エラーのみ非 0(診断は stderr のみ。ApiCommands.swift と同じ流儀)。
 
@@ -12,13 +12,13 @@ import FTCore
 struct ApiValidateProfile: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "validate-profile",
-        abstract: "Validate the profile JSON (apps/machines/runs) and print the result as JSON on stdout"
+        abstract: "Validate the profile JSON (apps/runs) and print the result as JSON on stdout"
             + " (validation errors still exit 0; only operational errors such as file I/O exit non-zero; diagnostics on stderr only)")
 
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
-    @Option(help: "Kind to filter by: apps / machines / runs (defaults to all kinds)")
+    @Option(help: "Kind to filter by: apps / runs (defaults to all kinds)")
     var kind: String?
 
     @Option(help: "Profile name to filter by, without the extension (without --kind, all kinds are searched for that name)")
@@ -31,24 +31,11 @@ struct ApiValidateProfile: AsyncParsableCommand {
         if let kind {
             guard let matched = ProfileFileKind.allCases.first(where: { $0.directoryName == kind })
             else {
-                throw ValidationError("--kind must be one of apps/machines/runs: \(kind)")
+                throw ValidationError("--kind must be one of apps/runs: \(kind)")
             }
             kinds = [matched]
         } else {
             kinds = ProfileFileKind.allCases
-        }
-
-        // 出力の "machine" フィールド(参考情報)に使う現在マシン名。runs 個々の参照解決チェックは
-        // determineMachine(runProfileName:) で各ファイル自身の machine 指定を優先するため、
-        // ここで未決定でも各ファイルのチェックには影響しない(machine 未指定のファイルだけ
-        // このマシン決定に相当する処理へフォールバックする)
-        var machineName: String?
-        do {
-            machineName = try ProfileResolver.determineMachine(
-                project: testProject).name
-        } catch {
-            logStderr("⚠️ Cannot determine the machine name (the machine field in the output will be null): "
-                + error.localizedDescription)
         }
 
         var results: [ApiValidateProfileResult] = []
@@ -68,7 +55,7 @@ struct ApiValidateProfile: AsyncParsableCommand {
         }
 
         let output = ApiValidateProfileOutput(
-            project: testProject.name, machine: machineName, results: results)
+            project: testProject.name, results: results)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(output)
@@ -85,24 +72,13 @@ struct ApiValidateProfile: AsyncParsableCommand {
         }
 
         var (errors, warnings) = ProfileResolver.validate(
-            kind: kind, data: data, context: "\(kind.directoryName)/\(fileName).json",
-            project: project)
+            kind: kind, data: data, context: "\(kind.directoryName)/\(fileName).json")
 
-        // 実行プロファイルは参照(app / デバイス name)も解決チェックする(他の検証エラーがある
-        // 場合は解決を試みない)。マシン決定は determineMachine(runProfileName:) に委ねる:
-        // このファイル自身が machine を明示指定していればそれを最優先するため、FT_MACHINE/登録名が
-        // 未設定・machines/ が複数ある環境でも参照チェックが行える(machineUndetermined だけは
-        // 既存プロファイルとの後方互換のため警告に留めてスキップする)
+        // 実行プロファイルは参照(app)も解決チェックする(他の検証エラーがある場合は解決を試みない)
         if kind == .run, errors.isEmpty {
             do {
-                let machine = try ProfileResolver.determineMachine(
-                    project: project,
-                    runProfileName: fileName)
-                let resolved = try ProfileResolver.resolve(
-                    project: project, runName: fileName, machineName: machine.name)
+                let resolved = try ProfileResolver.resolve(project: project, runName: fileName)
                 warnings += resolved.warnings
-            } catch ProfileError.machineUndetermined {
-                warnings.append("reference checks skipped because the machine name is undecided")
             } catch {
                 errors.append(error.localizedDescription)
             }
@@ -137,21 +113,8 @@ private struct ApiValidateProfileResult: Encodable {
     let warnings: [String]
 }
 
-/// fleetest api validate-profile の出力全体。machine は省略可能フィールドとして
-/// 明示的に null を encode する(ApiScenarioInfo と同方針)
+/// fleetest api validate-profile の出力全体(同期相手: vscode-fleetest/src/profileModel.ts)
 private struct ApiValidateProfileOutput: Encodable {
     let project: String
-    let machine: String?
     let results: [ApiValidateProfileResult]
-
-    private enum CodingKeys: String, CodingKey {
-        case project, machine, results
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(project, forKey: .project)
-        try container.encode(machine, forKey: .machine)
-        try container.encode(results, forKey: .results)
-    }
 }

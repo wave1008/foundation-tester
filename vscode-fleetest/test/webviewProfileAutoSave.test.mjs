@@ -62,32 +62,27 @@ function createWebview(t) {
   return { window, document: window.document, posted, send };
 }
 
-const MACHINE_PROFILE_INFO = {
-  type: "machineProfileInfo",
-  current: "M1",
-  error: null,
-  machines: [
-    {
-      name: "M1",
-      devices: [
-        { name: "シミュ1", platform: "ios", detail: "d", simulator: "iPhone 16", os: "18.0", udid: "U1" },
-        { name: "シミュ2", platform: "ios", detail: "d", simulator: "iPhone 16", os: "18.0", udid: "U2" },
-      ],
-    },
-    {
-      name: "M2",
-      devices: [{ name: "エミュ1", platform: "android", detail: "d", avd: "Pixel_8" }],
-    },
+// プロジェクトのデバイスカタログ(全実行プロファイルの devices[] の和集合)。この実行プロファイル
+// 自身が持つのは「シミュ1」だけで、「シミュ2」はカタログにしか居ない(チェックすると追加される)。
+const PROFILE_INFO = {
+  type: "profileInfo",
+  projects: ["SampleApp"],
+  profiles: ["ios"],
+  current: "ios",
+  filter: "all",
+  apps: ["sampleapp"],
+  project: "SampleApp",
+  projectDir: "TestProjects/SampleApp",
+  devices: [
+    { platform: "ios", name: "シミュ1", detail: "d", simulator: "iPhone 16", os: "18.0", udid: "U1" },
+    { platform: "ios", name: "シミュ2", detail: "d", simulator: "iPhone 16", os: "18.0", udid: "U2" },
   ],
 };
 
-const PROFILE_INFO = { type: "profileInfo", profiles: ["ios"], current: "ios", filter: "all", apps: ["sampleapp"], project: "SampleApp" };
-
 // parseRunProfileForForm が返す全欄(monitorProfileForms.ts の RunProfileFormFields)。
 const RUN_FIELDS = {
-  machine: "M1",
   app: "sampleapp",
-  devices: [{ name: "シミュ1" }],
+  devices: [{ platform: "ios", name: "シミュ1", enabled: true, simulator: "iPhone 16", os: "18.0", udid: "U1" }],
   heal: true,
   textVisualCheck: true,
   screenLooksLike: true,
@@ -119,7 +114,6 @@ function runProfileData(fields) {
 
 function loadedRunProfile(t) {
   const harness = createWebview(t);
-  harness.send(MACHINE_PROFILE_INFO);
   harness.send(PROFILE_INFO);
   harness.send(runProfileData(RUN_FIELDS));
   harness.posted.length = 0;
@@ -191,7 +185,12 @@ test("デバイスのチェックだけを切り替えても保存する(参照�
   boxes[1].click();
   const sent = saves(posted);
   assert.equal(sent.length, 1, "デバイスの切り替えが保存されない");
-  assert.deepEqual(JSON.parse(JSON.stringify(sent[0].fields.devices)), [{ name: "シミュ1" }, { name: "シミュ2" }]);
+  // realm 違いの deepStrictEqual を避けるため postMessage と同じく構造化して比べる。
+  const devices = JSON.parse(JSON.stringify(sent[0].fields.devices)).map((d) => ({ name: d.name, enabled: d.enabled }));
+  assert.deepEqual(devices, [
+    { name: "シミュ1", enabled: true },
+    { name: "シミュ2", enabled: true },
+  ]);
 });
 
 test("テキストは打鍵ごとには送らず、入力を終えたとき(change)に trim して保存する", (t) => {
@@ -232,23 +231,6 @@ test("検証で弾かれる値は保存せずエラーを出し、直すと保�
   assert.equal(saves(posted).length, 1);
   assert.equal(saves(posted)[0].fields.defaultTimeout, "10");
   assert.equal(document.getElementById("run-profile-error").textContent, "");
-});
-
-test("マシンを切り替えた直後(前のマシンのデバイスしか選ばれていない)は保存せず、このマシンのデバイスを選ぶと保存する", (t) => {
-  const { window, document, posted } = loadedRunProfile(t);
-  const machine = document.getElementById("run-profile-machine");
-  machine.value = "M2";
-  machine.dispatchEvent(new window.Event("change", { bubbles: true }));
-  assert.equal(saves(posted).length, 0, "monitor/run が noDevicesInMachineProfile で落ちるプロファイルを書いた");
-  assert.match(document.getElementById("run-profile-error").textContent, /M2/);
-
-  const emulator = [...document.querySelectorAll('#run-profile-devices input[type="checkbox"]')]
-    .find((box) => box.dataset.deviceName === "エミュ1");
-  emulator.click();
-  const sent = saves(posted);
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].fields.machine, "M2");
-  assert.ok(sent[0].fields.devices.some((d) => d.name === "エミュ1"));
 });
 
 test("送信中の変更は並行に送らず、応答の後に最新の値で1本だけ送る", (t) => {
@@ -305,41 +287,58 @@ test("Esc は未保存の編集を捨てて読み直す", (t) => {
   assert.ok(posted.some((m) => m.type === "runProfileLoad" && m.profile === "ios"));
 });
 
-test("マシンのデバイス編集: 名前を変えて別の行へ移ったら、保存の応答で選択を引き戻さない", (t) => {
+// ---- 実行プロファイル節のデバイス編集フォーム(runProfileDevicesTab.js) --------------------
+// 選択の引き戻し・改名途中の追随を (platform, machine, name) キーのフォームで確認する。
+
+function deviceRows(document) {
+  return [...document.querySelectorAll("#run-profile-devices .run-profile-device-row-item")];
+}
+
+test("実行プロファイルのデバイス編集: 名前を変えて別の行へ移ったら、保存の応答で選択を引き戻さない", (t) => {
   const { window, document, posted, send } = createWebview(t);
-  send(MACHINE_PROFILE_INFO);
-  const rows = () => [...document.querySelectorAll("#machine-device-list .machine-device-row")];
-  rows()[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  send(PROFILE_INFO);
+  send(runProfileData({
+    ...RUN_FIELDS,
+    devices: [
+      { platform: "ios", name: "シミュ1", enabled: true, simulator: "iPhone 16", os: "18.0", udid: "U1" },
+      { platform: "ios", name: "シミュ2", enabled: true, simulator: "iPhone 16", os: "18.0", udid: "U2" },
+    ],
+  }));
+  deviceRows(document)[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 
-  // blur で change → 保存 → そのまま2行目をクリック(自動保存の普通の流れ)
-  typeAndCommit(window, document.getElementById("editor-name"), "シミュ1-改");
-  assert.equal(posted.filter((m) => m.type === "machineDeviceUpdate").length, 1);
-  rows()[1].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  assert.equal(document.getElementById("editor-udid").textContent, "U2");
+  // blur で change → 保存 → そのまま2行目をクリック(自動保存の普通の流れ)。
+  typeAndCommit(window, document.getElementById("run-profile-device-name-input"), "シミュ1-改");
+  assert.equal(posted.filter((m) => m.type === "runProfileDeviceUpdate").length, 1);
+  deviceRows(document)[1].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  // 選択した行の値がフォームに載っていること(別の行に居る旨のクリックは送信中でも即座に反映する)。
+  assert.equal(document.getElementById("run-profile-device-udid").textContent, "U2");
 
-  send({ type: "machineDeviceUpdateResult", ok: true, name: "シミュ1-改", error: null });
-  send({
-    ...MACHINE_PROFILE_INFO,
-    machines: [{ ...MACHINE_PROFILE_INFO.machines[0], devices: [
-      { ...MACHINE_PROFILE_INFO.machines[0].devices[0], name: "シミュ1-改" },
-      MACHINE_PROFILE_INFO.machines[0].devices[1],
-    ] }],
-  });
-  assert.equal(document.getElementById("editor-udid").textContent, "U2", "選択が保存した行へ引き戻された");
-  assert.equal(rows()[1].classList.contains("selected"), true);
+  send({ type: "runProfileDeviceUpdateResult", ok: true, name: "シミュ1-改", error: null });
+  // ホストは成功後に続けて profileInfo/runProfileData を再送する(実際の配線と同じ)。
+  send(PROFILE_INFO);
+  send(runProfileData({
+    ...RUN_FIELDS,
+    devices: [
+      { platform: "ios", name: "シミュ1-改", enabled: true, simulator: "iPhone 16", os: "18.0", udid: "U1" },
+      { platform: "ios", name: "シミュ2", enabled: true, simulator: "iPhone 16", os: "18.0", udid: "U2" },
+    ],
+  }));
+  assert.equal(document.getElementById("run-profile-device-udid").textContent, "U2", "選択が保存した行へ引き戻された");
+  assert.equal(deviceRows(document)[1].classList.contains("selected"), true);
 });
 
-test("マシンのデバイス編集: 改名の保存中に確定した変更は、新しい名前で引き当てて送る", (t) => {
+test("実行プロファイルのデバイス編集: 改名の保存中に確定した変更は、新しい名前で引き当てて送る", (t) => {
   const { window, document, posted, send } = createWebview(t);
-  send(MACHINE_PROFILE_INFO);
-  document.querySelector("#machine-device-list .machine-device-row").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  send(PROFILE_INFO);
+  send(runProfileData(RUN_FIELDS));
+  deviceRows(document)[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 
-  typeAndCommit(window, document.getElementById("editor-name"), "シミュ1-改");
-  typeAndCommit(window, document.getElementById("editor-port"), "8200");
-  const updates = () => posted.filter((m) => m.type === "machineDeviceUpdate");
+  typeAndCommit(window, document.getElementById("run-profile-device-name-input"), "シミュ1-改");
+  typeAndCommit(window, document.getElementById("run-profile-device-port"), "8200");
+  const updates = () => posted.filter((m) => m.type === "runProfileDeviceUpdate");
   assert.equal(updates().length, 1);
 
-  send({ type: "machineDeviceUpdateResult", ok: true, name: "シミュ1-改", error: null });
+  send({ type: "runProfileDeviceUpdateResult", ok: true, name: "シミュ1-改", error: null });
   assert.equal(updates().length, 2);
   assert.equal(updates()[1].originalName, "シミュ1-改", "旧名で引くとホストが見つけられない");
   assert.equal(updates()[1].fields.port, "8200");

@@ -1258,7 +1258,7 @@ final class RemoteDispatchTests: XCTestCase {
 
     func testSkipBuildIsIgnoredWithNoteForAutoDispatch() {
         let decision = RemoteDispatchFlagPolicy.skipBuild(
-            origin: .autoDispatch(machine: "M1Max", host: "runner1"))
+            origin: .autoDispatch(machine: "M1Max"))
         guard case .ignoredWithNote(let note) = decision else {
             return XCTFail("expected .ignoredWithNote, got \(decision)")
         }
@@ -1274,17 +1274,16 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertEqual(message, "--report-dir is not supported with --runner")
     }
 
-    func testReportDirIsRejectedForAutoDispatchWithMachineAndHostInMessage() {
+    func testReportDirIsRejectedForAutoDispatchWithMachineInMessage() {
         // 欠陥1: 拒否理由が「--runner と併用できない」のままだと、打ってもいない --runner を疑うことになる。
-        // マシン名・host 名を含む理由に変える
+        // 機械の名前を含む理由に変える
         let decision = RemoteDispatchFlagPolicy.rejected(
-            flag: "--failed", origin: .autoDispatch(machine: "M1Max", host: "runner1"))
+            flag: "--failed", origin: .autoDispatch(machine: "M1Max"))
         guard case .rejected(let message) = decision else {
             return XCTFail("expected .rejected, got \(decision)")
         }
         XCTAssertTrue(message.contains("--failed"))
         XCTAssertTrue(message.contains("M1Max"))
-        XCTAssertTrue(message.contains("runner1"))
         XCTAssertFalse(message.contains("is not supported with --runner"),
                        "自動ディスパッチでは --runner を打っていないので、この文言を出さない")
     }
@@ -1294,7 +1293,7 @@ final class RemoteDispatchTests: XCTestCase {
             return XCTFail("expected .rejected for explicitHost")
         }
         guard case .rejected = RemoteDispatchFlagPolicy.rejected(
-            flag: "--port", origin: .autoDispatch(machine: "M1Max", host: "runner1")) else {
+            flag: "--port", origin: .autoDispatch(machine: "M1Max")) else {
             return XCTFail("expected .rejected for autoDispatch")
         }
     }

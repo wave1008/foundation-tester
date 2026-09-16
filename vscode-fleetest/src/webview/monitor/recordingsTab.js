@@ -141,7 +141,7 @@ function deviceNamePill(ref) {
   return pill;
 }
 
-/** マシン名バッジ(タイル/マシンプロファイルのホスト表示と同じ .badge-remote)。 */
+/** マシン名バッジ(タイル/実行プロファイルのデバイス一覧のホスト表示と同じ .badge-remote)。 */
 function machineBadge(machine) {
   const badge = document.createElement('span');
   badge.className = 'badge badge-remote';

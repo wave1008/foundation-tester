@@ -248,7 +248,7 @@ export interface RunFinishedEvent {
 
 /**
  * AndroidDataWiper.swift(実行開始時の AVD Wipe Data)の進行状況。runStarted より前に届くことがある。
- * device はマシンプロファイルのデバイス名(モニタータイル・deviceOpBusy・healthWatch と同じ名前空間)。
+ * device はデバイス名(モニタータイル・deviceOpBusy・healthWatch と同じ名前空間)。
  * failed の後に done は来ない。
  */
 export interface WipeStatusEvent {

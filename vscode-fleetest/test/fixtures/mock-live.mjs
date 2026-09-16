@@ -6,7 +6,7 @@
 //
 // 使い方:
 //   node mock-live.mjs list-devices --project <p>
-//     --project が "NoMachine" の場合はマシンプロファイル未設定を模して stdout に何も出さず、
+//     --project が "NoMachine" の場合はデバイス取得失敗を模して stdout に何も出さず、
 //     stderr にメッセージを書いて exit 1(実物の ApiListDevicesCommand と同じ:失敗時は
 //     {"ok":false} のような JSON を出さず、ArgumentParser 経由のエラーのみ)。
 //     それ以外は ios 1台(connected)・android 1台(offline)の2台を返して exit 0。
@@ -51,12 +51,11 @@ const command = args[0];
 if (command === "list-devices") {
   const project = optionValue("--project", "SampleApp");
   if (project === "NoMachine") {
-    emitStderr("エラー: マシンプロファイルが見つかりません: 未登録");
+    emitStderr("エラー: デバイス一覧の取得に失敗しました");
     process.exit(1);
   }
   emitStdout({
     project,
-    machine: "M1 Max",
     devices: [
       { name: "シミュ1", platform: "ios", state: "connected", detail: "port 8127", port: 8127, serial: null, udid: "11111111-2222-3333-4444-555555555555" },
       { name: "エミュ1", platform: "android", state: "offline", detail: "", port: null, serial: null, udid: null },

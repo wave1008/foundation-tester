@@ -1,10 +1,10 @@
-// VSCode拡張のライブ操作パネル向け: マシンプロファイル記載のデバイス1台の起動・停止
+// VSCode拡張のライブ操作パネル向け: 実行プロファイル記載のデバイス1台の起動・停止
 // (fleetest api start-device / stop-device)。起動・停止の実装(DeviceBooter/BridgeProvisioner)は
 // DevicesCommand(fleetest devices)と共通。stdout には NDJSON(log* → finished)だけを出す
 // (診断は stderr のみ。ok:false のときは exit code 1)。
 //
-// stop-device は --udid/--serial の直指定モードも持つ(未登録=マシンプロファイル未記載の起動中
-// デバイス向け。ApiMonitorCommand.unregisteredStates 参照)。プロジェクト・マシンプロファイル解決を
+// stop-device は --udid/--serial の直指定モードも持つ(未登録=実行プロファイル未記載の起動中
+// デバイス向け。ApiMonitorCommand.unregisteredStates 参照)。プロジェクト・実行プロファイル解決を
 // 一切行わない(ApiDeviceDownDirectTarget/ApiDeviceDownDirectSpec)。対向: vscode-fleetest/src/monitorDeviceOps.ts
 
 import ArgumentParser
@@ -16,19 +16,19 @@ import FTCore
 struct ApiStartDeviceCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "start-device",
-        abstract: "Start one device listed in the machine profile (NDJSON: log* -> finished on "
+        abstract: "Start one device listed in the run profiles (NDJSON: log* -> finished on "
             + "stdout; diagnostics on stderr only; exit code 1 when ok:false)")
 
-    @Option(help: "Logical device name (a name under ios or android in the machine profile)")
+    @Option(help: "Logical device name (a name under ios or android in the run profiles)")
     var name: String?
 
-    @Option(help: "Hardware UDID of a connected physical iOS device that is not in the machine profile (starts its bridge; mutually exclusive with --name)")
+    @Option(help: "Hardware UDID of a connected physical iOS device that is not in the run profiles (starts its bridge; mutually exclusive with --name)")
     var udid: String?
 
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
-    @Option(help: "Run profile name, used to resolve the machine. When given, that profile's machine wins; otherwise FT_MACHINE, the registered machine, or the only entry in machines/")
+    @Option(help: "Run profile name (when given, the device is looked up in that profile; otherwise in every run profile)")
     var profile: String?
 
     @Option(help: "Android GPU rendering mode (host / swiftshader_indirect; default host). Used as the CPU-rendering fallback for devices that freeze")
@@ -49,7 +49,7 @@ struct ApiStartDeviceCommand: AsyncParsableCommand {
             ConsoleOut.err("⚠️ Unknown --gpu value — falling back to host: \(gpu!)")
             resolvedGpu = "host"
         }
-        // 直指定モード(--udid): マシンプロファイル未記載の**接続中の実機**のブリッジを起こす。
+        // 直指定モード(--udid): 実行プロファイル未記載の**接続中の実機**のブリッジを起こす。
         // 実機は端末そのものを起動・停止しないので boot は無く、供給だけが仕事
         // (対向: vscode-fleetest/src/webview/monitor/deviceTiles.js の「ブリッジを起動」)
         guard let name else {
@@ -85,7 +85,7 @@ struct ApiStartDeviceCommand: AsyncParsableCommand {
         }
     }
 
-    /// `--udid` 直指定の1台。プロジェクト・マシンプロファイル解決を経ないため
+    /// `--udid` 直指定の1台。プロジェクト・実行プロファイル解決を経ないため
     /// `ApiDeviceOperation.run` を通らず、NDJSON の log*/finished をここで組み立てる
     /// (stop-device の runDirect と同じ形)
     private static func startPhysicalBridge(udid: String) async throws {
@@ -130,7 +130,7 @@ enum ApiDeviceUpDirectSpec {
 
 /// 仮想デバイス1台の Wipe Data(Android = AVD の userdata/cache/snapshots 削除、
 /// iOS = simctl erase)。**識別子の直指定だけ**を受け、`api delete-device` と同じく
-/// プロジェクト・マシンプロファイルを一切参照しない —— 消す対象はその AVD ディレクトリ /
+/// プロジェクト・実行プロファイルを一切参照しない —— 消す対象はその AVD ディレクトリ /
 /// シミュレータ UDID そのものなので、名前で引く必要が無い。名前で引く形にすると
 /// **リモートでは向こうの複製が古いと `device not found` で必ず失敗する**
 /// (複製が更新されるのはモニターの fan-out 開始時だけ)ため、操作のたびにプロジェクトを
@@ -144,7 +144,7 @@ struct ApiWipeDeviceCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "wipe-device",
         abstract: "Wipe one virtual device by identifier (Android: Wipe Data on --avd; iOS: simctl "
-            + "erase on --udid). Resolves no project or machine profile at all, like delete-device. "
+            + "erase on --udid). Resolves no project or run profile at all, like delete-device. "
             + "NDJSON: log*/wipeStatus* -> finished on stdout; diagnostics on stderr only; exit "
             + "code 1 when ok:false")
 
@@ -232,14 +232,14 @@ enum ApiDeviceWipeTarget: Equatable {
 struct ApiStartAllDevicesCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "start-all-devices",
-        abstract: "Start every device in the machine profile (NDJSON: log/deviceStarting/deviceFinished -> "
+        abstract: "Start every device in the run profiles (NDJSON: log/deviceStarting/deviceFinished -> "
             + "finished on stdout; diagnostics on stderr only; ok:false and exit code 1 only when every "
             + "device on this machine failed to start, otherwise ok:true even with partial failures)")
 
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
-    @Option(help: "Run profile name (when given, only the devices that profile references are started)")
+    @Option(help: "Run profile name (when given, only that profile's enabled devices are started)")
     var profile: String?
 
     @Flag(name: .customLong("no-bridge"), help: "Do not provision the iOS bridge")
@@ -262,10 +262,9 @@ struct ApiStartAllDevicesCommand: AsyncParsableCommand {
     func run() async throws {
         setvbuf(stdout, nil, _IOLBF, 0)
         do {
-            let machineProfile = try MachineProfileLoad.load(
+            let machineProfile = try DeviceRosterLoad.load(
                 project: project, profile: profile, deviceMachine: deviceMachine,
                 foreign: .dispatchedByCaller,  // RemoteDeviceFanout がこの後その機械へ回す
-                noteAutoMachine: { Self.logStderr($0) },
                 warn: { Self.logStderr($0) })
             let repoRoot = noBridge ? nil : try RepoRoot.find()
             // **リモートのぶんはその機械へ投げる**(手元の起動と同時に走る。RemoteDeviceFanout)。
@@ -336,13 +335,13 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
             + "profile fails to load, or every non-physical device given failed to restart)")
 
     @Option(name: .customLong("name"), parsing: .upToNextOption,
-            help: "Logical names of the devices to restart (under ios or android in the machine profile). Repeatable")
+            help: "Logical names of the devices to restart (under ios or android in the run profiles). Repeatable")
     var name: [String] = []
 
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
-    @Option(help: "Run profile name (when given, only the devices that profile references are affected)")
+    @Option(help: "Run profile name (when given, only that profile's enabled devices are affected)")
     var profile: String?
 
     @Option(name: .customLong("device-machine"), help: ArgumentHelp(
@@ -359,15 +358,14 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
             throw ValidationError("specify at least one --name")
         }
         do {
-            let machineProfile = try MachineProfileLoad.load(
+            let machineProfile = try DeviceRosterLoad.load(
                 project: project, profile: profile, deviceMachine: deviceMachine,
                 foreign: .notHandled,  // restart-devices は分散しない(watchdog 由来で手元専用)
-                noteAutoMachine: { Self.logStderr($0) },
                 warn: { Self.logStderr($0) })
 
             var items: [RestartItem] = []
             for deviceName in name {
-                // machineProfile は MachineProfileLoad.load が deviceMachine で絞った後なので、
+                // machineProfile は DeviceRosterLoad.load が deviceMachine で絞った後なので、
                 // ここに残っているのは「この機械の台」だけ(entries が host を焼き込んでいる)
                 guard case .found(let spec, let platform) = ApiDeviceOperation.findDevice(
                     name: deviceName, deviceMachine: deviceMachine, in: machineProfile) else {
@@ -474,7 +472,7 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
 struct ApiStopAllDevicesCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "stop-all-devices",
-        abstract: "Stop every device in the machine profile (NDJSON: log/deviceStopping/deviceFinished -> "
+        abstract: "Stop every device in the run profiles (NDJSON: log/deviceStopping/deviceFinished -> "
             + "finished on stdout; diagnostics on stderr only; ok:false and exit code 1 only when every "
             + "device on this machine failed to stop, otherwise ok:true even with partial failures, "
             + "summarized in a log line). With --profile, only the devices that profile references. "
@@ -484,7 +482,7 @@ struct ApiStopAllDevicesCommand: AsyncParsableCommand {
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
-    @Option(help: "Run profile name (when given, only the devices that profile references are stopped)")
+    @Option(help: "Run profile name (when given, only that profile's enabled devices are stopped)")
     var profile: String?
 
     @Option(name: .customLong("device-machine"), help: ArgumentHelp(
@@ -499,10 +497,9 @@ struct ApiStopAllDevicesCommand: AsyncParsableCommand {
     func run() async throws {
         setvbuf(stdout, nil, _IOLBF, 0)
         do {
-            let machineProfile = try MachineProfileLoad.load(
+            let machineProfile = try DeviceRosterLoad.load(
                 project: project, profile: profile, deviceMachine: deviceMachine,
                 foreign: .dispatchedByCaller,  // RemoteDeviceFanout がこの後その機械へ回す
-                noteAutoMachine: { Self.logStderr($0) },
                 warn: { Self.logStderr($0) })
             // リモートのぶんはその機械へ投げる(起動と同じ分散。RemoteDeviceFanout)
             let machines = RemoteDeviceFanout.remoteMachines(
@@ -561,26 +558,26 @@ struct ApiStopAllDevicesCommand: AsyncParsableCommand {
 struct ApiStopDeviceCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "stop-device",
-        abstract: "Stop one device listed in the machine profile (NDJSON: log* -> finished on "
+        abstract: "Stop one device listed in the run profiles (NDJSON: log* -> finished on "
             + "stdout; diagnostics on stderr only; exit code 1 when ok:false). Exactly one of "
             + "--name/--udid/--serial must be given; --udid/--serial stop a device directly "
             + "(no project/machine-profile resolution at all) for devices the monitor found "
-            + "running but that are not listed in any machine profile (registered:false; see "
+            + "running but that are not listed in any run profile (registered:false; see "
             + "ApiMonitorCommand.unregisteredStates)")
 
-    @Option(help: "Logical device name (a name under ios or android in the machine profile)")
+    @Option(help: "Logical device name (a name under ios or android in the run profiles)")
     var name: String?
 
-    @Option(help: "iOS simulator UDID. Direct mode: stops this simulator without resolving a project or machine profile")
+    @Option(help: "iOS simulator UDID. Direct mode: stops this simulator without resolving a project or run profile")
     var udid: String?
 
-    @Option(help: "Android emulator adb serial. Direct mode: stops this emulator without resolving a project or machine profile")
+    @Option(help: "Android emulator adb serial. Direct mode: stops this emulator without resolving a project or run profile")
     var serial: String?
 
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project). Ignored in direct (--udid/--serial) mode")
     var project: String?
 
-    @Option(help: "Run profile name, used to resolve the machine. When given, that profile's machine wins; otherwise FT_MACHINE, the registered machine, or the only entry in machines/. Ignored in direct (--udid/--serial) mode")
+    @Option(help: "Run profile name (when given, the device is looked up in that profile; otherwise in every run profile). Ignored in direct (--udid/--serial) mode")
     var profile: String?
 
     @Option(name: .customLong("device-machine"),
@@ -620,7 +617,7 @@ struct ApiStopDeviceCommand: AsyncParsableCommand {
         }
     }
 
-    /// 直指定モード(--udid/--serial)の1台停止。プロジェクト・マシンプロファイル解決を経ないため
+    /// 直指定モード(--udid/--serial)の1台停止。プロジェクト・実行プロファイル解決を経ないため
     /// ApiDeviceOperation.run を通らず、NDJSON の log*/finished 出力だけをここで組み立てる。
     /// **`--serial` は repoRoot: nil で呼ぶ**(iOS ブリッジ停止に使うだけの引数)が、lease の
     /// state dir は `DeviceBooter.shutdownOne` が別途 `RepoRoot.find()` で解決するので影響しない
@@ -665,7 +662,7 @@ enum ApiDeviceDownDirectTarget: Equatable {
     }
 }
 
-/// 直指定モードの spec 合成。マシンプロファイルに実在しない(未登録)デバイス向けのため、
+/// 直指定モードの spec 合成。実行プロファイルに実在しない(未登録)デバイス向けのため、
 /// カタログ照合のみで組み立てる。I/O を持たない pure 関数(ユニットテスト対象のため private にしない)
 enum ApiDeviceDownDirectSpec {
     /// androidSpec の結果(Swift の Result は Failure: Error 制約があり String を使えない)
@@ -700,7 +697,7 @@ enum ApiDeviceDownDirectSpec {
 }
 
 /// fleetest api start-device / stop-device 共通の実行ロジック
-/// (マシンプロファイル読み込み・--name 解決・NDJSON ストリーミング・エラー処理)
+/// (台帳読み込み・--name 解決・NDJSON ストリーミング・エラー処理)
 enum ApiDeviceOperation {
     static func run(
         name: String, project: String?, profile: String?, deviceMachine: String? = nil,
@@ -713,36 +710,18 @@ enum ApiDeviceOperation {
 
         let testProject = try ScenarioHost.project(named: project)
         // **台帳の決め方は実行プロファイルの有無で変わる**(監視 = ApiMonitorCommand と同じ規律):
-        //   選んでいる: その machine の台帳(runProfileName を渡すと determineMachine が
-        //     実行プロファイルの machine を最優先で解決する)
-        //   選んでいない: **台帳を1つに決めない** —— machines/ を全部畳み、手元 +
+        //   選んでいる: その実行プロファイルの devices(enabled: false も含む)
+        //   選んでいない: **台帳を1つに決めない** —— runs/ を全部畳み、手元 +
         //     リモート実行の登録簿にあるマシンの台から探す(MachineInventory)
         //
-        // 決められないという理由で操作を断らない —— **タイルに出ている台は操作できるべき**。
-        // 台帳が2つある案件では「(プロファイルなし)」でタイルからブリッジを起動すると必ず
-        // determineMachine が落ち、しかも NDJSON を出さずに終わるので拡張には何も出なかった
-        // (実害 2026-08-29)
-        let machineProfile: MachineProfile
-        let machineLabel: String
-        if profile != nil {
-            let machine = try ProfileResolver.determineMachine(
-                project: testProject, runProfileName: profile)
-            if machine.auto {
-                logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
-            }
-            let machineURL = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
-            guard FileManager.default.fileExists(atPath: machineURL.path) else {
-                throw ProfileError.machineProfileNotFound(
-                    machine: machine.name,
-                    available: ProfileResolver.machineNames(project: testProject))
-            }
-            do {
-                machineProfile = try JSONDecoder().decode(
-                    MachineProfile.self, from: Data(contentsOf: machineURL))
-            } catch {
-                throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
-            }
-            machineLabel = machine.name
+        // 決められないという理由で操作を断らない —— **タイルに出ている台は操作できるべき**
+        // (実害 2026-08-29: NDJSON を出さずに終わるので拡張には何も出なかった)
+        let roster: DeviceRoster
+        let rosterLabel: String
+        if let profile {
+            roster = try RunProfileScope.roster(project: testProject, runProfileName: profile,
+                                                enabledOnly: false)
+            rosterLabel = "run profile \(profile)"
         } else {
             let registry = (LocalConfig.load().remoteHosts ?? []).map(\.machine)
             let inventory = MachineInventory.merge(
@@ -753,26 +732,26 @@ enum ApiDeviceOperation {
             // 実在で決着させる述語(ApiMonitorCommand.localPresencePredicate)は simctl/adb を
             // 叩くので、単発コマンドの応答へ載せない
             for conflict in inventory.conflicts { logStderr("→ \(conflict.message)") }
-            machineProfile = MachineInventory.mergedProfile(inventory.entries)
-            machineLabel = "machines/"
+            roster = MachineInventory.mergedProfile(inventory.entries)
+            rosterLabel = "all run profiles"
         }
 
         let spec: DeviceSpec
         let platform: String
-        switch findDevice(name: name, deviceMachine: deviceMachine, in: machineProfile) {
+        switch findDevice(name: name, deviceMachine: deviceMachine, in: roster) {
         case .found(let foundSpec, let foundPlatform):
             spec = foundSpec
             platform = foundPlatform
         case .ambiguous(let hosts):
             emitFinished(ok: false, error: "\(name) exists on more than one machine"
                 + " (\(hosts.joined(separator: ", "))) — pass --device-machine to say which one"
-                + " (machine \(machineLabel))")
+                + " (\(rosterLabel))")
             throw ExitCode(1)
         case .missing:
             emitFinished(ok: false, error: "device not found: \(name)"
                 + (deviceMachine == nil ? ""
                    : " on \(DeviceMachineGrouping.display(MachineDispatch.normalize(deviceMachine)))")
-                + " (machine \(machineLabel))")
+                + " (\(rosterLabel))")
             throw ExitCode(1)
         }
 
@@ -788,7 +767,7 @@ enum ApiDeviceOperation {
         }
     }
 
-    /// --name をマシンプロファイルの ios/android 両方から検索する(ApiRestartDevicesCommand も利用するため fileprivate)。
+    /// --name を台帳の ios/android 両方から検索する(ApiRestartDevicesCommand も利用するため fileprivate)。
     /// **一意なのは name 単体ではなく (host, name)** —— 名前だけで引くと、同名の台が別の機械にも
     /// 居るとき(フリートでは通常)**別の機械のつもりの操作が手元の台に当たる**。
     ///
@@ -796,7 +775,6 @@ enum ApiDeviceOperation {
     /// `.ambiguous` で止める —— 黙って手元を選ぶと「M1Max を止めたつもりで手元が止まる」に
     /// なり、しかも成功したように見える(2026-08-17 に実際に起きた: 版の古い拡張が
     /// `--device-machine` を付けずに撃ち、手元の同名シミュレータが2台停止した)。
-    /// 実行プロファイルの参照解決(`DeviceMachineGrouping.resolve`)と同じ規律
     enum DeviceLookup {
         case found(spec: DeviceSpec, platform: String)
         case missing
@@ -804,9 +782,9 @@ enum ApiDeviceOperation {
     }
 
     static func findDevice(
-        name: String, deviceMachine: String?, in machine: MachineProfile
+        name: String, deviceMachine: String?, in machine: DeviceRoster
     ) -> DeviceLookup {
-        let entries = DeviceMachineGrouping.entries(machine: machine).filter { $0.name == name }
+        let entries = DeviceMachineGrouping.entries(roster: machine).filter { $0.name == name }
         guard deviceMachine != nil else {
             let machines = DeviceMachineGrouping.groups(entries, machine: { MachineDispatch.normalize($0.spec.machine) })
             if machines.count > 1 {

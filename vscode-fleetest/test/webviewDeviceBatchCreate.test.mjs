@@ -107,9 +107,16 @@ function installedDevices(iosDevices) {
 }
 
 /** 「デバイスを選択」→「+」で追加ダイアログまで開き、カタログを流し込む */
+function profileInfoMessage(devices = []) {
+  return {
+    type: "profileInfo", projects: ["P"], profiles: ["all"], current: "all", filter: "all", apps: [],
+    project: "P", projectDir: "TestProjects/P", devices,
+  };
+}
+
 function openAddModal(window, document, devices = []) {
-  post(window, { type: "machineProfileInfo", machines: [{ name: "M1", devices: [] }], current: "M1", error: null });
-  click(window, document.getElementById("btn-device-add-existing"));
+  post(window, profileInfoMessage());
+  click(window, document.getElementById("btn-run-profile-device-add-existing"));
   post(window, installedDevices(devices));
   click(window, document.getElementById("device-pick-ios-add-new"));
   post(window, { type: "deviceCatalog", ok: true, catalog: READY_CATALOG, error: null });
@@ -139,7 +146,7 @@ test("既定は2台で、「デバイス名-連番2桁(-01 始まり)」の名�
   assert.ok(message, "batchCreateDevices を送る");
   assert.deepEqual(Array.from(message.names), ["iPhone 17 Pro(iOS 27.0)-01", "iPhone 17 Pro(iOS 27.0)-02"]);
   assert.equal(message.platform, "ios");
-  assert.equal(message.machine, "M1");
+  assert.deepEqual({ ...message.source }, { kind: "local" }, "machine 欄は無く source で伝える");
   assert.deepEqual(Array.from(message.overwriteNames), [], "衝突が無ければ空");
 });
 
@@ -349,8 +356,9 @@ test("OK を押す前に別経路の installedDevices が届いても、自動�
     error: null,
   });
 
-  // machineProfilesTab の機種/OS 取得など、**こちらが投げていない再取得**の応答。
-  // ここで自動チェックを使い切ると、OK の再取得で行が作り直されてチェックが消える(実害)
+  // runProfileDevicesTab(実行プロファイル節のデバイス編集フォーム)の機種/OS 取得など、
+  // **こちらが投げていない再取得**の応答。ここで自動チェックを使い切ると、OK の再取得で
+  // 行が作り直されてチェックが消える(実害)
   post(window, installedDevices([
     { name: "dev01", udid: "SIM-A", os: "27.0" },
     { name: "dev02", udid: "SIM-B", os: "27.0" },
@@ -453,28 +461,29 @@ test("続けてデバイスを作っても、まだ OK していないチェッ�
   assert.equal(checked.length, 3, `1回目の作成分・手作業のチェック・2回目の作成分が全部残る: ${JSON.stringify(checked)}`);
 });
 
-test("外したチェックも再描画で戻らない(両方向に効く)", (t) => {
+// 除去はこのダイアログの役目ではなく、実行プロファイル節の
+// チェックボックス/右クリック「除去」が担う(#device-pick-overlay 冒頭コメント参照)。
+// カタログ登録済みの行はチェック ON のまま disabled にし、このダイアログでは外せない。
+test("カタログ登録済みの行はチェック ON のまま disabled で、このダイアログでは外せない", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
-  // 登録済み(= 初期チェック ON)のデバイスを1台用意する
-  post(window, {
-    type: "machineProfileInfo",
-    machines: [{ name: "M1", devices: [{ platform: "ios", name: "登録済み", udid: "SIM-R" }] }],
-    current: "M1",
-    error: null,
-  });
-  click(window, document.getElementById("btn-device-add-existing"));
+  // カタログ登録済み(= 初期チェック ON)のデバイスを1台用意する
+  post(window, profileInfoMessage([{ platform: "ios", name: "登録済み", udid: "SIM-R", detail: "d" }]));
+  click(window, document.getElementById("btn-run-profile-device-add-existing"));
   post(window, installedDevices([{ name: "登録済み", udid: "SIM-R", os: "27.0" }]));
 
   const row = document.querySelector("#device-pick-ios-body .device-pick-row");
   const checkbox = row.querySelector("input[type=checkbox]");
   assert.equal(checkbox.checked, true, "登録済みなので初期はチェック ON");
-  checkbox.click(); // 登録解除するつもりで外す(まだ OK していない)
+  assert.equal(checkbox.disabled, true, "登録済みの行はこのダイアログでは外せない");
+  checkbox.click(); // disabled なのでクリックしても変化しないはず
+  assert.equal(checkbox.checked, true, "disabled のチェックはクリックで変化しない");
 
   post(window, installedDevices([{ name: "登録済み", udid: "SIM-R", os: "27.0" }]));
   const after = document.querySelector("#device-pick-ios-body .device-pick-row input[type=checkbox]");
-  assert.equal(after.checked, false, "再描画で ON に戻らない");
+  assert.equal(after.checked, true, "再描画後もチェック ON のまま");
+  assert.equal(after.disabled, true);
 });
 
 // ---- ダウンロードが要る Android システムイメージのバッチ作成 ----
@@ -501,8 +510,8 @@ test("バッチ作成: ダウンロードが要る OS を選ぶと installSystem
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
 
-  post(window, { type: "machineProfileInfo", machines: [{ name: "M1", devices: [] }], current: "M1", error: null });
-  click(window, document.getElementById("btn-device-add-existing"));
+  post(window, profileInfoMessage());
+  click(window, document.getElementById("btn-run-profile-device-add-existing"));
   post(window, installedDevices([]));
   click(window, document.getElementById("device-pick-android-add-new"));
   post(window, { type: "deviceCatalog", ok: true, catalog: CATALOG_WITH_DOWNLOADABLE, error: null });
@@ -533,8 +542,8 @@ test("バッチ作成: インストール済みの OS を選んだままなら i
     tag: "google_apis", versionName: "Android 15",
   }];
 
-  post(window, { type: "machineProfileInfo", machines: [{ name: "M1", devices: [] }], current: "M1", error: null });
-  click(window, document.getElementById("btn-device-add-existing"));
+  post(window, profileInfoMessage());
+  click(window, document.getElementById("btn-run-profile-device-add-existing"));
   post(window, installedDevices([]));
   click(window, document.getElementById("device-pick-android-add-new"));
   post(window, { type: "deviceCatalog", ok: true, catalog, error: null });

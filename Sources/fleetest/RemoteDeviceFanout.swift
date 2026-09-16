@@ -29,7 +29,7 @@ enum RemoteDeviceFanout {
     static func remoteMachines(project: String?, profile: String?, deviceMachine: String?) -> [String] {
         guard deviceMachine == nil else { return [] }
         guard let testProject = try? ScenarioHost.project(named: project) else { return [] }
-        // **実行プロファイル未選択でも分散する** —— 台帳を1つに決めず machines/ を畳み、
+        // **実行プロファイル未選択でも分散する** —— 台帳を1つに決めず runs/ を畳み、
         // 登録簿にあるマシンの台を持つ機械へ投げる(監視の fan-out と同じ集合)。
         // ここで [] を返していたため、「(プロファイルなし)」での「デバイスを全て起動」は
         // **手元しか起きなかった**(実害 2026-08-29)
@@ -41,11 +41,7 @@ enum RemoteDeviceFanout {
             return DeviceMachineGrouping.groups(entries, machine: { $0.machine })
                 .compactMap(\.machine)
         }
-        guard let machine = try? ProfileResolver.determineMachine(
-                  project: testProject, runProfileName: profile),
-              let devices = try? ProfileResolver.runDeviceMachines(
-                  project: testProject, runProfileName: profile, machineName: machine.name)
-        else { return [] }
+        let devices = ProfileResolver.runDeviceMachines(project: testProject, runProfileName: profile)
         return DeviceMachineGrouping.groups(devices, machine: { $0.machine })
             .compactMap(\.machine)
     }
@@ -62,7 +58,7 @@ enum RemoteDeviceFanout {
                 group.addTask {
                     // **先にプロファイルを送る** —— `remote exec` は何も転送しないので、
                     // 向こうの作業ディレクトリに profiles/ が無い(または古い)ままだと
-                    // 「machines/ が空」で失敗する(2026-08-17 実機で確認)。run のディスパッチと
+                    // デバイスが見つからず失敗する(2026-08-17 実機で確認)。run のディスパッチと
                     // 同じ rsync 引数(RemoteTransferPlan)を使う = 転送の規則を二重に持たない
                     if let project, let failure = RemoteProjectSync.run(project: project, machine: machine) {
                         relay(logLine("❌ \(failure)"))

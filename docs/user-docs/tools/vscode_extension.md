@@ -45,7 +45,7 @@ is unavailable.
 - Right-click a tile to start or stop that one device (`fleetest api start-device`/`stop-device`).
   Device operations run one at a time through a shared queue, so queued tiles show a
   "Waiting..." badge.
-- Toolbar buttons start/stop every device on the machine profile and restart the monitor process.
+- Toolbar buttons start/stop every device in view and restart the monitor process.
 - The **Recording Sessions** tab opens runs that were recorded (run profile `record: true`) and shows each
   scenario's video, a step tree, and the error list. **If the Test Run tab is showing when a run
   finishes**, the monitor switches to the Recording Sessions tab and opens that run's recording as soon as
@@ -54,7 +54,9 @@ is unavailable.
   Between the last scenario finishing and the switch, "Editing recordings..." is shown to the right
   of the Run Tests button.
 - The **Profiles** tab lists, creates, copies, renames and deletes test projects themselves,
-  and lists, creates, copies, renames, deletes and edits run/app/machine profiles.
+  and lists, creates, copies, renames, deletes and edits run/app profiles. A run profile's
+  section shows the union of every run profile's devices with checkboxes (checked = this
+  profile runs it), and its own "Add device" button.
 - The **Settings** tab holds display, update, log-and-recording cleanup, and remote machine
   settings, including the update-check and update actions described below.
 

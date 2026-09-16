@@ -1,6 +1,6 @@
-// VSCode拡張の新規デバイス作成UI向け: シミュレータ/AVDを新規作成しマシンプロファイルへ
-// デバイスを追記する(fleetest api create-device)。カタログは fleetest api device-catalog、
-// 追記ロジックは FTCore.MachineProfileEditor を使う。stdout には NDJSON(log* → finished)
+// VSCode拡張の新規デバイス作成UI向け: シミュレータ/AVDを新規作成し実行プロファイルの devices へ
+// 追記する(fleetest api create-device)。カタログは fleetest api device-catalog、
+// 追記ロジックは FTCore.RunProfileDeviceEditor を使う。stdout には NDJSON(log* → finished)
 // だけを出す(診断は stderr のみ。ok:false のときは exit code 1)。
 
 import ArgumentParser
@@ -12,20 +12,20 @@ import FTCore
 struct ApiCreateDeviceCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "create-device",
-        abstract: "Create a new simulator/AVD and append the device to the machine profile"
+        abstract: "Create a new simulator/AVD and append the device to a run profile"
             + " (NDJSON: log* -> finished on stdout; diagnostics on stderr only;"
             + " exit code 1 when ok:false)")
 
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
-    @Option(help: "Machine name (defaults to FT_MACHINE, the registered name, or the only entry in machines/)")
-    var machine: String?
+    @Option(help: "Run profile to append the device to (profiles/runs/<name>.json; required unless --no-register)")
+    var profile: String?
 
     @Option(help: "Platform (ios / android)")
     var platform: String
 
-    @Option(help: "Logical device name (must be unique across ios and android in the machine profile)")
+    @Option(help: "Device name (must be unique on this machine across ios and android in the run profile)")
     var name: String
 
     @Option(help: ArgumentHelp(
@@ -45,7 +45,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
     var overwrite = false
 
     @Flag(name: .customLong("no-register"), help: ArgumentHelp(
-        "Only create the simulator/AVD without appending it to the machine profile"
+        "Only create the simulator/AVD without appending it to a run profile"
         + " (for the VSCode extension's pick-from-existing screen — registration happens on its OK)"))
     var noRegister = false
 
@@ -72,7 +72,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         }
 
         // --no-register: 物理作成のみ行い、プロファイルの解決・重複チェック・追記・書き戻しは
-        // 一切行わない(--machine/--project も無視可。登録は拡張の選択画面 OK で別途行われる想定)
+        // 一切行わない(--profile/--project も無視可。登録は拡張の選択画面 OK で別途行われる想定)
         if noRegister {
             let resultEntry: ApiCreateDeviceEntry
             switch platform {
@@ -81,28 +81,30 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
             default:
                 (_, resultEntry) = try createAVD(name: trimmedName)
             }
-            emitLog("Not registering into the machine profile (--no-register)")
+            emitLog("Not registering into a run profile (--no-register)")
             return resultEntry
         }
 
         let testProject = try ScenarioHost.project(named: project)
-        let machineName = try resolveMachineName(project: testProject)
-
-        let machineURL = testProject.machinesDir.appendingPathComponent("\(machineName).json")
-        guard FileManager.default.fileExists(atPath: machineURL.path) else {
-            throw CreateDeviceError("machine profile \(machineName).json does not exist")
+        guard let runName = profile?.trimmingCharacters(in: .whitespacesAndNewlines), !runName.isEmpty else {
+            throw CreateDeviceError("--profile is required (the run profile to append the device to),"
+                + " or pass --no-register")
         }
-        let data = try Data(contentsOf: machineURL)
+        let runURL = testProject.runsDir.appendingPathComponent("\(runName).json")
+        guard FileManager.default.fileExists(atPath: runURL.path) else {
+            throw CreateDeviceError("run profile \(runName).json does not exist")
+        }
+        let data = try Data(contentsOf: runURL)
         guard let profileObject = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         else {
-            throw CreateDeviceError("cannot parse machine profile \(machineName).json as JSON")
+            throw CreateDeviceError("cannot parse run profile \(runName).json as JSON")
         }
 
         // 名前重複は物理作成前に検証する(作成後に addingDevice で発覚すると孤児シミュレータ/AVDが
         // 残るため)。addingDevice 内の重複チェックは防御として残している。
         // **このコマンドは手元にしか作らない**(リモートは --no-register)ので、比べる相手は
         // 手元のデバイスだけ。別ホストの同名は重複ではない(FTCore.DeviceMachineGrouping)
-        let localNames = MachineProfileEditor.localDeviceNames(inProfileObject: profileObject)
+        let localNames = RunProfileDeviceEditor.localDeviceNames(inRunProfileObject: profileObject)
         guard !localNames.contains(trimmedName) else {
             throw CreateDeviceError("duplicate device name: \(trimmedName)"
                 + " on this machine (names must be unique per host, across ios and android)")
@@ -121,17 +123,17 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         // エラーメッセージにその旨を含める(呼び出し側が後始末できるように)。
         // 追記〜書き戻しはプロファイル単位の flock で直列化し、並行 create-device が互いの追記を
         // 上書きする lost-update を防ぐ。物理作成は上で完了済み=ロック外(並行のまま)。
-        let lock = try ProvisionLock(stateDir: testProject.machinesDir,
-                                     lockName: "machine-\(machineName).lock")
+        let lock = try ProvisionLock(stateDir: testProject.stateDir,
+                                     lockName: "run-profile-\(runName).lock")
         await lock.acquire()
         defer { lock.release() }
 
         // ロック下で最新のプロファイルを読み直す(初回読みは line 88。別プロセスの追記を取りこぼさない)。
         let currentObject: [String: Any]
         do {
-            let freshData = try Data(contentsOf: machineURL)
+            let freshData = try Data(contentsOf: runURL)
             guard let obj = (try? JSONSerialization.jsonObject(with: freshData)) as? [String: Any] else {
-                throw CreateDeviceError("cannot parse machine profile \(machineName).json as JSON")
+                throw CreateDeviceError("cannot parse run profile \(runName).json as JSON")
             }
             currentObject = obj
         } catch let error as CreateDeviceError {
@@ -144,34 +146,22 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
 
         let updated: [String: Any]
         do {
-            updated = try MachineProfileEditor.addingDevice(
-                toProfileObject: currentObject, platform: platform, device: deviceEntry)
+            updated = try RunProfileDeviceEditor.addingDevice(
+                toRunProfileObject: currentObject, device: deviceEntry)
         } catch {
             throw CreateDeviceError(
                 "the simulator/AVD was created, but appending it to the profile failed: "
                 + error.localizedDescription)
         }
         do {
-            // キー順は OrderedProfileJSON(host → name を先頭)。ProfileWriter.json と同じ口を通す
-            try ProfileWriter.json(updated).write(to: machineURL, options: .atomic)
+            // キー順は OrderedProfileJSON(platform → machine → name を先頭)。ProfileWriter.json と同じ口を通す
+            try ProfileWriter.json(updated).write(to: runURL, options: .atomic)
         } catch {
             throw CreateDeviceError(
                 "the simulator/AVD was created, but writing the profile file failed: "
                 + error.localizedDescription)
         }
         return resultEntry
-    }
-
-    /// マシン名の決定: --machine が明示指定されていればそれを最優先(env/自動採用より優先)。
-    /// 省略時は ProfileResolver.determineMachine(FT_MACHINE > 登録名 > machines/ が1つ)に委ねる
-    private func resolveMachineName(project: TestProject) throws -> String {
-        if let machine, !machine.isEmpty { return machine }
-        let determined = try ProfileResolver.determineMachine(
-            project: project)
-        if determined.auto {
-            logStderr("→ Using machine profile \(determined.name) automatically (it is the only one in machines/)")
-        }
-        return determined.name
     }
 
     // MARK: - iOS
@@ -228,7 +218,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         // host は**必ず書く**(手元なら "local")。省略は「プロファイル直下の既定を継ぐ」の意味で、
         // 既定がリモートのプロファイルだと手元で作った実体が別の機械のものとして扱われる
         let deviceEntry: [String: Any] = [
-            "host": DeviceMachineGrouping.localDisplayName,
+            "platform": "ios", "machine": DeviceMachineGrouping.localDisplayName,
             "name": name, "simulator": deviceTypeName, "os": runtimeVersion, "udid": udid,
         ]
         let resultEntry = ApiCreateDeviceEntry(avd: nil, name: name, udid: udid)
@@ -288,7 +278,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         // 付けなければ _2, _3... を足して両方残す(呼び出し側が「上書きするか」を人に聞ける
         // ようにするため、ここでは黙って選ばない)
         let installedIDs = Set(AndroidDeviceCatalog.installedAVDs().map(\.id))
-        let baseID = MachineProfileEditor.sanitizedAVDID(from: name)
+        let baseID = RunProfileDeviceEditor.sanitizedAVDID(from: name)
         var avdID = baseID
         if installedIDs.contains(baseID), overwrite {
             try deleteExistingAVD(baseID, avdmanagerPath: avdmanagerURL.path)
@@ -309,7 +299,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
 
         // host は必ず書く(理由は createSimulator 側のコメント)
         let deviceEntry: [String: Any] = [
-            "host": DeviceMachineGrouping.localDisplayName, "name": name, "avd": avdID,
+            "platform": "android", "machine": DeviceMachineGrouping.localDisplayName, "name": name, "avd": avdID,
         ]
         let resultEntry = ApiCreateDeviceEntry(avd: avdID, name: name, udid: nil)
         return (deviceEntry, resultEntry)
@@ -408,7 +398,7 @@ private struct ApiCreateDeviceLogEvent: Encodable {
     let message: String
 }
 
-/// マシンプロファイルへ追記したデバイス。iOS は udid が非 null/avd が null、
+/// 実行プロファイルへ追記したデバイス。iOS は udid が非 null/avd が null、
 /// Android は逆(avd が非 null/udid が null)
 private struct ApiCreateDeviceEntry: Encodable {
     let avd: String?

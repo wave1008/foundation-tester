@@ -29,7 +29,7 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
     private func profile(_ devices: [ResolvedDevice]) -> ResolvedProfile {
         ResolvedProfile(
             project: TestProject(name: "dummy", rootURL: URL(fileURLWithPath: "/tmp/dummy")),
-            runName: "r", machineName: "m", appName: "app", apps: [:],
+            runName: "r", appName: "app", apps: [:],
             devices: devices, fm: FMConfig(), heal: false,
             reportDir: URL(fileURLWithPath: "/tmp/dummy/reports"),
             defaultTimeout: nil, scenarioTimeout: nil, wipeDataOnBloat: true, updateWebView: false,

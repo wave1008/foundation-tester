@@ -1,13 +1,16 @@
 # 実行プロファイルのキー一覧
 
 `profiles/runs/<name>.json` は、アプリ・デバイス一覧・実行時設定を組み合わせます。
-このページでは認識される全キーを一覧します。参照先のアプリ/マシンプロファイルは
-[profiles_ja.md](./profiles_ja.md)、`--profile` による選択は
+このページでは認識される全キーを一覧します。参照先のアプリプロファイルとデバイスが
+自分の居るマシンをどう名乗るかは [profiles_ja.md](./profiles_ja.md)、`--profile` による選択は
 [running_scenarios_ja.md](../running/running_scenarios_ja.md) を参照してください。
 
 ```json
-{ "app": "sampleapp",
-  "devices": [ { "name": "simulator1" }, { "name": "simulator2" }, { "name": "emulator1" } ],
+{ "app": "myapp",
+  "devices": [
+    { "platform": "ios", "machine": "local", "name": "simulator1", "simulator": "iPhone 17 Pro" },
+    { "platform": "android", "machine": "local", "name": "emulator1", "avd": "Pixel 9(Android 16)" }
+  ],
   "heal": true, "reportDir": "reports", "defaultTimeout": 5,
   "wipeDataOnBloat": true, "wipeDataThresholdGB": 8 }
 ```
@@ -17,7 +20,7 @@
 | キー | 型 | 既定値 | 意味 |
 |---|---|---|---|
 | `app` | string | — | 使用する `apps/<name>.json` プロファイル名 |
-| `devices` | array | — | 実行するデバイス名(解決済みマシンプロファイルから引く。同じ配列に iOS/Android を混在可) |
+| `devices` | array | — | 実行するデバイスの実体(同じ配列に iOS/Android を混在可)。各要素: `platform`(`"ios"`/`"android"`、必須)、`machine`(そのデバイスが居るマシン。手元は `"local"`、`fleetest remote machines add` で登録した名前も書ける)、`name`(必須。`machine` と組み合わせて一意)、`enabled`(`false` なら一覧に残すが走らせない。省略 = 走らせる)、そのデバイス自身の実体キー(`simulator`/`os`/`udid`/`avd`/`serial`/`kind`/`port`/`engine`/`model`。詳細は [profiles_ja.md](./profiles_ja.md)) |
 | `heal` | bool | `--profile` 実行は `true`・プロファイル無しの素の `fleetest run` は `false` | セレクタの自己修復(指紋照合方式)を許可する([self_healing_ja.md](../running/self_healing_ja.md)参照)。下記の FM・OCR 系のトグルとは独立(自己修復は FM を使わない) |
 | `textVisualCheck` | bool | `true` | `exist`/`textIs` 等のテキストの視覚検証(occlusion guard)を有効にする。木では一致したが実際には見えていない「誤った緑」を検出する。FM(Foundation Models。experimental — [environments_ja.md](../overview/environments_ja.md))が呼ばれるのは、これか `screenLooksLike` が `true` のときだけ |
 | `screenLooksLike` | bool | `true` | `screenLooksLike`(FM 視覚検証)を有効にする。`false` のときは該当ステップが失敗ではなく skip になる |
@@ -25,8 +28,7 @@
 | `reportDir` | string | `"reports"` | Markdown レポートの出力先(プロジェクトルート相対) |
 | `defaultTimeout` | number(秒) | DSL 側の既定値 | `timeout:` を取る DSL コマンドの既定タイムアウト |
 | `scenarioTimeout` | int(秒) | `90` | シナリオ単位のホスト側 watchdog(壁時計タイムアウト)。個々のコマンド待ちを縛る `defaultTimeout` とは別物 |
-| `machine` | string | 自動解決 | 使うマシンプロファイル名の明示指定(解決順序は [profiles_ja.md](./profiles_ja.md) 参照) |
-| `iosInappEngine` | bool | `true` | `true` → iOS デバイスは hybrid エンジン(in-app 主 + XCUITest フォールバック)で動く。`false` → XCUITest のみ。マシンプロファイルでデバイスに `engine` を明示していればそちらが優先。Android には影響しない |
+| `iosInappEngine` | bool | `true` | `true` → iOS デバイスは hybrid エンジン(in-app 主 + XCUITest フォールバック)で動く。`false` → XCUITest のみ。`devices[]` のその要素自身に `engine` を明示していればそちらが優先。Android には影響しない |
 | `wipeDataOnBloat` | bool | `true` | 実行開始時、Android AVD の wipe 対象ファイル(userdata/cache/snapshots)が `wipeDataThresholdGB` を超えていたら Wipe Data する |
 | `wipeDataThresholdGB` | number(GB) | `8` | `wipeDataOnBloat` のしきい値 |
 | `updateWebView` | bool | `true` | 実行開始時に端末上の WebView 版を揃える(同じシナリオが端末の WebView 版によって挙動が変わるのを防ぐ) |
@@ -59,7 +61,7 @@ ON**、プロファイルを使わない素の `fleetest run` は既定 OFF で�
 `--set` については [running_scenarios_ja.md](../running/running_scenarios_ja.md) 参照。
 値は上表に示したキーの型と一致させる)。`--profile` の有無を問わず効きます —— 例外は実行
 プロファイルの devices 一覧・供給工程が要るキー(`iosInappEngine`・`updateWebView`・
-`wipeDataOnBloat`・`recoverCpuFallbackToGpu`・`app`・`machine`・`locale`・
+`wipeDataOnBloat`・`recoverCpuFallbackToGpu`・`app`・`locale`・
 `wipeDataThresholdGB`)で、これらは `--profile` が必須です。`devices`/`remoteControl` は
 配列・オブジェクトなので `<キー>=<値>` の形では指定できません(この2つはプロファイル JSON を
 直接編集してください)。`--set` に未知のキーを渡すとエラーになります(プロファイル JSON の中の

@@ -1,13 +1,16 @@
 # Run Profile Keys
 
 `profiles/runs/<name>.json` combines an app, a device list and run-time settings. This page
-lists every recognized key. See [profiles.md](./profiles.md) for the app/machine profiles it
-references, and [running_scenarios.md](../running/running_scenarios.md) for how `--profile`
-selects one.
+lists every recognized key. See [profiles.md](./profiles.md) for the app profile it references
+and how a device entry names its machine, and [running_scenarios.md](../running/running_scenarios.md)
+for how `--profile` selects one.
 
 ```json
-{ "app": "sampleapp",
-  "devices": [ { "name": "simulator1" }, { "name": "simulator2" }, { "name": "emulator1" } ],
+{ "app": "myapp",
+  "devices": [
+    { "platform": "ios", "machine": "local", "name": "simulator1", "simulator": "iPhone 17 Pro" },
+    { "platform": "android", "machine": "local", "name": "emulator1", "avd": "Pixel 9(Android 16)" }
+  ],
   "heal": true, "reportDir": "reports", "defaultTimeout": 5,
   "wipeDataOnBloat": true, "wipeDataThresholdGB": 8 }
 ```
@@ -17,7 +20,7 @@ selects one.
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `app` | string | — | Name of the `apps/<name>.json` profile to use |
-| `devices` | array | — | Device names to run on (from the resolved machine profile; iOS/Android can mix in the same list) |
+| `devices` | array | — | Device entities to run (iOS/Android can mix in the same list). Each entry: `platform` (`"ios"`/`"android"`, required), `machine` (the machine it lives on — `"local"` for this Mac, or a name registered with `fleetest remote machines add`), `name` (required; unique together with `machine`), `enabled` (`false` keeps it listed but does not run it; default = run it), plus the device's own body keys (`simulator`/`os`/`udid`/`avd`/`serial`/`kind`/`port`/`engine`/`model` — see [profiles.md](./profiles.md)) |
 | `heal` | bool | `true` for `--profile` runs, `false` for a plain `fleetest run` | Allow selector self-healing (fingerprint matching; see [self_healing.md](../running/self_healing.md)). Independent of the FM- and OCR-based toggles below — self-healing does not use FM |
 | `textVisualCheck` | bool | `true` | Text visual verification (occlusion guard) on `exist`/`textIs` etc. — catches a "false green" that matched in the tree but is not actually visible. FM (Foundation Models, experimental — see [environments.md](../overview/environments.md)) is called only when this or `screenLooksLike` is `true` |
 | `screenLooksLike` | bool | `true` | Enable `screenLooksLike` (FM visual verification). When `false`, those steps are skipped rather than failing |
@@ -25,8 +28,7 @@ selects one.
 | `reportDir` | string | `"reports"` | Where to write Markdown reports (relative to the project root) |
 | `defaultTimeout` | number (seconds) | DSL's own default | Default timeout for DSL commands that take `timeout:` |
 | `scenarioTimeout` | int (seconds) | `90` | Host-side wall-clock timeout per scenario (watchdog). Distinct from `defaultTimeout`, which only bounds individual command waits |
-| `machine` | string | auto-resolved | Explicit machine profile name (see the resolution order in [profiles.md](./profiles.md)) |
-| `iosInappEngine` | bool | `true` | `true` → iOS devices run the hybrid engine (in-app primary, XCUITest fallback); `false` → XCUITest only. A device's own `engine` in the machine profile takes precedence if set. No effect on Android |
+| `iosInappEngine` | bool | `true` | `true` → iOS devices run the hybrid engine (in-app primary, XCUITest fallback); `false` → XCUITest only. A device's own `engine` in its `devices[]` entry takes precedence if set. No effect on Android |
 | `wipeDataOnBloat` | bool | `true` | At run start, wipe an Android AVD's data if the wipe-affected files (userdata/cache/snapshots) exceed `wipeDataThresholdGB` |
 | `wipeDataThresholdGB` | number (GB) | `8` | Threshold for `wipeDataOnBloat` |
 | `updateWebView` | bool | `true` | Reconcile the on-device WebView version at the start of a run, so the same scenario does not behave differently across devices with different WebView builds |
@@ -59,7 +61,7 @@ run without editing the profile file — e.g. `--set heal=false`, `--set textVis
 [running_scenarios.md](../running/running_scenarios.md) for `--set`; the value must match the
 key's type shown above). It works with or without `--profile` — except the keys that need a run
 profile's device list or supply pipeline (`iosInappEngine`, `updateWebView`, `wipeDataOnBloat`,
-`recoverCpuFallbackToGpu`, `app`, `machine`, `locale`, `wipeDataThresholdGB`), which require
+`recoverCpuFallbackToGpu`, `app`, `locale`, `wipeDataThresholdGB`), which require
 `--profile`. `devices` and `remoteControl` are a list and an object and cannot be expressed as
 `<key>=<value>`; edit the profile JSON for those. An unknown key passed to `--set` is an error
 (an unknown key inside the profile JSON only prints a warning and is ignored).

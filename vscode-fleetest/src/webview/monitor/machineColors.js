@@ -5,7 +5,7 @@
 // と hosts[].color(machine→鍵)から作り直す。
 //
 // 可変状態はこのモジュールに置く(書き込み箇所と同じモジュールに置く規律)。バッジを描く
-// 5箇所(deviceTiles.js/laneLog.js/runProfilesTab.js/machineProfilesTab.js/recordingsTab.js)は
+// 5箇所(deviceTiles.js/laneLog.js/runProfilesTab.js/runProfileDevicesTab.js/recordingsTab.js)は
 // paintMachineBadge を呼ぶだけで、パレットの中身を知らない。設定タブのスウォッチ選択は
 // machineColorPalette()/hexForColorKey() で読み取り専用に参照する。
 

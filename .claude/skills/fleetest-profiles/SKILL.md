@@ -1,6 +1,6 @@
 ---
 name: fleetest-profiles
-description: fleetest のマシンプロファイル・アプリプロファイル・実行プロファイルを1回のフローでまとめて作成する。最初に iOS/Android を確認し、アプリの表示名・アプリIDを聞き(パッケージパスは聞かない)、デバイスは指定があればそれで、無ければそのマシンで利用可能な最新OSの仮想デバイス(無ければ作成)で用意する。「プロファイルを作って」「デバイスとアプリと実行プロファイルをまとめて用意して」「テスト対象を追加して」等の依頼で使う。
+description: fleetest のアプリプロファイル・実行プロファイルを1回のフローでまとめて作成する。最初に iOS/Android を確認し、アプリの表示名・アプリIDを聞き(パッケージパスは聞かない)、デバイスは指定があればそれで、無ければそのマシンで利用可能な最新OSの仮想デバイス(無ければ作成)で用意する。「プロファイルを作って」「デバイスとアプリと実行プロファイルをまとめて用意して」「テスト対象を追加して」等の依頼で使う。
 ---
 
 # fleetest プロファイル一括作成 runbook
@@ -22,7 +22,7 @@ description: fleetest のマシンプロファイル・アプリプロファイ�
 > **スキルの呼び出し記法はエージェントごとに違う**(Claude Code は `/fleetest-setup`)。
 > 以下は `/` 形で書くので、別の記法のエージェントではそちらへ読み替える。
 
-1つのアプリ×1プラットフォーム分の **マシン/アプリ/実行プロファイルの三点セット** を作る。
+1つのアプリ×1プラットフォーム分の **アプリ/実行プロファイルの二点セット** を作る。
 既存プロジェクト(`fleetest project create` / `fleetest init` 済み)に対して実行する。未セットアップなら
 `/fleetest-setup` を案内する。
 
@@ -36,7 +36,7 @@ description: fleetest のマシンプロファイル・アプリプロファイ�
   以降 `fleetest` はこれを指す。
 - **原則**: 各書き込みの後に検証ゲート(`fleetest profile list`)を通す。🧑 は停止して確認する。
   **既に分かっている値は聞き直さない** — `/fleetest-setup` から呼ばれた場合はプロジェクト名・
-  アプリ表示名・アプリID・プラットフォーム・マシン名が確定済み。**足りない値だけ**を聞く
+  アプリ表示名・アプリID・プラットフォームが確定済み。**足りない値だけ**を聞く
   (同じことを二度聞かれるのは、受け手にとって最も目に付く無駄)。
   **人に聞くときは必ず選択ダイアログ(Claude Code なら AskUserQuestion)を使う** — チャットに質問文を書いて答えを待たない
   (テキストで聞くと見落とされ、フローが止まる)。自由入力は Other で受ける。
@@ -67,7 +67,7 @@ description: fleetest のマシンプロファイル・アプリプロファイ�
 `appRef`(アプリプロファイルのファイル名)は `appName` を小文字化・`^[a-z0-9_-]+$` に整えた値にする
 (例 `SUT Store` → `sut-store`)。整えられない文字が多ければ🧑に確認する。
 
-### 3. 🧑 デバイス(マシンプロファイル)の指定を確認
+### 3. 🧑 デバイスの指定を確認
 
 **「デバイスについて指定したいものはあるか」** を聞く。指定できるのは:
 
@@ -80,21 +80,20 @@ description: fleetest のマシンプロファイル・アプリプロファイ�
 
 ### 4. プロファイルを作る(**1コマンド。JSON は手書きしない**)
 
-マシン/アプリ/実行の3ファイルは `fleetest profile setup` が整合させて書く(冪等・再実行可)。
+アプリ/実行の2ファイルは `fleetest profile setup` が整合させて書く(冪等・再実行可。
+書くデバイスは常にこの Mac(`"machine": "local"`)。別の機械のデバイスを足すときは「完了後」を参照)。
 **デバイスの選定もコマンドに任せる**(`--auto-device`)。
 `fleetest api device-catalog` / `simctl list` / `emulator -list-avds` を別々に叩かない
 (承認回数が増えるだけで、選定規則はコマンド側に入っている):
 
 ```
 fleetest profile setup --project <プロジェクト> --platform <ios|android|both> --auto-device \
-  --machine <マシン名> --app-id <アプリID> --app-name "<表示名>" [--app-path <パッケージパス>] [--app-ref <ref>]
+  --app-id <アプリID> --app-name "<表示名>" [--app-path <パッケージパス>] [--app-ref <ref>]
 ```
 
 - `--auto-device` の選定規則: **iOS = 最新 OS の既存シミュレータ(iPad は除外・名前に "Pro" を含むものを優先)** /
   **Android = config.ini の API レベルが最大の既存 AVD**。0台なら作成方法を示してエラーになる。
 - `--platform both` で iOS と Android を1回で作る(論理名は simulator1 / emulator1)。
-- `--machine` はマシンプロファイル名(`profiles/machines/<名前>.json`)。作った実行プロファイルには
-  その名前が `"machine"` として書かれる(この Mac の登録名という概念は無い)。
 - 機種/OS をユーザーが指定した場合だけ `--auto-device` を外し、実体を明示する
   (iOS: `--simulator "<機種名>" --os <version>` か `--udid`、Android: `--avd <avdID>` か `--serial`)。
 - 仮想デバイスを**新規作成**する必要があるとき(0台・指定に合うものが無い)は
@@ -104,7 +103,7 @@ fleetest profile setup --project <プロジェクト> --platform <ios|android|bo
 #### 4-b. 新規作成が要るとき(create-device)
 
 ```
-fleetest api create-device --project <プロジェクト> --machine <マシン名> \
+fleetest api create-device --project <プロジェクト> --profile <実行プロファイル名> \
   --platform <plat> --name "<論理名>" --model "<機種 identifier/id>" --os "<ランタイム identifier / システムイメージ package>"
 ```
 
@@ -134,4 +133,9 @@ fleetest profile list --project <プロジェクト>
 
 - 実行: `fleetest run --project <プロジェクト> --profile <plat>`(実機シミュレータ/エミュレータが要る)。
 - 別プラットフォームや別アプリを足すときは、この `/fleetest-profiles` をもう一度実行する
-  (マシンプロファイルには追記、アプリ/実行プロファイルは新しい `appRef`/`<plat>` で追加)。
+  (実行プロファイルの `devices` には追記、アプリプロファイルは新しい `appRef` で追加)。
+- **別の機械(リモートランナー)のデバイスを足すときは `fleetest profile setup`/`api create-device`
+  を使わない**(どちらも `"machine": "local"` の台しか作らない)。`fleetest remote machines add` で
+  そのマシンを登録したうえで、`profiles/runs/<name>.json` の `devices` に
+  `{ "platform": "...", "machine": "<登録名>", "name": "...", ... }` を直接追記するか、
+  拡張のプロファイルタブの「デバイスを追加」で機械を選んで足す(→ `/fleetest-remote-setup`)。

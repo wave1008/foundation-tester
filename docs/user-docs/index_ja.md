@@ -34,7 +34,7 @@ FM を使いません。テストはエージェント(MCP)に
 ### プロジェクトの作成
 
 - [テストプロジェクトの作成](project/creating_project_ja.md)
-- [プロファイル(アプリ / マシン / 実行)](project/profiles_ja.md)
+- [プロファイル(アプリ / 実行)](project/profiles_ja.md)
 - [実行プロファイルの設定項目](project/run_profile_ja.md)
 
 ### テストクラスの作成

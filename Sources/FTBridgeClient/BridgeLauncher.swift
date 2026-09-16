@@ -669,7 +669,7 @@ public struct BridgeLauncher {
 
     /// 指定 UDID を対象にするブリッジのポート一覧(停止しない読み取り専用)。
     /// **実機のブリッジ帰属判定はこれで行う**: /status の device 名は実機だと機種名("iPhone")で
-    /// マシンプロファイルのデバイス名と一致しないため、名前照合では永久に紐付かない。
+    /// 実行プロファイルのデバイス名と一致しないため、名前照合では永久に紐付かない。
     /// 特定は stopMatching と同じくプロセスの起動引数(-destination ... id=<UDID>)照合。
     /// stale な pid ファイルはここでは消さない(読み取り専用に徹する。掃除は stopMatching の役割)
     public static func portsMatching(udid: String, repoRoot: URL) -> [UInt16] {

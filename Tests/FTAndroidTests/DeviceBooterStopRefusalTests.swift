@@ -270,12 +270,12 @@ final class DeviceBooterShutdownAllLeaseRefusalTests: XCTestCase {
         let holder = getppid()
         RunLease.write(stateDir: dir, key: heldUDID, pid: holder)
 
-        let profile = MachineProfile(
-            ios: MachineDeviceList(devices: [
+        let profile = DeviceRoster(
+            ios: DeviceRosterList(devices: [
                 DeviceSpec(name: "iPhone-Held", kind: .physical, udid: heldUDID),
                 DeviceSpec(name: "iPhone-Free", kind: .physical, udid: "00008130-BBBB"),
             ]),
-            android: MachineDeviceList(devices: [
+            android: DeviceRosterList(devices: [
                 DeviceSpec(name: "Pixel-Free", kind: .physical, serial: "R3CN123"),
             ]))
         let stopped = LockedBox([String]())
@@ -299,7 +299,7 @@ final class DeviceBooterShutdownAllLeaseRefusalTests: XCTestCase {
         let heldUDID = "00008130-AAAA"
         RunLease.write(stateDir: dir, key: heldUDID, pid: getppid())
 
-        let profile = MachineProfile(ios: MachineDeviceList(devices: [
+        let profile = DeviceRoster(ios: DeviceRosterList(devices: [
             DeviceSpec(name: "iPhone-Held", kind: .physical, udid: heldUDID),
         ]))
         let stopped = LockedBox([String]())
@@ -323,7 +323,7 @@ final class DeviceBooterShutdownAllLeaseRefusalTests: XCTestCase {
         let resolvedUDID = "HW-UDID-9"
         RunLease.write(stateDir: dir, key: resolvedUDID, pid: holder)
 
-        let profile = MachineProfile(ios: MachineDeviceList(devices: [
+        let profile = DeviceRoster(ios: DeviceRosterList(devices: [
             DeviceSpec(name: "iPhone-Declared", kind: .physical, udid: "DEVICECTL-IDENTIFIER-9"),
         ]))
         let fakeDevice = IOSPhysicalDeviceInfo(

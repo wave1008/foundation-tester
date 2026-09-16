@@ -1,7 +1,7 @@
 // 他モジュールの状態には依存しない(vscode の postMessage/受信ハンドラのみで完結)。
 //
 // プロジェクトは TestProjects/<名前>/ ディレクトリのみで名前以外の設定値を持たないため、
-// 実行/アプリ/マシンプロファイル(appProfilesTab.js 等)と違いフォーム本体・dirty管理・
+// 実行/アプリプロファイル(appProfilesTab.js 等)と違いフォーム本体・dirty管理・
 // ロード/保存の口を持たない。選択の正はホスト側(fleetest.project 設定)なので、
 // ここでは選択状態を持たず profileInfo が届くたび message.project をそのまま反映するだけ。
 

@@ -221,18 +221,13 @@ enum FleetRunner {
     }
 
     /// エントリが走らせられる platform 集合を、実際の run と同じ規則(ProfileResolver.resolve)で
-    /// 求める。**マシンプロファイルはプロジェクト資産(git 管理)で、実行のたびにリモートへ
+    /// 求める。**実行プロファイルはプロジェクト資産(git 管理)で、実行のたびにリモートへ
     /// 転送される**ので、リモートエントリでも SSH せずローカルの clone から解決できる
-    /// (docs/remote-runner.md §8)。どのマシンプロファイルかは**実行プロファイルの `machine`**
-    /// が決める —— 登録簿にキャッシュしたリモートのマシン名は使わない
-    /// (「この機械の登録名」は持たない。ProfileResolver.determineMachine の宣言)
+    /// (docs/remote-runner.md §8)
     private static func resolveEntryPlatforms(
         _ entry: FleetRunEntry, project: TestProject
     ) throws -> Set<String> {
-        let (machineName, _) = try ProfileResolver.determineMachine(
-            project: project, runProfileName: entry.profile)
-        let resolved = try ProfileResolver.resolve(
-            project: project, runName: entry.profile, machineName: machineName)
+        let resolved = try ProfileResolver.resolve(project: project, runName: entry.profile)
         return Set(resolved.devices.map(\.platform))
     }
 
@@ -411,9 +406,8 @@ enum FleetRunner {
         var args = ["run", "--project", project, "--profile", profile]
         // "local" エントリも常に --runner を渡す(欠陥3・2026-08-17)。子プロセスは自分自身が
         // MachineDispatch を再適用するため、--runner を省略すると「未指定」と区別が付かず、
-        // entry.profile が引くマシンプロファイルに host が設定されていると子がそこへ自動
-        // ディスパッチしてしまい、{"host":"local"} と書いた意味が失われる(重複ホスト拒否も
-        // 無意味になる)。"local" を明示すれば MachineDispatch.resolve がそこで止める
+        // entry.profile の台が全部リモートにあると子がそこへ自動ディスパッチしてしまい、
+        // {"host":"local"} と書いた意味が失われる(重複ホスト拒否も無意味になる)。"local" を明示すれば MachineDispatch.resolve がそこで止める
         // (RunProfile.swift 参照)。--force-lock/--wait-lock 等のリモート専用フラグは引き続きリモートのみ
         // (ロックは発行側の関心。"local" 子には転送しない)
         if host != "local" {

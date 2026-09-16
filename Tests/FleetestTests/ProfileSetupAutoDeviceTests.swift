@@ -32,8 +32,10 @@ final class ProfileSetupAutoDeviceTests: XCTestCase {
             let device = entry(platform: platform)
             XCTAssertFalse(ProfileWriter.hasDeviceBody(device),
                            "\(platform): 実体なしと判定されないと --auto-device が一度も発火しない")
-            XCTAssertEqual(device["host"] as? String, DeviceMachineGrouping.localDisplayName)
-            XCTAssertEqual(device.count, 2, "実体を書かない限り host と name だけ")
+            XCTAssertEqual(device["machine"] as? String, "local")
+            XCTAssertEqual(device["platform"] as? String, platform)
+            XCTAssertNil(device["host"], "旧キーは書かない")
+            XCTAssertEqual(device.count, 3, "実体を書かない限り platform・machine・name だけ")
         }
     }
 
@@ -64,14 +66,14 @@ final class ProfileSetupAutoDeviceTests: XCTestCase {
             .joined(separator: "\n")
         XCTAssertFalse(code.contains("device.count"),
                        "実体の有無は ProfileWriter.hasDeviceBody で判定する"
-                       + "(host/name が常に入るのでキー数の比較は恒真になる)")
+                       + "(platform/machine/name が常に入るのでキー数の比較は恒真になる)")
         // プロファイルの os は接頭辞なし("27.0")が規約。SimDeviceInfo.os("iOS 27.0")を
         // 生のまま書くと表示側が「iOS iOS 27.0」と二重に出す(2026-08-19 の実害)
         XCTAssertTrue(code.contains("normalizeOS(picked.os)"),
                       "auto-pick の os は ApiInstalledDevicesCommand.normalizeOS を通して書く")
     }
 
-    /// 自動選定の結果を入れた後は実体あり = マシンプロファイルへ書く分岐に入る
+    /// 自動選定の結果を入れた後は実体あり = 実行プロファイルへ書く分岐に入る
     func testAutoPickedValuesBecomeABody() {
         var device = entry(platform: "ios")
         device["simulator"] = "iPhone 17 Pro"

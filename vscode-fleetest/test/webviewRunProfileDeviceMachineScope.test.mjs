@@ -1,8 +1,9 @@
-// webviewMachineDeviceMachineScope.test.mjs
-// マシンプロファイルのデバイス一覧(machineProfilesTab.js)が (machine, name) で行を identify することの
-// DOM テスト。実 HTML+実バンドルで動かす方式は webviewDevicePickHost.test.mjs と同じ。
+// webviewRunProfileDeviceMachineScope.test.mjs
+// 実行プロファイル節のデバイス一覧(runProfileDevicesTab.js)が (platform, machine, name) で
+// 行を identify することの DOM テスト。実 HTML+実バンドルで動かす方式は
+// webviewRunProfileDeviceBadge.test.mjs と同じ。
 //
-// 同じ機械プロファイルに別マシンの同名デバイスが並ぶのは通常(各機が同じ命名規則でシミュレータを
+// 同じ実行プロファイルに別マシンの同名デバイスが並ぶのは通常(各機が同じ命名規則でシミュレータを
 // 作る)。名前だけで持つと、①クリックした行と別マシンの同名行が選択状態になり、②右クリック
 // メニューの除去・編集フォームの確定が別の機械のエントリへ飛ぶ。
 
@@ -57,40 +58,48 @@ function createWebview(onPost = () => {}) {
   return { window, document: window.document };
 }
 
-// 手元とリモート(M1Max)に同名 "シミュ1" が居るマシンプロファイル。表示順は [手元, M1Max]。
-const MACHINE_WITH_SAME_NAME_ON_TWO_MACHINES = {
-  name: "M1",
-  devices: [
-    { name: "シミュ1", platform: "ios", detail: "iPhone 16 / 18.0", simulator: "iPhone 16", os: "18.0", udid: "UDID-LOCAL" },
-    {
-      name: "シミュ1",
-      platform: "ios",
-      machine: "M1Max",
-      detail: "iPhone 16 / 18.0",
-      simulator: "iPhone 16",
-      os: "18.0",
-      udid: "UDID-M1MAX",
-    },
-  ],
+// 手元とリモート(M1Max)に同名 "シミュ1" が居る実行プロファイル。表示順は [手元, M1Max]。
+const DEVICES_WITH_SAME_NAME_ON_TWO_MACHINES = [
+  { platform: "ios", name: "シミュ1", simulator: "iPhone 16", os: "18.0", udid: "UDID-LOCAL", enabled: true },
+  { platform: "ios", name: "シミュ1", machine: "M1Max", simulator: "iPhone 16", os: "18.0", udid: "UDID-M1MAX", enabled: true },
+];
+
+const PROFILE_INFO = {
+  type: "profileInfo",
+  projects: ["P"], profiles: ["all"], current: "all", filter: "all", apps: [],
+  project: "P", projectDir: "TestProjects/P",
+  devices: DEVICES_WITH_SAME_NAME_ON_TWO_MACHINES.map((d) => ({ ...d, detail: "iPhone 16 / 18.0" })),
 };
 
-function postMachine(window, machine) {
-  window.dispatchEvent(
-    new window.MessageEvent("message", {
-      data: { type: "machineProfileInfo", machines: [machine], current: machine.name, error: null },
-    }),
-  );
+function runProfileData(devices) {
+  return {
+    type: "runProfileData", profile: "all", ok: true, error: null,
+    fields: {
+      app: "", devices,
+      heal: true, textVisualCheck: true, screenLooksLike: true, ocrTextVisualCheck: true,
+      iosInappEngine: true, iosFastInput: false, iosPreActionWarmup: true, homeOnStart: true,
+      playProtectBypass: true, enableAnimations: false, containerInference: true, updateWebView: true,
+      wipeDataOnBloat: true, recoverCpuFallbackToGpu: false, record: false, recordFailuresOnly: false,
+      recordBitrateKbps: "", recordFullResolution: false, defaultTimeout: "", wipeDataThresholdGB: "",
+      locale: "", workspace: "", reportDir: "",
+    },
+  };
+}
+
+function postDevices(window, devices) {
+  window.dispatchEvent(new window.MessageEvent("message", { data: PROFILE_INFO }));
+  window.dispatchEvent(new window.MessageEvent("message", { data: runProfileData(devices) }));
 }
 
 function deviceRows(document) {
-  return [...document.querySelectorAll("#machine-device-list .machine-device-row")];
+  return [...document.querySelectorAll("#run-profile-devices .run-profile-device-row-item")];
 }
 
 test("同名が別マシンに並ぶとき、クリックした行だけが選択状態になる", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
-  postMachine(window, MACHINE_WITH_SAME_NAME_ON_TWO_MACHINES);
+  postDevices(window, DEVICES_WITH_SAME_NAME_ON_TWO_MACHINES);
   const rows = deviceRows(document);
   assert.equal(rows.length, 2);
 
@@ -108,19 +117,19 @@ test("右クリック→除去は、その行のマシンを載せて送る", (t
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
 
-  postMachine(window, MACHINE_WITH_SAME_NAME_ON_TWO_MACHINES);
+  postDevices(window, DEVICES_WITH_SAME_NAME_ON_TWO_MACHINES);
   const rows = deviceRows(document);
 
   rows[1].dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
-  document.getElementById("machine-device-menu-item").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  const remoteRemove = posted.filter((m) => m.type === "machineDeviceRemove").pop();
+  document.getElementById("run-profile-device-menu-item").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  const remoteRemove = posted.filter((m) => m.type === "runProfileDeviceRemove").pop();
   assert.equal(remoteRemove.devices.length, 1);
   assert.equal(remoteRemove.devices[0].name, "シミュ1");
   assert.equal(remoteRemove.devices[0].machine, "M1Max");
 
   rows[0].dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
-  document.getElementById("machine-device-menu-item").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  const localRemove = posted.filter((m) => m.type === "machineDeviceRemove").pop();
+  document.getElementById("run-profile-device-menu-item").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  const localRemove = posted.filter((m) => m.type === "runProfileDeviceRemove").pop();
   assert.equal(localRemove.devices.length, 1);
   assert.equal(localRemove.devices[0].name, "シミュ1");
   assert.equal(localRemove.devices[0].machine, undefined, "手元のデバイスに machine は載せない(省略=手元)");
@@ -131,45 +140,41 @@ test("編集フォームの自動保存は、選択した行のマシンを載�
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
 
-  postMachine(window, MACHINE_WITH_SAME_NAME_ON_TWO_MACHINES);
+  postDevices(window, DEVICES_WITH_SAME_NAME_ON_TWO_MACHINES);
   const rows = deviceRows(document);
 
   rows[1].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   // 選択した行の値がフォームに載っていること(別マシンの同名を掴んでいない witness)。
-  assert.equal(document.getElementById("editor-udid").textContent, "UDID-M1MAX");
+  assert.equal(document.getElementById("run-profile-device-udid").textContent, "UDID-M1MAX");
 
-  const nameInput = document.getElementById("editor-name");
+  const nameInput = document.getElementById("run-profile-device-name-input");
   nameInput.value = "シミュ1-改";
   nameInput.dispatchEvent(new window.Event("input", { bubbles: true }));
   nameInput.dispatchEvent(new window.Event("change", { bubbles: true }));
 
-  const update = posted.filter((m) => m.type === "machineDeviceUpdate").pop();
+  const update = posted.filter((m) => m.type === "runProfileDeviceUpdate").pop();
   assert.equal(update.originalName, "シミュ1");
-  assert.equal(update.deviceMachine, "M1Max");
+  assert.equal(update.machine, "M1Max", "その台が居る機械が載っている");
   assert.equal(update.fields.udid, "UDID-M1MAX");
-  // **machine(編集中のマシンプロファイル名)と deviceMachine(その台が居る機械)は別物**。
-  // 同じキーに寄せると片方が undefined になり、拡張側の検証がメッセージごと捨てて
-  // 保存中のまま何も起きない(2026-08-26 の改名で実際に起きた)
-  assert.equal(update.machine, "M1", "どのマシンプロファイルを書くかが落ちている");
 });
 
-test("手元の行の自動保存には deviceMachine を載せない(省略=手元)", (t) => {
+test("手元の行の自動保存には machine を載せない(省略=手元)", (t) => {
   const posted = [];
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
 
-  postMachine(window, MACHINE_WITH_SAME_NAME_ON_TWO_MACHINES);
+  postDevices(window, DEVICES_WITH_SAME_NAME_ON_TWO_MACHINES);
   const rows = deviceRows(document);
   rows[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  assert.equal(document.getElementById("editor-udid").textContent, "UDID-LOCAL");
+  assert.equal(document.getElementById("run-profile-device-udid").textContent, "UDID-LOCAL");
 
-  const nameInput = document.getElementById("editor-name");
+  const nameInput = document.getElementById("run-profile-device-name-input");
   nameInput.value = "シミュ1-改";
   nameInput.dispatchEvent(new window.Event("input", { bubbles: true }));
   nameInput.dispatchEvent(new window.Event("change", { bubbles: true }));
 
-  const update = posted.filter((m) => m.type === "machineDeviceUpdate").pop();
-  assert.equal(update.deviceMachine, undefined);
+  const update = posted.filter((m) => m.type === "runProfileDeviceUpdate").pop();
+  assert.equal(update.machine, undefined);
 });
 
 test("別マシンの同名へのリネームは webview 側の重複検証で弾かれない", (t) => {
@@ -177,22 +182,24 @@ test("別マシンの同名へのリネームは webview 側の重複検証で�
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
 
-  postMachine(window, {
-    name: "M1",
-    devices: [
-      { name: "シミュA", platform: "ios", detail: "d", simulator: "iPhone 16", os: "18.0", udid: "U1" },
-      { name: "シミュB", platform: "ios", machine: "M1Max", detail: "d", simulator: "iPhone 16", os: "18.0", udid: "U2" },
-    ],
-  });
+  const devices = [
+    { platform: "ios", name: "シミュA", simulator: "iPhone 16", os: "18.0", udid: "U1", enabled: true },
+    { platform: "ios", name: "シミュB", machine: "M1Max", simulator: "iPhone 16", os: "18.0", udid: "U2", enabled: true },
+  ];
+  window.dispatchEvent(new window.MessageEvent("message", {
+    data: { ...PROFILE_INFO, devices: devices.map((d) => ({ ...d, detail: "d" })) },
+  }));
+  window.dispatchEvent(new window.MessageEvent("message", { data: runProfileData(devices) }));
+
   const rows = deviceRows(document);
   rows[1].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  const nameInput = document.getElementById("editor-name");
+  const nameInput = document.getElementById("run-profile-device-name-input");
   nameInput.value = "シミュA"; // 手元に居る名前。M1Max では未使用なので許される
   nameInput.dispatchEvent(new window.Event("input", { bubbles: true }));
   nameInput.dispatchEvent(new window.Event("change", { bubbles: true }));
 
-  assert.equal(document.getElementById("editor-error").textContent, "");
-  const update = posted.filter((m) => m.type === "machineDeviceUpdate").pop();
+  assert.equal(document.getElementById("run-profile-device-error").textContent, "");
+  const update = posted.filter((m) => m.type === "runProfileDeviceUpdate").pop();
   assert.equal(update.fields.name, "シミュA");
-  assert.equal(update.deviceMachine, "M1Max");
+  assert.equal(update.machine, "M1Max");
 });

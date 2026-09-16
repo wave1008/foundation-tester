@@ -13,9 +13,10 @@ import path from "node:path";
 import { test } from "node:test";
 import { NdjsonParser } from "../src/ndjson";
 import {
-  addDevicesToMachineProfile,
+  addDevicesToRunProfile,
   buildRunProfileTemplate,
   bulkLifecycleOp,
+  catalogHasDeviceNameClash,
   createDeviceLifecycleQueueState,
   finishDeviceLifecycleJob,
   deviceLifecycleJobNeedsMonitorPause,
@@ -40,24 +41,22 @@ import {
   isMonitorFromWebviewMessage,
   machineDeviceDetail,
   monitorControlLine,
+  orderedDeviceEntry,
   parseAppProfileForForm,
   parseRunProfileForForm,
-  removeDeviceFromMachineProfile,
   removeDeviceFromRunProfile,
-  removeDevicesFromRunProfileOfMachine,
-  removeDevicesFromMachineProfile,
   removeQueuedBulkUpJob,
   RUNNING_DEVICES_PROFILE_VALUE,
-  syncDevicesInMachineProfile,
+  runProfileDeviceRefKey,
   toWebviewMessage,
   updateAppProfileInObject,
-  updateDeviceInMachineProfile,
+  updateDeviceInRunProfile,
   updateRunProfileInObject,
   validateNewAppProfileName,
   validateNewDeviceName,
-  validateNewMachineProfileName,
   validateNewProjectName,
   validateNewRunProfileName,
+  validateRunProfileDeviceEditFields,
 } from "../src/monitorModel";
 
 // esbuild がこのテストを out-test/ にバンドルするため、import.meta.url はバンドル後の
@@ -96,7 +95,7 @@ test("isMonitorEvent: monitorError の正常な値(device あり)を true と判
 });
 
 test("isMonitorEvent: monitorError は device 省略でも true(契約上 device は省略されうる)", () => {
-  const value = { kind: "monitorError", message: "マシンプロファイルが未設定です" };
+  const value = { kind: "monitorError", message: "実行プロファイルが未設定です" };
   assert.equal(isMonitorEvent(value), true);
 });
 
@@ -366,7 +365,6 @@ test("isMonitorFromWebviewMessage: ready/devicesUp/devicesDown/restartMonitor/ru
 test("isMonitorFromWebviewMessage: batchCreateDevices は names を検証する(空・99超・空文字は false)", () => {
   const base = {
     type: "batchCreateDevices",
-    machine: "M1",
     platform: "ios",
     names: ["dev00", "dev01"],
     model: "iPhone 17 Pro",
@@ -386,7 +384,7 @@ test("isMonitorFromWebviewMessage: batchCreateDevices は names を検証する(
   assert.equal(isMonitorFromWebviewMessage({ ...base, platform: "windows" }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, model: "" }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, os: "" }), false);
-  assert.equal(isMonitorFromWebviewMessage({ ...base, machine: "" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...base, source: { kind: "unknown" } }), false);
 });
 
 test("isMonitorFromWebviewMessage: batchCreateDevices の installSystemImage は省略可・型が合えば true", () => {
@@ -936,11 +934,11 @@ test("filterMonitorDevices: connected の iOS 実機・booted の Android 実機
   assert.deepEqual(filterMonitorDevices([iosConnected, androidBooting], "running"), [iosConnected, androidBooting]);
 });
 
-// 未登録(マシンプロファイル未記載の合成デバイス。determineStates(includeUnregistered:) 参照)
+// 未登録(どの実行プロファイルにも記載が無い合成デバイス。determineStates(includeUnregistered:) 参照)
 const SIM_UNREGISTERED = { ...SIM1, id: "ios:野良シム", name: "野良シム", registered: false };
 
-// **落とさない**。以前は除外していたが、マシンプロファイルが2つ以上ある案件では
-// `--profile` 無しの `api monitor` がマシンを決められず全台を registered:false で出すため、
+// **落とさない**。以前は除外していたが、実行プロファイルが2つ以上ある案件では
+// `--profile` 無しの `api monitor` が対象を1つに決められず全台を registered:false で出すため、
 // 「(プロファイルなし)で1台も出ない」になっていた(実害 2026-08-28)。
 test("filterMonitorDevices: filter='all' は registered=false も落とさない", () => {
   assert.deepEqual(
@@ -997,40 +995,6 @@ test("validateNewRunProfileName: '@' で始まる場合はエラー(予約値と
 
 test("validateNewRunProfileName: 既存名と重複する場合はエラー", () => {
   assert.notEqual(validateNewRunProfileName("ios", ["ios", "android"]), null);
-});
-
-// ---- validateNewMachineProfileName(新規/リネーム後のマシンプロファイル名検証) ----
-
-test("validateNewMachineProfileName: 妥当な名前は null(問題なし)", () => {
-  assert.equal(validateNewMachineProfileName("M1 Max", []), null);
-  assert.equal(validateNewMachineProfileName("my-machine_1", ["M1 Max"]), null);
-});
-
-test("validateNewMachineProfileName: 空文字はエラー", () => {
-  assert.notEqual(validateNewMachineProfileName("", []), null);
-});
-
-test("validateNewMachineProfileName: 前後に空白を含む(trim済みでない)場合はエラー", () => {
-  assert.notEqual(validateNewMachineProfileName(" M1 Max", []), null);
-  assert.notEqual(validateNewMachineProfileName("M1 Max ", []), null);
-});
-
-test("validateNewMachineProfileName: '/' や '\\\\' を含む場合はエラー", () => {
-  assert.notEqual(validateNewMachineProfileName("a/b", []), null);
-  assert.notEqual(validateNewMachineProfileName("a\\b", []), null);
-});
-
-test("validateNewMachineProfileName: '.' で始まる場合はエラー", () => {
-  assert.notEqual(validateNewMachineProfileName(".hidden", []), null);
-});
-
-test("validateNewMachineProfileName: 既存名と完全一致する場合はエラー", () => {
-  assert.notEqual(validateNewMachineProfileName("M1 Max", ["M1 Max", "M2 Ultra"]), null);
-});
-
-test("validateNewMachineProfileName: 既存名と大文字小文字違いで重複する場合もエラー(macOSのFSがcase-insensitiveなため)", () => {
-  assert.notEqual(validateNewMachineProfileName("m1 max", ["M1 Max"]), null);
-  assert.notEqual(validateNewMachineProfileName("M1 MAX", ["m1 max"]), null);
 });
 
 // ---- validateNewAppProfileName(新規/コピー先/リネーム後のアプリプロファイル名検証) ----
@@ -1097,14 +1061,13 @@ test("validateNewProjectName: 既存名と重複する場合はエラー", () =>
 
 // ---- buildRunProfileTemplate(新規実行プロファイルのテンプレートJSON生成) ----
 
-test("buildRunProfileTemplate: apps/devices 候補ありなら先頭のappと全devicesを使う", () => {
-  const json = buildRunProfileTemplate("M1 Max", ["sampleapp", "otherapp"], ["シミュ1", "エミュ1"]);
+test("buildRunProfileTemplate: 候補ありなら先頭のappを使い、devicesは空配列", () => {
+  const json = buildRunProfileTemplate(["sampleapp", "otherapp"]);
   assert.ok(json.endsWith("\n"));
   const parsed = JSON.parse(json);
   assert.deepEqual(parsed, {
-    machine: "M1 Max",
     app: "sampleapp",
-    devices: [{ name: "シミュ1" }, { name: "エミュ1" }],
+    devices: [],
     heal: true,
     textVisualCheck: true,
     ocrTextVisualCheck: true,
@@ -1115,13 +1078,12 @@ test("buildRunProfileTemplate: apps/devices 候補ありなら先頭のappと全
   });
 });
 
-test("buildRunProfileTemplate: 候補が無ければ app は空文字、devices は空文字1件のプレースホルダー", () => {
-  const json = buildRunProfileTemplate("M1 Max", [], []);
+test("buildRunProfileTemplate: 候補が無ければ app は空文字", () => {
+  const json = buildRunProfileTemplate([]);
   const parsed = JSON.parse(json);
   assert.deepEqual(parsed, {
-    machine: "M1 Max",
     app: "",
-    devices: [{ name: "" }],
+    devices: [],
     heal: true,
     textVisualCheck: true,
     ocrTextVisualCheck: true,
@@ -1132,28 +1094,7 @@ test("buildRunProfileTemplate: 候補が無ければ app は空文字、devices 
   });
 });
 
-test("buildRunProfileTemplate: machine が空文字なら machine キー自体を含めない", () => {
-  const json = buildRunProfileTemplate("", ["sampleapp"], ["シミュ1"]);
-  const parsed = JSON.parse(json);
-  assert.equal("machine" in parsed, false);
-  assert.deepEqual(parsed, {
-    app: "sampleapp",
-    devices: [{ name: "シミュ1" }],
-    heal: true,
-    textVisualCheck: true,
-    ocrTextVisualCheck: true,
-    screenLooksLike: true,
-    iosInappEngine: true,
-    updateWebView: true,
-    wipeDataOnBloat: true,
-  });
-});
-
-// ---- isMonitorFromWebviewMessage: マシンプロファイル(machineProfileRefresh/deviceCatalogRequest/createDevice) ----
-
-test("isMonitorFromWebviewMessage: machineProfileRefresh は常に true", () => {
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineProfileRefresh" }), true);
-});
+// ---- isMonitorFromWebviewMessage: deviceCatalogRequest/createDevice ----
 
 test("isMonitorFromWebviewMessage: deviceCatalogRequest/installedDevicesRequest は source が local/remote(machine非空)なら true", () => {
   for (const type of ["deviceCatalogRequest", "installedDevicesRequest"]) {
@@ -1172,32 +1113,12 @@ test("isMonitorFromWebviewMessage: deviceCatalogRequest/installedDevicesRequest 
   }
 });
 
-// ---- isMonitorFromWebviewMessage: マシンプロファイル自体の追加/削除/名前変更 ----
-
-test("isMonitorFromWebviewMessage: machineProfileAdd は常に true", () => {
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineProfileAdd" }), true);
-});
-
-test("isMonitorFromWebviewMessage: machineProfileCopy/Delete/Rename は machine が非空文字列なら true", () => {
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineProfileCopy", machine: "M1" }), true);
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineProfileDelete", machine: "M1" }), true);
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineProfileRename", machine: "M1" }), true);
-});
-
-test("isMonitorFromWebviewMessage: machineProfileCopy/Delete/Rename は machine 空文字/欠落/非文字列なら false", () => {
-  for (const type of ["machineProfileCopy", "machineProfileDelete", "machineProfileRename"]) {
-    assert.equal(isMonitorFromWebviewMessage({ type, machine: "" }), false);
-    assert.equal(isMonitorFromWebviewMessage({ type }), false);
-    assert.equal(isMonitorFromWebviewMessage({ type, machine: 123 }), false);
-    assert.equal(isMonitorFromWebviewMessage({ type, machine: null }), false);
-  }
-});
+// ---- isMonitorFromWebviewMessage: createDevice(machine プロファイル統合で machine フィールドは廃止) ----
 
 test("isMonitorFromWebviewMessage: createDevice は全フィールドが非空文字列(platformはios/android)+registerがboolean+sourceが妥当なら true", () => {
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "createDevice",
-      machine: "M1",
       platform: "ios",
       name: "シミュ1",
       model: "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro",
@@ -1210,7 +1131,6 @@ test("isMonitorFromWebviewMessage: createDevice は全フィールドが非空�
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "createDevice",
-      machine: "M1",
       platform: "android",
       name: "エミュ1",
       model: "pixel_9_pro",
@@ -1225,7 +1145,6 @@ test("isMonitorFromWebviewMessage: createDevice は全フィールドが非空�
 test("isMonitorFromWebviewMessage: createDevice はフィールド欠落/空文字/不正platform/register非boolean/source不正なら false", () => {
   const base = {
     type: "createDevice",
-    machine: "M1",
     platform: "ios",
     name: "n",
     model: "m",
@@ -1233,7 +1152,6 @@ test("isMonitorFromWebviewMessage: createDevice はフィールド欠落/空文�
     register: true,
     source: { kind: "local" },
   };
-  assert.equal(isMonitorFromWebviewMessage({ ...base, machine: "" }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, name: "" }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, model: "" }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, os: "" }), false);
@@ -1242,8 +1160,6 @@ test("isMonitorFromWebviewMessage: createDevice はフィールド欠落/空文�
   assert.equal(isMonitorFromWebviewMessage({ ...base, register: undefined }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, source: { kind: "remote", machine: "" } }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, source: { kind: "bogus" } }), false);
-  const { machine, ...missingMachine } = base;
-  assert.equal(isMonitorFromWebviewMessage(missingMachine), false);
   const { register, ...missingRegister } = base;
   assert.equal(isMonitorFromWebviewMessage(missingRegister), false);
   const { source, ...missingSource } = base;
@@ -1290,89 +1206,84 @@ test("isMonitorFromWebviewMessage: devicePickDeviceDelete はフィールド欠�
   assert.equal(isMonitorFromWebviewMessage(missingIdentifier), false);
 });
 
-test("isMonitorFromWebviewMessage: machineDeviceRemove は machine 非空文字列・devices 非空配列(各要素 name 非空文字列)なら true", () => {
+test("isMonitorFromWebviewMessage: runProfileDeviceRemove は devices 非空配列(各要素 platform+name 非空文字列)なら true", () => {
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: [{ name: "シミュ1" }] }),
+    isMonitorFromWebviewMessage({ type: "runProfileDeviceRemove", devices: [{ platform: "ios", name: "シミュ1" }] }),
     true,
   );
   // machine は省略可(=手元)。指定があれば非空文字列。
   assert.equal(
     isMonitorFromWebviewMessage({
-      type: "machineDeviceRemove",
-      machine: "M1",
-      devices: [{ name: "シミュ1", machine: "M1Max" }],
+      type: "runProfileDeviceRemove",
+      devices: [{ platform: "ios", name: "シミュ1", machine: "M1Max" }],
     }),
     true,
   );
-  // 複数選択の一括削除(要件5)。同名が別ホストに並ぶのは通常。
+  // 複数選択の一括除去。同名が別ホストに並ぶのは通常。
   assert.equal(
     isMonitorFromWebviewMessage({
-      type: "machineDeviceRemove",
-      machine: "M1",
-      devices: [{ name: "シミュ1" }, { name: "シミュ1", machine: "M1Max" }],
+      type: "runProfileDeviceRemove",
+      devices: [{ platform: "ios", name: "シミュ1" }, { platform: "ios", name: "シミュ1", machine: "M1Max" }],
     }),
     true,
   );
 });
 
-test("isMonitorFromWebviewMessage: machineDeviceWipe は name/platform/identifier が揃っていれば true", () => {
+test("isMonitorFromWebviewMessage: runProfileDeviceWipe は name/platform/identifier が揃っていれば true", () => {
   const ios = { name: "シミュ1", platform: "ios", identifier: "UDID-1" };
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [ios] }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "runProfileDeviceWipe", devices: [ios] }), true);
   assert.equal(
     isMonitorFromWebviewMessage({
-      type: "machineDeviceWipe",
+      type: "runProfileDeviceWipe",
       devices: [ios, { name: "エミュ1", platform: "android", identifier: "Pixel_8", machine: "M1Max" }],
     }),
     true,
   );
 });
 
-test("isMonitorFromWebviewMessage: machineDeviceWipe は識別子を欠くと false(名前では撃たない)", () => {
+test("isMonitorFromWebviewMessage: runProfileDeviceWipe は識別子を欠くと false(名前では撃たない)", () => {
   const ok = { name: "シミュ1", platform: "ios", identifier: "UDID-1" };
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [] }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "runProfileDeviceWipe", devices: [] }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "runProfileDeviceWipe" }), false);
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ name: "シミュ1" }] }),
+    isMonitorFromWebviewMessage({ type: "runProfileDeviceWipe", devices: [{ name: "シミュ1" }] }),
     false, // 名前だけでは撃たない(CLI は識別子でしか受け付けない)
   );
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ ...ok, identifier: "" }] }),
+    isMonitorFromWebviewMessage({ type: "runProfileDeviceWipe", devices: [{ ...ok, identifier: "" }] }),
     false,
   );
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ ...ok, platform: "web" }] }),
+    isMonitorFromWebviewMessage({ type: "runProfileDeviceWipe", devices: [{ ...ok, platform: "web" }] }),
     false,
   );
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ ...ok, name: "" }] }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: ["シミュ1"] }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "runProfileDeviceWipe", devices: [{ ...ok, name: "" }] }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "runProfileDeviceWipe", devices: ["シミュ1"] }), false);
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ ...ok, machine: "" }] }),
+    isMonitorFromWebviewMessage({ type: "runProfileDeviceWipe", devices: [{ ...ok, machine: "" }] }),
     false, // machine は指定するなら非空("" は「手元」ではなく不正)
   );
 });
 
-test("isMonitorFromWebviewMessage: machineDeviceRemove は machine 空文字/devices 空配列・欠落・要素不正なら false", () => {
-  const devices = [{ name: "シミュ1" }];
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "", devices }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: [] }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: [{ name: "" }] }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: [{ name: 1 }] }), false);
+test("isMonitorFromWebviewMessage: runProfileDeviceRemove は devices 空配列・欠落・要素不正なら false", () => {
+  const devices = [{ platform: "ios", name: "シミュ1" }];
+  assert.equal(isMonitorFromWebviewMessage({ type: "runProfileDeviceRemove", devices: [] }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "runProfileDeviceRemove", devices: [{ platform: "ios", name: "" }] }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "runProfileDeviceRemove", devices: [{ platform: "windows", name: "n" }] }), false);
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: [{ name: "OK", machine: "" }] }),
+    isMonitorFromWebviewMessage({ type: "runProfileDeviceRemove", devices: [{ platform: "ios", name: "OK", machine: "" }] }),
     false, // machine は指定するなら非空("" は「手元」ではなく不正)
   );
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: ["シミュ1"] }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", devices }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "runProfileDeviceRemove", devices: ["シミュ1"] }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "runProfileDeviceRemove" }), false);
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: { name: "シミュ1" } }),
+    isMonitorFromWebviewMessage({ type: "runProfileDeviceRemove", devices: { platform: "ios", name: "シミュ1" } }),
     false, // devices は配列必須(単体オブジェクトは不可)
   );
-  // 旧 webview の names 形は受け付けない(パネルを開き直せば新しいバンドルになる)。
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", names: ["シミュ1"] }), false);
+  assert.notEqual(devices.length, 0); // devices は上のケースで再利用するためのフィクスチャ
 });
 
-// ---- isMonitorFromWebviewMessage: machineDevicesSync(「+既存から選択」モーダルの OK) ----
+// ---- isMonitorFromWebviewMessage: runProfileDevicesSync(「+既存から選択」モーダルの OK) ----
 
 const VALID_SYNC_ADD_IOS_ENTRY = {
   platform: "ios",
@@ -1390,13 +1301,12 @@ const VALID_SYNC_ADD_ANDROID_ENTRY = {
 
 const LOCAL_SOURCE = { kind: "local" };
 
-test("isMonitorFromWebviewMessage: machineDevicesSync は add のみ非空(remove:[])なら true", () => {
+test("isMonitorFromWebviewMessage: runProfileDevicesSync は profile 非空・add 非空なら true", () => {
   assert.equal(
     isMonitorFromWebviewMessage({
-      type: "machineDevicesSync",
-      machine: "M1",
+      type: "runProfileDevicesSync",
+      profile: "ios",
       add: [VALID_SYNC_ADD_IOS_ENTRY, VALID_SYNC_ADD_ANDROID_ENTRY],
-      remove: [],
       source: LOCAL_SOURCE,
     }),
     true,
@@ -1404,211 +1314,158 @@ test("isMonitorFromWebviewMessage: machineDevicesSync は add のみ非空(remov
   // オプショナルフィールド(simulator/os/udid/avd)は省略可。
   assert.equal(
     isMonitorFromWebviewMessage({
-      type: "machineDevicesSync",
-      machine: "M1",
+      type: "runProfileDevicesSync",
+      profile: "ios",
       add: [{ platform: "ios", name: "n" }],
-      remove: [],
       source: LOCAL_SOURCE,
     }),
     true,
   );
-});
-
-test("isMonitorFromWebviewMessage: machineDevicesSync は remove のみ非空(add:[])なら true", () => {
   assert.equal(
     isMonitorFromWebviewMessage({
-      type: "machineDevicesSync",
-      machine: "M1",
-      add: [],
-      remove: ["シミュ1"],
-      source: LOCAL_SOURCE,
-    }),
-    true,
-  );
-});
-
-test("isMonitorFromWebviewMessage: machineDevicesSync は add/remove 両方非空でも true", () => {
-  assert.equal(
-    isMonitorFromWebviewMessage({
-      type: "machineDevicesSync",
-      machine: "M1",
+      type: "runProfileDevicesSync",
+      profile: "ios",
       add: [VALID_SYNC_ADD_IOS_ENTRY],
-      remove: ["シミュ1"],
       source: { kind: "remote", machine: "M1Max" },
     }),
     true,
   );
 });
 
-test("isMonitorFromWebviewMessage: machineDevicesSync は source 欠落/不正なら false", () => {
+test("isMonitorFromWebviewMessage: runProfileDevicesSync は source 欠落/不正なら false", () => {
   assert.equal(
     isMonitorFromWebviewMessage({
-      type: "machineDevicesSync",
-      machine: "M1",
+      type: "runProfileDevicesSync",
+      profile: "ios",
       add: [VALID_SYNC_ADD_IOS_ENTRY],
-      remove: [],
     }),
     false,
   );
   assert.equal(
     isMonitorFromWebviewMessage({
-      type: "machineDevicesSync",
-      machine: "M1",
+      type: "runProfileDevicesSync",
+      profile: "ios",
       add: [VALID_SYNC_ADD_IOS_ENTRY],
-      remove: [],
       source: { kind: "remote", machine: "" },
     }),
     false,
   );
 });
 
-test("isMonitorFromWebviewMessage: machineDevicesSync は machine 空文字なら false", () => {
+test("isMonitorFromWebviewMessage: runProfileDevicesSync は profile 空文字なら false", () => {
   assert.equal(
     isMonitorFromWebviewMessage({
-      type: "machineDevicesSync",
-      machine: "",
+      type: "runProfileDevicesSync",
+      profile: "",
       add: [VALID_SYNC_ADD_IOS_ENTRY],
-      remove: [],
       source: LOCAL_SOURCE,
     }),
     false,
   );
 });
 
-test("isMonitorFromWebviewMessage: machineDevicesSync は add/remove が両方空なら false", () => {
+test("isMonitorFromWebviewMessage: runProfileDevicesSync は add が空/欠落/配列でなければ false(除去はこのメッセージの役目ではない)", () => {
+  assert.equal(
+    isMonitorFromWebviewMessage({ type: "runProfileDevicesSync", profile: "ios", add: [], source: LOCAL_SOURCE }),
+    false,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({ type: "runProfileDevicesSync", profile: "ios", source: LOCAL_SOURCE }),
+    false,
+  );
   assert.equal(
     isMonitorFromWebviewMessage({
-      type: "machineDevicesSync", machine: "M1", add: [], remove: [], source: LOCAL_SOURCE,
+      type: "runProfileDevicesSync", profile: "ios", add: "not-array", source: LOCAL_SOURCE,
     }),
     false,
   );
 });
 
-test("isMonitorFromWebviewMessage: machineDevicesSync は add が欠落/配列でなければ false", () => {
-  assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDevicesSync", machine: "M1", remove: [], source: LOCAL_SOURCE }),
-    false,
-  );
+test("isMonitorFromWebviewMessage: runProfileDevicesSync は add 要素が不正なら false", () => {
   assert.equal(
     isMonitorFromWebviewMessage({
-      type: "machineDevicesSync", machine: "M1", add: "not-array", remove: [], source: LOCAL_SOURCE,
-    }),
-    false,
-  );
-});
-
-test("isMonitorFromWebviewMessage: machineDevicesSync は remove が欠落/配列でなければ false", () => {
-  assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDevicesSync", machine: "M1", add: [], source: LOCAL_SOURCE }),
-    false,
-  );
-  assert.equal(
-    isMonitorFromWebviewMessage({
-      type: "machineDevicesSync", machine: "M1", add: [], remove: "not-array", source: LOCAL_SOURCE,
-    }),
-    false,
-  );
-});
-
-test("isMonitorFromWebviewMessage: machineDevicesSync は remove に空文字/非文字列要素を含むと false", () => {
-  assert.equal(
-    isMonitorFromWebviewMessage({
-      type: "machineDevicesSync", machine: "M1", add: [], remove: [""], source: LOCAL_SOURCE,
-    }),
-    false,
-  );
-  assert.equal(
-    isMonitorFromWebviewMessage({
-      type: "machineDevicesSync", machine: "M1", add: [], remove: [123], source: LOCAL_SOURCE,
-    }),
-    false,
-  );
-});
-
-test("isMonitorFromWebviewMessage: machineDevicesSync は add 要素が不正なら false", () => {
-  assert.equal(
-    isMonitorFromWebviewMessage({
-      type: "machineDevicesSync",
-      machine: "M1",
+      type: "runProfileDevicesSync",
+      profile: "ios",
       add: [{ platform: "ios", name: "" }],
-      remove: [],
       source: LOCAL_SOURCE,
     }),
     false, // name 空文字
   );
   assert.equal(
     isMonitorFromWebviewMessage({
-      type: "machineDevicesSync",
-      machine: "M1",
+      type: "runProfileDevicesSync",
+      profile: "ios",
       add: [{ platform: "windows", name: "n" }],
-      remove: [],
+      source: LOCAL_SOURCE,
     }),
     false, // 不正 platform
   );
   assert.equal(
     isMonitorFromWebviewMessage({
-      type: "machineDevicesSync",
-      machine: "M1",
+      type: "runProfileDevicesSync",
+      profile: "ios",
       add: [{ platform: "ios", name: "n", udid: 123 }],
-      remove: [],
+      source: LOCAL_SOURCE,
     }),
     false, // オプショナルフィールドの型不正
   );
 });
 
-// ---- isMonitorFromWebviewMessage: machineDeviceUpdate(プロファイルタブ右ペインの編集フォーム) ----
+// ---- isMonitorFromWebviewMessage: runProfileDeviceUpdate(プロファイルタブ右ペインの編集フォーム) ----
 
-const VALID_MACHINE_DEVICE_UPDATE = {
-  type: "machineDeviceUpdate",
-  machine: "M1",
+const VALID_RUN_PROFILE_DEVICE_UPDATE = {
+  type: "runProfileDeviceUpdate",
   platform: "ios",
   originalName: "シミュ1",
-  fields: { name: "シミュ1", simulator: "iPhone 17 Pro", os: "27.0", udid: "", port: "", avd: "" },
+  fields: { name: "シミュ1", simulator: "iPhone 17 Pro", os: "27.0", udid: "", port: "", avd: "", serial: "" },
 };
 
-test("isMonitorFromWebviewMessage: machineDeviceUpdate は machine/originalName 非空・platform ios|android・fields6項目 string なら true", () => {
-  assert.equal(isMonitorFromWebviewMessage(VALID_MACHINE_DEVICE_UPDATE), true);
+test("isMonitorFromWebviewMessage: runProfileDeviceUpdate は originalName 非空・platform ios|android・fields7項目 string なら true", () => {
+  assert.equal(isMonitorFromWebviewMessage(VALID_RUN_PROFILE_DEVICE_UPDATE), true);
   assert.equal(
     isMonitorFromWebviewMessage({
-      ...VALID_MACHINE_DEVICE_UPDATE,
+      ...VALID_RUN_PROFILE_DEVICE_UPDATE,
       platform: "android",
-      fields: { name: "エミュ1", simulator: "", os: "", udid: "", port: "", avd: "Pixel 9(Android 16)" },
+      fields: { name: "エミュ1", simulator: "", os: "", udid: "", port: "", avd: "Pixel 9(Android 16)", serial: "" },
+    }),
+    true,
+  );
+  // machine は省略可(=手元)。指定があれば非空文字列。
+  assert.equal(
+    isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_DEVICE_UPDATE, machine: "M1Max" }),
+    true,
+  );
+});
+
+test("isMonitorFromWebviewMessage: runProfileDeviceUpdate は fields の空文字を許容する(createDevice と違い name 以外は空文字が正常値)", () => {
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      ...VALID_RUN_PROFILE_DEVICE_UPDATE,
+      fields: { name: "シミュ1", simulator: "", os: "", udid: "", port: "", avd: "", serial: "" },
     }),
     true,
   );
 });
 
-test("isMonitorFromWebviewMessage: machineDeviceUpdate は fields の空文字を許容する(createDevice と違い name 以外は空文字が正常値)", () => {
+test("isMonitorFromWebviewMessage: runProfileDeviceUpdate は originalName 空文字・machine空文字・不正 platform・fields欠落/型不正なら false", () => {
+  assert.equal(isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_DEVICE_UPDATE, originalName: "" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_DEVICE_UPDATE, machine: "" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_DEVICE_UPDATE, platform: "windows" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_DEVICE_UPDATE, fields: null }), false);
   assert.equal(
     isMonitorFromWebviewMessage({
-      ...VALID_MACHINE_DEVICE_UPDATE,
-      fields: { name: "シミュ1", simulator: "", os: "", udid: "", port: "", avd: "" },
-    }),
-    true,
-  );
-});
-
-test("isMonitorFromWebviewMessage: machineDeviceUpdate は machine/originalName 空文字・不正 platform・fields欠落/型不正なら false", () => {
-  assert.equal(isMonitorFromWebviewMessage({ ...VALID_MACHINE_DEVICE_UPDATE, machine: "" }), false);
-  assert.equal(isMonitorFromWebviewMessage({ ...VALID_MACHINE_DEVICE_UPDATE, originalName: "" }), false);
-  assert.equal(isMonitorFromWebviewMessage({ ...VALID_MACHINE_DEVICE_UPDATE, platform: "windows" }), false);
-  assert.equal(isMonitorFromWebviewMessage({ ...VALID_MACHINE_DEVICE_UPDATE, fields: null }), false);
-  assert.equal(
-    isMonitorFromWebviewMessage({
-      ...VALID_MACHINE_DEVICE_UPDATE,
-      fields: { name: "シミュ1", simulator: "", os: "", udid: "", avd: "" }, // port 欠落
+      ...VALID_RUN_PROFILE_DEVICE_UPDATE,
+      fields: { name: "シミュ1", simulator: "", os: "", udid: "", avd: "", serial: "" }, // port 欠落
     }),
     false,
   );
   assert.equal(
     isMonitorFromWebviewMessage({
-      ...VALID_MACHINE_DEVICE_UPDATE,
-      fields: { name: "シミュ1", simulator: "", os: "", udid: "", port: 0, avd: "" }, // port が number
+      ...VALID_RUN_PROFILE_DEVICE_UPDATE,
+      fields: { name: "シミュ1", simulator: "", os: "", udid: "", port: 0, avd: "", serial: "" }, // port が number
     }),
     false,
   );
-  const { machine, ...missingMachine } = VALID_MACHINE_DEVICE_UPDATE;
-  assert.equal(isMonitorFromWebviewMessage(missingMachine), false);
 });
 
 // ---- isMonitorFromWebviewMessage: 実行プロファイル設定フォーム(runProfileLoad/runProfileSave) ----
@@ -1617,9 +1474,11 @@ const VALID_RUN_PROFILE_SAVE = {
   type: "runProfileSave",
   profile: "run1",
   fields: {
-    machine: "M1 Max",
     app: "sampleapp",
-    devices: [{ name: "シミュ1" }, { name: "エミュ1" }],
+    devices: [
+      { platform: "ios", name: "シミュ1", enabled: true },
+      { platform: "android", name: "エミュ1", enabled: true, machine: "M1Max" },
+    ],
     heal: false,
     textVisualCheck: true,
     screenLooksLike: true,
@@ -1661,12 +1520,11 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields21�
     isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_SAVE, fields: { ...VALID_RUN_PROFILE_SAVE.fields, devices: [] } }),
     true,
   );
-  // machine/app/reportDir/defaultTimeout/wipeDataThresholdGB/locale は空文字も(型としては)許容する。
+  // app/reportDir/defaultTimeout/wipeDataThresholdGB/locale は空文字も(型としては)許容する。
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
       fields: {
-        machine: "",
         app: "",
         devices: [],
         heal: true,
@@ -1702,7 +1560,30 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 空文字・fields
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, devices: [{ name: "シミュ1" }, { name: 1 }] }, // name が非文字列
+      fields: {
+        ...VALID_RUN_PROFILE_SAVE.fields,
+        devices: [{ platform: "ios", name: "シミュ1", enabled: true }, { platform: "ios", name: 1, enabled: true }],
+      }, // name が非文字列
+    }),
+    false,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      ...VALID_RUN_PROFILE_SAVE,
+      fields: {
+        ...VALID_RUN_PROFILE_SAVE.fields,
+        devices: [{ platform: "windows", name: "n", enabled: true }],
+      }, // platform が ios/android でない
+    }),
+    false,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      ...VALID_RUN_PROFILE_SAVE,
+      fields: {
+        ...VALID_RUN_PROFILE_SAVE.fields,
+        devices: [{ platform: "ios", name: "n" }],
+      }, // enabled 欠落
     }),
     false,
   );
@@ -2016,859 +1897,241 @@ test("validateNewDeviceName: 既存(ios/android横断)と重複するならエ�
 
 // ---- removeDeviceFromRunProfile ----
 // 実体(シミュレータ/AVD)を消したあと、実行プロファイルが指す台も外すための関数。
-// マシンプロファイルと形が違う(devices は平らな配列で machine は各エントリが持つ)。
+// プロファイルタブの「除去」からも、(platform, machine, name) が一致する全実行プロファイルへ
+// 順に適用される形で使われる。
 
-test("removeDeviceFromRunProfile: (machine, name) 一致だけを外し、他マシンの同名は残す", () => {
+test("removeDeviceFromRunProfile: (platform, machine, name) 一致だけを外し、他マシンの同名は残す", () => {
   const profile = {
-    machine: "local+remote",
     app: "sut",
     devices: [
-      { machine: "local", name: "iPhone(iOS 27.0)01" },
-      { machine: "M1Max", name: "iPhone(iOS 27.0)01" },
-      { machine: "local", name: "iPhone(iOS 27.0)02" },
+      { platform: "ios", machine: "local", name: "iPhone(iOS 27.0)01" },
+      { platform: "ios", machine: "M1Max", name: "iPhone(iOS 27.0)01" },
+      { platform: "ios", machine: "local", name: "iPhone(iOS 27.0)02" },
     ],
   };
-  const result = removeDeviceFromRunProfile(profile, "iPhone(iOS 27.0)01", "local");
+  const result = removeDeviceFromRunProfile(profile, { platform: "ios", name: "iPhone(iOS 27.0)01" });
   assert.equal(result.removed, 1);
   assert.deepEqual(result.object.devices, [
-    { machine: "M1Max", name: "iPhone(iOS 27.0)01" },
-    { machine: "local", name: "iPhone(iOS 27.0)02" },
+    { platform: "ios", machine: "M1Max", name: "iPhone(iOS 27.0)01" },
+    { platform: "ios", machine: "local", name: "iPhone(iOS 27.0)02" },
   ]);
-  assert.equal(result.object.machine, "local+remote", "他のキーは保持する");
+  assert.equal(result.object.app, "sut", "他のキーは保持する");
 });
 
-test("removeDeviceFromRunProfile: machine 省略のエントリは local として引く", () => {
+test("removeDeviceFromRunProfile: machine 省略のキーは local として引く", () => {
   const result = removeDeviceFromRunProfile(
-    { devices: [{ name: "Pixel(Android 15)01" }, { machine: "M1Ultra", name: "Pixel(Android 15)01" }] },
-    "Pixel(Android 15)01",
-    "local",
+    {
+      devices: [
+        { platform: "android", name: "Pixel(Android 15)01" },
+        { platform: "android", machine: "M1Ultra", name: "Pixel(Android 15)01" },
+      ],
+    },
+    { platform: "android", name: "Pixel(Android 15)01" },
   );
   assert.equal(result.removed, 1);
-  assert.deepEqual(result.object.devices, [{ machine: "M1Ultra", name: "Pixel(Android 15)01" }]);
+  assert.deepEqual(result.object.devices, [
+    { platform: "android", machine: "M1Ultra", name: "Pixel(Android 15)01" },
+  ]);
+});
+
+test("removeDeviceFromRunProfile: platform が違えば同名でも消さない", () => {
+  const result = removeDeviceFromRunProfile(
+    { devices: [{ platform: "android", name: "同名" }, { platform: "ios", name: "同名" }] },
+    { platform: "ios", name: "同名" },
+  );
+  assert.equal(result.removed, 1);
+  assert.deepEqual(result.object.devices, [{ platform: "android", name: "同名" }]);
 });
 
 test("removeDeviceFromRunProfile: 対象が無ければ removed:0(書き戻さない判断に使う)", () => {
-  const result = removeDeviceFromRunProfile({ devices: [{ machine: "local", name: "他" }] }, "対象", "local");
+  const result = removeDeviceFromRunProfile(
+    { devices: [{ platform: "ios", machine: "local", name: "他" }] },
+    { platform: "ios", machine: "local", name: "対象" },
+  );
   assert.equal(result.removed, 0);
 });
 
 test("removeDeviceFromRunProfile: devices が無い/不正形式でも壊さない", () => {
-  assert.equal(removeDeviceFromRunProfile({ machine: "M1" }, "x", "local").removed, 0);
-  assert.equal(removeDeviceFromRunProfile(null, "x", "local"), null);
-  assert.equal(removeDeviceFromRunProfile([], "x", "local"), null);
+  assert.equal(removeDeviceFromRunProfile({ app: "M1" }, { platform: "ios", name: "x" }).removed, 0);
+  assert.equal(removeDeviceFromRunProfile(null, { platform: "ios", name: "x" }), null);
+  assert.equal(removeDeviceFromRunProfile([], { platform: "ios", name: "x" }), null);
   // 型不正の要素は対象外として保持する(消す方に倒すと利用者の記述を落とす)
-  const odd = removeDeviceFromRunProfile({ devices: ["文字列", { machine: "local", name: "x" }] }, "x", "local");
+  const odd = removeDeviceFromRunProfile(
+    { devices: ["文字列", { platform: "ios", machine: "local", name: "x" }] },
+    { platform: "ios", name: "x" },
+  );
   assert.equal(odd.removed, 1);
   assert.deepEqual(odd.object.devices, ["文字列"]);
 });
 
-// ---- removeDevicesFromRunProfileOfMachine ----
-// 「マシンプロファイルから外す」操作の前段。**そのマシンを使う実行プロファイルだけ**を掃く。
+// ---- runProfileDeviceRefKey / orderedDeviceEntry ----
 
-test("removeDevicesFromRunProfileOfMachine: machine が一致する実行プロファイルだけ掃く", () => {
+test("runProfileDeviceRefKey: (platform, machine, name) を1本のキーに畳む。machine 省略=手元", () => {
+  assert.equal(
+    runProfileDeviceRefKey({ platform: "ios", machine: "M1Max", name: "n" }),
+    runProfileDeviceRefKey({ platform: "ios", machine: "M1Max", name: "n" }),
+  );
+  assert.notEqual(
+    runProfileDeviceRefKey({ platform: "ios", name: "n" }),
+    runProfileDeviceRefKey({ platform: "android", name: "n" }),
+  );
+  assert.notEqual(
+    runProfileDeviceRefKey({ platform: "ios", machine: "M1Max", name: "n" }),
+    runProfileDeviceRefKey({ platform: "ios", name: "n" }),
+  );
+});
+
+test("orderedDeviceEntry: キー順は platform, machine, name, enabled、残りはアルファベット順", () => {
+  const entry = orderedDeviceEntry({
+    platform: "ios", name: "n", enabled: false, udid: "U", simulator: "S", os: "27.0", port: 8100,
+  });
+  assert.deepEqual(Object.keys(entry), ["platform", "machine", "name", "enabled", "os", "port", "simulator", "udid"]);
+  assert.equal(entry.machine, "local", "手元も明示で書く");
+});
+
+test("orderedDeviceEntry: enabled=true のときは enabled キーを書かない", () => {
+  const entry = orderedDeviceEntry({ platform: "android", machine: "M1Max", name: "n", enabled: true, avd: "Pixel_9" });
+  assert.deepEqual(Object.keys(entry), ["platform", "machine", "name", "avd"]);
+});
+
+// ---- catalogHasDeviceNameClash ----
+
+test("catalogHasDeviceNameClash: 同じ machine 内の別デバイスと同名なら衝突(ios/android 横断)", () => {
+  const catalog = [
+    { platform: "ios", name: "A" },
+    { platform: "android", name: "B" },
+  ];
+  assert.equal(catalogHasDeviceNameClash(catalog, { platform: "ios", name: "A" }, "B"), true);
+  assert.equal(catalogHasDeviceNameClash(catalog, { platform: "ios", name: "A" }, "C"), false);
+});
+
+test("catalogHasDeviceNameClash: 別の machine の同名は衝突ではない", () => {
+  const catalog = [{ platform: "ios", machine: "M1Max", name: "A" }];
+  assert.equal(catalogHasDeviceNameClash(catalog, { platform: "ios", name: "A" }, "A"), false);
+});
+
+test("catalogHasDeviceNameClash: 自分自身(同じキー)は除外する", () => {
+  const catalog = [{ platform: "ios", name: "A" }];
+  assert.equal(catalogHasDeviceNameClash(catalog, { platform: "ios", name: "A" }, "A"), false);
+});
+
+// ---- validateRunProfileDeviceEditFields ----
+
+test("validateRunProfileDeviceEditFields: name 必須", () => {
+  assert.notEqual(
+    validateRunProfileDeviceEditFields("ios", undefined, { name: "", simulator: "", os: "", udid: "", port: "", avd: "", serial: "" }),
+    null,
+  );
+});
+
+test("validateRunProfileDeviceEditFields: iOS の port は 0〜65535 の整数", () => {
+  const base = { name: "n", simulator: "", os: "", udid: "", avd: "", serial: "" };
+  assert.equal(validateRunProfileDeviceEditFields("ios", undefined, { ...base, port: "" }), null);
+  assert.equal(validateRunProfileDeviceEditFields("ios", undefined, { ...base, port: "8100" }), null);
+  assert.notEqual(validateRunProfileDeviceEditFields("ios", undefined, { ...base, port: "99999" }), null);
+  assert.notEqual(validateRunProfileDeviceEditFields("ios", undefined, { ...base, port: "abc" }), null);
+});
+
+test("validateRunProfileDeviceEditFields: 実機は iOS=udid / Android=serial が必須", () => {
+  const base = { name: "n", simulator: "", os: "", port: "", avd: "" };
+  assert.notEqual(validateRunProfileDeviceEditFields("ios", "physical", { ...base, udid: "", serial: "" }), null);
+  assert.equal(validateRunProfileDeviceEditFields("ios", "physical", { ...base, udid: "UDID-1", serial: "" }), null);
+  assert.notEqual(validateRunProfileDeviceEditFields("android", "physical", { ...base, udid: "", serial: "" }), null);
+  assert.equal(validateRunProfileDeviceEditFields("android", "physical", { ...base, udid: "", serial: "S-1" }), null);
+});
+
+// ---- updateDeviceInRunProfile ----
+
+test("updateDeviceInRunProfile: (platform, machine, name) 一致のエントリを fields で更新する(未知キー保持)", () => {
   const profile = {
-    machine: "M2Ultra",
     devices: [
-      { machine: "local", name: "iPhone-01" },
-      { machine: "local", name: "iPhone-02" },
+      { platform: "ios", machine: "local", name: "旧名", simulator: "iPhone 17 Pro", os: "27.0", customKey: "keep-me" },
     ],
   };
-  const hit = removeDevicesFromRunProfileOfMachine(profile, "M2Ultra", [{ name: "iPhone-01", machine: "local" }]);
-  assert.equal(hit.removed, 1);
-  assert.deepEqual(hit.object.devices, [{ machine: "local", name: "iPhone-02" }]);
-
-  // 別のマシンプロファイルを使う実行プロファイルは触らない(同じ台が別構成に居ることがある)
-  const miss = removeDevicesFromRunProfileOfMachine(profile, "M1Max", [{ name: "iPhone-01", machine: "local" }]);
-  assert.equal(miss.removed, 0);
-  assert.deepEqual(miss.object.devices, profile.devices, "中身はそのまま");
-});
-
-test("removeDevicesFromRunProfileOfMachine: 複数台をまとめて外し、machine 違いの同名は残す", () => {
-  const result = removeDevicesFromRunProfileOfMachine(
-    {
-      machine: "M2Ultra",
-      devices: [
-        { machine: "local", name: "iPhone-01" },
-        { machine: "M1Max", name: "iPhone-01" },
-        { machine: "local", name: "iPhone-02" },
-        { machine: "local", name: "Pixel-01" },
-      ],
-    },
-    "M2Ultra",
-    [{ name: "iPhone-01", machine: "local" }, { name: "iPhone-02" }],
+  const result = updateDeviceInRunProfile(
+    profile,
+    { platform: "ios", name: "旧名" },
+    { name: "新名", simulator: "iPhone 17 Pro", os: "27.0", udid: "", port: "8100", avd: "", serial: "" },
   );
-  assert.equal(result.removed, 2, "machine 省略は local として引く");
-  assert.deepEqual(result.object.devices, [
-    { machine: "M1Max", name: "iPhone-01" },
-    { machine: "local", name: "Pixel-01" },
-  ]);
+  assert.equal(result.matched, true);
+  assert.deepEqual(result.object.devices[0], {
+    platform: "ios", machine: "local", name: "新名", simulator: "iPhone 17 Pro", os: "27.0",
+    customKey: "keep-me", port: 8100,
+  });
 });
 
-test("removeDevicesFromRunProfileOfMachine: 不正形式は null(呼び出し側は書き戻さない)", () => {
-  assert.equal(removeDevicesFromRunProfileOfMachine(null, "M1", [{ name: "x" }]), null);
-  assert.equal(removeDevicesFromRunProfileOfMachine([], "M1", [{ name: "x" }]), null);
-});
-
-// ---- removeDeviceFromMachineProfile ----
-
-test("removeDeviceFromMachineProfile: name一致のデバイスを取り除き removed:true を返す", () => {
-  const profile = {
-    ios: { devices: [{ name: "シミュ1", simulator: "iPhone 17 Pro" }, { name: "シミュ2" }] },
-  };
-  const result = removeDeviceFromMachineProfile(profile, "シミュ1");
-  assert.equal(result.removed, true);
-  assert.deepEqual(result.object.ios.devices, [{ name: "シミュ2" }]);
-});
-
-test("removeDeviceFromMachineProfile: 同名のエントリが複数あれば全て取り除く", () => {
-  const profile = {
-    ios: { devices: [{ name: "シミュ1", note: "a" }, { name: "シミュ2" }, { name: "シミュ1", note: "b" }] },
-  };
-  const result = removeDeviceFromMachineProfile(profile, "シミュ1");
-  assert.equal(result.removed, true);
-  assert.deepEqual(result.object.ios.devices, [{ name: "シミュ2" }]);
-});
-
-test("removeDeviceFromMachineProfile: name不一致なら removed:false で内容は変わらない", () => {
-  const profile = { ios: { devices: [{ name: "シミュ1" }] } };
-  const result = removeDeviceFromMachineProfile(profile, "存在しない名前");
-  assert.equal(result.removed, false);
+test("updateDeviceInRunProfile: 一致しないプロファイルは matched:false でそのまま返す", () => {
+  const profile = { devices: [{ platform: "ios", machine: "local", name: "別の台" }] };
+  const result = updateDeviceInRunProfile(profile, { platform: "ios", name: "旧名" }, {
+    name: "新名", simulator: "", os: "", udid: "", port: "", avd: "", serial: "",
+  });
+  assert.equal(result.matched, false);
   assert.deepEqual(result.object, profile);
 });
 
-test("removeDeviceFromMachineProfile: 未知キー(トップレベル・セクション内・他デバイスのエントリ内)を保持する", () => {
-  const profile = {
-    someTopLevelKey: "keep-me",
-    ios: {
-      someSectionKey: "keep-me-too",
-      devices: [
-        { name: "シミュ1" },
-        { name: "シミュ2", udid: "ABCDEFGH", customField: 123 },
-      ],
-    },
-  };
-  const result = removeDeviceFromMachineProfile(profile, "シミュ1");
-  assert.equal(result.removed, true);
-  assert.equal(result.object.someTopLevelKey, "keep-me");
-  assert.equal(result.object.ios.someSectionKey, "keep-me-too");
-  assert.deepEqual(result.object.ios.devices, [{ name: "シミュ2", udid: "ABCDEFGH", customField: 123 }]);
+test("updateDeviceInRunProfile: Android は avd/serial だけを触り iOS 側のフィールドは変えない", () => {
+  const profile = { devices: [{ platform: "android", name: "旧名", avd: "Pixel_9", port: 8100 }] };
+  const result = updateDeviceInRunProfile(
+    profile,
+    { platform: "android", name: "旧名" },
+    { name: "新名", simulator: "", os: "", udid: "", port: "", avd: "Pixel_9", serial: "" },
+  );
+  assert.equal(result.matched, true);
+  assert.deepEqual(result.object.devices[0], { platform: "android", name: "新名", avd: "Pixel_9", port: 8100 });
 });
 
-test("removeDeviceFromMachineProfile: ios・android 横断で name 一致を探す", () => {
-  const profile = {
-    ios: { devices: [{ name: "シミュ1" }] },
-    android: { devices: [{ name: "エミュ1" }, { name: "対象" }] },
-  };
-  const result = removeDeviceFromMachineProfile(profile, "対象");
-  assert.equal(result.removed, true);
-  assert.deepEqual(result.object.ios.devices, [{ name: "シミュ1" }]); // 無関係なセクションは変化しない
-  assert.deepEqual(result.object.android.devices, [{ name: "エミュ1" }]);
+// ---- addDevicesToRunProfile ----
+
+test("addDevicesToRunProfile: entries を devices[] 末尾に追記する(未知キー保持)", () => {
+  const profile = { app: "sut", devices: [{ platform: "ios", machine: "local", name: "既存" }] };
+  const result = addDevicesToRunProfile(
+    profile,
+    [{ platform: "ios", name: "新規", simulator: "新規", os: "27.0", udid: "U-1" }],
+    [],
+  );
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.added, ["新規"]);
+  assert.equal(result.object.devices.length, 2);
+  assert.equal(result.object.devices[1].name, "新規");
+  assert.equal(result.object.devices[1].machine, "local");
+  assert.equal(result.object.app, "sut", "他のキーは保持する");
 });
 
-test("removeDeviceFromMachineProfile: セクション欠落・devices非配列はそのまま(false)", () => {
-  const profileNoSections = { note: "no ios/android here" };
-  const result1 = removeDeviceFromMachineProfile(profileNoSections, "何か");
-  assert.equal(result1.removed, false);
-  assert.deepEqual(result1.object, profileNoSections);
-
-  const profileBadDevices = { ios: { devices: "not-an-array" } };
-  const result2 = removeDeviceFromMachineProfile(profileBadDevices, "何か");
-  assert.equal(result2.removed, false);
-  assert.deepEqual(result2.object, profileBadDevices);
-});
-
-test("removeDeviceFromMachineProfile: トップレベルがオブジェクトでなければ null", () => {
-  assert.equal(removeDeviceFromMachineProfile(null, "x"), null);
-  assert.equal(removeDeviceFromMachineProfile("not-an-object", "x"), null);
-  assert.equal(removeDeviceFromMachineProfile(42, "x"), null);
-  assert.equal(removeDeviceFromMachineProfile(["ios", "android"], "x"), null);
-});
-
-// ---- (machine, name) での引き当て(別の機械の同名デバイスを巻き添えにしない) ----
-
-// 同じ機械プロファイルに手元と M1Max の同名デバイスが居る形(各機が同じ命名規則で作るので通常)。
-const PROFILE_SAME_NAME_ON_TWO_MACHINES = {
-  ios: {
-    devices: [
-      { machine: "local", name: "シミュ1", udid: "UDID-LOCAL" },
-      { machine: "M1Max", name: "シミュ1", udid: "UDID-M1MAX" },
+test("addDevicesToRunProfile: 名前衝突はカタログ+このプロファイルの既存分+同一バッチ内を見て自動採番する", () => {
+  const catalog = [{ platform: "ios", name: "シミュ1" }];
+  const profile = { devices: [] };
+  const result = addDevicesToRunProfile(
+    profile,
+    [
+      { platform: "ios", name: "シミュ1" }, // カタログと衝突 → (2)
+      { platform: "ios", name: "シミュ1" }, // バッチ内でも衝突 → (3)
     ],
-  },
-};
-
-test("removeDeviceFromMachineProfile: machine を渡すとその機械のぶんだけ消す", () => {
-  const result = removeDeviceFromMachineProfile(PROFILE_SAME_NAME_ON_TWO_MACHINES, "シミュ1", "M1Max");
-  assert.equal(result.removed, true);
-  assert.deepEqual(result.object.ios.devices, [{ machine: "local", name: "シミュ1", udid: "UDID-LOCAL" }]);
-
-  const local = removeDeviceFromMachineProfile(PROFILE_SAME_NAME_ON_TWO_MACHINES, "シミュ1", "local");
-  assert.deepEqual(local.object.ios.devices, [{ machine: "M1Max", name: "シミュ1", udid: "UDID-M1MAX" }]);
-});
-
-test("removeDeviceFromMachineProfile: machine 省略のエントリはプロファイル直下の既定に従う(旧キー host も読む)", () => {
-  const profile = {
-    host: "M1Max",
-    ios: { devices: [{ name: "シミュ1", udid: "UDID-M1MAX" }, { machine: "local", name: "シミュ1", udid: "UDID-LOCAL" }] },
-  };
-  const result = removeDeviceFromMachineProfile(profile, "シミュ1", "M1Max");
-  assert.deepEqual(result.object.ios.devices, [{ machine: "local", name: "シミュ1", udid: "UDID-LOCAL" }]);
-});
-
-test("removeDevicesFromMachineProfile: 各 (machine, name) だけを消す(machine 省略=手元)", () => {
-  const profile = {
-    ios: {
-      devices: [
-        { machine: "local", name: "シミュ1" },
-        { machine: "M1Max", name: "シミュ1" },
-        { machine: "M1Max", name: "シミュ2" },
-      ],
-    },
-  };
-  const result = removeDevicesFromMachineProfile(profile, [{ name: "シミュ1", machine: "M1Max" }, { name: "シミュ2" }]);
-  assert.equal(result.removed, 1); // シミュ2 は手元に居ないので消えない
-  assert.deepEqual(result.object.ios.devices, [{ machine: "local", name: "シミュ1" }, { machine: "M1Max", name: "シミュ2" }]);
-
-  const local = removeDevicesFromMachineProfile(profile, [{ name: "シミュ1" }]);
-  assert.equal(local.removed, 1);
-  assert.deepEqual(local.object.ios.devices, [{ machine: "M1Max", name: "シミュ1" }, { machine: "M1Max", name: "シミュ2" }]);
-});
-
-test("removeDevicesFromMachineProfile: 不正形式は null(呼び出し側は書き戻さない)", () => {
-  assert.equal(removeDevicesFromMachineProfile("not-an-object", [{ name: "x" }]), null);
-});
-
-test("updateDeviceInMachineProfile: machine を渡すとその機械のエントリだけを書き換える", () => {
-  const remote = updateDeviceInMachineProfile(
-    PROFILE_SAME_NAME_ON_TWO_MACHINES,
-    "ios",
-    "シミュ1",
-    iosFields({ name: "シミュ1-改", udid: "UDID-M1MAX" }),
-    "M1Max",
-  );
-  assert.equal(remote.ok, true);
-  assert.deepEqual(remote.object.ios.devices, [
-    { machine: "local", name: "シミュ1", udid: "UDID-LOCAL" },
-    { machine: "M1Max", name: "シミュ1-改", udid: "UDID-M1MAX" },
-  ]);
-
-  const local = updateDeviceInMachineProfile(
-    PROFILE_SAME_NAME_ON_TWO_MACHINES,
-    "ios",
-    "シミュ1",
-    iosFields({ name: "シミュ1-改", udid: "UDID-LOCAL" }),
-    "local",
-  );
-  assert.equal(local.ok, true);
-  assert.deepEqual(local.object.ios.devices, [
-    { machine: "local", name: "シミュ1-改", udid: "UDID-LOCAL" },
-    { machine: "M1Max", name: "シミュ1", udid: "UDID-M1MAX" },
-  ]);
-});
-
-test("updateDeviceInMachineProfile: 別の機械の同名へのリネームは重複ではない(同じ機械なら重複)", () => {
-  const profile = {
-    ios: {
-      devices: [
-        { machine: "local", name: "シミュA" },
-        { machine: "M1Max", name: "シミュB" },
-        { machine: "M1Max", name: "シミュC" },
-      ],
-    },
-  };
-  const crossHost = updateDeviceInMachineProfile(profile, "ios", "シミュB", iosFields({ name: "シミュA" }), "M1Max");
-  assert.equal(crossHost.ok, true);
-
-  const sameHost = updateDeviceInMachineProfile(profile, "ios", "シミュB", iosFields({ name: "シミュC" }), "M1Max");
-  assert.equal(sameHost.ok, false);
-});
-
-test("updateDeviceInMachineProfile: host を渡さなければ従来どおり名前だけで引く", () => {
-  const result = updateDeviceInMachineProfile(
-    PROFILE_SAME_NAME_ON_TWO_MACHINES,
-    "ios",
-    "シミュ1",
-    iosFields({ name: "シミュ1", udid: "UDID-LOCAL" }),
-  );
-  assert.equal(result.ok, false); // 同名が2件あるので重複判定に当たる
-});
-
-// ---- updateDeviceInMachineProfile ----
-
-function iosFields(overrides) {
-  return { name: "シミュ1", simulator: "", os: "", udid: "", port: "", avd: "", ...overrides };
-}
-
-test("updateDeviceInMachineProfile: 基本更新(simulator/os変更)", () => {
-  const profile = {
-    ios: { devices: [{ name: "シミュ1", simulator: "iPhone 16", os: "26.0" }] },
-  };
-  const result = updateDeviceInMachineProfile(
-    profile,
-    "ios",
-    "シミュ1",
-    iosFields({ simulator: "iPhone 17 Pro", os: "27.0" }),
+    catalog,
   );
   assert.equal(result.ok, true);
-  assert.equal(result.name, "シミュ1");
-  assert.deepEqual(result.object.ios.devices, [{ name: "シミュ1", simulator: "iPhone 17 Pro", os: "27.0" }]);
+  assert.deepEqual(result.added, ["シミュ1 (2)", "シミュ1 (3)"]);
 });
 
-test("updateDeviceInMachineProfile: リネーム+横断(ios/android)重複はエラー", () => {
-  const profile = {
-    ios: { devices: [{ name: "シミュ1" }] },
-    android: { devices: [{ name: "エミュ1" }] },
-  };
-  const result = updateDeviceInMachineProfile(profile, "ios", "シミュ1", iosFields({ name: "エミュ1" }));
-  assert.equal(result.ok, false);
-  assert.match(result.error, /エミュ1.*既に存在/);
+test("addDevicesToRunProfile: 別 machine の同名は衝突ではない", () => {
+  const catalog = [{ platform: "ios", machine: "M1Max", name: "シミュ1" }];
+  const result = addDevicesToRunProfile({ devices: [] }, [{ platform: "ios", name: "シミュ1" }], catalog);
+  assert.deepEqual(result.added, ["シミュ1"]);
 });
 
-test("updateDeviceInMachineProfile: 自分自身と同名(実質リネームなし)は OK", () => {
-  const profile = { ios: { devices: [{ name: "シミュ1", simulator: "iPhone 16" }] } };
-  const result = updateDeviceInMachineProfile(
-    profile,
-    "ios",
-    "シミュ1",
-    iosFields({ name: "シミュ1", simulator: "iPhone 17 Pro" }),
-  );
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.object.ios.devices, [{ name: "シミュ1", simulator: "iPhone 17 Pro" }]);
-});
-
-test("updateDeviceInMachineProfile: port の追加・削除・不正値", () => {
-  const profile = { ios: { devices: [{ name: "シミュ1" }] } };
-
-  const added = updateDeviceInMachineProfile(profile, "ios", "シミュ1", iosFields({ port: "8100" }));
-  assert.equal(added.ok, true);
-  assert.equal(added.object.ios.devices[0].port, 8100);
-
-  const withPort = { ios: { devices: [{ name: "シミュ1", port: 8100 }] } };
-  const removed = updateDeviceInMachineProfile(withPort, "ios", "シミュ1", iosFields({ port: "" }));
-  assert.equal(removed.ok, true);
-  assert.equal("port" in removed.object.ios.devices[0], false);
-
-  const invalid1 = updateDeviceInMachineProfile(profile, "ios", "シミュ1", iosFields({ port: "not-a-number" }));
-  assert.equal(invalid1.ok, false);
-  assert.match(invalid1.error, /0〜65535/);
-
-  const invalid2 = updateDeviceInMachineProfile(profile, "ios", "シミュ1", iosFields({ port: "65536" }));
-  assert.equal(invalid2.ok, false);
-  assert.match(invalid2.error, /0〜65535/);
-
-  const invalid3 = updateDeviceInMachineProfile(profile, "ios", "シミュ1", iosFields({ port: "-1" }));
-  assert.equal(invalid3.ok, false);
-  assert.match(invalid3.error, /0〜65535/);
-
-  const boundary = updateDeviceInMachineProfile(profile, "ios", "シミュ1", iosFields({ port: "65535" }));
-  assert.equal(boundary.ok, true);
-  assert.equal(boundary.object.ios.devices[0].port, 65535);
-});
-
-test("updateDeviceInMachineProfile: 空 name はエラー", () => {
-  const profile = { ios: { devices: [{ name: "シミュ1" }] } };
-  const result = updateDeviceInMachineProfile(profile, "ios", "シミュ1", iosFields({ name: "   " }));
-  assert.equal(result.ok, false);
-  assert.match(result.error, /デバイス名を入力/);
-});
-
-test("updateDeviceInMachineProfile: originalName が存在しなければエラー", () => {
-  const profile = { ios: { devices: [{ name: "シミュ1" }] } };
-  const result = updateDeviceInMachineProfile(profile, "ios", "存在しない", iosFields({ name: "存在しない" }));
-  assert.equal(result.ok, false);
-  assert.match(result.error, /見つかりませんでした/);
-
-  const noSection = { note: "no ios here" };
-  const result2 = updateDeviceInMachineProfile(noSection, "ios", "シミュ1", iosFields());
-  assert.equal(result2.ok, false);
-});
-
-test("updateDeviceInMachineProfile: トップレベルがオブジェクトでなければエラー", () => {
-  assert.equal(updateDeviceInMachineProfile(null, "ios", "x", iosFields()).ok, false);
-  assert.equal(updateDeviceInMachineProfile(["ios"], "ios", "x", iosFields()).ok, false);
-});
-
-test("updateDeviceInMachineProfile: 未知キー(トップレベル・対象エントリ内)を保持する", () => {
-  const profile = {
-    someTopLevelKey: "keep-me",
-    ios: {
-      devices: [{ name: "シミュ1", simulator: "iPhone 16", customField: 123 }],
-    },
-  };
-  const result = updateDeviceInMachineProfile(profile, "ios", "シミュ1", iosFields({ simulator: "iPhone 17 Pro" }));
-  assert.equal(result.ok, true);
-  assert.equal(result.object.someTopLevelKey, "keep-me");
-  assert.deepEqual(result.object.ios.devices[0], {
-    name: "シミュ1",
-    simulator: "iPhone 17 Pro",
-    customField: 123,
-  });
-});
-
-test("updateDeviceInMachineProfile: 反対プラットフォームのフィールドには触れない", () => {
-  const profile = { android: { devices: [{ name: "エミュ1", avd: "Pixel 9(Android 16)", strayIosField: "keep" }] } };
-  const result = updateDeviceInMachineProfile(
-    profile,
-    "android",
-    "エミュ1",
-    { name: "エミュ1", simulator: "", os: "", udid: "", port: "", avd: "Pixel 9(Android 17)" },
-  );
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.object.android.devices[0], {
-    name: "エミュ1",
-    avd: "Pixel 9(Android 17)",
-    strayIosField: "keep",
-  });
-});
-
-test("addDevicesToMachineProfile: 実機は kind/serial を書き、simulator/os/avd を書かない", () => {
-  const result = addDevicesToMachineProfile({}, [
-    { platform: "ios", kind: "physical", name: "iPhone 実機", udid: "00008130-AAAA" },
-    { platform: "android", kind: "physical", name: "Pixel 実機", serial: "14141JEC204922" },
-  ]);
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.object.ios.devices[0], {
-    machine: "local", name: "iPhone 実機", kind: "physical", udid: "00008130-AAAA",
-  });
-  assert.deepEqual(result.object.android.devices[0], {
-    machine: "local", name: "Pixel 実機", kind: "physical", serial: "14141JEC204922",
-  });
-});
-
-test("addDevicesToMachineProfile: 仮想デバイスには kind を書かない(既定 virtual)", () => {
-  const result = addDevicesToMachineProfile({}, [
-    { platform: "ios", name: "iPhone 17 Pro", simulator: "iPhone 17 Pro", os: "27.0", udid: "U1" },
-  ]);
-  assert.equal(result.ok, true);
-  assert.equal("kind" in result.object.ios.devices[0], false);
-});
-
-test("isInstalledDevicesJson: physicalDevices があっても無くても受理する", () => {
-  const base = {
-    android: { available: true, avds: [], error: null },
-    ios: { available: true, devices: [], error: null },
-  };
-  assert.equal(isInstalledDevicesJson(base), true, "旧 CLI(physicalDevices なし)");
-  assert.equal(isInstalledDevicesJson({
-    android: { ...base.android, physicalDevices: [{ model: "Pixel 4a", serial: "S1" }] },
-    ios: { ...base.ios, physicalDevices: [{ name: "iPhone", os: "26.5.2", udid: "U1", transport: "wired" }] },
-  }), true);
-  assert.equal(isInstalledDevicesJson({
-    ...base,
-    ios: { ...base.ios, physicalDevices: [{ name: "iPhone" }] },
-  }), false, "形が違う physicalDevices は弾く");
-});
-
-test("updateDeviceInMachineProfile: 実機(kind=physical)の serial を保存できる", () => {
-  const profile = { android: { devices: [{ name: "実機", kind: "physical", serial: "OLD" }] } };
-  const result = updateDeviceInMachineProfile(profile, "android", "実機", {
-    name: "実機", simulator: "", os: "", udid: "", port: "", avd: "", serial: "14141JEC204922",
-  });
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.object.android.devices[0], {
-    name: "実機", kind: "physical", serial: "14141JEC204922",
-  });
-});
-
-test("updateDeviceInMachineProfile: 実機で serial を空にすると保存を拒否する", () => {
-  // 空のまま保存できると run で「kind=physical ですが serial がありません」と落ちる
-  const profile = { android: { devices: [{ name: "実機", kind: "physical", serial: "S1" }] } };
-  const result = updateDeviceInMachineProfile(profile, "android", "実機", {
-    name: "実機", simulator: "", os: "", udid: "", port: "", avd: "", serial: "  ",
-  });
-  assert.equal(result.ok, false);
-  assert.match(result.error, /serial/);
-});
-
-test("updateDeviceInMachineProfile: iOS 実機で udid を空にすると保存を拒否する", () => {
-  const profile = { ios: { devices: [{ name: "実機", kind: "physical", udid: "00008130-AAAA" }] } };
-  const result = updateDeviceInMachineProfile(profile, "ios", "実機", {
-    name: "実機", simulator: "", os: "", udid: "", port: "", avd: "", serial: "",
-  });
-  assert.equal(result.ok, false);
-  assert.match(result.error, /udid/);
-});
-
-test("updateDeviceInMachineProfile: serial 欠落(旧 webview)でも落ちない", () => {
-  // 拡張と webview のバンドルは別々に更新されうる。欠落は未入力として扱う
-  const profile = { android: { devices: [{ name: "エミュ1", avd: "Pixel_9" }] } };
-  const result = updateDeviceInMachineProfile(profile, "android", "エミュ1", {
-    name: "エミュ1", simulator: "", os: "", udid: "", port: "", avd: "Pixel_9",
-  });
-  assert.equal(result.ok, true);
-});
-
-test("updateDeviceInMachineProfile: Android エントリに手書きの port キーがあっても保持する", () => {
-  // Android のフォームは port フィールドを持たず常に空文字を送ってくるため、port の削除処理が
-  // プラットフォーム分岐の外にあると avd 編集のついでに port キーが黙って消える(回帰テスト)。
-  const profile = { android: { devices: [{ name: "エミュ1", avd: "Pixel 9(Android 16)", port: 5556 }] } };
-  const result = updateDeviceInMachineProfile(
-    profile,
-    "android",
-    "エミュ1",
-    { name: "エミュ1", simulator: "", os: "", udid: "", port: "", avd: "Pixel 9(Android 17)" },
-  );
-  assert.equal(result.ok, true);
-  assert.equal(result.object.android.devices[0].port, 5556);
-});
-
-test("updateDeviceInMachineProfile: iOS エントリに紛れ込んだ avd キーがあっても一切触らず保持する", () => {
-  const profile = { ios: { devices: [{ name: "シミュ1", simulator: "iPhone 16", avd: "stray-avd-value" }] } };
-  const result = updateDeviceInMachineProfile(profile, "ios", "シミュ1", iosFields({ simulator: "iPhone 17 Pro" }));
-  assert.equal(result.ok, true);
-  assert.equal(result.object.ios.devices[0].avd, "stray-avd-value");
-});
-
-test("updateDeviceInMachineProfile: Android の avd 更新(追加・削除)", () => {
-  const profile = { android: { devices: [{ name: "エミュ1" }] } };
-  const added = updateDeviceInMachineProfile(profile, "android", "エミュ1", {
-    name: "エミュ1",
-    simulator: "",
-    os: "",
-    udid: "",
-    port: "",
-    avd: "Pixel 9(Android 16)",
-  });
-  assert.equal(added.ok, true);
-  assert.equal(added.object.android.devices[0].avd, "Pixel 9(Android 16)");
-
-  const withAvd = { android: { devices: [{ name: "エミュ1", avd: "Pixel 9(Android 16)" }] } };
-  const removed = updateDeviceInMachineProfile(withAvd, "android", "エミュ1", {
-    name: "エミュ1",
-    simulator: "",
-    os: "",
-    udid: "",
-    port: "",
-    avd: "",
-  });
-  assert.equal(removed.ok, true);
-  assert.equal("avd" in removed.object.android.devices[0], false);
-});
-
-// ---- addDevicesToMachineProfile ----
-// 「+既存から選択」モーダルの OK(machineDevicesSync)が add の追記部分に使う純粋関数
-// (syncDevicesInMachineProfile 経由でも呼ばれる)。entries は MachineDeviceAddEntry
-// (platform/name+オプショナルの simulator/os/udid/avd)の配列。
-
-const IOS_ADD_ENTRY = {
-  platform: "ios",
-  name: "iPhone 17 Pro",
-  simulator: "iPhone 17 Pro",
-  os: "27.0",
-  udid: "1C86FAKE-0000-0000-0000-000000000000",
-};
-
-const ANDROID_ADD_ENTRY = {
-  platform: "android",
-  name: "Pixel 9(Android 16)",
-  avd: "Pixel_9",
-};
-
-test("addDevicesToMachineProfile: 基本追記(iOS1件をセクション末尾に追加)", () => {
-  const result = addDevicesToMachineProfile({}, [IOS_ADD_ENTRY]);
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.added, ["iPhone 17 Pro"]);
-  // machine は省略しない(手元でも "local" を書く)。省略は「直下の既定を継ぐ」の意味になるため。
-  assert.deepEqual(result.object.ios.devices, [
-    { machine: "local", name: "iPhone 17 Pro", simulator: "iPhone 17 Pro", os: "27.0", udid: "1C86FAKE-0000-0000-0000-000000000000" },
-  ]);
-  // キー順も契約(2026-08-17 指示: machine → name を先に書く)。deepEqual は順序を見ないので別に固定する
-  assert.deepEqual(Object.keys(result.object.ios.devices[0]).slice(0, 2), ["machine", "name"]);
-});
-
-test("addDevicesToMachineProfile: 複数一括(iOS+Androidをまとめて追加し、既存デバイスの後ろに追記する)", () => {
-  const profile = {
-    ios: { devices: [{ name: "既存シミュ", udid: "EXISTING" }] },
-    android: { devices: [{ name: "既存エミュ", avd: "existing_avd" }] },
-  };
-  const result = addDevicesToMachineProfile(profile, [IOS_ADD_ENTRY, ANDROID_ADD_ENTRY]);
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.added, ["iPhone 17 Pro", "Pixel 9(Android 16)"]);
-  assert.equal(result.object.ios.devices.length, 2);
-  assert.equal(result.object.ios.devices[0].name, "既存シミュ");
-  assert.equal(result.object.ios.devices[1].name, "iPhone 17 Pro");
-  assert.equal(result.object.android.devices.length, 2);
-  assert.equal(result.object.android.devices[1].name, "Pixel 9(Android 16)");
-});
-
-test("addDevicesToMachineProfile: 名前衝突は既存デバイス名(ios/android横断)と重複しなくなるまで「名前 (2)」「名前 (3)」…とサフィックスを付ける", () => {
-  const profile = {
-    ios: { devices: [{ name: "iPhone 17 Pro" }] },
-    android: { devices: [{ name: "iPhone 17 Pro (2)" }] }, // ios/android 横断で衝突判定するため android 側にも既存名を置く
-  };
-  const result = addDevicesToMachineProfile(profile, [IOS_ADD_ENTRY]);
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.added, ["iPhone 17 Pro (3)"]);
-  assert.equal(result.object.ios.devices[1].name, "iPhone 17 Pro (3)");
-});
-
-test("addDevicesToMachineProfile: 同一バッチ内の名前衝突も自動サフィックスで救済する", () => {
-  const result = addDevicesToMachineProfile({}, [IOS_ADD_ENTRY, { ...IOS_ADD_ENTRY, udid: "OTHER-UDID" }]);
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.added, ["iPhone 17 Pro", "iPhone 17 Pro (2)"]);
-  assert.equal(result.object.ios.devices[0].name, "iPhone 17 Pro");
-  assert.equal(result.object.ios.devices[1].name, "iPhone 17 Pro (2)");
-});
-
-test("addDevicesToMachineProfile: エントリは name + 非空のオプショナルフィールドのみをキーとして構築する(空文字/undefinedは持たせない)", () => {
-  const undefinedFields = addDevicesToMachineProfile({}, [{ platform: "android", name: "エミュ1" }]);
-  assert.equal(undefinedFields.ok, true);
-  assert.deepEqual(undefinedFields.object.android.devices, [{ machine: "local", name: "エミュ1" }]);
-
-  // オプショナルフィールドが空文字で明示的に渡された場合もキー自体を持たせない。
-  const emptyStringFields = addDevicesToMachineProfile({}, [
-    { platform: "ios", name: "シミュ1", simulator: "", os: "", udid: "" },
-  ]);
-  assert.equal(emptyStringFields.ok, true);
-  assert.deepEqual(emptyStringFields.object.ios.devices, [{ machine: "local", name: "シミュ1" }]);
-});
-
-test("addDevicesToMachineProfile: 未知キー(トップレベル・既存セクション・既存デバイスエントリ)を保持する", () => {
-  const profile = {
-    customTopKey: "keep-me",
-    ios: {
-      customSectionKey: "keep-me-too",
-      devices: [{ name: "既存", udid: "EXISTING", customDeviceKey: "keep-me-three" }],
-    },
-  };
-  const result = addDevicesToMachineProfile(profile, [IOS_ADD_ENTRY]);
-  assert.equal(result.ok, true);
-  assert.equal(result.object.customTopKey, "keep-me");
-  assert.equal(result.object.ios.customSectionKey, "keep-me-too");
-  assert.equal(result.object.ios.devices[0].customDeviceKey, "keep-me-three");
-});
-
-test("addDevicesToMachineProfile: トップレベルがオブジェクトでなければ(配列含む)エラー", () => {
-  assert.equal(addDevicesToMachineProfile(null, [IOS_ADD_ENTRY]).ok, false);
-  assert.equal(addDevicesToMachineProfile([{ ios: {} }], [IOS_ADD_ENTRY]).ok, false);
-  assert.equal(addDevicesToMachineProfile("string", [IOS_ADD_ENTRY]).ok, false);
-});
-
-// ---- syncDevicesInMachineProfile ----
-// 「+既存から選択」モーダルの OK(machineDevicesSync)が使う純粋関数。remove を
-// removeDeviceFromMachineProfile で先に適用してから add を addDevicesToMachineProfile で
-// 追記する合成関数(削除→追加の順序であることを、名前再利用のテストで確認する)。
-
-test("syncDevicesInMachineProfile: 追加のみ(remove:[])は addDevicesToMachineProfile と同じ結果 + removed:0", () => {
-  const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], []);
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.added, ["iPhone 17 Pro"]);
-  assert.equal(result.removed, 0);
-  assert.deepEqual(result.object.ios.devices, [
-    { machine: "local", name: "iPhone 17 Pro", simulator: "iPhone 17 Pro", os: "27.0", udid: "1C86FAKE-0000-0000-0000-000000000000" },
-  ]);
-});
-
-test("syncDevicesInMachineProfile: 削除のみ(add:[])は指定名を除去し removed:1", () => {
-  const profile = { ios: { devices: [{ name: "既存デバイス名", udid: "EXISTING" }, { name: "残る" }] } };
-  const result = syncDevicesInMachineProfile(profile, [], ["既存デバイス名"]);
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.added, []);
-  assert.equal(result.removed, 1);
-  assert.deepEqual(result.object.ios.devices, [{ name: "残る" }]);
-});
-
-test("syncDevicesInMachineProfile: 追加+削除を1回で適用する", () => {
-  const profile = {
-    ios: { devices: [{ name: "削除対象", udid: "EXISTING" }] },
-    android: { devices: [{ name: "既存エミュ", avd: "existing_avd" }] },
-  };
-  const result = syncDevicesInMachineProfile(profile, [ANDROID_ADD_ENTRY], ["削除対象"]);
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.added, ["Pixel 9(Android 16)"]);
-  assert.equal(result.removed, 1);
-  assert.deepEqual(result.object.ios.devices, []);
-  assert.equal(result.object.android.devices.length, 2);
-  assert.equal(result.object.android.devices[0].name, "既存エミュ");
-  assert.equal(result.object.android.devices[1].name, "Pixel 9(Android 16)");
-});
-
-test("syncDevicesInMachineProfile: 削除→追加の名前再利用は衝突しない(除去後に一意性判定するため)", () => {
-  const profile = { ios: { devices: [{ name: "X", udid: "EXISTING" }] } };
-  const result = syncDevicesInMachineProfile(profile, [{ ...IOS_ADD_ENTRY, name: "X" }], ["X"]);
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.added, ["X"]); // 先に削除されるため "X (2)" にはならない
-  assert.equal(result.removed, 1);
-  assert.equal(result.object.ios.devices.length, 1);
-  assert.equal(result.object.ios.devices[0].name, "X");
-});
-
-test("syncDevicesInMachineProfile: remove に存在しない名前は ok:true・removed:0 でスキップされる", () => {
-  const profile = { ios: { devices: [{ name: "残る" }] } };
-  const result = syncDevicesInMachineProfile(profile, [], ["存在しない名前"]);
-  assert.equal(result.ok, true);
-  assert.equal(result.removed, 0);
-  assert.deepEqual(result.object.ios.devices, [{ name: "残る" }]);
-});
-
-test("syncDevicesInMachineProfile: 未知キー(トップレベル・セクション・デバイスエントリ)を保持する", () => {
-  const profile = {
-    customTopKey: "keep-me",
-    ios: {
-      customSectionKey: "keep-me-too",
-      devices: [{ name: "削除対象", udid: "EXISTING", customDeviceKey: "keep-me-three" }, { name: "残る" }],
-    },
-  };
-  const result = syncDevicesInMachineProfile(profile, [ANDROID_ADD_ENTRY], ["削除対象"]);
-  assert.equal(result.ok, true);
-  assert.equal(result.object.customTopKey, "keep-me");
-  assert.equal(result.object.ios.customSectionKey, "keep-me-too");
-  assert.deepEqual(result.object.ios.devices, [{ name: "残る" }]);
-  assert.equal(result.object.android.devices[0].name, "Pixel 9(Android 16)");
-});
-
-test("syncDevicesInMachineProfile: トップレベルがオブジェクトでなければ(配列含む)エラー", () => {
-  assert.equal(syncDevicesInMachineProfile(null, [], ["x"]).ok, false);
-  assert.equal(syncDevicesInMachineProfile([{ ios: {} }], [], ["x"]).ok, false);
-  assert.equal(syncDevicesInMachineProfile("string", [], ["x"]).ok, false);
-});
-
-// ---- syncDevicesInMachineProfile: source(devicePickHost.js のホスト選択)による host 書き込み ----
-// 契約(monitorProfileForms.ts): host は**追加したデバイス1台ずつ**に書く(一意なのは (host, name)
-// で、ローカルとリモートに同名のデバイスが並んでよい。Sources/FTCore/DeviceMachineGrouping.swift)。
-// プロファイル直下の host は「このプロファイルの既定」なので触らない —— ただし既定が別のホストを
-// 指しているときだけ、追加したローカルのデバイスに "local" を明示する(書かないと既定のリモートに
-// 居ることになる)。source を渡さない・remove のみ(add:[])では何も書かない。
-
-// 実行プロファイルのデバイス参照は (host, name)。**名前だけで保存すると、同名が別ホストに
-// 居るプロファイルで run が「どちらか決められない」と言って止まる**(CLI の ambiguousDeviceRef)
-test("parseRunProfileForForm / updateRunProfileInObject: devices の machine を往復させる", () => {
-  const profile = {
-    devices: [{ name: "iPhone-01" }, { machine: "M1Ultra", name: "iPhone-01", note: "keep" }],
-  };
-  const parsed = parseRunProfileForForm(profile);
-  assert.deepEqual(parsed.devices, [{ name: "iPhone-01" }, { name: "iPhone-01", machine: "M1Ultra" }]);
-
-  const saved = updateRunProfileInObject(profile, { ...BASE_RUN_PROFILE_FIELDS, devices: parsed.devices });
-  assert.equal(saved.ok, true);
-  // 同名でも (machine, name) で引き当てるので、未知キーは正しい方のエントリに残る
-  assert.deepEqual(saved.object.devices, [
-    { name: "iPhone-01" },
-    { machine: "M1Ultra", name: "iPhone-01", note: "keep" },
-  ]);
-});
-
-// **host は省略しない**(手元も "local")。省略した参照は、同名が複数ホストに居ると実行時に
-// 「どちらか決められない」で止まる(マシンプロファイル側の「"local" も明示」と同じ規律)
-test("updateRunProfileInObject: machine は常に書く(手元は local)", () => {
-  const remote = updateRunProfileInObject(
-    { devices: [] },
-    { ...BASE_RUN_PROFILE_FIELDS, devices: [{ name: "x", machine: "M1Max" }] });
-  assert.deepEqual(remote.object.devices, [{ machine: "M1Max", name: "x" }]);
-
-  const local = updateRunProfileInObject(
-    { devices: [] }, { ...BASE_RUN_PROFILE_FIELDS, devices: [{ name: "y" }] });
-  assert.deepEqual(local.object.devices, [{ machine: "local", name: "y" }]);
-});
-
-// ファイル側の "local" は内部表現では「手元」= host 無しに畳む(往復で形が揺れない)
-test("parseRunProfileForForm: host の \"local\" は手元として読む", () => {
-  const parsed = parseRunProfileForForm({ devices: [{ machine: "local", name: "y" }] });
-  assert.deepEqual(parsed.devices, [{ name: "y" }]);
-});
-
-test("removeDeviceFromMachineProfile: host を渡すとそのホストのぶんだけ消す(別ホストの同名は残す)", () => {
-  const profile = { ios: { devices: [
-    { machine: "local", name: "iPhone 17 Pro", udid: "LOCAL" },
-    { machine: "M1Ultra", name: "iPhone 17 Pro", udid: "REMOTE" },
-  ] } };
-  const result = removeDeviceFromMachineProfile(profile, "iPhone 17 Pro", "M1Ultra");
-  assert.equal(result.removed, true);
-  assert.deepEqual(result.object.ios.devices, [{ machine: "local", name: "iPhone 17 Pro", udid: "LOCAL" }]);
-});
-
-test("removeDeviceFromMachineProfile: host 省略時は従来どおり同名を全部消す", () => {
-  const profile = { ios: { devices: [
-    { machine: "local", name: "x" }, { machine: "M1Ultra", name: "x" },
-  ] } };
-  const result = removeDeviceFromMachineProfile(profile, "x");
-  assert.equal(result.removed, true);
-  assert.deepEqual(result.object.ios.devices, []);
-});
-
-// 直下の既定がリモートのプロファイルで、host を書いていないデバイスは既定のホストに居る
-test("removeDeviceFromMachineProfile: host 未指定のデバイスは直下の既定に従って判定する", () => {
-  const profile = { host: "M1Ultra", ios: { devices: [{ name: "x" }] } };
-  assert.deepEqual(
-    removeDeviceFromMachineProfile(profile, "x", "local").object.ios.devices,
-    [{ name: "x" }], "手元として消してはいけない");
-  assert.deepEqual(
-    removeDeviceFromMachineProfile(profile, "x", "M1Ultra").object.ios.devices, []);
-});
-
-test("addDevicesToMachineProfile: 別ホストの同名には (2) を付けない(一意なのは (host, name))", () => {
-  const profile = { ios: { devices: [{ machine: "local", name: "iPhone 17 Pro" }] } };
-  const result = addDevicesToMachineProfile(profile, [{ ...IOS_ADD_ENTRY, machine: "M1Ultra" }]);
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.added, ["iPhone 17 Pro"]);
-  assert.equal(result.object.ios.devices[1].name, "iPhone 17 Pro");
-});
-
-test("addDevicesToMachineProfile: 同じホストの同名には従来どおり (2) を付ける", () => {
-  const profile = { ios: { devices: [{ machine: "M1Ultra", name: "iPhone 17 Pro" }] } };
-  const result = addDevicesToMachineProfile(profile, [{ ...IOS_ADD_ENTRY, machine: "M1Ultra" }]);
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.added, ["iPhone 17 Pro (2)"]);
-});
-
-test("syncDevicesInMachineProfile: add + source:remote は追加したデバイスに machine を書く", () => {
-  const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], [], { kind: "remote", machine: "M1Max" });
-  assert.equal(result.ok, true);
-  assert.equal(result.object.ios.devices[0].machine, "M1Max");
-  // プロファイル直下は既定なので触らない(混在プロファイルでは「全部 M1Max」を意味してしまう)
-  assert.equal("machine" in result.object, false);
-});
-
-test("syncDevicesInMachineProfile: add + source:local は直下に machine キーを書かない", () => {
-  const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], [], { kind: "local" });
-  assert.equal(result.ok, true);
-  assert.equal("machine" in result.object, false);
-});
-
-// 既定がリモートのプロファイルへ手元のデバイスを混ぜる形。デバイス側に "local" を書かないと、
-// 既定(M1Max)を継いで「M1Max に居る」ことになり、run が手元の実体を見つけられない
-test("syncDevicesInMachineProfile: 既定がリモートのとき、追加したローカルのデバイスには local を明示する", () => {
-  const profile = { machine: "M1Max", ios: { devices: [] } };
-  const result = syncDevicesInMachineProfile(profile, [IOS_ADD_ENTRY], [], { kind: "local" });
-  assert.equal(result.ok, true);
-  assert.equal(result.object.ios.devices[0].machine, "local");
-  // 既定そのものは他のデバイスが使っているので消さない
-  assert.equal(result.object.machine, "M1Max");
-});
-
-test("syncDevicesInMachineProfile: source を渡さない場合は従来どおり machine キーを書かない", () => {
-  const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], []);
-  assert.equal(result.ok, true);
-  assert.equal("host" in result.object, false);
-});
-
-test("syncDevicesInMachineProfile: source を渡さない場合は既存の machine キーも保持する(判断材料が無い)", () => {
-  const profile = { machine: "M1Max", ios: { devices: [] } };
-  const result = syncDevicesInMachineProfile(profile, [IOS_ADD_ENTRY], []);
-  assert.equal(result.ok, true);
-  assert.equal(result.object.machine, "M1Max");
-});
-
-test("syncDevicesInMachineProfile: remove のみ(add:[])は source:remote でも直下に machine を書かない", () => {
-  const profile = { ios: { devices: [{ name: "削除対象", udid: "EXISTING" }] } };
-  const result = syncDevicesInMachineProfile(profile, [], ["削除対象"], { kind: "remote", machine: "M1Max" });
-  assert.equal(result.ok, true);
-  assert.equal("machine" in result.object, false);
-});
-
-test("syncDevicesInMachineProfile: remove のみ(add:[])は source:local でも既存の host キーを消さない", () => {
-  const profile = { host: "M1Max", ios: { devices: [{ name: "削除対象", udid: "EXISTING" }] } };
-  const result = syncDevicesInMachineProfile(profile, [], ["削除対象"], { kind: "local" });
-  assert.equal(result.ok, true);
-  assert.equal(result.object.host, "M1Max");
+test("addDevicesToRunProfile: 非オブジェクトなら ok:false", () => {
+  assert.equal(addDevicesToRunProfile(null, [], []).ok, false);
+  assert.equal(addDevicesToRunProfile([], [], []).ok, false);
 });
 
 // ---- parseRunProfileForForm ----
 
-test("parseRunProfileForForm: 正常な値は24フィールドをそのまま読み取る", () => {
+test("parseRunProfileForForm: 正常な値は23フィールドをそのまま読み取る", () => {
   const parsed = parseRunProfileForForm({
-    machine: "M1 Max",
     app: "sampleapp",
-    devices: [{ name: "シミュ1" }, { name: "エミュ1" }],
+    devices: [
+      { platform: "ios", name: "シミュ1" },
+      { platform: "android", machine: "M1Max", name: "エミュ1", enabled: false },
+    ],
     heal: true,
     textVisualCheck: false,
     screenLooksLike: false,
@@ -2894,9 +2157,11 @@ test("parseRunProfileForForm: 正常な値は24フィールドをそのまま読
     remoteControl: { workspace: "../sut-ec-mobile-workspace" },
   });
   assert.deepEqual(parsed, {
-    machine: "M1 Max",
     app: "sampleapp",
-    devices: [{ name: "シミュ1" }, { name: "エミュ1" }],
+    devices: [
+      { platform: "ios", name: "シミュ1", enabled: true },
+      { platform: "android", machine: "M1Max", name: "エミュ1", enabled: false },
+    ],
     heal: true,
     textVisualCheck: false,
     screenLooksLike: false,
@@ -2923,10 +2188,9 @@ test("parseRunProfileForForm: 正常な値は24フィールドをそのまま読
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、heal/screenLooksLike/textVisualCheck/containerInference=true、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionWarmup=true)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、heal/screenLooksLike/textVisualCheck/containerInference=true、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionWarmup=true)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
-    machine: "",
     app: "",
     devices: [],
     heal: true,
@@ -2955,9 +2219,8 @@ test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/loc
   });
 });
 
-test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が数値、heal が文字列、record/recordFailuresOnly/recordFullResolution/iosFastInput が文字列、remoteControl が非オブジェクト 等)", () => {
+test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文字列、record/recordFailuresOnly/recordFullResolution/iosFastInput が文字列、remoteControl が非オブジェクト 等)", () => {
   const parsed = parseRunProfileForForm({
-    machine: 123,
     app: null,
     devices: "not-an-array",
     heal: "true",
@@ -2980,7 +2243,6 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     remoteControl: "not-an-object",
   });
   assert.deepEqual(parsed, {
-    machine: "",
     app: "",
     devices: [],
     heal: true,
@@ -3099,11 +2361,46 @@ test("parseRunProfileForForm: recordBitrateKbps は number なら String() 化�
   assert.equal(parseRunProfileForForm({ recordBitrateKbps: "3000" }).recordBitrateKbps, "3000");
 });
 
-test("parseRunProfileForForm: devices は name が非文字列/オブジェクトでない要素をスキップする", () => {
+test("parseRunProfileForForm: devices は platform 不正/name が非文字列/オブジェクトでない要素をスキップする", () => {
   const parsed = parseRunProfileForForm({
-    devices: [{ name: "シミュ1" }, { name: 123 }, "not-an-object", { other: "x" }, { name: "エミュ1" }],
+    devices: [
+      { platform: "ios", name: "シミュ1" },
+      { platform: "ios", name: 123 },
+      "not-an-object",
+      { other: "x" },
+      { name: "platform欠落" },
+      { platform: "windows", name: "不正platform" },
+      { platform: "android", name: "エミュ1" },
+    ],
   });
-  assert.deepEqual(parsed.devices, [{ name: "シミュ1" }, { name: "エミュ1" }]);
+  assert.deepEqual(parsed.devices, [
+    { platform: "ios", name: "シミュ1", enabled: true },
+    { platform: "android", name: "エミュ1", enabled: true },
+  ]);
+});
+
+test("parseRunProfileForForm: devices の machine は 'local'/''/省略を手元(undefined)へ正規化する", () => {
+  const parsed = parseRunProfileForForm({
+    devices: [
+      { platform: "ios", machine: "local", name: "A" },
+      { platform: "ios", machine: "", name: "B" },
+      { platform: "ios", name: "C" },
+      { platform: "ios", machine: "M1Max", name: "D" },
+    ],
+  });
+  assert.deepEqual(parsed.devices.map((d) => d.machine), [undefined, undefined, undefined, "M1Max"]);
+});
+
+test("parseRunProfileForForm: devices の enabled は false のときだけ false、それ以外は true", () => {
+  const parsed = parseRunProfileForForm({
+    devices: [
+      { platform: "ios", name: "A", enabled: false },
+      { platform: "ios", name: "B", enabled: true },
+      { platform: "ios", name: "C" },
+      { platform: "ios", name: "D", enabled: "false" },
+    ],
+  });
+  assert.deepEqual(parsed.devices.map((d) => d.enabled), [false, true, true, true]);
 });
 
 test("parseRunProfileForForm: defaultTimeout が string ならそのまま返す(整数化しない)", () => {
@@ -3247,9 +2544,11 @@ test("parseAppProfileForForm: トップレベルが非オブジェクト(配列�
 // ---- updateRunProfileInObject ----
 
 const BASE_RUN_PROFILE_FIELDS = {
-  machine: "M1 Max",
   app: "sampleapp",
-  devices: [{ name: "シミュ1" }, { name: "エミュ1" }],
+  devices: [
+    { platform: "ios", name: "シミュ1", enabled: true },
+    { platform: "android", name: "エミュ1", enabled: true },
+  ],
   heal: false,
   textVisualCheck: true,
   screenLooksLike: true,
@@ -3273,10 +2572,9 @@ const BASE_RUN_PROFILE_FIELDS = {
   workspace: "",
 };
 
-test("updateRunProfileInObject: 基本更新(machine/app/heal/textVisualCheck/screenLooksLike/containerInference/iosInappEngine/wipeDataOnBloat/reportDir/defaultTimeout)", () => {
+test("updateRunProfileInObject: 基本更新(app/heal/textVisualCheck/screenLooksLike/containerInference/iosInappEngine/wipeDataOnBloat/reportDir/defaultTimeout)", () => {
   const result = updateRunProfileInObject({ app: "old", devices: [], heal: false, reportDir: "old" }, BASE_RUN_PROFILE_FIELDS);
   assert.equal(result.ok, true);
-  assert.equal(result.object.machine, "M1 Max");
   assert.equal(result.object.app, "sampleapp");
   assert.equal(result.object.heal, false);
   assert.equal(result.object.textVisualCheck, true);
@@ -3288,8 +2586,11 @@ test("updateRunProfileInObject: 基本更新(machine/app/heal/textVisualCheck/sc
   assert.equal(result.object.reportDir, "reports");
   assert.equal(result.object.defaultTimeout, 10);
   assert.equal(result.object.locale, "ja_JP");
-  // host は常に書く(手元は "local")
-  assert.deepEqual(result.object.devices, [{ machine: "local", name: "シミュ1" }, { machine: "local", name: "エミュ1" }]);
+  // machine は常に書く(手元は "local")。既存に無い(=新規)エントリなので platform 順に組み立てられる
+  assert.deepEqual(result.object.devices, [
+    { platform: "ios", machine: "local", name: "シミュ1" },
+    { platform: "android", machine: "local", name: "エミュ1" },
+  ]);
   assert.equal("record" in result.object, false); // record:false はキーを書かない
   assert.equal("recordFailuresOnly" in result.object, false);
   assert.equal("recordBitrateKbps" in result.object, false);
@@ -3418,13 +2719,12 @@ test("updateRunProfileInObject: locale は空文字でキー削除、'en-US'/'ja
   }
 });
 
-test("updateRunProfileInObject: machine/app/reportDir は空文字ならキー削除する", () => {
+test("updateRunProfileInObject: app/reportDir は空文字ならキー削除する", () => {
   const result = updateRunProfileInObject(
-    { machine: "M1 Max", app: "sampleapp", devices: [], heal: false, reportDir: "reports" },
-    { ...BASE_RUN_PROFILE_FIELDS, machine: "", app: "", reportDir: "" },
+    { app: "sampleapp", devices: [], heal: false, reportDir: "reports" },
+    { ...BASE_RUN_PROFILE_FIELDS, app: "", reportDir: "" },
   );
   assert.equal(result.ok, true);
-  assert.equal("machine" in result.object, false);
   assert.equal("app" in result.object, false);
   assert.equal("reportDir" in result.object, false);
 });
@@ -3462,26 +2762,54 @@ test("updateRunProfileInObject: defaultTimeout は空文字でキー削除、0 �
   }
 });
 
-test("updateRunProfileInObject: devices は既存の同名エントリ(未知キー込み)を再利用し、新規名は{name}のみ追加する", () => {
+test("updateRunProfileInObject: devices は既存の同名エントリ(未知キー込み)を再利用し、新規名は orderedDeviceEntry で追加する", () => {
   const profile = {
     devices: [
-      { name: "シミュ1", note: "keep-me" },
-      { name: "旧デバイス" },
+      { platform: "ios", name: "シミュ1", note: "keep-me" },
+      { platform: "ios", name: "旧デバイス" },
     ],
   };
   const result = updateRunProfileInObject(
-    profile, { ...BASE_RUN_PROFILE_FIELDS, devices: [{ name: "シミュ1" }, { name: "新デバイス" }] });
+    profile,
+    {
+      ...BASE_RUN_PROFILE_FIELDS,
+      devices: [
+        { platform: "ios", name: "シミュ1", enabled: true },
+        { platform: "ios", name: "新デバイス", enabled: true },
+      ],
+    },
+  );
   assert.equal(result.ok, true);
-  assert.deepEqual(result.object.devices,
-                   [{ name: "シミュ1", note: "keep-me" }, { machine: "local", name: "新デバイス" }]);
+  assert.deepEqual(result.object.devices, [
+    { platform: "ios", name: "シミュ1", note: "keep-me", machine: "local" },
+    { platform: "ios", machine: "local", name: "新デバイス" },
+  ]);
 });
 
 test("updateRunProfileInObject: devices は fields.devices の順序で再構成する", () => {
-  const profile = { devices: [{ name: "A" }, { name: "B" }] };
+  const profile = { devices: [{ platform: "ios", name: "A" }, { platform: "ios", name: "B" }] };
   const result = updateRunProfileInObject(
-    profile, { ...BASE_RUN_PROFILE_FIELDS, devices: [{ name: "B" }, { name: "A" }] });
+    profile,
+    {
+      ...BASE_RUN_PROFILE_FIELDS,
+      devices: [{ platform: "ios", name: "B", enabled: true }, { platform: "ios", name: "A", enabled: true }],
+    },
+  );
   assert.equal(result.ok, true);
-  assert.deepEqual(result.object.devices, [{ name: "B" }, { name: "A" }]);
+  assert.deepEqual(result.object.devices, [
+    { platform: "ios", name: "B", machine: "local" },
+    { platform: "ios", name: "A", machine: "local" },
+  ]);
+});
+
+test("updateRunProfileInObject: チェックを外すと enabled:false で残り、既存の除去はしない", () => {
+  const profile = { devices: [{ platform: "ios", name: "A" }] };
+  const result = updateRunProfileInObject(
+    profile,
+    { ...BASE_RUN_PROFILE_FIELDS, devices: [{ platform: "ios", name: "A", enabled: false }] },
+  );
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.object.devices, [{ platform: "ios", name: "A", machine: "local", enabled: false }]);
 });
 
 test("updateRunProfileInObject: 未知キー(トップレベル)を保持する", () => {
@@ -3492,11 +2820,13 @@ test("updateRunProfileInObject: 未知キー(トップレベル)を保持する"
 });
 
 test("updateRunProfileInObject: devices 要素内の未知キーを保持する(再利用時)", () => {
-  const profile = { devices: [{ name: "シミュ1", customFlag: true, nested: { a: 1 } }] };
+  const profile = { devices: [{ platform: "ios", name: "シミュ1", customFlag: true, nested: { a: 1 } }] };
   const result = updateRunProfileInObject(
-    profile, { ...BASE_RUN_PROFILE_FIELDS, devices: [{ name: "シミュ1" }] });
+    profile, { ...BASE_RUN_PROFILE_FIELDS, devices: [{ platform: "ios", name: "シミュ1", enabled: true }] });
   assert.equal(result.ok, true);
-  assert.deepEqual(result.object.devices, [{ name: "シミュ1", customFlag: true, nested: { a: 1 } }]);
+  assert.deepEqual(result.object.devices, [
+    { platform: "ios", name: "シミュ1", customFlag: true, nested: { a: 1 }, machine: "local" },
+  ]);
 });
 
 test("updateRunProfileInObject: トップレベルがオブジェクトでなければ(配列含む)エラー", () => {

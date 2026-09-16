@@ -155,7 +155,7 @@ struct ApiRunCommand: AsyncParsableCommand {
 
     @Option(name: .customLong("device"), parsing: .upToNextOption,
             help: ArgumentHelp("Run on only these devices of the run profile (device names as written in "
-                + "the machine profile). Repeatable; defaults to every device the run profile lists. "
+                + "the run profile). Repeatable; defaults to every device the run profile lists. "
                 + "Used by the per-host sub-runs when one run profile spans devices on several machines "
                 + "(docs/remote-runner.md §13)"))
     var devices: [String] = []
@@ -237,9 +237,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             throw ValidationError(message)
         }
         // 明示 --runner("local" を除く)は --profile が無いと dispatchToRemoteHost の
-        // 冒頭で必ず落ちる。resolveEffectiveDispatchTarget は --profile 無しではマシンプロファイル
-        // 経由の自動ディスパッチを見ない(machineProfileMachineAndName は `if let profile` の内側)ので、
-        // 明示 target をそのまま返す = ファイル I/O なしで引数だけから決まる
+        // 冒頭で必ず落ちる。resolveEffectiveDispatchTarget は明示 target をそのまま返す
+        // = ファイル I/O なしで引数だけから決まる
         if profile == nil, let target = runner, !MachineDispatch.isExplicitLocal(target) {
             throw ValidationError("--runner requires --profile")
         }
@@ -261,7 +260,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
         // `--dry-run` はデバイスにも録画にも触れないので `--set` はそもそも使われない
         // (`fleetest run` の同じ分岐と同じ理由・同じ規律)。
-        // ここを skip しないと、profile-only なキー(app/machine 等)を dry-run で試すだけの
+        // ここを skip しないと、profile-only なキー(app 等)を dry-run で試すだけの
         // 打鍵が `--profile` 必須のエラーで止まる ——`run` は info 注記だけで進む
         if profile == nil, !dryRun {
             let unsupported = Set(profileOverrides.keys)
@@ -298,12 +297,11 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         let testProject = try ScenarioHost.project(named: project)
 
-        // NDJSON はここより後でしか出さない(emitLine(ApiRunStartedEvent) 以降)。--runner/マシン
-        // プロファイルの host はローカルでは何も実行せずリモートの出力を中継するだけなので、
+        // NDJSON はここより後でしか出さない(emitLine(ApiRunStartedEvent) 以降)。--runner/全台が
+        // リモートのプロファイルはローカルでは何も実行せずリモートの出力を中継するだけなので、
         // 必ずそれより前に分岐する。--runner 明示 + --dry-run は dispatchToRemoteHost が明示的に
-        // 拒否する(既存どおり)ため常に解決へ進める一方、自動側(host 未指定)は dry-run のとき
-        // マシン側 host を見ない(requireProfileMachine: !dryRun)= ローカルで dry-run が走る。
-        // 優先順位・食い違いは FTCore.MachineDispatch に委譲(ユーザー決定)
+        // 拒否する(既存どおり)ため常に解決へ進める一方、自動側(--runner 未指定)は dry-run のとき
+        // 台の machine を見ない(requireProfileMachine: !dryRun)= ローカルで dry-run が走る
         // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとの子プロセス(`fleetest api
         // run --runner <label>`)へ分け、NDJSON を ApiRunMachineFanout が1本へ多重化する
         // (docs/remote-runner.md §13)。--runner 明示や全台が同じ機械なら nil が返り従来経路のまま。
@@ -312,7 +310,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         if !dryRun, let profile,
            let groups = try DeviceMachineRunner.plan(
                project: testProject, profileName: profile, explicitHost: runner,
-               deviceFilter: devices, overrides: profileOverrides) {
+               deviceFilter: devices) {
             if debug {
                 throw ValidationError(
                     "--debug is not supported with a profile that spans multiple machines"
@@ -331,8 +329,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
         if let dispatch = try resolveEffectiveDispatchTarget(
         explicitTarget: runner, profile: profile, project: project,
-            requireProfileMachine: !dryRun, warn: { logStderr($0) },
-            overrides: profileOverrides) {
+            requireProfileMachine: !dryRun) {
             try await dispatchToRemoteHost(dispatch, project: testProject)
             return
         }
@@ -361,14 +358,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         // runFinished 無しの異常終了を exit code で検知するため許容される)
         var resolvedProfile: ResolvedProfile?
         if let profile {
-            let machine = try ProfileResolver.determineMachine(
-                project: testProject,
-                runProfileName: profile)
-            if machine.auto {
-                logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
-            }
             let resolvedAll = try ProfileResolver.resolve(
-                project: testProject, runName: profile, machineName: machine.name,
+                project: testProject, runName: profile,
                 workspaceOverride: workspace, overrides: profileOverrides)
             // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17・
             // 2026-08-18)なので毎回雛形作成(ProfileRunner.run と同じ規律。既に揃っていれば
@@ -402,8 +393,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             if deviceMachine == nil, MachineDispatch.isExplicitLocal(runner) {
                 (effectiveDevices, effectiveDeviceHost) = try machineScopedDeviceFilter(
                     project: testProject, profile: profile,
-                    targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices,
-                    overrides: profileOverrides)
+                    targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices)
             }
             let full = resolvedAll.filteringDevices(names: effectiveDevices, deviceMachine: effectiveDeviceHost)
             // 絞り込みを指定したときだけ「合致0」を報告する。指定していないのに0台なのは
@@ -483,7 +473,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             androidWorkersTask = Task {
                 let deviceList = resolved.devices
                     .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-                logSupply("🧩 Profile \(resolved.runName): \(resolved.appName) @ \(resolved.machineName)")
+                logSupply("🧩 Profile \(resolved.runName): \(resolved.appName)")
                 logSupply("   Devices: \(deviceList)")
                 var wipedAndroid: [String] = []
                 if resolved.wipeDataOnBloat {
@@ -813,7 +803,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             throw ValidationError("--dry-run is not supported with --runner")
         }
         // 拒否 or 注記の分岐は FTRemote.RemoteDispatchFlagPolicy に委譲(欠陥1)。VSCode 拡張は
-        // 設定 fleetest.buildBeforeRun: false のとき常に --skip-build を送るため、マシンプロファイル
+        // 設定 fleetest.buildBeforeRun: false のとき常に --skip-build を送るため、実行プロファイル
         // 由来の自動ディスパッチ(origin = .autoDispatch)にそのまま適用すると、利用者が打っていない
         // フラグを理由に必ず落ちる。自動側は注記のみで無視する(リモートは常に自前でビルドする)
         let origin = dispatch.origin
@@ -838,7 +828,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         if deviceMachine == nil {
             (scopedDevices, scopedDeviceHost) = try machineScopedDeviceFilter(
                 project: project, profile: profile, targetMachine: dispatch.rawTarget,
-                requestedDevices: devices, overrides: dispatchOverrides)
+                requestedDevices: devices)
         }
         let exitCode = try await dispatcher.dispatchApi(
             project: project, profile: profile, scenarios: scenarios,
@@ -968,7 +958,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         if !dryRun {
             let deviceList = resolved.devices
                 .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-            logSupply("🧩 Profile \(profileName): \(resolved.appName) @ \(resolved.machineName)")
+            logSupply("🧩 Profile \(profileName): \(resolved.appName)")
             logSupply("   Devices: \(deviceList)")
             var wipedAndroid: [String] = []
             if resolved.wipeDataOnBloat {

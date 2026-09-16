@@ -55,7 +55,7 @@ Appium 比較 PoC 由来のドライバ改良(PR #1)が main 上で期待どお�
 ## 再現手順
 
 ```bash
-# 専用シミュレータ+verify プロファイル(machines/M2Ultra-verify 等)を用意して
+# 専用シミュレータ+verify 用の実行プロファイル(runs/ios-verify-xcuitest.json 等)を用意して
 FT_EVENT_LOG_PATH=<file> fleetest run --project sut-ec-mobile \
   --profile <ios-verify-xcuitest|ios-verify-hybrid> --scenario <シナリオ> --skip-build
 # 改良オフ側: FT_NO_FAST_LAUNCH=1 を前置

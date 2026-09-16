@@ -19,7 +19,7 @@ final class RemoteControlWorkspaceTests: XCTestCase {
             .appendingPathComponent("FTCoreTests-remoteControl-\(UUID().uuidString)")
         let root = tempDir.appendingPathComponent("TestProjects/SampleApp")
         project = TestProject(name: "SampleApp", rootURL: root)
-        for dir in [project.appsDir, project.machinesDir, project.runsDir] {
+        for dir in [project.appsDir, project.runsDir] {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
     }
@@ -32,15 +32,12 @@ final class RemoteControlWorkspaceTests: XCTestCase {
         try json.data(using: .utf8)!.write(to: dir.appendingPathComponent("\(name).json"))
     }
 
-    private func writeAppAndMachine(appPath: String = "apps/SampleApp.app",
+    private func writeApp(appPath: String = "apps/SampleApp.app",
                                     appPathPhysical: String? = nil) throws {
         let physical = appPathPhysical.map { ", \"appPathPhysical\": \"\($0)\"" } ?? ""
         try write("""
         { "ios": { "app": "com.example.sampleapp", "appPath": "\(appPath)"\(physical) } }
         """, to: project.appsDir, name: "sampleapp")
-        try write("""
-        { "ios": { "devices": [ { "name": "d1", "simulator": "iPhone 17 Pro" } ] } }
-        """, to: project.machinesDir, name: "m")
     }
 
     // MARK: - ProfileResolver.effectiveWorkspaceRaw(純粋関数)
@@ -81,7 +78,7 @@ final class RemoteControlWorkspaceTests: XCTestCase {
 
     func testDeclaredWorkspaceReadsRemoteControlWorkspace() throws {
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "d1" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "d1", "simulator": "iPhone 17 Pro" } ],
           "remoteControl": { "workspace": "../ws" } }
         """, to: project.runsDir, name: "r")
         XCTAssertEqual(ProfileResolver.declaredWorkspace(project: project, runName: "r"), "../ws")
@@ -89,14 +86,14 @@ final class RemoteControlWorkspaceTests: XCTestCase {
 
     func testDeclaredWorkspaceNilWhenSectionAbsent() throws {
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "d1" } ] }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "d1", "simulator": "iPhone 17 Pro" } ] }
         """, to: project.runsDir, name: "r")
         XCTAssertNil(ProfileResolver.declaredWorkspace(project: project, runName: "r"))
     }
 
     func testDeclaredWorkspaceNilWhenWorkspaceEmpty() throws {
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "d1" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "d1", "simulator": "iPhone 17 Pro" } ],
           "remoteControl": { "workspace": "   " } }
         """, to: project.runsDir, name: "r")
         XCTAssertNil(ProfileResolver.declaredWorkspace(project: project, runName: "r"))
@@ -111,12 +108,12 @@ final class RemoteControlWorkspaceTests: XCTestCase {
     // 原本(sourcePath)の解決基準はリポジトリルートのまま不変)
 
     func testUnspecifiedRemoteControlDefaultsToProjectRootWorkspace() throws {
-        try writeAppAndMachine()
+        try writeApp()
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "d1" } ] }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "d1", "simulator": "iPhone 17 Pro" } ] }
         """, to: project.runsDir, name: "r")
 
-        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
         XCTAssertEqual(resolved.workspaceRoot?.path,
                        project.rootURL.appendingPathComponent("workspace").path)
         XCTAssertEqual(resolved.apps["ios"]?.sourcePath,
@@ -162,7 +159,7 @@ final class RemoteControlWorkspaceTests: XCTestCase {
 
     func testEffectiveWorkspaceRootDefaultsToProjectRootWorkspaceWhenUndeclared() throws {
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "d1" } ] }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "d1", "simulator": "iPhone 17 Pro" } ] }
         """, to: project.runsDir, name: "r")
         XCTAssertEqual(
             ProfileResolver.effectiveWorkspaceRoot(project: project, runName: "r").path,
@@ -171,7 +168,7 @@ final class RemoteControlWorkspaceTests: XCTestCase {
 
     func testEffectiveWorkspaceRootUsesDeclaredValueWhenPresent() throws {
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "d1" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "d1", "simulator": "iPhone 17 Pro" } ],
           "remoteControl": { "workspace": "../ws" } }
         """, to: project.runsDir, name: "r")
         let expected = tempDir.deletingLastPathComponent().appendingPathComponent("ws")
@@ -185,13 +182,13 @@ final class RemoteControlWorkspaceTests: XCTestCase {
     // インストールに使う場所は別物。docs/remote-runner.md §17)
 
     func testDeclaredWorkspaceRedirectsInstallPathButKeepsSourceAtRepoRoot() throws {
-        try writeAppAndMachine(appPath: "apps/SampleApp.app")
+        try writeApp(appPath: "apps/SampleApp.app")
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "d1" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "d1", "simulator": "iPhone 17 Pro" } ],
           "remoteControl": { "workspace": "../sut-workspace" } }
         """, to: project.runsDir, name: "r")
 
-        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
         // repoRoot = project.rootURL(TestProjects/SampleApp)の2階層上 = tempDir(setUp 参照)。
         // "../sut-workspace" は tempDir の親 + "sut-workspace" へ畳み込まれる
         // (resolvePath を経由せず独立に期待値を組み立てる)
@@ -208,13 +205,13 @@ final class RemoteControlWorkspaceTests: XCTestCase {
     }
 
     func testDeclaredWorkspaceAbsoluteAlsoUsesAppsSubdirectory() throws {
-        try writeAppAndMachine(appPath: "apps/SampleApp.app")
+        try writeApp(appPath: "apps/SampleApp.app")
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "d1" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "d1", "simulator": "iPhone 17 Pro" } ],
           "remoteControl": { "workspace": "/Volumes/shared/ws" } }
         """, to: project.runsDir, name: "r")
 
-        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
         XCTAssertEqual(resolved.workspaceRoot?.path, "/Volumes/shared/ws")
         XCTAssertEqual(resolved.apps["ios"]?.appPath,
                        WorkspaceAppStaging.installPath(
@@ -228,13 +225,13 @@ final class RemoteControlWorkspaceTests: XCTestCase {
     /// リモートで見つからない、という以前と同じ不具合の変種が残る)。**原本(sourcePath)は
     /// 絶対パスのまま変わらない**(以前の「絶対パスなら触らない」テストはこの契約変更で置き換わる)
     func testAbsoluteAppPathIsAlsoRedirectedToWorkspaceAppsWhenDeclared() throws {
-        try writeAppAndMachine(appPath: "/opt/builds/SampleApp.app")
+        try writeApp(appPath: "/opt/builds/SampleApp.app")
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "d1" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "d1", "simulator": "iPhone 17 Pro" } ],
           "remoteControl": { "workspace": "../ws" } }
         """, to: project.runsDir, name: "r")
 
-        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
         XCTAssertEqual(resolved.apps["ios"]?.sourcePath, "/opt/builds/SampleApp.app")
         let expectedWorkspace = tempDir.deletingLastPathComponent().appendingPathComponent("ws")
         XCTAssertEqual(resolved.apps["ios"]?.appPath,
@@ -245,14 +242,14 @@ final class RemoteControlWorkspaceTests: XCTestCase {
     // MARK: - resolve(): --workspace(workspaceOverride)がプロファイルの宣言を上書きする
 
     func testWorkspaceOverrideWinsOverDeclaredValue() throws {
-        try writeAppAndMachine(appPath: "apps/SampleApp.app")
+        try writeApp(appPath: "apps/SampleApp.app")
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "d1" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "d1", "simulator": "iPhone 17 Pro" } ],
           "remoteControl": { "workspace": "../local-only-ws" } }
         """, to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(
-            project: project, runName: "r", machineName: "m",
+            project: project, runName: "r",
             workspaceOverride: "/Users/ci/fleetest-runner/work/workspace/SampleApp")
         XCTAssertEqual(resolved.workspaceRoot?.path,
                        "/Users/ci/fleetest-runner/work/workspace/SampleApp")
@@ -268,9 +265,9 @@ final class RemoteControlWorkspaceTests: XCTestCase {
     // MARK: - ProfileResolver.declaredAppPaths(軽量読み。RemoteRunDispatcher のミラー直前用)
 
     func testDeclaredAppPathsResolvesRelativeToRepoRoot() throws {
-        try writeAppAndMachine(appPath: "apps/SampleApp.app")
+        try writeApp(appPath: "apps/SampleApp.app")
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "d1" } ] }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "d1", "simulator": "iPhone 17 Pro" } ] }
         """, to: project.runsDir, name: "r")
 
         let paths = ProfileResolver.declaredAppPaths(project: project, runName: "r")
@@ -288,10 +285,10 @@ final class RemoteControlWorkspaceTests: XCTestCase {
     /// 宣言があるのに落とすと、実機を持つランナーで仮想デバイス用ビルドが入り
     /// 0xe8008014(未署名)で落ちる
     func testDeclaredAppPathsCarriesThePhysicalBuild() throws {
-        try writeAppAndMachine(appPath: "apps/SampleApp.app",
+        try writeApp(appPath: "apps/SampleApp.app",
                                appPathPhysical: "apps/device/SampleApp.app")
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "d1" } ] }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "d1", "simulator": "iPhone 17 Pro" } ] }
         """, to: project.runsDir, name: "r")
 
         let paths = ProfileResolver.declaredAppPaths(project: project, runName: "r")
@@ -309,11 +306,11 @@ final class RemoteControlWorkspaceTests: XCTestCase {
 
     func testValidateWarnsOnUnknownRemoteControlKey() throws {
         let json = Data("""
-        { "app": "sampleapp", "devices": [ { "name": "d1" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "d1", "simulator": "iPhone 17 Pro" } ],
           "remoteControl": { "workspce": "../ws" } }
         """.utf8)
         let (errors, warnings) = ProfileResolver.validate(
-            kind: .run, data: json, context: "runs/r.json", project: project)
+            kind: .run, data: json, context: "runs/r.json")
         XCTAssertTrue(errors.isEmpty, "\(errors)")
         XCTAssertTrue(warnings.contains { $0.contains("remoteControl") && $0.contains("workspce") },
                      "\(warnings)")
@@ -323,24 +320,24 @@ final class RemoteControlWorkspaceTests: XCTestCase {
     // (規則そのものは RunHooksTests.swift。ここは配線だけ)
 
     func testResolveCarriesTheHooksResolvedAgainstTheEffectiveWorkspace() throws {
-        try writeAppAndMachine()
+        try writeApp()
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "d1" } ],
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "d1", "simulator": "iPhone 17 Pro" } ],
           "remoteControl": { "workspace": "/Volumes/shared/ws" } }
         """, to: project.runsDir, name: "r")
 
-        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
         XCTAssertEqual(resolved.setupHook?.url.path, "/Volumes/shared/ws/scripts/setup.sh")
         XCTAssertEqual(resolved.teardownHook?.url.path, "/Volumes/shared/ws/scripts/teardown.sh")
     }
 
     func testHooksFollowTheDefaultWorkspaceWhenUndeclared() throws {
-        try writeAppAndMachine()
+        try writeApp()
         try write("""
-        { "app": "sampleapp", "devices": [ { "name": "d1" } ] }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "d1", "simulator": "iPhone 17 Pro" } ] }
         """, to: project.runsDir, name: "r")
 
-        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
         XCTAssertEqual(resolved.setupHook?.url.path,
                        project.rootURL.appendingPathComponent("workspace/scripts/setup.sh").path)
     }

@@ -2,10 +2,10 @@
 // **転送したプロファイルからローカルエイリアスを消す**(用語の定義と理由は FTCore.RunnerProfileView)。
 // プロジェクトの rsync は手元のファイルをそのまま運ぶので、そのままだとランナー機のディスクに
 // `"machine": "M1Ultra"` が残る。エイリアスは発行側だけの概念なので、転送の直後に
-// profiles/machines と profiles/runs を**そのランナーから見た姿**へ差し替える。
+// profiles/runs を**そのランナーから見た姿**へ差し替える。
 //
-// **machines を先に全部読んでから畳む** —— 注記の有無はプロジェクト単位の判定で、machines と runs の
-// 両方へ同じ値を渡す(RunnerProfileView.isMachineAnnotated)。
+// **runs を先に全部読んでから畳む** —— 注記の有無はプロジェクト単位の判定で、全ファイルへ
+// 同じ値を渡す(RunnerProfileView.isMachineAnnotated)。
 //
 // 呼ぶのは転送を行う2箇所(run ディスパッチの RemoteRunDispatcher.transfer と、
 // fan-out 用の RemoteProjectSync.run)。**片方だけ変えない** —— 片方が生のプロファイルを
@@ -30,25 +30,21 @@ enum RunnerProfileTransfer {
         }
         defer { try? FileManager.default.removeItem(at: staging) }
 
-        let machines = readProfiles(in: localProjectDir.appendingPathComponent("profiles/machines"))
         let runs = readProfiles(in: localProjectDir.appendingPathComponent("profiles/runs"))
-        let annotated = RunnerProfileView.isMachineAnnotated(machineProfiles: (machines ?? []).map { $0.object })
+        let annotated = RunnerProfileView.isMachineAnnotated(runProfiles: (runs ?? []).map { $0.object })
 
         var uploads: [(local: URL, remote: String)] = []
-        func stage(_ dirName: String, _ profiles: [(name: String, object: [String: Any])]?,
-                   _ localize: ([String: Any], String, Bool) -> [String: Any]) {
-            guard let profiles else { return }
-            let targetDir = staging.appendingPathComponent(dirName)
+        if let runs {
+            let targetDir = staging.appendingPathComponent("runs")
             try? FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
-            for profile in profiles {
-                guard let rendered = try? OrderedProfileJSON.data(localize(profile.object, alias, annotated))
-                else { continue }
+            for profile in runs {
+                let localized = RunnerProfileView.localizeRunProfile(
+                    profile.object, alias: alias, projectIsMachineAnnotated: annotated)
+                guard let rendered = try? OrderedProfileJSON.data(localized) else { continue }
                 try? rendered.write(to: targetDir.appendingPathComponent(profile.name))
             }
-            uploads.append((targetDir, "\(layout.projectDir(project))/profiles/\(dirName)/"))
+            uploads.append((targetDir, "\(layout.projectDir(project))/profiles/runs/"))
         }
-        stage("machines", machines, RunnerProfileView.localizeMachineProfile)
-        stage("runs", runs, RunnerProfileView.localizeRunProfile)
 
         for upload in uploads {
             let args = ["-az", "\(upload.local.path)/", "\(sshTarget):\(upload.remote)"]

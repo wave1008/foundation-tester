@@ -224,13 +224,13 @@ export function measureTileImageHeight() {
   return probe.clientHeight - chrome;
 }
 
-// マシンプロファイル未記載の合成デバイス。起動(up)と GPU 再起動が成立しないことを
+// どの実行プロファイルにも記載の無い合成デバイス。起動(up)と GPU 再起動が成立しないことを
 // タイル上でも明示する(停止・ライブ操作は可)。
 // **バッジは「他と違う」ことを示すもの**なので、区別しないときは出さない:
 //   - 「(起動中のデバイス)」を選んでいる間(ユーザー決定)—— このフィルタは登録に依らず
 //     動いている台を見るためのもので、そこでは未登録は例外ではなく普通の状態。
-//   - **1台も登録済みが居ないとき** —— マシンプロファイルが2つ以上ある案件では
-//     `api monitor` がマシンを決められず全台を未登録として出す(monitorDeviceModel.ts の
+//   - **1台も登録済みが居ないとき** —— 実行プロファイルが2つ以上ある案件では
+//     `api monitor` が対象デバイスの一覧を1つに決められず全台を未登録として出す(monitorDeviceModel.ts の
 //     filterMonitorDevices 参照)。全タイルに同じバッジが並ぶだけで何も区別しない。
 function renderUnregisteredBadge(entry) {
   const visible = entry.device.registered === false && !runningFilterActive && hasRegisteredTile();
@@ -275,7 +275,7 @@ function createTile(device) {
   header.className = 'tile-header';
   const name = document.createElement('span');
   name.className = 'tile-name';
-  // 手元でないデバイスのホスト名(マシンプロファイル/実行プロファイルの一覧と同じバッジ)。
+  // 手元でないデバイスのホスト名(実行プロファイルの一覧と同じバッジ)。
   // **モニターは手元のデバイスしか触れない**ので、リモートのタイルは状態を観測できない ——
   // 「どの機械の台か」を出さないと、未起動表示の理由が分からない
   const remoteBadge = document.createElement('span');
@@ -308,7 +308,7 @@ function createTile(device) {
   // バッジも絵文字1文字なので説明はホバーが唯一の手段。ネイティブ title(約1秒)ではなく
   // タイルの他の説明と同じ自前ツールチップ(0.2秒)に揃える
   setHoverTip(frozenBadge, t('wvMonitor.tile.frozenTitle'));
-  // 未登録(マシンプロファイル未記載の合成デバイス)バッジ。device.state に関わらず常時対象なので
+  // 未登録(どの実行プロファイルにも記載の無い合成デバイス)バッジ。device.state に関わらず常時対象なので
   // kindBadge と同じくヘッダーに置く(renderMode==='cpu' バッジは state==='connected' 限定だが
   // 表示切替の実装パターン=専用要素+専用 render 関数+style.display 切替は揃える)。
   const unregisteredBadge = document.createElement('span');
@@ -783,7 +783,7 @@ export function renderDeviceOpMenuItem() {
   // 止まっているものを止める操作しか選べなくなる)
   const item = deviceOpMenuItem(bridgeNotRunning(deviceOpMenuEntry) ? 'offline' : device.state,
                                 deviceOpMenuEntry.opBusy, device.kind === 'physical');
-  // 未登録(マシンプロファイル未記載)のシミュレータ/エミュレータは起動(up)が --name 前提のため
+  // 未登録(どの実行プロファイルにも記載の無い)シミュレータ/エミュレータは起動(up)が --name 前提のため
   // 成立しない。停止(down)だけ出す。
   // **実機は例外** —— 実機の up は「ブリッジを起動」であって端末の電源ではなく、udid で撃てる
   // (start-device --udid)。ここで隠すと、繋がっている実機がタイルに出るのに何も操作できない
@@ -828,7 +828,7 @@ function openDeviceOpMenu(entry, clientX, clientY) {
   deviceOpMenuItemBtn.style.display = '';
   deviceOpMenuSep.style.display = '';
   renderDeviceOpMenuItem();
-  // GPU再起動はマシンプロファイル前提(name 解決)のため未登録では出さない
+  // GPU再起動は実行プロファイルへの記載前提(name 解決)のため未登録では出さない
   // (起動/停止項目は renderDeviceOpMenuItem 側、ライブ操作は下で個別に扱う)。
   const unregistered = entry.device.registered === false;
   // ライブ操作はブリッジ接続済み(state==='connected')でのみ機能する(liveTab.js の「接続されていません」
@@ -1015,13 +1015,13 @@ deviceOpMenuItemBtn.addEventListener('click', (event) => {
   }
   const device = deviceOpMenuEntry.device;
   // **machine も載せる** —— 同名の台が別の機械にも居るのは通常で、名前だけだと
-  // 手元のマシンプロファイルの同名エントリを引いて**別の機械の設定でこの Mac に1台作る**
+  // 手元の実行プロファイルの同名エントリを引いて**別の機械の設定でこの Mac に1台作る**
   // (machine は api monitor のワイヤ名。値はマシン名 = エイリアス)
   const message = {
     type: 'deviceOp', name: device.name, op: deviceOpMenuItemBtn.dataset.op,
     machine: device.machine,
   };
-  // 未登録(registered:false)はマシンプロファイルに無いため --name で引けない。udid(iOS)/
+  // 未登録(registered:false)はどの実行プロファイルにも無いため --name で引けない。udid(iOS)/
   // serial(Android)を載せ、拡張側(monitorDeviceOps.ts)が stop-device --udid/--serial の
   // 直指定モードへ振り分ける(契約: monitorWebviewMessages.ts の "deviceOp")。
   if (device.registered === false) {

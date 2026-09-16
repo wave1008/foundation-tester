@@ -6,7 +6,6 @@ import Foundation
 
 /// 登録簿の1エントリ。**マシン名 → ssh 実体の対応だけ**を持つ。
 /// 機械の身元は ssh の宛先が保証するので、リモートのマシン登録名は持たない
-/// (ProfileResolver.determineMachine)
 public struct RemoteHostEntry: Codable, Equatable, Sendable {
     /// マシン名(利用者が設定タブで付ける名前)。登録簿内で一意(upsert が同名を置き換える)。
     /// プロファイルの `machine` 欄・`--host` に書くのはこの名前。

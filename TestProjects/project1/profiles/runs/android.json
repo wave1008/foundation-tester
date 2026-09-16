@@ -2,8 +2,19 @@
   "app": "project1",
   "devices": [
     {
+      "platform": "ios",
       "machine": "local",
-      "name": "エミュ1"
+      "name": "メイン機",
+      "enabled": false,
+      "os": "27.0",
+      "simulator": "iPhone 17 Pro(iOS 27.0)",
+      "udid": "A012ADD8-EEA0-4F0C-B8BC-65E748F5906F"
+    },
+    {
+      "platform": "android",
+      "machine": "local",
+      "name": "エミュ1",
+      "avd": "Pixel_9_Android_15_-01"
     }
   ],
   "heal": true

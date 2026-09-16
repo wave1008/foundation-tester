@@ -1,6 +1,6 @@
 ---
 name: fleetest-setup
-description: fleetest を使いたい受け手を、自分の iOS/Android アプリ向けにシナリオを書いて実行できる状態まで初期セットアップする。未クローンなら clone から行い、ビルド・環境検証・自分のプロジェクト作成・マシン/アプリのプロファイル設定・VSCode 拡張のインストールを、検証ゲートと人間チェックポイント付きで順に実行する。「セットアップして」「使えるようにして」「動かせるようにして」等の初回導入依頼で使う。
+description: fleetest を使いたい受け手を、自分の iOS/Android アプリ向けにシナリオを書いて実行できる状態まで初期セットアップする。未クローンなら clone から行い、ビルド・環境検証・自分のプロジェクト作成・アプリ/実行のプロファイル設定・VSCode 拡張のインストールを、検証ゲートと人間チェックポイント付きで順に実行する。「セットアップして」「使えるようにして」「動かせるようにして」等の初回導入依頼で使う。
 ---
 
 # fleetest 初期セットアップ runbook
@@ -118,15 +118,13 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 | テスト対象アプリの表示名（プロファイルの `appName`） | App | フォルダ名から作った候補 / Other=自由入力 |
 | テスト対象のプラットフォーム | Platform | iOS / Android / 両方 |
 
-**マシン名(= マシンプロファイル名)と clone 先は聞かない**（マシン名は preflight の
-`computer_name=`、clone 先は `tool_root=`。どちらも完了報告で伝えれば足りる)。
+**clone 先は聞かない**（`tool_root=` を完了報告で伝えれば足りる)。
 受け手が別の clone 先を明示した場合だけ追加で 1 問聞く。
 
 - bundle ID は**分からなくても中断しない**。「まだ分からない」ならプレースホルダ `com.example.myapp` の
   まま続行する（実IDが要るのは実行(launch)時だけ。後から `profiles/apps/<projectname>.json` の `app` を
   差し替えれば済む →ステップ6）。
-- **選択肢の候補は preflight の出力をそのまま使う**(`folder_name=` → プロジェクト名、
-  `computer_name=` → マシンプロファイル名の既定)。
+- **選択肢の候補は preflight の出力をそのまま使う**(`folder_name=` → プロジェクト名)。
   `scutil` や `basename` を別途実行しない(承認回数が増えるだけ)。**他リポジトリを探索して埋めない**。
 - clone 先は外部パッケージ構成のみ関係（→ステップ0.5）。指定があればそのパスが TOOL_ROOT。
 
@@ -174,11 +172,11 @@ git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
 
 ```
 curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETEST_REF:-main}/Scripts/install.sh | bash -s -- \
-  --name <ProjectName> --platform <ios|android|both> --machine <マシン名> --app-name "<表示名>" [--app-id <bundleID>]
+  --name <ProjectName> --platform <ios|android|both> --app-name "<表示名>" [--app-id <bundleID>]
 ```
 
-**`--machine` と `--app-name` を渡すとプロファイル作成(`profile setup --auto-device`)まで1回で終わる**
-(ステップ5・8 が不要になる。デバイスは自動選定)。値はすべてステップ0の回答と preflight の出力から作る。
+**`--app-name` を渡すとプロファイル作成(`profile setup --auto-device`)まで1回で終わる**
+(ステップ5・8 が不要になる。デバイスは自動選定・常にこの Mac)。値はすべてステップ0の回答と preflight の出力から作る。
 
 - **インストーラが規約位置(`.claude/`・`CLAUDE.md`・`.mcp.json`)を用意するのは Claude Code だけ**。
   他のエージェント(Codex・Cline 等)で使う受け手には、MCP サーバの登録と手順書の渡し方を
@@ -289,18 +287,18 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETE
 コミット、`.build/` と `TestProjects/*/reports/` は ignore(init が整備済み)。`.mcp.json` は TOOL_ROOT の
 絶対パスを含むためマシン固有。
 
-### 5. プロファイル（マシン/アプリ/実行）
+### 5. プロファイル（アプリ/実行）
 
 **JSON を手で書かない・デバイス調査のコマンドを個別に叩かない**。作成は `/fleetest-profiles`
-（ステップ8で呼ぶ）に任せる。自分で通すなら1コマンドで済む:
+（ステップ8で呼ぶ)に任せる。自分で通すなら1コマンドで済む:
 
 ```
 fleetest profile setup --project <ProjectName> --platform <ios|android|both> --auto-device \
-  --machine <マシン名> --app-id <bundleID> --app-name "<表示名>"
+  --app-id <bundleID> --app-name "<表示名>"
 ```
 
 `--auto-device` が既存デバイスを選び（iOS=最新 OS の中で "Pro" 優先・**iPad は除外** / Android=API 最大の AVD）、
-`--machine` が未登録なら同時に登録し、machines/apps/runs を同じ論理名で書いて解決まで検証する。
+この Mac(`"machine": "local"`)の台として apps/runs を同じ論理名で書いて解決まで検証する。
 機種を指定したいときだけ `--simulator "<機種名>" --os <version>` / `--avd <avdID>` を明示する。
 利用可能なデバイスが **0 台のときだけ** 🧑 停止し、Xcode / Android Studio での導入を依頼する。
 
@@ -439,9 +437,9 @@ CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 ### 8. プロファイル（済んでいなければ /fleetest-profiles）
 
 インストーラの結果に **`[ok] プロファイル`** が出ていれば作成済み。**ここは飛ばす**。
-`[skip]`（`--machine`/`--app-name` を渡さなかった）や `[warn]`（デバイスが無い等で失敗）のときだけ、
+`[skip]`（`--app-name` を渡さなかった）や `[warn]`（デバイスが無い等で失敗）のときだけ、
 **続けて `/fleetest-profiles` を呼ぶ**。その際、**ステップ0で聞いた値（プロジェクト名・アプリ表示名・
-アプリID・プラットフォーム）とマシン名をそのまま渡し、聞き直させない**。
+アプリID・プラットフォーム）をそのまま渡し、聞き直させない**。
 
 **この時点で VSCode の反映操作（Reload Window 等）をユーザーに求めたり、完了したか質問したりしない** —
 ここまでユーザーが操作するタイミングは一度も無いので、完了しているはずがない。反映はステップ9で最後にまとめて案内する。

@@ -54,7 +54,6 @@ final class BuildAndroidWorkersPartialFailureTests: XCTestCase {
         ResolvedProfile(
             project: TestProject(name: "dummy", rootURL: URL(fileURLWithPath: "/tmp/dummy")),
             runName: "run",
-            machineName: "machine",
             appName: "app",
             apps: [:],
             devices: devices,

@@ -4,7 +4,7 @@
 //
 // 安全側の規律(破壊的操作のため入口で止める。判定・文言は FTCore.DeviceDeletion に集約):
 // 起動中は削除しない/存在しない識別子を「削除できた」と言わない/識別子はシェルへ渡す前に検証する。
-// マシンプロファイルからの参照は削除を止めないが finished.referencedBy に載せ、宙ぶらりんの
+// 実行プロファイルからの参照は削除を止めないが finished.referencedBy に載せ、宙ぶらりんの
 // エントリが残ることを呼び出し側が言えるようにする(プロファイル解決は best-effort — 見つからない/
 // 壊れていても削除自体は続行し、referencedBy が空になるだけ)。
 
@@ -31,7 +31,7 @@ struct ApiDeleteDeviceCommand: AsyncParsableCommand {
         "Android AVD id as passed to avdmanager -n (required for --platform android)"))
     var avd: String?
 
-    @Option(help: ArgumentHelp("Test project name, used only to look up machine profiles for the referencedBy"
+    @Option(help: ArgumentHelp("Test project name, used only to look up run profiles for the referencedBy"
         + " check (defaults to the only one in TestProjects/, or the default project; if it cannot"
         + " be resolved the deletion still proceeds and referencedBy is empty)"))
     var project: String?
@@ -123,23 +123,23 @@ struct ApiDeleteDeviceCommand: AsyncParsableCommand {
 
     // MARK: - referencedBy
 
-    /// best-effort。プロジェクトが解決できない/一部のマシンプロファイルが読めなくても削除は
+    /// best-effort。プロジェクトが解決できない/一部の実行プロファイルが読めなくても削除は
     /// 既に完了しているため、ここでは例外を投げず空扱いにする(該当分だけ stderr に警告)
     private func referencedByMachines(identifier: String) -> [String] {
         guard let testProject = try? ScenarioHost.project(named: project) else {
             return []
         }
-        var profiles: [(name: String, profile: MachineProfile)] = []
-        for machineName in ProfileResolver.machineNames(project: testProject) {
-            let url = testProject.machinesDir.appendingPathComponent("\(machineName).json")
+        var profiles: [(name: String, profile: RunProfileDocument)] = []
+        for runName in ProfileResolver.runProfileNames(project: testProject) {
+            let url = testProject.runsDir.appendingPathComponent("\(runName).json")
             guard let data = try? Data(contentsOf: url),
-                  let profile = try? JSONDecoder().decode(MachineProfile.self, from: data) else {
-                logStderr("⚠️ Cannot read/parse machine profile \(machineName).json (skipping the referencedBy check for it)")
+                  let profile = try? JSONDecoder().decode(RunProfileDocument.self, from: data) else {
+                logStderr("⚠️ Cannot read/parse run profile \(runName).json (skipping the referencedBy check for it)")
                 continue
             }
-            profiles.append((machineName, profile))
+            profiles.append((runName, profile))
         }
-        return DeviceDeletion.referencedBy(machineProfiles: profiles, identifier: identifier)
+        return DeviceDeletion.referencedBy(runProfiles: profiles, identifier: identifier)
     }
 
     // MARK: - NDJSON 出力

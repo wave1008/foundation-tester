@@ -394,7 +394,7 @@ export class MonitorProcessManager {
       },
       (line) => this.deps.outputChannel.appendLine(`[monitor stdout] ${line}`),
     );
-    // **CLI が言っている理由を捨てない** —— 以前は exit code だけを見て「マシンプロファイル
+    // **CLI が言っている理由を捨てない** —— 以前は exit code だけを見て「デバイス設定が
     // 未設定かも」と決め打ちしていたため、実際は「その実行プロファイルはこのプロジェクトに
     // 無い」だったときに**見当違いの場所を調べさせた**(2026-08-17 の実害)。
     // stderr の直近の Error 行を控えてバナーに載せる(全文は OUTPUT に残る)

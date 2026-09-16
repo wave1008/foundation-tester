@@ -112,8 +112,9 @@ export class MonitorHealthWatchdog {
 
   observe(devices: readonly MonitorDevice[]): void {
     for (const device of devices) {
-      // 未登録(マシンプロファイル未記載)は自動修復の対象外: start-device/stop-device 再起動・Wi-Fi 修復は
-      // いずれもデバイス名でマシンプロファイルを引く前提のため、未登録では操作が成立しない。
+      // 未登録(どの実行プロファイルにも記載の無い)は自動修復の対象外: start-device/stop-device
+      // 再起動・Wi-Fi 修復はいずれもデバイス名で実行プロファイルの devices を引く前提のため、
+      // 未登録では操作が成立しない。
       if (device.registered === false) {
         continue;
       }

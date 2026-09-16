@@ -34,11 +34,9 @@ export const profilesStrings = {
   "profiles.label.none": { ja: "なし", en: "None" },
   "profiles.label.runProfile": { ja: "実行プロファイル", en: "Run profile" },
   "profiles.label.appProfile": { ja: "アプリプロファイル", en: "App profile" },
-  "profiles.label.machineProfile": { ja: "マシンプロファイル", en: "Machine profile" },
 
   "profiles.noun.profileName": { ja: "プロファイル名", en: "Profile name" },
   "profiles.noun.appProfileName": { ja: "アプリプロファイル名", en: "App profile name" },
-  "profiles.noun.machineProfileName": { ja: "マシンプロファイル名", en: "Machine profile name" },
 
   "profiles.title.newRunProfile": { ja: "新しい実行プロファイル名", en: "New run profile name" },
   "profiles.title.copyRunProfile": {
@@ -58,16 +56,6 @@ export const profilesStrings = {
     ja: "「{name}」の新しいアプリプロファイル名",
     en: "New app profile name for \"{name}\"",
   },
-  "profiles.title.newMachineProfile": { ja: "新しいマシンプロファイル名", en: "New machine profile name" },
-  "profiles.title.copyMachineProfile": {
-    ja: "「{name}」のコピー先のマシンプロファイル名",
-    en: "Machine profile name to copy \"{name}\" to",
-  },
-  "profiles.title.renameMachineProfile": {
-    ja: "「{name}」の新しいマシンプロファイル名",
-    en: "New machine profile name for \"{name}\"",
-  },
-
   "profiles.button.delete": { ja: "削除", en: "Delete" },
   "profiles.button.remove": { ja: "除去", en: "Remove" },
 
@@ -78,10 +66,6 @@ export const profilesStrings = {
   "profiles.confirm.deleteAppProfile": {
     ja: "アプリプロファイル「{name}」を削除しますか?この操作は元に戻せません。",
     en: "Delete app profile \"{name}\"? This action cannot be undone.",
-  },
-  "profiles.confirm.deleteMachineProfile": {
-    ja: "マシンプロファイル「{name}」を削除しますか?この操作は元に戻せません(プロファイルファイルのみ削除され、シミュレータ/AVD 本体は削除されません)。",
-    en: "Delete machine profile \"{name}\"? This action cannot be undone (only the profile file is deleted; the simulator/AVD itself is not).",
   },
   // 除去ログでデバイスを名指しするときの表記。**必ずホストを添える** —— 同名のデバイスが別の
   // 機械に並ぶのは通常で、名前だけでは「どの Mac の台か」が分からない(一意なのは (host, name))。
@@ -240,8 +224,24 @@ export const profilesStrings = {
     en: "Could not load run profile \"{name}\".",
   },
   "profiles.log.runProfileDevicesRemoved": {
-    ja: "[fleetest] {names}を実行プロファイルからも外しました: {profiles}",
-    en: "[fleetest] Also removed {names} from run profile(s): {profiles}",
+    ja: "[fleetest] {names}を実行プロファイルから除去しました: {profiles}",
+    en: "[fleetest] Removed {names} from run profile(s): {profiles}",
+  },
+  "profiles.log.runProfileDeviceNotFoundRemoveFailed": {
+    ja: "[fleetest] 指定のデバイスがどの実行プロファイルにも見つからず、除去できませんでした。",
+    en: "[fleetest] Could not remove: the specified device was not found in any run profile.",
+  },
+  "profiles.msg.runProfileDeviceNotFound": {
+    ja: "指定のデバイスがどの実行プロファイルにも見つかりませんでした。",
+    en: "The specified device was not found in any run profile.",
+  },
+  "profiles.log.runProfileDeviceUpdated": {
+    ja: "[fleetest] デバイス「{device}」を更新しました(実行プロファイル: {profiles})。",
+    en: "[fleetest] Updated device \"{device}\" (run profile(s): {profiles}).",
+  },
+  "profiles.log.runProfileDevicesAdded": {
+    ja: "[fleetest] 実行プロファイル「{name}」にデバイスを追加しました: {added}",
+    en: "[fleetest] Added device(s) to run profile \"{name}\": {added}",
   },
   "profiles.log.runProfileLoadFailed": {
     ja: "[fleetest] 実行プロファイル「{name}」の読み込みに失敗しました: {error}",
@@ -342,117 +342,9 @@ export const profilesStrings = {
     en: "[fleetest] Updated app profile \"{name}\".",
   },
 
-  // ---- マシンプロファイル ----
-  "profiles.log.machineProfileAdded": {
-    ja: "[fleetest] マシンプロファイル「{name}」を追加しました。",
-    en: "[fleetest] Added machine profile \"{name}\".",
-  },
-  "profiles.log.machineProfileAddFailed": {
-    ja: "[fleetest] マシンプロファイル「{name}」の追加に失敗しました: {error}",
-    en: "[fleetest] Failed to add machine profile \"{name}\": {error}",
-  },
-  "profiles.msg.machineProfileAddFailed": {
-    ja: "マシンプロファイル「{name}」の追加に失敗しました。",
-    en: "Failed to add machine profile \"{name}\".",
-  },
-  "profiles.msg.machineProfileNotFound": {
-    ja: "マシンプロファイル「{name}」が見つかりません。",
-    en: "Machine profile \"{name}\" not found.",
-  },
-  "profiles.log.machineProfileCopied": {
-    ja: "[fleetest] マシンプロファイル「{machine}」を「{name}」としてコピーしました。",
-    en: "[fleetest] Copied machine profile \"{machine}\" as \"{name}\".",
-  },
-  "profiles.log.machineProfileCopyFailed": {
-    ja: "[fleetest] マシンプロファイル「{name}」のコピーに失敗しました: {error}",
-    en: "[fleetest] Failed to copy machine profile \"{name}\": {error}",
-  },
-  "profiles.msg.machineProfileCopyFailed": {
-    ja: "マシンプロファイル「{name}」のコピーに失敗しました。",
-    en: "Failed to copy machine profile \"{name}\".",
-  },
-  "profiles.log.registeredMachineNameUpdated": {
-    ja: "[fleetest] 登録マシン名(machine set)も「{name}」に更新しました。",
-    en: "[fleetest] Also updated the registered machine name (machine set) to \"{name}\".",
-  },
-  "profiles.log.machineProfileRenamed": {
-    ja: "[fleetest] マシンプロファイル「{oldName}」を「{newName}」に変更しました。",
-    en: "[fleetest] Renamed machine profile \"{oldName}\" to \"{newName}\".",
-  },
-  "profiles.log.machineProfileRenameFailed": {
-    ja: "[fleetest] マシンプロファイル「{name}」の名前変更に失敗しました: {error}",
-    en: "[fleetest] Failed to rename machine profile \"{name}\": {error}",
-  },
-  "profiles.msg.machineProfileRenameFailed": {
-    ja: "マシンプロファイル「{name}」の名前変更に失敗しました。",
-    en: "Failed to rename machine profile \"{name}\".",
-  },
-  "profiles.log.machineProfileDeleted": {
-    ja: "[fleetest] マシンプロファイル「{name}」を削除しました。",
-    en: "[fleetest] Deleted machine profile \"{name}\".",
-  },
-  "profiles.log.machineProfileDeleteFailed": {
-    ja: "[fleetest] マシンプロファイル「{name}」の削除に失敗しました: {error}",
-    en: "[fleetest] Failed to delete machine profile \"{name}\": {error}",
-  },
-  "profiles.msg.machineProfileDeleteFailed": {
-    ja: "マシンプロファイル「{name}」の削除に失敗しました。",
-    en: "Failed to delete machine profile \"{name}\".",
-  },
-  "profiles.log.machineProfileLoadFailed": {
-    ja: "[fleetest] マシンプロファイル「{name}」の読み込みに失敗しました: {error}",
-    en: "[fleetest] Failed to load machine profile \"{name}\": {error}",
-  },
-  "profiles.msg.machineProfileLoadFailed": {
-    ja: "マシンプロファイル「{name}」を読み込めませんでした。",
-    en: "Could not load machine profile \"{name}\".",
-  },
-  "profiles.log.machineProfileInvalidFormatRemoveAborted": {
-    ja: "[fleetest] マシンプロファイル「{name}」の形式が不正なため、デバイスの除去を中断しました。",
-    en: "[fleetest] Machine profile \"{name}\" has an invalid format, so device removal was aborted.",
-  },
-  "profiles.log.machineProfileDeviceNotFoundRemoveFailed": {
-    ja: "[fleetest] マシンプロファイル「{name}」に指定のデバイスが見つからず、除去できませんでした。",
-    en: "[fleetest] Could not remove: the specified device was not found in machine profile \"{name}\".",
-  },
-  "profiles.msg.machineProfileDeviceNotFound": {
-    ja: "マシンプロファイル「{name}」に指定のデバイスが見つかりませんでした。",
-    en: "The specified device was not found in machine profile \"{name}\".",
-  },
-  "profiles.log.machineProfileDevicesRemoved": {
-    ja: "[fleetest] マシンプロファイル「{name}」から{count}台のデバイスを除去しました({names})。",
-    en: "[fleetest] Removed {count} device(s) from machine profile \"{name}\" ({names}).",
-  },
-  "profiles.log.machineProfileDeviceRemoveFailed": {
-    ja: "[fleetest] マシンプロファイル「{name}」からのデバイス除去に失敗しました: {error}",
-    en: "[fleetest] Failed to remove device(s) from machine profile \"{name}\": {error}",
-  },
-  "profiles.msg.machineProfileDeviceRemoveFailed": {
-    ja: "マシンプロファイル「{name}」からのデバイス除去に失敗しました。",
-    en: "Failed to remove device(s) from machine profile \"{name}\".",
-  },
-  "profiles.log.machineProfileDeviceUpdateFailed": {
-    ja: "[fleetest] マシンプロファイル「{machine}」のデバイス「{device}」の更新に失敗しました: {error}",
-    en: "[fleetest] Failed to update device \"{device}\" in machine profile \"{machine}\": {error}",
-  },
-  "profiles.msg.machineProfileWriteFailed": {
-    ja: "マシンプロファイル「{name}」への書き込みに失敗しました。",
-    en: "Failed to write to machine profile \"{name}\".",
-  },
-  "profiles.log.machineProfileDeviceUpdated": {
-    ja: "[fleetest] マシンプロファイル「{machine}」のデバイス「{device}」を更新しました。",
-    en: "[fleetest] Updated device \"{device}\" in machine profile \"{machine}\".",
-  },
+  // ---- モニターの監視スコープ ----
   "profiles.log.monitorRestartForScopeFiles": {
-    ja: "マシンプロファイルまたは選択中の実行プロファイルが変わったため、モニターを再起動します",
-    en: "Restarting the monitor because a machine profile or the selected run profile changed",
-  },
-  "profiles.log.machineProfileDevicesSyncWriteFailed": {
-    ja: "[fleetest] マシンプロファイル「{machine}」へのデバイス同期の書き込みに失敗しました: {error}",
-    en: "[fleetest] Failed to write device sync to machine profile \"{machine}\": {error}",
-  },
-  "profiles.log.machineProfileDevicesSynced": {
-    ja: "[fleetest] マシンプロファイル「{machine}」に追加{added}台・登録解除{removed}台を適用しました(追加: {addedList}、登録解除: {removeList})。",
-    en: "[fleetest] Applied {added} added and {removed} unregistered device(s) to machine profile \"{machine}\" (added: {addedList}, unregistered: {removeList}).",
+    ja: "選択中の実行プロファイル(または未選択時は全実行プロファイル)が変わったため、モニターを再起動します",
+    en: "Restarting the monitor because the selected run profile (or, with none selected, any run profile) changed",
   },
 } satisfies MessageDict;

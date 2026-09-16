@@ -1,7 +1,7 @@
 // webviewDevicePickDelete.test.mjs
 // #device-pick-overlay(「+既存から選択」モーダル)内、行右クリック「削除」(#device-pick-delete-menu)
 // の DOM テスト。実 HTML+実バンドルで動かす方式は webviewDevicePickHost.test.mjs と同じ(harness の
-// コメントはそちら参照)。machineDeviceRemove(プロファイルからの除去)とは別物 —— こちらはホスト上の
+// コメントはそちら参照)。runProfileDeviceRemove(プロファイルからの除去)とは別物 —— こちらはホスト上の
 // 実体(シミュレータ/AVD)を fleetest api delete-device で消す想定の devicePickDeviceDelete を送る。
 //
 // 検証対象: ①シミュレータ/AVD 行の右クリックで devicePickDeviceDelete が platform/identifier/name/
@@ -64,18 +64,13 @@ function post(window, data) {
   window.dispatchEvent(new window.MessageEvent("message", { data }));
 }
 
-function selectMachine(window, document, machine) {
+function openDevicePickModal(window, document) {
   post(window, {
-    type: "machineProfileInfo",
-    machines: [machine],
-    current: machine.name,
-    error: null,
+    type: "profileInfo",
+    projects: ["P"], profiles: ["all"], current: "all", filter: "all", apps: [],
+    project: "P", projectDir: "TestProjects/P", devices: [],
   });
-}
-
-function openDevicePickModal(window, document, machine) {
-  selectMachine(window, document, machine);
-  document.getElementById("btn-device-add-existing").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  document.getElementById("btn-run-profile-device-add-existing").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 }
 
 const INSTALLED_DEVICES_WITH_ROWS = {
@@ -109,7 +104,7 @@ test("シミュレータ行の右クリック→削除で devicePickDeviceDelete
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
 
-  openDevicePickModal(window, document, { name: "M1", devices: [] });
+  openDevicePickModal(window, document);
   post(window, INSTALLED_DEVICES_WITH_ROWS);
 
   // iOS グループは実機が先頭に出るため、シミュレータ行は2件目。
@@ -139,7 +134,7 @@ test("Android AVD 行の右クリック→削除で devicePickDeviceDelete(platf
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
 
-  openDevicePickModal(window, document, { name: "M1", devices: [] });
+  openDevicePickModal(window, document);
   post(window, INSTALLED_DEVICES_WITH_ROWS);
 
   const avdRow = document.querySelector("#device-pick-android-body .device-pick-row");
@@ -158,7 +153,7 @@ test("実機行を右クリックしても削除メニューは出ない(実体�
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
 
-  openDevicePickModal(window, document, { name: "M1", devices: [] });
+  openDevicePickModal(window, document);
   post(window, INSTALLED_DEVICES_WITH_ROWS);
 
   const iosRows = document.querySelectorAll("#device-pick-ios-body .device-pick-row");
@@ -175,7 +170,7 @@ test("devicePickDeviceDeleteResult(ok:true)を受けると一覧を再取得し�
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
 
-  openDevicePickModal(window, document, { name: "M1", devices: [] });
+  openDevicePickModal(window, document);
   post(window, INSTALLED_DEVICES_WITH_ROWS);
   assert.equal(posted.filter((m) => m.type === "installedDevicesRequest").length, 1);
 
@@ -205,7 +200,7 @@ test("devicePickDeviceDeleteResult(ok:false)は #device-pick-error にエラー�
   const { window, document } = createWebview();
   t.after(() => window.close());
 
-  openDevicePickModal(window, document, { name: "M1", devices: [] });
+  openDevicePickModal(window, document);
   post(window, INSTALLED_DEVICES_WITH_ROWS);
 
   const iosRows = document.querySelectorAll("#device-pick-ios-body .device-pick-row");

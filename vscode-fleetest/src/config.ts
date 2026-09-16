@@ -387,72 +387,17 @@ export function readAppProfileDetail(
 }
 
 /**
- * profiles/machines/ 直下の .json が**ちょうど1つ**のときのみ、その ios→android 順
- * (各プラットフォーム内は name 順)の devices[].name を返す(monitorPanel.ts の profileAdd が新規実行プロファイルの
- * デバイス候補に使う)。実際に「使われる」マシンプロファイルの判定(登録名/FT_MACHINE)は
- * CLI 側にしか無く、この拡張からは複数存在時にどれを使うか判定できないため、あいまいさが
- * 無い場合に限って埋める。0個・複数・読み取り/解析失敗は空配列。
- */
-export function readMachineDeviceNames(workspaceRoot: string, project: string): string[] {
-  const machinesDir = path.join(workspaceRoot, "TestProjects", project, "profiles", "machines");
-  let entries: fs.Dirent[];
-  try {
-    entries = fs
-      .readdirSync(machinesDir, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"));
-  } catch {
-    return [];
-  }
-  if (entries.length !== 1) {
-    return [];
-  }
-  try {
-    const raw = fs.readFileSync(path.join(machinesDir, entries[0]!.name), "utf8");
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) {
-      return [];
-    }
-    const names: string[] = [];
-    for (const platform of ["ios", "android"] as const) {
-      const section = (parsed as Record<string, unknown>)[platform];
-      if (typeof section !== "object" || section === null) {
-        continue;
-      }
-      const devices = (section as Record<string, unknown>).devices;
-      if (!Array.isArray(devices)) {
-        continue;
-      }
-      const sectionNames: string[] = [];
-      for (const device of devices) {
-        const name =
-          typeof device === "object" && device !== null
-            ? (device as Record<string, unknown>).name
-            : undefined;
-        if (typeof name === "string") {
-          sectionNames.push(name);
-        }
-      }
-      sectionNames.sort((a, b) => a.localeCompare(b));
-      names.push(...sectionNames);
-    }
-    return names;
-  } catch {
-    return [];
-  }
-}
-
-/**
- * profiles/machines/<マシン名>.json の devices[] 1件分。name のみ必須(simulator/os/udid は
- * iOS 用、avd は Android 用。未知キーは無視)。monitorModel.ts にも同じ形の型を独立定義している
- * (vscode 非依存を保つため、型のためだけに config.ts を import させない方針)。
+ * 実行プロファイル(profiles/runs/<name>.json)の devices[] 1件分。name/platform が必須(machine は
+ * 省略=手元)。simulator/os/udid/port は iOS 用、avd/serial は Android 用(未知キーは無視)。
  * kind="physical" は実機で、識別子は iOS=udid / Android=serial(Sources/FTCore/RunProfile.swift)。
+ * enabled は「プロジェクトのデバイスカタログ」1件としては意味を持たない(profile ごとの
+ * 採否は各実行プロファイルが個別に持つ)ため、ここでは扱わない。
  */
 export interface MachineDeviceEntry {
   readonly name: string;
   readonly platform: Platform;
-  /** このデバイスが居る機械(登録名。省略=プロファイル直下の machine、それも無ければ手元)。
-   * 一意なのは (machine, name)(Sources/FTCore/DeviceMachineGrouping.swift)。
-   * **JSON キーは "machine"**(旧 "host" も読む。toMachineDeviceEntry)。 */
+  /** このデバイスが居る機械(登録名。省略/"local" = 手元)。一意なのは (platform, machine, name)
+   * (Sources/FTCore/DeviceMachineGrouping.swift)。**JSON キーは "machine"**(常に明示で書かれる)。 */
   readonly machine?: string;
   readonly kind?: "virtual" | "physical";
   readonly simulator?: string;
@@ -465,25 +410,17 @@ export interface MachineDeviceEntry {
   readonly model?: string;
 }
 
-/** 1マシンプロファイル(machines/<マシン名>.json、ファイル名=マシン名)の要約。 */
-export interface MachineProfileSummary {
-  readonly name: string;
-  readonly devices: readonly MachineDeviceEntry[];
-  /** 登録済みマシン名(machines/<name>.json 直下の "machine"。旧 "host" も読む。
-   * 未設定/absent = ローカル)。CLI が run のディスパッチ先をここから判定する(この拡張は判定しない)。 */
-  readonly host?: string;
-}
-
-/** machines/<name>.json の devices[] 1要素を検証・変換する。name欠落/型不正は undefined(呼び出し側でスキップ)。 */
-function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDeviceEntry | undefined {
+/** runs/<name>.json の devices[] 1要素を検証・変換する。platform/name 欠落・型不正は undefined
+ * (呼び出し側でスキップ)。machine の "local"/"" は手元(undefined)に正規化する。 */
+function toRunProfileDeviceEntry(value: unknown): MachineDeviceEntry | undefined {
   if (typeof value !== "object" || value === null) {
     return undefined;
   }
   const record = value as Record<string, unknown>;
-  // **JSON キーは "machine"**(2026-08-26 改名。Sources/FTCore/RunProfile.swift の DeviceSpec と
-  // 同期)。旧キー "host" も読む —— 既存プロファイルは無改修で動く
-  const { name, kind, simulator, os: osVersion, udid, port, avd, serial, model } = record;
-  const machine = record.machine ?? record.host;
+  const { platform, name, kind, simulator, os: osVersion, udid, port, avd, serial, model, machine } = record;
+  if (platform !== "ios" && platform !== "android") {
+    return undefined;
+  }
   if (typeof name !== "string") {
     return undefined;
   }
@@ -517,10 +454,11 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
   if (kind !== undefined && kind !== "virtual" && kind !== "physical") {
     return undefined;
   }
+  const machineTrimmed = typeof machine === "string" ? machine.trim() : "";
   return {
     name,
     platform,
-    machine: machine as string | undefined,
+    machine: machineTrimmed === "" || machineTrimmed === "local" ? undefined : machineTrimmed,
     kind: kind as "virtual" | "physical" | undefined,
     simulator: simulator as string | undefined,
     os: osVersion as string | undefined,
@@ -533,76 +471,54 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
 }
 
 /**
- * profiles/machines/ 直下の .json をファイル名順に読み、ios→android順・各プラットフォーム内は
- * name 順で devices を一覧化する(webview「プロファイル」タブ用)。要素単位の型不正はスキップ、ファイル自体が読めなければ
- * そのマシンは devices:[] のみ返す(1件の不備で一覧全体を空にしないため)。readMachineDeviceNames
- * と異なり複数ファイルを許容する(UI表示用のため「1マシン1ファイル」制約は課さない)。
+ * プロジェクトの「デバイスカタログ」= 全実行プロファイル(profiles/runs/*.json、enabled:false の
+ * ものも含む)の devices[] の和集合。鍵は (platform, machine, name)、**ファイル名順に読み、
+ * 先に見つかった方を採用する**(同じ台を複数の実行プロファイルが参照するのは通常。
+ * どちらの本体で表現しても同じ実体を指す)。1ファイルの読み取り/解析失敗はそのファイル分だけ
+ * 空として扱う(1件の不備で一覧全体を空にしない)。
  */
-export function listMachineProfiles(workspaceRoot: string, project: string): MachineProfileSummary[] {
-  const machinesDir = path.join(workspaceRoot, "TestProjects", project, "profiles", "machines");
+export function listProjectDeviceCatalog(workspaceRoot: string, project: string): MachineDeviceEntry[] {
+  const runsDir = path.join(workspaceRoot, "TestProjects", project, "profiles", "runs");
   let entries: fs.Dirent[];
   try {
     entries = fs
-      .readdirSync(machinesDir, { withFileTypes: true })
+      .readdirSync(runsDir, { withFileTypes: true })
       .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
       .sort((a, b) => a.name.localeCompare(b.name));
   } catch {
     return [];
   }
 
-  return entries.map((entry) => {
-    const name = entry.name.slice(0, -".json".length);
+  const seen = new Set<string>();
+  const catalog: MachineDeviceEntry[] = [];
+  for (const entry of entries) {
     try {
-      const raw = fs.readFileSync(path.join(machinesDir, entry.name), "utf8");
+      const raw = fs.readFileSync(path.join(runsDir, entry.name), "utf8");
       const parsed: unknown = JSON.parse(raw);
       if (typeof parsed !== "object" || parsed === null) {
-        return { name, devices: [] };
+        continue;
       }
-      // 直下の既定も **"machine"**(旧 "host" も読む。Sources/FTCore/RunProfile.swift の MachineProfile)
-      const record = parsed as Record<string, unknown>;
-      const rawHost = record.machine ?? record.host;
-      const host = typeof rawHost === "string" && rawHost.length > 0 ? rawHost : undefined;
-      const devices: MachineDeviceEntry[] = [];
-      for (const platform of ["ios", "android"] as const) {
-        const section = (parsed as Record<string, unknown>)[platform];
-        if (typeof section !== "object" || section === null) {
+      const rawDevices = (parsed as Record<string, unknown>).devices;
+      if (!Array.isArray(rawDevices)) {
+        continue;
+      }
+      for (const rawDevice of rawDevices) {
+        const device = toRunProfileDeviceEntry(rawDevice);
+        if (!device) {
           continue;
         }
-        const rawDevices = (section as Record<string, unknown>).devices;
-        if (!Array.isArray(rawDevices)) {
+        const key = `${device.platform}\t${device.machine ?? ""}\t${device.name}`;
+        if (seen.has(key)) {
           continue;
         }
-        const sectionDevices: MachineDeviceEntry[] = [];
-        for (const rawDevice of rawDevices) {
-          const device = toMachineDeviceEntry(rawDevice, platform);
-          if (device) {
-            sectionDevices.push(device);
-          }
-        }
-        // **機械ごとにまとめる**(2026-08-17 指示): 手元が先 → ホスト名順、その中で名前順。
-        // 同名が別ホストに並ぶのが通常なので、名前を第1キーにすると1台ずつ機械が入れ替わり、
-        // 「この機械には何が居るか」が読めない。実効ホスト(デバイス指定 > 直下の既定)で比べる
-        const hostKey = (device: MachineDeviceEntry): string => {
-          const raw = (device.machine ?? "").trim();
-          if (raw === "local") {
-            return "";
-          }
-          return raw !== "" ? raw : (host ?? "");
-        };
-        sectionDevices.sort((a, b) => {
-          const [ha, hb] = [hostKey(a), hostKey(b)];
-          if (ha !== hb) {
-            return ha === "" ? -1 : hb === "" ? 1 : ha.localeCompare(hb);  // 手元が先
-          }
-          return a.name.localeCompare(b.name);
-        });
-        devices.push(...sectionDevices);
+        seen.add(key);
+        catalog.push(device);
       }
-      return { name, devices, ...(host !== undefined ? { host } : {}) };
     } catch {
-      return { name, devices: [] };
+      continue;
     }
-  });
+  }
+  return catalog;
 }
 
 

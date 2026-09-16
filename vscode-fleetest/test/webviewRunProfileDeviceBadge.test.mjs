@@ -2,8 +2,8 @@
 // 実行プロファイルタブのデバイス一覧に、実機だけバッジが出ることを実 HTML+実バンドルで確認する
 // DOM E2E(jsdom)。ハーネスの作りは test/webviewRunProfileWorkspace.test.mjs と同じ。
 //
-// バッジの見た目・文言はマシンプロファイル一覧/タイル/ピッカーと共通(.badge-kind +
-// wvMonitor.tile.physicalBadge)。片方だけ変えない。
+// バッジの見た目・文言はデバイス追加ダイアログの一覧と共通(.badge-kind + wvMonitor.tile.physicalBadge)。
+// 片方だけ変えない。
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -61,28 +61,19 @@ function createWebview() {
   };
 }
 
-const MACHINE_PROFILE_INFO = {
-  type: "machineProfileInfo",
-  current: "M2Ultra",
-  error: null,
-  machines: [
-    {
-      name: "M2Ultra",
-      devices: [
-        { name: "iPhone 16", platform: "ios", kind: "simulator", detail: "iOS 18.2" },
-        { name: "iPhone 実機", platform: "ios", kind: "physical", detail: "iOS 18.2" },
-      ],
-    },
-  ],
-};
-
 const PROFILE_INFO = {
   type: "profileInfo",
+  projects: ["sut-ec-mobile"],
   profiles: ["ios-1"],
   current: "ios-1",
   filter: "all",
   apps: ["sut-ec-mobile"],
   project: "sut-ec-mobile",
+  projectDir: "TestProjects/sut-ec-mobile",
+  devices: [
+    { platform: "ios", name: "iPhone 16", kind: "virtual", detail: "iOS 18.2" },
+    { platform: "ios", name: "iPhone 実機", kind: "physical", detail: "iOS 18.2" },
+  ],
 };
 
 const RUN_PROFILE_DATA = {
@@ -90,19 +81,24 @@ const RUN_PROFILE_DATA = {
   profile: "ios-1",
   ok: true,
   error: null,
-  fields: { machine: "M2Ultra", app: "sut-ec-mobile", devices: [] },
+  fields: {
+    app: "sut-ec-mobile",
+    devices: [
+      { platform: "ios", name: "iPhone 16", enabled: true, kind: "virtual" },
+      { platform: "ios", name: "iPhone 実機", enabled: true, kind: "physical" },
+    ],
+  },
 };
 
 function deviceRows(window) {
-  return [...window.document.getElementById("run-profile-devices").querySelectorAll(".run-profile-device-row")];
+  return [...window.document.getElementById("run-profile-devices").querySelectorAll(".run-profile-device-row-item")];
 }
 
 test("実行プロファイルのデバイス一覧は実機にだけバッジを出す", (t) => {
   const { window, sendToWebview } = createWebview();
   t.after(() => window.close());
-  sendToWebview(MACHINE_PROFILE_INFO);
   sendToWebview(PROFILE_INFO);
-  // 一覧はフォームのマシンが決まってから描かれる(未選択の間は案内文だけ)
+  // 一覧はフォームの読み込みが終わってから描かれる(未選択の間は案内文だけ)
   sendToWebview(RUN_PROFILE_DATA);
 
   const rows = deviceRows(window);
@@ -111,18 +107,23 @@ test("実行プロファイルのデバイス一覧は実機にだけバッジ�
   const badge = rows[1].querySelector(".badge-kind");
   assert.ok(badge, "実機にはバッジを出す");
   assert.equal(badge.textContent, "実機");
-  // バッジはデバイス名ピルの左(マシンプロファイル一覧と同じ並び)
+  // バッジはデバイス名ピルの左(デバイス追加ダイアログの一覧と同じ並び)
   assert.equal(badge.nextElementSibling, rows[1].querySelector(".tile-name"));
 });
 
-test("マシンに無い名前(欠落)にはバッジを出さない", (t) => {
+test("カタログに無い名前(欠落)にはバッジを出さない", (t) => {
   const { window, sendToWebview } = createWebview();
   t.after(() => window.close());
-  sendToWebview(MACHINE_PROFILE_INFO);
   sendToWebview(PROFILE_INFO);
   sendToWebview({
     ...RUN_PROFILE_DATA,
-    fields: { ...RUN_PROFILE_DATA.fields, devices: [{ name: "iPhone 実機" }, { name: "消えた台" }] },
+    fields: {
+      ...RUN_PROFILE_DATA.fields,
+      devices: [
+        { platform: "ios", name: "iPhone 実機", enabled: true, kind: "physical" },
+        { platform: "ios", name: "消えた台", enabled: true },
+      ],
+    },
   });
 
   const rows = deviceRows(window);

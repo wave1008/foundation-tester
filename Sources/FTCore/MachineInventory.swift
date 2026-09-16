@@ -1,18 +1,15 @@
 // MachineInventory.swift
 // **実行プロファイルを選んでいないときの監視対象**(拡張の「(プロファイルなし)」)を決める。
 //
-// マシンプロファイルは「この Mac に何が登録されているか」の台帳で、**1つのプロジェクトに複数
-// 置ける**(構成の使い分け。例: 手元だけの台帳と、ランナーも含む台帳)。実行プロファイルを
-// 選んでいれば台帳は一意に決まるが、選んでいないときは決められない —— 以前はそこで諦めて
-// 「今動いている台」だけを見ていたため、**台帳が2つある案件では1台も出なかった**
-// (実害 2026-08-28。全台が「マシンプロファイル未記載」扱いになり、拡張の表示フィルタが落とした)。
+// 台帳は**実行プロファイルの devices**(enabled: false の台も含む)で、1つのプロジェクトに複数ある。
+// 実行プロファイルを選んでいれば台帳は一意に決まるが、選んでいないときは決められない。
 //
 // 決め方は「どれか1つを選ぶ」ではなく **全部の台帳を畳んで、観測できるマシンの台だけ残す**:
 //   - **観測できるマシン = 手元 + リモート実行の登録簿にあるマシン**(設定タブのホスト表。
 //     ユーザー決定 2026-08-29)。登録簿に無いマシンの台は、監視の fan-out が張られないので
 //     状態が永久に "unknown" のタイルになるだけ = 出す意味が無い
-//   - 重複((platform, machine, name)が同じ)は**最初の1件**。台帳をまたいで同じ台を書くのは
-//     普通(手元の台は両方の台帳に居る)なので、重複はエラーではない。**入力の順序で決まる**ので
+//   - 重複((platform, machine, name)が同じ)は**最初の1件**。実行プロファイルをまたいで同じ台を
+//     書くのは普通なので、重複はエラーではない。**入力の順序で決まる**ので
 //     呼び出し側はファイル名順など安定した順で渡すこと
 //   - **ただし重複が「同じ台」とは限らない** —— 実体(udid/avd/serial)が食い違うときは
 //     IdentityConflict を添えて返す(merge)。**手元の台は「この機械に実在するほう」で決める**
@@ -26,12 +23,12 @@ import Foundation
 
 public enum MachineInventory {
 
-    /// 台帳1枚。`name` は**警告に出す表示名**(loadAllNamed は "M1Ultra.json" の形で入れる)
+    /// 台帳1枚。`name` は**警告に出す表示名**(loadAllNamed は "runs/ios.json" の形で入れる)
     public struct Source: Sendable {
         public let name: String
-        public let profile: MachineProfile
+        public let profile: DeviceRoster
 
-        public init(name: String, profile: MachineProfile) {
+        public init(name: String, profile: DeviceRoster) {
             self.name = name
             self.profile = profile
         }
@@ -60,7 +57,7 @@ public enum MachineInventory {
         public let resolvedByLocalPresence: Bool
 
         public var message: String {
-            let head = "machine profiles disagree about \(platform):\(machine)/\(name):"
+            let head = "run profiles disagree about \(platform):\(machine)/\(name):"
                 + " \(keptProfile) says \(keptIdentity), \(ignoredProfile) says \(ignoredIdentity)."
             if resolvedByLocalPresence {
                 return head
@@ -74,44 +71,44 @@ public enum MachineInventory {
         }
     }
 
-    /// machines/ の全マシンプロファイル。**ファイル名順**(下の重複解決が入力順で決まるので、
-    /// 走査順で結果が揺れないようにする)。壊れた JSON は警告して飛ばす —— 実行プロファイルを
-    /// 選んでいないときは「見えるものを見せる」経路なので、1枚の壊れた台帳で全部を止めない
-    /// (選んでいるときは従来どおり decodeFailed で落ちる)。
+    /// runs/ の全実行プロファイルの devices(enabled: false も含む)。**ファイル名順**
+    /// (下の重複解決が入力順で決まるので、走査順で結果が揺れないようにする)。壊れた JSON は
+    /// 警告して飛ばす —— 実行プロファイルを選んでいないときは「見えるものを見せる」経路なので、
+    /// 1枚の壊れた台帳で全部を止めない(選んでいるときは従来どおり decodeFailed で落ちる)。
     /// **I/O はこれと loadAllNamed だけ** —— 下の3つは純粋関数
-    public static func loadAll(project: TestProject, warn: (String) -> Void) -> [MachineProfile] {
+    public static func loadAll(project: TestProject, warn: (String) -> Void) -> [DeviceRoster] {
         loadAllNamed(project: project, warn: warn).map(\.profile)
     }
 
     /// loadAll と同じものを**台帳の名前付き**で返す。名前は identity の食い違いを名指しするために
     /// 要る(どちらの .json を直せばよいかが分からないと警告が行動に繋がらない)
     public static func loadAllNamed(project: TestProject, warn: (String) -> Void) -> [Source] {
-        ProfileResolver.machineNames(project: project).sorted().compactMap { name in
-            let url = project.machinesDir.appendingPathComponent("\(name).json")
+        ProfileResolver.runProfileNames(project: project).sorted().compactMap { name in
+            let url = project.runsDir.appendingPathComponent("\(name).json")
             guard let data = try? Data(contentsOf: url),
-                  let profile = try? JSONDecoder().decode(MachineProfile.self, from: data) else {
-                warn("skipping machine profile \(name): it cannot be read")
+                  let doc = try? JSONDecoder().decode(RunProfileDocument.self, from: data) else {
+                warn("skipping run profile \(name): it cannot be read")
                 return nil
             }
-            return Source(name: "\(name).json", profile: profile)
+            let roster = DeviceRoster(entries: DeviceMachineGrouping.entries(
+                runDevices: doc.devices ?? [], enabledOnly: false))
+            return Source(name: "runs/\(name).json", profile: roster)
         }
     }
 
-    /// 畳んだカタログを1つのマシンプロファイルの姿へ戻す(`machine` は各デバイスに焼き込み済み
-    /// なので既定は持たない)。**既存の (machine, name) 解決をそのまま使うため** ——
-    /// 探索の規律を2つ持たない(ApiDeviceOperation.findDevice / RunProfileScope と同じ入力にする)
-    public static func mergedProfile(_ entries: [DeviceMachineGrouping.CatalogEntry]) -> MachineProfile {
-        MachineProfile(
-            machine: nil,
-            ios: MachineDeviceList(devices: entries.filter { $0.platform == "ios" }.map(\.spec)),
-            android: MachineDeviceList(devices: entries.filter { $0.platform == "android" }.map(\.spec)))
+    /// 畳んだカタログを1つの台帳の姿へ戻す。**既存の (machine, name) 解決をそのまま使うため** ——
+    /// 探索の規律を2つ持たない(ApiDeviceOperation.findDevice と同じ入力にする)
+    public static func mergedProfile(_ entries: [DeviceMachineGrouping.CatalogEntry]) -> DeviceRoster {
+        DeviceRoster(
+            ios: DeviceRosterList(devices: entries.filter { $0.platform == "ios" }.map(\.spec)),
+            android: DeviceRosterList(devices: entries.filter { $0.platform == "android" }.map(\.spec)))
     }
 
-    /// 複数のマシンプロファイルを1つのカタログへ畳む。`registry` はリモート実行の登録簿の
+    /// 複数の台帳を1つのカタログへ畳む。`registry` はリモート実行の登録簿の
     /// マシン名(手元は登録簿に載らないので常に残す)。並びは渡された台帳の順 → その中は
     /// ios → android(DeviceMachineGrouping.entries と同じ)。
     public static func observableEntries(
-        profiles: [MachineProfile],
+        profiles: [DeviceRoster],
         registry: [String]
     ) -> [DeviceMachineGrouping.CatalogEntry] {
         merge(sources: profiles.enumerated().map { Source(name: "#\($0.offset + 1)", profile: $0.element) },
@@ -133,7 +130,7 @@ public enum MachineInventory {
         // (順序は最初に現れた場所のまま保つ)
         var seen: [String: (profile: String, identity: String?, index: Int)] = [:]
         for source in sources {
-            for entry in DeviceMachineGrouping.entries(machine: source.profile) {
+            for entry in DeviceMachineGrouping.entries(roster: source.profile) {
                 // entries() が実効マシンを spec へ焼き込んである(nil = 手元)
                 if let machine = entry.machine, !registered.contains(machine) {
                     continue

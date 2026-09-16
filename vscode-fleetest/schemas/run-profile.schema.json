@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "fleetest 実行プロファイル",
-  "description": "実行プロファイル(profiles/runs/<name>.json)。apps/<app>.json への参照(name)とデバイス(machines/<マシン名>.json の name 参照)の組み合わせ、実行時設定を定義する。構造の正は Sources/FTCore/RunProfile.swift の RunProfileDocument / ProfileResolver.validate。",
+  "description": "実行プロファイル(profiles/runs/<name>.json)。apps/<app>.json への参照(name)とデバイス一覧(devices[])、実行時設定を定義する。プロジェクトの「デバイスカタログ」は全実行プロファイルの devices[] の和集合(enabled:false のものも含む)。構造の正は Sources/FTCore/RunProfile.swift の RunProfileDocument / ProfileResolver.validate。",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -9,10 +9,6 @@
     "devices"
   ],
   "properties": {
-    "machine": {
-      "type": "string",
-      "description": "使用するマシンプロファイル名(profiles/machines/<名前>.json)。この指定が最優先で、未指定時は登録マシン(machine set)等から自動解決される。"
-    },
     "app": {
       "type": "string",
       "description": "apps/<name>.json への参照(拡張子なし)。必須。",
@@ -20,20 +16,75 @@
     },
     "devices": {
       "type": "array",
-      "description": "実行に使うデバイス(マシンプロファイルの name 参照)。iOS/Android混在可(両OSを同時実行する)。1件以上必須。",
+      "description": "この実行プロファイルが使うデバイス。iOS/Android混在可(両OSを同時実行する)。1件以上必須(ただし enabled:false のみのときは実行時に弾かれる)。",
       "minItems": 1,
       "items": {
         "type": "object",
-        "description": "デバイス参照(RunDeviceRef)。マシンプロファイル(profiles/machines/<マシン名>.json)側の name とちょうど一致する必要がある。",
+        "description": "1デバイス分の定義(DeviceSpec)。name は同じ machine の中で一意にすること(重複は検証エラーになる)。",
         "additionalProperties": true,
         "required": [
+          "platform",
           "name"
         ],
         "properties": {
+          "platform": {
+            "type": "string",
+            "enum": ["ios", "android"],
+            "description": "OS 種別。必須。"
+          },
+          "machine": {
+            "type": "string",
+            "description": "このデバイスが居る機械。省略または \"local\" でこのマシン。それ以外は登録簿(fleetest remote machines)の名前で、run はそのホストへディスパッチされる。ssh 宛先は書けない(プロジェクト資産に接続先の実体を混ぜない)。ツールは常に明示で書く。"
+          },
           "name": {
             "type": "string",
-            "description": "profiles/machines/<マシン名>.json 内のデバイス name(ios/android横断で一意にすること)。",
+            "description": "デバイス識別名。一意なのは (platform, machine, name)。",
             "minLength": 1
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "省略時 true。false はこのプロファイルの一覧には残すが実行しない(プロファイルタブのチェックボックスに対応)。",
+            "default": true
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["virtual", "physical"],
+            "description": "デバイスの実体種別(省略時 virtual)。virtual = iOS シミュレータ / Android エミュレータ。physical = 実機(iOS は udid、Android は serial が必須。iOS 実機は engine=xcuitest 固定)。"
+          },
+          "simulator": {
+            "type": "string",
+            "description": "iOS: シミュレータのデバイス名(例 \"iPhone 17 Pro\")。実機では未使用。"
+          },
+          "os": {
+            "type": "string",
+            "description": "iOS: OS バージョン(例 \"27.0\"。省略時は名前一致の最新)。実機では未使用。"
+          },
+          "udid": {
+            "type": "string",
+            "description": "iOS: UDID。kind=virtual ならシミュレータ UDID(simulator/os より優先)、kind=physical なら実機 UDID(xcrun devicectl list devices の Identifier。必須)。"
+          },
+          "port": {
+            "type": "integer",
+            "description": "iOS: ブリッジポートの固定(省略時は自動採番)。",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "engine": {
+            "type": "string",
+            "enum": ["xcuitest", "inapp"],
+            "description": "iOS: 駆動エンジン。xcuitest(既定)= XCUITest ブリッジ / inapp = シミュレータのアプリに dylib 注入する in-app ブリッジ(実機不可・高速)。kind=physical では xcuitest 以外は検証エラー。"
+          },
+          "avd": {
+            "type": "string",
+            "description": "Android: AVD(ID または表示名。起動中エミュレータとの照合で adb シリアルに解決される)。"
+          },
+          "serial": {
+            "type": "string",
+            "description": "Android 実機: adb シリアル(USB は \"14141JEC204922\"、WiFi は \"192.168.1.23:5555\")。kind=physical のとき必須。エミュレータでは使わない(avd から解決するため)。"
+          },
+          "model": {
+            "type": "string",
+            "description": "実機の機種名(iOS は marketingName、Android は ro.product.model)。表示専用で同定には使わない(登録時に控えるだけ)。"
           }
         }
       }
@@ -85,7 +136,7 @@
     },
     "iosInappEngine": {
       "type": "boolean",
-      "description": "iOS の高速な in-app エンジン(ハイブリッド)を使うか(既定 true=ON)。ON → iOS デバイスを hybrid(in-app 主+XCUITest フォールバック)、OFF → xcuitest で駆動する。マシンプロファイルでデバイスに engine を明示している場合はそちらが優先。Android には影響しない。",
+      "description": "iOS の高速な in-app エンジン(ハイブリッド)を使うか(既定 true=ON)。ON → iOS デバイスを hybrid(in-app 主+XCUITest フォールバック)、OFF → xcuitest で駆動する。devices[] の該当エントリで engine を明示している場合はそちらが優先。Android には影響しない。",
       "default": true
     },
     "wipeDataOnBloat": {

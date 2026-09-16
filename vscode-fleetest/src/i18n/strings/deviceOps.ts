@@ -399,10 +399,10 @@ export const deviceOpsStrings = {
   "deviceOps.deleteFailedGeneric": { ja: "デバイスの削除に失敗しました。", en: "Failed to delete the device." },
   "deviceOps.deleteReferencedByWarning": {
     ja:
-      "「{name}」を削除しました。これを参照しているマシンプロファイルが残っています: {profiles}。" +
+      "「{name}」を削除しました。これを参照している実行プロファイルが残っています: {profiles}。" +
       "次回の実行前に該当プロファイルのデバイス設定を見直してください。",
     en:
-      "Deleted \"{name}\". The following machine profiles still reference it: {profiles}. " +
+      "Deleted \"{name}\". The following run profiles still reference it: {profiles}. " +
       "Review their device settings before the next run.",
   },
   "deviceOps.log.deleteDeviceStartFailed": {
@@ -410,8 +410,8 @@ export const deviceOpsStrings = {
     en: "[fleetest] Failed to start delete-device({name}): {error}",
   },
   "deviceOps.log.deleteDeviceUnregistered": {
-    ja: "[fleetest] {name}をマシンプロファイルから外しました: {profiles}",
-    en: "[fleetest] Unregistered {name} from machine profile(s): {profiles}",
+    ja: "[fleetest] {name}を実行プロファイルから外しました: {profiles}",
+    en: "[fleetest] Unregistered {name} from run profile(s): {profiles}",
   },
   "deviceOps.log.deleteDeviceSucceeded": {
     ja: "[fleetest] delete-device({name})が完了しました。",
@@ -448,11 +448,11 @@ export const deviceOpsStrings = {
   },
   "deviceOps.monitorExitedMachineHint": {
     ja:
-      "マシンプロファイル未設定の可能性があります。TestProjects/<project>/profiles/machines/ の " +
-      "内容と、実行プロファイルの machine を確認してください。",
+      "実行プロファイルの devices 設定が不正な可能性があります。" +
+      "TestProjects/<project>/profiles/runs/ の内容を確認してください。",
     en:
-      "The machine profile might not be configured. Check TestProjects/<project>/profiles/machines/ " +
-      "and the run profile's machine.",
+      "The run profile's devices setting might be invalid. Check the contents of " +
+      "TestProjects/<project>/profiles/runs/.",
   },
   "deviceOps.monitorClosedMessage": {
     ja: "モニタープロセスが終了しました(exit code: {exitCode}, signal: {signal})。{hint}",

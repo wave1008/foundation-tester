@@ -1,5 +1,5 @@
 // monitorProfilesRunScopeRestart.test.mjs
-// 実行プロファイルの自動保存がモニターを再起動するのは、monitor が読む欄(machine/devices)が
+// 実行プロファイルの自動保存がモニターを再起動するのは、monitor が読む欄(devices)が
 // 変わったときだけ —— を「ロード → 保存 → watcher の判定」の実際の順序で縛る
 // (monitorProfilesDeviceMachineScope.test.mjs と同じ fake-deps パターン)。
 //
@@ -14,18 +14,16 @@ import { test } from "node:test";
 import { MonitorProfilesController } from "../src/monitorProfilesController";
 
 const RUN_PROFILE = {
-  machine: "M1",
   app: "sampleapp",
-  devices: [{ name: "シミュ1" }],
+  devices: [{ platform: "ios", machine: "local", name: "シミュ1" }],
   heal: true,
   reportDir: "reports",
 };
 
 // webview の runProfileSave が送る全欄(runProfilesTab.js collectRunProfileFields)。
 const FORM_FIELDS = {
-  machine: "M1",
   app: "sampleapp",
-  devices: [{ name: "シミュ1" }],
+  devices: [{ platform: "ios", name: "シミュ1", enabled: true }],
   fm: true,
   heal: true,
   textVisualCheck: true,
@@ -88,16 +86,21 @@ test("FM のトグルだけの保存ではモニターを再起動しない", ()
 test("devices を変えた保存はモニターを再起動する(保存直後の再ロードで指紋を置き直さない)", () => {
   const { controller, runPath, save } = makeController();
   controller.handleRunProfileLoad("ios");
-  save({ devices: [{ name: "シミュ1" }, { name: "シミュ2" }] });
+  save({
+    devices: [
+      { platform: "ios", name: "シミュ1", enabled: true },
+      { platform: "ios", name: "シミュ2", enabled: true },
+    ],
+  });
   assert.equal(controller.runProfileChangeNeedsRestart(runPath), true);
   // 同じ状態への2回目の通知(watcher は1書き込みで複数回鳴ることがある)は再起動しない
   assert.equal(controller.runProfileChangeNeedsRestart(runPath), false);
 });
 
-test("machine を変えた保存はモニターを再起動する", () => {
+test("デバイスの machine を変えた保存はモニターを再起動する((platform, machine, name) が鍵のため)", () => {
   const { controller, runPath, save } = makeController();
   controller.handleRunProfileLoad("ios");
-  save({ machine: "M2" });
+  save({ devices: [{ platform: "ios", machine: "M2", name: "シミュ1", enabled: true }] });
   assert.equal(controller.runProfileChangeNeedsRestart(runPath), true);
 });
 
@@ -107,7 +110,7 @@ test("フォームが一度も読んでいないファイルの変更は、判�
 });
 
 // `api monitor` は実行プロファイルを全キーごとデコードする: 手で型を壊すと起動に失敗し(give-up)、
-// その欄を直しても machine/devices は同じ。スコープだけで絞ると直してもモニターが戻らない
+// その欄を直しても devices は同じ。スコープだけで絞ると直してもモニターが戻らない
 test("手編集はスコープが同じでも再起動し、その後の最初のフォーム保存も再起動する", () => {
   const { controller, runPath, save } = makeController();
   controller.handleRunProfileLoad("ios");

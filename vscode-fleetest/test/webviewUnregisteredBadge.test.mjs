@@ -1,6 +1,6 @@
 // 「未登録」バッジの出し分けの DOM テスト(deviceTiles.js の renderUnregisteredBadge)。
 //
-// このバッジは「マシンプロファイルに無い台なので up と GPU 再起動が効かない」ことを言う。
+// このバッジは「どの実行プロファイルにも記載が無い台なので up と GPU 再起動が効かない」ことを言う。
 // **「(起動中のデバイス)」を選んでいる間は出さない** —— このフィルタは登録に依らず動いて
 // いる台を見るためのもので、そこでは未登録は例外ではなく普通の状態。全タイルに同じバッジが
 // 並ぶだけで何も区別しない。他のフィルタでは今までどおり出す。
@@ -63,7 +63,7 @@ function post(window, data) {
   window.dispatchEvent(new window.MessageEvent("message", { data }));
 }
 
-/** 全台が未登録(マシンプロファイルが2つ以上ある案件で `api monitor` が縮退したときの実データ)。 */
+/** 全台が未登録(実行プロファイルが2つ以上ある案件で `api monitor` が縮退したときの実データ)。 */
 function sendAllUnregistered(window) {
   post(window, {
     type: "devices",

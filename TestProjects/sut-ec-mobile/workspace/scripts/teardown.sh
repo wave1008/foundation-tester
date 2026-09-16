@@ -14,7 +14,7 @@
 #   - 終了コードは run の合否を変えない(失敗は警告として出るだけ)。
 #   - setup.sh が失敗したときも実行されるので、途中まで起きた状態にも耐えること。
 #   - "fleetest hooks reap" / "fleetest remote clean" からの代理実行では run の文脈が無いため、
-#     FT_MACHINE・FT_REPORT_DIR・デバイス一覧は空になる。
+#     FT_REPORT_DIR・デバイス一覧は空になる。
 
 set -u
 

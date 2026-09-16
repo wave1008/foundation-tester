@@ -1,4 +1,4 @@
-// VSCode拡張向け常駐 CLI(fleetest api monitor)。マシンプロファイルのデバイスを一定間隔で
+// VSCode拡張向け常駐 CLI(fleetest api monitor)。実行プロファイルのデバイスを一定間隔で
 // ポーリングし、状態+スクリーンショット(JPEG)を NDJSON で stdout に流す(monitorDevices/
 // monitorFrame/monitorError の3種のみ。診断は stderr)。デバイス起動・終了はこのコマンドの
 // 責務外。終了条件: stdin EOF または SIGTERM/SIGINT。
@@ -38,8 +38,8 @@ import UniformTypeIdentifiers
 struct ApiMonitorCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "monitor",
-        abstract: "Poll every device in the machine profile (or, with --profile, only the devices that"
-            + " profile references) at a fixed interval and stream their state and screenshots as"
+        abstract: "Poll every device in the run profiles (or, with --profile, only that profile's"
+            + " enabled devices) at a fixed interval and stream their state and screenshots as"
             + " NDJSON (monitorDevices/monitorFrame/monitorError) on stdout"
             + " (diagnostics on stderr only; exits on stdin EOF or SIGTERM/SIGINT)")
 
@@ -52,7 +52,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     @Option(name: .customLong("max-width"), help: "Maximum size of the screenshot long edge in px (default 480)")
     var maxWidth: Int = 480
 
-    @Option(help: "Run profile name (when given, only the devices that profile references are monitored; otherwise every device in the machine profile)")
+    @Option(help: "Run profile name (when given, only that profile's enabled devices are monitored; otherwise the devices of every run profile)")
     var profile: String?
 
     /// **どの機械のデバイスを観測するか**。simctl/adb は手元にしか効かないので、既定(nil)では
@@ -69,58 +69,25 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         ResidentProcessGuard.startOrphanWatchdog(logLabel: "monitor")
 
         let testProject = try ScenarioHost.project(named: project)
-        // **マシンプロファイルが要るのは実行プロファイルを選んでいるときだけ**。選んでいなければ
-        // 台帳を1つに決めず、machines/ を全部畳んで使う(下の targets を参照)
-        let machine: (name: String, auto: Bool)?
-        if Self.requiresMachineProfile(profile: profile) {
-            machine = try ProfileResolver.determineMachine(
-                project: testProject, runProfileName: profile)
-            if let machine, machine.auto {
-                logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
-            }
-        } else {
-            machine = nil
-        }
         // 監視対象の台。**実行プロファイルを選んでいるかどうかで作り方が違う**:
-        //   選んでいる: その machine の台帳 → 実行プロファイルが参照する台だけに絞る
-        //   選んでいない(拡張の「(プロファイルなし)」): **台帳を1つに決めない** —— machines/ を
+        //   選んでいる: その実行プロファイルの enabled の台
+        //   選んでいない(拡張の「(プロファイルなし)」): **台帳を1つに決めない** —— runs/ を
         //     全部畳み、手元 + リモート実行の登録簿にあるマシンの台だけを残す(MachineInventory)。
-        //     台帳が2つ以上ある案件では決められず「今動いている台」だけに縮退していたため、
-        //     **未起動の台が1台も出なかった**(実害 2026-08-28)
-        // **実効マシンは spec に焼き込まれている**(プロファイル既定の machine も反映済み。
-        // id・帰属判定・拡張へ出す machine がすべてこの1つの値を見る)
+        //     決められないからと「今動いている台」だけに縮退すると、**未起動の台が1台も出ない**
+        //     (実害 2026-08-28)
+        // **実効マシンは spec に焼き込まれている**(id・帰属判定・拡張へ出す machine がすべてこの1つの値を見る)
         let targets: [MonitorTarget]
-        if let machine, Self.requiresMachineProfile(profile: profile), let profile {
-            let machineURL = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
-            guard FileManager.default.fileExists(atPath: machineURL.path) else {
-                throw ProfileError.machineProfileNotFound(
-                    machine: machine.name,
-                    available: ProfileResolver.machineNames(project: testProject))
-            }
-            let machineProfile: MachineProfile
-            do {
-                machineProfile = try JSONDecoder().decode(
-                    MachineProfile.self, from: Data(contentsOf: machineURL))
-            } catch {
-                throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
-            }
-            // 実行プロファイルが参照するデバイスのみに絞り込む(RunProfileScope.swift。
-            // fleetest devices up/down --profile と共通のロジック)
-            let scoped = try RunProfileScope.filteredMachineProfile(
-                project: testProject, machineName: machine.name, machineProfile: machineProfile,
-                runProfileName: profile, warn: logStderr)
-            targets = DeviceMachineGrouping.entries(machine: scoped).map {
+        if let profile {
+            // 選んでいるのに0台なのは設定の誤りなので落とす(RunProfileScope が投げる)
+            let scoped = try RunProfileScope.roster(project: testProject, runProfileName: profile)
+            targets = DeviceMachineGrouping.entries(roster: scoped).map {
                 MonitorTarget(platform: $0.platform, spec: $0.spec)
-            }
-            // 選んでいるのに0台なのは設定の誤りなので落とす
-            if targets.isEmpty {
-                throw ValidationError("machine profile \(machine.name) defines no devices")
             }
         } else {
             let registry = (LocalConfig.load().remoteHosts ?? []).map(\.machine)
+            let sources = MachineInventory.loadAllNamed(project: testProject) { logStderr("[monitor] \($0)") }
             let merged = MachineInventory.merge(
-                sources: MachineInventory.loadAllNamed(project: testProject) { logStderr("[monitor] \($0)") },
-                registry: registry, existsLocally: Self.localPresencePredicate())
+                sources: sources, registry: registry, existsLocally: Self.localPresencePredicate())
             // **食い違いは黙って畳まない** —— 負けた台帳の台が実在するほうだと、起動中の台が
             // 下の unregisteredStates で「id 衝突」として落ち、画面から消える(実害 2026-09-03)
             for conflict in merged.conflicts { logStderr("[monitor] \(conflict.message)") }
@@ -128,8 +95,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             // **0台でも続ける**(起動中の台が現れたら出す)
             logStderr("[monitor] No run profile is selected — monitoring the devices registered for this"
                 + " machine and for every machine in the remote registry"
-                + " (\(targets.count) device(s) from \(ProfileResolver.machineNames(project: testProject).count)"
-                + " machine profile(s); registry: \(registry.isEmpty ? "none" : registry.joined(separator: ", ")))")
+                + " (\(targets.count) device(s) from \(sources.count) run profile(s);"
+                + " registry: \(registry.isEmpty ? "none" : registry.joined(separator: ", ")))")
         }
 
         let scope = Self.scope(targets: targets, deviceMachine: deviceMachine)
@@ -138,7 +105,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // プロファイル未選択(「起動中のデバイス」)は登録簿の全マシンへ張る(fanoutMachines の doc)
         let fanoutTargets = Self.fanoutMachines(
             foreignMachines: scope.foreignMachines,
-            profileSelected: Self.requiresMachineProfile(profile: profile),
+            profileSelected: profile != nil,
             registry: (LocalConfig.load().remoteHosts ?? []).map(\.machine),
             deviceMachine: deviceMachine)
         let fanout: RemoteMonitorFanout? = {
@@ -521,13 +488,6 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         }
     }
 
-    /// マシンプロファイルの確定を要求するか。**実行プロファイルを選んでいるときだけ必須**
-    /// —— 未選択は拡張の「(起動中のデバイス)」= 登録に依らず動いている台を見る、の意味なので、
-    /// machines/ が複数あって決められなくても起動中の台だけを出して続ける
-    /// (2026-08-17 の実害: プロファイルの選択を外した瞬間にモニターが起動できなくなった)。
-    /// I/O を持たない pure 関数(MonitorMachineScopeTests)
-    static func requiresMachineProfile(profile: String?) -> Bool { profile != nil }
-
     /// 監視対象の仕分け。**この機械が観測できるのは自分のデバイスだけ** —— 他の機械のぶんを
     /// simctl/adb で見ると、同名の手元のシミュレータに解決して**別の機械の台の状態と画面を出す**
     /// ((host, name) が一意なら同名は正常な構成なので普通に起きる)
@@ -544,7 +504,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
     /// fan-out 先の決定。**プロファイルを選んでいるときはその範囲**(scope が挙げた他機)、
     /// **選んでいないとき(拡張の「起動中のデバイス」)は登録簿の全マシン** ——
-    /// マシンプロファイルを引かない = どの台がどの機械に居るかを知る手掛かりが他に無いので、
+    /// 実行プロファイルを引かない = どの台がどの機械に居るかを知る手掛かりが他に無いので、
     /// 何もしないと**リモートで起動中の台が一覧に出ない**(2026-08-26 の報告)。
     /// **子(--device-machine 付き)は常に空** = 入れ子のディスパッチを作らない。
     /// 重複除去は登場順を保つ(表示とログの並びを入力から決まる形にする)。I/O を持たない pure 関数
@@ -573,7 +533,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         return Scope(owned: owned, listed: deviceMachine == nil ? targets : owned, foreignMachines: machines)
     }
 
-    /// 出す1サイクルぶんの devices を組み立てる。**並びはマシンプロファイルの順のまま**
+    /// 出す1サイクルぶんの devices を組み立てる。**並びは台帳の順のまま**
     /// (拡張も並べ替えるが、順序の正はここ = 手元とリモートで別扱いにしない)。
     /// - observed: この機械が simctl/adb で観測した台(未登録の起動中デバイスを含みうる)
     /// - remote: 子(その機械の monitor)が報告してきた台。id は (platform, host, name) 由来で
@@ -588,7 +548,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         var merged = listedTargets.map { target in
             observedByID[target.id] ?? remote[target.id] ?? unobservedInfo(target: target)
         }
-        // マシンプロファイルに無い台(determineStates が合成した起動中デバイス)を後ろへ足す
+        // 台帳に無い台(determineStates が合成した起動中デバイス)を後ろへ足す
         let listedIDs = Set(listedTargets.map(\.id))
         merged += observed.filter { !listedIDs.contains($0.id) }
         // **リモートの未登録の台も足す** —— プロファイル未選択(拡張の「起動中のデバイス」)では
@@ -648,7 +608,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// iOS は simctl 一覧+ブリッジ /status、Android は起動中 AVD 一覧をそれぞれ一括取得して
     /// 各デバイスへ振り分ける(デバイス毎に simctl/adb を叩くと台数に比例して遅くなるため)。
     /// internal: ApiListDevicesCommand.swift が単発の状態判定にも同じロジックを再利用する
-    /// includeUnregistered: true のとき、マシンプロファイル未記載でも起動中(iOS booted sim /
+    /// includeUnregistered: true のとき、台帳未記載でも起動中(iOS booted sim /
     /// Android running AVD)なら合成した DeviceRuntimeState を追加で返す(unregisteredStates 参照。
     /// 実機は対象外)。list-devices(--profile 指定時と同様スコープを絞る意図)は既定 false のまま。
     /// `skipped`(id 衝突で落とした合成デバイス)は**返すだけ** —— 常駐監視は毎周期ここを通るので、
@@ -726,11 +686,11 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         return (registeredStates + unregistered, skipped)
     }
 
-    /// 未登録(マシンプロファイル未記載)の起動中デバイスを合成する。iOS は booted なシミュレータの
+    /// 未登録(台帳未記載)の起動中デバイスを合成する。iOS は booted なシミュレータの
     /// うち registeredIosUdids に無いもの、Android は runningAVDs のうち canonical AVD ID が
     /// registeredTargets の avd に無いもの。
     /// **接続中の実機も合成する**(2026-08-26。以前は対象外だった)—— 拡張の「(起動中のデバイス)」は
-    /// マシンプロファイルを引かないので、ここで合成しないと**繋いである実機が一覧に出ず**、
+    /// 台帳を引かないので、ここで合成しないと**繋いである実機が一覧に出ず**、
     /// 実機バッジも付かない。識別子は iOS=udid / Android=serial で、登録済みのぶんは除く。
     /// 合成 id が登録ターゲット(または他の合成デバイス)の id と衝突したらスキップする — 拡張側は id を
     /// 一意キーとして devices を Map 管理するため、重複 id は片方が消える形で表示が壊れる。
@@ -1096,7 +1056,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                                       detail: error.localizedDescription,
                                       iosPort: nil, androidSerial: nil)
         }
-        // 実機は /status の device が機種名("iPhone")で返り、マシンプロファイルのデバイス名
+        // 実機は /status の device が機種名("iPhone")で返り、実行プロファイルのデバイス名
         // (例「iPhone wave(実機)」)と一致しない。名前照合では永久に connected にならないので、
         // ランナープロセスの -destination id=<UDID> で帰属を決める。resolve が通っている
         // = 接続済みなので、ブリッジが無くても booted(未接続なら上の catch で offline)
@@ -1384,12 +1344,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
 // MARK: - 監視対象・判定結果
 
-/// マシンプロファイルの 1 デバイス(監視対象)。internal: ApiListDevicesCommand.swift でも
-/// 同じ構造体を使ってマシンプロファイルのデバイスを表す(determineStates と対で共有)
+/// 台帳の 1 デバイス(監視対象)。internal: ApiListDevicesCommand.swift でも
+/// 同じ構造体を使って台帳のデバイスを表す(determineStates と対で共有)
 struct MonitorTarget {
     let platform: String  // "ios" / "android"
     let spec: DeviceSpec
-    /// マシンプロファイルに実在するか。false は determineStates(includeUnregistered:) が合成した
+    /// 実行プロファイルに実在するか。false は determineStates(includeUnregistered:) が合成した
     /// 起動中デバイス(未登録)。var なのは memberwise init に既定値付きで載せるため
     /// (let + 既定値だと init から除外され registered: false を渡せない)
     var registered: Bool = true
@@ -1757,7 +1717,7 @@ struct ApiMonitorDeviceInfo: Codable {
     /// recording-lease(RecordingLease.isFresh)が生存中なら true。run profile の record:true で
     /// このデバイスの動画録画(VideoRecordingCoordinator)が進行中の意味。leaseStateDir 未解決時は常に false
     let recording: Bool
-    /// マシンプロファイルに実在するか。false は determineStates(includeUnregistered:) が合成した
+    /// 実行プロファイルに実在するか。false は determineStates(includeUnregistered:) が合成した
     /// 起動中デバイス(未登録)。追加フィールドのみで後方互換のため ProtocolVersion は不変
     /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.registered)
     let registered: Bool

@@ -1,10 +1,13 @@
 {
-  "machine": "M1Ultra",
   "app": "ft_e2e_ios",
   "devices": [
     {
+      "platform": "ios",
       "machine": "M1Ultra",
-      "name": "iPhone 17 Pro(iOS 27.0)-01"
+      "name": "iPhone 17 Pro(iOS 27.0)-01",
+      "os": "27.0",
+      "simulator": "iPhone 17 Pro(iOS 27.0)-01",
+      "udid": "E1A517B3-2E0A-45AD-9C32-38AF315F39F7"
     }
   ],
   "heal": true,

@@ -1,15 +1,15 @@
 // ft_list_devices / ft_list_apps の本文を組み立てる材料。MCPServer+Dispatch.swift(配線は別担当)から呼ぶ。
 //
-// **マシンプロファイルを前提にできない**: .claude/skills/fleetest-mcp/SKILL.md の導線(MCP だけ
-// 入れる受け手)は machines/ を一つも持たない。devicesText はプロファイルが解決できないときも
+// **実行プロファイルを前提にできない**: .claude/skills/fleetest-mcp/SKILL.md の導線(MCP だけ
+// 入れる受け手)は runs/ にデバイスを一つも持たない。devicesText はプロファイルが解決できないときも
 // 素のカタログ(SimulatorCatalog / AndroidSerialResolver)へフォールバックし、**絶対に throw しない**
 // (失敗も文章として本文に書く)。
 //
 // ApiListDevicesCommand.swift の ApiMonitorCommand.determineStates は fleetest 実行ターゲットに
 // 閉じていて fleetest-mcp からは見えないため使わない。ここでは同種の判定を軽量に再実装する
 // (登録デバイスの疎通は 1 台ずつ試し、1 台の失敗で他を落とさない)。
-// ただし絞り込み(実行プロファイルによる devices 選別・別マシンの除外)は
-// ApiListDevicesCommand.swift と同じ FTCore.RunProfileScope / DeviceMachineGrouping を通し、
+// ただし台帳(実行プロファイルの devices・無指定なら全実行プロファイルの和)と別マシンの除外は
+// ApiListDevicesCommand.swift と同じ FTCore.RunProfileScope / MachineInventory / DeviceMachineGrouping を通し、
 // CLI と MCP の答えを揃える。**devicesText は絶対に throw しない契約は不変**なので、
 // この絞り込みが失敗しても本文に理由を書いて絞り込み前の集合で続行する。
 
@@ -42,16 +42,15 @@ enum DeviceInventory {
         }
     }
 
-    struct ResolvedMachine {
-        let name: String
-        let profile: MachineProfile
-        /// `RunProfileScope.filteredMachineProfile` が要る(devices up/down・api list-devices と同じ)
-        let project: TestProject
+    struct ResolvedRoster {
+        /// 見出しに出す台帳の出どころ("run profile \"ios\"" / "all run profiles")
+        let label: String
+        let roster: DeviceRoster
     }
 
     // MARK: - ft_list_devices
 
-    /// `abbreviated`: マシンプロファイルを使えない見出しを短縮形で出すか、その回の理由(reason)を
+    /// `abbreviated`: 台帳を使えない見出しを短縮形で出すか、その回の理由(reason)を
     /// 渡して判定するクロージャ。**理由込みで判定させる** —— 呼び出し側の鍵を理由に依存させないと、
     /// 「同じ理由の繰り返しは畳む」が「理由が変わっても畳む」に化ける(欠陥⑥: 指示どおり原因を
     /// 直しても、直った証拠だけが畳まれて読めなくなる)。
@@ -66,29 +65,13 @@ enum DeviceInventory {
         let wantsIOS = platform == nil || platform == "ios"
         let wantsAndroid = platform == nil || platform == "android"
 
-        let lookup = resolveMachine(project: project, profile: profile)
-        if case .resolved(let machine) = lookup {
-            var notes: [String] = []
-            var machineProfile = machine.profile
-            // profile: が渡されたら CLI(ApiListDevicesCommand)と同じ RunProfileScope で絞る。
-            // 失敗しても devicesText は throw しない契約なので、理由を本文に書いて絞り込み前の
-            // マシンプロファイルで続行する(壊れた実行プロファイルを黙って隠さない)
-            if let profile {
-                do {
-                    machineProfile = try RunProfileScope.filteredMachineProfile(
-                        project: machine.project, machineName: machine.name,
-                        machineProfile: machineProfile, runProfileName: profile,
-                        warn: { notes.append($0) })
-                } catch {
-                    notes.append("could not narrow to run profile \"\(profile)\": \(describe(error))"
-                        + " — showing every device in machine profile \(machine.name) instead")
-                }
-            }
-
+        var notes: [String] = []
+        let lookup = resolveRoster(project: project, profile: profile, notes: &notes)
+        if case .resolved(let resolved) = lookup {
             // 別の機械の台はここから操作できないので落とす(CLI の ApiListDevicesCommand と同じ
             // DeviceMachineGrouping 判定)。落とした台数・機械名は本文に残す(stderr は MCP
             // クライアントに見えないため)
-            let entries = DeviceMachineGrouping.entries(machine: machineProfile)
+            let entries = DeviceMachineGrouping.entries(roster: resolved.roster)
                 .filter { ($0.platform == "ios" && wantsIOS) || ($0.platform == "android" && wantsAndroid) }
             let (local, movedAway) = localDevices(entries: entries)
             if !movedAway.isEmpty {
@@ -118,19 +101,19 @@ enum DeviceInventory {
             }
 
             guard !rows.isEmpty else {
-                let text = noLocalDevicesText(machineName: machine.name, platform: platform,
+                let text = noLocalDevicesText(source: resolved.label, platform: platform,
                                               allMovedAway: !movedAway.isEmpty)
                 return ([text] + notes).joined(separator: "\n")
             }
-            return (["machine profile: \(machine.name)"] + notes + rows.map(line)).joined(separator: "\n")
+            return (["devices from \(resolved.label)"] + notes + rows.map(line)).joined(separator: "\n")
         }
 
         var rows: [Row] = []
         if wantsIOS { rows += await iosFallbackRows() }
         if wantsAndroid { rows += androidFallbackRows() }
         let header = fallbackHeader(reason: lookup.reason, abbreviated: abbreviated(lookup.reason))
-        guard !rows.isEmpty else { return header + "\nNone found." }
-        return ([header] + rows.map(line)).joined(separator: "\n")
+        guard !rows.isEmpty else { return ([header] + notes + ["None found."]).joined(separator: "\n") }
+        return ([header] + notes + rows.map(line)).joined(separator: "\n")
     }
 
     /// **手元に残る台と、別の機械へ移す台を分ける**(純粋関数・テスト用)。entries() が
@@ -156,8 +139,8 @@ enum DeviceInventory {
 
     /// 手元に1台も残らなかったときの見出し(純粋関数・テスト用)。**`allMovedAway` で言い分ける** ——
     /// 元から0台の「defines no ... devices」と、全部が別の機械に居るのは別の事実
-    static func noLocalDevicesText(machineName: String, platform: String?, allMovedAway: Bool) -> String {
-        let base = "machine profile \"\(machineName)\" defines no \(platform ?? "ios/android") devices"
+    static func noLocalDevicesText(source: String, platform: String?, allMovedAway: Bool) -> String {
+        let base = "\(source) defines no \(platform ?? "ios/android") devices"
         return allMovedAway ? base + " on this machine (they all live on another machine)." : base + "."
     }
 
@@ -177,7 +160,7 @@ enum DeviceInventory {
         return registered + extra
     }
 
-    /// マシンプロファイルを使えないときの見出し(純粋関数・テスト用)。
+    /// 台帳(実行プロファイルの devices)を使えないときの見出し(純粋関数・テスト用)。
     /// **理由を必ず載せる** —— 設定の壊れ(登録マシン名とプロファイル名の不一致など)を黙って
     /// フォールバックで隠すと、受け手は自分の profiles/ が死んでいることに気づけない
     ///
@@ -187,10 +170,10 @@ enum DeviceInventory {
     /// (ここを消すと受け手は自分の profiles/ が死んでいることに永久に気づけない)
     static func fallbackHeader(reason: String, abbreviated: Bool = false) -> String {
         guard !abbreviated else {
-            return "Not using a machine profile (reason given in the first ft_list_devices)."
+            return "Not using the run profiles' devices (reason given in the first ft_list_devices)."
                 + " Currently booted/connected:"
         }
-        return "Not using a machine profile (\(reason))."
+        return "Not using the run profiles\' devices (\(reason))."
             + " Listing devices that are currently booted/connected instead:"
     }
 
@@ -234,7 +217,7 @@ enum DeviceInventory {
     }
 
     enum MachineLookup {
-        case resolved(ResolvedMachine)
+        case resolved(ResolvedRoster)
         case unavailable(String)
 
         var reason: String {
@@ -243,31 +226,39 @@ enum DeviceInventory {
         }
     }
 
-    /// machine profile の解決(private・2026-08-12)。走査は伴わない(プロファイルの読み直しだけ)
-    private static func resolveMachine(project: String?, profile: String?) -> MachineLookup {
+    /// 台帳の解決(private)。走査は伴わない(プロファイルの読み直しだけ)。
+    /// profile: 指定 = その実行プロファイルの enabled の台(CLI の ApiListDevicesCommand と同じ)。
+    /// 読めなければ理由を notes に書いて全実行プロファイルの和へ落ちる(壊れた実行プロファイルを黙って隠さない)
+    private static func resolveRoster(project: String?, profile: String?,
+                                      notes: inout [String]) -> MachineLookup {
         let testProject: TestProject
         do {
             testProject = try ScenarioHost.project(named: project)
         } catch {
             return .unavailable(describe(error))
         }
-        let machine: (name: String, auto: Bool)
-        do {
-            machine = try ProfileResolver.determineMachine(
-                project: testProject,
-                runProfileName: profile)
-        } catch {
-            return .unavailable(describe(error))
+        if let profile {
+            do {
+                let roster = try RunProfileScope.roster(project: testProject, runProfileName: profile)
+                return .resolved(ResolvedRoster(label: "run profile \"\(profile)\"", roster: roster))
+            } catch {
+                notes.append("could not use run profile \"\(profile)\": \(describe(error))"
+                    + " — showing the devices of every run profile instead")
+            }
         }
-        let url = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
-        guard let data = try? Data(contentsOf: url) else {
-            return .unavailable("machine profile \"\(machine.name)\" is not in"
-                + " \(testProject.name)/profiles/machines/")
+        var readErrors: [String] = []
+        let sources = MachineInventory.loadAllNamed(project: testProject) { readErrors.append($0) }
+        notes += readErrors
+        // 別の機械の台も残す(呼び手が movedAway として件数を言う)ので、見えた機械を全部登録簿扱いにする
+        let machines = sources.flatMap { DeviceMachineGrouping.entries(roster: $0.profile) }
+            .compactMap(\.machine)
+        let merged = MachineInventory.merge(sources: sources, registry: machines, existsLocally: nil)
+        guard !merged.entries.isEmpty else {
+            return .unavailable("no run profile in \(testProject.name)/profiles/runs/ lists any device")
         }
-        guard let decoded = try? JSONDecoder().decode(MachineProfile.self, from: data) else {
-            return .unavailable("machine profile \"\(machine.name)\" could not be decoded")
-        }
-        return .resolved(ResolvedMachine(name: machine.name, profile: decoded, project: testProject))
+        notes += merged.conflicts.map(\.message)
+        return .resolved(ResolvedRoster(label: "all run profiles",
+                                        roster: MachineInventory.mergedProfile(merged.entries)))
     }
 
     /// **CLI のフラグ表記のまま出さない**: この文は FTCore(CLI 向け)から来るので
@@ -380,12 +371,12 @@ enum DeviceInventory {
         return duplicated
     }
 
-    /// **実機も並べる**(2026-08-14・実機+仮想デバイス混在の監査)。ここはマシンプロファイルが
+    /// **実機も並べる**(2026-08-14・実機+仮想デバイス混在の監査)。ここは台帳(実行プロファイル)が
     /// 解決しなかったときの**唯一の一覧**で、`androidFallbackRows` は最初から実機を含むのに
     /// iOS だけシミュレータしか数えていなかった。結果、繋がっている iPhone が
     /// **どの経路からも見えず**、`udid:` を要求するエラー文が「ft_list_devices を見ろ」と言うのと
     /// 相互参照して行き止まりになる。
-    /// machines/ に自分のホスト名が無い構成では、この fallback が常用経路になる
+    /// 実行プロファイルにデバイスが無い構成では、この fallback が常用経路になる
     private static func iosFallbackRows() async -> [Row] {
         let simulators = ((try? SimulatorCatalog.devices()) ?? [])
         let physical = ((try? IOSPhysicalDeviceCatalog.devices()) ?? [])

@@ -1,7 +1,11 @@
 {
   "app": "default",
   "devices": [
-    { "name": "simulator1" }
+    {
+      "platform": "ios",
+      "machine": "local",
+      "name": "simulator1"
+    }
   ],
   "heal": true
 }

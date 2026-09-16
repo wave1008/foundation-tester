@@ -191,16 +191,10 @@ enum ProfileRunner {
     ) async throws -> (summary: RunSummary, fmSettings: FMSettingsRecord) {
         var items = rawItems
         let runClockStart = Date()
-        // 1. マシン決定 → プロファイル合成(実行プロファイル自身の machine 指定があれば最優先)
+        // 1. プロファイル合成
         PhaseLog.mark("profile-runner-start")
-        let machine = try ProfileResolver.determineMachine(
-            project: project,
-            runProfileName: profileName)
-        if machine.auto {
-            ConsoleOut.out("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
-        }
         let resolvedAll = try ProfileResolver.resolve(
-            project: project, runName: profileName, machineName: machine.name,
+            project: project, runName: profileName,
             workspaceOverride: workspaceOverride, overrides: setOverrides)
         // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17・
         // 2026-08-18)なので毎回雛形作成(既に揃っていれば何もしない。WorkspaceScaffold の宣言)。
@@ -300,7 +294,7 @@ enum ProfileRunner {
         RunEnvironment.apply(resolved)
         let deviceList = resolved.devices
             .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-        ConsoleOut.out("🧩 Profile \(profileName): \(resolved.appName) @ \(resolved.machineName)")
+        ConsoleOut.out("🧩 Profile \(profileName): \(resolved.appName)")
         ConsoleOut.out("   Devices: \(deviceList)")
 
         // 1.5. Android AVD 肥大化チェック(超過分は Wipe Data。buildWorkers 前に実行)

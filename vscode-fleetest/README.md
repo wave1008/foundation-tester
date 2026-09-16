@@ -27,7 +27,7 @@ fleetest(Swift 製の iOS/Android UI テストツール。リポジトリルー�
   (詳細は下記「デバイスモニター」)。並列実行中は同じパネル下部にワーカー(デバイス)別の
   ログレーンを表示する(詳細は下記「並列実行とログレーン」)。各タイルは右クリックメニューから
   `fleetest api start-device`/`fleetest api stop-device` でそのデバイス1台だけを起動/停止できる。
-  「プロファイル」タブ(`src/monitorProfilesController.ts`)から実行/アプリ/マシンプロファイルの
+  「プロファイル」タブ(`src/monitorProfilesController.ts`)から実行/アプリプロファイルの
   一覧・作成・編集・削除ができ、ブリッジ無応答・Android ゲスト OS 異常を自動検出して修復を試みる
   ウォッチドッグ(`src/monitorBridgeWatchdog.ts` / `src/monitorHealthWatchdog.ts`。設定
   `fleetest.autoRepairBridge`/`fleetest.autoRepairDeviceHealth`)も動く
@@ -60,7 +60,7 @@ fleetest(Swift 製の iOS/Android UI テストツール。リポジトリルー�
   コマンド **「fleetest: 実行プロファイルを選択」**(`fleetest.selectProfile`)による
   `fleetest.profile` 設定の切り替え、プロファイルJSON保存時の自動検証+
   コマンド **「fleetest: プロファイルを検証」**(`fleetest.validateProfiles`)による
-  問題パネル(Diagnostics)への反映、`profiles/{apps,machines,runs}/*.json` の
+  問題パネル(Diagnostics)への反映、`profiles/{apps,runs}/*.json` の
   補完・型チェック用 JSON スキーマ(`schemas/*.schema.json`)を提供する
   (詳細は下記「実行プロファイルの編集支援」)
 
@@ -180,7 +180,7 @@ code --install-extension vscode-fleetest-<version>.vsix
 |---|---|---|---|
 | `fleetest.binaryPath` | string | `.build/debug/fleetest` | fleetest CLI バイナリのパス。相対パスはワークスペースルート基準で解決される。**存在しなければ PATH から `fleetest` を探す**(ビルド済み `fleetest` を PATH に置いた場合など) |
 | `fleetest.project` | string | `""` | 対象のテストプロジェクト名(`TestProjects/<name>` の `<name>`)。空なら自動判定(`TestProjects/` 直下が1つならそれを使用。複数あれば選択を促す) |
-| `fleetest.profile` | string | `""` | 使用する実行プロファイル名(`TestProjects/<project>/profiles/runs/<name>.json` の `<name>`)。空なら未指定。非空なら実行・デバッグ実行の両方で `platform`/`port`/`serial` の代わりにこちらが使われる。**デバイスモニターの監視対象・「デバイスを全て起動/終了」もこのプロファイルのデバイスに絞られる**(空ならマシンプロファイルの全デバイスが対象)。切り替えてもデバイスの起動状態は変更されない |
+| `fleetest.profile` | string | `""` | 使用する実行プロファイル名(`TestProjects/<project>/profiles/runs/<name>.json` の `<name>`)。空なら未指定。非空なら実行・デバッグ実行の両方で `platform`/`port`/`serial` の代わりにこちらが使われる。**デバイスモニターの監視対象・「デバイスを全て起動/終了」もこのプロファイルのデバイスに絞られる**(空なら全実行プロファイルのデバイスの和集合が対象)。切り替えてもデバイスの起動状態は変更されない |
 | `fleetest.platform` | `"ios"` \| `"android"` | `"ios"` | 対象プラットフォーム。`fleetest.profile` が空のときだけ使われる |
 | `fleetest.port` | number | `0` | ブリッジ接続ポート。`0` は未指定(CLI 既定値を使用)。`fleetest.profile` が空のときだけ使われる |
 | `fleetest.serial` | string | `""` | Android デバイスのシリアル番号。空は未指定。`fleetest.profile` が空のときだけ使われる |
@@ -282,8 +282,8 @@ UI 文字列は `src/i18n/`(拡張側ランタイム `i18n/index.ts`、辞書 `i
 
 ## 実行プロファイルの編集支援
 
-`TestProjects/<project>/profiles/{apps,machines,runs}/*.json` の作成・編集を助ける機能です。
-プロファイルの構造の正は `Sources/FTCore/RunProfile.swift`(`AppProfile`/`MachineProfile`/
+`TestProjects/<project>/profiles/{apps,runs}/*.json` の作成・編集を助ける機能です。
+プロファイルの構造の正は `Sources/FTCore/RunProfile.swift`(`AppProfile`/
 `RunProfileDocument`/`DeviceSpec` 等)です。
 
 ### プロファイル選択(`fleetest.selectProfile`)
@@ -296,14 +296,14 @@ UI 文字列は `src/i18n/`(拡張側ランタイム `i18n/index.ts`、辞書 `i
 
 ### プロファイル検証 → 問題パネル(Diagnostics)
 
-CLI `fleetest api validate-profile --project <p> [--kind apps|machines|runs] [--name <n>]`
+CLI `fleetest api validate-profile --project <p> [--kind apps|runs] [--name <n>]`
 (`Sources/fleetest/ApiValidateProfileCommand.swift`)の結果を、問題パネル(Problems)の
 `fleetest-profile` という DiagnosticCollection に反映します(`src/profileDiagnostics.ts`。
 JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/profileModel.ts` に切り出してあります)。
 検証エラー(`errors`)は Error、未知キー等の警告(`warnings`)は Warning として表示されます
 (位置情報は無いため、いずれも対象ファイルの先頭行に付きます)。
 
-- **保存時の自動検証**: `TestProjects/<project>/profiles/{apps,machines,runs}/*.json` を保存すると、
+- **保存時の自動検証**: `TestProjects/<project>/profiles/{apps,runs}/*.json` を保存すると、
   そのファイル1件だけを `--kind`/`--name` で絞り込んで検証し、該当ファイルの診断を更新します
   (エラー・警告が無くなれば問題パネルからも消えます)。
 - **コマンド「fleetest: プロファイルを検証」**(`fleetest.validateProfiles`): 対象プロジェクトの
@@ -312,16 +312,16 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
 
 ### JSON スキーマ(補完・ホバー・構文レベルの検証)
 
-`package.json` の `contributes.jsonValidation` により、`profiles/{apps,machines,runs}/*.json` を
-開くと `schemas/*.schema.json`(`app-profile.schema.json`/`machine-profile.schema.json`/
-`run-profile.schema.json`)が自動的に適用され、VS Code 標準の JSON 言語機能(補完・ホバー・
+`package.json` の `contributes.jsonValidation` により、`profiles/{apps,runs}/*.json` を
+開くと `schemas/*.schema.json`(`app-profile.schema.json`/`run-profile.schema.json`)が
+自動的に適用され、VS Code 標準の JSON 言語機能(補完・ホバー・
 必須キー/型不一致の構文レベルの警告)が効くようになります。
 
 - 未知のキーは(タイポ検出目的の)エラーにはしません(`additionalProperties: true`)。
   未知キーの検出は上記の CLI 検証(問題パネル)側の役割です(二重報告を避けるため)。
-- `runs/*.json` は `app`(文字列)と `devices`(1件以上。各要素は `{"name": "..."}` 形式。
-  文字列だけの指定は不可)を必須とします。これは `ProfileResolver.validate` がエラーとして
-  扱う項目と一致させています。
+- `runs/*.json` は `app`(文字列)と `devices`(1件以上。文字列だけの指定は不可)を必須とします。
+  スキーマが各要素に要求するのは `name` だけですが、`ProfileResolver.validate` は
+  `platform`(`"ios"`/`"android"`)も無いとエラーにします(問題パネル側で検出)。
 
 ## デバイスモニター
 
@@ -376,7 +376,7 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
   タイルで見られるようにするためです)。
 - **上部ツールバーの実行プロファイル選択**: 実行プロファイル名の一覧に加えて、次の2つの疑似項目が
   先頭に並びます。
-  - **「(プロファイルなし)」**: マシンプロファイルの全デバイス(未起動を含む)を表示します。
+  - **「(プロファイルなし)」**: 全実行プロファイルのデバイスの和集合(未起動を含む)を表示します。
     タイル右クリックの「起動」で個別に起動できるのはこの表示(または実行プロファイル選択時)です。
   - **「(起動中のデバイス)」**: 実行プロファイルではなく**表示フィルタ**で、監視対象は
     「(プロファイルなし)」と同じまま、タイルに出すのを起動中(未起動以外)のデバイスだけに
@@ -388,23 +388,26 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
   - プロファイルの切り替えで**デバイスの起動状態は変更されません**(切り替え先に含まれない稼働中
     デバイスも停止しません)。
 - 上部ツールバーのボタン:
-  - **「デバイスを全て起動」**: `fleetest devices up` を実行します(マシンプロファイルに定義された
-    デバイスを段階的に起動)。
+  - **「デバイスを全て起動」**: `fleetest devices up` を実行します(監視対象のデバイスを段階的に起動)。
   - **「全て終了」**: `fleetest devices down` を実行します(ブリッジ停止+シミュレータ/エミュレータ
     の全終了)。
   - **「モニター再起動」**: `fleetest api monitor` プロセスを再起動します(設定変更後や、
     モニタープロセスが異常終了した場合の再接続に使用します)。
   - 起動/終了の実行中(タイル個別操作を含む直列キューが空でない間)は多重起動を防ぐため両ボタンが
     無効化されます(キューが空になると自動的に再度有効になります)。
-- `fleetest api monitor` プロセスが異常終了した場合(マシンプロファイル未設定等)は、パネル上部に
-  エラーバナーで案内が表示されます。`fleetest machine set` の実行や
-  `TestProjects/<project>/profiles/machines/` の内容を確認してください。
+- `fleetest api monitor` プロセスが異常終了した場合(実行プロファイルにデバイスが1台も無い等)は、
+  パネル上部にエラーバナーで案内が表示されます。
+  `TestProjects/<project>/profiles/runs/` の内容を確認してください。
 - CLI 呼び出しの stdout/stderr の詳細ログは出力パネル「fleetest」に出力されます。
 
 ### 「プロファイル」タブ
 
-`src/monitorProfilesController.ts` が担当する、実行/アプリ/マシンプロファイルの一覧・作成・
-コピー・名前変更・削除・編集フォームです。マシンプロファイルの編集では、CLI の
+`src/monitorProfilesController.ts` が担当する、実行/アプリプロファイルの一覧・作成・
+コピー・名前変更・削除・編集フォームです。実行プロファイルの節には**全実行プロファイルの
+デバイスの和集合**がチェックボックス付きで並びます(チェック済み=このプロファイルが走らせる、
+未チェック=`enabled: false` として残す)。デバイスを編集(名前変更等)・削除すると、同じ
+(platform, machine, name) を持つ全ての実行プロファイルへ反映されます。「デバイスを追加」ボタンも
+この節にあり、選択中の実行プロファイルへ直接デバイスを追加します。デバイスの作成・編集では、CLI の
 `fleetest api device-catalog`(利用可能な機種/OSの一覧取得)・`fleetest api installed-devices`
 (導入済みシミュレータ/AVDの一覧取得)・`fleetest api create-device`(新規デバイス作成)を
 `src/monitorDeviceOps.ts` 経由の単発 spawn で呼び出します。実行プロファイル・アプリプロファイルは
@@ -526,10 +529,10 @@ webview 資産は `src/webview/live/main.js`(UI 本体はデバイスモニタ�
 (dry-run を除く)開始時にもこのパネルが自動的に開きます。
 
 - **上部のデバイスセレクタ**: タブを初めて表示すると `fleetest api list-devices --project <project>`
-  を実行し、マシンプロファイルの全デバイスと現在状態(接続済み/起動中/未起動)を取得してプルダウンに
+  を実行し、全デバイスと現在状態(接続済み/起動中/未起動)を取得してプルダウンに
   表示します。**「デバイス一覧を更新」**ボタンで再取得できます。`connected` 以外のデバイスも選択
   自体はできますが、選択中に「⚠ 接続されていません」という注意表示が出ます。`list-devices` が
-  失敗した場合(マシンプロファイル未設定、対象プロジェクト未解決等)は、`fleetest.platform`/
+  失敗した場合(実行プロファイルにデバイスが無い、対象プロジェクト未解決等)は、`fleetest.platform`/
   `fleetest.port`/`fleetest.serial` 設定から作った「設定のデバイス」1件にフォールバックし、上部に
   エラーバナーで理由を表示します。デバイスを選択すると、そのデバイス向けの `fleetest api live serve`
   常駐プロセスが起動し、画面の供給元(ストリーミング/自動フレーム)も切り替わります(詳細は下記
@@ -769,14 +772,13 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
     ことを確認する(該当行はファイル先頭行になる)。エラーを直してから保存し直すと、問題パネルから
     該当エラーが消えることを確認する。
 15. コマンドパレットから **「fleetest: プロファイルを検証」** を実行すると、対象プロジェクトの
-    `profiles/{apps,machines,runs}/*.json` が一括検証され、「エラー N件・警告 N件・問題なし N件」
+    `profiles/{apps,runs}/*.json` が一括検証され、「エラー N件・警告 N件・問題なし N件」
     という通知が表示されることを確認する(問題パネルにも各ファイルの結果が反映される)。
 16. `TestProjects/<project>/profiles/runs/<name>.json` をエディタで開き、既存キーの外側(オブジェクトの
     トップレベル)で補完(Ctrl+Space / Cmd+Space)を呼び出すと、`app`/`devices`/`heal`/`reportDir`/
     `defaultTimeout` が説明付きで候補に出ることを確認する。`"heal"` に文字列を入力するなど型を
     誤ると、エディタ上に構文レベルの警告(波線)が表示されることも確認する
-    (`profiles/apps/*.json`・`profiles/machines/*.json` でも同様にスキーマが効くことを合わせて
-    確認する)。
+    (`profiles/apps/*.json` でも同様にスキーマが効くことを合わせて確認する)。
 
 ### ステップ一覧
 
@@ -819,7 +821,7 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
     エミュレータが終了して各タイルが「未起動」に戻ることを確認する。
 27. `fleetest.binaryPath` を不正なパスに変更する、または `.build/debug/fleetest` を一時的に
     リネームするなどしてモニタープロセスを異常終了させると、パネル上部にエラーバナー
-    (マシンプロファイル未設定等の案内)が表示されることを確認する。
+    (実行プロファイルにデバイスが無い等の案内)が表示されることを確認する。
 
 ### 並列実行とログレーン
 
@@ -862,7 +864,7 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
     **「ライブ操作」** を選ぶと、同様にライブ操作パネルが開き(または前面に出て)そのデバイスが
     選択されることも確認する。エディタ左下のステータスバー常駐ボタンからも同じパネルが開けることを
     確認する。
-36. マシンプロファイルが見つからない状態(`fleetest.project` を存在しないプロジェクト名にする等)
+36. デバイスが1台も解決できない状態(`fleetest.project` を存在しないプロジェクト名にする等)
     でタブを開くと、上部にエラーバナーが表示され、デバイスセレクタに
     `fleetest.platform`/`fleetest.port`/`fleetest.serial` 設定から作られた「設定のデバイス」が
     1件だけ表示されることを確認する。
@@ -914,7 +916,7 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
     合わせて確認する)。
 47. メニューの **「停止」** をクリックすると同様に「停止中...」バッジが表示されて項目が無効化され、
     完了後にタイルが「未起動」に戻り、右クリックメニューが「起動」に切り替わることを確認する。
-48. マシンプロファイルに存在しない名前のデバイスを対象にする、または起動/停止に失敗する状況を
+48. 実行プロファイルに存在しない名前のデバイスを対象にする、または起動/停止に失敗する状況を
     作って操作すると(`finished` イベントが `ok:false`)、パネル上部のエラーバナーにデバイス名と
     エラー内容が表示されることを確認する。
 
@@ -954,8 +956,8 @@ FLEETEST_E2E=1 node --test out-test/e2e-dryrun-debug.test.mjs
 `connected`/`booted`/`offline`)を持つこと)・SIGTERM 送信から数秒以内にプロセスが終了すること・
 stdout に `monitorDevices`/`monitorFrame`/`monitorError` 以外の行種(パース不能な行を含む)が
 混ざっていないことを検証する。**シミュレータ/エミュレータ自体が起動している必要はありません**
-(`state: "offline"`(未起動)のままでも成功します。`TestProjects/SampleApp/profiles/machines/` に
-マシンプロファイルが定義されていることだけが前提です)。
+(`state: "offline"`(未起動)のままでも成功します。`TestProjects/SampleApp/profiles/runs/` の
+いずれかにデバイスが定義されていることだけが前提です)。
 
 ```bash
 cd ..
@@ -974,7 +976,6 @@ vscode-fleetest/
 ├── esbuild.mjs         # ビルドスクリプト(拡張本体 / テストバンドルの2用途)
 ├── schemas/
 │   ├── app-profile.schema.json     # profiles/apps/*.json 用 JSON スキーマ(補完・ホバー・型チェック)
-│   ├── machine-profile.schema.json # profiles/machines/*.json 用 JSON スキーマ
 │   └── run-profile.schema.json     # profiles/runs/*.json 用 JSON スキーマ
 ├── src/
 │   ├── extension.ts            # activate/deactivate。コンポーネント登録の起点
@@ -1009,7 +1010,7 @@ vscode-fleetest/
 │   ├── monitorDeviceOps.ts       # デバイスライフサイクル操作(起動/終了/新規作成)。device-catalog/installed-devices/create-device の単発 spawn
 │   ├── monitorDeviceStreamController.ts # タイル向け画面ストリーミング制御(iOS: fleetest-simstream / Android: fleetest-androidstream)
 │   ├── monitorProcessManager.ts  # monitor/host-metrics 常駐子プロセスの起動・停止・再起動・pause/resume
-│   ├── monitorProfilesController.ts # 「プロファイル」タブ(実行/アプリ/マシンプロファイルのCRUD・フォーム)
+│   ├── monitorProfilesController.ts # 「プロファイル」タブ(実行/アプリプロファイルのCRUD・フォーム)
 │   ├── monitorBridgeWatchdog.ts  # ブリッジ無応答の自動検出・start-device による自動修復(設定 fleetest.autoRepairBridge。vscode 非依存)
 │   ├── monitorHealthWatchdog.ts  # Android ゲストOS異常の自動検出・Wi-Fi再有効化/再起動による自動修復(設定 fleetest.autoRepairDeviceHealth。vscode 非依存)
 │   ├── adbWifiRepair.ts          # MonitorHealthWatchdog の Wi-Fi 修復コマンド実行(vscode 非依存)

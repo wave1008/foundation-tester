@@ -1,4 +1,4 @@
-// マシンプロファイルに載っている仮想デバイス1台の Wipe Data(人が右クリックから撃つ手動操作)。
+// 実行プロファイルに載っている仮想デバイス1台の Wipe Data(人が右クリックから撃つ手動操作)。
 // Android = AndroidDataWiper(Android Studio の Wipe Data と同じファイル集合)、
 // iOS = simctl erase(Erase All Content and Settings)。**実機は対象外**(端末を初期化する操作は
 // 持たない。webview 側でも項目を出さないが、CLI を直に叩かれても止める)。
@@ -20,7 +20,7 @@ public enum DeviceWiperError: Error, LocalizedError, Equatable {
         case .physicalDevice(let name):
             return "\(name) is a physical device — Wipe Data is only available for virtual devices"
         case .noAVD(let name):
-            return "no avd is specified for \(name) (add \"avd\" to the machine profile)"
+            return "no avd is specified for \(name) (add \"avd\" to the device in the run profile)"
         case .unsupportedPlatform(let platform):
             return "Wipe Data is not available for platform \(platform)"
         case .eraseFailed(let name, let detail):

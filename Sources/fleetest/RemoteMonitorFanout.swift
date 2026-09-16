@@ -4,7 +4,7 @@
 // 手元の `fleetest api monitor` は simctl/adb を叩くので**この機械のデバイスしか観測できない**。
 // 別の機械のデバイスは、その機械で `api monitor --device-machine <machine>` を1本走らせ、その
 // NDJSON を親が取り込む。親がやることは3つだけ:
-//   - `monitorDevices` は**保持する**(親が毎サイクル出す devices 配列へ、マシンプロファイルの
+//   - `monitorDevices` は**保持する**(親が毎サイクル出す devices 配列へ、実行プロファイルの
 //     並び順のまま差し込む。子と親でサイクルが揃っていないので、そのまま素通しはできない)
 //   - `monitorFrame` / `monitorError` は **"device" だけマシン付きに直して**中継する
 //     (子は畳んだプロファイルを見るので自分の台を "local" と名乗り、id にマシンが入らない。

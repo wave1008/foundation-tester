@@ -1,8 +1,8 @@
 // DeviceDeletion.swift
 // シミュレータ/AVD の実体削除(fleetest api delete-device)の純粋ロジック。
-// コマンド組み立て・入口検証・起動中/不存在の拒否判定・マシンプロファイル参照の洗い出しを
+// コマンド組み立て・入口検証・起動中/不存在の拒否判定・実行プロファイル参照の洗い出しを
 // ここへ集約し、ファイル I/O(simctl/avdmanager 実行・プロファイル読み込み・起動中判定の実照会)は
-// 呼び出し側(Sources/fleetest/ApiDeleteDeviceCommand.swift)に置く(MachineProfileEditor と同方針)。
+// 呼び出し側(Sources/fleetest/ApiDeleteDeviceCommand.swift)に置く(RunProfileDeviceEditor と同方針)。
 
 import Foundation
 
@@ -31,7 +31,7 @@ public enum DeviceDeletion {
         }
     }
 
-    /// avdmanager -n が受ける文字種(MachineProfileEditor.sanitizedAVDID の許可集合と同じ)。空文字も拒否
+    /// avdmanager -n が受ける文字種(RunProfileDeviceEditor.sanitizedAVDID の許可集合と同じ)。空文字も拒否
     public static func validateAndroidAVDName(_ raw: String) throws {
         let allowed = CharacterSet(charactersIn:
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-")
@@ -70,16 +70,16 @@ public enum DeviceDeletion {
         return nil
     }
 
-    /// identifier(iOS udid / Android avd id)を参照しているマシンプロファイル名の一覧
-    /// (machineProfiles の登場順)。削除そのものは止めず、呼び出し側が「宙ぶらりんのエントリが
+    /// identifier(iOS udid / Android avd id)を参照している実行プロファイル名の一覧
+    /// (runProfiles の登場順)。削除そのものは止めず、呼び出し側が「宙ぶらりんのエントリが
     /// 残る」ことを利用者へ伝えるための情報提供のみに使う
     public static func referencedBy(
-        machineProfiles: [(name: String, profile: MachineProfile)], identifier: String
+        runProfiles: [(name: String, profile: RunProfileDocument)], identifier: String
     ) -> [String] {
-        machineProfiles.filter { _, profile in
-            let iosMatch = (profile.ios?.devices ?? []).contains { $0.udid == identifier }
-            let androidMatch = (profile.android?.devices ?? []).contains { $0.avd == identifier }
-            return iosMatch || androidMatch
+        runProfiles.filter { _, profile in
+            (profile.devices ?? []).contains { entry in
+                entry.platform == "ios" ? entry.spec.udid == identifier : entry.spec.avd == identifier
+            }
         }.map(\.name)
     }
 }

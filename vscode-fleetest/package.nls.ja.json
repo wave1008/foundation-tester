@@ -2,7 +2,7 @@
   "fleetest.extension.description": "fleetest (Swift 製モバイル UI テストツール) のシナリオをツリー表示・実行するための VS Code 拡張",
   "fleetest.config.binaryPath.description": "fleetest CLI バイナリのパス。相対パスはワークスペースルート基準で解決されます。パスが存在しない場合(fleetest をグローバル導入した外部パッケージ等)は PATH から fleetest を探します。",
   "fleetest.config.project.description": "対象のテストプロジェクト名(TestProjects/<name> の <name>)。空の場合は自動判定します(TestProjects/ 直下がプロジェクト1つならそれを使用、複数ある場合は選択を促します)。",
-  "fleetest.config.profile.description": "使用する実行プロファイル名(TestProjects/<project>/profiles/runs/<name>.json の <name>)。空の場合は指定しません。非空の場合、実行・デバッグ実行では platform/port/serial の代わりにこちらが使われます(デバイス供給・自動インストール込みで実行。対象デバイスは事前に fleetest devices up 等で起動しておく必要があります)。デバイスモニターの監視対象もこのプロファイルが参照するデバイスに絞られます(空の場合は全デバイス)。デバイスモニターの「デバイスを全て起動」「全て終了」もこのプロファイルのデバイスのみが対象になります(空の場合はマシンプロファイルの全デバイス)。この設定を切り替えると、新しいプロファイルに含まれない稼働中デバイスは自動的に停止されます(含まれるデバイスは稼働中でもそのまま。自動起動はしません)。",
+  "fleetest.config.profile.description": "使用する実行プロファイル名(TestProjects/<project>/profiles/runs/<name>.json の <name>)。空の場合は指定しません。非空の場合、実行・デバッグ実行では platform/port/serial の代わりにこちらが使われます(デバイス供給・自動インストール込みで実行。対象デバイスは事前に fleetest devices up 等で起動しておく必要があります)。デバイスモニターの監視対象もこのプロファイルが参照するデバイスに絞られます(空の場合は全デバイス)。デバイスモニターの「デバイスを全て起動」「全て終了」もこのプロファイルのデバイスのみが対象になります(空の場合は全実行プロファイルのデバイスの和集合)。この設定を切り替えると、新しいプロファイルに含まれない稼働中デバイスは自動的に停止されます(含まれるデバイスは稼働中でもそのまま。自動起動はしません)。",
   "fleetest.config.platform.description": "対象プラットフォーム(fleetest.profile が空の場合のみ使用)。",
   "fleetest.config.port.description": "ブリッジ接続ポート。0 の場合は指定しません(既定値を使用。fleetest.profile が空の場合のみ使用)。",
   "fleetest.config.serial.description": "Android デバイスのシリアル番号。空の場合は指定しません(fleetest.profile が空の場合のみ使用)。",

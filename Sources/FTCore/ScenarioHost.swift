@@ -62,7 +62,7 @@ public struct DriverConnection: Sendable, Hashable {
     /// アプリが suspend され /status プローブが無応答のとき、注入先を特定して inapp/XCUITest の
     /// ルーティングを正しく決めるために使う(サブプロセスの mismatch 判定を参照)。
     public let inappBundleID: String?
-    /// 実行プロファイル上のデバイス論理名(profiles/machines/ の name)。レポートヘッダ表示用
+    /// 実行プロファイル上のデバイス論理名(profiles/runs/ の devices[].name)。レポートヘッダ表示用
     /// (ProfileWorkerFactory/MCPServer のプロファイル経路で設定される。--port 直指定等では nil)
     public let deviceName: String?
     /// 実機か(DeviceSpec.kind == physical)。simctl / エミュレータ前提の処理を止めるための判別軸。

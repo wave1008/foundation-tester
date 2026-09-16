@@ -70,7 +70,7 @@ fleetest run --platform android
 
 | Command | Description |
 |---|---|
-| `fleetest devices up` / `devices down` | Start/stop every device in the machine profile (or only a run profile's devices with `--profile`) |
+| `fleetest devices up` / `devices down` | Start/stop the union of every run profile's devices (or only one run profile's devices with `--profile`) |
 | `fleetest bridge up` / `bridge down` / `bridge status` | Manage the resident bridge (iOS: XCUITest runner / Android: on-device server) |
 
 ### Link

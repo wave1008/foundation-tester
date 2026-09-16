@@ -184,7 +184,7 @@ public enum SystemImageRepository {
             entries.append(Entry(
                 abi: abi, apiLevel: apiLevel, license: license, package: path,
                 sizeBytes: sizeBytes, tag: tag,
-                versionName: MachineProfileEditor.androidVersionName(apiLevel: apiLevel)))
+                versionName: RunProfileDeviceEditor.androidVersionName(apiLevel: apiLevel)))
         }
         return entries
     }

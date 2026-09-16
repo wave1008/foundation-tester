@@ -75,14 +75,13 @@ public enum RunHookEnvironment {
 
     public static func variables(
         kind: RunHook.Kind, workspace: URL, project: String, profile: String,
-        machine: String, reportDir: URL?, iosDevices: [String], androidDevices: [String]
+        reportDir: URL?, iosDevices: [String], androidDevices: [String]
     ) -> [String: String] {
         [
             "FT_HOOK": kind.rawValue,
             "FT_WORKSPACE": workspace.path,
             "FT_PROJECT": project,
             "FT_PROFILE": profile,
-            "FT_MACHINE": machine,
             "FT_REPORT_DIR": reportDir?.path ?? "",
             "FT_IOS_DEVICES": iosDevices.joined(separator: " "),
             "FT_ANDROID_DEVICES": androidDevices.joined(separator: " "),
@@ -94,7 +93,7 @@ public enum RunHookEnvironment {
             kind: kind,
             workspace: profile.workspaceRoot ?? profile.project.rootURL,
             project: profile.project.name, profile: profile.runName,
-            machine: profile.machineName, reportDir: profile.reportDir,
+            reportDir: profile.reportDir,
             iosDevices: profile.iosDevices.map(\.name),
             androidDevices: profile.androidDevices.map(\.name))
     }
@@ -103,7 +102,7 @@ public enum RunHookEnvironment {
     public static func variables(orphan info: RunHookLeaseInfo) -> [String: String] {
         variables(
             kind: .teardown, workspace: URL(fileURLWithPath: info.workspace),
-            project: info.project, profile: info.profile, machine: "", reportDir: nil,
+            project: info.project, profile: info.profile, reportDir: nil,
             iosDevices: [], androidDevices: [])
     }
 }

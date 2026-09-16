@@ -3150,7 +3150,7 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
   片方を直せば両方直る。実機で踏んだ罠:
   - **Android 実機は `avd` が無いので、AVD 前提のままだと永久に offline**(「avd が未設定です」)。
     `serial` を `adb devices` の接続一覧で確認する分岐が要る
-  - **iOS 実機の `/status` は device に機種名("iPhone")を返す**。マシンプロファイルのデバイス名
+  - **iOS 実機の `/status` は device に機種名("iPhone")を返す**。実行プロファイルのデバイス名
     (例「iPhone wave(実機)」)と一致しないため、名前照合では永久に connected にならない。
     ランナープロセスの `-destination id=<UDID>` で帰属を決める(`BridgeLauncher.portsMatching`)
   - LAN 経由の実機ブリッジは 127.0.0.1 に居ないので、ポートスキャンは `.endpoint` を見る
@@ -3167,9 +3167,9 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
 
 ### 実機と VSCode 拡張
 
-- マシンプロファイル編集フォームは実機で表示が変わる: iOS は機種/OS 行を隠し **udid** を、
-  Android は AVD 行の代わりに **serial** を readonly 表示する(いずれも実体を指すので変更不可)。
-  実機で識別子を空にした保存は拒否する(`updateDeviceInMachineProfile`)
+- 実行プロファイルのデバイス編集フォーム(`updateDeviceInMachineProfile`)は実機で表示が変わる:
+  iOS は機種/OS 行を隠し **udid** を、Android は AVD 行の代わりに **serial** を readonly 表示する
+  (いずれも実体を指すので変更不可)。実機で識別子を空にした保存は拒否する
 - デバイスタイルは実機に「実機」バッジを出す。右クリックの起動/停止は**項目を残したまま
   ラベルを「ブリッジを起動/停止」に変える**(実機は端末そのものを起動・停止せず、操作対象は
   ブリッジだけ)。**項目を隠してはいけない**: 隠すとモニターから実機のブリッジを起動できず、

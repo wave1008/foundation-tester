@@ -71,13 +71,6 @@ export const webviewMonitorAStrings = {
     ja: "{machine}\n状態不明",
     en: "{machine}\nunknown",
   },
-  // 登録はあるのに一覧に無いデバイス(実体を手で消した等)。リモートの実体は手元から見えないので、
-  // ここで出さないと「実行して落ちるまで気付けない」
-  "wvMonitor.devicePick.missingBadge": { ja: "実体なし", en: "Not installed" },
-  "wvMonitor.devicePick.missingDetail": {
-    ja: "登録: {identifier}(このホストに実体がありません。チェックを外すと登録を解除します)",
-    en: "Registered as {identifier} (no such device on this host; uncheck to unregister)",
-  },
   // avdmanager 不在の解決手段。**導入先はカタログを取った機械**なので、ローカルは導入ボタン、
   // リモートは remote exec の案内を出す(手元へ入れても向こうの欠けは埋まらない)
   "wvMonitor.deviceAdd.installCmdlineToolsOnRemote": {
@@ -98,8 +91,8 @@ export const webviewMonitorAStrings = {
   },
   "wvMonitor.tile.unregistered": { ja: "未登録", en: "Unregistered" },
   "wvMonitor.tile.unregisteredTitle": {
-    ja: "マシンプロファイル未記載の起動中デバイスです。起動は行えません(停止・ライブ操作は可能です)",
-    en: "A running device not listed in the machine profile. Starting is unavailable (stopping and Live Control are available).",
+    ja: "どの実行プロファイルにも記載の無い起動中デバイスです。起動は行えません(停止・ライブ操作は可能です)",
+    en: "A running device not listed in any run profile. Starting is unavailable (stopping and Live Control are available).",
   },
   // ツールバー右端の全選択トグル(deviceTiles.js が押すたびに title/aria-label を入れ替える)。
   "wvMonitor.toolbar.selectAll": { ja: "デバイスをすべて選択", en: "Select All Devices" },

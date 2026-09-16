@@ -1,12 +1,12 @@
 // e2e-monitor.test.mjs
 // `fleetest api monitor`(src/monitorModel.ts が変換する NDJSON の生成元)を実バイナリ
 // (.build/debug/fleetest)相手に spawn するエンドツーエンドテスト。node:test で実行するが、
-// 実バイナリ・実リポジトリ(SampleApp のマシンプロファイル)に依存するため、FLEETEST_E2E=1 が
+// 実バイナリ・実リポジトリ(SampleApp の実行プロファイル)に依存するため、FLEETEST_E2E=1 が
 // 設定されているときだけ実行する(それ以外は skip され、通常の `npm test` の合否には影響しない)。
 // e2e-dryrun-debug.test.mjs と同じ方針(REPO_ROOT/.build/debug/fleetest を spawn)。
 //
-// デバイス(シミュレータ/エミュレータ)自体が起動している必要はない。マシンプロファイル
-// (TestProjects/SampleApp/profiles/machines/)にデバイスが定義されてさえいれば、各デバイスは
+// デバイス(シミュレータ/エミュレータ)自体が起動している必要はない。実行プロファイル
+// (TestProjects/SampleApp/profiles/runs/)の devices[] にデバイスが定義されてさえいれば、各デバイスは
 // state: "offline"(未起動)のままでもこのテストは成功する(ApiMonitorCommand.swift 参照。
 // デバイスの起動・終了はこのコマンドの責務外)。
 //

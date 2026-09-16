@@ -202,7 +202,7 @@ export type DeviceOpQueueStatus = "queued" | "running";
 export type DeviceLifecycleJob =
   // restartNames: up のみ。起動済みでも down→up する対象(start-all-devices --restart に渡す)。
   | { readonly kind: "bulk"; readonly op: "up" | "down"; readonly restartNames?: readonly string[] }
-  // udid/serial: 未登録(マシンプロファイル未記載)デバイスの直指定。monitorDeviceOps.ts
+  // udid/serial: 未登録(どの実行プロファイルにも記載の無い)デバイスの直指定。monitorDeviceOps.ts
   // executeDeviceOpJob が --name の代わりに --udid/--serial を渡す(対向:
   // Sources/fleetest/ApiDeviceCommands.swift の ApiDeviceDownDirectTarget / ApiDeviceUpDirectSpec)。
   // **udid は up/down 両方**(up = 接続中の実機のブリッジ起動)、**serial は down のみ**
@@ -213,7 +213,7 @@ export type DeviceLifecycleJob =
   // シミュレータを1台作ってしまう(simctl は無ければ作る)
   | { readonly kind: "device"; readonly name: string; readonly op: "up" | "down"; readonly machine?: string; readonly udid?: string; readonly serial?: string }
   // wipe は **識別子で撃つ**(`api wipe-device --platform … --udid/--avd`)。delete-device と同じく
-  // プロジェクトもマシンプロファイルも参照しない —— 名前で引く形にすると、リモートでは向こうの
+  // プロジェクトも実行プロファイルも参照しない —— 名前で引く形にすると、リモートでは向こうの
   // 複製が古いと `device not found` で必ず失敗する(複製が更新されるのはモニターの fan-out
   // 開始時だけ)。**識別子を省略できない型にしてある**ので、呼び忘れはコンパイルで止まる
   | {

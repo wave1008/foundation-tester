@@ -35,7 +35,6 @@ export const panelsStrings = {
   "panels.common.testProject": { ja: "テストプロジェクト", en: "Test Project" },
   "panels.common.runProfile": { ja: "実行プロファイル", en: "Run Profile" },
   "panels.common.appProfile": { ja: "アプリプロファイル", en: "App Profile" },
-  "panels.common.machineProfile": { ja: "マシンプロファイル", en: "Machine Profile" },
   "panels.common.devices": { ja: "デバイス", en: "Devices" },
   "panels.common.deviceLabelColon": { ja: "デバイス:", en: "Device:" },
   "panels.common.refreshDeviceList": { ja: "デバイス一覧を更新", en: "Refresh Device List" },
@@ -85,8 +84,7 @@ export const panelsStrings = {
   "panels.runProfile.removeTitle": { ja: "実行プロファイルの削除", en: "Delete run profile" },
   "panels.runProfile.renameTitle": { ja: "実行プロファイル名の変更", en: "Rename run profile" },
   // {link} には該当セクションへジャンプする .profile-jump-link(HTML)が入る。プロファイル名は
-  // panels.common.{app,machine}Profile を再利用するので、語を変えるときは片方だけ直さない
-  "panels.runProfile.machineLabel": { ja: "参照する{link}", en: "{link} to reference" },
+  // panels.common.appProfile を再利用するので、語を変えるときは片方だけ直さない
   "panels.runProfile.appLabel": { ja: "参照する{link}", en: "{link} to reference" },
   "panels.runProfile.healLabel": { ja: "セレクタの自己修復を有効にする(指紋照合方式)", en: "Enable selector self-healing (fingerprint matching)" },
   "panels.runProfile.advancedSectionTitle": { ja: "Advanced Features(Experimental)", en: "Advanced Features (Experimental)" },
@@ -188,44 +186,39 @@ export const panelsStrings = {
   },
   "panels.appProfile.packageNamePlaceholder": { ja: "パッケージ名", en: "Package name" },
 
-  "panels.machineProfile.addTitle": { ja: "マシンプロファイルの追加", en: "Add machine profile" },
-  "panels.machineProfile.copyTitle": { ja: "マシンプロファイルのコピー", en: "Copy machine profile" },
-  "panels.machineProfile.removeTitle": { ja: "マシンプロファイルの削除", en: "Delete machine profile" },
-  "panels.machineProfile.renameTitle": { ja: "マシンプロファイル名の変更", en: "Rename machine profile" },
-  // マシンプロファイル側の見出し。実行プロファイルの「デバイス」(panels.common.devices)とは
-  // 用途が違う(あちらは選択済みの一覧、こちらは追加操作のラベル)ので別キーにする
-  "panels.machineProfile.addDevicesLabel": { ja: "デバイスを追加", en: "Add devices" },
-  "panels.machineProfile.addExistingTitle": {
-    ja: "インストール済みのシミュレータ/AVD・接続中の実機からマシンプロファイルに追加",
-    en: "Add from installed simulators/AVDs or connected physical devices to the machine profile",
+  // 実行プロファイル節のデバイス一覧に添える「デバイスを追加」ボタン(§13 段2 と同じ位置付け)。
+  "panels.runProfile.addDevicesLabel": { ja: "デバイスを追加", en: "Add devices" },
+  "panels.runProfile.addExistingTitle": {
+    ja: "インストール済みのシミュレータ/AVD・接続中の実機からこの実行プロファイルに追加",
+    en: "Add from installed simulators/AVDs or connected physical devices to this run profile",
   },
-  "panels.machineProfile.selectPrompt": {
+  "panels.runProfile.deviceSelectPrompt": {
     ja: "デバイスを選択すると内容を表示します",
     en: "Select a device to view details",
   },
-  "panels.machineProfile.nameLabel": { ja: "名前", en: "Name" },
-  "panels.machineProfile.modelLabel": { ja: "機種", en: "Model" },
-  "panels.machineProfile.modelReadonlyTitle": {
+  "panels.runProfile.deviceNameLabel": { ja: "名前", en: "Name" },
+  "panels.runProfile.deviceModelLabel": { ja: "機種", en: "Model" },
+  "panels.runProfile.deviceModelReadonlyTitle": {
     ja: "機種は変更できません(変更するにはデバイスを除去して作り直してください)",
     en: "Model cannot be changed (remove and recreate the device to change it)",
   },
-  "panels.machineProfile.osReadonlyTitle": {
+  "panels.runProfile.deviceOsReadonlyTitle": {
     ja: "OSは変更できません(変更するにはデバイスを除去して作り直してください)",
     en: "OS cannot be changed (remove and recreate the device to change it)",
   },
-  "panels.machineProfile.udidReadonlyTitle": {
+  "panels.runProfile.deviceUdidReadonlyTitle": {
     ja: "UDIDは作成時に決まる識別子のため変更できません",
     en: "UDID is fixed at creation time and cannot be changed",
   },
-  "panels.machineProfile.avdReadonlyTitle": {
+  "panels.runProfile.deviceAvdReadonlyTitle": {
     ja: "AVDは変更できません(変更するにはデバイスを除去して作り直してください)",
     en: "AVD cannot be changed (remove and recreate the device to change it)",
   },
-  "panels.machineProfile.physicalInfoReadonlyTitle": {
+  "panels.runProfile.devicePhysicalInfoReadonlyTitle": {
     ja: "登録時に控えた実機の情報(表示専用)。同定には使いません",
     en: "Device info captured at registration (display only). It is not used to identify the device.",
   },
-  "panels.machineProfile.serialReadonlyTitle": {
+  "panels.runProfile.deviceSerialReadonlyTitle": {
     ja: "実機の adb シリアル。実体を指すため変更できません(登録し直してください)",
     en: "The adb serial of the physical device. It identifies the device and cannot be changed (re-register instead).",
   },

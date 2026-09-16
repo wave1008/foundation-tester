@@ -74,7 +74,7 @@ function makeDeps(binaryPath) {
     notifyMonitorDevices: () => {},
     notifyMachineLocks: () => {},
     isPanelActive: () => true,
-    notifyMachineProfilesChanged: () => {},
+    notifyProjectDeviceCatalogChanged: () => {},
     openGeneratedDocument: () => {},
   };
   return { deps, controls };
@@ -365,7 +365,7 @@ test("リモートのデバイスは remote exec 経由の device-stream で配�
     assert.doesNotMatch(argv, /--device-machine M1Max/, "エイリアスで絞ると向こうで1台も残らない");
     assert.match(argv, /--platform ios --name iPhone 17 Pro/, "宛先は (platform, 名前) で指す");
     assert.match(argv, /--codec h264/, "codec 設定はリモートにもそのまま効く");
-    assert.match(argv, /--project demo/, "向こうもマシンプロファイルを引くのでプロジェクトが要る");
+    assert.match(argv, /--project demo/, "向こうも実行プロファイルの devices を引くのでプロジェクトが要る");
 
     const localArgv = await waitForArgv(dir, "fleetest-simstream", 300);
     assert.equal(localArgv, undefined,

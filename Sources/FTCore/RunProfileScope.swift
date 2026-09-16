@@ -1,24 +1,19 @@
-// 実行プロファイル(profiles/runs/<name>.json)によるマシンプロファイルの絞り込み(共通ヘルパー)。
+// 実行プロファイル(profiles/runs/<name>.json)が走らせる台(enabled の devices)を台帳にする共通ヘルパー。
 // `fleetest api monitor --profile`・`fleetest devices up/down --profile`・
 // `fleetest api list-devices --profile`・`ft_list_devices(profile:)` が共通で使う。
 // ProfileResolver.resolve() は app 参照の解決・bundle ID 検証まで行い、監視・起動制御には
-// 過剰なため、ここでは RunProfileDocument を直接デコードして devices(name 参照)だけを見る。
+// 過剰なため、ここでは RunProfileDocument を直接デコードして devices だけを見る。
 
 import Foundation
 
 public enum RunProfileScope {
-    /// 実行プロファイルが devices で参照するデバイスのみに絞り込んだ MachineProfile のコピーを返す。
+    /// 実行プロファイルの台を台帳にして返す(並びは devices の記述順 = 起動順の契約)。
+    /// - enabledOnly: true = 走らせる台だけ(監視・起動の絞り込み)/ false = enabled: false も含む
+    ///   (名前で1台を引く単体操作。一覧に出ている台は操作できるべき)
     /// - 実行プロファイルが存在しない・デコード不能・devices が空: ProfileError を投げる。
-    /// - 実行プロファイルが参照する名前のうち、マシンプロファイルに無いものがあれば warn 経由で
-    ///   警告する(処理は継続。マシンごとにデバイス構成が違いうるための想定内ケース)。
-    /// - 絞り込んだ結果、デバイスが1台も残らない: ProfileError.noDevicesInMachineProfile を投げる。
-    public static func filteredMachineProfile(
-        project: TestProject,
-        machineName: String,
-        machineProfile: MachineProfile,
-        runProfileName: String,
-        warn: (String) -> Void
-    ) throws -> MachineProfile {
+    /// - 対象が1台も無い: ProfileError.noEnabledDevices を投げる。
+    public static func roster(project: TestProject, runProfileName: String,
+                              enabledOnly: Bool = true) throws -> DeviceRoster {
         let runURL = project.runsDir.appendingPathComponent("\(runProfileName).json")
         guard FileManager.default.fileExists(atPath: runURL.path) else {
             throw ProfileError.runProfileNotFound(
@@ -30,50 +25,14 @@ public enum RunProfileScope {
         } catch {
             throw ProfileError.decodeFailed(runURL, detail: "\(error)")
         }
-        guard let deviceRefs = runDoc.devices, !deviceRefs.isEmpty else {
+        guard let devices = runDoc.devices, !devices.isEmpty else {
             throw ProfileError.missingDevices(run: runProfileName)
         }
-
-        // **参照の同一性は (host, name)**(FTCore.DeviceMachineGrouping)。名前だけで絞ると、
-        // 同名のデバイスが別のホストにも居るとき**選んでいない台まで混ざる**
-        // (モニターに未選択のタイルが並ぶ実害。2026-08-17)。実効マシンは entries が
-        // spec.machine へ書き戻すので、以降の利用側(モニターのマシン表示)もそれを読める
-        let entries = DeviceMachineGrouping.entries(machine: machineProfile)
-        // **並びはマシンプロファイル順**(実行プロファイルの記述順で並べ替えない。起動順の契約。
-        // testPreservesMachineProfileOrderNotRunProfileOrder)ので、採用は「印」で持つ
-        var matchedKeys = Set<String>()
-        var missingNames: [String] = []
-        for ref in deviceRefs {
-            switch DeviceMachineGrouping.resolve(ref, in: entries) {
-            case .found(let entry):
-                matchedKeys.insert("\(DeviceMachineGrouping.display(entry.machine))\t\(entry.name)")
-            case .missing:
-                missingNames.append(ref.name)
-            case .ambiguous(let machines):
-                // 曖昧な参照は**触らない**(どちらの機械の台か決まらないまま起動・監視しない)。
-                // run 側は同じ状況で中止する(ProfileError.ambiguousDeviceRef)
-                warn("⚠️ device \"\(ref.name)\" in run profile \(runProfileName) is ambiguous"
-                    + " (it exists on \(machines.joined(separator: ", "))) — skipping it."
-                    + " Add \"machine\" to the device entry to say which one")
-            }
+        let roster = DeviceRoster(
+            entries: DeviceMachineGrouping.entries(runDevices: devices, enabledOnly: enabledOnly))
+        guard !roster.isEmpty else {
+            throw ProfileError.noEnabledDevices(run: runProfileName)
         }
-        if !missingNames.isEmpty {
-            warn(
-                "⚠️ Some devices referenced by run profile \(runProfileName) are missing from machine profile " +
-                "\(machineName): \(Set(missingNames).sorted().joined(separator: ", "))")
-        }
-
-        let matched = entries.filter {
-            matchedKeys.contains("\(DeviceMachineGrouping.display($0.machine))\t\($0.name)")
-        }
-        let filteredIOS = matched.filter { $0.platform == "ios" }.map(\.spec)
-        let filteredAndroid = matched.filter { $0.platform == "android" }.map(\.spec)
-        guard !filteredIOS.isEmpty || !filteredAndroid.isEmpty else {
-            throw ProfileError.noDevicesInMachineProfile(
-                run: runProfileName, requested: deviceRefs.map(\.name), machine: machineName)
-        }
-        return MachineProfile(
-            ios: filteredIOS.isEmpty ? nil : MachineDeviceList(devices: filteredIOS),
-            android: filteredAndroid.isEmpty ? nil : MachineDeviceList(devices: filteredAndroid))
+        return roster
     }
 }

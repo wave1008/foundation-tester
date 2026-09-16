@@ -140,7 +140,7 @@ export class MonitorDeviceStreamController {
       return;
     }
 
-    // リモートの device-stream は向こうでマシンプロファイルを引くのでプロジェクト名が要る
+    // リモートの device-stream は向こうで実行プロファイルの devices を引くのでプロジェクト名が要る
     // (未解決なら省略 = 向こうの既定プロジェクトに委ねる)。**リモートが1台も無いなら引かない**
     let projectArgs: string[] | undefined;
     const remoteProjectArgs = (): string[] => {

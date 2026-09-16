@@ -35,7 +35,7 @@ needs no changes ([details](overview/about.md)).
 ### Creating project
 
 - [Creating a test project](project/creating_project.md)
-- [Profiles (app / machine / run)](project/profiles.md)
+- [Profiles (app / run)](project/profiles.md)
 - [Run profile settings](project/run_profile.md)
 
 ### Creating TestClass

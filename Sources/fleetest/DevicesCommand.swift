@@ -1,10 +1,10 @@
-// マシンプロファイルに定義されたデバイス群の起動・停止 CLI。
+// 実行プロファイルに定義されたデバイス群の起動・停止 CLI。
 //   fleetest devices up   … 並行起動(最大2台同時・起動済みスキップ・iOS はブリッジ供給まで。
 //                           1台以上あって0台成功=全滅は exit 1、部分失敗は要約1行を出し exit 0)
 //   fleetest devices down … 全ブリッジ停止+シミュレータ/エミュレータ全終了(--profile 無しは
 //                           登録簿の全マシンでも同じ掃討を走らせる。RemoteDeviceFanout.dispatchSweep)
 // どちらも --profile(実行プロファイル名)指定時は、そのプロファイルが参照するデバイスのみを
-// 対象にする(RunProfileScope.swift。省略時はマシンプロファイルの全デバイス)。
+// 対象にする(RunProfileScope.swift。省略時は全実行プロファイルのデバイス)。
 // DeviceBooter / BridgeProvisioner を直接使う(fleetest api start-device/stop-device と共通の実装)。
 
 import ArgumentParser
@@ -16,7 +16,7 @@ import FTCore
 struct DevicesCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "devices",
-        abstract: "Start and stop the devices in the machine profile",
+        abstract: "Start and stop the devices in the run profiles",
         subcommands: [Up.self, Down.self])
 
     struct Up: AsyncParsableCommand {
@@ -28,7 +28,7 @@ struct DevicesCommand: AsyncParsableCommand {
         @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
         var project: String?
 
-        @Option(help: "Run profile name (when given, only the devices that profile references are started; otherwise every device in the machine profile)")
+        @Option(help: "Run profile name (when given, only that profile's enabled devices are started; otherwise the devices of every run profile)")
         var profile: String?
 
         @Flag(name: .customLong("no-bridge"), help: "Do not provision the iOS bridge")
@@ -41,10 +41,9 @@ struct DevicesCommand: AsyncParsableCommand {
         var deviceMachine: String?
 
         func run() async throws {
-            let machineProfile = try MachineProfileLoad.load(
+            let machineProfile = try DeviceRosterLoad.load(
                 project: project, profile: profile, deviceMachine: deviceMachine,
                 foreign: .notHandled,  // `devices up` は分散しない(api start-all-devices が分散する側)
-                noteAutoMachine: { ConsoleOut.out($0) },
                 warn: { ConsoleOut.out($0) })
 
             // iOS はブート完了分をバッチで束ねてブリッジ供給する(bootAll 内。ブートと供給は並行)
@@ -192,12 +191,11 @@ struct DevicesCommand: AsyncParsableCommand {
         /// 全体を落とさない」規律は部分失敗の側で保たれる)。実機の扱い(端末は落とさずブリッジ
         /// だけ止める)は shutdownAll 側の分岐に任せる —— 呼び出し側に実機の知識を持たせない
         private func shutdownProfile(_ profile: String) async throws {
-            let filtered: MachineProfile
+            let filtered: DeviceRoster
             do {
-                filtered = try MachineProfileLoad.load(
+                filtered = try DeviceRosterLoad.load(
                     project: project, profile: profile, deviceMachine: deviceMachine,
                     foreign: .notHandled,  // --profile 付きの掃討は手元だけ
-                    noteAutoMachine: { ConsoleOut.out($0) },
                     warn: { ConsoleOut.out($0) })
             } catch {
                 // プロファイル自体の読み込み失敗は1台も停止を試みていないので「全滅」とは区別し、
@@ -226,14 +224,11 @@ struct DevicesCommand: AsyncParsableCommand {
     }
 }
 
-/// devices up/down・api start-all-devices 共通: プロジェクト/実行プロファイルからマシンプロファイルを
-/// 解決して読み込む(profile 指定時はそのプロファイルが参照するデバイスのみに絞る)。
-/// Up の従来コードをそのまま移した実装(ApiDeviceOperation の machineProfileNotFound ガードは
-/// 意図的に取り込まない。ファイル未検出時は Data(contentsOf:) がそのまま throw する Up 従来挙動を維持)
-enum MachineProfileLoad {
+/// devices up/down・api start-all-devices 共通: プロジェクト/実行プロファイルから台帳を読み込む
+/// (profile 指定時はそのプロファイルの enabled の台、無指定なら全実行プロファイルの和)。
+enum DeviceRosterLoad {
     /// - deviceMachine: **どの機械のデバイスを扱うか**(nil/"local" = 手元)。リモート機で自分の
-    ///   デバイスを起こすときに使う —— 転送されたマシンプロファイルにはそのデバイスの host
-    ///   (= その機械の登録名)が書いてあり、CLI には「自分が誰か」を知る手段が無いため、
+    ///   デバイスを起こすときに使う —— CLI には「自分が誰か」を知る手段が無いため、
     ///   呼び出し側(親)が明示する。例: `remote exec M1Max -- devices up --profile p --device-machine M1Max`
     /// **他の機械のデバイスを呼び出し側がどう扱うか**。既定値を置かない —— 分散する経路で
     /// 「その機械で起動してください」と案内すると、直後にツール自身が起動するので嘘になる
@@ -247,26 +242,22 @@ enum MachineProfileLoad {
 
     static func load(project: String?, profile: String?, deviceMachine: String? = nil,
                      foreign: ForeignDevices,
-                     noteAutoMachine: (String) -> Void,
-                     warn: (String) -> Void) throws -> MachineProfile {
+                     warn: (String) -> Void) throws -> DeviceRoster {
         try load(project: try ScenarioHost.project(named: project), profile: profile,
                  deviceMachine: deviceMachine,
                  registry: (LocalConfig.load().remoteHosts ?? []).map(\.machine),
-                 foreign: foreign,
-                 noteAutoMachine: noteAutoMachine, warn: warn)
+                 foreign: foreign, warn: warn)
     }
 
     /// プロジェクトと登録簿を受け取る本体(テストが差し替えられるように分けてある)。
     static func load(project testProject: TestProject, profile: String?, deviceMachine: String?,
                      registry: [String], foreign: ForeignDevices,
-                     noteAutoMachine: (String) -> Void,
-                     warn: (String) -> Void) throws -> MachineProfile {
-        // **実行プロファイルを選んでいなければ台帳を1つに決めない** —— machines/ を全部畳み、
+                     warn: (String) -> Void) throws -> DeviceRoster {
+        // **実行プロファイルを選んでいなければ台帳を1つに決めない** —— runs/ を全部畳み、
         // 手元 + リモート実行の登録簿にあるマシンの台を対象にする(監視 = ApiMonitorCommand・
         // 単体操作 = ApiDeviceOperation と同じ規律)。決められないという理由で操作を断らない:
         // 台帳が2つある案件では「(プロファイルなし)」のまま「デバイスを全て起動」を押しても
-        // `cannot tell which machine profile to use` で即死し、**画面には何も起きない**
-        // (実害 2026-08-29)
+        // 即死し、**画面には何も起きない**(実害 2026-08-29)
         guard let profile else {
             let inventory = MachineInventory.merge(
                 sources: MachineInventory.loadAllNamed(project: testProject) { warn("→ \($0)") },
@@ -279,21 +270,8 @@ enum MachineProfileLoad {
             let merged = MachineInventory.mergedProfile(inventory.entries)
             return keepingDevices(of: deviceMachine, in: merged, foreign: foreign, warn: warn)
         }
-        // --profile の machine 明示指定を最優先(ProfileResolver.resolve() と同じ優先順位)
-        let machine = try ProfileResolver.determineMachine(
-            project: testProject,
-            runProfileName: profile)
-        if machine.auto {
-            noteAutoMachine("→ Using machine profile \(machine.name) automatically")
-        }
-        let url = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
-        var machineProfile = try JSONDecoder().decode(
-            MachineProfile.self, from: Data(contentsOf: url))
-
-        machineProfile = try RunProfileScope.filteredMachineProfile(
-            project: testProject, machineName: machine.name, machineProfile: machineProfile,
-            runProfileName: profile, warn: warn)
-        return keepingDevices(of: deviceMachine, in: machineProfile, foreign: foreign, warn: warn)
+        let roster = try RunProfileScope.roster(project: testProject, runProfileName: profile)
+        return keepingDevices(of: deviceMachine, in: roster, foreign: foreign, warn: warn)
     }
 
     /// **この機械が扱えるデバイスだけ**にする(既定は手元 = host 無し)。起動・停止は simctl/adb を
@@ -301,11 +279,11 @@ enum MachineProfileLoad {
     /// 終わらないタイル」と、存在しない UDID への simctl boot(必ず失敗)を並べることになる
     /// (2026-08-17 の実害)。落とした分は必ず言う(黙って減らさない)。
     /// `deviceMachine` を渡すと、そのマシンのデバイスを**手元のものとして**扱う(上の doc 参照)
-    static func keepingDevices(of deviceMachine: String?, in profile: MachineProfile,
+    static func keepingDevices(of deviceMachine: String?, in profile: DeviceRoster,
                                foreign: ForeignDevices,
-                               warn: (String) -> Void) -> MachineProfile {
+                               warn: (String) -> Void) -> DeviceRoster {
         let wanted = MachineDispatch.normalize(deviceMachine)
-        let entries = DeviceMachineGrouping.entries(machine: profile)
+        let entries = DeviceMachineGrouping.entries(roster: profile)
         let others = entries.filter { $0.machine != wanted }
         guard !others.isEmpty else { return profile }
 
@@ -326,9 +304,8 @@ enum MachineProfileLoad {
         let kept = entries.filter { $0.machine == wanted }
         let ios = kept.filter { $0.platform == "ios" }.map(\.spec)
         let android = kept.filter { $0.platform == "android" }.map(\.spec)
-        return MachineProfile(
-            machine: profile.machine,
-            ios: ios.isEmpty ? nil : MachineDeviceList(devices: ios),
-            android: android.isEmpty ? nil : MachineDeviceList(devices: android))
+        return DeviceRoster(
+            ios: ios.isEmpty ? nil : DeviceRosterList(devices: ios),
+            android: android.isEmpty ? nil : DeviceRosterList(devices: android))
     }
 }

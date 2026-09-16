@@ -1,6 +1,6 @@
 // monitorDeviceOps.ts
 // デバイスモニターパネル(monitorPanel.ts)のデバイスライフサイクル操作(起動/終了/新規作成)部分。
-// pause/resume・マシンプロファイル最新化の通知は monitorProcessManager.ts/monitorProfilesController.ts
+// pause/resume・プロジェクトのデバイスカタログ最新化の通知は monitorProcessManager.ts/monitorProfilesController.ts
 // を直接参照せず、MonitorPanelDeps 経由のコールバックで依頼する(サブコントローラ間の直接参照禁止)。
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
@@ -60,9 +60,9 @@ type CreateDeviceOutcome = {
 };
 type CreateDeviceOutcomeHandler = (outcome: CreateDeviceOutcome) => void;
 
-/** プロファイルタブの「Wipe Data」1台分(machineDeviceWipe メッセージの要素と同じ形)。
+/** プロファイルタブの「Wipe Data」1台分(runProfileDeviceWipe メッセージの要素と同じ形)。
  * **identifier が主**(iOS = UDID / Android = AVD id)で、name は確認・ログ・タイル表示用。 */
-type WipeTargetDevice = Extract<MonitorFromWebviewMessage, { type: "machineDeviceWipe" }>["devices"][number];
+type WipeTargetDevice = Extract<MonitorFromWebviewMessage, { type: "runProfileDeviceWipe" }>["devices"][number];
 
 /** 「GPU で再起動」の1台ぶん(deviceRestartGpu / devicesRestartGpu の要素と同じ形)。
  * machine 省略 = 手元。 */
@@ -664,7 +664,7 @@ export class MonitorDeviceOps {
   /**
    * `fleetest devices up`/`devices down` を短命プロセスとして実行する(bulk ジョブの実処理)。
    * 選択中の実行プロファイル(fleetest.profile)が非空なら --profile を付与し、対象を
-   * そのプロファイルが参照するデバイスのみに限定する(空ならマシンプロファイルの全デバイス。
+   * そのプロファイルが参照するデバイスのみに限定する(空なら全実行プロファイルの和集合。
    * down も同様に --project/--profile を渡せる)。
    */
   private executeBulkJob(kind: "up" | "down", restartNames: readonly string[] = []): void {
@@ -1043,18 +1043,18 @@ export class MonitorDeviceOps {
     const serial = job.op === "wipe" ? undefined : job.serial;
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
-    // 未登録(マシンプロファイル未記載)デバイスの直指定モード: --name の代わりに --udid/--serial を渡し、
-    // プロジェクト・マシンプロファイル解決に使う --project/--profile も付けない(直指定はそれらを
+    // 未登録(どの実行プロファイルにも記載の無い)デバイスの直指定モード: --name の代わりに
+    // --udid/--serial を渡し、プロジェクト解決に使う --project/--profile も付けない(直指定はそれらを
     // 一切参照しない契約。Sources/fleetest/ApiDeviceCommands.swift ApiDeviceDownDirectTarget)。
     // **up の直指定は --udid だけ** —— 実機のブリッジ起動(start-device --udid)がそれ。
     // serial(Android)の up は端末の電源を入れる操作になり存在しないので down のみ。
     const direct = udid !== undefined || (op === "down" && serial !== undefined);
-    // **別の機械の台はその機械で操作する** —— 手元で `--name` を渡すと、手元のマシン
+    // **別の機械の台はその機械で操作する** —— 手元で `--name` を渡すと、手元の実行
     // プロファイルの同名エントリを引いて**別の機械の設定でこの Mac にシミュレータを作る**
     // (simctl は無ければ作る)。一括起動が RemoteDeviceFanout で分散するのと同じ規律
     const args: string[] = machine ? ["remote", "exec", machine, "--"] : [];
     args.push("api", op === "up" ? "start-device" : op === "down" ? "stop-device" : "wipe-device");
-    // **wipe は識別子だけで撃つ**(delete-device と同じ契約: プロジェクトもマシンプロファイルも
+    // **wipe は識別子だけで撃つ**(delete-device と同じ契約: プロジェクトも実行プロファイルも
     // 参照しない)。名前で引く形にすると、リモートでは向こうのプロファイル複製が古いと
     // `device not found` で必ず失敗し、操作のたびにプロジェクトを送り直す羽目になる
     // (複製が更新されるのはモニターの fan-out 開始時だけ。2026-08-29 に実機で確認)
@@ -1240,7 +1240,7 @@ export class MonitorDeviceOps {
     });
   }
 
-  // ---- マシンプロファイル(プロファイルタブ): デバイスカタログ取得・デバイス追加 -----------------
+  // ---- プロファイルタブ: デバイスカタログ取得・デバイス追加 -----------------
   // いずれもデバイスライフサイクルの直列キュー(lifecycleQueue)には載せない —
   // device-catalog は単なる参照系の単発コマンド、create-device もモーダル側の1件実行ガード
   // (creatingDevice)で十分であり、simctl/adb 起動系のキューと競合する処理ではないため。
@@ -1656,12 +1656,11 @@ export class MonitorDeviceOps {
           this.spawnCreateDevice(
             {
               type: "createDevice",
-              machine: msg.machine,
               platform: msg.platform,
               name,
               model: msg.model,
               os: msg.os,
-              // 登録はピッカーの OK(machineDevicesSync)が行う。ここは物理作成だけ
+              // 登録はピッカーの OK(runProfileDevicesSync)が行う。ここは物理作成だけ
               register: false,
               overwrite: overwrite.has(name),
               source: msg.source,
@@ -1783,13 +1782,13 @@ export class MonitorDeviceOps {
   /**
    * runCreateDevice/confirmAndSpawnCreateDevice からの実処理。finished が来る前にプロセスが
    * 落ちた場合は合成の失敗結果を送る(executeDeviceOpJob と同じパターン)。成功時は
-   * FileSystemWatcher 経由でも postMachineProfileInfo() が呼ばれるが、反映を待たせないようここでも
-   * MonitorPanelDeps.notifyMachineProfilesChanged 経由で明示的に呼ぶ(冪等なので二重呼び出しは無害)。
+   * FileSystemWatcher 経由でも postProfileInfo() が呼ばれるが、反映を待たせないようここでも
+   * MonitorPanelDeps.notifyProjectDeviceCatalogChanged 経由で明示的に呼ぶ(冪等なので二重呼び出しは無害)。
    * msg.register が false、または source が remote のときは `--no-register` を付与し物理作成のみ
-   * 行う(マシンプロファイルには追記しない)。remote は register の値によらず強制する ——
+   * 行う(実行プロファイルには追記しない)。remote は register の値によらず強制する ——
    * リモート側に登録してもプロファイルの正はローカルで、次回ディスパッチの rsync --delete で
    * 消えるため(§13)。作成した1台は #device-pick-overlay の再取得→チェック→OK
-   * (machineDevicesSync。常にローカルへ書く既存経路)にそのまま乗せてローカル登録する。
+   * (runProfileDevicesSync。常にローカルへ書く既存経路)にそのまま乗せてローカル登録する。
    */
   private spawnCreateDevice(msg: CreateDeviceMessage, onResult?: CreateDeviceOutcomeHandler): void {
     const config = this.deps.getConfig();
@@ -1814,8 +1813,6 @@ export class MonitorDeviceOps {
       "create-device",
       "--project",
       resolution.project,
-      "--machine",
-      msg.machine,
       "--platform",
       msg.platform,
       "--name",
@@ -1825,6 +1822,9 @@ export class MonitorDeviceOps {
       "--os",
       msg.os,
     ];
+    // このダイアログは常に #device-pick-overlay の「+」からしか開かず、常に register:false
+    // (物理作成のみ。登録は #device-pick-overlay の OK[runProfileDevicesSync]が別途行う)。
+    // `--profile` は登録するときだけ必要(CLI 契約)なので、常に --no-register のこの経路では渡さない。
     if (!msg.register || msg.source.kind === "remote") {
       apiArgs.push("--no-register");
     }
@@ -1850,7 +1850,7 @@ export class MonitorDeviceOps {
       // 多重実行ガードが素通りする)。解除はループを回している runBatchCreateDevices の責任
       if (onResult) {
         if (ok) {
-          this.deps.notifyMachineProfilesChanged();
+          this.deps.notifyProjectDeviceCatalogChanged();
         }
         onResult({ ok, error: detail, device });
         return;
@@ -1858,7 +1858,7 @@ export class MonitorDeviceOps {
       this.creatingDevice = false;
       this.deps.post({ type: "createDeviceResult", ok, name: msg.name, error: detail, device });
       if (ok) {
-        this.deps.notifyMachineProfilesChanged();
+        this.deps.notifyProjectDeviceCatalogChanged();
       }
     };
 
@@ -2062,7 +2062,7 @@ export class MonitorDeviceOps {
 
   /**
    * #device-pick-overlay の行右クリック「削除」: `fleetest api delete-device` を実行し、ホスト上の
-   * 実体(シミュレータ/AVD)を消す(machineDeviceRemove のプロファイル除去とは別物。本体は残さない)。
+   * 実体(シミュレータ/AVD)を消す(runProfileDeviceRemove のプロファイル除去とは別物。本体は残さない)。
    * 破壊的・不可逆な操作なので、ローカル/リモートどちらでも必ずホスト側 modal 確認を挟む
    * (§13・runCreateDevice のリモート確認と同じ showWarningMessage({modal:true}) 方式だが、
    * こちらは常に確認する — create と違い「作るだけ」ではなく実体を消すため)。
@@ -2105,7 +2105,7 @@ export class MonitorDeviceOps {
   /**
    * runDeleteDevice からの実処理(confirm 済み)。finished が来る前にプロセスが落ちた場合は合成の
    * 失敗結果を送る(spawnCreateDevice と同じパターン)。成功時、referencedBy が非空なら
-   * (削除した実体をまだ参照しているマシンプロファイルが残る)webview のダイアログが閉じていても
+   * (削除した実体をまだ参照している実行プロファイルが残る)webview のダイアログが閉じていても
    * 気付けるよう、別途 warning 通知も出す(devicePickDeviceDeleteResult はダイアログが開いている
    * 間しか見えないため)。
    */
@@ -2135,25 +2135,23 @@ export class MonitorDeviceOps {
       if (ok) {
         this.deps.outputChannel.appendLine(t("deviceOps.log.deleteDeviceSucceeded", { name: msg.name }));
         // **実体が消えたら登録も外す**(2026-08-25 の報告)。「デバイスを選択」の OK 側の同期
-        // (machineDevicesSync)に任せると、**キャンセルしたときに実体の無い登録が残る**。
-        // 消えた事実に台帳を合わせるだけなので確認は聞かない(削除自体は確認済み)。
-        // 引き当ては (host, name) —— 別の機械の同名を巻き添えにしない
-        // **referencedBy が空でも呼ぶ** —— あれはマシンプロファイルしか見ておらず、
-        // 実行プロファイル側の掃除はこの中で全件走査する
+        // (runProfileDevicesSync)に任せると、**キャンセルしたときに実体の無い登録が残る**。
+        // 消えた事実にプロファイルを合わせるだけなので確認は聞かない(削除自体は確認済み)。
+        // 引き当ては (platform, machine, name) —— 別の機械の同名を巻き添えにしない。
+        // **referencedBy が空でも呼ぶ** —— こちらは全実行プロファイルを自分で全件走査する
         {
           const machine = source.kind === "remote" ? source.machine : undefined;
-          const updated = this.deps.unregisterDeletedDevice(msg.name, machine);
-          const touched = [...updated.machines, ...updated.runs];
-          if (touched.length > 0) {
+          const updated = this.deps.unregisterDeletedDevice(msg.platform, msg.name, machine);
+          if (updated.runs.length > 0) {
             this.deps.outputChannel.appendLine(
               t("deviceOps.log.deleteDeviceUnregistered", {
                 name: msg.name,
-                profiles: touched.join(t("deviceOps.nameSeparator")),
+                profiles: updated.runs.join(t("deviceOps.nameSeparator")),
               }),
             );
           }
           // 外せなかったぶんだけ従来どおり警告する(形式不正・読めない等)
-          const remaining = referencedBy.filter((machine) => !updated.machines.includes(machine));
+          const remaining = referencedBy.filter((run) => !updated.runs.includes(run));
           if (remaining.length > 0) {
             void vscode.window.showWarningMessage(
               t("deviceOps.deleteReferencedByWarning", {

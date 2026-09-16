@@ -1,46 +1,8 @@
-// マシン/アプリ/実行プロファイルを揃えて書く純粋ロジック(`fleetest profile setup` の中身)。
-// 手書き運用で「machines の device 名と runs の参照名がずれる」「指示していない
-// プラットフォームの run が残る」不整合が起きたため、書き手を1箇所にした経緯がある。
+// アプリ/実行プロファイルを揃えて書く純粋ロジック(`fleetest profile setup` の中身)。
 import XCTest
 @testable import FTCore
 
 final class ProfileWriterTests: XCTestCase {
-
-    private let device: [String: Any] = ["name": "simulator1", "simulator": "iPhone 17 Pro"]
-
-    func testUpsertAddsDeviceAndKeepsUnknownKeys() throws {
-        let object: [String: Any] = ["note": "手編集で足したキー",
-                                     "ios": ["devices": [], "extra": 1]]
-        let updated = try ProfileWriter.upsertingDevice(
-            inProfileObject: object, platform: "ios", device: device)
-        let section = try XCTUnwrap(updated["ios"] as? [String: Any])
-        let devices = try XCTUnwrap(section["devices"] as? [[String: Any]])
-        XCTAssertEqual(devices.count, 1)
-        XCTAssertEqual(devices[0]["name"] as? String, "simulator1")
-        XCTAssertEqual(updated["note"] as? String, "手編集で足したキー", "未知キーを消さない")
-        XCTAssertEqual(section["extra"] as? Int, 1, "セクション内の未知キーも消さない")
-    }
-
-    /// 同じ論理名の再実行で増えない(冪等)。設定値は新しい方で置き換わる
-    func testUpsertReplacesSameName() throws {
-        let first = try ProfileWriter.upsertingDevice(
-            inProfileObject: [:], platform: "ios", device: device)
-        let second = try ProfileWriter.upsertingDevice(
-            inProfileObject: first, platform: "ios",
-            device: ["name": "simulator1", "simulator": "iPhone 16"])
-        let devices = try XCTUnwrap((second["ios"] as? [String: Any])?["devices"] as? [[String: Any]])
-        XCTAssertEqual(devices.count, 1)
-        XCTAssertEqual(devices[0]["simulator"] as? String, "iPhone 16")
-    }
-
-    /// 論理名は ios/android 横断で一意(runs からの参照が曖昧になるため)
-    func testUpsertRejectsNameUsedByOtherPlatform() throws {
-        let withIOS = try ProfileWriter.upsertingDevice(
-            inProfileObject: [:], platform: "ios", device: device)
-        XCTAssertThrowsError(try ProfileWriter.upsertingDevice(
-            inProfileObject: withIOS, platform: "android",
-            device: ["name": "simulator1", "avd": "Pixel_9"]))
-    }
 
     func testAppProfilePlacesFieldsInFixedSections() {
         let object = ProfileWriter.mergingAppProfile(
@@ -93,24 +55,31 @@ final class ProfileWriterTests: XCTestCase {
                        "利用者の明示指定を消さない")
     }
 
-    /// runs は machines 側の論理名をそのまま参照する(ここがずれると解決できない)
-    func testRunProfileReferencesDeviceName() {
-        let run = ProfileWriter.runProfile(appRef: "myapp", deviceNames: ["simulator1"])
+    func testRunProfileCarriesTheDeviceEntities() {
+        let device: [String: Any] = ["platform": "ios", "machine": "local", "name": "simulator1",
+                                     "simulator": "iPhone 17 Pro"]
+        let run = ProfileWriter.runProfile(appRef: "myapp", devices: [device])
         XCTAssertEqual(run["app"] as? String, "myapp")
-        XCTAssertEqual((run["devices"] as? [[String: String]])?.first?["name"], "simulator1")
+        let devices = run["devices"] as? [[String: Any]]
+        XCTAssertEqual(devices?.first?["name"] as? String, "simulator1")
+        XCTAssertEqual(devices?.first?["simulator"] as? String, "iPhone 17 Pro")
         XCTAssertEqual(run["heal"] as? Bool, true)
         XCTAssertEqual(run["textVisualCheck"] as? Bool, true)
         XCTAssertNil(run["reportDir"], "既定(reports)は書かない = フォームで空欄+透かしになる")
-        XCTAssertNil(run["machine"], "指定が無ければ書かない(登録名での解決に任せる)")
+        XCTAssertNil(run["machine"], "トップレベルの machine は無い(台ごとに持つ)")
     }
 
-    /// machine を書かないと拡張の実行プロファイル編集が「(未指定)」になりデバイスを選べない
-    func testRunProfileRecordsMachineWhenGiven() {
-        let run = ProfileWriter.runProfile(
-            appRef: "myapp", deviceNames: ["simulator1", "emulator1"], machine: "MyMac")
-        XCTAssertEqual(run["machine"] as? String, "MyMac")
-        XCTAssertEqual((run["devices"] as? [[String: String]])?.compactMap { $0["name"] },
-                       ["simulator1", "emulator1"])
+    /// 書き出しのキー順: platform → machine → name → enabled → 残りはアルファベット順
+    func testRunProfileJSONPutsDeviceIdentityFirst() throws {
+        let run = ProfileWriter.runProfile(appRef: "myapp", devices: [
+            ["udid": "U", "name": "s", "enabled": false, "machine": "local", "platform": "ios", "os": "27.0"],
+        ])
+        let text = String(decoding: try ProfileWriter.json(run), as: UTF8.self)
+        let keys = ["\"app\"", "\"devices\"", "\"platform\"", "\"machine\"", "\"name\"",
+                    "\"enabled\"", "\"os\"", "\"udid\""]
+        let positions = keys.compactMap { text.range(of: $0)?.lowerBound }
+        XCTAssertEqual(positions.count, keys.count, text)
+        XCTAssertEqual(positions, positions.sorted(), text)
     }
 
     func testDefaultDeviceNameMatchesScaffold() {
@@ -120,18 +89,18 @@ final class ProfileWriterTests: XCTestCase {
 
     // MARK: - 実体の有無(キー数で判定してはいけない)
 
-    /// **本丸**: host + name だけの1件は「実体なし」。ここが true になった 2026-08-17〜08-19 の間、
-    /// `profile setup --auto-device` は一度も発火せず、機種も OS も UDID も無い simulator1 /
-    /// emulator1 が受け手のマシンプロファイルへ書かれていた
-    func testHostAndNameAloneIsNotADeviceBody() {
-        XCTAssertFalse(ProfileWriter.hasDeviceBody(["host": "local", "name": "simulator1"]))
+    /// **本丸**: platform + machine + name だけの1件は「実体なし」。ここが true になると
+    /// `profile setup --auto-device` が一度も発火せず、機種も OS も UDID も無い simulator1 /
+    /// emulator1 が受け手のプロファイルへ書かれる
+    func testIdentityAloneIsNotADeviceBody() {
+        XCTAssertFalse(ProfileWriter.hasDeviceBody(["platform": "ios", "machine": "local", "name": "simulator1"]))
         XCTAssertFalse(ProfileWriter.hasDeviceBody([:]))
     }
 
     /// 実体を指さないキーが増えても「実体なし」のまま(キー数で数えると false → true に化ける)
     func testNonBodyKeysDoNotCountAsADeviceBody() {
         XCTAssertFalse(ProfileWriter.hasDeviceBody(
-            ["host": "local", "name": "simulator1", "engine": "inapp", "port": 8100]))
+            ["platform": "ios", "machine": "local", "name": "simulator1", "engine": "inapp", "port": 8100]))
     }
 
     /// JSON 側(deviceBodyKeys)と型側(DeviceSpec.lacksConcreteTarget)は同じ集合を見る。
@@ -156,7 +125,7 @@ final class ProfileWriterTests: XCTestCase {
     func testConcreteDeviceIsADeviceBody() {
         for body in [["simulator": "iPhone 17 Pro"], ["os": "27.0"], ["udid": "XXXX"],
                      ["avd": "Pixel_9"], ["serial": "emulator-5554"]] {
-            var device: [String: Any] = ["host": "local", "name": "device1"]
+            var device: [String: Any] = ["platform": "ios", "machine": "local", "name": "device1"]
             for (key, value) in body { device[key] = value }
             XCTAssertTrue(ProfileWriter.hasDeviceBody(device), "\(body) は実体")
         }

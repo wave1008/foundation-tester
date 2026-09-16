@@ -1,10 +1,10 @@
 // ProfileWriter.swift
-// マシン/アプリ/実行プロファイルを**同じ論理名で揃えて**書くための純粋ロジック(`fleetest profile setup`)。
-// エージェントに JSON を手書きさせると、マシン側の device 名と runs 側の参照名がずれる・
-// 指示していないプラットフォームの run が残る、という不整合が実際に起きた。書き手をここ1箇所にする。
+// アプリ/実行プロファイルを書くための純粋ロジック(`fleetest profile setup`)。
+// エージェントに JSON を手書きさせると、指示していないプラットフォームの run が残る等の
+// 不整合が実際に起きた。書き手をここ1箇所にする。
 //
 // ファイル I/O は呼び出し側(ProfileSetupCommand)。ここは辞書 → 辞書の変換だけを扱う
-// (MachineProfileEditor と同方針。ユーザーが手編集した未知キーを失わないよう JSONSerialization の
+// (RunProfileDeviceEditor と同方針。ユーザーが手編集した未知キーを失わないよう JSONSerialization の
 // [String: Any] を直接編集し、Codable の往復はしない)。
 
 import Foundation
@@ -19,7 +19,7 @@ public enum ProfileWriter {
     /// デバイス「実体」を表すキー(host / name は**論理名と所在**であって実体ではない)。
     /// **キー数で実体の有無を判定しない** —— 2026-08-17 に host を常に書くようにした時点で
     /// `profile setup` の `device.count == 1` という番兵が恒真になり、`--auto-device` が
-    /// 一度も発火しないまま実体の無い simulator1 / emulator1 が受け手のマシンプロファイルへ
+    /// 一度も発火しないまま実体の無い simulator1 / emulator1 が受け手のプロファイルへ
     /// 書かれた(しかも既に実体付きで登録されていた同名デバイスを実体なしで上書きした)。
     /// engine / port のような**実体を指さないキー**が増えても false のままであること
     public static let deviceBodyKeys: Set<String> = ["simulator", "os", "udid", "avd", "serial"]
@@ -27,35 +27,6 @@ public enum ProfileWriter {
     /// デバイスの実体(機種/OS/UDID/AVD/シリアル)が1つでも入っているか
     public static func hasDeviceBody(_ device: [String: Any]) -> Bool {
         device.keys.contains(where: deviceBodyKeys.contains)
-    }
-
-    /// マシンプロファイルへデバイスを upsert する(同名があれば置換・無ければ追加)。
-    /// 同名が**別プラットフォーム**に居る場合は名前の一意性が崩れるので置換せず throw する。
-    public static func upsertingDevice(
-        inProfileObject object: [String: Any], platform: String, device: [String: Any]
-    ) throws -> [String: Any] {
-        guard let name = device["name"] as? String else {
-            return try MachineProfileEditor.addingDevice(
-                toProfileObject: object, platform: platform, device: device)
-        }
-        let other = platform == "ios" ? "android" : "ios"
-        if let section = object[other] as? [String: Any],
-           let devices = section["devices"] as? [[String: Any]],
-           devices.contains(where: { ($0["name"] as? String) == name }) {
-            throw MachineProfileEditorError.duplicateDeviceName(name)
-        }
-
-        var object = object
-        var section = (object[platform] as? [String: Any]) ?? [:]
-        var devices = (section["devices"] as? [[String: Any]]) ?? []
-        if let index = devices.firstIndex(where: { ($0["name"] as? String) == name }) {
-            devices[index] = device      // 同じ論理名は上書き(再実行しても増えない)
-        } else {
-            devices.append(device)
-        }
-        section["devices"] = devices
-        object[platform] = section
-        return object
     }
 
     /// アプリプロファイルをマージする。フィールドの置き場所は固定(AppProfileSection.merging):
@@ -78,26 +49,20 @@ public enum ProfileWriter {
         return object
     }
 
-    /// 実行プロファイル。devices はマシンプロファイル側の論理名をそのまま参照する
-    /// (この一致が崩れると ProfileResolver が「デバイスが見つかりません」で落ちる)。
-    /// machine は**書いたときのマシン名**を明示する。CLI は登録名でも解決できるが、
-    /// 拡張の実行プロファイル編集は machine が無いとデバイスを一覧できない(「(未指定)」表示)。
-    /// 別マシンで使い回すときは machines/<名>.json を用意するか、この行を消して登録名解決に戻す。
+    /// 新しい実行プロファイル。devices は RunDeviceEntry の形(platform / machine / name / 実体)の辞書。
+    /// 既存の実行プロファイルへ台を足すときは RunProfileDeviceEditor.upsertingDevice を使う。
     /// reportDir は書かない(未指定 = 既定の reports。拡張のフォームは既定を透かしで見せる)
-    public static func runProfile(appRef: String, deviceNames: [String],
-                                  machine: String? = nil) -> [String: Any] {
-        var profile: [String: Any] = [
+    public static func runProfile(appRef: String, devices: [[String: Any]]) -> [String: Any] {
+        [
             "app": appRef,
-            "devices": deviceNames.map { ["name": $0] },
+            "devices": devices,
             "textVisualCheck": true,
             "heal": true,
         ]
-        if let machine { profile["machine"] = machine }
-        return profile
     }
 
     /// 人が読む前提のファイルなので、キー順を固定して整形する(差分が安定する)。
-    /// 順序の定義元は OrderedProfileJSON(host → name を先頭に出す。アルファベット順ではない)
+    /// 順序の定義元は OrderedProfileJSON(platform → machine → name を先頭に出す。アルファベット順ではない)
     public static func json(_ object: [String: Any]) throws -> Data {
         try OrderedProfileJSON.data(object)
     }

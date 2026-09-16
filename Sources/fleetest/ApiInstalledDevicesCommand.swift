@@ -1,7 +1,7 @@
 // VSCode拡張の「既存のデバイスから選択」UI 向け: マシンにインストール済みの iOS シミュレータと
 // Android AVD、**および接続中の実機**を1回取得しJSONで stdout に出力する
 // (fleetest api installed-devices)。
-// プロジェクト/マシンプロファイルに依存しないため引数は無い。
+// プロジェクト/プロファイルに依存しないため引数は無い。
 // stdout には結果 1 行の JSON だけを出す(診断は stderr のみ。ApiCommands.swift と同じ流儀)。
 //
 // iOS/Android いずれかの取得に失敗しても、そちら側だけ available:false + error を立てて
@@ -142,7 +142,7 @@ private struct ApiPhysicalIOSDevice: Encodable {
     let name: String
     /// "26.5.2" のようなバージョン番号のみ
     let os: String
-    /// マシンプロファイルの udid にそのまま書ける値
+    /// 実行プロファイルの udid にそのまま書ける値
     let udid: String
     /// "wired" / "localNetwork" 等(devicectl の transportType 生値)
     let transport: String
@@ -183,7 +183,7 @@ private struct ApiPhysicalAndroidDevice: Encodable {
     let model: String
     /// ro.build.version.release(例 "13")
     let os: String
-    /// マシンプロファイルの serial にそのまま書ける値
+    /// 実行プロファイルの serial にそのまま書ける値
     let serial: String
 }
 

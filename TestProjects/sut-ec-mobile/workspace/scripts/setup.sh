@@ -23,7 +23,6 @@
 #   FT_WORKSPACE        このワークスペースの絶対パス(カレントディレクトリでもある)
 #   FT_PROJECT          テストプロジェクト名
 #   FT_PROFILE          実行プロファイル名
-#   FT_MACHINE          マシンプロファイル名
 #   FT_REPORT_DIR       レポート出力先の絶対パス
 #   FT_IOS_DEVICES      この run が使うデバイス名(空白区切り。空のこともある)
 #   FT_ANDROID_DEVICES  同上、Android のぶん

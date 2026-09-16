@@ -1,4 +1,4 @@
-// マシンプロファイルに定義されたデバイスの起動・停止。
+// 実行プロファイルに定義されたデバイスの起動・停止。
 // - bootAll: 全デバイスの並行起動(最大2台同時)。1台を「ブート →(iOS)ブリッジ供給」まで
 //   完結させてから次のデバイスへ進む(同時進行が2台を超えないこと自体が要件)
 // - bootOne / shutdownOne: 1 台単位の起動・停止(モニターのプレースホルダー右クリック等)
@@ -38,7 +38,7 @@ public enum DeviceBooter {
     /// BootOutcomeSummarizer が純粋に要約する。deviceFinished の契約とは別軸)
     @discardableResult
     public static func bootAll(
-        machine: MachineProfile,
+        machine: DeviceRoster,
         repoRoot: URL? = nil,
         maxConcurrent: Int = 2,
         restartNames: Set<String> = [],
@@ -115,7 +115,7 @@ public enum DeviceBooter {
     /// その結果を渡すので、内部でも再取得しない)。
     @discardableResult
     public static func shutdownAll(
-        machine: MachineProfile,
+        machine: DeviceRoster,
         repoRoot: URL?,
         force: Bool = false,
         /// テスト注入用。nil なら `(try? RepoRoot.find())?.appendingPathComponent(".fleetest")`
@@ -382,7 +382,7 @@ public enum DeviceBooter {
     /// physicalItems = ios→android・各内 name 昇順・**必ず restart: false**(実機は down→up を
     /// 行わない。restartNames に名前が混じっていても通常の起動項目になるだけ)。
     static func buildBootQueue(
-        machine: MachineProfile, restartNames: Set<String>, cpuRenderNames: Set<String>
+        machine: DeviceRoster, restartNames: Set<String>, cpuRenderNames: Set<String>
     ) -> (items: [BootItem], physicalItems: [BootItem]) {
         let allIOS = (machine.ios?.devices ?? []).map { ($0, "ios") }
         let allAndroid = (machine.android?.devices ?? []).map { ($0, "android") }
@@ -503,7 +503,7 @@ public enum DeviceBooter {
         } else {
             guard let avd = spec.avd else {
                 throw DeviceBooterError.commandFailed(
-                    "no avd is specified (add \"avd\" to the machine profile)")
+                    "no avd is specified (add \"avd\" to the device in the run profile)")
             }
             let avdID = AndroidDeviceCatalog.canonicalAVDID(avd)
             if let serial = try? AndroidDeviceCatalog.runningAVDs()

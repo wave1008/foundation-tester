@@ -21,7 +21,7 @@ final class DeviceInventoryTests: XCTestCase {
     func testDevicesTextFallsBackWithTheReasonNamed() async {
         let missing = "no-such-project-for-device-inventory-tests"
         let text = await DeviceInventory.devicesText(project: missing, profile: nil, platform: nil)
-        XCTAssertTrue(text.contains("Not using a machine profile"), text)
+        XCTAssertTrue(text.contains("Not using the run profiles' devices"), text)
         XCTAssertTrue(text.contains(missing), text)
     }
 
@@ -34,9 +34,9 @@ final class DeviceInventoryTests: XCTestCase {
     // MARK: - fallbackHeader (純粋関数)
 
     func testFallbackHeaderIsEnglishAndExplainsTheSubstitution() {
-        let header = DeviceInventory.fallbackHeader(reason: "machine profile \"X\" is not in P")
-        XCTAssertTrue(header.contains("Not using a machine profile"), header)
-        XCTAssertTrue(header.contains("machine profile \"X\" is not in P"), header)
+        let header = DeviceInventory.fallbackHeader(reason: "no run profile in P/profiles/runs/ lists any device")
+        XCTAssertTrue(header.contains("Not using the run profiles' devices"), header)
+        XCTAssertTrue(header.contains("no run profile in P/profiles/runs/ lists any device"), header)
         XCTAssertTrue(header.contains("booted/connected"), header)
     }
 
@@ -403,33 +403,23 @@ final class DeviceInventoryTests: XCTestCase {
 
     /// 手元(machine 未指定): デバイス側もプロファイル側も machine を書いていなければ手元
     func testLocalDevicesKeepsAnUnspecifiedDeviceOnAMachinelessProfile() {
-        let profile = MachineProfile(ios: MachineDeviceList(devices: [DeviceSpec(name: "iPhone-01")]))
-        let entries = DeviceMachineGrouping.entries(machine: profile)
+        let profile = DeviceRoster(ios: DeviceRosterList(devices: [DeviceSpec(name: "iPhone-01")]))
+        let entries = DeviceMachineGrouping.entries(roster: profile)
         let (kept, movedAway) = DeviceInventory.localDevices(entries: entries)
         XCTAssertEqual(kept.map(\.name), ["iPhone-01"])
         XCTAssertTrue(movedAway.isEmpty)
     }
 
-    /// プロファイル既定がリモート: デバイス側が machine を書いていなければプロファイルの既定を継ぐ
-    func testLocalDevicesDropsADeviceThatInheritsARemoteProfileDefault() {
-        let profile = MachineProfile(machine: "M2Ultra",
-                                     ios: MachineDeviceList(devices: [DeviceSpec(name: "iPhone-01")]))
-        let entries = DeviceMachineGrouping.entries(machine: profile)
+    /// リモートの台は movedAway、"local" 明示は手元
+    func testLocalDevicesSplitsRemoteFromExplicitLocal() {
+        let profile = DeviceRoster(ios: DeviceRosterList(devices: [
+            DeviceSpec(name: "iPhone-01", machine: "M2Ultra"),
+            DeviceSpec(name: "iPhone-02", machine: "local"),
+        ]))
+        let entries = DeviceMachineGrouping.entries(roster: profile)
         let (kept, movedAway) = DeviceInventory.localDevices(entries: entries)
-        XCTAssertTrue(kept.isEmpty, "リモート既定を継いだ台が手元に残っている")
+        XCTAssertEqual(kept.map(\.name), ["iPhone-02"])
         XCTAssertEqual(movedAway.map { DeviceMachineGrouping.display($0.machine) }, ["M2Ultra"])
-    }
-
-    /// デバイスが "local" を明示: プロファイル既定がリモートでも、明示指定はそれより強い
-    /// (DeviceMachineGrouping.effectiveMachine の規則)
-    func testLocalDevicesKeepsADeviceThatExplicitlyNamesLocal() {
-        let profile = MachineProfile(
-            machine: "M2Ultra",
-            ios: MachineDeviceList(devices: [DeviceSpec(name: "iPhone-01", machine: "local")]))
-        let entries = DeviceMachineGrouping.entries(machine: profile)
-        let (kept, movedAway) = DeviceInventory.localDevices(entries: entries)
-        XCTAssertEqual(kept.map(\.name), ["iPhone-01"])
-        XCTAssertTrue(movedAway.isEmpty)
     }
 
     func testMovedAwayNoteNamesTheCountAndMachines() {
@@ -440,12 +430,12 @@ final class DeviceInventoryTests: XCTestCase {
     }
 
     func testNoLocalDevicesTextDistinguishesTrulyEmptyFromAllMovedAway() {
-        let empty = DeviceInventory.noLocalDevicesText(machineName: "M1Max", platform: "ios",
+        let empty = DeviceInventory.noLocalDevicesText(source: "run profile \"ios\"", platform: "ios",
                                                         allMovedAway: false)
-        XCTAssertTrue(empty.contains("defines no ios devices."), empty)
+        XCTAssertEqual(empty, "run profile \"ios\" defines no ios devices.")
         XCTAssertFalse(empty.contains("another machine"), empty)
 
-        let movedAway = DeviceInventory.noLocalDevicesText(machineName: "M1Max", platform: "ios",
+        let movedAway = DeviceInventory.noLocalDevicesText(source: "all run profiles", platform: "ios",
                                                             allMovedAway: true)
         XCTAssertTrue(movedAway.contains("another machine"), movedAway)
     }

@@ -26,8 +26,8 @@ export const liveStrings = {
     en: "Could not resolve the target test project.",
   },
   "live.deviceListFailedDetail": {
-    ja: "デバイス一覧の取得に失敗しました。マシンプロファイルの設定を確認してください({detail})",
-    en: "Failed to fetch the device list. Check the machine profile configuration ({detail})",
+    ja: "デバイス一覧の取得に失敗しました。実行プロファイルの devices 設定を確認してください({detail})",
+    en: "Failed to fetch the device list. Check the run profile's devices setting ({detail})",
   },
   "live.deviceListFailedError": {
     ja: "デバイス一覧の取得に失敗しました: {error}",

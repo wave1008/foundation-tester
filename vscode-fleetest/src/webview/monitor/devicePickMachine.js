@@ -1,6 +1,6 @@
 // devicePickMachine.js
 // #device-pick-overlay(「+既存から選択」モーダル)内のマシン選択(#device-pick-machine-select)。
-// マシン選択はこのダイアログのスコープだけに閉じる(マシンプロファイルタブに常設セレクタは置かない)。
+// マシン選択はこのダイアログのスコープだけに閉じる(実行プロファイル節に常設セレクタは置かない)。
 // 選択状態はここに保持する(VSCode 設定は増やさない)。
 //
 // 用語(docs/remote-runner.md §0): ここが扱うのは **machine = 登録簿のマシン名(この Mac だけの
@@ -60,18 +60,14 @@ machineSelect.addEventListener('change', () => {
   selectedMachine = machineSelect.value === localOptionValue() ? null : machineSelect.value;
 });
 
-/** #device-pick-overlay を開くたびに modals.js が呼ぶ。profileMachine は編集対象マシンプロファイルの
- * machine フィールド(未設定なら null/undefined)。登録簿から消えたマシンを指していればローカルへ
- * 落とす(§13 段2 と同じ防御 —「登録簿からマシンが消えたら選択はローカルへ戻る」)。 */
-export function resetDevicePickMachine(profileMachine) {
-  selectedMachine =
-    typeof profileMachine === 'string' && profileMachine.length > 0 && machineNames.includes(profileMachine)
-      ? profileMachine
-      : null;
+/** #device-pick-overlay を開くたびに modals.js が呼ぶ。実行プロファイルは単独の既定ホストを
+ * 持たないので、常にローカルへ戻す(§13 段2)。 */
+export function resetDevicePickMachine() {
+  selectedMachine = null;
   renderSelect();
 }
 
-/** deviceCatalogRequest/installedDevicesRequest/createDevice/machineDevicesSync の source として
+/** deviceCatalogRequest/installedDevicesRequest/createDevice/runProfileDevicesSync の source として
  * postMessage に載せる値(remoteRunArgs.ts の DeviceCommandSource と同形)。 */
 export function currentDeviceSource() {
   return selectedMachine === null ? { kind: 'local' } : { kind: 'remote', machine: selectedMachine };

@@ -87,7 +87,7 @@ public struct RunWorker {
     public let platform: String           // "ios" / "android"
     public let driver: AppDriver          // ウォームアップ・接続確認用
     public let connection: DriverConnection  // サブプロセスへ渡す接続情報
-    /// 実行プロファイル上のデバイス論理名(profiles/machines/ の name)。
+    /// 実行プロファイル上のデバイス論理名(profiles/runs/ の devices[].name)。
     /// ProfileWorkerFactory 経由で構築されたワーカーのみ設定される(fleetest api run の
     /// workersReady イベントの id 構築に使う。--port 等の非プロファイル経路では nil)
     public let logicalName: String?
