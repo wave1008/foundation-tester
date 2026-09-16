@@ -51,6 +51,6 @@ test("OCR の縦軸は HM_OCR_MAX_RATE を下限としたオートスケール",
 test("FM と OCR は同じ入力でも下限が違えば結果が違う", async () => {
   const { hmCountScale, HM_FM_MAX_RATE, HM_OCR_MAX_RATE } = await import("../src/webview/monitor/hostChartScale.js");
   assert.notEqual(HM_FM_MAX_RATE, HM_OCR_MAX_RATE, "下限が同じなら別軸にする意味の一部が消える");
-  assert.equal(hmCountScale([1, 2], HM_FM_MAX_RATE), HM_FM_MAX_RATE);
-  assert.equal(hmCountScale([1, 2], HM_OCR_MAX_RATE), HM_OCR_MAX_RATE);
+  assert.equal(hmCountScale([0, 1], HM_FM_MAX_RATE), HM_FM_MAX_RATE);
+  assert.equal(hmCountScale([0, 1], HM_OCR_MAX_RATE), HM_OCR_MAX_RATE);
 });

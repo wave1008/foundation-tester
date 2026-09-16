@@ -1882,7 +1882,8 @@ upstream main を clone して update.sh で追従するので、2人の rev は
 **機械によっては FM を 2 並列以上で呼ぶと壊れる。** 登録簿(`~/.config/fleetest/config.json` の
 `RemoteHostEntry`)に `fmConcurrency` を置き、ディスパッチが `FT_FM_CONCURRENCY` として運ぶ
 (`RemoteShell.remoteRunCommand`)。**設定が無ければ何も渡さない** —— ランナー側の既定
-(`FMLock.defaultConcurrency` = 5。根拠は docs/performance-tuning.md §3.5)が効く。
+(`FMLock.defaultConcurrency` = 1。壊れる機械を既定で守るためのユーザー決定。5 まで上げたときの
+効き方は docs/performance-tuning.md §3.5)が効く。
 
 ```
 fleetest remote machines add M1Ultra --host user@10.0.0.2 --fm-concurrency 1

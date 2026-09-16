@@ -225,7 +225,13 @@ cores/3 への同時数自動スケールも実装後に撤回(同ユーザー�
 - イベント形は start-all-devices と共通(`isDevicesUpEvent`)。契約同期相手: `ApiStopAllDevicesCommand`(Swift)/
   `monitorDeviceOps.ts` executeBulkJob / `monitorModel.ts` `deviceDownFinished` / `deviceTiles.js`。
 
-### 3.5 FM の許可枠(FMLock)は 5。約1回/秒は FM の天井ではない
+### 3.5 FM の許可枠(FMLock)。約1回/秒は FM の天井ではない
+
+**既定は 1**(ユーザー決定)。この節の実測は「5 まで上げると壊れない機械ではこう効く」の根拠で、
+既定は**2 並列以上で FM が壊れる機械**(docs/remote-runner.md §19)を守る側に置いてある。
+速さが要る機械は設定タブの「FM 並列枠」(登録簿の `fmConcurrency` / この機械は
+`LocalConfig.fmConcurrency`)で 5 に上げる。1 のままだと下の「枠1」の数字(待ち・timeout での
+素通り)がそのまま出るので、`fm.gateWait*` と `fm.skipped` で確認する。
 
 **run 中に見える「FM は約1回/秒」は `FMLock` の枠数が 1 だったことの帰結**であって、FM の
 能力ではない(2026-09-01 に反証。それまでこの節は「ホスト全体で直列化する」と書いていた)。

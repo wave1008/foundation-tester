@@ -13,7 +13,7 @@
  *  超えた窓ではオートスケールする(`hmCountScale`)。枠数の既定を動かすときは目盛りも見直す
  *  (`hostChartsFmMaxSync.test.mjs` がズレを検出する)。
  *  同期相手: Sources/FTCore/FMLock.swift の defaultConcurrency */
-export const HM_FM_MAX_RATE = 5;
+export const HM_FM_MAX_RATE = 1;
 
 /** OCR スパークラインの縦軸の上限(1 tick あたりの呼び出し回数)。**根拠は FM とは別**:
  *  occlusion-guard の1ステップは、読めなければ crop を拡大して読み直す

@@ -28,6 +28,12 @@
 // 素通りする(枠1 の実測で最大待ち 19,285ms = timeout 20 秒まで 0.7 秒)。多すぎても
 // スループットは平らなままレイテンシが伸びるだけ。
 //
+// **既定が 1 である理由**(ユーザー決定): 上の①②は「壊れない機械」での最適で、
+// **機械によっては 2 並列以上で FM が壊れる**(M1 Ultra で失敗 26〜31% → 枠1 で 0%。
+// docs/remote-runner.md §19)。既定は壊れない側に置き、速さが要る機械は設定タブ / 登録簿の
+// `fmConcurrency` で 5 に上げる。代償は上の「少なすぎる」側(待ち・timeout での素通り)で、
+// **`fm.gateWait*` と `fm.skipped` で確認する**(docs/results-json.md)。
+//
 // ロックは**リポジトリ単位ではなくホスト単位**(FM がホスト単位の資源のため。別リポジトリの
 // fleetest プロセスとも枠を共有する必要がある)。ファイルは
 // ~/Library/Caches/fleetest/fm.lock.<slot>(slot は 0..<concurrency)。
@@ -49,12 +55,12 @@ public enum FMLock {
     }
 
     /// 待ち行列の最後尾が待つ上限。超えたら諦めて FM をスキップする。
-    /// FM 1 回は実測 1〜4 秒なので、枠5でも通常はこの範囲に収まる
+    /// FM 1 回は実測 1〜4 秒なので、枠5でも通常はこの範囲に収まる(枠1 では最大待ち 19,285ms の実測あり)
     public static let defaultTimeoutSeconds: TimeInterval = 20
 
-    /// 既定の枠数。根拠はファイル冒頭コメントの 2026-09-01 実測(スループットが飽和する
-    /// 最小の並列度)。`FT_FM_CONCURRENCY` で上書きできる(不正値・0 以下は既定へ倒す)
-    public static let defaultConcurrency = 5
+    /// 既定の枠数。**1 はユーザー決定**(冒頭コメントの「既定が 1 である理由」)。
+    /// `FT_FM_CONCURRENCY` / 設定タブの FM 並列枠で上書きできる(不正値・0 以下は既定へ倒す)
+    public static let defaultConcurrency = 1
 
     /// テストだけが使う差し替え口。**production は常に nil**(`FT_FM_CONCURRENCY` を見る)。
     /// 枠数は最初の `descriptors()` で1回だけ解決して固定するため、テストがこれを変えたら

@@ -83,15 +83,15 @@ final class FMLockTests: XCTestCase {
     }
 
     /// 既定の枠数を**リテラルで固定する**。他のテストは concurrencyForTesting で枠数を明示するので、
-    /// production の既定値を1度も通らない —— ここが無いと既定を1(直列化)へ戻す変更が緑のまま通り、
-    /// 実測 204.8 秒のゲート待ちが黙って復活する(2026-09-01 実測。5 の根拠は FMLock.swift 冒頭)。
+    /// production の既定値を1度も通らない —— ここが無いと既定を黙って上げる変更が緑のまま通り、
+    /// 2 並列以上で FM が壊れる機械を既定で踏む(1 の根拠は FMLock.swift 冒頭)。
     /// **変えるときはこの数字と根拠を両方更新すること**
     func testDefaultConcurrencyIsPinned() throws {
-        XCTAssertEqual(FMLock.defaultConcurrency, 5)
+        XCTAssertEqual(FMLock.defaultConcurrency, 1)
         // **`FMLock.concurrency` では確かめない**: あれは**この機械の設定ファイル**を読むので、
         // ホストが `fmConcurrency` を入れているだけで落ちる(実際に 1 を入れた機械で落ちた)。
         // 上書きが無いときに既定が効くことは、解決そのものの純関数で見る
-        XCTAssertEqual(FMLock.resolveConcurrency(environment: [:], configured: nil), 5,
+        XCTAssertEqual(FMLock.resolveConcurrency(environment: [:], configured: nil), 1,
                        "上書きが無ければ既定が効く")
     }
 
@@ -200,8 +200,8 @@ final class FMLockTests: XCTestCase {
             for invalid in ["0", "-1", "not-a-number", ""] {
                 XCTAssertEqual(
                     FMLock.resolveConcurrency(environment: ["FT_FM_CONCURRENCY": invalid],
-                                              configured: nil), 5,
-                    "FT_FM_CONCURRENCY=\(invalid) は既定(5)へ倒れるはず")
+                                              configured: nil), 1,
+                    "FT_FM_CONCURRENCY=\(invalid) は既定(1)へ倒れるはず")
             }
             setenv("FT_FM_CONCURRENCY", "7", 1)
             XCTAssertEqual(FMLock.concurrency, 7, "正の整数は素通しするはず")
@@ -222,7 +222,7 @@ final class FMLockConcurrencyResolutionTests: XCTestCase {
         XCTAssertEqual(FMLock.resolveConcurrency(environment: [:], configured: 3), 3)
     }
 
-    /// 既定(5)と違う値で確かめる —— 既定と同じ値で書くと「設定を読んでいない実装」でも通る
+    /// 既定と違う値で確かめる —— 既定と同じ値で書くと「設定を読んでいない実装」でも通る
     func testConfigFileValueIsNotTheDefault() {
         XCTAssertNotEqual(3, FMLock.defaultConcurrency, "既定と同じ値では検証にならない")
     }
