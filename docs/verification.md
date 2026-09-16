@@ -986,8 +986,8 @@ FM の実呼び出しが全滅していると、**occlusion-guard(`exist` の既
 ## 検証は重ねない —— デバイス実行中に本線をビルドしない(2026-08-20 に再発)
 
 **変異テストは worktree(専用の `.build`)で隔離済み**なので本線の run とは衝突しない
-(`Scripts/mutation-check.sh` は `.build` と `.fleetest` を除いて同期し、worktree の中で
-`swift test` する)。**危ないのは本線で打つ `swift build` / `swift test`** —— 実行中の
+(`Scripts/mutation-check.sh` は本線で git が無視している物(`.build`・`.fleetest` を含む)を
+除いて同期し、worktree の中で `swift test` する)。**危ないのは本線で打つ `swift build` / `swift test`** —— 実行中の
 `fleetest` バイナリが差し替わって run が SIGKILL される(CLAUDE.md の実害。2026-08-20 に
 フル E2E の最中に単体テストを打って1回ぶん捨てた)。
 
@@ -1817,12 +1817,17 @@ fleetest api run --project E2E-CMP --dry-run "${ARGS[@]}" | grep "探したい�
 
 **やり方**: `Scripts/mutation-check.sh <mutations.json>` で **git worktree 並列**
 (2026-08-10 ユーザー指示)。変異の一覧(file / old / new / filter)を JSON で渡すと、
-常設 worktree(リポジトリの隣の `<repo名>-mutwt/`。`MUT_JOBS` 本・既定3)へ**未コミットの
+常設 worktree(リポジトリの隣の `<repo名>-mutwt/`。`MUT_JOBS` 本・既定4)へ**未コミットの
 作業ツリーごと rsync** して変異を適用し、`swift test --filter` を並列に走らせて
 OK(検出)/ SURVIVED(素通し)/ ERROR(適用失敗)の表を出す。
 **本線のツリーには1バイトも書かない**ので、復元忘れ・「変異版バイナリのままデバイス検証」
 (§変異テストの後は製品バイナリを作り直す)の型が構造的に起きない。
 初回だけ worktree のコールドビルドで数分かかる(以後は増分)。
+**worktree に運ぶのは git が無視していない物だけ**で、借りた worktree からは `.build` 以外の
+無視物(前の変異のテストが残した results/・xcresult・SUT のビルド成果物)を毎回消す —— 放置すると
+保持容量の掃除(本線の場所しか見ない)に映らないまま積もる(2026-09-16: 4 本で 65GB →
+`Scripts/mutation-check.sh --purge` で 40.5GB 回収)。同じ worktree を2本で触らないよう
+`<repo名>-mutwt/.mutation-check.lock` を取る(先客がいれば即座に断る)。
 **filter には密閉されたテストだけを指定する** —— ホスト共有資源(`.fleetest/` 台帳・simctl/adb・
 DiagnosticReports)に触るテストをプロセス並列で走らせると偽の失敗が出る(§並列実行)。
 手で1件だけ確かめるときの旧手順(`cp` 退避 → 壊す → 実行 → 復元)も引き続き可。

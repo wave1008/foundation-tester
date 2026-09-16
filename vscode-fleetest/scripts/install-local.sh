@@ -53,6 +53,12 @@ if [ ! -f "${INSTALL_DIR}/dist/extension.js" ]; then
   exit 1
 fi
 
+# 他の版の .vsix を消す(インストール後は誰も読まない。版を上げるたびに1個ずつ残り、
+# 2026-09-16 に 120 個・144MB 溜まっていた)。今回の版は残す(入れ直し用)
+for old in "${EXT_ROOT}/${NAME}"-*.vsix; do
+  [ -f "${old}" ] && [ "${old}" != "${VSIX_PATH}" ] && rm -f "${old}"
+done
+
 echo "✅ vscode-fleetest ${VERSION} をインストールしました"
 echo "⚠️  反映にはVSCodeで「Developer: Reload Window」が必要です(インストールだけでは旧版のまま動き続けます)"
 echo "⚠️  モニターパネルは開き直してください(retainContextWhenHidden で古いHTMLが保持されるため)"

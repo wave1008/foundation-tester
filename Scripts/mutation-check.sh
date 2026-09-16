@@ -6,8 +6,15 @@
 # 構造的に起きない。worktree は使い回す(.build が温まっていれば増分ビルドで走る。
 # 初回だけはコールドビルドで数分かかる)。
 #
+# **worktree に運ぶのは git が無視していない物だけ**。本線で無視されている未追跡物
+# (SUT のビルド成果物・results/・録画・.fleetest の台帳と xcresult・.vsix)は運ばず、借りた
+# worktree からも `.build` 以外を毎回消す —— 放置すると worktree の中で走ったテストの副産物が
+# 保持容量の掃除(本線の場所しか見ない)に一度も映らないまま積もる(2026-09-16: 4 本で 65GB)。
+# `swift test` は無視された物を読まない(同日 Tests/ を走査して確認)。
+#
 # 使い方:
 #   Scripts/mutation-check.sh <mutations.json>
+#   Scripts/mutation-check.sh --purge      # 全 worktree の無視物(.build 以外)を消すだけ
 #
 #   mutations.json: [
 #     {"label": "paren-reject off",          # 表示名
@@ -27,13 +34,63 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 exec python3 - "$@" <<'PYEOF'
-import json, os, re, subprocess, sys
+import fcntl, glob, json, os, re, shutil, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from queue import Queue
 
 if len(sys.argv) != 2:
-    sys.exit("usage: mutation-check.sh <mutations.json>")
+    sys.exit("usage: mutation-check.sh <mutations.json> | --purge")
+purge_only = sys.argv[1] == "--purge"
+
+repo = os.getcwd()
+name = os.path.basename(repo)
+root = os.environ.get("MUT_WORKTREE_ROOT", os.path.join(os.path.dirname(repo), f"{name}-mutwt"))
+
+def sh(args, **kw):
+    return subprocess.run(args, capture_output=True, text=True, **kw)
+
+def ignored_paths(tree):
+    """tree で git が無視している未追跡物(`--directory` = 無視されたディレクトリは中を辿らず1行)"""
+    r = sh(["git", "-C", tree, "ls-files", "-z", "-o", "-i", "--exclude-standard", "--directory"])
+    if r.returncode != 0:
+        sys.exit(f"git ls-files failed in {tree}: {r.stderr.strip()}")
+    return [p for p in r.stdout.split("\0") if p]
+
+def purge_ignored(wt):
+    """worktree の無視物を消す。**`.build` だけ残す**(温かいキャッシュが並列化の前提)。消した量(KB)を返す"""
+    freed = 0
+    for rel in ignored_paths(wt):
+        if rel.rstrip("/") == ".build":
+            continue
+        path = os.path.join(wt, rel.rstrip("/"))
+        du = sh(["du", "-sk", path])
+        freed += int(du.stdout.split()[0]) if du.returncode == 0 and du.stdout else 0
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path, ignore_errors=True)
+        elif os.path.lexists(path):
+            os.remove(path)
+    return freed
+
+# **同じ worktree を2本で触らない**(変異の同期・--purge の削除が、走っている swift test の足元を消す)
+os.makedirs(root, exist_ok=True)
+lock_file = open(os.path.join(root, ".mutation-check.lock"), "w")
+try:
+    fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    sys.exit(f"another mutation-check is using {root}. Wait for it to finish.")
+
+if purge_only:
+    total = 0
+    for wt in sorted(glob.glob(os.path.join(root, "wt*"))):
+        if not os.path.exists(os.path.join(wt, "Package.swift")):
+            continue
+        freed = purge_ignored(wt)
+        total += freed
+        print(f"{wt}: freed {freed / 1048576:.1f} GB")
+    print(f"total freed {total / 1048576:.1f} GB (.build kept)")
+    sys.exit(0)
+
 mutations = json.load(open(sys.argv[1]))
 if not isinstance(mutations, list) or not mutations:
     sys.exit("mutations.json must be a non-empty array")
@@ -56,18 +113,19 @@ if os.environ.get("MUT_ALLOW_DURING_RUN") != "1":
         sys.exit(f"device run in progress ({busy}). Wait for it, or set MUT_ALLOW_DURING_RUN=1"
                  " if you know the two will not compete for the same devices.")
 
-repo = os.getcwd()
-name = os.path.basename(repo)
-root = os.environ.get("MUT_WORKTREE_ROOT", os.path.join(os.path.dirname(repo), f"{name}-mutwt"))
 jobs = int(os.environ.get("MUT_JOBS", "4"))
 log_dir = os.path.join(repo, ".fleetest", "mutation", datetime.now().strftime("%Y%m%d-%H%M%S"))
 os.makedirs(log_dir, exist_ok=True)
 
-def sh(args, **kw):
-    return subprocess.run(args, capture_output=True, text=True, **kw)
+# 本線の無視物は運ばない(先頭 `/` = 転送の根に固定。rsync のワイルドカード文字は逃がす)。
+# -F(dir-merge)は使わない: openrsync では --delete から受け側を守らない(maintainer-notes §3.4)。
+# 除外した物は受け側でも --delete の対象外なので、残骸は purge_ignored が消す
+exclude_file = os.path.join(log_dir, "rsync-exclude.txt")
+with open(exclude_file, "w") as f:
+    for rel in ignored_paths(repo):
+        f.write("/" + re.sub(r"([*?\[\\])", r"\\\1", rel) + "\n")
 
 # worktree プールを確保(既存なら使い回す。--detach なのでブランチは汚さない)
-os.makedirs(root, exist_ok=True)
 pool = []
 for i in range(min(jobs, len(mutations))):
     wt = os.path.join(root, f"wt{i}")
@@ -93,10 +151,13 @@ def run_one(index, mutation):
 def run_in(wt, index, mutation):
     label = mutation.get("label", f"mutation {index + 1}")
     # 作業ツリーの現状(未コミット含む)を worktree へ同期。.build は消さない(温かい
-    # キャッシュが並列化の前提)。--delete は「本線で消したファイルの残留」を防ぐ
+    # キャッシュが並列化の前提)。--delete は「本線で消したファイルの残留」を防ぐ。
+    # 前の変異のテストが残した無視物は先に消す
+    purge_ignored(wt)
     r = sh(["rsync", "-a", "--delete",
             "--exclude=.git", "--exclude=.build", "--exclude=.fleetest",
             "--exclude=node_modules", "--exclude=results", "--exclude=reports",
+            f"--exclude-from={exclude_file}",
             f"{repo}/", f"{wt}/"])
     if r.returncode != 0:
         return (label, "ERROR", f"rsync failed: {r.stderr.strip()[:200]}", None)
