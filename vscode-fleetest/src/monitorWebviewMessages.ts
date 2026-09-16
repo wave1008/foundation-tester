@@ -388,13 +388,15 @@ export type MonitorToWebviewMessage =
   // セッション一覧(recordingsStore.ts が TestProjects/<current>/results/runs/*/*/recordings/index.json を
   // 列挙。新しい順・最大50件)。recordingsRefresh 受信時に post する。projects/current はプロジェクト
   // 選択の中身(ダッシュボードの "projects" と同じ意味。current "" = 未解決で sessions は空)。
-  // all = 「(すべて)」選択中(全プロジェクト横断。current は fleetest.project の解決結果のまま)
+  // all = 「(すべて)」選択中(全プロジェクト横断。current は fleetest.project の解決結果のまま)。
+  // refreshing = sessions は前回読み込んだ結果(キャッシュ)で、読み込み中。終わると false で送り直す
   | {
       readonly type: "recordingsSessions";
       readonly sessions: readonly RecordingSessionSummary[];
       readonly projects: readonly string[];
       readonly current: string;
       readonly all: boolean;
+      readonly refreshing: boolean;
     }
   // recordingsOpen への応答。ok:false は index.json 未検出等(webview は一覧ビューのまま)。
   // videos は scenarioID→動画 webview URI(MonitorPanelDeps.videoWebviewUri で変換済み。1エントリ=

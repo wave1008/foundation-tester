@@ -12,6 +12,7 @@ export const panelsStrings = {
   "panels.tabs.settings": { ja: "設定", en: "Settings" },
 
   "panels.recordings.refresh": { ja: "更新", en: "Refresh" },
+  "panels.recordings.refreshing": { ja: "更新中…", en: "Refreshing…" },
   "panels.recordings.backTitle": { ja: "セッション一覧に戻る", en: "Back to session list" },
   "panels.recordings.playPauseTitle": { ja: "再生 / 一時停止", en: "Play / Pause" },
   "panels.recordings.prevTestTitle": { ja: "前のテストへ", en: "Previous test" },

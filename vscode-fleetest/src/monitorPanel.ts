@@ -55,6 +55,7 @@ import { PANEL_TITLE, renderHtml } from "./monitorHtml";
 import { type HostMetricsToWebviewMessage, MonitorProcessManager } from "./monitorProcessManager";
 import { MonitorProfilesController } from "./monitorProfilesController";
 import { MonitorRecordingsController } from "./monitorRecordingsController";
+import { workspaceRecordingsSessionsCache } from "./recordingsSessionsCache";
 import { MonitorUpdateController } from "./monitorUpdateController";
 import {
   fetchRemoteHosts,
@@ -319,10 +320,14 @@ export class MonitorPanelController implements vscode.Disposable {
     this.processManager = new MonitorProcessManager(this.deps);
     this.profiles = new MonitorProfilesController(this.deps);
     this.deviceOps = new MonitorDeviceOps(this.deps);
-    this.recordings = new MonitorRecordingsController(this.deps, {
-      get: () => workspaceState.get<boolean>("monitor.recordingsAllProjects", false),
-      set: (value) => void workspaceState.update("monitor.recordingsAllProjects", value),
-    });
+    this.recordings = new MonitorRecordingsController(
+      this.deps,
+      {
+        get: () => workspaceState.get<boolean>("monitor.recordingsAllProjects", false),
+        set: (value) => void workspaceState.update("monitor.recordingsAllProjects", value),
+      },
+      workspaceRecordingsSessionsCache(workspaceState),
+    );
     this.update = new MonitorUpdateController({
       workspaceRoot: this.workspaceRoot,
       outputChannel: this.outputChannel,

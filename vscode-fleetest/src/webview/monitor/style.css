@@ -2549,6 +2549,10 @@ button.settings-remote-hosts-color-swatch:focus-visible {
   background-color: var(--vscode-editor-background);
   background-image: linear-gradient(rgba(128, 128, 128, 0.18), rgba(128, 128, 128, 0.18));
 }
+.recordings-refreshing {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
 .recordings-toolbar-title {
   font-weight: 600;
 }

@@ -19,7 +19,12 @@ import {
   type RecordingScenarioVideo,
   type RecordingTreeScenario,
 } from "./recordingsModel";
-import { listRecordingSessions, loadRecordingSessionDetail, resolveSessionRunIDs } from "./recordingsStore";
+import {
+  listRecordingSessions,
+  loadRecordingSessionDetail,
+  type RecordingSessionSummary,
+  resolveSessionRunIDs,
+} from "./recordingsStore";
 import type { MonitorPanelDeps } from "./monitorPanel";
 import { selectWorkspaceProject } from "./projectSelection";
 import type { MonitorToWebviewMessage } from "./monitorWebviewMessages";
@@ -32,23 +37,57 @@ export interface RecordingsAllProjectsStore {
   set(value: boolean): void;
 }
 
+/** 前回読み込んだ一覧の保存先(monitorPanel.ts が workspaceState "monitor.recordingsSessionsCache" で渡す)。
+ *  鍵はプロジェクト名、「(すべて)」は ALL_PROJECTS_CACHE_KEY。 */
+export interface RecordingsSessionsCache {
+  get(key: string): readonly RecordingSessionSummary[] | undefined;
+  set(key: string, sessions: readonly RecordingSessionSummary[]): void;
+}
+
+/** プロジェクト名(TestProjects/ のディレクトリ名)と衝突しない鍵。 */
+export const ALL_PROJECTS_CACHE_KEY = "\u0000all";
+
+function memoryCache(): RecordingsSessionsCache {
+  const entries = new Map<string, readonly RecordingSessionSummary[]>();
+  return { get: (key) => entries.get(key), set: (key, sessions) => void entries.set(key, sessions) };
+}
+
 export class MonitorRecordingsController {
+  /** refreshSessions の世代。追い越された読み込みの結果は送らない(新しい選択の一覧を古い結果で上書きしない)。 */
+  private refreshGeneration = 0;
+
   constructor(
     private readonly deps: MonitorPanelDeps,
     private readonly allProjects: RecordingsAllProjectsStore = { get: () => false, set: () => {} },
+    private readonly sessionsCache: RecordingsSessionsCache = memoryCache(),
   ) {}
 
   /** 一覧は選択中のプロジェクト(fleetest.project の解決結果)だけ。未解決なら空で、選択から復帰させる。
-   *  「(すべて)」選択中は全プロジェクト横断。 */
+   *  「(すべて)」選択中は全プロジェクト横断。
+   *  **前回の結果があれば先に refreshing:true で送り、読み込み後に差し替える** —— 列挙は run ごとの
+   *  ファイル読みで、拡張ホスト起動直後は他拡張と共有の libuv スレッドプールが埋まり 30 秒かかった
+   *  (単体では 0.2 秒。1 回の読みが平均 26ms 待たされ、それが run 数ぶん積み重なる)。 */
   async refreshSessions(): Promise<void> {
+    const generation = ++this.refreshGeneration;
     const projects = listProjectCandidates(this.deps.workspaceRoot);
     const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
     const current = resolution.kind === "resolved" ? resolution.project : "";
     const all = this.allProjects.get();
-    const sessions = all
-      ? await listRecordingSessions(this.deps.workspaceRoot)
-      : current === "" ? [] : await listRecordingSessions(this.deps.workspaceRoot, current);
-    this.deps.post({ type: "recordingsSessions", sessions, projects, current, all });
+    const cacheKey = all ? ALL_PROJECTS_CACHE_KEY : current === "" ? null : current;
+    if (cacheKey === null) {
+      this.deps.post({ type: "recordingsSessions", sessions: [], projects, current, all, refreshing: false });
+      return;
+    }
+    const cached = this.sessionsCache.get(cacheKey);
+    if (cached !== undefined) {
+      this.deps.post({ type: "recordingsSessions", sessions: cached, projects, current, all, refreshing: true });
+    }
+    const sessions = await listRecordingSessions(this.deps.workspaceRoot, all ? undefined : current);
+    this.sessionsCache.set(cacheKey, sessions);
+    if (generation !== this.refreshGeneration) {
+      return;
+    }
+    this.deps.post({ type: "recordingsSessions", sessions, projects, current, all, refreshing: false });
   }
 
   /** 設定 fleetest.project の変更(どのタブから変えても)は「(すべて)」を解除して追従する。

@@ -579,3 +579,26 @@ test("一覧: 成功は1件以上で緑・失敗は1件以上で赤・区切り�
     ["recordings-session-passed", "recordings-session-separator", "recordings-session-failed"],
   );
 });
+
+test("一覧: refreshing:true はキャッシュの一覧を出して「更新中」を表示し、false で消す(0件のキャッシュは読み込み中)", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  const label = window.document.getElementById("recordings-refreshing");
+  const empty = window.document.getElementById("recordings-empty");
+  const base = { type: "recordingsSessions", projects: ["AppA"], current: "AppA", all: false };
+  const cached = [{ project: "AppA", runID: "20260817-000001", startedAt: "2026-08-17T00:00:01Z", passed: 1, failed: 0 }];
+
+  sendToWebview({ ...base, sessions: cached, refreshing: true });
+  assert.equal(label.style.display, "inline");
+  assert.equal(window.document.querySelectorAll(".recordings-session-item").length, 1);
+
+  sendToWebview({ ...base, sessions: [...cached, { ...cached[0], runID: "20260817-000002" }], refreshing: false });
+  assert.equal(label.style.display, "none");
+  assert.equal(window.document.querySelectorAll(".recordings-session-item").length, 2);
+
+  sendToWebview({ ...base, sessions: [], refreshing: true });
+  assert.equal(label.style.display, "inline");
+  assert.equal(empty.style.display, "flex");
+  assert.equal(empty.textContent, "読み込み中...");
+  assert.equal(window.document.querySelectorAll(".recordings-session-item").length, 0);
+});

@@ -142,3 +142,47 @@ test("onProjectSettingChanged: 他のタブでプロジェクトが変わった�
   assert.equal(posts.at(-1).all, false);
   assert.deepEqual(listed(), ["AppA/20260911-010000"]);
 });
+
+// ---- 前回結果のキャッシュ(refreshSessions の先出し) ----
+
+function makeCachedController(t, cacheEntries = {}) {
+  const ctx = makeListController(t);
+  const entries = new Map(Object.entries(cacheEntries));
+  const posts = [];
+  const controller = new MonitorRecordingsController(
+    {
+      workspaceRoot: ctx.controller.deps.workspaceRoot,
+      getConfig: () => ({ project: "AppA" }),
+      post: (message) => posts.push(message),
+      videoWebviewUri: (filePath) => `https://localhost${filePath}`,
+    },
+    { get: () => false, set: () => {} },
+    { get: (key) => entries.get(key), set: (key, sessions) => entries.set(key, sessions) },
+  );
+  return { controller, posts, entries };
+}
+
+test("refreshSessions: キャッシュがあれば先に refreshing:true で送り、読み込み後に差し替えてキャッシュを更新する", async (t) => {
+  const stale = [{ project: "AppA", runID: "20260101-000000" }];
+  const { controller, posts, entries } = makeCachedController(t, { AppA: stale });
+  await controller.refreshSessions();
+  assert.equal(posts.length, 2);
+  assert.equal(posts[0].refreshing, true);
+  assert.deepEqual(posts[0].sessions, stale);
+  assert.equal(posts[1].refreshing, false);
+  assert.deepEqual(posts[1].sessions.map((s) => s.runID), ["20260911-010000"]);
+  assert.deepEqual(entries.get("AppA").map((s) => s.runID), ["20260911-010000"]);
+});
+
+test("refreshSessions: キャッシュが無ければ読み込み後の1回だけ送る", async (t) => {
+  const { controller, posts } = makeCachedController(t);
+  await controller.refreshSessions();
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].refreshing, false);
+});
+
+test("refreshSessions: 追い越された読み込みの結果は送らない(最後の要求の結果だけが refreshing:false で届く)", async (t) => {
+  const { controller, posts } = makeCachedController(t);
+  await Promise.all([controller.refreshSessions(), controller.refreshSessions()]);
+  assert.equal(posts.filter((m) => m.refreshing === false).length, 1);
+});

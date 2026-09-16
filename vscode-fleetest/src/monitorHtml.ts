@@ -565,6 +565,7 @@ function renderRecordingsPanel(): string {
         <!-- 並び・見た目はダッシュボードの #dash-toolbar と揃える(選択 → 更新。select.dash-project を共用) -->
         <select id="recordings-project-select" class="dash-project" title="${t("exploreHeal.dashboard.projectSelectTitle")}"></select>
         <button id="recordings-refresh" type="button">${t("panels.recordings.refresh")}</button>
+        <span id="recordings-refreshing" class="recordings-refreshing" style="display: none;">${t("panels.recordings.refreshing")}</span>
       </div>
       <div id="recordings-empty" class="recordings-empty" style="display: none;"></div>
       <div id="recordings-sessions" class="recordings-sessions"></div>

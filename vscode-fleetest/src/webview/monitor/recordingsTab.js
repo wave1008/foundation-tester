@@ -18,6 +18,7 @@ const sessionsEmpty = document.getElementById('recordings-empty');
 const sessionsList = document.getElementById('recordings-sessions');
 const refreshBtn = document.getElementById('recordings-refresh');
 const projectSelect = document.getElementById('recordings-project-select');
+const refreshingLabel = document.getElementById('recordings-refreshing');
 const backBtn = document.getElementById('recordings-back');
 const sessionTitle = document.getElementById('recordings-session-title');
 const sessionMachine = document.getElementById('recordings-session-machine');
@@ -292,6 +293,8 @@ function applyProjects(projects, current, all) {
 }
 
 export function applyRecordingsSessions(message) {
+  // 前回の結果(キャッシュ)を出しつつ読み込み中のときだけ表示する
+  refreshingLabel.style.display = message.refreshing === true ? 'inline' : 'none';
   if (Array.isArray(message.projects) && typeof message.current === 'string') {
     const all = message.all === true;
     applyProjects(message.projects, message.current, all);
@@ -301,6 +304,13 @@ export function applyRecordingsSessions(message) {
       sessionsEmpty.style.display = 'flex';
       return;
     }
+  }
+  if (message.refreshing === true && message.sessions.length === 0) {
+    // 前回0件でも「ありません」とは言わない(読み込み中)
+    sessionsList.textContent = '';
+    sessionsEmpty.textContent = t('recordings.sessions.loading');
+    sessionsEmpty.style.display = 'flex';
+    return;
   }
   renderSessions(message.sessions);
 }
