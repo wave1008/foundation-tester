@@ -4,13 +4,18 @@ struct ScrollScreen: View {
     @State private var selected = "-"
     @State private var tagSelected = "-"
     @State private var scrollToken = 0
+    @State private var topVisibleRow = 1
 
     var body: some View {
         // ScreenColumn は使わず自前で組む: UITableView を残り高さいっぱいに伸ばすため。
         VStack(alignment: .leading, spacing: 8) {
             TaggedText(tag: Tags.txtRowSelected, text: "selected=\(selected)")
-            TaggedButton(tag: Tags.btnScrollTop, label: "先頭へ") { scrollToken += 1 }
-            RowTableView(selected: $selected, scrollToTopToken: scrollToken)
+            // #txt_scroll_top はボタンの横に置く(縦に足すとリストが縮み、契約の「#row_06 まで完全に見える」が崩れる)
+            HStack(spacing: 12) {
+                TaggedButton(tag: Tags.btnScrollTop, label: "先頭へ") { scrollToken += 1 }
+                TaggedText(tag: Tags.txtScrollTop, text: "top=\(Tags.row(topVisibleRow))")
+            }
+            RowTableView(selected: $selected, topVisibleRow: $topVisibleRow, scrollToTopToken: scrollToken)
             // 横スクロールの検証材料(scrollFrame)。**リストの下に置く** —— 画面中央に置くと
             // 領域を指定しない従来スクロール(画面中央基準)がカルーセルに吸われる。
             // **1画面に 3〜4 個しか入らない幅**にする ——

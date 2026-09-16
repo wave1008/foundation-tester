@@ -1,6 +1,8 @@
 package com.ftester.e2e.screens
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -35,8 +38,13 @@ fun ScrollScreen() {
     // ScreenColumn は使わず自前で組む: LazyColumn を weight で残り高さいっぱいに伸ばすため。
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         TaggedText(Tags.TXT_ROW_SELECTED, "selected=$selected")
-        TaggedButton(Tags.BTN_SCROLL_TOP, "先頭へ") {
-            scope.launch { listState.animateScrollToItem(0) }
+        // #txt_scroll_top はボタンの横に置く(縦に足すとリストが縮み、契約の「#row_08 まで完全に見える」が崩れる)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TaggedButton(Tags.BTN_SCROLL_TOP, "先頭へ") {
+                scope.launch { listState.animateScrollToItem(0) }
+            }
+            Spacer(Modifier.width(12.dp))
+            TaggedText(Tags.TXT_SCROLL_TOP, "top=" + Tags.row(listState.firstVisibleItemIndex + 1))
         }
         // スコープセレクタ(`#list_rows >> ...`)の容器
         LazyColumn(state = listState,

@@ -74,6 +74,7 @@ object Tags {
     // スクロール
     const val TXT_ROW_SELECTED = "txt_row_selected"
     const val BTN_SCROLL_TOP = "btn_scroll_top"
+    const val TXT_SCROLL_TOP = "txt_scroll_top"
     const val LIST_ROWS = "list_rows"
 
     /** 行 tag。n は 1..ROW_COUNT。ゼロ詰め("row_01")= ラベルの部分一致衝突回避と対。 */

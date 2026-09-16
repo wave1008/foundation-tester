@@ -88,7 +88,10 @@ class スクロールで折り返し下の要素に到達できること {
                     tap("#nav_scroll")
                     swipeElementToElement("#row_06", "#row_02", durationSeconds: 0.5)
                 }.expectation {
-                    notExist("#row_01", timeout: 5)
+                    // notExist で行を追い出して確かめると RecyclerView の再利用窓に依存し、
+                    // 慣性の小さい遅い台で #row_01 が木に残って誤って赤になる(docs/ui-contract.md
+                    // §スクロール画面)。先頭に見えている行のラベル(#txt_scroll_top)で確かめる。
+                    select("#txt_scroll_top").textIsNot("top=row_01")
                 }
             }
             scene(9, "07.S0050: notExist(scroll:) で不在をスクロール探索できる") {

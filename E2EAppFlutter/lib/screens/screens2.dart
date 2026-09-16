@@ -253,9 +253,27 @@ class _ScrollScreenState extends State<ScrollScreen> {
   final _tagController = ScrollController();
   String _selected = '-';
   String _tagSelected = '-';
+  // 行の高さは 56 固定(itemBuilder の SizedBox)なので offset から直接割り出せる。
+  int _topRowIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_updateTopRow);
+  }
+
+  // #txt_scroll_top(先頭に一部でも見えている行)。docs/ui-contract.md §スクロール画面
+  void _updateTopRow() {
+    // clamp は num を返す(int.clamp が int を返すとは限らない)ので明示的に int へ戻す。
+    final index = (_controller.offset / 56).floor().clamp(0, Tags.rowCount - 1).toInt();
+    if (index != _topRowIndex) {
+      setState(() => _topRowIndex = index);
+    }
+  }
 
   @override
   void dispose() {
+    _controller.removeListener(_updateTopRow);
     _controller.dispose();
     _tagController.dispose();
     super.dispose();
@@ -268,7 +286,14 @@ class _ScrollScreenState extends State<ScrollScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TaggedText(Tags.txtRowSelected, 'selected=$_selected'),
-        TaggedButton(Tags.btnScrollTop, '先頭へ', onTap: () => _controller.jumpTo(0)),
+        // #txt_scroll_top はボタンの横に置く(縦に足すとリストが縮み、契約の「#row_06 まで完全に見える」が崩れる)
+        Row(
+          children: [
+            TaggedButton(Tags.btnScrollTop, '先頭へ', onTap: () => _controller.jumpTo(0)),
+            const SizedBox(width: 12),
+            TaggedText(Tags.txtScrollTop, 'top=${Tags.row(_topRowIndex + 1)}'),
+          ],
+        ),
         Expanded(
           // スコープセレクタ(`#list_rows >> ...`)の容器。**MergeSemantics で包まない** —
           // 畳むと子孫が消えてスコープの対象が無くなる(tagged() は畳むので使えない)。

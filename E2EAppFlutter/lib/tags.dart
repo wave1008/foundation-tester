@@ -72,6 +72,7 @@ class Tags {
   // スクロール
   static const txtRowSelected = 'txt_row_selected';
   static const btnScrollTop = 'btn_scroll_top';
+  static const txtScrollTop = 'txt_scroll_top';
   static const listRows = 'list_rows';
   static const rowCount = 40;
 

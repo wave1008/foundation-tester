@@ -11,12 +11,27 @@
         android:layout_height="wrap_content"
         android:text="selected=-" />
 
-    <Button
-        android:id="@+id/btn_scroll_top"
+    <!-- #txt_scroll_top はボタンの横に置く(縦に足すとリストが縮み、契約の「#row_06 まで完全に見える」が崩れる) -->
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:minHeight="48dp"
-        android:text="先頭へ" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btn_scroll_top"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="先頭へ" />
+
+        <TextView
+            android:id="@+id/txt_scroll_top"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="top=row_01" />
+    </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/list_rows"

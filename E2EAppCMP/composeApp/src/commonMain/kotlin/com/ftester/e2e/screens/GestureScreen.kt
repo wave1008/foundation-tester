@@ -62,7 +62,10 @@ fun GestureScreen(onOpenMap: () -> Unit = {}) {
                             if (dy < 0) "up" else "down"
                         }
                         last = "swipe"
-                    }
+                    },
+                    // 取り消されたドラッグは swipeDir を変えない。**届いて取り消された**ことだけ残す
+                    // (swipePointToPoint が稀に効かない件で「届いていない」と見分けるための印)
+                    onDragCancel = { last = "swipe-cancelled" }
                 ) { change, dragAmount ->
                     change.consume()
                     dx += dragAmount.x

@@ -151,10 +151,28 @@ fun buildMapScreen(activity: Activity, parent: ViewGroup): View {
 fun buildScrollScreen(activity: Activity, parent: ViewGroup): View {
     val v = activity.layoutInflater.inflate(R.layout.screen_scroll, parent, false)
     val selected = v.findViewById<TextView>(R.id.txt_row_selected)
+    val topRow = v.findViewById<TextView>(R.id.txt_scroll_top)
     val list = v.findViewById<RecyclerView>(R.id.list_rows)
-    list.layoutManager = LinearLayoutManager(activity)
+    val layoutManager = LinearLayoutManager(activity)
+    list.layoutManager = layoutManager
     list.adapter = RowAdapter { n -> selected.text = "selected=${rowTag(n)}" }
-    v.findViewById<Button>(R.id.btn_scroll_top).setOnClickListener { list.scrollToPosition(0) }
+    // #txt_scroll_top(先頭に一部でも見えている行)。docs/ui-contract.md §スクロール画面
+    fun updateTopRow() {
+        val first = layoutManager.findFirstVisibleItemPosition()
+        if (first != RecyclerView.NO_POSITION) {
+            topRow.text = "top=${rowTag(first + 1)}"
+        }
+    }
+    list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+        override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+            updateTopRow()
+        }
+    })
+    list.post { updateTopRow() }
+    v.findViewById<Button>(R.id.btn_scroll_top).setOnClickListener {
+        list.scrollToPosition(0)
+        list.post { updateTopRow() }
+    }
     // 横スクロールの検証材料(scrollFrame)。縦リストと同居させることで
     // 「指定した領域だけが動く」を検証できる
     val tagSelected = v.findViewById<TextView>(R.id.txt_tag_selected)

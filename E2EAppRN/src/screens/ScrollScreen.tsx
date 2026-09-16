@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { FlatList, StyleSheet, View, ViewToken } from 'react-native';
 
 import { rowCount, tag, tagCount, tagLabel, Tags, row, rowLabel } from '../tags';
 import { EchoText, TaggedButton } from '../ui';
@@ -14,16 +14,35 @@ const CAROUSEL = Array.from({ length: tagCount }, (_, i) => i + 1);
 export function ScrollScreen() {
   const [selected, setSelected] = useState('-');
   const [tagSelected, setTagSelected] = useState('-');
+  const [topRow, setTopRow] = useState(1);
   const listRef = useRef<FlatList<number>>(null);
+
+  // #txt_scroll_top(先頭に一部でも見えている行。docs/ui-contract.md §スクロール画面)。
+  // 行の実効高さが固定でない(minHeight + margin)ので offset からは割らず FlatList の可視判定を使う
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      const indices = viewableItems
+        .map(v => v.index)
+        .filter((i): i is number => i !== null && i !== undefined);
+      if (indices.length > 0) {
+        setTopRow(Math.min(...indices) + 1);
+      }
+    }
+  ).current;
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 1 }).current;
 
   return (
     <View style={styles.container}>
       <EchoText testID={Tags.txtRowSelected}>{`selected=${selected}`}</EchoText>
-      <TaggedButton
-        testID={Tags.btnScrollTop}
-        label="先頭へ"
-        onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: false })}
-      />
+      {/* #txt_scroll_top はボタンの横に置く(縦に足すとリストが縮み、契約の「#row_06 まで完全に見える」が崩れる) */}
+      <View style={styles.headerRow}>
+        <TaggedButton
+          testID={Tags.btnScrollTop}
+          label="先頭へ"
+          onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: false })}
+        />
+        <EchoText testID={Tags.txtScrollTop}>{`top=${row(topRow)}`}</EchoText>
+      </View>
       <FlatList
         testID={Tags.listRows}
         ref={listRef}
@@ -37,6 +56,8 @@ export function ScrollScreen() {
         removeClippedSubviews
         // 下端の余白: 最終行がビューポート下端に貼り付いたままだと座標タップが外れやすい。
         contentContainerStyle={{ paddingBottom: 80 }}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
         renderItem={({ item: n }) => (
           <TaggedButton
             testID={row(n)}
@@ -72,6 +93,11 @@ export function ScrollScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   container: {
     flex: 1,
     padding: 16,

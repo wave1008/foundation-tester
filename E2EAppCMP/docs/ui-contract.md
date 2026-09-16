@@ -262,7 +262,7 @@ Android は intent に package を明示するので影響しないが、**契�
 | `#txt_press_count` | Text | `press=<n>` 初期 `press=0` | |
 | `#pad_swipe` | Box | 内部に Text `スワイプ領域` | **コンテンツ領域いっぱい**。他要素はこの上に重ねる |
 | `#txt_swipe_dir` | Text | `swipe=<dir>` 初期 `swipe=-` | dir ∈ `up`/`down`/`left`/`right` |
-| `#txt_last_gesture` | Text | `last=<g>` 初期 `last=-` | g ∈ `tap`/`longpress`/`swipe` |
+| `#txt_last_gesture` | Text | `last=<g>` 初期 `last=-` | g ∈ `tap`/`longpress`/`swipe`。**CMP だけ** `swipe-cancelled`(ドラッグが届いたが取り消された。`swipe=<dir>` は変えない)も出す —— `swipePointToPoint` が稀に効かないとき、届かなかったのか取り消されたのかを失敗時の木で見分けるための印 |
 | `#btn_gesture_reset` | Button | `ジェスチャクリア` | 全カウンタを初期化 |
 | `#nav_map` | Button | `マップ` | **右下**に置く(マップ画面を開く。左下は `#btn_gesture_reset`)|
 
@@ -313,10 +313,13 @@ in-app 経路のソース走査テスト(`InAppGestureRoutingTests`)が担う。
 |---|---|---|---|
 | `#txt_row_selected` | Text | `selected=<v>` 初期 `selected=-` | 固定ヘッダ(スクロールしない) |
 | `#btn_scroll_top` | Button | `先頭へ` | 固定ヘッダ |
+| `#txt_scroll_top` | Text | `top=row_NN` 初期 `top=row_01` | **固定ヘッダ・`#btn_scroll_top` の横(同じ行)**。縦に積むとリストが縮み、下の「`#row_06`(CMP は `#row_08`)まで完全に見える」が崩れる。スクロールしても木から消えない。NN はリストの表示領域に**一部でも見えている最初の行**の番号(2 桁ゼロ埋め)。最小サポート画面でもリストと同時に木に載ること |
 | `#list_rows` | (容器) | (ラベルなし) | 行を包むスクロール容器。**スコープセレクタ `#list_rows >> …` の対象** |
 | `#row_01` … `#row_40` | Button | `行 01` … `行 40` | 高さ 56dp 以上・ゼロ詰め・**`#list_rows` の子孫**。**初期表示で `#row_06` までは完全に見える**こと(下の横カルーセルぶんリストが短い。シナリオの `swipeElementToElement` が依存する)。**CMP はさらに `#row_08` まで完全に見えること** — CMP の S0030 は `#row_06` 起点だとドラッグ距離が足りず `#row_01` が消えない(実測)ため `#row_08` 起点で、この保証に乗っている |
 
-行タップで `selected=row_NN`。`#row_40` は `scrollTo` の到達目標。
+行タップで `selected=row_NN`。`#row_40` は `scrollTo` の到達目標。**「スクロールした」ことの確認は
+`#txt_scroll_top` で行い、`notExist` で行を追い出して確かめない**(リストの再利用窓・キャッシュ範囲に
+依存し、慣性の小さい遅い台で残った行が誤って赤になる)。
 
 **同じ画面に横スクロール領域も置く**(スクロール領域の指定 = `scrollFrame` の検証材料。
 縦と横が同居していないと「指定した方だけが動く」ことを確かめられない):
