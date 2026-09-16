@@ -5,6 +5,7 @@
 // 頼む。シナリオ全体で −14〜19%。launch の「再起動」意味論は維持される。
 // 注: attachOnly(整定なし接続 約0.1s)も試したが、浮いた整定コストが最初のステップの
 // ポーリング待ちに移動して相殺・むしろ微悪化(bench-7 vs bench-8)のため activate を採用。
+// **attach は activate の前に 1 回だけ撃つ**(置き換えではない。理由は launch(bundleID:) の中)。
 
 import Foundation
 import FTCore
@@ -29,11 +30,37 @@ public final class FastLaunchDriver: AppDriver {
         let actionStart = clock.now
         try launchViaCoreSimOrSimctl(bundleID: bundleID)
         let actionMs = continuousClockMs(clock.now - actionStart)
-        // activate = プロキシ接続+前面化+初回整定(冒頭コメントの attachOnly 不採用理由を参照)
         let waitStart = clock.now
+        // **ランナーが前面と見るまで、接続だけで待つ**(attach = ランナー側の
+        // `wait(for: .runningForeground, timeout: 5)`。待ち切れなくても XCTest の失敗を記録しない)。
+        // activate はランナーがアプリを「動いていない」と見ると起動し直し、その起動が時間切れになると
+        // main が戻らず**ランナーごと落ちる**(2026-09-16: 起動直後・高負荷のシミュレータで、1 本の起動
+        // 失敗がレーンの喪失(建て直し約 60 秒 + 再キュー)になった。ランナーの見張りを 180 秒に延ばしても
+        // main は戻らなかった = 撃った時点で手遅れ)。**待ち切れなくても activate は撃つ**(従来の挙動)が、
+        // その事実を注記に残す —— 次にランナーが落ちたとき、この形だったかが記録から分かる
+        let activatedBeforeForeground = try await attachMissedForeground(bundleID: bundleID)
+        lastLaunchTimingValue = LaunchTiming(
+            actionMs: actionMs, waitMs: continuousClockMs(clock.now - waitStart),
+            activatedBeforeForeground: activatedBeforeForeground)
+        // activate = プロキシ接続+前面化+初回整定(冒頭コメントの attachOnly 不採用理由を参照)
         try await base.activate(bundleID: bundleID)
-        let waitMs = continuousClockMs(clock.now - waitStart)
-        lastLaunchTimingValue = LaunchTiming(actionMs: actionMs, waitMs: waitMs)
+        lastLaunchTimingValue = LaunchTiming(
+            actionMs: actionMs, waitMs: continuousClockMs(clock.now - waitStart),
+            activatedBeforeForeground: activatedBeforeForeground)
+    }
+
+    /// 前面と見なかったら true。**ランナーが「前面ではない」と答えた(HTTP 500)ときだけ**立てる ——
+    /// 接続できない等の失敗はそのまま投げる(activate も同じ理由で失敗するので撃たない)。
+    /// 注入口 `FT_FAKE_LAUNCH_NOT_FOREGROUND=1`: 答えを「前面ではない」に差し替える(実際には意図して
+    /// 起こせないので、注記の配線と「それでも activate して続く」ことの陽性対照に使う)
+    private func attachMissedForeground(bundleID: String) async throws -> Bool {
+        if ProcessInfo.processInfo.environment["FT_FAKE_LAUNCH_NOT_FOREGROUND"] == "1" { return true }
+        do {
+            try await base.attach(bundleID: bundleID)
+            return false
+        } catch DriverError.badResponse(let status, _) where status == 500 {
+            return true
+        }
     }
 
     /// CoreSimulator 直叩き優先(simctl launch 883〜909ms → ほぼ0ms・2026-08-02実測)。

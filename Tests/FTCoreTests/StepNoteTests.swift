@@ -28,6 +28,7 @@ final class StepNoteTests: XCTestCase {
         XCTAssertEqual(StepNote.settledAfterKeyboard.rawValue, "settled-after-keyboard")
         XCTAssertEqual(StepNote.actedOutsideContainer.rawValue, "acted-outside-container")
         XCTAssertEqual(StepNote.unchangedTapBeforeFailure.rawValue, "unchanged-tap-before-failure")
+        XCTAssertEqual(StepNote.launchActivatedBeforeForeground.rawValue, "launch-activated-before-foreground")
     }
 
     // MARK: - 永続化(results/ まで運ばれるか)

@@ -21,7 +21,11 @@ public func launchApp(_ bundleID: String? = nil, url: String? = nil,
     var deliveredBeforeUI = false
     core.performCustom(description: description, command: "launchApp", file: file, line: line,
                        launchTiming: { driver.lastLaunchTiming },
-                       note: { deliveredBeforeUI ? .launchURLBeforeInteractiveUI : nil }) {
+                       note: {
+                           if deliveredBeforeUI { return .launchURLBeforeInteractiveUI }
+                           return driver.lastLaunchTiming?.activatedBeforeForeground == true
+                               ? .launchActivatedBeforeForeground : nil
+                       }) {
         try await driver.launch(bundleID: bundle)
         if let url {
             deliveredBeforeUI = try await !core.executor.awaitInteractiveUI(
@@ -49,7 +53,11 @@ public func restartApp(_ bundleID: String? = nil,
     let bundle = bundleID ?? core.appBundleID
     let driver = core.driver
     core.performCustom(description: "restart \(bundle)", command: "restartApp", file: file, line: line,
-                       launchTiming: { driver.lastLaunchTiming }) {
+                       launchTiming: { driver.lastLaunchTiming },
+                       note: {
+                           driver.lastLaunchTiming?.activatedBeforeForeground == true
+                               ? .launchActivatedBeforeForeground : nil
+                       }) {
         try? await driver.terminate()
         try await driver.launch(bundleID: bundle)
     }

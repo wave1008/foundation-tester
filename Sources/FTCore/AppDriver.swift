@@ -12,9 +12,13 @@ import Foundation
 public struct LaunchTiming: Sendable {
     public let actionMs: Int
     public let waitMs: Int
-    public init(actionMs: Int, waitMs: Int) {
+    /// 起動させた後、**XCUITest ランナーがアプリを前面と見ないまま activate を頼んだ**
+    /// (FastLaunchDriver。注記 `StepNote.launchActivatedBeforeForeground` の材料)
+    public let activatedBeforeForeground: Bool
+    public init(actionMs: Int, waitMs: Int, activatedBeforeForeground: Bool = false) {
         self.actionMs = actionMs
         self.waitMs = waitMs
+        self.activatedBeforeForeground = activatedBeforeForeground
     }
 }
 

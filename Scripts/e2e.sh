@@ -297,6 +297,15 @@ for sut in $SUTS; do
       if needs_rebuild "$APP/dist/ios-simulator/FTE2EIOS.app" "$APP/Sources"; then
         echo "→ SUT ios-native を再ビルドします..."; "$APP/scripts/build-ios.sh"
       fi
+      # **実機用の成果物も揃える**(実機プロファイル ios-iphonese3 / ios-iphone13 が使う。このスイートは
+      # 実機を回さないので、ここで作り直さないと古いアプリのまま実機で走り、足したばかりの #id が
+      # 「element not found」で赤になる = 2026-09-16 に SE3 で踏んだ)。実機用を一度も作っていない
+      # 機械では作らない(署名の Team ID が要る)。失敗は警告だけでスイートの合否は変えない
+      if [ -e "$APP/dist/ios-device/FTE2EIOS.app" ] && needs_rebuild "$APP/dist/ios-device/FTE2EIOS.app" "$APP/Sources"; then
+        echo "→ SUT ios-native(実機用)を再ビルドします..."
+        "$APP/scripts/build-ios-device.sh" \
+          || echo "⚠️ 実機用の再ビルドに失敗しました(E2EAppIOS/scripts/build-ios-device.sh)。実機プロファイルは古いアプリのまま走ります"
+      fi
       run_profile E2E-iOS "$IOS_PROFILE"
       ;;
     android-native)

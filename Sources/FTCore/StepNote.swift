@@ -237,6 +237,13 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// S0020 は約 130 回中 2 回で、それまでは失敗文言にしか残らず数えられなかった)
     case unchangedTapBeforeFailure = "unchanged-tap-before-failure"
 
+    /// xcuitest の高速起動で、起動させた後に**ランナーがアプリを前面と見ないまま** activate を頼んだ
+    /// (`FastLaunchDriver`。ランナーが 5 秒待っても前面にならなかった)。activate はアプリを
+    /// 「動いていない」と見ると起動し直し、その起動が時間切れになるとランナーごと落ちる
+    /// (2026-09-16 の L18)。**立つだけでは失敗ではない**(activate が通れば緑)。
+    /// **率が上がったら起動の遅い台・高負荷**で、ランナー喪失の手前にいる
+    case launchActivatedBeforeForeground = "launch-activated-before-foreground"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -311,6 +318,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .settledAfterKeyboard:
             return "the preceding type shifted the on-screen layout (keyboard), so this waited for"
                 + " it to settle before resolving the target"
+        case .launchActivatedBeforeForeground:
+            return "the test runner did not see the app in the foreground after launching it, so it was"
+                + " asked to activate it anyway (which can make the runner relaunch the app)"
         case .unchangedTapBeforeFailure:
             return "a tap before this failure did not change the screen at all"
         case .actedOutsideContainer:
