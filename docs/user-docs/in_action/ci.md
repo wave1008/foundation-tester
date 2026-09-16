@@ -64,6 +64,12 @@ pipeline {
 
 - Device provisioning (simulator boot, bridge) is handled automatically by a `--profile` run.
   Consecutive jobs reuse an already-running bridge; only the first run pays the cold-start cost.
+- A run does not stop the bridge. A bridge exits on its own after a period without requests
+  (`FT_BRIDGE_TTL`, 2 hours by default), and the working files of an exited bridge are deleted when
+  the next job starts. An iOS bridge's working files **keep growing while it runs** (roughly
+  120–240 MB per hour per bridge while it is being driven). If your jobs pause for 2 hours or more
+  (overnight, for example), no cleanup is needed. **If jobs run around the clock without such a gap**,
+  run `fleetest devices down` periodically.
 - To clean up between jobs, add `fleetest devices down` (stops every bridge and shuts down every
   simulator/emulator) at the end of the job.
 
