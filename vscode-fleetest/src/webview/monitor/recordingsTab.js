@@ -161,7 +161,7 @@ function sessionMachines(message) {
   return typeof message.machine === 'string' && message.machine !== '' ? [message.machine] : [];
 }
 
-/** セッション行の3段目「実行マシン」。**台は出さない**(2026-08-26 ユーザー指示)——
+/** セッション行の2カラム目「実行マシン」のバッジ群。**台は出さない**(2026-08-26 ユーザー指示)——
  *  台は動画ごとに違うので、行では機械だけを見せて中身は再生ビューで見る。
  *  マシンが読めない古い記録では null(段を作らない)。 */
 function buildSessionMeta(session) {
@@ -201,30 +201,44 @@ function renderSessions(sessions) {
     startedSpan.className = 'recordings-session-started';
     startedSpan.textContent = formatDateTime(session.startedAt);
     main.appendChild(startedSpan);
-    const meta = buildSessionMeta(session);
-    if (meta) {
-      main.appendChild(meta);
-    }
     row.appendChild(main);
 
+    // 2カラム目 = 実行マシン、3カラム目 = 成否・録画の欠落(左詰めで縦に並べる)。
+    // 中身が無くても列は置く = 全行で各カラムの位置が揃う(style.css の .recordings-session-item)
+    const machinesCol = document.createElement('div');
+    machinesCol.className = 'recordings-session-machine-col';
+    const meta = buildSessionMeta(session);
+    if (meta) {
+      machinesCol.appendChild(meta);
+    }
+    row.appendChild(machinesCol);
+
+    const status = document.createElement('div');
+    status.className = 'recordings-session-status';
     if (session.passed !== null && session.failed !== null) {
+      // 成功(1件以上なら緑)・区切り(グレー)・失敗(1件以上なら赤)を別の要素にして色を分ける
       const counts = document.createElement('span');
       counts.className = 'recordings-session-counts';
-      if (session.failed > 0) {
-        counts.classList.add('recordings-session-counts-failed');
-      }
-      counts.textContent = t('recordings.sessions.passedFailed', {
-        passed: session.passed,
-        failed: session.failed,
-      });
-      row.appendChild(counts);
+      const passed = document.createElement('span');
+      passed.className = 'recordings-session-passed';
+      passed.classList.toggle('recordings-session-counts-passed', session.passed > 0);
+      passed.textContent = t('recordings.sessions.passed', { passed: session.passed });
+      const separator = document.createElement('span');
+      separator.className = 'recordings-session-separator';
+      separator.textContent = ' / ';
+      const failed = document.createElement('span');
+      failed.className = 'recordings-session-failed';
+      failed.classList.toggle('recordings-session-counts-failed', session.failed > 0);
+      failed.textContent = t('recordings.sessions.failed', { failed: session.failed });
+      counts.append(passed, separator, failed);
+      status.appendChild(counts);
     }
 
     if (session.clipsFailed !== null && session.clipsFailed > 0) {
       const clipsFailed = document.createElement('span');
       clipsFailed.className = 'recordings-session-counts recordings-session-counts-failed';
       clipsFailed.textContent = t('recordings.sessions.clipsFailed', { count: session.clipsFailed });
-      row.appendChild(clipsFailed);
+      status.appendChild(clipsFailed);
     }
 
     // **録画そのものが取れなかった台**(切り出し失敗とは別物)。これを出さないと、
@@ -233,8 +247,9 @@ function renderSessions(sessions) {
       const sourcesFailed = document.createElement('span');
       sourcesFailed.className = 'recordings-session-counts recordings-session-counts-failed';
       sourcesFailed.textContent = t('recordings.sessions.sourcesFailed', { count: session.sourcesFailed });
-      row.appendChild(sourcesFailed);
+      status.appendChild(sourcesFailed);
     }
+    row.appendChild(status);
 
     const open = () => vscode.postMessage({ type: 'recordingsOpen', project: session.project, runID: session.runID });
     row.addEventListener('click', open);

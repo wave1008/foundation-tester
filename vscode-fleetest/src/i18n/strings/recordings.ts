@@ -12,9 +12,8 @@ export const recordingsStrings = {
     ja: "テストプロジェクトを選択してください。",
     en: "Select a test project.",
   },
-  "recordings.sessions.passedFailed": {
-    ja: "{passed} 成功 / {failed} 失敗", en: "{passed} passed / {failed} failed",
-  },
+  "recordings.sessions.passed": { ja: "{passed} 成功", en: "{passed} passed" },
+  "recordings.sessions.failed": { ja: "{failed} 失敗", en: "{failed} failed" },
   "recordings.errors.none": { ja: "エラーなし", en: "No errors" },
   "recordings.errors.filtering": { ja: "フィルター中: {label}", en: "Filtered: {label}" },
   "recordings.errors.noneFiltered": {

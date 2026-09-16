@@ -2567,18 +2567,25 @@ button.settings-remote-hosts-color-swatch:focus-visible {
   padding: 16px 4px;
   color: var(--vscode-descriptionForeground);
 }
+/* 3カラム(run 名・日時 / 実行マシン / 成否・録画の欠落)。列幅は一覧の側で決め、各行は subgrid で
+   それに乗る = 1・2列目は全行で最も長い中身の幅になり、列の開始位置が全行で揃う(固定幅だと短い名前で
+   余白が空きすぎる)。ペインが狭いとき縮むのは1列目(run 名は ellipsis)だけ —— 2・3列目も縮めると
+   3列目(fr)に幅が回らず、文字が1字ずつ折り返して行が縦に伸びる */
 .recordings-sessions {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) max-content minmax(max-content, 1fr);
+  align-content: start;
+  row-gap: 4px;
+  column-gap: 16px;
 }
 .recordings-session-item {
-  display: flex;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
   align-items: center;
-  gap: 12px;
   padding: 8px 10px;
   border: 1px solid var(--ft-control-border);
   border-radius: 3px;
@@ -2590,7 +2597,6 @@ button.settings-remote-hosts-color-swatch:focus-visible {
   outline: none;
 }
 .recordings-session-main {
-  flex: 1 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -2606,18 +2612,33 @@ button.settings-remote-hosts-color-swatch:focus-visible {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
-/* セッション行の3段目「実行マシン + 台」。台数が多い run でも行が横に伸びないよう、
-   4台目以降は recordingsTab.js が「ほかN台」へ畳む(全台名はその title に残る)。 */
+.recordings-session-machine-col {
+  min-width: 0;
+}
 .recordings-session-meta {
   display: flex;
   align-items: center;
   gap: 4px;
   flex-wrap: wrap;
-  margin-top: 2px;
+}
+/* 2・3列目の間だけ広げる(column-gap 16px + 16px。マシン名のバッジと成否が近すぎて読みにくい) */
+.recordings-session-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  margin-left: 16px;
 }
 .recordings-session-counts {
   flex: 0 0 auto;
   font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+.recordings-session-counts-passed {
+  color: var(--vscode-charts-green, #388a34);
+}
+.recordings-session-separator {
   color: var(--vscode-descriptionForeground);
 }
 .recordings-session-counts-failed {
