@@ -83,9 +83,7 @@ export const panelsStrings = {
   "panels.runProfile.copyTitle": { ja: "実行プロファイルのコピー", en: "Copy run profile" },
   "panels.runProfile.removeTitle": { ja: "実行プロファイルの削除", en: "Delete run profile" },
   "panels.runProfile.renameTitle": { ja: "実行プロファイル名の変更", en: "Rename run profile" },
-  // {link} には該当セクションへジャンプする .profile-jump-link(HTML)が入る。プロファイル名は
-  // panels.common.appProfile を再利用するので、語を変えるときは片方だけ直さない
-  "panels.runProfile.appLabel": { ja: "参照する{link}", en: "{link} to reference" },
+  "panels.runProfile.appLabel": { ja: "参照するアプリプロファイル", en: "App profile to reference" },
   "panels.runProfile.healLabel": { ja: "セレクタの自己修復を有効にする(指紋照合方式)", en: "Enable selector self-healing (fingerprint matching)" },
   "panels.runProfile.advancedSectionTitle": { ja: "Advanced Features(Experimental)", en: "Advanced Features (Experimental)" },
   "panels.runProfile.textVisualCheckLabel": {

@@ -215,6 +215,28 @@ function updateSelectionUi() {
   }
 }
 
+// 表示順: OS(iOS → Android)→ machine(手元が先頭、以降は昇順)→ 仮想デバイス → 実機。
+// 同順位は rows の順(= ファイルの記述順)のまま。**並べ替えるのは表示だけ** ——
+// rows の順は currentDeviceEntries が保存に使う(起動順の契約)ので変えない
+const PLATFORM_ORDER = { ios: 0, android: 1 };
+export function compareDeviceRowsForDisplay(a, b) {
+  const pa = PLATFORM_ORDER[a.platform] ?? 2;
+  const pb = PLATFORM_ORDER[b.platform] ?? 2;
+  if (pa !== pb) {
+    return pa - pb;
+  }
+  const ma = a.machine && a.machine !== 'local' ? a.machine : '';
+  const mb = b.machine && b.machine !== 'local' ? b.machine : '';
+  if (ma !== mb) {
+    if (ma === '') return -1;
+    if (mb === '') return 1;
+    return ma < mb ? -1 : 1;
+  }
+  const ka = a.body?.kind === 'physical' ? 1 : 0;
+  const kb = b.body?.kind === 'physical' ? 1 : 0;
+  return ka - kb;
+}
+
 function renderRows() {
   deviceList.textContent = '';
   rowElements = new Map();
@@ -226,7 +248,7 @@ function renderRows() {
     updateSelectionUi();
     return;
   }
-  for (const row of rows) {
+  for (const row of [...rows].sort(compareDeviceRowsForDisplay)) {
     const rowEl = document.createElement('div');
     rowEl.className = 'run-profile-device-row-item';
     const checkbox = document.createElement('input');
@@ -235,12 +257,6 @@ function renderRows() {
     checkbox.addEventListener('click', (event) => event.stopPropagation());
     const nameLine = document.createElement('div');
     nameLine.className = 'run-profile-device-name-line';
-    if (row.body.kind === 'physical') {
-      const badge = document.createElement('span');
-      badge.className = 'badge badge-kind';
-      badge.textContent = t('wvMonitor.tile.physicalBadge');
-      nameLine.appendChild(badge);
-    }
     const name = document.createElement('span');
     name.className = 'tile-name tile-name-' + row.platform;
     name.textContent = row.name;
@@ -252,12 +268,21 @@ function renderRows() {
       paintMachineBadge(remote, row.machine);
       nameLine.appendChild(remote);
     }
-    const detail = document.createElement('div');
+    if (row.body.kind === 'physical') {
+      const badge = document.createElement('span');
+      badge.className = 'badge badge-kind';
+      badge.textContent = t('wvMonitor.tile.physicalBadge');
+      nameLine.appendChild(badge);
+    }
+    // 1段表示: 名前段の末尾に detail を並べる(長ければ detail だけが省略される)
+    const detail = document.createElement('span');
     detail.className = 'run-profile-device-detail';
     detail.textContent = deviceDetail(row.body);
+    detail.title = detail.textContent;
+    nameLine.appendChild(detail);
     const textCol = document.createElement('div');
     textCol.className = 'run-profile-device-text';
-    textCol.append(nameLine, detail);
+    textCol.append(nameLine);
     rowEl.append(checkbox, textCol);
     rowEl.addEventListener('click', (event) => toggleRowSelection(row.key, event));
     rowEl.addEventListener('contextmenu', (event) => {

@@ -107,8 +107,8 @@ test("実行プロファイルのデバイス一覧は実機にだけバッジ�
   const badge = rows[1].querySelector(".badge-kind");
   assert.ok(badge, "実機にはバッジを出す");
   assert.equal(badge.textContent, "実機");
-  // バッジはデバイス名ピルの左(デバイス追加ダイアログの一覧と同じ並び)
-  assert.equal(badge.nextElementSibling, rows[1].querySelector(".tile-name"));
+  // バッジはデバイス名ピル(と machine バッジ)の右
+  assert.equal(badge.previousElementSibling, rows[1].querySelector(".tile-name"));
 });
 
 test("カタログに無い名前(欠落)にはバッジを出さない", (t) => {

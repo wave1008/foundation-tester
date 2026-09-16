@@ -959,23 +959,6 @@ html.select-all-guard * {
   border-top: 1px solid var(--vscode-panel-border, transparent);
 }
 
-/* ---- プロファイルタブ: 固定ヘッダ(セクションジャンプリンク) ---- */
-/* button 要素なのでグローバル button スタイルを打ち消す。hover は button:hover:not(:disabled)
-   に詳細度で勝つよう要素セレクタ button を含めて揃える。 */
-button.profile-jump-link {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  color: var(--vscode-textLink-foreground, #3794ff);
-  font-size: inherit;
-}
-button.profile-jump-link:hover:not(:disabled) {
-  background-color: transparent;
-  text-decoration: underline;
-  color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground, #3794ff));
-}
-
 /* ---- プロファイルタブ: 実行プロファイルのデバイス一覧(#run-profile-devices) ---- */
 .profile-toolbar {
   flex: 0 0 auto;
@@ -1053,15 +1036,14 @@ button.profile-jump-link:hover:not(:disabled) {
   /* **10台ぶんで頭打ちにして中でスクロールする**(台数が多いとセクションが画面外まで伸び、
      プロファイルタブの他セクションへ辿り着けない。2026-08-17 指摘)。
      max-height は runProfileDevicesTab.js が11行目の実位置から算出して設定する —— 1行の高さは
-     フォント設定・実機バッジの有無で変わるので、CSS に固定値を置くと行の下段(detail)が
-     切れる(実際に切れた)。 */
+     フォント設定・実機バッジの有無で変わるので、CSS に固定値を置くと行が切れる(実際に切れた)。 */
   overflow-y: auto;
 }
 .run-profile-device-row-item {
-  /* チェックボックス + テキスト列(名前段 + detail 段)。高さは中身に任せる
+  /* チェックボックス + 1段(バッジ・名前・machine・detail)。高さは中身に任せる
      (固定値を入れないこと。上の max-height を参照)。 */
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 6px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
@@ -1096,7 +1078,11 @@ button.profile-jump-link:hover:not(:disabled) {
   color: inherit;
 }
 .run-profile-device-detail {
-  margin-top: 4px;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
@@ -1694,12 +1680,16 @@ input[type="search"]::placeholder {
   align-self: flex-start;
   max-width: 100%;
 }
-/* 実行プロファイルのデバイス一覧の名前段(バッジ+デバイス名ピル) */
+/* 実行プロファイルのデバイス一覧の1段(バッジ+デバイス名ピル+machine+detail)。
+   縮むのは detail だけ(名前・バッジは切らない) */
 .run-profile-device-name-line {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
+}
+.run-profile-device-name-line > :not(.run-profile-device-detail) {
+  flex: 0 0 auto;
 }
 
 /* 実機行の名前段。バッジ(文字幅)+デバイス名ピルを横並びにする。

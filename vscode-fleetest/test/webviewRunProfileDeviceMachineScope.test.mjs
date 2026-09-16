@@ -203,3 +203,40 @@ test("別マシンの同名へのリネームは webview 側の重複検証で�
   assert.equal(update.fields.name, "シミュA");
   assert.equal(update.machine, "M1Max");
 });
+
+// 表示順は OS(iOS → Android)→ machine(手元が先頭・以降は昇順)→ 仮想デバイス → 実機。
+// 並べ替えるのは表示だけで、保存(currentDeviceEntries)はファイルの記述順のまま。
+// 実機バッジは machine バッジの右に置く。
+test("デバイス行は OS・machine・実機の順に並び、実機バッジは machine バッジの右に出る", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+
+  const devices = [
+    { platform: "android", name: "a-local", machine: "local", avd: "A", enabled: true },
+    { platform: "ios", name: "i-zeta", machine: "Zeta", udid: "U1", enabled: true },
+    { platform: "ios", name: "i-phys", machine: "M1Max", kind: "physical", udid: "U2", enabled: true },
+    { platform: "ios", name: "i-virt", machine: "M1Max", udid: "U3", enabled: true },
+    { platform: "android", name: "a-m1", machine: "M1Max", avd: "B", enabled: true },
+    { platform: "ios", name: "i-local", udid: "U4", enabled: true },
+  ];
+  window.dispatchEvent(new window.MessageEvent("message", { data: { ...PROFILE_INFO, apps: ["app"], devices: [] } }));
+  const data = runProfileData(devices);
+  window.dispatchEvent(new window.MessageEvent("message", { data: { ...data, fields: { ...data.fields, app: "app" } } }));
+
+  const rows = deviceRows(document);
+  const names = rows.map((row) => row.querySelector(".tile-name").textContent);
+  assert.deepEqual(names, ["i-local", "i-virt", "i-phys", "i-zeta", "a-local", "a-m1"]);
+
+  const physRow = rows[2];
+  const badges = [...physRow.querySelectorAll(".badge")].map((b) => b.className);
+  assert.deepEqual(badges, ["badge badge-remote", "badge badge-kind"], "実機バッジは machine バッジの右");
+  const line = [...physRow.querySelector(".run-profile-device-name-line").children];
+  assert.ok(line.indexOf(physRow.querySelector(".tile-name")) < line.indexOf(physRow.querySelector(".badge-remote")));
+
+  // 保存は記述順のまま(チェックを1つ切り替えて保存要求を見る)
+  rows[0].querySelector("input[type=checkbox]").click();
+  const saved = posted.filter((m) => m.type === "runProfileSave").pop();
+  assert.ok(saved, "チェックの切り替えで保存が送られる");
+  assert.deepEqual([...saved.fields.devices].map((d) => String(d.name)), devices.map((d) => d.name));
+});

@@ -279,13 +279,6 @@ function renderDevicesPanel(): string {
   </div>`;
 }
 
-// 該当セクションへスクロールするインラインリンク(クリック処理は tabs.js が
-// .profile-jump-link 一括で張る)。label の中に置くが、interactive content なので
-// label の for による転送は起きない(HTML 仕様。押しても select にフォーカスは移らない)。
-function profileJumpLink(targetId: string, label: string): string {
-  return `<button type="button" class="profile-jump-link" data-target="${targetId}">${label}</button>`;
-}
-
 /** プロジェクトは TestProjects/<name>/ ディレクトリのみで名前以外の設定値を持たないため、
  * 実行/アプリプロファイルと違い編集フォーム本体を持たない(ツールバー1行のみ)。 */
 function renderProjectSection(): string {
@@ -335,9 +328,7 @@ function renderRunProfileSection(): string {
         <div id="run-profile-placeholder" class="profile-detail-placeholder" style="display: none;"></div>
         <div id="run-profile-editor" class="run-profile-editor" style="display: none;">
           <div class="modal-row">
-            <label for="run-profile-app">${t("panels.runProfile.appLabel", {
-              link: profileJumpLink("app-profile-section", t("panels.common.appProfile")),
-            })}</label>
+            <label for="run-profile-app">${t("panels.runProfile.appLabel")}</label>
             <select id="run-profile-app"></select>
           </div>
           <div class="modal-row run-profile-devices-row">

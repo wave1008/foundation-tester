@@ -96,8 +96,12 @@ function postDevices(window) {
   window.dispatchEvent(new window.MessageEvent("message", { data: runProfileData(DEVICES) }));
 }
 
+// 表示は OS・machine・実機の順に並べ替わるので、DEVICES の並び(添字)で行を引く
 function deviceRows(document) {
-  return [...document.querySelectorAll("#run-profile-devices .run-profile-device-row-item")];
+  const rendered = [...document.querySelectorAll("#run-profile-devices .run-profile-device-row-item")];
+  return DEVICES.map((d) => rendered.find((row) =>
+    row.querySelector(".tile-name").textContent === d.name
+    && (row.querySelector(".badge-remote")?.textContent ?? undefined) === d.machine));
 }
 
 function openMenuOn(window, row) {

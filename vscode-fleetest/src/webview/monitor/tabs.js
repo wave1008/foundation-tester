@@ -76,13 +76,3 @@ for (const id of TAB_IDS) {
   });
 }
 
-// data-target先へスクロール。リンクは実行プロファイルのラベル内(monitorHtml.ts の
-// profileJumpLink)にあり、静的HTMLなのでこの一括登録で足りる。
-for (const link of document.querySelectorAll('.profile-jump-link')) {
-  link.addEventListener('click', () => {
-    const target = document.getElementById(link.dataset.target);
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  });
-}
