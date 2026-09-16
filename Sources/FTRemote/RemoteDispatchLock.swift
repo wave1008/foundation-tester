@@ -150,6 +150,21 @@ public enum RemoteDispatchLock {
         return "pgrep -f -- \(RemoteShell.quote(pattern)) || true"
     }
 
+    /// 中断したディスパッチが**回収へ入る前に**ロックを外す 1 往復。このディスパッチの run
+    /// (`--report-dir <reportDir>` を引数に持つプロセス)がランナーに残っていれば外さず `busy`、
+    /// 居なければ外して `released` を出す。**居るかを見るのは中断で ssh が先に切れうるから**
+    /// (向こうの run はまだ後始末中かもしれない = 外すと同じ台に 2 本目が乗る)。
+    /// pgrep が自分と祖先を除く点は `liveDispatchedRunsCommand` と同じ
+    public static func releaseIfRunEndedCommand(base: String, reportDir: String) -> String {
+        "if pgrep -f -- \(RemoteShell.quote(regexEscaped(reportDir))) >/dev/null; then echo busy;"
+            + " else \(releaseCommand(base: base)) && echo released; fi"
+    }
+
+    /// `releaseIfRunEndedCommand` の出力が「外した」か。それ以外(busy・空・想定外)は外していない側
+    public static func releasedEarly(_ output: String) -> Bool {
+        output.trimmingCharacters(in: .whitespacesAndNewlines) == "released"
+    }
+
     public static func parseLivePIDs(_ output: String) -> [Int32] {
         output.split(whereSeparator: \.isNewline)
             .compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) }

@@ -846,6 +846,19 @@ public final class StepExecutor {
     /// 直前の操作(tap / 長押し)の記録。**読むのは失敗文言の組み立てだけ**。
     /// StepExecutor+Assert.swift の各失敗経路から読むため internal
     var lastInteraction: LastInteraction?
+    /// **tap が続いたとき、前のタップの記録を次のタップの解決まで持ち越す**入れ物(`executeAction` の入口で
+    /// 移し、`recordInteraction` で次のタップの解決に使った木と比べて確定させる)。
+    /// 直前 1 件だけだと、`tap(効かなかった) → tap(画面を変えないのが正常)→ 検証` で後者を名指しし、
+    /// 本当に効かなかった前者が消える(2026-09-16: E2E-iOS S0020 の `#btn_request_photos` →
+    /// `#btn_freeze_3s`。この並びでは失敗すれば必ず freeze_3s を名指しし、情報になっていなかった)
+    var tapAwaitingNextTree: LastInteraction?
+    /// 次のタップが解決に使った木と比べて**画面が変わっていなかった**と確定した、それより前のタップ
+    /// (古い順の呼び名)。tap / select 以外の操作が走ったら捨てる(`lastInteraction` と同じ「直前」の意味)。
+    /// 追加の撮影はしない(比べるのは既に持っている木だけ)
+    var unchangedEarlierTaps: [String] = []
+    /// 持ち越す件数の上限(同じ画面でタップを連打する台本で失敗文言が伸び続けないため。
+    /// 実例の S0020 は 1 件で足りる)
+    static let unchangedEarlierTapsLimit = 3
     /// **直前のステップが画面を動かした**(スワイプ・スクロール・端送り・探索・ドラッグ =
     /// settledSignature を通った)まま、次のロケータ操作がまだ木を撮っていない。
     /// 立っている間は、次の操作の対象解決の 1 枚だけ **キャッシュを迂回して撮る**(`.afterOwnMove`)。
@@ -973,6 +986,15 @@ public final class StepExecutor {
     /// 飲まれたタップの証跡を採る(LastInteraction 参照)。**追加のスナップショットは撮らない** ——
     /// 解決に使った木をそのまま基準にする。前面要素の判定も同じ木の上の計算だけ
     func recordInteraction(step: FlowStep, element: ElementInfo, in snapshot: SnapshotResponse) {
+        // 前のタップの確定。**同じタップの中で基準を取り直す**(liftCoveredTarget)2 回目は
+        // 持ち越しが既に空なので比べない
+        if let earlier = tapAwaitingNextTree {
+            tapAwaitingNextTree = nil
+            if Self.contentSignature(earlier.before) == Self.contentSignature(snapshot.elements) {
+                unchangedEarlierTaps.append(earlier.description)
+                unchangedEarlierTaps = Array(unchangedEarlierTaps.suffix(Self.unchangedEarlierTapsLimit))
+            }
+        }
         lastInteraction = LastInteraction(
             description: "tap \(step.locatorSummary)",
             before: snapshot.elements,
@@ -1014,7 +1036,25 @@ public final class StepExecutor {
     ///
     /// StepExecutor+Assert.swift の失敗経路から呼ぶため internal
     func tapDiagnosisHint(_ elements: [ElementInfo]?) -> String {
-        guard let last = lastInteraction, let elements, !elements.isEmpty else { return "" }
+        let last = lastTapHint(elements)
+        if last.unchanged || !unchangedEarlierTaps.isEmpty {
+            noteCodesThisStep.insert(.unchangedTapBeforeFailure)
+        }
+        return last.text + earlierTapsHint()
+    }
+
+    /// 次のタップの時点で画面が変わっていなかった、それより前のタップ(`unchangedEarlierTaps`)。
+    /// 直前のタップの結果とは独立に添える —— 直前のタップが「画面を変えないのが正常」な操作でも、
+    /// その前のタップが効いていなかった事実は消さない
+    private func earlierTapsHint() -> String {
+        guard !unchangedEarlierTaps.isEmpty else { return "" }
+        let names = unchangedEarlierTaps.joined(separator: ", then ")
+        return " (earlier, the screen was also unchanged between \(names) and the tap after it"
+            + " — that interaction may have been swallowed)"
+    }
+
+    private func lastTapHint(_ elements: [ElementInfo]?) -> (text: String, unchanged: Bool) {
+        guard let last = lastInteraction, let elements, !elements.isEmpty else { return ("", false) }
         if Self.contentSignature(elements) == Self.contentSignature(last.before) {
             var text = " (the preceding \(last.description) did not change the screen at all"
                 + "; the interaction may have been swallowed"
@@ -1025,15 +1065,15 @@ public final class StepExecutor {
                     ?? taken.type
                 text += " — its point was inside \(label), which is in front of the target"
             }
-            return text + ")"
+            return (text + ")", true)
         }
-        guard let now = Self.relocate(last.target, in: elements) else { return "" }
+        guard let now = Self.relocate(last.target, in: elements) else { return ("", false) }
         let dx = now.frame.x - last.target.frame.x
         let dy = now.frame.y - last.target.frame.y
-        guard (dx * dx + dy * dy).squareRoot() >= Self.movedTargetThreshold else { return "" }
-        return " (the target has moved (\(Int(dx)),\(Int(dy))) since the preceding"
+        guard (dx * dx + dy * dy).squareRoot() >= Self.movedTargetThreshold else { return ("", false) }
+        return (" (the target has moved (\(Int(dx)),\(Int(dy))) since the preceding"
             + " \(last.description) — the tap used the coordinates from before that move,"
-            + " so it may have landed on whatever was there at the time)"
+            + " so it may have landed on whatever was there at the time)", false)
     }
 
     /// 「動いた」と言い切る下限(pt)。整定のわずかな揺れやサブピクセルで注記を出さないための床。

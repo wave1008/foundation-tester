@@ -89,4 +89,59 @@ final class RemoteDispatchLiveRunGuardTests: XCTestCase {
     func testProbeReturnsNothingWhenNoDispatchedRunIsAlive() throws {
         XCTAssertEqual(try probePIDs(base: "/tmp/ftnone-\(UUID().uuidString)"), [])
     }
+
+    // MARK: - 中断時の早い解放(releaseIfRunEndedCommand)
+
+    private func makeLock(base: String) throws {
+        try FileManager.default.createDirectory(
+            atPath: RemoteDispatchLock.lockDirPath(base: base), withIntermediateDirectories: true)
+    }
+
+    private func runEarlyRelease(base: String, reportDir: String) throws -> String {
+        let shell = Process()
+        shell.executableURL = URL(fileURLWithPath: "/bin/zsh")   // ランナーのログインシェルと同じ
+        shell.arguments = ["-c", RemoteDispatchLock.releaseIfRunEndedCommand(base: base, reportDir: reportDir)]
+        let pipe = Pipe()
+        shell.standardOutput = pipe
+        try shell.run()
+        shell.waitUntilExit()
+        XCTAssertEqual(shell.terminationStatus, 0)
+        return String(decoding: pipe.fileHandleForReading.availableData, as: UTF8.self)
+    }
+
+    /// このディスパッチの run がまだ居れば外さない(ssh が先に切れても向こうは後始末中かもしれない)
+    func testEarlyReleaseKeepsTheLockWhileThisRunIsAlive() throws {
+        let base = "/tmp/ftearly-\(UUID().uuidString)"
+        let reportDir = "\(base)/users/alice/work/.fleetest/dispatch/s1/reports"
+        try makeLock(base: base)
+        defer { try? FileManager.default.removeItem(atPath: base) }
+        let run = try spawn(reportDir: reportDir)
+        defer { run.terminate() }
+        Thread.sleep(forTimeInterval: 0.3)
+
+        let output = try runEarlyRelease(base: base, reportDir: reportDir)
+        XCTAssertFalse(RemoteDispatchLock.releasedEarly(output), output)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: RemoteDispatchLock.lockDirPath(base: base)))
+    }
+
+    /// 居なければ外す。**別の stamp の run は妨げない**(同じ発行者の次のディスパッチ等)
+    func testEarlyReleaseRemovesTheLockWhenOnlyAnotherStampIsAlive() throws {
+        let base = "/tmp/ftearly-\(UUID().uuidString)"
+        try makeLock(base: base)
+        defer { try? FileManager.default.removeItem(atPath: base) }
+        let other = try spawn(reportDir: "\(base)/users/alice/work/.fleetest/dispatch/s2/reports")
+        defer { other.terminate() }
+        Thread.sleep(forTimeInterval: 0.3)
+
+        let output = try runEarlyRelease(
+            base: base, reportDir: "\(base)/users/alice/work/.fleetest/dispatch/s1/reports")
+        XCTAssertTrue(RemoteDispatchLock.releasedEarly(output), output)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: RemoteDispatchLock.lockDirPath(base: base)))
+    }
+
+    func testReleasedEarlyReadsOnlyTheReleasedWord() {
+        XCTAssertTrue(RemoteDispatchLock.releasedEarly("released\n"))
+        XCTAssertFalse(RemoteDispatchLock.releasedEarly("busy\n"))
+        XCTAssertFalse(RemoteDispatchLock.releasedEarly(""))
+    }
 }

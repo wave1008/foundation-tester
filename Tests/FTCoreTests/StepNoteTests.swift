@@ -26,6 +26,8 @@ final class StepNoteTests: XCTestCase {
         XCTAssertEqual(StepNote.ocrWarmupWaited.rawValue, "ocr-warmup-waited")
         XCTAssertEqual(StepNote.ocrWarmupCapped.rawValue, "ocr-warmup-capped")
         XCTAssertEqual(StepNote.settledAfterKeyboard.rawValue, "settled-after-keyboard")
+        XCTAssertEqual(StepNote.actedOutsideContainer.rawValue, "acted-outside-container")
+        XCTAssertEqual(StepNote.unchangedTapBeforeFailure.rawValue, "unchanged-tap-before-failure")
     }
 
     // MARK: - 永続化(results/ まで運ばれるか)

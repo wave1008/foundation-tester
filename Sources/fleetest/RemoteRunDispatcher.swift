@@ -90,7 +90,8 @@ struct RemoteRunDispatcher {
         let lockHeldRelay = InterruptRelay.observing { interruptFlag.mark() }
         defer { lockHeldRelay.stop() }
         try acquireDispatchLock(layout: layout)
-        defer { releaseDispatchLock(layout: layout) }
+        var lockReleasedEarly = false
+        defer { if !lockReleasedEarly { releaseDispatchLock(layout: layout) } }
         reapOrphanedHooksAcrossIssuers(layout: layout)
 
         // ワークスペースの用意(ステージング)は project の rsync より先に行う。ワークスペースは
@@ -118,6 +119,9 @@ struct RemoteRunDispatcher {
         let exitCode = try runRemoteAndRelay(
             fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds,
             stamp: stamp, project: project.name)
+        if interruptFlag.interrupted {
+            lockReleasedEarly = releaseLockIfRunEnded(layout: layout, reportDir: remoteReportDir)
+        }
 
         collectReports(project: project, remoteReportDir: remoteReportDir,
                       interrupted: interruptFlag.interrupted)
@@ -164,7 +168,8 @@ struct RemoteRunDispatcher {
         let lockHeldRelay = InterruptRelay.observing { interruptFlag.mark() }
         defer { lockHeldRelay.stop() }
         try acquireDispatchLock(layout: layout)
-        defer { releaseDispatchLock(layout: layout) }
+        var lockReleasedEarly = false
+        defer { if !lockReleasedEarly { releaseDispatchLock(layout: layout) } }
         reapOrphanedHooksAcrossIssuers(layout: layout)
 
         // 順序の理由は dispatch() のコメント参照(prepareWorkspace は transfer() より先)
@@ -187,6 +192,9 @@ struct RemoteRunDispatcher {
         let exitCode = try runRemoteAndRelay(
             fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds,
             stamp: stamp, project: project.name)
+        if interruptFlag.interrupted {
+            lockReleasedEarly = releaseLockIfRunEnded(layout: layout, reportDir: remoteReportDir)
+        }
 
         collectReports(project: project, remoteReportDir: remoteReportDir,
                       interrupted: interruptFlag.interrupted)
@@ -484,6 +492,19 @@ struct RemoteRunDispatcher {
         if !trimmed.isEmpty {
             log("==> reaped teardown scripts left behind on \(host.sshTarget)\n\(trimmed)")
         }
+    }
+
+    /// **中断したときだけ、回収へ入る前にロックを外す**。回収(録画の rsync)は数十秒かかり、その間に
+    /// 中断の猶予が尽きて SIGKILL されると defer に届かずロックが残る(2026-09-16: 3 機とも
+    /// `collecting recordings` の最中に刺されて残った)。外すのはこのディスパッチの run がランナーに
+    /// 居ないと確かめられたときだけ(`releaseIfRunEndedCommand`)。回収は日時付きの dispatch
+    /// ディレクトリと results/ しか読まないのでロックは要らない。外せなかったら従来どおり末尾の defer
+    private func releaseLockIfRunEnded(layout: RemoteLayout, reportDir: String) -> Bool {
+        guard let output = try? sshCapture(RemoteDispatchLock.releaseIfRunEndedCommand(
+            base: layout.base, reportDir: reportDir)) else { return false }
+        let released = RemoteDispatchLock.releasedEarly(output)
+        if released { log("==> released the dispatch lock before collecting (the run was interrupted)") }
+        return released
     }
 
     /// 成功・失敗・タイムアウト・例外いずれでも defer から呼ばれる。解放の失敗は run の成否を

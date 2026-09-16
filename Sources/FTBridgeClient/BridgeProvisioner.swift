@@ -500,6 +500,7 @@ public struct BridgeProvisioner {
     static func sweepStaleLedgers(repoRoot: URL) {
         let stateDir = repoRoot.appendingPathComponent(".fleetest")
         BridgeLauncher.sweepStalePidFiles(repoRoot: repoRoot)
+        BridgeLauncher.sweepOrphanResultBundles(repoRoot: repoRoot)
         StaleLedgerSweep.sweepIproxyPidFiles(stateDir: stateDir)
 
         guard let entries = try? FileManager.default.contentsOfDirectory(

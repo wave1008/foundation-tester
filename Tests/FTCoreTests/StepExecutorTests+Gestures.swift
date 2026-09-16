@@ -373,6 +373,8 @@ extension StepExecutorTests {
                        "ghost をタップしてはいけない: \(log.entries)")
         XCTAssertEqual(outcome.driverFallback?.contains("re-resolved"), true,
                        "掴み直したことを注記に残すこと: \(outcome.driverFallback ?? "nil") 呼び出し=\(log.entries)")
+        XCTAssertFalse(outcome.notes.contains(.actedOutsideContainer),
+                       "救えた回は「外のまま操作した」と記録しない")
     }
 
     /// 掴み直しても ghost のままなら**注記を残す**(黙ってタップして飲まれるのが最悪)。
@@ -399,6 +401,15 @@ extension StepExecutorTests {
 
         XCTAssertEqual(outcome.driverFallback?.contains("still reported outside"), true,
                        "救えなかったことを注記に残すこと: \(outcome.driverFallback ?? "nil") 呼び出し=\(log.entries)")
+        // **止めないのは設計どおり**(docs/design.md「ghost は拒否せず、警告して撃つ」)。
+        // その代わり run 横断で数えられる注記を必ず残す
+        guard case .passed = outcome.status else {
+            XCTFail("外のままでも撃って緑のまま(設計どおり)の想定だが \(outcome.status) だった"); return
+        }
+        XCTAssertTrue(log.entries.contains { $0.hasPrefix("primary.tap(") },
+                      "外のままでも操作は撃つ: \(log.entries)")
+        XCTAssertTrue(outcome.notes.contains(.actedOutsideContainer),
+                      "外のまま操作したことを notes に残す: \(outcome.notes)")
     }
 
     /// **救済で送った直後は、容器が次の1タッチを吸う**ので空打ちで肩代わりしてからタップする。

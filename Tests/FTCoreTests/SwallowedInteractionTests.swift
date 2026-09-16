@@ -66,6 +66,37 @@ private func text(_ ref: Int, _ id: String, _ label: String,
                 frame: FTRect(x: 16, y: y, width: 200, height: 24), depth: 1)
 }
 
+/// タップの回数で画面が決まるドライバ(撮影回数は整定の都合で揺れるので、「タップで画面が変わった」を
+/// 表すにはこちらが要る)。frames[i] = i 回タップした後の画面(尽きたら最後を繰り返す)
+private final class TapStateDriver: AppDriver {
+    let frames: [[ElementInfo]]
+    private(set) var tapCount = 0
+    init(frames: [[ElementInfo]]) { self.frames = frames }
+
+    func status() async throws -> StatusResponse {
+        StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
+    }
+    func install(packagePath: String) async throws {}
+    func uninstall(bundleID: String) async throws {}
+    func launch(bundleID: String) async throws {}
+    func isAppForeground(bundleID: String) async throws -> Bool { true }
+    func foregroundAppID() async throws -> String? { nil }
+    func terminate() async throws {}
+    func screenshot() async throws -> Data { Data() }
+    func type(ref: Int?, text: String) async throws {}
+    func tap(x: Double, y: Double) async throws { tapCount += 1 }
+    func tap(ref: Int) async throws { tapCount += 1 }
+    func press(ref: Int, duration: Double) async throws {}
+    func swipe(_ direction: FTSwipeDirection) async throws {}
+
+    func snapshot() async throws -> SnapshotResponse {
+        SnapshotResponse(sessionBundleID: nil,
+                         screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                         elements: frames[min(tapCount, frames.count - 1)],
+                         truncatedCount: 0, offscreen: nil)
+    }
+}
+
 final class SwallowedInteractionTests: XCTestCase {
 
     // MARK: - 署名(何を「変化」と数えるか)
@@ -406,5 +437,83 @@ final class SwallowedInteractionTests: XCTestCase {
         XCTAssertNil(StepExecutor.frontElementTakingPoint(x: 50, y: 50, of: target,
                                                           in: [sibling, target, child]),
                      "対象より前にある = 奥に描かれる要素は取らない")
+    }
+
+    // MARK: - それより前のタップ(tap が続いたとき)
+
+    private var alertScreen: [ElementInfo] {
+        [text(1, "btn_request_photos", "写真へのアクセスを要求", y: 300, type: "button"),
+         text(2, "btn_freeze_3s", "3秒固まる", y: 360, type: "button"),
+         text(3, "txt_photos_result", "photos=none", y: 420)]
+    }
+
+    private func runRequestThenFreeze(_ executor: StepExecutor) async -> StepOutcome {
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "btn_request_photos")))
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "btn_freeze_3s")))
+        return await executor.execute(
+            FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt_photos_result"),
+                     expected: "photos=denied", timeout: 0, occlusionGuard: false))
+    }
+
+    /// 2026-09-16 の S0020: 効かなかったのは前のタップで、直前のタップは「画面を変えないのが正常」。
+    /// 直前 1 件だけを見ると後者だけを名指しし、前者が消える
+    func testEarlierUnchangedTapIsNamedToo() async throws {
+        let executor = StepExecutor(driver: ScriptedDriver(frames: [alertScreen]), isAndroid: false)
+
+        let outcome = await runRequestThenFreeze(executor)
+
+        guard case .failed(let message) = outcome.status else { XCTFail("失敗するはず"); return }
+        XCTAssertTrue(message.contains("btn_freeze_3s") && message.contains("did not change the screen at all"),
+                      "直前のタップの証跡は従来どおり: \(message)")
+        XCTAssertTrue(message.contains("unchanged between tap id=btn_request_photos"),
+                      "それより前の、効かなかったタップも名指しする: \(message)")
+        XCTAssertTrue(outcome.notes.contains(.unchangedTapBeforeFailure), "\(outcome.notes)")
+    }
+
+    /// 前のタップで画面が変わっていたら、そのタップは名指ししない(誤検知を出さない側)
+    func testEarlierTapThatChangedTheScreenIsNotNamed() async throws {
+        var asked = alertScreen
+        asked[2] = text(3, "txt_photos_result", "photos=asked", y: 420)
+        let executor = StepExecutor(driver: TapStateDriver(frames: [alertScreen, asked]), isAndroid: false)
+
+        let outcome = await runRequestThenFreeze(executor)
+
+        guard case .failed(let message) = outcome.status else { XCTFail("失敗するはず"); return }
+        XCTAssertFalse(message.contains("btn_request_photos"), message)
+        XCTAssertTrue(message.contains("btn_freeze_3s"), "直前のタップは無変化なので従来どおり: \(message)")
+    }
+
+    /// 画面を変える操作を挟んだら、それより前のタップは名指ししない(直前 1 件と同じ規則)。
+    /// **確定した後に挟む**並びで確かめる(tap → swipe → tap では確定する前に記録が消えるので、
+    /// 確定済みの一覧を捨てる処理を通らない)
+    func testEarlierTapIsForgottenAfterAnotherAction() async throws {
+        let executor = StepExecutor(driver: ScriptedDriver(frames: [alertScreen]), isAndroid: false)
+
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "btn_request_photos")))
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "btn_freeze_3s")))
+        _ = await executor.execute(FlowStep(action: "swipe", direction: "up"))
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "btn_freeze_3s")))
+        let outcome = await executor.execute(
+            FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt_photos_result"),
+                     expected: "photos=denied", timeout: 0, occlusionGuard: false))
+
+        guard case .failed(let message) = outcome.status else { XCTFail("失敗するはず"); return }
+        XCTAssertFalse(message.contains("btn_request_photos"), message)
+        XCTAssertTrue(message.contains("btn_freeze_3s"), "スワイプ後のタップは従来どおり: \(message)")
+    }
+
+    /// 無変化のタップが 1 件も無い失敗には注記を立てない
+    func testNoNoteWithoutAnUnchangedTap() async throws {
+        var asked = alertScreen
+        asked[2] = text(3, "txt_photos_result", "photos=asked", y: 420)
+        var asked2 = alertScreen
+        asked2[2] = text(3, "txt_photos_result", "photos=asked twice", y: 420)
+        let executor = StepExecutor(driver: TapStateDriver(frames: [alertScreen, asked, asked2]),
+                                    isAndroid: false)
+
+        let outcome = await runRequestThenFreeze(executor)
+
+        guard case .failed = outcome.status else { XCTFail("失敗するはず"); return }
+        XCTAssertFalse(outcome.notes.contains(.unchangedTapBeforeFailure), "\(outcome.notes)")
     }
 }

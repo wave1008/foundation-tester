@@ -222,6 +222,21 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// **率が上がったらキーボードの押し上げが大きい/遅い画面**(WebView 等)を通っている
     case settledAfterKeyboard = "settled-after-keyboard"
 
+    /// 容器の外にあると判定した対象を、掴み直しと追加の送りを上限まで行っても外のまま**操作した**
+    /// (止めないのは設計どおり = docs/design.md「スクロール残像(ghost)は拒否せず、警告して撃つ」)。
+    /// ステップは緑のまま。**後段の検証が無いシナリオでは、これだけが「別の物に当たったかもしれない」
+    /// 痕跡**になる(2026-09-16: iPhone 13 LAN で撃った後、後段の textIs が selected=- で赤。
+    /// それまでは説明文の括弧書きにしか残らず run 横断で数えられなかった)。
+    /// **率が上がったら往復の遅い経路で寄せ(recoveryJump / recoveryDirection)が収束していない**
+    case actedOutsideContainer = "acted-outside-container"
+
+    /// 検証が失敗したとき、それより前のタップのうち**画面を 1 ピクセルも変えなかったもの**を失敗文言で
+    /// 名指しした(`StepExecutor.tapDiagnosisHint`。追加の撮影はしない)。**判定は変えない**
+    /// (変えないのが正常なタップもある)。立つのは失敗したステップだけ。
+    /// **率が上がったらタップが吸われている**(遷移直後の 1 タップ目・遅い Mac。2026-09-16 の
+    /// S0020 は約 130 回中 2 回で、それまでは失敗文言にしか残らず数えられなかった)
+    case unchangedTapBeforeFailure = "unchanged-tap-before-failure"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -296,6 +311,11 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .settledAfterKeyboard:
             return "the preceding type shifted the on-screen layout (keyboard), so this waited for"
                 + " it to settle before resolving the target"
+        case .unchangedTapBeforeFailure:
+            return "a tap before this failure did not change the screen at all"
+        case .actedOutsideContainer:
+            return "the element was still reported outside its scroll container when this acted on it,"
+                + " so the interaction may have landed elsewhere"
         }
     }
 }

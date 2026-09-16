@@ -14,7 +14,15 @@ extension StepExecutor {
         // 直前の操作の記録は**次の操作が画面を変えるまで**有効(検証は画面を変えないので消さない)。
         // `select` は掴むだけでデバイス操作が無いので例外 —— `tap → select → textIs` という
         // 一番ありふれた形で、落ちるのは textIs 側だから、ここで消すと肝心なときに証跡が無くなる
-        if action != "select" { lastInteraction = nil }
+        if action == "tap" {
+            // 前のタップは、このタップが解決に使う木と比べてから確定する(tapAwaitingNextTree の doc)
+            tapAwaitingNextTree = lastInteraction
+            lastInteraction = nil
+        } else if action != "select" {
+            lastInteraction = nil
+            tapAwaitingNextTree = nil
+            unchangedEarlierTaps = []
+        }
         // 焦点救済の「直前」は tap → type の並びだけ(select は掴むだけで焦点を動かさない)
         if action != "select", action != "type" { lastTapTarget = nil }
         pendingScrollFrameNote = nil
@@ -684,6 +692,7 @@ extension StepExecutor {
         var straddleNote: String?
         var ghostNote: String?
         if grabbedGhost(resolved) {
+            noteCodesThisStep.insert(.actedOutsideContainer)
             ghostNote = "the element is still reported outside its scroll container"
                 + " (\(ghostRetries) re-resolve(s), \(ghostSwipes) extra swipe(s));"
                 + " the interaction may be swallowed"

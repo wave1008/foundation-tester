@@ -597,6 +597,43 @@ public struct BridgeLauncher {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
+    /// 結果の束の名前からポートを読む(`bridge-<port>.xcresult` / `bridge-<port>-<stamp>.xcresult`)。
+    /// 形が違えば nil(= 触らない)
+    static func resultBundlePort(_ name: String) -> UInt16? {
+        guard name.hasPrefix("bridge-"), name.hasSuffix(".xcresult") else { return nil }
+        let stem = name.dropFirst("bridge-".count).dropLast(".xcresult".count)
+        return UInt16(stem.split(separator: "-", maxSplits: 1).first ?? "")
+    }
+
+    /// **生きたランナーの居ないポートの束**(純粋関数)。起動時の掃除(`staleResultBundles`)は
+    /// 同じポートで起動し直したときしか消さないので、復活のたびにポートが変わると古い束が
+    /// 誰にも消されず残る(2026-09-16: 23 束・4.1GB。束の中身は XCTest のセッションログで、ランナーが
+    /// 生きている間ずっと伸びる = 実機で約 230MB/時)。生きているランナーの束には触らない
+    static func orphanResultBundleNames(_ names: [String], livePorts: Set<UInt16>) -> [String] {
+        names.filter { name in
+            guard let port = resultBundlePort(name) else { return false }
+            return !livePorts.contains(port)
+        }.sorted()
+    }
+
+    /// `sweepStalePidFiles` の直後に呼ぶ(残った `.pid` = 生きたランナー)。ProvisionLock の内側で
+    /// 呼ばれるので、起動中のランナー(pid ファイルは xcodebuild の起動直後に書かれ、束はその後に
+    /// 作られる)を消すことは無い
+    public static func sweepOrphanResultBundles(repoRoot: URL) {
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
+        guard let stateEntries = try? FileManager.default.contentsOfDirectory(atPath: stateDir.path)
+        else { return }
+        let livePorts = Set(stateEntries.compactMap { name -> UInt16? in
+            guard name.hasPrefix("bridge-"), name.hasSuffix(".pid") else { return nil }
+            return UInt16(name.dropFirst("bridge-".count).dropLast(".pid".count))
+        })
+        let directory = stateDir.appendingPathComponent("xcresult")
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return }
+        for name in orphanResultBundleNames(names, livePorts: livePorts) {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+        }
+    }
+
     static func isResultBundle(_ name: String, port: UInt16) -> Bool {
         guard name.hasSuffix(".xcresult") else { return false }
         let stem = String(name.dropLast(".xcresult".count))
