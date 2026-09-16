@@ -44,7 +44,7 @@ fleetest run --runner mac2 …             ~/fleetest-runner/               ← 
 | 区分 | 前提 | 確認 |
 |---|---|---|
 | ハード | Apple silicon の Mac | `sysctl -n hw.optional.arm64` が 1 |
-| Xcode | **発行側と同じ Xcode・同じ macOS**(不一致はディスパッチが止まる) | `xcodebuild -version` |
+| Xcode | **発行側と同じ Xcode(版とビルド番号)と同じ iOS Simulator SDK**(不一致はディスパッチが止まる)。**macOS の版は照合しない**(26 と 27 の混在も可。ただしその Xcode が両方の macOS で動くこと) | `xcodebuild -version` |
 | ログイン | **コンソールにログイン済み**(いわゆる Aqua セッションが立っている) | `stat -f%Su /dev/console` がランナーのユーザー名 |
 | 電源 | システムスリープ無効(ディスプレイスリープと画面ロックは可) | `pmset -g \| grep " sleep"` |
 | ネットワーク | リモートログイン ON・鍵で入れる。画面共有 ON を推奨。**開けるのは発行側 → ランナー機の SSH 1本だけ**(手元の Mac に着信は要らない。転送も成果物回収もライブ映像もこの接続の中を通る) | 下のステップ1 |
@@ -189,7 +189,8 @@ fleetest remote setup <ユーザー>@<ホスト> --project <プロジェクト�
 
 ## ステップ3: 版を揃える
 
-ディスパッチは **git のコミット**と **Xcode/macOS の指紋**の2つを照合し、どちらかが違えば
+ディスパッチは **git のコミット**と **Xcode の指紋**(`xcodebuild -version` と iOS Simulator SDK の
+ビルド番号。**macOS の版は含まない**)の2つを照合し、どちらかが違えば
 **何も実行せずに止まる**(黙って古い版で走らせないため)。
 
 **`remote setup` の align ステップが毎回これを行う**ので、手元でコミットを進めたら
@@ -204,7 +205,10 @@ ssh <ホスト> 'cd ~/fleetest-runner/foundation-tester && git fetch origin && g
   「ランナーの挙動は変わらないから」と飛ばすと `remote status` が ⚠️ になり、ディスパッチは止まる
 - **手元の未コミットの変更は届かない**(警告が出る)。ツール本体の変更を試すなら、
   コミットして push し、ランナー機をそのコミットに合わせる
-- Xcode や macOS を更新したら**両方**を更新する。片方だけだと全ディスパッチが止まる
+- Xcode を更新したら**両方**を更新する。片方だけだと全ディスパッチが止まる
+- **macOS は照合しない**ので、Xcode が変わらない限り片方だけ上げてもディスパッチは止まらない
+  (26 と 27 の混在も可)。ただし**テキストの視覚検証(OCR・FM)は OS 付属の Vision とモデルを使う**ので、
+  機械によって読み取りや判定が変わりうる(ツールはこの差を検出しない)。赤が特定の機械に偏ったら OS の差を疑う
 - `fleetest remote align <ランナー>` だけでも揃う(`remote setup` の align ステップ単体。
   preflight/install は通さない軽量版)。VSCode 拡張は実行開始時に版ズレを自動検出し、
   「更新して実行 / キャンセル」のダイアログから更新できる(ズレたまま実行する選択肢は無い。
@@ -693,7 +697,7 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | `setup script exited with status 1` で**シナリオが0本**。手でランナーの画面から同じスクリプトを流すと通る | **ssh 越しに起こしたプロセスはローカルネットワーク権限を取れない**(許可を与える相手がシステム設定の一覧に現れない)。依存サービスが同じ機械の別アドレス(コンテナの 192.168.64.x 等)へ出ようとして `EHOSTUNREACH` | 依存サービスへの接続先を **`127.0.0.1` にする**(コンテナ実行基盤は loopback へ publish していることが多い)。LAN 越しが要るなら、そのサービスをランナーの GUI セッションで常駐させる |
 | `git revision mismatch` | 版がズレている | メッセージの向き付き案内に従う(「複数人でフリートを共有する」の表。単独利用ならステップ3) |
 | `another dispatch is already running on this remote host` | 別のディスパッチ(他の人・別ターミナル)が実行中、または自分のディスパッチが死んでロックが残った | 待つ(`--wait-lock <秒>`)。保持者が自分で死んでいるなら `fleetest remote unlock --runner <ランナー>`。他の人のもので確認できたときだけ `--force-lock` |
-| `toolchain mismatch` | Xcode / macOS が違う | 両機を同じ版に |
+| `toolchain mismatch` | Xcode の版(ビルド番号)か iOS Simulator SDK が違う(macOS の版は照合しない) | 両機に同じ Xcode を入れる |
 | `fleetest binary not found on remote` | ビルドされていない | ランナー機で `swift build --product fleetest` |
 | `Cannot code-sign the bridge runner for a physical device on this Mac` / `the login keychain is locked in this session` | **実機 iOS をランナー機で回すとき**。ssh セッションはログインキーチェーンがロックされたまま始まるので、XCUITest ランナーの codesign が署名鍵を使えない。fleetest は空パスワードでの unlock を試みるが、キーチェーンにパスワードがあると効かない | ランナー機のログインキーチェーンをその ssh セッションで使える状態にする: 最も簡単なのは**ランナー機のログインパスワードとログインキーチェーンのパスワードを揃え、`security set-keychain-settings`(引数なし)で自動ロックを切る**こと。それが許されない運用なら、実機 iOS の run はランナー機の GUI セッション(画面共有)から起こす。シミュレータだけのランナーには無関係(署名しない) |
 | `unknown package` | クローンのディレクトリ名を変えた | `~/fleetest-runner/foundation-tester` に戻す |

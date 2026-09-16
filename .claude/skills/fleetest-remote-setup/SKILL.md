@@ -17,8 +17,9 @@ description: 別の Mac(ランナー機)を用意して、手元から SSH で�
 ## 前提(満たしていなければ先に済ませる)
 
 - **手元**が既にセットアップ済み(`/fleetest-setup` 済み。`fleetest` がビルドされている)
-- **ランナー機**が Apple silicon の Mac で、手元と**同じ macOS + 同じ Xcode**
-  (指紋が1文字でも違うと全ディスパッチが止まる)
+- **ランナー機**が Apple silicon の Mac で、手元と**同じ Xcode**(版とビルド番号・iOS Simulator SDK まで指紋になる。
+  1文字でも違うと全ディスパッチが止まる)。**macOS の版は照合しない**(26 と 27 の混在も可。
+  ただしその Xcode が両方の macOS で動くこと)
 
 ## 進め方の原則
 
@@ -167,8 +168,8 @@ fleetest run --project <プロジェクト> --profile <実行プロファイル>
   - `fleetest remote clean --runner <宛先> --keep-days 7` — **定期的に。**
     ランナー機は誰も見ないので results/録画が溜まり、ある日ディスクフルで止まる
   - `fleetest remote setup <宛先>` — **ツールを更新したらこれを流し直す**(版を合わせる。
-    更新専用の手順は無い = 導入と同じコマンド。**Xcode/macOS の更新だけは例外**で、
-    両機を同じ版に揃える人手の作業が要る)
+    更新専用の手順は無い = 導入と同じコマンド。**Xcode の更新だけは例外**で、
+    両機を同じ版に揃える人手の作業が要る。macOS の更新は照合に掛からない)
 - モニターの見え方も伝える: **リモートのデバイスも手元と同じようにタイルに映る**
   (状態・ライブ映像・起動/停止。ホスト名のバッジが付くのが違い)。**版が揃っていないと
   状態も映像も来ず**「<ホスト> に届いていません」のままになる —— 版合わせはディスパッチ
@@ -179,7 +180,7 @@ fleetest run --project <プロジェクト> --profile <実行プロファイル>
 | 症状 | 原因 | 対処 |
 |---|---|---|
 | `git revision mismatch` | 手元とランナー機の版が違う | 手元をコミット&push してから `fleetest remote setup <宛先>` を流し直す(align が合わせる)。**手元の未コミットの変更は届かない** |
-| `toolchain mismatch` | Xcode / macOS の版が違う | **`remote setup` では直らない**(Xcode の導入は GUI と sudo が要る)。🧑 に両機を同じ版へ揃えてもらう。どちらを動かすかは人の判断 —— 片方を更新した時点で**全ディスパッチが止まる**ので、フリートでは1台だけ更新して検証してから残りへ広げる |
+| `toolchain mismatch` | Xcode の版(ビルド番号)か iOS Simulator SDK が違う(macOS は照合しない) | **`remote setup` では直らない**(Xcode の導入は GUI と sudo が要る)。🧑 に両機を同じ Xcode へ揃えてもらう。どちらを動かすかは人の判断 —— 片方を更新した時点で**全ディスパッチが止まる**ので、フリートでは1台だけ更新して検証してから残りへ広げる |
 | `is sitting at the login window` | ランナー機がログイン画面 | 🧑 に解錠+ログインを依頼(画面共有で可) |
 | `Cannot code-sign the bridge runner for a physical device` / `the login keychain is locked in this session` | 実機 iPhone をランナー機で使うとき、ssh セッションのログインキーチェーンがロックされている(空パスワードの自動 unlock が効かない) | 🧑 に依頼: ランナー機のログインキーチェーンのパスワードをログインパスワードと揃えて自動ロックを切る(`security set-keychain-settings`)か、実機の run は GUI セッションから起こす。シミュレータだけなら無関係 |
 | `Couldn't fetch updates from remote repositories` / `Recv failure: Operation timed out` | 回線が細く SPM の依存取得が落ちた | **再実行する**(取得済みは残るので数回で通る)。ランナー機で `cd ~/fleetest-runner/users/<issuerId>/work && swift package resolve` を先に通しても良い |

@@ -27,13 +27,17 @@
 | 条件 | 確認方法(ランナー機で実行) |
 |---|---|
 | Apple silicon の Mac | `sysctl -n hw.optional.arm64` が `1` |
-| 手元と同じ版の Xcode と macOS | `xcodebuild -version` |
+| 手元と同じ版の Xcode(macOS の版は違ってもかまいません。ただしその Xcode が動く macOS であること) | `xcodebuild -version` |
 | コンソールにログインしたままになっている | `stat -f%Su /dev/console` がランナー機のユーザー名 |
 | システムスリープが無効(ディスプレイのスリープと画面ロックはあってよい) | `pmset -g \| grep " sleep"` |
 | リモートログインが ON | ステップ1で確認します |
 | ファイアウォールが OFF。ON の場合は「すべての着信接続をブロック」が OFF | ステップ0の2を見てください |
 | Homebrew が入っていて、その macOS に対応した版になっている | `brew --version` が動く |
 | Android SDK と AVD(Android を実行するときだけ) | `fleetest doctor` |
+
+macOS の版が手元とランナー機で違う場合(例: 26 と 27)、テキストの視覚検証(OCR・FM)は各 Mac の
+macOS に付属する機能で動くため、Mac によって結果が変わることがあります。特定の Mac でだけ失敗するときは、
+macOS の版の違いを疑ってください。
 
 ## ステップ0: ランナー機を準備する(ランナー機で・1回だけ)
 
@@ -173,7 +177,7 @@ user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 2
 | 表示 | 意味 | 対処 |
 |---|---|---|
 | `LOGIN` が `no` | ランナー機がログイン画面で止まっている | 画面共有などでログインします |
-| `REV` か `TOOLCHAIN` に ⚠️ | 手元と版がずれている | `fleetest remote setup M1Max` をもう一度実行します。Xcode や macOS の違いは、両方の Mac を同じ版にします |
+| `REV` か `TOOLCHAIN` に ⚠️ | 手元と版がずれている | `fleetest remote setup M1Max` をもう一度実行します。Xcode の違いは、両方の Mac に同じ版の Xcode を入れます |
 | `RUNTIME` に ⚠️ | ランナー機の iOS シミュレータのランタイムが手元と違う | ランナー機で `xcodebuild -downloadPlatform iOS` を実行します(警告だけで、実行は止まりません) |
 | `BINARY` が `no` | ランナー機に fleetest がビルドされていない | ステップ3をもう一度実行します |
 
@@ -217,7 +221,7 @@ fleetest remote exec M1Max -- devices up --profile <実行プロファイル>
 
 - ずれているときは「リモートのfleetestのバージョンが本機と異なります」と出ます。
   「更新して実行」を押すと、ランナー機を手元と同じ版に揃えてから実行します。
-- 揃えられないとき(手元の変更を push していない、ランナー機に接続できない、Xcode や macOS が
+- 揃えられないとき(手元の変更を push していない、ランナー機に接続できない、Xcode の版が
   違う、など)は「リモートのfleetestを更新できないため実行できません」と理由が出て、実行は止まります。
 
 ## fleetest を更新したとき
@@ -247,7 +251,7 @@ fleetest remote exec M1Max -- devices up --profile <実行プロファイル>
 | `neither xcodegen nor Homebrew is available` | ランナー機に Homebrew が入っていない | ステップ0の7で Homebrew を入れてから、`fleetest remote setup` をもう一度実行します |
 | `is sitting at the login window` | ランナー機がログイン画面で止まっている | 画面共有などでログインします |
 | `git revision mismatch` | 手元とランナー機の版がずれている | `fleetest remote setup M1Max` をもう一度実行します |
-| `toolchain mismatch` | Xcode か macOS の版が違う | 両方の Mac を同じ版にします |
+| `toolchain mismatch` | Xcode の版が違う(macOS の版は比べません) | 両方の Mac に同じ版の Xcode を入れます |
 | `no runner workspace at …` | ランナー機にあなたの作業場所がまだ無い | `fleetest remote setup M1Max` を1回実行します |
 | `no running emulator for AVD …` | Android のエミュレータが起動していない | ステップ6の `devices up` を実行します |
 | `app package not found at …` | 手元の `appPath` にアプリが無い | 手元でアプリをビルドするか、`appPath` を直します |

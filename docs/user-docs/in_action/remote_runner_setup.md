@@ -27,13 +27,17 @@ In the examples below, the runner is `<user@192.168.xxx.xxx>` and its machine na
 | Requirement | Check (run on the runner) |
 |---|---|
 | Apple silicon Mac | `sysctl -n hw.optional.arm64` is `1` |
-| Same Xcode and macOS versions as your Mac | `xcodebuild -version` |
+| Same Xcode version as your Mac (the macOS version may differ, as long as it runs that Xcode) | `xcodebuild -version` |
 | Someone stays logged in at the console | `stat -f%Su /dev/console` matches the runner's user |
 | System sleep disabled (display sleep and screen lock are fine) | `pmset -g \| grep " sleep"` |
 | Remote Login on | checked in Step 1 |
 | The firewall is off; if it is on, its "Block all incoming connections" is off | see item 2 of Step 0 |
 | Homebrew is installed, in a version that supports that macOS | `brew --version` runs |
 | Android SDK and AVDs (only when running Android) | `fleetest doctor` |
+
+If your Mac and the runner run different macOS versions (for example 26 and 27), text visual
+verification (OCR and FM) uses the features bundled with each Mac's macOS, so its results can
+differ between Macs. If a check fails only on one Mac, suspect the macOS version difference.
 
 ## Step 0: Prepare the runner (on the runner, once)
 
@@ -237,7 +241,7 @@ user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 2
 | What you see | Meaning | What to do |
 |---|---|---|
 | `LOGIN` is `no` | The runner is sitting at the login window | Log in, for example over Screen Sharing |
-| ⚠️ in `REV` or `TOOLCHAIN` | The version differs from your Mac | Run `fleetest remote setup M1Max` again. For an Xcode or macOS difference, bring both Macs to the same version |
+| ⚠️ in `REV` or `TOOLCHAIN` | The version differs from your Mac | Run `fleetest remote setup M1Max` again. For an Xcode difference, install the same Xcode version on both Macs |
 | ⚠️ in `RUNTIME` | The runner's iOS simulator runtime differs from your Mac's | Run `xcodebuild -downloadPlatform iOS` on the runner (this is only a warning; runs are not stopped) |
 | `BINARY` is `no` | fleetest is not built on the runner | Run Step 3 again |
 
@@ -284,7 +288,7 @@ your Mac.
 - If it differs, you see "The remote runners' fleetest version differs from this machine's."
   Pressing "Update and run" brings the runner to your version and then runs.
 - If it cannot be brought in line (your changes are not pushed, the runner cannot be reached,
-  Xcode or macOS differ, and so on), you see "Cannot run: the remote runners' fleetest cannot be
+  the Xcode versions differ, and so on), you see "Cannot run: the remote runners' fleetest cannot be
   updated from here." with the reason, and the run does not start.
 
 ## After you update fleetest
@@ -316,7 +320,7 @@ until the versions match.
 | `neither xcodegen nor Homebrew is available` | Homebrew is not installed on the runner | Install Homebrew (item 7 of Step 0), then run `fleetest remote setup` again |
 | `is sitting at the login window` | The runner is at the login window | Log in, for example over Screen Sharing |
 | `git revision mismatch` | Your Mac and the runner are on different versions | Run `fleetest remote setup M1Max` again |
-| `toolchain mismatch` | Xcode or macOS versions differ | Bring both Macs to the same version |
+| `toolchain mismatch` | Xcode versions differ (the macOS version is not compared) | Install the same Xcode version on both Macs |
 | `no runner workspace at …` | Your work area does not exist on the runner yet | Run `fleetest remote setup M1Max` once |
 | `no running emulator for AVD …` | The Android emulator is not running | Run the `devices up` command from Step 6 |
 | `app package not found at …` | There is no app at `appPath` on your Mac | Build the app on your Mac, or fix `appPath` |

@@ -261,7 +261,7 @@ Android は `no running emulator for AVD ...` で失敗する)。`fleetest devic
 - リモート側も clone + ソースビルド(配布方針どおり)。更新は `Scripts/update.sh` の
   仕組みにそのまま乗せる
 - ディスパッチ前の適合チェックは**3項目**: **git revision・ToolchainFingerprint
-  (Xcode/macOS)・machineName**。不一致は**黙って走らせず fail fast**(このリポジトリの
+  (Xcode の版 + iOS Simulator SDK のビルド。**macOS の版は含まない**)・machineName**。不一致は**黙って走らせず fail fast**(このリポジトリの
   「片方だけ変えない」規律をマシン間に広げると、スキューは恒常的なバグ族になるため
   入口で遮断する)
 - **照会そのものが失敗したときは理由まで出す**(2026-09-09)。`RemoteCompat.ProbeOutcome` が
@@ -272,7 +272,7 @@ Android は `no running emulator for AVD ...` で失敗する)。`fleetest devic
 - **rev 一致の意味 = 両者が同一 upstream コミットにいること**。ローカルの未コミットの
   ツール変更はリモートに載らない(ツール開発中の変更をリモートで試す用途はスコープ外)
 - **照合するのは「rev に包含されないもの」だけ**という原則で3項目が決まる —
-  Toolchain(マシンごとの Xcode/macOS)と machineName(リポジトリ管理外のローカル設定)は
+  Toolchain(マシンごとの Xcode/SDK)と machineName(リポジトリ管理外のローカル設定)は
   rev では担保されない。**`ProtocolVersion` は照合しない**(リポジトリ管理下なので
   rev 一致に包含される。§12 の結論)
 - リモートの **TOOL_ROOT 解決は既存4箇所の規則を再利用**する(preflight.sh / update.sh /
@@ -1021,7 +1021,7 @@ machine 名付きで並ぶ)。「マージの実装」は要らなかった。
 | 区分 | 前提 | 必須? | 機械検証 |
 |---|---|---|---|
 | ハード | Apple silicon の実機 Mac(VM は FM 不可の公算大) | 必須 | `sysctl hw.optional.arm64` |
-| ツールチェーン | 発行側と同じ macOS + Xcode(ベータ整合・ToolchainFingerprint 一致) | 必須 | 既存適合チェック流用 |
+| ツールチェーン | 発行側と同じ Xcode + iOS Simulator SDK(ToolchainFingerprint 一致)。**macOS の版は照合しない**(混在可。ただし OCR・FM は OS 付属なので結果が機械で変わりうる) | 必須 | 既存適合チェック流用 |
 | **運用モード** | **A: FileVault 有効(既定)/ B: FileVault 無効+自動ログイン**(§5。どちらも正式構成) | 必須(いずれか) | `fdesetup status` + `defaults read com.apple.loginwindow autoLoginUser` |
 | セッション | **Aqua セッションが立っている**(= コンソールにランナーユーザーがログイン済み)。画面ロックは可 | 必須 | `stat -f%Su /dev/console` がランナーユーザーと一致(**両モード共通**) |
 | 電源 | **システムスリープ無効**(ディスプレイスリープは可) | 必須 | `pmset -g` |
