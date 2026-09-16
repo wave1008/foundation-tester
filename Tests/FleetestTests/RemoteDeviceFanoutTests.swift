@@ -110,9 +110,16 @@ final class RemoteDeviceFanoutTests: XCTestCase {
 
     /// 子の argv を等号で固定する。**`--device-machine local` が抜けると入れ子で分散し続ける**
     func testSweepChildRunsTheSameSweepPinnedToItsOwnMachine() {
-        XCTAssertEqual(RemoteDeviceFanout.sweepChildArgs(machine: "M1Ultra"),
+        XCTAssertEqual(RemoteDeviceFanout.sweepChildArgs(machine: "M1Ultra", force: false),
                        ["remote", "exec", "M1Ultra", "--", "devices", "down",
                         "--device-machine", "local"])
+    }
+
+    /// 手元の `--force` はランナーへ運ぶ(運ばないと各ランナーの run-lease の門で断られる)
+    func testSweepChildCarriesForce() {
+        XCTAssertEqual(RemoteDeviceFanout.sweepChildArgs(machine: "M1Ultra", force: true),
+                       ["remote", "exec", "M1Ultra", "--", "devices", "down",
+                        "--device-machine", "local", "--force"])
     }
 
     /// スラッシュを含むデバイス名(Android の AVD 表示名は普通に含む)が \/ へ潰れない ——

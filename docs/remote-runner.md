@@ -939,7 +939,9 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   止まらない台」が生まれる)。子は `--device-machine local` で走るので入れ子にはならない。
   出力は NDJSON でなくプレーンテキストなので、行頭に `[<machine>]` を付けて中継する。
   **リモートで `devices down` を撃つ側は `--device-machine local` を必ず付ける**
-  (`remote clean` がそう)—— 付けないとランナー自身の登録簿を辿って連鎖する
+  (`remote clean` がそう)—— 付けないとランナー自身の登録簿を辿って連鎖する。
+  **この掃討は run-lease を読んで丸ごと断る**(台を選べないため。`DeviceBooter.sweepRefusal`)——
+  判定は分散より前で、手元の `--force` は子へ運ぶ(§18.7「破壊的操作」)
 - **名前で引けるのはモニターが知っている台だけ**(2026-08-29)。ランナー側のプロファイル複製が
   更新されるのは**モニターの fan-out 開始時だけ**なので、それ以降に足した台・改名した台を
   名前で撃つと `device not found: <名前>` で必ず失敗する。**タイルの起動・停止はこの穴を踏まない**
@@ -1841,7 +1843,11 @@ upstream main を clone して update.sh で追従するので、2人の rev は
 - **破壊的操作**: `remote clean` は `RemoteDestructiveGuard` でロックを読んで中止する
   (`--ignore-lock` で押し切れる。**読めないときは通す** —— 掃除が永久にできなくなるほうが
   害が大きい)。拡張は一括停止・デバイス削除/作成の modal に保持者を添える
-  (**占有が不明なら何も足さない** = 沈黙)
+  (**占有が不明なら何も足さない** = 沈黙)。**ロックはディスパッチしか写さないので、台を止める
+  CLI 自身も run-lease を読む**(台ごとの停止は `DeviceBooter.stopRefusal` でその台だけ止めない /
+  プロファイル無しの掃討 `devices down` は `sweepRefusal` で丸ごと断る)。lease はツールのルートに
+  あるので、**ランナー機で直接打った run も写る**。`remote clean` の掃討は `--ignore-lock` を
+  `--force` として運ぶ
 - **順番待ちは GUI からも**: `api run --wait-lock`(`run` と対等になった。
   `RunCommandFlagParityTests` の run 専用表から外れた)+ 設定 `fleetest.remoteWaitLock`(既定 0 =
   従来どおり待たない)。**奪う口(`--force-lock`)は GUI に出さない** —— 走っているかもしれない

@@ -287,8 +287,10 @@
   `--ignore-lock` で押し切る。**読めないときは通す** = 掃除が永久にできなくなるほうが害が大きい)。
   **台を止める操作も同じ**(`DeviceBooter.shutdownOne` / `shutdownAll` が実際に止める前に
   `stopRefusal` = run-lease の保持者を読む。`api stop-device` / `stop-all-devices` / `restart-devices` /
-  `wipe-device` / `devices down --profile` の全部がここを通る。押し切るのは CLI の `--force` だけ)
-  → maintainer-notes §25。
+  `wipe-device` / `devices down --profile` の全部がここを通る。押し切るのは CLI の `--force` だけ)。
+  **プロファイル無しの全掃討 `devices down` は台を選べないので、生きた run-lease が1本でもあれば
+  掃討ごと断る**(`DeviceBooter.sweepRefusal`。判定はリモートへ分散する前。`--force` は子へ、
+  `remote clean --ignore-lock` は `--force` として運ぶ)→ maintainer-notes §25。
   **奪う口(`--force-lock` / `--force`)を GUI に出さない**。
   **ssh 越しのコマンドにグロブを書かない**(相手は zsh。`for w in <マッチ無し>` は**シェルごと
   落ちて後続の文が全部消える**)—— 一覧は `find … 2>/dev/null` で作る → maintainer-notes §3.5

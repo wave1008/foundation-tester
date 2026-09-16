@@ -1010,6 +1010,15 @@ spawner(= 親だけが読み手)を足した。**陽性対照**: 同じ形で親
   `remote clean` にしか無かった。判定を `DeviceBooter.stopRefusal` の1箇所に置き、`shutdownOne` /
   `shutdownAll` が止める前に通す(= stop-device / stop-all-devices / restart-devices / wipe-device /
   `devices down --profile` が全部通る)。押し切る `--force` は CLI だけ(GUI に出さない)。
+  **この時点では全掃討(`devices down` のプロファイル無し)だけが門を通っていなかった** ——
+  拡張の「全て終了」は実行プロファイル未選択のときこちらを呼び、確認ダイアログが見るのは
+  リモートの dispatch.lock だけなので、**手元でターミナルから回している run が確認なしで落ちた**。
+  掃討は `simctl shutdown all` で台を選べないので、生きた run-lease が1本でもあれば**掃討ごと断る**
+  (`DeviceBooter.sweepRefusal`)。判定はリモートへ分散する前に置く(手元で断ったのにリモートは
+  掃討する、を作らない)。リモートの子も同じコマンドなので、ランナー機で直接打った run も守られる
+  (lease はツールのルート = 利用者で共有の `.fleetest` に居る)。**押し切りは運ぶ**: 手元の `--force` は
+  子へ、`remote clean --ignore-lock` は `--force` として渡す(運ばないとランナー側の門で断られ、
+  押し切ったつもりで止まらない)
 - **機械ごと落ちた run の未実行シナリオが消えた**。`fleetest run` のファンアウトは exit code しか
   出さず、`--failed` の記録は回収できた JSON からしか書かれないので、走らなかった 9 本が
   「前回緑」のまま再実行から外れていた(`api run` 側には合成があり、2 実装の差だった)。

@@ -19,6 +19,16 @@ public enum RunLease {
         try? String(pid).write(to: leaseURL(stateDir: stateDir, key: key), atomically: true, encoding: .utf8)
     }
 
+    /// stateDir 直下の run-lease の鍵(`run-<key>.lease` の <key>)全部。鮮度は見ない(生死は holderPID で判定する)
+    public static func keys(stateDir: URL) -> [String] {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: stateDir.path) else { return [] }
+        return names.compactMap { name in
+            guard name.hasPrefix("run-"), name.hasSuffix(".lease") else { return nil }
+            let key = String(name.dropFirst("run-".count).dropLast(".lease".count))
+            return key.isEmpty ? nil : key
+        }.sorted()
+    }
+
     public static func remove(stateDir: URL, key: String) {
         try? FileManager.default.removeItem(at: leaseURL(stateDir: stateDir, key: key))
     }

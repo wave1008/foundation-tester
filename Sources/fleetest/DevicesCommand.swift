@@ -90,8 +90,9 @@ struct DevicesCommand: AsyncParsableCommand {
         var deviceMachine: String?
 
         @Flag(help: ArgumentHelp(
-            "With --profile, stop even devices a fleetest run is currently using (kills that"
-            + " run's device access). Has no effect on the full sweep (no --profile)"))
+            "Stop even devices a fleetest run is currently using (kills that run's device access)."
+            + " Without it, --profile skips the in-use devices, and the full sweep (no --profile)"
+            + " is refused entirely while any run holds a device on this machine"))
         var force = false
 
         func run() async throws {
@@ -100,11 +101,21 @@ struct DevicesCommand: AsyncParsableCommand {
                 return
             }
 
+            // **掃討は台を選べないので、run が1本でも台を握っていれば丸ごと断る**(規律④)。
+            // リモートへ投げる前に判定する = 断ったときはどの機械も触らない。
+            // リモートの子も同じコマンドなので、ランナー機の上で同じ判定が走る
+            if let refusal = DeviceBooter.sweepRefusal(
+                force: force, leaseStateDir: nil, simulatorNames: DeviceBooter.simulatorNamesByUDID) {
+                ConsoleOut.out("❌ \(refusal)")
+                throw ExitCode(1)
+            }
+
             // 手元だけ掃討しても**モニターに出ているリモートの台は残る**(「全て終了」を押しても
             // 消えない。実害 2026-08-30)。監視と同じ集合(登録簿の全マシン)へ同じ掃討を投げる。
             // 子は `--device-machine local` で走るので入れ子にはならない
             async let fanout: Void = RemoteDeviceFanout.dispatchSweep(
                 machines: RemoteDeviceFanout.sweepMachines(deviceMachine: deviceMachine),
+                force: force,
                 relay: { ConsoleOut.out($0) })
 
             if let root = try? RepoRoot.find() {

@@ -69,6 +69,80 @@ final class DeviceBooterStopRefusalTests: XCTestCase {
     }
 }
 
+/// 全掃討(`devices down` のプロファイル無し)の門。台を選べないので、生きた lease が1本でもあれば
+/// 掃討ごと断る(戻すと落ちる根拠: 変更前は掃討が run-lease を1度も読まず、手元で回っている run を
+/// 確認なしで落としていた)
+final class DeviceBooterSweepRefusalTests: XCTestCase {
+
+    func testRefusesWhileAnotherProcessHoldsALease() throws {
+        let message = try XCTUnwrap(DeviceBooter.sweepRefusal(
+            keys: ["UDID-1", "emulator-5554"], selfPID: 100, force: false,
+            holderPID: { $0 == "emulator-5554" ? 4242 : nil },
+            describe: { $0 == "UDID-1" ? "iPhone 17 [UDID-1]" : $0 }))
+        XCTAssertTrue(message.contains("emulator-5554 (held by pid 4242)"), message)
+        XCTAssertFalse(message.contains("UDID-1"), "保持者の居ない台は挙げない: \(message)")
+        XCTAssertTrue(message.contains("--force"), "押し切る手段を添える")
+    }
+
+    func testNamesEveryHeldDevice() throws {
+        let message = try XCTUnwrap(DeviceBooter.sweepRefusal(
+            keys: ["UDID-1", "UDID-2"], selfPID: 100, force: false,
+            holderPID: { $0 == "UDID-1" ? 4242 : 4343 },
+            describe: { "sim-\($0)" }))
+        XCTAssertTrue(message.contains("sim-UDID-1 (held by pid 4242)"), message)
+        XCTAssertTrue(message.contains("sim-UDID-2 (held by pid 4343)"), message)
+    }
+
+    func testDoesNotRefuseWithoutALiveHolder() {
+        XCTAssertNil(DeviceBooter.sweepRefusal(
+            keys: ["UDID-1"], selfPID: 100, force: false, holderPID: { _ in nil }, describe: { $0 }))
+        XCTAssertNil(DeviceBooter.sweepRefusal(
+            keys: [], selfPID: 100, force: false, holderPID: { _ in 4242 }, describe: { $0 }))
+    }
+
+    func testOwnLeaseDoesNotRefuse() {
+        XCTAssertNil(DeviceBooter.sweepRefusal(
+            keys: ["UDID-1"], selfPID: 100, force: false, holderPID: { _ in 100 }, describe: { $0 }))
+    }
+
+    func testForceOverridesAHeldLease() {
+        XCTAssertNil(DeviceBooter.sweepRefusal(
+            keys: ["UDID-1"], selfPID: 100, force: true, holderPID: { _ in 4242 }, describe: { $0 }))
+    }
+
+    // I/O 側: 実際の lease ファイルを読んで断る。他プロセスの生きた pid には親(テストランナー)を使う
+    func testReadsLeaseFilesFromTheStateDirectory() throws {
+        let stateDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        RunLease.write(stateDir: stateDir, key: "UDID-LIVE", pid: getppid())
+        RunLease.write(stateDir: stateDir, key: "UDID-DEAD", pid: 999_999)
+        RunLease.write(stateDir: stateDir, key: "UDID-SELF",
+                       pid: ProcessInfo.processInfo.processIdentifier)
+        var namesLookedUp = 0
+        let message = try XCTUnwrap(DeviceBooter.sweepRefusal(
+            force: false, leaseStateDir: stateDir,
+            simulatorNames: { namesLookedUp += 1; return ["UDID-LIVE": "iPhone 17"] }))
+        XCTAssertTrue(message.contains("iPhone 17 [UDID-LIVE] (held by pid \(getppid()))"), message)
+        XCTAssertFalse(message.contains("UDID-DEAD"), message)
+        XCTAssertFalse(message.contains("UDID-SELF"), message)
+        XCTAssertEqual(namesLookedUp, 1)
+        XCTAssertNil(DeviceBooter.sweepRefusal(
+            force: true, leaseStateDir: stateDir, simulatorNames: { [:] }))
+    }
+
+    // 死んだ pid の残骸しか無ければ、表示名の引き当て(本番は simctl)も撃たずに素通りする
+    func testDeadLeasesAloneDoNotLookUpNames() throws {
+        let stateDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        RunLease.write(stateDir: stateDir, key: "UDID-DEAD", pid: 999_999)
+        var namesLookedUp = 0
+        XCTAssertNil(DeviceBooter.sweepRefusal(
+            force: false, leaseStateDir: stateDir,
+            simulatorNames: { namesLookedUp += 1; return [:] }))
+        XCTAssertEqual(namesLookedUp, 0)
+    }
+}
+
 /// 実機 iOS の解決後 UDID(devicectl の一覧との照合。到達性は問わない・純粋関数)
 final class DeviceBooterResolvedPhysicalIOSUDIDTests: XCTestCase {
 

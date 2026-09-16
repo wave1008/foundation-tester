@@ -210,6 +210,49 @@ public enum DeviceBooter {
         return nil
     }
 
+    /// 全掃討(`devices down` のプロファイル無し)の門。掃討は `simctl shutdown all`・全エミュレータ・
+    /// 全ブリッジを一括で落とし台を選べないので、**生きた run-lease が1本でもあれば掃討ごと断る**
+    /// (stopRefusal と同じ規律④。台ごとに除外する形にはしない)。describe: 鍵 → 表示名
+    public static func sweepRefusal(
+        keys: [String], selfPID: Int32, force: Bool,
+        holderPID: (String) -> Int32?, describe: (String) -> String
+    ) -> String? {
+        guard !force else { return nil }
+        let conflicts = RunLeaseGuard.conflicts(
+            devices: keys.map { (device: describe($0), key: $0) }, selfPID: selfPID, holderPID: holderPID)
+        guard !conflicts.isEmpty else { return nil }
+        let list = conflicts.map { "\($0.device) (held by pid \($0.holderPID))" }.joined(separator: ", ")
+        return "refusing to shut everything down: a running fleetest run is using \(list)."
+            + " Wait for that run to finish, or pass --force to stop it anyway."
+    }
+
+    /// sweepRefusal の I/O 側。state dir が引けなければ nil(stopRefusal と同じく素通り)。
+    /// simulatorNames: UDID → 表示名(本番は `simulatorNamesByUDID`。Android の鍵 = serial はそのまま読める)
+    public static func sweepRefusal(
+        force: Bool, leaseStateDir: URL?, simulatorNames: () -> [String: String]
+    ) -> String? {
+        guard !force,
+              let dir = leaseStateDir ?? (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
+        else { return nil }
+        // simctl は生きた lease があるときだけ呼ぶ(死んだ pid の残骸だけなら掃討を遅らせない)
+        let selfPID = ProcessInfo.processInfo.processIdentifier
+        let keys = RunLease.keys(stateDir: dir).filter {
+            guard let pid = RunLease.holderPID(stateDir: dir, key: $0) else { return false }
+            return pid != selfPID
+        }
+        guard !keys.isEmpty else { return nil }
+        let names = simulatorNames()
+        return sweepRefusal(
+            keys: keys, selfPID: selfPID, force: force,
+            holderPID: { RunLease.holderPID(stateDir: dir, key: $0) },
+            describe: { key in names[key].map { "\($0) [\(key)]" } ?? key })
+    }
+
+    public static func simulatorNamesByUDID() -> [String: String] {
+        Dictionary(((try? SimulatorCatalog.devices()) ?? []).map { ($0.udid, $0.name) },
+                   uniquingKeysWith: { first, _ in first })
+    }
+
     /// run-lease の鍵(`ProfileRunner.leaseKeysByDevice` と同じ規則の唯一の定義元)。
     /// Android=serial(実機は宣言済み `spec.serial`・仮想は起動中 AVD と照合済みの serial)/
     /// iOS=UDID(実機は宣言済み `spec.udid`・仮想は `SimulatorCatalog` の解決済み UDID)。

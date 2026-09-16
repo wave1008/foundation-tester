@@ -90,4 +90,20 @@ final class RunLeaseTests: XCTestCase {
             [.modificationDate: past], ofItemAtPath: RunLease.leaseURL(stateDir: stateDir, key: udid).path)
         XCTAssertNil(RunLease.holderPID(stateDir: stateDir, key: udid))
     }
+
+    // 全掃討の門(DeviceBooter.sweepRefusal)が列挙に使う。run- 以外の lease・拡張子違い・空の鍵は拾わない
+    func testKeysListsOnlyRunLeases() throws {
+        let stateDir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+        for name in ["run-B.lease", "run-A.lease", "recording-C.lease", "run-D.lease.tmp",
+                     "run-.lease", "bridge-8100.pid", "mcp-E.lease"] {
+            try "1".write(to: stateDir.appendingPathComponent(name), atomically: true, encoding: .utf8)
+        }
+        XCTAssertEqual(RunLease.keys(stateDir: stateDir), ["A", "B"])
+    }
+
+    func testKeysIsEmptyWhenTheDirectoryIsMissing() {
+        XCTAssertEqual(RunLease.keys(stateDir: makeStateDir()), [])
+    }
 }

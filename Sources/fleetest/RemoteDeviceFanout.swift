@@ -104,22 +104,23 @@ enum RemoteDeviceFanout {
 
     /// 掃討の子の argv(純関数)。**`--device-machine local` が入れ子の分散を止める**
     /// (sweepMachines / remoteMachines はどちらも deviceMachine 指定時に [] を返す)
-    static func sweepChildArgs(machine: String) -> [String] {
+    /// **force は子へ運ぶ**(運ばないと手元で `--force` しても各ランナーの run-lease の門で断られる)
+    static func sweepChildArgs(machine: String, force: Bool) -> [String] {
         ["remote", "exec", machine, "--", "devices", "down", "--device-machine",
-         DeviceMachineGrouping.localDisplayName]
+         DeviceMachineGrouping.localDisplayName] + (force ? ["--force"] : [])
     }
 
     /// 各機械でも同じ掃討を走らせる。**api 経路と違い出力はプレーンテキスト**なので machineStamped は
     /// 通さず、行頭に `[<machine>]` を付けて中継する(手元の行と混ざるとどの機械の声か読めない)。
     /// プロファイルを見ないので転送(RemoteProjectSync)も要らない。
     /// **1台の失敗で他を止めない**(dispatch と同じ)
-    static func dispatchSweep(machines: [String],
+    static func dispatchSweep(machines: [String], force: Bool,
                               relay: @escaping @Sendable (String) -> Void) async {
         guard !machines.isEmpty else { return }
         await withTaskGroup(of: Void.self) { group in
             for machine in machines {
                 group.addTask {
-                    await runChild(args: sweepChildArgs(machine: machine), machine: machine,
+                    await runChild(args: sweepChildArgs(machine: machine, force: force), machine: machine,
                                    formatSpawnFailure: { "❌ \($0)" },
                                    relay: { relay("[\(machine)] \($0)") })
                 }

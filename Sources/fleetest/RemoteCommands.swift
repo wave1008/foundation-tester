@@ -422,6 +422,13 @@ struct RemoteCommand: AsyncParsableCommand {
             }
         }
 
+        /// ランナーで撃つ掃討の argv。**`--ignore-lock` は `--force` として運ぶ** —— 掃討はランナー側でも
+        /// run-lease を読んで断る(DeviceBooter.sweepRefusal)ので、押し切りを運ばないと
+        /// `--ignore-lock` を付けてもデバイスは止まらない
+        static func devicesDownArgs(ignoreLock: Bool) -> [String] {
+            ["devices", "down", "--device-machine", "local"] + (ignoreLock ? ["--force"] : [])
+        }
+
         private func cleanOne(_ raw: String) throws {
             let resolved = try RemoteHostResolver.resolve(rawHost: raw, remoteDirOverride: remoteDir)
             resolved.announce()
@@ -453,7 +460,7 @@ struct RemoteCommand: AsyncParsableCommand {
                 // 全マシンへ掃討を分散するので、付けないとランナー自身の登録簿を辿って
                 // 入れ子のディスパッチになる(経路は1段、の規律。RemoteDeviceFanout.sweepMachines)
                 let devicesDownCommand = RemoteShell.remoteRunCommand(
-                    layout: layout, fleetestArgs: ["devices", "down", "--device-machine", "local"])
+                    layout: layout, fleetestArgs: Self.devicesDownArgs(ignoreLock: ignoreLock))
                 let downResult = try Shell.run(remoteSSHBase + [target, devicesDownCommand])
                 if downResult.status != 0 {
                     ConsoleOut.out("warning: `devices down` exited with status \(downResult.status)\n\(downResult.tail)")

@@ -71,7 +71,9 @@ pipeline {
   (overnight, for example), no cleanup is needed. **If jobs run around the clock without such a gap**,
   run `fleetest devices down` periodically.
 - To clean up between jobs, add `fleetest devices down` (stops every bridge and shuts down every
-  simulator/emulator) at the end of the job.
+  simulator/emulator) at the end of the job. While another test run on the same Mac is using a
+  device, it stops nothing and exits with code 1 so that it does not kill that run. If jobs run in
+  parallel on the same Mac, schedule the cleanup for a time when no other job is running.
 
 ## Flaky scenarios (no retry mechanism, by design)
 

@@ -40,4 +40,31 @@ final class DevicesDownSweepFanoutTests: XCTestCase {
         XCTAssertTrue(code.contains("await fanout"),
                       "リモート分の完走を待たずに抜けると、子を殺したまま「終わった」と言う")
     }
+
+    /// **掃討は run-lease の門を先に通す**。判定の後に分散すると、手元で断ったのにリモートは
+    /// 掃討してしまう。`force` を子へ運ぶことも固定する
+    func testSweepChecksRunLeasesBeforeTouchingAnything() throws {
+        let code = try source("Sources/fleetest/DevicesCommand.swift")
+        let gate = try XCTUnwrap(code.range(of: "if let refusal = DeviceBooter.sweepRefusal("),
+                                 "profile 無しの devices down は run-lease の門を通す(条件を足して無効化しない)")
+        let fanout = try XCTUnwrap(code.range(of: "RemoteDeviceFanout.dispatchSweep("))
+        let bridges = try XCTUnwrap(code.range(of: "BridgeLauncher.stopAll("))
+        let simctl = try XCTUnwrap(code.range(of: #"["xcrun", "simctl", "shutdown", "all"]"#))
+        XCTAssertLessThan(gate.lowerBound, fanout.lowerBound)
+        XCTAssertLessThan(gate.lowerBound, bridges.lowerBound)
+        XCTAssertLessThan(gate.lowerBound, simctl.lowerBound)
+        XCTAssertTrue(code[gate.upperBound..<fanout.lowerBound].contains("throw ExitCode(1)"),
+                      "断ったら掃討へ進まず exit 1 で抜ける")
+        XCTAssertTrue(code[fanout.lowerBound...].prefix(200).contains("force: force"),
+                      "リモートの子へ --force を運ぶ")
+    }
+
+    /// `remote clean --ignore-lock` は掃討へ `--force` として運ぶ(運ばないとランナー側の門で断られ、
+    /// 押し切ったつもりでデバイスが止まらない)
+    func testRemoteCleanCarriesIgnoreLockAsForce() {
+        XCTAssertEqual(RemoteCommand.Clean.devicesDownArgs(ignoreLock: false),
+                       ["devices", "down", "--device-machine", "local"])
+        XCTAssertEqual(RemoteCommand.Clean.devicesDownArgs(ignoreLock: true),
+                       ["devices", "down", "--device-machine", "local", "--force"])
+    }
 }
