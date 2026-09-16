@@ -1,22 +1,6 @@
 # リモートランナーのセットアップ
 
-別の Mac(ランナー機)でテストを実行できるようにする手順です。できることや仕組みは
-[リモート実行](remote_runners_ja.md)を見てください。
-
-手順の多くは、ターミナル(CLI)と VSCode 拡張のどちらでも進められます。ただし、
-**ランナー機に fleetest を入れる作業(ステップ3)はターミナルでしかできません**。
-
-| ステップ | どこで行うか | CLI | VSCode 拡張 |
-|---|---|---|---|
-| 0. ランナー機を準備する | ランナー機 | —(手作業) | — |
-| 1. SSH の鍵でログインできるようにする | 手元の Mac | ✅ | — |
-| 2. マシンを登録する | 手元の Mac | ✅ | ✅ |
-| 3. ランナー機に fleetest を入れる | 手元の Mac | ✅ | — |
-| 4. ランナー機のデバイスをプロファイルに入れる | 手元の Mac | ✅ | ✅ |
-| 5. つながるか確認する | 手元の Mac | ✅ | ✅ |
-| 6. 最初のテストを実行する | 手元の Mac | ✅ | ✅ |
-
-以下の例では、ランナー機を `<user@192.168.xxx.xxx>`、マシン名を `M1Max` とします。
+別の Mac(ランナー機)でテストを実行できるようにする手順です。
 
 ## 始める前に
 
@@ -26,66 +10,45 @@
 
 | 条件 | 確認方法(ランナー機で実行) |
 |---|---|
-| Apple silicon の Mac | `sysctl -n hw.optional.arm64` が `1` |
-| 手元と同じ版の Xcode(macOS の版は違ってもかまいません。ただしその Xcode が動く macOS であること) | `xcodebuild -version` |
-| コンソールにログインしたままになっている | `stat -f%Su /dev/console` がランナー機のユーザー名 |
-| システムスリープが無効(ディスプレイのスリープと画面ロックはあってよい) | `pmset -g \| grep " sleep"` |
-| リモートログインが ON | ステップ1で確認します |
-| ファイアウォールが OFF。ON の場合は「すべての着信接続をブロック」が OFF | ステップ0の2を見てください |
-| Homebrew が入っていて、その macOS に対応した版になっている | `brew --version` が動く |
-| Android SDK と AVD(Android を実行するときだけ) | `fleetest doctor` |
+| Apple silicon であること | `sysctl -n hw.optional.arm64` が `1` |
+| ログインしていること |  |
+| システムスリープが無効になっていること | `sudo pmset -a sleep 0` |
+| 画面共有が ON になっていること | システム設定 → 一般 → 共有 → 画面共有 |
+| リモートログインが ON になっていること | システム設定 → 一般 → 共有 → リモートログイン |
+| 外部からの接続をすべてブロックが OFF であること | システム設定 → ネットワーク → ファイアウォール → オプション |
+| Homebrew がインストールされていること | `brew --version` |
+| Xcode をインストールしてライセンスに同意していること |  |
+| Xcode のバージョンが手元の Mac と同じバージョンであること | `xcodebuild -version` |
+| Xcode でテストで使用するiOSシミュレーターをダウンロードしていること |  |
+| Android Studio をインストールしていること。SDK の場所は既定(`~/Library/Android/sdk`)であること |  |
 
-macOS の版が手元とランナー機で違う場合(例: 26 と 27)、テキストの視覚検証(OCR・FM)は各 Mac の
-macOS に付属する機能で動くため、Mac によって結果が変わることがあります。特定の Mac でだけ失敗するときは、
-macOS の版の違いを疑ってください。
 
-## ステップ0: ランナー機を準備する(ランナー機で・1回だけ)
+## ステップ1: SSH の鍵でログインできるようにする
 
-ランナー機の前に座るか、画面共有で操作します。sudo や画面操作が要る作業なので、
-fleetest は代わりに行いません。
+👉 **手元の Mac で作業します。**
 
-1. **リモートログインを ON にする**: システム設定 → 一般 → 共有 → リモートログイン をONにします。
-2. **ファイアウォールを確認する**。**ファイアウォールが OFF なら、何もしなくて構いません。**
-   ON の場合は、「すべての着信接続をブロック」だけを OFF にします(システム設定 → ネットワーク →
-   ファイアウォール → オプション)。これが ON のままだと SSH も通りません。ファイアウォール自体は
-   ON のままで構いません。状態は次のコマンドで確認できます。
-   ```bash
-   /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate   # 「Firewall is disabled」なら確認はここまで
-   /usr/libexec/ApplicationFirewall/socketfilterfw --getblockall      # 「… set to disabled」なら OK
-   ```
-3. **画面共有を ON にする**(推奨)。ランナー機を再起動したとき、手元からログインし直せます。
-4. **システムスリープを無効にする**:
-   ```bash
-   sudo pmset -a sleep 0
-   ```
-5. **Xcode を入れ、ライセンスに同意する**。バージョンは手元の Mac と同じにします。
-6. **Android Studio を入れる**(Android を実行するときだけ)
-   - SDK の場所は既定(`~/Library/Android/sdk`)のままにしてください。fleetest は SSH 越しに
-     動くので、`~/.zshrc` などに書いた `ANDROID_HOME` の設定は読まれません。
-7. **Homebrew を入れる**
-8. **ログインしたままにする**。
-
-## ステップ1: SSH の鍵でログインできるようにする(手元の Mac で)
-
-AI に「user@192.168.xxx.xxx へSSHで接続できるようにして」と依頼してください。
+AIエージェントに以下のように依頼してください。
+```
+user@192.168.xxx.xxx へSSHで接続できるようにして
+```
+<br>
 
 手動でやる場合は以下を実行してください。
 ```bash
-ssh-copy-id <user@192.168.xxx.xxx>                       # 初回だけパスワードを1回入力します
-ssh -o BatchMode=yes <user@192.168.xxx.xxx> 'echo ok'    # ok と表示されれば準備完了です
+ssh-copy-id user@192.168.xxx.xxx  # ← 適切なユーザー名とホストに書き換えて実行します
+ssh -o BatchMode=yes user@192.168.xxx.xxx 'echo ok'  # ok と表示されれば準備完了です
 ```
 
-## ステップ2: マシンを登録する(手元の Mac で)
+## ステップ2: マシンを登録する
 
-ランナー機に、この Mac の中だけで通じる名前(マシン名)を付けます。以降の手順とプロファイルでは、
-この名前でランナー機を指します。
+👉 **手元の Mac で作業します。**
 
 ### VSCode 拡張で登録する
 
 1. コマンドパレットで `fleetest: デバイスモニターを表示` を実行し、デバイスモニターを開きます。
 2. 「設定」タブを開き、「マシン」の表の「リモートホストを追加」を押します。表に新しい行が
    追加されます。
-3. 「user@host」に SSH の宛先を入れます(例: `<user@192.168.xxx.xxx>`)。
+3. 「user@host」に SSH の宛先を入れます(例: `user@192.168.xxx.xxx`)。
 4. 「マシン(任意のエイリアス)」にマシン名を入れます(例: `M1Max`)。
 5. 「作業ベースディレクトリ」と「FM 並列枠」は、デフォルトで構いません。
 6. 「確定」をクリックします。
@@ -93,7 +56,7 @@ ssh -o BatchMode=yes <user@192.168.xxx.xxx> 'echo ok'    # ok と表示されれ
 ### CLI で登録する
 
 ```bash
-fleetest remote machines add <マシン名> --host <user@192.168.xxx.xxx>
+fleetest remote machines add <マシン名> --host user@192.168.xxx.xxx
 fleetest remote machines        # 登録を確認する
 ```
 
@@ -101,13 +64,13 @@ fleetest remote machines        # 登録を確認する
 - 同じ名前でもう一度 `add` すると、登録を上書きします。
 - 登録を消すときは `fleetest remote machines remove <マシン名>` です。
 
-CLI と拡張は同じ登録簿(`~/.config/fleetest/config.json`)を読み書きします。どちらで登録しても
-結果は同じです。
+CLI と拡張は同じ登録簿(`~/.config/fleetest/config.json`)を読み書きします。どちらで登録しても結果は同じです。
 
-## ステップ3: ランナー機に fleetest を入れる(手元の Mac で)
+## ステップ3: ランナー機に fleetest を入れる
 
-**この作業は VSCode 拡張からはできません。** ターミナルで次のコマンドを実行します。
-ランナー機に SSH でログインして作業する必要はありません。
+👉 **手元の Mac で作業します。**
+
+ターミナルで次のコマンドを実行します。
 
 ```bash
 swift run fleetest remote setup <マシン名> --project project1
@@ -116,7 +79,9 @@ swift run fleetest remote setup <マシン名> --project project1
 - 初回はビルドがあるので数分かかります。
 - 何度実行しても構いません。途中で止まっても、直してから同じコマンドをもう一度実行すれば続きから進みます。
 
-## ステップ4: ランナー機のデバイスをプロファイルに入れる(手元の Mac で)
+## ステップ4: ランナー機のデバイスをプロファイルに入れる
+
+👉 **手元の Mac で作業します。**
 
 どのデバイスでテストを実行するかは、マシンプロファイルと実行プロファイルで決めます。
 プロファイルは手元で編集し、実行のたびにランナー機へ自動で送られます。ランナー機のファイルを
@@ -127,8 +92,7 @@ swift run fleetest remote setup <マシン名> --project project1
 1. デバイスモニターの「プロファイル」タブで、ランナー機のデバイスを入れるマシンプロファイルを
    開きます。
 2. 「デバイスを追加」の「+」を押します。「デバイスを選択」が開きます。
-3. 上部の「マシン:」で `M1Max` を選びます。一覧が、ランナー機にあるデバイスに切り替わります
-   (読み込み中は「読み込み中...」と出ます)。
+3. 上部の「マシン:」で <マシン名> を選びます。一覧が、ランナー機にあるデバイスに切り替わります
 4. 使うデバイスにチェックを入れます。使いたいデバイスが無ければ、「デバイスを作成」の「+」から
    ランナー機の上に作れます。作成の前に「「<デバイス名>」を M1Max 上に作成します。よろしいですか?」と
    確認が出るので、「作成」を押します。
@@ -177,7 +141,7 @@ user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 2
 | 表示 | 意味 | 対処 |
 |---|---|---|
 | `LOGIN` が `no` | ランナー機がログイン画面で止まっている | 画面共有などでログインします |
-| `REV` か `TOOLCHAIN` に ⚠️ | 手元と版がずれている | `fleetest remote setup M1Max` をもう一度実行します。Xcode の違いは、両方の Mac に同じ版の Xcode を入れます |
+| `REV` か `TOOLCHAIN` に ⚠️ | 手元と版がずれている | `fleetest remote setup M1Max` をもう一度実行します。Xcode や macOS の違いは、両方の Mac を同じ版にします |
 | `RUNTIME` に ⚠️ | ランナー機の iOS シミュレータのランタイムが手元と違う | ランナー機で `xcodebuild -downloadPlatform iOS` を実行します(警告だけで、実行は止まりません) |
 | `BINARY` が `no` | ランナー機に fleetest がビルドされていない | ステップ3をもう一度実行します |
 
@@ -221,7 +185,7 @@ fleetest remote exec M1Max -- devices up --profile <実行プロファイル>
 
 - ずれているときは「リモートのfleetestのバージョンが本機と異なります」と出ます。
   「更新して実行」を押すと、ランナー機を手元と同じ版に揃えてから実行します。
-- 揃えられないとき(手元の変更を push していない、ランナー機に接続できない、Xcode の版が
+- 揃えられないとき(手元の変更を push していない、ランナー機に接続できない、Xcode や macOS が
   違う、など)は「リモートのfleetestを更新できないため実行できません」と理由が出て、実行は止まります。
 
 ## fleetest を更新したとき
@@ -251,7 +215,7 @@ fleetest remote exec M1Max -- devices up --profile <実行プロファイル>
 | `neither xcodegen nor Homebrew is available` | ランナー機に Homebrew が入っていない | ステップ0の7で Homebrew を入れてから、`fleetest remote setup` をもう一度実行します |
 | `is sitting at the login window` | ランナー機がログイン画面で止まっている | 画面共有などでログインします |
 | `git revision mismatch` | 手元とランナー機の版がずれている | `fleetest remote setup M1Max` をもう一度実行します |
-| `toolchain mismatch` | Xcode の版が違う(macOS の版は比べません) | 両方の Mac に同じ版の Xcode を入れます |
+| `toolchain mismatch` | Xcode か macOS の版が違う | 両方の Mac を同じ版にします |
 | `no runner workspace at …` | ランナー機にあなたの作業場所がまだ無い | `fleetest remote setup M1Max` を1回実行します |
 | `no running emulator for AVD …` | Android のエミュレータが起動していない | ステップ6の `devices up` を実行します |
 | `app package not found at …` | 手元の `appPath` にアプリが無い | 手元でアプリをビルドするか、`appPath` を直します |
