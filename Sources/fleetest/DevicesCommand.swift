@@ -95,6 +95,19 @@ struct DevicesCommand: AsyncParsableCommand {
             + " is refused entirely while any run holds a device on this machine"))
         var force = false
 
+        /// 全掃討の結果行。**読めなかったことを「止まった」と言わない**(従来は一覧が読めないと ✅ だった)
+        static func simulatorSweepLine(_ observation: SimulatorShutdownObservation) -> String {
+            switch observation {
+            case .stopped:
+                return "✅ All simulators shut down"
+            case .stillBooted:
+                return "⚠️ Some simulators will not stop (check xcrun simctl list devices)"
+            case .unreadable(let reason):
+                return "⚠️ Could not confirm that the simulators shut down — the simulator list could not be"
+                    + " read (\(reason)). Check xcrun simctl list devices"
+            }
+        }
+
         func run() async throws {
             if let profile {
                 try await shutdownProfile(profile)
@@ -130,24 +143,17 @@ struct DevicesCommand: AsyncParsableCommand {
             // exit code でなくカタログの実状態で成否判定し、Booted が残れば再試行する
             // (DeviceBooter.shutdownOne と同じ理由: macOS 27 beta の 405 レース、および
             // 生き残ったセッションによる shutdown 中の再ブート)
-            var shutdownConfirmed = false
+            var observation = SimulatorShutdownObservation.stillBooted
             for attempt in 1...3 {
                 _ = try? Shell.run(["xcrun", "simctl", "shutdown", "all"])
-                let stillBooted = (try? SimulatorCatalog.devices())?.contains(where: \.booted) ?? false
-                if !stillBooted {
-                    shutdownConfirmed = true
-                    break
-                }
+                observation = SimulatorCatalog.shutdownObservation(udid: nil)
+                if observation == .stopped { break }
                 if attempt < 3 {
-                    ConsoleOut.out("→ Some simulators have not shut down yet — retrying (\(attempt)/3)...")
+                    ConsoleOut.out("→ Could not confirm that every simulator shut down yet — retrying (\(attempt)/3)...")
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
                 }
             }
-            if shutdownConfirmed {
-                ConsoleOut.out("✅ All simulators shut down")
-            } else {
-                ConsoleOut.out("⚠️ Some simulators will not stop (check xcrun simctl list devices)")
-            }
+            ConsoleOut.out(Self.simulatorSweepLine(observation))
             // gRPC SHUTDOWN 優先(adb 経路死亡でも届く)・不可なら emu kill。
             // それでも offline には届かないため、残った qemu を最後に直接落とす
             if let adb = try? AndroidDriver.findADB(),

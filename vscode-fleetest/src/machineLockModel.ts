@@ -13,6 +13,8 @@
 // **「不明」と「空き」を混ぜない**。控えが無い機械は不明(観測していない・旧ランナー)で、
 // 空きだと言い切らない —— 破壊的操作の確認が「走っている run は無い」と誤って請け合わないため。
 
+import type { MonitorDevice } from "./monitorModel";
+
 /** 1機械ぶんの占有。**保持者が誰かは表示専用**(自己申告。Sources/FTRemote/HostOccupancy.swift)。 */
 export interface MachineLock {
   /** **その機械をまだ観測できているか**。false = 供給元(リモートの監視の子)が落ちた ——
@@ -92,4 +94,42 @@ export function occupiedMachines(locks: ReadonlyMap<string, MachineLock>): Set<s
 // 除外され(never へ潰れる)、解放の遷移が書けなくなる
 export function isConfirmedHeld(lock: MachineLock | undefined): boolean {
   return lock?.observed === true && lock.held;
+}
+
+/** **手元で run が使っている台**の名前(`inRun` = RunLease 由来なので CLI から起こした run も写る)。
+ * リモートの台は含めない(あちらは dispatch.lock = occupiedMachines で見る)。
+ * 一覧を未観測(undefined)なら空 = 黙る(CLI 側の門が最後に断る)。 */
+export function localDevicesInRun(devices: readonly MonitorDevice[] | undefined): readonly string[] {
+  return (devices ?? []).filter((d) => d.machine === undefined && d.inRun === true).map((d) => d.name);
+}
+
+export type BulkDownGate =
+  /** 全掃討は CLI が丸ごと断る(Sources/FTAndroid/DeviceBooter.swift の sweepRefusal)ので撃たない。
+   * **押し切るボタンは出さない**(GUI に --force を出さない規律) */
+  | { readonly kind: "blockedByLocalRun"; readonly names: readonly string[] }
+  | { readonly kind: "confirmOccupied"; readonly holders: readonly { readonly machine: string; readonly issuer?: string }[] }
+  | { readonly kind: "proceed" };
+
+/** 「全て終了」を押したときの門。**手元の run は全掃討(プロファイル未選択)のときだけ止める** ——
+ * プロファイル選択時の一括停止は CLI が使用中の台だけ飛ばして残りを止める(stopRefusal)ので、
+ * 押すこと自体は妨げない。 */
+export function bulkDownGate(input: {
+  readonly profileSelected: boolean;
+  readonly localInRun: readonly string[];
+  readonly occupied: readonly { readonly machine: string; readonly issuer?: string }[];
+}): BulkDownGate {
+  if (!input.profileSelected && input.localInRun.length > 0) {
+    return { kind: "blockedByLocalRun", names: input.localInRun };
+  }
+  if (input.occupied.length > 0) {
+    return { kind: "confirmOccupied", holders: input.occupied };
+  }
+  return { kind: "proceed" };
+}
+
+/** 全掃討の CLI が断ったときの1行(`❌ ` を外した本文)。それ以外は undefined。
+ * 文言の対: Sources/FTAndroid/DeviceBooter.swift の sweepRefusal */
+export function sweepRefusalDetail(line: string): string | undefined {
+  const match = /^❌ (refusing to shut everything down: .*)$/.exec(line.trim());
+  return match?.[1];
 }

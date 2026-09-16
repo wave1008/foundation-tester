@@ -67,4 +67,14 @@ final class DevicesDownSweepFanoutTests: XCTestCase {
         XCTAssertEqual(RemoteCommand.Clean.devicesDownArgs(ignoreLock: true),
                        ["devices", "down", "--device-machine", "local", "--force"])
     }
+
+    /// 全掃討の結果行: 一覧が読めなかったときに ✅ を名乗らない
+    func testSweepLineDoesNotClaimSuccessWhenTheListIsUnreadable() {
+        let line = DevicesCommand.Down.simulatorSweepLine(.unreadable("simctl list devices failed: timed out"))
+        XCTAssertFalse(line.contains("✅"), line)
+        XCTAssertTrue(line.contains("Could not confirm"), line)
+        XCTAssertTrue(line.contains("simctl list devices failed: timed out"), line)
+        XCTAssertEqual(DevicesCommand.Down.simulatorSweepLine(.stopped), "✅ All simulators shut down")
+        XCTAssertFalse(DevicesCommand.Down.simulatorSweepLine(.stillBooted).contains("✅"))
+    }
 }

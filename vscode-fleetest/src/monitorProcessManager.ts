@@ -19,7 +19,7 @@ import {
   sortMonitorDevices,
   toWebviewMessage,
 } from "./monitorModel";
-import { type MachineLock, applyMachineLockEvent, isConfirmedHeld } from "./machineLockModel";
+import { type MachineLock, applyMachineLockEvent, isConfirmedHeld, localDevicesInRun } from "./machineLockModel";
 import { NdjsonParser } from "./ndjson";
 import type { MonitorPanelDeps } from "./monitorPanel";
 
@@ -682,6 +682,11 @@ export class MonitorProcessManager {
   }
 
   /** いま run が走っている機械の一覧(一括停止の確認が読む)。 */
+  /** 手元で run が使っている台の名前(直近の monitorDevices。表示フィルタは通さない) */
+  localDevicesInRun(): readonly string[] {
+    return localDevicesInRun(this.latestDevices);
+  }
+
   occupiedMachineList(): readonly { readonly machine: string; readonly issuer?: string }[] {
     // **観測できているものだけを名指しする**(不明を「実行中」と言わない。言えないことは黙る)
     return [...this.machineLocks]

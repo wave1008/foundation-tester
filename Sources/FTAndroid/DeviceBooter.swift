@@ -610,19 +610,24 @@ public enum DeviceBooter {
             // macOS 27 beta 3: simctl shutdown は「Unable to shutdown...」(405)を返しつつ実際には
             // Booted のまま残るレースがあるため、exit code でなくカタログの実状態で成否判定する
             var lastResult: Shell.Result?
+            var observation = SimulatorShutdownObservation.stillBooted
             for attempt in 1...3 {
                 // simctl が稀に応答不能になるため時限化(30s)。締切ループが無効化するのを防ぐ。
                 lastResult = try Shell.run(["xcrun", "simctl", "shutdown", sim.udid], timeout: 30)
-                let stillBooted = (try? SimulatorCatalog.devices())?
-                    .first(where: { $0.udid == sim.udid })?.booted ?? false
-                if !stillBooted {
+                observation = SimulatorCatalog.shutdownObservation(udid: sim.udid)
+                if observation == .stopped {
                     log("✅ \(spec.name): simulator stopped (\(sim.name))")
                     return
                 }
                 if attempt < 3 {
-                    log("→ \(spec.name): shutdown not reflected yet — retrying (\(attempt)/3)...")
+                    log("→ \(spec.name): shutdown not confirmed yet — retrying (\(attempt)/3)...")
                     try await Task.sleep(nanoseconds: 2_000_000_000)
                 }
+            }
+            if case .unreadable(let reason) = observation {
+                throw DeviceBooterError.commandFailed(
+                    "simctl shutdown: could not confirm that the simulator stopped — the simulator list"
+                        + " could not be read (\(reason)). Check xcrun simctl list devices")
             }
             throw DeviceBooterError.commandFailed(
                 "simctl shutdown: the simulator did not stop after 3 attempts (last output: \(lastResult?.tail ?? ""))")

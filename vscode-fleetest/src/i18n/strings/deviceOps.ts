@@ -82,6 +82,18 @@ export const deviceOpsStrings = {
     ja: "{holders} — 停止するとその run は失敗します。",
     en: "{holders} — stopping them makes those runs fail.",
   },
+  "deviceOps.bulkDownLocalRunMessage": {
+    ja: "この Mac で実行中のテストがあるため、すべてのデバイスは停止できません。",
+    en: "A test run is in progress on this Mac, so the devices cannot all be stopped.",
+  },
+  "deviceOps.bulkDownLocalRunDetail": {
+    ja: "使用中: {names}。テストが終わってからもう一度実行してください。実行プロファイルを選択していれば、使用中でないデバイスだけを停止できます。",
+    en: "In use: {names}. Try again after the run finishes. With a run profile selected, only the devices that are not in use are stopped.",
+  },
+  "deviceOps.bulkDownRefused": {
+    ja: "fleetest: 実行中のテストがあるため、デバイスを停止しませんでした({detail})",
+    en: "fleetest: No devices were stopped because a test run is in progress ({detail})",
+  },
   "deviceOps.bulkDownOccupiedConfirmButton": {
     ja: "それでも停止",
     en: "Stop anyway",

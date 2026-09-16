@@ -187,3 +187,38 @@ public enum SimulatorCatalog {
                    physicalDevices: { (try? IOSPhysicalDeviceCatalog.devices()) ?? [] })
     }
 }
+
+/// 停止を確かめるための読み。**一覧が読めないことを「止まった」と読まない**
+/// (`(try? devices())?.contains(...) ?? false` の形は、読めないと停止を確認できないまま成功を名乗る)
+public enum SimulatorShutdownObservation: Equatable, Sendable {
+    case stopped
+    case stillBooted
+    /// 一覧を読めなかった(理由の1行)。呼び手は成功とも失敗とも言わず「確認できない」と言う
+    case unreadable(String)
+}
+
+extension SimulatorCatalog {
+    /// udid: nil なら「起動中の台が1台も無いか」、指定ならその台だけを見る(一覧から消えた台は停止扱い)
+    public static func shutdownObservation(
+        _ read: Result<[SimDeviceInfo], Error>, udid: String?
+    ) -> SimulatorShutdownObservation {
+        switch read {
+        case .failure(let error):
+            let reason = error.localizedDescription
+                .split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init) ?? ""
+            return .unreadable(reason.isEmpty ? String(describing: error) : reason)
+        case .success(let devices):
+            let booted: Bool
+            if let udid {
+                booted = devices.first(where: { $0.udid == udid })?.booted ?? false
+            } else {
+                booted = devices.contains(where: \.booted)
+            }
+            return booted ? .stillBooted : .stopped
+        }
+    }
+
+    public static func shutdownObservation(udid: String?) -> SimulatorShutdownObservation {
+        shutdownObservation(Result { try devices() }, udid: udid)
+    }
+}

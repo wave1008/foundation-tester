@@ -45,7 +45,7 @@ import {
   type MonitorDevice,
   type MonitorToWebviewMessage,
 } from "./monitorModel";
-import { type MachineLock, occupiedMachines } from "./machineLockModel";
+import { type MachineLock, bulkDownGate, occupiedMachines } from "./machineLockModel";
 import { MonitorBridgeWatchdog } from "./monitorBridgeWatchdog";
 import { MonitorDashboardController } from "./monitorDashboardController";
 import { MonitorDeviceOps } from "./monitorDeviceOps";
@@ -784,7 +784,8 @@ export class MonitorPanelController implements vscode.Disposable {
       case "devicesDown":
         // **他人(あるいは自分)の run が走っている機械があれば先に言う**(§18.1 #6)。
         // 一括停止はリモート機のブリッジとシミュレータも畳むので、走っている run は必ず落ちる。
-        // 占有が1件も無いときは従来どおり確認を挟まない(単独利用の手数を増やさない)
+        // 手元の run は全掃討のときだけ止める(CLI も同じ lease で断る。bulkDownGate)。
+        // 占有も手元の run も無いときは確認を挟まない(単独利用の手数を増やさない)
         void this.confirmThenBulkDown();
         break;
       case "restartMonitor":
@@ -1045,9 +1046,23 @@ export class MonitorPanelController implements vscode.Disposable {
   /** 一括停止の前に、占有中の機械があれば modal で確認する(webview の window.confirm は
    * 効かないのでホスト側で出す)。占有が無ければ即実行 = 従来どおり。 */
   private async confirmThenBulkDown(): Promise<void> {
-    const occupied = this.processManager.occupiedMachineList();
-    if (occupied.length > 0) {
-      const holders = occupied
+    const gate = bulkDownGate({
+      // executeBulkJob と同じ判定(プロファイル未選択 = 全掃討の devices down)
+      profileSelected: !!this.getConfig().profile,
+      localInRun: this.processManager.localDevicesInRun(),
+      occupied: this.processManager.occupiedMachineList(),
+    });
+    if (gate.kind === "blockedByLocalRun") {
+      void vscode.window.showWarningMessage(
+        t("deviceOps.bulkDownLocalRunMessage"),
+        { modal: true, detail: t("deviceOps.bulkDownLocalRunDetail", {
+          names: gate.names.join(t("deviceOps.nameSeparator")),
+        }) },
+      );
+      return;
+    }
+    if (gate.kind === "confirmOccupied") {
+      const holders = gate.holders
         .map((entry) => `${entry.machine}: ${entry.issuer ?? t("deviceOps.occupiedIssuerUnknown")}`)
         .join(t("deviceOps.nameSeparator"));
       const confirmLabel = t("deviceOps.bulkDownOccupiedConfirmButton");

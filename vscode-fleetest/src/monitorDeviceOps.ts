@@ -36,7 +36,7 @@ import {
   type MonitorFromWebviewMessage,
   type MonitorToWebviewMessage,
 } from "./monitorModel";
-import { isConfirmedHeld } from "./machineLockModel";
+import { isConfirmedHeld, sweepRefusalDetail } from "./machineLockModel";
 import { NdjsonParser } from "./ndjson";
 import type { MonitorPanelDeps } from "./monitorPanel";
 import { formatBytesAuto } from "./retentionModel";
@@ -744,7 +744,18 @@ export class MonitorDeviceOps {
 
     if (!useNdjson) {
       // profile 無しの down = 従来の devices down(全掃討・プレーンテキスト)。
-      proc.stdout.on("data", (chunk: Buffer) => appendLines("stdout", chunk));
+      // **CLI が run-lease で断ったら通知で見せる**(押す前の門 bulkDownGate は monitor の観測に頼るので、
+      // 観測の遅れ・一時停止中は CLI 側で初めて断られる。OUTPUT の1行だけだと「押しても何も起きない」)
+      let refusal: string | undefined;
+      let partial = "";
+      proc.stdout.on("data", (chunk: Buffer) => {
+        const lines = (partial + chunk.toString("utf8")).split("\n");
+        partial = lines.pop() ?? "";
+        for (const line of lines) {
+          refusal = sweepRefusalDetail(line) ?? refusal;
+        }
+        appendLines("stdout", chunk);
+      });
       proc.stderr.on("data", (chunk: Buffer) => appendLines("stderr", chunk));
 
       proc.on("error", (error) => {
@@ -757,6 +768,10 @@ export class MonitorDeviceOps {
         this.deps.outputChannel.appendLine(
           t("deviceOps.log.devicesClosed", { kind, exitCode: String(exitCode) }),
         );
+        refusal = sweepRefusalDetail(partial) ?? refusal;
+        if (exitCode !== 0 && refusal !== undefined) {
+          void vscode.window.showWarningMessage(t("deviceOps.bulkDownRefused", { detail: refusal }));
+        }
         finishOnce();
       });
       return;

@@ -5,7 +5,12 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyMachineLockEvent, isConfirmedHeld, occupiedMachines } from "../src/machineLockModel";
+import {
+  applyMachineLockEvent, bulkDownGate, isConfirmedHeld, localDevicesInRun, occupiedMachines, sweepRefusalDetail,
+} from "../src/machineLockModel";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { isMonitorEvent } from "../src/monitorDeviceModel";
 
 const heldEvent = {
@@ -67,4 +72,74 @@ test("monitorLock イベントの検証: 必須 bool 欠落は捨てる", () => 
   const dirty = { ...heldEvent, issuer: 42 };
   assert.equal(isMonitorEvent(dirty), true);
   assert.equal(dirty.issuer, undefined);
+});
+
+// ---- 「全て終了」の門(手元の run)----
+
+const dev = (name, extra) => ({
+  id: name, name, platform: "ios", state: "connected", detail: "", kind: "virtual", ...extra,
+});
+
+test("手元で run 中の台だけを挙げる(リモートの台・run していない台は挙げない)", () => {
+  const devices = [
+    dev("local-busy", { inRun: true }),
+    dev("local-idle", { inRun: false }),
+    dev("remote-busy", { inRun: true, machine: "M1Max" }),
+    dev("local-unknown", {}),
+  ];
+  assert.deepEqual(localDevicesInRun(devices), ["local-busy"]);
+  assert.deepEqual(localDevicesInRun(undefined), [], "未観測は黙る(CLI の門が最後に断る)");
+});
+
+test("プロファイル未選択(全掃討)で手元の run があれば撃たない —— リモートの占有より先に言う", () => {
+  const gate = bulkDownGate({
+    profileSelected: false, localInRun: ["iPhone A"], occupied: [{ machine: "M1Max", issuer: "bob" }],
+  });
+  assert.deepEqual(gate, { kind: "blockedByLocalRun", names: ["iPhone A"] });
+});
+
+test("プロファイル選択時は手元の run で止めない(CLI が使用中の台だけ飛ばす)", () => {
+  assert.deepEqual(
+    bulkDownGate({ profileSelected: true, localInRun: ["iPhone A"], occupied: [] }),
+    { kind: "proceed" });
+  assert.deepEqual(
+    bulkDownGate({ profileSelected: true, localInRun: ["iPhone A"], occupied: [{ machine: "M1Max" }] }),
+    { kind: "confirmOccupied", holders: [{ machine: "M1Max" }] });
+});
+
+test("何も走っていなければ確認を挟まない", () => {
+  assert.deepEqual(bulkDownGate({ profileSelected: false, localInRun: [], occupied: [] }), { kind: "proceed" });
+});
+
+test("CLI の拒否行だけを拾う", () => {
+  const line = "❌ refusing to shut everything down: a running fleetest run is using X (held by pid 1). Wait.";
+  assert.equal(sweepRefusalDetail(line),
+    "refusing to shut everything down: a running fleetest run is using X (held by pid 1). Wait.");
+  assert.equal(sweepRefusalDetail("[M1Max] " + line), undefined, "リモートの子の中継行は手元の拒否ではない");
+  assert.equal(sweepRefusalDetail("✅ All simulators shut down"), undefined);
+});
+
+test("拒否の文言は Swift 側(DeviceBooter.sweepRefusal)と一致する", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const swift = readFileSync(join(here, "../../Sources/FTAndroid/DeviceBooter.swift"), "utf8");
+  assert.ok(swift.includes('"refusing to shut everything down: '),
+    "Swift の文言を変えたら sweepRefusalDetail の正規表現も直す");
+  assert.ok(readFileSync(join(here, "../../Sources/fleetest/DevicesCommand.swift"), "utf8")
+    .includes('ConsoleOut.out("❌ \\(refusal)")'), "拒否行は ❌ 付きで stdout へ出す");
+});
+
+test("「全て終了」は門を通し、CLI の拒否は通知で見せる(配線)", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const panel = readFileSync(join(here, "../src/monitorPanel.ts"), "utf8");
+  const body = panel.slice(panel.indexOf("private async confirmThenBulkDown"));
+  assert.ok(body.indexOf("bulkDownGate(") >= 0
+    && body.indexOf("bulkDownGate(") < body.indexOf("enqueueLifecycleJob"),
+    "enqueue の前に bulkDownGate を通す");
+  const blockedStart = body.indexOf('if (gate.kind === "blockedByLocalRun")');
+  const blockedBranch = body.slice(blockedStart, body.indexOf("if (gate.kind", blockedStart + 1));
+  assert.ok(blockedStart >= 0 && /\breturn;/.test(blockedBranch),
+    "手元の run で止めるときは、その分岐の中で抜けて enqueue しない");
+  const ops = readFileSync(join(here, "../src/monitorDeviceOps.ts"), "utf8");
+  assert.ok(ops.includes("sweepRefusalDetail(line)") && ops.includes('t("deviceOps.bulkDownRefused"'),
+    "全掃討の拒否行を拾って通知する");
 });
