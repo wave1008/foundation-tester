@@ -126,7 +126,7 @@ public struct InAppLauncher {
         do {
             try await waitUntilReady()
         } catch let InAppLauncherError.notReady(detail) {
-            // **一次原因を添える**: 「did not respond in time: bridgeConnectionRefused」の裏が
+            // **一次原因を添える**: 「did not respond in time: connection refused」の裏が
             // アプリの即死(例: ランタイム共有キャッシュ破損の dyld エラー = OS_REASON_DYLD。
             // simctl shutdown→boot で回復)でも、素の文言からは見えず simctl のログを手で
             // 掘ることになる(受け手報告 2026-08-24)。ここは bundleID を知っている唯一の層。
@@ -190,7 +190,7 @@ public struct InAppLauncher {
             // 80ms 間隔(ready 検知の遅れは平均でこの半分。300ms だと最大 +300ms 遅れる)
             try await Task.sleep(nanoseconds: 80_000_000)
         }
-        throw InAppLauncherError.notReady(lastError.map { "\($0)" } ?? "no response")
+        throw InAppLauncherError.notReady(lastError.map(BridgeClient.readinessDetail) ?? "no response")
     }
 }
 

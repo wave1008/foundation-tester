@@ -26,7 +26,8 @@ final class BridgeUpPortMismatchMessageTests: XCTestCase {
     /// (この台にはそのポートで既にブリッジがあったので、止めて再実行すれば要求ポートに戻れる)
     func testTheReusedMessageNamesTheActualPortAsTheOneToStop() {
         let text = Bridge.Up.portMismatchMessage(actualPort: 8130, requestedPort: 8123,
-                                                  reason: .reusedExistingBridge)
+                                                  reason: .reusedExistingBridge,
+                                                  requestedPortHeldByOther: false)
         XCTAssertTrue(text.contains("Reused"), text)
         XCTAssertTrue(text.contains("bridge down --port 8130"), text)
     }
@@ -35,9 +36,21 @@ final class BridgeUpPortMismatchMessageTests: XCTestCase {
     /// (要求ポートを塞いでいるのは別の台のブリッジのことがある = 実測では iPhone 13 の LAN ブリッジ)
     func testTheNewLaunchMessageDoesNotClaimReuseOrSuggestStoppingAnything() {
         let text = Bridge.Up.portMismatchMessage(actualPort: 8128, requestedPort: 8123,
-                                                  reason: .startedOnAnotherPort)
+                                                  reason: .startedOnAnotherPort,
+                                                  requestedPortHeldByOther: true)
         XCTAssertFalse(text.contains("Reused"), text)
         XCTAssertTrue(text.contains("Started the bridge on port 8128 because port 8123 is in use by another bridge"), text)
+        XCTAssertFalse(text.contains("bridge down"), text)
+    }
+
+    /// N1(2026-09-18): 再利用でも、要求ポートを別の台が握っているなら止める案内は出さない
+    /// (今のポートを止めても要求ポートは空かない。実測では既定 8123 が USB 実機のトンネル)
+    func testTheReusedMessageDoesNotSuggestStoppingWhenTheRequestedPortBelongsToAnotherBridge() {
+        let text = Bridge.Up.portMismatchMessage(actualPort: 8129, requestedPort: 8123,
+                                                  reason: .reusedExistingBridge,
+                                                  requestedPortHeldByOther: true)
+        XCTAssertTrue(text.contains("Reused the running bridge on this device (port 8129)"), text)
+        XCTAssertTrue(text.contains("8123 is in use by another bridge"), text)
         XCTAssertFalse(text.contains("bridge down"), text)
     }
 }

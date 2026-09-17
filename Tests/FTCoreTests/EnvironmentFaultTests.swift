@@ -81,16 +81,37 @@ final class EnvironmentFaultTests: XCTestCase {
     /// この経路で緑に戻り、Android は事後プローブで拾えず赤のまま残っていた)
     func testOnlyAndroidRequeuesDriverUnreachableWithoutRetiring() {
         XCTAssertTrue(ScenarioRunner.requeuesWithoutRetiring(outcome: .driverUnreachable,
-                                                             platform: "android"))
+                                                             platform: "android", host: nil))
         XCTAssertFalse(ScenarioRunner.requeuesWithoutRetiring(outcome: .driverUnreachable,
-                                                              platform: "ios"))
+                                                              platform: "ios", host: nil))
+    }
+
+    /// iOS の LAN 実機だけは Android と同じ振り直しに載る(2026-09-18: Wi-Fi の瞬断 1 回で
+    /// 生きたランナーを止めて離脱していた)。USB トンネル(127.0.0.1)とシミュレータ(nil)は従来どおり
+    func testLANPhysicalIOSRequeuesDriverUnreachableWithoutRetiring() {
+        XCTAssertTrue(ScenarioRunner.requeuesWithoutRetiring(outcome: .driverUnreachable,
+                                                             platform: "ios", host: "192.168.20.7"))
+        XCTAssertFalse(ScenarioRunner.requeuesWithoutRetiring(outcome: .driverUnreachable,
+                                                              platform: "ios", host: "127.0.0.1"))
+        XCTAssertFalse(ScenarioRunner.requeuesWithoutRetiring(outcome: .failed,
+                                                              platform: "ios", host: "192.168.20.7"))
+    }
+
+    /// refused で即「死亡」と言ってよいのはループバックの宛先だけ
+    func testRefusalIsConclusiveOnlyForLoopback() {
+        for host in [nil, "127.0.0.1", "localhost", "::1"] {
+            XCTAssertTrue(BridgeProbeOutcome.refusalIsConclusive(host: host), "\(String(describing: host))")
+        }
+        for host in ["192.168.20.7", "10.0.0.5", "fe80::1", "iphone.local"] {
+            XCTAssertFalse(BridgeProbeOutcome.refusalIsConclusive(host: host), host)
+        }
     }
 
     /// environmentFault は既存どおり OS 問わず振り直し対象(この規律を壊していないことの固定)
     func testEnvironmentFaultRequeuesOnBothPlatforms() {
         for platform in ["ios", "android"] {
             XCTAssertTrue(ScenarioRunner.requeuesWithoutRetiring(outcome: .environmentFault,
-                                                                 platform: platform))
+                                                                 platform: platform, host: nil))
         }
     }
 
@@ -100,7 +121,7 @@ final class EnvironmentFaultTests: XCTestCase {
         for outcome in [ScenarioOutcome.passed, .failed, .frozen] {
             for platform in ["ios", "android"] {
                 XCTAssertFalse(ScenarioRunner.requeuesWithoutRetiring(outcome: outcome,
-                                                                      platform: platform))
+                                                                      platform: platform, host: nil))
             }
         }
     }

@@ -625,9 +625,16 @@ struct Bridge: AsyncParsableCommand {
 
         /// **「stop it and run again」の案内は再利用のときだけ出す** —— 新規起動のケースでは
         /// 案内どおりに今のポートを止めても要求ポートは空かない(塞いでいるのは別のブリッジ)
+        /// requestedPortHeldByOther: 要求ポートを**別の台の**ブリッジ(台帳 .pid/.inapp・実機の iproxy)が
+        /// 握っているか。握られていれば再利用でも止める案内は出さない —— 今のポートを止めても
+        /// 要求ポートは空かない(実測 2026-09-18: 既定 8123 が USB 実機のトンネルだった)
         static func portMismatchMessage(actualPort: UInt16, requestedPort: UInt16,
-                                        reason: PortMismatchReason) -> String {
+                                        reason: PortMismatchReason,
+                                        requestedPortHeldByOther: Bool) -> String {
             switch reason {
+            case .reusedExistingBridge where requestedPortHeldByOther:
+                return "⚠️ Reused the running bridge on this device (port \(actualPort)); the "
+                    + "requested/default port \(requestedPort) is in use by another bridge."
             case .reusedExistingBridge:
                 return "⚠️ Reused the running bridge on this device (port \(actualPort)) instead of the "
                     + "requested/default port \(requestedPort). To rebuild on port \(requestedPort), stop it "
@@ -689,8 +696,17 @@ struct Bridge: AsyncParsableCommand {
             // 固定ポート前提のスクリプトが :driverOptions.resolvedPort を叩いて外さないよう、差異を明示する
             if port != driverOptions.resolvedPort {
                 let reason = Self.portMismatchReason(actualPort: port, preexistingPorts: preexistingPorts)
+                let requested = driverOptions.resolvedPort
+                let stateDir = root.appendingPathComponent(".fleetest")
+                let heldByOther = !preexistingPorts.contains(requested) && (
+                    FileManager.default.fileExists(
+                        atPath: stateDir.appendingPathComponent("bridge-\(requested).pid").path)
+                    || FileManager.default.fileExists(
+                        atPath: InAppBridgeState.url(stateDir: stateDir, port: requested).path)
+                    || IOSDeviceTransport.isPortHeldByIproxy(hostPort: requested, repoRoot: root))
                 ConsoleOut.out(Self.portMismatchMessage(
-                    actualPort: port, requestedPort: driverOptions.resolvedPort, reason: reason))
+                    actualPort: port, requestedPort: requested, reason: reason,
+                    requestedPortHeldByOther: heldByOther))
             }
             let host = provisioned.first?.host ?? BridgeEndpoint.loopbackHost
             ConsoleOut.out("✅ Bridge ready: http://\(host):\(port)")

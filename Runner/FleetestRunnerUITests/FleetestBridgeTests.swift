@@ -11,6 +11,11 @@ final class FleetestBridgeTests: XCTestCase {
         // 個々の操作失敗(例: キーボード非表示での typeText)でテスト全体を
         // 落とさない。サーバは生き続ける。
         continueAfterFailure = true
+        // LAN の実機では標準出力(XCTest の活動ログ)がネットワーク越しに転送され、回線の揺れで
+        // 転送路が切れた直後の出力が SIGPIPE でランナーごと落としていた(2026-09-18 実測:
+        // "Test crashed with signal pipe" が 1 run に 3 回。HTTP のソケットは SO_NOSIGPIPE 済み)。
+        // ランナーは専用プロセスなので全体で無視し、書き込みは EPIPE で受ける
+        signal(SIGPIPE, SIG_IGN)
 
         let portString = ProcessInfo.processInfo.environment["FT_PORT"] ?? ""
         let port = UInt16(portString) ?? BridgeAPI.defaultPort

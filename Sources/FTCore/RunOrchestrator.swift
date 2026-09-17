@@ -448,6 +448,16 @@ public enum BridgeProbeOutcome: Sendable {
     /// 同じ bundle ID のアプリが載っていると /status 以外では見分けられない = 放置すると
     /// このレーンのシナリオが別の台で緑になる)。detail は BridgeIdentityCheck の文言
     case hijacked(detail: String)
+
+    /// `.refused` を「ブリッジプロセス死亡」と即断してよい宛先か。ループバック(シミュレータ・
+    /// USB トンネル)は LISTEN 不在の証拠になるが、**LAN の実機は Wi-Fi の瞬断・省電力でも
+    /// 接続不能(-1004)を返す** —— 即断すると生きたランナーを cleanupRetiredWorker が SIGTERM する
+    /// (2026-09-18 実測: 外からの /status が失敗の 1 秒前も 6 秒後も応答していたのに、4 run で 12 回離脱)。
+    /// false の宛先では `.silent` と同じく観察窓とランナーログの成長で判定する
+    public static func refusalIsConclusive(host: String?) -> Bool {
+        guard let host else { return true }
+        return ["127.0.0.1", "localhost", "::1"].contains(host)
+    }
 }
 
 /// ワーカー・サーキットブレーカ: 同一ワーカーで通常失敗(凍結/消失に該当しない)が連続でこの回数に
@@ -494,7 +504,8 @@ public enum ScenarioOutcome: Sendable, Equatable {
     /// 失敗ステップの `failureKind` が `driverUnreachable`(ブリッジ不達)だった。
     /// **OS で扱いが割れる** —— Android は environmentFault と同じ振り直し対象(runWorker 側の
     /// `requeuesWithoutRetiring`)。iOS は `.failed` と同じ経路(bridgeUnreachable プローブ→
-    /// ワーカー離脱→復帰)へそのまま流す(ここで早期に振り直すと建て直しが起きなくなる)
+    /// ワーカー離脱→復帰)へそのまま流す(ここで早期に振り直すと建て直しが起きなくなる)。
+    /// iOS の LAN 実機はプローブがブリッジの生存を確かめた後だけ Android と同じ振り直しに載る
     case driverUnreachable
 }
 
@@ -643,12 +654,16 @@ public enum ScenarioRunner {
     /// device offline で1本・実機再起動で1本)。**iOS はここで拾わない** —— 下流の
     /// bridgeUnreachable プローブ→ワーカー離脱→復帰→再キューの経路(既存)をそのまま通す必要があり、
     /// ここで早期に振り直すとブリッジの建て直しが起きなくなる
-    static func requeuesWithoutRetiring(outcome: ScenarioOutcome, platform: String) -> Bool {
+    /// host: ワーカーの宛先(`DriverConnection.host`)。iOS の LAN 実機だけ Android と同じ扱いにする
+    /// —— 事後プローブ(bridgeUnreachable)がブリッジの生存を確かめた後でここへ来るので、
+    /// 一過性の断で落ちた 1 本を赤のまま残さない(ループバックの iOS は従来どおり赤)
+    static func requeuesWithoutRetiring(outcome: ScenarioOutcome, platform: String, host: String?) -> Bool {
         switch outcome {
         case .environmentFault:
             return true
         case .driverUnreachable:
             return platform == "android"
+                || (platform == "ios" && !BridgeProbeOutcome.refusalIsConclusive(host: host))
         case .passed, .failed, .frozen:
             return false
         }
@@ -966,7 +981,8 @@ public final class RunOrchestrator {
         while true {
             switch await probeBridgeOnce(worker) {
             case .ok: return false
-            case .refused: return true
+            case .refused:
+                if BridgeProbeOutcome.refusalIsConclusive(host: worker.connection.host) { return true }
             case .hijacked(let detail):
                 lastBridgeIdentityMismatch = detail
                 return true
@@ -1385,7 +1401,7 @@ public final class RunOrchestrator {
                 }
             }
             // **iOS はドライバ不達(driverUnreachable)も .failed と同じ経路を通す**
-            // (振り直しは上の requeuesWithoutRetiring が Android だけに絞っている。ここを .failed
+            // (下の requeuesWithoutRetiring は iOS をプローブの後でしか通さない。ここを .failed
             // だけに限ると、driverUnreachable を名乗った失敗だけブリッジ生存プローブを飛ばして
             // しまい、iOS の既存挙動 —— 建て直し→復活→再キュー —— が起きなくなる)
             if unusableReason == nil, outcome == .failed || outcome == .driverUnreachable,
@@ -1400,14 +1416,16 @@ public final class RunOrchestrator {
             // 再起動で実測)。Android のブリッジは次の要求で黙って張り直されるので事後プローブでは
             // 健全に見え、落ちたシナリオが赤のまま残っていた。**ここまで来た = 台は生きている**ので、
             // 結果を捨てて振り直し、ワーカーは残す(iOS は上の bridgeUnreachable プローブが
-            // 離脱→建て直し→再キューを担うので、この分岐には入らない)
+            // 離脱→建て直し→再キューを担う。**LAN の実機だけ**はプローブが生存を確かめた後で
+            // ここに入る = Wi-Fi の瞬断で落ちた 1 本。BridgeProbeOutcome.refusalIsConclusive)
             // **ただし連続失敗はブレーカに数える** —— 数えないと、ブリッジを二度と張り直せない台
             // (adb には見えていて凍結もしていない形)が離脱もせずに残り、後続のシナリオの
             // 再キュー枠(1本につき1回)を1つずつ焼き潰す。ここで `.trip` したら振り直さずに
             // 下の離脱経路へ落とす(`environmentFault` は数えないまま = あちらは台ではなく
             // 環境ノイズという実測に基づく既存の判断)
             if unusableReason == nil, outcome == .driverUnreachable,
-               ScenarioRunner.requeuesWithoutRetiring(outcome: outcome, platform: worker.platform) {
+               ScenarioRunner.requeuesWithoutRetiring(outcome: outcome, platform: worker.platform,
+                                                      host: worker.connection.host) {
                 let verdict = breaker.recordFailure(runPasses: await runPasses.snapshot())
                 switch ScenarioRunner.unreachableLaneAction(verdict: verdict) {
                 case .retire(let reason):

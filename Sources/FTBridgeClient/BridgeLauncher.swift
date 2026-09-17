@@ -995,7 +995,7 @@ public struct BridgeLauncher {
             throw IOSDeviceTransportError.addressNotAnnounced(
                 port: port, logPath: logPath.path, blocker: blocker)
         }
-        throw LauncherError.timedOut(lastError.map { "\($0)" } ?? "no response", logPath.path)
+        throw LauncherError.timedOut(lastError.map(BridgeClient.readinessDetail) ?? "no response", logPath.path)
     }
 
     /// ランナーアプリ(xctest の host app)がそのシミュレータで動いているか。ps の 1 行が

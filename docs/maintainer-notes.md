@@ -1277,3 +1277,31 @@ XCTest の issue がテストメソッドの外(main queue)で記録されるた
 - **M19** L22(9/16)の掃討漏れ: 5 SUT のフリックと 05_スクロール の「送った」確認に残っていた `notExist("#row_01")` を
   `#txt_scroll_top` へ。**M21** 背の低い実機で `scrollLeft ×2` が先頭へ戻り切らない(距離が往復で非対称)
   → 戻る向きに撃ったうえで、到達は左向きの探索で担保する。
+
+## 34. LAN の実機ランナーが SIGPIPE で落ち、ホストが生きたランナーも止めていた(2026-09-18 負荷テスト N4 / N7 / N1)
+
+**実害**: Wi-Fi 接続の iPhone 13 が 1 run に 3 回離脱し、6 run でほぼ全滅(35 本中 32〜34 本が赤)。同時刻の USB の SE3 は 0 回。
+
+**2 つの事象が混ざっていた**(外から 1 秒ごとに `/status` と ping を打つ判別 witness で分けた):
+- **(a) ランナーは生きているのに一瞬だけ接続不能(-1004)** —— 外からの `/status` は失敗の 1 秒前も 6 秒後も 401 で応答していた。
+  `bridgeUnreachable` は `.refused` を観察窓なしで即「死亡」と確定し、`cleanupRetiredWorker` の `stopMatching` が
+  **生きた xcodebuild を SIGTERM** していた(ログの「Stopped stale bridges」がその印)。
+  → `BridgeProbeOutcome.refusalIsConclusive(host:)`: 即断してよいのはループバック(シミュレータ・USB トンネル)だけ。
+  LAN は `.silent` と同じ観察窓 + ランナーログの静止で判定し、ブリッジが生きていれば Android と同じ「残して再キュー」
+  (`requeuesWithoutRetiring(…, host:)`。ブレーカは数える)。陽性対照: 本当に死んだ回は約 23 秒観察してから正しく離脱した。
+- **(b) ランナーが本当に落ちる** —— 「Stopped stale bridges」が出ない離脱。xcresult の失敗は **`Test crashed with signal pipe`**。
+  直前はスクリーンショット取得の完了で、端末にクラッシュログは無い。HTTP のソケットは `SO_NOSIGPIPE` 済みなので、
+  出どころはそれ以外(LAN ではネットワーク越しに転送される標準出力 = XCTest の活動ログ、と見ている。特定はしていない)。
+  → ランナーの入口で `signal(SIGPIPE, SIG_IGN)`(専用プロセスなので全体で無視してよい。ホスト CLI の Shell.swift が
+  fd 単位にしている理由とは別)。ブリッジ v111。**同じ構成で 3 離脱/run → 0 離脱・35/35 緑**。
+  手元 8 台の `ios-xcuitest` 4 SUT(125 本)も全緑。
+
+**付随**
+- **N7** 起動待ちの失敗文が `"\(error)"` で列挙値をダンプしていた(`bridgeConnectionRefused(context: FTCore.DriverErrorContext(…iosXCUITest…)`。
+  in-app なのに XCUITest と名乗る)→ `BridgeClient.readinessDetail` で一次情報だけを運ぶ。同型は XCUITest の ready 待ち(BridgeLauncher)にもあった。
+- **N1** `bridge up` が既存を再利用したとき、既定ポートが**別の台**(USB 実機の iproxy)の物でも「今のポートを止めれば既定ポートで建て直せる」と
+  案内していた(M11 の直しは新規起動の側だけだった)→ 別の台が握っていれば止める案内を出さない。
+
+**学び**: 「ブリッジ不達で離脱」は、ホストの誤判定とランナーの本当の死が同じ文言になる。**「Stopped stale bridges」の有無**が
+「離脱の時点でホストの xcodebuild が生きていたか」を示すので、切り分けの最初に見る。証拠(ランナーログ・xcresult)は
+復活の建て直しで上書き・掃除されるので、調べるときは退避しながら回す。

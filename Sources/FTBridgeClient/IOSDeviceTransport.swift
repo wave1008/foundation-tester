@@ -267,7 +267,7 @@ public enum IOSDeviceTransport {
     /// (全シミュレータ/実機はホストの loopback を共有する)。生死は ProcessLiveness.isAlive
     /// (素の kill(pid,0) は禁止)。pid 再利用で無関係プロセスに化けていたら isIproxy(pid:) が
     /// 弾いて false(=空き)を返す
-    static func isPortHeldByIproxy(hostPort: UInt16, repoRoot: URL) -> Bool {
+    public static func isPortHeldByIproxy(hostPort: UInt16, repoRoot: URL) -> Bool {
         guard let text = try? String(contentsOf: pidURL(hostPort: hostPort, repoRoot: repoRoot),
                                      encoding: .utf8),
               let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)),

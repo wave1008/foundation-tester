@@ -388,7 +388,7 @@ public enum BridgeAPI {
     /// v110 (in-app only): the v109 path waits for the screen to settle before the synthetic touch again
     /// (a tap right after rotateTo was swallowed while the rotation was still running); it only skips the
     /// 250ms pause and the second re-read + activate.
-    public static let bridgeProtocolVersion = 110
+    public static let bridgeProtocolVersion = 111
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///

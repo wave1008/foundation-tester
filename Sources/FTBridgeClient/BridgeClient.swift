@@ -1027,6 +1027,20 @@ public final class BridgeClient: AppDriver {
             + " and retry")
     }
 
+    /// 起動待ち(InAppLauncher.waitUntilReady / BridgeLauncher の ready 待ち)の失敗に載せる一次情報。
+    /// `"\(error)"` は列挙値のダンプになり、DriverError の完成文は XCUITest 前提の固定文を含む
+    /// (in-app の待ちも BridgeClient で叩く = context が iosXCUITest)ので使わない
+    public static func readinessDetail(_ error: Error) -> String {
+        switch error {
+        case DriverError.bridgeConnectionRefused(_, let detail):
+            return "connection refused (\(detail))"
+        case DriverError.bridgeUnreachable(_, let detail):
+            return "no answer (\(detail))"
+        default:
+            return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
     private func send(_ req: URLRequest) async throws -> (Data, URLResponse) {
         do {
             if let collector = HTTPTimingCollector.shared {
