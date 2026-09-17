@@ -7,7 +7,7 @@
 
 import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
-import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRestart, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee } from './domRefs.js';
+import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuSelectOnlyBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRestart, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers, relayoutPreviewsForResize } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
@@ -832,6 +832,7 @@ function openDeviceOpMenu(entry, clientX, clientY) {
   deviceOpMenuEntry = entry;
   deviceOpMenuOpen = true;
   renderSelectionMenuItems();
+  deviceOpMenuSelectOnlyBtn.style.display = entry ? '' : 'none';
   if (!entry) {
     deviceOpMenuItemBtn.style.display = 'none';
     deviceOpMenuLiveBtn.style.display = 'none';
@@ -861,12 +862,26 @@ function openDeviceOpMenu(entry, clientX, clientY) {
   clampMenuPosition(deviceOpMenu, clientX, clientY);
 }
 
+// 実行ログのレーン(laneLog.js)の右クリック口。レーン id = タイルの device id。
+// タイルが無い id(全体レーン)は false = 呼び手は既定メニューに任せる
+export function openDeviceOpMenuForDevice(deviceId, clientX, clientY) {
+  const entry = tiles.get(deviceId);
+  if (!entry) {
+    return false;
+  }
+  openDeviceOpMenu(entry, clientX, clientY);
+  return true;
+}
+
 // 「すべて選択」「すべて解除」は今の状態で押せるかが決まる(結果が変わらないなら押させない)。
 // 判定はツールバーのトグルと同じ旗で行う —— 0枚でも ON/OFF は意味を持つ(出てきた台を
 // 選ぶかどうか)ので、台数では無効化しない。
 function renderSelectionMenuItems() {
   deviceOpMenuSelectAllBtn.disabled = selectAllOn;
   deviceOpMenuDeselectAllBtn.disabled = !selectAllOn && selectedDeviceIds.size === 0;
+  const onlyId = deviceOpMenuEntry && deviceOpMenuEntry.device.id;
+  deviceOpMenuSelectOnlyBtn.disabled = !onlyId
+    || (selectedDeviceIds.size === 1 && selectedDeviceIds.has(onlyId));
 }
 
 // ツールバーの全選択トグル。**全部選ばれているときだけ解除側**になる(部分選択から押した
@@ -1011,6 +1026,19 @@ deviceOpMenuSelectAllBtn.addEventListener('click', (event) => {
   }
   selectAllDevices();
   dropTextSelection(); // Cmd/Ctrl+A と同じ扱い(dropTextSelection の doc 参照)
+  closeDeviceOpMenu();
+});
+
+// 右クリックしたタイル1枚だけの選択に置き換える(全選択の旗は refreshSelectAllState が決める = 1台構成なら ON)
+deviceOpMenuSelectOnlyBtn.addEventListener('click', (event) => {
+  event.stopPropagation();
+  if (deviceOpMenuSelectOnlyBtn.disabled || !deviceOpMenuEntry) {
+    return;
+  }
+  selectedDeviceIds.clear();
+  selectedDeviceIds.add(deviceOpMenuEntry.device.id);
+  updateSelectionUi();
+  dropTextSelection();
   closeDeviceOpMenu();
 });
 

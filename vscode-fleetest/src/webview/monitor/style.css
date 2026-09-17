@@ -203,6 +203,20 @@ button.bulk-cancel:hover:not(:disabled) {
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
+.toolbar-run-row {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.run-stream-toggle {
+  margin-left: auto;
+  gap: 4px;
+  white-space: nowrap;
+  cursor: pointer;
+}
 /* 通常は1行(手元だけ)。リモート機の行が増えると縦に積む(hostCharts.js が hm-multi を付ける) */
 .host-metrics {
   display: flex;

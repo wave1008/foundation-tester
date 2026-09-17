@@ -45,7 +45,7 @@ import {
   type MonitorDevice,
   type MonitorToWebviewMessage,
 } from "./monitorModel";
-import { type MachineLock, bulkDownGate, occupiedMachines } from "./machineLockModel";
+import { type MachineLock, bulkDownGate, streamFoldMachines } from "./machineLockModel";
 import { MonitorBridgeWatchdog } from "./monitorBridgeWatchdog";
 import { MonitorDashboardController } from "./monitorDashboardController";
 import { MonitorDeviceOps } from "./monitorDeviceOps";
@@ -122,6 +122,9 @@ export interface MonitorPanelDeps {
    * monitorDeviceStreamController.ts がストリーミング開始を抑止しポーリングへフォールバックする
    * (workspaceState の "monitor.pollingMode" を共有する livePanel.ts/monitorLiveController.ts も同様)。 */
   isPollingMode(): boolean;
+  /** 「テスト実行」タブの「配信を表示する」チェックボックス(workspaceState の
+   * "monitor.showStreamDuringRun"。既定 ON)。false の間だけ run 中の台の配信を畳む。 */
+  isShowStreamDuringRun(): boolean;
   /** MonitorProfilesController.postProfileInfoへの委譲。MonitorDeviceOps.runCreateDevice成功時に呼ぶ。 */
   notifyProjectDeviceCatalogChanged(): void;
   /** MonitorProcessManager.restartMonitorProcessへの委譲(パネル未生成時は no-op)。
@@ -236,6 +239,9 @@ export class MonitorPanelController implements vscode.Disposable {
   private tileAutoFit: boolean;
   /** 「テスト実行」タブの全選択トグル(workspaceState の "monitor.selectAllDevices")。 */
   private selectAllDevices: boolean;
+  private showStreamDuringRun: boolean;
+  /** 直近の占有の控え。チェックボックスの切替で配信を畳む機械を引き直すのに使う。 */
+  private lastMachineLocks: ReadonlyMap<string, MachineLock> = new Map();
   /** stopping/rebooting を post 済みで done/failed が未着のデバイス名。runEnded 時、キャンセル等で
    * done/failed が来ないまま残った名前にバッジ固着を防ぐため phase:"done" を post する。 */
   private readonly wipeInProgress = new Set<string>();
@@ -279,6 +285,8 @@ export class MonitorPanelController implements vscode.Disposable {
     this.tileAutoFit = workspaceState.get<boolean>("monitor.tileAutoFit", true);
     // 既定 OFF(選んでいない状態から始める。webview 側 deviceTiles.js の初期値と揃える)。
     this.selectAllDevices = workspaceState.get<boolean>("monitor.selectAllDevices", false);
+    // 既定 ON = run 中も配信する(webview 側 streamToggle.js の初期値と揃える)。
+    this.showStreamDuringRun = workspaceState.get<boolean>("monitor.showStreamDuringRun", true);
     this.deps = {
       workspaceRoot: this.workspaceRoot,
       getConfig: this.getConfig,
@@ -306,9 +314,11 @@ export class MonitorPanelController implements vscode.Disposable {
       notifyMachineLocks: (locks) => {
         // 占有が変わった瞬間に畳む/戻す(次の monitorDevices を待たない = run の開始直後に
         // 配信が残っている時間を作らない)
-        this.deviceStream.setOccupiedMachines(occupiedMachines(locks));
+        this.lastMachineLocks = locks;
+        this.deviceStream.setOccupiedMachines(streamFoldMachines(locks, this.showStreamDuringRun));
       },
       isPollingMode: () => this.pollingMode,
+      isShowStreamDuringRun: () => this.showStreamDuringRun,
       machineLock: (machine) => this.processManager.machineLock(machine),
       stopDeviceStreams: (name, machine) => this.deviceStream.disposeForDeviceName(name, machine),
       stopAllStreams: () => this.deviceStream.disposeAllForDown(),
@@ -1025,6 +1035,13 @@ export class MonitorPanelController implements vscode.Disposable {
         this.selectAllDevices = message.value;
         void this.workspaceState.update("monitor.selectAllDevices", message.value);
         break;
+      case "setShowStreamDuringRun":
+        this.showStreamDuringRun = message.value;
+        void this.workspaceState.update("monitor.showStreamDuringRun", message.value);
+        // 次の monitorDevices を待たずに畳む/張り直す(setOccupiedMachines は変化が無いと再判定しない)
+        this.deviceStream.setOccupiedMachines(streamFoldMachines(this.lastMachineLocks, message.value));
+        this.deviceStream.reapply();
+        break;
       case "streamRendered":
         // webview がストリームフレームを描画できた ack。これを受けて初めてポーリングを間引く
         // (契約: monitorDeviceStreamController.ts 冒頭)
@@ -1162,6 +1179,7 @@ export class MonitorPanelController implements vscode.Disposable {
     // auto-fit は tilePaneHeight より後に送る(ON なら高さは復元値ではなく再計算で決まる)。
     this.post({ type: "tileAutoFit", value: this.tileAutoFit });
     this.post({ type: "selectAllDevices", value: this.selectAllDevices });
+    this.post({ type: "showStreamDuringRun", value: this.showStreamDuringRun });
     // 設定タブの更新セクション。ネットワークに出るので ready のたびに1回だけ(webview 再読込は稀)。
     // 失敗しても他の初期化を止めない fire-and-forget
     void this.update.check();

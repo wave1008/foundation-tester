@@ -3,7 +3,7 @@
 
 import { MAX_LANE_LINES, OVERALL_LANE_ID, overallLaneName, workerDisplayLabel } from "../../runLaneModel";
 import { lanesTitle, lanesPlaceholder, lanesGrid, lanesSelectionStatus, lanesRunStatus } from './domRefs.js';
-import { tiles, selectedDeviceIds, attachDeviceMirror, detachDeviceMirror } from './deviceTiles.js';
+import { tiles, selectedDeviceIds, attachDeviceMirror, detachDeviceMirror, openDeviceOpMenuForDevice } from './deviceTiles.js';
 import { t } from '../i18n.js';
 import { setHoverTip } from './hoverTip.js';
 import { computePreviewGrid } from './previewGridModel.js';
@@ -94,6 +94,15 @@ function ensureLane(id, name, platform, updateLabel, machine) {
   preview.style.display = 'none';
   pair.append(preview, el);
   lanesGrid.appendChild(pair);
+  // 拡大表示だけがデバイスのメニューを開く(ログ上は何も出さない。既定メニューの抑止は出力ペイン全体で行う)
+  preview.addEventListener('contextmenu', (event) => {
+    if (openDeviceOpMenuForDevice(id, event.clientX, event.clientY)) {
+      // document の contextmenu リスナが開いた直後に閉じる(タイル側と同じ理由)。
+      // 止めるとペイン側の抑止にも届かないので、ここでも preventDefault する
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  });
 
   lane = { el, pairEl: pair, previewEl: preview, headerEl: header, bodyEl: body, atBottom: true, lineCount: 0 };
   body.addEventListener('scroll', () => {
@@ -257,6 +266,9 @@ export function relayoutPreviewsForResize() {
 if (typeof ResizeObserver !== 'undefined') {
   new ResizeObserver(() => relayoutPreviewsForResize()).observe(lanesGrid);
 }
+
+// 実行ログのペインでは既定メニュー(Cut/Copy/Paste)を出さない。document へは伝播させる(開いているメニューを閉じる)
+lanesGrid.parentElement.addEventListener('contextmenu', (event) => event.preventDefault());
 
 // 出力ペインは常設(実行前もデバイス毎の空レーンを表示)。レーンはdevicesサイクルから常時同期。
 export function updateLanesPlaceholder() {

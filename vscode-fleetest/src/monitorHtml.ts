@@ -204,23 +204,29 @@ function renderDashboardPanel(): string {
 function renderDevicesPanel(): string {
   return `<div id="panel-devices" class="tab-panel" role="tabpanel" aria-labelledby="tab-devices">
     <div id="toolbar" class="toolbar">
-      <!-- 実行プロファイルはプロジェクトに属するので、その左に置いて左→右で絞り込みになる順にする。
-           選ぶと fleetest.project 設定が変わり、実行プロファイル一覧もこれに追従する。 -->
-      <label class="profile-label">${t("panels.common.testProject")}
-        <select id="project-select" title="${t("panels.toolbar.projectSelectTitle")}" disabled></select>
-      </label>
-      <label class="profile-label">${t("panels.common.runProfile")}
-        <select id="profile-select" title="${t("panels.toolbar.runProfileSelectTitle")}" disabled></select>
-      </label>
-      <button id="btn-devices-up">${t("panels.toolbar.startAllDevices")}</button>
-      <button id="btn-devices-down" class="secondary">${t("panels.toolbar.stopAll")}</button>
-      <button id="btn-restart" class="secondary">${t("panels.toolbar.restartMonitor")}</button>
-      <!-- 押せるのは実体のある実行プロファイルが選ばれている間だけ(判定と title は
-           deviceTiles.js の refreshRunTestsButton)。初期状態は disabled —— profileInfo が
-           届くまで実行プロファイルが何か分からない。 -->
-      <button id="btn-run-tests" disabled>${t("panels.toolbar.runTests")}</button>
-      <!-- テストが全部終わってから録画タブへ移るまでの間だけ出す(main.js の recordingsFinalizing) -->
-      <span id="run-recordings-finalizing" class="run-recordings-finalizing" hidden>${t("panels.toolbar.recordingsFinalizing")}</span>
+      <!-- 1行目(テスト実行まで + 右端の「配信を表示する」)。幅 100% で常に1行を占め、グラフとアイコン群は次の行
+           (チェックボックスをテスト実行と同じ行の右端に置くため。.toolbar-run-row) -->
+      <div id="toolbar-run-row" class="toolbar-run-row">
+        <!-- 実行プロファイルはプロジェクトに属するので、その左に置いて左→右で絞り込みになる順にする。
+             選ぶと fleetest.project 設定が変わり、実行プロファイル一覧もこれに追従する。 -->
+        <label class="profile-label">${t("panels.common.testProject")}
+          <select id="project-select" title="${t("panels.toolbar.projectSelectTitle")}" disabled></select>
+        </label>
+        <label class="profile-label">${t("panels.common.runProfile")}
+          <select id="profile-select" title="${t("panels.toolbar.runProfileSelectTitle")}" disabled></select>
+        </label>
+        <button id="btn-devices-up">${t("panels.toolbar.startAllDevices")}</button>
+        <button id="btn-devices-down" class="secondary">${t("panels.toolbar.stopAll")}</button>
+        <button id="btn-restart" class="secondary">${t("panels.toolbar.restartMonitor")}</button>
+        <!-- 押せるのは実体のある実行プロファイルが選ばれている間だけ(判定と title は
+             deviceTiles.js の refreshRunTestsButton)。初期状態は disabled —— profileInfo が
+             届くまで実行プロファイルが何か分からない。 -->
+        <button id="btn-run-tests" disabled>${t("panels.toolbar.runTests")}</button>
+        <!-- テストが全部終わってから録画タブへ移るまでの間だけ出す(main.js の recordingsFinalizing) -->
+        <span id="run-recordings-finalizing" class="run-recordings-finalizing" hidden>${t("panels.toolbar.recordingsFinalizing")}</span>
+        <!-- 状態の保存と復元は streamToggle.js ⇄ monitorPanel.ts(setShowStreamDuringRun / showStreamDuringRun) -->
+        <label class="profile-label run-stream-toggle" title="${t("panels.toolbar.showStreamDuringRunTitle")}"><input type="checkbox" id="chk-show-stream-during-run" checked>${t("panels.toolbar.showStreamDuringRun")}</label>
+      </div>
       <!-- hostMetricsメッセージ受信のたびにmain.js側で再描画(独自タイマーなし)。
            **リモート機のぶんは行が増える**(hostCharts.js が data-machine="" の行を複製する)ので、
            行の中身は data-metric で引く(id は手元の行にしか無い)。 -->
@@ -755,6 +761,8 @@ function renderDeviceOpMenu(): string {
     <!-- ここから下はデバイスに紐づかない項目(空きエリアの右クリックでも出る)。区切りは
          上のデバイス項目が1つでも出ているときだけ deviceTiles.js が表示する。 -->
     <div id="device-op-menu-sep" class="device-op-menu-sep"></div>
+    <!-- 右クリックしたタイルがあるときだけ deviceTiles.js が表示する -->
+    <button id="device-op-menu-select-only" class="device-op-menu-item" type="button" role="menuitem"><svg class="op-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 2h12v12H2V2zm1 1v10h10V3H3z"/><path d="M5 5h6v6H5V5z"/></svg><span>${t("panels.deviceMenu.selectOnlyThis")}</span></button>
     <button id="device-op-menu-select-all" class="device-op-menu-item" type="button" role="menuitem"><svg class="op-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 2h12v12H2V2zm1 1v10h10V3H3z"/><path d="M6.9 11.2 4 8.3l.7-.7 2.2 2.2 4.4-4.4.7.7-5.1 5.1z"/></svg><span>${t("panels.deviceMenu.selectAll")}</span></button>
     <button id="device-op-menu-deselect-all" class="device-op-menu-item" type="button" role="menuitem"><svg class="op-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 2h12v12H2V2zm1 1v10h10V3H3z"/></svg><span>${t("panels.deviceMenu.deselectAll")}</span></button>
   </div>`;

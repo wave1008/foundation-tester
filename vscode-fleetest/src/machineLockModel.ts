@@ -88,6 +88,26 @@ export function occupiedMachines(locks: ReadonlyMap<string, MachineLock>): Set<s
   return occupied;
 }
 
+/** 配信を畳む機械(「配信を表示する」チェックボックスの反映)。OFF = occupiedMachines と同じ
+ * (保持者を問わない)。ON = **他人の run の機械だけ**畳む —— 他人の run を配信で赤くしない
+ * (共有ランナーの規律。docs/remote-runner.md §18.7)。観測できない機械は保持者も分からないので
+ * ON でも畳む(`mine` は「他人」と「不明」を区別しない)。 */
+export function streamFoldMachines(
+  locks: ReadonlyMap<string, MachineLock>,
+  showStreamDuringRun: boolean,
+): Set<string> {
+  if (!showStreamDuringRun) {
+    return occupiedMachines(locks);
+  }
+  const folded = new Set<string>();
+  for (const [machine, lock] of locks) {
+    if (!lock.observed || (lock.held && !lock.mine)) {
+      folded.add(machine);
+    }
+  }
+  return folded;
+}
+
 /** 破壊的操作の確認・錠前の表示に使ってよい占有か。**観測できているときだけ**
  * (不明を「〜の run が実行中」と言わない・「走っていない」とも請け合わない)。 */
 // **型述語(`lock is MachineLock`)にしない** —— 偽の枝で「保持していない MachineLock」まで

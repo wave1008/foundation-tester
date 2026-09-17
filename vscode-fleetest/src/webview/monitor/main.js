@@ -31,6 +31,7 @@ import {
   applyHealthWatch,
   applyWipeStatus,
 } from './deviceTiles.js';
+import { applyShowStreamDuringRun } from './streamToggle.js';
 import { applyLaneAction, applyLaneHydrate, updateLaneVisibility, updateLanesPlaceholder } from './laneLog.js';
 import { applyProjectInfo } from './projectsTab.js';
 import { applyHostMetrics, setHostMetricMachines, setMachineLock } from './hostCharts.js';
@@ -272,6 +273,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'selectAllDevices':
       applySelectAllDevices(message.value);
+      break;
+    case 'showStreamDuringRun':
+      applyShowStreamDuringRun(message.value);
       break;
     case 'dashboard':
       handleDashboardMessage(message.message);

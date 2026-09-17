@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  applyMachineLockEvent, bulkDownGate, isConfirmedHeld, localDevicesInRun, occupiedMachines, sweepRefusalDetail,
+  applyMachineLockEvent, bulkDownGate, isConfirmedHeld, localDevicesInRun, occupiedMachines, streamFoldMachines, sweepRefusalDetail,
 } from "../src/machineLockModel";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -61,6 +61,18 @@ test("machine の無いイベント(手元)は控えない", () => {
 test("自分の run でも占有として扱う", () => {
   const locks = applyMachineLockEvent(new Map(), { ...heldEvent, issuer: "alice", mine: true });
   assert.deepEqual([...occupiedMachines(locks)], ["M1Max"]);
+});
+
+// 「配信を表示する」チェックボックス: OFF は保持者を問わず畳む / ON は他人の run と不明だけ畳む
+test("streamFoldMachines: OFF は自分の run も畳み、ON は他人の run と観測できない機械だけ畳む", () => {
+  let locks = applyMachineLockEvent(new Map(), { ...heldEvent, machine: "Mine", issuer: "alice", mine: true });
+  locks = applyMachineLockEvent(locks, { ...heldEvent, machine: "Other" });
+  locks = applyMachineLockEvent(locks, { ...heldEvent, machine: "Free", held: false, issuer: undefined });
+  locks = applyMachineLockEvent(locks, { ...heldEvent, machine: "Lost", mine: true });
+  locks = applyMachineLockEvent(locks, { ...heldEvent, machine: "Lost", observed: false, held: false, mine: true });
+  assert.deepEqual([...streamFoldMachines(locks, false)].sort(), ["Lost", "Mine", "Other"]);
+  assert.deepEqual([...streamFoldMachines(locks, true)].sort(), ["Lost", "Other"],
+    "ON でも他人の run は配信で赤くしない・保持者が分からない機械は畳んだまま");
 });
 
 test("monitorLock イベントの検証: 必須 bool 欠落は捨てる", () => {

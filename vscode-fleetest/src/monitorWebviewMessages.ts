@@ -358,6 +358,9 @@ export type MonitorToWebviewMessage =
   // tileAutoFit と同じ(setSelectAllDevices と対の契約)。**0枚でも復元する** ——
   // ready 直後はモニターがまだ台を出しておらず、出てきた台を webview 側が選び直す。
   | { readonly type: "selectAllDevices"; readonly value: boolean }
+  // 「テスト実行」タブの「配信を表示する」チェックボックスの状態(false = run 中の台の配信を畳む)。
+  // 永続化の経路は selectAllDevices と同じ(setShowStreamDuringRun と対の契約。受け手は streamToggle.js)。
+  | { readonly type: "showStreamDuringRun"; readonly value: boolean }
   // ブリッジ突然死の自動修復ウォッチドッグ(monitorBridgeWatchdog.ts)の状態遷移通知。name は
   // deviceOpBusy と同じ名前空間(デバイス論理名)。webview 側はタイルのバッジ表示に使う。
   | {
@@ -738,6 +741,9 @@ export type MonitorFromWebviewMessage =
   // 個別選択で全台が揃った/崩れたとき)。monitorPanel.ts が workspaceState へ永続化し、
   // パネル再作成時に "selectAllDevices" メッセージで復元する。
   | { readonly type: "setSelectAllDevices"; readonly value: boolean }
+  // 「配信を表示する」チェックボックスの切替。monitorPanel.ts が workspaceState へ永続化し、
+  // パネル再作成時に "showStreamDuringRun" メッセージで復元する。
+  | { readonly type: "setShowStreamDuringRun"; readonly value: boolean }
   // webview 側 WebCodecs が未対応/デコード失敗したときに1回送られてくる(受け手: monitorPanel.ts の
   // codecError ハンドラ→monitorDeviceStreamController.fallbackToMjpeg/monitorLiveController.fallbackToMjpeg)。
   // scope="tile" は device 必須(対象タイルを1つ特定するため)、scope="live" は選択中デバイスに
@@ -1088,6 +1094,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return typeof value.value === "number" && value.value > 0;
     case "setTileAutoFit":
     case "setSelectAllDevices":
+    case "setShowStreamDuringRun":
       return typeof value.value === "boolean";
     case "codecError":
       return (

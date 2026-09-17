@@ -56,6 +56,11 @@ export const panelsStrings = {
   // 「テスト実行」タブのツールバー右寄り。押すと Test Explorer を前面に出して全シナリオを走らせる
   // (配線: webview/monitor/deviceTiles.js → monitorPanel.ts → コマンド fleetest.runAllTests)。
   "panels.toolbar.runTests": { ja: "テスト実行", en: "Run Tests" },
+  "panels.toolbar.showStreamDuringRun": { ja: "配信を表示する", en: "Show Streaming" },
+  "panels.toolbar.showStreamDuringRunTitle": {
+    ja: "ON: テスト実行中もライブ配信を続けます(負荷が高いとテストが失敗することがあります)。OFF: テスト実行中のデバイスはライブ配信を止め、ポーリングの静止画で更新します(配信とテストが資源を取り合わない)",
+    en: "On: keep live streaming while tests run (tests may fail under heavy load). Off: devices running tests stop live streaming and update from polled screenshots (streaming does not compete with the tests)",
+  },
   "panels.toolbar.recordingsFinalizing": { ja: "録画を編集中...", en: "Editing recordings..." },
   "panels.banner.copied": { ja: "エラーメッセージをコピーしました", en: "Copied the error message" },
   "panels.toolbar.autoFitTitle": { ja: "自動フィット", en: "Auto-fit" },
@@ -271,6 +276,8 @@ export const panelsStrings = {
   "panels.deviceMenu.restartWithGpu": { ja: "GPUで再起動", en: "Restart with GPU" },
   // フリートの右クリック(タイルの上でも空きエリアでも出る。deviceTiles.js openDeviceOpMenu)
   "panels.deviceMenu.selectAll": { ja: "すべて選択", en: "Select All" },
+  // タイルの上の右クリックでだけ出る(空きエリアでは出さない)
+  "panels.deviceMenu.selectOnlyThis": { ja: "このデバイスのみ選択", en: "Select Only This Device" },
   "panels.deviceMenu.deselectAll": { ja: "すべて解除", en: "Deselect All" },
   "panels.deviceMenu.remove": { ja: "除去", en: "Remove" },
   // 実機の行では出さない(仮想デバイスの中身の初期化。Android=Wipe Data / iOS=simctl erase)。

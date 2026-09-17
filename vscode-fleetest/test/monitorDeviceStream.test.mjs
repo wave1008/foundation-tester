@@ -67,6 +67,7 @@ function makeDeps(binaryPath) {
       monitorInterval: 0.05, // まとめ窓(秒)。テストでは短く
     }),
     isPollingMode: () => false,
+    isShowStreamDuringRun: () => false,
     post: () => {},
     writeMonitorControl: (cmd) => controls.push(cmd),
     isDeviceStreaming: () => false,
@@ -540,6 +541,34 @@ test("機械の占有(occupiedMachines)と台の inRun は独立に配信を畳�
     controller.applyDevices([{ ...remoteDevice, inRun: true }]);
     assert.equal(await waitForArgv(dir, "fleetest", 300), undefined,
       "台の inRun だけでも畳む(機械は占有されていない)");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// 「配信を表示する」が ON(既定)なら run 中の台も配信する。OFF で畳む側は上の3本が
+// makeDeps の isShowStreamDuringRun: false で見ている
+test("配信を表示するが ON なら inRun:true の台も配信する", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir();
+  const { deps } = makeDeps(binaryPath);
+  let show = true;
+  deps.isShowStreamDuringRun = () => show;
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([{ ...iosDevice, inRun: true }]);
+    assert.ok(await waitForArgv(dir, "fleetest-simstream"), "ON は run 中でも配信を起こす");
+    controller.noteStreamRendered(iosDevice.id);
+    assert.equal(controller.isStreaming(iosDevice.id), true);
+
+    show = false;
+    controller.reapply();
+    assert.equal(controller.isStreaming(iosDevice.id), false, "OFF へ切り替えると即座に畳む");
+
+    fs.rmSync(path.join(dir, "fleetest-simstream.argv"));
+    show = true;
+    controller.reapply();
+    assert.ok(await waitForArgv(dir, "fleetest-simstream"), "ON へ戻すと即座に張り直す");
   } finally {
     controller.setVisible(false);
     fs.rmSync(dir, { recursive: true, force: true });
