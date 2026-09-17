@@ -23,7 +23,7 @@ fleetest run --project SampleApp --profile all
 
 ```bash
 fleetest bridge up --device "iPhone 17 Pro"                          # port 8123
-fleetest bridge up --device "iPhone 17 Pro Max" --port 8124 --skip-build
+fleetest bridge up --device "iPhone 17 Pro Max" --port 8124
 xcrun simctl install "iPhone 17 Pro Max" <対象アプリ.app>            # 各デバイスにアプリを入れる
 
 fleetest run --port 8123 --port 8124    # シナリオをワーカーに自動分配

@@ -1195,6 +1195,18 @@ struct ApiRunCommand: AsyncParsableCommand {
                     atPath: repoRoot.appendingPathComponent(".fleetest/bridge-\(port).log").path)
                 return (attrs?[.size] as? NSNumber)?.uint64Value
             },
+            runnerProcessAlive: { worker in
+                // xcuitest ランナー(ホスト側の xcodebuild)の生死。**nil = 分からない**
+                // (in-app ブリッジは台帳に pid を持たない)。BridgeLiveness.decide の材料で、
+                // 「生きている間はログ静止の近道を使わない/消えていれば窓の残りを待たない」を分ける
+                guard let port = worker.connection.xcuiPort
+                    ?? ((worker.connection.engine == nil || worker.connection.engine == "xcuitest")
+                        ? worker.connection.port : nil) else { return nil }
+                let pidPath = repoRoot.appendingPathComponent(".fleetest/bridge-\(port).pid").path
+                guard let text = try? String(contentsOfFile: pidPath, encoding: .utf8),
+                      let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+                return ProcessLiveness.isAlive(pid)
+            },
             probeBridge: { worker in
                 // hybrid の主ポート(in-app)は別アプリのシナリオ中サスペンドされ TCP 受理・HTTP
                 // 無応答になる(design §8.8)ため、死活確認は suspend されない xcuitest 側で行う

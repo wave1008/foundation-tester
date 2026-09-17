@@ -564,9 +564,6 @@ struct Bridge: AsyncParsableCommand {
         @Option(help: "Simulator device name (iOS only)")
         var device: String = "iPhone 17 Pro"
 
-        @Flag(help: "Skip build-for-testing when it is already built (iOS only)")
-        var skipBuild = false
-
         @Flag(help: "Also build and install SampleApp (iOS only)")
         var withSampleApp = false
 
@@ -663,14 +660,11 @@ struct Bridge: AsyncParsableCommand {
             let launcher = BridgeLauncher(repoRoot: root, device: resolvedUDID, port: driverOptions.resolvedPort,
                                           physical: physical)
 
-            ConsoleOut.out("→ Generating the project (xcodegen)...")
-            try launcher.generateProjectIfNeeded()
-
-            if !skipBuild {
-                ConsoleOut.out("→ build-for-testing (the first run takes several minutes)...")
-                try launcher.buildForTesting()
-            }
             if withSampleApp {
+                // installSampleApp() builds against the generated Xcode project, a path provision()
+                // below never touches — generate it here rather than unconditionally up front.
+                ConsoleOut.out("→ Generating the project (xcodegen)...")
+                try launcher.generateProjectIfNeeded()
                 ConsoleOut.out("→ Building and installing SampleApp...")
                 try launcher.installSampleApp()
             }
@@ -682,6 +676,8 @@ struct Bridge: AsyncParsableCommand {
             // signal kill で死ぬ)、直接起動は同一デバイスへの二重起動を防げない。provision() は
             // 稼働中ブリッジのスキャン→版一致なら再利用/旧版なら停止して起動し直すをまとめて行う
             // (モニター保持中でも拒否せず再利用・起動する=テスト/操作優先)。
+            // xcodegen/build-for-testing も provision()(prepareSharedBuilds)に委ねる ——
+            // 稼働中ブリッジの再利用ではどちらも撃たない(重複ビルドの排除。旧 CLI は無条件で撃っていた)。
             let spec = DeviceSpec(
                 name: device,
                 kind: physical ? .physical : nil,

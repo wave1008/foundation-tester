@@ -67,7 +67,8 @@ final class RunRecordTests: XCTestCase {
                 text: verdict(.alive, nil), vision: verdict(.dead, "ModelManagerError(1001)")))
             XCTAssertEqual(meta.passed, 1, "合否は変えない")
             XCTAssertEqual(meta.fmDead, ["vision"], "死んだ経路だけを名指しする")
-            XCTAssertEqual(meta.fmDeadReason, "vision: ModelManagerError(1001)")
+            XCTAssertEqual(meta.fmDeadReason,
+                           "vision: ModelManagerError(1001)" + FMLiveness.Reading.deadSummaryNote)
         }
     }
 
@@ -98,7 +99,8 @@ final class RunRecordTests: XCTestCase {
         try SharedResource.hostCaches.locked {
             let meta = try recordedMeta(injecting: nil, breakerOpen: true)
             XCTAssertEqual(meta.fmDead, ["text", "vision"])
-            XCTAssertEqual(meta.fmDeadReason, "text: circuit breaker open / vision: circuit breaker open")
+            XCTAssertEqual(meta.fmDeadReason, "text: circuit breaker open / vision: circuit breaker open"
+                           + FMLiveness.Reading.deadSummaryNote)
         }
     }
 
@@ -110,7 +112,8 @@ final class RunRecordTests: XCTestCase {
                 injecting: FMLiveness.Record(text: verdict(.alive, nil), vision: nil),
                 breakerOpen: true)
             XCTAssertEqual(meta.fmDead, ["vision"], "観測済みの text は上書きしない")
-            XCTAssertEqual(meta.fmDeadReason, "vision: circuit breaker open")
+            XCTAssertEqual(meta.fmDeadReason,
+                           "vision: circuit breaker open" + FMLiveness.Reading.deadSummaryNote)
         }
     }
 

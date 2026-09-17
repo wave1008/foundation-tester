@@ -75,26 +75,11 @@ final class EnvironmentFaultTests: XCTestCase {
                        .environmentFault)
     }
 
-    /// **振り分けは OS で割れる**(バグ修正の核心): environmentFault は OS 問わず振り直し対象。
-    /// driverUnreachable は **Android だけ** —— iOS はここで拾わず、既存のブリッジ生存プローブ
-    /// (bridgeUnreachable)→ワーカー離脱→復帰→再キューの経路をそのまま通す(修正前は iOS だけが
-    /// この経路で緑に戻り、Android は事後プローブで拾えず赤のまま残っていた)
-    func testOnlyAndroidRequeuesDriverUnreachableWithoutRetiring() {
-        XCTAssertTrue(ScenarioRunner.requeuesWithoutRetiring(outcome: .driverUnreachable,
-                                                             platform: "android", host: nil))
-        XCTAssertFalse(ScenarioRunner.requeuesWithoutRetiring(outcome: .driverUnreachable,
-                                                              platform: "ios", host: nil))
-    }
-
-    /// iOS の LAN 実機だけは Android と同じ振り直しに載る(2026-09-18: Wi-Fi の瞬断 1 回で
-    /// 生きたランナーを止めて離脱していた)。USB トンネル(127.0.0.1)とシミュレータ(nil)は従来どおり
-    func testLANPhysicalIOSRequeuesDriverUnreachableWithoutRetiring() {
-        XCTAssertTrue(ScenarioRunner.requeuesWithoutRetiring(outcome: .driverUnreachable,
-                                                             platform: "ios", host: "192.168.20.7"))
-        XCTAssertFalse(ScenarioRunner.requeuesWithoutRetiring(outcome: .driverUnreachable,
-                                                              platform: "ios", host: "127.0.0.1"))
-        XCTAssertFalse(ScenarioRunner.requeuesWithoutRetiring(outcome: .failed,
-                                                              platform: "ios", host: "192.168.20.7"))
+    /// **ドライバ不達は OS を問わず振り直す**(2026-09-18 に揃えた)。iOS がここへ来るのは
+    /// 事後プローブ(bridgeUnreachable)がブリッジの生存を確かめた後だけなので、
+    /// 「台は生きている」という前提は両 OS で同じ。死んでいれば呼び出し側が離脱経路へ回す
+    func testDriverUnreachableRequeuesWithoutRetiring() {
+        XCTAssertTrue(ScenarioRunner.requeuesWithoutRetiring(outcome: .driverUnreachable))
     }
 
     /// refused で即「死亡」と言ってよいのはループバックの宛先だけ
@@ -107,22 +92,16 @@ final class EnvironmentFaultTests: XCTestCase {
         }
     }
 
-    /// environmentFault は既存どおり OS 問わず振り直し対象(この規律を壊していないことの固定)
-    func testEnvironmentFaultRequeuesOnBothPlatforms() {
-        for platform in ["ios", "android"] {
-            XCTAssertTrue(ScenarioRunner.requeuesWithoutRetiring(outcome: .environmentFault,
-                                                                 platform: platform, host: nil))
-        }
+    /// environmentFault は既存どおり振り直し対象(この規律を壊していないことの固定)
+    func testEnvironmentFaultRequeuesWithoutRetiring() {
+        XCTAssertTrue(ScenarioRunner.requeuesWithoutRetiring(outcome: .environmentFault))
     }
 
-    /// passed/failed/frozen はどの OS でも振り直し対象にならない(この関数が触ってよいのは
+    /// passed/failed/frozen は振り直し対象にならない(この関数が触ってよいのは
     /// environmentFault と driverUnreachable の2ケースだけ)
     func testOtherOutcomesNeverRequeueWithoutRetiring() {
         for outcome in [ScenarioOutcome.passed, .failed, .frozen] {
-            for platform in ["ios", "android"] {
-                XCTAssertFalse(ScenarioRunner.requeuesWithoutRetiring(outcome: outcome,
-                                                                      platform: platform, host: nil))
-            }
+            XCTAssertFalse(ScenarioRunner.requeuesWithoutRetiring(outcome: outcome))
         }
     }
 }

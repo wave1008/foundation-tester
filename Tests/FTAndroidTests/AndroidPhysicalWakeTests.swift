@@ -34,6 +34,31 @@ final class AndroidPhysicalWakeTests: XCTestCase {
         XCTAssertNil(AndroidPhysicalDevice.awakeAndUnlocked(checkOutput: "error: device offline"))
     }
 
+    // MARK: - deep idle(Doze)の状態(dumpsys deviceidle get deep)
+
+    func testKnownStatesAreReadBack() {
+        for state in ["ACTIVE", "INACTIVE", "IDLE_PENDING", "SENSING", "LOCATING",
+                      "IDLE", "IDLE_MAINTENANCE", "OVERRIDE"] {
+            XCTAssertEqual(AndroidPhysicalDevice.deepIdleState(checkOutput: "\(state)\n"), state)
+        }
+    }
+
+    /// 未知の出力(フォーマット変化・エラー文言)は既知の状態と誤読しない = 不明
+    func testUnknownDeepIdleOutputIsUnknown() {
+        XCTAssertNil(AndroidPhysicalDevice.deepIdleState(checkOutput: ""))
+        XCTAssertNil(AndroidPhysicalDevice.deepIdleState(checkOutput: "error: device offline"))
+    }
+
+    /// 画面・入力に実際に影響する状態だけを「アイドル」と呼ぶ。判定に至る前の段階(SENSING 等)は
+    /// 端末が通常どおり動いているので含めない
+    func testOnlyIdleAndIdleMaintenanceCountAsDeepIdle() {
+        XCTAssertTrue(AndroidPhysicalDevice.isDeepIdle("IDLE"))
+        XCTAssertTrue(AndroidPhysicalDevice.isDeepIdle("IDLE_MAINTENANCE"))
+        for state in ["ACTIVE", "INACTIVE", "IDLE_PENDING", "SENSING", "LOCATING", "OVERRIDE"] {
+            XCTAssertFalse(AndroidPhysicalDevice.isDeepIdle(state), state)
+        }
+    }
+
     // MARK: - 配線(ソース走査)
 
     private func source(_ relative: String) throws -> String {
@@ -68,6 +93,18 @@ final class AndroidPhysicalWakeTests: XCTestCase {
         let tail = code[gate.upperBound...].prefix(400)
         XCTAssertTrue(tail.contains("AndroidPhysicalDevice.screenAwakeAndUnlocked(serial: serial) == false"),
                       String(tail))
+    }
+
+    /// deep idle の判定も「落ちたときだけ」の同じ形で名指しする(緑では撃たない)
+    func testAFailedScenarioNamesDeepIdle() throws {
+        let code = try source("Sources/FTScenarioRunner/ScenarioRunnerMain.swift")
+        guard let gate = code.range(of: "if !passed, runPlatform == \"android\", let serial,"
+                                         + " DevicePicker.isPhysicalAndroidSerial(serial),"
+                                         + "\n           let idleState = AndroidPhysicalDevice.deepIdleState(serial: serial),") else {
+            return XCTFail("失敗時の deep idle 確認が無い")
+        }
+        let tail = code[gate.upperBound...].prefix(400)
+        XCTAssertTrue(tail.contains("AndroidPhysicalDevice.isDeepIdle(idleState)"), String(tail))
     }
 
     /// 起こした「✔」の情報行は流さない(子の stderr は errorLogs の枠を1行ずつ取る)

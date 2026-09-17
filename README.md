@@ -270,7 +270,7 @@ Android シナリオがあれば専用ワーカーも同時に走る(1シナリ�
 ```bash
 # デバイス毎にブリッジを起動(ビルドは1回で共有される)
 swift run fleetest bridge up --device "iPhone 17 Pro"                          # port 8123
-swift run fleetest bridge up --device "iPhone 17 Pro Max" --port 8124 --skip-build
+swift run fleetest bridge up --device "iPhone 17 Pro Max" --port 8124
 xcrun simctl install "iPhone 17 Pro Max" <対象アプリ.app>   # 各デバイスにアプリを入れる
 
 swift run fleetest run --port 8123 --port 8124    # シナリオをワーカーに自動分配

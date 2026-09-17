@@ -997,6 +997,18 @@ public final class BridgeClient: AppDriver {
             + " its LAN transport until it is rebuilt with `fleetest bridge down --port <N>`)"
     }
 
+    /// **宛先がループバック かつ 実機** = USB トンネル(iproxy)越しの接続。lanTransportAdvice の対で、
+    /// 常にどちらか一方しか付かない(実機以外の経路は physicalUDID が無く、実機の LAN 接続は
+    /// ループバックでないので guard が両方に同時に成立しない)。トンネルは iproxy プロセスが
+    /// 保っているだけなので、ケーブルが抜ける・iproxy が落ちるのどちらも同じ「届かない」エラーになる
+    static func usbTunnelAdvice(baseURL: URL, physicalUDID: String?) -> String {
+        guard physicalUDID != nil, baseURL.host == BridgeEndpoint.loopbackHost else { return "" }
+        return " (reached over the USB tunnel — a physical device's bridge stays reachable only while"
+            + " iproxy keeps that tunnel open, so an unplugged cable and a killed iproxy process look"
+            + " the same from here; check the cable and that the device is still connected, then rebuild"
+            + " the bridge with `fleetest bridge down --port <N>` if it does not recover)"
+    }
+
     func request(path: String, method: String, body: Data?, query: String? = nil,
                  timeout: TimeInterval? = nil) async throws -> (Data, URLResponse) {
         var req = URLRequest(url: Self.url(base: baseURL, path: path, query: query))
@@ -1049,6 +1061,7 @@ public final class BridgeClient: AppDriver {
             return try await session.data(for: req)
         } catch {
             let detail = error.localizedDescription + Self.lanTransportAdvice(baseURL: baseURL)
+                + Self.usbTunnelAdvice(baseURL: baseURL, physicalUDID: physicalUDID)
             // BridgeClient は元々 XCUITest ランナー向けのクライアント(このクラスの doc 冒頭
             // 参照)なので、自分の宛先が in-app/Android に化けていることを知らない。
             // InAppDriver.withCrashContext / AndroidDriver.withBridge が境界で正しい

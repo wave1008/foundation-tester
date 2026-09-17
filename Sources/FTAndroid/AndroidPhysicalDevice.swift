@@ -90,6 +90,37 @@ public enum AndroidPhysicalDevice {
         return output.contains("mWakefulness=Awake") && output.contains("topResumedActivity=")
     }
 
+    /// `dumpsys deviceidle get deep` の生の状態(1往復・端末側で完結)。
+    /// **取得できない(空・未知の出力)ときは nil** = 不明を「アイドルでない」に倒さない
+    public static func deepIdleState(serial: String) -> String? {
+        guard let adb = try? AndroidDriver.findADB(),
+              let output = try? Shell.run(
+                [adb, "-s", serial, "shell", "dumpsys", "deviceidle", "get", "deep"],
+                timeout: 15).output else { return nil }
+        return deepIdleState(checkOutput: output)
+    }
+
+    /// Doze の状態機械が取りうる値(AOSP DeviceIdleController)。既知の値以外は nil で返す
+    /// (フォーマットが変わったときに未知の値を既知の状態と誤読しない)
+    private static let knownDeepIdleStates: Set<String> = [
+        "ACTIVE", "INACTIVE", "IDLE_PENDING", "SENSING", "LOCATING",
+        "IDLE", "IDLE_MAINTENANCE", "OVERRIDE",
+    ]
+
+    /// `dumpsys deviceidle get deep` の出力を読む純粋関数。前後の空白・改行を落とすだけ
+    static func deepIdleState(checkOutput output: String) -> String? {
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return knownDeepIdleStates.contains(trimmed) ? trimmed : nil
+    }
+
+    /// 画面・入力が実際に影響を受ける deep idle だけを true とする判定(純粋関数)。
+    /// IDLE / IDLE_MAINTENANCE は端末がネットワーク・アラームを止めて深く眠っている状態
+    /// (IDLE_MAINTENANCE は定期的な短い窓に戻るだけで、画面や UI 状態は変わらない)。
+    /// IDLE_PENDING / SENSING / LOCATING はまだ判定に至る前の段階で端末は通常どおり動く
+    public static func isDeepIdle(_ state: String) -> Bool {
+        state == "IDLE" || state == "IDLE_MAINTENANCE"
+    }
+
     /// dumpsys power の mWakefulness(Awake / Dozing / Asleep)。取得できなければ Awake 扱い
     private static func isAwake(adb: String, serial: String) -> Bool {
         guard let output = try? Shell.run(

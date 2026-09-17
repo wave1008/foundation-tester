@@ -401,3 +401,197 @@ final class RegionTextProbeWithRetryTests: XCTestCase {
         XCTAssertEqual(attempts, 2)
     }
 }
+
+/// `RegionText.shouldStartAnotherRound` — 純粋関数の境界(cooldown・予算)。2026-09-18、
+/// L24 の再発(N3): 1 ラウンド冷えて終わったプロセスがそのまま見捨てられていた事象の直し方。
+/// `ContinuousClock.Instant` の加減算だけで作るので壁時計を待たない
+final class RegionTextShouldStartAnotherRoundTests: XCTestCase {
+    func testFalseWhenCooldownNotYetElapsed() {
+        let now = ContinuousClock().now
+        let last = now - .seconds(10)
+        XCTAssertFalse(RegionText.shouldStartAnotherRound(
+            now: now, lastRoundFinishedAt: last, spentOnProbes: .zero,
+            cooldown: .seconds(30), totalBudget: .seconds(6)))
+    }
+
+    func testTrueExactlyAtTheCooldownBoundary() {
+        let now = ContinuousClock().now
+        let last = now - .seconds(30)
+        XCTAssertTrue(RegionText.shouldStartAnotherRound(
+            now: now, lastRoundFinishedAt: last, spentOnProbes: .zero,
+            cooldown: .seconds(30), totalBudget: .seconds(6)))
+    }
+
+    func testFalseWhenTotalBudgetIsExhausted() {
+        let now = ContinuousClock().now
+        let last = now - .seconds(60)
+        XCTAssertFalse(RegionText.shouldStartAnotherRound(
+            now: now, lastRoundFinishedAt: last, spentOnProbes: .seconds(6),
+            cooldown: .seconds(30), totalBudget: .seconds(6)))
+    }
+
+    func testFalseWhenTotalBudgetIsAlreadyOverspent() {
+        let now = ContinuousClock().now
+        let last = now - .seconds(60)
+        XCTAssertFalse(RegionText.shouldStartAnotherRound(
+            now: now, lastRoundFinishedAt: last, spentOnProbes: .seconds(9),
+            cooldown: .seconds(30), totalBudget: .seconds(6)))
+    }
+
+    func testTrueWhenCooldownElapsedAndBudgetRemains() {
+        let now = ContinuousClock().now
+        let last = now - .seconds(31)
+        XCTAssertTrue(RegionText.shouldStartAnotherRound(
+            now: now, lastRoundFinishedAt: last, spentOnProbes: .milliseconds(4_000),
+            cooldown: .seconds(30), totalBudget: .seconds(6)))
+    }
+
+    /// **既定値をリテラルで固定する**(production が実際に使う値)。他のテストが cooldown/totalBudget
+    /// を明示して呼ぶので、これが無いと既定を 0 に落とす変更が緑のまま通る
+    /// (`RegionTextProbeWithRetryTests.testDefaultRetryBudgetAndIntervalArePinned` と同じ規律)
+    func testDefaultCooldownAndTotalBudgetArePinned() {
+        XCTAssertEqual(RegionText.prewarmColdRetryCooldown, .seconds(30))
+        XCTAssertEqual(RegionText.prewarmColdRetryTotalBudget, .seconds(6))
+    }
+
+    /// 引数を省いた呼び出し(= production と同じ形)でも既定の cooldown/totalBudget を使うこと
+    func testUsesProductionDefaultsWhenOmitted() {
+        let now = ContinuousClock().now
+        XCTAssertFalse(RegionText.shouldStartAnotherRound(
+            now: now, lastRoundFinishedAt: now - .seconds(10), spentOnProbes: .zero))
+        XCTAssertTrue(RegionText.shouldStartAnotherRound(
+            now: now, lastRoundFinishedAt: now - .seconds(31), spentOnProbes: .zero))
+    }
+}
+
+/// `RegionText.PrewarmRoundState` — ラウンドの状態機械そのもの(cooldown・予算・二重起動防止)。
+/// 実 Vision・スレッド・flock を経由しない自前インスタンスで検証する(高速・決定的)
+final class RegionTextPrewarmRoundStateTests: XCTestCase {
+    func testNeverFinishedRoundIsInFlight() {
+        let state = RegionText.PrewarmRoundState()
+        XCTAssertEqual(state.resolveRetryStatus(now: ContinuousClock().now), .inFlight,
+                       "ラウンド 1 が一度も終わっていないのに inFlight 以外を返している")
+    }
+
+    func testNotEligibleBeforeCooldownElapses() {
+        let state = RegionText.PrewarmRoundState()
+        let finishedAt = ContinuousClock().now
+        state.recordFinished(now: finishedAt, spent: .milliseconds(200))
+        XCTAssertEqual(state.resolveRetryStatus(now: finishedAt, cooldown: .seconds(30), totalBudget: .seconds(6)),
+                       .notEligible)
+    }
+
+    /// 予約は排他: 予約した瞬間に running が立つので、同じ瞬間の別の呼び手は inFlight を見て
+    /// 二重にラウンドを起こさない
+    func testReservationIsExclusiveAndSubsequentCallsSeeInFlight() {
+        let state = RegionText.PrewarmRoundState()
+        let finishedAt = ContinuousClock().now
+        state.recordFinished(now: finishedAt, spent: .milliseconds(200))
+        let eligible = finishedAt + .seconds(31)
+        XCTAssertEqual(state.resolveRetryStatus(now: eligible, cooldown: .seconds(30), totalBudget: .seconds(6)),
+                       .reserved, "cooldown を空けたのに予約できていない")
+        XCTAssertEqual(state.resolveRetryStatus(now: eligible, cooldown: .seconds(30), totalBudget: .seconds(6)),
+                       .inFlight, "予約済みのラウンドがあるのに二重に予約している")
+    }
+
+    /// 予約すると新しい(未完了の)シグナルに差し替わる —— 前のラウンドの `currentSignal` を
+    /// 待っていた古い待ち手を巻き込まない
+    func testReservationReplacesTheSignalWithAFreshOne() {
+        let state = RegionText.PrewarmRoundState()
+        let finishedAt = ContinuousClock().now
+        state.recordFinished(now: finishedAt, spent: .zero)
+        XCTAssertTrue(state.currentSignal.isFinished)
+        let eligible = finishedAt + .seconds(31)
+        guard case .reserved = state.resolveRetryStatus(now: eligible, cooldown: .seconds(30), totalBudget: .seconds(6))
+        else { return XCTFail("reserved を返していない") }
+        XCTAssertFalse(state.currentSignal.isFinished, "予約直後は新しい未完了のシグナルであるべき")
+    }
+
+    /// 探りに使った時間はラウンドをまたいで積み上がる。3 ラウンドぶん(2 秒 × 3 = 6 秒)使い切ると
+    /// 4 ラウンド目は cooldown を空けても notEligible になる
+    func testSpentTimeAccumulatesAcrossRoundsUntilBudgetIsExhausted() {
+        let state = RegionText.PrewarmRoundState()
+        var t = ContinuousClock().now
+        state.recordFinished(now: t, spent: .seconds(2))  // ラウンド 1
+        t = t + .seconds(31)
+        XCTAssertEqual(state.resolveRetryStatus(now: t, cooldown: .seconds(30), totalBudget: .seconds(6)), .reserved)
+        state.recordFinished(now: t, spent: .seconds(2))  // ラウンド 2、合計 4 秒
+        t = t + .seconds(31)
+        XCTAssertEqual(state.resolveRetryStatus(now: t, cooldown: .seconds(30), totalBudget: .seconds(6)), .reserved)
+        state.recordFinished(now: t, spent: .seconds(2))  // ラウンド 3、合計 6 秒 = 予算ちょうど
+        t = t + .seconds(31)
+        XCTAssertEqual(state.resolveRetryStatus(now: t, cooldown: .seconds(30), totalBudget: .seconds(6)), .notEligible,
+                       "予算を使い切ったのに 4 ラウンド目を許している(無限に撃ち直す)")
+    }
+}
+
+/// `RegionText.awaitPrewarm` のラウンド制を実際のシングルトン(`RegionText.roundState`)経由で
+/// 通す。前段のラウンドは実行せず `recordFinished` で直接シードする(実 Vision の初回ロード
+/// (最大 47 秒)を待たない・`prewarmOnce` の一度きりの発火に依存しない)。テスト間で共有される
+/// プロセス全体の状態(`roundState`・`warm`)なので、必ず自分でリセットしてから使う
+final class RegionTextColdRetryRoundTests: XCTestCase {
+    override func tearDown() {
+        RegionText.warmOverrideForTesting = nil
+        RegionText.prewarmFinishOverrideForTesting = nil
+        RegionText.recognizeOverrideForTesting = nil
+        RegionText.roundState = RegionText.PrewarmRoundState()
+        RegionText.resetWarmForTesting()
+        super.tearDown()
+    }
+
+    /// 冷えた 1 ラウンド目のあと、cooldown を空けた `awaitPrewarm` が新しいラウンドを実際に走らせ、
+    /// そのラウンドの探りが(1 回目は空・2 回目は読める)最終的に読めれば `.warmed` を返す
+    func testAwaitPrewarmStartsAnotherRoundAfterCooldownAndReportsWarmed() async {
+        RegionText.resetWarmForTesting()
+        let seeded = RegionText.PrewarmRoundState()
+        let coldFinishedAt = ContinuousClock().now - RegionText.prewarmColdRetryCooldown - .seconds(1)
+        seeded.recordFinished(now: coldFinishedAt, spent: .milliseconds(500))
+        RegionText.roundState = seeded
+
+        let callCount = LockedCallCount()
+        RegionText.recognizeOverrideForTesting = { _ in
+            callCount.incrementAndGet() == 1 ? [] : ["fleetest"]
+        }
+
+        let outcome = await RegionText.awaitPrewarm(mode: .on, cap: .seconds(5))
+        guard case .warmed = outcome else { return XCTFail("warmed を返していない: \(outcome)") }
+        XCTAssertTrue(RegionText.isWarm)
+        XCTAssertGreaterThanOrEqual(callCount.value, 2, "撃ち直したラウンドが実際に走っていない")
+    }
+
+    /// mode が off の run では、条件を満たしていても新しいラウンドを起こさない
+    /// (off の run に Vision を読ませない契約。待ち手を取り残さないことも確かめる)
+    func testAwaitPrewarmStartsNoRoundWhenTheGateIsOff() async {
+        RegionText.resetWarmForTesting()
+        let seeded = RegionText.PrewarmRoundState()
+        seeded.recordFinished(now: ContinuousClock().now - RegionText.prewarmColdRetryCooldown - .seconds(1),
+                              spent: .milliseconds(500))
+        RegionText.roundState = seeded
+
+        let callCount = LockedCallCount()
+        RegionText.recognizeOverrideForTesting = { _ in
+            _ = callCount.incrementAndGet()
+            return ["fleetest"]
+        }
+
+        let outcome = await RegionText.awaitPrewarm(mode: .off, cap: .seconds(5))
+        guard case .finishedCold(let waited) = outcome else { return XCTFail("finishedCold を返していない: \(outcome)") }
+        XCTAssertEqual(waited, .zero)
+        XCTAssertEqual(callCount.value, 0, "off の run で探りを撃っている")
+    }
+
+    /// 予算を使い切っていれば、cooldown を空けていても待たずに `.finishedCold` へ戻る
+    /// (無限に撃ち直さない)
+    func testAwaitPrewarmStaysColdOnceTheRetryBudgetIsExhausted() async {
+        RegionText.resetWarmForTesting()
+        let seeded = RegionText.PrewarmRoundState()
+        let coldFinishedAt = ContinuousClock().now - RegionText.prewarmColdRetryCooldown - .seconds(1)
+        seeded.recordFinished(now: coldFinishedAt, spent: RegionText.prewarmColdRetryTotalBudget)
+        RegionText.roundState = seeded
+
+        let outcome = await RegionText.awaitPrewarm(mode: .on, cap: .seconds(5))
+        guard case .finishedCold(let waited) = outcome else { return XCTFail("finishedCold を返していない: \(outcome)") }
+        XCTAssertEqual(waited, .zero, "予算切れなのに待っている")
+        XCTAssertFalse(RegionText.isWarm)
+    }
+}

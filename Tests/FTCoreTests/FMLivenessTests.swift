@@ -60,7 +60,7 @@ final class FMLivenessTests: XCTestCase {
             XCTAssertEqual(reading.text?.state, .alive)
             XCTAssertEqual(reading.vision?.state, .dead, "text を書いても vision の死が消えない")
             XCTAssertEqual(reading.deadPaths, ["vision"])
-            XCTAssertEqual(reading.deadSummary(), "vision: ANE 0x10006")
+            XCTAssertEqual(reading.deadSummary(), "vision: ANE 0x10006" + FMLiveness.Reading.deadSummaryNote)
         }
     }
 
@@ -73,8 +73,21 @@ final class FMLivenessTests: XCTestCase {
 
             let reading = FMLiveness.current()
             XCTAssertEqual(reading.deadPaths, ["text", "vision"])
-            XCTAssertEqual(reading.deadSummary(), "text: text boom / vision: vision boom")
+            XCTAssertEqual(reading.deadSummary(),
+                           "text: text boom / vision: vision boom" + FMLiveness.Reading.deadSummaryNote)
             XCTAssertEqual(reading.deadSummary(limit: 6), "text: ", "limit は載せ先ごとの上限")
+        }
+    }
+
+    /// 死んだ理由に「この Mac の再起動で戻ったことがある」の事実を足す。**必ず直るとは言わない**
+    /// (2026-09-18 実測: ANE 異常からのカーネルパニック → 再起動直後は生き返った、の1回の観測)
+    func testDeadSummaryAddsRebootNoteWithoutPromisingAFix() throws {
+        try SharedResource.hostCaches.locked {
+            FMLiveness.record(path: .text, state: .dead, source: .probe, error: "ModelManagerError(1001)")
+            let summary = try XCTUnwrap(FMLiveness.current().deadSummary())
+            XCTAssertTrue(summary.contains("rebooting this Mac"), summary)
+            XCTAssertTrue(summary.contains("has cleared this state before"), summary)
+            XCTAssertFalse(summary.lowercased().contains("will fix"), "必ず直るとは断定しない: \(summary)")
         }
     }
 
@@ -218,7 +231,8 @@ final class FMLivenessTests: XCTestCase {
         let json = try XCTUnwrap(line)
         XCTAssertTrue(json.contains("\"fmVisionState\":\"dead\""), json)
         XCTAssertTrue(json.contains("\"fmTextState\":null"), "観測の無い経路は null(不明)。\(json)")
-        XCTAssertTrue(json.contains("\"fmDeadReason\":\"vision: ANE 0x10006\""), json)
+        XCTAssertTrue(json.contains("\"fmDeadReason\":\"vision: ANE 0x10006"
+                                    + FMLiveness.Reading.deadSummaryNote + "\""), json)
         XCTAssertTrue(json.contains("\"fmCheckedAt\":1700000000"), json)
 
         let quiet = HostMetricsSample(

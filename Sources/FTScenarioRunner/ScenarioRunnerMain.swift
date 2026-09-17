@@ -593,6 +593,17 @@ struct RunScenario: AsyncParsableCommand {
             ConsoleOut.err("⚠️ \(notice)")
             reportNotices.append(notice)
         }
+        // **落ちたときだけ**、Android 実機が deep idle(Doze)だったかを1往復で見て名指しする
+        // (screenAwakeAndUnlocked と同じ形。deep idle は画面消灯を伴わずに起きることもある —
+        // 端末側の判定が先に screen off へ倒れていない限り上と両方が付きうる)。緑の run では撃たない
+        if !passed, runPlatform == "android", let serial, DevicePicker.isPhysicalAndroidSerial(serial),
+           let idleState = AndroidPhysicalDevice.deepIdleState(serial: serial),
+           AndroidPhysicalDevice.isDeepIdle(idleState) {
+            let notice = "\(serial): the device was in deep idle (Doze, dumpsys deviceidle get deep ="
+                + " \(idleState)) when this scenario failed"
+            ConsoleOut.err("⚠️ \(notice)")
+            reportNotices.append(notice)
+        }
 
         let reportURL = try? ScenarioReportWriter.write(
             record: record, to: URL(fileURLWithPath: reportDir), notices: reportNotices)

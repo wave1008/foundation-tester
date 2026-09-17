@@ -23,7 +23,7 @@ Start one bridge per simulator, on separate ports, then hand `run` the port list
 
 ```bash
 fleetest bridge up --device "iPhone 17 Pro"                          # port 8123
-fleetest bridge up --device "iPhone 17 Pro Max" --port 8124 --skip-build
+fleetest bridge up --device "iPhone 17 Pro Max" --port 8124
 xcrun simctl install "iPhone 17 Pro Max" <path/to/App.app>           # install on each device
 
 fleetest run --port 8123 --port 8124    # scenarios are auto-distributed to the workers

@@ -127,6 +127,13 @@ public enum FMLiveness {
                 .compactMap { name, verdict in verdict?.state == .dead ? name : nil }
         }
 
+        /// deadSummary() が末尾に必ず足す事実の1文。2026-09-18 実測: text/vision とも
+        /// ModelManagerError で数時間死に続け、その間 ANE が異常な状態のままカーネルパニック
+        /// → 再起動直後は両経路とも生き返った。**直るとは断定しない**(この Mac の1回の観測)。
+        /// テストの期待値組み立てにも使う(この文言はここ1箇所だけが正)
+        public static let deadSummaryNote =
+            " (if this persists across runs, rebooting this Mac has cleared this state before)"
+
         /// 死んでいる経路と理由を1つの文字列に畳む。生/不明だけなら nil。
         /// **両方死んでいるときは両方出す** —— 「片方だけ死んでいる」と「全滅」は次の一手が違う
         /// (前者はシナリオの書き方で回避できる)。`limit` は載せ先ごとの上限
@@ -138,7 +145,7 @@ public enum FMLiveness {
                     return "\(name): \(verdict.error ?? verdict.source.rawValue)"
                 }
             guard !parts.isEmpty else { return nil }
-            let joined = parts.joined(separator: " / ")
+            let joined = parts.joined(separator: " / ") + Self.deadSummaryNote
             return limit.map { String(joined.prefix($0)) } ?? joined
         }
     }

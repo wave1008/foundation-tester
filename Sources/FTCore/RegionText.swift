@@ -73,6 +73,18 @@ public enum RegionText {
     /// 50ms は探りの所要の下限より短く、2 秒の予算内で複数回の撃ち直しを確保する
     public static let prewarmRetryInterval: Duration = .milliseconds(50)
 
+    /// 冷えたまま終わったラウンドの後、次のラウンドを試すまでに空けるべき最短間隔。
+    /// **根拠**: シナリオ実行プロセスの寿命は 20〜60 秒(`commitCompileCache` の doc)なので、
+    /// 1 プロセスあたり実質 1〜2 ラウンドに収まる。連打して `prewarmColdRetryTotalBudget` を
+    /// 溶かさないための下限
+    public static let prewarmColdRetryCooldown: Duration = .seconds(30)
+
+    /// 冷えたラウンドの再挑戦に使ってよい探りの合計時間の上限(ラウンド 1 の分を含む)。
+    /// **根拠**: 1 ラウンドの予算は `prewarmRetryBudget`(2 秒)なので、6 秒 = 最大 3 ラウンドぶん。
+    /// 置き換える相手(FM 段)の実測下限は 1.3 秒/回(`occlusionBudget` の doc)なので、使い切っても
+    /// FM 4〜5 回分のコストで収まる
+    public static let prewarmColdRetryTotalBudget: Duration = .seconds(6)
+
     /// 暖機の探りが使う認識器。**テストは `recognizeOverrideForTesting` で差し替え、Vision を
     /// 実際に叩かない**。探りは常に `renderedProbe()` の ASCII 文字列("fleetest")なので、
     /// `languages(for:)` の言語判定は通さず `defaultLanguages` 固定でよい
@@ -114,42 +126,61 @@ public enum RegionText {
         }
     }
 
-    private static let prewarmOnce: Void = {
-        // **専用スレッド**(協調スレッドプールに載せない): 下の flock はブロックする。
+    /// 1 ラウンド分の暖機の探りを実行し、`state` へ結果を記録する。**専用スレッド**から呼ぶ
+    /// (呼び手の責任。下の flock はブロックする)。ラウンド 1(`prewarmOnce`)と、冷えたラウンドの
+    /// 再挑戦(`startAnotherRound`)の両方がここを通る
+    private static func runPrewarmRound(state: PrewarmRoundState) {
+        // **「終わった」を必ず記録する**(読めた/読めない/画像不正のどの return 経路でも)。
+        // `awaitPrewarm` の待ち手はこれが立つまで戻らない。lock の close より先に宣言する
+        // (defer は LIFO なので、待ち手が起きる時点で flock は既に閉じている)
+        var spent: Duration = .zero
+        defer { state.recordFinished(now: ContinuousClock().now, spent: spent) }
         // 別の暖機(`warm-ocr`)がコンパイル中ならその完了を待ってから読む —— 待たずに自分でも
         // コンパイルすると 8 レーンぶんが同じモデルを同時に焼いて CPU を奪い合い、自分の分は
         // プロセスが先に死んでコミットされない(OCRWarmupLock の冒頭)
-        let thread = Thread {
-            // **「終わった」を必ず立てる**(読めた/読めない/画像不正のどの return 経路でも)。
-            // `awaitPrewarm` の待ち手はこれが立つまで戻らない。lock の close より先に宣言する
-            // (defer は LIFO なので、待ち手が起きる時点で flock は既に閉じている)
-            defer { prewarmFinishSignal.markFinished() }
-            let lock = OCRWarmupLock.acquire(processName: ProcessInfo.processInfo.processName)
-            defer { try? lock?.close() }
-            // 空の画像では認識器が言語モデルまで読み込まないことがあるので、文字を描いて読ませる
-            guard let image = renderedProbe() else {
-                recordPrewarmOutcome(lines: nil, error: "no probe image", attempts: 0)
-                return
-            }
-            let started = Date()
-            let done = DispatchSemaphore(value: 0)
-            let box = ProbeBox()
-            Task.detached(priority: .userInitiated) {
-                let (lines, error, attempts) = await probeWithRetry(image: image)
-                box.set(lines, error, attempts: attempts)
-                done.signal()
-            }
-            done.wait()
-            let (read, failure, attempts) = box.get()
-            recordPrewarmOutcome(lines: read, error: failure,
-                                 ms: Int(Date().timeIntervalSince(started) * 1000), attempts: attempts)
-            guard warmedUp(probe: read) else { return }
-            markWarm()
+        let lock = OCRWarmupLock.acquire(processName: ProcessInfo.processInfo.processName)
+        defer { try? lock?.close() }
+        // 空の画像では認識器が言語モデルまで読み込まないことがあるので、文字を描いて読ませる
+        guard let image = renderedProbe() else {
+            recordPrewarmOutcome(lines: nil, error: "no probe image", attempts: 0)
+            return
         }
+        let clock = ContinuousClock()
+        let started = clock.now
+        let startedDate = Date()
+        let done = DispatchSemaphore(value: 0)
+        let box = ProbeBox()
+        Task.detached(priority: .userInitiated) {
+            let (lines, error, attempts) = await probeWithRetry(image: image)
+            box.set(lines, error, attempts: attempts)
+            done.signal()
+        }
+        done.wait()
+        let (read, failure, attempts) = box.get()
+        spent = clock.now - started
+        recordPrewarmOutcome(lines: read, error: failure,
+                             ms: Int(Date().timeIntervalSince(startedDate) * 1000), attempts: attempts)
+        guard warmedUp(probe: read) else { return }
+        markWarm()
+    }
+
+    /// ラウンド 1。プロセスに確実に 1 回だけ走る(static let)。**専用スレッド**
+    /// (協調スレッドプールに載せない): `runPrewarmRound` 内の flock はブロックする
+    private static let prewarmOnce: Void = {
+        let thread = Thread { runPrewarmRound(state: roundState) }
         thread.name = "fleetest-ocr-prewarm"
         thread.qualityOfService = .userInitiated
         thread.start()
     }()
+
+    /// 冷えたまま終わったラウンドの後、`PrewarmRoundState.resolveRetryStatus` が `.reserved` を
+    /// 返したときだけ呼ぶ(二重起動しないことの担保はそちらの排他)。**専用スレッド**
+    private static func startAnotherRound() {
+        let thread = Thread { runPrewarmRound(state: roundState) }
+        thread.name = "fleetest-ocr-prewarm-retry"
+        thread.qualityOfService = .userInitiated
+        thread.start()
+    }
 
     private final class ProbeBox: @unchecked Sendable {
         private let lock = NSLock()
@@ -169,10 +200,16 @@ public enum RegionText {
     /// 同期関数に閉じ込める(async 文脈で lock/unlock を直に書くと Swift 6 で診断が出る)
     private static func markWarm() { warmLock.lock(); warm = true; warmLock.unlock() }
 
+    /// テスト専用リセット(production では呼ばない)。実 Vision を挟まず暖機の状態を初期化に戻す。
+    /// ラウンドの再挑戦テストが「今回のラウンドが本当に warm にしたか」を他テストの残留状態と
+    /// 混ぜずに見分けるために使う
+    static func resetWarmForTesting() { warmLock.lock(); warm = false; warmLock.unlock() }
+
     /// 暖機が「終わった」(成否を問わない)ことを async の待ち手へ知らせる信号。**待ち手は複数
     /// 許す**(occlusionFlip が並行に複数走っても壊れないため)。同期関数に閉じ込める
-    /// (markWarm と同じ理由 — async 文脈で lock を直に触らない)
-    private final class PrewarmFinishSignal: @unchecked Sendable {
+    /// (markWarm と同じ理由 — async 文脈で lock を直に触らない)。**ラウンドごとに使い捨てる**
+    /// (`PrewarmRoundState` が次のラウンドの予約時に新しいインスタンスへ差し替える)
+    final class PrewarmFinishSignal: @unchecked Sendable {
         private let lock = NSLock()
         private var finished = false
         private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -188,7 +225,7 @@ public enum RegionText {
 
         /// 既に終わっていれば即 resume。**継続を2回 resume しない**(finished かどうかの判定と
         /// waiters への追加を同じロックの中で行う)
-        /// 暖機が(読めたか否かに関わらず)もう終わっているか。終わっていれば待つ必要が無い
+        /// このラウンドが(読めたか否かに関わらず)もう終わっているか
         var isFinished: Bool { lock.lock(); defer { lock.unlock() }; return finished }
 
         func waitUntilFinished() async {
@@ -205,10 +242,63 @@ public enum RegionText {
         }
     }
 
-    private static let prewarmFinishSignal = PrewarmFinishSignal()
+    /// ラウンドの状態(直近の終了時刻・探りに使った合計時間・今どれかのラウンドが走っているか)。
+    /// **判定(`shouldStartAnotherRound`)と予約(`running` を true にする)を同じロックの中で行う**
+    /// —— 複数の待ち手が同時に `awaitPrewarm` を呼んでも新しいラウンドを二重に起こさないため。
+    /// production は `RegionText.roundState` の 1 インスタンスだけを使うが、internal アクセスなので
+    /// テストは自前のインスタンスを作って `resolveRetryStatus`/`recordFinished` を直接駆動できる
+    final class PrewarmRoundState: @unchecked Sendable {
+        enum RetryStatus: Equatable {
+            /// 何らかのラウンドが今走っている(ラウンド 1 がまだ一度も終わっていない場合を含む)。
+            /// 呼び手は新たに何も始めず、今のラウンドの完了を待つだけでよい
+            case inFlight
+            /// cooldown・予算とも満たしていたので、このラウンドを走らせるのは呼び手の責任
+            case reserved
+            /// cooldown・予算のどちらかを満たさない。待っても何も変わらないので `.finishedCold` へ
+            case notEligible
+        }
+
+        private let lock = NSLock()
+        private var running = false
+        private var lastFinishedAt: ContinuousClock.Instant?
+        private var spentOnProbes: Duration = .zero
+        private var signal = PrewarmFinishSignal()
+
+        var currentSignal: PrewarmFinishSignal { lock.lock(); defer { lock.unlock() }; return signal }
+
+        func resolveRetryStatus(now: ContinuousClock.Instant,
+                                cooldown: Duration = RegionText.prewarmColdRetryCooldown,
+                                totalBudget: Duration = RegionText.prewarmColdRetryTotalBudget) -> RetryStatus {
+            lock.lock(); defer { lock.unlock() }
+            if running { return .inFlight }
+            guard let last = lastFinishedAt else { return .inFlight }
+            guard RegionText.shouldStartAnotherRound(now: now, lastRoundFinishedAt: last,
+                                                     spentOnProbes: spentOnProbes,
+                                                     cooldown: cooldown, totalBudget: totalBudget)
+            else { return .notEligible }
+            running = true
+            signal = PrewarmFinishSignal()
+            return .reserved
+        }
+
+        func recordFinished(now: ContinuousClock.Instant, spent: Duration) {
+            lock.lock()
+            running = false
+            lastFinishedAt = now
+            spentOnProbes += spent
+            let s = signal
+            lock.unlock()
+            s.markFinished()
+        }
+    }
+
+    /// production はプロセス全体でこの 1 インスタンス。テストは差し替えて `awaitPrewarm` を
+    /// 実際に通すか(`RegionTextColdRetryRoundTests`)、別インスタンスを自分で作って状態機械だけを
+    /// 検証する(`RegionTextPrewarmRoundStateTests`)
+    static var roundState = PrewarmRoundState()
 
     /// `awaitPrewarm` が待つ本体をテストが差し替えるための口(production では nil)。設定されて
-    /// いれば実際の `prewarmFinishSignal` を待たず、この関数の完了をそのまま待ち対象にする ——
+    /// いれば実際の `roundState.currentSignal` を待たず、この関数の完了をそのまま待ち対象にする ——
     /// 実 Vision を積む本物の暖機は「進行中」を狙った時刻に作れないため。**既定が nil であること
     /// 自体は `RegionTextAwaitPrewarmTests` が固定する**(`warmOverrideForTesting` と同じ規律)
     public static var prewarmFinishOverrideForTesting: (@Sendable () async -> Void)?
@@ -231,23 +321,58 @@ public enum RegionText {
     /// **尽きたら待つのをやめて FM に回す**(occlusionFlip の既存の見送り経路。止めない)
     public static let prewarmWaitCap: Duration = .seconds(120)
 
+    /// 純粋関数: 冷えたまま終わったラウンドの後、次のラウンドを始めてよいか。
+    /// - `cooldown` 未満(直近のラウンドの終了からまだ空いていない)なら false(連打しない)
+    /// - `spentOnProbes`(これまでの探りの合計)が `totalBudget` に達していれば false(尽きたら諦める)
+    /// - 両方満たせば true
+    static func shouldStartAnotherRound(now: ContinuousClock.Instant, lastRoundFinishedAt: ContinuousClock.Instant,
+                                        spentOnProbes: Duration,
+                                        cooldown: Duration = RegionText.prewarmColdRetryCooldown,
+                                        totalBudget: Duration = RegionText.prewarmColdRetryTotalBudget) -> Bool {
+        now - lastRoundFinishedAt >= cooldown && spentOnProbes < totalBudget
+    }
+
     /// occlusion-guard の OCR 近道を実際に撃つ直前に呼ぶ。**暖機が終わるまで待つ**
     /// (ユーザー決定 2026-09-15: run の開始時には待たない・近道を呼ぶ時点でだけ待つ)。
     /// 既に暖まっていれば待たない(`.alreadyWarm`)。まだ始まっていなければここで始める
     /// (`prewarmIfNeeded`)。**mode が off のときは呼ばない**(呼び手の責任。off の run に
     /// Vision を読ませない契約は prewarmIfNeeded と同じ)。待った時間は
-    /// `DeadlineExclusion` へ計上する(締め切りの計算からこの待ちを差し引くため)
+    /// `DeadlineExclusion` へ計上する(締め切りの計算からこの待ちを差し引くため)。
+    ///
+    /// **ラウンド制**(2026-09-18、9/16 L24 の再発 = N3): 1 ラウンド(`probeWithRetry`、予算
+    /// `prewarmRetryBudget`)が冷えたまま終わっても、そのプロセスを見捨てない。呼ばれた時点で
+    /// 前のラウンドの終了から `prewarmColdRetryCooldown` 以上経っていて、かつ探りに使った合計時間が
+    /// `prewarmColdRetryTotalBudget` 未満なら新しいラウンドを起こして待つ(`PrewarmRoundState`)。
+    /// どちらかを満たさなければ従来どおり待たずに `.finishedCold(waited: .zero)`。
+    /// 実測(2026-09-18): 手元 Mac の窓 1 時間で `ocr-shortcut-not-warm` が 1,983 件、全部
+    /// プロセス単位で「1 回探って空 → 以後ずっと未暖機」の形だった
     public static func awaitPrewarm(mode: RegionTextGateMode,
                                     cap: Duration = prewarmWaitCap) async -> WarmWaitOutcome {
         if isWarm { return .alreadyWarm }
-        // 暖機が終わったのに読めない(Vision が空を返す)状態では、ガードのたびに差し引きの窓を開けない
-        // (待つものが無いのに子→親の deadlineExclusion を毎ステップ 2 行ずつ流すことになる)
-        if prewarmFinishOverrideForTesting == nil, prewarmFinishSignal.isFinished { return .finishedCold(waited: .zero) }
-        prewarmIfNeeded(mode: mode)
+        if prewarmFinishOverrideForTesting == nil {
+            switch roundState.resolveRetryStatus(now: ContinuousClock().now) {
+            case .notEligible:
+                // 再挑戦の余地が無いのに待たせない —— 待つものが無いのに毎ステップ
+                // 子→親の deadlineExclusion を 2 行ずつ流すことになる
+                return .finishedCold(waited: .zero)
+            case .reserved:
+                // off の run に Vision を読ませない契約は prewarmIfNeeded と同じ。予約だけ取って
+                // ラウンドを起こさないと待ち手が取り残されるので、その場で「終わった」ことにする
+                guard mode != .off else {
+                    roundState.recordFinished(now: ContinuousClock().now, spent: .zero)
+                    return .finishedCold(waited: .zero)
+                }
+                startAnotherRound()
+            case .inFlight:
+                prewarmIfNeeded(mode: mode)
+            }
+        } else {
+            prewarmIfNeeded(mode: mode)
+        }
         let clock = ContinuousClock()
         let start = clock.now
         let token = DeadlineExclusion.begin(cap: cap)
-        let waitBody = prewarmFinishOverrideForTesting ?? { await prewarmFinishSignal.waitUntilFinished() }
+        let waitBody = prewarmFinishOverrideForTesting ?? { await roundState.currentSignal.waitUntilFinished() }
         let outcome = await TaskBudget.run(cap) { await waitBody() }
         DeadlineExclusion.end(token)
         let waited = clock.now - start

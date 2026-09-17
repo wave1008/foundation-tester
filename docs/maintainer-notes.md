@@ -1305,3 +1305,30 @@ XCTest の issue がテストメソッドの外(main queue)で記録されるた
 **学び**: 「ブリッジ不達で離脱」は、ホストの誤判定とランナーの本当の死が同じ文言になる。**「Stopped stale bridges」の有無**が
 「離脱の時点でホストの xcodebuild が生きていたか」を示すので、切り分けの最初に見る。証拠(ランナーログ・xcresult)は
 復活の建て直しで上書き・掃除されるので、調べるときは退避しながら回す。
+
+## 35. 負荷テストの残り(2026-09-18・N9 / N3 / N2 / N5 / N10 / N11。N8 は再現せず)
+
+- **N9 生きているランナーを「不達」と確定していた**: XCUITest の 1 照会は、対象アプリが外部要因で背面に回ると実測 31 秒ブロックし、
+  その間 /status もランナーログも止まる。ログ静止の近道(15 秒)で確定すると**生きたランナーを止めて建て直す**。
+  → 1 周分の判定を `FTCore.BridgeLiveness.decide`(純粋関数)へ切り出し、材料に**ホスト側のランナープロセスの生死**を足した
+  (`.fleetest/bridge-<port>.pid` + `ProcessLiveness`。run / api run の 2 経路で注入。in-app は pid が無いので nil = 不明)。
+  規律: **生きている間はログ静止の近道を使わない**(窓 60 秒を使い切ってから確定)/ **消えていれば窓の残りを待たない**
+  (最も確かな死の証拠)/ 離脱理由には観測した事実だけを書く(「runner process is gone」「still alive but did not answer」)。
+  あわせて **iOS も「ブリッジが生きていれば残して再キュー」に揃えた**(`requeuesWithoutRetiring` から platform/host の分岐を外す。
+  iOS がここへ来るのは事後プローブの後だけ、という呼び出し順序が前提)。
+  デバイス対照: xcodebuild を SIGSTOP / シミュレータ内のランナーアプリを SIGSTOP —— **どちらも OS 側がランナーを終わらせるので
+  「LISTEN なし」で確定**(正しい)。**「生きているのに無応答」はデバイスでは再現できず、単体テストのみで担保**(正直に記録する)。
+- **N3 OCR 暖機のラウンド制**(9/16 L24 の再発): 探りが冷えたまま終わるとプロセスは最後まで近道を撃たなかった
+  (手元の 44% = 293/666 シナリオ)。→ `awaitPrewarm` が呼ばれた時点で、前のラウンドの終了から
+  `prewarmColdRetryCooldown`(30 秒)以上経ち、探りの合計が `prewarmColdRetryTotalBudget`(6 秒 = 1 ラウンド 2 秒 × 3)未満なら
+  新しいラウンドを起こして待つ(`PrewarmRoundState` が判定と予約を同じロックで行い二重起動しない)。`mode == .off` では起こさない。
+  **デバイス実測は結論が出ていない** —— 再起動後の手元は 258 ガード全部が warm(注記 0)で、冷えたラウンド自体が起きなかった。
+  ANE のパニック→再起動で環境が変わったので、修正の効果と切り分けられない。
+- **N2** `bridge up` が再利用でも xcodegen + build-for-testing を無条件に撃っていた → provision の鮮度判定へ一本化
+  (`--skip-build` は削除。`--with-sample-app` だけ xcodegen が要る)。実測: 再利用の所要 44.7 秒 → 3.0 秒。
+- **N5** USB トンネル(iproxy・宛先はループバック)の切断に触れない → `BridgeClient.usbTunnelAdvice`(LAN 注記の対。排他)。
+- **N10** FM 死の案内に「run をまたいで続くなら、この Mac の再起動でこの状態が解消したことがある」を 1 文足す
+  (`FMLiveness.Reading.deadSummaryNote` の 1 箇所。断定しない)。
+- **N11** Doze(deep idle)に触れない → 落ちたときだけ `dumpsys deviceidle get deep` を 1 往復で読み、IDLE / IDLE_MAINTENANCE のときだけ
+  事実を注記(画面消灯の注記と同じ形・独立)。Pixel 3a の実機で発火を確認。
+- **N8**(外部 terminate の直後に in-app の launch が失敗)は**再現しなかった**(3 回試行)。元の観測は 8 台 + 4 機 + MCP の高負荷中。

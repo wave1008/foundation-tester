@@ -460,6 +460,60 @@ public enum BridgeProbeOutcome: Sendable {
     }
 }
 
+/// 失敗後のブリッジ生存判定(`bridgeUnreachable` の 1 周分)。**純粋関数**(`decide`)に切り出して
+/// 単体テストで固める。観察の材料は3つ —— /status の応答・ホスト側のランナープロセスの生死・
+/// ランナーログの成長。
+public enum BridgeLiveness {
+    /// 離脱理由に写す事実(推測は書かない)。`nil` の材料には触れない
+    public enum Verdict: Sendable, Equatable {
+        /// 応答した = 生きている(busy でもここへ来る)
+        case reachable
+        /// 接続不能を確定。detail は run.json の離脱理由に入る事実
+        case unreachable(detail: String?)
+        /// まだ決めない(観察を続ける)
+        case keepObserving
+    }
+
+    /// - runnerProcessAlive: ホスト側のランナープロセス(xcuitest の xcodebuild)の生死。
+    ///   **`nil` は「分からない」**(in-app ブリッジのようにホスト側のプロセスが無い形)。
+    /// - logSilentSeconds: ランナーログが最後に伸びてからの秒数(ログが無ければ nil)。
+    /// - windowExpired: 観察窓(`BRIDGE_PROBE_OBSERVE_SECONDS`)を使い切ったか。
+    ///
+    /// **プロセスが生きている間はログ静止の近道を使わない** —— XCUITest の 1 照会は、対象アプリが
+    /// 外部要因で背面に回ると実測 31 秒ブロックし(2026-09-18: 実機で外から設定アプリを前面にした)、
+    /// その間ログも /status も止まる。近道(15 秒)で確定すると、**生きているランナーを止めて建て直す**。
+    /// 逆にプロセスが消えていれば、それが最も確かな死の証拠なので窓の残りを待たない。
+    public static func decide(probe: BridgeProbeOutcome, host: String?, runnerProcessAlive: Bool?,
+                             logSilentSeconds: TimeInterval?, logSilenceThreshold: TimeInterval,
+                             windowExpired: Bool) -> Verdict {
+        switch probe {
+        case .ok:
+            return .reachable
+        case .hijacked(let detail):
+            return .unreachable(detail: detail)
+        case .refused:
+            if BridgeProbeOutcome.refusalIsConclusive(host: host) {
+                return .unreachable(detail: "nothing is listening on its port")
+            }
+        case .silent:
+            break
+        }
+        if runnerProcessAlive == false {
+            return .unreachable(detail: "its runner process is gone")
+        }
+        let logSilent = logSilentSeconds.map { $0 >= logSilenceThreshold }
+        if runnerProcessAlive != true, logSilent == true {
+            return .unreachable(detail: "its runner log stopped growing")
+        }
+        guard windowExpired else { return .keepObserving }
+        // 窓を使い切った。ログが直近まで伸びていれば busy(健全)側に倒す(既存の規律)
+        if logSilent == false { return .reachable }
+        return .unreachable(detail: runnerProcessAlive == true
+            ? "its runner process was still alive but did not answer /status during the observation window"
+            : nil)
+    }
+}
+
 /// ワーカー・サーキットブレーカ: 同一ワーカーで通常失敗(凍結/消失に該当しない)が連続でこの回数に
 /// 達し、**かつその間に別のレーンが通っていたら**、原因不明でも「不調ワーカー」とみなして離脱させ
 /// 現シナリオを振り直す(判定は WorkerCircuitBreaker)。凍結/消失の個別プローブで拾えない不良
@@ -503,9 +557,8 @@ public enum ScenarioOutcome: Sendable, Equatable {
     case environmentFault
     /// 失敗ステップの `failureKind` が `driverUnreachable`(ブリッジ不達)だった。
     /// **OS で扱いが割れる** —— Android は environmentFault と同じ振り直し対象(runWorker 側の
-    /// `requeuesWithoutRetiring`)。iOS は `.failed` と同じ経路(bridgeUnreachable プローブ→
-    /// ワーカー離脱→復帰)へそのまま流す(ここで早期に振り直すと建て直しが起きなくなる)。
-    /// iOS の LAN 実機はプローブがブリッジの生存を確かめた後だけ Android と同じ振り直しに載る
+    /// `requeuesWithoutRetiring`)。iOS は先に `.failed` と同じ事後プローブ(bridgeUnreachable)を
+    /// 通し(ここで早期に振り直すと建て直しが起きなくなる)、ブリッジが生きていたときだけ振り直す
     case driverUnreachable
 }
 
@@ -654,16 +707,16 @@ public enum ScenarioRunner {
     /// device offline で1本・実機再起動で1本)。**iOS はここで拾わない** —— 下流の
     /// bridgeUnreachable プローブ→ワーカー離脱→復帰→再キューの経路(既存)をそのまま通す必要があり、
     /// ここで早期に振り直すとブリッジの建て直しが起きなくなる
-    /// host: ワーカーの宛先(`DriverConnection.host`)。iOS の LAN 実機だけ Android と同じ扱いにする
-    /// —— 事後プローブ(bridgeUnreachable)がブリッジの生存を確かめた後でここへ来るので、
-    /// 一過性の断で落ちた 1 本を赤のまま残さない(ループバックの iOS は従来どおり赤)
-    static func requeuesWithoutRetiring(outcome: ScenarioOutcome, platform: String, host: String?) -> Bool {
+    /// **iOS でこれが呼ばれるのは事後プローブ(bridgeUnreachable)がブリッジの生存を確かめた後だけ**
+    /// (呼び出し側の順序。Android にはその工程が無い)。生きている台で一過性に切れた 1 本を
+    /// 赤のまま残さず、台は残して振り直す —— 2026-09-18 まで iOS はここを通らず、
+    /// Wi-Fi の瞬断・アプリが背面に回った回が赤か、生きたランナーの建て直しになっていた
+    static func requeuesWithoutRetiring(outcome: ScenarioOutcome) -> Bool {
         switch outcome {
         case .environmentFault:
             return true
         case .driverUnreachable:
-            return platform == "android"
-                || (platform == "ios" && !BridgeProbeOutcome.refusalIsConclusive(host: host))
+            return true
         case .passed, .failed, .frozen:
             return false
         }
@@ -756,6 +809,9 @@ public final class RunOrchestrator {
     /// の傍証として bridgeUnreachable の busy/ウェッジ判別に使う。ログパスは FTBridgeClient 側の知識
     /// なので isDeviceFrozen と同じ理由で注入。取得不能・非 xcuitest は nil(判別に使わない)
     private let bridgeLogSize: (@Sendable (RunWorker) -> UInt64?)?
+    /// ホスト側のランナープロセス(xcuitest の xcodebuild)の生死。nil を返すのは「分からない」
+    /// (in-app ブリッジのようにホスト側にプロセスが無い形)。BridgeLiveness.decide の材料
+    private let runnerProcessAlive: (@Sendable (RunWorker) -> Bool?)?
     /// 失敗後チェックの /status プローブ 1 回分。isDeviceFrozen と同じ理由で注入(BridgeClient は
     /// FTBridgeClient)。hybrid は主ポート(in-app)が別アプリのシナリオ中サスペンドされ
     /// 「TCP 受理・HTTP 無応答」になるため、注入側で xcuitest 側ポートを叩く(design §8.8)。
@@ -851,6 +907,7 @@ public final class RunOrchestrator {
                 isDeviceFrozen: (@Sendable (String) async -> Bool)? = nil,
                 isDeviceUnreachable: (@Sendable (String) async -> Bool)? = nil,
                 bridgeLogSize: (@Sendable (RunWorker) -> UInt64?)? = nil,
+                runnerProcessAlive: (@Sendable (RunWorker) -> Bool?)? = nil,
                 probeBridge: (@Sendable (RunWorker) async -> BridgeProbeOutcome)? = nil,
                 writeRunLease: (@Sendable (String) -> Void)? = nil,
                 removeRunLease: (@Sendable (String) -> Void)? = nil,
@@ -877,6 +934,7 @@ public final class RunOrchestrator {
         self.isDeviceFrozen = isDeviceFrozen
         self.isDeviceUnreachable = isDeviceUnreachable
         self.bridgeLogSize = bridgeLogSize
+        self.runnerProcessAlive = runnerProcessAlive
         self.probeBridge = probeBridge
         self.runLeases = RunLeaseLedger(write: writeRunLease, remove: removeRunLease)
         self.recordingLeases = RunLeaseLedger(write: writeRecordingLease, remove: removeRecordingLease)
@@ -961,43 +1019,42 @@ public final class RunOrchestrator {
         return result ?? .silent
     }
 
-    /// iOS ワーカーの失敗後チェック。「接続不能」の確定条件:
-    /// - connection refused(プロセス死亡)は即確定
-    /// - それ以外は観察窓(60s)内で /status を繰り返す。失敗直後は AX 飽和で健全ブリッジも
-    ///   数十秒 /status に応答しない(プレフライト不採用と同じ教訓。短い期限は必ず誤検知する)
-    /// - xcuitest はランナーログが AX 処理中も成長し続ける=生存の傍証(bridgeLogSize 注入)。
-    ///   /status 無応答のままログが 15s 静止したらウェッジ確定(窓の残りを待たない)。
-    ///   窓を使い切ってもログが成長し続けていれば busy(健全)扱いで接続不能にしない
-    /// 直近の bridgeUnreachable が「別の台が答えた」で true を返したときの詳細(離脱理由に写す)。
-    /// 読んだら nil に戻す(次の判定に持ち越さない)
+    /// iOS ワーカーの失敗後チェック。1 周ごとの判定は `BridgeLiveness.decide`(純粋関数)。
+    /// 観察窓は 60s —— 失敗直後は AX 飽和で健全ブリッジも数十秒 /status に応答しない
+    /// (プレフライト不採用と同じ教訓。短い期限は必ず誤検知する)。
+    /// 直近の判定が true を返したときの事実(離脱理由に写す)。読んだら nil に戻す
+    /// (次の判定に持ち越さない)
     private var lastBridgeIdentityMismatch: String?
+    private var lastBridgeUnreachableDetail: String?
 
     private func bridgeUnreachable(_ worker: RunWorker) async -> Bool {
         lastBridgeIdentityMismatch = nil
+        lastBridgeUnreachableDetail = nil
         let deadline = Date().addingTimeInterval(BRIDGE_PROBE_OBSERVE_SECONDS)
         var lastSize = bridgeLogSize?(worker)
         let hasLogSignal = lastSize != nil  // in-app 等ホスト側ログが無い場合は窓いっぱい /status のみで判定
         var lastGrowth = Date()
         while true {
-            switch await probeBridgeOnce(worker) {
-            case .ok: return false
-            case .refused:
-                if BridgeProbeOutcome.refusalIsConclusive(host: worker.connection.host) { return true }
-            case .hijacked(let detail):
-                lastBridgeIdentityMismatch = detail
-                return true
-            case .silent: break
-            }
+            let probe = await probeBridgeOnce(worker)
             if hasLogSignal, let size = bridgeLogSize?(worker) {
                 if let prev = lastSize, size > prev { lastGrowth = Date() }
                 lastSize = size
-                if Date().timeIntervalSince(lastGrowth) >= BRIDGE_PROBE_LOG_SILENCE_SECONDS {
-                    return true
-                }
             }
-            if Date() >= deadline {
-                // 窓内で一度も応答なし。ログが直近まで成長していた場合のみ busy=健全側に倒す
-                return !(hasLogSignal && Date().timeIntervalSince(lastGrowth) < BRIDGE_PROBE_LOG_SILENCE_SECONDS)
+            switch BridgeLiveness.decide(
+                probe: probe, host: worker.connection.host,
+                runnerProcessAlive: runnerProcessAlive?(worker),
+                logSilentSeconds: hasLogSignal ? Date().timeIntervalSince(lastGrowth) : nil,
+                logSilenceThreshold: BRIDGE_PROBE_LOG_SILENCE_SECONDS,
+                windowExpired: Date() >= deadline) {
+            case .reachable:
+                return false
+            case .unreachable(let detail):
+                if case .hijacked = probe { lastBridgeIdentityMismatch = detail } else {
+                    lastBridgeUnreachableDetail = detail
+                }
+                return true
+            case .keepObserving:
+                break
             }
             try? await Task.sleep(nanoseconds: 3_000_000_000)
         }
@@ -1409,23 +1466,23 @@ public final class RunOrchestrator {
                await bridgeUnreachable(worker) {
                 unusableReason = lastBridgeIdentityMismatch.map {
                     "a bridge that now belongs to another device (\($0))"
-                } ?? "an unreachable bridge"
+                } ?? lastBridgeUnreachableDetail.map { "an unreachable bridge (\($0))" }
+                    ?? "an unreachable bridge"
             }
             // **Android のドライバ不達で、台は生きている**(消失でも凍結でもない)= ブリッジだけが
             // 一過性に切れた形(adb kill-server・ブリッジの force-stop・adb: device offline・実機の
             // 再起動で実測)。Android のブリッジは次の要求で黙って張り直されるので事後プローブでは
             // 健全に見え、落ちたシナリオが赤のまま残っていた。**ここまで来た = 台は生きている**ので、
-            // 結果を捨てて振り直し、ワーカーは残す(iOS は上の bridgeUnreachable プローブが
-            // 離脱→建て直し→再キューを担う。**LAN の実機だけ**はプローブが生存を確かめた後で
-            // ここに入る = Wi-Fi の瞬断で落ちた 1 本。BridgeProbeOutcome.refusalIsConclusive)
+            // 結果を捨てて振り直し、ワーカーは残す。**iOS もここへ入る** —— 上の
+            // bridgeUnreachable がブリッジの生存を確かめた後なので「台は生きている」が成り立つ
+            // (死んでいれば unusableReason が入り、離脱→建て直し→再キューの既存経路へ行く)
             // **ただし連続失敗はブレーカに数える** —— 数えないと、ブリッジを二度と張り直せない台
             // (adb には見えていて凍結もしていない形)が離脱もせずに残り、後続のシナリオの
             // 再キュー枠(1本につき1回)を1つずつ焼き潰す。ここで `.trip` したら振り直さずに
             // 下の離脱経路へ落とす(`environmentFault` は数えないまま = あちらは台ではなく
             // 環境ノイズという実測に基づく既存の判断)
             if unusableReason == nil, outcome == .driverUnreachable,
-               ScenarioRunner.requeuesWithoutRetiring(outcome: outcome, platform: worker.platform,
-                                                      host: worker.connection.host) {
+               ScenarioRunner.requeuesWithoutRetiring(outcome: outcome) {
                 let verdict = breaker.recordFailure(runPasses: await runPasses.snapshot())
                 switch ScenarioRunner.unreachableLaneAction(verdict: verdict) {
                 case .retire(let reason):
