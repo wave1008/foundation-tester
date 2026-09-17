@@ -69,7 +69,7 @@ import { applyMachineColors } from './machineColors.js';
 import { applyResidentMessage } from './processesTab.js';
 import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
 import { activateTab, currentTab, TAB_IDS, switchTab } from './tabs.js';
-import { setTilePaneHeight, setTileAutoFit } from './splitter.js';
+import { setTilePaneHeight, setTileAutoFit, setFleetVisible } from './splitter.js';
 import { adoptTitleHoverTips } from './hoverTip.js';
 import { handleDashboardMessage } from './dashboardTab.js';
 
@@ -270,6 +270,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'tileAutoFit':
       setTileAutoFit(message.value);
+      break;
+    case 'fleetVisible':
+      setFleetVisible(message.value);
       break;
     case 'selectAllDevices':
       applySelectAllDevices(message.value);

@@ -300,6 +300,11 @@ button.bulk-cancel:hover:not(:disabled) {
    枠は .icon-button の角丸(5px)+ 1px の余白ぶんだけ外側に取る。
    **下寄せ**(.toolbar の align-items: center を align-self で上書き) —— ホストグラフは
    リモート機のぶんだけ縦に伸びるので、中央だと機械の数でグループの位置が動く。 */
+/* フリート非表示(splitter.js)。出力ペインが flex の残りを占めるので高さの手当ては不要 */
+#panel-devices.fleet-hidden #tile-pane,
+#panel-devices.fleet-hidden #splitter {
+  display: none;
+}
 .toolbar-icon-group {
   align-self: flex-end;
   display: flex;

@@ -250,12 +250,14 @@ function renderDevicesPanel(): string {
           <span class="hm-fm-dead-badge"></span>
         </div>
       </div>
-      <!-- グラフの右・ツールバー右端の2つ。左が全選択トグル・右が高さの自動調整。
+      <!-- グラフの右・ツールバー右端の3つ。左からフリートの表示・全選択トグル・高さの自動調整。
            **どちらもタイルの見え方を操るので1つのグループに入れる**(枠の中でだけ隣接させ、
            ツールバーの他のボタンとは gap で切る)。
            **title/aria-label は webview 側(deviceTiles.js)が入れる** —— 押すたびに
            「すべて選択」⇄「すべて解除」で入れ替わるので、静的 HTML に置くと二重管理になる。 -->
       <div id="toolbar-tail" class="toolbar-icon-group toolbar-tail-start">
+        <!-- フリート(タイル領域+スプリッター)の表示トグル。状態と title は splitter.js -->
+        <button id="btn-fleet-visible" class="icon-button" type="button" aria-pressed="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 2h4v5H1V2zm1 1v3h2V3H2zm4-1h4v5H6V2zm1 1v3h2V3H7zm4-1h4v5h-4V2zm1 1v3h2V3h-2z"/><path d="M1 9h14v1H1zM1 11h14v1H1zM1 13h10v1H1z"/></svg></button>
         <button id="btn-select-all" class="icon-button" type="button" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 2h14v12H1V2zm1 1v10h12V3H2z"/><path d="M7 11.4 3.9 8.3l.9-.9L7 9.6l4.2-4.2.9.9z"/></svg></button>
         <!-- ON の間、タイル高さを「全デバイスが横幅にちょうど収まる」高さへ自動調整する
              (状態と再計算契機は splitter.js)。左右の縁へ向かう両矢印の自作SVG。 -->

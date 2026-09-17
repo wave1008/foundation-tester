@@ -4,7 +4,9 @@
 // セパレーターが最小位置にリセット)。tabs.js からは reapplyTilePaneHeight を呼ぶ。
 
 import { vscode, persistedState } from './vscodeApi.js';
-import { toolbar, banner, devicesPanel, tilePane, splitter, grid, btnAutoFit } from './domRefs.js';
+import { toolbar, banner, devicesPanel, tilePane, splitter, grid, btnAutoFit, btnFleetVisible } from './domRefs.js';
+import { t } from '../i18n.js';
+import { setHoverTip } from './hoverTip.js';
 import { relayoutTiles, setTileLayoutObserver, measureTileImageHeight } from './deviceTiles.js';
 import { computeFitPaneHeight } from './tileFitModel.js';
 
@@ -19,6 +21,10 @@ function defaultTilePaneHeight() {
   const available = availableSplitHeight();
   return Math.round((available > 0 ? available : window.innerHeight) / 2);
 }
+
+// ---- フリートの表示トグル(ツールバー右端のグループの先頭・既定 表示) ----
+// 既定が表示なので「!== false」(ホスト側 monitorPanel.ts の既定 true と揃える。片方だけ変えない)。
+let fleetVisible = persistedState.fleetVisible !== false;
 
 let desiredTilePaneHeight =
   typeof persistedState.tilePaneHeight === 'number' && persistedState.tilePaneHeight > 0
@@ -41,8 +47,9 @@ function clampTilePaneHeight(height) {
 
 // 「テスト実行」タブ非表示(display:none)の間はdevicesPanel.clientHeightが0になり、誤って
 // 最小値にクランプしてしまうため何もせず抜ける(タブ復帰時にswitchTabが呼び直す)。
+// フリート非表示の間も同じ理由で抜ける(タイルの幅が 0 に測れて auto-fit が desired を潰す)。
 function splitAreaHidden() {
-  return devicesPanel.clientHeight === 0 || devicesPanel.offsetParent === null;
+  return !fleetVisible || devicesPanel.clientHeight === 0 || devicesPanel.offsetParent === null;
 }
 
 function renderTilePaneHeight() {
@@ -209,6 +216,38 @@ export function setTileAutoFit(enabled) {
   reapplyTilePaneHeight();
 }
 
+function renderFleetVisible() {
+  devicesPanel.classList.toggle('fleet-hidden', !fleetVisible);
+  btnFleetVisible.classList.toggle('toggled', fleetVisible);
+  btnFleetVisible.setAttribute('aria-pressed', fleetVisible ? 'true' : 'false');
+  const label = t(fleetVisible ? 'wvMonitor.toolbar.hideFleet' : 'wvMonitor.toolbar.showFleet');
+  setHoverTip(btnFleetVisible, label);
+  btnFleetVisible.setAttribute('aria-label', label);
+}
+
+function applyFleetVisible(visible) {
+  fleetVisible = visible;
+  renderFleetVisible();
+  // 表示へ戻したときに現レイアウトで高さを取り直す(隠れている間の resize は splitAreaHidden で素通り)
+  reapplyTilePaneHeight();
+}
+
+btnFleetVisible.addEventListener('click', () => {
+  applyFleetVisible(!fleetVisible);
+  // 契約: monitorWebviewMessages.ts の setFleetVisible / fleetVisible(tileAutoFit と同じ二重保存)。
+  vscode.setState(Object.assign({}, vscode.getState(), { fleetVisible }));
+  vscode.postMessage({ type: 'setFleetVisible', value: fleetVisible });
+});
+
+// host からの復元値(sendInitialState)。
+export function setFleetVisible(visible) {
+  if (typeof visible !== 'boolean') {
+    return;
+  }
+  applyFleetVisible(visible);
+}
+
+renderFleetVisible();
 renderAutoFitButton();
 reapplyTilePaneHeight();
 window.addEventListener('resize', () => reapplyTilePaneHeight());

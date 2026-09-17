@@ -97,6 +97,8 @@ export const webviewMonitorAStrings = {
   // ツールバー右端の全選択トグル(deviceTiles.js が押すたびに title/aria-label を入れ替える)。
   "wvMonitor.toolbar.selectAll": { ja: "デバイスをすべて選択", en: "Select All Devices" },
   "wvMonitor.toolbar.deselectAll": { ja: "デバイスの選択をすべて解除", en: "Deselect All Devices" },
+  "wvMonitor.toolbar.showFleet": { ja: "フリートを表示する", en: "Show Fleet" },
+  "wvMonitor.toolbar.hideFleet": { ja: "フリートを非表示にする", en: "Hide Fleet" },
 
   "wvMonitor.tile.queuedRestart": { ja: "再起動待機", en: "Restart pending" },
   "wvMonitor.tile.queuedWipe": { ja: "Wipe 待機", en: "Wipe pending" },

@@ -11,6 +11,7 @@ export const btnRestart = document.getElementById('btn-restart');
 export const btnRunTests = document.getElementById('btn-run-tests');
 export const btnSelectAll = document.getElementById('btn-select-all');
 export const btnAutoFit = document.getElementById('btn-auto-fit');
+export const btnFleetVisible = document.getElementById('btn-fleet-visible');
 export const projectSelect = document.getElementById('project-select');
 export const profileSelect = document.getElementById('profile-select');
 
