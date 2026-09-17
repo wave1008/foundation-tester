@@ -1620,8 +1620,15 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   `InAppBridge.tapByRef` が InAppSettle(イベント駆動・cap 800ms)で遷移の整定を待ってから
   ツリーを取り直して再 activate し(+250ms でもう1回)、それでも不発なら従来どおり合成タッチへ。
   待ちはメインをブロックしない(asyncAfter)ので遷移自体は進む。**再試行は activate false の
-  ときだけ**発生し通常経路のコストはゼロ。恒常的に activate false の要素(合成タッチで動くもの)は
-  最大 ~1s 遅くなるが正しさ優先。レポート注記「要素を取り直して再実行」で観測できる。
+  ときだけ**発生し通常経路のコストはゼロ。レポート注記「要素を取り直して再実行」
+  (`re-fetched the element and retried`)で観測できる。
+  **撃ち直すのは自前描画(Compose / Flutter)のアプリだけ**(v109。`AppUIFramework.retriesUnfiredActivate`)。
+  救済が効いた記録は全期間で sut-ec-mobile(Compose)の 21 件だけで、UIKit / SwiftUI / RN の不発は恒常的
+  (RN の Pressable は tap の 96%・SwiftUI は表のセル・入力欄・アラートのボタン)。E2E の 9 月の約 1.6 万回で
+  一度も効かず、1 回あたり約 0.4 秒(RN は 1 シナリオ 7.5 回)を払うだけだった。それ以外のアプリでは
+  取り直しを**座標のためだけに**1 回行う(RN のコールドラウンチでレイアウト確定前の frame を叩いた実害 =
+  8/8 の `freshTapPoint`)。保存時の frame から動いていたときだけ整定を待って読み直し、動いていなければ
+  待たずに合成タッチへ落とす。語彙が読めなければ従来どおり撃ち直す。
 - **Compose/Flutter のスクロールは UIAccessibility の scroll アクションで駆動する**(2026-07-31)。
   両者は `UIScrollView` を持たないので `contentOffset` 経路が無く、合成タッチの drag も受理
   されないが、**VoiceOver が使う `accessibilityScroll` は実装している**

@@ -26,6 +26,13 @@ public enum AppUIFramework: String, Codable, Sendable, CaseIterable {
 
     /// 自前描画(a11y 要素がネイティブのビューを持たず、タッチはホストのビューが自前で処理する)
     public var isSelfRendered: Bool { self == .compose || self == .flutter }
+
+    /// in-app の ref タップで activate が不発のとき、整定を待って要素を取り直し activate を撃ち直すか。
+    /// 撃ち直しが効いた実測は Compose だけ(画面遷移の直後は activate がまだ配線されていない)。
+    /// UIKit / SwiftUI / RN の不発は恒常的(RN の Pressable・表のセル・入力欄)で、E2E の 9 月の
+    /// 約 1.6 万回で一度も効かず、1 回あたり約 0.4 秒(整定 + 固定 250ms + 取り直し 2 回)を払うだけだった。
+    /// 自前描画で分ける(Flutter は効いた実測が無いが、個別の値で分けると語彙を足した日に黙って外れる)
+    public var retriesUnfiredActivate: Bool { isSelfRendered }
 }
 
 public enum UIFrameworkMarkers {

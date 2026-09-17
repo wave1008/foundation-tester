@@ -382,7 +382,10 @@ public enum BridgeAPI {
     /// in the background when the bridge starts, so the first /status after a relaunch no longer waits for it.
     /// v105: the XCUITest runner's /type read-back re-targets to the typed text alone when the prior value was
     /// hint text (shared `TypeReadback.readbackTarget`), and reports an abandoned retype separately.
-    public static let bridgeProtocolVersion = 108
+    /// v109 (in-app only): a ref tap whose activate did not fire retries activate only on self-rendered apps
+    /// (`AppUIFramework.retriesUnfiredActivate`); others re-read the element once for its current frame and
+    /// send the synthetic touch without the settle + 250ms + second re-read (waiting only if it moved).
+    public static let bridgeProtocolVersion = 109
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///

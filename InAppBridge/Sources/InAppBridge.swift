@@ -539,6 +539,8 @@ final class FTInAppBridge {
     /// 黙って空振りする。1〜2 秒後の再操作は成功するため、アニメーション整定を待ってから
     /// 取り直すと救える。待ちはメインをブロックしない(asyncAfter / InAppSettle)。
     /// 再試行は activate が false のときだけ発生するので、通常経路のコストはゼロ。
+    /// **撃ち直すのは自前描画のアプリだけ**(`AppUIFramework.retriesUnfiredActivate`)。
+    /// それ以外は取り直しを座標のためだけに使い、すぐ合成タッチへ落とす。
     private func tapByRef(_ ref: Int, req: TapRequest) throws -> String? {
         let sem = DispatchSemaphore(value: 0)
         var thrown: Error?
@@ -550,6 +552,8 @@ final class FTInAppBridge {
         // この tap リクエストの世代。下で sem.wait が timeout してもメインの処理は取り消せず
         // 後で実際に走るので、その遅延コールバックが別リクエストの note を汚さないよう比較する
         let myGeneration = requestGeneration
+        // メインに入る前に読む(初回は裏の計算を錠で待つので、メインを塞がない)
+        let retriesUnfiredActivate = AppUIFramework(rawValue: uiFramework)?.retriesUnfiredActivate ?? true
 
         func finish(_ window: UIWindow) {
             InAppSettle.waitOnMain { converged in
@@ -574,16 +578,39 @@ final class FTInAppBridge {
             }
             finish(window)
         }
+        /// 取り直した要素の現在 frame を合成タッチの座標に採る。戻り値 = 保存時の frame から動いていたか
+        @discardableResult
+        func adoptFreshFrame(_ fresh: (node: NSObject, frame: CGRect)) -> Bool {
+            guard let orig = self.frames[ref] else { return false }
+            let distance = abs(fresh.frame.midX - orig.midX) + abs(fresh.frame.midY - orig.midY)
+            // 現在 frame を使うのは**近距離の移動だけ**(コールドラウンチ直後のレイアウト確定
+            // = 実測 ~60pt)。id 一致は距離無制限なので、画面遷移後の同 id 要素へ飛ぶと
+            // ホストの遮蔽・安全判定が別画面の木に対して無効になる。遠距離は従来どおり
+            // stored frame へ落とす
+            if distance <= 120 {
+                freshTapPoint = CGPoint(x: fresh.frame.midX, y: fresh.frame.midY)
+            }
+            return distance > 0
+        }
+        /// 撃ち直しをしないフレームワーク(retriesUnfiredActivate == false)の不発。
+        /// 取り直しは**座標のためだけに**残す(RN のコールドラウンチでレイアウトが確定する前の frame を
+        /// 叩いた実害)。動いていなければ待たずに撃ち、動いていたときだけ整定を待って読み直す
+        func synthAtCurrentFrame(stale: NSObject, window: UIWindow) {
+            guard let fresh = self.refreshedNode(matching: stale, ref: ref, window: window),
+                  adoptFreshFrame(fresh) else {
+                synthFallback(window)
+                return
+            }
+            InAppSettle.waitOnMain(capMs: 800) { _ in
+                if let settled = self.refreshedNode(matching: stale, ref: ref, window: window) {
+                    adoptFreshFrame(settled)
+                }
+                synthFallback(window)
+            }
+        }
         func retry(_ remaining: Int, stale: NSObject, window: UIWindow) {
             if let fresh = self.refreshedNode(matching: stale, ref: ref, window: window) {
-                // 現在 frame を使うのは**近距離の移動だけ**(コールドラウンチ直後のレイアウト確定
-                // = 実測 ~60pt)。id 一致は距離無制限なので、画面遷移後の同 id 要素へ飛ぶと
-                // ホストの遮蔽・安全判定が別画面の木に対して無効になる。遠距離は従来どおり
-                // stored frame へ落とす
-                if let orig = self.frames[ref],
-                   abs(fresh.frame.midX - orig.midX) + abs(fresh.frame.midY - orig.midY) <= 120 {
-                    freshTapPoint = CGPoint(x: fresh.frame.midX, y: fresh.frame.midY)
-                }
+                adoptFreshFrame(fresh)
                 if fresh.node.accessibilityActivate() {
                     note = "activate did not fire -> re-fetched the element and retried"
                     finish(window)
@@ -616,6 +643,10 @@ final class FTInAppBridge {
             let window = Self.window(of: node) ?? Self.frontmostTouchableWindow(keyWindow: keyWindow)
             if node.accessibilityActivate() {
                 finish(window)
+                return
+            }
+            guard retriesUnfiredActivate else {
+                synthAtCurrentFrame(stale: node, window: window)
                 return
             }
             // 遷移アニメーションが終わるのを待ってから取り直す(イベント駆動・上限 800ms)
