@@ -129,6 +129,37 @@ final class ScenarioReportWriterTests: XCTestCase {
         XCTAssertTrue(content.contains("a system alert was in front of the app"), content)
     }
 
+    // MARK: - notices(シナリオ全体の注意書き。M6: Android 実機の画面消灯を stderr だけでなく
+    // レポートにも載せる)
+
+    func testWriteIncludesNoticesAsWarningBlockquotes() throws {
+        let record = ScenarioRecordData(id: "Sample.testCase", title: "サンプル",
+                                        app: "com.example.app", platform: "android")
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let url = try ScenarioReportWriter.write(
+            record: record, to: dir,
+            notices: ["emulator-5560: the screen was off or locked when this scenario failed"])
+        let content = try String(contentsOf: url, encoding: .utf8)
+
+        XCTAssertTrue(content.contains(
+            "> ⚠️ emulator-5560: the screen was off or locked when this scenario failed"), content)
+    }
+
+    /// 既存の呼び手(notices 省略)は挙動が変わらないこと
+    func testWriteWithoutNoticesOmitsTheBlockquote() throws {
+        let record = ScenarioRecordData(id: "Sample.testCase", title: "サンプル",
+                                        app: "com.example.app", platform: "ios")
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let url = try ScenarioReportWriter.write(record: record, to: dir)
+        let content = try String(contentsOf: url, encoding: .utf8)
+
+        XCTAssertFalse(content.contains("⚠️"), content)
+    }
+
     // MARK: - inconclusive ステップの表示
 
     func testWriteMarksInconclusiveStepsWithQuestionIconAndReason() throws {

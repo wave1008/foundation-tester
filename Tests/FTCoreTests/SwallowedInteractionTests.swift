@@ -502,6 +502,32 @@ final class SwallowedInteractionTests: XCTestCase {
         XCTAssertTrue(message.contains("btn_freeze_3s"), "スワイプ後のタップは従来どおり: \(message)")
     }
 
+    // MARK: - checkIsON/checkIsOFF(M20: found 側にも tapDiagnosisHint を付ける)
+
+    /// `checkIsON`(assert: "checked")は textIs/exist と別の失敗文言を持つため、
+    /// tapDiagnosisHint を単独で通していなかった。tap 直後に checked が変わらないまま
+    /// checkIsON が失敗したら、「直前のタップが画面を変えなかった」を名指しすること
+    func testCheckedAssertFailureNamesTheUnchangedTap() async throws {
+        let checkbox = ElementInfo(ref: 1, type: "checkbox", identifier: "cb_agree", label: "同意する",
+                                   value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 16, y: 300, width: 200, height: 24), depth: 1,
+                                   checked: false)
+        let driver = ScriptedDriver(frames: [[checkbox]])
+        let executor = StepExecutor(driver: driver, isAndroid: false)
+
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "cb_agree")))
+        let outcome = await executor.execute(
+            FlowStep(assert: "checked", locator: FlowLocator(id: "cb_agree"),
+                     timeout: 0, occlusionGuard: false))
+
+        guard case .failed(let message) = outcome.status else {
+            XCTFail("checked のままなので失敗するはず: \(outcome.status)"); return
+        }
+        XCTAssertTrue(message.contains("the element is off"), message)
+        XCTAssertTrue(message.contains("did not change the screen at all"),
+                      "found 側にも tapDiagnosisHint が付くこと: \(message)")
+    }
+
     /// 無変化のタップが 1 件も無い失敗には注記を立てない
     func testNoNoteWithoutAnUnchangedTap() async throws {
         var asked = alertScreen

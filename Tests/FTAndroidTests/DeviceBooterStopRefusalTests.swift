@@ -121,13 +121,13 @@ final class DeviceBooterSweepRefusalTests: XCTestCase {
         var namesLookedUp = 0
         let message = try XCTUnwrap(DeviceBooter.sweepRefusal(
             force: false, leaseStateDir: stateDir,
-            simulatorNames: { namesLookedUp += 1; return ["UDID-LIVE": "iPhone 17"] }))
+            simulatorNames: { namesLookedUp += 1; return ["UDID-LIVE": "iPhone 17"] }, physicalIOSDeviceNames: { [:] }, androidDeviceModels: { [:] }))
         XCTAssertTrue(message.contains("iPhone 17 [UDID-LIVE] (held by pid \(getppid()))"), message)
         XCTAssertFalse(message.contains("UDID-DEAD"), message)
         XCTAssertFalse(message.contains("UDID-SELF"), message)
         XCTAssertEqual(namesLookedUp, 1)
         XCTAssertNil(DeviceBooter.sweepRefusal(
-            force: true, leaseStateDir: stateDir, simulatorNames: { [:] }))
+            force: true, leaseStateDir: stateDir, simulatorNames: { [:] }, physicalIOSDeviceNames: { [:] }, androidDeviceModels: { [:] }))
     }
 
     // 死んだ pid の残骸しか無ければ、表示名の引き当て(本番は simctl)も撃たずに素通りする
@@ -138,8 +138,43 @@ final class DeviceBooterSweepRefusalTests: XCTestCase {
         var namesLookedUp = 0
         XCTAssertNil(DeviceBooter.sweepRefusal(
             force: false, leaseStateDir: stateDir,
-            simulatorNames: { namesLookedUp += 1; return [:] }))
+            simulatorNames: { namesLookedUp += 1; return [:] }, physicalIOSDeviceNames: { [:] }, androidDeviceModels: { [:] }))
         XCTAssertEqual(namesLookedUp, 0)
+    }
+
+    // M10b: シミュレータの名前で引けなかった鍵(実機)は iOS → Android の実機カタログへ
+    // 引き直す。実機は simulatorNames に載らないので、そちらを空にしても名指しできること
+    func testFallsBackToThePhysicalIOSCatalogWhenNotASimulator() throws {
+        let stateDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        RunLease.write(stateDir: stateDir, key: "00008110-000260242EEB801E", pid: getppid())
+        let message = try XCTUnwrap(DeviceBooter.sweepRefusal(
+            force: false, leaseStateDir: stateDir, simulatorNames: { [:] },
+            physicalIOSDeviceNames: { ["00008110-000260242EEB801E": "iPhone 13"] },
+            androidDeviceModels: { [:] }))
+        XCTAssertTrue(message.contains("iPhone 13 [00008110-000260242EEB801E]"), message)
+    }
+
+    func testFallsBackToTheAndroidModelCatalogWhenNotASimulatorOrPhysicalIOS() throws {
+        let stateDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        RunLease.write(stateDir: stateDir, key: "14141JEC204922", pid: getppid())
+        let message = try XCTUnwrap(DeviceBooter.sweepRefusal(
+            force: false, leaseStateDir: stateDir, simulatorNames: { [:] },
+            physicalIOSDeviceNames: { [:] },
+            androidDeviceModels: { ["14141JEC204922": "Pixel_7"] }))
+        XCTAssertTrue(message.contains("Pixel_7 [14141JEC204922]"), message)
+    }
+
+    // 実機の一覧取得が失敗した(空を返す)ときは鍵だけで表示する(素通りしない=断りは続く)
+    func testFailedPhysicalLookupsStillNameTheKey() throws {
+        let stateDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        RunLease.write(stateDir: stateDir, key: "UNRESOLVABLE-KEY", pid: getppid())
+        let message = try XCTUnwrap(DeviceBooter.sweepRefusal(
+            force: false, leaseStateDir: stateDir, simulatorNames: { [:] },
+            physicalIOSDeviceNames: { [:] }, androidDeviceModels: { [:] }))
+        XCTAssertTrue(message.contains("UNRESOLVABLE-KEY (held by pid \(getppid()))"), message)
     }
 
     // MARK: - MCP(fleetest-mcp)が操作中の台(2026-09-17 負荷テスト M10)
@@ -190,14 +225,14 @@ final class DeviceBooterSweepRefusalTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
         MCPDeviceLease.write(stateDir: dir, key: "UDID-MCP", pid: mcpHolder)
         let mcpOnly = try XCTUnwrap(DeviceBooter.sweepRefusal(
-            force: false, leaseStateDir: dir, simulatorNames: { ["UDID-MCP": "iPhone 17"] }))
+            force: false, leaseStateDir: dir, simulatorNames: { ["UDID-MCP": "iPhone 17"] }, physicalIOSDeviceNames: { [:] }, androidDeviceModels: { [:] }))
         XCTAssertTrue(mcpOnly.contains("an MCP session is driving iPhone 17 [UDID-MCP] (fleetest-mcp pid \(mcpHolder))"),
                       mcpOnly)
-        XCTAssertNil(DeviceBooter.sweepRefusal(force: true, leaseStateDir: dir, simulatorNames: { [:] }))
+        XCTAssertNil(DeviceBooter.sweepRefusal(force: true, leaseStateDir: dir, simulatorNames: { [:] }, physicalIOSDeviceNames: { [:] }, androidDeviceModels: { [:] }))
 
         RunLease.write(stateDir: dir, key: "UDID-RUN", pid: getppid())
         let both = try XCTUnwrap(DeviceBooter.sweepRefusal(
-            force: false, leaseStateDir: dir, simulatorNames: { [:] }))
+            force: false, leaseStateDir: dir, simulatorNames: { [:] }, physicalIOSDeviceNames: { [:] }, androidDeviceModels: { [:] }))
         XCTAssertTrue(both.contains("UDID-RUN (held by pid \(getppid()))"), both)
         XCTAssertTrue(both.contains("UDID-MCP (fleetest-mcp pid \(mcpHolder))"), both)
     }
@@ -210,7 +245,7 @@ final class DeviceBooterSweepRefusalTests: XCTestCase {
         MCPDeviceLease.write(stateDir: dir, key: "UDID-PARENT", pid: getppid())
         XCTAssertNil(DeviceBooter.deviceInUseRefusal(
             deviceName: "d", keys: ["UDID-OWN", "UDID-PARENT"], force: false, leaseStateDir: dir))
-        XCTAssertNil(DeviceBooter.sweepRefusal(force: false, leaseStateDir: dir, simulatorNames: { [:] }))
+        XCTAssertNil(DeviceBooter.sweepRefusal(force: false, leaseStateDir: dir, simulatorNames: { [:] }, physicalIOSDeviceNames: { [:] }, androidDeviceModels: { [:] }))
     }
 }
 

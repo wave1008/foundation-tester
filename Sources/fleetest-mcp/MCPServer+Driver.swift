@@ -368,12 +368,16 @@ extension MCPServer {
         /// その udid を今使っている run の pid(`RunLease.holderPID`。`markDeviceInUse` と
         /// 同じ台帳・同じ鍵)。分かれば文面に添える
         let heldByRunPID: Int32?
-        /// `bridge up` の完成コマンドを組むための実体判定(`SimulatorCatalog.isPhysical(udid:)`
-        /// = ft_list_devices と同じ経路)。nil = シミュレータ・実機のどちらとも認識できない
-        let isPhysical: Bool?
+        /// `bridge up` の完成コマンドを組むための実体判定(`SimulatorCatalog.lookupUDID(udid:)`
+        /// = ft_list_devices と同じ経路)の4値。**`.notFound`(一覧を読めたが載っていない)と
+        /// `.unreadable`(一覧そのものが読めなかった)を混同しない** —— 混同すると、
+        /// 負荷下で simctl がタイムアウトしただけの回を「そのデバイスは存在しない」と断定する
+        let lookup: SimulatorCatalog.UDIDLookup
 
+        /// 診断そのものを取れなかった(予算超過)ときの既定。**理由を捏造しない** ——
+        /// 「載っていない」でも「シミュレータ/実機と判定できた」でもなく、診断が間に合わなかった事実だけ運ぶ
         static let unknown = UDIDBridgeDiagnosis(
-            listeningButUnresponsive: [], heldByRunPID: nil, isPhysical: nil)
+            listeningButUnresponsive: [], heldByRunPID: nil, lookup: .unreadable("diagnosis timed out"))
     }
 
     /// `udidBridgeDiagnosis` が確かめる候補ポートの上限。**2026-09-16 実機実測**: 旧実装は全ポート
@@ -389,7 +393,7 @@ extension MCPServer {
 
     /// `udidBridgeDiagnosis` の全体(`ps` / `simctl` / 必要なら `devicectl` / `isBound`)に掛ける
     /// 上限。根拠: `candidatePorts` 内の `ps` は数十 ms、`isBound` は候補上限
-    /// (`maxUDIDBridgeCandidatePorts`)× 300ms で worst case 1.2 秒、`SimulatorCatalog.isPhysical`
+    /// (`maxUDIDBridgeCandidatePorts`)× 300ms で worst case 1.2 秒、`SimulatorCatalog.lookupUDID`
     /// は通常 `xcrun simctl list` の数百 ms で終わるが、udid がシミュレータ一覧に無いと
     /// `IOSPhysicalDeviceCatalog.devices()` = `xcrun devicectl list devices`(timeout 30 秒)まで
     /// 引く。**この 30 秒をそのまま `ft_status`(対話的な口)へ持ち込まない** —— 尽きたら
@@ -402,7 +406,8 @@ extension MCPServer {
     /// LISTEN の確認は `BridgeDiscovery.isBound`(lsof ではなく生ソケットの connect+poll。
     /// `iosConnectionLostHint` の busy 判定と同じ部品で 300ms 上限)だけで行う。
     /// run の使用中は `RunLease.holderPID`(`markDeviceInUse` と同じ台帳)、
-    /// 実体判定は `SimulatorCatalog.isPhysical(udid:)`(ft_list_devices と同じ経路)をそのまま使う。
+    /// 実体判定は `SimulatorCatalog.lookupUDID(udid:)`(ft_list_devices と同じ経路。読み取り失敗も
+    /// `.unreadable` として運び、「載っていない」と混同しない)をそのまま使う。
     ///
     /// **`udidBridgeDiagnosisBlocking` は丸ごと同期**(`await` を1つも持たない) ——
     /// これを async 関数の本体に直に書くと、`Shell.run` の完了待ち(`DispatchSemaphore.wait`。
@@ -430,7 +435,7 @@ extension MCPServer {
             RunLease.holderPID(stateDir: $0.appendingPathComponent(".fleetest"), key: udid)
         }
         return UDIDBridgeDiagnosis(listeningButUnresponsive: listening, heldByRunPID: heldByRunPID,
-                                   isPhysical: SimulatorCatalog.isPhysical(udid: udid))
+                                   lookup: SimulatorCatalog.lookupUDID(udid: udid))
     }
 
     /// 同期の仕事(`work`)を専用 Thread で実行し、`budget` 以内に返らなければ `fallback` を返す。
@@ -532,7 +537,7 @@ extension MCPServer {
             return Self.bridgeBusyOnUDIDMessage(udid: udid, diagnosis: diagnosis)
         }
         return "no running bridge is on udid \(udid). ft_list_devices shows which devices have one;"
-            + " \(Self.bridgeUpSuggestion(udid: udid, isPhysical: diagnosis.isPhysical))"
+            + " \(Self.bridgeUpSuggestion(udid: udid, lookup: diagnosis.lookup))"
             + " (a device without a bridge cannot be driven from MCP)"
     }
 
@@ -541,17 +546,28 @@ extension MCPServer {
     /// 名前引き・同名複数台の曖昧さを迂回できる)。**実機は `--physical` を明示しないと
     /// 通らない** —— 実機 UDID は `bridge up` の「36 文字・ダッシュ5分割」形状判定に一致しない
     /// ため、`--physical` を付けなければシミュレータ名の文字列として名前引きされ必ず失敗する。
-    /// **判定できないとき(SimulatorCatalog.isPhysical が nil)は嘘のコマンドを書かない** ——
-    /// virtual/physical のどちらを付けるべきか断定できないので、確認の手順だけを返す
-    static func bridgeUpSuggestion(udid: String, isPhysical: Bool?) -> String {
-        guard let isPhysical else {
+    /// **判定できないとき(`.notFound`/`.unreadable`)は嘘のコマンドを書かない** ——
+    /// virtual/physical のどちらを付けるべきか断定できないので、確認の手順だけを返す。
+    /// **`.notFound`(一覧は読めたが載っていない)と `.unreadable`(一覧を読めなかった)は文面を分ける**
+    /// —— 後者を前者と同じ文言にすると、simctl がタイムアウトしただけの回を
+    /// 「そのデバイスは存在しない」と読者に断定させる(2026-09-17 実測: 高負荷下の5.3秒応答時に発生)
+    static func bridgeUpSuggestion(udid: String, lookup: SimulatorCatalog.UDIDLookup) -> String {
+        switch lookup {
+        case .simulator:
+            return "start it with `fleetest bridge up --device \"\(udid)\"`"
+        case .physical:
+            return "start it with `fleetest bridge up --device \"\(udid)\" --physical`"
+        case .notFound:
             return "no exact start command can be offered (that udid is not currently listed as"
                 + " either a simulator or a physical device) — check ft_list_devices for its current"
                 + " udid, then run `fleetest bridge up --device \"<udid>\"` for a simulator, or add"
                 + " `--physical` for a physical device"
+        case .unreadable(let reason):
+            return "could not read the simulator/physical device lists (\(reason)), so no exact"
+                + " start command can be offered — check ft_list_devices for its current udid, then"
+                + " run `fleetest bridge up --device \"<udid>\"` for a simulator, or add `--physical`"
+                + " for a physical device"
         }
-        let flag = isPhysical ? " --physical" : ""
-        return "start it with `fleetest bridge up --device \"\(udid)\"\(flag)`"
     }
 
     /// LISTEN はしているが `/status` に答えなかったときの文面(純粋関数)。**「居ない」とは

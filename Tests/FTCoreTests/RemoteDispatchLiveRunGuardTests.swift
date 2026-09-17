@@ -144,4 +144,40 @@ final class RemoteDispatchLiveRunGuardTests: XCTestCase {
         XCTAssertFalse(RemoteDispatchLock.releasedEarly("busy\n"))
         XCTAssertFalse(RemoteDispatchLock.releasedEarly(""))
     }
+
+    // MARK: - M7: ロックを外さずに run の終了だけを見る(runEndedCommand)
+
+    private func runEndedCheck(reportDir: String) throws -> String {
+        let shell = Process()
+        shell.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        shell.arguments = ["-c", RemoteDispatchLock.runEndedCommand(reportDir: reportDir)]
+        let pipe = Pipe()
+        shell.standardOutput = pipe
+        try shell.run()
+        shell.waitUntilExit()
+        XCTAssertEqual(shell.terminationStatus, 0)
+        return String(decoding: pipe.fileHandleForReading.availableData, as: UTF8.self)
+    }
+
+    func testRunEndedCommandReportsBusyWhileTheRunIsAlive() throws {
+        let base = "/tmp/ftended-\(UUID().uuidString)"
+        let reportDir = "\(base)/users/alice/work/.fleetest/dispatch/s1/reports"
+        let run = try spawn(reportDir: reportDir)
+        defer { run.terminate() }
+        Thread.sleep(forTimeInterval: 0.3)
+
+        XCTAssertFalse(RemoteDispatchLock.runHasEnded(try runEndedCheck(reportDir: reportDir)))
+    }
+
+    func testRunEndedCommandReportsEndedWhenNothingMatches() throws {
+        let reportDir = "/tmp/ftended-\(UUID().uuidString)/users/alice/work/.fleetest/dispatch/s1/reports"
+        XCTAssertTrue(RemoteDispatchLock.runHasEnded(try runEndedCheck(reportDir: reportDir)))
+    }
+
+    func testRunHasEndedReadsOnlyTheEndedWord() {
+        XCTAssertTrue(RemoteDispatchLock.runHasEnded("ended\n"))
+        XCTAssertFalse(RemoteDispatchLock.runHasEnded("busy\n"))
+        XCTAssertFalse(RemoteDispatchLock.runHasEnded("released\n"), "released と混同しない")
+        XCTAssertFalse(RemoteDispatchLock.runHasEnded(""))
+    }
 }

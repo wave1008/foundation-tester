@@ -577,20 +577,25 @@ struct RunScenario: AsyncParsableCommand {
         // (この直後の正常継続でも、どこかで throw しても)必ず1回だけ呼ぶ
 
         let record = core.finalRecord
-        let reportURL = try? ScenarioReportWriter.write(
-            record: record, to: URL(fileURLWithPath: reportDir))
-
         // デバッグの stop で中断した場合は成功扱いにしない(確認まで到達していない)
         let passed = record.passed && !core.stoppedByUser
         // **落ちたときだけ**、Android 実機の画面が途中で消えていなかったかを1往復で見て名指しする。
         // シナリオの前の確認(wakeIfAsleep)は実行中に消えた1本を救えず、その失敗文は
-        // 「セレクタが解決できない」としか言わない(2026-09-11 Pixel 4a)。緑の run では撃たない
+        // 「セレクタが解決できない」としか言わない(2026-09-11 Pixel 4a)。緑の run では撃たない。
+        // **レポート書き出しより前に判定する** —— stderr(→ errorLogs)には出るが、書き出しが
+        // 先だとレポート(.md)には載らない
+        var reportNotices: [String] = []
         if !passed, runPlatform == "android", let serial, DevicePicker.isPhysicalAndroidSerial(serial),
            AndroidPhysicalDevice.screenAwakeAndUnlocked(serial: serial) == false {
-            ConsoleOut.err("⚠️ \(serial): the screen was off or locked when this scenario failed — steps after"
+            let notice = "\(serial): the screen was off or locked when this scenario failed — steps after"
                 + " it went off could not reach the app (the next scenario wakes it; the tool does not keep"
-                + " the screen on)")
+                + " the screen on)"
+            ConsoleOut.err("⚠️ \(notice)")
+            reportNotices.append(notice)
         }
+
+        let reportURL = try? ScenarioReportWriter.write(
+            record: record, to: URL(fileURLWithPath: reportDir), notices: reportNotices)
         var finished = ScenarioEvent(kind: "scenarioFinished")
         finished.scenario = scenarioID
         finished.passed = passed

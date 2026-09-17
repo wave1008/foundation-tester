@@ -6,8 +6,11 @@ import FTCore
 
 public enum ScenarioReportWriter {
 
+    /// notices: シナリオ全体に関わる注意書き(例: 実機の画面が実行中に消えていた)。
+    /// 判定はこの関数の外(呼び出し側)で確定させてから渡すこと —— ここでは事実をそのまま載せるだけ。
+    /// 既存の呼び手は空のまま(挙動不変)
     @discardableResult
-    public static func write(record: ScenarioRecordData, to dir: URL) throws -> URL {
+    public static func write(record: ScenarioRecordData, to dir: URL, notices: [String] = []) throws -> URL {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         let formatter = DateFormatter()
@@ -27,6 +30,9 @@ public enum ScenarioReportWriter {
         }
         md += "- Result: \(record.passed ? "✅ passed" : "❌ failed")\n"
         md += "- Timestamp: \(ISO8601DateFormatter().string(from: Date()))\n"
+        for notice in notices {
+            md += "\n> ⚠️ \(notice)\n"
+        }
 
         var screenshots: [(name: String, data: Data)] = []
 

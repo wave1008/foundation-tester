@@ -1292,7 +1292,15 @@ extension MCPServer {
                 }
             }
             // clearRef はセッション ref。ブリッジへ渡す直前にだけ native へ戻す
-            try await clearDriver.clearInput(ref: clearRef.map { nativeRef($0, args: args) })
+            do {
+                try await clearDriver.clearInput(ref: clearRef.map { nativeRef($0, args: args) })
+            } catch {
+                // ref 指定の失敗はランナーが既にタップを撃った後(焦点待ちの 422 等)——
+                // 記録せずに投げると、次の ft_type/ft_snapshot が「このセッションの誰も
+                // 変えていないのに木が変わった」と外部要因のせいにする(M5b実測 2026-09-17)
+                if clearRef != nil { recordInteraction(action: "clearInput", resolvedRef: clearRef, args: args) }
+                throw error
+            }
             recordInteraction(action: "clearInput", resolvedRef: clearRef, args: args)
             // **無条件の「cleared」を断言しない**(2026-08-13。ft_type replace / 追記と同じ型の掃討)——
             // in-app iOS の UIKit 経路は clearInput の成否を検証なしで YES を返すので、値が残っていても

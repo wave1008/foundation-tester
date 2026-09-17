@@ -47,6 +47,30 @@ public enum AndroidDeviceCatalog {
     /// (bootCompleted は false、avdName は次の経路へ)
     public static let adbTimeoutSeconds: Double = 10
 
+    /// `adb devices -l` の出力から serial → model(機種名。純粋関数。単体テスト対象)を作る。
+    /// ヘッダ行("List of devices attached")・空行・state が "device" でない行(offline 等。
+    /// model: が無いことが多い)は無視する。実機・エミュレータどちらも同じ形式で載るが、
+    /// 呼び手(DeviceBooter.sweepRefusal)は実機の serial だけを引く
+    static func parseDeviceModels(output: String) -> [String: String] {
+        var result: [String: String] = [:]
+        for line in output.split(separator: "\n") {
+            let fields = line.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+            guard fields.count > 1, fields[1] == "device",
+                  let modelField = fields.first(where: { $0.hasPrefix("model:") }) else { continue }
+            result[fields[0]] = String(modelField.dropFirst("model:".count))
+        }
+        return result
+    }
+
+    /// 接続中デバイスの serial → 機種名(表示専用)。adb に届かない・model: が読めない個体は
+    /// 含まれない(呼び手は素の serial で表示する。DeviceBooter.sweepRefusal の名指し用)
+    public static func physicalDeviceModels() -> [String: String] {
+        guard let adbPath = try? AndroidDriver.findADB(),
+              let result = try? Shell.run([adbPath, "devices", "-l"], timeout: adbTimeoutSeconds),
+              result.status == 0 else { return [:] }
+        return parseDeviceModels(output: result.output)
+    }
+
     /// 接続中のデバイスシリアル一覧(state = device のみ)
     public static func connectedSerials() throws -> [String] {
         let adbPath = try AndroidDriver.findADB()

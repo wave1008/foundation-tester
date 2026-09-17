@@ -349,20 +349,31 @@ enum DeviceMachineRunner {
         project: TestProject, profileName: String, runGroup: String, since: Date,
         active: [(Int, Group, [String])], outcomes: [FleetEntryOutcome]
     ) {
-        let recorded = recordedScenarioIDs(project: project, runGroup: runGroup, since: since)
+        let recorded = scanRecordedScenarios(project: project, runGroup: runGroup, since: since)
         // **順序ではなく machineLabel で引く**: outcomes は今は active と同じ順序で作られているが、
         // その保証は run() の集計の実装詳細なので、崩れたときに「別の機械の exit code」を
         // 名指しする形にしない(引けなければ exit code 不明として 0 以外を意味する -1)
         let exitCodes = Dictionary(outcomes.map { ($0.host, $0.exitCode) }, uniquingKeysWith: { first, _ in first })
         for (_, group, ids) in active {
-            let missing = unrecordedScenarioIDs(assigned: ids, recorded: recorded)
-            guard !missing.isEmpty else { continue }
-            FleetRunner.log(missingResultsLine(
-                machineLabel: group.machineLabel, exitCode: exitCodes[group.machineLabel] ?? -1,
-                ids: missing))
-            for id in missing {
-                LastResultsStore.record(project: project, scenarioID: id, passed: false, profile: profileName)
+            let exitCode = exitCodes[group.machineLabel] ?? -1
+            let missing = unrecordedScenarioIDs(assigned: ids, recorded: recorded.all)
+            if !missing.isEmpty {
+                FleetRunner.log(missingResultsLine(
+                    machineLabel: group.machineLabel, exitCode: exitCode, ids: missing))
+                for id in missing {
+                    LastResultsStore.record(project: project, scenarioID: id, passed: false, profile: profileName)
+                }
             }
+            // M7b: 中断された記録は「記録あり」に数えられて missing に出ない(missing は「1件も
+            // 記録が無い」だけを見る)ので、別枠で知らせる。**exit code 0(正常終了)では出さない**
+            // (中断済みの記録が残るのは異常終了経路(ssh の断・kill 等)だけの想定。実測 2026-09-17:
+            // リモート機は中断を受け取って scenarios/*.json に interrupted: true で書いたが、
+            // 手元は「記録あり」としか見ておらず、その1本は画面にも exit=137 のログにも一度も出なかった)
+            guard exitCode != 0 else { continue }
+            let interrupted = ids.filter { recorded.interrupted.contains($0) }
+            guard !interrupted.isEmpty else { continue }
+            FleetRunner.log(interruptedResultsLine(
+                machineLabel: group.machineLabel, exitCode: exitCode, ids: interrupted))
         }
     }
 
@@ -374,22 +385,37 @@ enum DeviceMachineRunner {
     /// (これを超えるズレは `FTAndroid.AndroidHealthProbe.issueClockSkew` が別途検知する領域)
     private static let clockSkewMargin: TimeInterval = 5 * 60
 
-    /// この run(runGroup)に属する run ディレクトリの `scenarios/*.json` から scenarioID を集める。
+    /// この run(runGroup)に属する run ディレクトリの `scenarios/*.json` から集計した記録。
+    /// `all` = 記録があった scenarioID 全部、`interrupted` = そのうち `record.interrupted == true`
+    /// だったもの(サブ実行が ssh の断・kill 等で終わり、リモート側が「中断」として書いた途中版が
+    /// 回収されたケース。M7b)
+    struct RecordedScenarios {
+        var all: Set<String> = []
+        var interrupted: Set<String> = []
+    }
+
     /// **ファイル名でなく JSON の中身で照合する**(日本語ファイル名は NFD 保存で glob・文字列一致が
-    /// 静かに外れる実害あり)
-    static func recordedScenarioIDs(project: TestProject, runGroup: String, since: Date) -> Set<String> {
+    /// 静かに外れる実害あり)。呼び手を増やしても scanRuns の走査を2回払わないよう、
+    /// all/interrupted は1回の走査でまとめて集計する
+    static func scanRecordedScenarios(project: TestProject, runGroup: String, since: Date) -> RecordedScenarios {
         let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
         let metas = RunResultsStore.scanRuns(resultsDir: resultsDir,
                                              since: since.addingTimeInterval(-clockSkewMargin))
             .filter { $0.runGroup == runGroup }
-        var ids: Set<String> = []
+        var result = RecordedScenarios()
         for meta in metas {
             let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: meta.runID)
             for record in RunResultsStore.records(runDir: runDir) {
-                ids.insert(record.scenarioID)
+                result.all.insert(record.scenarioID)
+                if record.interrupted == true { result.interrupted.insert(record.scenarioID) }
             }
         }
-        return ids
+        return result
+    }
+
+    /// `all` だけでよい呼び手向け(unrecordedScenarioIDs の入力)
+    static func recordedScenarioIDs(project: TestProject, runGroup: String, since: Date) -> Set<String> {
+        scanRecordedScenarios(project: project, runGroup: runGroup, since: since).all
     }
 
     /// `assigned` のうち `recorded` に無い ID(順序は assigned のまま)。純粋関数(単体テスト対象)
@@ -405,6 +431,17 @@ enum DeviceMachineRunner {
         let listed = ids.prefix(maxListed).joined(separator: ", ")
         let suffix = ids.count > maxListed ? ", …" : ""
         return "⚠️ \(machineLabel): \(ids.count) scenario(s) produced no result"
+            + " (sub-run exited \(exitCode)): \(listed)\(suffix)"
+    }
+
+    /// 「記録はあるが中断されたまま残った」ことを知らせる1行(純粋関数。単体テスト対象)。
+    /// missingResultsLine と同じ5件で切る規則。**呼び出し側が exit code 0 では呼ばないこと**
+    /// (正常終了で中断記録が残ることは無い想定)
+    static func interruptedResultsLine(machineLabel: String, exitCode: Int32, ids: [String]) -> String {
+        let maxListed = 5
+        let listed = ids.prefix(maxListed).joined(separator: ", ")
+        let suffix = ids.count > maxListed ? ", …" : ""
+        return "⚠️ \(machineLabel): \(ids.count) scenario(s) were interrupted"
             + " (sub-run exited \(exitCode)): \(listed)\(suffix)"
     }
 

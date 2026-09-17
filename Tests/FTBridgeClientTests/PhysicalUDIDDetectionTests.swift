@@ -63,4 +63,65 @@ final class PhysicalUDIDDetectionTests: XCTestCase {
             SimulatorCatalog.isPhysical(udid: udid, simulators: [], physicalDevices: { [phone(udid: udid)] }),
             true)
     }
+
+    // MARK: - lookupUDID(4値版。M3b: 「載っていない」と「読めなかった」を混同しない)
+
+    private struct FakeReadError: Error, LocalizedError {
+        var errorDescription: String? { "simctl list devices failed: timed out" }
+    }
+
+    func testLookupUDIDReturnsSimulatorWhenInTheSimulatorList() {
+        let udid = "SIM-1"
+        XCTAssertEqual(
+            SimulatorCatalog.lookupUDID(udid: udid, simulators: .success([simulator(udid: udid)]),
+                                        physicalDevices: { .success([]) }),
+            .simulator)
+    }
+
+    func testLookupUDIDReturnsPhysicalWhenInThePhysicalList() {
+        let udid = "00008110-001460910E0A201E"
+        XCTAssertEqual(
+            SimulatorCatalog.lookupUDID(udid: udid, simulators: .success([]),
+                                        physicalDevices: { .success([phone(udid: udid)]) }),
+            .physical)
+    }
+
+    /// どちらの一覧も読めたが、どちらにも載っていない(= 本当に居ない)
+    func testLookupUDIDReturnsNotFoundWhenBothListsReadCleanly() {
+        XCTAssertEqual(
+            SimulatorCatalog.lookupUDID(
+                udid: "does-not-exist", simulators: .success([simulator(udid: "SIM-1")]),
+                physicalDevices: { .success([phone(udid: "PHONE-1")]) }),
+            .notFound)
+    }
+
+    /// シミュレータ一覧の読み取り自体が失敗 → `.unreadable`(「載っていない」と断定しない)。
+    /// **実機一覧は引かない**(読めなかった時点で確定するので devicectl を引く理由が無い)
+    func testLookupUDIDReturnsUnreadableWhenSimulatorListFailsAndSkipsPhysicalList() {
+        var queried = false
+        let result = SimulatorCatalog.lookupUDID(
+            udid: "U1", simulators: .failure(FakeReadError()),
+            physicalDevices: { queried = true; return .success([]) })
+        XCTAssertEqual(result, .unreadable("simctl list devices failed: timed out"))
+        XCTAssertFalse(queried, "シミュレータ一覧が読めない時点で確定しているのに devicectl を引いている")
+    }
+
+    /// シミュレータ一覧は読めたが載っておらず、実機一覧の読み取りが失敗 → `.unreadable`
+    /// (`.notFound` と誤認しない)
+    func testLookupUDIDReturnsUnreadableWhenPhysicalListFails() {
+        let result = SimulatorCatalog.lookupUDID(
+            udid: "U1", simulators: .success([simulator(udid: "SIM-1")]),
+            physicalDevices: { .failure(FakeReadError()) })
+        XCTAssertEqual(result, .unreadable("simctl list devices failed: timed out"))
+    }
+
+    /// **シミュレータで当たったら実機一覧を引かない**(isPhysical と同じ短絡)
+    func testLookupUDIDDoesNotQueryThePhysicalListWhenTheSimulatorMatches() {
+        var queried = false
+        let result = SimulatorCatalog.lookupUDID(
+            udid: "SIM-1", simulators: .success([simulator(udid: "SIM-1")]),
+            physicalDevices: { queried = true; return .success([]) })
+        XCTAssertEqual(result, .simulator)
+        XCTAssertFalse(queried, "シミュレータで確定しているのに devicectl を引いている")
+    }
 }

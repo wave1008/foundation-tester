@@ -382,7 +382,7 @@ public enum BridgeAPI {
     /// in the background when the bridge starts, so the first /status after a relaunch no longer waits for it.
     /// v105: the XCUITest runner's /type read-back re-targets to the typed text alone when the prior value was
     /// hint text (shared `TypeReadback.readbackTarget`), and reports an abandoned retype separately.
-    public static let bridgeProtocolVersion = 105
+    public static let bridgeProtocolVersion = 108
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///

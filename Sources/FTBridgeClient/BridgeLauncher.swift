@@ -138,7 +138,11 @@ public struct BridgeLauncher {
                 throw LauncherError.codeSigningIncomplete(
                     problems: problems, logPath: writeBuildLog(result.tail)?.path)
             }
-            throw LauncherError.commandFailed("xcodebuild build-for-testing", result.tail)
+            // result.tail(単純な末尾30行)だと destination 不一致の原因行が対象外宛先の
+            // 一覧に押し出されて消えることがある(XcodebuildFailureSummary のコメント参照)
+            throw LauncherError.commandFailed(
+                "xcodebuild build-for-testing",
+                XcodebuildFailureSummary.summarize(output: result.output, tailLineCount: 30))
         }
         ToolchainFingerprint.store(at: Self.runnerFingerprintPath(derivedDataPath: derivedDataPath))
         if !signing.isEmpty {

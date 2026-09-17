@@ -284,8 +284,48 @@ public final class InAppDriver: AppDriver {
             }
             if attempt < 7 { try? await Task.sleep(for: .milliseconds(500)) }
         }
-        return detail + " / no recent crash report found"
-            + " (no .ips appeared within 4s — possibly killed by the OS, memory pressure or a voluntary exit. "
-            + "In hybrid/mixed runs the backgrounded app can be suspended or terminated)"
+        // .ips が無い = 殺されたとは限らない(実測 2026-09-17: SIGSTOP で 60 秒止めたアプリは
+        // プロセスとして生きたまま無応答だった)。生死を確かめてから事実どおりの文言に分ける
+        switch await appIsStillRunning(bundleID: bundleID) {
+        case true:
+            return detail + " / no recent crash report found, and the app process is still running"
+                + " — it is not answering (a hang, or it is suspended because another app is in front)"
+        case false, nil:
+            return detail + " / no recent crash report found"
+                + " (no .ips appeared within 4s — possibly killed by the OS, memory pressure or a voluntary exit. "
+                + "In hybrid/mixed runs the backgrounded app can be suspended or terminated)"
+        }
+    }
+
+    /// .ips が見つからなかったときの生死確認。simulatorUDID が nil("booted" 起動で宛先が
+    /// 曖昧)や simctl 自体の失敗では判定できない(nil)ので、呼び出し側は従来の
+    /// 「殺された可能性」の文言を使う(判定できない=生きていない、にはしない)
+    /// **協調スレッドプールで待たない**(Shell.run は同期で最大 timeout 秒ブロックする)
+    private func appIsStillRunning(bundleID: String) async -> Bool? {
+        guard let udid = simulatorUDID else { return nil }
+        return await Task.detached {
+            guard let result = try? Shell.run(
+                ["xcrun", "simctl", "spawn", udid, "launchctl", "list"],
+                timeout: Self.launchctlListTimeoutSeconds
+            ), result.status == 0 else { return nil }
+            return Self.processIsRunning(inLaunchctlListOutput: result.output, bundleID: bundleID)
+        }.value
+    }
+
+    /// `launchctl list` の直読み(5 秒 = SafariWebInspector の lsof 診断と同じ、応答が無ければ
+    /// 待つ意味の無い読み取り専用診断の目安)
+    private static let launchctlListTimeoutSeconds: Double = 5
+
+    /// `launchctl list` の1行は "PID\tステータス\tラベル"。対象アプリのラベルは
+    /// "UIKitApplication:<bundleID>[" を含み、未起動なら PID 列が "-"。純粋関数でテストする
+    static func processIsRunning(inLaunchctlListOutput output: String, bundleID: String) -> Bool {
+        let marker = "UIKitApplication:\(bundleID)["
+        for line in output.split(separator: "\n") {
+            let fields = line.split(separator: "\t")
+            guard let label = fields.last, label.contains(marker) else { continue }
+            guard let pidField = fields.first, Int(pidField) != nil else { continue }
+            return true
+        }
+        return false
     }
 }

@@ -260,10 +260,30 @@ public enum DeviceBooter {
             + " Wait for that run to finish, or pass --force to stop it anyway."
     }
 
+    /// 実機 iOS の表示名解決(sweepRefusal の名指し用)。udid・deviceCtlIdentifier どちらの鍵でも
+    /// 引ける(lease の鍵が「宣言値」か「解決後の UDID」かは呼び出し元ごとに違う ——
+    /// resolvedPhysicalIOSUDID のコメント参照)。devicectl に届かなければ空(呼び手は素の鍵で表示)
+    public static func physicalIOSDeviceNamesByKey() -> [String: String] {
+        guard let devices = try? IOSPhysicalDeviceCatalog.devices() else { return [:] }
+        var result: [String: String] = [:]
+        for device in devices {
+            result[device.udid] = device.name
+            result[device.deviceCtlIdentifier] = device.name
+        }
+        return result
+    }
+
     /// sweepRefusal の I/O 側。state dir が引けなければ nil(stopRefusal と同じく素通り)。
-    /// simulatorNames: UDID → 表示名(本番は `simulatorNamesByUDID`。Android の鍵 = serial はそのまま読める)
+    /// simulatorNames: UDID → 表示名(本番は `simulatorNamesByUDID`。Android の鍵 = serial はそのまま読める)。
+    /// **シミュレータの名前で引けなかった鍵**(実機)は iOS(`physicalIOSDeviceNames`。本番は
+    /// `physicalIOSDeviceNamesByKey`)→ Android(`androidDeviceModels`。本番は
+    /// `AndroidDeviceCatalog.physicalDeviceModels`。`adb devices -l` の `model:` 欄)の順で引き直す。
+    /// **本番の既定はこの関数の中で作る**(呼び出し元・既存テストを変えずに済む)。引き当ては
+    /// simulatorNames と同じ規律で「生きた保持者が居るときだけ」撃つ(下の guard を通過した後)
     public static func sweepRefusal(
-        force: Bool, leaseStateDir: URL?, simulatorNames: () -> [String: String]
+        force: Bool, leaseStateDir: URL?, simulatorNames: () -> [String: String],
+        physicalIOSDeviceNames: () -> [String: String] = { DeviceBooter.physicalIOSDeviceNamesByKey() },
+        androidDeviceModels: () -> [String: String] = { AndroidDeviceCatalog.physicalDeviceModels() }
     ) -> String? {
         guard !force,
               let dir = leaseStateDir ?? (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
@@ -278,7 +298,15 @@ public enum DeviceBooter {
         let mcpHolders = MCPDeviceLease.liveHolders(stateDir: dir, excluding: [selfPID, getppid()])
         guard !keys.isEmpty || !mcpHolders.isEmpty else { return nil }
         let names = simulatorNames()
-        let describe: (String) -> String = { key in names[key].map { "\($0) [\(key)]" } ?? key }
+        // 実機の一覧(devicectl / adb)は、シミュレータ名でもエミュレータの serial でもない鍵があるときだけ引く
+        let needsPhysicalNames = (keys + Array(mcpHolders.keys))
+            .contains { names[$0] == nil && !$0.hasPrefix("emulator-") }
+        let iosNames = needsPhysicalNames ? physicalIOSDeviceNames() : [:]
+        let androidModels = needsPhysicalNames ? androidDeviceModels() : [:]
+        let describe: (String) -> String = { key in
+            let name = names[key] ?? iosNames[key] ?? androidModels[key]
+            return name.map { "\($0) [\(key)]" } ?? key
+        }
         let runRefusal = sweepRefusal(
             keys: keys, selfPID: selfPID, force: force,
             holderPID: { RunLease.holderPID(stateDir: dir, key: $0) }, describe: describe)

@@ -31,6 +31,16 @@ final class DeviceInventoryTests: XCTestCase {
         XCTAssertTrue(text.contains("windows"), text)
     }
 
+    // MARK: - allRunProfilesLabel(純粋関数。M17: 見出しにプロジェクト名を入れる)
+
+    /// project: 無指定でも既定の1プロジェクトしか読まないため、見出しにその名前を入れる
+    /// (実測: E2E-* のプロファイルに載っている台が default プロジェクトの ft_list_devices では
+    /// 「unregistered」と表示され、どのプロジェクトの台帳を見ているか分からなかった)
+    func testAllRunProfilesLabelNamesTheProject() {
+        XCTAssertEqual(DeviceInventory.allRunProfilesLabel(projectName: "default"),
+                       "all run profiles of project \"default\"")
+    }
+
     // MARK: - fallbackHeader (純粋関数)
 
     func testFallbackHeaderIsEnglishAndExplainsTheSubstitution() {

@@ -40,6 +40,16 @@ struct RemoteRunDispatcher {
     /// 尽きたら `ShellError.timedOut` が上がって落ちる(待ち続けるより良い)
     static let sshCaptureTimeoutSeconds: Double = 120
 
+    /// M7: ssh の断・kill(exit 255/137 等 —— 0/1/自分の中断のいずれでもない)のとき、回収へ入る前に
+    /// 「ランナー上でこのディスパッチの run がもう終わったか」を待つ上限(秒)。実測
+    /// (2026-09-17: M1Max へのディスパッチの ssh を SIGKILL してネットワーク断を模した)では、
+    /// リモートの後始末(run.json へ interrupted/finishedAt を書く)は 2 秒で終わっていた。
+    /// 超えても実害は「手元の記録が途中版のまま回収される = 次のディスパッチの回収で埋まる」
+    /// だけなので、待ちすぎない値に留める
+    static let remoteRunEndWaitLimitSeconds: Double = 30
+    /// 上のポーリング間隔(秒)。実測の後始末(2秒)より十分細かく、ssh を焼きすぎない値
+    static let remoteRunEndPollIntervalSeconds: UInt32 = 1
+
     let host: RemoteHostSpec
     /// `--remote-dir` の生値(既定 "~/fleetest-runner"。チルダ展開前)。resolveLayout が
     /// リモートの $HOME を取得してから RemoteLayout.resolveBase で絶対パスへ解決する
@@ -121,6 +131,8 @@ struct RemoteRunDispatcher {
             stamp: stamp, project: project.name)
         if interruptFlag.interrupted {
             lockReleasedEarly = releaseLockIfRunEnded(layout: layout, reportDir: remoteReportDir)
+        } else {
+            awaitRemoteRunEndIfDisconnected(exitCode: exitCode, reportDir: remoteReportDir)
         }
 
         collectReports(project: project, remoteReportDir: remoteReportDir,
@@ -194,6 +206,8 @@ struct RemoteRunDispatcher {
             stamp: stamp, project: project.name)
         if interruptFlag.interrupted {
             lockReleasedEarly = releaseLockIfRunEnded(layout: layout, reportDir: remoteReportDir)
+        } else {
+            awaitRemoteRunEndIfDisconnected(exitCode: exitCode, reportDir: remoteReportDir)
         }
 
         collectReports(project: project, remoteReportDir: remoteReportDir,
@@ -505,6 +519,26 @@ struct RemoteRunDispatcher {
         let released = RemoteDispatchLock.releasedEarly(output)
         if released { log("==> released the dispatch lock before collecting (the run was interrupted)") }
         return released
+    }
+
+    /// M7: 自分から中断したのでも exit 0/1 でもない(ssh の断・kill = 255/137 等)ときだけ、
+    /// 回収(collectReports)の前に「このディスパッチの run がランナー上でもう終わったか」を待つ。
+    /// **ロックは外さない**(releaseLockIfRunEnded と違い、自分から中断していないので二重投入の
+    /// 判断はできない)。待たずに回収へ進むと、リモートの後始末(run.json への interrupted/
+    /// finishedAt の書き込み)より先に手元が途中版を回収し、結果 DB でその run が走り続けているように
+    /// 見える(2026-09-17 実測: M1Max へのディスパッチの ssh を SIGKILL してネットワーク断を模した)。
+    /// ssh 自体が通らない(sshCapture が throw)なら待たずに回収へ進む
+    private func awaitRemoteRunEndIfDisconnected(exitCode: Int32, reportDir: String) {
+        guard exitCode != 0, exitCode != 1 else { return }
+        let deadline = Date().addingTimeInterval(Self.remoteRunEndWaitLimitSeconds)
+        while Date() < deadline {
+            guard let output = try? sshCapture(RemoteDispatchLock.runEndedCommand(reportDir: reportDir))
+            else { return }
+            if RemoteDispatchLock.runHasEnded(output) { return }
+            sleep(Self.remoteRunEndPollIntervalSeconds)
+        }
+        log("==> the remote run is still finishing — collecting what is there now"
+            + " (the next dispatch collects the rest)")
     }
 
     /// 成功・失敗・タイムアウト・例外いずれでも defer から呼ばれる。解放の失敗は run の成否を

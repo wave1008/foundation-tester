@@ -792,8 +792,11 @@ public final class FTDriveCore {
         let hostFinishedAt = ISO8601Millis.string(from: Date())
         let status = outcome?.status
             ?? .failed("the command timed out (\(Int(FTSync.commandTimeout))s)")
-        // outcome が nil = FTSync が打ち切った(StepExecutor は素性を返せていない)
-        let failureKind = outcome?.failureKind ?? .timeout
+        // outcome が nil = FTSync が打ち切った(StepExecutor は素性を返せていない)ときだけ
+        // .timeout で埋める。outcome があるのに failureKind が nil(StepExecutor が素性を
+        // 名乗らなかった)は nil のまま —— ここを .timeout で埋めると、実際はタイムアウトしていない
+        // 失敗(例: clearInput の値残り)が timeout として記録される(2026-09 の結果DBで7件実測)
+        let failureKind: StepFailureKind? = outcome == nil ? .timeout : outcome?.failureKind
         // **埋めるのは外から見えた2つだけ**。snapshotMs / actionMs / waitMs は打ち切られた側にしか
         // 無いので nil のまま残す(「言えないときは欄ごと省く」——「その他」に丸めない)
         let recordedDurationMs = outcome?.timing?.durationMs

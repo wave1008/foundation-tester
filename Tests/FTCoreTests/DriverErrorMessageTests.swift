@@ -24,8 +24,7 @@ final class DriverErrorMessageTests: XCTestCase {
         XCTAssertEqual(text,
             "Cannot reach the driver (not running, or slow to respond). In hybrid/mixed runs the"
                 + " backgrounded app can be suspended, so TCP is accepted but no HTTP response comes"
-                + " back. The inapp/hybrid engines are simulator-only (injection is impossible on"
-                + " physical devices — use an xcuitest profile). Check: fleetest bridge up."
+                + " back. Check: fleetest bridge up."
                 + " connection refused")
     }
 

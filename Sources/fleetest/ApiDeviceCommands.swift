@@ -699,6 +699,14 @@ enum ApiDeviceDownDirectSpec {
 /// fleetest api start-device / stop-device 共通の実行ロジック
 /// (台帳読み込み・--name 解決・NDJSON ストリーミング・エラー処理)
 enum ApiDeviceOperation {
+    /// profile: 無指定のときのエラー文言に出す見出し(純粋関数・テスト用)。**プロジェクト名を
+    /// 入れる**(M17。project: 無指定でも既定の1プロジェクトしか読まないため、見出しがどの
+    /// プロジェクトの話かを言わないと、他プロジェクトの台が「見つからない」理由を読み間違える。
+    /// fleetest-mcp 側の DeviceInventory.allRunProfilesLabel と同じ形)
+    static func allRunProfilesLabel(projectName: String) -> String {
+        "all run profiles of project \"\(projectName)\""
+    }
+
     static func run(
         name: String, project: String?, profile: String?, deviceMachine: String? = nil,
         body: @escaping @Sendable (
@@ -733,7 +741,7 @@ enum ApiDeviceOperation {
             // 叩くので、単発コマンドの応答へ載せない
             for conflict in inventory.conflicts { logStderr("→ \(conflict.message)") }
             roster = MachineInventory.mergedProfile(inventory.entries)
-            rosterLabel = "all run profiles"
+            rosterLabel = allRunProfilesLabel(projectName: testProject.name)
         }
 
         let spec: DeviceSpec

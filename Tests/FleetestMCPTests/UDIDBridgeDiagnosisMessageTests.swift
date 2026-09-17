@@ -18,12 +18,19 @@
 // `udidBridgeDiagnosisBlocking`(同期本体)を専用 Thread(`runOffCooperativePool`)へ逃がし、
 // `budgeted` で全体に `udidBridgeDiagnosisBudget`(3秒)の上限を掛けるよう作り直した。
 //
+// 5件目(2026-09-17 M3b。高負荷下の実測): `SimulatorCatalog.isPhysical(udid:)` は
+// `(try? devices()) ?? []` で simctl の読み取り失敗を空一覧に潰しており、「どちらにも載っていない」
+// と「一覧が読めなかった」が同じ nil に落ちていた。`SimulatorCatalog.UDIDLookup`(4値。
+// simulator/physical/notFound/unreadable(理由))へ置き換え、`bridgeUpSuggestion`/
+// `noResponsiveBridgeMessage` が「読めなかった」を「載っていない」と断定しない文面に分けた。
+// 既存の `isPhysical(udid:)`(Bool?)の他の呼び手(ApiLiveCommand 等)は変更していない。
+//
 // ここでは文面を組み立てる純粋関数(`bridgeUpSuggestion`/`noResponsiveBridgeMessage`/
 // `bridgeBusyOnUDIDMessage`)と、走査の広さを決める純粋関数(`cappedCandidatePorts`)、
 // 台帳の絞り込み(`candidatePorts`。実デバイス・実ブリッジは使わず、注入した台帳ファイルだけで
 // 固定する)を `UDIDBridgeDiagnosis`/入力を直接注入してテストする。
 // `udidBridgeDiagnosis` 自体(`BridgeDiscovery.isBound`/`RunLease.holderPID`/
-// `SimulatorCatalog.isPhysical` という既存の・既にテスト済みの部品を束ねるだけの IO 層)は
+// `SimulatorCatalog.lookupUDID` という既存の・既にテスト済みの部品を束ねるだけの IO 層)は
 // 実ブリッジが無いと材料が作れないためここではテストしない。lsof を撃つテストは書かない。
 // **上限の仕組み(`budgeted`/`runOffCooperativePool`)だけは時間のかかるダミー work を注入して
 // テストする**(実際の ps/simctl/devicectl は起こさない。下部の MARK 参照)。
@@ -36,12 +43,12 @@ import FTBridgeClient
 
 final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
 
-    // MARK: - bridgeUpSuggestion(3形)
+    // MARK: - bridgeUpSuggestion(4形)
 
     /// ①udid がシミュレータと判定できた: `--device` に udid をそのまま渡すコマンドを出す。
     /// `--physical` は付けない(名前より udid が優先されるので名前引きの曖昧さも迂回できる)
     func testBridgeUpSuggestionForSimulator() {
-        let text = MCPServer.bridgeUpSuggestion(udid: "SIM-1234", isPhysical: false)
+        let text = MCPServer.bridgeUpSuggestion(udid: "SIM-1234", lookup: .simulator)
         XCTAssertTrue(text.contains("fleetest bridge up --device \"SIM-1234\""), text)
         XCTAssertFalse(text.contains("--physical"), text)
     }
@@ -49,18 +56,32 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
     /// ①'udid が実機と判定できた: `--physical` を必ず添える(付けなければ実機 UDID は
     /// bridge up の形状判定に外れて名前引きされ、必ず失敗する)
     func testBridgeUpSuggestionForPhysicalDevice() {
-        let text = MCPServer.bridgeUpSuggestion(udid: "00008130-ABCDEF", isPhysical: true)
+        let text = MCPServer.bridgeUpSuggestion(udid: "00008130-ABCDEF", lookup: .physical)
         XCTAssertTrue(text.contains("fleetest bridge up --device \"00008130-ABCDEF\" --physical"), text)
     }
 
-    /// ②引けない(シミュレータ・実機のどちらとも判定できない): **嘘のコマンドを出さない** ——
+    /// ②一覧は読めたがどちらにも載っていない: **嘘のコマンドを出さない** ——
     /// 実際の udid を埋めた `--device "<udid>"` を組んではいけない
-    func testBridgeUpSuggestionWhenPhysicalityIsUnknownDoesNotFabricateACommand() {
-        let text = MCPServer.bridgeUpSuggestion(udid: "U1", isPhysical: nil)
+    func testBridgeUpSuggestionWhenNotFoundDoesNotFabricateACommand() {
+        let text = MCPServer.bridgeUpSuggestion(udid: "U1", lookup: .notFound)
         // 実際の udid を埋め込んだ、コピペで即使える(が確度の無い)コマンドを組んでいないこと。
         // `--device "<udid>"` はプレースホルダとしてのみ登場してよい
         XCTAssertFalse(text.contains("--device \"U1\""), text)
         XCTAssertFalse(text.contains("start it with"), text)
+        XCTAssertTrue(text.contains("ft_list_devices"), text)
+        XCTAssertTrue(text.contains("not currently listed"), text)
+    }
+
+    /// ③一覧そのものが読めなかった(負荷下の simctl タイムアウト等): 「載っていない」と断定しない。
+    /// 読めなかった理由をそのまま運び、②と文面を分ける(2026-09-17 実測の修正)
+    func testBridgeUpSuggestionWhenUnreadableStatesTheReasonAndDoesNotClaimAbsence() {
+        let text = MCPServer.bridgeUpSuggestion(
+            udid: "U1", lookup: .unreadable("simctl list devices failed: timed out"))
+        XCTAssertFalse(text.contains("--device \"U1\""), text)
+        XCTAssertFalse(text.contains("start it with"), text)
+        XCTAssertFalse(text.contains("not currently listed"), text)
+        XCTAssertTrue(text.contains("could not read the simulator/physical device lists"), text)
+        XCTAssertTrue(text.contains("simctl list devices failed: timed out"), text)
         XCTAssertTrue(text.contains("ft_list_devices"), text)
     }
 
@@ -70,7 +91,7 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
     func testNoResponsiveBridgeMessageWhenGoneAndResolvedAsSimulator() {
         let text = MCPServer.noResponsiveBridgeMessage(
             udid: "SIM-1234",
-            diagnosis: .init(listeningButUnresponsive: [], heldByRunPID: nil, isPhysical: false))
+            diagnosis: .init(listeningButUnresponsive: [], heldByRunPID: nil, lookup: .simulator))
         XCTAssertEqual(text, "no running bridge is on udid SIM-1234. ft_list_devices shows which"
             + " devices have one; start it with `fleetest bridge up --device \"SIM-1234\"`"
             + " (a device without a bridge cannot be driven from MCP)")
@@ -79,9 +100,22 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
     /// ②本当に居ないが、実体も判定できない(名前引きできない)—— 事実だけ言い、嘘のコマンドは出ない
     func testNoResponsiveBridgeMessageWhenGoneAndUnresolvable() {
         let text = MCPServer.noResponsiveBridgeMessage(
-            udid: "U1", diagnosis: .init(listeningButUnresponsive: [], heldByRunPID: nil, isPhysical: nil))
+            udid: "U1", diagnosis: .init(listeningButUnresponsive: [], heldByRunPID: nil, lookup: .notFound))
         XCTAssertTrue(text.hasPrefix("no running bridge is on udid U1."), text)
         XCTAssertFalse(text.contains("--device \"U1\""), text)
+    }
+
+    /// ②' 一覧そのものが読めなかった(M3b。負荷下の simctl タイムアウト等): 「載っていない」と
+    /// 断定せず、読めなかった事実を言う —— `.notFound` と文面を混同しない
+    func testNoResponsiveBridgeMessageWhenListsAreUnreadableStatesTheReason() {
+        let text = MCPServer.noResponsiveBridgeMessage(
+            udid: "U1", diagnosis: .init(listeningButUnresponsive: [], heldByRunPID: nil,
+                                         lookup: .unreadable("simctl list devices failed: timed out")))
+        XCTAssertTrue(text.hasPrefix("no running bridge is on udid U1."), text)
+        XCTAssertFalse(text.contains("--device \"U1\""), text)
+        XCTAssertFalse(text.contains("not currently listed"), text)
+        XCTAssertTrue(text.contains("could not read the simulator/physical device lists"), text)
+        XCTAssertTrue(text.contains("simctl list devices failed: timed out"), text)
     }
 
     /// ③LISTEN しているが `/status` 無応答 = busy。**「no running bridge」とは言わない**
@@ -89,7 +123,7 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
     func testNoResponsiveBridgeMessageWhenBusyDoesNotClaimAbsence() {
         let text = MCPServer.noResponsiveBridgeMessage(
             udid: "SIM-1234",
-            diagnosis: .init(listeningButUnresponsive: [8124], heldByRunPID: nil, isPhysical: false))
+            diagnosis: .init(listeningButUnresponsive: [8124], heldByRunPID: nil, lookup: .simulator))
         XCTAssertFalse(text.contains("no running bridge"), text)
         XCTAssertTrue(text.contains("port 8124"), text)
         XCTAssertTrue(text.contains("busy"), text)
@@ -100,7 +134,7 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
     func testBridgeBusyMessageNamesTheHoldingRunWhenKnown() {
         let text = MCPServer.bridgeBusyOnUDIDMessage(
             udid: "SIM-1234",
-            diagnosis: .init(listeningButUnresponsive: [8124], heldByRunPID: 4242, isPhysical: false))
+            diagnosis: .init(listeningButUnresponsive: [8124], heldByRunPID: 4242, lookup: .simulator))
         XCTAssertTrue(text.contains("fleetest run (pid 4242)"), text)
         XCTAssertTrue(text.contains("is using this device right now"), text)
     }
@@ -109,7 +143,7 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
     func testBridgeBusyMessageOmitsRunNoteWhenUnknown() {
         let text = MCPServer.bridgeBusyOnUDIDMessage(
             udid: "SIM-1234",
-            diagnosis: .init(listeningButUnresponsive: [8124], heldByRunPID: nil, isPhysical: false))
+            diagnosis: .init(listeningButUnresponsive: [8124], heldByRunPID: nil, lookup: .simulator))
         XCTAssertFalse(text.contains("fleetest run"), text)
     }
 
@@ -117,7 +151,7 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
     func testBridgeBusyMessageDoesNotRecommendBridgeUp() {
         let text = MCPServer.bridgeBusyOnUDIDMessage(
             udid: "SIM-1234",
-            diagnosis: .init(listeningButUnresponsive: [8124], heldByRunPID: nil, isPhysical: nil))
+            diagnosis: .init(listeningButUnresponsive: [8124], heldByRunPID: nil, lookup: .notFound))
         // 「`fleetest bridge up` は…のためのもの」と説明する1回だけは許容し、それ以外に
         // 積極的な推奨("start it with `fleetest bridge up")が無いことを見る
         XCTAssertFalse(text.contains("start it with `fleetest bridge up"), text)
@@ -129,7 +163,7 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
     func testReconcilePortUsesBusyMessageWhenDiagnosisShowsListeningPorts() {
         XCTAssertThrowsError(try MCPServer.reconcilePort(
             nil, udid: "U1", udidPorts: [],
-            diagnosis: .init(listeningButUnresponsive: [8130], heldByRunPID: nil, isPhysical: false))
+            diagnosis: .init(listeningButUnresponsive: [8130], heldByRunPID: nil, lookup: .simulator))
         ) {
             let text = $0.localizedDescription
             XCTAssertFalse(text.contains("no running bridge"), text)
@@ -271,14 +305,15 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
     }
 
     /// `udidBridgeDiagnosis` は上限超過時に既存の既定値(`UDIDBridgeDiagnosis.unknown` =
-    /// 「判定できない」。listeningButUnresponsive 空・heldByRunPID nil・isPhysical nil)へ落ちる
-    /// ことを、`budgeted` を直接使って固定する(型を `UDIDBridgeDiagnosis` に揃えるだけで、
-    /// `udidBridgeDiagnosis` 自身と同じ fallback を経路含めて確認する)
+    /// 「診断が間に合わなかった」。listeningButUnresponsive 空・heldByRunPID nil・
+    /// lookup は `.unreadable("diagnosis timed out")`)へ落ちることを、`budgeted` を直接使って
+    /// 固定する(型を `UDIDBridgeDiagnosis` に揃えるだけで、`udidBridgeDiagnosis` 自身と同じ
+    /// fallback を経路含めて確認する)
     func testBudgetedFallsBackToUDIDBridgeDiagnosisUnknownOnTimeout() async {
         let result = await MCPServer.budgeted(.milliseconds(150), fallback: .unknown) {
             () -> MCPServer.UDIDBridgeDiagnosis in
             Thread.sleep(forTimeInterval: 2)
-            return .init(listeningButUnresponsive: [8130], heldByRunPID: 4242, isPhysical: true)
+            return .init(listeningButUnresponsive: [8130], heldByRunPID: 4242, lookup: .physical)
         }
         XCTAssertEqual(result, .unknown)
     }

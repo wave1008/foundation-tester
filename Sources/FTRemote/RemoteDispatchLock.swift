@@ -150,19 +150,38 @@ public enum RemoteDispatchLock {
         return "pgrep -f -- \(RemoteShell.quote(pattern)) || true"
     }
 
-    /// 中断したディスパッチが**回収へ入る前に**ロックを外す 1 往復。このディスパッチの run
-    /// (`--report-dir <reportDir>` を引数に持つプロセス)がランナーに残っていれば外さず `busy`、
-    /// 居なければ外して `released` を出す。**居るかを見るのは中断で ssh が先に切れうるから**
-    /// (向こうの run はまだ後始末中かもしれない = 外すと同じ台に 2 本目が乗る)。
-    /// pgrep が自分と祖先を除く点は `liveDispatchedRunsCommand` と同じ
+    /// このディスパッチの run(`--report-dir <reportDir>` を引数に持つプロセス)がランナー上に
+    /// まだ残っているかの pgrep 条件式(単体では実行しない部品)。pgrep が自分と祖先を除く点は
+    /// `liveDispatchedRunsCommand` と同じ
+    private static func runAlivePgrepCondition(reportDir: String) -> String {
+        "pgrep -f -- \(RemoteShell.quote(regexEscaped(reportDir))) >/dev/null"
+    }
+
+    /// 中断したディスパッチが**回収へ入る前に**ロックを外す 1 往復。このディスパッチの run が
+    /// ランナーに残っていれば外さず `busy`、居なければ外して `released` を出す。**居るかを見るのは
+    /// 中断で ssh が先に切れうるから**(向こうの run はまだ後始末中かもしれない = 外すと同じ台に
+    /// 2 本目が乗る)
     public static func releaseIfRunEndedCommand(base: String, reportDir: String) -> String {
-        "if pgrep -f -- \(RemoteShell.quote(regexEscaped(reportDir))) >/dev/null; then echo busy;"
+        "if \(runAlivePgrepCondition(reportDir: reportDir)); then echo busy;"
             + " else \(releaseCommand(base: base)) && echo released; fi"
     }
 
     /// `releaseIfRunEndedCommand` の出力が「外した」か。それ以外(busy・空・想定外)は外していない側
     public static func releasedEarly(_ output: String) -> Bool {
         output.trimmingCharacters(in: .whitespacesAndNewlines) == "released"
+    }
+
+    /// M7: ディスパッチの ssh(-tt)が自分から中断したのでも exit 0/1 でもない形で終わった
+    /// (ssh の断・kill = 255/137 等)ときに、**ロックは外さず**このディスパッチの run が
+    /// ランナー上で終わっているかだけを見る 1 往復。`releaseIfRunEndedCommand` と同じ pgrep 判定を
+    /// 共有する(判定を2箇所に持たない)。releasedEarly の "released" と混同しないよう別の語を返す
+    public static func runEndedCommand(reportDir: String) -> String {
+        "if \(runAlivePgrepCondition(reportDir: reportDir)); then echo busy; else echo ended; fi"
+    }
+
+    /// `runEndedCommand` の出力が「終わっていた」か
+    public static func runHasEnded(_ output: String) -> Bool {
+        output.trimmingCharacters(in: .whitespacesAndNewlines) == "ended"
     }
 
     public static func parseLivePIDs(_ output: String) -> [Int32] {

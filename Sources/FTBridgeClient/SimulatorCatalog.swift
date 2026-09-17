@@ -217,6 +217,54 @@ public enum SimulatorCatalog {
         isPhysical(udid: udid, simulators: (try? devices()) ?? [],
                    physicalDevices: { (try? IOSPhysicalDeviceCatalog.devices()) ?? [] })
     }
+
+    /// エラーの最初の1行だけを理由として使う(スタックトレース等の残りは捨てる)。
+    /// shutdownObservation と lookupUDID(udid:) が共有する
+    static func firstLineReason(_ error: Error) -> String {
+        let reason = error.localizedDescription
+            .split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init) ?? ""
+        return reason.isEmpty ? String(describing: error) : reason
+    }
+
+    /// `isPhysical(udid:simulators:physicalDevices:)` の4値版。「一覧を読んだがどちらにも
+    /// 載っていない」と「一覧そのものが読めなかった(負荷下の simctl タイムアウト等)」を
+    /// 混同しない —— `isPhysical` は両方を nil に潰しており、MCP の「no running bridge」文言が
+    /// 読み取り失敗を「載っていない」と誤って断定していた
+    public enum UDIDLookup: Equatable, Sendable {
+        case simulator
+        case physical
+        case notFound
+        /// 一覧の読み取り自体が失敗した(理由の1行)
+        case unreadable(String)
+    }
+
+    /// 純関数。**実機一覧は遅延**(シミュレータで当たれば devicectl を引かない。isPhysical と同じ理由)
+    static func lookupUDID(
+        udid: String, simulators: Result<[SimDeviceInfo], Error>,
+        physicalDevices: () -> Result<[IOSPhysicalDeviceInfo], Error>
+    ) -> UDIDLookup {
+        switch simulators {
+        case .failure(let error):
+            return .unreadable(firstLineReason(error))
+        case .success(let devices):
+            if devices.contains(where: { $0.udid == udid }) { return .simulator }
+        }
+        switch physicalDevices() {
+        case .failure(let error):
+            return .unreadable(firstLineReason(error))
+        case .success(let devices):
+            if devices.contains(where: { $0.udid == udid || $0.deviceCtlIdentifier == udid }) {
+                return .physical
+            }
+            return .notFound
+        }
+    }
+
+    /// I/O 版
+    public static func lookupUDID(udid: String) -> UDIDLookup {
+        lookupUDID(udid: udid, simulators: Result { try devices() },
+                   physicalDevices: { Result { try IOSPhysicalDeviceCatalog.devices() } })
+    }
 }
 
 /// 停止を確かめるための読み。**一覧が読めないことを「止まった」と読まない**
@@ -235,9 +283,7 @@ extension SimulatorCatalog {
     ) -> SimulatorShutdownObservation {
         switch read {
         case .failure(let error):
-            let reason = error.localizedDescription
-                .split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init) ?? ""
-            return .unreadable(reason.isEmpty ? String(describing: error) : reason)
+            return .unreadable(SimulatorCatalog.firstLineReason(error))
         case .success(let devices):
             let booted: Bool
             if let udid {

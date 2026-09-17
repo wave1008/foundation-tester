@@ -258,6 +258,14 @@ public enum ProfileWorkerFactory {
     static let blankRebootTimeoutSeconds: TimeInterval = 120
     /// sys.boot_completed=1 から SystemUI 描画までの整定待ち(ナノ秒)
     static let bootSettleNs: UInt64 = 5_000_000_000
+    /// 1回目の flap 検知(誤検知回避の2連続サンプル)のサンプル数・間隔。**変えない**
+    /// (05809254 の意図的な選択: 誤除外のコストはワーカー1台減るだけ、という前提)。
+    /// guest reboot 前の再判定・ログの根拠文はこの2値から導く(値を1箇所にする)
+    static let flapCheckSamples = 2
+    static let flapCheckIntervalMs: UInt64 = 1_500
+    /// 空白判定の再判定ループ(guest reboot 後)のポーリング間隔。新しい時間の定数を増やさず
+    /// flapCheckIntervalMs をそのまま使い回す
+    static var blankPollIntervalNs: UInt64 { flapCheckIntervalMs * 1_000_000 }
 
     /// android かつ serial 判明済みのワーカーを対象に恒常 blank-screen(画面凍結)を並列判定し、
     /// **blank ならまず sleep/wake 修復(~4s)、不発なら guest reboot を同期発行してブート完了まで
@@ -318,7 +326,7 @@ public enum ProfileWorkerFactory {
                         return nil
                     }
                     guard await AndroidHealthProbe.isPersistentlyBlank(
-                        serial: serial, samples: 2, intervalMs: 1_500) else {
+                        serial: serial, samples: flapCheckSamples, intervalMs: flapCheckIntervalMs) else {
                         if let stateDir { DeviceFrozenStore.clear(stateDir: stateDir, key: serial) }
                         return nil
                     }
@@ -364,8 +372,22 @@ public enum ProfileWorkerFactory {
                     + "restarted — excluding it from dispatch")
                 continue
             }
-            log("🔁 \(worker.label): sleep/wake did not clear the frozen screen — restarting the guest"
+            // **破壊的な guest reboot(1〜2分)を撃つ前にもう一度、既定の窓(5サンプル×8秒 ≈40秒)で
+            // 確かめる**。直前の flap 検知(2サンプル×1.5秒 ≈3秒)は画面遷移中の一過性の白画面
+            // (約25秒周期でフラッピングする)も拾ってしまい、そのまま破壊的な再起動へ進めると
+            // 健全機を巻き込む(実測: E2E-Flutter/android のラウンド開始時に毎回同じ1台がここで
+            // 誤って再起動されていた)
+            guard await AndroidHealthProbe.isPersistentlyBlank(serial: serial) else {
+                repairedDevices.append((worker.label, serial))
+                log("✅ \(worker.label): the blank screen cleared on its own (it was transient)"
+                    + " — using it in this run")
+                continue
+            }
+            log("🔁 \(worker.label): sleep/wake did not clear the frozen screen"
+                + " (\(Self.uniformBlankEvidenceText(samples: flapCheckSamples, intervalMs: flapCheckIntervalMs)))"
+                + " — restarting the guest"
                 + " (waiting up to \(Int(blankRebootTimeoutSeconds))s for boot; it will be used in this run)")
+            let rebootIssuedAt = Date()
             // ブート完了が確認できない個体は blank 再判定に進めず除外する: 再起動中は screencap 取得
             // 自体が失敗し、probeBlank はそれを「非 blank」(誤除外しない安全側)に倒すため、
             // 判定に掛けるとブート途中の個体を「復帰した」と誤認して run に載せてしまう
@@ -375,8 +397,22 @@ public enum ProfileWorkerFactory {
                     + "excluding it from dispatch")
                 continue
             }
-            if await !AndroidHealthProbe.isPersistentlyBlank(serial: serial, samples: 2,
-                                                             intervalMs: 1_500) {
+            // ランチャー描画までの実測は ~60s(sys.boot_completed=1 直後の整定待ち bootSettleNs だけでは
+            // 足りない個体がある)。1回判定で打ち切ると描画前の黒画面を「まだ空白」と誤除外するため、
+            // **reboot を発行した時刻からの blankRebootTimeoutSeconds の残り**いっぱい、非空白が
+            // 観測できるまで1回ずつ probe する(新しい時間の定数は作らない —— ポーリング間隔は
+            // 上の flap 検知と同じ値を再利用する)
+            var cleared = false
+            while Self.blankPollShouldContinue(
+                elapsedSeconds: Date().timeIntervalSince(rebootIssuedAt),
+                budgetSeconds: blankRebootTimeoutSeconds) {
+                if await !AndroidHealthProbe.isPersistentlyBlank(serial: serial, samples: 1, intervalMs: 0) {
+                    cleared = true
+                    break
+                }
+                try? await Task.sleep(nanoseconds: blankPollIntervalNs)
+            }
+            if cleared {
                 repairedDevices.append((worker.label, serial))
                 log("✅ \(worker.label): the guest restart cleared the frozen screen (using it in this run)")
                 continue
@@ -391,6 +427,22 @@ public enum ProfileWorkerFactory {
             workers: workers.enumerated().filter { !excludedIndices.contains($0.offset) }.map(\.element),
             repaired: repairedDevices.map(\.label),
             excluded: excludedIndices.sorted().map { workers[$0].label })
+    }
+
+    /// flap 検知の根拠を1行にした文(純粋関数。単体テスト対象)。
+    /// 例: "the screen was a single uniform color in 2 captures 1.5s apart"
+    static func uniformBlankEvidenceText(samples: Int, intervalMs: UInt64) -> String {
+        let seconds = Double(intervalMs) / 1000
+        let formatted = seconds.truncatingRemainder(dividingBy: 1) == 0
+            ? String(format: "%.0f", seconds) : String(format: "%.1f", seconds)
+        return "the screen was a single uniform color in \(samples) captures \(formatted)s apart"
+    }
+
+    /// guest reboot 後、非空白の画面が観測できるまで待ち続けてよいか(純粋関数。単体テスト対象)。
+    /// 予算(reboot を発行した時刻からの経過 vs blankRebootTimeoutSeconds)を使い切ったら
+    /// 待つのをやめる(従来どおり、まだ空白なら除外)
+    static func blankPollShouldContinue(elapsedSeconds: Double, budgetSeconds: Double) -> Bool {
+        elapsedSeconds < budgetSeconds
     }
 
     /// guest reboot(adb reboot・不可なら gRPC RESET=VM リセット)を発行し、ブート完了まで待つ。

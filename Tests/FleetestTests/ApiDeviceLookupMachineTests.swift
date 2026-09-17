@@ -71,4 +71,13 @@ final class ApiDeviceLookupHostTests: XCTestCase {
         else { return XCTFail("host 省略の台は --device-machine local で引けること") }
         XCTAssertNil(spec.machine)
     }
+
+    // MARK: - allRunProfilesLabel(純粋関数。M17: profile: 無指定の見出しにプロジェクト名を入れる)
+
+    /// project: 無指定でも既定の1プロジェクトしか読まないため、見出しにその名前を入れる
+    /// (fleetest-mcp 側の DeviceInventory.allRunProfilesLabel と同じ理由・同じ形)
+    func testAllRunProfilesLabelNamesTheProject() {
+        XCTAssertEqual(ApiDeviceOperation.allRunProfilesLabel(projectName: "default"),
+                       "all run profiles of project \"default\"")
+    }
 }

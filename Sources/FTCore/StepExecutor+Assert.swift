@@ -1355,7 +1355,8 @@ extension StepExecutor {
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
         return found
-            ? .failed("the element is \(wantChecked ? "off" : "on"): \(step.locatorSummary)")
+            ? .failed("the element is \(wantChecked ? "off" : "on"): \(step.locatorSummary)"
+                      + tapDiagnosisHint(lastSnapshot?.elements))
             : failed(.notFound, "element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot)
                       + Self.keyboardResizedHint(lastSnapshot))
     }

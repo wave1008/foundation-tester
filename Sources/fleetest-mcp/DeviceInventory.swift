@@ -43,7 +43,7 @@ enum DeviceInventory {
     }
 
     struct ResolvedRoster {
-        /// 見出しに出す台帳の出どころ("run profile \"ios\"" / "all run profiles")
+        /// 見出しに出す台帳の出どころ("run profile \"ios\"" / "all run profiles of project \"default\"")
         let label: String
         let roster: DeviceRoster
     }
@@ -257,8 +257,17 @@ enum DeviceInventory {
             return .unavailable("no run profile in \(testProject.name)/profiles/runs/ lists any device")
         }
         notes += merged.conflicts.map(\.message)
-        return .resolved(ResolvedRoster(label: "all run profiles",
-                                        roster: MachineInventory.mergedProfile(merged.entries)))
+        return .resolved(ResolvedRoster(
+            label: allRunProfilesLabel(projectName: testProject.name),
+            roster: MachineInventory.mergedProfile(merged.entries)))
+    }
+
+    /// `resolveRoster` が profile: 無指定のとき組む見出し(純粋関数・テスト用)。**プロジェクト名を
+    /// 入れる**(M17。project: 無指定でも既定の1プロジェクトしか読まないため、他プロジェクトの
+    /// 実行プロファイルの台は「unregistered」に見える —— 見出しがどのプロジェクトの話かを
+    /// 言わないと、その理由を読み間違える)
+    static func allRunProfilesLabel(projectName: String) -> String {
+        "all run profiles of project \"\(projectName)\""
     }
 
     /// **CLI のフラグ表記のまま出さない**: この文は FTCore(CLI 向け)から来るので

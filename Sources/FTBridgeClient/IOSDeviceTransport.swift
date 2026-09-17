@@ -281,7 +281,10 @@ public enum IOSDeviceTransport {
     /// 掴んだまま進む)
     static func startIproxy(hostPort: UInt16, devicePort: UInt16,
                             deviceUDID: String, repoRoot: URL) throws {
-        if isIproxyRunning(hostPort: hostPort, deviceUDID: deviceUDID, repoRoot: repoRoot) { return }
+        if isIproxyRunning(hostPort: hostPort, deviceUDID: deviceUDID, repoRoot: repoRoot) {
+            stopStalePeerTunnels(hostPort: hostPort, deviceUDID: deviceUDID, repoRoot: repoRoot)
+            return
+        }
         stopIproxy(hostPort: hostPort, repoRoot: repoRoot)
         guard let iproxy = iproxyPath() else { throw IOSDeviceTransportError.iproxyMissing }
         let stateDir = repoRoot.appendingPathComponent(".fleetest")
@@ -308,6 +311,7 @@ public enum IOSDeviceTransport {
         try? String(process.processIdentifier)
             .write(to: pidURL(hostPort: hostPort, repoRoot: repoRoot),
                    atomically: true, encoding: .utf8)
+        stopStalePeerTunnels(hostPort: hostPort, deviceUDID: deviceUDID, repoRoot: repoRoot)
     }
 
     /// pid ファイルの pid が**今も、この UDID 向けの iproxy か**を見る。
@@ -371,5 +375,47 @@ public enum IOSDeviceTransport {
             }
         }
         try? FileManager.default.removeItem(at: url)
+    }
+
+    /// 台帳(`.fleetest/iproxy-<port>.pid`)に載っている他ポートの iproxy のうち、
+    /// **同じ UDID を向いているもの**を選ぶ(純粋関数。単体テスト対象)。`entries` は台帳から拾った
+    /// (port, ps のコマンドライン)の組。`hostPort` 自身(今張った/再利用したトンネル)は対象外
+    static func stalePeerPorts(entries: [(port: UInt16, command: String)],
+                               hostPort: UInt16, deviceUDID: String) -> [UInt16] {
+        entries
+            .filter { $0.port != hostPort }
+            .filter { iproxyMatches(command: $0.command, deviceUDID: deviceUDID) }
+            .map(\.port)
+    }
+
+    /// startIproxy がトンネルを確立/再利用した直後に呼ぶ。実機は全ポートで bundle id が
+    /// 共通なので、1台に同居できる iproxy は1本 —— 同じ UDID を向いた**他ポート**の古いトンネルは
+    /// どれにも使われないまま残り続ける(実測 2026-09-17: SE3 で iproxy が3本(現役1・前日以降の
+    /// 残骸2)生き残っていた)。**台帳に無い iproxy(利用者が手で起こしたもの)は触らない** ——
+    /// `.fleetest/iproxy-*.pid` を列挙した分だけが対象。生死・iproxy 判定は isIproxy(pid:) を
+    /// 再利用する(素の kill(pid,0) は禁止。StaleLedgerSweep と同じ「台帳はプロセスの実体で掃除する」規律)
+    static func stopStalePeerTunnels(hostPort: UInt16, deviceUDID: String, repoRoot: URL) {
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: stateDir.path) else { return }
+        var entries: [(port: UInt16, command: String)] = []
+        var pidByPort: [UInt16: Int32] = [:]
+        for name in names {
+            guard name.hasPrefix("iproxy-"), name.hasSuffix(".pid"),
+                  let port = UInt16(name.dropFirst("iproxy-".count).dropLast(".pid".count)),
+                  port != hostPort,
+                  let text = try? String(contentsOf: stateDir.appendingPathComponent(name), encoding: .utf8),
+                  let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  ProcessLiveness.isAlive(pid),
+                  let ps = try? Shell.run(["ps", "-p", String(pid), "-o", "command="]), ps.status == 0
+            else { continue }
+            entries.append((port, ps.output))
+            pidByPort[port] = pid
+        }
+        for port in stalePeerPorts(entries: entries, hostPort: hostPort, deviceUDID: deviceUDID) {
+            if let pid = pidByPort[port] { kill(pid, SIGTERM) }
+            try? FileManager.default.removeItem(at: pidURL(hostPort: port, repoRoot: repoRoot))
+            ConsoleOut.err("stopped a stale USB tunnel for \(deviceUDID) on port \(port)"
+                + " (superseded by the tunnel on port \(hostPort) — a device hosts only one at a time)")
+        }
     }
 }

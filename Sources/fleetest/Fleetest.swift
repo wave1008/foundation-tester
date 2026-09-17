@@ -575,7 +575,69 @@ struct Bridge: AsyncParsableCommand {
 
         @OptionGroup var driverOptions: DriverOptions
 
-        func validate() throws { try driverOptions.rejectVersionSkewFlag(in: "bridge up") }
+        func validate() throws {
+            try driverOptions.rejectVersionSkewFlag(in: "bridge up")
+            if driverOptions.resolvedPlatform != "android" {
+                try Self.validatePort(driverOptions.port, in: BridgeDiscovery.portRange)
+            }
+        }
+
+        /// `--port` はブリッジの走査範囲(BridgeDiscovery.portRange。run/MCP が見にいく範囲)の外だと
+        /// 起動自体は成功しても誰からも見つからない孤立ブリッジになる(実測 2026-09-17)。
+        /// 省略時の既定 8123 は範囲内なのでここでは明示指定だけを見る
+        static func validatePort(_ port: UInt16?, in range: ClosedRange<UInt16>) throws {
+            guard let port, !range.contains(port) else { return }
+            throw ValidationError("--port \(port) is outside the range the bridge scanner covers "
+                + "(\(range.lowerBound)-\(range.upperBound)); fleetest run/MCP would never find it there. "
+                + "Pick a port inside that range")
+        }
+
+        /// --device は UDID・シミュレータ名のどちらでも受けるが、実体は常に UDID に解決してから使う ——
+        /// xcodebuild の `-destination platform=iOS Simulator,name=<名前>` は名前に丸括弧等が入ると
+        /// 一致に失敗することがある(実測 2026-09-17: simctl 上に1台しか無い名前でも build-for-testing が
+        /// 「Unable to find a device matching the provided destination specifier」で落ちた)。UDID 指定なら
+        /// 綴りに関わらず通る。同名複数・0台は推測で1台を選ばず、SimulatorCatalog.resolve の判定に断らせる
+        static func resolveDeviceUDID(device: String, physical: Bool,
+                                      devices: () throws -> [SimDeviceInfo]) throws -> String {
+            let isUDID = physical || (device.count == 36 && device.split(separator: "-").count == 5)
+            guard !isUDID else { return device }
+            do {
+                return try SimulatorCatalog.resolve(
+                    spec: DeviceSpec(name: device, engine: "xcuitest"), in: try devices()).udid
+            } catch {
+                throw ValidationError((error as? LocalizedError)?.errorDescription ?? "\(error)")
+            }
+        }
+
+        /// M11: 要求ポートと違うポートで起動したときの理由。provision() の戻り値自体は
+        /// 再利用/新規起動を教えないため、**provision() を呼ぶ前にこの台が既に使っていたポート**
+        /// (`preexistingPorts`)にあるかどうかだけで判定する
+        enum PortMismatchReason: Equatable {
+            /// この台には呼び出し前から稼働中のブリッジがあり、それを再利用した
+            case reusedExistingBridge
+            /// この台には呼び出し前は無く、要求ポートが別ブリッジに塞がれていたので別ポートで新規起動した
+            case startedOnAnotherPort
+        }
+
+        static func portMismatchReason(actualPort: UInt16, preexistingPorts: Set<UInt16>) -> PortMismatchReason {
+            preexistingPorts.contains(actualPort) ? .reusedExistingBridge : .startedOnAnotherPort
+        }
+
+        /// **「stop it and run again」の案内は再利用のときだけ出す** —— 新規起動のケースでは
+        /// 案内どおりに今のポートを止めても要求ポートは空かない(塞いでいるのは別のブリッジ)
+        static func portMismatchMessage(actualPort: UInt16, requestedPort: UInt16,
+                                        reason: PortMismatchReason) -> String {
+            switch reason {
+            case .reusedExistingBridge:
+                return "⚠️ Reused the running bridge on this device (port \(actualPort)) instead of the "
+                    + "requested/default port \(requestedPort). To rebuild on port \(requestedPort), stop it "
+                    + "first with `fleetest bridge down --port \(actualPort)` and run again."
+            case .startedOnAnotherPort:
+                // 塞いでいるのは別の台(実機の LAN ブリッジ等)のことがあるので、止める案内は出さない
+                return "⚠️ Started the bridge on port \(actualPort) because port \(requestedPort) is in use "
+                    + "by another bridge. Pass --port with a free port to choose it explicitly."
+            }
+        }
 
         func run() async throws {
             if driverOptions.resolvedPlatform == "android" {
@@ -589,7 +651,9 @@ struct Bridge: AsyncParsableCommand {
                 return
             }
             let root = try RepoRoot.find()
-            let launcher = BridgeLauncher(repoRoot: root, device: device, port: driverOptions.resolvedPort,
+            let resolvedUDID = try Self.resolveDeviceUDID(device: device, physical: physical,
+                                                          devices: SimulatorCatalog.devices)
+            let launcher = BridgeLauncher(repoRoot: root, device: resolvedUDID, port: driverOptions.resolvedPort,
                                           physical: physical)
 
             ConsoleOut.out("→ Generating the project (xcodegen)...")
@@ -603,17 +667,18 @@ struct Bridge: AsyncParsableCommand {
                 ConsoleOut.out("→ Building and installing SampleApp...")
                 try launcher.installSampleApp()
             }
+            // M11 の判定材料: provision() を呼ぶ前に、この台が既に使っているポートを控えておく
+            // (呼んだ後では「元から有ったのか、今建てたのか」が区別できない)
+            let preexistingPorts = Set(BridgeLauncher.portsMatching(udid: resolvedUDID, repoRoot: root))
             // 起動は provision() 経由(直接 startDetached しない)。同一シミュレータに XCUITest
             // ランナーは1本しか同居できず(全ポート共通 bundle id のため2本目が先代を蹴り出し双方
             // signal kill で死ぬ)、直接起動は同一デバイスへの二重起動を防げない。provision() は
             // 稼働中ブリッジのスキャン→版一致なら再利用/旧版なら停止して起動し直すをまとめて行う
             // (モニター保持中でも拒否せず再利用・起動する=テスト/操作優先)。
-            // 実機は必ず UDID 指定(形状推測はしない。実機 UDID はシミュレータ UUID と形が違う)
-            let isUDID = physical || (device.count == 36 && device.split(separator: "-").count == 5)
             let spec = DeviceSpec(
                 name: device,
                 kind: physical ? .physical : nil,
-                udid: isUDID ? device : nil,
+                udid: resolvedUDID,
                 port: driverOptions.resolvedPort,
                 engine: "xcuitest")
             let provisioned = try await BridgeProvisioner(repoRoot: root)
@@ -623,9 +688,9 @@ struct Bridge: AsyncParsableCommand {
             // provision は同一デバイスの稼働中ブリッジを preferred(--port)を無視して再利用する。
             // 固定ポート前提のスクリプトが :driverOptions.resolvedPort を叩いて外さないよう、差異を明示する
             if port != driverOptions.resolvedPort {
-                ConsoleOut.out("⚠️ Reused the running bridge on this device (port \(port)) instead of the requested/default "
-                    + "port \(driverOptions.resolvedPort). To rebuild on port \(driverOptions.resolvedPort), stop it first "
-                    + "with `fleetest bridge down --port \(port)` and run again.")
+                let reason = Self.portMismatchReason(actualPort: port, preexistingPorts: preexistingPorts)
+                ConsoleOut.out(Self.portMismatchMessage(
+                    actualPort: port, requestedPort: driverOptions.resolvedPort, reason: reason))
             }
             let host = provisioned.first?.host ?? BridgeEndpoint.loopbackHost
             ConsoleOut.out("✅ Bridge ready: http://\(host):\(port)")

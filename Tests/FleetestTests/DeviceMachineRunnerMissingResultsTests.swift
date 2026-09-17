@@ -12,10 +12,12 @@ private func makeMeta(runID: String, startedAt: String, runGroup: String?) -> Ru
                  trigger: "cli", startedAt: startedAt, runGroup: runGroup)
 }
 
-private func makeScenarioRecord(scenarioID: String, runID: String) -> ScenarioRunRecord {
-    ScenarioRunRecord(runID: runID, scenarioID: scenarioID, platform: "ios", host: "testmachine",
-                      passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100,
-                      steps: StepCountsRecord(total: 1, passed: 1))
+private func makeScenarioRecord(scenarioID: String, runID: String, interrupted: Bool = false) -> ScenarioRunRecord {
+    var record = ScenarioRunRecord(runID: runID, scenarioID: scenarioID, platform: "ios", host: "testmachine",
+                                   passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100,
+                                   steps: StepCountsRecord(total: 1, passed: 1))
+    if interrupted { record.interrupted = true }
+    return record
 }
 
 final class DeviceMachineRunnerMissingResultsTests: XCTestCase {
@@ -59,6 +61,28 @@ final class DeviceMachineRunnerMissingResultsTests: XCTestCase {
         let line = DeviceMachineRunner.missingResultsLine(
             machineLabel: "M1Ultra", exitCode: 255, ids: ids)
         XCTAssertTrue(line.contains("9 scenario(s)"))
+        XCTAssertTrue(line.contains("A.s1, A.s2, A.s3, A.s4, A.s5"))
+        XCTAssertFalse(line.contains("A.s6"))
+        XCTAssertTrue(line.hasSuffix("…"))
+    }
+
+    // MARK: - interruptedResultsLine(純粋関数)
+
+    func testInterruptedResultsLineListsAllIDsUnderTheCap() {
+        let line = DeviceMachineRunner.interruptedResultsLine(
+            machineLabel: "M1Max", exitCode: 137, ids: ["A.s1"])
+        XCTAssertTrue(line.contains("M1Max"))
+        XCTAssertTrue(line.contains("1 scenario(s) were interrupted"))
+        XCTAssertTrue(line.contains("sub-run exited 137"))
+        XCTAssertTrue(line.contains("A.s1"))
+        XCTAssertFalse(line.contains("…"))
+    }
+
+    func testInterruptedResultsLineTruncatesLongLists() {
+        let ids = (1...9).map { "A.s\($0)" }
+        let line = DeviceMachineRunner.interruptedResultsLine(
+            machineLabel: "M1Max", exitCode: 137, ids: ids)
+        XCTAssertTrue(line.contains("9 scenario(s) were interrupted"))
         XCTAssertTrue(line.contains("A.s1, A.s2, A.s3, A.s4, A.s5"))
         XCTAssertFalse(line.contains("A.s6"))
         XCTAssertTrue(line.hasSuffix("…"))
@@ -160,5 +184,33 @@ final class DeviceMachineRunnerMissingResultsTests: XCTestCase {
         let missing = DeviceMachineRunner.unrecordedScenarioIDs(
             assigned: ["A.s1", "A.s2", "A.s3"], recorded: recorded)
         XCTAssertEqual(missing, ["A.s2", "A.s3"])
+    }
+
+    // M7b: 中断されたまま記録が残った分は `all`(=「記録あり」)には数えられるが missing には
+    // 出ない。別枠(`interrupted`)で拾えることを確かめる ——
+    // 実測: リモート機は中断された1本を scenarios/*.json に interrupted: true で記録したが、
+    // 手元は「記録あり」としか見ておらず、欠落としても中断としても一度も知らされなかった
+    func testScanRecordedScenariosSeparatesInterruptedFromNormalRecords() {
+        let group = "20260101-000000Z-abcd1234"
+        let runID = "20260101-000100Z-mach-0001"
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
+
+        RunResultsStore.writeMeta(
+            makeMeta(runID: runID, startedAt: "2026-01-01T00:01:00Z", runGroup: group),
+            runDir: runDir)
+        RunResultsStore.writeScenario(makeScenarioRecord(scenarioID: "A.s1", runID: runID),
+                                      runDir: runDir, fileName: "A.s1")
+        RunResultsStore.writeScenario(
+            makeScenarioRecord(scenarioID: "A.s2", runID: runID, interrupted: true),
+            runDir: runDir, fileName: "A.s2")
+
+        let recorded = DeviceMachineRunner.scanRecordedScenarios(
+            project: project, runGroup: group,
+            since: ISO8601DateFormatter().date(from: "2026-01-01T00:00:00Z")!)
+        XCTAssertEqual(recorded.all, ["A.s1", "A.s2"], "中断された分も「記録あり」に数える")
+        XCTAssertEqual(recorded.interrupted, ["A.s2"])
+        // missing(assigned - all)には出ない — 記録はある
+        XCTAssertEqual(DeviceMachineRunner.unrecordedScenarioIDs(
+            assigned: ["A.s1", "A.s2"], recorded: recorded.all), [])
     }
 }

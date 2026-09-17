@@ -770,6 +770,17 @@ final class BridgeRouter {
         return focused
     }
 
+    /// **焦点を持つ入力欄**(型を入力欄に限る)。型を問わない `firstMatch` は、焦点のある欄を
+    /// もう一度タップして開いた編集メニュー(Paste / AutoFill の collectionView)を返すことがあり、
+    /// 値の読めないその要素を相手に空打ちして 200 を返していた(2026-09-17 M13。SwiftUI・24 回に 1 回)
+    private static func focusedInput(_ app: XCUIApplication) -> XCUIElement {
+        let types: [UInt] = [XCUIElement.ElementType.textField, .secureTextField, .textView, .searchField]
+            .map(\.rawValue)
+        return app.descendants(matching: .any)
+            .matching(NSPredicate(format: "hasKeyboardFocus == true AND elementType IN %@", types))
+            .firstMatch
+    }
+
     /// 焦点を持つ要素の控え。タップの前後で「焦点が動いたか」を比べるためだけに使う
     private struct FocusMark: Equatable {
         let identifier: String
@@ -828,30 +839,37 @@ final class BridgeRouter {
     /// 422 を選ぶ理由: 501/404 は「このエンジンでは不可」(XCUITest へのフォールバック判定)、
     /// 503 は「アプリが起動していない」に取られているため。
     /// ホスト側の `isClearInputFallback` は 409 と同じく 422 でもフォールバックを許すので、
-    /// hybrid の in-app→XCUITest の再試行はこれまでどおり効く
+    /// hybrid の in-app→XCUITest の再試行はこれまでどおり効く。
+    ///
+    /// **ref を渡された経路はタップ直後の1回読みで焦点を判定しない**(2026-09-17 実測)。
+    /// Flutter はタップからフォーカス移動までが非同期で、直後は前の欄や無焦点が見える
+    /// (`awaitClearFocusTarget` 参照。InAppBridge.requireFocusMoved と同じ設計)。
     private func handleClear(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(ClearRequest.self, body)
         let app = try requireForegroundAppForInput()
-        let focusBefore = focusBeforeTappingNonInput(app, ref: req.ref)
-        var tapped: CGPoint?
+        let focused: XCUIElement
         if let ref = req.ref {
             let point = try resolvePoint(ref: ref, x: nil, y: nil)
+            let focusBefore = Self.focusMark(app)
             coordinate(app, point).tap()
-            tapped = point
-        }
-        let focused = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
-        if focusBefore != nil, let focusAfter = Self.focusMark(app) {
-            try Self.requireFocusMoved(from: focusBefore, to: focusAfter, tapped: tapped, action: "clear")
-        }
-        guard focused.exists else {
+            let refIsTextInput = refElements[ref].map(TypeReadback.isTextInput) ?? false
+            focused = try Self.awaitClearFocusTarget(app, tapped: point, focusBefore: focusBefore,
+                                                     refIsTextInput: refIsTextInput)
+        } else {
+            let typed = Self.focusedInput(app)
+            let f = typed.exists ? typed : app.descendants(matching: .any)
+                .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
             // **原因を名指しする**(2026-08-12 のブラウザ監査): 「ref を指定してください」だけだと
             // ref を渡した呼び手が読む先を失う —— 実際に起きるのは「渡した ref が入力欄ではなく、
-            // タップしても焦点が立たない容器だった」形(Safari の畳んだアドレスバー等)
-            throw BridgeError(422, "nothing has keyboard focus, so there is no field to clear."
-                + " If you passed a ref, it is probably not the input element itself — tapping a"
-                + " container does not move focus. Tap the field (or pass the ref of the element"
-                + " whose type is a text field) and try again")
+            // タップしても焦点が立たない容器だった」形(Safari の畳んだアドレスバー等)。
+            // ref なしのこの経路は焦点がすでに立っている前提(タップしていない)なので待たない
+            guard f.exists else {
+                throw BridgeError(422, "nothing has keyboard focus, so there is no field to clear."
+                    + " If you passed a ref, it is probably not the input element itself — tapping a"
+                    + " container does not move focus. Tap the field (or pass the ref of the element"
+                    + " whose type is a text field) and try again")
+            }
+            focused = f
         }
         if Self.remainingText(of: focused) == nil {
             // 空白のみの内容は a11y から読めない(value が nil か placeholder と同値に見える。
@@ -883,11 +901,77 @@ final class BridgeRouter {
             throw BridgeError(422, "could not empty the field"
                 + " (\(residual.count) character(s) still there after \(rounds) round(s))")
         }
+        // **ref の欄そのものを木で読み返す**(ホストの事後検証と同じ材料)。ライブの焦点要素の値だけで
+        // 「空になった」と言うと、焦点が別の要素に化けていたときに消えていない欄へ 200 を返す(M13)。
+        // 伏せ字の欄は読み返しの材料にしない(TypeReadback.isMaskedInput)
+        if let ref = req.ref, let target = refElements[ref], !TypeReadback.isMaskedInput(target) {
+            while true {
+                let elements = try captureOnce(app).elements
+                guard let left = TypeReadback.value(of: target, in: elements), !left.isEmpty else { break }
+                guard Date() < deadline else {
+                    throw BridgeError(422, "could not empty the field (\(left.count) character(s)"
+                        + " still there after \(rounds) round(s); the focused element reported empty)")
+                }
+                rounds += 1
+                // 位置は今の木から取る(キーボードで中身がずれる)。打鍵は**アプリ全体へ**送る ——
+                // 編集メニューが開いている間は要素に向けた typeText が別の要素へ向き、欄に届かなかった
+                // (40 回中 2 回)。キーボードの入力先は叩いた欄(最前のレスポンダ)なので app で届く
+                let now = elements.first { current in
+                    if let identifier = target.identifier, !identifier.isEmpty {
+                        return current.identifier == identifier
+                    }
+                    return current.frame == target.frame
+                }?.frame ?? target.frame
+                coordinate(app, CGPoint(x: now.x + now.width - 4, y: now.y + now.height / 2)).tap()
+                app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: left.count))
+            }
+        }
         // **控えの値も空にする**: /type は「入力前の値」を直近スナップショットの控え(refElements)から
         // 取るので、clear → type を撮り直さずに続けると clear 前の値を期待に足して再送し、
         // 消したはずの文字列が戻る(実機 iPhone 13・2026-08-31: replace で `   モバイル   `)
         if let ref = req.ref { refElements[ref]?.value = nil }
         return .json(OKResponse())
+    }
+
+    /// ref を渡された clear の焦点待ち(FocusWait.waitSeconds が上限・FocusWait.pollSeconds が刻み。
+    /// 唯一の定義元は BridgeDTO の doc)。**一致していれば最初の1取得で返る**ので happy path は
+    /// 遅くならない。以後の消去/残り判定はここで返した要素に対して行う——差し替えないと、
+    /// 前の欄が残焦点のまま「空になった」と誤読する(実測: シミュレータの xcuitest で
+    /// `clearInput` が値の残存を見逃した。2026-09-17)
+    /// **受け入れるのは「タップした点を含む」か「タップ前の焦点から変わった」焦点**。後者を外すと、
+    /// 容器の ref(内側に入力欄がちょうど1つ。MCP は警告して撃つ)で焦点が内側の欄へ正しく移っても
+    /// 点を含まないので断ってしまう。待つのは「無焦点」か「タップ前と同じ欄のまま」の間だけ
+    private static func awaitClearFocusTarget(_ app: XCUIApplication, tapped: CGPoint,
+                                              focusBefore: FocusMark?,
+                                              refIsTextInput: Bool) throws -> XCUIElement {
+        let deadline = Date().addingTimeInterval(FocusWait.waitSeconds)
+        var lastElsewhere: FocusMark?
+        while true {
+            if let mark = focusMark(app) {
+                if mark.frame.contains(tapped) || mark != focusBefore {
+                    let element = focusedInput(app)
+                    if element.exists { return element }
+                } else {
+                    lastElsewhere = mark
+                }
+            }
+            if Date() >= deadline { break }
+            Thread.sleep(forTimeInterval: FocusWait.pollSeconds)
+        }
+        if lastElsewhere != nil {
+            throw BridgeError(422, "tapping the ref did not move keyboard focus to it within"
+                + " \(FocusWait.waitSeconds)s — focus is still on another field, so clearing now"
+                + " would empty that field instead")
+        }
+        guard !refIsTextInput else {
+            // ref は入力欄型だと分かっているので「入力欄でないかも」とは言わない(事実だけ言う)
+            throw BridgeError(422, "tapping the input field did not give it keyboard focus within"
+                + " \(FocusWait.waitSeconds)s")
+        }
+        throw BridgeError(422, "nothing has keyboard focus, so there is no field to clear."
+            + " If you passed a ref, it is probably not the input element itself — tapping a"
+            + " container does not move focus. Tap the field (or pass the ref of the element"
+            + " whose type is a text field) and try again")
     }
 
     /// クリアの打ち切り時間(秒)。実測では 8 文字が 3 周で空になるので、

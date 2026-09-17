@@ -253,10 +253,10 @@ public enum DriverErrorMessage {
         let hint: String
         switch context.engine {
         case .iosInApp:
+            // in-app は常にシミュレータ上で走る(InAppDriver.context 参照)ので、この文言の
+            // 読み手の構成では「実機では不可」の案内は起こりえない
             hint = " In hybrid/mixed runs the backgrounded app can be suspended, so TCP is accepted"
-                + " but no HTTP response comes back. The inapp/hybrid engines are simulator-only"
-                + " (injection is impossible on physical devices — use an xcuitest profile)."
-                + " Check: fleetest bridge up."
+                + " but no HTTP response comes back. Check: fleetest bridge up."
         case .iosXCUITest:
             hint = " Check: fleetest bridge up."
         case .android:
