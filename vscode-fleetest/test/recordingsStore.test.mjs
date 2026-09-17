@@ -144,7 +144,6 @@ const EMPTY_INDEX_WITH_ATTEMPT_STATS = {
   recordings: [],
   clipsAttempted: 24,
   clipsFailed: 18,
-  encoderFallback: true,
 };
 
 test("listRecordingSessions: recordings が空でもclipsAttempted>0のindex.jsonは一覧に出る(全滅run)", async () => {
@@ -182,7 +181,7 @@ test("listRecordingSessions: sourcesFailed だけの index.json も一覧に出�
   }
 });
 
-test("listRecordingSessions: clipsAttempted/clipsFailed/encoderFallback をsummaryへ載せる", async () => {
+test("listRecordingSessions: clipsAttempted/clipsFailed をsummaryへ載せる", async () => {
   const root = makeWorkspace();
   try {
     writeJson(
@@ -192,20 +191,18 @@ test("listRecordingSessions: clipsAttempted/clipsFailed/encoderFallback をsumma
     const sessions = await listRecordingSessions(root);
     assert.equal(sessions[0].clipsAttempted, 24);
     assert.equal(sessions[0].clipsFailed, 18);
-    assert.equal(sessions[0].encoderFallback, true);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("listRecordingSessions: 新フィールドが無い(古い)index.jsonでもclipsAttempted/clipsFailedはnull・encoderFallbackはfalse", async () => {
+test("listRecordingSessions: 新フィールドが無い(古い)index.jsonでもclipsAttempted/clipsFailedはnull", async () => {
   const root = makeWorkspace();
   try {
     writeJson(path.join(runDir(root, "SampleApp", "20260723-000000"), "recordings", "index.json"), SAMPLE_INDEX);
     const sessions = await listRecordingSessions(root);
     assert.equal(sessions[0].clipsAttempted, null);
     assert.equal(sessions[0].clipsFailed, null);
-    assert.equal(sessions[0].encoderFallback, false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -219,13 +216,11 @@ test("listRecordingSessions: 新フィールドの型が不正でも壊れず「
       recordings: [],
       clipsAttempted: "24", // 文字列(不正型)
       clipsFailed: null,
-      encoderFallback: "true", // 文字列(不正型)
     });
     const sessions = await listRecordingSessions(root);
     assert.equal(sessions.length, 1);
     assert.equal(sessions[0].clipsAttempted, null);
     assert.equal(sessions[0].clipsFailed, null);
-    assert.equal(sessions[0].encoderFallback, false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -9,7 +9,7 @@
 // ボタン・起動時ブートストラップのみを置く。
 
 import { vscode, persistedState } from './vscodeApi.js';
-import { btnUp, btnDown, btnRestart, emptyMessage } from './domRefs.js';
+import { btnUp, btnDown, btnRestart, btnRunTests } from './domRefs.js';
 import {
   applyDevices,
   applyFrame,
@@ -20,6 +20,7 @@ import {
   setBusy,
   noteUpCancelRequested,
   applyTestRunActive,
+  applyRecordingsFinalizing,
   clearTilesForRestart,
   applyDeviceOpBusy,
   applyDeviceOpFailed,
@@ -69,8 +70,9 @@ import { applyMachineColors } from './machineColors.js';
 import { applyResidentMessage } from './processesTab.js';
 import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
 import { activateTab, currentTab, TAB_IDS, switchTab } from './tabs.js';
-import { setTilePaneHeight, setTileAutoFit, setFleetVisible } from './splitter.js';
+import { setTilePaneHeight, setTileAutoFit, setFleetVisible, isFleetVisible } from './splitter.js';
 import { adoptTitleHoverTips } from './hoverTip.js';
+import { setDevicesWaiting } from './waitingNote.js';
 import { handleDashboardMessage } from './dashboardTab.js';
 
 const recordingsFinalizingNote = document.getElementById('run-recordings-finalizing');
@@ -107,6 +109,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'recordingsFinalizing':
       recordingsFinalizingNote.hidden = !message.active;
+      // 編集中は「テスト実行/テストを中断」を出さない(表示のたびに書く refreshRunTestsButton は display に触れない)
+      btnRunTests.style.display = message.active ? 'none' : '';
+      applyRecordingsFinalizing(!!message.active);
       break;
     case 'bootBusy':
       bulkUpActive = !!message.busy && message.bulkOp === 'up';
@@ -275,7 +280,9 @@ window.addEventListener('message', (event) => {
       setFleetVisible(message.value);
       break;
     case 'selectAllDevices':
-      applySelectAllDevices(message.value);
+      // ラインビューが非表示なら「すべて選択」から始める(タイルを押して選べないため)。
+      // host は fleetVisible をこれより先に送る(monitorPanel.ts の ready)。保存値は書き換えない
+      applySelectAllDevices(message.value || !isFleetVisible());
       break;
     case 'showStreamDuringRun':
       applyShowStreamDuringRun(message.value);
@@ -331,7 +338,7 @@ switchTab(initialTab);
 // 初回 monitorDevices が届くまで(monitor プロセス起動+初回スキャンで数秒かかる)、待機メッセージを
 // 表示する。.empty は CSS 既定 display:none で、これが無いと最初のイベントまでタイル領域が無言の空白に
 // なる(restartMonitor ハンドラと同じ既知・安全な出し方。applyDevices が実デバイス到着後に none へ戻す)。
-emptyMessage.style.display = 'flex';
+setDevicesWaiting(true);
 
 updateLaneVisibility();
 updateLanesPlaceholder();

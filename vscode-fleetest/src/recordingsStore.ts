@@ -27,8 +27,6 @@ export interface RecordingSessionSummary {
   readonly clipsFailed: number | null;
   /** 録画ソースが1本も使えなかったワーカー数(RecordingIndex.sourcesFailed)。 */
   readonly sourcesFailed: number | null;
-  /** 同上。無ければ false(フォールバックしていないと同じ扱い)。 */
-  readonly encoderFallback: boolean;
   /** 束ね鍵(run.json の runGroup)。単機の run と旧記録では null = 束ねない。 */
   readonly runGroup: string | null;
 }
@@ -64,11 +62,6 @@ function stringField(obj: Record<string, unknown> | null, key: string): string |
 function numberField(obj: Record<string, unknown> | null, key: string): number | undefined {
   const v = obj?.[key];
   return typeof v === "number" ? v : undefined;
-}
-
-function booleanField(obj: Record<string, unknown> | null, key: string): boolean | undefined {
-  const v = obj?.[key];
-  return typeof v === "boolean" ? v : undefined;
 }
 
 /**
@@ -152,7 +145,7 @@ export async function listRecordingSessions(
         if (!isRecordingIndex(indexRaw)) {
           continue;
         }
-        // isRecordingIndex は clipsAttempted/clipsFailed/encoderFallback の型を検証しない(型不一致でも
+        // isRecordingIndex は clipsAttempted/clipsFailed の型を検証しない(型不一致でも
         // index 全体は有効なまま)ため、ここで record として再取得し stringField/numberField と同じ
         // 寛容さで読む。
         const indexRecord = indexRaw as unknown as Record<string, unknown>;
@@ -171,7 +164,6 @@ export async function listRecordingSessions(
           clipsAttempted: numberField(indexRecord, "clipsAttempted") ?? null,
           clipsFailed: numberField(indexRecord, "clipsFailed") ?? null,
           sourcesFailed: numberField(indexRecord, "sourcesFailed") ?? null,
-          encoderFallback: booleanField(indexRecord, "encoderFallback") ?? false,
           runGroup: stringField(meta, "runGroup") ?? null,
         });
       }
@@ -235,7 +227,6 @@ function combineSessions(
     clipsAttempted: sum(first.clipsAttempted, next.clipsAttempted),
     clipsFailed: sum(first.clipsFailed, next.clipsFailed),
     sourcesFailed: sum(first.sourcesFailed, next.sourcesFailed),
-    encoderFallback: first.encoderFallback || next.encoderFallback,
     runGroup: first.runGroup,
   };
 }

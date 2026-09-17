@@ -3258,6 +3258,21 @@ devicepoll の要点:
   `VTCompressionSessionInvalidate` / `RemoteVideoEncoder_EncodeFrame` が居れば上記のエンコーダ
   無応答(相手側の VTEncoderXPCService プロセスも `AVE_UCRecv` で待っている)。ツールは期限で
   自力離脱するので待てばよい。頻発するなら OS 再起動でしか AVE は復旧しない
+- **切り出しはソフトウェアエンコーダ固定**(2026-09-17)。同じ素材・本番と同じ条件(12 秒クリップ
+  16 本・同時 2 本・期限 60 秒)で交互に 8 回ずつ回した実測: ハードウェアは 8 回中 2 回で 1 本ずつ
+  `VTCompressionSessionInvalidate` から戻らず期限の 60 秒を払った(その回の所要 64s、他は 10.5〜10.9s)。
+  ソフトウェアは 0 回・11.1〜11.6s。1 本の中央値は 1.35s / 1.39s でほぼ同じ、12 秒クリップの大きさは
+  2.79MB(指定 1500kbps の +24%)/ 2.07MB(−8%)。画質とモニターの配信を流した負荷下は比べていない。
+  計測は `VideoRecordingFinalizer.swift` を写した単体プログラムで行った(FTCore の内部関数で外から呼べない)
+- **端末側に録画セッションが残った iOS シミュレータ**(simctl が `Host recording is already in progress`
+  = EBUSY で即落ちる。client プロセスが残っていなくても解けず、shutdown → boot でだけ解ける)は、
+  録画ありの run の**供給段階**で `HostRecordingProbe` が見つけ、凍結の回復と同じ経路で再起動する
+  (健全機の検査は 1 台約 0.4s・全台並列)。**陽性対照**: 起動中のシミュレータで
+  `xcrun simctl io <udid> recordVideo --codec=h264 --force /tmp/x.mov &` を 3 秒走らせて `kill -9` する
+  (SIGKILL で殺した recordVideo はセッションを残す = この状態を作れる)→ もう一度 recordVideo を撃って
+  EBUSY になることを確かめる → その台を含む record:true の run を回し、
+  `hold a stale host recording session … rebooting` と `the stale recording session(s) are gone` の2行が出て、
+  その台のクリップが index.json に載り `sourcesFailed` が無いことを見る
 
 ### WebView を触ったときの検証
 

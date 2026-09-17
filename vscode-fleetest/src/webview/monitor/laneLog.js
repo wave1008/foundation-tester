@@ -3,10 +3,10 @@
 
 import { MAX_LANE_LINES, OVERALL_LANE_ID, overallLaneName, workerDisplayLabel } from "../../runLaneModel";
 import { lanesTitle, lanesPlaceholder, lanesGrid, lanesSelectionStatus, lanesRunStatus } from './domRefs.js';
-import { tiles, selectedDeviceIds, attachDeviceMirror, detachDeviceMirror, openDeviceOpMenuForDevice, openSelectAllOnlyMenu } from './deviceTiles.js';
+import { tiles, selectedDeviceIds, attachDeviceMirror, detachDeviceMirror, openDeviceOpMenuForDevice, openSelectAllOnlyMenu, selectOnlyDevice } from './deviceTiles.js';
 import { t } from '../i18n.js';
 import { setHoverTip } from './hoverTip.js';
-import { computePreviewGrid } from './previewGridModel.js';
+import { computePreviewGrid, computeSinglePreviewWidth } from './previewGridModel.js';
 import { paintMachineBadge } from './machineColors.js';
 
 // レーン id(worker id、または OVERALL_LANE_ID) -> DOM 要素・自動スクロール状態
@@ -82,9 +82,15 @@ function ensureLane(id, name, platform, updateLabel, machine) {
   const header = document.createElement('div');
   header.className = 'lane-header';
   setLaneHeader(header, name, platform, machine);
+  // 1台だけ選択したときの見出し(バッジの代わりに「実行ログ」を中央に)。左の拡大表示がデバイスを示すので
+  // 名前を二重に出さない。出し分けは updateLaneVisibility
+  const logTitle = document.createElement('div');
+  logTitle.className = 'lane-header lane-log-title';
+  logTitle.textContent = t('wvMonitor2.laneLog.titleRunLog');
+  logTitle.style.display = 'none';
   const body = document.createElement('div');
   body.className = 'lane-body';
-  el.append(header, body);
+  el.append(header, logTitle, body);
   // 拡大表示はログの左。中身(タイルの絵の複製)は deviceTiles.js が入れる。デバイスを選択して
   // いない間は display:none で、レーンは従来どおりログだけになる(updateLaneVisibility)。
   const pair = document.createElement('div');
@@ -95,6 +101,8 @@ function ensureLane(id, name, platform, updateLabel, machine) {
   pair.append(preview, el);
   lanesGrid.appendChild(pair);
   // 拡大表示だけがデバイスのメニューを開く(ログ上は何も出さない。既定メニューの抑止は出力ペイン全体で行う)
+  // グリッドビューでダブルクリックした台だけの選択にする(1台なら左に絵・右にログ)
+  preview.addEventListener('dblclick', () => selectOnlyDevice(id));
   preview.addEventListener('contextmenu', (event) => {
     if (openDeviceOpMenuForDevice(id, event.clientX, event.clientY)) {
       // document の contextmenu リスナが開いた直後に閉じる(タイル側と同じ理由)。
@@ -104,7 +112,7 @@ function ensureLane(id, name, platform, updateLabel, machine) {
     }
   });
 
-  lane = { el, pairEl: pair, previewEl: preview, headerEl: header, bodyEl: body, atBottom: true, lineCount: 0 };
+  lane = { el, pairEl: pair, previewEl: preview, headerEl: header, logTitleEl: logTitle, bodyEl: body, atBottom: true, lineCount: 0 };
   body.addEventListener('scroll', () => {
     lane.atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 24;
   });
@@ -178,8 +186,10 @@ export function updateLaneVisibility() {
     ? allIds.filter((id) => selectedDeviceIds.has(id))
     : allIds;
   // デバイスを選択している間は拡大表示だけを並べる(ログは置かない。ユーザー決定)。
+  // **1台だけのときは左 = 拡大表示・右 = そのデバイスの実行ログ**(ユーザー決定 2026-09-17)。
   // 絞り込み無し(選択なし)は従来どおり全レーンのログ。
   const previewEnabled = selectedDeviceIds.size > 0;
+  const singleDevice = selectedDeviceIds.size === 1;
   const previewIds = [];
   for (const [id, lane] of lanes) {
     const visible = activeIds.includes(id);
@@ -187,7 +197,19 @@ export function updateLaneVisibility() {
     // 全体レーン(__overall__)にはタイルが無いので拡大表示も無い(ログのまま出す)。
     const showPreview = previewEnabled && visible && tiles.has(id);
     lane.previewEl.style.display = showPreview ? 'flex' : 'none';
-    lane.el.style.display = showPreview ? 'none' : 'flex';
+    const showLog = !showPreview || singleDevice;
+    const wasHidden = lane.el.style.display === 'none';
+    lane.el.style.display = showLog ? 'flex' : 'none';
+    if (showLog && wasHidden && lane.atBottom) {
+      // 隠れている間に積まれた行の末尾へ(隠れている間は scrollHeight が 0 で追従できない)
+      lane.bodyEl.scrollTop = lane.bodyEl.scrollHeight;
+    }
+    const beside = showPreview && singleDevice;
+    lane.headerEl.style.display = beside ? 'none' : '';
+    lane.logTitleEl.style.display = beside ? '' : 'none';
+    if (!beside) {
+      lane.previewEl.style.width = '';
+    }
     if (showPreview) {
       attachDeviceMirror(id, lane.previewEl);
       previewIds.push(id);
@@ -195,6 +217,7 @@ export function updateLaneVisibility() {
       detachDeviceMirror(id);
     }
   }
+  lanesGrid.classList.toggle('single-device', singleDevice && previewIds.length === 1);
   relayoutLanesGrid(activeIds.length, previewIds);
   // 見出しは中身に合わせる(選択中はログではなく拡大した動画を並べているため)。
   lanesTitle.textContent = previewEnabled
@@ -229,6 +252,12 @@ function relayoutLanesGrid(laneCount, previewIds) {
       aspect = value;
     }
   }
+  if (lanesGrid.classList.contains('single-device')) {
+    lanesGrid.style.gridTemplateColumns = 'minmax(0, 1fr)';
+    lanesGrid.style.gridTemplateRows = 'minmax(0, 1fr)';
+    layoutSinglePreview(previewIds[0], aspect);
+    return;
+  }
   const gridStyle = getComputedStyle(lanesGrid);
   const grid = computePreviewGrid({
     // classList の変更後に読むこと(拡大表示中はスクロールバーを出さないぶん幅が広い)
@@ -241,6 +270,23 @@ function relayoutLanesGrid(laneCount, previewIds) {
   });
   lanesGrid.style.gridTemplateColumns = 'repeat(' + grid.columns + ', minmax(0, 1fr))';
   lanesGrid.style.gridTemplateRows = 'repeat(' + grid.rows + ', minmax(0, 1fr))';
+}
+
+// 1台だけのときの拡大表示の幅。枠の固定費は実測する(定数を置かない)
+function layoutSinglePreview(id, aspect) {
+  const lane = lanes.get(id);
+  const frame = lane && lane.previewEl.querySelector('.lane-preview-frame');
+  if (!lane || !frame) {
+    return;
+  }
+  const width = computeSinglePreviewWidth({
+    paneWidth: lanesGrid.clientWidth,
+    paneHeight: lanesGrid.clientHeight,
+    aspect,
+    chromeHeight: lane.previewEl.offsetHeight - frame.clientHeight,
+    chromeWidth: lane.previewEl.offsetWidth - frame.clientWidth,
+  });
+  lane.previewEl.style.width = width === null ? '' : width + 'px';
 }
 
 // 1セルのうち絵以外(タグ段 + その下の間隔)の高さ。定数を置かず実測する(style.css を

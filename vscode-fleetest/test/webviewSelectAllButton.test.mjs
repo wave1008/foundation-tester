@@ -333,7 +333,7 @@ test("全部消えても押せる状態のまま(ON は据え置く)", (t) => {
   assert.equal(button(document).getAttribute("aria-pressed"), "true");
 });
 
-// ---- Cmd/Ctrl+A(フリートを触っている間だけ) ----
+// ---- Cmd/Ctrl+A(ラインビューを触っている間だけ) ----
 // 「触っている」= 最後に押した場所がタイルペインの中、またはフォーカスがその中にある。
 // **フォーカスだけを条件にしない** —— タイルは div(tabindex=-1)で、webview では押しても
 // activeElement が body のままになることがある(実害 2026-08-28: フォーカス条件だけの版は
@@ -394,7 +394,7 @@ test("キーはどこに届いても効く(タイルにフォーカスが入ら�
   assert.equal(selectedCount(document), 3);
 });
 
-test("フリートの外を押したあとは横取りしない(既定の全選択が要る場所を潰さない)", (t) => {
+test("ラインビューの外を押したあとは横取りしない(既定の全選択が要る場所を潰さない)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, 3);
@@ -422,7 +422,7 @@ test("修飾なし・Shift 付きの A は無視する(単なる文字入力を�
 // ネイティブメニュー経由でも走り、届く時刻も keydown とずれるので removeAllRanges も
 // 間に合わない。選択できるものを無くす(user-select:none)のが唯一効く。
 
-test("フリートを触っている間はページ全体を選択不可にする(押した瞬間から)", (t) => {
+test("ラインビューを触っている間はページ全体を選択不可にする(押した瞬間から)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, 3);
@@ -432,7 +432,7 @@ test("フリートを触っている間はページ全体を選択不可にす�
   assert.equal(guarded(document), true, "キーを待たずに掛ける = いつ届いても反転しない");
 });
 
-test("フリートの外を押したら選択可に戻す(ログのコピーを潰さない)", (t) => {
+test("ラインビューの外を押したら選択可に戻す(ログのコピーを潰さない)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, 3);
@@ -444,7 +444,7 @@ test("フリートの外を押したら選択可に戻す(ログのコピーを�
   assert.equal(guarded(document), false);
 });
 
-test("フリートの外へフォーカスが移ったら選択可に戻す(タブ移動・入力欄)", (t) => {
+test("ラインビューの外へフォーカスが移ったら選択可に戻す(タブ移動・入力欄)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, 3);
@@ -468,7 +468,7 @@ test("既に立っている選択は畳む(ペインを押す前に作ったも�
 });
 
 // ---- 右クリックメニューの「すべて選択/すべて解除」 ----
-// キー(Cmd/Ctrl+A)と同じ扱いにする。**メニューはフリートの領域**(タイルから開くもので、
+// キー(Cmd/Ctrl+A)と同じ扱いにする。**メニューはラインビューの領域**(タイルから開くもので、
 // DOM 上だけペインの外に居る)—— 領域から外すと、項目を押した瞬間にガードが外れて
 // それまで隠れていた選択が見え、「メニューの『すべて選択』で HTML が全選択された」に見える。
 
@@ -490,7 +490,7 @@ test("メニューを押してもガードは外れない(隠れていた選択�
   assert.equal(guarded(document), true, "前提: タイルを押した時点で掛かる");
 
   pointerDown(document, menuSelectAll(document));
-  assert.equal(guarded(document), true, "メニューはフリートの領域(外扱いにしない)");
+  assert.equal(guarded(document), true, "メニューはラインビューの領域(外扱いにしない)");
 });
 
 test("メニューの「すべて選択」はデバイスを全選択し、テキスト選択は畳む", (t) => {

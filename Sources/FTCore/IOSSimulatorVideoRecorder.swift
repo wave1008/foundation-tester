@@ -58,9 +58,11 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         if let failure = await smokeCheckWithRetries() {
             switch failure {
             case .hostRecordingBusy:
+                // 録画ありの run は供給の段階で再起動して解いている(HostRecordingProbe)。ここへ来るのは
+                // 再起動しても解けなかった台か、その検査を通らない経路
                 warn("this simulator holds a host recording session (simctl: \"Host recording is already"
                      + " in progress\"). It survives the client process, so shut the device down and boot"
-                     + " it again (fleetest api stop-device --udid \(udid) then start-device --name <名前>,"
+                     + " it again (fleetest api stop-device --udid \(udid) then start-device --name <name>,"
                      + " or xcrun simctl shutdown/boot \(udid)). Skipping recording for this device")
             case .emptyFile:
                 warn("a \(Int(Self.smokeSeconds))s test recording came out empty (simctl reported no"
@@ -142,7 +144,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         let sawBusy = LockedFlag()
         Task.detached {
             for await line in ScenarioHost.lineStream(stderrHandle) {
-                if line.contains("Host recording is already in progress") { sawBusy.set() }
+                if line.contains(HostRecordingProbe.busyMarker) { sawBusy.set() }
             }
         }
         let exitStream = ProcessExitWait.prepare(process)
@@ -214,7 +216,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         let stderrHandle = stderrPipe.fileHandleForReading
         Task.detached {
             for await line in ScenarioHost.lineStream(stderrHandle) {
-                if line.contains("Recording started") { startedCont.yield(Date()) }
+                if line.contains(HostRecordingProbe.startedMarker) { startedCont.yield(Date()) }
             }
             startedCont.finish()
         }

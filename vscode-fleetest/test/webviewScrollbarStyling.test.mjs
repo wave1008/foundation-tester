@@ -1,6 +1,6 @@
 // webview の CSS に ::-webkit-scrollbar-* を書かせないソース走査。
 //
-// 実害(2026-08-28): フリートのスクロールバーの色を3回変えたが、**1度も見た目が変わらなかった**。
+// 実害(2026-08-28): ラインビューのスクロールバーの色を3回変えたが、**1度も見た目が変わらなかった**。
 // VSCode の webview 既定スタイル(webview/browser/pre/index.html)が
 // `html { scrollbar-color: var(--vscode-scrollbarSlider-background) var(--vscode-editor-background) }`
 // を敷いており、scrollbar-color は継承する。Chromium は scrollbar-color が auto でない要素の
@@ -52,7 +52,7 @@ test("webview の CSS に ::-webkit-scrollbar-* を書かない(Chromium に無�
   );
 });
 
-test("フリートのスクロールバーは標準プロパティで指定されている", () => {
+test("ラインビューのスクロールバーは標準プロパティで指定されている", () => {
   const css = stripComments(fs.readFileSync("src/webview/monitor/style.css", "utf8"));
   const grid = css.slice(css.indexOf("\n.grid {"));
   const body = grid.slice(0, grid.indexOf("\n}"));

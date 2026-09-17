@@ -788,6 +788,11 @@ enum ProfileRunner {
             // どちらから呼ばれても run() 側で読めるよう、箱経由で運ぶ(戻り値の型は変えない)
             blankRepairBox.add(recovered.repaired)
             ws = recovered.workers
+            // 録画ありの run では、端末側に録画セッションが残った台を再起動して解く
+            // (HostRecordingProbe。凍結の回復と同じくブリッジごと張り直す)
+            ws = await ProfileWorkerFactory.recoverStaleRecordingIOSWorkers(
+                workers: ws, resolved: resolved, repoRoot: repoRoot,
+                apps: resolved.apps) { ConsoleOut.out($0) }
             await ProfileWorkerFactory.prepareDevicesOnStart(
                 ws, homeOnStart: resolved.homeOnStart) { ConsoleOut.out($0) }
             return ws

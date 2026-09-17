@@ -21,6 +21,7 @@ export const tileMarquee = document.getElementById('tile-marquee');
 export const splitter = document.getElementById('splitter');
 export const lanesTitle = document.getElementById('lanes-title');
 export const lanesPlaceholder = document.getElementById('lanes-placeholder');
+export const lanesWaiting = document.getElementById('lanes-waiting');
 export const lanesGrid = document.getElementById('lanes-grid');
 export const lanesSelectionStatus = document.getElementById('lanes-selection-status');
 export const lanesRunStatus = document.getElementById('lanes-run-status');

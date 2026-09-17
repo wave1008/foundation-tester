@@ -1,4 +1,4 @@
-// marqueeModel.js(フリートの範囲選択の幾何)のユニットテスト。DOM 非依存の純ロジック。
+// marqueeModel.js(ラインビューの範囲選択の幾何)のユニットテスト。DOM 非依存の純ロジック。
 
 import assert from "node:assert/strict";
 import { test } from "node:test";

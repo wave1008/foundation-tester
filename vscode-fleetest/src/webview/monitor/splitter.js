@@ -7,6 +7,7 @@ import { vscode, persistedState } from './vscodeApi.js';
 import { toolbar, banner, devicesPanel, tilePane, splitter, grid, btnAutoFit, btnFleetVisible } from './domRefs.js';
 import { t } from '../i18n.js';
 import { setHoverTip } from './hoverTip.js';
+import { setLineViewHiddenForWaiting } from './waitingNote.js';
 import { relayoutTiles, setTileLayoutObserver, measureTileImageHeight } from './deviceTiles.js';
 import { computeFitPaneHeight } from './tileFitModel.js';
 
@@ -22,7 +23,7 @@ function defaultTilePaneHeight() {
   return Math.round((available > 0 ? available : window.innerHeight) / 2);
 }
 
-// ---- フリートの表示トグル(ツールバー右端のグループの先頭・既定 表示) ----
+// ---- ラインビューの表示トグル(ツールバー右端のグループの先頭・既定 表示) ----
 // 既定が表示なので「!== false」(ホスト側 monitorPanel.ts の既定 true と揃える。片方だけ変えない)。
 let fleetVisible = persistedState.fleetVisible !== false;
 
@@ -47,7 +48,7 @@ function clampTilePaneHeight(height) {
 
 // 「テスト実行」タブ非表示(display:none)の間はdevicesPanel.clientHeightが0になり、誤って
 // 最小値にクランプしてしまうため何もせず抜ける(タブ復帰時にswitchTabが呼び直す)。
-// フリート非表示の間も同じ理由で抜ける(タイルの幅が 0 に測れて auto-fit が desired を潰す)。
+// ラインビュー非表示の間も同じ理由で抜ける(タイルの幅が 0 に測れて auto-fit が desired を潰す)。
 function splitAreaHidden() {
   return !fleetVisible || devicesPanel.clientHeight === 0 || devicesPanel.offsetParent === null;
 }
@@ -218,6 +219,7 @@ export function setTileAutoFit(enabled) {
 
 function renderFleetVisible() {
   devicesPanel.classList.toggle('fleet-hidden', !fleetVisible);
+  setLineViewHiddenForWaiting(!fleetVisible);
   btnFleetVisible.classList.toggle('toggled', fleetVisible);
   btnFleetVisible.setAttribute('aria-pressed', fleetVisible ? 'true' : 'false');
   const label = t(fleetVisible ? 'wvMonitor.toolbar.hideFleet' : 'wvMonitor.toolbar.showFleet');
@@ -238,6 +240,10 @@ btnFleetVisible.addEventListener('click', () => {
   vscode.setState(Object.assign({}, vscode.getState(), { fleetVisible }));
   vscode.postMessage({ type: 'setFleetVisible', value: fleetVisible });
 });
+
+export function isFleetVisible() {
+  return fleetVisible;
+}
 
 // host からの復元値(sendInitialState)。
 export function setFleetVisible(visible) {

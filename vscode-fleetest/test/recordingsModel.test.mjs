@@ -111,27 +111,25 @@ test("isRecordingIndex: recordings が空配列でもtrue(全滅runでindex.json
   assert.equal(isRecordingIndex({ schemaVersion: 2, recordings: [] }), true);
 });
 
-test("isRecordingIndex: clipsAttempted/clipsFailed/encoderFallback が正しい型ならtrue", () => {
+test("isRecordingIndex: clipsAttempted/clipsFailed が正しい型ならtrue", () => {
   assert.equal(
     isRecordingIndex({
       schemaVersion: 2,
       recordings: [],
       clipsAttempted: 24,
       clipsFailed: 18,
-      encoderFallback: true,
     }),
     true,
   );
 });
 
-test("isRecordingIndex: clipsAttempted/clipsFailed/encoderFallback の型が違ってもindex全体は無効にしない", () => {
+test("isRecordingIndex: clipsAttempted/clipsFailed の型が違ってもindex全体は無効にしない", () => {
   assert.equal(
     isRecordingIndex({
       schemaVersion: 2,
       recordings: [],
       clipsAttempted: "24",
       clipsFailed: null,
-      encoderFallback: "yes",
     }),
     true,
   );

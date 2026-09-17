@@ -126,7 +126,7 @@ test("ボタンは全選択と同じグループ・ホストグラフより後�
   // 全選択と1つのグループ(枠の中で隣接。ツールバーの他のボタンとは gap で切る)
   const group = document.getElementById("toolbar-tail");
   assert.equal(button.parentElement, group);
-  assert.equal(group.firstElementChild, document.getElementById("btn-fleet-visible"), "先頭はフリートの表示トグル");
+  assert.equal(group.firstElementChild, document.getElementById("btn-fleet-visible"), "先頭はラインビューの表示トグル");
   assert.equal(document.getElementById("btn-fleet-visible").nextElementSibling, document.getElementById("btn-select-all"));
   assert.equal(group.lastElementChild, button, "グループの中では自動フィットが右");
   assert.equal(toolbar.lastElementChild, group, "グラフより右(=最後)に置く");

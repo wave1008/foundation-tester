@@ -1185,6 +1185,7 @@ export class MonitorPanelController implements vscode.Disposable {
     }
     // auto-fit は tilePaneHeight より後に送る(ON なら高さは復元値ではなく再計算で決まる)。
     this.post({ type: "tileAutoFit", value: this.tileAutoFit });
+    // fleetVisible は selectAllDevices より先に送る(非表示なら webview が全選択から始める。main.js)
     this.post({ type: "fleetVisible", value: this.fleetVisible });
     this.post({ type: "selectAllDevices", value: this.selectAllDevices });
     this.post({ type: "showStreamDuringRun", value: this.showStreamDuringRun });

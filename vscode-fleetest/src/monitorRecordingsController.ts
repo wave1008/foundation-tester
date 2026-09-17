@@ -167,7 +167,6 @@ export class MonitorRecordingsController {
     let clipsAttempted: number | null = null;
     let clipsFailed: number | null = null;
     let sourcesFailed: number | null = null;
-    let encoderFallback = false;
     for (const detail of details) {
       for (const [scenarioID, entry] of firstRecordingEntryByScenario(detail.index.recordings)) {
         if (seenScenarios.has(scenarioID)) {
@@ -202,7 +201,6 @@ export class MonitorRecordingsController {
       if (detail.index.sourcesFailed !== undefined) {
         sourcesFailed = (sourcesFailed ?? 0) + detail.index.sourcesFailed;
       }
-      encoderFallback = encoderFallback || (detail.index.encoderFallback ?? false);
     }
     // エラーとツリーは機械をまたいで1つに混ぜる(壁時計順・クラス初出順。単機のときは従来と同じ)
     errors.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
@@ -222,7 +220,6 @@ export class MonitorRecordingsController {
       clipsAttempted,
       clipsFailed,
       sourcesFailed,
-      encoderFallback,
     };
   }
 }

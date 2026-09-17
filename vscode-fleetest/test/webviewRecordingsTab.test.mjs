@@ -330,11 +330,11 @@ test("一覧: clipsFailed>0 のセッション行に欠落チップが出る(0/�
     type: "recordingsSessions",
     sessions: [
       { project: "SampleApp", runID: "20260817-000001", startedAt: "2026-08-17T00:00:01Z",
-        passed: 3, failed: 0, clipsAttempted: 5, clipsFailed: 2, encoderFallback: true },
+        passed: 3, failed: 0, clipsAttempted: 5, clipsFailed: 2 },
       { project: "SampleApp", runID: "20260817-000002", startedAt: "2026-08-17T00:00:02Z",
-        passed: 3, failed: 0, clipsAttempted: 5, clipsFailed: 0, encoderFallback: false },
+        passed: 3, failed: 0, clipsAttempted: 5, clipsFailed: 0 },
       { project: "SampleApp", runID: "20260817-000003", startedAt: "2026-08-17T00:00:03Z",
-        passed: 3, failed: 0, clipsAttempted: null, clipsFailed: null, encoderFallback: false },
+        passed: 3, failed: 0, clipsAttempted: null, clipsFailed: null },
     ],
   });
 
@@ -352,7 +352,7 @@ test("一覧: clipsFailed>0 のセッション行に欠落チップが出る(0/�
 test("再生: 動画0本でも一覧へ戻らず、理由と件数を出してプレイヤーを隠す", (t) => {
   const { window, video, sendToWebview } = createWebview();
   t.after(() => window.close());
-  sendToWebview({ ...SESSION_MESSAGE, videos: [], clipsAttempted: 3, clipsFailed: 3, encoderFallback: true });
+  sendToWebview({ ...SESSION_MESSAGE, videos: [], clipsAttempted: 3, clipsFailed: 3 });
 
   const playerView = window.document.getElementById("recordings-player-view");
   assert.notEqual(playerView.style.display, "none", "動画が無くても再生ビューに留まる");
@@ -367,7 +367,7 @@ test("再生: 動画0本でも一覧へ戻らず、理由と件数を出して�
 test("再生: 一部だけ欠落しているときはプレイヤーを出したまま注記を添える", (t) => {
   const { window, video, sendToWebview } = createWebview();
   t.after(() => window.close());
-  sendToWebview({ ...SESSION_MESSAGE, clipsAttempted: 5, clipsFailed: 2, encoderFallback: true });
+  sendToWebview({ ...SESSION_MESSAGE, clipsAttempted: 5, clipsFailed: 2 });
 
   assert.notEqual(video.style.display, "none", "動画があるならプレイヤーは出す");
   const notice = window.document.querySelector(".recordings-clips-failed-notice");
@@ -442,12 +442,22 @@ test("recordingsFinalizing: テスト実行ボタンの右に「録画を編集�
   assert.equal(note.previousElementSibling.id, "btn-run-tests", "テスト実行ボタンのすぐ右");
   assert.equal(note.hidden, true, "既定は出さない");
 
+  const runButton = window.document.getElementById("btn-run-tests");
+  assert.notEqual(runButton.style.display, "none");
+
   sendToWebview({ type: "recordingsFinalizing", active: true });
   assert.equal(note.hidden, false);
   assert.equal(note.textContent, "録画を編集中...");
+  assert.equal(runButton.style.display, "none", "編集中はテスト実行/中断ボタンを出さない");
+  const restartButton = window.document.getElementById("btn-restart");
+  assert.equal(restartButton.disabled, true, "編集中はモニター再起動を押せない");
+  assert.equal(restartButton.title, "録画の編集中は使えません(編集の完了を待ってください)。");
 
   sendToWebview({ type: "recordingsFinalizing", active: false });
   assert.equal(note.hidden, true);
+  assert.equal(runButton.style.display, "", "編集が終わったら戻す");
+  assert.equal(restartButton.disabled, false, "編集が終わったら押せる");
+  assert.equal(restartButton.title, "");
 });
 
 // プロジェクト選択(ダッシュボードと同じ形。対向: monitorRecordingsController.ts の refreshSessions)
@@ -530,10 +540,10 @@ test("一覧: 5カラム(run 名 / 日時 / 実行マシン / 成否 / 録画の
     type: "recordingsSessions",
     sessions: [
       { project: "SampleApp", runID: "20260817-000001", startedAt: "2026-08-17T00:00:01Z",
-        passed: 20, failed: 1, clipsAttempted: 5, clipsFailed: 1, sourcesFailed: 2, encoderFallback: false,
+        passed: 20, failed: 1, clipsAttempted: 5, clipsFailed: 1, sourcesFailed: 2,
         machine: "M1Max", machines: ["M1Max"] },
       { project: "SampleApp", runID: "20260817-000002", startedAt: "2026-08-17T00:00:02Z",
-        machine: null, machines: [], passed: null, failed: null, clipsAttempted: null, clipsFailed: null, sourcesFailed: null, encoderFallback: false },
+        machine: null, machines: [], passed: null, failed: null, clipsAttempted: null, clipsFailed: null, sourcesFailed: null },
     ],
   });
   const rows = [...window.document.querySelectorAll(".recordings-session-item")];

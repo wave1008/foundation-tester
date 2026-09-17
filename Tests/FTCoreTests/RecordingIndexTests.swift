@@ -26,23 +26,21 @@ final class RecordingIndexTests: XCTestCase {
         XCTAssertEqual(decoded.recordings[0].segments[0].durationMs, 12_345)
         XCTAssertNil(decoded.clipsAttempted, "指定しなければ nil のはず")
         XCTAssertNil(decoded.clipsFailed)
-        XCTAssertNil(decoded.encoderFallback)
     }
 
     func testEncodeDecodeRoundTripWithCounters() throws {
-        let index = RecordingIndex(recordings: [], clipsAttempted: 5, clipsFailed: 2, encoderFallback: true)
+        let index = RecordingIndex(recordings: [], clipsAttempted: 5, clipsFailed: 2)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(index)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(json["clipsAttempted"] as? Int, 5, "拡張側との契約キー名は camelCase のまま")
         XCTAssertEqual(json["clipsFailed"] as? Int, 2)
-        XCTAssertEqual(json["encoderFallback"] as? Bool, true)
+        XCTAssertNil(json["encoderFallback"], "エンコーダの種別は index に書かない")
 
         let decoded = try JSONDecoder().decode(RecordingIndex.self, from: data)
         XCTAssertEqual(decoded.clipsAttempted, 5)
         XCTAssertEqual(decoded.clipsFailed, 2)
-        XCTAssertEqual(decoded.encoderFallback, true)
     }
 
     func testSanitizedFileNameReplacesNonAlphanumerics() {
@@ -72,7 +70,7 @@ final class RecordingIndexTests: XCTestCase {
             .appendingPathComponent("FTCoreTests-recording-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
-        RecordingIndexIO.write([], runDir: tempDir, clipsAttempted: 3, clipsFailed: 3, encoderFallback: true)
+        RecordingIndexIO.write([], runDir: tempDir, clipsAttempted: 3, clipsFailed: 3)
 
         let indexURL = tempDir.appendingPathComponent("recordings/index.json")
         let data = try Data(contentsOf: indexURL)
@@ -81,7 +79,6 @@ final class RecordingIndexTests: XCTestCase {
                        "切り出しが全滅しても attempted > 0 なら recordings 空のまま書くはず")
         XCTAssertEqual(decoded.clipsAttempted, 3)
         XCTAssertEqual(decoded.clipsFailed, 3)
-        XCTAssertEqual(decoded.encoderFallback, true)
     }
 
     /// **録画ソースが1本も使えなかった run も index を残す**(2026-08-26)。

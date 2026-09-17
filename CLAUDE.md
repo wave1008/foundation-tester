@@ -820,6 +820,11 @@
   `bridgeUnreachable` 再プローブ = `BridgeProbeOutcome.hijacked` の 2 箇所。bundle ID が同じ別の台は
   /status の udid / engine でしか見分けられない)④ワークスペースのステージ先は
   `WorkspaceAppStaging.installPath(declared:)` = 宣言文字列の名前空間(絶対パスから導かない)
+- **録画ありの run は供給段階で「端末側に残った録画セッション」を解く**(`HostRecordingProbe` →
+  `ProfileWorkerFactory.recoverStaleRecordingIOSWorkers`。凍結の回復と同じ再起動・台は外さない・不明は撃たない)。
+  **iOS の供給口3つ全部で凍結トリアージの直後に通す**(`HostRecordingProbeTests` が固定)。
+  **検査も録画も recordVideo は SIGINT でしか止めない**(SIGKILL/SIGTERM がこの状態を作る)。
+  切り出しのエンコーダはソフトウェア固定(実測は docs/verification.md §録画)
 - **iOS 供給の `installIfNeeded` を `try?` で戻さない**(全員失敗の throw を飲むと失敗前の一覧に
   戻り、古いアプリのまま走る。`InstallIfNeededTryOptionalSourceScanTests`)
 - **occlusion-guard の反転は、1 回目のガード評価が締切を跨いだ回だけ 1 度延長して撮り直す**
@@ -1034,6 +1039,12 @@
 実機と紛らわしい)。デバイス上での実行一般は「デバイス実行」「デバイス上」でよい。
 **「デバイスで動かした」と書きたくなった瞬間に、何の上で動かしたかを確認する**
 → maintainer-notes §7
+
+**用語(モニターのペイン)**: 「テスト実行」タブの**上部ペイン(タイルの並び)は「ラインビュー」**、
+**下部ペインはデバイス選択ありで「グリッドビュー」(拡大表示)・すべて解除(選択 0 台)で「実行ログビュー」**
+(ユーザー決定 2026-09-17)。ペインを「フリート」と
+呼ばない —— **「フリート」は複数機械・`run --fleet` の製品概念**に取っておく。下部ペインの見出し
+(「実行ログ/デバイス」)は中身を表すので据え置く
 
 **用語(陽性/陰性)**: **「陽性/陰性」は検知の語彙**(発火したかどうか)で、**判定の結果(緑/赤)には
 使わない**。occlusion-guard だけが「発火すると赤になる検知」なので、同じ事象を検知として語るか

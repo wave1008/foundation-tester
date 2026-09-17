@@ -25,10 +25,14 @@ enum VideoRecordingFinalizer {
     /// sourceFiles(連結順。要素数 1 で単一ファイルのケースも含む)の [clipStartMs, clipEndMs) を
     /// 切り出し、bitrateKbps*1000 bps の H.264 .mp4 として書き出す。fullResolution:false(既定)なら
     /// shrinkThreshold より大きいソースだけ半分解像度にする(true なら常にソース解像度のまま)。
-    /// clipStartMs/clipEndMs はソース内(gapless)の位置(RecordingWallClock.offsetMs 参照)
+    /// clipStartMs/clipEndMs はソース内(gapless)の位置(RecordingWallClock.offsetMs 参照)。
+    /// **エンコーダはソフトウェア固定**: ハードウェア(AppleAVE)は AVAssetWriter の内部でセッションを
+    /// 閉じる `VTCompressionSessionInvalidate` から戻らないことがあり(実測: 12 秒クリップ
+    /// 16 本×8 回で 2 回・各 1 本)、そのたびに期限の 60 秒を払った。正常時の所要は同等
+    /// (1 本の中央値 1.35 秒 / 1.39 秒)で、出力サイズもソフトウェアのほうが指定ビットレートに近い
     static func extractClip(sourceFiles: [URL], clipStartMs: Int, clipEndMs: Int,
                             bitrateKbps: Int, fullResolution: Bool,
-                            to outputURL: URL, preferSoftwareEncoder: Bool = false) async -> Bool {
+                            to outputURL: URL) async -> Bool {
         guard clipEndMs > clipStartMs, !sourceFiles.isEmpty else { return false }
         try? FileManager.default.removeItem(at: outputURL)
 
@@ -65,18 +69,16 @@ enum VideoRecordingFinalizer {
         ])
         guard reader.canAdd(readerOutput) else { return false }
         reader.add(readerOutput)
-        var outputSettings: [String: Any] = [
+        let outputSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: scaledEven(naturalSize.width),
             AVVideoHeightKey: scaledEven(naturalSize.height),
             AVVideoScalingModeKey: AVVideoScalingModeResizeAspect,
             AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: bitrateKbps * 1000],
-        ]
-        if preferSoftwareEncoder {
-            outputSettings[AVVideoEncoderSpecificationKey] = [
+            AVVideoEncoderSpecificationKey: [
                 kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder as String: false,
-            ]
-        }
+            ],
+        ]
         let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: outputSettings)
         writerInput.expectsMediaDataInRealTime = false
         guard writer.canAdd(writerInput) else { return false }

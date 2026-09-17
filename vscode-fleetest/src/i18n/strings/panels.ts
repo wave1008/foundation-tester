@@ -274,7 +274,7 @@ export const panelsStrings = {
 
   "panels.deviceMenu.liveControl": { ja: "ライブ操作", en: "Live Control" },
   "panels.deviceMenu.restartWithGpu": { ja: "GPUで再起動", en: "Restart with GPU" },
-  // フリートの右クリック(タイルの上でも空きエリアでも出る。deviceTiles.js openDeviceOpMenu)
+  // ラインビューの右クリック(タイルの上でも空きエリアでも出る。deviceTiles.js openDeviceOpMenu)
   "panels.deviceMenu.selectAll": { ja: "すべて選択", en: "Select All" },
   // タイルの上の右クリックでだけ出る(空きエリアでは出さない)
   "panels.deviceMenu.selectOnlyThis": { ja: "このデバイスのみ選択", en: "Select Only This Device" },

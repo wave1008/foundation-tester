@@ -76,7 +76,6 @@ const session = (over) => ({
   failed: 0,
   clipsAttempted: 1,
   clipsFailed: 0,
-  encoderFallback: false,
   ...over,
 });
 

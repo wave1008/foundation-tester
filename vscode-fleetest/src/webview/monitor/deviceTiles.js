@@ -6,8 +6,9 @@
 // offline/booted を経由する(state==='connected' に限定できない)ため他2つと別枠で判定する。
 
 import { t } from '../i18n.js';
+import { setDevicesWaiting } from './waitingNote.js';
 import { vscode } from './vscodeApi.js';
-import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuSelectOnlyBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRestart, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee } from './domRefs.js';
+import { grid, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuSelectOnlyBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRestart, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers, relayoutPreviewsForResize } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
@@ -120,7 +121,7 @@ let bulkOpActive = null;
 // 空 = 全ワーカー表示(絞り込みなし)
 export const selectedDeviceIds = new Set();
 // 「デバイスをすべて選択」が入っているか。台が1枚でも居る間は**選択の集合から導く**
-// (トグルの向きと挙動を2箇所に持たない)が、**フリートが空の間だけ据え置く** ——
+// (トグルの向きと挙動を2箇所に持たない)が、**ラインビューが空の間だけ据え置く** ——
 // モニター再起動や「すべて終了」で0枚になっても ON を落とさない = 戻ってきた台を選び直させない。
 // 初期値はホストが ready 後に送る 'selectAllDevices' で上書きされる(前回の値の復元)。
 let selectAllOn = false;
@@ -275,7 +276,7 @@ function createTile(device) {
   tile.className = 'tile';
   tile.title = t('wvMonitor.tile.title');
   // **クリックでだけフォーカスが入る**(tabindex=-1 はタブ順に入らない)。Cmd/Ctrl+A の
-  // 全選択をフリートに限定するための条件で、0 にすると台数ぶんのタブ停止ができて
+  // 全選択をラインビューに限定するための条件で、0 にすると台数ぶんのタブ停止ができて
   // ツールバーからの移動が潰れる。
   tile.tabIndex = -1;
   // 選択のクリックはタイルごとに張らず grid へ委譲する(当たりの規則はそちらのコメント)。
@@ -582,7 +583,7 @@ function renderMirror(entry) {
 }
 
 // 絵の上のタグ段。タイルのヘッダ(実機バッジ・デバイス名のピル・未登録バッジ)をそのまま複製する
-// —— フリートと同じ見た目・同じ内容にするため(組み立て直すと renderMeta の切替と食い違う)。
+// —— ラインビューと同じ見た目・同じ内容にするため(組み立て直すと renderMeta の切替と食い違う)。
 // ホスト名の段(タイルと同じく名前の下)は**常に置く**。リモートの台にだけ段を足すと、
 // その台だけ絵の上端が下がって手元と高さが揃わない(2026-08-24 のユーザー指摘)。
 // 手元の台には**見えないダミーのバッジ**を入れて高さだけ合わせる(中身が空の段は高さ 0)。
@@ -874,7 +875,7 @@ export function openDeviceOpMenuForDevice(deviceId, clientX, clientY) {
   return true;
 }
 
-// 実行ログのペイン(laneLog.js)の右クリック口。**選択が1台も無いとき**(すべて解除の状態)だけ
+// 下部ペイン(laneLog.js)の右クリック口。**選択が1台も無いとき**(すべて解除 = 実行ログビュー)だけ
 // 「すべて選択」1項目のメニューを開く。それ以外は false = 呼び手は何も出さない
 export function openSelectAllOnlyMenu(clientX, clientY) {
   if (selectAllOn || selectedDeviceIds.size > 0) {
@@ -954,13 +955,13 @@ btnSelectAll.addEventListener('click', () => {
   toggleSelectAll();
 });
 
-// ---- フリートを触っている間の Cmd/Ctrl+A ----------------------------------------------
-// 「フリートを触っている」= **最後に押した場所がフリートの領域の中**、またはフォーカスが
+// ---- ラインビューを触っている間の Cmd/Ctrl+A ----------------------------------------------
+// 「ラインビューを触っている」= **最後に押した場所がラインビューの領域の中**、またはフォーカスが
 // その中にある。**フォーカスだけを条件にしない** —— タイルは div(tabindex=-1)で、
 // webview では押しても activeElement が body のままになることがある。
 let fleetActive = false;
 
-// **右クリックメニューもフリートの領域**(タイルから開くもので、DOM 上だけペインの外に居る)。
+// **右クリックメニューもラインビューの領域**(タイルから開くもので、DOM 上だけペインの外に居る)。
 // 含めないと、メニューの項目を押した瞬間にガードが外れ、**それまで隠れていた選択が
 // 見えるようになる** —— 利用者からは「メニューの『すべて選択』で HTML が全選択された」
 // ように見える(実害 2026-08-28)。
@@ -968,9 +969,9 @@ function inFleetRegion(node) {
   return node instanceof Node && (tilePane.contains(node) || deviceOpMenu.contains(node));
 }
 
-// 既に立っている選択(フリートを触る前に作ったもの)はガードでは消えない ——
+// 既に立っている選択(ラインビューを触る前に作ったもの)はガードでは消えない ——
 // ガードは新しい選択を作らせないだけなので、外れた瞬間に前の選択が見えてしまう。
-// **フリートの「全選択/全解除」を実行したときは畳む**(キーもメニューも同じ扱い)。
+// **ラインビューの「全選択/全解除」を実行したときは畳む**(キーもメニューも同じ扱い)。
 function dropTextSelection() {
   const selection = window.getSelection ? window.getSelection() : null;
   if (selection) {
@@ -1002,7 +1003,7 @@ function fleetHasFocus() {
   return fleetActive || inFleetRegion(document.activeElement);
 }
 
-// フリートを触っている間だけ Cmd/Ctrl+A を「全選択/全解除」に使う(webview 既定の
+// ラインビューを触っている間だけ Cmd/Ctrl+A を「全選択/全解除」に使う(webview 既定の
 // 「テキストを全選択」はここでは何の役にも立たない)。それ以外の場所では横取りしない。
 //
 // **テキスト全選択の抑止は preventDefault ではできない**(2026-08-28 実測: 効かなかった)。
@@ -1010,7 +1011,7 @@ function fleetHasFocus() {
 // ページの既定動作とは別経路。届く時刻も keydown とずれるので、後から選択を消す
 // (removeAllRanges)のも間に合わない。**選択できるものが無ければ、いつ届いても何も
 // 反転しない** —— だから抑止は CSS(.select-all-guard の user-select:none)で行い、
-// フリートを触っている間ずっと掛けておく。ペイン外を押した時点で外れるので、ログの
+// ラインビューを触っている間ずっと掛けておく。ペイン外を押した時点で外れるので、ログの
 // テキスト選択・コピーは従来どおり(ドラッグの pointerdown が先に外す)。
 document.addEventListener('keydown', (event) => {
   if (event.key.toLowerCase() !== 'a' || event.altKey || event.shiftKey) {
@@ -1041,15 +1042,24 @@ deviceOpMenuSelectAllBtn.addEventListener('click', (event) => {
 });
 
 // 右クリックしたタイル1枚だけの選択に置き換える(全選択の旗は refreshSelectAllState が決める = 1台構成なら ON)
+// 「このデバイスのみ選択」の本体。右クリックメニューとグリッドビューのダブルクリック(laneLog.js)が共有する。
+// タイルが無い id は何もしない
+export function selectOnlyDevice(deviceId) {
+  if (!tiles.has(deviceId)) {
+    return;
+  }
+  selectedDeviceIds.clear();
+  selectedDeviceIds.add(deviceId);
+  updateSelectionUi();
+  dropTextSelection();
+}
+
 deviceOpMenuSelectOnlyBtn.addEventListener('click', (event) => {
   event.stopPropagation();
   if (deviceOpMenuSelectOnlyBtn.disabled || !deviceOpMenuEntry) {
     return;
   }
-  selectedDeviceIds.clear();
-  selectedDeviceIds.add(deviceOpMenuEntry.device.id);
-  updateSelectionUi();
-  dropTextSelection();
+  selectOnlyDevice(deviceOpMenuEntry.device.id);
   closeDeviceOpMenu();
 });
 
@@ -1171,7 +1181,7 @@ export function clearTilesForRestart() {
   }
   tiles.clear();
   selectedDeviceIds.clear();
-  emptyMessage.style.display = 'flex';
+  setDevicesWaiting(true);
   renderSelectAllButton();
   // 下のペインの拡大表示も畳む。**タイルを消すだけでは消えない** —— 拡大表示はレーン側の
   // DOM に居て、再起動の間は新しいフレームが来ないので最後の1枚が出たまま残る
@@ -1268,7 +1278,7 @@ export function applyDevices(devices) {
       grid.appendChild(entry.tile);
     }
   }
-  emptyMessage.style.display = tiles.size === 0 ? 'flex' : 'none';
+  setDevicesWaiting(tiles.size === 0);
   // **全タイルが揃ってから**判定する(hasRegisteredTile は集合全体を見るので、1枚ずつの
   // renderMeta では最初の数枚が古い判定のまま残る)。
   renderUnregisteredBadges();
@@ -1588,6 +1598,13 @@ let runCancelRequested = false;
 // profileInfo を1度でも受けたか。受ける前の実行プロファイル select は選択肢が1つも無いので
 // 触らせない(bootBusy が先に来ても解放しないための旗)。
 let profileInfoReceived = false;
+// 「録画を編集中...」の表示中(main.js の recordingsFinalizing)。モニター再起動を押させない
+let recordingsFinalizing = false;
+
+export function applyRecordingsFinalizing(active) {
+  recordingsFinalizing = active;
+  refreshBulkButtons();
+}
 
 function refreshBulkButtons() {
   // bulk up 実行中は「全て起動」ボタンを中断ボタンに転用する(クリック時の分岐は main.js。
@@ -1619,8 +1636,10 @@ function refreshBulkButtons() {
   // 「モニター再起動」は monitor プロセスごと建て直すので、起動の進行(bootBusy)を
   // 取りこぼして中断の導線が消える。
   btnDown.disabled = bulkBusy || testRunActive;
-  btnRestart.disabled = upCancelMode;
-  btnRestart.title = upCancelMode ? t('wvMonitor.bulk.disabledWhileStarting') : '';
+  btnRestart.disabled = upCancelMode || recordingsFinalizing;
+  btnRestart.title = upCancelMode
+    ? t('wvMonitor.bulk.disabledWhileStarting')
+    : recordingsFinalizing ? t('wvMonitor.bulk.disabledWhileFinalizingRecordings') : '';
   // 一括操作(起動・終了)が動いている間は対象そのものを動かさせない —— テストプロジェクト/
   // 実行プロファイルを変えると監視スコープが変わり(モニター再起動)、走っているキューは
   // 前の名簿のまま進む。**この2行は applyProfileInfo / applyProjectInfo の代入より後に効く
@@ -1880,7 +1899,7 @@ function deviceHitRect(entry) {
 // { tile: タイルの中か, entry: 当たり矩形の中ならそのタイル }。2つに分けるのは、タイルの中の
 // 帯の外(何もしない)とタイルの外(全解除)を区別するため。
 //
-// **判定は座標だけで行う(event.target を見ない)**。フリートは配信の描画と同じ main thread に
+// **判定は座標だけで行う(event.target を見ない)**。ラインビューは配信の描画と同じ main thread に
 // 載っており(実測 2026-08-28: 配信ヘルパー 22 本 × 12fps)、詰まっている間に押下と離上をまたいで
 // タイルが描き直されると、`event.target.closest('.tile')` は入れ替わった DOM を指して当たりを
 // 落とす —— 選択も解除も黙って効かない(2026-08-28 の報告)。タイルは重ならないので、

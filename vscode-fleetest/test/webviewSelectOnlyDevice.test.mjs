@@ -1,4 +1,4 @@
-// フリートのタイルの右クリックメニューの「このデバイスのみ選択」の DOM テスト。
+// ラインビューのタイルの右クリックメニューの「このデバイスのみ選択」の DOM テスト。
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewGpuRestartCarriesMachine.test.mjs と同じ。
 
 import assert from "node:assert/strict";

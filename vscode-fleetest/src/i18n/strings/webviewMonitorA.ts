@@ -97,8 +97,8 @@ export const webviewMonitorAStrings = {
   // ツールバー右端の全選択トグル(deviceTiles.js が押すたびに title/aria-label を入れ替える)。
   "wvMonitor.toolbar.selectAll": { ja: "デバイスをすべて選択", en: "Select All Devices" },
   "wvMonitor.toolbar.deselectAll": { ja: "デバイスの選択をすべて解除", en: "Deselect All Devices" },
-  "wvMonitor.toolbar.showFleet": { ja: "フリートを表示する", en: "Show Fleet" },
-  "wvMonitor.toolbar.hideFleet": { ja: "フリートを非表示にする", en: "Hide Fleet" },
+  "wvMonitor.toolbar.showFleet": { ja: "ラインビューを表示する", en: "Show Line View" },
+  "wvMonitor.toolbar.hideFleet": { ja: "ラインビューを非表示にする", en: "Hide Line View" },
 
   "wvMonitor.tile.queuedRestart": { ja: "再起動待機", en: "Restart pending" },
   "wvMonitor.tile.queuedWipe": { ja: "Wipe 待機", en: "Wipe pending" },
@@ -161,6 +161,11 @@ export const webviewMonitorAStrings = {
   "wvMonitor.runTests.disabledNoProfile": {
     ja: "実体のある実行プロファイルを選ぶと実行できます。",
     en: "Select an existing run profile to run tests.",
+  },
+  // 録画の編集中に押せなくなるボタン(「モニター再起動」)の説明。
+  "wvMonitor.bulk.disabledWhileFinalizingRecordings": {
+    ja: "録画の編集中は使えません(編集の完了を待ってください)。",
+    en: "Unavailable while recordings are being processed (wait for it to finish).",
   },
   // 一括起動の最中に押せなくなるボタン(「モニター再起動」)の説明。
   "wvMonitor.bulk.disabledWhileStarting": {

@@ -4,10 +4,10 @@
 // schemaVersion===2 のみ受け付ける):
 //   { "schemaVersion": 2, "recordings": [ { "scenarioID", "worker", "platform", "file",
 //     "segments": [ { "startedAt"(ISO8601+ミリ秒), "durationMs" } ] } ],
-//     "clipsAttempted", "clipsFailed", "encoderFallback", "sourcesFailed" }
+//     "clipsAttempted", "clipsFailed", "sourcesFailed" }
 // 1 recordings[] エントリ = 1 シナリオ(テスト関数)のクリップ。segments はそのクリップに
 // 含まれる実録画区間(壁時計。ワーカーの録画区間とシナリオ区間の交差。Android は複数になり得る)。
-// clipsAttempted/clipsFailed/encoderFallback/sourcesFailed は run 全体の集計(optional。
+// clipsAttempted/clipsFailed/sourcesFailed は run 全体の集計(optional。
 // エンコーダ不調で1本もクリップが取れなかった run も、recordings が空のまま clipsAttempted > 0 で
 // 書き出す = その run を拡張の録画タブから消さないため。vscode-fleetest/src/recordingsModel.ts と同期)。
 // **sourcesFailed は「録画ソースが1本も使えなかったワーカー数」** —— 切り出しまで到達しないので
@@ -57,20 +57,17 @@ public struct RecordingIndex: Codable, Sendable {
     public var clipsAttempted: Int?
     /// clipsAttempted のうち使えるクリップが得られなかった数
     public var clipsFailed: Int?
-    /// この run 中にハードウェアエンコーダからソフトウェアエンコーダへ切り替えたか
-    public var encoderFallback: Bool?
     /// 録画ソースが1本も使えなかったワーカー数(起動できなかった/停止時に読めるファイルが無かった)
     public var sourcesFailed: Int?
 
     public init(schemaVersion: Int = RecordingIndex.currentSchemaVersion,
                 recordings: [RecordingIndexEntry],
-                clipsAttempted: Int? = nil, clipsFailed: Int? = nil, encoderFallback: Bool? = nil,
+                clipsAttempted: Int? = nil, clipsFailed: Int? = nil,
                 sourcesFailed: Int? = nil) {
         self.schemaVersion = schemaVersion
         self.recordings = recordings
         self.clipsAttempted = clipsAttempted
         self.clipsFailed = clipsFailed
-        self.encoderFallback = encoderFallback
         self.sourcesFailed = sourcesFailed
     }
 }
@@ -86,7 +83,7 @@ public enum RecordingIndexIO {
     /// recordings/ が(他に何も残さず)空なら消す
     public static func write(_ entries: [RecordingIndexEntry], runDir: URL,
                              clipsAttempted: Int = 0, clipsFailed: Int = 0,
-                             encoderFallback: Bool = false, sourcesFailed: Int = 0) {
+                             sourcesFailed: Int = 0) {
         let dir = runDir.appendingPathComponent(directoryName)
         guard clipsAttempted > 0 || sourcesFailed > 0 || !entries.isEmpty else {
             if let contents = try? FileManager.default.contentsOfDirectory(atPath: dir.path),
@@ -101,7 +98,6 @@ public enum RecordingIndexIO {
             recordings: entries,
             clipsAttempted: clipsAttempted > 0 ? clipsAttempted : nil,
             clipsFailed: clipsAttempted > 0 ? clipsFailed : nil,
-            encoderFallback: clipsAttempted > 0 ? encoderFallback : nil,
             sourcesFailed: sourcesFailed > 0 ? sourcesFailed : nil)
         guard let data = try? encoder.encode(index) else { return }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

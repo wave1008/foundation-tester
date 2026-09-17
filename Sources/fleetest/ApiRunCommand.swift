@@ -568,6 +568,11 @@ struct ApiRunCommand: AsyncParsableCommand {
                                 await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
                             log: { logSupply($0) })
                         workers = iosTriage.workers
+                        // 録画ありの run では、端末側に録画セッションが残った台を再起動して解く
+                        // (HostRecordingProbe。ProfileRunner と同じ)
+                        workers = await ProfileWorkerFactory.recoverStaleRecordingIOSWorkers(
+                            workers: workers, resolved: resolved, repoRoot: repoRoot,
+                            apps: resolved.apps) { logSupply($0) }
                         // F10: iOS の回復も android task と合流させる(add は上書きしない)
                         triageBox.add(repaired: iosTriage.repaired, excluded: iosTriage.excluded)
                         await ProfileWorkerFactory.prepareDevicesOnStart(
@@ -1002,6 +1007,11 @@ struct ApiRunCommand: AsyncParsableCommand {
                                 await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
                 log: { logSupply($0) })
             workers = iosTriage.workers
+            // 録画ありの run では、端末側に録画セッションが残った台を再起動して解く
+            // (HostRecordingProbe。ProfileRunner と同じ)
+            workers = await ProfileWorkerFactory.recoverStaleRecordingIOSWorkers(
+                workers: workers, resolved: resolved, repoRoot: iosRepoRoot,
+                apps: resolved.apps) { logSupply($0) }
             await ProfileWorkerFactory.prepareDevicesOnStart(
                 workers, homeOnStart: resolved.homeOnStart) { logSupply($0) }
             blankTriage = (triage.repaired + iosTriage.repaired, triage.excluded + iosTriage.excluded)

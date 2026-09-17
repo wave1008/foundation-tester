@@ -1,7 +1,7 @@
 // 出力ペインの拡大表示(選択したデバイスの動画)の DOM テスト。
 // 実 HTML + 実バンドルを jsdom で動かす方式は webviewTileRelayout.test.mjs と同じ。
 //
-// 契約(ユーザー要件 2026-08-24): 「テスト実行」タブでフリートのデバイスを選ぶと、セパレーターの
+// 契約(ユーザー要件 2026-08-24): 「テスト実行」タブでラインビューのデバイスを選ぶと、セパレーターの
 // 下のペインは選択した台ぶんの拡大した動画を左から並べる(**ログは置かない**)。選択が無い
 // 間は従来どおり全ワーカーの実行ログ(拡大表示は display:none)。
 //
@@ -138,7 +138,7 @@ test("選択が無い間は拡大表示を出さない(従来どおりログだ�
   assert.equal(paneTitle(document), "実行ログ");
 });
 
-test("1台選択でその台の動画だけになる(ログは置かない)", (t) => {
+test("1台選択で左に動画・右にその台の実行ログ", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [{}, {}, {}]);
@@ -146,12 +146,59 @@ test("1台選択でその台の動画だけになる(ログは置かない)", (t
   const pairs = visiblePairs(document);
   assert.equal(pairs.length, 1, "選択した台の列だけ残すこと");
   assert.equal(visiblePreviews(document).length, 1);
-  assert.equal(visibleLogs(document).length, 0, "拡大表示の列にログを並べないこと");
-  assert.equal(pairs[0].children[0].className, "lane-preview");
+  assert.equal(visibleLogs(document).length, 1, "1台のときはログも並べる");
+  assert.equal(pairs[0].children[0].className, "lane-preview", "左が動画");
+  assert.equal(pairs[0].children[1].className, "lane", "右がログ");
+  assert.ok(document.getElementById("lanes-grid").classList.contains("single-device"));
+  // ログ側の見出しはバッジではなく「実行ログ」
+  const log = pairs[0].children[1];
+  assert.equal(log.querySelector(".lane-header:not(.lane-log-title)").style.display, "none", "バッジの見出しを隠す");
+  const logTitle = log.querySelector(".lane-log-title");
+  assert.notEqual(logTitle.style.display, "none");
+  assert.equal(logTitle.textContent, "実行ログ");
   // 見出しは中身に合わせる(ログではなく動画を並べている)
   assert.equal(paneTitle(document), "デバイス");
   // ログ側の DOM は消さない(選択を外せば続きが読める)
   assert.equal(pairs[0].querySelector(".lane-header").textContent, "Dev 1");
+});
+
+test("1台選択の動画の幅は絵に合わせ、2台に増やすとログを畳んで幅の指定も外す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  giveLanesGridSize(document, 1200, 500);
+  sendDevices(window, [{}, {}]);
+  clickTile(document, 0);
+  decodeFrame(window, document, 0, "QUJD", 390, 844);
+  const grid = document.getElementById("lanes-grid");
+  assert.equal(grid.style.gridTemplateColumns, "minmax(0, 1fr)");
+  assert.equal(grid.style.gridTemplateRows, "minmax(0, 1fr)");
+  const preview = visiblePreviews(document)[0];
+  // jsdom の枠の固定費は 0 なので 幅 = 500 × 390/844 の切り上げ(上限 1200×0.6 未満)
+  assert.equal(preview.style.width, Math.ceil(500 * 390 / 844) + "px");
+
+  clickTile(document, 1);
+  decodeFrame(window, document, 1, "QUJD", 390, 844);
+  assert.equal(grid.classList.contains("single-device"), false);
+  assert.equal(visibleLogs(document).length, 0, "2台ではログを置かない");
+  assert.ok(visiblePreviews(document).every((el) => el.style.width === ""), "幅の指定を残さない");
+  assert.equal(grid.style.gridTemplateColumns, "repeat(2, minmax(0, 1fr))");
+});
+
+test("グリッドビューの台をダブルクリックすると、その台だけの選択になる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, [{}, {}, {}]);
+  clickTile(document, 0);
+  clickTile(document, 2);
+  assert.equal(visiblePreviews(document).length, 2);
+  const target = visiblePairs(document)[1].querySelector(".lane-preview");
+  assert.equal(target.parentElement.querySelector(".lane-header").textContent, "Dev 2");
+  target.dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+  const selected = [...document.querySelectorAll("#grid .tile.selected")];
+  assert.equal(selected.length, 1, "1台だけ選択");
+  assert.equal(visiblePairs(document).length, 1);
+  assert.equal(visiblePairs(document)[0].querySelector(".lane-header").textContent, "Dev 2", "ダブルクリックした台");
+  assert.ok(document.getElementById("lanes-grid").classList.contains("single-device"), "1台なので左に絵・右にログ");
 });
 
 test("2台選択で動画が2つ、選択順ではなくデバイス順に並ぶ", (t) => {
@@ -177,15 +224,20 @@ test("選択を外すと拡大表示が消えてログへ戻る(出しっぱな�
   sendDevices(window, [{}, {}]);
   clickTile(document, 0);
   assert.equal(visiblePreviews(document).length, 1);
-  assert.equal(visibleLogs(document).length, 0);
+  assert.equal(visibleLogs(document).length, 1, "1台のときは右にログ");
   clickTile(document, 0);
   assert.equal(visiblePreviews(document).length, 0);
+  assert.equal(document.getElementById("lanes-grid").classList.contains("single-device"), false);
   assert.equal(visiblePairs(document).length, 2, "絞り込み解除で全レーンへ戻ること");
+  for (const pair of visiblePairs(document)) {
+    assert.equal(pair.querySelector(".lane-header:not(.lane-log-title)").style.display, "", "バッジの見出しに戻す");
+    assert.equal(pair.querySelector(".lane-log-title").style.display, "none");
+  }
   assert.equal(visibleLogs(document).length, 2, "ログを出し直すこと");
   assert.equal(paneTitle(document), "実行ログ", "見出しも戻すこと");
 });
 
-test("拡大表示の上にフリートと同じタグが付く", (t) => {
+test("拡大表示の上にラインビューと同じタグが付く", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [{}, {}]);
@@ -207,7 +259,7 @@ test("拡大表示の上にフリートと同じタグが付く", (t) => {
   assert.equal(header.querySelectorAll(".tile-header").length, 1);
 });
 
-test("実機・未登録・マシン名のタグもフリートと同じに出る", (t) => {
+test("実機・未登録・マシン名のタグもラインビューと同じに出る", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const devices = [{

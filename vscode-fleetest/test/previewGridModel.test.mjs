@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { computePreviewGrid } from "../src/webview/monitor/previewGridModel.js";
+import { computePreviewGrid, computeSinglePreviewWidth, SINGLE_PREVIEW_MAX_RATIO } from "../src/webview/monitor/previewGridModel.js";
 
 // 縦持ちスマホ(390x844)相当の縦横比。実測 --tile-aspect と同じ 幅/高さ。
 const PORTRAIT = 390 / 844;
@@ -128,4 +128,24 @@ test("測れない間(タブ非表示・初回描画前)は従来どおり横一
 
 test("0台でも壊れない", () => {
   assert.deepEqual(computePreviewGrid(pane(0)), { columns: 1, rows: 1 });
+});
+
+// 1台だけ選択(左 = 拡大表示・右 = 実行ログ)の拡大表示の幅
+test("1台の幅は 絵の高さ×縦横比 + 枠の固定費", () => {
+  assert.equal(computeSinglePreviewWidth({
+    paneWidth: 1200, paneHeight: 424, aspect: 0.5, chromeHeight: 24, chromeWidth: 10,
+  }), 210);
+});
+
+test("1台の幅はペイン幅の 60% で頭打ち(ログの幅を残す)", () => {
+  assert.equal(SINGLE_PREVIEW_MAX_RATIO, 0.6);
+  assert.equal(computeSinglePreviewWidth({
+    paneWidth: 1000, paneHeight: 400, aspect: 844 / 390, chromeHeight: 0, chromeWidth: 0,
+  }), 600);
+});
+
+test("1台の幅: 縦横比が未確定なら頭打ちの幅・ペインが測れなければ null", () => {
+  assert.equal(computeSinglePreviewWidth({ paneWidth: 1000, paneHeight: 400, aspect: 0 }), 600);
+  assert.equal(computeSinglePreviewWidth({ paneWidth: 0, paneHeight: 400, aspect: 0.5 }), null);
+  assert.equal(computeSinglePreviewWidth({ paneWidth: 1000, paneHeight: 0, aspect: 0.5 }), null);
 });

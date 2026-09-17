@@ -79,7 +79,6 @@ const SESSION = {
   failed: 0,
   clipsAttempted: 1,
   clipsFailed: 0,
-  encoderFallback: false,
 };
 
 function sessionStartedText(window) {

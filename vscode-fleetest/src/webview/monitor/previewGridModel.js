@@ -43,3 +43,28 @@ export function computePreviewGrid(m) {
   tied.sort((a, b) => (a.rows - b.rows) || (a.columns - b.columns));
   return { columns: tied[0].columns, rows: tied[0].rows };
 }
+
+// 1台だけ選択したとき(左 = 拡大表示・右 = 実行ログ)の拡大表示の外寸幅(px)。
+// 絵の高さはペインの高さで決まる(1行)ので、幅 = 絵の高さ × 縦横比 + 枠の横方向の固定費。
+// ログの幅を残すため maxRatio(ペイン幅に対する比)で頭打ちにする。縦横比が未確定(フレーム未着)の間は
+// 頭打ちの幅で置き、確定後の再計算で締める。測れないときは null(呼び手は幅を指定しない)。
+export const SINGLE_PREVIEW_MAX_RATIO = 0.6;
+
+/**
+ * @param {{paneWidth:number, paneHeight:number, aspect:number, chromeHeight:number,
+ *          chromeWidth:number}} m 実測値。chromeHeight/chromeWidth は拡大表示の外寸のうち
+ *   絵の枠以外(タグ段・余白・枠線)の高さ/幅。
+ * @returns {number|null}
+ */
+export function computeSinglePreviewWidth(m) {
+  if (!m || !(m.paneWidth > 0) || !(m.paneHeight > 0)) {
+    return null;
+  }
+  const cap = Math.floor(m.paneWidth * SINGLE_PREVIEW_MAX_RATIO);
+  if (!(m.aspect > 0)) {
+    return cap;
+  }
+  const imageHeight = Math.max(0, m.paneHeight - (m.chromeHeight > 0 ? m.chromeHeight : 0));
+  const width = Math.ceil(imageHeight * m.aspect + (m.chromeWidth > 0 ? m.chromeWidth : 0));
+  return Math.min(width, cap);
+}

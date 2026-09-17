@@ -872,6 +872,69 @@ public enum ProfileWorkerFactory {
         return mergeRecoveredIOS(into: workers, rebuiltIOS: rebuilt)
     }
 
+    /// 録画ありの run で、**端末側に録画セッションが残った iOS シミュレータ**を再起動して解く
+    /// (HostRecordingProbe の宣言)。再起動は凍結の回復と同じ `recover`(既定は
+    /// recoverFrozenIOSWorkers = ブリッジ停止 → shutdown → boot → 張り直し)。
+    ///
+    /// **台を外さない** —— 録画は付帯機能なので、解けなかった台もテストは走らせる(録画だけ
+    /// IOSSimulatorVideoRecorder.start が警告して飛ばす)。**不明の台は再起動しない**
+    /// (検査が言えなかったことを理由に台を落とさない)。録画しない run では何もしない
+    /// (検査そのものが録画の開始・停止なので、要らない run に払わせない)。
+    ///
+    /// **iOS ワーカーの供給口3つ全部から呼ぶ**(recoverFrozenIOSWorkers と同じ。配線は
+    /// HostRecordingProbeTests.testEverySupplyPathRecoversStaleRecordingAfterTheBlankTriage が固定)
+    public static func recoverStaleRecordingIOSWorkers(
+        workers: [RunWorker], resolved: ResolvedProfile, repoRoot: URL,
+        apps: [String: ResolvedAppTarget],
+        probe: (@Sendable (String) async -> HostRecordingProbe.Outcome)? = nil,
+        recover: (@Sendable ([String], [RunWorker]) async -> [RunWorker]?)? = nil,
+        log: @escaping @Sendable (String) -> Void
+    ) async -> [RunWorker] {
+        guard resolved.record else { return workers }
+        let workDir = repoRoot.appendingPathComponent(".fleetest/recording-probe")
+        let probeOne = probe ?? { await HostRecordingProbe.probe(udid: $0, workDir: workDir) }
+        let recoverWith = recover ?? { labels, current in
+            await recoverFrozenIOSWorkers(labels: labels, workers: current, resolved: resolved,
+                                          repoRoot: repoRoot, apps: apps, log: log)
+        }
+        let busy = await busyRecordingLabels(workers, probe: probeOne)
+        guard !busy.isEmpty else { return workers }
+        log("⚠️ \(busy.count) simulator(s) hold a stale host recording session (\(busy.joined(separator: ", ")))"
+            + " — rebooting them before the run starts so they can be recorded")
+        guard let rebuilt = await recoverWith(busy, workers) else {
+            log("⚠️ could not reboot the simulator(s) holding a stale recording session —"
+                + " they still run the tests, but will not be recorded")
+            return workers
+        }
+        let stillBusy = await busyRecordingLabels(rebuilt, probe: probeOne)
+        if stillBusy.isEmpty {
+            log("✅ the stale recording session(s) are gone — recording every simulator")
+        } else {
+            log("⚠️ \(stillBusy.joined(separator: ", ")): the recording session is still held after a reboot"
+                + " — these run the tests, but will not be recorded")
+        }
+        return rebuilt
+    }
+
+    /// busy の台の label(並列に検査する。対象は録画できる iOS シミュレータだけ = 実機と Android は見ない)
+    static func busyRecordingLabels(
+        _ workers: [RunWorker], probe: @escaping @Sendable (String) async -> HostRecordingProbe.Outcome
+    ) async -> [String] {
+        let targets = workers.compactMap { worker -> (String, String)? in
+            guard worker.platform == "ios", !worker.connection.physical,
+                  let udid = worker.connection.udid else { return nil }
+            return (worker.label, udid)
+        }
+        return await withTaskGroup(of: (String, HostRecordingProbe.Outcome).self) { group in
+            for (label, udid) in targets {
+                group.addTask { (label, await probe(udid)) }
+            }
+            var busy: [String] = []
+            for await (label, outcome) in group where outcome == .busy { busy.append(label) }
+            return busy.sorted()
+        }
+    }
+
     /// 再起動をかける対象。**iOS だけ**を採る —— 呼び出し元の一覧は Android と混ざっている
     /// ことがあり(ApiRunCommand の直接供給)、Android の凍結機はここへ来る前に別経路
     /// (`excludeOrRepairBlankScreenWorkers`)が修復済み。simctl は udid でしか撃てないので

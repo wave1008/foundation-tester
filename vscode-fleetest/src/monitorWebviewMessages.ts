@@ -354,7 +354,7 @@ export type MonitorToWebviewMessage =
   // 「テスト実行」タブの auto-fit トグルの状態(true = 全デバイスが横幅に収まる高さへ自動調整)。
   // 永続化の理由と経路は tilePaneHeight と同じ(setTileAutoFit と対の契約)。
   | { readonly type: "tileAutoFit"; readonly value: boolean }
-  // 「テスト実行」タブのフリート(タイル領域)の表示トグル(false = 非表示)。永続化の経路は
+  // 「テスト実行」タブのラインビュー(タイル領域)の表示トグル(false = 非表示)。永続化の経路は
   // tileAutoFit と同じ(setFleetVisible と対の契約。受け手は splitter.js)。
   | { readonly type: "fleetVisible"; readonly value: boolean }
   // 「テスト実行」タブの全選択トグルの状態(true = 全デバイス選択)。永続化の理由と経路は
@@ -434,7 +434,6 @@ export type MonitorToWebviewMessage =
       /** 録画ソースが1本も使えなかったワーカー数(録画が全滅した run を「録画していない run」と
        *  取り違えないための欄。Sources/FTCore/RecordingIndex.swift の sourcesFailed と同期)。 */
       readonly sourcesFailed?: number | null;
-      readonly encoderFallback?: boolean;
       // true = recordingsOpen への応答ではなく run 完了時の自動表示(monitorRecordingsController.ts の
       // revealRun。ok:true のときだけ来る)。webview は「テスト実行」タブ表示中だけ録画タブへ切り替えて
       // 開き、それ以外のタブでは捨てる(main.js の recordingsSession)
@@ -740,7 +739,7 @@ export type MonitorFromWebviewMessage =
   // auto-fit トグルの切替(ボタン押下・手動ドラッグによる自動 OFF)。monitorPanel.ts が
   // workspaceState へ永続化し、パネル再作成時に "tileAutoFit" メッセージで復元する。
   | { readonly type: "setTileAutoFit"; readonly value: boolean }
-  // フリートの表示トグルの切替。monitorPanel.ts が workspaceState へ永続化し、
+  // ラインビューの表示トグルの切替。monitorPanel.ts が workspaceState へ永続化し、
   // パネル再作成時に "fleetVisible" メッセージで復元する。
   | { readonly type: "setFleetVisible"; readonly value: boolean }
   // 全選択トグルの状態が変わったとき(ボタン・Cmd/Ctrl+A・右クリックメニュー、および
