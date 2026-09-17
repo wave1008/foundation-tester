@@ -68,6 +68,36 @@ enum ProfileRunner {
         }
     }
 
+    /// **機械分担の run がリモートへ配る前に**、手元の子と同じ規則(この機械の台へ絞る →
+    /// 本数+予備で絞る(MCP の台を避ける)→ lease 照合)で二重使用を断る(台+保持者 pid を名指しして throw)。
+    /// 手元の子の拒否より先にリモートの子がロックを取り、断られた run の半分が走って同時刻の
+    /// 別 run のリモート分を丸ごと弾いていた(2026-09-17 負荷テスト M12)。
+    /// 判定材料が揃わない(プロファイル解決の失敗等)ときは何もしない = 手元の子の判定に任せる。
+    /// DeviceMachineRunner と ApiRunMachineFanout の2経路から呼ぶ
+    static func rejectIfLocalDevicesLeasedBeforeDispatch(
+        project: TestProject, profileName: String, setOverrides: [String: RunProfileSetValue],
+        localDeviceNames: [String], localScenarios: [ScenarioInfo], broadcast: Bool,
+        leaseStateDir: URL? = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
+    ) throws {
+        guard let leaseStateDir, !localScenarios.isEmpty,
+              let resolvedAll = try? ProfileResolver.resolve(
+                  project: project, runName: profileName, overrides: setOverrides)
+        else { return }
+        let full = resolvedAll.filteringDevices(
+            names: localDeviceNames, deviceMachine: DeviceMachineGrouping.localDisplayName)
+        guard !full.devices.isEmpty else { return }
+        let (resolved, _) = limitingDevicesAvoidingMCP(
+            full, iosScenarios: localScenarios.filter { $0.platform != "android" }.count,
+            androidScenarios: localScenarios.filter { $0.platform != "ios" }.count,
+            trim: !broadcast, leaseStateDir: leaseStateDir)
+        do {
+            try rejectIfDevicesLeasedBeforePreparation(resolved: resolved, leaseStateDir: leaseStateDir)
+        } catch {
+            throw ProfileWorkerFactory.InstallError(message: error.localizedDescription
+                + " Nothing was dispatched to the other machines of this profile.")
+        }
+    }
+
     /// 台 → lease キー(Android = serial / iOS = udid。RunWorker の `serial ?? udid` と同じ値)。
     /// 解決の規則はワーカー構築と同じもの(AndroidDeviceCatalog.canonicalAVDID + 起動中の AVD /
     /// SimulatorCatalog.resolve)。iOS 実機は devicectl を引かず udid の記載をそのまま使う

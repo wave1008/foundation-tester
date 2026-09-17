@@ -132,10 +132,9 @@ public enum DeviceWiper {
         switch try target(spec: spec, platform: platform) {
         case .android(let avd):
             let key = androidLeaseKey?() ?? DeviceBooter.leaseKey(spec: spec, platform: platform)
-            if let refusal = DeviceBooter.stopRefusal(
-                deviceName: spec.name, key: key,
-                selfPID: ProcessInfo.processInfo.processIdentifier, force: force,
-                holderPID: { k in DeviceBooter.leaseHolderPID(leaseStateDir: leaseStateDir, key: k) }) {
+            if let refusal = DeviceBooter.deviceInUseRefusal(
+                deviceName: spec.name, keys: [key].compactMap { $0 }, force: force,
+                leaseStateDir: leaseStateDir) {
                 throw DeviceBooterError.commandFailed(refusal)
             }
             // **戻り値で成否を返させない**(`_ =` で捨てると「消えていないのに成功」になる。

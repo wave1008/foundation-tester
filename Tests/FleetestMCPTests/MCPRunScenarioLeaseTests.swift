@@ -30,8 +30,8 @@ final class MCPRunScenarioLeaseTests: XCTestCase {
     /// ScenarioHost.run より前に MCPDeviceLease の印を書く
     func testRunScenarioWritesLeaseBeforeTheRealRun() throws {
         let body = try functionBody("runScenario", in: try sourceCode())
-        guard let leaseRange = body.range(of: "MCPDeviceLease.writeAndWarnIfRunHolds") else {
-            XCTFail("runScenario が MCPDeviceLease.writeAndWarnIfRunHolds を呼んでいない")
+        guard let leaseRange = body.range(of: "MCPDeviceLease.writeAndWarnIfInUse") else {
+            XCTFail("runScenario が MCPDeviceLease.writeAndWarnIfInUse を呼んでいない")
             return
         }
         guard let runRange = body.range(of: "await ScenarioHost.run(project: project, scenarioID: info.id,") else {

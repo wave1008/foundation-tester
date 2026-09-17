@@ -310,7 +310,7 @@ extension MCPServer {
               let deviceKey = recorded ?? (args["udid"] as? String) ?? (args["serial"] as? String),
               !deviceKey.isEmpty else { return nil }
         // 印と文言は MCPDeviceLease の1箇所(ft_run_scenario も同じ口を使う)
-        return MCPDeviceLease.writeAndWarnIfRunHolds(
+        return MCPDeviceLease.writeAndWarnIfInUse(
             stateDir: stateDir, key: deviceKey, pid: ProcessInfo.processInfo.processIdentifier)
     }
 

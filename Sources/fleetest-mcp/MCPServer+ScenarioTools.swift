@@ -202,7 +202,7 @@ extension MCPServer {
         if let stateDir = deviceLeaseStateDir,
            let deviceKey = connection.udid ?? connection.serial, !deviceKey.isEmpty {
             let pid = ProcessInfo.processInfo.processIdentifier
-            let warning = MCPDeviceLease.writeAndWarnIfRunHolds(stateDir: stateDir, key: deviceKey, pid: pid)
+            let warning = MCPDeviceLease.writeAndWarnIfInUse(stateDir: stateDir, key: deviceKey, pid: pid)
             // **args が同じ udid/serial を直接名乗っている呼び出しだけ**は、call() の後処理
             // (`markDeviceInUse`)が同じ鍵を args から拾って同じ警告をもう一度応答の先頭へ足す
             // (driver(args) を経由しないこのツールだけが持つ重複経路)。二重に見せないため

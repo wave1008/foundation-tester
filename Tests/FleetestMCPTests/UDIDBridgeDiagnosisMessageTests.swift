@@ -96,7 +96,7 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
     }
 
     /// busy かつ run が使用中と分かっているときは、その pid を理由として添える
-    /// (`markDeviceInUse`/`writeAndWarnIfRunHolds` の警告と表現は重ねず、ここだけの1文で言う)
+    /// (`markDeviceInUse`/`writeAndWarnIfInUse` の警告と表現は重ねず、ここだけの1文で言う)
     func testBridgeBusyMessageNamesTheHoldingRunWhenKnown() {
         let text = MCPServer.bridgeBusyOnUDIDMessage(
             udid: "SIM-1234",

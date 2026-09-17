@@ -64,4 +64,25 @@ final class MCPDeviceLeaseTests: XCTestCase {
                           error.localizedDescription)
         }
     }
+
+    /// **別の MCP セッション**が同じ台の印を持っていたら名指しして言う(操作は止めない)。
+    /// 2026-09-17 負荷テスト M16: 2本目のセッションが1本目の周回中の台を無言で操作した。
+    /// 生きた別プロセスの印には launchd(1)を使う(印は開始時刻まで照合するので実在の pid が要る)
+    func testTouchingADeviceAnotherMCPSessionDrivesIsNamed() async throws {
+        MCPDeviceLease.write(stateDir: stateDir, key: "UDID-X", pid: 1)
+        let text = try await snapshotText()
+        XCTAssertTrue(text.contains("another MCP session (fleetest-mcp pid 1) is driving this device too"), text)
+        XCTAssertTrue(driver.calls.contains { $0.hasPrefix("snapshot") }, "警告して進むこと: \(driver.calls)")
+        XCTAssertEqual(MCPDeviceLease.liveHolders(stateDir: stateDir, excluding: []),
+                       ["UDID-X": ProcessInfo.processInfo.processIdentifier], "自分の印で上書きする")
+        let again = try await snapshotText()
+        XCTAssertFalse(again.contains("another MCP session"), "相手が書き戻すまでは言わない: \(again)")
+    }
+
+    /// 自分の印しか無ければ黙る
+    func testOwnMCPLeaseStaysQuiet() async throws {
+        _ = try await snapshotText()
+        let text = try await snapshotText()
+        XCTAssertFalse(text.contains("another MCP session"), text)
+    }
 }

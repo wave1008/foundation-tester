@@ -91,6 +91,16 @@ enum ApiRunMachineFanout {
             logStderr("    \(group.machineLabel): \(ids.count) scenario(s) on \(group.deviceNames.count) device(s)")
         }
 
+        // 手元の台の二重使用は runStarted と子の起動より前に断る(単機の api run の拒否と同じ形 =
+        // NDJSON を1行も出さず stderr + 非0。ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch)
+        if let local = active.first(where: { $0.group.machine == nil }) {
+            let ids = Set(local.ids)
+            try ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch(
+                project: project, profileName: profileName, setOverrides: options.setOverrides,
+                localDeviceNames: local.group.deviceNames,
+                localScenarios: selected.filter { ids.contains($0.id) }, broadcast: false)
+        }
+
         // total は対象外を除いた本数(単機の ApiRunCommand と同じ: スキップは runStarted に数えない)
         writeLine(encode(ApiRunStartedEvent(total: selected.count - notApplicable.count)))
 

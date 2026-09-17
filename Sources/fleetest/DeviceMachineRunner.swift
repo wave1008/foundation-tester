@@ -138,6 +138,15 @@ enum DeviceMachineRunner {
             }
         }
 
+        // 手元の台の二重使用は**どの機械へも配る前に**断る(ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch)
+        if let local = active.first(where: { $0.1.machine == nil }) {
+            let ids = Set(local.2)
+            try ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch(
+                project: project, profileName: profileName, setOverrides: setOverrides,
+                localDeviceNames: local.1.deviceNames,
+                localScenarios: selected.filter { ids.contains($0.id) }, broadcast: broadcast)
+        }
+
         let binary = FleetRunner.selfBinaryPath()
         // 機械ごとに別々の run になるので、ここで1回だけ束ね鍵を発行して全員へ配る
         // (FTCore.RunMetaRecord.runGroup。子が自分で作ると束にならない)

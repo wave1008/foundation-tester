@@ -141,6 +141,77 @@ final class DeviceBooterSweepRefusalTests: XCTestCase {
             simulatorNames: { namesLookedUp += 1; return [:] }))
         XCTAssertEqual(namesLookedUp, 0)
     }
+
+    // MARK: - MCP(fleetest-mcp)が操作中の台(2026-09-17 負荷テスト M10)
+    // MCP の印は「pid + 開始時刻」で生死を見るので、保持者には常に生きている launchd(1)を使う
+    // (親の pid は「MCP が起こしたコマンド」として数えない設計なので使えない)
+
+    private let mcpHolder: Int32 = 1
+
+    private func makeStateDir() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("mcp-refusal-\(UUID().uuidString)")
+    }
+
+    func testMCPStopRefusalNamesTheSessionNotARun() throws {
+        let message = try XCTUnwrap(DeviceBooter.mcpStopRefusal(
+            deviceName: "iPhone 17", keys: ["U1"], force: false, mcpHolderPID: { _ in 4242 }))
+        XCTAssertTrue(message.contains("iPhone 17 is being driven by an MCP session (fleetest-mcp pid 4242)"), message)
+        XCTAssertFalse(message.contains("fleetest run"), "run が使用中とは言わない: \(message)")
+        XCTAssertTrue(message.contains("--force"), message)
+        XCTAssertNil(DeviceBooter.mcpStopRefusal(
+            deviceName: "iPhone 17", keys: ["U1"], force: true, mcpHolderPID: { _ in 4242 }))
+        XCTAssertNil(DeviceBooter.mcpStopRefusal(
+            deviceName: "iPhone 17", keys: ["U1"], force: false, mcpHolderPID: { _ in nil }))
+    }
+
+    /// 台を止める経路(停止・一括停止)は MCP の印を読んで断る。印の無い台は止める
+    func testShutdownAllRefusesADeviceTheMCPIsDriving() async throws {
+        let dir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        MCPDeviceLease.write(stateDir: dir, key: "00008130-MCP", pid: mcpHolder)
+
+        let profile = DeviceRoster(ios: DeviceRosterList(devices: [
+            DeviceSpec(name: "iPhone-MCP", kind: .physical, udid: "00008130-MCP"),
+            DeviceSpec(name: "iPhone-Free", kind: .physical, udid: "00008130-FREE"),
+        ]))
+        let stopped = LockedBox([String]())
+        let outcomes = await DeviceBooter.shutdownAll(
+            machine: profile, repoRoot: nil, leaseStateDir: dir, log: { _ in },
+            stopOne: { spec, _ in stopped.mutate { $0.append(spec.name) } })
+
+        XCTAssertEqual(stopped.value, ["iPhone-Free"])
+        let failure = outcomes.first { $0.name == "iPhone-MCP" }?.failure ?? ""
+        XCTAssertTrue(failure.contains("MCP session (fleetest-mcp pid \(mcpHolder))"), failure)
+    }
+
+    /// 全掃討も MCP の印を読む。run-lease と両方あれば両方を名指しする
+    func testSweepRefusesWhileAnMCPSessionDrivesADevice() throws {
+        let dir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        MCPDeviceLease.write(stateDir: dir, key: "UDID-MCP", pid: mcpHolder)
+        let mcpOnly = try XCTUnwrap(DeviceBooter.sweepRefusal(
+            force: false, leaseStateDir: dir, simulatorNames: { ["UDID-MCP": "iPhone 17"] }))
+        XCTAssertTrue(mcpOnly.contains("an MCP session is driving iPhone 17 [UDID-MCP] (fleetest-mcp pid \(mcpHolder))"),
+                      mcpOnly)
+        XCTAssertNil(DeviceBooter.sweepRefusal(force: true, leaseStateDir: dir, simulatorNames: { [:] }))
+
+        RunLease.write(stateDir: dir, key: "UDID-RUN", pid: getppid())
+        let both = try XCTUnwrap(DeviceBooter.sweepRefusal(
+            force: false, leaseStateDir: dir, simulatorNames: { [:] }))
+        XCTAssertTrue(both.contains("UDID-RUN (held by pid \(getppid()))"), both)
+        XCTAssertTrue(both.contains("UDID-MCP (fleetest-mcp pid \(mcpHolder))"), both)
+    }
+
+    /// 自分(と親)の印は数えない(MCP が起こしたコマンドが自分の台を断らない)
+    func testOwnMCPLeaseDoesNotRefuse() {
+        let dir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        MCPDeviceLease.write(stateDir: dir, key: "UDID-OWN", pid: getpid())
+        MCPDeviceLease.write(stateDir: dir, key: "UDID-PARENT", pid: getppid())
+        XCTAssertNil(DeviceBooter.deviceInUseRefusal(
+            deviceName: "d", keys: ["UDID-OWN", "UDID-PARENT"], force: false, leaseStateDir: dir))
+        XCTAssertNil(DeviceBooter.sweepRefusal(force: false, leaseStateDir: dir, simulatorNames: { [:] }))
+    }
 }
 
 /// 実機 iOS の解決後 UDID(devicectl の一覧との照合。到達性は問わない・純粋関数)

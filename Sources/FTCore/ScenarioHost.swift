@@ -484,7 +484,9 @@ public enum ScenarioHost {
         var killer: Task<Void, Never>?
         if let watchdogSeconds {
             killer = Task {
-                let clock = ContinuousClock()
+                // **SuspendingClock**: Mac のスリープ中は子も止まっているので、その時間を締め切りに数えない
+                // (ContinuousClock だと復帰の瞬間に実行中の全レーンが timeout で赤になる)
+                let clock = SuspendingClock()
                 // 旧実装の `UInt64(watchdogSeconds) * 1_000_000_000` は負値で `UInt64(negative)` が
                 // trap し、桁の大きい値では乗算が overflow して trap した。入口検証
                 // (`RunProfileSetOverride`/`api validate-profile`/`ApiRunCommand.validate`)が
@@ -497,14 +499,19 @@ public enum ScenarioHost {
                 while !Task.isCancelled {
                     let now = clock.now
                     guard now < deadline else { break }
-                    try? await Task.sleep(for: deadline - now)
+                    try? await Task.sleep(until: deadline, clock: clock)
                     guard !Task.isCancelled else { return }
                     let extraMs = Self.continuousClockMs(await extensionTracker.extra)
                     guard extraMs > grantedExtraMs else { break }
                     deadline += .milliseconds(extraMs - grantedExtraMs)
                     grantedExtraMs = extraMs
                 }
-                guard !Task.isCancelled, await timeoutGuard.claim() else { return }
+                // **締め切りの時点で子が既に終わっていたら打ち切らない**(判定は終了経路に任せる)。
+                // 親が止まっていた間(拡張ホストの停止・ssh 越しの親の停止)に子が完走すると、再開時に
+                // この Task と stdout の読み取りが同時に起き、先に claim すると緑の子を timeout の赤に
+                // 書き換えていた(2026-09-17 負荷テスト M9。ScenarioHostWatchdogExitedChildTests)
+                guard !Task.isCancelled, ProcessLiveness.isAlive(process.processIdentifier),
+                      await timeoutGuard.claim() else { return }
                 process.terminate()  // SIGTERM
                 try? await Task.sleep(nanoseconds: 2_000_000_000)  // 2s 猶予
                 // process.isRunning は内部で waitpid して子を reap してしまい、終了待ち

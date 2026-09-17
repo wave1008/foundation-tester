@@ -132,7 +132,6 @@ public enum DeviceBooter {
         let entries: [(spec: DeviceSpec, platform: String)] =
             (machine.ios?.devices ?? []).map { ($0, "ios") } +
             (machine.android?.devices ?? []).map { ($0, "android") }
-        let selfPID = ProcessInfo.processInfo.processIdentifier
         let hasPhysicalIOS = entries.contains { $0.spec.isPhysical && $0.platform == "ios" }
         let resolvedPhysicalIOSDevices: [IOSPhysicalDeviceInfo] = physicalIOSDevices
             ?? ((hasPhysicalIOS && repoRoot != nil) ? ((try? IOSPhysicalDeviceCatalog.devices()) ?? []) : [])
@@ -150,10 +149,8 @@ public enum DeviceBooter {
                 leaseKeys.append(resolved)
             }
             var failure: String?
-            if let refusal = stopRefusal(
-                deviceName: spec.name, keys: leaseKeys,
-                selfPID: selfPID, force: force,
-                holderPID: { key in leaseHolderPID(leaseStateDir: leaseStateDir, key: key) }) {
+            if let refusal = deviceInUseRefusal(
+                deviceName: spec.name, keys: leaseKeys, force: force, leaseStateDir: leaseStateDir) {
                 log("❌ \(spec.name): \(refusal)")
                 failure = refusal
             } else {
@@ -210,6 +207,43 @@ public enum DeviceBooter {
         return nil
     }
 
+    /// **MCP(fleetest-mcp)が操作中の台も止めない**(run と同じ規律④。run は MCP の台を避けるのに、
+    /// 止める側だけが印を読まずにエージェントの台を落としていた = 2026-09-17 負荷テスト M10)。
+    /// 文言は run の拒否と分ける(「run が使用中」は事実と違う)
+    static func mcpStopRefusal(
+        deviceName: String, keys: [String], force: Bool, mcpHolderPID: (String) -> Int32?
+    ) -> String? {
+        guard !force, let pid = keys.lazy.compactMap(mcpHolderPID).first else { return nil }
+        return "refusing to stop: \(deviceName) is being driven by an MCP session (fleetest-mcp pid \(pid))."
+            + " Finish that session or point it at another device, or pass --force to stop it anyway."
+    }
+
+    /// 台を止める操作の門(run-lease → MCP の印の順)。止める4経路(停止・一括停止・再起動・Wipe)はここを通す
+    static func deviceInUseRefusal(
+        deviceName: String, keys: [String], force: Bool, leaseStateDir: URL?
+    ) -> String? {
+        stopRefusal(deviceName: deviceName, keys: keys,
+                    selfPID: ProcessInfo.processInfo.processIdentifier, force: force,
+                    holderPID: { leaseHolderPID(leaseStateDir: leaseStateDir, key: $0) })
+            ?? mcpStopRefusal(deviceName: deviceName, keys: keys, force: force,
+                              mcpHolderPID: { mcpLeaseHolderPID(leaseStateDir: leaseStateDir, key: $0) })
+    }
+
+    /// 自分と親の印は数えない(MCP が起こしたコマンドが自分の台を「MCP が操作中」と断らない)
+    static func mcpLeaseHolderPID(leaseStateDir: URL?, key: String) -> Int32? {
+        let dir = leaseStateDir ?? (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
+        guard let dir else { return nil }
+        return MCPDeviceLease.holderPID(stateDir: dir, key: key, excluding: [getpid(), getppid()])
+    }
+
+    /// 全掃討の MCP 側(純粋関数)。holders: (表示名, pid)
+    public static func mcpSweepRefusal(holders: [(device: String, pid: Int32)], force: Bool) -> String? {
+        guard !force, !holders.isEmpty else { return nil }
+        let list = holders.map { "\($0.device) (fleetest-mcp pid \($0.pid))" }.joined(separator: ", ")
+        return "refusing to shut everything down: an MCP session is driving \(list)."
+            + " Finish that session, or pass --force to stop it anyway."
+    }
+
     /// 全掃討(`devices down` のプロファイル無し)の門。掃討は `simctl shutdown all`・全エミュレータ・
     /// 全ブリッジを一括で落とし台を選べないので、**生きた run-lease が1本でもあれば掃討ごと断る**
     /// (stopRefusal と同じ規律④。台ごとに除外する形にはしない)。describe: 鍵 → 表示名
@@ -240,12 +274,20 @@ public enum DeviceBooter {
             guard let pid = RunLease.holderPID(stateDir: dir, key: $0) else { return false }
             return pid != selfPID
         }
-        guard !keys.isEmpty else { return nil }
+        // MCP の印も読む(mcpStopRefusal と同じ理由。自分と親の印は数えない)
+        let mcpHolders = MCPDeviceLease.liveHolders(stateDir: dir, excluding: [selfPID, getppid()])
+        guard !keys.isEmpty || !mcpHolders.isEmpty else { return nil }
         let names = simulatorNames()
-        return sweepRefusal(
+        let describe: (String) -> String = { key in names[key].map { "\($0) [\(key)]" } ?? key }
+        let runRefusal = sweepRefusal(
             keys: keys, selfPID: selfPID, force: force,
-            holderPID: { RunLease.holderPID(stateDir: dir, key: $0) },
-            describe: { key in names[key].map { "\($0) [\(key)]" } ?? key })
+            holderPID: { RunLease.holderPID(stateDir: dir, key: $0) }, describe: describe)
+        let mcpRefusal = mcpSweepRefusal(
+            holders: mcpHolders.sorted { $0.key < $1.key }.map { (describe($0.key), $0.value) }, force: force)
+        switch (runRefusal, mcpRefusal) {
+        case let (run?, mcp?): return run + " " + mcp
+        default: return runRefusal ?? mcpRefusal
+        }
     }
 
     public static func simulatorNamesByUDID() -> [String: String] {
@@ -566,10 +608,8 @@ public enum DeviceBooter {
                 leaseKeys.append(resolved)
             }
         }
-        if let refusal = stopRefusal(
-            deviceName: spec.name, keys: leaseKeys,
-            selfPID: ProcessInfo.processInfo.processIdentifier, force: force,
-            holderPID: { key in leaseHolderPID(leaseStateDir: leaseStateDir, key: key) }) {
+        if let refusal = deviceInUseRefusal(
+            deviceName: spec.name, keys: leaseKeys, force: force, leaseStateDir: leaseStateDir) {
             throw DeviceBooterError.commandFailed(refusal)
         }
         // 実機は停止しない(ユーザーの端末を勝手に落とさない)。ブリッジだけ止める。
