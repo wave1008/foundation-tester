@@ -1188,3 +1188,33 @@ XCTest の issue がテストメソッドの外(main queue)で記録されるた
   シミュレータで埋まっていた。**切った出力を不在の根拠にしない**(CLAUDE.md の確かめ方に追記)。
 - **実機用の SUT が古いまま実機で走った** —— `e2e.sh` はシミュレータ用しか作り直していなかった。
   実機用を一度作ってある機械では、ソースの鮮度で `build-ios-device.sh` も撃つ(失敗は警告だけ)。
+
+## 32. 一時停止・二重投入・MCP の台(2026-09-17 負荷テスト M9 / M12 / M10 / M16)
+
+- **M9 親が止まっている間に緑で終わった子を、再開の瞬間に timeout の赤へ書き換えていた**
+  (`api run` を 3 分 SIGSTOP・リモートの run を SIGSTOP の 2/2 で再現。レポート .md は ✅、結果 DB は赤、
+  `scenarioFinished` は緑と赤の 2 回流れていた)。再開時に watchdog の Task と stdout の読み取りが同時に
+  起き、先に `timeoutGuard.claim()` を取ると終わっている子を打ち切り扱いにする。
+  → **打ち切る前に子の生存を `ProcessLiveness.isAlive` で見る**(ゾンビ = 回収前も死と見る)。
+  あわせて締め切りの時計を **SuspendingClock** にした(Mac のスリープ中は子も止まっているので数えない。
+  ContinuousClock だと復帰の瞬間に実行中の全レーンが赤になる)。
+  陽性対照: `ScenarioHostWatchdogExitedChildTests`(孫が stdout を握って EOF を遅らせ、「締め切りの時点で
+  子は死んでいる」を作る)。デバイス: Pixel 3a の `api run` を 200 秒止めても緑 1 回・exit 0。
+  **同型の掃討**: 締め切りで子を止める他の経路(`Shell.run` の timeout・リモートの timeout)はセマフォの
+  待ちで終了を見るので、終わった子を打ち切る競合は無い。
+- **M12 手元分が「already in use」で断られた run が、リモート3機のロックを取って残りを走らせ、
+  同時刻に始まった本来の run のリモート 25 本を弾いた**。手元の子の拒否は子の中で起き、機械ごとの子は独立に走る。
+  → `ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch` を **どの機械へも配る前**に呼ぶ
+  (`fleetest run` の DeviceMachineRunner と `api run` の ApiRunMachineFanout の2経路。手元の子と同じ規則 =
+  この機械の台へ絞る → 本数+予備で絞る(MCP の台を避ける)→ lease 照合)。`api run` は単機の拒否と同じ形
+  (NDJSON を1行も出さず stderr + 非0)。リモート側の使用中(dispatch.lock)は子が自分で見る(ssh を足さない)。
+- **M10 台を止める操作(停止・一括停止・再起動・Wipe・全掃討)が MCP の印を読まず、エージェントが
+  操作中のシミュレータを警告なしで止めた**(run は MCP の台を避けるのに、止める側だけが読んでいなかった)。
+  → `DeviceBooter.deviceInUseRefusal`(run-lease → MCP の印)と全掃討の `mcpSweepRefusal`。
+  **文言は run の拒否と分ける**(「run が使用中」は事実と違う)。**自分と親の印は数えない**
+  (MCP が起こしたコマンドが自分の台を断らない)。拡張は「refusing to shut everything down:」の書き出しで
+  拾うので MCP だけの拒否もそのまま表示される。
+- **M16 MCP 同士は互いの印を見ず、2本目のセッションが1本目の周回中の台を無言で操作した**。
+  → `MCPDeviceLease.writeAndWarnIfInUse` が**書く前に**別セッションの印を読んで警告する(断らない =
+  run の衝突と同じ扱い。書くと上書きするので、相手が書き戻すまでは言わない)。
+- **残した同型**: `fleetest bridge down` は run-lease も MCP の印も読まない(保守者向け・止めても run は復活で戻る)。

@@ -255,6 +255,9 @@
     async 文脈に書かない = Swift 6 でエラー。同期関数の既存2箇所は据え置き)。
     **SIGKILL へのエスカレートは ssh にだけ**。**シグナルソースは1プロセスに1組**
     → maintainer-notes §3.2。`fleetest remote unlock` は自分の死んだディスパッチのロックだけを外す(`RemoteDispatchUnlock`)。**ロックの自動回収・unlock はランナー上でその run が生きていないことを確かめてから外す**(手元の pid が死んでもリモートの run は生きている)。**`-tt` の ssh は `ParentBoundCommand` で包む**(`kill -9` で親が死ぬと孤児の ssh がリモートの run を出力の write で止めたままにする)
+  - **機械分担の run は手元の台の二重使用を、どの機械へも配る前に断る**
+    (`ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch`。run / api run の2経路。子の中の拒否だけだと
+    リモート分が走り続けて同時刻の別 run を弾く)→ maintainer-notes §32
   - **`--runner M` + 明示 `--device` は M の台に限定**
     (`RemoteDispatchExplicitDeviceScope`)。**`--runner local` も同じ判定を通す**
     (run / api run の2経路。絞らないと別ホストのエントリの UDID を手元で探して
@@ -286,9 +289,9 @@
   `streamedByOther`。保持者は両方のウィンドウが同じ答えを出す規則で1本に決める)/ **④他人の run を殺す操作はロックを読む**(`remote clean` は中止・
   `--ignore-lock` で押し切る。**読めないときは通す** = 掃除が永久にできなくなるほうが害が大きい)。
   **台を止める操作も同じ**(`DeviceBooter.shutdownOne` / `shutdownAll` が実際に止める前に
-  `stopRefusal` = run-lease の保持者を読む。`api stop-device` / `stop-all-devices` / `restart-devices` /
+  `deviceInUseRefusal` = run-lease と **MCP の印(`mcp-<鍵>.lease`)** の保持者を読む。文言は run と MCP で分ける。`api stop-device` / `stop-all-devices` / `restart-devices` /
   `wipe-device` / `devices down --profile` の全部がここを通る。押し切るのは CLI の `--force` だけ)。
-  **プロファイル無しの全掃討 `devices down` は台を選べないので、生きた run-lease が1本でもあれば
+  **プロファイル無しの全掃討 `devices down` は台を選べないので、生きた run-lease か MCP の印が1本でもあれば
   掃討ごと断る**(`DeviceBooter.sweepRefusal`。判定はリモートへ分散する前。`--force` は子へ、
   `remote clean --ignore-lock` は `--force` として運ぶ)→ maintainer-notes §25。
   **奪う口(`--force-lock` / `--force`)を GUI に出さない**。
@@ -884,6 +887,9 @@
   **階層をまたぐ保証(起こした側 → `api run` → シナリオ実行バイナリ)は `CrossLayerTerminationTests` が
   実バイナリで固定する**(`--dry-run --debug --pause-on-start --skip-build` = デバイスも入れ子の swift build も
   要らない長生きの孫。親の SIGKILL と子への SIGTERM の両方)
+- **シナリオの watchdog(`ScenarioHost`)は打ち切る前に子の生存を見る・時計は SuspendingClock**
+  (親の一時停止・Mac のスリープからの再開で、終わっていた緑の子を timeout の赤に書き換えていた。
+  `ScenarioHostWatchdogExitedChildTests`)→ maintainer-notes §32
 - **`Shell.run` は子孫ごと止め、出力の EOF を待ち切らない**(Codex 指摘 2026-09-05): timeout の
   SIGTERM/SIGKILL は `killpg`(Foundation.Process の子はグループリーダー)で孫まで届かせる ——
   `kill(pid,…)` だけだと `trap '' TERM` を継いだ孫がパイプを握り続けて 30 秒返らなかった。
