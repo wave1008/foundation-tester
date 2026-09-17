@@ -384,8 +384,11 @@ public enum BridgeAPI {
     /// hint text (shared `TypeReadback.readbackTarget`), and reports an abandoned retype separately.
     /// v109 (in-app only): a ref tap whose activate did not fire retries activate only on self-rendered apps
     /// (`AppUIFramework.retriesUnfiredActivate`); others re-read the element once for its current frame and
-    /// send the synthetic touch without the settle + 250ms + second re-read (waiting only if it moved).
-    public static let bridgeProtocolVersion = 109
+    /// send the synthetic touch without the 250ms pause and the second re-read + activate.
+    /// v110 (in-app only): the v109 path waits for the screen to settle before the synthetic touch again
+    /// (a tap right after rotateTo was swallowed while the rotation was still running); it only skips the
+    /// 250ms pause and the second re-read + activate.
+    public static let bridgeProtocolVersion = 110
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///

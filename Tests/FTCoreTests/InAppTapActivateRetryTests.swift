@@ -45,6 +45,24 @@ final class InAppTapActivateRetryTests: XCTestCase {
         XCTAssertLessThan(gate.lowerBound, retry.lowerBound, "分岐は撃ち直しの前に置く")
     }
 
+    /// 撃ち直さない経路も、整定を待ってから合成タッチすること(回転の遷移中はタッチが捨てられる。
+    /// 「位置が動いたときだけ待つ」にしたら E2E-RN の回転直後の tap が吸われた)
+    func testNonRetryPathSettlesBeforeTheSyntheticTouch() throws {
+        let body = try tapByRefBody()
+        guard let start = body.range(of: "func synthAtCurrentFrame("),
+              let end = body.range(of: "func retry(", range: start.upperBound..<body.endIndex) else {
+            return XCTFail("synthAtCurrentFrame が見つかりません")
+        }
+        let path = body[start.lowerBound..<end.lowerBound]
+        guard let settle = path.range(of: "InAppSettle.waitOnMain("),
+              let touch = path.range(of: "synthFallback(") else {
+            return XCTFail("整定待ちか合成タッチが見つかりません")
+        }
+        XCTAssertLessThan(settle.lowerBound, touch.lowerBound, "合成タッチは整定の後")
+        XCTAssertEqual(path.components(separatedBy: "synthFallback(").count - 1, 1,
+                       "整定を通らずに合成タッチへ落ちる枝を作らない")
+    }
+
     /// 撃ち直さない経路も、取り直した現在 frame で撃つこと(RN のコールドラウンチでレイアウト確定前の
     /// frame を叩いた実害)
     func testNonRetryPathStillAdoptsTheCurrentFrame() throws {
