@@ -828,10 +828,11 @@ export function closeDeviceOpMenu() {
 }
 
 // entry=null はグリッドの空きエリアでの右クリック(デバイスの項目は出さず、全体の項目だけ)。
-function openDeviceOpMenu(entry, clientX, clientY) {
+function openDeviceOpMenu(entry, clientX, clientY, { selectAllOnly = false } = {}) {
   deviceOpMenuEntry = entry;
   deviceOpMenuOpen = true;
   renderSelectionMenuItems();
+  deviceOpMenuDeselectAllBtn.style.display = selectAllOnly ? 'none' : '';
   deviceOpMenuSelectOnlyBtn.style.display = entry ? '' : 'none';
   if (!entry) {
     deviceOpMenuItemBtn.style.display = 'none';
@@ -870,6 +871,16 @@ export function openDeviceOpMenuForDevice(deviceId, clientX, clientY) {
     return false;
   }
   openDeviceOpMenu(entry, clientX, clientY);
+  return true;
+}
+
+// 実行ログのペイン(laneLog.js)の右クリック口。**選択が1台も無いとき**(すべて解除の状態)だけ
+// 「すべて選択」1項目のメニューを開く。それ以外は false = 呼び手は何も出さない
+export function openSelectAllOnlyMenu(clientX, clientY) {
+  if (selectAllOn || selectedDeviceIds.size > 0) {
+    return false;
+  }
+  openDeviceOpMenu(null, clientX, clientY, { selectAllOnly: true });
   return true;
 }
 

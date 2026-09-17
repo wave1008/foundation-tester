@@ -3,7 +3,7 @@
 
 import { MAX_LANE_LINES, OVERALL_LANE_ID, overallLaneName, workerDisplayLabel } from "../../runLaneModel";
 import { lanesTitle, lanesPlaceholder, lanesGrid, lanesSelectionStatus, lanesRunStatus } from './domRefs.js';
-import { tiles, selectedDeviceIds, attachDeviceMirror, detachDeviceMirror, openDeviceOpMenuForDevice } from './deviceTiles.js';
+import { tiles, selectedDeviceIds, attachDeviceMirror, detachDeviceMirror, openDeviceOpMenuForDevice, openSelectAllOnlyMenu } from './deviceTiles.js';
 import { t } from '../i18n.js';
 import { setHoverTip } from './hoverTip.js';
 import { computePreviewGrid } from './previewGridModel.js';
@@ -267,8 +267,14 @@ if (typeof ResizeObserver !== 'undefined') {
   new ResizeObserver(() => relayoutPreviewsForResize()).observe(lanesGrid);
 }
 
-// 実行ログのペインでは既定メニュー(Cut/Copy/Paste)を出さない。document へは伝播させる(開いているメニューを閉じる)
-lanesGrid.parentElement.addEventListener('contextmenu', (event) => event.preventDefault());
+// 実行ログのペインでは既定メニュー(Cut/Copy/Paste)を出さない。選択が1台も無いときだけ「すべて選択」を出す。
+// 出さないときは document へ伝播させる(開いているメニューを閉じる)。出したときは止める(直後に閉じられるため)
+lanesGrid.parentElement.addEventListener('contextmenu', (event) => {
+  event.preventDefault();
+  if (openSelectAllOnlyMenu(event.clientX, event.clientY)) {
+    event.stopPropagation();
+  }
+});
 
 // 出力ペインは常設(実行前もデバイス毎の空レーンを表示)。レーンはdevicesサイクルから常時同期。
 export function updateLanesPlaceholder() {

@@ -85,10 +85,11 @@ function selectFirstTile(window, document) {
     new window.MouseEvent("click", { bubbles: true, cancelable: true }));
 }
 
-test("ログの上の右クリックは、既定メニューもデバイスのメニューも出さない", (t) => {
+test("選択があるとき、ログの上の右クリックは既定メニューもデバイスのメニューも出さない", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevice(window);
+  selectFirstTile(window, document);
   post(window, { type: "runEvent", action: { type: "line", laneId: "ios:Sim 1", text: "log line" } });
   post(window, { type: "runEvent", action: { type: "line", laneId: "__overall__", text: "overall" } });
   const menu = document.getElementById("device-op-menu");
@@ -130,4 +131,35 @@ test("拡大表示の右クリックは、タイルと同じ「ライブ操作�
   rightClick(window, preview);
   rightClick(window, document.getElementById("lanes-title"));
   assert.ok(!menu.classList.contains("visible"));
+});
+
+const display = (document, id) => document.getElementById(id).style.display;
+
+test("選択が1台も無いとき(すべて解除)、ログの右クリックは「すべて選択」だけのメニューを出す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevice(window);
+  const menu = document.getElementById("device-op-menu");
+  const event = rightClick(window, document.getElementById("lanes-title"));
+  assert.equal(event.defaultPrevented, true, "既定メニューは出さない");
+  assert.ok(menu.classList.contains("visible"), "document の contextmenu で閉じられずに開いたまま");
+  for (const id of ["device-op-menu-item", "device-op-menu-live", "device-op-menu-gpu", "device-op-menu-sep",
+    "device-op-menu-select-only", "device-op-menu-deselect-all"]) {
+    assert.equal(display(document, id), "none", `${id} は出さない`);
+  }
+  const selectAll = document.getElementById("device-op-menu-select-all");
+  assert.notEqual(selectAll.style.display, "none");
+  assert.equal(selectAll.disabled, false);
+
+  selectAll.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+  assert.equal(document.querySelectorAll("#grid .tile.selected").length, 1, "押すと全台が選ばれる");
+  assert.ok(!menu.classList.contains("visible"));
+
+  // 選択がある状態では出さない
+  rightClick(window, document.getElementById("lanes-title"));
+  assert.ok(!menu.classList.contains("visible"));
+  // タイルの右クリックでは「すべて解除」が戻る(隠したままにしない)
+  rightClick(window, document.querySelector("#grid .tile"));
+  assert.ok(menu.classList.contains("visible"));
+  assert.notEqual(display(document, "device-op-menu-deselect-all"), "none");
 });
