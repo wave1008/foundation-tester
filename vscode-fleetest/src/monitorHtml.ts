@@ -250,7 +250,7 @@ function renderDevicesPanel(): string {
           <span class="hm-fm-dead-badge"></span>
         </div>
       </div>
-      <!-- グラフの右・ツールバー右端の3つ。左からラインビューの表示・全選択トグル・高さの自動調整。
+      <!-- グラフの右・ツールバー右端の2つ。左からラインビューの表示・全選択トグル。
            **どちらもタイルの見え方を操るので1つのグループに入れる**(枠の中でだけ隣接させ、
            ツールバーの他のボタンとは gap で切る)。
            **title/aria-label は webview 側(deviceTiles.js)が入れる** —— 押すたびに
@@ -259,9 +259,6 @@ function renderDevicesPanel(): string {
         <!-- ラインビュー(タイル領域+スプリッター)の表示トグル。アイコンは縦長の枠3つ(並んだタイル)。状態と title は splitter.js -->
         <button id="btn-fleet-visible" class="icon-button" type="button" aria-pressed="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 2h4v12H1V2zm1 1v10h2V3H2zm4-1h4v12H6V2zm1 1v10h2V3H7zm4-1h4v12h-4V2zm1 1v10h2V3h-2z"/></svg></button>
         <button id="btn-select-all" class="icon-button" type="button" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 2h14v12H1V2zm1 1v10h12V3H2z"/><path d="M7 11.4 3.9 8.3l.9-.9L7 9.6l4.2-4.2.9.9z"/></svg></button>
-        <!-- ON の間、タイル高さを「全デバイスが横幅にちょうど収まる」高さへ自動調整する
-             (状態と再計算契機は splitter.js)。左右の縁へ向かう両矢印の自作SVG。 -->
-        <button id="btn-auto-fit" class="icon-button toolbar-auto-fit" type="button" aria-pressed="false" title="${t("panels.toolbar.autoFitTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1 3h1v10H1zM14 3h1v10h-1zM5 7.5h6v1H5zM6 5.5L3 8l3 2.5zM13 8l-3-2.5v5z"/></svg></button>
       </div>
     </div>
     <div id="banner" class="banner"></div>

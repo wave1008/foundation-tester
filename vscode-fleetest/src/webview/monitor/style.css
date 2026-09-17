@@ -296,7 +296,7 @@ button.bulk-cancel:hover:not(:disabled) {
 .toolbar-tail-start {
   margin-left: auto;
 }
-/* タイルの見え方を操る2つ(全選択・高さの自動調整)を1つのグループとして囲う。
+/* タイルの見え方を操るアイコン(ラインビューの表示・全選択)を1つのグループとして囲う。
    枠は .icon-button の角丸(5px)+ 1px の余白ぶんだけ外側に取る。
    **下寄せ**(.toolbar の align-items: center を align-self で上書き) —— ホストグラフは
    リモート機のぶんだけ縦に伸びるので、中央だと機械の数でグループの位置が動く。 */
@@ -313,10 +313,6 @@ button.bulk-cancel:hover:not(:disabled) {
   padding: 1px;
   border-radius: 6px;
   box-shadow: inset 0 0 0 1px var(--vscode-widget-border, rgba(127, 127, 127, 0.35));
-}
-/* ドラッグによる一時停止中(splitter.js。台数が変わると自動で再開)。ON 表示のまま減光で区別する。 */
-.toolbar-auto-fit.toggled.suspended {
-  opacity: 0.55;
 }
 .host-metric {
   display: flex;

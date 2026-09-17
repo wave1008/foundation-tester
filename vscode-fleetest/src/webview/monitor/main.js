@@ -70,7 +70,7 @@ import { applyMachineColors } from './machineColors.js';
 import { applyResidentMessage } from './processesTab.js';
 import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
 import { activateTab, currentTab, TAB_IDS, switchTab } from './tabs.js';
-import { setTilePaneHeight, setTileAutoFit, setFleetVisible, isFleetVisible } from './splitter.js';
+import { setTilePaneHeight, setFleetVisible, isFleetVisible } from './splitter.js';
 import { adoptTitleHoverTips } from './hoverTip.js';
 import { setDevicesWaiting } from './waitingNote.js';
 import { handleDashboardMessage } from './dashboardTab.js';
@@ -272,9 +272,6 @@ window.addEventListener('message', (event) => {
       break;
     case 'tilePaneHeight':
       setTilePaneHeight(message.value);
-      break;
-    case 'tileAutoFit':
-      setTileAutoFit(message.value);
       break;
     case 'fleetVisible':
       setFleetVisible(message.value);

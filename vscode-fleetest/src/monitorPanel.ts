@@ -235,8 +235,6 @@ export class MonitorPanelController implements vscode.Disposable {
   /** 「テスト実行」タブのスプリッター位置(タイルペイン高さ px)。未設定(パネル未ドラッグ)は undefined。
    * webview の getState はパネルを閉じると失われるため host 側で永続化する(splitter.js と対の契約)。 */
   private tilePaneHeight: number | undefined;
-  /** 「テスト実行」タブの auto-fit トグル(タイル高さを全デバイスが横幅に収まる高さへ自動調整)。 */
-  private tileAutoFit: boolean;
   private fleetVisible: boolean;
   /** 「テスト実行」タブの全選択トグル(workspaceState の "monitor.selectAllDevices")。 */
   private selectAllDevices: boolean;
@@ -283,7 +281,6 @@ export class MonitorPanelController implements vscode.Disposable {
     this.pollingMode = workspaceState.get<boolean>("monitor.pollingMode", false);
     this.tilePaneHeight = workspaceState.get<number>("monitor.tilePaneHeight");
     // 既定 ON(webview 側 splitter.js の「!== false」と揃える。片方だけ変えない)。
-    this.tileAutoFit = workspaceState.get<boolean>("monitor.tileAutoFit", true);
     // 既定 true(webview 側 splitter.js の「!== false」と揃える。片方だけ変えない)。
     this.fleetVisible = workspaceState.get<boolean>("monitor.fleetVisible", true);
     // 既定 OFF(選んでいない状態から始める。webview 側 deviceTiles.js の初期値と揃える)。
@@ -1030,10 +1027,6 @@ export class MonitorPanelController implements vscode.Disposable {
         this.tilePaneHeight = message.value;
         void this.workspaceState.update("monitor.tilePaneHeight", message.value);
         break;
-      case "setTileAutoFit":
-        this.tileAutoFit = message.value;
-        void this.workspaceState.update("monitor.tileAutoFit", message.value);
-        break;
       case "setFleetVisible":
         this.fleetVisible = message.value;
         void this.workspaceState.update("monitor.fleetVisible", message.value);
@@ -1183,8 +1176,6 @@ export class MonitorPanelController implements vscode.Disposable {
     if (this.tilePaneHeight !== undefined) {
       this.post({ type: "tilePaneHeight", value: this.tilePaneHeight });
     }
-    // auto-fit は tilePaneHeight より後に送る(ON なら高さは復元値ではなく再計算で決まる)。
-    this.post({ type: "tileAutoFit", value: this.tileAutoFit });
     // fleetVisible は selectAllDevices より先に送る(非表示なら webview が全選択から始める。main.js)
     this.post({ type: "fleetVisible", value: this.fleetVisible });
     this.post({ type: "selectAllDevices", value: this.selectAllDevices });

@@ -1,5 +1,5 @@
 // ツールバーのホストグラフ(MEM/CPU/GPU/OCR/FM)を**機械ごとの行**にする配線テスト(hostCharts.js)。
-// 実 HTML+実バンドルを jsdom で動かす方式は webviewAutoFitToggle.test.mjs と同じ。
+// 実 HTML+実バンドルを jsdom で動かす方式は webviewSelectAllButton.test.mjs と同じ。
 //
 // ここで見るのは行の集合と宛先の分岐だけ(描画そのものは jsdom にキャンバスが無いので測れない):
 // - 既定は手元の1行だけ。左端の機械名は出さない(.hm-multi が付かない)

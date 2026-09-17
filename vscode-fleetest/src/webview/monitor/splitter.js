@@ -4,34 +4,32 @@
 // セパレーターが最小位置にリセット)。tabs.js からは reapplyTilePaneHeight を呼ぶ。
 
 import { vscode, persistedState } from './vscodeApi.js';
-import { toolbar, banner, devicesPanel, tilePane, splitter, grid, btnAutoFit, btnFleetVisible } from './domRefs.js';
+import { toolbar, banner, devicesPanel, tilePane, splitter, btnFleetVisible } from './domRefs.js';
 import { t } from '../i18n.js';
 import { setHoverTip } from './hoverTip.js';
 import { setLineViewHiddenForWaiting } from './waitingNote.js';
-import { relayoutTiles, setTileLayoutObserver, measureTileImageHeight } from './deviceTiles.js';
-import { computeFitPaneHeight } from './tileFitModel.js';
+import { relayoutTiles } from './deviceTiles.js';
 
 // setState/getStateにも保存し、パネル再表示時に復元する。出力ペインはflexの残りスペースを
 // 自動占有するため個別管理は不要。
 
 const MIN_PANE_HEIGHT = 120;
 
-// 保存値がない初期表示はスプリット領域の上下中央(50%)。「テスト実行」タブ非表示等で
-// 領域が測れないときのみ window.innerHeight で代替する。
-function defaultTilePaneHeight() {
-  const available = availableSplitHeight();
-  return Math.round((available > 0 ? available : window.innerHeight) / 2);
-}
+// 保存値が無いときのラインビューの高さ = 表示エリア(スプリット領域)の 20%(ユーザー決定)。
+// **領域が測れた最初の描画で決める**(読み込み時点では「テスト実行」タブが未表示で測れないことがあり、
+// そこで決めると代わりの値が残る)。
+const DEFAULT_TILE_PANE_RATIO = 0.2;
 
 // ---- ラインビューの表示トグル(ツールバー右端のグループの先頭・既定 表示) ----
 // 既定が表示なので「!== false」(ホスト側 monitorPanel.ts の既定 true と揃える。片方だけ変えない)。
 let fleetVisible = persistedState.fleetVisible !== false;
 
+// null = 保存値が無い(最初の描画で DEFAULT_TILE_PANE_RATIO から決める)
 let desiredTilePaneHeight =
   typeof persistedState.tilePaneHeight === 'number' && persistedState.tilePaneHeight > 0
     ? persistedState.tilePaneHeight
-    : defaultTilePaneHeight();
-let tilePaneHeight = desiredTilePaneHeight;
+    : null;
+let tilePaneHeight = desiredTilePaneHeight ?? 0;
 
 // document.body.clientHeight だとタブバー分ずれるため、「テスト実行」タブパネル自身の
 // clientHeight を基準にする。
@@ -48,12 +46,15 @@ function clampTilePaneHeight(height) {
 
 // 「テスト実行」タブ非表示(display:none)の間はdevicesPanel.clientHeightが0になり、誤って
 // 最小値にクランプしてしまうため何もせず抜ける(タブ復帰時にswitchTabが呼び直す)。
-// ラインビュー非表示の間も同じ理由で抜ける(タイルの幅が 0 に測れて auto-fit が desired を潰す)。
+// ラインビュー非表示の間も同じ理由で抜ける(領域が測れない)。
 function splitAreaHidden() {
   return !fleetVisible || devicesPanel.clientHeight === 0 || devicesPanel.offsetParent === null;
 }
 
 function renderTilePaneHeight() {
+  if (desiredTilePaneHeight === null) {
+    desiredTilePaneHeight = Math.round(availableSplitHeight() * DEFAULT_TILE_PANE_RATIO);
+  }
   tilePaneHeight = clampTilePaneHeight(desiredTilePaneHeight);
   tilePane.style.height = tilePaneHeight + 'px';
   relayoutTiles();
@@ -70,17 +71,9 @@ export function applyTilePaneHeight(height) {
 
 // resize・タブ復帰用: desired は変えず現レイアウトへ再クランプするだけ。一時的に狭い
 // レイアウトでもユーザー意図を失わず、広がれば desired まで戻る。
-// auto-fit が ON のときだけは desired ごと「ちょうど収まる高さ」へ置き換える(OFF にした
-// 瞬間の見た目を保つため。以後はその高さが手動調整の起点になる)。
 export function reapplyTilePaneHeight() {
   if (splitAreaHidden()) {
     return;
-  }
-  if (autoFitEnabled && !autoFitSuspendedByDrag) {
-    const fitted = computeFitTilePaneHeight();
-    if (fitted !== null) {
-      desiredTilePaneHeight = clampTilePaneHeight(fitted);
-    }
   }
   renderTilePaneHeight();
 }
@@ -103,120 +96,6 @@ export function setTilePaneHeight(height) {
   reapplyTilePaneHeight();
 }
 
-// ---- auto-fit(ツールバー右端のトグル・既定 ON) ----
-// ON の間、タイルが1行(.grid は flex-wrap:nowrap)で横スクロールせずちょうど収まる高さへ
-// セパレーターを自動で置く。明示的に OFF にしたときだけ完全手動(従来ドラッグのみ)。
-// 再計算の契機: 台数変化・アスペクト比確定(deviceTiles.js の tileLayoutObserver)/
-// リサイズ・タブ復帰(reapplyTilePaneHeight)。
-// 既定 ON のため「=== true」ではなく「!== false」(未保存=ON。ホスト側の既定も
-// monitorPanel.ts で true に揃えている。片方だけ変えない)。
-let autoFitEnabled = persistedState.tileAutoFit !== false;
-// 手動ドラッグは OFF ではなく「一時停止」: リサイズ等では手動位置を保ち、台数が変わったら
-// 自動で再フィットして追従を再開する(ユーザー要件 2026-07-30)。永続化しない
-// (パネル再表示では ON に戻ってフィットし直す)。
-let autoFitSuspendedByDrag = false;
-
-// 実測して computeFitPaneHeight(tileFitModel.js)へ渡すだけ。定数(padding/border/gap)は
-// 持たず全て実測する(style.css を変えたときに片方だけ古くなるのを防ぐ)。
-function computeFitTilePaneHeight() {
-  const tileEls = grid.querySelectorAll('.tile');
-  const gridStyle = getComputedStyle(grid);
-  const measuredTiles = [];
-  for (const tileEl of tileEls) {
-    const frame = tileEl.querySelector('.frame-wrap');
-    if (!frame) {
-      return null;
-    }
-    const tileStyle = getComputedStyle(tileEl);
-    // 選択中タイルは border 2px/padding 7px と内訳が違うのでタイルごとに測る。
-    const innerWidth =
-      tileEl.clientWidth - parseFloat(tileStyle.paddingLeft) - parseFloat(tileStyle.paddingRight);
-    const imageWidth = frame.getBoundingClientRect().width;
-    measuredTiles.push({
-      imageWidth,
-      chromeWidth: tileEl.getBoundingClientRect().width - innerWidth,
-      // 画像以外の子(マシン名バッジの段など)が要求している幅。画像を縮めても
-      // ここより細くはならないので、固定費(chromeWidth)ではなく床として渡す。
-      floorWidth: Math.max(0, innerWidth - imageWidth),
-    });
-  }
-  const imageHeight = measureTileImageHeight();
-  if (imageHeight === null) {
-    return null;
-  }
-  return computeFitPaneHeight({
-    // 下限クランプ前の対応で測る(tileFitModel.js の paneOverhead の注記)。
-    paneOverhead: tilePaneHeight - imageHeight,
-    imageHeight: parseFloat(gridStyle.getPropertyValue('--tile-image-h')),
-    gridWidth: grid.clientWidth,
-    gap: parseFloat(gridStyle.columnGap),
-    tiles: measuredTiles,
-  });
-}
-
-function renderAutoFitButton() {
-  btnAutoFit.classList.toggle('toggled', autoFitEnabled);
-  btnAutoFit.classList.toggle('suspended', autoFitEnabled && autoFitSuspendedByDrag);
-  btnAutoFit.setAttribute('aria-pressed', autoFitEnabled ? 'true' : 'false');
-}
-
-function persistAutoFit() {
-  // tilePaneHeight と同じ二重保存(即時復元用の setState + パネル再作成に耐える host 側)。
-  // 契約: monitorWebviewMessages.ts の setTileAutoFit / tileAutoFit。
-  vscode.setState(Object.assign({}, vscode.getState(), { tileAutoFit: autoFitEnabled }));
-  vscode.postMessage({ type: 'setTileAutoFit', value: autoFitEnabled });
-}
-
-// 手動ドラッグ中に呼ぶ一時停止。ここで高さは触らない(ドラッグ側がそのまま反映する)。
-// OFF にはしない(台数変化で再開するため。完全 OFF はトグルの明示操作のみ)。
-function suspendAutoFitForManualDrag() {
-  if (!autoFitEnabled || autoFitSuspendedByDrag) {
-    return;
-  }
-  autoFitSuspendedByDrag = true;
-  renderAutoFitButton();
-}
-
-btnAutoFit.addEventListener('click', () => {
-  autoFitEnabled = !autoFitEnabled;
-  autoFitSuspendedByDrag = false;
-  renderAutoFitButton();
-  reapplyTilePaneHeight();
-  persistAutoFit();
-  if (!autoFitEnabled) {
-    // OFF にした時点の高さを手動位置として残す(次回復元はこの高さから始まる)。
-    persistTilePaneHeight();
-  }
-});
-
-// reason: 'deviceCount'(台数変化)| 'aspect'(アスペクト比確定)。台数変化だけは
-// ドラッグの一時停止を解除して再フィットする(フレーム到着のたびに来る aspect で解除すると
-// 手動位置がすぐ戻されてしまう)。
-setTileLayoutObserver((reason) => {
-  if (!autoFitEnabled) {
-    return;
-  }
-  if (reason === 'deviceCount' && autoFitSuspendedByDrag) {
-    autoFitSuspendedByDrag = false;
-    renderAutoFitButton();
-  }
-  if (autoFitSuspendedByDrag) {
-    return;
-  }
-  reapplyTilePaneHeight();
-});
-
-// host からの復元値(sendInitialState)。
-export function setTileAutoFit(enabled) {
-  if (typeof enabled !== 'boolean') {
-    return;
-  }
-  autoFitEnabled = enabled;
-  autoFitSuspendedByDrag = false;
-  renderAutoFitButton();
-  reapplyTilePaneHeight();
-}
-
 function renderFleetVisible() {
   devicesPanel.classList.toggle('fleet-hidden', !fleetVisible);
   setLineViewHiddenForWaiting(!fleetVisible);
@@ -236,7 +115,7 @@ function applyFleetVisible(visible) {
 
 btnFleetVisible.addEventListener('click', () => {
   applyFleetVisible(!fleetVisible);
-  // 契約: monitorWebviewMessages.ts の setFleetVisible / fleetVisible(tileAutoFit と同じ二重保存)。
+  // 契約: monitorWebviewMessages.ts の setFleetVisible / fleetVisible(tilePaneHeight と同じ二重保存)。
   vscode.setState(Object.assign({}, vscode.getState(), { fleetVisible }));
   vscode.postMessage({ type: 'setFleetVisible', value: fleetVisible });
 });
@@ -254,7 +133,6 @@ export function setFleetVisible(visible) {
 }
 
 renderFleetVisible();
-renderAutoFitButton();
 reapplyTilePaneHeight();
 window.addEventListener('resize', () => reapplyTilePaneHeight());
 
@@ -277,13 +155,7 @@ splitter.addEventListener('pointermove', (event) => {
   if (splitterPointerId !== event.pointerId) {
     return;
   }
-  const delta = event.clientY - splitterStartY;
-  // 実際に動いたときだけ一時停止する(押しただけ・0px のドラッグでは何もしない)。
-  // 停止しないと以後の再計算でセパレーターが手動位置から戻ってしまう。
-  if (delta !== 0) {
-    suspendAutoFitForManualDrag();
-  }
-  applyTilePaneHeight(splitterStartHeight + delta);
+  applyTilePaneHeight(splitterStartHeight + event.clientY - splitterStartY);
 });
 const endSplitterDrag = (event) => {
   if (splitterPointerId !== event.pointerId) {

@@ -3,9 +3,8 @@
 //
 // 背景(実害): devices のポーリングは「テスト実行」タブが非表示の間もホストから届き、
 // applyDevices が relayoutTiles を呼ぶ。display:none 中は clientHeight=0 で下限 60px に
-// 潰れるため、以前はそこで --tile-image-h が 60px に書き換わっていた。auto-fit
-// (splitter.js の computeFitTilePaneHeight)は「今のペイン高さ ↔ 今の --tile-image-h」が
-// 対応している前提の差分計算なので、タブへ戻ると過大な高さになりタイルがはみ出した。
+// 潰れるため、以前はそこで --tile-image-h が 60px に書き換わり、タブへ戻っても画像が
+// 下限の大きさのまま残った。
 //
 // jsdom にはレイアウトが無く clientHeight は常に 0 なので、「レイアウトがあるとき」は
 // 対象タイルの clientHeight を差し替えて再現する。
@@ -106,7 +105,7 @@ test("タブ非表示中に devices が届いても --tile-image-h を書き換�
   assert.equal(
     tileImageHeight(document),
     "240px",
-    "非表示中に下限 60px を書くと、タブ復帰時の auto-fit が差分計算を誤ってはみ出す",
+    "非表示中に下限 60px を書くと、タブ復帰後も画像が下限の大きさのまま残る",
   );
 });
 

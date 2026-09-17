@@ -1,5 +1,5 @@
 // 「テスト実行」タブのラインビュー(タイル領域)の表示トグル(splitter.js)の配線テスト。
-// 実 HTML+実バンドルを jsdom で動かす方式は webviewAutoFitToggle.test.mjs と同じ。
+// 実 HTML+実バンドルを jsdom で動かす方式は webviewSelectAllButton.test.mjs と同じ。
 // 契約は monitorWebviewMessages.ts の setFleetVisible(webview→host)/ fleetVisible(host→webview)。
 
 import assert from "node:assert/strict";
@@ -172,4 +172,67 @@ test("ラインビュー表示で開くと、全選択は保存値どおり", (t
   assert.equal(selectAllOn(document), false);
   restore(window, "selectAllDevices", true);
   assert.equal(selectAllOn(document), true);
+});
+
+// ---- ツールバー右端のグループとセパレーターの初期位置 ----
+
+test("右端のグループは表示トグルと全選択の2つだけで、グラフより後ろ(ツールバーの最後)にある", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const toolbar = document.getElementById("toolbar");
+  const group = document.getElementById("toolbar-tail");
+  assert.deepEqual([...group.children].map((el) => el.id), ["btn-fleet-visible", "btn-select-all"]);
+  assert.equal(toolbar.lastElementChild, group);
+  assert.ok(group.compareDocumentPosition(document.getElementById("host-metrics"))
+    & window.Node.DOCUMENT_POSITION_PRECEDING, "host-metrics より後ろ");
+  assert.equal(document.getElementById("btn-auto-fit"), null, "自動フィットのボタンは無い");
+});
+
+/** レイアウトのある webview を作る(jsdom は寸法が 0 なので、パネルの高さと offsetParent を与える) */
+function createLaidOutWebview(panelHeight, initialState) {
+  const posted = [];
+  let state = initialState;
+  const dom = new JSDOM(panelHtml, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://localhost/" });
+  const { window } = dom;
+  window.acquireVsCodeApi = () => ({
+    postMessage: (message) => posted.push(message),
+    setState: (next) => { state = next; },
+    getState: () => state,
+  });
+  window.HTMLElement.prototype.scrollIntoView = () => {};
+  Object.defineProperty(window.HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get() { return this.id === "panel-devices" ? panelHeight : 0; },
+  });
+  Object.defineProperty(window.HTMLElement.prototype, "offsetParent", {
+    configurable: true,
+    get() { return this.ownerDocument.body; },
+  });
+  window.eval(webviewBundle);
+  return { window, document: window.document, posted };
+}
+
+test("保存値が無いとき、ラインビューの高さは表示エリアの 20%", (t) => {
+  const { window, document } = createLaidOutWebview(1000);
+  t.after(() => window.close());
+  // 表示エリア = パネル 1000 - ツールバー・バナー・セパレーター(jsdom では 0)
+  assert.equal(document.getElementById("tile-pane").style.height, "200px");
+});
+
+test("保存値があるときは保存値を使う(20% で上書きしない)", (t) => {
+  const { window, document } = createLaidOutWebview(1000, { tilePaneHeight: 350 });
+  t.after(() => window.close());
+  assert.equal(document.getElementById("tile-pane").style.height, "350px");
+});
+
+test("読み込み時に表示エリアが測れなくても、測れた最初の描画で 20% を決める", (t) => {
+  const { window, document } = createLaidOutWebview(0);
+  t.after(() => window.close());
+  assert.equal(document.getElementById("tile-pane").style.height, "", "測れない間は書かない");
+  Object.defineProperty(window.HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get() { return this.id === "panel-devices" ? 800 : 0; },
+  });
+  window.dispatchEvent(new window.Event("resize"));
+  assert.equal(document.getElementById("tile-pane").style.height, "160px");
 });

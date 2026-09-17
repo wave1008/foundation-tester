@@ -88,7 +88,7 @@ function pressSelectAllKey(document, target, { meta = true, ctrl = false, shift 
   return event.defaultPrevented;
 }
 
-test("高さ自動調整ボタンと1つのグループに入り、そのすぐ左に置く", (t) => {
+test("ラインビューの表示トグルと1つのグループに入り、そのすぐ右(グループの最後)に置く", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const el = button(document);
@@ -96,7 +96,8 @@ test("高さ自動調整ボタンと1つのグループに入り、そのすぐ�
   const group = document.getElementById("toolbar-tail");
   assert.equal(el.parentElement, group);
   assert.equal(group.parentElement, document.getElementById("toolbar"));
-  assert.equal(el.nextElementSibling, document.getElementById("btn-auto-fit"));
+  assert.equal(el.previousElementSibling, document.getElementById("btn-fleet-visible"));
+  assert.equal(group.lastElementChild, el);
   assert.equal(el.textContent.trim(), "", "テキストではなくアイコン(インライン SVG)");
   assert.equal(el.querySelectorAll("svg").length, 1);
 });
@@ -161,7 +162,7 @@ test("説明は次に何が起きるかを示す", (t) => {
 test("右端の2つはネイティブ title ではなく自前ツールチップで説明を出す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  for (const id of ["btn-select-all", "btn-auto-fit"]) {
+  for (const id of ["btn-fleet-visible", "btn-select-all"]) {
     const el = document.getElementById(id);
     assert.ok(tip(document, el).length > 0, `${id}: 説明が入っている`);
     // title が残っていると 0.2 秒でこちらが出た約1秒後にネイティブも出て二重に見える

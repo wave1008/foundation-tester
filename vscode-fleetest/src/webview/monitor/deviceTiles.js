@@ -152,9 +152,7 @@ function refreshSelectAllState() {
 // device id -> { wrapEl, imgEl, canvasEl }
 const deviceMirrors = new Map();
 
-// 画像高さの絶対下限(px)。auto-fit の下限(MIN_FIT_IMAGE_HEIGHT_PX)とは別物 ——
-// こちらはセパレーターを手で最小まで詰めたときに 0 や負にならないための床で、
-// 手動操作の結果を尊重するぶん低い。
+// 画像高さの絶対下限(px)。セパレーターを手で最小まで詰めたときに 0 や負にならないための床。
 const MIN_TILE_IMAGE_HEIGHT = 60;
 // タイル内の「画像以外」の高さの合計(px)。CSS の固定高と一致させること:
 // padding 上下 8+8 + header 20 + footer 18 + gap 6×2 = 66
@@ -179,7 +177,6 @@ function setTileAspect(entry, aspect) {
   entry.tile.style.setProperty('--tile-aspect', value);
   // 拡大表示の段組みは縦横比から決まる(初回フレームで確定・解像度変更でも変わる)
   relayoutPreviewsForResize();
-  notifyTileLayoutChanged('aspect');
 }
 
 // 表示中の媒体から比率を取り直す(img ↔ canvas の切り替え時。どちらも実寸が分かっているときだけ)
@@ -197,29 +194,13 @@ function applyCanvasAspect(entry) {
   }
 }
 
-// auto-fit(splitter.js)へ「タイル構成が変わった=ちょうど収まる高さが変わった」ことを伝える。
-// 通知するのは台数変化('deviceCount')とアスペクト比確定('aspect')の2箇所だけ。reason は
-// splitter.js がドラッグ一時停止の解除判定に使う。relayoutTiles からは通知しない
-// (auto-fit の再計算が relayoutTiles を呼ぶため、通知すると無限ループになる)。
-let tileLayoutObserver = null;
-
-export function setTileLayoutObserver(observer) {
-  tileLayoutObserver = observer;
-}
-
-function notifyTileLayoutChanged(reason) {
-  if (tileLayoutObserver) {
-    tileLayoutObserver(reason);
-  }
-}
-
 // タイル実測高さから --tile-image-h を算出(タイル幅はこの高さ×アスペクト比で決まる)。
 // スプリッター移動・リサイズ・タイル生成のたびに呼び直す必要がある。
 export function relayoutTiles() {
   const raw = measureTileImageHeight();
   // 「テスト実行」タブ非表示中(display:none)は clientHeight=0 で下限に潰れる。書くと
-  // 「ペイン高さ ↔ --tile-image-h」の対応が壊れ、タブ復帰時の auto-fit(splitter.js の
-  // computeFitTilePaneHeight)が差分計算を誤ってはみ出す。devices は非表示中も届くので必須。
+  // 「ペイン高さ ↔ --tile-image-h」の対応が壊れ、タブ復帰時に画像の高さが下限のまま残る。
+  // devices は非表示中も届くので必須。
   if (raw === null) {
     return;
   }
@@ -227,11 +208,9 @@ export function relayoutTiles() {
 }
 
 // ペイン高さから決まる画像の高さ。**下限クランプ前**の値で、負にもなりうる
-// (ペインがタイルの中身より低い = 画像が下端で隠れている状態)。auto-fit はこの値で
-// 「ペイン高さのうち画像以外」を出す —— クランプ後の --tile-image-h から引くと、下限に
-// 張り付いている間だけ対応が崩れ、算出した高さでも画像が隠れたままになる。
+// (ペインがタイルの中身より低い = 画像が下端で隠れている状態)。
 // 測れない(タイル未生成・タブ非表示)ときは null。
-export function measureTileImageHeight() {
+function measureTileImageHeight() {
   const probe = grid.querySelector('.tile');
   if (!probe || probe.clientHeight === 0) {
     return null;
@@ -1229,14 +1208,12 @@ export function clearTilesForRestart() {
 }
 
 export function applyDevices(devices) {
-  const previousTileCount = tiles.size;
   // リモートのデバイスが混ざる構成でだけホスト名の段を出す(全タイルで高さを揃えるため
   // グリッド単位のクラスで制御する。判定は machine の有無)
   const nextMachineRow = devices.some((device) => !!device.machine);
   if (nextMachineRow !== machineRowReserved) {
     machineRowReserved = nextMachineRow;
     grid.classList.toggle('with-machine-row', nextMachineRow);
-    notifyTileLayoutChanged('deviceCount');
   }
   // 全選択が ON(= 今の全タイルが選択済み)の間は、**後から現れたデバイスも選択に足す**
   // = フリートが増えても「全部選択」のままにする(ユーザー要求 2026-09-09)。判定は
@@ -1330,11 +1307,6 @@ export function applyDevices(devices) {
     renderSelectAllButton();
   }
   relayoutTiles();
-  // devices は数秒ごとのポーリングで届くため、台数が変わったときだけ通知する
-  // (毎サイクル通知すると auto-fit の再計測が無駄に走る)。
-  if (tiles.size !== previousTileCount) {
-    notifyTileLayoutChanged('deviceCount');
-  }
   syncLanesToDevices(devices);
   updateLaneVisibility();
 }

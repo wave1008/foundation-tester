@@ -351,14 +351,11 @@ export type MonitorToWebviewMessage =
   // webview の getState はパネルを閉じると失われるため host 側で永続化する(setTilePaneHeight と対の契約)。
   // webview 側は splitter.js の setTilePaneHeight へ渡す。
   | { readonly type: "tilePaneHeight"; readonly value: number }
-  // 「テスト実行」タブの auto-fit トグルの状態(true = 全デバイスが横幅に収まる高さへ自動調整)。
-  // 永続化の理由と経路は tilePaneHeight と同じ(setTileAutoFit と対の契約)。
-  | { readonly type: "tileAutoFit"; readonly value: boolean }
   // 「テスト実行」タブのラインビュー(タイル領域)の表示トグル(false = 非表示)。永続化の経路は
-  // tileAutoFit と同じ(setFleetVisible と対の契約。受け手は splitter.js)。
+  // tilePaneHeight と同じ(setFleetVisible と対の契約。受け手は splitter.js)。
   | { readonly type: "fleetVisible"; readonly value: boolean }
   // 「テスト実行」タブの全選択トグルの状態(true = 全デバイス選択)。永続化の理由と経路は
-  // tileAutoFit と同じ(setSelectAllDevices と対の契約)。**0枚でも復元する** ——
+  // tilePaneHeight と同じ(setSelectAllDevices と対の契約)。**0枚でも復元する** ——
   // ready 直後はモニターがまだ台を出しておらず、出てきた台を webview 側が選び直す。
   | { readonly type: "selectAllDevices"; readonly value: boolean }
   // 「テスト実行」タブの「配信を表示する」チェックボックスの状態(false = run 中の台の配信を畳む)。
@@ -736,9 +733,6 @@ export type MonitorFromWebviewMessage =
   // 「テスト実行」タブのスプリッターをドラッグ終了した時のタイルペイン高さ(px)。monitorPanel.ts が
   // workspaceState へ永続化し、パネル再作成時に "tilePaneHeight" メッセージで復元する。
   | { readonly type: "setTilePaneHeight"; readonly value: number }
-  // auto-fit トグルの切替(ボタン押下・手動ドラッグによる自動 OFF)。monitorPanel.ts が
-  // workspaceState へ永続化し、パネル再作成時に "tileAutoFit" メッセージで復元する。
-  | { readonly type: "setTileAutoFit"; readonly value: boolean }
   // ラインビューの表示トグルの切替。monitorPanel.ts が workspaceState へ永続化し、
   // パネル再作成時に "fleetVisible" メッセージで復元する。
   | { readonly type: "setFleetVisible"; readonly value: boolean }
@@ -1097,7 +1091,6 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return true;
     case "setTilePaneHeight":
       return typeof value.value === "number" && value.value > 0;
-    case "setTileAutoFit":
     case "setFleetVisible":
     case "setSelectAllDevices":
     case "setShowStreamDuringRun":
