@@ -565,7 +565,7 @@ struct RunScenario: AsyncParsableCommand {
         do {
             try await core.restoreOrientationIfNeeded()
         } catch {
-            ConsoleOut.err("⚠️ failed to restore original orientation: \(error)")
+            ConsoleOut.err("⚠️ failed to restore original orientation: \(ErrorText.user(error))")
         }
 
         // 「否定側でしか使われず一度も解決できなかった #id」「最後まで不成立の ifCanSelect」

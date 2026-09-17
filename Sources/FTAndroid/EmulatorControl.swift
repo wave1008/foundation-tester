@@ -85,7 +85,8 @@ public enum EmulatorControl {
         } catch {
             markFailed(pid: endpoint.pid)
             ConsoleOut.err(
-                "⚠️ emulator gRPC failed — falling back to adb (\(serial), pid \(endpoint.pid)): \(error)")
+                "⚠️ emulator gRPC failed — falling back to adb (\(serial), pid \(endpoint.pid)): "
+                + ErrorText.user(error))
             return nil
         }
     }

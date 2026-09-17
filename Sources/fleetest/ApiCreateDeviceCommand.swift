@@ -325,7 +325,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         } catch let error as ShellError {
             throw CreateDeviceError(
                 "avdmanager create avd did not finish within \(Int(avdManagerCreateTimeoutSeconds))s "
-                + "(an unanswered prompt?): \(error)")
+                + "(an unanswered prompt?): \(ErrorText.user(error))")
         }
         guard result.status == 0 else {
             throw CreateDeviceError("avdmanager create avd failed: \(result.output)")
