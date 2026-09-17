@@ -181,6 +181,21 @@ function setTileAspect(entry, aspect) {
   notifyTileLayoutChanged('aspect');
 }
 
+// 表示中の媒体から比率を取り直す(img ↔ canvas の切り替え時。どちらも実寸が分かっているときだけ)
+function applyImageAspect(entry) {
+  const img = entry.imgEl;
+  if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
+    setTileAspect(entry, img.naturalWidth / img.naturalHeight);
+  }
+}
+
+function applyCanvasAspect(entry) {
+  const canvas = entry.canvasEl;
+  if (canvas && canvas.width > 0 && canvas.height > 0) {
+    setTileAspect(entry, canvas.width / canvas.height);
+  }
+}
+
 // auto-fit(splitter.js)へ「タイル構成が変わった=ちょうど収まる高さが変わった」ことを伝える。
 // 通知するのは台数変化('deviceCount')とアスペクト比確定('aspect')の2箇所だけ。reason は
 // splitter.js がドラッグ一時停止の解除判定に使う。relayoutTiles からは通知しない
@@ -330,10 +345,11 @@ function createTile(device) {
   // 既定のままだと画像を掴んだ時点でブラウザのドラッグが始まり、範囲選択のドラッグが途切れる
   img.draggable = false;
   // アスペクト比はデコードできた画像の実寸だけから決める(下の setTileAspect のコメント参照)。
+  // **h264 表示中は img(隠れている)から決めない** —— 安全弁のポーリングが届けた古い向きの1枚が、
+  // 表示中の canvas と違う比率を書き、canvas 側は寸法が変わらない限り直さない
   img.addEventListener('load', () => {
-    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-      setTileAspect(tiles.get(device.id), img.naturalWidth / img.naturalHeight);
-    }
+    const entryNow = tiles.get(device.id);
+    if (entryNow && !entryNow.usingH264) { applyImageAspect(entryNow); }
   });
   // デコードできないフレーム(ストリームの境界ズレ等)は黒い矩形を残さずプレースホルダへ倒す。
   // 残すとブリッジ死亡後もタイルに黒画面が居座り、状態を誤認させる
@@ -1266,6 +1282,7 @@ function disposeH264(entry) {
     entry.h264Renderer.dispose();
     entry.h264Renderer = null;
   }
+  applyImageAspect(entry);
 }
 
 // ストリーム由来フレームを実際に描画できたことをホストへ ack する(2秒スロットリング)。
@@ -1317,6 +1334,7 @@ export function applyH264Chunk(message) {
       canvas: entry.canvasEl,
       onFirstFrame: () => {
         entry.usingH264 = true;
+        applyCanvasAspect(entry);
         renderMeta(entry);
         renderFrame(entry);
       },

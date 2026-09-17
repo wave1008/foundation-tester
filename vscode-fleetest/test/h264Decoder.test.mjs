@@ -101,3 +101,25 @@ test("解像度が変わったら onDimensions が再び呼ばれる", async () 
 
   assert.deepEqual(dims, [{ width: 1080, height: 2424 }, { width: 480, height: 1080 }]);
 });
+
+// canvas は作り直しを跨いで使い回される(deviceTiles.js)。前の世代と同じ寸法でも、
+// 新しいレンダラは初回に必ず寸法を伝える —— 伝えないと、その間に隠れた img が書いた
+// 比率がタイルに残る(縦長の映像が横長の枠に入った 2026-09-17)
+test("使い回しの canvas が既に同じ寸法でも、新しいレンダラは初回に onDimensions を呼ぶ", async () => {
+  installWebCodecs([makeFrame(1080, 2424)]);
+  const dims = [];
+  const canvas = fakeCanvas();
+  canvas.width = 1080;
+  canvas.height = 2424;
+  const renderer = createH264Renderer({
+    canvas,
+    onError: () => assert.fail("onError が呼ばれた"),
+    onFirstFrame: () => {},
+    onDimensions: (d) => dims.push(d),
+  });
+
+  renderer.pushChunk(KEYFRAME, true, 0, 0);
+  await settle();
+
+  assert.deepEqual(dims, [{ width: 1080, height: 2424 }]);
+});

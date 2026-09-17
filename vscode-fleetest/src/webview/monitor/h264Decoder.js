@@ -98,6 +98,9 @@ export function createH264Renderer({ canvas, onError, onFirstFrame, onFrameRende
       .catch(() => fail());
   }
 
+  let reportedWidth = 0;
+  let reportedHeight = 0;
+
   function handleFrame(frame) {
     const now = performance.now();
     if (now - lastDrawTime < DRAW_INTERVAL_MS) {
@@ -113,9 +116,15 @@ export function createH264Renderer({ canvas, onError, onFirstFrame, onFrameRende
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
-        if (onDimensions && width > 0 && height > 0) {
-          onDimensions({ width, height });
-        }
+      }
+      // **canvas の寸法ではなく、このレンダラが最後に伝えた寸法と比べる** —— canvas は作り直しを
+      // 跨いで使い回すので、前の世代と同じ寸法だと新しい世代が一度も伝えず、その間に別の経路
+      // (隠れた img)が書いた比率がタイルに残る(縦長の映像が横長の枠に入った 2026-09-17)
+      if (onDimensions && width > 0 && height > 0
+          && (reportedWidth !== width || reportedHeight !== height)) {
+        reportedWidth = width;
+        reportedHeight = height;
+        onDimensions({ width, height });
       }
       ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
     } finally {

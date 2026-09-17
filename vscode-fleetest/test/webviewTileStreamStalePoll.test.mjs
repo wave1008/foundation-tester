@@ -132,3 +132,44 @@ test("stream:true(mjpeg 正式フォールバック)は h264 表示を静止画�
   assert.ok(!after.canvas.classList.contains("visible"), "mjpeg 正式フォールバックでは canvas から img へ戻ること");
   assert.ok(!after.img.classList.contains("h264-hidden"), "img が表示に戻ること");
 });
+
+// 縦横比は**表示している媒体から**決める。h264(canvas)表示中に、安全弁のポーリングが届けた
+// 別の向きの1枚(隠れた img)が load しても、タイルの比率を変えない(縦長の映像が横長の枠に
+// 入った 2026-09-17)。正式に img へ戻ったときだけ img の実寸に合わせる
+function loadImage(window, img, width, height) {
+  Object.defineProperty(img, "naturalWidth", { configurable: true, get: () => width });
+  Object.defineProperty(img, "naturalHeight", { configurable: true, get: () => height });
+  img.dispatchEvent(new window.Event("load"));
+}
+
+function tileAspect(document) {
+  return document.querySelector("#grid .tile").style.getPropertyValue("--tile-aspect");
+}
+
+test("h264 表示中に届いた別の向きの静止画は、タイルの縦横比を変えない", async (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window);
+  await sendKeyframeAndAwaitH264(window);
+  assert.equal(tileAspect(document), "0.5000", "前提: canvas(400x800)の比率");
+
+  post(window, { type: "frame", device: "android:Emu 1", jpegBase64: "AAAA", width: 800, height: 400 });
+  loadImage(window, tileMedia(document).img, 800, 400);
+
+  assert.equal(tileAspect(document), "0.5000", "隠れた img の load で横長にしてはいけない");
+});
+
+test("img へ正式に戻ったら、img の実寸で縦横比を取り直す", async (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window);
+  await sendKeyframeAndAwaitH264(window);
+  assert.equal(tileAspect(document), "0.5000", "前提: canvas(400x800)の比率");
+  const img = tileMedia(document).img;
+  Object.defineProperty(img, "naturalWidth", { configurable: true, get: () => 800 });
+  Object.defineProperty(img, "naturalHeight", { configurable: true, get: () => 400 });
+
+  post(window, { type: "frame", device: "android:Emu 1", jpegBase64: "AAAA", width: 800, height: 400, stream: true });
+
+  assert.equal(tileAspect(document), "2.0000", "img 表示に戻ったら img の比率");
+});
