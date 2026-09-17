@@ -35,8 +35,10 @@ class フリックが正しく動くこと {
                 action {
                     flickBottomToTop(scrollFrame: "#list_rows")
                 }.expectation {
-                    // 慣性距離に依存しない緩い検証: 「動いた」ことだけを見る(何行分かは問わない)
-                    notExist("#row_01")
+                    // notExist で行を追い出して確かめるとリストの再利用窓・キャッシュ範囲に依存し、
+                    // 慣性の小さい遅い台で #row_01 が木に残って誤って赤になる(docs/ui-contract.md
+                    // §スクロール画面)。先頭に見えている行のラベル(#txt_scroll_top)で確かめる。
+                    select("#txt_scroll_top").textIsNot("top=row_01")
                 }
             }
             // **戻り方向は端で撃つ**。フリングの距離は往路と復路で対称ではなく
@@ -60,7 +62,8 @@ class フリックが正しく動くこと {
                 action {
                     flickCenterToTop(scrollFrame: "#list_rows")
                 }.expectation {
-                    notExist("#row_01")
+                    // scene 2 と同じ理由(notExist は再利用窓に依存する)で txt_scroll_top を使う
+                    select("#txt_scroll_top").textIsNot("top=row_01")
                 }
             }
             scene(5, "横カルーセルは flickRightToLeft / flickCenterToLeft で送れる") {

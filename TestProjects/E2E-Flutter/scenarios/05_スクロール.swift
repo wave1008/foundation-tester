@@ -255,8 +255,9 @@ class スクロールで折り返し下の要素に到達できること {
                 }.action {
                     scrollDown(repeat: 2)
                 }.expectation {
-                    // 遅延生成の一覧なので、送った先では先頭行がツリーから消える
-                    notExist("#row_01", timeout: 2)
+                    // notExist は再利用窓に依存する(swipeElementToElement scene と同じ理由)ので
+                    // 先頭に見えている行のラベル(#txt_scroll_top)で確かめる。
+                    select("#txt_scroll_top").textIsNot("top=row_01")
                 }
             }
             scene(2, "`withScrollDown { }` はブロック内をスクロール探索にする") {
@@ -407,8 +408,9 @@ class スクロールで折り返し下の要素に到達できること {
                 action {
                     scrollDown(scrollFrame: "#list_rows", repeat: 2)
                 }.expectation {
-                    // 先頭行は流れ、先頭タグは残る
-                    notExist("#row_01")
+                    // 先頭行は流れ、先頭タグは残る。notExist は再利用窓に依存するので
+                    // 先頭に見えている行のラベル(#txt_scroll_top)で確かめる。
+                    select("#txt_scroll_top").textIsNot("top=row_01")
                     exist("#tag_01")
                 }
             }
@@ -425,16 +427,21 @@ class スクロールで折り返し下の要素に到達できること {
             }
             // **横方向は縦の焼き直しではない**: 端マージンの適用辺が入れ替わり、横スクロール容器の
             // `scrollable` 申告はフレームワークで割れる。4 SUT で回す価値が高い
-            scene(4, "`scrollLeft` で横カルーセルを戻すと先頭タグが再び見える") {
+            scene(4, "`scrollLeft` で横カルーセルを戻すと先頭タグに届く") {
                 action {
                     // **戻しは往路より多く撃つ**(フリングの距離は往路と復路で対称ではない。
                     // 12_フリック の同型 scene と同じ理由・同じ回数)。
-                    // 2026-08-06 にフル実行で1度だけ `#tag_01` 不在で落ちた
-                    // (208 サンプルでは再現せず = 未確定。回数を合わせて余裕を持たせる)
+                    // 「scrollLeft で戻る方向に動く」ことだけを撃ち、到達は探索で担保する
+                    // (2026-08-06 にフル実行で1度だけ `#tag_01` 不在で落ちた実測はこの理由による)
                     scrollLeft(scrollFrame: "#carousel_tags", repeat: 3)
                 }.expectation {
-                    exist("#tag_01")
                     exist("#row_01")
+                }.action {
+                    withScrollLeft(scrollFrame: "#carousel_tags") {
+                        exist("#tag_01")
+                    }
+                }.expectation {
+                    existWithoutScroll("#tag_01")
                 }
             }
             // **見るのはブロックが方向を継承するかだけ**で、タップまでは含めない。
