@@ -148,4 +148,72 @@ final class TypeKeyboardSettleTests: XCTestCase {
         XCTAssertEqual(driver.snapshotCallCount, 3,
                        "type解決(1)+読み返し(1)+tap解決(1) = 3(キーボードは動いていないので settle は通らない)")
     }
+
+    // MARK: - M22: secure 欄では iOS がキーボードを一度隠して出し直す(2026-09-17 実測)
+    // 打っている間と type が返ってから約 0.8 秒は画面外・その間 0.45 秒ほど木が静止するので、
+    // 整定待ちだけだと隠れている間に「静止した」と抜け、戻って 64pt 押し上がる前の座標で次の tap を撃った
+
+    private let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
+    private let shown = FTRect(x: 0, y: 600, width: 400, height: 200)
+    private let hidden = FTRect(x: 0, y: 844, width: 400, height: 200)   // 画面外に申告される形
+
+    func testKeyboardHiddenAfterTypeOnlyWhenItWasShownAndIsNowOffscreen() {
+        XCTAssertTrue(StepExecutor.keyboardHiddenAfterType(
+            before: shown, after: hidden, screen: screen, typedNewline: false))
+        XCTAssertTrue(StepExecutor.keyboardHiddenAfterType(
+            before: shown, after: nil, screen: screen, typedNewline: false))
+        XCTAssertFalse(StepExecutor.keyboardHiddenAfterType(
+            before: nil, after: hidden, screen: screen, typedNewline: false), "打つ前に出ていなければ待たない")
+        XCTAssertFalse(StepExecutor.keyboardHiddenAfterType(
+            before: shown, after: shown, screen: screen, typedNewline: false))
+        XCTAssertFalse(StepExecutor.keyboardHiddenAfterType(
+            before: shown, after: hidden, screen: screen, typedNewline: true), "Enter で閉じたなら待たない")
+        XCTAssertFalse(StepExecutor.keyboardOnScreen(FTRect(x: 0, y: 600, width: 400, height: 0), screen: screen),
+                       "高さ 0 は出ていない")
+    }
+
+    /// 本命: 隠れている間(#2〜#4)は待ち、戻った木(#5)から整定を見る
+    func testTapAfterTypeWaitsForAKeyboardThatWasHiddenToComeBack() async throws {
+        let log = CallLog()
+        let driver = FakeAppDriver(name: "primary", log: log, snapshotElements: [
+            [inputField(value: nil), sendButton(y: 480)], // #1 type の解決(キーボードあり)
+            [inputField(value: nil), sendButton(y: 700)], // #2 tap の最初の解決(隠れた = 中身が下がる)
+            [inputField(value: nil), sendButton(y: 700)], // #3 まだ隠れている(ここで整定と見なすと古い座標)
+            [inputField(value: nil), sendButton(y: 700)], // #4
+            [inputField(value: nil), sendButton(y: 480)], // #5 戻った(押し上げ後)
+        ])
+        driver.keyboardFrames = [shown, hidden, hidden, hidden, shown]
+        driver.verifiesTypedText = true
+        let executor = StepExecutor(driver: driver, isAndroid: false)
+
+        _ = await executor.execute(
+            FlowStep(action: "type", locator: FlowLocator(id: "wv_input"), text: "secret42"))
+        let tapOutcome = await executor.execute(
+            FlowStep(action: "tap", locator: FlowLocator(id: "btn_send")))
+
+        guard case .passed = tapOutcome.status else { return XCTFail("\(tapOutcome.status)") }
+        XCTAssertEqual(driver.snapshotCallCount, 7,
+                       "type解決(1)+最初の解決(1)+戻るまで(#3〜#5 の 3)+整定(2) = 7")
+    }
+
+    /// 改行で終わる type(Enter で閉じる)は、隠れても戻りを待たない
+    func testTapAfterTypeEndingWithNewlineDoesNotWaitForTheKeyboard() async throws {
+        let log = CallLog()
+        let driver = FakeAppDriver(name: "primary", log: log, snapshotElements: [
+            [inputField(value: nil), sendButton(y: 480)],
+            [inputField(value: nil), sendButton(y: 700)],
+        ])
+        driver.keyboardFrames = [shown, hidden]
+        driver.verifiesTypedText = true
+        let executor = StepExecutor(driver: driver, isAndroid: false)
+
+        _ = await executor.execute(
+            FlowStep(action: "type", locator: FlowLocator(id: "wv_input"), text: "abc\n"))
+        let tapOutcome = await executor.execute(
+            FlowStep(action: "tap", locator: FlowLocator(id: "btn_send")))
+
+        guard case .passed = tapOutcome.status else { return XCTFail("\(tapOutcome.status)") }
+        XCTAssertEqual(driver.snapshotCallCount, 4,
+                       "type解決(1)+最初の解決(1)+整定(2) = 4(戻りは待たない)")
+    }
 }

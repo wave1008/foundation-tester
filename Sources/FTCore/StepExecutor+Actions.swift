@@ -398,6 +398,7 @@ extension StepExecutor {
                 // 木で比べる(エンジンに依存しない)
                 keyboardFrameBeforeType = keyboardBefore
                 pendingTypeKeyboardCheck = true
+                pendingTypeEndedWithNewline = text.hasSuffix("\n")
                 return StepOutcome(status: .passed,
                                    driverFallback: Self.joinNotes(replaceFallbackNote,
                                        "typed into \(TapTargetGeometry.describe(recovered))"
@@ -508,7 +509,26 @@ extension StepExecutor {
         // ドライバが何であれ、ここで木を見て比べる
         if pendingTypeKeyboardCheck {
             pendingTypeKeyboardCheck = false
-            if Self.keyboardShifted(before: keyboardFrameBeforeType, after: snapshot.keyboardFrame) {
+            // 出し直しの途中で隠れているなら、戻るまで待ってから整定を見る(keyboardHiddenAfterType の doc)。
+            // 上限は焦点待ちの共有値(戻らなければ正当に閉じたと見てそのまま進む)
+            // 戻りを待った回は、戻った位置が打つ前と同じでも中身はこれから動くので必ず整定を見る
+            let waitedForKeyboard = Self.keyboardHiddenAfterType(
+                before: keyboardFrameBeforeType, after: snapshot.keyboardFrame,
+                screen: snapshot.screen, typedNewline: pendingTypeEndedWithNewline)
+            if waitedForKeyboard {
+                let deadline = clock.now + .milliseconds(Int(FocusWait.waitSeconds * 1000))
+                while clock.now < deadline,
+                      !Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) {
+                    let waitStart = clock.now
+                    try await Task.sleep(for: .milliseconds(Int(FocusWait.pollSeconds * 1000)))
+                    phase.waitMs += Self.ms(clock.now - waitStart)
+                    start = clock.now
+                    snapshot = try await freshSnapshot(.afterOwnMove)
+                    phase.snapshotMs += Self.ms(clock.now - start)
+                }
+            }
+            if waitedForKeyboard
+                || Self.keyboardShifted(before: keyboardFrameBeforeType, after: snapshot.keyboardFrame) {
                 // **settledSignature が自分で phase へ計上する**ので、ここでは足さない
                 // (足すと待ち時間を snapshotMs へ二重計上する)
                 let settled = try await settledSignature(phase: &phase)
@@ -1050,6 +1070,7 @@ extension StepExecutor {
                try await typeViaTypeDriver(td, step: step, phase: &phase) {
                 keyboardFrameBeforeType = keyboardBefore
                 pendingTypeKeyboardCheck = true
+                pendingTypeEndedWithNewline = text.hasSuffix("\n")
                 // ランナーの打ち直しの申告(OKResponse.note)はこの経路でも拾う(下の主経路と同じ)
                 return StepOutcome(status: .passed, healedStep: healedStep,
                                    healedByFingerprint: healedByFingerprint,
@@ -1090,6 +1111,7 @@ extension StepExecutor {
             // 打つ前後のキーボードを比べる**(keyboardFrameBeforeType の doc)
             keyboardFrameBeforeType = keyboardBefore
             pendingTypeKeyboardCheck = true
+            pendingTypeEndedWithNewline = text.hasSuffix("\n")
         case "clearInput":
             if let td = typeDriver, preferTypeDriver,
                try await clearViaTypeDriver(td, step: step, phase: &phase) {

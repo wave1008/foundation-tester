@@ -895,6 +895,26 @@ public final class StepExecutor {
     /// 押し上げ前の座標を撃って別要素に当たった(E2E-iOS S0010・11 本中 5 本)
     var pendingTypeKeyboardCheck = false
 
+    /// 直前の `type` の本文が改行で終わったか(= Enter でキーボードを閉じうる)。
+    /// **`pendingTypeKeyboardCheck` と同時に書く**(`keyboardHiddenAfterType` が読む)
+    var pendingTypeEndedWithNewline = false
+
+    /// 打つ前に出ていたキーボードが、打った後の最初の木で画面外に居るか(純粋関数)。
+    /// **secure 欄では iOS がキーボードを一度隠して出し直す**(実測 2026-09-17: 打っている間と、type が
+    /// 返ってから約 0.8 秒は画面外・その間 0.45 秒ほど木が静止する)ので、整定待ちだけだと隠れている間に
+    /// 「静止した」と抜け、戻った直後に中身が 64pt 押し上げられて次の tap が古い座標を撃つ(M22)。
+    /// 本文が改行で終わるときは Enter で正当に閉じうるので待たない
+    static func keyboardHiddenAfterType(before: FTRect?, after: FTRect?, screen: FTRect,
+                                        typedNewline: Bool) -> Bool {
+        !typedNewline && keyboardOnScreen(before, screen: screen) && !keyboardOnScreen(after, screen: screen)
+    }
+
+    /// 隠れたキーボードは nil ではなく画面外(y が画面の下端以上)の矩形で申告されることがある
+    static func keyboardOnScreen(_ frame: FTRect?, screen: FTRect) -> Bool {
+        guard let frame, frame.height > 0 else { return false }
+        return frame.y < screen.y + screen.height
+    }
+
     /// キーボードが「新しく出た」「矩形が動いた」「消えた」のいずれかで true(純粋関数)。
     /// 同一(nil→nil 含む)なら false。type の前後の `snapshot.keyboardFrame` を比べるためだけに使う
     static func keyboardShifted(before: FTRect?, after: FTRect?) -> Bool {
