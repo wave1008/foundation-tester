@@ -163,3 +163,52 @@ test("選択が1台も無いとき(すべて解除)、ログの右クリック�
   assert.ok(menu.classList.contains("visible"));
   assert.notEqual(display(document, "device-op-menu-deselect-all"), "none");
 });
+
+// entry 無しで開くメニュー(ラインビューの空きエリア・実行ログビューの「すべて選択」)も、外を押せば閉じる
+function press(window, el, type) {
+  el.dispatchEvent(new window.MouseEvent(type, { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+}
+
+test("ラインビューの空きエリアで開いたメニューは、外を押すと閉じる(項目を選ばなくてよい)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevice(window);
+  const menu = document.getElementById("device-op-menu");
+  const grid = document.getElementById("grid");
+  rightClick(window, grid);
+  assert.ok(menu.classList.contains("visible"), "前提: 空きエリアの右クリックで開く");
+  assert.equal(document.getElementById("device-op-menu-item").style.display, "none", "前提: デバイスの項目は無い");
+
+  press(window, document.getElementById("lanes-title"), "pointerdown");
+  assert.ok(!menu.classList.contains("visible"), "外の pointerdown で閉じる");
+
+  rightClick(window, grid);
+  assert.ok(menu.classList.contains("visible"));
+  press(window, document.getElementById("lanes-title"), "click");
+  assert.ok(!menu.classList.contains("visible"), "外の click でも閉じる");
+});
+
+test("メニューの中を押しても閉じず、項目はそのまま実行できる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevice(window);
+  const menu = document.getElementById("device-op-menu");
+  rightClick(window, document.getElementById("grid"));
+  const selectAll = document.getElementById("device-op-menu-select-all");
+  press(window, selectAll, "pointerdown");
+  assert.ok(menu.classList.contains("visible"), "中の pointerdown では閉じない");
+  press(window, selectAll, "click");
+  assert.equal(document.querySelectorAll("#grid .tile.selected").length, 1, "項目は実行される");
+  assert.ok(!menu.classList.contains("visible"));
+});
+
+test("実行ログビューの「すべて選択」メニューも、外を押すと閉じる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevice(window);
+  const menu = document.getElementById("device-op-menu");
+  rightClick(window, document.getElementById("lanes-title"));
+  assert.ok(menu.classList.contains("visible"));
+  press(window, document.getElementById("grid"), "pointerdown");
+  assert.ok(!menu.classList.contains("visible"));
+});

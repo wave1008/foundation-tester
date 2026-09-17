@@ -201,6 +201,71 @@ test("グリッドビューの台をダブルクリックすると、その台�
   assert.ok(document.getElementById("lanes-grid").classList.contains("single-device"), "1台なので左に絵・右にログ");
 });
 
+const dblclick = (window, el) =>
+  el.dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+const selectedTileCount = (document) => document.querySelectorAll("#grid .tile.selected").length;
+
+test("このデバイスのみ選択の後、その台をダブルクリックすると直前の選択へ戻る", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, [{}, {}, {}]);
+  clickTile(document, 0);
+  clickTile(document, 2);
+  const target = visiblePairs(document)[1].querySelector(".lane-preview");
+  dblclick(window, target);
+  assert.equal(visiblePairs(document).length, 1, "前提: その台だけになる");
+
+  dblclick(window, visiblePairs(document)[0].querySelector(".lane-preview"));
+  assert.deepEqual(visiblePairs(document).map((p) => p.querySelector(".lane-header").textContent),
+    ["Dev 0", "Dev 2"], "直前の2台に戻る");
+  assert.equal(selectedTileCount(document), 2);
+
+  // 戻した後のダブルクリックは再び「その台のみ」(行き来できる)
+  dblclick(window, visiblePairs(document)[0].querySelector(".lane-preview"));
+  assert.deepEqual(visiblePairs(document).map((p) => p.querySelector(".lane-header").textContent), ["Dev 0"]);
+});
+
+test("全選択からこのデバイスのみ選択した後のダブルクリックは全選択に戻る", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, [{}, {}, {}]);
+  document.getElementById("btn-select-all").click();
+  assert.equal(selectedTileCount(document), 3, "前提: 全選択");
+  dblclick(window, visiblePairs(document)[1].querySelector(".lane-preview"));
+  assert.equal(selectedTileCount(document), 1);
+  dblclick(window, visiblePairs(document)[0].querySelector(".lane-preview"));
+  assert.equal(selectedTileCount(document), 3, "全台の選択に戻る");
+  assert.equal(document.getElementById("btn-select-all").getAttribute("aria-pressed"), "true", "全選択の旗も戻る");
+});
+
+test("全選択に戻すときは、1台表示の間に現れた台も選ぶ(全選択の意味のまま)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, [{}, {}, {}]);
+  document.getElementById("btn-select-all").click();
+  dblclick(window, visiblePairs(document)[0].querySelector(".lane-preview"));
+  assert.equal(selectedTileCount(document), 1);
+  sendDevices(window, [{}, {}, {}, {}]);  // 4台目が現れる
+  assert.equal(selectedTileCount(document), 1, "前提: 1台表示のまま");
+  dblclick(window, visiblePairs(document)[0].querySelector(".lane-preview"));
+  assert.equal(selectedTileCount(document), 4, "現れた台も含めて全選択");
+});
+
+test("手で選択を変えた後は戻さない(ダブルクリックはその台のみ選択)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, [{}, {}, {}]);
+  clickTile(document, 0);
+  clickTile(document, 1);
+  clickTile(document, 2);
+  dblclick(window, visiblePairs(document)[0].querySelector(".lane-preview"));  // Dev 0 のみ
+  clickTile(document, 1);  // 手で足す(Dev 0 + Dev 1)
+  clickTile(document, 1);  // 手で外す(また Dev 0 のみ)
+  dblclick(window, visiblePairs(document)[0].querySelector(".lane-preview"));
+  assert.deepEqual(visiblePairs(document).map((p) => p.querySelector(".lane-header").textContent),
+    ["Dev 0"], "選択を一度変えたら3台へは戻さない");
+});
+
 test("2台選択で動画が2つ、選択順ではなくデバイス順に並ぶ", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());

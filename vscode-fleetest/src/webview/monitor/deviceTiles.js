@@ -1048,9 +1048,39 @@ export function selectOnlyDevice(deviceId) {
   if (!tiles.has(deviceId)) {
     return;
   }
+  selectOnlyRestore = { deviceId, previous: [...selectedDeviceIds], wasSelectAll: selectAllOn };
   selectedDeviceIds.clear();
   selectedDeviceIds.add(deviceId);
   updateSelectionUi();
+  dropTextSelection();
+}
+
+// 「このデバイスのみ選択」の直前の選択(グリッドビューのダブルクリックで戻す)。
+// 選択が一度でも変わったら捨てる(updateSelectionUi。戻す先はもう意味が無い)
+let selectOnlyRestore = null;
+
+// グリッドビューのダブルクリック(laneLog.js)。その台だけを表示している直後なら直前の選択へ戻し、
+// それ以外は「このデバイスのみ選択」
+export function toggleSelectOnlyDevice(deviceId) {
+  const restore = selectOnlyRestore;
+  if (!restore || restore.deviceId !== deviceId
+      || selectedDeviceIds.size !== 1 || !selectedDeviceIds.has(deviceId)) {
+    selectOnlyDevice(deviceId);
+    return;
+  }
+  selectOnlyRestore = null;
+  if (restore.wasSelectAll) {
+    // 全選択は旗ごと戻す(その後に現れた台も選ばれる = 全選択の意味のまま)
+    selectAllDevices();
+  } else {
+    selectedDeviceIds.clear();
+    for (const id of restore.previous) {
+      if (tiles.has(id)) {
+        selectedDeviceIds.add(id);
+      }
+    }
+    updateSelectionUi();
+  }
   dropTextSelection();
 }
 
@@ -1124,8 +1154,16 @@ deviceOpMenuLiveBtn.addEventListener('click', (event) => {
   closeDeviceOpMenu();
 });
 
+// メニューの外を押したら閉じる。**開いているかは deviceOpMenuOpen で見る** —— 空きエリアの右クリック・
+// 実行ログビューの「すべて選択」は entry 無しで開く(entry で見ると閉じる手段が項目の選択だけになる)。
+// capture:true の pointerdown = タイル・範囲選択の stopPropagation より先に見る(閉じるだけで何も止めない)
+document.addEventListener('pointerdown', (event) => {
+  if (deviceOpMenuOpen && !deviceOpMenu.contains(event.target)) {
+    closeDeviceOpMenu();
+  }
+}, true);
 document.addEventListener('click', (event) => {
-  if (deviceOpMenuEntry && !deviceOpMenu.contains(event.target)) {
+  if (deviceOpMenuOpen && !deviceOpMenu.contains(event.target)) {
     closeDeviceOpMenu();
   }
 });
@@ -1849,6 +1887,11 @@ function toggleDeviceSelection(id) {
 }
 
 function updateSelectionUi() {
+  // 選択が「その1台だけ」から一度でも外れたら、直前の選択へ戻す控えは捨てる
+  if (selectOnlyRestore
+      && !(selectedDeviceIds.size === 1 && selectedDeviceIds.has(selectOnlyRestore.deviceId))) {
+    selectOnlyRestore = null;
+  }
   refreshSelectAllState();
   for (const [id, entry] of tiles) {
     entry.tile.classList.toggle('selected', selectedDeviceIds.has(id));

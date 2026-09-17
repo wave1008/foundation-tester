@@ -3,7 +3,7 @@
 
 import { MAX_LANE_LINES, OVERALL_LANE_ID, overallLaneName, workerDisplayLabel } from "../../runLaneModel";
 import { lanesTitle, lanesPlaceholder, lanesGrid, lanesSelectionStatus, lanesRunStatus } from './domRefs.js';
-import { tiles, selectedDeviceIds, attachDeviceMirror, detachDeviceMirror, openDeviceOpMenuForDevice, openSelectAllOnlyMenu, selectOnlyDevice } from './deviceTiles.js';
+import { tiles, selectedDeviceIds, attachDeviceMirror, detachDeviceMirror, openDeviceOpMenuForDevice, openSelectAllOnlyMenu, toggleSelectOnlyDevice } from './deviceTiles.js';
 import { t } from '../i18n.js';
 import { setHoverTip } from './hoverTip.js';
 import { computePreviewGrid, computeSinglePreviewWidth } from './previewGridModel.js';
@@ -101,8 +101,9 @@ function ensureLane(id, name, platform, updateLabel, machine) {
   pair.append(preview, el);
   lanesGrid.appendChild(pair);
   // 拡大表示だけがデバイスのメニューを開く(ログ上は何も出さない。既定メニューの抑止は出力ペイン全体で行う)
-  // グリッドビューでダブルクリックした台だけの選択にする(1台なら左に絵・右にログ)
-  preview.addEventListener('dblclick', () => selectOnlyDevice(id));
+  // グリッドビューのダブルクリック: その台だけの選択にする(1台なら左に絵・右にログ)。
+  // 「このデバイスのみ選択」の直後にもう一度押すと、その前の選択へ戻す(deviceTiles.js)
+  preview.addEventListener('dblclick', () => toggleSelectOnlyDevice(id));
   preview.addEventListener('contextmenu', (event) => {
     if (openDeviceOpMenuForDevice(id, event.clientX, event.clientY)) {
       // document の contextmenu リスナが開いた直後に閉じる(タイル側と同じ理由)。
