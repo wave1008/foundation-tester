@@ -864,6 +864,8 @@ html.select-all-guard * {
   /* 固定高。ワーカー列(レーン)のヘッダをラベル文字列に依らず揃える(content 高だとまちまちになる) */
   display: flex;
   align-items: center;
+  /* バッジ(デバイス名・ホスト名)はレーンの左右中央 */
+  justify-content: center;
   flex: 0 0 26px;
   height: 26px;
   box-sizing: border-box;
