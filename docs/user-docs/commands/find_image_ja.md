@@ -72,7 +72,7 @@ existImage("[Share Icon]", scroll: .down).tap()
 - `withScrollDown { }` などの中では、`findImage` も `existImage` もスクロールしながら探します。今の画面だけを見るときは
   `scroll: .noScroll` を渡します(`existImage("[Icon]", scroll: .noScroll)`)。
 - スクロールしながら探すときは `scroll:` を渡します(`findImage("[Icon]", scroll: .down)`)。`exist` や `select` と同じ書き方です。
-  `findImageWithScrollDown` のような関数名の別名はありません(書くとコンパイルエラーが正しい書き方を示します)。
+  `findImageWithScrollDown` や `tapWithScrollDown` のような関数名の別名は、どのコマンドにもありません(書くとコンパイルエラーが正しい書き方を示します)。
 - 見本が1枚も無いときは、設定の誤りとして失敗します。
 - まれに、Mac の画像処理(Vision)が一時的にどの画像にも同じ特徴量を返す状態になります。そのまま比べると
   最初の候補を「見つけた」ことにしてしまうので、この状態は検知して失敗にします(文言は

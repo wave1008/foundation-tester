@@ -120,7 +120,7 @@ class ライフサイクルとコントロールが正しく働くこと {
             }
             scene(4, "リセットで全て初期値に戻る") {
                 action {
-                    tapWithScrollDown("#btn_controls_reset")
+                    tap("#btn_controls_reset", scroll: .down)
                     scrollToTop()
                 }.expectation {
                     select("#txt_sw_notify").textIs("notify=off")
@@ -136,7 +136,7 @@ class ライフサイクルとコントロールが正しく働くこと {
                 condition {
                     tap("#tab_home")
                     tap("#tab_controls")
-                    tapWithScrollDown("#btn_controls_reset")
+                    tap("#btn_controls_reset", scroll: .down)
                     scrollToTop()
                 }.expectation {
                     select("#btn_always_disabled").enabledIsFalse()

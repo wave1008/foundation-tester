@@ -27,8 +27,8 @@ class ホームが初期表示されること {
                     exist("カテゴリ")
                     exist("おすすめ")
                     // 4.7インチ実機ではここから下は画面外(667pt に収まらない)ため送りながら確認する
-                    existWithScrollDown("ベストセラー")
-                    existWithScrollDown("#product_card_fashion_5")  // おすすめ商品カード
+                    exist("ベストセラー", scroll: .down)
+                    exist("#product_card_fashion_5", scroll: .down)  // おすすめ商品カード
                 }
             }
         }

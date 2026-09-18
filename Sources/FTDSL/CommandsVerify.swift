@@ -16,7 +16,7 @@ import FTCore
 /// FM が判定を返さなかったステップは①だけで通り `visibility-guard-skipped` の注記が残る
 /// (判定は StepExecutor.occlusionFlip)。
 /// scroll: 指定すると検証前に**その方向へスクロールしながら要素を探す**
-/// (Shirates の existWithScrollDown 相当。省略時は現在画面だけを見る)。
+/// (Shirates の existWithScrollDown 相当。省略時はブロックの文脈に従い、文脈も無ければ現在画面だけを見る)。
 /// 方向は**コンテンツ基準**(`.down` = 下に読み進める)
 @discardableResult
 public func exist(_ selector: String, timeout: Double? = nil, requireVisible: Bool = true,
@@ -102,70 +102,6 @@ private func selectImpl(_ selector: FTSelector, timeout: Double?,
     return FTElement(selector: selector, matched: result.element)
 }
 
-@discardableResult
-public func selectWithScrollDown(_ selector: String, requireVisible: Bool = true,
-                                 maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                                 file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    select(selector, requireVisible: requireVisible, scroll: .down,
-           maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func selectWithScrollDown(_ selector: Sel, requireVisible: Bool = true,
-                                 maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                                 file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    select(selector, requireVisible: requireVisible, scroll: .down,
-           maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func selectWithScrollUp(_ selector: String, requireVisible: Bool = true,
-                               maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                               file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    select(selector, requireVisible: requireVisible, scroll: .up,
-           maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func selectWithScrollUp(_ selector: Sel, requireVisible: Bool = true,
-                               maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                               file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    select(selector, requireVisible: requireVisible, scroll: .up,
-           maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func selectWithScrollLeft(_ selector: String, requireVisible: Bool = true,
-                                 maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                                 file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    select(selector, requireVisible: requireVisible, scroll: .left,
-           maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func selectWithScrollLeft(_ selector: Sel, requireVisible: Bool = true,
-                                 maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                                 file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    select(selector, requireVisible: requireVisible, scroll: .left,
-           maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func selectWithScrollRight(_ selector: String, requireVisible: Bool = true,
-                                  maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                                  file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    select(selector, requireVisible: requireVisible, scroll: .right,
-           maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func selectWithScrollRight(_ selector: Sel, requireVisible: Bool = true,
-                                  maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                                  file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    select(selector, requireVisible: requireVisible, scroll: .right,
-           maxSwipes: maxSwipes, file: file, line: line)
-}
-
 // MARK: - findImage / findImages / existImage(画像で要素を探す・検証する。Shirates Vision の移植)
 
 /// **画像で要素を探す**(Shirates Vision の findImage)。テンプレートは DefaultClassifier の見本
@@ -181,7 +117,7 @@ public func selectWithScrollRight(_ selector: Sel, requireVisible: Bool = true,
 /// timeout: 既定 0 = 今の画面を1回だけ見る(`FindImage.defaultTimeout`。実行プロファイルの
 /// defaultTimeout には従わない)。出るのを待つなら秒数を渡す。scroll 指定時は位置ごとに1回だけ見る。
 /// scroll: 指定すると**その方向へスクロールしながら探す**(Shirates の findImage(allowScroll))。
-/// **`findImageWithScrollDown` 等の別名は置かない**(画像系は `scroll:` だけで指定する。
+/// **`findImageWithScrollDown` 等の別名は置かない**(スクロールの指定は全コマンドで `scroll:` だけ。
 /// Shirates の名前は UnavailableCommands.swift が受け止める)
 @discardableResult
 public func findImage(_ label: String, threshold: Double = FindImage.defaultThreshold,

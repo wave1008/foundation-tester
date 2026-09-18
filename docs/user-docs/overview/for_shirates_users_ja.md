@@ -19,8 +19,8 @@ Fleetest の Swift DSL は Shirates(Classic)の慣習に準拠しています。
 
 | 分類 | コマンド |
 |---|---|
-| タップ・要素選択 | `tap`(+`holdSeconds:`)、`tapWithScrollDown/Up/Left/Right`、`select`、`selectWithScroll*` |
-| 存在検証 | `exist`、`existWithScrollDown/Up`、`appIs` |
+| タップ・要素選択 | `tap`(+`holdSeconds:`)、`select` |
+| 存在検証 | `exist`、`appIs` |
 | テキスト・値の検証 | `textIs` / `textIsNot` / `textContains(Not)` / `textStartsWith(Not)` / `textEndsWith(Not)` / `textMatches(Not)` / `textMatchesDateFormat` / `textIsEmpty` / `textIsNotEmpty`、`valueIs…` も同じ10種一式 |
 | 任意の値の検証 | `thisIs` / `thisIsNot` / `thisIsTrue` / `thisIsFalse` / `thisIsEmpty` / `thisIsNotEmpty` / `thisIsBlank` / `thisIsNotBlank` / `thisContains(Not)` / `thisStartsWith(Not)` / `thisEndsWith(Not)` / `thisMatches(Not)` / `thisMatchesDateFormat` / `thisIsGreaterThan(OrEqual)` / `thisIsLessThan(OrEqual)` |
 | スクロール | `scrollDown/Up/Left/Right`(+`repeat:`)、`scrollToBottom/Top/RightEdge/LeftEdge`(+`maxSwipes:`)、`withScrollDown/Up/Left/Right`、`withoutScroll` |
@@ -52,7 +52,7 @@ Fleetest の Swift DSL は Shirates(Classic)の慣習に準拠しています。
 | `screenIs` / `screenIsOf` / `isScreen(Of)` / `waitScreen(Of)` / `switchScreen` | `screenLooksLike("説明文")`(FM 視覚検証)、またはその画面にしか無い要素への `exist(sel)` |
 | `dontExistImage` / `canFindImage` / `imageContains`(画像テンプレートマッチングの検証) | [`findImage`](../commands/find_image_ja.md) の戻り値を `.isEmpty` で見る、または `screenLooksLike("説明文")`(FM マルチモーダル視覚検証)。`findImage*` / `findImages` / `existImage*` / [`imageIs`](../commands/image_assertion_ja.md) は同名である |
 | `tapWithoutScroll` / `existWithoutScroll` / `selectWithoutScroll` / `existImageWithoutScroll` | 各コマンドに `scroll: .noScroll` を渡す(`exist(sel, scroll: .noScroll)`)。ブロックごと打ち消すなら `withoutScroll { }` |
-| `findImageWithScrollDown` / `existImageWithScrollDown` など(画像系の `*WithScroll*`) | `findImage(label, scroll: .down)` / `existImage(label, scroll: .down)` |
+| `tapWithScrollDown` / `existWithScrollUp` / `selectWithScrollLeft` / `findImageWithScrollDown` など(`*WithScroll*`) | 各コマンドに `scroll:` を渡す(`tap(sel, scroll: .down)` / `existImage(label, scroll: .down)`)。スクロールの指定は `scroll:` 引数だけです |
 | `macro` | 素の Swift 関数 |
 | `manual` / `knownIssue` | 無い —— 失敗したコマンドは必ずシナリオを中断する。失敗を「想定内」として黙らせる逃げ道は無い |
 | `must` / `should` / `want`、`SKIP` / `MANUAL` / `NOTIMPL` | 無い —— OS 限定のテストは `@TestClass(platform:)` / `@Test(platform:)` を使う |

@@ -13,14 +13,11 @@
 | `withoutScroll { … }` | 外側の `withScroll*` を打ち消し、ブロック内は現在画面だけで解決します。 |
 | `withoutContainerInference { … }` | ブロック内のすべてのコマンドで、容器の推測に依存する補正(後述)を止めます。 |
 | `scroll: .noScroll`(`tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `findImage` / `existImage` の引数) | `withScroll*` の中でも、この1コマンドだけスクロールしません(現在画面だけで解決します)。引数を省いた場合は、ブロックの向きに従います。 |
-| `tapWithScrollDown(sel, maxSwipes:)` 等(4方向) | `tap(sel, scroll: .down)` の別名です。 |
-| `existWithScrollDown(sel, maxSwipes:)` / `existWithScrollUp` | `exist(sel, scroll: .down)` の別名です。 |
-| `selectWithScrollDown(sel, maxSwipes:)` 等(4方向) | `select(sel, scroll: .down)` の別名です。 |
 
-**`*WithScroll*` の別名は `maxSwipes:`(`select` 系は `requireVisible:` も)しか取らない糖衣です。**
-`timeout:` や `holdSeconds:` も渡したいときは本体の `scroll:` 引数を使ってください
-(`tap(sel, scroll: .down, timeout: 2)`)。`existWithScrollLeft`/`Right` を置いていないのも
-同じ理由で、`exist(sel, scroll: .left)` と書けば足ります。
+**スクロールの指定は、各コマンドの `scroll:` 引数だけで行います。** 向き(`.down` / `.up` / `.right` / `.left`)を渡すと
+その方向へスクロールしながら探し、`.noScroll` を渡すと `withScroll*` の中でもスクロールしません。省略した場合は
+ブロックの向きに従います(ブロックの外なら現在画面だけ)。`tapWithScrollDown` や `existWithoutScroll` のように
+関数名で指定する別名はありません(書くと、コンパイルエラーが `scroll:` を使った書き方を示します)。
 
 ## スクロールさせたい領域: `scrollFrame:`
 

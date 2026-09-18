@@ -83,7 +83,7 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     tap("#tab_home")
                 }.action {
                     tap("#tab_controls")
-                    tapWithScrollDown("#btn_controls_reset")
+                    tap("#btn_controls_reset", scroll: .down)
                     scrollToTop()
                 }.expectation {
                     select("#txt_slider").textIs("volume=50")   // 先にアプリ側の状態を確定させる

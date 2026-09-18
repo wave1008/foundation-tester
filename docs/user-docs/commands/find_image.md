@@ -73,7 +73,7 @@ existImage("[Share Icon]", scroll: .down).tap()
 - Inside `withScrollDown { }` and the like, `findImage` and `existImage` search while scrolling. Pass `scroll: .noScroll`
   to look at the current screen only (`existImage("[Icon]", scroll: .noScroll)`).
 - To search while scrolling, pass `scroll:` (`findImage("[Icon]", scroll: .down)`), the same way as `exist` and `select`.
-  There are no function-name aliases such as `findImageWithScrollDown` (writing one gives a compile error that shows the right form).
+  No command has function-name aliases such as `findImageWithScrollDown` or `tapWithScrollDown` (writing one gives a compile error that shows the right form).
 - When there is no sample image at all, the step fails as a configuration error.
 - Occasionally the Mac's image processing (Vision) temporarily returns the same feature print for every image. Comparing in
   that state would "find" the first candidate, so the state is detected and the step fails (the message says

@@ -14,14 +14,11 @@ to an edge.
 | `withoutScroll { … }` | Cancels an outer `withScroll*` — commands inside resolve against the current screen only. |
 | `withoutContainerInference { … }` | Disables the container-inference corrections (below) for every command inside the block. |
 | `scroll: .noScroll` (an argument of `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `findImage` / `existImage`) | Skips scrolling for this one command even inside a `withScroll*` block (it resolves against the current screen only). Leaving the argument out follows the direction of the block. |
-| `tapWithScrollDown(sel, maxSwipes:)` etc. (4 directions) | Alias for `tap(sel, scroll: .down)`. |
-| `existWithScrollDown(sel, maxSwipes:)` / `existWithScrollUp` | Alias for `exist(sel, scroll: .down)`. |
-| `selectWithScrollDown(sel, maxSwipes:)` etc. (4 directions) | Alias for `select(sel, scroll: .down)`. |
 
-**The `*WithScroll*` aliases only take `maxSwipes:`** (`select` ones also take `requireVisible:`).
-If you need `timeout:` or `holdSeconds:` too, use the base command's `scroll:` argument instead:
-`tap(sel, scroll: .down, timeout: 2)`. `existWithScrollLeft`/`Right` do not exist for the same
-reason — write `exist(sel, scroll: .left)`.
+**Scrolling is specified only through each command's `scroll:` argument.** A direction (`.down` / `.up` / `.right` / `.left`)
+searches while scrolling that way, and `.noScroll` never scrolls, even inside a `withScroll*` block. Leaving it out follows
+the direction of the enclosing block (outside a block: the current screen only). There are no function-name aliases such as
+`tapWithScrollDown` or `existWithoutScroll` (writing one gives a compile error that shows the `scroll:` form).
 
 ## The scrollable region: `scrollFrame:`
 

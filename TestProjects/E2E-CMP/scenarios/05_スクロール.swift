@@ -3,8 +3,8 @@
 // 契約検証(docs/design.md §10)。折り返し下の要素は直前に scrollTo が必須であることを確認する。
 // あわせて `textContains`/`textMatches`・Shirates 準拠のスクロールコマンド群(`scrollToBottom`/
 // `scrollToTop`/`scrollDown(repeat:)`/`withScrollDown`/`tap(scroll:)`)・型付きセレクタ(Sel)の
-// スコープ・状態フィルタ・スクロール別名族(`tapWithScrollDown`/`existWithScrollUp`/
-// `scroll: .noScroll`)をまとめて検証する。
+// スコープ・状態フィルタ・`scroll:` 引数(`.down`/`.up`/
+// `.noScroll`)をまとめて検証する。
 // 旧シナリオ境界は tap("#tab_home") でホームへ戻ってから叩き直す形に置き換えてある
 // (App() はタブ/子画面切替で remember 状態を破棄するため、selected=- 等の初期値はこれだけで戻る)。
 // **統合B は2本の @Test に分けてある**(ios-xcuitest の壁時計対策。1本に畳むとスクロール操作の
@@ -222,7 +222,7 @@ class スクロールで折り返し下の要素に到達できること {
             scene(2, "checked / enabled のフィルタ") {
                 condition {
                     tap(.id("tab_controls"))
-                    tapWithScrollDown(.id("btn_controls_reset"))
+                    tap(.id("btn_controls_reset"), scroll: .down)
                     scrollToTop()
                 }.expectation {
                     exist(.id("cb_agree").checked(false))                 // #cb_agree&&checked=false
@@ -246,17 +246,17 @@ class スクロールで折り返し下の要素に到達できること {
                     exist(.id("row_01"))
                 }
             }
-            scene(4, "tapWithScrollDown の Sel 版で折り返し下の行まで送ってタップする") {
+            scene(4, "tap(scroll: .down) の Sel 版で折り返し下の行まで送ってタップする") {
                 action {
-                    tapWithScrollDown(.id("row_40"), maxSwipes: 15)
+                    tap(.id("row_40"), scroll: .down, maxSwipes: 15)
                 }.expectation {
                     // 固定ヘッダなのでスクロール後も見える
                     select(.id("txt_row_selected")).textIs("selected=row_40")
                 }
             }
-            scene(5, "existWithScrollUp の Sel 版で先頭へ戻りながら確認する") {
+            scene(5, "exist(scroll: .up) の Sel 版で先頭へ戻りながら確認する") {
                 expectation {
-                    existWithScrollUp(.id("row_01"), maxSwipes: 15)
+                    exist(.id("row_01"), scroll: .up, maxSwipes: 15)
                 }
             }
             scene(6, "withScrollDown の中でも scroll: .noScroll の Sel 版は現在画面だけを見る") {

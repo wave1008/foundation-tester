@@ -187,29 +187,10 @@ public enum DSLCommandIndex {
         .init("withoutScroll", "scroll", "withoutScroll { }",
               "Cancels an enclosing withScroll* for the block. For a single command pass scroll: .noScroll "
                 + "(tap / type / clearInput / select / exist / notExist / findImage / existImage); "
-                + "there are no *WithoutScroll functions, and findImage / existImage have no *WithScroll* aliases."),
+                + "scrolling is specified only by scroll: (scroll: .down to search while scrolling). "
+                + "There are no *WithScrollDown/Up/Right/Left or *WithoutScroll functions."),
         .init("withoutContainerInference", "scroll", "withoutContainerInference { }",
               "Disables container-inference-based tap/scroll correction for every command in the block."),
-        .init("tapWithScrollDown", "scroll", "tapWithScrollDown(selector, maxSwipes:)",
-              "Alias of tap(selector, scroll: .down). Takes only maxSwipes."),
-        .init("tapWithScrollUp", "scroll", "tapWithScrollUp(selector, maxSwipes:)",
-              "Alias of tap(selector, scroll: .up). Takes only maxSwipes."),
-        .init("tapWithScrollRight", "scroll", "tapWithScrollRight(selector, maxSwipes:)",
-              "Alias of tap(selector, scroll: .right). Takes only maxSwipes."),
-        .init("tapWithScrollLeft", "scroll", "tapWithScrollLeft(selector, maxSwipes:)",
-              "Alias of tap(selector, scroll: .left). Takes only maxSwipes."),
-        .init("existWithScrollDown", "scroll", "existWithScrollDown(selector, maxSwipes:)",
-              "Alias of exist(selector, scroll: .down). There is no left/right alias."),
-        .init("existWithScrollUp", "scroll", "existWithScrollUp(selector, maxSwipes:)",
-              "Alias of exist(selector, scroll: .up). There is no left/right alias."),
-        .init("selectWithScrollDown", "scroll", "selectWithScrollDown(selector, requireVisible:, maxSwipes:)",
-              "Alias of select(selector, scroll: .down)."),
-        .init("selectWithScrollUp", "scroll", "selectWithScrollUp(selector, requireVisible:, maxSwipes:)",
-              "Alias of select(selector, scroll: .up)."),
-        .init("selectWithScrollRight", "scroll", "selectWithScrollRight(selector, requireVisible:, maxSwipes:)",
-              "Alias of select(selector, scroll: .right)."),
-        .init("selectWithScrollLeft", "scroll", "selectWithScrollLeft(selector, requireVisible:, maxSwipes:)",
-              "Alias of select(selector, scroll: .left)."),
 
         // MARK: flick
         .init("flickCenterToTop", "flick",

@@ -812,7 +812,7 @@ uikit ホストの同シナリオ(元から DOM 経路)が 11.3s なので、ほ
 - **Android の settle は cap(`ACTION_CAP_MS` 2,000ms)に一度も届かない**(165 回中 0 回・
   quiet の最大 362ms)。ハンドラ全体でも最大 916ms
 - **ホスト `actionMs` が 5〜6 秒になる tap は「探索付き tap」**(`tap(sel, scroll:)` /
-  `tapWithScrollDown` / `withScrollDown { }`)。内蔵スクロール探索は**別ステップにしない**設計
+  `withScrollDown { }`)。内蔵スクロール探索は**別ステップにしない**設計
   (StepExecutor)なので、最大 15 回のスワイプが tap の名前で計上される。**素の tap は 255ms**。
   平均値だけ見て「Android の tap が遅い」と読まないこと
 

@@ -48,9 +48,9 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 |---|---|---|
 | `tap` | `tap(sel, timeout:scroll:maxSwipes:)` | ✅ |
 | `tap(holdSeconds:)` | 同名 | ✅ |
-| `tapWithScrollDown/Up/Left/Right` | 同名 | ✅ |
+| `tapWithScrollDown/Up/Left/Right` | `tap(sel, scroll: .down)` | 🟡 関数は置かない(下記「スクロールの指定は `scroll:` だけ」) |
 | `tapWithoutScroll` | `tap(sel, scroll: .noScroll)` | 🟡 関数は置かない(ユーザー決定 2026-09-19: スクロールの指定は `scroll:` に寄せる。Shirates の名前は `UnavailableCommands.swift` が書き方を返す) |
-| `select` / `selectWithScroll*` / `selectWithoutScroll` | 同名(`selectWithoutScroll` だけは `select(sel, scroll: .noScroll)`) | ✅ `exist`(検証)では代用にならないため実装(2026-07-31)。**掴めなければ失敗させず空要素を返す**(見つからないときも、見えないときも同じ。`requireVisible: false` で可視性照合を外せる)。Shirates の `throwsException` に相当する引数は持たない = 常に非 throw |
+| `select` / `selectWithScroll*` / `selectWithoutScroll` | `select`(`selectWithScroll*` は `select(sel, scroll: .down)`・`selectWithoutScroll` は `scroll: .noScroll`) | ✅ `exist`(検証)では代用にならないため実装(2026-07-31)。**掴めなければ失敗させず空要素を返す**(見つからないときも、見えないときも同じ。`requireVisible: false` で可視性照合を外せる)。Shirates の `throwsException` に相当する引数は持たない = 常に非 throw |
 | `TestDriver.lastElement` / `it` | `lastElement` | ✅ 2026-08-04 ユーザー決定で実装(それ以前は「概念を持たない」が承認済み差分)。要素を1つに定めて解決したコマンドが差し替える(`notExist` / `countIs` とセレクタを取らないコマンドは差し替えない)。**値は掴んだ時点の凍結値**・**掴めなければ空で上書き**・**scene を跨ぐと空**・一度も掴んでいない読み出しは空+警告。`it` の別名は置かない(Swift では読み手が識別子を追えない) |
 | `canSelect` / `canSelectWithScroll*` / `canSelectNot` | 単独コマンドは無い(`ifCanSelect` / `repeatWhileCanSelect` に内包) | 🟡 |
 | `existAll` / `canSelectAll` / `dontExistAll` | — | ➖ **実装しない**(ユーザー決定 2026-07-31)。`exist` のチェーンで書く方が保守しやすく、要素ごとに `timeout:` / `scroll:` 等のオプションも指定できる。**再提案しない** |
@@ -108,8 +108,8 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | Shirates | fleetest | |
 |---|---|---|
 | `exist` | 同名(戻り値チェーン可) | ✅ |
-| `existWithScrollDown/Up` | 同名 | ✅ |
-| `existWithScrollLeft/Right` | 別名なし(`exist(sel, scroll: .left)` で可) | ➖ **置かない**(下記「別名族が取る引数」) |
+| `existWithScrollDown/Up` | `exist(sel, scroll: .down)` | 🟡 関数は置かない(同上) |
+| `existWithScrollLeft/Right` | `exist(sel, scroll: .left)` | 🟡 関数は置かない(同上) |
 | `existWithoutScroll` | `exist(sel, scroll: .noScroll)` | 🟡 関数は置かない(`tapWithoutScroll` と同じ) |
 | `dontExist` | `notExist(sel, timeout:scroll:maxSwipes:)` | 🟡 **名前が違う** |
 | `dontExistWithScrollDown/Up` / `dontExistWithoutScroll` | `notExist(scroll:)` に集約 | 🟡 別名は無い |
@@ -267,13 +267,14 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `clearInput(sel)` | **Flutter の iOS は in-app エンジンでは消せず XCUITest 経由**になる(自動フォールバック。1〜2秒)。engine への editing state 配送は3回実測して不採用(design.md) |
 | `tapAppIcon` | 見つからないときの探索方法が OS で違う: Android はドロワーを開いて `flickCenterToTop` で最大8回スクロール探索、iOS は `flickRightToLeft` で最大5ページ送り(2回連続で画面が変化しなければ打ち切り) |
 
-## 別名族が取る引数(2026-08-02 に仕様として固定)
+## スクロールの指定は `scroll:` だけ(ユーザー決定 2026-09-19)
 
-`tapWithScroll*` / `existWithScroll*` / `selectWithScroll*` は **`maxSwipes:`(select 系は
-`requireVisible:` も)しか取らない糖衣**で、本体の全引数は生やさない。`existWithScrollLeft/Right`
-を置かないのも同じ判断。**理由**: 別名は「Shirates と同名で書ける」ことだけが価値で、引数が要る
-場面では本体の `scroll:` の方が短く読みやすい(`tap(sel, scroll: .down, timeout: 2)`)。
-別名にも全引数を生やすと、同じことを2通りで書ける組み合わせが増え、**生成側の語彙のブレ**になる
+`tapWithScroll*` / `existWithScroll*` / `selectWithScroll*` / `findImageWithScroll*` / `existImageWithScroll*` と
+`*WithoutScroll` は**1つも置かない**。各コマンドの `scroll:` に向き(`.down` 等)か `.noScroll`(この1コマンドだけ
+送らない)を渡す。**理由**: 関数名と引数の2通りで同じことが書けると、シグネチャが族ごとに不揃いになり
+(別名は `maxSwipes:` しか取らない・`exist` は上下だけ・画像系は4方向、だった)、**生成側の語彙のブレ**になる
+(この文書冒頭の「何を足すかの判断基準」そのもの)。Shirates の名前を書いた人には `UnavailableCommands.swift` が
+コンパイルエラーで書き方を返す。**別名を再提案しない。**
 (この文書冒頭の「何を足すかの判断基準」そのもの)。**引数の欠落を不整合として再提案しない。**
 
 ## 足す価値がある残り
@@ -285,4 +286,4 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | 項目 | 状態 |
 |---|---|
 | **祖先方向の相対セレクタ**(`:parent`) | ⏳ **保留**(ユーザー決定 2026-07-31)。id を持つのが子ラベルだけの行を「行として」検証するときに効くが、タップは座標が最前面に当たるので現状でも大きくは困らない。**シナリオを書いていて実際に必要になった時点で提案する**(それまで再提案しない) |
-| `notExist` の別名族・`existWithScrollLeft/Right` | ➖ **置かない**(上記「別名族が取る引数」で決着。2026-08-02)|
+| スクロールの別名族(`*WithScroll*`・`*WithoutScroll`) | ➖ **置かない**(上記「スクロールの指定は `scroll:` だけ」で決着。2026-09-19)|

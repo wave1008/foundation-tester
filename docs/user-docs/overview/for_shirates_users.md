@@ -19,8 +19,8 @@ present, and what only fleetest has.
 
 | Category | Commands |
 |---|---|
-| Tap / select | `tap` (+`holdSeconds:`), `tapWithScrollDown/Up/Left/Right`, `select`, `selectWithScroll*` |
-| Existence | `exist`, `existWithScrollDown/Up`, `appIs` |
+| Tap / select | `tap` (+`holdSeconds:`), `select` |
+| Existence | `exist`, `appIs` |
 | Text / value assertions | `textIs` / `textIsNot` / `textContains(Not)` / `textStartsWith(Not)` / `textEndsWith(Not)` / `textMatches(Not)` / `textMatchesDateFormat` / `textIsEmpty` / `textIsNotEmpty`, and the same 10-form set for `valueIs…` |
 | Any-value assertions | `thisIs` / `thisIsNot` / `thisIsTrue` / `thisIsFalse` / `thisIsEmpty` / `thisIsNotEmpty` / `thisIsBlank` / `thisIsNotBlank` / `thisContains(Not)` / `thisStartsWith(Not)` / `thisEndsWith(Not)` / `thisMatches(Not)` / `thisMatchesDateFormat` / `thisIsGreaterThan(OrEqual)` / `thisIsLessThan(OrEqual)` |
 | Scroll | `scrollDown/Up/Left/Right` (+`repeat:`), `scrollToBottom/Top/RightEdge/LeftEdge` (+`maxSwipes:`), `withScrollDown/Up/Left/Right`, `withoutScroll` |
@@ -52,7 +52,7 @@ present, and what only fleetest has.
 | `screenIs` / `screenIsOf` / `isScreen(Of)` / `waitScreen(Of)` / `switchScreen` | `screenLooksLike("description")` (FM visual check), or `exist(sel)` on an element unique to that screen |
 | `dontExistImage` / `canFindImage` / `imageContains` (image template matching assertions) | Check the result of [`findImage`](../commands/find_image.md) with `.isEmpty`, or `screenLooksLike("description")` (FM visual verification). `findImage*` / `findImages` / `existImage*` / [`imageIs`](../commands/image_assertion.md) exist under the same names |
 | `tapWithoutScroll` / `existWithoutScroll` / `selectWithoutScroll` / `existImageWithoutScroll` | Pass `scroll: .noScroll` to the command (`exist(sel, scroll: .noScroll)`). To cancel for a whole block, use `withoutScroll { }` |
-| `findImageWithScrollDown` / `existImageWithScrollDown` and the like (the image `*WithScroll*` names) | `findImage(label, scroll: .down)` / `existImage(label, scroll: .down)` |
+| `tapWithScrollDown` / `existWithScrollUp` / `selectWithScrollLeft` / `findImageWithScrollDown` and the like (`*WithScroll*`) | Pass `scroll:` to the command (`tap(sel, scroll: .down)` / `existImage(label, scroll: .down)`). Scrolling is specified only through the `scroll:` argument |
 | `macro` | a plain Swift function |
 | `manual` / `knownIssue` | not available — a failing command always aborts the scenario; there is no escape hatch to mark a failure as expected |
 | `must` / `should` / `want`, `SKIP` / `MANUAL` / `NOTIMPL` | not available — for OS-specific tests use `@TestClass(platform:)` / `@Test(platform:)` instead |

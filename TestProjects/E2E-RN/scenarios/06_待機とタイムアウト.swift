@@ -119,7 +119,7 @@ class 待機とタイムアウトが正しく効くこと {
                 condition {
                     tap("#btn_back")
                     tap("#tab_controls")
-                    tapWithScrollDown("#btn_controls_reset")
+                    tap("#btn_controls_reset", scroll: .down)
                     scrollToTop()
                 }.expectation {
                     // **状態フィルタは型ではなく id と併用する**: 同じ役割の要素でも型は SUT ごとに

@@ -1961,9 +1961,7 @@ select(.id("txt_result")).textIs("dialog=none")   // 検証はセレクタを取
   のような総称にすると leading-dot が効かなくなるため、各コマンドは String 版と `Sel` 版の
   **2 つの具体オーバーロード**を持ち、共通の impl(FTSelector を取る)へ畳む
 - **対象セレクタを取るコマンドは String / Sel が1対1**(2026-07-29 に非対称を解消)。
-  Shirates 由来の別名族(`tapWithScrollDown/Up/Right/Left` /
-  `existWithScrollDown/Up` /
-  `selectWithScrollDown/Up/Right/Left`)にも Sel 版がある。
+  (スクロールの別名族は置いていない = 下記)
   **片方だけ足さない** — `Sel` を選ぶと別名族が使えない状態は「型付き経路を選ぶと機能が減る」
   ことを意味し、生成側を Sel 既定に寄せられなくなる。取りこぼしは
   `Tests/FTDSLTests/SelOverloadParityTests.swift` がソース走査で検出する
@@ -1974,11 +1972,10 @@ select(.id("txt_result")).textIs("dialog=none")   // 検証はセレクタを取
   一方で `scrollFrame` は**生成コードにほとんど出ない引数**(生成側は文字列版を出す既定)なので、
   「型付き経路を選ぶと機能が減る」の実害が最も小さい場所。
   `SelOverloadParityTests.testScrollFrameRemainsStringOnly` がこの決定を固定する
-- **別名族は `maxSwipes:`(`select*` は `requireVisible:` も)しか取らない**(2026-08-02 に仕様として
-  固定)。本体の全引数は生やさない — 別名の価値は「Shirates と同名で書ける」ことだけで、引数が
-  要る場面では本体の `scroll:` の方が短い(`tap(sel, scroll: .down, timeout: 2)`)。全引数を生やすと
-  同じことを2通りで書ける組み合わせが増え、生成側の語彙のブレになる。
-  `existWithScrollLeft/Right` を置かないのも同じ判断。**引数の欠落を不整合として再提案しない**
+- **スクロールを関数名で指定する別名族(`*WithScrollDown/Up/Right/Left`・`*WithoutScroll`)は置かない**
+  (ユーザー決定 2026-09-19。2026-08-02 の「別名は `maxSwipes:` だけ取る糖衣」という仕様を置き換えた)。
+  指定は各コマンドの `scroll:` だけ = 同じことを2通りで書ける組み合わせを作らない(生成側の語彙のブレを消す)。
+  Shirates の名前は `UnavailableCommands.swift` がコンパイルエラーで書き方を返す。**別名を再提案しない**
 - 組み立てるのは**文字列版と同じ `FlowLocator`**。解決・実行・レポート・ヒールは完全に共通で、
   実行エンジンは分岐しない(`SelTests` が全構文について「文字列版と同じ FlowLocator になること」を固定)
 - フィルタ系メソッド(`text`/`type`/`nth` 等)は常に「**現在の対象**」に AND する:
@@ -2211,7 +2208,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   action が throw したら**リトライせず**即 NG(状態待ちと実行時エラーを混ぜない)。
   dry-run は performCustom の既定どおり body を実行しない
 - **`tap(scroll:)` / `type(scroll:)` / `exist(scroll:)`**
-  (2026-07-27。Shirates の `tapWithScrollDown` 相当。別名も併設 = 下記「スクロールの語彙」):
+  (2026-07-27。Shirates の `tapWithScrollDown` 相当。**関数名の別名は置かない** = 下記「スクロールの語彙」):
   コマンド名の変種を増やさず引数で表す。**探索は同じステップに畳む**(`FlowStep.direction` /
   `maxSwipes` を tap/exists 自身に載せ、`StepExecutor.runScrollSearch` が解決前に走る)。
   実体は `scrollTo` コマンドと共有するので挙動は1箇所にしかない。

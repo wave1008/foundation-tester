@@ -11,7 +11,7 @@
 // 旧 11/24 を統合)は tap("#tab_home") でホームへ戻ってから #tab_controls + #btn_controls_reset を
 // 叩き直す形に置き換えてある。S0010/S0030 は無変更。
 //
-// **#btn_controls_reset は tapWithScrollDown で撃つ**(素の tap に戻さない)。コントロール画面は
+// **#btn_controls_reset は tap(scroll: .down) で撃つ**(素の tap に戻さない)。コントロール画面は
 // 縦スクロールで、このボタンは最下段 —— 画面が短い端末(Pixel 3a/4a 等)では折り返しの下に入り、
 // Android の木にそもそも載らない(2026-08-28 に「cannot resolve the locator」で実際に落ちた。
 // 背の高いエミュレータでは通るので間欠に見える)。**直後の `scrollToTop()` も外さない** ——
@@ -109,7 +109,7 @@ class ライフサイクルとコントロールが正しく働くこと {
             }
             scene(4, "リセットで全て初期値に戻る") {
                 action {
-                    tapWithScrollDown("#btn_controls_reset")
+                    tap("#btn_controls_reset", scroll: .down)
                     scrollToTop()
                 }.expectation {
                     select("#txt_sw_notify").textIs("notify=off")
@@ -122,7 +122,7 @@ class ライフサイクルとコントロールが正しく働くこと {
                 condition {
                     tap("#tab_home")
                     tap("#tab_controls")
-                    tapWithScrollDown("#btn_controls_reset")
+                    tap("#btn_controls_reset", scroll: .down)
                     scrollToTop()
                 }.expectation {
                     select("#btn_always_disabled").enabledIsFalse()
@@ -168,7 +168,7 @@ class ライフサイクルとコントロールが正しく働くこと {
             }
             scene(8, "コントロールリセットで初期化してから #cb_agree の checkIsON/checkIsOFF を検証する") {
                 condition {
-                    tapWithScrollDown("#btn_controls_reset")
+                    tap("#btn_controls_reset", scroll: .down)
                     scrollToTop()
                 }.expectation {
                     select("#cb_agree").checkIsOFF()
@@ -182,7 +182,7 @@ class ライフサイクルとコントロールが正しく働くこと {
             }
             scene(9, "#sw_notify も同様に checkIsON/checkIsOFF が echo と一致する") {
                 condition {
-                    tapWithScrollDown("#btn_controls_reset")
+                    tap("#btn_controls_reset", scroll: .down)
                     scrollToTop()
                 }.expectation {
                     select("#sw_notify").checkIsOFF()
@@ -198,7 +198,7 @@ class ライフサイクルとコントロールが正しく働くこと {
                 condition {
                     tap("#tab_home")
                     tap("#tab_controls")
-                    tapWithScrollDown("#btn_controls_reset")
+                    tap("#btn_controls_reset", scroll: .down)
                     scrollToTop()
                 }.expectation {
                     select("#txt_slider").textIs("volume=50")

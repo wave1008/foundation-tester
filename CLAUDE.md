@@ -149,6 +149,14 @@
 - **機械可読な索引は `Sources/FTCore/CommandIndex.swift`**(`fleetest api dsl-commands` が出す)。
   **コマンドを足す/消す/改名したら索引も直す**(`CommandIndexSyncTests` が Commands.swift /
   CommandsVerify.swift / CommandsAppControl.swift / ValueAssertions.swift / FTElement と突き合わせる)
+- **スクロールの指定は各コマンドの `scroll:` 引数だけ**(ユーザー決定 2026-09-19)。向き(`.down` 等)か
+  `.noScroll`(`withScroll*` の中でもこの1コマンドだけ送らない)。**関数名で指定する別名
+  (`*WithScrollDown/Up/Right/Left`・`*WithoutScroll`)は1つも置かない・再提案しない** —— 別名は族ごとに
+  シグネチャが不揃いになり(`maxSwipes:` しか取らない・`exist` は上下だけ…)、同じことが2通りで書ける。
+  型は FTDSL の `FTScrollOption`(4方向 + `.noScroll`)。**`FTCore.FTScrollDirection` に `.noScroll` を足さない**
+  —— `scrollTo(direction:)`・`withScroll*`・MCP の `direction` に書けてしまう。**省略(nil)= 文脈に従う、と
+  `.noScroll` は別の値**で、解くのは `FTDriveCore.effectiveScroll` の1箇所(`SelScrollVariantDispatchTests` が
+  3値の解決を縛る)。ブロック形の `withScrollDown { }` / `withoutScroll { }` は残す
 - **置いていない名前は `Sources/FTDSL/UnavailableCommands.swift` で受け止める**(他ツールの名前・
   対称性から実在すると誤解される別名。`cannot find in scope` の代わりに正しい書き方を出す)
 
@@ -715,12 +723,6 @@
   失敗にする(証跡のスクリーンショットを添える)。action として走るので、アサーションの計数は `FlowStep.isVerification` が
   拾う(`assert != nil` だけで数えると existImage しか無い expectation を「検証0本」と誤る。`AuthoringGuardTests`)。
   DSL の写像(timeout 省略 = defaultTimeout・`scroll:` の向きと `.noScroll`・失敗で中断)は `ExistImageDSLTests`。
-  **画像系に `*WithScroll*` の別名を置かない**(スクロールは `scroll:` だけ = ユーザー決定 2026-09-19。Shirates の名前は
-  `UnavailableCommands.swift` が受け止める)。**「この1コマンドだけ送らない」は全コマンドで `scroll: .noScroll`**
-  (`*WithoutScroll` という関数は置かない。型は FTDSL の `FTScrollOption` = 4方向 + `.noScroll`。**`FTCore.FTScrollDirection` に
-  `.noScroll` を足さない** —— `scrollTo(direction:)`・`withScroll*`・MCP の `direction` に書けてしまう。
-  **省略(nil)= 文脈に従う、と `.noScroll` は別の値**で、解くのは `FTDriveCore.effectiveScroll` の1箇所。
-  `SelScrollVariantDispatchTests` が3値の解決を縛る)。
   候補は a11y の枠(見えている部分)・アスペクト比の許容幅に入るものだけ・同じ枠は1つに畳む(**id を持つ
   外側を残す。ラベルで選ばない** = XCUITest の木は飾りの Image を SF Symbol 名の id とラベル付きで同じ枠に
   載せる)。守る規律4つ: **①分類器のラベル一致だけで採らない**(分類器は見本のどれかのラベルを必ず答える。

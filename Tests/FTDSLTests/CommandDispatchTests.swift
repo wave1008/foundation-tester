@@ -389,16 +389,16 @@ final class CommandDispatchTests: XCTestCase {
         XCTAssertTrue(core.finalRecord.passed)
     }
 
-    /// selectWithScrollDown が scroll: .down を同じステップに畳んで積むこと(tap(scroll:)/exist(scroll:)
+    /// select(scroll: .down) が scroll を同じステップに畳んで積むこと(tap(scroll:)/exist(scroll:)
     /// と同じ規約。別の scrollTo ステップに分かれないことも合わせて確認)
-    func testSelectWithScrollDownCarriesScrollInSameStep() {
+    func testSelectScrollDownCarriesScrollInSameStep() {
         let core = makeCore(driver: RecordingDriver())
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)
         defer { FTRuntime.tearDown() }
 
         scenario {
             scene(1, "s") {
-                action { selectWithScrollDown("#cleanup") }
+                action { select("#cleanup", scroll: .down) }
             }
         }
 

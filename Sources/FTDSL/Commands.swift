@@ -202,7 +202,8 @@ public enum FTScrollOption: Sendable, Equatable {
 /// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定の要素を
 /// `ifCanSelect` で見るときの空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
 /// scroll: 指定するとタップ前に**その方向へスクロールしながら要素を探す**
-/// (Shirates の tapWithScrollDown 相当。省略時は現在画面だけを見る)。
+/// (Shirates の tapWithScrollDown 相当。省略時はブロックの文脈に従い、文脈も無ければ現在画面だけを見る。
+/// `.noScroll` は文脈があっても送らない = `FTScrollOption`)。
 /// 方向は**コンテンツ基準**(標準用語どおり `.down` = 下に読み進める。Shirates の ScrollDirection と同じ)
 public func tap(_ selector: String, holdSeconds: Double = FlowStep.defaultTapHoldSeconds,
                 timeout: Double? = nil,
@@ -878,71 +879,7 @@ public func withoutContainerInference(_ body: () -> Void) {
     FTRuntime.requireCore(command: "withoutContainerInference").runWithContainerInference(false, body)
 }
 
-// MARK: - スクロール付きの操作・検証(Shirates 準拠の別名)
-
-public func tapWithScrollDown(_ selector: String, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                              file: StaticString = #filePath, line: UInt = #line) {
-    tap(selector, scroll: .down, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-public func tapWithScrollDown(_ selector: Sel, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                              file: StaticString = #filePath, line: UInt = #line) {
-    tap(selector, scroll: .down, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-public func tapWithScrollUp(_ selector: String, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                            file: StaticString = #filePath, line: UInt = #line) {
-    tap(selector, scroll: .up, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-public func tapWithScrollUp(_ selector: Sel, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                            file: StaticString = #filePath, line: UInt = #line) {
-    tap(selector, scroll: .up, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-public func tapWithScrollRight(_ selector: String, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                               file: StaticString = #filePath, line: UInt = #line) {
-    tap(selector, scroll: .right, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-public func tapWithScrollRight(_ selector: Sel, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                               file: StaticString = #filePath, line: UInt = #line) {
-    tap(selector, scroll: .right, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-public func tapWithScrollLeft(_ selector: String, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                              file: StaticString = #filePath, line: UInt = #line) {
-    tap(selector, scroll: .left, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-public func tapWithScrollLeft(_ selector: Sel, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                              file: StaticString = #filePath, line: UInt = #line) {
-    tap(selector, scroll: .left, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func existWithScrollDown(_ selector: String, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                                file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    exist(selector, scroll: .down, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func existWithScrollDown(_ selector: Sel, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                                file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    exist(selector, scroll: .down, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func existWithScrollUp(_ selector: String, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                              file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    exist(selector, scroll: .up, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func existWithScrollUp(_ selector: Sel, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                              file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    exist(selector, scroll: .up, maxSwipes: maxSwipes, file: file, line: line)
-}
+// MARK: - スクロール
 
 /// 要素が見つかるまでスクロールする(見つかったら成功。タップはしない)
 public func scrollTo(_ selector: String, direction: FTScrollDirection = .down,

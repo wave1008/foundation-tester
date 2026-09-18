@@ -190,7 +190,7 @@ final class SelTests: XCTestCase {
     }
 }
 
-/// tapWithScrollDown/Up/Right/Left・existWithScrollDown/Up・`scroll: .noScroll`(tap / exist)の
+/// `scroll:` の4方向(tap / exist)と `scroll: .noScroll` の
 /// Sel オーバーロード。実装は String 版と同じ経路(tap(_:Sel,scroll:)/exist(_:Sel,scroll:))へ
 /// 委譲するだけなので、ここでは「委譲そのものが正しいか」(スクロール方向の転記ミス等)を、
 /// 実際にドライバまで実行して確認する(SelTests 本体は FlowLocator 比較だけで済むが、
@@ -254,44 +254,44 @@ final class SelScrollVariantDispatchTests: XCTestCase {
         scenario { scene(1, "s") { action { body() } } }
     }
 
-    /// tapWithScrollDown はコンテンツ `.down` = 指を上へ動かす(FTScrollDirection.swipe 参照)
-    func testTapWithScrollDownSelUsesSameDirectionAsStringVersion() {
+    /// tap(scroll: .down) はコンテンツ `.down` = 指を上へ動かす(FTScrollDirection.swipe 参照)
+    func testTapScrollDownSelUsesSameDirectionAsStringVersion() {
         let byString = ScrollRevealDriver(revealDirection: .up)
-        run(driver: byString) { tapWithScrollDown("#target") }
+        run(driver: byString) { tap("#target", scroll: .down) }
         XCTAssertEqual(byString.tapped, [1], "String 版が正しい方向で見つけられていない")
 
         let bySel = ScrollRevealDriver(revealDirection: .up)
-        run(driver: bySel) { tapWithScrollDown(.id("target")) }
+        run(driver: bySel) { tap(.id("target"), scroll: .down) }
         XCTAssertEqual(bySel.tapped, [1], "Sel 版がString版と異なる方向でスクロールしている")
     }
 
-    func testTapWithScrollUpSelUsesSameDirectionAsStringVersion() {
+    func testTapScrollUpSelUsesSameDirectionAsStringVersion() {
         let byString = ScrollRevealDriver(revealDirection: .down)
-        run(driver: byString) { tapWithScrollUp("#target") }
+        run(driver: byString) { tap("#target", scroll: .up) }
         XCTAssertEqual(byString.tapped, [1])
 
         let bySel = ScrollRevealDriver(revealDirection: .down)
-        run(driver: bySel) { tapWithScrollUp(.id("target")) }
+        run(driver: bySel) { tap(.id("target"), scroll: .up) }
         XCTAssertEqual(bySel.tapped, [1], "Sel 版がString版と異なる方向でスクロールしている")
     }
 
-    func testTapWithScrollRightSelUsesSameDirectionAsStringVersion() {
+    func testTapScrollRightSelUsesSameDirectionAsStringVersion() {
         let byString = ScrollRevealDriver(revealDirection: .left)
-        run(driver: byString) { tapWithScrollRight("#target") }
+        run(driver: byString) { tap("#target", scroll: .right) }
         XCTAssertEqual(byString.tapped, [1])
 
         let bySel = ScrollRevealDriver(revealDirection: .left)
-        run(driver: bySel) { tapWithScrollRight(.id("target")) }
+        run(driver: bySel) { tap(.id("target"), scroll: .right) }
         XCTAssertEqual(bySel.tapped, [1], "Sel 版がString版と異なる方向でスクロールしている")
     }
 
-    func testTapWithScrollLeftSelUsesSameDirectionAsStringVersion() {
+    func testTapScrollLeftSelUsesSameDirectionAsStringVersion() {
         let byString = ScrollRevealDriver(revealDirection: .right)
-        run(driver: byString) { tapWithScrollLeft("#target") }
+        run(driver: byString) { tap("#target", scroll: .left) }
         XCTAssertEqual(byString.tapped, [1])
 
         let bySel = ScrollRevealDriver(revealDirection: .right)
-        run(driver: bySel) { tapWithScrollLeft(.id("target")) }
+        run(driver: bySel) { tap(.id("target"), scroll: .left) }
         XCTAssertEqual(bySel.tapped, [1], "Sel 版がString版と異なる方向でスクロールしている")
     }
 
@@ -313,27 +313,27 @@ final class SelScrollVariantDispatchTests: XCTestCase {
         XCTAssertTrue(selDriver.tapped.isEmpty)
     }
 
-    func testExistWithScrollDownSelUsesSameDirectionAsStringVersion() {
+    func testExistScrollDownSelUsesSameDirectionAsStringVersion() {
         let byString = ScrollRevealDriver(revealDirection: .up)
         var stringElement: FTElement!
-        run(driver: byString) { stringElement = existWithScrollDown("#target") }
+        run(driver: byString) { stringElement = exist("#target", scroll: .down) }
         XCTAssertEqual(stringElement.id, "target")
 
         let bySel = ScrollRevealDriver(revealDirection: .up)
         var selElement: FTElement!
-        run(driver: bySel) { selElement = existWithScrollDown(.id("target")) }
+        run(driver: bySel) { selElement = exist(.id("target"), scroll: .down) }
         XCTAssertEqual(selElement.id, "target", "Sel 版がString版と異なる方向でスクロールしている")
     }
 
-    func testExistWithScrollUpSelUsesSameDirectionAsStringVersion() {
+    func testExistScrollUpSelUsesSameDirectionAsStringVersion() {
         let byString = ScrollRevealDriver(revealDirection: .down)
         var stringElement: FTElement!
-        run(driver: byString) { stringElement = existWithScrollUp("#target") }
+        run(driver: byString) { stringElement = exist("#target", scroll: .up) }
         XCTAssertEqual(stringElement.id, "target")
 
         let bySel = ScrollRevealDriver(revealDirection: .down)
         var selElement: FTElement!
-        run(driver: bySel) { selElement = existWithScrollUp(.id("target")) }
+        run(driver: bySel) { selElement = exist(.id("target"), scroll: .up) }
         XCTAssertEqual(selElement.id, "target", "Sel 版がString版と異なる方向でスクロールしている")
     }
 

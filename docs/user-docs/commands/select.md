@@ -7,7 +7,6 @@ Grabs an element without touching the device, for reading values or chaining ass
 | function | description |
 |---|---|
 | `select(sel, timeout:requireVisible:scroll:maxSwipes:)` | Grabs an element. Unlike `exist`, this is **not an assertion** — it does not appear as a verification step in the report. Used as the starting point for reading a value (`.text` / `.value` / `.id`) or for chaining an assertion. If the element cannot be grabbed, it does not fail — it returns an empty element instead, so callers branch on `.isEmpty` / `.isNotEmpty`. Use `exist` when you need to assert the element is there. `requireVisible: false` skips the visibility check entirely. |
-| `selectWithScrollDown(sel, requireVisible:maxSwipes:)` / `selectWithScrollUp` / `selectWithScrollRight` / `selectWithScrollLeft` | Shorthand for `select(sel, scroll: .down)` and so on. |
 | `select(sel, scroll: .noScroll)` | Grabs from the current screen only, even inside a `withScrollDown { }` block. |
 | `lastElement` | The **most recently grabbed element** (no arguments). Any command that resolves a single element — `select` / `exist` / `tap` / `type` / `waitForDisplay` / text and value assertions — replaces it when it succeeds. It holds the value at the moment it was grabbed; scrolling or tapping afterwards does not refresh it. |
 

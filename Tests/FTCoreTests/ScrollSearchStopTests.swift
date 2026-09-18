@@ -372,7 +372,7 @@ final class ScrollSearchStopTests: XCTestCase {
                  direction: "right", maxSwipes: maxSwipes)
     }
 
-    /// ボトムシートの案内は縦方向の探索のときだけ。横方向(`tapWithScrollRight` 等)に
+    /// ボトムシートの案内は縦方向の探索のときだけ。横方向(`tap(scroll: .right)` 等)に
     /// まで出すと、画面のどこかに無関係な縦シートがあるだけの誤誘導になる
     func testBottomSheetHintDoesNotAppearForAHorizontalSearch() {
         let step = scrollToRight("missing", maxSwipes: 8)

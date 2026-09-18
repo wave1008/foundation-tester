@@ -282,13 +282,13 @@ class スクロールで折り返し下の要素に到達できること {
             // Tests/FTBridgeClientTests/SwipeForScrollForwardingTests.swift がソース走査で固定している。
             // ここで見るのは**同じ経路を通ってデバイスに届くこと**だけ(CMP は 05_スクロール の Sel 版統合
             // @Test が同じ組を通しているので、文字列版はこちらの SUT 群が担う)
-            scene(7, "スクロール探索の別名族(tapWithScrollDown / existWithScrollUp)と scroll: .noScroll") {
+            scene(7, "scroll: の向き(tap / exist)と scroll: .noScroll") {
                 action {
-                    tapWithScrollDown("#row_40", maxSwipes: 15)
+                    tap("#row_40", scroll: .down, maxSwipes: 15)
                 }.expectation {
                     // 直前は selected=row_01 なので、届かなければ落ちる
                     select("#txt_row_selected").textIs("selected=row_40")
-                    existWithScrollUp("#row_01", maxSwipes: 15)
+                    exist("#row_01", scroll: .up, maxSwipes: 15)
                 }.action {
                     withScrollDown {
                         // 固定ヘッダは常に現在画面にある = スクロールせずに解決できる
