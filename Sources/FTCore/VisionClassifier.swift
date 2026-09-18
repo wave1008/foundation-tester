@@ -89,6 +89,8 @@ public enum VisionClassifier {
     }
 
     public struct TrainingSet: Sendable {
+        /// 分類器フォルダ(`vision/classifiers/<分類器名>/`)
+        public let directory: URL
         public let labels: [String: [URL]]
         public let options: Options
         public let digest: String
@@ -127,7 +129,7 @@ public enum VisionClassifier {
             }
         }
         let digest = hasher.finalize().prefix(12).map { String(format: "%02x", $0) }.joined()
-        return TrainingSet(labels: labels, options: options, digest: digest)
+        return TrainingSet(directory: directory, labels: labels, options: options, digest: digest)
     }
 
     // MARK: - モデル
@@ -137,10 +139,27 @@ public enum VisionClassifier {
         public let confidence: Double
     }
 
+    /// 学習の点検で、モデルが自分の見本を取り違えた1件(見本のラベルと違うラベルを1位に答えた)。
+    /// **閾値を持たない** —— 自分の見本すら見分けられないラベルは、本番の画像でも取り違えうる、という事実だけ
+    public struct Mismatch: Codable, Sendable, Equatable {
+        /// 分類器フォルダからの相対パス
+        public let sample: String
+        public let expected: String
+        /// nil = どのラベルも確信度 0.1 を超えなかった
+        public let predicted: String?
+        public let confidence: Double
+
+        public init(sample: String, expected: String, predicted: String?, confidence: Double) {
+            self.sample = sample; self.expected = expected; self.predicted = predicted; self.confidence = confidence
+        }
+    }
+
     public final class Model: @unchecked Sendable {
         let vnModel: VNCoreMLModel
         /// 学習したラベル(フォルダの相対パスを `_` でつないだもの)
         public let labels: [String]
+        /// 学習の点検で取り違えた見本(空 = 全見本を正しく答えた)
+        public internal(set) var mismatches: [Mismatch] = []
         init(vnModel: VNCoreMLModel, labels: [String]) { self.vnModel = vnModel; self.labels = labels }
 
         /// 1位のラベル。Shirates と同じく確信度 0.1 以下は候補にしない
@@ -154,7 +173,7 @@ public enum VisionClassifier {
         }
     }
 
-    public enum LoadError: Error, CustomStringConvertible {
+    public enum LoadError: LocalizedError, CustomStringConvertible {
         case createMLUnavailable
         case training(String)
         case duplicateLabel(String, [String])
@@ -166,6 +185,7 @@ public enum VisionClassifier {
                 return "the label \(label) is in more than one folder (\(folders.joined(separator: ", "))); a label can belong to only one folder"
             }
         }
+        public var errorDescription: String? { description }
     }
 
     private static let processLock = NSLock()
@@ -198,8 +218,49 @@ public enum VisionClassifier {
         let compiled = try MLModel.compileModel(at: modelURL)
         let model = Model(vnModel: try VNCoreMLModel(for: MLModel(contentsOf: compiled)),
                           labels: set.labels.keys.sorted())
+        model.mismatches = selfCheck(model, set, cachedAt: work.appendingPathComponent("selfcheck.json"))
         loaded[set.digest] = model
         return model
+    }
+
+    /// 学習の点検: 見本の1枚1枚を学習したモデル自身に掛け、見本のラベルと違う答えを集める。
+    /// 結果はモデルの隣に控え、同じ digest では掛け直さない(見本が変われば digest が変わる)
+    static func selfCheck(_ model: Model, _ set: TrainingSet, cachedAt url: URL) -> [Mismatch] {
+        if let data = try? Data(contentsOf: url), let cached = try? JSONDecoder().decode([Mismatch].self, from: data) {
+            return cached
+        }
+        var mismatches: [Mismatch] = []
+        for (label, images) in set.labels.sorted(by: { $0.key < $1.key }) {
+            for image in images {
+                guard let source = CGImageSourceCreateWithURL(image as CFURL, nil),
+                      let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else { continue }
+                let answer = try? model.classify(cgImage)
+                guard answer?.label != label else { continue }
+                let root = set.directory.standardizedFileURL.path + "/"
+                let path = image.standardizedFileURL.path
+                mismatches.append(Mismatch(sample: path.hasPrefix(root) ? String(path.dropFirst(root.count)) : path,
+                                           expected: label, predicted: answer?.label,
+                                           confidence: answer?.confidence ?? 0))
+            }
+        }
+        if let data = try? JSONEncoder().encode(mismatches) { try? data.write(to: url) }
+        return mismatches
+    }
+
+    /// 取り違えの1行の説明(シナリオ終了時の警告と `fleetest vision check` が同じ文を出す)
+    public static func describe(_ mismatch: Mismatch) -> String {
+        let predicted = mismatch.predicted.map { "\"\($0)\" (confidence \(String(format: "%.2f", mismatch.confidence)))" }
+            ?? "no label"
+        return "\(mismatch.sample) is classified as \(predicted), not \"\(mismatch.expected)\""
+    }
+
+    /// 切り出した画像を PNG にする(`fleetest vision capture`)
+    public static func pngData(_ image: CGImage) -> Data? {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil)
+        else { return nil }
+        CGImageDestinationAddImage(destination, image, nil)
+        return CGImageDestinationFinalize(destination) ? data as Data : nil
     }
 
     /// 学習(キャッシュに無いとき)の待ちは締め切りから差し引く(DeadlineExclusion。OCR の暖機と同じ扱い)

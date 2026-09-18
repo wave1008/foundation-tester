@@ -311,6 +311,17 @@ final class CommandDispatchTests: XCTestCase {
                        "\(messages)")
     }
 
+    /// 画像分類器が自分の見本を取り違えていたら、シナリオ終了時に弱い提案で知らせる(落とさない)
+    func testClassifierSelfCheckMismatchesAreWarned() {
+        let core = makeCore(driver: RecordingDriver())
+        core.executor.visionClassifierMismatches = ["DefaultClassifier": [
+            VisionClassifier.Mismatch(sample: "@i/[A]/x.png", expected: "@i_[A]", predicted: "@i_[B]", confidence: 0.7)]]
+        core.warnAboutNeverResolvedIDs()
+        let messages = core.finalRecord.fixSuggestions.map(\.message)
+        XCTAssertEqual(messages.contains { $0.contains("DefaultClassifier cannot tell its own sample images apart")
+            && $0.contains("@i/[A]/x.png") }, true, "\(messages)")
+    }
+
     /// scene 番号の重複は**警告する**(失敗にはしない = 既存シナリオを止めない)
     func testDuplicateSceneNumberIsWarned() {
         let core = makeCore(driver: RecordingDriver())

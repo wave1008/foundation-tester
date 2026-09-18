@@ -63,6 +63,8 @@ sample images (same location and labels as Shirates' Vision edition).
 - Steps judged from the image carry the note `check-state-classified` in the results.
 - `options=` / `imageFilter=binary` in Shirates' `MLImageClassifier.swift` are read with the same meaning.
 - [imageIs](image_assertion.md) uses the same mechanism to assert the label of an element's image.
+- Capture and check samples with `fleetest vision capture --classifier CheckStateClassifier --label "[ON]" --selector "#…"`
+  and `fleetest vision check` (details on the [imageIs](image_assertion.md) page).
 - On Android, both `isChecked` and `isSelected` are considered — tabs and selectable rows that
   only report `isSelected` (not `isChecked`) are still recognized as checked.
 

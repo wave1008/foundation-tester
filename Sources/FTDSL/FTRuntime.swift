@@ -1026,6 +1026,17 @@ public final class FTDriveCore {
                     + "Turn it on and verify checkIsON as well"),
                 emitEvent: false, file: "", line: 0)
         }
+        // 画像分類器が自分の見本を取り違えている = 本番の画像でも取り違えうる(学習の点検。VisionClassifier.selfCheck)
+        for (name, mismatches) in executor.visionClassifierMismatches.sorted(by: { $0.key < $1.key }) {
+            let shown = mismatches.prefix(5).map(VisionClassifier.describe).joined(separator: "; ")
+            let more = mismatches.count > 5 ? " and \(mismatches.count - 5) more" : ""
+            addSuggestion(FixSuggestion(
+                isStrong: false,
+                message: "\(name) cannot tell its own sample images apart: \(shown)\(more)."
+                    + " Add samples that separate these labels or remove the misleading ones"
+                    + " (check with `fleetest vision check`)"),
+                emitEvent: false, file: "", line: 0)
+        }
         for (selector, met) in branchOutcomes.sorted(by: { $0.key < $1.key }) where !met {
             addSuggestion(FixSuggestion(
                 isStrong: false,

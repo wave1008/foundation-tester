@@ -33,6 +33,25 @@ Classifies the **image** of the last grabbed element with a classifier trained f
 - It works the same way as [CheckStateClassifier](state_assertion.md), which judges checked states from images
   (each classifier has its own folder).
 
+
+## Capturing and checking samples (CLI)
+
+Instead of cropping samples by hand, capture them from the live device. The element's frame is cropped with the
+same function the judgement uses, so the crops always match.
+
+```sh
+fleetest vision capture --project <project> --classifier DefaultClassifier \
+  --label "@i/Settings/[Camera Icon]" --selector "#element-id" --port <bridge port>
+fleetest vision check --project <project>
+```
+
+- `vision capture` refuses mistakes before saving, such as a label that does not fit the classifier (a folder name that does not end with `[…]`) or the
+  same label in another folder.
+- `vision check` trains if needed and checks **whether the classifier can tell its own samples apart**. Samples it
+  gets wrong are named in a warning (samples that cannot be told apart will also be confused on real screens). It
+  only warns; the exit code stays 0.
+- The same warning appears at the end of a scenario when a run finds such samples.
+
 ## Example
 
 ```swift

@@ -1468,9 +1468,10 @@ extension StepExecutor {
             let model = try await VisionClassifier.load(
                 set, cacheDirectory: VisionClassifier.cacheDirectory(projectRoot: root, name: name))
             visionClassifiersLoaded[name] = .some(model)
+            if !model.mismatches.isEmpty { visionClassifierMismatches[name] = model.mismatches }
             return model
         } catch {
-            visionClassifierErrors[name] = String(describing: error)
+            visionClassifierErrors[name] = ErrorText.user(error)
             if name == CheckStateClassifier.name { noteCodesThisStep.insert(.checkStateClassifierFailed) }
             visionClassifiersLoaded[name] = .some(nil)
             return nil

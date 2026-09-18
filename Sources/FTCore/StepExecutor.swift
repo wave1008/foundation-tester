@@ -773,6 +773,8 @@ public final class StepExecutor {
     var visionClassifiersLoaded: [String: VisionClassifier.Model?] = [:]
     /// 分類器名 → 学習・読み込みに失敗した理由(失敗文言へ添える)
     var visionClassifierErrors: [String: String] = [:]
+    /// 分類器名 → 学習の点検で取り違えた見本(FTRuntime がシナリオ終了時に警告する。新しい検知なので落とさない)
+    public var visionClassifierMismatches: [String: [VisionClassifier.Mismatch]] = [:]
     /// [occlusion-guard] このステップが `occlusionFlip` の `visibilityGuardActive` 判定を通ったか
     /// (execute が StepOutcome.guardEntered に載せる)。**分母はここ** —— `visibilityGuardActive`
     /// が true でも tap 等のアクションは occlusionFlip を通らないので、そちらを分母にしてはならない。

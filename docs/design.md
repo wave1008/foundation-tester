@@ -2118,7 +2118,12 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   **`imageIs`(DefaultClassifier)も同じ学習・推論(`FTCore.VisionClassifier`)を使う** —— 見本は
   `vision/classifiers/DefaultClassifier/` 以下の任意の深さ、ラベルは親フォルダの相対パスを `_` でつないだもの、
   判定は1位のラベルの最後の `[` 以降が期待値を含むか(Shirates の LabelUtility.getShortLabel)。
-  同じ短いラベルが2つのフォルダにあるのは設定の誤り。見本に無いラベルは待たずに落とす
+  同じ短いラベルが2つのフォルダにあるのは設定の誤り。見本に無いラベルは待たずに落とす。
+  **見本の採取は `fleetest vision capture`**(推論と同じ `VisionClassifier.crop` で切る = 切り方のずれを作らない。
+  状態に写らないラベル・括弧の無いフォルダ・短いラベルの重複は保存前に断る)。**学習の点検**(`VisionClassifier.selfCheck`):
+  学習直後に見本の1枚1枚をモデル自身に掛け、見本と違うラベルを答えたものを `selfcheck.json` に控える。**閾値を
+  持たない**(自分の見本を取り違える = 本番でも取り違えうる、という事実だけ)。出口はシナリオ終了時の弱い提案と
+  `fleetest vision check`(警告だけ・exit 0)
 - **状態フィルタ(`checked=` / `enabled=`)は型ではなく `#id` と併用する**(2026-07-26 実測)。
   同じ役割の要素でも型は SUT で割れるため(コントロール画面の無効ボタンは CMP では `button`、
   View/XML では `clickable`)、`.button&&enabled=false` のような型との AND は SUT 固有の式になる。

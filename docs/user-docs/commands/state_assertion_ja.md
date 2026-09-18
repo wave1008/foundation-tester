@@ -63,6 +63,8 @@ select("#toggle_notifications").checkIsON()
 - 画像で判定したステップには、結果に注記 `check-state-classified` が付きます。
 - Shirates の `MLImageClassifier.swift` の `options=` / `imageFilter=binary` も同じ意味で読みます。
 - 同じ仕組みで、要素の画像のラベルを検証する [imageIs](image_assertion_ja.md) もあります。
+- 見本の切り出しと点検は `fleetest vision capture --classifier CheckStateClassifier --label "[ON]" --selector "#…"`
+  と `fleetest vision check` でできます(詳しくは [imageIs](image_assertion_ja.md) のページ)。
 - Android は `isChecked` と `isSelected` の両方を見ます — タブや選択行のように `isSelected` だけで
   選択状態を出す要素も、チェック済みとして認識されます。
 

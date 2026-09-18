@@ -33,6 +33,23 @@
 - チェック状態を画像で判定する [CheckStateClassifier](state_assertion_ja.md) と同じ仕組みです
   (分類器ごとにフォルダが分かれています)。
 
+
+## 見本の切り出しと点検(CLI)
+
+見本は手で切り出さず、稼働中の端末から切り出せます。判定のときと同じ関数で要素の枠を切るので、切り方がずれません。
+
+```sh
+fleetest vision capture --project <プロジェクト> --classifier DefaultClassifier \
+  --label "@i/Settings/[Camera Icon]" --selector "#要素の id" --port <ブリッジのポート>
+fleetest vision check --project <プロジェクト>
+```
+
+- `vision capture` は、ラベルが分類器に合わない(``[` で終わらないフォルダ名`)、同じラベルが別のフォルダにある、といった誤りを
+  保存前に断ります。
+- `vision check` は必要なら学習してから、**分類器が自分の見本を取り違えないか**を確かめます。取り違えた見本は
+  名指しで警告します(見本どうしが見分けられていない = 本番でも取り違えうる)。警告だけで、終了コードは 0 です。
+- シナリオの実行中に取り違えが見つかった場合も、シナリオの終わりに同じ警告が出ます。
+
 ## 例
 
 ```swift

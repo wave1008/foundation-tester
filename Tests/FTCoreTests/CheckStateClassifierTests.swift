@@ -136,6 +136,43 @@ final class CheckStateClassifierTests: XCTestCase {
         XCTAssertEqual(modified, again, "同じ見本なら学び直さない")
     }
 
+    // MARK: - 学習の点検(自分の見本を取り違えないか)
+
+    func testSelfCheckReportsSamplesTheModelCannotTellApart() throws {
+        let root = try Self.makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dir = CheckStateClassifier.directory(projectRoot: root)
+        let cache = CheckStateClassifier.cacheDirectory(projectRoot: root)
+        let clean = try VisionClassifier.loadBlocking(try XCTUnwrap(try VisionClassifier.trainingSet(at: dir)),
+                                                      cacheDirectory: cache)
+        XCTAssertEqual(clean.mismatches, [], "見分けられる見本なら取り違えは無い")
+
+        // オンの絵を [OFF] に紛れ込ませる = 見本どうしが矛盾する
+        try Self.checkboxPNG(on: true, shift: 1).write(to: dir.appendingPathComponent("[OFF]/wrong.png"))
+        let set = try XCTUnwrap(try VisionClassifier.trainingSet(at: dir))
+        let model = try VisionClassifier.loadBlocking(set, cacheDirectory: cache)
+        XCTAssertTrue(model.mismatches.contains { $0.sample == "[OFF]/wrong.png" && $0.expected == "[OFF]" },
+                      "\(model.mismatches)")
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: cache.appendingPathComponent("\(set.digest)/selfcheck.json").path), "点検の結果を控える")
+        XCTAssertTrue(VisionClassifier.describe(model.mismatches[0]).contains("is classified as"))
+    }
+
+    /// 実行器は読み込んだモデルの取り違えを覚える(FTRuntime がシナリオ終了時に警告する元)
+    func testExecutorRemembersTheSelfCheckMismatches() async throws {
+        let root = try Self.makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dir = CheckStateClassifier.directory(projectRoot: root)
+        try Self.checkboxPNG(on: true, shift: 1).write(to: dir.appendingPathComponent("[OFF]/wrong.png"))
+        let executor = StepExecutor(driver: ImageDriver(element: element(type: "button"),
+                                                        screenPNG: Self.checkboxPNG(on: true, shift: 2)),
+                                    isAndroid: false)
+        executor.visionClassifierProjectRoot = root
+        _ = await executor.execute(FlowStep(assert: "checked", locator: FlowLocator(id: "cb"), timeout: 0))
+        XCTAssertEqual(executor.visionClassifierMismatches[CheckStateClassifier.name]?.contains { $0.sample == "[OFF]/wrong.png" },
+                       true)
+    }
+
     // MARK: - 子プロセス境界の配線(型の効かない継ぎ目。OCRToggleWiringTests と同じ作法)
 
     private func source(_ path: String) throws -> String {
