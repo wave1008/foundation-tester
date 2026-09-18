@@ -175,6 +175,10 @@ public struct StepOutcome: Sendable {
     /// 失敗したときの素性(`StepFailureKind`)。**言えない失敗では nil のまま**。
     /// notes と同じ累積器方式(`failureKindThisStep`)で内側から立て、`execute` の出口で載せる
     public let failureKind: StepFailureKind?
+    /// **画像分類器の判定で落ちたときだけ**、判定に使ったスクリーンショット(PNG そのまま)。
+    /// 呼び手がレポートのステップ行に添える。切り出しではなく全体を持つ = 「判定した画面が
+    /// 失敗時の画面と同じか」を後から見比べられる(切り出しは要素一覧の枠から再現できる)
+    public let evidenceImage: Data?
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil,
                healedByFingerprint: Bool = false,
@@ -182,8 +186,10 @@ public struct StepOutcome: Sendable {
                notes: [StepNote] = [], guardEntered: Bool = false,
                observedChecked: Bool? = nil, resolvedElement: ElementInfo? = nil,
                scrollSwipes: Int? = nil, failureKind: StepFailureKind? = nil,
+               evidenceImage: Data? = nil,
                at: String = ISO8601Millis.string(from: Date())) {
         self.failureKind = failureKind
+        self.evidenceImage = evidenceImage
         self.guardEntered = guardEntered
         self.observedChecked = observedChecked
         self.resolvedElement = resolvedElement
@@ -622,6 +628,7 @@ public final class StepExecutor {
         noteCodesThisStep = []
         firstFrameBlankObserved = false
         failureKindThisStep = nil
+        classifierScreenshotThisStep = nil
         elementLimitCeilingLatchedThisStep = false
         systemAlertAdvisoryThisStep = nil
         systemAlertProbeFailure = nil
@@ -667,7 +674,8 @@ public final class StepExecutor {
                                    observedChecked: observedCheckedThisStep,
                                    resolvedElement: resolvedElementThisStep,
                                    scrollSwipes: scrollSwipesThisStep,
-                                   failureKind: failureKind(for: status))
+                                   failureKind: failureKind(for: status),
+                                   evidenceImage: Self.isSuccess(status) ? nil : classifierScreenshotThisStep)
             }
             return StepOutcome(status: .skipped("step has neither an action nor an assertion"))
         } catch {
@@ -803,6 +811,8 @@ public final class StepExecutor {
     /// このステップの失敗の素性。**最初に立てたものを残す**(内側の救済経路が後から
     /// 別の理由で落ちても、読み手が知りたいのは最初に何が起きたか)
     var failureKindThisStep: StepFailureKind?
+    /// このステップで画像分類器が最後に判定に使ったスクリーンショット(`StepOutcome.evidenceImage` の元)
+    var classifierScreenshotThisStep: Data?
 
     /// 天井の撮り直しで対象を拾ったステップの**後続読み**も天井にする per-step ラッチ。
     /// 立てるのは StepExecutor+Actions.swift の撮り直し呼び出し箇所だけ(Assert のループは

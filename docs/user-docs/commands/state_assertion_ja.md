@@ -61,6 +61,8 @@ select("#toggle_notifications").checkIsON()
 - 実行プロファイルの `preferCheckStateClassifier`(既定 `true`)で、アクセシビリティより分類器を
   優先します。`false` にすると、アクセシビリティが状態を報告しない要素にだけ使います。
 - 画像で判定したステップには、結果に注記 `check-state-classified` が付きます。
+- 画像で判定したチェックが失敗すると、分類器が判定に使ったスクリーンショットを、レポートの失敗した
+  ステップのすぐ下に添えます(何を見て判定したかを確かめられます)。
 - Shirates の `MLImageClassifier.swift` の `options=` / `imageFilter=binary` も同じ意味で読みます。
 - 同じ仕組みで、要素の画像のラベルを検証する [imageIs](image_assertion_ja.md) もあります。
 - 見本の切り出しと点検は `fleetest vision capture --classifier CheckStateClassifier --label "[ON]" --selector "#…"`

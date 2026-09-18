@@ -32,6 +32,7 @@ Classifies the **image** of the last grabbed element with a classifier trained f
   only when the samples change.
 - It works the same way as [CheckStateClassifier](state_assertion.md), which judges checked states from images
   (each classifier has its own folder).
+- When `imageIs` fails, the screenshot the classifier judged is attached to the report right under the failed step.
 
 
 ## Capturing and checking samples (CLI)

@@ -1439,7 +1439,7 @@ extension StepExecutor {
         }
         return .failed("the element image is classified as \"\(VisionClassifier.shortLabel(lastClassification.label))\""
             + " (label \"\(lastClassification.label)\", confidence \(String(format: "%.2f", lastClassification.confidence))),"
-            + " not \"\(expected)\": \(step.locatorSummary)")
+            + " not \"\(expected)\": \(step.locatorSummary) (the screenshot it judged is attached to the report)")
     }
 
     /// オンしか報告しない実装(Compose iOS の Checkbox/Radio・Flutter iOS の Radio)は、オフと
@@ -1483,6 +1483,7 @@ extension StepExecutor {
                               with classifier: VisionClassifier.Model) async -> VisionClassifier.Classification? {
         guard let png = try? await driver.screenshot(),
               let image = VisionClassifier.crop(png: png, frame: element.frame, screen: screen) else { return nil }
+        classifierScreenshotThisStep = png
         return try? classifier.classify(image)
     }
 
@@ -1499,7 +1500,8 @@ extension StepExecutor {
                                      classifierError: String?) -> String {
         if let classification {
             return " (judged by CheckStateClassifier from the element image: label \"\(classification.label)\","
-                + " confidence \(String(format: "%.2f", classification.confidence)))"
+                + " confidence \(String(format: "%.2f", classification.confidence));"
+                + " the screenshot it judged is attached to the report)"
         }
         if let classifierError { return " (CheckStateClassifier was not used: \(classifierError))" }
         return ""

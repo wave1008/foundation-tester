@@ -828,7 +828,10 @@ public final class FTDriveCore {
                    guardMs: outcome?.timing?.guardMs, ocrMs: outcome?.timing?.ocrMs,
                    at: recordedAt,
                    notes: outcome?.notes ?? [], guarded: outcome?.guardEntered ?? false,
-                   command: command, failureKind: failureKind)
+                   command: command, failureKind: failureKind,
+                   // 画像分類器の判定で落ちたときだけ入る(StepOutcome.evidenceImage)
+                   screenshotData: outcome?.evidenceImage,
+                   screenshotLabel: outcome?.evidenceImage == nil ? nil : "image-judged-by-classifier")
 
         // 修正提案。修復は指紋照合だけなので、`healedStep` は指紋で掴んだ要素を書けるセレクタへ
         // 写したもの。**永続化はしない**(指紋は毎回再導出でき、誤った一致を固定すると注記ごと消える)

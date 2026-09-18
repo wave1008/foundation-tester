@@ -147,8 +147,10 @@ final class CheckStateClassifierTests: XCTestCase {
                                                       cacheDirectory: cache)
         XCTAssertEqual(clean.mismatches, [], "見分けられる見本なら取り違えは無い")
 
-        // オンの絵を [OFF] に紛れ込ませる = 見本どうしが矛盾する
-        try Self.checkboxPNG(on: true, shift: 1).write(to: dir.appendingPathComponent("[OFF]/wrong.png"))
+        // オンの絵を [OFF] に紛れ込ませる = 見本どうしが矛盾する。**shift はこのテストだけの値にする** ——
+        // 学習済みモデルはプロセス内で digest ごとに控えられ(VisionClassifier.load)、他のテストと同じ見本だと
+        // 1プロセスで続けて走ったとき点検が走らず、この一時フォルダに selfcheck.json が書かれない
+        try Self.checkboxPNG(on: true, shift: 3).write(to: dir.appendingPathComponent("[OFF]/wrong.png"))
         let set = try XCTUnwrap(try VisionClassifier.trainingSet(at: dir))
         let model = try VisionClassifier.loadBlocking(set, cacheDirectory: cache)
         XCTAssertTrue(model.mismatches.contains { $0.sample == "[OFF]/wrong.png" && $0.expected == "[OFF]" },
@@ -305,5 +307,28 @@ final class CheckStateClassifierTests: XCTestCase {
         let noSamples = await run("checked", a11y: element(type: "button"), imageOn: true, projectRoot: nil, prefer: true)
         XCTAssertFalse(passed(noSamples))
         XCTAssertFalse(noSamples.notes.contains(.checkStateClassified))
+    }
+
+    /// **分類器の判定で落ちたときだけ、判定に使ったスクリーンショットを持ち帰る**(レポートに添える)。
+    /// 通ったとき・分類器を使わずに落ちたときは持たない(失敗の証拠であって毎ステップの記録ではない)
+    func testFailureJudgedByTheClassifierCarriesTheScreenshotItJudged() async throws {
+        let root = try Self.makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let failed = await run("checked", a11y: element(type: "button"), imageOn: false, projectRoot: root, prefer: true)
+        XCTAssertFalse(passed(failed))
+        XCTAssertEqual(failed.evidenceImage, Self.checkboxPNG(on: false, shift: 2),
+                       "判定に使ったスクリーンショットそのもの(切り出しではない)を持ち帰るはず")
+        if case .failed(let reason) = failed.status {
+            XCTAssertTrue(reason.contains("attached to the report"), reason)
+        }
+
+        let ok = await run("checked", a11y: element(type: "button"), imageOn: true, projectRoot: root, prefer: true)
+        XCTAssertTrue(passed(ok), "\(ok.status)")
+        XCTAssertNil(ok.evidenceImage, "通ったステップは画像を持たない")
+
+        let a11yOnly = await run("checked", a11y: element(type: "button"), imageOn: true, projectRoot: nil, prefer: true)
+        XCTAssertFalse(passed(a11yOnly))
+        XCTAssertNil(a11yOnly.evidenceImage, "分類器を使っていない失敗は画像を持たない")
     }
 }

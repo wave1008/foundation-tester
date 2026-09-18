@@ -61,6 +61,8 @@ sample images (same location and labels as Shirates' Vision edition).
 - The run profile's `preferCheckStateClassifier` (default `true`) prefers the classifier over
   accessibility. With `false`, it is used only for elements whose accessibility reports no checked state.
 - Steps judged from the image carry the note `check-state-classified` in the results.
+- When a check judged from the image fails, the screenshot the classifier judged is attached to the report
+  right under the failed step, so you can see what it looked at.
 - `options=` / `imageFilter=binary` in Shirates' `MLImageClassifier.swift` are read with the same meaning.
 - [imageIs](image_assertion.md) uses the same mechanism to assert the label of an element's image.
 - Capture and check samples with `fleetest vision capture --classifier CheckStateClassifier --label "[ON]" --selector "#…"`
