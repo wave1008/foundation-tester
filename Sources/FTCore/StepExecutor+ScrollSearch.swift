@@ -294,6 +294,15 @@ extension StepExecutor {
         return nil
     }
 
+    /// scrollToEdge が端を確定してよいのは、見えている中身が最後に変わってからこの時間が経った後だけ
+    /// (「不変」の判定とドライバの端申告の両方に掛ける)。根拠は RN の FlatList(in-app)の実測: 端へ飛んでから
+    /// 窓の外に続きを描き足すまで 0.4〜0.7 秒(0.4 秒後の送りは余地が無く、0.7 秒後の送りは先へ進んだ)。
+    /// 1.0 = 0.7 + 余裕。費用は速い経路(in-app / CDP)が本当の端に着いたときの最大 1.0 秒で、実スワイプ
+    /// (XCUITest / Android)は1本で1秒近くかかるのでふつう払わない。一度も変わっていない(送る前から端)
+    /// ときは待たない。尽きたとき(描き足しが 1.0 秒を超える)は途中で端と確定し、後段の exist が
+    /// 「送った先に無い」で落ちる
+    static let edgeClaimGraceAfterMove: Duration = .milliseconds(1000)
+
     /// `scrollToEdge` が端と認めるまでに必要な「署名が不変だった周回数」。
     ///
     /// 既定は **2**。Android では次のスワイプがフリングの停止だけに消費されて1回空振りすることがあり、
@@ -306,15 +315,6 @@ extension StepExecutor {
     /// (1スワイプ約2.5秒 = 実測 scrollToTop 中央値 12.1s の主成分。docs/performance-tuning.md §8)。
     /// 供給の無い画面(ネイティブ・旧ブリッジ・hybrid の WebViewDelegatingDriver)は
     /// `offscreen` が nil なので従来どおり 2 のまま = 挙動は変わらない
-    /// scrollToEdge が端を確定してよいのは、見えている中身が最後に変わってからこの時間が経った後だけ
-    /// (「不変」の判定とドライバの端申告の両方に掛ける)。根拠は RN の FlatList(in-app)の実測: 端へ飛んでから
-    /// 窓の外に続きを描き足すまで 0.4〜0.7 秒(0.4 秒後の送りは余地が無く、0.7 秒後の送りは先へ進んだ)。
-    /// 1.0 = 0.7 + 余裕。費用は速い経路(in-app / CDP)が本当の端に着いたときの最大 1.0 秒で、実スワイプ
-    /// (XCUITest / Android)は1本で1秒近くかかるのでふつう払わない。一度も変わっていない(送る前から端)
-    /// ときは待たない。尽きたとき(描き足しが 1.0 秒を超える)は途中で端と確定し、後段の exist が
-    /// 「送った先に無い」で落ちる
-    static let edgeClaimGraceAfterMove: Duration = .milliseconds(1000)
-
     static func unchangedRoundsForEdge(snapshot: SnapshotResponse,
                                        remainingJump: Double?) -> Int {
         guard remainingJump == nil, let hints = snapshot.offscreen, !hints.isEmpty else { return 2 }

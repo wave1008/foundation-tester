@@ -2543,7 +2543,8 @@ E2E-iOS を回すまで気付かなかった)。**距離を伸ばしても・画
   手元を更新した直後のフルスイートはそのプロファイルのリモート担当ぶんが丸ごと欠ける
   (実際に 22 本中 14 本しか走らず、結果表には「1 of 14 failed」としか出ない)。
   `--align` を付けると実行前に `api remote-compat` を引き、**ランナーがこの clone の祖先
-  (`remoteBehind`)のホストだけ** `fleetest remote align` する。
+  (`remoteBehind`)のホストだけ** `fleetest remote align` する。**対象のホストは同時に揃える**
+  (出力は機ごとのログへ分けて最後にまとめて出す。`Scripts/align.sh` と同じ形。1機ずつ待つと台数ぶん伸びる)。
   **既定では触らない** —— align はランナーの `.build` を差し替えるので、他人(や自分の別セッション)の
   run の下で走らせるとその run を SIGKILL で殺す(docs/remote-runner.md §18.3 規則2)。
   **向きを取り違えない**: `localBehind`(この clone が古い)・`diverged`(ブランチ作業)・

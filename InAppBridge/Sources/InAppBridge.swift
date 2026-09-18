@@ -972,8 +972,9 @@ final class FTInAppBridge {
     private func handleSwipe(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
         // 端送りの結果をホストへ返すための箱: true = 動かせなかった(もう端)/ false = 確かに動かした /
-        // nil = 分からない。**false も返す**: 端へ飛ぶたびにセルが同じ座標に並ぶ画面(RN の FlatList)では、
-        // 動いたかをホストが木の署名から読めない(Android の CDP 経路と同じ意味)
+        // nil = 分からない。**false は contentOffset を動かした経路だけ**: 端へ飛ぶたびにセルが同じ座標に並ぶ
+        // 画面(RN の FlatList)では、動いたかをホストが木の署名から読めない(Android の CDP 経路と同じ意味)。
+        // AX の scroll は端でも受理するフレームワーク(Compose)があるので、受理を false にしない
         var atEdge: Bool?
         // **スクロール領域の指定(SwipeRequest.path)は「座標を撃つ指示」ではなく
         // 「どこを・どれだけ動かすか」の指示として読む**。合成タッチの drag は受理されないので
@@ -1022,7 +1023,9 @@ final class FTInAppBridge {
                 }
                 switch outcome {
                 case .scrolled:
-                    return ok(atEdge: req.edge == true ? false : nil)
+                    // **atEdge: false(= 確かに動かした)を返さない**: Compose は端でも受理を返すので、受理は
+                    // 「動いた」の証拠にならない(返すとホストが端を確定できず maxSwipes まで送り続ける)
+                    return ok()
                 case .refused:
                     // 一致した容器そのものが断った = **その向きの端**(対象が1つに決まっているので
                     // 「スクロールできない画面」と区別できる。Flutter は端で false を返す)。

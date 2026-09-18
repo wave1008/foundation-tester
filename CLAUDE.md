@@ -870,6 +870,10 @@
   ときだけ。経緯と壊れ方は maintainer-notes §4.5.1)
   **座標ドラッグは `StepExecutor.dragWithFallback` だけから撃つ**(in-app は drag が 501。
   `driver.drag` を直に呼ぶと hybrid で黙って不発になる)
+- **端送りは「最後に動いてから `edgeClaimGraceAfterMove`(1.0 秒)」経つまで端と確定しない**(窓の外に描き足す
+  RN の FlatList で途中止まりした)。**ドライバの `atEdge: false`(= 確かに動かした)は事実を知っている経路だけが返す**
+  (in-app の contentOffset・Android の CDP)。**AX の scroll の受理は含めない** —— Compose は端でも受理し、含めた版は
+  端送りが毎回 maxSwipes まで回った(緑のまま)→ maintainer-notes §36
 - **occlusion-guard の OCR 近道は、暖機が終わっていなければ終わるまで待ってから撃つ**(ユーザー決定
   2026-09-15。**run の開始時には待たない**。経緯は maintainer-notes §18・§20): 認識器(Espresso)の
   コンパイルキャッシュは**プロセス名とバイナリの素性ごと・コンパイルがプロセスの生存中に終わったときだけ

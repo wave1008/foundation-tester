@@ -407,7 +407,10 @@ public enum BridgeAPI {
     /// v115 (in-app only): an edge scroll that moved content answers `atEdge: false` (was nil), as the Android
     /// CDP path does, so the host counts the move even when cells land on the same coordinates after each jump
     /// (RN FlatList).
-    public static let bridgeProtocolVersion = 115
+    /// v116 (in-app only): only the UIKit / SwiftUI / RN contentOffset path answers `atEdge: false`. The Compose /
+    /// Flutter region scroll no longer does, because Compose accepts the accessibility scroll even at the edge (the
+    /// host never found the edge and swiped up to maxSwipes).
+    public static let bridgeProtocolVersion = 116
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1527,7 +1530,7 @@ public struct OKResponse: Codable {
     /// activate 不発→合成タッチ)。throw にしない代わりに StepExecutor.driverFallback へ載せて可視化する。
     public var note: String?
     /// **端送り(`SwipeRequest.edge`)で「もう端に着いていた」**(= 動かせなかった)なら true、
-    /// **確かに動かした**なら false(v115〜)。位置を直接動かすエンジンだけが答えられる事実で、
+    /// **確かに動かした**なら false(v116〜。contentOffset を動かした経路だけ。AX の受理は端でも起きるので含めない)。位置を直接動かすエンジンだけが答えられる事実で、
     /// ホストは true で「署名が2回続けて不変」を待たずに切り上げ、false で「動いた」と数える
     /// (`AppDriver.reachedEdgeOnLastSwipe`)。旧ブリッジ・答えられない経路は nil = 従来どおりの判定
     public var atEdge: Bool?

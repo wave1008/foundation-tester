@@ -134,8 +134,10 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
   木の変化で端を知る)。witness = S0091 scene 2・3
 - **端へ飛んだ後に続きを描き足すリスト(RN の FlatList)**: in-app は端まで一度に飛ぶので、描き足し(実測 0.4〜0.7 秒)の
   前に「余地が無い」になる。しかも飛ぶたびにセルが同じ座標に並ぶので、木の署名では動いたと読めない。
-  → 端の確定は最後に動いてから 1.0 秒後・ブリッジは動かしたら `atEdge: false`(v115)。witness = RN の S0091 scene 2
-  (開いた直後の `scrollToRightEdge`。直す前は #tag_13 で止まった)
+  → 端の確定は最後に動いてから 1.0 秒後・ブリッジは `contentOffset` を動かしたら `atEdge: false`(v116)。
+  witness = RN の S0091 scene 2(開いた直後の `scrollToRightEdge`。直す前は #tag_13 で止まった)。
+  **Compose / Flutter の AX の scroll は「受理 = 動いた」と言わない**(Compose は端でも受理するので、言うと
+  端を確定できず maxSwipes まで送る。v115 で実際に踏んだ)
 
 **揃っていない点(B)**:
 - 1回の送りで進む距離はエンジン・フレームワークで違う(Compose / Flutter の in-app は1ページ、XCUITest は慣性つき
