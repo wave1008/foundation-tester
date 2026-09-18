@@ -1309,6 +1309,9 @@ extension StepExecutor {
         // 「状態が違う」と「見つからない」を別メッセージにするのは enabled と同じ規律
         let wantChecked = assert == "checked"
         var lastState: CheckState = .unknown
+        var lastClassification: CheckStateClassifier.Classification?
+        // 学習の待ちは DeadlineExclusion で締め切りから引かれる。ステップの待ち予算はその後から数える
+        let classifier = await loadedCheckStateClassifier()
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         let stepStart = clock.now
         var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
@@ -1341,7 +1344,14 @@ extension StepExecutor {
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                       strictForAssert: true) {
                 found = true
-                let state = checkState(of: element, step: step)
+                var state = checkState(of: element, step: step)
+                lastClassification = nil
+                if let classifier, preferCheckStateClassifier || state == .unknown,
+                   let result = await classifyCheckState(element, screen: snapshot.screen, with: classifier) {
+                    state = result.state
+                    lastClassification = result.classification
+                    noteCodesThisStep.insert(.checkStateClassified)
+                }
                 lastState = state
                 if state != .unknown { observedCheckedThisStep = true }
                 // 状態を報告しない要素への checkIsOFF は通す(Shirates と同じ。run 終了時の警告が拾う)
@@ -1368,6 +1378,7 @@ extension StepExecutor {
         }
         return found
             ? .failed(Self.checkStateMismatch(lastState, locator: step.locatorSummary)
+                      + Self.checkStateSourceHint(lastClassification, classifierError: checkStateClassifierError)
                       + tapDiagnosisHint(lastSnapshot?.elements))
             : failed(.notFound, "element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot)
                       + Self.keyboardResizedHint(lastSnapshot))
@@ -1384,6 +1395,49 @@ extension StepExecutor {
         return state
     }
 
+    /// CheckStateClassifier を読み込む(プロセスで1回。見本画像が無ければ nil)。学習の失敗は a11y だけで
+    /// 判定を続ける(注記 check-state-classifier-failed・理由は失敗文言へ)
+    func loadedCheckStateClassifier() async -> CheckStateClassifier.Model? {
+        if let loaded = checkStateClassifierLoaded { return loaded }
+        guard let root = checkStateClassifierProjectRoot,
+              let set = CheckStateClassifier.trainingSet(at: CheckStateClassifier.directory(projectRoot: root)) else {
+            checkStateClassifierLoaded = .some(nil)
+            return nil
+        }
+        do {
+            let model = try await CheckStateClassifier.load(
+                set, cacheDirectory: CheckStateClassifier.cacheDirectory(projectRoot: root))
+            checkStateClassifierLoaded = .some(model)
+            return model
+        } catch {
+            checkStateClassifierError = String(describing: error)
+            noteCodesThisStep.insert(.checkStateClassifierFailed)
+            checkStateClassifierLoaded = .some(nil)
+            return nil
+        }
+    }
+
+    /// 要素の枠でスクリーンショットを切り、分類器の1位のラベルを状態へ写す。ラベルが [ON]/[OFF] を
+    /// 含まない・撮れない・切れないときは nil(a11y の判定のまま)
+    func classifyCheckState(_ element: ElementInfo, screen: FTRect, with classifier: CheckStateClassifier.Model)
+        async -> (state: CheckState, classification: CheckStateClassifier.Classification)? {
+        guard let png = try? await driver.screenshot(),
+              let image = CheckStateClassifier.crop(png: png, frame: element.frame, screen: screen),
+              let classification = try? classifier.classify(image),
+              let state = CheckStateClassifier.state(forLabel: classification.label) else { return nil }
+        return (state, classification)
+    }
+
+    static func checkStateSourceHint(_ classification: CheckStateClassifier.Classification?,
+                                     classifierError: String?) -> String {
+        if let classification {
+            return " (judged by CheckStateClassifier from the element image: label \"\(classification.label)\","
+                + " confidence \(String(format: "%.2f", classification.confidence)))"
+        }
+        if let classifierError { return " (CheckStateClassifier was not used: \(classifierError))" }
+        return ""
+    }
+
     static func checkStateMismatch(_ state: CheckState, locator: String) -> String {
         switch state {
         case .on: return "the element is on: \(locator)"
@@ -1392,8 +1446,9 @@ extension StepExecutor {
         case .unknown:
             return "the element reports no check state: \(locator) (no selected trait and no on/off value; "
                 + "it is either off or an implementation that does not expose its check state to accessibility, "
-                + "such as a custom-drawn button. Verify a text that reflects the state with textIs, or have the app "
-                + "expose it, e.g. SwiftUI .accessibilityRepresentation { Toggle(...) })"
+                + "such as a custom-drawn button. Verify a text that reflects the state with textIs, have the app "
+                + "expose it (e.g. SwiftUI .accessibilityRepresentation { Toggle(...) }), or put sample images of the "
+                + "element in vision/classifiers/CheckStateClassifier/[ON] and [OFF] to judge it from its image)"
         }
     }
 

@@ -763,6 +763,16 @@ public final class StepExecutor {
     var observedCheckedThisStep: Bool?
     /// checkIsON/OFF で一度でもオンを報告した要素の鍵(`checkState(of:step:)`)。シナリオ = 実行器の寿命
     var checkStateReporters: Set<String> = []
+    /// CheckStateClassifier を探すプロジェクトのルート(`vision/classifiers/CheckStateClassifier/`)。
+    /// nil = 使わない。FTDriveCore が実行バイナリの `--project-dir` から渡す
+    public var checkStateClassifierProjectRoot: URL?
+    /// 分類器が使えるとき、a11y が状態を報告する要素でも分類器を優先するか(プロファイルの
+    /// `preferCheckStateClassifier`。**既定 true**)。false なら状態を報告しない要素にだけ使う
+    public var preferCheckStateClassifier = true
+    /// 分類器の読み込み結果(プロセスで1回。.some(nil) = 画像が無い・学習に失敗した)
+    var checkStateClassifierLoaded: CheckStateClassifier.Model??
+    /// 学習に失敗したときの理由(失敗文言へ添える)
+    var checkStateClassifierError: String?
     /// [occlusion-guard] このステップが `occlusionFlip` の `visibilityGuardActive` 判定を通ったか
     /// (execute が StepOutcome.guardEntered に載せる)。**分母はここ** —— `visibilityGuardActive`
     /// が true でも tap 等のアクションは occlusionFlip を通らないので、そちらを分母にしてはならない。

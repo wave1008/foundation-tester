@@ -453,6 +453,10 @@ function renderRunProfileSection(): string {
               <label for="run-profile-ocr-text-visual-check">${t("panels.runProfile.ocrTextVisualCheckLabel")}</label>
             </div>
             <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-prefer-check-state-classifier">
+              <label for="run-profile-prefer-check-state-classifier">${t("panels.runProfile.preferCheckStateClassifierLabel")}</label>
+            </div>
+            <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-text-visual-check">
               <label for="run-profile-text-visual-check">${t("panels.runProfile.textVisualCheckLabel")}</label>
             </div>

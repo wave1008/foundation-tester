@@ -84,10 +84,14 @@ class ライフサイクルとコントロールが正しく働くこと {
                     // これが無いと、ランナーが value を落とす退行を E2E が一生検出できない
                     // (echo は SUT が自前で描くので、ブリッジが黙っても緑のまま)
                     select("#slider_volume").valueIs("50%")
-                    // SwiftUI の Toggle は状態を value "1"/"0" で出す(selected trait は立てない)。
-                    // #cb_agree / #radio_* は自作の Button で状態を a11y に出さないので checkIsON は書けない
-                    // (docs/framework-differences.md)。状態の正は echo
+                    // #cb_agree / #radio_* は自作の Button で状態を a11y に一切出さない。
+                    // vision/classifiers/CheckStateClassifier の見本画像(この画面から a11y の枠で切り出した
+                    // もの)で学習した分類器が画像から判定する(Shirates Vision の移植)。
+                    // #sw_notify の Toggle は a11y でも読めるが、preferCheckStateClassifier(既定 true)で分類器が優先
                     select("#sw_notify").checkIsOFF()
+                    select("#cb_agree").checkIsOFF()
+                    select("#radio_a").checkIsON()
+                    select("#radio_b").checkIsOFF()
                 }
             }
             scene(2, "Switch とチェックを ON にする") {
@@ -98,6 +102,7 @@ class ライフサイクルとコントロールが正しく働くこと {
                     select("#txt_sw_notify").textIs("notify=on")
                     select("#txt_cb_agree").textIs("agree=true")
                     select("#sw_notify").checkIsON()
+                    select("#cb_agree").checkIsON()
                 }
             }
             scene(3, "ラジオを B へ切り替える") {
@@ -105,6 +110,8 @@ class ライフサイクルとコントロールが正しく働くこと {
                     tap("#radio_b")
                 }.expectation {
                     select("#txt_radio").textIs("plan=B")
+                    select("#radio_b").checkIsON()
+                    select("#radio_a").checkIsOFF()
                 }
             }
             scene(4, "リセットで全て初期値に戻る") {
@@ -117,6 +124,8 @@ class ライフサイクルとコントロールが正しく働くこと {
                     select("#txt_radio").textIs("plan=A")
                     select("#txt_slider").textIs("volume=50")
                     select("#sw_notify").checkIsOFF()
+                    select("#cb_agree").checkIsOFF()
+                    select("#radio_a").checkIsON()
                 }
             }
             scene(5, "11.S0010: 常時無効ボタンと条件付きボタンの enabled 状態を判定する") {

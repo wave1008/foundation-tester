@@ -1063,6 +1063,7 @@ test("buildRunProfileTemplate: 候補ありなら先頭のappを使い、devices
     heal: true,
     textVisualCheck: true,
     ocrTextVisualCheck: true,
+    preferCheckStateClassifier: true,
     screenLooksLike: true,
     iosInappEngine: true,
     updateWebView: true,
@@ -1079,6 +1080,7 @@ test("buildRunProfileTemplate: 候補が無ければ app は空文字", () => {
     heal: true,
     textVisualCheck: true,
     ocrTextVisualCheck: true,
+    preferCheckStateClassifier: true,
     screenLooksLike: true,
     iosInappEngine: true,
     updateWebView: true,
@@ -1419,6 +1421,7 @@ const VALID_RUN_PROFILE_SAVE = {
     screenLooksLike: true,
     containerInference: true,
     ocrTextVisualCheck: true,
+    preferCheckStateClassifier: true,
     iosInappEngine: true,
     iosFastInput: false,
     iosPreActionWarmup: true,
@@ -1447,7 +1450,7 @@ test("isMonitorFromWebviewMessage: runProfileLoad は profile 空文字/欠落/�
   assert.equal(isMonitorFromWebviewMessage({ type: "runProfileLoad", profile: 1 }), false);
 });
 
-test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields21項目の型が揃っていれば true", () => {
+test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields22項目の型が揃っていれば true", () => {
   assert.equal(isMonitorFromWebviewMessage(VALID_RUN_PROFILE_SAVE), true);
   // devices は空配列も(型としては)許容する — 「1件以上」の検証はクライアント側の別ロジックが担う。
   assert.equal(
@@ -1466,6 +1469,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields21�
         screenLooksLike: false,
         containerInference: false,
         ocrTextVisualCheck: false,
+        preferCheckStateClassifier: false,
         iosInappEngine: false,
         iosFastInput: true,
         iosPreActionWarmup: false,
@@ -1972,6 +1976,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     screenLooksLike: false,
     containerInference: false,
     ocrTextVisualCheck: false,
+    preferCheckStateClassifier: false,
     iosInappEngine: false,
     iosFastInput: true,
     iosPreActionWarmup: false,
@@ -2001,6 +2006,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     screenLooksLike: false,
     containerInference: false,
     ocrTextVisualCheck: false,
+    preferCheckStateClassifier: false,
     iosInappEngine: false,
     iosFastInput: true,
     iosPreActionWarmup: false,
@@ -2031,6 +2037,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/reco
     screenLooksLike: true,
     containerInference: true,
     ocrTextVisualCheck: true,
+    preferCheckStateClassifier: true,
     iosInappEngine: true,
     iosFastInput: false,
     iosPreActionWarmup: true,
@@ -2060,6 +2067,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     screenLooksLike: "false",
     containerInference: "false",
     ocrTextVisualCheck: "true",
+    preferCheckStateClassifier: "true",
     iosInappEngine: "false",
     iosFastInput: "true",
     reportDir: false,
@@ -2081,6 +2089,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     screenLooksLike: true,
     containerInference: true,
     ocrTextVisualCheck: true,
+    preferCheckStateClassifier: true,
     iosInappEngine: true,
     iosFastInput: false,
     iosPreActionWarmup: true,
@@ -2379,6 +2388,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   screenLooksLike: true,
   containerInference: true,
   ocrTextVisualCheck: true,
+  preferCheckStateClassifier: true,
   iosInappEngine: true,
   iosFastInput: false,
   iosPreActionWarmup: true,

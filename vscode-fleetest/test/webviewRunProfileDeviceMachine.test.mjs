@@ -96,6 +96,7 @@ const RUN_PROFILE_DATA = {
     textVisualCheck: true,
     screenLooksLike: true,
     ocrTextVisualCheck: true,
+    preferCheckStateClassifier: true,
     iosInappEngine: true,
     iosFastInput: false,
     iosPreActionWarmup: true,

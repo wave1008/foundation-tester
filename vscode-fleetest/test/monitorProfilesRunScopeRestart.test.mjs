@@ -30,6 +30,7 @@ const FORM_FIELDS = {
   screenLooksLike: true,
   ocr: true,
   ocrTextVisualCheck: true,
+  preferCheckStateClassifier: true,
   iosInappEngine: true,
   iosFastInput: false,
   iosPreActionWarmup: true,

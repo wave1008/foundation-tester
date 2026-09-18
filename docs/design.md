@@ -2105,7 +2105,16 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   文字をオンと読まないため。**オンしか報告しない実装**は、同じシナリオで一度オンを見た要素に限り
   報告の欠落をオフと読む(`StepExecutor.checkStateReporters`)。**救えない形**: 状態を a11y に出さない自作の
   部品(SwiftUI の Button 等)/ オンを見る前のオフ / Flutter・Compose・Android の mixed(オフと区別不能)。
-  `checkIsON` を不明な要素に書くと「reports no check state」で落ち、`checkIsOFF` は通して run 終了時に警告する
+  `checkIsON` を不明な要素に書くと「reports no check state」で落ち、`checkIsOFF` は通して run 終了時に警告する。
+  **画像での判定(`FTCore.CheckStateClassifier`。Shirates Vision の移植)**: プロジェクトの
+  `vision/classifiers/CheckStateClassifier/<ラベル>/` に見本画像(ラベルが2つ以上)があれば、要素の枠で
+  スクリーンショットを切り、Create ML の画像分類器の1位のラベル(`[ON]`/`[OFF]` を含むか)で判定する。
+  使う要素は実行プロファイルの `preferCheckStateClassifier`(既定 true = a11y より優先 / false = a11y が
+  不明の要素だけ)。学習済みモデルは `.fleetest/vision/CheckStateClassifier/<digest>/` にキャッシュし
+  (digest = 画像の中身 + オプション + 学習器の版)、並列のプロセスは digest ごとの flock で1本にする。
+  学習の待ちは `DeadlineExclusion` で締め切りから引く。**見本は推論と同じ a11y の枠で切ったものを置く**
+  (切り方がずれると別物に見える)。**見本に無い種類の部品は2クラスのどちらかへ必ず振られる**ので、
+  優先オンでは同じ画面のスイッチ・ラジオの見本も一緒に置く(witness は E2E-iOS の scenario 08)
 - **状態フィルタ(`checked=` / `enabled=`)は型ではなく `#id` と併用する**(2026-07-26 実測)。
   同じ役割の要素でも型は SUT で割れるため(コントロール画面の無効ボタンは CMP では `button`、
   View/XML では `clickable`)、`.button&&enabled=false` のような型との AND は SUT 固有の式になる。

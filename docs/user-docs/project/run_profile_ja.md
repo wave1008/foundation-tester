@@ -25,6 +25,7 @@
 | `textVisualCheck` | bool | `true` | `exist`/`textIs` 等のテキストの視覚検証(occlusion guard)を有効にする。木では一致したが実際には見えていない「誤った緑」を検出する。FM(Foundation Models。experimental — [environments_ja.md](../overview/environments_ja.md))が呼ばれるのは、これか `screenLooksLike` が `true` のときだけ |
 | `screenLooksLike` | bool | `true` | `screenLooksLike`(FM 視覚検証)を有効にする。`false` のときは該当ステップが失敗ではなく skip になる |
 | `ocrTextVisualCheck` | bool | `true` | occlusion guard が FM に訊く前に、端末の OCR(Vision)で要素を読む。期待テキストが丸ごと読めた回は FM を呼ばずに通り、読めなければ従来どおり FM が判定する(切ると同じ検査が遅くなるだけ)。`textVisualCheck` が `false` の run では guard 自体が走らないので効かない |
+| `preferCheckStateClassifier` | bool | `true` | `checkIsON` / `checkIsOFF` の判定で CheckStateClassifier(プロジェクトの `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に置いた見本画像から学習する画像分類器)をアクセシビリティより優先する。`false` なら、アクセシビリティが状態を報告しない要素にだけ使う。見本画像が無ければ効かない |
 | `reportDir` | string | `"reports"` | Markdown レポートの出力先(プロジェクトルート相対) |
 | `defaultTimeout` | number(秒) | DSL 側の既定値 | `timeout:` を取る DSL コマンドの既定タイムアウト |
 | `scenarioTimeout` | int(秒) | `90` | シナリオ単位のホスト側 watchdog(壁時計タイムアウト)。個々のコマンド待ちを縛る `defaultTimeout` とは別物 |

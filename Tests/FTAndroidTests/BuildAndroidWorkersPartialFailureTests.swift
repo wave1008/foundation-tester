@@ -70,6 +70,7 @@ final class BuildAndroidWorkersPartialFailureTests: XCTestCase {
             iosPreActionWarmup: true,
             containerInference: true,
             ocrTextVisualCheck: true,
+            preferCheckStateClassifier: true,
             enableAnimations: false,
             homeOnStart: true, playProtectBypass: true,
             record: false,

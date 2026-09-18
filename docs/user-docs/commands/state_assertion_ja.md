@@ -37,6 +37,28 @@ select("#toggle_notifications").checkIsON()
   一度オンを確かめた要素に限り、報告が無いことをオフと判定します。一度もオンを見ていない要素の
   `checkIsOFF` は状態が分からないまま通り、run 終了時に警告が出ます。
 - 「一部だけ選択」(mixed)の要素は、`checkIsON` でも `checkIsOFF` でも失敗します。
+
+## 画像でチェック状態を判定する(CheckStateClassifier)
+
+アクセシビリティが状態を出さない部品は、見本画像から学習した画像分類器で判定できます
+(Shirates の Vision 版と同じ置き場所・同じラベルです)。
+
+```
+<プロジェクト>/vision/classifiers/CheckStateClassifier/
+  [ON]/   オンの見本画像(png / jpg)
+  [OFF]/  オフの見本画像
+```
+
+- 見本は、判定したい要素の**枠そのもの**をスクリーンショットから切り出したものを置きます
+  (判定のときも要素の枠で切り出すため、切り方を揃えます)。
+- 分類器はオンかオフのどちらかを必ず答えます。**同じ画面のスイッチやラジオも判定に使う場合は、
+  それらの見本も置いてください**(見本に無い見た目は誤りやすくなります)。
+- 見本を置くと、初回の判定で学習します(数秒)。学習結果は `.fleetest/` に保存され、見本を
+  変えたときだけ学び直します。
+- 実行プロファイルの `preferCheckStateClassifier`(既定 `true`)で、アクセシビリティより分類器を
+  優先します。`false` にすると、アクセシビリティが状態を報告しない要素にだけ使います。
+- 画像で判定したステップには、結果に注記 `check-state-classified` が付きます。
+- Shirates の `MLImageClassifier.swift` の `options=` / `imageFilter=binary` も同じ意味で読みます。
 - Android は `isChecked` と `isSelected` の両方を見ます — タブや選択行のように `isSelected` だけで
   選択状態を出す要素も、チェック済みとして認識されます。
 

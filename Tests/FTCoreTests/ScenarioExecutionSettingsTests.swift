@@ -43,6 +43,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
                         screenLooksLike: false),
             heal: true,
             ocrTextVisualCheck: false,
+            preferCheckStateClassifier: false,
             iosFastInput: true,
             iosPreActionWarmup: false,
             containerInference: false,
@@ -62,7 +63,8 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
     /// profile-less の変換は `profileName` を nil のまま運ぶ(LastResultsStore.noProfileKey の区分へ)
     func testDeviceIndependentRunSettingsMappingLeavesProfileNameNil() {
         let settings = ScenarioExecutionSettings(DeviceIndependentRunSettings(
-            fm: FMConfig(), heal: false, ocrTextVisualCheck: true, iosFastInput: false,
+            fm: FMConfig(), heal: false, ocrTextVisualCheck: true, preferCheckStateClassifier: true,
+            iosFastInput: false,
             iosPreActionWarmup: true, containerInference: true, enableAnimations: false,
             playProtectBypass: true, homeOnStart: true, record: false, recordFailuresOnly: false,
             recordFullResolution: false, reportDir: nil, defaultTimeout: nil, scenarioTimeout: nil,
@@ -85,6 +87,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
             wipeDataThresholdGB: 8, recoverCpuFallbackToGpu: false, locale: "ja_JP",
             iosFastInput: false, iosPreActionWarmup: true, containerInference: false,
             ocrTextVisualCheck: false,
+            preferCheckStateClassifier: false,
             enableAnimations: false,
             homeOnStart: true, playProtectBypass: true, record: false, recordFailuresOnly: false,
             recordBitrateKbps: 1500, recordFullResolution: false, warnings: [])

@@ -177,6 +177,10 @@ struct RunScenario: AsyncParsableCommand {
     @Flag(name: .customLong("no-occlusion-ocr"), help: "Disable the Vision OCR tier of the occlusion guard (use FM only)")
     var noOcclusionOCR = false
 
+    @Flag(name: .customLong("no-prefer-check-state-classifier"),
+          help: "Use CheckStateClassifier only for elements whose accessibility reports no check state")
+    var noPreferCheckStateClassifier = false
+
     @Option(name: .customLong("report-dir"), help: "Directory to write reports to")
     var reportDir: String = "reports"
 
@@ -477,7 +481,10 @@ struct RunScenario: AsyncParsableCommand {
                                textVisualCheckEnabled: !noTextVisualCheck,
                                screenLooksLikeEnabled: !noScreenLooksLike,
                                containerInference: !noContainerInference,
-                               occlusionOCREnabled: !noOcclusionOCR, dryRun: dryRun,
+                               occlusionOCREnabled: !noOcclusionOCR,
+                               checkStateClassifierProjectRoot: projectDir.map { URL(fileURLWithPath: $0) },
+                               preferCheckStateClassifier: !noPreferCheckStateClassifier,
+                               dryRun: dryRun,
                                fingerprintCacheURL: fingerprintCacheURL,
                                selectorInventoryURL: selectorInventoryURL,
                                defaultTimeout: defaultTimeout,

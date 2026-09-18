@@ -88,6 +88,7 @@ const RUN_FIELDS = {
   screenLooksLike: true,
   containerInference: true,
   ocrTextVisualCheck: true,
+  preferCheckStateClassifier: true,
   iosInappEngine: true,
   iosFastInput: false,
   iosPreActionWarmup: true,
@@ -134,7 +135,7 @@ test("確定・キャンセルのボタンは3セクションとも無い", (t) 
   }
 });
 
-test("Advanced Features セクションは heal を先頭に4トグルがフラットに並び、旧親チェックボックス(#run-profile-fm/#run-profile-ocr)は無い", (t) => {
+test("Advanced Features セクションは heal を先頭に5トグルがフラットに並び、旧親チェックボックス(#run-profile-fm/#run-profile-ocr)は無い", (t) => {
   const { document } = loadedRunProfile(t);
   assert.equal(document.getElementById("run-profile-fm"), null);
   assert.equal(document.getElementById("run-profile-fm-options"), null);
@@ -144,11 +145,12 @@ test("Advanced Features セクションは heal を先頭に4トグルがフラ�
   const ids = [
     "run-profile-heal",
     "run-profile-ocr-text-visual-check",
+    "run-profile-prefer-check-state-classifier",
     "run-profile-text-visual-check",
     "run-profile-screen-looks-like",
   ];
   const section = document.getElementById(ids[0]).closest(".run-profile-section-group");
-  // 4行とも字下げラッパーの中ではなく、セクション直下の modal-row として並ぶ(フラット)。
+  // 5行とも字下げラッパーの中ではなく、セクション直下の modal-row として並ぶ(フラット)。
   for (const id of ids) {
     const el = document.getElementById(id);
     assert.equal(el.parentElement.classList.contains("profile-checkbox-row"), true);

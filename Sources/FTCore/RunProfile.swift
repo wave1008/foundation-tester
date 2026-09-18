@@ -394,6 +394,10 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// `textVisualCheck` が false のときは guard 自体が走らないのでこの値は無意味になる
     /// (ここでの追加ゲートは無い)
     public var ocrTextVisualCheck: Bool?
+    /// チェック状態(checkIsON / checkIsOFF)の判定で CheckStateClassifier を優先するか(**既定 true**)。
+    /// 分類器が使えるのは `vision/classifiers/CheckStateClassifier/<ラベル>/` に画像があるときだけ。
+    /// false なら a11y が状態を報告しない要素にだけ使う(CheckStateClassifier.swift)
+    public var preferCheckStateClassifier: Bool?
     /// 旧名 `screenIs` の受け口(コマンドの改名前に書かれた受け手のプロファイルが動き続けるため)。
     /// **読むのは screenLooksLike が未指定のときだけ**(effectiveScreenLooksLike)。書き出す側は
     /// 新キーだけを書く。この欄を消すと既存のプロファイルが黙って既定値に戻る
@@ -487,6 +491,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public init(app: String? = nil, devices: [RunDeviceEntry]? = nil,
                 heal: Bool? = nil, textVisualCheck: Bool? = nil, screenLooksLike: Bool? = nil,
                 ocrTextVisualCheck: Bool? = nil,
+                preferCheckStateClassifier: Bool? = nil,
                 screenIs: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
                 iosInappEngine: Bool? = nil,
@@ -505,6 +510,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.textVisualCheck = textVisualCheck
         self.screenLooksLike = screenLooksLike
         self.ocrTextVisualCheck = ocrTextVisualCheck
+        self.preferCheckStateClassifier = preferCheckStateClassifier
         self.screenIs = screenIs
         self.reportDir = reportDir
         self.defaultTimeout = defaultTimeout
@@ -533,6 +539,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
 
     static let knownKeys: Set<String> = [
         "app", "devices", "heal", "textVisualCheck", "screenLooksLike", "ocrTextVisualCheck",
+        "preferCheckStateClassifier",
         "screenIs",  // 旧名。effectiveScreenLooksLike が拾う(未知キー警告を出さないため残す)
         "reportDir", "defaultTimeout", "scenarioTimeout",
         "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
@@ -566,7 +573,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// Mirror で等号を固定する)
     fileprivate static let overridableKeyKinds: [String: ValueKind] = [
         "heal": .bool, "textVisualCheck": .bool,
-        "screenLooksLike": .bool, "ocrTextVisualCheck": .bool,
+        "screenLooksLike": .bool, "ocrTextVisualCheck": .bool, "preferCheckStateClassifier": .bool,
         "iosInappEngine": .bool, "iosFastInput": .bool, "iosPreActionWarmup": .bool,
         "containerInference": .bool, "enableAnimations": .bool, "homeOnStart": .bool,
         "playProtectBypass": .bool, "updateWebView": .bool, "wipeDataOnBloat": .bool,
@@ -602,6 +609,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
             case ("textVisualCheck", .bool(let v)): copy.textVisualCheck = v
             case ("screenLooksLike", .bool(let v)): copy.screenLooksLike = v
             case ("ocrTextVisualCheck", .bool(let v)): copy.ocrTextVisualCheck = v
+            case ("preferCheckStateClassifier", .bool(let v)): copy.preferCheckStateClassifier = v
             case ("iosInappEngine", .bool(let v)): copy.iosInappEngine = v
             case ("iosFastInput", .bool(let v)): copy.iosFastInput = v
             case ("iosPreActionWarmup", .bool(let v)): copy.iosPreActionWarmup = v
@@ -798,6 +806,8 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
     /// ロケータ自己修復(指紋照合)。**`fm` の配下ではない**(FM を使わないので、FM を切っても止めない)
     public let heal: Bool
     public let ocrTextVisualCheck: Bool
+    /// RunProfileDocument.preferCheckStateClassifier(**既定 true**)
+    public let preferCheckStateClassifier: Bool
     public let iosFastInput: Bool
     public let iosPreActionWarmup: Bool
     public let containerInference: Bool
@@ -848,6 +858,7 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
                 screenLooksLike: screenLooksLike),
             heal: doc.heal ?? true,
             ocrTextVisualCheck: doc.ocrTextVisualCheck ?? true,
+            preferCheckStateClassifier: doc.preferCheckStateClassifier ?? true,
             iosFastInput: doc.iosFastInput ?? false,
             iosPreActionWarmup: doc.iosPreActionWarmup ?? true,
             containerInference: doc.containerInference ?? true,
@@ -992,6 +1003,8 @@ public struct ResolvedProfile: Sendable {
     public let containerInference: Bool
     /// OCR を使ったテキストの視覚検証の実効値(RunProfileDocument.ocrTextVisualCheck。既定 true)
     public let ocrTextVisualCheck: Bool
+    /// RunProfileDocument.preferCheckStateClassifier の実効値(既定 true)
+    public let preferCheckStateClassifier: Bool
     /// アプリのアニメーションを残すか(RunProfileDocument.enableAnimations。既定 false=無効化)
     public let enableAnimations: Bool
     /// run 開始時に各デバイスへ home() を撃つか(RunProfileDocument.homeOnStart。**既定 true**)
@@ -1516,6 +1529,7 @@ public enum ProfileResolver {
             iosPreActionWarmup: settings.iosPreActionWarmup,
             containerInference: settings.containerInference,
             ocrTextVisualCheck: settings.ocrTextVisualCheck,
+            preferCheckStateClassifier: settings.preferCheckStateClassifier,
             enableAnimations: settings.enableAnimations,
             homeOnStart: settings.homeOnStart,
             playProtectBypass: settings.playProtectBypass,

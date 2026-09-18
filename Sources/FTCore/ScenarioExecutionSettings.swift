@@ -9,6 +9,8 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     /// OCR を使ったテキストの視覚検証の実効値(プロファイルの `ocrTextVisualCheck`)。
     /// OCR の用途が増えたらこの Bool を再利用せず欄を足す
     public var occlusionOCR: Bool
+    /// checkIsON / checkIsOFF で CheckStateClassifier を優先するか(プロファイルの `preferCheckStateClassifier`)
+    public var preferCheckStateClassifier: Bool
     public var containerInference: Bool
     public var defaultTimeout: Double?
     public var scenarioTimeout: Int?
@@ -22,11 +24,13 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     /// 既定値はこの1箇所だけに置く。他の層(ScenarioHost/RunOrchestrator/CLI)に既定を書かない。
     /// `homeOnStart` はデバイスに触る工程の設定なのでここには入れない
     public init(fm: FMConfig = FMConfig(), heal: Bool = false, occlusionOCR: Bool = true,
+                preferCheckStateClassifier: Bool = true,
                 containerInference: Bool = true, defaultTimeout: Double? = nil,
                 scenarioTimeout: Int? = nil, profileName: String? = nil) {
         self.fm = fm
         self.heal = heal
         self.occlusionOCR = occlusionOCR
+        self.preferCheckStateClassifier = preferCheckStateClassifier
         self.containerInference = containerInference
         self.defaultTimeout = defaultTimeout
         self.scenarioTimeout = scenarioTimeout
@@ -35,12 +39,14 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
 
     public init(_ settings: DeviceIndependentRunSettings) {
         self.init(fm: settings.fm, heal: settings.heal, occlusionOCR: settings.ocrTextVisualCheck,
+                  preferCheckStateClassifier: settings.preferCheckStateClassifier,
                   containerInference: settings.containerInference,
                   defaultTimeout: settings.defaultTimeout, scenarioTimeout: settings.scenarioTimeout)
     }
 
     public init(_ resolved: ResolvedProfile) {
         self.init(fm: resolved.fm, heal: resolved.heal, occlusionOCR: resolved.ocrTextVisualCheck,
+                  preferCheckStateClassifier: resolved.preferCheckStateClassifier,
                   containerInference: resolved.containerInference,
                   defaultTimeout: resolved.defaultTimeout, scenarioTimeout: resolved.scenarioTimeout,
                   profileName: resolved.runName)

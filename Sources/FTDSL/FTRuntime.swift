@@ -406,6 +406,10 @@ public final class FTDriveCore {
                 // `fm` の配下ではない)。false のときは FT_OCCLUSION_OCR を読まず常に .off ——
                 // プロファイルの明示 off が環境変数に勝つ
                 occlusionOCREnabled: Bool = true,
+                // CheckStateClassifier(Shirates Vision の移植)。見本画像の置き場所はこのルートの
+                // vision/classifiers/CheckStateClassifier/。nil なら使わない
+                checkStateClassifierProjectRoot: URL? = nil,
+                preferCheckStateClassifier: Bool = true,
                 dryRun: Bool = false,
                 fingerprintCacheURL: URL? = nil,
                 selectorInventoryURL: URL? = nil,
@@ -461,6 +465,8 @@ public final class FTDriveCore {
                                          app: app, platform: platform,
                                          deviceName: deviceName, deviceIdentifier: deviceIdentifier)
         self.executor.onDeviceFrozen = { [weak self] in self?.markDeviceFrozen() }
+        self.executor.checkStateClassifierProjectRoot = checkStateClassifierProjectRoot
+        self.executor.preferCheckStateClassifier = preferCheckStateClassifier
         // **シナリオ開始時に暖機を始める**(Vision のモデル初回ロードはプロセスに1回・数十秒
         // かかる)。StepExecutor.init の既定ゲート(executor 既定でガードが効くときだけ撃つ)は
         // DSL の経路では実質発火しない(executor 既定の occlusionGuard は常に false)ため、

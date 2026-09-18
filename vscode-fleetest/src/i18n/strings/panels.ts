@@ -102,6 +102,10 @@ export const panelsStrings = {
     ja: "OCRを使用したテキストの視覚検証を有効にする",
     en: "Enable OCR-based visual verification for text",
   },
+  "panels.runProfile.preferCheckStateClassifierLabel": {
+    ja: "チェック状態の判定はCheckStateClassifierによる視覚検証を優先する",
+    en: "Prefer visual verification by CheckStateClassifier when judging check states",
+  },
   "panels.runProfile.iosSectionTitle": { ja: "iOS", en: "iOS" },
   "panels.runProfile.inappEngineLabel": {
     ja: "高速なinappエンジンを使用する",

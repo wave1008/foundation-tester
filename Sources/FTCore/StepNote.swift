@@ -206,6 +206,12 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// コンパイルがハングしている**(ANE を避けていてもこの型は起こりうる。fm-flap-ane-load-failure)
     case ocrWarmupCapped = "ocr-warmup-capped"
 
+    /// checkIsON / checkIsOFF の状態を **CheckStateClassifier が要素の画像から判定した**
+    /// (a11y の報告ではない)。見本画像の不足・見た目の変更で誤りうる側なので、判定の出どころを残す
+    case checkStateClassified = "check-state-classified"
+    /// CheckStateClassifier の見本画像はあるのに、学習か読み込みに失敗した(a11y だけで判定した)
+    case checkStateClassifierFailed = "check-state-classifier-failed"
+
     /// 1番目の occlusion-guard 評価だけで、ガード自身の所要(FM の直列化待ち+推論)が
     /// このステップの待ち予算を食い潰し、1回もポーリングできないまま反転が確定しかけたので、
     /// deadline を一度だけ延ばして撮り直したところ通った(2026-09-15 実測: guardMs 6.3s >
@@ -252,6 +258,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .ocrShortcutBusy: return "the OCR shortcut was skipped: an earlier OCR read was still running past its budget (asked FM instead)"
         case .ocrWarmupWaited: return "the OCR shortcut waited for the recognizer to finish loading before using it"
         case .ocrWarmupCapped: return "the wait for the OCR recognizer to finish loading ran out (asked FM instead)"
+        case .checkStateClassified: return "the check state was judged by CheckStateClassifier from the element's image"
+        case .checkStateClassifierFailed:
+            return "CheckStateClassifier could not be trained or loaded, so the check state came from accessibility only"
         case .settleCapped: return "the screen did not settle (poll limit)"
         case .heldValue: return "from the grabbed value"
         case .scrollFrameMissing: return "the scrollFrame did not resolve, so the search stopped early"

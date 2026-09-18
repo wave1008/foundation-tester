@@ -275,6 +275,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         case "textVisualCheck": return doc.textVisualCheck.map(RunProfileSetValue.bool)
         case "screenLooksLike": return doc.screenLooksLike.map(RunProfileSetValue.bool)
         case "ocrTextVisualCheck": return doc.ocrTextVisualCheck.map(RunProfileSetValue.bool)
+        case "preferCheckStateClassifier": return doc.preferCheckStateClassifier.map(RunProfileSetValue.bool)
         case "iosInappEngine": return doc.iosInappEngine.map(RunProfileSetValue.bool)
         case "iosFastInput": return doc.iosFastInput.map(RunProfileSetValue.bool)
         case "iosPreActionWarmup": return doc.iosPreActionWarmup.map(RunProfileSetValue.bool)
@@ -305,7 +306,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
     /// 作るので、値の型は本体の宣言型マップと自動的に一致する(このテストが型を手で二重管理しない)
     private static let sampleRawValues: [String: String] = [
         "heal": "false", "textVisualCheck": "false",
-        "screenLooksLike": "false", "ocrTextVisualCheck": "false",
+        "screenLooksLike": "false", "ocrTextVisualCheck": "false", "preferCheckStateClassifier": "false",
         "iosInappEngine": "false", "iosFastInput": "true", "iosPreActionWarmup": "false",
         "containerInference": "false", "enableAnimations": "true", "homeOnStart": "false",
         "playProtectBypass": "false", "updateWebView": "false", "wipeDataOnBloat": "false",
@@ -471,6 +472,15 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
         let explicitFalse = DeviceIndependentRunSettings.resolve(
             RunProfileDocument().applyingOverrides(["ocrTextVisualCheck": false]))
         XCTAssertFalse(explicitFalse.ocrTextVisualCheck)
+    }
+
+    /// `preferCheckStateClassifier` の既定は true(ユーザー決定 2026-09-18)。リテラルで固定する
+    func testPreferCheckStateClassifierDefaultsToTrue() {
+        XCTAssertTrue(DeviceIndependentRunSettings.resolve(RunProfileDocument()).preferCheckStateClassifier)
+        XCTAssertTrue(ScenarioExecutionSettings().preferCheckStateClassifier)
+        let explicitFalse = DeviceIndependentRunSettings.resolve(
+            RunProfileDocument().applyingOverrides(["preferCheckStateClassifier": false]))
+        XCTAssertFalse(explicitFalse.preferCheckStateClassifier)
     }
 
     /// `fm`/`ocr` は実行プロファイルのキーではない(`--set` は汎用の未知キーエラーで断る)

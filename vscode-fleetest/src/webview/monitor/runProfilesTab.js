@@ -35,6 +35,7 @@ const runProfileHeal = document.getElementById('run-profile-heal');
 const runProfileTextVisualCheck = document.getElementById('run-profile-text-visual-check');
 const runProfileScreenLooksLike = document.getElementById('run-profile-screen-looks-like');
 const runProfileOcrTextVisualCheck = document.getElementById('run-profile-ocr-text-visual-check');
+const runProfilePreferCheckStateClassifier = document.getElementById('run-profile-prefer-check-state-classifier');
 const runProfileContainerInference = document.getElementById('run-profile-container-inference');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
 const runProfileIosFastInput = document.getElementById('run-profile-ios-fast-input');
@@ -246,6 +247,7 @@ function renderRunProfileEditor(fields) {
   runProfileTextVisualCheck.checked = fields.textVisualCheck;
   runProfileScreenLooksLike.checked = fields.screenLooksLike;
   runProfileOcrTextVisualCheck.checked = fields.ocrTextVisualCheck;
+  runProfilePreferCheckStateClassifier.checked = fields.preferCheckStateClassifier;
   updateInappOptionsVisibility();
   runProfileIosInappEngine.checked = fields.iosInappEngine;
   runProfileIosFastInput.checked = fields.iosFastInput;
@@ -350,6 +352,7 @@ function runProfileValuesEqual(fields) {
     runProfileTextVisualCheck.checked === fields.textVisualCheck &&
     runProfileScreenLooksLike.checked === fields.screenLooksLike &&
     runProfileOcrTextVisualCheck.checked === fields.ocrTextVisualCheck &&
+    runProfilePreferCheckStateClassifier.checked === fields.preferCheckStateClassifier &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosFastInput.checked === fields.iosFastInput &&
     runProfileIosPreActionWarmup.checked === fields.iosPreActionWarmup &&
@@ -442,6 +445,7 @@ function collectRunProfileFields() {
     textVisualCheck: runProfileTextVisualCheck.checked,
     screenLooksLike: runProfileScreenLooksLike.checked,
     ocrTextVisualCheck: runProfileOcrTextVisualCheck.checked,
+    preferCheckStateClassifier: runProfilePreferCheckStateClassifier.checked,
     iosInappEngine: runProfileIosInappEngine.checked,
     iosFastInput: runProfileIosFastInput.checked,
     iosPreActionWarmup: runProfileIosPreActionWarmup.checked,

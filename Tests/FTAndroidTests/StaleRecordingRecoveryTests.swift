@@ -55,7 +55,7 @@ final class StaleRecordingRecoveryTests: XCTestCase {
             defaultTimeout: nil, scenarioTimeout: nil, wipeDataOnBloat: true, updateWebView: false,
             wipeDataThresholdGB: 8, recoverCpuFallbackToGpu: false, locale: "ja_JP",
             iosFastInput: false, iosPreActionWarmup: true, containerInference: true,
-            ocrTextVisualCheck: true, enableAnimations: false,
+            ocrTextVisualCheck: true, preferCheckStateClassifier: true, enableAnimations: false,
             homeOnStart: true, playProtectBypass: true, record: record, recordFailuresOnly: false,
             recordBitrateKbps: 1500, recordFullResolution: false, warnings: [])
     }

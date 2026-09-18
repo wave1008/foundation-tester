@@ -80,7 +80,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 
 | フレームワーク | 違い | シナリオでの扱い |
 |---|---|---|
-| 自作の部品(SwiftUI の Button で作ったチェックボックス・ラジオ等) | チェック状態を a11y に一切出さない(value も selected trait も無い) | `checkIsON` は「reports no check state」で落ちる。状態は **echo の文字列**(`agree=true` 等)で確かめるか、アプリ側で公開する(SwiftUI なら `.accessibilityRepresentation { Toggle(...) }`) |
+| 自作の部品(SwiftUI の Button で作ったチェックボックス・ラジオ等) | チェック状態を a11y に一切出さない(value も selected trait も無い) | **見本画像を `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に置けば画像で判定できる**(CheckStateClassifier。witness は E2E-iOS の `#cb_agree` / `#radio_*`)。見本が無いと `checkIsON` は「reports no check state」で落ちる。ほかの手段は **echo の文字列**(`agree=true` 等)か、アプリ側で公開する(SwiftUI なら `.accessibilityRepresentation { Toggle(...) }`) |
 | Compose(iOS)の Checkbox/Radio・Flutter(iOS)の Radio | **オンだけ**報告する(オフと「状態を持たない」が同じ見え方) | 同じシナリオで一度オンを見た要素ならオフも確定する。見る前の `checkIsOFF` は通して警告 |
 | Flutter・Compose(iOS)・Android | mixed(一部だけ選択)をオフと区別して出さない(Flutter は `"0"`) | mixed を検証したいときは echo の文字列で |
 | WebKit の `<input type=radio>`(XCUITest 経路) | id の無い `other` 型(ラベル・value `"1"`/`"0"` 付き)で届き、木の規則(id の無い `other` は落とす)で**要素ごと消える** | in-app(DOM 経路)なら読める。XCUITest ではラベルのテキストを指す |
@@ -227,6 +227,7 @@ Android はどのフレームワークも `isChecked`(checkable なら value `"1
 
 | 版・コミット | 内容 |
 |---|---|
+| — | チェック状態を見本画像から判定する CheckStateClassifier(Shirates Vision の移植。実行プロファイル `preferCheckStateClassifier`・既定 true) |
 | v114 | チェック状態を value からも読む(Flutter・SwiftUI Toggle・RN・WebKit で `checkIsON` が落ちていた)。DOM 経路で `aria-checked`・`indeterminate` を読む |
 | `e83c9ba2` | tap の直後の改行入り `type` は、XCUITest へ回す前に焦点を待つ |
 | v113 `46c188f5` | `scrollFrame` 無しのスクロールを、in-app でも画面中央の下の容器に揃える |

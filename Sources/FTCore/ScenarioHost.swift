@@ -357,6 +357,7 @@ public enum ScenarioHost {
         let fm = settings.fm
         let containerInference = settings.containerInference
         let occlusionOCR = settings.occlusionOCR
+        let preferCheckStateClassifier = settings.preferCheckStateClassifier
         let defaultTimeout = settings.defaultTimeout
         let scenarioTimeout = settings.scenarioTimeout
         let startedAt = Date()
@@ -436,6 +437,7 @@ public enum ScenarioHost {
         // occlusion guard の OCR 事前判定(FMConfig の外。textVisualCheck が off なら guard 自体が
         // 走らないためこの値は無意味 —— 別ゲートは追加しない)
         if !occlusionOCR { args.append("--no-occlusion-ocr") }
+        if !preferCheckStateClassifier { args.append("--no-prefer-check-state-classifier") }
         if let debug {
             args.append("--debug")
             if debug.pauseOnStart { args.append("--pause-on-start") }

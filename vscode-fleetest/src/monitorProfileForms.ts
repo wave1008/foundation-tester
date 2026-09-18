@@ -51,6 +51,7 @@ export function buildRunProfileTemplate(appNames: readonly string[]): string {
   template.heal = true;
   template.textVisualCheck = true;
   template.ocrTextVisualCheck = true;
+  template.preferCheckStateClassifier = true;
   template.screenLooksLike = true;
   template.iosInappEngine = true;
   template.updateWebView = true;   // 既定 ON(WebView の版差でシナリオが端末ごとに落ちるため)
@@ -158,6 +159,10 @@ export interface RunProfileFormFields {
   /** occlusion guard の Vision OCR 事前判定段(独立トグル。textVisualCheck が false の run では
    * guard 自体が走らないため効かない)。 */
   readonly ocrTextVisualCheck: boolean;
+  /** checkIsON/checkIsOFF で CheckStateClassifier(vision/classifiers/CheckStateClassifier/ の見本画像)を
+   * a11y より優先するか(**既定 true**。false なら a11y が状態を報告しない要素にだけ使う)。
+   * Swift 側は RunProfileDocument.preferCheckStateClassifier */
+  readonly preferCheckStateClassifier: boolean;
   readonly iosInappEngine: boolean;
   readonly iosFastInput: boolean;
   /// **既定 true**。domInterop の委譲イベント直前にランナーへ1回問い合わせてから撃つ
@@ -192,8 +197,8 @@ export interface RunProfileFormFields {
  * 扱わない(CLI `--set defaultTimeout=` と手編集のためにキーとしては有効なまま。
  * updateRunProfileInObject の `{ ...source }` がそのまま保つ)。record/recordFailuresOnly/
  * recordFullResolution/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
- * heal/screenLooksLike/textVisualCheck/ocrTextVisualCheck/containerInference/homeOnStart/
- * playProtectBypass はスキーマ既定と合わせ既定 true
+ * heal/screenLooksLike/textVisualCheck/ocrTextVisualCheck/preferCheckStateClassifier/containerInference/
+ * homeOnStart/playProtectBypass はスキーマ既定と合わせ既定 true
  * (textVisualCheck は 2026-09-03 に false から変更)。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {
@@ -209,6 +214,8 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const textVisualCheck = typeof source.textVisualCheck === "boolean" ? source.textVisualCheck : true;
   const ocrTextVisualCheck =
     typeof source.ocrTextVisualCheck === "boolean" ? source.ocrTextVisualCheck : true;
+  const preferCheckStateClassifier =
+    typeof source.preferCheckStateClassifier === "boolean" ? source.preferCheckStateClassifier : true;
   // screenIs は改名前の旧キー。新キーが無いときだけ読む(Sources/FTCore/RunProfile.swift の
   // effectiveScreenLooksLike と同じ優先順。保存時は updateRunProfileInObject が旧キーを落とす)
   const screenLooksLike = typeof source.screenLooksLike === "boolean"
@@ -277,6 +284,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     screenLooksLike,
     containerInference,
     ocrTextVisualCheck,
+    preferCheckStateClassifier,
     iosInappEngine,
     iosFastInput,
     iosPreActionWarmup,
@@ -346,6 +354,7 @@ export function updateRunProfileInObject(
   delete result.triage;
   result.containerInference = fields.containerInference;
   result.ocrTextVisualCheck = fields.ocrTextVisualCheck;  // 同上(既定 true 側。containerInference と同じ理由で常に書く)
+  result.preferCheckStateClassifier = fields.preferCheckStateClassifier;  // 同上(既定 true 側)
   result.iosInappEngine = fields.iosInappEngine;
   result.updateWebView = fields.updateWebView;
   result.wipeDataOnBloat = fields.wipeDataOnBloat;
