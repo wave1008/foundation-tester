@@ -556,7 +556,7 @@ extension StepExecutorTests {
     }
 
     // MARK: - pressEnter(ロケータ無し。type(ref: nil) と同じくロケータ解決を挟まない経路)
-    // 以下は焦点待ち(awaitFocusBeforePressEnter)を通るので、409/typeDriver 切替の検証は
+    // 以下は焦点待ち(awaitFocusBeforeKeyInput)を通るので、409/typeDriver 切替の検証は
     // primary 側に focused 要素を用意して即進行させる(待ち自体は下の MARK で別途検証する)
 
     /// 1枚目から focused な要素があれば、焦点確認は1回で足りすぐ実行すること
@@ -637,7 +637,7 @@ extension StepExecutorTests {
         }
     }
 
-    // MARK: - pressEnter の焦点待ち(awaitFocusBeforePressEnter。MCP の awaitFocus と値を共有)
+    // MARK: - pressEnter の焦点待ち(awaitFocusBeforeKeyInput。MCP の awaitFocus と値を共有)
 
     /// 1枚目は focused なし・2枚目で focused あり → 実行され、snapshot は2回以上呼ばれ、警告なし
     func testPressEnterWaitsForFocusThenExecutesWithoutWarning() async throws {
@@ -661,7 +661,7 @@ extension StepExecutorTests {
     }
 
     /// **どこにも** focused == true が立たないまま(pressEnter に特定の対象は無いので、
-    /// 判定は「木のどこかが focused か」— DSL の awaitFocusBeforePressEnter 参照)→
+    /// 判定は「木のどこかが focused か」— DSL の awaitFocusBeforeKeyInput 参照)→
     /// タイムアウト後に実行され、警告注記が driverFallback に載る。実時間 waitSeconds(1.5s)を払う
     func testPressEnterTimesOutWithWarningWhenFocusNeverArrives() async throws {
         let log = CallLog()
@@ -679,6 +679,45 @@ extension StepExecutorTests {
         }
         XCTAssertEqual(outcome.driverFallback?.contains("took focus"), true, "\(outcome.driverFallback ?? "nil")")
         XCTAssertEqual(log.entries.last, "primary.pressEnter", "拒否せず実行まで進むこと")
+    }
+
+    // MARK: - tap 直後のロケータ無し・改行入り type の焦点待ち(awaitFocusBeforeKeyInput)
+
+    /// tap の直後に `type("…\n")`(XCUITest へ直行し、読み返しも焦点救済も通らない)は、打つ前に焦点を確かめる。
+    /// 焦点が立っていれば 1 枚読んで打ち、注記は付かない
+    func testNewlineTypeRightAfterTapChecksFocusBeforeTyping() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[inputField(ref: 1, id: "field", focused: true)]])
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "field")))
+        let tapIndex = try XCTUnwrap(log.entries.lastIndex { $0.hasPrefix("primary.tap") }, "\(log.entries)")
+        let outcome = await executor.execute(FlowStep(action: "type", text: "pqr\n"))
+
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        let afterTap = Array(log.entries[(tapIndex + 1)...])
+        let typeIndex = try XCTUnwrap(afterTap.firstIndex(of: "typedriver.type(ref:nil)"), "\(afterTap)")
+        XCTAssertTrue(afterTap[..<typeIndex].contains("primary.snapshot"), "打つ前に焦点を確かめていない: \(afterTap)")
+        XCTAssertNil(outcome.driverFallback, "焦点が立っているので注記は付かない")
+    }
+
+    /// 焦点が来ないまま待ちが尽きても拒否せずに打ち、注記を残す(pressEnter と同じ。実時間 waitSeconds を払う)
+    func testNewlineTypeRightAfterTapTypesWithWarningWhenFocusNeverArrives() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[inputField(ref: 1, id: "field", focused: false)]])
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "field")))
+        let outcome = await executor.execute(FlowStep(action: "type", text: "pqr\n"))
+
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(log.entries.last, "typedriver.type(ref:nil)", "拒否せず打つ")
+        XCTAssertEqual(outcome.driverFallback?.contains("took focus"), true, "\(outcome.driverFallback ?? "nil")")
+        XCTAssertEqual(outcome.driverFallback?.contains("before type"), true, "\(outcome.driverFallback ?? "nil")")
     }
 
     // MARK: - hideKeyboard(ロケータ無し。pressEnter と同じくロケータ解決を挟まない経路)

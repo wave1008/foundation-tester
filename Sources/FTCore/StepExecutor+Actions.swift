@@ -404,16 +404,24 @@ extension StepExecutor {
                                        "typed into \(TapTargetGeometry.describe(recovered))"
                                            + " (the preceding tap did not put a field in focus)"))
             }
-            let start = clock.now
             // ロケータ有り type(下記 case "type")と同じ規則: "\n" を含むときだけ
             // typeDriver(XCUITest)へ回し、iOS の Return キー既定挙動に揃える(理由は同 case のコメント参照)。
+            // **tap の直後なら、先に焦点が立つのを待つ**(pressEnter と同じ待ち)。この経路は焦点救済
+            // (上の retypeTargetIfUnfocused)も読み返しも通らず、Return で即確定するので打ち直せない ——
+            // E2E-RN で tap(#field_single) → type("pqr\n") が "pq" で確定した(tap が速くなった v110 以降に初出)。
+            // 焦点が既に立っていれば 1 枚読むだけで抜ける
+            var focusNote: String?
+            if text.contains("\n"), typeDriver != nil, lastTapTarget != nil {
+                focusNote = try await awaitFocusBeforeKeyInput("type", phase: &phase)
+            }
+            let start = clock.now
             if text.contains("\n"), let td = typeDriver {
                 try await td.type(ref: nil, text: text)
             } else {
                 try await driver.type(ref: nil, text: text)
             }
             phase.actionMs += Self.ms(clock.now - start)
-            return StepOutcome(status: .passed, driverFallback: replaceFallbackNote)
+            return StepOutcome(status: .passed, driverFallback: Self.joinNotes(replaceFallbackNote, focusNote))
         }
 
         // pressEnter もロケータを持たない(フォーカス中の入力欄への Enter 押下)ので、type(ref: nil)
@@ -421,7 +429,7 @@ extension StepExecutor {
         // 出す。InAppBridge.handlePressEnter 参照)は type のロケータ版と同じ形で
         // typeDriver(xcuitest)へフォールバックする
         if action == "pressEnter" {
-            let focusNote = try await awaitFocusBeforePressEnter(phase: &phase)
+            let focusNote = try await awaitFocusBeforeKeyInput("pressEnter", phase: &phase)
             let start = clock.now
             do {
                 try await driver.pressEnter()
@@ -1215,8 +1223,10 @@ extension StepExecutor {
     /// UIResponder でない a11y 要素の focused を申告しない)を待ち続けてしまうので、
     /// keyboardShown を第二の合図として持つ。
     ///
-    /// 合図が出ないまま waitSeconds 経過したら拒否せず注記を返す(呼び出し側で driverFallback へ合流)
-    private func awaitFocusBeforePressEnter(phase: inout PhaseAccumulator) async throws -> String? {
+    /// 合図が出ないまま waitSeconds 経過したら拒否せず注記を返す(呼び出し側で driverFallback へ合流)。
+    /// **ロケータ無しで改行入りの type も同じ待ちを通す**(tap の直後だけ。下記 case "type" の呼び出し参照)
+    private func awaitFocusBeforeKeyInput(_ operation: String,
+                                          phase: inout PhaseAccumulator) async throws -> String? {
         let clock = ContinuousClock()
         let deadline = Date().addingTimeInterval(FocusWait.waitSeconds)
         while true {
@@ -1227,8 +1237,8 @@ extension StepExecutor {
             if snapshot.elements.contains(where: { $0.focused == true })
                 || snapshot.keyboardShown == true { return nil }
             guard Date() < deadline else {
-                return "no field ever took focus within \(FocusWait.waitSeconds)s before pressEnter"
-                    + " — the Enter may have gone to whichever field still had it"
+                return "no field ever took focus within \(FocusWait.waitSeconds)s before \(operation)"
+                    + " — the keys may have gone to whichever field still had it"
             }
             let waitStart = clock.now
             try? await Task.sleep(for: .seconds(FocusWait.pollSeconds))

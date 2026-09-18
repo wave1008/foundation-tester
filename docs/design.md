@@ -1697,6 +1697,10 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   iOS 限定。条件を二重に持つと将来ずれる)。**ロケータ無しの `type`** も同じ規則で回るが、ref が無く
   attach 前だと 409 になるため `AppAttachDriver.type(ref: nil)` に activate 再試行を入れてある
   (ref 有りには入れない — activate が refFrames をクリアする)
+  **tap の直後のロケータ無し・改行入りの type は、先に焦点が立つのを待つ**(`awaitFocusBeforeKeyInput`。
+  pressEnter と同じ待ちで、焦点が既に立っていれば 1 枚読むだけ)。この経路は焦点救済も読み返しも通らず、
+  Return で即確定して打ち直せない —— E2E-RN で `tap(#field_single)` → `type("pqr\n")` が "pq" で確定した
+  (9 月の 386 回で 1 回。tap が速くなった v110 以降に初出。単独 10 回では再現せず、帰属は未確定)。
 - **iOS の Enter はフレームワークごとに受け口が違う**(2026-07-28 実測。吸収は
   `FTPressEnterOnComposeFirstResponder` の1箇所。**名前は Compose 由来だが実態は
   Compose / UITextField(UITextView)/ Flutter の3経路を吸収する** —— 改名すると
