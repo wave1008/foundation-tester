@@ -1596,6 +1596,54 @@ extension MCPServer {
             return staleNote + [["type": "image", "data": scaled.data.base64EncodedString(),
                                   "mimeType": "image/jpeg"]]
 
+        case "ft_capture_element":
+            // 中核(ラベル検査・保存と重複時の巻き戻し・点検)は VisionSample を CLI と共有する
+            guard let classifier = args["classifier"] as? String, let label = args["label"] as? String else {
+                throw MCPError("classifier and label are required")
+            }
+            if let issue = VisionSample.labelIssue(classifier: classifier, label: label) { throw MCPError(issue) }
+            let project = try ScenarioHost.project(named: args["project"] as? String)
+            let d = try await driver(args)
+            let element: ElementInfo
+            let screen: FTRect
+            var refNote = ""
+            if let ref = args["ref"] as? Int {
+                let target = try await verifiedRef(ref, driver: d, args: args)
+                guard let snapshot = lastSnapshots[Self.engineKey(args)],
+                      let found = snapshot.elements.first(where: { $0.ref == target.ref }) else {
+                    throw MCPError("[\(ref)] is not on the current screen. Take a fresh ft_snapshot")
+                }
+                element = found
+                screen = snapshot.screen
+                refNote = target.note
+            } else if let selector = args["selector"] as? String {
+                let snapshot = try await freshSnapshot(d, args: args)
+                let parsed = FTSelector.parse(selector)
+                let step = FlowStep(assert: "exists", locator: parsed.primary,
+                                    fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks)
+                guard let (found, _) = StepExecutor.resolve(step: step, in: snapshot, strictForAssert: true) else {
+                    throw MCPError("no element matches \(selector) on the current screen")
+                }
+                element = found
+                screen = snapshot.screen
+            } else {
+                throw MCPError("ref or selector is required")
+            }
+            let png = try await d.screenshot()
+            guard let image = VisionClassifier.crop(png: png, frame: element.frame, screen: screen) else {
+                throw MCPError("could not crop the element from the screenshot (is it inside the screen?)")
+            }
+            let file: URL
+            do {
+                file = try VisionSample.save(image, projectRoot: project.rootURL, classifier: classifier,
+                                             label: label, name: args["name"] as? String)
+            } catch {
+                throw MCPError(ErrorText.user(error))
+            }
+            let report = await VisionSample.report(projectRoot: project.rootURL, classifier: classifier)
+            return text("saved \(image.width)x\(image.height) px of \(RefGuard.describe(element)) to \(file.path)."
+                + refNote + "\n" + report.lines.joined(separator: "\n"))
+
         case "ft_terminate":
             // **対象が分からなければ黙って何もしないのではなく、名指しで断る**(§19.3 M3):
             // ドライバの terminate() は Android では currentPackage が無いと何も撃たずに

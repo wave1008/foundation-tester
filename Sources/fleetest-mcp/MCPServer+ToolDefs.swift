@@ -514,6 +514,20 @@ extension MCPServer {
             "fullSize": ["type": "boolean", "description": "Return the original PNG at full "
                 + "resolution instead, for when fine detail matters"],
         ]),
+        tool("ft_capture_element", "Save an element as a sample image of an image classifier: "
+            + "vision/classifiers/<classifier>/<label>/ in the test project. The element is cropped by its "
+            + "accessibility frame exactly as checkIsON/checkIsOFF (CheckStateClassifier) and imageIs "
+            + "(DefaultClassifier) crop it when judging. Afterwards the classifier is trained if needed and "
+            + "the samples it cannot tell apart are reported", [
+            "ref": ["type": "integer", "description": "Reference number from ft_snapshot (or use selector)"],
+            "selector": ["type": "string", "description": "Selector of the element, same syntax as the DSL (or use ref)"],
+            "classifier": ["type": "string", "enum": ["CheckStateClassifier", "DefaultClassifier"],
+                           "description": "CheckStateClassifier (labels [ON] / [OFF] / [INDETERMINATE]) or "
+                               + "DefaultClassifier (any folder ending with a bracketed name, e.g. @i/Settings/[Camera Icon])"],
+            "label": ["type": "string", "description": "Label folder under the classifier"],
+            "name": ["type": "string", "description": "File name of the sample (default: capture-<date>.png)"],
+            "project": projectProperty,
+        ], required: ["classifier", "label"]),
         tool("ft_terminate", "Terminate the running app. Fails if no target is known (neither "
             + "bundleId nor a prior ft_launch in this session) instead of silently doing nothing", [
             "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android). "

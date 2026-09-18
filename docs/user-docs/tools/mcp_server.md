@@ -68,6 +68,7 @@ these; naming a second device requires future calls to be explicit again.
 | `ft_dsl_commands` | DSL command index (names and signatures), for checking a command exists before writing it |
 | `ft_double_tap` / `ft_pinch` / `ft_drag` | Double tap, pinch, and arbitrary-direction drag |
 | `ft_screenshot` | Screenshot image, for visual inspection |
+| `ft_capture_element` | Saves an element as a sample image of an image classifier and reports the training check (samples for `checkIsON` / `imageIs`; see [imageIs](../commands/image_assertion.md)) |
 | `ft_list_scenarios` / `ft_run_scenario` | List scenarios / run deterministically (auto-builds; compile errors are returned as-is). A class name as `id` runs every scenario of the class except `@Deleted`/`@Draft`, like `fleetest run`. `profile:` cannot be combined with `port`/`serial`/`platform`/`udid`. **Unlike `fleetest run` it does not run the profile's setup/teardown scripts, install or update the app, send the device home first, or record into `results/`** (use the CLI for a full run) |
 | `ft_dry_run` | Device-free validation: selector syntax, unreachable scenes, assertion-less expectations, unknown `#id`s. For a scenario that declares no platform, `platform:` (default ios) picks the `ios { } / android { }` branch and the `#id` ledger |
 | `ft_list_projects` | List test projects and their run profiles |

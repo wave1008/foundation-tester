@@ -35,8 +35,7 @@ struct VisionCapture: AsyncParsableCommand {
     @OptionGroup var driverOptions: DriverOptions
 
     func run() async throws {
-        let issue = VisionCaptureRules.labelIssue(classifier: classifier, label: label)
-        if let issue { throw ValidationError(issue) }
+        if let issue = VisionSample.labelIssue(classifier: classifier, label: label) { throw ValidationError(issue) }
         let project = try ScenarioHost.project(named: project)
 
         let driver = try await driverOptions.makeDriver()
@@ -48,30 +47,15 @@ struct VisionCapture: AsyncParsableCommand {
             throw ValidationError("no element matches \(selector) on the current screen")
         }
         let png = try await driver.screenshot()
-        guard let image = VisionClassifier.crop(png: png, frame: element.frame, screen: snapshot.screen),
-              let data = VisionClassifier.pngData(image) else {
+        guard let image = VisionClassifier.crop(png: png, frame: element.frame, screen: snapshot.screen) else {
             throw ValidationError("could not crop \(selector) from the screenshot (is it inside the screen?)")
         }
-
-        let classifierFolder = VisionClassifier.directory(projectRoot: project.rootURL, name: classifier)
-        let folder = classifierFolder.appendingPathComponent(label, isDirectory: true)
-        // 断ったときに片付けるため、これから作るフォルダ(深い順)を控える
-        var created: [URL] = []
-        var cursor = folder
-        while !FileManager.default.fileExists(atPath: cursor.path) {
-            created.append(cursor)
-            cursor = cursor.deletingLastPathComponent()
-        }
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let file = folder.appendingPathComponent(name ?? VisionCaptureRules.defaultFileName(Date()))
-        try data.write(to: file)
-        // 同じ短いラベルが別のフォルダにあると学習できない(設定の誤り)ので、書いた直後に確かめて戻す
+        let file: URL
         do {
-            _ = try VisionClassifier.trainingSet(at: classifierFolder)
+            file = try VisionSample.save(image, projectRoot: project.rootURL, classifier: classifier,
+                                         label: label, name: name)
         } catch {
-            try? FileManager.default.removeItem(at: file)
-            for directory in created { try? FileManager.default.removeItem(at: directory) }
-            throw ValidationError("not saved: \(ErrorText.user(error))")
+            throw ValidationError(ErrorText.user(error))
         }
         ConsoleOut.out("✅ saved \(image.width)x\(image.height) px of \(selector) to \(file.path)")
         ConsoleOut.out("   Check the classifier with: fleetest vision check --project \(project.name) --classifier \(classifier)")
@@ -100,62 +84,9 @@ struct VisionCheck: AsyncParsableCommand {
             return
         }
         for name in names {
-            let directory = VisionClassifier.directory(projectRoot: project.rootURL, name: name)
-            let set: VisionClassifier.TrainingSet?
-            do {
-                set = try VisionClassifier.trainingSet(at: directory)
-            } catch {
-                ConsoleOut.out("❌ \(name): \(ErrorText.user(error))")
-                continue
-            }
-            guard let set else {
-                ConsoleOut.out("⚠️ \(name): needs sample images in at least two label folders (\(directory.path))")
-                continue
-            }
-            let model: VisionClassifier.Model
-            do {
-                model = try await VisionClassifier.load(
-                    set, cacheDirectory: VisionClassifier.cacheDirectory(projectRoot: project.rootURL, name: name))
-            } catch {
-                ConsoleOut.out("❌ \(name): \(ErrorText.user(error))")
-                continue
-            }
-            let samples = set.labels.values.reduce(0) { $0 + $1.count }
-            ConsoleOut.out("\(model.mismatches.isEmpty ? "✅" : "⚠️") \(name): \(set.labels.count) labels, \(samples) samples")
-            for label in set.labels.keys.sorted() {
-                ConsoleOut.out("   \(label) (\(set.labels[label]!.count))")
-            }
-            for mismatch in model.mismatches {
-                ConsoleOut.out("   ⚠️ \(VisionClassifier.describe(mismatch))")
+            for line in await VisionSample.report(projectRoot: project.rootURL, classifier: name).lines {
+                ConsoleOut.out(line)
             }
         }
-    }
-}
-
-/// `vision capture` の純粋な判定(テスト用に切り出す)
-enum VisionCaptureRules {
-    static let knownClassifiers: Set<String> = [CheckStateClassifier.name, DefaultClassifier.name]
-
-    /// 保存してから学習で気付く誤り(状態に写らないラベル・短いラベルの無いフォルダ)を先に断る
-    static func labelIssue(classifier: String, label: String) -> String? {
-        guard knownClassifiers.contains(classifier) else {
-            return "unknown classifier \(classifier) (use \(knownClassifiers.sorted().joined(separator: " or ")))"
-        }
-        let leaf = label.split(separator: "/").last.map(String.init) ?? label
-        if classifier == CheckStateClassifier.name, CheckStateClassifier.state(forLabel: leaf) == nil {
-            return "a CheckStateClassifier label must contain [ON], [OFF] or [INDETERMINATE] (got \(label))"
-        }
-        if !leaf.contains("[") || !leaf.hasSuffix("]") {
-            return "the label folder must end with a bracketed name such as [Camera Icon] (got \(label));"
-                + " imageIs matches the part from the last ["
-        }
-        return nil
-    }
-
-    static func defaultFileName(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
-        return "capture-\(formatter.string(from: date)).png"
     }
 }

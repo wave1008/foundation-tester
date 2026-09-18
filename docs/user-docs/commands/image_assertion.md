@@ -51,6 +51,7 @@ fleetest vision check --project <project>
   gets wrong are named in a warning (samples that cannot be told apart will also be confused on real screens). It
   only warns; the exit code stays 0.
 - The same warning appears at the end of a scenario when a run finds such samples.
+- Over MCP, `ft_capture_element` does the same (it also accepts an `ft_snapshot` ref and returns the check after saving).
 
 ## Example
 
