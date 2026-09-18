@@ -282,12 +282,12 @@ public final class FTDriveCore {
     /// ifCanSelect のセレクタ → 一度でも成立したか。**一度も成立しなかったものだけ**警告する
     /// (交互に出るダイアログのように「出ないこともある」のが正しい用途があるため)
     var branchOutcomes: [String: Bool] = [:]
-    /// `checkIsOFF` で通ったセレクタ → 最初に見た説明。**checked を一度も観測できなかったもの**は
-    /// 「状態を持たない要素を指していて、何を書いても通っていた」疑いがある(ブリッジは
-    /// checked を true のときだけ送るため、オフと未対応が区別できない)。
-    /// iOS の SwiftUI / Flutter の checkbox は selected trait を出さない = 常に通る(design.md)
+    /// `checkIsOFF` で通ったセレクタ → 最初に見た説明。**チェック状態を一度も観測できなかったもの**は
+    /// 「状態を持たない要素を指していて、何を書いても通っていた」疑いがある
+    /// (報告が無いとオフと未対応が区別できない。自作の SwiftUI ボタン・Compose iOS の Checkbox のオフ等。
+    /// 判定は CheckStateReading)
     var notCheckedOnlySelectors: [String: String] = [:]
-    /// checked を実際に観測できたセレクタ(観測できたなら状態を持つ要素だと分かる)
+    /// チェック状態(オン/オフ/mixed)を観測できたセレクタ(観測できたなら状態を持つ要素だと分かる)
     var checkedObservedSelectors: Set<String> = []
 
     /// `withScrollDown { }` 等が積む既定のスクロール向き(Shirates の CodeExecutionContext.scrollDirection 相当)。
@@ -1013,10 +1013,10 @@ public final class FTDriveCore {
         where !checkedObservedSelectors.contains(selector) {
             addSuggestion(FixSuggestion(
                 isStrong: false,
-                message: "`\(selector)` passed checkIsOFF, but a checked state was never observed "
-                    + "during this scenario (\(description)). If it points at an element with no check "
-                    + "state (a plain button) or at an implementation that never reports one "
-                    + "(SwiftUI on iOS, Flutter checkboxes), **any assertion passes**. "
+                message: "`\(selector)` passed checkIsOFF, but the element never reported a check state "
+                    + "(on or off) during this scenario (\(description)). If it points at an element with no "
+                    + "check state (a plain button) or at an implementation that reports only \"on\" or nothing "
+                    + "(custom-drawn SwiftUI buttons; Compose checkboxes on iOS), **any assertion passes**. "
                     + "Turn it on and verify checkIsON as well"),
                 emitEvent: false, file: "", line: 0)
         }

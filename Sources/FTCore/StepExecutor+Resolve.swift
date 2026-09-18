@@ -239,8 +239,10 @@ extension StepExecutor {
         narrow(locator.label, locator.labelMatch) { $0.label }
         narrow(locator.value, locator.valueMatch) { $0.value }
         narrow(locator.placeholder, locator.placeholderMatch) { $0.placeholder }
-        // checked は true のときだけ送られる = false は「オフ、または状態を持たない要素」
-        if let checked = locator.checked { pool = pool.filter { ($0.checked ?? false) == checked } }
+        // `checked=false` は「オフ、または状態を持たない要素」(mixed は含めない)。判定は CheckStateReading
+        if let checked = locator.checked {
+            pool = pool.filter { checked ? CheckStateReading.onOrMixed($0) == .on : CheckStateReading.onOrMixed($0) == nil }
+        }
         if let enabled = locator.enabled { pool = pool.filter { $0.enabled == enabled } }
         // 除外条件(`text!=キャンセル`)は**肯定フィルタで絞ったあと**に引く。
         // 否定だけの節は上の hasNoFilter で既に nil を返しているので、ここには来ない

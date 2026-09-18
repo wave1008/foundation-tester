@@ -421,12 +421,14 @@ public enum SnapshotRenderer {
         if !e.enabled {
             parts.append("disabled")
         }
-        // 選択・チェック状態(iOS の isSelected / Android の isChecked||isSelected)。
-        // **true のときだけ**出す = 「印が無い」は「オフ」と「状態を持たない」の両方を含む
+        // 選択・チェック状態(CheckStateReading。value 由来のオン/mixed も含む)。
+        // **オンと mixed のときだけ**出す = 「印が無い」は「オフ」と「状態を持たない」の両方を含む
         // (checkIsOFF が状態を持たない要素でも通る既定と同じ意味論。StepExecutor+Assert 参照)。
         // これが無いと、タブの選択状態は checkIsON では表明できるのに ft_snapshot からは見えない
-        if e.checked == true {
-            parts.append("checked")
+        switch CheckStateReading.onOrMixed(e) {
+        case .on: parts.append("checked")
+        case .mixed: parts.append("mixed")
+        default: break
         }
         // `scrollFrame:` に指定できる容器の印。**true のときだけ**出す(申告できないエンジンが
         // あるので「印が無い = スクロールしない」ではない。ElementInfo.scrollable 参照)

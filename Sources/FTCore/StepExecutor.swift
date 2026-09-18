@@ -160,10 +160,10 @@ public struct StepOutcome: Sendable {
     /// 返す直前に都度 Date() から採る(failed 以外にも付くが、永続化するのは失敗ステップのみ。
     /// ScenarioEvent.at / FailedStepRecord.at 参照)
     public let at: String
-    /// checked / notChecked のとき、**掴んだ要素が実際に checked を報告したか**。
-    /// ブリッジは true のときだけ送るので、nil のままなら「オフ」か「状態を持たない要素」の
-    /// 区別が付かない = `isNotChecked` が何を指しても通ってしまう。呼び手(FTDriveCore)が
-    /// シナリオ横断で集計し、一度も観測できなければ run 終了時に警告する
+    /// checked / notChecked のとき、**掴んだ要素がチェック状態(オン/オフ/mixed)を報告したか**
+    /// (`CheckStateReading`)。報告が無いと「オフ」か「状態を持たない要素」の区別が付かない =
+    /// `checkIsOFF` が何を指しても通ってしまう。呼び手(FTRuntime)がシナリオ横断で集計し、
+    /// 一度も観測できなければ run 終了時に警告する
     public let observedChecked: Bool?
     /// 成功時に実際に照合した要素(exist/textIs 等の assert・tap/type/press 等のアクションで解決した
     /// 要素)。失敗時は常に nil(掴めなかったのに値が読める状態を作らない)。notExists/count/
@@ -757,10 +757,12 @@ public final class StepExecutor {
     /// 内蔵スクロール探索が XCUITest 経由の swipe に落ちたときの注記(execute が載せる)。
     /// StepExecutor+Assert.swift の executeAssertExists からも書くため internal。
     var scrollSearchNote: String?
-    /// checked / notChecked が**実際に checked を観測したか**(execute が StepOutcome に載せる)。
+    /// checked / notChecked が**チェック状態を観測したか**(execute が StepOutcome に載せる)。
     /// executeAssert は Status しか返さないためインスタンス変数で受け渡す
     /// (StepExecutor+Assert.swift の executeAssertChecked から書くため internal)。
     var observedCheckedThisStep: Bool?
+    /// checkIsON/OFF で一度でもオンを報告した要素の鍵(`checkState(of:step:)`)。シナリオ = 実行器の寿命
+    var checkStateReporters: Set<String> = []
     /// [occlusion-guard] このステップが `occlusionFlip` の `visibilityGuardActive` 判定を通ったか
     /// (execute が StepOutcome.guardEntered に載せる)。**分母はここ** —— `visibilityGuardActive`
     /// が true でも tap 等のアクションは occlusionFlip を通らないので、そちらを分母にしてはならない。

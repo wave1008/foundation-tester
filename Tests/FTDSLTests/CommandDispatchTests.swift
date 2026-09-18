@@ -307,7 +307,7 @@ final class CommandDispatchTests: XCTestCase {
         }
         core.warnAboutNeverResolvedIDs()
         let messages = core.finalRecord.fixSuggestions.map(\.message)
-        XCTAssertEqual(messages.contains { $0.contains("a checked state was never observed") }, true,
+        XCTAssertEqual(messages.contains { $0.contains("never reported a check state") }, true,
                        "\(messages)")
     }
 

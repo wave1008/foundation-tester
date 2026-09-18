@@ -117,6 +117,12 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     select("#txt_cb_agree").textIs("agree=false")
                     select("#txt_radio").textIs("plan=A")
                     select("#txt_slider").textIs("volume=50")
+                    // 状態は echo とは別に要素そのものからも読む(iOS の Flutter は Checkbox/Switch を
+                    // value "1"/"0" で出す。2026-09-18 まで value を読まず checkIsON が落ちていた)。
+                    // radio_a を先にオンで見ておくと、オンしか報告しない Flutter iOS の Radio でも後のオフが確定する
+                    select("#sw_notify").checkIsOFF()
+                    select("#cb_agree").checkIsOFF()
+                    select("#radio_a").checkIsON()
                 }
             }
             scene(4, "Switch とチェックを ON にする") {
@@ -126,6 +132,8 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                 }.expectation {
                     select("#txt_sw_notify").textIs("notify=on")
                     select("#txt_cb_agree").textIs("agree=true")
+                    select("#sw_notify").checkIsON()
+                    select("#cb_agree").checkIsON()
                 }
             }
             scene(5, "ラジオを B へ切り替える") {
@@ -133,6 +141,8 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     tap("#radio_b")
                 }.expectation {
                     select("#txt_radio").textIs("plan=B")
+                    select("#radio_b").checkIsON()
+                    select("#radio_a").checkIsOFF()
                 }
             }
             scene(6, "リセットで全て初期値に戻る") {
@@ -144,6 +154,9 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     select("#txt_cb_agree").textIs("agree=false")
                     select("#txt_radio").textIs("plan=A")
                     select("#txt_slider").textIs("volume=50")
+                    select("#sw_notify").checkIsOFF()
+                    select("#cb_agree").checkIsOFF()
+                    select("#radio_b").checkIsOFF()
                 }
             }
             scene(7, "11.S0010: 常時無効ボタンと条件付きボタンの enabled 状態を判定する") {

@@ -80,7 +80,10 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 
 | フレームワーク | 違い | シナリオでの扱い |
 |---|---|---|
-| SwiftUI/UIKit・Flutter(iOS) | チェックボックスの選択状態(`checked=` / `checkIsON`)を a11y に出さない。Compose(iOS)は出す。Android は全部出す | 状態は **echo の文字列**(`agree=true` 等)で確かめる |
+| 自作の部品(SwiftUI の Button で作ったチェックボックス・ラジオ等) | チェック状態を a11y に一切出さない(value も selected trait も無い) | `checkIsON` は「reports no check state」で落ちる。状態は **echo の文字列**(`agree=true` 等)で確かめるか、アプリ側で公開する(SwiftUI なら `.accessibilityRepresentation { Toggle(...) }`) |
+| Compose(iOS)の Checkbox/Radio・Flutter(iOS)の Radio | **オンだけ**報告する(オフと「状態を持たない」が同じ見え方) | 同じシナリオで一度オンを見た要素ならオフも確定する。見る前の `checkIsOFF` は通して警告 |
+| Flutter・Compose(iOS)・Android | mixed(一部だけ選択)をオフと区別して出さない(Flutter は `"0"`) | mixed を検証したいときは echo の文字列で |
+| WebKit の `<input type=radio>`(XCUITest 経路) | id の無い `other` 型(ラベル・value `"1"`/`"0"` 付き)で届き、木の規則(id の無い `other` は落とす)で**要素ごと消える** | in-app(DOM 経路)なら読める。XCUITest ではラベルのテキストを指す |
 | SwiftUI・Compose(iOS) | Slider の value が `"50%"` などパーセント表記 | 値は echo の文字列で確かめる |
 | SwiftUI(UITableView) | 画面外の行ラベルが、id 無しで全行分木に残る | ラベルの部分一致で不在検証しない |
 | React Native(iOS in-app) | Modal の中身と背景の木が同居して見える(XCUITest は Modal だけ) | ダイアログ内は背景と衝突しない `#id` で指す |
@@ -165,6 +168,22 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 
 ---
 
+### 2.6 チェック状態(`checkIsON` / `checkIsOFF` / `checked=`)
+
+iOS は実装ごとに状態の出し方が違う(2026-09-18 実測・両エンジン同値)。**A. 揃えている** ——
+`FTCore.CheckStateReading` が全部を読み、オン / オフ / mixed / 不明に畳む。
+
+| 実装(iOS) | オン | オフ |
+|---|---|---|
+| Flutter の Checkbox/Switch・SwiftUI の Toggle・RN の role=switch | value `"1"`(型 switch) | value `"0"` |
+| RN の role=checkbox / radio | value `"checkbox, checked"` 等 | `"checkbox, unchecked"` 等 |
+| Compose の Checkbox/Radio・Flutter の Radio | selected trait | 何も出さない(→ 1.4 の B) |
+| Compose の Switch | selected trait | 何も出さない(型 switch なのでオフと読める) |
+| WebKit(XCUITest)/ DOM 経路 | value `"1"` | value `"0"`(mixed は `"2"`) |
+
+Android はどのフレームワークも `isChecked`(checkable なら value `"1"`/`"0"`)で出す。
+**B. 揃っていない**ものは 1.4 の表(状態を出さない自作の部品・オンだけ報告・mixed)。
+
 ## 3. 待ちと鮮度
 
 | フレームワーク | 違い | 区分 | ツールの動き |
@@ -208,6 +227,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 
 | 版・コミット | 内容 |
 |---|---|
+| v114 | チェック状態を value からも読む(Flutter・SwiftUI Toggle・RN・WebKit で `checkIsON` が落ちていた)。DOM 経路で `aria-checked`・`indeterminate` を読む |
 | `e83c9ba2` | tap の直後の改行入り `type` は、XCUITest へ回す前に焦点を待つ |
 | v113 `46c188f5` | `scrollFrame` 無しのスクロールを、in-app でも画面中央の下の容器に揃える |
 | v112 `075ca1af` | Compose / Flutter の `scrollFrame` を in-app で送る。横の向きの修正。UIKit 系の領域指定で最大のビューへ落とさない |

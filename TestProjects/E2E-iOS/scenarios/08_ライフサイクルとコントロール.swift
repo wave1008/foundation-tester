@@ -84,6 +84,10 @@ class ライフサイクルとコントロールが正しく働くこと {
                     // これが無いと、ランナーが value を落とす退行を E2E が一生検出できない
                     // (echo は SUT が自前で描くので、ブリッジが黙っても緑のまま)
                     select("#slider_volume").valueIs("50%")
+                    // SwiftUI の Toggle は状態を value "1"/"0" で出す(selected trait は立てない)。
+                    // #cb_agree / #radio_* は自作の Button で状態を a11y に出さないので checkIsON は書けない
+                    // (docs/framework-differences.md)。状態の正は echo
+                    select("#sw_notify").checkIsOFF()
                 }
             }
             scene(2, "Switch とチェックを ON にする") {
@@ -93,6 +97,7 @@ class ライフサイクルとコントロールが正しく働くこと {
                 }.expectation {
                     select("#txt_sw_notify").textIs("notify=on")
                     select("#txt_cb_agree").textIs("agree=true")
+                    select("#sw_notify").checkIsON()
                 }
             }
             scene(3, "ラジオを B へ切り替える") {
@@ -111,6 +116,7 @@ class ライフサイクルとコントロールが正しく働くこと {
                     select("#txt_cb_agree").textIs("agree=false")
                     select("#txt_radio").textIs("plan=A")
                     select("#txt_slider").textIs("volume=50")
+                    select("#sw_notify").checkIsOFF()
                 }
             }
             scene(5, "11.S0010: 常時無効ボタンと条件付きボタンの enabled 状態を判定する") {

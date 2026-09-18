@@ -165,6 +165,63 @@ final class AssertKindsTests: XCTestCase {
         }
     }
 
+    private func stateNode(_ type: String, value: String? = nil, checked: Bool? = nil) -> ElementInfo {
+        ElementInfo(ref: 1, type: type, identifier: "cb", label: nil, value: value, placeholder: nil,
+                    enabled: true, frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 1, checked: checked)
+    }
+
+    private func runCheck(_ assert: String, _ frames: [[ElementInfo]],
+                          on executor: StepExecutor? = nil) async -> StepOutcome {
+        let executor = executor ?? StepExecutor(driver: ScriptedDriver(frames: frames), isAndroid: false)
+        return await executor.execute(FlowStep(assert: assert, locator: FlowLocator(id: "cb"), timeout: 0))
+    }
+
+    /// Flutter の Checkbox・SwiftUI Toggle・RN は selected trait を立てず value で状態を出す。
+    /// 以前は value を読まず、オンにしても checkIsON が「off」で落ちた(2026-09-18 実測)
+    func testCheckIsONReadsTheStateFromValue() async {
+        let flutterOn = await runCheck("checked", [[stateNode("switch", value: "1")]])
+        XCTAssertTrue(isPassed(flutterOn.status))
+        let rnOn = await runCheck("checked", [[stateNode("other", value: "checkbox, checked")]])
+        XCTAssertTrue(isPassed(rnOn.status))
+        let rnOffButWantOff = await runCheck("notChecked", [[stateNode("other", value: "checkbox, unchecked")]])
+        XCTAssertTrue(isPassed(rnOffButWantOff.status))
+        XCTAssertEqual(rnOffButWantOff.observedChecked, true, "明示的なオフも観測として数える(終了時の警告を出さない)")
+    }
+
+    func testMismatchMessagesSayWhatWasReported() async {
+        let off = await runCheck("checked", [[stateNode("switch", value: "0")]])
+        XCTAssertEqual(failureReason(off.status)?.hasPrefix("the element is off"), true, failureReason(off.status) ?? "")
+        let on = await runCheck("notChecked", [[stateNode("switch", value: "1")]])
+        XCTAssertEqual(failureReason(on.status)?.hasPrefix("the element is on"), true)
+        let mixedOn = await runCheck("checked", [[stateNode("switch", value: "2")]])
+        XCTAssertEqual(failureReason(mixedOn.status)?.contains("mixed"), true)
+        let mixedOff = await runCheck("notChecked", [[stateNode("switch", value: "2")]])
+        XCTAssertEqual(failureReason(mixedOff.status)?.contains("mixed"), true, "mixed をオフとして通さない")
+    }
+
+    /// 状態を報告しない要素に checkIsON → 「オフ」と言わず、報告が無いことを言う
+    func testCheckIsONOnSilentElementSaysItReportsNoState() async {
+        let outcome = await runCheck("checked", [[stateNode("button")]])
+        let reason = failureReason(outcome.status) ?? ""
+        XCTAssertTrue(reason.contains("reports no check state"), reason)
+        XCTAssertFalse(reason.hasPrefix("the element is off"), reason)
+        XCTAssertEqual(outcome.observedChecked, nil)
+    }
+
+    /// オンしか報告しない実装(Compose iOS の Checkbox)も、一度オンを見た要素なら報告の欠落をオフと読む
+    func testElementSeenOnReadsSilenceAsOff() async {
+        let driver = ScriptedDriver(frames: [[stateNode("button", checked: true)], [stateNode("button")]])
+        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let on = await runCheck("checked", [], on: executor)
+        XCTAssertTrue(isPassed(on.status))
+        let off = await runCheck("notChecked", [], on: executor)
+        XCTAssertTrue(isPassed(off.status))
+        XCTAssertEqual(off.observedChecked, true)
+        let wantOn = await runCheck("checked", [], on: executor)
+        XCTAssertEqual(failureReason(wantOn.status)?.hasPrefix("the element is off"), true,
+                       failureReason(wantOn.status) ?? "")
+    }
+
     // MARK: - enabled / disabled
 
     func testEnabledPassesAndDisabledFailsForEnabledElement() async {

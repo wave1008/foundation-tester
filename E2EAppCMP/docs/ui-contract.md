@@ -59,11 +59,11 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 - **状態表示は必ず `key=value` 形式の Text にする**(`textIs` で完全一致検証できる)。
   Switch/Checkbox の AX value は OS で表現が違うため、値検証は原則この echo Text で行う
   (`valueIs` の OS 依存挙動は `ios {}` / `android {}` 節でのみ確認する)。
-  **`checkIsON` / `checkIsOFF`(と セレクタの `checked=`)は iOS 側が UI 実装依存**
-  (2026-07-26 の 4 SUT 実測。Android は 4 SUT とも取れる): Compose は selected trait を出すので
-  iOS でも取れるが、**SwiftUI/UIKit と Flutter の checkbox は出さない**。
-  だから**この契約では状態の正は echo Text**(`agree=<true|false>` 等)であり、
-  チェック状態を跨 SUT で検証するシナリオは echo Text を見る。
+  **`checkIsON` / `checkIsOFF`(と セレクタの `checked=`)は iOS の E2EAppIOS の `#cb_agree` / `#radio_*` でだけ
+  使えない** —— SwiftUI の Button で自作しており、状態を a11y に一切出さない(2026-09-18 実測)。
+  CMP・Flutter・RN の iOS と全 SUT の Android、E2EAppIOS の `#sw_notify`(Toggle)は読める
+  (読み方は docs/framework-differences.md §2.6)。**この契約では状態の正は echo Text**
+  (`agree=<true|false>` 等)で、`checkIsON` / `checkIsOFF` は echo と並べて書く。
 - **プロセス起動時は必ずホームタブのルートに戻る**(画面遷移状態を永続化しない)。
   `launchApp` はアプリのデータを消さないため、ナビ状態のリセットはアプリ側の責務
   (docs/design.md §10 の知見)。永続化するのは下表の「永続」印の付いた値だけ。

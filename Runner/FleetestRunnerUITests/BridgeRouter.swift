@@ -1567,8 +1567,9 @@ final class BridgeRouter {
             frame: FTRect(x: frame.origin.x, y: frame.origin.y,
                           width: frame.width, height: frame.height),
             depth: depth,
-            // Compose iOS は Switch の value を出さないため isSelected が唯一の checked 経路
-            // (SwiftUI/Flutter も同じ trait が立つ。2026-07-26 実測)。false は送らない
+            // isSelected = Compose iOS の On・Flutter iOS の Radio の選択中。false は送らない。
+            // SwiftUI Toggle / Flutter の Checkbox・Switch は trait を立てず value "1"/"0" で出す
+            // (オフの確定も含め CheckStateReading が読む)
             checked: node.isSelected ? true : nil,
             // スクロールできる容器か(scrollFrame の空振り検出用)。XCUITest は Android の
             // isScrollable に当たる属性を持たないので**型で判定する**(Shirates の iOS 側と同じ規則)。

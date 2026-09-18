@@ -2089,15 +2089,23 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   見つからなければ従来どおり現在のビューポートでの消滅待ちに進む。
   hybrid では **不在を確定する側でだけ** `fallbackDriver` を1回照会する(pass 経路の固定費 1 回。
   システム UI のダイアログが primary の snapshot に映らないため。miss 毎に払う `exist` 側とは事情が逆)
-- **`checkIsON` / `checkIsOFF`**(セレクタの `checked=` も同じ源)は `ElementInfo.checked` を見る。
-  取得元は **iOS = accessibility の selected trait**(`XCUIElementSnapshot.isSelected` / in-app は
-  `UIAccessibilityTraits.selected`)、**Android = `AccessibilityNodeInfo.isChecked`**。
-  Compose iOS は Switch の `value` を出さない(実測)ので selected trait が唯一の経路。
-  **true のときだけ送る**(省略 = オフ、または状態を持たない要素)。
-  **iOS 側は UI 実装依存**(2026-07-26 の 4 SUT 実測): Compose は selected trait を出すので取れるが、
-  **SwiftUI/UIKit と Flutter の checkbox は出さない** → `checked` が nil のままで
-  `checkIsON` / `checked=true` が当たらない。**Android 側は 4 SUT とも取れる**。
-  iOS も含めて確実に見たいならアプリ側の echo Text を `textIs` で見る
+- **`checkIsON` / `checkIsOFF`**(セレクタの `checked=`・スナップショットの `checked`/`mixed` 表示も同じ源)は
+  **`FTCore.CheckStateReading` だけが読む**(オン / オフ / mixed / 不明の4値)。ワイヤの `checked` は
+  true のときだけ送る(iOS = selected trait / Android = `isChecked || isSelected`)ので、オフと mixed は
+  value から確定させる。実測(2026-09-18・iOS 27・両エンジン同値)と一次ソースで決めた規則:
+  | 実装 | オン | オフ |
+  |---|---|---|
+  | Flutter の Checkbox/Switch・SwiftUI Toggle・RN の role=switch・WebKit | 型 switch + value "1" | value "0"(WebKit の mixed は "2") |
+  | RN の role=checkbox / radio | value に語 `checked` | 語 `unchecked`(OSS の RN は翻訳表が空 = 英語固定) |
+  | Compose iOS | selected trait | 何も出さない(Switch だけは型 switch・value 無し = オフと読める) |
+  | Flutter iOS の Radio | selected trait | 何も出さない(engine が value を出さない) |
+  | Android | `isChecked`(checkable なら value "1"/"0") | value "0" |
+  | DOM(WebView) | value "1" | value "0"(`aria-checked`・`indeterminate` も読む) |
+  **value は型で絞って読む**(iOS は switch/checkBox、Android は入力欄以外)—— バッジの数字 "1" や入力欄の
+  文字をオンと読まないため。**オンしか報告しない実装**は、同じシナリオで一度オンを見た要素に限り
+  報告の欠落をオフと読む(`StepExecutor.checkStateReporters`)。**救えない形**: 状態を a11y に出さない自作の
+  部品(SwiftUI の Button 等)/ オンを見る前のオフ / Flutter・Compose・Android の mixed(オフと区別不能)。
+  `checkIsON` を不明な要素に書くと「reports no check state」で落ち、`checkIsOFF` は通して run 終了時に警告する
 - **状態フィルタ(`checked=` / `enabled=`)は型ではなく `#id` と併用する**(2026-07-26 実測)。
   同じ役割の要素でも型は SUT で割れるため(コントロール画面の無効ボタンは CMP では `button`、
   View/XML では `clickable`)、`.button&&enabled=false` のような型との AND は SUT 固有の式になる。

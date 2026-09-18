@@ -400,7 +400,11 @@ public enum BridgeAPI {
     /// and Android do (they swipe the centre): UIKit / SwiftUI / RN pick the innermost scroll view containing
     /// the centre (was the largest scroll view with room anywhere, which moved a carousel below the list), and
     /// the self-rendered AX walk skips elements whose frame does not contain the centre (`ScrollPointReach`).
-    public static let bridgeProtocolVersion = 113
+    /// v114 (in-app WebView DOM walk; the host's DOM tree shares the script): a checkbox / switch state is
+    /// reported as value "1"/"0"/"2" (mixed) as WebKit's accessibility does, ARIA widgets are read from
+    /// aria-checked and native inputs' `indeterminate` (an ARIA checkbox was always off), and role=switch
+    /// maps to Switch.
+    public static let bridgeProtocolVersion = 114
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -966,9 +970,9 @@ public struct ElementInfo: Codable, Sendable {
     public var value: String?
     public var placeholder: String?
     public var enabled: Bool
-    /// チェック状態(true のときだけ送る = 省略は「オフ、または状態を持たない要素」)。
-    /// 取得元は iOS=`isSelected`(Compose iOS は Switch の value を出さないためこちらが唯一の経路)/
-    /// Android=`AccessibilityNodeInfo.isChecked`。isChecked / isNotChecked が唯一の読み手
+    /// チェック状態の生の申告(true のときだけ送る = 省略は「オフ、または状態を持たない要素」)。
+    /// 取得元は iOS=`isSelected` / Android=`isChecked || isSelected`。**直接読まない** ——
+    /// value に載ったオフ/mixed と合わせて判定する `CheckStateReading` を通す
     public var checked: Bool?
     public var frame: FTRect
     public var depth: Int

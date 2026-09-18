@@ -1305,9 +1305,10 @@ extension StepExecutor {
         _ assert: String, step: FlowStep,
         phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         let clock = ContinuousClock()
-        // checked は true のときだけブリッジが送る(省略 = オフ / 状態を持たない要素)。
+        // 状態の読み方は CheckStateReading(value からオフも確定させる)。
         // 「状態が違う」と「見つからない」を別メッセージにするのは enabled と同じ規律
         let wantChecked = assert == "checked"
+        var lastState: CheckState = .unknown
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         let stepStart = clock.now
         var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
@@ -1340,9 +1341,12 @@ extension StepExecutor {
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                       strictForAssert: true) {
                 found = true
-                // ブリッジは true のときだけ送る = 観測できたのは「オンだった」ときだけ
-                if element.checked == true { observedCheckedThisStep = true }
-                if (element.checked == true) == wantChecked {
+                let state = checkState(of: element, step: step)
+                lastState = state
+                if state != .unknown { observedCheckedThisStep = true }
+                // 状態を報告しない要素への checkIsOFF は通す(Shirates と同じ。run 終了時の警告が拾う)
+                let satisfied = wantChecked ? state == .on : (state == .off || state == .unknown)
+                if satisfied {
                     resolvedElementThisStep = element
                     if let fallback { return .passedViaFallback(fallback) }
                     return .passed
@@ -1363,10 +1367,34 @@ extension StepExecutor {
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
         return found
-            ? .failed("the element is \(wantChecked ? "off" : "on"): \(step.locatorSummary)"
+            ? .failed(Self.checkStateMismatch(lastState, locator: step.locatorSummary)
                       + tapDiagnosisHint(lastSnapshot?.elements))
             : failed(.notFound, "element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot)
                       + Self.keyboardResizedHint(lastSnapshot))
+    }
+
+    /// オンしか報告しない実装(Compose iOS の Checkbox/Radio・Flutter iOS の Radio)は、オフと
+    /// 「状態を持たない要素」が同じ見え方になる。**このシナリオで一度オンを報告した要素**なら、
+    /// 状態を持つと分かっているので、報告が無いことをオフと読む
+    func checkState(of element: ElementInfo, step: FlowStep) -> CheckState {
+        let key = "\(step.locatorSummary)|\(element.type)|\(element.identifier ?? element.label ?? "")"
+        let state = CheckStateReading.state(of: element, isAndroid: isAndroid)
+        if state == .on { checkStateReporters.insert(key) }
+        if state == .unknown, checkStateReporters.contains(key) { return .off }
+        return state
+    }
+
+    static func checkStateMismatch(_ state: CheckState, locator: String) -> String {
+        switch state {
+        case .on: return "the element is on: \(locator)"
+        case .off: return "the element is off: \(locator)"
+        case .mixed: return "the element is in a mixed (partially checked) state: \(locator)"
+        case .unknown:
+            return "the element reports no check state: \(locator) (no selected trait and no on/off value; "
+                + "it is either off or an implementation that does not expose its check state to accessibility, "
+                + "such as a custom-drawn button. Verify a text that reflects the state with textIs, or have the app "
+                + "expose it, e.g. SwiftUI .accessibilityRepresentation { Toggle(...) })"
+        }
     }
 
     private func executeAssertCount(step: FlowStep,

@@ -48,6 +48,7 @@ public enum WebViewDOM {
           if (explicit === "link") return "link";
           if (explicit === "button") return "button";
           if (explicit === "checkbox" || explicit === "radio") return "checkBox";
+          if (explicit === "switch") return "switch";
           if (explicit === "img" || explicit === "image") return "image";
           if (explicit === "textbox") return "textField";
           var tag = el.tagName.toLowerCase();
@@ -202,8 +203,16 @@ public enum WebViewDOM {
                   if (ph) node.placeholder = ph;
                   if (el.value) node.value = el.value;
                   node.label = (el.getAttribute("aria-label") || "").trim();
-                } else if (role === "checkBox") {
-                  node.checked = !!el.checked;
+                } else if (role === "checkBox" || role === "switch") {
+                  // 状態は value "1"/"0"/"2"(mixed)でも出す = WebKit の a11y(XCUITest)と同じ形。
+                  // checked は true のときだけ読まれる経路があるので、オフ/mixed は value が運ぶ。
+                  // ARIA の部品(div role=checkbox)は el.checked を持たない → aria-checked を読む
+                  var tagName = el.tagName.toLowerCase();
+                  var aria = (el.getAttribute("aria-checked") || "").toLowerCase();
+                  var mixed = tagName === "input" ? el.indeterminate === true : aria === "mixed";
+                  var on = tagName === "input" ? !!el.checked : aria === "true";
+                  node.checked = on && !mixed;
+                  node.value = mixed ? "2" : (on ? "1" : "0");
                 }
                 nodes.push(node);
                 // リンクは a11y 経路が link + staticText の2要素で出す。エンジン間で見え方を
@@ -321,6 +330,7 @@ public enum WebViewDOM {
         case "textView": return "TextView"
         case "image": return "Image"
         case "checkBox": return "CheckBox"
+        case "switch": return "Switch"
         case "picker": return "Picker"
         case "slider": return "Slider"
         default: return nil
