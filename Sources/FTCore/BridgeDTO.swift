@@ -404,7 +404,10 @@ public enum BridgeAPI {
     /// reported as value "1"/"0"/"2" (mixed) as WebKit's accessibility does, ARIA widgets are read from
     /// aria-checked and native inputs' `indeterminate` (an ARIA checkbox was always off), and role=switch
     /// maps to Switch.
-    public static let bridgeProtocolVersion = 114
+    /// v115 (in-app only): an edge scroll that moved content answers `atEdge: false` (was nil), as the Android
+    /// CDP path does, so the host counts the move even when cells land on the same coordinates after each jump
+    /// (RN FlatList).
+    public static let bridgeProtocolVersion = 115
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1523,10 +1526,10 @@ public struct OKResponse: Codable {
     /// 通常と違う経路を通ったときの短い説明(既定 nil)。失敗ではなく観測用(例: InAppBridge.handleTap の
     /// activate 不発→合成タッチ)。throw にしない代わりに StepExecutor.driverFallback へ載せて可視化する。
     public var note: String?
-    /// **端送り(`SwipeRequest.edge`)で「もう端に着いていた」**(= 動かせなかった)。
-    /// 位置を直接動かすエンジンだけが答えられる事実で、ホストはこれを受けて
-    /// 「署名が2回続けて不変」を待たずに切り上げる(`AppDriver.reachedEdgeOnLastSwipe`)。
-    /// 旧ブリッジは返さない → nil = 分からない = 従来どおりの判定
+    /// **端送り(`SwipeRequest.edge`)で「もう端に着いていた」**(= 動かせなかった)なら true、
+    /// **確かに動かした**なら false(v115〜)。位置を直接動かすエンジンだけが答えられる事実で、
+    /// ホストは true で「署名が2回続けて不変」を待たずに切り上げ、false で「動いた」と数える
+    /// (`AppDriver.reachedEdgeOnLastSwipe`)。旧ブリッジ・答えられない経路は nil = 従来どおりの判定
     public var atEdge: Bool?
     public init(ok: Bool = true, note: String? = nil, atEdge: Bool? = nil) {
         self.ok = ok

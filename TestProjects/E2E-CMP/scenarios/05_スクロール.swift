@@ -9,7 +9,7 @@
 // (App() はタブ/子画面切替で remember 状態を破棄するため、selected=- 等の初期値はこれだけで戻る)。
 // **統合B は2本の @Test に分けてある**(ios-xcuitest の壁時計対策。1本に畳むとスクロール操作の
 // 直列化で最長シナリオが伸び、レーンを増やしても縮まない。docs/performance-tuning.md §3.6)。
-// **S0060/S0080/S0090/S0100/S0110 は重量級(scrollFrame 本丸・古いツリー検出・横縦同居・
+// **S0060/S0080/S0090/S0091/S0100/S0110 は重量級(scrollFrame 本丸・古いツリー検出・横縦同居・
 // 状態不変性・領域指定なし探索の回帰)のため統合しない**(各自 launchApp を残す独立 @Test のまま)。
 
 import FTDSL
@@ -427,11 +427,29 @@ class スクロールで折り返し下の要素に到達できること {
                     existWithoutScroll("#tag_01")
                 }
             }
+        }
+    }
+
+    // --- 領域を指定した端送りと、指定外の領域が動かないことの番人 ---
+    // scene 4 はカルーセルが左端、scene 5 はリストが先頭の状態を前提にする = scene 2・3 の終わりで作られる
+    @Test("scrollFrame を指定した端送りと、スクロールしない帯・無指定の払いで他の領域が動かない")
+    func S0091() {
+        scenario {
+            scene(1, "スクロール画面を開く") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_scroll")
+                }.expectation {
+                    exist("#row_01")
+                    exist("#tag_01")
+                }
+            }
             // 横の端送り。端判定の機構(静止署名の2回連続不変化)は縦の scrollToBottom/scrollToTop と
             // 共通で軸だけが違うが、**容器の scrollable 申告はフレームワークで割れる**ので4 SUT で回す
             // (カルーセルは 20 件・1画面 3〜4 件のため往復で十数秒かかる。2026-08-04 にコスト優先で
             //  CMP のみにしたが、揃える判断に変えた)
-            scene(6, "`scrollToRightEdge` / `scrollToLeftEdge` は横の端まで送る") {
+            scene(2, "`scrollToRightEdge` / `scrollToLeftEdge` は横の端まで送る") {
                 action {
                     scrollToRightEdge(scrollFrame: "#carousel_tags", maxSwipes: 20)
                 }.expectation {
@@ -445,7 +463,7 @@ class スクロールで折り返し下の要素に到達できること {
             // 領域を指定した縦の端送り。Compose / Flutter の in-app は「枠が一致するスクロール容器」を AX で送り、
             // 容器が断ったら端と読む(Flutter は端で断る)。途中の断りを端と誤認すると #row_40 に届かずここで落ちる。
             // 他の SUT は同じ指定を従来の経路(contentOffset / 実スワイプ)で撃つ
-            scene(7, "`scrollToBottom` / `scrollToTop` に scrollFrame を指定すると縦リストの端まで送る") {
+            scene(3, "`scrollToBottom` / `scrollToTop` に scrollFrame を指定すると縦リストの端まで送る") {
                 action {
                     scrollToBottom(scrollFrame: "#list_rows", maxSwipes: 20)
                 }.expectation {
@@ -458,8 +476,8 @@ class スクロールで折り返し下の要素に到達できること {
             }
             // 縦の固定ヘッダの scene と対の、横の番人。カルーセル直下の #txt_tag_selected はスクロールしない。
             // 横にスクロールできるのはカルーセルだけなので、指定を無視して画面のどこかを送る実装だと
-            // カルーセルが動いて #tag_01 が消える(scene 6 の終わりで #tag_01 が見えている状態から始める)
-            scene(8, "スクロールしない横の帯を指定して払ってもカルーセルは動かない") {
+            // カルーセルが動いて #tag_01 が消える(scene 2 の終わりで #tag_01 が見えている状態から始める)
+            scene(4, "スクロールしない横の帯を指定して払ってもカルーセルは動かない") {
                 action {
                     scrollRight(scrollFrame: "#txt_tag_selected", repeat: 2)
                 }.expectation {
@@ -469,7 +487,7 @@ class スクロールで折り返し下の要素に到達できること {
             // scrollFrame 無しは「画面中央を払う」(XCUITest / Android はそのとおり動く)。画面中央は縦リストの上なので、
             // 横に払っても縦リストもカルーセルも動かない。in-app が「余地のある最大の容器」や「木の順で最初に受理した
             // 要素」を動かすと、画面下のカルーセルが動いて #tag_01 が消える(エンジンで結果が割れる形)
-            scene(9, "scrollFrame 無しで横に払っても、画面中央の縦リストは横に動かずカルーセルも動かない") {
+            scene(5, "scrollFrame 無しで横に払っても、画面中央の縦リストは横に動かずカルーセルも動かない") {
                 action {
                     scrollRight()
                 }.expectation {

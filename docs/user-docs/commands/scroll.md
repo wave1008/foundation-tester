@@ -70,6 +70,11 @@ one swipe covers, and whether a round trip is even needed, depends on the engine
 | iOS xcuitest | a real fling gesture (roughly 1.1 screens) | proportional to page count |
 | Android (native) | a real swipe stroke (roughly 1.2 screens) | proportional to page count; default `maxSwipes: 50` may not reach very long documents |
 
+The edge is confirmed only once the screen has not moved for 1.0 second. The paths that jump straight
+to the edge (the first two rows) pay this 1.0 second when they reach the real edge. It keeps a list that
+renders more items after a jump (such as a React Native `FlatList`) from being taken as ended before
+those items arrive.
+
 Raise `maxSwipes` for long documents on a real-gesture engine. Chaining several `flick*` calls to
 go faster is not a substitute — flick has no notion of having reached the edge; see
 [flick](./flick.md).

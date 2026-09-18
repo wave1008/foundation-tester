@@ -150,6 +150,22 @@ extension StepExecutor {
             let limit = max(1, step.maxSwipes ?? FlowStep.defaultMaxEdgeSwipes)
             var hintJumps = 0
             var sentSwipes = 0
+            // 見えている中身が最後に変わった時刻(端を確定してよいかの起点)。nil = 一度も変わっていない
+            // = 送る前から端だった → 猶予を待たない
+            let clock = ContinuousClock()
+            var lastChangeAt: ContinuousClock.Instant?
+            var retryAfterGrace = false
+            // 端を確定する前に、最後の変化から `edgeClaimGraceAfterMove` 経っているかを見る。
+            // 経っていなければ残りを待って true(= もう1本送ってから判断し直す)
+            func waitedForGrace() async throws -> Bool {
+                guard let lastChangeAt else { return false }
+                let remaining = Self.edgeClaimGraceAfterMove - (clock.now - lastChangeAt)
+                guard remaining > .zero else { return false }
+                let waitStart = clock.now
+                try await Task.sleep(for: remaining)
+                phase.waitMs += Self.ms(clock.now - waitStart)
+                return true
+            }
             // ドライバの端申告を確かめた読みは**次の周回の読みとして使い回す**
             // (捨てて撮り直すと、端の確定のために木を1周ぶん余計に読む)
             var carried: (signature: String, snapshot: SnapshotResponse, settled: Bool, changed: Bool)?
@@ -164,13 +180,18 @@ extension StepExecutor {
                 if !settled.settled { sawUnsettled = true }
                 let contentSignature = Self.edgeSignature(settled.snapshot)
                 unchanged = contentSignature == previous ? unchanged + 1 : 0
+                if let previous, contentSignature != previous { lastChangeAt = clock.now }
                 // ヒント跳躍(WebView): 端までの残り距離が分かるときは長距離ドラッグで寄せる
                 let jump = Self.offscreenEdgeJump(snapshot: settled.snapshot, finger: direction)
-                if unchanged >= Self.unchangedRoundsForEdge(snapshot: settled.snapshot,
+                // **変わってから `edgeClaimGraceAfterMove` 経つまでは端と確定しない**: 端へ飛ぶと続きを
+                // 非同期に描き足す仮想化リスト(RN の FlatList)は、描き足しが**窓の外**に起きるので
+                // 見えている署名が変わらない。待った直後の周回は必ず1本送る(描き足されていれば先へ進む)
+                if !retryAfterGrace,
+                   unchanged >= Self.unchangedRoundsForEdge(snapshot: settled.snapshot,
                                                             remainingJump: jump) {
-                    reachedEdge = true
-                    break
+                    guard try await waitedForGrace() else { reachedEdge = true; break }
                 }
+                retryAfterGrace = false
                 // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。
                 // 黙って全画面スワイプへ退化させない
                 if Self.scrollFrameUnresolved(step, in: settled.snapshot) {
@@ -195,14 +216,26 @@ extension StepExecutor {
                 // **ドライバが「もう端」と言えるなら、署名の2回不変を待たない**。
                 // 位置を直接動かせる経路(Android の CDP・in-app の contentOffset)は
                 // 「余地が無い」を**事実として**知っており、こちらの推測より強い。
-                // それでも**確認の読みを1回だけ入れる**: 端に着いた後に内容が伸びる画面
-                // (遅延読み込み)があるので、木が変わっていたらループへ戻る
+                // 申告も上の「不変」と同じく、最後の変化から `edgeClaimGraceAfterMove` 経つまでは確定しない
+                // (飛んだ直後の申告は、描き足す前の「今は余地が無い」でしかない)。確認の読みで木が
+                // 変わっていたらループへ戻る
+                // **false(= 確かに動かした)は署名より強い「動いた」**: 端へ飛ぶたびにセルが同じ座標に並ぶ
+                // 画面(RN の FlatList)では、動いても型と座標の署名が変わらず「不変」に見える
+                if driver.reachedEdgeOnLastSwipe == false {
+                    lastChangeAt = clock.now
+                    previous = nil
+                }
                 if driver.reachedEdgeOnLastSwipe == true {
                     let confirm = try await settledSignature(phase: &phase)
                     if !confirm.settled { sawUnsettled = true }
                     let confirmed = Self.edgeSignature(confirm.snapshot)
-                    if confirmed == previous { reachedEdge = true; break }
-                    previous = confirmed
+                    if confirmed == previous {
+                        guard try await waitedForGrace() else { reachedEdge = true; break }
+                        retryAfterGrace = true
+                    } else {
+                        previous = confirmed
+                        lastChangeAt = clock.now
+                    }
                     carried = confirm
                 }
             }

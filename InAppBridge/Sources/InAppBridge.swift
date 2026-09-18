@@ -971,7 +971,9 @@ final class FTInAppBridge {
 
     private func handleSwipe(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
-        // 端送りで動かせなかった(= もう端)ことをホストへ返すための箱
+        // 端送りの結果をホストへ返すための箱: true = 動かせなかった(もう端)/ false = 確かに動かした /
+        // nil = 分からない。**false も返す**: 端へ飛ぶたびにセルが同じ座標に並ぶ画面(RN の FlatList)では、
+        // 動いたかをホストが木の署名から読めない(Android の CDP 経路と同じ意味)
         var atEdge: Bool?
         // **スクロール領域の指定(SwipeRequest.path)は「座標を撃つ指示」ではなく
         // 「どこを・どれだけ動かすか」の指示として読む**。合成タッチの drag は受理されないので
@@ -1020,7 +1022,7 @@ final class FTInAppBridge {
                 }
                 switch outcome {
                 case .scrolled:
-                    return ok()
+                    return ok(atEdge: req.edge == true ? false : nil)
                 case .refused:
                     // 一致した容器そのものが断った = **その向きの端**(対象が1つに決まっているので
                     // 「スクロールできない画面」と区別できる。Flutter は端で false を返す)。
@@ -1092,6 +1094,7 @@ final class FTInAppBridge {
             }
             Self.scroll(scrollView, direction: req.direction, path: req.path,
                         toEdge: req.edge == true)
+            if req.edge == true { atEdge = false }
             // **端送りは動かした後も待たない**: 端送りの後にホストは必ず
             // `settledSignature`(署名が2回続けて一致)で整定を待つので、ここで待つのは二重。
             // 常にアニメーションし続ける画面ではこの cap(2.5s)がそのまま所要になり、
