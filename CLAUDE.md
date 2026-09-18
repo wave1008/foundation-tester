@@ -28,6 +28,8 @@
 ### 設計・検証
 
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
+- **UI フレームワーク別の差異の索引**(揃えている / 揃っていない / 経路だけ違う、の3区分で横に並べる):
+  docs/framework-differences.md。**フレームワークで挙動が割れる変更を入れたら表に1行足す**
 - 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
 - **結果 JSON のスキーマ**(run.json / scenarios/*.json の全欄・落ちた run の仕分けレシピ・
