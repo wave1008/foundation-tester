@@ -26,10 +26,10 @@ public func tapWithScrollDown(_ selector: String, maxSwipes: Int = 0, waitSecond
 public func tapWithScrollDown(_ selector: Sel, maxSwipes: Int = 0, waitSeconds: Double? = nil, holdSeconds: Double = 0) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no existWithScrollDown. Write exist(selector, scroll: .down) instead")
-public func existWithScrollDown(_ selector: String, maxSwipes: Int = 0, waitSeconds: Double? = nil, requireVisible: Bool = true) { fatalError() }
+public func existWithScrollDown(_ selector: String, maxSwipes: Int = 0, requireVisible: Bool = true, waitSeconds: Double? = nil) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no existWithScrollDown. Write exist(selector, scroll: .down) instead")
-public func existWithScrollDown(_ selector: Sel, maxSwipes: Int = 0, waitSeconds: Double? = nil, requireVisible: Bool = true) { fatalError() }
+public func existWithScrollDown(_ selector: Sel, maxSwipes: Int = 0, requireVisible: Bool = true, waitSeconds: Double? = nil) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no notExistWithScrollDown. Write notExist(selector, scroll: .down) instead")
 public func notExistWithScrollDown(_ selector: String, maxSwipes: Int = 0, waitSeconds: Double? = nil) { fatalError() }
@@ -56,10 +56,10 @@ public func tapWithScrollUp(_ selector: String, maxSwipes: Int = 0, waitSeconds:
 public func tapWithScrollUp(_ selector: Sel, maxSwipes: Int = 0, waitSeconds: Double? = nil, holdSeconds: Double = 0) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no existWithScrollUp. Write exist(selector, scroll: .up) instead")
-public func existWithScrollUp(_ selector: String, maxSwipes: Int = 0, waitSeconds: Double? = nil, requireVisible: Bool = true) { fatalError() }
+public func existWithScrollUp(_ selector: String, maxSwipes: Int = 0, requireVisible: Bool = true, waitSeconds: Double? = nil) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no existWithScrollUp. Write exist(selector, scroll: .up) instead")
-public func existWithScrollUp(_ selector: Sel, maxSwipes: Int = 0, waitSeconds: Double? = nil, requireVisible: Bool = true) { fatalError() }
+public func existWithScrollUp(_ selector: Sel, maxSwipes: Int = 0, requireVisible: Bool = true, waitSeconds: Double? = nil) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no notExistWithScrollUp. Write notExist(selector, scroll: .up) instead")
 public func notExistWithScrollUp(_ selector: String, maxSwipes: Int = 0, waitSeconds: Double? = nil) { fatalError() }
@@ -86,10 +86,10 @@ public func tapWithScrollRight(_ selector: String, maxSwipes: Int = 0, waitSecon
 public func tapWithScrollRight(_ selector: Sel, maxSwipes: Int = 0, waitSeconds: Double? = nil, holdSeconds: Double = 0) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no existWithScrollRight. Write exist(selector, scroll: .right) instead")
-public func existWithScrollRight(_ selector: String, maxSwipes: Int = 0, waitSeconds: Double? = nil, requireVisible: Bool = true) { fatalError() }
+public func existWithScrollRight(_ selector: String, maxSwipes: Int = 0, requireVisible: Bool = true, waitSeconds: Double? = nil) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no existWithScrollRight. Write exist(selector, scroll: .right) instead")
-public func existWithScrollRight(_ selector: Sel, maxSwipes: Int = 0, waitSeconds: Double? = nil, requireVisible: Bool = true) { fatalError() }
+public func existWithScrollRight(_ selector: Sel, maxSwipes: Int = 0, requireVisible: Bool = true, waitSeconds: Double? = nil) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no notExistWithScrollRight. Write notExist(selector, scroll: .right) instead")
 public func notExistWithScrollRight(_ selector: String, maxSwipes: Int = 0, waitSeconds: Double? = nil) { fatalError() }
@@ -116,10 +116,10 @@ public func tapWithScrollLeft(_ selector: String, maxSwipes: Int = 0, waitSecond
 public func tapWithScrollLeft(_ selector: Sel, maxSwipes: Int = 0, waitSeconds: Double? = nil, holdSeconds: Double = 0) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no existWithScrollLeft. Write exist(selector, scroll: .left) instead")
-public func existWithScrollLeft(_ selector: String, maxSwipes: Int = 0, waitSeconds: Double? = nil, requireVisible: Bool = true) { fatalError() }
+public func existWithScrollLeft(_ selector: String, maxSwipes: Int = 0, requireVisible: Bool = true, waitSeconds: Double? = nil) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no existWithScrollLeft. Write exist(selector, scroll: .left) instead")
-public func existWithScrollLeft(_ selector: Sel, maxSwipes: Int = 0, waitSeconds: Double? = nil, requireVisible: Bool = true) { fatalError() }
+public func existWithScrollLeft(_ selector: Sel, maxSwipes: Int = 0, requireVisible: Bool = true, waitSeconds: Double? = nil) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no notExistWithScrollLeft. Write notExist(selector, scroll: .left) instead")
 public func notExistWithScrollLeft(_ selector: String, maxSwipes: Int = 0, waitSeconds: Double? = nil) { fatalError() }
@@ -146,10 +146,10 @@ public func tapWithoutScroll(_ selector: String, waitSeconds: Double? = nil) { f
 public func tapWithoutScroll(_ selector: Sel, waitSeconds: Double? = nil) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no existWithoutScroll. Write exist(selector, scroll: .noScroll) instead")
-public func existWithoutScroll(_ selector: String, waitSeconds: Double? = nil, requireVisible: Bool = true) { fatalError() }
+public func existWithoutScroll(_ selector: String, requireVisible: Bool = true, waitSeconds: Double? = nil) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no existWithoutScroll. Write exist(selector, scroll: .noScroll) instead")
-public func existWithoutScroll(_ selector: Sel, waitSeconds: Double? = nil, requireVisible: Bool = true) { fatalError() }
+public func existWithoutScroll(_ selector: Sel, requireVisible: Bool = true, waitSeconds: Double? = nil) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no notExistWithoutScroll. Write notExist(selector, scroll: .noScroll) instead")
 public func notExistWithoutScroll(_ selector: String, waitSeconds: Double? = nil) { fatalError() }
@@ -158,10 +158,10 @@ public func notExistWithoutScroll(_ selector: String, waitSeconds: Double? = nil
 public func notExistWithoutScroll(_ selector: Sel, waitSeconds: Double? = nil) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no selectWithoutScroll. Write select(selector, scroll: .noScroll) instead")
-public func selectWithoutScroll(_ selector: String, waitSeconds: Double? = nil, requireVisible: Bool = true) { fatalError() }
+public func selectWithoutScroll(_ selector: String, requireVisible: Bool = true, waitSeconds: Double? = nil) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no selectWithoutScroll. Write select(selector, scroll: .noScroll) instead")
-public func selectWithoutScroll(_ selector: Sel, waitSeconds: Double? = nil, requireVisible: Bool = true) { fatalError() }
+public func selectWithoutScroll(_ selector: Sel, requireVisible: Bool = true, waitSeconds: Double? = nil) { fatalError() }
 
 @available(*, unavailable, message: "fleetest has no findImageWithoutScroll. Write findImage(label, scroll: .noScroll) instead")
 public func findImageWithoutScroll(_ label: String, threshold: Double = 0, aspectRatioTolerance: Double = 0, waitSeconds: Double? = nil) { fatalError() }

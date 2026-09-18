@@ -19,13 +19,13 @@ no form that takes a selector.
 
 | function | negation | comparison |
 |---|---|---|
-| `select(selector).valueIs(expected, waitSeconds:, requireVisible:, strict:)` | `valueIsNot(expected, waitSeconds:, strict:)` | exact match |
-| `valueContains(expected, waitSeconds:, requireVisible:, strict:)` | `valueContainsNot(expected, waitSeconds:, strict:)` | substring match |
-| `valueStartsWith(expected, waitSeconds:, requireVisible:, strict:)` | `valueStartsWithNot(expected, waitSeconds:, strict:)` | prefix match |
-| `valueEndsWith(expected, waitSeconds:, requireVisible:, strict:)` | `valueEndsWithNot(expected, waitSeconds:, strict:)` | suffix match |
-| `valueMatches(pattern, waitSeconds:, requireVisible:, strict:)` | `valueMatchesNot(pattern, waitSeconds:, strict:)` | regular expression (substring; use `^…$` for a full match) |
-| `valueMatchesDateFormat(format, waitSeconds:, requireVisible:)` | — | `DateFormatter` format string |
-| `valueIsNotEmpty(waitSeconds:, strict:)` | `valueIsEmpty(waitSeconds:, strict:)` | non-empty / empty |
+| `select(selector).valueIs(expected, requireVisible:, strict:, waitSeconds:)` | `valueIsNot(expected, strict:, waitSeconds:)` | exact match |
+| `valueContains(expected, requireVisible:, strict:, waitSeconds:)` | `valueContainsNot(expected, strict:, waitSeconds:)` | substring match |
+| `valueStartsWith(expected, requireVisible:, strict:, waitSeconds:)` | `valueStartsWithNot(expected, strict:, waitSeconds:)` | prefix match |
+| `valueEndsWith(expected, requireVisible:, strict:, waitSeconds:)` | `valueEndsWithNot(expected, strict:, waitSeconds:)` | suffix match |
+| `valueMatches(pattern, requireVisible:, strict:, waitSeconds:)` | `valueMatchesNot(pattern, strict:, waitSeconds:)` | regular expression (substring; use `^…$` for a full match) |
+| `valueMatchesDateFormat(format, requireVisible:, waitSeconds:)` | — | `DateFormatter` format string |
+| `valueIsNotEmpty(strict:, waitSeconds:)` | `valueIsEmpty(strict:, waitSeconds:)` | non-empty / empty |
 
 Comparison follows the same "same if it looks the same" rule as text assertions (`strict:` to
 disable it) — see [Text Assertion](./text_assertion.md) for the full rule.

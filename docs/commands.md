@@ -39,7 +39,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | コマンド | 説明 |
 |---|---|
 | `tap(sel, holdSeconds: 0, waitSeconds:scroll:maxSwipes:containerInference:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ)。**対象がまだ無効なら操作可能になるまで待ってから撃つ**(下記)。**下端のタブバー等に潜っているだけなら、撃つ前に容器を1回送って外す**(下記「縁の帯に潜った対象」)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
-| `select(sel, waitSeconds:requireVisible:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**掴めなければ失敗させず空要素を返す** — 「見つからない」も「見つかったが見えない(覆われ・見切れ)」も同じ形で返るので、呼び出し側は `.isEmpty` で分岐する(`exist` はどちらも失敗へ反転するので意味が違う)。**在ることを保証したいなら `exist`**。`requireVisible: false` で可視性照合自体を外す |
+| `select(sel, requireVisible:waitSeconds:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**掴めなければ失敗させず空要素を返す** — 「見つからない」も「見つかったが見えない(覆われ・見切れ)」も同じ形で返るので、呼び出し側は `.isEmpty` で分岐する(`exist` はどちらも失敗へ反転するので意味が違う)。**在ることを保証したいなら `exist`**。`requireVisible: false` で可視性照合自体を外す |
 | `lastElement` | **直前に掴んだ要素**(引数なし。Shirates(Classic) の `TestDriver.lastElement` 相当)。要素を1つに定めて解決したコマンド(`select` / `exist` / `tap` / `type` / `waitForDisplay` / テキスト・値の検証など)が通るたびに差し替わる。差し替えないのは**要素を1つに定めない** `notExist` / `countIs` と、**セレクタを取らない** `swipe` / `launchApp` 等。**値は掴んだ時点の凍結値**で、掴んだ後にスクロールやタップを挟むと古い値を読む(下記「掴んだ要素の値を読む」)。**scene を跨ぐと空**・**掴めなかったコマンドは空で上書き**・**一度も掴んでいなければ空+警告** |
 | `type("文字列", replace: false)` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。改行の扱いは下記。**引数はテキストであってセレクタではない** — `type("#email")` のようにセレクタらしい1語(`#` + 識別子・`\|\|` や `>>` を含む)を渡すと実行前に失敗する(黙って `#email` と打ち込んで後段の検証で落ちると原因から遠いため)。その文字列を本当に入力したいなら2引数形 `type("#field", "#email")` を使う。`replace: true` で撃つ前に `clearInput` 相当のクリアをしてから入力する(セレクタ解決が1回で済む) |
 | `type(sel, "文字列", waitSeconds:scroll:maxSwipes:replace:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし)。改行の扱いは下記。`replace: true` で撃つ前にクリアしてから入力する(下記 `clearInput` 参照)。**入った値を読み返して直す**: 末尾の欠落は追送・二重入力は削除・**中央の1文字が落ちた形(`hello123`→`hllo123`)は消してから全文を打ち直す**(ブリッジ v104。注記 `type-retyped` / XCUITest ランナーは `driverFallback` に "retyped the whole text …")。**打ち直しは1回まで** —— 打ち直しても同じ形で欠けるなら(英字を捨てる数字欄など)アプリ側の加工なので検証を諦めて受理する(注記 `type-retype-abandoned`。値は `textIs` で別途確かめる) |
@@ -332,7 +332,7 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 
 | コマンド | 説明 |
 |---|---|
-| `exist(sel, waitSeconds:requireVisible:scroll:maxSwipes:)` | 存在検証。テキストの視覚検証を有効にした run(実行プロファイル `textVisualCheck: true`)では**実際に見えていること**も確認する(幾何 → FM の2段。§共通の引数 `requireVisible`)。戻り値にチェーン可(後述) |
+| `exist(sel, requireVisible:waitSeconds:scroll:maxSwipes:)` | 存在検証。テキストの視覚検証を有効にした run(実行プロファイル `textVisualCheck: true`)では**実際に見えていること**も確認する(幾何 → FM の2段。§共通の引数 `requireVisible`)。戻り値にチェーン可(後述) |
 | `waitForDisplay(sel, waitSeconds: 15)` | 要素が表示されるまで待つ(**スクロールしない**)。戻り値は `FTElement`(`exist` と同様チェーン可)。見つからなければ失敗しシナリオ中断。**判定は `exist` と同じ可視性込み**(コマンド名 displayed の意味に沿わせている)で、**`exist` の `requireVisible: false` に当たる逃げ道は無い** — 覆われ検出を外したいなら `exist(sel, requireVisible: false, waitSeconds: 15)` を使う |
 | `waitForClose(sel, waitSeconds: 15)` | 要素が消えるまで待つ(**スクロールしない**)。`sel` は省略不可(Shirates の直前セレクタ再利用の省略形は無い。`lastElement` はあるが、待ち対象がソース上で読めなくなるため引数は必須のまま) |
 | `notExist(sel, waitSeconds:scroll:maxSwipes:)` | **消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じた確認に。`scroll:` 指定時は**その方向へスクロールしながら探し、見つかった時点で不在検証を失敗させる**(`exist(scroll:)` の裏返し。見つからなければ従来どおり現在のビューポートでの消滅待ちに進む) |

@@ -20,13 +20,13 @@ no form that takes a selector — `textIs("#msg", "Done")` does not compile.
 
 | function | negation | comparison |
 |---|---|---|
-| `select(selector).textIs(expected, waitSeconds:, requireVisible:, strict:)` | `textIsNot(expected, waitSeconds:, strict:)` | exact match |
-| `textContains(expected, waitSeconds:, requireVisible:, strict:)` | `textContainsNot(expected, waitSeconds:, strict:)` | substring match |
-| `textStartsWith(expected, waitSeconds:, requireVisible:, strict:)` | `textStartsWithNot(expected, waitSeconds:, strict:)` | prefix match |
-| `textEndsWith(expected, waitSeconds:, requireVisible:, strict:)` | `textEndsWithNot(expected, waitSeconds:, strict:)` | suffix match |
-| `textMatches(pattern, waitSeconds:, requireVisible:, strict:)` | `textMatchesNot(pattern, waitSeconds:, strict:)` | regular expression (substring; use `^…$` for a full match) |
-| `textMatchesDateFormat(format, waitSeconds:, requireVisible:)` | — | `DateFormatter` format string, e.g. `"yyyy/MM/dd"` |
-| `textIsNotEmpty(waitSeconds:, strict:)` | `textIsEmpty(waitSeconds:, strict:)` | non-empty / empty |
+| `select(selector).textIs(expected, requireVisible:, strict:, waitSeconds:)` | `textIsNot(expected, strict:, waitSeconds:)` | exact match |
+| `textContains(expected, requireVisible:, strict:, waitSeconds:)` | `textContainsNot(expected, strict:, waitSeconds:)` | substring match |
+| `textStartsWith(expected, requireVisible:, strict:, waitSeconds:)` | `textStartsWithNot(expected, strict:, waitSeconds:)` | prefix match |
+| `textEndsWith(expected, requireVisible:, strict:, waitSeconds:)` | `textEndsWithNot(expected, strict:, waitSeconds:)` | suffix match |
+| `textMatches(pattern, requireVisible:, strict:, waitSeconds:)` | `textMatchesNot(pattern, strict:, waitSeconds:)` | regular expression (substring; use `^…$` for a full match) |
+| `textMatchesDateFormat(format, requireVisible:, waitSeconds:)` | — | `DateFormatter` format string, e.g. `"yyyy/MM/dd"` |
+| `textIsNotEmpty(strict:, waitSeconds:)` | `textIsEmpty(strict:, waitSeconds:)` | non-empty / empty |
 
 All of the above are chainable on the return value of `exist` / `select`, and each also has an
 implicit one-argument free-function form that acts on the last grabbed element.

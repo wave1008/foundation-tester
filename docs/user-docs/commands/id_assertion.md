@@ -6,7 +6,7 @@ Asserts the identifier of the last grabbed element.
 
 | function | description |
 |---|---|
-| `select(selector).idIs(expected, waitSeconds:, strict:)` | Asserts the identifier of the element equals `expected`. The target is the element grabbed last; also available as the implicit `idIs(expected, waitSeconds:, strict:)`. |
+| `select(selector).idIs(expected, strict:, waitSeconds:)` | Asserts the identifier of the element equals `expected`. The target is the element grabbed last; also available as the implicit `idIs(expected, strict:, waitSeconds:)`. |
 
 Comparison follows the same "same if it looks the same" rule as text assertions (see
 [Text Assertion](./text_assertion.md)); pass `strict: true` to disable normalization.

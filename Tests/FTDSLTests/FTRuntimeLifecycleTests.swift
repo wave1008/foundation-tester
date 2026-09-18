@@ -163,7 +163,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
 
         scenario {
             scene(1, "失敗する") {
-                action { exist("#missing", waitSeconds: 0, requireVisible: false) }
+                action { exist("#missing", requireVisible: false, waitSeconds: 0) }
             }
             scene(2, "実行されない") {
                 action { tap("#cleanup") }
@@ -184,7 +184,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         scenario {
             scene(1, "s") {
                 action {
-                    exist("#missing", waitSeconds: 0, requireVisible: false)
+                    exist("#missing", requireVisible: false, waitSeconds: 0)
                     tap("#cleanup")   // 失敗後なのでスキップされる
                 }
             }
@@ -205,7 +205,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         defer { FTRuntime.tearDown() }
 
         scenario { scene(1, "s") { action { tap("#cleanup") } } }
-        ftRunTearDown { exist("#missing", waitSeconds: 0, requireVisible: false) }
+        ftRunTearDown { exist("#missing", requireVisible: false, waitSeconds: 0) }
 
         XCTAssertFalse(core.finalRecord.passed, "片付けの失敗もシナリオ失敗として残る")
     }
@@ -216,7 +216,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)
         defer { FTRuntime.tearDown() }
 
-        ftRunSetUp { exist("#missing", waitSeconds: 0, requireVisible: false) }
+        ftRunSetUp { exist("#missing", requireVisible: false, waitSeconds: 0) }
         scenario {
             scene(1, "s") { action { tap("#cleanup") } }
             scene(2, "s2") { action { tap("#cleanup") } }
@@ -282,7 +282,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         var element: FTElement!
         scenario {
             scene(1, "s") {
-                action { element = exist("#missing", waitSeconds: 0, requireVisible: false) }
+                action { element = exist("#missing", requireVisible: false, waitSeconds: 0) }
             }
         }
         XCTAssertNil(element.text)
@@ -300,7 +300,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         scenario {
             scene(1, "s") {
                 action {
-                    exist("#missing", waitSeconds: 0, requireVisible: false)   // 失敗 → シナリオ中断
+                    exist("#missing", requireVisible: false, waitSeconds: 0)   // 失敗 → シナリオ中断
                     element = exist("#cleanup")   // 中断後なのでスキップされる
                 }
             }
@@ -487,7 +487,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
             scene(1, "s") {
                 action {
                     verify("the missing element should not break this") {
-                        exist("#missing", waitSeconds: 0, requireVisible: false)
+                        exist("#missing", requireVisible: false, waitSeconds: 0)
                     }
                     tap("#cleanup")   // verify 失敗後なのでスキップされる
                 }
@@ -541,7 +541,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
                 action {
                     verify("outer") {
                         verify("inner") {
-                            exist("#missing", waitSeconds: 0, requireVisible: false)
+                            exist("#missing", requireVisible: false, waitSeconds: 0)
                         }
                     }
                 }
@@ -566,7 +566,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         scenario {
             scene(1, "s") {
                 action {
-                    exist("#missing", waitSeconds: 0, requireVisible: false)   // 失敗 → シナリオ中断
+                    exist("#missing", requireVisible: false, waitSeconds: 0)   // 失敗 → シナリオ中断
                     verify("should be skipped") { exist("#cleanup") }
                 }
             }

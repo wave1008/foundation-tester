@@ -18,13 +18,13 @@ select("#email"); valueIs("test@example.com")              // 暗黙(直前に�
 
 | 肯定 | 否定 | 判定 |
 |---|---|---|
-| `select(selector).valueIs(expected, waitSeconds:, requireVisible:, strict:)` | `valueIsNot(expected, waitSeconds:, strict:)` | 完全一致 |
-| `valueContains(expected, waitSeconds:, requireVisible:, strict:)` | `valueContainsNot(expected, waitSeconds:, strict:)` | 部分一致 |
-| `valueStartsWith(expected, waitSeconds:, requireVisible:, strict:)` | `valueStartsWithNot(expected, waitSeconds:, strict:)` | 前方一致 |
-| `valueEndsWith(expected, waitSeconds:, requireVisible:, strict:)` | `valueEndsWithNot(expected, waitSeconds:, strict:)` | 後方一致 |
-| `valueMatches(pattern, waitSeconds:, requireVisible:, strict:)` | `valueMatchesNot(pattern, waitSeconds:, strict:)` | 正規表現(部分一致。全体一致は `^…$`) |
-| `valueMatchesDateFormat(format, waitSeconds:, requireVisible:)` | — | `DateFormatter` の書式文字列 |
-| `valueIsNotEmpty(waitSeconds:, strict:)` | `valueIsEmpty(waitSeconds:, strict:)` | 空でない / 空 |
+| `select(selector).valueIs(expected, requireVisible:, strict:, waitSeconds:)` | `valueIsNot(expected, strict:, waitSeconds:)` | 完全一致 |
+| `valueContains(expected, requireVisible:, strict:, waitSeconds:)` | `valueContainsNot(expected, strict:, waitSeconds:)` | 部分一致 |
+| `valueStartsWith(expected, requireVisible:, strict:, waitSeconds:)` | `valueStartsWithNot(expected, strict:, waitSeconds:)` | 前方一致 |
+| `valueEndsWith(expected, requireVisible:, strict:, waitSeconds:)` | `valueEndsWithNot(expected, strict:, waitSeconds:)` | 後方一致 |
+| `valueMatches(pattern, requireVisible:, strict:, waitSeconds:)` | `valueMatchesNot(pattern, strict:, waitSeconds:)` | 正規表現(部分一致。全体一致は `^…$`) |
+| `valueMatchesDateFormat(format, requireVisible:, waitSeconds:)` | — | `DateFormatter` の書式文字列 |
+| `valueIsNotEmpty(strict:, waitSeconds:)` | `valueIsEmpty(strict:, waitSeconds:)` | 空でない / 空 |
 
 比較規則はテキストの検証と同じ「見た目が完全に一致していれば同じ」です(`strict:` で無効化可能)。
 詳細は[テキストの検証](./text_assertion_ja.md)を参照してください。

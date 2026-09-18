@@ -26,7 +26,7 @@ class 可視性の幾何 {
     func S0020() {
         scenario {
             scene(1, "逃げ道") {
-                condition { launchApp() }.expectation { exist("#nav_diagnostics", waitSeconds: 2, requireVisible: false) }
+                condition { launchApp() }.expectation { exist("#nav_diagnostics", requireVisible: false, waitSeconds: 2) }
             }
         }
     }

@@ -6,7 +6,7 @@
 
 | 関数 | 説明 |
 |---|---|
-| `select(selector).idIs(expected, waitSeconds:, strict:)` | 要素の identifier が `expected` と一致することを検証します。対象は直前に掴んだ要素で、暗黙形 `idIs(expected, waitSeconds:, strict:)` としても書けます。 |
+| `select(selector).idIs(expected, strict:, waitSeconds:)` | 要素の identifier が `expected` と一致することを検証します。対象は直前に掴んだ要素で、暗黙形 `idIs(expected, strict:, waitSeconds:)` としても書けます。 |
 
 比較規則はテキストの検証と同じ「見た目が完全に一致していれば同じ」です([テキストの検証](./text_assertion_ja.md)参照)。
 `strict: true` で正規化を無効化できます。

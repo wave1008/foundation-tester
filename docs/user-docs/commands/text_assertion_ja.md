@@ -19,13 +19,13 @@ select("#msg"); textIs("完了")                // 暗黙(直前に掴んだ要�
 
 | 肯定 | 否定 | 判定 |
 |---|---|---|
-| `select(selector).textIs(expected, waitSeconds:, requireVisible:, strict:)` | `textIsNot(expected, waitSeconds:, strict:)` | 完全一致 |
-| `textContains(expected, waitSeconds:, requireVisible:, strict:)` | `textContainsNot(expected, waitSeconds:, strict:)` | 部分一致 |
-| `textStartsWith(expected, waitSeconds:, requireVisible:, strict:)` | `textStartsWithNot(expected, waitSeconds:, strict:)` | 前方一致 |
-| `textEndsWith(expected, waitSeconds:, requireVisible:, strict:)` | `textEndsWithNot(expected, waitSeconds:, strict:)` | 後方一致 |
-| `textMatches(pattern, waitSeconds:, requireVisible:, strict:)` | `textMatchesNot(pattern, waitSeconds:, strict:)` | 正規表現(部分一致。全体一致は `^…$`) |
-| `textMatchesDateFormat(format, waitSeconds:, requireVisible:)` | — | `DateFormatter` の書式文字列(例: `"yyyy/MM/dd"`) |
-| `textIsNotEmpty(waitSeconds:, strict:)` | `textIsEmpty(waitSeconds:, strict:)` | 空でない / 空 |
+| `select(selector).textIs(expected, requireVisible:, strict:, waitSeconds:)` | `textIsNot(expected, strict:, waitSeconds:)` | 完全一致 |
+| `textContains(expected, requireVisible:, strict:, waitSeconds:)` | `textContainsNot(expected, strict:, waitSeconds:)` | 部分一致 |
+| `textStartsWith(expected, requireVisible:, strict:, waitSeconds:)` | `textStartsWithNot(expected, strict:, waitSeconds:)` | 前方一致 |
+| `textEndsWith(expected, requireVisible:, strict:, waitSeconds:)` | `textEndsWithNot(expected, strict:, waitSeconds:)` | 後方一致 |
+| `textMatches(pattern, requireVisible:, strict:, waitSeconds:)` | `textMatchesNot(pattern, strict:, waitSeconds:)` | 正規表現(部分一致。全体一致は `^…$`) |
+| `textMatchesDateFormat(format, requireVisible:, waitSeconds:)` | — | `DateFormatter` の書式文字列(例: `"yyyy/MM/dd"`) |
+| `textIsNotEmpty(strict:, waitSeconds:)` | `textIsEmpty(strict:, waitSeconds:)` | 空でない / 空 |
 
 上記はすべて `exist` / `select` の戻り値にチェーンでき、直前に掴んだ要素に効く1引数の
 暗黙形(自由関数)も持ちます。

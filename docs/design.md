@@ -1449,6 +1449,10 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   `timeout` は内部 / 別系統の名前で据え置き。**`ft_batch` は DSL の行を受けるので DSL と同じ `waitSeconds:`** ——
   索引の signature とビルダーのキー(`MCPServer.batchStepBuilders`)を片方だけ変えると、実在するラベルを断り
   無いラベルを受ける。`BatchLineParserTests.testWaitCapLabelFollowsTheDSL` が縛る)
+- **引数の並びは「対象 → コマンド固有 → `waitSeconds:` → `scroll:` → `maxSwipes:`」**(ユーザー決定 2026-09-19)。
+  `exist(sel, requireVisible:, waitSeconds:, scroll:, maxSwipes:)` / `textIs(expected, requireVisible:, strict:, waitSeconds:)` /
+  `checkIsON(prefer:, waitSeconds:)` / `tap(sel, holdSeconds:, waitSeconds:, scroll:, maxSwipes:)`。以前は検証系だけ
+  `waitSeconds` が固有の引数より前で、`checkIsON` とも操作系とも逆だった
 - tap/type/select は `waitSeconds:`(ロケータ解決の再試行待ち上限秒。0=リトライなし。
   省略時は tap/type が約0.7秒・select は `defaultTimeout`)を取る。
   出るか不定の要素を `ifCanSelect` で見るときの空振り短縮用(performance-tuning §5)

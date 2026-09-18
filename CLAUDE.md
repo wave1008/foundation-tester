@@ -161,6 +161,9 @@
   `FlowStep.timeout`・プロファイルの `defaultTimeout`・MCP ツールの `timeout` は別系統で据え置き)/ ループ上限は
   **`maxLoopCount:`** / ラベル無しの第1引数は `selector`・`label`・`appID`・`filename`、ブロックは `body` /
   同じことを2通りで書ける口を作らない(`screenshot` のファイル名はラベル無しの1形だけ)。
+  **引数の並びは「対象(ラベル無し)→ コマンド固有(`holdSeconds` / `requireVisible` / `strict` / `prefer` /
+  `threshold` 等)→ `waitSeconds:` → `scroll:` → `maxSwipes:`」**を全コマンドで守る(Swift は既定値つきでも
+  順序を強制するので、族の中で並びが割れると書き手が1つずつ覚える羽目になる)。
   **`ft_batch` は DSL の行を受けるので、索引の signature を変えたら `MCPServer.batchStepBuilders` のキーも同時に変える**
   (片方だけだと実在するラベルを断り、無いラベルを受ける。緑のまま通った = `BatchLineParserTests.testWaitCapLabelFollowsTheDSL`)
 - **置いていない名前は `Sources/FTDSL/UnavailableCommands.swift` で受け止める**(他ツールの名前・
