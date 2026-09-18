@@ -382,6 +382,17 @@ class スクロールで折り返し下の要素に到達できること {
                     existWithoutScroll("#tag_01")
                 }
             }
+            // scrollFrame 無しは「画面中央を払う」(XCUITest / Android はそのとおり動く)。画面中央は縦リストの上なので、
+            // 横に払っても縦リストもカルーセルも動かない。in-app が「余地のある最大の容器」や「木の順で最初に受理した
+            // 要素」を動かすと、画面下のカルーセルが動いて #tag_01 が消える(エンジンで結果が割れる形)
+            scene(9, "scrollFrame 無しで横に払っても、画面中央の縦リストは横に動かずカルーセルも動かない") {
+                action {
+                    scrollRight()
+                }.expectation {
+                    select("#txt_scroll_top").textIs("top=row_01")
+                    existWithoutScroll("#tag_01")
+                }
+            }
         }
     }
 

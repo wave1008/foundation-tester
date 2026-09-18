@@ -396,7 +396,11 @@ public enum BridgeAPI {
     /// the same UIAccessibilityScrollDirection (horizontal follows the finger; vertical is reversed).
     /// UIKit / SwiftUI / RN: a scroll with a region no longer falls back to the largest scroll view when no
     /// scroll view under the region's start point can move (it moved an unrelated carousel); it is a no-op.
-    public static let bridgeProtocolVersion = 112
+    /// v113 (in-app only): a scroll without a region moves only what the screen centre can reach, as XCUITest
+    /// and Android do (they swipe the centre): UIKit / SwiftUI / RN pick the innermost scroll view containing
+    /// the centre (was the largest scroll view with room anywhere, which moved a carousel below the list), and
+    /// the self-rendered AX walk skips elements whose frame does not contain the centre (`ScrollPointReach`).
+    public static let bridgeProtocolVersion = 113
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1389,6 +1393,19 @@ public enum ScrollRegionMatch {
         let inter = w * h
         let union = a.width * a.height + b.width * b.height - inter
         return union > 0 ? inter / union : 0
+    }
+}
+
+/// scrollFrame 無しのスクロールで、指を置く点(画面中央)に触れうる要素だけを対象にする判定
+/// (in-app の自前描画の AX 走査が使う)。XCUITest / Android は画面中央を実際に払うので、in-app も
+/// 同じ容器だけを動かす —— 「余地のある最大の容器」や「木の順で最初に受理した要素」を動かすと、
+/// 同じシナリオが iOS の既定エンジンでだけ別の容器(画面下のカルーセル等)を動かした。
+public enum ScrollPointReach {
+    /// 枠が点を含むか。**枠の大きさが 0 の要素は通す**(枠を申告しない入れ物。ここで刈ると
+    /// その下の容器まで届かず、ふだんの縦スクロールまで XCUITest へ落ちる)
+    public static func mayReach(frame: FTRect, x: Double, y: Double) -> Bool {
+        guard frame.width > 0, frame.height > 0 else { return true }
+        return x >= frame.x && x <= frame.x + frame.width && y >= frame.y && y <= frame.y + frame.height
     }
 }
 

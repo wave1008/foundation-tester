@@ -81,10 +81,10 @@ final class ScrollRegionMatchTests: XCTestCase {
                       "自前描画の領域指定が scrollRegion を通っていない")
     }
 
-    /// UIKit / SwiftUI / RN の in-app: 領域指定があるときは、始点を含むスクロールビューが無くても
-    /// 面積最大へ落とさない(落とすと指定と違う領域が動く。E2E-RN でカルーセルが動いた)。
-    /// 面積最大を採るのは領域指定が無いときだけ
-    func testUIKitTargetDoesNotFallBackToTheLargestWhenARegionIsGiven() throws {
+    /// UIKit / SwiftUI / RN の in-app: 指を置く点(領域の始点・無ければ画面中央)を含むスクロールビューだけを選び、
+    /// 画面のどこかの「余地のある最大の容器」へ落とさない(落とすと指定と違う領域が動く。E2E-RN でカルーセルが
+    /// 動いた・scrollFrame 無しでも画面下のカルーセルが動いた)
+    func testUIKitTargetUsesOnlyThePointOfContact() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let bridge = try String(contentsOf: root.appendingPathComponent("InAppBridge/Sources/InAppBridge.swift"),
@@ -94,10 +94,31 @@ final class ScrollRegionMatchTests: XCTestCase {
             return XCTFail("target が見つかりません")
         }
         let body = String(bridge[start.lowerBound..<end.upperBound])
-        let fallbacks = body.components(separatedBy: "largestWithRoom(").count - 1
-        XCTAssertEqual(fallbacks, 1, "面積最大は領域指定が無いときの 1 箇所だけ")
-        XCTAssertTrue(body.contains("guard let path else { return largestWithRoom("),
-                      "面積最大を採るのは path が無いときだけ")
+        XCTAssertFalse(bridge.contains("largestWithRoom("), "面積最大への落とし先を戻さない")
+        XCTAssertTrue(body.contains("?? centre"), "領域指定が無いときは画面中央を使う")
+        XCTAssertTrue(bridge.contains("centre: CGPoint(x: window.bounds.midX, y: window.bounds.midY)"),
+                      "呼び出し側が画面中央を渡していない")
+    }
+
+    /// 自前描画の AX 走査(scrollFrame 無し)は、画面中央に触れうる要素だけを見る
+    func testSelfRenderedWalkWithoutRegionIsConfinedToTheCentre() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let bridge = try String(contentsOf: root.appendingPathComponent("InAppBridge/Sources/InAppBridge.swift"),
+                                encoding: .utf8)
+        XCTAssertTrue(bridge.contains("return scrollWalk(root, accessibilityDirection(finger: finger), reaching: centre,"),
+                      "scrollFrame 無しの AX 走査が画面中央を渡していない")
+        XCTAssertTrue(bridge.contains("ScrollPointReach.mayReach(frame: frame, x: Double(point.x), y: Double(point.y))"),
+                      "走査が枠で刈っていない")
+    }
+
+    func testPointReach() {
+        let list = FTRect(x: 16, y: 230, width: 370, height: 462)
+        let carousel = FTRect(x: 16, y: 692, width: 370, height: 60)
+        XCTAssertTrue(ScrollPointReach.mayReach(frame: list, x: 201, y: 437))
+        XCTAssertFalse(ScrollPointReach.mayReach(frame: carousel, x: 201, y: 437), "画面下のカルーセルは中央に触れない")
+        XCTAssertTrue(ScrollPointReach.mayReach(frame: FTRect(x: 0, y: 0, width: 0, height: 0), x: 201, y: 437),
+                      "枠を申告しない入れ物は通す(刈るとその下の容器に届かない)")
     }
 
     /// スクロール用の経路だけが region を運ぶ(pan / flick はジェスチャそのものが目的なので運ばない)

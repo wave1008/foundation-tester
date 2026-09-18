@@ -2280,6 +2280,11 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   ②UIAccessibilityScrollDirection は縦がスクロールバーの向き(指と逆)・横は指の向き(反転していた頃は
   横カルーセルが逆へ送られ端で断られた)。効果(手元の iOS in-app): CMP の `scrollToLeftEdge` 6.6 → 2.0 秒・
   `scrollLeft ×2` 4.3 → 0.47 秒、Flutter の `scrollToLeftEdge` 8.9 → 1.7 秒・`scrollDown ×2` 5.5 → 0.53 秒。
+  **scrollFrame 無しは画面中央に揃える**(v113): XCUITest / Android は画面中央を払うが、in-app は UIKit 系が
+  「画面のどこかの余地のある最大の容器」、自前描画が「木の順で最初に受理した要素」を動かしていたので、縦リストが
+  中央にある画面で横に払うと画面下のカルーセルが動いた(in-app の Flutter・SwiftUI・RN だけ。4 SUT × 3 エンジンで実測)。
+  いまは UIKit 系が「画面中央を含み余地のある最も内側」、自前描画が「枠が画面中央を含まない要素を部分木ごと飛ばす」
+  (`ScrollPointReach`。枠 0 の入れ物は通す)。witness = 05_スクロール S0090 scene 9。
   時間指定は持たない(上記の承認済み差分)。
   **未指定のときに容器を特定して座標化する案は撤回済み**(2026-08-02 実装 → 撤回 →
   08-03 に条件を変えて再投入 → 再び撤回。**3度目は無い**)。2度目の撤回理由は2つ:

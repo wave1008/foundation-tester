@@ -1085,8 +1085,8 @@ final class FTInAppBridge {
             }
             // 余地なし = 端。no-op で 200 を返し、**動かしていないので整定も待たない**。
             // **端送りならその事実を返す**(ホストが署名の2回不変を待たずに切り上げられる)
-            guard let scrollView = Self.target(scrollViews, direction: req.direction,
-                                               path: req.path) else {
+            guard let scrollView = Self.target(scrollViews, direction: req.direction, path: req.path,
+                                               centre: CGPoint(x: window.bounds.midX, y: window.bounds.midY)) else {
                 atEdge = req.edge == true
                 return false
             }
@@ -1121,7 +1121,9 @@ final class FTInAppBridge {
     /// 「スクロールできない画面で黙って成功する」より安全)
     private static func scrollViaAccessibility(_ root: NSObject, finger: FTSwipeDirection) -> Bool {
         var visited = 0
-        return scrollWalk(root, accessibilityDirection(finger: finger), visited: &visited)
+        // 指を置く点 = 画面中央(scrollFrame 無しは XCUITest / Android も画面中央を払う)
+        let centre = (root as? UIView).map { CGPoint(x: $0.bounds.midX, y: $0.bounds.midY) }
+        return scrollWalk(root, accessibilityDirection(finger: finger), reaching: centre, visited: &visited)
     }
 
     /// UIAccessibilityScrollDirection の向きは**縦と横で基準が違う**: 縦はスクロールバーの動く向き
@@ -1155,7 +1157,7 @@ final class FTInAppBridge {
         for ref in refs {
             guard let node = snapshot.nodes[ref] else { continue }
             var visited = 0
-            if scrollWalk(node, direction, visited: &visited) { return .scrolled }
+            if scrollWalk(node, direction, reaching: nil, visited: &visited) { return .scrolled }
         }
         return .refused
     }
@@ -1163,13 +1165,23 @@ final class FTInAppBridge {
     /// 走査上限。AX ツリーは深いことがあるので暴走を止める(実測の受理は 20〜100 要素目)
     private static let axScrollMaxVisits = 2000
 
+    /// point: 指を置く点(window 座標)。nil = 刈らない(領域指定は一致した容器を根にするので要らない)。
+    /// 点があれば、枠がその点を含まない要素は**部分木ごと**飛ばす(`ScrollPointReach`)
     private static func scrollWalk(_ node: NSObject, _ direction: UIAccessibilityScrollDirection,
-                                   visited: inout Int) -> Bool {
+                                   reaching point: CGPoint?, visited: inout Int) -> Bool {
         if visited >= axScrollMaxVisits { return false }
         visited += 1
+        if let point {
+            let f = InAppSnapshot.axFrame(node)
+            let frame = FTRect(x: Double(f.origin.x), y: Double(f.origin.y),
+                               width: Double(f.width), height: Double(f.height))
+            if !ScrollPointReach.mayReach(frame: frame, x: Double(point.x), y: Double(point.y)) { return false }
+        }
         if node.accessibilityScroll(direction) { return true }
         if let elements = node.accessibilityElements as? [NSObject] {
-            for element in elements where scrollWalk(element, direction, visited: &visited) { return true }
+            for element in elements where scrollWalk(element, direction, reaching: point, visited: &visited) {
+                return true
+            }
         }
         // Flutter の SemanticsObjectContainer は accessibilityElements を実装せず、旧式の
         // indexed API だけを実装する(InAppSnapshot.axChildren と同じ事情)
@@ -1177,11 +1189,13 @@ final class FTInAppBridge {
         if count != NSNotFound && count > 0 {
             for i in 0..<count {
                 guard let element = node.accessibilityElement(at: i) as? NSObject else { continue }
-                if scrollWalk(element, direction, visited: &visited) { return true }
+                if scrollWalk(element, direction, reaching: point, visited: &visited) { return true }
             }
         }
         if let view = node as? UIView {
-            for sub in view.subviews where scrollWalk(sub, direction, visited: &visited) { return true }
+            for sub in view.subviews where scrollWalk(sub, direction, reaching: point, visited: &visited) {
+                return true
+            }
         }
         return false
     }
@@ -1277,40 +1291,23 @@ final class FTInAppBridge {
         return best
     }
 
-    /// 動かすスクロールビューを選ぶ。**領域指定(path)があれば始点を含むものだけ** ——
-    /// 始点はホストが対象領域の内側に取っているので、これで「指定と違う領域が動く」ことがなくなる。
+    /// 動かすスクロールビューを選ぶ。**指を置く点を含むものだけ** —— 点は領域指定(path)があれば
+    /// その始点(ホストが対象領域の内側に取る)、無ければ**画面中央**(XCUITest / Android も画面中央を払う)。
     /// 入れ子(リストの中の横カルーセル等)では、その向きに余地のあるもののうち**内側 = 面積が小さい方**を採る
     /// (余地の無い内側を飛ばして外側が動くのは、実機でも払う向きが合わないと親が動くのと同じ)。
-    /// 含むものが無ければ nil(= 何も動かさない)。領域指定が無いときだけ面積最大を採る
+    /// 含むものが無ければ nil(= 何も動かさない。呼び出し側が no-op の 200 にする)。
+    /// **画面のどこかの「余地のある最大の容器」へ落とさない** —— 落とすと指定と違う領域が黙って動く:
+    /// 領域指定では固定の帯を横に払うとカルーセルが動き(05_スクロール S0090 scene 8)、scrollFrame 無しでも
+    /// 画面中央が縦リストなのに画面下のカルーセルが動いた(XCUITest / Android は動かさない。scene 9)
     private static func target(_ scrollViews: [UIScrollView], direction: FTSwipeDirection,
-                               path: FTSwipePath?) -> UIScrollView? {
-        guard let path else { return largestWithRoom(scrollViews, direction: direction) }
-        let point = CGPoint(x: path.fromX, y: path.fromY)
+                               path: FTSwipePath?, centre: CGPoint) -> UIScrollView? {
+        let point = path.map { CGPoint(x: $0.fromX, y: $0.fromY) } ?? centre
         let containing = scrollViews.filter { sv in
             guard hasRoom(sv, direction), let window = sv.window else { return false }
             return sv.convert(sv.bounds, to: window).contains(point)
         }
-        // **領域指定があるときは面積最大へ落とさない**: 始点を含む(余地のある)スクロールビューが無い =
-        // 指定領域はスクロールしない(か端)なので何も動かさない(呼び出し側が no-op の 200 にする)。
-        // 落とすと指定と違う領域が黙って動く —— E2E-RN で、カルーセル直下の固定の帯を指定して横に払うと
-        // 横に余地のある唯一のスクロールビュー = カルーセルが動いた(05_スクロール S0090 scene 8)
         return containing.min(by: { $0.bounds.width * $0.bounds.height
                                     < $1.bounds.width * $1.bounds.height })
-    }
-
-    /// 面積最大の、**その向きに実際にスクロール余地がある**スクロールビュー。
-    /// 余地の判定を入れているのは、画面上に本体のスクロールとは無関係な(コンテンツが収まりきっている)
-    /// UIScrollView が居ることがあり、それを動かすと「offset は変わったが見た目は不変」= 黙った空振りに
-    /// なるため。全て余地なし = 端に達している(呼び出し側が no-op にする)。
-    private static func largestWithRoom(_ scrollViews: [UIScrollView],
-                                        direction: FTSwipeDirection) -> UIScrollView? {
-        var best: UIScrollView?
-        var bestArea: CGFloat = 0
-        for sv in scrollViews where hasRoom(sv, direction) {
-            let area = sv.bounds.width * sv.bounds.height
-            if area > bestArea { best = sv; bestArea = area }
-        }
-        return best
     }
 
     /// 指定方向へまだ動かせるか(1pt でも余地があれば真)。指の向きとスクロール方向は逆。
