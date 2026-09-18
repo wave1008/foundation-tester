@@ -42,7 +42,7 @@ class ログイン失敗が表示されること {
         scenario {
             scene(1, "ログイン画面を開く") {
                 action {
-                    tap("#btn_login", timeout: 5)  // アカウントの「ログイン / 登録」。セッション判定は非同期のため待つ
+                    tap("#btn_login", waitSeconds: 5)  // アカウントの「ログイン / 登録」。セッション判定は非同期のため待つ
                 }.expectation {
                     exist("#field_email")
                     exist("#btn_goto_signup")

@@ -159,7 +159,7 @@ final class IfCanSelectInterruptionTests: XCTestCase {
             scene(1, "s") {
                 action {
                     irregularHandler("#promo_modal", dismiss: "#btn_promo_close")
-                    repeatWhileCanSelect("いますぐ利用する", max: 3) {
+                    repeatWhileCanSelect("いますぐ利用する", maxLoopCount: 3) {
                         // 1周したら覆いが復活し、対象はもう戻らない(= 次の周回は
                         // 「閉じたが不成立」で終わる)
                         driver.covered = true
@@ -191,7 +191,7 @@ final class IfCanSelectInterruptionTests: XCTestCase {
             scene(1, "s") {
                 action {
                     irregularHandler("#promo_modal", dismiss: "#btn_promo_close")
-                    repeatWhileCanSelect("いますぐ利用する", max: 1) { rounds += 1 }
+                    repeatWhileCanSelect("いますぐ利用する", maxLoopCount: 1) { rounds += 1 }
                 }
             }
         }

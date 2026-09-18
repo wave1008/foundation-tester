@@ -178,7 +178,7 @@ final class HeldValueAssertTests: XCTestCase {
     /// どちらでも一致しなければ従来どおり落ちる(空振りを緑にしない)
     func testMismatchStillFails() {
         let driver = MutatingDriver()
-        let core = run(driver: driver) { select("#total").textIs("9,999", timeout: 0.2) }
+        let core = run(driver: driver) { select("#total").textIs("9,999", waitSeconds: 0.2) }
         guard case .failed = steps(core).last?.status else {
             return XCTFail("不一致が通ってしまった: \(steps(core).map(\.description))")
         }

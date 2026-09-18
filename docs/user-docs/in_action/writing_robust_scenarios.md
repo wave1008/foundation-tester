@@ -6,9 +6,9 @@ are in [the DSL command reference](../../commands.md).
 ## Don't add `wait` for element appearance
 
 Element appearance is waited for implicitly: operations retry locator resolution for about 0.7s
-(`timeout:` to change it), and verification commands poll until their timeout (5s by default).
+(`waitSeconds:` to change it), and verification commands poll until their timeout (5s by default).
 Putting a `wait(1)` before `exist(...)` is redundant — if the wait isn't long enough, raise the
-command's own `timeout:` instead. `wait` still has a real use: waiting out an animation where the
+command's own `waitSeconds:` instead. `wait` still has a real use: waiting out an animation where the
 element already exists but its tap coordinates are still moving (a menu expanding, a sheet
 sliding in).
 

@@ -69,7 +69,7 @@ lastElement.idIs("order_btn")              // 操作コマンドも掴んだ要�
 
 チェーンした検証(`exist(…).textIs(…)`・`lastElement.textIs(…)`・暗黙形の `textIs(…)`)は、
 **まず掴んだ時点の値で判定**します。満たしていればステップは記録されますが、デバイスを見に行きません
-(説明に `(from the grabbed value)` が付きます)。満たしていなければ従来どおり `timeout` まで
+(説明に `(from the grabbed value)` が付きます)。満たしていなければ従来どおり `waitSeconds` まで
 ポーリングします。
 
 ```swift

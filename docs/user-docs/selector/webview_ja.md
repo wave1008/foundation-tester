@@ -34,7 +34,7 @@ placeholder の節です。`#x` は identifier で引けなければ placeholder
 
 コンテナ自体は `.webView` 型で出ます(`.webView >> …` のスコープ起点にできます)。画面遷移
 直後は余裕を持ってください —— 中身が a11y/DOM ツリーに現れるまで数秒かかることがあるため、
-WebView 画面へ着地した直後の最初の検証は `timeout:` を長めに取ってください。
+WebView 画面へ着地した直後の最初の検証は `waitSeconds:` を長めに取ってください。
 
 ## `#x` は placeholder も引く
 

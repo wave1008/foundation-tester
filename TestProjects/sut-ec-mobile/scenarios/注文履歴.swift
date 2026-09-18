@@ -110,7 +110,7 @@ class 注文履歴に確定した注文が並ぶこと {
                     // カートは実行を跨いで累積する。空を基準にしないと「入れた1点」が曖昧になる
                     ifCanSelect("#btn_remove_fashion_5", waitSeconds: 1) { tap("#btn_remove_fashion_5") }
                     tap("#tab_home")
-                    tap("#product_card_fashion_5", timeout: 5)  // おすすめは非同期ロード
+                    tap("#product_card_fashion_5", waitSeconds: 5)  // おすすめは非同期ロード
                     tap("#btn_add_to_cart")
                     wait(1)  // 「カートに追加しました」スナックバーの整定
                     tap("#btn_open_cart")

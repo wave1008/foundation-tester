@@ -128,7 +128,7 @@ class チェックアウトできること {
             scene(3, "商品をカートに入れる") {
                 action {
                     tap("#tab_home")
-                    tap("#product_card_fashion_5", timeout: 5)  // おすすめは非同期ロード
+                    tap("#product_card_fashion_5", waitSeconds: 5)  // おすすめは非同期ロード
                     tap("#btn_add_to_cart")
                     wait(1)  // 「カートに追加しました」スナックバーの整定
                     tap("#btn_open_cart")

@@ -92,14 +92,14 @@ final class CheckStatePreferDSLTests: XCTestCase {
 
         // プロファイルは a11y 優先。`.classifier` の指定で画像(オン)が判定する
         let chained = run(projectRoot: root, profilePrefersClassifier: false) {
-            select("#cb", requireVisible: false).checkIsON(prefer: .classifier, timeout: 0)
+            select("#cb", requireVisible: false).checkIsON(prefer: .classifier, waitSeconds: 0)
         }
         XCTAssertTrue(chained.passed, chained.description)
         XCTAssertTrue(chained.description.contains("(prefer: classifier)"), chained.description)
 
         // プロファイルは分類器優先。`.accessibility` の指定で a11y(オフ)が判定する = checkIsON は落ちる
         let toA11y = run(projectRoot: root, profilePrefersClassifier: true) {
-            select("#cb", requireVisible: false).checkIsON(prefer: .accessibility, timeout: 0)
+            select("#cb", requireVisible: false).checkIsON(prefer: .accessibility, waitSeconds: 0)
         }
         XCTAssertFalse(toA11y.passed, "a11y はオフなので落ちるはず: \(toA11y.description)")
         XCTAssertTrue(toA11y.description.contains("(prefer: accessibility)"), toA11y.description)
@@ -107,18 +107,18 @@ final class CheckStatePreferDSLTests: XCTestCase {
         // 暗黙形(自由関数)も同じ引数を運ぶ
         let implicitOff = run(projectRoot: root, profilePrefersClassifier: true) {
             select("#cb", requireVisible: false)
-            checkIsOFF(prefer: .accessibility, timeout: 0)
+            checkIsOFF(prefer: .accessibility, waitSeconds: 0)
         }
         XCTAssertTrue(implicitOff.passed, implicitOff.description)
         let implicitOn = run(projectRoot: root, profilePrefersClassifier: false) {
             select("#cb", requireVisible: false)
-            checkIsON(prefer: .classifier, timeout: 0)
+            checkIsON(prefer: .classifier, waitSeconds: 0)
         }
         XCTAssertTrue(implicitOn.passed, implicitOn.description)
 
         // 省略時は実行プロファイルに従う(説明に印を足さない)
         let byProfile = run(projectRoot: root, profilePrefersClassifier: false) {
-            select("#cb", requireVisible: false).checkIsON(timeout: 0)
+            select("#cb", requireVisible: false).checkIsON(waitSeconds: 0)
         }
         XCTAssertFalse(byProfile.passed)
         XCTAssertFalse(byProfile.description.contains("prefer:"), byProfile.description)

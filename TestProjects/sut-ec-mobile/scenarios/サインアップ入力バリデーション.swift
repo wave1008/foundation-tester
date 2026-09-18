@@ -30,7 +30,7 @@ class サインアップ入力バリデーションが働くこと {
         scenario {
             scene(1, "サインアップ画面を開く") {
                 action {
-                    tap("#btn_login", timeout: 5)  // セッション判定は非同期。logged-out で出るまで待つ
+                    tap("#btn_login", waitSeconds: 5)  // セッション判定は非同期。logged-out で出るまで待つ
                     tap("#btn_goto_signup")
                 }.expectation {
                     exist("#field_name")

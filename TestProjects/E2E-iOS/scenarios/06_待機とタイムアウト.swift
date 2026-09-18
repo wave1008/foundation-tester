@@ -1,12 +1,12 @@
 // 06_待機とタイムアウト.swift
-// fleetest 機能: 暗黙待ち(exist/textIs の既定タイムアウト再試行)と `timeout:` 引数の検証・
+// fleetest 機能: 暗黙待ち(exist/textIs の既定タイムアウト再試行)と `waitSeconds:` 引数の検証・
 // notExist の待機/countIs/方向セレクタ・スコープ(`>>`)・状態フィルタ(12)・
 // `appIs`/`screenshot`/`waitForDisplay`/`verify`(21)をまとめて検証する。
-// #btn_delay_8 は既定5秒を超えるため timeout: を明示して通す(timeout が効いていることの証明であり、
+// #btn_delay_8 は既定5秒を超えるため waitSeconds: を明示して通す(timeout が効いていることの証明であり、
 // 「失敗させる」テストにはしない)。固定 wait() は暗黙待ちがあるため使わない。
 // 旧シナリオ境界は tap("#tab_home") でホームへ戻ってから叩き直す形に置き換えてある
 // (AppShell はタブ切替で子画面の @State を破棄するため、state=idle 等の初期値はこれだけで戻る)。
-// **S0020(timeout: の明示検証)は重量級(8秒待ち)のため統合しない**(独立 @Test のまま)。
+// **S0020(waitSeconds: の明示検証)は重量級(8秒待ち)のため統合しない**(独立 @Test のまま)。
 
 import FTDSL
 
@@ -131,7 +131,7 @@ class 待機とタイムアウトが正しく効くこと {
             scene(10, "非同期表示画面を開いてスクリーンショットを撮る") {
                 action {
                     tap("#nav_async")
-                    screenshot(filename: "S0010_async")
+                    screenshot("S0010_async")
                 }.expectation {
                     select("#txt_delay_state").textIs("state=idle")
                 }
@@ -159,7 +159,7 @@ class 待機とタイムアウトが正しく効くこと {
         }
     }
 
-    @Test("timeout: を明示して既定を超える遅延も待てる")
+    @Test("waitSeconds: を明示して既定を超える遅延も待てる")
     func S0020() {
         scenario {
             scene(1, "非同期表示画面をリセットして開く") {
@@ -172,28 +172,28 @@ class 待機とタイムアウトが正しく効くこと {
                     select("#txt_delay_state").textIs("state=idle")
                 }
             }
-            scene(2, "3秒後表示は timeout: 6 を明示して待つ") {
+            scene(2, "3秒後表示は waitSeconds: 6 を明示して待つ") {
                 action {
                     tap("#btn_delay_3")
                 }.expectation {
-                    exist("#txt_delayed", timeout: 6)
+                    exist("#txt_delayed", waitSeconds: 6)
                     select("#txt_delay_state").textIs("state=done")
                 }
             }
-            scene(3, "カウントダウンも timeout: 3 で観測できる") {
+            scene(3, "カウントダウンも waitSeconds: 3 で観測できる") {
                 action {
                     tap("#btn_async_reset")
                     tap("#btn_delay_3")
                 }.expectation {
-                    exist("#txt_countdown", timeout: 3)
+                    exist("#txt_countdown", waitSeconds: 3)
                 }
             }
-            scene(4, "8秒後表示は既定5秒を超えるため timeout: 12 を明示しないと拾えない") {
+            scene(4, "8秒後表示は既定5秒を超えるため waitSeconds: 12 を明示しないと拾えない") {
                 action {
                     tap("#btn_async_reset")
                     tap("#btn_delay_8")
                 }.expectation {
-                    exist("#txt_delayed", timeout: 12)
+                    exist("#txt_delayed", waitSeconds: 12)
                     select("#txt_delay_state").textIs("state=done")
                 }
             }

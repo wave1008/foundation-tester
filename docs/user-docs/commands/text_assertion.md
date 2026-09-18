@@ -13,20 +13,20 @@ select("#msg"); lastElement.textIs("Done") // explicit lastElement
 select("#msg"); textIs("Done")             // implicit (the last grabbed element)
 ```
 
-Arguments are `(expected, timeout:)` (the positive forms also take `requireVisible:`). There is
+Arguments are `(expected, waitSeconds:)` (the positive forms also take `requireVisible:`). There is
 no form that takes a selector — `textIs("#msg", "Done")` does not compile.
 
 ## Functions
 
 | function | negation | comparison |
 |---|---|---|
-| `select(selector).textIs(expected, timeout:, requireVisible:, strict:)` | `textIsNot(expected, timeout:, strict:)` | exact match |
-| `textContains(expected, timeout:, requireVisible:, strict:)` | `textContainsNot(expected, timeout:, strict:)` | substring match |
-| `textStartsWith(expected, timeout:, requireVisible:, strict:)` | `textStartsWithNot(expected, timeout:, strict:)` | prefix match |
-| `textEndsWith(expected, timeout:, requireVisible:, strict:)` | `textEndsWithNot(expected, timeout:, strict:)` | suffix match |
-| `textMatches(pattern, timeout:, requireVisible:, strict:)` | `textMatchesNot(pattern, timeout:, strict:)` | regular expression (substring; use `^…$` for a full match) |
-| `textMatchesDateFormat(format, timeout:, requireVisible:)` | — | `DateFormatter` format string, e.g. `"yyyy/MM/dd"` |
-| `textIsNotEmpty(timeout:, strict:)` | `textIsEmpty(timeout:, strict:)` | non-empty / empty |
+| `select(selector).textIs(expected, waitSeconds:, requireVisible:, strict:)` | `textIsNot(expected, waitSeconds:, strict:)` | exact match |
+| `textContains(expected, waitSeconds:, requireVisible:, strict:)` | `textContainsNot(expected, waitSeconds:, strict:)` | substring match |
+| `textStartsWith(expected, waitSeconds:, requireVisible:, strict:)` | `textStartsWithNot(expected, waitSeconds:, strict:)` | prefix match |
+| `textEndsWith(expected, waitSeconds:, requireVisible:, strict:)` | `textEndsWithNot(expected, waitSeconds:, strict:)` | suffix match |
+| `textMatches(pattern, waitSeconds:, requireVisible:, strict:)` | `textMatchesNot(pattern, waitSeconds:, strict:)` | regular expression (substring; use `^…$` for a full match) |
+| `textMatchesDateFormat(format, waitSeconds:, requireVisible:)` | — | `DateFormatter` format string, e.g. `"yyyy/MM/dd"` |
+| `textIsNotEmpty(waitSeconds:, strict:)` | `textIsEmpty(waitSeconds:, strict:)` | non-empty / empty |
 
 All of the above are chainable on the return value of `exist` / `select`, and each also has an
 implicit one-argument free-function form that acts on the last grabbed element.
@@ -49,7 +49,7 @@ exist("#total")
   preserved. Pass `strict: true` to disable this normalization
   (`textIs("Done", strict: true)`). A mismatch failure message says whether the normalized or
   strict comparison would have matched.
-- The element is assumed to already exist; these commands wait up to `timeout` for the value to
+- The element is assumed to already exist; these commands wait up to `waitSeconds` for the value to
   change, so they can be used to wait for a value update.
 - Negative forms and the empty checks (`textIsNot`, `textIsEmpty`, etc.) do not consider
   visibility — "not visible" cannot be confirmed from a screen match.
@@ -58,7 +58,7 @@ exist("#total")
 - When chained onto `exist(…)` / `select(…)` / `lastElement`, the check first evaluates against
   the value already grabbed. If that already satisfies the assertion, the step is recorded but no
   device round trip happens (the message shows `(from the grabbed value)`). Otherwise it polls the
-  device as usual up to `timeout`.
+  device as usual up to `waitSeconds`.
 
 ### Link
 - [index](../index.md)

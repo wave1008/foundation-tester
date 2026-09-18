@@ -6,10 +6,10 @@ Checks on the enabled/disabled and checked/unchecked state of the last grabbed e
 
 | function | description |
 |---|---|
-| `select(selector).enabledIsTrue(timeout:)` | Asserts the element is enabled. Waits up to `timeout` for a state change. The target is the element grabbed last. |
-| `select(selector).enabledIsFalse(timeout:)` | Asserts the element is disabled. Same waiting behavior. |
-| `select(selector).checkIsON(prefer:, timeout:)` | Asserts the element is checked. |
-| `select(selector).checkIsOFF(prefer:, timeout:)` | Asserts the element is not checked. Warns at the end of the run if the element never reported a checked state (on or off). |
+| `select(selector).enabledIsTrue(waitSeconds:)` | Asserts the element is enabled. Waits up to `waitSeconds` for a state change. The target is the element grabbed last. |
+| `select(selector).enabledIsFalse(waitSeconds:)` | Asserts the element is disabled. Same waiting behavior. |
+| `select(selector).checkIsON(prefer:, waitSeconds:)` | Asserts the element is checked. |
+| `select(selector).checkIsOFF(prefer:, waitSeconds:)` | Asserts the element is not checked. Warns at the end of the run if the element never reported a checked state (on or off). |
 
 All four are chainable on the return value of `exist` / `select`, and each also has an implicit
 free-function form that acts on the last grabbed element (e.g. `enabledIsTrue()`).

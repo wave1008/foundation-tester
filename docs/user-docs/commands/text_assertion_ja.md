@@ -12,20 +12,20 @@ select("#msg"); lastElement.textIs("完了")    // lastElement を明示
 select("#msg"); textIs("完了")                // 暗黙(直前に掴んだ要素)
 ```
 
-引数は `(期待値, timeout:)`(肯定形は `requireVisible:` も取ります)。セレクタを渡す形はありません
+引数は `(期待値, waitSeconds:)`(肯定形は `requireVisible:` も取ります)。セレクタを渡す形はありません
 — `textIs("#msg", "完了")` はコンパイルできません。
 
 ## 関数
 
 | 肯定 | 否定 | 判定 |
 |---|---|---|
-| `select(selector).textIs(expected, timeout:, requireVisible:, strict:)` | `textIsNot(expected, timeout:, strict:)` | 完全一致 |
-| `textContains(expected, timeout:, requireVisible:, strict:)` | `textContainsNot(expected, timeout:, strict:)` | 部分一致 |
-| `textStartsWith(expected, timeout:, requireVisible:, strict:)` | `textStartsWithNot(expected, timeout:, strict:)` | 前方一致 |
-| `textEndsWith(expected, timeout:, requireVisible:, strict:)` | `textEndsWithNot(expected, timeout:, strict:)` | 後方一致 |
-| `textMatches(pattern, timeout:, requireVisible:, strict:)` | `textMatchesNot(pattern, timeout:, strict:)` | 正規表現(部分一致。全体一致は `^…$`) |
-| `textMatchesDateFormat(format, timeout:, requireVisible:)` | — | `DateFormatter` の書式文字列(例: `"yyyy/MM/dd"`) |
-| `textIsNotEmpty(timeout:, strict:)` | `textIsEmpty(timeout:, strict:)` | 空でない / 空 |
+| `select(selector).textIs(expected, waitSeconds:, requireVisible:, strict:)` | `textIsNot(expected, waitSeconds:, strict:)` | 完全一致 |
+| `textContains(expected, waitSeconds:, requireVisible:, strict:)` | `textContainsNot(expected, waitSeconds:, strict:)` | 部分一致 |
+| `textStartsWith(expected, waitSeconds:, requireVisible:, strict:)` | `textStartsWithNot(expected, waitSeconds:, strict:)` | 前方一致 |
+| `textEndsWith(expected, waitSeconds:, requireVisible:, strict:)` | `textEndsWithNot(expected, waitSeconds:, strict:)` | 後方一致 |
+| `textMatches(pattern, waitSeconds:, requireVisible:, strict:)` | `textMatchesNot(pattern, waitSeconds:, strict:)` | 正規表現(部分一致。全体一致は `^…$`) |
+| `textMatchesDateFormat(format, waitSeconds:, requireVisible:)` | — | `DateFormatter` の書式文字列(例: `"yyyy/MM/dd"`) |
+| `textIsNotEmpty(waitSeconds:, strict:)` | `textIsEmpty(waitSeconds:, strict:)` | 空でない / 空 |
 
 上記はすべて `exist` / `select` の戻り値にチェーンでき、直前に掴んだ要素に効く1引数の
 暗黙形(自由関数)も持ちます。
@@ -47,14 +47,14 @@ exist("#total")
   — 半角スペースと全角スペースは違いますし、連続空白・両端の空白も残ります。
   `strict: true` を渡すと一切正規化しません(`textIs("完了", strict: true)`)。
   不一致で落ちたときは、失敗文が正規化比較・厳密比較のどちらなら一致したかを言います。
-- 要素は在る前提で、`timeout` までかけて値の変化を待ちます。値が更新されるのを待つ用途にも使えます。
+- 要素は在る前提で、`waitSeconds` までかけて値の変化を待ちます。値が更新されるのを待つ用途にも使えます。
 - 否定系と空判定(`textIsNot`・`textIsEmpty` など)は可視性を見ません
   — 「見えていないこと」は画面照合できないためです。
 - **これらに `scroll:` はありません。** 静止した画面を検証するためのコマンドなので、
   対象を先に `select(selector, scroll: .down)` などでビューに入れてから検証してください。
 - `exist(…)` / `select(…)` / `lastElement` にチェーンした検証は、まず掴んだ時点の値で判定します。
   それで条件を満たしていればデバイスを見に行きません(ステップは記録され、説明に
-  `(from the grabbed value)` が付きます)。満たしていなければ従来どおり `timeout` までポーリングします。
+  `(from the grabbed value)` が付きます)。満たしていなければ従来どおり `waitSeconds` までポーリングします。
 
 ### Link
 - [index](../index_ja.md)

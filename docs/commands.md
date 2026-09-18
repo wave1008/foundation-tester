@@ -13,7 +13,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 | 引数 | 意味 |
 |---|---|
-| `timeout: 秒` | ロケータ解決の再試行上限。**小数可**(`timeout: 1.2`)。**操作系の省略時は約 0.7 秒**、**`select` と検証系の省略時は 5 秒**(実行プロファイルの `defaultTimeout` で変更可。これも小数可)。`0` = 初回スナップショットのみ(出るか不定な要素を `ifCanSelect` で見るときの空振り短縮に) |
+| `waitSeconds: 秒` | ロケータ解決の再試行上限。**小数可**(`waitSeconds: 1.2`)。**操作系の省略時は約 0.7 秒**、**`select` と検証系の省略時は 5 秒**(実行プロファイルの `defaultTimeout` で変更可。これも小数可)。`0` = 初回スナップショットのみ(出るか不定な要素を `ifCanSelect` で見るときの空振り短縮に) |
 | `requireVisible: false` | 可視性確認を省く。**`exist` は見えていないと失敗へ反転し、`select` は空要素を返す**(意味が違う)。既定 true。確認が実際に走るのは実行プロファイルの `textVisualCheck`(**既定 true**。2026-09-03 にオプトインをやめた)が有効な run。確認は2段: **①幾何(FM 不要・決定的)** — 木に居ても**収まる軸の中心が画面外**なら不可視(iOS の木は画面外の要素も frame ごと残すので、通り過ぎた要素への `exist` がこれで止まる。`scroll:` 探索の「見つかった」判定と同じ述語)/ **②視覚照合** — 端末の OCR(Vision)が期待テキストを丸ごと読めれば通り、読めなければ FM が**描かれている文字を転写**し、期待テキストと突き合わせる(FM に期待テキストは渡さない。覆い・空白・別の文字はここで赤になる)。FM が判定を返さなかったステップ(実呼び出しの失敗・ブレーカ開)は①だけで通り、結果 JSON の `notes` に **`visibility-guard-skipped`** が残る(「検証したつもりで検証していない緑」を run 横断で拾える。macOS 26 / `textVisualCheck:false` の静的に無効な構成では出ない)。**`launchApp` / `restartApp` の直後だけ猶予がある** —— 画面がまだ launch storyboard(全画素同一の未描画フレーム)なら、この待ち時間を**もう一度だけ**払って待ち直し `first-frame-pending` を残す(スプラッシュのあるアプリで起動直後の `exist` が赤くならないため)。それでも一様色のままなら赤にして `first-frame-timeout` を添える |
 | `scroll: .down` / `maxSwipes:` | 実行前に**その方向へスクロールしながら要素を探す**(後述「スクロール」)。省略時は現在画面のみ |
 
@@ -22,7 +22,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
   出るか不定のアプリ内メッセージは `irregularHandler` を setUp で宣言し、
   その場限りの条件分岐は `ifCanSelect(sel) { … }` で包む
 - **要素の出現待ちは暗黙**。操作は解決を再試行し、検証はタイムアウトまでポーリング再判定するので、
-  `exist` の前に `wait` を置くのは冗長。待ちが足りなければ `timeout:` を上げる
+  `exist` の前に `wait` を置くのは冗長。待ちが足りなければ `waitSeconds:` を上げる
 - **失敗セマンティクス**: コマンド NG → **シナリオ中断**(以降のステップは scene を跨いですべてスキップ。
   `tearDown` だけは失敗後でも実行される)。ブロック内の**生 Swift コードはスキップされない**
   ため、失敗後に走らせたくない処理は `procedure { }` に包む
@@ -38,15 +38,15 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 | コマンド | 説明 |
 |---|---|
-| `tap(sel, holdSeconds: 0, timeout:scroll:maxSwipes:containerInference:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ)。**対象がまだ無効なら操作可能になるまで待ってから撃つ**(下記)。**下端のタブバー等に潜っているだけなら、撃つ前に容器を1回送って外す**(下記「縁の帯に潜った対象」)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
-| `select(sel, timeout:requireVisible:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**掴めなければ失敗させず空要素を返す** — 「見つからない」も「見つかったが見えない(覆われ・見切れ)」も同じ形で返るので、呼び出し側は `.isEmpty` で分岐する(`exist` はどちらも失敗へ反転するので意味が違う)。**在ることを保証したいなら `exist`**。`requireVisible: false` で可視性照合自体を外す |
+| `tap(sel, holdSeconds: 0, waitSeconds:scroll:maxSwipes:containerInference:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ)。**対象がまだ無効なら操作可能になるまで待ってから撃つ**(下記)。**下端のタブバー等に潜っているだけなら、撃つ前に容器を1回送って外す**(下記「縁の帯に潜った対象」)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
+| `select(sel, waitSeconds:requireVisible:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**掴めなければ失敗させず空要素を返す** — 「見つからない」も「見つかったが見えない(覆われ・見切れ)」も同じ形で返るので、呼び出し側は `.isEmpty` で分岐する(`exist` はどちらも失敗へ反転するので意味が違う)。**在ることを保証したいなら `exist`**。`requireVisible: false` で可視性照合自体を外す |
 | `lastElement` | **直前に掴んだ要素**(引数なし。Shirates(Classic) の `TestDriver.lastElement` 相当)。要素を1つに定めて解決したコマンド(`select` / `exist` / `tap` / `type` / `waitForDisplay` / テキスト・値の検証など)が通るたびに差し替わる。差し替えないのは**要素を1つに定めない** `notExist` / `countIs` と、**セレクタを取らない** `swipe` / `launchApp` 等。**値は掴んだ時点の凍結値**で、掴んだ後にスクロールやタップを挟むと古い値を読む(下記「掴んだ要素の値を読む」)。**scene を跨ぐと空**・**掴めなかったコマンドは空で上書き**・**一度も掴んでいなければ空+警告** |
 | `type("文字列", replace: false)` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。改行の扱いは下記。**引数はテキストであってセレクタではない** — `type("#email")` のようにセレクタらしい1語(`#` + 識別子・`\|\|` や `>>` を含む)を渡すと実行前に失敗する(黙って `#email` と打ち込んで後段の検証で落ちると原因から遠いため)。その文字列を本当に入力したいなら2引数形 `type("#field", "#email")` を使う。`replace: true` で撃つ前に `clearInput` 相当のクリアをしてから入力する(セレクタ解決が1回で済む) |
-| `type(sel, "文字列", timeout:scroll:maxSwipes:replace:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし)。改行の扱いは下記。`replace: true` で撃つ前にクリアしてから入力する(下記 `clearInput` 参照)。**入った値を読み返して直す**: 末尾の欠落は追送・二重入力は削除・**中央の1文字が落ちた形(`hello123`→`hllo123`)は消してから全文を打ち直す**(ブリッジ v104。注記 `type-retyped` / XCUITest ランナーは `driverFallback` に "retyped the whole text …")。**打ち直しは1回まで** —— 打ち直しても同じ形で欠けるなら(英字を捨てる数字欄など)アプリ側の加工なので検証を諦めて受理する(注記 `type-retype-abandoned`。値は `textIs` で別途確かめる) |
+| `type(sel, "文字列", waitSeconds:scroll:maxSwipes:replace:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし)。改行の扱いは下記。`replace: true` で撃つ前にクリアしてから入力する(下記 `clearInput` 参照)。**入った値を読み返して直す**: 末尾の欠落は追送・二重入力は削除・**中央の1文字が落ちた形(`hello123`→`hllo123`)は消してから全文を打ち直す**(ブリッジ v104。注記 `type-retyped` / XCUITest ランナーは `driverFallback` に "retyped the whole text …")。**打ち直しは1回まで** —— 打ち直しても同じ形で欠けるなら(英字を捨てる数字欄など)アプリ側の加工なので検証を諦めて受理する(注記 `type-retype-abandoned`。値は `textIs` で別途確かめる) |
 | `pressEnter()` | フォーカス中の入力へ Enter/IME アクション(検索・実行・改行)を発火(Shirates(Classic) 準拠) |
 | `hideKeyboard()` | ソフトキーボードを閉じる。**Android のみ**(出ているときだけ戻るキーを撃つので冪等)。**iOS は未対応で失敗する** — iOS で閉じたいときは `pressEnter()` を使う(単一行の欄なら閉じる) |
 | `clearInput()` | フォーカス中の入力欄を空にする |
-| `clearInput(sel, timeout:scroll:maxSwipes:)` | 要素を指定して入力欄を空にする(`type` は追記なので、書き換えるならまず `clearInput`。セレクタ解決を1回で済ませたいだけなら `type(sel, "文字列", replace: true)` で1コマンドに畳める)。**Flutter の iOS は in-app エンジンでは消せず XCUITest 経由になる**(自動フォールバック。1〜2秒かかる)。**空白だけの内容は a11y の値に載らない**(iOS の Compose で実測)ので、XCUITest ランナーは「空に見える」欄にも短い削除バーストを送り、`type` の読み返しは空白だけの差を検証不能として再送しない(2026-08-31。**末尾・途中の空白の欠落も検出できない**ので、空白が意味を持つ値は `textIs` で別途確かめる) |
+| `clearInput(sel, waitSeconds:scroll:maxSwipes:)` | 要素を指定して入力欄を空にする(`type` は追記なので、書き換えるならまず `clearInput`。セレクタ解決を1回で済ませたいだけなら `type(sel, "文字列", replace: true)` で1コマンドに畳める)。**Flutter の iOS は in-app エンジンでは消せず XCUITest 経由になる**(自動フォールバック。1〜2秒かかる)。**空白だけの内容は a11y の値に載らない**(iOS の Compose で実測)ので、XCUITest ランナーは「空に見える」欄にも短い削除バーストを送り、`type` の読み返しは空白だけの差を検証不能として再送しない(2026-08-31。**末尾・途中の空白の欠落も検出できない**ので、空白が意味を持つ値は `textIs` で別途確かめる) |
 | `swipe(.up / .down / .left / .right)` | 画面全体をスワイプ(**指の動き**)。iOS の XCUITest では縦向きは `XCUIApplication.swipeUp()` 等、**横向きは点→点のドラッグに合成する**(実機の横向きでは `swipeUp()` 系が1pt も動かないため。2026-08-31 実測) |
 | `tap(x:y:holdSeconds: 0)` | **座標を直接タップ**(Shirates 準拠)。座標は snapshot の `screen` と同じ座標系で、**iOS = pt / Android = px**(dp ではない)。`holdSeconds` を 0 より大きくすると長押し。**セレクタで指せるならそちらを使う** —— 座標はレイアウトが動いた瞬間に別の物を叩く。要るのは「アプリが要素を1つも公開しない画面」で、実測では操作可能要素の 9.3% が書けるセレクタを持たない。**`ft_batch` でも書ける**(`tap x: 120 y: 640`)。ただし**セレクタと併記はできない** —— どちらを撃ったか読み手に分からなくなるため拒否する。**in-app エンジンは見えない物を撃たない**: 画面外とソフトキーボードの上の点は失敗にする(in-app はキーを押せない。キーボードの下へは `pressEnter` で閉じてから)。スクロール容器で切れて描かれていない要素は frame が点を含んでも activate せず、その点に実際に見えている物へ撃つ |
 | `swipePointToPoint(startX:startY:endX:endY:durationSeconds: 1.5)` | 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px) |
@@ -67,7 +67,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 - **待ち切れなくても撃つ**。無効な要素をわざと叩いて「反応しない」ことを確かめる書き方は
   正当なので失敗にはしない(従来どおり `the target is disabled …` の注記が出る)
-- 予算はステップの `timeout:`、省略時は既定の待ち(5秒)。**待ちたくないときは `timeout: 0`**
+- 予算はステップの `waitSeconds:`、省略時は既定の待ち(5秒)。**待ちたくないときは `waitSeconds: 0`**
 - **`&&enabled=` を明示したセレクタでは待たない** —— `#btn&&enabled=false` は
   「無効なものを狙って掴む」宣言なので、待つと必ず予算を捨てる
 - **待っている間に湧いた割り込みは閉じる**(`irregularHandler` の宣言があるとき)。
@@ -185,8 +185,8 @@ action を持たない欄など)—— 黙って「全部入った」にはし�
 | `withoutScroll { … }` | 外側の `withScroll*` を打ち消し、ブロック内は現在画面だけで解決する |
 | `withoutContainerInference { … }` | ブロック内のすべてのコマンドで、容器の推測に依存する補正を止める(下記) |
 | `scroll: .noScroll`(`tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `findImage` / `existImage`) | `withScroll*` の中でも**この 1 コマンドだけ**スクロールしない(現在画面だけで解決する)。**引数を省くのとは別** —— 省略は「ブロックの文脈に従う」。`*WithoutScroll` という関数は置いていない(書くとコンパイルエラーがこの書き方を指す) |
-| `findImage(label, threshold:aspectRatioTolerance:timeout:scroll:maxSwipes:)`  | **画像で要素を掴む**(Shirates Vision の移植・`Sources/FTCore/FindImage.swift`)。テンプレートは DefaultClassifier の見本(ラベルが `label` で**終わる**フォルダ・自 OS の `@i`/`@a` を先に試す)。a11y 要素を枠で切り出し、見本と**アスペクト比が許容幅に入る**要素だけを近い順に Vision の画像特徴量の距離で比べ、最も近い1件が `threshold`(既定 0.15)以下なら掴む。超えたらその1件を DefaultClassifier に掛け、短いラベルが一致し、**かつ**確信度が `threshold` 以下かそのラベルの見本のどれかとの距離が `threshold` 以下なら掴む(Shirates の `classifyFull` と同じ。ラベル一致だけでは採らない = 分類器は見本のどれかのラベルを必ず答えるので、無関係な画像にも探しているラベルを返しうる。`StepExecutor.classificationConfirmed`)。**見つからなくても失敗せず空要素**(`select` と同じ)。**`timeout` の既定は 0**(今の画面を1回だけ見る・実行プロファイルの defaultTimeout に従わない。`FindImage.defaultTimeout`。待つのは `existImage` の側)。テンプレートが無い・許容幅が 0 < t ≤ 0.5 の外・scrollFrame 不解決・**Vision の縮退**(照合1回につき一様な白の特徴量を1つ作り、見本との距離が 0 なら「何も見分けられない」として失敗。2026-09-19 に3 SUT の別プロセスで同時に全候補が距離 0 になり最初の候補を叩いた。`FindImage.isDegenerate`)だけ失敗。記録の括弧書きに距離(見つからなければ最も近い距離)と比べた候補数が出る。**文字だけが違う同じ形の行は距離 0.08〜0.15 で並び既定の閾値では取り違える**(`threshold` を絞る。E2E-iOS 20 の S0030)。所要は docs/performance-tuning.md §3.30。`lastElement` を差し替える |
-| `existImage(label, threshold:aspectRatioTolerance:timeout:scroll:maxSwipes:)`  | **画像が画面にあることの検証**(Shirates Vision の移植)。**探索は `findImage` と同じ1本**(`StepExecutor.executeFindImage`)で、違いは**見つからなければ失敗**(`failureKind` = `not-found`)することと、**`timeout` の既定が実行プロファイルの defaultTimeout**(`exist` と同じ。出るまで撮り直す。`scroll:` 指定時は位置ごとに1回)であることだけ。失敗の文言に最も近かった距離と閾値が出て、判定に使ったスクリーンショットをレポートのステップ行に添える(`StepOutcome.evidenceImage`)。アサーションとして数える(`FlowStep.isVerification`)。見つけた要素を返し `lastElement` を差し替える。**文言の距離は撮り直し・スクロールの全周回の最小**で、添えるスクリーンショットは最後の1枚。スクリーンショットが画像として読めなかったときは `the screenshot could not be read` と言い分ける(「似た形の要素が無い」と混ぜない)。**待っている間は間隔を倍々に広げながら照合を繰り返す**(`PollBackoff` = 0.1 秒から最大 1 秒。既定の 5 秒で 7 回ほど。1回 = スクリーンショット + 候補数ぶんの特徴量。docs/performance-tuning.md §3.30)。`scroll: .noScroll` なら `withScroll*` の中でも送らない |
+| `findImage(label, threshold:aspectRatioTolerance:waitSeconds:scroll:maxSwipes:)`  | **画像で要素を掴む**(Shirates Vision の移植・`Sources/FTCore/FindImage.swift`)。テンプレートは DefaultClassifier の見本(ラベルが `label` で**終わる**フォルダ・自 OS の `@i`/`@a` を先に試す)。a11y 要素を枠で切り出し、見本と**アスペクト比が許容幅に入る**要素だけを近い順に Vision の画像特徴量の距離で比べ、最も近い1件が `threshold`(既定 0.15)以下なら掴む。超えたらその1件を DefaultClassifier に掛け、短いラベルが一致し、**かつ**確信度が `threshold` 以下かそのラベルの見本のどれかとの距離が `threshold` 以下なら掴む(Shirates の `classifyFull` と同じ。ラベル一致だけでは採らない = 分類器は見本のどれかのラベルを必ず答えるので、無関係な画像にも探しているラベルを返しうる。`StepExecutor.classificationConfirmed`)。**見つからなくても失敗せず空要素**(`select` と同じ)。**`timeout` の既定は 0**(今の画面を1回だけ見る・実行プロファイルの defaultTimeout に従わない。`FindImage.defaultWaitSeconds`。待つのは `existImage` の側)。テンプレートが無い・許容幅が 0 < t ≤ 0.5 の外・scrollFrame 不解決・**Vision の縮退**(照合1回につき一様な白の特徴量を1つ作り、見本との距離が 0 なら「何も見分けられない」として失敗。2026-09-19 に3 SUT の別プロセスで同時に全候補が距離 0 になり最初の候補を叩いた。`FindImage.isDegenerate`)だけ失敗。記録の括弧書きに距離(見つからなければ最も近い距離)と比べた候補数が出る。**文字だけが違う同じ形の行は距離 0.08〜0.15 で並び既定の閾値では取り違える**(`threshold` を絞る。E2E-iOS 20 の S0030)。所要は docs/performance-tuning.md §3.30。`lastElement` を差し替える |
+| `existImage(label, threshold:aspectRatioTolerance:waitSeconds:scroll:maxSwipes:)`  | **画像が画面にあることの検証**(Shirates Vision の移植)。**探索は `findImage` と同じ1本**(`StepExecutor.executeFindImage`)で、違いは**見つからなければ失敗**(`failureKind` = `not-found`)することと、**`timeout` の既定が実行プロファイルの defaultTimeout**(`exist` と同じ。出るまで撮り直す。`scroll:` 指定時は位置ごとに1回)であることだけ。失敗の文言に最も近かった距離と閾値が出て、判定に使ったスクリーンショットをレポートのステップ行に添える(`StepOutcome.evidenceImage`)。アサーションとして数える(`FlowStep.isVerification`)。見つけた要素を返し `lastElement` を差し替える。**文言の距離は撮り直し・スクロールの全周回の最小**で、添えるスクリーンショットは最後の1枚。スクリーンショットが画像として読めなかったときは `the screenshot could not be read` と言い分ける(「似た形の要素が無い」と混ぜない)。**待っている間は間隔を倍々に広げながら照合を繰り返す**(`PollBackoff` = 0.1 秒から最大 1 秒。既定の 5 秒で 7 回ほど。1回 = スクリーンショット + 候補数ぶんの特徴量。docs/performance-tuning.md §3.30)。`scroll: .noScroll` なら `withScroll*` の中でも送らない |
 | `findImages(label, threshold:aspectRatioTolerance:)` | `threshold` 未満(`nil` = 絞らない)を距離の小さい順に `[FTElement]` で返す。テンプレートは1枚(自 OS 用を優先)・**待たない・スクロールしない**。`lastElement` は差し替えない |
 | `element.tap(holdSeconds:)` | 掴んだ要素をタップ。**findImage / findImages で掴んだ要素は見つけた枠(画面に見えている部分)の中心を座標で叩く**(セレクタで引き直さない)・空の画像要素は失敗。それ以外は `tap(sel)` と同じ |
 
@@ -332,15 +332,15 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 
 | コマンド | 説明 |
 |---|---|
-| `exist(sel, timeout:requireVisible:scroll:maxSwipes:)` | 存在検証。テキストの視覚検証を有効にした run(実行プロファイル `textVisualCheck: true`)では**実際に見えていること**も確認する(幾何 → FM の2段。§共通の引数 `requireVisible`)。戻り値にチェーン可(後述) |
-| `waitForDisplay(sel, waitSeconds: 15)` | 要素が表示されるまで待つ(**スクロールしない**)。戻り値は `FTElement`(`exist` と同様チェーン可)。見つからなければ失敗しシナリオ中断。**判定は `exist` と同じ可視性込み**(コマンド名 displayed の意味に沿わせている)で、**`exist` の `requireVisible: false` に当たる逃げ道は無い** — 覆われ検出を外したいなら `exist(sel, requireVisible: false, timeout: 15)` を使う |
+| `exist(sel, waitSeconds:requireVisible:scroll:maxSwipes:)` | 存在検証。テキストの視覚検証を有効にした run(実行プロファイル `textVisualCheck: true`)では**実際に見えていること**も確認する(幾何 → FM の2段。§共通の引数 `requireVisible`)。戻り値にチェーン可(後述) |
+| `waitForDisplay(sel, waitSeconds: 15)` | 要素が表示されるまで待つ(**スクロールしない**)。戻り値は `FTElement`(`exist` と同様チェーン可)。見つからなければ失敗しシナリオ中断。**判定は `exist` と同じ可視性込み**(コマンド名 displayed の意味に沿わせている)で、**`exist` の `requireVisible: false` に当たる逃げ道は無い** — 覆われ検出を外したいなら `exist(sel, requireVisible: false, waitSeconds: 15)` を使う |
 | `waitForClose(sel, waitSeconds: 15)` | 要素が消えるまで待つ(**スクロールしない**)。`sel` は省略不可(Shirates の直前セレクタ再利用の省略形は無い。`lastElement` はあるが、待ち対象がソース上で読めなくなるため引数は必須のまま) |
-| `notExist(sel, timeout:scroll:maxSwipes:)` | **消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じた確認に。`scroll:` 指定時は**その方向へスクロールしながら探し、見つかった時点で不在検証を失敗させる**(`exist(scroll:)` の裏返し。見つからなければ従来どおり現在のビューポートでの消滅待ちに進む) |
-| `countIs(sel, 個数, timeout:)` | 候補の個数。**ツリー上の件数**で可視性は見ない。`\|\|` は和集合の総数(重複は 1 度だけ)。**ラベルで数えるときは型で絞る**(`.button&&項目` — ボタンと内側のラベルは別要素として両方載るため) |
+| `notExist(sel, waitSeconds:scroll:maxSwipes:)` | **消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じた確認に。`scroll:` 指定時は**その方向へスクロールしながら探し、見つかった時点で不在検証を失敗させる**(`exist(scroll:)` の裏返し。見つからなければ従来どおり現在のビューポートでの消滅待ちに進む) |
+| `countIs(sel, 個数, waitSeconds:)` | 候補の個数。**ツリー上の件数**で可視性は見ない。`\|\|` は和集合の総数(重複は 1 度だけ)。**ラベルで数えるときは型で絞る**(`.button&&項目` — ボタンと内側のラベルは別要素として両方載るため) |
 | `enabledIsTrue()` / `enabledIsFalse()` | 有効/無効の検証(タイムアウトまで状態変化を待つ)。**対象は直前に掴んだ要素**(`select("#btn").enabledIsTrue()`) |
 | `checkIsON(prefer:)` / `checkIsOFF(prefer:)` | チェック状態の検証。**対象は直前に掴んだ要素**。**`prefer:`(`.classifier` / `.accessibility`。省略 = 実行プロファイルの `preferCheckStateClassifier`)は状態を読む先の優先を1コマンドだけ上書きする**(`FlowStep.preferCheckStateClassifier`。意味はプロファイルのキーと同じ = `.accessibility` でも a11y が状態を報告しない要素は分類器へ落ちる。指定は記録の説明に `(prefer: …)` と出る。witness は全 SUT の `21_チェック状態の判定元.swift`)。状態の読み方は `CheckStateReading`(selected trait・スイッチの value "1"/"0"・RN の `checkbox, checked` 等。docs/design.md)。**状態を報告しない要素**(SwiftUI の Button で自作したチェックボックス等)の `checkIsON` は「reports no check state」で失敗し、`checkIsOFF` は通して run 終了時に警告する。indeterminate(一部だけ選択)はどちらでも失敗。オンしか報告しない実装(Compose iOS の Checkbox 等)は、同じシナリオで一度オンを見た要素なら報告の欠落をオフと読む。**プロジェクトの `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に見本画像があれば、要素の画像を分類器(Shirates Vision の移植)で判定する**(実行プロファイルの `preferCheckStateClassifier` = 既定 true で a11y より優先・false なら a11y が状態を報告しない要素だけ。判定した回は注記 `check-state-classified`。`[INDETERMINATE]` の見本を置けば indeterminate も判定する。**分類器の判定で落ちたステップは、判定に使ったスクリーンショット全体をレポートのそのステップ行に添える**(`StepOutcome.evidenceImage`。`imageIs` も同じ)。**Android は `isChecked` と `isSelected` の両方を見る**(2026-08-07) — タブや選択行は `isChecked` を立てず `isSelected` だけで選択状態を出すため、以前はこの種の要素で永久に通らなかった |
 | `imageIs(label)` | 要素の**画像**のラベル検証(Shirates Vision の移植)。**対象は直前に掴んだ要素**。要素の枠で切ったスクリーンショットを DefaultClassifier(プロジェクトの `vision/classifiers/DefaultClassifier/` 以下の見本画像で学習。ラベル = 親フォルダの相対パスを `_` でつないだもの)に掛け、1位のラベルの最後の `[` 以降が `label` を含めば通る。見本が無い・`label` を含むラベルの見本が無いときは待たずに失敗。失敗文言に分類されたラベルと確信度が出る |
-| `keyboardIsShown(timeout:)` / `keyboardIsNotShown(timeout:)` | ソフトキーボードの表示/非表示の検証。開閉はアニメーションを伴うためタイムアウトまでポーリングする。**「非表示」を確定できるのは iOS in-app と Android だけ** — iOS の xcuitest エンジンは「キーボードを見た/不明」しか言えないため、`keyboardIsNotShown` は失敗する(キーボードが見えていれば「keyboard is still shown」、見ていなければ「cannot determine the keyboard state」。不明を非表示と読んで嘘の成功にしない設計) |
+| `keyboardIsShown(waitSeconds:)` / `keyboardIsNotShown(waitSeconds:)` | ソフトキーボードの表示/非表示の検証。開閉はアニメーションを伴うためタイムアウトまでポーリングする。**「非表示」を確定できるのは iOS in-app と Android だけ** — iOS の xcuitest エンジンは「キーボードを見た/不明」しか言えないため、`keyboardIsNotShown` は失敗する(キーボードが見えていれば「keyboard is still shown」、見ていなければ「cannot determine the keyboard state」。不明を非表示と読んで嘘の成功にしない設計) |
 | `screenLooksLike("画面の説明文")` | FM による**見た目の**画面検証(スクリーンショットと説明文の照合)。実行プロファイルで `screenLooksLike:false` の場合はスキップ(素通り) |
 | `appIs(id, waitSeconds: 15)` | フォアグラウンドのアプリが `id`(iOS=bundle ID / Android=package 名)と一致することの検証。**ニックネーム機構は無く ID を直接書く**(Shirates 準拠だが引数の意味だけ異なる)。`waitSeconds` までポーリング。**Android は失敗時に actual の package 名をメッセージへ含める**(iOS は前面 bundle ID を取得する手段が無いため含まれない) |
 
@@ -371,7 +371,7 @@ select("#btn_ok"); lastElement.textIs("OK")     // 掴んだ要素を明示
 select("#btn_ok"); textIs("OK")                 // 暗黙(直前に掴んだ要素)
 ```
 
-引数は `(期待値, timeout:)`(肯定形は `requireVisible:` も取る)。
+引数は `(期待値, waitSeconds:)`(肯定形は `requireVisible:` も取る)。
 **セレクタを渡す形 `textIs("#btn_ok", "OK")` はありません**(コンパイルエラーになります)。
 
 | 肯定 | 否定 | 判定 |
@@ -637,7 +637,7 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 | `appSwitcher()` | アプリスイッチャーを開く |
 | `rotateTo(.landscape)` | 画面を回す。向きは **`.portrait` / `.landscape` の2つだけ**。**契約は「アプリの UI がその向きになること」**で、デバイスがどう傾いているかではない —— テストが観測できる frame と画面サイズは iOS / Android とも、Compose / SwiftUI / View-XML / Flutter / React Native のどれでもアプリ座標系で返るので、跨いで同じ意味を持つのはここまで(左右の区別は観測できないので語彙に置かない)。回した後は**向きが実際に変わるまで待ってから返る**(要求直後は古い向きが読める)。**回転を使ったシナリオは終了時に元の向きへ自動で戻る**(Android は自動回転の設定も戻す)。**アプリが横向きを許可していないと回らない**(iOS は Info.plist の `UISupportedInterfaceOrientations`、Android は `screenOrientation`)。iOS はその接続が使っているエンジンで回し、Android はホスト側の adb(`user_rotation`)で回すので実機でも効く。**Android は自動回転を切る**(切らないと角度が保持されない。実測)。MCP の `ft_rotate` も、`.portrait` へ戻したときだけ同じ復元を行う(横向きのまま探索を終えると自動回転は OFF のまま残る。接続が切れて作り直された場合は控えが失われ戻せない) |
 | `tapAppIcon(name?)` | ホーム画面のアプリアイコンをタップ(Shirates の `auto` 相当のみ。`tapAppIconMethod` 等のマクロ機構は無い)。**名前省略時はアプリプロファイルの `appName`**(親が解決して渡す。無ければ明示エラー。ラベルとの完全一致で探すので、`appName` はアイコンの下に出る名前そのものにする —— iOS は `appPath` の表示名と食い違うとプロファイル解決で警告)。手順: `home()`(iOS はもう1回)→ 現在画面で探索 → 見つからなければ Android はドロワーを開いて `flickCenterToTop` で最大8回スクロール探索、iOS は `flickRightToLeft` で最大5ページ送り(2回連続不変化でも打ち切り)。最後まで見つからなければ失敗(`"App icon not found.(name)"`) |
-| `screenshot(filename:?)` | 現在の画面を撮り、レポートのこのステップ直後に埋め込む。ファイル名省略時はステップ連番(`.png`)。**ラベル無しの `screenshot("a.png")` でも書ける**(Shirates は Kotlin の位置引数で同じ形が通るため)。Shirates の `force`/`onChangedOnly`/`withXmlSource` は無い。**Android の WebView 画面**は端末のキャプチャに中身が写らないことがあり、その場合だけ CDP から撮ったページ画像を合成する(下記) |
+| `screenshot(filename?)` | 現在の画面を撮り、レポートのこのステップ直後に埋め込む。ファイル名省略時はステップ連番(`.png`)。**ファイル名はラベル無し**(`screenshot("a.png")`。他の1引数コマンドと同じ形。`screenshot(filename:)` は置いていない = コンパイルエラーが書き方を指す)。Shirates の `force`/`onChangedOnly`/`withXmlSource` は無い。**Android の WebView 画面**は端末のキャプチャに中身が写らないことがあり、その場合だけ CDP から撮ったページ画像を合成する(下記) |
 
 ## 待機・分岐・反復
 
@@ -646,8 +646,8 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 | `wait(秒)` | 固定待ち。**要素の出現待ちには使わない**(暗黙待ちで足りる)。出番はセレクタで待てない整定(アニメ中の座標ずれ等)だけ |
 | `ifCanSelect(sel, waitSeconds: 0) { … }.ifElse { … }` | セレクタが解決できたらブロック実行。**既定は即時 1 回判定**(待つなら `waitSeconds:`。小数可)。出るか不定のダイアログの無害化に。**dry-run では両方のブロックを列挙する**(`.ifElse` の中の構文誤り・未知の `#id` もデバイス無しで返すため) |
 | `ios { … }` / `android { … }` | 対象 OS のときだけ実行 |
-| `repeatWhileCanSelect(sel, max: 10, waitSeconds: 0) { … }` | セレクタが解決できる限り繰り返す(件数不定の一括操作に)。上限到達は失敗にしないが記録に残る |
-| `doUntilTrue("説明", waitSeconds: 10, intervalSeconds: 0.5, maxLoopCount: 100) { 条件 }` | 条件(`() async throws -> Bool`)が true になるまで繰り返す。**アプリ・外部の状態待ち専用**(要素の出現待ちは各コマンドの `timeout:`)。throw したらリトライせず即 NG。`waitSeconds` は下記の 120 秒上限を超えられない |
+| `repeatWhileCanSelect(sel, maxLoopCount: 10, waitSeconds: 0) { … }` | セレクタが解決できる限り繰り返す(件数不定の一括操作に)。上限到達は失敗にしないが記録に残る |
+| `doUntilTrue("説明", waitSeconds: 10, intervalSeconds: 0.5, maxLoopCount: 100) { 条件 }` | 条件(`() async throws -> Bool`)が true になるまで繰り返す。**アプリ・外部の状態待ち専用**(要素の出現待ちは各コマンドの `waitSeconds:`)。throw したらリトライせず即 NG。`waitSeconds` は下記の 120 秒上限を超えられない |
 
 ## 構造化・前後処理・割り込み
 
@@ -889,7 +889,7 @@ ifCanSelect("#btnAgree||同意する") { tap("#btnAgree||同意する") }
 登録したのに一致するボタンが無ければ、素通りさせずに止める。
 
 **アラートが重なっていても順に閉じる**(位置情報の直後に ATT など。1枚閉じたら戻らずに
-確かめ直す)。**押しても消えない画面で無限に回ることはない**(ステップの `timeout` が打ち切る)。
+確かめ直す)。**押しても消えない画面で無限に回ることはない**(ステップの `waitSeconds` が打ち切る)。
 
 **なぜ要るか**: in-app のタップは `accessibilityActivate`(要素への直接のメソッド呼び出し)か
 自プロセスの窓への合成タッチで、**OS のイベント経路を通らない**。だからアラートが覆っていても

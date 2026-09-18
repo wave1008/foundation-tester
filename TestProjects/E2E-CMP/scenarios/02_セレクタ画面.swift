@@ -229,7 +229,7 @@ class セレクタ画面の機能一式が正しく動くこと {
             }
             scene(25, "doUntilTrue は条件が成立するまで繰り返す") {
                 action {
-                    // アプリ・外部の状態待ち用。画面要素の出現待ちは各コマンドの timeout: を使う
+                    // アプリ・外部の状態待ち用。画面要素の出現待ちは各コマンドの waitSeconds: を使う
                     var 試行回数 = 0
                     doUntilTrue("3 回目で成立する", waitSeconds: 5, intervalSeconds: 0.1) {
                         試行回数 += 1

@@ -28,7 +28,7 @@ class ログイン入力バリデーションが働くこと {
             scrollToBottom()
             tap("#btn_logout")
         }
-        tap("#btn_login", timeout: 5)  // アカウントのセッション判定は非同期。logged-out で「ログイン / 登録」が出るまで待つ
+        tap("#btn_login", waitSeconds: 5)  // アカウントのセッション判定は非同期。logged-out で「ログイン / 登録」が出るまで待つ
     }
 
     @Test("メール空欄ではログインできずエラーが出る")

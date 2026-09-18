@@ -36,7 +36,7 @@ Fleetest の Swift DSL は Shirates(Classic)の慣習に準拠しています。
 
 | Shirates | fleetest | 備考 |
 |---|---|---|
-| `dontExist` | `notExist(sel, timeout:scroll:maxSwipes:)` | `exist` の否定として読みやすい |
+| `dontExist` | `notExist(sel, waitSeconds:scroll:maxSwipes:)` | `exist` の否定として読みやすい |
 | `sendKeys` | `type("…")` / `type(sel, "…")` | `type(sel, "…", replace: true)` で「クリアしてから入力」を1コマンドに畳める(Shirates は2コマンドに分かれる) |
 | `pressBack` | `back()` | 両 OS で使える(iOS はナビゲーションバーの戻るボタンが無ければエッジスワイプに落ちる) |
 | `pressHome` | `home()` | 両 OS で使える |
@@ -57,8 +57,8 @@ Fleetest の Swift DSL は Shirates(Classic)の慣習に準拠しています。
 | `manual` / `knownIssue` | 無い —— 失敗したコマンドは必ずシナリオを中断する。失敗を「想定内」として黙らせる逃げ道は無い |
 | `must` / `should` / `want`、`SKIP` / `MANUAL` / `NOTIMPL` | 無い —— OS 限定のテストは `@TestClass(platform:)` / `@Test(platform:)` を使う |
 | データセット(`account` / `app` / `data` / `dataPattern`) | Swift のリテラル・定数をシナリオに直接書く |
-| `canSelect` 単独 | `ifCanSelect { }` か `repeatWhileCanSelect(sel, max:) { }` に包んで使う |
-| `existAll` / `canSelectAll` / `dontExistAll` | 個別の `exist` をチェーンで並べる(要素ごとに `timeout:` / `scroll:` を指定できる) |
+| `canSelect` 単独 | `ifCanSelect { }` か `repeatWhileCanSelect(sel, maxLoopCount:) { }` に包んで使う |
+| `existAll` / `canSelectAll` / `dontExistAll` | 個別の `exist` をチェーンで並べる(要素ごとに `waitSeconds:` / `scroll:` を指定できる) |
 | `tempSelector` / `tempValue` | 呼び出し箇所にセレクタを直接書く |
 | `withContext`(native/web コンテキスト切替) | 不要 —— WebView の中身も同じセレクタ・同じコマンドで透過的に読める |
 

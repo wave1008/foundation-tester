@@ -300,14 +300,14 @@ final class SelScrollVariantDispatchTests: XCTestCase {
     func testTapNoScrollSelDoesNotScrollEvenInsideOuterScrollContext() {
         let stringDriver = ScrollRevealDriver(revealDirection: .up)
         run(driver: stringDriver) {
-            withScrollDown { tap("#target", timeout: 0, scroll: .noScroll) }
+            withScrollDown { tap("#target", waitSeconds: 0, scroll: .noScroll) }
         }
         XCTAssertTrue(stringDriver.swipes.isEmpty, "String 版がスクロールしてしまった")
         XCTAssertTrue(stringDriver.tapped.isEmpty)
 
         let selDriver = ScrollRevealDriver(revealDirection: .up)
         run(driver: selDriver) {
-            withScrollDown { tap(.id("target"), timeout: 0, scroll: .noScroll) }
+            withScrollDown { tap(.id("target"), waitSeconds: 0, scroll: .noScroll) }
         }
         XCTAssertTrue(selDriver.swipes.isEmpty, "Sel 版がスクロールしてしまった")
         XCTAssertTrue(selDriver.tapped.isEmpty)
@@ -343,7 +343,7 @@ final class SelScrollVariantDispatchTests: XCTestCase {
         let stringDriver = ScrollRevealDriver(revealDirection: .up)
         var stringElement: FTElement!
         run(driver: stringDriver) {
-            withScrollDown { stringElement = exist("#target", timeout: 0, scroll: .noScroll) }
+            withScrollDown { stringElement = exist("#target", waitSeconds: 0, scroll: .noScroll) }
         }
         XCTAssertTrue(stringDriver.swipes.isEmpty, "String 版がスクロールしてしまった")
         XCTAssertNil(stringElement.id)
@@ -351,7 +351,7 @@ final class SelScrollVariantDispatchTests: XCTestCase {
         let selDriver = ScrollRevealDriver(revealDirection: .up)
         var selElement: FTElement!
         run(driver: selDriver) {
-            withScrollDown { selElement = exist(.id("target"), timeout: 0, scroll: .noScroll) }
+            withScrollDown { selElement = exist(.id("target"), waitSeconds: 0, scroll: .noScroll) }
         }
         XCTAssertTrue(selDriver.swipes.isEmpty, "Sel 版がスクロールしてしまった")
         XCTAssertNil(selElement.id, "Sel 版のフォールバック FTElement が空でない")

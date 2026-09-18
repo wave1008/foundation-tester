@@ -69,14 +69,35 @@ final class BatchLineParserTests: XCTestCase {
         }
     }
 
+    // MARK: - 待つ上限のラベルは DSL と同じ `waitSeconds:`
+
+    /// 索引の signature とビルダーのキーが食い違うと、実在する `waitSeconds:` を「未対応」と断り、
+    /// DSL に無い `timeout:` を受ける(索引だけ改名したときに実際にそうなった。2026-09-19)
+    func testWaitCapLabelFollowsTheDSL() throws {
+        let signature = try XCTUnwrap(DSLCommandIndex.all.first { $0.name == "tap" }?.signature)
+        let keys = try XCTUnwrap(MCPServer.batchStepBuilders["tap"]?.keys)
+        let accepted = try BatchStepResolver.resolve(
+            command: "tap", signature: signature,
+            args: try BatchLineParser.parse("tap '#a' waitSeconds: 2").args,
+            declaredKeys: keys, stepIndex: 0)
+        XCTAssertEqual(accepted["waitSeconds"] as? Double, 2)
+        XCTAssertThrowsError(try BatchStepResolver.resolve(
+            command: "tap", signature: signature,
+            args: try BatchLineParser.parse("tap '#a' timeout: 2").args,
+            declaredKeys: keys, stepIndex: 0)) { error in
+            XCTAssertTrue("\(error.localizedDescription)".contains("has no \"timeout:\" parameter"),
+                          error.localizedDescription)
+        }
+    }
+
     // MARK: - 位置引数とラベル付き引数の混在
 
     func testPositionalAndLabeledArgsMixed() throws {
-        let parsed = try BatchLineParser.parse("tap '#a' holdSeconds: 1.5 timeout: 2")
+        let parsed = try BatchLineParser.parse("tap '#a' holdSeconds: 1.5 waitSeconds: 2")
         XCTAssertEqual(parsed.args, [
             BatchLineArg(label: nil, value: .string("#a")),
             BatchLineArg(label: "holdSeconds", value: .number(1.5)),
-            BatchLineArg(label: "timeout", value: .number(2)),
+            BatchLineArg(label: "waitSeconds", value: .number(2)),
         ])
     }
 
@@ -227,7 +248,7 @@ final class BatchLineParserTests: XCTestCase {
             let message = (error as? BatchStepResolver.ResolveError)?.message ?? "\(error)"
             XCTAssertTrue(message.contains("\"containerInference:\""), message)
             XCTAssertTrue(message.contains("does not support"), message)
-            XCTAssertTrue(message.contains("selector, holdSeconds, timeout"), message)
+            XCTAssertTrue(message.contains("selector, holdSeconds, waitSeconds"), message)
         }
     }
 

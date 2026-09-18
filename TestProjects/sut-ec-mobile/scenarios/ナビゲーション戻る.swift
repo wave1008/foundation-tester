@@ -20,7 +20,7 @@ class 詳細から戻れること {
             scene(1, "ホームから商品詳細へ") {
                 action {
                     tap("#tab_home")
-                    tap("#product_card_fashion_5", timeout: 5)  // ホームおすすめは非同期ロード(Android cold で既定0.7sは空振り)
+                    tap("#product_card_fashion_5", waitSeconds: 5)  // ホームおすすめは非同期ロード(Android cold で既定0.7sは空振り)
                 }.expectation {
                     exist("#btn_back")        // 詳細の戻るボタン
                     exist("#btn_add_to_cart")

@@ -146,7 +146,7 @@ final class SuppressHandlerTests: XCTestCase {
                 action {
                     irregularHandler("#promo_modal", dismiss: "#btn_promo_close")
                     suppressHandler {
-                        tap("#no_such_element", timeout: 0)
+                        tap("#no_such_element", waitSeconds: 0)
                     }
                 }
             }
@@ -174,7 +174,7 @@ final class SuppressHandlerTests: XCTestCase {
                 action {
                     irregularHandler("#promo_modal", dismiss: "#btn_promo_close")
                     suppressHandler { exist("#promo_modal") }   // ここで「見た」
-                    tap("#no_such_element", timeout: 0)         // 区間の外で落ちる
+                    tap("#no_such_element", waitSeconds: 0)         // 区間の外で落ちる
                 }
             }
         }

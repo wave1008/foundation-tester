@@ -23,7 +23,7 @@ class WebViewの中身を操作できること {
                     select("#txt_screen_title").textIs("WebView")
                     // **中身が出るまで数秒かかる**(WebContent プロセスの a11y 起動待ち。
                     // 実測 約2.3秒、SUT により最大 約8秒)。既定 5 秒では足りないことがある
-                    exist("WebView 見出し", timeout: 20)
+                    exist("WebView 見出し", waitSeconds: 20)
                     exist(".webView")
                     select("wv_result=*").textIs("wv_result=-")
                 }

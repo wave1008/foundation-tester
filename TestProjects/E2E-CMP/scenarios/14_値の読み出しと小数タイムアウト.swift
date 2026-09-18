@@ -9,7 +9,7 @@
 // (Tests/FTDSLTests/FTRuntimeLifecycleTests.swift が持つ)。
 // 追加のデバイス往復が起きないことは Tests/FTDSLTests/CommandDispatchTests.swift が持つ。
 //
-// **秒引数の小数指定(timeout: 4.5 / waitSeconds: 2.5)の検証(旧 S0020)は
+// **秒引数の小数指定(waitSeconds: 4.5 / waitSeconds: 2.5)の検証(旧 S0020)は
 // 08_待機とタイムアウト.swift(08.S0010→21.S0010→20.S0020 の統合クラスタ)へ移設した**。
 // この S0010 自体はテキスト入力画面が対象で、入力系クラスタ(05/18)は境界のキーボード確実消去に
 // iOS 側の決定的な手段が無いため統合を見送っている(E2EAppCMP は IME アクション発火後もフォーカス・

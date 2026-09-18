@@ -253,7 +253,7 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 - interop かどうかは **WKWebView ごとに祖先のクラス名で**決める(アプリ単位で決めない。add-to-app で混ざるため)
 - **B**: WebView の中の `#id` は経路で出たり出なかったりする(DOM 経路は出る・WebView 124 は placeholder だけ・150 は id だけ)
   → 入力欄は `#wv_input||#WebView 入力` のように**2つ並べて書く**。初回表示は SUT で 0〜8 秒違う(ネイティブ Android は即時・
-  Flutter Android は約8秒)→ `timeout:` を長めに
+  Flutter Android は約8秒)→ `waitSeconds:` を長めに
 
 ---
 

@@ -45,11 +45,11 @@ exist("#total")
 
 要素の解決は、最初の1回で失敗させるのではなく、タイムアウトまでリトライします。
 
-- **操作系(`tap` / `type` など)**: 既定の `timeout:` は約 0.7 秒。
-- **`select` と検証系(`exist` / `textIs` など)**: 既定の `timeout:` は 5 秒
+- **操作系(`tap` / `type` など)**: 既定の `waitSeconds:` は約 0.7 秒。
+- **`select` と検証系(`exist` / `textIs` など)**: 既定の `waitSeconds:` は 5 秒
   (実行プロファイルの `defaultTimeout`)。
 
-どちらも `timeout:` を明示すれば(小数可。`timeout: 1.2` 等)、その呼び出しだけ既定値を
+どちらも `waitSeconds:` を明示すれば(小数可。`waitSeconds: 1.2` 等)、その呼び出しだけ既定値を
 上書きできます。
 
 ## 可視性・テキストの視覚検証

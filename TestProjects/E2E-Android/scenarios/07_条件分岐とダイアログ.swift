@@ -53,7 +53,7 @@ class 条件分岐とダイアログ操作が正しく働くこと {
             }
             scene(4, "ダイアログを閉じた状態で select しても scene は成功し、空要素が返る") {
                 action {
-                    select("#btn_dialog_ok", timeout: 0).isEmpty.thisIsTrue()
+                    select("#btn_dialog_ok", waitSeconds: 0).isEmpty.thisIsTrue()
                 }.expectation {
                     // select は掴めなくても失敗しないので、直前の結果が保たれたままであること
                     select("#txt_dialog_result").textIs("dialog=cancel")
@@ -124,7 +124,7 @@ class 条件分岐とダイアログ操作が正しく働くこと {
                     // 「id の綴り誤りでも成功する」経路に落ちない(run 終了時の警告と同じ趣旨)
                     exist("#txt_dialog_title")
                 }.action {
-                    repeatWhileCanSelect("#btn_dialog_cancel", max: 3, title: "ダイアログを閉じる") {
+                    repeatWhileCanSelect("#btn_dialog_cancel", maxLoopCount: 3, title: "ダイアログを閉じる") {
                         tap("#btn_dialog_cancel")
                         tap("#btn_maybe_dialog")
                     }

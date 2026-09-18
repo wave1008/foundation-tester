@@ -168,7 +168,7 @@ final class MCPBatchTests: XCTestCase {
     func testStopsAtTheFirstFailureAndDoesNotRunLaterSteps() async {
         do {
             _ = try await server.call(tool: "ft_batch", args: steps(
-                "tap '#login_btn'; tap '#does_not_exist' timeout: 0.0; tap '#login_btn'"))
+                "tap '#login_btn'; tap '#does_not_exist' waitSeconds: 0.0; tap '#login_btn'"))
             XCTFail("見つからないセレクタを含むバッチが成功した")
         } catch {
             let message = error.localizedDescription

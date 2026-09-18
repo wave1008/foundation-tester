@@ -27,7 +27,7 @@ for how `--profile` selects one.
 | `ocrTextVisualCheck` | bool | `true` | Let the occlusion guard read the element with on-device OCR (Vision) before asking FM. When the expected text is read in full the step passes without an FM call; anything else still goes to FM, so turning this off only makes the same check slower. It has no effect when `textVisualCheck` is `false`, because the guard itself does not run |
 | `preferCheckStateClassifier` | bool | `true` | For `checkIsON` / `checkIsOFF`, prefer CheckStateClassifier (an image classifier trained from the sample images in the project's `vision/classifiers/CheckStateClassifier/[ON]` and `[OFF]`) over accessibility. When `false`, it is used only for elements whose accessibility reports no check state. It has no effect without sample images |
 | `reportDir` | string | `"reports"` | Where to write Markdown reports (relative to the project root) |
-| `defaultTimeout` | number (seconds) | DSL's own default | Default timeout for DSL commands that take `timeout:` |
+| `defaultTimeout` | number (seconds) | DSL's own default | Default timeout for DSL commands that take `waitSeconds:` |
 | `scenarioTimeout` | int (seconds) | `90` | Host-side wall-clock timeout per scenario (watchdog). Distinct from `defaultTimeout`, which only bounds individual command waits |
 | `iosInappEngine` | bool | `true` | `true` → iOS devices run the hybrid engine (in-app primary, XCUITest fallback); `false` → XCUITest only. A device's own `engine` in its `devices[]` entry takes precedence if set. No effect on Android |
 | `wipeDataOnBloat` | bool | `true` | At run start, wipe an Android AVD's data if the wipe-affected files (userdata/cache/snapshots) exceed `wipeDataThresholdGB` |

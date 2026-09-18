@@ -23,14 +23,14 @@ wait(0.5)     // only for settling that no selector can express (e.g. an in-flig
 
 - **Element appearance is already implicit** — operations retry resolution and assertions poll
   until their timeout, so putting `wait()` before an `exist()` is redundant. If a wait is not
-  long enough, raise the command's `timeout:` (decimal allowed) instead of adding a fixed
+  long enough, raise the command's `waitSeconds:` (decimal allowed) instead of adding a fixed
   `wait()`.
 - **`wait()` is a last resort** for settling that has no selector to poll on, such as a
   coordinate shifting mid-animation. It is not a substitute for `waitForDisplay` /
   `waitForClose`.
 - **`waitForDisplay` judges visibility the same way `exist` does** (the name matches its
   meaning) — there is no `requireVisible: false` escape hatch on it. If you want to skip the
-  occlusion check while still waiting, use `exist(sel, requireVisible: false, timeout: 15)`
+  occlusion check while still waiting, use `exist(sel, requireVisible: false, waitSeconds: 15)`
   instead.
 - `waitForDisplay` / `waitForClose` never scroll to find the element; if it might be off-screen,
   scroll first or use `scrollTo`.

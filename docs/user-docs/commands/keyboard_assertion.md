@@ -1,14 +1,14 @@
 # keyboardIsShown, keyboardIsNotShown
 
 Checks whether the soft keyboard is shown. Opening and closing are animated, so both poll up to
-`timeout`.
+`waitSeconds`.
 
 ## Functions
 
 | function | description |
 |---|---|
-| `keyboardIsShown(timeout:)` | Asserts the soft keyboard is shown. |
-| `keyboardIsNotShown(timeout:)` | Asserts the soft keyboard is hidden. |
+| `keyboardIsShown(waitSeconds:)` | Asserts the soft keyboard is shown. |
+| `keyboardIsNotShown(waitSeconds:)` | Asserts the soft keyboard is hidden. |
 
 ## Example
 

@@ -35,7 +35,7 @@ class ログイン画面を開けること {
         scenario {
             scene(1, "アカウントからログイン画面を開く") {
                 action {
-                    tap("#btn_login", timeout: 5)  // アカウントの「ログイン / 登録」。セッション判定は非同期のため待つ
+                    tap("#btn_login", waitSeconds: 5)  // アカウントの「ログイン / 登録」。セッション判定は非同期のため待つ
                 }.expectation {
                     exist("#field_email")       // メール欄
                     exist("#field_password")    // パスワード欄

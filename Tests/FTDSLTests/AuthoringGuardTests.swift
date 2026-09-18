@@ -189,7 +189,7 @@ final class AuthoringGuardTests: XCTestCase {
 
         scenario {
             scene(1, "前段が落ちて中断される") {
-                action { tap("#missing", timeout: 0) }   // 存在しない要素 → 即座に失敗して中断
+                action { tap("#missing", waitSeconds: 0) }   // 存在しない要素 → 即座に失敗して中断
                     .expectation { exist("#field") }      // 中断でスキップされるだけの assert
             }
         }

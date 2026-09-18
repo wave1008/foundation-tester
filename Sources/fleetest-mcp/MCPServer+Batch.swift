@@ -42,7 +42,7 @@ extension MCPServer {
     ///
     /// `keys` は「このクロージャが実際に読む raw[...] キー」の**手での宣言**(signature からの
     /// 自動導出ではない — signature には出てこないのに読むキーもある。例: `type`/`clearInput`/
-    /// `doubleTap`/`pinchOut`/`pinchIn`/`swipeBy` の `timeout`)。`BatchLineParser`(ft_batch の
+    /// `doubleTap`/`pinchOut`/`pinchIn`/`swipeBy` の `waitSeconds`)。`BatchLineParser`(ft_batch の
     /// 行パーサ)がラベルの許否をここと突き合わせ、未対応ラベルを黙って捨てずに拒否する
     /// (`BatchKeyTypeCoverageTests` が「signature から導出できるか keys に載っているか」を
     /// 全ビルダに対して確認する)。順序は「サポートしている引数」のメッセージにそのまま出る
@@ -52,7 +52,7 @@ extension MCPServer {
     }
 
     static let batchStepBuilders: [String: BatchStepBuilder] = [
-        "tap": BatchStepBuilder(keys: ["selector", "holdSeconds", "timeout", "x", "y"]) { raw in
+        "tap": BatchStepBuilder(keys: ["selector", "holdSeconds", "waitSeconds", "x", "y"]) { raw in
             let hold = raw["holdSeconds"] as? Double ?? FlowStep.defaultTapHoldSeconds
             let duration = hold == FlowStep.defaultTapHoldSeconds ? nil : hold
             // **座標タップは受ける**。DSL の `tap(x:y:)` があり `ScenarioCodeGen` が 1:1 で
@@ -73,17 +73,17 @@ extension MCPServer {
             let selector = try requiredBatchSelector(raw, command: "tap")
             let step = FlowStep(action: "tap", locator: selector.primary,
                                 fallbacks: batchFallbacks(selector),
-                                timeout: raw["timeout"] as? Double,
+                                timeout: raw["waitSeconds"] as? Double,
                                 duration: duration)
             return (step, "tap \"\(selector.text)\"")
         },
-        "select": BatchStepBuilder(keys: ["selector", "timeout"]) { raw in
+        "select": BatchStepBuilder(keys: ["selector", "waitSeconds"]) { raw in
             let selector = try requiredBatchSelector(raw, command: "select")
             let step = FlowStep(action: "select", locator: selector.primary,
-                                fallbacks: batchFallbacks(selector), timeout: raw["timeout"] as? Double)
+                                fallbacks: batchFallbacks(selector), timeout: raw["waitSeconds"] as? Double)
             return (step, "select \"\(selector.text)\"")
         },
-        "type": BatchStepBuilder(keys: ["selector", "text", "timeout", "replace"]) { raw in
+        "type": BatchStepBuilder(keys: ["selector", "text", "waitSeconds", "replace"]) { raw in
             let replace = raw["replace"] as? Bool == true
             // **空文字は replace: true のときだけ通す**: 欄を空にする形で、DSL の
             // `type(_:_:replace:)` と `ft_type` が同じことをする(断ると「シナリオに書ける行が
@@ -95,7 +95,7 @@ extension MCPServer {
             let selector = optionalBatchSelector(raw)
             var step = FlowStep(action: "type", locator: selector?.primary,
                                 fallbacks: selector.flatMap(batchFallbacks), text: text,
-                                timeout: raw["timeout"] as? Double)
+                                timeout: raw["waitSeconds"] as? Double)
             step.replace = replace ? true : nil
             let target = selector.map { " \"\($0.text)\"" } ?? ""
             let suffix = replace ? " (replace)" : ""
@@ -114,11 +114,11 @@ extension MCPServer {
         "hideKeyboard": BatchStepBuilder(keys: []) { _ in
             (FlowStep(action: "hideKeyboard"), "hideKeyboard")
         },
-        "clearInput": BatchStepBuilder(keys: ["selector", "timeout"]) { raw in
+        "clearInput": BatchStepBuilder(keys: ["selector", "waitSeconds"]) { raw in
             let selector = optionalBatchSelector(raw)
             let step = FlowStep(action: "clearInput", locator: selector?.primary,
                                 fallbacks: selector.flatMap(batchFallbacks),
-                                timeout: raw["timeout"] as? Double)
+                                timeout: raw["waitSeconds"] as? Double)
             return (step, selector.map { "clearInput \"\($0.text)\"" } ?? "clearInput")
         },
         "swipe": BatchStepBuilder(keys: ["direction"]) { raw in
@@ -128,21 +128,21 @@ extension MCPServer {
             }
             return (FlowStep(action: "swipe", direction: direction.rawValue), "swipe \(direction.rawValue)")
         },
-        "doubleTap": BatchStepBuilder(keys: ["selector", "timeout"]) { raw in
+        "doubleTap": BatchStepBuilder(keys: ["selector", "waitSeconds"]) { raw in
             let selector = optionalBatchSelector(raw)
             let step = FlowStep(action: "doubleTap", locator: selector?.primary,
                                 fallbacks: selector.flatMap(batchFallbacks),
-                                timeout: raw["timeout"] as? Double)
+                                timeout: raw["waitSeconds"] as? Double)
             return (step, selector.map { "doubleTap \"\($0.text)\"" } ?? "doubleTap")
         },
-        "pinchOut": BatchStepBuilder(keys: ["selector", "scale", "durationSeconds", "timeout"]) {
+        "pinchOut": BatchStepBuilder(keys: ["selector", "scale", "durationSeconds", "waitSeconds"]) {
             batchPinchStep("pinchOut", defaultScale: FlowStep.defaultPinchOutScale, raw: $0)
         },
-        "pinchIn": BatchStepBuilder(keys: ["selector", "scale", "durationSeconds", "timeout"]) {
+        "pinchIn": BatchStepBuilder(keys: ["selector", "scale", "durationSeconds", "waitSeconds"]) {
             batchPinchStep("pinchIn", defaultScale: FlowStep.defaultPinchInScale, raw: $0)
         },
         "swipeBy": BatchStepBuilder(
-            keys: ["selector", "dxRatio", "dyRatio", "durationSeconds", "timeout"]
+            keys: ["selector", "dxRatio", "dyRatio", "durationSeconds", "waitSeconds"]
         ) { raw in
             guard let dxRatio = raw["dxRatio"] as? Double, let dyRatio = raw["dyRatio"] as? Double else {
                 throw MCPError("swipeBy requires dxRatio and dyRatio")
@@ -151,7 +151,7 @@ extension MCPServer {
             let duration = raw["durationSeconds"] as? Double ?? FlowStep.defaultSwipeDurationSeconds
             let step = FlowStep(action: "swipeBy", locator: selector?.primary,
                                 fallbacks: selector.flatMap(batchFallbacks),
-                                timeout: raw["timeout"] as? Double,
+                                timeout: raw["waitSeconds"] as? Double,
                                 duration: duration == FlowStep.defaultSwipeDurationSeconds ? nil : duration,
                                 dxRatio: dxRatio, dyRatio: dyRatio)
             let target = selector.map { " \"\($0.text)\"" } ?? ""
@@ -238,7 +238,7 @@ extension MCPServer {
         let duration = raw["durationSeconds"] as? Double ?? FlowStep.defaultPinchDurationSeconds
         let step = FlowStep(action: action, locator: selector?.primary,
                             fallbacks: selector.flatMap(batchFallbacks),
-                            timeout: raw["timeout"] as? Double,
+                            timeout: raw["waitSeconds"] as? Double,
                             duration: duration == FlowStep.defaultPinchDurationSeconds ? nil : duration,
                             scale: scale)
         let target = selector.map { " \"\($0.text)\"" } ?? ""

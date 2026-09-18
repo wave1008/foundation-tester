@@ -44,7 +44,7 @@ class 数量を指定してカートに追加できること {
             scene(2, "詳細で数量を3にしてカートに追加する") {
                 action {
                     tap("#tab_home")
-                    tap("#product_card_fashion_5", timeout: 5)  // ホームおすすめは非同期ロード(Android cold で既定0.7sは空振り)
+                    tap("#product_card_fashion_5", waitSeconds: 5)  // ホームおすすめは非同期ロード(Android cold で既定0.7sは空振り)
                     tap("#btn_qty_increment")  // 1 → 2
                     tap("#btn_qty_increment")  // 2 → 3
                     tap("#btn_add_to_cart")

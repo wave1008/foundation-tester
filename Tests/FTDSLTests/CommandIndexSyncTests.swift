@@ -217,7 +217,7 @@ final class CommandIndexSyncTests: XCTestCase {
     }
 
     /// signature 文字列(索引の表記)からラベルだけを読む。`\w+:` の出現をすべて拾う
-    /// (`select(selector).xxx(timeout:)` のような chain 表記でも `selector` は無視される)
+    /// (`select(selector).xxx(waitSeconds:)` のような chain 表記でも `selector` は無視される)
     private func declaredLabels(inSignature signature: String) -> Set<String> {
         var labels: Set<String> = []
         var current = ""

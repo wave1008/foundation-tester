@@ -36,7 +36,7 @@ breaks on whichever configuration you didn't write for.
 
 The container itself appears as type `.webView` (usable as a scope: `.webView >> …`). Give
 extra time right after a navigation — content can take a few seconds to appear in the
-accessibility/DOM tree, so use a longer `timeout:` on the first assertion after landing on a
+accessibility/DOM tree, so use a longer `waitSeconds:` on the first assertion after landing on a
 WebView screen.
 
 ## `#x` also matches placeholder

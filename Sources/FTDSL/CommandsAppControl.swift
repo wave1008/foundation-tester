@@ -12,10 +12,10 @@ import FTCore
 /// 1ステップで行う(driver.openURL が再起動直後の warm な状態へそのまま届く)。
 /// **配送は最初の画面が描かれてから**(`StepExecutor.awaitInteractiveUI` / LaunchURLReadiness): in-app の
 /// launch はブリッジが答えた時点で返るので、JS が listener を登録する前に撃つと React Native は URL を捨てる
-public func launchApp(_ bundleID: String? = nil, url: String? = nil,
+public func launchApp(_ appID: String? = nil, url: String? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "launchApp")
-    let bundle = bundleID ?? core.appBundleID
+    let bundle = appID ?? core.appBundleID
     let driver = core.driver
     let description = url.map { "launch \(bundle) and open \($0)" } ?? "launch \(bundle)"
     var deliveredBeforeUI = false
@@ -47,10 +47,10 @@ public func openURL(_ url: String, file: StaticString = #filePath, line: UInt = 
 
 /// アプリを終了してから起動し直す(scene 間の状態リセット用)。**データは消えない**
 /// (消したいときは clearAppData)
-public func restartApp(_ bundleID: String? = nil,
+public func restartApp(_ appID: String? = nil,
                        file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "restartApp")
-    let bundle = bundleID ?? core.appBundleID
+    let bundle = appID ?? core.appBundleID
     let driver = core.driver
     core.performCustom(description: "restart \(bundle)", command: "restartApp", file: file, line: line,
                        launchTiming: { driver.lastLaunchTiming },
@@ -72,10 +72,10 @@ public func restartApp(_ bundleID: String? = nil,
 /// 意味の差は2つ: **権限の付与も消える**(次の起動で OS のアラートが出る)/ install のぶん遅い。
 /// どちらも注記 `reinstalled-to-clear-data` で報告に残す。
 /// **消す前に入れ直せることを確かめる** —— 確かめずに uninstall すると端末からアプリだけ消える
-public func clearAppData(_ bundleID: String? = nil,
+public func clearAppData(_ appID: String? = nil,
                          file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "clearAppData")
-    let bundle = bundleID ?? core.appBundleID
+    let bundle = appID ?? core.appBundleID
     let driver = core.driver
     // 実行プロファイルが解決した配布物。実機の run では `appPathPhysical` が入っている
     // (RunOrchestrator / ApiRunCommand が `packagePath(physical:)` で決め、`--app-path` で届く)
@@ -167,18 +167,18 @@ public func installApp(_ appPackageFile: String? = nil,
 
 /// アプリをアンインストールする。nil のときは実行中アプリの既定 bundleID/package
 /// (launchApp() 引数なしと同じ解決 = core.appBundleID)
-public func removeApp(_ packageOrBundleId: String? = nil,
+public func removeApp(_ appID: String? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "removeApp")
     let driver = core.driver
-    let target = packageOrBundleId ?? core.appBundleID
+    let target = appID ?? core.appBundleID
     core.performCustom(description: "removeApp \"\(target)\"", command: "removeApp", file: file, line: line) {
         try await driver.uninstall(bundleID: target)
     }
 }
 
 /// appIs のポーリング(PollBackoff の再利用はコピペ禁止の契約。
-/// Sources/FTCore/PollBackoff.swift 参照)。timeout==0 でも初回照会は必ず1回行う
+/// Sources/FTCore/PollBackoff.swift 参照)。waitSeconds==0 でも初回照会は必ず1回行う
 private func pollForegroundMatch(driver: AppDriver, target: String,
                                  waitSeconds: Double) async throws -> Bool {
     let deadline = Date().addingTimeInterval(waitSeconds)
@@ -190,20 +190,20 @@ private func pollForegroundMatch(driver: AppDriver, target: String,
     }
 }
 
-/// フォアグラウンドのアプリが appNameOrAppId(iOS=bundle ID / Android=package 名)と一致することの検証。
-/// fleetest はニックネーム機構を持たないため、引数は ID そのもの(引数名だけ Shirates 準拠)。
+/// フォアグラウンドのアプリが appID(iOS=bundle ID / Android=package 名)と一致することの検証。
+/// fleetest はニックネーム機構を持たないため、引数は ID そのもの。
 /// waitSeconds までポーリングする。Android は失敗メッセージに actual の package 名を含める
 /// (iOS は前面 bundle ID を取得する手段が無いため自然と省かれる。foregroundAppID 参照)
-public func appIs(_ appNameOrAppId: String, waitSeconds: Double = FlowStep.defaultIsScreenWaitSeconds,
+public func appIs(_ appID: String, waitSeconds: Double = FlowStep.defaultIsScreenWaitSeconds,
                   file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "appIs")
     let driver = core.driver
-    core.performCustom(description: "appIs \"\(appNameOrAppId)\"", command: "appIs", file: file, line: line,
+    core.performCustom(description: "appIs \"\(appID)\"", command: "appIs", file: file, line: line,
                        isAssertion: true) {
         let matched = try await pollForegroundMatch(
-            driver: driver, target: appNameOrAppId, waitSeconds: waitSeconds)
+            driver: driver, target: appID, waitSeconds: waitSeconds)
         guard !matched else { return }
-        var message = "appIs \"\(appNameOrAppId)\" did not hold within \(FTSeconds.format(waitSeconds))s"
+        var message = "appIs \"\(appID)\" did not hold within \(FTSeconds.format(waitSeconds))s"
         // try? はネストした Optional を1段へ平坦化する(SE-0230): throw でも nil 返却でも actual は
         // nil になり、両方の場合を区別なく「省く」で扱える
         if let actual = try? await driver.foregroundAppID() {
@@ -216,19 +216,13 @@ public func appIs(_ appNameOrAppId: String, waitSeconds: Double = FlowStep.defau
 // MARK: - スクリーンショット
 
 /// 現在の画面をスクリーンショットとして撮り、レポートのこのステップの直後に埋め込む。
-/// ファイル名省略時はステップ連番(.png)。Shirates の force/onChangedOnly/withXmlSource は未実装
-public func screenshot(filename: String? = nil,
+/// ファイル名省略時はステップ連番(.png)。Shirates の force/onChangedOnly/withXmlSource は未実装。
+/// **ファイル名はラベル無し**(他の1引数コマンドと同じ。`screenshot(filename:)` は置かない =
+/// UnavailableCommands.swift が受け止める)
+public func screenshot(_ filename: String? = nil,
                        file: StaticString = #filePath, line: UInt = #line) {
     FTRuntime.requireCore(command: "screenshot").performScreenshot(
         filename: filename, file: file, line: line)
-}
-
-/// ラベル無しでファイル名を渡す形。**Shirates(Kotlin)では位置引数で `screenshot("a.png")` と
-/// 書ける**ので、そのまま移してきたシナリオが通るようにこちらも受ける
-/// (他の1引数コマンドがラベル省略形なので、`filename:` が必須なのは取り違えの元にもなっていた)
-public func screenshot(_ filename: String,
-                       file: StaticString = #filePath, line: UInt = #line) {
-    screenshot(filename: filename, file: file, line: line)
 }
 
 /// ホーム画面へ戻る
@@ -559,23 +553,23 @@ public func android(_ body: () -> Void) {
 /// **各周回のステップ説明には `[名前 #n]` が前置される**(group と同じ記録規約)。
 /// 上限に達しても失敗にはしない(消化しきれなかったことは記録に残る)。
 /// 本体が要素を減らさないと上限まで空回りするので、max は想定最大件数に合わせる
-public func repeatWhileCanSelect(_ selector: String, max: Int = 10, waitSeconds: Double = 0,
+public func repeatWhileCanSelect(_ selector: String, maxLoopCount: Int = 10, waitSeconds: Double = 0,
                                  title: String? = nil,
                                  file: StaticString = #filePath, line: UInt = #line,
                                  _ body: () -> Void) {
-    repeatWhileCanSelectImpl(FTSelector.parse(selector), max: max, waitSeconds: waitSeconds,
+    repeatWhileCanSelectImpl(FTSelector.parse(selector), maxLoopCount: maxLoopCount, waitSeconds: waitSeconds,
                              title: title, file: file, line: line, body)
 }
 
-public func repeatWhileCanSelect(_ selector: Sel, max: Int = 10, waitSeconds: Double = 0,
+public func repeatWhileCanSelect(_ selector: Sel, maxLoopCount: Int = 10, waitSeconds: Double = 0,
                                  title: String? = nil,
                                  file: StaticString = #filePath, line: UInt = #line,
                                  _ body: () -> Void) {
-    repeatWhileCanSelectImpl(selector.ftSelector, max: max, waitSeconds: waitSeconds,
+    repeatWhileCanSelectImpl(selector.ftSelector, maxLoopCount: maxLoopCount, waitSeconds: waitSeconds,
                              title: title, file: file, line: line, body)
 }
 
-private func repeatWhileCanSelectImpl(_ selector: FTSelector, max: Int, waitSeconds: Double,
+private func repeatWhileCanSelectImpl(_ selector: FTSelector, maxLoopCount: Int, waitSeconds: Double,
                                       title: String?,
                                       file: StaticString, line: UInt,
                                       _ body: () -> Void) {
@@ -591,7 +585,7 @@ private func repeatWhileCanSelectImpl(_ selector: FTSelector, max: Int, waitSeco
     let label = title ?? "repeat \"\(selector.text)\""
     var iterations = 0
     var dismissedInterruption: FTDriveCore.CanSelectOutcome = .init(found: false, dismissed: nil)
-    while iterations < max {
+    while iterations < maxLoopCount {
         let outcome = core.canSelect(selector, waitSeconds: waitSeconds)
         // 閉じた事実は**最後に閉じた周回のもの**を残す(周回ごとに記録を増やさない)
         if outcome.dismissed != nil { dismissedInterruption = outcome }
@@ -604,7 +598,7 @@ private func repeatWhileCanSelectImpl(_ selector: FTSelector, max: Int, waitSeco
     // **上限で止まったのか、出尽くしたのかを区別できるようにする**。`→ 10 回` だけだと
     // 「ちょうど 10 件だった」のか「まだ残っているのに打ち切った」のかが記録から読めない
     // (成功扱いにする契約は変えない = 上限到達を失敗にはしない)
-    let reachedMax = iterations >= max && max > 0 && !core.isDryRun
+    let reachedMax = iterations >= maxLoopCount && maxLoopCount > 0 && !core.isDryRun
     // 0 周 = 本体を一度も実行していない(ios/android の不一致と同じ扱い。runSection 参照)
     if iterations == 0 { core.noteUnexecutedBlock() }
     let suffix = reachedMax ? " (stopped at the limit; more may remain)" : ""
@@ -632,7 +626,7 @@ public func group(_ title: String, _ body: () -> Void) {
 /// アサーションが1つも無ければ **inconclusive**(ユーザー決定。Shirates の MANUAL
 /// 相当は持たないが、失敗にもしない。理由つきステップ + 弱い修正提案で気付かせる)
 public func verify(_ message: String, file: StaticString = #filePath, line: UInt = #line,
-                   _ block: () -> Void) {
+                   _ body: () -> Void) {
     let core = FTRuntime.requireCore(command: "verify")
     let description = "verify \"\(message)\""
     if core.scenarioAborted {
@@ -640,7 +634,7 @@ public func verify(_ message: String, file: StaticString = #filePath, line: UInt
                         file: "\(file)", line: Int(line))
         return
     }
-    let outcome = core.runVerify(block)
+    let outcome = core.runVerify(body)
     if outcome.failed {
         core.recordStep(description: description, status: .failed(message),
                         file: "\(file)", line: Int(line))
@@ -670,7 +664,7 @@ public func ftRunTearDown(_ body: () -> Void) {
 }
 
 /// 条件が満たされるまで任意の Swift コードを繰り返す(Shirates の doUntilTrue 相当)。
-/// **アプリ側・外部の状態を待つためのもの**で、画面要素の出現待ちは各コマンドの `timeout:` を使う
+/// **アプリ側・外部の状態を待つためのもの**で、画面要素の出現待ちは各コマンドの `waitSeconds:` を使う
 /// (こちらは記録が1ステップに畳まれるため、要素待ちに使うと失敗時の情報が減る)。
 /// action が true を返せば成功。waitSeconds 経過または maxLoopCount 到達で NG(シナリオ中断)。
 /// action が throw した場合は**リトライせず**その場で NG にする(状態の待ちと実行時エラーを混ぜない)。
@@ -678,13 +672,13 @@ public func ftRunTearDown(_ body: () -> Void) {
 public func doUntilTrue(_ title: String, waitSeconds: Double = 10, intervalSeconds: Double = 0.5,
                         maxLoopCount: Int = 100,
                         file: StaticString = #filePath, line: UInt = #line,
-                        _ action: @escaping () async throws -> Bool) {
+                        _ body: @escaping () async throws -> Bool) {
     FTRuntime.requireCore(command: "doUntilTrue")
         .performCustom(description: "doUntilTrue \"\(title)\"", command: "doUntilTrue", file: file, line: line) {
             let deadline = Date().addingTimeInterval(waitSeconds)
             var loops = 0
             while true {
-                if try await action() { return }
+                if try await body() { return }
                 loops += 1
                 if loops >= maxLoopCount {
                     throw FTCommandError.message(

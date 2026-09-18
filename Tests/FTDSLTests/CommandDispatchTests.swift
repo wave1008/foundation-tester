@@ -419,7 +419,7 @@ final class CommandDispatchTests: XCTestCase {
         scenario {
             scene(1, "s") {
                 action {
-                    element = select("#missing", timeout: 0)
+                    element = select("#missing", waitSeconds: 0)
                     reachedNextStep = true
                 }
             }
@@ -492,7 +492,7 @@ final class CommandDispatchTests: XCTestCase {
         scenario {
             scene(1, "s") {
                 action {
-                    tap("#missing", timeout: 0)
+                    tap("#missing", waitSeconds: 0)
                     reachedNextStep = true
                 }
             }
@@ -863,7 +863,7 @@ final class CommandDispatchTests: XCTestCase {
 
         scenario {
             scene(1, "s") {
-                action { screenshot(filename: "before-tap") }
+                action { screenshot("before-tap") }
             }
         }
 

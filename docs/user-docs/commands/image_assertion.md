@@ -7,8 +7,8 @@ Classifies the **image** of the last grabbed element with a classifier trained f
 
 | function | description |
 |---|---|
-| `select(selector).imageIs(label, timeout:)` | Asserts that the label the element's image is classified as contains `label`. Retakes and waits up to `timeout`. |
-| `imageIs(label, timeout:)` | The implicit form acting on the last grabbed element. |
+| `select(selector).imageIs(label, waitSeconds:)` | Asserts that the label the element's image is classified as contains `label`. Retakes and waits up to `waitSeconds`. |
+| `imageIs(label, waitSeconds:)` | The implicit form acting on the last grabbed element. |
 
 ## Where the sample images go
 

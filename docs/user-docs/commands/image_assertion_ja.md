@@ -7,8 +7,8 @@
 
 | 関数 | 説明 |
 |---|---|
-| `select(selector).imageIs(label, timeout:)` | 要素の画像の分類結果のラベルが `label` を含むことを検証します。`timeout` まで取り直しながら待ちます。 |
-| `imageIs(label, timeout:)` | 直前に掴んだ要素に対する暗黙形です。 |
+| `select(selector).imageIs(label, waitSeconds:)` | 要素の画像の分類結果のラベルが `label` を含むことを検証します。`waitSeconds` まで取り直しながら待ちます。 |
+| `imageIs(label, waitSeconds:)` | 直前に掴んだ要素に対する暗黙形です。 |
 
 ## 見本画像の置き場所
 

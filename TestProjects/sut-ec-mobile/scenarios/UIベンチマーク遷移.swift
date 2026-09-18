@@ -42,9 +42,9 @@ class UIベンチマークを操作できること {
             scene(2, "日セルタップで日詳細へ遷移") {
                 action {
                     // 初期ビューポート内の 1月中旬セル。どの日に着弾しても日詳細へ遷移する。
-                    tap("#day_2020_01_15", timeout: 10)
+                    tap("#day_2020_01_15", waitSeconds: 10)
                 }.expectation {
-                    exist("#slot_00", timeout: 10)  // 日詳細固有の 0時スロット = 遷移成立の証跡
+                    exist("#slot_00", waitSeconds: 10)  // 日詳細固有の 0時スロット = 遷移成立の証跡
                     exist("#btn_back")              // 小ツリーの詳細画面なら btn_back は確実に取れる
                 }
             }

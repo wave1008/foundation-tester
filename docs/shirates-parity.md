@@ -46,14 +46,14 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 | Shirates | fleetest | |
 |---|---|---|
-| `tap` | `tap(sel, timeout:scroll:maxSwipes:)` | ✅ |
+| `tap` | `tap(sel, waitSeconds:scroll:maxSwipes:)` | ✅ |
 | `tap(holdSeconds:)` | 同名 | ✅ |
 | `tapWithScrollDown/Up/Left/Right` | `tap(sel, scroll: .down)` | 🟡 関数は置かない(下記「スクロールの指定は `scroll:` だけ」) |
 | `tapWithoutScroll` | `tap(sel, scroll: .noScroll)` | 🟡 関数は置かない(ユーザー決定 2026-09-19: スクロールの指定は `scroll:` に寄せる。Shirates の名前は `UnavailableCommands.swift` が書き方を返す) |
 | `select` / `selectWithScroll*` / `selectWithoutScroll` | `select`(`selectWithScroll*` は `select(sel, scroll: .down)`・`selectWithoutScroll` は `scroll: .noScroll`) | ✅ `exist`(検証)では代用にならないため実装(2026-07-31)。**掴めなければ失敗させず空要素を返す**(見つからないときも、見えないときも同じ。`requireVisible: false` で可視性照合を外せる)。Shirates の `throwsException` に相当する引数は持たない = 常に非 throw |
 | `TestDriver.lastElement` / `it` | `lastElement` | ✅ 2026-08-04 ユーザー決定で実装(それ以前は「概念を持たない」が承認済み差分)。要素を1つに定めて解決したコマンドが差し替える(`notExist` / `countIs` とセレクタを取らないコマンドは差し替えない)。**値は掴んだ時点の凍結値**・**掴めなければ空で上書き**・**scene を跨ぐと空**・一度も掴んでいない読み出しは空+警告。`it` の別名は置かない(Swift では読み手が識別子を追えない) |
 | `canSelect` / `canSelectWithScroll*` / `canSelectNot` | 単独コマンドは無い(`ifCanSelect` / `repeatWhileCanSelect` に内包) | 🟡 |
-| `existAll` / `canSelectAll` / `dontExistAll` | — | ➖ **実装しない**(ユーザー決定 2026-07-31)。`exist` のチェーンで書く方が保守しやすく、要素ごとに `timeout:` / `scroll:` 等のオプションも指定できる。**再提案しない** |
+| `existAll` / `canSelectAll` / `dontExistAll` | — | ➖ **実装しない**(ユーザー決定 2026-07-31)。`exist` のチェーンで書く方が保守しやすく、要素ごとに `waitSeconds:` / `scroll:` 等のオプションも指定できる。**再提案しない** |
 | `scanElements` / `*InScanResults` | — | ➖ **画面全体の棚卸しはシナリオの仕事ではない**(2026-08-21 判定)。要素一覧は `fleetest api snapshot` と MCP の `ft_snapshot` にあり、そちらは**書く前に調べる**側の道具。シナリオ内で全要素を走査して条件分岐すると、木の揺れがそのまま実行の揺れになる |
 | `tapAppIcon` | `tapAppIcon(name?)` | ✅ 2026-08-03 **`auto` 相当のみ**(`tapAppIconMethod`・マクロ機構は持たない)。名前省略はプロファイルの `appName`(Shirates の `appIconName` 既定=プロファイル、と同義。親が解決して子へ渡す) |
 | `tap(x, y)`(座標) | `tap(x:y:holdSeconds:)` | 🟡 2026-08-16 実装。**承認済み差分**: 座標は `Int` ではなく `Double`(fleetest の座標コマンドは全部 `Double`。`swipePointToPoint` と揃える)/ `repeat:` `safeMode:` は持たない(Shirates は tap を swipe で合成するための引数だが、fleetest はドライバに座標タップの口がある)。単位は iOS = pt / Android = px |
@@ -111,7 +111,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `existWithScrollDown/Up` | `exist(sel, scroll: .down)` | 🟡 関数は置かない(同上) |
 | `existWithScrollLeft/Right` | `exist(sel, scroll: .left)` | 🟡 関数は置かない(同上) |
 | `existWithoutScroll` | `exist(sel, scroll: .noScroll)` | 🟡 関数は置かない(`tapWithoutScroll` と同じ) |
-| `dontExist` | `notExist(sel, timeout:scroll:maxSwipes:)` | 🟡 **名前が違う** |
+| `dontExist` | `notExist(sel, waitSeconds:scroll:maxSwipes:)` | 🟡 **名前が違う** |
 | `dontExistWithScrollDown/Up` / `dontExistWithoutScroll` | `notExist(scroll:)` に集約 | 🟡 別名は無い |
 | `screenIs` / `screenIsOf` / `isScreen(Of)` / `waitScreen(Of)` / `switchScreen` | — | ➖ 画面ニックネーム機構を持たない。**`screenIs` は `UnavailableCommands` が受け止める**(同名だった FM の視覚照合は 2026-08-21 に `screenLooksLike` へ改名した) |
 | — | `screenLooksLike(説明文)` | 🟢 FM の視覚照合(スクリーンショットと自然文の照合)。Shirates に対応物は無い |
@@ -170,7 +170,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `emulator` / `simulator` / `virtualDevice` / `realDevice` | — | ➖ 実機/仮想の差はツール側で吸収する方針 |
 | `platformName` / `isAndroid` / `isiOS` ほかプロパティ | — | ➖ **`ios { }` / `android { }` で足りる**(2026-08-21 判定)。値が要る場面は Swift 側で書ける。真偽値を配ると「片方だけ通る」書き方が増え、どの OS で何を検証したかが読めなくなる |
 | `osaifuKeitai(Not)` / `specialTag` / `stub(Not)` / `arm64` / `intel` | — | ➖ **Shirates 固有の運用タグ**(特定端末機能・スタブ構成・CPU 種別で実行を分ける)。fleetest の実行の絞り込みは実行プロファイルと `@Test(platform:)` が担う |
-| — | `repeatWhileCanSelect(sel, max:)` | 🟢 |
+| — | `repeatWhileCanSelect(sel, maxLoopCount:)` | 🟢 |
 
 ## 同期
 
@@ -179,7 +179,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `wait` | 同名 | ✅ |
 | `waitForDisplay` | `waitForDisplay(sel, waitSeconds: 15)` | ✅ 2026-08-03 スクロールしない・戻り値 `FTElement`。Shirates の `throwsException` に相当する引数は持たない(常に失敗として記録する) |
 | `waitForClose` | `waitForClose(sel, waitSeconds: 15)` | ✅ 2026-08-03 **`expression` 省略不可**(Shirates の直前セレクタ再利用の省略形は不採用。`lastElement` は 2026-08-04 に実装済みだが、待ち対象がソース上で読めなくなるため待ち系には省略形を置かない) |
-| `usingWaitSeconds` | `timeout:` 引数 / 実行プロファイル `defaultTimeout` | 🟡 |
+| `usingWaitSeconds` | `waitSeconds:` 引数 / 実行プロファイル `defaultTimeout` | 🟡 **待つ上限の引数名は全コマンドで `waitSeconds:`**(Shirates と同名。ユーザー決定 2026-09-19。以前は操作・検証が `timeout:`、待機・分岐が `waitSeconds:` と割れていた。実行プロファイルのキー `defaultTimeout` / `scenarioTimeout` と MCP ツールの `timeout` は別物で据え置き) |
 | `waitScreen` / `waitScreenOf` | — | ➖ 画面ニックネーム機構を持たない |
 
 ## アプリ・OS 操作
@@ -193,7 +193,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `goPreviousApp` | `appSwitcher()`(スイッチャーを開くだけ) | 🟡 |
 | `internetOn/Off` / `wiFiOn/Off` / `mobileOn/Off` | — | ⏳ **足す**(2026-08-21 判定。基準①=回避策が無い唯一の項目)。**通信断の状態を作れない**ので、オフライン時の表示・再試行・エラーダイアログを検証できない。**実害**: 受け手のアプリは規約画面を外部サイトから読み、通信が失敗するとエラーダイアログを出す —— それが偶発的にテストを落とすのに、**意図的に再現することも防ぐこともできない**。**Android のみ**(`adb shell svc wifi/data`)で、**iOS シミュレータはホストのネットワークを共有するため同等の手段が無い**(実機も同様)。足すときは 🟡(Android 限定)として書く |
 | `shell` / `shellAsync` | `procedure { }` 内で任意 Swift | 🟡 |
-| `screenshot` | `screenshot(filename:?)` / `screenshot(_:)` | ✅ 2026-08-03(位置引数版は 2026-08-20 追加。Kotlin は名前付き引数を位置でも渡せるので `screenshot("a.png")` がそのまま通る)**`filename` のみ**(他3引数は Shirates の auto-screenshot 機構の制御で、fleetest は毎操作の自動撮影を持たない)。画像はレポートの該当ステップ直後に埋め込む。失敗時の証跡・MCP `ft_screenshot` とは別経路 |
+| `screenshot` | `screenshot(filename?)` | ✅ 2026-08-03(**ファイル名はラベル無しの1形だけ** = 2026-09-19。Kotlin は名前付き引数を位置でも渡せるので `screenshot("a.png")` がそのまま通る。`filename:` のラベル形は置かない)**`filename` のみ**(他3引数は Shirates の auto-screenshot 機構の制御で、fleetest は毎操作の自動撮影を持たない)。画像はレポートの該当ステップ直後に埋め込む。失敗時の証跡・MCP `ft_screenshot` とは別経路 |
 | — | `home()` / `back()` | 🟢 OS 差を吸収した1コマンド |
 | — | `clearAppData(bundleID?)` | 🟢 再インストール不要でアプリデータ**と権限**を消す。初回起動・オンボーディング・権限ダイアログのテストが書ける(iOS はシミュレータ専用。キーチェーン/Keystore の値は残る) |
 | — | `openURL(url)` / `launchApp(url:)` | 🟢 2026-08-08 ディープリンク配送。**アプリを再起動せず**今の画面の上に遷移を積む(warm)。Shirates に対応物は無い |

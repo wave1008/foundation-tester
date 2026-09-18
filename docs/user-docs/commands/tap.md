@@ -6,7 +6,7 @@ Taps an element, or raw coordinates, on the screen.
 
 | function | description |
 |---|---|
-| `tap(sel, holdSeconds: 0, timeout:scroll:maxSwipes:containerInference:)` | Taps the first element matching the selector. `holdSeconds` greater than 0 makes it a long press (default 0 = normal tap). Waits for the target to become enabled before tapping (see Notes). |
+| `tap(sel, holdSeconds: 0, waitSeconds:scroll:maxSwipes:containerInference:)` | Taps the first element matching the selector. `holdSeconds` greater than 0 makes it a long press (default 0 = normal tap). Waits for the target to become enabled before tapping (see Notes). |
 | `tap(x: Int, y: Int, holdSeconds: 0)` | Taps raw coordinates. Coordinates use the same system as the `screen` frame in a snapshot — iOS = pt, Android = px (not dp). Prefer a selector whenever one is available. On iOS with the in-app engine, a point off the screen or on the software keyboard fails (the in-app engine cannot press keys — close the keyboard with `pressEnter` first), and an element clipped out of its scroll container is not activated even if its frame contains the point. |
 | `tap(sel, scroll: .noScroll)` | Taps without scrolling, even inside a `withScrollDown { }` block. |
 | `tapAppIcon(name?)` | Taps the app icon on the home screen. Name defaults to the app profile's `appName` when omitted. |
@@ -25,10 +25,10 @@ tap(x: 120, y: 640)                    // only when no selector is available
 - **`tap` waits for the target to become enabled before tapping.** A screen can render an
   element before it is actually interactive (a form still loading, a button disabled until
   validation passes). `tap` retries resolution until the element is `enabled`, up to the
-  step's `timeout:` (default about 5 seconds). If it never becomes enabled, `tap` still taps
+  step's `waitSeconds:` (default about 5 seconds). If it never becomes enabled, `tap` still taps
   it — a scenario that deliberately taps a disabled element to assert "nothing happens" keeps
   working. Waiting is skipped when the selector explicitly pins the state, e.g.
-  `#btn&&enabled=false`, or when `timeout: 0` is given.
+  `#btn&&enabled=false`, or when `waitSeconds: 0` is given.
 - **Traditional form**: `tap("#field")` followed by `type("some text")` also works. On Android,
   when `#id` resolves to the input's wrapping container rather than the field itself, focus can
   fail to land in the field; `type` recovers by locating the single input inside the tapped

@@ -76,7 +76,7 @@ lastElement.idIs("order_btn")            // operation commands also replace the 
 A chained check (`exist(…).textIs(…)`, `lastElement.textIs(…)`, or the implicit `textIs(…)`)
 first evaluates against the value already grabbed. If that already satisfies the assertion, the
 step is still recorded, but with no device round trip — the message shows
-`(from the grabbed value)`. Otherwise it polls the device as usual up to `timeout`.
+`(from the grabbed value)`. Otherwise it polls the device as usual up to `waitSeconds`.
 
 ```swift
 exist("#total").textIs("1,200")   // 0 round trips if the grabbed value is already "1,200"

@@ -1444,11 +1444,16 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
 - **要素が見つからなければ失敗(シナリオ中断)。唯一の例外は `select`** で、掴めなければ
   失敗させず空要素を返す(`FTElement.isEmpty`)。**「出るか不定」を表す引数は持たない**
   (`optional:` は 2026-08-02 に全廃。`irregularHandler` と `ifCanSelect` に一本化した。下記)
-- tap/type/select は `timeout:`(ロケータ解決の再試行待ち上限秒。0=リトライなし。
+- **待つ上限の引数名は全コマンドで `waitSeconds:`**(ユーザー決定 2026-09-19。Shirates と同名・単位が名前に出る。
+  `timeout:` は DSL に置かない。`FlowStep.timeout`・実行プロファイルの `defaultTimeout` / `scenarioTimeout`・MCP ツールの
+  `timeout` は内部 / 別系統の名前で据え置き。**`ft_batch` は DSL の行を受けるので DSL と同じ `waitSeconds:`** ——
+  索引の signature とビルダーのキー(`MCPServer.batchStepBuilders`)を片方だけ変えると、実在するラベルを断り
+  無いラベルを受ける。`BatchLineParserTests.testWaitCapLabelFollowsTheDSL` が縛る)
+- tap/type/select は `waitSeconds:`(ロケータ解決の再試行待ち上限秒。0=リトライなし。
   省略時は tap/type が約0.7秒・select は `defaultTimeout`)を取る。
   出るか不定の要素を `ifCanSelect` で見るときの空振り短縮用(performance-tuning §5)
-- **秒は全て小数(Double)**(2026-07-29。`timeout:` / `waitSeconds:` / `defaultTimeout` /
-  `--default-timeout`。`FlowStep.timeout` も `Double?`)。`timeout: 1.2` が書ける。
+- **秒は全て小数(Double)**(2026-07-29。`waitSeconds:` / `defaultTimeout` /
+  `--default-timeout`。`FlowStep.timeout` も `Double?`)。`waitSeconds: 1.2` が書ける。
   表示は `FTSeconds.format`(FTCore)が唯一の生成元で `5.0s` ではなく `5s`・`1.2s` と出す
   (`StepDescription.formatSeconds` はここへ委譲)。
   `ifCanSelect` のポーリングは残り時間と 0.25 秒の小さい方で待つ(**0.5 秒固定だとサブ秒の待ちが
@@ -1460,7 +1465,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
 - **要素の出現待ちは暗黙**: `tap` はロケータ解決を再試行(省略時 約0.7秒)し、
   `exist`/`textIs`/`valueIs` は既定タイムアウト(5秒・`--default-timeout` で上書き)まで
   スナップショットを取り直してポーリング再判定する。遷移後の検証直前に固定 `wait` を足すのは冗長で、
-  足りなければ各コマンドの `timeout:` を上げるのが本筋。例外は `ifCanSelect`
+  足りなければ各コマンドの `waitSeconds:` を上げるのが本筋。例外は `ifCanSelect`
   (既定 `waitSeconds:0` で即時 1 回判定。待つなら `waitSeconds:` を渡す)。
   `wait(1)` の出番はセレクタで待てない整定(アニメ中の座標ずれ等・下記知見の iOS シート例)に限る
 - **型名は先頭小文字**(`.button` / `.staticText`)。ブリッジは `Button` を送ってくるが
@@ -1862,7 +1867,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
 | `swipePointToPoint` / `swipeElementToElement` に withOffset・offsetY・intervalSeconds・repeat・safeMode・marginRatio・adjust が無い | ブリッジの drag が単発ジェスチャのため |
 | `optional:` 引数を持たない(Shirates は `throwsException: false`) | ユーザー決定 2026-08-02・**再提案しない**。「出るか不定」はアプリ内メッセージなら `irregularHandler`、その場限りなら `ifCanSelect { }` で表す。空振りを黙って許す引数が操作系に付いていると、腐ったセレクタが緑のまま残る。掴めないことが答えになり得る `select` だけは失敗させず空要素を返す |
 | `notExist`(Shirates は `dontExist`) | 否定の意味が読み取りやすく `exist` との対称も保てる(ユーザー決定 2026-07-31・**再提案しない**) |
-| `existAll` / `dontExistAll` を持たない | `exist` のチェーンで書く方が保守しやすく、要素ごとに `timeout:` / `scroll:` を指定できる(ユーザー決定 2026-07-31・**再提案しない**) |
+| `existAll` / `dontExistAll` を持たない | `exist` のチェーンで書く方が保守しやすく、要素ごとに `waitSeconds:` / `scroll:` を指定できる(ユーザー決定 2026-07-31・**再提案しない**) |
 | `clearInput` がソフトキー/Appium clear 機構ではない(xcuitest=末尾タップ+delete 連打 / inapp=first responder のテキスト置換(WebView の欄は全選択+削除1回で、確かめは呼び手が木で行う)/ Android=ACTION_SET_TEXT "") | キーボード要素を snapshot から除外しているため(pressEnter と同じ事情) |
 | キーボード可視の取得元がエンジンで違う(iOS xcuitest=AX ツリーの `.keyboard` ノード / iOS in-app=`UITextEffectsWindow` の可視判定 / Android=ホストが見る dumpsys の InputMethod window) | IME が別プロセスの window でアプリの a11y ツリーに出ないため(iOS の2経路の事情は下記「キーボードの観測と `hideKeyboard`」) |
 | `waitForDisplay` / `waitForClose` に `throwsException` が無い(タイムアウトは常に失敗として記録) | `optional:` 全廃(2026-08-02)と同じ方針。空振りを許すと腐ったセレクタが緑のまま残る(2026-08-03 承認) |
@@ -2197,14 +2202,14 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   **Swift 固有の事情**: Shirates は `Any?` の拡張だが、Swift は非 Optional の値に Optional の拡張が
   生えない(`"abc".thisIs(…)` が型解決できない)。実装は `Any?` 側に1つだけ置き、
   素の値へは `FTValue` プロトコルの転送メソッドで生やす(利用者に `let v: Any? =` を書かせない)
-- **`repeatWhileCanSelect(sel, max:)`** はセレクタが解決できる限り本体を繰り返す(上限 max)。
+- **`repeatWhileCanSelect(sel, maxLoopCount:)`** はセレクタが解決できる限り本体を繰り返す(上限 maxLoopCount)。
   各周回は `group` と同じ規約で `[名前 #n]` を前置して記録する。上限到達は失敗にしないが、
   **打ち切ったことは記録に出す**(`→ 10 回(上限に達したため打ち切り。まだ残っている可能性があります)`)。
   これが無いと「ちょうど 10 件だった」のか「まだ残っている」のかが後から読めない。
   dry-run は canSelect が常に true を返すため **1 周だけ**回してステップ列挙に留める
 - **`doUntilTrue(title, waitSeconds:intervalSeconds:maxLoopCount:)`**(2026-07-27。Shirates 準拠の名前):
   任意の Swift 条件が true になるまで繰り返す。**アプリ・外部の状態待ち専用**で、要素の出現待ちは
-  各コマンドの `timeout:` を使う(こちらは記録が1ステップに畳まれ、失敗時の情報が減るため)。
+  各コマンドの `waitSeconds:` を使う(こちらは記録が1ステップに畳まれ、失敗時の情報が減るため)。
   action が throw したら**リトライせず**即 NG(状態待ちと実行時エラーを混ぜない)。
   dry-run は performCustom の既定どおり body を実行しない
 - **`tap(scroll:)` / `type(scroll:)` / `exist(scroll:)`**
@@ -3966,7 +3971,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
      platform 非依存に書いたシナリオを両OSで回すなら `--profile ios` と `--profile android` を
      別々に実行する。シナリオ数や負荷には依存しない決定的な挙動(2026-07-22 実測)
 6. `defaultTimeout` はランナーの `--default-timeout` → FTDriveCore に渡り、
-   exist/textIs/valueIs の `timeout: Double? = nil` の既定値になる
+   exist/textIs/valueIs の `waitSeconds: Double? = nil` の既定値になる
 7. ワーカー構築(供給+インストール)は ProfileWorkerFactory(FTAndroid)に共通化され、
    CLI(ProfileRunner)と `fleetest api run`(VSCode 拡張など UI 入口向けの共通経路)が共用する
 

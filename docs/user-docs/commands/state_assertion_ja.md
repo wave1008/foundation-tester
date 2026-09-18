@@ -6,10 +6,10 @@
 
 | 関数 | 説明 |
 |---|---|
-| `select(selector).enabledIsTrue(timeout:)` | 要素が有効であることを検証します。`timeout` まで状態変化を待ちます。対象は直前に掴んだ要素です。 |
-| `select(selector).enabledIsFalse(timeout:)` | 要素が無効であることを検証します。待機の挙動は同じです。 |
-| `select(selector).checkIsON(prefer:, timeout:)` | 要素がチェックされていることを検証します。`prefer:` で、状態を読む先の優先(`.classifier` / `.accessibility`)をこの1コマンドだけ指定できます(省略時は実行プロファイルに従います)。 |
-| `select(selector).checkIsOFF(prefer:, timeout:)` | 要素がチェックされていないことを検証します。`prefer:` は `checkIsON` と同じです。要素がチェック状態(オン/オフ)を一度も報告しなかった場合、run 終了時に警告が出ます。 |
+| `select(selector).enabledIsTrue(waitSeconds:)` | 要素が有効であることを検証します。`waitSeconds` まで状態変化を待ちます。対象は直前に掴んだ要素です。 |
+| `select(selector).enabledIsFalse(waitSeconds:)` | 要素が無効であることを検証します。待機の挙動は同じです。 |
+| `select(selector).checkIsON(prefer:, waitSeconds:)` | 要素がチェックされていることを検証します。`prefer:` で、状態を読む先の優先(`.classifier` / `.accessibility`)をこの1コマンドだけ指定できます(省略時は実行プロファイルに従います)。 |
+| `select(selector).checkIsOFF(prefer:, waitSeconds:)` | 要素がチェックされていないことを検証します。`prefer:` は `checkIsON` と同じです。要素がチェック状態(オン/オフ)を一度も報告しなかった場合、run 終了時に警告が出ます。 |
 
 いずれも `exist` / `select` の戻り値にチェーンでき、直前に掴んだ要素に効く暗黙形(自由関数。
 例: `enabledIsTrue()`)も持ちます。

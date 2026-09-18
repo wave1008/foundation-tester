@@ -36,7 +36,7 @@ class 未登録のシステムアラート {
                     tap("#btn_freeze_3s")
                 }.expectation {
                     // 無いものを待って時間切れ → 失敗文言にアラートの題名とボタンが出る
-                    exist("#this_id_does_not_exist", timeout: 3)
+                    exist("#this_id_does_not_exist", waitSeconds: 3)
                 }
             }
         }

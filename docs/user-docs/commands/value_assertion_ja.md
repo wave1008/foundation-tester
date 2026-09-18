@@ -12,19 +12,19 @@ select("#email"); lastElement.valueIs("test@example.com") // lastElement を明�
 select("#email"); valueIs("test@example.com")              // 暗黙(直前に掴んだ要素)
 ```
 
-引数は `(期待値, timeout:)`(肯定形は `requireVisible:` も取ります)。セレクタを渡す形はありません。
+引数は `(期待値, waitSeconds:)`(肯定形は `requireVisible:` も取ります)。セレクタを渡す形はありません。
 
 ## 関数
 
 | 肯定 | 否定 | 判定 |
 |---|---|---|
-| `select(selector).valueIs(expected, timeout:, requireVisible:, strict:)` | `valueIsNot(expected, timeout:, strict:)` | 完全一致 |
-| `valueContains(expected, timeout:, requireVisible:, strict:)` | `valueContainsNot(expected, timeout:, strict:)` | 部分一致 |
-| `valueStartsWith(expected, timeout:, requireVisible:, strict:)` | `valueStartsWithNot(expected, timeout:, strict:)` | 前方一致 |
-| `valueEndsWith(expected, timeout:, requireVisible:, strict:)` | `valueEndsWithNot(expected, timeout:, strict:)` | 後方一致 |
-| `valueMatches(pattern, timeout:, requireVisible:, strict:)` | `valueMatchesNot(pattern, timeout:, strict:)` | 正規表現(部分一致。全体一致は `^…$`) |
-| `valueMatchesDateFormat(format, timeout:, requireVisible:)` | — | `DateFormatter` の書式文字列 |
-| `valueIsNotEmpty(timeout:, strict:)` | `valueIsEmpty(timeout:, strict:)` | 空でない / 空 |
+| `select(selector).valueIs(expected, waitSeconds:, requireVisible:, strict:)` | `valueIsNot(expected, waitSeconds:, strict:)` | 完全一致 |
+| `valueContains(expected, waitSeconds:, requireVisible:, strict:)` | `valueContainsNot(expected, waitSeconds:, strict:)` | 部分一致 |
+| `valueStartsWith(expected, waitSeconds:, requireVisible:, strict:)` | `valueStartsWithNot(expected, waitSeconds:, strict:)` | 前方一致 |
+| `valueEndsWith(expected, waitSeconds:, requireVisible:, strict:)` | `valueEndsWithNot(expected, waitSeconds:, strict:)` | 後方一致 |
+| `valueMatches(pattern, waitSeconds:, requireVisible:, strict:)` | `valueMatchesNot(pattern, waitSeconds:, strict:)` | 正規表現(部分一致。全体一致は `^…$`) |
+| `valueMatchesDateFormat(format, waitSeconds:, requireVisible:)` | — | `DateFormatter` の書式文字列 |
+| `valueIsNotEmpty(waitSeconds:, strict:)` | `valueIsEmpty(waitSeconds:, strict:)` | 空でない / 空 |
 
 比較規則はテキストの検証と同じ「見た目が完全に一致していれば同じ」です(`strict:` で無効化可能)。
 詳細は[テキストの検証](./text_assertion_ja.md)を参照してください。

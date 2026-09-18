@@ -23,12 +23,12 @@ wait(0.5)     // セレクタで待てない整定のときだけ(アニメ中�
 
 - **要素の出現待ちは既に暗黙です** —— 操作は解決を再試行し、検証はタイムアウトまでポーリング
   再判定するので、`exist()` の前に `wait()` を置くのは冗長です。待ちが足りなければ固定の
-  `wait()` を足すのではなく、コマンドの `timeout:`(小数可)を上げてください。
+  `wait()` を足すのではなく、コマンドの `waitSeconds:`(小数可)を上げてください。
 - **`wait()` はセレクタで待てない整定のための最後の手段です**(アニメ中に座標がずれる等)。
   `waitForDisplay` / `waitForClose` の代わりにはなりません。
 - **`waitForDisplay` の判定は `exist` と同じ可視性込み**です(コマンド名 displayed の意味に
   沿わせています)—— `exist` の `requireVisible: false` に当たる逃げ道はありません。覆われ
-  検出を外したまま待ちたい場合は `exist(sel, requireVisible: false, timeout: 15)` を使って
+  検出を外したまま待ちたい場合は `exist(sel, requireVisible: false, waitSeconds: 15)` を使って
   ください。
 - `waitForDisplay` / `waitForClose` はどちらもスクロールして探しません。画面外にある可能性が
   あるなら、先にスクロールするか `scrollTo` を使ってください。

@@ -27,7 +27,7 @@
 | `ocrTextVisualCheck` | bool | `true` | occlusion guard が FM に訊く前に、端末の OCR(Vision)で要素を読む。期待テキストが丸ごと読めた回は FM を呼ばずに通り、読めなければ従来どおり FM が判定する(切ると同じ検査が遅くなるだけ)。`textVisualCheck` が `false` の run では guard 自体が走らないので効かない |
 | `preferCheckStateClassifier` | bool | `true` | `checkIsON` / `checkIsOFF` の判定で CheckStateClassifier(プロジェクトの `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に置いた見本画像から学習する画像分類器)をアクセシビリティより優先する。`false` なら、アクセシビリティが状態を報告しない要素にだけ使う。見本画像が無ければ効かない |
 | `reportDir` | string | `"reports"` | Markdown レポートの出力先(プロジェクトルート相対) |
-| `defaultTimeout` | number(秒) | DSL 側の既定値 | `timeout:` を取る DSL コマンドの既定タイムアウト |
+| `defaultTimeout` | number(秒) | DSL 側の既定値 | `waitSeconds:` を取る DSL コマンドの既定タイムアウト |
 | `scenarioTimeout` | int(秒) | `90` | シナリオ単位のホスト側 watchdog(壁時計タイムアウト)。個々のコマンド待ちを縛る `defaultTimeout` とは別物 |
 | `iosInappEngine` | bool | `true` | `true` → iOS デバイスは hybrid エンジン(in-app 主 + XCUITest フォールバック)で動く。`false` → XCUITest のみ。`devices[]` のその要素自身に `engine` を明示していればそちらが優先。Android には影響しない |
 | `wipeDataOnBloat` | bool | `true` | 実行開始時、Android AVD の wipe 対象ファイル(userdata/cache/snapshots)が `wipeDataThresholdGB` を超えていたら Wipe Data する |

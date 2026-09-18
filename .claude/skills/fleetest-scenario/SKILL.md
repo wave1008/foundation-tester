@@ -266,7 +266,7 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 
 | 分類 | コマンド |
 |---|---|
-| タップ/入力 | `tap(sel, timeout:)` / `tap(sel, holdSeconds:)`(長押し)/ `type(text)`(直前フォーカス)/ `type(sel, text)` / `select(sel)`(掴むだけ。**掴めなければ空要素**を返し失敗しない)/ `lastElement`(直前に掴んだ要素。**値は掴んだ時点の凍結値**なので、掴んだ直後に読むときだけ使う。離れた場所で使うなら `let e = select(…)` で受ける) |
+| タップ/入力 | `tap(sel, waitSeconds:)` / `tap(sel, holdSeconds:)`(長押し)/ `type(text)`(直前フォーカス)/ `type(sel, text)` / `select(sel)`(掴むだけ。**掴めなければ空要素**を返し失敗しない)/ `lastElement`(直前に掴んだ要素。**値は掴んだ時点の凍結値**なので、掴んだ直後に読むときだけ使う。離れた場所で使うなら `let e = select(…)` で受ける) |
 | スワイプ/スクロール | `swipe(.up/.down/.left/.right)`(**指の動き**。生のジェスチャ)/ 以下は**コンテンツ基準**(`.down` = 下に読み進める): `scrollTo(sel, direction:, maxSwipes:)` / `scrollDown(repeat:)` `scrollUp` `scrollRight` `scrollLeft` / `scrollToBottom(maxSwipes:)` `scrollToTop` `scrollToRightEdge` `scrollToLeftEdge` / `flickCenterToTop/Bottom/Left/Right` `flickLeftToRight/RightToLeft` `flickBottomToTop/TopToBottom`(画面基点・8種。速い1ストロークの生ジェスチャ) |
 | スクロールしながら探す | `tap(sel, scroll: .down)` / `exist(sel, scroll: .down)`(**`tapWithScrollDown` のような関数名の別名は無い** = スクロールの指定は `scroll:` だけ)/ ブロックで囲む `withScrollDown { … }` と、打ち消し: 1コマンドだけなら `scroll: .noScroll`(`exist(sel, scroll: .noScroll)`)・ブロックなら `withoutScroll { … }`。**画像系(`findImage` / `existImage`)は別名が無く `scroll:` だけ** |
 | 検証 | セレクタを取るのは `exist(sel)` / `notExist(sel)` / `countIs(sel, 個数)` / `screenLooksLike(画面の説明文)` だけ。**要素の属性検証は「掴んでから」書く**: `select(sel).enabledIsTrue()` / `.enabledIsFalse()` / `.checkIsON()` / `.checkIsOFF()` / `.idIs("…")` / `.imageIs("[ラベル]")`(要素の画像の分類。**プロジェクトの `vision/classifiers/DefaultClassifier/` に見本画像があるときだけ**書く = 無ければ必ず失敗する。見本は `ft_capture_element`(MCP)か `fleetest vision capture` で端末から採り、`fleetest vision check` で点検する)。`verify("説明") { … }` は複数アサーションを1ステップに集約(ブロック内0個なら inconclusive = passed でも failed でもない・シナリオは続行) |
@@ -274,20 +274,20 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 | 画面に依らない値の検証 | `thisIs` `thisIsNot` `thisIsTrue` `thisContains` `thisMatchesDateFormat` `thisIsGreaterThan` …(API 応答・計算結果に直接生える。失敗は1ステップとして記録される) |
 | アプリ制御 | `launchApp(bundleID?)` / `restartApp()` / `terminateApp()` / `home()` / `appSwitcher()` / `installApp(path?)` / `removeApp(id?)` / `appIs(id, waitSeconds:)` / `tapAppIcon(name?)`(ホーム画面のアイコンをタップ。省略時はプロファイルの appName) |
 | 待機/分岐 | `wait(秒)` / `waitForDisplay(sel, waitSeconds:)`(表示まで待つ。スクロールしない)/ `waitForClose(sel, waitSeconds:)`(消えるまで待つ。スクロールしない)/ `ifCanSelect(sel, waitSeconds:) { … }.ifElse { … }` / `ios { }` / `android { }` / `procedure("名") { try await … }` |
-| 反復 | `repeatWhileCanSelect(sel, max: n) { … }`(解決できる限り繰り返す。上限到達は失敗にしない)/ `doUntilTrue("名", waitSeconds:) { 条件 }`(**アプリ・外部の状態待ち専用**。要素の出現待ちは各コマンドの `timeout:`) |
+| 反復 | `repeatWhileCanSelect(sel, maxLoopCount: n) { … }`(解決できる限り繰り返す。上限到達は失敗にしない)/ `doUntilTrue("名", waitSeconds:) { 条件 }`(**アプリ・外部の状態待ち専用**。要素の出現待ちは各コマンドの `waitSeconds:`) |
 | 割り込み | `irregularHandler("#promo_modal", dismiss: "#btn_close")` を setUp で宣言すると、出るか不定の**アプリ内メッセージ**を出た時点で自動的に閉じる(OS のダイアログはツール側が吸収するので書かない)。**そのモーダル自体を検証・操作したい区間**では `suppressHandler { … }`(1つの CAE ブロックの内側)か `disableHandler()` … `enableHandler()`(**CAE を跨ぐとき**)で自動クローズを止める |
 | まとまり | `group("ログイン") { … }`(記録に `[ログイン]` を前置するだけ。実行・失敗の扱いは素の列と同じ) |
-| 記録 | `screenshot(filename:?)`(現在の画面を撮り、このステップ直後にレポートへ埋め込む) |
+| 記録 | `screenshot(filename?)`(ファイル名はラベル無し)(現在の画面を撮り、このステップ直後にレポートへ埋め込む) |
 | 前後処理 | テストクラスに `func setUp()` / `func tearDown()`(引数なし)を書くと各 `@Test` の前後で自動実行 |
 
 - **要素が見つからなければ失敗**(シナリオ中断)。**唯一の例外は `select`**(空要素を返す。`.isEmpty` で分岐)。
   「出るか不定」を表す引数は無いので、アプリ内メッセージは `irregularHandler`、その場限りの分岐は
-  `ifCanSelect(sel) { … }` で書く。`timeout:` = ロケータ再試行の上限秒(0=即諦め、省略=約0.7秒)で、
+  `ifCanSelect(sel) { … }` で書く。`waitSeconds:` = ロケータ再試行の上限秒(0=即諦め、省略=約0.7秒)で、
   `ifCanSelect` / `select` の空振り短縮に使う。
-- **`wait(秒)` は原則不要**。`tap` はロケータ解決を約0.7秒(`timeout:` でその秒数)まで再試行し、
+- **`wait(秒)` は原則不要**。`tap` はロケータ解決を約0.7秒(`waitSeconds:` でその秒数)まで再試行し、
   `exist`/`textIs`/`valueIs` は既定タイムアウト(5秒・実行プロファイルの `--default-timeout` で上書き)まで
   ポーリング再判定する。要素の**出現待ち**はこれらが暗黙にこなすので、遷移後の `exist` 直前などに
-  `wait` を入れても冗長。待ちが足りなければ `exist(sel, timeout:)` / `tap(sel, timeout:)` を上げる。
+  `wait` を入れても冗長。待ちが足りなければ `exist(sel, waitSeconds:)` / `tap(sel, waitSeconds:)` を上げる。
 - **`ifCanSelect` だけは既定で即時判定**(`waitSeconds:0`)。遷移直後に分岐条件を待ちたいときは
   先行 `wait` ではなく `ifCanSelect(sel, waitSeconds:)` を使う(解決できたら即進む)。
 - **`type` は Compose Multiplatform / Flutter 等(UIKit の入力欄を持たないアプリ)でもそのまま書いてよい**。
@@ -356,7 +356,7 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
   - **`.型[n]` は画面状態で指す要素が変わる**(一覧では削除ボタン、空表示では別ボタン/タブ 等)。
     容器の id があるなら `#容器 >> .型[n]` でスコープを付けると画面クロムやスクロール位置の影響を切れる。
     破壊的・index 指定の tap は、**意図した状態のみ出るマーカーで `ifCanSelect` ガード**してから撃つ。
-  - **件数不定の一括操作は `repeatWhileCanSelect(sel, max: n) { … }`** を使う(セレクタが解決
+  - **件数不定の一括操作は `repeatWhileCanSelect(sel, maxLoopCount: n) { … }`** を使う(セレクタが解決
     できる限り繰り返す。上限到達は失敗にしない)。上限は想定最大件数に合わせる。
 - **既定は現在画面のみ**(非スクロール)。折り返しの下にある項目は `tap(sel, scroll: .down)` /
   `exist(sel, scroll: .down)` で探索するか、先に `scrollTo(sel, maxSwipes:)` で送る。
@@ -382,7 +382,7 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
   **`#id` は一切効かない**(HTML の `id` 属性は両 OS とも a11y に出ない)。指せるのは
   表示テキスト・`aria-label`・型だけ。**リンクは `.link` と `.staticText` の2要素で重複して
   出る**ので `.link&&ラベル` と型で絞る。**ラベルの無い入力欄は `placeholder=…`** で指す。
-  中身が現れるまで初回は数秒かかることがあるため、**遷移直後の検証は `timeout:` を長めに**
+  中身が現れるまで初回は数秒かかることがあるため、**遷移直後の検証は `waitSeconds:` を長めに**
   (実測: 内蔵 HTML で 2〜8 秒。実ページ+通信ならさらに延びる)。id を採取しようとして
   スナップショットに無くても、アプリ側の不備ではなく仕様(改善提案の対象にしない)。
 

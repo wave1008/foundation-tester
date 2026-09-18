@@ -38,7 +38,7 @@ class クラッシュ検知でブリッジ切断とレポートが記録され�
                     // ここで inapp ブリッジのプロセスごと落ちるため、この exist は
                     // DriverError.bridgeConnectionRefused として失敗し、レポートに
                     // クラッシュレポート(.ips)のパスと終了理由が添付されることを人が確認する
-                    exist("#txt_home_marker", timeout: 3)
+                    exist("#txt_home_marker", waitSeconds: 3)
                 }
             }
         }

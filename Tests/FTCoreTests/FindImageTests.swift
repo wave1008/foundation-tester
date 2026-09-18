@@ -23,7 +23,7 @@ final class FindImageTests: XCTestCase {
 
     /// 既定値はリテラルで固定する(他のテストは timeout を明示するので、既定を戻す変更が素通りする)
     func testDefaultsArePinned() throws {
-        XCTAssertEqual(FindImage.defaultTimeout, 0)
+        XCTAssertEqual(FindImage.defaultWaitSeconds, 0)
         XCTAssertEqual(FindImage.defaultThreshold, 0.15)
         XCTAssertEqual(FindImage.defaultAspectRatioTolerance, 0.2)
         // DSL の findImage がこの定数を既定にしていること(実行プロファイルの defaultTimeout へ落とさない)
@@ -32,7 +32,7 @@ final class FindImageTests: XCTestCase {
             .appendingPathComponent("Sources/FTDSL/CommandsVerify.swift"), encoding: .utf8)
         let start = try XCTUnwrap(source.range(of: "public func findImage(_ label: String"))
         let signature = source[start.lowerBound...].prefix(while: { $0 != "{" })
-        XCTAssertTrue(signature.contains("timeout: Double = FindImage.defaultTimeout"), String(signature))
+        XCTAssertTrue(signature.contains("waitSeconds: Double = FindImage.defaultWaitSeconds"), String(signature))
         let body = source[start.upperBound...].prefix(1200)
         XCTAssertFalse(body.contains("core.defaultTimeout"), "findImage は実行プロファイルの defaultTimeout を使わない")
     }

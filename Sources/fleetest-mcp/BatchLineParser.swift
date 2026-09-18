@@ -370,7 +370,7 @@ enum BatchArgSpecTable {
 
 /// `BatchParsedLine.args` を、既存の `batchStepBuilders` クロージャがそのまま読める辞書へ変換する。
 /// `declaredKeys` は「そのビルダが実際に読むキー」(`MCPServer.BatchStepBuilder.keys`。手で宣言、
-/// signature から自動導出しない — signature には無いのに読むキーもある: 例 `type` の `timeout`)。
+/// signature から自動導出しない — signature には無いのに読むキーもある: 例 `type` の `waitSeconds`)。
 /// **未対応ラベルは黙って捨てず、signature に載っているかどうかでメッセージを変える**
 enum BatchStepResolver {
     struct ResolveError: Error, LocalizedError {
@@ -477,7 +477,7 @@ enum BatchStepResolver {
     static let doubleKeys: Set<String> = [
         // x/y は座標タップ(`tap x: 120 y: 640`)。単位は snapshot の screen と同じ
         // (iOS = pt / Android = px)なので整数で書かれることが多いが、型は Double で揃える
-        "holdSeconds", "timeout", "scale", "durationSeconds", "dxRatio", "dyRatio", "x", "y",
+        "holdSeconds", "waitSeconds", "scale", "durationSeconds", "dxRatio", "dyRatio", "x", "y",
     ]
     static let boolKeys: Set<String> = ["replace"]
 

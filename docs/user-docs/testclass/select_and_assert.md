@@ -47,11 +47,11 @@ same set works as an implicit (no-argument) call, as shown above.
 
 Element lookups retry until a timeout instead of failing on the first miss:
 
-- **Operations (`tap`, `type`, …)**: default `timeout:` is about 0.7 seconds.
-- **`select` and assertion commands (`exist`, `textIs`, …)**: default `timeout:` is 5
+- **Operations (`tap`, `type`, …)**: default `waitSeconds:` is about 0.7 seconds.
+- **`select` and assertion commands (`exist`, `textIs`, …)**: default `waitSeconds:` is 5
   seconds (the run profile's `defaultTimeout`).
 
-Both accept an explicit `timeout:` (fractional seconds allowed, e.g. `timeout: 1.2`) to
+Both accept an explicit `waitSeconds:` (fractional seconds allowed, e.g. `waitSeconds: 1.2`) to
 override the default for a single call.
 
 ## Visibility and text visual verification

@@ -6,7 +6,7 @@ Captures the current screen and embeds it in the report.
 
 | function | description |
 |---|---|
-| `screenshot(filename:?)` | Captures the current screen and embeds it in the report right after this step. Without a filename, a step-numbered name is used. Can also be called positionally, `screenshot("a.png")`. |
+| `screenshot(filename?)` | Captures the current screen and embeds it in the report right after this step. Without a filename, a step-numbered name is used. The file name takes no label: `screenshot("a.png")`. |
 
 ## Example
 

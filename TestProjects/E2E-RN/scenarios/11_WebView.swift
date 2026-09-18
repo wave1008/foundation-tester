@@ -26,7 +26,7 @@ class WebViewの中身を操作できること {
                     select("#txt_screen_title").textIs("WebView")
                     // **中身が出るまで数秒かかる**(WebContent プロセスの a11y 起動待ち。
                     // Flutter 実測で最大 約8秒。RN でも既定 5 秒では足りない前提で維持する)
-                    exist("WebView 見出し", timeout: 20)
+                    exist("WebView 見出し", waitSeconds: 20)
                     exist(".webView")
                     select("wv_result=*").textIs("wv_result=-")
                 }

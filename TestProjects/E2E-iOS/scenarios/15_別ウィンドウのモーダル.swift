@@ -34,7 +34,7 @@ class 別ウィンドウのモーダルが木に載ること {
                 action {
                     tap("#btn_overlay_close")
                 }.expectation {
-                    notExist("#btn_overlay_close", timeout: 3)
+                    notExist("#btn_overlay_close", waitSeconds: 3)
                     select("#txt_overlay_result").textIs("overlay=closed")
                 }
             }
@@ -82,10 +82,10 @@ class 別ウィンドウのモーダルが木に載ること {
                 }.action {
                     // モーダルが湧く前に始まり、湧いた時点でハンドラが閉じる。
                     // 閉じられないと `overlay=closed` に届かない(下の画面は覆われたまま)
-                    exist("#txt_overlay_result", timeout: 10)
+                    exist("#txt_overlay_result", waitSeconds: 10)
                 }.expectation {
                     select("#txt_overlay_result").textIs("overlay=closed")
-                    notExist("#btn_overlay_close", timeout: 3)
+                    notExist("#btn_overlay_close", waitSeconds: 3)
                 }
             }
         }
@@ -122,7 +122,7 @@ class 別ウィンドウのモーダルが木に載ること {
             scene(2, "ブロックを出たらハンドラが閉じる") {
                 expectation {
                     // 抑止が戻っていなければモーダルは残り続けてここが落ちる
-                    notExist("#btn_overlay_close", timeout: 10)
+                    notExist("#btn_overlay_close", waitSeconds: 10)
                     select("#txt_overlay_result").textIs("overlay=closed")
                 }
             }

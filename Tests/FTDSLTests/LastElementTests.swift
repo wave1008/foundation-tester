@@ -92,7 +92,7 @@ final class LastElementTests: XCTestCase {
         var held: FTElement!
         run {
             select("#total")
-            select("#missing", timeout: 0)
+            select("#missing", waitSeconds: 0)
             held = lastElement
         }
         XCTAssertTrue(held.isEmpty, "掴めなかったのに前の要素が残っている: \(held.id ?? "-")")
@@ -105,9 +105,9 @@ final class LastElementTests: XCTestCase {
         var afterCountIs: FTElement!
         run {
             select("#total")
-            notExist("#missing", timeout: 0)
+            notExist("#missing", waitSeconds: 0)
             afterNotExist = lastElement
-            countIs("#missing", 0, timeout: 0)
+            countIs("#missing", 0, waitSeconds: 0)
             afterCountIs = lastElement
         }
         XCTAssertEqual(afterNotExist.id, "total", "notExist が保持要素を消している")
@@ -152,7 +152,7 @@ final class LastElementTests: XCTestCase {
 
     /// 空の保持要素にチェーンした検証は落ちる(存在しないセレクタを持たせてあるため)
     func testChainingOnAnEmptyHeldElementFails() {
-        let core = run { lastElement.textIs("合計 1,200 円", timeout: 0) }
+        let core = run { lastElement.textIs("合計 1,200 円", waitSeconds: 0) }
         let steps = core.finalRecord.scenes.flatMap(\.steps)
         guard case .failed = steps.last?.status else {
             return XCTFail("空の lastElement へのチェーンが通ってしまった: \(steps.map(\.description))")

@@ -105,7 +105,7 @@ final class FTElementChainTests: XCTestCase {
     /// (通してしまうと「何を書いても緑」になり、チェーンが飾りになる)
     func testChainedAssertionFailsOnMismatch() {
         // timeout を詰める(既定 5 秒ぶん変化を待ってから落ちるため)
-        let core = run { exist("#total").textContains("送料", timeout: 0.2) }
+        let core = run { exist("#total").textContains("送料", waitSeconds: 0.2) }
         guard case .failed = steps(core).last?.status else {
             return XCTFail("合致しない textContains が通ってしまった: \(steps(core).map(\.description))")
         }

@@ -5,7 +5,7 @@ import FTCore
 
 /// Flow → Swift DSL コードの生成(`fleetest api gen-scenario` が使う)。
 /// **生成物は利用者がそのまま実行するコード**なので、秒引数が Double 化された後も
-/// `duration: 1` / `timeout: 1.2` の形で出る(`1.0` や `1.2000000000000002` にしない)ことを固定する。
+/// `duration: 1` / `waitSeconds: 1.2` の形で出る(`1.0` や `1.2000000000000002` にしない)ことを固定する。
 final class ScenarioCodeGenTests: XCTestCase {
 
     private func render(_ steps: [FlowStep]) -> String {
@@ -85,14 +85,14 @@ final class ScenarioCodeGenTests: XCTestCase {
         let fractional = render([
             FlowStep(assert: "exists", locator: FlowLocator(id: "msg"), timeout: 1.2),
         ])
-        XCTAssertTrue(fractional.contains("exist(\"#msg\", timeout: 1.2)"), fractional)
+        XCTAssertTrue(fractional.contains("exist(\"#msg\", waitSeconds: 1.2)"), fractional)
 
         // 既定(5秒)と同じなら出さない
         let omitted = render([
             FlowStep(assert: "exists", locator: FlowLocator(id: "msg"), timeout: 5),
         ])
         XCTAssertTrue(omitted.contains("exist(\"#msg\")"), omitted)
-        XCTAssertFalse(omitted.contains("timeout:"), omitted)
+        XCTAssertFalse(omitted.contains("waitSeconds:"), omitted)
     }
 
     /// select は action(操作)として生成される。exist(assert)とコード生成の分岐が違うことを固定する
@@ -100,13 +100,13 @@ final class ScenarioCodeGenTests: XCTestCase {
         let explicit = render([
             FlowStep(action: "select", locator: FlowLocator(id: "msg"), timeout: 1.2),
         ])
-        XCTAssertTrue(explicit.contains("select(\"#msg\", timeout: 1.2)"), explicit)
+        XCTAssertTrue(explicit.contains("select(\"#msg\", waitSeconds: 1.2)"), explicit)
 
         let omitted = render([
             FlowStep(action: "select", locator: FlowLocator(id: "msg"), timeout: 5),
         ])
         XCTAssertTrue(omitted.contains("select(\"#msg\")"), omitted)
-        XCTAssertFalse(omitted.contains("timeout:"), omitted)
+        XCTAssertFalse(omitted.contains("waitSeconds:"), omitted)
     }
 
     /// **廃止済みの `optional:` を生成コードに復活させない**。録画 JSON に古い `optional` キーが

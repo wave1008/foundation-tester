@@ -161,17 +161,17 @@ final class ExistImageDSLTests: XCTestCase {
     func testOmittedTimeoutFollowsTheDefaultTimeoutOfTheCore() throws {
         let root = try makeProject()
         defer { try? FileManager.default.removeItem(at: root) }
-        func screenshots(timeout: Double?) -> Int {
+        func screenshots(waitSeconds: Double?) -> Int {
             let driver = ScreenDriver()
             let core = makeCore(driver: driver, root: root, defaultTimeout: 0.6)
             FTRuntime.bootstrap(core: core, dslThread: Thread.current)
             defer { FTRuntime.tearDown() }
-            scenario { scene(1, "s") { FTDSL.expectation { existImage("[Circle Icon]", threshold: -1, timeout: timeout) } } }
+            scenario { scene(1, "s") { FTDSL.expectation { existImage("[Circle Icon]", threshold: -1, waitSeconds: waitSeconds) } } }
             return driver.screenshots
         }
         // 失敗時はランタイムがレポート用にもう1枚撮るので、枚数は「1回だけ見た」場合との差で見る
-        let once = screenshots(timeout: 0)
-        XCTAssertGreaterThan(screenshots(timeout: nil), once, "省略時は defaultTimeout まで撮り直して待つこと")
+        let once = screenshots(waitSeconds: 0)
+        XCTAssertGreaterThan(screenshots(waitSeconds: nil), once, "省略時は defaultTimeout まで撮り直して待つこと")
     }
 
     func testNoScrollDoesNotScrollInsideAScrollContext() throws {

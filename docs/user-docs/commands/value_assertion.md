@@ -12,20 +12,20 @@ select("#email"); lastElement.valueIs("test@example.com") // explicit lastElemen
 select("#email"); valueIs("test@example.com")             // implicit (the last grabbed element)
 ```
 
-Arguments are `(expected, timeout:)` (the positive forms also take `requireVisible:`). There is
+Arguments are `(expected, waitSeconds:)` (the positive forms also take `requireVisible:`). There is
 no form that takes a selector.
 
 ## Functions
 
 | function | negation | comparison |
 |---|---|---|
-| `select(selector).valueIs(expected, timeout:, requireVisible:, strict:)` | `valueIsNot(expected, timeout:, strict:)` | exact match |
-| `valueContains(expected, timeout:, requireVisible:, strict:)` | `valueContainsNot(expected, timeout:, strict:)` | substring match |
-| `valueStartsWith(expected, timeout:, requireVisible:, strict:)` | `valueStartsWithNot(expected, timeout:, strict:)` | prefix match |
-| `valueEndsWith(expected, timeout:, requireVisible:, strict:)` | `valueEndsWithNot(expected, timeout:, strict:)` | suffix match |
-| `valueMatches(pattern, timeout:, requireVisible:, strict:)` | `valueMatchesNot(pattern, timeout:, strict:)` | regular expression (substring; use `^…$` for a full match) |
-| `valueMatchesDateFormat(format, timeout:, requireVisible:)` | — | `DateFormatter` format string |
-| `valueIsNotEmpty(timeout:, strict:)` | `valueIsEmpty(timeout:, strict:)` | non-empty / empty |
+| `select(selector).valueIs(expected, waitSeconds:, requireVisible:, strict:)` | `valueIsNot(expected, waitSeconds:, strict:)` | exact match |
+| `valueContains(expected, waitSeconds:, requireVisible:, strict:)` | `valueContainsNot(expected, waitSeconds:, strict:)` | substring match |
+| `valueStartsWith(expected, waitSeconds:, requireVisible:, strict:)` | `valueStartsWithNot(expected, waitSeconds:, strict:)` | prefix match |
+| `valueEndsWith(expected, waitSeconds:, requireVisible:, strict:)` | `valueEndsWithNot(expected, waitSeconds:, strict:)` | suffix match |
+| `valueMatches(pattern, waitSeconds:, requireVisible:, strict:)` | `valueMatchesNot(pattern, waitSeconds:, strict:)` | regular expression (substring; use `^…$` for a full match) |
+| `valueMatchesDateFormat(format, waitSeconds:, requireVisible:)` | — | `DateFormatter` format string |
+| `valueIsNotEmpty(waitSeconds:, strict:)` | `valueIsEmpty(waitSeconds:, strict:)` | non-empty / empty |
 
 Comparison follows the same "same if it looks the same" rule as text assertions (`strict:` to
 disable it) — see [Text Assertion](./text_assertion.md) for the full rule.

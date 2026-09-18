@@ -36,7 +36,7 @@ present, and what only fleetest has.
 
 | Shirates | fleetest | Note |
 |---|---|---|
-| `dontExist` | `notExist(sel, timeout:scroll:maxSwipes:)` | reads more clearly as a negation of `exist` |
+| `dontExist` | `notExist(sel, waitSeconds:scroll:maxSwipes:)` | reads more clearly as a negation of `exist` |
 | `sendKeys` | `type("…")` / `type(sel, "…")` | `type(sel, "…", replace: true)` also folds in a clear-before-type, which Shirates does as two separate calls |
 | `pressBack` | `back()` | works on both OS (iOS falls back to an edge swipe when there's no navigation bar back button) |
 | `pressHome` | `home()` | works on both OS |
@@ -57,8 +57,8 @@ present, and what only fleetest has.
 | `manual` / `knownIssue` | not available — a failing command always aborts the scenario; there is no escape hatch to mark a failure as expected |
 | `must` / `should` / `want`, `SKIP` / `MANUAL` / `NOTIMPL` | not available — for OS-specific tests use `@TestClass(platform:)` / `@Test(platform:)` instead |
 | Datasets (`account` / `app` / `data` / `dataPattern`) | Swift literals or constants written directly in the scenario |
-| `canSelect` on its own | wrap it in `ifCanSelect { }` or `repeatWhileCanSelect(sel, max:) { }` |
-| `existAll` / `canSelectAll` / `dontExistAll` | a chain of individual `exist` calls (each can have its own `timeout:` / `scroll:`) |
+| `canSelect` on its own | wrap it in `ifCanSelect { }` or `repeatWhileCanSelect(sel, maxLoopCount:) { }` |
+| `existAll` / `canSelectAll` / `dontExistAll` | a chain of individual `exist` calls (each can have its own `waitSeconds:` / `scroll:`) |
 | `tempSelector` / `tempValue` | write the selector directly at the call site |
 | `withContext` (native/web context switching) | not needed — WebView content is read transparently through the same selectors and commands |
 

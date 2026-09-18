@@ -33,7 +33,7 @@ class カートの数量を操作できること {
         tap("#tab_cart")
         emptyCart()
         tap("#tab_home")
-        tap("#product_card_fashion_5", timeout: 5)  // ホームおすすめは非同期ロード(Android cold で既定0.7sは空振り)
+        tap("#product_card_fashion_5", waitSeconds: 5)  // ホームおすすめは非同期ロード(Android cold で既定0.7sは空振り)
         tap("#btn_add_to_cart")
         tap("#btn_open_cart")
     }

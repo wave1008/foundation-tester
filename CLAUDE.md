@@ -157,6 +157,12 @@
   —— `scrollTo(direction:)`・`withScroll*`・MCP の `direction` に書けてしまう。**省略(nil)= 文脈に従う、と
   `.noScroll` は別の値**で、解くのは `FTDriveCore.effectiveScroll` の1箇所(`SelScrollVariantDispatchTests` が
   3値の解決を縛る)。ブロック形の `withScrollDown { }` / `withoutScroll { }` は残す
+- **引数名の規律**(ユーザー決定 2026-09-19): 待つ上限は全コマンドで **`waitSeconds:`**(`timeout:` を DSL に置かない。
+  `FlowStep.timeout`・プロファイルの `defaultTimeout`・MCP ツールの `timeout` は別系統で据え置き)/ ループ上限は
+  **`maxLoopCount:`** / ラベル無しの第1引数は `selector`・`label`・`appID`・`filename`、ブロックは `body` /
+  同じことを2通りで書ける口を作らない(`screenshot` のファイル名はラベル無しの1形だけ)。
+  **`ft_batch` は DSL の行を受けるので、索引の signature を変えたら `MCPServer.batchStepBuilders` のキーも同時に変える**
+  (片方だけだと実在するラベルを断り、無いラベルを受ける。緑のまま通った = `BatchLineParserTests.testWaitCapLabelFollowsTheDSL`)
 - **置いていない名前は `Sources/FTDSL/UnavailableCommands.swift` で受け止める**(他ツールの名前・
   対称性から実在すると誤解される別名。`cannot find in scope` の代わりに正しい書き方を出す)
 
@@ -730,7 +736,7 @@
   **②Vision の縮退を黙って通さない**(`isDegenerate`。異なる画像に同一の特徴量が返ると全候補が距離 0 になり、
   最初の候補を「発見」して別の要素を叩く。Vision の失敗としては記録されない)/ **③見つからないことは失敗に
   しない**(select と同じ。失敗は設定の誤りと Vision が答えを出せない状態だけ。**existImage だけが見つからないことを失敗にする**)/
-  **④findImage の `timeout` の既定は 0**(`FindImage.defaultTimeout`。待つのは existImage の側 = 既定は実行プロファイルの defaultTimeout)。**文字だけが違う同じ形の部品は距離
+  **④findImage の `waitSeconds` の既定は 0**(`FindImage.defaultWaitSeconds`。待つのは existImage の側 = 既定は実行プロファイルの defaultTimeout)。**文字だけが違う同じ形の部品は距離
   0.08〜0.15 に並ぶ**ので、既定の閾値のまま行を探す書き方を E2E に置かない → maintainer-notes §37
 - **in-app のスクリーンショットは、自前描画(`isSelfRendered`)で木が絵より先に進んでいる間は撮らない**
   (`InAppRenderCatchUp`・v117)。操作を起こす2経路(`tapByRef` / `performSettlingIfMoved`)が直前に画素と木の

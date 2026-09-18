@@ -46,7 +46,7 @@ class クラッシュ検知でブリッジ切断とレポートが記録され�
                 }.expectation {
                     // ここでアプリのプロセスが落ちるため、この exist は失敗する。
                     // 失敗の種類と添付情報を人が確認するのがこのシナリオの目的。
-                    exist("#txt_home_marker", timeout: 3)
+                    exist("#txt_home_marker", waitSeconds: 3)
                 }
             }
         }

@@ -24,7 +24,7 @@ class お気に入りを登録解除できること {
         ifCanSelect("#tab_wishlist") { tap("#tab_wishlist") }
         ifCanSelect("#product_card_fashion_5", waitSeconds: 1) {
             tap("#product_card_fashion_5")
-            tap("#btn_wishlist_toggle", timeout: 5)
+            tap("#btn_wishlist_toggle", waitSeconds: 5)
             tap("#btn_back")
         }
     }
@@ -35,7 +35,7 @@ class お気に入りを登録解除できること {
             scene(1, "対象商品を未登録状態にする(基準化)") {
                 action {
                     tap("#tab_home")  // launchApp の再開画面を正規化
-                    tap("#product_card_fashion_5", timeout: 5)  // おすすめ先頭カード（id 指定）→ 詳細。ホームおすすめは非同期ロード(Android cold で既定0.7sは空振り)
+                    tap("#product_card_fashion_5", waitSeconds: 5)  // おすすめ先頭カード（id 指定）→ 詳細。ホームおすすめは非同期ロード(Android cold で既定0.7sは空振り)
                     // 既に登録済みなら外して「未登録」を基準にする(トグルの擬陽性回避)
                     ifCanSelect("お気に入りから削除") { tap("#btn_wishlist_toggle") }
                 }.expectation {
@@ -65,7 +65,7 @@ class お気に入りを登録解除できること {
                     // 一覧の♡タップは iOS inapp で toggle が発火しない(id/ラベルとも解決はするが状態不変)。
                     // 詳細に入り #btn_wishlist_toggle(scene2 で iOS/Android とも実証済み)で確実に外す。
                     tap("#product_card_fashion_5")
-                    tap("#btn_wishlist_toggle", timeout: 5)  // 一覧→詳細は非同期ロード。既定0.7sでは空振りしうる
+                    tap("#btn_wishlist_toggle", waitSeconds: 5)  // 一覧→詳細は非同期ロード。既定0.7sでは空振りしうる
                     tap("#btn_back")
                 }.expectation {
                     exist("お気に入りは空です")

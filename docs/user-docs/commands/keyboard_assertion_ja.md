@@ -1,13 +1,13 @@
 # keyboardIsShown, keyboardIsNotShown
 
-ソフトキーボードの表示/非表示を検証します。開閉はアニメーションを伴うため、どちらも `timeout` までポーリングします。
+ソフトキーボードの表示/非表示を検証します。開閉はアニメーションを伴うため、どちらも `waitSeconds` までポーリングします。
 
 ## 関数
 
 | 関数 | 説明 |
 |---|---|
-| `keyboardIsShown(timeout:)` | ソフトキーボードが表示されていることを検証します。 |
-| `keyboardIsNotShown(timeout:)` | ソフトキーボードが非表示であることを検証します。 |
+| `keyboardIsShown(waitSeconds:)` | ソフトキーボードが表示されていることを検証します。 |
+| `keyboardIsNotShown(waitSeconds:)` | ソフトキーボードが非表示であることを検証します。 |
 
 ## 例
 
