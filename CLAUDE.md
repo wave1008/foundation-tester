@@ -698,7 +698,8 @@
   `TapTargetGeometry.offscreenScrollGateCentre`。**天井まで来ていたら「上げろ」と言わない**。
   **FM に訊いて答えが無かったステップは `visibility-guard-skipped`** を立てる
 - **チェック状態は `FTCore.CheckStateReading`(a11y の4値)と `FTCore.CheckStateClassifier`(見本画像の
-  画像分類。Shirates Vision の移植)の2つだけが読む**。value は型で絞って読む(バッジの "1" を読まない)。
+  画像分類。Shirates Vision の移植)の2つだけが読む**。画像分類の学習・推論は `FTCore.VisionClassifier` の
+  1箇所で、`imageIs`(DefaultClassifier)と共有する。value は型で絞って読む(バッジの "1" を読まない)。
   分類器は `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に見本があるときだけ使い、優先は
   実行プロファイルの `preferCheckStateClassifier`(既定 true)。**見本は推論と同じ a11y の枠で切る**
   (docs/design.md の checkIsON の節)

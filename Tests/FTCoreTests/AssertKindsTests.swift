@@ -193,10 +193,10 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertEqual(failureReason(off.status)?.hasPrefix("the element is off"), true, failureReason(off.status) ?? "")
         let on = await runCheck("notChecked", [[stateNode("switch", value: "1")]])
         XCTAssertEqual(failureReason(on.status)?.hasPrefix("the element is on"), true)
-        let mixedOn = await runCheck("checked", [[stateNode("switch", value: "2")]])
-        XCTAssertEqual(failureReason(mixedOn.status)?.contains("mixed"), true)
-        let mixedOff = await runCheck("notChecked", [[stateNode("switch", value: "2")]])
-        XCTAssertEqual(failureReason(mixedOff.status)?.contains("mixed"), true, "mixed をオフとして通さない")
+        let indeterminateOn = await runCheck("checked", [[stateNode("switch", value: "2")]])
+        XCTAssertEqual(failureReason(indeterminateOn.status)?.contains("indeterminate"), true)
+        let indeterminateOff = await runCheck("notChecked", [[stateNode("switch", value: "2")]])
+        XCTAssertEqual(failureReason(indeterminateOff.status)?.contains("indeterminate"), true, "indeterminate をオフとして通さない")
     }
 
     /// 状態を報告しない要素に checkIsON → 「オフ」と言わず、報告が無いことを言う

@@ -36,7 +36,7 @@ select("#toggle_notifications").checkIsON()
 - **Implementations that report only "on"** (Compose checkboxes on iOS, for example): once the same
   scenario has seen the element on, a missing report is read as off. `checkIsOFF` on an element that was
   never seen on passes without knowing the state, and a warning is shown at the end of the run.
-- An element in a mixed (partially checked) state fails both `checkIsON` and `checkIsOFF`.
+- An element in an indeterminate (partially checked) state fails both `checkIsON` and `checkIsOFF`.
 
 ## Judging the checked state from images (CheckStateClassifier)
 
@@ -45,13 +45,16 @@ sample images (same location and labels as Shirates' Vision edition).
 
 ```
 <project>/vision/classifiers/CheckStateClassifier/
-  [ON]/   sample images of the "on" state (png / jpg)
-  [OFF]/  sample images of the "off" state
+  [ON]/             sample images of the "on" state (png / jpg)
+  [OFF]/            sample images of the "off" state
+  [INDETERMINATE]/  sample images of the partially checked state (optional)
 ```
 
 - Each sample should be **exactly the element's frame** cropped from a screenshot (the element is
   cropped the same way when it is judged).
-- The classifier always answers either on or off. **If switches or radios on the same screen are judged
+- With samples in `[INDETERMINATE]`, a partially checked look is judged indeterminate and both `checkIsON` and
+  `checkIsOFF` fail for that reason (a fleetest-specific label). Without them, it is judged on or off.
+- The classifier always answers one of the sample labels. **If switches or radios on the same screen are judged
   too, add samples of them as well** (looks that are not in the samples are easy to misjudge).
 - The first judgement trains the classifier (a few seconds). The result is kept under `.fleetest/` and
   is retrained only when the samples change.
@@ -59,6 +62,7 @@ sample images (same location and labels as Shirates' Vision edition).
   accessibility. With `false`, it is used only for elements whose accessibility reports no checked state.
 - Steps judged from the image carry the note `check-state-classified` in the results.
 - `options=` / `imageFilter=binary` in Shirates' `MLImageClassifier.swift` are read with the same meaning.
+- [imageIs](image_assertion.md) uses the same mechanism to assert the label of an element's image.
 - On Android, both `isChecked` and `isSelected` are considered — tabs and selectable rows that
   only report `isSelected` (not `isChecked`) are still recognized as checked.
 

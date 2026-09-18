@@ -120,7 +120,8 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `packageIs` | `appIs` で代用 | ➖ **実装しない**(ユーザー決定 2026-08-03。いったん実装後に削除)。ニックネームが無い fleetest では `appIs` が ID 直指定のため Android で**完全に同じ検査**になる。**再提案しない** |
 | `isApp` | — | ➖ **`appIs` と重複**(2026-08-21 判定)。Shirates の `isApp` は真偽を返す形だが、fleetest は分岐に `ifCanSelect` / Swift を使うので、検証は `appIs`(失敗させる)側に一本化する |
 | `verify`(任意内容の検証) | `verify(message) { }` | ✅ 2026-08-03 ブロック内のアサーション1つ以上が全成功で passed。**アサーション0個は inconclusive**(passed でも failed でもない・シナリオは中断しない。Shirates の `MANUAL` 相当は持たない。ユーザー決定 2026-08-03) |
-| `existImage` / `dontExistImage` / `findImage*` / `imageIs` / `imageContains` | — | ➖ 画像テンプレートマッチングは非対応(切り出し画像の管理が生成に向かない。FM の `screenLooksLike` が代替) |
+| `existImage` / `dontExistImage` / `findImage*` / `imageContains` | — | ➖ 画像テンプレートマッチングは非対応(切り出し画像の管理が生成に向かない。FM の `screenLooksLike` が代替) |
+| Vision 版の `imageIs`(`DefaultClassifier`) | `select(sel).imageIs(label)` / `imageIs(label)` | 🟡 2026-09-18 移植(ユーザー指示で `imageIs` だけ。`Sources/FTCore/VisionClassifier.swift`)。見本の置き場所(`vision/classifiers/DefaultClassifier/` 以下の任意の深さ)・ラベル(親フォルダの相対パスを `_` でつなぐ・判定は最後の `[` 以降を含むか)・`#` ファイルの除外・同じラベルの重複エラー・学習方式は同じ。**違い**: 部品の切り出しは a11y の枠 / `threshold`・`classifierName` の引数は持たない / 見本に無いラベルは待たずに落とす / shard に割らない |
 | — | `countIs(sel, n)`(節ごとの内訳付き) | 🟢 |
 
 ## 属性の検証
@@ -133,7 +134,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `accessIs…` 一式 | `#id` に統合 | 🟡 |
 | `enabledIsTrue/False` | `enabledIsTrue()` / `enabledIsFalse()` | ✅ 2026-08-04 糖衣形を同名で踏襲(旧 `isEnabled`/`isDisabled` から改名)。**生文字列の親形 `enabledIs(expected:)` は持たない**(下記 ➖) |
 | `checkIsON` / `checkIsOFF` | `checkIsON()` / `checkIsOFF()` | ✅ 2026-08-04 同名で踏襲(旧 `isChecked`/`isNotChecked` から改名) |
-| Vision 版の `checkIsON` / `checkIsOFF`(`CheckStateClassifier`) | 同じ置き場所(`vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]`)の見本画像があれば使う | 🟡 2026-09-18 移植(`Sources/FTCore/CheckStateClassifier.swift`)。学習(Create ML・ScenePrint・`options=`/`imageFilter=binary`)とラベルの読み方(`[ON]`/`[OFF]` を含むか)は同じ。**違い**: 部品の切り出しは Shirates の画像区分け(SegmentContainer)ではなく a11y の枠 / a11y が状態を報告する要素と両方あるときの優先は実行プロファイルの `preferCheckStateClassifier`(既定 true = 分類器を優先) / Shirates の `classifierName` 等の引数は持たない |
+| Vision 版の `checkIsON` / `checkIsOFF`(`CheckStateClassifier`) | 同じ置き場所(`vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]`)の見本画像があれば使う | 🟡 2026-09-18 移植(`Sources/FTCore/VisionClassifier.swift`)。学習(Create ML・ScenePrint・`options=`/`imageFilter=binary`)とラベルの読み方(`[ON]`/`[OFF]` を含むか)は同じ。**違い**: 部品の切り出しは Shirates の画像区分け(SegmentContainer)ではなく a11y の枠 / a11y が状態を報告する要素と両方あるときの優先は実行プロファイルの `preferCheckStateClassifier`(既定 true = 分類器を優先) / Shirates の `classifierName` 等の引数は持たない / **`[INDETERMINATE]` のラベル(fleetest 独自)** で indeterminate を判定する(Shirates ではどちらにも当たらず両方落ちる = 結果は同じ) |
 | `enabledIs(expected:)` / `checkedIs(expected:)`(生文字列の親形) | — | ➖ **持たない**。生値比較は OS 依存(checked は Android "true"/"false"・iOS "1"/"")で、fleetest が持つ正規化済み Bool と衝突する。糖衣形(`enabledIsTrue/False`・`checkIsON/OFF`)は OS 差を吸収済みで正規化と一致する。Shirates 自身も `checkIsON/OFF` の中でこの OS 差を吸収している。**再提案しない** |
 | `selectedIs(True/False)` | — | ➖ iOS の selected trait は `checked` に写像している |
 | `displayedIs` | `requireVisible:` + `textVisualCheck` | 🟡 |

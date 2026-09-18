@@ -1,20 +1,21 @@
-// Shirates(Vision)の CheckStateClassifier の移植。要素の画像を Create ML の画像分類器に掛けて
-// チェック状態を判定する —— a11y が状態を出さない部品(SwiftUI の Button で自作したチェックボックス等)
-// を救う唯一の経路(docs/framework-differences.md §1.4 の救えない形)。
+// Shirates(Vision)の画像分類器(vision/classifiers/<分類器名>/)の移植。要素の画像を Create ML の
+// 画像分類器に掛ける。使い手は2つ: CheckStateClassifier(checkIsON/OFF)と DefaultClassifier(imageIs)。
 //
-// Shirates と同じ約束:
-//   - 置き場所は `<プロジェクト>/vision/classifiers/CheckStateClassifier/<ラベル>/*.png|jpg`。
-//     ラベルは `[ON]` / `[OFF]`(判定は「ラベルが [ON] / [OFF] を含むか」= Shirates の checkIsON と同じ)
+// Shirates と同じ約束(VisionClassifierShard / LearningImageFileEntry):
+//   - 見本は `<プロジェクト>/vision/classifiers/<分類器名>/` 以下の任意の深さの png/jpg。ラベルは
+//     **画像の親フォルダを分類器フォルダからの相対パスで `_` につないだもの**(例 `@i_Settings_[Camera Icon]`)。
+//     判定で見るのは**最後の `[` 以降**(短いラベル。LabelUtility.getShortLabel)
+//   - `#` で始まるファイルはテキストの索引なので学習に使わない
+//   - 同じ短いラベルのフォルダが2か所にあるのは設定の誤り(Shirates も例外にする)
 //   - 同じフォルダの `MLImageClassifier.swift` の `// options=-noise,-blur` と `// imageFilter=binary` を読む
 //     (augmentation と、学習画像の二値化版の追加。`-fp:N` は特徴抽出の版)
 //   - 学習は MLImageClassifier(ScenePrint の転移学習 + ロジスティック回帰)。**ラベルが2つ未満なら使わない**
-//   - 推論は1位のラベルだけを見る(Shirates の CheckStateClassifier は shard 1・threshold 1.0 なので
-//     距離による再確認は通らない)
+//   - 推論は1位のラベルだけを見る(shard 1・threshold 1.0 の Shirates と同じ。距離による再確認は通らない)
 // 違い: Shirates は画像の区分け(SegmentContainer)で部品を切り出すが、fleetest は a11y の枠で切る。
-// 見本画像も同じ枠で切ったものを置くこと(推論と学習で切り方を揃える)。
+// 見本画像も同じ枠で切ったものを置くこと(推論と学習で切り方を揃える)。分類器を複数の shard に割らない。
 //
-// 学習済みモデルは `<プロジェクト>/.fleetest/vision/CheckStateClassifier/<digest>/model.mlmodel` に置き、
-// 画像の中身・オプション・学習器の版から作る digest が変わったときだけ学び直す。並列のシナリオ実行
+// 学習済みモデルは `<プロジェクト>/.fleetest/vision/<分類器名>/<digest>/model.mlmodel` に置き、
+// 画像の中身・ラベル・オプション・学習器の版から作る digest が変わったときだけ学び直す。並列のシナリオ実行
 // プロセスが同時に学ばないよう digest ごとの flock で1本にする(先客の完了を待って読む)。
 
 import CoreGraphics
@@ -28,28 +29,26 @@ import Vision
 import CreateML
 #endif
 
-public enum CheckStateClassifier {
-    public static let name = "CheckStateClassifier"
+public enum VisionClassifier {
     /// 学習の手順を変えたら上げる(digest に入る = 古いキャッシュを使わない)
-    static let trainerVersion = "1"
+    static let trainerVersion = "2"
     /// 学習を待つ時間を締め切りから差し引くときの上限(DeadlineExclusion の cap)。
     /// 実測: Shirates の見本 16 枚で 7 秒(swift スクリプトの翻訳込み)。見本が数百枚でも数十秒の見込みで、
     /// 上限はシナリオの締め切りを延ばす最大幅(超えたら通常の締め切りへ戻るだけで、学習は止めない)
     static let trainingCap: Duration = .seconds(120)
 
-    public static func directory(projectRoot: URL) -> URL {
+    public static func directory(projectRoot: URL, name: String) -> URL {
         projectRoot.appendingPathComponent("vision/classifiers/\(name)", isDirectory: true)
     }
 
-    public static func cacheDirectory(projectRoot: URL) -> URL {
+    public static func cacheDirectory(projectRoot: URL, name: String) -> URL {
         projectRoot.appendingPathComponent(".fleetest/vision/\(name)", isDirectory: true)
     }
 
-    /// ラベル名 → 状態。Shirates の checkIsON は `label.contains("[ON]")`
-    public static func state(forLabel label: String) -> CheckState? {
-        if label.contains("[ON]") { return .on }
-        if label.contains("[OFF]") { return .off }
-        return nil
+    /// 判定で見る短いラベル(最後の `[` 以降。無ければ全体)。Shirates の LabelUtility.getShortLabel
+    public static func shortLabel(_ label: String) -> String {
+        guard let index = label.lastIndex(of: "[") else { return label }
+        return String(label[index...])
     }
 
     // MARK: - 学習データ
@@ -97,23 +96,30 @@ public enum CheckStateClassifier {
 
     static let imageExtensions: Set<String> = ["png", "jpg", "jpeg"]
 
-    /// 画像を持つラベルが2つ以上あるときだけ返す(1ラベルでは分類器にならない。Shirates も学習しない)
-    public static func trainingSet(at directory: URL) -> TrainingSet? {
+    /// 画像を持つラベルが2つ以上あるときだけ返す(1ラベルでは分類器にならない。Shirates も学習しない)。
+    /// 同じ短いラベルが2つのフォルダにあれば `LoadError.duplicateLabel`
+    public static func trainingSet(at directory: URL) throws -> TrainingSet? {
         let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey])
-        else { return nil }
+        guard let walker = fm.enumerator(at: directory, includingPropertiesForKeys: nil,
+                                         options: [.skipsHiddenFiles]) else { return nil }
+        let rootComponents = directory.standardizedFileURL.pathComponents
         var labels: [String: [URL]] = [:]
-        for entry in entries where (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
-            let images = ((try? fm.contentsOfDirectory(at: entry, includingPropertiesForKeys: nil)) ?? [])
-                .filter { imageExtensions.contains($0.pathExtension.lowercased()) }
-                .sorted { $0.lastPathComponent < $1.lastPathComponent }
-            if !images.isEmpty { labels[entry.lastPathComponent] = images }
+        for case let file as URL in walker
+        where imageExtensions.contains(file.pathExtension.lowercased()) && !file.lastPathComponent.hasPrefix("#") {
+            let parent = file.deletingLastPathComponent().standardizedFileURL.pathComponents
+            guard parent.count > rootComponents.count else { continue }   // 分類器フォルダ直下の画像はラベルを持たない
+            labels[parent.dropFirst(rootComponents.count).joined(separator: "_"), default: []].append(file)
+        }
+        for key in labels.keys { labels[key]!.sort { $0.lastPathComponent < $1.lastPathComponent } }
+        let byShort = Dictionary(grouping: labels.keys, by: shortLabel)
+        if let (short, keys) = byShort.first(where: { $0.value.count > 1 }) {
+            throw LoadError.duplicateLabel(short, keys.sorted())
         }
         guard labels.count >= 2 else { return nil }
         let script = try? String(contentsOf: directory.appendingPathComponent("MLImageClassifier.swift"), encoding: .utf8)
         let options = Options.parse(scriptText: script)
         var hasher = SHA256()
-        hasher.update(data: Data("v\(trainerVersion);\(options.fingerprint)".utf8))
+        hasher.update(data: Data("\(directory.lastPathComponent);v\(trainerVersion);\(options.fingerprint)".utf8))
         for label in labels.keys.sorted() {
             for image in labels[label]! {
                 hasher.update(data: Data("\(label)/\(image.lastPathComponent)".utf8))
@@ -133,7 +139,9 @@ public enum CheckStateClassifier {
 
     public final class Model: @unchecked Sendable {
         let vnModel: VNCoreMLModel
-        init(vnModel: VNCoreMLModel) { self.vnModel = vnModel }
+        /// 学習したラベル(フォルダの相対パスを `_` でつないだもの)
+        public let labels: [String]
+        init(vnModel: VNCoreMLModel, labels: [String]) { self.vnModel = vnModel; self.labels = labels }
 
         /// 1位のラベル。Shirates と同じく確信度 0.1 以下は候補にしない
         public func classify(_ image: CGImage) throws -> Classification? {
@@ -149,10 +157,13 @@ public enum CheckStateClassifier {
     public enum LoadError: Error, CustomStringConvertible {
         case createMLUnavailable
         case training(String)
+        case duplicateLabel(String, [String])
         public var description: String {
             switch self {
             case .createMLUnavailable: return "Create ML is not available on this host"
             case .training(let detail): return "training failed: \(detail)"
+            case .duplicateLabel(let label, let folders):
+                return "the label \(label) is in more than one folder (\(folders.joined(separator: ", "))); a label can belong to only one folder"
             }
         }
     }
@@ -185,7 +196,8 @@ public enum CheckStateClassifier {
             }
         }
         let compiled = try MLModel.compileModel(at: modelURL)
-        let model = Model(vnModel: try VNCoreMLModel(for: MLModel(contentsOf: compiled)))
+        let model = Model(vnModel: try VNCoreMLModel(for: MLModel(contentsOf: compiled)),
+                          labels: set.labels.keys.sorted())
         loaded[set.digest] = model
         return model
     }
@@ -327,5 +339,38 @@ public enum CheckStateClassifier {
         else { return }
         CGImageDestinationAddImage(destination, image, nil)
         CGImageDestinationFinalize(destination)
+    }
+}
+
+
+/// checkIsON / checkIsOFF の画像判定(Shirates Vision の CheckStateClassifier)
+public enum CheckStateClassifier {
+    public static let name = "CheckStateClassifier"
+
+    public static func directory(projectRoot: URL) -> URL {
+        VisionClassifier.directory(projectRoot: projectRoot, name: name)
+    }
+
+    public static func cacheDirectory(projectRoot: URL) -> URL {
+        VisionClassifier.cacheDirectory(projectRoot: projectRoot, name: name)
+    }
+
+    /// ラベル名 → 状態。Shirates の checkIsON は `label.contains("[ON]")`。
+    /// `[INDETERMINATE]` は fleetest 独自(Shirates はどちらにも当たらず両方落ちる = 結果は同じで、理由を言える)
+    public static func state(forLabel label: String) -> CheckState? {
+        if label.contains("[INDETERMINATE]") { return .indeterminate }
+        if label.contains("[ON]") { return .on }
+        if label.contains("[OFF]") { return .off }
+        return nil
+    }
+}
+
+/// imageIs の画像判定(Shirates Vision の DefaultClassifier)
+public enum DefaultClassifier {
+    public static let name = "DefaultClassifier"
+
+    /// Shirates の imageIs: 1位のラベルの短いラベルが期待値を含むか
+    public static func matches(label: String, expected: String) -> Bool {
+        VisionClassifier.shortLabel(label).contains(expected)
     }
 }

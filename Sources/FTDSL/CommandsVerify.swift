@@ -550,6 +550,16 @@ public func checkIsON(timeout: Double? = nil,
     return lastElement.checkIsON(timeout: timeout, file: file, line: line)
 }
 
+/// 要素の**画像**のラベル検証(Shirates Vision の imageIs)。**対象は直前に掴んだ要素**。
+/// 要素の枠で切ったスクリーンショットを DefaultClassifier(プロジェクトの
+/// `vision/classifiers/DefaultClassifier/<…>/[ラベル]/` の見本画像で学習した分類器)に掛け、
+/// 1位のラベルの最後の `[` 以降が `label` を含めば通る
+@discardableResult
+public func imageIs(_ label: String, timeout: Double? = nil,
+                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    return lastElement.imageIs(label, timeout: timeout, file: file, line: line)
+}
+
 /// **オフ**であることの検証。状態を持たない要素(ただのボタン等)も「オフ」として通る
 /// (ブリッジは true のときだけ送るため。誤用は run 終了時に警告が出る)
 @discardableResult
@@ -626,6 +636,17 @@ private func emptyAssert(_ assert: String, verb: String, selector: FTSelector, t
 /// textIs / valueIs / textContains / textMatches の共通実装。
 /// operatorText は説明文の記号だけを分ける(完全一致系は `==`、部分一致系は `~`)。
 /// held は FTElement のチェーンだけが渡す(自由関数版は nil = 常に実機を見る)
+/// imageIs の実装。**保持値では判定しない**(画像は掴んだ時点の木に無い。HeldElementAssert の既定 = 実機を見る)
+private func imageAssert(_ label: String, selector: FTSelector, timeout: Double?,
+                         file: StaticString, line: UInt) {
+    let core = FTRuntime.requireCore(command: "imageIs")
+    let step = FlowStep(assert: "imageIs", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks,
+                        expected: label, timeout: timeout ?? core.defaultTimeout)
+    perform("imageIs", selector, step: step,
+            description: "imageIs \"\(selector.text)\" == \"\(label)\"", file: file, line: line)
+}
+
 private func textAssert(_ assert: String, verb: String, selector: FTSelector, expected: String,
                         timeout: Double?, requireVisible: Bool, operatorText: String = "~",
                         held: ElementInfo? = nil, strict: Bool = false,
@@ -1144,6 +1165,13 @@ public struct FTElement {
                              file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         enabledAssert("notChecked", verb: "checkIsOFF", selector: selector,
                       timeout: timeout, held: matched, file: file, line: line)
+        return self
+    }
+
+    @discardableResult
+    public func imageIs(_ label: String, timeout: Double? = nil,
+                        file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+        imageAssert(label, selector: selector, timeout: timeout, file: file, line: line)
         return self
     }
 }

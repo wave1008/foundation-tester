@@ -555,6 +555,8 @@ extension StepExecutor {
             return try await executeAssertEnabledDisabled(assert, step: step, phase: &phase)
         case "checked", "notChecked":
             return try await executeAssertChecked(assert, step: step, phase: &phase)
+        case "imageIs":
+            return try await executeAssertImageIs(step: step, phase: &phase)
         case "count":
             return try await executeAssertCount(step: step, phase: &phase)
         case "screenMatches":
@@ -1309,9 +1311,9 @@ extension StepExecutor {
         // 「状態が違う」と「見つからない」を別メッセージにするのは enabled と同じ規律
         let wantChecked = assert == "checked"
         var lastState: CheckState = .unknown
-        var lastClassification: CheckStateClassifier.Classification?
+        var lastClassification: VisionClassifier.Classification?
         // 学習の待ちは DeadlineExclusion で締め切りから引かれる。ステップの待ち予算はその後から数える
-        let classifier = await loadedCheckStateClassifier()
+        let classifier = await loadedVisionClassifier(CheckStateClassifier.name)
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         let stepStart = clock.now
         var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
@@ -1378,10 +1380,66 @@ extension StepExecutor {
         }
         return found
             ? .failed(Self.checkStateMismatch(lastState, locator: step.locatorSummary)
-                      + Self.checkStateSourceHint(lastClassification, classifierError: checkStateClassifierError)
+                      + Self.checkStateSourceHint(lastClassification,
+                                                  classifierError: visionClassifierErrors[CheckStateClassifier.name])
                       + tapDiagnosisHint(lastSnapshot?.elements))
             : failed(.notFound, "element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot)
                       + Self.keyboardResizedHint(lastSnapshot))
+    }
+
+    /// imageIs(Shirates Vision の DefaultClassifier): 掴んだ要素の枠で切った画像の1位のラベル
+    /// (短いラベル)が期待値を含むか。**見本が無い・期待値のラベルの見本が無いときはポーリングせず落とす**
+    /// (待っても答えが変わらない)
+    private func executeAssertImageIs(step: FlowStep,
+                                      phase: inout PhaseAccumulator) async throws -> StepResult.Status {
+        let expected = step.expected ?? ""
+        let classifier = await loadedVisionClassifier(DefaultClassifier.name)
+        guard let classifier else {
+            let folder = "vision/classifiers/\(DefaultClassifier.name)"
+            if let error = visionClassifierErrors[DefaultClassifier.name] {
+                return .failed("imageIs could not use \(DefaultClassifier.name): \(error)")
+            }
+            return .failed("imageIs needs sample images in \(folder)/<label folder>/ (at least two labels); none were found")
+        }
+        guard classifier.labels.contains(where: { DefaultClassifier.matches(label: $0, expected: expected) }) else {
+            return .failed("no sample images in \(DefaultClassifier.name) are labeled \"\(expected)\""
+                + " (labels: \(classifier.labels.map(VisionClassifier.shortLabel).sorted().joined(separator: ", ")))")
+        }
+        let clock = ContinuousClock()
+        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        var backoff = PollBackoff()
+        var found = false
+        var lastClassification: VisionClassifier.Classification?
+        var lastSnapshot: SnapshotResponse?
+        while true {
+            let start = clock.now
+            var snapshot = try await driver.snapshot(bypassingCache: false)
+            phase.snapshotMs += Self.ms(clock.now - start)
+            try await dismissInterruption(in: &snapshot, phase: &phase)
+            lastSnapshot = snapshot
+            if let (element, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
+                found = true
+                lastClassification = await classifyElementImage(element, screen: snapshot.screen, with: classifier)
+                if let label = lastClassification?.label, DefaultClassifier.matches(label: label, expected: expected) {
+                    resolvedElementThisStep = element
+                    if let fallback { return .passedViaFallback(fallback) }
+                    return .passed
+                }
+            }
+            if Date() >= deadline { break }
+            let waitStart = clock.now
+            try await Task.sleep(for: backoff.nextDelay())
+            phase.waitMs += Self.ms(clock.now - waitStart)
+        }
+        guard found else {
+            return failed(.notFound, "element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot))
+        }
+        guard let lastClassification else {
+            return .failed("the element image could not be classified (screenshot or crop failed): \(step.locatorSummary)")
+        }
+        return .failed("the element image is classified as \"\(VisionClassifier.shortLabel(lastClassification.label))\""
+            + " (label \"\(lastClassification.label)\", confidence \(String(format: "%.2f", lastClassification.confidence))),"
+            + " not \"\(expected)\": \(step.locatorSummary)")
     }
 
     /// オンしか報告しない実装(Compose iOS の Checkbox/Radio・Flutter iOS の Radio)は、オフと
@@ -1395,40 +1453,48 @@ extension StepExecutor {
         return state
     }
 
-    /// CheckStateClassifier を読み込む(プロセスで1回。見本画像が無ければ nil)。学習の失敗は a11y だけで
-    /// 判定を続ける(注記 check-state-classifier-failed・理由は失敗文言へ)
-    func loadedCheckStateClassifier() async -> CheckStateClassifier.Model? {
-        if let loaded = checkStateClassifierLoaded { return loaded }
-        guard let root = checkStateClassifierProjectRoot,
-              let set = CheckStateClassifier.trainingSet(at: CheckStateClassifier.directory(projectRoot: root)) else {
-            checkStateClassifierLoaded = .some(nil)
-            return nil
-        }
+    /// 画像分類器を読み込む(分類器ごとにプロセスで1回。見本画像が無ければ nil)。学習・読み込みの失敗は
+    /// 理由を `visionClassifierErrors` に残して nil(checkIsON/OFF は a11y だけで判定を続ける =
+    /// 注記 check-state-classifier-failed / imageIs は理由を添えて失敗する)
+    func loadedVisionClassifier(_ name: String) async -> VisionClassifier.Model? {
+        if let loaded = visionClassifiersLoaded[name] { return loaded }
         do {
-            let model = try await CheckStateClassifier.load(
-                set, cacheDirectory: CheckStateClassifier.cacheDirectory(projectRoot: root))
-            checkStateClassifierLoaded = .some(model)
+            guard let root = visionClassifierProjectRoot,
+                  let set = try VisionClassifier.trainingSet(
+                      at: VisionClassifier.directory(projectRoot: root, name: name)) else {
+                visionClassifiersLoaded[name] = .some(nil)
+                return nil
+            }
+            let model = try await VisionClassifier.load(
+                set, cacheDirectory: VisionClassifier.cacheDirectory(projectRoot: root, name: name))
+            visionClassifiersLoaded[name] = .some(model)
             return model
         } catch {
-            checkStateClassifierError = String(describing: error)
-            noteCodesThisStep.insert(.checkStateClassifierFailed)
-            checkStateClassifierLoaded = .some(nil)
+            visionClassifierErrors[name] = String(describing: error)
+            if name == CheckStateClassifier.name { noteCodesThisStep.insert(.checkStateClassifierFailed) }
+            visionClassifiersLoaded[name] = .some(nil)
             return nil
         }
+    }
+
+    /// 要素の枠でスクリーンショットを切り、分類器の1位を返す(撮れない・切れないときは nil)
+    func classifyElementImage(_ element: ElementInfo, screen: FTRect,
+                              with classifier: VisionClassifier.Model) async -> VisionClassifier.Classification? {
+        guard let png = try? await driver.screenshot(),
+              let image = VisionClassifier.crop(png: png, frame: element.frame, screen: screen) else { return nil }
+        return try? classifier.classify(image)
     }
 
     /// 要素の枠でスクリーンショットを切り、分類器の1位のラベルを状態へ写す。ラベルが [ON]/[OFF] を
     /// 含まない・撮れない・切れないときは nil(a11y の判定のまま)
-    func classifyCheckState(_ element: ElementInfo, screen: FTRect, with classifier: CheckStateClassifier.Model)
-        async -> (state: CheckState, classification: CheckStateClassifier.Classification)? {
-        guard let png = try? await driver.screenshot(),
-              let image = CheckStateClassifier.crop(png: png, frame: element.frame, screen: screen),
-              let classification = try? classifier.classify(image),
+    func classifyCheckState(_ element: ElementInfo, screen: FTRect, with classifier: VisionClassifier.Model)
+        async -> (state: CheckState, classification: VisionClassifier.Classification)? {
+        guard let classification = await classifyElementImage(element, screen: screen, with: classifier),
               let state = CheckStateClassifier.state(forLabel: classification.label) else { return nil }
         return (state, classification)
     }
 
-    static func checkStateSourceHint(_ classification: CheckStateClassifier.Classification?,
+    static func checkStateSourceHint(_ classification: VisionClassifier.Classification?,
                                      classifierError: String?) -> String {
         if let classification {
             return " (judged by CheckStateClassifier from the element image: label \"\(classification.label)\","
@@ -1442,7 +1508,7 @@ extension StepExecutor {
         switch state {
         case .on: return "the element is on: \(locator)"
         case .off: return "the element is off: \(locator)"
-        case .mixed: return "the element is in a mixed (partially checked) state: \(locator)"
+        case .indeterminate: return "the element is in an indeterminate (partially checked) state: \(locator)"
         case .unknown:
             return "the element reports no check state: \(locator) (no selected trait and no on/off value; "
                 + "it is either off or an implementation that does not expose its check state to accessibility, "

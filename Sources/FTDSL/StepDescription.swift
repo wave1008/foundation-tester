@@ -270,6 +270,11 @@ public enum StepDescription {
                 return isJapanese(obj) ? "\"\(obj)\"がオンであること" : "\"\(obj)\" is on"
             case "notChecked":
                 return isJapanese(obj) ? "\"\(obj)\"がオフであること" : "\"\(obj)\" is off"
+            case "imageIs":
+                let expected = step.expected ?? ""
+                return isJapanese(obj, expected)
+                    ? "\"\(obj)\"の画像が\"\(expected)\"であること"
+                    : "\"\(obj)\" image is \"\(expected)\""
             case "count":
                 let count = step.expectedCount ?? 0
                 return isJapanese(obj)

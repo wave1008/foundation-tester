@@ -53,41 +53,42 @@ final class CheckStateClassifierTests: XCTestCase {
     // MARK: - 学習データの読み方
 
     func testShiratesScriptHeaderIsParsed() {
-        let options = CheckStateClassifier.Options.parse(scriptText: "// options=-noise,-blur\n// imageFilter=binary\n1\n")
+        let options = VisionClassifier.Options.parse(scriptText: "// options=-noise,-blur\n// imageFilter=binary\n1\n")
         XCTAssertEqual(options.augmentation, ["noise", "blur"])
         XCTAssertTrue(options.binary)
         XCTAssertEqual(options.featurePrintRevision, 2)
-        XCTAssertEqual(CheckStateClassifier.Options.parse(scriptText: "// options=-fp:1").featurePrintRevision, 1)
-        XCTAssertEqual(CheckStateClassifier.Options.parse(scriptText: nil), CheckStateClassifier.Options())
+        XCTAssertEqual(VisionClassifier.Options.parse(scriptText: "// options=-fp:1").featurePrintRevision, 1)
+        XCTAssertEqual(VisionClassifier.Options.parse(scriptText: nil), VisionClassifier.Options())
     }
 
     func testLabelsMapToStatesLikeShirates() {
         XCTAssertEqual(CheckStateClassifier.state(forLabel: "[ON]"), .on)
         XCTAssertEqual(CheckStateClassifier.state(forLabel: "switch[OFF]"), .off)
         XCTAssertNil(CheckStateClassifier.state(forLabel: "ON"))
+        XCTAssertEqual(CheckStateClassifier.state(forLabel: "[INDETERMINATE]"), .indeterminate, "fleetest 独自のラベル")
     }
 
     func testTrainingSetNeedsTwoLabelsWithImages() throws {
         let root = try Self.makeProject(samples: 1)
         defer { try? FileManager.default.removeItem(at: root) }
         let dir = CheckStateClassifier.directory(projectRoot: root)
-        XCTAssertEqual(CheckStateClassifier.trainingSet(at: dir)?.labels.count, 2)
+        XCTAssertEqual(try VisionClassifier.trainingSet(at: dir)?.labels.count, 2)
         try FileManager.default.removeItem(at: dir.appendingPathComponent("[OFF]/s0.png"))
-        XCTAssertNil(CheckStateClassifier.trainingSet(at: dir), "1ラベルでは分類器にならない")
-        XCTAssertNil(CheckStateClassifier.trainingSet(at: root.appendingPathComponent("missing")))
+        XCTAssertNil(try VisionClassifier.trainingSet(at: dir), "1ラベルでは分類器にならない")
+        XCTAssertNil(try VisionClassifier.trainingSet(at: root.appendingPathComponent("missing")))
     }
 
     func testDigestFollowsImageContentAndOptions() throws {
         let root = try Self.makeProject(samples: 2)
         defer { try? FileManager.default.removeItem(at: root) }
         let dir = CheckStateClassifier.directory(projectRoot: root)
-        let first = try XCTUnwrap(CheckStateClassifier.trainingSet(at: dir)).digest
-        XCTAssertEqual(CheckStateClassifier.trainingSet(at: dir)?.digest, first)
+        let first = try XCTUnwrap(try VisionClassifier.trainingSet(at: dir)).digest
+        XCTAssertEqual(try VisionClassifier.trainingSet(at: dir)?.digest, first)
         try Self.checkboxPNG(on: true, shift: 5).write(to: dir.appendingPathComponent("[ON]/s0.png"))
-        let changedImage = try XCTUnwrap(CheckStateClassifier.trainingSet(at: dir)).digest
+        let changedImage = try XCTUnwrap(try VisionClassifier.trainingSet(at: dir)).digest
         XCTAssertNotEqual(changedImage, first, "画像の中身が変われば学び直す")
         try "// options=-noise".write(to: dir.appendingPathComponent("MLImageClassifier.swift"), atomically: true, encoding: .utf8)
-        XCTAssertNotEqual(CheckStateClassifier.trainingSet(at: dir)?.digest, changedImage, "オプションが変われば学び直す")
+        XCTAssertNotEqual(try VisionClassifier.trainingSet(at: dir)?.digest, changedImage, "オプションが変われば学び直す")
     }
 
     // MARK: - 画像
@@ -95,17 +96,17 @@ final class CheckStateClassifierTests: XCTestCase {
     func testCropScalesFromPointsToPixels() throws {
         let png = Self.checkboxPNG(on: true, shift: 0, canvas: 120)
         // 画面 40pt 幅 = 画像 120px(3倍)
-        let image = try XCTUnwrap(CheckStateClassifier.crop(
+        let image = try XCTUnwrap(VisionClassifier.crop(
             png: png, frame: FTRect(x: 10, y: 5, width: 20, height: 10), screen: FTRect(x: 0, y: 0, width: 40, height: 40)))
         XCTAssertEqual(image.width, 60)
         XCTAssertEqual(image.height, 30)
-        XCTAssertNil(CheckStateClassifier.crop(png: png, frame: FTRect(x: 100, y: 100, width: 5, height: 5),
+        XCTAssertNil(VisionClassifier.crop(png: png, frame: FTRect(x: 100, y: 100, width: 5, height: 5),
                                                screen: FTRect(x: 0, y: 0, width: 40, height: 40)), "画面外")
     }
 
     func testOtsuSplitsTwoPeaks() {
         let pixels = [UInt8](repeating: 20, count: 50) + [UInt8](repeating: 220, count: 50)
-        let threshold = CheckStateClassifier.otsuThreshold(pixels)
+        let threshold = VisionClassifier.otsuThreshold(pixels)
         XCTAssertTrue((20..<220).contains(threshold), "\(threshold)")
     }
 
@@ -114,9 +115,9 @@ final class CheckStateClassifierTests: XCTestCase {
     func testTrainsClassifiesAndReusesTheCachedModel() throws {
         let root = try Self.makeProject(script: "// options=-noise\n// imageFilter=binary")
         defer { try? FileManager.default.removeItem(at: root) }
-        let set = try XCTUnwrap(CheckStateClassifier.trainingSet(at: CheckStateClassifier.directory(projectRoot: root)))
+        let set = try XCTUnwrap(try VisionClassifier.trainingSet(at: CheckStateClassifier.directory(projectRoot: root)))
         let cache = CheckStateClassifier.cacheDirectory(projectRoot: root)
-        let model = try CheckStateClassifier.loadBlocking(set, cacheDirectory: cache)
+        let model = try VisionClassifier.loadBlocking(set, cacheDirectory: cache)
         let modelFile = cache.appendingPathComponent("\(set.digest)/model.mlmodel")
         XCTAssertTrue(FileManager.default.fileExists(atPath: modelFile.path))
         // imageFilter=binary は学習画像に二値化の2枚を足す
@@ -129,8 +130,8 @@ final class CheckStateClassifierTests: XCTestCase {
             XCTAssertEqual(try model.classify(image)?.label, expected)
         }
         let modified = try FileManager.default.attributesOfItem(atPath: modelFile.path)[.modificationDate] as? Date
-        CheckStateClassifier.forgetLoadedModelsForTesting()   // 別プロセス(次のシナリオ)と同じ条件
-        _ = try CheckStateClassifier.loadBlocking(set, cacheDirectory: cache)
+        VisionClassifier.forgetLoadedModelsForTesting()   // 別プロセス(次のシナリオ)と同じ条件
+        _ = try VisionClassifier.loadBlocking(set, cacheDirectory: cache)
         let again = try FileManager.default.attributesOfItem(atPath: modelFile.path)[.modificationDate] as? Date
         XCTAssertEqual(modified, again, "同じ見本なら学び直さない")
     }
@@ -150,11 +151,47 @@ final class CheckStateClassifierTests: XCTestCase {
         let runner = try source("Sources/FTScenarioRunner/ScenarioRunnerMain.swift")
         XCTAssertTrue(runner.contains("customLong(\"no-prefer-check-state-classifier\")"))
         XCTAssertTrue(runner.contains("preferCheckStateClassifier: !noPreferCheckStateClassifier"))
-        XCTAssertTrue(runner.contains("checkStateClassifierProjectRoot: projectDir.map { URL(fileURLWithPath: $0) }"),
+        XCTAssertTrue(runner.contains("visionClassifierProjectRoot: projectDir.map { URL(fileURLWithPath: $0) }"),
                       "見本画像を探すプロジェクトのルートを渡していない(分類器が一度も使われない)")
         let runtime = try source("Sources/FTDSL/FTRuntime.swift")
-        XCTAssertTrue(runtime.contains("self.executor.checkStateClassifierProjectRoot = checkStateClassifierProjectRoot"))
+        XCTAssertTrue(runtime.contains("self.executor.visionClassifierProjectRoot = visionClassifierProjectRoot"))
         XCTAssertTrue(runtime.contains("self.executor.preferCheckStateClassifier = preferCheckStateClassifier"))
+    }
+
+    // MARK: - indeterminate([INDETERMINATE] の見本。fleetest 独自)
+
+    /// 枠の中に横棒だけの箱(一部だけ選択の見た目)
+    static func indeterminatePNG(shift: Int, canvas: Int = 64) -> Data {
+        let context = CGContext(data: nil, width: canvas, height: canvas, bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpaceCreateDeviceRGB(),
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: canvas, height: canvas))
+        context.setStrokeColor(CGColor(red: 0.1, green: 0.3, blue: 0.9, alpha: 1))
+        context.setFillColor(CGColor(red: 0.1, green: 0.3, blue: 0.9, alpha: 1))
+        context.setLineWidth(4)
+        let box = CGRect(x: 12 + shift, y: 12 + shift, width: 36 - shift, height: 36 - shift)
+        context.stroke(box)
+        context.fill(CGRect(x: box.minX + 8, y: box.midY - 3, width: box.width - 16, height: 6))
+        return png(context.makeImage()!)
+    }
+
+    func testIndeterminateSamplesFailBothAssertionsWithTheReason() async throws {
+        let root = try Self.makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dir = CheckStateClassifier.directory(projectRoot: root).appendingPathComponent("[INDETERMINATE]")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        for i in 0..<6 { try Self.indeterminatePNG(shift: i).write(to: dir.appendingPathComponent("s\(i).png")) }
+
+        for assert in ["checked", "notChecked"] {
+            let driver = ImageDriver(element: element(type: "button"), screenPNG: Self.indeterminatePNG(shift: 2))
+            let executor = StepExecutor(driver: driver, isAndroid: false)
+            executor.visionClassifierProjectRoot = root
+            let outcome = await executor.execute(FlowStep(assert: assert, locator: FlowLocator(id: "cb"), timeout: 0))
+            guard case .failed(let reason) = outcome.status else { return XCTFail("\(assert) は落ちるはず") }
+            XCTAssertTrue(reason.contains("indeterminate"), reason)
+            XCTAssertTrue(reason.contains("[INDETERMINATE]"), reason)
+        }
     }
 
     // MARK: - checkIsON / checkIsOFF への組み込み
@@ -188,7 +225,7 @@ final class CheckStateClassifierTests: XCTestCase {
                      prefer: Bool) async -> StepOutcome {
         let driver = ImageDriver(element: element, screenPNG: Self.checkboxPNG(on: imageOn, shift: 2))
         let executor = StepExecutor(driver: driver, isAndroid: false)
-        executor.checkStateClassifierProjectRoot = projectRoot
+        executor.visionClassifierProjectRoot = projectRoot
         executor.preferCheckStateClassifier = prefer
         return await executor.execute(FlowStep(assert: assert, locator: FlowLocator(id: "cb"), timeout: 0))
     }

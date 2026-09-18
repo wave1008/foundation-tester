@@ -32,7 +32,7 @@ final class SelOverloadParityTests: XCTestCase {
         "valueIs", "valueIsNot", "valueContains", "valueContainsNot",
         "valueStartsWith", "valueStartsWithNot", "valueEndsWith", "valueEndsWithNot",
         "valueMatches", "valueMatchesNot", "valueMatchesDateFormat",
-        "idIs",
+        "idIs", "imageIs",
     ]
 
     /// **承認済みの差分**(ユーザー決定・**再提案しない**): `scrollFrame:`

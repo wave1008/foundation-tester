@@ -287,7 +287,7 @@ public final class FTDriveCore {
     /// (報告が無いとオフと未対応が区別できない。自作の SwiftUI ボタン・Compose iOS の Checkbox のオフ等。
     /// 判定は CheckStateReading)
     var notCheckedOnlySelectors: [String: String] = [:]
-    /// チェック状態(オン/オフ/mixed)を観測できたセレクタ(観測できたなら状態を持つ要素だと分かる)
+    /// チェック状態(オン/オフ/indeterminate)を観測できたセレクタ(観測できたなら状態を持つ要素だと分かる)
     var checkedObservedSelectors: Set<String> = []
 
     /// `withScrollDown { }` 等が積む既定のスクロール向き(Shirates の CodeExecutionContext.scrollDirection 相当)。
@@ -408,7 +408,7 @@ public final class FTDriveCore {
                 occlusionOCREnabled: Bool = true,
                 // CheckStateClassifier(Shirates Vision の移植)。見本画像の置き場所はこのルートの
                 // vision/classifiers/CheckStateClassifier/。nil なら使わない
-                checkStateClassifierProjectRoot: URL? = nil,
+                visionClassifierProjectRoot: URL? = nil,
                 preferCheckStateClassifier: Bool = true,
                 dryRun: Bool = false,
                 fingerprintCacheURL: URL? = nil,
@@ -465,7 +465,7 @@ public final class FTDriveCore {
                                          app: app, platform: platform,
                                          deviceName: deviceName, deviceIdentifier: deviceIdentifier)
         self.executor.onDeviceFrozen = { [weak self] in self?.markDeviceFrozen() }
-        self.executor.checkStateClassifierProjectRoot = checkStateClassifierProjectRoot
+        self.executor.visionClassifierProjectRoot = visionClassifierProjectRoot
         self.executor.preferCheckStateClassifier = preferCheckStateClassifier
         // **シナリオ開始時に暖機を始める**(Vision のモデル初回ロードはプロセスに1回・数十秒
         // かかる)。StepExecutor.init の既定ゲート(executor 既定でガードが効くときだけ撃つ)は

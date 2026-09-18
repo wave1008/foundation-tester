@@ -2,14 +2,16 @@
 // ワイヤの `checked` は true のときだけ送られる(省略 = オフ / 状態を持たない要素の区別が無い)ので、
 // value に載っている状態を読んで「オフ」を確定させる。規則と実測(iOS 27・両エンジン同値):
 //   - Flutter の Checkbox/Switch・SwiftUI Toggle・RN の role=switch・WebKit の checkbox: 型 switch + value "1"/"0"
-//     (WebKit の mixed は "2")。Flutter の mixed は engine が "0" を返す = オフと区別できない
+//     (WebKit の indeterminate は "2")。Flutter の indeterminate は engine が "0" を返す = オフと区別できない
 //   - RN の role=checkbox/radio: value "checkbox, checked" 等(OSS の RN は翻訳表が空 = 英語固定)
 //   - Compose iOS: On のときだけ selected trait。Off/Indeterminate は何も出さない。Switch は型 switch で value 無し
 //   - Android: checkable なノードにブリッジが value "1"/"0" を載せる(型は CheckBox/Switch/StaticText/Button …)
 //   - DOM 経路(WebView): checkBox/switch の役割に value "1"/"0"/"2" を載せる(WebViewDOMSnapshot)
 
 public enum CheckState: String, Sendable, Equatable {
-    case on, off, mixed
+    /// indeterminate = 一部だけ選択(HTML の `indeterminate`・Compose の `ToggleableState.Indeterminate`)。
+    /// 外部の語は ARIA / RN が `mixed`、WebKit・DOM 経路の value が `"2"`
+    case on, off, indeterminate
     /// 状態を報告していない(状態を持たない要素か、状態を a11y に出さない実装)
     case unknown
 }
@@ -26,10 +28,10 @@ public enum CheckStateReading {
 
     /// セレクタの `checked=` 用(プラットフォームを知らない経路)。オンの判定は OS に依らない ——
     /// Android の value "1" は isChecked 由来で、同じノードは必ず `checked == true` も持つ
-    public static func onOrMixed(_ element: ElementInfo) -> CheckState? {
+    public static func onOrIndeterminate(_ element: ElementInfo) -> CheckState? {
         switch state(of: element, isAndroid: false) {
         case .on: return .on
-        case .mixed: return .mixed
+        case .indeterminate: return .indeterminate
         case .off, .unknown: return element.checked == true ? .on : nil
         }
     }
@@ -58,7 +60,7 @@ public enum CheckStateReading {
         switch value {
         case "1": return .on
         case "0": return .off
-        case "2": return isAndroid ? nil : .mixed
+        case "2": return isAndroid ? nil : .indeterminate
         default: return nil
         }
     }
@@ -67,7 +69,7 @@ public enum CheckStateReading {
     private static func tokenState(type: String, value: String?) -> CheckState? {
         guard let value, !textEntryTypes.contains(type) else { return nil }
         let tokens = Set(value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
-        if tokens.contains("mixed") { return .mixed }
+        if tokens.contains("mixed") { return .indeterminate }   // RN の語
         if tokens.contains("unchecked") { return .off }
         if tokens.contains("checked") { return .on }
         return nil

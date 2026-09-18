@@ -286,6 +286,7 @@ final class AuthoringGuardTests: XCTestCase {
                     select("#field").valueIsNotEmpty()
 
                     select("#field").idIs("field")
+                    select("#field").imageIs("[Icon]")
                 }
             }
         }

@@ -2089,13 +2089,13 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   見つからなければ従来どおり現在のビューポートでの消滅待ちに進む。
   hybrid では **不在を確定する側でだけ** `fallbackDriver` を1回照会する(pass 経路の固定費 1 回。
   システム UI のダイアログが primary の snapshot に映らないため。miss 毎に払う `exist` 側とは事情が逆)
-- **`checkIsON` / `checkIsOFF`**(セレクタの `checked=`・スナップショットの `checked`/`mixed` 表示も同じ源)は
-  **`FTCore.CheckStateReading` だけが読む**(オン / オフ / mixed / 不明の4値)。ワイヤの `checked` は
-  true のときだけ送る(iOS = selected trait / Android = `isChecked || isSelected`)ので、オフと mixed は
+- **`checkIsON` / `checkIsOFF`**(セレクタの `checked=`・スナップショットの `checked`/`indeterminate` 表示も同じ源)は
+  **`FTCore.CheckStateReading` だけが読む**(オン / オフ / indeterminate / 不明の4値)。ワイヤの `checked` は
+  true のときだけ送る(iOS = selected trait / Android = `isChecked || isSelected`)ので、オフと indeterminate は
   value から確定させる。実測(2026-09-18・iOS 27・両エンジン同値)と一次ソースで決めた規則:
   | 実装 | オン | オフ |
   |---|---|---|
-  | Flutter の Checkbox/Switch・SwiftUI Toggle・RN の role=switch・WebKit | 型 switch + value "1" | value "0"(WebKit の mixed は "2") |
+  | Flutter の Checkbox/Switch・SwiftUI Toggle・RN の role=switch・WebKit | 型 switch + value "1" | value "0"(WebKit の indeterminate は "2"。ARIA / RN の語は mixed) |
   | RN の role=checkbox / radio | value に語 `checked` | 語 `unchecked`(OSS の RN は翻訳表が空 = 英語固定) |
   | Compose iOS | selected trait | 何も出さない(Switch だけは型 switch・value 無し = オフと読める) |
   | Flutter iOS の Radio | selected trait | 何も出さない(engine が value を出さない) |
@@ -2104,7 +2104,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   **value は型で絞って読む**(iOS は switch/checkBox、Android は入力欄以外)—— バッジの数字 "1" や入力欄の
   文字をオンと読まないため。**オンしか報告しない実装**は、同じシナリオで一度オンを見た要素に限り
   報告の欠落をオフと読む(`StepExecutor.checkStateReporters`)。**救えない形**: 状態を a11y に出さない自作の
-  部品(SwiftUI の Button 等)/ オンを見る前のオフ / Flutter・Compose・Android の mixed(オフと区別不能)。
+  部品(SwiftUI の Button 等)/ オンを見る前のオフ / Flutter・Compose・Android の indeterminate(オフと区別不能。CheckStateClassifier の `[INDETERMINATE]` の見本で救える)。
   `checkIsON` を不明な要素に書くと「reports no check state」で落ち、`checkIsOFF` は通して run 終了時に警告する。
   **画像での判定(`FTCore.CheckStateClassifier`。Shirates Vision の移植)**: プロジェクトの
   `vision/classifiers/CheckStateClassifier/<ラベル>/` に見本画像(ラベルが2つ以上)があれば、要素の枠で
@@ -2114,7 +2114,11 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   (digest = 画像の中身 + オプション + 学習器の版)、並列のプロセスは digest ごとの flock で1本にする。
   学習の待ちは `DeadlineExclusion` で締め切りから引く。**見本は推論と同じ a11y の枠で切ったものを置く**
   (切り方がずれると別物に見える)。**見本に無い種類の部品は2クラスのどちらかへ必ず振られる**ので、
-  優先オンでは同じ画面のスイッチ・ラジオの見本も一緒に置く(witness は E2E-iOS の scenario 08)
+  優先オンでは同じ画面のスイッチ・ラジオの見本も一緒に置く(witness は E2E-iOS の scenario 08)。
+  **`imageIs`(DefaultClassifier)も同じ学習・推論(`FTCore.VisionClassifier`)を使う** —— 見本は
+  `vision/classifiers/DefaultClassifier/` 以下の任意の深さ、ラベルは親フォルダの相対パスを `_` でつないだもの、
+  判定は1位のラベルの最後の `[` 以降が期待値を含むか(Shirates の LabelUtility.getShortLabel)。
+  同じ短いラベルが2つのフォルダにあるのは設定の誤り。見本に無いラベルは待たずに落とす
 - **状態フィルタ(`checked=` / `enabled=`)は型ではなく `#id` と併用する**(2026-07-26 実測)。
   同じ役割の要素でも型は SUT で割れるため(コントロール画面の無効ボタンは CMP では `button`、
   View/XML では `clickable`)、`.button&&enabled=false` のような型との AND は SUT 固有の式になる。

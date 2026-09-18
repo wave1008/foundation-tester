@@ -79,6 +79,7 @@ needs no changes ([details](overview/about.md)).
     - [Value assertion (valueIs, valueContains, ...)](commands/value_assertion.md)
     - [id assertion (idIs)](commands/id_assertion.md)
     - [State assertion (enabledIsTrue, enabledIsFalse, checkIsON, checkIsOFF)](commands/state_assertion.md)
+    - [Image assertion (imageIs)](commands/image_assertion.md)
 - Asserting others
     - [Keyboard assertion (keyboardIsShown, keyboardIsNotShown)](commands/keyboard_assertion.md)
     - [Screen assertion (screenLooksLike)](commands/screen_assertion.md)

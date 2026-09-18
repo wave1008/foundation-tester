@@ -396,7 +396,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var ocrTextVisualCheck: Bool?
     /// チェック状態(checkIsON / checkIsOFF)の判定で CheckStateClassifier を優先するか(**既定 true**)。
     /// 分類器が使えるのは `vision/classifiers/CheckStateClassifier/<ラベル>/` に画像があるときだけ。
-    /// false なら a11y が状態を報告しない要素にだけ使う(CheckStateClassifier.swift)
+    /// false なら a11y が状態を報告しない要素にだけ使う(VisionClassifier.swift)
     public var preferCheckStateClassifier: Bool?
     /// 旧名 `screenIs` の受け口(コマンドの改名前に書かれた受け手のプロファイルが動き続けるため)。
     /// **読むのは screenLooksLike が未指定のときだけ**(effectiveScreenLooksLike)。書き出す側は

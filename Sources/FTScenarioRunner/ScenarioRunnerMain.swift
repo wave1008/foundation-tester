@@ -482,7 +482,7 @@ struct RunScenario: AsyncParsableCommand {
                                screenLooksLikeEnabled: !noScreenLooksLike,
                                containerInference: !noContainerInference,
                                occlusionOCREnabled: !noOcclusionOCR,
-                               checkStateClassifierProjectRoot: projectDir.map { URL(fileURLWithPath: $0) },
+                               visionClassifierProjectRoot: projectDir.map { URL(fileURLWithPath: $0) },
                                preferCheckStateClassifier: !noPreferCheckStateClassifier,
                                dryRun: dryRun,
                                fingerprintCacheURL: fingerprintCacheURL,

@@ -28,7 +28,7 @@ final class CheckStateTests: XCTestCase {
         XCTAssertEqual(ios(el("other", value: "checkbox, unchecked")), .off)
         XCTAssertEqual(ios(el("other", value: "radio button, checked")), .on)
         XCTAssertEqual(ios(el("other", value: "radio button, unchecked")), .off)
-        XCTAssertEqual(ios(el("other", value: "checkbox, mixed")), .mixed)
+        XCTAssertEqual(ios(el("other", value: "checkbox, mixed")), .indeterminate)
         // busy や app の accessibilityValue が後ろに付いても読める
         XCTAssertEqual(ios(el("other", value: "checkbox, checked, busy")), .on)
     }
@@ -45,9 +45,9 @@ final class CheckStateTests: XCTestCase {
         XCTAssertEqual(ios(el("button")), .unknown)
     }
 
-    func testWebKitReportsMixedAsTwo() {
-        XCTAssertEqual(ios(el("switch", value: "2")), .mixed)
-        XCTAssertEqual(ios(el("checkBox", value: "2")), .mixed, "DOM 経路は checkBox 型で同じ値を載せる")
+    func testWebKitReportsIndeterminateAsTwo() {
+        XCTAssertEqual(ios(el("switch", value: "2")), .indeterminate)
+        XCTAssertEqual(ios(el("checkBox", value: "2")), .indeterminate, "DOM 経路は checkBox 型で同じ値を載せる")
         XCTAssertEqual(ios(el("checkBox", value: "0", checked: false)), .off)
     }
 
@@ -103,10 +103,10 @@ final class CheckStateTests: XCTestCase {
                         el("switch", value: "2", id: "c", ref: 3), el("button", id: "d", ref: 4)]
         XCTAssertEqual(StepExecutor.candidates(FlowLocator(checked: true), elements: elements)?.map(\.ref), [1])
         XCTAssertEqual(StepExecutor.candidates(FlowLocator(checked: false), elements: elements)?.map(\.ref), [2, 4],
-                       "checked=false はオフと状態を持たない要素(mixed は含めない)")
+                       "checked=false はオフと状態を持たない要素(indeterminate は含めない)")
     }
 
-    func testRenderingMarksDerivedOnAndMixed() {
+    func testRenderingMarksDerivedOnAndIndeterminate() {
         let snapshot = SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 400, height: 800),
                                         elements: [el("switch", value: "1", id: "a", ref: 1),
                                                    el("switch", value: "2", id: "b", ref: 2),
@@ -114,7 +114,7 @@ final class CheckStateTests: XCTestCase {
                                         truncatedCount: 0)
         let lines = SnapshotRenderer.render(snapshot).split(separator: "\n")
         XCTAssertTrue(lines.contains { $0.contains("id=a") && $0.contains(" checked") }, lines.joined(separator: "\n"))
-        XCTAssertTrue(lines.contains { $0.contains("id=b") && $0.contains(" mixed") })
-        XCTAssertFalse(lines.contains { $0.contains("id=c") && ($0.contains(" checked") || $0.contains(" mixed")) })
+        XCTAssertTrue(lines.contains { $0.contains("id=b") && $0.contains(" indeterminate") })
+        XCTAssertFalse(lines.contains { $0.contains("id=c") && ($0.contains(" checked") || $0.contains(" indeterminate")) })
     }
 }

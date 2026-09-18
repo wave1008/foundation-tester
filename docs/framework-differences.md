@@ -82,7 +82,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 |---|---|---|
 | 自作の部品(SwiftUI の Button で作ったチェックボックス・ラジオ等) | チェック状態を a11y に一切出さない(value も selected trait も無い) | **見本画像を `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に置けば画像で判定できる**(CheckStateClassifier。witness は E2E-iOS の `#cb_agree` / `#radio_*`)。見本が無いと `checkIsON` は「reports no check state」で落ちる。ほかの手段は **echo の文字列**(`agree=true` 等)か、アプリ側で公開する(SwiftUI なら `.accessibilityRepresentation { Toggle(...) }`) |
 | Compose(iOS)の Checkbox/Radio・Flutter(iOS)の Radio | **オンだけ**報告する(オフと「状態を持たない」が同じ見え方) | 同じシナリオで一度オンを見た要素ならオフも確定する。見る前の `checkIsOFF` は通して警告。**見本画像を置けば、見る前のオフも画像で判定できる**(§2.6) |
-| Flutter・Compose(iOS)・Android | mixed(一部だけ選択)をオフと区別して出さない(Flutter は `"0"`) | mixed を検証したいときは echo の文字列で。**CheckStateClassifier も mixed を返せない**(§2.6) |
+| Flutter・Compose(iOS)・Android | indeterminate(一部だけ選択)をオフと区別して出さない(Flutter は `"0"`) | **`[INDETERMINATE]` の見本画像を置けば画像で判定できる**(§2.6)。ほかは echo の文字列で |
 | WebKit の `<input type=radio>`(XCUITest 経路) | id の無い `other` 型(ラベル・value `"1"`/`"0"` 付き)で届き、木の規則(id の無い `other` は落とす)で**要素ごと消える** | in-app(DOM 経路)なら読める。XCUITest ではラベルのテキストを指す |
 | SwiftUI・Compose(iOS) | Slider の value が `"50%"` などパーセント表記 | 値は echo の文字列で確かめる |
 | SwiftUI(UITableView) | 画面外の行ラベルが、id 無しで全行分木に残る | ラベルの部分一致で不在検証しない |
@@ -171,7 +171,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 ### 2.6 チェック状態(`checkIsON` / `checkIsOFF` / `checked=`)
 
 iOS は実装ごとに状態の出し方が違う(2026-09-18 実測・両エンジン同値)。**A. 揃えている** ——
-`FTCore.CheckStateReading` が全部を読み、オン / オフ / mixed / 不明に畳む。
+`FTCore.CheckStateReading` が全部を読み、オン / オフ / indeterminate / 不明に畳む。
 
 | 実装(iOS) | オン | オフ |
 |---|---|---|
@@ -179,10 +179,10 @@ iOS は実装ごとに状態の出し方が違う(2026-09-18 実測・両エン�
 | RN の role=checkbox / radio | value `"checkbox, checked"` 等 | `"checkbox, unchecked"` 等 |
 | Compose の Checkbox/Radio・Flutter の Radio | selected trait | 何も出さない(→ 1.4 の B) |
 | Compose の Switch | selected trait | 何も出さない(型 switch なのでオフと読める) |
-| WebKit(XCUITest)/ DOM 経路 | value `"1"` | value `"0"`(mixed は `"2"`) |
+| WebKit(XCUITest)/ DOM 経路 | value `"1"` | value `"0"`(indeterminate は `"2"`。ARIA / RN の語は `mixed`) |
 
 Android はどのフレームワークも `isChecked`(checkable なら value `"1"`/`"0"`)で出す。
-**B. 揃っていない**ものは 1.4 の表(状態を出さない自作の部品・オンだけ報告・mixed)。
+**B. 揃っていない**ものは 1.4 の表(状態を出さない自作の部品・オンだけ報告・indeterminate)。
 
 **画像での判定(CheckStateClassifier。Shirates Vision の移植)** —— a11y が状態を出さない部品を救う経路。
 プロジェクトの `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に見本画像があれば、要素の枠で
@@ -195,14 +195,19 @@ Android はどのフレームワークも `isChecked`(checkable なら value `"1
 
 見本は**推論と同じ a11y の枠で切る**(witness は E2E-iOS の scenario 08 = `#cb_agree` / `#radio_*` / `#sw_notify`)。
 画像で判定したステップには注記 `check-state-classified`。
+**`[INDETERMINATE]` のラベル(fleetest 独自)** に見本を置くと indeterminate も判定でき、`checkIsON` / `checkIsOFF` の
+両方が「indeterminate」と言って落ちる(Shirates はこのラベルをどちらにも当てないので結果は同じで、理由を言えるだけ違う)。
+同じ学習・推論(`FTCore.VisionClassifier`)を `imageIs`(DefaultClassifier。`vision/classifiers/DefaultClassifier/` の見本で
+要素の画像のラベルを検証)も使う。どちらも要素の枠で切ったスクリーンショットを見るので、**フレームワークの違いに
+左右されない**(差が出るのは a11y の枠の取り方だけ = 見本も同じ枠で切る)。
 
 **それでも救えない形**(a11y・分類器のどちらにも根拠が無い):
 
 | 形 | 理由 | 扱い |
 |---|---|---|
 | 要素が木に出ない(a11y から隠した部品・XCUITest 経路の WebKit のラジオ) | 分類器は「掴んだ要素の枠」を切るので、掴めなければ使えない | ラベルの文字を指す / in-app(DOM 経路)で読む |
-| mixed(一部だけ選択) | 分類器が状態に写すのは `[ON]`/`[OFF]` だけ。a11y も Flutter・Compose(iOS)・Android は区別しない | echo の文字列で。**既定(分類器を優先)では、a11y が mixed を正しく出す WebKit・RN でも分類器がオン/オフに振る** —— mixed を扱う画面は `preferCheckStateClassifier: false` |
-| 見本に無い見た目(ダークモード・テーマ・サイズ・無効・押下中・フォーカスリング・枠に入るラベルの文字や言語・切替アニメーション中) | 分類器は必ずオンかオフのどちらかを答える = 見本外の見た目は誤りうる | 回す条件ごとの見本を置く(Shirates の見本も bright / dark を持つ) |
+| indeterminate の見本を置いていない画面の indeterminate | 分類器は見本のラベル(`[ON]`/`[OFF]`)のどちらかを必ず答える。a11y も Flutter・Compose(iOS)・Android は区別しない | `[INDETERMINATE]` に見本を置く。**置かないまま既定(分類器を優先)だと、a11y が indeterminate を正しく出す WebKit・RN でも分類器がオン/オフに振る** |
+| 見本に無い見た目(ダークモード・テーマ・サイズ・無効・押下中・フォーカスリング・枠に入るラベルの文字や言語・切替アニメーション中) | 分類器は必ず見本のラベルのどれかを答える = 見本外の見た目は誤りうる | 回す条件ごとの見本を置く(Shirates の見本も bright / dark を持つ) |
 | 状態を持たない要素(ただのボタン)を指した checkIsON/OFF | 既定(分類器を優先)では、画像からどちらかの判定が付いてしまう(以前は「報告なし」で落ちるか素通り) | 状態を持つ部品だけを指す |
 | 見切れた要素(枠が画面外にはみ出す) | 切り出せないので a11y の判定に戻る(a11y も不明なら不明) | 画面内へ送ってから検証する |
 

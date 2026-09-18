@@ -78,6 +78,7 @@ FM を使いません。テストはエージェント(MCP)に
     - [値の検証(valueIs, valueContains, …)](commands/value_assertion_ja.md)
     - [id の検証(idIs)](commands/id_assertion_ja.md)
     - [状態の検証(enabledIsTrue, enabledIsFalse, checkIsON, checkIsOFF)](commands/state_assertion_ja.md)
+    - [画像の検証(imageIs)](commands/image_assertion_ja.md)
 - その他の検証
     - [キーボードの検証(keyboardIsShown, keyboardIsNotShown)](commands/keyboard_assertion_ja.md)
     - [画面の検証(screenLooksLike)](commands/screen_assertion_ja.md)
