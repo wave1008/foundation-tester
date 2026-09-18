@@ -224,14 +224,26 @@ EOF_PAIRS
     echo "   ✅ 揃えるものはありません"
     return 0
   fi
+  # **全機を同時に起こし、待つのは最後にまとめて**(1機ずつ待つと台数ぶん伸びる。Scripts/align.sh と同じ形)。
+  # 出力は機ごとのログへ分け、終わってから順に見せる(並列の出力が行単位で混ざると読めない)
+  local logdir pids="" code
+  logdir="$(mktemp -d)"
+  echo "==> fleetest remote align$hosts(並列。fetch → checkout → build。数分かかります)"
   for host in $hosts; do
-    echo "==> fleetest remote align $host(fetch → checkout → build。数分かかります)"
-    if "$FLEETEST" remote align "$host"; then
+    ( "$FLEETEST" remote align "$host" > "$logdir/$host.log" 2>&1; echo $? > "$logdir/$host.code" ) &
+    pids="$pids $!"
+  done
+  for pid in $pids; do wait "$pid" || true; done
+  for host in $hosts; do
+    code="$(cat "$logdir/$host.code" 2>/dev/null || echo 1)"
+    sed "s/^/   [$host] /" "$logdir/$host.log"
+    if [ "$code" = 0 ]; then
       echo "   ✅ $host を揃えました"
     else
-      echo "   ❌ $host の align に失敗しました(このホストを使うプロファイルは適合チェックで落ちます)"
+      echo "   ❌ $host の align に失敗しました(exit=${code}。このホストを使うプロファイルは適合チェックで落ちます)"
     fi
   done
+  rm -rf "$logdir"
   return 0
 }
 if [ "$ALIGN" = 1 ]; then align_runners; fi
