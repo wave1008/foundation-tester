@@ -8,8 +8,8 @@
 |---|---|
 | `select(selector).enabledIsTrue(timeout:)` | 要素が有効であることを検証します。`timeout` まで状態変化を待ちます。対象は直前に掴んだ要素です。 |
 | `select(selector).enabledIsFalse(timeout:)` | 要素が無効であることを検証します。待機の挙動は同じです。 |
-| `select(selector).checkIsON(timeout:)` | 要素がチェックされていることを検証します。 |
-| `select(selector).checkIsOFF(timeout:)` | 要素がチェックされていないことを検証します。要素がチェック状態(オン/オフ)を一度も報告しなかった場合、run 終了時に警告が出ます。 |
+| `select(selector).checkIsON(prefer:, timeout:)` | 要素がチェックされていることを検証します。`prefer:` で、状態を読む先の優先(`.classifier` / `.accessibility`)をこの1コマンドだけ指定できます(省略時は実行プロファイルに従います)。 |
+| `select(selector).checkIsOFF(prefer:, timeout:)` | 要素がチェックされていないことを検証します。`prefer:` は `checkIsON` と同じです。要素がチェック状態(オン/オフ)を一度も報告しなかった場合、run 終了時に警告が出ます。 |
 
 いずれも `exist` / `select` の戻り値にチェーンでき、直前に掴んだ要素に効く暗黙形(自由関数。
 例: `enabledIsTrue()`)も持ちます。
@@ -60,6 +60,9 @@ select("#toggle_notifications").checkIsON()
   変えたときだけ学び直します。
 - 実行プロファイルの `preferCheckStateClassifier`(既定 `true`)で、アクセシビリティより分類器を
   優先します。`false` にすると、アクセシビリティが状態を報告しない要素にだけ使います。
+- 1コマンドだけ変えたいときは引数で指定します。`checkIsON(prefer: .classifier)` は見本があれば分類器で判定し、
+  `checkIsON(prefer: .accessibility)` はアクセシビリティが状態を報告する要素をアクセシビリティで判定します
+  (報告しない要素は、この指定でも分類器で判定します)。指定はレポートのステップにも出ます。
 - 画像で判定したステップには、結果に注記 `check-state-classified` が付きます。
 - 画像で判定したチェックが失敗すると、分類器が判定に使ったスクリーンショットを、レポートの失敗した
   ステップのすぐ下に添えます(何を見て判定したかを確かめられます)。

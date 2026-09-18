@@ -261,12 +261,34 @@ final class CheckStateClassifierTests: XCTestCase {
     }
 
     private func run(_ assert: String, a11y element: ElementInfo, imageOn: Bool, projectRoot: URL?,
-                     prefer: Bool) async -> StepOutcome {
+                     prefer: Bool, stepPrefer: Bool? = nil) async -> StepOutcome {
         let driver = ImageDriver(element: element, screenPNG: Self.checkboxPNG(on: imageOn, shift: 2))
         let executor = StepExecutor(driver: driver, isAndroid: false)
         executor.visionClassifierProjectRoot = projectRoot
         executor.preferCheckStateClassifier = prefer
-        return await executor.execute(FlowStep(assert: assert, locator: FlowLocator(id: "cb"), timeout: 0))
+        return await executor.execute(FlowStep(assert: assert, locator: FlowLocator(id: "cb"), timeout: 0,
+                                               preferCheckStateClassifier: stepPrefer))
+    }
+
+    /// DSL の `prefer:`(FlowStep.preferCheckStateClassifier)は実行プロファイルの既定を**両方向に**上書きする
+    func testStepPreferenceOverridesTheProfileInBothDirections() async throws {
+        let root = try Self.makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        // a11y はオフ・画像はオン = どちらで判定したかが結果に出る
+        let a11yOff = element(type: "switch", value: "0")
+        let toClassifier = await run("checked", a11y: a11yOff, imageOn: true, projectRoot: root,
+                                     prefer: false, stepPrefer: true)
+        XCTAssertTrue(passed(toClassifier), "プロファイルが a11y 優先でも、ステップ指定で分類器: \(toClassifier.status)")
+        XCTAssertTrue(toClassifier.notes.contains(.checkStateClassified))
+        let toAccessibility = await run("checked", a11y: a11yOff, imageOn: true, projectRoot: root,
+                                        prefer: true, stepPrefer: false)
+        XCTAssertFalse(passed(toAccessibility), "プロファイルが分類器優先でも、ステップ指定で a11y")
+        XCTAssertFalse(toAccessibility.notes.contains(.checkStateClassified))
+        // a11y 優先でも、a11y が状態を報告しない要素は分類器へ落ちる(プロファイルの false と同じ意味)
+        let silent = await run("checked", a11y: element(type: "button"), imageOn: true, projectRoot: root,
+                               prefer: true, stepPrefer: false)
+        XCTAssertTrue(passed(silent), "\(silent.status)")
+        XCTAssertTrue(silent.notes.contains(.checkStateClassified))
     }
 
     private func element(type: String, value: String? = nil) -> ElementInfo {

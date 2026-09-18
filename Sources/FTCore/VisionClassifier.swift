@@ -448,6 +448,14 @@ public enum VisionClassifier {
 }
 
 
+/// checkIsON / checkIsOFF が状態を読む先の優先(DSL の `prefer:`。実行プロファイルの
+/// `preferCheckStateClassifier` を1コマンドだけ上書きする)。意味はプロファイルのキーと同じ:
+/// `.classifier` = 見本があれば分類器で判定 / `.accessibility` = a11y が状態を報告する要素は a11y で、
+/// 報告しない要素(自作の部品・オンを見る前の Compose の Checkbox 等)だけ分類器
+public enum CheckStateSource: String, Sendable, CaseIterable {
+    case classifier, accessibility
+}
+
 /// checkIsON / checkIsOFF の画像判定(Shirates Vision の CheckStateClassifier)
 public enum CheckStateClassifier {
     public static let name = "CheckStateClassifier"

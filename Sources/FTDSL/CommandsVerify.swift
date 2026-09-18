@@ -632,12 +632,14 @@ public func enabledIsFalse(timeout: Double? = nil,
     return lastElement.enabledIsFalse(timeout: timeout, file: file, line: line)
 }
 
-/// スイッチ・チェックボックス・ラジオが**オン**であることの検証。取得元は
-/// iOS=accessibility の selected trait / Android=isChecked。**型が OS で揃わない要素でも使える**
+/// スイッチ・チェックボックス・ラジオが**オン**であることの検証。状態の読み先は a11y(`CheckStateReading`)と
+/// 見本画像の分類器(`CheckStateClassifier`)。**型が OS で揃わない要素でも使える**。
+/// prefer: 読み先の優先をこの1コマンドだけ指定する(`CheckStateSource`。省略 = 実行プロファイルの
+/// `preferCheckStateClassifier`)。`.accessibility` でも a11y が状態を報告しない要素は分類器が判定する
 @discardableResult
-public func checkIsON(timeout: Double? = nil,
+public func checkIsON(prefer: CheckStateSource? = nil, timeout: Double? = nil,
                       file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    return lastElement.checkIsON(timeout: timeout, file: file, line: line)
+    return lastElement.checkIsON(prefer: prefer, timeout: timeout, file: file, line: line)
 }
 
 /// 要素の**画像**のラベル検証(Shirates Vision の imageIs)。**対象は直前に掴んだ要素**。
@@ -653,9 +655,9 @@ public func imageIs(_ label: String, timeout: Double? = nil,
 /// **オフ**であることの検証。状態を持たない要素(ただのボタン等)も「オフ」として通る
 /// (ブリッジは true のときだけ送るため。誤用は run 終了時に警告が出る)
 @discardableResult
-public func checkIsOFF(timeout: Double? = nil,
+public func checkIsOFF(prefer: CheckStateSource? = nil, timeout: Double? = nil,
                        file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    return lastElement.checkIsOFF(timeout: timeout, file: file, line: line)
+    return lastElement.checkIsOFF(prefer: prefer, timeout: timeout, file: file, line: line)
 }
 
 
@@ -842,14 +844,19 @@ private func waitForCloseImpl(_ selector: FTSelector, waitSeconds: Double,
 
 /// enabled/disabled/checked/notChecked の共通実装(アサート名だけが違う)。
 /// **checked/notChecked は held を渡されても実機を見る**(HeldElementAssert の除外理由参照)
+/// prefer: checkIsON / checkIsOFF だけが渡す(状態を読む先の優先。nil = 実行プロファイルに従う)。
+/// 指定は記録の説明にも出す(どちらで判定させたかをレポートで読めるように)
 private func enabledAssert(_ assert: String, verb: String, selector: FTSelector, timeout: Double?,
+                           prefer: CheckStateSource? = nil,
                            held: ElementInfo? = nil,
                            file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: verb)
     let step = FlowStep(assert: assert, locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
-                        timeout: timeout ?? core.defaultTimeout)
-    perform(verb, selector, step: step, description: "\(verb) \"\(selector.text)\"",
+                        timeout: timeout ?? core.defaultTimeout,
+                        preferCheckStateClassifier: prefer.map { $0 == .classifier })
+    let suffix = prefer.map { " (prefer: \($0.rawValue))" } ?? ""
+    perform(verb, selector, step: step, description: "\(verb) \"\(selector.text)\"" + suffix,
             held: held, file: file, line: line)
 }
 
@@ -1286,18 +1293,18 @@ public struct FTElement {
     }
 
     @discardableResult
-    public func checkIsON(timeout: Double? = nil,
+    public func checkIsON(prefer: CheckStateSource? = nil, timeout: Double? = nil,
                           file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         enabledAssert("checked", verb: "checkIsON", selector: selector,
-                      timeout: timeout, held: matched, file: file, line: line)
+                      timeout: timeout, prefer: prefer, held: matched, file: file, line: line)
         return self
     }
 
     @discardableResult
-    public func checkIsOFF(timeout: Double? = nil,
+    public func checkIsOFF(prefer: CheckStateSource? = nil, timeout: Double? = nil,
                              file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         enabledAssert("notChecked", verb: "checkIsOFF", selector: selector,
-                      timeout: timeout, held: matched, file: file, line: line)
+                      timeout: timeout, prefer: prefer, held: matched, file: file, line: line)
         return self
     }
 

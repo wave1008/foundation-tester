@@ -2124,7 +2124,8 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   `vision/classifiers/CheckStateClassifier/<ラベル>/` に見本画像(ラベルが2つ以上)があれば、要素の枠で
   スクリーンショットを切り、Create ML の画像分類器の1位のラベル(`[ON]`/`[OFF]` を含むか)で判定する。
   使う要素は実行プロファイルの `preferCheckStateClassifier`(既定 true = a11y より優先 / false = a11y が
-  不明の要素だけ)。学習済みモデルは `.fleetest/vision/CheckStateClassifier/<digest>/` にキャッシュし
+  不明の要素だけ)。**DSL の `checkIsON(prefer:)` / `checkIsOFF(prefer:)` が1コマンドだけ上書きする**
+  (`CheckStateSource` → `FlowStep.preferCheckStateClassifier`。優先はステップ指定 > プロファイル)。学習済みモデルは `.fleetest/vision/CheckStateClassifier/<digest>/` にキャッシュし
   (digest = 画像の中身 + オプション + 学習器の版)、並列のプロセスは digest ごとの flock で1本にする。
   学習の待ちは `DeadlineExclusion` で締め切りから引く。**見本は推論と同じ a11y の枠で切ったものを置く**
   (切り方がずれると別物に見える)。**見本に無い種類の部品は2クラスのどちらかへ必ず振られる**ので、

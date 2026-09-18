@@ -1314,6 +1314,8 @@ extension StepExecutor {
         var lastClassification: VisionClassifier.Classification?
         // 学習の待ちは DeadlineExclusion で締め切りから引かれる。ステップの待ち予算はその後から数える
         let classifier = await loadedVisionClassifier(CheckStateClassifier.name)
+        // 優先はステップ指定(DSL の `prefer:`)> 実行プロファイル
+        let prefersClassifier = step.preferCheckStateClassifier ?? preferCheckStateClassifier
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         let stepStart = clock.now
         var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
@@ -1348,7 +1350,7 @@ extension StepExecutor {
                 found = true
                 var state = checkState(of: element, step: step)
                 lastClassification = nil
-                if let classifier, preferCheckStateClassifier || state == .unknown,
+                if let classifier, prefersClassifier || state == .unknown,
                    let result = await classifyCheckState(element, screen: snapshot.screen, with: classifier) {
                     state = result.state
                     lastClassification = result.classification

@@ -140,6 +140,9 @@ public struct FlowStep: Codable, Sendable {
     public var imageThreshold: Double?
     /// findImage / findImages のアスペクト比の許容幅(`FindImage.aspectRatioRange`)。nil = 既定
     public var aspectRatioTolerance: Double?
+    /// checked / notChecked で CheckStateClassifier を a11y より優先するか(DSL の `prefer:`)。
+    /// nil = 実行プロファイルの `preferCheckStateClassifier` に従う。**checked / notChecked 以外は未使用**
+    public var preferCheckStateClassifier: Bool?
 
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, endLocator: FlowLocator? = nil,
@@ -156,7 +159,9 @@ public struct FlowStep: Codable, Sendable {
                 intervalSeconds: Double? = nil,
                 scale: Double? = nil, dxRatio: Double? = nil, dyRatio: Double? = nil,
                 x: Double? = nil, y: Double? = nil,
-                imageThreshold: Double? = nil, aspectRatioTolerance: Double? = nil) {
+                imageThreshold: Double? = nil, aspectRatioTolerance: Double? = nil,
+                preferCheckStateClassifier: Bool? = nil) {
+        self.preferCheckStateClassifier = preferCheckStateClassifier
         self.x = x
         self.y = y
         self.imageThreshold = imageThreshold

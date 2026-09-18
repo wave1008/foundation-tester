@@ -8,8 +8,8 @@ Checks on the enabled/disabled and checked/unchecked state of the last grabbed e
 |---|---|
 | `select(selector).enabledIsTrue(timeout:)` | Asserts the element is enabled. Waits up to `timeout` for a state change. The target is the element grabbed last. |
 | `select(selector).enabledIsFalse(timeout:)` | Asserts the element is disabled. Same waiting behavior. |
-| `select(selector).checkIsON(timeout:)` | Asserts the element is checked. |
-| `select(selector).checkIsOFF(timeout:)` | Asserts the element is not checked. Warns at the end of the run if the element never reported a checked state (on or off). |
+| `select(selector).checkIsON(prefer:, timeout:)` | Asserts the element is checked. |
+| `select(selector).checkIsOFF(prefer:, timeout:)` | Asserts the element is not checked. Warns at the end of the run if the element never reported a checked state (on or off). |
 
 All four are chainable on the return value of `exist` / `select`, and each also has an implicit
 free-function form that acts on the last grabbed element (e.g. `enabledIsTrue()`).
@@ -60,6 +60,10 @@ sample images (same location and labels as Shirates' Vision edition).
   is retrained only when the samples change.
 - The run profile's `preferCheckStateClassifier` (default `true`) prefers the classifier over
   accessibility. With `false`, it is used only for elements whose accessibility reports no checked state.
+- To change it for one command, pass the argument: `checkIsON(prefer: .classifier)` judges with the classifier when there
+  are samples, and `checkIsON(prefer: .accessibility)` judges with accessibility for elements whose accessibility reports a
+  checked state (elements that report none are still judged by the classifier). The choice is shown on the step in the report.
+  `checkIsOFF` takes the same argument; when omitted, the run profile decides.
 - Steps judged from the image carry the note `check-state-classified` in the results.
 - When a check judged from the image fails, the screenshot the classifier judged is attached to the report
   right under the failed step, so you can see what it looked at.

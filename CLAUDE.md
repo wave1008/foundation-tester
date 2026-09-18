@@ -701,8 +701,30 @@
   画像分類。Shirates Vision の移植)の2つだけが読む**。画像分類の学習・推論は `FTCore.VisionClassifier` の
   1箇所で、`imageIs`(DefaultClassifier)と共有する。value は型で絞って読む(バッジの "1" を読まない)。
   分類器は `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に見本があるときだけ使い、優先は
-  実行プロファイルの `preferCheckStateClassifier`(既定 true)。**見本は推論と同じ a11y の枠で切る**
-  (docs/design.md の checkIsON の節)
+  実行プロファイルの `preferCheckStateClassifier`(既定 true)と、それを1コマンドだけ上書きする DSL の
+  `checkIsON(prefer:)` / `checkIsOFF(prefer:)`(`CheckStateSource`。決めるのは `executeAssertChecked` の1箇所 =
+  ステップ指定 > プロファイル)。**DSL の写像は `CheckStatePreferDSLTests` が通しで縛る** —— FTCore の単体は
+  FlowStep を直接作り、E2E の 21 は合否しか見ないので、写像の反転・渡し忘れはどちらも緑のまま通る。
+  **見本は推論と同じ a11y の枠で切る**(docs/design.md の checkIsON の節)。
+  **見本は 5 SUT 全部に ON / OFF の両方を置く**(片側だけだと分類器が片方の状態しか知らず、findImage も
+  その状態の部品を探せない)。見本を置いた SUT では引数なしの `checkIsON()` が分類器の判定に切り替わるので、
+  a11y の読みを E2E で守るのは各 SUT の `21_チェック状態の判定元.swift` の `prefer: .accessibility`
+- **画像で要素を探す判定は `FTCore.FindImage` の1箇所**(findImage / findImages。Shirates Vision の移植)。
+  候補は a11y の枠(見えている部分)・アスペクト比の許容幅に入るものだけ・同じ枠は1つに畳む(**id を持つ
+  外側を残す。ラベルで選ばない** = XCUITest の木は飾りの Image を SF Symbol 名の id とラベル付きで同じ枠に
+  載せる)。守る規律4つ: **①分類器のラベル一致だけで採らない**(分類器は見本のどれかのラベルを必ず答える。
+  Shirates の `classifyFull` と同じく確信度か見本との距離で確かめる = `classificationConfirmed`)/
+  **②Vision の縮退を黙って通さない**(`isDegenerate`。異なる画像に同一の特徴量が返ると全候補が距離 0 になり、
+  最初の候補を「発見」して別の要素を叩く。Vision の失敗としては記録されない)/ **③見つからないことは失敗に
+  しない**(select と同じ。失敗は設定の誤りと Vision が答えを出せない状態だけ)/ **④`timeout` の既定は 0**
+  (`FindImage.defaultTimeout`。待つのは後日の existImage の側)。**文字だけが違う同じ形の部品は距離
+  0.08〜0.15 に並ぶ**ので、既定の閾値のまま行を探す書き方を E2E に置かない → maintainer-notes §37
+- **in-app のスクリーンショットは、自前描画(`isSelfRendered`)で木が絵より先に進んでいる間は撮らない**
+  (`InAppRenderCatchUp`・v117)。操作を起こす2経路(`tapByRef` / `performSettlingIfMoved`)が直前に画素と木の
+  指紋を控え、`/screenshot` は**木が変わったのに画素が控えのままの間だけ**待つ。**遷移の完了は待たない**
+  (ユーザー決定。ループするアニメーションで毎回上限まで待つ形を作らない)。**木の指紋は枠だけで取らない**
+  (スイッチのオン/オフは枠を変えない = 型・id・ラベル・value・checked・enabled も畳む)。**門は層の型でなく
+  フレームワークの自己申告**(Compose の `CMPMetalLayer` は `CAMetalLayer` の子孫ではない)→ maintainer-notes §37
 - **type の読み返しの有無はドライバの能力**(`AppDriver.verifiesTypedText`。xcuitest ランナー/
   Android 注入器 = true・in-app = false で、false のときだけ `StepExecutor` がホスト側で読み返す)
 - **デバイスの健康状態も同じ**: 「画面が凍結しているか」は `FTCore.FrozenVerdict` が唯一の定義元で、

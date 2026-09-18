@@ -2655,6 +2655,17 @@ run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 
   記録の必要性を説明したコメント自身に一致して一度素通りした)。
   作成時の経路(FMDoctor / ScenarioNamer / TestbaseDrafter)は run の実績ではないので免除リスト
 
+### Vision(画像特徴量)まで死ぬことがある —— 画像に依存する E2E は判定に使えない(2026-09-19)
+
+同じ機械状態(ANE の破綻)で、FM だけでなく Vision の `GenerateImageFeaturePrintRequest` も死ぬ。経過は2相:
+①**異なる画像に同一の特徴量が返る縮退**(全候補が距離 0.000。Vision の失敗としては記録されない)→
+②要求が 30 秒後に `Building espresso plan [espresso error: -1]` で落ちる(ホストの単体テストも同じ)。
+①は `FindImage.isDegenerate`(白紙との距離 0)が失敗にする。**この間、findImage / imageIs / checkIsON の
+分類器の E2E(各 SUT の 08・20・21)は赤でも緑でも判定に使えない**。切り分けは
+`swift test --filter FindImageTests`(ホストで特徴量を実際に作る。0.5 秒で終わるはずが 30 秒かかって落ちる)。
+**見本の採取(`fleetest vision capture`)とブリッジの鮮度の確認は Vision を使わないので、この間も進められる**。
+復旧は再起動(ブートごとの当たり外れ)。経緯は maintainer-notes §37。
+
 ### FM が全滅している間の E2E は「弱い緑」(2026-08-03)
 
 FM(オンデバイスモデル)が死んでいると、**occlusion-guard(`exist` の既定 `requireVisible`)・

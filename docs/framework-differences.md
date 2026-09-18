@@ -199,6 +199,12 @@ Android はどのフレームワークも `isChecked`(checkable なら value `"1
 | `true`(**既定**) | 見本があれば全部(a11y が状態を報告していても分類器が勝つ) |
 | `false` | a11y が状態を報告しない要素だけ(自作の部品・オンを見る前の Compose の Checkbox 等) |
 
+1コマンドだけ変えるのは `checkIsON(prefer: .classifier / .accessibility)`(`checkIsOFF` も同じ)。**全 SUT の
+`21_チェック状態の判定元.swift` が同じ要素を両方の優先で読む**。`.accessibility` を指定しても分類器が判定した組み合わせ
+(2026-09-19 実測・結果 JSON の注記 `check-state-classified` で確認)= a11y が状態を報告しない所:
+Compose iOS の Checkbox / Radio の**オフ**、Flutter iOS の Radio の**オフ**、E2E-iOS の自作ボタン(常に)。
+Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判定した。
+
 見本は**推論と同じ a11y の枠で切る**(witness は E2E-iOS の scenario 08 = `#cb_agree` / `#radio_*` / `#sw_notify`)。
 画像で判定したステップには注記 `check-state-classified`。
 **`[INDETERMINATE]` のラベル(fleetest 独自)** に見本を置くと indeterminate も判定でき、`checkIsON` / `checkIsOFF` の
