@@ -1,7 +1,8 @@
-# findImage, findImages
+# findImage, findImages, existImage
 
 Finds the element on the screen whose appearance is nearest to a sample image (a port of `findImage` / `findImages`
 from Shirates' Vision edition). Use it to grab elements a selector cannot point at, such as icons with neither an id nor a label.
+`existImage` searches the same way and asserts that the image is on the screen.
 
 ## Functions
 
@@ -10,6 +11,9 @@ from Shirates' Vision edition). Use it to grab elements a selector cannot point 
 | `findImage(label, threshold:, aspectRatioTolerance:, timeout:, scroll:, maxSwipes:)` | Grabs the one element nearest to the sample image. Returns an empty element instead of failing when nothing is found (branch with `.isEmpty`). By default it looks at the current screen once (`timeout` defaults to 0). Pass seconds to `timeout` to wait for it to appear. |
 | `findImages(label, threshold:, aspectRatioTolerance:)` | Returns every element below `threshold`, nearest first (`[FTElement]`). Looks at the current screen once (no waiting, no scrolling). `threshold: nil` returns every candidate. |
 | `findImageWithScrollDown(label, threshold:, aspectRatioTolerance:, maxSwipes:)` | `findImage` while scrolling down (Up / Right / Left also exist). |
+| `existImage(label, threshold:, aspectRatioTolerance:, timeout:, scroll:, maxSwipes:)` | Asserts that the sample image is on the screen (a port of `existImage` from Shirates' Vision edition). It searches the same way as `findImage` and **fails when nothing is found**. Returns the found element. Without `timeout` it waits for the image to appear up to the run profile's default wait (same as `exist`). |
+| `existImageWithScrollDown(label, threshold:, aspectRatioTolerance:, maxSwipes:)` | `existImage` while scrolling down (Up also exists; for left / right write `existImage(label, scroll: .right)`). |
+| `existImageWithoutScroll(label, threshold:, aspectRatioTolerance:, timeout:)` | `existImage` on the current screen without scrolling, even inside `withScrollDown { }` and the like. |
 | `element.tap(holdSeconds:)` | Taps the grabbed element. An element grabbed by `findImage` / `findImages` is tapped at the centre of the found frame. |
 
 ## How it searches
@@ -53,6 +57,9 @@ findImageWithScrollDown("[Share Icon]").tap()
 
 let stars = findImages("[Star Icon]")
 stars.first?.tap()
+
+existImage("[Camera Icon]")
+existImageWithScrollDown("[Share Icon]").tap()
 ```
 
 ## Notes
@@ -64,6 +71,10 @@ stars.first?.tap()
 - One call takes roughly 0.1 seconds for the screenshot plus about 8 milliseconds per candidate (measured on a simulator).
 - `timeout` defaults to 0: it looks at the current screen once (it does not follow the run profile's default wait). To wait for the
   image to appear, for example right after a screen transition, pass seconds such as `timeout: 3`. While scrolling, it looks once per position.
+- When `existImage` fails, the failure message says the nearest distance and the `threshold`, and the screenshot it judged is
+  attached to that step in the report. While it waits, it takes a new screenshot and compares again at growing intervals (from 0.1 second up to 1 second).
+- Inside `withScrollDown { }` and the like, `findImage` and `existImage` search while scrolling. Use `existImageWithoutScroll`
+  to check the current screen only.
 - When there is no sample image at all, the step fails as a configuration error.
 - Occasionally the Mac's image processing (Vision) temporarily returns the same feature print for every image. Comparing in
   that state would "find" the first candidate, so the state is detected and the step fails (the message says

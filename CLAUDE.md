@@ -559,7 +559,8 @@
 - **テストが production の関数を通っているかも見る**(→ maintainer-notes §4.13)。検出できない変異が出たらテストを境界へ
   寄せる(要素数を増やす・既定値でなく限界値で呼ぶ)
 - **テストが production の代わりに正規化・整形していないか** → maintainer-notes §4.13.1
-- **変異が生き残ったら、まずテストの置き場所とフィルタを疑う** → maintainer-notes §4.12
+- **変異が生き残ったら、まずテストの置き場所とフィルタを疑う** → maintainer-notes §4.12。
+  **「殺せた」も exit code で数えない** —— 変異がコンパイルエラーでも exit 1 になる。狙ったテスト名の失敗行で取る
 
 ### 版と契約の同期(片方だけ変えない)
 
@@ -709,15 +710,19 @@
   **見本は 5 SUT 全部に ON / OFF の両方を置く**(片側だけだと分類器が片方の状態しか知らず、findImage も
   その状態の部品を探せない)。見本を置いた SUT では引数なしの `checkIsON()` が分類器の判定に切り替わるので、
   a11y の読みを E2E で守るのは各 SUT の `21_チェック状態の判定元.swift` の `prefer: .accessibility`
-- **画像で要素を探す判定は `FTCore.FindImage` の1箇所**(findImage / findImages。Shirates Vision の移植)。
+- **画像で要素を探す判定は `FTCore.FindImage` の1箇所**(findImage / findImages / existImage。Shirates Vision の移植)。
+  **existImage は探索を2つ目に持たない** —— `executeFindImage` を同じ action 経路で通り、見つからなかったときだけ
+  失敗にする(証跡のスクリーンショットを添える)。action として走るので、アサーションの計数は `FlowStep.isVerification` が
+  拾う(`assert != nil` だけで数えると existImage しか無い expectation を「検証0本」と誤る。`AuthoringGuardTests`)。
+  DSL の写像(timeout 省略 = defaultTimeout・WithoutScroll・失敗で中断)は `ExistImageDSLTests`。
   候補は a11y の枠(見えている部分)・アスペクト比の許容幅に入るものだけ・同じ枠は1つに畳む(**id を持つ
   外側を残す。ラベルで選ばない** = XCUITest の木は飾りの Image を SF Symbol 名の id とラベル付きで同じ枠に
   載せる)。守る規律4つ: **①分類器のラベル一致だけで採らない**(分類器は見本のどれかのラベルを必ず答える。
   Shirates の `classifyFull` と同じく確信度か見本との距離で確かめる = `classificationConfirmed`)/
   **②Vision の縮退を黙って通さない**(`isDegenerate`。異なる画像に同一の特徴量が返ると全候補が距離 0 になり、
   最初の候補を「発見」して別の要素を叩く。Vision の失敗としては記録されない)/ **③見つからないことは失敗に
-  しない**(select と同じ。失敗は設定の誤りと Vision が答えを出せない状態だけ)/ **④`timeout` の既定は 0**
-  (`FindImage.defaultTimeout`。待つのは後日の existImage の側)。**文字だけが違う同じ形の部品は距離
+  しない**(select と同じ。失敗は設定の誤りと Vision が答えを出せない状態だけ。**existImage だけが見つからないことを失敗にする**)/
+  **④findImage の `timeout` の既定は 0**(`FindImage.defaultTimeout`。待つのは existImage の側 = 既定は実行プロファイルの defaultTimeout)。**文字だけが違う同じ形の部品は距離
   0.08〜0.15 に並ぶ**ので、既定の閾値のまま行を探す書き方を E2E に置かない → maintainer-notes §37
 - **in-app のスクリーンショットは、自前描画(`isSelfRendered`)で木が絵より先に進んでいる間は撮らない**
   (`InAppRenderCatchUp`・v117)。操作を起こす2経路(`tapByRef` / `performSettlingIfMoved`)が直前に画素と木の

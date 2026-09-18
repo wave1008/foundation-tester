@@ -175,11 +175,11 @@ public struct StepOutcome: Sendable {
     /// 失敗したときの素性(`StepFailureKind`)。**言えない失敗では nil のまま**。
     /// notes と同じ累積器方式(`failureKindThisStep`)で内側から立て、`execute` の出口で載せる
     public let failureKind: StepFailureKind?
-    /// **画像分類器の判定で落ちたときだけ**、判定に使ったスクリーンショット(PNG そのまま)。
+    /// **画像の判定(分類器・existImage)で落ちたときだけ**、判定に使ったスクリーンショット(PNG そのまま)。
     /// 呼び手がレポートのステップ行に添える。切り出しではなく全体を持つ = 「判定した画面が
     /// 失敗時の画面と同じか」を後から見比べられる(切り出しは要素一覧の枠から再現できる)
     public let evidenceImage: Data?
-    /// findImage / findImages が見つけた要素(距離の小さい順)。それ以外のステップと失敗時は nil
+    /// findImage / findImages / existImage が見つけた要素(距離の小さい順)。それ以外のステップと失敗時は nil
     public let imageMatches: [FindImage.Match]?
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil,
@@ -659,6 +659,7 @@ public final class StepExecutor {
                                        ? resolvedElementThisStep : nil,
                                    scrollSwipes: scrollSwipesThisStep,
                                    failureKind: failureKind(for: outcome.status),
+                                   evidenceImage: Self.isSuccess(status) ? nil : classifierScreenshotThisStep,
                                    imageMatches: Self.isSuccess(outcome.status) ? imageMatchesThisStep : nil)
             }
             if let assert = step.assert {
@@ -817,7 +818,7 @@ public final class StepExecutor {
     /// このステップの失敗の素性。**最初に立てたものを残す**(内側の救済経路が後から
     /// 別の理由で落ちても、読み手が知りたいのは最初に何が起きたか)
     var failureKindThisStep: StepFailureKind?
-    /// このステップで画像分類器が最後に判定に使ったスクリーンショット(`StepOutcome.evidenceImage` の元)
+    /// このステップで画像の判定(分類器・画像の照合)が最後に使ったスクリーンショット(`StepOutcome.evidenceImage` の元)
     var classifierScreenshotThisStep: Data?
     /// findImage / findImages が見つけた要素(`StepOutcome.imageMatches` の元)
     var imageMatchesThisStep: [FindImage.Match]?

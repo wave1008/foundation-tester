@@ -192,7 +192,7 @@ public func selectWithoutScroll(_ selector: Sel,
     return element ?? FTElement(selector: selector.ftSelector)
 }
 
-// MARK: - findImage / findImages(画像で要素を探す。Shirates Vision の移植)
+// MARK: - findImage / findImages / existImage(画像で要素を探す・検証する。Shirates Vision の移植)
 
 /// **画像で要素を探す**(Shirates Vision の findImage)。テンプレートは DefaultClassifier の見本
 /// (`vision/classifiers/DefaultClassifier/` 以下の、ラベルが `label` で終わるフォルダの画像。
@@ -213,19 +213,81 @@ public func findImage(_ label: String, threshold: Double = FindImage.defaultThre
                       timeout: Double = FindImage.defaultTimeout,
                       scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                       file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    let core = FTRuntime.requireCore(command: "findImage")
+    findImageImpl(command: "findImage", label, threshold: threshold,
+                  aspectRatioTolerance: aspectRatioTolerance, timeout: timeout,
+                  scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
+}
+
+/// findImage と existImage の共通の本体(探索は StepExecutor.executeFindImage の1つ。
+/// 違いは「見つからなかったときに落ちるか」だけで、それは action 名で executor が決める)
+private func findImageImpl(command: String, _ label: String, threshold: Double,
+                           aspectRatioTolerance: Double, timeout: Double,
+                           scroll: FTScrollDirection?, maxSwipes: Int,
+                           file: StaticString, line: UInt) -> FTElement {
+    let core = FTRuntime.requireCore(command: command)
     let scroll = core.effectiveScroll(scroll)
-    let step = FlowStep(action: "findImage", direction: scroll?.swipe.rawValue, expected: label,
+    let step = FlowStep(action: command, direction: scroll?.swipe.rawValue, expected: label,
                         timeout: timeout,
                         maxSwipes: scroll == nil ? nil : maxSwipes,
                         scrollFrame: contextScrollFrame(core, scrolling: scroll != nil),
                         imageThreshold: threshold, aspectRatioTolerance: aspectRatioTolerance)
-    let result = core.perform(step: step, description: "findImage \"\(label)\"", command: "findImage",
+    let result = core.perform(step: step, description: "\(command) \"\(label)\"", command: command,
                               commandError: FindImage.validate(aspectRatioTolerance: aspectRatioTolerance),
                               file: file, line: line)
     let element = FTElement(imageMatch: result.imageMatches?.first, imageLabel: label)
     core.lastResolvedElement = element
     return element
+}
+
+/// **画像が画面にあることを検証する**(Shirates Vision の existImage)。探し方は `findImage` と同じ
+/// (テンプレート・候補・閾値・分類器による救済)で、**見つからなければ失敗**。失敗の文言に最も近かった
+/// 距離と閾値が出て、判定に使ったスクリーンショットがレポートに添えられる。
+/// 見つけた要素を返すので `.tap()` などをチェーンできる。
+/// timeout: nil = 実行プロファイルの defaultTimeout(`exist` と同じ。出るまで撮り直して待つ)。
+/// scroll 指定時は位置ごとに1回だけ見る
+@discardableResult
+public func existImage(_ label: String, threshold: Double = FindImage.defaultThreshold,
+                       aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
+                       timeout: Double? = nil,
+                       scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                       file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    let core = FTRuntime.requireCore(command: "existImage")
+    return findImageImpl(command: "existImage", label, threshold: threshold,
+                         aspectRatioTolerance: aspectRatioTolerance,
+                         timeout: timeout ?? core.defaultTimeout,
+                         scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
+public func existImageWithScrollDown(_ label: String, threshold: Double = FindImage.defaultThreshold,
+                                     aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
+                                     maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                                     file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    existImage(label, threshold: threshold, aspectRatioTolerance: aspectRatioTolerance,
+               scroll: .down, maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
+public func existImageWithScrollUp(_ label: String, threshold: Double = FindImage.defaultThreshold,
+                                   aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
+                                   maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                                   file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    existImage(label, threshold: threshold, aspectRatioTolerance: aspectRatioTolerance,
+               scroll: .up, maxSwipes: maxSwipes, file: file, line: line)
+}
+
+/// withScroll* の中でも**この1コマンドだけ**現在画面で検証する(existWithoutScroll と同じ仕組み)
+@discardableResult
+public func existImageWithoutScroll(_ label: String, threshold: Double = FindImage.defaultThreshold,
+                                    aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
+                                    timeout: Double? = nil,
+                                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    var element: FTElement?
+    FTRuntime.requireCore(command: "existImageWithoutScroll").runWithScrollContext(.none) {
+        element = existImage(label, threshold: threshold, aspectRatioTolerance: aspectRatioTolerance,
+                             timeout: timeout, file: file, line: line)
+    }
+    return element ?? FTElement(imageMatch: nil, imageLabel: label)
 }
 
 /// **画像で要素を探し、閾値を下回るものを全部返す**(Shirates Vision の findImages)。
@@ -942,7 +1004,7 @@ public struct FTElement {
     /// 取り直すときに使う)、無ければ実在しないラベル(= 取り直すと必ず落ちる。lastElement の空要素と同じ)
     init(imageMatch: FindImage.Match?, imageLabel: String) {
         self.selector = imageMatch?.selector.map(FTSelector.parse)
-            ?? FTSelector.label("<findImage \"\(imageLabel)\": \(imageMatch == nil ? "not found" : "no writable selector")>")
+            ?? FTSelector.label("<image \"\(imageLabel)\": \(imageMatch == nil ? "not found" : "no writable selector")>")
         self.matched = imageMatch?.element
         self.imageLabel = imageLabel
         self.imageFrame = imageMatch?.visibleFrame

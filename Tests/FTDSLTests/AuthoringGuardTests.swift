@@ -247,6 +247,7 @@ final class AuthoringGuardTests: XCTestCase {
                     waitForDisplay("#field")
                     waitForClose("#field")
                     notExist("#field")
+                    existImage("[Icon]")
                     countIs("#field", 1)
                     select("#field").enabledIsTrue()
                     select("#field").enabledIsFalse()

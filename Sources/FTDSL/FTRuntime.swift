@@ -692,7 +692,7 @@ public final class FTDriveCore {
             step.containerInference = effectiveContainerInference(nil)
         }
         let filePath = relativePath("\(file)")
-        // verify() のブロック内アサーション数を数える(判定は FlowStep.assert != nil に加え、
+        // verify() のブロック内アサーション数を数える(判定は FlowStep.isVerification に加え、
         // **結果が skipped でないこと**)。screenLooksLike(FM 無効時)のように assert が
         // 実行された上で `.skipped` を返す経路は「検証自体が成立しない」ので、数えると
         // 「アサーションが1つも無い」を見逃すべき verify/expectation が緑になる。数えるのは
@@ -702,7 +702,7 @@ public final class FTDriveCore {
         // 「宣言されている」と数える。書かれてもいないのに lint が「アサーションが無い」と誤るのは、
         // 前段の失敗でシナリオが止まっただけの普通の赤い run で誤誘導になる
         func noteAssertionUnlessSkipped(_ status: StepResult.Status) {
-            guard step.assert != nil else { return }
+            guard step.isVerification else { return }
             if case .skipped = status { return }
             noteAssertion()
         }
@@ -711,7 +711,7 @@ public final class FTDriveCore {
             let status = StepResult.Status.skipped(skipReason)
             recordStep(description: description, status: status, file: filePath, line: Int(line),
                        command: command)
-            if step.assert != nil { noteAssertion() }
+            if step.isVerification { noteAssertion() }
             return PerformResult(status: status, element: nil)
         }
         // 構文検証はデバイスに触る前(dry-run でも)に行う。パースは失敗しない契約のため、
@@ -831,9 +831,10 @@ public final class FTDriveCore {
                    at: recordedAt,
                    notes: outcome?.notes ?? [], guarded: outcome?.guardEntered ?? false,
                    command: command, failureKind: failureKind,
-                   // 画像分類器の判定で落ちたときだけ入る(StepOutcome.evidenceImage)
+                   // 画像の判定(分類器・existImage)で落ちたときだけ入る(StepOutcome.evidenceImage)
                    screenshotData: outcome?.evidenceImage,
-                   screenshotLabel: outcome?.evidenceImage == nil ? nil : "image-judged-by-classifier")
+                   screenshotLabel: outcome?.evidenceImage == nil ? nil
+                       : step.action == "existImage" ? "judged-by-findImage" : "image-judged-by-classifier")
 
         // 修正提案。修復は指紋照合だけなので、`healedStep` は指紋で掴んだ要素を書けるセレクタへ
         // 写したもの。**永続化はしない**(指紋は毎回再導出でき、誤った一致を固定すると注記ごと消える)

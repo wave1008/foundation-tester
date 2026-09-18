@@ -80,6 +80,10 @@ public struct FlowStep: Codable, Sendable {
     /// スクロール探索(`scrollTo` / `tap(scroll:)` / `exist(scroll:)`)の既定スワイプ上限。
     /// DSL の既定引数はこの1つに揃える
     public static let defaultMaxSwipes = 8
+
+    /// 「検証として書かれた」ステップか(DSL のアサーション計数の判定)。existImage は findImage の
+    /// 探索を通すためアクションとして実行するが、見つからなければ落ちる検証
+    public var isVerification: Bool { assert != nil || action == "existImage" }
     /// 端まで送る(scrollToBottom 等)の上限。**終了条件は「画面が変わらなくなること」**で、
     /// これは暴走を止める安全網にすぎないので探索(8)より大きく取る
     public static let defaultMaxEdgeSwipes = 50
@@ -135,10 +139,10 @@ public struct FlowStep: Codable, Sendable {
     /// **`tap` 以外は未使用**
     public var x: Double?
     public var y: Double?
-    /// findImage / findImages の特徴量の距離の閾値(`FindImage`)。findImages の nil = 絞らない。
-    /// **findImage / findImages 以外は未使用**(ラベルは `expected`)
+    /// findImage / findImages / existImage の特徴量の距離の閾値(`FindImage`)。findImages の nil = 絞らない。
+    /// **これら以外は未使用**(ラベルは `expected`)
     public var imageThreshold: Double?
-    /// findImage / findImages のアスペクト比の許容幅(`FindImage.aspectRatioRange`)。nil = 既定
+    /// findImage / findImages / existImage のアスペクト比の許容幅(`FindImage.aspectRatioRange`)。nil = 既定
     public var aspectRatioTolerance: Double?
     /// checked / notChecked で CheckStateClassifier を a11y より優先するか(DSL の `prefer:`)。
     /// nil = 実行プロファイルの `preferCheckStateClassifier` に従う。**checked / notChecked 以外は未使用**

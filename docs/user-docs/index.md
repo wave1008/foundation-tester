@@ -58,7 +58,7 @@ needs no changes ([details](overview/about.md)).
     - [tap, tapWithScroll*, tapWithoutScroll, tapAppIcon](commands/tap.md)
 - Select element
     - [select, selectWithScroll*, lastElement](commands/select.md)
-    - [Find by image (findImage, findImages)](commands/find_image.md)
+    - [Find by image (findImage, findImages, existImage)](commands/find_image.md)
 - Install and launch app
     - [installApp, removeApp, clearAppData](commands/install_app.md)
     - [launchApp, restartApp, terminateApp, openURL](commands/launch_app.md)

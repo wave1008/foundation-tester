@@ -1,7 +1,8 @@
-# findImage, findImages
+# findImage, findImages, existImage
 
 画面の中から、見本画像に最も近い見た目の要素を探します(Shirates の Vision 版の `findImage` / `findImages` の移植です)。
 id もラベルも持たないアイコンのように、セレクタで指せない要素を掴むときに使います。
+`existImage` は同じ探し方で、画像が画面にあることを検証します。
 
 ## 関数
 
@@ -10,6 +11,9 @@ id もラベルも持たないアイコンのように、セレクタで指せ�
 | `findImage(label, threshold:, aspectRatioTolerance:, timeout:, scroll:, maxSwipes:)` | 見本画像に最も近い要素を1つ掴みます。見つからなくても失敗せず、空の要素を返します(`.isEmpty` で分岐します)。既定では今の画面を1回だけ見ます(`timeout` 既定 0)。出るのを待つときは `timeout` に秒数を渡します。 |
 | `findImages(label, threshold:, aspectRatioTolerance:)` | `threshold` を下回る要素を、近い順にすべて返します(`[FTElement]`)。今の画面を1回だけ見ます(待たない・スクロールしない)。`threshold: nil` なら絞りません。 |
 | `findImageWithScrollDown(label, threshold:, aspectRatioTolerance:, maxSwipes:)` | スクロールしながら `findImage` します(Up / Right / Left もあります)。 |
+| `existImage(label, threshold:, aspectRatioTolerance:, timeout:, scroll:, maxSwipes:)` | 見本画像が画面にあることを検証します(Shirates の Vision 版の `existImage` の移植)。探し方は `findImage` と同じで、**見つからなければ失敗**します。見つけた要素を返します。`timeout` を省くと、実行プロファイルの既定の待ち時間まで、出るのを待ちます(`exist` と同じ)。 |
+| `existImageWithScrollDown(label, threshold:, aspectRatioTolerance:, maxSwipes:)` | スクロールしながら `existImage` します(Up もあります。左右は `existImage(label, scroll: .right)` と書きます)。 |
+| `existImageWithoutScroll(label, threshold:, aspectRatioTolerance:, timeout:)` | `withScrollDown { }` などの中でも、スクロールせずに今の画面で `existImage` します。 |
 | `element.tap(holdSeconds:)` | 掴んだ要素をタップします。`findImage` / `findImages` で掴んだ要素は、見つけた枠の中心を座標でタップします。 |
 
 ## 探し方
@@ -52,6 +56,9 @@ findImageWithScrollDown("[Share Icon]").tap()
 
 let stars = findImages("[Star Icon]")
 stars.first?.tap()
+
+existImage("[Camera Icon]")
+existImageWithScrollDown("[Share Icon]").tap()
 ```
 
 ## 注意点
@@ -63,6 +70,10 @@ stars.first?.tap()
 - 1回の所要の目安は、スクリーンショット約 0.1 秒 + 候補1件あたり約 8 ミリ秒です(シミュレータでの実測)。
 - `timeout` の既定は 0 で、今の画面を1回だけ見ます(実行プロファイルの既定の待ち時間には従いません)。画面が切り替わった直後など、
   画像が出るのを待つときは `timeout: 3` のように秒数を渡してください。スクロールしながら探すときは、位置ごとに1回だけ見ます。
+- `existImage` が失敗したときは、失敗の文言に最も近かった距離と `threshold` が出て、判定に使ったスクリーンショットがレポートの
+  そのステップに添えられます。待っている間は、間隔を広げながら(0.1 秒から最大 1 秒)スクリーンショットを撮り直して比べます。
+- `withScrollDown { }` などの中では、`findImage` も `existImage` もスクロールしながら探します。今の画面だけを見るときは
+  `existImageWithoutScroll` を使います。
 - 見本が1枚も無いときは、設定の誤りとして失敗します。
 - まれに、Mac の画像処理(Vision)が一時的にどの画像にも同じ特徴量を返す状態になります。そのまま比べると
   最初の候補を「見つけた」ことにしてしまうので、この状態は検知して失敗にします(文言は

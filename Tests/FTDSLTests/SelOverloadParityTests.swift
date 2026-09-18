@@ -21,6 +21,7 @@ final class SelOverloadParityTests: XCTestCase {
         "iosAlertHandler",      // OS アラートのボタンラベル(SpringBoard 側。アプリのセレクタではない)
         "findImage", "findImages", "findImageWithScrollDown", "findImageWithScrollUp",
         "findImageWithScrollRight", "findImageWithScrollLeft",  // 見本画像のラベル(DefaultClassifier)
+        "existImage", "existImageWithScrollDown", "existImageWithScrollUp", "existImageWithoutScroll",
         "group", "procedure", "scene", "verify", "doUntilTrue",  // 記録用のタイトル・説明
     ]
 

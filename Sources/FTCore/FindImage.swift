@@ -32,7 +32,7 @@ public enum FindImage {
     /// DSL の findImage の既定の待ち(秒)。0 = 今の画面を1回だけ見る(Shirates の findImage の
     /// waitSeconds = 0.0 と同じ・ユーザー決定 2026-09-19)。1回 0.16〜0.25 秒かかるので、実行プロファイルの
     /// defaultTimeout(5 秒)まで撮り直すと「無いことを確かめる」たびに 5 秒を払う(docs/performance-tuning.md §3.30)。
-    /// **待つのは検証の側**(後日の existImage は 0 より大きい既定を持つ予定)
+    /// **待つのは検証の側**(existImage の既定は実行プロファイルの defaultTimeout)
     public static let defaultTimeout: Double = 0
 
     public struct Match: Sendable {

@@ -242,6 +242,37 @@ final class FindImageTests: XCTestCase {
         XCTAssertNil(filtered.resolvedElement, "findImages は要素を1つに定めない")
     }
 
+    func testExistImagePassesAndGrabsTheElementLikeFindImage() async throws {
+        let root = try makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let outcome = await run("existImage", threshold: FindImage.defaultThreshold, projectRoot: root)
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(outcome.imageMatches?.map(\.element.identifier), ["circle"])
+        XCTAssertEqual(outcome.resolvedElement?.identifier, "circle")
+        XCTAssertNil(outcome.evidenceImage, "通ったステップは証跡を持ち帰らない")
+    }
+
+    func testExistImageNotFoundFailsWithTheNearestDistanceAndTheJudgedScreenshot() async throws {
+        let root = try makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let outcome = await run("existImage", threshold: -1, projectRoot: root)
+        guard case .failed(let reason) = outcome.status else {
+            return XCTFail("existImage は見つからなければ失敗: \(outcome.status)")
+        }
+        XCTAssertTrue(reason.hasPrefix("image \"[Circle Icon]\" does not exist: not found (nearest distance "), reason)
+        XCTAssertTrue(reason.contains("threshold -1.000"), reason)
+        XCTAssertEqual(outcome.failureKind, .notFound)
+        XCTAssertNil(outcome.imageMatches)
+        XCTAssertNil(outcome.resolvedElement)
+        XCTAssertEqual(outcome.evidenceImage, Self.screenPNG())
+    }
+
+    func testExistImageCountsAsVerificationButFindImageDoesNot() {
+        XCTAssertTrue(FlowStep(action: "existImage", expected: "x").isVerification)
+        XCTAssertFalse(FlowStep(action: "findImage", expected: "x").isVerification)
+        XCTAssertTrue(FlowStep(assert: "exists").isVerification)
+    }
+
     func testMissingTemplateFailsAndSaysWhereToPutIt() async throws {
         let root = try makeProject()
         defer { try? FileManager.default.removeItem(at: root) }

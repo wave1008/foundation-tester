@@ -50,7 +50,7 @@ Fleetest の Swift DSL は Shirates(Classic)の慣習に準拠しています。
 |---|---|
 | ニックネーム(セレクタ/画面/データセットのニックネーム) | セレクタを直接書く(間接参照の機構は無い) |
 | `screenIs` / `screenIsOf` / `isScreen(Of)` / `waitScreen(Of)` / `switchScreen` | `screenLooksLike("説明文")`(FM 視覚検証)、またはその画面にしか無い要素への `exist(sel)` |
-| `existImage` / `dontExistImage` / `canFindImage` / `imageContains`(画像テンプレートマッチングの検証) | [`findImage`](../commands/find_image_ja.md) の戻り値を `.isEmpty` で見る、または `screenLooksLike("説明文")`(FM マルチモーダル視覚検証)。`findImage*` / `findImages` / [`imageIs`](../commands/image_assertion_ja.md) は同名である |
+| `dontExistImage` / `canFindImage` / `imageContains`(画像テンプレートマッチングの検証) | [`findImage`](../commands/find_image_ja.md) の戻り値を `.isEmpty` で見る、または `screenLooksLike("説明文")`(FM マルチモーダル視覚検証)。`findImage*` / `findImages` / `existImage*` / [`imageIs`](../commands/image_assertion_ja.md) は同名である |
 | `macro` | 素の Swift 関数 |
 | `manual` / `knownIssue` | 無い —— 失敗したコマンドは必ずシナリオを中断する。失敗を「想定内」として黙らせる逃げ道は無い |
 | `must` / `should` / `want`、`SKIP` / `MANUAL` / `NOTIMPL` | 無い —— OS 限定のテストは `@TestClass(platform:)` / `@Test(platform:)` を使う |

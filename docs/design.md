@@ -2134,7 +2134,8 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   `vision/classifiers/DefaultClassifier/` 以下の任意の深さ、ラベルは親フォルダの相対パスを `_` でつないだもの、
   判定は1位のラベルの最後の `[` 以降が期待値を含むか(Shirates の LabelUtility.getShortLabel)。
   同じ短いラベルが2つのフォルダにあるのは設定の誤り。見本に無いラベルは待たずに落とす。
-  **`findImage` / `findImages`(`FTCore.FindImage`)は DefaultClassifier の見本をテンプレートに使う**: 候補は a11y 要素を
+  **`findImage` / `findImages` / `existImage`(`FTCore.FindImage`)は DefaultClassifier の見本をテンプレートに使う**
+  (`existImage` は findImage と同じ探索を通り、見つからなかったときだけ失敗にする = 探索を2つ持たない): 候補は a11y 要素を
   枠(画面で切った見えている部分)で切り出したもので、見本とアスペクト比が許容幅(Shirates の式)に入るものだけを
   近い順に Vision の画像特徴量(`GenerateImageFeaturePrintRequest`)の距離で比べる。枠が同じ要素は1つに畳む。
   findImage の1位が閾値を超えたときの分類器による救済は **ラベル一致だけでは採らない**(分類器は見本のどれかの
@@ -2149,8 +2150,9 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   状態に写らないラベル・括弧の無いフォルダ・短いラベルの重複は保存前に断る)。**学習の点検**(`VisionClassifier.selfCheck`):
   学習直後に見本の1枚1枚をモデル自身に掛け、見本と違うラベルを答えたものを `selfcheck.json` に控える。**閾値を
   持たない**(自分の見本を取り違える = 本番でも取り違えうる、という事実だけ)。出口はシナリオ終了時の弱い提案と
-  `fleetest vision check`(警告だけ・exit 0)。**分類器の判定で落ちたステップは、判定に使ったスクリーンショット全体を
-  レポートのそのステップ行に添える**(`StepOutcome.evidenceImage`。切り出しではなく全体 = 判定した画面が失敗時の
+  `fleetest vision check`(警告だけ・exit 0)。**分類器の判定で落ちたステップと、見つからずに落ちた `existImage` は、判定に使ったスクリーンショット全体を
+  レポートのそのステップ行に添える**(`StepOutcome.evidenceImage`。ファイル名の印は `image-judged-by-classifier` /
+  `judged-by-findImage` = 24 文字で切られるので後者は短くしてある。切り出しではなく全体 = 判定した画面が失敗時の
   画面と同じかを見比べられる。通ったステップ・分類器を使わずに落ちたステップは持たない)
 - **状態フィルタ(`checked=` / `enabled=`)は型ではなく `#id` と併用する**(2026-07-26 実測)。
   同じ役割の要素でも型は SUT で割れるため(コントロール画面の無効ボタンは CMP では `button`、

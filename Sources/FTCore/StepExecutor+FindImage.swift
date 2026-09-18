@@ -1,6 +1,8 @@
 // StepExecutor+FindImage.swift
-// findImage / findImages(Shirates Vision の移植)のアクション。照合の中核は FindImage.swift。
-// **見つからなくても失敗にしない**(select と同じ = ユーザー決定。見つけた要素は
+// findImage / findImages / existImage(Shirates Vision の移植)のアクション。照合の中核は FindImage.swift。
+// **existImage は findImage と同じ探索を通り、見つからなかったときだけ失敗にする**(Shirates の existImage =
+// findImage(throwsException = false) + isFound の検査。探索を2つ持たない)。
+// **findImage / findImages は見つからなくても失敗にしない**(select と同じ = ユーザー決定。見つけた要素は
 // `imageMatchesThisStep` → StepOutcome.imageMatches で DSL へ返し、空なら空要素)。
 // 失敗にするのは設定の誤り(テンプレートが無い・引数が範囲外・scrollFrame が解決できない)と、
 // Vision が答えを出せない状態(縮退 = `FindImage.isDegenerate` / 要求の失敗 = execution error)だけ。
@@ -12,12 +14,12 @@ import ImageIO
 extension StepExecutor {
 
     static func isFindImageAction(_ action: String) -> Bool {
-        action == "findImage" || action == "findImages"
+        action == "findImage" || action == "findImages" || action == "existImage"
     }
 
     func executeFindImage(_ action: String, step: FlowStep,
                           phase: inout PhaseAccumulator) async throws -> StepOutcome {
-        let single = action == "findImage"
+        let single = action != "findImages"
         let label = step.expected ?? ""
         let tolerance = step.aspectRatioTolerance ?? FindImage.defaultAspectRatioTolerance
         if let error = FindImage.validate(aspectRatioTolerance: tolerance) {
@@ -93,6 +95,12 @@ extension StepExecutor {
         }
         notes.insert(Self.findImageNote(scan, single: single, threshold: threshold), at: 0)
         notes.insert("\(scan.compared) compared", at: 1)
+        if action == "existImage", scan.found.isEmpty {
+            return StepOutcome(status: failed(.notFound, Self.existImageFailure(
+                label: label, scan: scan, threshold: threshold,
+                attached: classifierScreenshotThisStep != nil)),
+                               driverFallback: notes.dropFirst().joined(separator: " / "))
+        }
         imageMatchesThisStep = scan.found
         if single { resolvedElementThisStep = scan.found.first?.element }
         return StepOutcome(status: .passed, driverFallback: notes.joined(separator: " / "))
@@ -106,6 +114,8 @@ extension StepExecutor {
         var classified: Bool
         /// 最後に照合した画面で特徴量を比べた候補の数(テンプレートを複数試したら合計)。所要の説明に出す
         var compared = 0
+        /// 最後のスクリーンショットが画像として読めなかった(「似た形の要素が無い」と言い分けるため)
+        var screenshotUnreadable = false
     }
 
     /// 1枚の画面で照合する。findImage はテンプレートを順に試し、最初に見つかった1件で止める
@@ -121,8 +131,10 @@ extension StepExecutor {
         phase.snapshotMs += Self.ms(clock.now - shotStart)
         guard let source = CGImageSourceCreateWithData(png as CFData, nil),
               let screenshot = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-            return ImageScan(found: [], nearest: carried, classified: false)
+            return ImageScan(found: [], nearest: carried, classified: false, screenshotUnreadable: true)
         }
+        // existImage が落ちたときの証跡(StepOutcome.evidenceImage。通ったステップは持ち帰らない)
+        classifierScreenshotThisStep = png
         let matchStart = clock.now
         defer { phase.actionMs += Self.ms(clock.now - matchStart) }
         var nearest = carried
@@ -180,6 +192,13 @@ extension StepExecutor {
         return false
     }
 
+    /// existImage の失敗文言。距離と閾値を必ず出す(照合をやり直さずに閾値を決め直せるように)。
+    /// **距離は撮り直し・スクロールの全周回の最小**で、添えるスクリーンショットは最後の1枚(別の周回のことがある)
+    static func existImageFailure(label: String, scan: ImageScan, threshold: Double?, attached: Bool) -> String {
+        "image \"\(label)\" does not exist: \(findImageNote(scan, single: true, threshold: threshold))"
+            + (attached ? "; the screenshot it judged is attached to the report" : "")
+    }
+
     /// 記録の括弧書き(見つけた距離・見つからなかった理由)。数字は照合をやり直さずに閾値を
     /// 決め直せるようにするため必ず出す
     static func findImageNote(_ scan: ImageScan, single: Bool, threshold: Double?) -> String {
@@ -194,10 +213,12 @@ extension StepExecutor {
                     ? "found by \(DefaultClassifier.name) (distance \(format(match.distance)) >\(limit))"
                     : "found (distance \(format(match.distance)))"
             }
+            if scan.nearest == nil, scan.screenshotUnreadable { return "not found (the screenshot could not be read)" }
             guard let nearest = scan.nearest else { return "not found (no element of a similar aspect ratio)" }
             return "not found (nearest distance \(format(nearest.distance)) >\(limit))"
         }
         if scan.found.isEmpty {
+            if scan.nearest == nil, scan.screenshotUnreadable { return "0 found (the screenshot could not be read)" }
             guard let nearest = scan.nearest else { return "0 found (no element of a similar aspect ratio)" }
             return "0 found (nearest distance \(format(nearest.distance)),\(limit))"
         }

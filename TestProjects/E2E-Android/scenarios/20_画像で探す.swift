@@ -1,5 +1,5 @@
 // 20_画像で探す.swift
-// fleetest 機能: `findImage` / `findImages` / `findImageWithScrollDown`(Shirates Vision の移植)と、
+// fleetest 機能: `findImage` / `findImages` / `findImageWithScrollDown` / `existImage`(Shirates Vision の移植)と、
 // 見つけた要素の `FTElement.tap()`(見つけた枠の中心を座標で叩く)。
 // テンプレートは DefaultClassifier の見本(vision/classifiers/DefaultClassifier/Controls/ と Home/)。
 // **見本は Android だけ**(`@a`)。
@@ -77,6 +77,29 @@ class 画像で要素を探す {
                     findImageWithScrollDown("[Diagnostics Nav]", threshold: 0.03).tap()
                 }.expectation {
                     select("#txt_screen_title").textIs("診断")
+                }
+            }
+        }
+    }
+
+    @Test("画像があることを検証する")
+    func S0040() {
+        scenario {
+            scene(1, "コントロール画面の部品を existImage で検証する") {
+                condition {
+                    launchApp()
+                    tap("#tab_controls")
+                }.expectation {
+                    existImage("[Checkbox]")
+                    existImage("[Switch]").idIs("sw_notify")
+                }
+            }
+            scene(2, "ホームの最下行を existImageWithScrollDown で検証する") {
+                condition {
+                    tap("#tab_home")
+                }.expectation {
+                    // 閾値を絞る理由は S0030 と同じ(文字だけが違う同じ形の行)
+                    existImageWithScrollDown("[Diagnostics Nav]", threshold: 0.03).idIs("nav_diagnostics")
                 }
             }
         }
