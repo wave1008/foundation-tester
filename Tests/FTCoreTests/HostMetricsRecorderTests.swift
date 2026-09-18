@@ -47,18 +47,18 @@ final class HostMetricsRecorderTests: XCTestCase {
         XCTAssertTrue(sawNonNullCPU, "cpu が値を持つ行が1つも無い(初回捨てサンプル後に値が出るはず)")
     }
 
-    /// 6欄(fmCalls/fmFailures/fmTotalMs/ocrCalls/ocrFailures/ocrTotalMs)は控えを読めないときも
+    /// 6欄(fmCalls/fmFailures/fmTotalMs/visionCalls/visionFailures/visionTotalMs)は控えを読めないときも
     /// **キーごと省略しない**(null で明示する)。encodeIfPresent の自動合成に戻すとキー自体が消え、
     /// 「不明」と「0件」の区別が出力から失われる
     func testFMFieldsAreNullNotOmittedWhenUnavailable() throws {
         let sample = HostMetricsSample(
             ts: 0, cpu: nil, gpu: nil, memUsedBytes: nil, memTotalBytes: nil,
             fmCalls: nil, fmFailures: nil, fmTotalMs: nil,
-            ocrCalls: nil, ocrFailures: nil, ocrTotalMs: nil)
+            visionCalls: nil, visionFailures: nil, visionTotalMs: nil)
         let line = try XCTUnwrap(sample.encodedLine())
         let obj = try XCTUnwrap(
             try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
-        for key in ["fmCalls", "fmFailures", "fmTotalMs", "ocrCalls", "ocrFailures", "ocrTotalMs"] {
+        for key in ["fmCalls", "fmFailures", "fmTotalMs", "visionCalls", "visionFailures", "visionTotalMs"] {
             XCTAssertTrue(obj.keys.contains(key), "\(key) がキーごと省略されている: \(line)")
             XCTAssertTrue(obj[key] is NSNull, "\(key) が null で符号化されていない: \(line)")
         }

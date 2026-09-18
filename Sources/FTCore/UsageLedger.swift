@@ -1,9 +1,9 @@
-// 「呼び出し回数の機械グローバルな控え」の共通実装。FM(FMUsageLedger)と OCR(OCRUsageLedger)は
+// 「呼び出し回数の機械グローバルな控え」の共通実装。FM(FMUsageLedger)と OCR(VisionUsageLedger)は
 // この上に乗る薄いファサードで、中身(pid ごとの JSON・アトミック rename・基準取り・pid 再利用の
 // 扱い・死んだ pid の reap・複数読み手の規律)はここ1箇所に持つ(コピーしない。互いの状態は
 // インスタンスごとに分離)。
 //
-// 呼び出し元プロセス(FM を叩く各シナリオランナー・OCR を叩く RegionText 等)がここへ書き、
+// 呼び出し元プロセス(FM を叩く各シナリオランナー・Vision を叩く RegionText・VisionClassifier 等)がここへ書き、
 // host-metrics 常駐プロセスが毎 tick 読む形にする。host-metrics 自身が対象を叩いて測ると
 // 測定対象を自分で消費してしまうため、実仕事をしているプロセス自身が書く。
 //

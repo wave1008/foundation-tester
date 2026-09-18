@@ -8,7 +8,7 @@ results/runs/<YYYY-MM>/<runID>/
   run.json                   ... この run 全体(RunMetaRecord)
   scenarios/<シナリオID>.json  ... シナリオ 1 回分(ScenarioRunRecord)
   scenarios/<シナリオID>~2.json ... 同一 run 内の再実行(連番)
-  host-metrics.ndjson        ... 実行中のホスト負荷(cpu/gpu/mem)と FM(回数・死活)/OCR(回数)
+  host-metrics.ndjson        ... 実行中のホスト負荷(cpu/gpu/mem)と FM(回数・死活)/Vision(回数。OCR・画像分類器)
 ```
 
 `runID` = `<yyyyMMdd-HHmmss(UTC)>Z-<乱数8hex>`(固定幅なので**辞書順 = 時系列順**)。
@@ -230,14 +230,14 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 
 FM を呼ぶ構成だったかは `textVisualCheck || screenLooksLike` で判定する(両方 false の run では FM を一切呼ばない)。
 
-### host-metrics.ndjson の FM/OCR 欄
+### host-metrics.ndjson の FM/Vision 欄
 
 1行 = 1サンプル(既定 1Hz)。**回数と死活は別の軸**で、混ぜて読まないこと。
 
 | フィールド | 型 | 意味 |
 |---|---|---|
 | fmCalls / fmFailures / fmTotalMs | Int? | そのサンプリング間隔で完了した FM 呼び出し(この機械の全プロセス合計。供給元は `FMUsageLedger`)。**null = 控えを読めなかった(不明)/ 0 = 呼び出しが無かった**。混ぜない |
-| ocrCalls / ocrFailures / ocrTotalMs | Int? | そのサンプリング間隔で完了した OCR(Vision の文字認識。occlusion-guard Tier-2 の `RegionText`)呼び出し(この機械の全プロセス合計。供給元は `OCRUsageLedger`)。**1件 = `recognize` 1回**(`RegionText.resolve` の拡大はしごは読めるまで最大3段まで撃つので、1回のガードで最大3件になりうる)。**null = 控えを読めなかった(不明)/ 0 = 呼び出しが無かった**。混ぜない |
+| visionCalls / visionFailures / visionTotalMs | Int? | そのサンプリング間隔で完了した Vision / Core ML(FM 以外)の呼び出し(この機械の全プロセス合計。供給元は `VisionUsageLedger`。モニターの VN)。数えるのは3種: **OCR の `recognize` 1回**(occlusion-guard Tier-2 の `RegionText`。拡大はしごは読めるまで最大3段まで撃つので、1回のガードで最大3件になりうる)/ **画像分類器の推論1回**(`VisionClassifier`。checkIsON/OFF・imageIs と、学習直後の見本の点検で見本1枚につき1回)/ **学習1回**。OCR の暖機は数えない。**null = 控えを読めなかった(不明)/ 0 = 呼び出しが無かった**。混ぜない |
 | fmTextState / fmVisionState | String? | `"alive"` / `"dead"` / **null = 不明**(観測が無い・`FMLiveness.freshSeconds` より古い)。**呼び出しが0件でも埋まる**のが回数欄との決定的な違い —— 誰も FM を使っていない間、回数だけでは「使われていない」と「死んでいる」が同じ絵になる |
 | fmDeadReason | String? | 死んでいる経路と理由(`text: … / vision: …`)。**1Hz で流れる行なので 200 文字で切る**(全文は `fleetest doctor --fm-only` と `scenarios/*.json` の `fm.firstError`) |
 | fmCheckedAt | Double? | 上の死活を観測した epoch 秒(新しいほうの経路)。**いつの観測かを必ず見る** —— 最大 120 秒古くなりうる |
@@ -245,7 +245,7 @@ FM を呼ぶ構成だったかは `textVisualCheck || screenLooksLike` で判定
 死活の供給元は2つ: **①実仕事の FM 呼び出しの成否**(連続 `FMBreaker.threshold` 回の失敗で死。
 経路ごとに数える)と **②死活プローブ**(`api host-metrics --fm-probe`。拡張のモニターだけが渡す。
 **台帳が古く、かつ誰も FM を使っていないときだけ**1回撃つ)。プローブは `FMUsageLedger` に
-書かないので、回数欄は「実仕事」だけを表し続ける。**OCR に死活・プローブは無い**(回数欄だけ)。
+書かないので、回数欄は「実仕事」だけを表し続ける。**Vision に死活・プローブは無い**(回数欄だけ)。
 
 ### WorkerAnomalyRecord
 

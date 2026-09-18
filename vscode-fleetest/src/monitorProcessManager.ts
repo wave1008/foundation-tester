@@ -79,12 +79,12 @@ type HostMetricsRawEvent = {
   readonly fmVisionState?: string | null;
   readonly fmDeadReason?: string | null;
   readonly fmCheckedAt?: number | null;
-  /** OCR(Vision の文字認識)呼び出しの実測。供給元は機械グローバルな控えで、このプロセスの
-   *  実測ではない(fmCalls と同じ形。Sources 側は FTCore.OCRUsageLedger 相当)。欄が無い行
+  /** Vision / Core ML(OCR と画像分類器。FM 以外)呼び出しの実測。供給元は機械グローバルな控えで、このプロセスの
+   *  実測ではない(fmCalls と同じ形。Sources 側は FTCore.VisionUsageLedger 相当)。欄が無い行
    *  (旧 CLI)も受理し undefined を null(不明)と同じに扱う(isHostMetricsEvent 参照)。 */
-  readonly ocrCalls?: number | null;
-  readonly ocrFailures?: number | null;
-  readonly ocrTotalMs?: number | null;
+  readonly visionCalls?: number | null;
+  readonly visionFailures?: number | null;
+  readonly visionTotalMs?: number | null;
 };
 
 /** value が HostMetricsRawEvent として扱ってよいか判定する(isMonitorEvent と同じ方針)。
@@ -112,9 +112,9 @@ function isHostMetricsEvent(value: unknown): value is HostMetricsRawEvent {
     stringOrNullOrAbsent(record.fmVisionState) &&
     stringOrNullOrAbsent(record.fmDeadReason) &&
     numberOrNullOrAbsent(record.fmCheckedAt) &&
-    numberOrNullOrAbsent(record.ocrCalls) &&
-    numberOrNullOrAbsent(record.ocrFailures) &&
-    numberOrNullOrAbsent(record.ocrTotalMs)
+    numberOrNullOrAbsent(record.visionCalls) &&
+    numberOrNullOrAbsent(record.visionFailures) &&
+    numberOrNullOrAbsent(record.visionTotalMs)
   );
 }
 
@@ -142,11 +142,11 @@ export type HostMetricsToWebviewMessage =
       /** 死んでいる経路の理由(`text: …` / `vision: …`。CLI 側で 200 文字に切ってある)。 */
       readonly fmDeadReason: string | null;
       readonly fmCheckedAt: number | null;
-      /** そのサンプリング間隔で完了した OCR(Vision の文字認識)呼び出し(その機械の全プロセス
+      /** そのサンプリング間隔で完了した Vision / Core ML(OCR と画像分類器)呼び出し(その機械の全プロセス
        *  合計)。null = 控えを読めず不明、0 = 呼び出しが無かった(fmCalls と同じ区別)。 */
-      readonly ocrCalls: number | null;
-      readonly ocrFailures: number | null;
-      readonly ocrTotalMs: number | null;
+      readonly visionCalls: number | null;
+      readonly visionFailures: number | null;
+      readonly visionTotalMs: number | null;
     }
   /** 行の集合(手元 + このリモート機。値より先に配る)。消えた機械の行は webview 側で捨てる。 */
   | { readonly type: "hostMetricsMachines"; readonly machines: readonly string[] }
@@ -810,9 +810,9 @@ export class MonitorProcessManager {
           fmVisionState: value.fmVisionState ?? null,
           fmDeadReason: value.fmDeadReason ?? null,
           fmCheckedAt: value.fmCheckedAt ?? null,
-          ocrCalls: value.ocrCalls ?? null,
-          ocrFailures: value.ocrFailures ?? null,
-          ocrTotalMs: value.ocrTotalMs ?? null,
+          visionCalls: value.visionCalls ?? null,
+          visionFailures: value.visionFailures ?? null,
+          visionTotalMs: value.visionTotalMs ?? null,
         });
       },
       (line) => this.deps.outputChannel.appendLine(`[${label} stdout] ${line}`),

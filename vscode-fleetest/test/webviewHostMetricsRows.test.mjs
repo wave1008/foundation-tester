@@ -1,4 +1,4 @@
-// ツールバーのホストグラフ(MEM/CPU/GPU/OCR/FM)を**機械ごとの行**にする配線テスト(hostCharts.js)。
+// ツールバーのホストグラフ(MEM/CPU/GPU/VN/FM)を**機械ごとの行**にする配線テスト(hostCharts.js)。
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewSelectAllButton.test.mjs と同じ。
 //
 // ここで見るのは行の集合と宛先の分岐だけ(描画そのものは jsdom にキャンバスが無いので測れない):
@@ -88,7 +88,7 @@ function machineLabels(document) {
   return rows(document).map((row) => row.querySelector(".hm-machine").textContent);
 }
 
-/** 1行ぶんの表示値(MEM/CPU/GPU/OCR/FM の順)。 */
+/** 1行ぶんの表示値(MEM/CPU/GPU/VN/FM の順)。 */
 function values(row) {
   return [...row.querySelectorAll(".host-metric")].map((metric) => metric.querySelector(".hm-value").textContent);
 }
@@ -97,9 +97,9 @@ function rowFor(document, machine) {
   return document.querySelector(`#host-metrics .hm-row[data-machine="${machine}"]`);
 }
 
-/** OCR のセル(値・class の検証に使う)。 */
-function ocrCell(document, machine) {
-  return rowFor(document, machine).querySelector('[data-metric="ocr"]');
+/** VN のセル(値・class の検証に使う)。 */
+function visionCell(document, machine) {
+  return rowFor(document, machine).querySelector('[data-metric="vision"]');
 }
 
 /** FM のツールチップ。**窓(直近 N tick)の集計はラベルではなくここに出る** ——
@@ -109,27 +109,27 @@ function fmTitle(document, machine) {
   return rowFor(document, machine).querySelector('[data-metric="fm"]').title;
 }
 
-/** OCR のツールチップ。fmTitle と同じ理由(窓の集計はここでしか検証できない)。 */
-function ocrTitle(document, machine) {
-  return ocrCell(document, machine).title;
+/** VN のツールチップ。fmTitle と同じ理由(窓の集計はここでしか検証できない)。 */
+function visionTitle(document, machine) {
+  return visionCell(document, machine).title;
 }
 
-/** fm/ocr 省略時は calls:0(既知の0件、欠測ではない)。欠測にしたいテストは { calls: null } … を
- *  渡す(旧来どおり fmCalls/ocrCalls のフルキー名で上書きする)。
- *  死活(fmTextState/fmVisionState/fmDeadReason/fmCheckedAt)は**回数とは別の軸**で OCR には無い
+/** fm/vision 省略時は calls:0(既知の0件、欠測ではない)。欠測にしたいテストは { calls: null } … を
+ *  渡す(旧来どおり fmCalls/visionCalls のフルキー名で上書きする)。
+ *  死活(fmTextState/fmVisionState/fmDeadReason/fmCheckedAt)は**回数とは別の軸**で VN には無い
  *  ので、省略時は不明(null)= 旧 CLI の行と同じ形。 */
-function hostMetricsSample(machine, cpu, fm = {}, ocr = {}) {
+function hostMetricsSample(machine, cpu, fm = {}, vision = {}) {
   const {
     fmCalls = 0, fmFailures = 0, fmTotalMs = 0,
     fmTextState = null, fmVisionState = null, fmDeadReason = null,
     fmCheckedAt = Date.now() / 1000,
   } = fm;
-  const { ocrCalls = 0, ocrFailures = 0, ocrTotalMs = 0 } = ocr;
+  const { visionCalls = 0, visionFailures = 0, visionTotalMs = 0 } = vision;
   return {
     type: "hostMetrics", ...(machine ? { machine } : {}),
     cpu, gpu: 0.25, memUsedBytes: 8 * 1024 * 1024 * 1024, memTotalBytes: 32 * 1024 * 1024 * 1024,
     fmCalls, fmFailures, fmTotalMs, fmTextState, fmVisionState, fmDeadReason, fmCheckedAt,
-    ocrCalls, ocrFailures, ocrTotalMs,
+    visionCalls, visionFailures, visionTotalMs,
   };
 }
 
@@ -156,7 +156,7 @@ test("hostMetricsMachines で機械ごとの行が増え、左端が local / <�
   for (const row of rows(document)) {
     assert.deepEqual(
       [...row.querySelectorAll(".host-metric")].map((m) => m.dataset.metric),
-      ["mem", "cpu", "gpu", "ocr", "fm"], "どの行も MEM/CPU/GPU/OCR/FM の5系列を持つ",
+      ["mem", "cpu", "gpu", "vision", "fm"], "どの行も MEM/CPU/GPU/VN/FM の5系列を持つ",
     );
   }
   assert.equal(document.querySelectorAll("#hm-cpu").length, 1, "複製した行に id を残さない");
@@ -671,66 +671,66 @@ test("FM の縦軸は全行で共有される(行ごとに伸縮しない)", (t)
     `高さの比は値の比(8:2=4)になるはず。実際 ${(high / low).toFixed(2)}(行ごとなら約2.5)`);
 });
 
-// OCR は GPU と FM の間(供給元は同じ hostMetrics の ocrCalls/ocrFailures/ocrTotalMs)。
+// VN は GPU と FM の間(供給元は同じ hostMetrics の visionCalls/visionFailures/visionTotalMs)。
 // 数え方・窓・欠測の扱いは FM の系列に倣うが、**死活・バッジは持たない**。
-test("OCR は機械ごとの行に積まれ、値のセルは直近 tick の呼び出し回数", (t) => {
+test("VN は機械ごとの行に積まれ、値のセルは直近 tick の呼び出し回数", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
-  const ocrOf = (machine) => ocrCell(document, machine).querySelector(".hm-value").textContent;
+  const visionOf = (machine) => visionCell(document, machine).querySelector(".hm-value").textContent;
 
   for (const c of [1, 0, 2]) {
-    send(window, hostMetricsSample("mac2", 0.9, {}, { ocrCalls: c }));
+    send(window, hostMetricsSample("mac2", 0.9, {}, { visionCalls: c }));
     send(window, hostMetricsSample(undefined, 0.1)); // 手元の tick で commit させる
   }
 
-  assert.equal(ocrOf("mac2"), "2", "最後の tick の回数がそのまま値のセルに出る(窓の平均ではない)");
+  assert.equal(visionOf("mac2"), "2", "最後の tick の回数がそのまま値のセルに出る(窓の平均ではない)");
 });
 
-test("OCR のツールチップは窓の移動窓レートを出す", (t) => {
+test("VN のツールチップは窓の移動窓レートを出す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
 
   for (let i = 0; i < 5; i += 1) {
-    send(window, hostMetricsSample("mac2", 0.9, {}, { ocrCalls: 1 }));
+    send(window, hostMetricsSample("mac2", 0.9, {}, { visionCalls: 1 }));
     send(window, hostMetricsSample(undefined, 0.1));
   }
 
-  assert.match(ocrTitle(document, "mac2"), /OCR 1\.0回\/秒|OCR 1\.0\/s/,
+  assert.match(visionTitle(document, "mac2"), /VN 1\.0回\/秒|VN 1\.0\/s/,
     "直近5 tick で1回ずつ観測できた = 1.0/秒");
 });
 
-test("ocrCalls が null は欠測(–)、0 は 0(不明と0件を混ぜない)", (t) => {
+test("visionCalls が null は欠測(–)、0 は 0(不明と0件を混ぜない)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
-  const ocrOf = (machine) => ocrCell(document, machine).querySelector(".hm-value").textContent;
+  const visionOf = (machine) => visionCell(document, machine).querySelector(".hm-value").textContent;
 
-  send(window, hostMetricsSample("mac2", 0.9, {}, { ocrCalls: null }));
+  send(window, hostMetricsSample("mac2", 0.9, {}, { visionCalls: null }));
   send(window, hostMetricsSample(undefined, 0.1));
-  assert.equal(ocrOf("mac2"), "–", "直近 tick が不明(控えを読めない)なら欠測表示");
+  assert.equal(visionOf("mac2"), "–", "直近 tick が不明(控えを読めない)なら欠測表示");
 
-  send(window, hostMetricsSample("mac2", 0.9, {}, { ocrCalls: 0 }));
+  send(window, hostMetricsSample("mac2", 0.9, {}, { visionCalls: 0 }));
   send(window, hostMetricsSample(undefined, 0.1));
-  assert.equal(ocrOf("mac2"), "0", "既知の0件(呼び出しが無かった)は欠測と区別する");
+  assert.equal(visionOf("mac2"), "0", "既知の0件(呼び出しが無かった)は欠測と区別する");
 });
 
-// FM の失敗はガード自体を無効化するので死活の軸が要るが、OCR の失敗はその回の判定が FM へ
-// 回るだけで判定能力は落ちない —— OCR には死活もバッジも作らない(FM が死んでいても道連れにしない)
-test("FM が死んでいても OCR の系列は死の扱いを受けない", (t) => {
+// FM の失敗はガード自体を無効化するので死活の軸が要るが、VN の失敗はその回の判定が別の経路
+// (OCR は FM・分類器は a11y)へ回るだけで判定能力は落ちない —— VN には死活もバッジも作らない(FM が死んでいても道連れにしない)
+test("FM が死んでいても VN の系列は死の扱いを受けない", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
   send(window, hostMetricsSample("mac2", 0.9,
     { fmTextState: "dead", fmVisionState: "dead", fmDeadReason: "text: x / vision: y" },
-    { ocrCalls: 3 }));
+    { visionCalls: 3 }));
   send(window, hostMetricsSample(undefined, 0.1));
 
   const fmEntry = rowFor(document, "mac2").querySelector('[data-metric="fm"]');
   assert.ok(fmEntry.classList.contains("hm-fm-dead"), "前提: FM は死んでいる");
-  const entry = ocrCell(document, "mac2");
-  assert.equal(entry.classList.contains("hm-fm-dead"), false, "OCR のセルに hm-fm-dead は付かない");
-  assert.equal(entry.classList.contains("hm-fm-warn"), false, "OCR のセルに hm-fm-warn も付かない");
-  assert.equal(entry.querySelector(".hm-value").textContent, "3", "OCR の回数はそのまま出る");
+  const entry = visionCell(document, "mac2");
+  assert.equal(entry.classList.contains("hm-fm-dead"), false, "VN のセルに hm-fm-dead は付かない");
+  assert.equal(entry.classList.contains("hm-fm-warn"), false, "VN のセルに hm-fm-warn も付かない");
+  assert.equal(entry.querySelector(".hm-value").textContent, "3", "VN の回数はそのまま出る");
 });

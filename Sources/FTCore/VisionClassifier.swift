@@ -162,8 +162,21 @@ public enum VisionClassifier {
         public internal(set) var mismatches: [Mismatch] = []
         init(vnModel: VNCoreMLModel, labels: [String]) { self.vnModel = vnModel; self.labels = labels }
 
-        /// 1位のラベル。Shirates と同じく確信度 0.1 以下は候補にしない
+        /// 1位のラベル。Shirates と同じく確信度 0.1 以下は候補にしない。
+        /// 1回ごとに VisionUsageLedger へ1件書く(ロックの内側から呼ぶ経路は `classifyUnrecorded`)
         public func classify(_ image: CGImage) throws -> Classification? {
+            let start = Date()
+            do {
+                let answer = try classifyUnrecorded(image)
+                VisionUsageLedger.record(ok: true, ms: Date().timeIntervalSince(start) * 1000)
+                return answer
+            } catch {
+                VisionUsageLedger.record(ok: false, ms: Date().timeIntervalSince(start) * 1000)
+                throw error
+            }
+        }
+
+        func classifyUnrecorded(_ image: CGImage) throws -> Classification? {
             let request = VNCoreMLRequest(model: vnModel)
             try VNImageRequestHandler(cgImage: image).perform([request])
             let observations = (request.results as? [VNClassificationObservation]) ?? []
@@ -199,6 +212,11 @@ public enum VisionClassifier {
     /// 学習済みモデルを返す(無ければ学ぶ)。**ブロックする** —— 協調スレッドプールの上で呼ばない
     /// (呼び手は `load(_:cacheDirectory:)` の async 版)
     public static func loadBlocking(_ set: TrainingSet, cacheDirectory: URL) throws -> Model {
+        // 学習と点検の推論は processLock の内側で走るので、控えへの記録は解放の後にまとめて書く
+        // (VisionUsageLedger.record はファイル I/O をするのでロックの外から呼ぶ規律)。
+        // defer は逆順に走る = unlock → 記録
+        var usage = VisionUsage()
+        defer { usage.flush() }
         processLock.lock()
         defer { processLock.unlock() }
         if let model = loaded[set.digest] { return model }
@@ -212,20 +230,41 @@ public enum VisionClassifier {
             if fd >= 0 { flock(fd, LOCK_EX) }
             defer { if fd >= 0 { close(fd) } }
             if !FileManager.default.fileExists(atPath: modelURL.path) {
-                try train(set, into: work, modelURL: modelURL)
+                try usage.measure { try train(set, into: work, modelURL: modelURL) }
             }
         }
         let compiled = try MLModel.compileModel(at: modelURL)
         let model = Model(vnModel: try VNCoreMLModel(for: MLModel(contentsOf: compiled)),
                           labels: set.labels.keys.sorted())
-        model.mismatches = selfCheck(model, set, cachedAt: work.appendingPathComponent("selfcheck.json"))
+        model.mismatches = selfCheck(model, set, cachedAt: work.appendingPathComponent("selfcheck.json"), usage: &usage)
         loaded[set.digest] = model
         return model
     }
 
+    /// ロックの内側で撃った Vision / Core ML の呼び出しを控え、ロックの外で VisionUsageLedger へ書く
+    struct VisionUsage {
+        private var calls: [(ok: Bool, ms: Double)] = []
+
+        mutating func measure<T>(_ body: () throws -> T) throws -> T {
+            let start = Date()
+            do {
+                let value = try body()
+                calls.append((true, Date().timeIntervalSince(start) * 1000))
+                return value
+            } catch {
+                calls.append((false, Date().timeIntervalSince(start) * 1000))
+                throw error
+            }
+        }
+
+        func flush() {
+            for call in calls { VisionUsageLedger.record(ok: call.ok, ms: call.ms) }
+        }
+    }
+
     /// 学習の点検: 見本の1枚1枚を学習したモデル自身に掛け、見本のラベルと違う答えを集める。
     /// 結果はモデルの隣に控え、同じ digest では掛け直さない(見本が変われば digest が変わる)
-    static func selfCheck(_ model: Model, _ set: TrainingSet, cachedAt url: URL) -> [Mismatch] {
+    static func selfCheck(_ model: Model, _ set: TrainingSet, cachedAt url: URL, usage: inout VisionUsage) -> [Mismatch] {
         if let data = try? Data(contentsOf: url), let cached = try? JSONDecoder().decode([Mismatch].self, from: data) {
             return cached
         }
@@ -234,7 +273,7 @@ public enum VisionClassifier {
             for image in images {
                 guard let source = CGImageSourceCreateWithURL(image as CFURL, nil),
                       let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else { continue }
-                let answer = try? model.classify(cgImage)
+                let answer = try? usage.measure { try model.classifyUnrecorded(cgImage) }
                 guard answer?.label != label else { continue }
                 let root = set.directory.standardizedFileURL.path + "/"
                 let path = image.standardizedFileURL.path

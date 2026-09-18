@@ -8,7 +8,7 @@
 // HostMetricsRawEvent と対。
 //
 // 中身の実装(pid ごとの JSON・アトミック rename・基準取り・pid 再利用の扱い・死んだ pid の
-// reap・複数読み手の規律)は UsageLedger.swift に共通化してある(OCRUsageLedger と共有。
+// reap・複数読み手の規律)は UsageLedger.swift に共通化してある(VisionUsageLedger と共有。
 // コピーしない)。ここは FM 専用の薄いファサード。
 //
 // 置き場は ~/.fleetest/fm-usage/(FT_FM_USAGE_DIR で差し替え。テスト用)。

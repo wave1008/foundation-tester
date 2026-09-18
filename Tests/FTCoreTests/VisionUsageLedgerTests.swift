@@ -1,7 +1,7 @@
-// OCRUsageLedger(OCR 呼び出しの機械グローバルな控え)の検証。
+// VisionUsageLedger(Vision / Core ML 呼び出しの機械グローバルな控え)の検証。
 // 共通の機構(基準取り・pid 再利用・reap 等)は UsageLedger として FMUsageLedger と共有しており、
 // そちらは FMUsageLedgerTests が守る。ここで見るのは「別インスタンスとして独立していること」
-// (置き場が別・累計が混ざらない)と、実際の書き手(RegionText.read)からの配線だけ。
+// (置き場が別・累計が混ざらない)と、実際の書き手(RegionText.read / VisionClassifier)からの配線だけ。
 // 生存判定に実際の kill(2) を使うため、SharedResource.hostCaches で直列化する
 // (FMUsageLedgerTests と同じ理由)。
 
@@ -12,44 +12,44 @@ import ImageIO
 import XCTest
 @testable import FTCore
 
-final class OCRUsageLedgerTests: XCTestCase {
+final class VisionUsageLedgerTests: XCTestCase {
     private var dir: URL!
-    private var savedOCREnv: String?
+    private var savedVisionEnv: String?
 
     override func setUpWithError() throws {
         dir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("OCRUsageLedgerTests-\(UUID().uuidString)")
-        savedOCREnv = ProcessInfo.processInfo.environment["FT_OCR_USAGE_DIR"]
-        setenv("FT_OCR_USAGE_DIR", dir.path, 1)
+            .appendingPathComponent("VisionUsageLedgerTests-\(UUID().uuidString)")
+        savedVisionEnv = ProcessInfo.processInfo.environment["FT_VISION_USAGE_DIR"]
+        setenv("FT_VISION_USAGE_DIR", dir.path, 1)
         // 累計はプロセス内で持ち越される。置き場だけ新しくすると、基準取りの**後**に初めて
         // 現れる pid の増分が「そのプロセスのこれまでの累計まるごと」になる(drain の規律)
-        OCRUsageLedger.resetForTesting()
+        VisionUsageLedger.resetForTesting()
     }
 
     override func tearDownWithError() throws {
-        if let savedOCREnv { setenv("FT_OCR_USAGE_DIR", savedOCREnv, 1) } else { unsetenv("FT_OCR_USAGE_DIR") }
+        if let savedVisionEnv { setenv("FT_VISION_USAGE_DIR", savedVisionEnv, 1) } else { unsetenv("FT_VISION_USAGE_DIR") }
         try? FileManager.default.removeItem(at: dir)
     }
 
-    /// FT_OCR_USAGE_DIR の下に書く(FM の控えを汚さない)。FM 側は既定の置き場(または他テストが
-    /// 設定した FT_FM_USAGE_DIR)のままなので、ここでは「OCR が自分の置き場の下に実際にファイルを
+    /// FT_VISION_USAGE_DIR の下に書く(FM の控えを汚さない)。FM 側は既定の置き場(または他テストが
+    /// 設定した FT_FM_USAGE_DIR)のままなので、ここでは「Vision の控えが自分の置き場の下に実際にファイルを
     /// 作る」ことだけを確かめる
     func testWritesUnderItsOwnDirectory() throws {
         try SharedResource.hostCaches.locked {
-            OCRUsageLedger.record(ok: true, ms: 12)
+            VisionUsageLedger.record(ok: true, ms: 12)
             let selfPID = ProcessInfo.processInfo.processIdentifier
             XCTAssertTrue(FileManager.default.fileExists(
                 atPath: dir.appendingPathComponent("\(selfPID).json").path),
-                "OCR の控えが FT_OCR_USAGE_DIR の下に作られていない")
+                "Vision の控えが FT_VISION_USAGE_DIR の下に作られていない")
         }
     }
 
-    /// FM と OCR の累計は別インスタンス(別ファイル群)なので混ざらない ——
-    /// OCR へ record してから FM を drain しても増分は出ない
-    func testFMAndOCRCountersDoNotMix() throws {
+    /// FM と Vision の累計は別インスタンス(別ファイル群)なので混ざらない ——
+    /// Vision へ record してから FM を drain しても増分は出ない
+    func testFMAndVisionCountersDoNotMix() throws {
         try SharedResource.hostCaches.locked {
             let fmDir = URL(fileURLWithPath: NSTemporaryDirectory())
-                .appendingPathComponent("OCRUsageLedgerTests-fm-\(UUID().uuidString)")
+                .appendingPathComponent("VisionUsageLedgerTests-fm-\(UUID().uuidString)")
             let savedFMEnv = ProcessInfo.processInfo.environment["FT_FM_USAGE_DIR"]
             setenv("FT_FM_USAGE_DIR", fmDir.path, 1)
             defer {
@@ -60,26 +60,26 @@ final class OCRUsageLedgerTests: XCTestCase {
             var fmPrevious: [Int32: FMUsageLedger.Counters]? = nil
             XCTAssertEqual(FMUsageLedger.drain(previous: &fmPrevious)?.calls, 0, "FM 側の基準取り")
 
-            OCRUsageLedger.record(ok: true, ms: 5)
-            OCRUsageLedger.record(ok: true, ms: 7)
+            VisionUsageLedger.record(ok: true, ms: 5)
+            VisionUsageLedger.record(ok: true, ms: 7)
 
             XCTAssertEqual(FMUsageLedger.drain(previous: &fmPrevious)?.calls, 0,
-                           "OCR への record が FM 側の増分に漏れている")
+                           "Vision への record が FM 側の増分に漏れている")
         }
     }
 
     /// record → drain の増分が取れる(基準取りの回は0、以降は増分が出る)
     func testRecordThenDrainYieldsIncrement() throws {
         try SharedResource.hostCaches.locked {
-            var previous: [Int32: OCRUsageLedger.Counters]? = nil
+            var previous: [Int32: VisionUsageLedger.Counters]? = nil
 
-            OCRUsageLedger.record(ok: true, ms: 40)
-            let first = OCRUsageLedger.drain(previous: &previous)
+            VisionUsageLedger.record(ok: true, ms: 40)
+            let first = VisionUsageLedger.drain(previous: &previous)
             XCTAssertEqual(first?.calls, 0, "初見の pid は増分0")
 
-            OCRUsageLedger.record(ok: true, ms: 30)
-            OCRUsageLedger.record(ok: false, ms: 20)
-            let second = OCRUsageLedger.drain(previous: &previous)
+            VisionUsageLedger.record(ok: true, ms: 30)
+            VisionUsageLedger.record(ok: false, ms: 20)
+            let second = VisionUsageLedger.drain(previous: &previous)
             XCTAssertEqual(second?.calls, 2)
             XCTAssertEqual(second?.failures, 1)
             XCTAssertEqual(second?.totalMs, 50)
@@ -111,14 +111,44 @@ final class OCRUsageLedgerTests: XCTestCase {
     func testRegionTextReadRecordsExactlyOneCall() async throws {
         try await SharedResource.hostCaches.locked {
             let (data, rect) = try png("swipe-down.png")
-            var previous: [Int32: OCRUsageLedger.Counters]? = nil
-            XCTAssertEqual(OCRUsageLedger.drain(previous: &previous)?.calls, 0, "基準取り")
+            var previous: [Int32: VisionUsageLedger.Counters]? = nil
+            XCTAssertEqual(VisionUsageLedger.drain(previous: &previous)?.calls, 0, "基準取り")
 
             _ = await RegionText.read(pngData: data, frame: rect, screen: rect,
                                       languages: RegionText.defaultLanguages, upscale: 1)
 
-            let delta = OCRUsageLedger.drain(previous: &previous)
+            let delta = VisionUsageLedger.drain(previous: &previous)
             XCTAssertEqual(delta?.calls, 1, "read 1回につき控えは1件増える")
+        }
+    }
+
+    // MARK: - VisionClassifier からの配線
+
+    /// 学習1回 + 点検の推論(見本 12 枚ぶん)+ 本番の推論1回が、それぞれ1件ずつ控えへ入る。
+    /// 学習と点検はロックの内側で走るので、記録が解放後にまとめて書かれることもここで見える
+    func testVisionClassifierRecordsTrainingAndEachInference() async throws {
+        let root = try DefaultClassifierTests.makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dir = VisionClassifier.directory(projectRoot: root, name: DefaultClassifier.name)
+        let set = try XCTUnwrap(try VisionClassifier.trainingSet(at: dir))
+        let samples = set.labels.values.reduce(0) { $0 + $1.count }
+        XCTAssertEqual(samples, 12, "この後の期待値は見本 12 枚前提")
+        VisionClassifier.forgetLoadedModelsForTesting()
+
+        try await SharedResource.hostCaches.locked {
+            var previous: [Int32: VisionUsageLedger.Counters]? = nil
+            XCTAssertEqual(VisionUsageLedger.drain(previous: &previous)?.calls, 0, "基準取り")
+
+            let model = try await VisionClassifier.load(
+                set, cacheDirectory: VisionClassifier.cacheDirectory(projectRoot: root, name: DefaultClassifier.name))
+            XCTAssertEqual(VisionUsageLedger.drain(previous: &previous)?.calls, 1 + samples,
+                           "学習1件 + 点検の推論が見本1枚につき1件")
+
+            let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(
+                try XCTUnwrap(CGImageSourceCreateWithData(
+                    DefaultClassifierTests.iconPNG(circle: true, shift: 2) as CFData, nil)), 0, nil))
+            _ = try model.classify(image)
+            XCTAssertEqual(VisionUsageLedger.drain(previous: &previous)?.calls, 1, "推論1回につき1件")
         }
     }
 }
