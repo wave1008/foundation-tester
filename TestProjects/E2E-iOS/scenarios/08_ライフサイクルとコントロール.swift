@@ -92,6 +92,10 @@ class ライフサイクルとコントロールが正しく働くこと {
                     select("#cb_agree").checkIsOFF()
                     select("#radio_a").checkIsON()
                     select("#radio_b").checkIsOFF()
+                    // 部品の種類を画像で見分ける(DefaultClassifier の見本 vision/classifiers/DefaultClassifier/@i/Controls/)
+                    select("#sw_notify").imageIs("[Switch]")
+                    select("#cb_agree").imageIs("[Checkbox]")
+                    select("#radio_a").imageIs("[Radio]")
                 }
             }
             scene(2, "Switch とチェックを ON にする") {
