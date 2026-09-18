@@ -16,7 +16,7 @@ MCP exposes the same check as `ft_dry_run`; the VS Code extension runs it via
 | Problem | How it's caught |
 |---|---|
 | Selector syntax errors | The selector expression parser runs before any device call |
-| Unreachable scenes / branches | Static reachability check of the scenario structure |
+| Mistakes inside `ifCanSelect { }` / `.ifElse { }` | In a dry-run **both blocks are executed** regardless of the condition, so selector syntax errors and unknown `#id`s inside either one are reported |
 | An `expectation { }` block with zero assertions | Counted the same way `verify` counts assertions (`exist`/`notExist`/`textIs` and friends, `thisIs` variants, `appIs`; `select` does not count). A scenario with **zero** assertions overall gets a stronger warning |
 | `#id`s that don't exist in any screen you've captured | Checked against the project's selector inventory (`<project>/.fleetest/selector-inventory.json`), built by `ft_snapshot` calls made while writing the scenario |
 
@@ -27,9 +27,9 @@ two thirds of a scenario's `#id`s are already in the inventory (a single capture
 otherwise flag most existing scenarios as wrong). Only exact-match `#id`s are checked — wildcard
 forms (`#row_*`) and labels are excluded, since labels normally change with copy edits.
 
-None of this is caught for content inside `ios { }` / `android { }` / `ifCanSelect { }` blocks
-that never executed for the platform being checked — what's inside is only known once the block
-actually runs.
+A dry-run is not static analysis: it actually executes the scenario and only skips the device
+calls. So nothing is caught for content inside `ios { }` / `android { }` blocks that did not
+execute for the platform being checked (to cover both OSes, dry-run once per platform).
 
 ## What it does not do
 
