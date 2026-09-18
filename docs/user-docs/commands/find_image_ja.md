@@ -10,10 +10,7 @@ id もラベルも持たないアイコンのように、セレクタで指せ�
 |---|---|
 | `findImage(label, threshold:, aspectRatioTolerance:, timeout:, scroll:, maxSwipes:)` | 見本画像に最も近い要素を1つ掴みます。見つからなくても失敗せず、空の要素を返します(`.isEmpty` で分岐します)。既定では今の画面を1回だけ見ます(`timeout` 既定 0)。出るのを待つときは `timeout` に秒数を渡します。 |
 | `findImages(label, threshold:, aspectRatioTolerance:)` | `threshold` を下回る要素を、近い順にすべて返します(`[FTElement]`)。今の画面を1回だけ見ます(待たない・スクロールしない)。`threshold: nil` なら絞りません。 |
-| `findImageWithScrollDown(label, threshold:, aspectRatioTolerance:, maxSwipes:)` | スクロールしながら `findImage` します(Up / Right / Left もあります)。 |
 | `existImage(label, threshold:, aspectRatioTolerance:, timeout:, scroll:, maxSwipes:)` | 見本画像が画面にあることを検証します(Shirates の Vision 版の `existImage` の移植)。探し方は `findImage` と同じで、**見つからなければ失敗**します。見つけた要素を返します。`timeout` を省くと、実行プロファイルの既定の待ち時間まで、出るのを待ちます(`exist` と同じ)。 |
-| `existImageWithScrollDown(label, threshold:, aspectRatioTolerance:, maxSwipes:)` | スクロールしながら `existImage` します(Up もあります。左右は `existImage(label, scroll: .right)` と書きます)。 |
-| `existImageWithoutScroll(label, threshold:, aspectRatioTolerance:, timeout:)` | `withScrollDown { }` などの中でも、スクロールせずに今の画面で `existImage` します。 |
 | `element.tap(holdSeconds:)` | 掴んだ要素をタップします。`findImage` / `findImages` で掴んだ要素は、見つけた枠の中心を座標でタップします。 |
 
 ## 探し方
@@ -52,13 +49,13 @@ if icon.isEmpty {
     // 見つからなかったとき
 }
 
-findImageWithScrollDown("[Share Icon]").tap()
+findImage("[Share Icon]", scroll: .down).tap()
 
 let stars = findImages("[Star Icon]")
 stars.first?.tap()
 
 existImage("[Camera Icon]")
-existImageWithScrollDown("[Share Icon]").tap()
+existImage("[Share Icon]", scroll: .down).tap()
 ```
 
 ## 注意点
@@ -73,7 +70,9 @@ existImageWithScrollDown("[Share Icon]").tap()
 - `existImage` が失敗したときは、失敗の文言に最も近かった距離と `threshold` が出て、判定に使ったスクリーンショットがレポートの
   そのステップに添えられます。待っている間は、間隔を広げながら(0.1 秒から最大 1 秒)スクリーンショットを撮り直して比べます。
 - `withScrollDown { }` などの中では、`findImage` も `existImage` もスクロールしながら探します。今の画面だけを見るときは
-  `existImageWithoutScroll` を使います。
+  `scroll: .noScroll` を渡します(`existImage("[Icon]", scroll: .noScroll)`)。
+- スクロールしながら探すときは `scroll:` を渡します(`findImage("[Icon]", scroll: .down)`)。`exist` や `select` と同じ書き方です。
+  `findImageWithScrollDown` のような関数名の別名はありません(書くとコンパイルエラーが正しい書き方を示します)。
 - 見本が1枚も無いときは、設定の誤りとして失敗します。
 - まれに、Mac の画像処理(Vision)が一時的にどの画像にも同じ特徴量を返す状態になります。そのまま比べると
   最初の候補を「見つけた」ことにしてしまうので、この状態は検知して失敗にします(文言は

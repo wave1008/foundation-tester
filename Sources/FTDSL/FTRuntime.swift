@@ -293,7 +293,8 @@ public final class FTDriveCore {
     var checkedObservedSelectors: Set<String> = []
 
     /// `withScrollDown { }` 等が積む既定のスクロール向き(Shirates の CodeExecutionContext.scrollDirection 相当)。
-    /// 各コマンドの `scroll:` が明示されていればそちらが勝つ。`.none` は withoutScroll { } の明示的な打ち消し
+    /// 各コマンドの `scroll:` が明示されていればそちらが勝つ(`scroll: .noScroll` = その1コマンドだけ送らない)。
+    /// `.none` は withoutScroll { } の明示的な打ち消し
     enum ScrollContext { case none, direction(FTScrollDirection) }
     var scrollContextStack: [ScrollContext] = []
 
@@ -302,9 +303,9 @@ public final class FTDriveCore {
     /// 中身はセレクタ式(Shirates も String 式)。ブロック内の `scroll:` 探索が継承する
     var scrollFrameStack: [String?] = []
 
-    /// コマンドが使うスクロール向き。明示 > ブロックの文脈 > 無し
-    func effectiveScroll(_ explicit: FTScrollDirection?) -> FTScrollDirection? {
-        if let explicit { return explicit }
+    /// コマンドが使うスクロール向き。明示(`.noScroll` は「送らない」の明示)> ブロックの文脈 > 無し
+    func effectiveScroll(_ explicit: FTScrollOption?) -> FTScrollDirection? {
+        if let explicit { return explicit.direction }
         switch scrollContextStack.last {
         case .direction(let d): return d
         case .none?, nil: return nil

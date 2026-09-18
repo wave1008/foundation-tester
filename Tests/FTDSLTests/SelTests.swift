@@ -190,7 +190,7 @@ final class SelTests: XCTestCase {
     }
 }
 
-/// tapWithScrollDown/Up/Right/Left・tapWithoutScroll・existWithScrollDown/Up・existWithoutScroll の
+/// tapWithScrollDown/Up/Right/Left・existWithScrollDown/Up・`scroll: .noScroll`(tap / exist)の
 /// Sel オーバーロード。実装は String 版と同じ経路(tap(_:Sel,scroll:)/exist(_:Sel,scroll:))へ
 /// 委譲するだけなので、ここでは「委譲そのものが正しいか」(スクロール方向の転記ミス等)を、
 /// 実際にドライバまで実行して確認する(SelTests 本体は FlowLocator 比較だけで済むが、
@@ -295,19 +295,19 @@ final class SelScrollVariantDispatchTests: XCTestCase {
         XCTAssertEqual(bySel.tapped, [1], "Sel 版がString版と異なる方向でスクロールしている")
     }
 
-    /// withScroll* の外側文脈があっても tapWithoutScroll は一切スワイプしない
+    /// withScroll* の外側文脈があっても tap(scroll: .noScroll) は一切スワイプしない
     /// (String 版・Sel 版とも、対象が現在画面に無ければタップされないまま終わる)
-    func testTapWithoutScrollSelDoesNotScrollEvenInsideOuterScrollContext() {
+    func testTapNoScrollSelDoesNotScrollEvenInsideOuterScrollContext() {
         let stringDriver = ScrollRevealDriver(revealDirection: .up)
         run(driver: stringDriver) {
-            withScrollDown { tapWithoutScroll("#target", timeout: 0) }
+            withScrollDown { tap("#target", timeout: 0, scroll: .noScroll) }
         }
         XCTAssertTrue(stringDriver.swipes.isEmpty, "String 版がスクロールしてしまった")
         XCTAssertTrue(stringDriver.tapped.isEmpty)
 
         let selDriver = ScrollRevealDriver(revealDirection: .up)
         run(driver: selDriver) {
-            withScrollDown { tapWithoutScroll(.id("target"), timeout: 0) }
+            withScrollDown { tap(.id("target"), timeout: 0, scroll: .noScroll) }
         }
         XCTAssertTrue(selDriver.swipes.isEmpty, "Sel 版がスクロールしてしまった")
         XCTAssertTrue(selDriver.tapped.isEmpty)
@@ -337,13 +337,13 @@ final class SelScrollVariantDispatchTests: XCTestCase {
         XCTAssertEqual(selElement.id, "target", "Sel 版がString版と異なる方向でスクロールしている")
     }
 
-    /// withScroll* の外側文脈があっても existWithoutScroll は一切スワイプせず、
+    /// withScroll* の外側文脈があっても exist(scroll: .noScroll) は一切スワイプせず、
     /// 現在画面に無ければ「空の FTElement」(id も nil)を返す
-    func testExistWithoutScrollSelDoesNotScrollEvenInsideOuterScrollContext() {
+    func testExistNoScrollSelDoesNotScrollEvenInsideOuterScrollContext() {
         let stringDriver = ScrollRevealDriver(revealDirection: .up)
         var stringElement: FTElement!
         run(driver: stringDriver) {
-            withScrollDown { stringElement = existWithoutScroll("#target", timeout: 0) }
+            withScrollDown { stringElement = exist("#target", timeout: 0, scroll: .noScroll) }
         }
         XCTAssertTrue(stringDriver.swipes.isEmpty, "String 版がスクロールしてしまった")
         XCTAssertNil(stringElement.id)
@@ -351,10 +351,27 @@ final class SelScrollVariantDispatchTests: XCTestCase {
         let selDriver = ScrollRevealDriver(revealDirection: .up)
         var selElement: FTElement!
         run(driver: selDriver) {
-            withScrollDown { selElement = existWithoutScroll(.id("target"), timeout: 0) }
+            withScrollDown { selElement = exist(.id("target"), timeout: 0, scroll: .noScroll) }
         }
         XCTAssertTrue(selDriver.swipes.isEmpty, "Sel 版がスクロールしてしまった")
         XCTAssertNil(selElement.id, "Sel 版のフォールバック FTElement が空でない")
+    }
+
+    /// `scroll:` の3値の解決(全コマンド共通の1箇所 = effectiveScroll)。
+    /// **省略(nil)と `.noScroll` は別** —— 省略は文脈に従い、`.noScroll` は文脈があっても送らない
+    func testScrollOptionResolvesExplicitOverContextAndNoScrollCancelsTheContext() {
+        let core = makeCore(driver: ScrollRevealDriver(revealDirection: .up))
+        XCTAssertNil(core.effectiveScroll(nil), "文脈なし・省略は送らない")
+        XCTAssertEqual(core.effectiveScroll(.left), .left)
+        XCTAssertNil(core.effectiveScroll(.noScroll))
+        core.runWithScrollContext(.direction(.down)) {
+            XCTAssertEqual(core.effectiveScroll(nil), .down, "省略は文脈に従う")
+            XCTAssertEqual(core.effectiveScroll(.up), .up, "明示の向きは文脈に勝つ")
+            XCTAssertNil(core.effectiveScroll(.noScroll), ".noScroll は文脈があっても送らない")
+        }
+        for direction in FTScrollDirection.allCases {
+            XCTAssertEqual(FTScrollOption(direction).direction, direction)
+        }
     }
 
     /// 実行時: 失敗ステップとして記録され、シナリオが中断すること(crash しない)。

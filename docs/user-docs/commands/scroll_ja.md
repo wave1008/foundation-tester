@@ -12,12 +12,10 @@
 | `withScrollDown { … }` / `withScrollUp` / `withScrollRight` / `withScrollLeft` | ブロック内の `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` を**すべてスクロール探索**にします(明示の `scroll:` があればそちらが優先)。**`notExist` は意味が変わります** —— 探索中に見つかった時点で失敗になります。 |
 | `withoutScroll { … }` | 外側の `withScroll*` を打ち消し、ブロック内は現在画面だけで解決します。 |
 | `withoutContainerInference { … }` | ブロック内のすべてのコマンドで、容器の推測に依存する補正(後述)を止めます。 |
+| `scroll: .noScroll`(`tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `findImage` / `existImage` の引数) | `withScroll*` の中でも、この1コマンドだけスクロールしません(現在画面だけで解決します)。引数を省いた場合は、ブロックの向きに従います。 |
 | `tapWithScrollDown(sel, maxSwipes:)` 等(4方向) | `tap(sel, scroll: .down)` の別名です。 |
-| `tapWithoutScroll(sel, timeout:)` | `withScroll*` の中でも、この1コマンドだけスクロールしません。 |
 | `existWithScrollDown(sel, maxSwipes:)` / `existWithScrollUp` | `exist(sel, scroll: .down)` の別名です。 |
-| `existWithoutScroll(sel, timeout:requireVisible:)` | `withScroll*` の中でも現在画面だけで存在検証します。 |
 | `selectWithScrollDown(sel, maxSwipes:)` 等(4方向) | `select(sel, scroll: .down)` の別名です。 |
-| `selectWithoutScroll(sel, timeout:requireVisible:)` | `withScroll*` の中でも現在画面だけで解決する `select` です。 |
 
 **`*WithScroll*` の別名は `maxSwipes:`(`select` 系は `requireVisible:` も)しか取らない糖衣です。**
 `timeout:` や `holdSeconds:` も渡したいときは本体の `scroll:` 引数を使ってください
@@ -82,7 +80,7 @@ scrollTo("#row_40", scrollFrame: "#list_rows")
 tap("設定", scroll: .down)          // 折り返しの下にある項目を探索してからタップ
 withScrollDown {
     tap("#row_40")                  // 書かなくても探索される
-    existWithoutScroll("#header")   // 固定ヘッダは現在画面で確認
+    exist("#header", scroll: .noScroll)   // 固定ヘッダは現在画面で確認
 }
 ```
 

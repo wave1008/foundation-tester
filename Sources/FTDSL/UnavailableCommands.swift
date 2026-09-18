@@ -4,7 +4,7 @@
 // 1往復で直る。**実体は無い**(呼べない)ので実行時の挙動には一切影響しない。
 //
 // 収録する基準は次の2つだけ。**思い付きで足さない**(増やすほど補完候補が汚れる):
-//   ① 対称性から実在すると誤解される別名(`existWithScrollLeft`・`*WithScroll*(timeout:)`)。
+//   ① 対称性から実在すると誤解される別名(`existWithScrollLeft`・`*WithScroll*(timeout:)`・`*WithoutScroll`)。
 //      置いていない理由は docs/commands.md「`*WithScroll*` の別名は…」を参照
 //   ② 他ツール(Appium / Espresso / Maestro 等)の頻出名で、fleetest に 1:1 の対応先があるもの
 //
@@ -31,6 +31,53 @@ public func notExistWithScrollLeft(_ selector: String, maxSwipes: Int = 0) { fat
 
 @available(*, unavailable, message: "fleetest has no notExistWithScrollRight. Write notExist(selector, scroll: .right) instead")
 public func notExistWithScrollRight(_ selector: String, maxSwipes: Int = 0) { fatalError() }
+
+// 画像系(findImage / existImage)は `*WithScroll*` の別名を1つも置かない(`scroll:` だけで指定する)。
+// Shirates Vision には実在する名前なので受け止める
+
+@available(*, unavailable, message: "fleetest has no findImageWithScrollDown. Write findImage(label, scroll: .down) instead")
+public func findImageWithScrollDown(_ label: String, threshold: Double = 0, aspectRatioTolerance: Double = 0, maxSwipes: Int = 0) { fatalError() }
+
+@available(*, unavailable, message: "fleetest has no findImageWithScrollUp. Write findImage(label, scroll: .up) instead")
+public func findImageWithScrollUp(_ label: String, threshold: Double = 0, aspectRatioTolerance: Double = 0, maxSwipes: Int = 0) { fatalError() }
+
+@available(*, unavailable, message: "fleetest has no findImageWithScrollRight. Write findImage(label, scroll: .right) instead")
+public func findImageWithScrollRight(_ label: String, threshold: Double = 0, aspectRatioTolerance: Double = 0, maxSwipes: Int = 0) { fatalError() }
+
+@available(*, unavailable, message: "fleetest has no findImageWithScrollLeft. Write findImage(label, scroll: .left) instead")
+public func findImageWithScrollLeft(_ label: String, threshold: Double = 0, aspectRatioTolerance: Double = 0, maxSwipes: Int = 0) { fatalError() }
+
+@available(*, unavailable, message: "fleetest has no existImageWithScrollDown. Write existImage(label, scroll: .down) instead")
+public func existImageWithScrollDown(_ label: String, threshold: Double = 0, aspectRatioTolerance: Double = 0, maxSwipes: Int = 0) { fatalError() }
+
+@available(*, unavailable, message: "fleetest has no existImageWithScrollUp. Write existImage(label, scroll: .up) instead")
+public func existImageWithScrollUp(_ label: String, threshold: Double = 0, aspectRatioTolerance: Double = 0, maxSwipes: Int = 0) { fatalError() }
+
+// `*WithoutScroll` は置かない(その1コマンドだけ送らない指定は `scroll: .noScroll`)。Shirates の名前なので受け止める
+
+@available(*, unavailable, message: "fleetest has no tapWithoutScroll. Write tap(selector, scroll: .noScroll) instead")
+public func tapWithoutScroll(_ selector: String, timeout: Double? = nil) { fatalError() }
+
+@available(*, unavailable, message: "fleetest has no tapWithoutScroll. Write tap(selector, scroll: .noScroll) instead")
+public func tapWithoutScroll(_ selector: Sel, timeout: Double? = nil) { fatalError() }
+
+@available(*, unavailable, message: "fleetest has no existWithoutScroll. Write exist(selector, scroll: .noScroll) instead")
+public func existWithoutScroll(_ selector: String, timeout: Double? = nil, requireVisible: Bool = true) { fatalError() }
+
+@available(*, unavailable, message: "fleetest has no existWithoutScroll. Write exist(selector, scroll: .noScroll) instead")
+public func existWithoutScroll(_ selector: Sel, timeout: Double? = nil, requireVisible: Bool = true) { fatalError() }
+
+@available(*, unavailable, message: "fleetest has no selectWithoutScroll. Write select(selector, scroll: .noScroll) instead")
+public func selectWithoutScroll(_ selector: String, timeout: Double? = nil, requireVisible: Bool = true) { fatalError() }
+
+@available(*, unavailable, message: "fleetest has no selectWithoutScroll. Write select(selector, scroll: .noScroll) instead")
+public func selectWithoutScroll(_ selector: Sel, timeout: Double? = nil, requireVisible: Bool = true) { fatalError() }
+
+@available(*, unavailable, message: "fleetest has no findImageWithoutScroll. Write findImage(label, scroll: .noScroll) instead")
+public func findImageWithoutScroll(_ label: String, threshold: Double = 0, aspectRatioTolerance: Double = 0, timeout: Double? = nil) { fatalError() }
+
+@available(*, unavailable, message: "fleetest has no existImageWithoutScroll. Write existImage(label, scroll: .noScroll) instead")
+public func existImageWithoutScroll(_ label: String, threshold: Double = 0, aspectRatioTolerance: Double = 0, timeout: Double? = nil) { fatalError() }
 
 // `*WithScroll*` の別名は maxSwipes(select 系は requireVisible も)しか取らない糖衣。
 // timeout / holdSeconds を渡したいときは本体の scroll: を使う(docs/commands.md)

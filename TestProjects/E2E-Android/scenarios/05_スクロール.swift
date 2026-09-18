@@ -172,7 +172,7 @@ class スクロールで折り返し下の要素に到達できること {
                     scrollToBottom(maxSwipes: 20)
                 }.expectation {
                     // 端まで送っていれば末尾行が**探索なしで**見えている
-                    existWithoutScroll("#row_40")
+                    exist("#row_40", scroll: .noScroll)
                 }
             }
             scene(17, "`scrollToTop` は端まで送る") {
@@ -180,7 +180,7 @@ class スクロールで折り返し下の要素に到達できること {
                     scrollToTop(maxSwipes: 20)
                 }.expectation {
                     // 端まで戻っていれば先頭行が**探索なしで**見えている
-                    existWithoutScroll("#row_01")
+                    exist("#row_01", scroll: .noScroll)
                 }
             }
             scene(18, "16.S0030: scrollDown(repeat:) と withScrollDown") {
@@ -203,7 +203,7 @@ class スクロールで折り返し下の要素に到達できること {
                         // 明示の scroll: を書かなくても探索される(狙いは 07 と同じ末尾行)
                         tap("#row_40")
                         // 固定ヘッダは現在画面にあるので、探索を打ち消して確認する
-                        existWithoutScroll("#txt_row_selected")
+                        exist("#txt_row_selected", scroll: .noScroll)
                     }
                 }.expectation {
                     select("#txt_row_selected").textIs("selected=row_40")
@@ -280,7 +280,7 @@ class スクロールで折り返し下の要素に到達できること {
             // Tests/FTBridgeClientTests/SwipeForScrollForwardingTests.swift がソース走査で固定している。
             // ここで見るのは**同じ経路を通ってデバイスに届くこと**だけ(CMP は 05_スクロール の Sel 版統合
             // @Test が同じ組を通しているので、文字列版はこちらの SUT 群が担う)
-            scene(7, "スクロール探索の別名族(tapWithScrollDown / existWithScrollUp / tapWithoutScroll)") {
+            scene(7, "スクロール探索の別名族(tapWithScrollDown / existWithScrollUp)と scroll: .noScroll") {
                 action {
                     tapWithScrollDown("#row_40", maxSwipes: 15)
                 }.expectation {
@@ -290,8 +290,8 @@ class スクロールで折り返し下の要素に到達できること {
                 }.action {
                     withScrollDown {
                         // 固定ヘッダは常に現在画面にある = スクロールせずに解決できる
-                        existWithoutScroll("#txt_row_selected")
-                        tapWithoutScroll("#btn_scroll_top")
+                        exist("#txt_row_selected", scroll: .noScroll)
+                        tap("#btn_scroll_top", scroll: .noScroll)
                     }
                 }.expectation {
                     exist("#row_01")
@@ -376,7 +376,7 @@ class スクロールで折り返し下の要素に到達できること {
                         exist("#tag_01")
                     }
                 }.expectation {
-                    existWithoutScroll("#tag_01")
+                    exist("#tag_01", scroll: .noScroll)
                 }
             }
             scene(5, "`withScrollRight { }` / `withScrollLeft { }` はブロック内を横方向の探索にする") {
@@ -387,13 +387,13 @@ class スクロールで折り返し下の要素に到達できること {
                     }
                 }.expectation {
                     // 探索が実際に画面へ入れたこと(現在画面だけで解決できる)
-                    existWithoutScroll("#tag_15")
+                    exist("#tag_15", scroll: .noScroll)
                 }.action {
                     withScrollLeft(scrollFrame: "#carousel_tags") {
                         exist("#tag_01", maxSwipes: 10)
                     }
                 }.expectation {
-                    existWithoutScroll("#tag_01")
+                    exist("#tag_01", scroll: .noScroll)
                 }
             }
         }
@@ -418,11 +418,11 @@ class スクロールで折り返し下の要素に到達できること {
                 action {
                     scrollToRightEdge(scrollFrame: "#carousel_tags", maxSwipes: 20)
                 }.expectation {
-                    existWithoutScroll("#tag_20")
+                    exist("#tag_20", scroll: .noScroll)
                 }.action {
                     scrollToLeftEdge(scrollFrame: "#carousel_tags", maxSwipes: 20)
                 }.expectation {
-                    existWithoutScroll("#tag_01")
+                    exist("#tag_01", scroll: .noScroll)
                 }
             }
             // 領域を指定した縦の端送り。Compose / Flutter の in-app は「枠が一致するスクロール容器」を AX で送り、
@@ -432,11 +432,11 @@ class スクロールで折り返し下の要素に到達できること {
                 action {
                     scrollToBottom(scrollFrame: "#list_rows", maxSwipes: 20)
                 }.expectation {
-                    existWithoutScroll("#row_40")
+                    exist("#row_40", scroll: .noScroll)
                 }.action {
                     scrollToTop(scrollFrame: "#list_rows", maxSwipes: 20)
                 }.expectation {
-                    existWithoutScroll("#row_01")
+                    exist("#row_01", scroll: .noScroll)
                 }
             }
             // 縦の固定ヘッダの scene と対の、横の番人。カルーセル直下の #txt_tag_selected はスクロールしない。
@@ -446,7 +446,7 @@ class スクロールで折り返し下の要素に到達できること {
                 action {
                     scrollRight(scrollFrame: "#txt_tag_selected", repeat: 2)
                 }.expectation {
-                    existWithoutScroll("#tag_01")
+                    exist("#tag_01", scroll: .noScroll)
                 }
             }
             // scrollFrame 無しは「画面中央を払う」(XCUITest / Android はそのとおり動く)。画面中央は縦リストの上なので、
@@ -457,7 +457,7 @@ class スクロールで折り返し下の要素に到達できること {
                     scrollRight()
                 }.expectation {
                     select("#txt_scroll_top").textIs("top=row_01")
-                    existWithoutScroll("#tag_01")
+                    exist("#tag_01", scroll: .noScroll)
                 }
             }
         }

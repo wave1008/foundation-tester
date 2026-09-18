@@ -13,12 +13,10 @@ to an edge.
 | `withScrollDown { … }` / `withScrollUp` / `withScrollRight` / `withScrollLeft` | Makes every `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` inside the block search by scrolling (an explicit `scroll:` on a command still wins). **`notExist` changes meaning** inside the block — it fails as soon as the element turns up while scrolling. |
 | `withoutScroll { … }` | Cancels an outer `withScroll*` — commands inside resolve against the current screen only. |
 | `withoutContainerInference { … }` | Disables the container-inference corrections (below) for every command inside the block. |
+| `scroll: .noScroll` (an argument of `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `findImage` / `existImage`) | Skips scrolling for this one command even inside a `withScroll*` block (it resolves against the current screen only). Leaving the argument out follows the direction of the block. |
 | `tapWithScrollDown(sel, maxSwipes:)` etc. (4 directions) | Alias for `tap(sel, scroll: .down)`. |
-| `tapWithoutScroll(sel, timeout:)` | Skips scrolling for this one command even inside a `withScroll*` block. |
 | `existWithScrollDown(sel, maxSwipes:)` / `existWithScrollUp` | Alias for `exist(sel, scroll: .down)`. |
-| `existWithoutScroll(sel, timeout:requireVisible:)` | Asserts existence against the current screen only, even inside a `withScroll*` block. |
 | `selectWithScrollDown(sel, maxSwipes:)` etc. (4 directions) | Alias for `select(sel, scroll: .down)`. |
-| `selectWithoutScroll(sel, timeout:requireVisible:)` | Resolves against the current screen only, even inside a `withScroll*` block. |
 
 **The `*WithScroll*` aliases only take `maxSwipes:`** (`select` ones also take `requireVisible:`).
 If you need `timeout:` or `holdSeconds:` too, use the base command's `scroll:` argument instead:
@@ -85,7 +83,7 @@ go faster is not a substitute — flick has no notion of having reached the edge
 tap("Settings", scroll: .down)      // scroll to find the item behind a fold, then tap it
 withScrollDown {
     tap("#row_40")                  // searched for even though not written explicitly
-    existWithoutScroll("#header")   // a fixed header, checked on the current screen only
+    exist("#header", scroll: .noScroll)   // a fixed header, checked on the current screen only
 }
 ```
 

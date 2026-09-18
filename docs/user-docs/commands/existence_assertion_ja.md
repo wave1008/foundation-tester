@@ -10,7 +10,7 @@
 | `notExist(selector, timeout:, scroll:, maxSwipes:)` | 要素が消えるまで待ちます(初回で不在なら即成功)。`scroll:` を指定すると、その方向へスクロールしながら探し、見つかった時点で不在検証を失敗させます。スクロールしても見つからなければ、通常どおり現在のビューポートでの消滅待ちに進みます。 |
 | `countIs(selector, count, timeout:)` | ツリー上の候補件数を検証します。可視性は見ません。`\|\|` は和集合の総数(重複は1度だけ)。ラベルで数えるときは型で絞ってください(例: `.button&&追加` — ボタンと内側のラベルは別要素として両方マッチするため)。 |
 | `existWithScrollDown(selector, maxSwipes:)` / `existWithScrollUp(selector, maxSwipes:)` | `exist(selector, scroll: .down)` / `exist(selector, scroll: .up)` のエイリアスです。`maxSwipes` だけを取ります。左右方向のエイリアスはありません。 |
-| `existWithoutScroll(selector, timeout:, requireVisible:)` | `withScrollDown` / `withScrollUp` / `withScrollRight` / `withScrollLeft` ブロックの内側でも、現在の画面だけで存在検証します。 |
+| `exist(selector, scroll: .noScroll)` | `withScrollDown` / `withScrollUp` / `withScrollRight` / `withScrollLeft` ブロックの内側でも、現在の画面だけで存在検証します。 |
 
 `waitForDisplay` / `waitForClose` はスクロールせずに要素の表示/消滅を待つコマンドです。
 [wait](./wait_ja.md) を参照してください。

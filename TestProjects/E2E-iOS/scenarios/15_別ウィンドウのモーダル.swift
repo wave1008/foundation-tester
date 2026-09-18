@@ -26,8 +26,8 @@ class 別ウィンドウのモーダルが木に載ること {
                     wait(2.5)
                 }.expectation {
                     // ここが落ちるなら「画面を覆っているのに木から見えない」状態
-                    existWithoutScroll("#txt_overlay_title")
-                    existWithoutScroll("#btn_overlay_close")
+                    exist("#txt_overlay_title", scroll: .noScroll)
+                    exist("#btn_overlay_close", scroll: .noScroll)
                 }
             }
             scene(2, "モーダルは操作できて、閉じると消える") {
@@ -54,10 +54,10 @@ class 別ウィンドウのモーダルが木に載ること {
                     wait(2.5)
                 }.expectation {
                     // バナーが見える(別ウィンドウが載っている)
-                    existWithoutScroll("#btn_banner_close")
+                    exist("#btn_banner_close", scroll: .noScroll)
                     // **背面も見える**(バナーは覆っていない = 触れる)。
                     // 「手前の窓だけ見せる」実装だとここが落ちる
-                    existWithoutScroll("#btn_show_dialog")
+                    exist("#btn_show_dialog", scroll: .noScroll)
                 }
             }
         }
@@ -113,9 +113,9 @@ class 別ウィンドウのモーダルが木に載ること {
                     suppressHandler {
                         // 抑止していなければ**1つ目のステップで閉じられて**ここが落ちる。
                         // 複数ステップ置くのは「1回だけ見逃す」実装と区別するため
-                        existWithoutScroll("#txt_overlay_title")
-                        existWithoutScroll("#btn_overlay_close")
-                        existWithoutScroll("#txt_overlay_title")
+                        exist("#txt_overlay_title", scroll: .noScroll)
+                        exist("#btn_overlay_close", scroll: .noScroll)
+                        exist("#txt_overlay_title", scroll: .noScroll)
                     }
                 }
             }
@@ -146,7 +146,7 @@ class 別ウィンドウのモーダルが木に載ること {
                         exist("#btn_show_dialog")
                     }.ifElse {
                         // 不成立 = 覆いを閉じずに答えている(実在しない id で必ず落とす)
-                        existWithoutScroll("#ifcanselect_answered_while_covered")
+                        exist("#ifcanselect_answered_while_covered", scroll: .noScroll)
                     }
                 }
             }

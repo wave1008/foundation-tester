@@ -1961,9 +1961,9 @@ select(.id("txt_result")).textIs("dialog=none")   // 検証はセレクタを取
   のような総称にすると leading-dot が効かなくなるため、各コマンドは String 版と `Sel` 版の
   **2 つの具体オーバーロード**を持ち、共通の impl(FTSelector を取る)へ畳む
 - **対象セレクタを取るコマンドは String / Sel が1対1**(2026-07-29 に非対称を解消)。
-  Shirates 由来の別名族(`tapWithScrollDown/Up/Right/Left` `tapWithoutScroll` /
-  `existWithScrollDown/Up` `existWithoutScroll` /
-  `selectWithScrollDown/Up/Right/Left` `selectWithoutScroll`)にも Sel 版がある。
+  Shirates 由来の別名族(`tapWithScrollDown/Up/Right/Left` /
+  `existWithScrollDown/Up` /
+  `selectWithScrollDown/Up/Right/Left`)にも Sel 版がある。
   **片方だけ足さない** — `Sel` を選ぶと別名族が使えない状態は「型付き経路を選ぶと機能が減る」
   ことを意味し、生成側を Sel 既定に寄せられなくなる。取りこぼしは
   `Tests/FTDSLTests/SelOverloadParityTests.swift` がソース走査で検出する
@@ -2294,8 +2294,10 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
 - **ブロック**: `withScrollDown { }` 系は `FTDriveCore.scrollContextStack` に積み、
   ブロック内の `tap`/`type`/`clearInput`/`select`/`exist`/`notExist` が `scroll:` 未指定なら
   **その向きで探索**する(`notExist` だけは意味が裏返る。上記「否定・状態・個数のアサーション」)。
-  `withoutScroll { }` と `tapWithoutScroll` / `existWithoutScroll` は積んだ文脈を1段打ち消す。
-  明示の `scroll:` 引数が常に最優先(`FTDriveCore.effectiveScroll`)
+  `withoutScroll { }` は積んだ文脈を1段打ち消す。1コマンドだけ打ち消すのは **`scroll: .noScroll`**
+  (`FTScrollOption` = 4方向 + `.noScroll`。`*WithoutScroll` という関数は置かない。**省略(nil)= 文脈に従う、とは別の値**)。
+  明示の `scroll:` 引数が常に最優先(`FTDriveCore.effectiveScroll` の1箇所で解く)。`FTScrollDirection` に
+  `.noScroll` を混ぜないのは、向きを取る側(`scrollTo(direction:)`・`withScroll*`・MCP)に書けてしまうため
 - **`textIs` 等の検証コマンドに `scroll:` は持たせない**(ユーザー決定 2026-07-27)。
   静止した画面を詳細に検証するためのもので、条件が揃うまで自動でスクロールする挙動は望まれていない。
   **再提案しない**

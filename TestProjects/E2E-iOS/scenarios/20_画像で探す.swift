@@ -1,5 +1,5 @@
 // 20_画像で探す.swift
-// fleetest 機能: `findImage` / `findImages` / `findImageWithScrollDown` / `existImage`(Shirates Vision の移植)と、
+// fleetest 機能: `findImage` / `findImages` / `findImage(scroll:)` / `existImage`(Shirates Vision の移植)と、
 // 見つけた要素の `FTElement.tap()`(見つけた枠の中心を座標で叩く)。
 // テンプレートは DefaultClassifier の見本(vision/classifiers/DefaultClassifier/@i/…)。
 // `[Switch]` / `[Checkbox]` / `[Radio]` はコントロール画面から、`[Keyboard Cover Nav]` はホームの最下行
@@ -64,7 +64,7 @@ class 画像で要素を探す {
     @Test("スクロールしながら画像で探す")
     func S0030() {
         scenario {
-            scene(1, "ホームの最下行を findImageWithScrollDown で見つける") {
+            scene(1, "ホームの最下行を findImage(scroll: .down) で見つける") {
                 condition {
                     launchApp()
                     tap("#tab_home")
@@ -73,7 +73,7 @@ class 画像で要素を探す {
                     // 他の行 0.084〜1.262 で、既定の閾値 0.15 だと最初の画面の #nav_gesture 等で止まる)。
                     // 閾値を絞るとスクロールしてから掴む。分類器のラベル一致だけで採る退行があると、
                     // 最初の画面の別の行で止まってここが赤になる(classificationConfirmed の witness)
-                    findImageWithScrollDown("[Keyboard Cover Nav]", threshold: 0.03).tap()
+                    findImage("[Keyboard Cover Nav]", threshold: 0.03, scroll: .down).tap()
                 }.expectation {
                     select("#txt_screen_title").textIs("キーボードの覆い")
                 }
@@ -93,12 +93,12 @@ class 画像で要素を探す {
                     existImage("[Switch]").idIs("sw_notify")
                 }
             }
-            scene(2, "ホームの最下行を existImageWithScrollDown で検証する") {
+            scene(2, "ホームの最下行を existImage(scroll: .down) で検証する") {
                 condition {
                     tap("#tab_home")
                 }.expectation {
                     // 閾値を絞る理由は S0030 と同じ(文字だけが違う同じ形の行)
-                    existImageWithScrollDown("[Keyboard Cover Nav]", threshold: 0.03).idIs("nav_keyboard_cover")
+                    existImage("[Keyboard Cover Nav]", threshold: 0.03, scroll: .down).idIs("nav_keyboard_cover")
                 }
             }
         }

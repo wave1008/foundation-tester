@@ -55,7 +55,7 @@ needs no changes ([details](overview/about.md)).
 ### Function/Property
 
 - Tap element
-    - [tap, tapWithScroll*, tapWithoutScroll, tapAppIcon](commands/tap.md)
+    - [tap, tapWithScroll*, tapAppIcon](commands/tap.md)
 - Select element
     - [select, selectWithScroll*, lastElement](commands/select.md)
     - [Find by image (findImage, findImages, existImage)](commands/find_image.md)

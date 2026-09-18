@@ -20,7 +20,7 @@ import FTCore
 /// 方向は**コンテンツ基準**(`.down` = 下に読み進める)
 @discardableResult
 public func exist(_ selector: String, timeout: Double? = nil, requireVisible: Bool = true,
-                  scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                  scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                   file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     existImpl(FTSelector.parse(selector), timeout: timeout, requireVisible: requireVisible,
               scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
@@ -28,7 +28,7 @@ public func exist(_ selector: String, timeout: Double? = nil, requireVisible: Bo
 
 @discardableResult
 public func exist(_ selector: Sel, timeout: Double? = nil, requireVisible: Bool = true,
-                  scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                  scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                   file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     existImpl(selector.ftSelector, timeout: timeout, requireVisible: requireVisible,
               scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
@@ -36,7 +36,7 @@ public func exist(_ selector: Sel, timeout: Double? = nil, requireVisible: Bool 
 
 @discardableResult
 private func existImpl(_ selector: FTSelector, timeout: Double?, requireVisible: Bool,
-                       scroll: FTScrollDirection?, maxSwipes: Int,
+                       scroll: FTScrollOption?, maxSwipes: Int,
                        file: StaticString, line: UInt) -> FTElement {
     let core = FTRuntime.requireCore(command: "exist")
     let scroll = core.effectiveScroll(scroll)
@@ -65,7 +65,7 @@ private func existImpl(_ selector: FTSelector, timeout: Double?, requireVisible:
 @discardableResult
 public func select(_ selector: String, timeout: Double? = nil,
                    requireVisible: Bool = true,
-                   scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                   scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     selectImpl(FTSelector.parse(selector), timeout: timeout,
               requireVisible: requireVisible,
@@ -75,7 +75,7 @@ public func select(_ selector: String, timeout: Double? = nil,
 @discardableResult
 public func select(_ selector: Sel, timeout: Double? = nil,
                    requireVisible: Bool = true,
-                   scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                   scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     selectImpl(selector.ftSelector, timeout: timeout,
               requireVisible: requireVisible,
@@ -85,7 +85,7 @@ public func select(_ selector: Sel, timeout: Double? = nil,
 @discardableResult
 private func selectImpl(_ selector: FTSelector, timeout: Double?,
                         requireVisible: Bool,
-                        scroll: FTScrollDirection?, maxSwipes: Int,
+                        scroll: FTScrollOption?, maxSwipes: Int,
                         file: StaticString, line: UInt) -> FTElement {
     let core = FTRuntime.requireCore(command: "select")
     let scroll = core.effectiveScroll(scroll)
@@ -166,32 +166,6 @@ public func selectWithScrollRight(_ selector: Sel, requireVisible: Bool = true,
            maxSwipes: maxSwipes, file: file, line: line)
 }
 
-/// withScroll* の中でも**この1コマンドだけ**現在画面から解決する(existWithoutScroll と同じ仕組み)
-@discardableResult
-public func selectWithoutScroll(_ selector: String,
-                                timeout: Double? = nil, requireVisible: Bool = true,
-                                file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    var element: FTElement?
-    FTRuntime.requireCore(command: "selectWithoutScroll").runWithScrollContext(.none) {
-        element = select(selector, timeout: timeout,
-                         requireVisible: requireVisible, file: file, line: line)
-    }
-    return element ?? FTElement(selector: FTSelector.parse(selector))
-}
-
-/// フォールバックは selector.ftSelector から作る(existWithoutScroll と同じ理由)
-@discardableResult
-public func selectWithoutScroll(_ selector: Sel,
-                                timeout: Double? = nil, requireVisible: Bool = true,
-                                file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    var element: FTElement?
-    FTRuntime.requireCore(command: "selectWithoutScroll").runWithScrollContext(.none) {
-        element = select(selector, timeout: timeout,
-                         requireVisible: requireVisible, file: file, line: line)
-    }
-    return element ?? FTElement(selector: selector.ftSelector)
-}
-
 // MARK: - findImage / findImages / existImage(画像で要素を探す・検証する。Shirates Vision の移植)
 
 /// **画像で要素を探す**(Shirates Vision の findImage)。テンプレートは DefaultClassifier の見本
@@ -206,12 +180,14 @@ public func selectWithoutScroll(_ selector: Sel,
 /// 記録の括弧書きに距離が出る(見つからなかったときは最も近かった距離)ので閾値の調整に使う。
 /// timeout: 既定 0 = 今の画面を1回だけ見る(`FindImage.defaultTimeout`。実行プロファイルの
 /// defaultTimeout には従わない)。出るのを待つなら秒数を渡す。scroll 指定時は位置ごとに1回だけ見る。
-/// scroll: 指定すると**その方向へスクロールしながら探す**(Shirates の findImage(allowScroll))
+/// scroll: 指定すると**その方向へスクロールしながら探す**(Shirates の findImage(allowScroll))。
+/// **`findImageWithScrollDown` 等の別名は置かない**(画像系は `scroll:` だけで指定する。
+/// Shirates の名前は UnavailableCommands.swift が受け止める)
 @discardableResult
 public func findImage(_ label: String, threshold: Double = FindImage.defaultThreshold,
                       aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
                       timeout: Double = FindImage.defaultTimeout,
-                      scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                      scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                       file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     findImageImpl(command: "findImage", label, threshold: threshold,
                   aspectRatioTolerance: aspectRatioTolerance, timeout: timeout,
@@ -222,7 +198,7 @@ public func findImage(_ label: String, threshold: Double = FindImage.defaultThre
 /// 違いは「見つからなかったときに落ちるか」だけで、それは action 名で executor が決める)
 private func findImageImpl(command: String, _ label: String, threshold: Double,
                            aspectRatioTolerance: Double, timeout: Double,
-                           scroll: FTScrollDirection?, maxSwipes: Int,
+                           scroll: FTScrollOption?, maxSwipes: Int,
                            file: StaticString, line: UInt) -> FTElement {
     let core = FTRuntime.requireCore(command: command)
     let scroll = core.effectiveScroll(scroll)
@@ -249,45 +225,13 @@ private func findImageImpl(command: String, _ label: String, threshold: Double,
 public func existImage(_ label: String, threshold: Double = FindImage.defaultThreshold,
                        aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
                        timeout: Double? = nil,
-                       scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                       scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                        file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     let core = FTRuntime.requireCore(command: "existImage")
     return findImageImpl(command: "existImage", label, threshold: threshold,
                          aspectRatioTolerance: aspectRatioTolerance,
                          timeout: timeout ?? core.defaultTimeout,
                          scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func existImageWithScrollDown(_ label: String, threshold: Double = FindImage.defaultThreshold,
-                                     aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
-                                     maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                                     file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    existImage(label, threshold: threshold, aspectRatioTolerance: aspectRatioTolerance,
-               scroll: .down, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func existImageWithScrollUp(_ label: String, threshold: Double = FindImage.defaultThreshold,
-                                   aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
-                                   maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                                   file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    existImage(label, threshold: threshold, aspectRatioTolerance: aspectRatioTolerance,
-               scroll: .up, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-/// withScroll* の中でも**この1コマンドだけ**現在画面で検証する(existWithoutScroll と同じ仕組み)
-@discardableResult
-public func existImageWithoutScroll(_ label: String, threshold: Double = FindImage.defaultThreshold,
-                                    aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
-                                    timeout: Double? = nil,
-                                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    var element: FTElement?
-    FTRuntime.requireCore(command: "existImageWithoutScroll").runWithScrollContext(.none) {
-        element = existImage(label, threshold: threshold, aspectRatioTolerance: aspectRatioTolerance,
-                             timeout: timeout, file: file, line: line)
-    }
-    return element ?? FTElement(imageMatch: nil, imageLabel: label)
 }
 
 /// **画像で要素を探し、閾値を下回るものを全部返す**(Shirates Vision の findImages)。
@@ -306,42 +250,6 @@ public func findImages(_ label: String, threshold: Double? = FindImage.defaultTh
                               commandError: FindImage.validate(aspectRatioTolerance: aspectRatioTolerance),
                               file: file, line: line)
     return (result.imageMatches ?? []).map { FTElement(imageMatch: $0, imageLabel: label) }
-}
-
-@discardableResult
-public func findImageWithScrollDown(_ label: String, threshold: Double = FindImage.defaultThreshold,
-                                    aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
-                                    maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    findImage(label, threshold: threshold, aspectRatioTolerance: aspectRatioTolerance,
-              scroll: .down, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func findImageWithScrollUp(_ label: String, threshold: Double = FindImage.defaultThreshold,
-                                  aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
-                                  maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                                  file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    findImage(label, threshold: threshold, aspectRatioTolerance: aspectRatioTolerance,
-              scroll: .up, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func findImageWithScrollRight(_ label: String, threshold: Double = FindImage.defaultThreshold,
-                                     aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
-                                     maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                                     file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    findImage(label, threshold: threshold, aspectRatioTolerance: aspectRatioTolerance,
-              scroll: .right, maxSwipes: maxSwipes, file: file, line: line)
-}
-
-@discardableResult
-public func findImageWithScrollLeft(_ label: String, threshold: Double = FindImage.defaultThreshold,
-                                    aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
-                                    maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    findImage(label, threshold: threshold, aspectRatioTolerance: aspectRatioTolerance,
-              scroll: .left, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 /// 何も掴んでいない `lastElement` が持つセレクタ。**実在しないラベル**なので、そのまま
@@ -823,21 +731,21 @@ private func textAssert(_ assert: String, verb: String, selector: FTSelector, ex
 /// scroll: 指定すると**その方向へスクロールしながら探し、見つかったら不在検証を即失敗させる**
 /// (exist(scroll:) の裏返し。見つからなければ従来どおり現在のビューポートでの消滅待ちへ進む)
 public func notExist(_ selector: String, timeout: Double? = nil,
-                     scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                     scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                      file: StaticString = #filePath, line: UInt = #line) {
     notExistImpl(FTSelector.parse(selector), timeout: timeout,
                 scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 public func notExist(_ selector: Sel, timeout: Double? = nil,
-                     scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                     scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                      file: StaticString = #filePath, line: UInt = #line) {
     notExistImpl(selector.ftSelector, timeout: timeout,
                 scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 private func notExistImpl(_ selector: FTSelector, timeout: Double?,
-                          scroll: FTScrollDirection?, maxSwipes: Int,
+                          scroll: FTScrollOption?, maxSwipes: Int,
                           file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: "notExist")
     let scroll = core.effectiveScroll(scroll)

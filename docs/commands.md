@@ -7,7 +7,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 引数の `sel` はセレクタ式(文字列)。**対象セレクタを取る全コマンドに型付きセレクタ(`Sel`)版が併設**
 されている(`tap(.id("login_btn"))` 等。意味・記録・ヒールは文字列版と同一で、`tapWithScrollDown`
-`existWithoutScroll` のような別名族も両方で書ける)。**例外は `scrollFrame:` 引数で、こちらは
+`existWithScrollDown` のような別名族も両方で書ける)。**例外は `scrollFrame:` 引数で、こちらは
 文字列のみ**(`scrollDown(scrollFrame: "#list")`。`Sel` 版のコマンドでも同じ)。
 
 ## 共通の引数と挙動
@@ -185,14 +185,12 @@ action を持たない欄など)—— 黙って「全部入った」にはし�
 | `withScrollDown { … }` / `withScrollUp` / `withScrollRight` / `withScrollLeft` | ブロック内の `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `findImage` / `existImage` を**すべてスクロール探索**にする(明示の `scroll:` があればそちらが優先)。**`notExist` は意味が変わる** — 探索中に見つかった時点で失敗になる |
 | `withoutScroll { … }` | 外側の `withScroll*` を打ち消し、ブロック内は現在画面だけで解決する |
 | `withoutContainerInference { … }` | ブロック内のすべてのコマンドで、容器の推測に依存する補正を止める(下記) |
+| `scroll: .noScroll`(`tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `findImage` / `existImage`) | `withScroll*` の中でも**この 1 コマンドだけ**スクロールしない(現在画面だけで解決する)。**引数を省くのとは別** —— 省略は「ブロックの文脈に従う」。`*WithoutScroll` という関数は置いていない(書くとコンパイルエラーがこの書き方を指す) |
 | `tapWithScrollDown(sel, maxSwipes:)` 等 4 方向 | `tap(sel, scroll: .down)` の別名(Shirates と同名) |
-| `tapWithoutScroll(sel, timeout:)` | `withScroll*` の中でも**この 1 コマンドだけ**スクロールしない |
 | `existWithScrollDown(sel, maxSwipes:)` / `existWithScrollUp` | `exist(sel, scroll: .down)` の別名 |
-| `existWithoutScroll(sel, timeout:requireVisible:)` | `withScroll*` の中でも現在画面だけで存在検証 |
 | `selectWithScrollDown(sel, maxSwipes:)` 等 4 方向 | `select(sel, scroll: .down)` の別名(Shirates と同名) |
-| `selectWithoutScroll(sel, timeout:requireVisible:)` | `withScroll*` の中でも現在画面だけで解決する `select` |
-| `findImage(label, threshold:aspectRatioTolerance:timeout:scroll:maxSwipes:)` / `findImageWithScrollDown` 等 4 方向 | **画像で要素を掴む**(Shirates Vision の移植・`Sources/FTCore/FindImage.swift`)。テンプレートは DefaultClassifier の見本(ラベルが `label` で**終わる**フォルダ・自 OS の `@i`/`@a` を先に試す)。a11y 要素を枠で切り出し、見本と**アスペクト比が許容幅に入る**要素だけを近い順に Vision の画像特徴量の距離で比べ、最も近い1件が `threshold`(既定 0.15)以下なら掴む。超えたらその1件を DefaultClassifier に掛け、短いラベルが一致し、**かつ**確信度が `threshold` 以下かそのラベルの見本のどれかとの距離が `threshold` 以下なら掴む(Shirates の `classifyFull` と同じ。ラベル一致だけでは採らない = 分類器は見本のどれかのラベルを必ず答えるので、無関係な画像にも探しているラベルを返しうる。`StepExecutor.classificationConfirmed`)。**見つからなくても失敗せず空要素**(`select` と同じ)。**`timeout` の既定は 0**(今の画面を1回だけ見る・実行プロファイルの defaultTimeout に従わない。`FindImage.defaultTimeout`。待つのは `existImage` の側)。テンプレートが無い・許容幅が 0 < t ≤ 0.5 の外・scrollFrame 不解決・**Vision の縮退**(照合1回につき一様な白の特徴量を1つ作り、見本との距離が 0 なら「何も見分けられない」として失敗。2026-09-19 に3 SUT の別プロセスで同時に全候補が距離 0 になり最初の候補を叩いた。`FindImage.isDegenerate`)だけ失敗。記録の括弧書きに距離(見つからなければ最も近い距離)と比べた候補数が出る。**文字だけが違う同じ形の行は距離 0.08〜0.15 で並び既定の閾値では取り違える**(`threshold` を絞る。E2E-iOS 20 の S0030)。所要は docs/performance-tuning.md §3.30。`lastElement` を差し替える |
-| `existImage(label, threshold:aspectRatioTolerance:timeout:scroll:maxSwipes:)` / `existImageWithScrollDown` / `existImageWithScrollUp` / `existImageWithoutScroll` | **画像が画面にあることの検証**(Shirates Vision の移植)。**探索は `findImage` と同じ1本**(`StepExecutor.executeFindImage`)で、違いは**見つからなければ失敗**(`failureKind` = `not-found`)することと、**`timeout` の既定が実行プロファイルの defaultTimeout**(`exist` と同じ。出るまで撮り直す。`scroll:` 指定時は位置ごとに1回)であることだけ。失敗の文言に最も近かった距離と閾値が出て、判定に使ったスクリーンショットをレポートのステップ行に添える(`StepOutcome.evidenceImage`)。アサーションとして数える(`FlowStep.isVerification`)。見つけた要素を返し `lastElement` を差し替える。**文言の距離は撮り直し・スクロールの全周回の最小**で、添えるスクリーンショットは最後の1枚。スクリーンショットが画像として読めなかったときは `the screenshot could not be read` と言い分ける(「似た形の要素が無い」と混ぜない)。**待っている間は間隔を倍々に広げながら照合を繰り返す**(`PollBackoff` = 0.1 秒から最大 1 秒。既定の 5 秒で 7 回ほど。1回 = スクリーンショット + 候補数ぶんの特徴量。docs/performance-tuning.md §3.30)。`existImageWithoutScroll` は `withScroll*` の中でも送らない |
+| `findImage(label, threshold:aspectRatioTolerance:timeout:scroll:maxSwipes:)`  | **画像で要素を掴む**(Shirates Vision の移植・`Sources/FTCore/FindImage.swift`)。テンプレートは DefaultClassifier の見本(ラベルが `label` で**終わる**フォルダ・自 OS の `@i`/`@a` を先に試す)。a11y 要素を枠で切り出し、見本と**アスペクト比が許容幅に入る**要素だけを近い順に Vision の画像特徴量の距離で比べ、最も近い1件が `threshold`(既定 0.15)以下なら掴む。超えたらその1件を DefaultClassifier に掛け、短いラベルが一致し、**かつ**確信度が `threshold` 以下かそのラベルの見本のどれかとの距離が `threshold` 以下なら掴む(Shirates の `classifyFull` と同じ。ラベル一致だけでは採らない = 分類器は見本のどれかのラベルを必ず答えるので、無関係な画像にも探しているラベルを返しうる。`StepExecutor.classificationConfirmed`)。**見つからなくても失敗せず空要素**(`select` と同じ)。**`timeout` の既定は 0**(今の画面を1回だけ見る・実行プロファイルの defaultTimeout に従わない。`FindImage.defaultTimeout`。待つのは `existImage` の側)。テンプレートが無い・許容幅が 0 < t ≤ 0.5 の外・scrollFrame 不解決・**Vision の縮退**(照合1回につき一様な白の特徴量を1つ作り、見本との距離が 0 なら「何も見分けられない」として失敗。2026-09-19 に3 SUT の別プロセスで同時に全候補が距離 0 になり最初の候補を叩いた。`FindImage.isDegenerate`)だけ失敗。記録の括弧書きに距離(見つからなければ最も近い距離)と比べた候補数が出る。**文字だけが違う同じ形の行は距離 0.08〜0.15 で並び既定の閾値では取り違える**(`threshold` を絞る。E2E-iOS 20 の S0030)。所要は docs/performance-tuning.md §3.30。`lastElement` を差し替える |
+| `existImage(label, threshold:aspectRatioTolerance:timeout:scroll:maxSwipes:)`  | **画像が画面にあることの検証**(Shirates Vision の移植)。**探索は `findImage` と同じ1本**(`StepExecutor.executeFindImage`)で、違いは**見つからなければ失敗**(`failureKind` = `not-found`)することと、**`timeout` の既定が実行プロファイルの defaultTimeout**(`exist` と同じ。出るまで撮り直す。`scroll:` 指定時は位置ごとに1回)であることだけ。失敗の文言に最も近かった距離と閾値が出て、判定に使ったスクリーンショットをレポートのステップ行に添える(`StepOutcome.evidenceImage`)。アサーションとして数える(`FlowStep.isVerification`)。見つけた要素を返し `lastElement` を差し替える。**文言の距離は撮り直し・スクロールの全周回の最小**で、添えるスクリーンショットは最後の1枚。スクリーンショットが画像として読めなかったときは `the screenshot could not be read` と言い分ける(「似た形の要素が無い」と混ぜない)。**待っている間は間隔を倍々に広げながら照合を繰り返す**(`PollBackoff` = 0.1 秒から最大 1 秒。既定の 5 秒で 7 回ほど。1回 = スクリーンショット + 候補数ぶんの特徴量。docs/performance-tuning.md §3.30)。`scroll: .noScroll` なら `withScroll*` の中でも送らない |
 | `findImages(label, threshold:aspectRatioTolerance:)` | `threshold` 未満(`nil` = 絞らない)を距離の小さい順に `[FTElement]` で返す。テンプレートは1枚(自 OS 用を優先)・**待たない・スクロールしない**。`lastElement` は差し替えない |
 | `element.tap(holdSeconds:)` | 掴んだ要素をタップ。**findImage / findImages で掴んだ要素は見つけた枠(画面に見えている部分)の中心を座標で叩く**(セレクタで引き直さない)・空の画像要素は失敗。それ以外は `tap(sel)` と同じ |
 
@@ -201,6 +199,13 @@ action を持たない欄など)—— 黙って「全部入った」にはし�
 (`tap(sel, scroll: .down, timeout: 2)`)。`existWithScrollLeft/Right` を置いていないのも同じ理由で、
 `exist(sel, scroll: .left)` と書けるためです。**置いていない別名を書いてもコンパイルエラーが
 正しい書き方を指します**(`tapWithScrollDown(sel, timeout: 2)` → 「本体の `scroll:` を使え」)。
+**画像系(`findImage` / `existImage`)には `*WithScroll*` の別名を1つも置いていません** —— スクロールは
+`scroll:` だけで指定します(`existImage("[Icon]", scroll: .down)`。ユーザー決定 2026-09-19)。Shirates の
+`findImageWithScrollDown` / `existImageWithScrollDown` 等を書くと、コンパイルエラーがこの書き方を指します。
+**「この1コマンドだけ送らない」も `scroll:` で指定します**(`scroll: .noScroll`。型は `FTScrollOption` =
+4方向 + `.noScroll`。`scrollTo(direction:)` や `withScroll*` が取る `FTScrollDirection` とは別の型なので、
+向きを取る側に `.noScroll` は書けません)。Shirates の `tapWithoutScroll` / `existWithoutScroll` /
+`selectWithoutScroll` は置いていません(同じくコンパイルエラーが書き方を指します)。
 
 レポートに出る注記(**失敗ではなく観測**。読み方):
 
@@ -238,7 +243,7 @@ flick は**ジェスチャそのものが目的**のコマンドで端の判定�
 tap("設定", scroll: .down)          // 折り返しの下にある項目を探索してからタップ
 withScrollDown {
     tap("#row_40")                  // ブロック内は書かなくても探索される
-    existWithoutScroll("#header")   // 固定ヘッダは現在画面で確認
+    exist("#header", scroll: .noScroll)   // 固定ヘッダは現在画面で確認
 }
 ```
 

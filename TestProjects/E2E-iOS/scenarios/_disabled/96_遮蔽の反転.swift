@@ -47,7 +47,7 @@ class 遮蔽の反転 {
                 }.expectation {
                     // 木には居り、画面内にも居る。覆いは無地なので Tier-1 のインク足切りを
                     // 通過し、**FM に訊く経路だけ**が反転を出せる
-                    existWithoutScroll("#txt_paint_target")
+                    exist("#txt_paint_target", scroll: .noScroll)
                 }
             }
         }
@@ -64,7 +64,7 @@ class 遮蔽の反転 {
                 }.action {
                     tap("#btn_toggle_paint")
                 }.expectation {
-                    existWithoutScroll("#txt_paint_target")
+                    exist("#txt_paint_target", scroll: .noScroll)
                 }
             }
         }

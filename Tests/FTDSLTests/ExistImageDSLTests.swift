@@ -1,6 +1,6 @@
 // existImage の DSL の写像(FTCore の単体は FlowStep を直接作るので、DSL 側の渡し忘れ・反転は通ってしまう):
 // 見つけた要素を返す / 見つからなければシナリオを中断する / timeout 省略 = core.defaultTimeout /
-// existImageWithoutScroll は withScroll* の中でも送らない
+// `scroll: .noScroll` は withScroll* の中でも送らない / スクロールは `scroll:` だけで指定する
 
 import CoreGraphics
 import Foundation
@@ -93,6 +93,24 @@ final class ExistImageDSLTests: XCTestCase {
                     emit: { _ in })
     }
 
+    /// 画像系のスクロールは `scroll:` で指定する(関数名の別名は置かない)。明示の向きが送りに届くこと
+    func testScrollParameterDrivesTheSearch() throws {
+        let root = try makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        func swipes(_ body: @escaping () -> Void) -> [FTSwipeDirection] {
+            let driver = ScreenDriver()
+            let core = makeCore(driver: driver, root: root, defaultTimeout: 0)
+            FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+            defer { FTRuntime.tearDown() }
+            scenario { scene(1, "s") { FTDSL.expectation { body() } } }
+            return driver.swipes
+        }
+        XCTAssertTrue(swipes { existImage("[Circle Icon]", threshold: -1) }.isEmpty, "scroll 無指定は送らない")
+        // コンテンツ .down = 指は上へ(FTScrollDirection.swipe)
+        XCTAssertEqual(Set(swipes { existImage("[Circle Icon]", threshold: -1, scroll: .down) }), [.up])
+        XCTAssertEqual(Set(swipes { findImage("[Circle Icon]", threshold: -1, scroll: .up) }), [.down])
+    }
+
     private func failures(_ core: FTDriveCore) -> [String] {
         core.finalRecord.scenes.flatMap(\.steps).compactMap { step -> String? in
             if case .failed(let reason) = step.status { return reason }
@@ -156,7 +174,7 @@ final class ExistImageDSLTests: XCTestCase {
         XCTAssertGreaterThan(screenshots(timeout: nil), once, "省略時は defaultTimeout まで撮り直して待つこと")
     }
 
-    func testExistImageWithoutScrollDoesNotScrollInsideAScrollContext() throws {
+    func testNoScrollDoesNotScrollInsideAScrollContext() throws {
         let root = try makeProject()
         defer { try? FileManager.default.removeItem(at: root) }
         func swipes(_ body: @escaping () -> Void) -> [FTSwipeDirection] {
@@ -169,6 +187,8 @@ final class ExistImageDSLTests: XCTestCase {
         }
         // 陽性対照: 同じ文脈で existImage は送る(見つからないので端まで)。これが空だと下の検査は何も言えない
         XCTAssertFalse(swipes { existImage("[Circle Icon]", threshold: -1) }.isEmpty)
-        XCTAssertTrue(swipes { existImageWithoutScroll("[Circle Icon]", threshold: -1) }.isEmpty)
+        XCTAssertTrue(swipes { existImage("[Circle Icon]", threshold: -1, scroll: .noScroll) }.isEmpty)
+        XCTAssertFalse(swipes { findImage("[Circle Icon]", threshold: -1) }.isEmpty)
+        XCTAssertTrue(swipes { findImage("[Circle Icon]", threshold: -1, scroll: .noScroll) }.isEmpty)
     }
 }

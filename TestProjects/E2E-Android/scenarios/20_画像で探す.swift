@@ -1,5 +1,5 @@
 // 20_画像で探す.swift
-// fleetest 機能: `findImage` / `findImages` / `findImageWithScrollDown` / `existImage`(Shirates Vision の移植)と、
+// fleetest 機能: `findImage` / `findImages` / `findImage(scroll:)` / `existImage`(Shirates Vision の移植)と、
 // 見つけた要素の `FTElement.tap()`(見つけた枠の中心を座標で叩く)。
 // テンプレートは DefaultClassifier の見本(vision/classifiers/DefaultClassifier/Controls/ と Home/)。
 // **見本は Android だけ**(`@a`)。
@@ -68,13 +68,13 @@ class 画像で要素を探す {
     @Test("スクロールしながら画像で探す")
     func S0030() {
         scenario {
-            scene(1, "ホームの最下行を findImageWithScrollDown で見つける") {
+            scene(1, "ホームの最下行を findImage(scroll: .down) で見つける") {
                 condition {
                     launchApp()
                     tap("#tab_home")
                 }.action {
                     // 文字だけが違う同じ形の行は距離で見分けにくい(E2E-iOS の 20 と同じ理由で閾値を絞る)
-                    findImageWithScrollDown("[Diagnostics Nav]", threshold: 0.03).tap()
+                    findImage("[Diagnostics Nav]", threshold: 0.03, scroll: .down).tap()
                 }.expectation {
                     select("#txt_screen_title").textIs("診断")
                 }
@@ -94,12 +94,12 @@ class 画像で要素を探す {
                     existImage("[Switch]").idIs("sw_notify")
                 }
             }
-            scene(2, "ホームの最下行を existImageWithScrollDown で検証する") {
+            scene(2, "ホームの最下行を existImage(scroll: .down) で検証する") {
                 condition {
                     tap("#tab_home")
                 }.expectation {
                     // 閾値を絞る理由は S0030 と同じ(文字だけが違う同じ形の行)
-                    existImageWithScrollDown("[Diagnostics Nav]", threshold: 0.03).idIs("nav_diagnostics")
+                    existImage("[Diagnostics Nav]", threshold: 0.03, scroll: .down).idIs("nav_diagnostics")
                 }
             }
         }

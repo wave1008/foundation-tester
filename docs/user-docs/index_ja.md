@@ -54,7 +54,7 @@ FM を使いません。テストはエージェント(MCP)に
 ### 関数/プロパティ
 
 - 要素のタップ
-    - [tap, tapWithScroll*, tapWithoutScroll, tapAppIcon](commands/tap_ja.md)
+    - [tap, tapWithScroll*, tapAppIcon](commands/tap_ja.md)
 - 要素の選択
     - [select, selectWithScroll*, lastElement](commands/select_ja.md)
     - [画像で探す(findImage, findImages, existImage)](commands/find_image_ja.md)
