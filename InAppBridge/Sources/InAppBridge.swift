@@ -1002,16 +1002,35 @@ final class FTInAppBridge {
         // なる(2026-08-01 実測 scrollTo 9.5s / scrollToTop 14.2s。同じ画面が SwiftUI ホスト
         // では 1.1s / 1.5s)。
         if ["compose", "flutter"].contains(uiFramework), req.scroll == true {
-            // **領域指定つきは受けない**(2026-08-02 実測で確定)。自前描画のフレームワークでは
-            // hitTest も AX ツリーも「画面のどこか」までしか絞れず、指定領域の外を指しても
-            // 画面本体のスクロールが受理してしまう —— E2E-Flutter で「固定ヘッダを指定したのに
-            // リストが動く」を実際に踏んだ。**黙って別の領域を動かすより 501 で XCUITest へ回す**
-            // (あちらは座標を実際に撃てるので領域どおりに動く)。
-            // UIKit/SwiftUI 側(下の contentOffset 経路)は矩形で対象を選べるので受ける
-            if req.path != nil {
-                throw InAppError(501, "the in-app engine cannot confine a scroll to a region on"
-                    + " \(uiFramework) (self-rendered: neither hitTest nor AX can narrow the"
-                    + " area). hybrid falls back to XCUITest")
+            // **領域指定は「枠が一致するスクロール可能な AX 要素」だけを動かす**。2 点(始点・終点)からは
+            // hitTest も AX の走査も「画面のどこか」までしか絞れず、固定ヘッダを指定してもリストが動いた
+            // (E2E-Flutter)。ホストが送る `path.region`(scrollFrame の要素の枠)と一致する要素が
+            // 無ければ —— 固定ヘッダのように、指定がスクロール容器でない場合も —— 従来どおり 501 で
+            // XCUITest へ回す(あちらは座標を実際に撃てるので領域どおりに動く)。
+            if let path = req.path {
+                guard let region = path.region else {
+                    throw InAppError(501, "the in-app engine cannot confine a scroll to a region on"
+                        + " \(uiFramework) without the region's frame (self-rendered: neither hitTest nor"
+                        + " AX can narrow the area from two points). hybrid falls back to XCUITest")
+                }
+                var outcome = RegionScroll.noMatch
+                try performSettlingIfMoved { window -> Bool in
+                    outcome = Self.scrollRegion(region, in: window, finger: req.direction)
+                    return outcome == .scrolled
+                }
+                switch outcome {
+                case .scrolled:
+                    return ok()
+                case .refused:
+                    // 一致した容器そのものが断った = **その向きの端**(対象が1つに決まっているので
+                    // 「スクロールできない画面」と区別できる。Flutter は端で false を返す)。
+                    // 端送りならその事実を返す(ホストが署名の2回不変を待たずに切り上げられる)
+                    return ok(atEdge: req.edge == true)
+                case .noMatch:
+                    throw InAppError(501, "no scrollable element on this screen has the frame of the"
+                        + " requested region on \(uiFramework) (the in-app engine only scrolls a region"
+                        + " that is itself a scroll container). hybrid falls back to XCUITest")
+                }
             }
             var scrolled = false
             try performSettlingIfMoved { window -> Bool in
@@ -1101,16 +1120,44 @@ final class FTInAppBridge {
     /// 501 を返しホストの XCUITest フォールバックに委ねる(端での 1 回ぶんは無駄になるが、
     /// 「スクロールできない画面で黙って成功する」より安全)
     private static func scrollViaAccessibility(_ root: NSObject, finger: FTSwipeDirection) -> Bool {
-        // 指の向き = コンテンツと逆(指を上へ = 次のページへ送る)
-        let direction: UIAccessibilityScrollDirection
-        switch finger {
-        case .up: direction = .down
-        case .down: direction = .up
-        case .left: direction = .right
-        case .right: direction = .left
-        }
         var visited = 0
-        return scrollWalk(root, direction, visited: &visited)
+        return scrollWalk(root, accessibilityDirection(finger: finger), visited: &visited)
+    }
+
+    /// UIAccessibilityScrollDirection の向きは**縦と横で基準が違う**: 縦はスクロールバーの動く向き
+    /// (= 指と逆。指を上へ = `.down`)、横は**指の向きそのもの**(指を左へ = `.left` = 右の内容を出す)。
+    /// Flutter のエンジンがこの解釈で写像している(縦は逆・横はそのまま)。横を縦と同じく反転していた頃は
+    /// 逆向きに送って端で断られ、E2E-Flutter の横カルーセルが動かなかった
+    private static func accessibilityDirection(finger: FTSwipeDirection) -> UIAccessibilityScrollDirection {
+        switch finger {
+        case .up: return .down
+        case .down: return .up
+        case .left: return .left
+        case .right: return .right
+        }
+    }
+
+    enum RegionScroll { case scrolled, refused, noMatch }
+
+    /// 領域指定のスクロール(自前描画)。枠が region と一致するスクロール可能な要素(`ScrollRegionMatch`)を
+    /// **門**にし、その要素を根に AX の scroll を走査で撃つ(内側の容器から)。一致する要素が無ければ noMatch、
+    /// あるのに全部が断ったら refused(= その向きの端)。
+    /// **容器そのものに撃つだけでは足りない**: Compose の容器(scroll 印の付く要素)は scroll を断り、
+    /// 受理するのは内側の要素だった(E2E-CMP で実測: 撃っても動かず、端と誤認して端送りが即終わった)。
+    /// 根を容器に絞るので、領域の外の要素は撃たない。**枠はスナップショットと同じ走査で出す** =
+    /// ホストが region を作った枠と同じ規則(別の走査だと同じ要素でも枠がずれて一致しない)
+    private static func scrollRegion(_ region: FTRect, in window: UIWindow,
+                                     finger: FTSwipeDirection) -> RegionScroll {
+        let snapshot = InAppSnapshot.capture(window: window)
+        let refs = ScrollRegionMatch.candidates(in: snapshot.elements, region: region)
+        guard !refs.isEmpty else { return .noMatch }
+        let direction = accessibilityDirection(finger: finger)
+        for ref in refs {
+            guard let node = snapshot.nodes[ref] else { continue }
+            var visited = 0
+            if scrollWalk(node, direction, visited: &visited) { return .scrolled }
+        }
+        return .refused
     }
 
     /// 走査上限。AX ツリーは深いことがあるので暴走を止める(実測の受理は 20〜100 要素目)
@@ -1230,11 +1277,11 @@ final class FTInAppBridge {
         return best
     }
 
-    /// 動かすスクロールビューを選ぶ。**領域指定(path)があれば始点を含むものを優先する** ——
+    /// 動かすスクロールビューを選ぶ。**領域指定(path)があれば始点を含むものだけ** ——
     /// 始点はホストが対象領域の内側に取っているので、これで「指定と違う領域が動く」ことがなくなる。
-    /// 入れ子(リストの中の横カルーセル等)では**内側 = 面積が小さい方**を採る:
-    /// 指定された領域そのものを動かしたいのであって、その親ではない。
-    /// 含むものが無ければ従来どおり面積最大へ落ちる(領域が UIScrollView でない画面もあるため)
+    /// 入れ子(リストの中の横カルーセル等)では、その向きに余地のあるもののうち**内側 = 面積が小さい方**を採る
+    /// (余地の無い内側を飛ばして外側が動くのは、実機でも払う向きが合わないと親が動くのと同じ)。
+    /// 含むものが無ければ nil(= 何も動かさない)。領域指定が無いときだけ面積最大を採る
     private static func target(_ scrollViews: [UIScrollView], direction: FTSwipeDirection,
                                path: FTSwipePath?) -> UIScrollView? {
         guard let path else { return largestWithRoom(scrollViews, direction: direction) }
@@ -1243,11 +1290,12 @@ final class FTInAppBridge {
             guard hasRoom(sv, direction), let window = sv.window else { return false }
             return sv.convert(sv.bounds, to: window).contains(point)
         }
-        if let innermost = containing.min(by: { $0.bounds.width * $0.bounds.height
-                                                < $1.bounds.width * $1.bounds.height }) {
-            return innermost
-        }
-        return largestWithRoom(scrollViews, direction: direction)
+        // **領域指定があるときは面積最大へ落とさない**: 始点を含む(余地のある)スクロールビューが無い =
+        // 指定領域はスクロールしない(か端)なので何も動かさない(呼び出し側が no-op の 200 にする)。
+        // 落とすと指定と違う領域が黙って動く —— E2E-RN で、カルーセル直下の固定の帯を指定して横に払うと
+        // 横に余地のある唯一のスクロールビュー = カルーセルが動いた(05_スクロール S0090 scene 8)
+        return containing.min(by: { $0.bounds.width * $0.bounds.height
+                                    < $1.bounds.width * $1.bounds.height })
     }
 
     /// 面積最大の、**その向きに実際にスクロール余地がある**スクロールビュー。

@@ -388,7 +388,15 @@ public enum BridgeAPI {
     /// v110 (in-app only): the v109 path waits for the screen to settle before the synthetic touch again
     /// (a tap right after rotateTo was swallowed while the rotation was still running); it only skips the
     /// 250ms pause and the second re-read + activate.
-    public static let bridgeProtocolVersion = 111
+    /// v112 (in-app only): a scroll swipe with a region (`FTSwipePath.region` = the scrollFrame element's frame)
+    /// on a self-rendered app (Compose / Flutter) scrolls the scrollable AX element whose frame matches it
+    /// (`ScrollRegionMatch`) instead of answering 501; no match still answers 501, and a matched element
+    /// refusing the scroll is reported as the edge. The AX scroll is walked from the matched element (Compose's
+    /// container itself refuses; an inner element scrolls it), and a horizontal finger direction now maps to
+    /// the same UIAccessibilityScrollDirection (horizontal follows the finger; vertical is reversed).
+    /// UIKit / SwiftUI / RN: a scroll with a region no longer falls back to the largest scroll view when no
+    /// scroll view under the region's start point can move (it moved an unrelated carousel); it is a no-op.
+    public static let bridgeProtocolVersion = 112
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1342,16 +1350,46 @@ public struct FTSwipePath: Codable, Equatable, Sendable {
     public var fromY: Double
     public var toX: Double
     public var toY: Double
+    /// scrollFrame で指定した要素の矩形(`ScrollGeometry.path` の container)。**in-app の自前描画
+    /// (Compose / Flutter)だけが読む**: 2 点からは「どの容器か」が絞れない(hitTest も AX の走査も
+    /// 画面のどこかまでしか絞れず、固定ヘッダを指定してもリストが動いた)ので、枠がこれと一致する
+    /// スクロール可能な AX 要素だけを動かす。nil = 領域の指定なし(in-app の自前描画は 501 で XCUITest へ)
+    public var region: FTRect?
 
-    public init(fromX: Double, fromY: Double, toX: Double, toY: Double) {
+    public init(fromX: Double, fromY: Double, toX: Double, toY: Double, region: FTRect? = nil) {
         self.fromX = fromX
         self.fromY = fromY
         self.toX = toX
         self.toY = toY
+        self.region = region
     }
 
     /// 始点から終点までの距離(velocity の算出に使う。縦横どちらかしか動かさないので単純和でよい)
     public var distance: Double { (toX - fromX).magnitude + (toY - fromY).magnitude }
+}
+
+/// `FTSwipePath.region` と枠が一致するスクロール可能な要素を選ぶ(in-app の自前描画が使う純粋な判定)。
+public enum ScrollRegionMatch {
+    /// 一致とみなす重なり(IoU)の下限。region はホストが**同じスナップショットの要素の枠**から作るので、
+    /// レイアウトが動いていなければ完全一致(1.0)になる。0.9 は送るまでの間の小さなずれだけを許す値で、
+    /// 固定ヘッダの帯(リストの 1 割未満の高さ)がリストの枠と一致することは無い
+    public static let minimumOverlap = 0.9
+
+    /// 一致する要素の ref を**内側から**(木の後ろから)返す。同じ枠で入れ子になった容器は内側が実体
+    public static func candidates(in elements: [ElementInfo], region: FTRect) -> [Int] {
+        elements.filter { $0.scrollable == true && overlap($0.frame, region) >= minimumOverlap }
+            .map(\.ref).reversed()
+    }
+
+    /// 重なり(交差の面積 ÷ 和集合の面積)。どちらかの面積が 0 なら 0
+    public static func overlap(_ a: FTRect, _ b: FTRect) -> Double {
+        let w = min(a.x + a.width, b.x + b.width) - max(a.x, b.x)
+        let h = min(a.y + a.height, b.y + b.height) - max(a.y, b.y)
+        guard w > 0, h > 0 else { return 0 }
+        let inter = w * h
+        let union = a.width * a.height + b.width * b.height - inter
+        return union > 0 ? inter / union : 0
+    }
 }
 
 public struct SwipeRequest: Codable {

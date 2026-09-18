@@ -36,7 +36,7 @@ public enum ScrollGeometry {
         let start = clampMargin(startMarginRatio)
         let end = clampMargin(endMarginRatio)
 
-        let path: FTSwipePath
+        var path: FTSwipePath
         switch direction {
         case .down:   // 指は上へ: 下の縁から上の縁へ
             let x = area.centerX
@@ -55,6 +55,9 @@ public enum ScrollGeometry {
             path = FTSwipePath(fromX: area.x + area.width * start, fromY: y,
                                toX: area.x + area.width * (1 - end), toY: y)
         }
+        // スクロール目的の経路だけに載せる(panPath / flickPath はジェスチャそのものが目的なので載せない)。
+        // 交差ではなく**要素の矩形そのもの**を渡す(in-app はスナップショットと同じ枠で突き合わせる)
+        path.region = container
         return path.distance >= minUsableDistance ? path : nil
     }
 

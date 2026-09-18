@@ -407,6 +407,30 @@ class スクロールで折り返し下の要素に到達できること {
                     existWithoutScroll("#tag_01")
                 }
             }
+            // 領域を指定した縦の端送り。Compose / Flutter の in-app は「枠が一致するスクロール容器」を AX で送り、
+            // 容器が断ったら端と読む(Flutter は端で断る)。途中の断りを端と誤認すると #row_40 に届かずここで落ちる。
+            // 他の SUT は同じ指定を従来の経路(contentOffset / 実スワイプ)で撃つ
+            scene(7, "`scrollToBottom` / `scrollToTop` に scrollFrame を指定すると縦リストの端まで送る") {
+                action {
+                    scrollToBottom(scrollFrame: "#list_rows", maxSwipes: 20)
+                }.expectation {
+                    existWithoutScroll("#row_40")
+                }.action {
+                    scrollToTop(scrollFrame: "#list_rows", maxSwipes: 20)
+                }.expectation {
+                    existWithoutScroll("#row_01")
+                }
+            }
+            // 縦の固定ヘッダの scene と対の、横の番人。カルーセル直下の #txt_tag_selected はスクロールしない。
+            // 横にスクロールできるのはカルーセルだけなので、指定を無視して画面のどこかを送る実装だと
+            // カルーセルが動いて #tag_01 が消える(scene 6 の終わりで #tag_01 が見えている状態から始める)
+            scene(8, "スクロールしない横の帯を指定して払ってもカルーセルは動かない") {
+                action {
+                    scrollRight(scrollFrame: "#txt_tag_selected", repeat: 2)
+                }.expectation {
+                    existWithoutScroll("#tag_01")
+                }
+            }
         }
     }
 
