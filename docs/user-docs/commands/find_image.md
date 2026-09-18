@@ -1,0 +1,77 @@
+# findImage, findImages
+
+Finds the element on the screen whose appearance is nearest to a sample image (a port of `findImage` / `findImages`
+from Shirates' Vision edition). Use it to grab elements a selector cannot point at, such as icons with neither an id nor a label.
+
+## Functions
+
+| function | description |
+|---|---|
+| `findImage(label, threshold:, aspectRatioTolerance:, timeout:, scroll:, maxSwipes:)` | Grabs the one element nearest to the sample image. Returns an empty element instead of failing when nothing is found (branch with `.isEmpty`). By default it looks at the current screen once (`timeout` defaults to 0). Pass seconds to `timeout` to wait for it to appear. |
+| `findImages(label, threshold:, aspectRatioTolerance:)` | Returns every element below `threshold`, nearest first (`[FTElement]`). Looks at the current screen once (no waiting, no scrolling). `threshold: nil` returns every candidate. |
+| `findImageWithScrollDown(label, threshold:, aspectRatioTolerance:, maxSwipes:)` | `findImage` while scrolling down (Up / Right / Left also exist). |
+| `element.tap(holdSeconds:)` | Taps the grabbed element. An element grabbed by `findImage` / `findImages` is tapped at the centre of the found frame. |
+
+## How it searches
+
+1. It looks up the sample images of DefaultClassifier. It uses the images in folders whose label ends with `label`,
+   trying the ones for the running OS (marked `@i` for iOS / `@a` for Android) first.
+2. It cuts the accessibility elements of the screen out of the screenshot by their frames. Only the elements whose
+   **aspect ratio is close** to the sample (tolerance `aspectRatioTolerance`, 0.2 by default) become candidates, closest first.
+3. For each candidate it measures the **image feature print distance** to the sample (Vision's FeaturePrint; smaller is more similar).
+4. `findImage` grabs the nearest one when its distance is at most `threshold` (0.15 by default). Otherwise it
+   classifies that one with DefaultClassifier (the same classifier as [imageIs](image_assertion.md)). It grabs it only when the
+   label matches and, in addition, its distance to one of that label's samples is at most `threshold` (or the classification
+   confidence is at most `threshold`). A matching label alone is not enough, because the classifier always answers one of
+   the sample labels.
+
+## Where the sample images go
+
+It uses the same samples as [imageIs](image_assertion.md).
+
+```
+<project>/vision/classifiers/DefaultClassifier/
+  @i/Home/[Camera Icon]/   sample images (png / jpg)
+  @a/Home/[Camera Icon]/
+```
+
+- Put images cut out by **the element's own frame** (`fleetest vision capture` or the MCP tool
+  `ft_capture_element` cuts them for you).
+- `findImages` uses only one sample image (the one for the running OS first).
+
+## Example
+
+```swift
+findImage("[Camera Icon]").tap()
+
+let icon = findImage("[Camera Icon]", timeout: 3)
+if icon.isEmpty {
+    // not found
+}
+
+findImageWithScrollDown("[Share Icon]").tap()
+
+let stars = findImages("[Star Icon]")
+stars.first?.tap()
+```
+
+## Notes
+
+- The distance and the number of compared candidates are written to the record (the nearest distance when nothing was found). Use it to choose `threshold`.
+- **Parts of the same shape that differ only in their text (list rows, for example) are hard to tell apart.** In a
+  measurement, rows of identical-looking buttons were 0.08 to 0.15 apart, and the default `threshold` (0.15) grabbed a
+  different row. When looking for such parts, check the distances in the record and tighten `threshold` (for example `threshold: 0.03`).
+- One call takes roughly 0.1 seconds for the screenshot plus about 8 milliseconds per candidate (measured on a simulator).
+- `timeout` defaults to 0: it looks at the current screen once (it does not follow the run profile's default wait). To wait for the
+  image to appear, for example right after a screen transition, pass seconds such as `timeout: 3`. While scrolling, it looks once per position.
+- When there is no sample image at all, the step fails as a configuration error.
+- Occasionally the Mac's image processing (Vision) temporarily returns the same feature print for every image. Comparing in
+  that state would "find" the first candidate, so the state is detected and the step fails (the message says
+  `Vision returned the same image feature print for different images`). Retry the run.
+- When the found element has a writable selector (an id or a unique label), you can chain assertions such as `textIs`.
+- Moving the screen after finding makes `tap()` hit the old coordinates. Tap right after finding.
+- Unlike Shirates, which cuts parts out by segmenting the image, the candidates are the frames of accessibility
+  elements. Parts that do not appear in accessibility cannot be found.
+
+### Link
+- [index](../index.md)

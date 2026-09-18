@@ -191,6 +191,9 @@ action を持たない欄など)—— 黙って「全部入った」にはし�
 | `existWithoutScroll(sel, timeout:requireVisible:)` | `withScroll*` の中でも現在画面だけで存在検証 |
 | `selectWithScrollDown(sel, maxSwipes:)` 等 4 方向 | `select(sel, scroll: .down)` の別名(Shirates と同名) |
 | `selectWithoutScroll(sel, timeout:requireVisible:)` | `withScroll*` の中でも現在画面だけで解決する `select` |
+| `findImage(label, threshold:aspectRatioTolerance:timeout:scroll:maxSwipes:)` / `findImageWithScrollDown` 等 4 方向 | **画像で要素を掴む**(Shirates Vision の移植・`Sources/FTCore/FindImage.swift`)。テンプレートは DefaultClassifier の見本(ラベルが `label` で**終わる**フォルダ・自 OS の `@i`/`@a` を先に試す)。a11y 要素を枠で切り出し、見本と**アスペクト比が許容幅に入る**要素だけを近い順に Vision の画像特徴量の距離で比べ、最も近い1件が `threshold`(既定 0.15)以下なら掴む。超えたらその1件を DefaultClassifier に掛け、短いラベルが一致し、**かつ**確信度が `threshold` 以下かそのラベルの見本のどれかとの距離が `threshold` 以下なら掴む(Shirates の `classifyFull` と同じ。ラベル一致だけでは採らない = 分類器は見本のどれかのラベルを必ず答えるので、無関係な画像にも探しているラベルを返しうる。`StepExecutor.classificationConfirmed`)。**見つからなくても失敗せず空要素**(`select` と同じ)。**`timeout` の既定は 0**(今の画面を1回だけ見る・実行プロファイルの defaultTimeout に従わない。`FindImage.defaultTimeout`。待つのは後日の `existImage` の側)。テンプレートが無い・許容幅が 0 < t ≤ 0.5 の外・scrollFrame 不解決・**Vision の縮退**(照合1回につき一様な白の特徴量を1つ作り、見本との距離が 0 なら「何も見分けられない」として失敗。2026-09-19 に3 SUT の別プロセスで同時に全候補が距離 0 になり最初の候補を叩いた。`FindImage.isDegenerate`)だけ失敗。記録の括弧書きに距離(見つからなければ最も近い距離)と比べた候補数が出る。**文字だけが違う同じ形の行は距離 0.08〜0.15 で並び既定の閾値では取り違える**(`threshold` を絞る。E2E-iOS 20 の S0030)。所要は docs/performance-tuning.md §3.30。`lastElement` を差し替える |
+| `findImages(label, threshold:aspectRatioTolerance:)` | `threshold` 未満(`nil` = 絞らない)を距離の小さい順に `[FTElement]` で返す。テンプレートは1枚(自 OS 用を優先)・**待たない・スクロールしない**。`lastElement` は差し替えない |
+| `element.tap(holdSeconds:)` | 掴んだ要素をタップ。**findImage / findImages で掴んだ要素は見つけた枠(画面に見えている部分)の中心を座標で叩く**(セレクタで引き直さない)・空の画像要素は失敗。それ以外は `tap(sel)` と同じ |
 
 **`*WithScroll*` の別名は `maxSwipes:`(`select` 系は `requireVisible:` も)しか取らない糖衣**です。
 `timeout:` や `holdSeconds:` を渡したいときは本体の `scroll:` を使ってください

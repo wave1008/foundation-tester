@@ -129,3 +129,63 @@ enum InAppSettle {
         keyPath.hasPrefix("filters.") || keyPath.hasPrefix("backdropFilters.")
     }
 }
+
+/// **自前描画のアプリ(Compose / Flutter)で、a11y の木が絵より先に進んでいる間は撮らない**。
+///
+/// Compose / Flutter の iOS は、画面を切り替えると a11y の木(セマンティクス)が先に新しい画面になり、
+/// 絵はその後に描かれる。CMP の初回訪問では、タップが返ってから 0.27〜0.45 秒のあいだ
+/// `drawHierarchy` が切り替え前の絵をバイト同一で返した(2026-09-19 実測。2回目の訪問・SwiftUI・
+/// XCUITest エンジンでは起きない)。その絵で findImage / imageIs / 分類器 / occlusion-guard が判定すると、
+/// 木の枠で**別の画面の画素**を切り出す。
+///
+/// 待つのは「木は変わったのに、画素がまだ操作前のまま」のときだけ。**遷移の完了は待たない**
+/// (ユーザー決定: a11y が静定し描画に反映されたらすぐ撮る。ループするアニメーションで毎回上限まで
+/// 待つ形を作らない)。画素の比較は低解像度の指紋(描画だけで約 12ms。フルの screenshot は PNG への
+/// 変換込みで約 120ms)。**門は目印から自己申告した `uiFramework` の `isSelfRendered`**
+/// (SwiftUI / UIKit / RN では何もしない)。**層の型では判定できない** —— Compose の `CMPMetalLayer` は
+/// `CAMetalLayer` の子孫ではなく素の `CALayer` の子クラス(同日の実測: `CMPMetalLayer < CALayer`)。
+/// 描画の内部(`nextDrawable` 等)の差し替えも Compose では1件も記録できなかった
+enum InAppRenderCatchUp {
+    /// 操作の直前の控え
+    struct Before {
+        let pixels: Int
+        let tree: Int
+    }
+
+    /// 画素が追いつくのを待つ上限。根拠は実測の遅れの最大 0.45 秒の2倍強。尽きたら待たずに撮る
+    /// (木だけが変わり絵が変わらない画面 = a11y だけの変化もありうるので、失敗にはしない)
+    static let capSeconds: Double = 1.0
+    /// 指紋を撮り直す間隔(1 フレーム)
+    static let pollSeconds: Double = 1.0 / 60
+    /// 指紋の解像度。0.25 倍(iPhone 17 Pro で 101x219px)= 44pt の部品が 11px で写る。
+    /// 描画の固定費は 0.05〜0.25 倍でほぼ同じ(11〜13ms)なので、小さくしても安くならない
+    static let printScale: CGFloat = 0.25
+
+    /// メインで呼ぶ。低解像度の画素の指紋
+    static func pixelPrint(_ window: UIWindow) -> Int {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = printScale
+        let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
+        }
+        guard let data = image.cgImage?.dataProvider?.data as Data? else { return 0 }
+        var hasher = Hasher()
+        hasher.combine(data)
+        return hasher.finalize()
+    }
+
+    /// 木の指紋。**枠だけでなく状態(value / checked)とラベルも畳む** —— スイッチのオン/オフや
+    /// チェックは枠を変えないので、枠だけだと「木は変わっていない」と読んで切り替え前の絵を撮る
+    /// (`checkIsON` の分類器がその絵を判定する)。ref は含めない(振り直しで変わる)。木の順で畳む
+    /// (順が変わる = 木が変わった)。WebView の DOM を混ぜる前の木で取る(`/screenshot` の自前読みと揃える)
+    static func treePrint(_ elements: [ElementInfo]) -> Int {
+        var hasher = Hasher()
+        for e in elements {
+            hasher.combine(e.type); hasher.combine(e.identifier); hasher.combine(e.label)
+            hasher.combine(e.value); hasher.combine(e.checked); hasher.combine(e.enabled)
+            hasher.combine(e.frame.x); hasher.combine(e.frame.y)
+            hasher.combine(e.frame.width); hasher.combine(e.frame.height)
+        }
+        return hasher.finalize()
+    }
+}

@@ -192,6 +192,96 @@ public func selectWithoutScroll(_ selector: Sel,
     return element ?? FTElement(selector: selector.ftSelector)
 }
 
+// MARK: - findImage / findImages(画像で要素を探す。Shirates Vision の移植)
+
+/// **画像で要素を探す**(Shirates Vision の findImage)。テンプレートは DefaultClassifier の見本
+/// (`vision/classifiers/DefaultClassifier/` 以下の、ラベルが `label` で終わるフォルダの画像。
+/// 自 OS の印 `@i` / `@a` が付いたものを先に試す)。画面の a11y 要素を枠で切り出し、
+/// テンプレートとアスペクト比が近い要素(許容幅 `aspectRatioTolerance`)から順に画像特徴量の
+/// 距離を測り、**最も近い1件**が `threshold` 以下なら掴む(超えたら、その1件を DefaultClassifier に
+/// 掛け、ラベルが一致し、かつ確信度が閾値以下かそのラベルの見本との距離が閾値以下なら掴む =
+/// `StepExecutor.classificationConfirmed`)。**見つからなくても失敗せず空要素を返す**(select と同じ。
+/// `.isEmpty` で分岐する)。見つけた要素は `.tap()` で枠の中心を座標で叩ける
+/// (id もラベルも無い部品を想定しているのでセレクタで引き直さない)。
+/// 記録の括弧書きに距離が出る(見つからなかったときは最も近かった距離)ので閾値の調整に使う。
+/// timeout: 既定 0 = 今の画面を1回だけ見る(`FindImage.defaultTimeout`。実行プロファイルの
+/// defaultTimeout には従わない)。出るのを待つなら秒数を渡す。scroll 指定時は位置ごとに1回だけ見る。
+/// scroll: 指定すると**その方向へスクロールしながら探す**(Shirates の findImage(allowScroll))
+@discardableResult
+public func findImage(_ label: String, threshold: Double = FindImage.defaultThreshold,
+                      aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
+                      timeout: Double = FindImage.defaultTimeout,
+                      scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                      file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    let core = FTRuntime.requireCore(command: "findImage")
+    let scroll = core.effectiveScroll(scroll)
+    let step = FlowStep(action: "findImage", direction: scroll?.swipe.rawValue, expected: label,
+                        timeout: timeout,
+                        maxSwipes: scroll == nil ? nil : maxSwipes,
+                        scrollFrame: contextScrollFrame(core, scrolling: scroll != nil),
+                        imageThreshold: threshold, aspectRatioTolerance: aspectRatioTolerance)
+    let result = core.perform(step: step, description: "findImage \"\(label)\"", command: "findImage",
+                              commandError: FindImage.validate(aspectRatioTolerance: aspectRatioTolerance),
+                              file: file, line: line)
+    let element = FTElement(imageMatch: result.imageMatches?.first, imageLabel: label)
+    core.lastResolvedElement = element
+    return element
+}
+
+/// **画像で要素を探し、閾値を下回るものを全部返す**(Shirates Vision の findImages)。
+/// 距離の小さい順。`threshold: nil` なら絞らずアスペクト比の許容幅に入った候補を全部返す。
+/// テンプレートは1枚だけ使う(自 OS の印が付いたものを優先 = Shirates の getFile)。
+/// **待たない・スクロールしない**(今の画面だけを1回見る。Shirates と同じ)。
+/// `lastElement` は差し替えない(要素を1つに定めないため。countIs と同じ)
+@discardableResult
+public func findImages(_ label: String, threshold: Double? = FindImage.defaultThreshold,
+                       aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
+                       file: StaticString = #filePath, line: UInt = #line) -> [FTElement] {
+    let core = FTRuntime.requireCore(command: "findImages")
+    let step = FlowStep(action: "findImages", expected: label, timeout: 0,
+                        imageThreshold: threshold, aspectRatioTolerance: aspectRatioTolerance)
+    let result = core.perform(step: step, description: "findImages \"\(label)\"", command: "findImages",
+                              commandError: FindImage.validate(aspectRatioTolerance: aspectRatioTolerance),
+                              file: file, line: line)
+    return (result.imageMatches ?? []).map { FTElement(imageMatch: $0, imageLabel: label) }
+}
+
+@discardableResult
+public func findImageWithScrollDown(_ label: String, threshold: Double = FindImage.defaultThreshold,
+                                    aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
+                                    maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    findImage(label, threshold: threshold, aspectRatioTolerance: aspectRatioTolerance,
+              scroll: .down, maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
+public func findImageWithScrollUp(_ label: String, threshold: Double = FindImage.defaultThreshold,
+                                  aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
+                                  maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                                  file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    findImage(label, threshold: threshold, aspectRatioTolerance: aspectRatioTolerance,
+              scroll: .up, maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
+public func findImageWithScrollRight(_ label: String, threshold: Double = FindImage.defaultThreshold,
+                                     aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
+                                     maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                                     file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    findImage(label, threshold: threshold, aspectRatioTolerance: aspectRatioTolerance,
+              scroll: .right, maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
+public func findImageWithScrollLeft(_ label: String, threshold: Double = FindImage.defaultThreshold,
+                                    aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
+                                    maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    findImage(label, threshold: threshold, aspectRatioTolerance: aspectRatioTolerance,
+              scroll: .left, maxSwipes: maxSwipes, file: file, line: line)
+}
+
 /// 何も掴んでいない `lastElement` が持つセレクタ。**実在しないラベル**なので、そのまま
 /// チェーンした検証は必ず落ちる(空要素を黙って通さないため)
 private let lastElementPlaceholder = "<lastElement: nothing has been grabbed yet>"
@@ -818,7 +908,8 @@ public func keyboardIsNotShown(timeout: Double? = nil,
 /// (text/value の全対称 + `enabledIsTrue` / `enabledIsFalse` / `checkIsON` / `checkIsOFF` + `idIs`)。
 /// 一部だけ生やすと「どれがチェーンできるか」が覚えられず、書いてみるまで分からない。
 /// **例外は要素を1つに定めないコマンド**(`notExist` / `countIs` / `screenLooksLike`)で、これらは
-/// 掴んだ要素に対する検証ではないのでチェーンにしない。新しい検証コマンドを足すときは両方に足す
+/// 掴んだ要素に対する検証ではないのでチェーンにしない。新しい検証コマンドを足すときは両方に足す。
+/// **操作は `tap()` だけ**で、この規則の外(自由関数は `tap(selector)`。ftElementChainSync.test.mjs の OPERATIONS)
 public struct FTElement {
     let selector: FTSelector
     /// exist が照合した時点の要素(**再取得しない**。追加のデバイス往復は発生させない)。
@@ -828,9 +919,51 @@ public struct FTElement {
     /// FTDriveCore.perform の高速経路 / 判定範囲は HeldElementAssert)
     let matched: ElementInfo?
 
+    /// findImage / findImages で掴んだ要素のときだけ非 nil(探したラベル)。`tap()` を座標で撃つ印
+    let imageLabel: String?
+    /// findImage / findImages が見つけた要素の、画面に見えている部分の枠(`tap()` はこの中心を叩く)
+    let imageFrame: FTRect?
+
     init(selector: FTSelector, matched: ElementInfo? = nil) {
         self.selector = selector
         self.matched = matched
+        self.imageLabel = nil
+        self.imageFrame = nil
+    }
+
+    /// findImage / findImages の結果。セレクタは書ける形があればそれ(チェーンした検証が
+    /// 取り直すときに使う)、無ければ実在しないラベル(= 取り直すと必ず落ちる。lastElement の空要素と同じ)
+    init(imageMatch: FindImage.Match?, imageLabel: String) {
+        self.selector = imageMatch?.selector.map(FTSelector.parse)
+            ?? FTSelector.label("<findImage \"\(imageLabel)\": \(imageMatch == nil ? "not found" : "no writable selector")>")
+        self.matched = imageMatch?.element
+        self.imageLabel = imageLabel
+        self.imageFrame = imageMatch?.visibleFrame
+    }
+
+    /// 掴んだ要素をタップする。**findImage / findImages で掴んだ要素は、見つけた枠の中心を座標で叩く**
+    /// (画像で探す部品は id もラベルも無いことが多いので引き直さない。見つけた後に画面を動かすと
+    /// 古い座標を叩く)。空の画像要素は叩かずに失敗する。それ以外は `tap(セレクタ)` と同じ
+    /// (セレクタから引き直す)
+    public func tap(holdSeconds: Double = FlowStep.defaultTapHoldSeconds,
+                    file: StaticString = #filePath, line: UInt = #line) {
+        guard let imageLabel else {
+            tapImpl(selector, holdSeconds: holdSeconds, timeout: nil, scroll: nil,
+                    maxSwipes: FlowStep.defaultMaxSwipes, containerInference: nil, file: file, line: line)
+            return
+        }
+        guard let imageFrame else {
+            FTRuntime.requireCore(command: "tap").performCustom(
+                description: "tap image \"\(imageLabel)\"", command: "tap", file: file, line: line) {
+                throw FTCommandError.message("nothing to tap: the image \"\(imageLabel)\" was not found")
+            }
+            return
+        }
+        let x = imageFrame.x + imageFrame.width / 2
+        let y = imageFrame.y + imageFrame.height / 2
+        coordinateTap(x: x, y: y, holdSeconds: holdSeconds,
+                      description: "tap image \"\(imageLabel)\" (\(String(format: "%.1f", x)), \(String(format: "%.1f", y)))",
+                      file: file, line: line)
     }
 
     /// **要素を掴めていないか**(Shirates の `TestElement.isEmpty` 相当)。

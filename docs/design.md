@@ -400,6 +400,20 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 §10「キーボードの観測と `hideKeyboard`」)。Android は `hideKeyboard` をホスト側の
 戻るキーで実現するのでルートを持たない。
 
+InApp の `GET /screenshot` は `drawHierarchy(afterScreenUpdates: false)` で可視の窓を奥から重ねて描くが、
+**自前描画のアプリ(`uiFramework` の `isSelfRendered` = Compose / Flutter)では、a11y の木が絵より先に進む**
+—— CMP の起動後の初回訪問で、タップが返ってから 0.27〜0.45 秒のあいだ切り替え前の絵がバイト同一で返った
+(2026-09-19 実測。2回目の訪問・SwiftUI・XCUITest エンジンでは起きない)。その絵で findImage / imageIs /
+分類器 / occlusion-guard が判定すると、木の枠で別の画面の画素を切る。v117 の `InAppRenderCatchUp`
+(`InAppSettle.swift`)が守る規律は3つ: **①操作の直前に 0.25 倍の画素の指紋と木(frames)の指紋を控える**
+(`captureRenderBefore`。操作を起こす経路は `tapByRef` と `performSettlingIfMoved` の2つで、両方が通す。
+約 12ms)/ **②`/screenshot` は、木が変わったのに画素が控えと同じ間だけ待つ**(上限 1.0 秒 = 実測の遅れの
+2倍強。ホストが操作後に木を読んでいなければブリッジが自分で1回読んで比べる(2ms)。frames/nodes の対応表は
+書き換えない)/ **③遷移の完了・アニメーションの静止は待たない**(ユーザー決定。ループする絵で毎回上限まで
+待つ形を作らない。画素が1度でも変われば撮る)。**門は層の型ではなくフレームワークの自己申告** ——
+Compose の `CMPMetalLayer` は `CAMetalLayer` の子孫ではなく素の `CALayer` の子クラスで、`nextDrawable` の
+差し替えも1件も記録できなかった。
+
 `/systemui/*` は XCUITest ランナーだけが持つ、SpringBoard(別プロセス)を読む・叩く口。
 **`POST /session springboard` + `GET /snapshot` との違いはセッションを触らないこと**だけで、
 返る木は同じ。ref は専用の名前空間(ランナーの `systemRefFrames`)に振り、
@@ -2119,6 +2133,17 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   `vision/classifiers/DefaultClassifier/` 以下の任意の深さ、ラベルは親フォルダの相対パスを `_` でつないだもの、
   判定は1位のラベルの最後の `[` 以降が期待値を含むか(Shirates の LabelUtility.getShortLabel)。
   同じ短いラベルが2つのフォルダにあるのは設定の誤り。見本に無いラベルは待たずに落とす。
+  **`findImage` / `findImages`(`FTCore.FindImage`)は DefaultClassifier の見本をテンプレートに使う**: 候補は a11y 要素を
+  枠(画面で切った見えている部分)で切り出したもので、見本とアスペクト比が許容幅(Shirates の式)に入るものだけを
+  近い順に Vision の画像特徴量(`GenerateImageFeaturePrintRequest`)の距離で比べる。枠が同じ要素は1つに畳む。
+  findImage の1位が閾値を超えたときの分類器による救済は **ラベル一致だけでは採らない**(分類器は見本のどれかの
+  ラベルを必ず答える)—— 確信度が閾値以下か、そのラベルの見本との距離が閾値以下のときだけ(Shirates の
+  `classifyFull` と同じ条件。`StepExecutor.classificationConfirmed`)。**見つからなくても失敗しない**(select と同じ)。
+  見つけた要素の `FTElement.tap()` はセレクタで引き直さず、見つけた枠の中心を座標で叩く。
+  **Vision の縮退の門**: 照合1回につき一様な白 32x32 の特徴量を1つ作り、見本との距離が 0 なら失敗にする
+  (実物の見本と白紙は 1.44 離れる。2026-09-19 04:29〜04:32 に CMP iOS / RN Android / E2E-Android の別プロセスで
+  同時に全候補が距離 0 になり、最初の候補を「発見」して別の行を叩いた。5分後には正常。Vision の失敗としては
+  記録されない = 同一の答えなので、距離だけが手掛かり)。縮退中に作ったテンプレートの控えは捨てる。
   **見本の採取は `fleetest vision capture`**(推論と同じ `VisionClassifier.crop` で切る = 切り方のずれを作らない。
   状態に写らないラベル・括弧の無いフォルダ・短いラベルの重複は保存前に断る)。**学習の点検**(`VisionClassifier.selfCheck`):
   学習直後に見本の1枚1枚をモデル自身に掛け、見本と違うラベルを答えたものを `selfcheck.json` に控える。**閾値を

@@ -237,7 +237,7 @@ FM を呼ぶ構成だったかは `textVisualCheck || screenLooksLike` で判定
 | フィールド | 型 | 意味 |
 |---|---|---|
 | fmCalls / fmFailures / fmTotalMs | Int? | そのサンプリング間隔で完了した FM 呼び出し(この機械の全プロセス合計。供給元は `FMUsageLedger`)。**null = 控えを読めなかった(不明)/ 0 = 呼び出しが無かった**。混ぜない |
-| visionCalls / visionFailures / visionTotalMs | Int? | そのサンプリング間隔で完了した Vision / Core ML(FM 以外)の呼び出し(この機械の全プロセス合計。供給元は `VisionUsageLedger`。モニターの VN)。数えるのは3種: **OCR の `recognize` 1回**(occlusion-guard Tier-2 の `RegionText`。拡大はしごは読めるまで最大3段まで撃つので、1回のガードで最大3件になりうる)/ **画像分類器の推論1回**(`VisionClassifier`。checkIsON/OFF・imageIs と、学習直後の見本の点検で見本1枚につき1回)/ **学習1回**。OCR の暖機は数えない。**null = 控えを読めなかった(不明)/ 0 = 呼び出しが無かった**。混ぜない |
+| visionCalls / visionFailures / visionTotalMs | Int? | そのサンプリング間隔で完了した Vision / Core ML(FM 以外)の呼び出し(この機械の全プロセス合計。供給元は `VisionUsageLedger`。モニターの VN)。数えるのは4種: **OCR の `recognize` 1回**(occlusion-guard Tier-2 の `RegionText`。拡大はしごは読めるまで最大3段まで撃つので、1回のガードで最大3件になりうる)/ **画像分類器の推論1回**(`VisionClassifier`。checkIsON/OFF・imageIs と、学習直後の見本の点検で見本1枚につき1回)/ **学習1回** / **画像特徴量の生成1回**(`FindImage`。findImage / findImages が候補1件ごとに1回・テンプレートはプロセス内で初回だけ)。OCR の暖機は数えない。**null = 控えを読めなかった(不明)/ 0 = 呼び出しが無かった**。混ぜない |
 | fmTextState / fmVisionState | String? | `"alive"` / `"dead"` / **null = 不明**(観測が無い・`FMLiveness.freshSeconds` より古い)。**呼び出しが0件でも埋まる**のが回数欄との決定的な違い —— 誰も FM を使っていない間、回数だけでは「使われていない」と「死んでいる」が同じ絵になる |
 | fmDeadReason | String? | 死んでいる経路と理由(`text: … / vision: …`)。**1Hz で流れる行なので 200 文字で切る**(全文は `fleetest doctor --fm-only` と `scenarios/*.json` の `fm.firstError`) |
 | fmCheckedAt | Double? | 上の死活を観測した epoch 秒(新しいほうの経路)。**いつの観測かを必ず見る** —— 最大 120 秒古くなりうる |

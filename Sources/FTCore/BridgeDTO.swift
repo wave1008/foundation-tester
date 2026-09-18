@@ -410,7 +410,10 @@ public enum BridgeAPI {
     /// v116 (in-app only): only the UIKit / SwiftUI / RN contentOffset path answers `atEdge: false`. The Compose /
     /// Flutter region scroll no longer does, because Compose accepts the accessibility scroll even at the edge (the
     /// host never found the edge and swiped up to maxSwipes).
-    public static let bridgeProtocolVersion = 116
+    /// v117 (in-app only): for apps that draw with Metal (Compose / Flutter), `/screenshot` right after an action waits
+    /// until the pixels differ from before the action when the accessibility tree has changed (the tree runs ahead of the
+    /// picture on a first visit; the old screen came back byte-identical for up to 0.45 s). Transitions are not awaited.
+    public static let bridgeProtocolVersion = 117
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///

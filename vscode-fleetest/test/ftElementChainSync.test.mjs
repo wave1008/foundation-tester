@@ -29,13 +29,18 @@ function readSource() {
   return names.map((name) => readFileSync(path.join(DSL_DIR, name), "utf8")).join("\n");
 }
 
-/// FTElement のメソッド名(判定の実体)。**構造体の終端(行頭 })で切る** —— 切らないと
+/// FTElement の**操作**(検証ではない)。3つの書き方の規則の外: 自由関数はセレクタを取る形
+/// (`tap(selector)`)が本体で、`FTElement.tap()` は掴んだ要素(findImage の結果は座標)を叩く口
+const OPERATIONS = new Set(["tap"]);
+
+/// FTElement の検証メソッド名(判定の実体)。**構造体の終端(行頭 })で切る** —— 切らないと
 /// 後続の型のメソッド(FTBranch.ifElse 等)まで拾う
 function chainMethods(source) {
   const start = source.indexOf("public struct FTElement");
   const rest = source.slice(start);
   const body = rest.slice(0, rest.indexOf("\n}"));
-  return new Set([...body.matchAll(/^    public func ([a-zA-Z]+)\(/gm)].map((m) => m[1]));
+  return new Set([...body.matchAll(/^    public func ([a-zA-Z]+)\(/gm)].map((m) => m[1])
+    .filter((name) => !OPERATIONS.has(name)));
 }
 
 /// トップレベルの自由関数のうち、`lastElement.<同名>(` へ委譲しているもの

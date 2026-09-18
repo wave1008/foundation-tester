@@ -57,6 +57,7 @@ FM を使いません。テストはエージェント(MCP)に
     - [tap, tapWithScroll*, tapWithoutScroll, tapAppIcon](commands/tap_ja.md)
 - 要素の選択
     - [select, selectWithScroll*, lastElement](commands/select_ja.md)
+    - [画像で探す(findImage, findImages)](commands/find_image_ja.md)
 - アプリのインストールと起動
     - [installApp, removeApp, clearAppData](commands/install_app_ja.md)
     - [launchApp, restartApp, terminateApp, openURL](commands/launch_app_ja.md)

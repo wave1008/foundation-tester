@@ -179,6 +179,8 @@ public struct StepOutcome: Sendable {
     /// 呼び手がレポートのステップ行に添える。切り出しではなく全体を持つ = 「判定した画面が
     /// 失敗時の画面と同じか」を後から見比べられる(切り出しは要素一覧の枠から再現できる)
     public let evidenceImage: Data?
+    /// findImage / findImages が見つけた要素(距離の小さい順)。それ以外のステップと失敗時は nil
+    public let imageMatches: [FindImage.Match]?
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil,
                healedByFingerprint: Bool = false,
@@ -187,7 +189,9 @@ public struct StepOutcome: Sendable {
                observedChecked: Bool? = nil, resolvedElement: ElementInfo? = nil,
                scrollSwipes: Int? = nil, failureKind: StepFailureKind? = nil,
                evidenceImage: Data? = nil,
+               imageMatches: [FindImage.Match]? = nil,
                at: String = ISO8601Millis.string(from: Date())) {
+        self.imageMatches = imageMatches
         self.failureKind = failureKind
         self.evidenceImage = evidenceImage
         self.guardEntered = guardEntered
@@ -629,6 +633,7 @@ public final class StepExecutor {
         firstFrameBlankObserved = false
         failureKindThisStep = nil
         classifierScreenshotThisStep = nil
+        imageMatchesThisStep = nil
         elementLimitCeilingLatchedThisStep = false
         systemAlertAdvisoryThisStep = nil
         systemAlertProbeFailure = nil
@@ -653,7 +658,8 @@ public final class StepExecutor {
                                    resolvedElement: Self.isSuccess(outcome.status)
                                        ? resolvedElementThisStep : nil,
                                    scrollSwipes: scrollSwipesThisStep,
-                                   failureKind: failureKind(for: outcome.status))
+                                   failureKind: failureKind(for: outcome.status),
+                                   imageMatches: Self.isSuccess(outcome.status) ? imageMatchesThisStep : nil)
             }
             if let assert = step.assert {
                 var status = try await executeAssert(assert, step: step, phase: &phase)
@@ -813,6 +819,8 @@ public final class StepExecutor {
     var failureKindThisStep: StepFailureKind?
     /// このステップで画像分類器が最後に判定に使ったスクリーンショット(`StepOutcome.evidenceImage` の元)
     var classifierScreenshotThisStep: Data?
+    /// findImage / findImages が見つけた要素(`StepOutcome.imageMatches` の元)
+    var imageMatchesThisStep: [FindImage.Match]?
 
     /// 天井の撮り直しで対象を拾ったステップの**後続読み**も天井にする per-step ラッチ。
     /// 立てるのは StepExecutor+Actions.swift の撮り直し呼び出し箇所だけ(Assert のループは

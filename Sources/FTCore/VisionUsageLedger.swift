@@ -1,6 +1,7 @@
 // Vision / Core ML(FM ではない従来機能)呼び出しの機械グローバルな控え。書き手は2つ:
 //   - RegionText.read(occlusion-guard Tier-2 の OCR)= `recognize` 1回で1件
 //   - VisionClassifier(checkIsON/OFF・imageIs の画像分類器)= 推論1回・学習1回でそれぞれ1件
+//   - FindImage(findImage / findImages)= 画像特徴量(FeaturePrint)の生成1回で1件
 // Vision を呼ぶ経路を足したらここへも記録する(モニターの VN グラフが黙って欠ける)。
 //
 // FMUsageLedger と同じ理由・同じ形: host-metrics 自身が Vision を叩いて測ると測定対象を自分で

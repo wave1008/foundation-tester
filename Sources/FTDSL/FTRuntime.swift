@@ -160,6 +160,8 @@ public final class FTRuntime {
 struct PerformResult {
     let status: StepResult.Status
     let element: ElementInfo?
+    /// findImage / findImages が見つけた要素(StepOutcome.imageMatches)
+    var imageMatches: [FindImage.Match]? = nil
 }
 
 // MARK: - ドライブコア(コマンドの実体)
@@ -880,7 +882,8 @@ public final class FTDriveCore {
                           systemAlertPresent: outcome?.notes.contains(.systemAlertPresent) == true)
         }
         noteAssertionUnlessSkipped(status)
-        return PerformResult(status: status, element: outcome?.resolvedElement)
+        return PerformResult(status: status, element: outcome?.resolvedElement,
+                             imageMatches: outcome?.imageMatches)
     }
 
     /// dry-run 中、**台帳に無い `#id`** を覚える(綴り誤り・でっち上げの検出。SelectorInventory)。

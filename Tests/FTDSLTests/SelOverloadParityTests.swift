@@ -19,6 +19,8 @@ final class SelOverloadParityTests: XCTestCase {
         "screenshot",       // ファイル名
         "screenLooksLike",         // 画面の説明文(FM の視覚照合)
         "iosAlertHandler",      // OS アラートのボタンラベル(SpringBoard 側。アプリのセレクタではない)
+        "findImage", "findImages", "findImageWithScrollDown", "findImageWithScrollUp",
+        "findImageWithScrollRight", "findImageWithScrollLeft",  // 見本画像のラベル(DefaultClassifier)
         "group", "procedure", "scene", "verify", "doUntilTrue",  // 記録用のタイトル・説明
     ]
 

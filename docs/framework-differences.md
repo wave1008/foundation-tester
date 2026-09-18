@@ -206,6 +206,8 @@ Android はどのフレームワークも `isChecked`(checkable なら value `"1
 同じ学習・推論(`FTCore.VisionClassifier`)を `imageIs`(DefaultClassifier。`vision/classifiers/DefaultClassifier/` の見本で
 要素の画像のラベルを検証)も使う。どちらも要素の枠で切ったスクリーンショットを見るので、**フレームワークの違いに
 左右されない**(差が出るのは a11y の枠の取り方だけ = 見本も同じ枠で切る)。
+`findImage` / `findImages`(同じ見本をテンプレートに使う)も候補は a11y 要素の枠なので、**アイコンが a11y に1要素として
+載らない実装では探せない**(フレームワークごとの実測はまだ無い。確かめたのは E2E-iOS の SwiftUI だけ)。
 
 **それでも救えない形**(a11y・分類器のどちらにも根拠が無い):
 
@@ -226,6 +228,7 @@ Android はどのフレームワークも `isChecked`(checkable なら value `"1
 | Android の WebView(全フレームワーク) | DOM の変更が a11y へ 4〜8 秒遅れる | A | WebView の中のノードだけ `refresh()` してから読む |
 | Compose(iOS) | 縁のぼかし(scroll edge effect)のアニメーションが終わらず、整定が上限に張り付く | A | `filters.*` のアニメーションを動きとして数えない |
 | Flutter(iOS) | 慣性が 800ms でも収束しない | C | XCUITest ランナーの整定予算を固定(待ち切らない) |
+| Compose・Flutter(iOS・in-app) | 画面を切り替えた直後、a11y の木は新しい画面なのに絵(自前の Metal 描画)が追いつかない。CMP は起動後の初回訪問でタップが返ってから 0.27〜0.45 秒のあいだ**切り替え前の絵**をバイト同一で返す(2回目の訪問・SwiftUI・XCUITest エンジンでは起きない) | A | 操作の直前に低解像度の画素と木の指紋を控え、**木が変わったのに画素が操作前のままの間だけ**待ってから撮る(`InAppRenderCatchUp`・v117)。遷移の完了は待たない。操作1回あたり約 12ms、待つのは追いついていない回だけ(初回訪問で約 0.3〜0.4 秒) |
 | Flutter / Compose / SwiftUI / RN | 起動直後の白い画面(blank)の長さが描画の重さに比例する(誤った再起動は Flutter 10・Compose 3・SwiftUI/RN 0) | C | blank の判定窓を約10秒にする |
 | React Native | JS が listener を登録する前に届いた warm な URL を捨てる | A | `launchApp(url:)` は最初の画面が描かれてから URL を配送する |
 | Flutter(Android) | 起動直後の数百 ms はタップを取りこぼす。タップ直後は入力接続が未確立 | B | SUT のシナリオは起動直後・タップ直後に `exist` を1往復挟む |
@@ -260,6 +263,7 @@ Android はどのフレームワークも `isChecked`(checkable なら value `"1
 
 | 版・コミット | 内容 |
 |---|---|
+| v117 | in-app のスクリーンショットは、自前描画(Compose / Flutter)で木が絵より先に進んでいる間は撮らない(`InAppRenderCatchUp`。findImage / imageIs / 分類器 / occlusion-guard が別の画面の画素を切り出していた) |
 | — | チェック状態を見本画像から判定する CheckStateClassifier(Shirates Vision の移植。実行プロファイル `preferCheckStateClassifier`・既定 true) |
 | v114 | チェック状態を value からも読む(Flutter・SwiftUI Toggle・RN・WebKit で `checkIsON` が落ちていた)。DOM 経路で `aria-checked`・`indeterminate` を読む |
 | `e83c9ba2` | tap の直後の改行入り `type` は、XCUITest へ回す前に焦点を待つ |

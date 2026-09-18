@@ -202,9 +202,9 @@ func contextScrollFrame(_ core: FTDriveCore, scrolling: Bool) -> FlowLocator? {
 }
 
 /// 探索の実体は StepExecutor.runScrollSearch(scrollTo コマンドと共有)
-private func tapImpl(_ selector: FTSelector, holdSeconds: Double, timeout: Double?,
-                     scroll: FTScrollDirection?, maxSwipes: Int, containerInference: Bool?,
-                     file: StaticString, line: UInt) {
+func tapImpl(_ selector: FTSelector, holdSeconds: Double, timeout: Double?,
+             scroll: FTScrollDirection?, maxSwipes: Int, containerInference: Bool?,
+             file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: "tap")
     let scroll = core.effectiveScroll(scroll)
     let step = FlowStep(action: "tap", locator: selector.primary,
@@ -351,10 +351,16 @@ public func rotateTo(_ orientation: FTOrientation,
 /// (あちらは tap を swipe で合成するための引数。fleetest はドライバに座標タップの口がある)
 public func tap(x: Double, y: Double, holdSeconds: Double = FlowStep.defaultTapHoldSeconds,
                 file: StaticString = #filePath, line: UInt = #line) {
+    coordinateTap(x: x, y: y, holdSeconds: holdSeconds, description: "tap (\(x), \(y))", file: file, line: line)
+}
+
+/// 座標タップの本体(`tap(x:y:)` と、findImage で見つけた要素の `FTElement.tap()` が共有する)
+func coordinateTap(x: Double, y: Double, holdSeconds: Double, description: String,
+                   file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: "tap")
     let driver = core.driver
     let typeDriver = core.executor.typeDriver
-    core.performCustom(description: "tap (\(x), \(y))", command: "tap", file: file, line: line) {
+    core.performCustom(description: description, command: "tap", file: file, line: line) {
         // 長押しだけ経路が分かれるのは `tap(sel, holdSeconds:)` と同じ(StepExecutor+Actions)。
         // in-app は座標ジェスチャを持たない(501)ので hybrid では XCUITest へ回す
         do {

@@ -135,6 +135,11 @@ public struct FlowStep: Codable, Sendable {
     /// **`tap` 以外は未使用**
     public var x: Double?
     public var y: Double?
+    /// findImage / findImages の特徴量の距離の閾値(`FindImage`)。findImages の nil = 絞らない。
+    /// **findImage / findImages 以外は未使用**(ラベルは `expected`)
+    public var imageThreshold: Double?
+    /// findImage / findImages のアスペクト比の許容幅(`FindImage.aspectRatioRange`)。nil = 既定
+    public var aspectRatioTolerance: Double?
 
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, endLocator: FlowLocator? = nil,
@@ -150,9 +155,12 @@ public struct FlowStep: Codable, Sendable {
                 startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
                 intervalSeconds: Double? = nil,
                 scale: Double? = nil, dxRatio: Double? = nil, dyRatio: Double? = nil,
-                x: Double? = nil, y: Double? = nil) {
+                x: Double? = nil, y: Double? = nil,
+                imageThreshold: Double? = nil, aspectRatioTolerance: Double? = nil) {
         self.x = x
         self.y = y
+        self.imageThreshold = imageThreshold
+        self.aspectRatioTolerance = aspectRatioTolerance
         self.scale = scale
         self.dxRatio = dxRatio
         self.dyRatio = dyRatio

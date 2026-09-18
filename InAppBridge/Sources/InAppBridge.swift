@@ -26,6 +26,12 @@ final class FTInAppBridge {
     // accept ループは1本ずつ処理するので単純プロパティで足りる(同時アクセスなし)。
     // nodes は弱参照テーブル(画面遷移後に旧ビュー階層を snapshot 更新まで抱え込まないため)。
     private var frames: [Int: CGRect] = [:]
+    /// 直前の操作の控え(`InAppRenderCatchUp`)。自前描画のアプリの操作でだけ立ち、操作後の最初の
+    /// `/screenshot` で消費する。メインでだけ読み書きする
+    private var renderBefore: InAppRenderCatchUp.Before?
+    /// 直近の `/snapshot` の木の指紋(`InAppRenderCatchUp.treePrint`。WebView の DOM を混ぜる前)。
+    /// frames と同じ時点で差し替える
+    private var treePrint = 0
     /// 直近 snapshot の ref → 見えている範囲(InAppSnapshot.Result.clips)。frames と同じ時点で差し替える
     private var clips: [Int: CGRect] = [:]
     /// 直近 snapshot で入力欄だった ref(`TypeReadback.isTextInput`)。frames と同じ時点で差し替える
@@ -228,7 +234,9 @@ final class FTInAppBridge {
         // その完了はメインキューへ配送されるため、メインを保持したまま待つとデッドロックする
         let merged = mergeWebViewDOM(into: base, max: limit)
 
+        let treePrint = InAppRenderCatchUp.treePrint(base.elements)
         mainSync {
+            self.treePrint = treePrint
             self.frames = merged.frames
             self.clips = merged.clips
             self.textInputRefs = Set(merged.elements.filter(TypeReadback.isTextInput).map(\.ref))
@@ -554,6 +562,7 @@ final class FTInAppBridge {
         let myGeneration = requestGeneration
         // メインに入る前に読む(初回は裏の計算を錠で待つので、メインを塞がない)
         let retriesUnfiredActivate = AppUIFramework(rawValue: uiFramework)?.retriesUnfiredActivate ?? true
+        let selfRendered = AppUIFramework(rawValue: uiFramework)?.isSelfRendered ?? false
 
         func finish(_ window: UIWindow) {
             InAppSettle.waitOnMain { converged in
@@ -627,6 +636,7 @@ final class FTInAppBridge {
                 sem.signal()
                 return
             }
+            self.captureRenderBefore(keyWindow: keyWindow, selfRendered: selfRendered)
             guard let node = self.nodes.object(forKey: NSNumber(value: ref)) as? NSObject else {
                 // 保持ノードが無い(従来と同じく座標へ)。宛先は**いま指が当たる窓**
                 synthFallback(Self.frontmostTouchableWindow(keyWindow: keyWindow))
@@ -1429,7 +1439,8 @@ final class FTInAppBridge {
     }
 
     private func handleScreenshot() throws -> InAppHTTPServer.Response {
-        try mainSync {
+        awaitRenderCatchUp()
+        return try mainSync {
             guard let key = self.keyWindow() else {
                 throw InAppError(409, "no key window")
             }
@@ -1447,6 +1458,45 @@ final class FTInAppBridge {
                 throw InAppError(500, "PNG encoding failed")
             }
             return .png(png)
+        }
+    }
+
+    /// メインで呼ぶ。**操作を起こす経路は `tapByRef` と `performSettlingIfMoved` の2つ**で、どちらも
+    /// 操作の直前にここを通す(自前描画のアプリだけ画素と木を控える。撮るのは約 12ms)。
+    /// 経路を足したら必ず呼ぶ —— 呼ばないと、その操作の直後の `/screenshot` が操作前の絵を返しうる。
+    /// selfRendered は `uiFramework` の `isSelfRendered`(メインに入る前に読んで渡す)
+    private func captureRenderBefore(keyWindow: UIWindow, selfRendered: Bool) {
+        renderBefore = selfRendered
+            ? InAppRenderCatchUp.Before(pixels: InAppRenderCatchUp.pixelPrint(keyWindow), tree: treePrint)
+            : nil
+    }
+
+    /// 直前の操作の後に木が変わった(直近の `/snapshot` で観測)のに、画素がまだ操作前のままなら、
+    /// 変わるまで待つ(上限 `InAppRenderCatchUp.capSeconds`)。**メインを握ったまま待たない** ——
+    /// 描画はメインで進むので、握ると追いつかない。判定の理由は `InAppRenderCatchUp`
+    private func awaitRenderCatchUp() {
+        let pending: (before: InAppRenderCatchUp.Before, window: UIWindow)? = mainSync {
+            guard let before = self.renderBefore, let key = self.keyWindow() else { return nil }
+            var now = self.treePrint
+            if now == before.tree {
+                // ホストが操作の後にまだ木を読んでいない(`tap` → `screenshot()` の並び)。木が変わったかは
+                // 自分で読んで判定する。**ref の対応表(frames/nodes)は書き換えない** —— /snapshot が
+                // 揃えて書く4つ組の一部だけを差し替えると ref が食い違う。指紋を比べるだけ
+                FTEnsureFlutterSemantics()
+                let fresh = InAppSnapshot.capture(windows: Self.visibleWindows(keyWindow: key),
+                                                  max: BridgeAPI.resolvedSnapshotElementLimit(nil))
+                now = InAppRenderCatchUp.treePrint(fresh.elements)
+            }
+            // 木が変わっていなければ控えは残す(次の操作が控え直す)
+            guard now != before.tree else { return nil }
+            self.renderBefore = nil
+            return (before, key)
+        }
+        guard let pending else { return }
+        let deadline = CACurrentMediaTime() + InAppRenderCatchUp.capSeconds
+        while mainSync({ InAppRenderCatchUp.pixelPrint(pending.window) }) == pending.before.pixels,
+              CACurrentMediaTime() < deadline {
+            Thread.sleep(forTimeInterval: InAppRenderCatchUp.pollSeconds)
         }
     }
 
@@ -1488,6 +1538,8 @@ final class FTInAppBridge {
         // この呼び出しの世代。timeout 後に main が空いて block/整定が実際に走ったとき、その
         // コールバックが後続の無関係なリクエストの `lastSettleCapped` を書き換えないための比較値
         let myGeneration = requestGeneration
+        // メインに入る前に読む(tapByRef と同じ理由)
+        let selfRendered = AppUIFramework(rawValue: uiFramework)?.isSelfRendered ?? false
         DispatchQueue.main.async {
             guard let key = self.keyWindow() else {
                 thrown = InAppError(409, "no key window")
@@ -1497,6 +1549,7 @@ final class FTInAppBridge {
             // **操作の宛先は「いま指が当たる窓」**。keyWindow 固定だと、
             // 別 UIWindow のモーダルが出ている間にスクロールや座標タップが**背面へ抜ける**
             let window = Self.frontmostTouchableWindow(keyWindow: key)
+            self.captureRenderBefore(keyWindow: key, selfRendered: selfRendered)
             let moved: Bool
             do {
                 moved = try block(window)

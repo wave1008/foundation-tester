@@ -50,7 +50,7 @@ present, and what only fleetest has.
 |---|---|
 | Nicknames (selector / screen / dataset nicknames) | selectors written directly; no indirection layer |
 | `screenIs` / `screenIsOf` / `isScreen(Of)` / `waitScreen(Of)` / `switchScreen` | `screenLooksLike("description")` (FM visual check), or `exist(sel)` on an element unique to that screen |
-| `existImage` / `dontExistImage` / `findImage*` / `imageIs` / `imageContains` (image template matching) | `screenLooksLike("description")` (FM visual verification) |
+| `existImage` / `dontExistImage` / `canFindImage` / `imageContains` (image template matching assertions) | Check the result of [`findImage`](../commands/find_image.md) with `.isEmpty`, or `screenLooksLike("description")` (FM visual verification). `findImage*` / `findImages` / [`imageIs`](../commands/image_assertion.md) exist under the same names |
 | `macro` | a plain Swift function |
 | `manual` / `knownIssue` | not available — a failing command always aborts the scenario; there is no escape hatch to mark a failure as expected |
 | `must` / `should` / `want`, `SKIP` / `MANUAL` / `NOTIMPL` | not available — for OS-specific tests use `@TestClass(platform:)` / `@Test(platform:)` instead |

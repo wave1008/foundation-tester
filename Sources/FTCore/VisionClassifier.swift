@@ -366,9 +366,14 @@ public enum VisionClassifier {
     /// 要素の枠でスクリーンショットを切り出す。枠はスナップショットの座標系(iOS = pt / Android = px)で、
     /// 画像との倍率は画面の幅の比から導く
     public static func crop(png: Data, frame: FTRect, screen: FTRect) -> CGImage? {
-        guard screen.width > 0,
-              let source = CGImageSourceCreateWithData(png as CFData, nil),
+        guard let source = CGImageSourceCreateWithData(png as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        return crop(image: image, frame: frame, screen: screen)
+    }
+
+    /// 復号済みのスクリーンショットから切る(同じ画面から何枚も切る findImage は復号を1回にする)
+    public static func crop(image: CGImage, frame: FTRect, screen: FTRect) -> CGImage? {
+        guard screen.width > 0 else { return nil }
         let scale = Double(image.width) / screen.width
         let rect = CGRect(x: (frame.x - screen.x) * scale, y: (frame.y - screen.y) * scale,
                           width: frame.width * scale, height: frame.height * scale).integral

@@ -14,17 +14,20 @@ extension StepExecutor {
         // 直前の操作の記録は**次の操作が画面を変えるまで**有効(検証は画面を変えないので消さない)。
         // `select` は掴むだけでデバイス操作が無いので例外 —— `tap → select → textIs` という
         // 一番ありふれた形で、落ちるのは textIs 側だから、ここで消すと肝心なときに証跡が無くなる
+        // 掴むだけでデバイスを動かさないアクション(スクロールしない findImage / findImages も同じ)
+        let grabsOnly = action == "select"
+            || (Self.isFindImageAction(action) && step.direction == nil)
         if action == "tap" {
             // 前のタップは、このタップが解決に使う木と比べてから確定する(tapAwaitingNextTree の doc)
             tapAwaitingNextTree = lastInteraction
             lastInteraction = nil
-        } else if action != "select" {
+        } else if !grabsOnly {
             lastInteraction = nil
             tapAwaitingNextTree = nil
             unchangedEarlierTaps = []
         }
         // 焦点救済の「直前」は tap → type の並びだけ(select は掴むだけで焦点を動かさない)
-        if action != "select", action != "type" { lastTapTarget = nil }
+        if !grabsOnly, action != "type" { lastTapTarget = nil }
         pendingScrollFrameNote = nil
         spanScale = 1
         // **OS のシステム UI が被さっている間は、どのアクションも撃たない**(SystemUIGate)。
@@ -49,6 +52,9 @@ extension StepExecutor {
             }
         }
         // ロケータ不要のアクション
+        if Self.isFindImageAction(action) {
+            return try await executeFindImage(action, step: step, phase: &phase)
+        }
         if action == "swipe" {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
             // **未指定でも撮る**(2026-08-31): キーボード表示中かどうかは snapshot でしか

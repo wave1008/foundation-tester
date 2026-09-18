@@ -98,9 +98,19 @@ public enum DSLCommandIndex {
                 + "There is also tap(x:, y:, holdSeconds:) for raw coordinates — iOS pt / Android px, "
                 + "the same system as the snapshot frames. Prefer a selector: coordinates hit "
                 + "something else as soon as the layout moves, and they are for screens where the "
-                + "app publishes nothing to select."),
+                + "app publishes nothing to select. Also chains as element.tap(holdSeconds:): an element "
+                + "grabbed by findImage/findImages is tapped at the centre of the found frame.",
+              chainable: true),
         .init("select", "operation", "select(selector, timeout:, requireVisible:, scroll:, maxSwipes:)",
               "Grabs an element without touching the device. Returns an empty element instead of failing."),
+        .init("findImage", "operation",
+              "findImage(label, threshold:, aspectRatioTolerance:, timeout:, scroll:, maxSwipes:)",
+              "Finds the element whose image is nearest to a DefaultClassifier sample image whose label ends with label "
+                + "(a11y elements of a similar aspect ratio are compared by Vision image feature print distance). "
+                + "Returns an empty element instead of failing; tap it with .tap()."),
+        .init("findImages", "operation", "findImages(label, threshold:, aspectRatioTolerance:)",
+              "Returns every element whose image distance to the sample image is below threshold, nearest first "
+                + "(threshold: nil returns every candidate). Looks at the current screen once."),
         .init("lastElement", "operation", "lastElement",
               "The element the last single-element command grabbed. Values are frozen at grab time and cleared between scenes."),
         .init("type", "operation",
@@ -194,6 +204,18 @@ public enum DSLCommandIndex {
               "Alias of exist(selector, scroll: .up). There is no left/right alias."),
         .init("existWithoutScroll", "scroll", "existWithoutScroll(selector, timeout:, requireVisible:)",
               "Checks existence on the current screen even inside a withScroll* block."),
+        .init("findImageWithScrollDown", "scroll",
+              "findImageWithScrollDown(label, threshold:, aspectRatioTolerance:, maxSwipes:)",
+              "findImage while scrolling down."),
+        .init("findImageWithScrollUp", "scroll",
+              "findImageWithScrollUp(label, threshold:, aspectRatioTolerance:, maxSwipes:)",
+              "findImage while scrolling up."),
+        .init("findImageWithScrollRight", "scroll",
+              "findImageWithScrollRight(label, threshold:, aspectRatioTolerance:, maxSwipes:)",
+              "findImage while scrolling right."),
+        .init("findImageWithScrollLeft", "scroll",
+              "findImageWithScrollLeft(label, threshold:, aspectRatioTolerance:, maxSwipes:)",
+              "findImage while scrolling left."),
         .init("selectWithScrollDown", "scroll", "selectWithScrollDown(selector, requireVisible:, maxSwipes:)",
               "Alias of select(selector, scroll: .down)."),
         .init("selectWithScrollUp", "scroll", "selectWithScrollUp(selector, requireVisible:, maxSwipes:)",
