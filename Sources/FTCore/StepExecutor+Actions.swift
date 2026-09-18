@@ -591,7 +591,7 @@ extension StepExecutor {
                         start = clock.now
                         // 探索後の再試行もキャッシュを捨てる。古い木は撮り直しても同じものが
                         // 返るので、素取得だと**再試行の予算をまるごと空振りに使う**
-                        snapshot = try await freshSnapshot(.afterSearch(swiped: searchSwiped))
+                        snapshot = try await freshSnapshot(.repoll(afterSearchSwiped: searchSwiped))
                         phase.snapshotMs += Self.ms(clock.now - start)
                         let previous = resolved
                         resolved = Self.resolve(step: step, in: snapshot)
@@ -629,7 +629,7 @@ extension StepExecutor {
                             ghostSwipes += 1
                             _ = try await settledSignature(phase: &phase)
                             start = clock.now
-                            snapshot = try await freshSnapshot(.afterSearch(swiped: searchSwiped))
+                            snapshot = try await freshSnapshot(.repoll(afterSearchSwiped: searchSwiped))
                             phase.snapshotMs += Self.ms(clock.now - start)
                             let previous = resolved
                             resolved = Self.resolve(step: step, in: snapshot)
@@ -653,7 +653,7 @@ extension StepExecutor {
                         _ = try await settledSignature(phase: &phase)
                     }
                     start = clock.now
-                    snapshot = try await freshSnapshot(.afterSearch(swiped: searchSwiped))
+                    snapshot = try await freshSnapshot(.repoll(afterSearchSwiped: searchSwiped))
                     phase.snapshotMs += Self.ms(clock.now - start)
                     let previous = resolved
                     resolved = Self.resolve(step: step, in: snapshot)

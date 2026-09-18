@@ -268,9 +268,10 @@ struct RunScenario: AsyncParsableCommand {
         // (tap/type は通る。実験で確定済み)。probe の uiFramework=="compose" 検出時のみ true
         // (probe 不達なら false のまま=StepExecutor の事後 409 安全網に委ねる)
         var typeDriverGestures: Set<String> = []
-        // StepExecutor の空打ちゲート(shouldEmptyDrag)へ渡す答え。**AppUIFrameworkQuery だけで決める**
-        // (静的な材料 → in-app の自己申告 → 不明)。Android は releasesScrollTouch=false で影響しないので
-        // nil のまま(判定コスト自体を払わない)
+        // StepExecutor へ渡す答え(空打ちゲート shouldEmptyDrag と、待つ間の読み直しの迂回
+        // repollBypassesCache)。**AppUIFrameworkQuery だけで決める**(静的な材料 → in-app の自己申告 → 不明)。
+        // **Android も決める** —— 空打ちには効かないが、Compose の a11y キャッシュの遅れを迂回するのに要る
+        // (nil のままだと迂回が黙って効かない。2026-09-18 に実際にそうなっていた)
         var uiFrameworkHint: AppUIFramework?
         let uiFrameworkSubject = AppUIFrameworkQuery.Subject(
             platform: runPlatform, bundleID: appBundleID, appPath: appPath, udid: udid, physical: physical)
@@ -403,6 +404,9 @@ struct RunScenario: AsyncParsableCommand {
                     await AndroidPhysicalDevice.wakeIfAsleep(serial: serial, log: { ConsoleOut.err($0) })
                 }
                 driver = try AndroidDriver(serial: serial)
+                // Android のブリッジは申告しないので静的な材料(.apk の目印・台帳)だけ。
+                // .apk は台帳がパス・更新時刻・サイズで控えるので、読むのは初回だけ
+                uiFrameworkHint = AppUIFrameworkQuery.staticAnswer(for: uiFrameworkSubject).framework
             default:
                 throw ValidationError("platform must be ios or android: \(runPlatform)")
             }

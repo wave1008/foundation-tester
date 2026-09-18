@@ -212,6 +212,10 @@ enum SnapshotFreshness {
     /// 内蔵スクロール探索の後の解決。**探索がスワイプを撃っていなければ**素取得でよい
     /// (撃っていないなら木は古くならない)
     case afterSearch(swiped: Bool)
+    /// 要素が現れるのを待つ**再試行の周**(1 回目の解決で見つからなかった後)。
+    /// 探索がスワイプを撃っていれば afterSearch と同じ理由で、撃っていなくても
+    /// `repollBypassesCache` なら迂回する
+    case repoll(afterSearchSwiped: Bool)
 }
 
 public final class StepExecutor {
@@ -467,8 +471,25 @@ public final class StepExecutor {
     let isAndroid: Bool
 
     /// 対象アプリの UI フレームワーク(`AppUIFrameworkQuery` の答え。nil = 不明)。
-    /// **空打ちの発火条件だけに使う**(shouldEmptyDrag)。他の判定には持ち込まない
+    /// **使うのは空打ちの発火条件(shouldEmptyDrag)と、待つ間の読み直しの迂回(repollBypassesCache)だけ**。
+    /// 他の判定には持ち込まない
     let uiFramework: AppUIFramework?
+
+    /// 要素が現れる・値が変わるのを**待つ間の 2 回目以降の読み**で、ドライバのキャッシュを迂回するか。
+    /// Android の Compose は、新しく出たノードを a11y のキャッシュへ 800ms 以上出さない
+    /// (2026-09-18 実測: 1 秒後に表示される要素を、ポーリング間隔 100/200/400/800/1000ms で読むと
+    /// 押してから 1.8 秒の読みでまだ無く 2.8 秒で見つかる。`refresh=1` なら 1.08 秒。
+    /// 50ms 刻みで読み続けると遅れは出ない = 読む頻度に依存する)。View/XML と Flutter の E2E では
+    /// 遅れが出ていない。迂回は 1 回あたり約 +50ms(要素 19 個の画面で 8 → 50〜60ms)なので、
+    /// **1 回目の読み(ふだんの経路)では払わず**、見つからずに待っている周だけ払う。
+    /// 自前描画で分ける(個別の値で分けると語彙を足した日に黙って外れる)。不明なら迂回しない
+    var repollBypassesCache: Bool {
+        driver.supportsCacheBypass && Self.repollBypassesCache(isAndroid: isAndroid, app: uiFramework)
+    }
+
+    static func repollBypassesCache(isAndroid: Bool, app: AppUIFramework?) -> Bool {
+        isAndroid && app?.isSelfRendered == true
+    }
 
     /// 空打ちを撃ってよいか。releasesScrollTouch(iOS)に加え、uiFramework が判明していれば
     /// Compose/Flutter だけに絞る —— タッチ消費はそれらの自前描画スクロール容器に固有で、
@@ -675,6 +696,7 @@ public final class StepExecutor {
         switch freshness {
         case .afterOwnMove: return true
         case .afterSearch(let swiped): return swiped
+        case .repoll(let swiped): return swiped || repollBypassesCache
         }
     }
 

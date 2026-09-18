@@ -94,7 +94,11 @@ final class PostSwipeSnapshotFreshnessTests: XCTestCase {
         }
         // **`swiped:` の実引数まで見る**: `.afterSearch(swiped: false)` に固定されると
         // 理由は書かれたまま迂回が消えるので、語彙の存在だけでは検出できない
-        let gated = body.filter { $0.contains("freshSnapshot(.afterSearch(swiped: searchSwiped))") }
+        // 再試行の周は `.repoll`(待つ間の迂回も兼ねる)で書く。どちらの語彙でも実引数は searchSwiped
+        let gated = body.filter {
+            $0.contains("freshSnapshot(.afterSearch(swiped: searchSwiped))")
+                || $0.contains("freshSnapshot(.repoll(afterSearchSwiped: searchSwiped))")
+        }
         XCTAssertGreaterThanOrEqual(gated.count, 3,
                                     "探索後の解決 snapshot は初回と再試行2経路(timeout 指定 / 既定3回)の"
                                     + "計3箇所すべてを searchSwiped で迂回すること。現在 \(gated.count) 箇所")

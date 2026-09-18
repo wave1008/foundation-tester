@@ -22,6 +22,14 @@ struct AssertFreshRetry {
     private var failUsed = false
     private var passUsed = false
     private var armed = false
+    /// 2 回目以降の読みを常に迂回する(StepExecutor.repollBypassesCache)。**既定値を置かない** ——
+    /// 新しい待ちループが渡し忘れると、Compose の Android で出現の検出が 1 周期遅れたまま黙って緑になる
+    private let bypassOnRepoll: Bool
+    private var reads = 0
+
+    init(bypassOnRepoll: Bool) {
+        self.bypassOnRepoll = bypassOnRepoll
+    }
 
     /// 期限到達時に呼ぶ。true なら「取り直してもう1周」
     mutating func arm(ifSupported supported: Bool) -> Bool {
@@ -40,10 +48,10 @@ struct AssertFreshRetry {
         return true
     }
 
-    /// snapshot 取得時に呼ぶ。arm/confirmPass した直後の1周だけ true
+    /// snapshot 取得時に呼ぶ(1 周 1 回)。arm/confirmPass した直後の1周、または bypassOnRepoll の 2 周目以降で true
     mutating func takeArmed() -> Bool {
-        defer { armed = false }
-        return armed
+        defer { armed = false; reads += 1 }
+        return armed || (bypassOnRepoll && reads > 0)
     }
 }
 
@@ -569,7 +577,7 @@ extension StepExecutor {
         }
         var deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         let stepStart = clock.now
-        var freshRetry = AssertFreshRetry()
+        var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
         var backoff = PollBackoff()
         var primaryMisses = 0
@@ -724,7 +732,7 @@ extension StepExecutor {
         }
         var deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         let stepStart = clock.now
-        var freshRetry = AssertFreshRetry()
+        var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
         var lastActual: String?
         var found = false
@@ -946,7 +954,7 @@ extension StepExecutor {
         // 可視性(occlusion)は見ない: ツリーから消えたことが唯一の判定。
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         let stepStart = clock.now
-        var freshRetry = AssertFreshRetry()
+        var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
         // 否定形を通す前の確認は1周だけ(上の continue が deadline 検査を飛ばすため)
         var passConfirmed = false
@@ -1051,7 +1059,7 @@ extension StepExecutor {
         }
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         let stepStart = clock.now
-        var freshRetry = AssertFreshRetry()
+        var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
         // 否定形を通す前の確認は1周だけ(上の continue が deadline 検査を飛ばすため)
         var passConfirmed = false
@@ -1172,7 +1180,7 @@ extension StepExecutor {
         let wantEnabled = assert == "enabled"
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         let stepStart = clock.now
-        var freshRetry = AssertFreshRetry()
+        var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
         var backoff = PollBackoff()
         var found = false
@@ -1241,7 +1249,7 @@ extension StepExecutor {
         let wantShown = assert == "keyboardShown"
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         let stepStart = clock.now
-        var freshRetry = AssertFreshRetry()
+        var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
         // 否定形を通す前の確認は1周だけ(上の continue が deadline 検査を飛ばすため)
         var passConfirmed = false
@@ -1302,7 +1310,7 @@ extension StepExecutor {
         let wantChecked = assert == "checked"
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         let stepStart = clock.now
-        var freshRetry = AssertFreshRetry()
+        var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
         var backoff = PollBackoff()
         var found = false
@@ -1375,7 +1383,7 @@ extension StepExecutor {
         let chain = [locator] + (step.fallbacks ?? [])
         let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         let stepStart = clock.now
-        var freshRetry = AssertFreshRetry()
+        var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
         var backoff = PollBackoff()
         var actual = 0
