@@ -81,8 +81,8 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | フレームワーク | 違い | シナリオでの扱い |
 |---|---|---|
 | 自作の部品(SwiftUI の Button で作ったチェックボックス・ラジオ等) | チェック状態を a11y に一切出さない(value も selected trait も無い) | **見本画像を `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に置けば画像で判定できる**(CheckStateClassifier。witness は E2E-iOS の `#cb_agree` / `#radio_*`)。見本が無いと `checkIsON` は「reports no check state」で落ちる。ほかの手段は **echo の文字列**(`agree=true` 等)か、アプリ側で公開する(SwiftUI なら `.accessibilityRepresentation { Toggle(...) }`) |
-| Compose(iOS)の Checkbox/Radio・Flutter(iOS)の Radio | **オンだけ**報告する(オフと「状態を持たない」が同じ見え方) | 同じシナリオで一度オンを見た要素ならオフも確定する。見る前の `checkIsOFF` は通して警告 |
-| Flutter・Compose(iOS)・Android | mixed(一部だけ選択)をオフと区別して出さない(Flutter は `"0"`) | mixed を検証したいときは echo の文字列で |
+| Compose(iOS)の Checkbox/Radio・Flutter(iOS)の Radio | **オンだけ**報告する(オフと「状態を持たない」が同じ見え方) | 同じシナリオで一度オンを見た要素ならオフも確定する。見る前の `checkIsOFF` は通して警告。**見本画像を置けば、見る前のオフも画像で判定できる**(§2.6) |
+| Flutter・Compose(iOS)・Android | mixed(一部だけ選択)をオフと区別して出さない(Flutter は `"0"`) | mixed を検証したいときは echo の文字列で。**CheckStateClassifier も mixed を返せない**(§2.6) |
 | WebKit の `<input type=radio>`(XCUITest 経路) | id の無い `other` 型(ラベル・value `"1"`/`"0"` 付き)で届き、木の規則(id の無い `other` は落とす)で**要素ごと消える** | in-app(DOM 経路)なら読める。XCUITest ではラベルのテキストを指す |
 | SwiftUI・Compose(iOS) | Slider の value が `"50%"` などパーセント表記 | 値は echo の文字列で確かめる |
 | SwiftUI(UITableView) | 画面外の行ラベルが、id 無しで全行分木に残る | ラベルの部分一致で不在検証しない |
@@ -183,6 +183,28 @@ iOS は実装ごとに状態の出し方が違う(2026-09-18 実測・両エン�
 
 Android はどのフレームワークも `isChecked`(checkable なら value `"1"`/`"0"`)で出す。
 **B. 揃っていない**ものは 1.4 の表(状態を出さない自作の部品・オンだけ報告・mixed)。
+
+**画像での判定(CheckStateClassifier。Shirates Vision の移植)** —— a11y が状態を出さない部品を救う経路。
+プロジェクトの `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に見本画像があれば、要素の枠で
+切ったスクリーンショットを Create ML の画像分類器に掛け、1位のラベルで判定する(フレームワークを問わない)。
+
+| 設定 `preferCheckStateClassifier` | 分類器を使う要素 |
+|---|---|
+| `true`(**既定**) | 見本があれば全部(a11y が状態を報告していても分類器が勝つ) |
+| `false` | a11y が状態を報告しない要素だけ(自作の部品・オンを見る前の Compose の Checkbox 等) |
+
+見本は**推論と同じ a11y の枠で切る**(witness は E2E-iOS の scenario 08 = `#cb_agree` / `#radio_*` / `#sw_notify`)。
+画像で判定したステップには注記 `check-state-classified`。
+
+**それでも救えない形**(a11y・分類器のどちらにも根拠が無い):
+
+| 形 | 理由 | 扱い |
+|---|---|---|
+| 要素が木に出ない(a11y から隠した部品・XCUITest 経路の WebKit のラジオ) | 分類器は「掴んだ要素の枠」を切るので、掴めなければ使えない | ラベルの文字を指す / in-app(DOM 経路)で読む |
+| mixed(一部だけ選択) | 分類器が状態に写すのは `[ON]`/`[OFF]` だけ。a11y も Flutter・Compose(iOS)・Android は区別しない | echo の文字列で。**既定(分類器を優先)では、a11y が mixed を正しく出す WebKit・RN でも分類器がオン/オフに振る** —— mixed を扱う画面は `preferCheckStateClassifier: false` |
+| 見本に無い見た目(ダークモード・テーマ・サイズ・無効・押下中・フォーカスリング・枠に入るラベルの文字や言語・切替アニメーション中) | 分類器は必ずオンかオフのどちらかを答える = 見本外の見た目は誤りうる | 回す条件ごとの見本を置く(Shirates の見本も bright / dark を持つ) |
+| 状態を持たない要素(ただのボタン)を指した checkIsON/OFF | 既定(分類器を優先)では、画像からどちらかの判定が付いてしまう(以前は「報告なし」で落ちるか素通り) | 状態を持つ部品だけを指す |
+| 見切れた要素(枠が画面外にはみ出す) | 切り出せないので a11y の判定に戻る(a11y も不明なら不明) | 画面内へ送ってから検証する |
 
 ## 3. 待ちと鮮度
 
