@@ -611,8 +611,18 @@ final class StepExecutorTests: XCTestCase {
     }
 
     /// 暖機を頼むのは**ガードが実際に走る回**(生成のたびに頼むと、ガードが一度も撃たれない
-    /// executor でも Vision のモデルを読み込む)
+    /// executor でも Vision のモデルを読み込む)。
+    /// **暖機の状態はプロセス全体で共有する**: 同じプロセスで先に走ったテストが暖機を終わらせていると、
+    /// ガードは頼まずに抜けるのが正しい動き(`RegionText.awaitPrewarm`)なので、「まだ暖まっていない・
+    /// 暖機も終わっていない」を差し替え口で固定する(`swift test --filter StepExecutorTests` の
+    /// 1 プロセス実行で、並び順しだいで落ちていた)
     func testOCRPrewarmIsRequestedWhenTheGuardRuns() async throws {
+        RegionText.warmOverrideForTesting = false
+        RegionText.prewarmFinishOverrideForTesting = {}
+        defer {
+            RegionText.warmOverrideForTesting = nil
+            RegionText.prewarmFinishOverrideForTesting = nil
+        }
         let log = CallLog()
         let label = "こんにちは"
         let primary = FakeAppDriver(name: "primary", log: log,
