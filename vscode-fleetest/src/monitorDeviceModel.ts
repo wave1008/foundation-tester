@@ -319,3 +319,52 @@ export function filterMonitorDevices(
     ? devices.filter((device) => device.state !== "offline" && device.state !== "unknown")
     : [...devices];
 }
+
+/** 「マシン有効」off の機械(手元は "local")。`api remote-machines` の hosts[].enabled / local.enabled が正
+ *  (CLI の FTCore.MachineEnablement と同じ集合。webview 側の複製は machineColors.js の disabledMachines)。
+ *  読み手はタブを開いたときの終了(planDisabledMachineStops)。**表示は隠さない**(終了するまで見せる)
+ *  欠落は有効(古い CLI では何も落とさない) */
+export function disabledMachineSet(
+  hosts: readonly { readonly machine: string; readonly enabled?: boolean }[],
+  local: { readonly enabled?: boolean } | undefined,
+): ReadonlySet<string> {
+  const result = new Set(hosts.filter((host) => host.enabled === false).map((host) => host.machine));
+  if (local?.enabled === false) {
+    result.add("local");
+  }
+  return result;
+}
+
+/**
+ * 「テスト実行」タブを開いたときに終了させる「マシン有効」off の機械の台(純粋関数)。
+ * **機械ごとに1回だけ**: その機械の台が1台でも観測済み(state が unknown 以外)になった時点で
+ * handled に入れ、起動中(booted/connected)の仮想デバイスを返す。リモートの観測は fan-out が
+ * 遅れて届けるので、開いた瞬間の一覧だけで決めると unknown のまま取りこぼす。handled に入った
+ * 機械は二度と見ない = タブを開いている間に利用者が手で起こした台とは争わない。
+ * **実機は終了しない**(一括操作と同じ規律。止めても利用者の手で起こし直す手段が無い)。
+ */
+export function planDisabledMachineStops(
+  devices: readonly MonitorDevice[],
+  disabledMachines: ReadonlySet<string>,
+  handled: ReadonlySet<string>,
+): { readonly stops: readonly { readonly name: string; readonly machine?: string }[];
+     readonly newlyHandled: readonly string[] } {
+  const stops: { name: string; machine?: string }[] = [];
+  const newlyHandled: string[] = [];
+  for (const machine of disabledMachines) {
+    if (handled.has(machine)) {
+      continue;
+    }
+    const onMachine = devices.filter((device) => (device.machine ?? "local") === machine);
+    if (!onMachine.some((device) => device.state !== "unknown")) {
+      continue;
+    }
+    newlyHandled.push(machine);
+    for (const device of onMachine) {
+      if ((device.state === "booted" || device.state === "connected") && device.kind !== "physical") {
+        stops.push({ name: device.name, machine: device.machine });
+      }
+    }
+  }
+  return { stops, newlyHandled };
+}

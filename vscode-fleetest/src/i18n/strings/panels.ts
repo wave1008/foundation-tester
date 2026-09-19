@@ -63,6 +63,8 @@ export const panelsStrings = {
   },
   "panels.toolbar.recordingsFinalizing": { ja: "録画を編集中...", en: "Editing recordings..." },
   "panels.banner.copied": { ja: "エラーメッセージをコピーしました", en: "Copied the error message" },
+  // テスト実行タブのチャート行の「マシン有効」off の印(hostCharts.js の hmApplyDisabled が可視性を切り替える)
+  "panels.hostMetrics.machineDisabled": { ja: "⊘無効", en: "⊘Off" },
   "panels.hostMetrics.memTitle": { ja: "メモリ使用量", en: "Memory usage" },
   "panels.hostMetrics.cpuTitle": { ja: "CPU負荷", en: "CPU load" },
   "panels.hostMetrics.gpuTitle": { ja: "GPU負荷", en: "GPU load" },

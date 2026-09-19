@@ -270,6 +270,28 @@ button.bulk-cancel:hover:not(:disabled) {
 .host-metrics.hm-multi .hm-lock.hm-lock-on {
   visibility: visible;
 }
+/* 「マシン有効」off の印(⊘無効)。枠と可視性の規律は .hm-lock と同じ(全行に同じ文言で置く =
+   visibility:hidden の行も同じ幅を取るので列は揃う)。
+   **手元だけの1行表示でも off のときは出す**(錠前と違い、手元1台を止めた事実はそこでしか見えない)。
+   警告色にしない(利用者が選んだ状態で、異常ではない) */
+.hm-off {
+  display: none;
+  white-space: nowrap;
+  margin-left: -4px;
+  font-size: 11px;
+  line-height: 1;
+  text-align: center;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+  cursor: default;
+}
+.host-metrics.hm-multi .hm-off {
+  display: inline-block;
+  visibility: hidden;
+}
+.host-metrics .hm-off.hm-off-on {
+  display: inline-block;
+  visibility: visible;
+}
 /* 「モニター再起動」と「テスト実行」の間だけ広げる(ツールバーの gap 8px + ここの 8px)。
    左のモニター操作群(実行プロファイル・一括起動/停止・再起動)と、テスト実行を切り分ける。 */
 #btn-restart {

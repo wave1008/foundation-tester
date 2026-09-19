@@ -24,6 +24,8 @@ import {
   deviceOpMenuItem,
   enqueueDeviceLifecycleJob,
   filterMonitorDevices,
+  disabledMachineSet,
+  planDisabledMachineStops,
   deleteDeviceApiArgs,
   hasDeviceLifecycleJobFor,
   installSystemImageApiArgs,
@@ -870,6 +872,13 @@ test("monitorControlLine: pause/resume/suppressFrames を末尾改行付きの N
 });
 
 // ---- filterMonitorDevices(「起動中のデバイス」表示フィルタ) ----
+
+test("disabledMachineSet: enabled:false の機械と local.enabled:false の手元だけ・欠落は有効", () => {
+  assert.deepEqual([...disabledMachineSet(
+    [{ machine: "A", enabled: false }, { machine: "B", enabled: true }, { machine: "C" }],
+    { enabled: false })].sort(), ["A", "local"]);
+  assert.equal(disabledMachineSet([{ machine: "A" }], undefined).size, 0);
+});
 
 const SIM1 = { id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "connected", detail: "" };
 const SIM2 = { id: "ios:シミュ2", name: "シミュ2", platform: "ios", state: "booted", detail: "" };
@@ -3420,4 +3429,32 @@ test("setLptHistoryRuns: 1以上の整数か null だけ受け付ける", () => 
   assert.equal(isMonitorFromWebviewMessage({ type: "setLptHistoryRuns", value: 2.5 }), false);
   assert.equal(isMonitorFromWebviewMessage({ type: "setLptHistoryRuns", value: "20" }), false);
   assert.equal(isMonitorFromWebviewMessage({ type: "setLptHistoryRuns" }), false);
+});
+
+// ---- planDisabledMachineStops(テスト実行タブを開いたときに終了させる台) ----
+
+test("planDisabledMachineStops: 無効な機械の起動中の仮想デバイスだけを返し、実機・停止中・有効な機械は触らない", () => {
+  const devices = [
+    { id: "ios:L", name: "L", platform: "ios", state: "connected", detail: "", kind: "virtual" },
+    { id: "ios:M1Max/A", name: "A", platform: "ios", state: "booted", detail: "", kind: "virtual", machine: "M1Max" },
+    { id: "ios:M1Max/B", name: "B", platform: "ios", state: "offline", detail: "", kind: "virtual", machine: "M1Max" },
+    { id: "ios:M1Max/P", name: "P", platform: "ios", state: "connected", detail: "", kind: "physical", machine: "M1Max" },
+    { id: "ios:M1Ultra/A", name: "A", platform: "ios", state: "connected", detail: "", kind: "virtual", machine: "M1Ultra" },
+  ];
+  const plan = planDisabledMachineStops(devices, new Set(["M1Max", "local"]), new Set());
+  assert.deepEqual(new Set(plan.stops.map((s) => `${s.machine ?? "local"}/${s.name}`)), new Set(["M1Max/A", "local/L"]));
+  assert.deepEqual([...plan.newlyHandled].sort(), ["M1Max", "local"]);
+});
+
+test("planDisabledMachineStops: 観測が届くまで(全台 unknown)は待ち、済んだ機械は二度と撃たない", () => {
+  const unknown = [{ id: "ios:M1Max/A", name: "A", platform: "ios", state: "unknown", detail: "", kind: "virtual", machine: "M1Max" }];
+  const waiting = planDisabledMachineStops(unknown, new Set(["M1Max"]), new Set());
+  assert.deepEqual(waiting.stops, []);
+  assert.deepEqual(waiting.newlyHandled, [], "unknown だけなら済みにしない(後で届く観測で撃つ)");
+
+  const observed = [{ ...unknown[0], state: "connected" }];
+  assert.deepEqual(planDisabledMachineStops(observed, new Set(["M1Max"]), new Set()).stops,
+    [{ name: "A", machine: "M1Max" }]);
+  assert.deepEqual(planDisabledMachineStops(observed, new Set(["M1Max"]), new Set(["M1Max"])).stops, [],
+    "済んだ機械は撃たない(開いている間に手で起こした台と争わない)");
 });

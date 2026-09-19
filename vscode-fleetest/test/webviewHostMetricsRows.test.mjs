@@ -188,6 +188,32 @@ test("占有の錠前は行より先に届いても出る(行の生成時に貼�
   assert.equal(chip.getAttribute("data-hover-tip"), null, "空きの錠前に説明を残さない");
 });
 
+// 「マシン有効」off の印(⊘)。remoteConfig は行の前にも後にも届く。印は全行に枠があり可視性だけ切り替える
+test("マシン有効が off の機械の行にだけ無効の印が点く(行の前後どちらに届いても)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  const isOn = (machine) => rowFor(document, machine).querySelector(".hm-off").classList.contains("hm-off-on");
+  send(window, { type: "remoteConfig", hosts: [
+    { machine: "mac2", host: "u@mac2", dir: "", enabled: false },
+    { machine: "mac3", host: "u@mac3", dir: "", enabled: true },
+  ], local: { machine: "local", host: "me@localhost", fmConcurrency: 0, enabled: false } });
+  send(window, { type: "hostMetricsMachines", machines: ["mac2", "mac3"] });
+
+  assert.equal(isOn("mac2"), true, "行の生成時に貼る");
+  assert.equal(isOn("mac3"), false, "複製元(手元の行)の印を引き継がない");
+  assert.equal(isOn(""), true, "手元は local.enabled で決まる");
+  assert.match(rowFor(document, "mac2").querySelector(".hm-off").getAttribute("data-hover-tip"), /mac2/);
+  assert.deepEqual(rows(document).map((row) => row.querySelectorAll(".hm-off").length), [1, 1, 1],
+    "枠は全行に1つ(列をずらさない)");
+
+  send(window, { type: "remoteConfig", hosts: [{ machine: "mac2", host: "u@mac2", dir: "" }],
+    local: { machine: "local", host: "me@localhost", fmConcurrency: 0, enabled: true } });
+  assert.equal(isOn("mac2"), false, "enabled 欠落は有効 = 後着の config で外れる");
+  assert.equal(isOn(""), false);
+  assert.equal(rowFor(document, "mac2").querySelector(".hm-off").getAttribute("data-hover-tip"), null);
+});
+
 // **錠前は行の幅を動かさない** —— 出る行にだけ要素を足すと、その行だけ MEM/CPU/… が右へずれる
 // (2026-08-31 の実害)。枠は全行に常にあり、切り替えるのは可視性だけ
 test("錠前が出ても行ごとの列がずれない(枠は全行に常にある)", (t) => {

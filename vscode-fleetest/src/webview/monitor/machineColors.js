@@ -16,6 +16,10 @@ let hexByMachine = new Map(); // machine -> color(hex)。鍵が不明(パレッ�
 // バッジを複数並べる箇所が orderMachinesLikeSettings で使う
 let machineRank = new Map([['local', 0]]); // machine -> 並び順
 const machineOrderListeners = [];
+// 「マシン有効」が off の機械(手元は "local")。remoteConfig の hosts[].enabled / local.enabled が正
+// (CLI の FTCore.MachineEnablement と同じ集合)。欠落は有効 = 古い CLI では何も出さない
+let disabledMachines = new Set();
+const machineEnablementListeners = [];
 
 /** remoteConfig 受信のたびに呼ぶ。パレットと machine→色の対応を作り直し、既に描かれている
  *  バッジ(data-machine を持つもの)を塗り直す。machineColors が配列でなければパレットは空
@@ -48,6 +52,25 @@ export function applyMachineColors(message) {
   for (const listener of machineOrderListeners) {
     listener();
   }
+  disabledMachines = new Set(hosts
+    .filter((host) => typeof host.machine === 'string' && host.machine !== '' && host.enabled === false)
+    .map((host) => host.machine));
+  if (message.local && message.local.enabled === false) {
+    disabledMachines.add('local');
+  }
+  for (const listener of machineEnablementListeners) {
+    listener();
+  }
+}
+
+/** 「マシン有効」が off か。machine が空 = 手元("local") */
+export function isMachineDisabled(machine) {
+  return disabledMachines.has(machine || 'local');
+}
+
+/** remoteConfig を受けるたびに呼ぶ(有効/無効が変わりうる)。表示を作り直す箇所が登録する。 */
+export function onMachineEnablementChanged(listener) {
+  machineEnablementListeners.push(listener);
 }
 
 /** 設定タブのマシン一覧の順に並べ替えたコピー。一覧に無いマシンは後ろに、受け取った順のまま置く。 */

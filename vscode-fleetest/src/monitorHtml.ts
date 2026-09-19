@@ -237,6 +237,8 @@ function renderDevicesPanel(): string {
           <!-- 占有(その機械で run が実行中)の錠前。**全行に必ず置く** —— 出る行にだけ足すと
                その行だけ幅が増えて、MEM/CPU/… の列が行ごとにずれる(2026-08-31 の実害)。
                出す/出さないは可視性だけで切り替える(hostCharts.js の hmApplyLock)。 -->
+          <!-- 「マシン有効」off の印。錠前と同じく**全行に必ず置き**可視性だけ切り替える(hmApplyDisabled) -->
+          <span class="hm-off">${t("panels.hostMetrics.machineDisabled")}</span>
           <span class="hm-lock">🔒</span>
           <span class="host-metric" id="hm-mem" data-metric="mem" title="${t("panels.hostMetrics.memTitle")}"><span class="hm-label">MEM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <span class="host-metric" id="hm-cpu" data-metric="cpu" title="${t("panels.hostMetrics.cpuTitle")}"><span class="hm-label">CPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>

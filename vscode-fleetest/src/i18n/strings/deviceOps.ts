@@ -11,6 +11,10 @@ export const deviceOpsStrings = {
     ja: "[fleetest] デバイスの起動を中断します(start-all-devices へ SIGTERM)",
     en: "[fleetest] Stopping device startup (sending SIGTERM to start-all-devices)",
   },
+  "deviceOps.log.stopDisabledMachineDevice": {
+    ja: "「マシン有効」がオフの {machine} のデバイス {name} を終了します(テスト実行タブを開いたため)",
+    en: "Stopping {name} on {machine} because \"Machine enabled\" is off (Test Run tab opened)",
+  },
   "deviceOps.log.bulkUpQueueCancelled": {
     ja: "[fleetest] キュー待ちの一括起動を取り消しました",
     en: "[fleetest] Cancelled the queued bulk startup",

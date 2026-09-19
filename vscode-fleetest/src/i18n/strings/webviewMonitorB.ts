@@ -101,6 +101,10 @@ export const webviewMonitorBStrings = {
     en: "Your run is in progress on {machine}",
   },
   "wvMonitor2.hostCharts.lockIssuerUnknown": { ja: "誰か", en: "someone" },
+  "wvMonitor2.hostCharts.machineDisabled": {
+    ja: "{machine} は「マシン有効」がオフです(設定タブ)。テストはこのマシンへ振り分けられません",
+    en: "\"Machine enabled\" is off for {machine} (Settings tab). Test runs are not scheduled onto this machine",
+  },
   "wvMonitor2.hostCharts.cpuTitle": { ja: "CPU負荷 {value}", en: "CPU load {value}" },
   "wvMonitor2.hostCharts.gpuTitle": { ja: "GPU負荷 {value}", en: "GPU load {value}" },
   "wvMonitor2.hostCharts.visionTitle": {

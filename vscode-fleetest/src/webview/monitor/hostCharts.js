@@ -26,6 +26,7 @@
 import { t } from '../i18n.js';
 import { HM_FM_MAX_RATE, HM_VISION_MAX_RATE, hmSharedCountScale } from './hostChartScale.js';
 import { setHoverTip } from './hoverTip.js';
+import { isMachineDisabled, onMachineEnablementChanged } from './machineColors.js';
 
 const HM_MAX_SAMPLES = 60;
 // 手元の tick が途絶えたとみなすまでの猶予(ms)。手元の host-metrics 子が落ちてから自動再起動
@@ -180,6 +181,26 @@ function hmApplyLock(row, machine) {
     : '');
 }
 
+/** 「マシン有効」off の印を1行へ反映する(要素は足し引きしない。hmApplyLock と同じ理由) */
+function hmApplyDisabled(row, machine) {
+  const chip = row.el.querySelector('.hm-off');
+  if (!chip) {
+    return;
+  }
+  const off = isMachineDisabled(machine);
+  chip.classList.toggle('hm-off-on', off);
+  setHoverTip(chip, off
+    ? t('wvMonitor2.hostCharts.machineDisabled', { machine: machine === '' ? HM_LOCAL_LABEL : machine })
+    : '');
+}
+
+// remoteConfig は行より後にも先にも届く。届いた時点で全行を塗り直し、行の生成時にも貼る(hmEnsureRow)
+onMachineEnablementChanged(() => {
+  for (const [machine, row] of hmRows) {
+    hmApplyDisabled(row, machine);
+  }
+});
+
 /** 手元が先・以降は機械名順に並べ直す(appendChild は既存ノードでは移動として働く)。 */
 function hmSortRows() {
   for (const machine of [...hmRows.keys()].filter((key) => key !== '').sort()) {
@@ -217,6 +238,7 @@ function hmEnsureRow(machine) {
   const row = hmMakeRow(rowEl, machine);
   hmRows.set(machine, row);
   hmApplyLock(row, machine);   // 行より先に届いていた占有をここで貼る
+  hmApplyDisabled(row, machine);   // 複製元(手元の行)の印を引き継がない
   hmSortRows(); // サンプル先着で作られた行も並びは機械名順に保つ
   hmSyncMultiClass();
   return row;
