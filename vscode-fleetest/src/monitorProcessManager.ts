@@ -20,7 +20,7 @@ import {
   toWebviewMessage,
 } from "./monitorModel";
 import { type MachineLock, applyMachineLockEvent, isConfirmedHeld, localDevicesInRun } from "./machineLockModel";
-import { NdjsonParser } from "./ndjson";
+import { NdjsonParser, abbreviateLogLine } from "./ndjson";
 import type { MonitorPanelDeps } from "./monitorPanel";
 
 /**
@@ -351,7 +351,7 @@ export class MonitorProcessManager {
       (rawValue) => {
         if (!isMonitorEvent(rawValue)) {
           this.deps.outputChannel.appendLine(
-            t("deviceOps.log.unknownLine", { label: "monitor", value: JSON.stringify(rawValue) }),
+            t("deviceOps.log.unknownLine", { label: "monitor", value: abbreviateLogLine(JSON.stringify(rawValue)) }),
           );
           return;
         }
@@ -392,7 +392,7 @@ export class MonitorProcessManager {
         }
         this.deps.post(toWebviewMessage(value));
       },
-      (line) => this.deps.outputChannel.appendLine(`[monitor stdout] ${line}`),
+      (line) => this.deps.outputChannel.appendLine(`[monitor stdout] ${abbreviateLogLine(line)}`),
     );
     // **CLI が言っている理由を捨てない** —— 以前は exit code だけを見て「デバイス設定が
     // 未設定かも」と決め打ちしていたため、実際は「その実行プロファイルはこのプロジェクトに

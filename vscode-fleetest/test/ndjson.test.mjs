@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { NdjsonParser } from "../src/ndjson";
+import { NdjsonParser, abbreviateLogLine } from "../src/ndjson";
 
 /** NdjsonParser を生成し、パース結果(values)と非JSON行(nonJsonLines)を集める配列を返す。 */
 function createCollector() {
@@ -91,4 +91,12 @@ test("CRLF 改行でも末尾の \\r が取り除かれてパースできる", (
   const { parser, values } = createCollector();
   parser.push(Buffer.from('{"kind":"a"}\r\n{"kind":"b"}\r\n', "utf8"));
   assert.deepEqual(values, [{ kind: "a" }, { kind: "b" }]);
+});
+
+test("abbreviateLogLine: 画像フレーム級の行は先頭 300 文字と長さだけ残す・短い行は素通し", () => {
+  const frame = '{"device":"ios:x","jpegBase64":"' + "A".repeat(100000) + '"}';
+  const out = abbreviateLogLine(frame);
+  assert.equal(out, frame.slice(0, 300) + `… (${frame.length} chars, truncated)`);
+  assert.equal(abbreviateLogLine("x".repeat(300)), "x".repeat(300));
+  assert.equal(abbreviateLogLine("short"), "short");
 });

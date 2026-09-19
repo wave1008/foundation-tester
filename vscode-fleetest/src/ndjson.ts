@@ -59,3 +59,14 @@ export class NdjsonParser {
     }
   }
 }
+
+/** OUTPUT へ生の行を出すときの上限(文字)。モニターの行は画像フレーム(jpegBase64・約10万文字)を
+ * 含みうるので、読めなかった行を全文出すと base64 で OUTPUT が埋まる。診断に要るのは先頭(kind・device)と長さだけ */
+export const LOG_LINE_MAX_CHARS = 300;
+
+export function abbreviateLogLine(line: string, max: number = LOG_LINE_MAX_CHARS): string {
+  if (line.length <= max) {
+    return line;
+  }
+  return `${line.slice(0, max)}… (${line.length} chars, truncated)`;
+}
