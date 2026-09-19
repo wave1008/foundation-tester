@@ -737,7 +737,7 @@ test("isLiveWebviewEnvelope: type が 'live' 以外、または message が不�
 
 const MOCK_LIVE = path.resolve(process.cwd(), "test", "fixtures", "mock-live.mjs");
 
-/** mock-live.mjs list-devices をワンショット spawn し、livePanel.ts の runOneShot() 相当の挙動
+/** mock-live.mjs list-devices をワンショット spawn し、monitorLiveController.ts の runOneShot() 相当の挙動
  * (stdout 全体を JSON.parse)を再現して { json, exitCode } を返す。 */
 function runMockListDevices(args) {
   return new Promise((resolve, reject) => {
@@ -762,7 +762,7 @@ function runMockListDevices(args) {
 
 /**
  * mock-live.mjs live serve(または実バイナリの `api live serve`)を常駐 spawn し、
- * livePanel.ts の sendServeCommand() 相当の挙動(コマンド送信 → NDJSON 行を指定数だけ読む)を
+ * monitorLiveController.ts の sendServeCommand() 相当の挙動(コマンド送信 → NDJSON 行を指定数だけ読む)を
  * 再現するテストダブル。send() は生の JSON.parse 値の配列を返す(parseLiveServeEvent への
  * 通し方はテスト側に委ねる)。close() は stdin を閉じてプロセスの終了(exitCode)を待つ。
  */

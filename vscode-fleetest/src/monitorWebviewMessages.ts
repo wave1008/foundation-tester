@@ -8,6 +8,8 @@
 import type { MonitorDeviceFilter } from "./config";
 import type { DashboardFromWebviewMessage, DashboardToWebviewMessage } from "./dashboardModel";
 import { isDashboardFromWebviewMessage } from "./dashboardModel";
+import type { LiveFromWebviewMessage, LiveToWebviewMessage } from "./liveModel";
+import { isLiveFromWebviewMessage } from "./liveModel";
 import type {
   RecordingErrorEntry,
   RecordingScenarioDevice,
@@ -60,9 +62,9 @@ export type MonitorToWebviewMessage =
       readonly height: number;
       readonly data: Uint8Array;
     }
-  // ライブ操作パネルの H.264 AU 1件(monitorLiveController.ts の onChunk が post する。既存の
+  // 「ライブ操作」タブの H.264 AU 1件(monitorLiveController.ts の onChunk が post する。既存の
   // { type: "frame", image } と並置。h264Chunk と同じく "live" 封筒は経由しない — webview 側は
-  // src/webview/live/main.js の直下ディスパッチャから直接 liveTab.js の applyLiveH264Chunk へ渡す)。
+  // src/webview/monitor/main.js の直下ディスパッチャから直接 liveTab.js の applyLiveH264Chunk へ渡す)。
   | {
       readonly type: "liveH264Chunk";
       readonly keyframe: boolean;
@@ -449,7 +451,24 @@ export type MonitorToWebviewMessage =
   // (webview→host の ready/refresh 等がモニター既存の同名メッセージと衝突するため、
   // "dashboard" 型の封筒に包んで送る。monitorPanel.ts → monitorDashboardController.ts、
   // webview 側は src/webview/monitor/dashboardTab.js の handleDashboardMessage)。
-  | { readonly type: "dashboard"; readonly message: DashboardToWebviewMessage };
+  | { readonly type: "dashboard"; readonly message: DashboardToWebviewMessage }
+  // ---- ライブ操作タブ -----------------------------------------------------------------------
+  // 「ライブ操作」タブ向けの封筒。liveModel.ts の LiveToWebviewMessage/LiveFromWebviewMessage 自体は
+  // webview→host の命名衝突を避けるため "live" 型の封筒に包む(host 側は src/liveTabHost.ts、
+  // webview 側は src/webview/monitor/liveTab.js の applyLiveMessage)。
+  | { readonly type: "live"; readonly message: LiveToWebviewMessage }
+  // ライブ操作タブの H.264 AU(既存の "h264Chunk" と並置。理由は該当コメント参照)は
+  // このすぐ上の "liveH264Chunk" 型がそのまま兼ねる("live" 封筒は経由しない)。
+  // デバイスタイル右クリック「ライブ操作」・fleetest.showLiveControl から、モニターを開いて
+  // 「ライブ操作」タブへ切り替えたうえで届ける(host push。webview→host の
+  // LiveFromWebviewMessage.openDevice と名前が紛らわしいため live* 接頭辞で区別する)。
+  | { readonly type: "liveOpenDevice"; readonly id: string }
+  // 既存パネルへの再バインド要求(選択中デバイスの一覧を取り直す)。対向: liveTab.js の refreshLiveDevices。
+  | { readonly type: "liveRefreshDevicesFromHost" }
+  // webview パネル自体の可視性(他エディタタブの裏に隠れているか)。monitorPanel.ts の
+  // onDidChangeViewState から送る。「ライブ操作」タブが表示中かは別軸(devicesTabVisible と同型の
+  // 判定を webview 側 main.js が両方の AND で行う。対向: src/webview/monitor/liveTab.js の setLiveVisible)。
+  | { readonly type: "panelVisible"; readonly visible: boolean };
 
 /** 検証済みの MonitorEvent を、webview へそのまま postMessage できる形に変換する。 */
 // monitorHold は webview へ送らない(monitorProcessManager.ts が OUTPUT ログで処理して return する)
@@ -516,8 +535,8 @@ export type MonitorFromWebviewMessage =
       readonly serial?: string;
       readonly registered?: boolean;
     }
-  // デバイスタイル右クリック「ライブ操作」: 独立ライブ操作パネル(livePanel.ts)を開いて id のデバイスを
-  // 選択させる(受け手: monitorPanel.ts → registerMonitorPanel の openLiveForDevice)。
+  // デバイスタイル右クリック「ライブ操作」: 「ライブ操作」タブへ切り替えて id のデバイスを
+  // 選択させる(受け手: monitorPanel.ts → LiveTabHost の openForDevice)。
   | { readonly type: "openLiveForDevice"; readonly id: string }
   // 「GPUで再起動」: CPU 描画フォールバックを解除して host GPU で再起動する手動操作。
   // webview 側は CPU バッジ(renderMode==='cpu')の Android タイルでのみメニューに出す。
@@ -695,9 +714,9 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "nameInputConfirm"; readonly id: number; readonly name: string }
   | { readonly type: "nameInputCancel"; readonly id: number }
   // 設定タブの「ポーリングモードを使用する」チェックボックス変更(settingsTab.js)。true でストリーミングを
-  // 止めてポーリングへ強制する(iOS/Android・ライブ操作パネル/デバイスタイル共通)。monitorPanel.ts が
-  // workspaceState へ永続化し、対の "pollingMode" メッセージで即時反映する(livePanel.ts は
-  // workspaceState を直接読むため、この即時反映の対象はデバイスタイルのみ)。
+  // 止めてポーリングへ強制する(iOS/Android・「ライブ操作」タブ/デバイスタイル共通)。monitorPanel.ts が
+  // workspaceState へ永続化し、対の "pollingMode" メッセージで即時反映する(LiveTabHost は
+  // isPollingMode() で毎回読み直すため、この即時反映の対象はデバイスタイルのみ)。
   | { readonly type: "setPollingMode"; readonly value: boolean }
   // 設定タブの表示言語セレクタ変更(settingsTab.js)。monitorPanel.ts が fleetest.language 設定(Global)を
   // 更新する。反映は extension.ts の onDidChangeConfiguration ハンドラ(ツリー再翻訳 + 再読み込み案内)。
@@ -772,7 +791,11 @@ export type MonitorFromWebviewMessage =
   // ---- ダッシュボードタブ -------------------------------------------------------------------
   // dashboardModel.ts の DashboardFromWebviewMessage をそのまま運ぶ封筒(上の
   // MonitorToWebviewMessage の "dashboard" 型と対)。
-  | { readonly type: "dashboard"; readonly message: DashboardFromWebviewMessage };
+  | { readonly type: "dashboard"; readonly message: DashboardFromWebviewMessage }
+  // ---- ライブ操作タブ -----------------------------------------------------------------------
+  // liveModel.ts の LiveFromWebviewMessage をそのまま運ぶ封筒(上の MonitorToWebviewMessage の
+  // "live" 型と対。host 側は src/liveTabHost.ts の handleWebviewMessage)。
+  | { readonly type: "live"; readonly message: LiveFromWebviewMessage };
 
 /**
  * runProfileDevicesSync の add[] 1件(RunProfileDeviceAddEntry)の検証。name の空文字は不正。
@@ -1124,6 +1147,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return typeof value.project === "string" && value.project !== "" && typeof value.runID === "string" && value.runID !== "";
     case "dashboard":
       return isDashboardFromWebviewMessage(value.message);
+    case "live":
+      return isLiveFromWebviewMessage(value.message);
     default:
       return false;
   }

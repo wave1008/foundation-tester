@@ -1152,7 +1152,7 @@ deviceOpMenuGpuBtn.addEventListener('click', (event) => {
   closeDeviceOpMenu();
 });
 
-// 受け手: monitorPanel.ts → livePanel.ts の openForDevice(独立ライブ操作パネルを表示)。
+// 受け手: monitorPanel.ts → liveTabHost.ts の openForDevice(「ライブ操作」タブへ切り替えて表示)。
 deviceOpMenuLiveBtn.addEventListener('click', (event) => {
   event.stopPropagation();
   if (!deviceOpMenuEntry) {

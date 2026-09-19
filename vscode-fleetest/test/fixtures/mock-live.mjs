@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // mock-live.mjs
 // `fleetest api list-devices`(ワンショット)/ `fleetest api live serve`(常駐)を模したダミー
-// 実行スクリプト。livePanel.ts が実際に spawn する形(binaryPath 相当 = このスクリプト、
-// args = "api" の次から)を再現するため、第一引数に "list-devices" または "live" を取る。
+// 実行スクリプト。liveTabHost.ts(monitorLiveController.ts 経由)が実際に spawn する形
+// (binaryPath 相当 = このスクリプト、args = "api" の次から)を再現するため、第一引数に
+// "list-devices" または "live" を取る。
 //
 // 使い方:
 //   node mock-live.mjs list-devices --project <p>

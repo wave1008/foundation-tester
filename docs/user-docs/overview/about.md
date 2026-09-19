@@ -23,7 +23,7 @@ Authoring and execution have clearly separated roles.
 **AI (or a human) writes the test.** There are three ways to write one, and all of them produce
 the same Swift scenario.
 
-- Record your operations in the VSCode extension's live-control panel
+- Record your operations in the VSCode extension's device monitor (Live Control tab)
 - Let an agent write it — it explores the real screens and captures selectors as it goes
 - Write it by hand — irregular handling and test data setup are plain Swift
 

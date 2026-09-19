@@ -4010,7 +4010,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
   **実行/デバッグ実行は `fleetest.profile` 未指定なら実行せず、「テスト実行」タブでの指定を促す通知
   (ボタン「テスト実行」タブを開く = `fleetest.showDeviceMonitor`)を出す**(未指定だとブリッジ自動供給の無い
   直接ポート接続に落ち、全シナリオが接続拒否で即失敗するため。ユーザー決定 2026-07-26。
-  dry-run とライブ操作パネル連動は実デバイスを要さない/解決済みのため除外)
+  dry-run とライブ操作タブ連動は実デバイスを要さない/解決済みのため除外)
   内部的には CLI と同じ `fleetest api ...` サブコマンドを呼ぶため、解決ロジック(ProfileResolver 等)
   は CLI と共通(詳細は [vscode-fleetest/README.md](../vscode-fleetest/README.md))
 - MCP: `ft_list_scenarios` / `ft_run_scenario` に `project` / `profile` 引数、`ft_list_projects` 追加。

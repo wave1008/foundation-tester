@@ -1,6 +1,7 @@
-// 独立ライブ操作パネル(#panel-live)の UI 本体。src/webview/live/main.js が applyLiveMessage を
-// message ディスパッチャに組み込む。host への送信は type:'live' の封筒で包む(対向: src/liveModel.ts の
-// LiveWebviewEnvelope、処理は src/monitorLiveController.ts。host 側の窓口は src/livePanel.ts)。
+// デバイスモニターの「ライブ操作」タブ(#panel-live)の UI 本体。src/webview/monitor/main.js が
+// applyLiveMessage を message ディスパッチャに組み込む。host への送信は type:'live' の封筒で包む
+// (対向: src/liveModel.ts の LiveWebviewEnvelope、処理は src/monitorLiveController.ts。
+// host 側の窓口は src/liveTabHost.ts)。
 
 import { t } from '../i18n.js';
 import { vscode, persistedState } from './vscodeApi.js';
@@ -739,12 +740,12 @@ export function applyLiveMessage(message) {
   }
 }
 
-// ---- パネル本体(src/webview/live/main.js)から呼ばれるエントリポイント -----------------------
+// ---- パネル本体(src/webview/monitor/main.js)から呼ばれるエントリポイント -----------------------
 
 let initialized = false;
 
 /** パネル初期化(初回のみ)。デバイス一覧・アプリプロファイル一覧を取得し、要素一覧セクションの
- * 高さを復元する(旧ライブ操作パネルの show()→refreshDevices 相当)。 */
+ * 高さを復元する。 */
 export function initLive() {
   if (initialized) { return; }
   initialized = true;
@@ -759,7 +760,7 @@ export function setLiveVisible(visible) {
   if (visible) { applyElementsHeight(elementsSectionHeight); }
 }
 
-/** デバイスタイル右クリック「ライブ操作」(受信元: deviceTiles.js → livePanel.ts → ここ)。 */
+/** デバイスタイル右クリック「ライブ操作」(受信元: deviceTiles.js → liveTabHost.ts → ここ)。 */
 export function openLiveDevice(id) {
   disposeLiveH264();
   liveH264ErrorSent = false;

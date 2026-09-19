@@ -77,8 +77,8 @@ export function registerRunHandler(
   // GUI 実行(実行/デバッグ)が終わるたびに実行対象シナリオIDを渡して呼ぶ(reportCodeLens.ts の
   // refresh と lastResultsSync.ts の absorb 用。last-results が変化し得るタイミング)。
   onRunFinished?: (executedScenarioIds: string[]) => void,
-  // fleetest.liveControlOnRun 用: 実行(dry-run 以外)の前にライブ操作パネルを対象 platform の
-  // デバイスへ合わせる(livePanel.ts の prepareForRun)。デバッグ実行には渡さない。
+  // fleetest.liveControlOnRun 用: 実行(dry-run 以外)の前に「ライブ操作」タブを対象 platform の
+  // デバイスへ合わせる(liveTabHost.ts の prepareForRun)。デバッグ実行には渡さない。
   prepareLiveForRun?: (platform: "ios" | "android") => Promise<LiveRunTarget | undefined>,
 ): void {
   const controller = testTree.controller;
@@ -908,7 +908,7 @@ async function executeRun(
   };
   const cancelListener = token.onCancellationRequested(cancelInvocation);
 
-  // liveFollow: livePanel.ts が単一クラス実行のときだけ自動追従する判定(runHandler が liveTarget を用意したか)。
+  // liveFollow: liveTabHost.ts が単一クラス実行のときだけ自動追従する判定(runHandler が liveTarget を用意したか)。
   const runId = eventBus.beginRun(dryRun, liveTarget !== undefined);
 
   try {

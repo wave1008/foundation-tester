@@ -31,15 +31,16 @@ fleetest(Swift 製の iOS/Android UI テストツール。リポジトリルー�
   一覧・作成・編集・削除ができ、ブリッジ無応答・Android ゲスト OS 異常を自動検出して修復を試みる
   ウォッチドッグ(`src/monitorBridgeWatchdog.ts` / `src/monitorHealthWatchdog.ts`。設定
   `fleetest.autoRepairBridge`/`fleetest.autoRepairDeviceHealth`)も動く
-- ライブ操作(`src/monitorLiveController.ts` / `src/liveModel.ts`)。独立した Webview パネル
-  (`src/livePanel.ts`。コマンド **「fleetest: ライブ操作を表示」**(`fleetest.showLiveControl`)、
-  view type `fleetestLiveControl`)で、画像上のタップ/ドラッグ(スワイプ)/長押し・要素一覧タップ・
-  テキスト入力・ホーム/タスク切替の操作と、操作を記録して Swift シナリオを生成するレコーディング
-  (`fleetest api gen-scenario`)を、`fleetest api list-devices`(デバイス一覧のみワンショット)と
-  `fleetest api live serve`(常駐プロセス。選択デバイスごとに1つ spawn し、NDJSON でコマンド送信・
-  観測イベント受信を行う)経由で行う。設定 `fleetest.liveControlOnRun`(既定 `true`)が有効な間は
-  テスト実行開始時にもこのパネルが自動的に開くほか、ステータスバー常駐ボタンやデバイスモニターの
-  タイル右クリック「ライブ操作」からも開ける(詳細は下記「ライブ操作」)
+- ライブ操作(`src/monitorLiveController.ts` / `src/liveModel.ts`)。デバイスモニターの
+  「ライブ操作」タブ(`src/liveTabHost.ts`。コマンド **「fleetest: ライブ操作を表示」**
+  (`fleetest.showLiveControl`)でモニターを開いてこのタブへ切り替える)で、画像上のタップ/
+  ドラッグ(スワイプ)/長押し・要素一覧タップ・テキスト入力・ホーム/タスク切替の操作と、操作を
+  記録して Swift シナリオを生成するレコーディング(`fleetest api gen-scenario`)を、
+  `fleetest api list-devices`(デバイス一覧のみワンショット)と `fleetest api live serve`
+  (常駐プロセス。選択デバイスごとに1つ spawn し、NDJSON でコマンド送信・観測イベント受信を行う)
+  経由で行う。設定 `fleetest.liveControlOnRun`(既定 `true`)が有効な間はテスト実行開始時にも
+  このタブが自動的に開くほか、コマンドやデバイスモニターのタイル右クリック
+  「ライブ操作」からも開ける(詳細は下記「ライブ操作」)
 - 結果ダッシュボード(`src/dashboardPanel.ts` / `src/dashboardModel.ts`)。コマンド
   **「fleetest: 結果ダッシュボードを開く」**(`fleetest.showResultsDashboard`)で開く独立 Webview
   パネルで、`fleetest api results --project <名> ...` の集計結果(シナリオ別成功率・不安定
@@ -195,7 +196,7 @@ code --install-extension vscode-fleetest-<version>.vsix
 | `fleetest.iosStreamEnabled` | boolean | `true` | iOS の画面更新に映像ストリーミング(`fleetest-simstream`)を使う。無効・ヘルパー未ビルド時はポーリングにフォールバック |
 | `fleetest.androidStreamEnabled` | boolean | `true` | Android の画面更新に映像ストリーミング(`fleetest-androidstream`)を使う。無効・ヘルパー未ビルド・adb 未検出時はポーリングにフォールバック |
 | `fleetest.streamCodec` | `"h264"` \| `"mjpeg"` | `"h264"` | デバイス画面ストリーミングのコーデック。`h264`(既定)は WebCodecs によるハードウェアデコードを使う。問題が出る環境では `mjpeg`(従来方式)に切り替える |
-| `fleetest.liveControlOnRun` | boolean | `true` | テスト実行(Run Test)開始時に、ライブ操作パネルをエディタの右側へ自動表示する |
+| `fleetest.liveControlOnRun` | boolean | `true` | テスト実行(Run Test)開始時に、デバイスモニターの「ライブ操作」タブを自動表示する |
 | `fleetest.autoRepairBridge` | boolean | `true` | ブリッジ無応答(接続済みだったデバイスが起動中のまま復帰しない状態が続く)を検出したら、実行中のレーンが無い間に限り start-device で自動修復を試みる |
 | `fleetest.autoRepairDeviceHealth` | boolean | `false` | Android エミュレータのゲスト OS 異常(Wi-Fi 無効・時計のずれ)を検出したとき、Wi-Fi 再有効化→再起動の順で自動修復を試みる |
 | `fleetest.showOnlyFailedTests` | boolean | `false` | Test Explorer のツリーを失敗したテストだけに絞り込む(未実施・成功のテストは非表示)。Test Explorer タイトルバーのフィルターボタンでも切り替えられる |
@@ -509,24 +510,23 @@ stdin 経由の JSON(`{"fixes":[...]}`)で呼び出し、シナリオソース�
 
 ## ライブ操作
 
-独立した Webview パネル(`src/livePanel.ts`。コマンド `fleetest.showLiveControl`、view type
-`fleetestLiveControl`)。ロジック本体はデバイスモニターと共通の `src/monitorLiveController.ts`、
-webview 資産は `src/webview/live/main.js`(UI 本体はデバイスモニターと共有する
-`src/webview/monitor/liveTab.js` をそのまま呼び出す)です。macOS GUI 版(`fleetest-gui`)の
-「ライブ操作」タブ(`Sources/fleetest-gui/LiveView.swift` + `AppModel.swift` の
-`refreshLive`/`liveAction`)に相当する機能です。デバイスモニターパネルとは別パネル・別シングルトン
-ですが、ポーリングモード設定(`workspaceState` の `monitor.pollingMode`)だけは共有します。
+デバイスモニターパネル(`src/monitorPanel.ts`)の「ライブ操作」タブ。ロジック本体は
+`src/liveTabHost.ts`(サブコントローラとして monitorPanel.ts に同居)と、デバイスモニターと共通の
+`src/monitorLiveController.ts`、webview 資産はデバイスモニターと共通の `src/webview/monitor/main.js`
+から呼び出す `src/webview/monitor/liveTab.js` です。macOS GUI 版(`fleetest-gui`)の「ライブ操作」
+タブ(`Sources/fleetest-gui/LiveView.swift` + `AppModel.swift` の `refreshLive`/`liveAction`)に
+相当する機能です。デバイスモニターの他タブとはポーリングモード設定(`workspaceState` の
+`monitor.pollingMode`)を含め、webview・設定とも完全に同居しています。
 
-パネルを開く経路は3通りあります。
+タブを開く経路は2通りあります。
 
-- コマンドパレットから **「fleetest: ライブ操作を表示」** を実行する(既に開いている場合は前面に
-  出るだけ)
-- エディタ左下のステータスバーに常駐するボタンをクリックする
-- デバイスモニターパネルでタイルを右クリックして**「ライブ操作」**を選ぶ(パネルが開き、
-  対象デバイスを選択したうえで接続済みなら画面も取得します)
+- コマンドパレットから **「fleetest: ライブ操作を表示」** を実行する(デバイスモニターを開いて
+  「ライブ操作」タブへ切り替える。既に開いている場合は前面に出るだけ)
+- デバイスモニターパネルでタイルを右クリックして**「ライブ操作」**を選ぶ(「ライブ操作」タブへ
+  切り替わり、対象デバイスを選択したうえで接続済みなら画面も取得します)
 
 さらに設定 `fleetest.liveControlOnRun`(既定 `true`)が有効な間は、Test Explorer の「実行」
-(dry-run を除く)開始時にもこのパネルが自動的に開きます。
+(dry-run を除く)開始時にもこのタブが自動的に開きます。
 
 - **上部のデバイスセレクタ**: タブを初めて表示すると `fleetest api list-devices --project <project>`
   を実行し、全デバイスと現在状態(接続済み/起動中/未起動)を取得してプルダウンに
@@ -857,13 +857,12 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
 ### ライブ操作
 
 35. デバイス(シミュレータ/エミュレータ)を `fleetest devices up` 等で起動した状態で、
-    コマンドパレットから **「fleetest: ライブ操作を表示」** を実行する。独立したライブ操作パネルが
-    開き、上部のデバイスセレクタに起動済みのデバイスが一覧表示されることを確認する(ブリッジ
-    接続済みのデバイスは「接続済み」と表示される)。もう一度実行しても新しいパネルが増えず、既存の
-    パネルが前面に出ることを確認する。デバイスモニターパネルでタイルを右クリックし
-    **「ライブ操作」** を選ぶと、同様にライブ操作パネルが開き(または前面に出て)そのデバイスが
-    選択されることも確認する。エディタ左下のステータスバー常駐ボタンからも同じパネルが開けることを
-    確認する。
+    コマンドパレットから **「fleetest: ライブ操作を表示」** を実行する。デバイスモニターパネルが
+    開いて「ライブ操作」タブへ切り替わり、上部のデバイスセレクタに起動済みのデバイスが一覧表示
+    されることを確認する(ブリッジ接続済みのデバイスは「接続済み」と表示される)。もう一度実行
+    しても新しいパネルが増えず、既存のパネルが前面に出て「ライブ操作」タブのままであることを
+    確認する。デバイスモニターパネルでタイルを右クリックし **「ライブ操作」** を選ぶと、同様に
+    「ライブ操作」タブへ切り替わり(または前面に出て)そのデバイスが選択されることも確認する。
 36. デバイスが1台も解決できない状態(`fleetest.project` を存在しないプロジェクト名にする等)
     でタブを開くと、上部にエラーバナーが表示され、デバイスセレクタに
     `fleetest.platform`/`fleetest.port`/`fleetest.serial` 設定から作られた「設定のデバイス」が
@@ -1020,11 +1019,10 @@ vscode-fleetest/
 │   ├── profileModel.ts           # `fleetest api validate-profile` の出力の検証・変換、プロファイルファイルパスの種別判定(vscode 非依存)
 │   ├── profileDiagnostics.ts     # DiagnosticCollection("fleetest-profile")。保存時自動検証・fleetest.validateProfiles コマンド
 │   ├── liveModel.ts              # `fleetest api list-devices`/`fleetest api live serve`/`fleetest api gen-scenario` の検証・NDJSONコマンド組み立て・座標変換・要素行フォーマット・CLI引数組み立て・レコーディング→FlowStep変換・webviewメッセージプロトコル(vscode 非依存)
-│   ├── liveDeps.ts               # MonitorLiveController への窓口インターフェース(livePanel.ts が実装)
+│   ├── liveDeps.ts               # MonitorLiveController への窓口インターフェース(liveTabHost.ts が実装)
 │   ├── liveRunTarget.ts          # prepareForRun が返す契約(runHandler.ts の --platform/--port/--serial 組み立て用)
 │   ├── monitorLiveController.ts  # ライブ操作の中核サブコントローラ。list-devices の専用spawn+live serve の常駐spawn(いずれもFleetestCliのキューを使わない)・座標変換の適用・serveの観測イベント反映・画面ストリーミング/自動フレームの供給元切替・レコーディング→gen-scenario
-│   ├── livePanel.ts              # 独立ライブ操作パネルの WebviewPanel(fleetestLiveControl)。コマンド fleetest.showLiveControl・ステータスバー常駐ボタン・実行開始時の自動オープン(fleetest.liveControlOnRun)
-│   ├── livePanelHtml.ts          # ライブ操作パネルの webview HTML 生成(本文は #panel-live。CSS/座標変換ロジックはデバイスモニターと共用)
+│   ├── liveTabHost.ts            # デバイスモニターの「ライブ操作」タブのサブコントローラ。コマンド fleetest.showLiveControl・実行開始時の自動オープン(fleetest.liveControlOnRun)・デバイスタイル右クリック連携
 │   ├── dashboardModel.ts         # 結果ダッシュボードの vscode 非依存の型・ペイロード型ガード(`fleetest api results` の契約)
 │   ├── dashboardPanel.ts         # 結果ダッシュボードの WebviewPanel(fleetestResultsDashboard)。コマンド fleetest.showResultsDashboard
 │   ├── i18n/
@@ -1033,8 +1031,7 @@ vscode-fleetest/
 │   │   └── strings/*.ts          # namespace 別辞書(`{ "ns.key": { ja, en } }`。lane.ts は vscode 非依存の共有ランタイム)
 │   └── webview/
 │       ├── i18n.js                # webview 側 i18n ランタイム(locale は <html lang> 経由)
-│       ├── monitor/               # デバイスモニターの webview 資産(main.js/tabs.js/deviceTiles.js/liveTab.js/各プロファイルタブ/h264Decoder.js 等)
-│       ├── live/main.js           # 独立ライブ操作パネルのエントリポイント(monitor/liveTab.js を共有利用)
+│       ├── monitor/               # デバイスモニターの webview 資産(main.js/tabs.js/deviceTiles.js/liveTab.js/各プロファイルタブ/h264Decoder.js 等。liveTab.js が「ライブ操作」タブの UI 本体)
 │       └── dashboard/             # 結果ダッシュボードの webview 資産(main.js/render.js/charts.js/format.js/style.css)
 └── test/
     ├── ndjson.test.mjs           # NdjsonParser のユニットテスト(node:test)

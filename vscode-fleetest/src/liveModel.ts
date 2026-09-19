@@ -1,5 +1,5 @@
 // liveModel.ts
-// ライブ操作パネル(livePanel.ts)向けの vscode 非依存ロジック(検証・型定義・座標変換・
+// 「ライブ操作」タブ(liveTabHost.ts)向けの vscode 非依存ロジック(検証・型定義・座標変換・
 // webview プロトコル)。
 //
 // 契約(Sources/fleetest/ApiListDevicesCommand.swift・ApiLiveCommand.swift):
@@ -619,7 +619,7 @@ export function buildDeviceArgs(device: LiveDeviceRef): string[] {
   return args;
 }
 
-/** デバイス参照の同一性判定(livePanel.ts の serve 再バインド要否判定に使う)。 */
+/** デバイス参照の同一性判定(liveTabHost.ts の serve 再バインド要否判定に使う)。 */
 export function sameLiveDeviceRef(a: LiveDeviceRef, b: LiveDeviceRef): boolean {
   return a.platform === b.platform && a.port === b.port && a.serial === b.serial && a.udid === b.udid;
 }
@@ -864,8 +864,8 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
 }
 
 // ---- host⇔webview封筒 -------------------------------------------------------------------
-// ライブ操作パネルは独立webviewのため多重化の実利用は無いが、既存プロトコルとして type:"live" で
-// 包む形を維持する(対向: src/webview/monitor/liveTab.js、host 側: src/livePanel.ts)。
+// 「ライブ操作」タブはデバイスモニターの webview に同居するため、type:"live" の封筒で他タブの
+// メッセージと多重化する(対向: src/webview/monitor/liveTab.js、host 側: src/liveTabHost.ts)。
 
 /** webview → host。 */
 export interface LiveWebviewEnvelope {

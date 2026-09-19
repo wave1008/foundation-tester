@@ -26,7 +26,7 @@ fleetest profile setup --platform ios --app-id com.example.myapp --auto-device
 
 - エージェントに書かせる(`/fleetest:fleetest-scenario`)。実画面を探索しながらセレクタを
   採取してくれます
-- VSCode 拡張のライブ操作パネルで録画する。アプリを操作すると、シナリオが自動で生成されます
+- VSCode 拡張のデバイスモニターの「ライブ操作」タブで録画する。アプリを操作すると、シナリオが自動で生成されます
 - 手書きする
 
 最小のログインシナリオはこうなります。

@@ -1,7 +1,6 @@
 // バッチJ 辞書(webview 側)。namespace: wvMonitor2.
 // 対象ソース: webview/monitor/{runProfilesTab,runProfileDevicesTab,processesTab,appProfilesTab,
-//   projectsTab,laneLog,hostCharts,splitter,h264Decoder,main,menu,tabs,settingsTab}.js,
-//   webview/live/main.js
+//   projectsTab,laneLog,hostCharts,splitter,h264Decoder,main,menu,tabs,settingsTab}.js
 // webview バンドルから import される。**vscode 非依存**を保つこと。
 // キーは "wvMonitor2." 始まり。ja は元の日本語と byte-identical(既存テスト互換)。
 import type { MessageDict } from "../core";

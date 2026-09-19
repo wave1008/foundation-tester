@@ -26,7 +26,7 @@ There are three ways, and all of them produce the same kind of Swift file under
 
 - Ask your agent (`/fleetest:fleetest-scenario`). It explores the real screens and captures
   selectors for you
-- Record it in the VSCode extension's live-control panel. Operate the app and a scenario is
+- Record it in the VSCode extension's device monitor (Live Control tab). Operate the app and a scenario is
   generated
 - Write it by hand
 

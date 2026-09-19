@@ -1,5 +1,5 @@
 // monitorLiveController.ts
-// ライブ操作パネル(livePanel.ts)のロジック本体。
+// デバイスモニターの「ライブ操作」タブ(liveTabHost.ts)のロジック本体。
 //
 // - `fleetest api list-devices` は FleetestCli の直列キュー(`fleetest api run` と共有。シナリオ実行が
 //   `swift build` を伴い得るため同時2プロセスを防ぐ SPM ビルドロック対策)には乗せず、oneShotCli.ts の
@@ -13,8 +13,8 @@
 //   serve はデバイスごとの状態を持つプロセスなので、デバイス選択が変わったら明示的に再バインド
 //   (停止→新デバイスで起動)し諦め状態もリセットする(=デバイスを選び直す操作が host-metrics の
 //   「再起動ボタン」に相当する回復経路。専用ボタンは無い)。
-// - webview 資産は src/webview/monitor/liveTab.js(src/webview/live/main.js から applyLiveMessage を import)。
-//   frameToDisplayRect の計算だけを手書きで複製している(要素一覧の表示テキストは host 側で
+// - webview 資産は src/webview/monitor/liveTab.js(src/webview/monitor/main.js から applyLiveMessage を
+//   import)。frameToDisplayRect の計算だけを手書きで複製している(要素一覧の表示テキストは host 側で
 //   事前整形して送るため複製不要)。liveModel.ts の frameToDisplayRect を変更したら
 //   liveTab.js 側も追随させること。
 
@@ -156,7 +156,7 @@ export class MonitorLiveController implements vscode.Disposable {
   private selectedDeviceId: string | undefined;
   /** openDevice 用: 次の applyDevices で優先選択する id(消費したら undefined に戻す)。 */
   private pendingSelectId: string | undefined;
-  /** preferPlatform 用: Run Test 自動オープン(livePanel.ts)が「実行中シナリオの platform」を渡す。
+  /** preferPlatform 用: Run Test 自動オープン(liveTabHost.ts)が「実行中シナリオの platform」を渡す。
    * 選択中デバイスの platform がこれと食い違う間、applyDevices/preferPlatform は一覧の先頭から
    * この platform のデバイスを探して自動選択する。ユーザーが手動で選び直したら(selectDevice/
    * openDevice)解除する(明示選択を尊重する)。 */
@@ -461,7 +461,7 @@ export class MonitorLiveController implements vscode.Disposable {
     this.applyDevices([option], bannerMessage);
   }
 
-  /** Run Test 自動オープン(livePanel.ts)が「実行中シナリオの platform」を渡す窓口。選択中デバイスの
+  /** Run Test 自動オープン(liveTabHost.ts)が「実行中シナリオの platform」を渡す窓口。選択中デバイスの
    * platform が食い違う場合のみ、現在の一覧の先頭から一致する platform のデバイスへ即座に切り替える
    * (一致するデバイスが無ければ現状維持)。一覧未取得のときは preferredPlatform を覚えておき、次の
    * applyDevices が適用する。 */
@@ -598,8 +598,8 @@ export class MonitorLiveController implements vscode.Disposable {
     });
   }
 
-  /** デバイスタイル右クリック「ライブ操作」から(monitorPanel.ts の deviceTiles.js → livePanel.ts の
-   * openForDevice → 独立パネルの liveTab.js openLiveDevice)。
+  /** デバイスタイル右クリック「ライブ操作」から(monitorPanel.ts の deviceTiles.js → liveTabHost.ts の
+   * openForDevice → 「ライブ操作」タブの liveTab.js openLiveDevice)。
    * id はモニターと共通の `platform:name`(Swift 側 MonitorTarget.id と devicesToOptions が同形式)。
    * 一覧に無ければ取得し直してから選択し、接続済みなら snapshot まで自動取得する。 */
   private async openDevice(id: string): Promise<void> {
@@ -1130,7 +1130,7 @@ export class MonitorLiveController implements vscode.Disposable {
       onChunk: (data, keyframe, width, height) => {
         this.handleConnectionOk();
         // liveH264Chunk は "live" 封筒を経由しない top-level メッセージ(webview 側
-        // src/webview/live/main.js の直下ディスパッチャが受ける契約。monitorModel.ts の
+        // src/webview/monitor/main.js の直下ディスパッチャが受ける契約。monitorModel.ts の
         // MonitorToWebviewMessage 参照)。
         this.deps.post({ type: "liveH264Chunk", keyframe, width, height, data: new Uint8Array(data) });
       },
@@ -1518,8 +1518,8 @@ export class MonitorLiveController implements vscode.Disposable {
   }
 
   // ---- webview からのメッセージ -----------------------------------------------------
-  // isLiveFromWebviewMessage による型ガードは呼び出し元(monitorPanel.ts の isLiveWebviewEnvelope)
-  // 側で済んでいるためここでは行わない。
+  // isLiveFromWebviewMessage による型ガードは呼び出し元(monitorPanel.ts の
+  // isMonitorFromWebviewMessage の "live" ケース)側で済んでいるためここでは行わない。
 
   handleWebviewMessage(message: LiveFromWebviewMessage): void {
     switch (message.type) {

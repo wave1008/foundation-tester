@@ -1,5 +1,5 @@
 // バッチD 辞書。namespace: live.
-// 対象ソース: monitorLiveController.ts, liveModel.ts, livePanel.ts, deviceStream.ts
+// 対象ソース: monitorLiveController.ts, liveModel.ts, liveTabHost.ts, deviceStream.ts
 // キーは "live." 始まり。ja は元の日本語と byte-identical(既存テスト互換)。
 import type { MessageDict } from "../core";
 
@@ -180,7 +180,7 @@ export const liveStrings = {
     en: '"{label}"',
   },
 
-  // ---- livePanel.ts ----
+  // ---- liveTabHost.ts ----
   "live.panel.streamStallRestart": {
     ja: "[live-stream] キーフレーム未受信のままのためヘルパーを再起動します。",
     en: "[live-stream] No keyframe received. Restarting helper.",
@@ -188,14 +188,6 @@ export const liveStrings = {
   "live.panel.codecFallback": {
     ja: "[live-stream] WebCodecs 未対応/デコード失敗のため mjpeg へフォールバックします。",
     en: "[live-stream] WebCodecs unsupported or decode failed. Falling back to mjpeg.",
-  },
-  "live.panel.statusBarLabel": {
-    ja: "$(device-mobile) ライブ操作",
-    en: "$(device-mobile) Live Control",
-  },
-  "live.panel.statusBarTooltip": {
-    ja: "fleetest: ライブ操作を表示",
-    en: "fleetest: Show Live Control",
   },
 
   // ---- deviceStream.ts: helper プロセス管理ログ(helper 自身の stdout/stderr 内容ではなく、

@@ -7,10 +7,11 @@ import { closeDeviceOpMenu } from './deviceTiles.js';
 import { closeDeviceMenu as closeRunProfileDeviceMenu } from './runProfileDevicesTab.js';
 import { reapplyTilePaneHeight } from './splitter.js';
 
-export const TAB_IDS = ['dashboard', 'devices', 'recordings', 'profiles', 'processes', 'settings'];
+export const TAB_IDS = ['dashboard', 'devices', 'live', 'recordings', 'profiles', 'processes', 'settings'];
 const tabButtons = {
   dashboard: document.getElementById('tab-dashboard'),
   devices: document.getElementById('tab-devices'),
+  live: document.getElementById('tab-live'),
   profiles: document.getElementById('tab-profiles'),
   processes: document.getElementById('tab-processes'),
   recordings: document.getElementById('tab-recordings'),
@@ -19,6 +20,7 @@ const tabButtons = {
 const tabPanels = {
   dashboard: document.getElementById('panel-dashboard'),
   devices: devicesPanel,
+  live: document.getElementById('panel-live'),
   profiles: document.getElementById('panel-profiles'),
   processes: document.getElementById('panel-processes'),
   recordings: document.getElementById('panel-recordings'),
@@ -26,7 +28,7 @@ const tabPanels = {
 };
 
 // 起動時はタブボタンを出さないタブ。activateTab で開いたときに現れる(パネルを開き直すまで残る)。
-export const HIDDEN_AT_STARTUP = ['processes'];
+export const HIDDEN_AT_STARTUP = ['live', 'processes'];
 
 let currentTabId = null;
 
@@ -71,19 +73,24 @@ export function activateTab(tab) {
   persistActiveTab(tab);
 }
 
-/** 起動時に出さないタブのボタンを隠す。表示中なら設定タブ(開く口がある場所)へ戻す。 */
+// 閉じられるタブ → 表示中に閉じたときの移り先。閉じたタブは activateTab で開くと再び現れる
+// (開く口: 設定タブ「ツール」・ライブ操作はコマンド/タイル右クリック/Run Test も)。
+const CLOSE_FALLBACK = { live: 'devices', processes: 'settings' };
+
 export function hideTab(tab) {
   tabButtons[tab].style.display = 'none';
   if (currentTabId === tab) {
-    activateTab('settings');
+    activateTab(CLOSE_FALLBACK[tab]);
   }
 }
 
 // 閉じる × はタブボタンの内側なので、ボタンの click(タブを開く)へ伝えない。
-document.getElementById('tab-processes-close').addEventListener('click', (event) => {
-  event.stopPropagation();
-  hideTab('processes');
-});
+for (const tab of Object.keys(CLOSE_FALLBACK)) {
+  document.getElementById(`tab-${tab}-close`).addEventListener('click', (event) => {
+    event.stopPropagation();
+    hideTab(tab);
+  });
+}
 
 for (const id of TAB_IDS) {
   tabButtons[id].addEventListener('click', () => {

@@ -1,8 +1,11 @@
 // monitorPanel.ts
-// デバイスモニターの WebviewPanel(コマンド `fleetest.showDeviceMonitor`)。ライブ操作は独立パネル
-// (livePanel.ts)へ分離済み。デバイスタイル右クリック「ライブ操作」だけ openLiveForDevice 経由で連携する。
+// デバイスモニターの WebviewPanel(コマンド `fleetest.showDeviceMonitor`)。「ライブ操作」タブ
+// (旧・独立パネル)は liveTabHost.ts の LiveTabHost がサブコントローラとして同居する。
 // MonitorPanelController は以下のサブコントローラを束ねるオーケストレーターで、各サブコントローラは
 // 互いを直接参照せず MonitorPanelDeps 経由でのみ連携する:
+// - liveTabHost.ts の LiveTabHost: 「ライブ操作」タブのロジック(MonitorLiveController への窓口)。
+//   fleetest.showLiveControl コマンド・デバイスタイル右クリック「ライブ操作」・
+//   run 開始時の自動追従(fleetest.liveControlOnRun)から呼ばれる
 // - monitorProcessManager.ts の MonitorProcessManager: monitor/host-metrics 常駐子プロセスの起動・停止・再起動
 // - monitorProfilesController.ts の MonitorProfilesController: 「プロファイル」タブの一覧post・CRUD・フォームのロード/保存
 // - monitorDeviceOps.ts の MonitorDeviceOps: デバイスライフサイクルキュー・device-catalog/installed-devices/create-device
@@ -56,6 +59,8 @@ import { MonitorHealthWatchdog } from "./monitorHealthWatchdog";
 import { PANEL_TITLE, renderHtml } from "./monitorHtml";
 import { type HostMetricsToWebviewMessage, MonitorProcessManager } from "./monitorProcessManager";
 import { MonitorProfilesController } from "./monitorProfilesController";
+import { LiveTabHost } from "./liveTabHost";
+import type { LiveRunTarget } from "./liveRunTarget";
 import { MonitorRecordingsController } from "./monitorRecordingsController";
 import { workspaceRecordingsSessionsCache } from "./recordingsSessionsCache";
 import { MonitorUpdateController } from "./monitorUpdateController";
@@ -86,6 +91,7 @@ import {
   snapshotRunLaneState,
   type RunLaneToWebviewMessage,
 } from "./runLaneModel";
+import type { FleetestTestTree } from "./testTree";
 
 const VIEW_TYPE = "fleetestMonitor";
 
@@ -122,7 +128,7 @@ export interface MonitorPanelDeps {
   machineLock(machine: string): MachineLock | undefined;
   /** 設定タブの「ポーリングモードを使用する」チェックボックスの現在値。true の間は
    * monitorDeviceStreamController.ts がストリーミング開始を抑止しポーリングへフォールバックする
-   * (workspaceState の "monitor.pollingMode" を共有する livePanel.ts/monitorLiveController.ts も同様)。 */
+   * (workspaceState の "monitor.pollingMode" を共有する liveTabHost.ts/monitorLiveController.ts も同様)。 */
   isPollingMode(): boolean;
   /** 「テスト実行」タブの「配信を表示する」チェックボックス(workspaceState の
    * "monitor.showStreamDuringRun"。既定 ON)。false の間だけ run 中の台の配信を畳む。 */
@@ -163,18 +169,21 @@ export function registerMonitorPanel(
   getConfig: () => FleetestConfig,
   outputChannel: vscode.OutputChannel,
   cli: FleetestCli,
+  testTree: FleetestTestTree,
   eventBus: RunEventBus,
-  openLiveForDevice: (id: string) => void,
-): { relocalize(): void } {
+): {
+  relocalize(): void;
+  prepareForRun(platform: "ios" | "android"): Promise<LiveRunTarget | undefined>;
+} {
   const controller = new MonitorPanelController(
     workspaceRoot,
     getConfig,
     outputChannel,
     cli,
+    testTree,
     eventBus,
     context.extensionUri,
     context.workspaceState,
-    openLiveForDevice,
   );
   // TEST EXPLORER タイトルの view/title ボタンはペイン非フォーカス時に隠れる。
   // フォーカスに依存しない常時表示の導線としてステータスバーへ常駐させる。
@@ -192,9 +201,13 @@ export function registerMonitorPanel(
     // 旧・単独パネル "結果ダッシュボード" は撤去済み(モニターのタブへ統合)。このコマンドは
     // モニターパネルを開いてダッシュボードタブを選択する動きに変える。
     vscode.commands.registerCommand("fleetest.showResultsDashboard", () => controller.show("dashboard")),
+    vscode.commands.registerCommand("fleetest.showLiveControl", () => controller.showLiveControl()),
   );
 
-  return { relocalize: () => controller.relocalize() };
+  return {
+    relocalize: () => controller.relocalize(),
+    prepareForRun: (platform) => controller.prepareForRun(platform),
+  };
 }
 
 /** export はテスト(panelRelocalize.test.mjs)が relocalize() を直接検証するため。
@@ -211,6 +224,7 @@ export class MonitorPanelController implements vscode.Disposable {
   private readonly recordings: MonitorRecordingsController;
   private readonly update: MonitorUpdateController;
   private readonly dashboard: MonitorDashboardController;
+  private readonly live: LiveTabHost;
 
   /** パネル再作成時にhydrateLaneUi()で流し込むため、実行を跨いで保持する。 */
   private readonly laneState = createRunLaneState();
@@ -284,10 +298,10 @@ export class MonitorPanelController implements vscode.Disposable {
     private readonly getConfig: () => FleetestConfig,
     private readonly outputChannel: vscode.OutputChannel,
     private readonly cli: FleetestCli,
+    testTree: FleetestTestTree,
     eventBus: RunEventBus,
     private readonly extensionUri: vscode.Uri,
     private readonly workspaceState: vscode.Memento,
-    private readonly openLiveForDevice: (id: string) => void,
   ) {
     this.pollingMode = workspaceState.get<boolean>("monitor.pollingMode", false);
     this.tilePaneHeight = workspaceState.get<number>("monitor.tilePaneHeight");
@@ -363,6 +377,21 @@ export class MonitorPanelController implements vscode.Disposable {
       post: (message) => this.post({ type: "dashboard", message }),
       isPanelActive: () => this.panel !== undefined,
     });
+    this.live = new LiveTabHost(
+      {
+        post: (message) => this.post(message),
+        isPanelOpen: () => this.panel !== undefined,
+        showTab: (tab) => this.showTabQuietly(tab),
+        openGeneratedDocument: (filePath) => this.openGeneratedDocument(filePath),
+        isPollingMode: () => this.pollingMode,
+      },
+      this.getConfig,
+      this.cli,
+      testTree,
+      eventBus,
+      this.workspaceRoot,
+      this.outputChannel,
+    );
     // enqueueLifecycleJob 委譲のため deviceOps より後に生成する。
     this.bridgeWatchdog = new MonitorBridgeWatchdog({
       post: (message) => this.post(message),
@@ -468,6 +497,17 @@ export class MonitorPanelController implements vscode.Disposable {
 
   /** initialTab を指定すると、パネルが既に開いている場合は reveal 後にそのタブへ切り替える。
    * 新規作成の場合は pendingInitialTab に保持し sendInitialState() で送る。 */
+  /** 「ライブ操作」タブへの自動切替(Run Test 開始・タイル右クリック)。開いているモニターは列を動かさず
+   * エディタのフォーカスも奪わない(show() の reveal(Beside) はモニターを別の列へ動かす)。 */
+  private showTabQuietly(tab: string): void {
+    if (!this.panel) {
+      this.show(tab);
+      return;
+    }
+    this.panel.reveal(undefined, true);
+    this.post({ type: "switchTab", tab });
+  }
+
   show(initialTab?: string): void {
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Beside);
@@ -496,6 +536,9 @@ export class MonitorPanelController implements vscode.Disposable {
     panel.onDidChangeViewState((event) => {
       this.panelVisible = event.webviewPanel.visible;
       this.applyDeviceStreamVisibility();
+      // 「ライブ操作」タブの自動フレーム更新を止める/再開するため webview へも伝える(対向:
+      // src/webview/monitor/main.js の updateLiveVisible。タブ自体が非表示なら効果は無い)。
+      this.post({ type: "panelVisible", visible: event.webviewPanel.visible });
     });
     panel.onDidDispose(() => {
       this.panel = undefined;
@@ -503,6 +546,7 @@ export class MonitorPanelController implements vscode.Disposable {
       this.processManager.stopHostMetricsProcess();
       this.deviceStream.dispose();
       this.dashboard.dispose();
+      this.live.stopProcesses();
     });
 
     this.pendingInitialTab = initialTab;
@@ -522,6 +566,7 @@ export class MonitorPanelController implements vscode.Disposable {
     }
     this.panel.webview.html = renderHtml(this.panel.webview, this.extensionUri);
     this.deviceStream.restartAllStreams();
+    this.live.restartStream();
   }
 
   dispose(): void {
@@ -533,9 +578,20 @@ export class MonitorPanelController implements vscode.Disposable {
     this.processManager.stopHostMetricsProcess();
     this.deviceStream.dispose();
     this.dashboard.dispose();
+    this.live.dispose();
     const panel = this.panel;
     this.panel = undefined;
     panel?.dispose();
+  }
+
+  /** Run Test 実行前(runHandler.ts)から呼ばれる。 */
+  async prepareForRun(platform: "ios" | "android"): Promise<LiveRunTarget | undefined> {
+    return await this.live.prepareForRun(platform);
+  }
+
+  /** fleetest.showLiveControl コマンド。 */
+  showLiveControl(): void {
+    this.live.show();
   }
 
   private post(message: MonitorToWebviewMessage | RunLaneToWebviewMessage | HostMetricsToWebviewMessage): void {
@@ -944,7 +1000,7 @@ export class MonitorPanelController implements vscode.Disposable {
         });
         break;
       case "openLiveForDevice":
-        this.openLiveForDevice(message.id);
+        this.live.openForDevice(message.id);
         break;
       case "deviceRestartGpu":
         this.deviceOps.restartWithGpu(message.name, message.machine);
@@ -1052,8 +1108,9 @@ export class MonitorPanelController implements vscode.Disposable {
       case "setPollingMode":
         this.pollingMode = message.value;
         void this.workspaceState.update("monitor.pollingMode", message.value);
-        // トグル直後に即時反映する(次の monitorDevices イベント待ちにしない)。ライブ操作パネル
-        // (livePanel.ts)は独立プロセスのため、こちらは次のデバイス選択/表示状態変化で追いつく。
+        // トグル直後に即時反映する(次の monitorDevices イベント待ちにしない)のはタイルの配信だけ。
+        // 「ライブ操作」タブ(LiveTabHost)は isPollingMode() を毎回読み直す作りのため、
+        // 次のデバイス選択/表示状態変化で自然に追いつく(強制の再評価は不要)。
         this.deviceStream.reapply();
         break;
       case "setLptHistoryRuns":
@@ -1110,7 +1167,10 @@ export class MonitorPanelController implements vscode.Disposable {
         }
         break;
       case "streamStall":
-        if (message.device) {
+        if (message.scope === "live") {
+          this.outputChannel.appendLine(t("live.panel.streamStallRestart"));
+          this.live.restartStream();
+        } else if (message.device) {
           this.outputChannel.appendLine(
             `[monitor-stream] ${message.device}: ${t("monitor.log.streamStallRestart")}`,
           );
@@ -1118,7 +1178,10 @@ export class MonitorPanelController implements vscode.Disposable {
         }
         break;
       case "codecError":
-        if (message.scope === "tile" && message.device) {
+        if (message.scope === "live") {
+          this.outputChannel.appendLine(t("live.panel.codecFallback"));
+          this.live.fallbackToMjpeg();
+        } else if (message.scope === "tile" && message.device) {
           this.outputChannel.appendLine(
             `[monitor-stream] ${message.device}: ${t("monitor.log.codecFallbackMjpeg")}`,
           );
@@ -1136,6 +1199,9 @@ export class MonitorPanelController implements vscode.Disposable {
         break;
       case "dashboard":
         this.dashboard.handleWebviewMessage(message.message);
+        break;
+      case "live":
+        this.live.handleWebviewMessage(message.message);
         break;
     }
   }
@@ -1181,6 +1247,9 @@ export class MonitorPanelController implements vscode.Disposable {
 
   private sendInitialState(): void {
     this.hydrateLaneUi();
+    // openForDevice() がモニター新規作成と同時に呼ばれていた場合の openDevice 送信保留分を flush する
+    // (html設定直後の postMessage は webview 側リスナー登録前に届き握りつぶされるレース回避)。
+    this.live.notifyReady();
     this.profiles.postProfileInfo();
     this.profiles.postProfileInfo();
     // webview再読込がジョブ実行中に起きた場合にボタン無効状態・タイルのバッジを復元するため。

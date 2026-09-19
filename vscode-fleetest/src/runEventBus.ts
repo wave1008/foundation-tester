@@ -34,7 +34,7 @@ export class RunEventBus {
   }
 
   /** isDryRun は healReviewPanel.ts の HealFixCollector が dry-run 実行を除外する判定に使う。
-   * liveFollow は livePanel.ts が単一クラス実行のときだけライブ自動追従する判定に使う
+   * liveFollow は liveTabHost.ts が単一クラス実行のときだけライブ自動追従する判定に使う
    * (runHandler.ts が単一デバイスの liveTarget を用意したか)。 */
   beginRun(isDryRun = false, liveFollow = false): number {
     const runId = this.nextRunId;

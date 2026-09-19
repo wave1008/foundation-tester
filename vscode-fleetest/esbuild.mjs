@@ -2,8 +2,8 @@
 // vscode-fleetest のビルドスクリプト。
 //
 //   node esbuild.mjs          : src/extension.ts -> dist/extension.js と
-//                                src/webview/{monitor,live,dashboard}/ -> media/{monitor,live,dashboard}/
-//                                の両方を1回ビルド(live は main.js のみ。style.css は media/monitor/ を共用)
+//                                src/webview/monitor/ -> media/monitor/ の両方を1回ビルド
+//                                (「ライブ操作」タブはモニターの webview に統合済み。専用エントリは無い)
 //   node esbuild.mjs --watch  : 上記をどちらもウォッチモードで実行
 //   node esbuild.mjs --tests  : test/*.test.mjs を out-test/ にバンドルする(node:test 用。
 //                                src/*.ts を直接 import しているテストを Node がそのまま
@@ -50,10 +50,10 @@ async function buildWebview() {
     // src/webview/dashboard/ は単独 entryPoint を持たない(「ダッシュボード」はモニターパネルの
     // タブへ統合済み。main.js は monitor/dashboardTab.js が import し、style.css は
     // monitor/style.css が @import で束ねる。dashboard/ 配下のモジュール自体は変更しない)。
+    // 「ライブ操作」タブも同じ形で統合済み(main.js は monitor/main.js が liveTab.js を import する)。
     entryPoints: [
       path.join(rootDir, "src/webview/monitor/main.js"),
       path.join(rootDir, "src/webview/monitor/style.css"),
-      path.join(rootDir, "src/webview/live/main.js"),
     ],
     bundle: true,
     platform: "browser",

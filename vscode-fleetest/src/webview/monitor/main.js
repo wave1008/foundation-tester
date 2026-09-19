@@ -2,8 +2,7 @@
 //   vscodeApi.js  acquireVsCodeApi(1回のみ)+persistedState / domRefs.js  共有DOM定数
 //   splitter.js/deviceTiles.js/laneLog.js/hostCharts.js  「テスト実行」タブ
 //   projectsTab.js/runProfileDevicesTab.js/appProfilesTab.js/runProfilesTab.js  プロファイルタブ
-//   settingsTab.js  設定タブ / modals.js  3モーダル / tabs.js  タブ切替
-// ライブ操作は独立パネル(src/webview/live/main.js、UI本体は liveTab.js を共有)へ分離済み。
+//   settingsTab.js  設定タブ / modals.js  3モーダル / tabs.js  タブ切替 / liveTab.js  「ライブ操作」タブ
 // 各モジュールの import はトップレベルのイベント登録実行に必要(未使用に見えても消さない)。
 // 外側IIFEは無い(esbuildのiife出力が同役割)。ここにはメッセージディスパッチャ・ツールバー
 // ボタン・起動時ブートストラップのみを置く。
@@ -70,6 +69,7 @@ import { applyMachineColors } from './machineColors.js';
 import { applyResidentMessage } from './processesTab.js';
 import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
 import { activateTab, currentTab, HIDDEN_AT_STARTUP, TAB_IDS, switchTab } from './tabs.js';
+import { applyLiveH264Chunk, applyLiveMessage, initLive, openLiveDevice, refreshLiveDevices, setLiveVisible } from './liveTab.js';
 import { setTilePaneHeight, setFleetVisible, isFleetVisible } from './splitter.js';
 import { adoptTitleHoverTips } from './hoverTip.js';
 import { setDevicesWaiting } from './waitingNote.js';
@@ -287,10 +287,37 @@ window.addEventListener('message', (event) => {
     case 'dashboard':
       handleDashboardMessage(message.message);
       break;
+    case 'live':
+      applyLiveMessage(message.message);
+      break;
+    case 'liveH264Chunk':
+      applyLiveH264Chunk(message);
+      break;
+    case 'liveOpenDevice':
+      activateTab('live');
+      openLiveDevice(message.id);
+      break;
+    case 'liveRefreshDevicesFromHost':
+      refreshLiveDevices();
+      break;
+    case 'panelVisible':
+      monitorPanelVisible = !!message.visible;
+      updateLiveVisible();
+      break;
     default:
       break;
   }
 });
+
+// 「ライブ操作」タブの自動フレーム更新は、モニターの webview パネルが表示中(他エディタタブの
+// 裏に隠れていない)かつ「ライブ操作」タブが選択中のときだけ回す(どちらか一方でも欠けると
+// H.264 のエンコード/デコードが丸ごと無駄になる)。パネル生成直後は表示中という前提
+// (createWebviewPanel 直後は visible。以後の切替は host からの panelVisible が更新する)。
+let monitorPanelVisible = true;
+function updateLiveVisible() {
+  setLiveVisible(monitorPanelVisible && currentTab() === 'live');
+}
+document.addEventListener('ft-tab-activated', updateLiveVisible);
 
 // bulk up 実行中フラグ(bootBusy で更新)。true の間、btnUp は「デバイスの起動を中断」として動く
 // (ラベル切替は deviceTiles.js setBusy)。
@@ -334,6 +361,10 @@ const initialTab =
     ? persistedState.activeTab
     : 'devices';
 switchTab(initialTab);
+// switchTab が発火する 'ft-tab-activated' で updateLiveVisible() が呼ばれ、初期タブが 'live' の
+// ときだけ visibility:true を送る(それ以外は false のまま。setLiveVisible 呼び出し順は initLive()
+// の前後を問わない。可視性通知とデバイス一覧要求は互いに独立)。
+initLive();
 
 // 初回 monitorDevices が届くまで(monitor プロセス起動+初回スキャンで数秒かかる)、待機メッセージを
 // 表示する。.empty は CSS 既定 display:none で、これが無いと最初のイベントまでタイル領域が無言の空白に

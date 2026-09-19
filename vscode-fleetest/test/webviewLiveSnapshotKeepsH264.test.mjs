@@ -1,5 +1,5 @@
-// 独立ライブ操作パネルで、h264 映像が健全な間はタップ等の操作結果として届く 'snapshot'
-// (jpeg 一枚絵 + 要素一覧)を受けても、映像(canvas)表示を静止画へ戻さないことの回帰テスト。
+// デバイスモニターの「ライブ操作」タブで、h264 映像が健全な間はタップ等の操作結果として届く
+// 'snapshot'(jpeg 一枚絵 + 要素一覧)を受けても、映像(canvas)表示を静止画へ戻さないことの回帰テスト。
 //
 // 実害(docs/bug-audit-2026-09-06.md §3 liveTab.js:382): applySnapshot が liveUsingH264 の間も
 // 無条件に disposeLiveH264 していたため、画像上をタップするたび(monitorLiveController.ts の
@@ -11,6 +11,7 @@
 // jsdom には 2D canvas コンテキストが無い(canvas パッケージ未導入)ため、
 // HTMLCanvasElement.prototype.getContext と VideoDecoder/EncodedVideoChunk をテスト用に
 // 差し替える(h264Decoder.test.mjs / webviewTileStreamStalePoll.test.mjs と同型のフェイク)。
+// harness(monitorHtml.ts + webview/monitor/main.js の実バンドル)は webviewLiveDrag.test.mjs と同型。
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -27,7 +28,7 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 before(async () => {
   const htmlBuild = await esbuild.build({
-    entryPoints: [path.resolve("src/livePanelHtml.ts")],
+    entryPoints: [path.resolve("src/monitorHtml.ts")],
     bundle: true, platform: "node", format: "cjs", target: "node18",
     write: false, external: ["vscode"], logLevel: "silent",
   });
@@ -39,10 +40,10 @@ before(async () => {
     asWebviewUri: (uri) => `https://localhost${uri.path}`,
     cspSource: "https://localhost",
   };
-  panelHtml = mod.exports.renderLiveHtml(webviewStub, { path: "" });
+  panelHtml = mod.exports.renderHtml(webviewStub, { path: "" });
 
   const mainBuild = await esbuild.build({
-    entryPoints: [path.resolve("src/webview/live/main.js")],
+    entryPoints: [path.resolve("src/webview/monitor/main.js")],
     bundle: true, platform: "browser", format: "iife", target: "es2022",
     write: false, logLevel: "silent",
   });
@@ -55,6 +56,7 @@ function createWebview() {
   window.acquireVsCodeApi = () => ({
     postMessage: () => {}, setState: () => {}, getState: () => undefined,
   });
+  window.HTMLElement.prototype.scrollIntoView = () => {};
   // jsdom の canvas には 2D コンテキストが無い(実描画はしないダミーで足りる)。
   window.HTMLCanvasElement.prototype.getContext = () => ({ drawImage() {} });
   // VideoDecoder は decode() 呼び出しで即 1 フレームを output する最小フェイク。
@@ -75,6 +77,9 @@ function createWebview() {
     constructor(init) { Object.assign(this, init); }
   };
   window.eval(webviewBundle);
+  window.document.getElementById("tab-live").dispatchEvent(
+    new window.MouseEvent("click", { bubbles: true }),
+  );
   return { window, document: window.document };
 }
 

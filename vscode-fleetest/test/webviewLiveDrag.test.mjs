@@ -1,14 +1,16 @@
 // webviewLiveDrag.test.mjs
-// 独立ライブ操作パネルの webview を実 HTML+実バンドルで動かす DOM E2E(jsdom)。
-// renderLiveHtml(livePanelHtml.ts)を vscode スタブ付きでオンザフライ bundle して HTML を生成し、
-// src/webview/live/main.js も esbuild(write:false)で bundle して window.eval で実行する。
+// デバイスモニターの「ライブ操作」タブの webview を実 HTML+実バンドルで動かす DOM E2E(jsdom)。
+// renderHtml(monitorHtml.ts)を vscode スタブ付きでオンザフライ bundle して HTML を生成し、
+// src/webview/monitor/main.js も esbuild(write:false)で bundle して window.eval で実行する
+// (harness は webviewDevicesTabVisible.test.mjs と同型)。
 // 実 VSCode webview との差分は acquireVsCodeApi / getBoundingClientRect / PointerEvent のみ
 // (setPointerCapture は jsdom に無いが、liveTab.js 側が try/catch で握る契約なのでシム不要)。
 //
 // 検証対象(ドラッグ=スワイプ機能の回帰):
-// - パネル読み込み(スクリプト実行)で visibility:true / refreshDevices を host へ送る
+// - 「ライブ操作」タブへ切り替えると visibility:true を host へ送る(refreshDevices は
+//   タブに関わらず起動時に一度だけ送る。main.js の initLive() 参照)
 // - snapshot 未取得のまま frame だけ受信 → refreshSnapshot を一度だけ自動要求(パネル開き直しで
-//   ライブ操作パネルが復元された直後の「タップ/ドラッグ無反応」の再発防止)
+//   「ライブ操作」タブが復元された直後の「タップ/ドラッグ無反応」の再発防止)
 // - snapshot 取得前はポインタ操作を送らない
 // - snapshot 取得後: 移動 5px 未満=tapPoint、以上=dragPoints。pointerup は window 側で拾う
 //   (setPointerCapture が効かない環境の取りこぼし防止)。範囲外で離したら表示範囲へクランプ
@@ -26,9 +28,9 @@ let panelHtml;
 let webviewBundle;
 
 before(async () => {
-  // renderLiveHtml を vscode スタブで実行して実 HTML を得る
+  // renderHtml を vscode スタブで実行して実 HTML を得る
   const htmlBuild = await esbuild.build({
-    entryPoints: [path.resolve("src/livePanelHtml.ts")],
+    entryPoints: [path.resolve("src/monitorHtml.ts")],
     bundle: true,
     platform: "node",
     format: "cjs",
@@ -47,11 +49,11 @@ before(async () => {
     asWebviewUri: (uri) => `https://localhost${uri.path}`,
     cspSource: "https://localhost",
   };
-  panelHtml = mod.exports.renderLiveHtml(webviewStub, { path: "" });
+  panelHtml = mod.exports.renderHtml(webviewStub, { path: "" });
 
   // webview バンドル(media/ 出力を経由せず現ソースから直接 bundle する)
   const mainBuild = await esbuild.build({
-    entryPoints: [path.resolve("src/webview/live/main.js")],
+    entryPoints: [path.resolve("src/webview/monitor/main.js")],
     bundle: true,
     platform: "browser",
     format: "iife",
@@ -63,7 +65,8 @@ before(async () => {
 });
 
 /** 実 HTML+バンドルを読み込んだ webview 相当の DOM を作り、host への postMessage を捕捉する。
- * スクリプト実行(=webviewBundle の eval)だけでパネル初期化が走る(タブ切替は無い)。 */
+ * スクリプト実行(=webviewBundle の eval)の直後に「ライブ操作」タブへ切り替える(タブ切替は
+ * main.js 側の ft-tab-activated 経由で visibility:true を発火させるのに必要)。 */
 /** **window.close() を忘れると main.js の setInterval が残ってプロセスが終わらない**
  * (node --test はファイル単位の子プロセスの終了を待つので、1本の閉じ忘れでスイート全体が
  * 止まる。2026-08-17 に実際に起き、npm test が終わらなくなった)。各 test は t.after で閉じる。 */
@@ -80,7 +83,12 @@ function createWebview() {
     setState: () => {},
     getState: () => undefined,
   });
+  window.HTMLElement.prototype.scrollIntoView = () => {};
   window.eval(webviewBundle);
+
+  window.document.getElementById("tab-live").dispatchEvent(
+    new window.MouseEvent("click", { bubbles: true }),
+  );
 
   const screenshot = window.document.getElementById("live-screenshot");
   // jsdom はレイアウトを持たないため表示サイズを固定で与える(400x800)
@@ -120,7 +128,7 @@ const SNAPSHOT_MESSAGE = {
 };
 const FRAME_MESSAGE = { type: "live", message: { type: "frame", image: "aW1n" } };
 
-test("パネル読み込みで visibility:true と refreshDevices を host へ送る", (t) => {
+test("起動時に refreshDevices を送り、「ライブ操作」タブへの切替で visibility:true を送る", (t) => {
   const { window, liveMessages } = createWebview();
   t.after(() => window.close());
   const messages = liveMessages();

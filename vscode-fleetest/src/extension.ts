@@ -21,7 +21,6 @@ import { registerHealReviewPanel } from "./healReviewPanel";
 import { initI18n, setLocaleFromConfig, t } from "./i18n";
 import { handleLanguageChange } from "./languageChangeHandler";
 import { registerLastResultsSync } from "./lastResultsSync";
-import { registerLivePanel } from "./livePanel";
 import { registerMonitorPanel } from "./monitorPanel";
 import { sweepOrphans } from "./orphanSweep";
 import { registerProfileDiagnostics } from "./profileDiagnostics";
@@ -153,9 +152,11 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
   );
-  // registerRunHandler の Run Test 前ライブパネル連携(prepareForRun)と registerMonitorPanel の
-  // openLiveForDevice(デバイスタイル右クリック連携)の両方に使うため先に生成する。
-  const livePanel = registerLivePanel(context, workspaceRoot, getConfig, outputChannel, cli, testTree, runEventBus);
+  // registerRunHandler の Run Test 前ライブ連携(prepareForRun)に使うため先に生成する
+  // (デバイスタイル右クリック「ライブ操作」はモニター自身の webview メッセージ経由で
+  // LiveTabHost を直接呼ぶので、コールバックの受け渡しは不要)。
+  const monitorPanel = registerMonitorPanel(
+    context, workspaceRoot, getConfig, outputChannel, cli, testTree, runEventBus);
   registerRunHandler(
     context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel, runEventBus,
     (executedScenarioIds) => {
@@ -166,12 +167,10 @@ export function activate(context: vscode.ExtensionContext): void {
       // run 中に来ていたプロジェクト切替(registerCommands の onDidChangeConfiguration)を拾う。
       testTree.flushPendingProjectSwitch();
     },
-    livePanel.prepareForRun,
+    monitorPanel.prepareForRun,
   );
   registerDebugAdapter(context, workspaceRoot, getConfig, outputChannel);
   registerStepsView(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel);
-  const monitorPanel = registerMonitorPanel(
-    context, workspaceRoot, getConfig, outputChannel, cli, runEventBus, livePanel.openForDevice);
   const healReviewPanel = registerHealReviewPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus, cli);
   registerProfileDiagnostics(context, cli, workspaceRoot, getConfig, outputChannel);
 
@@ -187,7 +186,6 @@ export function activate(context: vscode.ExtensionContext): void {
         isRunActive,
         rebuildTestTree: () => testTree.rebuildFromLastData(),
         relocalizePanels: [
-          livePanel.relocalize,
           monitorPanel.relocalize,
           healReviewPanel.relocalize,
         ],

@@ -1,11 +1,12 @@
 // バッチB 辞書。namespace: panels.
-// 対象ソース: monitorHtml.ts, livePanelHtml.ts(静的 HTML のタブ名・ボタン・title 属性など)
+// 対象ソース: monitorHtml.ts(静的 HTML のタブ名・ボタン・title 属性など。「ライブ操作」タブも含む)
 // キーは "panels." 始まり。ja は元の日本語と byte-identical(既存テスト互換)。
 import type { MessageDict } from "../core";
 
 export const panelsStrings = {
   "panels.tabs.dashboard": { ja: "ダッシュボード", en: "Dashboard" },
   "panels.tabs.testRun": { ja: "テスト実行", en: "Test Run" },
+  "panels.tabs.live": { ja: "ライブ操作", en: "Live Control" },
   "panels.tabs.profiles": { ja: "プロファイル", en: "Profiles" },
   "panels.tabs.processes": { ja: "プロセス", en: "Processes" },
   "panels.tabs.close": { ja: "タブを閉じる", en: "Close tab" },
@@ -402,5 +403,4 @@ export const panelsStrings = {
     ja: "選択中プロファイルのアプリを選択デバイスで起動します",
     en: "Launch the selected profile's app on the selected device",
   },
-  "panels.live.panelTitle": { ja: "ライブ操作", en: "Live Control" },
 } satisfies MessageDict;

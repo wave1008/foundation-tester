@@ -45,6 +45,8 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 
   ${renderDevicesPanel()}
 
+  ${renderLivePanel()}
+
   ${renderProfilesPanel()}
 
   ${renderRecordingsPanel()}
@@ -75,10 +77,11 @@ function renderTabBar(): string {
   return `<div id="tabbar" role="tablist">
     <button id="tab-dashboard" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-dashboard">${t("panels.tabs.dashboard")}</button>
     <button id="tab-devices" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="panel-devices">${t("panels.tabs.testRun")}</button>
+    <button id="tab-live" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-live" style="display: none;">${t("panels.tabs.live")}<span id="tab-live-close" class="tab-close" role="button" title="${t("panels.tabs.close")}" aria-label="${t("panels.tabs.close")}">×</span></button>
     <button id="tab-recordings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-recordings">${t("panels.tabs.recordings")}</button>
     <button id="tab-profiles" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-profiles">${t("panels.tabs.profiles")}</button>
     <button id="tab-settings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-settings">${t("panels.tabs.settings")}</button>
-    <!-- 起動時は出さない。設定タブ「ツール」の「プロセス」で現れる(tabs.js の HIDDEN_AT_STARTUP) -->
+    <!-- tab-live / tab-processes は起動時は出さない(tabs.js の HIDDEN_AT_STARTUP。開くと現れる) -->
     <button id="tab-processes" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-processes" style="display: none;">${t("panels.tabs.processes")}<span id="tab-processes-close" class="tab-close" role="button" title="${t("panels.tabs.close")}" aria-label="${t("panels.tabs.close")}">×</span></button>
     <!-- 更新があるときだけ現れるボタン(タブの並びの直後。タブに関係なく常に見える)。
          押すと設定タブへ切り替える。対向: settingsTab.js -->
@@ -286,6 +289,101 @@ function renderDevicesPanel(): string {
       <div id="lanes-placeholder" class="lanes-placeholder">${t("panels.devices.lanesPlaceholder")}</div>
       <div id="lanes-grid" class="lanes-grid" style="display: none;"></div>
     </div>
+  </div>`;
+}
+
+/** 「ライブ操作」タブ。id は liveTab.js が参照するため変更しないこと。挙動は
+ * monitorLiveController.ts / src/liveTabHost.ts / src/webview/monitor/liveTab.js が持つ。 */
+function renderLivePanel(): string {
+  return `<div id="panel-live" class="tab-panel" role="tabpanel" aria-labelledby="tab-live" style="display: none;">
+    <div class="toolbar">
+      <label for="live-device-select">${t("panels.common.deviceLabelColon")}</label>
+      <select id="live-device-select"></select>
+      <button id="live-btn-refresh-devices" class="secondary">${t("panels.common.refreshDeviceList")}</button>
+      <span id="live-device-warning"></span>
+      <span id="live-busy-label"></span>
+    </div>
+    <div class="toolbar live-record-row">
+      <label for="live-app-profile-select">${t("panels.live.appProfileLabelColon")}</label>
+      <select id="live-app-profile-select" title="${t("panels.common.appProfile")}"></select>
+    </div>
+    <div class="toolbar live-app-profile-detail" id="live-app-profile-detail">
+      <span class="app-profile-detail-field"><span class="app-profile-detail-label">${t("panels.appProfile.displayNameLabel")}:</span> <span id="live-app-profile-name" class="app-profile-detail-value">—</span></span>
+      <span class="app-profile-detail-field"><span class="app-profile-detail-label">${t("panels.appProfile.appIdLabel")}:</span> <span id="live-app-profile-bundle" class="app-profile-detail-value">—</span></span>
+      <span class="app-profile-detail-field app-profile-detail-path"><span class="app-profile-detail-label">${t("panels.appProfile.packagePathLabel")}:</span> <span id="live-app-profile-path" class="app-profile-detail-value">—</span></span>
+      <button id="live-btn-install" class="secondary" title="${t("panels.live.installButtonTitle")}" disabled>${t("panels.live.installButton")}</button>
+    </div>
+    <div class="toolbar live-record-actions">
+      <button id="live-btn-record">${t("panels.live.startRecording")}</button>
+      <button id="live-btn-launch" class="secondary" title="${t("panels.live.launchButtonTitle")}" disabled>${t("panels.live.launchButton")}</button>
+      <span id="live-record-status" class="live-record-status"></span>
+    </div>
+    <div id="live-banner" class="banner"></div>
+    <div id="live-action-error"></div>
+
+    <div class="content">
+      <div class="screenshot-pane" id="live-screenshot-pane">
+        <!-- 画像スロット。内容フィットで画像実寸に縮み pane 上端に付く。liveTab.js の fitScreenshot が
+             pane 実測高から actions/gap を引いた残りを #live-screenshot の max-height に反映する。 -->
+        <div class="screenshot-frame" id="live-screenshot-frame">
+          <div class="screenshot-wrap" id="live-screenshot-wrap" title="${t("panels.live.gestureHintTitle")}">
+            <img id="live-screenshot" alt="${t("panels.live.screenshotAlt")}">
+            <div id="live-hover-box"></div>
+            <svg id="live-drag-overlay" aria-hidden="true"><line id="live-drag-line"/><circle id="live-drag-start" r="6"/></svg>
+            <div id="live-screenshot-placeholder">${t("panels.live.screenshotPlaceholder")}</div>
+            <div id="live-conn-overlay">
+              <div class="conn-title">${t("panels.live.connectionErrorTitle")}</div>
+              <div class="conn-note">${t("panels.live.connectionErrorNote")}</div>
+              <div id="live-conn-detail"></div>
+            </div>
+            <div id="live-busy-overlay">
+              <div id="live-busy-spinner"></div>
+              <div id="live-busy-message"></div>
+            </div>
+          </div>
+        </div>
+        <div class="screenshot-actions" id="live-screenshot-actions">
+          <button id="live-btn-home" class="secondary" title="${t("panels.live.homeButtonTitle")}">${t("panels.live.homeButton")}</button>
+          <button id="live-btn-app-switcher" class="secondary" title="${t("panels.live.appSwitcherTitle")}">${t("panels.live.appSwitcherButton")}</button>
+          <button id="live-btn-zoom-in" class="secondary" title="${t("panels.live.zoomInTitle")}">${t("panels.live.zoomInButton")}</button>
+          <button id="live-btn-zoom-out" class="secondary" title="${t("panels.live.zoomOutTitle")}">${t("panels.live.zoomOutButton")}</button>
+          <!-- 修飾キーの割り当ては UI に出さないと誰も気付かない(README だけでは届かない)。
+               全体の割り当ては画面領域の tooltip(gestureHintTitle)にも同じものを出す -->
+          <span id="live-gesture-hint" class="screenshot-hint" title="${t("panels.live.gestureHintTitle")}">${t("panels.live.gestureHint")}</span>
+        </div>
+      </div>
+
+      <div class="splitter splitter-vertical" id="live-screen-splitter" title="${t("panels.live.screenSplitterTitle")}"></div>
+
+      <div class="control-pane">
+        <div class="live-lists">
+          <div class="live-elements-section" id="live-elements-section">
+            <div class="elements-header">
+              <span>${t("panels.live.elementsHeader")}</span>
+              <button id="live-btn-refresh-snapshot" class="secondary" title="${t("panels.live.refreshSnapshotTitle")}">${t("panels.live.refreshSnapshot")}</button>
+            </div>
+            <div id="live-elements-list" class="elements-list"></div>
+            <div class="row live-type-row">
+              <input id="live-type-text" type="text" placeholder="${t("panels.live.typeTextPlaceholder")}">
+            </div>
+          </div>
+          <div class="splitter" id="live-lists-splitter" title="${t("panels.live.listsSplitterTitle")}"></div>
+          <div class="live-oplog-section">
+            <div class="oplog-header">
+              <span>${t("panels.live.oplogHeader")}</span>
+              <button id="live-btn-oplog-clear" class="secondary" type="button">${t("panels.live.oplogClear")}</button>
+            </div>
+            <div id="live-oplog-list" class="oplog-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ライブ操作の画像上で右クリック。開始/終了の活性は liveTab.js が録画状態に応じて切替(#live-btn-record と同ロジック)。 -->
+  <div id="live-record-menu" class="device-op-menu" role="menu">
+    <button id="live-record-menu-start" class="device-op-menu-item" type="button" role="menuitem">${t("panels.live.startRecording")}</button>
+    <button id="live-record-menu-stop" class="device-op-menu-item" type="button" role="menuitem">${t("panels.live.stopRecording")}</button>
   </div>`;
 }
 
@@ -654,6 +752,7 @@ function renderSettingsPanel(): string {
       <div class="settings-group">
         <div class="settings-section-title">${t("panels.settings.toolsSectionTitle")}</div>
         <div class="settings-update-actions">
+          <button id="settings-tool-live" class="secondary" type="button">${t("panels.tabs.live")}</button>
           <button id="settings-tool-processes" class="secondary" type="button">${t("panels.settings.toolsProcessesButton")}</button>
         </div>
       </div>

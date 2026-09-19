@@ -72,8 +72,8 @@ export interface FleetestConfig {
    * 順で自動修復を試みる(monitorHealthWatchdog.ts)。既定 false: autoRepairBridge と異なり、
    * Wi-Fi をわざと切ってテストするケースを勝手に上書きしないため。 */
   autoRepairDeviceHealth: boolean;
-  /** true の場合、テスト実行(Run Test、非dry-run)開始時にライブ操作パネル(livePanel.ts)を
-   * エディタの右側(ViewColumn.Beside)へ自動表示する。 */
+  /** true の場合、テスト実行(Run Test、非dry-run)開始時にデバイスモニター(monitorPanel.ts)を
+   * 「ライブ操作」タブで自動表示する(liveTabHost.ts)。 */
   liveControlOnRun: boolean;
   /** "auto": 起動時に upstream の更新有無を確認し、あれば通知する(updateCheck.ts)。"off": 確認しない。
    * 確認するだけで取り込みはしない(取り込みは /fleetest-update)。 */
