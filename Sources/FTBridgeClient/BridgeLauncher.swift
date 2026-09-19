@@ -894,9 +894,11 @@ public struct BridgeLauncher {
     /// endpoint: nil = ループバック・token 無し(シミュレータの既定)。**実機は必ず渡すこと**——
     /// establish() の戻り値をそのまま渡す(host だけ取り出すと token を静かに失う。usb トンネルは
     /// host がループバックのままなので、この関数の既定と区別が付かなくなる)
+    /// 応答した /status を返す(引き取った起動途中のランナーの版を呼び手が確かめるため。BridgeProvisioner の adopt)
+    @discardableResult
     public func waitUntilReady(timeout: TimeInterval = BridgeLauncher.startupTimeoutSeconds,
                                endpoint: BridgeEndpoint? = nil,
-                               log: @escaping (String) -> Void = { _ in }) async throws {
+                               log: @escaping (String) -> Void = { _ in }) async throws -> StatusResponse {
         let client = BridgeClient(endpoint: endpoint ?? BridgeEndpoint(port: port))
         // 締切は固定でなく進み具合で延びる(BridgeStartupWait)。伸びる根拠はログのサイズ
         let launchedAt = Date()
@@ -930,7 +932,7 @@ public struct BridgeLauncher {
                 let status = try await client.status()
                 if status.ready {
                     enableReduceMotion()
-                    return
+                    return status
                 }
             } catch {
                 lastError = error
@@ -1091,15 +1093,16 @@ public struct BridgeLauncher {
         return signingMismatch(stored: storedSigning, current: signing)
     }
 
-    /// ランナーのビルド入力の最終更新時刻。入力集合は Runner/project.yml の sources と対
-    /// (FleetestRunnerUITests/ + FleetestRunnerApp/ + project.yml + 共有 DTO の BridgeDTO.swift)。
+    /// ランナーのビルド入力の最終更新時刻。入力 = **`BridgeSourceSet.xcuitest`(ブリッジの入力の正本:
+    /// UITests と、project.yml が取り込む共有 FTCore ファイル)** + project.yml + ホストアプリ(FleetestRunnerApp。
+    /// 挙動には効かないがビルドには入る)。自前の一覧を持たない —— 以前は共有ファイルのうち
+    /// SnapshotDedupe.swift / TypeReadback.swift を落としていて、それだけを変えても旧ビルドのまま走った。
     /// 取得できない場合は nil = 「判定不能」として再ビルドさせる(古いまま走らせるより安全)
     static func newestRunnerSourceTimestamp(repoRoot: URL) -> Date? {
-        var inputs = [
-            repoRoot.appendingPathComponent("Runner/project.yml"),
-            repoRoot.appendingPathComponent("Sources/FTCore/BridgeDTO.swift"),
-        ]
-        for dir in ["Runner/FleetestRunnerUITests", "Runner/FleetestRunnerApp"] {
+        guard let bridgeInputs = try? BridgeSourceSet.xcuitest.files(repoRoot: repoRoot) else { return nil }
+        var inputs = bridgeInputs.map { repoRoot.appendingPathComponent($0) }
+            + [repoRoot.appendingPathComponent("Runner/project.yml")]
+        for dir in ["Runner/FleetestRunnerApp"] {
             let dirURL = repoRoot.appendingPathComponent(dir)
             guard let entries = try? FileManager.default.contentsOfDirectory(
                 at: dirURL, includingPropertiesForKeys: [.contentModificationDateKey]) else {

@@ -991,23 +991,33 @@ public struct BridgeProvisioner {
                     + " allowed for it to become ready) — stopping and restarting it")
                 return try await stopAndRelaunch()
             }
+            let status: StatusResponse
             do {
                 // 宛先は起動した側が記録した .endpoint を読む(LAN 経由の実機はループバックでは
                 // 届かない。usb トンネルは host こそループバックだが token を記録している ——
                 // endpoint ごと渡さないと host だけでは再現できない。仮想デバイスは記録が無く
                 // load がループバック・token 無しを返す)
-                try await launcher.waitUntilReady(
+                status = try await launcher.waitUntilReady(
                     timeout: readyBudget,
                     endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot),
                     log: { log("\(name): \($0)") })
-                log("✅ \(name): took over the \(engine) bridge that was starting (port \(port))")
-                return port
             } catch {
                 // 親を失ったゾンビ(再起動・kill で announce しないまま残ったランナー)。
                 // 放置すると同じデバイスで何度でも待たされるので、止めてから同じポートで立て直す
                 log("⚠️ \(name): the starting bridge (port \(port)) is not responding — stopping and restarting it")
                 return try await stopAndRelaunch()
             }
+            // **引き取ったランナーの版は応答してから確かめる**(起動途中は /status に答えないので、
+            // 再利用の判定=版一致を通らずにここへ来る)。旧ビルドのまま起動途中だったランナーを使うと、
+            // 版を上げた修正が黙って効かない(2026-09-19: v119 のツールの bridge up が v118 のランナーを返した)
+            if Self.adoptedRunnerIsStale(status) {
+                log("⚠️ \(name): the bridge that was starting on port \(port) is from an older build"
+                    + " (v\(status.protocolVersion.map(String.init) ?? "?"), this tool expects"
+                    + " v\(BridgeAPI.bridgeProtocolVersion)) — stopping and restarting it")
+                return try await stopAndRelaunch()
+            }
+            log("✅ \(name): took over the \(engine) bridge that was starting (port \(port))")
+            return port
         case .launch(let port, let needsInstall, let stopStalePort, let reclaimInApp):
             let stateDir = repoRoot.appendingPathComponent(".fleetest")
             if let stopStalePort {
@@ -1271,6 +1281,12 @@ public struct BridgeProvisioner {
     }
 
     /// 稼働中ブリッジ 1 つの識別情報(接続先 UDID・engine 種別)
+    /// 引き取った起動途中のランナーが旧ビルドか(再利用の判定と同じ基準 = 版が現行値と一致しない。
+    /// 版を名乗らない旧ランナーも旧ビルドとみなす)
+    static func adoptedRunnerIsStale(_ status: StatusResponse) -> Bool {
+        status.protocolVersion != BridgeAPI.bridgeProtocolVersion
+    }
+
     struct RunningBridge: Sendable {
         let udid: String?
         /// /status が返したデバイス名。udid が同名複数で nil に落ちたときの相関フォールバックに使う。

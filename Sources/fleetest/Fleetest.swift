@@ -615,10 +615,16 @@ struct Bridge: AsyncParsableCommand {
             case reusedExistingBridge
             /// この台には呼び出し前は無く、要求ポートが別ブリッジに塞がれていたので別ポートで新規起動した
             case startedOnAnotherPort
+            /// この台の旧ビルドのブリッジが居たポートで、それを止めて建て直した(再利用ではない)
+            case restartedOlderBuild
         }
 
-        static func portMismatchReason(actualPort: UInt16, preexistingPorts: Set<UInt16>) -> PortMismatchReason {
-            preexistingPorts.contains(actualPort) ? .reusedExistingBridge : .startedOnAnotherPort
+        /// stalePorts: 呼び出し前に**旧版**を名乗っていた preexistingPorts(provision は旧版を再利用せず、
+        /// 止めて同じポートで建て直す。ポートが呼び出し前から在っただけで「再利用」と言うと事実と違う)
+        static func portMismatchReason(actualPort: UInt16, preexistingPorts: Set<UInt16>,
+                                       stalePorts: Set<UInt16>) -> PortMismatchReason {
+            guard preexistingPorts.contains(actualPort) else { return .startedOnAnotherPort }
+            return stalePorts.contains(actualPort) ? .restartedOlderBuild : .reusedExistingBridge
         }
 
         /// **「stop it and run again」の案内は再利用のときだけ出す** —— 新規起動のケースでは
@@ -637,6 +643,9 @@ struct Bridge: AsyncParsableCommand {
                 return "⚠️ Reused the running bridge on this device (port \(actualPort)) instead of the "
                     + "requested/default port \(requestedPort). To rebuild on port \(requestedPort), stop it "
                     + "first with `fleetest bridge down --port \(actualPort)` and run again."
+            case .restartedOlderBuild:
+                return "⚠️ Stopped this device's bridge from an older build on port \(actualPort) and restarted it there"
+                    + " (the requested/default port \(requestedPort) is in use by another bridge)."
             case .startedOnAnotherPort:
                 // 塞いでいるのは別の台(実機の LAN ブリッジ等)のことがあるので、止める案内は出さない
                 return "⚠️ Started the bridge on port \(actualPort) because port \(requestedPort) is in use "
@@ -672,6 +681,11 @@ struct Bridge: AsyncParsableCommand {
             // M11 の判定材料: provision() を呼ぶ前に、この台が既に使っているポートを控えておく
             // (呼んだ後では「元から有ったのか、今建てたのか」が区別できない)
             let preexistingPorts = Set(BridgeLauncher.portsMatching(udid: resolvedUDID, repoRoot: root))
+            // 旧版を名乗るもの(provision が止めて建て直す)。応答しないものは判定材料が無いので含めない
+            let stalePorts = Set(preexistingPorts.filter { port in
+                BridgeLauncher.probeForeignBridge(port: port, timeout: 0.4)
+                    .map { $0.protocolVersion != BridgeAPI.bridgeProtocolVersion } ?? false
+            })
             // 起動は provision() 経由(直接 startDetached しない)。同一シミュレータに XCUITest
             // ランナーは1本しか同居できず(全ポート共通 bundle id のため2本目が先代を蹴り出し双方
             // signal kill で死ぬ)、直接起動は同一デバイスへの二重起動を防げない。provision() は
@@ -692,7 +706,8 @@ struct Bridge: AsyncParsableCommand {
             // provision は同一デバイスの稼働中ブリッジを preferred(--port)を無視して再利用する。
             // 固定ポート前提のスクリプトが :driverOptions.resolvedPort を叩いて外さないよう、差異を明示する
             if port != driverOptions.resolvedPort {
-                let reason = Self.portMismatchReason(actualPort: port, preexistingPorts: preexistingPorts)
+                let reason = Self.portMismatchReason(actualPort: port, preexistingPorts: preexistingPorts,
+                                                     stalePorts: stalePorts)
                 let requested = driverOptions.resolvedPort
                 let stateDir = root.appendingPathComponent(".fleetest")
                 let heldByOther = !preexistingPorts.contains(requested) && (

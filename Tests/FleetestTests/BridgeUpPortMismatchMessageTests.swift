@@ -12,14 +12,26 @@ final class BridgeUpPortMismatchMessageTests: XCTestCase {
 
     func testAPortFoundInThePreexistingSetIsReportedAsReused() {
         XCTAssertEqual(
-            Bridge.Up.portMismatchReason(actualPort: 8130, preexistingPorts: [8130, 8140]),
+            Bridge.Up.portMismatchReason(actualPort: 8130, preexistingPorts: [8130, 8140], stalePorts: []),
             .reusedExistingBridge)
     }
 
     func testAPortNotInThePreexistingSetIsReportedAsANewLaunch() {
         XCTAssertEqual(
-            Bridge.Up.portMismatchReason(actualPort: 8128, preexistingPorts: []),
+            Bridge.Up.portMismatchReason(actualPort: 8128, preexistingPorts: [], stalePorts: []),
             .startedOnAnotherPort)
+    }
+
+    /// 呼び出し前から在ったポートでも、旧版だったなら provision は止めて建て直している = 「再利用」ではない
+    /// (2026-09-19: 旧版を止めて同じポートで建て直したのに「Reused the running bridge」と出た)
+    func testAPreexistingPortThatWasAnOlderBuildIsReportedAsRestarted() {
+        XCTAssertEqual(
+            Bridge.Up.portMismatchReason(actualPort: 8124, preexistingPorts: [8124], stalePorts: [8124]),
+            .restartedOlderBuild)
+        let text = Bridge.Up.portMismatchMessage(actualPort: 8124, requestedPort: 8123,
+                                                  reason: .restartedOlderBuild, requestedPortHeldByOther: true)
+        XCTAssertFalse(text.contains("Reused"), text)
+        XCTAssertTrue(text.contains("older build on port 8124"), text)
     }
 
     /// 再利用のときだけ「今動いているポートを止めて撃ち直せ」と言ってよい

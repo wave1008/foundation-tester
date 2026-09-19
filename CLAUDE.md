@@ -629,7 +629,9 @@
   ハンドラだけ変えた場合も落ちる**)。**版を上げること自体は強制できない**ので最後は人間の規律。
   **試行的な変更ほどブリッジに入れない**。
   **ブリッジの入力ファイル一覧は `Sources/FTCore/BridgeSourceSet.swift` が唯一の定義元**
-  (`InAppLauncher` の dylib 再ビルド判定も同じ一覧を使う。片方だけ変えない)
+  (`InAppLauncher` の dylib 再ビルド判定と、XCUITest ランナーの作り直し判定 `BridgeLauncher.newestRunnerSourceTimestamp`
+  も同じ一覧を使う。片方だけ変えない。ランナーが取り込む共有 FTCore ファイルは `Runner/project.yml` と
+  この一覧の等号を `BridgeLauncherRebuildTests` が固定する)
 - **LPT の実績 run 数の既定値は3箇所(`LPTOrdering.defaultHistoryRuns` / `package.json` の
   `fleetest.lptHistoryRuns.default` / `monitorPanel.ts` が webview へ送る default)で一致必須**
   (`lptDefaultSync.test.mjs` が検出)

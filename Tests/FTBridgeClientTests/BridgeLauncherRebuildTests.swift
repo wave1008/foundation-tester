@@ -14,8 +14,7 @@ final class BridgeLauncherRebuildTests: XCTestCase {
             try FileManager.default.createDirectory(
                 at: root.appendingPathComponent(dir), withIntermediateDirectories: true)
         }
-        for file in ["Runner/project.yml", "Runner/FleetestRunnerUITests/BridgeRouter.swift",
-                     "Runner/FleetestRunnerApp/App.swift", "Sources/FTCore/BridgeDTO.swift"] {
+        for file in Self.inputs {
             try Data("x".utf8).write(to: root.appendingPathComponent(file))
         }
     }
@@ -23,6 +22,11 @@ final class BridgeLauncherRebuildTests: XCTestCase {
     override func tearDownWithError() throws {
         try? FileManager.default.removeItem(at: root)
     }
+
+    /// ランナーのビルド入力(BridgeSourceSet.xcuitest の共有 FTCore ファイルを含む)
+    private static let inputs = ["Runner/project.yml", "Runner/FleetestRunnerUITests/BridgeRouter.swift",
+                                 "Runner/FleetestRunnerApp/App.swift", "Sources/FTCore/BridgeDTO.swift",
+                                 "Sources/FTCore/SnapshotDedupe.swift", "Sources/FTCore/TypeReadback.swift"]
 
     private let toolchain = "Xcode X / sdk Y"
 
@@ -50,8 +54,7 @@ final class BridgeLauncherRebuildTests: XCTestCase {
 
     func testFreshXCTestRunDoesNotRebuild() throws {
         let xctestrun = try makeXCTestRun(modified: Date())
-        for file in ["Runner/project.yml", "Runner/FleetestRunnerUITests/BridgeRouter.swift",
-                     "Runner/FleetestRunnerApp/App.swift", "Sources/FTCore/BridgeDTO.swift"] {
+        for file in Self.inputs {
             try setModified(file, Date(timeIntervalSinceNow: -3600))
         }
         XCTAssertFalse(needsRebuild(xctestrun))
@@ -69,6 +72,33 @@ final class BridgeLauncherRebuildTests: XCTestCase {
         XCTAssertTrue(needsRebuild(xctestrun))
     }
 
+    /// ランナーに組み込まれる共有 FTCore ファイルは BridgeDTO だけではない(以前は SnapshotDedupe /
+    /// TypeReadback を入力から落としていて、それだけを変えても旧ビルドのまま走った)
+    func testNewerSharedFTCoreFilesTriggerRebuild() throws {
+        for file in ["Sources/FTCore/SnapshotDedupe.swift", "Sources/FTCore/TypeReadback.swift"] {
+            let xctestrun = try makeXCTestRun(modified: Date(timeIntervalSinceNow: -3600))
+            for input in Self.inputs { try setModified(input, Date(timeIntervalSinceNow: -7200)) }
+            try setModified(file, Date())
+            XCTAssertTrue(needsRebuild(xctestrun), "\(file) が新しければ作り直す")
+        }
+    }
+
+    /// **ランナーが取り込む共有 FTCore ファイル(project.yml)== BridgeSourceSet.xcuitest のそれ**。
+    /// 作り直しの判定は BridgeSourceSet から入力を作るので、project.yml だけに足すと判定から漏れる
+    func testRunnerProjectSharedSourcesMatchTheBridgeSourceSet() throws {
+        let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let yml = try String(contentsOf: repo.appendingPathComponent("Runner/project.yml"), encoding: .utf8)
+        let fromProject = Set(yml.split(separator: "\n").compactMap { line -> String? in
+            guard let range = line.range(of: "../Sources/FTCore/") else { return nil }
+            return "Sources/FTCore/" + line[range.upperBound...].trimmingCharacters(in: .whitespaces)
+        })
+        let fromSourceSet = Set(try BridgeSourceSet.xcuitest.files(repoRoot: repo)
+            .filter { $0.hasPrefix("Sources/FTCore/") })
+        XCTAssertFalse(fromProject.isEmpty)
+        XCTAssertEqual(fromProject, fromSourceSet)
+    }
+
     func testUnreadableInputsTriggerRebuild() throws {
         let xctestrun = try makeXCTestRun(modified: Date())
         try FileManager.default.removeItem(
@@ -80,8 +110,7 @@ final class BridgeLauncherRebuildTests: XCTestCase {
     /// (旧 Xcode のランナーを新ランタイムに載せると実行中に落ちる)
     func testToolchainChangeTriggersRebuild() throws {
         let xctestrun = try makeXCTestRun(modified: Date())
-        for file in ["Runner/project.yml", "Runner/FleetestRunnerUITests/BridgeRouter.swift",
-                     "Runner/FleetestRunnerApp/App.swift", "Sources/FTCore/BridgeDTO.swift"] {
+        for file in Self.inputs {
             try setModified(file, Date(timeIntervalSinceNow: -3600))
         }
         XCTAssertTrue(needsRebuild(xctestrun, toolchain: "Xcode 27.1 / sdk 27B2"))
