@@ -100,4 +100,45 @@ final class ConsoleOutTests: XCTestCase {
                           "out() と err() の出力が同じ fd 上で混ざった: \(line.prefix(80))…")
         }
     }
+
+    /// **非ブロッキングの fd でバッファが埋まっても行を途中で捨てない**(2026-09-19: api monitor の
+    /// フレームが 64KB 付近で切れ、次のフレームが同じ行に繋がった)。読み手を遅らせて EAGAIN を
+    /// 確実に踏ませ、2行とも欠けずに届くことを見る
+    func testNonBlockingFullPipeDoesNotTearLines() throws {
+        let pipe = Pipe()
+        let writeFD = pipe.fileHandleForWriting.fileDescriptor
+        _ = fcntl(writeFD, F_SETFL, fcntl(writeFD, F_GETFL, 0) | O_NONBLOCK)
+        let readHandle = pipe.fileHandleForReading
+        let first = "{\"n\":1,\"blob\":\"" + String(repeating: "A", count: 200_000) + "\"}"
+        let second = "{\"n\":2}"
+
+        let collected = LockedData()
+        let done = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .utility).async {
+            Thread.sleep(forTimeInterval: 0.3)  // 先にパイプ(64KB)を埋めさせる
+            while true {
+                let chunk = readHandle.availableData
+                if chunk.isEmpty { break }
+                collected.append(chunk)
+            }
+            done.signal()
+        }
+        ConsoleOut.emit(first, fd: writeFD)
+        ConsoleOut.emit(second, fd: writeFD)
+        try pipe.fileHandleForWriting.close()
+        XCTAssertEqual(done.wait(timeout: .now() + 10), .success)
+
+        let lines = String(decoding: collected.value, as: UTF8.self)
+            .split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        XCTAssertEqual(lines.count, 2, "行が裂けた/繋がった")
+        XCTAssertTrue(lines.first == first, "1行目が欠けた: \(lines.first?.count ?? 0)/\(first.count) 文字")
+        XCTAssertEqual(lines.last, second)
+    }
+}
+
+private final class LockedData: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+    func append(_ chunk: Data) { lock.lock(); data.append(chunk); lock.unlock() }
+    var value: Data { lock.lock(); defer { lock.unlock() }; return data }
 }

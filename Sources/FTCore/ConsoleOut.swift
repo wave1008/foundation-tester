@@ -99,9 +99,52 @@ public enum ConsoleOut {
                 // **EINTR は諦める理由にならない**: fleetest は SIGINT/SIGTERM を扱うので
                 // シグナルで中断された write を諦めると、同じ「行が裂ける」形が稀に再発する
                 if n < 0 && errno == EINTR { continue }
-                guard n > 0 else { return }
+                // **EAGAIN / ENOBUFS も諦めない**。諦めると書きかけの行の直後に次の行が続き、
+                // NDJSON が2行ぶん壊れる(2026-09-19 実測: api monitor のフレーム2枚が1行に
+                // 繋がった。errno は未記録のため EAGAIN か ENOBUFS かは未確定)。
+                // 待つのはブロッキングの write(2) が本来待つのと同じ = 上限を置かない
+                if n < 0 && (errno == EAGAIN || errno == ENOBUFS) {
+                    awaitWritable(fd)
+                    continue
+                }
+                guard n > 0 else {
+                    let code = n < 0 ? errno : 0
+                    giveUp(fd: fd, written: offset, total: buffer.count, errno: code)
+                    return
+                }
                 offset += n
             }
+        }
+    }
+
+    /// 再試行の刻み(ミリ秒)。EAGAIN は POLLOUT で起きるが、ENOBUFS は POLLOUT が立ったままでも
+    /// 返り続けうる(ソケットでなくカーネルのバッファ不足)ので、poll が即座に返っても空回りしない
+    /// ための下限。100ms は 2 秒周期のモニター・人が読むログのどちらにも見えない遅れ
+    static let retryIntervalMilliseconds: Int32 = 100
+
+    private static func awaitWritable(_ fd: Int32) {
+        var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+        let start = DispatchTime.now()
+        _ = poll(&pfd, 1, retryIntervalMilliseconds)
+        let waitedNs = DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds
+        let floorNs = UInt64(retryIntervalMilliseconds) * 1_000_000
+        if waitedNs < floorNs { usleep(useconds_t((floorNs - waitedNs) / 1000)) }
+    }
+
+    /// 書き切れなかった。**書きかけの行は改行で閉じる**(次の行が前の行に繋がって2行とも
+    /// 壊れるのを1行で止める)。理由は stderr へ生の write(2) で1行 —— emit はロックを握って
+    /// いるので再入できない(NSLock は再帰しない)。stderr 自身の失敗なら何も言えない
+    private static func giveUp(fd: Int32, written: Int, total: Int, errno code: Int32) {
+        if written > 0 {
+            var newline: UInt8 = 0x0A
+            _ = Foundation.write(fd, &newline, 1)
+        }
+        guard fd != FileHandle.standardError.fileDescriptor else { return }
+        let reason = code == 0 ? "write returned 0" : String(cString: strerror(code))
+        let message = "[fleetest] output write gave up after \(written)/\(total) bytes"
+            + " (fd \(fd), errno \(code): \(reason))\n"
+        message.utf8CString.withUnsafeBufferPointer { buf in
+            _ = Foundation.write(FileHandle.standardError.fileDescriptor, buf.baseAddress, buf.count - 1)
         }
     }
 }
