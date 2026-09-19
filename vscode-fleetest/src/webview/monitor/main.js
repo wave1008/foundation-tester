@@ -361,6 +361,19 @@ const initialTab =
     ? persistedState.activeTab
     : 'devices';
 switchTab(initialTab);
+
+// パネルのどこ(全タブ・モーダル)で右クリックしても既定メニュー(Cut/Copy/Paste)を出さない。
+// 文字を打つ入力欄だけは残す(貼り付けが要る)。stopPropagation しない = 開いている自前メニューを閉じる
+// 他の document の contextmenu リスナはそのまま届く。タイル・空きエリア・実行ログ等は各自で自前メニューを出す
+document.addEventListener('contextmenu', (event) => {
+  const target = event.target;
+  const editable = target instanceof HTMLTextAreaElement
+    || (target instanceof HTMLInputElement && !['checkbox', 'radio', 'button', 'range'].includes(target.type))
+    || (target instanceof HTMLElement && target.isContentEditable);
+  if (!editable) {
+    event.preventDefault();
+  }
+});
 // switchTab が発火する 'ft-tab-activated' で updateLiveVisible() が呼ばれ、初期タブが 'live' の
 // ときだけ visibility:true を送る(それ以外は false のまま。setLiveVisible 呼び出し順は initLive()
 // の前後を問わない。可視性通知とデバイス一覧要求は互いに独立)。
