@@ -31,8 +31,10 @@ class システムアラートの操作 {
                 }.action {
                     tap("#btn_request_photos")
                 }.expectation {
-                    // in-app の木には載らない = fallback で解決できていること
-                    exist("許可しない")
+                    // in-app の木には載らない = fallback で解決できていること。
+                    // アラートを出す時機は OS(SpringBoard)が決める = アプリにもツールにも縮められない。
+                    // 負荷下の M1mini で 5 秒以内に出ない赤が 2 回あった(読みは速く、アラートがまだ無い)
+                    exist("許可しない", waitSeconds: 15)
                 }
             }
             scene(2, "閉じればアプリの操作に戻れる") {

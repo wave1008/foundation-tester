@@ -153,6 +153,28 @@ final class SwallowedInteractionTests: XCTestCase {
         XCTAssertTrue(message.contains("tap "), "どの操作かを書くこと: \(message)")
     }
 
+    /// iOS の木はアプリのプロセスだけなので、SpringBoard のアラート(権限の要求等)を出したタップも
+    /// 無変化に見える。iOS では「飲まれた」と言い切らずその可能性を添え、Android(権限ダイアログが
+    /// 木に載る)では添えない(M1mini の E2E-iOS 16 S0010 で誤誘導した)
+    func testIOSAlsoNamesAnOutOfAppSystemAlertButAndroidDoesNot() async throws {
+        func message(isAndroid: Bool) async -> String {
+            let unchanged = [text(1, "btn_request_photos", "写真へのアクセスを要求", y: 300, type: "clickable"),
+                             text(2, "txt_title", "診断")]
+            let executor = StepExecutor(driver: ScriptedDriver(frames: [unchanged]), isAndroid: isAndroid)
+            _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "btn_request_photos")))
+            let outcome = await executor.execute(
+                FlowStep(assert: "exists", locator: FlowLocator(label: "許可しない"),
+                         timeout: 0, occlusionGuard: false))
+            guard case .failed(let message) = outcome.status else { return "not failed: \(outcome.status)" }
+            return message
+        }
+        let ios = await message(isAndroid: false)
+        XCTAssertTrue(ios.contains("did not change the screen at all") && ios.contains("system alert"), ios)
+        let android = await message(isAndroid: true)
+        XCTAssertTrue(android.contains("did not change the screen at all"), android)
+        XCTAssertFalse(android.contains("system alert"), android)
+    }
+
     /// **画面が変わっていれば黙る**。タップは効いたが期待値と違う(= セレクタや期待値の誤り)を
     /// 「飲まれた」と言うと調査を誤誘導する。誤検知は出さない側へ倒す
     func testNoHintWhenTheScreenChanged() async throws {

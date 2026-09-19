@@ -1146,14 +1146,23 @@ public final class StepExecutor {
         guard !unchangedEarlierTaps.isEmpty else { return "" }
         let names = unchangedEarlierTaps.joined(separator: ", then ")
         return " (earlier, the screen was also unchanged between \(names) and the tap after it"
-            + " — that interaction may have been swallowed)"
+            + " — that interaction may have been swallowed\(outOfAppCaveat))"
+    }
+
+    /// iOS の木はアプリのプロセスだけ(in-app / XCUITest とも)。SpringBoard のアラート(権限の要求等)を
+    /// 出したタップも木では「無変化」に見えるので、飲まれたと言い切らない(M1mini の E2E-iOS 16 S0010:
+    /// 写真の権限アラートが 5 秒以内に出なかった赤に、この注記が「飲まれた」と誤誘導した)。
+    /// Android は権限ダイアログがアクティブウィンドウとして木に載るので足さない
+    private var outOfAppCaveat: String {
+        isAndroid ? "" : ", or it raised a system alert (e.g. a permission request), which is drawn outside"
+            + " the app and never appears in its tree"
     }
 
     private func lastTapHint(_ elements: [ElementInfo]?) -> (text: String, unchanged: Bool) {
         guard let last = lastInteraction, let elements, !elements.isEmpty else { return ("", false) }
         if Self.contentSignature(elements) == Self.contentSignature(last.before) {
             var text = " (the preceding \(last.description) did not change the screen at all"
-                + "; the interaction may have been swallowed"
+                + "; the interaction may have been swallowed\(outOfAppCaveat)"
             if let taken = last.pointTakenBy {
                 // 名指しであって貼れるセレクタの保証はしない(TapTargetGeometry.describe と同じ判断。
                 // 2026-08-15。エスケープ未対応)

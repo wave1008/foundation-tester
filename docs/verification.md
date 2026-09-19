@@ -2179,6 +2179,10 @@ in-app の合成タッチについて「**drag はジェスチャ認識器に受
 使った木**を覚えておき、失敗した検証が手元に持っている木と突き合わせて、**1ピクセルも変わって
 いなければ** `(the preceding tap … did not change the screen at all; the interaction may have
 been swallowed)` を添える(`StepExecutor.tapDiagnosisHint`)。
+- **iOS では「別プロセスのアラートを出した」可能性も併記する**(`, or it raised a system alert …`)。
+  iOS の木は in-app / XCUITest ともアプリのプロセスだけなので、権限の要求など SpringBoard の
+  アラートを出したタップも「無変化」に見える(M1mini の E2E-iOS 16 S0010 で、アラートが待ちの
+  5 秒に間に合わなかった赤を「飲まれた」と誤誘導した)。Android は権限ダイアログが木に載るので添えない
 - **追加のスナップショットは撮らない**。実行中に I/O を足すと事象そのものが消える
   (下記「Compose の探索直後タップ」の heisenbug で 13 周回して再現しなかった)ため、
   これは設計要件であって最適化ではない

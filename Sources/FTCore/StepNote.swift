@@ -333,7 +333,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
             return "the test runner did not see the app in the foreground after launching it, so it was"
                 + " asked to activate it anyway (which can make the runner relaunch the app)"
         case .unchangedTapBeforeFailure:
-            return "a tap before this failure did not change the screen at all"
+            return "a tap before this failure did not change the app's tree at all"
         case .actedOutsideContainer:
             return "the element was still reported outside its scroll container when this acted on it,"
                 + " so the interaction may have landed elsewhere"
