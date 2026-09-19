@@ -121,4 +121,43 @@ final class RepollCacheBypassTests: XCTestCase {
         XCTAssertEqual(driver.reads.first, false, "1 回目の読みは払わない")
         XCTAssertTrue(driver.reads.dropFirst().contains(true), "待ちの読み直しで迂回していない: \(driver.reads)")
     }
+
+    /// 実機 Android の P5(E2E-CMP 09 S0010): 遅延要素が**上に差し込まれて**リセットのボタンが下がる。
+    /// exist は迂回の周で新しい木を見て成立するが、キャッシュ(素取得)はまだ古い位置のまま
+    private func resetButton(y: Double) -> ElementInfo {
+        ElementInfo(ref: 2, type: "button", identifier: "btn_async_reset", label: "非同期リセット", value: nil,
+                    placeholder: nil, enabled: true, frame: FTRect(x: 20, y: y, width: 200, height: 48),
+                    depth: 1)
+    }
+
+    /// exist が迂回の周で成立したら、次の tap の解決の 1 枚も迂回して新しい位置を読む。
+    /// さらに次の tap では迂回しない(消費した読みで立て直して連鎖しない)
+    func testTapAfterARepolledExistReadsPastTheStaleCache() async {
+        let driver = StaleCacheDriver(stale: [resetButton(y: 300)],
+                                      fresh: [target(), resetButton(y: 388)])
+        let executor = StepExecutor(driver: driver, isAndroid: true, uiFramework: .compose)
+        let exist = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "txt_delayed"),
+                                                    timeout: 5, occlusionGuard: false))
+        XCTAssertTrue(isPassed(exist.status), "\(exist.status)")
+        XCTAssertEqual(driver.reads, [false, true], "前提: exist は 2 回目の迂回で成立")
+
+        let tap = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "btn_async_reset")))
+        XCTAssertTrue(isPassed(tap.status), "\(tap.status)")
+        XCTAssertEqual(driver.reads.dropFirst(2).first, true, "tap の解決がキャッシュの古い木を読んだ: \(driver.reads)")
+
+        let readsBefore = driver.reads.count
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "btn_async_reset")))
+        XCTAssertEqual(driver.reads.dropFirst(readsBefore).first, false, "消費した読みで印を立て直している: \(driver.reads)")
+    }
+
+    /// 対照: 1 回目の読み(素取得)で成立した exist の後は、tap も素取得のまま(通る側の固定費を増やさない)
+    func testTapAfterAFirstReadExistDoesNotBypass() async {
+        let driver = StaleCacheDriver(stale: [target(), resetButton(y: 388)],
+                                      fresh: [target(), resetButton(y: 388)])
+        let executor = StepExecutor(driver: driver, isAndroid: true, uiFramework: .compose)
+        _ = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "txt_delayed"),
+                                            timeout: 5, occlusionGuard: false))
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "btn_async_reset")))
+        XCTAssertFalse(driver.reads.contains(true), "\(driver.reads)")
+    }
 }

@@ -1,5 +1,5 @@
 // 直前のステップが画面を動かしたら、次のロケータ操作の解決の 1 枚はキャッシュを迂回して撮る
-// (StepExecutor.previousStepMovedContent)。Android の a11y キャッシュはスクロール後に古い座標を
+// (StepExecutor.nextResolveBypassesCache)。Android の a11y キャッシュはスクロール後に古い座標を
 // 返すことがあり、整定(新鮮な木)で止まったと確かめても、続く tap が素取得の古い座標を叩いていた。
 
 import XCTest
@@ -29,7 +29,7 @@ final class FreshSnapshotAfterMoveTests: XCTestCase {
 
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertEqual(driver.bypassedSnapshotCount, afterScroll + 1, "tap の解決の 1 枚だけ迂回して撮るはず")
-        XCTAssertFalse(executor.previousStepMovedContent, "消費したら印は下りるはず")
+        XCTAssertFalse(executor.nextResolveBypassesCache, "消費したら印は下りるはず")
     }
 
     /// 直前が動かないステップ(tap → tap)なら迂回しない(通る側の固定費を増やさない)

@@ -57,7 +57,9 @@ extension StepExecutor {
         var lastSnapshotMs = 0
         while true {
             let start = clock.now
-            let snapshot = try await driver.snapshot(bypassingCache: bypassesCache(.afterOwnMove))
+            let bypass = bypassesCache(.afterOwnMove)
+            if bypass { markRepollBypassed() }
+            let snapshot = try await driver.snapshot(bypassingCache: bypass)
             lastSnapshotMs = Self.ms(clock.now - start)
             if LaunchURLReadiness.hasInteractiveElement(snapshot.elements) { return true }
             if clock.now >= deadline { return false }
@@ -640,7 +642,7 @@ extension StepExecutor {
         // 落ち着いた画面なら 2 枚で返るので固定費は約 +130ms/呼び出しに収まる
         let clock = ContinuousClock()
         var start = clock.now
-        previousStepMovedContent = true   // 次のロケータ操作は解決の 1 枚をキャッシュ迂回で撮る
+        nextResolveBypassesCache = true   // 次のロケータ操作は解決の 1 枚をキャッシュ迂回で撮る
         var last = try await freshSnapshot(.afterOwnMove)
         var previous = signature(last)
         var previousElements = last.elements

@@ -48,15 +48,27 @@ struct AssertFreshRetry {
         return true
     }
 
+    /// 直前の takeArmed が「読み直しの周の迂回」だったか(arm/confirmPass による迂回は含めない)
+    private(set) var lastTakeWasRepollBypass = false
+
     /// snapshot 取得時に呼ぶ(1 周 1 回)。arm/confirmPass した直後の1周、または bypassOnRepoll の 2 周目以降で true
     mutating func takeArmed() -> Bool {
         defer { armed = false; reads += 1 }
-        return armed || (bypassOnRepoll && reads > 0)
+        lastTakeWasRepollBypass = bypassOnRepoll && reads > 0
+        return armed || lastTakeWasRepollBypass
     }
 }
 
 extension StepExecutor {
     // MARK: - アサーション
+
+    /// アサーションの待ちループの1周の読み。**直呼びしない**(読み直しの迂回で nextResolveBypassesCache を
+    /// 立てる所がここだけ)
+    func assertionSnapshot(_ retry: inout AssertFreshRetry) async throws -> SnapshotResponse {
+        let bypass = retry.takeArmed()
+        if retry.lastTakeWasRepollBypass { markRepollBypassed() }
+        return try await driver.snapshot(bypassingCache: bypass)
+    }
 
     /// 可視性照合(`requireVisible`)がこのステップで効くか。ステップ指定(DSL の requireVisible)
     /// 優先、無ければ executor 既定。`occlusionGuardEnabled` はどちらより上位の実行プロファイル由来
@@ -606,7 +618,7 @@ extension StepExecutor {
         while true {
             var start = clock.now
             if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
-            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
+            var snapshot = try await assertionSnapshot(&freshRetry)
             if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs
@@ -759,7 +771,7 @@ extension StepExecutor {
         while true {
             var start = clock.now
             if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
-            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
+            var snapshot = try await assertionSnapshot(&freshRetry)
             if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs
@@ -967,7 +979,7 @@ extension StepExecutor {
         while true {
             let start = clock.now
             if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
-            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
+            var snapshot = try await assertionSnapshot(&freshRetry)
             if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs
@@ -1081,7 +1093,7 @@ extension StepExecutor {
         while true {
             let start = clock.now
             if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
-            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
+            var snapshot = try await assertionSnapshot(&freshRetry)
             if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs
@@ -1193,7 +1205,7 @@ extension StepExecutor {
         while true {
             let start = clock.now
             if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
-            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
+            var snapshot = try await assertionSnapshot(&freshRetry)
             if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs
@@ -1260,7 +1272,7 @@ extension StepExecutor {
         while true {
             driver.captureKeyboardStateOnNextSnapshot()
             let start = clock.now
-            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
+            var snapshot = try await assertionSnapshot(&freshRetry)
             if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs
@@ -1329,7 +1341,7 @@ extension StepExecutor {
         while true {
             let start = clock.now
             if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
-            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
+            var snapshot = try await assertionSnapshot(&freshRetry)
             if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs
@@ -1563,7 +1575,7 @@ extension StepExecutor {
         while true {
             let start = clock.now
             if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
-            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
+            var snapshot = try await assertionSnapshot(&freshRetry)
             if let injectedDelay = SlowSnapshotInjection.delay() { try await Task.sleep(for: injectedDelay) }
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs

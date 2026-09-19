@@ -543,10 +543,10 @@ extension StepExecutor {
 
         // ロケータ解決の再試行(ファイル冒頭のセマンティクス参照: 最大3回、計700ms)
         var start = clock.now
-        // 直前のステップが画面を動かしていたら、この 1 枚はキャッシュを迂回する(previousStepMovedContent の doc)
-        let freshness: SnapshotFreshness = previousStepMovedContent
+        // 素取得が既に見た木より古いかもしれなければ、この 1 枚はキャッシュを迂回する(nextResolveBypassesCache の doc)
+        let freshness: SnapshotFreshness = nextResolveBypassesCache
             ? .afterOwnMove : .afterSearch(swiped: searchSwiped)
-        previousStepMovedContent = false
+        nextResolveBypassesCache = false
         var snapshot = try await freshSnapshot(freshness)
         phase.snapshotMs += Self.ms(clock.now - start)
         // **直前の type が「打つ前後」でキーボードを動かしたか、ここで初めて確かめる**

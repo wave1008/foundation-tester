@@ -724,7 +724,9 @@ public final class StepExecutor {
         if elementLimitCeilingLatchedThisStep {
             driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling)
         }
-        return try await driver.snapshot(bypassingCache: bypassesCache(freshness))
+        let bypass = bypassesCache(freshness)
+        if bypass, case .repoll = freshness { markRepollBypassed() }
+        return try await driver.snapshot(bypassingCache: bypass)
     }
 
     /// このステップで立った注記。順序を rawValue 固定にするのは、記録が run 間で決定的に
@@ -917,14 +919,20 @@ public final class StepExecutor {
     /// 持ち越す件数の上限(同じ画面でタップを連打する台本で失敗文言が伸び続けないため。
     /// 実例の S0020 は 1 件で足りる)
     static let unchangedEarlierTapsLimit = 3
-    /// **直前のステップが画面を動かした**(スワイプ・スクロール・端送り・探索・ドラッグ =
-    /// settledSignature を通った)まま、次のロケータ操作がまだ木を撮っていない。
+    /// **素取得の木が、既に見た迂回の木より古いかもしれない**まま、次のロケータ操作がまだ木を撮っていない。
     /// 立っている間は、次の操作の対象解決の 1 枚だけ **キャッシュを迂回して撮る**(`.afterOwnMove`)。
-    /// 整定は新鮮な木で「止まった」を確かめるが、続く操作の解決は探索が無ければ素取得 =
-    /// Android の a11y キャッシュに残った**スクロール前の座標**を叩く(Pixel 3a 実測: scrollToTop →
-    /// exist ×2 → tap が 212px ずれた位置に当たる。12 run 中 2 回)。exist / textIs は座標を
-    /// 使わないので消費しない(scroll → exist → tap の並びで tap まで持ち越す)
-    var previousStepMovedContent = false
+    /// Android の `refresh()` はキャッシュを更新しないので、迂回して新しい木を見た直後の素取得は
+    /// 古い座標を返す。立てるのは2つ: ①画面を動かした(settledSignature を通った。Pixel 3a 実測:
+    /// scrollToTop → exist ×2 → tap が 212px ずれた位置に当たる)②**待つ間の読み直しで迂回した**
+    /// (`markRepollBypassed`。exist が迂回の周で成立 → 次の tap が素取得で兄弟の古い位置を叩く。
+    /// E2E-CMP 09 S0010 の `#btn_async_reset` が実機 Android で 8/9)。**消費する読み自身では立て直さない**
+    /// (立て直すと以後の操作が全部迂回する)。exist / textIs は座標を使わないので消費しない
+    var nextResolveBypassesCache = false
+
+    /// 待つ間の読み直しで実際に迂回したら呼ぶ(nextResolveBypassesCache の ②)
+    func markRepollBypassed() {
+        nextResolveBypassesCache = true
+    }
     /// **直前のアクションが tap だったときの対象**(`type`(セレクタ無し)の焦点救済に使う)。
     /// `lastInteraction` は次のアクションの入口で捨てられるので流用できない。
     /// tap 以外のアクションが走ったら捨てる = 「直前」の意味を保つ(`executeAction` の入口)
@@ -946,7 +954,7 @@ public final class StepExecutor {
     /// **この経路では1度も発火しなかった**。**「打った後」は次のステップが解決のために
     /// どのみち撮る最初の `freshSnapshot` に譲る**ことで、読み返しの有無・エンジンに依存しない
     /// (StepExecutor+Actions.swift の消費側 doc 参照)。
-    /// **previousStepMovedContent と同じ「1回で消費」規律**。立っていても、その1枚で
+    /// **nextResolveBypassesCache と同じ「1回で消費」規律**。立っていても、その1枚で
     /// キーボードが動いていなければ**追加コストはゼロ**(比較だけ)——動いていたときだけ
     /// `settledSignature(phase:)` で収束を待つ。iOS 実機を LAN(往復48ms)で回した実測
     /// (2026-09-16): WebView の `type` → 116〜134pt の押し上げの最中に次の `tap` が解決し、

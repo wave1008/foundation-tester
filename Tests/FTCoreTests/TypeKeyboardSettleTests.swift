@@ -4,7 +4,7 @@
 //
 // 実機を LAN(往復48ms)で回した実測(2026-09-16): WebView への `type` で 116〜134pt 押し上がる
 // **最中**に次の `tap` が解決し、押し上げ前の座標を撃って別要素に当たった
-// (E2E-iOS S0010・11 本中 5 本)。previousStepMovedContent(Android の a11y キャッシュ迂回)とは
+// (E2E-iOS S0010・11 本中 5 本)。nextResolveBypassesCache(Android の a11y キャッシュ迂回)とは
 // 別物 —— iOS in-app はキャッシュを持たないので、要るのは「1枚撮り直す」ではなく「収束を待つ」。
 //
 // **「打った後」の観測は読み返し(`verifyTypedText`)に頼らない**(2026-09-16 に設計変更)。
