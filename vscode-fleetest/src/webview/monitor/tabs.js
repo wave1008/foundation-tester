@@ -25,6 +25,9 @@ const tabPanels = {
   settings: document.getElementById('panel-settings'),
 };
 
+// 起動時はタブボタンを出さないタブ。activateTab で開いたときに現れる(パネルを開き直すまで残る)。
+export const HIDDEN_AT_STARTUP = ['processes'];
+
 let currentTabId = null;
 
 function persistActiveTab(tab) {
@@ -63,9 +66,24 @@ export function activateTab(tab) {
   if (!TAB_IDS.includes(tab)) {
     return;
   }
+  tabButtons[tab].style.display = '';
   switchTab(tab);
   persistActiveTab(tab);
 }
+
+/** 起動時に出さないタブのボタンを隠す。表示中なら設定タブ(開く口がある場所)へ戻す。 */
+export function hideTab(tab) {
+  tabButtons[tab].style.display = 'none';
+  if (currentTabId === tab) {
+    activateTab('settings');
+  }
+}
+
+// 閉じる × はタブボタンの内側なので、ボタンの click(タブを開く)へ伝えない。
+document.getElementById('tab-processes-close').addEventListener('click', (event) => {
+  event.stopPropagation();
+  hideTab('processes');
+});
 
 for (const id of TAB_IDS) {
   tabButtons[id].addEventListener('click', () => {

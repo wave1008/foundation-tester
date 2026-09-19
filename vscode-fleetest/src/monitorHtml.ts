@@ -77,8 +77,9 @@ function renderTabBar(): string {
     <button id="tab-devices" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="panel-devices">${t("panels.tabs.testRun")}</button>
     <button id="tab-recordings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-recordings">${t("panels.tabs.recordings")}</button>
     <button id="tab-profiles" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-profiles">${t("panels.tabs.profiles")}</button>
-    <button id="tab-processes" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-processes">${t("panels.tabs.processes")}</button>
     <button id="tab-settings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-settings">${t("panels.tabs.settings")}</button>
+    <!-- 起動時は出さない。設定タブ「ツール」の「プロセス」で現れる(tabs.js の HIDDEN_AT_STARTUP) -->
+    <button id="tab-processes" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-processes" style="display: none;">${t("panels.tabs.processes")}<span id="tab-processes-close" class="tab-close" role="button" title="${t("panels.tabs.close")}" aria-label="${t("panels.tabs.close")}">×</span></button>
     <!-- 更新があるときだけ現れるボタン(タブの並びの直後。タブに関係なく常に見える)。
          押すと設定タブへ切り替える。対向: settingsTab.js -->
     <button id="tabbar-update" class="tabbar-update" type="button" style="display: none;">${t("panels.settings.updateRunButton")}</button>
@@ -650,6 +651,12 @@ function renderRecordingsPanel(): string {
 function renderSettingsPanel(): string {
   return `<div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" style="display: none;">
     <div class="settings-body">
+      <div class="settings-group">
+        <div class="settings-section-title">${t("panels.settings.toolsSectionTitle")}</div>
+        <div class="settings-update-actions">
+          <button id="settings-tool-processes" class="secondary" type="button">${t("panels.settings.toolsProcessesButton")}</button>
+        </div>
+      </div>
       <!-- 更新セクション。判定は Scripts/update-check.sh、取り込みは Scripts/update.sh
            (拡張は実行して結果を出すだけ)。対向: settingsTab.js / monitorUpdateController.ts -->
       <div class="settings-group">

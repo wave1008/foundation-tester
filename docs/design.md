@@ -4370,7 +4370,9 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   bulk down を NDJSON 化**(`deviceStopping`/`deviceFinished`。停止ロジックは `shutdownProfile` と同一で回帰なし)、
   拡張は `deviceFinished` ごとにそのタイルだけ offline を先行反映(`deviceDownFinished` → resume 後に本物の
   state で上書き)。profile 無しの down は従来の全掃討 `devices down` のまま。詳細は performance-tuning.md §3.4
-- **「プロセス」タブ(常駐プロセス一覧・停止)**(2026-07-19): `ps` の fleetest 関連常駐を分類表示
+- **「プロセス」タブ(常駐プロセス一覧・停止)**(2026-07-19): **起動時は出さない** —— 設定タブ「ツール」の
+  「プロセス」で設定タブの右に現れ、タブの × で隠す(`tabs.js` の `HIDDEN_AT_STARTUP`。復元もしない)。
+  `ps` の fleetest 関連常駐を分類表示
   (`residentProcesses.ts`)。Android ブリッジは**エミュレータ内 `am instrument`= ホスト `ps` に出ない**ため
   `adb forward --list` から情報行を合成(ホスト PID 無し→PID 列は `(遅延起動)`/デバイス内 PID `(12345)`)。
   停止ボタンは「プロセスを終了してタブを閉じる」の1つ(2026-08-19 に「すべて強制終了」を廃止して

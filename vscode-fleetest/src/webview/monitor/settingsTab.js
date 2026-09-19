@@ -20,7 +20,7 @@ import {
   parseRetentionInput,
   unitValueToBytes,
 } from '../../retentionModel';
-import { switchTab } from './tabs.js';
+import { activateTab, switchTab } from './tabs.js';
 
 const pollingModeCheckbox = document.getElementById('settings-polling-mode');
 const lptCheckbox = document.getElementById('settings-lpt');
@@ -36,6 +36,10 @@ const updateCheckButton = document.getElementById('settings-update-check');
 // 「更新する」は設定タブの中ではなく**タブバー(設定タブの右隣)**にある(どのタブを見ていても目に入る)。
 // 更新があるときだけ表示する — 押せない状態のボタンを常時見せても情報にならないため。
 const updateRunButton = document.getElementById('tabbar-update');
+
+document.getElementById('settings-tool-processes').addEventListener('click', () => {
+  activateTab('processes');
+});
 
 pollingModeCheckbox.addEventListener('change', () => {
   vscode.postMessage({ type: 'setPollingMode', value: pollingModeCheckbox.checked });

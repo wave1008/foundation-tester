@@ -77,6 +77,22 @@ body {
   color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
   border-top-color: var(--vscode-tab-activeBorderTop, var(--vscode-focusBorder, #007acc));
 }
+/* 閉じられるタブ(プロセス)の ×。右の余白は × が担うので padding-right を詰める。 */
+#tabbar .tab-button:has(.tab-close) {
+  padding-right: 8px;
+}
+#tabbar .tab-close {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 4px;
+  border-radius: 3px;
+  line-height: 1.2;
+  opacity: 0.7;
+}
+#tabbar .tab-close:hover {
+  opacity: 1;
+  background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
 /* 非アクティブは JS が inline style で display:none にする(タブ切替時にスプリッター高さの
    同期的な再計算が必要なため、CSS クラス切替ではなく inline style を使う)。 */
 .tab-panel {

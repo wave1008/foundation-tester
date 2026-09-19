@@ -69,7 +69,7 @@ import { applyDevicePickMachines } from './devicePickMachine.js';
 import { applyMachineColors } from './machineColors.js';
 import { applyResidentMessage } from './processesTab.js';
 import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
-import { activateTab, currentTab, TAB_IDS, switchTab } from './tabs.js';
+import { activateTab, currentTab, HIDDEN_AT_STARTUP, TAB_IDS, switchTab } from './tabs.js';
 import { setTilePaneHeight, setFleetVisible, isFleetVisible } from './splitter.js';
 import { adoptTitleHoverTips } from './hoverTip.js';
 import { setDevicesWaiting } from './waitingNote.js';
@@ -328,8 +328,11 @@ btnRestart.addEventListener('click', () => {
 // 全選択ボタンの文言は押すたびに変わるので deviceTiles.js が自分で setHoverTip する。
 adoptTitleHoverTips('#toolbar .icon-button[title]');
 
-// 選択タブの永続化(vscode.getState())から復元する。不正値・未設定は 'devices'。
-const initialTab = TAB_IDS.includes(persistedState.activeTab) ? persistedState.activeTab : 'devices';
+// 選択タブの永続化(vscode.getState())から復元する。不正値・未設定・起動時に出さないタブは 'devices'。
+const initialTab =
+  TAB_IDS.includes(persistedState.activeTab) && !HIDDEN_AT_STARTUP.includes(persistedState.activeTab)
+    ? persistedState.activeTab
+    : 'devices';
 switchTab(initialTab);
 
 // 初回 monitorDevices が届くまで(monitor プロセス起動+初回スキャンで数秒かかる)、待機メッセージを

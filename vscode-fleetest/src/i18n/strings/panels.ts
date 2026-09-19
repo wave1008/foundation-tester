@@ -8,6 +8,7 @@ export const panelsStrings = {
   "panels.tabs.testRun": { ja: "テスト実行", en: "Test Run" },
   "panels.tabs.profiles": { ja: "プロファイル", en: "Profiles" },
   "panels.tabs.processes": { ja: "プロセス", en: "Processes" },
+  "panels.tabs.close": { ja: "タブを閉じる", en: "Close tab" },
   "panels.tabs.recordings": { ja: "テストセッション", en: "Test Sessions" },
   "panels.tabs.settings": { ja: "設定", en: "Settings" },
 
@@ -228,6 +229,8 @@ export const panelsStrings = {
     ja: "デバイス画面のストリーミングが不安定なときの回避用です。",
     en: "A workaround for when device screen streaming is unstable.",
   },
+  "panels.settings.toolsSectionTitle": { ja: "ツール", en: "Tools" },
+  "panels.settings.toolsProcessesButton": { ja: "プロセス", en: "Processes" },
   // 設定タブ「更新」セクション(静的ラベル)。動的な状態表示は webviewMonitorB.ts の wvMonitor2.update.*
   "panels.settings.updateLabel": { ja: "更新", en: "Updates" },
   "panels.settings.updateChecking": { ja: "確認しています…", en: "Checking..." },
