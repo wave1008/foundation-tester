@@ -3433,7 +3433,7 @@ test("setLptHistoryRuns: 1以上の整数か null だけ受け付ける", () => 
   assert.equal(isMonitorFromWebviewMessage({ type: "setLptHistoryRuns" }), false);
 });
 
-// ---- planDisabledMachineStops(テスト実行タブを開いたときに終了させる台) ----
+// ---- planDisabledMachineStops(デバイスモニタータブを開いたときに終了させる台) ----
 
 test("planDisabledMachineStops: 無効な機械の起動中の仮想デバイスだけを返し、実機・停止中・有効な機械は触らない", () => {
   const devices = [

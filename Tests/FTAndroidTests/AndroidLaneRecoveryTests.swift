@@ -117,7 +117,7 @@ final class AndroidLaneRecoveryTests: XCTestCase {
     }
 
     /// 進行は**台ごとに開始と結果の2行**を (i/N) 付きで出す。直列で1台に1分近くかかるため、
-    /// 完了行だけだと待っている間ずっと無音になる(読み手は拡張の「テスト実行」タブ)。
+    /// 完了行だけだと待っている間ずっと無音になる(読み手は拡張の「デバイスモニター」タブ)。
     func testLogsPerDeviceProgressBeforeAndAfterEachBoot() async {
         let lines = LockedBox([String]())
         let devices = [device("d1"), device("d2"), device("d3")]

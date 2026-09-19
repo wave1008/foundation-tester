@@ -1,4 +1,4 @@
-// 「テスト実行」タブの「配信を表示する」チェックボックス。
+// 「デバイスモニター」タブの「配信を表示する」チェックボックス。
 // 対向: src/monitorWebviewMessages.ts の setShowStreamDuringRun / showStreamDuringRun(monitorPanel.ts が永続化)。
 // 初期値 ON(HTML の checked)は monitorPanel.ts の既定と揃える(片方だけ変えない)。
 

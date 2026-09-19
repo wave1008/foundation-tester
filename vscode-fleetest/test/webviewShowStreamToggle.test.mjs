@@ -1,4 +1,4 @@
-// 「テスト実行」タブの「配信を表示する」チェックボックスの配線テスト。
+// 「デバイスモニター」タブの「配信を表示する」チェックボックスの配線テスト。
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewSelectAllPersist.test.mjs と同じ。
 // 契約は monitorWebviewMessages.ts の setShowStreamDuringRun(webview→host)/ showStreamDuringRun(host→webview)。
 

@@ -1,6 +1,6 @@
 // エントリポイント。機能別ESモジュール:
 //   vscodeApi.js  acquireVsCodeApi(1回のみ)+persistedState / domRefs.js  共有DOM定数
-//   splitter.js/deviceTiles.js/laneLog.js/hostCharts.js  「テスト実行」タブ
+//   splitter.js/deviceTiles.js/laneLog.js/hostCharts.js  「デバイスモニター」タブ
 //   projectsTab.js/runProfileDevicesTab.js/appProfilesTab.js/runProfilesTab.js  プロファイルタブ
 //   settingsTab.js  設定タブ / modals.js  3モーダル / tabs.js  タブ切替 / liveTab.js  「ライブ操作」タブ
 // 各モジュールの import はトップレベルのイベント登録実行に必要(未使用に見えても消さない)。
@@ -258,7 +258,7 @@ window.addEventListener('message', (event) => {
       applyRecordingsSessions(message);
       break;
     case 'recordingsSession':
-      // reveal = run 完了時の自動表示(monitorRecordingsController.ts の revealRun)。「テスト実行」タブを
+      // reveal = run 完了時の自動表示(monitorRecordingsController.ts の revealRun)。「デバイスモニター」タブを
       // 見ているときだけ切り替える —— 他のタブで作業中なら奪わない(録画タブの再生中の別セッションも潰さない)。
       // 先に再生ビューへ差し替えてから切り替える: 逆順だと ft-tab-activated が一覧の再取得を撃つ
       if (message.reveal) {

@@ -5,7 +5,7 @@ import type { MessageDict } from "../core";
 
 export const panelsStrings = {
   "panels.tabs.dashboard": { ja: "ダッシュボード", en: "Dashboard" },
-  "panels.tabs.testRun": { ja: "テスト実行", en: "Test Run" },
+  "panels.tabs.testRun": { ja: "デバイスモニター", en: "Device Monitor" },
   "panels.tabs.live": { ja: "ライブ操作", en: "Live Control" },
   "panels.tabs.profiles": { ja: "プロファイル", en: "Profiles" },
   "panels.tabs.processes": { ja: "プロセス", en: "Processes" },
@@ -55,7 +55,7 @@ export const panelsStrings = {
   "panels.toolbar.startAllDevices": { ja: "デバイスを全て起動", en: "Start All Devices" },
   "panels.toolbar.stopAll": { ja: "全て終了", en: "Stop All" },
   "panels.toolbar.restartMonitor": { ja: "モニター再起動", en: "Restart Monitor" },
-  // 「テスト実行」タブのツールバー右寄り。押すと Test Explorer を前面に出して全シナリオを走らせる
+  // 「デバイスモニター」タブのツールバー右寄り。押すと Test Explorer を前面に出して全シナリオを走らせる
   // (配線: webview/monitor/deviceTiles.js → monitorPanel.ts → コマンド fleetest.runAllTests)。
   "panels.toolbar.runTests": { ja: "テスト実行", en: "Run Tests" },
   "panels.toolbar.showStreamDuringRun": { ja: "配信を表示する", en: "Show Streaming" },
@@ -65,7 +65,7 @@ export const panelsStrings = {
   },
   "panels.toolbar.recordingsFinalizing": { ja: "録画を編集中...", en: "Editing recordings..." },
   "panels.banner.copied": { ja: "エラーメッセージをコピーしました", en: "Copied the error message" },
-  // テスト実行タブのチャート行の「マシン有効」off の印(hostCharts.js の hmApplyDisabled が可視性を切り替える)
+  // デバイスモニタータブのチャート行の「マシン有効」off の印(hostCharts.js の hmApplyDisabled が可視性を切り替える)
   "panels.hostMetrics.machineDisabled": { ja: "⊘無効", en: "⊘Off" },
   "panels.hostMetrics.memTitle": { ja: "メモリ使用量", en: "Memory usage" },
   "panels.hostMetrics.cpuTitle": { ja: "CPU負荷", en: "CPU load" },

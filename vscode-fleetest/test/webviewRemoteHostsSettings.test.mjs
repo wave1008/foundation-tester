@@ -685,7 +685,7 @@ test("color popover: the stylesheet lets [hidden] win over its display:grid", as
   assert.match(css, /\.settings-remote-hosts-color-popover\[hidden\]\s*\{\s*display:\s*none;?\s*\}/);
 });
 
-// バッジ色ボタンはテスト実行タブのバッジのプレビュー。文字は送る時点のマシン名
+// バッジ色ボタンはデバイスモニタータブのバッジのプレビュー。文字は送る時点のマシン名
 // (空欄なら host から採る)で、入力に追従する
 test("バッジ色ボタンはマシン名入りのバッジとして描かれ、入力に追従する", (t) => {
   const { window, document } = createWebview();

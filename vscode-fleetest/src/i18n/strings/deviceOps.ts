@@ -24,12 +24,12 @@ export const deviceOpsStrings = {
     en: "Not starting {name} on {machine} because \"Machine enabled\" is off",
   },
   "deviceOps.log.cancelDisabledMachineStart": {
-    ja: "「マシン有効」がオフの {machine} のデバイス {name} の起動を取り消します(テスト実行タブを開いたため)",
-    en: "Cancelling the start of {name} on {machine} because \"Machine enabled\" is off (Test Run tab opened)",
+    ja: "「マシン有効」がオフの {machine} のデバイス {name} の起動を取り消します(「デバイスモニター」タブを開いたため)",
+    en: "Cancelling the start of {name} on {machine} because \"Machine enabled\" is off (Device Monitor tab opened)",
   },
   "deviceOps.log.stopDisabledMachineDevice": {
-    ja: "「マシン有効」がオフの {machine} のデバイス {name} を終了します(テスト実行タブを開いたため)",
-    en: "Stopping {name} on {machine} because \"Machine enabled\" is off (Test Run tab opened)",
+    ja: "「マシン有効」がオフの {machine} のデバイス {name} を終了します(「デバイスモニター」タブを開いたため)",
+    en: "Stopping {name} on {machine} because \"Machine enabled\" is off (Device Monitor tab opened)",
   },
   "deviceOps.log.bulkUpQueueCancelled": {
     ja: "[fleetest] キュー待ちの一括起動を取り消しました",
@@ -395,8 +395,8 @@ export const deviceOpsStrings = {
   },
   "deviceOps.wipeConfirmButton": { ja: "Wipe Data", en: "Wipe Data" },
   "deviceOps.wipeStarted": {
-    ja: "Wipe Dataを実行しました。進捗状況は「テスト実行」タブで確認できます。",
-    en: "Wipe Data started. You can follow it on the Test Run tab.",
+    ja: "Wipe Dataを実行しました。進捗状況は「デバイスモニター」タブで確認できます。",
+    en: "Wipe Data started. You can follow it on the Device Monitor tab.",
   },
   "deviceOps.wipeAllBusy": {
     ja: "対象のデバイスはすべて別の操作を実行中です。完了してからやり直してください。",

@@ -1,4 +1,4 @@
-// 「テスト実行」タブのツールバーにあるテストプロジェクト選択(#project-select)の DOM テスト。
+// 「デバイスモニター」タブのツールバーにあるテストプロジェクト選択(#project-select)の DOM テスト。
 // 実 HTML+実バンドルで動かす方式は webviewDevicesTabVisible.test.mjs と同じ。
 //
 // 検証対象:

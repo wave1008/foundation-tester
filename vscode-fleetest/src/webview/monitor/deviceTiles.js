@@ -201,7 +201,7 @@ function applyCanvasAspect(entry) {
 // スプリッター移動・リサイズ・タイル生成のたびに呼び直す必要がある。
 export function relayoutTiles() {
   const raw = measureTileImageHeight();
-  // 「テスト実行」タブ非表示中(display:none)は clientHeight=0 で下限に潰れる。書くと
+  // 「デバイスモニター」タブ非表示中(display:none)は clientHeight=0 で下限に潰れる。書くと
   // 「ペイン高さ ↔ --tile-image-h」の対応が壊れ、タブ復帰時に画像の高さが下限のまま残る。
   // devices は非表示中も届くので必須。
   if (raw === null) {

@@ -4,7 +4,7 @@
 //
 // **パレットの定義は CLI が持つ**(拡張は定数を持たない)。remoteConfig の machineColors[]
 // (鍵→hex)と hosts[].color(machine→鍵)から、既に描かれている `.badge-remote` を塗り直す
-// (deviceTiles.js の「テスト実行」タイル・laneLog.js の実行ログレーン見出しの両方が対象。
+// (deviceTiles.js の「デバイスモニター」タブのタイル・laneLog.js の実行ログレーン見出しの両方が対象。
 // syncLanesToDevices は applyDevices と同じサイクルで動くため、1回の devices 送信で両方に
 // バッジが立つ)。
 //

@@ -2299,7 +2299,7 @@ input[type="search"]::placeholder {
   white-space: nowrap;
   text-align: center;
 }
-/* バッジ色ボタン = テスト実行タブのバッジのプレビュー(見た目は .badge .badge-remote)。
+/* バッジ色ボタン = デバイスモニタータブのバッジのプレビュー(見た目は .badge .badge-remote)。
    グローバルな button の枠・余白・ホバー色を打ち消す —— button:hover の背景は
    .badge-remote より詳細度が高く、未設定の行がホバーで別の色に化ける */
 button.settings-remote-hosts-color-swatch {

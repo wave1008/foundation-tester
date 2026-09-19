@@ -1,4 +1,4 @@
-// 「テスト実行」タブのラインビュー(タイル領域)の表示トグル(splitter.js)の配線テスト。
+// 「デバイスモニター」タブのラインビュー(タイル領域)の表示トグル(splitter.js)の配線テスト。
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewSelectAllButton.test.mjs と同じ。
 // 契約は monitorWebviewMessages.ts の setFleetVisible(webview→host)/ fleetVisible(host→webview)。
 

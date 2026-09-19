@@ -13,7 +13,7 @@
 // - ツリー行クリックで選択ハイライト+エラー一覧フィルター(チップ表示)、再クリックで解除
 // - キーボード(録画タブアクティブ・再生ビュー表示中のみ): Space で play/pause
 // - 連続再生 ON で 'ended' 発火時に次のテスト(scenarioNav の次エントリ)の動画へ切り替わる
-// - run 完了時の reveal は「テスト実行」タブ表示中だけ録画タブへ切り替えて再生ビューを開く
+// - run 完了時の reveal は「デバイスモニター」タブ表示中だけ録画タブへ切り替えて再生ビューを開く
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -383,10 +383,10 @@ function isTabActive(window, id) {
   return window.document.getElementById(`tab-${id}`).classList.contains("active");
 }
 
-test("reveal: 「テスト実行」タブ表示中なら録画タブへ切り替えて再生ビューで開く", (t) => {
+test("reveal: 「デバイスモニター」タブ表示中なら録画タブへ切り替えて再生ビューで開く", (t) => {
   const { window, posts, video, sendToWebview } = createWebview({ tab: "devices" });
   t.after(() => window.close());
-  assert.ok(isTabActive(window, "devices"), "前提: テスト実行タブから始まる");
+  assert.ok(isTabActive(window, "devices"), "前提: デバイスモニタータブから始まる");
   posts.length = 0;
 
   sendToWebview({ ...SESSION_MESSAGE, reveal: true });

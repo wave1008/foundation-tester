@@ -91,7 +91,7 @@ function renderTabBar(): string {
 
 // 「ダッシュボード」タブ。旧・単独パネル(dashboardPanel.ts)の renderHtml() 本文をそのまま移設した
 // もの(セクション構成・id は不変。挙動は monitorDashboardController.ts / src/webview/monitor/
-// dashboardTab.js が持つ)。**#toolbar/.toolbar だけ dash- 接頭辞に改名**(「テスト実行」タブの
+// dashboardTab.js が持つ)。**#toolbar/.toolbar だけ dash- 接頭辞に改名**(「デバイスモニター」タブの
 // #toolbar/.toolbar と同一 document 内で衝突するため。他の id/class は monitor 側と衝突しない
 // ことを確認済み)。
 function renderDashboardPanel(): string {

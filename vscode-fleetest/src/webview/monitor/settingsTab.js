@@ -347,7 +347,7 @@ function updateMachinePlaceholder(row) {
 let colorPopover;
 let colorPopoverRow;
 
-/** ボタンはテスト実行タブのバッジ(.badge .badge-remote)のプレビュー。文字は送る時点で決まる
+/** ボタンはデバイスモニタータブのバッジ(.badge .badge-remote)のプレビュー。文字は送る時点で決まる
  *  マシン名(currentHostsPayload と同じ規則: 空欄なら host から採る)。 */
 function updateSwatchLabel(row) {
   const machine = row.machineInput.value.trim() || defaultMachineForHost(row.hostInput.value);

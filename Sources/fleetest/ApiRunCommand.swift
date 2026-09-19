@@ -1583,7 +1583,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     }
 
     /// 供給フェーズ(デバイス起動・インストール・凍結 triage)の進行。**stderr と NDJSON の両方**へ出す
-    /// —— stderr は拡張の OUTPUT にしか出ないので、これが無いと「テスト実行」タブは供給の数分間
+    /// —— stderr は拡張の OUTPUT にしか出ないので、これが無いと「デバイスモニター」タブは供給の数分間
     /// 無音になる(デバイスが起動していないと実測 3分39秒)。runStarted 前の行の扱いは
     /// SupplyLogRelay の宣言。
     private func logSupply(_ message: String) {

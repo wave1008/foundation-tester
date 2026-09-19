@@ -1,4 +1,4 @@
-// 「テスト実行」タブ「デバイスを全て選択」トグルの永続化・復元の配線テスト。
+// 「デバイスモニター」タブ「デバイスを全て選択」トグルの永続化・復元の配線テスト。
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewSelectAllButton.test.mjs と同じ。
 //
 // 状態は webview の getState ではなく host の workspaceState に持つ(パネルを閉じると

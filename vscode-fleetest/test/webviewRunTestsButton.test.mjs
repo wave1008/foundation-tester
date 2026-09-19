@@ -1,4 +1,4 @@
-// 「テスト実行」タブのツールバーにある「テスト実行」(#btn-run-tests)の DOM テスト。
+// 「デバイスモニター」タブのツールバーにある「テスト実行」(#btn-run-tests)の DOM テスト。
 // 実 HTML+実バンドルで動かす方式は webviewProjectSelect.test.mjs と同じ。
 //
 // 検証対象:

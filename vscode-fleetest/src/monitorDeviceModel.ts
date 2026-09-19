@@ -267,7 +267,7 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
  * プラットフォームが外側なのは、プロファイルタブが ios/android の別セクションを持ち、
  * ホストでのまとまりはその中にあるため。タイルは1列なので、外側=左右のかたまりになる。
  * monitorProcessManager.ts が monitorDevices 受信時に適用し、以降の全消費側
- * (「テスト実行」タブのタイル)はこの順で受け取る。
+ * (「デバイスモニター」タブのタイル)はこの順で受け取る。
  */
 export function sortMonitorDevices(devices: readonly MonitorDevice[]): MonitorDevice[] {
   return [...devices].sort((a, b) => {
@@ -344,7 +344,7 @@ export interface DisabledMachineStop {
 }
 
 /**
- * 「テスト実行」タブを開いたときに終了させる「マシン有効」off の機械の台(純粋関数)。
+ * 「デバイスモニター」タブを開いたときに終了させる「マシン有効」off の機械の台(純粋関数)。
  * **機械ごとに1回だけ**: その機械の台が1台でも観測済み(state が unknown 以外)になった時点で
  * handled に入れ、起動中(booted/connected)の仮想デバイスを返す。リモートの観測は fan-out が
  * 遅れて届けるので、開いた瞬間の一覧だけで決めると unknown のまま取りこぼす。handled に入った

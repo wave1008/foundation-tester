@@ -10,7 +10,7 @@ import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
 import { clearDeviceRows, currentDeviceEntries, renderDeviceRows } from './runProfileDevicesTab.js';
 
-// 選択は「編集対象」であり、「テスト実行」タブの実行プロファイル選択(fleetest.profile)とは独立。
+// 選択は「編集対象」であり、「デバイスモニター」タブの実行プロファイル選択(fleetest.profile)とは独立。
 // 自動保存(確定ボタンは無い): チェック/選択は change で即、テキストは change(= blur か Enter で
 // 入力を終えたとき)で runProfileSave を送る。dirty = フォーム値と runProfileOriginalFields
 // (直近に保存/ロードした値)の差。検証で弾かれた値は dirty のまま残り、エラーを出す。

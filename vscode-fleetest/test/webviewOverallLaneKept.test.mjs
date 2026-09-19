@@ -1,4 +1,4 @@
-// 「テスト実行」タブの全体レーン(__overall__)が workersReady で消えないことの DOM テスト。
+// 「デバイスモニター」タブの全体レーン(__overall__)が workersReady で消えないことの DOM テスト。
 // 実 HTML + 実バンドルを jsdom で動かす方式は webviewLanePreview.test.mjs と同じ。
 //
 // 背景(実害 2026-09-09): 供給フェーズの進行(「(3/8) …: starting」)は worker を持たないので

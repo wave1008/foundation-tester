@@ -137,7 +137,7 @@ export class MonitorRecordingsController {
 
   /** run 完了時の自動表示。**録画を読めたときだけ** reveal 付きで送る(録画しない run・index.json 未作成は
    *  何も送らない = 一覧ビューへ戻す ok:false も送らない)。タブを切り替えるかは webview が決める
-   *  (「テスト実行」タブを見ているときだけ。main.js の recordingsSession)。 */
+   *  (「デバイスモニター」タブを見ているときだけ。main.js の recordingsSession)。 */
   async revealRun(project: string, runID: string): Promise<void> {
     const session = await this.buildSession(project, runID);
     if (session) {

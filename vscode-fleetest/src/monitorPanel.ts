@@ -130,7 +130,7 @@ export interface MonitorPanelDeps {
    * monitorDeviceStreamController.ts がストリーミング開始を抑止しポーリングへフォールバックする
    * (workspaceState の "monitor.pollingMode" を共有する liveTabHost.ts/monitorLiveController.ts も同様)。 */
   isPollingMode(): boolean;
-  /** 「テスト実行」タブの「配信を表示する」チェックボックス(workspaceState の
+  /** 「デバイスモニター」タブの「配信を表示する」チェックボックス(workspaceState の
    * "monitor.showStreamDuringRun"。既定 ON)。false の間だけ run 中の台の配信を畳む。 */
   isShowStreamDuringRun(): boolean;
   /** MonitorProfilesController.postProfileInfoへの委譲。MonitorDeviceOps.runCreateDevice成功時に呼ぶ。 */
@@ -236,11 +236,11 @@ export class MonitorPanelController implements vscode.Disposable {
   private pendingInitialTab: string | undefined;
   /** WebviewPanel.visible(他エディタタブの裏に隠れていないか)。 */
   private panelVisible = true;
-  /** モニター内タブが「デバイス」か(デバイスタイルが display:none でないか)。
+  /** モニター内タブが「デバイスモニター」か(デバイスタイルが display:none でないか)。
    * webview から devicesTabVisible で届く。初期値 true は起動直後の一瞬だけで、
    * webview の初期 switchTab が必ず正しい値を送ってくる。 */
   private devicesTabVisible = true;
-  /** 「テスト実行」タブを開いてから終了を済ませた「マシン有効」off の機械(planDisabledMachineStops)。
+  /** 「デバイスモニター」タブを開いてから終了を済ませた「マシン有効」off の機械(planDisabledMachineStops)。
    * undefined = タブが閉じている(掃除しない)。**開いた瞬間(非表示→表示)にだけ新しく始める** */
   private disabledStopHandled: Set<string> | undefined;
   /** 直前に webview から届いたタブの可視性(開いた瞬間の検出用。devicesTabVisible の初期値 true とは別に持つ) */
@@ -250,18 +250,18 @@ export class MonitorPanelController implements vscode.Disposable {
   /** 直近の monitorDevices(表示フィルタ前) */
   private latestObservedDevices: readonly MonitorDevice[] = [];
 
-  /** 配信helperを動かすのはパネルが見えていて かつ 「テスト実行」タブが開いているときだけ。
+  /** 配信helperを動かすのはパネルが見えていて かつ 「デバイスモニター」タブが開いているときだけ。
    * どちらか一方でも欠けると H.264 のエンコード/デコードが丸ごと無駄になる。 */
   private applyDeviceStreamVisibility(): void {
     this.deviceStream.setVisible(this.panelVisible && this.devicesTabVisible);
   }
   /** 設定タブ「ポーリングモードを使用する」の現在値(ワークスペース単位で永続化)。 */
   private pollingMode: boolean;
-  /** 「テスト実行」タブのスプリッター位置(タイルペイン高さ px)。未設定(パネル未ドラッグ)は undefined。
+  /** 「デバイスモニター」タブのスプリッター位置(タイルペイン高さ px)。未設定(パネル未ドラッグ)は undefined。
    * webview の getState はパネルを閉じると失われるため host 側で永続化する(splitter.js と対の契約)。 */
   private tilePaneHeight: number | undefined;
   private fleetVisible: boolean;
-  /** 「テスト実行」タブの全選択トグル(workspaceState の "monitor.selectAllDevices")。 */
+  /** 「デバイスモニター」タブの全選択トグル(workspaceState の "monitor.selectAllDevices")。 */
   private selectAllDevices: boolean;
   private showStreamDuringRun: boolean;
   /** 直近の占有の控え。チェックボックスの切替で配信を畳む機械を引き直すのに使う。 */
@@ -663,7 +663,7 @@ export class MonitorPanelController implements vscode.Disposable {
     }
   }
 
-  /** 「テスト実行」タブを開いたとき、「マシン有効」off の機械の起動中の台を終了する(タイルの「停止」と
+  /** 「デバイスモニター」タブを開いたとき、「マシン有効」off の機械の起動中の台を終了する(タイルの「停止」と
    *  同じ device ジョブ。run / MCP が使用中の台は CLI 側が断る = deviceInUseRefusal)。
    *  観測・登録簿のどちらかが届くたびに呼び、機械ごとに1回だけ撃つ(planDisabledMachineStops) */
   private stopDisabledMachineDevices(): void {
@@ -1403,7 +1403,7 @@ export class MonitorPanelController implements vscode.Disposable {
     ]);
     // config の binaryPath 配下(このリポジトリのビルド成果物)は名前を問わず fleetest 由来として拾う。
     const binaryDir = path.dirname(this.getConfig().binaryPath);
-    // 表示・掃除の対象外を取得段階で除外する: Android エミュ本体(qemu、「テスト実行」タブの領域)と
+    // 表示・掃除の対象外を取得段階で除外する: Android エミュ本体(qemu、「デバイスモニター」タブの領域)と
     // MCP サーバ(mcp、セッションを守るため掃討しない=表示もしない)。
     const host = parseResidentProcesses(stdout, { simulatorNames, binaryDir, inappBridges, locale: currentLocale() }).filter(
       (p) => p.type !== "emulator" && p.type !== "mcp",
@@ -1526,7 +1526,7 @@ export class MonitorPanelController implements vscode.Disposable {
     this.processManager.stopMonitorProcess();
     this.processManager.stopHostMetricsProcess();
     // 2) iOS ブリッジをシミュレータ本体を残してクリーン停止(xcuitest+inapp。pid/inapp ファイル基準で
-    //    SIGTERM→simctl terminate。simctl shutdown はしない=「テスト実行」タブの領域)。
+    //    SIGTERM→simctl terminate。simctl shutdown はしない=「デバイスモニター」タブの領域)。
     await this.runFleetest(["bridge", "down", "--all"]);
     // 3) Android ブリッジを am force-stop + adb forward --remove で停止(qemu=エミュレータ本体は残す)。
     //    adb 未検出環境ではスキップ(出力ノイズを避ける)。
@@ -1561,7 +1561,7 @@ export class MonitorPanelController implements vscode.Disposable {
       await this.killResidentProcessesCore();
     } catch (e) {
       // 掃討が途中で失敗してもタブは閉じる(core の step 1 でモニターは既に停止済みで、
-      // 開いたままでも「テスト実行」タブは固まるだけ)。失敗はダイアログで知らせる。
+      // 開いたままでも「デバイスモニター」タブは固まるだけ)。失敗はダイアログで知らせる。
       void vscode.window.showErrorMessage(t("monitor.residentKillClose.error", { error: String(e) }));
     }
     // restartAll はしない(「終了して閉じる」なので自動復帰させない)。タブを閉じる。

@@ -85,7 +85,7 @@ public enum AndroidLaneRecovery {
         var failed: [(name: String, error: Error)] = []
         for (offset, device) in devices.enumerated() {
             // 進行は**1台ごとに開始も出す**(直列なので完了行だけだと、1台に1分近くかかる間
-            // 何も出ない。読み手は拡張の「テスト実行」タブ = ApiRunCommand.logSupply)
+            // 何も出ない。読み手は拡張の「デバイスモニター」タブ = ApiRunCommand.logSupply)
             let progress = "(\(offset + 1)/\(devices.count))"
             // avd 未指定は起動引数を組めない(plan が除外済み。直接呼ばれたときの保険)。
             // **表示名を AVD ID として使わない** —— 別の AVD を起こしうる

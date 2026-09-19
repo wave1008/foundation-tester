@@ -48,7 +48,7 @@ is unavailable.
   "Waiting..." badge.
 - Toolbar buttons start/stop every device in view and restart the monitor process.
 - The **Test Sessions** tab opens runs that were recorded (run profile `record: true`) and shows each
-  scenario's video, a step tree, and the error list. **If the Test Run tab is showing when a run
+  scenario's video, a step tree, and the error list. **If the Device Monitor tab is showing when a run
   finishes**, the monitor switches to the Test Sessions tab and opens that run's recording as soon as
   it is ready (it does not switch while another tab is showing, nor for runs without recordings or
   cancelled runs).

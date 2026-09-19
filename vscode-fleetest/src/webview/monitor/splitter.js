@@ -16,7 +16,7 @@ import { relayoutTiles } from './deviceTiles.js';
 const MIN_PANE_HEIGHT = 120;
 
 // 保存値が無いときのラインビューの高さ = 表示エリア(スプリット領域)の 20%(ユーザー決定)。
-// **領域が測れた最初の描画で決める**(読み込み時点では「テスト実行」タブが未表示で測れないことがあり、
+// **領域が測れた最初の描画で決める**(読み込み時点では「デバイスモニター」タブが未表示で測れないことがあり、
 // そこで決めると代わりの値が残る)。
 const DEFAULT_TILE_PANE_RATIO = 0.2;
 
@@ -31,7 +31,7 @@ let desiredTilePaneHeight =
     : null;
 let tilePaneHeight = desiredTilePaneHeight ?? 0;
 
-// document.body.clientHeight だとタブバー分ずれるため、「テスト実行」タブパネル自身の
+// document.body.clientHeight だとタブバー分ずれるため、「デバイスモニター」タブパネル自身の
 // clientHeight を基準にする。
 function availableSplitHeight() {
   const bannerHeight = banner.classList.contains('visible') ? banner.offsetHeight : 0;
@@ -44,7 +44,7 @@ function clampTilePaneHeight(height) {
   return Math.min(Math.max(height, MIN_PANE_HEIGHT), maxHeight);
 }
 
-// 「テスト実行」タブ非表示(display:none)の間はdevicesPanel.clientHeightが0になり、誤って
+// 「デバイスモニター」タブ非表示(display:none)の間はdevicesPanel.clientHeightが0になり、誤って
 // 最小値にクランプしてしまうため何もせず抜ける(タブ復帰時にswitchTabが呼び直す)。
 // ラインビュー非表示の間も同じ理由で抜ける(領域が測れない)。
 function splitAreaHidden() {
@@ -86,7 +86,7 @@ function persistTilePaneHeight() {
   vscode.postMessage({ type: 'setTilePaneHeight', value: desiredTilePaneHeight });
 }
 
-// host からの復元値(sendInitialState)を反映する。「テスト実行」タブ非表示中は描画が no-op のため、
+// host からの復元値(sendInitialState)を反映する。「デバイスモニター」タブ非表示中は描画が no-op のため、
 // desired だけ更新して次の switchTab の reapplyTilePaneHeight で反映されるようにする。
 export function setTilePaneHeight(height) {
   if (typeof height !== 'number' || !(height > 0)) {
