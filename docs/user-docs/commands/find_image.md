@@ -65,6 +65,11 @@ existImage("[Share Icon]", scroll: .down).tap()
 - **Parts of the same shape that differ only in their text (list rows, for example) are hard to tell apart.** In a
   measurement, rows of identical-looking buttons were 0.08 to 0.15 apart, and the default `threshold` (0.15) grabbed a
   different row. When looking for such parts, check the distances in the record and tighten `threshold` (for example `threshold: 0.03`).
+- **Capture sample images for each OS version and screen scale you test on.** The same row is 0.04 to 0.12 apart across OS
+  versions because the text is drawn differently (measured on the same row on Android 15 / 13 / 12, including differences
+  you cannot see). Devices on the same OS version are 0.001 to 0.003 apart. `findImage` / `existImage` try every
+  sample in the label folder, so adding the new sample to the same folder finds the element on both devices (you can
+  keep `threshold` tight). `findImages` uses only one sample, so this does not help there.
 - One call takes roughly 0.1 seconds for the screenshot plus about 8 milliseconds per candidate (measured on a simulator).
 - `waitSeconds` defaults to 0: it looks at the current screen once (it does not follow the run profile's default wait). To wait for the
   image to appear, for example right after a screen transition, pass seconds such as `waitSeconds: 3`. While scrolling, it looks once per position.
