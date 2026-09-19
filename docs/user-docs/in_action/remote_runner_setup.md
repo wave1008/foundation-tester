@@ -147,6 +147,10 @@ fleetest remote machines        # check the registration
 - The button in the "Badge color" column opens a palette to choose the badge color. If you
   do not choose one, a color not used by other machines is assigned automatically. The color is
   used for the machine name badges in the Device Monitor.
+- "Machine enabled" (right of the badge color, on by default): when you turn it off, test runs
+  are not scheduled onto that machine. Devices of a run profile that live on it are skipped and
+  the scenarios go to the remaining machines. The row for your own Mac has it too. A run that
+  names the machine explicitly with `--runner` still reaches it.
 - The "−" at the right end of a row removes the registration after you confirm it in a dialog.
 - "user@host" and the machine name must be unique (a blank machine name counts as the name taken
   from "user@host", and `local` is taken by your own Mac). If they collide, nothing is saved: the

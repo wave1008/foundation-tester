@@ -307,7 +307,8 @@ export type MonitorToWebviewMessage =
        *  **拡張はこの数を持たない** —— 二重管理にすると片方だけ変わったときに嘘を表示する */
       readonly defaultFMConcurrency?: number;
       /** この機械の固定行(消せない。FM 枠だけ編集できる)。settingsTab.js が先頭に描く */
-      readonly local?: { readonly machine: "local"; readonly host: string; readonly fmConcurrency: number };
+      readonly local?: { readonly machine: "local"; readonly host: string; readonly fmConcurrency: number;
+                         readonly enabled: boolean };
       /** バッジ色パレット(表示順 = 配列順)。**拡張は色の一覧を持たない** —— CLI からそのまま配る。
        *  古い CLI(欠落)では undefined = settingsTab.js/machineColors.js が色機能を黙って無効にする。 */
       readonly machineColors?: readonly MachineColor[];
@@ -808,7 +809,8 @@ function isRemoteHostEntryLike(value: unknown): value is RemoteHostEntry {
     typeof value.machine === "string" &&
     typeof value.host === "string" &&
     typeof value.dir === "string" &&
-    (value.color === undefined || typeof value.color === "string")
+    (value.color === undefined || typeof value.color === "string") &&
+    (value.enabled === undefined || typeof value.enabled === "boolean")
   );
 }
 

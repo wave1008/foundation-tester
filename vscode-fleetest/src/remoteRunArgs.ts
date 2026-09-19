@@ -28,6 +28,9 @@ export interface RemoteHostEntry {
   /** バッジ色パレットの鍵(machineColors[] の key)。**""  = 未設定**(dir/fmConcurrency と同じ
    * 「常にキーがあり空は未設定」の契約)。パレットの定義自体は持たない(CLI 側)。 */
   readonly color?: string;
+  /** 「マシン有効」。false のマシンへは CLI がプロファイル駆動の振り分けで配らない
+   * (FTCore.MachineEnablement)。欠落は true(CLI は常にキーを出す)。 */
+  readonly enabled?: boolean;
 }
 
 /** 「+既存から選択」ダイアログ「デバイス候補のマシン」(§13 段2)。machine は登録簿のマシン名
@@ -94,7 +97,8 @@ export function normalizeRemoteHosts(raw: unknown): RemoteHostEntry[] {
     const fm = record.fmConcurrency;
     const fmConcurrency = typeof fm === "number" && fm > 0 ? fm : 0;
     const color = typeof record.color === "string" ? record.color : "";
-    result.push({ machine, host, dir, fmConcurrency, color });
+    const enabled = record.enabled !== false;
+    result.push({ machine, host, dir, fmConcurrency, color, enabled });
   }
   return result;
 }
@@ -114,6 +118,8 @@ export interface LocalMachineEntry {
   readonly machine: "local";
   readonly host: string;
   readonly fmConcurrency: number;
+  /** 「マシン有効」(CLI 側 LocalConfig.localMachineEnabled)。欠落は true */
+  readonly enabled: boolean;
 }
 
 export function parseLocalMachine(json: unknown): LocalMachineEntry | undefined {
@@ -132,6 +138,7 @@ export function parseLocalMachine(json: unknown): LocalMachineEntry | undefined 
     machine: "local",
     host: row.host,
     fmConcurrency: typeof row.fmConcurrency === "number" && row.fmConcurrency > 0 ? row.fmConcurrency : 0,
+    enabled: row.enabled !== false,
   };
 }
 
@@ -216,7 +223,8 @@ export function diffRemoteHostsForSync(
     // (= 打った値が消える)。欄を足したらここも足す
     return !prev || prev.host !== h.host || prev.dir !== h.dir
       || (prev.fmConcurrency ?? 0) !== (h.fmConcurrency ?? 0)
-      || (prev.color ?? "") !== (h.color ?? "");
+      || (prev.color ?? "") !== (h.color ?? "")
+      || (prev.enabled !== false) !== (h.enabled !== false);
   });
   return { removedNames, upserts };
 }

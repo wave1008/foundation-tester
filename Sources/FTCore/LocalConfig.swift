@@ -31,6 +31,9 @@ public struct LocalConfig: Codable, Sendable, Equatable {
     /// (RemoteHostRegistry.validateName)なので、手元だけはここに置く。
     /// 機械によっては FM を2並列以上で呼ぶと壊れる(docs/remote-runner.md §19)
     public var fmConcurrency: Int?
+    /// **この機械**の「マシン有効」(設定タブの固定行)。false だけを保存する(nil = 有効)。
+    /// リモート機のぶんは `remoteHosts[].enabled`(fmConcurrency と同じ理由でここに置く)
+    public var localMachineEnabled: Bool?
     /// ログ・録画・レポート・デバイス添付の保持容量(`fleetest clean` / run 完了時の掃除)。
     /// **既定値はここに持たない** —— 唯一の定義元は `RetentionPolicy` の static。
     /// nil(欄ごと無い)は「全部既定」であって「掃除しない」ではない
@@ -40,7 +43,8 @@ public struct LocalConfig: Codable, Sendable, Equatable {
                 lastRunProfile: [String: String]? = nil,
                 developmentTeam: String? = nil, bundleIDPrefix: String? = nil,
                 remoteHosts: [RemoteHostEntry]? = nil, issuerId: String? = nil,
-                fmConcurrency: Int? = nil, retention: RetentionPolicy? = nil) {
+                fmConcurrency: Int? = nil, localMachineEnabled: Bool? = nil,
+                retention: RetentionPolicy? = nil) {
         self.defaultProject = defaultProject
         self.lastRunProfile = lastRunProfile
         self.developmentTeam = developmentTeam
@@ -48,6 +52,7 @@ public struct LocalConfig: Codable, Sendable, Equatable {
         self.remoteHosts = remoteHosts
         self.issuerId = issuerId
         self.fmConcurrency = fmConcurrency
+        self.localMachineEnabled = localMachineEnabled
         self.retention = retention
     }
 

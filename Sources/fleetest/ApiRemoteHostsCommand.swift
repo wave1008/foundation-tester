@@ -36,10 +36,14 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
         if let importJSON {
             let incoming = try Self.decodeImportEntries(importJSON)
             for raw in incoming {
-                // **"local" は登録簿に入れない**(予約名)。設定タブの固定行から来る FM 枠だけを
+                // **"local" は登録簿に入れない**(予約名)。設定タブの固定行から来る FM 枠と「マシン有効」だけを
                 // LocalConfig へ流す。host は表示用なので無視する
                 if (raw.machine ?? "").trimmingCharacters(in: .whitespaces) == "local" {
                     config.fmConcurrency = (raw.fmConcurrency ?? 0) > 0 ? raw.fmConcurrency : nil
+                    // キーが無ければ据え置く(登録簿の行と同じ規律)。保存するのは false だけ
+                    if let enabled = raw.enabled {
+                        config.localMachineEnabled = enabled ? nil : false
+                    }
                     continue
                 }
                 try Self.validateColor(raw.color)
@@ -75,7 +79,8 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
         guard !sentKey else { return entry }
         let kept = existing.first { $0.machine == entry.machine }?.fmConcurrency
         return RemoteHostEntry(machine: entry.machine, host: entry.host,
-                               dir: entry.dir, fmConcurrency: kept, color: entry.color)
+                               dir: entry.dir, fmConcurrency: kept, color: entry.color,
+                               enabled: entry.enabled)
     }
 
     /// 非空で未知の色は `--import` 全体を拒否する(既知の鍵一覧をメッセージに出す)。
@@ -113,7 +118,8 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
             hosts: entries.map(ApiRemoteHostEntry.init),
             defaultFMConcurrency: FMLock.defaultConcurrency,
             local: ApiLocalEntry(host: "\(NSUserName())@localhost",
-                                 fmConcurrency: config.fmConcurrency ?? 0),
+                                 fmConcurrency: config.fmConcurrency ?? 0,
+                                 enabled: config.localMachineEnabled != false),
             machineColors: MachineBadgeColor.palette.map { ApiMachineColor(key: $0.key, color: $0.hex) })
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -139,6 +145,8 @@ struct ApiRemoteHostImportEntry: Decodable {
     /// バッジ色の鍵。"" と欠落は未設定(upsert が保つ/割り当てる)。非空の未知鍵は
     /// `validateColor` が --import 全体を拒否するので、ここに来る時点で既知か未設定
     let color: String?
+    /// 「マシン有効」。欠落 = 既存を保つ(upsert が決める)。設定タブは常に送る
+    let enabled: Bool?
 
     var entry: RemoteHostEntry {
         let given = (machine ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -146,7 +154,8 @@ struct ApiRemoteHostImportEntry: Decodable {
         return RemoteHostEntry(machine: resolved, host: host,
                                dir: dir.flatMap { $0.isEmpty ? nil : $0 },
                                fmConcurrency: fmConcurrency.flatMap { $0 > 0 ? $0 : nil },
-                               color: color.flatMap { $0.isEmpty ? nil : $0 })
+                               color: color.flatMap { $0.isEmpty ? nil : $0 },
+                               enabled: enabled)
     }
 }
 
@@ -161,6 +170,8 @@ private struct ApiRemoteHostEntry: Encodable {
     let fmConcurrency: Int
     /// dir と同じ流儀で常にキーを出す。未設定は ""(パレットに無い鍵は decode 時点で nil に落ちる)
     let color: String
+    /// 「マシン有効」。常にキーを出す(未設定 = true)
+    let enabled: Bool
 
     init(_ entry: RemoteHostEntry) {
         machine = entry.machine
@@ -168,6 +179,7 @@ private struct ApiRemoteHostEntry: Encodable {
         dir = entry.dir ?? ""
         fmConcurrency = entry.fmConcurrency ?? 0
         color = entry.color ?? ""
+        enabled = entry.isEnabled
     }
 }
 
@@ -190,9 +202,10 @@ private struct ApiMachineColor: Encodable {
     let color: String
 }
 
-/// 設定タブの固定行。編集できるのは fmConcurrency だけ(host/machine は表示専用)
+/// 設定タブの固定行。編集できるのは fmConcurrency と enabled だけ(host/machine は表示専用)
 private struct ApiLocalEntry: Encodable {
     let machine = "local"
     let host: String
     let fmConcurrency: Int
+    let enabled: Bool
 }

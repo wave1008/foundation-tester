@@ -113,4 +113,15 @@ final class ApiRemoteHostsImportTests: XCTestCase {
             incoming.entry, sentKey: false, from: [])
         XCTAssertEqual(merged.color, "mint")
     }
+
+    /// 「マシン有効」: キーを送れば import が運び、mergingFMConcurrency が作り直しで落とさない
+    func testImportCarriesEnabledThroughTheFMMerge() throws {
+        let incoming = try XCTUnwrap(ApiRemoteHostsCommand.decodeImportEntries(
+            #"[{"machine":"M1Ultra","host":"user@h","enabled":false}]"#).first)
+        XCTAssertEqual(ApiRemoteHostsCommand.mergingFMConcurrency(
+            incoming.entry, sentKey: false, from: []).enabled, false)
+        let absent = try XCTUnwrap(ApiRemoteHostsCommand.decodeImportEntries(
+            #"[{"machine":"M1Ultra","host":"user@h"}]"#).first)
+        XCTAssertNil(absent.entry.enabled)
+    }
 }

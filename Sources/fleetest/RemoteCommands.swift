@@ -584,10 +584,11 @@ struct RemoteCommand: AsyncParsableCommand {
             }
 
             private static func emitTable(_ entries: [RemoteHostEntry]) {
-                let header = ["MACHINE", "HOST", "DIR", "FM", "COLOR"]
+                let header = ["MACHINE", "HOST", "DIR", "FM", "COLOR", "ENABLED"]
                 var rows = [header]
                 rows.append(contentsOf: entries.map {
-                    [$0.machine, $0.host, $0.dir ?? "-", $0.fmConcurrency.map(String.init) ?? "-", $0.color ?? "-"]
+                    [$0.machine, $0.host, $0.dir ?? "-", $0.fmConcurrency.map(String.init) ?? "-", $0.color ?? "-",
+                     $0.isEnabled ? "yes" : "no"]
                 })
                 let widths = (0..<header.count).map { col in rows.map { $0[col].count }.max() ?? 0 }
                 for row in rows {
@@ -631,6 +632,11 @@ struct RemoteCommand: AsyncParsableCommand {
                 + "Omit to keep the current color; new machines get one not used by others"))
             var color: String?
 
+            @Option(help: ArgumentHelp("Whether runs may dispatch to this machine (true/false). "
+                + "false = profile-driven scheduling and --fleet skip it; an explicit --runner still reaches it. "
+                + "Omit to keep the current setting"))
+            var enabled: Bool?
+
             func run() async throws {
                 try RemoteHostRegistry.validateName(machine)
                 _ = try RemoteHostSpec.parse(host)
@@ -652,9 +658,9 @@ struct RemoteCommand: AsyncParsableCommand {
                 // 別件で add を打ち直した瞬間に設定が黙って消える。消すのは --clear-fm-concurrency だけ
                 let existing = (config.remoteHosts ?? []).first { $0.machine == machine }?.fmConcurrency
                 let slots = clearFmConcurrency ? nil : (fmConcurrency ?? existing)
-                // color は upsert が唯一の決定点(nil なら既存を保つ・新規なら自動割り当て)
+                // color / enabled は upsert が唯一の決定点(nil なら既存を保つ・新規なら自動割り当て)
                 let entry = RemoteHostEntry(machine: machine, host: host, dir: dir,
-                                           fmConcurrency: slots, color: color)
+                                           fmConcurrency: slots, color: color, enabled: enabled)
                 config.remoteHosts = RemoteHostRegistry.upsert(entry, into: config.remoteHosts ?? [])
                 try config.save()
                 let slotsNote = slots.map { " (FM concurrency \($0))" } ?? ""

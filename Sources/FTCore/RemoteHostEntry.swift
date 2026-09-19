@@ -22,17 +22,24 @@ public struct RemoteHostEntry: Codable, Equatable, Sendable {
     /// 設定タブのバッジ色(`MachineBadgeColor.palette` の鍵)。**唯一の決定点は
     /// `RemoteHostRegistry.upsert`**(新規は自動割り当て・省略は既存を保つ)
     public let color: String?
+    /// 設定タブの「マシン有効」。**false だけを保存する**(nil = 有効。true は upsert が nil へ畳む)。
+    /// false のマシンへはプロファイル駆動の振り分けで配らない(判定は `MachineEnablement`)。
+    /// **唯一の決定点は `RemoteHostRegistry.upsert`**(nil は既存を保つ)
+    public let enabled: Bool?
 
     public init(machine: String, host: String, dir: String? = nil, fmConcurrency: Int? = nil,
-                color: String? = nil) {
+                color: String? = nil, enabled: Bool? = nil) {
         self.machine = machine
         self.host = host
         self.dir = dir
         self.fmConcurrency = fmConcurrency
         self.color = color
+        self.enabled = enabled
     }
 
-    private enum CodingKeys: String, CodingKey { case machine, name, host, dir, fmConcurrency, color }
+    public var isEnabled: Bool { enabled != false }
+
+    private enum CodingKeys: String, CodingKey { case machine, name, host, dir, fmConcurrency, color, enabled }
 
     /// 読みは machine > 旧 name、書きは machine だけ(改名の互換はこの1箇所)
     public init(from decoder: Decoder) throws {
@@ -51,6 +58,7 @@ public struct RemoteHostEntry: Codable, Equatable, Sendable {
         // パレットに無い鍵・空文字は nil へ倒す(壊れた設定で止めない。fmConcurrency と同じ方針)
         let rawColor = try container.decodeIfPresent(String.self, forKey: .color)
         color = (rawColor.map { !$0.isEmpty && MachineBadgeColor.isKnown($0) } ?? false) ? rawColor : nil
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -60,5 +68,6 @@ public struct RemoteHostEntry: Codable, Equatable, Sendable {
         try container.encodeIfPresent(dir, forKey: .dir)
         try container.encodeIfPresent(fmConcurrency, forKey: .fmConcurrency)
         try container.encodeIfPresent(color, forKey: .color)
+        try container.encodeIfPresent(enabled, forKey: .enabled)
     }
 }

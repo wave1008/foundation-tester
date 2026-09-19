@@ -1935,6 +1935,24 @@ Mac Studio M1 Ultra(Mac13,2 / macOS 26A5425a)で、occlusion guard を有効に�
   拡張は色の機能を黙って無効にする
 - マシン名を変えても色はついて行く(設定タブは改名を remove + import で送り、行の色を載せる)
 
+## 21. マシン有効(`enabled`)
+
+設定タブの「マシン有効」(バッジ色の右・既定 ON)。**off のマシンへは、どこへ配るかを
+ツールが決める経路で配らない**。判定の唯一の定義元は `FTCore.MachineEnablement`。
+
+- 保存形: 登録簿は `RemoteHostEntry.enabled`、この機械(固定行)は `LocalConfig.localMachineEnabled`。
+  **false だけを保存する**(nil = 有効)。upsert は nil を「既存を保つ」と読む(色と同じ規律。
+  `remote machines add` を打ち直しても消えない)。`api remote-machines` の出力は `hosts[].enabled` /
+  `local.enabled` を常に出す。CLI は `remote machines add <name> --host … --enabled false`
+- 効く経路: **`DeviceMachineRunner.plan`**(`run --profile` / `api run --profile` の機械分担・
+  全台が1機械の自動ディスパッチ・`api remote-compat` の対象集合)と **`--fleet`**
+  (`FleetRunner.excludingDisabledMachines`)。外した機械は stderr に1行出す
+- **1台でも外したら、残りが1機械でも分割計画を返す** —— nil を返すと単一経路がプロファイルを
+  丸ごと見て、外した機械へ自動ディスパッチする/手元でリモートの台を探す。全部外れたら断る
+- **明示の `--runner` には効かない**: 機械分担・フリートの子は `--runner <machine|local>` 付きで起こされ、
+  ランナー機の上でも `--runner local` で走る。ここで断ると配った先で自分の run を止める
+- 監視(`api monitor` の fan-out)・デバイス操作は止めない(配らないだけ)。dry-run は常に手元
+
 ## 関連
 
 - CI 前提・FM の可否表: [ci.md](ci.md)

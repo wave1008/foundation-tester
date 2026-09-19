@@ -2251,9 +2251,11 @@ input[type="search"]::placeholder {
 .settings-remote-hosts-machine .settings-remote-hosts-input {
   min-width: 0;
 }
-/* バッジ色の列。見出しの幅まで縮め、スウォッチを中央に置く */
+/* バッジ色・マシン有効の列。見出しの幅まで縮め、中身を中央に置く */
 .settings-remote-hosts-table th.settings-remote-hosts-color,
-.settings-remote-hosts-table td.settings-remote-hosts-color {
+.settings-remote-hosts-table td.settings-remote-hosts-color,
+.settings-remote-hosts-table th.settings-remote-hosts-enabled,
+.settings-remote-hosts-table td.settings-remote-hosts-enabled {
   width: 1%;
   white-space: nowrap;
   text-align: center;

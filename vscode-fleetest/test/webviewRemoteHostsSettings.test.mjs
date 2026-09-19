@@ -81,16 +81,16 @@ function fillAndCommit(window, input, value) {
 // 列の並び(monitorHtml.ts の thead と settingsTab.js の td 生成順が対)。
 // **必須のホストが先、任意のマシン名がその右**。下のテストが見出しと入力欄の両方で固定する
 // 入力欄の並び(バッジ色の列は入力欄を持たないので、列の位置とは別に持つ)
-const [HOST, MACHINE, FM, DIR] = [0, 1, 2, 3];
+const [HOST, MACHINE, ENABLED, FM, DIR] = [0, 1, 2, 3, 4];
 // 列(見出し・td)の並び
-const [COL_HOST, COL_MACHINE, COL_COLOR, COL_FM, COL_DIR] = [0, 1, 2, 3, 4];
+const [COL_HOST, COL_MACHINE, COL_COLOR, COL_ENABLED, COL_FM, COL_DIR] = [0, 1, 2, 3, 4, 5];
 
 const REMOTE_CONFIG = {
   type: "remoteConfig",
   hosts: [{ machine: "M1Max", host: "user@m1max", dir: "" }],
 };
 
-test("列の並びはホスト → マシン(任意) → バッジ色 → FM → 作業ベースディレクトリ", (t) => {
+test("列の並びはホスト → マシン(任意) → バッジ色 → マシン有効 → FM → 作業ベースディレクトリ", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
@@ -99,6 +99,7 @@ test("列の並びはホスト → マシン(任意) → バッジ色 → FM →
   assert.match(headers[COL_HOST], /user@host/);
   assert.match(headers[COL_MACHINE], /マシン|Machine/);
   assert.match(headers[COL_COLOR], /バッジ色|Badge color/);
+  assert.match(headers[COL_ENABLED], /マシン有効|Machine enabled/);
   assert.match(headers[COL_FM], /FM/);
   assert.match(headers[COL_DIR], /ディレクトリ|directory/);
 
@@ -169,7 +170,7 @@ test("マシン名を空のまま確定すると、host のホスト部が machi
   const message = JSON.parse(JSON.stringify(posted.filter((m) => m.type === "setRemoteConfig").at(-1)));
   const added = message.hosts.find((h) => h.host === "user@m1ultra.local");
   assert.deepEqual(added,
-    { machine: "m1ultra.local", host: "user@m1ultra.local", dir: "", fmConcurrency: 0, color: "" });
+    { machine: "m1ultra.local", host: "user@m1ultra.local", dir: "", fmConcurrency: 0, color: "", enabled: true });
   assert.ok(isMonitorFromWebviewMessage(message), "拡張側のゲートを通る");
 });
 
@@ -335,9 +336,9 @@ test("この機械の行が先頭に固定で描かれ、削除ボタンを持�
   // 左端を可変行と揃えるため host/machine も input にするが、**読み取り専用**にして
   // 編集できるのは FM 枠だけに保つ
   const inputs = rows[0].querySelectorAll("input");
-  assert.equal(inputs.length, 4, "host / machine / dir / FM");
-  // 並びは HOST / MACHINE / FM / DIR。編集できるのは FM だけ
-  assert.deepEqual([...inputs].map((i) => i.readOnly), [true, true, false, true]);
+  assert.equal(inputs.length, 5, "host / machine / enabled / FM / dir");
+  // 並びは HOST / MACHINE / ENABLED / FM / DIR。編集できるのは マシン有効 と FM だけ
+  assert.deepEqual([...inputs].map((i) => i.readOnly), [true, true, false, false, true]);
 });
 
 test("この機械の FM 枠は machine:'local' として送られる(登録簿には入らない)", (t) => {
@@ -470,6 +471,7 @@ test("列の並びが見出し・可変行・固定行で一致する", (t) => {
   assert.match(headers[COL_HOST], /user@host/);
   assert.match(headers[COL_MACHINE], /マシン|Machine/);
   assert.match(headers[COL_COLOR], /バッジ色|Badge color/);
+  assert.match(headers[COL_ENABLED], /マシン有効|Machine enabled/);
   assert.match(headers[COL_FM], /FM/);
   assert.match(headers[COL_DIR], /ディレクトリ|directory/);
 
@@ -814,4 +816,43 @@ test("登録済みの行を編集して重複させたら送らず、直した�
   assert.equal(sent.length, 1);
   assert.equal(JSON.stringify(sent[0].hosts.map((h) => h.machine)), JSON.stringify(["A", "B2"]));
   assert.equal(machineB.classList.contains("settings-remote-hosts-input-invalid"), false);
+});
+
+// 「マシン有効」(バッジ色の右)。off のマシンへは CLI が振り分けない(FTCore.MachineEnablement)
+test("マシン有効は既定 ON で、外すと setRemoteConfig に enabled:false が乗り、拡張側のゲートを通る", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((m) => posted.push(m));
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig", hosts: [{ machine: "M1Max", host: "user@m1max", dir: "" }],
+    local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0 } });
+  const rows = document.querySelectorAll("#settings-remote-hosts-body tr");
+  const localBox = rows[0].querySelectorAll("input")[ENABLED];
+  const remoteBox = rows[1].querySelectorAll("input")[ENABLED];
+  assert.equal(localBox.type, "checkbox");
+  assert.equal(localBox.checked, true, "enabled 欠落(古い CLI)は ON");
+  assert.equal(remoteBox.checked, true);
+
+  remoteBox.checked = false;
+  remoteBox.dispatchEvent(new window.Event("change", { bubbles: true }));
+  let sent = posted.filter((m) => m.type === "setRemoteConfig").at(-1);
+  assert.equal(sent.hosts.find((h) => h.machine === "M1Max").enabled, false);
+  assert.equal(sent.hosts.find((h) => h.machine === "local").enabled, true);
+  assert.equal(isMonitorFromWebviewMessage(sent), true);
+
+  localBox.checked = false;
+  localBox.dispatchEvent(new window.Event("change", { bubbles: true }));
+  sent = posted.filter((m) => m.type === "setRemoteConfig").at(-1);
+  assert.equal(sent.hosts.find((h) => h.machine === "local").enabled, false);
+});
+
+test("remoteConfig の enabled:false はチェックを外した状態で描かれる(固定行も)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  post(window, { type: "remoteConfig", hosts: [{ machine: "M1Max", host: "user@m1max", dir: "", enabled: false }],
+    local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0, enabled: false } });
+  const rows = document.querySelectorAll("#settings-remote-hosts-body tr");
+  assert.equal(rows[0].querySelectorAll("input")[ENABLED].checked, false);
+  assert.equal(rows[1].querySelectorAll("input")[ENABLED].checked, false);
 });

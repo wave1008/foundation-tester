@@ -30,35 +30,35 @@ test("normalizeRemoteHosts: 配列でない/不正要素は除去", () => {
 test("normalizeRemoteHosts: machine 空なら host のホスト部を流用", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "", host: "user@mac-01", dir: "" }]),
-    [{ machine: "mac-01", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "" }],
+    [{ machine: "mac-01", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "", enabled: true }],
   );
 });
 
 test("normalizeRemoteHosts: host 空でも machine があれば残す(壊れた登録として設定タブにそのまま出す)", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "broken", host: "", dir: "" }]),
-    [{ machine: "broken", host: "", dir: "", fmConcurrency: 0, color: "" }],
+    [{ machine: "broken", host: "", dir: "", fmConcurrency: 0, color: "", enabled: true }],
   );
 });
 
 test("normalizeRemoteHosts: 型不正フィールドは空文字扱い(dir/host が string でない)", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "x", host: 123, dir: null }]),
-    [{ machine: "x", host: "", dir: "", fmConcurrency: 0, color: "" }],
+    [{ machine: "x", host: "", dir: "", fmConcurrency: 0, color: "", enabled: true }],
   );
 });
 
 test("normalizeRemoteHosts: machine は CLI 契約どおり保持する(§13 のキャッシュ)", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "mac-02", host: "mac-02", dir: "" }]),
-    [{ machine: "mac-02", host: "mac-02", dir: "", fmConcurrency: 0, color: "" }],
+    [{ machine: "mac-02", host: "mac-02", dir: "", fmConcurrency: 0, color: "", enabled: true }],
   );
 });
 
 test("parseRemoteHostsResponse: {hosts:[…]} を正規化して返す", () => {
   assert.deepEqual(
     parseRemoteHostsResponse({ hosts: [{ machine: "mac-01", host: "user@mac-01", dir: "" }] }),
-    [{ machine: "mac-01", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "" }],
+    [{ machine: "mac-01", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "", enabled: true }],
   );
 });
 
@@ -128,11 +128,11 @@ test("deviceCommandArgs: remote は apiArgs を変更しない(呼び出し側�
 test("normalizeRemoteHosts: 旧キー name も読む(machine が優先)", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ name: "M1Ultra", host: "user@mac-01", dir: "" }]),
-    [{ machine: "M1Ultra", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "" }],
+    [{ machine: "M1Ultra", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "", enabled: true }],
   );
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "new", name: "old", host: "h", dir: "" }]),
-    [{ machine: "new", host: "h", dir: "", fmConcurrency: 0, color: "" }],
+    [{ machine: "new", host: "h", dir: "", fmConcurrency: 0, color: "", enabled: true }],
   );
 });
 
@@ -237,4 +237,16 @@ test("mergeRemoteHostsSideFields: machineColors も応答で更新し、無け�
   // 古い CLI・失敗応答(欄が無い)では据え置く —— 消すとパレットが不安定に消えたり戻ったりする
   const kept = mergeRemoteHostsSideFields(previous, {});
   assert.deepEqual(kept.machineColors, [{ key: "rose", color: "#f6c1cc" }]);
+});
+
+test("マシン有効: normalize は欠落を true に・diff は enabled だけの変更を upsert する", () => {
+  const [missing, off] = normalizeRemoteHosts([
+    { machine: "A", host: "u@a", dir: "" },
+    { machine: "B", host: "u@b", dir: "", enabled: false },
+  ]);
+  assert.equal(missing.enabled, true);
+  assert.equal(off.enabled, false);
+  const { upserts } = diffRemoteHostsForSync([missing], [{ ...missing, enabled: false }]);
+  assert.deepEqual(upserts.map((h) => h.machine), ["A"]);
+  assert.equal(diffRemoteHostsForSync([missing], [{ ...missing, enabled: true }]).upserts.length, 0);
 });

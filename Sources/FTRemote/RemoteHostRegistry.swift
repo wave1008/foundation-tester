@@ -83,7 +83,7 @@ public enum RemoteHostRegistry {
     /// **色の唯一の決定点**: entry.color が nil なら既存(同名)の色を保つ・既存も無ければ
     /// 他のマシンと重ならない色を自動割り当てする(色を省略した upsert で色が消えないように —
     /// upsert は丸ごと置き換えなので、ここで保たないと別件の add で色が消える)。
-    /// entry.color が非 nil ならそのまま使う
+    /// entry.color が非 nil ならそのまま使う。enabled も nil なら既存を保つ
     public static func upsert(_ entry: RemoteHostEntry, into entries: [RemoteHostEntry]) -> [RemoteHostEntry] {
         let others = entries.filter { $0.machine != entry.machine }
         let color: String
@@ -94,10 +94,11 @@ public enum RemoteHostRegistry {
         } else {
             color = MachineBadgeColor.autoAssign(usedBy: others.map(\.color))
         }
-        let resolved = entry.color == color
-            ? entry
-            : RemoteHostEntry(machine: entry.machine, host: entry.host, dir: entry.dir,
-                              fmConcurrency: entry.fmConcurrency, color: color)
+        // enabled も同じ規律(nil = 既存を保つ)。**true は nil へ畳む**(保存するのは false だけ)
+        let enabled = (entry.enabled ?? entries.first(where: { $0.machine == entry.machine })?.enabled) == false
+            ? false : nil
+        let resolved = RemoteHostEntry(machine: entry.machine, host: entry.host, dir: entry.dir,
+                                       fmConcurrency: entry.fmConcurrency, color: color, enabled: enabled)
         var result = others
         result.append(resolved)
         return result.sorted { $0.machine < $1.machine }

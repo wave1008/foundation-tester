@@ -1293,7 +1293,8 @@ struct RunScenarios: AsyncParsableCommand {
         if !dryRun, fleet == nil, let profile,
            let groups = try DeviceMachineRunner.plan(
                project: try ScenarioHost.project(named: project), profileName: profile,
-               explicitHost: runner, deviceFilter: devices) {
+               explicitHost: runner, deviceFilter: devices,
+               disabledMachines: MachineEnablement.disabledMachines(config: LocalConfig.load())) {
             let exitCode = try await DeviceMachineRunner.run(
                 project: try ScenarioHost.project(named: project), profileName: profile,
                 groups: groups, scenarios: scenarios, folders: folders,
@@ -1674,14 +1675,24 @@ struct RunScenarios: AsyncParsableCommand {
     private func dispatchToFleet(_ fleetName: String) async throws {
         let testProject = try ScenarioHost.project(named: project)
         let doc = try FleetProfile.load(project: testProject, name: fleetName)
-        let registeredNames = Set((LocalConfig.load().remoteHosts ?? []).map(\.machine))
+        let config = LocalConfig.load()
+        let registeredNames = Set((config.remoteHosts ?? []).map(\.machine))
         let issues = FleetProfile.validate(doc, project: testProject, registeredHostNames: registeredNames)
         guard issues.isEmpty else {
             throw ValidationError((["fleet \"\(fleetName)\" is invalid:"] + issues.map { "  - \($0)" })
                 .joined(separator: "\n"))
         }
+        let (enabledDoc, skipped) = FleetRunner.excludingDisabledMachines(
+            doc, disabled: MachineEnablement.disabledMachines(config: config))
+        if !skipped.isEmpty {
+            guard !enabledDoc.runs.isEmpty else {
+                throw ValidationError(MachineEnablement.allDisabledMessage(
+                    skipped, subject: "fleet \"\(fleetName)\" runs on"))
+            }
+            FleetRunner.log(MachineEnablement.skippedNotice(skipped))
+        }
         let exitCode = try await FleetRunner.run(
-            project: testProject, fleetName: fleetName, fleet: doc,
+            project: testProject, fleetName: fleetName, fleet: enabledDoc,
             scenarios: scenarios, folders: folders,
             setOverrides: try RunProfileSetOverride.parse(setOverrides),
             noLPT: noLPT, lptHistoryRuns: lptHistoryRuns, performanceMode: performanceMode,

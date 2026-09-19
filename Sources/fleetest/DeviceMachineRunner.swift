@@ -31,17 +31,31 @@ enum DeviceMachineRunner {
     /// 同じ機械)なら nil を返し、呼び出し側は既存の単一ディスパッチ経路をそのまま通す。
     ///
     /// **`--runner` を明示したときは常に nil** —— 明示指定は「今回はこの機械で走らせる」の意味で、
-    /// 分散より強い(MachineDispatch と同じ「明示が勝つ」規律)。
+    /// 分散より強い(MachineDispatch と同じ「明示が勝つ」規律)。「マシン有効」も明示には効かない。
+    ///
+    /// `disabledMachines`(`MachineEnablement.disabledMachines`)の機械の台は配らない。**1台でも外したら
+    /// 残りが1機械でも分割計画を返す** —— nil を返すと単一経路がプロファイルを丸ごと見て、
+    /// 外した機械へ自動ディスパッチする/手元でリモートの台を探す。全部外れたら断る
     static func plan(project: TestProject, profileName: String,
-                     explicitHost: String?, deviceFilter: [String]) throws -> [Group]? {
+                     explicitHost: String?, deviceFilter: [String],
+                     disabledMachines: Set<String>) throws -> [Group]? {
         if explicitHost != nil { return nil }
         var devices = ProfileResolver.runDeviceMachines(project: project, runProfileName: profileName)
         if !deviceFilter.isEmpty {
             let wanted = Set(deviceFilter)
             devices = devices.filter { wanted.contains($0.name) }
         }
-        let grouped = DeviceMachineGrouping.groups(devices) { $0.machine }
-        guard grouped.count > 1 else { return nil }
+        let (kept, excluded) = MachineEnablement.partition(devices, disabled: disabledMachines)
+        if !excluded.isEmpty {
+            guard !kept.isEmpty else {
+                throw ValidationError(MachineEnablement.allDisabledMessage(
+                    excluded, subject: "hosts run profile \"\(profileName)\"'s devices"))
+            }
+            // stderr へ(api run の stdout は NDJSON 専用)
+            ConsoleOut.err(MachineEnablement.skippedNotice(excluded))
+        }
+        let grouped = DeviceMachineGrouping.groups(kept) { $0.machine }
+        guard grouped.count > 1 || !excluded.isEmpty else { return nil }
         return grouped.map { group in
             Group(machine: group.machine,
                   deviceNames: group.devices.map(\.name),

@@ -442,6 +442,9 @@ fleetest run --project <プロジェクト> --fleet <名前> --split --junit rep
 `RemoteHostRegistry.validateUniqueHost`)。行の削除はホスト側のモーダルで確認する。
 「バッジ色」列のボタンでバッジの色をパレットから選べる(未選択なら他のマシンと重ならない色が
 自動で付く。docs/remote-runner.md §20)。
+その右の「マシン有効」(既定 ON)を外すと、そのマシンへはテストを振り分けない(機械分担・
+全台が1機械の自動ディスパッチ・`--fleet`。明示の `--runner` は除く。docs/remote-runner.md §21)。
+この機械の行にもあり、外すと手元の台へ振り分けない。
 
 **これは VSCode の設定ではなく CLI の登録簿**(`~/.config/fleetest/config.json`)を読み書きしている
 (`fleetest api remote-machines`)ので、`fleetest remote machines add` で足したものと同じ表に出る。

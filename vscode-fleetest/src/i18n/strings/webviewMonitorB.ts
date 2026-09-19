@@ -178,6 +178,10 @@ export const webviewMonitorBStrings = {
   },
   // バッジ色スウォッチ(パレットの定義は CLI 側 machineColors[]。古い CLI では未受信のため disabled)
   "wvMonitor2.remote.colorTitle": { ja: "バッジの色を選ぶ", en: "Choose badge color" },
+  "wvMonitor2.remote.enabledTitle": {
+    ja: "オフにすると、このマシンへはテストを振り分けない(--runner で明示した実行は除く)",
+    en: "When off, runs are not scheduled onto this machine (an explicit --runner still reaches it)",
+  },
   // バッジ色ボタン(バッジのプレビュー)の文字。マシン名もホストもまだ空の行でだけ出す
   "wvMonitor2.remote.colorPreviewEmpty": { ja: "マシン名", en: "machine" },
 

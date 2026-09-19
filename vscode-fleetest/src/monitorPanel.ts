@@ -65,7 +65,7 @@ import {
   type RemoteHostsCliOutcome,
 } from "./remoteHostsController";
 import { diffRemoteHostsForSync, mergeRemoteHostsSideFields,
-  type MachineColor, type RemoteHostEntry } from "./remoteRunArgs";
+  type LocalMachineEntry, type MachineColor, type RemoteHostEntry } from "./remoteRunArgs";
 import {
   fetchRetention,
   fetchRetentionUsage,
@@ -263,7 +263,7 @@ export class MonitorPanelController implements vscode.Disposable {
   private lastKnownRemoteHosts: RemoteHostEntry[] = [];
   /** 未設定時の FM 枠(CLI が返す既定)。**拡張は値を持たず、読めたものをそのまま配る** */
   private lastKnownDefaultFMConcurrency: number | undefined;
-  private lastKnownLocalMachine: { machine: "local"; host: string; fmConcurrency: number } | undefined;
+  private lastKnownLocalMachine: LocalMachineEntry | undefined;
   /** バッジ色パレット(CLI 側の唯一の定義元)。**拡張は色の一覧を持たず、読めたものをそのまま配る**。
    *  古い CLI では undefined のまま(webview 側が色機能を黙って無効にする)。 */
   private lastKnownMachineColors: readonly MachineColor[] | undefined;

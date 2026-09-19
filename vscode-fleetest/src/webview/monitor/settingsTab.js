@@ -81,7 +81,7 @@ languageSelect.addEventListener('change', () => {
 // 埋めておく)。入力欄には「これになる」名前をウォーターマークで出す。
 const remoteHostsError = document.getElementById('settings-remote-hosts-error');
 let hostRows = []; // { id, tr, machineInput, hostInput, dirInput, fmInput, confirmed, confirmButton,
-                    //   color, colorSwatch }
+                    //   color, colorSwatch, enabledInput }
 let nextRowId = 0;
 // 未設定時の FM 枠。**CLI が返す値をそのまま使う**(拡張は定数を持たない —— 二重管理にすると
 // 片方だけ変わったときにウォーターマークが嘘になる)。未受信のうちは空欄のまま
@@ -111,13 +111,15 @@ function renderLocalRow(tbody, local) {
     td.appendChild(input);
     tr.appendChild(td);
   };
-  // **列の並びは可変行と揃える**(user@host → マシン → バッジ色 → FM 並列枠 → 作業ベースディレクトリ)
+  // **列の並びは可変行と揃える**(user@host → マシン → バッジ色 → マシン有効 → FM 並列枠 → 作業ベースディレクトリ)
   fixedCell(local.host, 'settings-remote-hosts-host');
   fixedCell(local.machine, 'settings-remote-hosts-machine');
   // この機械にはリモートのバッジが出ないので色は持たない(空のセルで列数だけ揃える)
   const colorTd = document.createElement('td');
   colorTd.className = 'settings-remote-hosts-color';
   tr.appendChild(colorTd);
+  const enabledInput = makeEnabledCell(tr, local.enabled !== false);
+  enabledInput.addEventListener('change', () => onHostsChanged());
   const fmTd = document.createElement('td');
   fmTd.className = 'settings-remote-hosts-fm';
   const input = makeFMConcurrencyInput(local.fmConcurrency);
@@ -128,7 +130,23 @@ function renderLocalRow(tbody, local) {
   // 削除ボタンは置かない(固定行)。列数を揃えるため空のセルだけ足す
   tr.appendChild(document.createElement('td'));
   tbody.appendChild(tr);
-  localRow = { tr, input, host: local.host };
+  localRow = { tr, input, host: local.host, enabledInput };
+}
+
+/** 「マシン有効」のセル(バッジ色の右)。**行の種類を問わずこの関数を通す**(makeFMConcurrencyInput と同じ理由)。
+ *  off のマシンへは CLI がプロファイル駆動の振り分けで配らない(FTCore.MachineEnablement) */
+function makeEnabledCell(tr, checked) {
+  const td = document.createElement('td');
+  td.className = 'settings-remote-hosts-enabled';
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.className = 'settings-remote-hosts-enabled-input';
+  input.checked = checked;
+  input.title = t('wvMonitor2.remote.enabledTitle');
+  input.setAttribute('aria-label', t('wvMonitor2.remote.enabledTitle'));
+  td.appendChild(input);
+  tr.appendChild(td);
+  return input;
 }
 
 /** FM 並列枠の入力欄。**「直近 N 件までの履歴を使用する」と同じ作り**(`type=number` +
@@ -183,7 +201,8 @@ function currentHostsPayload() {
   const fixed = [];
   if (localRow) {
     fixed.push({ machine: 'local', host: localRow.host, dir: '',
-                 fmConcurrency: fmConcurrencyValue(localRow.input) });
+                 fmConcurrency: fmConcurrencyValue(localRow.input),
+                 enabled: localRow.enabledInput.checked });
   }
   // 未確定行(confirmed:false)はホストが空のことがあるため、確定済み行だけを送る
   // (「確定」ボタン自体は host が埋まるまで押せないが、ここでも二重に落として安全側に倒す)。
@@ -196,6 +215,7 @@ function currentHostsPayload() {
         machine: machine || defaultMachineForHost(host), host, dir: row.dirInput.value.trim(),
         fmConcurrency: fmConcurrencyValue(row.fmInput),
         color: row.color || '',
+        enabled: row.enabledInput.checked,
       };
     }));
 }
@@ -471,7 +491,7 @@ function addHostRow(host, confirmed) {
     return input;
   };
 
-  // **列の並び = td を append する順**。ホスト → マシン → バッジ色 → FM → ディレクトリ。
+  // **列の並び = td を append する順**。ホスト → マシン → バッジ色 → マシン有効 → FM → ディレクトリ。
   // 必須の host を先に置き、任意のマシン名をその右に置く(見出しは monitorHtml.ts と対)
   row.hostInput = makeTextCell(host ? host.host : '', 'user@host', 'settings-remote-hosts-host');
   row.color = host ? (host.color || '') : '';
@@ -493,6 +513,9 @@ function addHostRow(host, confirmed) {
   row.machineInput.addEventListener('input', () => updateSwatchLabel(row));
   colorTd.appendChild(swatchButton);
   tr.appendChild(colorTd);
+  // 新しい行は有効で始まる(CLI の既定と同じ)
+  row.enabledInput = makeEnabledCell(tr, host ? host.enabled !== false : true);
+  row.enabledInput.addEventListener('change', () => { if (row.confirmed) { onHostsChanged(); } });
   // FM 並列枠。**空欄 = 未設定**(ランナー側の既定に任せる)。0 を送ると CLI 側が解除として扱う。
   // 機械によっては FM を2並列以上で呼ぶと壊れるため機械ごとに絞れる(docs/remote-runner.md §19)
   const fmTd = document.createElement('td');

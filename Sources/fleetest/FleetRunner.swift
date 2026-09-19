@@ -23,6 +23,21 @@ struct FleetEntryOutcome: Sendable {
 
 enum FleetRunner {
 
+    /// 「マシン有効」が off の機械のエントリを外す(純粋関数)。host は登録名か "local" で書く契約
+    /// (FleetProfile.validate)なので、`MachineDispatch.normalize` で畳んで表示名と突き合わせる
+    static func excludingDisabledMachines(
+        _ fleet: FleetProfileDocument, disabled: Set<String>
+    ) -> (fleet: FleetProfileDocument, skipped: [String]) {
+        var skipped: [String] = []
+        let kept = fleet.runs.filter { entry in
+            let label = DeviceMachineGrouping.display(MachineDispatch.normalize(entry.host))
+            guard disabled.contains(label) else { return true }
+            if !skipped.contains(label) { skipped.append(label) }
+            return false
+        }
+        return (FleetProfileDocument(runs: kept), skipped)
+    }
+
     /// 全エントリを並行起動し、1画面の集計を出す。戻り値 = FleetProfile.aggregateExitCode
     static func run(
         project: TestProject, fleetName: String, fleet: FleetProfileDocument,

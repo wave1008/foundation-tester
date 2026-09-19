@@ -310,7 +310,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         if !dryRun, let profile,
            let groups = try DeviceMachineRunner.plan(
                project: testProject, profileName: profile, explicitHost: runner,
-               deviceFilter: devices) {
+               deviceFilter: devices,
+               disabledMachines: MachineEnablement.disabledMachines(config: LocalConfig.load())) {
             if debug {
                 throw ValidationError(
                     "--debug is not supported with a profile that spans multiple machines"

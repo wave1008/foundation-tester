@@ -96,7 +96,8 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
     /// DeviceMachineRunner の分割計画から、単一機械の自動ディスパッチならその機械を取る
     private static func remoteHostNames(project: TestProject, profile: String) throws -> [String] {
         if let groups = try DeviceMachineRunner.plan(
-            project: project, profileName: profile, explicitHost: nil, deviceFilter: []) {
+            project: project, profileName: profile, explicitHost: nil, deviceFilter: [],
+            disabledMachines: MachineEnablement.disabledMachines(config: LocalConfig.load())) {
             return ApiRemoteCompat.remoteMachineLabels(planGroups: groups, autoDispatchMachine: nil)
         }
         let dispatch = try? resolveEffectiveDispatchTarget(
