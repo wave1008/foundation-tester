@@ -303,6 +303,10 @@ static NSData *ftReadOutputWithTimeout(NSTask *task, NSPipe *pipe, NSTimeInterva
     @synchronized (buffer) { return [buffer copy]; }
 }
 
+// 有限の --time-limit を満了して screenrecord が正常終了したことを呼び出し側へ伝える exit code。
+// 契約の同期相手: vscode-fleetest/src/deviceStream.ts の TIME_LIMIT_EXIT_CODE
+static const int kFtExitTimeLimitReached = 6;
+
 /// screenrecord の --time-limit を端末の API レベルで決める。
 /// **--time-limit 0(無制限)は API 34 未満で使えない**: Android 13(API 33)実機では即座に
 /// 終了して 47 バイトしか出ない(2026-07-25 実測。エミュレータは API 35 で問題なく、
@@ -492,8 +496,17 @@ int main(int argc, char **argv) {
     };
 
     // adbが自発的に終了=fatal(拡張側の常駐監視が再起動する。ここで内部再試行はしない)。
+    // 有限の --time-limit を満了した正常終了だけは別の exit code で伝える(拡張は失敗として数えず
+    // 黙って張り直す)。経過は adb の起動から測るので、満了なら必ず上限以上になる
+    const int timeLimitSeconds = timeLimit.intValue;
+    const double adbLaunchedAt = ftNow();
     task.terminationHandler = ^(NSTask *t) {
         if (gShuttingDown) return;
+        if (t.terminationStatus == 0 && timeLimitSeconds > 0
+            && ftNow() - adbLaunchedAt >= timeLimitSeconds) {
+            fprintf(stderr, "note: screenrecord reached its --time-limit (%d s); the extension restarts it\n", timeLimitSeconds);
+            exit(kFtExitTimeLimitReached);
+        }
         fprintf(stderr, "error: adbが終了しました(status=%d)。screenrecordセッション終了/端末切断/回転などの可能性\n", (int)t.terminationStatus);
         exit(4);
     };

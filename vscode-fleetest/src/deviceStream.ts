@@ -83,6 +83,10 @@ const MAX_QUICK_FAILURES = 3;
  * 圧縮セッションが壊れ、15秒ごとの wedge 再起動を無限に繰り返してタイルが永久に
  * 「接続中」になった)。呼び出し側に mjpeg で張り直させる。 */
 const CODEC_UNAVAILABLE_EXIT_CODE = 3;
+/** Android helper の screenrecord が有限の --time-limit(API 34 未満は 180 秒)を満了した正常終了。
+ * 契約の同期相手: Sources/fleetest-androidstream/main.m の kFtExitTimeLimitReached。
+ * 失敗ではないので連続失敗に数えず、「予期しない終了」とも言わずに張り直す */
+const TIME_LIMIT_EXIT_CODE = 6;
 
 /** iOS/Android 共通のストリーミング helper 制御インターフェース(monitorLiveController.ts・
  * monitorDeviceStreamController.ts が両プラットフォームを1つのフィールド/Mapで扱えるようにする)。 */
@@ -245,6 +249,13 @@ export class StreamPipeline implements LiveStreamPipeline {
         this.options.outputChannel.appendLine(
           `[${this.options.logPrefix}] ${t("live.stream.codecUnavailable")}`);
         this.options.onCodecUnavailable();
+        return;
+      }
+      if (code === TIME_LIMIT_EXIT_CODE) {
+        this.options.outputChannel.appendLine(
+          t("live.stream.timeLimitRestart", { prefix: this.options.logPrefix }));
+        this.failureStreak = 0;
+        this.scheduleRestart();
         return;
       }
       const reason = signal ? `signal ${signal}` : `exit code ${String(code)}`;

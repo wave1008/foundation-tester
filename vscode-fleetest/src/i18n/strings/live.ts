@@ -224,6 +224,10 @@ export const liveStrings = {
     ja: "画面ストリーミングを継続できませんでした({reason})。",
     en: "Could not continue screen streaming ({reason}).",
   },
+  "live.stream.timeLimitRestart": {
+    ja: "[{prefix}] 画面録画の時間上限に達したので張り直します。",
+    en: "[{prefix}] Screen recording reached its time limit. Restarting.",
+  },
   "live.stream.restarting": {
     ja: "[{prefix}] 予期しない終了({reason})。{delay}ms 後に再起動します。",
     en: "[{prefix}] Unexpected exit ({reason}). Restarting in {delay}ms.",

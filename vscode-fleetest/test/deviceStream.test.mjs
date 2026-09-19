@@ -279,6 +279,32 @@ test("それ以外の exit code は従来どおり再起動する(諦めまで�
   }
 });
 
+// Android の screenrecord は API 34 未満で --time-limit 180 が上限 = 3 分ごとに必ず終わる。
+// helper は満了を exit 6 で伝える。失敗ではないので「予期しない終了」と言わず、諦めにも数えない
+// contract: Sources/fleetest-androidstream/main.m の kFtExitTimeLimitReached と同値
+test("exit 6(録画の時間上限の満了)は失敗に数えず、何度でも張り直す", async () => {
+  const { dir, helper } = makeExitingHelper(6);
+  const lines = [];
+  let failures = 0;
+  const pipeline = new StreamPipeline({
+    command: helper, args: [], logPrefix: "android-stream",
+    outputChannel: { appendLine(line) { lines.push(line); } }, codec: "h264",
+    onFrame: () => {}, onChunk: () => {}, onConnectionOk: () => {},
+    onFailure: () => { failures += 1; },
+    onCodecUnavailable: () => { assert.fail("codec のせいではない"); },
+  });
+  try {
+    pipeline.start();
+    // 起動直後の終了が 3 回続けば通常は諦める(MAX_QUICK_FAILURES)。4 回張り直せば数えていない
+    assert.ok(await waitFor(() => lines.length >= 4, 8000), `張り直しが続くはず: ${lines.join(" | ")}`);
+    assert.equal(failures, 0, "時間上限の満了で諦めない");
+    assert.ok(lines.every((line) => !/予期しない終了|Unexpected exit/.test(line)), lines.join(" | "));
+  } finally {
+    pipeline.dispose();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // 1フレームも届かないまま wedge を繰り返す台は諦める。
 // 実害(2026-08-17): 20 タイル同時配信でホストがエンコードをこなせなくなり(h264 は
 // kVTSessionMalfunctionErr、mjpeg は "JPEG encode failed")、**15秒ごとの再起動を無限に
