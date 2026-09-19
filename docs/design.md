@@ -447,7 +447,9 @@ SpringBoard は system shell なので背面に回らず、`requireForegroundApp
 旧ランナー(版 < 79)は 404 を返し、`SystemUIDriver` が旧経路へ落ちる。
 
 `POST /rotate` は iOS の2実装だけが持つ(`{orientation}` → 整定後の実際の向き、整定しなければ
-`422`)。Android は adb(`AndroidDriver`)で直接行うためルートを持たない。
+`422`)。Android は adb(`AndroidDriver`)で直接行うためルートを持たない。XCUITest ランナーは判定に
+アプリの窓を読むので、**セッションのアプリが落ちていれば 503・背面なら 422 で撃たずに断る**
+(`requireForegroundAppForRotation`。読むと XCTest が Tear Down してランナーごと消える。v118)。
 
 **回転の契約は「アプリの UI がその向きになること」**(2026-08-10 ユーザー決定)。デバイスがどう
 傾いているかではない —— テストが観測できる frame と画面サイズは、iOS も Android も、

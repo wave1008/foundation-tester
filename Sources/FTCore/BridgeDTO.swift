@@ -413,7 +413,10 @@ public enum BridgeAPI {
     /// v117 (in-app only): for apps that draw with Metal (Compose / Flutter), `/screenshot` right after an action waits
     /// until the pixels differ from before the action when the accessibility tree has changed (the tree runs ahead of the
     /// picture on a first visit; the old screen came back byte-identical for up to 0.45 s). Transitions are not awaited.
-    public static let bridgeProtocolVersion = 117
+    /// v118 (XCUITest runner only): `/rotate` refuses when the session's app is not running (503) or not in the foreground
+    /// (422) instead of reading its window, which tore the runner down (the bridge vanished after a rotate following a
+    /// crash); an app that leaves mid-wait is reported as such, not as an undeclared orientation.
+    public static let bridgeProtocolVersion = 118
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///

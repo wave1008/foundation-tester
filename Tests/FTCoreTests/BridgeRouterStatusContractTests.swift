@@ -83,6 +83,26 @@ final class BridgeRouterStatusContractTests: XCTestCase {
                       + "(.notRunning の否定では .runningBackground が素通りする)")
     }
 
+    /// **回転はセッションのアプリが前面で生きているときだけ窓を読む**(`requireForegroundAppForRotation`)。
+    /// 判定は `app.frame` を読むので、落ちた・背面のアプリで読むと XCTest が Tear Down してランナーごと消える
+    /// (2026-09-19 負荷テスト: クラッシュ後の ft_rotate でブリッジが消えた。起動 → 停止 → rotate で毎回再現)。
+    /// 待ちの途中で消えた形も `appOrientation` が前面を確かめてから読むことで止める
+    func testRotationReadsTheWindowOnlyWhileTheAppIsInTheForeground() throws {
+        let source = try routerSource
+        let rotate = try XCTUnwrap(handlerBody("handleRotate", in: source))
+        XCTAssertTrue(rotate.contains("try requireForegroundAppForRotation()"),
+                      "handleRotate はセッションがあるとき requireForegroundAppForRotation() を通すこと")
+        let guardBody = try XCTUnwrap(handlerBody("requireForegroundAppForRotation", in: source))
+        XCTAssertTrue(guardBody.contains("try requireLiveApp()"), "落ちたアプリは requireLiveApp の 503 で断る")
+        XCTAssertTrue(guardBody.contains("BridgeError(422,") && guardBody.contains("== .runningForeground"),
+                      "背面は前面と等しいことを要求して 422 で断る")
+        let orientation = try XCTUnwrap(handlerBody("appOrientation", in: source))
+        let check = try XCTUnwrap(orientation.range(of: "app.state == .runningForeground"),
+                                  "appOrientation は窓を読む前に前面を確かめること")
+        let read = try XCTUnwrap(orientation.range(of: "app.frame"))
+        XCTAssertLessThan(check.lowerBound, read.lowerBound, "前面の確認は app.frame より前")
+    }
+
     /// `private func <名>` から次の `private func` の手前まで
     private func handlerBody(_ name: String, in source: String) -> String? {
         guard let start = source.range(of: "private func \(name)") else { return nil }

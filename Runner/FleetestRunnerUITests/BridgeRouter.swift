@@ -1019,8 +1019,11 @@ final class BridgeRouter {
     /// nil が返り続けると「回っていない」と誤判定して 3 秒待ち切る(2026-08-10 実測)。
     /// セッションが無いときは窓で判定できないのでデバイスの向きに落ちる
     /// (その場合だけは縦専用アプリを見抜けないが、/rotate をセッション無しで撃つ経路は無い)
+    /// **前面に居ないアプリの窓は読まない**(落ちた・背面のアプリの `frame` は XCTest を Tear Down させ、
+    /// ランナーごとブリッジが消える。待ちの途中でアプリが消える形もここで止める)
     private func appOrientation() -> FTOrientation? {
         guard let app else { return XCUIDevice.shared.orientation.ftOrientation }
+        guard app.state == .runningForeground else { return nil }
         let frame = app.frame
         guard frame.width > 0, frame.height > 0 else { return nil }
         return frame.width > frame.height ? .landscape : .portrait
@@ -1207,8 +1210,12 @@ final class BridgeRouter {
     /// POST /rotate. See InAppBridge.handleRotate for why this polls (XCUIDevice's readback is
     /// immediate per PoC, but the shared budget/behavior stays symmetric across both iOS bridges).
     /// **No requireApp()**: rotation is device-level, not app-session-scoped (same as handleAppState).
+    /// **セッションがあるときは前面で生きていることを先に確かめる**(`requireForegroundAppForRotation`)——
+    /// 判定はアプリの窓を読むので、落ちた・背面のアプリで読むとランナーごと消える
+    /// (2026-09-19 負荷テスト: クラッシュ後の ft_rotate でブリッジが消え、以後 881 回「no running bridge」)
     private func handleRotate(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(RotateRequest.self, body)
+        if app != nil { _ = try requireForegroundAppForRotation() }
         // 契約は「アプリの UI が横になること」で物理方向は約束しない(FTOrientation の宣言を参照)
         // ので、`UIDeviceOrientation` と `UIInterfaceOrientation` の左右が逆であることは問題に
         // ならない —— どちらの landscape でも成功とする(読み側も左右をまとめている)
@@ -1229,6 +1236,11 @@ final class BridgeRouter {
                 return .json(RotateResponse(orientation: req.orientation))
             }
             Thread.sleep(forTimeInterval: RotationSettle.pollIntervalSeconds)
+        }
+        if let app, app.state != .runningForeground {
+            throw BridgeError(422, "the session's app (\(sessionBundleID ?? "?")) left the foreground or stopped"
+                + " while waiting for the rotation to \(req.orientation.rawValue), so it could not be confirmed."
+                + " Bring it back first (DSL: launchApp / MCP: ft_launch \(sessionBundleID ?? "<bundleId>"))")
         }
         throw BridgeError(422, "orientation did not settle to \(req.orientation.rawValue) within "
             + "\(RotationSettle.deadlineSeconds)s (the app stayed "
@@ -1725,6 +1737,19 @@ final class BridgeRouter {
                 + " runner down). Bring it back first (DSL: launchApp / MCP: ft_launch \(sessionBundleID ?? "<bundleId>")"
                 + " — resume: true keeps its state), or point the session at what IS in front"
                 + " (MCP: ft_launch com.apple.springboard for the home screen)")
+        }
+        return app
+    }
+
+    /// **回転(/rotate)専用**の前面確認。判定にアプリの窓(`app.frame`)を読むので、ジェスチャ系と同じく
+    /// 落ちたアプリ(503 = requireLiveApp)・背面のアプリ(422)では撃たない
+    private func requireForegroundAppForRotation() throws -> XCUIApplication {
+        let app = try requireLiveApp()
+        guard app.state == .runningForeground else {
+            throw BridgeError(422, "the session's app (\(sessionBundleID ?? "?")) is not in the foreground,"
+                + " so it cannot be rotated (reading its window in this state takes the runner down)."
+                + " Bring it back first (DSL: launchApp / MCP: ft_launch \(sessionBundleID ?? "<bundleId>")"
+                + " — resume: true keeps its state)")
         }
         return app
     }
