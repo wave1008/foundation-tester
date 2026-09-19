@@ -871,12 +871,13 @@ final class BridgeRouter {
             }
             focused = f
         }
-        if Self.remainingText(of: focused) == nil {
+        if try Self.presentRemainingText(of: focused) == nil {
             // 空白のみの内容は a11y から読めない(value が nil か placeholder と同値に見える。
             // TypeReadback のコメント参照)ので、この欄が本当に空か「見えない空白が残っている」かは
             // 区別できない。長さも分からないので固定本数の当て推量で消す——空欄への delete は
             // no-op なので外れて多く撃っても損は無く、それでも残るほど長ければ次の /type の
             // 読み返し不一致が唯一の合図になる(2026-08-31・実機実測)
+            try Self.requirePresent(focused)
             let frame = focused.frame
             coordinate(app, CGPoint(x: frame.maxX - 4, y: frame.midY)).tap()
             focused.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue,
@@ -886,17 +887,18 @@ final class BridgeRouter {
         var previous: String?
         var stagnantRounds = 0
         var rounds = 0
-        while let text = Self.remainingText(of: focused), !text.isEmpty {
+        while let text = try Self.presentRemainingText(of: focused), !text.isEmpty {
             // 「打っても減らない」が続いたら delete では消せない欄。deadline まで叩かず抜ける
             stagnantRounds = (text == previous) ? stagnantRounds + 1 : 0
             if stagnantRounds >= Self.clearMaxStagnantRounds || Date() >= deadline { break }
             previous = text
             rounds += 1
+            try Self.requirePresent(focused)
             let frame = focused.frame
             coordinate(app, CGPoint(x: frame.maxX - 4, y: frame.midY)).tap()
             focused.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
         }
-        if let residual = Self.remainingText(of: focused) {
+        if let residual = try Self.presentRemainingText(of: focused) {
             // 残った値そのものは出さない(パスワード欄も通る経路)。長さと周回数だけ出す
             throw BridgeError(422, "could not empty the field"
                 + " (\(residual.count) character(s) still there after \(rounds) round(s))")
@@ -983,6 +985,23 @@ final class BridgeRouter {
     /// ツールが誤って残しがちな空白の連続を覆う値として 8 を置く(2026-08-31 実機実測の根拠は
     /// 直前のコメント参照)
     private static let invisibleContentDeleteBurst = 8
+
+    /// **消去の途中で欄が消えたら、それ以上触らずに 422 で断る**。消えた要素の value / frame を読む・
+    /// typeText を撃つと XCTest が失敗を記録し、数件で Tear Down してランナーごと消える(2026-09-19:
+    /// WebView の中身(WebContent)を消去の途中で止めると、3 件目の失敗で Tear Down。毎回再現)。
+    /// `exists` は失敗を記録しない。確認と操作の間の短い窓は残るが、失敗が重なる形は止まる
+    private static func requirePresent(_ element: XCUIElement) throws {
+        guard element.exists else {
+            throw BridgeError(422, "the field went away while it was being cleared (the screen changed"
+                + " under it — for example a web view reloaded its content). Take a fresh snapshot and try again")
+        }
+    }
+
+    /// `requirePresent` を通してから `remainingText` を読む(handleClear の読み取りはすべてここを通す)
+    private static func presentRemainingText(of element: XCUIElement) throws -> String? {
+        try requirePresent(element)
+        return remainingText(of: element)
+    }
 
     /// value が placeholder と一致/空なら nil(クリア済み扱い)を返す
     private static func remainingText(of element: XCUIElement) -> String? {

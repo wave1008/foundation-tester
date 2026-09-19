@@ -7,6 +7,14 @@ import XCTest
 
 final class FleetestBridgeTests: XCTestCase {
 
+    /// **XCUI の操作の失敗をテストの失敗として記録しない**(ログにだけ残す)。記録すると1件でも Tear Down して
+    /// ランナーごとブリッジが消える(2026-09-19: WebView の中身を入力の途中で止め、消えた欄へ撃った typeText の
+    /// 失敗1件で Tear Down。毎回再現)。このテストの成否に意味は無く(ブリッジの寿命そのもの)、操作の失敗は
+    /// 各ハンドラが HTTP のエラーとしてホストへ返す。`continueAfterFailure` だけでは止まらない
+    override func record(_ issue: XCTIssue) {
+        NSLog("[fleetest] XCTest issue not recorded (the bridge keeps running): %@", issue.compactDescription)
+    }
+
     func testRunBridgeServer() throws {
         // 個々の操作失敗(例: キーボード非表示での typeText)でテスト全体を
         // 落とさない。サーバは生き続ける。

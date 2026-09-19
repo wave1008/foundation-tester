@@ -103,6 +103,49 @@ final class BridgeRouterStatusContractTests: XCTestCase {
         XCTAssertLessThan(check.lowerBound, read.lowerBound, "前面の確認は app.frame より前")
     }
 
+    /// **消去(/clear)は欄に触る直前に毎回在るかを確かめる**(`requirePresent` / `presentRemainingText`)。
+    /// 消えた要素の value / frame / typeText は XCTest の失敗を記録し、3 件目で Tear Down してランナーごと
+    /// 消える(2026-09-19: WebView の中身を消去の途中で止めると毎回再現)。`exists` は失敗を記録しない
+    func testClearChecksTheFieldStillExistsBeforeTouchingIt() throws {
+        let source = try routerSource
+        let clear = try XCTUnwrap(handlerBody("handleClear", in: source))
+        XCTAssertFalse(clear.contains("Self.remainingText(of: focused)"),
+                       "handleClear の読み取りは presentRemainingText を通すこと(素の remainingText は在るかを見ない)")
+        var searchFrom = clear.startIndex
+        var frames = 0
+        while let read = clear.range(of: "let frame = focused.frame", range: searchFrom..<clear.endIndex) {
+            frames += 1
+            let before = clear[clear.startIndex..<read.lowerBound]
+            let lastGuard = before.range(of: "try Self.requirePresent(focused)", options: .backwards)
+            let lastRead = before.range(of: "presentRemainingText", options: .backwards)
+            XCTAssertNotNil(lastGuard, "focused.frame の前に requirePresent があること")
+            if let lastGuard, let lastRead {
+                XCTAssertGreaterThan(lastGuard.lowerBound, lastRead.lowerBound,
+                                     "frame を読む直前(値を読んだ後)に在るかを確かめ直すこと")
+            }
+            searchFrom = read.upperBound
+        }
+        XCTAssertEqual(frames, 2, "focused.frame を読む箇所の数が変わった = この走査を見直すこと")
+        let guardStart = try XCTUnwrap(source.range(of: "private static func requirePresent"))
+        let guardBody = String(source[guardStart.upperBound...].prefix(600))
+        XCTAssertTrue(guardBody.contains("element.exists") && guardBody.contains("BridgeError(422,"),
+                      "在るかは exists(失敗を記録しない)で見て、無ければ 422")
+    }
+
+    /// **ランナーのテストは XCUI の失敗を記録しない**(`FleetestBridgeTests.record(_:)` がログにだけ残す)。
+    /// 記録すると1件でも Tear Down してランナーごとブリッジが消える(2026-09-19: 消えた欄への typeText の失敗
+    /// 1件で Tear Down・毎回再現 → 上書き後は同じ手順5回で失敗12件をログに残して生存)。`super` を呼ぶと元に戻る
+    func testRunnerTestDoesNotRecordXCUIFailures() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Runner/FleetestRunnerUITests/FleetestBridgeTests.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "override func record(_ issue: XCTIssue)"),
+                                  "FleetestBridgeTests が record(_:) を上書きしていない")
+        let body = String(source[start.upperBound...].prefix(400))
+        let end = body.range(of: "\n    }")?.lowerBound ?? body.endIndex
+        XCTAssertFalse(body[..<end].contains("super.record"), "super を呼ぶと失敗が記録され Tear Down する")
+    }
+
     /// `private func <名>` から次の `private func` の手前まで
     private func handlerBody(_ name: String, in source: String) -> String? {
         guard let start = source.range(of: "private func \(name)") else { return nil }

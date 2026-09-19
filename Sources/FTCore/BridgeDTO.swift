@@ -416,7 +416,11 @@ public enum BridgeAPI {
     /// v118 (XCUITest runner only): `/rotate` refuses when the session's app is not running (503) or not in the foreground
     /// (422) instead of reading its window, which tore the runner down (the bridge vanished after a rotate following a
     /// crash); an app that leaves mid-wait is reported as such, not as an undeclared orientation.
-    public static let bridgeProtocolVersion = 118
+    /// v119 (XCUITest runner only): `/clear` checks that the field still exists before each read and keystroke and answers
+    /// 422 when it went away mid-clear (a web view reloading its content); touching the vanished element recorded XCTest
+    /// failures and the runner tore down on the third one. The runner's test also stops recording XCUI failures as test
+    /// failures (they are logged): a single recorded failure was enough to tear the runner down with the bridge.
+    public static let bridgeProtocolVersion = 119
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
