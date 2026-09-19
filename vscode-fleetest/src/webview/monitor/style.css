@@ -227,8 +227,13 @@ button.bulk-cancel:hover:not(:disabled) {
   gap: 8px;
   min-width: 0;
 }
+/* ラインビューのボタン群(#toolbar-tail)の左。群との間はボタン1つ分 = .toolbar の gap 8px + 14px = .icon-button の 22px。
+   群と同じく下寄せ・同じ高さ(群 = ボタン 22px + 枠の余白 1px×2)にして縦位置を揃える */
 .run-stream-toggle {
   margin-left: auto;
+  margin-right: 14px;
+  align-self: flex-end;
+  height: 24px;
   gap: 4px;
   white-space: nowrap;
   cursor: pointer;
@@ -331,9 +336,6 @@ button.bulk-cancel:hover:not(:disabled) {
 }
 /* ツールバー右端へ寄せる。**寄せるのはグループ1つだけ** —— 個々のボタンに margin-left:auto を
    付けると、その間がツールバーの gap ぶん開いて別々のボタンに見える。 */
-.toolbar-tail-start {
-  margin-left: auto;
-}
 /* タイルの見え方を操るアイコン(ラインビューの表示・全選択)を1つのグループとして囲う。
    枠は .icon-button の角丸(5px)+ 1px の余白ぶんだけ外側に取る。
    **下寄せ**(.toolbar の align-items: center を align-self で上書き) —— ホストグラフは
@@ -480,6 +482,19 @@ select:disabled { opacity: 0.5; cursor: default; }
   flex-direction: column;
   gap: 6px;
   /* クリックで選択可能だが cursor は意図的に変えない */
+}
+/* 「画面更新」OFF(streamToggle.js が #panel-devices に付ける)。タイルと拡大表示の画面の絵・名前・バッジを暗くする。
+   **状態の表示は暗くしない**(フッターの「未起動」等 = .tile-state・エラー・絵の代わりの「ブリッジ未起動」等 =
+   .frame-placeholder・凍結/未登録の警告バッジ)。**実行ログのレーン見出しのバッジも暗くしない**(バッジは
+   .tile / .lane-preview-header の中に絞る。.lane-host も .badge なので素の .badge にしない)。
+   filter は子で打ち消せないので .tile 全体に掛けず部品ごとに掛ける */
+.stream-display-off .frame-wrap img,
+.stream-display-off .frame-wrap canvas,
+.stream-display-off .lane-preview-media,
+.stream-display-off .tile-name,
+.stream-display-off .tile .badge:not(.badge-frozen):not(.badge-unregistered),
+.stream-display-off .lane-preview-header .badge:not(.badge-frozen):not(.badge-unregistered) {
+  filter: brightness(0.55);
 }
 /* 範囲選択の矩形(#tile-pane の中に絶対配置。位置と表示は deviceTiles.js)。
    pointer-events:none = 矩形自身がドラッグ中のポインタを奪わない。 */

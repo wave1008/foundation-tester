@@ -208,8 +208,7 @@ function renderDashboardPanel(): string {
 function renderDevicesPanel(): string {
   return `<div id="panel-devices" class="tab-panel" role="tabpanel" aria-labelledby="tab-devices">
     <div id="toolbar" class="toolbar">
-      <!-- 1行目(テスト実行まで + 右端の「配信を表示する」)。幅 100% で常に1行を占め、グラフとアイコン群は次の行
-           (チェックボックスを「テストを実行」と同じ行の右端に置くため。.toolbar-run-row) -->
+      <!-- 1行目(「テストを実行」まで)。幅 100% で常に1行を占め、グラフ・「画面更新」・アイコン群は次の行 -->
       <div id="toolbar-run-row" class="toolbar-run-row">
         <!-- 実行プロファイルはプロジェクトに属するので、その左に置いて左→右で絞り込みになる順にする。
              選ぶと fleetest.project 設定が変わり、実行プロファイル一覧もこれに追従する。 -->
@@ -228,8 +227,6 @@ function renderDevicesPanel(): string {
         <button id="btn-run-tests" disabled>${t("panels.toolbar.runTests")}</button>
         <!-- テストが全部終わってから録画タブへ移るまでの間だけ出す(main.js の recordingsFinalizing) -->
         <span id="run-recordings-finalizing" class="run-recordings-finalizing" hidden>${t("panels.toolbar.recordingsFinalizing")}</span>
-        <!-- 状態の保存と復元は streamToggle.js ⇄ monitorPanel.ts(setShowStreamDuringRun / showStreamDuringRun) -->
-        <label class="profile-label run-stream-toggle" title="${t("panels.toolbar.showStreamDuringRunTitle")}"><input type="checkbox" id="chk-show-stream-during-run" checked>${t("panels.toolbar.showStreamDuringRun")}</label>
       </div>
       <!-- hostMetricsメッセージ受信のたびにmain.js側で再描画(独自タイマーなし)。
            **リモート機のぶんは行が増える**(hostCharts.js が data-machine="" の行を複製する)ので、
@@ -261,10 +258,14 @@ function renderDevicesPanel(): string {
            ツールバーの他のボタンとは gap で切る)。
            **title/aria-label は webview 側(deviceTiles.js)が入れる** —— 押すたびに
            「すべて選択」⇄「すべて解除」で入れ替わるので、静的 HTML に置くと二重管理になる。 -->
-      <div id="toolbar-tail" class="toolbar-icon-group toolbar-tail-start">
+      <!-- 状態の保存と復元は streamToggle.js ⇄ monitorPanel.ts(setShowStreamDuringRun / showStreamDuringRun)。
+           右寄せ(margin-left:auto)はこのラベルが持つ = 直後の #toolbar-tail はラベルに付いて右端へ寄る -->
+      <label class="profile-label run-stream-toggle" title="${t("panels.toolbar.showStreamDuringRunTitle")}"><input type="checkbox" id="chk-show-stream-during-run" checked>${t("panels.toolbar.showStreamDuringRun")}</label>
+      <div id="toolbar-tail" class="toolbar-icon-group">
         <!-- ラインビュー(タイル領域+スプリッター)の表示トグル。アイコンは縦長の枠3つ(並んだタイル)。状態と title は splitter.js -->
         <button id="btn-fleet-visible" class="icon-button" type="button" aria-pressed="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 2h4v12H1V2zm1 1v10h2V3H2zm4-1h4v12H6V2zm1 1v10h2V3H7zm4-1h4v12h-4V2zm1 1v10h2V3h-2z"/></svg></button>
-        <button id="btn-select-all" class="icon-button" type="button" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 2h14v12H1V2zm1 1v10h12V3H2z"/><path d="M7 11.4 3.9 8.3l.9-.9L7 9.6l4.2-4.2.9.9z"/></svg></button>
+        <!-- 全選択。アイコンは枠に囲まれたタイル3枚(チェックボックスに見せない。押下中の強調は .toggled) -->
+        <button id="btn-select-all" class="icon-button" type="button" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 1h14v14H1V1zm1 1v12h12V2H2z"/><rect x="4" y="4" width="2" height="8" rx="0.5"/><rect x="7" y="4" width="2" height="8" rx="0.5"/><rect x="10" y="4" width="2" height="8" rx="0.5"/></svg></button>
       </div>
     </div>
     <div id="banner" class="banner"></div>

@@ -63,7 +63,7 @@ test("自分の run でも占有として扱う", () => {
   assert.deepEqual([...occupiedMachines(locks)], ["M1Max"]);
 });
 
-// 「配信を表示する」チェックボックス: OFF は保持者を問わず畳む / ON は他人の run と不明だけ畳む
+// 「画面更新」チェックボックス: OFF は保持者を問わず畳む / ON は他人の run と不明だけ畳む
 test("streamFoldMachines: OFF は自分の run も畳み、ON は他人の run と観測できない機械だけ畳む", () => {
   let locks = applyMachineLockEvent(new Map(), { ...heldEvent, machine: "Mine", issuer: "alice", mine: true });
   locks = applyMachineLockEvent(locks, { ...heldEvent, machine: "Other" });

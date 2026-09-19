@@ -58,10 +58,10 @@ export const panelsStrings = {
   // 「デバイスモニター」タブのツールバー右寄り。押すと Test Explorer を前面に出して全シナリオを走らせる
   // (配線: webview/monitor/deviceTiles.js → monitorPanel.ts → コマンド fleetest.runAllTests)。
   "panels.toolbar.runTests": { ja: "テストを実行", en: "Run Tests" },
-  "panels.toolbar.showStreamDuringRun": { ja: "配信を表示する", en: "Show Streaming" },
+  "panels.toolbar.showStreamDuringRun": { ja: "画面更新", en: "Screen Updates" },
   "panels.toolbar.showStreamDuringRunTitle": {
-    ja: "ON: テスト実行中もライブ配信を続けます(負荷が高いとテストが失敗することがあります)。OFF: テスト実行中のデバイスはライブ配信を止め、ポーリングの静止画で更新します(配信とテストが資源を取り合わない)",
-    en: "On: keep live streaming while tests run (tests may fail under heavy load). Off: devices running tests stop live streaming and update from polled screenshots (streaming does not compete with the tests)",
+    ja: "ON: デバイスの画面をライブ配信します(テスト実行中も続けます。負荷が高いとテストが失敗することがあります)。OFF: 全デバイスの画面の配信と取り込みを止めてマシンの負荷を下げます(タイルは最後の画面のまま暗く表示します。状態の表示は続けます)",
+    en: "On: stream device screens live (also while tests run; tests may fail under heavy load). Off: stop streaming and capturing every device's screen to reduce machine load (tiles keep the last frame, dimmed; status keeps updating)",
   },
   "panels.toolbar.recordingsFinalizing": { ja: "録画を編集中...", en: "Editing recordings..." },
   "panels.banner.copied": { ja: "エラーメッセージをコピーしました", en: "Copied the error message" },

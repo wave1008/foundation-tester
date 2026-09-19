@@ -88,7 +88,7 @@ export function occupiedMachines(locks: ReadonlyMap<string, MachineLock>): Set<s
   return occupied;
 }
 
-/** 配信を畳む機械(「配信を表示する」チェックボックスの反映)。OFF = occupiedMachines と同じ
+/** 配信を畳む機械(「画面更新」チェックボックスの反映)。OFF = occupiedMachines と同じ
  * (保持者を問わない)。ON = **他人の run の機械だけ**畳む —— 他人の run を配信で赤くしない
  * (共有ランナーの規律。docs/remote-runner.md §18.7)。観測できない機械は保持者も分からないので
  * ON でも畳む(`mine` は「他人」と「不明」を区別しない)。 */

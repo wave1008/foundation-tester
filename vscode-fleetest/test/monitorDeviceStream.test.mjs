@@ -547,9 +547,9 @@ test("機械の占有(occupiedMachines)と台の inRun は独立に配信を畳�
   }
 });
 
-// 「配信を表示する」が ON(既定)なら run 中の台も配信する。OFF で畳む側は上の3本が
+// 「画面更新」が ON(既定)なら run 中の台も配信する。OFF で畳む側は上の3本が
 // makeDeps の isShowStreamDuringRun: false で見ている
-test("配信を表示するが ON なら inRun:true の台も配信する", async () => {
+test("「画面更新」が ON なら inRun:true の台も配信する", async () => {
   const { dir, binaryPath } = makeMockBinaryDir();
   const { deps } = makeDeps(binaryPath);
   let show = true;
