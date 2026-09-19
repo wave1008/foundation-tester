@@ -932,6 +932,7 @@ public struct BridgeLauncher {
                 let status = try await client.status()
                 if status.ready {
                     enableReduceMotion()
+                    keepSoftwareKeyboardShown()
                     return status
                 }
             } catch {
@@ -1050,6 +1051,12 @@ public struct BridgeLauncher {
             animationsEnabled: AnimationPolicy.animationsEnabled()) { message in
                 ConsoleOut.err(message)
             }
+    }
+
+    /// ソフトキーボードを縮めない(IOSSoftwareKeyboard の doc)。コールド起動時のみ・失敗は非致命・実機は何もしない
+    private func keepSoftwareKeyboardShown() {
+        if physical { return }
+        IOSSoftwareKeyboard.apply(udid: device) { ConsoleOut.err($0) }
     }
 
     func findXCTestRun() throws -> URL? {

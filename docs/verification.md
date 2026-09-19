@@ -104,6 +104,20 @@ Mac の再起動直後(シミュレータ 0 台)に `--ios-xcuitest` を回す�
 数え直す(`BridgeStartupWait`)。陽性対照は**次の再起動直後の `--cmp --ios-xcuitest`**(ログに
 「booting the simulator before starting the xcuitest runner」が並び、落ちなければ効いている)。
 
+## Mac の再起動の後、シミュレータのソフトキーボードが出なくなる(2026-09-19)
+
+再起動の直後の `e2e.sh --ios-inapp` で、ローカル機の `keyboardIsShown` だけが決定的に赤(E2E-CMP / Flutter の 03。
+リモートの3機は緑)。欄に焦点は立つがソフトキーボードが出ない = iOS がハードウェアキーボードがあると見なして
+縮めている。台ごとに見ると `com.apple.keyboard.preferences` の `AutomaticMinimizationEnabled` が true の台だけ出ず、
+false の台(-02)は出た。**Simulator.app 側の `ConnectHardwareKeyboard` は無関係**(シミュレータは Simulator.app
+無しの画面なしで動いていた・書いても効かない)。**`com.apple.Preferences` に書いても効かない**(書く先は
+`com.apple.keyboard.preferences`)。false にすると Simulator の起動し直し無しで次の焦点から出る。
+
+**ツールが供給時に書く**(`IOSSoftwareKeyboard`。run の iOS 供給 = `ProfileWorkerFactory.buildIOSWorkers` と、ブリッジの
+コールド起動 = `BridgeLauncher` の2か所・シミュレータだけ・失敗は警告して続行 = `IOSReduceMotion` と同じ形)。
+陽性対照: 8台中7台が true の状態から CMP / Flutter の 03 が緑、使った台はすべて false に直った。
+**実機はホストから変えられない**(実機でソフトキーボードが出ないときは端末側でハードウェアキーボードを外す)。
+
 ## 長く生きた XCUITest ランナーは AX 照会のたびに数秒待つ状態に落ちることがある(2026-09-14)
 
 同じ 1 シナリオが台によって 6 秒と 22 秒に割れたら(tap 0.5 秒 → 4 秒)、その台のランナーのログに

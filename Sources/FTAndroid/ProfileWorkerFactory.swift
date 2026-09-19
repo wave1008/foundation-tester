@@ -39,6 +39,7 @@ public enum ProfileWorkerFactory {
         for device in provisioned where !device.physical {
             IOSReduceMotion.apply(udid: device.udid,
                                   animationsEnabled: resolved.enableAnimations, warn: log)
+            IOSSoftwareKeyboard.apply(udid: device.udid, warn: log)
         }
         return provisioned.map { makeIOSWorker(device: $0, iosApp: iosApp) }
     }
