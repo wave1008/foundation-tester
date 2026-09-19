@@ -43,7 +43,9 @@ class 画像で要素を探す {
             scene(1, "起動直後の初回訪問でチェックボックスを findImage で掴んで叩く") {
                 condition {
                     // **launchApp の直後にタブを切り替えてすぐ撮る**のが要点(v117 の witness): CMP iOS の
-                    // in-app は初回訪問でタップが返ってから 0.3〜0.45 秒のあいだ切り替え前の絵を返した
+                    // in-app は初回訪問でタップが返ってから 0.3〜0.45 秒のあいだ切り替え前の絵を返した。
+                    // **XCUITest エンジン(--ios-xcuitest)では赤になる既知の制約**: 同じ遅れがあり直していない
+                    // (docs/framework-differences.md §3)。待つ existImage(S0040)は通る
                     launchApp()
                     tap("#tab_controls")
                 }.action {

@@ -403,7 +403,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 InApp の `GET /screenshot` は `drawHierarchy(afterScreenUpdates: false)` で可視の窓を奥から重ねて描くが、
 **自前描画のアプリ(`uiFramework` の `isSelfRendered` = Compose / Flutter)では、a11y の木が絵より先に進む**
 —— CMP の起動後の初回訪問で、タップが返ってから 0.27〜0.45 秒のあいだ切り替え前の絵がバイト同一で返った
-(2026-09-19 実測。2回目の訪問・SwiftUI・XCUITest エンジンでは起きない)。その絵で findImage / imageIs /
+(2026-09-19 実測。2回目の訪問・SwiftUI では起きない。**XCUITest エンジンでも起きるが直していない** = docs/framework-differences.md §3)。その絵で findImage / imageIs /
 分類器 / occlusion-guard が判定すると、木の枠で別の画面の画素を切る。v117 の `InAppRenderCatchUp`
 (`InAppSettle.swift`)が守る規律は3つ: **①操作の直前に 0.25 倍の画素の指紋と木(frames)の指紋を控える**
 (`captureRenderBefore`。操作を起こす経路は `tapByRef` と `performSettlingIfMoved` の2つで、両方が通す。
