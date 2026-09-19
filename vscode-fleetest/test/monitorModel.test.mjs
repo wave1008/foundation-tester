@@ -3458,3 +3458,25 @@ test("planDisabledMachineStops: 観測が届くまで(全台 unknown)は待ち�
   assert.deepEqual(planDisabledMachineStops(observed, new Set(["M1Max"]), new Set(["M1Max"])).stops, [],
     "済んだ機械は撃たない(開いている間に手で起こした台と争わない)");
 });
+
+test("planDisabledMachineStops: 識別子があれば登録の有無に関わらず直指定・無ければ登録済みだけ名前で・未登録は撃たない", () => {
+  const devices = [
+    { id: "android:M1mini/P", name: "P", platform: "android", state: "connected", detail: "", kind: "virtual",
+      machine: "M1mini", registered: false, serial: "emulator-5554" },
+    { id: "ios:M1mini/S", name: "S", platform: "ios", state: "booted", detail: "", kind: "virtual",
+      machine: "M1mini", registered: false, udid: "UDID-1" },
+    { id: "android:M1mini/Q", name: "Q", platform: "android", state: "connected", detail: "", kind: "virtual",
+      machine: "M1mini", registered: false },
+    { id: "android:M1mini/R", name: "R", platform: "android", state: "connected", detail: "", kind: "virtual",
+      machine: "M1mini" },
+    // 登録済みでも serial があれば直指定(名前は向こうの別プロジェクトの名前でありうる)
+    { id: "android:M1mini/Pixel_9_Android_15_-01", name: "Pixel_9_Android_15_-01", platform: "android",
+      state: "connected", detail: "", kind: "virtual", machine: "M1mini", serial: "emulator-5556" },
+  ];
+  assert.deepEqual(planDisabledMachineStops(devices, new Set(["M1mini"]), new Set()).stops, [
+    { name: "P", machine: "M1mini", serial: "emulator-5554" },
+    { name: "S", machine: "M1mini", udid: "UDID-1" },
+    { name: "R", machine: "M1mini" },
+    { name: "Pixel_9_Android_15_-01", machine: "M1mini", serial: "emulator-5556" },
+  ]);
+});

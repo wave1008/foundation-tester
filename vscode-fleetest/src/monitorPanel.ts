@@ -621,10 +621,10 @@ export class MonitorPanelController implements vscode.Disposable {
     for (const machine of newlyHandled) {
       this.disabledStopHandled.add(machine);
     }
-    for (const { name, machine } of stops) {
+    for (const { name, machine, udid, serial } of stops) {
       this.outputChannel.appendLine(t("deviceOps.log.stopDisabledMachineDevice",
         { name, machine: machine ?? "local" }));
-      this.deviceOps.enqueueLifecycleJob({ kind: "device", name, op: "down", machine });
+      this.deviceOps.enqueueLifecycleJob({ kind: "device", name, op: "down", machine, udid, serial });
     }
   }
 
