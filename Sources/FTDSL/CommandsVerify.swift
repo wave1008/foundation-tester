@@ -172,7 +172,7 @@ public func existImage(_ label: String, threshold: Double = FindImage.defaultThr
 
 /// **画像で要素を探し、閾値を下回るものを全部返す**(Shirates Vision の findImages)。
 /// 距離の小さい順。`threshold: nil` なら絞らずアスペクト比の許容幅に入った候補を全部返す。
-/// テンプレートは1枚だけ使う(自 OS の印が付いたものを優先 = Shirates の getFile)。
+/// ラベルの見本を全部使い、同じ要素は距離の小さいほうで1つに畳む(Shirates は1枚だけ = docs/shirates-parity.md)。
 /// **待たない・スクロールしない**(今の画面だけを1回見る。Shirates と同じ)。
 /// `lastElement` は差し替えない(要素を1つに定めないため。countIs と同じ)
 @discardableResult

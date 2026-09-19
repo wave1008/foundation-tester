@@ -38,7 +38,7 @@ It uses the same samples as [imageIs](image_assertion.md).
 
 - Put images cut out by **the element's own frame** (`fleetest vision capture` or the MCP tool
   `ft_capture_element` cuts them for you).
-- `findImages` uses only one sample image (the one for the running OS first).
+- `findImages` also uses every sample in the label folder. When several samples hit the same element, it is returned once with the nearest distance (Shirates' `findImages` uses only one sample).
 
 ## Example
 
@@ -69,7 +69,8 @@ existImage("[Share Icon]", scroll: .down).tap()
   versions because the text is drawn differently (measured on the same row on Android 15 / 13 / 12, including differences
   you cannot see). Devices on the same OS version are 0.001 to 0.003 apart. `findImage` / `existImage` try every
   sample in the label folder, so adding the new sample to the same folder finds the element on both devices (you can
-  keep `threshold` tight). `findImages` uses only one sample, so this does not help there.
+  keep `threshold` tight). The same goes for `findImages`: for parts whose look changes with their state (on / off),
+  put a sample for each state and both are returned.
 - One call takes roughly 0.1 seconds for the screenshot plus about 8 milliseconds per candidate (measured on a simulator).
 - `waitSeconds` defaults to 0: it looks at the current screen once (it does not follow the run profile's default wait). To wait for the
   image to appear, for example right after a screen transition, pass seconds such as `waitSeconds: 3`. While scrolling, it looks once per position.

@@ -35,8 +35,8 @@ extension StepExecutor {
             return StepOutcome(status: .failed(FindImage.MatchError.noTemplate(
                 label: label, directory: "vision/classifiers/\(DefaultClassifier.name)").description))
         }
-        // findImages は Shirates の VisionClassifier.getFile と同じく1枚(自 OS 用を優先)だけを使う
-        let templates = single ? allTemplates : [allTemplates[0]]
+        // findImages もラベルの見本を全部使う(Shirates は getFile の1枚だけ。差は FindImage.mergeAcrossTemplates)
+        let templates = allTemplates
         let threshold: Double? = single ? (step.imageThreshold ?? FindImage.defaultThreshold) : step.imageThreshold
 
         var notes: [String] = []
@@ -122,9 +122,20 @@ extension StepExecutor {
     /// (Shirates の findImageCore)。1位が閾値を超えたら1位の画像を DefaultClassifier に掛け、
     /// 短いラベルが一致し、かつ `classificationConfirmed` が通れば採る(分類器が無い・学べないときは
     /// この救済を飛ばす)
+    /// 1回の走査。Vision の呼び出しの控え(VisionUsageLedger)は走査につき1回だけ書く
+    /// (特徴量を候補の数だけ作るので、1件ずつ書くと書き込みが照合より重くなる)
     private func scanImage(templates: [URL], label: String, single: Bool, threshold: Double?,
                            tolerance: Double, snapshot: SnapshotResponse, carried: FindImage.Match?,
                            phase: inout PhaseAccumulator) async throws -> ImageScan {
+        try await VisionUsageLedger.batched {
+            try await scanImageOnce(templates: templates, label: label, single: single, threshold: threshold,
+                                    tolerance: tolerance, snapshot: snapshot, carried: carried, phase: &phase)
+        }
+    }
+
+    private func scanImageOnce(templates: [URL], label: String, single: Bool, threshold: Double?,
+                               tolerance: Double, snapshot: SnapshotResponse, carried: FindImage.Match?,
+                               phase: inout PhaseAccumulator) async throws -> ImageScan {
         let clock = ContinuousClock()
         let shotStart = clock.now
         let png = try await driver.screenshot()
@@ -150,15 +161,17 @@ extension StepExecutor {
                 return match
             }, nearest: nearest, classified: classified, compared: compared)
         }
+        var perTemplate: [[FindImage.Match]] = []
+        let prints = FindImage.CandidatePrints()
         for template in templates {
             let matches = try await FindImage.match(template: template, elements: snapshot.elements,
                                                     screen: snapshot.screen, screenshot: screenshot,
-                                                    tolerance: tolerance)
+                                                    tolerance: tolerance, prints: prints)
             compared += matches.count
             if let first = matches.first, first.distance < (nearest?.distance ?? .infinity) { nearest = first }
             guard single else {
-                return named(threshold.map { limit in matches.filter { $0.distance < limit } } ?? matches,
-                             classified: false)
+                perTemplate.append(matches)
+                continue
             }
             guard let primary = matches.first else { continue }
             let limit = threshold ?? FindImage.defaultThreshold
@@ -172,6 +185,9 @@ extension StepExecutor {
                try await Self.classificationConfirmed(classification, crop: crop, templates: templates, threshold: limit) {
                 return named([primary], classified: true)
             }
+        }
+        if !single {
+            return named(FindImage.mergeAcrossTemplates(perTemplate, threshold: threshold), classified: false)
         }
         return ImageScan(found: [], nearest: nearest, classified: false, compared: compared)
     }

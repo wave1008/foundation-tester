@@ -55,12 +55,12 @@ class 画像で要素を探す {
                     findImage("[Switch]").idIs("sw_notify")
                 }
             }
-            scene(2, "オフのラジオ2つを findImages で見つける") {
+            scene(2, "ラジオ3つを findImages で見つける") {
                 expectation {
-                    // 見本はオフのラジオ。Material のオンのラジオ(#radio_a)は中を塗るので別の絵になり見つからない
-                    // (SwiftUI の E2E-iOS では線の太さの差だけで距離 0.11 に収まる = SUT の 20 と違う点)
+                    // findImages はラベルの見本を全部使う。Material のオンのラジオ(#radio_a)は中を塗るので
+                    // オフの見本からは遠いが、オンの見本(b_on)で当たる = 見本を1枚しか使わないと落ちる witness
                     let ids = findImages("[Radio]").map { $0.id ?? "-" }.sorted()
-                    ids.joined(separator: ",").thisIs("radio_b,radio_c")
+                    ids.joined(separator: ",").thisIs("radio_a,radio_b,radio_c")
                 }
             }
         }

@@ -164,7 +164,8 @@ final class FindImageTests: XCTestCase {
                                                              screen: FTRect(x: 0, y: 0, width: 300, height: 100)))
         let matches = try await FindImage.match(template: template, elements: screenElements,
                                                 screen: FTRect(x: 0, y: 0, width: 300, height: 100),
-                                                screenshot: screenshot, tolerance: 0.2)
+                                                screenshot: screenshot, tolerance: 0.2,
+                                                prints: FindImage.CandidatePrints())
         XCTAssertEqual(matches.count, 3)
         XCTAssertEqual(matches.first?.element.identifier, "circle")
         XCTAssertLessThan(try XCTUnwrap(matches.first?.distance), FindImage.defaultThreshold)
@@ -240,6 +241,84 @@ final class FindImageTests: XCTestCase {
         XCTAssertEqual(filtered.imageMatches?.map(\.element.identifier), ["circle"],
                        "\(filtered.status) / \(filtered.driverFallback ?? "-") / all: \(all.driverFallback ?? "-")")
         XCTAssertNil(filtered.resolvedElement, "findImages は要素を1つに定めない")
+    }
+
+    // MARK: - findImages はラベルの見本を全部使う(Shirates は1枚。docs/shirates-parity.md)
+
+    private func match(_ e: ElementInfo, _ distance: Double, _ template: String) -> FindImage.Match {
+        FindImage.Match(element: e, visibleFrame: e.frame, distance: distance,
+                        template: URL(fileURLWithPath: "/t/\(template).png"))
+    }
+
+    func testMergeKeepsEachElementOnceAtItsNearestDistance() {
+        let a = element(1, id: "a", 0, 0, 10, 10), b = element(2, id: "b", 10, 0, 10, 10),
+            c = element(3, id: "c", 20, 0, 10, 10)
+        let merged = FindImage.mergeAcrossTemplates(
+            [[match(a, 0.02, "off"), match(b, 0.20, "off"), match(c, 0.14, "off")],
+             [match(b, 0.03, "on"), match(a, 0.30, "on"), match(c, 0.05, "on")]],
+            threshold: 0.15)
+        XCTAssertEqual(merged.map(\.element.identifier), ["a", "b", "c"], "距離順・1要素1件")
+        // c は両方の見本が閾値内(0.14 / 0.05)= 先に出た距離ではなく近いほうを残す
+        XCTAssertEqual(merged.map(\.distance), [0.02, 0.03, 0.05], "要素ごとに最も近い見本の距離")
+        XCTAssertEqual(merged.map { $0.template.lastPathComponent }, ["off.png", "on.png", "on.png"])
+        XCTAssertEqual(FindImage.mergeAcrossTemplates([[match(c, 0.15, "on")]], threshold: 0.15).count, 0,
+                       "findImages は閾値未満(<)だけ(Shirates のまま)")
+        XCTAssertEqual(FindImage.mergeAcrossTemplates([[match(a, 0.9, "off")], [match(b, 0.8, "on")]],
+                                                      threshold: nil).map(\.element.identifier), ["b", "a"],
+                       "threshold: nil は絞らない")
+    }
+
+    /// 1枚目の見本(丸)には当たらない要素(四角)も、2枚目の見本で返る(実行経路で確かめる)
+    func testFindImagesUsesEveryTemplateOfTheLabel() async throws {
+        let root = try makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dir = VisionClassifier.directory(projectRoot: root, name: DefaultClassifier.name)
+            .appendingPathComponent("@i/Home/[Circle Icon]", isDirectory: true)
+        let square = try XCTUnwrap(VisionClassifier.crop(png: Self.screenPNG(), frame: FTRect(x: 100, y: 0, width: 100, height: 100),
+                                                        screen: FTRect(x: 0, y: 0, width: 300, height: 100)))
+        // パス順で circle.png の後ろ = 1枚しか使わなければ試されない
+        try CheckStateClassifierTests.png(square).write(to: dir.appendingPathComponent("square.png"))
+        let outcome = await run("findImages", threshold: FindImage.defaultThreshold, projectRoot: root)
+        XCTAssertEqual(outcome.imageMatches?.map { $0.element.identifier ?? "-" }.sorted(), ["circle", "square"],
+                       "\(outcome.status) / \(outcome.driverFallback ?? "-")")
+    }
+
+    /// 見本が複数でも、候補の特徴量は走査につき1回だけ計算し、距離は控え無しと同じ
+    func testCandidatePrintsAreComputedOncePerScan() async throws {
+        let root = try makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dir = VisionClassifier.directory(projectRoot: root, name: DefaultClassifier.name)
+            .appendingPathComponent("@i/Home/[Circle Icon]", isDirectory: true)
+        let screen = FTRect(x: 0, y: 0, width: 300, height: 100)
+        let square = try XCTUnwrap(VisionClassifier.crop(png: Self.screenPNG(), frame: FTRect(x: 100, y: 0, width: 100, height: 100),
+                                                        screen: screen))
+        try CheckStateClassifierTests.png(square).write(to: dir.appendingPathComponent("square.png"))
+        let templates = FindImage.templateFiles(label: "[Circle Icon]", classifierDirectory: VisionClassifier.directory(
+            projectRoot: root, name: DefaultClassifier.name), isAndroid: false)
+        XCTAssertEqual(templates.count, 2)
+        let screenshot = try XCTUnwrap(VisionClassifier.crop(png: Self.screenPNG(), frame: screen, screen: screen))
+        let shared = FindImage.CandidatePrints()
+        for template in templates {
+            let cached = try await FindImage.match(template: template, elements: screenElements, screen: screen,
+                                                   screenshot: screenshot, tolerance: 0.2, prints: shared)
+            let fresh = try await FindImage.match(template: template, elements: screenElements, screen: screen,
+                                                  screenshot: screenshot, tolerance: 0.2, prints: FindImage.CandidatePrints())
+            XCTAssertEqual(cached.map(\.distance), fresh.map(\.distance))
+        }
+        XCTAssertEqual(shared.computed, screenElements.count, "見本2枚でも候補3つぶんしか計算しない")
+    }
+
+    /// 1回の走査の Vision の控えは1回だけ書く(特徴量1回ごとに書くと照合より重い。performance-tuning §3.30)
+    func testEachScanWritesTheVisionLedgerOnce() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FTCore/StepExecutor+FindImage.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "private func scanImage(templates:"))
+        let end = try XCTUnwrap(source.range(of: "private func scanImageOnce(templates:"))
+        XCTAssertTrue(source[start.upperBound..<end.lowerBound].contains("VisionUsageLedger.batched"),
+                      "走査を batched で包んでいない")
+        XCTAssertEqual(source.components(separatedBy: "scanImageOnce(").count - 1, 2,
+                       "scanImageOnce を直に呼ぶのは scanImage だけ(宣言 + 1か所)")
     }
 
     func testExistImagePassesAndGrabsTheElementLikeFindImage() async throws {
@@ -335,7 +414,8 @@ extension FindImageTests {
         let screenshot = try XCTUnwrap(VisionClassifier.crop(png: Self.screenPNG(), frame: screen, screen: screen))
         do {
             _ = try await FindImage.match(template: blank, elements: screenElements, screen: screen,
-                                          screenshot: screenshot, tolerance: 0.5)
+                                          screenshot: screenshot, tolerance: 0.5,
+                                          prints: FindImage.CandidatePrints())
             XCTFail("白紙のテンプレートで照合が通ってはいけない")
         } catch let error as FindImage.MatchError {
             guard case .degeneratePrints = error else { return XCTFail("\(error)") }
@@ -366,7 +446,7 @@ extension FindImageTests {
         let loop = try XCTUnwrap(body.range(of: "for candidate in candidates"))
         XCTAssertLessThan(degenerate.lowerBound, consistent.lowerBound)
         XCTAssertLessThan(inconsistent.lowerBound, loop.lowerBound, "候補を照合する前に断る")
-        XCTAssertTrue(body[consistent.lowerBound..<inconsistent.lowerBound].contains("forgetTemplatePrints()"),
-                      "ずれた控えを次の照合に使わない")
+        XCTAssertTrue(body[consistent.lowerBound..<inconsistent.lowerBound].contains("discardTemplatePrints(after: template)"),
+                      "ずれた控えを次の照合に使わない(プロセス内の控えも永続控えも)")
     }
 }

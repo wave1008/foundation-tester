@@ -86,6 +86,32 @@ final class VisionUsageLedgerTests: XCTestCase {
         }
     }
 
+    /// batched の範囲の record は溜めて、終わりに1回だけ書く(途中ではファイルに出ない)。
+    /// 件数・失敗・所要の合計は1件ずつ書いたときと同じ
+    func testBatchedRecordsAreWrittenOnceWithTheSameTotals() async throws {
+        let selfPID = ProcessInfo.processInfo.processIdentifier
+        let file = dir.appendingPathComponent("\(selfPID).json")
+        func writtenCalls() throws -> Int {
+            let object = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any]
+            return try XCTUnwrap(object?["calls"] as? Int)
+        }
+        var previous: [Int32: VisionUsageLedger.Counters]? = nil
+        VisionUsageLedger.record(ok: true, ms: 1)
+        _ = VisionUsageLedger.drain(previous: &previous)   // 基準取り(初見の pid は増分0)
+        let before = try writtenCalls()
+        try await VisionUsageLedger.batched {
+            VisionUsageLedger.record(ok: true, ms: 10)
+            VisionUsageLedger.record(ok: false, ms: 20)
+            VisionUsageLedger.record(ok: true, ms: 30)
+            XCTAssertEqual(try writtenCalls(), before, "範囲の途中では書かない")
+        }
+        XCTAssertEqual(try writtenCalls(), before + 3)
+        let delta = VisionUsageLedger.drain(previous: &previous)
+        XCTAssertEqual(delta?.calls, 3)
+        XCTAssertEqual(delta?.failures, 1)
+        XCTAssertEqual(delta?.totalMs, 60)
+    }
+
     // MARK: - RegionText.read からの配線
 
     /// `Tests/FTCoreTests/このファイル` から相対に `Tests/Fixtures/OcclusionCrops` を指す

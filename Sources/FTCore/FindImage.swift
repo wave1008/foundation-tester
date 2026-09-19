@@ -182,20 +182,44 @@ public enum FindImage {
 
     private static let templateLock = NSLock()
     nonisolated(unsafe) private static var templatePrints: [String: FeaturePrintObservation] = [:]
+    /// プロセス内の控えのうち、永続控え(TemplatePrintStore)に載っているもの(= 書き直さない)
+    nonisolated(unsafe) private static var persistedTemplateKeys: Set<String> = []
 
     static func forgetTemplatePrints() {
-        templateLock.withLock { templatePrints = [:] }
+        templateLock.withLock { templatePrints = [:]; persistedTemplateKeys = [] }
     }
 
-    /// テンプレートの特徴量(ファイルのパス・更新時刻・大きさが同じならプロセス内で使い回す)
-    static func templatePrint(_ url: URL, image: CGImage) async throws -> FeaturePrintObservation {
+    private static func memoryKey(_ url: URL) -> String {
         let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
-        let key = "\(url.standardizedFileURL.path)|\((attributes?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)"
+        return "\(url.standardizedFileURL.path)|\((attributes?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)"
             + "|\(attributes?[.size] as? Int ?? 0)"
+    }
+
+    /// テンプレートの特徴量。プロセス内の控え(パス・更新時刻・大きさ)→ 永続控え(中身と OS の版が一致)→ 計算、の順。
+    /// **計算したものは永続控えにまだ書かない**(書くのは match が門を通した後 = `persistTemplatePrint`)
+    static func templatePrint(_ url: URL, image: CGImage) async throws -> FeaturePrintObservation {
+        let key = memoryKey(url)
         if let cached = templateLock.withLock({ templatePrints[key] }) { return cached }
+        if let stored = TemplatePrintStore.lookup(url) {
+            templateLock.withLock { templatePrints[key] = stored; persistedTemplateKeys.insert(key) }
+            return stored
+        }
         let observation = try await featurePrint(image)
         templateLock.withLock { templatePrints[key] = observation }
         return observation
+    }
+
+    /// 門(縮退・測り直し)を通った見本の特徴量を永続控えへ書く(載っていれば何もしない)
+    private static func persistTemplatePrint(_ url: URL, _ observation: FeaturePrintObservation) {
+        let key = memoryKey(url)
+        guard templateLock.withLock({ persistedTemplateKeys.insert(key).inserted }) else { return }
+        TemplatePrintStore.record(url, print: observation)
+    }
+
+    /// 門で落ちた: プロセス内の控えを全部捨て、その見本の永続控えも消す(壊れた状態の特徴量を持ち越さない)
+    private static func discardTemplatePrints(after template: URL) {
+        forgetTemplatePrints()
+        TemplatePrintStore.drop(template)
     }
 
     /// 縮退の検知に使う一様な白(この画像の特徴量は、実物の見本とは距離 1.4 ほど離れる。2026-09-19 実測)
@@ -223,11 +247,52 @@ public enum FindImage {
     static let selfDistanceTolerance: Double = 0.0001
     static func isConsistent(selfDistance distance: Double) -> Bool { distance <= selfDistanceTolerance }
 
+    /// findImages の結果: 全テンプレートの照合を合わせ、閾値未満(`<`。nil なら絞らない)だけを残し、
+    /// **同じ要素(ref)は距離の小さいほうで1つに畳んで**距離順に返す(同じ距離なら先に出た順)。
+    /// Shirates の findImages はテンプレートを1枚(getFile)しか使わないが、fleetest はラベルの見本を全部使う
+    /// (docs/shirates-parity.md。OS の版・画面の倍率・部品の状態ごとの見本がどれか1枚に当たればよい)
+    public static func mergeAcrossTemplates(_ perTemplate: [[Match]], threshold: Double?) -> [Match] {
+        var best: [Int: (order: Int, match: Match)] = [:]
+        var order = 0
+        for match in perTemplate.joined() where threshold.map({ match.distance < $0 }) ?? true {
+            if let current = best[match.element.ref] {
+                if match.distance < current.match.distance { best[match.element.ref] = (current.order, match) }
+            } else {
+                best[match.element.ref] = (order, match)
+                order += 1
+            }
+        }
+        return best.values
+            .sorted { $0.match.distance != $1.match.distance
+                ? $0.match.distance < $1.match.distance : $0.order < $1.order }
+            .map(\.match)
+    }
+
+    /// 1回の走査(同じスクリーンショット)の中で、候補の切り出しの特徴量を見本どうしで使い回す控え。
+    /// 見本が N 枚あると候補の特徴量を N 回計算し直していた(findImages をラベルの見本全部に広げて
+    /// 照合が約3倍になった実測)。鍵は見えている枠 = 同じスクリーンショットなら同じ切り出し。
+    /// **走査ごとに作り直す**(別のスクリーンショットの特徴量で照合しない)
+    public final class CandidatePrints: @unchecked Sendable {
+        private var prints: [String: FeaturePrintObservation] = [:]
+        public init() {}
+        /// 実際に特徴量を計算した回数(控えから返した回は数えない)
+        public private(set) var computed = 0
+        fileprivate func observation(for frame: FTRect, compute: () async throws -> FeaturePrintObservation?)
+            async rethrows -> FeaturePrintObservation? {
+            let key = "\(frame.x),\(frame.y),\(frame.width),\(frame.height)"
+            if let cached = prints[key] { return cached }
+            guard let observation = try await compute() else { return nil }
+            computed += 1
+            prints[key] = observation
+            return observation
+        }
+    }
+
     /// 1つのテンプレートを画面の候補と比べ、距離の小さい順に返す(閾値では絞らない)。
     /// **照合1回につき一様な白の特徴量を1つ作って縮退を確かめる**(候補ごとではない。約 4ms)。
     /// 縮退していたらテンプレートの控えも捨てる(縮退中に作った特徴量を次の回に使わない)
     public static func match(template: URL, elements: [ElementInfo], screen: FTRect, screenshot: CGImage,
-                             tolerance: Double) async throws -> [Match] {
+                             tolerance: Double, prints: CandidatePrints) async throws -> [Match] {
         guard let templateImage = loadImage(template) else {
             throw MatchError.unreadableTemplate(template.path)
         }
@@ -238,20 +303,24 @@ public enum FindImage {
         let templateObservation = try await templatePrint(template, image: templateImage)
         let blank = try await featurePrint(blankSentinel)
         if isDegenerate(templateDistanceToBlank: try templateObservation.distance(to: blank)) {
-            forgetTemplatePrints()
+            discardTemplatePrints(after: template)
             throw MatchError.degeneratePrints(template: template.lastPathComponent)
         }
         // 見本を取り直して控えと比べる(控えを作った時点・今のどちらかが壊れていれば一致しない)
         let selfDistance = Double(try templateObservation.distance(to: try await featurePrint(templateImage)))
         if !isConsistent(selfDistance: selfDistance) {
-            forgetTemplatePrints()
+            discardTemplatePrints(after: template)
             throw MatchError.inconsistentPrints(template: template.lastPathComponent, distance: selfDistance)
         }
+        persistTemplatePrint(template, templateObservation)
         var matches: [Match] = []
         for candidate in candidates {
-            guard let crop = VisionClassifier.crop(image: screenshot, frame: candidate.visibleFrame, screen: screen)
-            else { continue }
-            let distance = try templateObservation.distance(to: try await featurePrint(crop))
+            guard let observation = try await prints.observation(for: candidate.visibleFrame, compute: {
+                guard let crop = VisionClassifier.crop(image: screenshot, frame: candidate.visibleFrame, screen: screen)
+                else { return nil }
+                return try await featurePrint(crop)
+            }) else { continue }
+            let distance = try templateObservation.distance(to: observation)
             matches.append(Match(element: candidate.element, visibleFrame: candidate.visibleFrame,
                                  distance: distance, template: template))
         }

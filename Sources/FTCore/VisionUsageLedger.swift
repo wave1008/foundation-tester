@@ -31,7 +31,26 @@ public enum VisionUsageLedger {
     /// (ここでファイル I/O をするため)。書き込み失敗は握りつぶす —— 呼び出しそのものを
     /// 絶対に止めない
     public static func record(ok: Bool, ms: Double) {
-        ledger.record(ok: ok, ms: ms)
+        if let batch = currentBatch { batch.append(ok: ok, ms: ms) } else { ledger.record(ok: ok, ms: ms) }
+    }
+
+    /// `batched` の範囲で溜める控え(範囲の終わりに1回だけ書く)
+    final class Batch: @unchecked Sendable {
+        private let lock = NSLock()
+        private var calls: [(ok: Bool, ms: Double)] = []
+        func append(ok: Bool, ms: Double) { lock.withLock { calls.append((ok, ms)) } }
+        func take() -> [(ok: Bool, ms: Double)] { lock.withLock { defer { calls = [] }; return calls } }
+    }
+
+    @TaskLocal static var currentBatch: Batch?
+
+    /// `body` の中の record を溜めて、終わりに1回だけ書く(件数・失敗・所要の合計は1件ずつと同じ)。
+    /// findImage の1回の走査のように、特徴量を短時間に何十回も作る経路で使う。**入れ子は外側がまとめて書く**
+    public static func batched<T>(_ body: () async throws -> T) async rethrows -> T {
+        if currentBatch != nil { return try await body() }
+        let batch = Batch()
+        defer { ledger.record(batch.take()) }
+        return try await $currentBatch.withValue(batch) { try await body() }
     }
 
     /// 直近スナップショットからの増分を返す。呼び出し側(host-metrics のサンプリングループ)が

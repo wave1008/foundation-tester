@@ -747,7 +747,11 @@
   見本を取り直し、控えと一致しなければ断る(`isConsistent`。健全なら 4 機 1,200 回とも距離 0))/ **③見つからないことは失敗に
   しない**(select と同じ。失敗は設定の誤りと Vision が答えを出せない状態だけ。**existImage だけが見つからないことを失敗にする**)/
   **④findImage の `waitSeconds` の既定は 0**(`FindImage.defaultWaitSeconds`。待つのは existImage の側 = 既定は実行プロファイルの defaultTimeout)。**文字だけが違う同じ形の部品は距離
-  0.08〜0.15 に並ぶ**ので、既定の閾値のまま行を探す書き方を E2E に置かない → maintainer-notes §37
+  0.08〜0.15 に並ぶ**ので、既定の閾値のまま行を探す書き方を E2E に置かない → maintainer-notes §37。
+  **findImages もラベルの見本を全部使う**(Shirates は1枚 = shirates-parity.md の差分)。特徴量は計算の回数だけが
+  費用(大きさ・並列で変わらない)なので、候補の特徴量は走査の中で使い回し(`FindImage.CandidatePrints`)、
+  見本の特徴量は `TemplatePrintStore`(`<project>/.fleetest/vision/template-prints.json`)に永続化する ——
+  **中身の sha256 と OS の版で差分更新・書くのは門を通った特徴量だけ・門で落ちたら消す**(docs/performance-tuning.md §3.30)
 - **in-app のスクリーンショットは、自前描画(`isSelfRendered`)で木が絵より先に進んでいる間は撮らない**
   (`InAppRenderCatchUp`・v117)。操作を起こす2経路(`tapByRef` / `performSettlingIfMoved`)が直前に画素と木の
   指紋を控え、`/screenshot` は**木が変わったのに画素が控えのままの間だけ**待つ。**遷移の完了は待たない**

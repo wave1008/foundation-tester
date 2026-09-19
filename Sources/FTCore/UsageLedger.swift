@@ -95,11 +95,20 @@ public final class UsageLedger {
     /// (ここでファイル I/O をするため、呼び出し側のロック内で呼ぶと I/O をロック内に持ち込む)。
     /// 書き込み失敗は握りつぶす —— 呼び出し元の実行そのものを絶対に止めない
     func record(ok: Bool, ms: Double) {
+        record([(ok: ok, ms: ms)])
+    }
+
+    /// 複数件をまとめて記録し、書き込みは1回だけにする(書き込みは1件あたり 1.5〜1.9ms =
+    /// docs/performance-tuning.md §3.30)。累計への足し方は1件ずつと同じ
+    func record(_ batch: [(ok: Bool, ms: Double)]) {
+        guard !batch.isEmpty else { return }
         reapOnce()
         lock.lock()
-        calls += 1
-        if !ok { failures += 1 }
-        totalMs += Int(ms.rounded())
+        for call in batch {
+            calls += 1
+            if !call.ok { failures += 1 }
+            totalMs += Int(call.ms.rounded())
+        }
         let entry = FileEntry(
             pid: ProcessInfo.processInfo.processIdentifier,
             calls: calls, failures: failures, totalMs: totalMs,
