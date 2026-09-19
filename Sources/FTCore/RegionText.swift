@@ -510,6 +510,11 @@ public enum RegionText {
         t.start()
     }
 
+    /// 諦めた読みが戻り、`abandonedInFlight` を引いた**直後**に呼ぶ(テスト用。本番では nil)。
+    /// 「戻ったら減る」を壁時計の上限なしに確かめるため —— 読みの所要は負荷で数秒に伸びる
+    /// (全件並列の swift test で 5 秒の待ちを越えて落ちた)(`warmOverrideForTesting` と同じ規律)
+    nonisolated(unsafe) public static var lateFinishObserverForTesting: (@Sendable () -> Void)?
+
     public static func resolveWithinBudget(expected: String, pngData: Data,
                                            frame: FTRect, screen: FTRect,
                                            cropPadding: CGFloat = 24,
@@ -533,6 +538,7 @@ public enum RegionText {
             ConsoleOut.err("[fleetest] ocr shortcut finished late: \(ms)ms"
                 + " attempts=\(r?.reading.attempts ?? 0) pixels=\(r?.reading.pixels ?? 0)"
                 + " readable=\(r?.readable ?? false) expected=\"\(expected)\"")
+            lateFinishObserverForTesting?()
         }) {
             await resolve(expected: expected, pngData: pngData, frame: frame, screen: screen,
                           cropPadding: cropPadding, languages: languages)

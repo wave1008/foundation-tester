@@ -118,6 +118,8 @@ final class RegionTextWarmDefaultTests: XCTestCase {
     func testWarmOverrideIsNotSetInProduction() {
         XCTAssertNil(RegionText.warmOverrideForTesting,
                      "差し替え口が残っている(テストが後始末していない)")
+        XCTAssertNil(RegionText.lateFinishObserverForTesting,
+                     "差し込み口が残っている(テストが後始末していない)")
     }
 }
 
@@ -130,16 +132,17 @@ final class RegionTextAbandonedInFlightTests: XCTestCase {
         let png = try XCTUnwrap(Self.tinyTextPNG())
         let rect = FTRect(x: 0, y: 0, width: 120, height: 40)
         let before = RegionText.abandonedInFlight
+        // **読みが戻った出来事を直接待つ**(壁時計の上限で待たない。所要は負荷で数秒に伸びる)。
+        // timeout は刺さったときの逃げ道だけで、性質の判定には使わない
+        let returned = expectation(description: "諦めた読みが戻った")
+        RegionText.lateFinishObserverForTesting = { returned.fulfill() }
+        defer { RegionText.lateFinishObserverForTesting = nil }
         let outcome = await RegionText.resolveWithinBudget(expected: "fleetest", pngData: png,
                                                            frame: rect, screen: rect,
                                                            budget: .zero)
         guard case .budgetExhausted = outcome else { return XCTFail("予算 0 なのに諦めていない") }
         XCTAssertEqual(RegionText.abandonedInFlight, before + 1, "諦めた読みを数えていない")
-        // 読みは走り続けて戻る(健全な Vision なら 1 秒以内)
-        for _ in 0..<100 {
-            if RegionText.abandonedInFlight == before { break }
-            try await Task.sleep(for: .milliseconds(50))
-        }
+        await fulfillment(of: [returned], timeout: 300)
         XCTAssertEqual(RegionText.abandonedInFlight, before, "戻った読みを引いていない(近道が永久に閉じる)")
     }
 
