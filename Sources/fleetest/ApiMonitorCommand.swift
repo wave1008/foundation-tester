@@ -895,6 +895,26 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         let deliver: Bool
     }
 
+    /// 差分の名前を並べる上限。配信の張り/畳みは1台ずつ届くので通常は1〜数件。超えるのは
+    /// パネルの表示切替(全台の抑止 ⇄ 解除)と機械単位の畳みで、全台の名前は1行 5KB 超になるうえ
+    /// 情報にならない(台数で足りる)
+    static let suppressionDeltaNameCap = 8
+
+    static func suppressionDeltaLine(ids: Set<String>, previous: Set<String>) -> String {
+        func side(_ sign: String, _ names: [String]) -> String {
+            let shown = names.prefix(suppressionDeltaNameCap).joined(separator: ", ")
+            let rest = names.count - suppressionDeltaNameCap
+            return "\(sign) \(names.count): " + shown + (rest > 0 ? ", … (\(rest) more)" : "")
+        }
+        let added = ids.subtracting(previous).sorted()
+        let removed = previous.subtracting(ids).sorted()
+        var delta: [String] = []
+        if !added.isEmpty { delta.append(side("+", added)) }
+        if !removed.isEmpty { delta.append(side("-", removed)) }
+        return "[monitor] Frame suppression: \(ids.count) device(s)"
+            + (delta.isEmpty ? " (unchanged)" : " " + delta.joined(separator: "; "))
+    }
+
     /// - 非抑制: 毎サイクル撮って配る
     /// - 抑制中: `probeInterval` 間隔で**撮るだけ**(配らない)
     ///
@@ -1292,13 +1312,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     // fan-out の子(--device-machine 付き)は親から同じ行を無加工で中継されるので、
                     // 親が1行出せば足りる(子も出すと機械の数だけ同じ差分が並ぶ)
                     if deviceMachine == nil {
-                        let added = ids.subtracting(previous).sorted()
-                        let removed = previous.subtracting(ids).sorted()
-                        var delta: [String] = []
-                        if !added.isEmpty { delta.append("+ " + added.joined(separator: ", ")) }
-                        if !removed.isEmpty { delta.append("- " + removed.joined(separator: ", ")) }
-                        self.logStderr("[monitor] Frame suppression: \(ids.count) device(s)"
-                                       + (delta.isEmpty ? " (unchanged)" : " " + delta.joined(separator: "; ")))
+                        self.logStderr(Self.suppressionDeltaLine(ids: ids, previous: previous))
                     }
                 default:
                     break
