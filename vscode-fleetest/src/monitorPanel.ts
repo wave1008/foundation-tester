@@ -920,7 +920,19 @@ export class MonitorPanelController implements vscode.Disposable {
       case "killAllResidentProcessesAndClose":
         void this.killAllResidentProcessesAndClose();
         break;
+      case "deviceUpCancel":
+        this.deviceOps.cancelDeviceUp(message.name, message.machine);
+        break;
       case "deviceOp":
+        // 「マシン有効」off の機械の台は起動しない(webview のメニューも無効化している。これは古い
+        // メニュー状態から届いた要求の門)。登録簿を読めていなければ通す(不明を無効と読まない)
+        if (message.op === "up" && this.remoteHostsLoaded
+            && disabledMachineSet(this.lastKnownRemoteHosts, this.lastKnownLocalMachine)
+              .has(message.machine ?? "local")) {
+          this.outputChannel.appendLine(t("deviceOps.log.startRefusedMachineDisabled",
+            { name: message.name, machine: message.machine ?? "local" }));
+          break;
+        }
         this.deviceOps.enqueueLifecycleJob({
           kind: "device", name: message.name, op: message.op, machine: message.machine,
           udid: message.udid, serial: message.serial,

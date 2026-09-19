@@ -31,6 +31,7 @@ import {
   isDevicesUpEvent,
   isInstallSystemImageEvent,
   removeQueuedBulkUpJob,
+  removeQueuedDeviceUpJob,
   isInstalledDevicesJson,
   type MonitorDevice,
   type MonitorFromWebviewMessage,
@@ -281,6 +282,8 @@ export class MonitorDeviceOps {
   private readonly deletingIdentifiers = new Set<string>();
   /** 実行中の bulk up(start-all-devices)プロセス。「デバイスの起動を中断」の kill 対象。close で undefined に戻す。 */
   private bulkUpProc: PipeProcess | undefined;
+  /** 実行中の device up ジョブのプロセスと取り消しの印(cancelDeviceUp)。**鍵はジョブ**(再試行を跨いで同一) */
+  private readonly deviceUpRuns = new Map<DeviceLifecycleJob, { proc?: PipeProcess; cancelled: boolean }>();
   /** 凍結が治らず CPU 描画(swiftshader)へフォールバックしたデバイス論理名。セッション中維持
    * (host に戻すと再凍結するため)。個別 start-device 時に --gpu を、bulk start-all-devices
    * (executeBulkJob)時に --cpu-render を付ける(CLI 側の同期相手:
@@ -448,6 +451,30 @@ export class MonitorDeviceOps {
    * ブート自体はエミュレータ/simctl が detach 済みのため完走しうる=中断の意味は「以降のデバイスへ
    * 進まない」。後始末(チップ剥がし・busy 解除・次ジョブ実行)は既存の close→finishLifecycleQueueHead
    * 経路が担う。キュー待ち(未実行)の bulk up はキューから除去する。 */
+  /** タイルの「起動をキャンセル」: 1台の起動を止めて未起動へ戻す。待機中ならキューから外すだけ。
+   * 実行中なら再試行を止めて start-device を SIGTERM し、終わったら同じ台の停止ジョブを積む ——
+   * エミュレータ/simctl の起動は detach 済みで、プロセスを止めても台は起動しきってしまうため。 */
+  cancelDeviceUp(name: string, machine?: string): void {
+    const queued = removeQueuedDeviceUpJob(this.lifecycleQueue, name, machine);
+    if (queued.removed) {
+      this.lifecycleQueue = queued.state;
+      this.deps.outputChannel.appendLine(t("deviceOps.log.deviceUpCancelledQueued", { name }));
+      this.postDeviceLifecycleStatus(name, machine);
+      this.postBootBusy();
+      return;
+    }
+    const running = this.lifecycleQueue.running.find(
+      (job) => job.kind === "device" && job.op === "up" && job.name === name && job.machine === machine);
+    const upRun = running ? this.deviceUpRuns.get(running) : undefined;
+    if (!upRun || upRun.cancelled) {
+      return;
+    }
+    upRun.cancelled = true;
+    this.deps.outputChannel.appendLine(t("deviceOps.log.deviceUpCancelling", { name }));
+    // proc が無い = 再試行の待ち中。次の試行の入口で打ち切る(runDeviceOpAttempt)
+    upRun.proc?.kill("SIGTERM");
+  }
+
   cancelBulkUp(): void {
     const runningBulkUp = this.lifecycleQueue.running.some(
       (job) => job.kind === "bulk" && job.op === "up",
@@ -551,8 +578,10 @@ export class MonitorDeviceOps {
     const status = deviceLifecycleStatusFor(this.lifecycleQueue, name, machine);
     // **machine も載せる** —— 載せないと webview が同名の先頭のタイル(= 手元)を書き換え、
     // 「M2Ultra の台を停止」が手元のタイルに「シャットダウン中」と出る(2026-08-17 の実害)
+    // op:"up" を返すのは device ジョブだけ(bulk / restartBatch は down の順番待ちで返る)= 取り消せる
     this.deps.post({
       type: "deviceOpBusy", name, machine, op: status?.op ?? null, status: status?.status ?? null,
+      cancellable: status?.op === "up",
     });
   }
 
@@ -1019,14 +1048,25 @@ export class MonitorDeviceOps {
     // spawn 失敗時の 'error'+'close' 二重発火・複数試行にまたがる finish の二重呼び出しを防ぐ
     // ジョブ単位のガード(finishLifecycleQueueHead は1ジョブにつき1回だけ呼ぶ)。
     let jobFinished = false;
+    const upRun = job.op === "up" ? { cancelled: false } : undefined;
+    if (upRun) {
+      this.deviceUpRuns.set(job, upRun);
+    }
     const finishOnce = (): void => {
       if (jobFinished) {
         return;
       }
       jobFinished = true;
+      this.deviceUpRuns.delete(job);
       // **machine も入れる** —— sameLifecycleJob は (machine, name, op) で照合するので、
       // 落とすと「実行中に該当ジョブがありません」になる
       this.finishLifecycleJob(job);
+      if (upRun?.cancelled && job.op === "up") {
+        // 取り消した起動は未起動へ戻す(起動は detach 済みで止まらない)。識別子は up と同じもので撃つ
+        this.enqueueLifecycleJob({
+          kind: "device", name: job.name, op: "down", machine: job.machine, udid: job.udid, serial: job.serial,
+        });
+      }
     };
     this.runDeviceOpAttempt(job, 0, finishOnce);
   }
@@ -1039,6 +1079,11 @@ export class MonitorDeviceOps {
     finishOnce: () => void,
   ): void {
     const { name, op, machine } = job;
+    const upRun = this.deviceUpRuns.get(job);
+    if (upRun?.cancelled) {
+      finishOnce();
+      return;
+    }
     const udid = job.op === "wipe" ? undefined : job.udid;
     const serial = job.op === "wipe" ? undefined : job.serial;
     const config = this.deps.getConfig();
@@ -1114,6 +1159,10 @@ export class MonitorDeviceOps {
         return;
       }
       attemptSettled = true;
+      if (upRun?.cancelled) {
+        finishOnce();
+        return;
+      }
       if (failed && !signingFailure && op === "up" && attempt < MonitorDeviceOps.deviceUpMaxRetries) {
         this.deps.outputChannel.appendLine(
           t("deviceOps.log.deviceUpRetrying", {
@@ -1149,6 +1198,9 @@ export class MonitorDeviceOps {
       settle(true);
       return;
     }
+    if (upRun) {
+      upRun.proc = proc;
+    }
 
     const stdoutParser = new NdjsonParser(
       (value) => {
@@ -1167,6 +1219,9 @@ export class MonitorDeviceOps {
           // run 開始時の自動 Wipe と同じタイル表示を使う(footer の「Wipe: 停止中/再起動中」)。
           // **machine も載せる** —— 名前だけだと同名の手元タイルが書き換わる
           this.deps.post({ type: "wipeStatus", name, machine, phase: value.phase });
+        } else if (!value.ok && upRun?.cancelled) {
+          // 取り消しで止めた結果の失敗は失敗として出さない
+          failureLogged = true;
         } else if (!value.ok) {
           signingFailure = value.signingProblems !== undefined;
           // 署名の欠けは**こちらの言語で**組み立て直す(CLI の error は英語 = CLI 利用者向け)
@@ -1224,7 +1279,7 @@ export class MonitorDeviceOps {
       // finished 経由で既にログ済みの場合は二重に出さない。
       // **バナーにも出す** —— ログだけだと利用者からは無反応に見える。理由は stderr の
       // 最後の実質行(CLI はそこに原因を書く。stderrDetailLine の doc 参照)
-      if (!failureLogged && exitCode !== 0) {
+      if (!failureLogged && exitCode !== 0 && !upRun?.cancelled) {
         const detail = stderrDetailLine(stderr);
         // **exit 64 = 引数エラー**(ArgumentParser)。リモートで出たなら、ほぼ「向こうの fleetest が
         // 古くてこのサブコマンド/オプションを知らない」(spawnCreateDevice と同じ読み替え)

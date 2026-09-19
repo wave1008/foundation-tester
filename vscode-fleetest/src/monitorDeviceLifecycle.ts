@@ -387,6 +387,25 @@ export function removeQueuedBulkUpJob(state: DeviceLifecycleQueueState): {
   };
 }
 
+/** 待機中の device up ジョブ((machine, name) が一致するもの)を1件取り除く(タイルの「起動をキャンセル」用。
+ * 実行中のものはプロセス kill で止める = ここでは触らない)。該当が無ければ state をそのまま返す。 */
+export function removeQueuedDeviceUpJob(
+  state: DeviceLifecycleQueueState,
+  name: string,
+  machine?: string,
+): { readonly state: DeviceLifecycleQueueState; readonly removed?: Extract<DeviceLifecycleJob, { kind: "device" }> } {
+  const index = state.jobs.findIndex(
+    (job) => job.kind === "device" && job.op === "up" && job.name === name && job.machine === machine);
+  if (index === -1) {
+    return { state };
+  }
+  const removed = state.jobs[index] as Extract<DeviceLifecycleJob, { kind: "device" }>;
+  return {
+    state: { running: state.running, jobs: [...state.jobs.slice(0, index), ...state.jobs.slice(index + 1)] },
+    removed,
+  };
+}
+
 /** キュー内(実行中含む)の bulk(全て起動/終了)ジョブの op。bootBusy.bulkOp の算出に使う
  * (webview は up の間 未起動タイルを「待機中」、down の間 稼働中タイルを「シャットダウン中」表示にする)。 */
 export function bulkLifecycleOp(state: DeviceLifecycleQueueState): "up" | "down" | null {

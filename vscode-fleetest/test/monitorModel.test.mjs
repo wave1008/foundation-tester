@@ -47,6 +47,7 @@ import {
   parseRunProfileForForm,
   removeDeviceFromRunProfile,
   removeQueuedBulkUpJob,
+  removeQueuedDeviceUpJob,
   RUNNING_DEVICES_PROFILE_VALUE,
   runProfileDeviceRefKey,
   toWebviewMessage,
@@ -3479,4 +3480,21 @@ test("planDisabledMachineStops: 識別子があれば登録の有無に関わら
     { name: "R", machine: "M1mini" },
     { name: "Pixel_9_Android_15_-01", machine: "M1mini", serial: "emulator-5556" },
   ]);
+});
+
+test("removeQueuedDeviceUpJob: (machine, name) が一致する待機中の up だけを外し、実行中・別の機械・down は触らない", () => {
+  const runningUp = { kind: "device", name: "A", op: "up" };
+  const state = {
+    running: [runningUp],
+    jobs: [
+      { kind: "device", name: "A", op: "down" },
+      { kind: "device", name: "A", op: "up", machine: "M1Max" },
+      { kind: "device", name: "A", op: "up" },
+    ],
+  };
+  const result = removeQueuedDeviceUpJob(state, "A", undefined);
+  assert.deepEqual(result.removed, { kind: "device", name: "A", op: "up" });
+  assert.deepEqual(result.state.running, [runningUp]);
+  assert.equal(result.state.jobs.length, 2);
+  assert.equal(removeQueuedDeviceUpJob(state, "B", undefined).removed, undefined);
 });

@@ -86,6 +86,9 @@ export type MonitorToWebviewMessage =
       readonly op: DeviceOpKind | null;
       /** キュー内での状態("running"=実行中／"queued"=順番待ち)。op が null のときは null。 */
       readonly status: DeviceOpQueueStatus | null;
+      /** true = タイルの「起動をキャンセル」で取り消せる(1台ぶんの device up ジョブ)。一括起動・
+       *  再起動のバッチが送る up には付かない(MonitorDeviceOps.cancelDeviceUp が扱えない) */
+      readonly cancellable?: boolean;
     }
   // machine も載せる —— 落とすとリモートの失敗が**同名の手元タイル**の状態を戻す
   // (deviceOpBusy と同じ理由)
@@ -498,6 +501,8 @@ export type MonitorFromWebviewMessage =
   // udid/serial/registered: 未登録(どの実行プロファイルにも記載の無い)デバイスの直指定用。registered:false の
   // ときだけ deviceTiles.js が iOS udid / Android serial のどちらかを載せる(--name で引けないため)。
   // 対向: monitorDeviceOps.ts executeDeviceOpJob(stop-device --udid/--serial の直指定モード)。
+  /** タイルの右クリック「起動をキャンセル」(起動中/起動待ちの1台)。受け手: MonitorDeviceOps.cancelDeviceUp */
+  | { readonly type: "deviceUpCancel"; readonly name: string; readonly machine?: string }
   | {
       readonly type: "deviceOp";
       readonly name: string;
@@ -883,6 +888,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         (Array.isArray(value.restartNames) &&
           value.restartNames.every((n) => typeof n === "string" && n !== ""))
       );
+    case "deviceUpCancel":
+      return typeof value.name === "string" && (value.machine === undefined || typeof value.machine === "string");
     case "deviceOp":
       return (
         typeof value.name === "string" &&

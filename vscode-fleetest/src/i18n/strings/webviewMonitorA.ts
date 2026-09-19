@@ -24,6 +24,11 @@ export const webviewMonitorAStrings = {
   "wvMonitor.deviceOpMenu.stoppingDown": { ja: "停止中...", en: "Stopping..." },
   "wvMonitor.deviceOpMenu.wiping": { ja: "Wipe Data 実行中...", en: "Wiping data..." },
   "wvMonitor.deviceOpMenu.start": { ja: "起動", en: "Start" },
+  "wvMonitor.deviceOpMenu.cancelStart": { ja: "起動をキャンセル", en: "Cancel Start" },
+  // 「起動をキャンセル」を押してから取り消しが終わるまでのタイルの表示(deviceTiles.js の cancellingUp)
+  "wvMonitor.tile.cancellingStart": { ja: "キャンセル中", en: "Cancelling" },
+  // 「マシン有効」off の機械の台は起動させない(deviceTiles.js の renderDeviceOpMenuItem)
+  "wvMonitor.deviceOpMenu.startMachineDisabled": { ja: "起動できません(マシン無効)", en: "Cannot start (machine off)" },
   "wvMonitor.deviceOpMenu.stop": { ja: "停止", en: "Stop" },
   // 実機は端末そのものを起動・停止しない(操作対象はブリッジだけ)ので別ラベルにする
   "wvMonitor.deviceOpMenu.startBridge": { ja: "ブリッジを起動", en: "Start bridge" },

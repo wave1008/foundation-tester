@@ -11,6 +11,18 @@ export const deviceOpsStrings = {
     ja: "[fleetest] デバイスの起動を中断します(start-all-devices へ SIGTERM)",
     en: "[fleetest] Stopping device startup (sending SIGTERM to start-all-devices)",
   },
+  "deviceOps.log.deviceUpCancelledQueued": {
+    ja: "{name} の起動待ちを取り消しました",
+    en: "Cancelled the queued start of {name}",
+  },
+  "deviceOps.log.deviceUpCancelling": {
+    ja: "{name} の起動をキャンセルします(起動処理を止めてから停止します)",
+    en: "Cancelling the start of {name} (stopping the start process, then shutting it down)",
+  },
+  "deviceOps.log.startRefusedMachineDisabled": {
+    ja: "「マシン有効」がオフの {machine} のデバイス {name} は起動しません",
+    en: "Not starting {name} on {machine} because \"Machine enabled\" is off",
+  },
   "deviceOps.log.stopDisabledMachineDevice": {
     ja: "「マシン有効」がオフの {machine} のデバイス {name} を終了します(テスト実行タブを開いたため)",
     en: "Stopping {name} on {machine} because \"Machine enabled\" is off (Test Run tab opened)",

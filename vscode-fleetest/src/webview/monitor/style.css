@@ -981,7 +981,8 @@ html.select-all-guard * {
 /* up/downアイコンはdata-op(deviceTiles.jsが設定)で切替 */
 #device-op-menu-item .op-icon { display: none; }
 #device-op-menu-item[data-op='up'] .op-icon-up { display: block; }
-#device-op-menu-item[data-op='down'] .op-icon-down { display: block; }
+#device-op-menu-item[data-op='down'] .op-icon-down,
+#device-op-menu-item[data-op='cancelUp'] .op-icon-down { display: block; }
 .device-op-menu-item:hover:not(:disabled) {
   background-color: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
   color: var(--vscode-menu-selectionForeground, inherit);

@@ -568,6 +568,80 @@ test("同名の台を2機で同時に操作しても、それぞれのタイル�
 // exit code だけを出していたため、`remote exec` の exit 91(発行者のワークスペースが無い)が
 // 「installed-devices が失敗しました(exit code: 91)」としか見えず、対処が分からなかった実害の回帰。
 
+// ---- タイルの「起動をキャンセル」(cancelDeviceUp) ----
+
+/** start-device は SIGTERM まで居座り、受けたら finished(ok:false)を出して終わる(= 失敗として
+ *  再試行の経路に乗る形。取り消しがそれを止めることを見る)。stop-device は stopSeconds 秒かかる。
+ *  sleep の出力は捨てる = 孫がパイプを握って close が遅れない */
+function makeSlowMockBinary(stopSeconds = 0) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-deviceops-cancel-"));
+  const binaryPath = path.join(dir, "fleetest");
+  fs.writeFileSync(binaryPath, `#!/bin/sh
+echo "$@" >> "${path.join(dir, "argv")}"
+case "$*" in
+  *start-device*)
+    trap 'kill $S 2>/dev/null; echo "{\\"kind\\":\\"finished\\",\\"ok\\":false,\\"error\\":\\"terminated\\"}"; exit 1' TERM
+    sleep 30 >/dev/null 2>&1 &
+    S=$!
+    wait $S ;;
+  *stop-device*) exec sleep ${stopSeconds} ;;
+esac
+exit 0
+`);
+  fs.chmodSync(binaryPath, 0o755);
+  return { dir, binaryPath };
+}
+
+async function waitFor(predicate, timeoutMs = 3000) {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error("条件が時間内に成立しませんでした");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+test("実行中の起動をキャンセルすると start-device を止め、失敗を出さずに同じ台の stop-device を撃つ", async () => {
+  const { dir, binaryPath } = makeSlowMockBinary();
+  const { deps, posts } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.enqueueLifecycleJob({ kind: "device", name: "Dev", op: "up", machine: "M1mini" });
+    await waitFor(() => argvLines(dir).some((line) => line.includes("start-device")));
+    assert.ok(posts.some((m) => m.type === "deviceOpBusy" && m.op === "up" && m.cancellable === true),
+      "1台ぶんの起動は取り消せると webview へ伝える");
+    deviceOps.cancelDeviceUp("Dev", "M1mini");
+    await waitUntilIdle(deviceOps, 5000);
+    const lines = argvLines(dir);
+    assert.equal(lines.filter((line) => line.includes("start-device")).length, 1, "取り消した起動は再試行しない");
+    const stop = lines.find((line) => line.includes("stop-device"));
+    assert.ok(stop, "未起動へ戻す停止を撃つ");
+    assert.match(stop, /remote exec M1mini --/, "同じ機械で撃つ");
+    assert.equal(posts.some((m) => m.type === "deviceOpFailed"), false, "取り消しを失敗として出さない");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("起動待ち(キュー)をキャンセルするとキューから外すだけで、start-device も stop-device も撃たない", async () => {
+  const { dir, binaryPath } = makeSlowMockBinary(1);
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    // 同じ台の down が実行中の間、up は順番待ちになる(再起動の down→up と同じ形)
+    deviceOps.enqueueLifecycleJob({ kind: "device", name: "Dev", op: "down" });
+    deviceOps.enqueueLifecycleJob({ kind: "device", name: "Dev", op: "up" });
+    deviceOps.cancelDeviceUp("Dev", undefined);
+    await waitUntilIdle(deviceOps, 5000);
+    const lines = argvLines(dir);
+    assert.equal(lines.filter((line) => line.includes("start-device")).length, 0);
+    assert.equal(lines.filter((line) => line.includes("stop-device")).length, 1, "先行の down だけ");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("stderrDetailLine: 進捗見出しを飛ばして最後の実質行(対処つき)を採る", () => {
   const stderr = [
     "==> host M1Ultra → wave1008@192.168.20.95",

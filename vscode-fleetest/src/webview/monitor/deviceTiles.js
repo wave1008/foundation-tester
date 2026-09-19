@@ -14,7 +14,7 @@ import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
 import { setHoverTip, flashTip } from './hoverTip.js';
 import { isDragDistance, marqueeRect, idsInMarquee, mergeMarqueeSelection, rectContains, autoScrollVelocity, autoScrollStep } from './marqueeModel.js';
-import { paintMachineBadge } from './machineColors.js';
+import { isMachineDisabled, onMachineEnablementChanged, paintMachineBadge } from './machineColors.js';
 
 // bridgeWatch(拡張ホストの自動修復ウォッチドッグ、契約は main.js の 'bridgeWatch' ケース参照)の
 // phase→footer表示。'ok'はここに含めず通常表示へフォールバックさせる。
@@ -62,6 +62,9 @@ const WIPE_STATUS_LABEL = {
 // 項目自体は隠さない: 隠すとモニターから実機のブリッジを起動できなくなる(タイルが
 // 「接続中」のまま何もできない状態になる実害。2026-07-25)
 function deviceOpMenuItem(state, busy, physical) {
+  // 起動中・起動待ちの1台は取り消せる(未起動へ戻す。MonitorDeviceOps.cancelDeviceUp)。
+  // 一括起動・再起動のバッチの台(cancellable 無し)は従来どおり押せない「起動中」
+  if (busy && busy.op === 'up' && busy.cancellable) { return { label: t('wvMonitor.deviceOpMenu.cancelStart'), op: 'cancelUp', disabled: false }; }
   if (busy && busy.status === 'queued') { return { label: t('wvMonitor.deviceOpMenu.queued'), op: busy.op, disabled: true }; }
   if (busy && busy.op === 'up') { return { label: t('wvMonitor.deviceOpMenu.startingUp'), op: 'up', disabled: true }; }
   if (busy && busy.op === 'down') { return { label: t('wvMonitor.deviceOpMenu.stoppingDown'), op: 'down', disabled: true }; }
@@ -368,6 +371,10 @@ function createTile(device) {
     // 起動が終わったが**まだ新しい観測が来ていない**間だけ true(applyDeviceOpBusy が立て、
     // applyDevices が畳む)。この間は「待機中」へ戻さず「起動中」を保つ
     awaitingStateAfterUp: false,
+    // 「起動をキャンセル」を押してから up の busy が外れるまで true(押した webview が立て、
+    // applyDeviceOpBusy が畳む)。この間は「起動中/起動待機」の代わりに「キャンセル中」と言い、
+    // 外れた直後に awaitingStateAfterUp を立てない(起動していないのに「起動中」が一瞬出た)
+    upCancelRequested: false,
     stateBadgeEl: stateBadge,
     runningBadgeEl: runningBadge,
     queuedBadgeEl: queuedBadge,
@@ -452,6 +459,7 @@ function renderFrame(entry) {
   // ことが変わらないので意味を持たない)。**bridgeNotRunning より先に判定させる**こと
   // (下のラベル選択の優先順位を参照) —— でないと起動完了直後〜次の devices サイクルの間
   // 「ブリッジ未起動」が一瞬混じる。
+  const cancellingUp = offline && entry.upCancelRequested && entry.opBusy?.op === 'up';
   const physicalBridgeStarting = isPhysical && offline
     && (entry.opBusy?.op === 'up' || !!entry.awaitingStateAfterUp);
   // **Wipe Data 中は最後のフレームを出さない**。中身を消して(場合によっては数分かけて)
@@ -517,6 +525,8 @@ function renderFrame(entry) {
       : shuttingDown
         // 実機は端末そのものを起動・停止しない(操作対象はブリッジだけ)ので言い換える
         ? (isPhysical ? t('wvMonitor.tile.stoppingBridge') : t('wvMonitor.tile.shuttingDown'))
+        : cancellingUp
+          ? t('wvMonitor.tile.cancellingStart')
         : physicalBridgeStarting
           ? t('wvMonitor.tile.startingBridge')
           : waitingUp
@@ -741,7 +751,7 @@ function renderMeta(entry) {
   // (一括起動は実機も対象。一括終了は実機タイルを触らない)。
   // bulkOpActive 変化時の再評価は setBusy 側の renderMeta 一括呼び出しが担う。
   let queuedText = '';
-  if (entry.opBusy?.status === 'queued') {
+  if (entry.opBusy?.status === 'queued' && !(entry.upCancelRequested && entry.opBusy.op === 'up')) {
     // 実機で待っているのはブリッジの起動/停止(端末そのものは起動も停止もしない)。
     // 仮想デバイスの「起動待機」「再起動待機」は端末の操作を指すので変えない
     const physicalQueued = entry.device.kind === 'physical';
@@ -789,11 +799,21 @@ export function renderDeviceOpMenuItem() {
     return;
   }
   deviceOpMenuItemBtn.style.display = '';
+  // 「マシン有効」off の機械の台は起動させない(実機のブリッジ起動も同じ)。停止は残す。
+  // 項目は隠さず理由を出す(隠すと「なぜ起動が無いか」が分からない)。拡張側にも同じ門がある(monitorPanel.ts の deviceOp)
+  const machineOff = item.op === 'up' && !item.disabled && isMachineDisabled(device.machine);
   // ラベルはspanに書く(ボタン直のtextContent代入はアイコンSVGを消す)。data-opはCSSのアイコン切替も担う。
-  deviceOpMenuItemLabel.textContent = item.label;
-  deviceOpMenuItemBtn.disabled = item.disabled;
+  deviceOpMenuItemLabel.textContent = machineOff ? t('wvMonitor.deviceOpMenu.startMachineDisabled') : item.label;
+  deviceOpMenuItemBtn.disabled = item.disabled || machineOff;
   deviceOpMenuItemBtn.dataset.op = item.op;
 }
+
+// 開いている間に「マシン有効」が切り替わったら項目を作り直す
+onMachineEnablementChanged(() => {
+  if (deviceOpMenuOpen) {
+    renderDeviceOpMenuItem();
+  }
+});
 
 // 「開いているか」は entry では判定できない —— 空きエリアの右クリックでは entry が無いまま開く。
 let deviceOpMenuOpen = false;
@@ -1088,6 +1108,15 @@ deviceOpMenuItemBtn.addEventListener('click', (event) => {
     return;
   }
   const device = deviceOpMenuEntry.device;
+  if (deviceOpMenuItemBtn.dataset.op === 'cancelUp') {
+    const entry = deviceOpMenuEntry;
+    vscode.postMessage({ type: 'deviceUpCancel', name: device.name, machine: device.machine });
+    closeDeviceOpMenu();
+    entry.upCancelRequested = true;
+    renderMeta(entry);
+    renderFrame(entry);
+    return;
+  }
   // **machine も載せる** —— 同名の台が別の機械にも居るのは通常で、名前だけだと
   // 手元の実行プロファイルの同名エントリを引いて**別の機械の設定でこの Mac に1台作る**
   // (machine は api monitor のワイヤ名。値はマシン名 = エイリアス)
@@ -1425,7 +1454,9 @@ export function applyDeviceOpBusy(message) {
     return;
   }
   const prev = entry.opBusy;
-  entry.opBusy = message.op ? { op: message.op, status: message.status || 'running' } : undefined;
+  entry.opBusy = message.op
+    ? { op: message.op, status: message.status || 'running', cancellable: message.cancellable === true }
+    : undefined;
   // 新しい操作(up/down/wipe)が来たら bridgeStoppedLocally は畳む —— 前回の down 完了から
   // 観測が追いつく前に次の操作が始まった場合、その古い印を引きずらない(起動し直したのに
   // 「未起動」のまま固まる事故を避ける)。
@@ -1444,9 +1475,13 @@ export function applyDeviceOpBusy(message) {
   // **失敗した操作のあとは待たない** —— 状態が変わるのを待つのは操作が成功したときだけ正当で、
   // 失敗しているなら待つ対象が無い。待たせると次の観測まで「起動中」が残り、その間タイルの
   // メニューも押せないままになる(lastOpFailed は applyDeviceOpFailed が立てる)
-  if (prev?.op === 'up' && !entry.opBusy && !entry.lastOpFailed
+  // **キャンセルした起動のあとも待たない**(起動していないので待つ対象が無い)
+  if (prev?.op === 'up' && !entry.opBusy && !entry.lastOpFailed && !entry.upCancelRequested
       && (entry.device.state === 'offline' || bridgeNotRunning(entry))) {
     entry.awaitingStateAfterUp = true;
+  }
+  if (entry.opBusy?.op !== 'up') {
+    entry.upCancelRequested = false;
   }
   // 新しい操作が始まったら失敗の記憶は捨てる(次の操作の判断を縛らない)
   if (entry.opBusy) {
