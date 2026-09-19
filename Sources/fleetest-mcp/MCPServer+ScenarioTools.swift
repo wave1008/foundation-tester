@@ -120,7 +120,8 @@ extension MCPServer {
     /// クラス名なら CLI(`fleetest run`)と同じく非削除・非ドラフトの全シナリオを1本の接続で
     /// 順に流す(`ScenarioSelection.resolve`)。**この run が行わないこと**は末尾の説明文参照
     /// (ft_run_scenario のツール定義。ProfileRunner.run/ApiRunCommand と違い setup/teardown
-    /// スクリプト・アプリの install/update・home()・results/ への記録は無い)
+    /// スクリプト・home()・results/ への記録は無い。アプリを入れるのは profile 付き iOS の
+    /// ブリッジ準備(autoInstall)だけ = resolveProfileTarget)
     func runScenario(_ args: [String: Any]) async throws -> [[String: Any]] {
         guard let id = args["id"] as? String else { throw MCPError("id is required") }
         if let conflict = Self.profileConflict(args) { throw MCPError(conflict) }
@@ -142,7 +143,7 @@ extension MCPServer {
         var prologue: [String] = []
         // @TestClass(app:) 省略時の既定アプリ解決(FTCore.ScenarioAppResolution)に必要な3つ。
         // installHandler は渡さない(MCP の run はホスト install の RPC を持たない —
-        // ft_install で入れ済みという前提。appPath は installApp() の引数省略時のフォールバックにも
+        // ft_install か profile のブリッジ準備(autoInstall)で入れ済みという前提。appPath は installApp() の引数省略時のフォールバックにも
         // 使われるが、install を呼ばないこの経路では uiFrameworkHint の判定材料としてのみ働く)
         var appPath: String?
         var appName: String?

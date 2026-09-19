@@ -1410,7 +1410,7 @@ public enum ProfileResolver {
         // "<workspaceRoot>/apps/<原本のファイル名>" に切り替わる(原本の
         // ResolvedAppTarget.sourcePath は常にリポジトリルート基準のまま)。実体のコピー(ステージング)
         // はここでは行わない(純粋な path 計算のみ) —— 呼び出し側(ProfileRunner.run/ApiRunCommand/
-        // RemoteRunDispatcher)が resolve() 直後に `WorkspaceAppStaging` を呼んで原本を運ぶ。
+        // RemoteRunDispatcher/MCP の resolveProfileTarget)が resolve() 直後に `WorkspaceAppStaging` を呼んで原本を運ぶ。
         // リモートへディスパッチすると appPath のアプリパッケージ自体は転送されない
         // (RemoteTransferPlan.rsyncArgs は TestProjects/<project> しか rsync しない)ため、
         // リポジトリルート基準の絶対パスはリモートに存在しない。既定のワークスペースは

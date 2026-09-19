@@ -178,6 +178,13 @@ extension MCPServer {
         // 通す —— Play Protect のキルスイッチだけでなく iosFastInput/iosPreActionWarmup/
         // enableAnimations も同時に注入する
         RunEnvironment.apply(resolved)
+        // **ブリッジ準備より前に appPath の原本を apps/ へ運ぶ**(ProfileRunner/ApiRunCommand と同じ)。
+        // resolved.apps[].appPath は常にステージ先を指すので、運ばずに provision へ渡すと
+        // autoInstall が存在しないパスを simctl install して落ちる
+        let staged = try WorkspaceAppStaging.stageWorkspaceApps(resolved)
+        if !staged.isEmpty {
+            prologue.append("→ Staged app package(s) into the workspace: " + staged.joined(separator: ", "))
+        }
         let platform = platformArg ?? resolved.devices.first?.platform ?? "ios"
         guard let device = resolved.devices.first(where: { $0.platform == platform }) else {
             throw MCPError("profile \(profileName) has no \(platform) device")

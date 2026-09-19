@@ -2,8 +2,9 @@
 // appPath の原本(ResolvedAppTarget.sourcePath。常にリポジトリルート基準)を
 // `remoteControl.workspace` の apps/ へ供給する I/O 層。インストール先の決定(パス計算)は
 // ProfileResolver.resolve が既に行っている(ResolvedAppTarget.appPath)。ここは
-// 「そこにバイトを実際に運ぶ」ことだけを担う。呼び出し場所は3つ:
-//   - ProfileRunner.run / ApiRunCommand: 自分自身の apps[platform] を揃える(stageWorkspaceApps)
+// 「そこにバイトを実際に運ぶ」ことだけを担う。呼び出し場所は4つ:
+//   - ProfileRunner.run / ApiRunCommand / MCP の resolveProfileTarget: 自分自身の apps[platform] を
+//     揃える(stageWorkspaceApps)。**resolve した appPath をデバイスへ渡す経路を足したらここも通す**
 //   - RemoteRunDispatcher: ミラー rsync 直前にローカルのワークスペースへ揃える(installPath 単体)
 // docs/remote-runner.md §17。
 

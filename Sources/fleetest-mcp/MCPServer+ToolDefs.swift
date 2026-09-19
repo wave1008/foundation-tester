@@ -550,8 +550,10 @@ extension MCPServer {
         ], required: ["id"], scope: .project),
         tool("ft_run_scenario", "Run a scenario deterministically. On failure, returns the failing step's error and the report path. Builds automatically. "
             + "A class name runs every scenario of the class except @Deleted/@Draft (same as fleetest run). "
-            + "Unlike fleetest run it does not run the profile's setup/teardown scripts, install or update the app, "
-            + "send the device home first, or record into results/ — use fleetest run for a full run", [
+            + "Unlike fleetest run it does not run the profile's setup/teardown scripts, "
+            + "send the device home first, or record into results/ — use fleetest run for a full run. "
+            + "It installs the app only on iOS with a profile whose app has autoInstall "
+            + "(copied into the workspace, installed when the installed copy is out of date); otherwise install it with ft_install", [
             "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios) or a class name"],
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
             "profile": ["type": "string", "description": "Run profile name (profiles/runs/; resolves the connection, heal and report destination). "
