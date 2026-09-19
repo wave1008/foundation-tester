@@ -633,6 +633,7 @@ public final class StepExecutor {
         firstFrameBlankObserved = false
         failureKindThisStep = nil
         classifierScreenshotThisStep = nil
+        classifierFailureThisStep = nil
         imageMatchesThisStep = nil
         elementLimitCeilingLatchedThisStep = false
         systemAlertAdvisoryThisStep = nil
@@ -820,6 +821,8 @@ public final class StepExecutor {
     var failureKindThisStep: StepFailureKind?
     /// このステップで画像の判定(分類器・画像の照合)が最後に使ったスクリーンショット(`StepOutcome.evidenceImage` の元)
     var classifierScreenshotThisStep: Data?
+    /// このステップで分類器の答えを使わなかった理由(`VisionClassifier.ClassifyError`。直近の1件)
+    var classifierFailureThisStep: String?
     /// findImage / findImages が見つけた要素(`StepOutcome.imageMatches` の元)
     var imageMatchesThisStep: [FindImage.Match]?
 

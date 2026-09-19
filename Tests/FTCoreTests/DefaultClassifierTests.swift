@@ -128,6 +128,24 @@ final class DefaultClassifierTests: XCTestCase {
         XCTAssertTrue(reason(unknown)?.contains("no sample images") == true, reason(unknown) ?? "")
     }
 
+    /// 対照が外れた推論の答えは imageIs でも使わない(「切り出しに失敗」とは言い分ける)
+    func testImageIsDoesNotUseAnAnswerWhenAControlIsMisclassified() async throws {
+        let root = try Self.makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dir = VisionClassifier.directory(projectRoot: root, name: DefaultClassifier.name)
+        let set = try XCTUnwrap(try VisionClassifier.trainingSet(at: dir))
+        let model = try VisionClassifier.loadBlocking(
+            set, cacheDirectory: VisionClassifier.cacheDirectory(projectRoot: root, name: DefaultClassifier.name))
+        let circle = try XCTUnwrap(set.labels.keys.first { $0.hasSuffix("[Circle Icon]") })
+        model.inferenceForTesting = { _ in VisionClassifier.Classification(label: circle, confidence: 1) }
+        defer { model.inferenceForTesting = nil }   // 同じ見本のモデルはプロセス内で共有される
+
+        let outcome = await imageIs("[Circle Icon]", screenIsCircle: true, projectRoot: root)
+        let message = try XCTUnwrap(reason(outcome), "定数を答える推論で imageIs を通さない")
+        XCTAssertTrue(message.contains("not answering reliably"), message)
+        XCTAssertFalse(message.contains("crop failed"), message)
+    }
+
     func testImageIsWithoutSamplesFailsAndSaysWhereToPutThem() async {
         let outcome = await imageIs("[Circle Icon]", screenIsCircle: true, projectRoot: nil)
         XCTAssertTrue(reason(outcome)?.contains("vision/classifiers/DefaultClassifier") == true, reason(outcome) ?? "")

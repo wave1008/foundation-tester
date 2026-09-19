@@ -118,11 +118,11 @@ final class CheckStateClassifierTests: XCTestCase {
         let set = try XCTUnwrap(try VisionClassifier.trainingSet(at: CheckStateClassifier.directory(projectRoot: root)))
         let cache = CheckStateClassifier.cacheDirectory(projectRoot: root)
         let model = try VisionClassifier.loadBlocking(set, cacheDirectory: cache)
-        let modelFile = cache.appendingPathComponent("\(set.digest)/model.mlmodel")
+        let modelFile = cache.appendingPathComponent("model.mlmodel")
         XCTAssertTrue(FileManager.default.fileExists(atPath: modelFile.path))
         // imageFilter=binary は学習画像に二値化の2枚を足す
         XCTAssertTrue(FileManager.default.fileExists(
-            atPath: cache.appendingPathComponent("\(set.digest)/training/[ON]/s0_binary2.png").path))
+            atPath: cache.appendingPathComponent("training/[ON]/s0_binary2.png").path))
 
         for (on, expected) in [(true, "[ON]"), (false, "[OFF]")] {
             let source = CGImageSourceCreateWithData(Self.checkboxPNG(on: on, shift: 3) as CFData, nil)!
@@ -134,6 +134,55 @@ final class CheckStateClassifierTests: XCTestCase {
         _ = try VisionClassifier.loadBlocking(set, cacheDirectory: cache)
         let again = try FileManager.default.attributesOfItem(atPath: modelFile.path)[.modificationDate] as? Date
         XCTAssertEqual(modified, again, "同じ見本なら学び直さない")
+    }
+
+    // MARK: - 置き場所(分類器ごとに1組・見本の更新1回につき学習1回)
+
+    /// 見本が変わったら同じ場所へ上書きする(置き場所のモデルは常に1組)。digest は最後に書き換わる
+    func testSampleChangeRetrainsInPlace() throws {
+        let root = try Self.makeProject(samples: 5)   // 他のテストと別の見本 = プロセス内の控えを共有しない
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dir = CheckStateClassifier.directory(projectRoot: root)
+        let cache = CheckStateClassifier.cacheDirectory(projectRoot: root)
+        let first = try XCTUnwrap(try VisionClassifier.trainingSet(at: dir))
+        _ = try VisionClassifier.loadBlocking(first, cacheDirectory: cache)
+        XCTAssertEqual(try String(contentsOf: cache.appendingPathComponent("digest"), encoding: .utf8), first.digest)
+
+        try Self.checkboxPNG(on: true, shift: 7).write(to: dir.appendingPathComponent("[ON]/added.png"))
+        let second = try XCTUnwrap(try VisionClassifier.trainingSet(at: dir))
+        XCTAssertNotEqual(first.digest, second.digest)
+        _ = try VisionClassifier.loadBlocking(second, cacheDirectory: cache)
+        XCTAssertEqual(try String(contentsOf: cache.appendingPathComponent("digest"), encoding: .utf8), second.digest)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cache.appendingPathComponent("training/[ON]/added.png").path),
+                      "新しい見本で学び直した")
+        let entries = Set(try FileManager.default.contentsOfDirectory(atPath: cache.path))
+        XCTAssertEqual(entries, ["model.mlmodel", "selfcheck.json", "digest", "training", "train.lock"],
+                       "モデルは1組だけ")
+    }
+
+    /// **同時に来たプロセスのうち学ぶのは1本だけ**。flock は open ごとの記述子に付くので、同じプロセスの
+    /// 別スレッドで取っても互いに待つ = 別プロセスと同じ条件で確かめられる
+    func testConcurrentLoadersTrainOnlyOnce() throws {
+        let root = try Self.makeProject(samples: 4)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let set = try XCTUnwrap(try VisionClassifier.trainingSet(at: CheckStateClassifier.directory(projectRoot: root)))
+        let cache = CheckStateClassifier.cacheDirectory(projectRoot: root)
+        let lock = NSLock()
+        var trained = 0
+        var errors: [Error] = []
+        DispatchQueue.concurrentPerform(iterations: 4) { _ in
+            var usage = VisionClassifier.VisionUsage()
+            do {
+                let didTrain = try VisionClassifier.withCacheLock(cache) {
+                    try VisionClassifier.ensureModel(set, cacheDirectory: cache, usage: &usage)
+                }
+                lock.lock(); if didTrain { trained += 1 }; lock.unlock()
+            } catch {
+                lock.lock(); errors.append(error); lock.unlock()
+            }
+        }
+        XCTAssertTrue(errors.isEmpty, "\(errors)")
+        XCTAssertEqual(trained, 1, "見本1組につき学習は1回")
     }
 
     // MARK: - 学習の点検(自分の見本を取り違えないか)
@@ -156,7 +205,7 @@ final class CheckStateClassifierTests: XCTestCase {
         XCTAssertTrue(model.mismatches.contains { $0.sample == "[OFF]/wrong.png" && $0.expected == "[OFF]" },
                       "\(model.mismatches)")
         XCTAssertTrue(FileManager.default.fileExists(
-            atPath: cache.appendingPathComponent("\(set.digest)/selfcheck.json").path), "点検の結果を控える")
+            atPath: cache.appendingPathComponent("selfcheck.json").path), "点検の結果を控える")
         XCTAssertTrue(VisionClassifier.describe(model.mismatches[0]).contains("is classified as"))
     }
 
@@ -329,6 +378,50 @@ final class CheckStateClassifierTests: XCTestCase {
         let noSamples = await run("checked", a11y: element(type: "button"), imageOn: true, projectRoot: nil, prefer: true)
         XCTAssertFalse(passed(noSamples))
         XCTAssertFalse(noSamples.notes.contains(.checkStateClassified))
+    }
+
+    // MARK: - 推論の対照(壊れた推論の答えを使わない)
+
+    /// 対照はラベルの違う見本2枚。点検で取り違えた見本は選ばない(健全なときも外すので対照にならない)
+    func testControlsAreTwoSamplesOfDifferentLabelsTheModelGetsRight() throws {
+        let root = try Self.makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let set = try XCTUnwrap(try VisionClassifier.trainingSet(at: CheckStateClassifier.directory(projectRoot: root)))
+        let controls = VisionClassifier.controlSamples(set, excluding: [])
+        XCTAssertEqual(controls.map(\.label), ["[OFF]", "[ON]"])
+        let skipFirstOff = VisionClassifier.controlSamples(set, excluding: [
+            VisionClassifier.Mismatch(sample: "[OFF]/s0.png", expected: "[OFF]", predicted: "[ON]", confidence: 0.9)])
+        XCTAssertEqual(skipFirstOff.map(\.label), ["[OFF]", "[ON]"], "取り違えた s0 の代わりに次の見本を選ぶ")
+        XCTAssertEqual(VisionClassifier.controlSamples(set, excluding: (0..<6).map {
+            VisionClassifier.Mismatch(sample: "[OFF]/s\($0).png", expected: "[OFF]", predicted: "[ON]", confidence: 0.9)
+        }).count, 0, "2 ラベルそろわなければ確かめない(空)")
+    }
+
+    /// **壊れた推論は失敗を返さず、どの画像にも同じラベルを確信度 1.00 で答える**(2026-09-19 負荷テスト:
+    /// ON が写った crop を [OFF] 1.00 と答えた)。対照が外れたら答えを使わず a11y で判定する ——
+    /// とくに**誤った緑**(a11y はオンなのに checkIsOFF が分類器の [OFF] で通る)を塞ぐ
+    func testAnswerIsNotUsedWhenAControlSampleIsMisclassified() async throws {
+        let root = try Self.makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let set = try XCTUnwrap(try VisionClassifier.trainingSet(at: CheckStateClassifier.directory(projectRoot: root)))
+        let model = try VisionClassifier.loadBlocking(set, cacheDirectory: CheckStateClassifier.cacheDirectory(projectRoot: root))
+        XCTAssertEqual(model.controls.count, 2)
+        model.inferenceForTesting = { _ in VisionClassifier.Classification(label: "[OFF]", confidence: 1) }
+        defer { model.inferenceForTesting = nil }   // 同じ見本のモデルはプロセス内で共有される
+
+        let a11yOn = element(type: "switch", value: "1")
+        let off = await run("notChecked", a11y: a11yOn, imageOn: true, projectRoot: root, prefer: true)
+        XCTAssertFalse(passed(off), "a11y はオン。壊れた分類器の [OFF] で checkIsOFF を通さない")
+        XCTAssertTrue(off.notes.contains(.checkStateClassifierFailed))
+        XCTAssertFalse(off.notes.contains(.checkStateClassified))
+        let on = await run("checked", a11y: a11yOn, imageOn: true, projectRoot: root, prefer: true)
+        XCTAssertTrue(passed(on), "a11y のオンで判定する: \(on.status)")
+
+        // a11y が状態を持たない要素は判定材料が無い = 落ち、理由を言う
+        let silent = await run("checked", a11y: element(type: "button"), imageOn: true, projectRoot: root, prefer: true)
+        guard case .failed(let reason) = silent.status else { return XCTFail("\(silent.status)") }
+        XCTAssertTrue(reason.contains("not answering reliably"), reason)
+        XCTAssertTrue(reason.contains("\"[ON]\""), "どの対照を外したかを言う: \(reason)")
     }
 
     /// **分類器の判定で落ちたときだけ、判定に使ったスクリーンショットを持ち帰る**(レポートに添える)。

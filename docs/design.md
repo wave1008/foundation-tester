@@ -2131,11 +2131,19 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   スクリーンショットを切り、Create ML の画像分類器の1位のラベル(`[ON]`/`[OFF]` を含むか)で判定する。
   使う要素は実行プロファイルの `preferCheckStateClassifier`(既定 true = a11y より優先 / false = a11y が
   不明の要素だけ)。**DSL の `checkIsON(prefer:)` / `checkIsOFF(prefer:)` が1コマンドだけ上書きする**
-  (`CheckStateSource` → `FlowStep.preferCheckStateClassifier`。優先はステップ指定 > プロファイル)。学習済みモデルは `.fleetest/vision/CheckStateClassifier/<digest>/` にキャッシュし
-  (digest = 画像の中身 + オプション + 学習器の版)、並列のプロセスは digest ごとの flock で1本にする。
+  (`CheckStateSource` → `FlowStep.preferCheckStateClassifier`。優先はステップ指定 > プロファイル)。学習済みモデルは分類器ごとに1組だけ `.fleetest/vision/CheckStateClassifier/` に置き、隣の `digest`
+  (画像の中身 + オプション + 学習器の版)が見本と一致しないときだけ学び直して上書きする。確認・学習・読み込みは
+  分類器ごとの flock(`train.lock`)の内側で行い、ロックの中で digest を確かめ直すので、見本の更新1回につき学習は1回
+  (`VisionClassifier.ensureModel`)。モデルは別名で書いて rename で差し替え、digest は最後に書く。
   学習の待ちは `DeadlineExclusion` で締め切りから引く。**見本は推論と同じ a11y の枠で切ったものを置く**
   (切り方がずれると別物に見える)。**見本に無い種類の部品は2クラスのどちらかへ必ず振られる**ので、
   優先オンでは同じ画面のスイッチ・ラジオの見本も一緒に置く(witness は E2E-iOS の scenario 08)。
+  **推論のたびに対照(ラベルの違う見本2枚。学習の点検で正しく答えたものから `controlSamples` が選ぶ)も掛け、
+  どちらかが自分のラベルに答えなければ答えを使わない**(`VisionClassifier.Model.classify`。checkIsON/OFF は a11y へ・
+  `imageIs` は失敗)。壊れた Vision / Core ML は失敗を返さず、どの画像にも同じラベルを確信度 1.00 で答える
+  (2026-09-19 負荷テスト: 手元の ANE が揺れている間に ON の crop を [OFF] 1.00 と 7 回。同じ crop・同じモデルを後で
+  掛けると 20/20 [ON])。findImage の縮退の門(白との距離 0)は特徴量の経路だけを見るので、Core ML の経路には
+  効かない。対照が2枚そろわないモデルは確かめない。
   **`imageIs`(DefaultClassifier)も同じ学習・推論(`FTCore.VisionClassifier`)を使う** —— 見本は
   `vision/classifiers/DefaultClassifier/` 以下の任意の深さ、ラベルは親フォルダの相対パスを `_` でつないだもの、
   判定は1位のラベルの最後の `[` 以降が期待値を含むか(Shirates の LabelUtility.getShortLabel)。

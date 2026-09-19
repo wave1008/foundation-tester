@@ -64,6 +64,9 @@ select("#toggle_notifications").checkIsON()
   `checkIsON(prefer: .accessibility)` はアクセシビリティが状態を報告する要素をアクセシビリティで判定します
   (報告しない要素は、この指定でも分類器で判定します)。指定はレポートのステップにも出ます。
 - 画像で判定したステップには、結果に注記 `check-state-classified` が付きます。
+- 判定のたびに、置いた見本のうち2枚(ラベルごとに1枚)も分類し直します。分類器がそれを取り違えたら答えを使わず、
+  アクセシビリティだけで判定します(注記 `check-state-classifier-failed`)。Mac の Vision / Core ML が一時的に
+  壊れたときに起きます(エラーを返さず、どの画像にも同じラベルを確信度いっぱいで答え続けます)。続くなら Mac を再起動してください。
 - 画像で判定したチェックが失敗すると、分類器が判定に使ったスクリーンショットを、レポートの失敗した
   ステップのすぐ下に添えます(何を見て判定したかを確かめられます)。
 - Shirates の `MLImageClassifier.swift` の `options=` / `imageFilter=binary` も同じ意味で読みます。

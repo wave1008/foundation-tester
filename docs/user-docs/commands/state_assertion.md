@@ -65,6 +65,10 @@ sample images (same location and labels as Shirates' Vision edition).
   checked state (elements that report none are still judged by the classifier). The choice is shown on the step in the report.
   `checkIsOFF` takes the same argument; when omitted, the run profile decides.
 - Steps judged from the image carry the note `check-state-classified` in the results.
+- Each judgement also re-checks two of your own samples (one per label). If the classifier gets one of them wrong,
+  its answer is not used and the checked state comes from accessibility only (note `check-state-classifier-failed`).
+  This happens when Vision / Core ML on the Mac is temporarily broken: it keeps answering the same label with full
+  confidence instead of reporting an error. If it persists, reboot the Mac.
 - When a check judged from the image fails, the screenshot the classifier judged is attached to the report
   right under the failed step, so you can see what it looked at.
 - `options=` / `imageFilter=binary` in Shirates' `MLImageClassifier.swift` are read with the same meaning.

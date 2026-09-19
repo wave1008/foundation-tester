@@ -33,6 +33,8 @@ Classifies the **image** of the last grabbed element with a classifier trained f
 - It works the same way as [CheckStateClassifier](state_assertion.md), which judges checked states from images
   (each classifier has its own folder).
 - When `imageIs` fails, the screenshot the classifier judged is attached to the report right under the failed step.
+- Each judgement also re-checks two of your own samples. If the classifier gets one of them wrong (Vision / Core ML on
+  the Mac is temporarily broken), its answer is not used and `imageIs` fails with that reason.
 
 
 ## Capturing and checking samples (CLI)

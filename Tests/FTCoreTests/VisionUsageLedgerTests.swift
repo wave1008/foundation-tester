@@ -124,7 +124,7 @@ final class VisionUsageLedgerTests: XCTestCase {
 
     // MARK: - VisionClassifier からの配線
 
-    /// 学習1回 + 点検の推論(見本 12 枚ぶん)+ 本番の推論1回が、それぞれ1件ずつ控えへ入る。
+    /// 学習1回 + 点検の推論(見本 12 枚ぶん)+ 本番の推論1回(と対照2枚)が、それぞれ1件ずつ控えへ入る。
     /// 学習と点検はロックの内側で走るので、記録が解放後にまとめて書かれることもここで見える
     func testVisionClassifierRecordsTrainingAndEachInference() async throws {
         let root = try DefaultClassifierTests.makeProject()
@@ -148,7 +148,9 @@ final class VisionUsageLedgerTests: XCTestCase {
                 try XCTUnwrap(CGImageSourceCreateWithData(
                     DefaultClassifierTests.iconPNG(circle: true, shift: 2) as CFData, nil)), 0, nil))
             _ = try model.classify(image)
-            XCTAssertEqual(VisionUsageLedger.drain(previous: &previous)?.calls, 1, "推論1回につき1件")
+            XCTAssertEqual(model.controls.count, 2)
+            XCTAssertEqual(VisionUsageLedger.drain(previous: &previous)?.calls, 3,
+                           "本番の推論1件 + 対照2枚の推論 = 推論1回につき1件")
         }
     }
 }

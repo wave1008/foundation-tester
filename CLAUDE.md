@@ -724,6 +724,9 @@
   ステップ指定 > プロファイル)。**DSL の写像は `CheckStatePreferDSLTests` が通しで縛る** —— FTCore の単体は
   FlowStep を直接作り、E2E の 21 は合否しか見ないので、写像の反転・渡し忘れはどちらも緑のまま通る。
   **見本は推論と同じ a11y の枠で切る**(docs/design.md の checkIsON の節)。
+  **分類器の答えは推論のたびに対照(ラベルの違う見本2枚)で確かめ、外れたら使わない**(`VisionClassifier.Model.classify`。
+  壊れた Vision / Core ML はエラーを返さず全部に同じラベルを確信度 1.00 で答える = checkIsOFF の誤った緑。
+  findImage の縮退の門は特徴量の経路だけで Core ML の経路には効かない)。
   **見本は 5 SUT 全部に ON / OFF の両方を置く**(片側だけだと分類器が片方の状態しか知らず、findImage も
   その状態の部品を探せない)。見本を置いた SUT では引数なしの `checkIsON()` が分類器の判定に切り替わるので、
   a11y の読みを E2E で守るのは各 SUT の `21_チェック状態の判定元.swift` の `prefer: .accessibility`

@@ -14,9 +14,10 @@
 // 違い: Shirates は画像の区分け(SegmentContainer)で部品を切り出すが、fleetest は a11y の枠で切る。
 // 見本画像も同じ枠で切ったものを置くこと(推論と学習で切り方を揃える)。分類器を複数の shard に割らない。
 //
-// 学習済みモデルは `<プロジェクト>/.fleetest/vision/<分類器名>/<digest>/model.mlmodel` に置き、
-// 画像の中身・ラベル・オプション・学習器の版から作る digest が変わったときだけ学び直す。並列のシナリオ実行
-// プロセスが同時に学ばないよう digest ごとの flock で1本にする(先客の完了を待って読む)。
+// 学習済みモデルは分類器ごとに1か所(`<プロジェクト>/.fleetest/vision/<分類器名>/model.mlmodel`)に置き、
+// 隣の `digest` に「どの見本から作ったか」(画像の中身・ラベル・オプション・学習器の版から作る digest)を書く。
+// **digest が一致しないときだけ学び直して上書きする**。並列のシナリオ実行プロセスは分類器ごとの flock
+// (`train.lock`)を通って確認・学習・読み込みをするので、見本の更新1回につき学習は1回(先客の完了を待って読む)。
 
 import CoreGraphics
 import CoreML
@@ -160,14 +161,39 @@ public enum VisionClassifier {
         public let labels: [String]
         /// 学習の点検で取り違えた見本(空 = 全見本を正しく答えた)
         public internal(set) var mismatches: [Mismatch] = []
+        /// 推論のたびに一緒に掛ける対照 = ラベルの違う見本2枚(点検で正しく答えたものから `controlSamples` が選ぶ)。
+        /// 空 = 選べなかった(確かめずに答える)
+        var controls: [Control] = []
+        /// テスト用の推論の差し替え口(Core ML の縮退は意図的に起こせない)
+        var inferenceForTesting: ((CGImage) throws -> Classification?)?
         init(vnModel: VNCoreMLModel, labels: [String]) { self.vnModel = vnModel; self.labels = labels }
 
+        struct Control {
+            let label: String
+            let image: CGImage
+        }
+
         /// 1位のラベル。Shirates と同じく確信度 0.1 以下は候補にしない。
-        /// 1回ごとに VisionUsageLedger へ1件書く(ロックの内側から呼ぶ経路は `classifyUnrecorded`)
+        /// **対照が自分のラベルに答えなければ答えを使わない**(`ClassifyError.controlMismatch`)——
+        /// Vision / Core ML は壊れても失敗を返さず、どの画像にも同じラベルを確信度 1.00 で答える
+        /// (2026-09-19 負荷テスト: ON が写った crop を [OFF] 1.00 と 7 回答え、同じ crop・同じモデルを
+        /// 後で掛けると 20/20 [ON] 1.00)。1推論ごとに VisionUsageLedger へ1件書く
+        /// (ロックの内側から呼ぶ経路は `classifyUnrecorded`)
         public func classify(_ image: CGImage) throws -> Classification? {
+            let answer = try recorded { try classifyUnrecorded(image) }
+            for control in controls {
+                let got = try recorded { try classifyUnrecorded(control.image) }
+                guard got?.label == control.label else {
+                    throw ClassifyError.controlMismatch(expected: control.label, got: got)
+                }
+            }
+            return answer
+        }
+
+        private func recorded(_ body: () throws -> Classification?) throws -> Classification? {
             let start = Date()
             do {
-                let answer = try classifyUnrecorded(image)
+                let answer = try body()
                 VisionUsageLedger.record(ok: true, ms: Date().timeIntervalSince(start) * 1000)
                 return answer
             } catch {
@@ -177,6 +203,7 @@ public enum VisionClassifier {
         }
 
         func classifyUnrecorded(_ image: CGImage) throws -> Classification? {
+            if let inferenceForTesting { return try inferenceForTesting(image) }
             let request = VNCoreMLRequest(model: vnModel)
             try VNImageRequestHandler(cgImage: image).perform([request])
             let observations = (request.results as? [VNClassificationObservation]) ?? []
@@ -184,6 +211,21 @@ public enum VisionClassifier {
             else { return nil }
             return Classification(label: best.identifier, confidence: Double(best.confidence))
         }
+    }
+
+    public enum ClassifyError: LocalizedError, CustomStringConvertible {
+        case controlMismatch(expected: String, got: Classification?)
+        public var description: String {
+            switch self {
+            case .controlMismatch(let expected, let got):
+                let answered = got.map { "\"\($0.label)\" (confidence \(String(format: "%.2f", $0.confidence)))" }
+                    ?? "no label"
+                return "the classifier answered \(answered) for its own sample image of \"\(expected)\","
+                    + " so Vision / Core ML is not answering reliably on this machine right now and its answer"
+                    + " was not used; this is a transient state of the machine (retry the run; if it persists, reboot)"
+            }
+        }
+        public var errorDescription: String? { description }
     }
 
     public enum LoadError: LocalizedError, CustomStringConvertible {
@@ -220,25 +262,58 @@ public enum VisionClassifier {
         processLock.lock()
         defer { processLock.unlock() }
         if let model = loaded[set.digest] { return model }
-        let work = cacheDirectory.appendingPathComponent(set.digest, isDirectory: true)
-        let modelURL = work.appendingPathComponent("model.mlmodel")
-        if !FileManager.default.fileExists(atPath: modelURL.path) {
-            try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
-            let lockPath = cacheDirectory.appendingPathComponent("\(set.digest).lock").path
-            // FileManager.createFile を使わない(既存の inode を置き換えて先客の flock と衝突しなくなる)
-            let fd = open(lockPath, O_WRONLY | O_CREAT, 0o644)
-            if fd >= 0 { flock(fd, LOCK_EX) }
-            defer { if fd >= 0 { close(fd) } }
-            if !FileManager.default.fileExists(atPath: modelURL.path) {
-                try usage.measure { try train(set, into: work, modelURL: modelURL) }
-            }
+        // 読み込みもロックを通す: 別プロセスが上書きしている最中のモデル・点検結果を読まない
+        let model = try withCacheLock(cacheDirectory) {
+            _ = try ensureModel(set, cacheDirectory: cacheDirectory, usage: &usage)
+            let compiled = try MLModel.compileModel(at: CacheLayout.model(cacheDirectory))
+            let model = Model(vnModel: try VNCoreMLModel(for: MLModel(contentsOf: compiled)),
+                              labels: set.labels.keys.sorted())
+            model.mismatches = selfCheck(model, set, cachedAt: CacheLayout.selfCheck(cacheDirectory), usage: &usage)
+            return model
         }
-        let compiled = try MLModel.compileModel(at: modelURL)
-        let model = Model(vnModel: try VNCoreMLModel(for: MLModel(contentsOf: compiled)),
-                          labels: set.labels.keys.sorted())
-        model.mismatches = selfCheck(model, set, cachedAt: work.appendingPathComponent("selfcheck.json"), usage: &usage)
+        model.controls = controlSamples(set, excluding: model.mismatches)
         loaded[set.digest] = model
         return model
+    }
+
+    /// 分類器ごとの置き場所(`cacheDirectory` 直下)。モデル・点検結果・digest は1組だけ持つ
+    enum CacheLayout {
+        static func model(_ dir: URL) -> URL { dir.appendingPathComponent("model.mlmodel") }
+        static func selfCheck(_ dir: URL) -> URL { dir.appendingPathComponent("selfcheck.json") }
+        static func digest(_ dir: URL) -> URL { dir.appendingPathComponent("digest") }
+        static func training(_ dir: URL) -> URL { dir.appendingPathComponent("training", isDirectory: true) }
+        static func lock(_ dir: URL) -> URL { dir.appendingPathComponent("train.lock") }
+    }
+
+    /// 置き場所のモデルが `set` から作ったものでないか(無い・digest が違う)。ロックを取らずに読む = 目安にだけ使う
+    static func isStale(_ set: TrainingSet, cacheDirectory: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: CacheLayout.model(cacheDirectory).path),
+              let stamp = try? String(contentsOf: CacheLayout.digest(cacheDirectory), encoding: .utf8)
+        else { return true }
+        return stamp != set.digest
+    }
+
+    /// 分類器ごとの flock を取って `body` を走らせる。**同じプロセスの別スレッドどうしも排他になる**
+    /// (flock は open ごとの記述子に付くので、open し直した fd どうしは衝突する)
+    static func withCacheLock<T>(_ cacheDirectory: URL, _ body: () throws -> T) throws -> T {
+        try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        // FileManager.createFile を使わない(既存の inode を置き換えて先客の flock と衝突しなくなる)
+        let fd = open(CacheLayout.lock(cacheDirectory).path, O_WRONLY | O_CREAT, 0o644)
+        if fd >= 0 { flock(fd, LOCK_EX) }
+        defer { if fd >= 0 { close(fd) } }
+        return try body()
+    }
+
+    /// **`withCacheLock` の内側で呼ぶ**。置き場所のモデルが `set` から作ったものでなければ学び直して上書きし、
+    /// 学んだら true。確認をロックの内側でもう一度するので、同時に来たプロセスのうち学ぶのは最初の1本だけ
+    /// (後の者は先客が書いた digest を見て読むだけになる)。順序: 点検結果を消す → 学習 → モデルを差し替え →
+    /// digest を最後に書く(途中で落ちても digest が古いまま = 次の者が学び直す)
+    static func ensureModel(_ set: TrainingSet, cacheDirectory: URL, usage: inout VisionUsage) throws -> Bool {
+        guard isStale(set, cacheDirectory: cacheDirectory) else { return false }
+        try? FileManager.default.removeItem(at: CacheLayout.selfCheck(cacheDirectory))
+        try usage.measure { try train(set, cacheDirectory: cacheDirectory) }
+        try Data(set.digest.utf8).write(to: CacheLayout.digest(cacheDirectory), options: .atomic)
+        return true
     }
 
     /// ロックの内側で撃った Vision / Core ML の呼び出しを控え、ロックの外で VisionUsageLedger へ書く
@@ -275,15 +350,36 @@ public enum VisionClassifier {
                       let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else { continue }
                 let answer = try? usage.measure { try model.classifyUnrecorded(cgImage) }
                 guard answer?.label != label else { continue }
-                let root = set.directory.standardizedFileURL.path + "/"
-                let path = image.standardizedFileURL.path
-                mismatches.append(Mismatch(sample: path.hasPrefix(root) ? String(path.dropFirst(root.count)) : path,
-                                           expected: label, predicted: answer?.label,
-                                           confidence: answer?.confidence ?? 0))
+                mismatches.append(Mismatch(sample: samplePath(image, in: set), expected: label,
+                                           predicted: answer?.label, confidence: answer?.confidence ?? 0))
             }
         }
         if let data = try? JSONEncoder().encode(mismatches) { try? data.write(to: url) }
         return mismatches
+    }
+
+    /// 分類器フォルダからの相対パス(Mismatch.sample の書式)
+    static func samplePath(_ image: URL, in set: TrainingSet) -> String {
+        let root = set.directory.standardizedFileURL.path + "/"
+        let path = image.standardizedFileURL.path
+        return path.hasPrefix(root) ? String(path.dropFirst(root.count)) : path
+    }
+
+    /// 推論のたびに掛ける対照(`Model.controls`)。**ラベルの違う2枚**で足りる —— 壊れた推論は全部に同じ
+    /// ラベルを答えるので、2つのラベルのどちらかを必ず外す。点検で取り違えた見本は選ばない(健全なときも
+    /// 外すので対照にならない)。2枚そろわなければ空 = 確かめない
+    static func controlSamples(_ set: TrainingSet, excluding mismatches: [Mismatch]) -> [Model.Control] {
+        let wrong = Set(mismatches.map(\.sample))
+        var picked: [Model.Control] = []
+        for (label, images) in set.labels.sorted(by: { $0.key < $1.key }) where picked.count < 2 {
+            for url in images where !wrong.contains(samplePath(url, in: set)) {
+                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                      let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { continue }
+                picked.append(Model.Control(label: label, image: image))
+                break
+            }
+        }
+        return picked.count == 2 ? picked : []
     }
 
     /// 取り違えの1行の説明(シナリオ終了時の警告と `fleetest vision check` が同じ文を出す)
@@ -304,8 +400,7 @@ public enum VisionClassifier {
 
     /// 学習(キャッシュに無いとき)の待ちは締め切りから差し引く(DeadlineExclusion。OCR の暖機と同じ扱い)
     public static func load(_ set: TrainingSet, cacheDirectory: URL) async throws -> Model {
-        let needsTraining = !FileManager.default.fileExists(
-            atPath: cacheDirectory.appendingPathComponent("\(set.digest)/model.mlmodel").path)
+        let needsTraining = isStale(set, cacheDirectory: cacheDirectory)
         let token = needsTraining ? DeadlineExclusion.begin(cap: trainingCap) : nil
         defer { if let token { DeadlineExclusion.end(token) } }
         return try await withCheckedThrowingContinuation { continuation in
@@ -316,11 +411,12 @@ public enum VisionClassifier {
         }
     }
 
-    private static func train(_ set: TrainingSet, into work: URL, modelURL: URL) throws {
+    /// 学習してモデルを置き場所へ差し替える(`ensureModel` からだけ呼ぶ = ロックの内側)
+    private static func train(_ set: TrainingSet, cacheDirectory: URL) throws {
         #if canImport(CreateML)
         let fm = FileManager.default
-        try? fm.removeItem(at: work)
-        let training = work.appendingPathComponent("training", isDirectory: true)
+        let training = CacheLayout.training(cacheDirectory)
+        try? fm.removeItem(at: training)
         for (label, images) in set.labels {
             let dir = training.appendingPathComponent(label, isDirectory: true)
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -350,9 +446,13 @@ public enum VisionClassifier {
         do {
             let classifier = try MLImageClassifier(trainingData: .labeledDirectories(at: training),
                                                    parameters: parameters)
-            let temporary = work.appendingPathComponent("model.tmp.mlmodel")
+            let temporary = cacheDirectory.appendingPathComponent("model.tmp.mlmodel")
+            try? fm.removeItem(at: temporary)
             try classifier.write(to: temporary)
-            try fm.moveItem(at: temporary, to: modelURL)
+            // rename(2) は置き換えを一度に行う(moveItem は既存があると失敗する)
+            guard rename(temporary.path, CacheLayout.model(cacheDirectory).path) == 0 else {
+                throw LoadError.training("could not replace the model (errno \(errno))")
+            }
         } catch {
             throw LoadError.training(String(describing: error))
         }

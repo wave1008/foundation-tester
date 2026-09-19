@@ -1350,11 +1350,15 @@ extension StepExecutor {
                 found = true
                 var state = checkState(of: element, step: step)
                 lastClassification = nil
-                if let classifier, prefersClassifier || state == .unknown,
-                   let result = await classifyCheckState(element, screen: snapshot.screen, with: classifier) {
-                    state = result.state
-                    lastClassification = result.classification
-                    noteCodesThisStep.insert(.checkStateClassified)
+                if let classifier, prefersClassifier || state == .unknown {
+                    if let result = await classifyCheckState(element, screen: snapshot.screen, with: classifier) {
+                        state = result.state
+                        lastClassification = result.classification
+                        noteCodesThisStep.insert(.checkStateClassified)
+                    } else if classifierFailureThisStep != nil {
+                        // 答えを使わなかった = a11y の読みのまま判定する
+                        noteCodesThisStep.insert(.checkStateClassifierFailed)
+                    }
                 }
                 lastState = state
                 if state != .unknown { observedCheckedThisStep = true }
@@ -1383,7 +1387,8 @@ extension StepExecutor {
         return found
             ? .failed(Self.checkStateMismatch(lastState, locator: step.locatorSummary)
                       + Self.checkStateSourceHint(lastClassification,
-                                                  classifierError: visionClassifierErrors[CheckStateClassifier.name])
+                                                  classifierError: visionClassifierErrors[CheckStateClassifier.name]
+                                                      ?? classifierFailureThisStep)
                       + tapDiagnosisHint(lastSnapshot?.elements))
             : failed(.notFound, "element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot)
                       + Self.keyboardResizedHint(lastSnapshot))
@@ -1437,6 +1442,9 @@ extension StepExecutor {
             return failed(.notFound, "element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot))
         }
         guard let lastClassification else {
+            if let classifierFailureThisStep {
+                return .failed("imageIs could not use \(DefaultClassifier.name): \(classifierFailureThisStep): \(step.locatorSummary)")
+            }
             return .failed("the element image could not be classified (screenshot or crop failed): \(step.locatorSummary)")
         }
         return .failed("the element image is classified as \"\(VisionClassifier.shortLabel(lastClassification.label))\""
@@ -1486,7 +1494,12 @@ extension StepExecutor {
         guard let png = try? await driver.screenshot(),
               let image = VisionClassifier.crop(png: png, frame: element.frame, screen: screen) else { return nil }
         classifierScreenshotThisStep = png
-        return try? classifier.classify(image)
+        do {
+            return try classifier.classify(image)
+        } catch {
+            classifierFailureThisStep = ErrorText.user(error)
+            return nil
+        }
     }
 
     /// 要素の枠でスクリーンショットを切り、分類器の1位のラベルを状態へ写す。ラベルが [ON]/[OFF] を

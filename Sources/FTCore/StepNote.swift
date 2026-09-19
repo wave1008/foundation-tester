@@ -209,7 +209,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// checkIsON / checkIsOFF の状態を **CheckStateClassifier が要素の画像から判定した**
     /// (a11y の報告ではない)。見本画像の不足・見た目の変更で誤りうる側なので、判定の出どころを残す
     case checkStateClassified = "check-state-classified"
-    /// CheckStateClassifier の見本画像はあるのに、学習か読み込みに失敗した(a11y だけで判定した)
+    /// CheckStateClassifier の見本画像はあるのに、学習か読み込みに失敗した、または推論の対照が外れて
+    /// 答えを使わなかった(`VisionClassifier.ClassifyError`)。どちらも a11y だけで判定した
     case checkStateClassifierFailed = "check-state-classifier-failed"
 
     /// 1番目の occlusion-guard 評価だけで、ガード自身の所要(FM の直列化待ち+推論)が
@@ -260,7 +261,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .ocrWarmupCapped: return "the wait for the OCR recognizer to finish loading ran out (asked FM instead)"
         case .checkStateClassified: return "the check state was judged by CheckStateClassifier from the element's image"
         case .checkStateClassifierFailed:
-            return "CheckStateClassifier could not be trained or loaded, so the check state came from accessibility only"
+            return "CheckStateClassifier could not be trained or loaded, or its answer could not be trusted,"
+                + " so the check state came from accessibility only"
         case .settleCapped: return "the screen did not settle (poll limit)"
         case .heldValue: return "from the grabbed value"
         case .scrollFrameMissing: return "the scrollFrame did not resolve, so the search stopped early"
