@@ -56,6 +56,8 @@ is unavailable.
   cancelled runs).
   Between the last scenario finishing and the switch, "Editing recordings..." is shown to the right
   of the Run Tests button.
+  The **Export Test Results** button in the player view's header writes the open session's results
+  to an Excel (.xlsx) file; a dialog lets you choose where to save it.
 - The **Profiles** tab lists, creates, copies, renames and deletes test projects themselves,
   and lists, creates, copies, renames, deletes and edits run/app profiles. A run profile's
   section shows the union of every run profile's devices with checkboxes (checked = this

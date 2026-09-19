@@ -462,6 +462,15 @@ test("isMonitorFromWebviewMessage: createDevice の installSystemImage は省略
   );
 });
 
+test("isMonitorFromWebviewMessage: recordingsExport は project/runID(共に非空文字列)が揃っていれば true", () => {
+  assert.equal(isMonitorFromWebviewMessage({ type: "recordingsExport", project: "p", runID: "r" }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "recordingsExport", project: "p", runID: "" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "recordingsExport", project: "", runID: "r" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "recordingsExport", project: "p" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "recordingsExport", runID: "r" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "recordingsExport" }), false);
+});
+
 test("isMonitorFromWebviewMessage: 未知の type や不正値は false", () => {
   assert.equal(isMonitorFromWebviewMessage({ type: "unknown" }), false);
   assert.equal(isMonitorFromWebviewMessage({}), false);

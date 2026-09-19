@@ -161,6 +161,14 @@ export interface MonitorPanelDeps {
   /** `fleetest <args>` を CLI キュー経由で実行する(Package.swift を書き換える project 系は
    *  list-scenarios のビルドと同時に走らせない)。出力は出力パネルへ流し、末尾を返す。 */
   runFleetestCli(args: readonly string[]): Promise<{ readonly ok: boolean; readonly output: string }>;
+  /** 保存先を選ばせる(録画タブのエクスポート専用)。defaultAbsPath は既定のファイル名込み絶対パス、
+   *  filterLabel はファイルの種類欄の表示名(拡張子は xlsx 固定)。キャンセル時は undefined。 */
+  showSaveDialog(defaultAbsPath: string, filterLabel: string): Promise<string | undefined>;
+  /** 情報メッセージ(actionLabel 省略でボタン無し)。押された結果のラベルを返す(押されなければ undefined)。 */
+  showInfo(message: string, actionLabel?: string): Promise<string | undefined>;
+  showError(message: string): void;
+  /** OS の既定アプリでファイルを開く(vscode.env.openExternal)。 */
+  openExternal(absPath: string): void;
 }
 
 export function registerMonitorPanel(
@@ -353,6 +361,22 @@ export class MonitorPanelController implements vscode.Disposable {
       videoWebviewUri: (absPath) =>
         this.panel ? this.panel.webview.asWebviewUri(vscode.Uri.file(absPath)).toString() : null,
       runFleetestCli: (args) => this.runFleetestCli(args),
+      showSaveDialog: async (defaultAbsPath, filterLabel) => {
+        const uri = await vscode.window.showSaveDialog({
+          defaultUri: vscode.Uri.file(defaultAbsPath),
+          filters: { [filterLabel]: ["xlsx"] },
+        });
+        return uri?.fsPath;
+      },
+      showInfo: async (message, actionLabel) => {
+        if (actionLabel === undefined) {
+          await vscode.window.showInformationMessage(message);
+          return undefined;
+        }
+        return vscode.window.showInformationMessage(message, actionLabel);
+      },
+      showError: (message) => void vscode.window.showErrorMessage(message),
+      openExternal: (absPath) => void vscode.env.openExternal(vscode.Uri.file(absPath)),
     };
     this.deviceStream = new MonitorDeviceStreamController(this.deps);
     this.processManager = new MonitorProcessManager(this.deps);
@@ -1198,6 +1222,9 @@ export class MonitorPanelController implements vscode.Disposable {
         break;
       case "recordingsOpen":
         void this.recordings.openSession(message.project, message.runID);
+        break;
+      case "recordingsExport":
+        void this.recordings.exportSession(message.project, message.runID);
         break;
       case "dashboard":
         this.dashboard.handleWebviewMessage(message.message);

@@ -294,3 +294,52 @@ export async function loadRecordingSessionDetail(
                                       await readMachineAliases(workspaceRoot));
   return { runDir, index: indexRaw, machine, scenarios };
 }
+
+/** run.json の fmSettings(docs/results-json.md)。寛容に読む(欠落した欄は null)。 */
+export interface RunMetaFmSettings {
+  readonly heal: boolean | null;
+  readonly textVisualCheck: boolean | null;
+  readonly screenLooksLike: boolean | null;
+  readonly ocrTextVisualCheck: boolean | null;
+}
+
+/** エクスポート(resultsExportModel.ts)が使う run.json の断片。host/profile は生の
+ *  (エイリアス変換前の)値のまま返す —— シナリオ側(scenarios/*.json 自身の host/profile)が
+ *  欠けているときのフォールバックにしか使わないため、表示用のマシン名読み替え
+ *  (sessionMachineLabel)は不要。 */
+export interface RunMetaFragment {
+  readonly profile: string | null;
+  readonly host: string | null;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+  readonly trigger: string | null;
+  readonly issuer: string | null;
+  readonly fmSettings: RunMetaFmSettings | null;
+}
+
+function booleanField(obj: Record<string, unknown> | null, key: string): boolean | null {
+  const v = obj?.[key];
+  return typeof v === "boolean" ? v : null;
+}
+
+/** run.json を寛容に読む(欠落・壊れたファイルは全欄 null)。 */
+export async function loadRunMeta(runDir: string): Promise<RunMetaFragment> {
+  const metaRaw = await readJson(path.join(runDir, "run.json"));
+  const meta = isRecord(metaRaw) ? metaRaw : null;
+  const fmSettingsRaw = isRecord(meta?.fmSettings) ? meta.fmSettings : null;
+  const fmSettings: RunMetaFmSettings | null = fmSettingsRaw === null ? null : {
+    heal: booleanField(fmSettingsRaw, "heal"),
+    textVisualCheck: booleanField(fmSettingsRaw, "textVisualCheck"),
+    screenLooksLike: booleanField(fmSettingsRaw, "screenLooksLike"),
+    ocrTextVisualCheck: booleanField(fmSettingsRaw, "ocrTextVisualCheck"),
+  };
+  return {
+    profile: stringField(meta, "profile") ?? null,
+    host: stringField(meta, "host") ?? stringField(meta, "machine") ?? null,
+    startedAt: stringField(meta, "startedAt") ?? null,
+    finishedAt: stringField(meta, "finishedAt") ?? null,
+    trigger: stringField(meta, "trigger") ?? null,
+    issuer: stringField(meta, "issuer") ?? null,
+    fmSettings,
+  };
+}

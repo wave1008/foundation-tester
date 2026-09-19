@@ -63,6 +63,7 @@ final class StepBudgetInstrumentTests: XCTestCase {
     func testBuilderCarriesTheInstrumentsIntoTheTimeline() {
         var event = ScenarioEvent(kind: "step")
         event.index = 1
+        event.section = "expectation"
         event.description = "select \"#x\""
         event.status = "failed"
         event.durationMs = 120_000
@@ -78,6 +79,7 @@ final class StepBudgetInstrumentTests: XCTestCase {
         builder.consume(event)
         let record = builder.build(passed: false, timedOut: false, startedAt: Date(),
                                    durationMs: 120_000, packageRoot: nil)
+        XCTAssertEqual(record.timeline?.first?.section, "expectation")
         XCTAssertEqual(record.timeline?.first?.scheduleDelayMs, 119_500)
         XCTAssertEqual(record.timeline?.first?.cpuMs, 3)
         XCTAssertEqual(record.timeline?.first?.ioBlockedMs, 4)

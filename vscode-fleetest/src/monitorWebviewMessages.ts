@@ -788,6 +788,10 @@ export type MonitorFromWebviewMessage =
   // null = 「(すべて)」(録画タブだけの表示。fleetest.project は変えない)
   | { readonly type: "recordingsSelectProject"; readonly project: string | null }
   | { readonly type: "recordingsOpen"; readonly project: string; readonly runID: string }
+  // 再生ビューのヘッダー「テスト結果をエクスポート」。project/runID は開いているセッションと同じ
+  // (束ねたセッションは代表 run の runID。monitorRecordingsController.exportSession が
+  // resolveSessionRunIDs で構成 run 全部を引き直す)。
+  | { readonly type: "recordingsExport"; readonly project: string; readonly runID: string }
   // ---- ダッシュボードタブ -------------------------------------------------------------------
   // dashboardModel.ts の DashboardFromWebviewMessage をそのまま運ぶ封筒(上の
   // MonitorToWebviewMessage の "dashboard" 型と対)。
@@ -1144,6 +1148,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "recordingsSelectProject":
       return value.project === null || (typeof value.project === "string" && value.project !== "");
     case "recordingsOpen":
+    case "recordingsExport":
       return typeof value.project === "string" && value.project !== "" && typeof value.runID === "string" && value.runID !== "";
     case "dashboard":
       return isDashboardFromWebviewMessage(value.message);

@@ -2654,7 +2654,8 @@ button.settings-remote-hosts-color-swatch:focus-visible {
 .recordings-toolbar-title {
   font-weight: 600;
 }
-#recordings-refresh {
+#recordings-refresh,
+#recordings-export {
   font-family: inherit;
   font-size: inherit;
   padding: 4px 10px;
@@ -2664,7 +2665,11 @@ button.settings-remote-hosts-color-swatch:focus-visible {
   color: var(--vscode-button-foreground);
   cursor: pointer;
 }
-#recordings-refresh:hover:not(:disabled) { background-color: var(--vscode-button-hoverBackground); }
+#recordings-refresh:hover:not(:disabled),
+#recordings-export:hover:not(:disabled) { background-color: var(--vscode-button-hoverBackground); }
+/* 見出しの右端に寄せる */
+#recordings-export { margin-left: auto; flex: 0 0 auto; }
+#recordings-export:disabled { opacity: 0.5; cursor: default; }
 .recordings-empty {
   padding: 16px 4px;
   color: var(--vscode-descriptionForeground);

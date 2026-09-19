@@ -690,6 +690,7 @@ function renderRecordingsPanel(): string {
         <!-- 実行マシン(run.json の machine)。**束ねたセッションでは複数**入るので、これは
              バッジそのものではなくバッジの入れ物(recordingsTab.js が中身と表示を切り替える) -->
         <span id="recordings-session-machine" class="recordings-session-machines" style="display: none;"></span>
+        <button id="recordings-export" type="button">${t("panels.recordings.exportResults")}</button>
       </div>
       <div class="recordings-body">
         <div class="recordings-video-pane">

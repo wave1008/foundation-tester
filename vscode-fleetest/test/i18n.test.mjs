@@ -30,6 +30,7 @@ import { webviewDashboardStrings } from "../src/i18n/strings/webviewDashboard";
 import { recordingsStrings } from "../src/i18n/strings/recordings";
 import { laneStrings } from "../src/i18n/strings/lane";
 import { updateStrings } from "../src/i18n/strings/update";
+import { resultsExportStrings } from "../src/i18n/strings/resultsExport";
 
 const ROOT = process.cwd();
 
@@ -46,6 +47,7 @@ const DICTS = [
   { name: "compat", prefix: "compat.", dict: compatStrings, side: "ext" },
   { name: "hookScaffold", prefix: "hookScaffold.", dict: hookScaffoldStrings, side: "ext" },
   { name: "update", prefix: "update.", dict: updateStrings, side: "ext" },
+  { name: "resultsExport", prefix: "resultsExport.", dict: resultsExportStrings, side: "ext" },
   { name: "webviewMonitorA", prefix: "wvMonitor.", dict: webviewMonitorAStrings, side: "webview" },
   { name: "webviewMonitorB", prefix: "wvMonitor2.", dict: webviewMonitorBStrings, side: "webview" },
   { name: "webviewDashboard", prefix: "wvDashboard.", dict: webviewDashboardStrings, side: "webview" },

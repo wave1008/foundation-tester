@@ -228,6 +228,34 @@ test("recordingsSession 適用でツリーが class→scenario→scene→step �
   assert.ok(rows[5].querySelector(".recordings-tree-icon-passed"), "S0020 は passed");
 });
 
+test("エクスポートボタン: セッションを開くまで disabled・開くとクリックで recordingsExport を送る", (t) => {
+  const { window, posts, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  const exportBtn = window.document.getElementById("recordings-export");
+  assert.equal(exportBtn.disabled, true, "セッション未読み込みの間は撃てない");
+
+  sendToWebview(SESSION_MESSAGE);
+  assert.equal(exportBtn.disabled, false);
+
+  exportBtn.click();
+  // posts は jsdom 側の realm のオブジェクトなので JSON で比べる(recordingsSelectProject の既存テストと同じ)。
+  assert.equal(
+    JSON.stringify(posts.filter((p) => p.type === "recordingsExport")),
+    JSON.stringify([{ type: "recordingsExport", project: "SampleApp", runID: "20260724-000000" }]),
+  );
+});
+
+test("エクスポートボタン: 一覧ビューに戻ると再び disabled になる", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  const exportBtn = window.document.getElementById("recordings-export");
+  sendToWebview(SESSION_MESSAGE);
+  assert.equal(exportBtn.disabled, false);
+
+  window.document.getElementById("recordings-back").click();
+  assert.equal(exportBtn.disabled, true);
+});
+
 test("録画が無いシナリオはグレーアウト+「録画なし」表示になる(配下も同様)", (t) => {
   const { window, sendToWebview } = createWebview();
   t.after(() => window.close());

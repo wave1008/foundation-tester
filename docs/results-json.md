@@ -330,7 +330,9 @@ screenLooksLike がこの回数ぶん静かに素通りしたことを事後に�
 ### TimelineStepRecord
 
 全ステップを到着順に持つ(録画再生 UI のステップツリー用)。
-`scene` / `sceneTitle` / `index` / `description` / `status` / `at` / `durationMs` / `notes`。
+`scene` / `sceneTitle` / `section` / `index` / `description` / `status` / `at` / `durationMs` / `notes`。
+`section` は FailedStepRecord と同じ値(condition/action/expectation/setUp/tearDown。CAE ブロック外は省略)で、
+拡張の「テスト結果をエクスポート」が列の振り分けに使う。2026-09-20 より前の記録には無い。
 **run 横断で注記を数えるときは `description` の文言一致ではなく `notes` を見る**
 (文言を変えた瞬間に集計が 0 件になる)。
 

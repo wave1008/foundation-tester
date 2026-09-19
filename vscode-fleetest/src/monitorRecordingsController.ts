@@ -4,8 +4,10 @@
 // 動画ファイルの webview URI 変換は MonitorPanelDeps.videoWebviewUri 経由(他サブコントローラを
 // 直接参照しない方針。monitorPanel.ts 冒頭参照)。
 
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { listProjectCandidates, resolveProjectName } from "./config";
+import { t } from "./i18n";
 import {
   buildRecordingErrorEntries,
   buildRecordingTree,
@@ -22,14 +24,28 @@ import {
 import {
   listRecordingSessions,
   loadRecordingSessionDetail,
+  loadRunMeta,
   type RecordingSessionSummary,
   resolveSessionRunIDs,
 } from "./recordingsStore";
 import type { MonitorPanelDeps } from "./monitorPanel";
 import { selectWorkspaceProject } from "./projectSelection";
 import type { MonitorToWebviewMessage } from "./monitorWebviewMessages";
+import {
+  buildResultsExportModel,
+  extractResultsExportScenarioSource,
+  type ResultsExportRunMeta,
+  type ResultsExportScenarioSource,
+} from "./resultsExportModel";
+import { buildResultsExportWorkbook } from "./resultsExportWorkbook";
 
 type RecordingsSessionMessage = Extract<MonitorToWebviewMessage, { type: "recordingsSession" }>;
+
+function scenarioIdOf(raw: unknown): string | null {
+  return typeof raw === "object" && raw !== null && typeof (raw as { scenarioID?: unknown }).scenarioID === "string"
+    ? (raw as { scenarioID: string }).scenarioID
+    : null;
+}
 
 /** 「(すべて)」選択の保存先(monitorPanel.ts が workspaceState "monitor.recordingsAllProjects" で渡す)。 */
 export interface RecordingsAllProjectsStore {
@@ -142,6 +158,79 @@ export class MonitorRecordingsController {
     const session = await this.buildSession(project, runID);
     if (session) {
       this.deps.post({ ...session, reveal: true });
+    }
+  }
+
+  /** 「テストセッション」タブのヘッダーボタン「テスト結果をエクスポート」。開いているセッション
+   *  (束ねたセッションは runGroup を共有する run 全部。buildSession と同じ解決)の
+   *  scenarios/*.json を fleetest 向けレイアウトの .xlsx へ書き出す。保存先は
+   *  `showSaveDialog` で利用者に確かめる(既定はセッション先頭 run の runDir 直下)。
+   *  fs/vscode は deps 越し(resultsExportModel.ts/resultsExportWorkbook.ts は vscode 非依存を保つ)。 */
+  async exportSession(project: string, runID: string): Promise<void> {
+    try {
+      const runIDs = await resolveSessionRunIDs(this.deps.workspaceRoot, project, runID);
+      const pairs = await Promise.all(
+        runIDs.map(async (id) => ({ runID: id, detail: await loadRecordingSessionDetail(this.deps.workspaceRoot, project, id) })),
+      );
+      const details = pairs.filter(
+        (p): p is { runID: string; detail: NonNullable<typeof p.detail> } => p.detail !== null,
+      );
+      if (details.length === 0) {
+        this.deps.showError(t("panels.recordings.exportNoData"));
+        return;
+      }
+      const sources: ResultsExportScenarioSource[] = [];
+      const runMetas: ResultsExportRunMeta[] = [];
+      // 動画は firstRecordingEntryByScenario と同じ「最初にマッチした1件」規約(束ねたセッションでも
+      // run を跨いで1件だけ = buildSession と同じ)。
+      const seenVideoScenarios = new Set<string>();
+      for (const { runID: rid, detail } of details) {
+        const meta = await loadRunMeta(detail.runDir);
+        runMetas.push({
+          runID: rid,
+          startedAt: meta.startedAt,
+          finishedAt: meta.finishedAt,
+          trigger: meta.trigger,
+          issuer: meta.issuer,
+          profile: meta.profile,
+          machine: detail.machine,
+          fmSettings: meta.fmSettings,
+        });
+        const videoByScenario = new Map<string, string>();
+        for (const [scenarioID, entry] of firstRecordingEntryByScenario(detail.index.recordings)) {
+          if (seenVideoScenarios.has(scenarioID)) continue;
+          seenVideoScenarios.add(scenarioID);
+          videoByScenario.set(scenarioID, path.join(detail.runDir, entry.file));
+        }
+        for (const raw of detail.scenarios) {
+          const scenarioID = scenarioIdOf(raw);
+          const videoPath = scenarioID !== null ? videoByScenario.get(scenarioID) ?? null : null;
+          const source = extractResultsExportScenarioSource(raw, meta.profile, detail.machine, videoPath);
+          if (source) sources.push(source);
+        }
+      }
+      if (sources.length === 0) {
+        this.deps.showError(t("panels.recordings.exportNoData"));
+        return;
+      }
+      const model = buildResultsExportModel(project, sources, runMetas);
+      const workbook = buildResultsExportWorkbook(model, this.deps.workspaceRoot);
+
+      const defaultPath = path.join(details[0]!.detail.runDir, `${project}_${runID}.xlsx`);
+      const savePath = await this.deps.showSaveDialog(defaultPath, t("panels.recordings.exportFilterLabel"));
+      if (savePath === undefined) {
+        return; // キャンセル
+      }
+      await fs.writeFile(savePath, workbook.toBuffer());
+      const action = await this.deps.showInfo(
+        t("panels.recordings.exportSaved", { path: savePath }),
+        t("panels.recordings.exportOpen"),
+      );
+      if (action !== undefined) {
+        this.deps.openExternal(savePath);
+      }
+    } catch (e) {
+      this.deps.showError(t("panels.recordings.exportError", { error: String(e) }));
     }
   }
 

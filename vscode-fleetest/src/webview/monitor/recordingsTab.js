@@ -1,7 +1,10 @@
 // モニターパネル「録画」タブ(#panel-recordings)。セッション一覧→再生ビューの2ビュー構成。
 // 対向: src/monitorWebviewMessages.ts の recordingsSessions/recordingsSession(拡張→webview)・
-// recordingsRefresh/recordingsOpen(webview→拡張)、処理は src/monitorRecordingsController.ts。
-// エラー一覧の動画内オフセット(offsetMs)は拡張側(recordingsModel.ts)で計算済みのものを使うだけ。
+// recordingsRefresh/recordingsOpen/recordingsExport(webview→拡張)、処理は
+// src/monitorRecordingsController.ts(エクスポートは resultsExportModel.ts/resultsExportWorkbook.ts が
+// .xlsx を組み立てる)。エラー一覧の動画内オフセット(offsetMs)は拡張側(recordingsModel.ts)で
+// 計算済みのものを使うだけ。#recordings-export は project/runID の出どころが detailMachinesSource
+// (最後に届いた recordingsSession)のため、それが無い間(一覧ビュー)は disabled。
 //
 // 契約: recordings/index.json は1エントリ=1シナリオ(テスト関数)の mp4(v2)。動画の切替は
 // 「ワーカー切替」ではなく「シナリオ動画の切替」(selectScenarioVideo)。動画は各シナリオの
@@ -22,6 +25,19 @@ const refreshingLabel = document.getElementById('recordings-refreshing');
 const backBtn = document.getElementById('recordings-back');
 const sessionTitle = document.getElementById('recordings-session-title');
 const sessionMachine = document.getElementById('recordings-session-machine');
+const exportBtn = document.getElementById('recordings-export');
+// セッションを開くまで撃てない(project/runID の出どころが detailMachinesSource のため)。
+exportBtn.disabled = true;
+exportBtn.addEventListener('click', () => {
+  if (!detailMachinesSource) {
+    return;
+  }
+  vscode.postMessage({
+    type: 'recordingsExport',
+    project: detailMachinesSource.project,
+    runID: detailMachinesSource.runID,
+  });
+});
 const video = document.getElementById('recordings-video');
 const playBtn = document.getElementById('recordings-play');
 const rewindBtn = document.getElementById('recordings-rewind');
@@ -87,6 +103,7 @@ function showListView() {
   sessionMachine.textContent = '';
   sessionMachine.style.display = 'none';
   detailMachinesSource = null;
+  exportBtn.disabled = true;
   resetVideoAvailability();
 }
 
@@ -946,6 +963,7 @@ export function applyRecordingsSession(message) {
   const sourcesFailed = typeof message.sourcesFailed === 'number' ? message.sourcesFailed : null;
   const machines = sessionMachines(message);
   detailMachinesSource = message;
+  exportBtn.disabled = false;
   currentDetail = {
     videosByScenario: new Map(videos.map((v) => [v.scenarioID, v.videoUri])),
     // scenarioID → 撮った台(録画のあるシナリオのぶんだけ。無い記録では空)

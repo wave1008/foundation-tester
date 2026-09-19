@@ -16,6 +16,20 @@ export const panelsStrings = {
   "panels.recordings.refresh": { ja: "更新", en: "Refresh" },
   "panels.recordings.refreshing": { ja: "更新中…", en: "Refreshing…" },
   "panels.recordings.backTitle": { ja: "セッション一覧に戻る", en: "Back to session list" },
+  "panels.recordings.exportResults": { ja: "テスト結果をエクスポート", en: "Export Test Results" },
+  "panels.recordings.exportFilterLabel": { ja: "Excel ブック", en: "Excel Workbook" },
+  "panels.recordings.exportSaved": {
+    ja: "テスト結果をエクスポートしました: {path}",
+    en: "Exported test results: {path}",
+  },
+  "panels.recordings.exportOpen": { ja: "開く", en: "Open" },
+  "panels.recordings.exportError": {
+    ja: "テスト結果のエクスポートに失敗しました: {error}",
+    en: "Failed to export test results: {error}",
+  },
+  "panels.recordings.exportNoData": {
+    ja: "エクスポートできるテスト結果がありません。", en: "There are no test results to export.",
+  },
   "panels.recordings.playPauseTitle": { ja: "再生 / 一時停止", en: "Play / Pause" },
   "panels.recordings.prevTestTitle": { ja: "前のテストへ", en: "Previous test" },
   "panels.recordings.nextTestTitle": { ja: "次のテストへ", en: "Next test" },

@@ -432,6 +432,9 @@ public struct FailedStepRecord: Codable, Sendable {
 public struct TimelineStepRecord: Codable, Sendable {
     public var scene: Int?
     public var sceneTitle: String?
+    /// condition / action / expectation / setUp / tearDown(ScenarioEvent.section 由来。CAE ブロック外は nil)。
+    /// 拡張の「テスト結果をエクスポート」が列の振り分けに使う。この欄を持たない旧レコードも nil
+    public var section: String?
     public var index: Int
     public var description: String
     /// ScenarioEvent.status をそのまま(passed/passedViaFallback/healed/failed/skipped)
@@ -462,7 +465,8 @@ public struct TimelineStepRecord: Codable, Sendable {
     /// notes を持たない旧レコードはどちらも nil
     public var notes: [String]?
 
-    public init(scene: Int? = nil, sceneTitle: String? = nil, index: Int, description: String,
+    public init(scene: Int? = nil, sceneTitle: String? = nil, section: String? = nil,
+                index: Int, description: String,
                 status: String, at: String? = nil, durationMs: Int? = nil,
                 snapshotMs: Int? = nil, actionMs: Int? = nil, waitMs: Int? = nil,
                 scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, ioBlockedMs: Int? = nil,
@@ -470,6 +474,7 @@ public struct TimelineStepRecord: Codable, Sendable {
                 ocrMs: Int? = nil, notes: [String]? = nil) {
         self.scene = scene
         self.sceneTitle = sceneTitle
+        self.section = section
         self.index = index
         self.description = description
         self.status = status
@@ -729,6 +734,7 @@ public struct ScenarioRecordBuilder {
         // 録画再生 UI のステップツリー用: 成否によらず到着順のまま全ステップを積む
         timeline.append(TimelineStepRecord(
             scene: event.scene, sceneTitle: event.sceneTitle ?? event.scene.flatMap { sceneTitles[$0] },
+            section: event.section,
             index: event.index ?? 0, description: event.description ?? "",
             status: status, at: event.at, durationMs: event.durationMs,
             snapshotMs: event.snapshotMs, actionMs: event.actionMs, waitMs: event.waitMs,
