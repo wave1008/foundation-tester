@@ -299,10 +299,10 @@ export class MonitorDeviceOps {
     return isDeviceLifecycleQueueBusy(this.lifecycleQueue);
   }
 
-  /** キューが空になったら解決する待ち手(「テスト実行」の起動待ち。monitorPanel)。 */
+  /** キューが空になったら解決する待ち手(「テストを実行」の起動待ち。monitorPanel)。 */
   private queueIdleWaiters: (() => void)[] = [];
 
-  /** ライフサイクルキューが空になるまで待つ(既に空なら即解決)。「テスト実行」が
+  /** ライフサイクルキューが空になるまで待つ(既に空なら即解決)。「テストを実行」が
    * 一括起動の完了を待ってから run を投げるための口 —— 中断で bulk up を止めた場合も
    * ジョブが終わって空になるので同じように解決する(呼び手が中断を見て run を諦める)。 */
   whenLifecycleQueueIdle(): Promise<void> {

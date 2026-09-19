@@ -144,11 +144,11 @@ export const webviewMonitorAStrings = {
     ja: "メッセージをコピーします(閉じません)",
     en: "Copy the message (does not dismiss it)",
   },
-  // 「テスト実行」ボタンの説明。押せる/押せないで入れ替えるので静的 HTML には置かない
+  // 「テストを実行」ボタンの説明。押せる/押せないで入れ替えるので静的 HTML には置かない
   // (btnUp と同じ形)。
   // ボタンの文言(実行 ⇄ 中断)。**ja は panels.toolbar.runTests と byte 一致させる** ——
   // 静的 HTML の初期表示と webview の再描画で文字が変わらないようにする。
-  "wvMonitor.runTests.run": { ja: "テスト実行", en: "Run Tests" },
+  "wvMonitor.runTests.run": { ja: "テストを実行", en: "Run Tests" },
   "wvMonitor.runTests.cancel": { ja: "テストを中断", en: "Cancel Test Run" },
   "wvMonitor.runTests.cancelTitle": {
     ja: "実行中のテストを中断します(実行中のシナリオは終了処理を行ってから止まります)。",

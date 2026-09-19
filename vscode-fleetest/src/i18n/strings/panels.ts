@@ -57,7 +57,7 @@ export const panelsStrings = {
   "panels.toolbar.restartMonitor": { ja: "モニター再起動", en: "Restart Monitor" },
   // 「デバイスモニター」タブのツールバー右寄り。押すと Test Explorer を前面に出して全シナリオを走らせる
   // (配線: webview/monitor/deviceTiles.js → monitorPanel.ts → コマンド fleetest.runAllTests)。
-  "panels.toolbar.runTests": { ja: "テスト実行", en: "Run Tests" },
+  "panels.toolbar.runTests": { ja: "テストを実行", en: "Run Tests" },
   "panels.toolbar.showStreamDuringRun": { ja: "配信を表示する", en: "Show Streaming" },
   "panels.toolbar.showStreamDuringRunTitle": {
     ja: "ON: テスト実行中もライブ配信を続けます(負荷が高いとテストが失敗することがあります)。OFF: テスト実行中のデバイスはライブ配信を止め、ポーリングの静止画で更新します(配信とテストが資源を取り合わない)",

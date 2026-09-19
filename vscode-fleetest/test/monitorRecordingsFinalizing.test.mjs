@@ -1,5 +1,5 @@
 // monitorRecordingsFinalizing.test.mjs
-// 「テスト実行」ボタン右の「録画を編集中」表示(MonitorPanelController の setRecordingsFinalizing)の出し入れ。
+// 「テストを実行」ボタン右の「録画を編集中」表示(MonitorPanelController の setRecordingsFinalizing)の出し入れ。
 // 出すのは recordingFinalizing イベント(CLI: テストが全部終わり、録画の切り出しだけが残った)から、
 // run 終了後の録画タブへの自動表示(revealRun)が片付くまで。消し忘れると次の run まで残り、
 // 早く消すと切り出し待ちの間に何も出ない。

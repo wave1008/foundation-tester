@@ -74,8 +74,8 @@ export type MonitorToWebviewMessage =
     }
   | { readonly type: "deviceError"; readonly device?: string; readonly message: string }
   | { readonly type: "bootBusy"; readonly busy: boolean; readonly bulkOp: "up" | "down" | null }
-  // GUI 実行(Test Explorer / 「デバイスモニター」タブの「テスト実行」)の進行。true の間だけツールバーの
-  // 対象選択と一括操作を畳み、「テスト実行」を中断ボタンに変える(対向: deviceTiles.js の
+  // GUI 実行(Test Explorer / 「デバイスモニター」タブの「テストを実行」)の進行。true の間だけツールバーの
+  // 対象選択と一括操作を畳み、「テストを実行」を中断ボタンに変える(対向: deviceTiles.js の
   // applyTestRunActive)。**出所は RunEventBus の runStarted/runEnded**なので、誰が起こした
   // 実行でも同じ扱いになる。
   | { readonly type: "testRunActive"; readonly active: boolean }
@@ -442,7 +442,7 @@ export type MonitorToWebviewMessage =
       // 開き、それ以外のタブでは捨てる(main.js の recordingsSession)
       readonly reveal?: boolean;
     }
-  // 「テスト実行」ボタン右の「録画を編集中」表示(monitorPanel.ts の setRecordingsFinalizing)。
+  // 「テストを実行」ボタン右の「録画を編集中」表示(monitorPanel.ts の setRecordingsFinalizing)。
   // 対向: src/webview/monitor/main.js の recordingsFinalizing
   | { readonly type: "recordingsFinalizing"; readonly active: boolean }
   // ---- ダッシュボードタブ -------------------------------------------------------------------
@@ -507,7 +507,7 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "devicesUpCancel" }
   | { readonly type: "devicesDown" }
   | { readonly type: "restartMonitor" }
-  // ツールバーの「テスト実行」: Test Explorer を前面に出して全シナリオを走らせる
+  // ツールバーの「テストを実行」: Test Explorer を前面に出して全シナリオを走らせる
   // (受け手: monitorPanel.ts → コマンド fleetest.runAllTests = runHandler.ts)。
   // 押せるのは実体のある実行プロファイルが選ばれている間だけ(判定は webview 側)。
   | { readonly type: "runTests" }

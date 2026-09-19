@@ -269,7 +269,7 @@ export class MonitorPanelController implements vscode.Disposable {
   /** stopping/rebooting を post 済みで done/failed が未着のデバイス名。runEnded 時、キャンセル等で
    * done/failed が来ないまま残った名前にバッジ固着を防ぐため phase:"done" を post する。 */
   private readonly wipeInProgress = new Set<string>();
-  /** ツールバーの「実行中」表示(= 「テストを中断」)。runStarted〜runEnded に加え、「テスト実行」を
+  /** ツールバーの「実行中」表示(= 「テストを中断」)。runStarted〜runEnded に加え、「テストを実行」を
    * 押してから run が始まるまで(startTestRunAfterDevicesUp)も true。 */
   private testRunActive = false;
   /** RunEventBus の runStarted〜runEnded の間だけ true(= 本当に run が走っている)。testRunActive を
@@ -278,7 +278,7 @@ export class MonitorPanelController implements vscode.Disposable {
   /** 「録画を編集中」表示。recordingFinalizing(テストが全部終わり録画の切り出しだけが残った)から、
    * run の終了後に録画タブへの自動表示(revealRun)を片付けるまで true。webview 再読込でも復元する。 */
   private recordingsFinalizing = false;
-  /** 「テスト実行」を押してから run を投げるまでの間(= 一括起動の完了待ち)。
+  /** 「テストを実行」を押してから run を投げるまでの間(= 一括起動の完了待ち)。
    * この間の「テストを中断」は run ではなく一括起動を止める(startTestRunAfterDevicesUp)。 */
   private pendingRunStart = false;
   private runStartAborted = false;
@@ -846,7 +846,7 @@ export class MonitorPanelController implements vscode.Disposable {
   }
 
   /**
-   * 「テスト実行」ボタンは**まず「デバイスを全て起動」と同じ処理**を通す(ユーザー決定 2026-09-09)。
+   * 「テストを実行」ボタンは**まず「デバイスを全て起動」と同じ処理**を通す(ユーザー決定 2026-09-09)。
    * タイルの「起動待機」バッジはこのライフサイクルキューからしか出ないので、run 内の供給
    * (ApiRunCommand → AndroidLaneRecovery)に任せるとボタンから起動したときだけ無表示になっていた。
    * **run 内の供給は消せない** —— Test Explorer からの実行・CLI・リモート機にはモニターが居ない

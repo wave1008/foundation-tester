@@ -1,4 +1,4 @@
-// 「デバイスモニター」タブのツールバーにある「テスト実行」(#btn-run-tests)の DOM テスト。
+// 「デバイスモニター」タブのツールバーにある「テストを実行」(#btn-run-tests)の DOM テスト。
 // 実 HTML+実バンドルで動かす方式は webviewProjectSelect.test.mjs と同じ。
 //
 // 検証対象:
@@ -7,7 +7,7 @@
 //   設定にはあるがファイルが無い名前は弾く)
 // - 押すと runTests を送る
 // - 一括起動の最中(「デバイスの起動を中断」表示)は「全て終了」「モニター再起動」と揃って押せない
-// - 一括停止(「全て終了」)の最中も select・全て起動/終了・テスト実行を触らせない
+// - 一括停止(「全て終了」)の最中も select・全て起動/終了・「テストを実行」を触らせない
 //   (モニター再起動だけは止めない)
 // - 同じ間はテストプロジェクト・実行プロファイルの select も触らせない
 // - テスト実行中(testRunActive)は select・一括起動/終了を畳み、ボタンが「テストを中断」になる
@@ -159,7 +159,7 @@ function sendBootBusy(window, busy, bulkOp) {
   );
 }
 
-test("一括起動の最中は「全て終了」「モニター再起動」「テスト実行」が揃って押せない", (t) => {
+test("一括起動の最中は「全て終了」「モニター再起動」「テストを実行」が揃って押せない", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendProfileInfo(window);
@@ -224,7 +224,7 @@ test("一括停止(「全て終了」)の最中も操作させない(モニタ�
   assert.deepEqual(locked.map((id) => document.getElementById(id).disabled), [false, false, false, false, false]);
 });
 
-test("起動の最中に実行プロファイルを選び直しても「テスト実行」は押せないまま", (t) => {
+test("起動の最中に実行プロファイルを選び直しても「テストを実行」は押せないまま", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendProfileInfo(window);
@@ -260,7 +260,7 @@ test("テスト実行中はツールバーを畳み、ボタンが「テスト�
 
   sendTestRunActive(window, false);
   assert.deepEqual(locked.map((id) => document.getElementById(id).disabled), [false, false, false, false]);
-  assert.equal(button.textContent, "テスト実行");
+  assert.equal(button.textContent, "テストを実行");
   assert.equal(button.classList.contains("bulk-cancel"), false);
 });
 
@@ -270,7 +270,7 @@ test("テスト実行が起こした一括起動では「デバイスの起動�
   sendProfileInfo(window);
   const btnUp = document.getElementById("btn-devices-up");
 
-  // 「テスト実行」→ 先に一括起動(monitorPanel.startTestRunAfterDevicesUp)。この順で届く。
+  // 「テストを実行」→ 先に一括起動(monitorPanel.startTestRunAfterDevicesUp)。この順で届く。
   sendTestRunActive(window, true);
   sendBootBusy(window, true, "up");
   assert.equal(btnUp.textContent, "デバイスを全て起動",

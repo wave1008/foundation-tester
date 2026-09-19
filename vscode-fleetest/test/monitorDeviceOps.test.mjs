@@ -1020,7 +1020,7 @@ test("バッチの「GPU で再起動」は手元を restart-devices 1本にま�
   }
 });
 
-// whenLifecycleQueueIdle:「テスト実行」ボタンが**一括起動の完了を待ってから** run を投げるための口
+// whenLifecycleQueueIdle:「テストを実行」ボタンが**一括起動の完了を待ってから** run を投げるための口
 // (monitorPanel.startTestRunAfterDevicesUp)。待てないと run 内の供給と一括起動が二重に走る。
 test("whenLifecycleQueueIdle: 空なら即解決・ジョブがあれば完了まで待つ", async () => {
   const { dir, binaryPath } = makeMockBinary();

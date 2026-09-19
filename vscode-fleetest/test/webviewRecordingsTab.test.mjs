@@ -435,11 +435,11 @@ test("reveal 無し(利用者が一覧から開いた応答)はタブを切り�
   assert.ok(isTabActive(window, "devices"));
 });
 
-test("recordingsFinalizing: テスト実行ボタンの右に「録画を編集中...」を出し入れする", (t) => {
+test("recordingsFinalizing: 「テストを実行」ボタンの右に「録画を編集中...」を出し入れする", (t) => {
   const { window, sendToWebview } = createWebview({ tab: "devices" });
   t.after(() => window.close());
   const note = window.document.getElementById("run-recordings-finalizing");
-  assert.equal(note.previousElementSibling.id, "btn-run-tests", "テスト実行ボタンのすぐ右");
+  assert.equal(note.previousElementSibling.id, "btn-run-tests", "「テストを実行」ボタンのすぐ右");
   assert.equal(note.hidden, true, "既定は出さない");
 
   const runButton = window.document.getElementById("btn-run-tests");
@@ -448,7 +448,7 @@ test("recordingsFinalizing: テスト実行ボタンの右に「録画を編集�
   sendToWebview({ type: "recordingsFinalizing", active: true });
   assert.equal(note.hidden, false);
   assert.equal(note.textContent, "録画を編集中...");
-  assert.equal(runButton.style.display, "none", "編集中はテスト実行/中断ボタンを出さない");
+  assert.equal(runButton.style.display, "none", "編集中は「テストを実行」「テストを中断」ボタンを出さない");
   const restartButton = window.document.getElementById("btn-restart");
   assert.equal(restartButton.disabled, true, "編集中はモニター再起動を押せない");
   assert.equal(restartButton.title, "録画の編集中は使えません(編集の完了を待ってください)。");

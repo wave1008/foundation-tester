@@ -111,7 +111,7 @@ export function registerRunHandler(
     false,
   );
 
-  // 既定の「実行」プロファイル。「デバイスモニター」タブの「テスト実行」(fleetest.runAllTests)からも
+  // 既定の「実行」プロファイル。「デバイスモニター」タブの「テストを実行」(fleetest.runAllTests)からも
   // これで走らせる —— 別に handler を作ると実行の見え方(TestRun の帰属)が2通りになる。
   const runHandler = makeHandler(false);
   const runProfile = controller.createRunProfile(
@@ -133,7 +133,7 @@ export function registerRunHandler(
         executeDebugRun(controller, workspaceRoot, getConfig, watcher, request, token, onRunFinished),
       true,
     ),
-    // 「デバイスモニター」タブの「テスト実行」ボタンの受け口(monitorPanel.ts)。include 無しの
+    // 「デバイスモニター」タブの「テストを実行」ボタンの受け口(monitorPanel.ts)。include 無しの
     // request = 全シナリオ(@Deleted/@Draft は resolveTargets が外す)。**先に Test Explorer を
     // 前面に出す** —— 進行と結果はそこにしか出ないので、出さないと押しても無反応に見える。
     vscode.commands.registerCommand("fleetest.runAllTests", async () => {

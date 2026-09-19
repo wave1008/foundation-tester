@@ -63,7 +63,7 @@ function createWebview() {
 
 const sentValues = (posted) => posted.filter((m) => m?.type === "setShowStreamDuringRun").map((m) => m.value);
 
-test("チェックボックスはテスト実行ボタンと同じ行の末尾(右寄せ)に既定 ON で置かれる", (t) => {
+test("チェックボックスは「テストを実行」ボタンと同じ行の末尾(右寄せ)に既定 ON で置かれる", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const checkbox = document.getElementById("chk-show-stream-during-run");
@@ -71,7 +71,7 @@ test("チェックボックスはテスト実行ボタンと同じ行の末尾(�
   assert.equal(checkbox.checked, true);
   const label = checkbox.closest("label");
   const row = document.getElementById("toolbar-run-row");
-  assert.equal(label.parentElement, row, "テスト実行と同じ行");
+  assert.equal(label.parentElement, row, "「テストを実行」と同じ行");
   assert.equal(document.getElementById("btn-run-tests").parentElement, row);
   assert.equal(row.lastElementChild, label, "行の末尾");
   assert.ok(label.classList.contains("run-stream-toggle"), "右寄せ(margin-left:auto)の class");

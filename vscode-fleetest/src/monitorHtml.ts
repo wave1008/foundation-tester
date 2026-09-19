@@ -209,7 +209,7 @@ function renderDevicesPanel(): string {
   return `<div id="panel-devices" class="tab-panel" role="tabpanel" aria-labelledby="tab-devices">
     <div id="toolbar" class="toolbar">
       <!-- 1行目(テスト実行まで + 右端の「配信を表示する」)。幅 100% で常に1行を占め、グラフとアイコン群は次の行
-           (チェックボックスをテスト実行と同じ行の右端に置くため。.toolbar-run-row) -->
+           (チェックボックスを「テストを実行」と同じ行の右端に置くため。.toolbar-run-row) -->
       <div id="toolbar-run-row" class="toolbar-run-row">
         <!-- 実行プロファイルはプロジェクトに属するので、その左に置いて左→右で絞り込みになる順にする。
              選ぶと fleetest.project 設定が変わり、実行プロファイル一覧もこれに追従する。 -->

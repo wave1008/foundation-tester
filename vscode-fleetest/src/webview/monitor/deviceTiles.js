@@ -1655,7 +1655,7 @@ function refreshBulkButtons() {
   // bulk up 実行中は「全て起動」ボタンを中断ボタンに転用する(クリック時の分岐は main.js。
   // 受け手: monitorPanel.ts devicesUpCancel → MonitorDeviceOps.cancelBulkUp)。
   // **GUI 実行が起こした一括起動は中断ボタンにしない**(ユーザー指示 2026-09-09)——
-  // 「テスト実行」は先に一括起動を通す(monitorPanel.startTestRunAfterDevicesUp)が、実行中は
+  // 「テストを実行」は先に一括起動を通す(monitorPanel.startTestRunAfterDevicesUp)が、実行中は
   // ツールバーを畳むので押せず、「デバイスの起動を中断」が押せない文言だけ出ていた。
   // この段の中断の口は「テストを中断」1つ(押すと一括起動を止めて run へ進まない)。
   const upCancelMode = bulkBusy && bulkBusyOp === 'up' && !testRunActive;
@@ -1739,7 +1739,7 @@ const PROFILE_RUNNING_LABEL = t('wvMonitor.profile.running');
 // monitorProfilesController.selectProfile が行う。
 const PROFILE_RUNNING_VALUE = '@running';
 
-// 実在する実行プロファイル名(直近の profileInfo)。「テスト実行」を押せるかの判定に使う。
+// 実在する実行プロファイル名(直近の profileInfo)。「テストを実行」を押せるかの判定に使う。
 let knownProfiles = new Set();
 
 // 現在値が profiles に無ければ(手書き設定等)unknownOption で補い選択状態を保つ。
