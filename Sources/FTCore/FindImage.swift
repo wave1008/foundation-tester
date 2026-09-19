@@ -169,6 +169,7 @@ public enum FindImage {
     /// 画像の特徴量(Shirates の ImageFeaturePrintMatcher.getFeaturePrintObservation と同じ要求)。
     /// 1回ごとに VisionUsageLedger へ1件書く
     public static func featurePrint(_ image: CGImage) async throws -> FeaturePrintObservation {
+        templateLock.withLock { featurePrintCount += 1 }
         let start = Date()
         do {
             let observation = try await GenerateImageFeaturePrintRequest().perform(on: image)
@@ -181,12 +182,16 @@ public enum FindImage {
     }
 
     private static let templateLock = NSLock()
+    /// 特徴量を作った回数(テスト用。回数だけが費用なので、門や控えの効き目を回数で縛る)
+    nonisolated(unsafe) static var featurePrintCount = 0
     nonisolated(unsafe) private static var templatePrints: [String: FeaturePrintObservation] = [:]
     /// プロセス内の控えのうち、永続控え(TemplatePrintStore)に載っているもの(= 書き直さない)
     nonisolated(unsafe) private static var persistedTemplateKeys: Set<String> = []
+    /// このプロセスで測り直して控えと一致した見本(= 以後の走査では「最初の見本」になったときだけ測り直す)
+    nonisolated(unsafe) private static var verifiedTemplateKeys: Set<String> = []
 
     static func forgetTemplatePrints() {
-        templateLock.withLock { templatePrints = [:]; persistedTemplateKeys = [] }
+        templateLock.withLock { templatePrints = [:]; persistedTemplateKeys = []; verifiedTemplateKeys = [] }
     }
 
     private static func memoryKey(_ url: URL) -> String {
@@ -201,7 +206,12 @@ public enum FindImage {
         let key = memoryKey(url)
         if let cached = templateLock.withLock({ templatePrints[key] }) { return cached }
         if let stored = TemplatePrintStore.lookup(url) {
-            templateLock.withLock { templatePrints[key] = stored; persistedTemplateKeys.insert(key) }
+            // 永続控えに載るのは門を通った特徴量だけ = 確かめ済みとして扱う(今の機械の状態は走査の最初の見本で見る)
+            templateLock.withLock {
+                templatePrints[key] = stored
+                persistedTemplateKeys.insert(key)
+                verifiedTemplateKeys.insert(key)
+            }
             return stored
         }
         let observation = try await featurePrint(image)
@@ -277,6 +287,10 @@ public enum FindImage {
         public init() {}
         /// 実際に特徴量を計算した回数(控えから返した回は数えない)
         public private(set) var computed = 0
+        /// 縮退の門の白紙の特徴量(走査で1回だけ作り、全見本の判定に使い回す)
+        fileprivate var blank: FeaturePrintObservation?
+        /// この走査で「今の機械の状態」を測り直し済みか(最初に照合した見本で1回)
+        fileprivate var machineRechecked = false
         fileprivate func observation(for frame: FTRect, compute: () async throws -> FeaturePrintObservation?)
             async rethrows -> FeaturePrintObservation? {
             let key = "\(frame.x),\(frame.y),\(frame.width),\(frame.height)"
@@ -301,16 +315,29 @@ public enum FindImage {
                                     templateHeight: Double(templateImage.height), tolerance: tolerance)
         guard !candidates.isEmpty else { return [] }
         let templateObservation = try await templatePrint(template, image: templateImage)
-        let blank = try await featurePrint(blankSentinel)
+        // 縮退の門: 白紙は走査で1回だけ作る(判定は見本ごと = 距離の計算だけ)
+        let blank: FeaturePrintObservation
+        if let cached = prints.blank { blank = cached } else {
+            blank = try await featurePrint(blankSentinel)
+            prints.blank = blank
+        }
         if isDegenerate(templateDistanceToBlank: try templateObservation.distance(to: blank)) {
             discardTemplatePrints(after: template)
             throw MatchError.degeneratePrints(template: template.lastPathComponent)
         }
-        // 見本を取り直して控えと比べる(控えを作った時点・今のどちらかが壊れていれば一致しない)
-        let selfDistance = Double(try templateObservation.distance(to: try await featurePrint(templateImage)))
-        if !isConsistent(selfDistance: selfDistance) {
-            discardTemplatePrints(after: template)
-            throw MatchError.inconsistentPrints(template: template.lastPathComponent, distance: selfDistance)
+        // 見本を取り直して控えと比べる(控えを作った時点・今のどちらかが壊れていれば一致しない)。
+        // 撃つのは **走査の最初の見本(= 今の機械の状態)** と **このプロセスで初めて使う見本(= その控えの正しさ)** だけ。
+        // 機械の異常は見本を選ばないので1枚で捕まり、見本ごとの控えは1回確かめれば以後は同じ(健全なら 1,200/1,200 で完全一致)
+        let key = memoryKey(template)
+        let firstUse = !templateLock.withLock { verifiedTemplateKeys.contains(key) }
+        if !prints.machineRechecked || firstUse {
+            prints.machineRechecked = true
+            let selfDistance = Double(try templateObservation.distance(to: try await featurePrint(templateImage)))
+            if !isConsistent(selfDistance: selfDistance) {
+                discardTemplatePrints(after: template)
+                throw MatchError.inconsistentPrints(template: template.lastPathComponent, distance: selfDistance)
+            }
+            templateLock.withLock { _ = verifiedTemplateKeys.insert(key) }
         }
         persistTemplatePrint(template, templateObservation)
         var matches: [Match] = []

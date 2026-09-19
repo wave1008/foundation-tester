@@ -321,6 +321,41 @@ final class FindImageTests: XCTestCase {
                        "scanImageOnce を直に呼ぶのは scanImage だけ(宣言 + 1か所)")
     }
 
+    /// 門は「今の機械の状態」を走査につき1回(白紙1 + 最初の見本の測り直し1)、見本ごとの控えはプロセスで
+    /// 初めて計算したときだけ測り直す(永続控えから読んだ見本は門を通ったもの)。見本2枚・候補3つで、
+    /// 初回 8 回・2回目 5 回・次のプロセス 5 回(毎回見本ごとなら 7 回)
+    func testGatesRunOncePerScanAndEachTemplateOncePerProcess() async throws {
+        let root = try makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dir = VisionClassifier.directory(projectRoot: root, name: DefaultClassifier.name)
+            .appendingPathComponent("@i/Home/[Circle Icon]", isDirectory: true)
+        let screen = FTRect(x: 0, y: 0, width: 300, height: 100)
+        let square = try XCTUnwrap(VisionClassifier.crop(png: Self.screenPNG(), frame: FTRect(x: 100, y: 0, width: 100, height: 100),
+                                                        screen: screen))
+        try CheckStateClassifierTests.png(square).write(to: dir.appendingPathComponent("square.png"))
+        let templates = FindImage.templateFiles(label: "[Circle Icon]", classifierDirectory: VisionClassifier.directory(
+            projectRoot: root, name: DefaultClassifier.name), isAndroid: false)
+        let screenshot = try XCTUnwrap(VisionClassifier.crop(png: Self.screenPNG(), frame: screen, screen: screen))
+        FindImage.forgetTemplatePrints()
+        func scan() async throws -> Int {
+            let before = FindImage.featurePrintCount
+            let prints = FindImage.CandidatePrints()
+            for template in templates {
+                _ = try await FindImage.match(template: template, elements: screenElements, screen: screen,
+                                              screenshot: screenshot, tolerance: 0.2, prints: prints)
+            }
+            return FindImage.featurePrintCount - before
+        }
+        let first = try await scan()
+        let second = try await scan()
+        XCTAssertEqual(first, 8, "見本2 + 白紙1 + 測り直し2(どちらも初めて) + 候補3")
+        XCTAssertEqual(second, 5, "白紙1 + 最初の見本の測り直し1 + 候補3")
+        // 別のプロセス(= プロセス内の控えが空): 見本は永続控えから読み、確かめ済みとして扱う
+        FindImage.forgetTemplatePrints()
+        let nextProcess = try await scan()
+        XCTAssertEqual(nextProcess, 5, "永続控えの見本は門を通ったもの = 走査の最初の1枚だけ測り直す")
+    }
+
     func testExistImagePassesAndGrabsTheElementLikeFindImage() async throws {
         let root = try makeProject()
         defer { try? FileManager.default.removeItem(at: root) }
