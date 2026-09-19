@@ -499,6 +499,8 @@ extension StepExecutor {
                 return StepOutcome(status: .passed, driverFallback: "fell back to XCUITest")
             }
             phase.actionMs += Self.ms(clock.now - start)
+            // 木からキーボードが消えるのを待つのは次のロケータ操作の解決(pendingHideKeyboardWait の doc)
+            if isAndroid { pendingHideKeyboardWait = step.timeout ?? FlowStep.defaultWaitSeconds }
             return StepOutcome(status: .passed)
         }
 
@@ -582,6 +584,25 @@ extension StepExecutor {
                 snapshot = settled.snapshot
                 // **待っている間に実際に木が変わった回だけ**数える(settledAfterKeyboard の doc)
                 if settled.changed { noteCodesThisStep.insert(.settledAfterKeyboard) }
+            }
+        }
+        // hideKeyboard の後、木がまだキーボードを申告していれば消えるまで待つ(pendingHideKeyboardWait の doc)。
+        // 消えた後は整定を見る(下端の要素が戻り、中身が伸びる)
+        if let cap = pendingHideKeyboardWait {
+            pendingHideKeyboardWait = nil
+            if Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) {
+                let deadline = clock.now + .milliseconds(Int(cap * 1000))
+                while clock.now < deadline,
+                      Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) {
+                    let waitStart = clock.now
+                    try await Task.sleep(for: .milliseconds(Int(FocusWait.pollSeconds * 1000)))
+                    phase.waitMs += Self.ms(clock.now - waitStart)
+                    start = clock.now
+                    snapshot = try await freshSnapshot(.afterOwnMove)
+                    phase.snapshotMs += Self.ms(clock.now - start)
+                }
+                // **settledSignature が自分で phase へ計上する**(ここでは足さない)
+                snapshot = try await settledSignature(phase: &phase).snapshot
             }
         }
         // 宣言された割り込み(アプリ内メッセージ等)が出ていれば先に閉じる。**解決を試みる前**に

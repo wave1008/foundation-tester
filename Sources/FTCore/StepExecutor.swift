@@ -961,6 +961,16 @@ public final class StepExecutor {
     /// 押し上げ前の座標を撃って別要素に当たった(E2E-iOS S0010・11 本中 5 本)
     var pendingTypeKeyboardCheck = false
 
+    /// **Android の `hideKeyboard` の後、次のロケータ操作の解決で木のキーボードが消えるまで待つ上限(秒)**。
+    /// 立てるのは hideKeyboard の成功時だけ・消費は次のロケータ操作の最初の解決で1回(pendingTypeKeyboardCheck と
+    /// 同じ規律。exist / textIs は自分で待つので消費しない)。木にキーボードが無ければ追加の費用はゼロ。
+    /// 実測(2026-09-19 Pixel 3a・Android 12・Flutter): 入力欄の外を叩いて IME が閉じ始めると dumpsys は即
+    /// 非表示(= hideKeyboard は何もしない)だが、a11y の木は **約 5.4 秒** キーボードを申告し続け、その間
+    /// 下端のタブバーを `isVisibleToUser = false` で落とす(refresh しても同じ)。次の tap は既定の解決の
+    /// 待ち(約 0.7 秒)で「cannot resolve」になった。Pixel 4a(Android 13)は 0.32 秒で戻る。
+    /// **iOS では立てない**(閉じられない種類のキーボードが正当に残り、毎回上限まで待つことになる)
+    var pendingHideKeyboardWait: Double?
+
     /// 直前の `type` の本文が改行で終わったか(= Enter でキーボードを閉じうる)。
     /// **`pendingTypeKeyboardCheck` と同時に書く**(`keyboardHiddenAfterType` が読む)
     var pendingTypeEndedWithNewline = false

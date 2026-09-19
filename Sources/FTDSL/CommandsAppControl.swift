@@ -264,11 +264,11 @@ public func back(file: StaticString = #filePath, line: UInt = #line) {
 /// フォーカス中の入力のキーボードを閉じる(冪等: 非表示中でも成功扱い)。
 /// home/back と違い**アプリ内**のフォーカス操作なので systemDriver ではなく driver を使う
 public func hideKeyboard(file: StaticString = #filePath, line: UInt = #line) {
-    let core = FTRuntime.requireCore(command: "hideKeyboard")
-    let driver = core.driver
-    core.performCustom(description: "hideKeyboard", command: "hideKeyboard", file: file, line: line) {
-        try await driver.hideKeyboard()
-    }
+    // **StepExecutor を通す**(ドライバを直に呼ばない): 次のロケータ操作が木からキーボードが消えるのを
+    // 待つ印(pendingHideKeyboardWait)を立てるのは executor の hideKeyboard だけ。MCP の ft_batch と同じ経路
+    let step = FlowStep(action: "hideKeyboard")
+    FTRuntime.requireCore(command: "hideKeyboard")
+        .perform(step: step, description: "hideKeyboard", command: "hideKeyboard", file: file, line: line)
 }
 
 /// アプリスイッチャー(タスク一覧)を開く

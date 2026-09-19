@@ -238,6 +238,7 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 | Compose(iOS・XCUITest エンジン) | 上と同じ遅れが XCUITest のスクリーンショットでも起きる。タブを切り替えた直後の 0.3 秒以上、**切り替え前の画面**が返る(木は新しい画面)。ただし絵はバイト同一ではなく、押したタブの強調が載っている | B | **既知の制約**。待たずに1回だけ見る `findImage` / `findImages`(既定 `waitSeconds` 0)は別の画面を切って「無い」と答える。待つ `existImage` と、`waitSeconds` を渡した `findImage` は通る。in-app の v117 を移しても直らない(押した強調で画素が変わるので「画素が操作前のまま」の判定が発火しない)ので入れていない |
 | Flutter / Compose / SwiftUI / RN | 起動直後の白い画面(blank)の長さが描画の重さに比例する(誤った再起動は Flutter 10・Compose 3・SwiftUI/RN 0) | C | blank の判定窓を約10秒にする |
 | React Native | JS が listener を登録する前に届いた warm な URL を捨てる | A | `launchApp(url:)` は最初の画面が描かれてから URL を配送する |
+| Flutter(Android 12 の実機) | 入力欄の外を叩いて IME が閉じ始めると、dumpsys は即「非表示」なのに a11y の木は**約 5.4 秒**キーボードを申告し続け、下端のタブバーを `isVisibleToUser = false` で落とす(`refresh` しても同じ。Pixel 3a で実測・Pixel 4a の Android 13 は 0.32 秒) | A | `hideKeyboard` の後、次のロケータ操作の最初の解決で木がキーボードを申告していれば消えるまで待ってから整定を見る(`pendingHideKeyboardWait`。上限 5 秒 = `FlowStep.defaultWaitSeconds`(実測の 5.4 秒は IME が閉じ始めた時刻から。hideKeyboard の時点では残り約 4.7 秒)。Android だけ・消えていれば費用ゼロ) |
 | Flutter(Android) | 起動直後の数百 ms はタップを取りこぼす。タップ直後は入力接続が未確立 | B | SUT のシナリオは起動直後・タップ直後に `exist` を1往復挟む |
 
 ---
