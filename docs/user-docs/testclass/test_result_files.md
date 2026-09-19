@@ -10,7 +10,9 @@ where to find them; see [Results analysis](../running/results_analysis.md) and
 regardless of outcome. It has the same hierarchy as the code:
 `scene → condition/action/expectation → step`, plus the failure message and element list at the
 point of failure, a screenshot of the point of failure (if any), and fix suggestions for a broken
-selector when self-healing ran.
+selector when self-healing ran. On iOS (hybrid and xcuitest engines) the failure screenshot
+captures the whole screen, so an OS alert such as a permission request shows up in it even though
+it is not in the app's element list.
 
 ## Result JSON
 

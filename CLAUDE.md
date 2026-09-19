@@ -951,7 +951,10 @@
   **締め切り・予算のテストは戻り値でなく所要を直接測る**(`TaskBudgetTests`)
 - **システムアラートの判定は2段**: 登録がある間は `SystemUIGate` が毎ステップ止める / 登録が
   無いときは **launch 直後の最初の触る操作と失敗時だけ1回聞いて** `system-alert-present` の注記と
-  題名を残す(止めない・閉じない)。常時監視へ広げない
+  題名を残す(止めない・閉じない)。常時監視へ広げない。
+  **失敗時の証跡の絵は hybrid なら XCUITest(`XCUIScreen`)で撮る**(`FTRuntime.handleFailure`。in-app の絵は
+  アプリの window しか描かず OS のアラートが写らない)。**iOS の「飲まれたタップ」注記はアラートの可能性を
+  併記する**(iOS の木はアプリのプロセスだけ = アラートを出したタップも無変化に見える)
 - **終了猶予の方針は1つ**(Codex 指摘 2026-09-06): **自前の後始末を持つ fleetest のプロセス**
   (`api run` / `run --runner` の子 / `fleetest-scenarios` = 終了スクリプト・dispatch.lock の解放・
   向きの復元)には**時限の SIGKILL を送らない** —— SIGTERM を送って待ち、刺さったら人が強制終了する
