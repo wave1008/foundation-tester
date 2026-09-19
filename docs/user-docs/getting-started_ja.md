@@ -64,7 +64,7 @@ claude plugin install fleetest@foundation-tester --scope user
 
 5. VSCode で `Developer: Reload Window` を実行します
 
-6. VSCode の左下に表示される**デバイスモニター**をクリックします
+6. VSCode の左下のステータスバーに表示される **fleetest mobile** をクリックします(デバイスモニターが開きます)
 
 手動で1つずつ確認しながら進めたい場合は `.claude/skills/fleetest-setup/SKILL.md` を参照して
 ください。

@@ -327,7 +327,8 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
 ## デバイスモニター
 
 コマンドパレットから **「fleetest: デバイスモニターを表示」**(`fleetest.showDeviceMonitor`)を
-実行すると、エディタの横(`ViewColumn.Beside`)に Webview パネルが開きます。既に開いている
+実行するか、左下のステータスバーに常駐する **fleetest mobile** をクリックすると、
+エディタの横(`ViewColumn.Beside`)に Webview パネルが開きます。既に開いている
 場合は既存のパネルを前面に出すだけです(1ワークスペースにつき1枚のシングルトン)。
 
 - パネルを開くと `fleetest api monitor --project <project> --interval <秒> --max-width <max-width>` を
@@ -803,7 +804,8 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
 
 21. コマンドパレットから **「fleetest: デバイスモニターを表示」** を実行し、エディタの横に
     Webview パネルが開くことを確認する。もう一度実行しても新しいパネルが増えず、既存の
-    パネルが前面に出る(reveal される)ことを確認する。
+    パネルが前面に出る(reveal される)ことを確認する。左下のステータスバーの **fleetest mobile** を
+    クリックしても同じパネルが開く(前面に出る)ことを確認する。
 22. デバイスが1台も起動していない状態では、`fleetest.monitorInterval` 秒間隔でタイルが
     「未起動」(灰バッジ)として表示され、画面部分がプレースホルダー枠になっていることを
     確認する。

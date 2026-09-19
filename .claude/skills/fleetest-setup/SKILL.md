@@ -452,7 +452,8 @@ CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 - VSCode で **WORK_DIR** を開く（外部構成: あなたのテストパッケージのフォルダ。clone 構成:
   `foundation-tester` フォルダ）
 - `Developer: Reload Window` を実行（インストール・設定だけでは反映されない）
-- fleetest パネル（Test Explorer / デバイスモニター等）を開く
+- fleetest パネル（Test Explorer / デバイスモニター等）を開く（デバイスモニターは左下のステータスバーの
+  **fleetest mobile** から開ける）
 - （7.5 で `.mcp.json` を書いた場合）Claude Code が **fleetest MCP サーバの承認**を求めたら許可する
   → `ft_*` ツールが使え、`/fleetest-scenario` が MCP 経由で動く
 

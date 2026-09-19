@@ -33,7 +33,8 @@ menu ("fleetest: Show Step List").
 
 ## Device Monitor
 
-Command **"fleetest: Show Device Monitor"** opens a webview panel of device tiles (one panel per
+Command **"fleetest: Show Device Monitor"** (or **fleetest mobile** in the status bar at the
+lower-left corner of VSCode) opens a webview panel of device tiles (one panel per
 workspace). Each tile shows the device name, a platform badge (iOS/Android), a status badge, and
 the current screen — streamed live by default via a headless helper
 (`fleetest-simstream`/`fleetest-androidstream`), falling back to periodic screenshots if streaming
