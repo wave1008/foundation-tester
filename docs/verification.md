@@ -2660,7 +2660,9 @@ run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 
 同じ機械状態(ANE の破綻)で、FM だけでなく Vision の `GenerateImageFeaturePrintRequest` も死ぬ。経過は2相:
 ①**異なる画像に同一の特徴量が返る縮退**(全候補が距離 0.000。Vision の失敗としては記録されない)→
 ②要求が 30 秒後に `Building espresso plan [espresso error: -1]` で落ちる(ホストの単体テストも同じ)。
-①は `FindImage.isDegenerate`(白紙との距離 0)が失敗にする。**この間、findImage / imageIs / checkIsON の
+①は `FindImage.isDegenerate`(白紙との距離 0)が失敗にする。①ほど極端でない異常(普段 0.002 前後で見つかる見本が
+0.33〜0.43 で「見つからない」になった。2026-09-19 負荷テスト)は `FindImage.isConsistent`(同じ見本を取り直して
+控えと一致するか。健全なら 4 機 1,200 回とも距離 0)が失敗にする。**この間、findImage / imageIs / checkIsON の
 分類器の E2E(各 SUT の 08・20・21)は赤でも緑でも判定に使えない**。切り分けは
 `swift test --filter FindImageTests`(ホストで特徴量を実際に作る。0.5 秒で終わるはずが 30 秒かかって落ちる)。
 **見本の採取(`fleetest vision capture`)とブリッジの鮮度の確認は Vision を使わないので、この間も進められる**。

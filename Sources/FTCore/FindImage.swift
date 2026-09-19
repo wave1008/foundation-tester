@@ -51,6 +51,8 @@ public enum FindImage {
         case unreadableTemplate(String)
         /// Vision が異なる画像に同一の特徴量を返した(機械全体の一時的な異常。ANE / Vision の縮退)
         case degeneratePrints(template: String)
+        /// Vision が同じ画像に違う特徴量を返した(縮退ほど極端でない一時的な異常。距離が信用できない)
+        case inconsistentPrints(template: String, distance: Double)
 
         public var description: String {
             switch self {
@@ -66,6 +68,11 @@ public enum FindImage {
                     + " is at distance 0 from a blank image), so no image can be told apart right now;"
                     + " this is a transient state of the machine (retry the run; if it persists, reboot)"
                     + " unless the template itself is a blank image"
+            case .inconsistentPrints(let template, let distance):
+                return "Vision returned a different image feature print for the same image (the template \(template)"
+                    + " re-measured at distance \(String(format: "%.4f", distance)) from its earlier print; a healthy"
+                    + " machine returns exactly the same print), so image distances cannot be trusted right now;"
+                    + " this is a transient state of the machine (retry the run; if it persists, reboot)"
             }
         }
         public var errorDescription: String? { description }
@@ -207,6 +214,15 @@ public enum FindImage {
     /// 判定は純粋関数(テストは同じ観測を2つ渡して破れることを確かめる)
     static func isDegenerate(templateDistanceToBlank distance: Double) -> Bool { distance == 0 }
 
+    /// **同じ見本を取り直した特徴量が控えと一致するか**(縮退の門が拾えない「半端な異常」の門)。
+    /// 健全なら完全に一致する(2026-09-19 実測: 4 機 = M1 / M1 Max / M1 Ultra / M2 Ultra・macOS 27.0/27.2 で
+    /// 見本 60 枚 × 5 回 × 4 = 1,200 回すべて距離 0)。許容幅 `selfDistanceTolerance` は、異なる見本どうしの
+    /// 最小距離(0.0011。同じ実測)より一桁小さい値。超えたら照合の距離を信用しない
+    /// (負荷テストでは普段 0.002 前後で見つかる見本が 0.33〜0.43 で「見つからない」になった = findImage の
+    /// 誤った赤、`isEmpty` での否定なら誤った緑)。判定は純粋関数
+    static let selfDistanceTolerance: Double = 0.0001
+    static func isConsistent(selfDistance distance: Double) -> Bool { distance <= selfDistanceTolerance }
+
     /// 1つのテンプレートを画面の候補と比べ、距離の小さい順に返す(閾値では絞らない)。
     /// **照合1回につき一様な白の特徴量を1つ作って縮退を確かめる**(候補ごとではない。約 4ms)。
     /// 縮退していたらテンプレートの控えも捨てる(縮退中に作った特徴量を次の回に使わない)
@@ -224,6 +240,12 @@ public enum FindImage {
         if isDegenerate(templateDistanceToBlank: try templateObservation.distance(to: blank)) {
             forgetTemplatePrints()
             throw MatchError.degeneratePrints(template: template.lastPathComponent)
+        }
+        // 見本を取り直して控えと比べる(控えを作った時点・今のどちらかが壊れていれば一致しない)
+        let selfDistance = Double(try templateObservation.distance(to: try await featurePrint(templateImage)))
+        if !isConsistent(selfDistance: selfDistance) {
+            forgetTemplatePrints()
+            throw MatchError.inconsistentPrints(template: template.lastPathComponent, distance: selfDistance)
         }
         var matches: [Match] = []
         for candidate in candidates {

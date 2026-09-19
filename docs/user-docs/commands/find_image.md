@@ -78,6 +78,9 @@ existImage("[Share Icon]", scroll: .down).tap()
 - Occasionally the Mac's image processing (Vision) temporarily returns the same feature print for every image. Comparing in
   that state would "find" the first candidate, so the state is detected and the step fails (the message says
   `Vision returned the same image feature print for different images`). Retry the run.
+- In the same way, a less extreme state where Vision returns a different feature print for the same image is detected by
+  re-measuring the sample on each search (the message says `Vision returned a different image feature print for the same image`).
+  Distances in that state cannot be trusted, so the step fails. Retry the run; if it keeps happening, restart the Mac.
 - When the found element has a writable selector (an id or a unique label), you can chain assertions such as `textIs`.
 - Moving the screen after finding makes `tap()` hit the old coordinates. Tap right after finding.
 - Unlike Shirates, which cuts parts out by segmenting the image, the candidates are the frames of accessibility

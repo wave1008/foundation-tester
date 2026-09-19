@@ -77,6 +77,9 @@ existImage("[Share Icon]", scroll: .down).tap()
 - まれに、Mac の画像処理(Vision)が一時的にどの画像にも同じ特徴量を返す状態になります。そのまま比べると
   最初の候補を「見つけた」ことにしてしまうので、この状態は検知して失敗にします(文言は
   `Vision returned the same image feature print for different images`)。run をやり直してください。
+- 同じように、それほど極端でない状態(Vision が同じ画像に違う特徴量を返す)も、探すたびに見本を測り直して検知します
+  (文言は `Vision returned a different image feature print for the same image`)。この状態の距離は信用できないので
+  失敗にします。run をやり直し、続くなら Mac を再起動してください。
 - 見つけた要素に書けるセレクタ(id か一意なラベル)があれば、`textIs` などの検証をつなげられます。
 - 見つけてから画面を動かすと、`tap()` は古い座標をタップします。見つけた直後にタップしてください。
 - 画像の区分けで部品を切り出す Shirates と違い、切り出しはアクセシビリティ要素の枠です。アクセシビリティに

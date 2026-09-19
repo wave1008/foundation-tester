@@ -343,3 +343,30 @@ extension FindImageTests {
         }
     }
 }
+
+// MARK: - Vision の半端な異常(同じ画像に違う特徴量)
+
+extension FindImageTests {
+    func testTheSameImageMustGiveTheSamePrint() {
+        XCTAssertTrue(FindImage.isConsistent(selfDistance: 0), "健全なら同じ画像の特徴量は完全に一致する(実測 1,200/1,200)")
+        XCTAssertFalse(FindImage.isConsistent(selfDistance: 0.0011), "異なる見本どうしの最小距離(実測)は通さない")
+        XCTAssertFalse(FindImage.isConsistent(selfDistance: 0.33), "負荷テストで見た半端な異常の距離")
+    }
+
+    /// match は縮退の門の後・候補の照合の前に、見本を取り直して控えと比べ、ずれたら照合せずに断る
+    func testMatchReMeasuresTheTemplateBeforeComparingCandidates() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FTCore/FindImage.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "public static func match(template:"))
+        let body = source[start.upperBound...]
+        let degenerate = try XCTUnwrap(body.range(of: "throw MatchError.degeneratePrints"))
+        let consistent = try XCTUnwrap(body.range(of: "if !isConsistent(selfDistance:"))
+        let inconsistent = try XCTUnwrap(body.range(of: "throw MatchError.inconsistentPrints"))
+        let loop = try XCTUnwrap(body.range(of: "for candidate in candidates"))
+        XCTAssertLessThan(degenerate.lowerBound, consistent.lowerBound)
+        XCTAssertLessThan(inconsistent.lowerBound, loop.lowerBound, "候補を照合する前に断る")
+        XCTAssertTrue(body[consistent.lowerBound..<inconsistent.lowerBound].contains("forgetTemplatePrints()"),
+                      "ずれた控えを次の照合に使わない")
+    }
+}
