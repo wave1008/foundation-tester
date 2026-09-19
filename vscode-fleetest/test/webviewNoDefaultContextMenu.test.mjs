@@ -1,5 +1,6 @@
-// モニターパネル(fleetest mobile)のどこで右クリックしても既定メニュー(Cut/Copy/Paste)を出さない(main.js の
-// document の contextmenu = preventDefault)の DOM テスト。文字を打つ入力欄だけは既定メニューを残す。
+// 拡張(fleetest mobile)の画面のどこで右クリックしても既定メニュー(Cut/Copy/Paste)を出さない DOM テスト。
+// 画面は2つ: モニターパネル(main.js の document の contextmenu = preventDefault)と自己修復の確認パネル
+// (healReviewPanel.ts のインラインスクリプト)。どちらも文字を打つ入力欄だけは既定メニューを残す。
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewAndroidBridgeNotRunning.test.mjs と同じ。
 
 import assert from "node:assert/strict";
@@ -8,6 +9,9 @@ import path from "node:path";
 import { before, test } from "node:test";
 import * as esbuild from "esbuild";
 import { JSDOM } from "jsdom";
+
+import { HealReviewController } from "../src/healReviewPanel";
+import { RunEventBus } from "../src/runEventBus";
 
 const require2 = createRequire(import.meta.url);
 
@@ -95,5 +99,33 @@ test("設定タブの数値の入力欄では既定メニューを残す", (t) =
   t.after(() => window.close());
   const input = document.getElementById("settings-lpt-history");
   assert.equal(input.type, "number");
+  assert.equal(rightClick(window, input), false);
+});
+
+/** 自己修復の確認パネルの HTML(relocalize が panel.webview.html に書く)をインラインスクリプトごと動かす。 */
+function createHealReviewWebview() {
+  const controller = new HealReviewController(
+    "/tmp/proj", () => ({ binaryPath: "/usr/local/bin/fleetest", project: "P", profile: "" }),
+    { appendLine() {} }, {}, new RunEventBus());
+  const panel = { webview: { html: "" } };
+  controller.panel = panel;
+  controller.relocalize();
+  const dom = new JSDOM(panel.webview.html, {
+    runScripts: "dangerously", pretendToBeVisual: true, url: "https://localhost/",
+    beforeParse(window) {
+      window.acquireVsCodeApi = () => ({ postMessage: () => {}, setState: () => {}, getState: () => undefined });
+    },
+  });
+  return { window: dom.window, document: dom.window.document };
+}
+
+test("自己修復の確認パネルでも既定メニューを出さず、入力欄では残す", (t) => {
+  const { window, document } = createHealReviewWebview();
+  t.after(() => window.close());
+  assert.equal(rightClick(window, document.getElementById("btn-apply")), true);
+  assert.equal(rightClick(window, document.body), true);
+  const input = document.createElement("input");
+  input.type = "text";
+  document.body.appendChild(input);
   assert.equal(rightClick(window, input), false);
 });

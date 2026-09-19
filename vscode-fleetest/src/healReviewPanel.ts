@@ -448,6 +448,18 @@ function renderHtml(items: readonly HealReviewItem[]): string {
   <script nonce="${nonce}">
   (function () {
     const vscode = acquireVsCodeApi();
+
+    // No default right-click menu (Cut/Copy/Paste) except in text inputs (selector/comment edits need paste).
+    // Same rule on every screen of the extension (pair: the same listener in src/webview/monitor/main.js).
+    document.addEventListener('contextmenu', (event) => {
+      const target = event.target;
+      const editable = target instanceof HTMLTextAreaElement
+        || (target instanceof HTMLInputElement && !['checkbox', 'radio', 'button', 'range'].includes(target.type))
+        || (target instanceof HTMLElement && target.isContentEditable);
+      if (!editable) {
+        event.preventDefault();
+      }
+    });
     const rowsEl = document.getElementById('rows');
     const emptyEl = document.getElementById('empty');
     const btnApply = document.getElementById('btn-apply');

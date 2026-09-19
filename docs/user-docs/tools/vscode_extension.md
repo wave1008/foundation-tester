@@ -47,6 +47,8 @@ is unavailable.
   Device operations run one at a time through a shared queue, so queued tiles show a
   "Waiting..." badge.
 - Toolbar buttons start/stop every device in view and restart the monitor process.
+- Turning **Screen Updates** (right end of the toolbar) off stops streaming and capturing every
+  device's screen to reduce the Mac's load. Tiles keep their last frame, dimmed (status keeps updating).
 - The **Test Sessions** tab opens runs that were recorded (run profile `record: true`) and shows each
   scenario's video, a step tree, and the error list. **If the Device Monitor tab is showing when a run
   finishes**, the monitor switches to the Test Sessions tab and opens that run's recording as soon as
@@ -59,12 +61,18 @@ is unavailable.
   section shows the union of every run profile's devices with checkboxes (checked = this
   profile runs it), and its own "Add device" button.
 - The **Settings** tab holds display, update, log-and-recording cleanup, and remote machine
-  settings, including the update-check and update actions described below.
+  settings, including the update-check and update actions described below. The **Tools** section
+  at its top has "Live Control" and "Processes" buttons that bring up those tabs.
+- The **Live Control** tab (below) and the **Processes** tab (list and stop fleetest's resident
+  processes) are hidden at startup. Opening one brings its tab up; close it with the tab's ×.
+- Right-clicking anywhere does not show the default Cut/Copy/Paste menu (except in text input fields).
 
 ## Live Control
 
-Command **"fleetest: Show Live Control"** opens an independent panel for touching a device directly
-from its screenshot:
+A tab for touching a device directly from its screenshot, shown to the right of the device monitor's
+**Device Monitor** tab. Open it with the command **"fleetest: Show Live Control"**, the **Live Control**
+button under Settings → Tools, or **Live Control** in a tile's right-click menu (opens with that device
+selected). It also opens automatically when a test run starts (setting `fleetest.liveControlOnRun`):
 
 | Gesture | Action |
 |---|---|
@@ -84,7 +92,7 @@ compile it is parked under `scenarios/_disabled/` instead of being added to the 
 
 ## Results Dashboard
 
-Command **"fleetest: Open Results Dashboard"** opens a panel summarizing
+Command **"fleetest: Open Results Dashboard"** shows, in the device monitor's **Dashboard** tab, a summary of
 `fleetest api results` for the project: recent runs, per-scenario success rate and duration,
 flaky scenarios, device/worker breakdowns, a daily trend, slow scenarios, and other insights.
 
