@@ -356,6 +356,11 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   届くため —— in-app はアラートを残したまま背面のアプリが反応し、XCUITest は XCTest の割り込み処理が
   アラートのボタン(拒否側)を押して権限を黙って変える(実測)。座標の操作は断らない(XCUITest では
   アラートそのものに当たる)。判定は `SystemUIGate` の1箇所
+- **失敗時の証跡の絵は画面全体を撮る(2026-09-20)**: in-app の `/screenshot` はアプリ自身の window を
+  描き直すだけで、SpringBoard のアラートは写らない。hybrid は `fallbackDriver`(XCUITest =
+  `XCUIScreen`)で撮り、撮れなければ主ドライバへ落ちる(`FTRuntime.handleFailure`。白フレームの
+  撮り直しも同じ撮り方)。**変えたのは失敗の証跡だけ** —— DSL の `screenshot`・遮蔽の crop・
+  findImage はアプリ座標の絵が要り、in-app の絵の追いつき待ち(`InAppRenderCatchUp`)もそちらに効く
 - **起動元の自己申告と doctor の刈り取り(2026-07-30)**: 3ブリッジとも `/status` で起動元
   (`ownerRepo`。iOS xcuitest はホスト上で停止できる `ownerPid` も)と直前の無通信秒数
   (`idleSeconds`)を申告する(注入経路: xctestrun 環境変数 / `-e owner` / SIMCTL_CHILD)。

@@ -1437,17 +1437,28 @@ public final class FTDriveCore {
         // 画素をサンプルする BlankFrameDetector が唯一の判定手段。
         // これを外していたため、環境起因の全滅が「テストの失敗」として無警告で記録されていた
         let inferFrozenFromBlankFrame = !physical
+        // 証跡の絵は**画面全体**を撮れる XCUITest(hybrid の fallbackDriver = XCUIScreen)を先に使う。
+        // in-app の /screenshot はアプリ自身の window を描き直すだけなので、SpringBoard のアラート
+        // (権限の要求等)が出ていても写らない = 「出なかった」のか「出ていたのに見つけられなかった」の
+        // かを証跡から判別できない。撮れなければ主ドライバへ落ちる。fallbackDriver が無い
+        // (Android・in-app 単独)なら主ドライバのまま。engine=xcuitest の fallbackDriver は主と
+        // 同じランナーなので同じ絵になる
+        let wholeScreen = executor.fallbackDriver
+        let takeScreenshot: () async -> Data? = {
+            if let wholeScreen, let shot = try? await wholeScreen.screenshot() { return shot }
+            return try? await driver.screenshot()
+        }
         let context = FTSync.run { () async -> (Data?, Bool, String?) in
             let snapshot = try? await driver.snapshot()
             let elementsText = snapshot.map { SnapshotRenderer.render($0) }
-            var screenshot = try? await driver.screenshot()
+            var screenshot = await takeScreenshot()
             var evidenceBlank = false
             if inferFrozenFromBlankFrame, let shot = screenshot,
                BlankFrameDetector.isUniformBlank(pngData: shot) {
                 evidenceBlank = true
                 for _ in 0..<3 {
                     try? await Task.sleep(nanoseconds: 2_500_000_000)
-                    guard let retry = try? await driver.screenshot() else { continue }
+                    guard let retry = await takeScreenshot() else { continue }
                     screenshot = retry
                     if !BlankFrameDetector.isUniformBlank(pngData: retry) {
                         evidenceBlank = false
