@@ -32,6 +32,7 @@ import {
   isInstallSystemImageEvent,
   removeQueuedBulkUpJob,
   removeQueuedDeviceUpJob,
+  deviceUpJobsOnMachine,
   isInstalledDevicesJson,
   type MonitorDevice,
   type MonitorFromWebviewMessage,
@@ -473,6 +474,16 @@ export class MonitorDeviceOps {
     this.deps.outputChannel.appendLine(t("deviceOps.log.deviceUpCancelling", { name }));
     // proc が無い = 再試行の待ち中。次の試行の入口で打ち切る(runDeviceOpAttempt)
     upRun.proc?.kill("SIGTERM");
+  }
+
+  /** その機械(手元は "local")の1台ぶんの起動を全部取り消す(実行中は止めて停止まで・待機中は外す)。
+   * 取り消した台の名前を返す */
+  cancelDeviceUpsOnMachine(machine: string): readonly string[] {
+    const targets = deviceUpJobsOnMachine(this.lifecycleQueue, machine);
+    for (const target of targets) {
+      this.cancelDeviceUp(target.name, target.machine);
+    }
+    return targets.map((target) => target.name);
   }
 
   cancelBulkUp(): void {

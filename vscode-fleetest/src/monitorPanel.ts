@@ -620,6 +620,11 @@ export class MonitorPanelController implements vscode.Disposable {
       this.disabledStopHandled);
     for (const machine of newlyHandled) {
       this.disabledStopHandled.add(machine);
+      // 積まれている/走っている起動も取り消す(停止まで行う)。放っておくと掃除のあとで起動しきり、
+      // 機械ごと「済み」なので誰も止めない(2026-09-20 の実害: 起動ジョブ中の台が残った)
+      for (const name of this.deviceOps.cancelDeviceUpsOnMachine(machine)) {
+        this.outputChannel.appendLine(t("deviceOps.log.cancelDisabledMachineStart", { name, machine }));
+      }
     }
     for (const { name, machine, udid, serial } of stops) {
       this.outputChannel.appendLine(t("deviceOps.log.stopDisabledMachineDevice",

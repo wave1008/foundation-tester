@@ -642,6 +642,27 @@ test("起動待ち(キュー)をキャンセルするとキューから外すだ
   }
 });
 
+test("cancelDeviceUpsOnMachine: その機械の起動を実行中は止めて停止まで・待機中は外す(他の機械は触らない)", async () => {
+  const { dir, binaryPath } = makeSlowMockBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.enqueueLifecycleJob({ kind: "device", name: "Run", op: "up" });
+    deviceOps.enqueueLifecycleJob({ kind: "device", name: "Other", op: "up", machine: "M1Max" });
+    await waitFor(() => argvLines(dir).filter((line) => line.includes("start-device")).length === 2);
+    assert.deepEqual([...deviceOps.cancelDeviceUpsOnMachine("local")], ["Run"]);
+    await waitFor(() => argvLines(dir).some((line) => line.includes("stop-device")), 5000);
+    const stops = argvLines(dir).filter((line) => line.includes("stop-device"));
+    assert.equal(stops.length, 1);
+    assert.match(stops[0], /--name Run/);
+    assert.doesNotMatch(stops[0], /remote exec/, "手元の台は手元で止める");
+    deviceOps.cancelDeviceUp("Other", "M1Max");
+    await waitUntilIdle(deviceOps, 5000);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("stderrDetailLine: 進捗見出しを飛ばして最後の実質行(対処つき)を採る", () => {
   const stderr = [
     "==> host M1Ultra → wave1008@192.168.20.95",

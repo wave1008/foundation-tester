@@ -48,6 +48,7 @@ import {
   removeDeviceFromRunProfile,
   removeQueuedBulkUpJob,
   removeQueuedDeviceUpJob,
+  deviceUpJobsOnMachine,
   RUNNING_DEVICES_PROFILE_VALUE,
   runProfileDeviceRefKey,
   toWebviewMessage,
@@ -3497,4 +3498,18 @@ test("removeQueuedDeviceUpJob: (machine, name) が一致する待機中の up �
   assert.deepEqual(result.state.running, [runningUp]);
   assert.equal(result.state.jobs.length, 2);
   assert.equal(removeQueuedDeviceUpJob(state, "B", undefined).removed, undefined);
+});
+
+test("deviceUpJobsOnMachine: その機械の1台ぶんの up(実行中・待機中)だけ・手元は local・down/バッチは含めない", () => {
+  const state = {
+    running: [{ kind: "device", name: "A", op: "up" }, { kind: "bulk", op: "up" }],
+    jobs: [
+      { kind: "device", name: "B", op: "up" },
+      { kind: "device", name: "C", op: "down" },
+      { kind: "device", name: "D", op: "up", machine: "M1Max" },
+      { kind: "restartBatch", names: ["E"] },
+    ],
+  };
+  assert.deepEqual(deviceUpJobsOnMachine(state, "local"), [{ name: "A", machine: undefined }, { name: "B", machine: undefined }]);
+  assert.deepEqual(deviceUpJobsOnMachine(state, "M1Max"), [{ name: "D", machine: "M1Max" }]);
 });

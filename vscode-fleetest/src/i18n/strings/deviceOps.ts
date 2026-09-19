@@ -23,6 +23,10 @@ export const deviceOpsStrings = {
     ja: "「マシン有効」がオフの {machine} のデバイス {name} は起動しません",
     en: "Not starting {name} on {machine} because \"Machine enabled\" is off",
   },
+  "deviceOps.log.cancelDisabledMachineStart": {
+    ja: "「マシン有効」がオフの {machine} のデバイス {name} の起動を取り消します(テスト実行タブを開いたため)",
+    en: "Cancelling the start of {name} on {machine} because \"Machine enabled\" is off (Test Run tab opened)",
+  },
   "deviceOps.log.stopDisabledMachineDevice": {
     ja: "「マシン有効」がオフの {machine} のデバイス {name} を終了します(テスト実行タブを開いたため)",
     en: "Stopping {name} on {machine} because \"Machine enabled\" is off (Test Run tab opened)",
