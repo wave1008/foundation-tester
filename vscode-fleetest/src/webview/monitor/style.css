@@ -1179,6 +1179,7 @@ html.select-all-guard * {
   justify-content: center;
   flex: 0 0 26px;
   height: 26px;
+  gap: 4px;
   box-sizing: border-box;
   padding: 0 8px;
   background-color: var(--vscode-sideBar-background, var(--vscode-editor-background));
@@ -1192,6 +1193,19 @@ html.select-all-guard * {
   font-size: 12px;
 }
 /* .tile-name-ios/-android を共用する色付きピル(タイルのデバイス名と同じ表現) */
+/* **機械バッジはデバイス名の下**(ユーザー決定 2026-09-21。タイルと同じ並び)。
+   段の有無がレーンごとに混ざると高さが揃わないので、1つでも機械付きが居れば全レーンで確保する
+   (laneLog.js の syncLaneMachineRow が #lanes-grid に with-machine-row を付ける) */
+.lanes-grid.with-machine-row .lane-header {
+  flex-direction: column;
+  /* **上寄せ**(ユーザー決定 2026-09-21)—— 中央寄せだと、機械バッジの無いレーンだけ
+     デバイス名が下がって縦位置が揃わない */
+  justify-content: flex-start;
+  flex-basis: 44px;
+  height: 44px;
+  padding-top: 3px;
+  gap: 2px;
+}
 .lane-name {
   display: inline-block;
   font-weight: 600;

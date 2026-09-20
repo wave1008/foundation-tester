@@ -20,8 +20,16 @@ let deviceOrder = [];
 // lanesGridの子要素をdeviceOrder順に並べ直す(appendChildは既存ノードの移動)。
 // deviceOrderに無いid(全体レーン等)は末尾・相対順維持。
 // 動かすのは pairEl(拡大表示+ログの組)。lanesGrid の直接の子は常に .lane-pair。
+// 機械バッジの段を出すか。**1つでも機械付きのレーンが居れば全レーンで確保する** ——
+// 段の有無がレーンごとに混ざると見出しの高さが揃わない(タイルの .with-machine-row と同じ規律)
+function syncLaneMachineRow() {
+  const anyMachine = [...lanes.values()].some((lane) => lane.headerEl.querySelector('.lane-host'));
+  lanesGrid.classList.toggle('with-machine-row', anyMachine);
+}
+
 function reorderLanes() {
   if (deviceOrder.length === 0) {
+    syncLaneMachineRow();
     return;
   }
   const rank = new Map(deviceOrder.map((id, index) => [id, index]));
@@ -31,6 +39,7 @@ function reorderLanes() {
   for (const id of ordered) {
     lanesGrid.appendChild(lanes.get(id).pairEl);
   }
+  syncLaneMachineRow();
 }
 
 // worker id(またはタイルが存在しない全体レーン)ごとの「実行中」状態。

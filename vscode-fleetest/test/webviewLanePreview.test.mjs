@@ -506,3 +506,28 @@ test("選択したままデバイスが消えても拡大表示を残さない",
   assert.equal(visiblePairs(document).length, 1, "残った台は従来どおりログだけに戻ること");
   assert.equal(visibleLogs(document).length, 1);
 });
+
+// 実行ログビューのレーン見出しは、機械バッジをデバイス名の**下**に置く(ユーザー決定 2026-09-21。
+// タイルと同じ並び)。段の有無がレーンごとに混ざると高さが揃わないので、**1つでも機械付きが
+// 居れば全レーンで確保する** —— CSS はこのクラスで段を出す(jsdom は CSS を読まない)。
+test("機械付きのレーンが1つでもあれば #lanes-grid に with-machine-row が付く", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const grid = document.getElementById("lanes-grid");
+
+  window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices: [
+    { id: "d0", name: "Dev 0", platform: "ios", state: "connected", detail: "",
+      kind: "virtual", udid: "UDID-0", recording: false, registered: true },
+  ] } }));
+  assert.equal(grid.classList.contains("with-machine-row"), false, "手元だけなら段は要らない");
+
+  window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices: [
+    { id: "d0", name: "Dev 0", platform: "ios", state: "connected", detail: "",
+      kind: "virtual", udid: "UDID-0", recording: false, registered: true },
+    { id: "d1", name: "Dev 1", platform: "ios", state: "connected", detail: "",
+      kind: "virtual", udid: "UDID-1", recording: false, registered: true, machine: "m1max" },
+  ] } }));
+  assert.equal(grid.classList.contains("with-machine-row"), true);
+  const hosts = [...document.querySelectorAll("#lanes-grid .lane-host")].map((el) => el.textContent);
+  assert.deepEqual(hosts, ["m1max"], "機械バッジは機械付きのレーンにだけ出る(段は全レーンで確保)");
+});
