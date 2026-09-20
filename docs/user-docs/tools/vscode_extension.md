@@ -64,7 +64,7 @@ is unavailable.
   profile runs it), and its own "Add device" button.
 - The **Settings** tab holds display, update, log-and-recording cleanup, and remote machine
   settings, including the update-check and update actions described below. The **Tools** section
-  at its top has "Live Control" and "Processes" buttons that bring up those tabs.
+  at its top has a "Processes" button that brings up that tab.
 - The **Live Control** tab (below) and the **Processes** tab (list and stop fleetest's resident
   processes) are hidden at startup. Opening one brings its tab up; close it with the tab's ×.
 - Right-clicking anywhere does not show the default Cut/Copy/Paste menu (except in text input fields).
@@ -72,9 +72,8 @@ is unavailable.
 ## Live Control
 
 A tab for touching a device directly from its screenshot, shown to the right of the device monitor's
-**Device Monitor** tab. Open it with the command **"fleetest: Show Live Control"**, the **Live Control**
-button under Settings → Tools, or **Live Control** in a tile's right-click menu (opens with that device
-selected). It also opens automatically when a test run starts (setting `fleetest.liveControlOnRun`):
+**Device Monitor** tab. Open it with the command **"fleetest: Show Live Control"** or **Live Control**
+in a tile's right-click menu (opens with that device selected). It also opens automatically when a test run starts (setting `fleetest.liveControlOnRun`):
 
 | Gesture | Action |
 |---|---|

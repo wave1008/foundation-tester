@@ -754,7 +754,6 @@ function renderSettingsPanel(): string {
       <div class="settings-group">
         <div class="settings-section-title">${t("panels.settings.toolsSectionTitle")}</div>
         <div class="settings-update-actions">
-          <button id="settings-tool-live" class="secondary" type="button">${t("panels.tabs.live")}</button>
           <button id="settings-tool-processes" class="secondary" type="button">${t("panels.settings.toolsProcessesButton")}</button>
         </div>
       </div>

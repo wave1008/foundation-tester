@@ -4385,7 +4385,7 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   拡張は `deviceFinished` ごとにそのタイルだけ offline を先行反映(`deviceDownFinished` → resume 後に本物の
   state で上書き)。profile 無しの down は従来の全掃討 `devices down` のまま。詳細は performance-tuning.md §3.4
 - **「ライブ操作」タブ**: 「デバイスモニター」タブの右隣。**起動時は出さない**(プロセスタブと同じ
-  `HIDDEN_AT_STARTUP`・× で隠す)。開く口はコマンド `fleetest.showLiveControl`・設定タブ「ツール」・タイルの
+  `HIDDEN_AT_STARTUP`・× で隠す)。開く口はコマンド `fleetest.showLiveControl`・タイルの
   右クリック・Run Test の自動表示(`liveControlOnRun`)。ロジックは `liveTabHost.ts`(モニターに同居)
 - **右クリックの既定メニュー(Cut/Copy/Paste)は拡張の全画面で出さない**(モニターの `main.js` と
   `healReviewPanel.ts` のインラインスクリプトが同じ規則を持つ。文字を打つ入力欄だけ残す)

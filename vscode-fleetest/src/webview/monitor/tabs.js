@@ -74,7 +74,7 @@ export function activateTab(tab) {
 }
 
 // 閉じられるタブ → 表示中に閉じたときの移り先。閉じたタブは activateTab で開くと再び現れる
-// (開く口: 設定タブ「ツール」・ライブ操作はコマンド/タイル右クリック/Run Test も)。
+// (開く口: processes は設定タブ「ツール」・live はコマンド/タイル右クリック/Run Test)。
 const CLOSE_FALLBACK = { live: 'devices', processes: 'settings' };
 
 export function hideTab(tab) {

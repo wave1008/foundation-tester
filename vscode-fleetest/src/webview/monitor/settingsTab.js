@@ -37,10 +37,6 @@ const updateCheckButton = document.getElementById('settings-update-check');
 // 更新があるときだけ表示する — 押せない状態のボタンを常時見せても情報にならないため。
 const updateRunButton = document.getElementById('tabbar-update');
 
-document.getElementById('settings-tool-live').addEventListener('click', () => {
-  activateTab('live');
-});
-
 document.getElementById('settings-tool-processes').addEventListener('click', () => {
   activateTab('processes');
 });
