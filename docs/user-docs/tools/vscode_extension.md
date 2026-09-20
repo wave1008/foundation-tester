@@ -47,7 +47,21 @@ is unavailable.
   Device operations run one at a time through a shared queue, so queued tiles show a
   "Waiting..." badge.
 - Toolbar buttons start/stop every device in view and restart the monitor process.
-- Turning **Screen Updates** (right end of the toolbar) off stops streaming and capturing every
+- The **run board** under the toolbar lists the runs going on right now, on this Mac and on every
+  registered runner machine, with "N of M done" and an estimated time left — not just runs you
+  started, but CLI runs and other people's runs too. Clicking a row selects that run's devices in
+  the Line View.
+- The Device Monitor tab is split into three views, top to bottom: the **Line View** (the row of
+  device tiles), the **Grid View** (enlarged screens of the selected devices), and the **Run Log View**
+  (the run log of the selected devices). Drag a divider to resize, click a view's header to collapse or
+  expand it (the header row always stays visible, wherever you drag).
+- The Grid View and the Run Log View show **only the devices selected in the Line View**. Clicking
+  anywhere on a tile toggles its selection; clicking outside the tiles clears the selection. With
+  nothing selected both views say "Select a device" (provisioning progress during a run still appears
+  in the Run Log View). With exactly one device selected, the Grid View shows the enlarged screen and
+  that device's run log side by side, and the Run Log View below folds itself so the same log is not
+  shown twice.
+- Turning **Live Updates** (right end of the Grid View header) off stops streaming and capturing every
   device's screen to reduce the Mac's load. Tiles keep their last frame, dimmed (status keeps updating).
 - The **Test Sessions** tab opens runs that were recorded (run profile `record: true`) and shows each
   scenario's video, a step tree, and the error list. **If the Device Monitor tab is showing when a run
