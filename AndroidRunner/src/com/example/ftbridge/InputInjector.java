@@ -88,23 +88,31 @@ final class InputInjector {
         String before = null;         // combined を作ったときの読み(applied の「変わったか」の基準)
         boolean masked = false;
         boolean blindFired = false;   // 猶予後の未フォーカス発火は1回だけ
+        boolean lastRefreshOK = false;  // 以下3つは期限切れの文言に載せる事実(failureFacts)
+        String lastRead = null;
+        int accepted = 0;
         Rect bounds = new Rect();
         while (true) {
             try {
                 AccessibilityNodeInfo root = ua.getRootInActiveWindow();
                 AccessibilityNodeInfo target = root == null ? null
                         : findEditable(root, shortId, (int) x, (int) y, bounds);
-                if (target != null) {
-                    // **読む前に必ず取り直す**。a11y ノードはキャッシュから供給され、とくに
+                // **読む前に必ず取り直す**。a11y ノードはキャッシュから供給され、とくに
                     // WebView(Chromium)は DOM 変更のイベントを遅れて出すため、取り直さないと
                     // getText() が**変更前の値を返し続ける**(SnapshotBuilder.collect の
                     // insideWebView refresh と同じ事情・同じ対策)。これが無いと
                     // 「SET_TEXT は効いているのに読みが古く、期限切れで 500」になる
                     // (2026-07-31 実測: WebView 入力欄で 20%。値は実際には入っていた)。
-                    // 1ノード1 IPC。通常経路は 1〜2 周で終わるのでコストは無視できる
-                    target.refresh();
+                // 1ノード1 IPC。通常経路は 1〜2 周で終わるのでコストは無視できる
+                boolean fresh = target != null && target.refresh();
+                if (target != null) {
+                    lastRefreshOK = fresh;
+                    if (!fresh) lastState = STALE_READ;
+                }
+                if (fresh) {
                     CharSequence existing = target.isShowingHintText() ? "" : target.getText();
                     String current = existing == null ? "" : existing.toString();
+                    lastRead = current;
                     if (combined != null && applied(current, combined, masked, before)) {
                         logReformatted(current, combined, masked);
                         return;
@@ -133,6 +141,7 @@ final class InputInjector {
                         args.putCharSequence(
                                 AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, combined);
                         if (target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                            accepted++;
                             if (firstFireAt == 0) firstFireAt = SystemClock.uptimeMillis();
                             lastState = focused ? "ACTION_SET_TEXT was accepted but the value did not change"
                                                 : "ACTION_SET_TEXT on an unfocused field did not take effect";
@@ -161,7 +170,9 @@ final class InputInjector {
             if (SystemClock.uptimeMillis() >= deadline) {
                 throw new BridgeRouter.BridgeException(500,
                         "cannot type into the field that was tapped (" + lastState + ", "
-                        + timeoutMs + "ms waited; giving up rather than typing into the wrong field)");
+                        + timeoutMs + "ms waited; "
+                        + failureFacts(ua, lastRead, masked, lastRefreshOK, accepted)
+                        + "; giving up rather than typing into the wrong field)");
             }
             SystemClock.sleep(20);
         }
@@ -243,6 +254,31 @@ final class InputInjector {
                 + " (wrote \"" + combined + "\")");
     }
 
+    /** `refresh()` の false は「取り直せなかった」で、**ノードの中身は古いまま残る**。
+     *  その読みを「値がまだ入っている」の根拠にすると、反映済みの欄を期限切れで失敗にする
+     *  (読む経路は4つとも、false の周回では読まず・撃たず、次の周回で木から引き直す)。 */
+    private static final String STALE_READ =
+            "the node could not be refreshed, so reading it would return stale text";
+
+    /** 失敗文言に載せる「最後に読み返した値」。**マスク欄は長さだけ**(値そのものは出さない)。
+     *  長い欄で応答が膨らまないよう 40 文字で切る。null = 一度も読めていない */
+    private static String describeRead(String value, boolean masked) {
+        if (value == null) return "nothing was read back";
+        if (masked) return "read back " + value.length() + " masked characters";
+        String shown = value.length() <= 40 ? value : value.substring(0, 40) + "...";
+        return "read back \"" + shown + "\"";
+    }
+
+    /** 期限切れの失敗に添える事実。**どれも失敗の時点の観測で、推測は入れない** ——
+     *  「読みが古かった」のか「アプリが値を戻した」のかは、この4つが無いと記録から割れない。 */
+    private static String failureFacts(UiAutomation ua, String lastRead, boolean masked,
+                                       boolean lastRefreshOK, int accepted) {
+        return describeRead(lastRead, masked)
+                + ", refresh " + (lastRefreshOK ? "ok" : "failed")
+                + ", ACTION_SET_TEXT accepted " + accepted + (accepted == 1 ? " time" : " times")
+                + (imeWindowVisible(ua) ? ", the IME window is in front" : "");
+    }
+
     /**
      * resource-id(短縮形)優先でノードを探す。**id は画面内で一意とは限らない**
      * (Google マップの時刻ピッカーで時/分の EditText が同じ id を持つ)ので、一致が
@@ -318,8 +354,10 @@ final class InputInjector {
      * タップした点(x,y)にある editable ノードを空文字へ全置換する(/clear の ref 経路)。
      * 追跡・フォーカスゲート・try/catch の規律は setTextAppendingAt と同一(そちらのコメント参照)。
      * 空への置換は冪等なので combined の1回構築は不要。マスク欄も「空」の読みは "" になる。
-     * 期限内に確認できなければ 409(ホストの typeDriver フォールバックの合図。
-     * setTextAppendingAt の 500 とは意図的に異なる)。
+     * 期限内に確認できなければ 409(setTextAppendingAt の 500 とは意図的に異なる)。
+     * **Android では 409 に受け皿が無い** —— ホストの typeDriver フォールバックが効くのは
+     * iOS の hybrid だけ(ScenarioRunnerMain が iOS の分岐でしか typeDriver を渡さない)ので、
+     * ここの 409 はそのままシナリオの失敗になる。判断材料は失敗文言に全部載せること。
      */
     static void clearTextAt(UiAutomation ua, double x, double y, String shortId, long timeoutMs) {
         long start = SystemClock.uptimeMillis();
@@ -329,24 +367,34 @@ final class InputInjector {
         long firstFireAt = 0;
         String lastState = "target node not found";
         boolean blindFired = false;
+        boolean lastRefreshOK = false;  // 以下4つは期限切れの文言に載せる事実(failureFacts)
+        String lastRead = null;
+        boolean masked = false;
+        int accepted = 0;
         Rect bounds = new Rect();
         while (true) {
             try {
                 AccessibilityNodeInfo root = ua.getRootInActiveWindow();
                 AccessibilityNodeInfo target = root == null ? null
                         : findEditable(root, shortId, (int) x, (int) y, bounds);
-                if (target != null) {
-                    // 読む前に取り直す(理由は setTextAppendingAt の同じ位置のコメント)。
+                // 読む前に取り直す(理由は setTextAppendingAt の同じ位置のコメント)。
                     // **この経路の破損は再現していない**(2026-07-31 に refresh 有無で A/B: どちらも
                     // 40/40 成功)。それでも入れるのは、ここの失敗モードが**沈黙**だから ——
                     // 古い空文字を読むと「消えていないのに成功」を返し、後段の別の検証まで
                     // 行かないと分からない。type/フォーカス経路と形を揃える意味もある。コストは
-                    // 1ノード1 IPC(A/B の実測差 317ms 対 328ms = 誤差)
-                    target.refresh();
+                // 1ノード1 IPC(A/B の実測差 317ms 対 328ms = 誤差)
+                boolean fresh = target != null && target.refresh();
+                if (target != null) {
+                    lastRefreshOK = fresh;
+                    if (!fresh) lastState = STALE_READ;
+                }
+                if (fresh) {
                     CharSequence remaining = target.isShowingHintText() ? "" : target.getText();
                     if (remaining == null || remaining.length() == 0) {
                         return;
                     }
+                    lastRead = remaining.toString();
+                    masked = target.isPassword();
                     boolean focused = target.isFocused();
                     if (focused && firstFireAt != 0
                             && SystemClock.uptimeMillis() - firstFireAt >= 700
@@ -360,6 +408,7 @@ final class InputInjector {
                         args.putCharSequence(
                                 AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
                         if (target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                            accepted++;
                             if (firstFireAt == 0) firstFireAt = SystemClock.uptimeMillis();
                             lastState = focused ? "ACTION_SET_TEXT was accepted but the value is still there"
                                                 : "ACTION_SET_TEXT on an unfocused field did not take effect";
@@ -385,7 +434,8 @@ final class InputInjector {
             if (SystemClock.uptimeMillis() >= deadline) {
                 throw new BridgeRouter.BridgeException(409,
                         "cannot clear the field that was tapped (" + lastState + ", "
-                        + timeoutMs + "ms waited)");
+                        + timeoutMs + "ms waited; "
+                        + failureFacts(ua, lastRead, masked, lastRefreshOK, accepted) + ")");
             }
             SystemClock.sleep(20);
         }
@@ -418,17 +468,25 @@ final class InputInjector {
         String combined = null;
         String before = null;
         boolean masked = false;
+        boolean lastRefreshOK = false;  // 以下3つは期限切れの文言に載せる事実(failureFacts)
+        String lastRead = null;
+        int accepted = 0;
         while (true) {
             try {
                 AccessibilityNodeInfo root = SnapshotBuilder.waitForRoot(ua, 500);
                 // 入れ物へ倒れた findFocus から combined を作ると空読み + 拒否で 2 秒待って 500
                 // (focusedEditable の doc)
                 AccessibilityNodeInfo focus = root == null ? null : focusedEditable(root);
+                // 読む前に取り直す(理由は setTextAppendingAt の同じ位置のコメント)
+                boolean fresh = focus != null && focus.refresh();
                 if (focus != null) {
-                    // 読む前に取り直す(理由は setTextAppendingAt の同じ位置のコメント)
-                    focus.refresh();
+                    lastRefreshOK = fresh;
+                    if (!fresh) lastState = STALE_READ;
+                }
+                if (fresh) {
                     CharSequence existing = focus.isShowingHintText() ? "" : focus.getText();
                     String current = existing == null ? "" : existing.toString();
+                    lastRead = current;
                     if (combined != null && applied(current, combined, masked, before)) {
                         logReformatted(current, combined, masked);
                         return;
@@ -443,6 +501,7 @@ final class InputInjector {
                     args.putCharSequence(
                             AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, combined);
                     if (focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                        accepted++;
                         lastState = "ACTION_SET_TEXT was accepted but the value did not change";
                     } else {
                         lastState = "this field does not accept ACTION_SET_TEXT (a WebView, for example)";
@@ -454,7 +513,8 @@ final class InputInjector {
                 lastState = "the node became stale (" + e.getClass().getSimpleName() + ")";
             }
             if (SystemClock.uptimeMillis() >= deadline) {
-                throw new BridgeRouter.BridgeException(500, lastState + "(2000ms waited)");
+                throw new BridgeRouter.BridgeException(500, lastState + " (2000ms waited; "
+                        + failureFacts(ua, lastRead, masked, lastRefreshOK, accepted) + ")");
             }
             SystemClock.sleep(20);
         }
@@ -494,33 +554,47 @@ final class InputInjector {
      * 2 回に 1 回落ちた(実機 Pixel 4a・2026-09-05。直前の type は通っているので入力欄は生きて
      * いる = 一瞬の拒否を確定失敗にしていた)。
      * 対象なし/期限切れは 409(setTextAppending の 500 とは意図的に異なる。
-     * BridgeDTO.ClearRequest の記載どおりホストの typeDriver フォールバックの合図とする)。
+     * **Android には typeDriver が無いのでそのまま失敗になる** —— clearTextAt の doc 参照)。
      */
     static void clearFocused(UiAutomation ua, long timeoutMs) {
         long deadline = SystemClock.uptimeMillis() + timeoutMs;
         String lastState = "no-input-focus: nothing has input focus (tap the field by ref first)";
+        boolean lastRefreshOK = false;  // 以下4つは期限切れの文言に載せる事実(failureFacts)
+        String lastRead = null;
+        boolean masked = false;
+        int accepted = 0;
         while (true) {
             try {
                 AccessibilityNodeInfo root = ua.getRootInActiveWindow();
                 AccessibilityNodeInfo focus = root == null ? null : focusedEditable(root);
+                boolean fresh = focus != null && focus.refresh();   // 読む前に取り直す(clearTextAt と同じ理由)
                 if (focus != null) {
-                    focus.refresh();   // 読む前に取り直す(clearTextAt と同じ理由)
+                    lastRefreshOK = fresh;
+                    if (!fresh) lastState = STALE_READ;
+                }
+                if (fresh) {
                     CharSequence remaining = focus.isShowingHintText() ? "" : focus.getText();
                     if (remaining == null || remaining.length() == 0) {
                         return;
                     }
+                    lastRead = remaining.toString();
+                    masked = focus.isPassword();
                     Bundle args = new Bundle();
                     args.putCharSequence(
                             AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
-                    lastState = focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-                            ? "ACTION_SET_TEXT was accepted but the value is still there"
-                            : "this field does not accept ACTION_SET_TEXT (a WebView, for example)";
+                    if (focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                        accepted++;
+                        lastState = "ACTION_SET_TEXT was accepted but the value is still there";
+                    } else {
+                        lastState = "this field does not accept ACTION_SET_TEXT (a WebView, for example)";
+                    }
                 }
             } catch (RuntimeException e) {
                 lastState = "the node became stale (" + e.getClass().getSimpleName() + ")";
             }
             if (SystemClock.uptimeMillis() >= deadline) {
-                throw new BridgeRouter.BridgeException(409, lastState + " (" + timeoutMs + "ms waited)");
+                throw new BridgeRouter.BridgeException(409, lastState + " (" + timeoutMs + "ms waited; "
+                        + failureFacts(ua, lastRead, masked, lastRefreshOK, accepted) + ")");
             }
             SystemClock.sleep(20);
         }

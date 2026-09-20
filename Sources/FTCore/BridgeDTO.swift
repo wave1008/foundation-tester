@@ -1276,8 +1276,9 @@ public struct TypeRequest: Codable {
 
 /// POST /clear(入力欄のクリア。DSL の clearInput)。3ブリッジ共通。
 /// ref あり = その要素へフォーカスを立ててからクリア(/type の ref 経路と同じ点解決)。
-/// ref なし = フォーカス中の入力欄をクリア。対象が無ければ 409(/type の 409 と同じ扱いで
-/// ホストは typeDriver へフォールバックする)
+/// ref なし = フォーカス中の入力欄をクリア。対象が無ければ 409(/type の 409 と同じ扱い)。
+/// **409 でフォールバックできるのは typeDriver を持つ iOS の hybrid だけ** ——
+/// Android は ScenarioRunnerMain が typeDriver を渡さないので、409 はそのまま失敗になる
 public struct ClearRequest: Codable {
     public var ref: Int?
     public init(ref: Int? = nil) {
