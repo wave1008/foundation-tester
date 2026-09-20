@@ -129,11 +129,16 @@ export interface LiveSnapshot {
 
 export interface LiveOkResult {
   readonly ok: true;
+  /** actionResult のみ: その操作を撃った先(セッションの向き先の bundle ID)。契約は
+   * Sources/fleetest/ApiLiveCommand.swift 冒頭。iOS のみ・不明なら undefined。 */
+  readonly app?: string;
 }
 
 export interface LiveErrorResult {
   readonly ok: false;
   readonly error: string;
+  /** LiveOkResult.app と同じ(失敗した操作の撃ち先)。 */
+  readonly app?: string;
 }
 
 export type LiveActionResult = LiveOkResult | LiveErrorResult;
@@ -218,11 +223,13 @@ export function parseLiveFrameResult(value: unknown): LiveFrameResult | undefine
 }
 
 export function parseLiveActionResult(value: unknown): LiveActionResult | undefined {
+  // app は**在るときだけ載せる**(undefined の欄を作らない = 旧 CLI の出力と同じ形に保つ)
+  const app = isRecord(value) && typeof value.app === "string" ? { app: value.app } : {};
   if (isLiveOkResult(value)) {
-    return { ok: true };
+    return { ok: true, ...app };
   }
   if (isLiveErrorResult(value)) {
-    return value;
+    return { ok: false, error: value.error, ...app };
   }
   return undefined;
 }
@@ -277,7 +284,8 @@ export function parseLiveServeEvent(value: unknown): LiveServeEvent | undefined 
     if (!result) {
       return undefined;
     }
-    return { kind: "actionResult", result: result.ok ? { ok: true } : { ok: false, error: result.error } };
+    // parseLiveActionResult が ok/error/app だけの新しい物を作るので、envelope の "kind" は残らない
+    return { kind: "actionResult", result };
   }
   if (value.kind === "snapshot") {
     const result = parseLiveSnapshotResult(value);
@@ -372,6 +380,15 @@ export function hitTestElement(point: LivePoint, elements: readonly LiveElement[
     }
   }
   return best;
+}
+
+/** その操作を**記録対象のアプリの上で行ったか**。ライブ操作はセッションを前面のものへ追従させる
+ * (Sources/fleetest/LiveSessionFollower.swift)ので、ホーム画面・別のアプリを触った操作も
+ * actionResult として返ってくる —— 記録すると、対象アプリでは決して解決しないロケータ
+ * (ホーム画面のアイコン等)がシナリオに入る。
+ * app が無い(Android・不明)ときは true(判定材料が無いのに落とさない)。 */
+export function operationBelongsToApp(app: string | undefined, recordedBundle: string | undefined): boolean {
+  return !app || !recordedBundle || app === recordedBundle;
 }
 
 // ---- レコーディング → FlowStep 変換(契約: Sources/FTCore/Flow.swift。gen-scenario --steps の入力) ----
@@ -711,6 +728,11 @@ export type LiveToWebviewMessage =
       readonly elements: readonly LiveElementView[];
     }
   | { readonly type: "frame"; readonly image: string }
+  /** 直前のデバイスのスナップショット(画面サイズ・要素一覧)を捨てさせる。デバイスを
+   * 切り替えたのに残っていると、タップ座標が前のデバイスの画面サイズで換算され、要素一覧の
+   * 行タップが**別のデバイスの ref** を叩く。webview はこれを受けたら次のフレームで
+   * refreshSnapshot を要求し直す(liveTab.js の requestSnapshotIfNeeded)。 */
+  | { readonly type: "clearSnapshot" }
   | { readonly type: "actionError"; readonly message: string }
   | { readonly type: "busy"; readonly busy: boolean }
   | { readonly type: "connection"; readonly connected: boolean; readonly message: string | null }
@@ -785,7 +807,10 @@ export type LiveFromWebviewMessage =
       readonly dragMs: number;
     }
   | { readonly type: "tapRef"; readonly ref: number }
-  | { readonly type: "typeText"; readonly text: string; readonly ref: number | null }
+  /** 入力は**デバイス側でフォーカスしている要素**へ送る(ref は付けない)。パネルで最後に
+   * 触った要素の ref は、その操作が返すスナップショットで採番し直されるため、次の入力の時点では
+   * もう同じ要素を指していない —— 送ると別の要素へ黙って打ち込む。 */
+  | { readonly type: "typeText"; readonly text: string }
   | { readonly type: "appSwitcher" }
   | { readonly type: "home" }
   | { readonly type: "visibility"; readonly visible: boolean }
@@ -849,7 +874,7 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
     case "tapRef":
       return typeof value.ref === "number";
     case "typeText":
-      return typeof value.text === "string" && (value.ref === null || typeof value.ref === "number");
+      return typeof value.text === "string";
     case "visibility":
       return typeof value.visible === "boolean";
     case "selectAppProfile":

@@ -10,6 +10,7 @@
 //   {"cmd":"type","text":<String>,"ref":<Int省略可>}     テキスト入力(ref省略時はフォーカス中の要素)
 //   {"cmd":"clear","ref":<Int省略可>}                    入力欄をクリア(ref省略時はフォーカス中の要素)
 //   {"cmd":"hideKeyboard"}                              フォーカス中の入力のソフトキーボードを閉じる
+//                                                        (**Android のみ**。iOS は 501 で、閉じるのは pressEnter)
 //   {"cmd":"swipe","direction":"up"|"down"|"left"|"right"}
 //   {"cmd":"drag","fromX":..,"fromY":..,"toX":..,"toY":..,"press":<秒省略可>,"duration":<秒省略可>}
 //                                                       **斜めのパンはこれで撃つ**(両軸を動かす)
@@ -35,8 +36,8 @@
 //
 // イベント(serve → stdout、1行1JSON。診断は stderr のみ):
 //   refresh 以外のコマンドはまず
-//     {"kind":"actionResult","ok":true,"error":null}
-//     {"kind":"actionResult","ok":false,"error":"<説明>"}
+//     {"kind":"actionResult","ok":true,"error":null,"app":"<bundle ID>"|null}
+//     {"kind":"actionResult","ok":false,"error":"<説明>","app":"<bundle ID>"|null}
 //   のどちらかを出し、続けて(操作の成否を問わず)観測イベント
 //     {"kind":"snapshot","ok":true,"error":null,"platform":"ios"|"android",
 //      "screen":{"width":..,"height":..},"image":"<base64 JPEG>",
@@ -50,6 +51,10 @@
 //   (actionResult・snapshot は出さない。ライブ操作パネルの自動画面更新用)。
 //   拡張側は actionResult が ok:false のとき、続く snapshot イベントは画面へ反映しない
 //   (直前の表示を保持したままエラーを表示する)。
+//   app は**その操作を撃った先**(セッションの向き先)。ライブ操作はセッションを前面のものへ
+//   追従させるので、ホーム画面・別のアプリを触った操作もここへ来る —— 拡張はこれを見て
+//   レコーディングに載せるかを決める(対象アプリ以外の操作は記録しない)。iOS のみ・
+//   分からなければ null(拡張は null を従来どおり「対象アプリの操作」として扱う)。
 //
 // 座標契約: snapshot の screen / elements[].frame はポイント座標。
 //
@@ -223,10 +228,10 @@ struct ApiLiveServe: AsyncParsableCommand {
         if command.cmd != "refresh" {
             do {
                 try await perform(command: command, driver: driver, follower: follower)
-                emitLine(ApiLiveActionResultEvent(ok: true, error: nil))
+                emitLine(ApiLiveActionResultEvent(ok: true, error: nil, app: follower?.sessionTarget))
             } catch {
                 let message = await annotated(error, starter: starter, triggering: true)
-                emitLine(ApiLiveActionResultEvent(ok: false, error: message))
+                emitLine(ApiLiveActionResultEvent(ok: false, error: message, app: follower?.sessionTarget))
             }
         }
         // **観測の直前にもう一度追従させる**: 直前の操作で前面が変わっている(ホームへ戻った・
@@ -522,19 +527,22 @@ private struct ApiLiveServeCommand: Decodable {
 
 // MARK: - JSON 出力(イベント)
 
-/// actionResult イベント(refresh 以外の全コマンド共通)
+/// actionResult イベント(refresh 以外の全コマンド共通)。app = その操作を撃った先
+/// (セッションの向き先。ファイル冒頭のプロトコル参照)
 private struct ApiLiveActionResultEvent: Encodable {
     let kind = "actionResult"
     let ok: Bool
     let error: String?
+    let app: String?
 
-    private enum CodingKeys: String, CodingKey { case kind, ok, error }
+    private enum CodingKeys: String, CodingKey { case kind, ok, error, app }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(kind, forKey: .kind)
         try container.encode(ok, forKey: .ok)
         try container.encode(error, forKey: .error)
+        try container.encode(app, forKey: .app)
     }
 }
 

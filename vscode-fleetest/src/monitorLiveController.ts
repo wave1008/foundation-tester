@@ -57,6 +57,7 @@ import {
   type LiveSnapshot,
   type LiveToWebviewMessage,
   locatorChainForElement,
+  operationBelongsToApp,
   parseGenScenarioEvent,
   parseListDevicesResult,
   parseLiveServeEvent,
@@ -633,6 +634,9 @@ export class MonitorLiveController implements vscode.Disposable {
   private ensureServeProcessForSelection(): void {
     const device = this.currentDeviceRef();
     if (!device) {
+      if (this.serveDevice) {
+        this.clearSnapshotCache();
+      }
       this.serveDevice = undefined;
       this.stopServeProcess();
     } else {
@@ -646,10 +650,25 @@ export class MonitorLiveController implements vscode.Disposable {
   /** device 向けの serve プロセスが既に起動していれば何もしない。そうでなければ
    * (未選択→選択・別デバイスへの切り替え・予期しない終了[giveUp 含む]のいずれでも)再バインドする。 */
   private ensureServeProcess(device: LiveDeviceRef): void {
-    if (this.serveProcess && this.serveDevice && sameLiveDeviceRef(this.serveDevice, device)) {
+    const bound = this.serveDevice;
+    if (this.serveProcess && bound && sameLiveDeviceRef(bound, device)) {
       return;
     }
+    if (!bound || !sameLiveDeviceRef(bound, device)) {
+      this.clearSnapshotCache();
+    }
     this.rebindServeProcess(device);
+  }
+
+  /** 直前のデバイスのスナップショット(画面サイズ・要素一覧)を捨てる。デバイスを切り替えた
+   * のに残っていると、**タップ座標が前のデバイスの画面サイズで換算され**(px の Android →
+   * pt の iOS で特に大きく外れる)、要素一覧の行タップは**新しいデバイスの木の同じ番号**を
+   * 叩く(ref はスナップショットごとの採番なので、別の要素に当たっても誰も気付けない)。
+   * webview 側も同時に捨てさせ、次のフレームで撮り直しを要求させる(clearSnapshot の doc)。 */
+  private clearSnapshotCache(): void {
+    this.lastScreen = undefined;
+    this.lastElements = [];
+    this.post({ type: "clearSnapshot" });
   }
 
   /**
@@ -1233,6 +1252,9 @@ export class MonitorLiveController implements vscode.Disposable {
     options?: { readonly silentObservation?: boolean; readonly logLabel?: string },
   ): Promise<boolean> {
     if (this.busy) {
+      // **黙って落とさない** —— 画面タップ・ツールバーは busy 中 webview 側で止まるが、
+      // レコーディング開始は止まらないので、ここに来ると overlay だけ光って何も起きない
+      this.postActionError(t("live.busyRetry"));
       return false;
     }
     const device = this.currentDeviceRef();
@@ -1251,7 +1273,8 @@ export class MonitorLiveController implements vscode.Disposable {
         }
         return false;
       }
-      if (this.recording && recordStep) {
+      // 記録するのは対象アプリの上での操作だけ(operationBelongsToApp の doc)
+      if (this.recording && recordStep && operationBelongsToApp(action?.app, this.recordApp?.bundle)) {
         this.recordedSteps.push(recordStep);
       }
       if (options?.logLabel) {
@@ -1662,11 +1685,12 @@ export class MonitorLiveController implements vscode.Disposable {
           break;
         }
         // 直前の tap でフォーカスした要素へ送る前提でロケータを付けずに記録する(ScenarioCodeGen が
-        // type("text") を出す。ref:null=フォーカス中要素への入力)。
+        // type("text") を出す)。**入力先も同じ**で、ref は付けずフォーカス中の要素へ送る
+        // (理由は LiveFromWebviewMessage の typeText の doc)。
         const typeStep: RecordedStep = { action: "type", text: message.text };
         const typedLabel = t("live.opLabel.type", { text: truncateOperationLabelText(message.text) });
         void this.runAction(
-          { cmd: "type", text: message.text, ref: message.ref },
+          { cmd: "type", text: message.text, ref: null },
           typeStep,
           { logLabel: typedLabel },
         );

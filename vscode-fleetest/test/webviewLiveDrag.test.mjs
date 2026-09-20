@@ -99,7 +99,7 @@ function createWebview() {
   const sendToWebview = (data) => window.dispatchEvent(new window.MessageEvent("message", { data }));
   // jsdom レルムのオブジェクトは Object.prototype が異なり deepEqual が落ちるため JSON で正規化する
   const liveMessages = () => posts.filter((p) => p.type === "live").map((p) => JSON.parse(JSON.stringify(p.message)));
-  return { window, posts, screenshot, sendToWebview, liveMessages };
+  return { window, document: window.document, posts, screenshot, sendToWebview, liveMessages };
 }
 
 /** PointerEvent は jsdom に無いため MouseEvent に pointerId を後付けして代用する。 */
@@ -127,6 +127,47 @@ const SNAPSHOT_MESSAGE = {
   },
 };
 const FRAME_MESSAGE = { type: "live", message: { type: "frame", image: "aW1n" } };
+
+/** デバイスを切り替えると host(monitorLiveController.clearSnapshotCache)が clearSnapshot を送る。
+ * 前のデバイスの画面サイズ・要素一覧を握ったままだと、タップ座標が前のデバイスの座標系で換算され
+ * (px の Android → pt の iOS で特に大きく外れる)、要素一覧の行タップは新しいデバイスの木の
+ * 同じ番号を叩く。捨てたあとは snapshot 未取得と同じ状態(無反応 + 撮り直しの自動要求)に戻る。 */
+test("clearSnapshot 後は前のデバイスの座標系でタップせず、要素一覧を捨てて撮り直しを要求する", (t) => {
+  const { window, document, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
+
+  sendToWebview({
+    ...SNAPSHOT_MESSAGE,
+    message: {
+      ...SNAPSHOT_MESSAGE.message,
+      elements: [
+        { ref: 1, text: "button #btn", type: "button", frame: { x: 0, y: 0, width: 100, height: 40 } },
+      ],
+    },
+  });
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 100, y: 100 }));
+  window.dispatchEvent(pointerEvent(window, "pointerup", { x: 100, y: 100 }));
+  assert.equal(liveMessages().filter((m) => m.type === "tapPoint").length, 1, "前提: snapshot があればタップを送る");
+  assert.equal(document.getElementById("live-elements-list").children.length, 1, "前提: 要素一覧が出ている");
+
+  sendToWebview({ type: "live", message: { type: "clearSnapshot" } });
+  assert.equal(document.getElementById("live-elements-list").children.length, 0, "要素一覧を捨てること");
+
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 100, y: 100 }));
+  window.dispatchEvent(pointerEvent(window, "pointerup", { x: 100, y: 100 }));
+  assert.equal(
+    liveMessages().filter((m) => m.type === "tapPoint").length,
+    1,
+    "捨てたあとのタップは送らない(前のデバイスの座標系で換算しない)",
+  );
+
+  sendToWebview(FRAME_MESSAGE);
+  assert.equal(
+    liveMessages().filter((m) => m.type === "refreshSnapshot").length,
+    1,
+    "次のフレームで撮り直しを自動要求する",
+  );
+});
 
 test("起動時に refreshDevices を送り、「ライブ操作」タブへの切替で visibility:true を送る", (t) => {
   const { window, liveMessages } = createWebview();

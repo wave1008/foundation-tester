@@ -26,6 +26,7 @@ import {
   isLiveWebviewEnvelope,
   isListDevicesResult,
   locatorChainForElement,
+  operationBelongsToApp,
   parseLiveActionResult,
   parseLiveServeEvent,
   parseLiveSnapshotResult,
@@ -231,6 +232,33 @@ test("parseLiveServeEvent: kind=actionResult の成功/失敗を判別する", (
     kind: "actionResult",
     result: { ok: false, error: "失敗しました" },
   });
+});
+
+test("parseLiveServeEvent: actionResult の app(操作を撃った先)を落とさない", () => {
+  assert.deepEqual(parseLiveServeEvent({ kind: "actionResult", ok: true, app: "com.example.app" }), {
+    kind: "actionResult",
+    result: { ok: true, app: "com.example.app" },
+  });
+  assert.deepEqual(parseLiveServeEvent({ kind: "actionResult", ok: false, error: "x", app: "com.apple.springboard" }), {
+    kind: "actionResult",
+    result: { ok: false, error: "x", app: "com.apple.springboard" },
+  });
+  // app が文字列でない/無い旧形式では欄自体を作らない(undefined の欄で deepEqual を割らない)
+  assert.deepEqual(parseLiveServeEvent({ kind: "actionResult", ok: true, app: 12 }), {
+    kind: "actionResult",
+    result: { ok: true },
+  });
+});
+
+// ---- operationBelongsToApp(レコーディングの採否) ----
+
+test("operationBelongsToApp: 対象アプリ以外(ホーム画面・別アプリ)で行った操作は記録しない", () => {
+  assert.equal(operationBelongsToApp("com.example.app", "com.example.app"), true);
+  assert.equal(operationBelongsToApp("com.apple.springboard", "com.example.app"), false);
+  assert.equal(operationBelongsToApp("com.other.app", "com.example.app"), false);
+  // 判定材料が無いとき(Android・旧 CLI・記録していない)は落とさない
+  assert.equal(operationBelongsToApp(undefined, "com.example.app"), true);
+  assert.equal(operationBelongsToApp("com.apple.springboard", undefined), true);
 });
 
 test("parseLiveServeEvent: kind=snapshot の成功/失敗を判別する", () => {

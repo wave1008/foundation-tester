@@ -23,10 +23,10 @@ enum LiveSessionTarget {
     /// 次に向け直すべき bundle ID。**nil = 変更不要**(向け直しは refFrames を消すので、
     /// 同じ向き先なら撃たない = 直前のスナップショットの ref を生かしたままにする)。
     /// - preferred: パネルが駆動しているアプリ(未選択・終了後は nil)
-    static func retarget(current: String?, preferred: String?,
+    static func retarget(sessionTarget: String?, preferred: String?,
                          preferredIsForeground: Bool) -> String? {
         let desired = (preferredIsForeground ? preferred : nil) ?? springboard
-        return desired == current ? nil : desired
+        return desired == sessionTarget ? nil : desired
     }
 }
 
@@ -34,8 +34,10 @@ enum LiveSessionTarget {
 final class LiveSessionFollower {
     /// パネルが駆動しているアプリ。nil = まだ選んでいない(= 画面にあるものを触るだけ)
     private(set) var preferred: String?
-    /// ランナーのセッションの向き先。**こちらが動かした分だけ**追う(起動時だけ /status で採る)
-    private var current: String?
+    /// ランナーのセッションの向き先 = **今どのアプリを触っているか**。**こちらが動かした分だけ**
+    /// 追う(起動時だけ /status で採る)。レコーディングの採否(対象アプリの上での操作か)も
+    /// これで決めるので外へ出す(ApiLiveActionResultEvent.app)
+    private(set) var sessionTarget: String?
     private var initialized = false
     private let log: (String) -> Void
 
@@ -56,7 +58,7 @@ final class LiveSessionFollower {
             foreground = (try? await driver.isAppForeground(bundleID: preferred)) ?? false
         }
         guard let target = LiveSessionTarget.retarget(
-            current: current, preferred: preferred, preferredIsForeground: foreground) else { return }
+            sessionTarget: sessionTarget, preferred: preferred, preferredIsForeground: foreground) else { return }
         do {
             if target == LiveSessionTarget.springboard {
                 // springboard は**起動せず参照だけ**(BridgeRouter.handleLaunch)。
@@ -66,7 +68,7 @@ final class LiveSessionFollower {
                 // 既に前面だと確かめた上での向け直しなので、activate でも絵は変わらない
                 try await driver.activate(bundleID: target)
             }
-            current = target
+            sessionTarget = target
             log("pointed the session at \(target)")
         } catch {
             log("could not point the session at \(target): \(error.localizedDescription)")
@@ -80,15 +82,15 @@ final class LiveSessionFollower {
     /// 見えるのは一瞬で、取り違えて別のものを殺すほうが害が大きい
     func pointAtApp(_ bundleID: String, driver: AppDriver) async throws {
         await initializeIfNeeded(driver: driver)
-        guard current != bundleID else { return }
+        guard sessionTarget != bundleID else { return }
         try await driver.activate(bundleID: bundleID)
-        current = bundleID
+        sessionTarget = bundleID
     }
 
     /// セッションを動かすコマンド(launch / activate)が成功した直後に呼ぶ
     func noteSessionChanged(to bundleID: String) {
         initialized = true
-        current = bundleID
+        sessionTarget = bundleID
         preferred = bundleID == LiveSessionTarget.springboard ? nil : bundleID
     }
 
@@ -97,7 +99,7 @@ final class LiveSessionFollower {
     /// clearAppData の既定対象もそれのため
     func noteSessionDropped() {
         initialized = true
-        current = nil
+        sessionTarget = nil
     }
 
     /// パネルが駆動しているアプリ(terminate の対象・clearAppData の bundle 省略時の既定)。
@@ -109,7 +111,7 @@ final class LiveSessionFollower {
         guard !initialized else { return }
         initialized = true
         let status = try? await driver.status()
-        current = status?.sessionBundleID
-        preferred = current == LiveSessionTarget.springboard ? nil : current
+        sessionTarget = status?.sessionBundleID
+        preferred = sessionTarget == LiveSessionTarget.springboard ? nil : sessionTarget
     }
 }

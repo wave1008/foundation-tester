@@ -70,7 +70,6 @@ const STATE_LABEL = {
 let currentDevices = [];
 let lastScreen = null;
 let lastElements = [];
-let selectedRef = null;
 let busy = false;
 // frame 受信時の自動全量更新(refreshSnapshot)の一回制御。applySnapshot で false に戻す。
 let autoSnapshotRequested = false;
@@ -110,7 +109,8 @@ function setBusy(value) {
   for (const b of busyButtons) { b.disabled = value; }
   deviceSelect.disabled = value;
   busyLabel.textContent = value ? t('wvMonitor.live.processing') : '';
-  updateProfileActionButtons();
+  // 「レコーディング開始」も busy を見る(updateRecordButton が updateProfileActionButtons を呼ぶ)
+  updateRecordButton();
 }
 
 const DETAIL_UNSET = t('wvMonitor.live.detailUnset');
@@ -220,7 +220,7 @@ function updateRecordButton() {
   const showStop = recording || generating;
   recordBtn.textContent = showStop ? t('wvMonitor.live.recordStop') : t('wvMonitor.live.recordStart');
   recordBtn.classList.toggle('recording', showStop);
-  recordBtn.disabled = generating || (!recording && !hasAppProfile);
+  recordBtn.disabled = generating || (!recording && (!hasAppProfile || busy));
   appProfileSelect.disabled = recording || generating;
   updateRecordMenuItems();
   updateProfileActionButtons();
@@ -229,7 +229,7 @@ function updateRecordButton() {
 // 画像右クリックメニューの開始/終了の活性を updateRecordButton と同条件で同期(開いている間に
 // 状態が変わっても追随する)。開始=停止中かつ生成中でなくプロファイル有り、終了=録画中かつ生成中でない。
 function updateRecordMenuItems() {
-  recordMenuStart.disabled = recording || generating || !hasAppProfile;
+  recordMenuStart.disabled = recording || generating || !hasAppProfile || busy;
   recordMenuStop.disabled = !recording || generating;
   recordMenuStart.title = (!recording && !generating && !hasAppProfile) ? t('wvMonitor.live.appProfileRequired') : '';
 }
@@ -379,11 +379,21 @@ function frameToDisplayRect(frame, screen, display) {
   };
 }
 
+// デバイスが切り替わった(host の clearSnapshotCache)。前のデバイスの画面サイズ・要素一覧で
+// タップ座標を換算したり ref を叩いたりしないよう捨てる。lastScreen が null の間は
+// ポインタ操作が無反応になり、次のフレームで requestSnapshotIfNeeded が撮り直しを要求する。
+function clearSnapshot() {
+  lastScreen = null;
+  lastElements = [];
+  autoSnapshotRequested = false;
+  hideHover();
+  renderElements();
+}
+
 function applySnapshot(message) {
   lastScreen = message.screen;
   lastElements = message.elements;
   autoSnapshotRequested = false;
-  selectedRef = null;
   // h264 映像が健全な間はここで静止画へ切り替えない —— 切り替えるとデコーダを作り直すことになり、
   // 次のキーフレーム到達まで表示が止まる(タップ/ドラッグのたびに毎回起きていた)。要素一覧・
   // ホバー枠(showHover)は lastScreen/lastElements の更新だけで動くので、表示は継続してよい。
@@ -542,7 +552,6 @@ function renderElements() {
       if (busy) { return; }
       for (const r of elementsList.querySelectorAll('.element-row')) { r.classList.remove('selected'); }
       row.classList.add('selected');
-      selectedRef = element.ref;
       post({ type: 'tapRef', ref: element.ref });
     });
     row.addEventListener('mouseenter', () => showHover(element));
@@ -602,7 +611,7 @@ document.getElementById('live-btn-app-switcher').addEventListener('click', () =>
 });
 function submitTypeText() {
   showActionError('');
-  post({ type: 'typeText', text: typeTextInput.value, ref: selectedRef });
+  post({ type: 'typeText', text: typeTextInput.value });
   // 送信したら入力欄をクリアする(post は value を同期読みするので後でクリアしてよい)。
   typeTextInput.value = '';
 }
@@ -678,6 +687,9 @@ export function applyLiveMessage(message) {
       break;
     case 'snapshot':
       applySnapshot(message);
+      break;
+    case 'clearSnapshot':
+      clearSnapshot();
       break;
     case 'frame':
       disposeLiveH264(); // mjpeg フォールバック復帰(codecError 後、host が frame 送信に切替えた場合)

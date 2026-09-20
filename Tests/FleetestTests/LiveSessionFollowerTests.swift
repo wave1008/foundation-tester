@@ -11,20 +11,20 @@ final class LiveSessionFollowerTests: XCTestCase {
 
     func testPointsAtSpringboardWhenTheAppIsNotInFront() {
         XCTAssertEqual(
-            LiveSessionTarget.retarget(current: "com.example.app", preferred: "com.example.app",
+            LiveSessionTarget.retarget(sessionTarget: "com.example.app", preferred: "com.example.app",
                                        preferredIsForeground: false),
             springboard)
     }
 
     func testStaysOnTheAppWhileItIsInFront() {
         XCTAssertNil(
-            LiveSessionTarget.retarget(current: "com.example.app", preferred: "com.example.app",
+            LiveSessionTarget.retarget(sessionTarget: "com.example.app", preferred: "com.example.app",
                                        preferredIsForeground: true))
     }
 
     func testComesBackToTheAppOnceItIsInFrontAgain() {
         XCTAssertEqual(
-            LiveSessionTarget.retarget(current: springboard, preferred: "com.example.app",
+            LiveSessionTarget.retarget(sessionTarget: springboard, preferred: "com.example.app",
                                        preferredIsForeground: true),
             "com.example.app")
     }
@@ -33,10 +33,10 @@ final class LiveSessionFollowerTests: XCTestCase {
     /// 毎コマンド撃つと直前のスナップショットの ref が無効になる
     func testDoesNotRetargetWhenAlreadyPointedAtSpringboard() {
         XCTAssertNil(
-            LiveSessionTarget.retarget(current: springboard, preferred: "com.example.app",
+            LiveSessionTarget.retarget(sessionTarget: springboard, preferred: "com.example.app",
                                        preferredIsForeground: false))
         XCTAssertNil(
-            LiveSessionTarget.retarget(current: springboard, preferred: nil,
+            LiveSessionTarget.retarget(sessionTarget: springboard, preferred: nil,
                                        preferredIsForeground: false))
     }
 
@@ -44,7 +44,7 @@ final class LiveSessionFollowerTests: XCTestCase {
     /// **前面判定が true でも** preferred が無ければ springboard へ倒す
     func testPointsAtSpringboardWithoutAPreferredApp() {
         XCTAssertEqual(
-            LiveSessionTarget.retarget(current: nil, preferred: nil, preferredIsForeground: true),
+            LiveSessionTarget.retarget(sessionTarget: nil, preferred: nil, preferredIsForeground: true),
             springboard)
     }
 

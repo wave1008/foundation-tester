@@ -9,6 +9,10 @@ export const liveStrings = {
     ja: "ライブ操作の常駐プロセスが起動していません。デバイスを選び直してください。",
     en: "The Live Control resident process is not running. Please reselect the device.",
   },
+  "live.busyRetry": {
+    ja: "別の操作を処理中です。少し待ってからもう一度お試しください。",
+    en: "Another action is still running. Please try again in a moment.",
+  },
   "live.serveTimeoutMessage": {
     ja: "ライブ操作の応答がタイムアウトしました(常駐プロセスが応答していません)。",
     en: "The Live Control response timed out (the resident process is not responding).",

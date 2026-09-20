@@ -84,7 +84,7 @@ in a tile's right-click menu (opens with that device selected). It also opens au
 | Toolbar zoom in/out | Pinch (whole screen) |
 
 An element list next to the screenshot lets you tap by row instead of by coordinate, and a text
-field sends input to the last-tapped element (or the focused element if none was tapped).
+field sends input to whatever the device has focused (tap the field first, then type).
 
 You can keep driving the device after the app under test leaves the foreground (iOS). When the home
 screen, the app switcher, another app or a system dialog comes to the front, live control follows
