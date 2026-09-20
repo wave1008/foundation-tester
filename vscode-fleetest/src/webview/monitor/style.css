@@ -395,6 +395,15 @@ button.bulk-cancel:hover:not(:disabled) {
   height: 20px;
   font-size: 11px;
 }
+/* 見出し行の右端へ(間は .line-view-selection との余白で埋める) */
+.line-view-select-all {
+  margin-left: auto;
+}
+.line-view-selection {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
 .run-board-title {
   flex: 0 0 auto;
   font-weight: 600;

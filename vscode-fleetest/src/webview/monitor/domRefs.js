@@ -10,7 +10,6 @@ export const btnDown = document.getElementById('btn-devices-down');
 export const btnRestart = document.getElementById('btn-restart');
 export const btnRunTests = document.getElementById('btn-run-tests');
 export const btnSelectAll = document.getElementById('btn-select-all');
-export const btnFleetVisible = document.getElementById('btn-fleet-visible');
 export const projectSelect = document.getElementById('project-select');
 export const profileSelect = document.getElementById('profile-select');
 
@@ -18,6 +17,7 @@ export const runBoard = document.getElementById('run-board');
 export const lineViewHeader = document.getElementById('line-view-header');
 export const lineViewToggle = document.getElementById('line-view-toggle');
 export const lineViewTitle = document.getElementById('line-view-title');
+export const lineViewSelection = document.getElementById('line-view-selection');
 export const runBoardHeader = document.getElementById('run-board-header');
 export const runBoardToggle = document.getElementById('run-board-toggle');
 export const runBoardTitle = document.getElementById('run-board-title');

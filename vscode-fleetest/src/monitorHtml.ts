@@ -259,21 +259,15 @@ function renderDevicesPanel(): string {
            **title/aria-label は webview 側(deviceTiles.js)が入れる** —— 押すたびに
            「すべて選択」⇄「すべて解除」で入れ替わるので、静的 HTML に置くと二重管理になる。 -->
       <!-- 状態の保存と復元は streamToggle.js ⇄ monitorPanel.ts(setShowStreamDuringRun / showStreamDuringRun)。
-           右寄せ(margin-left:auto)はこのラベルが持つ = 直後の #toolbar-tail はラベルに付いて右端へ寄る -->
+           右寄せ(margin-left:auto)はこのラベルが持つ(ツールバーの最後の要素) -->
       <label class="profile-label run-stream-toggle" title="${t("panels.toolbar.showStreamDuringRunTitle")}"><input type="checkbox" id="chk-show-stream-during-run" checked>${t("panels.toolbar.showStreamDuringRun")}</label>
-      <div id="toolbar-tail" class="toolbar-icon-group">
-        <!-- ラインビュー(タイル領域+スプリッター)の表示トグル。アイコンは縦長の枠3つ(並んだタイル)。状態と title は splitter.js -->
-        <button id="btn-fleet-visible" class="icon-button" type="button" aria-pressed="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 2h4v12H1V2zm1 1v10h2V3H2zm4-1h4v12H6V2zm1 1v10h2V3H7zm4-1h4v12h-4V2zm1 1v10h2V3h-2z"/></svg></button>
-        <!-- 全選択。アイコンは枠に囲まれたタイル3枚(チェックボックスに見せない。押下中の強調は .toggled) -->
-        <button id="btn-select-all" class="icon-button" type="button" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 1h14v14H1V1zm1 1v12h12V2H2z"/><rect x="4" y="4" width="2" height="8" rx="0.5"/><rect x="7" y="4" width="2" height="8" rx="0.5"/><rect x="10" y="4" width="2" height="8" rx="0.5"/></svg></button>
-      </div>
     </div>
     <!-- run ボード(フリート横断の実行状況。docs/design.md §18)。ツールバー直下・ラインビューの上
          (グリッド表示中も進捗が見えることを優先。ユーザー決定 2026-09-20)。run 0本でもヘッダは残す
          (main.js の 'monitorRuns'/'runBoardReset'/'runBoardCollapsed' ケースが runBoard.js へ渡す)。 -->
     <div id="run-board" class="run-board">
       <div id="run-board-header" class="run-board-header">
-        <!-- title/aria-label は webview 側(runBoard.js)が状態(開/閉)に応じて入れる(btn-fleet-visible と同じ規律) -->
+        <!-- title/aria-label は webview 側(runBoard.js)が状態(開/閉)に応じて入れる(状態で入れ替える既存の規律と同じ) -->
         <button id="run-board-toggle" class="run-board-toggle" type="button" aria-expanded="true" data-expanded="true">▶</button>
         <span id="run-board-title" class="run-board-title"></span>
         <!-- ラベルは状態(全展開かどうか)で runBoard.js が入れ替える。クリックはヘッダ行の
@@ -290,6 +284,11 @@ function renderDevicesPanel(): string {
     <div id="line-view-header" class="run-board-header">
       <button id="line-view-toggle" class="run-board-toggle" type="button" aria-expanded="true" data-expanded="true">▶</button>
       <span id="line-view-title" class="run-board-title"></span>
+      <!-- 選択中の台数(deviceTiles.js の updateSelectionUi が書く。0台のときは空) -->
+      <span id="line-view-selection" class="line-view-selection"></span>
+      <!-- 全選択。**見出し行のクリック(開閉)へ波及させない**ので deviceTiles.js が
+           stopPropagation する。アイコンは枠に囲まれたタイル3枚 -->
+      <button id="btn-select-all" class="icon-button line-view-select-all" type="button" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 1h14v14H1V1zm1 1v12h12V2H2z"/><rect x="4" y="4" width="2" height="8" rx="0.5"/><rect x="7" y="4" width="2" height="8" rx="0.5"/><rect x="10" y="4" width="2" height="8" rx="0.5"/></svg></button>
     </div>
 
     <div id="tile-pane" class="tile-pane">

@@ -87,7 +87,7 @@ export const webviewMonitorBStrings = {
   // (静的HTML側の既定は panels.common.runLog。ja/en とも同じ文字列を保つこと)。
   "wvMonitor2.laneLog.titleRunLog": { ja: "実行ログ", en: "Run Log" },
   "wvMonitor2.laneLog.titleDevices": { ja: "デバイス", en: "Devices" },
-  "wvMonitor2.laneLog.selectedCount": { ja: "選択中{count}台を表示", en: "Showing {count} selected" },
+  "wvMonitor2.laneLog.selectedCount": { ja: "{count}台を表示", en: "Showing {count}" },
   "wvMonitor2.laneLog.allWorkers": { ja: "全ワーカー", en: "All workers" },
 
   // hostCharts.js

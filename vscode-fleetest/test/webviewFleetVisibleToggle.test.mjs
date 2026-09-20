@@ -63,36 +63,36 @@ function createWebview(initialState) {
   return { window, document: window.document, posted, getState: () => state };
 }
 
-const fleetButton = (document) => document.getElementById("btn-fleet-visible");
+const lineViewToggle = (document) => document.getElementById("line-view-toggle");
 const isHidden = (document) => document.getElementById("panel-devices").classList.contains("fleet-hidden");
 const sentValues = (posted) => posted.filter((m) => m?.type === "setFleetVisible").map((m) => m.value);
 
-test("ボタンは「すべて選択/解除」の左(右端グループの先頭)にあり、既定は表示", (t) => {
+// 開閉の口は**見出し行だけ**(ツールバーのトグルは撤去した。ユーザー決定 2026-09-21)——
+// 同じ状態を動かす口が2つあると、片方だけ状態表示を直して食い違う
+test("開閉の口は見出し行だけ(ツールバーにトグルは無い)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  const button = fleetButton(document);
-  assert.equal(button.parentElement, document.getElementById("toolbar-tail"));
-  assert.equal(button.nextElementSibling, document.getElementById("btn-select-all"));
-  assert.equal(button.textContent.trim(), "", "テキストではなくアイコン");
-  assert.equal(isHidden(document), false);
-  assert.equal(button.getAttribute("aria-pressed"), "true");
-  assert.equal(button.getAttribute("aria-label"), "ラインビューを非表示にする");
+  assert.equal(document.getElementById("btn-fleet-visible"), null, "ツールバーのトグルは撤去");
+  const toggle = lineViewToggle(document);
+  assert.equal(isHidden(document), false, "既定は表示");
+  assert.equal(toggle.dataset.expanded, "true");
+  assert.equal(toggle.getAttribute("aria-label"), "ラインビューを閉じる");
 });
 
 test("押すと非表示・もう一度押すと表示に戻り、そのたびに host へ保存する", (t) => {
   const { window, document, posted, getState } = createWebview();
   t.after(() => window.close());
-  const button = fleetButton(document);
+  const toggle = lineViewToggle(document);
 
-  button.click();
+  toggle.click();
   assert.equal(isHidden(document), true, "タイル領域とスプリッターを隠す");
-  assert.equal(button.getAttribute("aria-pressed"), "false");
-  assert.equal(button.getAttribute("aria-label"), "ラインビューを表示する");
+  assert.equal(toggle.dataset.expanded, "false");
+  assert.equal(toggle.getAttribute("aria-label"), "ラインビューを開く");
   assert.equal(getState().fleetVisible, false);
 
-  button.click();
+  toggle.click();
   assert.equal(isHidden(document), false);
-  assert.equal(button.getAttribute("aria-label"), "ラインビューを非表示にする");
+  assert.equal(toggle.getAttribute("aria-label"), "ラインビューを閉じる");
   assert.deepEqual(sentValues(posted), [false, true]);
 });
 
@@ -127,10 +127,10 @@ test("待機中にラインビューを隠すと、下のペインに「デバ�
   assert.equal(document.getElementById("empty").style.display, "flex", "前提: 起動直後は待機中");
   assert.equal(note.style.display, "none", "ラインビューが見えている間は出さない");
 
-  fleetButton(document).click();
+  lineViewToggle(document).click();
   assert.equal(note.style.display, "flex");
 
-  fleetButton(document).click();
+  lineViewToggle(document).click();
   assert.equal(note.style.display, "none", "ラインビューを戻したら消す");
 });
 
@@ -176,16 +176,16 @@ test("ラインビュー表示で開くと、全選択は保存値どおり", (t
 
 // ---- ツールバー右端のグループとセパレーターの初期位置 ----
 
-test("右端のグループは表示トグルと全選択の2つだけで、グラフより後ろ(ツールバーの最後)にある", (t) => {
+// ラインビューの開閉も全選択も**見出し行**へ移した(2026-09-21)。ツールバー右端の
+// アイコン群は空になったので消してある —— 空の箱を残すと次に何かを足す置き場として復活する
+test("ツールバーの右端にアイコン群は無い(開閉も全選択も見出し行へ移した)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  const toolbar = document.getElementById("toolbar");
-  const group = document.getElementById("toolbar-tail");
-  assert.deepEqual([...group.children].map((el) => el.id), ["btn-fleet-visible", "btn-select-all"]);
-  assert.equal(toolbar.lastElementChild, group);
-  assert.ok(group.compareDocumentPosition(document.getElementById("host-metrics"))
-    & window.Node.DOCUMENT_POSITION_PRECEDING, "host-metrics より後ろ");
+  assert.equal(document.getElementById("toolbar-tail"), null);
+  assert.equal(document.getElementById("btn-fleet-visible"), null);
   assert.equal(document.getElementById("btn-auto-fit"), null, "自動フィットのボタンは無い");
+  const header = document.getElementById("line-view-header");
+  assert.equal(document.getElementById("btn-select-all").parentElement, header);
 });
 
 /** レイアウトのある webview を作る(jsdom は寸法が 0 なので、パネルの高さと offsetParent を与える) */

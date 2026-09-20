@@ -88,16 +88,16 @@ function pressSelectAllKey(document, target, { meta = true, ctrl = false, shift 
   return event.defaultPrevented;
 }
 
-test("ラインビューの表示トグルと1つのグループに入り、そのすぐ右(グループの最後)に置く", (t) => {
+// **ラインビューの見出し行の右端**へ置く(ユーザー決定 2026-09-21)—— 操作の対象(タイル)の
+// すぐ上にあるほうが結び付きが分かる。ツールバーの右端グループ(#toolbar-tail)は空になったので消した
+test("ラインビューの見出し行の右端に置く", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const el = button(document);
-  // どちらもタイルの見え方を操るので同じ枠に入れる(ツールバーの他のボタンとは gap で切る)
-  const group = document.getElementById("toolbar-tail");
-  assert.equal(el.parentElement, group);
-  assert.equal(group.parentElement, document.getElementById("toolbar"));
-  assert.equal(el.previousElementSibling, document.getElementById("btn-fleet-visible"));
-  assert.equal(group.lastElementChild, el);
+  const header = document.getElementById("line-view-header");
+  assert.equal(el.parentElement, header);
+  assert.equal(header.lastElementChild, el, "行の最後 = 右端(margin-left:auto で寄せる)");
+  assert.equal(document.getElementById("toolbar-tail"), null, "空になったグループは残さない");
   assert.equal(el.textContent.trim(), "", "テキストではなくアイコン(インライン SVG)");
   assert.equal(el.querySelectorAll("svg").length, 1);
 });
@@ -159,10 +159,10 @@ test("説明は次に何が起きるかを示す", (t) => {
   assert.equal(button(document).getAttribute("aria-label"), tip(document, button(document)));
 });
 
-test("右端の2つはネイティブ title ではなく自前ツールチップで説明を出す", (t) => {
+test("右端のボタンはネイティブ title ではなく自前ツールチップで説明を出す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  for (const id of ["btn-fleet-visible", "btn-select-all"]) {
+  for (const id of ["btn-select-all"]) {
     const el = document.getElementById(id);
     assert.ok(tip(document, el).length > 0, `${id}: 説明が入っている`);
     // title が残っていると 0.2 秒でこちらが出た約1秒後にネイティブも出て二重に見える

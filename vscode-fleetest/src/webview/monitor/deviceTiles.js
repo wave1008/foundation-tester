@@ -8,7 +8,7 @@
 import { t } from '../i18n.js';
 import { setDevicesWaiting } from './waitingNote.js';
 import { vscode } from './vscodeApi.js';
-import { grid, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuSelectOnlyBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRestart, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee } from './domRefs.js';
+import { grid, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuSelectOnlyBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRestart, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee, lineViewSelection } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers, relayoutPreviewsForResize } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
@@ -955,7 +955,10 @@ function toggleSelectAll() {
   }
 }
 
-btnSelectAll.addEventListener('click', () => {
+btnSelectAll.addEventListener('click', (event) => {
+  // **見出し行の開閉へ波及させない** —— ボタンはラインビューの見出し行の中に居り、
+  // 親(#line-view-header)は click でラインビューを開閉する(splitter.js)
+  event.stopPropagation();
   toggleSelectAll();
 });
 
@@ -1943,6 +1946,11 @@ function updateSelectionUi() {
     entry.tile.classList.toggle('selected', selectedDeviceIds.has(id));
   }
   renderSelectAllButton();
+  // ラインビューの見出しに選択中の台数を出す(**選択の変更はここを必ず通る**)。
+  // 0 台のときは空にする —— 「0台を選択」は情報が無く、見出しが常に何か言っている状態になる
+  lineViewSelection.textContent = selectedDeviceIds.size > 0
+    ? t('wvMonitor.lineView.selected', { count: String(selectedDeviceIds.size) })
+    : '';
   updateLaneVisibility();
 }
 
