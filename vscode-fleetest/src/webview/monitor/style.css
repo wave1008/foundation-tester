@@ -374,6 +374,15 @@ button.bulk-cancel:hover:not(:disabled) {
 .run-board-header:hover {
   background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.2));
 }
+/* 「実行中」の末尾から「デバイス」までも他の見出し行どうしと同じ 4px(罫線 1px は別)にする。
+   run ボードの末尾は状態で変わる —— 開いていれば最後の行の padding-bottom 2px、畳んでいれば
+   見出しの padding-bottom 4px。足りないぶんをこちら側で持つ(4 - 2 / 4 - 4) */
+#line-view-header {
+  padding-top: 2px;
+}
+.run-board[data-collapsed="true"] ~ #line-view-header {
+  padding-top: 0;
+}
 
 /* ヘッダの開閉も行の chevron と同じ規律(文字は常に ▶・向きは回転・ホバーで押せる面) */
 .run-board-toggle {
@@ -1034,19 +1043,34 @@ html.select-all-guard * {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 8px 12px 12px 12px;
+  padding: 8px 0 12px 0;
   overflow: hidden;
 }
 /* 実行ログビュー。高さは JS(splitter.js)が inline style で入れる(グリッドビューは
-   .output-pane の flex:1 1 auto のまま残りを占有する) */
+   .output-pane の flex:1 1 auto のまま残りを占有する)。
+   **見出し行どうしの間は畳んだときに 4px**(ユーザー決定 2026-09-21)= この padding-bottom 2px +
+   #output-pane の padding-top 2px(畳むと #splitter-log は消え、見出しの margin も 0 になる) */
 .log-pane {
   flex: 0 0 auto;
+  /* 直前がスプリッターのとき = グリッドビュー(#output-pane の padding-top)と同じ 2px */
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+/* ラインビューを畳むとスプリッターも消え、直前は見出し行(.run-board-header の padding-bottom 4px)に
+   なる。ここを足すと「デバイス→実行ログ」だけ 6px になるので 0 に戻す(他の見出し行どうしは 4px) */
+#panel-devices.fleet-hidden .log-pane {
+  padding-top: 0;
+}
+#output-pane {
+  padding-top: 2px;
 }
 .lanes-header {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 10px;
+  /* ラインビューの見出し(.run-board-header)と同じ gap。**3つの見出しの左端を揃える**ので
+     片方だけ変えない(左端 = .pane-header の padding-left + 三角 + この gap) */
+  gap: 6px;
   margin-bottom: 8px;
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
@@ -1054,10 +1078,22 @@ html.select-all-guard * {
 /* 実行ログビュー・グリッドビューの見出し行(run ボードのヘッダと同じ規律: どこを押しても
    開閉・hover の面は同じトークン。三角の回転は .run-board-toggle を再利用) */
 .pane-header {
+  /* ラインビューの見出し(.run-board-header の padding: 4px 8px)と左端を揃える。
+     縦は足さない —— 見出し行どうしの間の 4px が変わる */
+  padding: 0 8px;
+  /* **2つの見出し行の高さを揃える**。高いのはグリッドビュー側で、中身は「ライブ更新」の
+     ラベル = チェックボックス 18px + .run-stream-toggle の上下 padding 1px = 20px
+     (実行ログ側は三角 16px と文字だけ)。チェックボックスの寸法を変えたらここも変える */
+  min-height: 20px;
   cursor: pointer;
 }
 .pane-header:hover {
   background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.2));
+}
+/* 畳んだ側の見出し行の下マージンは、下に何も無いので捨てる */
+#panel-devices.log-view-hidden #log-view-header,
+#panel-devices.grid-view-hidden #grid-view-header {
+  margin-bottom: 0;
 }
 /* 畳んだ側は見出し行だけ残す(.fleet-hidden と同じ書き方)。**隠す相手に inline の
    display を書かない** —— inline はここに勝つので、畳んでも消えない形が静かにできる */
@@ -1096,6 +1132,8 @@ html.select-all-guard * {
   padding: 12px;
 }
 .lanes-grid {
+  /* 横の余白はここが持つ(ペインは 0)。タイル側の .grid の inset と同じ 12px */
+  margin: 0 12px;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: scroll; /* auto は常時表示にならないため(.grid と同じ。スクロールバー明示スタイルは下の共通ブロック) */
