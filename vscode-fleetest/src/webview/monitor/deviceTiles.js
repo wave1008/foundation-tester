@@ -1954,14 +1954,11 @@ function updateSelectionUi() {
   updateLaneVisibility();
 }
 
-// クリックの当たり(ユーザー決定)。タイルごとに張らず委譲するのは判定を1箇所に持つため。
-//  - 「画像の高さの帯 × タイルの幅」= そのデバイスの選択トグル
-//    (画像の左右の余白を押しても押したことにする)
-//  - タイルの中でその帯の外(見出し・ホスト名の段・脚、およびその左右)= **何もしない**
-//    (押し損ねで選択を全部失わないため)
-//  - タイルの外(タイルとタイルの間・右端の余り)でも、**画像の高さに収まっていれば何もしない**
+// クリックの当たり(ユーザー決定 2026-09-21)。タイルごとに張らず委譲するのは判定を1箇所に持つため。
+//  - **タイルの中ならどこでも**そのデバイスの選択トグル(見出し・ホスト名の段・脚も含む)
+//  - タイルの外(タイルとタイルの間・右端の余り)でも、**タイルの高さに収まっていれば何もしない**
 //    —— タイルの隙間は 8px しかなく、狙って押すものではない
-//  - 解除は「画像の高さの外」を押したときだけ(グリッドの上下の余白・タイルの見出しや脚の高さ)
+//  - 解除は「タイルの高さの外」を押したときだけ(グリッドの上下の余白)
 //
 // **決めるのは pointerup で、click は保険**。詰まっている間の押下→離上では click が
 // そもそも来ないことがある(押下と離上で当たり先が変わると合成されない)ので、click を待つと
@@ -1974,11 +1971,11 @@ grid.addEventListener('click', (event) => {
   applyTileClickAt(event.clientX, event.clientY);
 });
 
-// クリックの高さがどれかのデバイスの画像の高さに収まっているか(タイルの外で使う)。
-// 画像の高さはグリッド共通(--tile-image-h)だが、1台ずつ見て一致を取る。
+// クリックの高さがどれかのタイルの高さに収まっているか(タイルの外で使う)。
+// 当たり矩形と同じ相手(タイル)で見る = 規則を2つ持たない。
 function deviceBandContainsY(y) {
   for (const entry of tiles.values()) {
-    const rect = entry.frameWrapEl.getBoundingClientRect();
+    const rect = entry.tile.getBoundingClientRect();
     if (rect.height > 0 && y >= rect.top && y <= rect.top + rect.height) {
       return true;
     }
@@ -1986,15 +1983,14 @@ function deviceBandContainsY(y) {
   return false;
 }
 
-// 当たり矩形: 横はタイル幅いっぱい・縦は画像の高さだけ。範囲選択(marqueeSelect)も同じものを使う。
+// 当たり矩形 = タイルそのもの。範囲選択(marqueeSelect)も同じものを使う。
 function deviceHitRect(entry) {
-  const tileRect = entry.tile.getBoundingClientRect();
-  const frameRect = entry.frameWrapEl.getBoundingClientRect();
-  return { left: tileRect.left, width: tileRect.width, top: frameRect.top, height: frameRect.height };
+  const rect = entry.tile.getBoundingClientRect();
+  return { left: rect.left, width: rect.width, top: rect.top, height: rect.height };
 }
 
-// { tile: タイルの中か, entry: 当たり矩形の中ならそのタイル }。2つに分けるのは、タイルの中の
-// 帯の外(何もしない)とタイルの外(全解除)を区別するため。
+// { tile: タイルの中か, entry: 当たり矩形の中ならそのタイル }。当たり矩形はタイルと同じなので
+// 今は一致するが、タイルの外(全解除)と区別する構造はそのまま残す。
 //
 // **判定は座標だけで行う(event.target を見ない)**。ラインビューは配信の描画と同じ main thread に
 // 載っており(実測 2026-08-28: 配信ヘルパー 22 本 × 12fps)、詰まっている間に押下と離上をまたいで

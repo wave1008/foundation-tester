@@ -271,26 +271,25 @@ test("中ボタンのドラッグ(横スクロール)では矩形を出さない
   grid.dispatchEvent(pointerEvent(window, "pointerup", { x: 300, y: 120, button: 1 }));
 });
 
-// 押し損ねで選択を全部失わないよう、タイルの中は「画像の帯なら選択トグル・それ以外は何もしない」。
-// 解除はタイルの外(グリッドの空きエリア)だけ(ユーザー決定)。
-test("画像の上下(見出し・脚)のクリックは選択を変えない", (t) => {
+// **タイルの中ならどこでも**そのデバイスの選択トグル(ユーザー決定 2026-09-21)。
+// 解除はタイルの外(グリッドの空きエリア)だけ。
+test("タイルの中ならどこを押しても選択トグル(見出し・脚・角も含む)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, 3);
   layoutTiles(document, 3);
-  clickImage(window, document, 0);
-  clickImage(window, document, 1);
-  assert.deepEqual(selectedNames(document), ["Dev 0", "Dev 1"]);
   // 画像の上(見出しの帯 y 0〜30)
   clickAt(window, document.querySelector("#grid .tile .tile-header"), 50, 10);
-  assert.deepEqual(selectedNames(document), ["Dev 0", "Dev 1"]);
-  // 画像の左右の余白の、さらに上下(タイルの角。x は画像の外・y は帯の外)
-  clickAt(window, tileOf(document, 0), 5, 10);
+  assert.deepEqual(selectedNames(document), ["Dev 0"]);
+  // タイルの角(x は画像の外・y は画像より下)。同じ台なのでトグルで外れる
   clickAt(window, tileOf(document, 0), 95, 190);
-  assert.deepEqual(selectedNames(document), ["Dev 0", "Dev 1"]);
+  assert.deepEqual(selectedNames(document), []);
+  // 別の台の脚
+  clickAt(window, tileOf(document, 1), 150, 180);
+  assert.deepEqual(selectedNames(document), ["Dev 1"]);
 });
 
-test("解除は画像の高さの外(グリッドの上下の余白)だけ", (t) => {
+test("解除はタイルの高さの外(グリッドの上下の余白)だけ", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, 3);
@@ -303,7 +302,7 @@ test("解除は画像の高さの外(グリッドの上下の余白)だけ", (t)
 });
 
 // タイルの隙間は 8px しかなく狙って押すものではない(実害 2026-08-24: 選択が飛ぶ)。
-test("タイルとタイルの間でも画像の高さに収まっていれば解除しない", (t) => {
+test("タイルとタイルの間でもタイルの高さに収まっていれば解除しない", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, 3);
@@ -311,24 +310,24 @@ test("タイルとタイルの間でも画像の高さに収まっていれば�
   clickImage(window, document, 0);
   clickImage(window, document, 2);
   assert.deepEqual(selectedNames(document), ["Dev 0", "Dev 2"]);
-  // タイル0(〜100)とタイル1(110〜)の隙間 x 105・画像の高さの中 y 100
+  // タイル0(〜100)とタイル1(110〜)の隙間 x 105・タイルの高さの中 y 100
   clickAt(window, document.getElementById("grid"), 105, 100);
   assert.deepEqual(selectedNames(document), ["Dev 0", "Dev 2"]);
-  // 同じ隙間でも画像より上(y 10)なら解除
+  // 見出しの帯の高さ(y 10)もタイルの中なので解除しない
   clickAt(window, document.getElementById("grid"), 105, 10);
+  assert.deepEqual(selectedNames(document), ["Dev 0", "Dev 2"]);
+  // タイルより下(y 250)なら解除
+  clickAt(window, document.getElementById("grid"), 105, 250);
   assert.deepEqual(selectedNames(document), []);
 });
 
-test("範囲選択も画像だけを見る(見出し・脚をかすめただけでは選ばない)", (t) => {
+test("範囲選択もタイル全体を見る(見出しの帯をかすめただけで選ぶ)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, 3);
   layoutTiles(document, 3);
-  // y 0〜20 はタイルの見出しの帯(画像は y 30 から)
+  // y 0〜20 はタイルの見出しの帯(画像は y 30 から)。当たりはタイルなのでここでも選ぶ
   drag(window, document, 0, 0, 400, 20);
-  assert.deepEqual(selectedNames(document), []);
-  // 画像の帯まで下ろせば選ばれる
-  drag(window, document, 0, 0, 400, 40);
   assert.deepEqual(selectedNames(document), ["Dev 0", "Dev 1", "Dev 2"]);
 });
 
@@ -349,8 +348,8 @@ test("グリッドの外で離したドラッグの次のクリックを飲み�
   assert.deepEqual(selectedNames(document), ["Dev 0", "Dev 1", "Dev 2"], "1回目のクリックで選ばれること");
 });
 
-// 当たりは「画像の高さの帯 × タイル幅」(ユーザー決定)。タイルは画像より広いことが
-// あり(見出しのバッジで広がる)、その左右の余白を押したときに何も起きないと押し損ねに見える。
+// 当たりはタイルそのもの(ユーザー決定 2026-09-21)。タイルは画像より広いことがあり
+// (見出しのバッジで広がる)、その左右の余白を押したときに何も起きないと押し損ねに見える。
 test("画像の左右の余白のクリックはそのデバイスのクリック", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
@@ -363,19 +362,19 @@ test("画像の左右の余白のクリックはそのデバイスのクリッ�
   assert.deepEqual(selectedNames(document), [], "同じデバイスなのでトグルで外れる");
 });
 
-test("画像の下(脚)のクリックは選択もしないし解除もしない", (t) => {
+test("画像の下(脚)のクリックもそのデバイスのクリック", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, 3);
   layoutTiles(document, 3);
   clickImage(window, document, 1);
   assert.deepEqual(selectedNames(document), ["Dev 1"]);
-  // 画像は y 30〜170、その下(y 180)はタイルの中だが帯の外
+  // 画像は y 30〜170、その下(y 180)もタイルの中
   clickAt(window, tileOf(document, 1), 150, 180);
-  assert.deepEqual(selectedNames(document), ["Dev 1"]);
-  // 未選択の台の脚を押しても選ばれない
+  assert.deepEqual(selectedNames(document), [], "同じ台なのでトグルで外れる");
+  // 未選択の台の脚を押せば選ばれる
   clickAt(window, tileOf(document, 2), 260, 180);
-  assert.deepEqual(selectedNames(document), ["Dev 1"]);
+  assert.deepEqual(selectedNames(document), ["Dev 2"]);
 });
 
 test("範囲選択も左右の余白を含む(画像に触れなくても帯に入れば選ぶ)", (t) => {
