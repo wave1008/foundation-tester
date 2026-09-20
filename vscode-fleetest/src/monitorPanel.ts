@@ -46,7 +46,6 @@ import {
   isMonitorFromWebviewMessage,
   type MonitorControlCommand,
   disabledMachineSet,
-  planDisabledMachineStops,
   type MonitorDevice,
   type MonitorToWebviewMessage,
 } from "./monitorModel";
@@ -248,15 +247,8 @@ export class MonitorPanelController implements vscode.Disposable {
    * webview から devicesTabVisible で届く。初期値 true は起動直後の一瞬だけで、
    * webview の初期 switchTab が必ず正しい値を送ってくる。 */
   private devicesTabVisible = true;
-  /** 「デバイスモニター」タブを開いてから終了を済ませた「マシン有効」off の機械(planDisabledMachineStops)。
-   * undefined = タブが閉じている(掃除しない)。**開いた瞬間(非表示→表示)にだけ新しく始める** */
-  private disabledStopHandled: Set<string> | undefined;
-  /** 直前に webview から届いたタブの可視性(開いた瞬間の検出用。devicesTabVisible の初期値 true とは別に持つ) */
-  private disabledStopTabWasVisible = false;
   /** 登録簿を1度でも CLI から読めたか。読む前の空の控えを「無効な機械は無い」と読まない */
   private remoteHostsLoaded = false;
-  /** 直近の monitorDevices(表示フィルタ前) */
-  private latestObservedDevices: readonly MonitorDevice[] = [];
 
   /** 配信helperを動かすのはパネルが見えていて かつ 「デバイスモニター」タブが開いていて かつ
    * 「画面更新」が ON のときだけ。どれか1つでも欠けると画面の配信・取り込み(suppressFrames)を全台止める
@@ -340,8 +332,6 @@ export class MonitorPanelController implements vscode.Disposable {
       isDeviceStreaming: (deviceId) => this.deviceStream.isStreaming(deviceId),
       getStreamingDeviceIds: () => this.deviceStream.streamingIds(),
       notifyMonitorDevices: (devices) => {
-        this.latestObservedDevices = devices;
-        this.stopDisabledMachineDevices();
         this.deviceOps.syncCpuRenderNames(devices);
         this.deviceStream.applyDevices(devices);
         this.bridgeWatchdog.observe(devices);
@@ -688,32 +678,6 @@ export class MonitorPanelController implements vscode.Disposable {
     }
   }
 
-  /** 「デバイスモニター」タブを開いたとき、「マシン有効」off の機械の起動中の台を終了する(タイルの「停止」と
-   *  同じ device ジョブ。run / MCP が使用中の台は CLI 側が断る = deviceInUseRefusal)。
-   *  観測・登録簿のどちらかが届くたびに呼び、機械ごとに1回だけ撃つ(planDisabledMachineStops) */
-  private stopDisabledMachineDevices(): void {
-    if (!this.disabledStopHandled || !this.remoteHostsLoaded) {
-      return;
-    }
-    const { stops, newlyHandled } = planDisabledMachineStops(
-      this.latestObservedDevices,
-      disabledMachineSet(this.lastKnownRemoteHosts, this.lastKnownLocalMachine),
-      this.disabledStopHandled);
-    for (const machine of newlyHandled) {
-      this.disabledStopHandled.add(machine);
-      // 積まれている/走っている起動も取り消す(停止まで行う)。放っておくと掃除のあとで起動しきり、
-      // 機械ごと「済み」なので誰も止めない(2026-09-20 の実害: 起動ジョブ中の台が残った)
-      for (const name of this.deviceOps.cancelDeviceUpsOnMachine(machine)) {
-        this.outputChannel.appendLine(t("deviceOps.log.cancelDisabledMachineStart", { name, machine }));
-      }
-    }
-    for (const { name, machine, udid, serial } of stops) {
-      this.outputChannel.appendLine(t("deviceOps.log.stopDisabledMachineDevice",
-        { name, machine: machine ?? "local" }));
-      this.deviceOps.enqueueLifecycleJob({ kind: "device", name, op: "down", machine, udid, serial });
-    }
-  }
-
   /** CLI 応答のうち **hosts[] 以外の欄**(この機械の固定行・既定の FM 枠)を控え直す。
    *  **書き込み系(import/remove)の応答からも必ず通す** —— 読み取り時にしか控えないと、
    *  直後に webview へ送り返す `local` が古いままになり、固定行に打った値が
@@ -939,8 +903,6 @@ export class MonitorPanelController implements vscode.Disposable {
     }
     switch (message.type) {
       case "ready":
-        // webview の作り直し(パネルを開き直した)= 次の devicesTabVisible:true を「開いた」と数える
-        this.disabledStopTabWasVisible = false;
         this.sendInitialState();
         break;
       case "devicesUp":
@@ -984,13 +946,6 @@ export class MonitorPanelController implements vscode.Disposable {
         });
         break;
       case "devicesTabVisible":
-        if (message.visible && !this.disabledStopTabWasVisible) {
-          this.disabledStopHandled = new Set();
-          this.stopDisabledMachineDevices();
-        } else if (!message.visible) {
-          this.disabledStopHandled = undefined;
-        }
-        this.disabledStopTabWasVisible = message.visible;
         this.devicesTabVisible = message.visible;
         this.applyDeviceStreamVisibility();
         return;
@@ -1310,7 +1265,6 @@ export class MonitorPanelController implements vscode.Disposable {
         this.lastKnownRemoteHosts = result.hosts ?? [];
         this.noteRemoteHostsOutcome(result);
         this.remoteHostsLoaded = this.remoteHostsLoaded || result.hosts !== undefined;
-        this.stopDisabledMachineDevices();
         this.post({ type: "remoteConfig", hosts: this.lastKnownRemoteHosts,
                     defaultFMConcurrency: this.lastKnownDefaultFMConcurrency,
                 local: this.lastKnownLocalMachine,

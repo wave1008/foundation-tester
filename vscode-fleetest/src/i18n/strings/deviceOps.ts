@@ -23,14 +23,6 @@ export const deviceOpsStrings = {
     ja: "「マシン有効」がオフの {machine} のデバイス {name} は起動しません",
     en: "Not starting {name} on {machine} because \"Machine enabled\" is off",
   },
-  "deviceOps.log.cancelDisabledMachineStart": {
-    ja: "「マシン有効」がオフの {machine} のデバイス {name} の起動を取り消します(「デバイスモニター」タブを開いたため)",
-    en: "Cancelling the start of {name} on {machine} because \"Machine enabled\" is off (Device Monitor tab opened)",
-  },
-  "deviceOps.log.stopDisabledMachineDevice": {
-    ja: "「マシン有効」がオフの {machine} のデバイス {name} を終了します(「デバイスモニター」タブを開いたため)",
-    en: "Stopping {name} on {machine} because \"Machine enabled\" is off (Device Monitor tab opened)",
-  },
   "deviceOps.log.bulkUpQueueCancelled": {
     ja: "[fleetest] キュー待ちの一括起動を取り消しました",
     en: "[fleetest] Cancelled the queued bulk startup",

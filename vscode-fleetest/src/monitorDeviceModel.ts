@@ -322,7 +322,8 @@ export function filterMonitorDevices(
 
 /** 「マシン有効」off の機械(手元は "local")。`api remote-machines` の hosts[].enabled / local.enabled が正
  *  (CLI の FTCore.MachineEnablement と同じ集合。webview 側の複製は machineColors.js の disabledMachines)。
- *  読み手はタブを開いたときの終了(planDisabledMachineStops)。**表示は隠さない**(終了するまで見せる)
+ *  読み手は monitorPanel のデバイス起動を断る門(deviceOp の up)と webview の「⊘無効」の印。
+ *  **表示は隠さない**(操作メニューを無効化するだけで、タイル自体は見せる)。
  *  欠落は有効(古い CLI では何も落とさない) */
 export function disabledMachineSet(
   hosts: readonly { readonly machine: string; readonly enabled?: boolean }[],
@@ -333,57 +334,4 @@ export function disabledMachineSet(
     result.add("local");
   }
   return result;
-}
-
-/** planDisabledMachineStops の1件。udid / serial は未登録の台の直指定(device ジョブの同名欄へ渡す) */
-export interface DisabledMachineStop {
-  readonly name: string;
-  readonly machine?: string;
-  readonly udid?: string;
-  readonly serial?: string;
-}
-
-/**
- * 「デバイスモニター」タブを開いたときに終了させる「マシン有効」off の機械の台(純粋関数)。
- * **機械ごとに1回だけ**: その機械の台が1台でも観測済み(state が unknown 以外)になった時点で
- * handled に入れ、起動中(booted/connected)の仮想デバイスを返す。リモートの観測は fan-out が
- * 遅れて届けるので、開いた瞬間の一覧だけで決めると unknown のまま取りこぼす。handled に入った
- * 機械は二度と見ない = タブを開いている間に利用者が手で起こした台とは争わない。
- * **実機は終了しない**(一括操作と同じ規律。止めても利用者の手で起こし直す手段が無い)。
- * **識別子(iOS = udid / Android = serial)があれば常にそれで直指定する**(名前で撃つのは識別子が無い
- * 登録済みの台だけ。未登録で識別子も無ければ撃たない)。名前で引くと、向こうの機械では**手元で選んでいる
- * プロジェクトの**実行プロファイルから探すので、監視が別のプロジェクトの名前で出している台
- * (sut-ec-mobile では AVD 名の `Pixel_9_Android_15_-01` が M1mini では台の名前)は `device not found` になる
- * (2026-09-20 の実害)。直指定も同じ DeviceBooter.shutdownOne を通る(ApiDeviceCommands.swift)。
- */
-export function planDisabledMachineStops(
-  devices: readonly MonitorDevice[],
-  disabledMachines: ReadonlySet<string>,
-  handled: ReadonlySet<string>,
-): { readonly stops: readonly DisabledMachineStop[]; readonly newlyHandled: readonly string[] } {
-  const stops: DisabledMachineStop[] = [];
-  const newlyHandled: string[] = [];
-  for (const machine of disabledMachines) {
-    if (handled.has(machine)) {
-      continue;
-    }
-    const onMachine = devices.filter((device) => (device.machine ?? "local") === machine);
-    if (!onMachine.some((device) => device.state !== "unknown")) {
-      continue;
-    }
-    newlyHandled.push(machine);
-    for (const device of onMachine) {
-      if ((device.state !== "booted" && device.state !== "connected") || device.kind === "physical") {
-        continue;
-      }
-      if (device.platform === "ios" && device.udid) {
-        stops.push({ name: device.name, machine: device.machine, udid: device.udid });
-      } else if (device.platform === "android" && device.serial) {
-        stops.push({ name: device.name, machine: device.machine, serial: device.serial });
-      } else if (device.registered !== false) {
-        stops.push({ name: device.name, machine: device.machine });
-      }
-    }
-  }
-  return { stops, newlyHandled };
 }

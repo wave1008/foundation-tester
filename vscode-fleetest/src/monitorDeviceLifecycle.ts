@@ -406,19 +406,6 @@ export function removeQueuedDeviceUpJob(
   };
 }
 
-/** その機械(手元は "local")へ積まれている1台ぶんの up ジョブ(実行中 → 待機中の順)。
- * 「マシン有効」off の機械の掃除が取り消す対象(monitorPanel.stopDisabledMachineDevices)。
- * 一括起動・再起動のバッチは含めない(1台だけを取り消す口が無い) */
-export function deviceUpJobsOnMachine(
-  state: DeviceLifecycleQueueState,
-  machine: string,
-): readonly { readonly name: string; readonly machine?: string }[] {
-  return [...state.running, ...state.jobs]
-    .filter((job): job is Extract<DeviceLifecycleJob, { kind: "device" }> =>
-      job.kind === "device" && job.op === "up" && (job.machine ?? "local") === machine)
-    .map((job) => ({ name: job.name, machine: job.machine }));
-}
-
 /** キュー内(実行中含む)の bulk(全て起動/終了)ジョブの op。bootBusy.bulkOp の算出に使う
  * (webview は up の間 未起動タイルを「待機中」、down の間 稼働中タイルを「シャットダウン中」表示にする)。 */
 export function bulkLifecycleOp(state: DeviceLifecycleQueueState): "up" | "down" | null {

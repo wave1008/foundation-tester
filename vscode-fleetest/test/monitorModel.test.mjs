@@ -25,7 +25,6 @@ import {
   enqueueDeviceLifecycleJob,
   filterMonitorDevices,
   disabledMachineSet,
-  planDisabledMachineStops,
   deleteDeviceApiArgs,
   hasDeviceLifecycleJobFor,
   installSystemImageApiArgs,
@@ -48,7 +47,6 @@ import {
   removeDeviceFromRunProfile,
   removeQueuedBulkUpJob,
   removeQueuedDeviceUpJob,
-  deviceUpJobsOnMachine,
   RUNNING_DEVICES_PROFILE_VALUE,
   runProfileDeviceRefKey,
   toWebviewMessage,
@@ -3446,56 +3444,6 @@ test("setLptHistoryRuns: 1以上の整数か null だけ受け付ける", () => 
   assert.equal(isMonitorFromWebviewMessage({ type: "setLptHistoryRuns" }), false);
 });
 
-// ---- planDisabledMachineStops(デバイスモニタータブを開いたときに終了させる台) ----
-
-test("planDisabledMachineStops: 無効な機械の起動中の仮想デバイスだけを返し、実機・停止中・有効な機械は触らない", () => {
-  const devices = [
-    { id: "ios:L", name: "L", platform: "ios", state: "connected", detail: "", kind: "virtual" },
-    { id: "ios:M1Max/A", name: "A", platform: "ios", state: "booted", detail: "", kind: "virtual", machine: "M1Max" },
-    { id: "ios:M1Max/B", name: "B", platform: "ios", state: "offline", detail: "", kind: "virtual", machine: "M1Max" },
-    { id: "ios:M1Max/P", name: "P", platform: "ios", state: "connected", detail: "", kind: "physical", machine: "M1Max" },
-    { id: "ios:M1Ultra/A", name: "A", platform: "ios", state: "connected", detail: "", kind: "virtual", machine: "M1Ultra" },
-  ];
-  const plan = planDisabledMachineStops(devices, new Set(["M1Max", "local"]), new Set());
-  assert.deepEqual(new Set(plan.stops.map((s) => `${s.machine ?? "local"}/${s.name}`)), new Set(["M1Max/A", "local/L"]));
-  assert.deepEqual([...plan.newlyHandled].sort(), ["M1Max", "local"]);
-});
-
-test("planDisabledMachineStops: 観測が届くまで(全台 unknown)は待ち、済んだ機械は二度と撃たない", () => {
-  const unknown = [{ id: "ios:M1Max/A", name: "A", platform: "ios", state: "unknown", detail: "", kind: "virtual", machine: "M1Max" }];
-  const waiting = planDisabledMachineStops(unknown, new Set(["M1Max"]), new Set());
-  assert.deepEqual(waiting.stops, []);
-  assert.deepEqual(waiting.newlyHandled, [], "unknown だけなら済みにしない(後で届く観測で撃つ)");
-
-  const observed = [{ ...unknown[0], state: "connected" }];
-  assert.deepEqual(planDisabledMachineStops(observed, new Set(["M1Max"]), new Set()).stops,
-    [{ name: "A", machine: "M1Max" }]);
-  assert.deepEqual(planDisabledMachineStops(observed, new Set(["M1Max"]), new Set(["M1Max"])).stops, [],
-    "済んだ機械は撃たない(開いている間に手で起こした台と争わない)");
-});
-
-test("planDisabledMachineStops: 識別子があれば登録の有無に関わらず直指定・無ければ登録済みだけ名前で・未登録は撃たない", () => {
-  const devices = [
-    { id: "android:M1mini/P", name: "P", platform: "android", state: "connected", detail: "", kind: "virtual",
-      machine: "M1mini", registered: false, serial: "emulator-5554" },
-    { id: "ios:M1mini/S", name: "S", platform: "ios", state: "booted", detail: "", kind: "virtual",
-      machine: "M1mini", registered: false, udid: "UDID-1" },
-    { id: "android:M1mini/Q", name: "Q", platform: "android", state: "connected", detail: "", kind: "virtual",
-      machine: "M1mini", registered: false },
-    { id: "android:M1mini/R", name: "R", platform: "android", state: "connected", detail: "", kind: "virtual",
-      machine: "M1mini" },
-    // 登録済みでも serial があれば直指定(名前は向こうの別プロジェクトの名前でありうる)
-    { id: "android:M1mini/Pixel_9_Android_15_-01", name: "Pixel_9_Android_15_-01", platform: "android",
-      state: "connected", detail: "", kind: "virtual", machine: "M1mini", serial: "emulator-5556" },
-  ];
-  assert.deepEqual(planDisabledMachineStops(devices, new Set(["M1mini"]), new Set()).stops, [
-    { name: "P", machine: "M1mini", serial: "emulator-5554" },
-    { name: "S", machine: "M1mini", udid: "UDID-1" },
-    { name: "R", machine: "M1mini" },
-    { name: "Pixel_9_Android_15_-01", machine: "M1mini", serial: "emulator-5556" },
-  ]);
-});
-
 test("removeQueuedDeviceUpJob: (machine, name) が一致する待機中の up だけを外し、実行中・別の機械・down は触らない", () => {
   const runningUp = { kind: "device", name: "A", op: "up" };
   const state = {
@@ -3511,18 +3459,4 @@ test("removeQueuedDeviceUpJob: (machine, name) が一致する待機中の up �
   assert.deepEqual(result.state.running, [runningUp]);
   assert.equal(result.state.jobs.length, 2);
   assert.equal(removeQueuedDeviceUpJob(state, "B", undefined).removed, undefined);
-});
-
-test("deviceUpJobsOnMachine: その機械の1台ぶんの up(実行中・待機中)だけ・手元は local・down/バッチは含めない", () => {
-  const state = {
-    running: [{ kind: "device", name: "A", op: "up" }, { kind: "bulk", op: "up" }],
-    jobs: [
-      { kind: "device", name: "B", op: "up" },
-      { kind: "device", name: "C", op: "down" },
-      { kind: "device", name: "D", op: "up", machine: "M1Max" },
-      { kind: "restartBatch", names: ["E"] },
-    ],
-  };
-  assert.deepEqual(deviceUpJobsOnMachine(state, "local"), [{ name: "A", machine: undefined }, { name: "B", machine: undefined }]);
-  assert.deepEqual(deviceUpJobsOnMachine(state, "M1Max"), [{ name: "D", machine: "M1Max" }]);
 });
