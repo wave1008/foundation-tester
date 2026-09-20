@@ -562,6 +562,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     // 通常パースは失敗しない。壊れていたら 0(不明な負の経過を出すよりまし)
                     elapsedSeconds: record.startedAt.isEmpty ? 0 : (elapsedSeconds(since: record.startedAt) ?? 0),
                     total: record.total, done: record.done, failed: record.failed,
+                    // 詰まりの事実(段6)。台帳の値をそのまま運ぶ(判定・文言は作らない)
+                    requeued: record.requeued, laneDropouts: record.laneDropouts,
                     // 段5(残り見積もり。docs/design.md §18.4)。台帳の値をそのまま運ぶ ——
                     // 実績ゼロの run は台帳側が既に nil を書いているので、ここで別途判定しない
                     etaSeconds: record.etaSeconds,
@@ -569,7 +571,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                         ApiMonitorRunProgressLane(
                             key: lane.key, name: lane.name, platform: lane.platform,
                             scenario: lane.scenario,
-                            scenarioElapsedSeconds: lane.scenarioStartedAt.flatMap { elapsedSeconds(since: $0) })
+                            scenarioElapsedSeconds: lane.scenarioStartedAt.flatMap { elapsedSeconds(since: $0) },
+                            expectedSeconds: lane.expectedSeconds)
                     },
                     phase: record.phase)
             }
@@ -1766,6 +1769,9 @@ struct ApiMonitorRunProgressLane: Codable, Equatable {
     let platform: String?
     let scenario: String?
     let scenarioElapsedSeconds: Int?
+    /// **詰まりの事実**(docs/design.md §18.5 段6): 実行中シナリオの実績中央値(秒)。台帳の値を
+    /// そのまま運ぶ(作り替えない)。`scenario` が nil、または実績が無ければ nil
+    let expectedSeconds: Int?
 }
 
 /// フリート横断の run 進捗。1 run 分(docs/design.md §18.2 の monitorRuns.runs[])
@@ -1782,12 +1788,16 @@ struct ApiMonitorRunProgress: Codable, Equatable {
     let total: Int
     let done: Int
     let failed: Int
+    /// **詰まりの事実**(docs/design.md §18.5 段6): 結果を捨てて振り直した累計。台帳の値をそのまま運ぶ
+    let requeued: Int
+    /// **詰まりの事実**: レーンが離脱した累計。台帳の値をそのまま運ぶ
+    let laneDropouts: Int
     /// 残り見積もり(docs/design.md §18.4)。makespan の下界・実績ゼロの run は nil
     let etaSeconds: Int?
     let lanes: [ApiMonitorRunProgressLane]
-    /// 台帳の値をそのまま運ぶ("preparing" / "running")。作り替えない
-    /// "preparing"(デバイスの供給中)/ "running"。**版は揃える前提**(ProtocolVersion 15。
-    /// 欄を持たない版のランナーの行は decode できず中継されない = align を促す既存の規律のまま)
+    /// 台帳の値をそのまま運ぶ("building" / "preparing" / "running")。作り替えない。
+    /// **版は揃える前提**(ProtocolVersion 16。欄を持たない版のランナーの行は decode できず
+    /// 中継されない = align を促す既存の規律のまま)
     let phase: String
 }
 

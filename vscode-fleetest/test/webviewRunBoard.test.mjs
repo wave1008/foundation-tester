@@ -82,7 +82,7 @@ function monitorRunsMessage(overrides) {
     type: "monitorRuns",
     observed: true,
     runs: [{
-      pid: 41233, runID: "run-1", mine: true, phase: "running",
+      pid: 41233, runID: "run-1", mine: true, phase: "running", requeued: 0, laneDropouts: 0,
       project: "ec-mobile", profile: "ios-smoke",
       elapsedSeconds: 261, total: 12, done: 7, failed: 2,
       lanes: [{ key: "UDID-1", name: "iPhone 17-01", platform: "ios", scenario: "05_検索",
@@ -120,7 +120,7 @@ test("準備中の run は本数でなく「準備中」を出し、進捗バー
   const { window, document } = createWebview();
   t.after(() => window.close());
   post(window, { type: "monitorRuns", machine: "M1Max", observed: true, runs: [{
-    pid: 41233, runID: "run-1", mine: true, phase: "preparing",
+    pid: 41233, runID: "run-1", mine: true, phase: "preparing", requeued: 0, laneDropouts: 0,
     project: "E2E-iOS", profile: "ios-inapp",
     elapsedSeconds: 12, total: 0, done: 0, failed: 0, lanes: [],
   }] });

@@ -35,14 +35,19 @@ public struct RunProgressLane: Codable, Equatable, Sendable {
     // **レーンごとの残り本数は持たない**(docs/design.md §18.1)—— shared dispatch は同一 platform の
     // レーンが1つのキューを共有するので、レーン別の残数は同じ数字が並ぶだけで誤読を招く
     // (3レーンに「残 2」= 6本残っていると読める)。run の残りは total - done で足りる
+    /// **詰まりの事実**(段6・docs/design.md §18.5): 実行中シナリオの実績中央値(秒)。
+    /// `scenario` が nil、または実績表に無ければ nil(推測値を出さない)。値は固定
+    /// (シナリオ開始時に1回引く。経過との比較は読み手が `scenarioStartedAt` との差分で行う)
+    public let expectedSeconds: Int?
 
     public init(key: String, name: String, platform: String?, scenario: String?,
-               scenarioStartedAt: String?) {
+               scenarioStartedAt: String?, expectedSeconds: Int?) {
         self.key = key
         self.name = name
         self.platform = platform
         self.scenario = scenario
         self.scenarioStartedAt = scenarioStartedAt
+        self.expectedSeconds = expectedSeconds
     }
 }
 
@@ -64,15 +69,22 @@ public struct RunProgressRecord: Codable, Equatable, Sendable {
     public let total: Int
     public let done: Int
     public let failed: Int
-    /// 段5(残り見積もり)は未実装 —— 常に nil。推測値は出さない
+    /// **詰まりの事実**(段6・docs/design.md §18.5): 結果を捨てて振り直した累計
+    /// (`RunProgressState.laneIdled` が成立した回数)。判定・文言は作らない —— 事実の並置だけ
+    public let requeued: Int
+    /// **詰まりの事実**: レーンが離脱した累計(`RunProgressState.laneLeft` の回数)
+    public let laneDropouts: Int
+    /// 段5(残り見積もり)。実績が1件も無い run は nil。推測値は出さない
     public let etaSeconds: Int?
     public let lanes: [RunProgressLane]
-    /// "preparing"(デバイスの供給中。まだシナリオは1本も走っていない)/ "running"
+    /// "building"(シナリオの swift build 中。run の入口で書く)/
+    /// "preparing"(デバイスの供給中)/ "running"
     public let phase: String
 
     public init(pid: Int32, runID: String?, runGroup: String?, issuer: String?, project: String,
                profile: String?, startedAt: String, total: Int, done: Int, failed: Int,
-               etaSeconds: Int?, lanes: [RunProgressLane], phase: String) {
+               requeued: Int, laneDropouts: Int, etaSeconds: Int?, lanes: [RunProgressLane],
+               phase: String) {
         self.pid = pid
         self.runID = runID
         self.runGroup = runGroup
@@ -83,6 +95,8 @@ public struct RunProgressRecord: Codable, Equatable, Sendable {
         self.total = total
         self.done = done
         self.failed = failed
+        self.requeued = requeued
+        self.laneDropouts = laneDropouts
         self.etaSeconds = etaSeconds
         self.lanes = lanes
         self.phase = phase

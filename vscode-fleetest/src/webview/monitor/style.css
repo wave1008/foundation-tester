@@ -509,6 +509,14 @@ button.bulk-cancel:hover:not(:disabled) {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+/* 詰まりの事実(再キュー・レーン離脱)。**警告色にしない** —— 事実を並べるだけで、
+   遅い/異常という判定はしていない(docs/design.md §18.5) */
+.run-board-notes {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+}
 .run-board-time {
   flex: 0 0 auto;
   font-variant-numeric: tabular-nums;

@@ -23,13 +23,19 @@ export interface RunBoardLane {
   readonly scenario?: string;
   /** `scenario` が無いときは省略。 */
   readonly scenarioElapsedSeconds?: number;
+  /** 実行中シナリオの実績中央値(秒)。実績が無ければ省略。 */
+  readonly expectedSeconds?: number;
 }
 
 /** 1 run(1機械ぶん)。ネットワークから届く生の形(machine/receivedAtMs は畳み込みの側が足す)。 */
 export interface RunBoardRawRun {
   readonly pid: number;
-  /** "preparing" = デバイスの供給中(まだ1本も走っていない)/ "running"。 */
+  /** "building"(シナリオのビルド中)/ "preparing"(デバイスの供給中)/ "running"。 */
   readonly phase: string;
+  /** 結果を捨てて振り直した累計。 */
+  readonly requeued: number;
+  /** レーンが離脱した累計。 */
+  readonly laneDropouts: number;
   /** `RunRecorder` が無い経路(--dry-run/--debug 等)では省略されうる。省略時は pid が代わりの鍵。 */
   readonly runID?: string;
   readonly runGroup?: string;
@@ -119,9 +125,12 @@ export interface RunBoardGroup {
   /** プロファイル無し実行では省略されうる。 */
   readonly profile?: string;
   /** 束ねた run 全体の合計(機械分担の run はレーンでなく run 単位で合算する)。 */
-  /** **束ねた run が1つでも走り出していれば "running"**(全部が供給中のときだけ "preparing")。
-   * 機械分担の run は機械ごとに供給の進みが違うので、片方が走り出したら進捗を出す。 */
-  readonly phase: "preparing" | "running";
+  /** **束ねた run の中で最も進んだ段階**(1つでも走り出していれば "running")。機械分担の run は
+   * 機械ごとに進みが違うので、片方が走り出したら進捗を出す。 */
+  readonly phase: "building" | "preparing" | "running";
+  /** 束ねた run の合計。**事実だけ**(判定・警告はしない。docs/design.md §18.5)。 */
+  readonly requeued: number;
+  readonly laneDropouts: number;
   readonly total: number;
   readonly done: number;
   readonly failed: number;
@@ -171,7 +180,9 @@ export function buildRunGroups(state: ReadonlyMap<string, MachineRunsEntry>): re
       groupKey,
       mine: first.mine,
       issuer: first.issuer,
-      phase: runs.every((run) => run.phase === "preparing") ? "preparing" : "running",
+      phase: mostAdvancedPhase(runs),
+      requeued: sum(runs.map((run) => run.requeued)),
+      laneDropouts: sum(runs.map((run) => run.laneDropouts)),
       project: first.project,
       profile: first.profile,
       total: sum(runs.map((r) => r.total)),
@@ -229,6 +240,14 @@ export function machinesWithoutRuns(
     result.push({ machine, status: status === "running" ? "idle" : status });
   }
   return result;
+}
+
+/** 束ねた run の中で最も進んだ段階。1つでも走り出していれば進捗を出したいので running が最優先。 */
+function mostAdvancedPhase(runs: readonly RunBoardRun[]): "building" | "preparing" | "running" {
+  if (runs.some((run) => run.phase === "running")) {
+    return "running";
+  }
+  return runs.some((run) => run.phase === "preparing") ? "preparing" : "building";
 }
 
 function sum(values: readonly number[]): number {

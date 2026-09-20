@@ -97,7 +97,7 @@ final class RemoteMonitorFanoutIDTests: XCTestCase {
                                          interval: 2, maxWidth: 960,
                                          log: { _ in }, relayLine: { line in relayed.mutate { $0.append(line) } })
         fanout.ingest(
-            line: #"{"kind":"monitorRuns","observed":true,"runs":[{"pid":41233,"runID":"r1","runGroup":null,"issuer":"alice","mine":false,"project":"ec-mobile","profile":"ios-smoke","phase":"running","elapsedSeconds":10,"total":5,"done":1,"failed":0,"etaSeconds":null,"lanes":[]}]}"#,
+            line: #"{"kind":"monitorRuns","observed":true,"runs":[{"pid":41233,"runID":"r1","runGroup":null,"issuer":"alice","mine":false,"project":"ec-mobile","profile":"ios-smoke","phase":"running","elapsedSeconds":10,"total":5,"done":1,"failed":0,"requeued":0,"laneDropouts":0,"etaSeconds":null,"lanes":[]}]}"#,
             machine: "M1Ultra")
         let lines = relayed.value
         guard let line = lines.first, lines.count == 1 else {

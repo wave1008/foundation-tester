@@ -249,6 +249,9 @@ function ensureRow(groupKey) {
   const countsEl = document.createElement('span');
   countsEl.className = 'run-board-counts';
 
+  const notesEl = document.createElement('span');
+  notesEl.className = 'run-board-notes';
+
   const timeEl = document.createElement('span');
   timeEl.className = 'run-board-time';
   const elapsedEl = document.createElement('span');
@@ -257,7 +260,7 @@ function ensureRow(groupKey) {
   remainingEl.className = 'run-board-remaining';
   timeEl.append(elapsedEl, document.createTextNode(' / '), remainingEl);
 
-  summaryEl.append(chevronEl, machineBadgeEl, scopeEl, progressEl, countsEl, timeEl);
+  summaryEl.append(chevronEl, machineBadgeEl, scopeEl, progressEl, countsEl, notesEl, timeEl);
 
   const issuerEl = document.createElement('div');
   issuerEl.className = 'run-board-issuer';
@@ -279,7 +282,7 @@ function ensureRow(groupKey) {
   });
 
   const row = {
-    rowEl, chevronEl, machineBadgeEl, scopeEl, progressEl, progressBarEl, countsEl, elapsedEl, remainingEl,
+    rowEl, chevronEl, machineBadgeEl, scopeEl, progressEl, progressBarEl, countsEl, notesEl, elapsedEl, remainingEl,
     issuerEl, lanesEl, group: null, laneRows: new Map(),
   };
   rows.set(groupKey, row);
@@ -306,7 +309,14 @@ function renderRowTime(row) {
 function renderLaneTimes(row) {
   const now = Date.now();
   for (const entry of row.laneRows.values()) {
-    entry.elapsedEl.textContent = formatMinSec(liveElapsedSeconds(entry.base, entry.receivedAtMs, now));
+    const elapsed = liveElapsedSeconds(entry.base, entry.receivedAtMs, now);
+    // **実績中央値を超えたときだけ並べる**(docs/design.md §18.5)。「何倍で警告」は根拠の
+    // 無い定数になるので閾値を置かず、超えたか否か(= 事実)だけで出し分ける。
+    // 語も中立に —— 「遅い」とは書かない(ツールには原因を分けられない)
+    entry.elapsedEl.textContent = entry.expectedSeconds !== undefined && elapsed > entry.expectedSeconds
+      ? t('runBoard.elapsedOverMedian', {
+          elapsed: formatMinSec(elapsed), median: formatMinSec(entry.expectedSeconds) })
+      : formatMinSec(elapsed);
   }
 }
 
@@ -357,6 +367,7 @@ function renderLanes(row, group) {
       if (!idle && lane.scenarioElapsedSeconds !== undefined) {
         row.laneRows.set((run.machine ?? '') + '\u0000' + lane.key, {
           elapsedEl, base: lane.scenarioElapsedSeconds, receivedAtMs: run.receivedAtMs,
+          expectedSeconds: lane.expectedSeconds,
         });
       }
     }
@@ -387,12 +398,12 @@ function updateRow(row, group) {
   // profile はプロファイル無し実行(--dry-run 等)では省略されうる(FTCore.RunProgressRecord.profile)。
   row.scopeEl.textContent = group.profile ? `${group.project} / ${group.profile}` : group.project;
 
-  // **供給中(準備中)は進捗を出さない** —— 本数も割合もまだ意味を持たない(docs/design.md §18.5)。
-  // 経過だけは出す(どれくらい待っているかが分かる)
-  const preparing = group.phase === 'preparing';
-  row.progressEl.style.display = preparing ? 'none' : '';
-  if (preparing) {
-    row.countsEl.textContent = t('runBoard.preparing');
+  // **走り出す前(ビルド中・供給中)は進捗を出さない** —— 本数も割合もまだ意味を持たない
+  // (docs/design.md §18.5)。経過だけは出す(どれくらい待っているかが分かる)
+  const beforeRunning = group.phase !== 'running';
+  row.progressEl.style.display = beforeRunning ? 'none' : '';
+  if (beforeRunning) {
+    row.countsEl.textContent = t(group.phase === 'building' ? 'runBoard.building' : 'runBoard.preparing');
   } else {
     const pct = group.total > 0 ? Math.max(0, Math.min(1, group.done / group.total)) * 100 : 0;
     row.progressBarEl.style.width = pct + '%';
@@ -400,6 +411,18 @@ function updateRow(row, group) {
       ? `${group.done}/${group.total} ✕${group.failed}`
       : `${group.done}/${group.total}`;
   }
+
+  // **詰まりは事実だけ**(0 のときは出さない)。「遅い」「異常」とは書かない ——
+  // アプリが重いのか機械が混んでいるのかツールには分けられない(docs/design.md §18.5)
+  const notes = [];
+  if (group.requeued > 0) {
+    notes.push(t('runBoard.requeued', { count: String(group.requeued) }));
+  }
+  if (group.laneDropouts > 0) {
+    notes.push(t('runBoard.laneDropouts', { count: String(group.laneDropouts) }));
+  }
+  row.notesEl.textContent = notes.join('  ');
+  row.notesEl.style.display = notes.length > 0 ? '' : 'none';
 
   if (!group.mine && group.issuer) {
     row.issuerEl.textContent = t('runBoard.issuerRun', { issuer: group.issuer });

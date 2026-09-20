@@ -549,6 +549,10 @@ actor RunProgressState {
     private let total: Int
     private var done = 0
     private var failed = 0
+    /// **詰まりの事実だけ**(docs/design.md §18.1 段6)。判定・閾値は作らない —— laneIdled/laneLeft
+    /// が成立した回数をそのまま数えるだけ
+    private var requeuedCount = 0
+    private var laneDropoutsCount = 0
     private var lanesByKey: [String: RunProgressLane] = [:]
     private var lastWritten: RunProgressRecord?
     private let write: (@Sendable (RunProgressRecord) -> Void)?
@@ -583,6 +587,7 @@ actor RunProgressState {
         let record = RunProgressRecord(
             pid: pid, runID: runID, runGroup: runGroup, issuer: issuer, project: project,
             profile: profile, startedAt: startedAt, total: total, done: done, failed: failed,
+            requeued: requeuedCount, laneDropouts: laneDropoutsCount,
             etaSeconds: currentEtaSeconds(), lanes: lanesByKey.values.sorted { $0.key < $1.key },
             phase: "running")
         guard record != lastWritten else { return }
@@ -613,16 +618,27 @@ actor RunProgressState {
         if count == 1 { pendingCounts.removeValue(forKey: key) } else { pendingCounts[key] = count - 1 }
     }
 
+    /// レーン単位の「詰まりの事実」(docs/design.md §18.5 段6): 実行中シナリオの実績中央値(秒)。
+    /// 実績表に無い(初見のシナリオ・実績ゼロの run)なら nil —— 推測値は出さない。
+    /// ms→秒は `RunProgressEstimate.etaSeconds` と同じ丸め(切り上げ)に揃える
+    private func expectedSeconds(scenario: String, platform: String?) -> Int? {
+        guard let platform else { return nil }
+        guard let ms = estimates[RunProgressEstimate.ScenarioKey(scenarioID: scenario, platform: platform)]
+        else { return nil }
+        return Int((ms / 1000).rounded(.up))
+    }
+
     /// レーンの新規参加・復帰(revive 後の再参加も同じ経路。key が変われば新規レーン扱い)
     func laneJoined(key: String, name: String, platform: String?) {
         lanesByKey[key] = RunProgressLane(key: key, name: name, platform: platform,
-                                          scenario: nil, scenarioStartedAt: nil)
+                                          scenario: nil, scenarioStartedAt: nil, expectedSeconds: nil)
         flush()
     }
 
     /// ワーカー離脱(デバイス使用不能)によるレーンの消滅。復帰できれば laneJoined が改めて足す
     func laneLeft(key: String) {
         guard lanesByKey.removeValue(forKey: key) != nil else { return }
+        laneDropoutsCount += 1
         flush()
     }
 
@@ -635,7 +651,8 @@ actor RunProgressState {
         }
         lanesByKey[laneKey] = RunProgressLane(
             key: lane.key, name: lane.name, platform: lane.platform, scenario: scenario,
-            scenarioStartedAt: ISO8601DateFormatter().string(from: at))
+            scenarioStartedAt: ISO8601DateFormatter().string(from: at),
+            expectedSeconds: expectedSeconds(scenario: scenario, platform: lane.platform))
         flush()
     }
 
@@ -649,9 +666,10 @@ actor RunProgressState {
             let key = RunProgressEstimate.ScenarioKey(scenarioID: scenario, platform: platform)
             pendingCounts[key, default: 0] += 1
         }
+        requeuedCount += 1
         lanesByKey[laneKey] = RunProgressLane(
             key: lane.key, name: lane.name, platform: lane.platform, scenario: nil,
-            scenarioStartedAt: nil)
+            scenarioStartedAt: nil, expectedSeconds: nil)
         flush()
     }
 
@@ -661,7 +679,7 @@ actor RunProgressState {
         if let lane = lanesByKey[laneKey] {
             lanesByKey[laneKey] = RunProgressLane(
                 key: lane.key, name: lane.name, platform: lane.platform, scenario: nil,
-                scenarioStartedAt: nil)
+                scenarioStartedAt: nil, expectedSeconds: nil)
         }
         flush()
     }

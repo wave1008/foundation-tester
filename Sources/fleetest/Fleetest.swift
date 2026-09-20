@@ -1321,6 +1321,29 @@ struct RunScenarios: AsyncParsableCommand {
         let testProject = try ScenarioHost.project(named: project)
         PhaseLog.mark("project-resolved")
 
+        // run 進捗の記帳(docs/design.md §18.1)。**ビルドより前に書く** —— 実測でシナリオの
+        // swift build から phase: "preparing" が出るまで ~15秒あり、書かないとその間ボードに
+        // 1本も出ない。総本数・レーンはまだ未確定(total: 0・lanes: [])。`ProfileRunner.run` が
+        // 同じ pid ファイルを phase: "preparing" で上書きする。**この build 呼び出しは
+        // ProfileRunner.swift の外(ここ)にある**ので、"preparing" と違い「building」の書き手は
+        // ここに置く。**後始末**: ProfileRunner.run へ到達できずに関数を抜けたら控えを消す
+        let progressPid = ProcessInfo.processInfo.processIdentifier
+        var progressHandedToProfileRunner = false
+        if profile != nil, !dryRun {
+            RunProgressLedger.sweep(directory: RunProgressLedger.directory())
+            RunProgressLedger.write(RunProgressRecord(
+                pid: progressPid, runID: nil, runGroup: nil, issuer: LocalConfig.resolveIssuerId(),
+                project: testProject.name, profile: profile,
+                startedAt: ISO8601DateFormatter().string(from: Date()), total: 0, done: 0, failed: 0,
+                requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: "building"),
+                directory: RunProgressLedger.directory())
+        }
+        defer {
+            if profile != nil, !dryRun, !progressHandedToProfileRunner {
+                RunProgressLedger.remove(pid: progressPid, directory: RunProgressLedger.directory())
+            }
+        }
+
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
         if !skipBuild {
             ConsoleOut.out("→ Building scenarios (\(testProject.name))...")
@@ -1437,6 +1460,7 @@ struct RunScenarios: AsyncParsableCommand {
             }
             let runSummary: RunSummary
             let fmSettings: FMSettingsRecord
+            progressHandedToProfileRunner = true
             do {
                 (runSummary, fmSettings) = try await ProfileRunner.run(
                     project: testProject, profileName: profile, items: items,

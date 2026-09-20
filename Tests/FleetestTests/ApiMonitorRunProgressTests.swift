@@ -12,10 +12,12 @@ import XCTest
 final class ApiMonitorRunProgressTests: XCTestCase {
 
     private func record(issuer: String? = "alice@air", lanes: [RunProgressLane] = [],
-                        phase: String = "running") -> RunProgressRecord {
+                        phase: String = "running", requeued: Int = 0,
+                        laneDropouts: Int = 0) -> RunProgressRecord {
         RunProgressRecord(
             pid: 41233, runID: "r1", runGroup: nil, issuer: issuer, project: "ec-mobile",
             profile: "ios-smoke", startedAt: "2026-09-20T10:03:12Z", total: 12, done: 7, failed: 2,
+            requeued: requeued, laneDropouts: laneDropouts,
             etaSeconds: 999, lanes: lanes, phase: phase)
     }
 
@@ -29,14 +31,32 @@ final class ApiMonitorRunProgressTests: XCTestCase {
     func testScenarioElapsedSecondsIsComputedPerLaneAndNilWithoutAScenario() {
         let lanes = [
             RunProgressLane(key: "UDID-A", name: "iPhone 17-01", platform: "ios",
-                            scenario: "05_検索", scenarioStartedAt: "2026-09-20T10:06:21Z"),
+                            scenario: "05_検索", scenarioStartedAt: "2026-09-20T10:06:21Z",
+                            expectedSeconds: 90),
             RunProgressLane(key: "UDID-B", name: "iPhone 17-02", platform: "ios",
-                            scenario: nil, scenarioStartedAt: nil),
+                            scenario: nil, scenarioStartedAt: nil, expectedSeconds: nil),
         ]
         let out = ApiMonitorCommand.monitorRuns(records: [record(lanes: lanes)], now: now, myIssuer: "bob@office")
         XCTAssertEqual(out.first?.lanes.count, 2)
         XCTAssertEqual(out.first?.lanes[0].scenarioElapsedSeconds, 72, "10:06:21 → 10:07:33 は 72 秒")
         XCTAssertNil(out.first?.lanes[1].scenarioElapsedSeconds, "scenario が nil のレーンは経過も nil")
+    }
+
+    /// **詰まりの事実**(§18.5 段6)は台帳の値をそのまま運ぶ(ここで別途 nil化・再計算しない)
+    func testRequeuedAndLaneDropoutsArePassedThroughFromTheLedger() {
+        let out = ApiMonitorCommand.monitorRuns(
+            records: [record(requeued: 3, laneDropouts: 1)], now: now, myIssuer: "bob@office")
+        XCTAssertEqual(out.first?.requeued, 3)
+        XCTAssertEqual(out.first?.laneDropouts, 1)
+    }
+
+    /// レーンの expectedSeconds も台帳の値をそのまま運ぶ
+    func testLaneExpectedSecondsIsPassedThroughFromTheLedger() {
+        let lanes = [RunProgressLane(key: "UDID-A", name: "iPhone 17-01", platform: "ios",
+                                     scenario: "05_検索", scenarioStartedAt: "2026-09-20T10:06:21Z",
+                                     expectedSeconds: 90)]
+        let out = ApiMonitorCommand.monitorRuns(records: [record(lanes: lanes)], now: now, myIssuer: "bob@office")
+        XCTAssertEqual(out.first?.lanes.first?.expectedSeconds, 90)
     }
 
     func testMineIsTrueOnlyWhenIssuerMatchesExactly() {
@@ -73,7 +93,7 @@ final class ApiMonitorRunProgressTests: XCTestCase {
         let noEstimate = RunProgressRecord(
             pid: 41233, runID: "r1", runGroup: nil, issuer: "alice@air", project: "ec-mobile",
             profile: "ios-smoke", startedAt: "2026-09-20T10:03:12Z", total: 12, done: 7, failed: 2,
-            etaSeconds: nil, lanes: [], phase: "running")
+            requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: "running")
         let out = ApiMonitorCommand.monitorRuns(records: [noEstimate], now: now, myIssuer: "bob@office")
         XCTAssertNil(out.first?.etaSeconds)
     }
@@ -81,10 +101,12 @@ final class ApiMonitorRunProgressTests: XCTestCase {
     func testResultIsOrderedByPID() {
         let a = RunProgressRecord(pid: 300, runID: nil, runGroup: nil, issuer: nil, project: "p",
                                   profile: nil, startedAt: "2026-09-20T10:00:00Z", total: 1, done: 0,
-                                  failed: 0, etaSeconds: nil, lanes: [], phase: "running")
+                                  failed: 0, requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [],
+                                  phase: "running")
         let b = RunProgressRecord(pid: 100, runID: nil, runGroup: nil, issuer: nil, project: "p",
                                   profile: nil, startedAt: "2026-09-20T10:00:00Z", total: 1, done: 0,
-                                  failed: 0, etaSeconds: nil, lanes: [], phase: "running")
+                                  failed: 0, requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [],
+                                  phase: "running")
         let out = ApiMonitorCommand.monitorRuns(records: [a, b], now: now, myIssuer: "bob@office")
         XCTAssertEqual(out.map(\.pid), [100, 300])
     }

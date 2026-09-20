@@ -490,9 +490,8 @@ enum ProfileRunner {
         // 「終了猶予の方針」= 自前の後始末を持つ fleetest の子には時限の SIGKILL を送らない)
         let interruptState = RunInterruptState(recorder: recorder)
 
-        // 死んだ pid の控えを回収してから始める(SIGKILL で removeRunProgress に届かなかったぶん。
-        // docs/design.md §18.1 —— 掃除は書き手側に置く)
-        RunProgressLedger.sweep(directory: RunProgressLedger.directory())
+        // **sweep はここでは呼ばない** —— この run の掃除は "building" を書く入口で済んでいる
+        // (1 run で2回走らせない。docs/design.md §18.1「run 開始時に1回」)
 
         // 供給(iOS lateWorkers 等)がまだ済んでいない間もボードに1本出す(段階「準備中」)。
         // RunOrchestrator が最初の laneJoined で "running" の record へ上書きするまでの穴埋め。
@@ -504,7 +503,8 @@ enum ProfileRunner {
             pid: progressPid, runID: recorder?.runID, runGroup: recorder?.runGroup,
             issuer: LocalConfig.resolveIssuerId(), project: project.name, profile: profileName,
             startedAt: ISO8601DateFormatter().string(from: Date()), total: 0, done: 0, failed: 0,
-            etaSeconds: nil, lanes: [], phase: "preparing"), directory: RunProgressLedger.directory())
+            requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: "preparing"),
+            directory: RunProgressLedger.directory())
         var progressHandedToOrchestrator = false
         defer {
             if !progressHandedToOrchestrator {

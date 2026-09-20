@@ -30,7 +30,7 @@ function lane(overrides) {
 
 function run(overrides) {
   return {
-    pid: 41233, runID: "run-1", issuer: undefined, mine: true, phase: "running",
+    pid: 41233, runID: "run-1", issuer: undefined, mine: true, phase: "running", requeued: 0, laneDropouts: 0,
     project: "ec-mobile", profile: "ios-smoke",
     elapsedSeconds: 261, total: 12, done: 7, failed: 2,
     lanes: [lane()],
@@ -196,7 +196,7 @@ const wireEvent = {
   kind: "monitorRuns", machine: "M1Max", observed: true,
   runs: [{
     pid: 41233, runID: "run-1", runGroup: "grp-1", issuer: "alice@air", mine: false,
-    project: "ec-mobile", profile: "ios-smoke", phase: "running",
+    project: "ec-mobile", profile: "ios-smoke", phase: "running", requeued: 0, laneDropouts: 0,
     elapsedSeconds: 261, total: 12, done: 7, failed: 2, etaSeconds: null,
     lanes: [{ key: "UDID-1", name: "iPhone 17-01", platform: "ios", scenario: "05_検索",
               scenarioElapsedSeconds: 72 }],

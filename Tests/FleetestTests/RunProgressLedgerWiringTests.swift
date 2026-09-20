@@ -34,9 +34,6 @@ final class RunProgressLedgerWiringTests: XCTestCase {
                           "\(path): writeRunProgress が RunProgressLedger.write を呼んでいない")
             XCTAssertTrue(text.contains("RunProgressLedger.remove("),
                           "\(path): removeRunProgress が RunProgressLedger.remove を呼んでいない")
-            XCTAssertTrue(text.contains("RunProgressLedger.sweep("),
-                          "\(path): run の開始時に sweep を呼んでいない(SIGKILL で残った控えが" +
-                          " 溜まり続け、api monitor が毎周期そのぶんを読む)")
             XCTAssertTrue(text.contains("profile: resolved.runName") || text.contains("profile: profileName"),
                           "\(path): RunOrchestrator へプロファイル名を渡していない" +
                           " (RunProgressRecord.profile が常に nil になる)")
@@ -53,5 +50,43 @@ final class RunProgressLedgerWiringTests: XCTestCase {
                           "\(path): 供給の前に phase: \"preparing\" を書いていない" +
                           " (供給中の run がボードに1本も出ない)")
         }
+    }
+
+    /// **段階「building」**(docs/design.md §18.1)は run の入口・シナリオの swift build より
+    /// 前に書く(実測: build から phase: "preparing" が出るまで ~15秒。書かないとその間ボードに
+    /// 1本も出ない)。**build 呼び出しは ProfileRunner.swift の外に居る** ——
+    /// `fleetest run --profile` は Sources/fleetest/Fleetest.swift(RunScenarios.run)、
+    /// `fleetest api run` は Sources/fleetest/ApiRunCommand.swift(run)がビルドを呼ぶ
+    /// (ProfileRunner.run/runWithProfileParallel はどちらもビルド完了後にしか呼ばれない)ので、
+    /// "building" の書き手はビルド呼び出し元のファイルで確かめる
+    func testBuildingPhaseIsWrittenBeforeTheScenarioBuildCall() throws {
+        for path in ["Sources/fleetest/Fleetest.swift", "Sources/fleetest/ApiRunCommand.swift"] {
+            let text = try Self.code(path)
+            guard let buildRange = text.range(of: "→ Building scenarios") else {
+                XCTFail("\(path): build のログ行が見つからない(この走査の前提が崩れている)")
+                continue
+            }
+            guard let phaseRange = text.range(of: "phase: \"building\"") else {
+                XCTFail("\(path): phase: \"building\" を書いていない" +
+                        " (ビルド中の run がボードに1本も出ない)")
+                continue
+            }
+            XCTAssertTrue(phaseRange.lowerBound < buildRange.lowerBound,
+                          "\(path): phase: \"building\" がビルド呼び出しより後ろにある" +
+                          " (ビルド中はボードに1本も出ない)")
+        }
+    }
+
+    /// **sweep は run の入口(building を書くところ)に1回だけ** —— 段階ごとに呼ぶと
+    /// 1 run で何度も走る。死んだ控えが溜まると `api monitor` が毎周期そのぶんを読む
+    func testSweepRunsOncePerRunAtTheEntry() throws {
+        for path in ["Sources/fleetest/Fleetest.swift", "Sources/fleetest/ApiRunCommand.swift"] {
+            let text = try Self.code(path)
+            let sweeps = text.components(separatedBy: "RunProgressLedger.sweep(").count - 1
+            XCTAssertEqual(sweeps, 1, "\(path): sweep は run の入口に1回だけ(いま \(sweeps) 箇所)")
+        }
+        let profileRunner = try Self.code("Sources/fleetest/ProfileRunner.swift")
+        XCTAssertFalse(profileRunner.contains("RunProgressLedger.sweep("),
+                       "ProfileRunner はビルドの後に呼ばれる —— 入口(Fleetest.swift)で済んでいる")
     }
 }

@@ -5027,7 +5027,7 @@ CLI 実行・他人の run・ランナー機で直に打たれた run は `inRun
 ```json
 { "pid": 41233, "runID": "…", "runGroup": "…", "issuer": "alice@air",
   "project": "ec-mobile", "profile": "ios-smoke",
-  "phase": "running",
+  "phase": "running", "requeued": 1, "laneDropouts": 0,
   "startedAt": "2026-09-20T10:03:12Z", "total": 12, "done": 7, "failed": 2,
   "etaSeconds": 190,
   "lanes": [ { "key": "<udid|serial>", "name": "iPhone 17-01", "platform": "ios",
@@ -5044,18 +5044,26 @@ CLI 実行・他人の run・ランナー機で直に打たれた run は `inRun
 - **生存判定は pid だけ**(`ProcessLiveness.isAlive`。mtime を見ない = `FMUsageLedger` と同じ)。
   SIGKILL で残った控えは読み手が無視し、`RunCompletionSweep` と `remote clean` の保持ポリシーが掃く
   (`StreamLease` と同じ扱い)
-- **供給の前に「準備中」を1件書く**(`phase: "preparing"`。ユーザー指摘 2026-09-20)——
-  台帳を `RunOrchestrator` からしか書かないと、**転送・ビルド・デバイスの供給(実測 15〜20 秒。
-  リモートはさらに長い)の間は run が1本も無い**ことになり、走っているのにボードでは「空き」に
-  見える。書き手は run / api run の2経路で、`RunOrchestrator` が走り出したら `"running"` の
-  レコードで上書きする(同じ pid = 同じファイル)。**orchestrator へ渡る前に抜けたら消す**
-  (defer。プロセスがすぐ死なない経路への保険)。**旧い控えに欄は無い**ので decode は
-  `"running"` に倒す
+- **run の段階を `phase` で持つ**(`"building"` → `"preparing"` → `"running"`。ユーザー指摘
+  2026-09-20)—— 台帳を `RunOrchestrator` からしか書かないと、**ビルド・転送・デバイスの供給
+  (実測で合計 20 秒。リモートはさらに長い)の間は run が1本も無い**ことになり、走っているのに
+  ボードでは「空き」に見える。**書き始めは run の入口**(シナリオのビルドより前)で、
+  ビルドが終わったら `"preparing"`、`RunOrchestrator` が走り出したら `"running"` へ上書きする
+  (同じ pid = 同じファイル)。**書き手は段階ごとに場所が違う** —— `"building"` は
+  `Fleetest.swift`(`fleetest run` はシナリオのビルドが `ProfileRunner` の外にある)と
+  `ApiRunCommand`、`"preparing"` は `ProfileRunner` と `ApiRunCommand`、`"running"` は
+  `RunOrchestrator` の1箇所。**どの段階も run / api run の両経路に置く**(片方だけだと
+  その経路が無言になる)。**orchestrator へ渡る前に抜けたら消す**(defer。プロセスが
+  すぐ死なない経路への保険)
 - **書くのはデバイスを実際に回しているプロセスだけ**。機械分担の run(親が手元・子が各機械)で
   親も書くと二重計上になる。束ねるのは読み手で、鍵は `runGroup`(単機 run は runID 自身)
 - **レーンの `name` はモニターのタイルと同じ名前**(`RunWorker.logicalName` = 実行プロファイルの
   `devices[].name`)。`label` はポート込み(`…-01(ios:8130)`)なので、使うと同じ台がボードと
   タイルで別名に見える
+- **詰まりの事実だけを載せる**(段6): run 単位の `requeued`(結果を捨てて振り直した回数)と
+  `laneDropouts`(レーンが離脱した回数)、レーン単位の `expectedSeconds`(実行中シナリオの
+  実績中央値。実績が無ければ省く)。**「遅い」「異常」とは書かない** —— それを分ける測定を
+  していない(maintainer-notes §29)
 - **レーンごとの「残り本数」は持たない**。shared dispatch は同一 platform のレーンが1つのキューを
   共有するので、レーン別の残数は**同じ数字が並ぶだけ**(3レーンに「残 2」= 6本残っていると誤読される)。
   run の残りは `total - done` で足り、実行中の本数はレーンを見れば分かる
@@ -5152,6 +5160,11 @@ CLI 実行・他人の run・ランナー機で直に打たれた run は `inRun
   機械分担の run は最初に現れた機械の位置に1行だけ置く。この制約があるので**走っていない機械の
   列揃えに grid は使えない**(run 行と混ざるため)—— 名前の `min-width` で揃え、
   **行の高さは固定する**(和文の「空き」と記号の「—」は既定の行高が違い、揃えないと上下に揺れる)
+- **詰まりは事実の並置だけ**(段6。ユーザー決定 2026-09-20): run 行に `⟳N`(再キュー)と
+  `レーン離脱 N` を、**0 のときは出さない**。レーン行は**経過が実績中央値を超えたときだけ**
+  `1:12(中央 1:10)` と並べる。**閾値を置かない** —— 「超えたか否か」は事実で、「何倍で警告」は
+  根拠のない定数になる。**語は中立に**(「遅い」「刺さっている」と書かない)—— ツールには
+  アプリが重いのか機械が混んでいるのか分けられない(失敗の記録に分類を置かないのと同じ理由)
 - **レーンのデバイス名は省略しない** —— 末尾で見分けるので、途中で切ると同じ見た目が並ぶ
 - **階層はインデントで示す**: ヘッダ 8px → run 行 24px → レーン 48px。**レーンには縦のガイド線**を
   引く(ユーザー指摘 2026-09-20)—— インデントだけだと、下に続く「走っていない機械」の行と

@@ -122,15 +122,22 @@ export interface MonitorRunLane {
   readonly scenario?: string;
   /** `scenario` が無いときは省略(待機中は経過も無い)。 */
   readonly scenarioElapsedSeconds?: number;
+  /** 実行中シナリオの実績中央値(秒)。実績が無ければ省略。**経過と並べるだけ**で、
+   * 超過の判定や警告はしない(docs/design.md §18.5)。 */
+  readonly expectedSeconds?: number;
 }
 
 /** run ボードの1 run(1機械ぶん。docs/design.md §18.1)。機械分担の run は `runGroup` を共有する
  * 複数の MonitorRunEntry に分かれて届く(束ねるのは読み手 = runBoardModel.ts)。 */
 export interface MonitorRunEntry {
   readonly pid: number;
-  /** "preparing"(デバイスの供給中。まだ1本も走っていない)/ "running"。
-   * **版は揃える前提**(ProtocolVersion 15。FTCore.RunProgressRecord.phase と対)。 */
+  /** "building"(シナリオのビルド中)/ "preparing"(デバイスの供給中)/ "running"。
+   * **版は揃える前提**(ProtocolVersion 16。FTCore.RunProgressRecord.phase と対)。 */
   readonly phase: string;
+  /** 結果を捨てて振り直した累計。**事実だけ**(「遅い」等の判定はしない。docs/design.md §18.5)。 */
+  readonly requeued: number;
+  /** レーンが離脱した累計。 */
+  readonly laneDropouts: number;
   /** `RunRecorder` が無い経路(--dry-run/--debug 等)では省略されうる。 */
   readonly runID?: string;
   /** 共有すると機械分担の run として1行に束ねる(runBoardModel.ts)。無ければ単機 run =
@@ -287,12 +294,17 @@ function isMonitorRunLane(value: unknown): value is MonitorRunLane {
   if (value.scenarioElapsedSeconds === null) {
     value.scenarioElapsedSeconds = undefined;
   }
+  if (value.expectedSeconds === null) {
+    // 実績の無いシナリオ(台帳が nil を書く)。省略と同じ「並べない」へ正規化する
+    value.expectedSeconds = undefined;
+  }
   return (
     typeof value.key === "string" &&
     typeof value.name === "string" &&
     (value.platform === undefined || (typeof value.platform === "string" && PLATFORMS.has(value.platform))) &&
     (value.scenario === undefined || typeof value.scenario === "string") &&
-    (value.scenarioElapsedSeconds === undefined || typeof value.scenarioElapsedSeconds === "number")
+    (value.scenarioElapsedSeconds === undefined || typeof value.scenarioElapsedSeconds === "number") &&
+    (value.expectedSeconds === undefined || typeof value.expectedSeconds === "number")
   );
 }
 
@@ -330,6 +342,8 @@ function isMonitorRunEntry(value: unknown): value is MonitorRunEntry {
     typeof value.failed === "number" &&
     (value.etaSeconds === undefined || typeof value.etaSeconds === "number") &&
     typeof value.phase === "string" &&
+    typeof value.requeued === "number" &&
+    typeof value.laneDropouts === "number" &&
     Array.isArray(value.lanes) &&
     value.lanes.every(isMonitorRunLane)
   );

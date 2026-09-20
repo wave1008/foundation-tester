@@ -592,6 +592,30 @@ struct ApiRunCommand: AsyncParsableCommand {
             androidWorkersTask = nil
         }
 
+        // run 進捗の記帳(docs/design.md §18.1)。**ビルドより前に書く** —— 実測でシナリオの
+        // swift build から phase: "preparing" が出るまで ~15秒あり、書かないとその間ボードに
+        // 1本も出ない。総本数・レーンはまだ未確定(total: 0・lanes: [])。
+        // `runWithProfileParallel` が同じ pid ファイルを phase: "preparing" で上書きする。
+        // 条件は androidWorkersTask/iosWorkersTask を起こす条件(上)と同じ = runWithProfileParallel
+        // が実際に呼ばれる経路だけに書く。**後始末**: そこへ到達できずに関数を抜けたら控えを消す
+        let progressPid = ProcessInfo.processInfo.processIdentifier
+        var progressHandedToRunWithProfileParallel = false
+        if let resolvedProfile, !dryRun, debugOptions == nil {
+            RunProgressLedger.sweep(directory: RunProgressLedger.directory())
+            RunProgressLedger.write(RunProgressRecord(
+                pid: progressPid, runID: nil, runGroup: nil, issuer: LocalConfig.resolveIssuerId(),
+                project: testProject.name, profile: resolvedProfile.runName,
+                startedAt: ISO8601DateFormatter().string(from: Date()), total: 0, done: 0, failed: 0,
+                requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: "building"),
+                directory: RunProgressLedger.directory())
+        }
+        defer {
+            if resolvedProfile != nil, !dryRun, debugOptions == nil,
+               !progressHandedToRunWithProfileParallel {
+                RunProgressLedger.remove(pid: progressPid, directory: RunProgressLedger.directory())
+            }
+        }
+
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
         if !skipBuild {
             logStderr("→ Building scenarios (\(testProject.name))...")
@@ -708,6 +732,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                     logSupply(RunStartLine.text(
                         androidWorkers: androidWorkers.count, eagerIOSWorkers: eagerIOSWorkers.count,
                         hasLateIOS: hasLateIOS))
+                    progressHandedToRunWithProfileParallel = true
                     outcome = try await runWithProfileParallel(
                         resolved: resolvedProfile, project: testProject, selected: selected,
                         workers: androidWorkers + eagerIOSWorkers, iosWorkersTask: effectiveIosWorkersTask,
@@ -1169,9 +1194,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         // そのまま通す —— ここでは新しい分岐を作らない
         let interruptState = RunInterruptState(recorder: recorder)
 
-        // 死んだ pid の控えを回収してから始める(SIGKILL で removeRunProgress に届かなかったぶん。
-        // docs/design.md §18.1 —— 掃除は書き手側に置く)
-        RunProgressLedger.sweep(directory: RunProgressLedger.directory())
+        // **sweep はここでは呼ばない** —— この run の掃除は "building" を書く入口で済んでいる
+        // (1 run で2回走らせない。docs/design.md §18.1「run 開始時に1回」)
 
         // 供給(iOS lateWorkers 等)がまだ済んでいない間もボードに1本出す(段階「準備中」)。
         // RunOrchestrator が最初の laneJoined で "running" の record へ上書きするまでの穴埋め。
@@ -1183,7 +1207,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             pid: progressPid, runID: recorder?.runID, runGroup: recorder?.runGroup,
             issuer: LocalConfig.resolveIssuerId(), project: project.name, profile: resolved.runName,
             startedAt: ISO8601DateFormatter().string(from: Date()), total: 0, done: 0, failed: 0,
-            etaSeconds: nil, lanes: [], phase: "preparing"), directory: RunProgressLedger.directory())
+            requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: "preparing"),
+            directory: RunProgressLedger.directory())
         var progressHandedToOrchestrator = false
         defer {
             if !progressHandedToOrchestrator {
