@@ -192,6 +192,39 @@ export function buildRunGroups(state: ReadonlyMap<string, MachineRunsEntry>): re
   });
 }
 
+/** run が1本も走っていない機械(ボード展開時に本体へ並べる)。`machine` は
+ * `LOCAL_MACHINE_KEY` = 手元。**"running" は返さない** —— run がある機械は run の行として
+ * 出るので、ここに出すと同じ機械が2行になる。 */
+export interface MachineWithoutRuns {
+  readonly machine: string;
+  readonly status: Exclude<MachineRunStatus, "running">;
+}
+
+/** `machines`(フリートに居る機械の母集団)のうち、`groups` のどの run も使っていないものを
+ * 状態つきで返す。並びは `machines` の順(呼び手が local を先頭に置く)。
+ * **観測できていない機械も落とさない**(「不明」として並べる = 空きと混ぜないための表示)。 */
+export function machinesWithoutRuns(
+  state: ReadonlyMap<string, MachineRunsEntry>,
+  machines: readonly string[],
+  groups: readonly RunBoardGroup[],
+): readonly MachineWithoutRuns[] {
+  const busy = new Set<string>();
+  for (const group of groups) {
+    for (const run of group.runs) {
+      busy.add(run.machine ?? LOCAL_MACHINE_KEY);
+    }
+  }
+  const result: MachineWithoutRuns[] = [];
+  for (const machine of machines) {
+    if (busy.has(machine)) {
+      continue;
+    }
+    const status = machineRunStatus(state, machine);
+    result.push({ machine, status: status === "running" ? "idle" : status });
+  }
+  return result;
+}
+
 function sum(values: readonly number[]): number {
   return values.reduce((total, value) => total + value, 0);
 }

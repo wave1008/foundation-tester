@@ -9,6 +9,7 @@ import { test } from "node:test";
 import {
   applyMonitorRunsEvent,
   buildRunGroups,
+  machinesWithoutRuns,
   liveElapsedSeconds,
   liveRemaining,
   LOCAL_MACHINE_KEY,
@@ -241,4 +242,22 @@ test("toWebviewMessage: monitorRuns はそのまま webview 契約へ渡す(type
   assert.equal(posted.machine, "M1Max");
   assert.equal(posted.observed, true);
   assert.deepEqual(posted.runs, value.runs);
+});
+
+// ---- machinesWithoutRuns ------------------------------------------------------------------
+
+test("run のある機械は除き、残りを空き/不明で返す(実行中は返さない)", () => {
+  let state = applyMonitorRunsEvent(new Map(), { observed: true, runs: [] });          // 手元 = 空き
+  state = applyMonitorRunsEvent(state, { machine: "M1Max", observed: true, runs: [run({})] });
+  // M1Ultra は一度も受けていない = 不明
+  const groups = buildRunGroups(state);
+  const idle = machinesWithoutRuns(state, ["", "M1Max", "M1Ultra"], groups);
+  assert.deepEqual(idle, [{ machine: "", status: "idle" }, { machine: "M1Ultra", status: "unknown" }]);
+});
+
+test("observed:false の機械は「不明」として残す(空きに倒さない)", () => {
+  let state = applyMonitorRunsEvent(new Map(), { machine: "M1Max", observed: true, runs: [] });
+  state = applyMonitorRunsEvent(state, { machine: "M1Max", observed: false, runs: [] });
+  const idle = machinesWithoutRuns(state, ["M1Max"], buildRunGroups(state));
+  assert.deepEqual(idle, [{ machine: "M1Max", status: "unknown" }]);
 });

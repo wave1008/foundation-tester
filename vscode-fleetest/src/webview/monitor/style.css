@@ -358,45 +358,70 @@ button.bulk-cancel:hover:not(:disabled) {
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
+  cursor: pointer;
 }
+.run-board-header:hover {
+  background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.2));
+}
+
+/* ヘッダの開閉も行の chevron と同じ規律(文字は常に ▶・向きは回転・ホバーで押せる面) */
 .run-board-toggle {
   flex: 0 0 auto;
   background: none;
   border: none;
+  width: 16px;
+  height: 16px;
+  line-height: 16px;
+  padding: 0;
+  font-size: 9px;
+  text-align: center;
+  border-radius: 3px;
   color: var(--vscode-icon-foreground, var(--vscode-foreground));
   cursor: pointer;
-  padding: 0 2px;
-  font-size: 11px;
-  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 0.1s ease;
+}
+.run-board-toggle[data-expanded="true"] {
+  transform: rotate(90deg);
 }
 .run-board-toggle:hover {
+  background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
   color: var(--vscode-foreground);
+}
+/* 配色・hover・ON の見せ方は .icon-button / .icon-button.toggled に任せる(「デバイスを
+   すべて選択」と同じエフェクト。ユーザー決定 2026-09-20)。ここは位置と字の大きさだけ持つ */
+.run-board-expand-all {
+  margin-left: auto;   /* ヘッダの右端へ寄せる */
+  flex: 0 0 auto;
+  height: 20px;
+  font-size: 11px;
 }
 .run-board-title {
   flex: 0 0 auto;
   font-weight: 600;
   white-space: nowrap;
 }
-.run-board-machines {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  overflow: hidden;
+/* 機械名の長さが違っても状態の列が揃うよう、行ではなく **1つの grid** に並べる。
+   max-content = 最長の機械名に合わせて自動で決まる(固定幅にすると長い名前で崩れる) */
+.run-board-idle-machines {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  column-gap: 12px;
+  row-gap: 2px;
+  padding: 3px 8px 3px 32px;   /* run 行の chevron 幅ぶん下げて、run の行と視覚的に区別する */
+  opacity: 0.75;               /* 走っていない機械は控えめに(run の行が主役) */
 }
-.run-board-machine {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-  color: var(--vscode-descriptionForeground);
+/* 1行ぶんの入れ物。**display: contents** で自分は箱を持たず、名前と状態を親 grid の
+   セルとして直接置く(この宣言を外すと列が揃わなくなる) */
+.run-board-idle-machine {
+  display: contents;
 }
-/* 状態の色は3値のみ(実行中=緑、空き=控えめなグレー、不明=警告色)。値そのものの色相は
-   持たない CPU/GPU 等のグラフとは違い、ここは判定を色で言う唯一の箇所。 */
-.run-board-dot-running { color: var(--vscode-testing-iconPassed, #2f9e63); }
-.run-board-dot-idle { color: var(--vscode-descriptionForeground, #9d9d9d); }
-.run-board-dot-unknown { color: var(--vscode-errorForeground, #f14c4c); }
+
+/* 走っていない機械は2値(空き / 不明)。**どちらもグレー**(ユーザー決定 2026-09-20)——
+   観測できていないのは異常ではないので警告色を使わない。区別は語と「—」で付ける。
+   実行中の機械は run の行として出るのでここには現れない。 */
+.run-board-machine-state-idle,
+.run-board-machine-state-unknown { color: var(--vscode-descriptionForeground, #9d9d9d); }
 .run-board-rows {
   display: flex;
   flex-direction: column;
@@ -456,8 +481,12 @@ button.bulk-cancel:hover:not(:disabled) {
   overflow: hidden;
 }
 .run-board-progress-bar {
+  /* **display: block が要る** —— この要素は <span> なので、既定の inline のままだと
+     width/height が1ピクセルも効かず、枠だけ出て塗りが見えない(2026-09-20 に実際にそうなった) */
+  display: block;
   height: 100%;
   background-color: var(--vscode-progressBar-background, #0e70c0);
+  transition: width 0.2s ease;
 }
 .run-board-row.run-board-row-hasFailed .run-board-progress-bar {
   background-color: var(--vscode-errorForeground, #f14c4c);

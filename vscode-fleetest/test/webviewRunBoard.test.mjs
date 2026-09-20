@@ -3,6 +3,7 @@
 // (型検査の効かない postMessage 境界を実データで縛る)。
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { before, test } from "node:test";
@@ -91,18 +92,122 @@ function monitorRunsMessage(overrides) {
   };
 }
 
-// 「不明」と「空き」を混ぜないのがこのボードの要点なので、記号だけに頼らず語で言い切る
-// (● と ○ は形が似ている)。3値が同時に出る盤面を1枚作って確かめる。
-test("機械の要約は3値とも語を出す(空き・実行中・不明)", (t) => {
+// run のある機械は run の行として出るので、ここには現れない(二重に出さない)。
+// 「不明」と「空き」は混ぜない —— 記号だけだと ○ と ? の区別が形頼みなので語でも言い切る。
+test("走っていない機械は本体に行として並ぶ(実行中の機械は出ない)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   post(window, { type: "hostMetricsMachines", machines: ["M1Max", "M1Ultra"] });
-  post(window, { type: "monitorRuns", observed: true, runs: [] });          // 手元 = 観測できて 0 本
-  post(window, monitorRunsMessage({ machine: "M1Max" }));                    // 実行中
+  post(window, { type: "monitorRuns", observed: true, runs: [] });   // 手元 = 観測できて 0 本
+  post(window, monitorRunsMessage({ machine: "M1Max" }));            // 実行中 → run の行になる
   // M1Ultra へは1行も送らない = 一度も聞いていない
-  const chips = [...document.querySelectorAll("#run-board-machines .run-board-machine")]
-    .map((el) => el.textContent);
-  assert.deepEqual(chips, ["local○空き", "M1Max●実行中", "M1Ultra?不明"]);
+  const idle = [...document.querySelectorAll(".run-board-idle-machine")].map((el) => el.textContent);
+  assert.deepEqual(idle, ["local空き", "M1Ultra—"], "空きは語・不明は「—」");
+  const unknown = [...document.querySelectorAll(".run-board-machine-state-unknown")][0];
+  assert.equal(unknown.title, "実行状況を観測できていません", "ダッシュの意味は title で言う");
+  assert.equal(document.querySelectorAll(".run-board-row").length, 1, "M1Max は run の行として出る");
+  assert.equal(document.getElementById("run-board-machines"), null, "ヘッダの要約は置かない");
+});
+
+test("進捗バーに塗り幅を設定する", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, monitorRunsMessage());   // 7/12
+  assert.equal(document.querySelector(".run-board-progress-bar").style.width, `${(7 / 12) * 100}%`);
+});
+
+// 塗りは <span> なので、display: block を外すと inline に戻って width が1ピクセルも効かない
+// (枠だけ出て塗りが見えない = 2026-09-20 の実害)。**jsdom は CSS を読み込まない**ので
+// getComputedStyle では捕まえられず、宣言そのものをテキストで押さえる。
+test("進捗バーの塗りは display: block を持つ(span の inline では width が効かない)", () => {
+  const css = readFileSync(new URL("../src/webview/monitor/style.css", import.meta.url), "utf8");
+  const start = css.indexOf(".run-board-progress-bar {");
+  assert.notEqual(start, -1, ".run-board-progress-bar の宣言が見つからない");
+  const declarations = css.slice(start, css.indexOf("}", start));
+  assert.match(declarations, /display:\s*block/);
+});
+
+// 機械名の長さが違っても状態の列が揃うのは、親が grid で行が display: contents だから。
+// **jsdom は CSS を読み込まない**ので宣言そのものをテキストで押さえる(進捗バーと同じ理由)。
+test("走っていない機械は grid の列で揃える(display: contents を外すとガタつく)", () => {
+  const css = readFileSync(new URL("../src/webview/monitor/style.css", import.meta.url), "utf8");
+  const grid = css.slice(css.indexOf(".run-board-idle-machines {"));
+  assert.match(grid.slice(0, grid.indexOf("}")), /display:\s*grid/);
+  const row = css.slice(css.indexOf(".run-board-idle-machine {"));
+  assert.match(row.slice(0, row.indexOf("}")), /display:\s*contents/);
+});
+
+test("「全て展開」はトグル: ON の間はあとから来た run も開いた状態で出る", (t) => {
+  const { window, document, sent } = createWebview();
+  t.after(() => window.close());
+  post(window, monitorRunsMessage());
+  const button = document.getElementById("run-board-expand-all");
+  assert.equal(button.classList.contains("toggled"), false);
+  // **レーンの DOM は畳んでいても存在する**(表示は run-board-row-expanded で切り替え)ので、
+  // 開いているかは行のクラスで見る
+  assert.equal(document.querySelectorAll(".run-board-row-expanded").length, 0, "初期は畳まれている");
+
+  click(window, button);
+  assert.equal(button.classList.contains("toggled"), true, "ラベルは変えず押し込み状態で ON を見せる");
+  assert.equal(button.textContent, "全て展開");
+  assert.equal(document.querySelectorAll(".run-board-row-expanded").length, 1);
+  assert.equal(document.getElementById("run-board-toggle").dataset.expanded, "true",
+    "ボタンの click がヘッダへ波及してボードごと畳まれてはいけない");
+  assert.ok(sent.some((m) => m.type === "setRunBoardExpandAll" && m.value === true),
+    "モードなので host に永続化させる");
+
+  // **あとから現れた run も開いて出る**(これがワンショットとの違い)
+  post(window, monitorRunsMessage({ machine: "M1Max", runs: [{
+    pid: 555, runID: "run-2", mine: true, project: "ec-mobile", profile: "android-regress",
+    elapsedSeconds: 30, total: 4, done: 1, failed: 0,
+    lanes: [{ key: "emulator-5554", name: "Pixel 9-01", platform: "android", scenario: "01_起動",
+              scenarioElapsedSeconds: 10 }],
+  }] }));
+  assert.equal(document.querySelectorAll(".run-board-row-expanded").length, 2, "新しい run も展開済みで出る");
+
+  click(window, button);
+  assert.equal(button.classList.contains("toggled"), false);
+  assert.equal(document.querySelectorAll(".run-board-row-expanded").length, 0, "OFF で全部畳む");
+});
+
+test("ON のまま1行だけ閉じるとモードを抜け、他の行は開いたまま", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, monitorRunsMessage());
+  post(window, monitorRunsMessage({ machine: "M1Max", runs: [{
+    pid: 555, runID: "run-2", mine: true, project: "ec-mobile", profile: "android-regress",
+    elapsedSeconds: 30, total: 4, done: 1, failed: 0,
+    lanes: [{ key: "emulator-5554", name: "Pixel 9-01", platform: "android", scenario: "01_起動",
+              scenarioElapsedSeconds: 10 }],
+  }] }));
+  click(window, document.getElementById("run-board-expand-all"));
+  assert.equal(document.querySelectorAll(".run-board-row-expanded").length, 2);
+
+  click(window, document.querySelectorAll(".run-board-chevron")[0]);
+  assert.equal(document.getElementById("run-board-expand-all").classList.contains("toggled"), false, "モードを抜ける");
+  assert.equal(document.querySelectorAll(".run-board-row-expanded").length, 1,
+    "閉じたのは1行だけ —— 残りは開いたまま(抜けた瞬間に全部畳まない)");
+});
+
+test("「全て展開」は折りたたみ中は出さない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const button = document.getElementById("run-board-expand-all");
+  assert.equal(button.style.display, "", "run 0 本でもモードのスイッチとして出す");
+  click(window, document.getElementById("run-board-title"));   // ボードを畳む
+  assert.equal(button.style.display, "none", "折りたたみ中は本体が見えないので出さない");
+});
+
+test("ヘッダ行はどこを押しても開閉する(三角だけが当たり判定ではない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const header = document.getElementById("run-board-header");
+  const toggle = document.getElementById("run-board-toggle");
+  assert.equal(toggle.dataset.expanded, "true");
+  click(window, document.getElementById("run-board-title"));   // タイトルを押す
+  assert.equal(toggle.dataset.expanded, "false", "ヘッダのどの子を押しても畳む");
+  click(window, header);
+  assert.equal(toggle.dataset.expanded, "true");
 });
 
 test("run 0本でもヘッダは残る(「モニターが見ていない」と「走っていない」を区別できるように)", (t) => {
@@ -145,6 +250,18 @@ test("展開トグルは状態を属性で持ち、文字は回るだけ(開け�
   assert.match(chevron.title, /閉じる/);
 });
 
+test("ヘッダの開閉も文字は回るだけ(行の chevron と同じ規律)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const toggle = document.getElementById("run-board-toggle");
+  assert.equal(toggle.textContent, "▶");
+  assert.equal(toggle.dataset.expanded, "true", "初期は開いている");
+  click(window, toggle);
+  assert.equal(toggle.textContent, "▶", "文字は差し替えない");
+  assert.equal(toggle.dataset.expanded, "false");
+  assert.equal(toggle.getAttribute("aria-expanded"), "false");
+});
+
 test("レーン行クリックはその1台だけを選択する", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
@@ -159,7 +276,7 @@ test("レーン行クリックはその1台だけを選択する", (t) => {
   });
   post(window, monitorRunsMessage());
   // 展開しないとレーン行は DOM から見えない(表示は run-board-row-expanded クラスで切り替え)ので、
-  // まず展開する(▸/▾ のクリック)。
+  // まず展開する(三角のクリック)。
   click(window, document.querySelector(".run-board-chevron"));
   const laneEl = document.querySelector(".run-board-lane");
   assert.ok(laneEl, "展開するとレーン行が見える");

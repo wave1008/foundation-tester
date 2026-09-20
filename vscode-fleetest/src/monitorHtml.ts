@@ -274,9 +274,11 @@ function renderDevicesPanel(): string {
     <div id="run-board" class="run-board">
       <div id="run-board-header" class="run-board-header">
         <!-- title/aria-label は webview 側(runBoard.js)が状態(開/閉)に応じて入れる(btn-fleet-visible と同じ規律) -->
-        <button id="run-board-toggle" class="run-board-toggle" type="button" aria-expanded="true">▾</button>
+        <button id="run-board-toggle" class="run-board-toggle" type="button" aria-expanded="true" data-expanded="true">▶</button>
         <span id="run-board-title" class="run-board-title"></span>
-        <span id="run-board-machines" class="run-board-machines"></span>
+        <!-- ラベルは状態(全展開かどうか)で runBoard.js が入れ替える。クリックはヘッダ行の
+             開閉へ波及させない(stopPropagation) -->
+        <button id="run-board-expand-all" class="icon-button with-label run-board-expand-all" type="button" aria-pressed="false"></button>
       </div>
       <div id="run-board-rows" class="run-board-rows"></div>
     </div>

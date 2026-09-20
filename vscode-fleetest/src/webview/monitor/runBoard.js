@@ -7,7 +7,7 @@
 // 数字だけ書き換える**(DOM は作り直さない。CLAUDE.md の規律)。
 
 import { t } from '../i18n.js';
-import { runBoard, runBoardToggle, runBoardTitle, runBoardMachines, runBoardRows } from './domRefs.js';
+import { runBoard, runBoardHeader, runBoardToggle, runBoardTitle, runBoardExpandAll, runBoardRows } from './domRefs.js';
 import { vscode, persistedState } from './vscodeApi.js';
 import { paintMachineBadge } from './machineColors.js';
 import { deviceIdForLane, selectOnlyDevices } from './deviceTiles.js';
@@ -15,7 +15,7 @@ import {
   LOCAL_MACHINE_KEY,
   applyMonitorRunsEvent,
   buildRunGroups,
-  machineRunStatus,
+  machinesWithoutRuns,
   liveElapsedSeconds,
   liveRemaining,
 } from '../../runBoardModel';
@@ -31,7 +31,10 @@ let remoteMachines = [];
 
 // ボード全体の開閉。host 復元前の既定は展開(webview 側 splitter.js の isFleetVisible と同じ規律)。
 let collapsed = false;
-// 個々の run 行の展開(▸/▾)。groupKey は run が終われば二度と現れないので、host 側には
+// 「全て展開」トグル。**モードであって一度きりの操作ではない** —— ON の間は、あとから現れた
+// run も展開された状態で出る(ユーザー決定 2026-09-20)。host が workspaceState に持つ。
+let expandAll = false;
+// 個々の run 行の展開。groupKey は run が終われば二度と現れないので、host 側には
 // 永続化しない(webview の getState だけ = 同一パネルの再読込(言語切替)を跨ぐだけで十分)。
 const expandedGroups = new Set(
   Array.isArray(persistedState.runBoardExpandedGroups) ? persistedState.runBoardExpandedGroups : [],
@@ -39,6 +42,11 @@ const expandedGroups = new Set(
 
 // groupKey -> 行の DOM とブックキーピング。render() が groups の集合に合わせて足し引きする。
 const rows = new Map();
+
+/** その run の行を開くか。**expandAll が ON なら個別の記録によらず開く**(新しい行も含む)。 */
+function isGroupExpanded(groupKey) {
+  return expandAll || expandedGroups.has(groupKey);
+}
 
 function persistExpandedGroups() {
   vscode.setState(Object.assign({}, vscode.getState(), { runBoardExpandedGroups: [...expandedGroups] }));
@@ -61,16 +69,21 @@ function machineList() {
 
 function applyCollapsedUi() {
   runBoard.dataset.collapsed = collapsed ? 'true' : 'false';
-  runBoardToggle.textContent = collapsed ? '▸' : '▾';
+  // 行の chevron と同じ規律 —— 文字は常に ▶ で、向きは CSS の回転で表す
+  runBoardToggle.textContent = '▶';
+  runBoardToggle.dataset.expanded = collapsed ? 'false' : 'true';
   runBoardToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   const label = t(collapsed ? 'runBoard.expand' : 'runBoard.collapse');
   runBoardToggle.title = label;
   runBoardToggle.setAttribute('aria-label', label);
 }
 
-runBoardToggle.addEventListener('click', () => {
+// **ヘッダ行のどこを押しても開閉する**(三角だけが当たり判定だと小さすぎる。ユーザー指摘)。
+// トグルは <button> なのでキーボードの Enter/Space も click になり、そのままここへ来る
+runBoardHeader.addEventListener('click', () => {
   collapsed = !collapsed;
   applyCollapsedUi();
+  render();
   vscode.postMessage({ type: 'setRunBoardCollapsed', value: collapsed });
 });
 
@@ -91,37 +104,79 @@ export function setRunBoardMachines(machines) {
 
 function renderHeader(groups) {
   runBoardTitle.textContent = t('runBoard.title', { count: String(groups.length) });
-  runBoardMachines.textContent = '';
-  for (const machine of machineList()) {
-    const status = machineRunStatus(runsByMachine, machine);
-    const el = document.createElement('span');
-    el.className = 'run-board-machine';
-
-    const label = document.createElement('span');
-    label.textContent = machineLabel(machine);
-    el.appendChild(label);
-
-    const dot = document.createElement('span');
-    dot.className = 'run-board-dot-' + status;
-    dot.textContent = MACHINE_STATUS_MARK[status];
-    el.appendChild(dot);
-
-    // **3値とも語を出す**(記号だけだと ● と ○ の区別が形頼みになる。
-    // 「不明」と「空き」を混ぜないのが run ボードの要点なので、語で言い切る)
-    const word = document.createElement('span');
-    word.textContent = t(MACHINE_STATUS_KEY[status]);
-    el.appendChild(word);
-    runBoardMachines.appendChild(el);
-  }
+  // **折りたたみ中は出さない**(本体が見えないので押しても何も起きない)。run 0 本でも出す ——
+  // これはモードのスイッチで、「いま開く行があるか」とは別
+  runBoardExpandAll.style.display = collapsed ? 'none' : '';
+  runBoardExpandAll.textContent = t('runBoard.expandAll');
+  // ON の見せ方は「デバイスをすべて選択」と同じ .toggled(ユーザー決定 2026-09-20)
+  runBoardExpandAll.classList.toggle('toggled', expandAll);
+  runBoardExpandAll.setAttribute('aria-pressed', expandAll ? 'true' : 'false');
+  runBoardExpandAll.title = t('runBoard.expandAllHint');
 }
 
-const MACHINE_STATUS_MARK = { running: '●', idle: '○', unknown: '?' };
-// **キーだけを module-level に置く**(表示文字列を const にすると import 時の locale で固定される)
-const MACHINE_STATUS_KEY = {
-  running: 'runBoard.machineRunning',
-  idle: 'runBoard.machineIdle',
-  unknown: 'runBoard.machineUnknown',
-};
+function setExpandAll(value) {
+  expandAll = value;
+  vscode.postMessage({ type: 'setRunBoardExpandAll', value });
+}
+
+// **ヘッダ行の開閉へ波及させない** —— 親(run-board-header)が click で開閉するので、
+// stopPropagation を外すとボタンを押した瞬間にボードごと畳まれる
+runBoardExpandAll.addEventListener('click', (event) => {
+  event.stopPropagation();
+  if (expandAll) {
+    // OFF にしたら個別の記録も畳む(残すと OFF にしたのに全部開いたままになる)
+    expandedGroups.clear();
+    persistExpandedGroups();
+  }
+  setExpandAll(!expandAll);
+  render();
+});
+
+/** host からの復元値(sendInitialState)。ユーザー操作の再送はしない(setRunBoardCollapsed と同じ規律)。 */
+export function setRunBoardExpandAll(value) {
+  if (typeof value !== 'boolean') {
+    return;
+  }
+  expandAll = value;
+  render();
+}
+
+// run が走っていない機械(展開時のみ。折りたたみ時はボード本体ごと隠れる)。
+// **run のある機械はここに出さない** —— その機械は run の行として出ているので二重になる。
+// **1つの grid に入れる**(行ごとに独立した flex にすると、機械名の長さで状態の列がガタつく)
+function renderMachinesWithoutRuns(groups) {
+  const entries = machinesWithoutRuns(runsByMachine, machineList(), groups);
+  if (entries.length === 0) {
+    return;
+  }
+  const container = document.createElement('div');
+  container.className = 'run-board-idle-machines';
+  for (const entry of entries) {
+    const el = document.createElement('div');
+    el.className = 'run-board-idle-machine';
+
+    const name = document.createElement('span');
+    name.className = 'run-board-idle-machine-name';
+    name.textContent = machineLabel(entry.machine);
+
+    // 空きは語、**不明は「—」**(ユーザー決定 2026-09-20。`remote status` の LOCK/FM 欄が
+    // 判定不能に使うのと同じ記法・ボードの「残り —」とも同じ文字)。赤字にはしない ——
+    // 観測できていないのは異常ではないので、警告色を使うと毎回そこへ目が行く。
+    // **何のダッシュかは title で言う**(記号だけだと読み手が意味を持てない)
+    const word = document.createElement('span');
+    word.className = 'run-board-idle-machine-status run-board-machine-state-' + entry.status;
+    if (entry.status === 'unknown') {
+      word.textContent = t('runBoard.remainingUnknown');
+      word.title = t('runBoard.machineUnknown');
+    } else {
+      word.textContent = t('runBoard.machineIdle');
+    }
+
+    el.append(name, word);
+    container.appendChild(el);
+  }
+  runBoardRows.appendChild(container);
+}
 
 function selectRunDevices(group) {
   const ids = [];
@@ -137,12 +192,26 @@ function selectRunDevices(group) {
 }
 
 function toggleGroupExpanded(groupKey) {
+  const leavingExpandAll = expandAll;
+  if (expandAll) {
+    // **自動展開を抜ける**: いま全行が開いて見えているので、その姿を個別の記録へ写してから
+    // 抜ける(写さないと、1行閉じただけで他の行まで畳まれて見える)
+    for (const group of buildRunGroups(runsByMachine)) {
+      expandedGroups.add(group.groupKey);
+    }
+    setExpandAll(false);
+  }
   if (expandedGroups.has(groupKey)) {
     expandedGroups.delete(groupKey);
   } else {
     expandedGroups.add(groupKey);
   }
   persistExpandedGroups();
+  if (leavingExpandAll) {
+    // ヘッダのトグルの見た目(ON/OFF)も変わるので、行だけでなく全体を描き直す
+    render();
+    return;
+  }
   const row = rows.get(groupKey);
   if (row && row.group) {
     updateRow(row, row.group);
@@ -301,7 +370,7 @@ function renderLanes(row, group) {
 function updateRow(row, group) {
   row.group = group;
   row.rowEl.classList.toggle('run-board-row-hasFailed', group.failed > 0);
-  const expanded = expandedGroups.has(group.groupKey);
+  const expanded = isGroupExpanded(group.groupKey);
   row.rowEl.classList.toggle('run-board-row-expanded', expanded);
   row.chevronEl.dataset.expanded = expanded ? 'true' : 'false';
   row.chevronEl.setAttribute('aria-expanded', expanded ? 'true' : 'false');
@@ -356,6 +425,12 @@ function render() {
       rows.delete(groupKey);
     }
   }
+  // run の行のあとに、走っていない機械を並べる。**毎回作り直す**(run 行と違って
+  // DOM を使い回す価値のある状態を持たない = 1機械1行のテキストだけ)
+  for (const el of runBoardRows.querySelectorAll('.run-board-idle-machines')) {
+    el.remove();
+  }
+  renderMachinesWithoutRuns(groups);
 }
 
 /** main.js の 'monitorRuns' ケースから渡す(1件 = 1機械ぶん。契約は monitorDeviceModel.ts)。 */

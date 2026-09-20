@@ -266,6 +266,10 @@ export class MonitorPanelController implements vscode.Disposable {
    * ヘッダの ▸/▾(個々の run 行の展開)は webview 側だけで持つ(runBoard.js。ephemeral な groupKey
    * ごとの状態はセッションを跨いで意味を持たない)。 */
   private runBoardCollapsed: boolean;
+  /** run ボードの「全て展開」トグル(workspaceState の "monitor.runBoardExpandAll")。
+   * **モードであって一度きりの操作ではない** —— ON の間は新しく現れた run も展開する
+   * (だから groupKey ごとの展開と違い、セッションを跨いで意味を持つ = host が持つ)。 */
+  private runBoardExpandAll: boolean;
   /** 「デバイスモニター」タブの全選択トグル(workspaceState の "monitor.selectAllDevices")。 */
   private selectAllDevices: boolean;
   private showStreamDuringRun: boolean;
@@ -315,6 +319,7 @@ export class MonitorPanelController implements vscode.Disposable {
     this.fleetVisible = workspaceState.get<boolean>("monitor.fleetVisible", true);
     // 既定 展開(webview 側 runBoard.js の初期値と揃える)。
     this.runBoardCollapsed = workspaceState.get<boolean>("monitor.runBoardCollapsed", false);
+    this.runBoardExpandAll = workspaceState.get<boolean>("monitor.runBoardExpandAll", false);
     // 既定 OFF(選んでいない状態から始める。webview 側 deviceTiles.js の初期値と揃える)。
     this.selectAllDevices = workspaceState.get<boolean>("monitor.selectAllDevices", false);
     // 既定 ON = run 中も配信する(webview 側 streamToggle.js の初期値と揃える)。
@@ -1138,6 +1143,10 @@ export class MonitorPanelController implements vscode.Disposable {
         this.runBoardCollapsed = message.value;
         void this.workspaceState.update("monitor.runBoardCollapsed", message.value);
         break;
+      case "setRunBoardExpandAll":
+        this.runBoardExpandAll = message.value;
+        void this.workspaceState.update("monitor.runBoardExpandAll", message.value);
+        break;
       case "setSelectAllDevices":
         this.selectAllDevices = message.value;
         void this.workspaceState.update("monitor.selectAllDevices", message.value);
@@ -1303,6 +1312,7 @@ export class MonitorPanelController implements vscode.Disposable {
     // fleetVisible は selectAllDevices より先に送る(非表示なら webview が全選択から始める。main.js)
     this.post({ type: "fleetVisible", value: this.fleetVisible });
     this.post({ type: "runBoardCollapsed", value: this.runBoardCollapsed });
+    this.post({ type: "runBoardExpandAll", value: this.runBoardExpandAll });
     this.post({ type: "selectAllDevices", value: this.selectAllDevices });
     this.post({ type: "showStreamDuringRun", value: this.showStreamDuringRun });
     // 設定タブの更新セクション。ネットワークに出るので ready のたびに1回だけ(webview 再読込は稀)。

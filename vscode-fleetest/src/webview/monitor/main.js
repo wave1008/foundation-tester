@@ -35,7 +35,7 @@ import { applyShowStreamDuringRun } from './streamToggle.js';
 import { applyLaneAction, applyLaneHydrate, updateLaneVisibility, updateLanesPlaceholder } from './laneLog.js';
 import { applyProjectInfo } from './projectsTab.js';
 import { applyHostMetrics, setHostMetricMachines, setMachineLock } from './hostCharts.js';
-import { applyMonitorRuns, resetRunBoard, setRunBoardCollapsed, setRunBoardMachines } from './runBoard.js';
+import { applyMonitorRuns, resetRunBoard, setRunBoardCollapsed, setRunBoardExpandAll, setRunBoardMachines } from './runBoard.js';
 import { applyProjectDeviceCatalog } from './runProfileDevicesTab.js';
 import {
   applyAppProfileInfo,
@@ -142,6 +142,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'runBoardCollapsed':
       setRunBoardCollapsed(message.value);
+      break;
+    case 'runBoardExpandAll':
+      setRunBoardExpandAll(message.value);
       break;
     case 'deviceOpBusy':
       applyDeviceOpBusy(message);
