@@ -63,15 +63,18 @@ function createWebview() {
 
 const sentValues = (posted) => posted.filter((m) => m?.type === "setShowStreamDuringRun").map((m) => m.value);
 
-test("チェックボックスはラインビューのボタン群(#toolbar-tail)の直前(右寄せ)に既定 ON で置かれる", (t) => {
+test("チェックボックスはグリッドビューの見出し行の右端に既定 ON で置かれる", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const checkbox = document.getElementById("chk-show-stream-during-run");
   assert.ok(checkbox);
   assert.equal(checkbox.checked, true);
   const label = checkbox.closest("label");
-  assert.equal(label.nextElementSibling, document.getElementById("toolbar-tail"), "ボタン群のすぐ左");
-  assert.equal(label.parentElement, document.getElementById("toolbar"));
+  // **グリッドビューの見出し行の右端**(ユーザー決定 2026-09-21)—— 効く相手(画面の絵)と
+  // 同じ場所に置く。ツールバーからは外した
+  const header = document.querySelector(".lanes-header");
+  assert.equal(label.parentElement, header);
+  assert.equal(header.lastElementChild, label, "行の最後 = 右端(margin-left:auto で寄せる)");
   assert.ok(label.classList.contains("run-stream-toggle"), "右寄せ(margin-left:auto)の class");
 });
 

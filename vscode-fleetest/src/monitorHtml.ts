@@ -258,9 +258,6 @@ function renderDevicesPanel(): string {
            ツールバーの他のボタンとは gap で切る)。
            **title/aria-label は webview 側(deviceTiles.js)が入れる** —— 押すたびに
            「すべて選択」⇄「すべて解除」で入れ替わるので、静的 HTML に置くと二重管理になる。 -->
-      <!-- 状態の保存と復元は streamToggle.js ⇄ monitorPanel.ts(setShowStreamDuringRun / showStreamDuringRun)。
-           右寄せ(margin-left:auto)はこのラベルが持つ(ツールバーの最後の要素) -->
-      <label class="profile-label run-stream-toggle" title="${t("panels.toolbar.showStreamDuringRunTitle")}"><input type="checkbox" id="chk-show-stream-during-run" checked>${t("panels.toolbar.showStreamDuringRun")}</label>
     </div>
     <!-- run ボード(フリート横断の実行状況。docs/design.md §18)。ツールバー直下・ラインビューの上
          (グリッド表示中も進捗が見えることを優先。ユーザー決定 2026-09-20)。run 0本でもヘッダは残す
@@ -305,6 +302,10 @@ function renderDevicesPanel(): string {
         <span id="lanes-title" class="lanes-title">${t("panels.common.runLog")}</span>
         <span id="lanes-selection-status"></span>
         <span id="lanes-run-status"></span>
+        <!-- 「画面更新」。**見出し行の右端**(ユーザー決定 2026-09-21)。
+             状態の保存と復元は streamToggle.js ⇄ monitorPanel.ts
+             (setShowStreamDuringRun / showStreamDuringRun) -->
+        <label class="profile-label run-stream-toggle" title="${t("panels.toolbar.showStreamDuringRunTitle")}"><input type="checkbox" id="chk-show-stream-during-run" checked>${t("panels.toolbar.showStreamDuringRun")}</label>
       </div>
       <!-- ラインビュー非表示中の「デバイスを待機しています」(出し入れは waitingNote.js) -->
       <div id="lanes-waiting" class="lanes-waiting" style="display: none;">${t("panels.devices.emptyMessage")}</div>

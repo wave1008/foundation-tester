@@ -227,16 +227,13 @@ button.bulk-cancel:hover:not(:disabled) {
   gap: 8px;
   min-width: 0;
 }
-/* ラインビューのボタン群(#toolbar-tail)の左。群との間はボタン1つ分 = .toolbar の gap 8px + 14px = .icon-button の 22px。
-   群と同じく下寄せ・同じ高さ(群 = ボタン 22px + 枠の余白 1px×2)にして縦位置を揃える */
+/* 「画面更新」はグリッドビューの見出し行の右端へ寄せる(margin-left: auto)。
+   この行の他の要素(タイトル・選択数・run の状況)は左から詰める */
 .run-stream-toggle {
   margin-left: auto;
-  margin-right: 14px;
-  align-self: flex-end;
-  height: 24px;
+  align-self: center;
   gap: 4px;
   white-space: nowrap;
-  cursor: pointer;
 }
 /* 通常は1行(手元だけ)。リモート機の行が増えると縦に積む(hostCharts.js が hm-multi を付ける) */
 .host-metrics {
