@@ -4,7 +4,7 @@
 // セパレーターが最小位置にリセット)。tabs.js からは reapplyTilePaneHeight を呼ぶ。
 //
 // 縦の並びは toolbar/banner/line-view-header → tile-pane(ラインビュー) → splitter →
-// log-pane(実行ログビュー) → splitter-log → output-pane(グリッドビュー。flex:1 1 auto で残りを占有)。
+// output-pane(グリッドビュー。flex:1 1 auto で残りを占有) → splitter-log → log-pane(実行ログビュー)。
 // tile-pane と log-pane は明示高さ(このモジュールが計算)・output-pane は残りを自動で占める。
 
 import { vscode, persistedState } from './vscodeApi.js';
@@ -385,7 +385,8 @@ splitterLog.addEventListener('pointermove', (event) => {
   if (splitterLogPointerId !== event.pointerId) {
     return;
   }
-  applyLogPaneHeight(splitterLogStartHeight + event.clientY - splitterLogStartY);
+  // 実行ログビューは**下**のペイン(上はグリッドビュー)。セパレーターを下げると縮む
+  applyLogPaneHeight(splitterLogStartHeight - (event.clientY - splitterLogStartY));
 });
 const endSplitterLogDrag = (event) => {
   if (splitterLogPointerId !== event.pointerId) {

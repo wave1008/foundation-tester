@@ -356,8 +356,9 @@ button.bulk-cancel:hover:not(:disabled) {
 
 /* run ボード(フリート横断の実行状況。docs/design.md §18)。ツールバー直下・ラインビューの上に
    常設(run 0本でもヘッダは残す。runBoard.js)。 */
+/* 見出し行どうしの間に**線を見せない**(ユーザー決定 2026-09-21)ので下辺の罫線は持たない。
+   区切りは地色(見出し行と同じ)だけで付ける */
 .run-board {
-  border-bottom: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.35));
   background-color: var(--vscode-editorGroupHeader-tabsBackground, transparent);
   font-size: 12px;
 }
@@ -366,6 +367,9 @@ button.bulk-cancel:hover:not(:disabled) {
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
+  /* 4つの見出し行(実行中・ラインビュー・グリッドビュー・実行ログ)は同じ地色
+     (ユーザー決定 2026-09-21)。.run-board 自身にも同じ色があるので、中の見出しでは二重になるだけ */
+  background-color: var(--vscode-editorGroupHeader-tabsBackground, transparent);
   /* グリッドビューの見出し(.lanes-header)と同じ 12px。既定(13px)のままだと
      ラインビューの見出しだけ1px 大きくなる */
   font-size: 12px;
@@ -1046,23 +1050,19 @@ html.select-all-guard * {
   padding: 8px 0 12px 0;
   overflow: hidden;
 }
-/* 実行ログビュー。高さは JS(splitter.js)が inline style で入れる(グリッドビューは
-   .output-pane の flex:1 1 auto のまま残りを占有する)。
-   **見出し行どうしの間は畳んだときに 4px**(ユーザー決定 2026-09-21)= この padding-bottom 2px +
-   #output-pane の padding-top 2px(畳むと #splitter-log は消え、見出しの margin も 0 になる) */
+/* 上 = グリッドビュー(#output-pane。flex:1 1 auto で残りを占有)・下 = 実行ログビュー
+   (#log-pane。高さは JS(splitter.js)が inline style で入れる)。
+   上下の余白は**位置**で決める: #splitter-log を挟んで 2px + 2px、パネルの底は 12px。
+   グリッドビューの上が 0 なのは、ラインビューを畳むと #splitter も消えて直前が見出し行
+   (.run-board-header の padding-bottom 4px)になるため —— 足すとそこだけ広くなる
+   (他の見出し行どうしは 4px) */
 .log-pane {
   flex: 0 0 auto;
-  /* 直前がスプリッターのとき = グリッドビュー(#output-pane の padding-top)と同じ 2px */
-  padding-top: 2px;
-  padding-bottom: 2px;
-}
-/* ラインビューを畳むとスプリッターも消え、直前は見出し行(.run-board-header の padding-bottom 4px)に
-   なる。ここを足すと「デバイス→実行ログ」だけ 6px になるので 0 に戻す(他の見出し行どうしは 4px) */
-#panel-devices.fleet-hidden .log-pane {
   padding-top: 0;
 }
 #output-pane {
-  padding-top: 2px;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 .lanes-header {
   flex: 0 0 auto;
@@ -1080,7 +1080,11 @@ html.select-all-guard * {
 .pane-header {
   /* ラインビューの見出し(.run-board-header の padding: 4px 8px)と左端を揃える。
      縦は足さない —— 見出し行どうしの間の 4px が変わる */
-  padding: 0 8px;
+  /* 上下の 2px は**見出しの中**に持つ —— ペイン側の padding だと地色が塗られず、
+     暗い帯が見出し行どうしの間の線に見える */
+  padding: 2px 8px;
+  /* 地色は run ボードの見出しと同じ(.run-board-header と片方だけ変えない) */
+  background-color: var(--vscode-editorGroupHeader-tabsBackground, transparent);
   /* **2つの見出し行の高さを揃える**。高いのはグリッドビュー側で、中身は「ライブ更新」の
      ラベル = チェックボックス 18px + .run-stream-toggle の上下 padding 1px = 20px
      (実行ログ側は三角 16px と文字だけ)。チェックボックスの寸法を変えたらここも変える */

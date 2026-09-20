@@ -297,19 +297,6 @@ function renderDevicesPanel(): string {
 
     <div id="splitter" class="splitter" role="separator" aria-orientation="horizontal" aria-label="${t("panels.devices.splitterAriaLabel")}"></div>
 
-    <!-- 実行ログビュー(常設。台ごとのログ。選択中は選択した台だけに絞る)。開閉・高さの調整は
-         splitter.js(logViewVisible / logPaneHeight)。レーンの DOM 管理は laneLog.js -->
-    <div id="log-pane" class="output-pane log-pane">
-      <div id="log-view-header" class="lanes-header pane-header">
-        <button id="log-view-toggle" class="run-board-toggle" type="button" aria-expanded="true" data-expanded="true">▶</button>
-        <span id="lanes-title" class="lanes-title">${t("panels.common.runLog")}</span>
-        <span id="lanes-run-status"></span>
-      </div>
-      <div id="lanes-grid" class="lanes-grid"></div>
-    </div>
-
-    <div id="splitter-log" class="splitter" role="separator" aria-orientation="horizontal" aria-label="${t("panels.devices.logSplitterAriaLabel")}"></div>
-
     <!-- グリッドビュー(選択した台の拡大表示。1台だけ選択のときは実行ログの複製も並べる)。
          id は据え置き(旧・出力ペイン)。開閉は splitter.js(gridViewVisible) -->
     <div id="output-pane" class="output-pane">
@@ -326,6 +313,19 @@ function renderDevicesPanel(): string {
       <!-- グリッドビュー非表示中の「デバイスを待機しています」(出し入れは waitingNote.js) -->
       <div id="lanes-waiting" class="lanes-waiting" style="display: none;">${t("panels.devices.emptyMessage")}</div>
       <div id="preview-grid" class="lanes-grid"></div>
+    </div>
+
+    <div id="splitter-log" class="splitter" role="separator" aria-orientation="horizontal" aria-label="${t("panels.devices.logSplitterAriaLabel")}"></div>
+
+    <!-- 実行ログビュー(常設。台ごとのログ。選択中は選択した台だけに絞る)。開閉・高さの調整は
+         splitter.js(logViewVisible / logPaneHeight)。レーンの DOM 管理は laneLog.js -->
+    <div id="log-pane" class="output-pane log-pane">
+      <div id="log-view-header" class="lanes-header pane-header">
+        <button id="log-view-toggle" class="run-board-toggle" type="button" aria-expanded="true" data-expanded="true">▶</button>
+        <span id="lanes-title" class="lanes-title">${t("panels.common.runLog")}</span>
+        <span id="lanes-run-status"></span>
+      </div>
+      <div id="lanes-grid" class="lanes-grid"></div>
     </div>
   </div>`;
 }
