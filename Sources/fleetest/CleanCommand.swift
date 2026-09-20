@@ -1,11 +1,11 @@
-// ログ・録画・レポート・デバイス添付の保持容量クリーンアップ(`fleetest clean` /
+// ログ・録画・レポート・デバイス添付・xcresult の保持容量クリーンアップ(`fleetest clean` /
 // `fleetest api clean`)。
 //
 // **中核は `RetentionSweeper.clean` の1箇所**で、この2コマンドはどちらも引数の解釈と
 // 出力の形しか持たない —— `run` と `api run` が2実装に割れて片方だけ直る事故を繰り返さないため。
 //
 // **他の利用者の成果物は消さない**: 対象はこのリポジトリ配下(TestProjects/*/results,
-// TestProjects/*/reports, .fleetest/*.log)と、この Mac のシミュレータの添付だけ。
+// TestProjects/*/reports, .fleetest/*.log, .fleetest/xcresult)と、この Mac のシミュレータの添付だけ。
 //
 // **消す処理は機械で同時に1本**(`RetentionSweepLock`)。背景の自動掃除は先客がいれば黙って抜け、
 // 手動(`clean` / `api clean`)は先客を名指しして失敗する。dry-run は錠を取らない(消さない)。
@@ -17,8 +17,9 @@ import FTCore
 struct CleanCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "clean",
-        abstract: "Delete old recordings, reports, logs and simulator attachments: any category"
-            + " above 90% of its limit is swept back down to 90% (limits: fleetest api retention)")
+        abstract: "Delete old recordings, reports, logs, simulator attachments and xcresult bundles:"
+            + " any category above 90% of its limit is swept back down to 90%"
+            + " (limits: fleetest api retention)")
 
     @Flag(help: "List what would be deleted without deleting anything")
     var dryRun = false
@@ -35,6 +36,9 @@ struct CleanCommand: AsyncParsableCommand {
     @Flag(name: .customLong("device-captures"),
           help: "Sweep the testmanagerd Attachments of this Mac's simulators")
     var deviceCaptures = false
+
+    @Flag(help: "Sweep .fleetest/xcresult (XCUITest runner result bundles; live bridges are never swept)")
+    var xcresult = false
 
     /// run の完了時に `RunCompletionSweep` が起こす背景の掃除(利用者は打たない)
     @Flag(name: .customLong("background"), help: .hidden)
@@ -56,7 +60,7 @@ struct CleanCommand: AsyncParsableCommand {
         let report = RetentionSweeper.clean(
             roots: roots,
             categories: Self.categories(recordings: recordings, reports: reports, logs: logs,
-                                        deviceCaptures: deviceCaptures),
+                                        deviceCaptures: deviceCaptures, xcresult: xcresult),
             policy: LocalConfig.load().retention ?? RetentionPolicy(),
             dryRun: dryRun,
             log: { ConsoleOut.out($0) }, notice: { ConsoleOut.out($0) })
@@ -85,12 +89,13 @@ struct CleanCommand: AsyncParsableCommand {
     /// **カテゴリ無指定は全部**(掃除は run の開始時に自動でも走るので、素の `fleetest clean` が
     /// 一部しか見ないと利用者の期待とずれる)
     static func categories(recordings: Bool, reports: Bool, logs: Bool,
-                           deviceCaptures: Bool) -> [RetentionSweeper.Category] {
+                           deviceCaptures: Bool, xcresult: Bool = false) -> [RetentionSweeper.Category] {
         var selected: [RetentionSweeper.Category] = []
         if deviceCaptures { selected.append(.deviceCaptures) }
         if recordings { selected.append(.recordings) }
         if reports { selected.append(.reports) }
         if logs { selected.append(.logs) }
+        if xcresult { selected.append(.xcresult) }
         return selected.isEmpty ? RetentionSweeper.Category.allCases : selected
     }
 }

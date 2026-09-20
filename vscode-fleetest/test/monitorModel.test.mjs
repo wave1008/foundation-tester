@@ -3410,6 +3410,10 @@ test("setRetention: 上限はバイト(0以上の整数)か null・未知の鍵�
     }),
     true,
   );
+  assert.equal(
+    isMonitorFromWebviewMessage({ type: "setRetention", patch: { xcresultMaxBytes: 5368709120 } }),
+    true,
+  );
 
   assert.equal(isMonitorFromWebviewMessage({ type: "setRetention", patch: { logsMaxBytes: -1 } }), false);
   assert.equal(isMonitorFromWebviewMessage({ type: "setRetention", patch: { logsMaxBytes: 1.5 } }), false,

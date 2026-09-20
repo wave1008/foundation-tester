@@ -834,6 +834,12 @@ function renderSettingsPanel(): string {
             <span class="settings-unit">MB</span>
             <span id="settings-cleanup-logs-usage" class="settings-hint settings-cleanup-usage"></span>
           </label>
+          <label class="settings-item settings-cleanup-row" for="settings-cleanup-xcresult">
+            <span>${t("panels.settings.cleanupXcresultLabel")}</span>
+            <input type="number" id="settings-cleanup-xcresult" class="settings-number settings-cleanup-number" min="0" step="any">
+            <span class="settings-unit">GB</span>
+            <span id="settings-cleanup-xcresult-usage" class="settings-hint settings-cleanup-usage"></span>
+          </label>
         </div>
         <div class="settings-cleanup-actions">
           <button id="settings-cleanup-now" class="secondary" type="button">${t("panels.settings.cleanupNowButton")}</button>

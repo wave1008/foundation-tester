@@ -39,6 +39,14 @@ final class RetentionCommandTests: XCTestCase {
         XCTAssertNil(try merge(current, #"{"logsMaxBytes":null}"#))
     }
 
+    /// xcresult も他の上限4欄と同じ3値(欠落/null/値)で合流する
+    func testXcresultMaxBytesIsMergedLikeTheOtherByteCaps() throws {
+        let current = RetentionPolicy(xcresultMaxBytes: 10)
+        XCTAssertEqual(try merge(current, #"{"xcresultMaxBytes":99}"#)?.xcresultMaxBytes, 99)
+        XCTAssertNil(try merge(current, #"{"xcresultMaxBytes":null}"#)?.xcresultMaxBytes)
+        XCTAssertEqual(try merge(current, #"{}"#)?.xcresultMaxBytes, 10, "キー無しは据え置く")
+    }
+
     func testSweepAfterRunIsMergedLikeTheByteCaps() throws {
         XCTAssertEqual(try merge(nil, #"{"sweepAfterRun":false}"#)?.sweepAfterRun, false)
         XCTAssertEqual(try merge(RetentionPolicy(sweepAfterRun: false), #"{}"#)?.sweepAfterRun, false)
@@ -64,6 +72,13 @@ final class RetentionCommandTests: XCTestCase {
             CleanCommand.categories(recordings: true, reports: false, logs: true,
                                     deviceCaptures: false),
             [.recordings, .logs])
+    }
+
+    func testXcresultFlagSelectsOnlyXcresult() {
+        XCTAssertEqual(
+            CleanCommand.categories(recordings: false, reports: false, logs: false,
+                                    deviceCaptures: false, xcresult: true),
+            [.xcresult])
     }
 
     // MARK: - レポートのファイル名から日付を取る

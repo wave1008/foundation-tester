@@ -33,7 +33,12 @@ public struct BridgeLauncher {
     /// 指定しないと Xcode は既定の DerivedData に起動ごとの新しいフォルダ
     /// (`FleetestRunner-<hash>/Logs/Test/*.xcresult`)を作り、終わらない UI テストの結果を
     /// 誰も読まないまま積む(実測 100 個・1.8 GB・1 日約 50 個)
-    var resultBundleDirectory: URL { stateDir.appendingPathComponent("xcresult") }
+    var resultBundleDirectory: URL { Self.resultBundleDirectory(repoRoot: repoRoot) }
+    /// `<repoRoot>/.fleetest/xcresult`。**唯一の置き場の定義元** —— `sweepOrphanResultBundles` と
+    /// `RetentionSweeper`(xcresult 分類の保持容量掃除)が同じ場所を指すため公開する
+    public static func resultBundleDirectory(repoRoot: URL) -> URL {
+        repoRoot.appendingPathComponent(".fleetest/xcresult")
+    }
     /// **起動ごとに別名**(`bridge-<port>-<起動時刻ms>.xcresult`)。同名を使い回すと、前回の束が
     /// 残っていた/消した直後に書き戻された回に xcodebuild が `Existing file at -resultBundlePath` で
     /// 1 秒で死ぬ(2026-09-14 に 2 台で実測。台帳 §19.25)。古い束は startDetached が同じポートの
@@ -602,8 +607,9 @@ public struct BridgeLauncher {
     }
 
     /// 結果の束の名前からポートを読む(`bridge-<port>.xcresult` / `bridge-<port>-<stamp>.xcresult`)。
-    /// 形が違えば nil(= 触らない)
-    static func resultBundlePort(_ name: String) -> UInt16? {
+    /// 形が違えば nil(= 触らない)。**`RetentionSweeper` の xcresult 分類も同じ判定を使う**
+    /// (別実装を持つと束の命名を変えたときに片方だけ追随漏れする)
+    public static func resultBundlePort(_ name: String) -> UInt16? {
         guard name.hasPrefix("bridge-"), name.hasSuffix(".xcresult") else { return nil }
         let stem = name.dropFirst("bridge-".count).dropLast(".xcresult".count)
         return UInt16(stem.split(separator: "-", maxSplits: 1).first ?? "")
@@ -631,7 +637,7 @@ public struct BridgeLauncher {
             guard name.hasPrefix("bridge-"), name.hasSuffix(".pid") else { return nil }
             return UInt16(name.dropFirst("bridge-".count).dropLast(".pid".count))
         })
-        let directory = stateDir.appendingPathComponent("xcresult")
+        let directory = Self.resultBundleDirectory(repoRoot: repoRoot)
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return }
         for name in orphanResultBundleNames(names, livePorts: livePorts) {
             try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))

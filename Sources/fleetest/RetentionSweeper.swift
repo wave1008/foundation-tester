@@ -1,7 +1,7 @@
 // RetentionSweeper.swift
 // 保持容量の掃除の I/O 側。**判定は持たない** —— 新しい順に積んで上限を超えた分を落とす規則は
 // `FTCore.RetentionSweep.plan`(純粋関数)が唯一の定義元で、ここは
-// ①4系統の「セッション」を採ってくる ②plan の結果のパスを消す、の2つだけを行う。
+// ①5系統の「セッション」を採ってくる ②plan の結果のパスを消す、の2つだけを行う。
 //
 // 消してよい/いけないの境界(guarded)は系統ごとに違うが、**採取したセッションを消すのは
 // `apply` 1箇所**に閉じる —— 系統ごとに削除を書くと、どれかが「結果 JSON も消す」ような
@@ -14,7 +14,7 @@ import Foundation
 enum RetentionSweeper {
 
     enum Category: String, CaseIterable, Sendable {
-        case deviceCaptures, recordings, reports, logs
+        case deviceCaptures, recordings, reports, logs, xcresult
 
         func maxBytes(_ policy: RetentionPolicy) -> Int64 {
             switch self {
@@ -22,6 +22,7 @@ enum RetentionSweeper {
             case .recordings: return policy.effectiveRecordingsMaxBytes
             case .reports: return policy.effectiveReportsMaxBytes
             case .logs: return policy.effectiveLogsMaxBytes
+            case .xcresult: return policy.effectiveXcresultMaxBytes
             }
         }
     }
@@ -64,6 +65,7 @@ enum RetentionSweeper {
         case .recordings: return recordingSessions(packageRoot: roots.package, activeRunID: activeRunID)
         case .reports: return reportSessions(packageRoot: roots.package, activeRunID: activeRunID)
         case .logs: return logSessions(roots: roots)
+        case .xcresult: return xcresultSessions(toolRoot: roots.tool)
         }
     }
 
@@ -164,10 +166,41 @@ enum RetentionSweeper {
         let name = url.deletingPathExtension().lastPathComponent
         guard name.hasPrefix("bridge-"),
               let port = UInt16(name.dropFirst("bridge-".count)) else { return false }
-        return pid(ofBridgePort: port, stateDir: stateDir).map(ProcessLiveness.isAlive) ?? false
+        return bridgeIsLive(port: port, stateDir: stateDir)
     }
 
-    // MARK: - (d) デバイス由来の添付
+    /// そのポートで生きているブリッジが居るか。ログ・xcresult の guarded 判定が共有する
+    /// (**生死は `ProcessLiveness.isAlive` だけで見る** —— pid ファイルの存在は「かつて起動した」
+    /// でしかなく、掃除し忘れた pid ファイルが guarded を永久に固定してしまう)
+    private static func bridgeIsLive(port: UInt16, stateDir: URL) -> Bool {
+        pid(ofBridgePort: port, stateDir: stateDir).map(ProcessLiveness.isAlive) ?? false
+    }
+
+    // MARK: - (d) XCUITest ランナーの結果の束(xcresult)
+
+    /// 単位は束1つ = 起動1回ぶん(`BridgeLauncher.resultBundlePath` が起動のたびに別名で作る)。
+    /// 生きているブリッジの分は XCTest が書き込み中(「終わらない UI テスト」の全操作ログ)なので
+    /// guarded ——`BridgeLauncher.captureSettings`(動画・スクショを止める設定)はこのログを止めない
+    /// (実測 2026-09-20: 実機ブリッジ1本・75分で 324 MB)。**孤児**(生きたランナーの居ないポートの束)は
+    /// 通常 `BridgeLauncher.sweepOrphanResultBundles` が起動のたびに無条件で消すので、ここに残るのは
+    /// その掃除より後に生まれた分か掃除の間隔が空いた分だけ。名前がこの形
+    /// (`bridge-<port>.xcresult` / `bridge-<port>-<stamp>.xcresult`)でない束には触らない
+    /// (利用者やほかのツールが置いた物かもしれない)
+    static func xcresultSessions(toolRoot: URL) -> [RetentionSweep.Session] {
+        let stateDir = toolRoot.appendingPathComponent(".fleetest")
+        let directory = BridgeLauncher.resultBundleDirectory(repoRoot: toolRoot)
+        var sessions: [RetentionSweep.Session] = []
+        for url in subdirectories(of: directory) {
+            guard let port = BridgeLauncher.resultBundlePort(url.lastPathComponent) else { continue }
+            guard let measured = measure(directory: url) else { continue }
+            sessions.append(RetentionSweep.Session(
+                id: url.lastPathComponent, bytes: measured.bytes, newestModified: measured.newest,
+                paths: [url], guarded: bridgeIsLive(port: port, stateDir: stateDir)))
+        }
+        return sessions
+    }
+
+    // MARK: - (e) デバイス由来の添付
 
     /// `~/Library/Developer/CoreSimulator/Devices/<UDID>/data/Containers/Data/InternalDaemon/
     /// <container>/tmp/Attachments/` 直下の通常ファイル。**ディレクトリは消さない**

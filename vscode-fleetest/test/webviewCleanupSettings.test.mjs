@@ -94,6 +94,7 @@ const RESPONSE = {
     recordingsMaxBytes: 107374182400,
     reportsMaxBytes: 1048576000,
     logsMaxBytes: 524288000,
+    xcresultMaxBytes: 5368709120,
     sweepAfterRun: true,
   },
   defaults: {
@@ -101,9 +102,16 @@ const RESPONSE = {
     recordingsMaxBytes: 107374182400,
     reportsMaxBytes: 1048576000,
     logsMaxBytes: 524288000,
+    xcresultMaxBytes: 5368709120,
     sweepAfterRun: true,
   },
-  usage: { deviceCaptures: 934000000000, recordings: 2900000000, reports: 1430000000, logs: 7340032 },
+  usage: {
+    deviceCaptures: 934000000000,
+    recordings: 2900000000,
+    reports: 1430000000,
+    logs: 7340032,
+    xcresult: 1200000000,
+  },
 };
 
 const INPUT_IDS = {
@@ -111,6 +119,7 @@ const INPUT_IDS = {
   recordingsMaxBytes: "settings-cleanup-recordings",
   reportsMaxBytes: "settings-cleanup-reports",
   logsMaxBytes: "settings-cleanup-logs",
+  xcresultMaxBytes: "settings-cleanup-xcresult",
 };
 
 test("単位変換は往復で値が変わらない(GB/MB ⇄ バイト)", () => {
@@ -149,6 +158,7 @@ test("クリーンアップ: CLI の実効値が入力欄と使用量に入る",
   assert.equal(document.getElementById(INPUT_IDS.recordingsMaxBytes).value, "100", "100 GB");
   assert.equal(document.getElementById(INPUT_IDS.reportsMaxBytes).value, "1000", "1000 MB");
   assert.equal(document.getElementById(INPUT_IDS.logsMaxBytes).value, "500", "500 MB");
+  assert.equal(document.getElementById(INPUT_IDS.xcresultMaxBytes).value, "5", "5 GB");
   assert.equal(document.getElementById("settings-cleanup-enabled").checked, true);
 
   const usage = document.getElementById(`${INPUT_IDS.deviceCapturesMaxBytes}-usage`).textContent;
@@ -158,6 +168,8 @@ test("クリーンアップ: CLI の実効値が入力欄と使用量に入る",
   );
   const logsUsage = document.getElementById(`${INPUT_IDS.logsMaxBytes}-usage`).textContent;
   assert.ok(logsUsage.includes(formatBytes(RESPONSE.usage.logs, "MB")), `MB の行: ${logsUsage}`);
+  const xcresultUsage = document.getElementById(`${INPUT_IDS.xcresultMaxBytes}-usage`).textContent;
+  assert.ok(xcresultUsage.includes(formatBytes(RESPONSE.usage.xcresult, "GB")), `GB の行: ${xcresultUsage}`);
 });
 
 test("クリーンアップ: 入力した上限はバイトで送られ、ゲートを通る", (t) => {
@@ -297,7 +309,7 @@ test("クリーンアップ: 使用量は後から届く(上限だけ先に出�
     type: "retention",
     policy: RESPONSE.policy,
     defaults: RESPONSE.defaults,
-    usage: { deviceCaptures: null, recordings: null, reports: null, logs: null },
+    usage: { deviceCaptures: null, recordings: null, reports: null, logs: null, xcresult: null },
   });
   // 上限はもう入っている(空欄で待たせない)
   assert.equal(

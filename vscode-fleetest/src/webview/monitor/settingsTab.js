@@ -700,6 +700,7 @@ const CLEANUP_INPUT_IDS = {
   recordingsMaxBytes: 'settings-cleanup-recordings',
   reportsMaxBytes: 'settings-cleanup-reports',
   logsMaxBytes: 'settings-cleanup-logs',
+  xcresultMaxBytes: 'settings-cleanup-xcresult',
 };
 const cleanupEnabledCheckbox = document.getElementById('settings-cleanup-enabled');
 const cleanupNowButton = document.getElementById('settings-cleanup-now');

@@ -51,6 +51,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         update.recordingsMaxBytes.apply(to: &policy.recordingsMaxBytes)
         update.reportsMaxBytes.apply(to: &policy.reportsMaxBytes)
         update.logsMaxBytes.apply(to: &policy.logsMaxBytes)
+        update.xcresultMaxBytes.apply(to: &policy.xcresultMaxBytes)
         update.sweepAfterRun.apply(to: &policy.sweepAfterRun)
         return policy.isEmpty ? nil : policy
     }
@@ -88,11 +89,12 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         var recordingsMaxBytes: Field<Int64>
         var reportsMaxBytes: Field<Int64>
         var logsMaxBytes: Field<Int64>
+        var xcresultMaxBytes: Field<Int64>
         var sweepAfterRun: Field<Bool>
 
         private enum CodingKeys: String, CodingKey {
             case deviceCapturesMaxBytes, recordingsMaxBytes, reportsMaxBytes, logsMaxBytes
-            case sweepAfterRun
+            case xcresultMaxBytes, sweepAfterRun
         }
 
         init(from decoder: Decoder) throws {
@@ -101,6 +103,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
             recordingsMaxBytes = try Self.field(container, .recordingsMaxBytes)
             reportsMaxBytes = try Self.field(container, .reportsMaxBytes)
             logsMaxBytes = try Self.field(container, .logsMaxBytes)
+            xcresultMaxBytes = try Self.field(container, .xcresultMaxBytes)
             sweepAfterRun = try Self.field(container, .sweepAfterRun)
         }
 
@@ -120,7 +123,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
             policy: PolicyOutput(policy.resolved), defaults: PolicyOutput(RetentionPolicy.defaults),
             usage: UsageOutput(
                 deviceCaptures: usage?[.deviceCaptures], recordings: usage?[.recordings],
-                reports: usage?[.reports], logs: usage?[.logs]))
+                reports: usage?[.reports], logs: usage?[.logs], xcresult: usage?[.xcresult]))
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(output),
@@ -135,6 +138,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         let recordingsMaxBytes: Int64
         let reportsMaxBytes: Int64
         let logsMaxBytes: Int64
+        let xcresultMaxBytes: Int64
         let sweepAfterRun: Bool
 
         init(_ policy: RetentionPolicy) {
@@ -142,6 +146,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
             recordingsMaxBytes = policy.effectiveRecordingsMaxBytes
             reportsMaxBytes = policy.effectiveReportsMaxBytes
             logsMaxBytes = policy.effectiveLogsMaxBytes
+            xcresultMaxBytes = policy.effectiveXcresultMaxBytes
             sweepAfterRun = policy.effectiveSweepAfterRun
         }
     }
@@ -153,6 +158,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         let recordings: Int64?
         let reports: Int64?
         let logs: Int64?
+        let xcresult: Int64?
 
         func encode(to encoder: Encoder) throws {
             var c = encoder.container(keyedBy: CodingKeys.self)
@@ -160,10 +166,11 @@ struct ApiRetentionCommand: AsyncParsableCommand {
             try c.encode(recordings, forKey: .recordings)
             try c.encode(reports, forKey: .reports)
             try c.encode(logs, forKey: .logs)
+            try c.encode(xcresult, forKey: .xcresult)
         }
 
         enum CodingKeys: String, CodingKey {
-            case deviceCaptures, recordings, reports, logs
+            case deviceCaptures, recordings, reports, logs, xcresult
         }
     }
 

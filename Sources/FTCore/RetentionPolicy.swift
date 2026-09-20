@@ -1,5 +1,5 @@
 // RetentionPolicy.swift
-// ログ・録画・レポート・デバイス由来の添付の保持容量。
+// ログ・録画・レポート・デバイス由来の添付・xcresult の保持容量。
 //
 // **既定値の定義元はこの型だけ**(他所へ散らさない。CLI も拡張も `fleetest api retention` が
 // 返す実効値を読む)。欄を足したら `effective…` アクセサと `defaults` の出力も揃える ——
@@ -19,6 +19,8 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
     public var reportsMaxBytes: Int64?
     /// <repoRoot>/.fleetest/*.log の上限。nil = 既定
     public var logsMaxBytes: Int64?
+    /// <repoRoot>/.fleetest/xcresult/ の上限(XCUITest ランナーの結果の束)。nil = 既定
+    public var xcresultMaxBytes: Int64?
     /// run の完了後に背景で自動掃除するか(発動は上限の `sweepTriggerPercent`% を超えたときだけ)。nil = 既定
     public var sweepAfterRun: Bool?
 
@@ -26,18 +28,20 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
                 recordingsMaxBytes: Int64? = nil,
                 reportsMaxBytes: Int64? = nil,
                 logsMaxBytes: Int64? = nil,
+                xcresultMaxBytes: Int64? = nil,
                 sweepAfterRun: Bool? = nil) {
         self.deviceCapturesMaxBytes = deviceCapturesMaxBytes
         self.recordingsMaxBytes = recordingsMaxBytes
         self.reportsMaxBytes = reportsMaxBytes
         self.logsMaxBytes = logsMaxBytes
+        self.xcresultMaxBytes = xcresultMaxBytes
         self.sweepAfterRun = sweepAfterRun
     }
 
     /// 全欄が未設定か(`api retention --import` が既定へ戻したとき、LocalConfig から欄ごと消すため)
     public var isEmpty: Bool {
         deviceCapturesMaxBytes == nil && recordingsMaxBytes == nil && reportsMaxBytes == nil
-            && logsMaxBytes == nil && sweepAfterRun == nil
+            && logsMaxBytes == nil && xcresultMaxBytes == nil && sweepAfterRun == nil
     }
 
     // MARK: - 既定値(単位: バイト。1 GiB = 1_073_741_824 / 1 MiB = 1_048_576)
@@ -59,6 +63,20 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
     /// 500 MiB。ブリッジ1本のログが長い run で数十 MB になる。
     /// 尽きたら古いログファイルから消える(生きているブリッジのログは消さない)
     public static let defaultLogsMaxBytes: Int64 = 500 * 1_048_576
+
+    /// 5 GiB。XCUITest ランナーの結果の束(xcresult)。**生きているブリッジぶんは
+    /// ランナーが書き込み中で消せない**(guarded) —— 束の中身は「終わらない UI テスト」の
+    /// 全操作(`XCTWaiter` / `XCTContext` の活動)を起動から継続して書く生ログで、
+    /// `BridgeLauncher.captureSettings`(動画・スクショを止める設定)の対象外。
+    /// 実測(2026-09-20): 実機ブリッジ1本を 75 分立てただけで束が 324 MB(24 時間なら
+    /// 1台で約 6 GB/日)、8台規模の負荷試験では全体で 733 MB/時。この上限は
+    /// **保持量を抑える線ではなく、立てっぱなしに気付かせる線** —— guarded だけで
+    /// 超えても掃除はできず `overCapAfterGuards` の通知が出るだけ。5 GiB は単発のブリッジなら
+    /// 約 20 時間(6 GB/日)で届く量で、「一晩放置」を翌朝までに拾える。尽きたら**孤児**
+    /// (生きたランナーの居ないポートの束)から消える。孤児は通常
+    /// `BridgeLauncher.sweepOrphanResultBundles` が起動のたびに無条件で消すので、ここに残るのは
+    /// その掃除より後に生まれた分か掃除の間隔が空いた分だけ
+    public static let defaultXcresultMaxBytes: Int64 = 5 * 1_073_741_824
 
     /// 既定で run の完了後に掃除する。**背景の別プロセス**で走るのでテストの実行時間には乗らない
     public static let defaultSweepAfterRun = true
@@ -89,6 +107,9 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
     public var effectiveLogsMaxBytes: Int64 {
         Self.effective(logsMaxBytes, default: Self.defaultLogsMaxBytes)
     }
+    public var effectiveXcresultMaxBytes: Int64 {
+        Self.effective(xcresultMaxBytes, default: Self.defaultXcresultMaxBytes)
+    }
     public var effectiveSweepAfterRun: Bool { sweepAfterRun ?? Self.defaultSweepAfterRun }
 
     /// 実効値に nil は無い。**0 と負を混ぜない** —— 0 は「保持しない」という有効な指定で、
@@ -104,6 +125,7 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
                         recordingsMaxBytes: effectiveRecordingsMaxBytes,
                         reportsMaxBytes: effectiveReportsMaxBytes,
                         logsMaxBytes: effectiveLogsMaxBytes,
+                        xcresultMaxBytes: effectiveXcresultMaxBytes,
                         sweepAfterRun: effectiveSweepAfterRun)
     }
 

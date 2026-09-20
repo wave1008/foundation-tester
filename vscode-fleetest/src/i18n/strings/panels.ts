@@ -294,6 +294,12 @@ export const panelsStrings = {
   "panels.settings.cleanupRecordingsLabel": { ja: "録画の上限", en: "Limit for recordings" },
   "panels.settings.cleanupReportsLabel": { ja: "レポートの上限", en: "Limit for reports" },
   "panels.settings.cleanupLogsLabel": { ja: "ログの上限", en: "Limit for logs" },
+  // 生きているブリッジぶんの束は消せない(guarded)ので、この上限は「保持量を抑える線」ではなく
+  // 「立てっぱなしに気付かせる線」。docs/results-json.md §保持容量
+  "panels.settings.cleanupXcresultLabel": {
+    ja: "ブリッジ診断ログの上限",
+    en: "Limit for bridge diagnostics",
+  },
   "panels.settings.cleanupNowButton": { ja: "今すぐクリーンアップ", en: "Clean up now" },
 
   "panels.deviceMenu.liveControl": { ja: "ライブ操作", en: "Live Control" },
