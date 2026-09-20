@@ -378,6 +378,15 @@ export type MonitorToWebviewMessage =
   // 「デバイスモニター」タブのラインビュー(タイル領域)の表示トグル(false = 非表示)。永続化の経路は
   // tilePaneHeight と同じ(setFleetVisible と対の契約。受け手は splitter.js)。
   | { readonly type: "fleetVisible"; readonly value: boolean }
+  // 「デバイスモニター」タブの実行ログビュー(#log-pane)の高さ(px)。永続化の経路は
+  // tilePaneHeight と同じ(setLogPaneHeight と対の契約。受け手は splitter.js)。
+  | { readonly type: "logPaneHeight"; readonly value: number }
+  // 実行ログビューの表示トグル(false = 非表示)。永続化の経路は tilePaneHeight と同じ
+  // (setLogViewVisible と対の契約。受け手は splitter.js)。
+  | { readonly type: "logViewVisible"; readonly value: boolean }
+  // グリッドビュー(#output-pane)の表示トグル(false = 非表示)。永続化の経路は tilePaneHeight と
+  // 同じ(setGridViewVisible と対の契約。受け手は splitter.js)。
+  | { readonly type: "gridViewVisible"; readonly value: boolean }
   // run ボード(ヘッダの折りたたみ。既定は展開)。永続化の経路は tilePaneHeight と同じ
   // (setRunBoardCollapsed と対の契約。受け手は src/webview/monitor/runBoard.js)。
   | { readonly type: "runBoardCollapsed"; readonly value: boolean }
@@ -787,6 +796,15 @@ export type MonitorFromWebviewMessage =
   // ラインビューの表示トグルの切替。monitorPanel.ts が workspaceState へ永続化し、
   // パネル再作成時に "fleetVisible" メッセージで復元する。
   | { readonly type: "setFleetVisible"; readonly value: boolean }
+  // 実行ログビューとグリッドビューの間のスプリッターをドラッグ終了した時の実行ログビュー高さ(px)。
+  // monitorPanel.ts が workspaceState へ永続化し、パネル再作成時に "logPaneHeight" メッセージで復元する。
+  | { readonly type: "setLogPaneHeight"; readonly value: number }
+  // 実行ログビューの表示トグルの切替。monitorPanel.ts が workspaceState へ永続化し、
+  // パネル再作成時に "logViewVisible" メッセージで復元する。
+  | { readonly type: "setLogViewVisible"; readonly value: boolean }
+  // グリッドビューの表示トグルの切替。monitorPanel.ts が workspaceState へ永続化し、
+  // パネル再作成時に "gridViewVisible" メッセージで復元する。
+  | { readonly type: "setGridViewVisible"; readonly value: boolean }
   // run ボードの折りたたみ切替(ヘッダの ▸/▾ とは別 — ボード全体の開閉)。monitorPanel.ts が
   // workspaceState へ永続化し、パネル再作成時に "runBoardCollapsed" メッセージで復元する。
   | { readonly type: "setRunBoardCollapsed"; readonly value: boolean }
@@ -1159,8 +1177,11 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "runUpdate":
       return true;
     case "setTilePaneHeight":
+    case "setLogPaneHeight":
       return typeof value.value === "number" && value.value > 0;
     case "setFleetVisible":
+    case "setLogViewVisible":
+    case "setGridViewVisible":
     case "setRunBoardCollapsed":
     case "setRunBoardExpandAll":
     case "setSelectAllDevices":

@@ -71,8 +71,9 @@ test("チェックボックスはグリッドビューの見出し行の右端�
   assert.equal(checkbox.checked, true);
   const label = checkbox.closest("label");
   // **グリッドビューの見出し行の右端**(ユーザー決定 2026-09-21)—— 効く相手(画面の絵)と
-  // 同じ場所に置く。ツールバーからは外した
-  const header = document.querySelector(".lanes-header");
+  // 同じ場所に置く。ツールバーからは外した。実行ログビューの見出し行(#log-view-header)も
+  // 同じ .lanes-header クラスを持つので、id で名指しする
+  const header = document.getElementById("grid-view-header");
   assert.equal(label.parentElement, header);
   assert.equal(header.lastElementChild, label, "行の最後 = 右端(margin-left:auto で寄せる)");
   assert.ok(label.classList.contains("run-stream-toggle"), "右寄せ(margin-left:auto)の class");

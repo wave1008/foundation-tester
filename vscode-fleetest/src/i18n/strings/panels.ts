@@ -89,10 +89,7 @@ export const panelsStrings = {
 
   "panels.devices.emptyMessage": { ja: "デバイスを待機しています", en: "Waiting for devices" },
   "panels.devices.splitterAriaLabel": { ja: "タイルと出力の分割境界線", en: "Divider between tiles and output" },
-  "panels.devices.lanesPlaceholder": {
-    ja: "テストを実行するとデバイス毎の出力がここに表示されます",
-    en: "Output for each device appears here once a test runs",
-  },
+  "panels.devices.logSplitterAriaLabel": { ja: "実行ログとグリッドの分割境界線", en: "Divider between run log and grid" },
 
   "panels.project.directoryLabel": { ja: "プロジェクトディレクトリ", en: "Project directory" },
   "panels.project.addTitle": { ja: "テストプロジェクトの追加", en: "Add test project" },

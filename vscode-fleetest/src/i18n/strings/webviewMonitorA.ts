@@ -106,6 +106,10 @@ export const webviewMonitorAStrings = {
   "wvMonitor.lineView.selected": { ja: "{count}台を選択", en: "{count} selected" },
   "wvMonitor.lineView.show": { ja: "ラインビューを開く", en: "Show Line View" },
   "wvMonitor.lineView.hide": { ja: "ラインビューを閉じる", en: "Hide Line View" },
+  "wvMonitor.logView.show": { ja: "実行ログビューを開く", en: "Show Run Log View" },
+  "wvMonitor.logView.hide": { ja: "実行ログビューを閉じる", en: "Hide Run Log View" },
+  "wvMonitor.gridView.show": { ja: "グリッドビューを開く", en: "Show Grid View" },
+  "wvMonitor.gridView.hide": { ja: "グリッドビューを閉じる", en: "Hide Grid View" },
 
   "wvMonitor.tile.queuedRestart": { ja: "再起動待機", en: "Restart pending" },
   "wvMonitor.tile.queuedWipe": { ja: "Wipe 待機", en: "Wipe pending" },

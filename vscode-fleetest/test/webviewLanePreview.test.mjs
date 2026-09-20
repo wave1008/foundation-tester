@@ -1,9 +1,10 @@
-// 出力ペインの拡大表示(選択したデバイスの動画)の DOM テスト。
+// 実行ログビュー(#log-pane)・グリッドビュー(#output-pane)の DOM テスト。
 // 実 HTML + 実バンドルを jsdom で動かす方式は webviewTileRelayout.test.mjs と同じ。
 //
-// 契約(ユーザー要件 2026-08-24): 「デバイスモニター」タブでラインビューのデバイスを選ぶと、セパレーターの
-// 下のペインは選択した台ぶんの拡大した動画を左から並べる(**ログは置かない**)。選択が無い
-// 間は従来どおり全ワーカーの実行ログ(拡大表示は display:none)。
+// 契約(ユーザー要件 2026-09-21): 「デバイスモニター」タブは下段が実行ログビュー(常に選択に
+// 絞った台のログ。0台なら全台)とグリッドビュー(選択した台の拡大表示。**選択0台では空**)の
+// 2ペインに分かれる。**ちょうど1台選択のときだけ**、グリッドビューの中に 拡大表示|実行ログの複製
+// (ミラー)を並べる ―― ログ本体の DOM は実行ログビュー側から動かさない。
 //
 // 絵は「複製」で描く(canvas も img も DOM の2箇所に置けない)。mjpeg は同じ data URL を
 // 別の img へ写すだけなので、ここでは **タイルと拡大表示が同じ src を指すこと**を見る。
@@ -76,9 +77,9 @@ function sendFrame(window, deviceId, jpegBase64) {
 }
 
 // jsdom にはレイアウトが無く clientWidth/Height は常に 0。段組みの計算は実測値から決まるので、
-// 「レイアウトがあるとき」を出力ペインの寸法差し替えで再現する(webviewTileRelayout.test.mjs と同じ手)。
-function giveLanesGridSize(document, width, height) {
-  const grid = document.getElementById("lanes-grid");
+// 「レイアウトがあるとき」を #preview-grid の寸法差し替えで再現する(webviewTileRelayout.test.mjs と同じ手)。
+function givePreviewGridSize(document, width, height) {
+  const grid = document.getElementById("preview-grid");
   Object.defineProperty(grid, "clientWidth", { value: width, configurable: true });
   Object.defineProperty(grid, "clientHeight", { value: height, configurable: true });
 }
@@ -119,57 +120,60 @@ function clickTile(document, index) {
   }));
 }
 
-const visiblePairs = (document) =>
-  [...document.querySelectorAll("#lanes-grid .lane-pair")].filter((el) => el.style.display !== "none");
-const visiblePreviews = (document) =>
-  [...document.querySelectorAll("#lanes-grid .lane-preview")].filter((el) => el.style.display !== "none");
-// 隠れている列(選択で絞り込まれたレーン)の中のログは数えない
-const paneTitle = (document) => document.getElementById("lanes-title").textContent;
-const visibleLogs = (document) =>
-  visiblePairs(document).map((pair) => pair.querySelector(".lane")).filter((el) => el.style.display !== "none");
+const dblclick = (window, el) =>
+  el.dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+const selectedTileCount = (document) => document.querySelectorAll("#grid .tile.selected").length;
 
-test("選択が無い間は拡大表示を出さない(従来どおりログだけ)", (t) => {
+// 実行ログビュー(#lanes-grid の直接の子 .lane)。選択に応じて display で絞る。
+const visibleLogs = (document) =>
+  [...document.querySelectorAll("#lanes-grid .lane")].filter((el) => el.style.display !== "none");
+// グリッドビューの拡大表示(#preview-grid の中の .lane-preview。1台選択時は .lane-pair の中)。
+const visiblePreviews = (document) =>
+  [...document.querySelectorAll("#preview-grid .lane-preview")].filter((el) => el.style.display !== "none");
+const previewDeviceName = (el) => el.querySelector(".lane-preview-header .tile-name")?.textContent;
+const visiblePreviewNames = (document) => visiblePreviews(document).map(previewDeviceName);
+const logHeaderName = (laneEl) => laneEl.querySelector(".lane-header").textContent;
+
+test("選択が無い間はグリッドビューを空にする(実行ログビューは全台)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [{}, {}, {}]);
-  assert.equal(visiblePairs(document).length, 3, "全レーンを出すこと");
-  assert.equal(visibleLogs(document).length, 3, "選択なしのときはログを出すこと");
+  assert.equal(visibleLogs(document).length, 3, "実行ログビューは全レーンを出すこと");
   assert.equal(visiblePreviews(document).length, 0, "選択していないのに動画枠を出さないこと");
-  assert.equal(paneTitle(document), "実行ログ");
+  assert.equal(document.getElementById("lanes-title").textContent, "実行ログ");
+  assert.equal(document.getElementById("grid-view-title").textContent, "デバイス");
+  assert.equal(document.getElementById("lanes-selection-status").textContent, "");
 });
 
-test("1台選択で左に動画・右にその台の実行ログ", (t) => {
+test("1台選択で実行ログビューはその台だけに絞り、グリッドビューは拡大表示+ログの複製を並べる", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [{}, {}, {}]);
   clickTile(document, 1);
-  const pairs = visiblePairs(document);
-  assert.equal(pairs.length, 1, "選択した台の列だけ残すこと");
+
+  assert.equal(visibleLogs(document).length, 1, "実行ログビューも選択に絞る");
+  assert.equal(logHeaderName(visibleLogs(document)[0]), "Dev 1");
+  assert.equal(document.getElementById("lanes-title").textContent, "実行ログ", "見出しは切り替えない");
+
   assert.equal(visiblePreviews(document).length, 1);
-  assert.equal(visibleLogs(document).length, 1, "1台のときはログも並べる");
-  assert.equal(pairs[0].children[0].className, "lane-preview", "左が動画");
-  assert.equal(pairs[0].children[1].className, "lane", "右がログ");
-  assert.ok(document.getElementById("lanes-grid").classList.contains("single-device"));
-  // ログ側の見出しはバッジではなく「実行ログ」
-  const log = pairs[0].children[1];
-  assert.equal(log.querySelector(".lane-header:not(.lane-log-title)").style.display, "none", "バッジの見出しを隠す");
-  const logTitle = log.querySelector(".lane-log-title");
-  assert.notEqual(logTitle.style.display, "none");
-  assert.equal(logTitle.textContent, "実行ログ");
-  // 見出しは中身に合わせる(ログではなく動画を並べている)
-  assert.equal(paneTitle(document), "デバイス");
-  // ログ側の DOM は消さない(選択を外せば続きが読める)
-  assert.equal(pairs[0].querySelector(".lane-header").textContent, "Dev 1");
+  const previewGrid = document.getElementById("preview-grid");
+  assert.ok(previewGrid.classList.contains("single-device"));
+  const pair = previewGrid.querySelector(".lane-pair");
+  assert.ok(pair, "1台のときは .lane-pair で拡大表示とログの複製を束ねる");
+  assert.equal(pair.children[0].className, "lane-preview", "左が動画");
+  assert.equal(pair.children[1].className, "lane lane-log-mirror", "右がログの複製");
+  assert.equal(pair.children[1].querySelector(".lane-log-title").textContent, "実行ログ");
+  assert.equal(document.getElementById("grid-view-title").textContent, "デバイス");
 });
 
-test("1台選択の動画の幅は絵に合わせ、2台に増やすとログを畳んで幅の指定も外す", (t) => {
+test("1台選択の動画の幅は絵に合わせ、2台に増やすとログの複製を解いて幅の指定も外す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  giveLanesGridSize(document, 1200, 500);
+  givePreviewGridSize(document, 1200, 500);
   sendDevices(window, [{}, {}]);
   clickTile(document, 0);
   decodeFrame(window, document, 0, "QUJD", 390, 844);
-  const grid = document.getElementById("lanes-grid");
+  const grid = document.getElementById("preview-grid");
   assert.equal(grid.style.gridTemplateColumns, "minmax(0, 1fr)");
   assert.equal(grid.style.gridTemplateRows, "minmax(0, 1fr)");
   const preview = visiblePreviews(document)[0];
@@ -179,7 +183,9 @@ test("1台選択の動画の幅は絵に合わせ、2台に増やすとログを
   clickTile(document, 1);
   decodeFrame(window, document, 1, "QUJD", 390, 844);
   assert.equal(grid.classList.contains("single-device"), false);
-  assert.equal(visibleLogs(document).length, 0, "2台ではログを置かない");
+  assert.equal(grid.querySelector(".lane-pair"), null, "2台になったらログの複製の組は解く");
+  assert.equal(visiblePreviews(document).length, 2);
+  assert.equal(visibleLogs(document).length, 2, "実行ログビューは選択台数ぶん出す(拡大表示とは独立)");
   assert.ok(visiblePreviews(document).every((el) => el.style.width === ""), "幅の指定を残さない");
   assert.equal(grid.style.gridTemplateColumns, "repeat(2, minmax(0, 1fr))");
 });
@@ -191,19 +197,14 @@ test("グリッドビューの台をダブルクリックすると、その台�
   clickTile(document, 0);
   clickTile(document, 2);
   assert.equal(visiblePreviews(document).length, 2);
-  const target = visiblePairs(document)[1].querySelector(".lane-preview");
-  assert.equal(target.parentElement.querySelector(".lane-header").textContent, "Dev 2");
-  target.dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true, cancelable: true }));
-  const selected = [...document.querySelectorAll("#grid .tile.selected")];
-  assert.equal(selected.length, 1, "1台だけ選択");
-  assert.equal(visiblePairs(document).length, 1);
-  assert.equal(visiblePairs(document)[0].querySelector(".lane-header").textContent, "Dev 2", "ダブルクリックした台");
-  assert.ok(document.getElementById("lanes-grid").classList.contains("single-device"), "1台なので左に絵・右にログ");
+  const target = visiblePreviews(document)[1];
+  assert.equal(previewDeviceName(target), "Dev 2");
+  dblclick(window, target);
+  assert.equal(selectedTileCount(document), 1, "1台だけ選択");
+  assert.equal(visiblePreviews(document).length, 1);
+  assert.equal(previewDeviceName(visiblePreviews(document)[0]), "Dev 2", "ダブルクリックした台");
+  assert.ok(document.getElementById("preview-grid").classList.contains("single-device"), "1台なので左に絵・右にログの複製");
 });
-
-const dblclick = (window, el) =>
-  el.dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true, cancelable: true }));
-const selectedTileCount = (document) => document.querySelectorAll("#grid .tile.selected").length;
 
 test("このデバイスのみ選択の後、その台をダブルクリックすると直前の選択へ戻る", (t) => {
   const { window, document } = createWebview();
@@ -211,18 +212,17 @@ test("このデバイスのみ選択の後、その台をダブルクリック�
   sendDevices(window, [{}, {}, {}]);
   clickTile(document, 0);
   clickTile(document, 2);
-  const target = visiblePairs(document)[1].querySelector(".lane-preview");
+  const target = visiblePreviews(document)[1];
   dblclick(window, target);
-  assert.equal(visiblePairs(document).length, 1, "前提: その台だけになる");
+  assert.equal(visiblePreviews(document).length, 1, "前提: その台だけになる");
 
-  dblclick(window, visiblePairs(document)[0].querySelector(".lane-preview"));
-  assert.deepEqual(visiblePairs(document).map((p) => p.querySelector(".lane-header").textContent),
-    ["Dev 0", "Dev 2"], "直前の2台に戻る");
+  dblclick(window, visiblePreviews(document)[0]);
+  assert.deepEqual(visiblePreviewNames(document), ["Dev 0", "Dev 2"], "直前の2台に戻る");
   assert.equal(selectedTileCount(document), 2);
 
   // 戻した後のダブルクリックは再び「その台のみ」(行き来できる)
-  dblclick(window, visiblePairs(document)[0].querySelector(".lane-preview"));
-  assert.deepEqual(visiblePairs(document).map((p) => p.querySelector(".lane-header").textContent), ["Dev 0"]);
+  dblclick(window, visiblePreviews(document)[0]);
+  assert.deepEqual(visiblePreviewNames(document), ["Dev 0"]);
 });
 
 test("全選択からこのデバイスのみ選択した後のダブルクリックは全選択に戻る", (t) => {
@@ -231,9 +231,9 @@ test("全選択からこのデバイスのみ選択した後のダブルクリ�
   sendDevices(window, [{}, {}, {}]);
   document.getElementById("btn-select-all").click();
   assert.equal(selectedTileCount(document), 3, "前提: 全選択");
-  dblclick(window, visiblePairs(document)[1].querySelector(".lane-preview"));
+  dblclick(window, visiblePreviews(document)[1]);
   assert.equal(selectedTileCount(document), 1);
-  dblclick(window, visiblePairs(document)[0].querySelector(".lane-preview"));
+  dblclick(window, visiblePreviews(document)[0]);
   assert.equal(selectedTileCount(document), 3, "全台の選択に戻る");
   assert.equal(document.getElementById("btn-select-all").getAttribute("aria-pressed"), "true", "全選択の旗も戻る");
 });
@@ -243,11 +243,11 @@ test("全選択に戻すときは、1台表示の間に現れた台も選ぶ(全
   t.after(() => window.close());
   sendDevices(window, [{}, {}, {}]);
   document.getElementById("btn-select-all").click();
-  dblclick(window, visiblePairs(document)[0].querySelector(".lane-preview"));
+  dblclick(window, visiblePreviews(document)[0]);
   assert.equal(selectedTileCount(document), 1);
   sendDevices(window, [{}, {}, {}, {}]);  // 4台目が現れる
   assert.equal(selectedTileCount(document), 1, "前提: 1台表示のまま");
-  dblclick(window, visiblePairs(document)[0].querySelector(".lane-preview"));
+  dblclick(window, visiblePreviews(document)[0]);
   assert.equal(selectedTileCount(document), 4, "現れた台も含めて全選択");
 });
 
@@ -258,48 +258,37 @@ test("手で選択を変えた後は戻さない(ダブルクリックはその�
   clickTile(document, 0);
   clickTile(document, 1);
   clickTile(document, 2);
-  dblclick(window, visiblePairs(document)[0].querySelector(".lane-preview"));  // Dev 0 のみ
+  dblclick(window, visiblePreviews(document)[0]);  // Dev 0 のみ
   clickTile(document, 1);  // 手で足す(Dev 0 + Dev 1)
   clickTile(document, 1);  // 手で外す(また Dev 0 のみ)
-  dblclick(window, visiblePairs(document)[0].querySelector(".lane-preview"));
-  assert.deepEqual(visiblePairs(document).map((p) => p.querySelector(".lane-header").textContent),
-    ["Dev 0"], "選択を一度変えたら3台へは戻さない");
+  dblclick(window, visiblePreviews(document)[0]);
+  assert.deepEqual(visiblePreviewNames(document), ["Dev 0"], "選択を一度変えたら3台へは戻さない");
 });
 
-test("2台選択で動画が2つ、選択順ではなくデバイス順に並ぶ", (t) => {
+test("2台選択で動画が2つ・ログも2つ、選択順ではなくデバイス順に並ぶ", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [{}, {}, {}]);
   clickTile(document, 2);
   clickTile(document, 0);
-  const pairs = visiblePairs(document);
-  assert.equal(pairs.length, 2);
   assert.equal(visiblePreviews(document).length, 2, "選択した台ぶんの動画枠を出すこと");
-  assert.equal(visibleLogs(document).length, 0);
-  assert.deepEqual(
-    pairs.map((pair) => pair.querySelector(".lane-header").textContent),
-    ["Dev 0", "Dev 2"],
-    "並びはタイルと同じデバイス順(deviceOrder)であること",
-  );
+  assert.equal(visibleLogs(document).length, 2);
+  assert.deepEqual(visiblePreviewNames(document), ["Dev 0", "Dev 2"], "並びはタイルと同じデバイス順(deviceOrder)であること");
+  assert.deepEqual(visibleLogs(document).map(logHeaderName), ["Dev 0", "Dev 2"]);
 });
 
-test("選択を外すと拡大表示が消えてログへ戻る(出しっぱなしにしない)", (t) => {
+test("選択を外すと拡大表示が消え、実行ログビューは全台に戻る", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [{}, {}]);
   clickTile(document, 0);
   assert.equal(visiblePreviews(document).length, 1);
-  assert.equal(visibleLogs(document).length, 1, "1台のときは右にログ");
+  assert.equal(visibleLogs(document).length, 1, "1台選択中は実行ログビューも絞る");
   clickTile(document, 0);
   assert.equal(visiblePreviews(document).length, 0);
-  assert.equal(document.getElementById("lanes-grid").classList.contains("single-device"), false);
-  assert.equal(visiblePairs(document).length, 2, "絞り込み解除で全レーンへ戻ること");
-  for (const pair of visiblePairs(document)) {
-    assert.equal(pair.querySelector(".lane-header:not(.lane-log-title)").style.display, "", "バッジの見出しに戻す");
-    assert.equal(pair.querySelector(".lane-log-title").style.display, "none");
-  }
-  assert.equal(visibleLogs(document).length, 2, "ログを出し直すこと");
-  assert.equal(paneTitle(document), "実行ログ", "見出しも戻すこと");
+  assert.equal(document.getElementById("preview-grid").classList.contains("single-device"), false);
+  assert.equal(document.getElementById("preview-grid").querySelector(".lane-pair"), null);
+  assert.equal(visibleLogs(document).length, 2, "実行ログビューを出し直すこと");
 });
 
 test("拡大表示の上にラインビューと同じタグが付く", (t) => {
@@ -360,7 +349,7 @@ test("タグの段数は手元でもリモートでも同じ(絵の上端を揃�
   window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices } }));
   clickTile(document, 0);
   clickTile(document, 1);
-  const headers = [...document.querySelectorAll("#lanes-grid .lane-preview-header")];
+  const headers = [...document.querySelectorAll("#preview-grid .lane-preview-header")];
   assert.equal(headers.length, 2);
   for (const header of headers) {
     assert.equal(header.querySelectorAll(".tile-header").length, 1);
@@ -406,13 +395,13 @@ test("絵が無い台はタイルと同じプレースホルダを出す(黒い�
 test("段組みは絵が一番大きくなる形にする(6台なら2段)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  giveLanesGridSize(document, 1200, 900);
+  givePreviewGridSize(document, 1200, 900);
   sendDevices(window, Array.from({ length: 6 }, () => ({})));
   // 先に6台を選ぶ(この時点では縦横比が分からないので横一列のまま)
   for (let i = 0; i < 6; i++) {
     clickTile(document, i);
   }
-  const grid = document.getElementById("lanes-grid");
+  const grid = document.getElementById("preview-grid");
   assert.equal(grid.style.gridTemplateColumns, "repeat(6, minmax(0, 1fr))");
   // 絵が届いて縦横比が決まったら組み直す
   for (let i = 0; i < 6; i++) {
@@ -427,13 +416,13 @@ test("段組みは絵が一番大きくなる形にする(6台なら2段)", (t) 
 test("2台なら左右(横長のペイン)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  giveLanesGridSize(document, 1200, 900);
+  givePreviewGridSize(document, 1200, 900);
   sendDevices(window, [{}, {}]);
   clickTile(document, 0);
   decodeFrame(window, document, 0, "QUJD", 390, 844);
   clickTile(document, 1);
   decodeFrame(window, document, 1, "QUJD", 390, 844);
-  const grid = document.getElementById("lanes-grid");
+  const grid = document.getElementById("preview-grid");
   assert.equal(grid.style.gridTemplateColumns, "repeat(2, minmax(0, 1fr))");
   assert.equal(grid.style.gridTemplateRows, "repeat(1, minmax(0, 1fr))");
 });
@@ -441,22 +430,22 @@ test("2台なら左右(横長のペイン)", (t) => {
 test("縦横比が混ざるときは一番横に広い台に合わせる(はみ出す台を作らない)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  giveLanesGridSize(document, 1200, 900);
+  givePreviewGridSize(document, 1200, 900);
   sendDevices(window, [{}, {}]);
   clickTile(document, 0);
   clickTile(document, 1);
   decodeFrame(window, document, 0, "QUJD", 390, 844);   // 縦持ち
   decodeFrame(window, document, 1, "QUJD", 844, 390);   // 横持ち(タブレット・回転)
   // 縦持ちだけなら左右(2列)が最大だが、横持ちが混ざると2列では横幅が足りず小さくなる
-  const grid = document.getElementById("lanes-grid");
+  const grid = document.getElementById("preview-grid");
   assert.equal(grid.style.gridTemplateColumns, "repeat(1, minmax(0, 1fr))");
   assert.equal(grid.style.gridTemplateRows, "repeat(2, minmax(0, 1fr))");
 });
 
-test("ログへ戻したら段組みも横一列へ戻す(行の指定を残さない)", (t) => {
+test("選択解除で段組みも横一列(空)へ戻す(行の指定を残さない)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  giveLanesGridSize(document, 1200, 900);
+  givePreviewGridSize(document, 1200, 900);
   sendDevices(window, Array.from({ length: 6 }, () => ({})));
   for (let i = 0; i < 6; i++) {
     clickTile(document, i);
@@ -465,10 +454,11 @@ test("ログへ戻したら段組みも横一列へ戻す(行の指定を残さ�
   for (let i = 0; i < 6; i++) {
     clickTile(document, i);
   }
-  const grid = document.getElementById("lanes-grid");
+  const grid = document.getElementById("preview-grid");
   assert.equal(grid.classList.contains("previewing"), false);
-  assert.equal(grid.style.gridTemplateColumns, "repeat(6, minmax(0, 1fr))");
+  assert.equal(grid.style.gridTemplateColumns, "");
   assert.equal(grid.style.gridTemplateRows, "");
+  assert.equal(visibleLogs(document).length, 6, "実行ログビューは全台へ戻る");
 });
 
 // 再起動の間は新しいフレームが来ないので、畳まないと最後の1枚が出たまま残る(タイルを
@@ -483,7 +473,7 @@ test("モニター再起動で拡大表示を畳む(古い絵を出したまま�
 
   document.getElementById("btn-restart").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 
-  assert.equal(document.querySelectorAll("#lanes-grid .lane-preview-media").length, 0, "絵の要素ごと外すこと");
+  assert.equal(document.querySelectorAll("#preview-grid .lane-preview-media").length, 0, "絵の要素ごと外すこと");
   assert.equal(visiblePreviews(document).length, 0);
   assert.equal(visibleLogs(document).length, 2, "レーン自体は run の状態なので残しログへ戻す");
 });
@@ -501,10 +491,9 @@ test("選択したままデバイスが消えても拡大表示を残さない",
     kind: "virtual", udid: "UDID-1", recording: false, registered: true,
   }];
   window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices } }));
-  assert.equal(document.querySelectorAll("#lanes-grid .lane-preview-media").length, 0);
+  assert.equal(document.querySelectorAll("#preview-grid .lane-preview-media").length, 0);
   assert.equal(visiblePreviews(document).length, 0);
-  assert.equal(visiblePairs(document).length, 1, "残った台は従来どおりログだけに戻ること");
-  assert.equal(visibleLogs(document).length, 1);
+  assert.equal(visibleLogs(document).length, 1, "残った台は従来どおりログだけに戻ること");
 });
 
 // 実行ログビューのレーン見出しは、機械バッジをデバイス名の**下**に置く(ユーザー決定 2026-09-21。

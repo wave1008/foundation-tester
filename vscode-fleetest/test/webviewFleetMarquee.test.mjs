@@ -254,7 +254,7 @@ test("デバイスの画像はドラッグできない(掴むとブラウザの�
   assert.equal(tileImg.draggable, false);
   // 拡大表示の絵も同じ
   clickImage(window, document, 0);
-  const previewImg = document.querySelector("#lanes-grid .lane-preview-media");
+  const previewImg = document.querySelector("#preview-grid .lane-preview-media");
   assert.equal(previewImg.draggable, false);
 });
 

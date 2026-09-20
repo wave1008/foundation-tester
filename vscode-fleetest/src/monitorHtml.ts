@@ -297,20 +297,35 @@ function renderDevicesPanel(): string {
 
     <div id="splitter" class="splitter" role="separator" aria-orientation="horizontal" aria-label="${t("panels.devices.splitterAriaLabel")}"></div>
 
-    <div id="output-pane" class="output-pane">
-      <div class="lanes-header">
+    <!-- 実行ログビュー(常設。台ごとのログ。選択中は選択した台だけに絞る)。開閉・高さの調整は
+         splitter.js(logViewVisible / logPaneHeight)。レーンの DOM 管理は laneLog.js -->
+    <div id="log-pane" class="output-pane log-pane">
+      <div id="log-view-header" class="lanes-header pane-header">
+        <button id="log-view-toggle" class="run-board-toggle" type="button" aria-expanded="true" data-expanded="true">▶</button>
         <span id="lanes-title" class="lanes-title">${t("panels.common.runLog")}</span>
-        <span id="lanes-selection-status"></span>
         <span id="lanes-run-status"></span>
+      </div>
+      <div id="lanes-grid" class="lanes-grid"></div>
+    </div>
+
+    <div id="splitter-log" class="splitter" role="separator" aria-orientation="horizontal" aria-label="${t("panels.devices.logSplitterAriaLabel")}"></div>
+
+    <!-- グリッドビュー(選択した台の拡大表示。1台だけ選択のときは実行ログの複製も並べる)。
+         id は据え置き(旧・出力ペイン)。開閉は splitter.js(gridViewVisible) -->
+    <div id="output-pane" class="output-pane">
+      <div id="grid-view-header" class="lanes-header pane-header">
+        <button id="grid-view-toggle" class="run-board-toggle" type="button" aria-expanded="true" data-expanded="true">▶</button>
+        <!-- 文言は常に固定(laneLog.js が wvMonitor2.laneLog.titleDevices を入れる) -->
+        <span id="grid-view-title" class="lanes-title"></span>
+        <span id="lanes-selection-status"></span>
         <!-- 「ライブ更新」。**見出し行の右端**(ユーザー決定 2026-09-21)。
              状態の保存と復元は streamToggle.js ⇄ monitorPanel.ts
              (setShowStreamDuringRun / showStreamDuringRun) -->
         <label class="profile-label run-stream-toggle" title="${t("panels.toolbar.showStreamDuringRunTitle")}"><input type="checkbox" id="chk-show-stream-during-run" checked>${t("panels.toolbar.showStreamDuringRun")}</label>
       </div>
-      <!-- ラインビュー非表示中の「デバイスを待機しています」(出し入れは waitingNote.js) -->
+      <!-- グリッドビュー非表示中の「デバイスを待機しています」(出し入れは waitingNote.js) -->
       <div id="lanes-waiting" class="lanes-waiting" style="display: none;">${t("panels.devices.emptyMessage")}</div>
-      <div id="lanes-placeholder" class="lanes-placeholder">${t("panels.devices.lanesPlaceholder")}</div>
-      <div id="lanes-grid" class="lanes-grid" style="display: none;"></div>
+      <div id="preview-grid" class="lanes-grid"></div>
     </div>
   </div>`;
 }

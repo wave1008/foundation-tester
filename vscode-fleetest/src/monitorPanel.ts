@@ -262,6 +262,11 @@ export class MonitorPanelController implements vscode.Disposable {
    * webview の getState はパネルを閉じると失われるため host 側で永続化する(splitter.js と対の契約)。 */
   private tilePaneHeight: number | undefined;
   private fleetVisible: boolean;
+  /** 実行ログビュー(#log-pane)の高さ(px)。tilePaneHeight と同じ契約(splitter.js と対)。 */
+  private logPaneHeight: number | undefined;
+  /** 実行ログビュー・グリッドビューの開閉。fleetVisible と同じ契約(splitter.js と対)。 */
+  private logViewVisible: boolean;
+  private gridViewVisible: boolean;
   /** run ボード(docs/design.md §18)の折りたたみ(workspaceState の "monitor.runBoardCollapsed")。
    * ヘッダの ▸/▾(個々の run 行の展開)は webview 側だけで持つ(runBoard.js。ephemeral な groupKey
    * ごとの状態はセッションを跨いで意味を持たない)。 */
@@ -317,6 +322,10 @@ export class MonitorPanelController implements vscode.Disposable {
     // 既定 ON(webview 側 splitter.js の「!== false」と揃える。片方だけ変えない)。
     // 既定 true(webview 側 splitter.js の「!== false」と揃える。片方だけ変えない)。
     this.fleetVisible = workspaceState.get<boolean>("monitor.fleetVisible", true);
+    this.logPaneHeight = workspaceState.get<number>("monitor.logPaneHeight");
+    // 既定 true(webview 側 splitter.js の「!== false」と揃える。片方だけ変えない)。
+    this.logViewVisible = workspaceState.get<boolean>("monitor.logViewVisible", true);
+    this.gridViewVisible = workspaceState.get<boolean>("monitor.gridViewVisible", true);
     // 既定 展開(webview 側 runBoard.js の初期値と揃える)。
     this.runBoardCollapsed = workspaceState.get<boolean>("monitor.runBoardCollapsed", false);
     this.runBoardExpandAll = workspaceState.get<boolean>("monitor.runBoardExpandAll", false);
@@ -1139,6 +1148,18 @@ export class MonitorPanelController implements vscode.Disposable {
         this.fleetVisible = message.value;
         void this.workspaceState.update("monitor.fleetVisible", message.value);
         break;
+      case "setLogPaneHeight":
+        this.logPaneHeight = message.value;
+        void this.workspaceState.update("monitor.logPaneHeight", message.value);
+        break;
+      case "setLogViewVisible":
+        this.logViewVisible = message.value;
+        void this.workspaceState.update("monitor.logViewVisible", message.value);
+        break;
+      case "setGridViewVisible":
+        this.gridViewVisible = message.value;
+        void this.workspaceState.update("monitor.gridViewVisible", message.value);
+        break;
       case "setRunBoardCollapsed":
         this.runBoardCollapsed = message.value;
         void this.workspaceState.update("monitor.runBoardCollapsed", message.value);
@@ -1311,6 +1332,11 @@ export class MonitorPanelController implements vscode.Disposable {
     }
     // fleetVisible は selectAllDevices より先に送る(非表示なら webview が全選択から始める。main.js)
     this.post({ type: "fleetVisible", value: this.fleetVisible });
+    if (this.logPaneHeight !== undefined) {
+      this.post({ type: "logPaneHeight", value: this.logPaneHeight });
+    }
+    this.post({ type: "logViewVisible", value: this.logViewVisible });
+    this.post({ type: "gridViewVisible", value: this.gridViewVisible });
     this.post({ type: "runBoardCollapsed", value: this.runBoardCollapsed });
     this.post({ type: "runBoardExpandAll", value: this.runBoardExpandAll });
     this.post({ type: "selectAllDevices", value: this.selectAllDevices });

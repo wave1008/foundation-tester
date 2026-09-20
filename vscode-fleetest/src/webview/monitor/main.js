@@ -32,7 +32,7 @@ import {
   applyWipeStatus,
 } from './deviceTiles.js';
 import { applyShowStreamDuringRun } from './streamToggle.js';
-import { applyLaneAction, applyLaneHydrate, updateLaneVisibility, updateLanesPlaceholder } from './laneLog.js';
+import { applyLaneAction, applyLaneHydrate, updateLaneVisibility } from './laneLog.js';
 import { applyProjectInfo } from './projectsTab.js';
 import { applyHostMetrics, setHostMetricMachines, setMachineLock } from './hostCharts.js';
 import { applyMonitorRuns, resetRunBoard, setRunBoardCollapsed, setRunBoardExpandAll, setRunBoardMachines } from './runBoard.js';
@@ -71,7 +71,7 @@ import { applyResidentMessage } from './processesTab.js';
 import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
 import { activateTab, currentTab, HIDDEN_AT_STARTUP, TAB_IDS, switchTab } from './tabs.js';
 import { applyLiveH264Chunk, applyLiveMessage, initLive, openLiveDevice, refreshLiveDevices, setLiveVisible } from './liveTab.js';
-import { setTilePaneHeight, setFleetVisible, isFleetVisible } from './splitter.js';
+import { setTilePaneHeight, setFleetVisible, isFleetVisible, setLogPaneHeight, setLogViewVisible, setGridViewVisible } from './splitter.js';
 import { adoptTitleHoverTips } from './hoverTip.js';
 import { setDevicesWaiting } from './waitingNote.js';
 import { handleDashboardMessage } from './dashboardTab.js';
@@ -291,6 +291,15 @@ window.addEventListener('message', (event) => {
     case 'fleetVisible':
       setFleetVisible(message.value);
       break;
+    case 'logPaneHeight':
+      setLogPaneHeight(message.value);
+      break;
+    case 'logViewVisible':
+      setLogViewVisible(message.value);
+      break;
+    case 'gridViewVisible':
+      setGridViewVisible(message.value);
+      break;
     case 'selectAllDevices':
       // ラインビューが非表示なら「すべて選択」から始める(タイルを押して選べないため)。
       // host は fleetVisible をこれより先に送る(monitorPanel.ts の ready)。保存値は書き換えない
@@ -401,7 +410,6 @@ initLive();
 setDevicesWaiting(true);
 
 updateLaneVisibility();
-updateLanesPlaceholder();
 
 // ready ハンドシェイク: 全リスナー登録済みをhostに通知。hostはこれを受けて初期状態を送る。
 vscode.postMessage({ type: 'ready' });

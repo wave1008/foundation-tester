@@ -1,8 +1,14 @@
 // lanesの読み書きはこのモジュールに閉じる。deviceTiles.jsとはselectedDeviceIds/tiles/
 // runningWorkers(いずれも再代入されないMap/Set)を介して相互参照する。
+//
+// レーンは2枚の DOM を持つ: el(実行ログ。常に #lanes-grid の直接の子) / previewEl(拡大表示。
+// 選択中かつタイルがあるときだけ #preview-grid に置く)。**1台だけ選択のときだけ**、
+// previewEl と実行ログの複製(ミラー)を .lane-pair で束ねて #preview-grid に置く
+// (グリッドビューの中で 拡大表示|ログ を並べる。ログ本体の DOM は動かさない = 選択を外せば
+// #lanes-grid 側でそのまま続きが読める)。
 
 import { MAX_LANE_LINES, OVERALL_LANE_ID, overallLaneName, workerDisplayLabel } from "../../runLaneModel";
-import { lanesTitle, lanesPlaceholder, lanesGrid, lanesSelectionStatus, lanesRunStatus } from './domRefs.js';
+import { lanesGrid, previewGrid, gridViewTitle, lanesSelectionStatus, lanesRunStatus, logPane, outputPane } from './domRefs.js';
 import { tiles, selectedDeviceIds, attachDeviceMirror, detachDeviceMirror, openDeviceOpMenuForDevice, openSelectAllOnlyMenu, toggleSelectOnlyDevice } from './deviceTiles.js';
 import { t } from '../i18n.js';
 import { setHoverTip } from './hoverTip.js';
@@ -17,9 +23,13 @@ const lanes = new Map();
 // DOM追加順のままだとタイルの並びと食い違う。
 let deviceOrder = [];
 
-// lanesGridの子要素をdeviceOrder順に並べ直す(appendChildは既存ノードの移動)。
+// グリッドビューの見出しは固定文言(実行ログビュー側は静的 HTML が持つ)。
+gridViewTitle.textContent = t('wvMonitor2.laneLog.titleDevices');
+
+// lanesGrid(実行ログ)の子要素をdeviceOrder順に並べ直す(appendChildは既存ノードの移動)。
+// previewGrid側は「直接の子」(ミラー中でない previewEl)だけ並べ直す —— ミラー中の1枚は
+// .lane-pair に包まれて previewGrid の子になっており、動かすとミラーの組が壊れる。
 // deviceOrderに無いid(全体レーン等)は末尾・相対順維持。
-// 動かすのは pairEl(拡大表示+ログの組)。lanesGrid の直接の子は常に .lane-pair。
 // 機械バッジの段を出すか。**1つでも機械付きのレーンが居れば全レーンで確保する** ——
 // 段の有無がレーンごとに混ざると見出しの高さが揃わない(タイルの .with-machine-row と同じ規律)
 function syncLaneMachineRow() {
@@ -37,7 +47,11 @@ function reorderLanes() {
     (a, b) => (rank.get(a) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b) ?? Number.MAX_SAFE_INTEGER),
   );
   for (const id of ordered) {
-    lanesGrid.appendChild(lanes.get(id).pairEl);
+    const lane = lanes.get(id);
+    lanesGrid.appendChild(lane.el);
+    if (lane.previewEl.parentElement === previewGrid) {
+      previewGrid.appendChild(lane.previewEl);
+    }
   }
   syncLaneMachineRow();
 }
@@ -91,26 +105,17 @@ function ensureLane(id, name, platform, updateLabel, machine) {
   const header = document.createElement('div');
   header.className = 'lane-header';
   setLaneHeader(header, name, platform, machine);
-  // 1台だけ選択したときの見出し(バッジの代わりに「実行ログ」を中央に)。左の拡大表示がデバイスを示すので
-  // 名前を二重に出さない。出し分けは updateLaneVisibility
-  const logTitle = document.createElement('div');
-  logTitle.className = 'lane-header lane-log-title';
-  logTitle.textContent = t('wvMonitor2.laneLog.titleRunLog');
-  logTitle.style.display = 'none';
   const body = document.createElement('div');
   body.className = 'lane-body';
-  el.append(header, logTitle, body);
-  // 拡大表示はログの左。中身(タイルの絵の複製)は deviceTiles.js が入れる。デバイスを選択して
-  // いない間は display:none で、レーンは従来どおりログだけになる(updateLaneVisibility)。
-  const pair = document.createElement('div');
-  pair.className = 'lane-pair';
+  el.append(header, body);
+  lanesGrid.appendChild(el);
+
+  // 拡大表示(選択したデバイスのぶんだけ #preview-grid に置く。中身(タイルの絵の複製)は
+  // deviceTiles.js が入れる)。
   const preview = document.createElement('div');
   preview.className = 'lane-preview';
   preview.style.display = 'none';
-  pair.append(preview, el);
-  lanesGrid.appendChild(pair);
-  // 拡大表示だけがデバイスのメニューを開く(ログ上は何も出さない。既定メニューの抑止は出力ペイン全体で行う)
-  // グリッドビューのダブルクリック: その台だけの選択にする(1台なら左に絵・右にログ)。
+  // グリッドビューのダブルクリック: その台だけの選択にする(1台なら左に絵・右にログの複製)。
   // 「このデバイスのみ選択」の直後にもう一度押すと、その前の選択へ戻す(deviceTiles.js)
   preview.addEventListener('dblclick', () => toggleSelectOnlyDevice(id));
   preview.addEventListener('contextmenu', (event) => {
@@ -122,7 +127,7 @@ function ensureLane(id, name, platform, updateLabel, machine) {
     }
   });
 
-  lane = { el, pairEl: pair, previewEl: preview, headerEl: header, logTitleEl: logTitle, bodyEl: body, atBottom: true, lineCount: 0 };
+  lane = { el, previewEl: preview, headerEl: header, bodyEl: body, atBottom: true, lineCount: 0 };
   body.addEventListener('scroll', () => {
     lane.atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 24;
   });
@@ -135,7 +140,8 @@ function ensureLane(id, name, platform, updateLabel, machine) {
 // 描き続ける)。lanes からの delete は呼び手が行う(反復中の削除を呼び手側で制御するため)。
 function removeLane(id, lane) {
   detachDeviceMirror(id);
-  lane.pairEl.remove();
+  lane.el.remove();
+  lane.previewEl.remove();
 }
 
 function appendLaneLine(laneId, text) {
@@ -156,6 +162,27 @@ function appendLaneLine(laneId, text) {
   }
   if (wasAtBottom) {
     lane.bodyEl.scrollTop = lane.bodyEl.scrollHeight;
+  }
+
+  if (logMirror && logMirror.id === laneId) {
+    const mirrorWasAtBottom =
+      logMirror.body.scrollHeight - logMirror.body.scrollTop - logMirror.body.clientHeight < 24;
+    const mirrorLine = document.createElement('div');
+    mirrorLine.className = 'lane-line';
+    mirrorLine.textContent = text;
+    logMirror.body.appendChild(mirrorLine);
+    logMirror.lineCount += 1;
+    while (logMirror.lineCount > MAX_LANE_LINES) {
+      const first = logMirror.body.firstChild;
+      if (!first) {
+        break;
+      }
+      logMirror.body.removeChild(first);
+      logMirror.lineCount -= 1;
+    }
+    if (mirrorWasAtBottom) {
+      logMirror.body.scrollTop = logMirror.body.scrollHeight;
+    }
   }
 }
 
@@ -190,36 +217,77 @@ function configureLanes(laneInfos) {
   updateLaneVisibility();
 }
 
+// 実行ログの複製(1台だけ選択のときにグリッドビューへ置くミラー)。詳細はファイル冒頭のコメント。
+// 一度に1台ぶんだけ持つ(束ねる .lane-pair 自体が状態を持つので、id が変わるたびに作り直す)。
+let logMirror = null;
+
+function buildLogMirror(lane) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'lane-pair';
+  const mirrorLane = document.createElement('div');
+  mirrorLane.className = 'lane lane-log-mirror';
+  const header = document.createElement('div');
+  header.className = 'lane-header lane-log-title';
+  header.textContent = t('wvMonitor2.laneLog.titleRunLog');
+  const body = document.createElement('div');
+  body.className = 'lane-body';
+  mirrorLane.append(header, body);
+  wrapper.append(lane.previewEl, mirrorLane);
+  previewGrid.appendChild(wrapper);
+  return { wrapper, body };
+}
+
+// mirrorId は「ちょうど1台選択・かつタイルがある」ときだけそのデバイス id、それ以外は null。
+function syncLogMirror(mirrorId) {
+  if (logMirror && logMirror.id === mirrorId) {
+    return;
+  }
+  if (logMirror) {
+    const oldLane = lanes.get(logMirror.id);
+    if (oldLane) {
+      // previewEl を組から外して #preview-grid の直接の子へ戻す(消えていなければ引き続き表示対象)
+      previewGrid.appendChild(oldLane.previewEl);
+    }
+    logMirror.wrapper.remove();
+    logMirror.body.replaceChildren();
+    logMirror = null;
+  }
+  if (mirrorId === null) {
+    return;
+  }
+  const lane = lanes.get(mirrorId);
+  const { wrapper, body } = buildLogMirror(lane);
+  body.append(...[...lane.bodyEl.children].map((el) => el.cloneNode(true)));
+  body.scrollTop = body.scrollHeight;
+  logMirror = { id: mirrorId, wrapper, body, lineCount: lane.lineCount };
+}
+
 export function updateLaneVisibility() {
   const allIds = [...lanes.keys()];
   const activeIds = selectedDeviceIds.size > 0
     ? allIds.filter((id) => selectedDeviceIds.has(id))
     : allIds;
-  // デバイスを選択している間は拡大表示だけを並べる(ログは置かない。ユーザー決定)。
-  // **1台だけのときは左 = 拡大表示・右 = そのデバイスの実行ログ**(ユーザー決定 2026-09-17)。
-  // 絞り込み無し(選択なし)は従来どおり全レーンのログ。
+
+  // 実行ログビュー: activeIds(選択0台なら全レーン・1台以上なら選択中のレーンだけ)。
+  // グリッドビューの選択状態に関わらず、常にこの規則だけで決まる。
+  for (const [id, lane] of lanes) {
+    const visible = activeIds.includes(id);
+    const wasHidden = lane.el.style.display === 'none';
+    lane.el.style.display = visible ? 'flex' : 'none';
+    if (visible && wasHidden && lane.atBottom) {
+      // 隠れている間に積まれた行の末尾へ(隠れている間は scrollHeight が 0 で追従できない)
+      lane.bodyEl.scrollTop = lane.bodyEl.scrollHeight;
+    }
+  }
+  lanesGrid.style.gridTemplateColumns = 'repeat(' + Math.max(1, activeIds.length) + ', minmax(0, 1fr))';
+
+  // グリッドビュー: 選択中かつタイルがあるレーンだけ拡大表示する(選択0台では何も出さない)。
   const previewEnabled = selectedDeviceIds.size > 0;
   const singleDevice = selectedDeviceIds.size === 1;
   const previewIds = [];
   for (const [id, lane] of lanes) {
-    const visible = activeIds.includes(id);
-    lane.pairEl.style.display = visible ? 'flex' : 'none';
-    // 全体レーン(__overall__)にはタイルが無いので拡大表示も無い(ログのまま出す)。
-    const showPreview = previewEnabled && visible && tiles.has(id);
+    const showPreview = previewEnabled && selectedDeviceIds.has(id) && tiles.has(id);
     lane.previewEl.style.display = showPreview ? 'flex' : 'none';
-    const showLog = !showPreview || singleDevice;
-    const wasHidden = lane.el.style.display === 'none';
-    lane.el.style.display = showLog ? 'flex' : 'none';
-    if (showLog && wasHidden && lane.atBottom) {
-      // 隠れている間に積まれた行の末尾へ(隠れている間は scrollHeight が 0 で追従できない)
-      lane.bodyEl.scrollTop = lane.bodyEl.scrollHeight;
-    }
-    const beside = showPreview && singleDevice;
-    lane.headerEl.style.display = beside ? 'none' : '';
-    lane.logTitleEl.style.display = beside ? '' : 'none';
-    if (!beside) {
-      lane.previewEl.style.width = '';
-    }
     if (showPreview) {
       attachDeviceMirror(id, lane.previewEl);
       previewIds.push(id);
@@ -227,31 +295,43 @@ export function updateLaneVisibility() {
       detachDeviceMirror(id);
     }
   }
-  lanesGrid.classList.toggle('single-device', singleDevice && previewIds.length === 1);
-  relayoutLanesGrid(activeIds.length, previewIds);
-  // 見出しは中身に合わせる(選択中はログではなく拡大した動画を並べているため)。
-  lanesTitle.textContent = previewEnabled
-    ? t('wvMonitor2.laneLog.titleDevices')
-    : t('wvMonitor2.laneLog.titleRunLog');
+
+  // **1台だけ選択のときだけ**、拡大表示の隣に実行ログの複製を並べる。
+  const mirrorId = singleDevice && previewIds.length === 1 ? previewIds[0] : null;
+  syncLogMirror(mirrorId);
+
+  // ミラー対象を除く拡大表示をデバイス順で並べる(ミラー対象は .lane-pair の中にいるので動かさない)。
+  const rank = new Map(deviceOrder.map((id, index) => [id, index]));
+  const directPreviewIds = previewIds
+    .filter((id) => id !== mirrorId)
+    .sort((a, b) => (rank.get(a) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b) ?? Number.MAX_SAFE_INTEGER));
+  for (const id of directPreviewIds) {
+    const lane = lanes.get(id);
+    previewGrid.appendChild(lane.previewEl);
+    // 1台だけのときの幅指定(layoutSinglePreview)を残さない
+    lane.previewEl.style.width = '';
+  }
+
+  previewGrid.classList.toggle('single-device', mirrorId !== null);
+  relayoutPreviewGrid(previewIds);
+
   lanesSelectionStatus.textContent = selectedDeviceIds.size > 0
     ? t('wvMonitor2.laneLog.selectedCount', { count: selectedDeviceIds.size })
-    : t('wvMonitor2.laneLog.allWorkers');
+    : '';
 }
 
 // 直近の段組み計算に使った引数(ResizeObserver / アスペクト確定からの再計算で使い回す)。
 let previewLayoutIds = [];
-let previewLaneCount = 1;
 
-// ログだけのときは従来どおり横一列。拡大表示のときは「絵が一番大きくなる」段組みにする
-// (計算は previewGridModel.js。行も列も 1fr の等分なので、あとは grid-template を書くだけ)。
-function relayoutLanesGrid(laneCount, previewIds) {
-  previewLaneCount = laneCount;
+// 拡大表示は「絵が一番大きくなる」段組みにする(計算は previewGridModel.js。行も列も 1fr の
+// 等分なので、あとは grid-template を書くだけ)。
+function relayoutPreviewGrid(previewIds) {
   previewLayoutIds = previewIds;
   const previewing = previewIds.length > 0;
-  lanesGrid.classList.toggle('previewing', previewing);
+  previewGrid.classList.toggle('previewing', previewing);
   if (!previewing) {
-    lanesGrid.style.gridTemplateColumns = 'repeat(' + Math.max(1, laneCount) + ', minmax(0, 1fr))';
-    lanesGrid.style.gridTemplateRows = '';
+    previewGrid.style.gridTemplateColumns = '';
+    previewGrid.style.gridTemplateRows = '';
     return;
   }
   // 一番横に広い台に合わせる(狭い台はその枠の中で letterbox される)。
@@ -262,24 +342,24 @@ function relayoutLanesGrid(laneCount, previewIds) {
       aspect = value;
     }
   }
-  if (lanesGrid.classList.contains('single-device')) {
-    lanesGrid.style.gridTemplateColumns = 'minmax(0, 1fr)';
-    lanesGrid.style.gridTemplateRows = 'minmax(0, 1fr)';
+  if (previewGrid.classList.contains('single-device')) {
+    previewGrid.style.gridTemplateColumns = 'minmax(0, 1fr)';
+    previewGrid.style.gridTemplateRows = 'minmax(0, 1fr)';
     layoutSinglePreview(previewIds[0], aspect);
     return;
   }
-  const gridStyle = getComputedStyle(lanesGrid);
+  const gridStyle = getComputedStyle(previewGrid);
   const grid = computePreviewGrid({
     // classList の変更後に読むこと(拡大表示中はスクロールバーを出さないぶん幅が広い)
-    paneWidth: lanesGrid.clientWidth,
-    paneHeight: lanesGrid.clientHeight,
+    paneWidth: previewGrid.clientWidth,
+    paneHeight: previewGrid.clientHeight,
     count: previewIds.length,
     aspect,
     gap: parseFloat(gridStyle.rowGap),
     chromeHeight: measurePreviewChromeHeight(),
   });
-  lanesGrid.style.gridTemplateColumns = 'repeat(' + grid.columns + ', minmax(0, 1fr))';
-  lanesGrid.style.gridTemplateRows = 'repeat(' + grid.rows + ', minmax(0, 1fr))';
+  previewGrid.style.gridTemplateColumns = 'repeat(' + grid.columns + ', minmax(0, 1fr))';
+  previewGrid.style.gridTemplateRows = 'repeat(' + grid.rows + ', minmax(0, 1fr))';
 }
 
 // 1台だけのときの拡大表示の幅。枠の固定費は実測する(定数を置かない)
@@ -290,8 +370,8 @@ function layoutSinglePreview(id, aspect) {
     return;
   }
   const width = computeSinglePreviewWidth({
-    paneWidth: lanesGrid.clientWidth,
-    paneHeight: lanesGrid.clientHeight,
+    paneWidth: previewGrid.clientWidth,
+    paneHeight: previewGrid.clientHeight,
     aspect,
     chromeHeight: lane.previewEl.offsetHeight - frame.clientHeight,
     chromeWidth: lane.previewEl.offsetWidth - frame.clientWidth,
@@ -302,7 +382,7 @@ function layoutSinglePreview(id, aspect) {
 // 1セルのうち絵以外(タグ段 + その下の間隔)の高さ。定数を置かず実測する(style.css を
 // 変えたときに片方だけ古くなるのを防ぐ)。レイアウト未確定なら 0。
 function measurePreviewChromeHeight() {
-  const preview = lanesGrid.querySelector('.lane-preview');
+  const preview = previewGrid.querySelector('.lane-preview');
   const frame = preview && preview.querySelector('.lane-preview-frame');
   if (!preview || !frame) {
     return 0;
@@ -311,33 +391,29 @@ function measurePreviewChromeHeight() {
 }
 
 // ペインの大きさが変わったら組み直す(セパレーターのドラッグ・ウィンドウ/パネルの
-// リサイズを1箇所で拾う)。段組みを書き換えても lanesGrid 自身の大きさは変わらないので
+// リサイズを1箇所で拾う)。段組みを書き換えても previewGrid 自身の大きさは変わらないので
 // 再入しない。jsdom には ResizeObserver が無いので存在するときだけ張る。
 export function relayoutPreviewsForResize() {
   if (previewLayoutIds.length === 0) {
     return;
   }
-  relayoutLanesGrid(previewLaneCount, previewLayoutIds);
+  relayoutPreviewGrid(previewLayoutIds);
 }
 if (typeof ResizeObserver !== 'undefined') {
-  new ResizeObserver(() => relayoutPreviewsForResize()).observe(lanesGrid);
+  new ResizeObserver(() => relayoutPreviewsForResize()).observe(previewGrid);
 }
 
-// 実行ログのペインでは既定メニュー(Cut/Copy/Paste)を出さない。選択が1台も無いときだけ「すべて選択」を出す。
-// 出さないときは document へ伝播させる(開いているメニューを閉じる)。出したときは止める(直後に閉じられるため)
-lanesGrid.parentElement.addEventListener('contextmenu', (event) => {
+// 実行ログ・グリッドの両ペインでは既定メニュー(Cut/Copy/Paste)を出さない。選択が1台も無いときだけ
+// 「すべて選択」を出す。出さないときは document へ伝播させる(開いているメニューを閉じる)。
+// 出したときは止める(直後に閉じられるため)
+function handlePaneContextMenu(event) {
   event.preventDefault();
   if (openSelectAllOnlyMenu(event.clientX, event.clientY)) {
     event.stopPropagation();
   }
-});
-
-// 出力ペインは常設(実行前もデバイス毎の空レーンを表示)。レーンはdevicesサイクルから常時同期。
-export function updateLanesPlaceholder() {
-  lanesPlaceholder.style.display = 'none';
-  lanesGrid.style.display = 'grid';
 }
-updateLanesPlaceholder();
+logPane.addEventListener('contextmenu', handlePaneContextMenu);
+outputPane.addEventListener('contextmenu', handlePaneContextMenu);
 
 // 実行開始(cleared)で一旦消えても、次のdevicesサイクルで復元される。
 // タイル側(deviceTiles.js applyDevices)と対で、devicesに無いレーンは削除して数を同期する。

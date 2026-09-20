@@ -83,12 +83,11 @@ export const webviewMonitorBStrings = {
   },
 
   // laneLog.js
-  // 出力ペインの見出し。選択中は中身が実行ログではなく拡大した動画になるので言い換える
-  // (静的HTML側の既定は panels.common.runLog。ja/en とも同じ文字列を保つこと)。
+  // 実行ログビューの見出し(常に titleRunLog。静的 HTML 側の既定は panels.common.runLog)。
+  // グリッドビューの見出しは常に titleDevices。1台選択時のミラー(実行ログの複製)の見出しにも titleRunLog を使う。
   "wvMonitor2.laneLog.titleRunLog": { ja: "実行ログ", en: "Run Log" },
   "wvMonitor2.laneLog.titleDevices": { ja: "デバイス", en: "Devices" },
   "wvMonitor2.laneLog.selectedCount": { ja: "{count}台を表示", en: "Showing {count}" },
-  "wvMonitor2.laneLog.allWorkers": { ja: "全ワーカー", en: "All workers" },
 
   // hostCharts.js
   "wvMonitor2.hostCharts.lockOther": {

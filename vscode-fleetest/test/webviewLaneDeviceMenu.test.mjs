@@ -106,7 +106,7 @@ test("拡大表示の右クリックは、タイルと同じ「ライブ操作�
   t.after(() => window.close());
   sendDevice(window);
   selectFirstTile(window, document);
-  const preview = document.querySelector("#lanes-grid .lane-preview");
+  const preview = document.querySelector("#preview-grid .lane-preview");
   assert.notEqual(preview.style.display, "none", "選択すると拡大表示になる");
 
   const event = rightClick(window, preview);

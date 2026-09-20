@@ -29,11 +29,21 @@ export const tilePane = document.getElementById('tile-pane');
 export const tileMarquee = document.getElementById('tile-marquee');
 export const splitter = document.getElementById('splitter');
 export const lanesTitle = document.getElementById('lanes-title');
-export const lanesPlaceholder = document.getElementById('lanes-placeholder');
 export const lanesWaiting = document.getElementById('lanes-waiting');
 export const lanesGrid = document.getElementById('lanes-grid');
 export const lanesSelectionStatus = document.getElementById('lanes-selection-status');
 export const lanesRunStatus = document.getElementById('lanes-run-status');
+
+// 実行ログビュー(#log-pane)・グリッドビュー(#output-pane)の開閉・分割(splitter.js)。
+export const logPane = document.getElementById('log-pane');
+export const logViewHeader = document.getElementById('log-view-header');
+export const logViewToggle = document.getElementById('log-view-toggle');
+export const splitterLog = document.getElementById('splitter-log');
+export const outputPane = document.getElementById('output-pane');
+export const gridViewHeader = document.getElementById('grid-view-header');
+export const gridViewToggle = document.getElementById('grid-view-toggle');
+export const gridViewTitle = document.getElementById('grid-view-title');
+export const previewGrid = document.getElementById('preview-grid');
 
 export const deviceOpMenu = document.getElementById('device-op-menu');
 export const deviceOpMenuItemBtn = document.getElementById('device-op-menu-item');
