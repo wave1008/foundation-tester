@@ -101,12 +101,27 @@ const visiblePreviews = (document) =>
 
 // ---- ①②: 選択0台/2台の絞り込み(要求どおりの最小確認。詳細は webviewLanePreview.test.mjs) ----
 
-test("選択0台では全レーンのログが #lanes-grid に出て #preview-grid は空", (t) => {
+test("選択0台では実行ログも拡大表示も出さない", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, 3);
-  assert.equal(visibleLogs(document).length, 3);
+  assert.equal(visibleLogs(document).length, 0);
   assert.equal(document.getElementById("preview-grid").children.length, 0);
+});
+
+// 全体レーンは台ではない(タイルも無い)ので選択に従わせない —— 消すと供給フェーズの進行
+// (worker を持たないイベント)が読めなくなる。
+test("全体レーン(__overall__)は選択0台でも残る", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 2);
+  post(window, { type: "runEvent", action: { type: "line", laneId: "__overall__", text: "起動しています (1/2)" } });
+  const shown = visibleLogs(document);
+  assert.equal(shown.length, 1, "選択0台でも全体レーンだけは出る");
+  assert.equal(shown[0].querySelector(".lane-body").textContent, "起動しています (1/2)");
+
+  clickTile(document, 0);
+  assert.equal(visibleLogs(document).length, 2, "台を選ぶと全体レーンと並べて出す");
 });
 
 test("2台選択でログが2本に絞られ、拡大表示が2枚出る", (t) => {

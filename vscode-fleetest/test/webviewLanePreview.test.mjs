@@ -1,8 +1,8 @@
 // 実行ログビュー(#log-pane)・グリッドビュー(#output-pane)の DOM テスト。
 // 実 HTML + 実バンドルを jsdom で動かす方式は webviewTileRelayout.test.mjs と同じ。
 //
-// 契約(ユーザー要件 2026-09-21): 「デバイスモニター」タブは下段が実行ログビュー(常に選択に
-// 絞った台のログ。0台なら全台)とグリッドビュー(選択した台の拡大表示。**選択0台では空**)の
+// 契約(ユーザー要件 2026-09-21): 「デバイスモニター」タブは下段がグリッドビュー(選択した台の
+// 拡大表示)と実行ログビュー(**ラインビューで選択した台のログだけ**。どちらも選択0台では空)の
 // 2ペインに分かれる。**ちょうど1台選択のときだけ**、グリッドビューの中に 拡大表示|実行ログの複製
 // (ミラー)を並べる ―― ログ本体の DOM は実行ログビュー側から動かさない。
 //
@@ -134,11 +134,11 @@ const previewDeviceName = (el) => el.querySelector(".lane-preview-header .tile-n
 const visiblePreviewNames = (document) => visiblePreviews(document).map(previewDeviceName);
 const logHeaderName = (laneEl) => laneEl.querySelector(".lane-header").textContent;
 
-test("選択が無い間はグリッドビューを空にする(実行ログビューは全台)", (t) => {
+test("選択が無い間はグリッドビューも実行ログビューも空にする", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [{}, {}, {}]);
-  assert.equal(visibleLogs(document).length, 3, "実行ログビューは全レーンを出すこと");
+  assert.equal(visibleLogs(document).length, 0, "選択した台だけを出すこと(0台なら1本も出さない)");
   assert.equal(visiblePreviews(document).length, 0, "選択していないのに動画枠を出さないこと");
   assert.equal(document.getElementById("lanes-title").textContent, "実行ログ");
   assert.equal(document.getElementById("grid-view-title").textContent, "デバイス");
@@ -277,7 +277,7 @@ test("2台選択で動画が2つ・ログも2つ、選択順ではなくデバ�
   assert.deepEqual(visibleLogs(document).map(logHeaderName), ["Dev 0", "Dev 2"]);
 });
 
-test("選択を外すと拡大表示が消え、実行ログビューは全台に戻る", (t) => {
+test("選択を外すと拡大表示も実行ログも消える", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [{}, {}]);
@@ -288,7 +288,7 @@ test("選択を外すと拡大表示が消え、実行ログビューは全台�
   assert.equal(visiblePreviews(document).length, 0);
   assert.equal(document.getElementById("preview-grid").classList.contains("single-device"), false);
   assert.equal(document.getElementById("preview-grid").querySelector(".lane-pair"), null);
-  assert.equal(visibleLogs(document).length, 2, "実行ログビューを出し直すこと");
+  assert.equal(visibleLogs(document).length, 0, "実行ログも選択に従って消えること");
 });
 
 test("拡大表示の上にラインビューと同じタグが付く", (t) => {
@@ -458,7 +458,7 @@ test("選択解除で段組みも横一列(空)へ戻す(行の指定を残さ�
   assert.equal(grid.classList.contains("previewing"), false);
   assert.equal(grid.style.gridTemplateColumns, "");
   assert.equal(grid.style.gridTemplateRows, "");
-  assert.equal(visibleLogs(document).length, 6, "実行ログビューは全台へ戻る");
+  assert.equal(visibleLogs(document).length, 0, "実行ログビューも空へ戻る");
 });
 
 // 再起動の間は新しいフレームが来ないので、畳まないと最後の1枚が出たまま残る(タイルを
@@ -475,7 +475,7 @@ test("モニター再起動で拡大表示を畳む(古い絵を出したまま�
 
   assert.equal(document.querySelectorAll("#preview-grid .lane-preview-media").length, 0, "絵の要素ごと外すこと");
   assert.equal(visiblePreviews(document).length, 0);
-  assert.equal(visibleLogs(document).length, 2, "レーン自体は run の状態なので残しログへ戻す");
+  assert.equal(visibleLogs(document).length, 0, "選択が解けるのでログも出さない(レーン自体は残る)");
 });
 
 test("選択したままデバイスが消えても拡大表示を残さない", (t) => {
@@ -493,7 +493,7 @@ test("選択したままデバイスが消えても拡大表示を残さない",
   window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices } }));
   assert.equal(document.querySelectorAll("#preview-grid .lane-preview-media").length, 0);
   assert.equal(visiblePreviews(document).length, 0);
-  assert.equal(visibleLogs(document).length, 1, "残った台は従来どおりログだけに戻ること");
+  assert.equal(visibleLogs(document).length, 0, "消えた台の選択は残らないのでログも出ない");
 });
 
 // 実行ログビューのレーン見出しは、機械バッジをデバイス名の**下**に置く(ユーザー決定 2026-09-21。

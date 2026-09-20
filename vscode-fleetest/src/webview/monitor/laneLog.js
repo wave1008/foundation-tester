@@ -263,13 +263,10 @@ function syncLogMirror(mirrorId) {
 }
 
 export function updateLaneVisibility() {
-  const allIds = [...lanes.keys()];
-  const activeIds = selectedDeviceIds.size > 0
-    ? allIds.filter((id) => selectedDeviceIds.has(id))
-    : allIds;
-
-  // 実行ログビュー: activeIds(選択0台なら全レーン・1台以上なら選択中のレーンだけ)。
-  // グリッドビューの選択状態に関わらず、常にこの規則だけで決まる。
+  // 実行ログビューに出すのは**ラインビューで選択した台だけ**(ユーザー決定 2026-09-21)。
+  // 選択0台なら1本も出さない。**全体レーン(__overall__)は台ではない**ので選択に関わらず残す ——
+  // ここに供給フェーズの進行(worker を持たないイベント)が積まれるので、消すと run の進みが読めなくなる。
+  const activeIds = [...lanes.keys()].filter((id) => id === OVERALL_LANE_ID || selectedDeviceIds.has(id));
   for (const [id, lane] of lanes) {
     const visible = activeIds.includes(id);
     const wasHidden = lane.el.style.display === 'none';
