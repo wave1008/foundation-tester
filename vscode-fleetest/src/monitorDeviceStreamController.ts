@@ -161,7 +161,7 @@ export class MonitorDeviceStreamController {
       const codec: "mjpeg" | "h264" = this.mjpegFallbackIds.has(device.id) ? "mjpeg" : config.streamCodec;
       const codecArgs = codec === "h264" ? ["--codec", "h264"] : [];
       // **占有中の機械・その台自身が run 中・他の発行者が配信中の台は起こさない**(共有ランナー。
-      // 「画面更新」が ON のとき、occupiedMachines は自分の run のぶんを含まず inRun も見ない。
+      // 「ライブ更新」が ON のとき、occupiedMachines は自分の run のぶんを含まず inRun も見ない。
       // §18.2 M2)。occupiedMachines(機械単位。dispatch.lock)と inRun(台単位。RunLease)は
       // 粒度が違う信号で、**どちらか一方が立てば畳む**(手元は machine 無しなので occupiedMachines
       // では判定できず、inRun がその代わりになる)。qualifying に入れない = 既存のパイプラインも
@@ -170,7 +170,7 @@ export class MonitorDeviceStreamController {
         continue;
       }
       if (!showStreamDuringRun && device.inRun === true) {
-        // 「画面更新」が ON(既定)なら run 中も配信を続ける(利用者の選択。配信を張ったままの run は赤くなり得る =
+        // 「ライブ更新」が ON(既定)なら run 中も配信を続ける(利用者の選択。配信を張ったままの run は赤くなり得る =
         // docs/verification.md)。
         // RunLease は pid 生存 + mtime 15 秒で自ら失効する(解除条件はこの2つだけ)ので、
         // run が死ねば次の applyDevices(最大 monitorInterval 秒後)で配信は自動的に戻る。

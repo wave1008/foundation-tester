@@ -388,7 +388,7 @@ export type MonitorToWebviewMessage =
   // tilePaneHeight と同じ(setSelectAllDevices と対の契約)。**0枚でも復元する** ——
   // ready 直後はモニターがまだ台を出しておらず、出てきた台を webview 側が選び直す。
   | { readonly type: "selectAllDevices"; readonly value: boolean }
-  // 「デバイスモニター」タブの「画面更新」チェックボックスの状態(false = 全台の配信と画面の取り込みを止める)。
+  // 「デバイスモニター」タブの「ライブ更新」チェックボックスの状態(false = 全台の配信と画面の取り込みを止める)。
   // 永続化の経路は selectAllDevices と同じ(setShowStreamDuringRun と対の契約。受け手は streamToggle.js)。
   | { readonly type: "showStreamDuringRun"; readonly value: boolean }
   // ブリッジ突然死の自動修復ウォッチドッグ(monitorBridgeWatchdog.ts)の状態遷移通知。name は
@@ -775,7 +775,7 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "refreshResidentProcesses" }
   // タブ切替でデバイスタイルが display:none になったことの通知。ホストは配信helperを止める
   // (対向: src/webview/monitor/tabs.js の switchTab)。パネル自体の表示可否とは別軸で、
-  // ホスト側は両方と「画面更新」(setShowStreamDuringRun)の AND を deviceStream.setVisible へ渡す
+  // ホスト側は両方と「ライブ更新」(setShowStreamDuringRun)の AND を deviceStream.setVisible へ渡す
   | { readonly type: "devicesTabVisible"; readonly visible: boolean }
   // 常駐プロセス(モニター/host-metrics/配信・ブリッジ・workspace 由来の残余)を掃討したあと、
   // 再起動せずにモニターパネル(タブ)を閉じる。確認ダイアログは出さず即実行。応答は返さない
@@ -797,7 +797,7 @@ export type MonitorFromWebviewMessage =
   // 個別選択で全台が揃った/崩れたとき)。monitorPanel.ts が workspaceState へ永続化し、
   // パネル再作成時に "selectAllDevices" メッセージで復元する。
   | { readonly type: "setSelectAllDevices"; readonly value: boolean }
-  // 「画面更新」チェックボックスの切替。monitorPanel.ts が workspaceState へ永続化し、
+  // 「ライブ更新」チェックボックスの切替。monitorPanel.ts が workspaceState へ永続化し、
   // パネル再作成時に "showStreamDuringRun" メッセージで復元する。
   | { readonly type: "setShowStreamDuringRun"; readonly value: boolean }
   // webview 側 WebCodecs が未対応/デコード失敗したときに1回送られてくる(受け手: monitorPanel.ts の

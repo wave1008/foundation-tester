@@ -234,6 +234,17 @@ button.bulk-cancel:hover:not(:disabled) {
   align-self: center;
   gap: 4px;
   white-space: nowrap;
+  /* 押せることを示す(ホバーの面と文字色は .icon-button / run ボードの操作と同じ表現) */
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+.run-stream-toggle:hover {
+  background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+  color: var(--vscode-foreground);
+}
+.run-stream-toggle input {
+  cursor: pointer;
 }
 /* 通常は1行(手元だけ)。リモート機の行が増えると縦に積む(hostCharts.js が hm-multi を付ける) */
 .host-metrics {
@@ -355,6 +366,9 @@ button.bulk-cancel:hover:not(:disabled) {
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
+  /* グリッドビューの見出し(.lanes-header)と同じ 12px。既定(13px)のままだと
+     ラインビューの見出しだけ1px 大きくなる */
+  font-size: 12px;
   cursor: pointer;
 }
 .run-board-header:hover {
@@ -695,14 +709,15 @@ select:disabled { opacity: 0.5; cursor: default; }
 }
 .grid {
   position: absolute;
-  inset: 12px 12px 0 12px;
+  /* 上 2px = 見出し行とタイルの間(ユーザー決定 2026-09-21。左右 12px は据え置き) */
+  inset: 2px 12px 0 12px;
   display: flex;
   flex-wrap: nowrap;
   align-items: stretch; /* タイル高さフィット(.frame-wrap)の前提 */
   gap: 8px;
   overflow-x: scroll; /* auto は常時表示にならないため */
   overflow-y: hidden;
-  padding-bottom: 10px;
+  padding-bottom: 2px;   /* タイルの下端と横スクロールバーの間(ユーザー決定 2026-09-21。10 → 2) */
   /* つまみは**濃いグレーを半透明で**・溝は**塗らない**(ユーザー決定 2026-08-28)。
      テーマのトークンにも前面色にも戻さない —— どちらも明るめの中間グレーで、
      セパレーター(.splitter)と同色になり見分けが付かなかった。黒だと今度は暗い地に
@@ -975,7 +990,7 @@ html.select-all-guard * {
 }
 .empty {
   position: absolute;
-  inset: 12px 12px 0 12px;
+  inset: 2px 12px 0 12px;   /* .grid と同じ位置に重ねる */
   display: none;
   align-items: center;
   justify-content: center;
@@ -1034,6 +1049,11 @@ html.select-all-guard * {
 .lanes-title {
   font-weight: 600;
   color: var(--vscode-foreground);
+}
+/* 「N台を表示」。ラインビューの同じ意味のラベル(.line-view-selection)と同じ 11px
+   —— 親の .lanes-header は 12px なので、継承のままだと片方だけ大きくなる */
+#lanes-selection-status {
+  font-size: 11px;
 }
 /* ペイン全体の上下左右中央に重ねる(ラインビューの .empty と同じ出し方)。下のログ操作を邪魔しない */
 .lanes-waiting {

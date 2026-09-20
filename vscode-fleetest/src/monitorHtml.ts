@@ -208,7 +208,7 @@ function renderDashboardPanel(): string {
 function renderDevicesPanel(): string {
   return `<div id="panel-devices" class="tab-panel" role="tabpanel" aria-labelledby="tab-devices">
     <div id="toolbar" class="toolbar">
-      <!-- 1行目(「テストを実行」まで)。幅 100% で常に1行を占め、グラフ・「画面更新」・アイコン群は次の行 -->
+      <!-- 1行目(「テストを実行」まで)。幅 100% で常に1行を占め、グラフ・「ライブ更新」・アイコン群は次の行 -->
       <div id="toolbar-run-row" class="toolbar-run-row">
         <!-- 実行プロファイルはプロジェクトに属するので、その左に置いて左→右で絞り込みになる順にする。
              選ぶと fleetest.project 設定が変わり、実行プロファイル一覧もこれに追従する。 -->
@@ -302,7 +302,7 @@ function renderDevicesPanel(): string {
         <span id="lanes-title" class="lanes-title">${t("panels.common.runLog")}</span>
         <span id="lanes-selection-status"></span>
         <span id="lanes-run-status"></span>
-        <!-- 「画面更新」。**見出し行の右端**(ユーザー決定 2026-09-21)。
+        <!-- 「ライブ更新」。**見出し行の右端**(ユーザー決定 2026-09-21)。
              状態の保存と復元は streamToggle.js ⇄ monitorPanel.ts
              (setShowStreamDuringRun / showStreamDuringRun) -->
         <label class="profile-label run-stream-toggle" title="${t("panels.toolbar.showStreamDuringRunTitle")}"><input type="checkbox" id="chk-show-stream-during-run" checked>${t("panels.toolbar.showStreamDuringRun")}</label>

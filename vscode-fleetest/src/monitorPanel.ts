@@ -129,7 +129,7 @@ export interface MonitorPanelDeps {
    * monitorDeviceStreamController.ts がストリーミング開始を抑止しポーリングへフォールバックする
    * (workspaceState の "monitor.pollingMode" を共有する liveTabHost.ts/monitorLiveController.ts も同様)。 */
   isPollingMode(): boolean;
-  /** 「デバイスモニター」タブの「画面更新」チェックボックス(workspaceState の
+  /** 「デバイスモニター」タブの「ライブ更新」チェックボックス(workspaceState の
    * "monitor.showStreamDuringRun"。既定 ON)。false の間だけ run 中の台の配信を畳む。 */
   isShowStreamDuringRun(): boolean;
   /** MonitorProfilesController.postProfileInfoへの委譲。MonitorDeviceOps.runCreateDevice成功時に呼ぶ。 */
@@ -251,7 +251,7 @@ export class MonitorPanelController implements vscode.Disposable {
   private remoteHostsLoaded = false;
 
   /** 配信helperを動かすのはパネルが見えていて かつ 「デバイスモニター」タブが開いていて かつ
-   * 「画面更新」が ON のときだけ。どれか1つでも欠けると画面の配信・取り込み(suppressFrames)を全台止める
+   * 「ライブ更新」が ON のときだけ。どれか1つでも欠けると画面の配信・取り込み(suppressFrames)を全台止める
    * (見えない絵のエンコード/デコードは丸ごと無駄。OFF は利用者がマシンの負荷を下げる口。観測は monitor が続ける) */
   private applyDeviceStreamVisibility(): void {
     this.deviceStream.setVisible(this.panelVisible && this.devicesTabVisible && this.showStreamDuringRun);
