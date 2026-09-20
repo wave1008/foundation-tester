@@ -298,6 +298,72 @@ test("グリッドビューを畳むと「デバイスを待機しています�
   assert.equal(waiting.style.display, "flex", "戻したら再び出る");
 });
 
+// ---- 1台だけ選択したときの実行ログビューの自動折り畳み(ユーザー決定 2026-09-21) ----
+// グリッドビューに同じログの複製が出るので上下に二重で出さない。**利用者の設定は書き換えない**
+// ので、1台でなくなれば元の開閉状態に戻る。
+
+const logHidden = (document) => document.getElementById("panel-devices").classList.contains("log-view-hidden");
+
+test("1台選択で実行ログビューを畳み、2台選ぶと戻す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  assert.equal(logHidden(document), false, "前提: 両方開いている");
+
+  clickTile(document, 0);
+  assert.equal(logHidden(document), true, "1台選択で畳む");
+
+  clickTile(document, 1);
+  assert.equal(logHidden(document), false, "2台目を選ぶと戻す");
+});
+
+test("選択を全部外したときも実行ログビューを戻す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 2);
+  clickTile(document, 0);
+  assert.equal(logHidden(document), true);
+  clickTile(document, 0);
+  assert.equal(logHidden(document), false, "0台でも畳んだままにしない");
+});
+
+test("グリッドビューを畳んでいる間は実行ログビューを畳まない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 2);
+  document.getElementById("grid-view-header").click();
+  clickTile(document, 0);
+  assert.equal(logHidden(document), false, "複製が見えないので畳む理由が無い");
+});
+
+test("自動で畳んだ実行ログビューは手で開ける・設定は保存しない", (t) => {
+  const { window, document, posted } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 2);
+  clickTile(document, 0);
+  assert.equal(logHidden(document), true);
+
+  document.getElementById("log-view-header").click();
+  assert.equal(logHidden(document), false, "手で開ける");
+  assert.deepEqual(posted.filter((m) => m?.type === "setLogViewVisible"), [], "設定は変えていないので保存しない");
+
+  // 手で開けたあとに畳むと、これは利用者の操作なので保存する
+  document.getElementById("log-view-header").click();
+  // 値だけ見る(jsdom 側の realm のオブジェクトなので deepEqual は prototype で落ちる)
+  assert.deepEqual(posted.filter((m) => m?.type === "setLogViewVisible").map((m) => m.value), [false]);
+});
+
+test("利用者が畳んでいる実行ログビューを、選択の変化で勝手に開かない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  document.getElementById("log-view-header").click();
+  assert.equal(logHidden(document), true, "前提: 手で畳んだ");
+  clickTile(document, 0);
+  clickTile(document, 1);
+  assert.equal(logHidden(document), true, "2台選んでも開かない(戻すのは自動で畳んだぶんだけ)");
+});
+
 // ---- host との契約(setLogPaneHeight/setLogViewVisible/setGridViewVisible) ----
 
 test("host の復元値(logViewVisible/gridViewVisible)を反映し、送り返さない", (t) => {

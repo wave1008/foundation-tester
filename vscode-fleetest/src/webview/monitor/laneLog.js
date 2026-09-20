@@ -13,6 +13,8 @@ import { tiles, selectedDeviceIds, attachDeviceMirror, detachDeviceMirror, openD
 import { t } from '../i18n.js';
 import { setHoverTip } from './hoverTip.js';
 import { computePreviewGrid, computeSinglePreviewWidth } from './previewGridModel.js';
+// 循環(splitter → deviceTiles → laneLog)になるが、呼ぶのは関数の中だけなので評価順に依存しない
+import { setLogViewFoldedForSingleSelection } from './splitter.js';
 import { paintMachineBadge } from './machineColors.js';
 
 // レーン id(worker id、または OVERALL_LANE_ID) -> DOM 要素・自動スクロール状態
@@ -296,6 +298,8 @@ export function updateLaneVisibility() {
   // **1台だけ選択のときだけ**、拡大表示の隣に実行ログの複製を並べる。
   const mirrorId = singleDevice && previewIds.length === 1 ? previewIds[0] : null;
   syncLogMirror(mirrorId);
+  // 複製が出ている間は実行ログビューを畳む(同じログを上下に出さない)。戻すのも splitter.js の1箇所
+  setLogViewFoldedForSingleSelection(mirrorId !== null);
 
   // ミラー対象を除く拡大表示をデバイス順で並べる(ミラー対象は .lane-pair の中にいるので動かさない)。
   const rank = new Map(deviceOrder.map((id, index) => [id, index]));

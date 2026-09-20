@@ -37,6 +37,14 @@ let fleetVisible = persistedState.fleetVisible !== false;
 let logViewVisible = persistedState.logViewVisible !== false;
 let gridViewVisible = persistedState.gridViewVisible !== false;
 
+// **1台だけ選択した間は実行ログビューを自動で畳む**(ユーザー決定 2026-09-21)——
+// グリッドビューの中に同じログの複製が出るため。利用者の設定(logViewVisible)は書き換えないので、
+// 選択が 1 台でなくなればこの旗を下ろすだけで元の開閉状態に戻る。
+let logViewAutoFolded = false;
+function logViewShown() {
+  return logViewVisible && !logViewAutoFolded;
+}
+
 // null = 保存値が無い(最初の描画で既定比から決める)
 let desiredTilePaneHeight =
   typeof persistedState.tilePaneHeight === 'number' && persistedState.tilePaneHeight > 0
@@ -198,7 +206,7 @@ export function setFleetVisible(visible) {
 // ---- 実行ログビュー(log-pane)の高さ ----
 
 function renderLogPaneHeight() {
-  if (!logViewVisible) {
+  if (!logViewShown()) {
     // 本体(.lanes-grid/プレースホルダ)は CSS(.log-view-hidden)で隠れるので、高さの指定も外して
     // 見出し行だけの高さへ縮める(desired は保持し、再度開いたときに使う)。
     logPane.style.height = '';
@@ -246,15 +254,16 @@ export function setLogPaneHeight(height) {
 // flex-grow を足す)。
 
 function renderPaneFlex() {
-  logPane.style.flex = (!gridViewVisible && logViewVisible) ? '1 1 auto' : '';
+  logPane.style.flex = (!gridViewVisible && logViewShown()) ? '1 1 auto' : '';
   outputPane.style.flex = gridViewVisible ? '' : '0 0 auto';
 }
 
 function renderLogViewVisible() {
-  devicesPanel.classList.toggle('log-view-hidden', !logViewVisible);
-  logViewToggle.dataset.expanded = logViewVisible ? 'true' : 'false';
-  logViewToggle.setAttribute('aria-expanded', logViewVisible ? 'true' : 'false');
-  const label = t(logViewVisible ? 'wvMonitor.logView.hide' : 'wvMonitor.logView.show');
+  const shown = logViewShown();
+  devicesPanel.classList.toggle('log-view-hidden', !shown);
+  logViewToggle.dataset.expanded = shown ? 'true' : 'false';
+  logViewToggle.setAttribute('aria-expanded', shown ? 'true' : 'false');
+  const label = t(shown ? 'wvMonitor.logView.hide' : 'wvMonitor.logView.show');
   logViewToggle.title = label;
   logViewToggle.setAttribute('aria-label', label);
 }
@@ -278,12 +287,24 @@ function applyLogViewVisible(visible) {
 
 function applyGridViewVisible(visible) {
   gridViewVisible = visible;
+  if (!visible) {
+    // 複製が見えなくなるので自動で畳んでおく理由も消える
+    logViewAutoFolded = false;
+  }
   renderGridViewVisible();
   renderPaneFlex();
   reapplyLogPaneHeight();
 }
 
 function toggleLogViewVisible() {
+  if (logViewAutoFolded) {
+    // 自動で畳んだものを手で開く。**設定は変えていないので保存しない**
+    logViewAutoFolded = false;
+    renderLogViewVisible();
+    renderPaneFlex();
+    reapplyLogPaneHeight();
+    return;
+  }
   applyLogViewVisible(!logViewVisible);
   vscode.setState(Object.assign({}, vscode.getState(), { logViewVisible }));
   vscode.postMessage({ type: 'setLogViewVisible', value: logViewVisible });
@@ -303,6 +324,25 @@ export function setLogViewVisible(visible) {
     return;
   }
   applyLogViewVisible(visible);
+}
+
+// 呼び手は laneLog.js(選択の変化を1箇所で見ている)。fold = ちょうど1台選択で複製が出ている。
+export function setLogViewFoldedForSingleSelection(fold) {
+  if (fold) {
+    // 畳むのは**両方が開いている**ときだけ(グリッドビューが畳まれていれば複製は見えない)
+    if (logViewAutoFolded || !logViewVisible || !gridViewVisible) {
+      return;
+    }
+    logViewAutoFolded = true;
+  } else {
+    if (!logViewAutoFolded) {
+      return;
+    }
+    logViewAutoFolded = false;
+  }
+  renderLogViewVisible();
+  renderPaneFlex();
+  reapplyLogPaneHeight();
 }
 
 export function setGridViewVisible(visible) {
