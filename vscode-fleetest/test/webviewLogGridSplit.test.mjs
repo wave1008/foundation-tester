@@ -298,6 +298,39 @@ test("グリッドビューを畳むと「デバイスを待機しています�
   assert.equal(waiting.style.display, "flex", "戻したら再び出る");
 });
 
+// ---- 選択0台の案内(ユーザー決定 2026-09-21)----
+// 出し入れはクラスだけで決める(CSS が display を持つ)。**inline の display を書くと畳みの
+// 規則に勝つ**ので、要素側に style が付いていないことも見る。
+
+const panelClasses = (document) => document.getElementById("panel-devices").classList;
+
+test("選択0台でグリッドビュー・実行ログビューに案内を出す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 2);
+  assert.equal(panelClasses(document).contains("no-selection"), true);
+  assert.equal(document.getElementById("preview-empty").textContent, "デバイスを選択して下さい");
+  assert.equal(document.getElementById("lanes-empty").textContent, "デバイスを選択して下さい");
+  assert.equal(document.getElementById("preview-empty").style.display, "", "display は CSS が持つ");
+
+  clickTile(document, 0);
+  assert.equal(panelClasses(document).contains("no-selection"), false, "選ぶと消える");
+});
+
+test("全体レーンに行があるときは実行ログビュー側の案内を出さない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 2);
+  assert.equal(panelClasses(document).contains("log-has-overall-lines"), false);
+  post(window, { type: "runEvent", action: { type: "line", laneId: "__overall__", text: "起動しています (1/2)" } });
+  assert.equal(panelClasses(document).contains("log-has-overall-lines"), true, "供給の進行と文字が重ならないように");
+});
+
+test("style.css: 案内は畳んでいる側には出さない", () => {
+  assert.match(styleCssSource, /#panel-devices\.no-selection:not\(\.grid-view-hidden\) #preview-empty/);
+  assert.match(styleCssSource, /:not\(\.log-view-hidden\):not\(\.log-has-overall-lines\) #lanes-empty/);
+});
+
 // ---- 1台だけ選択したときの実行ログビューの自動折り畳み(ユーザー決定 2026-09-21) ----
 // グリッドビューに同じログの複製が出るので上下に二重で出さない。**利用者の設定は書き換えない**
 // ので、1台でなくなれば元の開閉状態に戻る。

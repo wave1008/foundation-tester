@@ -8,7 +8,7 @@
 // #lanes-grid 側でそのまま続きが読める)。
 
 import { MAX_LANE_LINES, OVERALL_LANE_ID, overallLaneName, workerDisplayLabel } from "../../runLaneModel";
-import { lanesGrid, previewGrid, gridViewTitle, lanesSelectionStatus, lanesRunStatus, logPane, outputPane } from './domRefs.js';
+import { lanesGrid, previewGrid, gridViewTitle, lanesSelectionStatus, lanesRunStatus, logPane, outputPane, devicesPanel } from './domRefs.js';
 import { tiles, selectedDeviceIds, attachDeviceMirror, detachDeviceMirror, openDeviceOpMenuForDevice, openSelectAllOnlyMenu, toggleSelectOnlyDevice } from './deviceTiles.js';
 import { t } from '../i18n.js';
 import { setHoverTip } from './hoverTip.js';
@@ -166,6 +166,10 @@ function appendLaneLine(laneId, text) {
     lane.bodyEl.scrollTop = lane.bodyEl.scrollHeight;
   }
 
+  if (laneId === OVERALL_LANE_ID) {
+    syncOverallLinesClass();
+  }
+
   if (logMirror && logMirror.id === laneId) {
     const mirrorWasAtBottom =
       logMirror.body.scrollHeight - logMirror.body.scrollTop - logMirror.body.clientHeight < 24;
@@ -319,6 +323,15 @@ export function updateLaneVisibility() {
   lanesSelectionStatus.textContent = selectedDeviceIds.size > 0
     ? t('wvMonitor2.laneLog.selectedCount', { count: selectedDeviceIds.size })
     : '';
+  devicesPanel.classList.toggle('no-selection', selectedDeviceIds.size === 0);
+  syncOverallLinesClass();
+}
+
+// 選択0台の案内は、全体レーンに行があるときは出さない(供給の進行と重なるため)。
+// クラスにするのは出し入れを CSS 側に持たせるため(.pane-empty の注記)。
+function syncOverallLinesClass() {
+  const overall = lanes.get(OVERALL_LANE_ID);
+  devicesPanel.classList.toggle('log-has-overall-lines', (overall?.lineCount ?? 0) > 0);
 }
 
 // 直近の段組み計算に使った引数(ResizeObserver / アスペクト確定からの再計算で使い回す)。

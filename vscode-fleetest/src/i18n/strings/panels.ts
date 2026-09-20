@@ -88,6 +88,7 @@ export const panelsStrings = {
   "panels.hostMetrics.fmTitle": { ja: "FM 呼び出し回数", en: "FM call count" },
 
   "panels.devices.emptyMessage": { ja: "デバイスを待機しています", en: "Waiting for devices" },
+  "panels.devices.selectDevices": { ja: "デバイスを選択して下さい", en: "Select a device" },
   "panels.devices.splitterAriaLabel": { ja: "タイルと出力の分割境界線", en: "Divider between tiles and output" },
   "panels.devices.logSplitterAriaLabel": { ja: "実行ログとグリッドの分割境界線", en: "Divider between run log and grid" },
 

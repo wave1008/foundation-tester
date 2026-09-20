@@ -1146,6 +1146,25 @@ html.select-all-guard * {
   font-size: 13px;
   padding: 12px;
 }
+/* 選択0台のときの案内(ユーザー決定 2026-09-21)。.lanes-waiting と同じ出し方(ペインに重ねる)。
+   **出し入れは必ずクラスで**行う —— inline の display を書くと畳みの規則(display:none)に勝つ。
+   実行ログビュー側は**全体レーンに行があるときは出さない**(供給の進行と文字が重なるため) */
+.pane-empty {
+  display: none;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+  font-size: 13px;
+  padding: 12px;
+}
+#panel-devices.no-selection:not(.grid-view-hidden) #preview-empty,
+#panel-devices.no-selection:not(.log-view-hidden):not(.log-has-overall-lines) #lanes-empty {
+  display: flex;
+}
 .lanes-grid {
   /* 横の余白はここが持つ(ペインは 0)。タイル側の .grid の inset と同じ 12px */
   margin: 0 12px;

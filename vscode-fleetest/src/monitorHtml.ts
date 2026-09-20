@@ -313,6 +313,7 @@ function renderDevicesPanel(): string {
       <!-- グリッドビュー非表示中の「デバイスを待機しています」(出し入れは waitingNote.js) -->
       <div id="lanes-waiting" class="lanes-waiting" style="display: none;">${t("panels.devices.emptyMessage")}</div>
       <div id="preview-grid" class="lanes-grid"></div>
+      <div id="preview-empty" class="pane-empty">${t("panels.devices.selectDevices")}</div>
     </div>
 
     <div id="splitter-log" class="splitter" role="separator" aria-orientation="horizontal" aria-label="${t("panels.devices.logSplitterAriaLabel")}"></div>
@@ -326,6 +327,9 @@ function renderDevicesPanel(): string {
         <span id="lanes-run-status"></span>
       </div>
       <div id="lanes-grid" class="lanes-grid"></div>
+      <!-- 選択0台のときの案内。出し入れは CSS(#panel-devices.no-selection)—— inline の display を
+           書くと畳みの規則に勝ってしまう -->
+      <div id="lanes-empty" class="pane-empty">${t("panels.devices.selectDevices")}</div>
     </div>
   </div>`;
 }
