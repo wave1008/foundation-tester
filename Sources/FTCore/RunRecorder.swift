@@ -33,8 +33,9 @@ public final class RunRecorder: @unchecked Sendable {
     private let issuer: String?
     /// 同じ実行から分かれた run を束ねる鍵(RunMetaRecord.runGroup の宣言参照)。issuer と同じく
     /// begin/finish 両方へ同じ値を焼き込む —— finish で落とすと、途中で落ちた run だけが
-    /// 束から外れて「マシンが1台足りない実行」に見える
-    private let runGroup: String?
+    /// 束から外れて「マシンが1台足りない実行」に見える。
+    /// **public なのは RunProgressRecord.runGroup の出典元のため**(RunOrchestrator が読む)
+    public let runGroup: String?
     /// 動画録画(record:true)が recordings/index.json を書く場所。RunOrchestrator への
     /// VideoRecordingConfig 注入に呼び出し側(ApiRunCommand/ProfileRunner)が使う
     public let runDir: URL

@@ -20,7 +20,13 @@ import type { RecordingSessionSummary } from "./recordingsStore";
 import type { DeviceCommandSource, MachineColor, RemoteHostEntry } from "./remoteRunArgs";
 import { isRetentionPatch, type RetentionPatch, type RetentionUsage, type RetentionValues } from "./retentionModel";
 import type { ResidentProcess } from "./residentProcesses";
-import { isRecord, type MonitorDevice, type MonitorEvent, type MonitorPlatform } from "./monitorDeviceModel";
+import {
+  isRecord,
+  type MonitorDevice,
+  type MonitorEvent,
+  type MonitorPlatform,
+  type MonitorRunEntry,
+} from "./monitorDeviceModel";
 import type { DeviceOpKind, DeviceOpQueueStatus } from "./monitorDeviceLifecycle";
 import type {
   AppProfileCommonFields,
@@ -36,6 +42,18 @@ import type {
 /** extension → webview へ送るメッセージ(型付き)。 */
 export type MonitorToWebviewMessage =
   | { readonly type: "devices"; readonly devices: readonly MonitorDevice[] }
+  // run ボード(docs/design.md §18)。**1件 = 1機械ぶん**(monitorLock と同じ相乗り。machine 欠落 =
+  // 手元)。observed:false は「その機械をもう観測できていない」で runs は常に空 —— 「run が無い」
+  // ではない(受け手は runBoardModel.ts の applyMonitorRunsEvent を通す。src/webview/monitor/runBoard.js)。
+  | {
+      readonly type: "monitorRuns";
+      readonly machine?: string;
+      readonly observed: boolean;
+      readonly runs: readonly MonitorRunEntry[];
+    }
+  // monitor プロセスの再起動(startMonitorProcess)の合図。machineLocks と同じ寿命の規律 ——
+  // 新しいプロセスが最初のサイクルで出し直すまで、古い run の控えを webview に残さない。
+  | { readonly type: "runBoardReset" }
   | {
       readonly type: "frame";
       readonly device: string;
@@ -360,6 +378,9 @@ export type MonitorToWebviewMessage =
   // 「デバイスモニター」タブのラインビュー(タイル領域)の表示トグル(false = 非表示)。永続化の経路は
   // tilePaneHeight と同じ(setFleetVisible と対の契約。受け手は splitter.js)。
   | { readonly type: "fleetVisible"; readonly value: boolean }
+  // run ボード(ヘッダの折りたたみ。既定は展開)。永続化の経路は tilePaneHeight と同じ
+  // (setRunBoardCollapsed と対の契約。受け手は src/webview/monitor/runBoard.js)。
+  | { readonly type: "runBoardCollapsed"; readonly value: boolean }
   // 「デバイスモニター」タブの全選択トグルの状態(true = 全デバイス選択)。永続化の理由と経路は
   // tilePaneHeight と同じ(setSelectAllDevices と対の契約)。**0枚でも復元する** ——
   // ready 直後はモニターがまだ台を出しておらず、出てきた台を webview 側が選び直す。
@@ -492,6 +513,8 @@ export function toWebviewMessage(
       };
     case "monitorError":
       return { type: "deviceError", device: event.device, message: event.message };
+    case "monitorRuns":
+      return { type: "monitorRuns", machine: event.machine, observed: event.observed, runs: event.runs };
   }
 }
 
@@ -761,6 +784,9 @@ export type MonitorFromWebviewMessage =
   // ラインビューの表示トグルの切替。monitorPanel.ts が workspaceState へ永続化し、
   // パネル再作成時に "fleetVisible" メッセージで復元する。
   | { readonly type: "setFleetVisible"; readonly value: boolean }
+  // run ボードの折りたたみ切替(ヘッダの ▸/▾ とは別 — ボード全体の開閉)。monitorPanel.ts が
+  // workspaceState へ永続化し、パネル再作成時に "runBoardCollapsed" メッセージで復元する。
+  | { readonly type: "setRunBoardCollapsed"; readonly value: boolean }
   // 全選択トグルの状態が変わったとき(ボタン・Cmd/Ctrl+A・右クリックメニュー、および
   // 個別選択で全台が揃った/崩れたとき)。monitorPanel.ts が workspaceState へ永続化し、
   // パネル再作成時に "selectAllDevices" メッセージで復元する。
@@ -1129,6 +1155,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "setTilePaneHeight":
       return typeof value.value === "number" && value.value > 0;
     case "setFleetVisible":
+    case "setRunBoardCollapsed":
     case "setSelectAllDevices":
     case "setShowStreamDuringRun":
       return typeof value.value === "boolean";

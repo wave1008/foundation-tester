@@ -178,6 +178,19 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         let runnerBase = RunnerBase.fromEnvironment()
         let myIssuer = LocalConfig.resolveIssuerId()
         var lastOccupancy: HostOccupancy?
+        // フリート横断の run 進捗(docs/design.md §18)。**FT_RUNNER_BASE に依存しない** ——
+        // dispatch.lock と違い、手元(FT_RUNNER_BASE 未設定)で走る CLI 実行の run もここで見せる
+        // のが目的。読む場所は機械グローバル(~/.fleetest/runs)なので、ここでは fan-out の子
+        // (--device-machine 付き)かどうかも問わない
+        let runProgressDir = RunProgressLedger.directory()
+        // **比較は生の台帳(RunProgressRecord)で行う** —— 変換後の ApiMonitorRunProgress は
+        // elapsedSeconds/scenarioElapsedSeconds を毎周期の `now` で計算し直すので、生のまま
+        // 比較しないと壁時計が進むだけの周期でも「変化した」と判定して毎回 emit してしまう
+        // (startedAt/scenarioStartedAt は固定文字列なので、記録そのものが動いていない限り一致する)
+        // **Optional で持つ**(空配列で初期化しない)—— run が 0 本のとき「空配列 == 空配列」で
+        // 1行も出さないと、拡張は「一度も聞いていない = 不明」のままになり **「空き」を表現できない**
+        // (monitorLock の lastOccupancy が Optional なのと同じ理由)
+        var lastRunRecords: [RunProgressRecord]?
         while !stop.isSet {
             if let occupancy = HostOccupancy.read(base: runnerBase, myIssuer: myIssuer),
                occupancy != lastOccupancy {
@@ -187,6 +200,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     ? "[monitor] A dispatch holds this runner's lock"
                       + " (\(occupancy.issuer ?? "holder unknown")) — the extension stops live streams here"
                     : "[monitor] This runner's dispatch lock is free")
+            }
+            let currentRunRecords = RunProgressLedger.readAll(directory: runProgressDir)
+                .sorted { $0.pid < $1.pid }
+            if Self.shouldEmitRuns(current: currentRunRecords, last: lastRunRecords) {
+                lastRunRecords = currentRunRecords
+                emitLine(ApiMonitorRunsEvent(
+                    runs: Self.monitorRuns(records: currentRunRecords, now: Date(), myIssuer: myIssuer)))
             }
             // **保持ファイル(`fleetest monitor pause`)は毎周期の頭で見る** —— kill と違い
             // 拡張に再起動されない止め方(FTCore.MonitorHold)。手元スコープのときだけ:
@@ -517,6 +537,47 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         return registry
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty && MachineDispatch.normalize($0) != nil && seen.insert($0).inserted }
+    }
+
+    /// `RunProgressRecord`(台帳。ISO8601 を持つ)→ 拡張へ渡す形(秒に直し、mine を判定する)。
+    /// **経過は呼び出し側の `now`**(docs/design.md §18.3: 同じ機械の時計で計算する。台帳の
+    /// ISO8601 をそのまま流さない)。**issuer が nil の record は mine=false**
+    /// (HostOccupancy.interpret と同じ向き)。並びは pid 昇順に固定する(readAll はディレクトリ
+    /// 列挙順=不定なので、固定しないと変化していない run でも比較のたびに emit してしまう)。
+    /// I/O を持たない pure 関数
+    static func monitorRuns(records: [RunProgressRecord], now: Date, myIssuer: String) -> [ApiMonitorRunProgress] {
+        let iso = ISO8601DateFormatter()
+        func elapsedSeconds(since text: String) -> Int? {
+            guard let started = iso.date(from: text) else { return nil }
+            return max(0, Int(now.timeIntervalSince(started).rounded()))
+        }
+        return records
+            .sorted { $0.pid < $1.pid }
+            .map { record in
+                ApiMonitorRunProgress(
+                    pid: record.pid, runID: record.runID, runGroup: record.runGroup,
+                    issuer: record.issuer, mine: record.issuer.map { $0 == myIssuer } ?? false,
+                    project: record.project, profile: record.profile,
+                    // 台帳の startedAt は RunOrchestrator が ISO8601DateFormatter で書いた値なので
+                    // 通常パースは失敗しない。壊れていたら 0(不明な負の経過を出すよりまし)
+                    elapsedSeconds: record.startedAt.isEmpty ? 0 : (elapsedSeconds(since: record.startedAt) ?? 0),
+                    total: record.total, done: record.done, failed: record.failed,
+                    // 段5(残り見積もり)は未実装 —— 台帳の値に関わらず常に nil(推測値を出さない)
+                    etaSeconds: nil,
+                    lanes: record.lanes.map { lane in
+                        ApiMonitorRunProgressLane(
+                            key: lane.key, name: lane.name, platform: lane.platform,
+                            scenario: lane.scenario,
+                            scenarioElapsedSeconds: lane.scenarioStartedAt.flatMap { elapsedSeconds(since: $0) })
+                    })
+            }
+    }
+
+    /// `monitorRuns` を出すか。**`last` が nil(まだ1行も出していない)なら必ず出す** ——
+    /// run 0 本の機械が「空き」だと分かるのは1行受け取ってからで、出さないと拡張の側は
+    /// 「不明」のまま(「不明」と「空き」を混ぜない規律の、送り手側の半分)
+    static func shouldEmitRuns(current: [RunProgressRecord], last: [RunProgressRecord]?) -> Bool {
+        current != last
     }
 
     /// I/O を持たない pure 関数(MonitorMachineScopeTests)
@@ -1692,6 +1753,61 @@ struct ApiMonitorLockEvent: Codable {
         self.issuerHost = nil
         self.acquiredAt = nil
         self.mine = false
+    }
+}
+
+/// フリート横断の run 進捗(docs/design.md §18)。1レーン分。台帳(RunProgressLane)の
+/// ISO8601 は運ばない —— 経過は monitor が自分の時計で秒に直す(18.3)
+struct ApiMonitorRunProgressLane: Codable, Equatable {
+    let key: String
+    let name: String
+    let platform: String?
+    let scenario: String?
+    let scenarioElapsedSeconds: Int?
+}
+
+/// フリート横断の run 進捗。1 run 分(docs/design.md §18.2 の monitorRuns.runs[])
+struct ApiMonitorRunProgress: Codable, Equatable {
+    let pid: Int32
+    let runID: String?
+    let runGroup: String?
+    let issuer: String?
+    /// **issuer が nil のときは false**(不明を自分扱いにしない。HostOccupancy.mine と同じ向き)
+    let mine: Bool
+    let project: String
+    let profile: String?
+    let elapsedSeconds: Int
+    let total: Int
+    let done: Int
+    let failed: Int
+    /// 段5(残り見積もり)は未実装 —— 常に nil
+    let etaSeconds: Int?
+    let lanes: [ApiMonitorRunProgressLane]
+}
+
+/// monitorRuns イベント: フリート横断の run 進捗(docs/design.md §18.2)。**FT_RUNNER_BASE に
+/// 依存しない** —— dispatch.lock(ApiMonitorLockEvent)と違い手元でも出す。`machine` は **var**
+/// (子は畳んだプロファイルを見て自分を "local" と名乗るので、中継する RemoteMonitorFanout が
+/// monitorLock/monitorDevices と同じ規律で埋める)
+struct ApiMonitorRunsEvent: Codable, Equatable {
+    private(set) var kind = "monitorRuns"
+    var machine: String?
+    /// **その機械をまだ観測できているか**。子が落ちたら親が false で1行出す(ApiMonitorLockEvent と
+    /// 同じ規律。**false を「run 無し」と読ませない** —— 拡張は控えを消して「不明」に戻す)
+    let observed: Bool
+    let runs: [ApiMonitorRunProgress]
+
+    init(runs: [ApiMonitorRunProgress], machine: String? = nil) {
+        self.machine = machine
+        self.observed = true
+        self.runs = runs
+    }
+
+    /// 「この機械はもう観測できていない」1行(親が子の死を見たときだけ出す)
+    init(unobservedMachine machine: String) {
+        self.machine = machine
+        self.observed = false
+        self.runs = []
     }
 }
 

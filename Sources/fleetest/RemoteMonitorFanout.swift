@@ -156,6 +156,7 @@ final class RemoteMonitorFanout: @unchecked Sendable {
                 log("[monitor] ❌ \(failure) — devices on \(machine) stay unobserved for now;"
                     + " retrying every \(Self.slowRetrySeconds)s")
                 relayUnobservedLock(machine)
+                relayUnobservedRuns(machine)
                 sleepUnlessStopping(Self.slowRetrySeconds)
                 continue
             }
@@ -170,6 +171,7 @@ final class RemoteMonitorFanout: @unchecked Sendable {
                 children.removeValue(forKey: machine)
                 lock.unlock()
                 relayUnobservedLock(machine)
+                relayUnobservedRuns(machine)
                 if isStopping() { return }
                 let plan = Self.retryPlan(quickFailures: quickFailures,
                                           elapsed: Date().timeIntervalSince(startedAt))
@@ -273,6 +275,21 @@ final class RemoteMonitorFanout: @unchecked Sendable {
             relayLine(text)
             return
         }
+        if kind == "monitorRuns" {
+            // フリート横断の run 進捗(docs/design.md §18.2)。**マシン名は親が埋める** ——
+            // 子は `--device-machine local` で自分を "local" としか名乗れない(monitorLock と同じ理由)
+            guard var event = try? JSONDecoder().decode(ApiMonitorRunsEvent.self, from: data) else {
+                log("[monitor] \(machine): cannot read the remote monitorRuns line")
+                return
+            }
+            event.machine = machine
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+            guard let encoded = try? encoder.encode(event),
+                  let text = String(data: encoded, encoding: .utf8) else { return }
+            relayLine(text)
+            return
+        }
         guard kind == "monitorDevices" else {
             // monitorFrame / monitorError。**"device" だけマシン付きに直して**中継する
             // (base64 は触らない = 1往復ぶんの無駄を避ける。理由はファイル冒頭)
@@ -327,6 +344,16 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         guard let data = try? encoder.encode(ApiMonitorLockEvent(unobservedMachine: machine)),
+              let line = String(data: data, encoding: .utf8) else { return }
+        relayLine(line)
+    }
+
+    /// 「この機械の run 進捗はもう観測できていない」を1行流す(子の死・接続断のたび。
+    /// relayUnobservedLock と同じ規律 —— 控えは消さない/observed:false で不明に倒す)
+    func relayUnobservedRuns(_ machine: String) {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(ApiMonitorRunsEvent(unobservedMachine: machine)),
               let line = String(data: data, encoding: .utf8) else { return }
         relayLine(line)
     }

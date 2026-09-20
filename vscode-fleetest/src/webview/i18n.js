@@ -12,12 +12,14 @@ import { webviewMonitorAStrings } from '../i18n/strings/webviewMonitorA';
 import { webviewMonitorBStrings } from '../i18n/strings/webviewMonitorB';
 import { webviewDashboardStrings } from '../i18n/strings/webviewDashboard';
 import { recordingsStrings } from '../i18n/strings/recordings';
+import { runBoardStrings } from '../i18n/strings/runBoard';
 
 const merged = {
   ...webviewMonitorAStrings,
   ...webviewMonitorBStrings,
   ...webviewDashboardStrings,
   ...recordingsStrings,
+  ...runBoardStrings,
 };
 
 const locale = document.documentElement.lang === 'ja' ? 'ja' : 'en';

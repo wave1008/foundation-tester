@@ -530,6 +530,104 @@ private actor JoinedLaneKeys {
     func snapshot() -> Set<String> { keys }
 }
 
+/// run 進捗の記帳(docs/design.md §18。段1・2)。RunLeaseLedger と同じ形 —— 書き手の実体
+/// (`RunProgressLedger.write/remove`)は fleetest ターゲットが注入する(FTCore は書き込み先の
+/// 生成規約を持つが、pid・プロセス起動の知識は呼び出し側に残す既存の注入規律に揃える)。
+/// **書くのは変化した瞬間だけ**(前回の record と比較して同じなら書かない。Equatable)。
+/// `total`/`startedAt` 等は不変 —— 変わるのは done/failed/lanes だけなので、それ以外は
+/// コンストラクタで固定する
+/// **internal**(private ではない)—— RunLeaseLedger と同じく直接単体テストする対象
+/// (RunProgressStateTests)。RunOrchestrator 自身は単体で組めないため
+actor RunProgressState {
+    private let pid: Int32
+    private let runID: String?
+    private let runGroup: String?
+    private let issuer: String?
+    private let project: String
+    private let profile: String?
+    private let startedAt: String
+    private let total: Int
+    private var done = 0
+    private var failed = 0
+    private var lanesByKey: [String: RunProgressLane] = [:]
+    private var lastWritten: RunProgressRecord?
+    private let write: (@Sendable (RunProgressRecord) -> Void)?
+    private let remove: (@Sendable () -> Void)?
+
+    init(pid: Int32, runID: String?, runGroup: String?, issuer: String?, project: String,
+        profile: String?, startedAt: Date, total: Int,
+        write: (@Sendable (RunProgressRecord) -> Void)?, remove: (@Sendable () -> Void)?) {
+        self.pid = pid
+        self.runID = runID
+        self.runGroup = runGroup
+        self.issuer = issuer
+        self.project = project
+        self.profile = profile
+        self.startedAt = ISO8601DateFormatter().string(from: startedAt)
+        self.total = total
+        self.write = write
+        self.remove = remove
+    }
+
+    private func flush() {
+        let record = RunProgressRecord(
+            pid: pid, runID: runID, runGroup: runGroup, issuer: issuer, project: project,
+            profile: profile, startedAt: startedAt, total: total, done: done, failed: failed,
+            etaSeconds: nil, lanes: lanesByKey.values.sorted { $0.key < $1.key })
+        guard record != lastWritten else { return }
+        lastWritten = record
+        write?(record)
+    }
+
+    /// レーンの新規参加・復帰(revive 後の再参加も同じ経路。key が変われば新規レーン扱い)
+    func laneJoined(key: String, name: String, platform: String?) {
+        lanesByKey[key] = RunProgressLane(key: key, name: name, platform: platform,
+                                          scenario: nil, scenarioStartedAt: nil)
+        flush()
+    }
+
+    /// ワーカー離脱(デバイス使用不能)によるレーンの消滅。復帰できれば laneJoined が改めて足す
+    func laneLeft(key: String) {
+        guard lanesByKey.removeValue(forKey: key) != nil else { return }
+        flush()
+    }
+
+    func scenarioStarted(laneKey: String, scenario: String, at: Date) {
+        guard let lane = lanesByKey[laneKey] else { return }
+        lanesByKey[laneKey] = RunProgressLane(
+            key: lane.key, name: lane.name, platform: lane.platform, scenario: scenario,
+            scenarioStartedAt: ISO8601DateFormatter().string(from: at))
+        flush()
+    }
+
+    /// 結果を捨てて再キュー(環境の一過性エラー・不達ブリッジの振り直し等)。
+    /// **done/failed は増やさない** —— 同じシナリオを別の機会にもう一度実行するので、
+    /// まだ「終わった」ことにはならない(最終的な合否は、次に scenarioFinished が呼ばれたとき)
+    func laneIdled(laneKey: String) {
+        guard let lane = lanesByKey[laneKey] else { return }
+        lanesByKey[laneKey] = RunProgressLane(
+            key: lane.key, name: lane.name, platform: lane.platform, scenario: nil,
+            scenarioStartedAt: nil)
+        flush()
+    }
+
+    func scenarioFinished(laneKey: String, passed: Bool) {
+        done += 1
+        if !passed { failed += 1 }
+        if let lane = lanesByKey[laneKey] {
+            lanesByKey[laneKey] = RunProgressLane(
+                key: lane.key, name: lane.name, platform: lane.platform, scenario: nil,
+                scenarioStartedAt: nil)
+        }
+        flush()
+    }
+
+    /// run 終了。台帳ファイルを消す(best-effort。呼び手が閉じ忘れても pid 死亡で readAll が無視する)
+    func finish() {
+        remove?()
+    }
+}
+
 /// 並列ワーカーへのシナリオ分配キュー(早い者勝ち)
 actor ScenarioQueue {
     private var items: [ScenarioRunItem]
@@ -826,6 +924,17 @@ public final class RunOrchestrator {
     private let recordingLeases: RunLeaseLedger
     /// どちらかの lease の書き手が注入されているか(未注入ならハートビートを起こさない)
     private let hasLeaseWriters: Bool
+    /// 実行プロファイル名(run.json の profile と同じ由来。docs/design.md §18 の RunProgressRecord.profile)。
+    /// orchestrator は解決済みプロファイルの構造を知らないため、呼び出し側が文字列で渡す
+    private let profile: String?
+    /// run 進捗の書き手(`RunProgressLedger.write` を pid・ディレクトリで束ねたもの)。
+    /// isDeviceFrozen 等と同じ理由(FTCore はプロセス起動側の知識を持たない)で fleetest ターゲットが注入
+    private let writeRunProgress: (@Sendable (RunProgressRecord) -> Void)?
+    private let removeRunProgress: (@Sendable () -> Void)?
+    /// run() の頭で構築し、その run の間だけ生きる(run をまたいで使い回さない)。
+    /// 並行ワーカーが開始する前に一度だけ代入し、以降は読むだけ(TestingSlots 等と違い actor に
+    /// しないのは、生成が run() の単一箇所に閉じているため)
+    private var progressState: RunProgressState?
     /// ワーカー離脱(retired)時の後始末(ウェッジしたブリッジプロセスの停止等)。復帰(revive)の
     /// 有無に関係なく離脱の度に必ず呼ぶ — 復帰しない離脱(キュー空・上限到達)で kill を省くと、
     /// ウェッジしたランナーがシミュレータを掴んだまま生き残り、次回 run の新ブリッジと
@@ -913,6 +1022,9 @@ public final class RunOrchestrator {
                 removeRunLease: (@Sendable (String) -> Void)? = nil,
                 writeRecordingLease: (@Sendable (String) -> Void)? = nil,
                 removeRecordingLease: (@Sendable (String) -> Void)? = nil,
+                profile: String? = nil,
+                writeRunProgress: (@Sendable (RunProgressRecord) -> Void)? = nil,
+                removeRunProgress: (@Sendable () -> Void)? = nil,
                 cleanupRetiredWorker: (@Sendable (RunWorker) async -> Void)? = nil,
                 reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)? = nil,
                 recheckRunner: RunnerRecheck? = nil,
@@ -939,6 +1051,9 @@ public final class RunOrchestrator {
         self.runLeases = RunLeaseLedger(write: writeRunLease, remove: removeRunLease)
         self.recordingLeases = RunLeaseLedger(write: writeRecordingLease, remove: removeRecordingLease)
         self.hasLeaseWriters = writeRunLease != nil || writeRecordingLease != nil
+        self.profile = profile
+        self.writeRunProgress = writeRunProgress
+        self.removeRunProgress = removeRunProgress
         self.cleanupRetiredWorker = cleanupRetiredWorker
         self.reviveWorker = reviveWorker
         self.recheckRunner = recheckRunner
@@ -1126,6 +1241,17 @@ public final class RunOrchestrator {
         /// broadcast のドレイン文言用(参加したレーンの key)。shared では使わない
         let joinedKeys = JoinedLaneKeys()
 
+        // run 進捗の記帳(docs/design.md §18)。**total はここで確定した値のまま動かさない**
+        // (再キュー・失敗で変えない。RunProgressRecord.total の宣言参照)
+        if writeRunProgress != nil || removeRunProgress != nil {
+            progressState = RunProgressState(
+                pid: ProcessInfo.processInfo.processIdentifier,
+                runID: recorder?.runID, runGroup: recorder?.runGroup,
+                issuer: LocalConfig.resolveIssuerId(), project: project.name, profile: profile,
+                startedAt: Date(), total: total,
+                write: writeRunProgress, remove: removeRunProgress)
+        }
+
         continuation.yield(.runStarted(total: total, workerLabels: workers.map(\.label)))
 
         // run-lease/recording-lease ハートビート: mtime を stalenessSeconds(15s)以内に保つため
@@ -1221,6 +1347,8 @@ public final class RunOrchestrator {
                 failed += 1
             }
         }
+
+        await progressState?.finish()
 
         let summary = RunSummary(total: total, failed: failed,
                                  degradedWorkers: await degraded.snapshot(),
@@ -1351,6 +1479,15 @@ public final class RunOrchestrator {
         if let leaseKey {
             await runLeases.acquire(leaseKey)
         }
+        // run 進捗のレーン鍵。**run-lease と同じ鍵体系を使う**が、lease が持てない接続
+        // (--port 等 udid/serial の無い経路。この orchestrator では progressState 自体が
+        // 未注入なので実質関係ない)でも記帳自体は続けられるよう label へ縮退する
+        let progressLaneKey = leaseKey ?? worker.label
+        // **名前はモニターのタイルと同じ logicalName**(実行プロファイルの devices[].name)——
+        // label はポート込み("…-01(ios:8130)")なので、同じ台がボードとタイルで別名に見える
+        await progressState?.laneJoined(key: progressLaneKey,
+                                        name: worker.logicalName ?? worker.label,
+                                        platform: worker.platform)
 
         // **録れない台(物理 iPhone)は run の頭で名指しして警告する**(`record: true` を指定したのに
         // 黙って効かない形を作らない。判定は VideoRecordingCoordinator.unrecordableReason の1箇所)
@@ -1382,6 +1519,8 @@ public final class RunOrchestrator {
             // ワーカーの録画プロセス自体は起動しっぱなしで、ここでは区間だけ記録する
             await videoRecording?.scenarioStarted(
                 workerLabel: worker.label, scenarioID: item.info.id, at: Date())
+            await progressState?.scenarioStarted(laneKey: progressLaneKey, scenario: item.info.id,
+                                                 at: Date())
             let slowestStep = SlowestStepSnapshot()
             let outcome = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker,
@@ -1410,6 +1549,7 @@ public final class RunOrchestrator {
             if outcome == .passed {
                 breaker.recordPass()
                 await runPasses.increment()
+                await progressState?.scenarioFinished(laneKey: progressLaneKey, passed: true)
                 // **レーンが空いている今だけ測り直す**(次の 1 件をまだ取っていない)。
                 // 失敗の経路は除く —— 離脱すれば revive が供給を通り、そこで同じ 1 問が測る。
                 // 中断中・残りが無いときは撃たない(建て直しは数十秒かかり、次の run の再利用が測る)
@@ -1431,6 +1571,11 @@ public final class RunOrchestrator {
             if outcome == .environmentFault {
                 let requeued = await discardAndRequeue(item, worker: worker, queue: queue,
                                                        reason: "a transient accessibility fault")
+                if requeued {
+                    await progressState?.laneIdled(laneKey: progressLaneKey)
+                } else {
+                    await progressState?.scenarioFinished(laneKey: progressLaneKey, passed: false)
+                }
                 if !requeued { failed += 1 }
                 continue
             }
@@ -1490,6 +1635,11 @@ public final class RunOrchestrator {
                 case .requeue:
                     let requeued = await discardAndRequeue(item, worker: worker, queue: queue,
                                                            reason: "an unreachable bridge")
+                    if requeued {
+                        await progressState?.laneIdled(laneKey: progressLaneKey)
+                    } else {
+                        await progressState?.scenarioFinished(laneKey: progressLaneKey, passed: false)
+                    }
                     if !requeued { failed += 1 }
                     continue
                 }
@@ -1517,12 +1667,21 @@ public final class RunOrchestrator {
             }
             if let reason = unusableReason {
                 let requeued = await discardAndRequeue(item, worker: worker, queue: queue, reason: reason)
+                if requeued {
+                    await progressState?.laneIdled(laneKey: progressLaneKey)
+                } else {
+                    await progressState?.scenarioFinished(laneKey: progressLaneKey, passed: false)
+                }
                 if !requeued { failed += 1 }
                 await reportWorkerFailed(worker, "dropped out because of \(reason)")
+                // このレーンはもう走らない(復帰できれば superviseWorker が新しい runWorker で
+                // laneJoined を呼び直す)
+                await progressState?.laneLeft(key: progressLaneKey)
                 // run-lease はここでは外さない(superviseWorker が復帰の成否で決める)
                 await stopRecording(worker, leaseKey: leaseKey)
                 return .retired(failed: failed, worker: worker)
             }
+            await progressState?.scenarioFinished(laneKey: progressLaneKey, passed: false)
             failed += 1
         }
         if let leaseKey { await runLeases.release(leaseKey) }

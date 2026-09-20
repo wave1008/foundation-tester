@@ -28,6 +28,7 @@ import { webviewMonitorAStrings } from "../src/i18n/strings/webviewMonitorA";
 import { webviewMonitorBStrings } from "../src/i18n/strings/webviewMonitorB";
 import { webviewDashboardStrings } from "../src/i18n/strings/webviewDashboard";
 import { recordingsStrings } from "../src/i18n/strings/recordings";
+import { runBoardStrings } from "../src/i18n/strings/runBoard";
 import { laneStrings } from "../src/i18n/strings/lane";
 import { updateStrings } from "../src/i18n/strings/update";
 import { resultsExportStrings } from "../src/i18n/strings/resultsExport";
@@ -52,6 +53,7 @@ const DICTS = [
   { name: "webviewMonitorB", prefix: "wvMonitor2.", dict: webviewMonitorBStrings, side: "webview" },
   { name: "webviewDashboard", prefix: "wvDashboard.", dict: webviewDashboardStrings, side: "webview" },
   { name: "recordings", prefix: "recordings.", dict: recordingsStrings, side: "webview" },
+  { name: "runBoard", prefix: "runBoard.", dict: runBoardStrings, side: "webview" },
   // レーンログ用の別ランタイム(runReducer.ts/runLaneModel.ts、tLane 経由。拡張・webview 両バンドル共有)。
   { name: "lane", prefix: "lane.", dict: laneStrings, side: "lane" },
 ];

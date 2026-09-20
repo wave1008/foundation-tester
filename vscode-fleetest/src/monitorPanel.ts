@@ -262,6 +262,10 @@ export class MonitorPanelController implements vscode.Disposable {
    * webview の getState はパネルを閉じると失われるため host 側で永続化する(splitter.js と対の契約)。 */
   private tilePaneHeight: number | undefined;
   private fleetVisible: boolean;
+  /** run ボード(docs/design.md §18)の折りたたみ(workspaceState の "monitor.runBoardCollapsed")。
+   * ヘッダの ▸/▾(個々の run 行の展開)は webview 側だけで持つ(runBoard.js。ephemeral な groupKey
+   * ごとの状態はセッションを跨いで意味を持たない)。 */
+  private runBoardCollapsed: boolean;
   /** 「デバイスモニター」タブの全選択トグル(workspaceState の "monitor.selectAllDevices")。 */
   private selectAllDevices: boolean;
   private showStreamDuringRun: boolean;
@@ -309,6 +313,8 @@ export class MonitorPanelController implements vscode.Disposable {
     // 既定 ON(webview 側 splitter.js の「!== false」と揃える。片方だけ変えない)。
     // 既定 true(webview 側 splitter.js の「!== false」と揃える。片方だけ変えない)。
     this.fleetVisible = workspaceState.get<boolean>("monitor.fleetVisible", true);
+    // 既定 展開(webview 側 runBoard.js の初期値と揃える)。
+    this.runBoardCollapsed = workspaceState.get<boolean>("monitor.runBoardCollapsed", false);
     // 既定 OFF(選んでいない状態から始める。webview 側 deviceTiles.js の初期値と揃える)。
     this.selectAllDevices = workspaceState.get<boolean>("monitor.selectAllDevices", false);
     // 既定 ON = run 中も配信する(webview 側 streamToggle.js の初期値と揃える)。
@@ -1128,6 +1134,10 @@ export class MonitorPanelController implements vscode.Disposable {
         this.fleetVisible = message.value;
         void this.workspaceState.update("monitor.fleetVisible", message.value);
         break;
+      case "setRunBoardCollapsed":
+        this.runBoardCollapsed = message.value;
+        void this.workspaceState.update("monitor.runBoardCollapsed", message.value);
+        break;
       case "setSelectAllDevices":
         this.selectAllDevices = message.value;
         void this.workspaceState.update("monitor.selectAllDevices", message.value);
@@ -1292,6 +1302,7 @@ export class MonitorPanelController implements vscode.Disposable {
     }
     // fleetVisible は selectAllDevices より先に送る(非表示なら webview が全選択から始める。main.js)
     this.post({ type: "fleetVisible", value: this.fleetVisible });
+    this.post({ type: "runBoardCollapsed", value: this.runBoardCollapsed });
     this.post({ type: "selectAllDevices", value: this.selectAllDevices });
     this.post({ type: "showStreamDuringRun", value: this.showStreamDuringRun });
     // 設定タブの更新セクション。ネットワークに出るので ready のたびに1回だけ(webview 再読込は稀)。

@@ -28,6 +28,17 @@
 ### 設計・検証
 
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
+- **モニターの run ボード**(フリート横断の実行状況。**誰の run でも**「何本中何本」を出す。
+  拡張が起こした run しか見えない `runEvent` の穴を塞ぐ): 契約は **docs/design.md §18 が唯一の定義元**。
+  供給は機械グローバルの台帳 `~/.fleetest/runs/<pid>.json`(`FTCore.RunProgressLedger`。
+  **プロジェクトの `.fleetest/` に置かない** = ランナー機では発行者ごとに work が分かれ他人の run が
+  見えなくなる)→ `api monitor` が `monitorRuns` で配る → リモートは fan-out が machine を埋める。
+  守る規律5つ: **①記帳は `RunOrchestrator` の1箇所・注入は run / api run の2経路**
+  (`RunProgressLedgerWiringTests` が走査で固定。片方だけだとその経路の run が緑のまま映らない)/
+  **②生存判定は pid だけ**(mtime を見ない)/ **③死んだ控えは書き手が run 開始時に掃く**
+  (読み手は毎周期読むので掃除を置かない)/ **④経過は読み手(同じ機械の monitor)が秒に直して運ぶ**
+  (向こうの時計を手元で解釈しない)/ **⑤レーンごとの残り本数は持たない**(shared キューでは
+  同じ数字が並ぶだけで誤読を招く)
 - **UI フレームワーク別の差異の索引**(揃えている / 揃っていない / 経路だけ違う、の3区分で横に並べる):
   docs/framework-differences.md。**フレームワークで挙動が割れる変更を入れたら表に1行足す**
 - 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md

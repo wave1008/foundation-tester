@@ -490,6 +490,10 @@ enum ProfileRunner {
         // 「終了猶予の方針」= 自前の後始末を持つ fleetest の子には時限の SIGKILL を送らない)
         let interruptState = RunInterruptState(recorder: recorder)
 
+        // 死んだ pid の控えを回収してから始める(SIGKILL で removeRunProgress に届かなかったぶん。
+        // docs/design.md §18.1 —— 掃除は書き手側に置く)
+        RunProgressLedger.sweep(directory: RunProgressLedger.directory())
+
         let orchestrator = RunOrchestrator(
             project: project, workers: workers + eagerIOSWorkers,
             settings: ScenarioExecutionSettings(resolved),
@@ -577,6 +581,14 @@ enum ProfileRunner {
             removeRecordingLease: { key in
                 guard let leaseStateDir else { return }
                 RecordingLease.remove(stateDir: leaseStateDir, key: key)
+            },
+            profile: profileName,
+            writeRunProgress: { record in
+                RunProgressLedger.write(record, directory: RunProgressLedger.directory())
+            },
+            removeRunProgress: {
+                RunProgressLedger.remove(pid: ProcessInfo.processInfo.processIdentifier,
+                                         directory: RunProgressLedger.directory())
             },
             cleanupRetiredWorker: { retired in
                 // ウェッジした旧ブリッジ(/status 無応答)は provision の再利用スキャンに映らないまま

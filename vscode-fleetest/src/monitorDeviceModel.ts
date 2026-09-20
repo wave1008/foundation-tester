@@ -107,6 +107,49 @@ export interface MonitorDevice {
   readonly bridgeRunning?: boolean;
 }
 
+/** run ボードの1レーン(台1枚)。docs/design.md §18.1/§18.2。key は udid(iOS)/serial(Android)で、
+ * webview 側(runBoard.js)がラインビューのタイル(MonitorDevice.udid/serial)と突き合わせて
+ * デバイス選択に使う(MonitorDevice.id とは別物 — id は "platform:name" 形で udid/serial ではない)。
+ * **`remaining`(レーンごとの残り本数)は持たない** —— shared dispatch は同一 platform のレーンが
+ * 1つのキューを共有するので、レーン別の残数は同じ数字が並ぶだけで誤読を招く
+ * (`FTCore.RunProgressLane` のコメント参照。run 全体の残りは `total - done`)。 */
+export interface MonitorRunLane {
+  readonly key: string;
+  readonly name: string;
+  /** dry-run/デバッグ経路など供給側が platform を持たない run では省略されうる。 */
+  readonly platform?: MonitorPlatform;
+  /** 実行中のシナリオ ID。**省略 = 待機中**(直前の1本を終えて次を待つ・まだ何も取っていない)。 */
+  readonly scenario?: string;
+  /** `scenario` が無いときは省略(待機中は経過も無い)。 */
+  readonly scenarioElapsedSeconds?: number;
+}
+
+/** run ボードの1 run(1機械ぶん。docs/design.md §18.1)。機械分担の run は `runGroup` を共有する
+ * 複数の MonitorRunEntry に分かれて届く(束ねるのは読み手 = runBoardModel.ts)。 */
+export interface MonitorRunEntry {
+  readonly pid: number;
+  /** `RunRecorder` が無い経路(--dry-run/--debug 等)では省略されうる。 */
+  readonly runID?: string;
+  /** 共有すると機械分担の run として1行に束ねる(runBoardModel.ts)。無ければ単機 run =
+   * runID(それも無ければ pid)が鍵。 */
+  readonly runGroup?: string;
+  /** 自己申告のディスパッチ発行者。不明・自分の run では省略されうる。 */
+  readonly issuer?: string;
+  readonly mine: boolean;
+  readonly project: string;
+  /** プロファイル無し実行(--dry-run 等)では省略されうる。 */
+  readonly profile?: string;
+  /** 受信時点の経過秒。以降の秒読みは読み手が自分の時計で進める(docs/design.md §18.3)。 */
+  readonly elapsedSeconds: number;
+  readonly total: number;
+  readonly done: number;
+  readonly failed: number;
+  /** 受信時点の残り見積もり秒。**当面いつも null(=undefined)** —— 実績の無い run は省く
+   * (docs/design.md §18.4)。null は undefined に正規化する(isMonitorRunEntry)。 */
+  readonly etaSeconds?: number;
+  readonly lanes: readonly MonitorRunLane[];
+}
+
 /** `fleetest api monitor` の NDJSON 1行分のイベント(kind で判別)。 */
 export type MonitorEvent =
   | { readonly kind: "monitorDevices"; readonly devices: readonly MonitorDevice[] }
@@ -134,6 +177,15 @@ export type MonitorEvent =
       readonly issuerHost?: string;
       readonly acquiredAt?: string;
       readonly mine: boolean;
+    }
+  // フリート横断の run 進捗(docs/design.md §18.2)。**1行 = 1機械ぶん**(monitorLock と同じ相乗り)。
+  // machine 欠落 = 手元。observed:false は「その機械をもう観測できていない」で runs は常に空 ——
+  // 「run が無い」ではない(読み手は runBoardModel.ts の applyMonitorRunsEvent を通す)
+  | {
+      readonly kind: "monitorRuns";
+      readonly machine?: string;
+      readonly observed: boolean;
+      readonly runs: readonly MonitorRunEntry[];
     };
 
 const PLATFORMS: ReadonlySet<string> = new Set<MonitorPlatform>(["ios", "android"]);
@@ -219,6 +271,66 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
   );
 }
 
+function isMonitorRunLane(value: unknown): value is MonitorRunLane {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (value.platform === null) {
+    value.platform = undefined;
+  }
+  if (value.scenario === null) {
+    value.scenario = undefined;
+  }
+  if (value.scenarioElapsedSeconds === null) {
+    value.scenarioElapsedSeconds = undefined;
+  }
+  return (
+    typeof value.key === "string" &&
+    typeof value.name === "string" &&
+    (value.platform === undefined || (typeof value.platform === "string" && PLATFORMS.has(value.platform))) &&
+    (value.scenario === undefined || typeof value.scenario === "string") &&
+    (value.scenarioElapsedSeconds === undefined || typeof value.scenarioElapsedSeconds === "number")
+  );
+}
+
+function isMonitorRunEntry(value: unknown): value is MonitorRunEntry {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (value.runID === null) {
+    value.runID = undefined;
+  }
+  if (value.runGroup === null) {
+    value.runGroup = undefined;
+  }
+  if (value.issuer === null) {
+    value.issuer = undefined;
+  }
+  if (value.profile === null) {
+    value.profile = undefined;
+  }
+  if (value.etaSeconds === null) {
+    // **当面いつも null**(docs/design.md §18.4)。省略と同じ「—」表示に正規化する。
+    value.etaSeconds = undefined;
+  }
+  return (
+    typeof value.pid === "number" &&
+    (value.runID === undefined || typeof value.runID === "string") &&
+    (value.runGroup === undefined || typeof value.runGroup === "string") &&
+    (value.issuer === undefined || typeof value.issuer === "string") &&
+    typeof value.mine === "boolean" &&
+    typeof value.project === "string" &&
+    (value.profile === undefined || typeof value.profile === "string") &&
+    typeof value.elapsedSeconds === "number" &&
+    typeof value.total === "number" &&
+    typeof value.done === "number" &&
+    typeof value.failed === "number" &&
+    (value.etaSeconds === undefined || typeof value.etaSeconds === "number") &&
+    Array.isArray(value.lanes) &&
+    value.lanes.every(isMonitorRunLane)
+  );
+}
+
 /** 未知の kind・型不一致は false(呼び出し側は安全に無視できる)。device 等の省略可フィールドは undefined を許容。 */
 export function isMonitorEvent(value: unknown): value is MonitorEvent {
   if (!isRecord(value) || typeof value.kind !== "string") {
@@ -255,6 +367,16 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
         typeof value.mine === "boolean" &&
         typeof value.observed === "boolean" &&
         (value.machine === undefined || typeof value.machine === "string")
+      );
+    case "monitorRuns":
+      if (value.machine === null) {
+        value.machine = undefined;
+      }
+      return (
+        typeof value.observed === "boolean" &&
+        (value.machine === undefined || typeof value.machine === "string") &&
+        Array.isArray(value.runs) &&
+        value.runs.every(isMonitorRunEntry)
       );
     default:
       return false;

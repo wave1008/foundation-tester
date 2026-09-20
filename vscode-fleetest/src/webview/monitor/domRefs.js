@@ -14,6 +14,12 @@ export const btnFleetVisible = document.getElementById('btn-fleet-visible');
 export const projectSelect = document.getElementById('project-select');
 export const profileSelect = document.getElementById('profile-select');
 
+export const runBoard = document.getElementById('run-board');
+export const runBoardToggle = document.getElementById('run-board-toggle');
+export const runBoardTitle = document.getElementById('run-board-title');
+export const runBoardMachines = document.getElementById('run-board-machines');
+export const runBoardRows = document.getElementById('run-board-rows');
+
 export const devicesPanel = document.getElementById('panel-devices');
 export const tilePane = document.getElementById('tile-pane');
 export const tileMarquee = document.getElementById('tile-marquee');

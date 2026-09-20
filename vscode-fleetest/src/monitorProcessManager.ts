@@ -339,6 +339,9 @@ export class MonitorProcessManager {
     // false 始まりなので、保持中に建て直せば active=true が改めて届く)
     this.monitorHoldActive = false;
     this.deps.notifyMachineLocks(this.machineLocks);
+    // run ボード(docs/design.md §18)の控えも同じ寿命 —— webview 側は runBoardModel.ts の状態を
+    // 持つ独立モジュールなので、ホスト側に控えは無く明示的なリセット合図で畳む。
+    this.deps.post({ type: "runBoardReset" });
     this.monitorStartedAt = Date.now();
     // 再起動(プロファイル切り替え含む)でプロセス側の抑制状態は失われるため、既にストリーミング中の
     // デバイスがあれば suppressFrames を再送する(MonitorDeviceStreamController.streamingIds 参照)。

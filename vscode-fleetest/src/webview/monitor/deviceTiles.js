@@ -1054,6 +1054,40 @@ export function selectOnlyDevice(deviceId) {
   dropTextSelection();
 }
 
+// run ボード(runBoard.js)の行クリック用: run ボードのレーンの鍵(udid|serial。monitorRuns の
+// MonitorRunLane.key)からラインビューのタイル id(device.id = "platform:name"。udid/serial とは
+// 別の識別子)を引く。machine 込みで突き合わせる —— 同じ serial が別の機械に居ることは無いはず
+// だが、手元(machine undefined)とリモートを取り違えないため明示的に見る。無ければ undefined
+// (消えたタイル・観測窓の外)。
+export function deviceIdForLane(machine, laneKey) {
+  for (const [id, entry] of tiles) {
+    if (entry.device.machine !== machine) {
+      continue;
+    }
+    if (entry.device.udid === laneKey || entry.device.serial === laneKey) {
+      return id;
+    }
+  }
+  return undefined;
+}
+
+// run ボード(runBoard.js)の行クリック用: 複数台を一括で選び直す(selectOnlyDevice の複数版。
+// 「このデバイスのみ選択」の直前選択に戻す仕組みは1台前提なので流用しない = restore は捨てる)。
+// 一致するタイルが1枚も無ければ何もしない(消えた台の run 行を押しても選択を崩さない)。
+export function selectOnlyDevices(deviceIds) {
+  const ids = deviceIds.filter((id) => tiles.has(id));
+  if (ids.length === 0) {
+    return;
+  }
+  selectOnlyRestore = null;
+  selectedDeviceIds.clear();
+  for (const id of ids) {
+    selectedDeviceIds.add(id);
+  }
+  updateSelectionUi();
+  dropTextSelection();
+}
+
 // 「このデバイスのみ選択」の直前の選択(グリッドビューのダブルクリックで戻す)。
 // 選択が一度でも変わったら捨てる(updateSelectionUi。戻す先はもう意味が無い)
 let selectOnlyRestore = null;

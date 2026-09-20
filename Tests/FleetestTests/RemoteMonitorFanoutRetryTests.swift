@@ -90,9 +90,17 @@ final class RemoteMonitorFanoutRetryTests: XCTestCase {
         XCTAssertEqual(syncFailures.count, 2)
         XCTAssertTrue(syncFailures.allSatisfy { $0.contains("retrying every 60s") }, syncFailures.joined(separator: "\n"))
 
-        // 諦めている間も中継は「未観測」のまま(状態を偽らない): rsync 失敗 2 回 + 子の死 5 回
-        let unobserved = relayed.value.filter { $0.contains(#""observed":false"#) && $0.contains(#""machine":"M1Ultra""#) }
-        XCTAssertEqual(unobserved.count, 7, relayed.value.joined(separator: "\n"))
+        // 諦めている間も中継は「未観測」のまま(状態を偽らない): rsync 失敗 2 回 + 子の死 5 回。
+        // **kind で絞って数える** —— 未観測は占有(monitorLock)と run 進捗(monitorRuns)の
+        // 2種類が同じ契機で出るので、合計本数で数えると片方を足しただけでこのテストが落ちる
+        func unobserved(_ kind: String) -> [String] {
+            relayed.value.filter {
+                $0.contains(#""kind":"\#(kind)""#) && $0.contains(#""observed":false"#)
+                    && $0.contains(#""machine":"M1Ultra""#)
+            }
+        }
+        XCTAssertEqual(unobserved("monitorLock").count, 7, relayed.value.joined(separator: "\n"))
+        XCTAssertEqual(unobserved("monitorRuns").count, 7, relayed.value.joined(separator: "\n"))
         XCTAssertTrue(fanout.snapshot().isEmpty, "子が死んだあとの台を残さない")
     }
 

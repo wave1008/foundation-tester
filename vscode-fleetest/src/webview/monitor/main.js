@@ -35,6 +35,7 @@ import { applyShowStreamDuringRun } from './streamToggle.js';
 import { applyLaneAction, applyLaneHydrate, updateLaneVisibility, updateLanesPlaceholder } from './laneLog.js';
 import { applyProjectInfo } from './projectsTab.js';
 import { applyHostMetrics, setHostMetricMachines, setMachineLock } from './hostCharts.js';
+import { applyMonitorRuns, resetRunBoard, setRunBoardCollapsed, setRunBoardMachines } from './runBoard.js';
 import { applyProjectDeviceCatalog } from './runProfileDevicesTab.js';
 import {
   applyAppProfileInfo,
@@ -130,6 +131,17 @@ window.addEventListener('message', (event) => {
     case 'hostMetricsMachines':
       // 行の集合(手元 + リモート機)。値より先に届くので、観測が来る前から行が見える
       setHostMetricMachines(message.machines);
+      // run ボードのヘッダの機械要約も同じ集合を使う(専用のホスト配線を増やさない。runBoard.js 冒頭コメント参照)
+      setRunBoardMachines(message.machines);
+      break;
+    case 'monitorRuns':
+      applyMonitorRuns(message);
+      break;
+    case 'runBoardReset':
+      resetRunBoard();
+      break;
+    case 'runBoardCollapsed':
+      setRunBoardCollapsed(message.value);
       break;
     case 'deviceOpBusy':
       applyDeviceOpBusy(message);

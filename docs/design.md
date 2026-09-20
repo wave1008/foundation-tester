@@ -5002,3 +5002,153 @@ pid 引きとソケット一覧は**1往復に畳む**(adb は1回ごとに数�
   「ロケータを解決できません」で確実に落ちる(空実装で緑になる方が危険なので意図的)
 - 手順文は必ずコマンド行の末尾コメントに残す(写像が外れても元の意図が読める)
 - `--name` 明示時は重複回避の連番が付かないため、同名ファイルがあれば上書きせずエラーにする
+
+## 18. デバイスモニターの run ボード(フリート横断の実行状況。2026-09-20 設計・未実装)
+
+**動機**: モニターが run について持っている情報は2つだけ —— タイルの `inRun`(run-lease の鮮度)と、
+**拡張が起こした run にしか届かない** `runEvent` のログ。「何本中何本終わったか」はどこにも無く、
+CLI 実行・他人の run・ランナー機で直に打たれた run は `inRun: true` の1ビットに潰れる
+(**FM のレートを run のイベントから供給しなかったのと同じ穴**)。
+
+**見せるもの**: 走っている run を1行ずつ、進捗(done/total・失敗数)・経過・残り見積もり・
+レーン(デバイス)の内訳。**主語は run であって台ではない** —— 台数が増えてもボードは伸びない。
+対象は共有フリート全体(手元 + 全ランナー機・**自分の run も他人の run も**。ユーザー決定 2026-09-20)。
+
+### 18.1 供給源は台帳(`FTCore.RunProgressLedger`)
+
+```
+~/.fleetest/runs/<pid>.json          ← 機械グローバル(FMUsageLedger の隣・同じ規律)
+```
+
+**機械グローバルに置くのが要点**。ランナー機では発行者ごとに work が分かれる
+(`<base>/users/<issuer>/work/`。remote-runner.md §18.6)ので、プロジェクトの `.fleetest/` に置くと
+**他人の run が原理的に見えない**。共有アカウント前提(remote-runner.md §15.3)なので `~` は全員で1つ。
+
+```json
+{ "pid": 41233, "runID": "…", "runGroup": "…", "issuer": "alice@air",
+  "project": "ec-mobile", "profile": "ios-smoke",
+  "startedAt": "2026-09-20T10:03:12Z", "total": 12, "done": 7, "failed": 2,
+  "etaSeconds": 190,
+  "lanes": [ { "key": "<udid|serial>", "name": "iPhone 17-01", "platform": "ios",
+               "scenario": "05_検索", "scenarioStartedAt": "…" } ] }
+```
+
+- **記帳は `RunOrchestrator` の1箇所**。run-lease と同じ注入口(`writeRunLease` の隣)で、
+  `runSequential` / `runParallel` の両方がここを通る = 記帳の実装を2つ持たない
+- **ただし注入は2経路**(`ProfileRunner` と `ApiRunCommand`。`fleetest run` と `fleetest api run` は
+  オプションも配線も別々に持つ2実装)。**片方だけに足すとその経路では何も出ないまま緑で通る**ので、
+  両経路の注入をソース走査テストで等号固定する
+- **書くのは変化した瞬間だけ**(シナリオの開始・終了、レーンの増減)。秒ごとには書かない ——
+  経過は読み手が計算する(18.3)
+- **生存判定は pid だけ**(`ProcessLiveness.isAlive`。mtime を見ない = `FMUsageLedger` と同じ)。
+  SIGKILL で残った控えは読み手が無視し、`RunCompletionSweep` と `remote clean` の保持ポリシーが掃く
+  (`StreamLease` と同じ扱い)
+- **書くのはデバイスを実際に回しているプロセスだけ**。機械分担の run(親が手元・子が各機械)で
+  親も書くと二重計上になる。束ねるのは読み手で、鍵は `runGroup`(単機 run は runID 自身)
+- **レーンの `name` はモニターのタイルと同じ名前**(`RunWorker.logicalName` = 実行プロファイルの
+  `devices[].name`)。`label` はポート込み(`…-01(ios:8130)`)なので、使うと同じ台がボードと
+  タイルで別名に見える
+- **レーンごとの「残り本数」は持たない**。shared dispatch は同一 platform のレーンが1つのキューを
+  共有するので、レーン別の残数は**同じ数字が並ぶだけ**(3レーンに「残 2」= 6本残っていると誤読される)。
+  run の残りは `total - done` で足り、実行中の本数はレーンを見れば分かる
+- **死んだ pid の控えは書き手が掃く**(`sweep`)。run の開始時に1回だけ走らせる(`StaleLedgerSweep` が
+  provision の入口で台帳を掃除するのと同じ立場)。**読み手は消さない** —— `api monitor` は毎周期
+  読むので、掃除を読み手に置くと監視が重くなるほど掃除も増える
+
+### 18.2 監視への相乗り(`monitorRuns`)
+
+`HostOccupancy` / `monitorLock` と**同じ経路**に乗せる。**ssh は1本も増えない**。
+
+```
+発行側                             ランナー機
+ api monitor(親) ── ssh ──▶ api monitor --device-machine local(子)
+     ▲ monitorRuns                     │ 毎周期 ~/.fleetest/runs/*.json を読む
+     │ (親が machine を埋める)          │ (pid が生きているものだけ)
+   拡張 ─┴─ run ボードを描く
+```
+
+```jsonc
+{"kind":"monitorRuns","observed":true,"machine":"M1Max","runs":[
+  {"pid":41233,"runGroup":"…","issuer":"alice@air","mine":false,
+   "project":"ec-mobile","profile":"ios-smoke",
+   "elapsedSeconds":261,"total":12,"done":7,"failed":2,"etaSeconds":190,
+   "lanes":[{"key":"…","name":"iPhone 17-01","scenario":"05_検索",
+             "scenarioElapsedSeconds":72}]}]}
+```
+
+- **machine は中継する親が埋める**(子は `--device-machine local` で自分を local と名乗るので、
+  そのまま流すと手元の行に化ける。monitorDevices / monitorFrame / host-metrics に次ぐ4経路目)
+- **「不明」と「無い」を混ぜない**: 子が落ちた・旧ランナーは `observed:false`。**控えも行も消さない**
+  (消すと「実行中の run なし」と同じ形になる)
+- **版は据え置き**(イベントの追加は後方互換。旧 CLI は1行も出さない = 不明に落ちるだけ)
+- **`monitorLock` と情報源が別**なので、ロックを取らない run(ランナー機で直に打った `fleetest run`)も
+  ここには出る —— remote-runner.md §18.7 末尾の「ロックに写らない run」がこの経路で見えるようになる
+
+### 18.3 時刻は秒に直して運ぶ
+
+台帳は ISO8601 で持つが、**読むのは同じ機械の monitor** なので、経過は**読み手が自分の時計で計算して
+秒で載せる**。手元は受信時刻から秒読みするだけ。`FMLiveness.checkedAt` / ロックの `acquiredAt` が
+残している「向こうの時計とのずれ」を、この経路では最初から作らない。
+
+### 18.4 残り見積もり(新しい定数を1つも置かない)
+
+**見積もるのは run を走らせているプロセス自身**。他人の実績は手元に無いので、手元では原理的に計算できない。
+
+- 材料は LPT がすでに使っているもの —— `RunResultsStore.scanRecords` → `LPTScheduler.durations`
+  (実績の中央値)と、実績のないシナリオ用の `unknownDurationMs`。**2つ目の実装を作らない**
+- 値は makespan(レーンごとの残り時間の最大)。**分母(`total`)は run 開始時に確定した本数**で、
+  再キューでも失敗でも動かさない
+- **実績が1件も無い run は `etaSeconds` を省く**(欄ごと省く = 表示は「—」)。推測値を出さない
+- 表示は必ず `~` 付き。超過したら「残り ~0:00(+2:31 超過)」と**事実だけ**を並べ、
+  遅れの帰属は書かない(maintainer-notes §29)
+
+### 18.5 UI(ツールバー直下に常設。ユーザー決定 2026-09-20)
+
+```
+┌ 実行中 2 ───────────────── local ● │ M1Max ● │ M1Ultra ? 不明 ┐
+│ ▾ local   ec-mobile / ios-smoke   ███████░░░  7/12 ✕2   4:21 / 残 ~3:10 │
+│     iPhone 17-01  ▶ 05_検索              1:12                           │
+│     iPhone 17-02  ▶ 07_決済              0:48                           │
+│     iPhone 17-03  ⏹ 待機                  —                             │
+│ ▸ M1Max   ec-mobile / android-regress  ███░░░░░░  3/20   1:48 / 残 ~9:40 │
+│                                                        alice の run     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+- **置き場所はツールバーの直下・ラインビューの上**(ユーザー決定)—— グリッド表示中も進捗が見える
+  ことを優先する。下部ペインの第3モードにはしない
+- **run 0 本でもヘッダ1行は残す**(ユーザー決定)—— 消すとレイアウトが飛び、「モニターが run を
+  見ていない」のか「走っていない」のかも区別できない
+- **ヘッダに機械の要約**(● 実行中 / ○ 空き / ? 不明)。ボードは run の一覧なので空き機械の行は
+  作らず、ここで拾う —— **不明を空きに見せないため**
+- **他人の run もプロジェクト名・プロファイル名・シナリオ名まで出す**(ユーザー決定 2026-09-20。
+  同一信頼グループ前提)。自分の run では issuer を出さない
+- 機械分担の run は `runGroup` で1行に束ね、展開でレーンが機械ごとに並ぶ
+- 行のクリックでその run の台を**ラインビューで選択**(既存の `selectedDeviceIds`)。レーン行は1台
+- 機械の色は `machineColors.js`、折りたたみ状態は `tilePaneHeight` と同じく設定へ保存
+
+### 18.6 実装の段
+
+| 段 | 内容 | 検証 |
+|---|---|---|
+| 1 | `FTCore.RunProgressLedger`(書き・読み・解釈は純粋関数)+ `RunOrchestrator` への注入 | 単体 + 変異。注入忘れはソース走査(`ParentDeathWatchWiringTests` と同型) |
+| 2 | `api monitor` が手元の台帳を読み `monitorRuns` を出す | 仕分けは `ApiMonitorCommand.scope` と同じく pure に切り出す |
+| 3 | 拡張: `runBoardModel.ts`(vscode 非依存)+ `webview/monitor/runBoard.js` | 往復テスト(型の効かない webview 境界)。i18n は両バンドル共有なので `lane.ts` 方式 |
+| 4 | fan-out の中継(親が machine を埋める・`observed:false`) | 既存3経路と並べた等号テスト |
+| 5 | 残り見積もり | LPT の部品を通すことをソース走査で固定 |
+| 6 | 詰まりの注記(requeued / レーン離脱 / シナリオの経過と実績中央値の並置) | まず警告表示から |
+
+段1〜3で「フリート全体の、誰の run でも、何本中何本」が出る。4 でリモートが乗り、5 で見積もり。
+
+### 18.7 やらないと決めたもの
+
+- **時間軸の帯(ガント)**: 「いつ何が動いていたか」は結果 DB(`api results`)とダッシュボードタブの
+  担当で、モニターは「今」を出す口。両方に持つと同じ数字が2箇所で食い違う
+- **空き機械の行をボードに並べる**: 行が台数ぶん伸びて run が埋もれる。空きはヘッダの要約に畳む
+- **自分の run だけ `runEvent` から描く**: 供給源を台帳に一本化する。2通りの経路を持つと、
+  同じ run が自分と他人で違う数字になる(runEvent はログレーン用に残す)
+- **`results/<runID>/run.json` を実況の供給源にする**: `RunMetaRecord` は begin() の時点で pid ごと
+  書かれており「実行中かクラッシュか」も読めるが、①**発行者ごとの work の下**にあるので他人の run が
+  見えない ②毎周期 `scenarios/*.json` を数えるのは走査が重い ③**結果 JSON のスキーマの定義元は
+  docs/results-json.md** で、実況のための欄を足すとそちらが汚れる。**記録(永続)と実況(揮発)を
+  混ぜない** —— 突き合わせは台帳が持つ `runID` で足りる

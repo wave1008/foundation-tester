@@ -268,6 +268,19 @@ function renderDevicesPanel(): string {
         <button id="btn-select-all" class="icon-button" type="button" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 1h14v14H1V1zm1 1v12h12V2H2z"/><rect x="4" y="4" width="2" height="8" rx="0.5"/><rect x="7" y="4" width="2" height="8" rx="0.5"/><rect x="10" y="4" width="2" height="8" rx="0.5"/></svg></button>
       </div>
     </div>
+    <!-- run ボード(フリート横断の実行状況。docs/design.md §18)。ツールバー直下・ラインビューの上
+         (グリッド表示中も進捗が見えることを優先。ユーザー決定 2026-09-20)。run 0本でもヘッダは残す
+         (main.js の 'monitorRuns'/'runBoardReset'/'runBoardCollapsed' ケースが runBoard.js へ渡す)。 -->
+    <div id="run-board" class="run-board">
+      <div id="run-board-header" class="run-board-header">
+        <!-- title/aria-label は webview 側(runBoard.js)が状態(開/閉)に応じて入れる(btn-fleet-visible と同じ規律) -->
+        <button id="run-board-toggle" class="run-board-toggle" type="button" aria-expanded="true">▾</button>
+        <span id="run-board-title" class="run-board-title"></span>
+        <span id="run-board-machines" class="run-board-machines"></span>
+      </div>
+      <div id="run-board-rows" class="run-board-rows"></div>
+    </div>
+
     <div id="banner" class="banner"></div>
 
     <div id="tile-pane" class="tile-pane">

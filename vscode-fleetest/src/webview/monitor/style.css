@@ -345,6 +345,168 @@ button.bulk-cancel:hover:not(:disabled) {
 #panel-devices.fleet-hidden #splitter {
   display: none;
 }
+
+/* run ボード(フリート横断の実行状況。docs/design.md §18)。ツールバー直下・ラインビューの上に
+   常設(run 0本でもヘッダは残す。runBoard.js)。 */
+.run-board {
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.35));
+  background-color: var(--vscode-editorGroupHeader-tabsBackground, transparent);
+  font-size: 12px;
+}
+.run-board-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+}
+.run-board-toggle {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: var(--vscode-icon-foreground, var(--vscode-foreground));
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 1;
+}
+.run-board-toggle:hover {
+  color: var(--vscode-foreground);
+}
+.run-board-title {
+  flex: 0 0 auto;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.run-board-machines {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  overflow: hidden;
+}
+.run-board-machine {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+}
+/* 状態の色は3値のみ(実行中=緑、空き=控えめなグレー、不明=警告色)。値そのものの色相は
+   持たない CPU/GPU 等のグラフとは違い、ここは判定を色で言う唯一の箇所。 */
+.run-board-dot-running { color: var(--vscode-testing-iconPassed, #2f9e63); }
+.run-board-dot-idle { color: var(--vscode-descriptionForeground, #9d9d9d); }
+.run-board-dot-unknown { color: var(--vscode-errorForeground, #f14c4c); }
+.run-board-rows {
+  display: flex;
+  flex-direction: column;
+}
+.run-board[data-collapsed="true"] .run-board-rows {
+  display: none;
+}
+.run-board-row {
+  border-top: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.25));
+}
+.run-board-row-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.run-board-row-summary:hover {
+  background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.2));
+}
+.run-board-chevron {
+  flex: 0 0 auto;
+  width: 12px;
+  text-align: center;
+  color: var(--vscode-icon-foreground, var(--vscode-foreground));
+  cursor: pointer;
+}
+.run-board-scope {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 80px;
+}
+.run-board-progress {
+  flex: 0 0 auto;
+  width: 90px;
+  height: 8px;
+  border-radius: 4px;
+  background-color: var(--vscode-widget-border, rgba(127, 127, 127, 0.3));
+  overflow: hidden;
+}
+.run-board-progress-bar {
+  height: 100%;
+  background-color: var(--vscode-progressBar-background, #0e70c0);
+}
+.run-board-row.run-board-row-hasFailed .run-board-progress-bar {
+  background-color: var(--vscode-errorForeground, #f14c4c);
+}
+.run-board-counts {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.run-board-time {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+}
+.run-board-issuer {
+  padding: 0 8px 3px 28px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.run-board-lanes {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 2px;
+}
+.run-board-row:not(.run-board-row-expanded) .run-board-lanes,
+.run-board-row:not(.run-board-row-expanded) .run-board-issuer {
+  display: none;
+}
+.run-board-lane-machine-header {
+  padding: 2px 8px 0 28px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+}
+.run-board-lane {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px 2px 36px;
+  cursor: pointer;
+}
+.run-board-lane:hover {
+  background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.2));
+}
+.run-board-lane-name {
+  flex: 0 0 auto;
+  width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.run-board-lane-scenario {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.run-board-lane-elapsed {
+  flex: 0 0 auto;
+  width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--vscode-descriptionForeground);
+}
 .toolbar-icon-group {
   align-self: flex-end;
   display: flex;

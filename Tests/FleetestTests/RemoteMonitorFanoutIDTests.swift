@@ -89,6 +89,41 @@ final class RemoteMonitorFanoutIDTests: XCTestCase {
         XCTAssertTrue(line.contains(#""machine":"M1Ultra""#), line)
     }
 
+    /// フリート横断の run 進捗(monitorRuns)も**マシン名は親が埋める**(docs/design.md §18.2)。
+    /// 埋め忘れると、子は "local" を名乗ったまま届くので拡張が手元のタイルへ誤って重ねる
+    func testRunsLineGetsTheMachineStamped() {
+        let relayed = LockedBox<[String]>([])
+        let fanout = RemoteMonitorFanout(machines: ["M1Ultra"], project: "P", profile: nil,
+                                         interval: 2, maxWidth: 960,
+                                         log: { _ in }, relayLine: { line in relayed.mutate { $0.append(line) } })
+        fanout.ingest(
+            line: #"{"kind":"monitorRuns","observed":true,"runs":[{"pid":41233,"runID":"r1","runGroup":null,"issuer":"alice","mine":false,"project":"ec-mobile","profile":"ios-smoke","elapsedSeconds":10,"total":5,"done":1,"failed":0,"etaSeconds":null,"lanes":[]}]}"#,
+            machine: "M1Ultra")
+        let lines = relayed.value
+        guard let line = lines.first, lines.count == 1 else {
+            return XCTFail("expected exactly one relayed line: \(lines)")
+        }
+        XCTAssertTrue(line.contains(#""machine":"M1Ultra""#), line)
+        XCTAssertTrue(line.contains(#""runID":"r1""#), line)
+    }
+
+    /// 子が落ちたら run 進捗も「もう観測できていない」を1行流す(monitorLock と同じ規律。
+    /// **held/run 無しと空きを混ぜない** —— 拡張は控えを消して不明に戻す)
+    func testUnobservedRunsLineIsRelayedWhenTheChildDies() {
+        let relayed = LockedBox<[String]>([])
+        let fanout = RemoteMonitorFanout(machines: ["M1Ultra"], project: "P", profile: nil,
+                                         interval: 2, maxWidth: 960,
+                                         log: { _ in }, relayLine: { line in relayed.mutate { $0.append(line) } })
+        fanout.relayUnobservedRuns("M1Ultra")
+        let lines = relayed.value
+        guard let line = lines.first, lines.count == 1 else {
+            return XCTFail("expected exactly one relayed line: \(lines)")
+        }
+        XCTAssertTrue(line.contains(#""observed":false"#), line)
+        XCTAssertTrue(line.contains(#""machine":"M1Ultra""#), line)
+        XCTAssertTrue(line.contains(#""runs":[]"#), line)
+    }
+
     func testUnexpectedLinesPassThroughUnchanged() {
         for line in [#"{"kind":"monitorFrame"}"#, "not json", #"{"device":"noplatform"}"#] {
             XCTAssertEqual(RemoteMonitorFanout.machineScoped(line: line, machine: "M1Max"), line, line)

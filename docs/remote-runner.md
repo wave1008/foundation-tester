@@ -839,6 +839,9 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   kill ボタンを出さない(§11)
 - 実行の集約通知に **FM 不可ホストでの screenLooksLike 素通り**を明記する(run 末尾の FM 警告の
   中継だけでは複数ホストの出力に埋もれる。レビュー指摘)
+- **run の進捗(フリート横断の run ボード)の契約は docs/design.md §18 が正**(供給は機械
+  グローバルの台帳 `~/.fleetest/runs/<pid>.json`・中継はこの fan-out に相乗りする
+  `monitorRuns`。ここには置かない = 二重管理にしない)
 
 ### リモートのデバイスの状態と画面(2026-08-17 実装)
 
