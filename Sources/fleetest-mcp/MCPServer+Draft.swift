@@ -18,7 +18,7 @@ extension MCPServer {
     /// **アサーションは推測で作らない**(F-5): expectation は空の骨格で出し、
     /// ft_dry_run の「アサーションの無い expectation ブロック」検出に埋めさせる。
     /// **セレクタを解決できなかった手は TODO で残す**(F-4) —— 消すと手順と食い違う
-    func draftScenario(_ args: [String: Any]) -> String {
+    func draftScenario(_ args: [String: Any]) throws -> String {
         let recorded = (args["all"] as? Bool == true)
             ? interactions.entries : interactions.sinceLastLaunch
         guard !recorded.isEmpty else {
@@ -29,8 +29,8 @@ extension MCPServer {
         // 「意図」ではないので、行き止まりのタップや試し打ちがそのまま載る。自動では
         // 本筋と回り道を見分けられない(どちらも成功した操作)ので、**番号を見せて選ばせる**
         let (scope, droppedCount, ignoredNumbers) = InteractionLog.prune(
-            recorded, lastN: args["lastN"] as? Int,
-            drop: (args["drop"] as? [Any])?.compactMap { $0 as? Int } ?? [])
+            recorded, lastN: try Self.intArgument(args, "lastN"),
+            drop: try Self.intArrayArgument(args, "drop") ?? [])
         guard !scope.isEmpty else {
             return "Every recorded step was pruned away (\(recorded.count) recorded,"
                 + " \(droppedCount) dropped). Call ft_draft_scenario again with a smaller"
@@ -56,7 +56,7 @@ extension MCPServer {
                 resolved += 1
             }
         }
-        let sceneBreaks = ((args["scenes"] as? [Any])?.compactMap { $0 as? Int } ?? [])
+        let sceneBreaks = (try Self.intArrayArgument(args, "scenes") ?? [])
             .compactMap { number -> Int? in
                 guard number >= 1, number <= stepIndexForListing.count else { return nil }
                 return stepIndexForListing[number - 1]

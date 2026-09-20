@@ -25,7 +25,7 @@ extension MCPServer {
         -> SnapshotResponse {
         // `maxElements` は**この1回だけ**の上限(ブリッジの `?max=`)。既定へ戻す必要は無い ——
         // ドライバ側が1回で消費する契約なので、次の呼び出しは黙って 120 に戻る
-        if let requested = args["maxElements"] as? Int {
+        if let requested = try Self.intArgument(args, "maxElements") {
             driver.raiseElementLimitOnNextSnapshot(requested)
             return adoptSnapshot(try await driver.snapshot(bypassingCache: driver.supportsCacheBypass),
                                  args: args)
@@ -66,8 +66,8 @@ extension MCPServer {
 
     /// 待ちのポーリングが毎回かける要素上限(`Self.waitFor` の `elementLimit`)。
     /// **明示指定 > ラッチ > 既定(nil)** —— `freshSnapshot` の優先順と同じにする
-    func pollElementLimit(_ args: [String: Any]) -> Int? {
-        if let requested = args["maxElements"] as? Int { return requested }
+    func pollElementLimit(_ args: [String: Any]) throws -> Int? {
+        if let requested = try Self.intArgument(args, "maxElements") { return requested }
         return webPageCeilingLatched.contains(Self.engineKey(args))
             ? BridgeAPI.maxSnapshotElementsCeiling : nil
     }
@@ -570,10 +570,10 @@ extension MCPServer {
             // 追いついていない)なので、両方は二重に待つだけ。パターンは ft_snapshot の
             // waitFor 分岐と同じ(refetched の扱いも含め)
             if let waitFor = args["waitFor"] as? String {
-                let seconds = args["timeout"] as? Double ?? Self.defaultWaitSeconds
+                let seconds = try Self.doubleArgument(args, "timeout") ?? Self.defaultWaitSeconds
                 let waited = try await Self.waitFor(waitFor, driver: snapshotDriver,
                                                     first: snapshot, seconds: seconds,
-                                                    elementLimit: pollElementLimit(args))
+                                                    elementLimit: try pollElementLimit(args))
                 snapshot = waited.refetched ? adoptSnapshot(waited.snapshot, args: args) : waited.snapshot
                 waitNote = waited.found ? "waitFor \"\(waitFor)\" appeared.\n"
                     : "waitFor \"\(waitFor)\" did not appear within \(Self.secondsText(seconds))"
@@ -658,7 +658,7 @@ extension MCPServer {
                 + " (nothing was read on this device yet), so it did not wait.\n")
         }
         var snapshot = initial
-        let seconds = args["timeout"] as? Double ?? Self.defaultWaitSeconds
+        let seconds = try Self.doubleArgument(args, "timeout") ?? Self.defaultWaitSeconds
         let deadline = Date().addingTimeInterval(max(0, seconds))
         var changed = !Self.looksUnchanged(beforeAction, snapshot)
         let changedOnFirstRead = changed
@@ -1079,6 +1079,10 @@ extension MCPServer {
     /// verifiedRef と同じ規律で、撮った時点から動いていても黙って古い座標を使わない
     func resolveScrollFrameArg(_ args: [String: Any], driver: AppDriver) async throws
         -> ScrollFrameArg {
+        // **intArgument を通さない**(NumericArgumentSourceScanTests の allowlist 対象): scrollFrame は
+        // Int(ref)/String(selector) のどちらも正当な値で、非 Int は「型が違う」のではなく
+        // 「もう一方の形」。型の拒否は入口の validateScrollFrameArg(Int/String 以外だけ断る)が
+        // 既にやっている
         if let ref = args["scrollFrame"] as? Int {
             guard let resolved = resolveSessionRef(ref, args: args) else {
                 throw MCPError("scrollFrame ref [\(ref)] is unknown — it is not from any recent"
@@ -1232,7 +1236,7 @@ extension MCPServer {
             action: "scrollTo", locator: selector.primary,
             fallbacks: selector.fallbacks.isEmpty ? nil : selector.fallbacks,
             direction: direction.swipe.rawValue,
-            maxSwipes: args["maxSwipes"] as? Int ?? FlowStep.defaultMaxSwipes,
+            maxSwipes: try Self.intArgument(args, "maxSwipes") ?? FlowStep.defaultMaxSwipes,
             scrollFrame: scrollFrameArg.locator,
             scrollFrameRect: scrollFrameArg.rect)
         let scrollFrameLabelNote = scrollFrameArg.note.isEmpty ? ""

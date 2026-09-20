@@ -375,11 +375,71 @@ extension MCPServer {
     /// `port` 引数を UInt16 に畳む。無指定は nil。**範囲外・非整数は MCPError** ——
     /// `UInt16.init` は 65535 超・負数で trap し、エージェントの typo 1 回でサーバごと落ちる
     static func portArgument(_ args: [String: Any]) throws -> UInt16? {
-        guard let raw = args["port"] else { return nil }
-        guard let value = raw as? Int, let port = UInt16(exactly: value), port > 0 else {
-            throw MCPError("port must be an integer between 1 and 65535 (got \(raw))")
+        guard let value = try intArgument(args, "port") else { return nil }
+        guard let port = UInt16(exactly: value), port > 0 else {
+            throw MCPError("port must be an integer between 1 and 65535 (got \(value))")
         }
         return port
+    }
+
+    /// **数値引数の唯一の取り出し口**(Int/Double 共通)。全ての `args["…"] as? Int` /
+    /// `as? Double` はここを通す(`NumericArgumentSourceScanTests` が直読みの再混入を検出)。
+    /// 無指定は nil(従来どおり)。**型が違えば断る**(寛容化しない) —— MCP クライアントは
+    /// JSON Schema が integer/number でも実際に文字列で送ることがあり(実測)、黙って
+    /// `as?` を失敗させると呼び手は「値が無い」と区別できないまま、tap の ref なら x/y
+    /// 座標フォールバックのような**より危険な**経路へ落ちる。"8" と "8.5" のような境界を
+    /// 解釈で割ることもしない(文字列から数値への変換規則を1つ選ぶこと自体が寛容化)
+    static func intArgument(_ args: [String: Any], _ key: String) throws -> Int? {
+        guard let raw = args[key] else { return nil }
+        guard let value = raw as? Int else {
+            throw MCPError(numericArgumentTypeError(key: key, raw: raw, expected: "an integer"))
+        }
+        return value
+    }
+
+    /// Double 版(同じ規律)
+    static func doubleArgument(_ args: [String: Any], _ key: String) throws -> Double? {
+        guard let raw = args[key] else { return nil }
+        guard let value = raw as? Double else {
+            throw MCPError(numericArgumentTypeError(key: key, raw: raw, expected: "a number"))
+        }
+        return value
+    }
+
+    private static func numericArgumentTypeError(key: String, raw: Any, expected: String) -> String {
+        "\(key) must be \(expected) (got \(describeArgumentValue(raw))) — pass a JSON number, not a quoted string"
+    }
+
+    /// エラー文に渡された値の**型が分かる形**で埋め込む。素の `\(raw)` は文字列 "8130" を
+    /// 数値の 8130 と見分けが付かない形で出す(この不具合の実物)
+    /// 整数の**配列**を取る引数(`drop` / `scenes` = 1 始まりのステップ番号)。
+    /// **要素が1つでも整数でなければ断る** —— `compactMap { $0 as? Int }` で落とすと、
+    /// 指定した番号が黙って効かない(刈り込みや切れ目が入らないのに成功したように見える)
+    static func intArrayArgument(_ args: [String: Any], _ key: String) throws -> [Int]? {
+        guard let raw = args[key] else { return nil }
+        guard let items = raw as? [Any] else {
+            throw MCPError("\(key) must be an array of integers (got \(describeArgumentValue(raw)))"
+                + " — pass JSON numbers, not quoted strings")
+        }
+        return try items.enumerated().map { index, item in
+            guard let value = item as? Int else {
+                throw MCPError("\(key)[\(index)] must be an integer"
+                    + " (got \(describeArgumentValue(item))) — pass JSON numbers,"
+                    + " not quoted strings")
+            }
+            return value
+        }
+    }
+
+    private static func describeArgumentValue(_ raw: Any) -> String {
+        switch raw {
+        case let value as String: return "the string \"\(value)\""
+        case let value as Bool: return "the boolean \(value)"
+        case is [Any]: return "an array"
+        case is [String: Any]: return "an object"
+        case is NSNull: return "null"
+        default: return "\(raw)"
+        }
     }
 }
 

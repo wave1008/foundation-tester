@@ -101,13 +101,16 @@ extension MCPServer {
         }
     }
 
-    /// driver(_:) が使うキャッシュキーと同じ引き当て(エンジンの記録先)
+    /// driver(_:) が使うキャッシュキーと同じ引き当て(エンジンの記録先)。**93 箇所から
+    /// 呼ばれる non-throwing 関数**なので型ゲートは `try?` で通す(誤った型は nil = 従来どおり
+    /// port なしのキーに畳む)——実際の接続は `portArgument`/`portForIOS`(throws)が別途
+    /// 検査するので、ここが緩くても「文字列を渡したのに繋がってしまう」ことにはならない
     static func engineKey(_ args: [String: Any]) -> String {
         if let profileName = args["profile"] as? String {
             return driverCacheKey(profile: profileName, project: args["project"] as? String,
                                   platform: args["platform"] as? String)
         }
-        return driverCacheKey(platform: platformName(args), port: args["port"] as? Int,
+        return driverCacheKey(platform: platformName(args), port: try? Self.intArgument(args, "port"),
                               serial: args["serial"] as? String)
     }
 
@@ -558,8 +561,8 @@ extension MCPServer {
                 platform: Self.platformName(args),
                 bundleID: logBundleID,
                 serial: args["serial"] as? String,
-                withinSeconds: args["sinceSeconds"] as? Int ?? 300,
-                maxLines: args["lines"] as? Int ?? 100,
+                withinSeconds: try Self.intArgument(args, "sinceSeconds") ?? 300,
+                maxLines: try Self.intArgument(args, "lines") ?? 100,
                 crashOnly: (args["all"] as? Bool) != true,
                 physicalUDID: logsPhysicalUDID))
 
@@ -691,10 +694,10 @@ extension MCPServer {
             // **待つのはホスト側の仕事**: エージェントに snapshot を撃ち直させると、待った
             // 回数だけ画面一覧が文脈に積まれる(1回あたり数千トークン)
             if let waitFor = args["waitFor"] as? String {
-                let seconds = args["timeout"] as? Double ?? Self.defaultWaitSeconds
+                let seconds = try Self.doubleArgument(args, "timeout") ?? Self.defaultWaitSeconds
                 let waited = try await Self.waitFor(waitFor, driver: snapshotDriver,
                                                     first: snapshot, seconds: seconds,
-                                                    elementLimit: pollElementLimit(args))
+                                                    elementLimit: try pollElementLimit(args))
                 // **撃ち直しが起きたときだけ adoptSnapshot を通す**: 撃ち直しが無ければ
                 // `waited.snapshot` は `snapshot`(既にセッション ref)そのものなので、
                 // native 前提の adoptSnapshot に通すと同じ木を「別世代」と誤認する
@@ -730,7 +733,7 @@ extension MCPServer {
 
         case "ft_tap":
             let d = try await driver(args)
-            if let ref = args["ref"] as? Int {
+            if let ref = try Self.intArgument(args, "ref") {
                 let target = try await verifiedRef(ref, driver: d, args: args)
                 // **target.ref はセッション ref**。ブリッジは native の番号しか知らないので、
                 // 撃つ直前にだけ nativeRef で戻す(応答・記録には引き続きセッション ref を使う)
@@ -749,7 +752,7 @@ extension MCPServer {
                     + Self.changedHint(args) + waitForWithoutSnapshotAfterNote(args)
                     + (await snapshotAfterBody(args)))
             }
-            if let x = args["x"] as? Double, let y = args["y"] as? Double {
+            if let x = try Self.doubleArgument(args, "x"), let y = try Self.doubleArgument(args, "y") {
                 if let offscreen = Self.offscreenCoordinateError(
                     x: x, y: y, screen: await coordinateScreen(d, args: args),
                     engine: engines[Self.engineKey(args)]) { throw offscreen }
@@ -776,7 +779,7 @@ extension MCPServer {
                 throw MCPError("text is required (or pass pressEnter: true to fire Enter only)")
             }
             let typeDriver = try await driver(args)
-            var targetRef = args["ref"] as? Int
+            var targetRef = try Self.intArgument(args, "ref")
             var note = ""
             // **type は追記**(docs/commands.md)。既に入っている欄へ撃つと連結された文字列になり、
             // 戻り値が `Typed: "東京タワー"` だけだと気づけない —— 検索欄なら検索自体は成立するので
@@ -1279,7 +1282,7 @@ extension MCPServer {
         case "ft_clear_input":
             // ref 省略 = フォーカス中の欄(DSL の clearInput() と同じ)
             let clearDriver = try await driver(args)
-            var clearRef = args["ref"] as? Int
+            var clearRef = try Self.intArgument(args, "ref")
             var clearNote = ""
             var clearTarget: ElementInfo?
             if let ref = clearRef {
@@ -1322,7 +1325,7 @@ extension MCPServer {
                 + (clearRef.map { reproductionNote(resolvedRef: $0, args: args) } ?? ""))
 
         case "ft_draft_scenario":
-            return text(draftScenario(args))
+            return text(try draftScenario(args))
 
         case "ft_dsl_commands":
             return dslCommands(args)
@@ -1338,7 +1341,7 @@ extension MCPServer {
             var doubleTapNote = ""
             var doubleTapSelector = ""
             var doubleTapResolvedRef: Int?
-            if let ref = args["ref"] as? Int {
+            if let ref = try Self.intArgument(args, "ref") {
                 let (element, labelNote) = try await verifiedElement(ref, driver: doubleTapDriver, args: args)
                 doubleTapPoint = (element.frame.centerX, element.frame.centerY)
                 doubleTapWhat = "[\(ref)]"
@@ -1365,7 +1368,7 @@ extension MCPServer {
                         ?? FTRect(x: 0, y: 0, width: 0, height: 0),
                         isAndroid: doubleTapDriver is AndroidDriver) + labelNote
                 doubleTapSelector = reproductionNote(resolvedRef: element.ref, args: args)
-            } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
+            } else if let x = try Self.doubleArgument(args, "x"), let y = try Self.doubleArgument(args, "y") {
                 if let offscreen = Self.offscreenCoordinateError(
                     x: x, y: y, screen: await coordinateScreen(doubleTapDriver, args: args),
                     engine: engines[Self.engineKey(args)]) { throw offscreen }
@@ -1396,13 +1399,13 @@ extension MCPServer {
             // **once() は実際に使う枝でだけ呼ぶ**: fromRef 側で上書きされる既定値として
             // 呼ぶと、座標形を一度も返していないのに「もう説明した」ことになってしまう
             var dragSelector = ""
-            if let ref = args["fromRef"] as? Int {
+            if let ref = try Self.intArgument(args, "fromRef") {
                 // **撮り直した木の frame を使う**(verifiedElement)。覚えていた frame から
                 // 座標を作ると、この修正が防ごうとしている「古い座標を撃つ」に自分で落ちる
                 let (element, labelNote) = try await verifiedElement(ref, driver: dragDriver, args: args)
                 fromPoint = (element.frame.centerX, element.frame.centerY)
                 dragSelector = reproductionNote(resolvedRef: element.ref, args: args) + labelNote
-            } else if let x = args["fromX"] as? Double, let y = args["fromY"] as? Double {
+            } else if let x = try Self.doubleArgument(args, "fromX"), let y = try Self.doubleArgument(args, "fromY") {
                 // 宛先の無い呼び出しは木を読む前に断る(引数の検査はデバイスに触らない)
                 guard args["toX"] != nil || args["toY"] != nil || args["dx"] != nil || args["dy"] != nil else {
                     throw MCPError("the drag does not move: pass toX/toY, or dx/dy")
@@ -1419,8 +1422,8 @@ extension MCPServer {
                 throw MCPError("fromRef or fromX/fromY is required")
             }
             // 終点は絶対座標か相対移動のどちらか(相対は「グラバーを 400 上へ」を素直に書ける)
-            let toX = args["toX"] as? Double ?? (from.x + (args["dx"] as? Double ?? 0))
-            let toY = args["toY"] as? Double ?? (from.y + (args["dy"] as? Double ?? 0))
+            let toX = try Self.doubleArgument(args, "toX") ?? (from.x + (try Self.doubleArgument(args, "dx") ?? 0))
+            let toY = try Self.doubleArgument(args, "toY") ?? (from.y + (try Self.doubleArgument(args, "dy") ?? 0))
             guard toX != from.x || toY != from.y else {
                 throw MCPError("the drag does not move: pass toX/toY, or dx/dy")
             }
@@ -1428,7 +1431,7 @@ extension MCPServer {
             let fromY = from.y
             try await dragDriver.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
                                       pressSeconds: 0.05,
-                                      durationSeconds: args["durationSeconds"] as? Double ?? 1.5)
+                                      durationSeconds: try Self.doubleArgument(args, "durationSeconds") ?? 1.5)
             // DSL に drag の対応コマンドが無いので、下書きには TODO 行として残す
             // (座標タップと同じ扱い。黙って消すと探索の再現が途中から辻褄が合わなくなる)
             recordInteraction(action: "drag", resolvedRef: nil, args: args,
@@ -1444,7 +1447,7 @@ extension MCPServer {
                 + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
 
         case "ft_pinch":
-            let scale = args["scale"] as? Double ?? 2.0
+            let scale = try Self.doubleArgument(args, "scale") ?? 2.0
             guard scale > 0, scale != 1, scale.isFinite else {
                 throw MCPError("scale must be positive and not 1 (>1 zooms in, <1 zooms out)")
             }
@@ -1458,20 +1461,20 @@ extension MCPServer {
             var pinchSelector = ""
             var pinchResolvedRef: Int?
             var pinchCoordinate: (x: Double, y: Double)?
-            if let ref = args["ref"] as? Int {
+            if let ref = try Self.intArgument(args, "ref") {
                 let (element, labelNote) = try await verifiedElement(ref, driver: pinchDriver, args: args)
                 frame = element.frame
                 identifier = element.identifier
                 pinchResolvedRef = element.ref
                 pinchSelector = reproductionNote(resolvedRef: element.ref, args: args) + labelNote
-            } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
+            } else if let x = try Self.doubleArgument(args, "x"), let y = try Self.doubleArgument(args, "y") {
                 // **地図・キャンバスには ref が無い**(2026-08-09 実測): Apple マップの場所カードを
                 // 半分出したまま ref 無しで撃つと、指が画面全体に開くのでシートが掴まれ、
                 // **地図は 1px も動かずシートが全画面に展開した**。逃げ道が無かったので、
                 // ft_tap / ft_long_press / ft_drag と同じく座標を受ける
                 pinchCoordinate = (x, y)
                 let pinchScreen = lastSnapshots[Self.engineKey(args)]?.screen
-                var pinchRadius = args["radius"] as? Double
+                var pinchRadius = try Self.doubleArgument(args, "radius")
                 // Android は最小スケール距離(27 mm)に届く半径まで既定を広げる(pinchRadiusHonouringMinimumSpan の doc)
                 if pinchRadius == nil, let android = pinchDriver as? AndroidDriver,
                    let minimumSpan = android.minimumScalingSpanPx() {
@@ -1495,7 +1498,7 @@ extension MCPServer {
             } else {
                 whole = true
             }
-            let pinchDuration = args["durationSeconds"] as? Double ?? 0.5
+            let pinchDuration = try Self.doubleArgument(args, "durationSeconds") ?? 0.5
             try await pinchDriver.pinch(frame: frame, identifier: identifier, scale: scale,
                                         durationSeconds: pinchDuration)
             // 記録は DSL の語彙(pinchOut/pinchIn)で。既定の 0.5s は落とす(codegen が省くため)
@@ -1532,8 +1535,8 @@ extension MCPServer {
                     + " DSL's tap(holdSeconds:)) — pass holdSeconds instead")
             }
             let pressDriver = try await driver(args)
-            let pressDuration = args["holdSeconds"] as? Double ?? 1.0
-            if let ref = args["ref"] as? Int {
+            let pressDuration = try Self.doubleArgument(args, "holdSeconds") ?? 1.0
+            if let ref = try Self.intArgument(args, "ref") {
                 let pressTarget = try await verifiedRef(ref, driver: pressDriver, args: args)
                 // pressTarget.ref はセッション ref。ブリッジへ渡す直前にだけ native へ戻す
                 try await pressDriver.press(ref: nativeRef(pressTarget.ref, args: args),
@@ -1548,7 +1551,7 @@ extension MCPServer {
             // **座標形は ft_tap と揃える**: ドライバは press(x:y:duration:) を要件として持つのに
             // MCP からは ref でしか呼べなかった。地図・キャンバスのように a11y 要素が無い点を
             // 長押しする操作(ピンを落とす・住所を出す)が一切書けない状態だった
-            if let x = args["x"] as? Double, let y = args["y"] as? Double {
+            if let x = try Self.doubleArgument(args, "x"), let y = try Self.doubleArgument(args, "y") {
                 if let offscreen = Self.offscreenCoordinateError(
                     x: x, y: y, screen: await coordinateScreen(pressDriver, args: args),
                     engine: engines[Self.engineKey(args)]) { throw offscreen }
@@ -1595,8 +1598,8 @@ extension MCPServer {
             // 縮小できないとき(壊れた PNG・ImageIO 失敗)は絵を返さないより原寸のほうがまし
             guard let scaled = ImageDownscale.jpeg(
                 png: png,
-                maxWidth: args["maxWidth"] as? Int ?? Self.screenshotMaxWidth,
-                quality: args["quality"] as? Double ?? Self.screenshotQuality) else {
+                maxWidth: try Self.intArgument(args, "maxWidth") ?? Self.screenshotMaxWidth,
+                quality: try Self.doubleArgument(args, "quality") ?? Self.screenshotQuality) else {
                 return staleNote
                     + [["type": "image", "data": png.base64EncodedString(), "mimeType": "image/png"]]
             }
@@ -1614,7 +1617,7 @@ extension MCPServer {
             let element: ElementInfo
             let screen: FTRect
             var refNote = ""
-            if let ref = args["ref"] as? Int {
+            if let ref = try Self.intArgument(args, "ref") {
                 let target = try await verifiedRef(ref, driver: d, args: args)
                 guard let snapshot = lastSnapshots[Self.engineKey(args)],
                       let found = snapshot.elements.first(where: { $0.ref == target.ref }) else {
