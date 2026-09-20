@@ -553,9 +553,17 @@ actor RunProgressState {
     private var lastWritten: RunProgressRecord?
     private let write: (@Sendable (RunProgressRecord) -> Void)?
     private let remove: (@Sendable () -> Void)?
+    /// 残り見積もり(docs/design.md §18.4)の実績表(ms)。空 = 実績ゼロ → etaSeconds は常に nil
+    private let estimates: [RunProgressEstimate.ScenarioKey: Double]
+    /// 未着手ジョブの多重集合(件数)。同じ (scenarioID, platform) が複数残ることがある
+    /// (broadcast は同じシナリオが複数レーンぶん残る)。scenarioStarted で1減らし、
+    /// 再キュー(laneIdled)でまた1増やす
+    private var pendingCounts: [RunProgressEstimate.ScenarioKey: Int]
 
     init(pid: Int32, runID: String?, runGroup: String?, issuer: String?, project: String,
         profile: String?, startedAt: Date, total: Int,
+        estimates: [RunProgressEstimate.ScenarioKey: Double] = [:],
+        pendingScenarios: [RunProgressEstimate.ScenarioKey] = [],
         write: (@Sendable (RunProgressRecord) -> Void)?, remove: (@Sendable () -> Void)?) {
         self.pid = pid
         self.runID = runID
@@ -565,6 +573,8 @@ actor RunProgressState {
         self.profile = profile
         self.startedAt = ISO8601DateFormatter().string(from: startedAt)
         self.total = total
+        self.estimates = estimates
+        self.pendingCounts = Dictionary(grouping: pendingScenarios, by: { $0 }).mapValues(\.count)
         self.write = write
         self.remove = remove
     }
@@ -573,10 +583,33 @@ actor RunProgressState {
         let record = RunProgressRecord(
             pid: pid, runID: runID, runGroup: runGroup, issuer: issuer, project: project,
             profile: profile, startedAt: startedAt, total: total, done: done, failed: failed,
-            etaSeconds: nil, lanes: lanesByKey.values.sorted { $0.key < $1.key })
+            etaSeconds: currentEtaSeconds(), lanes: lanesByKey.values.sorted { $0.key < $1.key })
         guard record != lastWritten else { return }
         lastWritten = record
         write?(record)
+    }
+
+    /// §18.4 の式そのもの。**未着手はレーンから独立**(pendingCounts)・**実行中はレーンから直接**
+    /// (lanesByKey の scenario/scenarioStartedAt)。同じ機械・同じプロセスの時計を使うだけなので
+    /// (§18.3 が扱う「向こうの時計とのずれ」はここには無い)、経過は Date() との差でそのまま出す
+    private func currentEtaSeconds() -> Int? {
+        let pending = pendingCounts.flatMap { key, count in Array(repeating: key, count: count) }
+        let running: [(scenario: RunProgressEstimate.ScenarioKey, elapsedSeconds: Double)] =
+            lanesByKey.values.compactMap { lane in
+                guard let scenario = lane.scenario, let platform = lane.platform,
+                      let startedText = lane.scenarioStartedAt,
+                      let laneStartedAt = ISO8601DateFormatter().date(from: startedText)
+                else { return nil }
+                let key = RunProgressEstimate.ScenarioKey(scenarioID: scenario, platform: platform)
+                return (key, max(0, Date().timeIntervalSince(laneStartedAt)))
+            }
+        return RunProgressEstimate.etaSeconds(
+            table: estimates, pending: pending, running: running, liveLanes: lanesByKey.count)
+    }
+
+    private func decrementPending(_ key: RunProgressEstimate.ScenarioKey) {
+        guard let count = pendingCounts[key], count > 0 else { return }
+        if count == 1 { pendingCounts.removeValue(forKey: key) } else { pendingCounts[key] = count - 1 }
     }
 
     /// レーンの新規参加・復帰(revive 後の再参加も同じ経路。key が変われば新規レーン扱い)
@@ -594,6 +627,11 @@ actor RunProgressState {
 
     func scenarioStarted(laneKey: String, scenario: String, at: Date) {
         guard let lane = lanesByKey[laneKey] else { return }
+        // 未着手 → 実行中(pendingCounts から1つ引く。lane.platform は laneJoined で
+        // worker.platform から常に埋まる —— nil なら鍵が作れないので寄与させない)
+        if let platform = lane.platform {
+            decrementPending(RunProgressEstimate.ScenarioKey(scenarioID: scenario, platform: platform))
+        }
         lanesByKey[laneKey] = RunProgressLane(
             key: lane.key, name: lane.name, platform: lane.platform, scenario: scenario,
             scenarioStartedAt: ISO8601DateFormatter().string(from: at))
@@ -602,9 +640,14 @@ actor RunProgressState {
 
     /// 結果を捨てて再キュー(環境の一過性エラー・不達ブリッジの振り直し等)。
     /// **done/failed は増やさない** —— 同じシナリオを別の機会にもう一度実行するので、
-    /// まだ「終わった」ことにはならない(最終的な合否は、次に scenarioFinished が呼ばれたとき)
+    /// まだ「終わった」ことにはならない(最終的な合否は、次に scenarioFinished が呼ばれたとき)。
+    /// **見積もりは「未着手」へ戻す**(実行中 → もう一度 pendingCounts へ)
     func laneIdled(laneKey: String) {
         guard let lane = lanesByKey[laneKey] else { return }
+        if let scenario = lane.scenario, let platform = lane.platform {
+            let key = RunProgressEstimate.ScenarioKey(scenarioID: scenario, platform: platform)
+            pendingCounts[key, default: 0] += 1
+        }
         lanesByKey[laneKey] = RunProgressLane(
             key: lane.key, name: lane.name, platform: lane.platform, scenario: nil,
             scenarioStartedAt: nil)
@@ -931,6 +974,12 @@ public final class RunOrchestrator {
     /// isDeviceFrozen 等と同じ理由(FTCore はプロセス起動側の知識を持たない)で fleetest ターゲットが注入
     private let writeRunProgress: (@Sendable (RunProgressRecord) -> Void)?
     private let removeRunProgress: (@Sendable () -> Void)?
+    /// 残り見積もり(docs/design.md §18.4)の実績を読む件数(シナリオ1本あたり)。
+    /// **FTCore は fleetest ターゲットの `LPTOrdering` を参照できない**ため、呼び出し側が
+    /// 同じ run の `LPTOrdering.apply` に渡したのと同じ値(`lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns`)
+    /// をそのまま渡す —— ETA が LPT の並べ替えと違う窓の実績を読むと、同じ run 内で
+    /// 「並び順」と「残り時間」が別々の実績集合を見ることになる
+    private let progressHistoryRuns: Int
     /// run() の頭で構築し、その run の間だけ生きる(run をまたいで使い回さない)。
     /// 並行ワーカーが開始する前に一度だけ代入し、以降は読むだけ(TestingSlots 等と違い actor に
     /// しないのは、生成が run() の単一箇所に閉じているため)
@@ -1025,6 +1074,7 @@ public final class RunOrchestrator {
                 profile: String? = nil,
                 writeRunProgress: (@Sendable (RunProgressRecord) -> Void)? = nil,
                 removeRunProgress: (@Sendable () -> Void)? = nil,
+                progressHistoryRuns: Int,
                 cleanupRetiredWorker: (@Sendable (RunWorker) async -> Void)? = nil,
                 reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)? = nil,
                 recheckRunner: RunnerRecheck? = nil,
@@ -1054,6 +1104,7 @@ public final class RunOrchestrator {
         self.profile = profile
         self.writeRunProgress = writeRunProgress
         self.removeRunProgress = removeRunProgress
+        self.progressHistoryRuns = progressHistoryRuns
         self.cleanupRetiredWorker = cleanupRetiredWorker
         self.reviveWorker = reviveWorker
         self.recheckRunner = recheckRunner
@@ -1192,6 +1243,10 @@ public final class RunOrchestrator {
         let queueKey: @Sendable (RunWorker) -> String
         /// ドレイン(残ったまま終わった item)の記録に載せる (platform, worker, 理由)
         let drainInfo: (String, Bool) -> (platform: String, worker: String?, reason: String)
+        /// 実際にキューへ乗る(= いつか scenarioStarted される)シナリオの鍵の多重集合。
+        /// 残り見積もり(docs/design.md §18.4)の未着手初期値。**即スキップ分(担当ワーカーなし)は
+        /// 含めない** —— どのレーンにも一生取られないので、含めると見積もりが下がりきらないまま残る
+        var runnableScenarios: [RunProgressEstimate.ScenarioKey] = []
         switch dispatch {
         case .shared:
             let grouped = Dictionary(grouping: items) { $0.info.platform ?? defaultPlatform }
@@ -1209,11 +1264,14 @@ public final class RunOrchestrator {
                 }
                 failed += list.count
             }
-            queues = grouped.filter { workerPlatforms.contains($0.key) }
-                .mapValues { ScenarioQueue($0) }
+            let runnable = grouped.filter { workerPlatforms.contains($0.key) }
+            queues = runnable.mapValues { ScenarioQueue($0) }
             total = items.count
             queueKey = { $0.platform }
             drainInfo = { platform, _ in (platform, nil, "no usable workers") }
+            runnableScenarios = runnable.flatMap { platform, list in
+                list.map { RunProgressEstimate.ScenarioKey(scenarioID: $0.info.id, platform: platform) }
+            }
         case .broadcast(let lanes):
             let plan = BroadcastPlan.make(items: items, lanes: lanes)
             for item in plan.unassigned {
@@ -1237,6 +1295,13 @@ public final class RunOrchestrator {
                         joined ? "device \(key) dropped out and could not be revived"
                                : "device \(key) never joined the run")
             }
+            // broadcast は1レーン1キュー = plan.queues のまま(shared と違い platform で
+            // まとめ直さない)。cross-platform 項目(item.info.platform == nil)は各対象レーンの
+            // platform で複数回計上される —— 実際に各レーンで1回ずつ走るジョブなので正しい
+            runnableScenarios = plan.queues.flatMap { key, list in
+                list.map { RunProgressEstimate.ScenarioKey(
+                    scenarioID: $0.info.id, platform: lanePlatform[key] ?? defaultPlatform) }
+            }
         }
         /// broadcast のドレイン文言用(参加したレーンの key)。shared では使わない
         let joinedKeys = JoinedLaneKeys()
@@ -1244,11 +1309,26 @@ public final class RunOrchestrator {
         // run 進捗の記帳(docs/design.md §18)。**total はここで確定した値のまま動かさない**
         // (再キュー・失敗で変えない。RunProgressRecord.total の宣言参照)
         if writeRunProgress != nil || removeRunProgress != nil {
+            // 残り見積もり(§18.4)。読むのは run 開始時に1回だけ。LPTOrdering.apply と同じ実績源
+            // (RunResultsStore.scanRecords → LPTScheduler.durations)だが **machine 優先はしない**
+            // (preferringMachine 無し。手元の run の見積もりに他機の実績を混ぜるかは別の設計判断)
+            let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
+            let since = Date().addingTimeInterval(-30 * 24 * 60 * 60)  // LPTOrdering.historyDays と同じ窓
+            // LPTOrdering.apply と同じ下限(0/負値を渡されても「実績なし」に安全側で倒れる。
+            // FleetRunner.runSplit の historyRuns 節と同じ)
+            let records = RunResultsStore.scanRecords(
+                resultsDir: resultsDir, since: since,
+                maxObservationsPerScenario: max(1, progressHistoryRuns))
+            let durations = LPTScheduler.durations(from: records)
+            let estimateTable = RunProgressEstimate.estimateTable(
+                durations: durations, scenarios: runnableScenarios)
+
             progressState = RunProgressState(
                 pid: ProcessInfo.processInfo.processIdentifier,
                 runID: recorder?.runID, runGroup: recorder?.runGroup,
                 issuer: LocalConfig.resolveIssuerId(), project: project.name, profile: profile,
                 startedAt: Date(), total: total,
+                estimates: estimateTable, pendingScenarios: runnableScenarios,
                 write: writeRunProgress, remove: removeRunProgress)
         }
 

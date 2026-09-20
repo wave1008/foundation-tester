@@ -1,7 +1,8 @@
 // フリート横断の run 進捗(docs/design.md §18)を `api monitor` が拡張へ渡す形に直す
 // `ApiMonitorCommand.monitorRuns` の検証。守るもの: ①経過は台帳の ISO8601 をそのまま流さず
 // 呼び出し側の `now` で秒に直す(§18.3) ②issuer が nil のときは mine=false
-// (不明を自分扱いにしない。HostOccupancy と同じ向き) ③etaSeconds は常に nil(段5は未実装)。
+// (不明を自分扱いにしない。HostOccupancy と同じ向き) ③etaSeconds は台帳の値をそのまま運ぶ
+// (§18.4。計算自体は RunOrchestrator/RunProgressEstimate の責務で、ここでは中継するだけ)。
 
 import FTCore
 import XCTest
@@ -53,9 +54,19 @@ final class ApiMonitorRunProgressTests: XCTestCase {
         XCTAssertEqual(out.first?.mine, false)
     }
 
-    /// 段5(残り見積もり)は未実装 —— 台帳に値が入っていても常に nil で渡す
-    func testEtaSecondsIsAlwaysNilRegardlessOfTheLedgerValue() {
+    /// 残り見積もり(§18.4)は台帳の値をそのまま運ぶ(ここで別途 nil化・再計算しない)
+    func testEtaSecondsIsPassedThroughFromTheLedger() {
         let out = ApiMonitorCommand.monitorRuns(records: [record()], now: now, myIssuer: "bob@office")
+        XCTAssertEqual(out.first?.etaSeconds, 999)
+    }
+
+    /// 実績ゼロの run は台帳側が既に nil を書いているので、そのまま nil が届く
+    func testEtaSecondsStaysNilWhenTheLedgerHasNoEstimate() {
+        let noEstimate = RunProgressRecord(
+            pid: 41233, runID: "r1", runGroup: nil, issuer: "alice@air", project: "ec-mobile",
+            profile: "ios-smoke", startedAt: "2026-09-20T10:03:12Z", total: 12, done: 7, failed: 2,
+            etaSeconds: nil, lanes: [])
+        let out = ApiMonitorCommand.monitorRuns(records: [noEstimate], now: now, myIssuer: "bob@office")
         XCTAssertNil(out.first?.etaSeconds)
     }
 

@@ -1269,6 +1269,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 RunProgressLedger.remove(pid: ProcessInfo.processInfo.processIdentifier,
                                          directory: RunProgressLedger.directory())
             },
+            progressHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
             cleanupRetiredWorker: { retired in
                 // ウェッジした旧ブリッジ(/status 無応答)は provision の再利用スキャンに映らないまま
                 // 生き残り、シミュレータを掴み続ける。離脱検知の時点で UDID 照合で明示停止する

@@ -1952,6 +1952,11 @@ struct RunScenarios: AsyncParsableCommand {
                                            reportDir: URL(fileURLWithPath: reportDir),
                                            recorder: recorder,
                                            recordingConfig: recordingConfig,
+                                           // このパス(プロファイル無し run)は writeRunProgress を
+                                           // 注入しない(docs/design.md §18.1: 注入は2経路だけ)ので
+                                           // 残り見積もりの実績も読まれない。値自体は LPTOrdering.apply
+                                           // (直前)と揃える —— 将来ここへ注入するときに窓がズレない
+                                           progressHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
                                            appBundleIDs: Self.appBundleIDs(appID),
                                            registerChildProcess: { interruptState.registerChildProcess($0) })
         let interruptRelay = InterruptRelay.observing {

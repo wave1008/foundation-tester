@@ -562,8 +562,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     // 通常パースは失敗しない。壊れていたら 0(不明な負の経過を出すよりまし)
                     elapsedSeconds: record.startedAt.isEmpty ? 0 : (elapsedSeconds(since: record.startedAt) ?? 0),
                     total: record.total, done: record.done, failed: record.failed,
-                    // 段5(残り見積もり)は未実装 —— 台帳の値に関わらず常に nil(推測値を出さない)
-                    etaSeconds: nil,
+                    // 段5(残り見積もり。docs/design.md §18.4)。台帳の値をそのまま運ぶ ——
+                    // 実績ゼロの run は台帳側が既に nil を書いているので、ここで別途判定しない
+                    etaSeconds: record.etaSeconds,
                     lanes: record.lanes.map { lane in
                         ApiMonitorRunProgressLane(
                             key: lane.key, name: lane.name, platform: lane.platform,
@@ -1780,7 +1781,7 @@ struct ApiMonitorRunProgress: Codable, Equatable {
     let total: Int
     let done: Int
     let failed: Int
-    /// 段5(残り見積もり)は未実装 —— 常に nil
+    /// 残り見積もり(docs/design.md §18.4)。makespan の下界・実績ゼロの run は nil
     let etaSeconds: Int?
     let lanes: [ApiMonitorRunProgressLane]
 }
