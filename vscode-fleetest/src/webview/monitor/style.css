@@ -714,6 +714,10 @@ select:disabled { opacity: 0.5; cursor: default; }
 }
 .tile {
   flex: 0 0 auto;
+  /* **枠の内側でクリップする**(ユーザー決定 2026-09-21)—— タイルの高さはペインに合わせて
+     stretch されるので、ペインを画像の下限(MIN_TILE_IMAGE_HEIGHT + chrome)より低く詰めると
+     画像が枠からはみ出す。外すとその状態で絵が枠の外へ流れる */
+  overflow: hidden;
   border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
   border-radius: 4px;
   padding: 8px;
