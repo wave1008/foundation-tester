@@ -236,3 +236,23 @@ test("読み込み時に表示エリアが測れなくても、測れた最初�
   window.dispatchEvent(new window.Event("resize"));
   assert.equal(document.getElementById("tile-pane").style.height, "160px");
 });
+
+// ラインビューの見出し行(run ボードのヘッダと同じ作り)。**行のどこを押しても開閉**する ——
+// 三角だけだと当たり判定が小さい。状態は文字ではなく data-expanded で持ち、向きは CSS が回す。
+test("ラインビューの見出し行はどこを押しても開閉する", (t) => {
+  const { window, document, posted } = createWebview();
+  t.after(() => window.close());
+  const toggle = document.getElementById("line-view-toggle");
+  assert.equal(toggle.textContent, "▶");
+  assert.equal(toggle.dataset.expanded, "true", "既定は表示");
+  assert.equal(document.getElementById("line-view-title").textContent, "デバイス");
+
+  document.getElementById("line-view-title").click();   // 三角ではなくタイトルを押す
+  assert.equal(toggle.dataset.expanded, "false");
+  assert.equal(isHidden(document), true);
+  assert.deepEqual(sentValues(posted), [false], "ツールバーのボタンと同じく host へ永続化させる");
+
+  document.getElementById("line-view-header").click();
+  assert.equal(toggle.dataset.expanded, "true");
+  assert.deepEqual(sentValues(posted), [false, true]);
+});

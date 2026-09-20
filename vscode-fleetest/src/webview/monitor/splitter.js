@@ -4,7 +4,7 @@
 // セパレーターが最小位置にリセット)。tabs.js からは reapplyTilePaneHeight を呼ぶ。
 
 import { vscode, persistedState } from './vscodeApi.js';
-import { toolbar, banner, devicesPanel, tilePane, splitter, btnFleetVisible } from './domRefs.js';
+import { toolbar, banner, devicesPanel, tilePane, splitter, btnFleetVisible, lineViewHeader, lineViewToggle, lineViewTitle } from './domRefs.js';
 import { t } from '../i18n.js';
 import { setHoverTip } from './hoverTip.js';
 import { setLineViewHiddenForWaiting } from './waitingNote.js';
@@ -99,6 +99,10 @@ export function setTilePaneHeight(height) {
 function renderFleetVisible() {
   devicesPanel.classList.toggle('fleet-hidden', !fleetVisible);
   setLineViewHiddenForWaiting(!fleetVisible);
+  // 見出し行(run ボードのヘッダと同じ規律: 文字は常に ▶ で向きは CSS の回転)
+  lineViewToggle.dataset.expanded = fleetVisible ? 'true' : 'false';
+  lineViewToggle.setAttribute('aria-expanded', fleetVisible ? 'true' : 'false');
+  lineViewTitle.textContent = t('wvMonitor.lineView.title');
   btnFleetVisible.classList.toggle('toggled', fleetVisible);
   btnFleetVisible.setAttribute('aria-pressed', fleetVisible ? 'true' : 'false');
   const label = t(fleetVisible ? 'wvMonitor.toolbar.hideFleet' : 'wvMonitor.toolbar.showFleet');
@@ -113,12 +117,17 @@ function applyFleetVisible(visible) {
   reapplyTilePaneHeight();
 }
 
-btnFleetVisible.addEventListener('click', () => {
+function toggleFleetVisible() {
   applyFleetVisible(!fleetVisible);
   // 契約: monitorWebviewMessages.ts の setFleetVisible / fleetVisible(tilePaneHeight と同じ二重保存)。
   vscode.setState(Object.assign({}, vscode.getState(), { fleetVisible }));
   vscode.postMessage({ type: 'setFleetVisible', value: fleetVisible });
-});
+}
+
+btnFleetVisible.addEventListener('click', toggleFleetVisible);
+// **見出し行はどこを押しても開閉**(run ボードのヘッダと同じ。三角だけだと当たり判定が小さい)。
+// トグルは <button> なのでキーボードの Enter/Space も click になり、そのままここへ来る
+lineViewHeader.addEventListener('click', toggleFleetVisible);
 
 export function isFleetVisible() {
   return fleetVisible;

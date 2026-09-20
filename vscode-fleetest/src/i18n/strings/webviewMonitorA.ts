@@ -103,6 +103,7 @@ export const webviewMonitorAStrings = {
   "wvMonitor.toolbar.selectAll": { ja: "デバイスをすべて選択", en: "Select All Devices" },
   "wvMonitor.toolbar.deselectAll": { ja: "デバイスの選択をすべて解除", en: "Deselect All Devices" },
   "wvMonitor.toolbar.showFleet": { ja: "ラインビューを表示する", en: "Show Line View" },
+  "wvMonitor.lineView.title": { ja: "デバイス", en: "Devices" },
   "wvMonitor.toolbar.hideFleet": { ja: "ラインビューを非表示にする", en: "Hide Line View" },
 
   "wvMonitor.tile.queuedRestart": { ja: "再起動待機", en: "Restart pending" },

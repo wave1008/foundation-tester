@@ -285,6 +285,13 @@ function renderDevicesPanel(): string {
 
     <div id="banner" class="banner"></div>
 
+    <!-- ラインビューの見出し(run ボードのヘッダと同じ作り: 行のどこを押しても開閉・
+         三角は状態を回転で示す)。開閉は既存の fleetVisible に載せる(splitter.js) -->
+    <div id="line-view-header" class="run-board-header">
+      <button id="line-view-toggle" class="run-board-toggle" type="button" aria-expanded="true" data-expanded="true">▶</button>
+      <span id="line-view-title" class="run-board-title"></span>
+    </div>
+
     <div id="tile-pane" class="tile-pane">
       <div id="grid" class="grid"></div>
       <div id="empty" class="empty">${t("panels.devices.emptyMessage")}</div>
