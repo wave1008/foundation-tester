@@ -172,9 +172,10 @@ final class AssignPortTests: XCTestCase {
     }
 
     func testStopIfOwnedBridgeNotFoundForUnusedPort() throws {
-        // 誰も LISTEN していない高番ポート。lsof が見つけられなければ .notFound
+        // 誰も LISTEN していないポート(**固定番号にしない**。理由は TestPorts)。
+        // lsof が見つけられなければ .notFound
         let outcome = PortHolder.stopIfOwnedBridge(
-            port: 59_999, stateDir: repoRoot.appendingPathComponent(".fleetest"),
+            port: try TestPorts.withNoListener(), stateDir: repoRoot.appendingPathComponent(".fleetest"),
             derivedDataPath: repoRoot.appendingPathComponent(".fleetest/DerivedData"))
         guard case .notFound = outcome else {
             return XCTFail(".notFound を期待: \(outcome)")
