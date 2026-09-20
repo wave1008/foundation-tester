@@ -1925,10 +1925,10 @@ input[type="search"]::placeholder {
   /* img 既定のネイティブドラッグ&選択を無効化(ドラッグ=スワイプ判定に必須。liveTab.js と対)。 */
   -webkit-user-drag: none;
   user-select: none;
-  /* 円形の薄い影カーソル(SVG data URI)。ホットスポット 21 21=円中心がタップ座標。
+  /* 円形の薄い影カーソル(SVG data URI)。ホットスポット 14 14=円中心がタップ座標。
      暗い画面でも見えるよう白の薄い縁取り付き。data: は CSP img-src で許可済み。 */
-  cursor: url('data:image/svg+xml;utf8,<svg%20xmlns="http://www.w3.org/2000/svg"%20width="42"%20height="42"><defs><radialGradient%20id="g"><stop%20offset="55%25"%20stop-color="%23000"%20stop-opacity="0.30"/><stop%20offset="100%25"%20stop-color="%23000"%20stop-opacity="0"/></radialGradient></defs><circle%20cx="21"%20cy="21"%20r="19.5"%20fill="url(%23g)"%20stroke="%23fff"%20stroke-opacity="0.35"%20stroke-width="1"/></svg>')
-    21 21,
+  cursor: url('data:image/svg+xml;utf8,<svg%20xmlns="http://www.w3.org/2000/svg"%20width="28"%20height="28"><defs><radialGradient%20id="g"><stop%20offset="55%25"%20stop-color="%23000"%20stop-opacity="0.30"/><stop%20offset="100%25"%20stop-color="%23000"%20stop-opacity="0"/></radialGradient></defs><circle%20cx="14"%20cy="14"%20r="12.5"%20fill="url(%23g)"%20stroke="%23fff"%20stroke-opacity="0.35"%20stroke-width="1"/></svg>')
+    14 14,
     crosshair;
 }
 #live-screenshot.visible, #live-canvas.visible { display: block; }
