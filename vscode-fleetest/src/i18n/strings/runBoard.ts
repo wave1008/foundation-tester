@@ -8,6 +8,8 @@ export const runBoardStrings = {
   "runBoard.title": { ja: "実行中 {count}", en: "Running {count}" },
   "runBoard.collapse": { ja: "run ボードを閉じる", en: "Collapse run board" },
   "runBoard.expand": { ja: "run ボードを開く", en: "Expand run board" },
+  "runBoard.expandLanes": { ja: "デバイスごとの内訳を開く", en: "Show per-device lanes" },
+  "runBoard.collapseLanes": { ja: "デバイスごとの内訳を閉じる", en: "Hide per-device lanes" },
   "runBoard.machineRunning": { ja: "実行中", en: "Running" },
   "runBoard.machineIdle": { ja: "空き", en: "Free" },
   "runBoard.machineUnknown": { ja: "不明", en: "Unknown" },

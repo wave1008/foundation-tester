@@ -128,6 +128,23 @@ test("monitorRuns を受けるとヘッダの件数と行が増える。行ク�
     "run の行クリックで、その run が使っている台をラインビューで選択する");
 });
 
+// 「開ける行だ」と分かることが目的なので、状態は文字ではなく aria-expanded / data-expanded で持つ
+// (字を差し替える形は細くて気づかれなかった)。CSS はこの data 属性で三角を回す。
+test("展開トグルは状態を属性で持ち、文字は回るだけ(開けると分かる形)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, monitorRunsMessage());
+  const chevron = document.querySelector(".run-board-chevron");
+  assert.equal(chevron.textContent, "▶", "文字は展開しても差し替えない");
+  assert.equal(chevron.getAttribute("aria-expanded"), "false");
+  assert.match(chevron.title, /開く/);
+  click(window, chevron);
+  assert.equal(chevron.textContent, "▶");
+  assert.equal(chevron.getAttribute("aria-expanded"), "true");
+  assert.equal(chevron.dataset.expanded, "true", "向きは CSS の回転で表すので data 属性が要る");
+  assert.match(chevron.title, /閉じる/);
+});
+
 test("レーン行クリックはその1台だけを選択する", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());

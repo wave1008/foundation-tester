@@ -419,10 +419,26 @@ button.bulk-cancel:hover:not(:disabled) {
 }
 .run-board-chevron {
   flex: 0 0 auto;
-  width: 12px;
+  width: 16px;
+  height: 16px;
+  line-height: 16px;
+  font-size: 9px;
   text-align: center;
+  border-radius: 3px;
   color: var(--vscode-icon-foreground, var(--vscode-foreground));
   cursor: pointer;
+  /* 向きは回転で表す(textContent は常に ▶)。展開のたびに字が入れ替わるより、
+     同じ字が回るほうが「この行は開ける」と伝わる = VSCode のツリーと同じ挙動 */
+  transform: rotate(0deg);
+  transition: transform 0.1s ease;
+}
+.run-board-chevron[data-expanded="true"] {
+  transform: rotate(90deg);
+}
+/* 行にカーソルが乗ったときだけ押せる面を出す(常時出すと行が騒がしい) */
+.run-board-row-summary:hover .run-board-chevron {
+  background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+  color: var(--vscode-foreground);
 }
 .run-board-scope {
   flex: 1 1 auto;

@@ -161,8 +161,12 @@ function ensureRow(groupKey) {
   const summaryEl = document.createElement('div');
   summaryEl.className = 'run-board-row-summary';
 
+  // **文字は常に同じ三角**で、向きは CSS の回転で表す(VSCode のツリーと同じ挙動)。
+  // 文字を差し替える形(▸/▾)は字面が細く、展開できる行だと気づかれなかった
   const chevronEl = document.createElement('span');
   chevronEl.className = 'run-board-chevron';
+  chevronEl.textContent = '▶';
+  chevronEl.setAttribute('role', 'button');
 
   const machineBadgeEl = document.createElement('span');
   machineBadgeEl.className = 'badge badge-remote run-board-machine-badge';
@@ -299,7 +303,11 @@ function updateRow(row, group) {
   row.rowEl.classList.toggle('run-board-row-hasFailed', group.failed > 0);
   const expanded = expandedGroups.has(group.groupKey);
   row.rowEl.classList.toggle('run-board-row-expanded', expanded);
-  row.chevronEl.textContent = expanded ? '▾' : '▸';
+  row.chevronEl.dataset.expanded = expanded ? 'true' : 'false';
+  row.chevronEl.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  const chevronLabel = t(expanded ? 'runBoard.collapseLanes' : 'runBoard.expandLanes');
+  row.chevronEl.title = chevronLabel;
+  row.chevronEl.setAttribute('aria-label', chevronLabel);
 
   if (group.runs.length === 1) {
     row.machineBadgeEl.style.display = '';
