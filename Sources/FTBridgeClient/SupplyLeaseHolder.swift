@@ -59,6 +59,18 @@ public final class SupplyLeaseHolder: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// 予定していたが結局この run では使わない台(供給失敗でレーンから外れた等)の lease を取り消す。
+    /// **`handOff` と違いファイルも消す** —— handOff は持ち主が orchestrator へ移るだけで台は
+    /// 引き続きこの run が使うが、これは「この run はもう使わない」ので lease ごと手放す
+    public func releaseKeys(_ keysToRelease: [String]) {
+        lock.lock()
+        defer { lock.unlock() }
+        for key in keysToRelease {
+            guard keys.remove(key) != nil else { continue }
+            RunLease.remove(stateDir: stateDir, key: key)
+        }
+    }
+
     private func rewriteHeld() {
         lock.lock()
         defer { lock.unlock() }

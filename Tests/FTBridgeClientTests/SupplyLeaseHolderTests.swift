@@ -82,6 +82,29 @@ final class SupplyLeaseHolderTests: XCTestCase {
         XCTAssertFalse(leaseExists("emulator-5556"))
     }
 
+    /// releaseKeys は名指ししたキーだけ消す(残りは hold されたまま = 供給に失敗してレーンから
+    /// 外れた台だけ手放し、実際に建った台の lease はそのまま)
+    func testReleaseKeysRemovesOnlyNamedKeysAndLeavesOthersHeld() async throws {
+        let holder = SupplyLeaseHolder(stateDir: stateDir, heartbeatSeconds: 0.05)
+        holder.hold(keys: ["UDID-A", "UDID-B"])
+        holder.releaseKeys(["UDID-A"])
+        XCTAssertFalse(leaseExists("UDID-A"))
+        XCTAssertTrue(leaseExists("UDID-B"))
+        // 取り消したキーはハートビートの対象からも外れる(書き戻されない)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertFalse(leaseExists("UDID-A"))
+        holder.release()
+    }
+
+    /// 未知のキー(hold していないもの)を渡しても何もしない
+    func testReleaseKeysIgnoresUnknownKeys() {
+        let holder = SupplyLeaseHolder(stateDir: stateDir)
+        holder.hold(keys: ["UDID-A"])
+        holder.releaseKeys(["UDID-NEVER-HELD"])
+        XCTAssertTrue(leaseExists("UDID-A"))
+        holder.release()
+    }
+
     /// release の後はハートビートが1度も書かない
     func testNothingIsWrittenAfterRelease() async throws {
         let holder = SupplyLeaseHolder(stateDir: stateDir, heartbeatSeconds: 0.02)
