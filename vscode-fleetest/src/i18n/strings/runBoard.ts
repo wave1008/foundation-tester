@@ -6,11 +6,9 @@ import type { MessageDict } from "../core";
 
 export const runBoardStrings = {
   "runBoard.title": { ja: "実行中 {count}", en: "Running {count}" },
-  "runBoard.expandAll": { ja: "全て展開", en: "Expand all" },
-  "runBoard.expandAllHint": {
-    ja: "ON の間は、あとから始まった run も展開して表示します",
-    en: "While on, runs that start later are expanded too",
-  },
+  // ツールチップと aria-label が共有。**ON/OFF で入れ替えない**(ユーザー決定 2026-09-21)——
+  // このボタンは「いま開く」ではなく「開いた状態を保つ」モードのスイッチ
+  "runBoard.expandAll": { ja: "全て展開を維持", en: "Keep all expanded" },
   "runBoard.collapse": { ja: "run ボードを閉じる", en: "Collapse run board" },
   "runBoard.expand": { ja: "run ボードを開く", en: "Expand run board" },
   "runBoard.expandLanes": { ja: "デバイスごとの内訳を開く", en: "Show per-device lanes" },

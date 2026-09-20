@@ -203,6 +203,9 @@ button.bulk-cancel:hover:not(:disabled) {
    .icon-button で none のため、枠は inset box-shadow で描く(付け外しで幅がずれない)。 */
 .icon-button.toggled {
   background-color: var(--vscode-inputOption-activeBackground, rgba(0, 122, 204, 0.4));
+  /* 地色のトークンは触らず、白を薄く重ねて明度だけ上げる(ユーザー決定 2026-09-21)。
+     トークンを直値に置き換えるとテーマ追従を失うので、調整ノブはこの alpha 1つだけ */
+  background-image: linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14));
   color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
   box-shadow: inset 0 0 0 1px var(--vscode-inputOption-activeBorder, transparent);
 }
@@ -416,8 +419,11 @@ button.bulk-cancel:hover:not(:disabled) {
    すべて選択」と同じエフェクト。ユーザー決定 2026-09-20)。ここは位置と字の大きさだけ持つ */
 .run-board-expand-all {
   flex: 0 0 auto;
+  /* 見出し行(20px)に収める。中身はアイコンだけなので正方形 */
+  width: 20px;
   height: 20px;
-  font-size: 11px;
+  /* 見出し(「実行中 N」)から離す。行の gap(6px)に足して 16px */
+  margin-left: 10px;
 }
 /* 見出し行の右端へ(間は .line-view-selection との余白で埋める) */
 .line-view-select-all {

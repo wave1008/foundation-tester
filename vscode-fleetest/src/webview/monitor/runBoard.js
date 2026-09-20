@@ -10,6 +10,7 @@ import { t } from '../i18n.js';
 import { runBoard, runBoardHeader, runBoardToggle, runBoardTitle, runBoardExpandAll, runBoardRows } from './domRefs.js';
 import { vscode, persistedState } from './vscodeApi.js';
 import { paintMachineBadge } from './machineColors.js';
+import { setHoverTip } from './hoverTip.js';
 import { deviceIdForLane, selectOnlyDevices } from './deviceTiles.js';
 import {
   LOCAL_MACHINE_KEY,
@@ -107,11 +108,16 @@ function renderHeader(groups) {
   // **折りたたみ中は出さない**(本体が見えないので押しても何も起きない)。run 0 本でも出す ——
   // これはモードのスイッチで、「いま開く行があるか」とは別
   runBoardExpandAll.style.display = collapsed ? 'none' : '';
-  runBoardExpandAll.textContent = t('runBoard.expandAll');
   // ON の見せ方は「デバイスをすべて選択」と同じ .toggled(ユーザー決定 2026-09-20)
   runBoardExpandAll.classList.toggle('toggled', expandAll);
   runBoardExpandAll.setAttribute('aria-pressed', expandAll ? 'true' : 'false');
-  runBoardExpandAll.title = t('runBoard.expandAllHint');
+  // アイコンだけなので(ユーザー決定 2026-09-21)、名前は tooltip と aria-label が持つ。
+  // 出し方は「デバイスをすべて選択」と同じ(deviceTiles.js の renderSelectAllButton)。
+  // ネイティブ title は使わない(表示まで約1秒で指定できない。setHoverTip が title を空にするので
+  // 二重にも出ない)。**文言は ON/OFF で入れ替えない**(ユーザー決定 2026-09-21)
+  const expandAllLabel = t('runBoard.expandAll');
+  setHoverTip(runBoardExpandAll, expandAllLabel);
+  runBoardExpandAll.setAttribute('aria-label', expandAllLabel);
 }
 
 function setExpandAll(value) {

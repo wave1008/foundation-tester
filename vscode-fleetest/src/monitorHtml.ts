@@ -267,9 +267,9 @@ function renderDevicesPanel(): string {
         <!-- title/aria-label は webview 側(runBoard.js)が状態(開/閉)に応じて入れる(状態で入れ替える既存の規律と同じ) -->
         <button id="run-board-toggle" class="run-board-toggle" type="button" aria-expanded="true" data-expanded="true">▶</button>
         <span id="run-board-title" class="run-board-title"></span>
-        <!-- ラベルは状態(全展開かどうか)で runBoard.js が入れ替える。クリックはヘッダ行の
-             開閉へ波及させない(stopPropagation) -->
-        <button id="run-board-expand-all" class="icon-button with-label run-board-expand-all" type="button" aria-pressed="false"></button>
+        <!-- ツリーを開いた形のアイコン(下向きの三角 + インデントした行。ユーザー決定 2026-09-21)。名前は tooltip と aria-label が持つ
+             (runBoard.js)。クリックはヘッダ行の開閉へ波及させない(stopPropagation) -->
+        <button id="run-board-expand-all" class="icon-button run-board-expand-all" type="button" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1.6 2.9h4.2L3.7 6.6z"/><rect x="7" y="2.9" width="7.4" height="1.5" rx="0.7"/><rect x="9" y="7.2" width="5.4" height="1.5" rx="0.7"/><rect x="9" y="11.5" width="5.4" height="1.5" rx="0.7"/></svg></button>
       </div>
       <div id="run-board-rows" class="run-board-rows"></div>
     </div>
