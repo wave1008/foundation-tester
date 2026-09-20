@@ -324,7 +324,13 @@ function renderLanes(row, group) {
     if (multiMachine) {
       const header = document.createElement('div');
       header.className = 'run-board-lane-machine-header';
-      header.textContent = machineLabel(run.machine);
+      // **run 行のバッジと同じ見た目**(機械の色も同じ)—— 機械分担の run では
+      // run 行にバッジを出せない(複数機械にまたがる)ので、ここが唯一の機械の目印になる
+      const badge = document.createElement('span');
+      badge.className = 'badge badge-remote run-board-machine-badge';
+      badge.textContent = machineLabel(run.machine);
+      paintMachineBadge(badge, run.machine);
+      header.appendChild(badge);
       row.lanesEl.appendChild(header);
     }
     for (const lane of run.lanes) {

@@ -156,7 +156,12 @@ function refreshSelectAllState() {
 const deviceMirrors = new Map();
 
 // 画像高さの絶対下限(px)。セパレーターを手で最小まで詰めたときに 0 や負にならないための床。
-const MIN_TILE_IMAGE_HEIGHT = 60;
+// **タイルの幅もここで決まる**(幅 = この高さ × アスペクト比)。60 では中身が判別できない
+// (iPhone で幅 28px)ので 120 にした(ユーザー決定 2026-09-21)。
+// **既知の副作用**: ペインをこの高さ(120 + chrome 66〜88)より低く詰めると、画像がタイルから
+// はみ出す。タイルの幅を CSS の min-width / width の式で広げる案は、**バッジの自然幅が
+// タイルの幅になる**(.tile-header は「幅0 + min-width:100%」で親の幅を参照する)ため取り下げた
+const MIN_TILE_IMAGE_HEIGHT = 120;
 // タイル内の「画像以外」の高さの合計(px)。CSS の固定高と一致させること:
 // padding 上下 8+8 + header 20 + footer 18 + gap 6×2 = 66
 const TILE_CHROME_HEIGHT = 66;

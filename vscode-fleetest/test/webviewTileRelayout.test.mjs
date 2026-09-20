@@ -2,8 +2,8 @@
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewDevicesTabVisible.test.mjs と同じ。
 //
 // 背景(実害): devices のポーリングは「デバイスモニター」タブが非表示の間もホストから届き、
-// applyDevices が relayoutTiles を呼ぶ。display:none 中は clientHeight=0 で下限 60px に
-// 潰れるため、以前はそこで --tile-image-h が 60px に書き換わり、タブへ戻っても画像が
+// applyDevices が relayoutTiles を呼ぶ。display:none 中は clientHeight=0 で下限に
+// 潰れるため、以前はそこで --tile-image-h が下限に書き換わり、タブへ戻っても画像が
 // 下限の大きさのまま残った。
 //
 // jsdom にはレイアウトが無く clientHeight は常に 0 なので、「レイアウトがあるとき」は
@@ -105,7 +105,7 @@ test("タブ非表示中に devices が届いても --tile-image-h を書き換�
   assert.equal(
     tileImageHeight(document),
     "240px",
-    "非表示中に下限 60px を書くと、タブ復帰後も画像が下限の大きさのまま残る",
+    "非表示中に下限を書くと、タブ復帰後も画像が下限の大きさのまま残る",
   );
 });
 
@@ -134,5 +134,7 @@ test("レイアウトがあるときは実測高さから書く(ガードが広�
 
   fakeTileHeight(document, 100);
   sendDevices(window, 2);
-  assert.equal(tileImageHeight(document), "60px", "下限 60px は表示中には従来どおり効く");
+  assert.equal(tileImageHeight(document), "120px",
+    "下限(MIN_TILE_IMAGE_HEIGHT)は表示中には従来どおり効く。**値をここで固定する** ——"
+    + " 床はタイルの幅も決めるので、下げると台の中身が判別できない大きさに戻る");
 });

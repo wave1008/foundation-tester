@@ -544,11 +544,10 @@ button.bulk-cancel:hover:not(:disabled) {
 .run-board-row:not(.run-board-row-expanded) .run-board-issuer {
   display: none;
 }
+/* 中身は run 行と同じバッジ1つなので、見出し自体は位置だけ持つ(色・太さはバッジ側) */
 .run-board-lane-machine-header {
-  padding: 2px 8px 0 16px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--vscode-descriptionForeground);
+  padding: 4px 8px 2px 16px;
+  line-height: 18px;
 }
 .run-board-lane {
   display: flex;
@@ -772,8 +771,13 @@ html.select-all-guard * {
 }
 /* width:0 + min-width:100%: ヘッダー/フッターの固有幅(バッジ等)がタイル幅を
    決めないようにする。無いとタイルが画像より広がり並ぶ台数が減る。 */
+/* **タイルの幅は画面(.frame-wrap)だけで決める** —— この3つは中身が長くても幅を押し広げない
+   (width:0 + min-width:100% で「幅の計算に寄与しないが表示は親いっぱい」)。**新しい段を足したら
+   必ずここへ加える** —— 外すとバッジの文字数でタイルの幅が変わり、同じ機種の台が不揃いに並ぶ
+   (2026-09-21: .tile-machine-row を足したときに漏れ、M1Ultra の台だけ広くなった) */
 .tile-header,
-.tile-footer {
+.tile-footer,
+.tile-machine-row {
   width: 0;
   min-width: 100%;
 }
