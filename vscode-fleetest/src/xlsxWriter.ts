@@ -11,7 +11,6 @@
 // xlsx の実体には意味を持たない値のため。
 
 import { deflateRawSync } from "node:zlib";
-import { pathToFileURL } from "node:url";
 
 // ---- スタイル -----------------------------------------------------------------------------
 
@@ -22,7 +21,6 @@ export interface XlsxFont {
   readonly name?: string;
   readonly size?: number;
   readonly bold?: boolean;
-  readonly underline?: boolean;
   /** ARGB(例 "FFFFFFFF")。省略は自動(黒)。 */
   readonly color?: string;
 }
@@ -153,8 +151,6 @@ export class XlsxSheet {
   readonly rowMeta = new Map<number, SheetRowMeta>();
   readonly columnWidths = new Map<number, number>();
   readonly merges: string[] = [];
-  /** ハイパーリンク(挿入順)。配列インデックス+1が rId(sheetN.xml.rels の Relationship Id と対応)。 */
-  readonly hyperlinks: { ref: string; target: string }[] = [];
   autoFilterRef: string | undefined;
   private maxCol = 0;
   private maxRow = 0;
@@ -230,12 +226,6 @@ export class XlsxSheet {
     this.merges.push(range);
   }
 
-  /** セルへ外部ファイルへのハイパーリンクを張る(絶対パス→file URL は書き手側で変換)。 */
-  setHyperlink(row: number, col: number, text: string, absPath: string, styleId?: number): void {
-    this.setString(row, col, text, styleId);
-    this.hyperlinks.push({ ref: cellRef(row, col), target: pathToFileURL(absPath).href });
-  }
-
   setAutoFilter(ref: string): void {
     this.autoFilterRef = ref;
   }
@@ -253,7 +243,7 @@ export class XlsxSheet {
 type RegisteredFont = XlsxFont;
 
 function fontKey(f: XlsxFont): string {
-  return JSON.stringify([f.name ?? "", f.size ?? 0, !!f.bold, !!f.underline, f.color ?? ""]);
+  return JSON.stringify([f.name ?? "", f.size ?? 0, !!f.bold, f.color ?? ""]);
 }
 
 function borderKey(b: XlsxBorder): string {
@@ -345,7 +335,6 @@ class StyleRegistry {
       .map((f) => {
         const parts: string[] = [];
         if (f.bold) parts.push("<b/>");
-        if (f.underline) parts.push("<u/>"); // CT_Font 順序: b, u, sz, color, name
         parts.push(`<sz val="${f.size ?? 11}"/>`);
         if (f.color) parts.push(`<color rgb="${escapeXmlAttr(f.color)}"/>`);
         parts.push(`<name val="${escapeXmlAttr(f.name ?? "Calibri")}"/>`);
@@ -526,41 +515,15 @@ export class XlsxWorkbook {
             .map((range) => `<mergeCell ref="${escapeXmlAttr(range)}"/>`)
             .join("")}</mergeCells>`;
     const autoFilterXml = sheet.autoFilterRef ? `<autoFilter ref="${escapeXmlAttr(sheet.autoFilterRef)}"/>` : "";
-    // r:id は同シートの xl/worksheets/_rels/sheetN.xml.rels 内の Relationship Id と挿入順で対応
-    // (sheetRelsXml も同じ配列を同じ順で辿る)。
-    const hyperlinksXml =
-      sheet.hyperlinks.length === 0
-        ? ""
-        : `<hyperlinks>${sheet.hyperlinks
-            .map((h, i) => `<hyperlink ref="${escapeXmlAttr(h.ref)}" r:id="rId${i + 1}"/>`)
-            .join("")}</hyperlinks>`;
-
     return (
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
       `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
       `${sheetPr}<dimension ref="${sheet.dimensionRef()}"/>${sheetViews}` +
       `<sheetFormatPr defaultRowHeight="15"${hasOutline ? ` outlineLevelRow="${maxOutline}"` : ""}/>${colsXml}` +
-      // CT_Worksheet の並び: sheetData → autoFilter → mergeCells → hyperlinks(ECMA-376 準拠。
+      // CT_Worksheet の並び: sheetData → autoFilter → mergeCells(ECMA-376 準拠。
       // 順序違反は Excel が「破損」として開けない。xlsxWriter.test.mjs のスキーマ順テスト参照)。
-      `<sheetData>${rowsXml}</sheetData>${autoFilterXml}${mergeXml}${hyperlinksXml}` +
+      `<sheetData>${rowsXml}</sheetData>${autoFilterXml}${mergeXml}` +
       `</worksheet>`
-    );
-  }
-
-  /** シート固有のハイパーリンク関係(無ければ null = ファイルを作らない)。 */
-  private sheetRelsXml(sheet: XlsxSheet): string | null {
-    if (sheet.hyperlinks.length === 0) {
-      return null;
-    }
-    const rels = sheet.hyperlinks
-      .map(
-        (h, i) =>
-          `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${escapeXmlAttr(h.target)}" TargetMode="External"/>`,
-      )
-      .join("");
-    return (
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`
     );
   }
 
@@ -706,11 +669,7 @@ export class XlsxWorkbook {
     put("xl/_rels/workbook.xml.rels", this.workbookRelsXml());
     put("xl/styles.xml", this.styles.toXml());
     put("xl/sharedStrings.xml", this.sharedStrings.toXml());
-    sheetXmls.forEach((xml, i) => {
-      put(`xl/worksheets/sheet${i + 1}.xml`, xml);
-      const rels = this.sheetRelsXml(this.sheets[i]!);
-      if (rels !== null) put(`xl/worksheets/_rels/sheet${i + 1}.xml.rels`, rels);
-    });
+    sheetXmls.forEach((xml, i) => put(`xl/worksheets/sheet${i + 1}.xml`, xml));
     return buildZip(entries);
   }
 }

@@ -68,10 +68,7 @@ export const resultsExportStrings = {
   "resultsExport.scenarios.header.failedStep": { ja: "失敗したステップ", en: "Failed Step" },
   "resultsExport.scenarios.header.failureKind": { ja: "失敗の経路", en: "Failure Kind" },
   "resultsExport.scenarios.header.reason": { ja: "理由", en: "Reason" },
-  "resultsExport.scenarios.header.source": { ja: "ソース", en: "Source" },
   "resultsExport.scenarios.header.notes": { ja: "注記", en: "Notes" },
-  "resultsExport.scenarios.header.video": { ja: "動画", en: "Video" },
-  "resultsExport.scenarios.videoLinkText": { ja: "再生", en: "Play" },
 
   "resultsExport.steps.header.class": { ja: "クラス", en: "Class" },
   "resultsExport.steps.header.method": { ja: "シナリオ", en: "Scenario" },

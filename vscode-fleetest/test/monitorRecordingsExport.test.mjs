@@ -96,10 +96,6 @@ test("exportSession: 保存先へ有効な xlsx(zip)を書き、完了メッセ�
   assert.ok(bytes.includes(Buffer.from("xl/worksheets/sheet1.xml")), "概要");
   assert.ok(bytes.includes(Buffer.from("xl/worksheets/sheet2.xml")), "シナリオ");
   assert.ok(bytes.includes(Buffer.from("xl/worksheets/sheet3.xml")), "ステップ");
-  // 録画があるシナリオは「シナリオ」シート(sheet2)に動画へのハイパーリンクを持つ
-  // (ファイル名は zip エントリ名として非圧縮で置かれるので存在確認できる。中身の検証は
-  // resultsExportWorkbook.test.mjs 側)。
-  assert.ok(bytes.includes(Buffer.from("xl/worksheets/_rels/sheet2.xml.rels")), "動画リンクの rels ファイル");
 });
 
 test("exportSession: 保存ダイアログをキャンセルしたら何も書かない・メッセージも出さない", async (t) => {

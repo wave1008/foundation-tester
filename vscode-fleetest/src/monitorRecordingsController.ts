@@ -41,12 +41,6 @@ import { buildResultsExportWorkbook } from "./resultsExportWorkbook";
 
 type RecordingsSessionMessage = Extract<MonitorToWebviewMessage, { type: "recordingsSession" }>;
 
-function scenarioIdOf(raw: unknown): string | null {
-  return typeof raw === "object" && raw !== null && typeof (raw as { scenarioID?: unknown }).scenarioID === "string"
-    ? (raw as { scenarioID: string }).scenarioID
-    : null;
-}
-
 /** 「(すべて)」選択の保存先(monitorPanel.ts が workspaceState "monitor.recordingsAllProjects" で渡す)。 */
 export interface RecordingsAllProjectsStore {
   get(): boolean;
@@ -181,9 +175,6 @@ export class MonitorRecordingsController {
       }
       const sources: ResultsExportScenarioSource[] = [];
       const runMetas: ResultsExportRunMeta[] = [];
-      // 動画は firstRecordingEntryByScenario と同じ「最初にマッチした1件」規約(束ねたセッションでも
-      // run を跨いで1件だけ = buildSession と同じ)。
-      const seenVideoScenarios = new Set<string>();
       for (const { runID: rid, detail } of details) {
         const meta = await loadRunMeta(detail.runDir);
         runMetas.push({
@@ -196,16 +187,8 @@ export class MonitorRecordingsController {
           machine: detail.machine,
           fmSettings: meta.fmSettings,
         });
-        const videoByScenario = new Map<string, string>();
-        for (const [scenarioID, entry] of firstRecordingEntryByScenario(detail.index.recordings)) {
-          if (seenVideoScenarios.has(scenarioID)) continue;
-          seenVideoScenarios.add(scenarioID);
-          videoByScenario.set(scenarioID, path.join(detail.runDir, entry.file));
-        }
         for (const raw of detail.scenarios) {
-          const scenarioID = scenarioIdOf(raw);
-          const videoPath = scenarioID !== null ? videoByScenario.get(scenarioID) ?? null : null;
-          const source = extractResultsExportScenarioSource(raw, meta.profile, detail.machine, videoPath);
+          const source = extractResultsExportScenarioSource(raw, meta.profile, detail.machine);
           if (source) sources.push(source);
         }
       }
@@ -214,7 +197,7 @@ export class MonitorRecordingsController {
         return;
       }
       const model = buildResultsExportModel(project, sources, runMetas);
-      const workbook = buildResultsExportWorkbook(model, this.deps.workspaceRoot);
+      const workbook = buildResultsExportWorkbook(model);
 
       const defaultPath = path.join(details[0]!.detail.runDir, `${project}_${runID}.xlsx`);
       const savePath = await this.deps.showSaveDialog(defaultPath, t("panels.recordings.exportFilterLabel"));

@@ -216,7 +216,6 @@ test("workbook/styles/worksheet の最上位要素がスキーマの順序どお
   sheet.setRowOutlineLevel(2, 1);
   sheet.mergeCells("A1:C1");
   sheet.setAutoFilter("A1:C1");
-  sheet.setHyperlink(3, 1, "リンク", "/tmp/日本語.txt");
   const files = readZip(workbook.toBuffer());
   const wb = topLevelOrder(files.get("xl/workbook.xml"), "workbook");
   assertSchemaOrder(wb, ["fileVersion", "fileSharing", "workbookPr", "workbookProtection", "bookViews", "sheets",
@@ -228,31 +227,11 @@ test("workbook/styles/worksheet の最上位要素がスキーマの順序どお
   assertSchemaOrder(sheet1Order, ["sheetPr", "dimension",
     "sheetViews", "sheetFormatPr", "cols", "sheetData", "sheetCalcPr", "sheetProtection", "protectedRanges",
     "scenarios", "autoFilter", "sortState", "dataConsolidate", "customSheetViews", "mergeCells", "phoneticPr",
-    "conditionalFormatting", "dataValidations", "hyperlinks", "printOptions", "pageMargins"], "sheet1.xml");
-  assert.ok(sheet1Order.includes("autoFilter") && sheet1Order.includes("mergeCells") && sheet1Order.includes("hyperlinks"),
-    sheet1Order.join(","));
+    "conditionalFormatting", "dataValidations", "printOptions", "pageMargins"], "sheet1.xml");
+  assert.ok(sheet1Order.includes("autoFilter") && sheet1Order.includes("mergeCells"), sheet1Order.join(","));
 
   // _xlnm._FilterDatabase(オートフィルタを Excel に認識させるのに要る)。
   assert.match(files.get("xl/workbook.xml"), /<definedName name="_xlnm\._FilterDatabase" localSheetId="0" hidden="1">'S'!\$A\$1:\$C\$1<\/definedName>/);
-
-  // ハイパーリンクは同シートの _rels ファイルに外部 file URL(percent-encoded)として書かれる。
-  const rels = files.get("xl/worksheets/_rels/sheet1.xml.rels");
-  assert.ok(rels, "sheet1.xml.rels が無い");
-  assert.match(rels, /Type="http:\/\/schemas\.openxmlformats\.org\/officeDocument\/2006\/relationships\/hyperlink"/);
-  assert.match(rels, /TargetMode="External"/);
-  assert.match(rels, /Target="file:\/\/[^"]*%E6[^"]*\.txt"/, rels);
-  assert.match(files.get("xl/worksheets/sheet1.xml"), /<hyperlinks><hyperlink ref="A3" r:id="rId1"\/><\/hyperlinks>/);
-});
-
-test("下線付きフォントは <u/> を持ち、下線なしと同じキーで重複排除されない", () => {
-  const workbook = new XlsxWorkbook();
-  const underlined = workbook.registerStyle({ font: { name: "Meiryo UI", color: "FF0563C1", underline: true } });
-  const plain = workbook.registerStyle({ font: { name: "Meiryo UI", color: "FF0563C1" } });
-  assert.notEqual(underlined, plain);
-  const sheet = workbook.addSheet({ name: "Sheet1" });
-  sheet.setString(1, 1, "link", underlined);
-  const xml = readZip(workbook.toBuffer()).get("xl/styles.xml");
-  assert.match(xml, /<font><u\/><sz val="11"\/><color rgb="FF0563C1"\/><name val="Meiryo UI"\/><\/font>/);
 });
 
 // 分割していない向きのペインを名乗ると Excel が「パーツ内のビュー」を修復する(確認ダイアログが出る)。

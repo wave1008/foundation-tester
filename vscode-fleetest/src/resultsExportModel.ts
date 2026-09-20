@@ -46,9 +46,6 @@ export interface ResultsExportFailedStep {
   readonly failureKind: string | null;
   readonly detail: string | null;
   readonly notes: readonly string[];
-  /** ワークスペースルート相対(docs/results-json.md の FailedStepRecord.file)。 */
-  readonly file: string | null;
-  readonly line: number | null;
 }
 
 export interface ResultsExportScenarioSource {
@@ -73,8 +70,6 @@ export interface ResultsExportScenarioSource {
   readonly errorLogs: readonly string[];
   readonly timeline: readonly ResultsExportTimelineStep[];
   readonly failedSteps: readonly ResultsExportFailedStep[];
-  /** 動画の絶対パス(録画が無ければ null。呼び出し側が firstRecordingEntryByScenario で解決)。 */
-  readonly videoPath: string | null;
 }
 
 function parseTimelineStep(value: unknown): ResultsExportTimelineStep | null {
@@ -107,8 +102,6 @@ function parseFailedStep(value: unknown): ResultsExportFailedStep | null {
     failureKind: typeof value.failureKind === "string" ? value.failureKind : null,
     detail: typeof value.detail === "string" ? value.detail : null,
     notes: Array.isArray(value.notes) ? value.notes.filter((n): n is string => typeof n === "string") : [],
-    file: typeof value.file === "string" ? value.file : null,
-    line: typeof value.line === "number" ? value.line : null,
   };
 }
 
@@ -130,7 +123,6 @@ export function extractResultsExportScenarioSource(
   raw: unknown,
   fallbackProfile: string | null,
   machine: string | null,
-  videoPath: string | null,
 ): ResultsExportScenarioSource | null {
   if (!isRecord(raw) || typeof raw.scenarioID !== "string") {
     return null;
@@ -167,7 +159,6 @@ export function extractResultsExportScenarioSource(
     errorLogs,
     timeline,
     failedSteps,
-    videoPath,
   };
 }
 
@@ -215,10 +206,6 @@ export interface ResultsExportScenarioRow {
   /** 失敗ステップの detail、無ければ timedOut/interrupted/skipKind + errorLogs の合成文。成功なら null。 */
   readonly reason: string | null;
   readonly failedStepNotes: readonly string[];
-  /** ワークスペースルート相対。 */
-  readonly sourceFile: string | null;
-  readonly sourceLine: number | null;
-  readonly videoPath: string | null;
   readonly timeline: readonly ResultsExportTimelineStep[];
 }
 
@@ -317,9 +304,6 @@ function buildScenarioRow(source: ResultsExportScenarioSource): ResultsExportSce
     failureKind: failedStep?.failureKind ?? null,
     reason: reason === "" ? null : reason,
     failedStepNotes: failedStep?.notes ?? [],
-    sourceFile: failedStep?.file ?? null,
-    sourceLine: failedStep?.line ?? null,
-    videoPath: source.videoPath,
     timeline: source.timeline,
   };
 }

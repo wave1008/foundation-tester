@@ -20,8 +20,8 @@ function timelineStep(overrides = {}) {
 }
 
 function extract(raw, overrides = {}) {
-  const { fallbackProfile = null, machine = null, videoPath = null } = overrides;
-  return extractResultsExportScenarioSource(raw, fallbackProfile, machine, videoPath);
+  const { fallbackProfile = null, machine = null } = overrides;
+  return extractResultsExportScenarioSource(raw, fallbackProfile, machine);
 }
 
 function modelFrom(sources, runMetas = []) {
@@ -53,10 +53,8 @@ test("extractResultsExportScenarioSource: profile はレコード自身の値を
   assert.equal(withoutOwn.profile, "fallback-profile");
 });
 
-test("extractResultsExportScenarioSource: machine(run.json 由来)・videoPath は呼び出し側の引数をそのまま持つ", () => {
-  const source = extract({ scenarioID: "C.M" }, { machine: "mac-mini-1", videoPath: "/runs/x/rec.mp4" });
-  assert.equal(source.machine, "mac-mini-1");
-  assert.equal(source.videoPath, "/runs/x/rec.mp4");
+test("extractResultsExportScenarioSource: machine(run.json 由来)は呼び出し側の引数をそのまま持つ", () => {
+  assert.equal(extract({ scenarioID: "C.M" }, { machine: "mac-mini-1" }).machine, "mac-mini-1");
 });
 
 test("extractResultsExportScenarioSource: 自己修復数は steps.healed + steps.passedViaFallback(欠落は0)", () => {
@@ -96,8 +94,6 @@ test("extractResultsExportScenarioSource: timeline/failedSteps/errorLogs は寛�
   assert.deepEqual(source.timeline[0].notes, ["n1"], "notes の非文字列は捨てる");
   assert.equal(source.failedSteps.length, 1, "description を欠く要素は捨てる");
   assert.equal(source.failedSteps[0].failureKind, "not-found");
-  assert.equal(source.failedSteps[0].file, "a.swift");
-  assert.equal(source.failedSteps[0].line, 12);
 });
 
 // ---- buildResultsExportModel: シナリオ結果の判定 ----
@@ -130,7 +126,7 @@ test("結果判定: passed:false(他フラグ無し)なら失敗", () => {
 
 // ---- buildResultsExportModel: 失敗シナリオ行の各欄 ----
 
-test("失敗行: failedSteps[0] から失敗した scene/ステップ/経路/理由/注記/ソースを埋める", () => {
+test("失敗行: failedSteps[0] から失敗した scene/ステップ/経路/理由/注記を埋める", () => {
   const source = extract({
     scenarioID: "C.S1",
     passed: false,
@@ -140,7 +136,7 @@ test("失敗行: failedSteps[0] から失敗した scene/ステップ/経路/理
     failedSteps: [
       {
         index: 0, scene: 1, sceneTitle: "ログイン画面", description: "assert", command: "exist",
-        failureKind: "not-found", detail: "#btn not found", notes: ["retry-exhausted"], file: "TestProjects/x/S1.swift", line: 42,
+        failureKind: "not-found", detail: "#btn not found", notes: ["retry-exhausted"],
       },
     ],
   });
@@ -151,8 +147,6 @@ test("失敗行: failedSteps[0] から失敗した scene/ステップ/経路/理
   assert.equal(row.failureKind, "not-found");
   assert.equal(row.reason, "#btn not found");
   assert.deepEqual(row.failedStepNotes, ["retry-exhausted"]);
-  assert.equal(row.sourceFile, "TestProjects/x/S1.swift");
-  assert.equal(row.sourceLine, 42);
 });
 
 test("シナリオ単位の失敗(failedStep 無し)は timedOut/interrupted/skipKind + errorLogs を理由にする", () => {
@@ -175,7 +169,6 @@ test("成功シナリオは理由・失敗欄がすべて null/空", () => {
   assert.equal(row.failedStepDescription, null);
   assert.equal(row.failureKind, null);
   assert.deepEqual(row.failedStepNotes, []);
-  assert.equal(row.sourceFile, null);
 });
 
 // ---- 重複シナリオ・並び順 ----

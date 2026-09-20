@@ -2,10 +2,7 @@
 // ResultsExportModel(resultsExportModel.ts。locale 非依存の中立データ)を fleetest 向けレイアウトで
 // xlsxWriter.ts の呼び出しへ変換する。文言はここで初めて t()(拡張側 i18n。locale は
 // fleetest.language)を通して解決する——モデル自体は locale を知らない。
-// ソース/動画へのハイパーリンクは絶対パスが要るため workspaceRoot を引数で受け取る
-// (fs は読まない。node:path の join/basename だけ)。
 
-import * as path from "node:path";
 import { t, type MessageKey } from "./i18n";
 import type {
   ResultsExportClassSummary,
@@ -19,7 +16,6 @@ import type { XlsxBorder } from "./xlsxWriter";
 const FONT_NAME = "Meiryo UI";
 const HEADER_FILL = "FF1F3864";
 const SCENARIO_HEADER_FILL = "FFD9E1F2"; // ステップシートのシナリオ見出し行
-const LINK_COLOR = "FF0563C1";
 const SUCCESS_FILL = "FFC6EFCE";
 const FAILURE_FILL = "FFFFC7CE";
 const TIMEOUT_FILL = "FFFFEB9C"; // タイムアウト/中断で共用
@@ -42,7 +38,7 @@ const DATA_BORDER: XlsxBorder = {
 
 // 開始列(10列目)は "yyyy/mm/dd hh:mm:ss" が切れない幅
 const SCENARIOS_COLUMN_WIDTHS: readonly number[] = [
-  5, 24, 10, 36, 8, 26, 12, 10, 8, 20, 8, 24, 36, 12, 48, 24, 20, 8,
+  5, 24, 10, 36, 8, 26, 12, 10, 8, 20, 8, 24, 36, 12, 48, 20,
 ];
 const STEPS_COLUMN_WIDTHS: readonly number[] = [24, 10, 6, 20, 10, 5, 50, 10, 8, 24];
 
@@ -133,7 +129,7 @@ function fmSettingsText(fm: ResultsExportFmSettings | null): string {
     .join(", ");
 }
 
-export function buildResultsExportWorkbook(model: ResultsExportModel, workspaceRoot: string): XlsxWorkbook {
+export function buildResultsExportWorkbook(model: ResultsExportModel): XlsxWorkbook {
   const workbook = new XlsxWorkbook();
 
   const overviewSheet = workbook.addSheet({
@@ -148,7 +144,7 @@ export function buildResultsExportWorkbook(model: ResultsExportModel, workspaceR
     showGridLines: false,
     freezePane: { xSplit: 3, ySplit: 1, topLeftCell: "D2" },
   });
-  renderScenariosSheet(workbook, scenariosSheet, model, workspaceRoot);
+  renderScenariosSheet(workbook, scenariosSheet, model);
 
   const stepsSheet = workbook.addSheet({
     name: t("resultsExport.sheet.steps"),
@@ -274,9 +270,7 @@ function renderCountBlock(
   });
 }
 
-function renderScenariosSheet(
-  workbook: XlsxWorkbook, sheet: XlsxSheet, model: ResultsExportModel, workspaceRoot: string,
-): void {
+function renderScenariosSheet(workbook: XlsxWorkbook, sheet: XlsxSheet, model: ResultsExportModel): void {
   SCENARIOS_COLUMN_WIDTHS.forEach((w, i) => sheet.setColumnWidth(i + 1, w));
 
   const headerStyle = workbook.registerStyle({
@@ -300,9 +294,7 @@ function renderScenariosSheet(
     "resultsExport.scenarios.header.failedStep",
     "resultsExport.scenarios.header.failureKind",
     "resultsExport.scenarios.header.reason",
-    "resultsExport.scenarios.header.source",
     "resultsExport.scenarios.header.notes",
-    "resultsExport.scenarios.header.video",
   ] as const;
   headerKeys.forEach((key, i) => sheet.setString(1, i + 1, t(key), headerStyle));
 
@@ -317,7 +309,6 @@ function renderScenariosSheet(
   const dateStyle = workbook.registerStyle({
     font: baseFont(), border: DATA_BORDER, alignment: { horizontal: "right" }, numFmt: DATE_TIME_NUMFMT,
   });
-  const linkStyle = workbook.registerStyle({ font: baseFont({ color: LINK_COLOR, underline: true }), border: DATA_BORDER });
 
   model.scenarios.forEach((row, i) => {
     const r = i + 2;
@@ -355,17 +346,11 @@ function renderScenariosSheet(
     else sheet.setStyleOnly(r, 14, plainStyle);
     if (row.reason) sheet.setString(r, 15, row.reason, wrapStyle);
     else sheet.setStyleOnly(r, 15, wrapStyle);
-    if (row.sourceFile) {
-      const text = `${path.basename(row.sourceFile)}${row.sourceLine !== null ? `:${row.sourceLine}` : ""}`;
-      sheet.setHyperlink(r, 16, text, path.join(workspaceRoot, row.sourceFile), linkStyle);
-    } else sheet.setStyleOnly(r, 16, plainStyle);
-    if (row.failedStepNotes.length > 0) sheet.setString(r, 17, row.failedStepNotes.join(", "), plainStyle);
-    else sheet.setStyleOnly(r, 17, plainStyle);
-    if (row.videoPath) sheet.setHyperlink(r, 18, t("resultsExport.scenarios.videoLinkText"), row.videoPath, linkStyle);
-    else sheet.setStyleOnly(r, 18, plainStyle);
+    if (row.failedStepNotes.length > 0) sheet.setString(r, 16, row.failedStepNotes.join(", "), plainStyle);
+    else sheet.setStyleOnly(r, 16, plainStyle);
   });
 
-  sheet.setAutoFilter(`A1:R${model.scenarios.length + 1}`);
+  sheet.setAutoFilter(`A1:P${model.scenarios.length + 1}`);
 }
 
 function renderStepsSheet(workbook: XlsxWorkbook, sheet: XlsxSheet, model: ResultsExportModel): void {
