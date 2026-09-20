@@ -86,6 +86,11 @@ in a tile's right-click menu (opens with that device selected). It also opens au
 An element list next to the screenshot lets you tap by row instead of by coordinate, and a text
 field sends input to the last-tapped element (or the focused element if none was tapped).
 
+You can keep driving the device after the app under test leaves the foreground (iOS). When the home
+screen, the app switcher, another app or a system dialog comes to the front, live control follows
+whatever is on screen — gestures land on it and the element list shows it. It switches back on its
+own once the app returns to the front (if it does not, launch the app from the toolbar).
+
 **Recording**: start recording, perform the flow, then stop — the extension turns the recorded
 steps into a Swift scenario under `TestProjects/<project>/scenarios/Generated/` via
 `fleetest api gen-scenario`. The generated file is build-verified immediately; if it fails to

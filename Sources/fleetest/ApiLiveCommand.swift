@@ -53,6 +53,10 @@
 //
 // 座標契約: snapshot の screen / elements[].frame はポイント座標。
 //
+// セッションの向き先(iOS のみ): 操作と観測の直前に、セッションを**今 前面にあるもの**へ
+// 向け直す(LiveSessionFollower)。ホーム画面・アプリスイッチャー・別のアプリ・システム
+// ダイアログが前面でも、画面に映っているものをそのまま触れる。Android は何もしない。
+//
 // 終了: stdin EOF、または SIGTERM/SIGINT(setvbuf の行バッファ化含め他の常駐 api コマンドと同じ
 // 流儀)。ただしこちらは周期処理を持たないコマンド駆動のため、StopFlag+ポーリングではなく
 // AsyncStream で橋渡しし SIGTERM/SIGINT は continuation.finish() で for-await を抜けさせる。
@@ -104,6 +108,10 @@ struct ApiLiveServe: AsyncParsableCommand {
 
         var (driver, port) = try await makeDriverAvoidingInApp()
         let starter = makeAutoStarter(port: port)
+        // セッションを「今 前面にあるもの」へ追従させる(LiveSessionFollower)。**iOS だけ**の補正で、
+        // Android は木がアクティブウィンドウ・タップが画面座標なので何もしなくても画面に追従する
+        let follower = driverOptions.resolvedPlatform == "ios"
+            ? LiveSessionFollower(log: { logStderr($0) }) : nil
         if let starter {
             Task { await starter.checkAndRestartIfStale() }
         }
@@ -149,7 +157,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                 driver = BridgeClient(endpoint: endpoint)
                 logStderr("switched the driver to \(endpoint.host):\(port) (announced by the runner)")
             }
-            await handle(command: command, driver: driver, starter: starter)
+            await handle(command: command, driver: driver, starter: starter, follower: follower)
             ResidentProcessGuard.noteCommandEnd()
         }
     }
@@ -203,21 +211,27 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// 1コマンドを処理する: refresh 以外はまずアクションを実行して actionResult を出し、
     /// 続けて(操作の成否を問わず)観測イベントを出す。refresh は観測イベントのみ
     private func handle(
-        command: ApiLiveServeCommand, driver: AppDriver, starter: LiveBridgeAutoStarter?
+        command: ApiLiveServeCommand, driver: AppDriver, starter: LiveBridgeAutoStarter?,
+        follower: LiveSessionFollower?
     ) async {
         if command.cmd == "frame" {
+            // 自動画面更新は `/screenshot`(XCUIScreen = 画面そのもの)だけなのでセッションに依らない。
+            // ここで追従させると、利用者が何もしていない間もセッションを動かすことになる
             await emitFrame(driver: driver, starter: starter)
             return
         }
         if command.cmd != "refresh" {
             do {
-                try await perform(command: command, driver: driver)
+                try await perform(command: command, driver: driver, follower: follower)
                 emitLine(ApiLiveActionResultEvent(ok: true, error: nil))
             } catch {
                 let message = await annotated(error, starter: starter, triggering: true)
                 emitLine(ApiLiveActionResultEvent(ok: false, error: message))
             }
         }
+        // **観測の直前にもう一度追従させる**: 直前の操作で前面が変わっている(ホームへ戻った・
+        // 別のアプリが出た)ことがあり、古いセッションのまま撮ると画面ではなく最後の状態が載る
+        await follower?.follow(driver: driver)
         await emitObservation(driver: driver, starter: starter)
     }
 
@@ -245,9 +259,19 @@ struct ApiLiveServe: AsyncParsableCommand {
         return element
     }
 
+    /// **撃つ前にセッションを前面へ追従させる**コマンド(画面を触る操作)。セッションそのものを
+    /// 動かすコマンド(launch / activate / terminate / clearAppData / install)は通さない ——
+    /// あちらは対象のアプリを引数で名指ししており、追従させると自分で決めた向き先を上書きする
+    private static func followsFrontmost(_ cmd: String) -> Bool {
+        ["tap", "type", "clear", "hideKeyboard", "swipe", "drag", "doubleTap", "pinch", "press",
+         "back", "appSwitcher", "home"].contains(cmd)
+    }
+
     /// コマンドに応じたドライバ操作を実行する。引数不足・未知の cmd は ServeCommandError を投げる
     /// (呼び出し元 handle が actionResult の ok:false として拾う)
-    private func perform(command: ApiLiveServeCommand, driver: AppDriver) async throws {
+    private func perform(command: ApiLiveServeCommand, driver: AppDriver,
+                         follower: LiveSessionFollower?) async throws {
+        if Self.followsFrontmost(command.cmd) { await follower?.follow(driver: driver) }
         switch command.cmd {
         case "tap":
             if let ref = command.ref {
@@ -317,11 +341,13 @@ struct ApiLiveServe: AsyncParsableCommand {
                 throw ServeCommandError.invalidArguments("launch requires bundle")
             }
             try await driver.launch(bundleID: bundle)
+            follower?.noteSessionChanged(to: bundle)
         case "activate":
             guard let bundle = command.bundle else {
                 throw ServeCommandError.invalidArguments("activate requires bundle")
             }
             try await driver.activate(bundleID: bundle)
+            follower?.noteSessionChanged(to: bundle)
         case "appSwitcher":
             try await driver.openAppSwitcher()
         case "home":
@@ -329,10 +355,25 @@ struct ApiLiveServe: AsyncParsableCommand {
         case "back":
             try await driver.back()
         case "terminate":
+            // **セッションの向き先を対象に撃つ**ので、追従で springboard を向いていたら戻す。
+            // 駆動しているアプリが無ければ**断る** —— そのまま撃つと SpringBoard を終了させる
+            if let follower {
+                guard let target = follower.drivenApp() else {
+                    throw ServeCommandError.invalidArguments(
+                        "terminate needs an app in this session — launch one first")
+                }
+                try await follower.pointAtApp(target, driver: driver)
+            }
             try await driver.terminate()
+            follower?.noteSessionDropped()
         case "clearAppData":
-            let bundle = try await resolveBundleForClearAppData(command: command, driver: driver)
+            let bundle = try await resolveBundleForClearAppData(
+                command: command, driver: driver, follower: follower)
+            // clearAppData はホスト側で `terminate()`(= セッションのアプリ)を撃ってから
+            // コンテナを消すので、対象のアプリへセッションを寄せてからでないと別のものを殺す
+            try await follower?.pointAtApp(bundle, driver: driver)
             try await driver.clearAppData(bundleID: bundle)
+            follower?.noteSessionDropped()
         case "install":
             guard let path = command.path else {
                 throw ServeCommandError.invalidArguments("install requires path")
@@ -359,13 +400,18 @@ struct ApiLiveServe: AsyncParsableCommand {
         }
     }
 
-    /// bundle 省略時は現在のセッションが指すアプリ(/status.sessionBundleID)を対象にする。
-    /// それも取れなければ引数不足として扱う(terminate と違い clearAppData は bundleID が必須のため)
+    /// bundle 省略時は**パネルが駆動しているアプリ**、それも無ければセッションが指すアプリ
+    /// (/status.sessionBundleID)を対象にする。どちらも取れなければ引数不足として扱う
+    /// (terminate と違い clearAppData は bundleID が必須のため)
     private func resolveBundleForClearAppData(
-        command: ApiLiveServeCommand, driver: AppDriver
+        command: ApiLiveServeCommand, driver: AppDriver, follower: LiveSessionFollower?
     ) async throws -> String {
         if let bundle = command.bundle { return bundle }
-        guard let sessionBundleID = try? await driver.status().sessionBundleID else {
+        // **追従役の preferred が先** —— セッションは springboard を向いていることがあり、
+        // そのまま既定にすると SpringBoard のデータを消す対象になる
+        if let preferred = follower?.drivenApp() { return preferred }
+        guard let sessionBundleID = try? await driver.status().sessionBundleID,
+              sessionBundleID != LiveSessionTarget.springboard else {
             throw ServeCommandError.invalidArguments(
                 "clearAppData requires bundle (no active session to infer it from)")
         }
