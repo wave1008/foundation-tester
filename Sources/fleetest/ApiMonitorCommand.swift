@@ -1769,8 +1769,8 @@ struct ApiMonitorRunProgressLane: Codable, Equatable {
     let platform: String?
     let scenario: String?
     let scenarioElapsedSeconds: Int?
-    /// **詰まりの事実**(docs/design.md §18.5 段6): 実行中シナリオの実績中央値(秒)。台帳の値を
-    /// そのまま運ぶ(作り替えない)。`scenario` が nil、または実績が無ければ nil
+    /// **記録用**(画面には出さない。ユーザー決定 2026-09-21): 実行中シナリオの実績中央値(秒)。
+    /// 台帳の値をそのまま運ぶ(作り替えない)
     let expectedSeconds: Int?
 }
 

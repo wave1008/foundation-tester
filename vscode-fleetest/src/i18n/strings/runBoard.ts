@@ -21,7 +21,6 @@ export const runBoardStrings = {
   "runBoard.building": { ja: "ビルド中", en: "Building…" },
   "runBoard.requeued": { ja: "⟳{count}", en: "⟳{count}" },
   "runBoard.laneDropouts": { ja: "レーン離脱 {count}", en: "{count} lane(s) dropped" },
-  "runBoard.elapsedOverMedian": { ja: "{elapsed}(中央 {median})", en: "{elapsed} (median {median})" },
   "runBoard.preparing": { ja: "準備中(デバイスを用意しています)", en: "Preparing devices…" },
   "runBoard.laneIdle": { ja: "⏹ 待機", en: "⏹ Waiting" },
   "runBoard.remainingUnknown": { ja: "—", en: "—" },

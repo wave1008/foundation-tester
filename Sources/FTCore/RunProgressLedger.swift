@@ -35,9 +35,9 @@ public struct RunProgressLane: Codable, Equatable, Sendable {
     // **レーンごとの残り本数は持たない**(docs/design.md §18.1)—— shared dispatch は同一 platform の
     // レーンが1つのキューを共有するので、レーン別の残数は同じ数字が並ぶだけで誤読を招く
     // (3レーンに「残 2」= 6本残っていると読める)。run の残りは total - done で足りる
-    /// **詰まりの事実**(段6・docs/design.md §18.5): 実行中シナリオの実績中央値(秒)。
-    /// `scenario` が nil、または実績表に無ければ nil(推測値を出さない)。値は固定
-    /// (シナリオ開始時に1回引く。経過との比較は読み手が `scenarioStartedAt` との差分で行う)
+    /// **記録用**(画面には出さない。ユーザー決定 2026-09-21): 実行中シナリオの実績中央値(秒)。
+    /// `scenario` が nil、または実績表に無ければ nil(推測値は書かない)。値は固定 ——
+    /// シナリオ開始時に1回引く。**「いつもと比べてどうだったか」を後から分析するために残す**
     public let expectedSeconds: Int?
 
     public init(key: String, name: String, platform: String?, scenario: String?,

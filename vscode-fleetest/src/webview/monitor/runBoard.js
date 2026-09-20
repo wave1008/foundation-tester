@@ -309,14 +309,7 @@ function renderRowTime(row) {
 function renderLaneTimes(row) {
   const now = Date.now();
   for (const entry of row.laneRows.values()) {
-    const elapsed = liveElapsedSeconds(entry.base, entry.receivedAtMs, now);
-    // **実績中央値を超えたときだけ並べる**(docs/design.md §18.5)。「何倍で警告」は根拠の
-    // 無い定数になるので閾値を置かず、超えたか否か(= 事実)だけで出し分ける。
-    // 語も中立に —— 「遅い」とは書かない(ツールには原因を分けられない)
-    entry.elapsedEl.textContent = entry.expectedSeconds !== undefined && elapsed > entry.expectedSeconds
-      ? t('runBoard.elapsedOverMedian', {
-          elapsed: formatMinSec(elapsed), median: formatMinSec(entry.expectedSeconds) })
-      : formatMinSec(elapsed);
+    entry.elapsedEl.textContent = formatMinSec(liveElapsedSeconds(entry.base, entry.receivedAtMs, now));
   }
 }
 
@@ -367,7 +360,6 @@ function renderLanes(row, group) {
       if (!idle && lane.scenarioElapsedSeconds !== undefined) {
         row.laneRows.set((run.machine ?? '') + '\u0000' + lane.key, {
           elapsedEl, base: lane.scenarioElapsedSeconds, receivedAtMs: run.receivedAtMs,
-          expectedSeconds: lane.expectedSeconds,
         });
       }
     }

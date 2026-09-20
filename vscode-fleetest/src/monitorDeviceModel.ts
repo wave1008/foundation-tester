@@ -122,9 +122,6 @@ export interface MonitorRunLane {
   readonly scenario?: string;
   /** `scenario` が無いときは省略(待機中は経過も無い)。 */
   readonly scenarioElapsedSeconds?: number;
-  /** 実行中シナリオの実績中央値(秒)。実績が無ければ省略。**経過と並べるだけ**で、
-   * 超過の判定や警告はしない(docs/design.md §18.5)。 */
-  readonly expectedSeconds?: number;
 }
 
 /** run ボードの1 run(1機械ぶん。docs/design.md §18.1)。機械分担の run は `runGroup` を共有する
@@ -294,17 +291,12 @@ function isMonitorRunLane(value: unknown): value is MonitorRunLane {
   if (value.scenarioElapsedSeconds === null) {
     value.scenarioElapsedSeconds = undefined;
   }
-  if (value.expectedSeconds === null) {
-    // 実績の無いシナリオ(台帳が nil を書く)。省略と同じ「並べない」へ正規化する
-    value.expectedSeconds = undefined;
-  }
   return (
     typeof value.key === "string" &&
     typeof value.name === "string" &&
     (value.platform === undefined || (typeof value.platform === "string" && PLATFORMS.has(value.platform))) &&
     (value.scenario === undefined || typeof value.scenario === "string") &&
-    (value.scenarioElapsedSeconds === undefined || typeof value.scenarioElapsedSeconds === "number") &&
-    (value.expectedSeconds === undefined || typeof value.expectedSeconds === "number")
+    (value.scenarioElapsedSeconds === undefined || typeof value.scenarioElapsedSeconds === "number")
   );
 }
 

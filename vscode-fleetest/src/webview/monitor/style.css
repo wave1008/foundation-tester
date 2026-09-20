@@ -445,6 +445,9 @@ button.bulk-cancel:hover:not(:disabled) {
   /* 階層のインデント: ヘッダ 8px → run 行 24px → レーン 48px(.run-board-lanes)。
      **走っていない機械の行は run 行と同じ 24px** —— run の子ではないので同列に置く */
   padding: 3px 8px 3px 24px;
+  /* run 行も高さを固定(進捗バー・注記の有無で変わらない) */
+  line-height: 20px;
+  min-height: 20px;
   cursor: pointer;
 }
 .run-board-row-summary:hover {
@@ -552,6 +555,10 @@ button.bulk-cancel:hover:not(:disabled) {
   align-items: center;
   gap: 8px;
   padding: 2px 8px 2px 16px;
+  /* **行の高さを固定する**(ユーザー指摘 2026-09-20)—— 中身(「0:08」/「0:08(中央 0:08)」)で
+     高さが変わると、レーンが増減したように見えて目が滑る */
+  line-height: 18px;
+  min-height: 18px;
   cursor: pointer;
 }
 .run-board-lane:hover {
@@ -571,7 +578,10 @@ button.bulk-cancel:hover:not(:disabled) {
 }
 .run-board-lane-elapsed {
   flex: 0 0 auto;
-  width: 40px;
+  /* **折り返さない**(width 固定だと「0:08(中央 0:08)」が3行に折れて行が伸びた)。
+     数字だけのときは min-width で右端が揃う */
+  min-width: 40px;
+  white-space: nowrap;
   text-align: right;
   font-variant-numeric: tabular-nums;
   color: var(--vscode-descriptionForeground);

@@ -618,9 +618,8 @@ actor RunProgressState {
         if count == 1 { pendingCounts.removeValue(forKey: key) } else { pendingCounts[key] = count - 1 }
     }
 
-    /// レーン単位の「詰まりの事実」(docs/design.md §18.5 段6): 実行中シナリオの実績中央値(秒)。
-    /// 実績表に無い(初見のシナリオ・実績ゼロの run)なら nil —— 推測値は出さない。
-    /// ms→秒は `RunProgressEstimate.etaSeconds` と同じ丸め(切り上げ)に揃える
+    /// 記録用(画面には出さない): 実行中シナリオの実績中央値(秒)。実績表に無ければ nil ——
+    /// 推測値は書かない。ms→秒は `RunProgressEstimate.etaSeconds` と同じ丸め(切り上げ)
     private func expectedSeconds(scenario: String, platform: String?) -> Int? {
         guard let platform else { return nil }
         guard let ms = estimates[RunProgressEstimate.ScenarioKey(scenarioID: scenario, platform: platform)]

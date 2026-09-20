@@ -157,6 +157,18 @@ test("進捗バーの塗りは display: block を持つ(span の inline では w
 // 走っていない機械の行は run 行と混ぜて機械の順に並べるので、列は min-width で揃える。
 // 行の高さは固定する —— 和文の「空き」と記号の「—」は既定の行高が違い、揃えないと上下に揺れる。
 // **jsdom は CSS を読み込まない**ので宣言そのものをテキストで押さえる(進捗バーと同じ理由)。
+// 中身で行の高さが変わると、レーンが増減したように見える(2026-09-20 の実害:
+// 「0:08(中央 0:08)」が3行に折れた)。**jsdom は CSS を読まない**のでテキストで押さえる。
+test("レーン行は高さを固定し、経過は折り返さない", () => {
+  const css = readFileSync(new URL("../src/webview/monitor/style.css", import.meta.url), "utf8");
+  const lane = css.slice(css.indexOf(".run-board-lane {"));
+  assert.match(lane.slice(0, lane.indexOf("}")), /line-height:\s*18px/);
+  const elapsed = css.slice(css.indexOf(".run-board-lane-elapsed {"));
+  const decl = elapsed.slice(0, elapsed.indexOf("}"));
+  assert.match(decl, /white-space:\s*nowrap/, "折り返すと行が伸びる");
+  assert.doesNotMatch(decl, /\n\s*width:/, "固定幅だと中央値つきの表示が入らない");
+});
+
 test("走っていない機械の行は名前の幅と行の高さを固定する", () => {
   const css = readFileSync(new URL("../src/webview/monitor/style.css", import.meta.url), "utf8");
   const row = css.slice(css.indexOf(".run-board-idle-machine {"));

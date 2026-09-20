@@ -23,8 +23,6 @@ export interface RunBoardLane {
   readonly scenario?: string;
   /** `scenario` が無いときは省略。 */
   readonly scenarioElapsedSeconds?: number;
-  /** 実行中シナリオの実績中央値(秒)。実績が無ければ省略。 */
-  readonly expectedSeconds?: number;
 }
 
 /** 1 run(1機械ぶん)。ネットワークから届く生の形(machine/receivedAtMs は畳み込みの側が足す)。 */
