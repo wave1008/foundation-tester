@@ -101,8 +101,13 @@ test("走っていない機械は本体に行として並ぶ(実行中の機械�
   post(window, { type: "monitorRuns", observed: true, runs: [] });   // 手元 = 観測できて 0 本
   post(window, monitorRunsMessage({ machine: "M1Max" }));            // 実行中 → run の行になる
   // M1Ultra へは1行も送らない = 一度も聞いていない
-  const idle = [...document.querySelectorAll(".run-board-idle-machine")].map((el) => el.textContent);
+  // 三角は列を揃えるための飾り(押せない)なので、名前と状態だけを見る
+  const idle = [...document.querySelectorAll(".run-board-idle-machine")].map((el) =>
+    el.querySelector(".run-board-idle-machine-name").textContent
+      + el.querySelector(".run-board-idle-machine-status").textContent);
   assert.deepEqual(idle, ["local空き", "M1Ultra—"], "空きは語・不明は「—」");
+  assert.equal(document.querySelectorAll(".run-board-chevron-empty").length, 2,
+    "子を持たない行にも三角を置く(列を揃えるため)");
   const unknown = [...document.querySelectorAll(".run-board-machine-state-unknown")][0];
   assert.equal(unknown.title, "実行状況を観測できていません", "ダッシュの意味は title で言う");
   assert.equal(document.querySelectorAll(".run-board-row").length, 1, "M1Max は run の行として出る");
@@ -125,7 +130,9 @@ test("準備中の run は本数でなく「準備中」を出し、進捗バー
     "準備中も「実行中」の件数に数える(走っているので)");
   // その機械は「空き」の一覧から外れる
   post(window, { type: "hostMetricsMachines", machines: ["M1Max"] });
-  const idle = [...document.querySelectorAll(".run-board-idle-machine")].map((el) => el.textContent);
+  const idle = [...document.querySelectorAll(".run-board-idle-machine")].map((el) =>
+    el.querySelector(".run-board-idle-machine-name").textContent
+      + el.querySelector(".run-board-idle-machine-status").textContent);
   assert.deepEqual(idle, ["local—"], "準備中でも M1Max は使用中(空きに出さない)");
 });
 
@@ -147,75 +154,34 @@ test("進捗バーの塗りは display: block を持つ(span の inline では w
   assert.match(declarations, /display:\s*block/);
 });
 
-// 機械名の長さが違っても状態の列が揃うのは、親が grid で行が display: contents だから。
+// 走っていない機械の行は run 行と混ぜて機械の順に並べるので、列は min-width で揃える。
+// 行の高さは固定する —— 和文の「空き」と記号の「—」は既定の行高が違い、揃えないと上下に揺れる。
 // **jsdom は CSS を読み込まない**ので宣言そのものをテキストで押さえる(進捗バーと同じ理由)。
-test("走っていない機械は grid の列で揃える(display: contents を外すとガタつく)", () => {
+test("走っていない機械の行は名前の幅と行の高さを固定する", () => {
   const css = readFileSync(new URL("../src/webview/monitor/style.css", import.meta.url), "utf8");
-  const grid = css.slice(css.indexOf(".run-board-idle-machines {"));
-  assert.match(grid.slice(0, grid.indexOf("}")), /display:\s*grid/);
   const row = css.slice(css.indexOf(".run-board-idle-machine {"));
-  assert.match(row.slice(0, row.indexOf("}")), /display:\s*contents/);
+  const rowDecl = row.slice(0, row.indexOf("}"));
+  assert.match(rowDecl, /line-height:\s*18px/, "語と — で行の高さが変わらないよう固定する");
+  const name = css.slice(css.indexOf(".run-board-idle-machine-name {"));
+  assert.match(name.slice(0, name.indexOf("}")), /min-width:/, "状態の列を揃える");
 });
 
-test("「全て展開」はトグル: ON の間はあとから来た run も開いた状態で出る", (t) => {
-  const { window, document, sent } = createWebview();
-  t.after(() => window.close());
-  post(window, monitorRunsMessage());
-  const button = document.getElementById("run-board-expand-all");
-  assert.equal(button.classList.contains("toggled"), false);
-  // **レーンの DOM は畳んでいても存在する**(表示は run-board-row-expanded で切り替え)ので、
-  // 開いているかは行のクラスで見る
-  assert.equal(document.querySelectorAll(".run-board-row-expanded").length, 0, "初期は畳まれている");
-
-  click(window, button);
-  assert.equal(button.classList.contains("toggled"), true, "ラベルは変えず押し込み状態で ON を見せる");
-  assert.equal(button.textContent, "全て展開");
-  assert.equal(document.querySelectorAll(".run-board-row-expanded").length, 1);
-  assert.equal(document.getElementById("run-board-toggle").dataset.expanded, "true",
-    "ボタンの click がヘッダへ波及してボードごと畳まれてはいけない");
-  assert.ok(sent.some((m) => m.type === "setRunBoardExpandAll" && m.value === true),
-    "モードなので host に永続化させる");
-
-  // **あとから現れた run も開いて出る**(これがワンショットとの違い)
-  post(window, monitorRunsMessage({ machine: "M1Max", runs: [{
-    pid: 555, runID: "run-2", mine: true, project: "ec-mobile", profile: "android-regress",
-    elapsedSeconds: 30, total: 4, done: 1, failed: 0,
-    lanes: [{ key: "emulator-5554", name: "Pixel 9-01", platform: "android", scenario: "01_起動",
-              scenarioElapsedSeconds: 10 }],
-  }] }));
-  assert.equal(document.querySelectorAll(".run-board-row-expanded").length, 2, "新しい run も展開済みで出る");
-
-  click(window, button);
-  assert.equal(button.classList.contains("toggled"), false);
-  assert.equal(document.querySelectorAll(".run-board-row-expanded").length, 0, "OFF で全部畳む");
-});
-
-test("ON のまま1行だけ閉じるとモードを抜け、他の行は開いたまま", (t) => {
+// 機械の並びは常に同じ(local → 登録簿の順)。run が始まると行の種類は変わるが**位置は動かない**
+// —— 動くと目が追えない(2026-09-20 の指摘: M1Max の run が local の上に来ていた)。
+test("並びは常に機械の順で、run が始まっても位置が動かない", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  post(window, monitorRunsMessage());
-  post(window, monitorRunsMessage({ machine: "M1Max", runs: [{
-    pid: 555, runID: "run-2", mine: true, project: "ec-mobile", profile: "android-regress",
-    elapsedSeconds: 30, total: 4, done: 1, failed: 0,
-    lanes: [{ key: "emulator-5554", name: "Pixel 9-01", platform: "android", scenario: "01_起動",
-              scenarioElapsedSeconds: 10 }],
-  }] }));
-  click(window, document.getElementById("run-board-expand-all"));
-  assert.equal(document.querySelectorAll(".run-board-row-expanded").length, 2);
+  post(window, { type: "hostMetricsMachines", machines: ["M1Max", "M1Ultra"] });
+  post(window, { type: "monitorRuns", observed: true, runs: [] });                 // local = 空き
+  post(window, { type: "monitorRuns", machine: "M1Ultra", observed: true, runs: [] });
+  const label = () => [...document.getElementById("run-board-rows").children].map((el) =>
+    el.classList.contains("run-board-idle-machine")
+      ? el.querySelector(".run-board-idle-machine-name").textContent
+      : `run:${el.querySelector(".run-board-machine-badge").textContent || "local"}`);
+  assert.deepEqual(label(), ["local", "M1Max", "M1Ultra"], "M1Max は一度も聞いていない = 不明");
 
-  click(window, document.querySelectorAll(".run-board-chevron")[0]);
-  assert.equal(document.getElementById("run-board-expand-all").classList.contains("toggled"), false, "モードを抜ける");
-  assert.equal(document.querySelectorAll(".run-board-row-expanded").length, 1,
-    "閉じたのは1行だけ —— 残りは開いたまま(抜けた瞬間に全部畳まない)");
-});
-
-test("「全て展開」は折りたたみ中は出さない", (t) => {
-  const { window, document } = createWebview();
-  t.after(() => window.close());
-  const button = document.getElementById("run-board-expand-all");
-  assert.equal(button.style.display, "", "run 0 本でもモードのスイッチとして出す");
-  click(window, document.getElementById("run-board-title"));   // ボードを畳む
-  assert.equal(button.style.display, "none", "折りたたみ中は本体が見えないので出さない");
+  post(window, monitorRunsMessage({ machine: "M1Max" }));   // 真ん中の機械で run が始まる
+  assert.deepEqual(label(), ["local", "run:M1Max", "M1Ultra"], "位置は同じまま行の種類だけ変わる");
 });
 
 test("ヘッダ行はどこを押しても開閉する(三角だけが当たり判定ではない)", (t) => {

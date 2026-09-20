@@ -144,38 +144,35 @@ export function setRunBoardExpandAll(value) {
 // run が走っていない機械(展開時のみ。折りたたみ時はボード本体ごと隠れる)。
 // **run のある機械はここに出さない** —— その機械は run の行として出ているので二重になる。
 // **1つの grid に入れる**(行ごとに独立した flex にすると、機械名の長さで状態の列がガタつく)
-function renderMachinesWithoutRuns(groups) {
-  const entries = machinesWithoutRuns(runsByMachine, machineList(), groups);
-  if (entries.length === 0) {
-    return;
+function makeIdleMachineRow(machine, status) {
+  const el = document.createElement('div');
+  el.className = 'run-board-idle-machine';
+
+  // **子を持たない行にも三角を出す**(ユーザー決定 2026-09-20)—— 空白にすると列は揃うが
+  // 行の作りが run 行と違って見える。開くものが無いので押せない(薄く出すだけ)
+  const chevron = document.createElement('span');
+  chevron.className = 'run-board-chevron run-board-chevron-empty';
+  chevron.textContent = '▶';
+
+  const name = document.createElement('span');
+  name.className = 'run-board-idle-machine-name';
+  name.textContent = machineLabel(machine);
+
+  // 空きは語、**不明は「—」**(ユーザー決定 2026-09-20。`remote status` の LOCK/FM 欄が
+  // 判定不能に使うのと同じ記法・ボードの「残り —」とも同じ文字)。赤字にはしない ——
+  // 観測できていないのは異常ではないので、警告色を使うと毎回そこへ目が行く。
+  // **何のダッシュかは title で言う**(記号だけだと読み手が意味を持てない)
+  const word = document.createElement('span');
+  word.className = 'run-board-idle-machine-status run-board-machine-state-' + status;
+  if (status === 'unknown') {
+    word.textContent = t('runBoard.remainingUnknown');
+    word.title = t('runBoard.machineUnknown');
+  } else {
+    word.textContent = t('runBoard.machineIdle');
   }
-  const container = document.createElement('div');
-  container.className = 'run-board-idle-machines';
-  for (const entry of entries) {
-    const el = document.createElement('div');
-    el.className = 'run-board-idle-machine';
 
-    const name = document.createElement('span');
-    name.className = 'run-board-idle-machine-name';
-    name.textContent = machineLabel(entry.machine);
-
-    // 空きは語、**不明は「—」**(ユーザー決定 2026-09-20。`remote status` の LOCK/FM 欄が
-    // 判定不能に使うのと同じ記法・ボードの「残り —」とも同じ文字)。赤字にはしない ——
-    // 観測できていないのは異常ではないので、警告色を使うと毎回そこへ目が行く。
-    // **何のダッシュかは title で言う**(記号だけだと読み手が意味を持てない)
-    const word = document.createElement('span');
-    word.className = 'run-board-idle-machine-status run-board-machine-state-' + entry.status;
-    if (entry.status === 'unknown') {
-      word.textContent = t('runBoard.remainingUnknown');
-      word.title = t('runBoard.machineUnknown');
-    } else {
-      word.textContent = t('runBoard.machineIdle');
-    }
-
-    el.append(name, word);
-    container.appendChild(el);
-  }
-  runBoardRows.appendChild(container);
+  el.append(chevron, name, word);
+  return el;
 }
 
 function selectRunDevices(group) {
@@ -418,26 +415,54 @@ function updateRow(row, group) {
 function render() {
   const groups = buildRunGroups(runsByMachine);
   renderHeader(groups);
+  // 機械行は状態を持たないので毎回作り直す(run 行は展開・秒読みを持つので rows で使い回す)
+  for (const el of runBoardRows.querySelectorAll('.run-board-idle-machine')) {
+    el.remove();
+  }
+  const idleStatus = new Map(
+    machinesWithoutRuns(runsByMachine, machineList(), groups).map((e) => [e.machine, e.status]),
+  );
+
+  // **並びは常に機械の順**(machineList = local → 登録簿の順)。run が始まっても機械の位置は
+  // 動かさない(ユーザー決定 2026-09-20)—— 動くと目が追えない
   const seen = new Set();
-  for (const group of groups) {
+  const placed = new Set();
+  const place = (group) => {
+    placed.add(group.groupKey);
     seen.add(group.groupKey);
     const row = ensureRow(group.groupKey);
     updateRow(row, group);
-    // 既存ノードへの appendChild は移動として働く = groups の順のまま並び直る(重複しない)。
+    // 既存ノードへの appendChild は移動として働く(重複しない)
     runBoardRows.appendChild(row.rowEl);
+  };
+  for (const machine of machineList()) {
+    for (const group of groups) {
+      if (placed.has(group.groupKey)) {
+        continue;
+      }
+      // 機械分担の run は**最初に現れた機械の位置**に1行だけ置く
+      if (group.runs.some((run) => (run.machine ?? LOCAL_MACHINE_KEY) === machine)) {
+        place(group);
+      }
+    }
+    const status = idleStatus.get(machine);
+    if (status !== undefined) {
+      runBoardRows.appendChild(makeIdleMachineRow(machine, status));
+    }
   }
+  // 登録簿に無い機械の run も落とさない(machineList に出てこないぶん)
+  for (const group of groups) {
+    if (!placed.has(group.groupKey)) {
+      place(group);
+    }
+  }
+
   for (const [groupKey, row] of rows) {
     if (!seen.has(groupKey)) {
       row.rowEl.remove();
       rows.delete(groupKey);
     }
   }
-  // run の行のあとに、走っていない機械を並べる。**毎回作り直す**(run 行と違って
-  // DOM を使い回す価値のある状態を持たない = 1機械1行のテキストだけ)
-  for (const el of runBoardRows.querySelectorAll('.run-board-idle-machines')) {
-    el.remove();
-  }
-  renderMachinesWithoutRuns(groups);
 }
 
 /** main.js の 'monitorRuns' ケースから渡す(1件 = 1機械ぶん。契約は monitorDeviceModel.ts)。 */

@@ -391,7 +391,6 @@ button.bulk-cancel:hover:not(:disabled) {
 /* 配色・hover・ON の見せ方は .icon-button / .icon-button.toggled に任せる(「デバイスを
    すべて選択」と同じエフェクト。ユーザー決定 2026-09-20)。ここは位置と字の大きさだけ持つ */
 .run-board-expand-all {
-  margin-left: auto;   /* ヘッダの右端へ寄せる */
   flex: 0 0 auto;
   height: 20px;
   font-size: 11px;
@@ -401,21 +400,27 @@ button.bulk-cancel:hover:not(:disabled) {
   font-weight: 600;
   white-space: nowrap;
 }
-/* 機械名の長さが違っても状態の列が揃うよう、行ではなく **1つの grid** に並べる。
-   max-content = 最長の機械名に合わせて自動で決まる(固定幅にすると長い名前で崩れる) */
-.run-board-idle-machines {
-  display: grid;
-  grid-template-columns: max-content max-content;
-  column-gap: 12px;
-  row-gap: 2px;
-  /* **run 行と同じ 24px** —— これらは run の子ではなく、run と同列に並ぶ機械の一覧 */
-  padding: 6px 8px 3px 24px;
+/* 走っていない機械の1行。**run 行と混ぜて機械の順に並べる**ので grid の列は使えず、
+   名前の幅を min-width で揃える(機械名は短い。長い名前はその行だけ押し出す) */
+.run-board-idle-machine {
+  display: flex;
+  align-items: center;
+  gap: 8px;            /* run 行と同じ = 三角のあとの文字の頭が揃う */
+  /* **run 行と同じ 24px**。三角は機械行にも置くので(押せないだけ)、文字の頭は
+     run 行の名前と同じ 48px に揃う */
+  padding: 2px 8px 2px 24px;
+  /* **語("空き")と記号("—")で行の高さが変わらないよう固定する**(ユーザー指摘 2026-09-20)——
+     和文とダッシュでは既定の行高が違い、行ごとに上下が揺れる */
+  line-height: 18px;
+  min-height: 18px;
   opacity: 0.75;               /* 走っていない機械は控えめに(run の行が主役) */
 }
-/* 1行ぶんの入れ物。**display: contents** で自分は箱を持たず、名前と状態を親 grid の
-   セルとして直接置く(この宣言を外すと列が揃わなくなる) */
-.run-board-idle-machine {
-  display: contents;
+.run-board-idle-machine-name {
+  flex: 0 0 auto;
+  min-width: 88px;   /* 状態の列を揃える(M1Ultra で約 60px。余裕を持たせる) */
+}
+.run-board-idle-machine-status {
+  flex: 1 1 auto;
 }
 
 /* 走っていない機械は2値(空き / 不明)。**どちらもグレー**(ユーザー決定 2026-09-20)——
@@ -459,6 +464,11 @@ button.bulk-cancel:hover:not(:disabled) {
      同じ字が回るほうが「この行は開ける」と伝わる = VSCode のツリーと同じ挙動 */
   transform: rotate(0deg);
   transition: transform 0.1s ease;
+}
+/* 子(レーン)を持たない行の三角。列を揃えるためだけに出すので、押せる見た目にしない */
+.run-board-chevron-empty {
+  cursor: default;
+  opacity: 0.35;
 }
 .run-board-chevron[data-expanded="true"] {
   transform: rotate(90deg);
@@ -506,14 +516,14 @@ button.bulk-cancel:hover:not(:disabled) {
   color: var(--vscode-descriptionForeground);
 }
 .run-board-issuer {
-  padding: 0 8px 3px 48px;
+  padding: 0 8px 3px 64px;
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
 /* レーンは run の子。**縦のガイド線**で親子を示す(インデントだけだと、下に続く
    「走っていない機械」の行と見分けが付かない) */
 .run-board-lanes {
-  margin-left: 32px;
+  margin-left: 48px;   /* レーンは run の子 —— 機械の一覧(48px)よりさらに内側に置く */
   border-left: 1px solid var(--vscode-tree-indentGuidesStroke, rgba(127, 127, 127, 0.35));
   display: flex;
   flex-direction: column;
@@ -540,10 +550,9 @@ button.bulk-cancel:hover:not(:disabled) {
   background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.2));
 }
 .run-board-lane-name {
+  /* **省略しない**(ユーザー決定 2026-09-20)—— デバイス名は末尾で見分けるので、
+     途中で切ると "iPhone 17 Pro(iO…" が並んで区別が付かない */
   flex: 0 0 auto;
-  width: 110px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .run-board-lane-scenario {
