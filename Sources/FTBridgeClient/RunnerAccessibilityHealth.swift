@@ -10,6 +10,7 @@
 // run 中にまた 2 秒超のステップが 7/22・22/91 本)ので、緑のシナリオの直後にも同じ 1 問で測り直す
 // (`BridgeProvisioner.recheckRunner` / fleetest の `RunnerMidRunRecheck`)。
 
+import FTCore
 import Foundation
 
 /// 建て直しても直らなかった台(udid)。**このプロセスの間だけ**覚える(run ごとに作り直される)。
@@ -118,5 +119,81 @@ public enum RunnerAccessibilityHealth {
         return "⚠️ \(name): the xcuitest bridge on port \(port) \(measured); normal is under 0.3s"
             + " (a stale remote element after a system daemon restart makes every query wait"
             + " ~\(Int(slowProbeSeconds * 2))s) — restarting it"
+    }
+
+    // MARK: - 印を run をまたいで持ち越す(RunnerSlownessStore)
+
+    /// 供給の入口で、run をまたいだ印(`RunnerSlownessStore`)から次に何を試すかを決める(純粋関数)。
+    /// **リースのある台には絶対に触らない**(ユーザー決定)—— 印があっても再起動を試みず、
+    /// 従来どおり「建て直さずそのまま使う」に落とす
+    public enum SupplySlownessAction: Equatable, Sendable {
+        /// 印なし。従来どおり 1 問プローブしてから必要なら建て直す
+        case proceedNormally
+        /// 印 = runnerRestartDidNotHelp かつリース無し。ブリッジを建てる前にシミュレータごと再起動する
+        case restartSimulator
+        /// 印 = simulatorRestartDidNotHelp、またはリースがある台。何も撃たずそのまま使う
+        case reuseWithoutRestarting
+    }
+
+    public static func supplySlownessAction(persisted: RunnerSlowness?, hasForeignLease: Bool) -> SupplySlownessAction {
+        switch persisted {
+        case nil: return .proceedNormally
+        case .simulatorRestartDidNotHelp: return .reuseWithoutRestarting
+        case .runnerRestartDidNotHelp: return hasForeignLease ? .reuseWithoutRestarting : .restartSimulator
+        }
+    }
+
+    /// run-lease / MCP の印のどちらかを**他プロセス**が持っているか(純粋関数)。自分自身が持つ
+    /// run-lease は「使用中」に数えない(この run 自身が供給の中で自分の台に触るのは正常)。
+    /// `DeviceBooter.deviceInUseRefusal`(docs/remote-runner.md §18.7 規律④)と同じ規律だが、
+    /// FTAndroid → FTBridgeClient の依存方向のためあちらを直接呼べない(循環)。RunLease/MCPDeviceLease は
+    /// 同じモジュール(FTBridgeClient)に居るので、判定だけをここへ複製する
+    static func hasForeignLease(runLeaseHolder: Int32?, mcpLeaseHolder: Int32?, selfPID: Int32) -> Bool {
+        if let runLeaseHolder, runLeaseHolder != selfPID { return true }
+        return mcpLeaseHolder != nil
+    }
+
+    /// I/O 版。selfPID/parentPID は既定値(本番はこのまま呼ぶ)。MCP の印は自分と親の分を数えない
+    /// (`DeviceBooter.mcpLeaseHolderPID` と同じ理由: MCP が起こしたコマンドが自分の台を
+    /// 「他人が使用中」と誤読しない)
+    static func hasForeignLease(udid: String, stateDir: URL,
+                                selfPID: Int32 = ProcessInfo.processInfo.processIdentifier,
+                                parentPID: Int32 = getppid()) -> Bool {
+        hasForeignLease(
+            runLeaseHolder: RunLease.holderPID(stateDir: stateDir, key: udid),
+            mcpLeaseHolder: MCPDeviceLease.holderPID(stateDir: stateDir, key: udid,
+                                                     excluding: [selfPID, parentPID]),
+            selfPID: selfPID)
+    }
+
+    /// シミュレータごと再起動する前の 1 行。「前の run で」と言えるのは、この印が
+    /// `RunnerSlownessStore` でプロセスを跨いで残るため(`RunnerRestartFutility` はプロセス内だけ)
+    public static func restartingSimulatorMessage(name: String, port: UInt16) -> String {
+        "⚠️ \(name): the xcuitest bridge on port \(port) was still slow after a runner restart"
+            + " in an earlier run — rebooting the simulator before reusing it"
+    }
+
+    /// シミュレータの再起動でも直らなかったときの 1 行。**測った事実だけ**を言う(帰属は書かない)。
+    /// 以後このデバイスには何も自動で撃たない(呼び手が印を simulatorRestartDidNotHelp に更新する)
+    public static func simulatorRestartDidNotHelpMessage(name: String, port: UInt16,
+                                                          afterSeconds: TimeInterval?) -> String {
+        let measured = afterSeconds.map { "\(String(format: "%.1f", $0))s" } ?? "an unmeasured amount of time"
+        return "⚠️ \(name): the xcuitest bridge on port \(port) still took \(measured) for a"
+            + " one-element accessibility query after rebooting the simulator (normal is under 0.3s)"
+            + " — nothing further is tried automatically for this device"
+    }
+
+    /// 印 = simulatorRestartDidNotHelp の台を、触らずそのまま使うときの 1 行
+    public static func keptAfterSimulatorRestartFailedMessage(name: String, port: UInt16) -> String {
+        "→ \(name): reusing the xcuitest bridge on port \(port) as it is"
+            + " (rebooting the simulator did not help either, so nothing further is tried"
+            + " automatically for this device)"
+    }
+
+    /// 印はあるが、この台を今どこかのセッション(run または MCP)が使用中なので触らないときの 1 行
+    public static func keptBecauseLeasedMessage(name: String, port: UInt16) -> String {
+        "→ \(name): reusing the xcuitest bridge on port \(port) as it is"
+            + " (it was slow in an earlier run, but another session is using this device right now,"
+            + " so it is not touched)"
     }
 }

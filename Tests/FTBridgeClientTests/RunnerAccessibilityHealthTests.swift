@@ -121,4 +121,99 @@ final class RunnerAccessibilityHealthTests: XCTestCase {
         XCTAssertEqual(BridgeProvisioner.executionOrder(of: ["inapp"]), [0])
         XCTAssertEqual(BridgeProvisioner.executionOrder(of: ["xcuitest"]), [0])
     }
+
+    // MARK: - 印を run をまたいで持ち越す(supplySlownessAction)
+
+    /// 印なしは従来どおり
+    func testNoMarkProceedsNormally() {
+        XCTAssertEqual(
+            RunnerAccessibilityHealth.supplySlownessAction(persisted: nil, hasForeignLease: false),
+            .proceedNormally)
+        XCTAssertEqual(
+            RunnerAccessibilityHealth.supplySlownessAction(persisted: nil, hasForeignLease: true),
+            .proceedNormally)
+    }
+
+    /// 印 = runnerRestartDidNotHelp かつリース無しは、シミュレータごと再起動する
+    func testRunnerRestartFailedMarkWithoutLeaseRestartsTheSimulator() {
+        XCTAssertEqual(
+            RunnerAccessibilityHealth.supplySlownessAction(
+                persisted: .runnerRestartDidNotHelp, hasForeignLease: false),
+            .restartSimulator)
+    }
+
+    /// **変異②「lease がある台を除外しない」の陽性対照**: リースがあれば、印があっても
+    /// 絶対にシミュレータへ触らない(reuseWithoutRestarting に倒れる)
+    func testRunnerRestartFailedMarkWithLeaseNeverTouchesTheDevice() {
+        XCTAssertEqual(
+            RunnerAccessibilityHealth.supplySlownessAction(
+                persisted: .runnerRestartDidNotHelp, hasForeignLease: true),
+            .reuseWithoutRestarting)
+    }
+
+    /// 印 = simulatorRestartDidNotHelp は、リースの有無を問わず二度と触らない
+    /// (シミュレータ再起動はもう試していないだけの話ではなく「試して効かなかった」ので)
+    func testSimulatorRestartFailedMarkNeverRestartsAgain() {
+        XCTAssertEqual(
+            RunnerAccessibilityHealth.supplySlownessAction(
+                persisted: .simulatorRestartDidNotHelp, hasForeignLease: false),
+            .reuseWithoutRestarting)
+        XCTAssertEqual(
+            RunnerAccessibilityHealth.supplySlownessAction(
+                persisted: .simulatorRestartDidNotHelp, hasForeignLease: true),
+            .reuseWithoutRestarting)
+    }
+
+    // MARK: - リースの判定(hasForeignLease)
+
+    func testNoHoldersIsNotForeign() {
+        XCTAssertFalse(RunnerAccessibilityHealth.hasForeignLease(
+            runLeaseHolder: nil, mcpLeaseHolder: nil, selfPID: 100))
+    }
+
+    /// 自分自身が持つ run-lease は「使用中」に数えない(この run 自身が供給の中で自分の台に触るのは正常)
+    func testOwnRunLeaseIsNotForeign() {
+        XCTAssertFalse(RunnerAccessibilityHealth.hasForeignLease(
+            runLeaseHolder: 100, mcpLeaseHolder: nil, selfPID: 100))
+    }
+
+    /// **変異②の別角度**: 他プロセスの run-lease は必ず foreign
+    func testAnotherProcessRunLeaseIsForeign() {
+        XCTAssertTrue(RunnerAccessibilityHealth.hasForeignLease(
+            runLeaseHolder: 999, mcpLeaseHolder: nil, selfPID: 100))
+    }
+
+    /// MCP の印(渡された時点で自分/親は除外済みという契約)は常に foreign
+    func testMCPLeaseIsForeign() {
+        XCTAssertTrue(RunnerAccessibilityHealth.hasForeignLease(
+            runLeaseHolder: nil, mcpLeaseHolder: 555, selfPID: 100))
+    }
+
+    // MARK: - 新しい 1 行(印を run をまたいで持ち越す各メッセージ)
+
+    func testRestartingSimulatorMessageNamesTheEarlierRun() {
+        let text = RunnerAccessibilityHealth.restartingSimulatorMessage(name: "d", port: 8123)
+        XCTAssertTrue(text.contains("an earlier run"), text)
+        XCTAssertTrue(text.contains("rebooting the simulator"), text)
+    }
+
+    func testSimulatorRestartDidNotHelpMessageStatesTheMeasurementOnly() {
+        let measured = RunnerAccessibilityHealth.simulatorRestartDidNotHelpMessage(
+            name: "d", port: 8123, afterSeconds: 3.1)
+        XCTAssertTrue(measured.contains("3.1s"), measured)
+        XCTAssertTrue(measured.contains("nothing further is tried automatically"), measured)
+        let unmeasured = RunnerAccessibilityHealth.simulatorRestartDidNotHelpMessage(
+            name: "d", port: 8123, afterSeconds: nil)
+        XCTAssertTrue(unmeasured.contains("an unmeasured amount of time"), unmeasured)
+    }
+
+    func testKeptAfterSimulatorRestartFailedMessage() {
+        let text = RunnerAccessibilityHealth.keptAfterSimulatorRestartFailedMessage(name: "d", port: 8123)
+        XCTAssertTrue(text.contains("rebooting the simulator did not help either"), text)
+    }
+
+    func testKeptBecauseLeasedMessage() {
+        let text = RunnerAccessibilityHealth.keptBecauseLeasedMessage(name: "d", port: 8123)
+        XCTAssertTrue(text.contains("another session is using this device"), text)
+    }
 }

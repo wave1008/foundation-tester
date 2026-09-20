@@ -235,6 +235,12 @@ final class DeviceBooterSweepRefusalTests: XCTestCase {
             force: false, leaseStateDir: dir, simulatorNames: { [:] }, physicalIOSDeviceNames: { [:] }, androidDeviceModels: { [:] }))
         XCTAssertTrue(both.contains("UDID-RUN (held by pid \(getppid()))"), both)
         XCTAssertTrue(both.contains("UDID-MCP (fleetest-mcp pid \(mcpHolder))"), both)
+        // 2026-09-20 実測: 見出し「refusing to shut everything down」は run/MCP 両方が
+        // 使用中でも1回だけ(以前は各半分が見出し込みの完成文を持ち、単純連結で2回出ていた)
+        XCTAssertEqual(both.components(separatedBy: "refusing to shut everything down").count - 1, 1, both)
+        XCTAssertTrue(both.hasPrefix("refusing to shut everything down: a running fleetest run is using"), both)
+        XCTAssertTrue(both.contains("Wait for that run to finish, or pass --force to stop it anyway."
+            + " an MCP session is driving"), "見出しの後に run → MCP の順で本文が並ぶ: \(both)")
     }
 
     /// 自分(と親)の印は数えない(MCP が起こしたコマンドが自分の台を断らない)

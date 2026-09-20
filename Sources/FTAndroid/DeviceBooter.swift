@@ -236,11 +236,21 @@ public enum DeviceBooter {
         return MCPDeviceLease.holderPID(stateDir: dir, key: key, excluding: [getpid(), getppid()])
     }
 
+    /// **全掃討の拒否文の見出しは1つ**(run と MCP のどちらか一方だけを断るときも、両方を
+    /// 断るときも先頭はこれ1回)。以前は run/MCP それぞれが見出し込みの完成文を持ち、両方
+    /// 使用中のときに単純連結して見出しが2回出ていた
+    static let sweepRefusalHeading = "refusing to shut everything down: "
+
     /// 全掃討の MCP 側(純粋関数)。holders: (表示名, pid)
     public static func mcpSweepRefusal(holders: [(device: String, pid: Int32)], force: Bool) -> String? {
+        mcpSweepRefusalBody(holders: holders, force: force).map { sweepRefusalHeading + $0 }
+    }
+
+    /// 見出しを含まない本文だけ(sweepRefusal(force:leaseStateDir:…) が run 側と1つの見出しへ束ねる)
+    private static func mcpSweepRefusalBody(holders: [(device: String, pid: Int32)], force: Bool) -> String? {
         guard !force, !holders.isEmpty else { return nil }
         let list = holders.map { "\($0.device) (fleetest-mcp pid \($0.pid))" }.joined(separator: ", ")
-        return "refusing to shut everything down: an MCP session is driving \(list)."
+        return "an MCP session is driving \(list)."
             + " Finish that session, or pass --force to stop it anyway."
     }
 
@@ -251,12 +261,21 @@ public enum DeviceBooter {
         keys: [String], selfPID: Int32, force: Bool,
         holderPID: (String) -> Int32?, describe: (String) -> String
     ) -> String? {
+        sweepRefusalBody(keys: keys, selfPID: selfPID, force: force,
+                         holderPID: holderPID, describe: describe).map { sweepRefusalHeading + $0 }
+    }
+
+    /// 見出しを含まない本文だけ(mcpSweepRefusalBody と対)
+    private static func sweepRefusalBody(
+        keys: [String], selfPID: Int32, force: Bool,
+        holderPID: (String) -> Int32?, describe: (String) -> String
+    ) -> String? {
         guard !force else { return nil }
         let conflicts = RunLeaseGuard.conflicts(
             devices: keys.map { (device: describe($0), key: $0) }, selfPID: selfPID, holderPID: holderPID)
         guard !conflicts.isEmpty else { return nil }
         let list = conflicts.map { "\($0.device) (held by pid \($0.holderPID))" }.joined(separator: ", ")
-        return "refusing to shut everything down: a running fleetest run is using \(list)."
+        return "a running fleetest run is using \(list)."
             + " Wait for that run to finish, or pass --force to stop it anyway."
     }
 
@@ -307,14 +326,17 @@ public enum DeviceBooter {
             let name = names[key] ?? iosNames[key] ?? androidModels[key]
             return name.map { "\($0) [\(key)]" } ?? key
         }
-        let runRefusal = sweepRefusal(
+        let runBody = sweepRefusalBody(
             keys: keys, selfPID: selfPID, force: force,
             holderPID: { RunLease.holderPID(stateDir: dir, key: $0) }, describe: describe)
-        let mcpRefusal = mcpSweepRefusal(
+        let mcpBody = mcpSweepRefusalBody(
             holders: mcpHolders.sorted { $0.key < $1.key }.map { (describe($0.key), $0.value) }, force: force)
-        switch (runRefusal, mcpRefusal) {
-        case let (run?, mcp?): return run + " " + mcp
-        default: return runRefusal ?? mcpRefusal
+        // **見出しはここで1回だけ足す**(run/MCP それぞれの本文は見出しを持たない)
+        switch (runBody, mcpBody) {
+        case let (run?, mcp?): return sweepRefusalHeading + run + " " + mcp
+        case let (run?, nil): return sweepRefusalHeading + run
+        case let (nil, mcp?): return sweepRefusalHeading + mcp
+        case (nil, nil): return nil
         }
     }
 
@@ -677,20 +699,15 @@ public enum DeviceBooter {
             }
             // macOS 27 beta 3: simctl shutdown は「Unable to shutdown...」(405)を返しつつ実際には
             // Booted のまま残るレースがあるため、exit code でなくカタログの実状態で成否判定する
-            var lastResult: Shell.Result?
-            var observation = SimulatorShutdownObservation.stillBooted
-            for attempt in 1...3 {
-                // simctl が稀に応答不能になるため時限化(30s)。締切ループが無効化するのを防ぐ。
-                lastResult = try Shell.run(["xcrun", "simctl", "shutdown", sim.udid], timeout: 30)
-                observation = SimulatorCatalog.shutdownObservation(udid: sim.udid)
-                if observation == .stopped {
-                    log("✅ \(spec.name): simulator stopped (\(sim.name))")
-                    return
-                }
-                if attempt < 3 {
-                    log("→ \(spec.name): shutdown not confirmed yet — retrying (\(attempt)/3)...")
-                    try await Task.sleep(nanoseconds: 2_000_000_000)
-                }
+            // 手順と定数は SimulatorShutdownRetry(BridgeProvisioner の台ごと再起動と共有)
+            let outcome = await SimulatorShutdownRetry.shutdown(udid: sim.udid) { attempt, total in
+                log("→ \(spec.name): shutdown not confirmed yet — retrying (\(attempt)/\(total))...")
+            }
+            let observation = outcome.observation
+            let lastResult = outcome.lastResult
+            if observation == .stopped {
+                log("✅ \(spec.name): simulator stopped (\(sim.name))")
+                return
             }
             if case .unreadable(let reason) = observation {
                 throw DeviceBooterError.commandFailed(
@@ -698,7 +715,7 @@ public enum DeviceBooter {
                         + " could not be read (\(reason)). Check xcrun simctl list devices")
             }
             throw DeviceBooterError.commandFailed(
-                "simctl shutdown: the simulator did not stop after 3 attempts (last output: \(lastResult?.tail ?? ""))")
+                "simctl shutdown: the simulator did not stop after \(SimulatorShutdownRetry.attempts) attempts (last output: \(lastResult?.tail ?? ""))")
         } else {
             // **「すでに停止している」は成功**(iOS の `guard sim.booted else { … already stopped }`
             // と同じ扱い)。Android は serial の解決が `avdNotRunning` で throw するため、
