@@ -28,7 +28,6 @@ export const devicesPanel = document.getElementById('panel-devices');
 export const tilePane = document.getElementById('tile-pane');
 export const tileMarquee = document.getElementById('tile-marquee');
 export const splitter = document.getElementById('splitter');
-export const lanesTitle = document.getElementById('lanes-title');
 export const lanesWaiting = document.getElementById('lanes-waiting');
 export const lanesGrid = document.getElementById('lanes-grid');
 export const lanesSelectionStatus = document.getElementById('lanes-selection-status');

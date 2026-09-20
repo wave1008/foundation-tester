@@ -1,7 +1,7 @@
 // desiredTilePaneHeight/desiredLogPaneHeight=ユーザー意図(ドラッグ・host復元のみで更新、永続化対象)、
 // tilePaneHeight/logPaneHeight=表示用クランプ済み値。分離しないと、パネル表示切替中の一時的に小さい
 // レイアウトで resize が走った際にユーザー意図まで最小値へ潰される(実害: エディタ開閉で
-// セパレーターが最小位置にリセット)。tabs.js からは reapplyTilePaneHeight を呼ぶ。
+// セパレーターが最小位置にリセット)。tabs.js からは reapplyPaneHeights を呼ぶ。
 //
 // 縦の並びは toolbar/banner/line-view-header → tile-pane(ラインビュー) → splitter →
 // output-pane(グリッドビュー。flex:1 1 auto で残りを占有) → splitter-log → log-pane(実行ログビュー)。
@@ -40,9 +40,15 @@ let gridViewVisible = persistedState.gridViewVisible !== false;
 // **1台だけ選択した間は実行ログビューを自動で畳む**(ユーザー決定 2026-09-21)——
 // グリッドビューの中に同じログの複製が出るため。利用者の設定(logViewVisible)は書き換えないので、
 // 選択が 1 台でなくなればこの旗を下ろすだけで元の開閉状態に戻る。
+// **畳む理由が生きているか(= 複製が見えているか)は旗と別に毎回導出する** —— グリッドビューを
+// 畳んでいる間は複製が見えないので効かせない。旗のほうを捨てると、グリッドビューを開き直した
+// ときに同じログが上下に2つ出たまま次の選択変更まで戻らない。
 let logViewAutoFolded = false;
+function autoFoldActive() {
+  return logViewAutoFolded && gridViewVisible;
+}
 function logViewShown() {
-  return logViewVisible && !logViewAutoFolded;
+  return logViewVisible && !autoFoldActive();
 }
 
 // null = 保存値が無い(最初の描画で既定比から決める)
@@ -152,7 +158,7 @@ function persistTilePaneHeight() {
 }
 
 // host からの復元値(sendInitialState)を反映する。「デバイスモニター」タブ非表示中は描画が no-op のため、
-// desired だけ更新して次の switchTab の reapplyTilePaneHeight で反映されるようにする。
+// desired だけ更新して次の switchTab の reapplyPaneHeights で反映されるようにする。
 export function setTilePaneHeight(height) {
   if (typeof height !== 'number' || !(height > 0)) {
     return;
@@ -287,17 +293,16 @@ function applyLogViewVisible(visible) {
 
 function applyGridViewVisible(visible) {
   gridViewVisible = visible;
-  if (!visible) {
-    // 複製が見えなくなるので自動で畳んでおく理由も消える
-    logViewAutoFolded = false;
-  }
+  // 旗は消さない(autoFoldActive が gridViewVisible を見るので、畳んでいる間は効かない)
   renderGridViewVisible();
+  renderLogViewVisible();
   renderPaneFlex();
   reapplyLogPaneHeight();
 }
 
 function toggleLogViewVisible() {
-  if (logViewAutoFolded) {
+  const shown = logViewShown();
+  if (!shown && autoFoldActive() && logViewVisible) {
     // 自動で畳んだものを手で開く。**設定は変えていないので保存しない**
     logViewAutoFolded = false;
     renderLogViewVisible();
@@ -305,7 +310,9 @@ function toggleLogViewVisible() {
     reapplyLogPaneHeight();
     return;
   }
-  applyLogViewVisible(!logViewVisible);
+  // 手で決めたら自動の旗は下ろす(**見えている状態を反転する** = 押した見た目どおりに動かす)
+  logViewAutoFolded = false;
+  applyLogViewVisible(!shown);
   vscode.setState(Object.assign({}, vscode.getState(), { logViewVisible }));
   vscode.postMessage({ type: 'setLogViewVisible', value: logViewVisible });
 }
@@ -329,8 +336,9 @@ export function setLogViewVisible(visible) {
 // 呼び手は laneLog.js(選択の変化を1箇所で見ている)。fold = ちょうど1台選択で複製が出ている。
 export function setLogViewFoldedForSingleSelection(fold) {
   if (fold) {
-    // 畳むのは**両方が開いている**ときだけ(グリッドビューが畳まれていれば複製は見えない)
-    if (logViewAutoFolded || !logViewVisible || !gridViewVisible) {
+    // 旗はグリッドビューの開閉に関わらず立てる(効かせるかは autoFoldActive が決める)——
+    // 畳んでいる間に選んだ1台でも、開き直した瞬間に複製が見えるため
+    if (logViewAutoFolded || !logViewVisible) {
       return;
     }
     logViewAutoFolded = true;
@@ -361,7 +369,9 @@ if (typeof ResizeObserver !== 'undefined') {
 // ラインビュー非表示中は reapplyTilePaneHeight が素通りする(領域が測れない)ので、
 // 実行ログビューの再クランプは独立に呼ぶ —— 呼ばないと畳んだ状態で窓を縮めたとき、
 // 古い高さのままグリッドビューの見出し行が押し出される。
-function reapplyPaneHeights() {
+// **再クランプの入口はこれ1つ**(resize・run ボードの伸縮・タブ復帰(tabs.js)・初期描画)——
+// tile 側だけを呼ぶ経路を作ると、ラインビューを畳んでいる間そこだけ実行ログビューが取り残される。
+export function reapplyPaneHeights() {
   reapplyTilePaneHeight();
   reapplyLogPaneHeight();
 }
@@ -370,7 +380,7 @@ renderFleetVisible();
 renderLogViewVisible();
 renderGridViewVisible();
 renderPaneFlex();
-reapplyTilePaneHeight();
+reapplyPaneHeights();
 window.addEventListener('resize', () => reapplyPaneHeights());
 
 let splitterPointerId = null;

@@ -224,6 +224,18 @@ test("グリッドビュー見出し内の「ライブ更新」トグルは開�
 
 const styleCssSource = readFileSync(path.resolve("src/webview/monitor/style.css"), "utf8");
 
+// 高さの再クランプは tile 側だけを呼ぶ経路を作らない(ラインビューを畳んでいる間 tile 側は
+// splitAreaHidden で素通りするので、実行ログビューだけ古い高さのまま取り残される)。
+test("tabs.js のタブ復帰は 3 ペインぶんの再クランプ(reapplyPaneHeights)を呼ぶ", () => {
+  const tabsSource = readFileSync(path.resolve("src/webview/monitor/tabs.js"), "utf8");
+  assert.match(tabsSource, /reapplyPaneHeights\(\);/, "タブ復帰で呼ぶのは reapplyPaneHeights");
+  assert.equal(
+    /reapplyTilePaneHeight/.test(tabsSource),
+    false,
+    "tile 側だけを呼ぶと実行ログビューが取り残される",
+  );
+});
+
 test("style.css: log-view-hidden/grid-view-hidden のどちらでも #splitter-log を隠す規則がある", () => {
   assert.match(
     styleCssSource,
@@ -367,6 +379,41 @@ test("グリッドビューを畳んでいる間は実行ログビューを畳�
   document.getElementById("grid-view-header").click();
   clickTile(document, 0);
   assert.equal(logHidden(document), false, "複製が見えないので畳む理由が無い");
+});
+
+test("グリッドビューを開き直すと、1台選択のままなら実行ログビューを畳み直す", (t) => {
+  const { window, document, posted } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 2);
+  clickTile(document, 0);
+  assert.equal(logHidden(document), true, "前提: 1台選択で畳んでいる");
+
+  document.getElementById("grid-view-header").click();
+  assert.equal(logHidden(document), false, "複製が見えないので戻す");
+  document.getElementById("grid-view-header").click();
+  assert.equal(logHidden(document), true, "複製がまた見えるので畳み直す(同じログを上下に出さない)");
+  assert.deepEqual(
+    posted.filter((m) => m?.type === "setLogViewVisible"),
+    [],
+    "自動の畳みなので利用者の設定は保存しない",
+  );
+});
+
+test("グリッドビューを畳んでいる間の実行ログビューの見出しクリックは、見えている状態を反転する", (t) => {
+  const { window, document, posted } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 2);
+  document.getElementById("grid-view-header").click();
+  clickTile(document, 0);
+  assert.equal(logHidden(document), false, "前提: 複製が見えないので開いている");
+
+  document.getElementById("log-view-header").click();
+  assert.equal(logHidden(document), true, "押した見た目どおりに畳む(空振りしない)");
+  assert.deepEqual(
+    posted.filter((m) => m?.type === "setLogViewVisible").map((m) => m.value),
+    [false],
+    "利用者の操作なので保存する",
+  );
 });
 
 test("自動で畳んだ実行ログビューは手で開ける・設定は保存しない", (t) => {

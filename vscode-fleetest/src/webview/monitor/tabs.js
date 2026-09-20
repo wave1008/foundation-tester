@@ -1,11 +1,11 @@
 // switchTabはcloseDeviceOpMenu(deviceTiles.js)・closeDeviceMenu(runProfileDevicesTab.js)・
-// reapplyTilePaneHeight(splitter.js)のimportに依存する。
+// reapplyPaneHeights(splitter.js)のimportに依存する。
 
 import { vscode } from './vscodeApi.js';
 import { devicesPanel } from './domRefs.js';
 import { closeDeviceOpMenu } from './deviceTiles.js';
 import { closeDeviceMenu as closeRunProfileDeviceMenu } from './runProfileDevicesTab.js';
-import { reapplyTilePaneHeight } from './splitter.js';
+import { reapplyPaneHeights } from './splitter.js';
 
 export const TAB_IDS = ['dashboard', 'devices', 'live', 'recordings', 'profiles', 'processes', 'settings'];
 const tabButtons = {
@@ -54,7 +54,8 @@ export function switchTab(tab) {
   }
   if (tab === 'devices') {
     // 非表示中はclientHeight=0のガードで何もしなかった分を再クランプする(splitter.js参照)。
-    reapplyTilePaneHeight();
+    // ラインビューを畳んでいると tile 側は素通りするので、3ペインぶんの入口を呼ぶ。
+    reapplyPaneHeights();
   }
   // デバイスタイルが display:none の間は配信helperとデコードが無駄になるのでホストへ知らせる
   // (対向: src/monitorWebviewMessages.ts の devicesTabVisible / monitorPanel.ts)。
