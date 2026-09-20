@@ -570,7 +570,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                             key: lane.key, name: lane.name, platform: lane.platform,
                             scenario: lane.scenario,
                             scenarioElapsedSeconds: lane.scenarioStartedAt.flatMap { elapsedSeconds(since: $0) })
-                    })
+                    },
+                    phase: record.phase)
             }
     }
 
@@ -1784,6 +1785,10 @@ struct ApiMonitorRunProgress: Codable, Equatable {
     /// 残り見積もり(docs/design.md §18.4)。makespan の下界・実績ゼロの run は nil
     let etaSeconds: Int?
     let lanes: [ApiMonitorRunProgressLane]
+    /// 台帳の値をそのまま運ぶ("preparing" / "running")。作り替えない
+    /// "preparing"(デバイスの供給中)/ "running"。**版は揃える前提**(ProtocolVersion 15。
+    /// 欄を持たない版のランナーの行は decode できず中継されない = align を促す既存の規律のまま)
+    let phase: String
 }
 
 /// monitorRuns イベント: フリート横断の run 進捗(docs/design.md §18.2)。**FT_RUNNER_BASE に

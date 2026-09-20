@@ -28,6 +28,8 @@ export interface RunBoardLane {
 /** 1 run(1機械ぶん)。ネットワークから届く生の形(machine/receivedAtMs は畳み込みの側が足す)。 */
 export interface RunBoardRawRun {
   readonly pid: number;
+  /** "preparing" = デバイスの供給中(まだ1本も走っていない)/ "running"。 */
+  readonly phase: string;
   /** `RunRecorder` が無い経路(--dry-run/--debug 等)では省略されうる。省略時は pid が代わりの鍵。 */
   readonly runID?: string;
   readonly runGroup?: string;
@@ -117,6 +119,9 @@ export interface RunBoardGroup {
   /** プロファイル無し実行では省略されうる。 */
   readonly profile?: string;
   /** 束ねた run 全体の合計(機械分担の run はレーンでなく run 単位で合算する)。 */
+  /** **束ねた run が1つでも走り出していれば "running"**(全部が供給中のときだけ "preparing")。
+   * 機械分担の run は機械ごとに供給の進みが違うので、片方が走り出したら進捗を出す。 */
+  readonly phase: "preparing" | "running";
   readonly total: number;
   readonly done: number;
   readonly failed: number;
@@ -166,6 +171,7 @@ export function buildRunGroups(state: ReadonlyMap<string, MachineRunsEntry>): re
       groupKey,
       mine: first.mine,
       issuer: first.issuer,
+      phase: runs.every((run) => run.phase === "preparing") ? "preparing" : "running",
       project: first.project,
       profile: first.profile,
       total: sum(runs.map((r) => r.total)),

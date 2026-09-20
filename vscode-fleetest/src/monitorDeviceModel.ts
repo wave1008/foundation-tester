@@ -128,6 +128,9 @@ export interface MonitorRunLane {
  * 複数の MonitorRunEntry に分かれて届く(束ねるのは読み手 = runBoardModel.ts)。 */
 export interface MonitorRunEntry {
   readonly pid: number;
+  /** "preparing"(デバイスの供給中。まだ1本も走っていない)/ "running"。
+   * **版は揃える前提**(ProtocolVersion 15。FTCore.RunProgressRecord.phase と対)。 */
+  readonly phase: string;
   /** `RunRecorder` が無い経路(--dry-run/--debug 等)では省略されうる。 */
   readonly runID?: string;
   /** 共有すると機械分担の run として1行に束ねる(runBoardModel.ts)。無ければ単機 run =
@@ -310,7 +313,7 @@ function isMonitorRunEntry(value: unknown): value is MonitorRunEntry {
     value.profile = undefined;
   }
   if (value.etaSeconds === null) {
-    // **当面いつも null**(docs/design.md §18.4)。省略と同じ「—」表示に正規化する。
+    // 実績の無い run は省く(docs/design.md §18.4)。省略と同じ「—」表示に正規化する。
     value.etaSeconds = undefined;
   }
   return (
@@ -326,6 +329,7 @@ function isMonitorRunEntry(value: unknown): value is MonitorRunEntry {
     typeof value.done === "number" &&
     typeof value.failed === "number" &&
     (value.etaSeconds === undefined || typeof value.etaSeconds === "number") &&
+    typeof value.phase === "string" &&
     Array.isArray(value.lanes) &&
     value.lanes.every(isMonitorRunLane)
   );

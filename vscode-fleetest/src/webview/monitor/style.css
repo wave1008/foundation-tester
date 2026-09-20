@@ -408,7 +408,8 @@ button.bulk-cancel:hover:not(:disabled) {
   grid-template-columns: max-content max-content;
   column-gap: 12px;
   row-gap: 2px;
-  padding: 3px 8px 3px 32px;   /* run 行の chevron 幅ぶん下げて、run の行と視覚的に区別する */
+  /* **run 行と同じ 24px** —— これらは run の子ではなく、run と同列に並ぶ機械の一覧 */
+  padding: 6px 8px 3px 24px;
   opacity: 0.75;               /* 走っていない機械は控えめに(run の行が主役) */
 }
 /* 1行ぶんの入れ物。**display: contents** で自分は箱を持たず、名前と状態を親 grid の
@@ -436,7 +437,9 @@ button.bulk-cancel:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 3px 8px;
+  /* 階層のインデント: ヘッダ 8px → run 行 24px → レーン 48px(.run-board-lanes)。
+     **走っていない機械の行は run 行と同じ 24px** —— run の子ではないので同列に置く */
+  padding: 3px 8px 3px 24px;
   cursor: pointer;
 }
 .run-board-row-summary:hover {
@@ -503,11 +506,15 @@ button.bulk-cancel:hover:not(:disabled) {
   color: var(--vscode-descriptionForeground);
 }
 .run-board-issuer {
-  padding: 0 8px 3px 28px;
+  padding: 0 8px 3px 48px;
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
+/* レーンは run の子。**縦のガイド線**で親子を示す(インデントだけだと、下に続く
+   「走っていない機械」の行と見分けが付かない) */
 .run-board-lanes {
+  margin-left: 32px;
+  border-left: 1px solid var(--vscode-tree-indentGuidesStroke, rgba(127, 127, 127, 0.35));
   display: flex;
   flex-direction: column;
   padding-bottom: 2px;
@@ -517,7 +524,7 @@ button.bulk-cancel:hover:not(:disabled) {
   display: none;
 }
 .run-board-lane-machine-header {
-  padding: 2px 8px 0 28px;
+  padding: 2px 8px 0 16px;
   font-size: 11px;
   font-weight: 600;
   color: var(--vscode-descriptionForeground);
@@ -526,7 +533,7 @@ button.bulk-cancel:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 2px 8px 2px 36px;
+  padding: 2px 8px 2px 16px;
   cursor: pointer;
 }
 .run-board-lane:hover {

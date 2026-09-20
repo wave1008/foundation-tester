@@ -597,7 +597,11 @@
 
 - `fleetest api` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と
   `vscode-fleetest/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が
-  検出。拡張は起動時に照合し不一致を警告)
+  検出。拡張は起動時に照合し不一致を警告)。**後方互換の読み替えは置かない**
+  (ユーザー方針 2026-09-20)—— 欄を足すときも `decodeIfPresent ?? 既定値` で古い形を吸わず、
+  **必須にして版を +1** する。リモートは `Scripts/align.sh` で毎回全機を同じコミットへ揃える運用で、
+  版がずれた状態は存在しない(ずれていれば適合チェックが止める)。互換を入れると、その経路は
+  テストでしか踏まれずに腐り、**沈黙する縮退**(decode 失敗で機械1台ぶんの行が消える等)を作る
 - **`fleetest run` と `fleetest api run` はオプションも配線も別々に持つ2実装**。片方だけに足した
   変更はどちらの経路も緑のまま通る(実行されるのは足したほうだけ)。**意図した差分は
   `RunCommandFlagParityTests` が等号で固定する** —— 片側にフラグを足すと落ちるので、

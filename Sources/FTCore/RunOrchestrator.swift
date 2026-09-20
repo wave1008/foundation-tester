@@ -583,7 +583,8 @@ actor RunProgressState {
         let record = RunProgressRecord(
             pid: pid, runID: runID, runGroup: runGroup, issuer: issuer, project: project,
             profile: profile, startedAt: startedAt, total: total, done: done, failed: failed,
-            etaSeconds: currentEtaSeconds(), lanes: lanesByKey.values.sorted { $0.key < $1.key })
+            etaSeconds: currentEtaSeconds(), lanes: lanesByKey.values.sorted { $0.key < $1.key },
+            phase: "running")
         guard record != lastWritten else { return }
         lastWritten = record
         write?(record)

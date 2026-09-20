@@ -282,7 +282,7 @@ function ensureRow(groupKey) {
   });
 
   const row = {
-    rowEl, chevronEl, machineBadgeEl, scopeEl, progressBarEl, countsEl, elapsedEl, remainingEl,
+    rowEl, chevronEl, machineBadgeEl, scopeEl, progressEl, progressBarEl, countsEl, elapsedEl, remainingEl,
     issuerEl, lanesEl, group: null, laneRows: new Map(),
   };
   rows.set(groupKey, row);
@@ -390,12 +390,19 @@ function updateRow(row, group) {
   // profile はプロファイル無し実行(--dry-run 等)では省略されうる(FTCore.RunProgressRecord.profile)。
   row.scopeEl.textContent = group.profile ? `${group.project} / ${group.profile}` : group.project;
 
-  const pct = group.total > 0 ? Math.max(0, Math.min(1, group.done / group.total)) * 100 : 0;
-  row.progressBarEl.style.width = pct + '%';
-
-  row.countsEl.textContent = group.failed > 0
-    ? `${group.done}/${group.total} ✕${group.failed}`
-    : `${group.done}/${group.total}`;
+  // **供給中(準備中)は進捗を出さない** —— 本数も割合もまだ意味を持たない(docs/design.md §18.5)。
+  // 経過だけは出す(どれくらい待っているかが分かる)
+  const preparing = group.phase === 'preparing';
+  row.progressEl.style.display = preparing ? 'none' : '';
+  if (preparing) {
+    row.countsEl.textContent = t('runBoard.preparing');
+  } else {
+    const pct = group.total > 0 ? Math.max(0, Math.min(1, group.done / group.total)) * 100 : 0;
+    row.progressBarEl.style.width = pct + '%';
+    row.countsEl.textContent = group.failed > 0
+      ? `${group.done}/${group.total} ✕${group.failed}`
+      : `${group.done}/${group.total}`;
+  }
 
   if (!group.mine && group.issuer) {
     row.issuerEl.textContent = t('runBoard.issuerRun', { issuer: group.issuer });

@@ -2,6 +2,7 @@
 // 守るもの: ①往復(write→readAll で同じ内容が返る) ②生存判定は pid だけ(死んだ pid は除外)
 // ③壊れた JSON 1件が全体を巻き添えにしない ④既定ディレクトリはリテラルで固定する
 // ⑤sweep は死んだ pid のぶんだけ消す(生きている run を消さない・自分の物でない名前に触らない)
+// **版を揃える前提なので後方互換の decode は持たない**(ユーザー方針 2026-09-20)
 // (FMUsageLedger と同じ規律。CLAUDE.md「既定値はリテラルで固定するテストを置く」)。
 
 import XCTest
@@ -16,13 +17,15 @@ final class RunProgressLedgerTests: XCTestCase {
         return dir
     }
 
-    private func makeRecord(pid: Int32, done: Int = 1, failed: Int = 0) -> RunProgressRecord {
+    private func makeRecord(pid: Int32, done: Int = 1, failed: Int = 0,
+                            phase: String = "running") -> RunProgressRecord {
         RunProgressRecord(
             pid: pid, runID: "run-\(pid)", runGroup: nil, issuer: "alice@air",
             project: "ec-mobile", profile: "ios-smoke", startedAt: "2026-09-20T10:03:12Z",
             total: 12, done: done, failed: failed, etaSeconds: nil,
             lanes: [RunProgressLane(key: "UDID-A", name: "iPhone 17-01", platform: "ios",
-                                    scenario: "05_検索", scenarioStartedAt: "2026-09-20T10:04:00Z")])
+                                    scenario: "05_検索", scenarioStartedAt: "2026-09-20T10:04:00Z")],
+            phase: phase)
     }
 
     func testDefaultDirectoryIsHomeDotFleetestRuns() {
@@ -108,4 +111,16 @@ final class RunProgressLedgerTests: XCTestCase {
         let dir = tempDir().appendingPathComponent("does-not-exist", isDirectory: true)
         XCTAssertEqual(RunProgressLedger.readAll(directory: dir, isAlive: { _ in true }), [])
     }
+
+    /// "preparing" が往復する(段階「準備中」)
+    func testPreparingPhaseRoundTrips() {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let record = makeRecord(pid: 41233, phase: "preparing")
+        RunProgressLedger.write(record, directory: dir)
+        let read = RunProgressLedger.readAll(directory: dir, isAlive: { _ in true })
+        XCTAssertEqual(read, [record])
+        XCTAssertEqual(read.first?.phase, "preparing")
+    }
+
 }

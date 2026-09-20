@@ -1173,6 +1173,24 @@ struct ApiRunCommand: AsyncParsableCommand {
         // docs/design.md §18.1 —— 掃除は書き手側に置く)
         RunProgressLedger.sweep(directory: RunProgressLedger.directory())
 
+        // 供給(iOS lateWorkers 等)がまだ済んでいない間もボードに1本出す(段階「準備中」)。
+        // RunOrchestrator が最初の laneJoined で "running" の record へ上書きするまでの穴埋め。
+        // **後始末**: ここから RunOrchestrator.run() の呼び出しへ到達できずに throw すると
+        // finish() が一度も呼ばれない(finish() は RunOrchestrator の中でしか呼ばれない)ので、
+        // handoff が立たないまま関数を抜けるときは defer で自分の控えを消す
+        let progressPid = ProcessInfo.processInfo.processIdentifier
+        RunProgressLedger.write(RunProgressRecord(
+            pid: progressPid, runID: recorder?.runID, runGroup: recorder?.runGroup,
+            issuer: LocalConfig.resolveIssuerId(), project: project.name, profile: resolved.runName,
+            startedAt: ISO8601DateFormatter().string(from: Date()), total: 0, done: 0, failed: 0,
+            etaSeconds: nil, lanes: [], phase: "preparing"), directory: RunProgressLedger.directory())
+        var progressHandedToOrchestrator = false
+        defer {
+            if !progressHandedToOrchestrator {
+                RunProgressLedger.remove(pid: progressPid, directory: RunProgressLedger.directory())
+            }
+        }
+
         let orchestrator = RunOrchestrator(
             project: project, workers: workers,
             settings: ScenarioExecutionSettings(resolved),
@@ -1327,6 +1345,9 @@ struct ApiRunCommand: AsyncParsableCommand {
             orchestrator.requestInterrupt()
         }
         defer { interruptRelay.stop() }
+        // ここから先は RunOrchestrator.run() が必ず finish() まで進む(non-throwing)ので、
+        // "preparing" の後始末は orchestrator 側の finish()/remove に委ねる
+        progressHandedToOrchestrator = true
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         var timing = ScenarioTimingTracker()

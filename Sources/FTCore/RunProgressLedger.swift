@@ -67,10 +67,12 @@ public struct RunProgressRecord: Codable, Equatable, Sendable {
     /// 段5(残り見積もり)は未実装 —— 常に nil。推測値は出さない
     public let etaSeconds: Int?
     public let lanes: [RunProgressLane]
+    /// "preparing"(デバイスの供給中。まだシナリオは1本も走っていない)/ "running"
+    public let phase: String
 
     public init(pid: Int32, runID: String?, runGroup: String?, issuer: String?, project: String,
                profile: String?, startedAt: String, total: Int, done: Int, failed: Int,
-               etaSeconds: Int?, lanes: [RunProgressLane]) {
+               etaSeconds: Int?, lanes: [RunProgressLane], phase: String) {
         self.pid = pid
         self.runID = runID
         self.runGroup = runGroup
@@ -83,7 +85,9 @@ public struct RunProgressRecord: Codable, Equatable, Sendable {
         self.failed = failed
         self.etaSeconds = etaSeconds
         self.lanes = lanes
+        self.phase = phase
     }
+
 }
 
 public enum RunProgressLedger {

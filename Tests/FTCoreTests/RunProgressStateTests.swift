@@ -93,6 +93,15 @@ final class RunProgressStateTests: XCTestCase {
         XCTAssertEqual(journal.writes.last?.total, 12)
     }
 
+    /// RunProgressState が書く record は常に "running"("preparing" は供給フェーズが
+    /// RunOrchestrator の外(ProfileRunner/ApiRunCommand)で書く別の記録)
+    func testWrittenRecordsAreAlwaysPhaseRunning() async {
+        let journal = Journal()
+        let state = makeState(journal)
+        await state.laneJoined(key: "UDID-A", name: "iPhone 17-01", platform: "ios")
+        XCTAssertEqual(journal.writes.last?.phase, "running")
+    }
+
     func testFinishCallsRemove() async {
         let journal = Journal()
         let state = makeState(journal)

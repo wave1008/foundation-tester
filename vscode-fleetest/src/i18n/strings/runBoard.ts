@@ -18,6 +18,7 @@ export const runBoardStrings = {
   "runBoard.machineIdle": { ja: "空き", en: "Free" },
   "runBoard.machineUnknown": { ja: "実行状況を観測できていません", en: "Run status not observed" },
   "runBoard.issuerRun": { ja: "{issuer} の run", en: "{issuer}'s run" },
+  "runBoard.preparing": { ja: "準備中(デバイスを用意しています)", en: "Preparing devices…" },
   "runBoard.laneIdle": { ja: "⏹ 待機", en: "⏹ Waiting" },
   "runBoard.remainingUnknown": { ja: "—", en: "—" },
   "runBoard.remainingTime": { ja: "残 ~{time}", en: "~{time} left" },

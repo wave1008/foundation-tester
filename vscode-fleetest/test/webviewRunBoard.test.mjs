@@ -82,7 +82,7 @@ function monitorRunsMessage(overrides) {
     type: "monitorRuns",
     observed: true,
     runs: [{
-      pid: 41233, runID: "run-1", mine: true,
+      pid: 41233, runID: "run-1", mine: true, phase: "running",
       project: "ec-mobile", profile: "ios-smoke",
       elapsedSeconds: 261, total: 12, done: 7, failed: 2,
       lanes: [{ key: "UDID-1", name: "iPhone 17-01", platform: "ios", scenario: "05_検索",
@@ -107,6 +107,26 @@ test("走っていない機械は本体に行として並ぶ(実行中の機械�
   assert.equal(unknown.title, "実行状況を観測できていません", "ダッシュの意味は title で言う");
   assert.equal(document.querySelectorAll(".run-board-row").length, 1, "M1Max は run の行として出る");
   assert.equal(document.getElementById("run-board-machines"), null, "ヘッダの要約は置かない");
+});
+
+// 供給(デバイスの用意)の間も run は走っているので、ボードに行を出す —— 出さないと
+// 「テスト実行中なのに空き」に見える(2026-09-20 の実害。リモートでは供給が 15〜20 秒)。
+test("準備中の run は本数でなく「準備中」を出し、進捗バーは隠す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, { type: "monitorRuns", machine: "M1Max", observed: true, runs: [{
+    pid: 41233, runID: "run-1", mine: true, phase: "preparing",
+    project: "E2E-iOS", profile: "ios-inapp",
+    elapsedSeconds: 12, total: 0, done: 0, failed: 0, lanes: [],
+  }] });
+  assert.equal(document.querySelector(".run-board-counts").textContent, "準備中(デバイスを用意しています)");
+  assert.equal(document.querySelector(".run-board-progress").style.display, "none");
+  assert.equal(document.getElementById("run-board-title").textContent, "実行中 1",
+    "準備中も「実行中」の件数に数える(走っているので)");
+  // その機械は「空き」の一覧から外れる
+  post(window, { type: "hostMetricsMachines", machines: ["M1Max"] });
+  const idle = [...document.querySelectorAll(".run-board-idle-machine")].map((el) => el.textContent);
+  assert.deepEqual(idle, ["local—"], "準備中でも M1Max は使用中(空きに出さない)");
 });
 
 test("進捗バーに塗り幅を設定する", (t) => {

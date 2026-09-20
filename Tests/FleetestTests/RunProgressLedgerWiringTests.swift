@@ -42,4 +42,16 @@ final class RunProgressLedgerWiringTests: XCTestCase {
                           " (RunProgressRecord.profile が常に nil になる)")
         }
     }
+
+    /// 2経路とも、供給(デバイスの供給・iOS lateWorkers 等)が終わる前に
+    /// phase: "preparing" の記録を書いていること(段階「準備中」)。片方だけだと
+    /// その経路の run はボードに「空き」のまま何十秒も映らない
+    func testBothCallSitesWritePreparingBeforeSupplyCompletes() throws {
+        for path in Self.sources {
+            let text = try Self.code(path)
+            XCTAssertTrue(text.contains("phase: \"preparing\""),
+                          "\(path): 供給の前に phase: \"preparing\" を書いていない" +
+                          " (供給中の run がボードに1本も出ない)")
+        }
+    }
 }
