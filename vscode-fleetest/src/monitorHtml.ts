@@ -370,6 +370,7 @@ function renderLivePanel(): string {
         <div class="screenshot-frame" id="live-screenshot-frame">
           <div class="screenshot-wrap" id="live-screenshot-wrap" title="${t("panels.live.gestureHintTitle")}">
             <img id="live-screenshot" alt="${t("panels.live.screenshotAlt")}">
+            <svg id="live-boxes-overlay" aria-hidden="true"></svg>
             <div id="live-hover-box"></div>
             <svg id="live-drag-overlay" aria-hidden="true"><line id="live-drag-line"/><circle id="live-drag-start" r="6"/></svg>
             <div id="live-screenshot-placeholder">${t("panels.live.screenshotPlaceholder")}</div>
@@ -402,6 +403,7 @@ function renderLivePanel(): string {
           <div class="live-elements-section" id="live-elements-section">
             <div class="elements-header">
               <span>${t("panels.live.elementsHeader")}</span>
+              <label id="live-boxes-toggle" class="elements-header-toggle"><input id="live-show-boxes" type="checkbox">${t("panels.live.showBoxes")}</label>
               <button id="live-btn-refresh-snapshot" class="secondary" title="${t("panels.live.refreshSnapshotTitle")}">${t("panels.live.refreshSnapshot")}</button>
             </div>
             <div id="live-elements-list" class="elements-list"></div>

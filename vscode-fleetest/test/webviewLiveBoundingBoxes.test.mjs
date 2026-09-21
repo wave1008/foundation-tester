@@ -1,4 +1,4 @@
-// webviewLiveSettleRefresh.test.mjs
+// webviewLiveBoundingBoxes.test.mjs
 // デバイスモニターの「ライブ操作」タブの webview を実 HTML+実バンドルで動かす DOM E2E(jsdom)。
 // renderHtml(monitorHtml.ts)を vscode スタブ付きでオンザフライ bundle して HTML を生成し、
 // src/webview/monitor/main.js も esbuild(write:false)で bundle して window.eval で実行する
@@ -6,16 +6,9 @@
 // 実 VSCode webview との差分は acquireVsCodeApi / getBoundingClientRect / PointerEvent のみ
 // (setPointerCapture は jsdom に無いが、liveTab.js 側が try/catch で握る契約なのでシム不要)。
 //
-// 検証対象: 「画面が動いて、止まったら一度だけ撮り直す」(liveTab.js の scheduleSettleRefresh)。
-//
-// 実害は2件とも「操作の応答が操作直後の1枚しか無い」ことから来ている:
-//   - 2026-09-21: アプリスイッチャーからホームを押すとクロスフェード中の絵が残った(絵が古い)
-//   - 2026-09-22: システムアラートが出ても要素一覧・バウンディングボックスが前の画面のまま
-//     (木が古い。アラートはタップから遅れて出るので操作直後の1枚には載らない)
-//
-// 守る性質は3つ: 絵が動いている間は撮らずに先送りすること、止まったら撮ること、
-// 撮り直しの結果では繰り返さないこと(静止画面で撮り続けない)。
-// 実時計で待つのはここだけ —— タイマーの発火そのものが検証対象なので、値を縮める口は作らない。
+// 検証対象: 「バウンディングボックスを表示」トグル(要素一覧の見出し)。
+// 全要素の枠を画像に重ねて出す。枠の座標は hover 枠と同じ frameToDisplayRect(表示px)で、
+// 表示サイズが変わるたびに引き直す。トグルの状態は vscode.setState に持つ。
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -119,66 +112,93 @@ function pointerEvent(window, type, { x, y, pointerId = 1, button = 0, altKey = 
 }
 
 
+const ELEMENTS = [
+  { ref: 1, type: "button", label: "ホーム", identifier: "tab_home", value: null,
+    frame: { x: 0, y: 760, width: 134, height: 40 } },
+  { ref: 2, type: "staticText", label: "情報", identifier: "txt_title", value: null,
+    frame: { x: 16, y: 60, width: 370, height: 24 } },
+];
+
 const SNAPSHOT = {
   type: "live",
   message: {
-    type: "snapshot",
-    platform: "ios",
+    type: "snapshot", platform: "ios",
     screen: { width: 400, height: 800 },
     image: "aW1n",
-    elements: [],
+    elements: ELEMENTS,
   },
 };
 
-/** SETTLE_REFRESH_MS(700) を跨いで落ち着くまで待つ。 */
-const afterSettleWindow = () => new Promise((resolve) => setTimeout(resolve, 1100));
+function boxes(document) {
+  return [...document.getElementById("live-boxes-overlay").querySelectorAll("rect")];
+}
 
-test("操作直後の snapshot のあと、撮り直しを一度だけ要求する", async (t) => {
-  const { window, sendToWebview, liveMessages } = createWebview();
+test("トグルが『要素一覧を更新』の左にある", (t) => {
+  const { window, document } = createWebview();
   t.after(() => window.close());
 
-  sendToWebview(SNAPSHOT);
-  const before = liveMessages().filter((m) => m.type === "refreshSnapshot").length;
-
-  await afterSettleWindow();
-  const refreshes = liveMessages().filter((m) => m.type === "refreshSnapshot");
-  assert.equal(refreshes.length, before + 1, "遷移が終わった頃に撮り直しを要求すること");
-
-  // その要求の結果として届いた snapshot では仕掛け直さない(静止画面で撮り続けない)
-  sendToWebview(SNAPSHOT);
-  await afterSettleWindow();
+  const toggle = document.getElementById("live-boxes-toggle");
+  assert.ok(toggle, "トグルが存在すること");
   assert.equal(
-    liveMessages().filter((m) => m.type === "refreshSnapshot").length,
-    before + 1,
-    "撮り直しの結果でまた撮り直してはいけない",
+    toggle.nextElementSibling.id, "live-btn-refresh-snapshot",
+    "「要素一覧を更新」のすぐ左に並ぶこと",
   );
+  assert.equal(document.getElementById("live-show-boxes").checked, false, "既定は OFF");
 });
 
-test("絵が動いている間は先送りし、止まってから撮り直す", async (t) => {
-  const { window, sendToWebview, liveMessages } = createWebview();
+test("ON で全要素の枠を出し、OFF で消す", (t) => {
+  const { window, document, sendToWebview } = createWebview();
   t.after(() => window.close());
 
   sendToWebview(SNAPSHOT);
-  const before = liveMessages().filter((m) => m.type === "refreshSnapshot").length;
+  assert.equal(boxes(document).length, 0, "既定(OFF)では枠を出さない");
 
-  // 600ms 間隔で 2 回チャンクを流す(= まだ動いている)。予約が先送りされるので、
-  // 合計 1200ms 経っても撮り直しは飛ばない
-  for (let i = 0; i < 2; i += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    window.dispatchEvent(new window.MessageEvent("message", {
-      data: { type: "liveH264Chunk", keyframe: true, width: 0, height: 0, data: new Uint8Array([0, 0, 1, 0x67]) },
-    }));
-  }
-  assert.equal(
-    liveMessages().filter((m) => m.type === "refreshSnapshot").length,
-    before,
-    "動いている間は撮らないこと(アニメーションの途中で撃たない)",
+  const checkbox = document.getElementById("live-show-boxes");
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+
+  const drawn = boxes(document);
+  assert.equal(drawn.length, ELEMENTS.length, "要素の数だけ枠を出すこと");
+  // 画面 400x800 を 400x800 で表示しているので 1:1(createWebview の rect スタブ)
+  assert.deepEqual(
+    drawn.map((r) => [r.getAttribute("x"), r.getAttribute("y"),
+                      r.getAttribute("width"), r.getAttribute("height")].join(",")),
+    ["0,760,134,40", "16,60,370,24"],
+    "枠の位置は要素の frame を表示座標へ写したもの",
   );
 
-  await afterSettleWindow();
-  assert.equal(
-    liveMessages().filter((m) => m.type === "refreshSnapshot").length,
-    before + 1,
-    "止まったら一度だけ撮ること",
-  );
+  checkbox.checked = false;
+  checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.equal(boxes(document).length, 0, "OFF で消すこと");
+});
+
+test("ON のまま新しい snapshot が来たら枠を引き直す", (t) => {
+  const { window, document, sendToWebview } = createWebview();
+  t.after(() => window.close());
+
+  const checkbox = document.getElementById("live-show-boxes");
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+  sendToWebview(SNAPSHOT);
+  assert.equal(boxes(document).length, 2, "前提: 2つ出ている");
+
+  sendToWebview({
+    ...SNAPSHOT,
+    message: { ...SNAPSHOT.message, elements: [ELEMENTS[0]] },
+  });
+  assert.equal(boxes(document).length, 1, "新しい木の要素数に追随すること");
+});
+
+test("デバイスを切り替えたら枠も捨てる", (t) => {
+  const { window, document, sendToWebview } = createWebview();
+  t.after(() => window.close());
+
+  const checkbox = document.getElementById("live-show-boxes");
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+  sendToWebview(SNAPSHOT);
+  assert.equal(boxes(document).length, 2, "前提: 出ている");
+
+  sendToWebview({ type: "live", message: { type: "clearSnapshot" } });
+  assert.equal(boxes(document).length, 0, "前のデバイスの枠を残さないこと");
 });

@@ -28,6 +28,7 @@ const screenshotWrap = document.getElementById('live-screenshot-wrap');
 const liveCanvas = document.createElement('canvas');
 liveCanvas.id = 'live-canvas';
 const hoverBox = document.getElementById('live-hover-box');
+const boxesOverlay = document.getElementById('live-boxes-overlay');
 screenshotWrap.insertBefore(liveCanvas, hoverBox);
 const screenshotPlaceholder = document.getElementById('live-screenshot-placeholder');
 const dragOverlay = document.getElementById('live-drag-overlay');
@@ -42,6 +43,7 @@ const typeTextInput = document.getElementById('live-type-text');
 const actionError = document.getElementById('live-action-error');
 const actionErrorText = document.getElementById('live-action-error-text');
 const actionErrorClose = document.getElementById('live-action-error-close');
+const showBoxesToggle = document.getElementById('live-show-boxes');
 const elementsList = document.getElementById('live-elements-list');
 const oplogList = document.getElementById('live-oplog-list');
 const oplogClearBtn = document.getElementById('live-btn-oplog-clear');
@@ -100,14 +102,17 @@ let liveH264ErrorSent = false;
 // キーフレーム未受信のまま届いたデルタチャンク数と streamStall 送信済みフラグ(タイル側 deviceTiles.js と同型)
 let liveDeltasBeforeKey = 0;
 let liveStallSent = false;
-// 操作直後の一枚絵は**遷移の途中**を捉えていることがある(アプリスイッチャー → ホーム等で、
-// クロスフェード中の絵が残る)。配信が次のフレームを描けば自動で最新になるが、遷移が終わると
-// 画面は静止して配信も止まるため、来なければ一度だけ撮り直す。
-// **遷移の完了は待たない** —— 操作の応答はそのまま返し、あとから絵だけ差し替える。
-// 値: iOS のシステム遷移(ホーム/アプリスイッチャー)のアニメーションを跨ぐ長さ。配信のフレームが
-// 描けた時点でキャンセルするので、実際に払うのは配信が止まっている静止画面のときだけ。
-// 尽きたとき: これより長い遷移では古い絵が残る(次の操作で更新される。現状と同じ)。
+// **画面が動いて、止まったら一度だけ撮り直す**。操作の応答(絵と木)は操作直後の1枚なので、
+// 遷移の途中やアプリが遅れて出すもの(システムアラート等)を捉えられない —— 絵はクロスフェードの
+// 途中で止まり、木にはアラートが1要素も載らない。
+// **遷移の完了は待たない** —— 操作の応答はそのまま返し、あとから撮り直して差し替える。
+// 予約は絵が動くたび(h264 チャンク)に先送りするので、アニメーションが長くても末尾で1回だけ撃つ。
+// 値: 既定 12fps の配信で数フレーム分の空白を「止まった」と見なす長さ。短くするとアニメーションの
+// 途中で撃ち、長くすると追随が遅れる。
+// 尽きたとき: 画面が動かないまま内容だけ変わる場合は追随しない(「要素一覧を更新」で撮り直す)。
 const SETTLE_REFRESH_MS = 700;
+// 要素の枠を画像に重ねて出すか(「バウンディングボックスを表示」)。vscode.setState に永続化。
+let showBoxes = persistedState.liveShowBoxes === true;
 let settleRefreshTimer = null;
 // 撮り直しとして要求した snapshot か(その結果でまた仕掛けると静止画面で撮り続ける)。
 let settleRefreshRequested = false;
@@ -331,16 +336,14 @@ function activeScreenEl() {
 
 // 前面に出すのはどちらか一方だけ。**デコーダには触らない**(捨てると次のキーフレームまで
 // 1枚も描けず、タップのたびに映像が数秒止まる)。
-// **新しい絵が前面に出たら撮り直しの予約は落とす** —— 仕掛け直すのは applySnapshot だけ
-// (あちらは showStill のあとに仕掛けるので打ち消されない)。
+// **撮り直しの予約はここでは落とさない** —— 配信が描けても持っているのは絵だけで、木は
+// 操作時のものから動かない(アラートが出ても要素一覧・枠が前の画面のままだった)。
 function showStill() {
-  cancelSettleRefresh();
   liveCanvas.classList.remove('visible');
   screenshot.classList.add('visible');
   screenshotPlaceholder.style.display = 'none';
 }
 function showCanvas() {
-  cancelSettleRefresh();
   screenshot.classList.remove('visible');
   liveCanvas.classList.add('visible');
   screenshotPlaceholder.style.display = 'none';
@@ -395,6 +398,7 @@ function fitScreenshot() {
   // 実装差(Chromium)を避けるため確定値を JS で入れる。比が分かるまでは cap を外し
   // placeholder 幅(min-width)に委ねる。
   screenshotPane.style.maxWidth = size ? Math.ceil(size.width + SCREENSHOT_WRAP_BORDER) + 'px' : '';
+  renderBoxes(); // 表示サイズが変わったら枠も引き直す
 }
 // pane の高さは flex で決まり画像内容に依存しない(=maxHeight/maxWidth 変更で再発火しない)ため無限ループ無し。
 if (typeof ResizeObserver !== 'undefined') {
@@ -600,6 +604,42 @@ function hideHover() {
   hoverBox.style.display = 'none';
 }
 
+// ---- バウンディングボックス(「バウンディングボックスを表示」トグル) ------------------------
+// 画像に重ねて全要素の枠を出す。枠は SVG の <rect> をまとめて1つの要素に描く(要素ごとの div は
+// 数百枚になると DOM が重い)。座標は hover 枠と同じ frameToDisplayRect(表示px)。
+// **表示サイズが変わるたびに引き直す**(fitScreenshot・snapshot 受信・トグル操作)。
+
+function renderBoxes() {
+  if (!showBoxes || !lastScreen || lastElements.length === 0) {
+    boxesOverlay.classList.remove('visible');
+    boxesOverlay.replaceChildren();
+    return;
+  }
+  const rect = activeScreenEl().getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) { return; } // タブ非表示中は測れない
+  const display = { width: rect.width, height: rect.height };
+  boxesOverlay.setAttribute('viewBox', `0 0 ${display.width} ${display.height}`);
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const shapes = lastElements.map((element) => {
+    const box = frameToDisplayRect(element.frame, lastScreen, display);
+    const node = document.createElementNS(svgNS, 'rect');
+    node.setAttribute('x', box.x);
+    node.setAttribute('y', box.y);
+    node.setAttribute('width', Math.max(box.width, 1));
+    node.setAttribute('height', Math.max(box.height, 1));
+    return node;
+  });
+  boxesOverlay.replaceChildren(...shapes);
+  boxesOverlay.classList.add('visible');
+}
+
+showBoxesToggle.checked = showBoxes;
+showBoxesToggle.addEventListener('change', () => {
+  showBoxes = showBoxesToggle.checked;
+  vscode.setState(Object.assign({}, vscode.getState(), { liveShowBoxes: showBoxes }));
+  renderBoxes();
+});
+
 function renderElements() {
   elementsList.innerHTML = '';
   for (const element of lastElements) {
@@ -624,6 +664,7 @@ function renderElements() {
     row.addEventListener('mouseleave', hideHover);
     elementsList.appendChild(row);
   }
+  renderBoxes();
 }
 
 // ---- 操作記録(host の operationLog を追記。対向: monitorLiveController.ts の postOperationLog) ----
@@ -708,6 +749,8 @@ export function applyLiveH264Chunk(message) {
   if (liveH264ErrorSent) {
     return;
   }
+  // 絵が動いた = まだ遷移の途中かもしれない。止まってから撮り直すよう予約を先送りする
+  scheduleSettleRefresh();
   // 初期キーフレームを取り逃すとデルタしか届かず永久に描画できない(タイルで実害化したのと同型)。
   // 一定数デルタが続いたらホストにヘルパー再起動を頼み、新キーフレームから始め直す(deviceTiles.js と同型)。
   if (message.keyframe) {

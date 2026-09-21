@@ -57,8 +57,9 @@ before(async () => {
 function createWebview() {
   const dom = new JSDOM(panelHtml, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://localhost/" });
   const { window } = dom;
+  const posts = [];
   window.acquireVsCodeApi = () => ({
-    postMessage: () => {}, setState: () => {}, getState: () => undefined,
+    postMessage: (message) => posts.push(message), setState: () => {}, getState: () => undefined,
   });
   window.HTMLElement.prototype.scrollIntoView = () => {};
   // jsdom の canvas には 2D コンテキストが無い(実描画はしないダミーで足りる)。
@@ -84,7 +85,8 @@ function createWebview() {
   window.document.getElementById("tab-live").dispatchEvent(
     new window.MouseEvent("click", { bubbles: true }),
   );
-  return { window, document: window.document };
+  const liveMessages = () => posts.filter((p) => p.type === "live").map((p) => p.message);
+  return { window, document: window.document, liveMessages };
 }
 
 function post(window, data) {
@@ -157,4 +159,33 @@ test("'frame'(host が mjpeg 配信へ切替済み)は引き続き静止画表�
   const after = media(document);
   assert.ok(!after.canvas.classList.contains("visible"), "'frame' では canvas から img へ戻ること");
   assert.ok(after.screenshot.classList.contains("visible"), "screenshot(img)が表示に戻ること");
+});
+
+
+// **描けても撮り直しの予約は落とさない** —— 配信が持っているのは絵だけで、木は操作時のものから
+// 動かない。落とすと、アプリが遅れて出したもの(システムアラート)が要素一覧にも
+// バウンディングボックスにも出ないままになる(2026-09-22 の実害)。
+test("フレームを描いても、止まったあとの撮り直しは行う", async (t) => {
+  const { window, liveMessages } = createWebview();
+  t.after(() => window.close());
+  await sendKeyframeAndAwaitH264(window);
+  // 撮り直しは lastScreen があって初めて意味を持つ(座標系が無いと送らない)
+  post(window, {
+    type: "live",
+    message: { type: "snapshot", screen: { width: 400, height: 800 }, image: "AAAA", elements: [] },
+  });
+
+  const before = liveMessages().filter((m) => m.type === "refreshSnapshot").length;
+
+  // 描画間引き(DRAW_INTERVAL_MS=66ms)を跨いでから 1 枚 —— ここで onFrameRendered → showCanvas が走る
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  post(window, { type: "liveH264Chunk", keyframe: true, width: 0, height: 0, data: KEYFRAME });
+  await settle();
+
+  await new Promise((resolve) => setTimeout(resolve, 1100)); // SETTLE_REFRESH_MS(700)を跨ぐ
+  assert.equal(
+    liveMessages().filter((m) => m.type === "refreshSnapshot").length,
+    before + 1,
+    "描画で予約を落としてはいけない(木は古いままなので撮り直す)",
+  );
 });

@@ -11,6 +11,7 @@ export const panelsStrings = {
   "panels.tabs.processes": { ja: "プロセス", en: "Processes" },
   "panels.tabs.close": { ja: "タブを閉じる", en: "Close tab" },
   "panels.live.dismissError": { ja: "このメッセージを消す", en: "Dismiss this message" },
+  "panels.live.showBoxes": { ja: "バウンディングボックスを表示", en: "Show bounding boxes" },
   "panels.tabs.recordings": { ja: "テストセッション", en: "Test Sessions" },
   "panels.tabs.settings": { ja: "設定", en: "Settings" },
 
