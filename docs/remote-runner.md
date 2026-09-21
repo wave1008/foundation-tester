@@ -1916,15 +1916,21 @@ upstream main を clone して update.sh で追従するので、2人の rev は
 ```
 発行側                            ランナー機(<base>)
   api monitor(親)  ── ssh ──▶  api monitor --device-machine local(子)
-      ▲ monitorLock                    │ 毎周期 ~/.fleetest/dispatch.lock/info.json を読む
-      │ (親が machine を埋める)         │ (FT_RUNNER_BASE で場所を知る)
+      │ ▲ monitorLock                  │ 毎周期 ~/.fleetest/dispatch.lock/info.json を読む
+      │ │ (親が machine を埋める)       │
+      └─── monitorLock(machine 欄なし = 手元。自分の ~/.fleetest を同じように読む)
   拡張 ─┴─ 配信を畳む / 錠前を出す / 破壊的操作の確認に添える
 ```
 
-- **場所の受け渡しは `FT_RUNNER_BASE`**(`FTCore.RunnerBase`)。`RemoteShell.remoteRunCommand` /
-  `remoteExecCommand` が export する **1箇所**。**手元実行では未設定**なので、この値の有無が
-  そのまま「ランナー機の文脈か」の判定になる(手元には dispatch.lock という概念が無い)。
-  **exec も `FT_ISSUER` を運ぶ**(子が「保持者は自分か」を判定するため)
+- **手元も観測の対象**(2026-09-21)。dispatch.lock は機械に1本で、**リモートへのディスパッチも
+  ローカル run も同じ1本を取る**(§13)ので、「ランナー機の文脈か」(`FT_RUNNER_BASE`)は
+  占有を配るかどうかの条件にしない —— 条件にしていた頃は、手元の run 中にツールバーの
+  手元の行に錠前が出ず、他人がこの Mac へディスパッチしても配信が畳まれなかった。
+  **手元の綴りは `machine` 欄を出さないこと**(monitorRuns / monitorDevices と同じ。
+  拡張は `runBoardModel.LOCAL_MACHINE_KEY` = 空文字へ写し、ホスト負荷グラフの手元の行と一致する)。
+  `FTCore.RunnerBase` に残った役割は **`StreamLease` の控えの置き場だけ**
+- **`FT_RUNNER_BASE` は `RemoteShell.remoteRunCommand` / `remoteExecCommand` が export する
+  1箇所**。**exec も `FT_ISSUER` を運ぶ**(子が「保持者は自分か」を判定するため)
 - **判定は `FTRemote.HostOccupancy` の1箇所**(純粋関数 + 薄い読み込み)。
   **info が読めなくても held は保つ**(「情報が読めなくてもロックは尊重する」と同じ向き)/
   **保持者不明を自分扱いにしない**(破壊的操作の確認が黙る側へ倒れる)
@@ -1940,7 +1946,9 @@ upstream main を clone して update.sh で追従するので、2人の rev は
   実測: 8台に配信を張ったフル E2E で Android が実際に赤になった)。**ただし自分の run のぶんは
   利用者が選ぶ**(ユーザー決定 2026-09-17): 「デバイスモニター」タブの「ライブ更新」(既定 ON)が
   ON の間は、手元の台の `inRun` と自分が保持する機械では配信を続ける。**他人の run と、観測できない
-  機械は ON でも畳む**(`machineLockModel.streamFoldMachines`)。**OFF は run の有無を問わず全台の配信と
+  機械は ON でも畳む**(`machineLockModel.streamFoldMachines`)。**手元も同じ規則を通る**
+  (2026-09-21): 自分の run は `mine:true` なので ON では畳まず、**他人がこの Mac へディスパッチして
+  保持している間だけ畳む**。3ケースは `machineLockModel.test.mjs` が等号で固定する。**OFF は run の有無を問わず全台の配信と
   画面の取り込み(suppressFrames)を止める**(マシンの負荷を下げる口 = ユーザー決定。パネルが隠れたときと同じ
   `deviceStream.setVisible(false)` の経路。観測は monitor が続ける)。タイルと拡大表示は最後の絵のまま、絵・名前・
   バッジの明度を下げる(`streamToggle.js`。「未起動」「ブリッジ未起動」等の状態の表示と、実行ログのレーン見出しのバッジは暗くしない)。**畳むのは配信だけで観測は

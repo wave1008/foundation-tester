@@ -118,9 +118,10 @@ export interface MonitorPanelDeps {
   /** monitorDevicesイベントをMonitorDeviceStreamControllerへ渡す(パイプラインの張り替え判定に使う。
    * monitorProcessManager.tsのmonitorDevices処理から呼ぶ)。 */
   notifyMonitorDevices(devices: readonly MonitorDevice[]): void;
-  /** リモート機の占有(dispatch.lock)が変わったときに MonitorProcessManager が呼ぶ。
-   * **配信の自動退避**(占有中の機械のライブ配信を畳んでポーリングへ落とす)の入口
-   * (docs/remote-runner.md §18.2 M2)。 */
+  /** 機械の占有(dispatch.lock)が変わったときに MonitorProcessManager が呼ぶ。
+   * **手元も含む**(キーは runBoardModel の LOCAL_MACHINE_KEY)。**配信の自動退避**
+   * (占有中の機械のライブ配信を畳んでポーリングへ落とす)の入口
+   * (docs/remote-runner.md §18.7 M2)。 */
   notifyMachineLocks(locks: ReadonlyMap<string, MachineLock>): void;
   /** その機械で run が走っているか(MonitorProcessManager.machineLock への委譲)。
    * **undefined は「不明」**(観測していない・旧ランナー)で、「走っていない」ではない。 */
@@ -1262,7 +1263,9 @@ export class MonitorPanelController implements vscode.Disposable {
     }
     if (gate.kind === "confirmOccupied") {
       const holders = gate.holders
-        .map((entry) => `${entry.machine}: ${entry.issuer ?? t("deviceOps.occupiedIssuerUnknown")}`)
+        // 手元(LOCAL_MACHINE_KEY = 空文字)はマシン名のスロットに既存の呼び名を入れる
+        .map((entry) => `${entry.machine || t("deviceOps.machineLocalLabel")}: `
+          + `${entry.issuer ?? t("deviceOps.occupiedIssuerUnknown")}`)
         .join(t("deviceOps.nameSeparator"));
       const confirmLabel = t("deviceOps.bulkDownOccupiedConfirmButton");
       const choice = await vscode.window.showWarningMessage(

@@ -575,6 +575,43 @@ test("占有の行は既定では「タイルはポーリングで更新」と�
   assert.match(held[0], /タイルはポーリングで更新/);
 });
 
+// **手元の占有も配る**(2026-09-21)。CLI は monitorLock の machine 欄を出さない(手元の綴り)
+// ので、控えも webview へのメッセージも LOCAL_MACHINE_KEY(空文字 = hostCharts の行キー)になる。
+// 捨てていた頃は手元の run 中に錠前が出ず、配信の退避も効かなかった
+test("machine 欄の無い占有(手元)も控え・錠前・退避へ配る", () => {
+  const lines = [];
+  const posted = [];
+  const folded = [];
+  const procs = [];
+  const spawnFn = () => {
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const manager = new MonitorProcessManager(makeDeps({
+    outputChannel: { appendLine: (line) => lines.push(line) },
+    post: (message) => posted.push(message),
+    notifyMachineLocks: (locks) => folded.push(new Map(locks)),
+  }), spawnFn);
+  manager.startMonitorProcess();
+
+  feedLine(procs[0], {
+    kind: "monitorLock", observed: true, held: true, issuer: "wave1008", mine: true,
+  });
+
+  const locks = posted.filter((message) => message.type === "machineLock");
+  assert.equal(locks.length, 1);
+  assert.equal(locks[0].machine, "", "webview の行キーは手元 = 空文字");
+  assert.equal(locks[0].held, true);
+  assert.equal(locks[0].mine, true);
+  assert.deepEqual(manager.occupiedMachineList(), [{ machine: "", issuer: "wave1008" }]);
+  assert.equal(folded.at(-1).get("").held, true, "配信の退避へも配る");
+  // 文言のマシン名スロットには既存の呼び名を入れる(空文字を素通ししない)
+  const held = lines.filter((line) => line.includes("run が実行中です"));
+  assert.equal(held.length, 1);
+  assert.match(held[0], /ローカル/);
+});
+
 test("`monitor pause` 保持中の占有の行はポーリング更新を請け合わない", () => {
   const lines = [];
   const procs = [];

@@ -172,9 +172,10 @@ export type MonitorEvent =
   // OUTPUT ログだけ(配信の停止自体は、hold 中の全タイル state:"unknown" 化で
   // monitorDeviceStreamController の既存の qualifying 判定が畳む)
   | { readonly kind: "monitorHold"; readonly active: boolean }
-  // ランナー機の dispatch.lock の状態(ApiMonitorLockEvent。docs/remote-runner.md §18.2 M2)。
-  // **リモートの機械についてのみ届く**(machine は中継する親が埋める)。observed:false は
-  // 「その機械をもう観測できていない」= 空きではなく**不明**へ戻す合図
+  // 機械の dispatch.lock の状態(ApiMonitorLockEvent。docs/remote-runner.md §18.7 M2)。
+  // **machine 欠落 = 手元**(monitorRuns と同じ綴り。リモートぶんは中継する親が埋める)——
+  // ロックは機械に1本で、リモートへのディスパッチもローカル run も同じ1本を取る。
+  // observed:false は「その機械をもう観測できていない」= 空きではなく**不明**へ戻す合図
   | {
       readonly kind: "monitorLock";
       readonly machine?: string;

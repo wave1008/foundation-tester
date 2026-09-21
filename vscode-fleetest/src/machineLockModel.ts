@@ -1,7 +1,10 @@
 // machineLockModel.ts
-// **どのリモート機で誰の run が走っているか**の控え(vscode 非依存の純粋関数。
-// docs/remote-runner.md §18.2 M2)。供給元は `api monitor` の monitorLock イベント
-// (ランナー機で走っている fan-out の子が dispatch.lock をローカルで読み、親が machine を埋める)。
+// **どの機械で誰の run が走っているか**の控え(vscode 非依存の純粋関数。
+// docs/remote-runner.md §18.7 M2)。供給元は `api monitor` の monitorLock イベント
+// (その機械で走っている監視プロセスが dispatch.lock をローカルで読む。リモートぶんは
+// fan-out の子が読んで親が machine を埋め、**手元ぶんは machine 欠落のまま届く**)。
+// **手元も対象**: dispatch.lock は機械に1本で、リモートへのディスパッチもローカル run も
+// 同じ1本を取る(CLAUDE.md「1マシンで同時に走る run は1本」)。
 //
 // 使い道は3つ。**どれも「新しい ssh を張らない」ことが前提**(この控えは既に流れている
 // モニターの副産物):
@@ -14,6 +17,7 @@
 // 空きだと言い切らない —— 破壊的操作の確認が「走っている run は無い」と誤って請け合わないため。
 
 import type { MonitorDevice } from "./monitorModel";
+import { LOCAL_MACHINE_KEY } from "./runBoardModel";
 
 /** 1機械ぶんの占有。**保持者が誰かは表示専用**(自己申告。Sources/FTRemote/HostOccupancy.swift)。 */
 export interface MachineLock {
@@ -29,7 +33,7 @@ export interface MachineLock {
 }
 
 /** monitorLock イベント1件を控えへ畳む(不変。新しい Map を返す)。
- * `observed:false`(子が落ちた)と machine 無しは**控えを消す** = 不明へ戻す。 */
+ * **machine 欠落 = 手元**(`LOCAL_MACHINE_KEY`)—— monitorRuns / monitorDevices と同じ綴り。 */
 export function applyMachineLockEvent(
   current: ReadonlyMap<string, MachineLock>,
   event: {
@@ -43,20 +47,19 @@ export function applyMachineLockEvent(
   },
 ): Map<string, MachineLock> {
   const next = new Map(current);
-  if (event.machine === undefined) {
-    // 手元(machine 無し)には dispatch.lock という概念が無い。届いたら捨てる
-    return next;
-  }
+  // **machine 欠落は捨てない** —— 手元の綴りなので `LOCAL_MACHINE_KEY` へ写す。捨てていた頃は
+  // 手元の run 中に錠前が出ず、他人がこの Mac へディスパッチしていても配信が畳まれなかった
+  const machine = event.machine ?? LOCAL_MACHINE_KEY;
   if (!event.observed) {
     // **控えを消さない** —— 消すと「一度も聞いていない機械」(= 配信してよい)と同じになり、
     // run の最中に子が落ちただけで**配信が再開する**(2026-08-31 のレビュー指摘)。
     // **直前に分かっていた値は残す**(捨てると「不明」と「空きだと分かっている」が同じ形になる)。
     // 残した値を**事実として出してはいけない** —— 表示と確認は isConfirmedHeld を通す
-    const previous = current.get(event.machine);
-    next.set(event.machine, { ...(previous ?? { held: false, mine: false }), observed: false });
+    const previous = current.get(machine);
+    next.set(machine, { ...(previous ?? { held: false, mine: false }), observed: false });
     return next;
   }
-  next.set(event.machine, {
+  next.set(machine, {
     observed: true,
     held: event.held,
     issuer: event.issuer,
@@ -91,7 +94,11 @@ export function occupiedMachines(locks: ReadonlyMap<string, MachineLock>): Set<s
 /** 配信を畳む機械(「ライブ更新」チェックボックスの反映)。OFF = occupiedMachines と同じ
  * (保持者を問わない)。ON = **他人の run の機械だけ**畳む —— 他人の run を配信で赤くしない
  * (共有ランナーの規律。docs/remote-runner.md §18.7)。観測できない機械は保持者も分からないので
- * ON でも畳む(`mine` は「他人」と「不明」を区別しない)。 */
+ * ON でも畳む(`mine` は「他人」と「不明」を区別しない)。
+ *
+ * **手元(`LOCAL_MACHINE_KEY`)も同じ規則で通る** —— 自分の run は `mine:true` なので ON では
+ * 畳まれず(ユーザー決定 2026-09-17「自分の run のぶんは利用者が選ぶ」)、他人がこの Mac へ
+ * ディスパッチして保持しているときだけ畳む。この3ケースは machineLockModel.test.mjs が等号固定。 */
 export function streamFoldMachines(
   locks: ReadonlyMap<string, MachineLock>,
   showStreamDuringRun: boolean,

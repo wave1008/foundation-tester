@@ -1,12 +1,14 @@
 // HostOccupancy.swift
-// 「今このランナー機で誰かのディスパッチが走っているか」を、**その機械の上のローカルなファイル
-// 読みだけで**判定する(docs/remote-runner.md §18.2 の M2「占有表示・配信の自動退避」)。
+// 「今この機械で誰かの run が走っているか」を、**その機械の上のローカルなファイル読みだけで**
+// 判定する(docs/remote-runner.md §18.7 の M2「占有表示・配信の自動退避」)。
 //
-// dispatch.lock は機械に1本(RemoteDispatchLock。ランナーの `~/.fleetest/`)で、その info.json は
-// ランナーのディスクにある。
-// ランナーで動いている子プロセス(fan-out の `api monitor` / `api device-stream`)は **ssh を
-// 1本も足さずに**読めるので、手元から監視間隔ごとに覗きに行く形にはしない(ssh の churn を
-// 作らない = docs/remote-runner.md §13 の規律)。
+// dispatch.lock は機械に1本(RemoteDispatchLock。`~/.fleetest/`)で、**リモートへのディスパッチも
+// ローカル run も同じ1本を取る**(CLAUDE.md「1マシンで同時に走る run は1本」)。
+// だから**手元も観測の対象**で、「ランナー機の文脈か」(FT_RUNNER_BASE)は占有を配るかどうかの
+// 条件にしない —— 手元の run も占有である。
+// その機械で動いているプロセス(手元の `api monitor` / fan-out の子)は **ssh を1本も足さずに**
+// 読めるので、手元から監視間隔ごとに覗きに行く形にはしない(ssh の churn を作らない =
+// docs/remote-runner.md §13 の規律)。
 //
 // **保持者が誰かは表示専用**(RemoteDispatchLockInfo と同じ規律 —— pid も issuer も自己申告)。
 // 配信の退避は**保持者が誰かによらず**効かせる: 配信とテストの干渉は他人の run でも自分の run
@@ -14,12 +16,12 @@
 // 実際に赤になった」)。`mine` は文言と破壊的操作の確認にだけ使う。
 //
 // **この判定は「出れば占有」であって「出なければ空き」ではない**: dispatch.lock を取らない
-// 経路(ランナー機で人が直に打った `fleetest run`)は写らない。
+// 経路(`--force-lock` で押し切った run・MCP の `ft_*`)は写らない。
 
 import Foundation
 import FTCore
 
-/// ランナー機の占有状態(その機械の dispatch.lock 1本の要約)。NDJSON へそのまま載せるので Codable。
+/// 機械の占有状態(その機械の dispatch.lock 1本の要約)。NDJSON へそのまま載せるので Codable。
 public struct HostOccupancy: Equatable, Sendable, Codable {
     public let held: Bool
     /// 保持者の自己申告 issuerId。旧 info.json(issuer キーが無い)や読めなかったときは nil
@@ -56,18 +58,14 @@ public struct HostOccupancy: Equatable, Sendable, Codable {
                              mine: info.issuer.map { $0 == myIssuer } ?? false)
     }
 
-    /// ランナー機のディスクから読む(I/O はここだけ。判定は interpret)。
-    /// `runnerBase` が nil(= 手元で走っている。FT_RUNNER_BASE 未設定)なら nil を返し、
-    /// 呼び出し側は「占有の概念が無い」として何も出さない。
-    ///
-    /// **`runnerBase` は「ランナー機の文脈か」の判定にだけ使う**(ロックの置き場ではない ——
-    /// ロックは機械グローバルな `~/.fleetest` に1本。`RemoteDispatchLock.lockDirPath`)。
-    /// ここは**そのロックが守る機械の上で**走っている子なので、読むのは自分の `$HOME`。
-    /// `home` はテスト用の差し替え口
-    public static func read(runnerBase: String?, myIssuer: String,
+    /// この機械のディスクから読む(I/O はここだけ。判定は interpret)。**読むのは自分の `$HOME`**
+    /// —— ロックは機械グローバルな `~/.fleetest` に1本(`RemoteDispatchLock.lockDirPath`)で、
+    /// 手元でもランナー機でも同じ1本。**「ランナー機の文脈か」(`RunnerBase`)は条件にしない**
+    /// = 手元の run も占有なので、ここで黙ると錠前も配信の退避も手元にだけ効かなくなる。
+    /// `home` / `fileManager` はテスト用の差し替え口
+    public static func read(myIssuer: String,
                             home: URL = FileManager.default.homeDirectoryForCurrentUser,
-                            fileManager: FileManager = .default) -> HostOccupancy? {
-        guard runnerBase != nil else { return nil }
+                            fileManager: FileManager = .default) -> HostOccupancy {
         let dir = RemoteDispatchLock.lockDirPath(home: home.path)
         var isDirectory: ObjCBool = false
         let exists = fileManager.fileExists(atPath: dir, isDirectory: &isDirectory) && isDirectory.boolValue
@@ -119,9 +117,11 @@ public enum RemoteDestructiveGuard {
 /// **手元実行では未設定**なので、この値の有無がそのまま「ランナー機の文脈か」の判定になる。
 /// 発行側の export は RemoteShell.remoteRunCommand / remoteExecCommand の1箇所。
 ///
-/// **役割は2つに減った**: ①ランナー機の文脈かの判定(`HostOccupancy.read` —— 手元には占有の
-/// 概念が無い)②配信の控えの置き場(`FTCore.StreamLease`)。dispatch.lock / dispatch.queue は
-/// ロックは機械グローバルな `~/.fleetest` にあるので、**この値から場所を導く読み手は居ない**
+/// **役割は1つだけになった**: 配信の控え(`FTCore.StreamLease`)の置き場。
+/// dispatch.lock / dispatch.queue は機械グローバルな `~/.fleetest` にあるので**この値から場所を
+/// 導く読み手は居ない**し、**占有(`HostOccupancy`)を配るかどうかの判定にも使わない** ——
+/// ロックが機械に1本で手元の run も同じ1本を取る以上、「ランナー機の文脈か」は占有の有無と
+/// 無関係(手元で黙ると錠前と配信の退避が手元にだけ効かない)。
 public enum RunnerBase {
     public static let environmentKey = "FT_RUNNER_BASE"
 

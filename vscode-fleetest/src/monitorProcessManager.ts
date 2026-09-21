@@ -20,6 +20,7 @@ import {
   toWebviewMessage,
 } from "./monitorModel";
 import { type MachineLock, applyMachineLockEvent, isConfirmedHeld, localDevicesInRun } from "./machineLockModel";
+import { LOCAL_MACHINE_KEY } from "./runBoardModel";
 import { NdjsonParser, abbreviateLogLine } from "./ndjson";
 import type { MonitorPanelDeps } from "./monitorPanel";
 
@@ -150,9 +151,10 @@ export type HostMetricsToWebviewMessage =
     }
   /** 行の集合(手元 + このリモート機。値より先に配る)。消えた機械の行は webview 側で捨てる。 */
   | { readonly type: "hostMetricsMachines"; readonly machines: readonly string[] }
-  /** その機械で誰かの run(dispatch)が走っているか(docs/remote-runner.md §18.2 M2)。
-   *  ツールバーの機械の行に錠前を出す。**held:false は「空き」**で、控えを消す(不明へ戻す)
-   *  ときは送らない —— 表示は「錠前が出るか出ないか」の2値で足りる。 */
+  /** その機械で誰かの run が走っているか(docs/remote-runner.md §18.7 M2)。
+   *  ツールバーの機械の行に錠前を出す(**手元の行も同じ** —— machine は LOCAL_MACHINE_KEY =
+   *  空文字で、hostCharts.js の行キーと一致する)。**held:false は「空き」**で、控えを消す
+   *  (不明へ戻す)ときは送らない —— 表示は「錠前が出るか出ないか」の2値で足りる。 */
   | {
       readonly type: "machineLock";
       readonly machine: string;
@@ -210,8 +212,9 @@ export class MonitorProcessManager {
    * だけのために接続が churn する。
    */
   private hostMetricsMachines: readonly string[] = [];
-  /** リモート機ごとの占有(dispatch.lock)。供給元は monitorLock イベント(docs/remote-runner.md
-   * §18.2 M2)。**控えが無い機械は「不明」**で、空きとは区別する(machineLockModel.ts)。 */
+  /** 機械ごとの占有(dispatch.lock)。供給元は monitorLock イベント(docs/remote-runner.md
+   * §18.7 M2)。**手元も入る**(キーは LOCAL_MACHINE_KEY = 空文字)。
+   * **控えが無い機械は「不明」**で、空きとは区別する(machineLockModel.ts)。 */
   private machineLocks: ReadonlyMap<string, MachineLock> = new Map();
   /**
    * `fleetest monitor pause` の保持中か(供給元は monitorHold イベント)。保持中は観測ごと
@@ -678,8 +681,8 @@ export class MonitorProcessManager {
     }
   }
 
-  /** リモート機で誰かが run を走らせているか。破壊的操作の確認が読む(占有が**不明**の機械は
-   * undefined —— 「走っていない」と請け合わない)。 */
+  /** その機械で誰かが run を走らせているか(手元は LOCAL_MACHINE_KEY)。破壊的操作の確認が
+   * 読む(占有が**不明**の機械は undefined —— 「走っていない」と請け合わない)。 */
   machineLock(machine: string): MachineLock | undefined {
     return this.machineLocks.get(machine);
   }
@@ -703,31 +706,35 @@ export class MonitorProcessManager {
     readonly issuer?: string; readonly issuerHost?: string; readonly acquiredAt?: string;
     readonly mine: boolean;
   }): void {
-    const before = event.machine === undefined ? undefined : this.machineLocks.get(event.machine);
+    // **machine 欠落 = 手元**(LOCAL_MACHINE_KEY)。捨てない —— 手元の run も dispatch.lock を
+    // 取るので、錠前も配信の退避も手元に効かせる(docs/remote-runner.md §18.7)
+    const machine = event.machine ?? LOCAL_MACHINE_KEY;
+    const before = this.machineLocks.get(machine);
     this.machineLocks = applyMachineLockEvent(this.machineLocks, event);
-    const after = event.machine === undefined ? undefined : this.machineLocks.get(event.machine);
+    const after = this.machineLocks.get(machine);
     if (before?.held === after?.held && before?.issuer === after?.issuer
         && before?.observed === after?.observed) {
       return;
     }
-    if (event.machine !== undefined) {
-      // **「終わった」と言うのは、掴んでいたのが解放されたときだけ** —— 起動直後の
-      // 「不明 → 空き」や、観測が途切れただけの遷移で「run が終わりました」と書かない
-      // (毎回の monitor 起動で、走ってもいない run の完了行が機械ぶん並ぶ)
-      if (isConfirmedHeld(after)) {
-        this.deps.outputChannel.appendLine(t(this.monitorHoldActive
-          ? "deviceOps.log.machineLockHeldWhilePaused"
-          : "deviceOps.log.machineLockHeld",
-        { machine: event.machine, issuer: after?.issuer ?? "?" }));
-      } else if (isConfirmedHeld(before) && after?.observed === true) {
-        this.deps.outputChannel.appendLine(
-          t("deviceOps.log.machineLockFree", { machine: event.machine }));
-      }
-      this.deps.post({
-        type: "machineLock", machine: event.machine,
-        held: isConfirmedHeld(after), issuer: after?.issuer, mine: after?.mine ?? false,
-      });
+    // 文言のマシン名スロットに手元を入れる呼び名(既存の1つ。monitorDeviceOps.ts と同じ)
+    const label = machine === LOCAL_MACHINE_KEY ? t("deviceOps.machineLocalLabel") : machine;
+    // **「終わった」と言うのは、掴んでいたのが解放されたときだけ** —— 起動直後の
+    // 「不明 → 空き」や、観測が途切れただけの遷移で「run が終わりました」と書かない
+    // (毎回の monitor 起動で、走ってもいない run の完了行が機械ぶん並ぶ)
+    if (isConfirmedHeld(after)) {
+      this.deps.outputChannel.appendLine(t(this.monitorHoldActive
+        ? "deviceOps.log.machineLockHeldWhilePaused"
+        : "deviceOps.log.machineLockHeld",
+      { machine: label, issuer: after?.issuer ?? "?" }));
+    } else if (isConfirmedHeld(before) && after?.observed === true) {
+      this.deps.outputChannel.appendLine(
+        t("deviceOps.log.machineLockFree", { machine: label }));
     }
+    // webview の行キーは手元が空文字(hostCharts.js の hmRows)。**そのまま渡す**
+    this.deps.post({
+      type: "machineLock", machine,
+      held: isConfirmedHeld(after), issuer: after?.issuer, mine: after?.mine ?? false,
+    });
     this.deps.notifyMachineLocks(this.machineLocks);
   }
 

@@ -1,5 +1,6 @@
-// ランナー機の占有判定(docs/remote-runner.md §18.2 M2)。**ssh を足さずにランナー機の
-// ディスクだけで読む**契約なので、ここで固定するのは「ロックの中身 → 占有状態」の写像だけ。
+// 機械の占有判定(docs/remote-runner.md §18.7 M2)。**ssh を足さずにその機械のディスクだけで
+// 読む**契約なので、ここで固定するのは「ロックの中身 → 占有状態」の写像だけ。
+// **手元も対象**(dispatch.lock は機械に1本で、ローカル run も同じ1本を取る)。
 
 import XCTest
 @testable import FTCore
@@ -57,40 +58,33 @@ final class HostOccupancyTests: XCTestCase {
         XCTAssertFalse(state.mine)
     }
 
-    /// 手元実行(FT_RUNNER_BASE 未設定)には占有の概念が無い ―― nil を返して呼び出し側を黙らせる。
-    /// **ロックが実在しても黙る**(判定に使うのは runnerBase の有無だけ)
-    func testReadWithoutRunnerBaseIsNil() throws {
-        let home = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ft-occupancy-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: home) }
-        try FileManager.default.createDirectory(
-            at: URL(fileURLWithPath: RemoteDispatchLock.lockDirPath(home: home.path)),
-            withIntermediateDirectories: true)
-        XCTAssertNil(HostOccupancy.read(runnerBase: nil, myIssuer: "alice", home: home))
-    }
-
-    /// **読む場所は `<home>/.fleetest/`** —— `runnerBase` が何であれ同じ1本を読む
-    /// (同じ Mac に base を2つ作ってもロックは1本、の読み手側)
-    func testReadFromDiskSeesTheLockDirectory() throws {
+    /// **手元(FT_RUNNER_BASE 未設定)でも読む**(2026-09-21)—— dispatch.lock は機械に1本で、
+    /// リモートへのディスパッチもローカル run も同じ1本を取る。ここを「ランナー機の文脈か」で
+    /// 黙らせていた頃は、手元の run 中に錠前が出ず配信の退避も効かなかった。
+    /// **環境変数を1つも読まない**ことまで固定する(引数から runnerBase が消えている)
+    func testReadSeesTheLockOnTheLocalMachineToo() throws {
         let home = FileManager.default.temporaryDirectory
             .appendingPathComponent("ft-occupancy-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: home) }
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
 
-        XCTAssertEqual(
-            HostOccupancy.read(runnerBase: "/Users/ci/fleetest-runner", myIssuer: "alice", home: home),
-            .free)
+        // FT_RUNNER_BASE が立っていない状態でも「空き」を答える(黙らない = 拡張が
+        // 「不明」と「空き」を区別できる)
+        XCTAssertNil(RunnerBase.fromEnvironment([:]))
+        XCTAssertEqual(HostOccupancy.read(myIssuer: "alice", home: home), .free)
 
         let lockDir = URL(fileURLWithPath: RemoteDispatchLock.lockDirPath(home: home.path))
         try FileManager.default.createDirectory(at: lockDir, withIntermediateDirectories: true)
         try info(issuer: "bob").write(
             toFile: RemoteDispatchLock.infoFilePath(home: home.path), atomically: true, encoding: .utf8)
 
-        for runnerBase in ["/Users/ci/fleetest-runner", "/Volumes/ssd/other-runner"] {
-            let state = HostOccupancy.read(runnerBase: runnerBase, myIssuer: "alice", home: home)
-            XCTAssertEqual(state?.held, true, runnerBase)
-            XCTAssertEqual(state?.issuer, "bob", runnerBase)
-        }
+        let state = HostOccupancy.read(myIssuer: "alice", home: home)
+        XCTAssertEqual(state.held, true)
+        XCTAssertEqual(state.issuer, "bob")
+        XCTAssertFalse(state.mine)
+
+        // 自分のロックなら mine(拡張の「ライブ更新」ON はこの行だけ畳まない)
+        XCTAssertTrue(HostOccupancy.read(myIssuer: "bob", home: home).mine)
     }
 
     // MARK: - RemoteDestructiveGuard(占有中のホストでデバイスを止めない)
@@ -130,8 +124,8 @@ final class HostOccupancyTests: XCTestCase {
         XCTAssertTrue(message.contains("bob"), message)
     }
 
-    /// **役割は「ランナー機の文脈か」の判定と StreamLease の置き場だけ**
-    /// (dispatch.lock / dispatch.queue の場所はここから導かない)
+    /// **役割は StreamLease の置き場だけ**(dispatch.lock / dispatch.queue の場所も、
+    /// 占有を配るかどうかも、ここからは導かない)
     func testRunnerBaseReadsTheEnvironmentKey() {
         XCTAssertEqual(RunnerBase.fromEnvironment(["FT_RUNNER_BASE": "/Users/ci/fleetest-runner"]),
                        "/Users/ci/fleetest-runner")

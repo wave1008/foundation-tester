@@ -24,6 +24,7 @@ import { t } from "./i18n";
 import type { MonitorDevice, MonitorPlatform } from "./monitorModel";
 import type { MonitorPanelDeps } from "./monitorPanel";
 import { admitStreamStarts } from "./remoteStreamAdmission";
+import { LOCAL_MACHINE_KEY } from "./runBoardModel";
 
 /** applyDevices が1サイクル分の qualifying 判定と同時に組み立てる、起動に必要な情報一式。 */
 interface QualifyingTarget {
@@ -87,7 +88,8 @@ export class MonitorDeviceStreamController {
     return this.streamingDeviceIds.has(deviceId);
   }
 
-  /** 占有中のリモート機を差し替える(MonitorProcessManager → MonitorPanelDeps.notifyMachineLocks)。
+  /** 占有中の機械(手元は LOCAL_MACHINE_KEY)を差し替える
+   * (MonitorProcessManager → MonitorPanelDeps.notifyMachineLocks)。
    * 変化があったときだけ即座に再判定する —— 次の monitorDevices(既定2秒後)を待つと、
    * run が始まった直後に配信が残っている時間ができる。 */
   setOccupiedMachines(machines: ReadonlySet<string>): void {
@@ -162,11 +164,13 @@ export class MonitorDeviceStreamController {
       const codecArgs = codec === "h264" ? ["--codec", "h264"] : [];
       // **占有中の機械・その台自身が run 中・他の発行者が配信中の台は起こさない**(共有ランナー。
       // 「ライブ更新」が ON のとき、occupiedMachines は自分の run のぶんを含まず inRun も見ない。
-      // §18.2 M2)。occupiedMachines(機械単位。dispatch.lock)と inRun(台単位。RunLease)は
-      // 粒度が違う信号で、**どちらか一方が立てば畳む**(手元は machine 無しなので occupiedMachines
-      // では判定できず、inRun がその代わりになる)。qualifying に入れない = 既存のパイプラインも
-      // 下の破棄ループが畳み、タイルはポーリングのフレームで更新され続ける
-      if (device.machine !== undefined && this.occupiedMachines.has(device.machine)) {
+      // §18.7 M2)。occupiedMachines(機械単位。dispatch.lock)と inRun(台単位。RunLease)は
+      // 粒度が違う信号で、**どちらか一方が立てば畳む**。**手元も機械単位で判定する**(台の
+      // machine 欠落は LOCAL_MACHINE_KEY)—— 他人がこの Mac へディスパッチして保持していると
+      // inRun は立たない(RunLease は同じ機械の run が置くが、畳むべき根拠は機械のロック)。
+      // qualifying に入れない = 既存のパイプラインも下の破棄ループが畳み、タイルはポーリングの
+      // フレームで更新され続ける
+      if (this.occupiedMachines.has(device.machine ?? LOCAL_MACHINE_KEY)) {
         continue;
       }
       if (!showStreamDuringRun && device.inRun === true) {

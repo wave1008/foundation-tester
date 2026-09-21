@@ -260,9 +260,9 @@ final class RemoteMonitorFanout: @unchecked Sendable {
               let kind = (try? JSONDecoder().decode(KindOnly.self, from: data))?.kind
         else { return }
         if kind == "monitorLock" {
-            // ランナー機の dispatch.lock の状態(§18.2 M2)。**マシン名は親が埋める** ——
-            // 子は自分を "local" としか名乗れないので、そのまま流すと拡張がどの機械の
-            // 占有か分からない(monitorDevices の id と同じ理由)
+            // ランナー機の dispatch.lock の状態(§18.7 M2)。**マシン名は親が埋める** ——
+            // 子は machine 欄を出さない(= 手元の綴り)ので、そのまま流すと拡張が手元の
+            // 占有として読む(monitorDevices の id・monitorRuns と同じ理由)
             guard var event = try? JSONDecoder().decode(ApiMonitorLockEvent.self, from: data) else {
                 log("[monitor] \(machine): cannot read the remote monitorLock line")
                 return

@@ -1,5 +1,5 @@
 // machineLockModel.test.mjs
-// リモート機の占有(dispatch.lock)の控え(src/machineLockModel.ts)。
+// 機械(手元を含む)の占有(dispatch.lock)の控え(src/machineLockModel.ts)。
 // **「不明」と「空き」を混ぜない**のがこのモデルの要点 —— 破壊的操作の確認が
 // 「走っている run は無い」と誤って請け合わないため。
 
@@ -8,6 +8,7 @@ import { test } from "node:test";
 import {
   applyMachineLockEvent, bulkDownGate, isConfirmedHeld, localDevicesInRun, occupiedMachines, streamFoldMachines, sweepRefusalDetail,
 } from "../src/machineLockModel";
+import { LOCAL_MACHINE_KEY } from "../src/runBoardModel";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,9 +53,39 @@ test("控えに無い機械は配信を止めない", () => {
   assert.equal(isConfirmedHeld(undefined), false);
 });
 
-test("machine の無いイベント(手元)は控えない", () => {
+// **machine 欠落 = 手元**(monitorRuns / monitorDevices と同じ綴り)。手元も dispatch.lock を
+// 取るので捨てない —— 捨てていた頃は手元の run 中に錠前が出ず、他人がこの Mac へディスパッチ
+// していても配信が畳まれなかった
+test("machine の無いイベント(手元)は LOCAL_MACHINE_KEY で控える", () => {
   const locks = applyMachineLockEvent(new Map(), { ...heldEvent, machine: undefined });
-  assert.equal(locks.size, 0);
+  assert.deepEqual([...locks.keys()], [LOCAL_MACHINE_KEY]);
+  assert.equal(locks.get(LOCAL_MACHINE_KEY).held, true);
+  assert.equal(locks.get(LOCAL_MACHINE_KEY).issuer, "bob");
+  assert.deepEqual([...occupiedMachines(locks)], [LOCAL_MACHINE_KEY]);
+  // observed:false(監視プロセスが落ちた)も手元の控えへ畳む = 不明へ戻す
+  const gone = applyMachineLockEvent(locks, { ...heldEvent, machine: undefined, observed: false, held: false });
+  assert.equal(gone.get(LOCAL_MACHINE_KEY).observed, false);
+  assert.equal(gone.get(LOCAL_MACHINE_KEY).held, true, "直前に分かっていた値は残す");
+});
+
+// **3ケースを等号で固定する**(この経路は手元の占有を配るまで1度も通っていなかった)。
+// ①自分の run 中の手元は畳まない(ユーザー決定 2026-09-17「自分の run のぶんはライブ更新で
+// 利用者が選ぶ」)②他人がこの Mac へディスパッチしている手元は畳む ③ライブ更新 OFF は全台畳む
+test("streamFoldMachines: 手元も同じ規則(自分の run は畳まない・他人の run は畳む・OFF は全台)", () => {
+  const localMine = applyMachineLockEvent(
+    new Map(), { ...heldEvent, machine: undefined, issuer: "alice", mine: true });
+  assert.deepEqual([...streamFoldMachines(localMine, true)], [],
+    "自分の run 中の手元は畳まない");
+
+  const localOther = applyMachineLockEvent(
+    new Map(), { ...heldEvent, machine: undefined, issuer: "bob", mine: false });
+  assert.deepEqual([...streamFoldMachines(localOther, true)], [LOCAL_MACHINE_KEY],
+    "他人がこの Mac へディスパッチして保持している間は畳む");
+
+  let both = applyMachineLockEvent(new Map(), { ...heldEvent, machine: undefined, issuer: "alice", mine: true });
+  both = applyMachineLockEvent(both, { ...heldEvent, machine: "M1Max", issuer: "alice", mine: true });
+  assert.deepEqual([...streamFoldMachines(both, false)].sort(), [LOCAL_MACHINE_KEY, "M1Max"].sort(),
+    "ライブ更新 OFF は保持者を問わず全台畳む(手元も)");
 });
 
 // 自分の run でも配信との干渉は同じなので、退避の対象からは外さない

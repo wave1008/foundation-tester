@@ -966,7 +966,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     /// ランナー機の base を子へ渡す(FTCore.RunnerBase)。**run と exec の両方**に無いと、
-    /// その経路の子だけ dispatch.lock を読めず、占有中でも配信を張り続ける(§18.2 M2)
+    /// その経路の子だけ StreamLease の控えを読み書きできず、二重配信を止められない(§18.7 M2)
     func testBothRemoteCommandsExportTheRunnerBase() {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         for command in [RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: ["run"]),

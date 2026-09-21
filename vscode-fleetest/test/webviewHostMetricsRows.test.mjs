@@ -188,6 +188,25 @@ test("占有の錠前は行より先に届いても出る(行の生成時に貼�
   assert.equal(chip.getAttribute("data-hover-tip"), null, "空きの錠前に説明を残さない");
 });
 
+// **手元の行にも同じ規則で錠前が出る**(2026-09-21)。dispatch.lock は機械に1本で、
+// リモートへのディスパッチもローカル run も同じ1本を取るので、手元も占有になりうる。
+// 行キーは空文字(CLI は monitorLock の machine 欄を出さない = 手元の綴り)
+test("手元の行にも錠前が出る(機械名のスロットには行の呼び名を入れる)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  send(window, { type: "machineLock", machine: "", held: true, issuer: "alice", mine: true });
+
+  const chip = rowFor(document, "").querySelector(".hm-lock");
+  assert.ok(chip.classList.contains("hm-lock-on"), "手元の行にも錠前が点く");
+  assert.match(chip.getAttribute("data-hover-tip"), /local/,
+    "空文字の行キーをそのまま文言へ入れない(呼び名は 'local')");
+
+  send(window, { type: "machineLock", machine: "", held: false, mine: true });
+  assert.equal(chip.classList.contains("hm-lock-on"), false, "解放で消える");
+  assert.equal(chip.getAttribute("data-hover-tip"), null);
+});
+
 // 「マシン有効」off の印(⊘)。remoteConfig は行の前にも後にも届く。印は全行に枠があり可視性だけ切り替える
 test("マシン有効が off の機械の行にだけ無効の印が点く(行の前後どちらに届いても)", (t) => {
   const { window, document } = createWebview();

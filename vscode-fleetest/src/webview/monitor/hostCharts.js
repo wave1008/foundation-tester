@@ -137,7 +137,8 @@ function hmSyncMultiClass() {
 }
 
 /**
- * その機械で誰かの run が走っていることを、機械名の隣の錠前で出す(docs/remote-runner.md §18.2)。
+ * その機械で誰かの run が走っていることを、機械名の隣の錠前で出す(docs/remote-runner.md §18.7)。
+ * **手元の行も同じ**(キーは空文字)—— dispatch.lock は機械に1本で、ローカル run も取る。
  * **出るのは「占有中」のときだけ**(空きは無印)。ライブ配信はこの間ホスト側で畳まれ、タイルは
  * ポーリングで更新され続ける ―― その理由が画面のどこにも無いと「映像が止まった」に見える。
  * 対向: monitorProcessManager.ts の machineLock メッセージ。
@@ -170,13 +171,15 @@ function hmApplyLock(row, machine) {
   }
   const lock = hmLocks.get(machine);
   chip.classList.toggle('hm-lock-on', !!lock);
+  // 手元の行キーは空文字なので、名前のスロットには行の呼び名を入れる(hmApplyDisabled と同じ)
+  const label = machine === '' ? HM_LOCAL_LABEL : machine;
   // **説明はタイルと同じ自前ツールチップ**(0.2 秒)。ネイティブ `title` は遅延が約1秒で
   // 指定できず、この錠前のような小さい的では「乗せても何も出ない」に見える(2026-08-31 の指摘)
   setHoverTip(chip, lock
     ? (lock.mine
-      ? t('wvMonitor2.hostCharts.lockMine', { machine })
+      ? t('wvMonitor2.hostCharts.lockMine', { machine: label })
       : t('wvMonitor2.hostCharts.lockOther', {
-        machine, issuer: lock.issuer || t('wvMonitor2.hostCharts.lockIssuerUnknown'),
+        machine: label, issuer: lock.issuer || t('wvMonitor2.hostCharts.lockIssuerUnknown'),
       }))
     : '');
 }

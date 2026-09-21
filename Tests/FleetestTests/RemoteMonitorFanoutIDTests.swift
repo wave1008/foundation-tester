@@ -5,6 +5,7 @@
 
 import XCTest
 import FTCore
+import FTRemote
 import FTTestSupport
 @testable import fleetest
 
@@ -71,6 +72,32 @@ final class RemoteMonitorFanoutIDTests: XCTestCase {
         XCTAssertTrue(line.contains(#""machine":"M1Ultra""#), line)
         XCTAssertTrue(line.contains(#""issuer":"bob""#), line)
         XCTAssertTrue(line.contains(#""held":true"#), line)
+    }
+
+    /// **手元の綴りは「machine 欄を出さない」**(monitorRuns / monitorDevices と同じ。拡張の
+    /// runBoardModel.LOCAL_MACHINE_KEY へ写る)。ここで "local" のような別名を入れると、
+    /// ①拡張のホスト負荷グラフの手元の行(キーは空文字)に錠前が付かない ②中継が上書きする
+    /// 前提(RemoteMonitorFanout.ingest)と綴りが2通りになる
+    func testLocalLockLineOmitsTheMachineField() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let occupancy = HostOccupancy(held: true, issuer: "alice", issuerHost: "dev-mbp",
+                                      acquiredAt: "2026-09-21T00:00:00Z", mine: true)
+        let line = String(decoding: try encoder.encode(ApiMonitorLockEvent(occupancy: occupancy)),
+                          as: UTF8.self)
+        XCTAssertFalse(line.contains("\"machine\""), line)
+        XCTAssertTrue(line.contains(#""observed":true"#), line)
+        XCTAssertTrue(line.contains(#""mine":true"#), line)
+        // **中継はこの行をそのまま機械名付きに直せる**(片方だけ変えない)
+        let relayed = LockedBox<[String]>([])
+        let fanout = RemoteMonitorFanout(machines: ["M1Ultra"], project: "P", profile: nil,
+                                         interval: 2, maxWidth: 960,
+                                         log: { _ in }, relayLine: { l in relayed.mutate { $0.append(l) } })
+        fanout.ingest(line: line, machine: "M1Ultra")
+        guard let stamped = relayed.value.first, relayed.value.count == 1 else {
+            return XCTFail("expected exactly one relayed line: \(relayed.value)")
+        }
+        XCTAssertTrue(stamped.contains(#""machine":"M1Ultra""#), stamped)
     }
 
     /// 子が落ちたら「もう観測できていない」を1行流す。**held:false を空きと読ませないため

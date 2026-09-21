@@ -1280,11 +1280,10 @@ public enum RemoteShell {
         owner.map { "export \(StreamOwner.environmentKey)=\(quote($0)) && " } ?? ""
     }
 
-    /// ランナー機の base を子へ渡す(FTCore.RunnerBase)。**手元実行では存在しない値**なので、
-    /// 子はこの有無で「ランナー機の上に居るか」を判定でき、その機械の dispatch.lock
-    /// (`~/.fleetest/`)を ssh 無しで読める(docs/remote-runner.md §18.2)。**場所はこの値から
-    /// 導かない** —— 渡しているのは文脈の印と配信の控えの置き場(StreamLease)。run/exec の
-    /// 両方に置く —— 片方だけだと、その経路の子だけ占有が見えないまま配信を張り続ける
+    /// ランナー機の base を子へ渡す(FTCore.RunnerBase)。**用途は配信の控え(StreamLease)の
+    /// 置き場だけ**(docs/remote-runner.md §18.7)—— dispatch.lock は機械グローバルな
+    /// `~/.fleetest/` に1本なので、占有はこの値と無関係に読む。run/exec の両方に置く ——
+    /// 片方だけだと、その経路の子だけ「他人が配信中」を見られず二重配信を止められない
     private static func runnerBaseCmd(layout: RemoteLayout) -> String {
         "export \(RunnerBase.environmentKey)=\(quote(layout.base)) && "
     }

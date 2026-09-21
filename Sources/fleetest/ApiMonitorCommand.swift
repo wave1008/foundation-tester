@@ -170,13 +170,17 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         var lastHoldActive = false
         // 直近サイクルで id 衝突により落とした合成デバイスの警告(変化したときだけ出す)
         var lastSkipped: Set<String> = []
-        // **ランナー機の上で走っているときだけ**(FT_RUNNER_BASE が立っている = 発行側の
-        // remoteExecCommand から起こされた子)、その機械の dispatch.lock を毎周期読んで
-        // monitorLock を出す。手元では nil のまま = 1行も出ない(docs/remote-runner.md §18.2)。
-        // **ssh は増えない**(ローカルのファイル読み)。親は RemoteMonitorFanout がマシン名を
-        // 埋めて中継し、拡張がそのマシンの配信を畳む
-        let runnerBase = RunnerBase.fromEnvironment()
+        // その機械の dispatch.lock を毎周期読んで monitorLock を出す。**FT_RUNNER_BASE に
+        // 依存しない**(2026-09-21)—— ロックは機械に1本で、リモートへのディスパッチも
+        // ローカル run も同じ1本を取る(CLAUDE.md「1マシンで同時に走る run は1本」)ので、
+        // **手元の run も占有**。黙ると錠前と配信の退避が手元にだけ効かない。
+        // **ssh は増えない**(ローカルのファイル読み)。`machine` は埋めない = 欠落が手元の綴り
+        // (monitorRuns / monitorDevices と同じ)で、リモートぶんは RemoteMonitorFanout が
+        // 中継しながら機械名を埋める
         let myIssuer = LocalConfig.resolveIssuerId()
+        // **StreamLease の控えの置き場だけ**に使う(FTCore.RunnerBase の唯一の役割)。
+        // 手元では nil = 「他の発行者が配信中か」は分からない
+        let runnerBase = RunnerBase.fromEnvironment()
         var lastOccupancy: HostOccupancy?
         // フリート横断の run 進捗(docs/design.md §18)。**FT_RUNNER_BASE に依存しない** ——
         // dispatch.lock と違い、手元(FT_RUNNER_BASE 未設定)で走る CLI 実行の run もここで見せる
@@ -192,14 +196,14 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // (monitorLock の lastOccupancy が Optional なのと同じ理由)
         var lastRunRecords: [RunProgressRecord]?
         while !stop.isSet {
-            if let occupancy = HostOccupancy.read(runnerBase: runnerBase, myIssuer: myIssuer),
-               occupancy != lastOccupancy {
+            let occupancy = HostOccupancy.read(myIssuer: myIssuer)
+            if occupancy != lastOccupancy {
                 lastOccupancy = occupancy
                 emitLine(ApiMonitorLockEvent(occupancy: occupancy))
                 logStderr(occupancy.held
-                    ? "[monitor] A dispatch holds this runner's lock"
+                    ? "[monitor] A run holds this machine's dispatch lock"
                       + " (\(occupancy.issuer ?? "holder unknown")) — the extension stops live streams here"
-                    : "[monitor] This runner's dispatch lock is free")
+                    : "[monitor] This machine's dispatch lock is free")
             }
             let currentRunRecords = RunProgressLedger.readAll(directory: runProgressDir)
                 .sorted { $0.pid < $1.pid }
@@ -1721,10 +1725,16 @@ struct ApiMonitorDevicesEvent: Codable {
     let devices: [ApiMonitorDeviceInfo]
 }
 
-/// ランナー機の dispatch.lock の状態変化(docs/remote-runner.md §18.2 M2)。
-/// **ランナー機で走っている子だけが出す**(手元には dispatch.lock という概念が無い)。
+/// 機械の dispatch.lock の状態変化(docs/remote-runner.md §18.7 M2)。**手元でも出す** ——
+/// ロックは機械に1本で、リモートへのディスパッチもローカル run も同じ1本を取る。
 /// `machine` は **var** —— 子は自分の機械名を知らない(畳んだプロファイルでは "local")ので、
 /// 中継する RemoteMonitorFanout が埋める(monitorDevices・monitorFrame と同じ規律)。
+/// **欠落 = 手元**(monitorRuns / monitorDevices と同じ綴り。拡張は runBoardModel の
+/// LOCAL_MACHINE_KEY へ写す)。
+///
+/// **ProtocolVersion は上げない**(2026-09-21 の「手元でも出す」): 欄は1つも増減せず型も
+/// 変わらず、`machine` 欠落は fan-out の子が中継前に出していた既存の形そのまま。増えたのは
+/// **この行が出てくる場所**だけで、欄の取りうる値も読み替えも足していない。
 /// 同期相手: vscode-fleetest/src/monitorDeviceModel.ts(isMonitorEvent)
 struct ApiMonitorLockEvent: Codable {
     private(set) var kind = "monitorLock"

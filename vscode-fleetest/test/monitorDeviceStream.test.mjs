@@ -447,9 +447,9 @@ test("リモートの実機は設定に関わらず MJPEG で張る — h264 を
 });
 
 // --- run 中の台の配信退避(手元・リモート共通の inRun 信号) -----------------------------
-// occupiedMachines(機械単位。共有ランナーの dispatch.lock)と inRun(台単位。RunLease)は
-// 粒度が違う信号で、どちらか一方が立てば畳む。手元の台は machine が無く occupiedMachines では
-// 判定できないため、この信号が無いと「手元だけ run 中も配信が張りっぱなし」になる
+// occupiedMachines(機械単位。dispatch.lock)と inRun(台単位。RunLease)は粒度が違う信号で、
+// どちらか一方が立てば畳む。**手元も両方の信号を持つ**(2026-09-21 に手元の占有も配るように
+// なった)が、inRun が無いと「手元だけ run 中も配信が張りっぱなし」になる
 // (実測: 手元 8 台の stale-screenshot 注記がリモートの 5〜14 倍)。
 
 test("inRun:true の手元の台は配信を起こさない", async () => {
@@ -460,6 +460,29 @@ test("inRun:true の手元の台は配信を起こさない", async () => {
     controller.applyDevices([{ ...iosDevice, inRun: true }]);
     assert.equal(await waitForArgv(dir, "fleetest-simstream", 300), undefined,
       "run 中の台にヘルパーを起こしてはいけない");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// **手元の占有(dispatch.lock)でも畳む**(2026-09-21)。他人がこの Mac へディスパッチしている
+// ときは手元の RunLease が立たない台もあるので、機械単位の信号がここで効く。手元の台は
+// machine 欄が無いので LOCAL_MACHINE_KEY(空文字)で引く
+test("手元の占有(空文字の機械)でも配信を起こさない", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir();
+  const { deps } = makeDeps(binaryPath);
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.setOccupiedMachines(new Set([""]));
+    controller.applyDevices([iosDevice]);
+    assert.equal(await waitForArgv(dir, "fleetest-simstream", 300), undefined,
+      "占有中の手元にヘルパーを起こしてはいけない");
+
+    // 陰性対照: 占有が外れれば従来どおり張る(「常に畳む」側へ倒れていない)
+    controller.setOccupiedMachines(new Set());
+    controller.applyDevices([iosDevice]);
+    assert.ok(await waitForArgv(dir, "fleetest-simstream"), "解放で配信が戻る");
   } finally {
     controller.setVisible(false);
     fs.rmSync(dir, { recursive: true, force: true });
