@@ -27,10 +27,17 @@ enum LiveSessionTarget {
     /// アプリの `.state` は `.runningForeground` のまま(BridgeRouter.handleAppState)で、前面判定
     /// だけでは向き先が変わらない。アプリを向いたままだとアラートは木に1要素も載らず、
     /// 要素一覧に出ないし ref でも叩けない。
+    ///
+    /// - frontmost: preferred 以外のアプリが前面にいるならその bundle ID(FrontmostApp)。
+    ///   **駆動対象でないアプリ(設定アプリ等)を開いている間も木を読めるようにするため**に要る ——
+    ///   springboard へ倒すと操作は絶対座標で届くが、木は SpringBoard 自身の UI しか持たない。
+    ///   アラート中は使わない(アラートを載せているのは SpringBoard のほう)。
     static func retarget(sessionTarget: String?, preferred: String?,
-                         preferredIsForeground: Bool, systemAlertPresent: Bool) -> String? {
+                         preferredIsForeground: Bool, systemAlertPresent: Bool,
+                         frontmost: String?) -> String? {
         let onTheApp = preferredIsForeground && !systemAlertPresent
-        let desired = (onTheApp ? preferred : nil) ?? springboard
+        let other = systemAlertPresent ? nil : frontmost
+        let desired = (onTheApp ? preferred : nil) ?? other ?? springboard
         return desired == sessionTarget ? nil : desired
     }
 }
@@ -44,9 +51,14 @@ final class LiveSessionFollower {
     /// これで決めるので外へ出す(ApiLiveActionResultEvent.app)
     private(set) var sessionTarget: String?
     private var initialized = false
+    /// 直近に見つけた前面アプリ(preferred 以外)。次回はこれを1回聞くだけで済ませる。
+    private var lastFrontmost: String?
+    /// 起動中アプリを列挙するための simctl の宛先。nil = 列挙しない(実機・未指定)
+    private let udid: String?
     private let log: (String) -> Void
 
-    init(log: @escaping (String) -> Void) {
+    init(udid: String?, log: @escaping (String) -> Void) {
+        self.udid = udid
         self.log = log
     }
 
@@ -68,9 +80,15 @@ final class LiveSessionFollower {
         if foreground {
             systemAlertPresent = ((try? await driver.systemAlert()) ?? nil)?.present ?? false
         }
+        // preferred が前面でなく、アラートも出ていないなら「別のアプリを見ている」可能性がある。
+        // **そのときだけ探す**(毎回 simctl と IPC を払わない)
+        var frontmost: String?
+        if !foreground && !systemAlertPresent {
+            frontmost = await frontmostApp(driver: driver)
+        }
         guard let target = LiveSessionTarget.retarget(
             sessionTarget: sessionTarget, preferred: preferred, preferredIsForeground: foreground,
-            systemAlertPresent: systemAlertPresent) else { return }
+            systemAlertPresent: systemAlertPresent, frontmost: frontmost) else { return }
         do {
             if target == LiveSessionTarget.springboard {
                 // springboard は**起動せず参照だけ**(BridgeRouter.handleLaunch)。
@@ -85,6 +103,33 @@ final class LiveSessionFollower {
         } catch {
             log("could not point the session at \(target): \(error.localizedDescription)")
         }
+    }
+
+    /// 今 前面にあるアプリ(preferred 以外)。**公開 API だけで採る** —— 手順と根拠は FrontmostApp。
+    /// 見つからなければ nil(呼び手は springboard へ倒す = 従来どおり)。
+    ///
+    /// **直近の答えを先に1回だけ確かめる** —— 同じアプリを見ている間は IPC 1 回で済み、
+    /// 起動中アプリの列挙(simctl spawn)も全候補への問い合わせも払わない。
+    private func frontmostApp(driver: AppDriver) async -> String? {
+        if let last = lastFrontmost,
+           (try? await driver.isAppForeground(bundleID: last)) == true {
+            return last
+        }
+        lastFrontmost = nil
+        guard let udid else { return nil }
+        guard let listing = try? Shell.run(
+            ["xcrun", "simctl", "spawn", udid, "launchctl", "list"], timeout: 10), listing.status == 0
+        else { return nil }
+        var foreground: [String] = []
+        for bundleID in FrontmostApp.candidates(launchctlOutput: listing.output) {
+            if (try? await driver.isAppForeground(bundleID: bundleID)) == true {
+                foreground.append(bundleID)
+            }
+        }
+        let picked = FrontmostApp.pick(foreground: foreground)
+        lastFrontmost = picked
+        if let picked { log("frontmost app is \(picked)") }
+        return picked
     }
 
     /// **セッションのアプリを対象に撃つ破壊的な操作**(terminate / clearAppData)の前に、

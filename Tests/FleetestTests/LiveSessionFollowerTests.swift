@@ -12,20 +12,20 @@ final class LiveSessionFollowerTests: XCTestCase {
     func testPointsAtSpringboardWhenTheAppIsNotInFront() {
         XCTAssertEqual(
             LiveSessionTarget.retarget(sessionTarget: "com.example.app", preferred: "com.example.app",
-                                       preferredIsForeground: false, systemAlertPresent: false),
+                                       preferredIsForeground: false, systemAlertPresent: false, frontmost: nil),
             springboard)
     }
 
     func testStaysOnTheAppWhileItIsInFront() {
         XCTAssertNil(
             LiveSessionTarget.retarget(sessionTarget: "com.example.app", preferred: "com.example.app",
-                                       preferredIsForeground: true, systemAlertPresent: false))
+                                       preferredIsForeground: true, systemAlertPresent: false, frontmost: nil))
     }
 
     func testComesBackToTheAppOnceItIsInFrontAgain() {
         XCTAssertEqual(
             LiveSessionTarget.retarget(sessionTarget: springboard, preferred: "com.example.app",
-                                       preferredIsForeground: true, systemAlertPresent: false),
+                                       preferredIsForeground: true, systemAlertPresent: false, frontmost: nil),
             "com.example.app")
     }
 
@@ -34,10 +34,10 @@ final class LiveSessionFollowerTests: XCTestCase {
     func testDoesNotRetargetWhenAlreadyPointedAtSpringboard() {
         XCTAssertNil(
             LiveSessionTarget.retarget(sessionTarget: springboard, preferred: "com.example.app",
-                                       preferredIsForeground: false, systemAlertPresent: false))
+                                       preferredIsForeground: false, systemAlertPresent: false, frontmost: nil))
         XCTAssertNil(
             LiveSessionTarget.retarget(sessionTarget: springboard, preferred: nil,
-                                       preferredIsForeground: false, systemAlertPresent: false))
+                                       preferredIsForeground: false, systemAlertPresent: false, frontmost: nil))
     }
 
     /// **システムアラートが出ている間は springboard へ倒す**。アラートは別プロセスの窓なので
@@ -47,7 +47,7 @@ final class LiveSessionFollowerTests: XCTestCase {
     func testPointsAtSpringboardWhileASystemAlertIsUp() {
         XCTAssertEqual(
             LiveSessionTarget.retarget(sessionTarget: "com.example.app", preferred: "com.example.app",
-                                       preferredIsForeground: true, systemAlertPresent: true),
+                                       preferredIsForeground: true, systemAlertPresent: true, frontmost: nil),
             springboard)
     }
 
@@ -55,7 +55,7 @@ final class LiveSessionFollowerTests: XCTestCase {
     func testComesBackToTheAppOnceTheAlertIsGone() {
         XCTAssertEqual(
             LiveSessionTarget.retarget(sessionTarget: springboard, preferred: "com.example.app",
-                                       preferredIsForeground: true, systemAlertPresent: false),
+                                       preferredIsForeground: true, systemAlertPresent: false, frontmost: nil),
             "com.example.app")
     }
 
@@ -63,15 +63,89 @@ final class LiveSessionFollowerTests: XCTestCase {
     func testDoesNotRetargetWhenAlreadyOnSpringboardDuringAnAlert() {
         XCTAssertNil(
             LiveSessionTarget.retarget(sessionTarget: springboard, preferred: "com.example.app",
-                                       preferredIsForeground: true, systemAlertPresent: true))
+                                       preferredIsForeground: true, systemAlertPresent: true, frontmost: nil))
     }
 
     /// アプリを選んでいない(起動直後・終了後)は画面にあるものを触るだけ。
     /// **前面判定が true でも** preferred が無ければ springboard へ倒す
     func testPointsAtSpringboardWithoutAPreferredApp() {
         XCTAssertEqual(
-            LiveSessionTarget.retarget(sessionTarget: nil, preferred: nil, preferredIsForeground: true, systemAlertPresent: false),
+            LiveSessionTarget.retarget(sessionTarget: nil, preferred: nil, preferredIsForeground: true, systemAlertPresent: false, frontmost: nil),
             springboard)
+    }
+
+    // MARK: - 前面アプリ(駆動対象外のアプリを見ているとき)
+
+    /// 駆動対象でないアプリ(設定アプリ等)が前面なら、そちらへ向ける。springboard へ倒すと
+    /// 操作は絶対座標で届くが木は SpringBoard 自身の UI しか持たず、要素一覧がほぼ空になる
+    /// (2026-09-22 の実害)。
+    func testPointsAtTheFrontmostAppWhenItIsNotThePreferredOne() {
+        XCTAssertEqual(
+            LiveSessionTarget.retarget(sessionTarget: springboard, preferred: "com.example.app",
+                                       preferredIsForeground: false, systemAlertPresent: false,
+                                       frontmost: "com.apple.Preferences"),
+            "com.apple.Preferences")
+    }
+
+    /// 見つからなければ従来どおり springboard(ホーム画面・アプリスイッチャーはこちら)
+    func testFallsBackToSpringboardWithoutAFrontmostApp() {
+        XCTAssertEqual(
+            LiveSessionTarget.retarget(sessionTarget: "com.example.app", preferred: "com.example.app",
+                                       preferredIsForeground: false, systemAlertPresent: false,
+                                       frontmost: nil),
+            springboard)
+    }
+
+    /// **アラート中は frontmost を使わない** —— アラートを載せているのは SpringBoard のほうで、
+    /// 裏のアプリへ向けるとアラートが木から消える
+    func testIgnoresTheFrontmostAppWhileASystemAlertIsUp() {
+        XCTAssertEqual(
+            LiveSessionTarget.retarget(sessionTarget: "com.example.app", preferred: "com.example.app",
+                                       preferredIsForeground: true, systemAlertPresent: true,
+                                       frontmost: "com.apple.Preferences"),
+            springboard)
+    }
+
+    /// 駆動しているアプリが前面ならそのまま(frontmost より preferred が優先)
+    func testPrefersTheDrivenAppOverTheFrontmostLookup() {
+        XCTAssertNil(
+            LiveSessionTarget.retarget(sessionTarget: "com.example.app", preferred: "com.example.app",
+                                       preferredIsForeground: true, systemAlertPresent: false,
+                                       frontmost: "com.apple.Preferences"))
+    }
+
+    // MARK: - 候補の作り方(FrontmostApp)
+
+    /// `launchctl list` は UIKitApplication 以外の行が大半。bundle ID だけを取り出す
+    func testExtractsBundleIDsFromLaunchctlOutput() {
+        let output = """
+        97515	0	UIKitApplication:com.example.ftrunner.uitests.xctrunner[b88c][rb-legacy]
+        95284	0	UIKitApplication:com.apple.Fitness[b41c][rb-legacy]
+        -	0	com.apple.audio.SandboxHelper
+        97784	0	UIKitApplication:com.apple.Preferences[b0d0][rb-legacy]
+        """
+        XCTAssertEqual(FrontmostApp.candidates(launchctlOutput: output),
+                       ["com.apple.Fitness", "com.apple.Preferences"],
+                       "UIKitApplication 行だけを採り、ランナー自身は落とすこと")
+    }
+
+    /// **SpringBoard は常に前面と答える**(system shell なので背面に回らない)。除外しないと
+    /// 必ず2つ以上が前面になり、前面アプリを決められない(実測 2026-09-22)
+    func testPicksTheOnlyForegroundAppExcludingSpringboard() {
+        XCTAssertEqual(
+            FrontmostApp.pick(foreground: [springboard, "com.apple.Preferences"]),
+            "com.apple.Preferences")
+    }
+
+    /// 0個 = アプリは前面にない(ホーム画面)。呼び手は springboard へ倒す
+    func testPicksNothingWhenNoAppIsInFront() {
+        XCTAssertNil(FrontmostApp.pick(foreground: [springboard]))
+        XCTAssertNil(FrontmostApp.pick(foreground: []))
+    }
+
+    /// 2個以上 = 判定材料が足りない。**黙って選ばない**(別のアプリの木を読ませない)
+    func testRefusesWhenSeveralAppsClaimToBeInFront() {
+        XCTAssertNil(FrontmostApp.pick(foreground: ["com.apple.Preferences", "com.apple.Maps"]))
     }
 
     // MARK: - 配線(ソース走査)
@@ -166,5 +240,18 @@ final class LiveSessionFollowerTests: XCTestCase {
         for cmd in ["launch", "activate", "terminate", "clearAppData", "install", "frame", "refresh"] {
             XCTAssertFalse(body.contains("\"\(cmd)\""), "\(cmd) は追従させない")
         }
+    }
+}
+
+/// 前面アプリの探索は **preferred が前面でないときだけ**走らせる。毎回走らせると操作のたびに
+/// simctl spawn と候補ぶんの IPC を払う(体感できる遅さになる)。
+extension LiveSessionFollowerTests {
+    func testLooksForTheFrontmostAppOnlyWhenTheDrivenAppIsNotInFront() throws {
+        let source = try followerSource()
+        XCTAssertTrue(source.contains("if !foreground && !systemAlertPresent {"),
+                      "探索の門(前面でない かつ アラート無し)が無い: \(source.prefix(0))")
+        let gate = try XCTUnwrap(source.range(of: "if !foreground && !systemAlertPresent {"))
+        let call = try XCTUnwrap(source.range(of: "await frontmostApp(driver: driver)"))
+        XCTAssertTrue(gate.lowerBound < call.lowerBound, "門の中で呼ぶこと")
     }
 }
