@@ -421,6 +421,23 @@ function disposeLiveH264() {
   }
 }
 
+// liveModel.ts の pointFromClick / hitTestElement と同じ規則(webview は CSP により import 不可の
+// ため複製。liveModel.ts 側を変更したらここも追随させること)。返すのは ref だけで足りる。
+function hitTestRefAt(clickX, clickY, display) {
+  if (!lastScreen || display.width <= 0 || display.height <= 0) { return null; }
+  const x = Math.min(Math.max((clickX / display.width) * lastScreen.width, 0), lastScreen.width);
+  const y = Math.min(Math.max((clickY / display.height) * lastScreen.height, 0), lastScreen.height);
+  let best = null;
+  let bestArea = Infinity;
+  for (const element of lastElements) {
+    const f = element.frame;
+    if (x < f.x || x > f.x + f.width || y < f.y || y > f.y + f.height) { continue; }
+    const area = f.width * f.height; // 重なりの中で最も具体的なもの = 面積最小
+    if (area < bestArea) { bestArea = area; best = element.ref; }
+  }
+  return best;
+}
+
 // liveModel.ts の frameToDisplayRect と同じ計算(webview は CSP により import 不可のため複製。
 // liveModel.ts 側を変更したらここも追随させること)。
 function frameToDisplayRect(frame, screen, display) {
@@ -524,6 +541,22 @@ function handleScreenPointerDown(event) {
 // 表示中の要素で受けたイベントの currentTarget を rect 計算に使う。
 screenshot.addEventListener('pointerdown', handleScreenPointerDown);
 liveCanvas.addEventListener('pointerdown', handleScreenPointerDown);
+
+// 画像上のホバー = その点の要素(枠と一覧の行を対で光らせる)。**枠自身には当てない** ——
+// SVG に pointer-events を入れると枠がクリックを吸ってタップが飛ばなくなるので、
+// オーバーレイは透過のままにして、ここで当たり判定する。
+function handleScreenHover(event) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  // **枠が OFF でも一覧の行は光らせる**(どの要素を指しているかは分かったほうがよい)。
+  // 違うのは見た目と一覧送りの2つだけ: 赤枠は枠が出ているときだけ(CSS の .boxes-on)、
+  // 一覧のスクロールも同じく ON のときだけ(OFF で勝手に動くと読んでいる場所を見失う)。
+  setHot(hitTestRefAt(event.clientX - rect.left, event.clientY - rect.top,
+                      { width: rect.width, height: rect.height }), showBoxes);
+}
+for (const el of [screenshot, liveCanvas]) {
+  el.addEventListener('pointermove', handleScreenHover);
+  el.addEventListener('pointerleave', () => setHot(null, false));
+}
 window.addEventListener('pointermove', (event) => {
   if (!dragStart || event.pointerId !== dragStart.pointerId) { return; }
   const rect = dragStart.el.getBoundingClientRect();
@@ -609,7 +642,51 @@ function hideHover() {
 // 数百枚になると DOM が重い)。座標は hover 枠と同じ frameToDisplayRect(表示px)。
 // **表示サイズが変わるたびに引き直す**(fitScreenshot・snapshot 受信・トグル操作)。
 
+// 画像上でマウスが載っている要素。枠(SVG rect)と要素一覧の行を**対で**光らせるので、
+// ref → それぞれの DOM を引けるようにしておく(描き直しのたびに作り直す)。
+let hotRef = null;
+const boxByRef = new Map();
+const rowByRef = new Map();
+
+// 強調は**専用の枠を1枚、最前面に重ねて**描く。既存の枠の色を変えるだけだと、SVG は DOM 順に
+// 描かれるので後続の枠の下に隠れる(指した枠が見えないことがある)。
+const hotBox = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+hotBox.setAttribute('class', 'hot');
+
+function applyHot() {
+  hotBox.remove(); // 位置も重なり順も残さない(必要なら下で最後に足し直す)
+  if (hotRef === null) { return; }
+  rowByRef.get(hotRef)?.classList.add('hot');
+  const source = boxByRef.get(hotRef);
+  if (!source) { return; } // 枠を出していない(トグル OFF)ときは行だけ光る
+  for (const attribute of ['x', 'y', 'width', 'height']) {
+    hotBox.setAttribute(attribute, source.getAttribute(attribute));
+  }
+  boxesOverlay.appendChild(hotBox); // **最後に足す = 最前面**
+}
+/** scrollList: 一覧を送ってよいか。**画像側で指したときだけ true** —— 行を直接ホバーしている
+ * 最中に送ると、カーソルの下で一覧が動いて別の行に乗ってしまう。 */
+function setHot(ref, scrollList) {
+  if (ref === hotRef) { return; }
+  if (hotRef !== null) {
+    rowByRef.get(hotRef)?.classList.remove('hot');
+  }
+  hotRef = ref;
+  applyHot();
+  // 一覧の外にある行は見えるところまで送る。**'nearest'** = 既に見えていれば動かさない
+  // (毎回中央に寄せると、マウスを少し動かすだけで一覧が跳ねる)。
+  // 対象が変わった回だけ呼ぶ(applyHot は描き直しからも呼ばれるので、あちらには置かない)。
+  if (ref !== null && scrollList) {
+    rowByRef.get(ref)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+}
+
 function renderBoxes() {
+  boxByRef.clear();
+  hotBox.remove();
+  // 行の見た目(赤枠を出すか)は CSS 側で分ける。**状態は一覧に持たせる** —— 行ごとに
+  // クラスを出し分けると、描き直しのたびに全行へ付け替えることになる
+  elementsList.classList.toggle('boxes-on', showBoxes);
   if (!showBoxes || !lastScreen || lastElements.length === 0) {
     boxesOverlay.classList.remove('visible');
     boxesOverlay.replaceChildren();
@@ -627,43 +704,53 @@ function renderBoxes() {
     node.setAttribute('y', box.y);
     node.setAttribute('width', Math.max(box.width, 1));
     node.setAttribute('height', Math.max(box.height, 1));
+    boxByRef.set(element.ref, node);
     return node;
   });
   boxesOverlay.replaceChildren(...shapes);
   boxesOverlay.classList.add('visible');
+  applyHot();
 }
 
 showBoxesToggle.checked = showBoxes;
 showBoxesToggle.addEventListener('change', () => {
   showBoxes = showBoxesToggle.checked;
   vscode.setState(Object.assign({}, vscode.getState(), { liveShowBoxes: showBoxes }));
+  // ホバー中に切り替えると、行ホバーの出し先(単一枠 ⇄ hot)が入れ替わる。両方畳んでから引き直す
+  setHot(null, false);
+  hideHover();
   renderBoxes();
 });
 
 function renderElements() {
+  rowByRef.clear();
   elementsList.innerHTML = '';
   for (const element of lastElements) {
     const row = document.createElement('div');
     row.className = 'element-row';
-    // 2カラム(本文 | 矩形)。列幅は .elements-list 側が決め、行は subgrid で乗る
-    // = 矩形の開始位置が全行で揃う(liveModel.ts の line / frameText と対)
-    const main = document.createElement('span');
-    main.className = 'element-cell-main';
-    main.textContent = element.line;
+    // 2カラム(矩形 | 本文)。列幅は .elements-list 側が決め、行は subgrid で乗る
+    // = 矩形の幅が全行で揃い、本文の開始位置も揃う(liveModel.ts の frameText / line と対)
     const frameCell = document.createElement('span');
     frameCell.className = 'element-cell-frame';
     frameCell.textContent = element.frameText;
-    row.append(main, frameCell);
-    row.addEventListener('click', () => {
-      if (busy) { return; }
-      for (const r of elementsList.querySelectorAll('.element-row')) { r.classList.remove('selected'); }
-      row.classList.add('selected');
-      post({ type: 'tapRef', ref: element.ref });
+    const main = document.createElement('span');
+    main.className = 'element-cell-main';
+    main.textContent = element.line;
+    row.append(frameCell, main);
+    // **行のクリックでは何もしない**(ユーザー決定 2026-09-22) —— 一覧は読むためのもので、
+    // 触れたつもりのないタップがデバイスへ飛ばないようにする。ホバーで枠を出すだけ。
+    // 枠を出している間(showBoxes)は **hot(赤)へ一本化** —— 単一枠(青)と重ねると同じ要素に
+    // 2つ枠が出る。画像側から指したときと見た目が揃うので、どちらから指しても同じに見える。
+    row.addEventListener('mouseenter', () => {
+      if (showBoxes) { setHot(element.ref, false); } else { showHover(element); }
     });
-    row.addEventListener('mouseenter', () => showHover(element));
-    row.addEventListener('mouseleave', hideHover);
+    row.addEventListener('mouseleave', () => {
+      if (showBoxes) { setHot(null, false); } else { hideHover(); }
+    });
+    rowByRef.set(element.ref, row);
     elementsList.appendChild(row);
   }
+  applyHot();
   renderBoxes();
 }
 

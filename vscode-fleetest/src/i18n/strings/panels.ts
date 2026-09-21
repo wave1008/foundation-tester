@@ -408,7 +408,7 @@ export const panelsStrings = {
     ja: "アプリスイッチャー(タスク一覧)を開きます",
     en: "Open the app switcher (task list)",
   },
-  "panels.live.elementsHeader": { ja: "要素一覧(クリックでタップ)", en: "Elements (click to tap)" },
+  "panels.live.elementsHeader": { ja: "要素一覧", en: "Elements" },
   "panels.live.refreshSnapshot": { ja: "要素一覧を更新", en: "Refresh Elements" },
   "panels.live.refreshSnapshotTitle": {
     ja: "要素一覧とタップ座標を現在の画面で取り直します。映像は自動更新されますが、操作なしで画面が変わった直後(非同期ロード・端末を直接操作など)に押すと要素一覧を拾い直せます。",

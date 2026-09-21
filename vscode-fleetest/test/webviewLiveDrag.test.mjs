@@ -169,6 +169,32 @@ test("clearSnapshot 後は前のデバイスの座標系でタップせず、要
   );
 });
 
+// 要素一覧は**読むためのもの**。行を押しただけでデバイスへタップが飛ぶと、見ているつもりの
+// 操作が画面を変えてしまう(ユーザー決定 2026-09-22 で無効化。見出しからも「クリックでタップ」を外した)。
+test("要素一覧の行をクリックしても何も送らない", (t) => {
+  const { window, document, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
+
+  sendToWebview({
+    ...SNAPSHOT_MESSAGE,
+    message: {
+      ...SNAPSHOT_MESSAGE.message,
+      elements: [
+        { ref: 1, type: "button", label: "ホーム", identifier: "tab_home", value: null,
+          frame: { x: 0, y: 760, width: 134, height: 40 } },
+      ],
+    },
+  });
+  const row = document.querySelector("#live-elements-list .element-row");
+  assert.ok(row, "前提: 行が出ている");
+  const before = liveMessages().length;
+
+  row.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  assert.equal(liveMessages().length, before, "行クリックでは host へ何も送らないこと");
+  assert.ok(!row.classList.contains("selected"), "選択表示も付けないこと");
+});
+
 test("起動時に refreshDevices を送り、「ライブ操作」タブへの切替で visibility:true を送る", (t) => {
   const { window, liveMessages } = createWebview();
   t.after(() => window.close());
