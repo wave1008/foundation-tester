@@ -384,10 +384,14 @@ test("追加ボタンの文言はリモートホストを追加", (t) => {
   t.after(() => window.close());
   const add = document.getElementById("settings-remote-hosts-add");
   assert.match(add.textContent, /リモートホストを追加|Add remote host/);
-  // 追加ボタンはマシン セクションの一番下(表・エラー表示より後)
+  // 追加ボタンは表・エラー表示より後(その下に別の設定項目が並ぶのは構わない ――
+  // 「セクションの最後」で固定すると、マシン セクションへ項目を足すたびにここが落ちる)
   const group = add.closest(".settings-group");
-  const last = group.lastElementChild;
-  assert.ok(last.contains(add), "セクションの最後の要素");
+  for (const before of [group.querySelector(".settings-remote-hosts-table"),
+                        group.querySelector(".settings-remote-hosts-error")]) {
+    assert.ok(before.compareDocumentPosition(add) & window.Node.DOCUMENT_POSITION_FOLLOWING,
+      "追加ボタンは表・エラー表示より後");
+  }
   assert.ok(group.querySelector(".settings-remote-hosts-table").compareDocumentPosition(add)
             & window.Node.DOCUMENT_POSITION_FOLLOWING, "表より下");
 });
@@ -855,4 +859,75 @@ test("remoteConfig の enabled:false はチェックを外した状態で描か�
   const rows = document.querySelectorAll("#settings-remote-hosts-body tr");
   assert.equal(rows[0].querySelectorAll("input")[ENABLED].checked, false);
   assert.equal(rows[1].querySelectorAll("input")[ENABLED].checked, false);
+});
+
+// ---- 順番待ち(fleetest.remoteWaitLock → api run --wait-lock)----------------------
+// **型検査の効かない境界**(webview ⇄ 拡張)なので往復で縛る: webview が送る形が
+// isMonitorFromWebviewMessage を通らないと、画面では値が変わったように見えて設定に届かない。
+
+test("順番待ちの欄がマシンセクションにあり、値と既定が往復する", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  const input = document.getElementById("settings-remote-wait-lock");
+  assert.ok(input, "マシンセクションに順番待ちの入力欄がある");
+  assert.ok(document.getElementById("panel-settings").contains(input));
+  assert.equal(input.type, "number", "秒数なので数値入力(FM 枠・履歴件数と同じ流儀)");
+  assert.equal(input.min, "0", "0 = 待たない を選べる");
+
+  post(window, { type: "remoteWaitLock", value: 900, default: 3600 });
+  assert.equal(input.value, "900", "実際に使う秒数が常に見えている(既定でも空欄にしない)");
+  assert.equal(input.placeholder, "3600", "入力を消した一瞬の保険として既定値も出す");
+
+  post(window, { type: "remoteWaitLock", value: 0, default: 3600 });
+  assert.equal(input.value, "0", "0(待たない)は空欄ではなく 0 と描く");
+});
+
+test("順番待ちの秒数を入れると setRemoteWaitLock が送られ、拡張側のゲートを通る", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((m) => posted.push(m));
+  t.after(() => window.close());
+
+  const input = document.getElementById("settings-remote-wait-lock");
+  for (const [raw, expected] of [["1800", 1800], ["0", 0]]) {
+    posted.length = 0;
+    fillAndCommit(window, input, raw);
+    const messages = posted.filter((m) => m?.type === "setRemoteWaitLock");
+    assert.equal(messages.length, 1, `"${raw}" で1件送る`);
+    assert.equal(messages[0].value, expected);
+    assert.equal(isMonitorFromWebviewMessage(messages[0]), true, `"${raw}" は拡張側のゲートを通る`);
+  }
+});
+
+test("順番待ちの空欄・不正値は null(既定へ戻す)を送り、入力欄に既定値を入れ直す", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((m) => posted.push(m));
+  t.after(() => window.close());
+
+  const input = document.getElementById("settings-remote-wait-lock");
+  post(window, { type: "remoteWaitLock", value: 900, default: 3600 });
+
+  for (const raw of ["", "-1", "abc", "2.5"]) {
+    posted.length = 0;
+    fillAndCommit(window, input, raw);
+    const messages = posted.filter((m) => m?.type === "setRemoteWaitLock");
+    assert.equal(messages.length, 1, `"${raw}" で1件送る`);
+    assert.equal(messages[0].value, null, `"${raw}" は既定へ戻す`);
+    assert.equal(isMonitorFromWebviewMessage(messages[0]), true);
+    assert.equal(input.value, "3600", `"${raw}" は入力欄に既定値を入れ直す`);
+  }
+});
+
+// 走っている他人の run を殺せる導線は GUI に出さない(ユーザー決定。docs/remote-runner.md §18.7)
+test("順番待ちの隣に「奪う」導線を出さない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  // **HTML コメントは剥いでから見る** —— コメントは利用者に見えない(test/i18n.test.mjs が
+  // 残存日本語の走査で HTML コメントを除外するのと同じ理由)。ここで見たいのは UI の導線だけで、
+  // 「奪う口はここに出さない」と書いた保守者向けのコメント自体を禁じたいのではない
+  const panel = document.getElementById("panel-settings");
+  const visible = panel.innerHTML.replace(/<!--[\s\S]*?-->/g, "");
+  assert.ok(!/force-lock|forceLock|ignore-lock/i.test(visible),
+    "--force-lock / --ignore-lock に当たる操作口を設定タブに置かない");
 });

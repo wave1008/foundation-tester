@@ -107,6 +107,10 @@ enum ApiRunMachineFanout {
         let binary = FleetRunner.selfBinaryPath()
         // 束ね鍵はここで1回だけ発行する(理由は DeviceMachineRunner.run の同じ箇所)
         let runGroup = RunRecorder.makeRunGroupID()
+        // dispatch.lock の待機チケットも**ここで1回だけ**採って全ての子へ同じ値を配る
+        // (DispatchTicketIssuer の宣言。機械ごとに採り直すと前後関係が機械によって食い違い、
+        // 2つの run が互いに相手の機械を待つ)
+        let ticket = DispatchTicketIssuer.issue(runGroup: runGroup)
         let (stream, continuation) = AsyncStream<ChildEvent>.makeStream()
         let groupMachines = active.map { $0.group.machine }
 
@@ -138,7 +142,7 @@ enum ApiRunMachineFanout {
                     let start = Date()
                     let exitCode = await runChild(
                         index: position, binary: binary, args: args, machineLabel: group.machineLabel,
-                        continuation: continuation, registry: registry)
+                        ticket: ticket, continuation: continuation, registry: registry)
                     return (position, FleetEntryOutcome(
                         host: group.machineLabel, profile: profileName, exitCode: exitCode,
                         duration: Date().timeIntervalSince(start)))
@@ -217,13 +221,15 @@ enum ApiRunMachineFanout {
 
     /// 子1体ぶん。stdout(NDJSON)は行単位で continuation へ、stderr(診断)はホスト名を前置して
     /// そのまま親の stderr へ流す(stdout は NDJSON 専用の契約なので混ぜない)
+    /// `ticket` は dispatch.lock の待機列の鍵。**親が1回だけ採ったものを受け取るだけ**で、
+    /// ここで採り直さない(DispatchTicketIssuer の宣言)
     private static func runChild(
-        index: Int, binary: String, args: [String], machineLabel: String,
+        index: Int, binary: String, args: [String], machineLabel: String, ticket: DispatchTicket,
         continuation: AsyncStream<ChildEvent>.Continuation, registry: ChildProcessRegistry
     ) async -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
-        process.environment = ParentDeathWatch.childEnvironment()
+        process.environment = DispatchTicketIssuer.childEnvironment(ticket: ticket)
         process.arguments = args
         process.standardInput = FileHandle.nullDevice
         let stdoutPipe = Pipe()

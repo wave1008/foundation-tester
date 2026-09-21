@@ -220,7 +220,9 @@ test("webview: t('...') のキーが webview 辞書に存在する", () => {
 test("lane: tLane('...') のキーが lane 辞書に存在する", () => {
   const laneKeys = new Set(Object.keys(laneStrings));
   const missing = [];
-  for (const rel of ["src/runReducer.ts", "src/runLaneModel.ts"]) {
+  // lane.ts 自身も見る(dispatchWaitingLine のように、辞書ファイル側に1行の組み立てを
+  // 置いた分のキーは他の2ファイルからは見えない)
+  for (const rel of ["src/runReducer.ts", "src/runLaneModel.ts", "src/i18n/strings/lane.ts"]) {
     const src = readFileSync(path.join(ROOT, rel), "utf8");
     for (const m of src.matchAll(/\btLane\(\s*(['"])([^'"]+)\1/g)) {
       if (!laneKeys.has(m[2])) {

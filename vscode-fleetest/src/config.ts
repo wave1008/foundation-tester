@@ -36,7 +36,15 @@ export interface FleetestConfig {
   /** リモートランナーの dispatch ロックが埋まっているときに待つ秒数(0 = 待たずに失敗)。
    * 共有フリートでは run が機械ごとに直列化されるため、待てないと「取れなかった」を人間が
    * 手で押し直す運用になる(docs/remote-runner.md §18.2 M2)。`fleetest api run --wait-lock` へ渡す。
-   * **奪う口(--force-lock)は GUI に出さない** —— 走っている他人の run を殺せる導線を作らない。 */
+   * **奪う口(--force-lock)は GUI に出さない** —— 走っている他人の run を殺せる導線を作らない。
+   *
+   * 既定 3600 秒(1 時間)の根拠: run 1 本の実測が 10 分前後(フル E2E スイートで約 615 秒。
+   * docs/verification.md の基準値)なので、**先客が数本並んでいても待ち切れる長さ**を採る。
+   * **進捗(待機列の位置)に応じて期限を延ばす形は採らない** —— 期限が動くと仕様が分かりにくく
+   * 挙動が読めない(ユーザー決定 2026-09-21。再提案しない)。尽きたときは CLI が待機列の位置つきの
+   * 文言で失敗するので、利用者は押し直すか この値を伸ばす。
+   * 既定は package.json の fleetest.remoteWaitLock.default・monitorPanel.ts が設定タブへ送る
+   * default と一致必須(test/remoteWaitLockDefaultSync.test.mjs が検証)。 */
   remoteWaitLock: number;
   /** デバイスモニターの更新間隔(秒)。0.5 未満は 0.5 に切り上げる(`fleetest api monitor --interval`)。 */
   monitorInterval: number;
@@ -109,7 +117,7 @@ export function readConfig(workspaceRoot: string): FleetestConfig {
     heal: configuration.get<boolean>("heal", false),
     lptScheduling: configuration.get<boolean>("lptScheduling", true),
     lptHistoryRuns: Math.max(1, Math.floor(configuration.get<number>("lptHistoryRuns", 5))),
-    remoteWaitLock: Math.max(0, Math.floor(configuration.get<number>("remoteWaitLock", 0))),
+    remoteWaitLock: Math.max(0, Math.floor(configuration.get<number>("remoteWaitLock", 3600))),
     monitorInterval: Math.max(0.5, configuration.get<number>("monitorInterval", 2)),
     monitorMaxWidth: Math.min(1600, Math.max(240, configuration.get<number>("monitorMaxWidth", 960))),
     monitorDeviceFilter: configuration.get<string>("monitorDeviceFilter", "all") === "running" ? "running" : "all",

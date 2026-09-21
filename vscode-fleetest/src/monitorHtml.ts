@@ -907,6 +907,16 @@ function renderSettingsPanel(): string {
         <div class="settings-remote-hosts-actions">
           <button id="settings-remote-hosts-add" class="secondary" type="button">${t("panels.settings.remoteHostsAdd")}</button>
         </div>
+        <!-- 順番待ち(fleetest.remoteWaitLock → api run --wait-lock)。ランナーは dispatch.lock で
+             機械ごとに直列化されるので、埋まっているときにどれだけ並ぶかの上限。**0 も正当な値**
+             (待たずに失敗)なので空欄と区別する。**奪う口(--force-lock)はここに出さない**。
+             対向: settingsTab.js の applySettings / setRemoteWaitLock, monitorPanel.ts。 -->
+        <label class="settings-item settings-item-inline" for="settings-remote-wait-lock">
+          ${t("panels.settings.remoteWaitLockLabel")}
+          <input type="number" id="settings-remote-wait-lock" class="settings-number settings-seconds-number" min="0" step="1">
+          <span class="settings-unit">${t("panels.settings.remoteWaitLockUnit")}</span>
+        </label>
+        <div class="settings-hint">${t("panels.settings.remoteWaitLockHint")}</div>
       </div>
     </div>
   </div>`;

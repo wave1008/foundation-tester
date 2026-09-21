@@ -273,6 +273,18 @@ export const panelsStrings = {
   "panels.settings.remoteHostsColFMConcurrency": { ja: "FM 並列枠", en: "FM concurrency" },
   "panels.settings.remoteHostsAdd": { ja: "リモートホストを追加", en: "Add remote host" },
 
+  // 順番待ち(fleetest.remoteWaitLock → api run --wait-lock)。ランナーは機械ごとに直列化される。
+  // **「奪う」(--force-lock)の語は出さない** —— GUI に導線を作らない(docs/remote-runner.md §18.7)
+  "panels.settings.remoteWaitLockLabel": {
+    ja: "ランナー競合時の最大待機時間",
+    en: "Max wait on runner contention",
+  },
+  "panels.settings.remoteWaitLockUnit": { ja: "秒", en: "sec" },
+  "panels.settings.remoteWaitLockHint": {
+    ja: "この Mac から出るリモート実行が、ランナーが他の run で埋まっているときに順番待ちをする上限です。0 にすると待たずに失敗します。",
+    en: "How long a remote run started from this Mac waits in line while the runner is busy with another run. 0 fails immediately instead of waiting.",
+  },
+
   // 設定タブ「ログ・録画」のクリーンアップ欄(静的ラベル)。保持ポリシーの実体は **VSCode 設定ではなく
   // CLI 側のマシン設定**(`fleetest api retention`)。動的表示(使用量・掃除の結果)は
   // webviewMonitorB.ts の wvMonitor2.cleanup.*。単位記号(GB/MB)は言語に依らないので辞書に置かない。

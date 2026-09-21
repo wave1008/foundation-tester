@@ -165,6 +165,9 @@ enum DeviceMachineRunner {
         // 機械ごとに別々の run になるので、ここで1回だけ束ね鍵を発行して全員へ配る
         // (FTCore.RunMetaRecord.runGroup。子が自分で作ると束にならない)
         let runGroup = RunRecorder.makeRunGroupID()
+        // dispatch.lock の待機チケットも**ここで1回だけ**採って全ての子へ同じ値を配る
+        // (DispatchTicketIssuer の宣言。機械ごとに採り直すと前後関係が機械によって食い違う)
+        let ticket = DispatchTicketIssuer.issue(runGroup: runGroup)
         // サブ実行のクラッシュ検出(reportMissingResults)が「この run で書かれた記録」を
         // 走査の窓で絞るための開始時刻。子の起動より前に捕まえる(子の書き込みは必ずこの後)
         let dispatchStart = Date()
@@ -183,7 +186,7 @@ enum DeviceMachineRunner {
                         broadcast: broadcast, runGroup: runGroup, reportDir: reportDir)
                     let start = Date()
                     let exitCode = await FleetRunner.runEntry(
-                        binary: binary, args: args, hostLabel: group.machineLabel)
+                        binary: binary, args: args, hostLabel: group.machineLabel, ticket: ticket)
                     return (index, FleetEntryOutcome(
                         host: group.machineLabel, profile: profileName, exitCode: exitCode,
                         duration: Date().timeIntervalSince(start)))

@@ -75,6 +75,7 @@ export type RunEventKind =
   | "runFinished"
   | "wipeStatus"
   | "scenarioRequeued"
+  | "dispatchWaiting"
   | "recordingFinalizing";
 
 const RUN_EVENT_KINDS: ReadonlySet<string> = new Set<RunEventKind>([
@@ -91,6 +92,7 @@ const RUN_EVENT_KINDS: ReadonlySet<string> = new Set<RunEventKind>([
   "runFinished",
   "wipeStatus",
   "scenarioRequeued",
+  "dispatchWaiting",
   "recordingFinalizing",
 ]);
 
@@ -272,6 +274,28 @@ export interface ScenarioRequeuedEvent {
 }
 
 /**
+ * リモート(`--runner`)の dispatch.lock の待機列に並んでいる(まだ1台も動いていない)。
+ * `--wait-lock <秒>` を渡したときだけ届き、待っている間は進行と同じ刻みで繰り返し届く。
+ * 取得できた/諦めたときの終了イベントは無い(runStarted か失敗で終わりが分かる)。
+ * machine はモニタータイル・run レーンと同じ名前空間。
+ * holder は**読めたときだけ**入る —— 欠けているのは「不明」であって「空き」でも「占有」でもないので、
+ * 欠けているときに「実行中」と断定してはいけない。
+ * 契約の同期相手: Sources/fleetest/ApiRunCommand.swift ApiDispatchWaitingEvent
+ */
+export interface DispatchWaitingEvent {
+  kind: "dispatchWaiting";
+  machine: string;
+  /** 待機列での自分の位置(1起点)。 */
+  position: number;
+  /** 生きているチケットの総数(自分を含む)。 */
+  total: number;
+  holder?: string;
+  elapsedSeconds: number;
+  /** `--wait-lock <秒>`。フラグが無ければキーごと来ない。 */
+  limitSeconds?: number;
+}
+
+/**
  * どのワーカーももうシナリオを実行しておらず、残りは録画のクリップ切り出しと後始末だけになった
  * (録画した run で1回だけ。複数機械の run では全機械が終えたとき)。モニターはここから録画タブへ
  * 移るまで「録画を編集中」を出す(monitorPanel.ts)。
@@ -296,6 +320,7 @@ export type RunEvent =
   | RunFinishedEvent
   | WipeStatusEvent
   | ScenarioRequeuedEvent
+  | DispatchWaitingEvent
   | RecordingFinalizingEvent;
 
 /**

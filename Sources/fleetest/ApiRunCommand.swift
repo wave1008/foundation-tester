@@ -1693,6 +1693,28 @@ private struct ApiWipeStatusEvent: Encodable {
     let phase: String
 }
 
+/// リモートの dispatch.lock の待機列に並んでいる間の進行通知(`--runner` 指定時のみ)。
+/// 出すのは `RemoteRunDispatcher.acquireDispatchLock` の1箇所で、**既存の進行ログと同じ刻み**
+/// (初回 + `WaitLockPolling.shouldLogProgress`)。取得できた/諦めたときの終了イベントは無い
+/// (runStarted か失敗で終わりが分かる)。internal: RemoteRunDispatcher が emit する。
+/// 契約の同期相手: vscode-fleetest/src/model.ts の DispatchWaitingEvent
+struct ApiDispatchWaitingEvent: Encodable {
+    let kind = "dispatchWaiting"
+    /// 待っている相手の **machine**(モニタータイル・run レーンと同じ名前空間)。
+    /// `--runner` の生値(登録簿のエイリアス)があればそれ、無ければ ssh 宛先そのもの
+    let machine: String
+    /// 待機列での自分の位置(1始まり)
+    let position: Int
+    /// 生きているチケットの総数(自分を含む)
+    let total: Int
+    /// いまロックを掴んでいる人(`RemoteDispatchLock.holderSummary`)。**読めたときだけ**入る ——
+    /// nil はキーごと省く(読めなかったことを「占有」に倒さない。DispatchWaitStatus.holder の宣言)
+    let holder: String?
+    let elapsedSeconds: Int
+    /// `--wait-lock <秒>`。フラグが無ければキーごと省く
+    let limitSeconds: Int?
+}
+
 /// 振り直し通知(RunEvent.flowRequeued)。契約の同期相手: vscode-fleetest/src/model.ts ScenarioRequeuedEvent
 private struct ApiScenarioRequeuedEvent: Encodable {
     let kind = "scenarioRequeued"

@@ -47,7 +47,7 @@ final class RemoteDispatchLockInterruptRelayTests: XCTestCase {
                         + " would skip releaseDispatchLock's defer and leave the remote lock stuck")
                 continue
             }
-            guard let acquireRange = body.range(of: "try acquireDispatchLock(layout: layout)") else {
+            guard let acquireRange = body.range(of: "try acquireDispatchLock(") else {
                 XCTFail("\(marker): acquireDispatchLock call not found")
                 continue
             }

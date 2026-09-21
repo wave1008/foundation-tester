@@ -26,6 +26,14 @@ export const laneStrings = {
     ja: "  🔁 {reason}のため別デバイスで再実行します({attempt}/{limit})",
     en: "  🔁 Re-running on another device due to {reason} ({attempt}/{limit})",
   },
+  "lane.dispatchWaiting": {
+    ja: "  ⏳ {machine} の順番待ち: {position}/{total}",
+    en: "  ⏳ Queued on {machine}: {position} of {total}",
+  },
+  "lane.dispatchWaitingHolder": {
+    ja: "  ⏳ {machine} の順番待ち: {position}/{total}（実行中: {holder}）",
+    en: "  ⏳ Queued on {machine}: {position} of {total} (running: {holder})",
+  },
   "lane.detailFallback": { ja: "     フォールバック: {detail}", en: "     Fallback: {detail}" },
   "lane.detailHealed": { ja: "     自己修復: {detail}", en: "     Heal: {detail}" },
   "lane.detailSkipped": { ja: "     スキップ理由: {detail}", en: "     Skip reason: {detail}" },
@@ -54,6 +62,23 @@ export function tLane(key: string, params?: Record<string, string | number>): st
     return key;
   }
   return formatMessage(entry[locale], params);
+}
+
+/**
+ * dispatch.lock の順番待ちの1行。**保持者が読めたときだけ「実行中」を名乗る** —— 欠けているのは
+ * 「不明」であって「占有」でも「空き」でもない。runReducer.ts(Test Explorer の出力)と
+ * runLaneModel.ts(モニターの実行ログビュー)が同じ1行を出すため、判断はここ1箇所に置く。
+ */
+export function dispatchWaitingLine(event: {
+  machine: string;
+  position: number;
+  total: number;
+  holder?: string;
+}): string {
+  const common = { machine: event.machine, position: event.position, total: event.total };
+  return event.holder == null
+    ? tLane("lane.dispatchWaiting", common)
+    : tLane("lane.dispatchWaitingHolder", { ...common, holder: event.holder });
 }
 
 /** 逐次実行(worker なし)をまとめる「全体」レーンの表示名(locale 依存のため関数)。 */

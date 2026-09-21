@@ -9,7 +9,7 @@
 // (✅ 成功 / ❌ 失敗 / ⚠️ スキップ / ❓ inconclusive / 🔧 自己修復 / 💡 修正提案 / ▶ 開始 / ⏸ 一時停止)。
 
 import { isRunEvent, type RunEvent, type WorkerInfo } from "./model";
-import { tLane } from "./i18n/strings/lane";
+import { dispatchWaitingLine, tLane } from "./i18n/strings/lane";
 
 /** 出力・失敗メッセージに添えるソース位置。file はリポジトリルート相対、line は1起点。 */
 export interface RunLocation {
@@ -178,6 +178,11 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
     case "recordingFinalizing":
       // モニターの「録画を編集中」表示(monitorPanel.ts)専用。Test Explorer 出力には出さない。
       return [];
+
+    case "dispatchWaiting":
+      // **worker を付けない** = 全体レーン(OVERALL_LANE_ID)へ出す。まだ1台も動いていない
+      // (レーンが1本も無い)ので、付けられる worker が無い
+      return [{ type: "output", text: dispatchWaitingLine(event) }];
 
     case "scenarioRequeued":
       return [

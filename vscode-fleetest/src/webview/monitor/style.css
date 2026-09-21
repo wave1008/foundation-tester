@@ -2614,6 +2614,11 @@ input[type="search"]::placeholder {
 .settings-cleanup-number {
   width: 88px;
 }
+/* 秒数の入力(順番待ち上限)。既定 900・伸ばすと 3600 の4桁になるので .settings-number では
+   スピナーに食われて見切れる */
+.settings-seconds-number {
+  width: 88px;
+}
 .settings-unit {
   color: var(--vscode-descriptionForeground);
 }

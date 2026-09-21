@@ -318,6 +318,10 @@ export type MonitorToWebviewMessage =
   | { readonly type: "lptScheduling"; readonly value: boolean }
   // LPT の実績走査 run 数。default は設定タブの初期値・空欄時の戻り先に使う
   | { readonly type: "lptHistoryRuns"; readonly value: number; readonly default: number }
+  // 設定タブ「マシン」section の順番待ち上限(秒)。fleetest.remoteWaitLock の現在値。
+  // default は lptHistoryRuns と同じく初期値・空欄時の戻り先(**0 も正当な値**なので
+  // 「空欄 = 0」にはしない)
+  | { readonly type: "remoteWaitLock"; readonly value: number; readonly default: number }
   // 設定タブの表示言語セレクタ(#settings-language)の現在値(fleetest.language 設定の生値)。ready 直後に
   // 送る。webview 側は settingsTab.js の applySettings。切替は setLanguage と対。
   | { readonly type: "language"; readonly value: "auto" | "ja" | "en" }
@@ -781,6 +785,10 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "setLptScheduling"; readonly value: boolean }
   // null = 既定へ戻す(入力欄を空にした場合)
   | { readonly type: "setLptHistoryRuns"; readonly value: number | null }
+  // リモート実行の順番待ち上限(秒)。ホストは fleetest.remoteWaitLock 設定を更新し、
+  // run 時に 0 より大きければ fleetest api run へ --wait-lock を渡す(src/runHandler.ts)。
+  // null = 既定へ戻す(入力欄が空・不正値)。**0 は「待たない」という正当な値**で null とは別
+  | { readonly type: "setRemoteWaitLock"; readonly value: number | null }
   | { readonly type: "refreshResidentProcesses" }
   // タブ切替でデバイスタイルが display:none になったことの通知。ホストは配信helperを止める
   // (対向: src/webview/monitor/tabs.js の switchTab)。パネル自体の表示可否とは別軸で、
@@ -1171,6 +1179,13 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return (
         value.value === null ||
         (typeof value.value === "number" && Number.isInteger(value.value) && value.value >= 1)
+      );
+    case "setRemoteWaitLock":
+      // **0 は「待たない」の有効な指定**(lptHistoryRuns と違って下限は 0)。負値・小数は
+      // 秒数として意味を持たないので弾く。null = 既定へ戻す
+      return (
+        value.value === null ||
+        (typeof value.value === "number" && Number.isInteger(value.value) && value.value >= 0)
       );
     case "refreshResidentProcesses":
     case "killAllResidentProcessesAndClose":

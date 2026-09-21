@@ -99,7 +99,7 @@ struct RemoteRunDispatcher {
         let interruptFlag = DispatchInterruptFlag()
         let lockHeldRelay = InterruptRelay.observing { interruptFlag.mark() }
         defer { lockHeldRelay.stop() }
-        try acquireDispatchLock(layout: layout)
+        try acquireDispatchLock(layout: layout, runGroup: runGroup)
         var lockReleasedEarly = false
         defer { if !lockReleasedEarly { releaseDispatchLock(layout: layout) } }
         reapOrphanedHooksAcrossIssuers(layout: layout)
@@ -179,7 +179,7 @@ struct RemoteRunDispatcher {
         let interruptFlag = DispatchInterruptFlag()
         let lockHeldRelay = InterruptRelay.observing { interruptFlag.mark() }
         defer { lockHeldRelay.stop() }
-        try acquireDispatchLock(layout: layout)
+        try acquireDispatchLock(layout: layout, runGroup: runGroup)
         var lockReleasedEarly = false
         defer { if !lockReleasedEarly { releaseDispatchLock(layout: layout) } }
         reapOrphanedHooksAcrossIssuers(layout: layout)
@@ -393,64 +393,164 @@ struct RemoteRunDispatcher {
 
     /// フリート内の重複は FleetProfile.validate で防げるが、別フリート・別人・CLI/GUI 併走に
     /// よる同一ホストへの二重実行はここでしか防げない。**単発の `run --runner` でも常に取得する**
-    /// (フリート専用の仕組みにしない ―― 競合はフリートかどうかと無関係にホスト単位で起きる)
-    private func acquireDispatchLock(layout: RemoteLayout) throws {
+    /// (フリート専用の仕組みにしない ―― 競合はフリートかどうかと無関係にホスト単位で起きる)。
+    ///
+    /// 取得は **FIFO の待機列経由**(`RemoteDispatchQueue`)。1往復で「並ぶ → 失効チケットを掃く →
+    /// 先頭なら mkdir でロックを取る」まで行い、`--wait-lock` の撃ち直しがそのままチケットの
+    /// ハートビートを兼ねる(別に touch を撃たない)。**中断・クラッシュでチケットが残っても
+    /// `RemoteDispatchQueue.staleSeconds`(30秒)で失効する**ので defer で消しに行かない
+    /// (中断時に ssh を1本増やさない)
+    private func acquireDispatchLock(layout: RemoteLayout, runGroup: String?) throws {
         log("==> acquiring dispatch lock on \(host.sshTarget)")
         let info = RemoteDispatchLockInfo.now(
             issuerHost: ProcessInfo.processInfo.hostName, pid: ProcessInfo.processInfo.processIdentifier,
             issuer: LocalConfig.resolveIssuerId())
+        let ticket = RemoteDispatchQueue.resolveTicket(
+            environment: ProcessInfo.processInfo.environment, issuer: LocalConfig.resolveIssuerId(),
+            runGroup: runGroup, pid: ProcessInfo.processInfo.processIdentifier, now: Date())
         if forceLock {
             log("warning: --force-lock is stealing the dispatch lock on \(host.sshTarget)"
                 + " (any dispatch it was protecting may still be running)")
+            // 奪う側が列に残り続けないよう、先に自分のチケットを消す
+            dequeueTicket(layout: layout, ticket: ticket)
             _ = try sshCapture(RemoteDispatchLock.forceAcquireCommand(base: layout.base, info: info))
             return
         }
-        if let waitLock {
-            try acquireDispatchLockWithWait(layout: layout, info: info, limitSeconds: waitLock)
-            return
-        }
-        var result = try Shell.run(sshBase + [host.sshTarget, RemoteDispatchLock.acquireCommand(
-            base: layout.base, info: info)])
-        guard result.status == 0 else {
+        var elapsed = 0
+        var autoReleaseTried = false
+        while true {
+            let result = try Shell.run(sshBase + [host.sshTarget,
+                                                  RemoteDispatchQueue.enqueueAndTryAcquireCommand(
+                                                    base: layout.base, ticket: ticket, info: info)])
+            // 到達不能は待って直る種類の失敗ではない。**チケットを消しに行かない**(向こうへ届かない)
             guard result.status != 255 else {
                 throw RemoteDispatchError.remoteSetupFailed(
                     "cannot reach \(host.sshTarget) over ssh (status 255)\n\(result.tail)")
             }
-            var existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
-            // **自分の死んだディスパッチが残したロックは自動で回収する**。判定は
-            // `remote unlock`/モニター起動時の自動掃除(StaleLockSweep)と同じ
-            // `RemoteDispatchUnlock.decideAutomaticSweep` を共有する(同じ規則を2箇所に持たない)。
-            // 他人・他機のロックは release を返さない(refuse)ので、そこは従来どおり待たせる/
-            // 手作業の unlock を案内する
-            var decision = Self.staleLockAutoRelease(
-                lockRead: existing, myIssuer: LocalConfig.resolveIssuerId(),
-                myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive)
-            // 「自分の死んだディスパッチ」と判定できた(= release)のに、ランナー上でその run が生きていた/
-            // 確かめられなかった回だけ専用の文言にする。それ以外(自分の生きているディスパッチ・他人のロック)は
-            // 定型文(--wait-lock / unlock の案内付き)のまま
-            var keptBecauseRunIsAlive: String?
-            if case .release = decision {
-                decision = RemoteDispatchUnlock.guardingLiveRemoteRun(
-                    decision, livePIDs: liveDispatchedRunPIDs(layout: layout))
-                if case .refuse(let reason) = decision { keptBecauseRunIsAlive = reason }
+            guard let outcome = RemoteDispatchQueue.parseOutcome(result.output, ticket: ticket) else {
+                // 並べなかった/シェルのエラーで判定語が読めない ―― 従来のエラー経路へ倒す
+                dequeueTicket(layout: layout, ticket: ticket)
+                let existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
+                throw RemoteDispatchError.remoteSetupFailed(Self.dispatchLockFailureMessage(
+                    status: result.status, lockRead: existing, tail: result.tail,
+                    sshTarget: host.sshTarget))
             }
-            if case .release(let reason) = decision {
-                log("==> auto-releasing a stale dispatch lock on \(host.sshTarget) left by a dead process"
-                    + " of ours (\(reason))")
-                _ = try? sshCapture(RemoteDispatchLock.releaseCommand(base: layout.base))
-                result = try Shell.run(sshBase + [host.sshTarget, RemoteDispatchLock.acquireCommand(
-                    base: layout.base, info: info)])
-                if result.status == 0 { return }
-                existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
+            let position: Int
+            let total: Int
+            let holder: RemoteDispatchLockInfo?
+            switch outcome {
+            case .acquired:
+                // 向こうで自分のチケットは消えている(enqueueAndTryAcquireCommand が消す)
+                return
+            case .waiting(let p, let t, let h), .held(let p, let t, let h):
+                position = p
+                total = t
+                holder = h
             }
-            if let keptBecauseRunIsAlive {
-                // 定型文(heldMessage)は unlock を勧めるので使わない(unlock も同じ理由で断る)
+            // 先頭なのに取れなかった = 誰かが掴んでいる。**自分の死んだディスパッチなら回収する**
+            // (1回だけ試す ―― 他人のロックは何周しても答えが変わらない)
+            if case .held = outcome, !autoReleaseTried {
+                autoReleaseTried = true
+                switch autoReleaseOurStaleLock(layout: layout) {
+                case .released:
+                    continue // 待機列経由で撃ち直す
+                case .keptBecauseRunIsAlive(let reason):
+                    // 向こうで run が生きているので、待てるなら待つ(待たないなら従来どおり落とす)。
+                    // 定型文(heldMessage)は unlock を勧めるので使わない(unlock も同じ理由で断る)
+                    guard waitLock != nil else {
+                        dequeueTicket(layout: layout, ticket: ticket)
+                        throw RemoteDispatchError.remoteSetupFailed(
+                            "the dispatch lock on \(host.sshTarget) belongs to an earlier dispatch of yours"
+                            + " from this Mac that is no longer running here, so it was not released:"
+                            + " \(reason)")
+                    }
+                case .notOurs:
+                    break
+                }
+            }
+            let status = DispatchWaitStatus(
+                target: host.sshTarget, position: position, total: total,
+                holder: holder,
+                elapsedSeconds: elapsed, limitSeconds: waitLock)
+            guard let limitSeconds = waitLock else {
+                dequeueTicket(layout: layout, ticket: ticket)
                 throw RemoteDispatchError.remoteSetupFailed(
-                    "the dispatch lock on \(host.sshTarget) belongs to an earlier dispatch of yours from this"
-                    + " Mac that is no longer running here, so it was not released: \(keptBecauseRunIsAlive)")
+                    status.refusalMessage)
             }
-            throw RemoteDispatchError.remoteSetupFailed(Self.dispatchLockFailureMessage(
-                status: result.status, lockRead: existing, tail: result.tail, sshTarget: host.sshTarget))
+            // **ログと NDJSON イベントは同じ式で出す**(判断を2つ持たない ―― 片方だけ刻みが
+            // 変わると端末と拡張で見える回数が食い違う)。shouldLogProgress は elapsed == 0 でも
+            // true を返すので、分岐は「初回の文言か経過の文言か」だけ
+            if WaitLockPolling.shouldLogProgress(elapsedSeconds: elapsed) {
+                log(elapsed == 0 ? status.queuedLine : status.stillQueuedLine)
+                emitDispatchWaiting(status)
+            }
+            guard WaitLockPolling.decide(elapsedSeconds: elapsed,
+                                         limitSeconds: limitSeconds) == .retry else {
+                dequeueTicket(layout: layout, ticket: ticket)
+                throw RemoteDispatchError.remoteSetupFailed(
+                    status.refusalMessage)
+            }
+            Thread.sleep(forTimeInterval: Double(WaitLockPolling.pollIntervalSeconds))
+            elapsed += WaitLockPolling.pollIntervalSeconds
+        }
+    }
+
+    /// 待機の事実を `fleetest api run` の NDJSON へ出す(**apiRun のときだけ** ―― cliRun の
+    /// stdout は人間向けなので従来のログのまま)。押した人に無言で止まって見えるのを防ぐのが目的で、
+    /// 数字・保持者はログと同じ1つの値(`DispatchWaitStatus`)から採る。
+    /// **machine は拡張のモニタータイル・run レーンと同じ名前空間**にする ―― `hostLabel`
+    /// (`--runner` の生値 = 登録簿の machine 名)があればそれ、無ければ ssh 宛先
+    /// (エイリアスが無い経路。host をそのまま名乗るほうが、拡張に空欄を出すより読める)。
+    /// エンコード失敗は黙って捨てる(待機の通知が出ないだけで run は続く)
+    private func emitDispatchWaiting(_ status: DispatchWaitStatus) {
+        guard mode == .apiRun else { return }
+        let event = ApiDispatchWaitingEvent(
+            machine: hostLabel ?? host.sshTarget,
+            position: status.position, total: status.total,
+            // **読めたときだけ**(nil は Encodable の合成が encodeIfPresent でキーごと省く)
+            holder: status.holder.map { RemoteDispatchLock.holderSummary($0) },
+            elapsedSeconds: status.elapsedSeconds, limitSeconds: status.limitSeconds)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(event),
+              let line = String(data: data, encoding: .utf8) else { return }
+        ConsoleOut.out(line)
+    }
+
+    /// 待つのをやめた/失敗したときに**自分のチケットだけ**消す(他人の待機には触らない)。
+    /// 失敗は無視する ―― 消せなくても staleSeconds で失効するので、ここで run を落とす価値は無い
+    private func dequeueTicket(layout: RemoteLayout, ticket: DispatchTicket) {
+        _ = try? sshCapture(RemoteDispatchQueue.dequeueCommand(base: layout.base, ticket: ticket))
+    }
+
+    private enum StaleLockDecision {
+        case released
+        /// 自分の死んだディスパッチのロックだが、ランナー上でその run は生きていた/確かめられなかった
+        case keptBecauseRunIsAlive(String)
+        /// 他人・他機・自分の生きているディスパッチのロック(従来どおり待たせる)
+        case notOurs
+    }
+
+    /// **自分の死んだディスパッチが残したロックは自動で回収する**。判定は `remote unlock`/
+    /// モニター起動時の自動掃除(StaleLockSweep)と同じ `RemoteDispatchUnlock.decideAutomaticSweep`
+    /// を共有する(同じ規則を2箇所に持たない)。他人・他機のロックは release を返さない(refuse)
+    private func autoReleaseOurStaleLock(layout: RemoteLayout) -> StaleLockDecision {
+        let existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
+        let sweep = Self.staleLockAutoRelease(
+            lockRead: existing, myIssuer: LocalConfig.resolveIssuerId(),
+            myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive)
+        guard case .release = sweep else { return .notOurs }
+        switch RemoteDispatchUnlock.guardingLiveRemoteRun(
+            sweep, livePIDs: liveDispatchedRunPIDs(layout: layout)) {
+        case .release(let reason):
+            log("==> auto-releasing a stale dispatch lock on \(host.sshTarget) left by a dead process"
+                + " of ours (\(reason))")
+            _ = try? sshCapture(RemoteDispatchLock.releaseCommand(base: layout.base))
+            return .released
+        case .refuse(let reason):
+            return .keptBecauseRunIsAlive(reason)
+        case .nothingToDo:
+            return .notOurs
         }
     }
 
@@ -489,39 +589,6 @@ struct RemoteRunDispatcher {
             return "could not create the dispatch lock on \(sshTarget) (ssh status \(status))\(detail)"
         }
         return RemoteDispatchLock.heldMessage(lockRead.flatMap(RemoteDispatchLock.decode))
-    }
-
-    /// `--wait-lock`: 取得できない間、解放をポーリングして待つ(奪わない。時刻での自動奪取は無い)。
-    /// ssh 到達不能(255)は待たずに即 throw ―― 待って直る種類の失敗ではない。同じ `info`
-    /// (acquiredAt はこのディスパッチが待ち始めた時刻)を毎回の再試行で使い回す
-    private func acquireDispatchLockWithWait(
-        layout: RemoteLayout, info: RemoteDispatchLockInfo, limitSeconds: Int
-    ) throws {
-        var elapsed = 0
-        while true {
-            let result = try Shell.run(sshBase + [host.sshTarget, RemoteDispatchLock.acquireCommand(
-                base: layout.base, info: info)])
-            if result.status == 0 { return }
-            guard result.status != 255 else {
-                throw RemoteDispatchError.remoteSetupFailed(
-                    "cannot reach \(host.sshTarget) over ssh (status 255)\n\(result.tail)")
-            }
-            let existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
-            let existingInfo = existing.flatMap(RemoteDispatchLock.decode)
-            if elapsed == 0 {
-                log("==> dispatch lock on \(host.sshTarget) is \(RemoteDispatchLock.holderSummary(existingInfo))"
-                    + " — waiting up to \(limitSeconds)s")
-            }
-            guard WaitLockPolling.decide(elapsedSeconds: elapsed, limitSeconds: limitSeconds) == .retry else {
-                throw RemoteDispatchError.remoteSetupFailed(
-                    RemoteDispatchLock.heldMessage(existingInfo) + " (waited \(elapsed)s)")
-            }
-            Thread.sleep(forTimeInterval: Double(WaitLockPolling.pollIntervalSeconds))
-            elapsed += WaitLockPolling.pollIntervalSeconds
-            if elapsed > 0, WaitLockPolling.shouldLogProgress(elapsedSeconds: elapsed) {
-                log("==> still waiting on \(host.sshTarget)'s dispatch lock (\(elapsed)s of \(limitSeconds)s)")
-            }
-        }
     }
 
     /// **ロックを取った直後に、全発行者ぶんの孤児 hooks を代行実行する**(§18.1 #6)。

@@ -417,6 +417,34 @@ function runMockThroughPipeline(mockArgs) {
   });
 }
 
+test("dispatchWaiting は worker 無しの出力(全体レーン)になり、保持者を併記する", () => {
+  const state = createRunReducerState();
+  const r = reduceRunEvent(state, {
+    kind: "dispatchWaiting", machine: "M1Max", position: 2, total: 3,
+    holder: "issuer=taro pid=1234", elapsedSeconds: 60, limitSeconds: 900,
+  }, 0);
+  assert.equal(r.actions.length, 1);
+  assert.equal(r.actions[0].type, "output");
+  // worker を付けない = 実行ログビューの全体レーンへ出る(まだ1台も動いていない)
+  assert.equal(r.actions[0].worker, undefined);
+  assert.ok(r.actions[0].text.includes("M1Max"));
+  assert.ok(r.actions[0].text.includes("2/3"));
+  assert.ok(r.actions[0].text.includes("issuer=taro pid=1234"));
+});
+
+test("dispatchWaiting は保持者が読めなかったら「実行中」と断定しない", () => {
+  const state = createRunReducerState();
+  const r = reduceRunEvent(state, {
+    kind: "dispatchWaiting", machine: "M1Max", position: 2, total: 3, elapsedSeconds: 0,
+  }, 0);
+  assert.equal(r.actions.length, 1);
+  assert.ok(r.actions[0].text.includes("2/3"));
+  assert.ok(
+    !r.actions[0].text.includes("実行中"),
+    `保持者が不明なのに占有を断定している: ${r.actions[0].text}`,
+  );
+});
+
 test("scenarioRequeued は出力行と requeued アクション(待機中へ戻す)を発生させる", () => {
   const state = createRunReducerState();
   const r = reduceRunEvent(state, {

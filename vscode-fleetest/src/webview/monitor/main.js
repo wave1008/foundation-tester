@@ -247,6 +247,7 @@ window.addEventListener('message', (event) => {
     case 'pollingMode':
     case 'lptScheduling':
     case 'lptHistoryRuns':
+    case 'remoteWaitLock':
     case 'language':
     case 'updateStatus':
     case 'retention':

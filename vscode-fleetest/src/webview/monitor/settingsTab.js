@@ -27,6 +27,10 @@ const lptCheckbox = document.getElementById('settings-lpt');
 const lptHistoryInput = document.getElementById('settings-lpt-history');
 // 拡張から届く既定値(空欄・不正値のときに戻す値)。届くまでは null。
 let lptHistoryDefault = null;
+const remoteWaitLockInput = document.getElementById('settings-remote-wait-lock');
+// 拡張から届く既定値(空欄・不正値のときに戻す値)。届くまでは null。
+// **0 は正当な値**(待たない)なので、この null(= 既定が未着)と混ぜない。
+let remoteWaitLockDefault = null;
 const languageSelect = document.getElementById('settings-language');
 const remoteHostsBody = document.getElementById('settings-remote-hosts-body');
 const remoteHostsAddButton = document.getElementById('settings-remote-hosts-add');
@@ -63,6 +67,20 @@ lptHistoryInput.addEventListener('change', () => {
     lptHistoryInput.value = lptHistoryDefault === null ? '' : String(lptHistoryDefault);
   }
   vscode.postMessage({ type: 'setLptHistoryRuns', value: valid ? parsed : null });
+});
+
+// リモート実行の順番待ち上限(秒)。lptHistoryInput と同じ流儀 —— 入力欄には常に実際に使う
+// 秒数を入れ、空欄・不正値のときは null を送って設定を消し UI にも既定値を入れ直す。
+// **0 は受け付ける**(待たずに失敗する、という選択)。
+remoteWaitLockInput.addEventListener('change', () => {
+  const raw = remoteWaitLockInput.value.trim();
+  // parseInt は "2.5" を 2 に切り詰めて黙って別の値にしてしまうので Number() で厳密に見る
+  const parsed = Number(raw);
+  const valid = raw !== '' && Number.isInteger(parsed) && parsed >= 0;
+  if (!valid) {
+    remoteWaitLockInput.value = remoteWaitLockDefault === null ? '' : String(remoteWaitLockDefault);
+  }
+  vscode.postMessage({ type: 'setRemoteWaitLock', value: valid ? parsed : null });
 });
 
 // 表示言語の変更。拡張側が fleetest.language 設定を更新し、完全反映には再読み込みが要る
@@ -857,6 +875,11 @@ export function applySettings(message) {
     lptHistoryDefault = message.default;
     lptHistoryInput.placeholder = String(message.default);
     lptHistoryInput.value = String(message.value);
+  } else if (message.type === 'remoteWaitLock') {
+    // lptHistoryRuns と同じ(実際に使う秒数を常に値として入れる。placeholder は保険)
+    remoteWaitLockDefault = message.default;
+    remoteWaitLockInput.placeholder = String(message.default);
+    remoteWaitLockInput.value = String(message.value);
   } else if (message.type === 'language') {
     languageSelect.value = message.value;
   } else if (message.type === 'remoteConfig') {

@@ -1119,6 +1119,14 @@ export class MonitorPanelController implements vscode.Disposable {
           .getConfiguration("fleetest")
           .update("lptHistoryRuns", message.value ?? undefined, vscode.ConfigurationTarget.Global);
         return;
+      case "setRemoteWaitLock":
+        // null = 入力欄が空・不正値 → 設定を消して既定へ戻す(0 は「待たない」の正当な値なので
+        // undefined へ倒さない)。次の run から効く(走っている run の待ちは変わらない)。
+        // CLI へは runHandler.ts が 0 より大きいときだけ --wait-lock を渡す。
+        void vscode.workspace
+          .getConfiguration("fleetest")
+          .update("remoteWaitLock", message.value ?? undefined, vscode.ConfigurationTarget.Global);
+        return;
       case "setLptScheduling":
         // 次の run から効く(実行中の run の順序は変わらない)。CLI へは runHandler.ts が
         // false のとき --no-lpt を渡す。
@@ -1293,6 +1301,13 @@ export class MonitorPanelController implements vscode.Disposable {
       type: "lptHistoryRuns",
       value: vscode.workspace.getConfiguration("fleetest").get<number>("lptHistoryRuns", 5),
       default: 5,
+    });
+    // default は設定タブの初期値・空欄時の戻り先(package.json の fleetest.remoteWaitLock.default・
+    // config.ts の readConfig と一致させること。remoteWaitLockDefaultSync.test.mjs が検証)
+    this.post({
+      type: "remoteWaitLock",
+      value: vscode.workspace.getConfiguration("fleetest").get<number>("remoteWaitLock", 3600),
+      default: 3600,
     });
     this.post({
       type: "language",

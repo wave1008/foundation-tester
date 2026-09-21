@@ -6,7 +6,7 @@
 // runReducer.ts とは別の状態を持つ独立モジュールだが、アイコンは STATUS_MARK を再利用して揃える。
 
 import { STATUS_MARK } from "./runReducer";
-import { overallLaneName, tLane } from "./i18n/strings/lane";
+import { dispatchWaitingLine, overallLaneName, tLane } from "./i18n/strings/lane";
 import type { RunEvent, WorkerInfo } from "./model";
 
 /** worker フィールドが無いイベント(逐次実行 = 非プロファイル/dry-run/デバッグ)をまとめるレーン。 */
@@ -320,6 +320,11 @@ export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: num
       }
       return actions;
     }
+
+    case "dispatchWaiting":
+      // 全体レーン(worker を持たない = laneIdOf が OVERALL_LANE_ID へ落とす)。まだ1台も
+      // 動いていないので、ここに出さないと押した人には無言で止まって見える
+      return pushLine(state, laneIdOf(event), dispatchWaitingLine(event));
 
     case "wipeStatus":
       // デバイスタイルのバッジ表示(monitorPanel.ts の handleBusMessage)専用。ログレーンには出さない。

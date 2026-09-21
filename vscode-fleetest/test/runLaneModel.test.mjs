@@ -85,6 +85,27 @@ test("workersReady: 累積再送でも同じ id のレーンの lines は維持�
   assert.deepEqual(snapshot.linesByLane["android:エミュ1"], []);
 });
 
+test("dispatchWaiting は全体レーンに出る(保持者が読めたときだけ実行中を名乗る)", () => {
+  const state = createRunLaneState();
+  const actions = feed(state, [
+    { kind: "dispatchWaiting", machine: "M1Max", position: 2, total: 3, elapsedSeconds: 0 },
+    {
+      kind: "dispatchWaiting", machine: "M1Max", position: 1, total: 2,
+      holder: "issuer=taro pid=1234", elapsedSeconds: 60, limitSeconds: 900,
+    },
+  ]);
+
+  const lines = actions.filter((a) => a.type === "line");
+  assert.equal(lines.length, 2);
+  assert.ok(lines.every((a) => a.laneId === OVERALL_LANE_ID));
+  assert.ok(lines[0].text.includes("2/3"));
+  assert.ok(
+    !lines[0].text.includes("実行中"),
+    `保持者が不明なのに占有を断定している: ${lines[0].text}`,
+  );
+  assert.ok(lines[1].text.includes("issuer=taro pid=1234"));
+});
+
 test("worker フィールドが無いイベント(逐次実行)は全体レーン(OVERALL_LANE_ID)に集約される", () => {
   const state = createRunLaneState();
   const actions = feed(state, [

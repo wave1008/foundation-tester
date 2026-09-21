@@ -30,9 +30,15 @@ final class ParentDeathWatchWiringTests: XCTestCase {
         ]
         for path in spawnSites {
             let text = try source(path)
-            // 鍵を直接書く形(ScenarioHost)と、環境ごと組み立てる `childEnvironment()` の両方を認める
+            // 鍵を直接書く形(ScenarioHost)と、環境ごと組み立てる `childEnvironment()` の両方を認める。
+            // **run をリモートへ配る2経路**(FleetRunner.runEntry / ApiRunMachineFanout.runChild)は
+            // `DispatchTicketIssuer.childEnvironment(` を通す —— あちらは
+            // `ParentDeathWatch.childEnvironment` の戻り値に dispatch.lock の待機チケット
+            // (`FT_DISPATCH_TICKET`)を1つ足すだけなので、FT_PARENT_PID の契約は同じ
+            // (`DispatchTicketPlumbingTests` が土台に ParentDeathWatch を使うことを固定する)
             XCTAssertTrue(text.contains("ParentDeathWatch.environmentKey")
-                              || text.contains("ParentDeathWatch.childEnvironment("),
+                              || text.contains("ParentDeathWatch.childEnvironment(")
+                              || text.contains("DispatchTicketIssuer.childEnvironment("),
                           "\(path) が FT_PARENT_PID を子へ渡していない(孤児のまま残る)")
         }
     }

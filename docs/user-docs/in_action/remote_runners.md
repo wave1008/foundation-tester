@@ -174,9 +174,11 @@ devices.
 kept from fighting over the same device. When the runner is busy, you are shown who has been
 using it and since when.
 
-- **Wait until it is free**: on the CLI, add `--wait-lock <seconds>`. In the VS Code extension,
-  set `fleetest.remoteWaitLock` to a number of seconds (the default 0 fails right away without
-  waiting). The extension has no way to take over a busy runner.
+- **Wait until it is free**: this is the default, for up to 1 hour — long enough to sit through
+  several runs ahead of you. Change it in the Device Monitor's **Settings** tab, under **Machines** →
+  **Max wait on runner contention** (0 fails right away without waiting); the setting key is
+  `fleetest.remoteWaitLock`. On the CLI, add `--wait-lock <seconds>`. While you are in line, the
+  run log shows your position. The extension has no way to take over a busy runner.
 - **See who is using it**: it appears in the LOCK column of
   `fleetest remote status --runner <machine>`. `-` means "could not be checked", not "free".
   The Device Monitor shows 🔒 on that machine's row in the toolbar.

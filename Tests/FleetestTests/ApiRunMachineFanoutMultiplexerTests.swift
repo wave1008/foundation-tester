@@ -170,6 +170,17 @@ final class ApiRunMachineFanoutMultiplexerTests: XCTestCase {
         XCTAssertEqual(jsonObject(out[0])["message"] as? String, "[local] → hello")
     }
 
+    /// **dispatchWaiting は親の stdout まで素通しで届く**(子は `--runner <machineLabel>` で
+    /// 走るので machine は既に自分で名乗っている。kind が未知でも worker が無くても中継は落とさない、
+    /// という既存の規則にそのまま乗る)。落ちると、待っている run が拡張には無言のままになる
+    func testDispatchWaitingPassesThroughToTheParentWithItsMachine() {
+        var mux = MachineFanoutMultiplexer(groupMachines: ["M1Max"])
+        let line = #"{"elapsedSeconds":0,"kind":"dispatchWaiting","machine":"M1Max","position":2,"total":3}"#
+        let out = mux.ingest(childIndex: 0, line: line)
+        XCTAssertEqual(out, [line], "1バイトも変えずに中継する")
+        XCTAssertEqual(jsonObject(out[0])["machine"] as? String, "M1Max")
+    }
+
     /// **log 以外の worker 無しの行は触らない**(wipeStatus 等。message 欄の意味が違う)
     func testWorkerlessNonLogLinesAreStillUntouched() {
         var mux = MachineFanoutMultiplexer(groupMachines: ["M1Max"])

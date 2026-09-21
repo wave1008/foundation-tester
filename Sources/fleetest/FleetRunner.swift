@@ -55,6 +55,12 @@ enum FleetRunner {
         let junitTempDir = try makeJUnitTempDir(requested: junit)
         defer { if let junitTempDir { try? FileManager.default.removeItem(at: junitTempDir) } }
 
+        // dispatch.lock の待機チケットは**この run で1回だけ**採り、全エントリの子へ同じ値を配る
+        // (DispatchTicketIssuer の宣言。機械ごとに採り直すと、機械 A と機械 B で前後関係が
+        // 食い違って互いに相手を待つ)。--split と共用するので分岐より前で採る。
+        // **--fleet に runGroup は無い**(エントリごとに別の run。束ね鍵を持たない)ので pid で区別する
+        let ticket = DispatchTicketIssuer.issue(runGroup: nil)
+
         // --split は別経路(FleetSplit.swift の項参照)。**この分岐より下は --junit 配線を除き無改修**
         // (プレーンな --fleet の挙動を1バイトも変えない契約)
         if split {
@@ -64,7 +70,7 @@ enum FleetRunner {
                 setOverrides: setOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                 performanceMode: performanceMode,
                 forceLock: forceLock, waitLock: waitLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
-                quiet: quiet, junit: junit, junitTempDir: junitTempDir)
+                quiet: quiet, junit: junit, junitTempDir: junitTempDir, ticket: ticket)
         }
 
         let binary = selfBinaryPath()
@@ -83,7 +89,8 @@ enum FleetRunner {
                         quiet: quiet,
                         junitPath: entryJUnitPath(tempDir: junitTempDir, index: index))
                     let start = Date()
-                    let exitCode = await runEntry(binary: binary, args: args, hostLabel: entry.host)
+                    let exitCode = await runEntry(binary: binary, args: args,
+                                                  hostLabel: entry.host, ticket: ticket)
                     return (index, FleetEntryOutcome(
                         host: entry.host, profile: entry.profile, exitCode: exitCode,
                         duration: Date().timeIntervalSince(start)))
@@ -126,7 +133,7 @@ enum FleetRunner {
         setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
         performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?,
-        quiet: Bool, junit: String?, junitTempDir: URL?
+        quiet: Bool, junit: String?, junitTempDir: URL?, ticket: DispatchTicket
     ) async throws -> Int32 {
         log("==> fleet \"\(fleetName)\" --split: building \(project.name) locally to resolve"
             + " the scenario list (plain --fleet skips this build)")
@@ -214,7 +221,8 @@ enum FleetRunner {
                         quiet: quiet,
                         junitPath: entryJUnitPath(tempDir: junitTempDir, index: index))
                     let start = Date()
-                    let exitCode = await runEntry(binary: binary, args: args, hostLabel: entry.host)
+                    let exitCode = await runEntry(binary: binary, args: args,
+                                                  hostLabel: entry.host, ticket: ticket)
                     return (index, FleetEntryOutcome(
                         host: entry.host, profile: entry.profile, exitCode: exitCode,
                         duration: Date().timeIntervalSince(start)))
@@ -510,10 +518,13 @@ enum FleetRunner {
 
     /// 子の stdout+stderr を1本のパイプへ合流させ、行単位で `[<host>] ` を前置して中継する。
     /// 読み取りは PipeLinePump(専用スレッドでブロッキング読み取り、完了は AsyncStream で待つ)
-    static func runEntry(binary: String, args: [String], hostLabel: String) async -> Int32 {
+    /// `ticket` は dispatch.lock の待機列の鍵。**親が1回だけ採ったものを受け取るだけ**で、
+    /// ここで採り直さない(DispatchTicketIssuer の宣言)
+    static func runEntry(binary: String, args: [String], hostLabel: String,
+                         ticket: DispatchTicket) async -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
-        process.environment = ParentDeathWatch.childEnvironment()
+        process.environment = DispatchTicketIssuer.childEnvironment(ticket: ticket)
         process.arguments = args
         process.standardInput = FileHandle.nullDevice
         let pipe = Pipe()

@@ -2,7 +2,7 @@
   "name": "vscode-fleetest",
   "displayName": "fleetest mobile",
   "description": "%fleetest.extension.description%",
-  "version": "0.1.113",
+  "version": "0.1.117",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -87,7 +87,7 @@
         },
         "fleetest.remoteWaitLock": {
           "type": "number",
-          "default": 0,
+          "default": 3600,
           "minimum": 0,
           "description": "%fleetest.config.remoteWaitLock.description%"
         },
