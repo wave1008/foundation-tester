@@ -251,7 +251,7 @@ function feedMonitorDevices(proc, devices) {
   const line = JSON.stringify({
     kind: "monitorDevices",
     devices: devices.map((device) => ({
-      id: device.id, name: device.name, platform: "ios", state: "connected", detail: "",
+      id: device.id, name: device.name, platform: "ios", state: device.state ?? "connected", detail: "",
       inRun: false, recording: false, registered: true, frozen: false, kind: "virtual",
       ...(device.machine ? { machine: device.machine } : {}),
     })),
@@ -651,4 +651,147 @@ test("保持が解除された後の占有の行は既定の文言へ戻る", ()
 
   const held = lines.filter((line) => line.includes("run が実行中です"));
   assert.match(held.at(-1), /タイルはポーリングで更新/);
+});
+
+// ---- ランナーの再起動を「その機械が再び観測できるようになった」で拾う(2026-09-21) ----
+// ランナーを再起動すると LAN 上では TCP が即座に拒否され、host-metrics の子は連敗3回の枠を
+// ミリ秒で使い切って10分の窓に入る。**10分は縮めない**(旧バイナリへの ssh churn と飽和中の
+// 空振りが根拠)ので、合図で拾う。判定は hostMetricsRetry.ts の observationRevivalPlan。
+
+/** machine ごとに spawn した子を覚える spawnFn(procs[0] は monitor プロセス)。 */
+function makeRemoteSpawn(calls, procs, remoteProcs) {
+  return (command, args) => {
+    calls.push(args);
+    const proc = makeFakeProc();
+    procs.push(proc);
+    if (args[0] === "remote") {
+      const list = remoteProcs.get(args[2]) ?? [];
+      list.push(proc);
+      remoteProcs.set(args[2], list);
+    }
+    return proc;
+  };
+}
+
+/** その機械の子を「起動直後の異常終了」3回で諦めさせる(3回目の close で10分の窓へ入る)。 */
+function driveToGiveUp(t, procsForMachine) {
+  for (let i = 0; i < 3; i += 1) {
+    crashImmediately(procsForMachine.at(-1));
+    t.mock.timers.tick(5000);
+  }
+}
+
+test("観測できない→観測できるに戻ったら、諦めを畳んで即座に張り直す(10分を待たない)", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const calls = [];
+  const procs = [];
+  const remoteProcs = new Map();
+  const lines = [];
+  const manager = new MonitorProcessManager(
+    makeDeps({ outputChannel: { appendLine: (line) => lines.push(line) } }),
+    makeRemoteSpawn(calls, procs, remoteProcs),
+  );
+  manager.startAll();
+  const remoteCalls = () => calls.filter((args) => args[0] === "remote").length;
+
+  feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+  assert.equal(remoteCalls(), 1);
+
+  driveToGiveUp(t, remoteProcs.get("mac2"));
+  assert.equal(remoteCalls(), 3, "諦めるまでに短間隔で2回張り直す");
+
+  // ランナーが落ちた: fanout の子も死ぬのでその機械の台は unknown になる
+  feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2", state: "unknown" }]);
+  t.mock.timers.tick(60000);
+  assert.equal(remoteCalls(), 3, "落ちている間は張り直さない");
+
+  // 戻った: fanout が60秒以内に張り直すので観測が戻る
+  feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+  assert.equal(remoteCalls(), 4, "合図で即座に1本立てる");
+  assert.ok(lines.some((line) => line.includes("[mac2]") && line.includes("再び観測")),
+    "OUTPUT に理由が残る");
+
+  // 合図は遷移でだけ出る(観測できたままの監視サイクルで撃ち続けない)
+  feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+  assert.equal(remoteCalls(), 4, "同じ観測が続くだけでは撃たない");
+});
+
+test("観測できないまま(旧バイナリ相当)では畳まない = 10分の経路のまま", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const calls = [];
+  const procs = [];
+  const remoteProcs = new Map();
+  const manager = new MonitorProcessManager(makeDeps(), makeRemoteSpawn(calls, procs, remoteProcs));
+  manager.startAll();
+  const remoteCalls = () => calls.filter((args) => args[0] === "remote").length;
+
+  // 旧バイナリの機械は fanout の子も上がらないので、最初から台は unknown
+  feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2", state: "unknown" }]);
+  assert.equal(remoteCalls(), 1);
+  driveToGiveUp(t, remoteProcs.get("mac2"));
+  assert.equal(remoteCalls(), 3);
+
+  for (let i = 0; i < 5; i += 1) {
+    feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2", state: "unknown" }]);
+    t.mock.timers.tick(60000);
+  }
+  assert.equal(remoteCalls(), 3, "合図が出ないので ssh を張り続けない");
+
+  t.mock.timers.tick(10 * 60 * 1000);
+  assert.equal(remoteCalls(), 4, "10分の経路は生きている");
+});
+
+test("ずっと観測できている(飽和相当)では畳まない = 10分の経路のまま", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const calls = [];
+  const procs = [];
+  const remoteProcs = new Map();
+  const manager = new MonitorProcessManager(makeDeps(), makeRemoteSpawn(calls, procs, remoteProcs));
+  manager.startAll();
+  const remoteCalls = () => calls.filter((args) => args[0] === "remote").length;
+
+  feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+  driveToGiveUp(t, remoteProcs.get("mac2"));
+  assert.equal(remoteCalls(), 3);
+
+  // 飽和中も fanout の子は生きている(台は connected のまま)
+  for (let i = 0; i < 5; i += 1) {
+    feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+    t.mock.timers.tick(60000);
+  }
+  assert.equal(remoteCalls(), 3, "飽和中に撃たない(10分の窓を守る)");
+});
+
+test("合図で畳むのはその機械のぶんだけ(他の機械の諦めに触らない)", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const calls = [];
+  const procs = [];
+  const remoteProcs = new Map();
+  const manager = new MonitorProcessManager(makeDeps(), makeRemoteSpawn(calls, procs, remoteProcs));
+  manager.startAll();
+  const remoteFor = (machine) => calls.filter((args) => args[0] === "remote" && args[2] === machine).length;
+
+  feedMonitorDevices(procs[0], [
+    { id: "ios:mac2/A", name: "A", machine: "mac2", state: "unknown" },
+    { id: "ios:mac3/C", name: "C", machine: "mac3", state: "unknown" },
+  ]);
+  assert.equal(remoteFor("mac2"), 1);
+  assert.equal(remoteFor("mac3"), 1);
+
+  // 2機とも諦めさせる(close は機械ごとの子へ送る)
+  for (let i = 0; i < 3; i += 1) {
+    crashImmediately(remoteProcs.get("mac2").at(-1));
+    crashImmediately(remoteProcs.get("mac3").at(-1));
+    t.mock.timers.tick(5000);
+  }
+  assert.equal(remoteFor("mac2"), 3);
+  assert.equal(remoteFor("mac3"), 3);
+
+  // mac2 だけ戻る
+  feedMonitorDevices(procs[0], [
+    { id: "ios:mac2/A", name: "A", machine: "mac2" },
+    { id: "ios:mac3/C", name: "C", machine: "mac3", state: "unknown" },
+  ]);
+  assert.equal(remoteFor("mac2"), 4, "戻った機械だけ張り直す");
+  assert.equal(remoteFor("mac3"), 3, "落ちたままの機械には触らない");
 });
