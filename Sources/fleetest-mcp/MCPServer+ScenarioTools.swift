@@ -179,6 +179,27 @@ extension MCPServer {
             // profile 無しのときだけ要る
             RunEnvironment.apply(DeviceIndependentRunSettings.resolve(DeviceIndependentRunSettings.profileLessBase))
             let platform = infos.first?.platform ?? (args["platform"] as? String ?? "ios")
+
+            // @TestClass(app:) が無いシナリオの既定アプリを、このプロジェクトのアプリプロファイル
+            // (profiles/apps/*.json)から解決する。profile 引数が無いこの経路だけが持つ穴
+            // (resolveProfileTarget 側は resolved.apps[platform] からすでに埋めている)
+            switch Self.defaultAppFromProjectApps(Self.loadAppProfiles(project: project), platform: platform) {
+            case .resolved(let profileName, let bundleID, let name, let path):
+                appBundleID = bundleID
+                appName = name
+                appPath = path
+                prologue.append("ℹ️ using the app from profiles/apps/\(profileName).json (\(bundleID))"
+                    + " — the scenario declares no @TestClass(app:)")
+            case .ambiguous(let profileNames):
+                throw MCPError("this project has \(profileNames.count) app profiles"
+                    + " (\(profileNames.joined(separator: ", ")))"
+                    + " and the scenario declares no @TestClass(app:) — add @TestClass(app:"
+                    + " \"<bundleID>\") to the scenario, or run it with profile: <run profile name>"
+                    + " (then drop udid/port/serial)")
+            case .none:
+                break
+            }
+
             // **宛先の決め方は探索系(driver(_:))と同じにする**。片方だけ賢いと
             // 「ft_snapshot は繋がるのに ft_run_scenario だけ既定ポートで落ちる」になる。
             // **iOS の接続は CLI の `--port` 直指定と同じ PortDirectIOSTarget から作る** —— ポートだけ
@@ -232,7 +253,45 @@ extension MCPServer {
         if infos.count > 1 {
             lines.append("\(passedCount) passed / \(failedCount) failed")
         }
-        return text(lines.joined(separator: "\n"))
+        // **成功応答に載る警告・prologue も CLI → MCP の言い換えを通す**(forMCP は今まで
+        // 投げた Error にしか掛かっておらず、ここに載る FTCore/ScenarioAppResolution 由来の
+        // 文言(`--profile` 等)がそのまま出ていた)。掛ける場所はここ1箇所に集約する
+        return text(MCPMessageText.forMCP(lines.joined(separator: "\n")))
+    }
+
+    /// profile 無し呼び出しの既定アプリ解決(profile あり経路は resolveProfileTarget が別に持つ)。
+    /// **判定だけを切り出した純粋関数** —— ディスク走査(loadAppProfiles)と分けてテストで固定する
+    enum DefaultAppFromProjectApps: Equatable {
+        /// ちょうど1つのアプリプロファイルが対象 platform の欄(bundleID)を持っていた
+        case resolved(profileName: String, bundleID: String, appName: String?, appPath: String?)
+        /// アプリプロファイルが2つ以上ある = platform だけでは黙って選べない
+        case ambiguous(profileNames: [String])
+        /// 0個、または唯一のプロファイルに対象 platform の欄が無い
+        case none
+    }
+
+    static func defaultAppFromProjectApps(
+        _ apps: [(name: String, profile: AppProfile)], platform: String
+    ) -> DefaultAppFromProjectApps {
+        guard apps.count == 1 else {
+            return apps.isEmpty ? .none : .ambiguous(profileNames: apps.map(\.name))
+        }
+        let (name, profile) = apps[0]
+        let section = profile.section(for: platform)
+        guard let bundleID = section.app, !bundleID.isEmpty else { return .none }
+        return .resolved(profileName: name, bundleID: bundleID,
+                         appName: section.appName, appPath: section.appPath)
+    }
+
+    /// profiles/apps/*.json を読めた分だけ返す(読めない/デコードできないファイルは黙って除く —
+    /// ProfileResolver.declaredAppPaths 等の既存の読み方と同じ規律)
+    static func loadAppProfiles(project: TestProject) -> [(name: String, profile: AppProfile)] {
+        ProfileResolver.appProfileNames(project: project).compactMap { name in
+            guard let data = try? Data(
+                    contentsOf: project.appsDir.appendingPathComponent("\(name).json")),
+                  let profile = try? JSONDecoder().decode(AppProfile.self, from: data) else { return nil }
+            return (name, profile)
+        }
     }
 
     /// DSL コマンド索引(`fleetest api dsl-commands` と同じ出典 = Sources/FTCore/CommandIndex.swift)。
