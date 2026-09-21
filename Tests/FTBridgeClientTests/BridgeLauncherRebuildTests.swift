@@ -42,7 +42,12 @@ final class BridgeLauncherRebuildTests: XCTestCase {
 
     private func needsRebuild(_ xctestrun: URL, signing: String = "",
                               toolchain: String? = nil) -> Bool {
-        BridgeLauncher.runnerNeedsRebuild(
+        rebuildReason(xctestrun, signing: signing, toolchain: toolchain) != nil
+    }
+
+    private func rebuildReason(_ xctestrun: URL, signing: String = "",
+                               toolchain: String? = nil) -> BridgeLauncher.RunnerRebuildReason? {
+        BridgeLauncher.runnerRebuildReason(
             repoRoot: root, xctestrun: xctestrun, signing: signing,
             toolchain: toolchain ?? self.toolchain)
     }
@@ -114,6 +119,22 @@ final class BridgeLauncherRebuildTests: XCTestCase {
             try setModified(file, Date(timeIntervalSinceNow: -3600))
         }
         XCTAssertTrue(needsRebuild(xctestrun, toolchain: "Xcode 27.1 / sdk 27B2"))
+        // **理由まで固定する** —— 呼び手はこれをそのまま出すので、ここが sourcesChanged に
+        // 化けると「Runner sources changed」と誤って帰属する(実際にそう出ていた)
+        XCTAssertEqual(rebuildReason(xctestrun, toolchain: "Xcode 27.1 / sdk 27B2"), .toolchainChanged)
+        XCTAssertEqual(rebuildReason(xctestrun, toolchain: "Xcode 27.1 / sdk 27B2")?.summary,
+                       "The Xcode toolchain changed")
+    }
+
+    /// 原因ごとに別の理由を返す(1つに丸めると帰属を誤る)
+    func testRebuildReasonNamesTheCause() throws {
+        let fresh = try makeXCTestRun(modified: Date())
+        for file in Self.inputs {
+            try setModified(file, Date(timeIntervalSinceNow: -3600))
+        }
+        XCTAssertNil(rebuildReason(fresh), "変化が無ければ作り直さない")
+        try setModified(Self.inputs[0], Date(timeIntervalSinceNow: 60))
+        XCTAssertEqual(rebuildReason(fresh), .sourcesChanged)
     }
 
     /// 指紋が無い(旧版で作った成果物)ときも作り直す = 判定不能は再ビルド側へ倒す

@@ -727,10 +727,11 @@ public struct BridgeProvisioner {
                                               port: xcui.port, physical: xcui.sim.physical)
                 try launcher.generateProjectIfNeeded()
                 let existing = try launcher.findXCTestRun()
-                let rebuild = existing.map {
-                    BridgeLauncher.runnerNeedsRebuild(
+                let rebuildReason = existing.flatMap {
+                    BridgeLauncher.runnerRebuildReason(
                         repoRoot: repoRoot, xctestrun: $0,
-                        signing: launcher.currentSigningFingerprint()) } ?? false
+                        signing: launcher.currentSigningFingerprint()) }
+                let rebuild = rebuildReason != nil
                 // **ビルドを始める前に**ロックを知らせる(ビルド自体に解除は要らないので待たない
                 // = 数分の間に解除してもらえれば、起動時に待たずに済む)
                 if xcui.sim.physical, existing == nil || rebuild,
@@ -742,9 +743,9 @@ public struct BridgeProvisioner {
                     log("→ build-for-testing (for \(xcui.sim.physical ? "a physical device" : "the simulator")"
                         + "; the first run takes several minutes)...")
                     try launcher.buildForTesting()
-                } else if rebuild {
-                    // ソース変更後の旧 xctestrun を起動し続けない(BridgeLauncher.runnerNeedsRebuild 参照)
-                    log("→ Runner sources changed — re-running build-for-testing...")
+                } else if let rebuildReason {
+                    // 古い xctestrun を起動し続けない(BridgeLauncher.runnerRebuildReason 参照)
+                    log("→ \(rebuildReason.summary) — re-running build-for-testing...")
                     try launcher.buildForTesting()
                 }
             }

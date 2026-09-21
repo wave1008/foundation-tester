@@ -201,8 +201,8 @@ public struct BridgeLauncher {
     /// = 従来の xctestrunNotFound → buildForTesting 経路に任せる
     public func rebuildIfStale() throws {
         guard let xctestrun = try findXCTestRun() else { return }
-        if Self.runnerNeedsRebuild(repoRoot: repoRoot, xctestrun: xctestrun,
-                                   signing: currentSigningFingerprint()) {
+        if Self.runnerRebuildReason(repoRoot: repoRoot, xctestrun: xctestrun,
+                                    signing: currentSigningFingerprint()) != nil {
             try buildForTesting()
         }
     }
@@ -1084,26 +1084,47 @@ public struct BridgeLauncher {
         }
     }
 
+    /// 作り直す理由。**呼び手はこれをそのまま出す** —— どれで発火したかは判定の入力から分かるので、
+    /// 一律に「ソースが変わった」と書かない(実際に Xcode を切り替えた run が「Runner sources
+    /// changed」と出していた)
+    enum RunnerRebuildReason: Sendable {
+        case artifactUnreadable
+        case sourcesChanged
+        case toolchainChanged
+        case signingChanged
+
+        var summary: String {
+            switch self {
+            case .artifactUnreadable: return "The built runner is missing or unreadable"
+            case .sourcesChanged: return "Runner sources changed"
+            case .toolchainChanged: return "The Xcode toolchain changed"
+            case .signingChanged: return "The code-signing settings changed"
+            }
+        }
+    }
+
     /// ランナーのソースが xctestrun より新しいか(InAppLauncher.needsBuild と対の鮮度判定)。
     /// これが無いと prepareSharedBuilds は「xctestrun 不在」しか見ず、ソース変更後も旧バイナリを
-    /// 起動し続ける(旧版検知 → 停止 → 同じ旧バイナリで再起動、の毎 run ループになる。2026-07-28 実害)
-    static func runnerNeedsRebuild(repoRoot: URL, xctestrun: URL, signing: String,
-                                   toolchain: String? = ToolchainFingerprint.current()) -> Bool {
+    /// 起動し続ける(旧版検知 → 停止 → 同じ旧バイナリで再起動、の毎 run ループになる。2026-07-28 実害)。
+    /// nil = 作り直さない
+    static func runnerRebuildReason(repoRoot: URL, xctestrun: URL, signing: String,
+                                    toolchain: String? = ToolchainFingerprint.current())
+        -> RunnerRebuildReason? {
         guard let built = (try? xctestrun.resourceValues(forKeys: [.contentModificationDateKey]))?
                 .contentModificationDate,
-              let newest = newestRunnerSourceTimestamp(repoRoot: repoRoot) else { return true }
-        if newest > built { return true }
+              let newest = newestRunnerSourceTimestamp(repoRoot: repoRoot) else { return .artifactUnreadable }
+        if newest > built { return .sourcesChanged }
         // Xcode/SDK を上げてもソースの mtime は動かない。指紋が変わっていたら作り直す
         // (旧 Xcode のランナーを新ランタイムに載せると実行中に「Application is not running」で落ちる)
         // 指紋は DerivedData ルートに置く。xctestrun からの相対位置は Xcode の出力レイアウトに
         // 依存するので、決め打ちせず上方向に探す(見つからなければ「旧版の成果物」= 作り直す)
-        guard let fingerprint = findRunnerFingerprint(near: xctestrun) else { return true }
-        if !ToolchainFingerprint.matches(storedAt: fingerprint, current: toolchain) { return true }
+        guard let fingerprint = findRunnerFingerprint(near: xctestrun) else { return .artifactUnreadable }
+        if !ToolchainFingerprint.matches(storedAt: fingerprint, current: toolchain) { return .toolchainChanged }
         // 署名設定(チーム・接頭辞)の変更もソースの mtime を動かさない(buildForTesting の doc)
         let storedSigning = try? String(
             contentsOf: fingerprint.deletingLastPathComponent().appendingPathComponent(".signing"),
             encoding: .utf8)
-        return signingMismatch(stored: storedSigning, current: signing)
+        return signingMismatch(stored: storedSigning, current: signing) ? .signingChanged : nil
     }
 
     /// ランナーのビルド入力の最終更新時刻。入力 = **`BridgeSourceSet.xcuitest`(ブリッジの入力の正本:
