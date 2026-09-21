@@ -170,22 +170,18 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         var lastHoldActive = false
         // 直近サイクルで id 衝突により落とした合成デバイスの警告(変化したときだけ出す)
         var lastSkipped: Set<String> = []
-        // その機械の dispatch.lock を毎周期読んで monitorLock を出す。**FT_RUNNER_BASE に
-        // 依存しない**(2026-09-21)—— ロックは機械に1本で、リモートへのディスパッチも
+        // その機械の dispatch.lock を毎周期読んで monitorLock を出す。**ランナー機の文脈かで
+        // 分岐しない**(2026-09-21)—— ロックは機械に1本で、リモートへのディスパッチも
         // ローカル run も同じ1本を取る(CLAUDE.md「1マシンで同時に走る run は1本」)ので、
         // **手元の run も占有**。黙ると錠前と配信の退避が手元にだけ効かない。
         // **ssh は増えない**(ローカルのファイル読み)。`machine` は埋めない = 欠落が手元の綴り
         // (monitorRuns / monitorDevices と同じ)で、リモートぶんは RemoteMonitorFanout が
         // 中継しながら機械名を埋める
         let myIssuer = LocalConfig.resolveIssuerId()
-        // **StreamLease の控えの置き場だけ**に使う(FTCore.RunnerBase の唯一の役割)。
-        // 手元では nil = 「他の発行者が配信中か」は分からない
-        let runnerBase = RunnerBase.fromEnvironment()
         var lastOccupancy: HostOccupancy?
-        // フリート横断の run 進捗(docs/design.md §18)。**FT_RUNNER_BASE に依存しない** ——
-        // dispatch.lock と違い、手元(FT_RUNNER_BASE 未設定)で走る CLI 実行の run もここで見せる
-        // のが目的。読む場所は機械グローバル(~/.fleetest/runs)なので、ここでは fan-out の子
-        // (--device-machine 付き)かどうかも問わない
+        // フリート横断の run 進捗(docs/design.md §18)。読む場所は機械グローバル
+        // (~/.fleetest/runs)なので、ここでは fan-out の子(--device-machine 付き)かどうかも
+        // 問わない —— 手元で走る CLI 実行の run もここで見せるのが目的
         let runProgressDir = RunProgressLedger.directory()
         // **比較は生の台帳(RunProgressRecord)で行う** —— 変換後の ApiMonitorRunProgress は
         // elapsedSeconds/scenarioElapsedSeconds を毎周期の `now` で計算し直すので、生のまま
@@ -370,19 +366,17 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 let frozenVerdict = Self.frozenVerdict(
                     id: state.target.id, key: leaseKey,
                     debounce: frozenDebounce, stateDir: leaseStateDir, inRun: inRun)
-                // 他の発行者がこの台を配信中か(共有ランナー。手元では runnerBase が nil)
-                let leasedByOther = runnerBase.map { base in
-                    StreamLease.heldByOther(
-                        info: StreamLease.read(base: base, platform: state.target.platform,
-                                               name: state.target.name),
-                        myIssuer: myIssuer, pidAlive: ProcessLiveness.isAlive)
-                }
+                // 他の発行者がこの台を配信中か。控えは機械グローバル(~/.fleetest/streams)なので
+                // **手元でも読む** —— 台が居る機械の上で走るこのプロセスの $HOME が答えを持つ
+                let leasedByOther = StreamLease.heldByOther(
+                    info: StreamLease.read(platform: state.target.platform, name: state.target.name),
+                    myIssuer: myIssuer, pidAlive: ProcessLiveness.isAlive)
                 // 同じ Mac の別のウィンドウ(別の FT_PARENT_PID)がこの台のヘルパーを持っているか
                 let heldLocally = Self.streamIdentity(state).map { identity in
                     LocalStreamHolder.heldByOther(identity: identity, rows: processRows,
                                                   myOwner: LocalStreamHolder.myOwner())
                 } ?? false
-                let streamedByOther: Bool? = (leasedByOther ?? false) || heldLocally ? true : leasedByOther
+                let streamedByOther: Bool? = leasedByOther || heldLocally
                 var bridgeRunning: Bool?
                 if let serial = state.androidSerial, let probed = bridgeRunningBySerial[serial] {
                     bridgeRunning = probed
@@ -1811,8 +1805,8 @@ struct ApiMonitorRunProgress: Codable, Equatable {
     let phase: String
 }
 
-/// monitorRuns イベント: フリート横断の run 進捗(docs/design.md §18.2)。**FT_RUNNER_BASE に
-/// 依存しない** —— dispatch.lock(ApiMonitorLockEvent)と違い手元でも出す。`machine` は **var**
+/// monitorRuns イベント: フリート横断の run 進捗(docs/design.md §18.2)。**手元でも出す**
+/// (読む台帳が機械グローバルなので、CLI 実行の run も他人の run も載る)。`machine` は **var**
 /// (子は畳んだプロファイルを見て自分を "local" と名乗るので、中継する RemoteMonitorFanout が
 /// monitorLock/monitorDevices と同じ規律で埋める)
 struct ApiMonitorRunsEvent: Codable, Equatable {
@@ -1899,7 +1893,9 @@ struct ApiMonitorDeviceInfo: Codable {
     /// **他の発行者・他のウィンドウがこの台の画面配信を張っている**(共有ランナーは
     /// FTCore.StreamLease、同じ Mac の別ウィンドウは FTCore.LocalStreamHolder)。
     /// 拡張はこの台の配信を起こさずポーリングのままにする —— 同じ台を人数ぶん捕捉すると
-    /// ランナーが痛む(docs/remote-runner.md §18.2)。誰も張っていない手元では nil。
+    /// ランナーが痛む(docs/remote-runner.md §18.2)。誰も張っていなければ false
+    /// (どちらの判定もこの機械の中で完結するので「不明」は無い。nil は観測そのものを
+    /// していない経路 = 合成デバイスの行だけ)。
     /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
     /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.streamedByOther)
     let streamedByOther: Bool?

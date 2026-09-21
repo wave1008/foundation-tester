@@ -1922,15 +1922,17 @@ upstream main を clone して update.sh で追従するので、2人の rev は
   拡張 ─┴─ 配信を畳む / 錠前を出す / 破壊的操作の確認に添える
 ```
 
-- **手元も観測の対象**(2026-09-21)。dispatch.lock は機械に1本で、**リモートへのディスパッチも
-  ローカル run も同じ1本を取る**(§13)ので、「ランナー機の文脈か」(`FT_RUNNER_BASE`)は
-  占有を配るかどうかの条件にしない —— 条件にしていた頃は、手元の run 中にツールバーの
-  手元の行に錠前が出ず、他人がこの Mac へディスパッチしても配信が畳まれなかった。
-  **手元の綴りは `machine` 欄を出さないこと**(monitorRuns / monitorDevices と同じ。
-  拡張は `runBoardModel.LOCAL_MACHINE_KEY` = 空文字へ写し、ホスト負荷グラフの手元の行と一致する)。
-  `FTCore.RunnerBase` に残った役割は **`StreamLease` の控えの置き場だけ**
-- **`FT_RUNNER_BASE` は `RemoteShell.remoteRunCommand` / `remoteExecCommand` が export する
-  1箇所**。**exec も `FT_ISSUER` を運ぶ**(子が「保持者は自分か」を判定するため)
+- **手元も観測の対象**。dispatch.lock は機械に1本で、**リモートへのディスパッチもローカル run も
+  同じ1本を取る**(§13)ので、「ランナー機の文脈か」を占有を配るかどうかの条件にしない ——
+  条件にしていた頃は、手元の run 中にツールバーの手元の行に錠前が出ず、他人がこの Mac へ
+  ディスパッチしても配信が畳まれなかった。**手元の綴りは `machine` 欄を出さないこと**
+  (monitorRuns / monitorDevices と同じ。拡張は `runBoardModel.LOCAL_MACHINE_KEY` = 空文字へ写し、
+  ホスト負荷グラフの手元の行と一致する)
+- **`FT_RUNNER_BASE` は無い**(2026-09-21 に削除)。役割は2つあったが、**ロックの場所**は
+  `~/.fleetest` 固定になり、**`StreamLease` の控えの置き場**も同じ区画へ移って、どちらも
+  `<base>` に依存しなくなった。**書き手も読み手もその機械の上で走る**ので、自分の `$HOME` が
+  そのまま正解(ssh で運ぶ必要が無い)。**`FT_ISSUER` は run / exec とも運び続ける**
+  (子が「保持者は自分か」を判定するため)
 - **判定は `FTRemote.HostOccupancy` の1箇所**(純粋関数 + 薄い読み込み)。
   **info が読めなくても held は保つ**(「情報が読めなくてもロックは尊重する」と同じ向き)/
   **保持者不明を自分扱いにしない**(破壊的操作の確認が黙る側へ倒れる)

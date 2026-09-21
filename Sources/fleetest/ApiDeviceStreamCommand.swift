@@ -97,12 +97,12 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
         // **配信の控えを置いてから化ける**(FTCore.StreamLease)。共有ランナーで同じ台を2人が
         // 眺めると端末側の捕捉コストが人数ぶん重なるので、監視の子がこの控えを読んで
         // 「他人が配信中」を配り、拡張はその台の配信を起こさない。**ここでは誰も拒否しない**
-        // (拒否すると起こしては断られる ssh の再試行ループになる)。pid は execv 後も同じ
-        if let base = RunnerBase.fromEnvironment() {
-            StreamLease.write(base: base, platform: platform, name: name,
-                              info: .now(pid: ProcessInfo.processInfo.processIdentifier,
-                                         issuer: LocalConfig.resolveIssuerId()))
-        }
+        // (拒否すると起こしては断られる ssh の再試行ループになる)。pid は execv 後も同じ。
+        // 置き場は機械グローバルな `~/.fleetest/streams`(この台が居る機械 = 自分の $HOME)なので
+        // **文脈で分岐しない** —— 手元で起こした配信も同じ1箇所に載る
+        StreamLease.write(platform: platform, name: name,
+                          info: .now(pid: ProcessInfo.processInfo.processIdentifier,
+                                     issuer: LocalConfig.resolveIssuerId()))
         // **ping を止め切ってから化ける** —— 書き込みの途中で execv するとレコードが切れる
         resolvePing?.stop()
         // ヘルパーへ化ける(戻ってこない)。失敗したときだけ下へ落ちる

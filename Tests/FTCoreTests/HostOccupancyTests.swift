@@ -58,19 +58,18 @@ final class HostOccupancyTests: XCTestCase {
         XCTAssertFalse(state.mine)
     }
 
-    /// **手元(FT_RUNNER_BASE 未設定)でも読む**(2026-09-21)—— dispatch.lock は機械に1本で、
-    /// リモートへのディスパッチもローカル run も同じ1本を取る。ここを「ランナー機の文脈か」で
-    /// 黙らせていた頃は、手元の run 中に錠前が出ず配信の退避も効かなかった。
-    /// **環境変数を1つも読まない**ことまで固定する(引数から runnerBase が消えている)
+    /// **手元でも読む**(2026-09-21)—— dispatch.lock は機械に1本で、リモートへのディスパッチも
+    /// ローカル run も同じ1本を取る。ここを「ランナー機の文脈か」で黙らせていた頃は、
+    /// 手元の run 中に錠前が出ず配信の退避も効かなかった。
+    /// **環境変数を1つも読まない**ことまで固定する(引数は home だけ)
     func testReadSeesTheLockOnTheLocalMachineToo() throws {
         let home = FileManager.default.temporaryDirectory
             .appendingPathComponent("ft-occupancy-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: home) }
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
 
-        // FT_RUNNER_BASE が立っていない状態でも「空き」を答える(黙らない = 拡張が
-        // 「不明」と「空き」を区別できる)
-        XCTAssertNil(RunnerBase.fromEnvironment([:]))
+        // 何も立っていない状態でも「空き」を答える(黙らない = 拡張が「不明」と「空き」を
+        // 区別できる)
         XCTAssertEqual(HostOccupancy.read(myIssuer: "alice", home: home), .free)
 
         let lockDir = URL(fileURLWithPath: RemoteDispatchLock.lockDirPath(home: home.path))
@@ -122,14 +121,5 @@ final class HostOccupancyTests: XCTestCase {
             return XCTFail("expected proceedWithWarning")
         }
         XCTAssertTrue(message.contains("bob"), message)
-    }
-
-    /// **役割は StreamLease の置き場だけ**(dispatch.lock / dispatch.queue の場所も、
-    /// 占有を配るかどうかも、ここからは導かない)
-    func testRunnerBaseReadsTheEnvironmentKey() {
-        XCTAssertEqual(RunnerBase.fromEnvironment(["FT_RUNNER_BASE": "/Users/ci/fleetest-runner"]),
-                       "/Users/ci/fleetest-runner")
-        XCTAssertNil(RunnerBase.fromEnvironment(["FT_RUNNER_BASE": ""]))
-        XCTAssertNil(RunnerBase.fromEnvironment([:]))
     }
 }

@@ -18,7 +18,7 @@
 // **受け入れている穴**: pid が一巡して無関係のプロセスに当たると、その台は「他人が配信中」の
 // まま張れなくなる(症状はタイル1枚がポーリングのままになるだけで、run には影響しない)。
 // 時間で切る案は「何秒なら古い」の根拠が無い(長い配信は何時間でも続く)ので採らず、
-// **`remote clean` の保持ポリシーが `<base>/.fleetest/streams` を掃く**ことで上限を作る。
+// **`remote clean` の保持ポリシーが `~/.fleetest/streams` を掃く**ことで上限を作る。
 
 import Foundation
 
@@ -45,13 +45,18 @@ public struct StreamLeaseInfo: Codable, Equatable, Sendable {
 
 public enum StreamLease {
 
-    /// 控えの置き場は**ホスト共有**(`<base>/.fleetest/streams/`)。発行者ネームスペースの中に
-    /// 置くと、他人の配信が見えず二重配信を防げない ―― デバイスはホストの資源(dispatch.lock が
-    /// 機械に1本なのと同じ理由)。
-    /// **ただし dispatch.lock と違い `<base>` 基準のまま** = 同じ Mac に base が2つあると
-    /// 控えも2つに分かれる(`MachineStateDirectory` へは移していない)
-    public static func directory(base: String) -> String {
-        base + "/.fleetest/streams"
+    /// 控えの置き場は**機械グローバル**(`~/.fleetest/streams/`。`FTCore.MachineStateDirectory`)。
+    /// 発行者ネームスペースの中に置くと他人の配信が見えず二重配信を防げないのに加え、
+    /// **`<base>` 基準だと同じ Mac に base を2つ作った瞬間に控えが割れる** —— 奪い合う相手は
+    /// 同じ端末の捕捉コスト(screenrecord / simstream)なので、dispatch.lock と同じ理由で
+    /// 守る単位は `<base>` ではなくその機械。
+    ///
+    /// `home` は**その控えを持つ機械のホーム**。書き手(`api device-stream`)も読み手
+    /// (`api monitor`)も**その台が居る機械の上で走る**(リモートぶんは fan-out の子が ssh 先で
+    /// 走る)ので、実運用では常に自分の `$HOME` —— ssh 越しに運ぶ必要があるのは、向こうの
+    /// パスをシェルコマンドへ書く `RemoteCleanPlan` だけ(そこは `RemoteLayout.home` を渡す)
+    public static func directory(home: String) -> String {
+        MachineStateDirectory.path(home: home) + "/streams"
     }
 
     /// デバイス1台の鍵。**`api device-stream` と `api monitor` が同じ綴りを作る契約**
@@ -69,15 +74,19 @@ public enum StreamLease {
         return encoded
     }
 
-    public static func fileURL(base: String, platform: String, name: String) -> URL {
-        URL(fileURLWithPath: directory(base: base))
+    /// `home` はテスト用の差し替え口(環境変数ではなく引数 —— `RunProgressLedger.directory(home:)`
+    /// と同じ形)。**パスの組み立ては `directory` の1箇所**を通す
+    public static func fileURL(platform: String, name: String,
+                               home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        URL(fileURLWithPath: directory(home: home.path))
             .appendingPathComponent(key(platform: platform, name: name) + ".json")
     }
 
     /// 控えを置く(配信を始める直前に1回)。失敗は無視してよい ―― 控えが無くても配信は張れる
     /// (二重配信を1回見逃すだけ。配信そのものを控えの都合で止めない)
-    public static func write(base: String, platform: String, name: String, info: StreamLeaseInfo) {
-        let url = fileURL(base: base, platform: platform, name: name)
+    public static func write(platform: String, name: String, info: StreamLeaseInfo,
+                             home: URL = FileManager.default.homeDirectoryForCurrentUser) {
+        let url = fileURL(platform: platform, name: name, home: home)
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let encoder = JSONEncoder()
@@ -96,8 +105,9 @@ public enum StreamLease {
     }
 
     /// ディスクから1台ぶん読む(判定は heldByOther)
-    public static func read(base: String, platform: String, name: String) -> StreamLeaseInfo? {
-        let url = fileURL(base: base, platform: platform, name: name)
+    public static func read(platform: String, name: String,
+                            home: URL = FileManager.default.homeDirectoryForCurrentUser) -> StreamLeaseInfo? {
+        let url = fileURL(platform: platform, name: name, home: home)
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(StreamLeaseInfo.self, from: data)
     }

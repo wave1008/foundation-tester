@@ -876,7 +876,6 @@ final class RemoteDispatchTests: XCTestCase {
             + "{ echo \"no runner workspace at \(workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
             + "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && "
-            + "export FT_RUNNER_BASE='/Users/ci/fleetest-runner' && "
             + "export FT_DISPATCH_LOCK_HELD='local' && test -x '\(binary)' || "
             + "{ echo \"fleetest binary not found on remote — run: swift build --product fleetest\" >&2; exit 90; } && "
             + "'\(binary)' project sync >/dev/null 2>&1 || true && "
@@ -965,18 +964,15 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertTrue(issuerRange.lowerBound < guardRange.lowerBound, command)
     }
 
-    /// ランナー機の base を子へ渡す(FTCore.RunnerBase)。**run と exec の両方**に無いと、
-    /// その経路の子だけ StreamLease の控えを読み書きできず、二重配信を止められない(§18.7 M2)
-    func testBothRemoteCommandsExportTheRunnerBase() {
+    /// **ランナー機の base は子へ渡さない**(2026-09-21)。配信の控え(`FTCore.StreamLease`)が
+    /// 機械グローバルな `~/.fleetest/streams` へ移り、子は自分の `$HOME` から場所を導くので、
+    /// `FT_RUNNER_BASE` を読む口は1つも残っていない。**使われない環境変数を運ばない** ——
+    /// 残すと「ここから置き場を導いてよい」に見え、base が2つある Mac で控えが割れる形が戻る
+    func testRemoteCommandsCarryNoRunnerBase() {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         for command in [RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: ["run"]),
                         RemoteShell.remoteExecCommand(layout: layout, args: ["api", "monitor"])] {
-            XCTAssertTrue(command.contains("export FT_RUNNER_BASE='/Users/ci/fleetest-runner' && "), command)
-            guard let baseRange = command.range(of: "FT_RUNNER_BASE"),
-                  let launchRange = command.range(of: "test -x") else {
-                return XCTFail("expected markers missing: \(command)")
-            }
-            XCTAssertTrue(baseRange.lowerBound < launchRange.lowerBound, command)
+            XCTAssertFalse(command.contains("FT_RUNNER_BASE"), command)
         }
     }
 
@@ -1786,10 +1782,12 @@ final class RemoteDispatchTests: XCTestCase {
     func testCleanPlanCoversAllIssuersAndTheLegacyLayoutWithoutGlobs() {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
-        let base = "'/Users/ci/fleetest-runner'"
-        // 配信の控えはホスト共有の1箇所(発行者ネームスペースの外)。**死んだ pid の控えが
-        // 溜まると、pid が一巡したときにその台の配信が誰にも張れなくなる**ので上限を作る
-        XCTAssertTrue(commands[0].contains("\(base)/.fleetest/streams -mindepth 1 -maxdepth 1"), commands[0])
+        // 配信の控えは**機械に1箇所**(`~/.fleetest/streams` = `<base>` 配下ではない)。
+        // **死んだ pid の控えが溜まると、pid が一巡したときにその台の配信が誰にも張れなくなる**
+        // ので上限を作る。掃除先は `RemoteLayout.home` 基準 —— base を変えても同じ1箇所
+        XCTAssertTrue(commands[0].contains("'/Users/ci/.fleetest/streams' -mindepth 1 -maxdepth 1"),
+                      commands[0])
+        XCTAssertFalse(commands[0].contains("fleetest-runner"), commands[0])
         let perWork = commands[1]
         XCTAssertTrue(perWork.contains("find '/Users/ci/fleetest-runner/users' -mindepth 2 -maxdepth 2 -type d -name work"),
                       perWork)
@@ -2033,7 +2031,7 @@ final class RemoteDispatchTests: XCTestCase {
             + "{ echo \"no runner workspace at \(workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
             + "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && "
-            + "export FT_RUNNER_BASE='/Users/ci/fleetest-runner' && export FT_ISSUER='alice' && test -x '\(binary)' || "
+            + "export FT_ISSUER='alice' && test -x '\(binary)' || "
             + "{ echo \"fleetest binary not found on remote — run: swift build --product fleetest\" >&2; exit 90; } && "
             + "'\(binary)' 'doctor' '--fm-only'")
     }

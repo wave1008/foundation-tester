@@ -1109,7 +1109,6 @@ public enum RemoteCleanPlan {
     /// 無いディレクトリは `if [ -d ]` で飛ばす(find のエラーを警告として出さない)
     public static func commands(layout: RemoteLayout, keepDays: Int, dryRun: Bool) -> [String] {
         let action = dryRun ? "-print" : "-exec rm -rf {} +"
-        let base = RemoteShell.quote(layout.base)
         let users = RemoteShell.quote(layout.usersDir)
         let legacy = RemoteShell.quote(layout.base + "/work")
         let projects = RemoteLayout.projectsDirName
@@ -1117,11 +1116,12 @@ public enum RemoteCleanPlan {
             "if [ -d \(dir) ]; then find \(dir) -mindepth \(depth) -maxdepth \(depth)"
                 + " -mtime +\(keepDays) \(action); fi"
         }
-        // 配信の控え(FTCore.StreamLease)。**ホスト共有の1箇所**で、書いた側は execv で
-        // 化けるので自分では消せない —— 死んだ pid の控えが溜まる(読む側は無視するが、
-        // **pid が一巡して別プロセスに当たると、その台の配信が誰にも張れなくなる**)。
-        // ここで保持ポリシーに掛けて上限を作る(数日前の配信は必ず終わっている)
-        let streams = aged(base + "/.fleetest/streams", depth: 1)
+        // 配信の控え(FTCore.StreamLease)。**機械に1箇所**(`~/.fleetest/streams`。`<base>` 配下
+        // ではない = base が2つあっても控えは割れない)で、書いた側は execv で化けるので自分では
+        // 消せない —— 死んだ pid の控えが溜まる(読む側は無視するが、**pid が一巡して別プロセスに
+        // 当たると、その台の配信が誰にも張れなくなる**)。ここで保持ポリシーに掛けて上限を作る
+        // (数日前の配信は必ず終わっている)
+        let streams = aged(RemoteShell.quote(StreamLease.directory(home: layout.home)), depth: 1)
         let works = "$(find \(users) -mindepth 2 -maxdepth 2 -type d -name work 2>/dev/null) \(legacy)"
         let perWork = "for w in \(works); do "
             + aged("\"$w/.fleetest/dispatch\"", depth: 1) + "; "
@@ -1227,7 +1227,7 @@ public enum RemoteShell {
         return "cd \(quote(layout.workDir)) 2>/dev/null && test -f Package.swift || "
             + "{ echo \"no runner workspace at \(layout.workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
-            + "\(pathCmd) && \(runnerBaseCmd(layout: layout))\(issuerCmd)\(streamOwnerCmd(streamOwner))"
+            + "\(pathCmd) && \(issuerCmd)\(streamOwnerCmd(streamOwner))"
             + "\(devDirCmd)\(fmCmd)\(lockHeldCmd)\(guardCmd) && \(syncCmd) && \(launch)"
     }
 
@@ -1267,7 +1267,7 @@ public enum RemoteShell {
         return "cd \(quote(layout.workDir)) 2>/dev/null && test -f Package.swift || "
             + "{ echo \"no runner workspace at \(layout.workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
-            + "\(pathCmd) && \(runnerBaseCmd(layout: layout))\(issuerCmd)\(streamOwnerCmd(streamOwner))"
+            + "\(pathCmd) && \(issuerCmd)\(streamOwnerCmd(streamOwner))"
             + "\(devDirCmd)\(guardCmd) && \(launch)"
     }
 
@@ -1278,14 +1278,6 @@ public enum RemoteShell {
     /// 経路ごとに結論が割れないよう、構造で揃える)
     private static func streamOwnerCmd(_ owner: String?) -> String {
         owner.map { "export \(StreamOwner.environmentKey)=\(quote($0)) && " } ?? ""
-    }
-
-    /// ランナー機の base を子へ渡す(FTCore.RunnerBase)。**用途は配信の控え(StreamLease)の
-    /// 置き場だけ**(docs/remote-runner.md §18.7)—— dispatch.lock は機械グローバルな
-    /// `~/.fleetest/` に1本なので、占有はこの値と無関係に読む。run/exec の両方に置く ——
-    /// 片方だけだと、その経路の子だけ「他人が配信中」を見られず二重配信を止められない
-    private static func runnerBaseCmd(layout: RemoteLayout) -> String {
-        "export \(RunnerBase.environmentKey)=\(quote(layout.base)) && "
     }
 }
 
