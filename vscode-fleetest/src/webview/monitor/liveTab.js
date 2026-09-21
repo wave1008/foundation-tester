@@ -306,8 +306,23 @@ const SCREENSHOT_PANE_GAP = 6;    // .screenshot-pane の gap(px)。CSS と一�
 
 // タップ/ドラッグ/ホバー枠は screenshot と liveCanvas のうち現在表示中の方を基準にする
 // (どちらか一方だけが'.visible'で、サイズ・座標系は等価に保つ前提)。
+// **liveUsingH264 では決めない** —— あれは「デコーダが生きている」であって、前面に出ているのが
+// どちらかとは別(配信が次のフレームを描くまでは snapshot の一枚絵を前に出す。showStill/showCanvas)。
 function activeScreenEl() {
-  return liveUsingH264 ? liveCanvas : screenshot;
+  return liveCanvas.classList.contains('visible') ? liveCanvas : screenshot;
+}
+
+// 前面に出すのはどちらか一方だけ。**デコーダには触らない**(捨てると次のキーフレームまで
+// 1枚も描けず、タップのたびに映像が数秒止まる)。
+function showStill() {
+  liveCanvas.classList.remove('visible');
+  screenshot.classList.add('visible');
+  screenshotPlaceholder.style.display = 'none';
+}
+function showCanvas() {
+  screenshot.classList.remove('visible');
+  liveCanvas.classList.add('visible');
+  screenshotPlaceholder.style.display = 'none';
 }
 // img は naturalWidth/Height、canvas はビットマップ実寸(h264Decoder が frame.displayWidth/Height に
 // 合わせて設定済み)で自然サイズを取る。
@@ -394,17 +409,15 @@ function applySnapshot(message) {
   lastScreen = message.screen;
   lastElements = message.elements;
   autoSnapshotRequested = false;
-  // h264 映像が健全な間はここで静止画へ切り替えない —— 切り替えるとデコーダを作り直すことになり、
-  // 次のキーフレーム到達まで表示が止まる(タップ/ドラッグのたびに毎回起きていた)。要素一覧・
-  // ホバー枠(showHover)は lastScreen/lastElements の更新だけで動くので、表示は継続してよい。
-  if (liveUsingH264) {
-    renderElements();
-    return;
-  }
-  disposeLiveH264(); // snapshot は jpeg 一枚絵。h264 未使用中はここで確実に片付けてから表示する
+  // 届いた一枚絵は**操作の結果そのもの**(host は tap のあとに撮って返す)。配信より新しいので
+  // 常に前面へ出す —— 配信は静止画面でエンコードを止めるため、出さずに待つと次のキーフレームが
+  // 来るまで古い絵が残る(実測 10 秒超。simstream の MaxKeyFrameIntervalDuration は 4 秒だが、
+  // 変化が無い間はそもそもエンコードされない)。
+  // **デコーダは捨てない** —— 捨てると作り直しになり、キーフレーム待ちの間 1 枚も描けなくなる
+  // (タップのたびに映像が止まっていた退行そのもの)。生かしたまま前面を入れ替えるだけにして、
+  // 次のフレームが描けた時点で showCanvas が canvas を前に戻す。
   screenshot.src = 'data:image/jpeg;base64,' + message.image;
-  screenshot.classList.add('visible');
-  screenshotPlaceholder.style.display = 'none';
+  showStill();
   hoverBox.style.display = 'none';
   renderElements();
   fitScreenshot();
@@ -667,12 +680,13 @@ export function applyLiveH264Chunk(message) {
       canvas: liveCanvas,
       onFirstFrame: () => {
         liveUsingH264 = true;
-        screenshot.classList.remove('visible');
-        liveCanvas.classList.add('visible');
-        screenshotPlaceholder.style.display = 'none';
+        showCanvas();
         fitScreenshot();
         requestSnapshotIfNeeded();
       },
+      // **描けた時点で canvas を前に戻す** —— snapshot の一枚絵を前面にしている間も
+      // デコーダは生きているので、次のフレームはキーフレームを待たずに描ける。
+      onFrameRendered: () => showCanvas(),
       onError: () => {
         liveH264ErrorSent = true;
         vscode.postMessage({ type: 'codecError', scope: 'live' });
@@ -702,8 +716,7 @@ export function applyLiveMessage(message) {
     case 'frame':
       disposeLiveH264(); // mjpeg フォールバック復帰(codecError 後、host が frame 送信に切替えた場合)
       screenshot.src = 'data:image/jpeg;base64,' + message.image;
-      screenshot.classList.add('visible');
-      screenshotPlaceholder.style.display = 'none';
+      showStill();
       requestSnapshotIfNeeded();
       break;
     case 'actionError':

@@ -1,12 +1,16 @@
-// デバイスモニターの「ライブ操作」タブで、h264 映像が健全な間はタップ等の操作結果として届く
-// 'snapshot'(jpeg 一枚絵 + 要素一覧)を受けても、映像(canvas)表示を静止画へ戻さないことの回帰テスト。
+// デバイスモニターの「ライブ操作」タブで、タップ等の操作結果として届く 'snapshot'
+// (jpeg 一枚絵 + 要素一覧)を受けたとき、**デコーダを捨てずに**前面だけ一枚絵へ入れ替えることの
+// 回帰テスト。
 //
-// 実害(docs/bug-audit-2026-09-06.md §3 liveTab.js:382): applySnapshot が liveUsingH264 の間も
-// 無条件に disposeLiveH264 していたため、画像上をタップするたび(monitorLiveController.ts の
-// runAction/runTapAtPoint が操作後に snapshot を取り直して post する)h264 デコーダを作り直す
-// ことになり、次のキーフレーム到達まで表示が止まっていた。要素一覧・ホバー枠は
-// lastScreen/lastElements の更新だけで機能するため、映像を止める必要はない。
-// 'frame' メッセージ(host が完全に mjpeg 配信へ切り替えた場合)はこれまで通り静止画に戻す。
+// 守っているものが2つある:
+//   - デコーダを作り直さない(実害 docs/bug-audit-2026-09-06.md §3 liveTab.js:382):
+//     作り直すと次のキーフレームまで1枚も描けず、タップのたびに映像が数秒止まる。
+//     h264 のキーフレームは「画面が動いてから最大 4 秒」かつ静止中はそもそもエンコードされない
+//     (fleetest-simstream の MaxKeyFrameIntervalDuration と keepalive)ので、実測で 10 秒を超えた。
+//   - 届いた一枚絵をすぐ出す(実害 2026-09-21): 配信は静止画面でエンコードを止めるため、
+//     canvas を尊重して待つと「木はもう次の画面なのに絵が切り替わらない」状態が続く。
+//     snapshot は host が tap の**あと**に撮って返すので、配信より新しい。
+// 'frame' メッセージ(host が完全に mjpeg 配信へ切り替えた場合)はこれまで通りデコーダを捨てる。
 //
 // jsdom には 2D canvas コンテキストが無い(canvas パッケージ未導入)ため、
 // HTMLCanvasElement.prototype.getContext と VideoDecoder/EncodedVideoChunk をテスト用に
@@ -99,7 +103,7 @@ function media(document) {
   };
 }
 
-test("h264 映像が健全な間、タップ等が誘発する snapshot は映像表示を静止画へ戻さない", async (t) => {
+test("snapshot は届いた一枚絵を前面へ出す(配信の古い絵を残さない)", async (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   await sendKeyframeAndAwaitH264(window);
@@ -114,8 +118,33 @@ test("h264 映像が健全な間、タップ等が誘発する snapshot は映�
   });
 
   const after = media(document);
-  assert.ok(after.canvas.classList.contains("visible"), "snapshot 受信後も canvas 表示を維持すること(デコーダを破棄しない)");
-  assert.ok(!after.screenshot.classList.contains("visible"), "screenshot(img)へ表示が戻ってはいけない");
+  assert.ok(after.screenshot.classList.contains("visible"), "届いた一枚絵を前面へ出すこと");
+  assert.ok(!after.canvas.classList.contains("visible"), "配信の古い絵を前面に残さないこと");
+  assert.ok(after.screenshot.src.endsWith("AAAA"), "出すのは届いたばかりの絵であること");
+});
+
+// **デコーダを作り直していないことは「キーフレーム無しのデルタで描けるか」で判る** ——
+// 作り直していれば sawKeyframe が落ちてデルタは全部捨てられ、canvas は前へ戻れない。
+test("snapshot のあと、デルタ1枚で canvas が前面に戻る(デコーダを作り直していない)", async (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  await sendKeyframeAndAwaitH264(window);
+
+  post(window, {
+    type: "live",
+    message: { type: "snapshot", screen: { width: 400, height: 800 }, image: "AAAA", elements: [] },
+  });
+  assert.ok(media(document).screenshot.classList.contains("visible"), "前提: 一枚絵が前面");
+
+  // 描画間引き(h264Decoder の DRAW_INTERVAL_MS=66ms)を跨がせてから delta を1枚
+  const base = window.performance.now();
+  window.performance.now = () => base + 100;
+  post(window, { type: "liveH264Chunk", keyframe: false, width: 0, height: 0, data: KEYFRAME });
+  await settle();
+
+  const after = media(document);
+  assert.ok(after.canvas.classList.contains("visible"), "描けた時点で canvas が前面に戻ること");
+  assert.ok(!after.screenshot.classList.contains("visible"), "一枚絵は下がること");
 });
 
 test("'frame'(host が mjpeg 配信へ切替済み)は引き続き静止画表示へ戻す", async (t) => {
