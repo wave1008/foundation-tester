@@ -294,11 +294,19 @@ struct Doctor: AsyncParsableCommand {
             return
         }
 
-        _ = printRoots()
+        // **❌ を出したら非0で終わる**(`--fm-only` / `--roots-only` と同じ向き)。
+        // 全体レポートだけ常に 0 を返していたので、exit code で門を作る呼び手
+        // (スキル・CI)は赤い行を見落とした。⚠️(警告)は数えない
+        var problems = 0
+        if !fm.available { problems += 1 }
+        if !vision.available, !visionUnsupported { problems += 1 }
+
+        if !printRoots() { problems += 1 }
 
         let xcode = try Shell.run(["xcodebuild", "-version"])
         let xcodeLine = xcode.output.split(separator: "\n").first.map(String.init) ?? "unknown"
         ConsoleOut.out(xcode.status == 0 ? "✅ \(xcodeLine)" : "❌ xcodebuild not found")
+        if xcode.status != 0 { problems += 1 }
 
         await reportUnmanagedBridges()
 
@@ -344,6 +352,7 @@ struct Doctor: AsyncParsableCommand {
         ConsoleOut.out(xcodegen.status == 0
               ? "✅ xcodegen: \(xcodegen.output.trimmingCharacters(in: .whitespacesAndNewlines))"
               : "❌ xcodegen is required: brew install xcodegen")
+        if xcodegen.status != 0 { problems += 1 }
 
         if let android = try? AndroidDriver() {
             let devices = try Shell.run([android.adbPath, "devices"])
@@ -355,6 +364,7 @@ struct Doctor: AsyncParsableCommand {
                 ConsoleOut.out("   ✅ Bridge APK: \(apk.path)")
             } else {
                 ConsoleOut.out("   ❌ Bridge APK not found (generate it with AndroidRunner/build.sh)")
+                problems += 1
             }
             // AVD の新規作成(モニターの「デバイスを追加」/ api create-device)にだけ要る。
             // 既存 AVD で実行するぶんには不要なので警告どまり
@@ -377,6 +387,12 @@ struct Doctor: AsyncParsableCommand {
             }
         } else {
             ConsoleOut.out("⚠️ adb not found (set ANDROID_HOME if you use Android)")
+        }
+
+        // 何が赤かったかは上の行がそのまま持っているので、ここでは数だけ添えて非0で抜ける
+        if problems > 0 {
+            ConsoleOut.out("❌ \(problems) check(s) failed — see the ❌ lines above")
+            throw ExitCode(1)
         }
     }
 
@@ -740,21 +756,61 @@ struct Bridge: AsyncParsableCommand {
         @Option(help: "Android device serial (defaults to every connected device)")
         var serial: String?
 
+        @Flag(help: "Stop the bridge even if a run or an MCP session is currently using its device")
+        var force = false
+
         func run() async throws {
             if platform == "android" {
-                for serial in try AndroidBridgeCLI.serials(only: serial) {
+                let serials = try AndroidBridgeCLI.serials(only: serial)
+                // **止める前に全台ぶん見る** —— 途中で断ると、断られる前の台だけ止まった
+                // 半端な状態になる(鍵は serial。run-lease / MCP の印と同じ鍵)
+                let androidLeaseDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
+                if let refusal = serials.compactMap({ serial in
+                    DeviceBooter.deviceInUseRefusal(
+                        deviceName: serial, keys: [serial], force: force,
+                        leaseStateDir: androidLeaseDir)
+                }).first {
+                    ConsoleOut.out("❌ \(refusal)")
+                    throw ExitCode(1)
+                }
+                for serial in serials {
                     try AndroidDriver(serial: serial).stopBridge()
                     ConsoleOut.out("✅ Stopped the Android bridge: \(serial)")
                 }
                 return
             }
             let root = try RepoRoot.find()
+            let leaseStateDir = root.appendingPathComponent(".fleetest")
+            let selfPID = ProcessInfo.processInfo.processIdentifier
+            // 保持者の判定は BridgeLauncher.stop()/stopAll() 側(供給・古いブリッジの掃除からも
+            // 呼ばれる)には足さず、利用者が打つこの CLI の口だけに置く
             if all {
+                let found = await BridgeDiscovery.scan(excluding: 0, repoRoot: root)
+                let targets = found.map { (name: $0.device, keys: $0.udid.map { [$0] } ?? []) }
+                if let refusal = BridgeDownRefusal.decide(
+                    targets: targets, force: force,
+                    runHolderPID: { RunLease.holderPID(stateDir: leaseStateDir, key: $0) },
+                    mcpHolderPID: { MCPDeviceLease.holderPID(
+                        stateDir: leaseStateDir, key: $0, excluding: [selfPID, getppid()]) },
+                    selfPID: selfPID) {
+                    ConsoleOut.out("❌ \(refusal)")
+                    throw ExitCode(1)
+                }
                 let stopped = BridgeLauncher.stopAll(repoRoot: root, skipPhysical: false)
                 ConsoleOut.out(stopped.isEmpty
                       ? "No bridges are running"
                       : "✅ Stopped bridges (port: \(stopped.joined(separator: ", ")))")
             } else {
+                // 対象ポートが引けない(応答なし等)ときは素通りする(既存の stopRefusal と同じ
+                // 規律 —— 止められないと回復手段が無くなる)
+                let found = await BridgeDiscovery.scan(excluding: 0, repoRoot: root)
+                if let target = found.first(where: { $0.port == port }),
+                   let refusal = DeviceBooter.deviceInUseRefusal(
+                       deviceName: target.device, keys: target.udid.map { [$0] } ?? [],
+                       force: force, leaseStateDir: leaseStateDir) {
+                    ConsoleOut.out("❌ \(refusal)")
+                    throw ExitCode(1)
+                }
                 // physical は stop() が見ない(kind を知らない経路からも止められるよう、
                 // stop() 側が条件分岐しない宣言をしている)ので false でよい
                 let launcher = BridgeLauncher(repoRoot: root, port: port, physical: false)

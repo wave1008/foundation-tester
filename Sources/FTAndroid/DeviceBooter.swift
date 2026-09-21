@@ -218,8 +218,9 @@ public enum DeviceBooter {
             + " Finish that session or point it at another device, or pass --force to stop it anyway."
     }
 
-    /// 台を止める操作の門(run-lease → MCP の印の順)。止める4経路(停止・一括停止・再起動・Wipe)はここを通す
-    static func deviceInUseRefusal(
+    /// 台を止める操作の門(run-lease → MCP の印の順)。止める4経路(停止・一括停止・再起動・Wipe)に加え、
+    /// `fleetest bridge down --port`(別モジュール。CLI の口だけに置く門)もここを通す
+    public static func deviceInUseRefusal(
         deviceName: String, keys: [String], force: Bool, leaseStateDir: URL?
     ) -> String? {
         stopRefusal(deviceName: deviceName, keys: keys,
@@ -239,7 +240,14 @@ public enum DeviceBooter {
     /// **全掃討の拒否文の見出しは1つ**(run と MCP のどちらか一方だけを断るときも、両方を
     /// 断るときも先頭はこれ1回)。以前は run/MCP それぞれが見出し込みの完成文を持ち、両方
     /// 使用中のときに単純連結して見出しが2回出ていた
-    static let sweepRefusalHeading = "refusing to shut everything down: "
+    public static let sweepRefusalHeading = "refusing to shut everything down: "
+
+    /// 2つの本文を1つの見出しの下へ並べる。**後ろの文は大文字で始める** —— 本文はどちらも
+    /// 単体では見出しに続く小文字始まりなので、そのまま連結すると
+    /// "… stop it anyway. an MCP session is driving …" と文の切れ目が読み取れない
+    public static func sentenceJoined(_ first: String, _ second: String) -> String {
+        first + " " + second.prefix(1).uppercased() + second.dropFirst()
+    }
 
     /// 全掃討の MCP 側(純粋関数)。holders: (表示名, pid)
     public static func mcpSweepRefusal(holders: [(device: String, pid: Int32)], force: Bool) -> String? {
@@ -333,7 +341,7 @@ public enum DeviceBooter {
             holders: mcpHolders.sorted { $0.key < $1.key }.map { (describe($0.key), $0.value) }, force: force)
         // **見出しはここで1回だけ足す**(run/MCP それぞれの本文は見出しを持たない)
         switch (runBody, mcpBody) {
-        case let (run?, mcp?): return sweepRefusalHeading + run + " " + mcp
+        case let (run?, mcp?): return sweepRefusalHeading + sentenceJoined(run, mcp)
         case let (run?, nil): return sweepRefusalHeading + run
         case let (nil, mcp?): return sweepRefusalHeading + mcp
         case (nil, nil): return nil

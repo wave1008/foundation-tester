@@ -239,8 +239,9 @@ final class DeviceBooterSweepRefusalTests: XCTestCase {
         // 使用中でも1回だけ(以前は各半分が見出し込みの完成文を持ち、単純連結で2回出ていた)
         XCTAssertEqual(both.components(separatedBy: "refusing to shut everything down").count - 1, 1, both)
         XCTAssertTrue(both.hasPrefix("refusing to shut everything down: a running fleetest run is using"), both)
+        // 2文目は大文字で始める(小文字のまま続けると文の切れ目が読み取れない)
         XCTAssertTrue(both.contains("Wait for that run to finish, or pass --force to stop it anyway."
-            + " an MCP session is driving"), "見出しの後に run → MCP の順で本文が並ぶ: \(both)")
+            + " An MCP session is driving"), "見出しの後に run → MCP の順で本文が並ぶ: \(both)")
     }
 
     /// 自分(と親)の印は数えない(MCP が起こしたコマンドが自分の台を断らない)
