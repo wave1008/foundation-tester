@@ -42,6 +42,8 @@ function makeDeps(overrides = {}) {
     isDeviceStreaming: () => false,
     notifyMonitorDevices: () => {},
     notifyMachineLocks: () => {},
+    // 「ライブ更新」チェックボックス(既定 ON)。占有の行が「配信を畳んだか」を言うために読む
+    isShowStreamDuringRun: () => true,
     getConfig: () => ({
       binaryPath: "/usr/local/bin/fleetest",
       project: "P",
@@ -631,6 +633,78 @@ test("`monitor pause` 保持中の占有の行はポーリング更新を請け�
   assert.equal(held.length, 1);
   assert.doesNotMatch(held[0], /タイルはポーリングで更新/);
   assert.match(held[0], /モニタ停止中のためタイルも更新されません/);
+});
+
+// ---- 占有の行は「実際に畳んだか」で言うことを変える(2026-09-21) ----
+// 手元の run も dispatch.lock を取るようになり、自分の run では「ライブ更新」(既定 ON)が
+// 配信を畳まない。**畳みの判定は machineLockModel.ts の streamFoldMachines の1箇所**で、
+// ここはその結果を受け取って文言を選ぶだけ(文言側に2つ目の判定を作らない)。
+// 実害: 畳まないのに「ライブ配信を停止します」と請け合っていた。
+
+/** 占有イベントを1件流して、占有の行(「run が実行中です」を含む行)だけを返す。 */
+function heldLines(event, overrides = {}) {
+  const lines = [];
+  const procs = [];
+  const spawnFn = () => {
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const manager = new MonitorProcessManager(makeDeps({
+    outputChannel: { appendLine: (line) => lines.push(line) },
+    ...overrides,
+  }), spawnFn);
+  manager.startMonitorProcess();
+  feedLine(procs[0], event);
+  return lines.filter((line) => line.includes("run が実行中です"));
+}
+
+const lockHeldMine = {
+  kind: "monitorLock", machine: "mac2", observed: true, held: true, issuer: "wave1008", mine: true,
+};
+
+test("自分の run + 「ライブ更新」オンは畳まないので「停止します」と言わない", () => {
+  assert.deepEqual(heldLines(lockHeldMine), [
+    "[monitor] mac2 で wave1008 の run が実行中です — 「ライブ更新」がオンのため、この機械のライブ配信は続けます",
+  ]);
+});
+
+test("他人の run は畳むので「停止します」と言う", () => {
+  assert.deepEqual(heldLines(lockHeld), [
+    "[monitor] mac2 で wave1008 の run が実行中です — この機械のライブ配信を停止します(タイルはポーリングで更新)",
+  ]);
+});
+
+test("「ライブ更新」オフなら自分の run も畳むので「停止します」と言う", () => {
+  assert.deepEqual(heldLines(lockHeldMine, { isShowStreamDuringRun: () => false }), [
+    "[monitor] mac2 で wave1008 の run が実行中です — この機械のライブ配信を停止します(タイルはポーリングで更新)",
+  ]);
+});
+
+// 同型: 解放の行も「実際に畳んでいたか」で言うことを変える(止めていないものは戻せない)。
+test("解放の行は畳んでいたときだけ「再開します」と言う", () => {
+  const lines = [];
+  const procs = [];
+  const spawnFn = () => {
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const manager = new MonitorProcessManager(
+    makeDeps({ outputChannel: { appendLine: (line) => lines.push(line) } }), spawnFn);
+  manager.startMonitorProcess();
+
+  // 自分の run(畳まない)→ 解放
+  feedLine(procs[0], lockHeldMine);
+  feedLine(procs[0], { kind: "monitorLock", machine: "mac2", observed: true, held: false, mine: false });
+  // 他人の run(畳む)→ 解放
+  feedLine(procs[0], lockHeld);
+  feedLine(procs[0], { kind: "monitorLock", machine: "mac2", observed: true, held: false, mine: false });
+
+  assert.deepEqual(lines.filter((line) => line.includes("run が終わりました")), [
+    "[monitor] mac2 の run が終わりました(ライブ配信は畳んでいません)",
+    "[monitor] mac2 の run が終わりました — ライブ配信を再開します",
+  ]);
 });
 
 test("保持が解除された後の占有の行は既定の文言へ戻る", () => {

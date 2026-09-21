@@ -15,11 +15,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   MonitorDeviceOps,
   firstLine,
   installSystemImageBatchConfirmMessage,
   installSystemImageConfirmMessage,
+  occupancyDetailLine,
   signingGuidance,
   stderrDetailLine,
 } from "../src/monitorDeviceOps";
@@ -1032,4 +1034,46 @@ test("whenLifecycleQueueIdle: 空なら即解決・ジョブがあれば完了�
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ---- 破壊的操作の modal に添える占有の1行(occupancyDetailLine) ----
+// **手元も添える**(2026-09-21)。手元の run も dispatch.lock を取るようになったので、占有は
+// 機械を問わず同じ規則で読む。控えは呼び手(deps.machineLock)が引いて渡す純粋関数なので、
+// modal を await する経路(vscode スタブでは解決しない)を通さずここで固定できる。
+
+test("occupancyDetailLine: 手元(machine=null)の保持者も既存の呼び名で名乗る", () => {
+  const line = occupancyDetailLine(null, { observed: true, held: true, issuer: "wave1008", mine: true });
+  assert.equal(line, "ローカル では wave1008 の run が実行中です。この操作はその run を壊します。");
+});
+
+test("occupancyDetailLine: リモートは従来どおり機械名で名乗る", () => {
+  const line = occupancyDetailLine("mac2", { observed: true, held: true, issuer: "someone", mine: false });
+  assert.equal(line, "mac2 では someone の run が実行中です。この操作はその run を壊します。");
+});
+
+test("occupancyDetailLine: 発行者が分からなくても保持は名乗る", () => {
+  const line = occupancyDetailLine(null, { observed: true, held: true, mine: false });
+  assert.equal(line, "ローカル では 誰か(発行者不明) の run が実行中です。この操作はその run を壊します。");
+});
+
+// 陰性対照: **不明を空きと言わない代わりに、何も足さない**(沈黙)。
+// 控えが無い/観測できていない/保持していない の3形すべてで undefined。
+test("occupancyDetailLine: 占有が不明・空きなら何も足さない", () => {
+  assert.equal(occupancyDetailLine(null, undefined), undefined, "控えが無い = 不明");
+  assert.equal(occupancyDetailLine(null, { observed: false, held: true, issuer: "wave1008", mine: true }), undefined,
+    "観測できていない控えを事実として出さない");
+  assert.equal(occupancyDetailLine(null, { observed: true, held: false, mine: false }), undefined);
+});
+
+// 呼び出し側の配線(型では守れない)。remote だけで絞っていた頃は手元で1行も出なかった
+test("削除の modal は手元でも occupancyDetail を通す(remote で絞らない)", () => {
+  const source = fs.readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "monitorDeviceOps.ts"), "utf8");
+  assert.doesNotMatch(source, /"remote"\s*\?\s*this\.occupancyDetail/,
+    "occupancyDetail をリモート限定の三項で囲わない(手元の占有が出なくなる)");
+  assert.match(
+    source,
+    /detail: this\.occupancyDetail\(msg\.source\.kind === "remote" \? msg\.source\.machine : null\)/,
+    "削除の modal は手元(null)も occupancyDetail へ渡す",
+  );
 });

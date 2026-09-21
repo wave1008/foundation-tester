@@ -64,9 +64,16 @@ export const deviceOpsStrings = {
     ja: "[monitor] 保持が解除されました — 観測を再開します",
     en: "[monitor] The hold was released — resuming observation",
   },
+  // **畳んだときだけ「停止します」と言う**。畳むかどうかの判定は machineLockModel.ts の
+  // streamFoldMachines の1箇所で、ここはその結果で文言を選ぶだけ(判定を文言側に作らない)
   "deviceOps.log.machineLockHeld": {
     ja: "[monitor] {machine} で {issuer} の run が実行中です — この機械のライブ配信を停止します(タイルはポーリングで更新)",
     en: "[monitor] A run by {issuer} is in progress on {machine} — stopping live streams there (tiles keep updating by polling)",
+  },
+  // 畳まなかったとき(「ライブ更新」がオン + 自分の run)。**配信は続くので「停止します」と言わない**
+  "deviceOps.log.machineLockHeldStreamKept": {
+    ja: "[monitor] {machine} で {issuer} の run が実行中です — 「ライブ更新」がオンのため、この機械のライブ配信は続けます",
+    en: "[monitor] A run by {issuer} is in progress on {machine} — \"Live Updates\" is on, so live streams there are kept",
   },
   // `fleetest monitor pause` 保持中の言い換え。保持中は全タイルが state:"unknown"
   // (「モニタ停止中」)になりポーリングでの更新も止まるので、上の括弧書きは嘘になる
@@ -77,6 +84,11 @@ export const deviceOpsStrings = {
   "deviceOps.log.machineLockFree": {
     ja: "[monitor] {machine} の run が終わりました — ライブ配信を再開します",
     en: "[monitor] The run on {machine} finished — resuming live streams",
+  },
+  // 畳んでいなかった run が終わったとき。**止めていないものを「再開します」と言わない**
+  "deviceOps.log.machineLockFreeStreamKept": {
+    ja: "[monitor] {machine} の run が終わりました(ライブ配信は畳んでいません)",
+    en: "[monitor] The run on {machine} finished (live streams were never folded)",
   },
   "deviceOps.occupiedDetail": {
     ja: "{machine} では {issuer} の run が実行中です。この操作はその run を壊します。",

@@ -19,7 +19,13 @@ import {
   sortMonitorDevices,
   toWebviewMessage,
 } from "./monitorModel";
-import { type MachineLock, applyMachineLockEvent, isConfirmedHeld, localDevicesInRun } from "./machineLockModel";
+import {
+  type MachineLock,
+  applyMachineLockEvent,
+  isConfirmedHeld,
+  localDevicesInRun,
+  streamFoldMachines,
+} from "./machineLockModel";
 import {
   HOST_METRICS_QUICK_FAILURE_LIMIT,
   type MachineObservation,
@@ -770,13 +776,27 @@ export class MonitorProcessManager {
     // 「不明 → 空き」や、観測が途切れただけの遷移で「run が終わりました」と書かない
     // (毎回の monitor 起動で、走ってもいない run の完了行が機械ぶん並ぶ)
     if (isConfirmedHeld(after)) {
+      // **「停止します」と言ってよいのは実際に畳んだときだけ** —— 自分の run は「ライブ更新」が
+      // オンなら畳まない(machineLockModel.ts の streamFoldMachines)。**判定はここで作らず**、
+      // 配信の退避と同じ1つの関数の結果を読む(CLAUDE.md「共有するのは判定であって文言ではない」)
+      const folded = streamFoldMachines(this.machineLocks, this.deps.isShowStreamDuringRun()).has(machine);
+      // **保持中は畳み方より強い** —— `monitor pause` は観測ごと止めるので、畳んでいない機械でも
+      // 配信は出ていない(monitorHoldActive の注記)
       this.deps.outputChannel.appendLine(t(this.monitorHoldActive
         ? "deviceOps.log.machineLockHeldWhilePaused"
-        : "deviceOps.log.machineLockHeld",
+        : (folded
+          ? "deviceOps.log.machineLockHeld"
+          : "deviceOps.log.machineLockHeldStreamKept"),
       { machine: label, issuer: after?.issuer ?? "?" }));
-    } else if (isConfirmedHeld(before) && after?.observed === true) {
-      this.deps.outputChannel.appendLine(
-        t("deviceOps.log.machineLockFree", { machine: label }));
+    } else if (before !== undefined && isConfirmedHeld(before) && after?.observed === true) {
+      // 同型: **畳んでいなかったなら「再開します」と言わない**(止めていないものは戻せない)。
+      // 訊く相手は同じ streamFoldMachines で、解放前の控えを渡すだけ
+      const wasFolded = streamFoldMachines(
+        new Map([[machine, before]]), this.deps.isShowStreamDuringRun()).has(machine);
+      this.deps.outputChannel.appendLine(t(wasFolded
+        ? "deviceOps.log.machineLockFree"
+        : "deviceOps.log.machineLockFreeStreamKept",
+      { machine: label }));
     }
     // webview の行キーは手元が空文字(hostCharts.js の hmRows)。**そのまま渡す**
     this.deps.post({

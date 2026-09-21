@@ -37,7 +37,8 @@ import {
   type MonitorFromWebviewMessage,
   type MonitorToWebviewMessage,
 } from "./monitorModel";
-import { isConfirmedHeld, sweepRefusalDetail } from "./machineLockModel";
+import { type MachineLock, isConfirmedHeld, sweepRefusalDetail } from "./machineLockModel";
+import { LOCAL_MACHINE_KEY } from "./runBoardModel";
 import { NdjsonParser } from "./ndjson";
 import type { MonitorPanelDeps } from "./monitorPanel";
 import { formatBytesAuto } from "./retentionModel";
@@ -259,6 +260,25 @@ export function installSystemImageBatchConfirmMessage(params: {
     first: params.first,
     last: params.last,
     licenseNote: installSystemImageLicenseNote(params.license),
+  });
+}
+
+/**
+ * 破壊的操作の確認に添える占有の1行(その機械で run が走っているときだけ)。
+ * **`machine === null` は手元**で、呼び名は既存の1つ(`deviceOps.machineLocalLabel`)。
+ * **占有が不明(観測できていない)なら何も足さない** —— 「走っていない」と請け合わないための沈黙
+ * (docs/remote-runner.md §18.1 #6)。控えは呼び手が引いて渡す(純粋関数)。
+ */
+export function occupancyDetailLine(
+  machine: string | null,
+  lock: MachineLock | undefined,
+): string | undefined {
+  if (!isConfirmedHeld(lock)) {
+    return undefined;
+  }
+  return t("deviceOps.occupiedDetail", {
+    machine: machine ?? t("deviceOps.machineLocalLabel"),
+    issuer: lock?.issuer ?? t("deviceOps.occupiedIssuerUnknown"),
   });
 }
 
@@ -1667,7 +1687,7 @@ export class MonitorDeviceOps {
                 machine, count: String(msg.overwriteNames.length), names: msg.overwriteNames.join(", "),
               })
             : undefined,
-          msg.source.kind === "remote" ? this.occupancyDetail(msg.source.machine) : undefined,
+          this.occupancyDetail(msg.source.kind === "remote" ? msg.source.machine : null),
           t("deviceOps.installSystemImageLicenseHint"),
         ].filter((line): line is string => line !== undefined);
         detail = detailLines.join("\n\n");
@@ -2099,20 +2119,10 @@ export class MonitorDeviceOps {
     });
   }
 
-  /** 破壊的操作の modal に添える1行(その機械で run が走っているときだけ)。
-   * **占有が不明なら何も足さない** —— 「走っていない」と請け合わないための沈黙
-   * (docs/remote-runner.md §18.1 #6)。 */
+  /** 破壊的操作の modal に添える1行。**machine の null は手元**(控えの鍵は `LOCAL_MACHINE_KEY`)——
+   * 手元の run も dispatch.lock を取るので、リモートと同じ規則で添える。 */
   private occupancyDetail(machine: string | null): string | undefined {
-    if (machine === null) {
-      return undefined;
-    }
-    const lock = this.deps.machineLock(machine);
-    if (!isConfirmedHeld(lock)) {
-      return undefined;
-    }
-    return t("deviceOps.occupiedDetail", {
-      machine, issuer: lock?.issuer ?? t("deviceOps.occupiedIssuerUnknown"),
-    });
+    return occupancyDetailLine(machine, this.deps.machineLock(machine ?? LOCAL_MACHINE_KEY));
   }
 
   /**
@@ -2139,7 +2149,8 @@ export class MonitorDeviceOps {
     const deleteLabel = t("deviceOps.deleteConfirmButton");
     const choice = await vscode.window.showWarningMessage(
       t("deviceOps.deleteConfirmMessage", { name: msg.name, machine: machineLabel }),
-      { modal: true, detail: msg.source.kind === "remote" ? this.occupancyDetail(msg.source.machine) : undefined },
+      // **手元も添える** —— 手元の run も dispatch.lock を取るので、占有は機械を問わず同じ規則
+      { modal: true, detail: this.occupancyDetail(msg.source.kind === "remote" ? msg.source.machine : null) },
       deleteLabel,
     );
     if (choice !== deleteLabel) {
