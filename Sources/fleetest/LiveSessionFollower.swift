@@ -51,8 +51,14 @@ final class LiveSessionFollower {
     /// これで決めるので外へ出す(ApiLiveActionResultEvent.app)
     private(set) var sessionTarget: String?
     private var initialized = false
+    /// 前面アプリの全探索に使ってよい時間[秒]。**拡張の serve 応答待ち(20 秒)の十分内側**に置く ——
+    /// 超えると拡張が serve を kill→respawn し、画面が固まったように見える。
+    /// 尽きたら springboard へ倒す(木は読めるので操作は続けられる)。
+    private static let frontmostSearchBudgetSeconds: TimeInterval = 3
+
     /// 直近に見つけた前面アプリ(preferred 以外)。次回はこれを1回聞くだけで済ませる。
     private var lastFrontmost: String?
+
     /// 起動中アプリを列挙するための simctl の宛先。nil = 列挙しない(実機・未指定)
     private let udid: String?
     private let log: (String) -> Void
@@ -74,16 +80,31 @@ final class LiveSessionFollower {
             // 嘘は「戻り遅れ」にしかならない(springboard を向いたままでも座標では届く)ので安全側
             foreground = (try? await driver.isAppForeground(bundleID: preferred)) ?? false
         }
+        // **SpringBoard の面が覆っているかは常に見る** —— アプリスイッチャー・コントロール
+        // センター・通知センターの間、**どのアプリも foreground と答え続ける**(アプリ側からは
+        // 気付けないので専用の口がある。BridgeRouter.handleSystemUICovering)。
+        // preferred の前面判定だけでなく**前面アプリの探索も必ず誤る**ので、駆動対象が前面か
+        // どうかに関わらず先に聞く(実害 2026-09-22: 駆動対象でない Safari を見ている状態で
+        // スイッチャーを開くと、探索が Safari を「前面」と拾って木が Safari のままだった)。
+        let covered = ((try? await driver.systemUICovering()) ?? nil)?.covering == true
+        if covered {
+            foreground = false
+            lastFrontmost = nil // 面の向こうのアプリを「前面」として覚えない
+        }
         // **聞くのは前面と答えた回だけ** —— 前面でなければどのみち springboard を向くので、
         // アラートの有無は答えを変えない(常時の監視にしない)。
         var systemAlertPresent = false
         if foreground {
             systemAlertPresent = ((try? await driver.systemAlert()) ?? nil)?.present ?? false
         }
-        // preferred が前面でなく、アラートも出ていないなら「別のアプリを見ている」可能性がある。
-        // **そのときだけ探す**(毎回 simctl と IPC を払わない)
+        // preferred が前面でなく、アラートも面も出ていないなら「別のアプリを見ている」可能性がある。
+        // **そのときだけ探す**(毎回 simctl と IPC を払わない)。
+        // **覆われているときは探さない** —— 見えているのは SpringBoard の面なので springboard へ
+        // 倒すのが正しく、探すだけ無駄。しかも面が出ている間は state の問い合わせが極端に遅く、
+        // 探索が応答を止める(実測 2026-09-22: アプリスイッチャー表示中に 120 秒を超えて
+        // 強制終了 = 拡張から見ると serve が固まる)
         var frontmost: String?
-        if !foreground && !systemAlertPresent {
+        if !foreground && !systemAlertPresent && !covered {
             frontmost = await frontmostApp(driver: driver)
         }
         guard let target = LiveSessionTarget.retarget(
@@ -95,8 +116,11 @@ final class LiveSessionFollower {
                 // activate で撃つとホームへ飛んでシステムアラートを消す
                 try await driver.launch(bundleID: target)
             } else {
-                // 既に前面だと確かめた上での向け直しなので、activate でも絵は変わらない
-                try await driver.activate(bundleID: target)
+                // **前面確認だけの attach**(activate ではない)—— 前面だと確かめた相手でも
+                // activate は画面を動かす。Spotlight のような SpringBoard の拡張を activate すると
+                // ホーム画面が描画を失って真っ黒になり、自アプリなら注入付きの再起動になる
+                // (AppDriver.attach の doc)。失敗しても activate へ倒さない
+                try await driver.attach(bundleID: target)
             }
             sessionTarget = target
             log("pointed the session at \(target)")
@@ -120,8 +144,16 @@ final class LiveSessionFollower {
         guard let listing = try? Shell.run(
             ["xcrun", "simctl", "spawn", udid, "launchctl", "list"], timeout: 10), listing.status == 0
         else { return nil }
+        // **探索に締切を置く** —— 1件あたりの問い合わせは普通ミリ秒だが、画面の状態によっては
+        // 極端に遅くなる(実測 2026-09-22)。ライブ操作は人間の操作なので、待たせるくらいなら
+        // 「見つからなかった」(= springboard へ倒す)ほうがよい。尽きたら打ち切る
+        let deadline = Date().addingTimeInterval(Self.frontmostSearchBudgetSeconds)
         var foreground: [String] = []
         for bundleID in FrontmostApp.candidates(launchctlOutput: listing.output) {
+            if Date() >= deadline {
+                log("frontmost search hit its budget — falling back to springboard")
+                return nil
+            }
             if (try? await driver.isAppForeground(bundleID: bundleID)) == true {
                 foreground.append(bundleID)
             }
@@ -169,6 +201,10 @@ final class LiveSessionFollower {
         initialized = true
         let status = try? await driver.status()
         sessionTarget = status?.sessionBundleID
-        preferred = sessionTarget == LiveSessionTarget.springboard ? nil : sessionTarget
+        // **駆動対象にできないものは preferred にしない** —— 起動時のセッションが
+        // SpringBoard の裏方(ウィジェットのレンダラ等)を向いていることがあり、そのまま
+        // 引き継ぐと「そのアプリを駆動している」ことになって前面追従が働かない
+        // (実害 2026-09-22: screen がウィジェットの窓になり、絵が横に膨らんだ)
+        preferred = sessionTarget.map { FrontmostApp.isExcluded($0) ? nil : $0 } ?? nil
     }
 }

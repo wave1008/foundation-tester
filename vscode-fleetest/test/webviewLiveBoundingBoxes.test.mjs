@@ -478,3 +478,89 @@ test("強調は最前面に重ねた別の枠で、元の枠は変えない", (t
   assert.equal(overlay.querySelectorAll("rect.hot").length, 0, "外れたら重ねた枠を消すこと");
   assert.equal(boxes(document).length, ELEMENTS.length, "元の枠は残ること");
 });
+
+// 操作を撃ったら画面が変わる。**その前に枠を消す**(ユーザー決定 2026-09-22) —— 古い木から
+// 描いた枠が新しい画面の上に残ると、合っていない位置を指してしまう。
+test("操作を撃ったら(busy)枠を消し、結果が届いたら引き直す", (t) => {
+  const { window, document, sendToWebview } = createWebview();
+  t.after(() => window.close());
+
+  const checkbox = document.getElementById("live-show-boxes");
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+  sendToWebview(SNAPSHOT);
+  document.getElementById("live-screenshot").dispatchEvent(pointerMove(window, 100, 70));
+  assert.equal(boxes(document).length, ELEMENTS.length, "前提: 枠が出ている");
+  assert.equal(hotBoxes(document).length, 1, "前提: 強調も出ている");
+
+  sendToWebview({ type: "live", message: { type: "busy", busy: true } });
+
+  assert.equal(boxes(document).length, 0, "操作を撃った時点で枠を消すこと");
+  assert.equal(hotBoxes(document).length, 0, "強調も消すこと");
+  assert.equal(
+    document.querySelectorAll("#live-elements-list .element-row").length, ELEMENTS.length,
+    "要素一覧は消さないこと(読んでいる最中に行が消えると追えない)",
+  );
+
+  // 操作の結果(新しい木)が届いたら引き直す
+  sendToWebview({ type: "live", message: { type: "busy", busy: false } });
+  sendToWebview(SNAPSHOT);
+  assert.equal(boxes(document).length, ELEMENTS.length, "結果が届いたら引き直すこと");
+});
+
+// 撮り直し(操作後に画面が止まってから1回撮る)は**画面を変えない観測**なので、枠を消さない。
+// 消すと遷移後に「出る → 消える → 出る」とちらつく(2026-09-22 の報告)。
+test("撮り直しの間は枠を消さない(ちらつかせない)", async (t) => {
+  const { window, document, sendToWebview } = createWebview();
+  t.after(() => window.close());
+
+  const checkbox = document.getElementById("live-show-boxes");
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+  sendToWebview(SNAPSHOT);
+  assert.equal(boxes(document).length, ELEMENTS.length, "前提: 枠が出ている");
+
+  // 撮り直しが要求されるまで待つ(SETTLE_REFRESH_MS = 700)
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+
+  // その結果として host は busy を立てるが、ここで消してはいけない
+  sendToWebview({ type: "live", message: { type: "busy", busy: true } });
+  assert.equal(boxes(document).length, ELEMENTS.length, "撮り直し中は枠を保つこと");
+
+  sendToWebview({ type: "live", message: { type: "busy", busy: false } });
+  sendToWebview(SNAPSHOT);
+  assert.equal(boxes(document).length, ELEMENTS.length, "撮り直しの結果でも出ていること");
+});
+
+// 枠を消したあと、**次の木が届くまでは描き直さない**。fitScreenshot も枠を引き直すので、
+// これが無いと画像のサイズが変わった拍子(タスクスイッチャーのように絵が大きく変わるとき)に
+// 古い木の枠が復活する(実害 2026-09-22)。
+test("消したあとは、画像サイズが変わっても古い枠を復活させない", (t) => {
+  const { window, document, sendToWebview } = createWebview();
+  t.after(() => window.close());
+
+  const checkbox = document.getElementById("live-show-boxes");
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+  sendToWebview(SNAPSHOT);
+  assert.equal(boxes(document).length, ELEMENTS.length, "前提: 枠が出ている");
+
+  // 操作 → 枠が消える
+  sendToWebview({ type: "live", message: { type: "busy", busy: true } });
+  assert.equal(boxes(document).length, 0, "前提: 消えている");
+
+  // 木が届く前に画像のサイズが変わる(fitScreenshot → renderBoxes の経路)。
+  // **jsdom はレイアウトを持たない**ので pane の高さを与えないと fitScreenshot が
+  // 早期 return し、この経路を1度も通らない(通っていないテストは変異で死なない)
+  const pane = document.getElementById("live-screenshot-pane");
+  Object.defineProperty(pane, "clientHeight", { configurable: true, value: 800 });
+  window.dispatchEvent(new window.Event("resize"));
+  document.getElementById("live-screenshot").dispatchEvent(new window.Event("load"));
+
+  assert.equal(boxes(document).length, 0, "古い木の枠を復活させないこと");
+
+  // 新しい木が届いたら描く
+  sendToWebview({ type: "live", message: { type: "busy", busy: false } });
+  sendToWebview(SNAPSHOT);
+  assert.equal(boxes(document).length, ELEMENTS.length, "新しい木では描くこと");
+});

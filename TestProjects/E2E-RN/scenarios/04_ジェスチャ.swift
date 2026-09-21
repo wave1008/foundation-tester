@@ -204,7 +204,7 @@ class ジェスチャが正しく検出されること {
                     select("#txt_pan").textIs("pan=right-down")
                 }
             }
-            scene(19, "対象を指定しないジェスチャは画面全体に効く(iOS は制約未検証のため対象外)") {
+            scene(19, "対象を指定しないピンチも効く(iOS は制約未検証のため対象外)") {
                 action {
                     tap("#btn_map_reset")
                     android { pinchOut() }

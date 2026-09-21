@@ -128,6 +128,11 @@ public final class SessionRecoveryDriver: AppDriver {
         lastBundleID = bundleID
     }
 
+    public func attach(bundleID: String) async throws {
+        try await base.attach(bundleID: bundleID)
+        lastBundleID = bundleID
+    }
+
     public func openAppSwitcher() async throws { try await withRecovery { try await base.openAppSwitcher() } }
     public func home() async throws { try await withRecovery { try await base.home() } }
     public func back() async throws { try await withRecovery { try await base.back() } }

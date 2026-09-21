@@ -17,6 +17,17 @@ public enum XCUIBridgeResolver {
         public let endpoint: BridgeEndpoint
         /// 振り替え・起動が起きたとき、または振り替えられなかった理由。nil = 指定ポートのまま
         public let note: String?
+        /// 指定ポートが in-app ブリッジだったときの、その in-app 自身。
+        /// **自アプリだけは in-app を主に使いたい呼び手**(ライブ操作: WKWebView の DOM は
+        /// in-app しか読めない)が Hybrid 構成を組むために要る。振り替え先(endpoint)は
+        /// 別アプリ・SpringBoard・home/appSwitcher を受け持つ XCUITest のまま。
+        public let inApp: InApp?
+
+        public struct InApp: Sendable {
+            public let endpoint: BridgeEndpoint
+            /// in-app ブリッジが住んでいるアプリ。**これが無いと「自アプリか」を判定できない**
+            public let bundleID: String
+        }
     }
 
     static let portRange: ClosedRange<UInt16> = BridgeAPI.defaultPort...(BridgeAPI.defaultPort + 31)
@@ -36,21 +47,25 @@ public enum XCUIBridgeResolver {
         // 無応答の孤児ブリッジ1本で待たされる。BridgeProvisioner.scanRunningBridges と同じ理由)
         guard let status = try? await client(preferredEndpoint, timeout: 3).status(timeout: 3),
               status.engine == "inapp" else {
-            return Resolution(endpoint: preferredEndpoint, note: nil)
+            return Resolution(endpoint: preferredEndpoint, note: nil, inApp: nil)
         }
         let device = status.device
         let scan = await scanBridges(device: device, excluding: preferred, repoRoot: repoRoot)
+        // in-app が住んでいるアプリ。**自アプリの判定に要る**ので、分かるときだけ持ち出す
+        let inApp = status.sessionBundleID.map {
+            Resolution.InApp(endpoint: preferredEndpoint, bundleID: $0)
+        }
 
         if let found = scan.xcuiForDevice {
             let note = "port \(preferred) is an in-app bridge — rerouted to the XCUITest bridge (port \(found.port))"
             if logsReroute { logger(note) }
-            return Resolution(endpoint: found, note: note)
+            return Resolution(endpoint: found, note: note, inApp: inApp)
         }
         guard autoStart else {
             let note = "port \(preferred) is an in-app bridge"
                 + " (no XCUITest bridge found for this device; provide one with `fleetest bridge up`)"
             logger(note)
-            return Resolution(endpoint: preferredEndpoint, note: note)
+            return Resolution(endpoint: preferredEndpoint, note: note, inApp: inApp)
         }
         return await start(forDevice: device, repoRoot: repoRoot, occupied: scan.live.union([preferred]),
                            fallback: preferredEndpoint, logger: logger)
@@ -105,7 +120,7 @@ public enum XCUIBridgeResolver {
                               logger: @escaping @Sendable (String) -> Void) async -> Resolution {
         func giveUp(_ reason: String) -> Resolution {
             logger(reason)
-            return Resolution(endpoint: fallback, note: reason)
+            return Resolution(endpoint: fallback, note: reason, inApp: nil)
         }
         guard let repoRoot else {
             return giveUp("cannot start the XCUITest bridge (repository root unresolved)")
@@ -207,7 +222,8 @@ public enum XCUIBridgeResolver {
         }
         let note = "started the XCUITest bridge (port \(port))"
         logger(note)
-        return Resolution(endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot), note: note)
+        return Resolution(endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot), note: note,
+                          inApp: nil)
     }
 
     /// 空きポートを小さい順に。**pid ファイル・稼働中ポート・実機の USB トンネルの3つ**で弾く:

@@ -274,6 +274,14 @@ public final class HybridFallbackDriver: AppDriver {
         delegatedApp = false
     }
 
+    /// **自アプリでも XCUITest 側へ向ける** —— 向け直す先の「セッション」を持つのは XCUITest だけで、
+    /// in-app に回すと既定実装から launch = 注入付きの再起動へ落ちる。画面は動かないので
+    /// 委譲状態(どちらの木を読むか)には触らない
+    public func attach(bundleID: String) async throws {
+        if try await delegateForeignApp(bundleID, { try await $0.attach(bundleID: bundleID) }) { return }
+        try await fallback.attach(bundleID: bundleID)
+    }
+
     /// **自分の中に居ないアプリは XCUITest 側で開く**。in-app ブリッジは対象アプリの
     /// プロセス内に住むので、別 bundle を渡されても自分の外は見えない ——
     /// primary に投げると「成功したのに読めるのは自分の木だけ」になる。

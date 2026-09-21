@@ -329,6 +329,9 @@ public final class WebViewDelegatingDriver: AppDriver {
         resetDelegation()
         try await primary.activate(bundleID: bundleID)
     }
+    /// **画面が変わらない**ので委譲状態は畳まない。向け先のセッションを持つのは XCUITest 側だけ
+    public func attach(bundleID: String) async throws { try await delegated.attach(bundleID: bundleID) }
+
     public func terminate() async throws {
         resetDelegation()
         try await primary.terminate()

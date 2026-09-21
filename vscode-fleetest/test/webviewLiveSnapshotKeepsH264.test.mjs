@@ -189,3 +189,35 @@ test("フレームを描いても、止まったあとの撮り直しは行う",
     "描画で予約を落としてはいけない(木は古いままなので撮り直す)",
   );
 });
+
+// **canvas と一枚絵が同時に隠れてはいけない** —— 両方隠れると wrap の背景色が見えて画面が
+// 真っ黒になる(実害 2026-09-22: Spotlight でキーボードが出た直後。デコードエラーからの
+// mjpeg フォールバックは host の切り替えを挟むので、その間ずっと黒いままだった)。
+test("デコードエラーで canvas を降りても、一枚絵を前に出す", async (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  await sendKeyframeAndAwaitH264(window);
+
+  // 先に一枚絵を1枚受けておく(src がある状態)
+  post(window, {
+    type: "live",
+    message: { type: "snapshot", screen: { width: 400, height: 800 }, image: "AAAA", elements: [] },
+  });
+  // 配信へ戻す
+  const base = window.performance.now();
+  window.performance.now = () => base + 100;
+  post(window, { type: "liveH264Chunk", keyframe: false, width: 0, height: 0, data: KEYFRAME });
+  await settle();
+  assert.ok(media(document).canvas.classList.contains("visible"), "前提: canvas 表示");
+
+  // デコーダを捨てる(codecError 相当)
+  window.VideoDecoder.prototype.decode = function () { throw new Error("boom"); };
+  post(window, { type: "liveH264Chunk", keyframe: false, width: 0, height: 0, data: KEYFRAME });
+  await settle();
+
+  const after = media(document);
+  assert.ok(!(after.canvas.classList.contains("visible") && after.screenshot.classList.contains("visible")),
+            "同時に両方は出さない");
+  assert.ok(after.canvas.classList.contains("visible") || after.screenshot.classList.contains("visible"),
+            "どちらも隠れたままにしない(真っ黒になる)");
+});

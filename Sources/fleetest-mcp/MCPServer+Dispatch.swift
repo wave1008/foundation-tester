@@ -1472,7 +1472,6 @@ extension MCPServer {
             var frame: FTRect?
             var identifier: String?
             var whole = false
-            var areaIgnored = false
             var pinchSelector = ""
             var pinchResolvedRef: Int?
             var pinchCoordinate: (x: Double, y: Double)?
@@ -1504,12 +1503,23 @@ extension MCPServer {
                             + " to override)"
                     }
                 }
+                // **どの経路も領域を受け取れる**(2026-09-22。XCUITest は非公開 API の座標ピンチ
+                // `CoordinatePinch` で撃つ)。**使えない Xcode だけ**要素ピンチへ縮退し、
+                // そのことはブリッジが注記で返す —— ここで先回りして「無視した」と言わない
                 frame = Self.pinchArea(x: x, y: y, radius: pinchRadius, screen: pinchScreen)
-                // **XCUITest は領域を受け取れない**(`PinchRequest.frame` を読むのは Android と
-                // in-app だけ。XCTest のピンチは XCUIElement にしか生えておらず、座標版が無い)。
-                // 黙って全画面へ退化させると、狙った場所を撃ったつもりで**手前のシートを掴む**
-                // —— この修正の動機そのものなので、退化したことを必ず言う
-                areaIgnored = engines[Self.engineKey(args)] == "xcuitest"
+            } else if !(pinchDriver is AndroidDriver),
+                      let snapshot = lastSnapshots[Self.engineKey(args)] {
+                // **直近の木から、両方の指が同じものに載る位置を選ぶ**(画面全体だと指が端に着き、
+                // 手前のシートに1本を取られてパンになる。実測と理由は PinchRegion)。
+                // **絞れなくても画面矩形は渡す** —— 領域があれば座標で撃てる = DSL / ライブと同じ扱い
+                if let area = PinchRegion.area(elements: snapshot.elements, screen: snapshot.screen) {
+                    frame = area
+                    pinchSelector += " (no ref/x/y: pinched the middle of the screen,"
+                        + " where both fingers stay on the same thing)"
+                } else {
+                    frame = snapshot.screen
+                    whole = true
+                }
             } else {
                 whole = true
             }
@@ -1529,15 +1539,10 @@ extension MCPServer {
                 + (whole ? " The fingers spanned the whole screen, so anything on top of the area"
                     + " you meant (a bottom sheet, a card) may have taken the gesture instead —"
                     + " pass x/y to pinch a specific spot." : "")
-                + (areaIgnored ? " x/y was NOT honoured: the XCUITest engine can only pinch an"
-                    + " element (XCTest has no coordinate pinch), so the fingers spanned the whole"
-                    + " screen and anything drawn over that spot may have taken the gesture."
-                    + " Pass profile: naming an in-app/hybrid run profile to pinch a coordinate"
-                    + " area (this relaunches the app — re-navigate before retrying)." : "")
                 // **同じ逃げ道を2度書かない**(2026-08-08 に長文の苦情があった箇所)。
                 // 領域が無視されたときの文は engine も remedy も言い切っているので、
                 // 汎用の Flutter 助言はそこでは畳む
-                + (areaIgnored ? "" : iosEngineHint("Flutter", frameworkKey: .flutter, "pinch", args: args))
+                + iosEngineHint("Flutter", frameworkKey: .flutter, "pinch", args: args)
                 + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
 
         // 旧名 `ft_press` は call() の toolAliases が現名へ畳む(ここに並べると記憶の適用から漏れる)

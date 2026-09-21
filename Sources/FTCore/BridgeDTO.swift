@@ -420,7 +420,7 @@ public enum BridgeAPI {
     /// 422 when it went away mid-clear (a web view reloading its content); touching the vanished element recorded XCTest
     /// failures and the runner tore down on the third one. The runner's test also stops recording XCUI failures as test
     /// failures (they are logged): a single recorded failure was enough to tear the runner down with the bridge.
-    public static let bridgeProtocolVersion = 119
+    public static let bridgeProtocolVersion = 123
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -480,11 +480,15 @@ public enum BridgeAPI {
     ///   ローカライズされる名前は使わない)
     /// - `SBCoverSheetWindow`: 通知センター(カバーシート)。ロック画面もこれなので、
     ///   **ロック中もアプリは覆われている**という意味で正しい
+    /// - `SBSwitcherWindow`: アプリスイッチャー(タスク一覧)。**アプリは前面と答え続ける**
+    ///   (実測 2026-09-22: スイッチャー表示中に Safari が foreground:true、木もページのまま)
+    ///   ので、ここに無いとライブ操作の前面追従がアプリへ activate を撃ち、
+    ///   **開いたスイッチャーが閉じてアプリに戻る**
     ///
     /// **iOS の版が変わると識別子は変わりうる**。増減させるときは実機で
     /// 「素の状態に出ないこと」と「その面で出ること」の両方を測ること
     public static let systemUICoveringMarkers: [String] = [
-        "cc-brightness-slider", "cc-volume-slider", "SBCoverSheetWindow",
+        "cc-brightness-slider", "cc-volume-slider", "SBCoverSheetWindow", "SBSwitcherWindow",
     ]
 
     public static func isHomeButtonPhoneScreen(width: Double, height: Double) -> Bool {

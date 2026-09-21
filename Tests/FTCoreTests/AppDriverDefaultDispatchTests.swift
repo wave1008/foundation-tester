@@ -76,4 +76,25 @@ final class AppDriverDefaultDispatchTests: XCTestCase {
                       + orphans.joined(separator: " / ")
                       + " —— AppDriver のプロトコル本体にも同じ宣言を足すこと")
     }
+
+    /// **attach の既定実装を activate / launch へ倒さない**。attach の存在理由は「画面を動かさずに
+    /// セッションを向け直す」ことなので、倒した瞬間に理由が消える —— 実装していないドライバで
+    /// 黙って画面が動き、Spotlight のような SpringBoard の拡張では**画面が真っ黒になる**
+    /// (実測 2026-09-22 の陽性対照: activate でスクリーンショット 2.2MB→68KB・木が 28→6 要素)。
+    /// 向け直せないことより画面を壊すほうが害が大きいので、既定は素直に 501 を投げる。
+    func testTheAttachDefaultNeverFallsBackToActivating() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(
+            contentsOf: root.appendingPathComponent("Sources/FTCore/AppDriver.swift"), encoding: .utf8)
+        let defaults = try block(source, opening: "public extension AppDriver {")
+        let start = try XCTUnwrap(defaults.range(of: "func attach(bundleID: String) async throws {"))
+        let end = try XCTUnwrap(defaults.range(of: "\n    }", range: start.upperBound..<defaults.endIndex))
+        let body = String(defaults[start.upperBound..<end.lowerBound])
+        XCTAssertTrue(body.contains("throw DriverError.badResponse"),
+                      "既定は失敗させること(画面を動かす手段へ倒さない): \(body)")
+        for forbidden in ["activate(", "launch("] {
+            XCTAssertFalse(body.contains(forbidden), "\(forbidden) へ倒さないこと: \(body)")
+        }
+    }
 }

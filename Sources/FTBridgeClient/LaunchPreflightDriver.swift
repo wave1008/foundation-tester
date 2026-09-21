@@ -75,6 +75,10 @@ public final class LaunchPreflightDriver: AppDriver {
         try await base.activate(bundleID: bundleID)
     }
 
+    /// **門を通さない** —— attach は前面確認だけで launch を撃たないので、この型が防いでいる
+    /// 「未インストールの launch でランナーが 60 秒ハング」は起きない
+    public func attach(bundleID: String) async throws { try await base.attach(bundleID: bundleID) }
+
     private func ensureInstalled(bundleID: String) throws {
         if confirmedInstalled.contains(bundleID) { return }
         // CoreSimulator 直叩き優先(simctl get_app_container 約703ms → ほぼ0ms・2026-08-02実測)。

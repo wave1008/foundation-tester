@@ -19,10 +19,13 @@ export function displayAspect(screen, natural) {
 }
 
 /**
- * 画像の表示寸法[px]。高さは pane の残り(maxH)いっぱいまで使い、手動幅(スプリッター)が
- * あるときだけ幅で頭打ちにする。**幅と高さの両方を返す**のは、片方だけ指定して max-width に
- * もう片方を任せると、幅で制限されたときに縦横比が崩れるため。
- * aspect が null のときは null(呼び出し側は従来どおり絵に任せる)。
+ * **pane の幅**を決めるための表示寸法[px]。高さは pane の残り(maxH)いっぱいまで使い、
+ * 手動幅(スプリッター)があるときだけ幅で頭打ちにする。
+ *
+ * **絵そのものの寸法には使わない** —— 絵に幅・高さを入れると、screen が実画面と食い違った回に
+ * その比へ引き伸ばされる(実害 2026-09-22)。絵は max-width/max-height だけで収め、縦横比は
+ * 絵に決めさせる。ここで決めるのは「右の要素一覧をどこから並べるか」だけ。
+ * aspect が null のときは null(呼び出し側は幅の指定を外す)。
  */
 export function fitScreenSize(aspect, maxH, widthCap) {
   if (aspect === null || !(maxH > 0)) {

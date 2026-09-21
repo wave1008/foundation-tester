@@ -13,12 +13,22 @@
 import Foundation
 
 enum FrontmostApp {
-    /// 前面かどうかを聞いても答えにならない bundle ID。
+    /// 前面かどうかを聞いても答えにならない bundle ID。**利用者が見ている「アプリ」ではないもの**を落とす。
     /// - SpringBoard: system shell。背面に回らないので常に前面と答える
-    /// - ランナー自身: XCUITest のランナーアプリ。利用者が見ている画面ではない
+    /// - ランナー自身: XCUITest のランナーアプリ
+    /// - SpringBoard の裏方(ウィジェットのレンダラ・ビューサービス): 画面の一部を描くだけで、
+    ///   利用者から見ればホーム画面。**実測 2026-09-22: ホーム画面で
+    ///   `com.apple.chrono.WidgetRenderer-Default` が前面と答える**(SpringBoard も true、他は false)。
+    ///   落とさないとセッションがここを向き、**home が効かなくなる**
+    ///   (`XCUIDevice.press(.home)` の検証が「前面のまま」で 422。BridgeRouter.handleHome)
+    ///
+    /// **網羅はできない** —— 裏方プロセスは OS の版で増えるので、ここは「知っている型を落とす」
+    /// だけ。取りこぼしても `pick` の「ちょうど1つ」条件が、複数が前面と答える場合は選ばせない。
     static func isExcluded(_ bundleID: String) -> Bool {
         if bundleID == LiveSessionTarget.springboard { return true }
-        return bundleID.hasSuffix(".xctrunner")
+        if bundleID.hasSuffix(".xctrunner") { return true }
+        if bundleID.hasPrefix("com.apple.chrono.") { return true }
+        return bundleID.hasSuffix("ViewService")
     }
 
     /// `launchctl list` の1行から UIKitApplication の bundle ID を取り出す。

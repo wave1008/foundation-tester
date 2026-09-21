@@ -61,6 +61,17 @@ public protocol AppDriver {
     func launch(bundleID: String) async throws
     /// 状態を保持したまま前面へ切り替える(未起動なら起動)。
     func activate(bundleID: String) async throws
+    /// **既に前面にあると確かめたアプリ**へ、画面を動かさずにセッションを向け直す。
+    /// 前面化も起動も撃たないのが activate / launch との違い。前面でなければ失敗する。
+    ///
+    /// **利用者が見ているものが必ずしも「アプリ」ではない**ので要る —— Spotlight を開くと
+    /// `com.apple.Spotlight` が前面と答えるが、これは SpringBoard の拡張で、activate すると
+    /// **ホーム画面が描画を失い画面が真っ黒になる**(実測 2026-09-22。陽性対照:
+    /// activate でスクリーンショット 2.2MB→68KB・木が 28→6 要素)。自アプリでも同じで、
+    /// in-app ドライバの activate は既定実装から launch = dylib 注入の再起動へ落ちる。
+    ///
+    /// **プロトコル要件として宣言すること**(既定実装へ静的ディスパッチで落ちる)
+    func attach(bundleID: String) async throws
     /// アプリスイッチャー(タスク一覧)を開く。
     func openAppSwitcher() async throws
     /// ホーム画面に戻る。
@@ -388,6 +399,13 @@ public extension AppDriver {
 
     func activate(bundleID: String) async throws {
         try await launch(bundleID: bundleID)
+    }
+
+    /// **activate へ倒さない** —— 向け直せないことより、画面を壊すほうが害が大きい
+    /// (要件の doc 参照)。呼び手は失敗を「向け直せなかった」として扱う
+    func attach(bundleID: String) async throws {
+        throw DriverError.badResponse(
+            status: 501, body: "This driver cannot point its session at an app without activating it")
     }
 
     func openAppSwitcher() async throws {

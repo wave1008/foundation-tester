@@ -52,6 +52,7 @@ private final class RecordingDriver: AppDriver, @unchecked Sendable {
         lastLaunchedBundleID = bundleID
         try record("launch")
     }
+    func attach(bundleID: String) async throws { try record("attach(\(bundleID))") }
     func snapshot() async throws -> SnapshotResponse {
         try record("snapshot")
         return snapshotResponse
@@ -96,6 +97,49 @@ private final class RecordingDriver: AppDriver, @unchecked Sendable {
     func back() async throws { try record("back") }
     func screenshot() async throws -> Data { Data() }
     func terminate() async throws {}
+}
+
+/// **attach は必ず XCUITest 側へ**。向け直す先の「セッション」を持つのは XCUITest だけで、
+/// in-app に回すと既定実装から launch = dylib 注入の再起動へ落ちる。
+/// 画面を動かさないことが attach の存在理由なので、ここが緩むと**利用者のアプリが再起動する**。
+final class HybridAttachRoutingTests: XCTestCase {
+
+    private var log: RecordingDriver.Log!
+    private var inApp: RecordingDriver!
+    private var xcui: RecordingDriver!
+    private var foreign: RecordingDriver!
+    private var driver: HybridFallbackDriver!
+
+    override func setUp() {
+        super.setUp()
+        log = RecordingDriver.Log()
+        inApp = RecordingDriver(name: "inapp", log: log)
+        xcui = RecordingDriver(name: "xcui", log: log)
+        foreign = RecordingDriver(name: "foreign", log: log)
+        driver = HybridFallbackDriver(primary: inApp, fallback: xcui,
+                                      primaryBundleID: "com.example.app", foreignApp: foreign)
+    }
+
+    /// **自アプリでも in-app へ回さない**(ここが実害の本体)
+    func testAttachToTheOwnAppGoesToXCUITestNotInApp() async throws {
+        try await driver.attach(bundleID: "com.example.app")
+        XCTAssertEqual(log.entries, ["xcui.attach(com.example.app)"])
+    }
+
+    /// 別アプリ(Spotlight 等)は foreignApp へ
+    func testAttachToAnotherAppGoesToTheForeignSession() async throws {
+        try await driver.attach(bundleID: "com.apple.Spotlight")
+        XCTAssertEqual(log.entries, ["foreign.attach(com.apple.Spotlight)"])
+    }
+
+    /// **attach は木の読み先を変えない** —— 画面が動かないので委譲状態を畳む理由が無い。
+    /// 畳むと自アプリの attach のあとに in-app ではなく XCUITest の木を読み始める
+    func testAttachDoesNotChangeWhichTreeIsRead() async throws {
+        try await driver.attach(bundleID: "com.example.app")
+        log.entries.removeAll()
+        _ = try await driver.snapshot()
+        XCTAssertEqual(log.entries, ["inapp.snapshot"], "読みは in-app のまま: \(log.entries)")
+    }
 }
 
 final class HybridFallbackDriverTests: XCTestCase {

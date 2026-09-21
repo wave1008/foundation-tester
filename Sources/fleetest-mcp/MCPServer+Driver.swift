@@ -915,12 +915,14 @@ extension MCPServer {
         // activate/attached 状態を1本にしないと余計な activate が挟まる)
         let attach = AppAttachDriver(port: xcuiPort, host: provisioned.host, bundleID: bundleID,
                                      physicalUDID: provisioned.physical ? provisioned.udid : nil)
-        // hybrid の主は in-app(provisioned.port)。同一性はそちらへ問う
-        return (HybridFallbackDriver(primary: WebViewDelegatingDriver(primary: inapp, delegated: attach),
-                                     fallback: attach, primaryBundleID: bundleID,
-                                     foreignApp: SessionRecoveryDriver(base: BridgeClient(
-                                         port: xcuiPort, host: provisioned.host,
-                                         physicalUDID: provisioned.physical ? provisioned.udid : nil))),
+        // hybrid の主は in-app(provisioned.port)。同一性はそちらへ問う。
+        // **合成は HybridDriverComposition の1箇所**(ライブ操作・シナリオ実行と同じ形にする)
+        return (HybridDriverComposition.inAppFirst(
+                    inApp: inapp, attach: attach,
+                    foreignApp: SessionRecoveryDriver(base: BridgeClient(
+                        port: xcuiPort, host: provisioned.host,
+                        physicalUDID: provisioned.physical ? provisioned.udid : nil)),
+                    bundleID: bundleID),
                 provisioned.port)
     }
 

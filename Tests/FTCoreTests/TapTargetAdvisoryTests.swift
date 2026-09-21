@@ -100,12 +100,17 @@ final class TapTargetAdvisoryTests: XCTestCase {
                                                     overlayWindows: .none, isAndroid: false))
     }
 
-    /// **覆いの目印**(実機で測った集合)。空にする・localize される名前を混ぜる退行を落とす
+    /// **覆いの目印**(デバイス上で「素の状態に出ない・その面で出る」を測った集合)。
+    /// 空にする・localize される名前を混ぜる退行を落とす。
+    /// `SBSwitcherWindow` は 2026-09-22 に追加(iPhone 17 Pro / iOS 27.0 のシミュレータで測定)——
+    /// **識別子は `SBSwitcherWindow:Main`** なので前方一致で引き、**閉じたあとも残る**ので
+    /// `.exists` ではなく `.isHittable` まで見る(BridgeRouter.handleSystemUICovering)
     func testSystemUICoveringMarkersAreTheMeasuredSet() {
         let markers = BridgeAPI.systemUICoveringMarkers
         XCTAssertEqual(Set(markers),
-                       ["cc-brightness-slider", "cc-volume-slider", "SBCoverSheetWindow"],
-                       "実機で「素の状態に出ない・その面で出る」を測った集合。増減は再測定してから")
+                       ["cc-brightness-slider", "cc-volume-slider", "SBCoverSheetWindow",
+                        "SBSwitcherWindow"],
+                       "デバイス上で「素の状態に出ない・その面で出る」を測った集合。増減は再測定してから")
         // **ローカライズされる名前を混ぜない**(同時に出る mode-おやすみモード 等)
         XCTAssertTrue(markers.allSatisfy { $0.allSatisfy { $0.isASCII } },
                       "ASCII 以外 = ローカライズされる名前が混ざっている: \(markers)")

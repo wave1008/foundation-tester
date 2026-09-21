@@ -102,6 +102,7 @@ public final class FastLaunchDriver: AppDriver {
     public func systemAlert() async throws -> SystemAlertProbeResponse? { try await base.systemAlert() }
     public func systemUICovering() async throws -> SystemUICoveringResponse? { try await base.systemUICovering() }
     public func activate(bundleID: String) async throws { try await base.activate(bundleID: bundleID) }
+    public func attach(bundleID: String) async throws { try await base.attach(bundleID: bundleID) }
     public func openAppSwitcher() async throws { try await base.openAppSwitcher() }
     public func home() async throws { try await base.home() }
     public func snapshot() async throws -> SnapshotResponse { try await base.snapshot() }

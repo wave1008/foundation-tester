@@ -367,9 +367,18 @@ extension StepExecutor {
         if Self.gestureActions.contains(action), step.locator == nil,
            step.fallbacks?.isEmpty ?? true {
             let snapshot = try await snapshotForScrollFrame(phase: &phase)
-            return try await performGesture(action, step: step, target: snapshot.screen,
-                                            identifier: nil, viewport: snapshot.screen,
-                                            phase: &phase)
+            // **ピンチだけは領域を絞る** —— 指の2点が別々のものに載るとパンに化ける
+            // (理由と実測は PinchRegion)。doubleTap は中心を叩くだけ・swipeBy は比率の基準が
+            // 変わるので絞らない。Android は領域の短辺から指の幅を決めるので渡さない
+            let area = !isAndroid && ["pinchOut", "pinchIn"].contains(action)
+                ? PinchRegion.area(elements: snapshot.elements, screen: snapshot.screen) : nil
+            let outcome = try await performGesture(
+                action, step: step, target: area ?? snapshot.screen, identifier: nil,
+                viewport: snapshot.screen, phase: &phase)
+            guard area != nil else { return outcome }
+            return StepOutcome(status: outcome.status, driverFallback: Self.joinNotes(
+                outcome.driverFallback,
+                "pinched the middle of the screen so both fingers stay on the same thing"))
         }
 
         // 要素が見つかるまでスクロール(見つかったら成功。操作はしない)

@@ -28,11 +28,17 @@ For a map, image viewer, or drawing surface, operate it with these four commands
 pan (diagonal included), `pinchOut`/`pinchIn` to zoom, `doubleTap` to zoom in. Three things to
 keep in mind:
 
-- **How a pinch's target is resolved differs by engine.** Android and iOS in-app synthesize the
-  two touch points around the center of the specified region. **iOS XCUITest has no
-  coordinate-based multi-touch gesture**, so it pinches by resolving an element via its
-  `accessibilityIdentifier` instead. **An element without an id, targeted through XCUITest, falls
-  back to pinching the whole screen** — this is left as a note on the step.
+- **A pinch is aimed by an area on every engine.** Android and iOS in-app synthesize the two touch
+  points around the center of the given region; iOS XCUITest places them at the two opposite ends
+  of it. Only when the area cannot be used does XCUITest fall back to resolving an element by its
+  `accessibilityIdentifier` — and it says so in a note on the step.
+- **`pinchOut()` / `pinchIn()` written without a target pinch a small area at the centre of the
+  screen**, not the whole screen. **A pinch does not happen when the two fingers land on different
+  things**: measured on Apple Maps (2026-09-22), pinching the whole screen put the lower finger on
+  the search card, and a zoom out turned into a pan of the map (a zoom in still worked, because
+  there the fingers start at the centre and spread out). fleetest therefore picks a spot where both
+  fingers stay on the same thing, narrowing the span if it has to, and falls back to the whole
+  screen only when no such spot exists.
 - **On iOS, whether a gesture works depends on the engine**, for some gestures. The default
   hybrid engine works across every framework (the host picks the engine automatically). Android
   has no such split — every gesture works everywhere:

@@ -113,6 +113,10 @@ let liveStallSent = false;
 const SETTLE_REFRESH_MS = 700;
 // 要素の枠を画像に重ねて出すか(「バウンディングボックスを表示」)。vscode.setState に永続化。
 let showBoxes = persistedState.liveShowBoxes === true;
+// 枠を消してから**次の木が届くまで**は描き直さない。fitScreenshot も枠を引き直すので、
+// これが無いと画像のサイズが変わった拍子に古い木の枠が復活する
+// (実害 2026-09-22: タスクスイッチャーを出すと直前の画面の枠が出たまま残った)。
+let boxesStale = false;
 let settleRefreshTimer = null;
 // 撮り直しとして要求した snapshot か(その結果でまた仕掛けると静止画面で撮り続ける)。
 let settleRefreshRequested = false;
@@ -128,6 +132,13 @@ function setBusy(value) {
   for (const b of busyButtons) { b.disabled = value; }
   deviceSelect.disabled = value;
   busyLabel.textContent = value ? t('wvMonitor.live.processing') : '';
+  // **操作を撃った時点で枠を消す**(ユーザー決定 2026-09-22) —— これから画面が変わるので、
+  // 古い木から描いた枠はもう画面と合わない。操作の結果が届いたら renderBoxes が引き直す。
+  // 要素一覧は消さない(読んでいる最中に行が消えると追えない。あちらは「更新」で入れ替わる)
+  //
+  // **撮り直し(scheduleSettleRefresh)の間は消さない** —— あれは画面を変えない観測で、
+  // 消すと遷移後に「出る → 消える → 出る」とちらつく(2026-09-22)
+  if (value && !settleRefreshRequested) { clearBoxes(); }
   // 「レコーディング開始」も busy を見る(updateRecordButton が updateProfileActionButtons を呼ぶ)
   updateRecordButton();
 }
@@ -375,16 +386,18 @@ function fitScreenshot() {
   if (paneH === 0) { return; } // タブ非表示中(display:none)は測れないので触らない
   const avail = paneH - screenshotActions.offsetHeight - SCREENSHOT_PANE_GAP - SCREENSHOT_WRAP_BORDER;
   const maxH = Math.max(40, avail);
-  // **表示サイズは絵の解像度で決めない**(理由は liveScreenFit.js)。画面比は lastScreen から採り、
-  // 幅と高さの両方を明示して入れる —— 片方だけ入れて max-width に任せると、幅で制限された回だけ
-  // 縦横比が崩れる。
+  // **絵そのものには幅・高さを入れない**。上限(max-width/max-height)だけ与えて、縦横比は
+  // 絵に決めさせる —— 寸法を明示すると、screen が実画面と食い違った回にその比へ引き伸ばされる
+  // (実害 2026-09-22: セッションがウィジェットの裏方を向いて screen が 349x565 になり、
+  //  0.46 の絵が 0.618 へ横に膨らんだ)。**絵の比は常に正しい**ので、こちらを信じる。
+  // screen は pane の幅を決めるためだけに使う(下)。
   const aspect = displayAspect(lastScreen, naturalSize(activeScreenEl()));
   const widthCap = screenPaneWidth != null ? screenPaneWidth - SCREENSHOT_WRAP_BORDER : undefined;
   const size = fitScreenSize(aspect, maxH, widthCap);
   for (const el of [screenshot, liveCanvas]) {
-    el.style.maxHeight = size ? '' : maxH + 'px'; // 比が分かるまでは従来どおり絵に任せる
-    el.style.width = size ? size.width + 'px' : '';
-    el.style.height = size ? size.height + 'px' : '';
+    el.style.maxHeight = maxH + 'px';
+    el.style.width = '';
+    el.style.height = '';
   }
   // スプリッターで手動幅が設定されているときは pane を固定幅にする(自動ハグの maxWidth 計算はしない)。
   if (screenPaneWidth != null) {
@@ -414,7 +427,15 @@ function disposeLiveH264() {
   liveUsingH264 = false;
   liveDeltasBeforeKey = 0;
   liveStallSent = false;
-  liveCanvas.classList.remove('visible');
+  // **canvas を降りたら一枚絵を前に出す** —— 両方隠れると wrap の背景色が見えて画面が
+  // 真っ黒になる(実害 2026-09-22: Spotlight でキーボードが出た直後。デコードエラーからの
+  // mjpeg フォールバックは host 側の切り替えを挟むので、その間ずっと黒いままだった)。
+  // 絵をまだ1枚も受けていないときは placeholder のままにする
+  if (screenshot.getAttribute('src')) {
+    showStill();
+  } else {
+    liveCanvas.classList.remove('visible');
+  }
   if (liveRenderer) {
     liveRenderer.dispose();
     liveRenderer = null;
@@ -456,6 +477,7 @@ function frameToDisplayRect(frame, screen, display) {
 // タップ座標を換算したり ref を叩いたりしないよう捨てる。lastScreen が null の間は
 // ポインタ操作が無反応になり、次のフレームで requestSnapshotIfNeeded が撮り直しを要求する。
 function clearSnapshot() {
+  clearBoxes(); // 消してから stale にする(先に stale だけ立てると overlay が空にならない)
   cancelSettleRefresh();
   settleRefreshRequested = false;
   lastScreen = null;
@@ -468,6 +490,7 @@ function clearSnapshot() {
 function applySnapshot(message) {
   lastScreen = message.screen;
   lastElements = message.elements;
+  boxesStale = false; // 新しい木が来たので描いてよい
   autoSnapshotRequested = false;
   // 届いた一枚絵は**操作の結果そのもの**(host は tap のあとに撮って返す)。配信より新しいので
   // 常に前面へ出す —— 配信は静止画面でエンコードを止めるため、出さずに待つと次のキーフレームが
@@ -681,7 +704,19 @@ function setHot(ref, scrollList) {
   }
 }
 
+/** 枠と強調をまとめて落とす(要素一覧の行はそのまま)。**次の木が届くまで描き直さない**。 */
+function clearBoxes() {
+  boxesStale = true;
+  setHot(null, false);
+  boxByRef.clear();
+  hotBox.remove();
+  boxesOverlay.classList.remove('visible');
+  boxesOverlay.replaceChildren();
+}
+
 function renderBoxes() {
+  // 消した後は次の木を待つ(fitScreenshot からの引き直しで古い枠を蘇らせない)
+  if (boxesStale) { return; }
   boxByRef.clear();
   hotBox.remove();
   // 行の見た目(赤枠を出すか)は CSS 側で分ける。**状態は一覧に持たせる** —— 行ごとに

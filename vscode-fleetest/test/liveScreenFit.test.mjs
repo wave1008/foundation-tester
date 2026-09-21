@@ -1,8 +1,11 @@
 // liveScreenFit.js(「ライブ操作」タブの画面表示サイズ)のユニットテスト。DOM 非依存の純ロジック。
 //
-// 守っているのは「同じ画面なら表示サイズが動かない」こと。絵の供給元は配信(長辺 900px)と
+// 守っているのは「同じ画面なら pane の幅が動かない」こと。絵の供給元は配信(長辺 900px)と
 // snapshot(原寸)の2つあり、さらに配信の IOSurface はシステムダイアログの表示などで寸法が
 // 変わる。実害(2026-09-21): システムダイアログが出ると画像が小さくなった。
+//
+// **絵そのものの寸法はここで決めない**(2026-09-22) —— 絵に寸法を入れると、screen が実画面と
+// 食い違った回にその比へ引き伸ばされる。絵は max-width/max-height で収め、縦横比は絵に任せる。
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -29,7 +32,7 @@ test("displayAspect: どちらも無ければ null", () => {
 });
 
 // 実害そのもの: 配信(900x1956)と snapshot(1206x2622)で表示サイズが違ってはいけない。
-test("fitScreenSize: 絵の解像度が変わっても表示サイズは同じ", () => {
+test("fitScreenSize: 絵の解像度が変わっても pane の幅は同じ", () => {
   const aspect = displayAspect(SCREEN, { w: 900, h: 1956 });
   const a = fitScreenSize(aspect, 800);
   const b = fitScreenSize(displayAspect(SCREEN, { w: 1206, h: 2622 }), 800);

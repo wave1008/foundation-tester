@@ -468,8 +468,9 @@ extension MCPServer {
             "interactiveOnly": interactiveOnlyProperty,
         ]),
         tool("ft_pinch","Pinch to zoom. scale > 1 zooms in, 0 < scale < 1 zooms out. Target it with ref, "
-            + "or with x/y on a map or canvas that has no element of its own — without either, the fingers "
-            + "span the whole screen, so a bottom sheet on top of it may take the gesture instead. "
+            + "or with x/y on a map or canvas that has no element of its own — without either, the pinch "
+            + "falls on the content under the centre of the screen, or on the whole screen when there is "
+            + "no such element (then a bottom sheet on top of it may take the gesture instead). "
             + "The actual zoom can be smaller than requested (fingers stay inside the target). "
             + "Pass profile: on iOS — without it Flutter apps do not zoom (see docs/commands.md).", [
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],

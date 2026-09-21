@@ -386,7 +386,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 | `POST /swipe` | `{direction}` or `{fromRef, direction}`。用途つきの任意項目あり(下記「スクロールの語彙」) |
 | `POST /press` | `{ref, duration}` または `{x, y, duration}` 長押し |
 | `POST /doubletap` | `{ref}` または `{x,y}`。**2回の /tap では代用できない**(往復で OS のダブルタップ判定時間を超える) |
-| `POST /pinch` | `{scale, frame?, identifier?, durationSeconds?}` 2本指ズーム。**対象の指定が経路で違う**ので両方を運ぶ(Android と in-app は `frame` の中心で合成・XCUITest は座標指定の多点ジェスチャを持たず `identifier` で要素を引く) |
+| `POST /pinch` | `{scale, frame?, identifier?, durationSeconds?}` 2本指ズーム。**`frame` があればどの経路も座標で撃つ**(Android は frame の短辺から指の幅を決めて中心に置く / XCUITest は frame の長辺の両端に指を置く = `CoordinatePinch`)。`frame` が無い・座標ピンチが使えないときだけ XCUITest が `identifier` で要素を引く(**縮退したことを注記で必ず言う**) |
 | `POST /clear` | `{ref}` 省略可(省略時はフォーカス中の入力欄)。入力欄のクリア |
 | `POST /pressEnter` | Return キー相当(受け口ごとの機構は §10) |
 | `GET  /screenshot` | `XCUIScreen.main.screenshot()` → PNG |
@@ -3202,11 +3202,12 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     場所カードを半分出したまま `scale 0.4` を撃つと**地図は 1px も動かず、シートが全画面に展開した**。
     既定の半径は**画面の短辺の 22%**(座標系が iOS=pt / Android=px で桁が違うので固定値にしない)、
     画面の内側へクランプする(外へ出た指は届かず、要求より小さいズームになる)。
-    **エンジンで honour できるかが割れる**: `PinchRequest.frame` を読むのは **Android と
-    iOS in-app だけ**で、**XCUITest は読めない**(XCTest のピンチは `XCUIElement` にしか生えておらず
-    座標版が無い)。だから xcuitest エンジンでは**全画面へ退化したことを戻り値で必ず言う**
+    **XCUITest も 2026-09-22 から座標で撃てる**(`CoordinatePinch`。それまでは
+    `XCUIElement.pinch` しか無く領域を読めなかったので「x/y は honour できない」と断っていた)——
+    公開 API に座標版が無いので**非公開の `XCPointerEventPath` / `XCSynthesizedEventRecord`** で
+    経路を組む。**実行時に存在を確かめ、無ければ要素ピンチへ縮退して戻り値で必ず言う**
     (黙って退化させると「狙った場所を撃ったつもりで手前のシートを掴む」= この修正の動機そのもの)。
-    逃げ道は他のジェスチャと同じ `profile:` で in-app/hybrid を選ぶこと
+    **ホスト側で先回りして「無視した」と言わない** —— 縮退したかを知っているのはブリッジだけ
   - **ソフトキーボードの遮蔽は木からは原理的に判定できない**(2026-08-08)。iOS xcuitest は
     `.keyboard`/`.key` サブツリーを木から除外しており、残る外側コンテナ(`inputView`)は
     子孫ゼロの空葉になって**空葉除外(誤検知対策)に正しく弾かれる**。Android は IME が

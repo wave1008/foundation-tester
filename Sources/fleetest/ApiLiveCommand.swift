@@ -111,7 +111,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         // SERVE_REQUEST_TIMEOUT_MS(20秒)にして、通常は拡張の kill→respawn を先に効かせる。
         ResidentProcessGuard.startCommandWatchdog(maxSeconds: 30, logLabel: "live serve")
 
-        var (driver, port) = try await makeDriverAvoidingInApp()
+        var (driver, port) = try await makeLiveDriver()
         let starter = makeAutoStarter(port: port)
         // セッションを「今 前面にあるもの」へ追従させる(LiveSessionFollower)。**iOS だけ**の補正で、
         // Android は木がアクティブウィンドウ・タップが画面座標なので何もしなくても画面に追従する
@@ -167,10 +167,16 @@ struct ApiLiveServe: AsyncParsableCommand {
         }
     }
 
-    /// live は home/appSwitcher/drag/座標 press を扱うため **in-app ブリッジを使わない**。
-    /// 指定ポートが in-app なら同じデバイスの XCUITest ブリッジへ振り替える(XCUIBridgeResolver)。
+    /// live のドライバ構成。**自アプリだけ in-app を主にする**(ユーザー決定 2026-09-22) ——
+    /// WKWebView の中身を DOM で読めるのは in-app だけで、レコーディングはそれに依る。
+    /// それ以外(別アプリ・SpringBoard)と、in-app が原理的に実行できない操作
+    /// (home / appSwitcher / 座標 drag・press)は XCUITest が受け持つ。
+    /// 仕分けは `HybridFallbackDriver` と `WebViewDelegatingDriver` が持っている既存の規律を
+    /// そのまま使う(MCP の ft_* と同じ構成。二つ目の実装を書かない)。
+    ///
+    /// in-app が居ない(指定ポートが XCUITest・Android)ときは従来どおり単独で使う。
     /// 戻り値のポートは以後の自動起動・再起動が同じ宛先を見るために返す
-    private func makeDriverAvoidingInApp() async throws -> (AppDriver, UInt16) {
+    private func makeLiveDriver() async throws -> (AppDriver, UInt16) {
         guard driverOptions.resolvedPlatform == "ios" else {
             return (try await driverOptions.makeDriver(), driverOptions.resolvedPort)
         }
@@ -183,7 +189,27 @@ struct ApiLiveServe: AsyncParsableCommand {
             logger: { message in
                 ConsoleOut.err("[live serve] " + message)
             })
-        return (BridgeClient(endpoint: resolution.endpoint), resolution.endpoint.port)
+        let xcui = BridgeClient(endpoint: resolution.endpoint)
+        // in-app が居て、かつ振り替え先(XCUITest)が別に取れているときだけ組む。
+        // 同じ宛先しか無い = XCUITest が見つからなかった場合は、in-app 単独では home も
+        // appSwitcher も撃てないので XCUITest 側(= そのまま)に寄せる
+        guard let inApp = resolution.inApp, inApp.endpoint.port != resolution.endpoint.port,
+              let repoRoot = try? RepoRoot.find(), let udid else {
+            return (xcui, resolution.endpoint.port)
+        }
+        let inAppDriver = InAppDriver(repoRoot: repoRoot, udid: udid, port: inApp.endpoint.port)
+        // attach は**同じインスタンス**を委譲とフォールバックの両方に使う(MCP と同じ理由:
+        // activate/attached 状態を1本にしないと余計な activate が挟まる)
+        let attach = AppAttachDriver(port: resolution.endpoint.port, host: resolution.endpoint.host,
+                                     bundleID: inApp.bundleID,
+                                     physicalUDID: SimulatorCatalog.isPhysical(udid: udid) == true ? udid : nil)
+        ConsoleOut.err("[live serve] own app \(inApp.bundleID) is driven in-app (DOM);"
+                       + " other apps and home/appSwitcher go through XCUITest (port \(resolution.endpoint.port))")
+        // **合成は HybridDriverComposition の1箇所**(MCP の ft_* と同じ形。二つ目の実装を書かない)
+        let driver = HybridDriverComposition.inAppFirst(
+            inApp: inAppDriver, attach: attach, foreignApp: xcui, bundleID: inApp.bundleID)
+        // 以後の自動起動・再起動が見るのは **XCUITest 側**(in-app は dylib 注入で建て直せない)
+        return (driver, resolution.endpoint.port)
     }
 
     /// platform=ios かつ --udid 指定時のみ自動起動を有効化する。RepoRoot.find() の失敗は
@@ -237,7 +263,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         // **観測の直前にもう一度追従させる**: 直前の操作で前面が変わっている(ホームへ戻った・
         // 別のアプリが出た)ことがあり、古いセッションのまま撮ると画面ではなく最後の状態が載る
         await follower?.follow(driver: driver)
-        await emitObservation(driver: driver, starter: starter)
+        await emitObservation(driver: driver, starter: starter, follower: follower)
     }
 
     /// error が DriverError.bridgeConnectionRefused のときだけ starter のサフィックスを連結する
@@ -325,17 +351,25 @@ struct ApiLiveServe: AsyncParsableCommand {
                 throw ServeCommandError.invalidArguments(
                     "pinch scale must be positive and not 1 (>1 zooms in, <1 zooms out)")
             }
-            // ref 指定時は frame と identifier の両方を渡す(経路で対象の伝え方が違う。
-            // FTCore/BridgeDTO の PinchRequest)
-            var frame: FTRect?
-            var identifier: String?
+            let duration = command.duration ?? 0.5
             if let ref = command.ref {
+                // ref 指定時は frame と identifier の両方を渡す(経路で対象の伝え方が違う。
+                // FTCore/BridgeDTO の PinchRequest)
                 let element = try await Self.element(ref: ref, driver: driver)
-                frame = element.frame
-                identifier = element.identifier
+                try await driver.pinch(frame: element.frame, identifier: element.identifier,
+                                       scale: scale, durationSeconds: duration)
+            } else {
+                // **指の2点が別々のものに載らない位置を選ぶ**(実測と理由は PinchRegion)。
+                // Android は領域の短辺から指の幅を決めるので渡さない。**絞れなくても画面矩形は渡す**
+                // —— 領域があれば座標で撃てる(端ちょうどには置かない)= DSL と同じ扱いにする
+                let snapshot = try await driver.snapshot()
+                let area = driverOptions.resolvedPlatform == "ios"
+                    ? (PinchRegion.area(elements: snapshot.elements, screen: snapshot.screen)
+                        ?? snapshot.screen)
+                    : nil
+                try await driver.pinch(frame: area, identifier: nil, scale: scale,
+                                       durationSeconds: duration)
             }
-            try await driver.pinch(frame: frame, identifier: identifier, scale: scale,
-                                   durationSeconds: command.duration ?? 0.5)
         case "press":
             guard let x = command.x, let y = command.y, let duration = command.duration else {
                 throw ServeCommandError.invalidArguments("press requires x/y/duration")
@@ -426,11 +460,12 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// スクリーンショット(ダウンスケール済み JPEG)とアクセシビリティツリーを観測イベントとして出す
     /// (ApiMonitorCommand.swift の MonitorImage を共有利用する)。refresh(ユーザーの「更新」
     /// ボタン)はこの経路しか通らないため、ここでの自動起動トリガーは必須
-    private func emitObservation(driver: AppDriver, starter: LiveBridgeAutoStarter?) async {
+    private func emitObservation(driver: AppDriver, starter: LiveBridgeAutoStarter?,
+                                 follower: LiveSessionFollower?) async {
         do {
             let png = try await driver.screenshot()
             let jpeg = try MonitorImage.downscaledJPEG(pngData: png, maxWidth: maxWidth)
-            let snap = try await snapshotWithSessionFallback(driver: driver)
+            let snap = try await snapshotWithSessionFallback(driver: driver, follower: follower)
             let elements = snap.elements.map {
                 ApiLiveElement(ref: $0.ref, type: $0.type, label: $0.label,
                                identifier: $0.identifier, value: $0.value, frame: $0.frame)
@@ -462,16 +497,23 @@ struct ApiLiveServe: AsyncParsableCommand {
         }
     }
 
-    /// xcuitest ブリッジはセッション未作成だと /snapshot が 409 を返す(ライブ操作はデバイス選択
-    /// 直後などアプリ未起動のまま観測しうる)。409 のときだけ springboard 参照セッション
-    /// (起動せず・非破壊。SystemUIDriver.swift と同じ経路)を張って1回だけ再試行する。
-    /// 409 以外(タイムアウト等)で再試行しないのは、生きている既存アプリセッションを
+    /// 木が読めない2つの状態から springboard 参照セッション(起動せず・非破壊。
+    /// SystemUIDriver.swift と同じ経路)で回復し、1回だけ再試行する:
+    ///   - **409**: セッション未作成(ライブ操作はデバイス選択直後などアプリ未起動のまま観測しうる)
+    ///   - **422**: セッションのアプリが前面でない(BridgeRouter.requireForegroundApp)。
+    ///     **ライブ操作では普通に起きる** —— 利用者はいつでも画面を切り替えるので、前面追従が
+    ///     向けた直後に外れることがある。springboard は背面に回らないので必ず読める
+    /// それ以外(タイムアウト等)で再試行しないのは、生きている既存アプリセッションを
     /// springboard で上書きしないため。
-    private func snapshotWithSessionFallback(driver: AppDriver) async throws -> SnapshotResponse {
+    /// **follower にも伝える** —— 黙って倒すと「まだあのアプリを向いている」と思い続け、
+    /// 次の追従が「向き先は変わっていない」と判断して撃たない
+    private func snapshotWithSessionFallback(driver: AppDriver,
+                                             follower: LiveSessionFollower?) async throws -> SnapshotResponse {
         do {
             return try await driver.snapshot()
-        } catch DriverError.badResponse(let status, _) where status == 409 {
-            try await driver.launch(bundleID: "com.apple.springboard")
+        } catch DriverError.badResponse(let status, _) where status == 409 || status == 422 {
+            try await driver.launch(bundleID: LiveSessionTarget.springboard)
+            follower?.noteSessionChanged(to: LiveSessionTarget.springboard)
             return try await driver.snapshot()
         }
     }

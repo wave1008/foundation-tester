@@ -278,6 +278,8 @@ public final class AppAttachDriver: AppDriver {
     public func install(packagePath: String) async throws {}
     public func uninstall(bundleID: String) async throws {}
     public func launch(bundleID: String) async throws {}
+    /// セッションを持つのは XCUITest 側だけなので、ここは素通しする(no-op にしない)
+    public func attach(bundleID: String) async throws { try await client.attach(bundleID: bundleID) }
     public func terminate() async throws {}
     public func clearAppData(bundleID: String) async throws {}
     // /appstate はセッション不要の読み取り。attach 用も実体は BridgeClient なのでそのまま使える

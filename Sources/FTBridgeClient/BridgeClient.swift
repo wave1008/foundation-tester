@@ -566,7 +566,9 @@ public final class BridgeClient: AppDriver {
     /// in-app は自分自身しか知らない)。appIs の失敗メッセージは actual なしで表示する
     public func foregroundAppID() async throws -> String? { nil }
 
-    /// simctl 等で起動済みのアプリへプロキシ接続だけ行う(FastLaunchDriver 用。activate 比 約-1s)
+    /// 起動済みのアプリへプロキシ接続だけ行う(前面でなければ失敗する)。前面化を撃たないので
+    /// **画面を動かさない** —— FastLaunchDriver の時短(activate 比 約-1s)と、ライブ操作の
+    /// 追従(LiveSessionFollower)が使う。非破壊が要る理由は AppDriver.attach の doc
     public func attach(bundleID: String) async throws {
         let _: OKResponse = try await post("/session",
                                            body: LaunchRequest(bundleID: bundleID, attachOnly: true),

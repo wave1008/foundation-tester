@@ -40,6 +40,12 @@ final class FleetestBridgeTests: XCTestCase {
         let ttl = BridgeAPI.resolvedBridgeTTLSeconds(ProcessInfo.processInfo.environment["FT_BRIDGE_TTL"])
         NSLog("[fleetest] bridge listening on %@:%d ttl=%@", bindHost, Int(port),
               ttl > 0 ? "\(ttl)s" : "off")
+        // **非公開 API が消えたら起動時に分かるようにする**(CoordinatePinch の doc)。
+        // 無いと縮小のピンチが「手前のシートに1本を取られてパンになる」形へ静かに戻る
+        NSLog("[fleetest] coordinate pinch: %@",
+              CoordinatePinch.isAvailable ? "available"
+                  : "UNAVAILABLE — this Xcode has no XCPointerEventPath;"
+                    + " a zoom out will fall back to the element pinch and may pan instead")
 
         // 画面が進んでいるかの計器(/status の displayIdleSeconds)。**RunLoop を回し始める前に**
         // 載せる —— 下のループが回り出さないと CADisplayLink は tick しない

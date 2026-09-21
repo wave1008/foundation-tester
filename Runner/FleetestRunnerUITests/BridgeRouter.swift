@@ -384,9 +384,18 @@ final class BridgeRouter {
     /// **述語で1回のクエリにまとめる**(目印ごとに `.exists` を撃つと往復が本数分になる)
     private func handleSystemUICovering() -> BridgeHTTPServer.Response {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let predicate = NSPredicate(format: "identifier IN %@", BridgeAPI.systemUICoveringMarkers)
+        // **前方一致**で見る —— 窓の identifier には接尾辞が付く(実測 2026-09-22:
+        // アプリスイッチャーは `SBSwitcherWindow:Main`)。完全一致だと取りこぼし、
+        // 覆われているのに「覆われていない」と答える
+        let predicate = NSCompoundPredicate(orPredicateWithSubpredicates:
+            BridgeAPI.systemUICoveringMarkers.map { NSPredicate(format: "identifier BEGINSWITH %@", $0) })
         let match = springboard.descendants(matching: .any).matching(predicate).firstMatch
-        guard match.exists else { return .json(SystemUICoveringResponse(covering: false)) }
+        // **exists だけでは足りない** —— 一度開いた面の窓は閉じてもツリーに残る(実測 2026-09-22:
+        // アプリスイッチャーを閉じてホーム画面へ戻っても `SBSwitcherWindow:Main` の exists は
+        // true のまま)。**今その面が触れる状態か**で切る
+        guard match.exists, match.isHittable else {
+            return .json(SystemUICoveringResponse(covering: false))
+        }
         return .json(SystemUICoveringResponse(covering: true, marker: match.identifier))
     }
 
@@ -1219,11 +1228,63 @@ final class BridgeRouter {
             }
         }
         let duration = max(req.durationSeconds ?? 0.5, 0.05)
+        // **領域が来ていて座標ピンチが使えるならそちら**(理由は CoordinatePinch)。
+        // XCUIElement のピンチは指の位置を選べず、縮小では枠の端から閉じるのでパンに化ける
+        if let frame = req.frame, CoordinatePinch.isAvailable {
+            try coordinatePinch(frame: frame, scale: req.scale, duration: duration)
+            return .json(OKResponse(note: note))
+        }
+        if req.frame != nil {
+            // **縮退したことは必ず言う**(黙ると「縮小したのにパンした」の理由が読めない)
+            note = [note, "no coordinate pinch in this Xcode (XCPointerEventPath is gone), so the"
+                + " fingers came from the element's frame — a zoom out can be taken by whatever"
+                + " sits on its edge"].compactMap { $0 }.joined(separator: " / ")
+        }
         // 拡大は正・縮小は負の velocity。極端値は避ける(0.1〜10 scale/秒)
         let magnitude = min(max(abs(req.scale - 1) / duration, 0.1), 10)
         target.pinch(withScale: CGFloat(req.scale),
                      velocity: req.scale > 1 ? magnitude : -magnitude)
         return .json(OKResponse(note: note))
+    }
+
+    /// 閉じ切った側でも指をこれ以上近づけない[pt]。Android 側(`BridgeRouter.java` の 16px)と同じ考え
+    private static let pinchMinimumHalfSpan = 8.0
+
+    /// 指2本を **frame の中で向かい合う2点**に置いて動かす。**向きと端の決め方は
+    /// `FTCore.PinchRegion.closingTouchPoints` と同じ規則**(ホストはその2点が対象の上に
+    /// 乗ることを確かめてから領域を送る。片方だけ変えない)。
+    /// 縮小は両端から閉じ、拡大は閉じた位置から両端まで開く —— **どちらも指は frame の外へ出ない**
+    private func coordinatePinch(frame: FTRect, scale: Double, duration: TimeInterval) throws {
+        // **原則は横に並べる** —— 縦に並べると、同時に効いている縦スクロール/ドラッグの
+        // recognizer が指を取ってしまう(実測 2026-09-22: 縦長の `#pad_map` を縦にピンチすると
+        // SUT が `pan=none-down` を記録し、拡大率は 1 のままだった)。
+        // よほど縦長(2倍超)の枠のときだけ縦にする。**規則は `PinchRegion.closingTouchPoints` と同じ**
+        let vertical = frame.height > frame.width * 2
+        let centre = CGPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
+        // **指を枠の縁ちょうどには置かない**(境界の座標は隣の要素に拾われうる)。
+        // ホストは外側の2点で「同じものに載るか」を見る(`PinchRegion.closingTouchPoints`)ので、
+        // **内側へ寄せるぶんには判定を壊さない**。0.8 は Android の同じ処理(BridgeRouter.java の
+        // maxSpan)が使う 0.9 より一段内側 —— iOS は枠が画面いっぱいのことがあり、
+        // 画面の縁はシステムのジェスチャ帯になる
+        let edgeInset = 0.8
+        let outerHalf = (vertical ? frame.height : frame.width) / 2 * edgeInset
+        // 閉じた側の半径(拡大でも縮小でも内側)。**指が重なるまで閉じない** ——
+        // 極端な scale で2点が同じ座標になると、ピンチではなく1本指の操作として届く
+        // (Android の同じ処理 BridgeRouter.java も 16px の床を置いている)
+        let innerHalf = max(outerHalf * min(scale, 1 / scale), Self.pinchMinimumHalfSpan)
+        func points(_ halfSpan: Double) -> (CGPoint, CGPoint) {
+            vertical
+                ? (CGPoint(x: centre.x, y: centre.y - halfSpan),
+                   CGPoint(x: centre.x, y: centre.y + halfSpan))
+                : (CGPoint(x: centre.x - halfSpan, y: centre.y),
+                   CGPoint(x: centre.x + halfSpan, y: centre.y))
+        }
+        let zoomingOut = scale < 1
+        try CoordinatePinch.pinch(from: points(zoomingOut ? outerHalf : innerHalf),
+                                  to: points(zoomingOut ? innerHalf : outerHalf),
+                                  duration: duration,
+                                  orientation: appOrientation() == .landscape
+                                      ? .landscapeLeft : .portrait)
     }
 
     /// POST /rotate. See InAppBridge.handleRotate for why this polls (XCUIDevice's readback is
