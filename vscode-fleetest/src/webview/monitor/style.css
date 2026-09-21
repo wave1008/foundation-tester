@@ -2413,8 +2413,12 @@ input[type="search"]::placeholder {
   max-width: 320px;
 }
 #panel-live .control-pane {
-  /* 画像の右の残り幅いっぱいに広げる(要素一覧・操作記録を横いっぱいに)。min-width が下限。 */
-  flex: 1 1 auto;
+  /* 画像の右の残り幅いっぱいに広げる(要素一覧・操作記録を横いっぱいに)。min-width が下限。
+     **flex-basis は 0** —— auto にすると基準幅が中身(要素一覧の列幅は max-content)になり、
+     長いラベルの木が来ただけで画像ペイン(flex-shrink:1)を押して画像が縮む。実害 2026-09-22:
+     システムアラートの説明文が長く、アラートが出ている間だけ画像がひと回り小さくなった。
+     画像の大きさは木の中身に依存してはいけない。 */
+  flex: 1 1 0;
   min-width: 280px;
   display: flex;
   flex-direction: column;
