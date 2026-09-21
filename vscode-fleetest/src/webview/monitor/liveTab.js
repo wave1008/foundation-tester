@@ -547,7 +547,15 @@ function renderElements() {
   for (const element of lastElements) {
     const row = document.createElement('div');
     row.className = 'element-row';
-    row.textContent = element.line;
+    // 2カラム(本文 | 矩形)。列幅は .elements-list 側が決め、行は subgrid で乗る
+    // = 矩形の開始位置が全行で揃う(liveModel.ts の line / frameText と対)
+    const main = document.createElement('span');
+    main.className = 'element-cell-main';
+    main.textContent = element.line;
+    const frameCell = document.createElement('span');
+    frameCell.className = 'element-cell-frame';
+    frameCell.textContent = element.frameText;
+    row.append(main, frameCell);
     row.addEventListener('click', () => {
       if (busy) { return; }
       for (const r of elementsList.querySelectorAll('.element-row')) { r.classList.remove('selected'); }

@@ -482,8 +482,9 @@ export function parseGenScenarioEvent(value: unknown): GenScenarioEvent | undefi
 // ---- 要素一覧の1行表示フォーマット --------------------------------------------------------
 
 /**
- * 要素一覧の1行の表示テキストを組み立てる(形式:
+ * 要素一覧の1行のうち**左の列**の表示テキストを組み立てる(形式:
  * `[ref] type "label" id=identifier =value`。label/identifier/value が空・null のフィールドは省く)。
+ * 矩形は右の列(formatElementFrame)なのでここには含めない。
  */
 export function formatElementLine(element: LiveElement): string {
   const parts = [`[${element.ref}]`, element.type];
@@ -497,6 +498,16 @@ export function formatElementLine(element: LiveElement): string {
     parts.push(`=${element.value}`);
   }
   return parts.join(" ");
+}
+
+/**
+ * 要素一覧の1行のうち**右の列**(矩形)。書式は ft_snapshot の要素行
+ * (Sources/FTCore/SnapshotRendering.swift)と同じ `(x,y WxH)`・ポイント座標で、
+ * Swift 側の `Int(_:)` と同じ切り捨て(負値も 0 方向へ)。
+ */
+export function formatElementFrame(frame: LiveRect): string {
+  const n = (value: number): number => (Number.isFinite(value) ? Math.trunc(value) : 0);
+  return `(${n(frame.x)},${n(frame.y)} ${n(frame.width)}x${n(frame.height)})`;
 }
 
 /** 「操作記録」1行に使う要素の短い説明。label > #identifier > type の優先。 */
@@ -709,8 +720,10 @@ export function fallbackDeviceOption(source: FallbackDeviceSource): LiveDeviceOp
 // ---- webview メッセージプロトコル ---------------------------------------------------------
 
 /** webview へ渡す要素一覧の1件分(表示テキストを host 側で事前整形して付与する)。 */
+/** 要素一覧の行。line は左の列・frameText は右の列(liveTab.js の renderElements と対)。 */
 export interface LiveElementView extends LiveElement {
   readonly line: string;
+  readonly frameText: string;
 }
 
 export type LiveToWebviewMessage =
@@ -762,7 +775,11 @@ export function toSnapshotMessage(snapshot: LiveSnapshot): LiveToWebviewMessage 
     platform: snapshot.platform,
     screen: snapshot.screen,
     image: snapshot.image,
-    elements: snapshot.elements.map((element) => ({ ...element, line: formatElementLine(element) })),
+    elements: snapshot.elements.map((element) => ({
+      ...element,
+      line: formatElementLine(element),
+      frameText: formatElementFrame(element.frame),
+    })),
   };
 }
 

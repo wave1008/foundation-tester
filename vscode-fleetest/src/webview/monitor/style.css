@@ -2440,22 +2440,37 @@ input[type="search"]::placeholder {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 2カラム(本文 / 矩形)。列幅は一覧の側で決め、各行は subgrid で乗る = 矩形の開始位置が
+   全行で揃う(.recordings-sessions と同じ形)。狭いとき縮むのは本文列(ellipsis)だけ */
 #panel-live .elements-list {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
   border-radius: 3px;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) max-content;
+  align-content: start;
+  column-gap: 12px;
 }
 #panel-live .element-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
   padding: 3px 6px;
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: 11px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   /* クリックで選択可能だが cursor は変えない(.tile と同方針) */
 }
+#panel-live .element-cell-main {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 矩形は補助情報なので淡く。選択行では前景色を継承して明度差を保つ(.run-profile-device-detail と同方針) */
+#panel-live .element-cell-frame { color: var(--vscode-descriptionForeground); }
+#panel-live .element-row.selected .element-cell-frame { color: inherit; }
 /* .run-profile-device-row-item/.device-pick-row と同じ式(50%透過)。 */
 #panel-live .element-row:hover { background-color: color-mix(in srgb, var(--vscode-list-hoverBackground) 50%, transparent); }
 /* .run-profile-device-row-item.selected と同じ値(list-activeSelectionBackground)で統一。変更時は揃えること。 */

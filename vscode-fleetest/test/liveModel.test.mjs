@@ -20,6 +20,7 @@ import {
   devicesToOptions,
   fallbackDeviceOption,
   FALLBACK_DEVICE_ID,
+  formatElementFrame,
   formatElementLine,
   frameToDisplayRect,
   isLiveFromWebviewMessage,
@@ -420,8 +421,9 @@ test("formatElementLine: label/identifier/value が全て揃っている場合",
     label: "ユーザー名",
     identifier: "username_field",
     value: "wave1008",
-    frame: { x: 0, y: 0, width: 0, height: 0 },
+    frame: { x: 16, y: 120, width: 370, height: 44 },
   });
+  // 矩形は別カラム(formatElementFrame)なので本文には含めない
   assert.equal(line, '[3] TextField "ユーザー名" id=username_field =wave1008');
 });
 
@@ -432,7 +434,7 @@ test("formatElementLine: null/空文字のフィールドは省く", () => {
     label: "ログイン",
     identifier: null,
     value: "",
-    frame: { x: 0, y: 0, width: 0, height: 0 },
+    frame: { x: 20, y: 780, width: 362, height: 48 },
   });
   assert.equal(line, '[1] Button "ログイン"');
 });
@@ -444,9 +446,27 @@ test("formatElementLine: label/identifier/value 全て無ければ [ref] type �
     label: null,
     identifier: null,
     value: null,
-    frame: { x: 0, y: 0, width: 0, height: 0 },
+    frame: { x: 0, y: 0, width: 402, height: 874 },
   });
   assert.equal(line, "[5] Image");
+});
+
+// ---- formatElementFrame ----
+
+test("formatElementFrame: ft_snapshot と同じ (x,y WxH)", () => {
+  assert.equal(formatElementFrame({ x: 20, y: 780, width: 362, height: 48 }), "(20,780 362x48)");
+  assert.equal(formatElementFrame({ x: 0, y: 0, width: 402, height: 874 }), "(0,0 402x874)");
+});
+
+// Swift 側(SnapshotRendering.swift の Int(_:))と同じ切り捨て。負の座標(画面外へはみ出した
+// 要素)も 0 方向へ切る
+test("formatElementFrame: 小数は切り捨てる(負値も 0 方向へ)", () => {
+  assert.equal(formatElementFrame({ x: -8.7, y: 100.9, width: 393.5, height: 640.2 }), "(-8,100 393x640)");
+});
+
+// NaN/Infinity(壊れた木)でも "NaNxNaN" のような行を出さない
+test("formatElementFrame: 非有限値は 0 に倒す", () => {
+  assert.equal(formatElementFrame({ x: Number.NaN, y: 0, width: Number.POSITIVE_INFINITY, height: 10 }), "(0,0 0x10)");
 });
 
 // ---- stepDescriptionToOperationLabel ----
@@ -641,6 +661,7 @@ test("toSnapshotMessage: elements に formatElementLine と同じ line フィー
   assert.equal(message.elements.length, 1);
   assert.equal(message.elements[0].line, formatElementLine(snapshot.elements[0]));
   assert.equal(message.elements[0].line, '[1] Button "ログイン" id=login_button');
+  assert.equal(message.elements[0].frameText, "(20,780 362x48)");
   // 元の frame 情報も保持していること(ホバー枠オーバーレイに必要)
   assert.deepEqual(message.elements[0].frame, { x: 20, y: 780, width: 362, height: 48 });
 });
@@ -867,6 +888,7 @@ test("統合: mock-live.mjs live serve の refresh は snapshot イベント1行
   assert.equal(event.result.elements.length, 2);
   const message = toSnapshotMessage(event.result);
   assert.equal(message.elements[0].line, '[1] Button "ログイン" id=login_button');
+  assert.equal(message.elements[0].frameText, "(20,780 362x48)");
   const exitCode = await serve.close();
   assert.equal(exitCode, 0, "stdin EOF でクリーンに終了すること");
 });
