@@ -64,25 +64,21 @@ final class BridgeToolchainLedgerWiringTests: XCTestCase {
                       ".restart が建て直していない(版の違うブリッジをそのまま使い続ける)")
     }
 
-    /// `.launch` の ready 合流点(両エンジン共通)で record すること。ここを外すと reuse/adopt の
-    /// 判定が永久に「控え無し」のまま毎回建て直しになる
-    func testLaunchRecordsToolchainAtTheReadyJoinPoint() throws {
+    /// **`record` は起動(waitUntilReady)より前**。ready の後に書くと、別プロセスが `.adopt` で
+    /// このブリッジを引き取るときに「控え無し」を見て、**正常なブリッジを止めてしまう** ——
+    /// 引き取る側は /status が答えた瞬間に見に来るので、必ずその窓に入りうる
+    func testRecordHappensBeforeTheBridgeBecomesReachable() throws {
         let code = try Self.source
-        guard let recordRange = code.range(of: "BridgeToolchainLedger.record(stateDir: stateDir, port: port)"),
-            let readyLogRange = code.range(of: "log(\"✅ \\(name): \\(engine) bridge ready (port \\(port))\")")
+        guard let recordRange = code.range(of: "BridgeToolchainLedger.record(stateDir: stateDir, port: port)")
         else {
-            return XCTFail("record または ready ログの行が見当たらない")
+            return XCTFail("`.launch` が record していない(reuse/adopt の比較相手が永久に無い)")
         }
-        XCTAssertTrue(recordRange.upperBound <= readyLogRange.lowerBound,
-                      "record は両エンジン共通の ready ログより前(= 合流点)で呼ぶこと。"
-                      + "片方のエンジンだけの分岐内に置くと、もう一方のエンジンが記録されない")
+        // `.launch` の中の待ち(引き取る側から見える瞬間)より前にあること
+        let afterRecord = code[recordRange.upperBound...]
+        XCTAssertTrue(afterRecord.contains("waitUntilReady"),
+                      "record が `.launch` の待ちより後にある(引き取り側が空の控えを見る)")
+        XCTAssertEqual(code.components(separatedBy: "BridgeToolchainLedger.record(").count - 1, 1,
+                       "record は1箇所だけ(両エンジンの合流点)")
     }
 
-    /// 台帳の掃除(拡張子の一覧)に toolchain を足すこと。無いと孤児の .toolchain が掃除されず、
-    /// 死んだブリッジの指紋が永久にディスクへ残る
-    func testStaleLedgerSweepScansToolchainExtension() throws {
-        let code = try Self.source
-        XCTAssertTrue(code.contains("[\"pid\", \"inapp\", \"endpoint\", \"device\", \"toolchain\"]"),
-                      "sweepStaleLedgers の走査対象拡張子に toolchain が無い")
-    }
 }

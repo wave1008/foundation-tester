@@ -93,4 +93,16 @@ final class BridgeToolchainLedgerTests: XCTestCase {
         XCTAssertEqual(BridgeToolchainLedger.decide(toolchainMatches: false, hasForeignLease: true),
                        .warnAndReuse, "リースのある台は止めないが、黙って使わない")
     }
+
+    /// **既定の引数(production が通る形)を1度は通す** —— 他のテストが `current:`/`toolchain:` を
+    /// 明示しているので、既定を `nil` 等に変えても全部緑のまま通ってしまう
+    /// (`FMLockTests.testDefaultConcurrencyIsPinned` と同じ型の砦)
+    func testDefaultsGoThroughTheRealToolchainFingerprint() {
+        BridgeToolchainLedger.record(stateDir: stateDir, port: 8130)
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: BridgeToolchainLedger.url(stateDir: stateDir, port: 8130).path),
+            "既定引数の record が何も書いていない(swift test は Xcode のある機械でしか走らない)")
+        XCTAssertTrue(BridgeToolchainLedger.matchesCurrent(stateDir: stateDir, port: 8130),
+                      "既定引数どうしの record → matchesCurrent が一致しない")
+    }
 }

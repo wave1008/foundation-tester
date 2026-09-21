@@ -1236,6 +1236,11 @@ public struct BridgeProvisioner {
                 }
                 log("⚠️ \(name): port \(port) is held by an unrelated process (\(holder))")
             }
+            // **起動より前に控える**(BridgeToolchainLedger)。ready の後に書くと、別プロセスが
+            // `.adopt` でこのブリッジを引き取るとき「控え無し」を見て**正常なブリッジを止めてしまう**
+            // —— 引き取る側は /status が答えた瞬間に見に来るので、起動側が ready の後に書く形だと
+            // 必ずその窓に入りうる。古いポートの停止はここまでに済んでいる
+            BridgeToolchainLedger.record(stateDir: stateDir, port: port)
             if reclaimInApp {
                 try? FileManager.default.removeItem(
                     at: InAppBridgeState.url(stateDir: stateDir, port: port))
@@ -1376,8 +1381,6 @@ public struct BridgeProvisioner {
                     throw BridgeProvisionerError.notReady(port: port, underlying: error)
                 }
             }
-            // **両エンジンの唯一の ready 合流点**。起動した時点の指紋を控える(BridgeToolchainLedger の doc)
-            BridgeToolchainLedger.record(stateDir: stateDir, port: port)
             log("✅ \(name): \(engine) bridge ready (port \(port))")
             return port
         }
