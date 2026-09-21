@@ -422,7 +422,7 @@ test("formatElementLine: label/identifier/value が全て揃っている場合",
     value: "wave1008",
     frame: { x: 0, y: 0, width: 0, height: 0 },
   });
-  assert.equal(line, "[3] TextField 「ユーザー名」 id=username_field =wave1008");
+  assert.equal(line, '[3] TextField "ユーザー名" id=username_field =wave1008');
 });
 
 test("formatElementLine: null/空文字のフィールドは省く", () => {
@@ -434,7 +434,7 @@ test("formatElementLine: null/空文字のフィールドは省く", () => {
     value: "",
     frame: { x: 0, y: 0, width: 0, height: 0 },
   });
-  assert.equal(line, "[1] Button 「ログイン」");
+  assert.equal(line, '[1] Button "ログイン"');
 });
 
 test("formatElementLine: label/identifier/value 全て無ければ [ref] type だけ", () => {
@@ -640,7 +640,7 @@ test("toSnapshotMessage: elements に formatElementLine と同じ line フィー
   assert.equal(message.image, "AAAA");
   assert.equal(message.elements.length, 1);
   assert.equal(message.elements[0].line, formatElementLine(snapshot.elements[0]));
-  assert.equal(message.elements[0].line, "[1] Button 「ログイン」 id=login_button");
+  assert.equal(message.elements[0].line, '[1] Button "ログイン" id=login_button');
   // 元の frame 情報も保持していること(ホバー枠オーバーレイに必要)
   assert.deepEqual(message.elements[0].frame, { x: 20, y: 780, width: 362, height: 48 });
 });
@@ -866,7 +866,7 @@ test("統合: mock-live.mjs live serve の refresh は snapshot イベント1行
   assert.equal(event.result.screen.width, 402);
   assert.equal(event.result.elements.length, 2);
   const message = toSnapshotMessage(event.result);
-  assert.equal(message.elements[0].line, "[1] Button 「ログイン」 id=login_button");
+  assert.equal(message.elements[0].line, '[1] Button "ログイン" id=login_button');
   const exitCode = await serve.close();
   assert.equal(exitCode, 0, "stdin EOF でクリーンに終了すること");
 });

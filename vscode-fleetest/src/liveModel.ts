@@ -483,7 +483,7 @@ export function parseGenScenarioEvent(value: unknown): GenScenarioEvent | undefi
 
 /**
  * 要素一覧の1行の表示テキストを組み立てる(形式:
- * `[ref] type「label」id=identifier =value`。label/identifier/value が空・null のフィールドは省く)。
+ * `[ref] type "label" id=identifier =value`。label/identifier/value が空・null のフィールドは省く)。
  */
 export function formatElementLine(element: LiveElement): string {
   const parts = [`[${element.ref}]`, element.type];

@@ -180,7 +180,7 @@ export const liveStrings = {
     en: "Created from fleetest.platform/port/serial settings",
   },
   "live.elementLine.label": {
-    ja: "「{label}」",
+    ja: '"{label}"',
     en: '"{label}"',
   },
 
