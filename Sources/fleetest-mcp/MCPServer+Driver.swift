@@ -964,64 +964,103 @@ extension MCPServer {
     /// requireLiveApp と同じ形(XCUI に触れる前に弾いて手前でエラーにする)。
     ///
     /// ブリッジ側は未インストールと未起動を区別できない(XCUIApplication はどちらも notRunning)
-    /// のでホストが確かめる。**確かめられないときは nil = 素通し**(実機・同名デバイス複数・
-    /// simctl/adb 不調。断定しない側に倒す)。iOS のシステムアプリ(springboard/Safari)も
-    /// get_app_container が runtime のパスを返すので誤って弾かない(2026-08-06 実測)
-    func installedState(bundleID: String, driver: AppDriver, args: [String: Any]) async -> Bool? {
-        // 差し替えドライバ(テスト)ではデバイスを照会しない = simctl/adb を撃たない
-        guard makeDriver == nil else { return nil }
+    /// のでホストが確かめる。iOS のシステムアプリ(springboard/Safari)も get_app_container が
+    /// runtime のパスを返すので誤って弾かない(2026-08-06 実測)。
+    ///
+    /// **判定そのものを返す**(Bool? ではない): 「確かめられない」ときに撃つか断つかは呼び出し側
+    /// (`launchGuardDecision`)がエンジン・OS を見て決める。ここで nil = 素通しへ潰すと、
+    /// in-app とそれ以外で扱いを変えられなくなる
+    func installedVerdict(
+        bundleID: String, driver: AppDriver, args: [String: Any]
+    ) async -> InstalledAppCheck.InstallVerdict {
+        // 差し替えドライバ(テスト)ではデバイスを照会しない = simctl/adb を撃たない。
+        // **`.unknown` を返さない** —— 門は unknown を「撃たない」側に倒すので、差し替え
+        // ドライバの launch が全部断られる
+        guard makeDriver == nil else { return .installed }
+        let verdict: InstalledAppCheck.InstallVerdict
         if let android = driver as? AndroidDriver {
-            let installed = android.isInstalled(bundleID: bundleID)
-            if installed == nil { Self.logStderr(Self.uncheckedNote(bundleID: bundleID, reason: "adb")) }
-            return installed
-        }
-        // **実機は simctl ではなく devicectl**(§19.3 M8。ft_list_apps の同型判定と揃える —
-        // MCPServer+Dispatch.swift の ft_list_apps 参照): 実機の udid を simulatorInstallVerdict
-        // へ渡すと、udid の形が同じシミュレータ名(既定は機種名なので実機と同名になりやすい)を
-        // 誤って照会し、別デバイスの在否を答える。候補は3段(ft_list_apps と同じ優先順)
-        let key = Self.engineKey(args)
-        let candidateUDID = (args["udid"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-            ?? udids[key].flatMap { $0 }
-            ?? connectedPorts[key].flatMap { port in
-                (try? RepoRoot.find()).flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }
+            if let installed = android.isInstalled(bundleID: bundleID) {
+                verdict = installed ? .installed : .notInstalled
+            } else {
+                verdict = .unknown("adb")
             }
-        // **シミュレータの UDID(UUID 形)では devicectl を撃たない** —— 毎 ft_launch に 1 秒級の
-        // `devicectl list devices` を払わせない。実機の UDID は `00008110-…`(8-16)で UUID にならない
-        if let candidateUDID, UUID(uuidString: candidateUDID) == nil,
-           let physicalDevices = try? IOSPhysicalDeviceCatalog.devices(),
-           physicalDevices.contains(where: {
-               $0.udid == candidateUDID || $0.deviceCtlIdentifier == candidateUDID
-           }) {
-            guard let apps = try? IOSPhysicalAppCatalog.apps(udid: candidateUDID) else {
-                Self.logStderr(Self.uncheckedNote(bundleID: bundleID, reason: "devicectl could not"
-                    + " list installed apps"))
-                return nil
+        } else {
+            // **実機は simctl ではなく devicectl**(§19.3 M8。ft_list_apps の同型判定と揃える —
+            // MCPServer+Dispatch.swift の ft_list_apps 参照): 実機の udid を simulatorInstallVerdict
+            // へ渡すと、udid の形が同じシミュレータ名(既定は機種名なので実機と同名になりやすい)を
+            // 誤って照会し、別デバイスの在否を答える。候補は3段(ft_list_apps と同じ優先順)
+            let key = Self.engineKey(args)
+            let candidateUDID = (args["udid"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                ?? udids[key].flatMap { $0 }
+                ?? connectedPorts[key].flatMap { port in
+                    (try? RepoRoot.find()).flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }
+                }
+            // **シミュレータの UDID(UUID 形)では devicectl を撃たない** —— 毎 ft_launch に 1 秒級の
+            // `devicectl list devices` を払わせない。実機の UDID は `00008110-…`(8-16)で UUID にならない
+            if let candidateUDID, UUID(uuidString: candidateUDID) == nil,
+               let physicalDevices = try? IOSPhysicalDeviceCatalog.devices(),
+               physicalDevices.contains(where: {
+                   $0.udid == candidateUDID || $0.deviceCtlIdentifier == candidateUDID
+               }) {
+                if let apps = try? IOSPhysicalAppCatalog.apps(udid: candidateUDID) {
+                    verdict = apps.contains { $0.id == bundleID } ? .installed : .notInstalled
+                } else {
+                    verdict = .unknown("devicectl could not list installed apps")
+                }
+            } else if let candidateUDID, UUID(uuidString: candidateUDID) != nil {
+                // udid が分かるならデバイス名版(同名複数台で曖昧になりうる)を経由しない
+                verdict = InstalledAppCheck.simulatorInstallVerdict(udid: candidateUDID, bundleID: bundleID)
+            } else if let device = try? await driver.status().device {
+                verdict = InstalledAppCheck.simulatorInstallVerdict(deviceName: device, bundleID: bundleID)
+            } else {
+                verdict = .unknown("the bridge did not report a device")
             }
-            return apps.contains { $0.id == bundleID }
         }
-        guard let device = try? await driver.status().device else {
-            Self.logStderr(Self.uncheckedNote(bundleID: bundleID, reason: "the bridge did not report a device"))
-            return nil
-        }
-        switch InstalledAppCheck.simulatorInstallVerdict(deviceName: device, bundleID: bundleID) {
-        case .installed: return true
-        case .notInstalled: return false
-        case .unknown(let reason):
-            // **素通しは必ず言う**: 黙って通すと、ランナーが死んでから原因を探すことになる
-            Self.logStderr(Self.uncheckedNote(bundleID: bundleID, reason: reason))
-            return nil
-        }
+        return verdict
     }
 
+    /// 撃つ側(Android・in-app)で確かめられなかったときの記録。**断る側では出さない** ——
+    /// あちらは拒否文言そのものが呼び出し元へ届く
     static func uncheckedNote(bundleID: String, reason: String) -> String {
         "could not verify whether \(bundleID) is installed (\(reason)) — launching anyway."
-            + " If it is missing, the XCUITest runner will exit and this bridge will disappear."
     }
 
     static func notInstalledMessage(bundleID: String) -> String {
         "\(bundleID) is not installed on this device."
             + " Install it with ft_install packagePath: <.app or .apk>, or check the bundle ID"
             + " (Android: the package name)."
+    }
+
+    /// **ft_launch の門(純粋関数)**。nil = 撃ってよい・非 nil = その文言で断る。
+    ///
+    /// `.unknown` を撃ってよいのは Android(未インストールの `launch` はランナーを道連れにしない)と
+    /// iOS の in-app エンジン(`XCUIApplication.launch()` を経由しない)だけ —— **hybrid・エンジン
+    /// 不明(nil)は XCUITest 経路へ落ちうるので危険側**として断つ。springboard は
+    /// `handleLaunch` が launch せず参照するだけなので門を通らない
+    static func launchGuardDecision(
+        verdict: InstalledAppCheck.InstallVerdict, isAndroid: Bool, engine: String?, bundleID: String
+    ) -> String? {
+        guard bundleID != "com.apple.springboard" else { return nil }
+        switch verdict {
+        case .installed: return nil
+        case .notInstalled: return notInstalledMessage(bundleID: bundleID)
+        case .unknown(let reason):
+            guard !isAndroid, engine != "inapp" else { return nil }
+            return uncheckedLaunchRefusal(bundleID: bundleID, reason: reason)
+        }
+    }
+
+    /// **確かめられなかったので撃たない**ときの文言。①確かめられなかった理由 ②撃った場合に
+    /// 起きること(XCUITest ランナーの main queue ハング → ブリッジ自壊。§T1 実測)③次の手、の3点を持つ
+    static func uncheckedLaunchRefusal(bundleID: String, reason: String) -> String {
+        "could not verify whether \(bundleID) is installed (\(reason))."
+            + " Launching an app that turns out to be missing hangs XCUIApplication.launch(),"
+            + " and after about 60s the XCUITest bridge self-terminates"
+            + " (\"handler timed out after 60s; bridge self-terminating\") — this call refuses"
+            + " instead of risking that."
+            + " Retry in a moment (the check may succeed once the device is less busy),"
+            + " install it first with ft_install packagePath: <.app or .apk>,"
+            + " or double-check the bundle ID."
     }
 
     /// XCUITest のセッションは**そのアプリに閉じている**ので、ホーム画面やシステム UI は

@@ -56,6 +56,20 @@ public enum InstalledAppCheck {
         return verdict(deviceName: deviceName, installedFlags: installedFlags)
     }
 
+    /// udid が分かっているときの判定(`deviceName:` 版と違い名前の曖昧さが無いので即断定できる)。
+    /// **run 側(`LaunchPreflightDriver.ensureInstalled`)と同じ順序**: CoreSimulator 直叩き
+    /// (ほぼ0ms)優先・利用不能なら simctl get_app_container へフォールバック
+    public static func simulatorInstallVerdict(udid: String, bundleID: String) -> InstallVerdict {
+        if let installed = CoreSimAppControl.isInstalled(udid: udid, bundleID: bundleID) {
+            return installed ? .installed : .notInstalled
+        }
+        guard let result = try? Shell.run(
+            ["xcrun", "simctl", "get_app_container", udid, bundleID], timeout: 15) else {
+            return .unknown("simctl get_app_container failed for \(udid)")
+        }
+        return result.status == 0 ? .installed : .notInstalled
+    }
+
     /// **同名が複数でも「どれにも入っていない」なら断定できる**(どれが宛先でも未インストール)。
     /// 既定名のシミュレータを2台起動している受け手は珍しくないので、
     /// 「一意に引けたときだけ判定する」では素通りする

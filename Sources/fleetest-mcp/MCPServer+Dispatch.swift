@@ -232,6 +232,14 @@ extension MCPServer {
 
     func call(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
         let tool = Self.canonicalToolName(tool)
+        // **未知のツール名はここで断る**(デバイスを触るより前)。この後の
+        // foldingUDIDIntoPort は udid → port の解決にブリッジ走査を撃つので、ここで弾かないと
+        // 「打ち間違えたツール名」が「ブリッジが無い」という誤った診断になる
+        // (実測: 存在しない udid + 打ち間違えたツール名 → "no running bridge is on udid …")。
+        // dispatch(tool:args:) の default: にある同じ throw は二重の備えとして残す
+        guard Self.toolDefinitions.contains(where: { $0["name"] as? String == tool }) else {
+            throw MCPError("unknown tool: \(tool)")
+        }
         // JSON null の欄は「省略」に畳む(droppingNullArguments 参照)。foldingUDIDIntoPort より前
         let args = Self.droppingNullArguments(args)
         // profile と udid/port/serial の併用は**畳む前に**断る(udid の畳み込みはブリッジ走査を撃つ)
@@ -598,9 +606,16 @@ extension MCPServer {
                     + " engine has no activate-without-relaunch and falls through to a normal"
                     + " launch. Drop resume: true, or attach with the xcuitest engine.")
             }
-            // **撃つ前に弾く**(ランナー死の予防。installedState のコメント参照)
-            if await installedState(bundleID: bundleID, driver: launchDriver, args: args) == false {
-                throw MCPError(Self.notInstalledMessage(bundleID: bundleID))
+            // **撃つ前に弾く**(ランナー死の予防。installedVerdict/launchGuardDecision のコメント参照)
+            let installVerdict = await installedVerdict(bundleID: bundleID, driver: launchDriver, args: args)
+            if let refusal = Self.launchGuardDecision(
+                verdict: installVerdict, isAndroid: launchDriver is AndroidDriver,
+                engine: engines[launchKey], bundleID: bundleID) {
+                throw MCPError(refusal)
+            }
+            // 確かめられないまま撃つ経路(Android・in-app)は記録に残す
+            if case .unknown(let reason) = installVerdict {
+                Self.logStderr(Self.uncheckedNote(bundleID: bundleID, reason: reason))
             }
             if resumes {
                 try await launchDriver.activate(bundleID: bundleID)
@@ -638,9 +653,9 @@ extension MCPServer {
             let openURLDriver = try await driver(args)
             let explicitBundleID = args["bundleId"] as? String
             let openURLBundleID = explicitBundleID ?? launchedBundleIDs[Self.engineKey(args)]
-            // installedState は撃たない: simctl openurl/devicectl openURL・am start は OS の URL
-            // ルーティングで、installedState が守っている XCUIApplication.launch() のランナー死
-            // (ft_launch のコメント参照)とは経路が別
+            // installedVerdict は撃たない: simctl openurl/devicectl openURL・am start は OS の URL
+            // ルーティングで、installedVerdict/launchGuardDecision が守っている
+            // XCUIApplication.launch() のランナー死(ft_launch のコメント参照)とは経路が別
             // **既定で着地を待つ**。URL の配送は非同期なので、
             // `snapshotAfter` だけを渡すと**前の画面が黙って返る** —— 読み手は「開いた先の
             // 画面が欲しい」から snapshotAfter を付けているので、既定が誤りの側に倒れていた
