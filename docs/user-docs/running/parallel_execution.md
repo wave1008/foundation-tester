@@ -50,6 +50,29 @@ still needs `--profile`; `--device` narrows which devices are included. Results 
 by their `worker` field, since the same `scenarioID` appears once per device (see
 [results_analysis.md](./results_analysis.md)).
 
+## One run at a time per machine
+
+**A Mac runs one fleetest run at a time.** Two runs on the same machine fight over the same
+simulators and the same loopback ports, and the load makes tests unstable — so the second one is
+not started. This is deliberate, not a limit to work around.
+
+You rarely need a second run anyway: parallelism lives *inside* one run. Put more devices in the
+run profile and the scenarios are shared out across them (the sections above), rather than
+starting `run` twice.
+
+If you do start a second one:
+
+- **On the CLI** it stops right away with `another fleetest run is already running on this Mac`,
+  telling you who started the run in progress and since when. Add `--wait-lock <seconds>` to queue
+  for it instead of failing; runs are served in the order they got in line.
+- **In the VS Code extension** it waits by default, for up to 1 hour. Change it in the Device
+  Monitor's **Settings** tab, under **Machines** → **Max wait on runner contention** (0 fails right
+  away without waiting). While you are in line, the run log shows your position.
+
+A runner machine follows the same rule: a run dispatched to it takes that machine's one slot, so
+the runner is busy for everyone until it finishes — see
+[remote_runners.md](../in_action/remote_runners.md).
+
 ## Other places parallel execution shows up
 
 - The VS Code extension runs the same parallel execution through the `fleetest.profile` setting

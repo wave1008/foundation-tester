@@ -172,7 +172,8 @@ devices.
 
 **Only one run at a time** can use a runner. The devices belong to that runner, so two runs are
 kept from fighting over the same device. When the runner is busy, you are shown who has been
-using it and since when.
+using it and since when. Your own Mac works the same way for the runs you start on it (see
+[Parallel execution](../running/parallel_execution.md)).
 
 - **Wait until it is free**: this is the default, for up to 1 hour — long enough to sit through
   several runs ahead of you. Change it in the Device Monitor's **Settings** tab, under **Machines** →

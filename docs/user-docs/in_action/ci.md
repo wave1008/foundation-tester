@@ -72,8 +72,12 @@ pipeline {
   run `fleetest devices down` periodically.
 - To clean up between jobs, add `fleetest devices down` (stops every bridge and shuts down every
   simulator/emulator) at the end of the job. While another test run on the same Mac is using a
-  device, it stops nothing and exits with code 1 so that it does not kill that run. If jobs run in
-  parallel on the same Mac, schedule the cleanup for a time when no other job is running.
+  device, it stops nothing and exits with code 1 so that it does not kill that run. If jobs can
+  overlap on the same Mac, schedule the cleanup for a time when no other job is running.
+- **One run at a time per Mac.** A second `fleetest run` on the same agent does not start — it
+  stops with `another fleetest run is already running on this Mac`. Either keep jobs that share an
+  agent from overlapping, or add `--wait-lock <seconds>` so the second one queues instead of
+  failing (see [Parallel execution](../running/parallel_execution.md)).
 
 ## Flaky scenarios (no retry mechanism, by design)
 
