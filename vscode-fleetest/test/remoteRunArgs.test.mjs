@@ -30,35 +30,35 @@ test("normalizeRemoteHosts: 配列でない/不正要素は除去", () => {
 test("normalizeRemoteHosts: machine 空なら host のホスト部を流用", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "", host: "user@mac-01", dir: "" }]),
-    [{ machine: "mac-01", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "", enabled: true }],
+    [{ machine: "mac-01", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "", enabled: true, developerDir: "" }],
   );
 });
 
 test("normalizeRemoteHosts: host 空でも machine があれば残す(壊れた登録として設定タブにそのまま出す)", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "broken", host: "", dir: "" }]),
-    [{ machine: "broken", host: "", dir: "", fmConcurrency: 0, color: "", enabled: true }],
+    [{ machine: "broken", host: "", dir: "", fmConcurrency: 0, color: "", enabled: true, developerDir: "" }],
   );
 });
 
 test("normalizeRemoteHosts: 型不正フィールドは空文字扱い(dir/host が string でない)", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "x", host: 123, dir: null }]),
-    [{ machine: "x", host: "", dir: "", fmConcurrency: 0, color: "", enabled: true }],
+    [{ machine: "x", host: "", dir: "", fmConcurrency: 0, color: "", enabled: true, developerDir: "" }],
   );
 });
 
 test("normalizeRemoteHosts: machine は CLI 契約どおり保持する(§13 のキャッシュ)", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "mac-02", host: "mac-02", dir: "" }]),
-    [{ machine: "mac-02", host: "mac-02", dir: "", fmConcurrency: 0, color: "", enabled: true }],
+    [{ machine: "mac-02", host: "mac-02", dir: "", fmConcurrency: 0, color: "", enabled: true, developerDir: "" }],
   );
 });
 
 test("parseRemoteHostsResponse: {hosts:[…]} を正規化して返す", () => {
   assert.deepEqual(
     parseRemoteHostsResponse({ hosts: [{ machine: "mac-01", host: "user@mac-01", dir: "" }] }),
-    [{ machine: "mac-01", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "", enabled: true }],
+    [{ machine: "mac-01", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "", enabled: true, developerDir: "" }],
   );
 });
 
@@ -128,11 +128,11 @@ test("deviceCommandArgs: remote は apiArgs を変更しない(呼び出し側�
 test("normalizeRemoteHosts: 旧キー name も読む(machine が優先)", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ name: "M1Ultra", host: "user@mac-01", dir: "" }]),
-    [{ machine: "M1Ultra", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "", enabled: true }],
+    [{ machine: "M1Ultra", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "", enabled: true, developerDir: "" }],
   );
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "new", name: "old", host: "h", dir: "" }]),
-    [{ machine: "new", host: "h", dir: "", fmConcurrency: 0, color: "", enabled: true }],
+    [{ machine: "new", host: "h", dir: "", fmConcurrency: 0, color: "", enabled: true, developerDir: "" }],
   );
 });
 
@@ -249,4 +249,40 @@ test("マシン有効: normalize は欠落を true に・diff は enabled だけ
   const { upserts } = diffRemoteHostsForSync([missing], [{ ...missing, enabled: false }]);
   assert.deepEqual(upserts.map((h) => h.machine), ["A"]);
   assert.equal(diffRemoteHostsForSync([missing], [{ ...missing, enabled: true }]).upserts.length, 0);
+});
+
+test("normalizeRemoteHosts: developerDir(Xcode pin)を読み、欠落は空文字(未設定)", () => {
+  const [pinned] = normalizeRemoteHosts([
+    { machine: "M1Ultra", host: "user@h", dir: "", developerDir: "/Applications/Xcode_27.app" },
+  ]);
+  assert.equal(pinned.developerDir, "/Applications/Xcode_27.app");
+  const [unset] = normalizeRemoteHosts([{ machine: "M1Max", host: "user@h", dir: "" }]);
+  assert.equal(unset.developerDir, "", "未設定は空文字");
+  const [nonString] = normalizeRemoteHosts([{ machine: "M1Max", host: "user@h", dir: "", developerDir: 42 }]);
+  assert.equal(nonString.developerDir, "", "非文字列は空文字扱い");
+});
+
+// developerDir には設定タブの入力欄が無い(CLI の口だけが書く)。次の2本は「拡張がこの欄を
+// 知らずに往復させても pin を消さない」契約を固定する(--set-remote-machines-pin の実害の再現防止)。
+test("diffRemoteHostsForSync: developerDir は比較対象にしない(pin だけを理由に upsert しない)", () => {
+  const pinned = { machine: "M1Ultra", host: "user@h", dir: "", fmConcurrency: 0, color: "",
+                   enabled: true, developerDir: "/Applications/Xcode_27.app" };
+  // webview(next側)は developerDir のキー自体を持たない(currentHostsPayload と同じ形)
+  const { host, dir, fmConcurrency, color, enabled, machine } = pinned;
+  const nextFromWebview = { machine, host, dir, fmConcurrency, color, enabled };
+  assert.equal(diffRemoteHostsForSync([pinned], [nextFromWebview]).upserts.length, 0,
+    "developerDir だけの見かけ上の差では upsert しない");
+});
+
+test("diffRemoteHostsForSync: pin 済みマシンの他欄編集は upsert に developerDir キーを含まない", () => {
+  const pinned = { machine: "M1Ultra", host: "user@h", dir: "", fmConcurrency: 0, color: "",
+                   enabled: true, developerDir: "/Applications/Xcode_27.app" };
+  // dir だけ編集。webview からの送信値は developerDir のキーを持たない
+  const nextFromWebview = { machine: "M1Ultra", host: "user@h", dir: "/new/base", fmConcurrency: 0,
+                            color: "", enabled: true };
+  const { upserts } = diffRemoteHostsForSync([pinned], [nextFromWebview]);
+  assert.equal(upserts.length, 1);
+  assert.equal("developerDir" in upserts[0], false,
+    "developerDir キーが無ければ CLI の import は既存の pin を保つ(ApiRemoteHostsCommand.mergingDeveloperDir)");
+  assert.equal(JSON.stringify(upserts[0]).includes("developerDir"), false);
 });

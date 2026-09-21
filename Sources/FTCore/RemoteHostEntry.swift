@@ -26,20 +26,33 @@ public struct RemoteHostEntry: Codable, Equatable, Sendable {
     /// false のマシンへはプロファイル駆動の振り分けで配らない(判定は `MachineEnablement`)。
     /// **唯一の決定点は `RemoteHostRegistry.upsert`**(nil は既存を保つ)
     public let enabled: Bool?
+    /// この機械で使う Xcode の pin(`.app` バンドルの絶対パス。例 "/Applications/Xcode_27.app"。
+    /// 利用者向けの案内と同じ形 = docs/remote-runner-setup.md の `--developer-dir` の例)。
+    /// 実際に export する `DEVELOPER_DIR` は `FTRemote.XcodeSelection.resolve` がここから
+    /// "/Contents/Developer" を補って作る。nil ならディスパッチが指紋照合で自動選択する。
+    /// **存在確認はしない** —— 誤った pin は後段の toolchain 照合が blocking で捕まえる
+    /// (docs/remote-runner.md §7)。
+    /// **`fmConcurrency` と同じ規律**: upsert はここを素通しするだけで、「省略したら既存を保つ・
+    /// 消すのは明示操作だけ」は呼び出し側(`remote machines add` の --clear-developer-dir、
+    /// `ApiRemoteHostsCommand.mergingDeveloperDir`)が持つ
+    public let developerDir: String?
 
     public init(machine: String, host: String, dir: String? = nil, fmConcurrency: Int? = nil,
-                color: String? = nil, enabled: Bool? = nil) {
+                color: String? = nil, enabled: Bool? = nil, developerDir: String? = nil) {
         self.machine = machine
         self.host = host
         self.dir = dir
         self.fmConcurrency = fmConcurrency
         self.color = color
         self.enabled = enabled
+        self.developerDir = developerDir
     }
 
     public var isEnabled: Bool { enabled != false }
 
-    private enum CodingKeys: String, CodingKey { case machine, name, host, dir, fmConcurrency, color, enabled }
+    private enum CodingKeys: String, CodingKey {
+        case machine, name, host, dir, fmConcurrency, color, enabled, developerDir
+    }
 
     /// 読みは machine > 旧 name、書きは machine だけ(改名の互換はこの1箇所)
     public init(from decoder: Decoder) throws {
@@ -59,6 +72,10 @@ public struct RemoteHostEntry: Codable, Equatable, Sendable {
         let rawColor = try container.decodeIfPresent(String.self, forKey: .color)
         color = (rawColor.map { !$0.isEmpty && MachineBadgeColor.isKnown($0) } ?? false) ? rawColor : nil
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled)
+        // 空文字は未設定へ倒す(dir/color と同じ方針。手書き設定で "" を書いても壊れた pin にしない)
+        let rawDeveloperDir = try container.decodeIfPresent(String.self, forKey: .developerDir)
+        developerDir = (rawDeveloperDir?.trimmingCharacters(in: .whitespacesAndNewlines))
+            .flatMap { $0.isEmpty ? nil : $0 }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -69,5 +86,6 @@ public struct RemoteHostEntry: Codable, Equatable, Sendable {
         try container.encodeIfPresent(fmConcurrency, forKey: .fmConcurrency)
         try container.encodeIfPresent(color, forKey: .color)
         try container.encodeIfPresent(enabled, forKey: .enabled)
+        try container.encodeIfPresent(developerDir, forKey: .developerDir)
     }
 }

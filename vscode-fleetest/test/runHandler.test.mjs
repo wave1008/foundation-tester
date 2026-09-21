@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { lastResultsDir, lookupKey, readAllResults, readFailedScenarioIds } from "../src/lastResults";
-import { resolveTargets } from "../src/runHandler";
+import { formatMachineDetailValue, resolveTargets } from "../src/runHandler";
 import { classId, DELETED_TAG_ID, folderId } from "../src/testTree";
 
 /** vscode.TestItemCollection の最小 duck type(size / forEach)。 */
@@ -196,4 +196,51 @@ test("resolveTargets: exclude に class を渡すと配下 leaf を丸ごと外�
   const tree = controllerWith(clsA, clsB, empty);
   const targets = resolveTargets(tree, { include: undefined, exclude: [clsA, empty] });
   assert.deepEqual([...targets.keys()], ["B.S0010"]);
+});
+
+test("formatMachineDetailValue: xcodeSelectionError は本文をそのまま出す(翻訳しない)", () => {
+  const machine = {
+    machine: "M1Max",
+    reachable: true,
+    revisionCompatible: true,
+    toolchainCompatible: false,
+    xcodeSelectionError: "no Xcode matches 17A5305f; candidates: Xcode 27 (17A5305f) at /Applications/Xcode_27.app",
+  };
+  assert.equal(
+    formatMachineDetailValue(machine),
+    "no Xcode matches 17A5305f; candidates: Xcode 27 (17A5305f) at /Applications/Xcode_27.app",
+  );
+});
+
+test("formatMachineDetailValue: xcodeSelectionError は toolchain 不一致の汎用文言より優先する", () => {
+  const machine = {
+    machine: "M1Max",
+    reachable: true,
+    revisionCompatible: true,
+    toolchain: "swift-5.9",
+    toolchainCompatible: false,
+    xcodeSelectionError: "no Xcode matches",
+  };
+  assert.equal(formatMachineDetailValue(machine), "no Xcode matches");
+});
+
+test("formatMachineDetailValue: xcodeSelectionError が無ければ従来どおり toolchain 不一致文言", () => {
+  const machine = {
+    machine: "M1Max",
+    reachable: true,
+    revisionCompatible: true,
+    toolchain: "swift-5.9",
+    toolchainCompatible: false,
+  };
+  assert.match(formatMachineDetailValue(machine), /swift-5\.9/);
+});
+
+test("formatMachineDetailValue: unreachable は xcodeSelectionError より優先(そこまで到達できない)", () => {
+  const machine = {
+    machine: "M1Max",
+    reachable: false,
+    error: "ssh connection refused",
+    xcodeSelectionError: "no Xcode matches",
+  };
+  assert.equal(formatMachineDetailValue(machine), "ssh connection refused");
 });

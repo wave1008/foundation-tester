@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { decideRemoteCompat } from "../src/remoteCompatGate";
+import { decideRemoteCompat, hasXcodeSelectionError } from "../src/remoteCompatGate";
 
 const okMachine = (machine) => ({
   machine,
@@ -168,6 +168,38 @@ test("localBehind と remoteBehind が混在: canUpdate=false(1機でも align �
   assert.equal(decision.canUpdate, false);
   assert.deepEqual(decision.updatableMachines, []);
   assert.deepEqual(decision.localBehindMachines, ["M1Ultra"]);
+});
+
+test("hasXcodeSelectionError: 非空文字列だけ true", () => {
+  assert.equal(hasXcodeSelectionError({ machine: "M1Max", xcodeSelectionError: "no matching Xcode found" }), true);
+  assert.equal(hasXcodeSelectionError({ machine: "M1Max", xcodeSelectionError: "" }), false);
+  assert.equal(hasXcodeSelectionError({ machine: "M1Max", xcodeSelectionError: null }), false);
+  assert.equal(hasXcodeSelectionError({ machine: "M1Max" }), false);
+});
+
+test("xcodeSelectionError: 非 null なら toolchainCompatible が undefined でも ask かつ incompatible に入る", () => {
+  // CLI 側の不変条件(xcodeSelectionError 非 null なら toolchainCompatible=false)に依存しない
+  // ことを確かめる(ゲート単体で blocking へ倒す)
+  const machine = { ...okMachine("M1Max"), toolchainCompatible: undefined,
+                     xcodeSelectionError: "no matching Xcode; candidates: Xcode 26 (26A5xxx) at /Applications/Xcode_26.app" };
+  const decision = decideRemoteCompat({ machines: [machine], revisionPublished: true });
+  assert.equal(decision.kind, "ask");
+  assert.deepEqual(decision.incompatible, [machine]);
+});
+
+test("xcodeSelectionError: canUpdate=false(align では直らない)・updatableMachines は空", () => {
+  const machine = { ...okMachine("M1Max"), xcodeSelectionError: "no matching Xcode found" };
+  const decision = decideRemoteCompat({ machines: [machine], revisionPublished: true });
+  assert.equal(decision.canUpdate, false);
+  assert.deepEqual(decision.updatableMachines, []);
+});
+
+test("xcodeSelectionError と rev ズレが混在: 1機でも xcodeSelectionError があれば全体 canUpdate=false", () => {
+  const selectionFailed = { ...okMachine("M1Max"), xcodeSelectionError: "no matching Xcode found" };
+  const revBehind = { ...okMachine("M1Ultra"), revisionCompatible: false, revisionRelation: "remoteBehind" };
+  const decision = decideRemoteCompat({ machines: [selectionFailed, revBehind], revisionPublished: true });
+  assert.equal(decision.canUpdate, false);
+  assert.deepEqual(decision.updatableMachines, []);
 });
 
 test("壊れた入力(machines が配列でない/report が null): proceed", () => {

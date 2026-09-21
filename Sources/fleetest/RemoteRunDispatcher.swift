@@ -80,7 +80,7 @@ struct RemoteRunDispatcher {
                   remoteTimeoutSeconds: Int?, runGroup: String? = nil) async throws -> Int32 {
         let setupStart = Date()
         let (layout, session) = try resolveLayout()
-        try checkCompatibility(layout: layout)
+        let developerDir = try checkCompatibility(layout: layout)
 
         // **ロック取得の前から観測を張る**(中断があっても、これから登録する
         // `defer { releaseDispatchLock }` を必ず走らせるため)。ここから下は Shell.run 越しの
@@ -128,7 +128,7 @@ struct RemoteRunDispatcher {
         let overheadSeconds = Date().timeIntervalSince(setupStart)
         let exitCode = try runRemoteAndRelay(
             fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds,
-            stamp: stamp, project: project.name)
+            stamp: stamp, project: project.name, developerDir: developerDir)
         if interruptFlag.interrupted {
             lockReleasedEarly = releaseLockIfRunEnded(layout: layout, reportDir: remoteReportDir)
         } else {
@@ -172,7 +172,7 @@ struct RemoteRunDispatcher {
                      remoteTimeoutSeconds: Int?, runGroup: String? = nil) async throws -> Int32 {
         let setupStart = Date()
         let (layout, session) = try resolveLayout()
-        try checkCompatibility(layout: layout)
+        let developerDir = try checkCompatibility(layout: layout)
 
         // 中断があっても解放の defer を必ず走らせる(理由・順序は dispatch() のコメント参照)。
         // interruptFlag の理由も dispatch() と同じ
@@ -203,7 +203,7 @@ struct RemoteRunDispatcher {
         let overheadSeconds = Date().timeIntervalSince(setupStart)
         let exitCode = try runRemoteAndRelay(
             fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds,
-            stamp: stamp, project: project.name)
+            stamp: stamp, project: project.name, developerDir: developerDir)
         if interruptFlag.interrupted {
             lockReleasedEarly = releaseLockIfRunEnded(layout: layout, reportDir: remoteReportDir)
         } else {
@@ -304,7 +304,11 @@ struct RemoteRunDispatcher {
         return false
     }
 
-    private func checkCompatibility(layout: RemoteLayout) throws {
+    /// 戻り値 = このディスパッチで使う `DEVELOPER_DIR`(nil = ambient)。**このディスパッチの
+    /// toolchain probe と、あとで撃つ run(runRemoteAndRelay → RemoteShell.remoteRunCommand)は
+    /// 必ずこの1つの戻り値を使う** —— 別々に解決すると、ここで照合した Xcode と実際に走る Xcode が
+    /// 食い違う(緑のまま別の Xcode で走る沈黙の退行)
+    private func checkCompatibility(layout: RemoteLayout) throws -> String? {
         let localRevision = localCapture(["git", "-C", localRepoRoot.path, "rev-parse", "HEAD"])
         // TestProjects/<project>/ は run のたびに rsync で届く(§13)ので、そこだけの変更
         // (未追跡のプロファイル JSON 等)で鳴らすのは誤誘導 —— 判定は hasUncommittedToolChanges の1箇所
@@ -318,7 +322,17 @@ struct RemoteRunDispatcher {
             try sshCapture("git -C \(RemoteShell.quote(layout.toolRoot)) rev-parse HEAD")
         }
         let localToolchain = ToolchainFingerprint.current()
-        let toolchainProbe = probeRemote("toolchain") { try remoteToolchainFingerprint() }
+
+        // Xcode の選択(docs/remote-runner.md §7)。**適合照合(toolchain probe)より前に解決する**
+        // —— refused はここで即座に止め、選べた場合はその DEVELOPER_DIR を toolchain probe に
+        // 使わせる(ambient のまま照合すると、あとで run が選ぶ Xcode と食い違いうる)
+        let xcodeOutcome = resolveXcodeSelection(layout: layout)
+        if case .refused(let reason) = xcodeOutcome {
+            throw RemoteDispatchError.incompatible([reason])
+        }
+        let developerDir = xcodeOutcome.developerDir
+
+        let toolchainProbe = probeRemote("toolchain") { try remoteToolchainFingerprint(developerDir: developerDir) }
         let remoteRevision = revisionProbe.capturedValue
         let verdict = RemoteCompat.verdict(
             localRevision: localRevision, remoteRevision: revisionProbe,
@@ -354,11 +368,24 @@ struct RemoteRunDispatcher {
                 + " — run `fleetest remote setup \(host.sshTarget)` once for this issuer"
                 + " (docs/remote-runner.md §18)")
         }
+        return developerDir
     }
 
-    private func remoteToolchainFingerprint() throws -> String {
-        let xcodeVersion = try sshCapture("xcodebuild -version")
-        let sdkBuild = try sshCapture("xcrun --sdk iphonesimulator --show-sdk-build-version")
+    /// **1回だけ**(probeRemote のような引き直しは無い)。失敗は「列挙できなかった」と同じ扱いで
+    /// ambient に倒す(空の候補一覧なら XcodeSelection.resolve が .ambient を返す) ——
+    /// 見えないだけで運用を止めない(候補が実在するのに一致しないケースだけを refused にする)
+    private func resolveXcodeSelection(layout: RemoteLayout) -> XcodeSelection.Outcome {
+        let pin = registeredEntry?.developerDir
+        let listing = (try? sshCapture(XcodeSelection.listCommand)) ?? ""
+        let installed = XcodeSelection.parse(listing)
+        return XcodeSelection.resolve(
+            localFingerprint: ToolchainFingerprint.current(), installed: installed, pin: pin)
+    }
+
+    private func remoteToolchainFingerprint(developerDir: String?) throws -> String {
+        let prefix = developerDir.map { "export DEVELOPER_DIR=\(RemoteShell.quote($0)) && " } ?? ""
+        let xcodeVersion = try sshCapture("\(prefix)xcodebuild -version")
+        let sdkBuild = try sshCapture("\(prefix)xcrun --sdk iphonesimulator --show-sdk-build-version")
         return ToolchainFingerprint.compose(xcodeVersionOutput: xcodeVersion, sdkBuild: sdkBuild)
     }
 
@@ -690,16 +717,22 @@ struct RemoteRunDispatcher {
     /// 登録簿の `fmConcurrency` を **ssh 宛先で**引く。マシン名ではなく host で引くのは、
     /// ここまで来た時点でエイリアスは解決済みで、手元にあるのが ssh 実体だから。
     /// 未登録・未設定なら nil = ランナー側の既定に任せる
-    private var registeredFMConcurrency: Int? {
-        LocalConfig.load().remoteHosts?.first { $0.host == host.sshTarget }?.fmConcurrency
+    /// 登録簿のこの機械の行。**鍵は host(ssh 実体)** —— エイリアス(machine)は頻繁に変わりうるので
+    /// 引く鍵にしない(docs/remote-runner.md §0)
+    private var registeredEntry: RemoteHostEntry? {
+        LocalConfig.load().remoteHosts?.first { $0.host == host.sshTarget }
     }
 
+    private var registeredFMConcurrency: Int? { registeredEntry?.fmConcurrency }
+
     private func runRemoteAndRelay(fleetestArgs: [String], layout: RemoteLayout,
-                                   timeoutSeconds: Int?, stamp: String, project: String) throws -> Int32 {
+                                   timeoutSeconds: Int?, stamp: String, project: String,
+                                   developerDir: String?) throws -> Int32 {
         log("==> running on \(host.sshTarget): fleetest \(fleetestArgs.joined(separator: " "))")
         let command = RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: fleetestArgs,
                                                    issuer: LocalConfig.resolveIssuerId(),
-                                                   fmConcurrency: registeredFMConcurrency)
+                                                   fmConcurrency: registeredFMConcurrency,
+                                                   developerDir: developerDir)
         // ssh を「このプロセスが死んだら止まる」包みに入れる(孤児の ssh がリモートの run を出力の write で
         // 止めたままにする。理由は ParentBoundCommand の冒頭)
         let status = try runInheritedWithLineRewrite(

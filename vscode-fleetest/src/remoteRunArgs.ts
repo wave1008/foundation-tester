@@ -31,6 +31,11 @@ export interface RemoteHostEntry {
   /** 「マシン有効」。false のマシンへは CLI がプロファイル駆動の振り分けで配らない
    * (FTCore.MachineEnablement)。欠落は true(CLI は常にキーを出す)。 */
   readonly enabled?: boolean;
+  /** この機械で使う Xcode の pin(`.app` の絶対パス)。**""  = 未設定**(dir/color と同じ契約)。
+   * **書き込みは CLI の口(`fleetest remote machines add --developer-dir`)だけ**
+   * ——設定タブに入力欄は無い(ユーザー決定)。そのため常に「読んだ値をそのまま返す」だけで、
+   * diffRemoteHostsForSync の比較対象には含めない(下のコメント参照)。 */
+  readonly developerDir?: string;
 }
 
 /** 「+既存から選択」ダイアログ「デバイス候補のマシン」(§13 段2)。machine は登録簿のマシン名
@@ -98,7 +103,8 @@ export function normalizeRemoteHosts(raw: unknown): RemoteHostEntry[] {
     const fmConcurrency = typeof fm === "number" && fm > 0 ? fm : 0;
     const color = typeof record.color === "string" ? record.color : "";
     const enabled = record.enabled !== false;
-    result.push({ machine, host, dir, fmConcurrency, color, enabled });
+    const developerDir = typeof record.developerDir === "string" ? record.developerDir : "";
+    result.push({ machine, host, dir, fmConcurrency, color, enabled, developerDir });
   }
   return result;
 }
@@ -220,7 +226,12 @@ export function diffRemoteHostsForSync(
     const prev = previousByName.get(h.machine);
     // **編集できる欄はすべて比較する**。1つでも漏らすと、その欄だけを変えた編集が差分ゼロと
     // 判定されて CLI へ届かず、直後に届く remoteConfig が入力を古い値へ戻す
-    // (= 打った値が消える)。欄を足したらここも足す
+    // (= 打った値が消える)。欄を足したらここも足す。
+    // **developerDir は比較しない** —— 設定タブに入力欄が無く、next(webview の送信値)は
+    // このキー自体を持たない。持たせて比較すると、pin 済みマシンは他の欄の編集のたびに
+    // 「変わった」と誤判定される(next 側は常にキー無し=消えて見える)。キーを送らなければ
+    // CLI の import は pin を保つので、比較しないのがそのまま正しい往復になる
+    // (`ApiRemoteHostsCommand.mergingDeveloperDir`)
     return !prev || prev.host !== h.host || prev.dir !== h.dir
       || (prev.fmConcurrency ?? 0) !== (h.fmConcurrency ?? 0)
       || (prev.color ?? "") !== (h.color ?? "")

@@ -18,10 +18,16 @@
 | 外部からの接続をすべてブロックが OFF であること | システム設定 → ネットワーク → ファイアウォール → オプション |
 | Homebrew がインストールされていること | `brew --version` |
 | Xcode をインストールしてライセンスに同意していること |  |
-| Xcode の製品版(例: 26.x)が手元の Mac と同じであること(ベータのビルド番号までは揃えなくてよい) | `xcodebuild -version` |
+| 手元の Mac と同じ Xcode の製品版がランナー機のどこかにあること(ベータのビルド番号までは揃えなくてよい) | `xcodebuild -version` |
 | Xcode でテストで使用するiOSシミュレーターをダウンロードしていること |  |
 | Android Studio をインストールしていること。SDK の場所は既定(`~/Library/Android/sdk`)であること |  |
 
+ランナー機の `/Applications` に複数の Xcode を並べて入れておけば、手元の Mac の Xcode の製品版に
+合う方を fleetest が自動で選びます(他の版を削除する必要はなく、`sudo` も要りません)。別の場所に
+置いた Xcode を使わせたいときは、マシンを登録するとき(ステップ2)に
+`--developer-dir <.app へのパス>` でそのパスを指定してください。指定しないと fleetest はその
+Xcode を見つけられません。一致する Xcode が無い、または複数が同じくらい一致するときは、
+候補の一覧を添えて実行が止まります。
 
 ## ステップ1: SSH の鍵でログインできるようにする
 
@@ -75,6 +81,10 @@ fleetest remote machines        # 登録を確認する
 - マシン名に使えるのは英数字と `_` `.` `-` だけです。`local` は手元の Mac を表す名前なので使えません。
 - 同じ名前でもう一度 `add` すると、登録を上書きします。
 - 登録を消すときは `fleetest remote machines remove <マシン名>` です。
+- このランナーに使わせたい Xcode が `/Applications` 以外の場所にあるときは、
+  `--developer-dir <.app へのパス>`(例: `--developer-dir /Applications/Xcode_27.app`)を付けて
+  固定します。ランナーの `/Applications` に、使うそれぞれの製品版の Xcode が1つずつしか無いなら
+  付けなくて構いません。
 
 CLI と拡張は同じ登録簿(`~/.config/fleetest/config.json`)を読み書きします。どちらで登録しても結果は同じです。
 
@@ -151,7 +161,7 @@ user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 2
 |---|---|---|
 | `LOGIN` が `no` | ランナー機がログイン画面で止まっている | 画面共有などでログインします |
 | `REV` に ⚠️ | 手元とツール本体の版がずれている(実行は止まります) | `fleetest remote setup M1Max` をもう一度実行します |
-| `TOOLCHAIN` に ❌ | Xcode の製品版が違う(実行は止まります) | 両方の Mac を同じ Xcode 製品版に揃えます |
+| `TOOLCHAIN` に ❌ | 手元の Mac の製品版に一致する Xcode がランナー機に無い、または複数が同じくらい一致する(実行は止まります) | 一致する製品版の Xcode をランナー機へ追加で入れます(他の版を消す必要はありません)。複数あって絞れないときは `--developer-dir` で固定します |
 | `TOOLCHAIN` に ⚠️ | Xcode は同じ製品版だがベータのビルド番号が違う(実行は止まりません) | 揃えなくても実行できます。揃えたい場合は両方の Mac を同じビルドにします |
 | `RUNTIME` に ⚠️ | ランナー機の iOS シミュレータのランタイムが手元と違う | ランナー機で `xcodebuild -downloadPlatform iOS` を実行します(警告だけで、実行は止まりません) |
 | `BINARY` が `no` | ランナー機に fleetest がビルドされていない | ステップ3をもう一度実行します |
@@ -227,7 +237,9 @@ fleetest remote exec M1Max -- devices up --profile <実行プロファイル>
 | `neither xcodegen nor Homebrew is available` | ランナー機に Homebrew が入っていない | ステップ0の7で Homebrew を入れてから、`fleetest remote setup` をもう一度実行します |
 | `is sitting at the login window` | ランナー機がログイン画面で止まっている | 画面共有などでログインします |
 | `git revision mismatch` | 手元とランナー機の版がずれている | `fleetest remote setup M1Max` をもう一度実行します |
-| `toolchain mismatch` | Xcode の製品版が違う(macOS の版は関係ありません。ベータのビルド番号だけの違いではこのメッセージは出ません) | 両方の Mac を同じ Xcode 製品版にします |
+| `toolchain mismatch` | 手元の Mac の Xcode 製品版に一致する Xcode がランナー機に無い(macOS の版は関係ありません。ベータのビルド番号だけの違いではこのメッセージは出ません) | 一致する製品版の Xcode をランナー機の `/Applications` へ追加で入れます(既に入っている版を消す必要はありません) |
+| `could not tell which installed Xcode to dispatch with: … match this Mac's product version` | ランナー機に、手元の Mac の製品版に一致する Xcode が複数ある | 使わせたい方を固定します: `fleetest remote machines add <マシン名> --host <宛先> --developer-dir <.app へのパス>` |
+| `could not tell which installed Xcode to dispatch with: none of the …` | ランナー機に手元と一致する Xcode が1つも無い(メッセージが見つかった Xcode を全部並べます) | その製品版の Xcode をランナー機へ追加で入れます(他の版は消さなくて構いません)。固定しても直りません |
 | `no runner workspace at …` | ランナー機にあなたの作業場所がまだ無い | `fleetest remote setup M1Max` を1回実行します |
 | `no running emulator for AVD …` | Android のエミュレータが起動していない | ステップ6の `devices up` を実行します |
 | `app package not found at …` | 手元の `appPath` にアプリが無い | 手元でアプリをビルドするか、`appPath` を直します |

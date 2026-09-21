@@ -21,7 +21,7 @@ import { t } from "./i18n";
 import { lastResultsDir, lookupKey, readFailedScenarioIds } from "./lastResults";
 import type { LiveRunTarget } from "./liveRunTarget";
 import { runOneShot } from "./oneShotCli";
-import { decideRemoteCompat, type RemoteCompatMachine, type RemoteCompatReport } from "./remoteCompatGate";
+import { decideRemoteCompat, hasXcodeSelectionError, type RemoteCompatMachine, type RemoteCompatReport } from "./remoteCompatGate";
 import { findLatestReport, listRecentReports, reportsDir } from "./scenarioReports";
 import { FORCE_KILL_REQUEST, type ScenarioFinishedEventBody, STILL_RUNNING_EVENT } from "./debugAdapter";
 import { isRunEvent } from "./model";
@@ -434,13 +434,18 @@ function resolveTargetPlatform(targets: Map<string, vscode.TestItem>): "ios" | "
 
 /** リモート版ズレダイアログの1マシン分の値(revision 先頭7桁 / エラー / toolchain 不一致)。
  * error・revision は CLI からの英語値をそのまま出す(枠だけ ja/en。CLAUDE.md の方針)。 */
-function formatMachineDetailValue(machine: RemoteCompatMachine): string {
+export function formatMachineDetailValue(machine: RemoteCompatMachine): string {
   if (!machine.reachable) {
     return machine.error ?? t("run.remoteCompat.hostUnreachable");
   }
   if (machine.revisionCompatible === false) {
     const short = machine.revision?.slice(0, 7);
     return short && short.length > 0 ? short : t("run.remoteCompat.hostRevisionUnknown");
+  }
+  // Xcode の選定が決められなかった(候補一覧つきの英語1文)ときは、この方が具体的なので
+  // 汎用の toolchain 不一致文言より先に出す(CLAUDE.md: CLI 由来の英文は翻訳せずそのまま)
+  if (hasXcodeSelectionError(machine)) {
+    return machine.xcodeSelectionError as string;
   }
   if (machine.toolchainCompatible === false) {
     return t("run.remoteCompat.hostToolchainMismatch", { toolchain: machine.toolchain ?? "?" });

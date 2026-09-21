@@ -97,6 +97,13 @@ struct RemoteCommand: AsyncParsableCommand {
                 for r in reports where !r.reachable {
                     ConsoleOut.out("\(r.sshTarget): \(r.detail ?? "unreachable")")
                 }
+                // TOOLCHAIN の ❌(候補一覧つき)。**これは exit code に入る**(compatible が false
+                // になる。runtime 不一致とは違い、Xcode を選べないと実際のディスパッチが止まるため)
+                for r in reports {
+                    if let reason = r.xcodeSelectionRefusalReason {
+                        ConsoleOut.out("❌ \(r.sshTarget): \(reason)")
+                    }
+                }
                 // **警告だけ**(exit code に入れない。新しい検知はまず警告から)
                 for r in reports where Self.runtimeMatches(local: localRuntime, remote: r.status?.simulatorRuntime) == false {
                     ConsoleOut.out("⚠️ \(r.sshTarget): the iOS simulator runtime differs from this Mac"
@@ -223,6 +230,7 @@ struct RemoteCommand: AsyncParsableCommand {
                     binaryPresent: r.status?.binaryPresent,
                     freeKB: r.status?.freeKB,
                     lock: Self.lockCell(r.status?.lock),
+                    xcodeSelectionError: r.xcodeSelectionRefusalReason,
                     error: r.detail)
             }
             let encoder = JSONEncoder()
@@ -590,11 +598,11 @@ struct RemoteCommand: AsyncParsableCommand {
             }
 
             private static func emitTable(_ entries: [RemoteHostEntry]) {
-                let header = ["MACHINE", "HOST", "DIR", "FM", "COLOR", "ENABLED"]
+                let header = ["MACHINE", "HOST", "DIR", "FM", "COLOR", "ENABLED", "XCODE"]
                 var rows = [header]
                 rows.append(contentsOf: entries.map {
                     [$0.machine, $0.host, $0.dir ?? "-", $0.fmConcurrency.map(String.init) ?? "-", $0.color ?? "-",
-                     $0.isEnabled ? "yes" : "no"]
+                     $0.isEnabled ? "yes" : "no", $0.developerDir ?? "-"]
                 })
                 let widths = (0..<header.count).map { col in rows.map { $0[col].count }.max() ?? 0 }
                 for row in rows {
@@ -643,6 +651,15 @@ struct RemoteCommand: AsyncParsableCommand {
                 + "Omit to keep the current setting"))
             var enabled: Bool?
 
+            @Option(help: ArgumentHelp("Pin the Xcode this machine's dispatches use when it has more than one "
+                + "installed (path to the Xcode.app bundle, e.g. /Applications/Xcode_27.app). "
+                + "Omit to keep the current pin; without a pin, dispatch auto-selects by matching this Mac's "
+                + "toolchain (docs/remote-runner.md §7)"))
+            var developerDir: String?
+
+            @Flag(help: "Drop this machine's Xcode pin (fall back to automatic selection)")
+            var clearDeveloperDir = false
+
             func run() async throws {
                 try RemoteHostRegistry.validateName(machine)
                 _ = try RemoteHostSpec.parse(host)
@@ -653,6 +670,9 @@ struct RemoteCommand: AsyncParsableCommand {
                 if fmConcurrency != nil, clearFmConcurrency {
                     throw ValidationError("--fm-concurrency and --clear-fm-concurrency cannot be combined")
                 }
+                if developerDir != nil, clearDeveloperDir {
+                    throw ValidationError("--developer-dir and --clear-developer-dir cannot be combined")
+                }
                 if let color, !MachineBadgeColor.isKnown(color) {
                     let known = MachineBadgeColor.palette.map(\.key).joined(separator: ", ")
                     throw ValidationError("unknown color \"\(color)\" (known: \(known))")
@@ -662,15 +682,19 @@ struct RemoteCommand: AsyncParsableCommand {
                     RemoteHostEntry(machine: machine, host: host), in: config.remoteHosts ?? [])
                 // **省略したら既存の値を保つ**。upsert なので「指定なし = nil で上書き」にすると、
                 // 別件で add を打ち直した瞬間に設定が黙って消える。消すのは --clear-fm-concurrency だけ
-                let existing = (config.remoteHosts ?? []).first { $0.machine == machine }?.fmConcurrency
-                let slots = clearFmConcurrency ? nil : (fmConcurrency ?? existing)
+                let existingEntry = (config.remoteHosts ?? []).first { $0.machine == machine }
+                let slots = clearFmConcurrency ? nil : (fmConcurrency ?? existingEntry?.fmConcurrency)
+                // developerDir も同じ規律(--clear-developer-dir だけが消す)
+                let pin = clearDeveloperDir ? nil : (developerDir ?? existingEntry?.developerDir)
                 // color / enabled は upsert が唯一の決定点(nil なら既存を保つ・新規なら自動割り当て)
                 let entry = RemoteHostEntry(machine: machine, host: host, dir: dir,
-                                           fmConcurrency: slots, color: color, enabled: enabled)
+                                           fmConcurrency: slots, color: color, enabled: enabled,
+                                           developerDir: pin)
                 config.remoteHosts = RemoteHostRegistry.upsert(entry, into: config.remoteHosts ?? [])
                 try config.save()
                 let slotsNote = slots.map { " (FM concurrency \($0))" } ?? ""
-                ConsoleOut.out("✅ Registered machine \"\(machine)\" → \(host)\(slotsNote)")
+                let pinNote = pin.map { " (Xcode pinned: \($0))" } ?? ""
+                ConsoleOut.out("✅ Registered machine \"\(machine)\" → \(host)\(slotsNote)\(pinNote)")
             }
         }
 
@@ -918,7 +942,12 @@ enum RemoteStatusProbing {
         do {
             let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: "$HOME"),
                                       issuer: try resolveLayoutIssuer())
-            let command = RemoteStatusProbe.command(layout: layout, simulatorRuntime: wantRuntime)
+            // **ディスパッチが実際に使う Xcode と同じ解決を通す**(RemoteRunDispatcher.checkCompatibility
+            // と同じ規律。docs/remote-runner.md §7)—— ここで ambient のまま toolchain を読むと、
+            // 表と実際の run が食い違う
+            let xcodeOutcome = resolveXcodeSelection(target: target)
+            let command = RemoteStatusProbe.command(layout: layout, simulatorRuntime: wantRuntime,
+                                                     developerDir: xcodeOutcome.developerDir)
             let result = try Shell.run(remoteSSHBase + [target, command])
             // ssh は自身の接続失敗(DNS/認証/タイムアウト等)だけ 255 を返す規約 — リモート
             // コマンドの終了コードはそのまま通るため、df 等が失敗しても到達はしている
@@ -929,11 +958,31 @@ enum RemoteStatusProbing {
             }
             let status = RemoteStatusProbe.parse(result.output)
             let fmOK = wantFM ? await probeFM(target: target, layout: layout) : nil
-            return HostRow(sshTarget: target, reachable: true, detail: nil, status: status, fmOK: fmOK)
+            // 一致0個・複数(候補一覧つき)。**HostReport がこれを toolchain の blocking へ畳む** ——
+            // 別に持つと TOOLCHAIN セル・exit code(compatible)・api remote-compat のどれかが
+            // この失敗を見落とす経路を作ってしまう
+            var refusalReason: String?
+            if case .refused(let reason) = xcodeOutcome { refusalReason = reason }
+            return HostRow(sshTarget: target, reachable: true, detail: nil, status: status, fmOK: fmOK,
+                           xcodeSelectionRefusalReason: refusalReason)
         } catch {
             return HostRow(sshTarget: target, reachable: false,
                            detail: "\(error)", status: nil, fmOK: nil)
         }
+    }
+
+    /// 追加の ssh 1往復(列挙)。**失敗は ambient に倒す**(XcodeSelection.resolve は空の候補一覧を
+    /// 「列挙できなかった」と同じに扱う) —— `remote status` は診断コマンドなので、この往復自体が
+    /// 死んでいてもホストの到達性そのものは本体の probe が別途判定する
+    private static func resolveXcodeSelection(target: String) -> XcodeSelection.Outcome {
+        let pin = LocalConfig.load().remoteHosts?.first { $0.host == target }?.developerDir
+        guard let listing = try? Shell.run(remoteSSHBase + [target, XcodeSelection.listCommand]),
+              listing.status == 0 else {
+            return XcodeSelection.resolve(localFingerprint: nil, installed: [], pin: pin)
+        }
+        let installed = XcodeSelection.parse(listing.output)
+        return XcodeSelection.resolve(
+            localFingerprint: ToolchainFingerprint.current(), installed: installed, pin: pin)
     }
 
     private static func probeFM(target: String, layout: RemoteLayout) async -> Bool? {
@@ -953,6 +1002,11 @@ struct HostRow: Sendable {
     let detail: String?
     let status: RemoteHostStatus?
     let fmOK: Bool?
+    /// 一致0個・複数(候補一覧つき。docs/remote-runner.md §7)。nil = pin 済み/自動選択できた/
+    /// 候補が無く ambient。**HostReport.init がこれを verdict.blocking(toolchain 接頭辞)へ畳む**。
+    /// 既定 nil ―― 既存の5引数呼び出し(不到達・接続失敗の早期 return)を壊さない。
+    /// **`let` にしない** —— 既定値つきの `let` は memberwise init から欄ごと落ちる
+    var xcodeSelectionRefusalReason: String?
 }
 
 /// HostRow にローカル値との適合判定を添えたもの(表示直前に1回だけ計算する。
@@ -965,6 +1019,8 @@ struct HostReport {
     let status: RemoteHostStatus?
     let fmOK: Bool?
     let verdict: RemoteCompat.CompatVerdict
+    /// row.xcodeSelectionRefusalReason をそのまま運ぶ(印字用。判定自体は verdict.blocking を見る)
+    let xcodeSelectionRefusalReason: String?
 
     init(row: HostRow, localRevision: String?, localToolchain: String?) {
         sshTarget = row.sshTarget
@@ -972,10 +1028,18 @@ struct HostReport {
         detail = row.detail
         status = row.status
         fmOK = row.fmOK
-        verdict = row.status.map {
+        xcodeSelectionRefusalReason = row.xcodeSelectionRefusalReason
+        var base = row.status.map {
             RemoteCompat.verdict(localRevision: localRevision, remoteRevision: $0.revision,
                                  localToolchain: localToolchain, remoteToolchain: $0.toolchain)
         } ?? RemoteCompat.CompatVerdict()
+        // **"toolchain" 接頭辞**にする —— toolchainCompatible/mark はこの接頭辞で blocking を
+        // 拾うので、ここだけ別の接頭辞にすると TOOLCHAIN セルが ✅ のまま食い違う
+        if let reason = row.xcodeSelectionRefusalReason {
+            base = RemoteCompat.CompatVerdict(blocking: base.blocking + ["toolchain: \(reason)"],
+                                              advisory: base.advisory)
+        }
+        verdict = base
     }
 
     /// blocking が空か(advisory だけならディスパッチは止まらない)
@@ -1021,6 +1085,9 @@ private struct StatusHostJSON: Encodable {
     /// 占有("free" / "held by <issuer>" / "held (holder unknown)" / "-" = 判定不能)。
     /// 文字列1つに畳むのは表示用の欄だから(機械判定に使うなら probe をそのまま出す)
     let lock: String?
+    /// Xcode の選択が一致0個・複数で拒否されたときの候補一覧つきメッセージ(docs/remote-runner.md §7)。
+    /// non-nil なら `toolchainCompatible` は false(TOOLCHAIN の ❌ と同じ判定)
+    let xcodeSelectionError: String?
     let error: String?
 }
 

@@ -152,6 +152,29 @@ final class RemoteHostRegistryTests: XCTestCase {
         XCTAssertEqual(entries.map(\.machine), ["alpha", "mid", "zeta"])
     }
 
+    // MARK: - upsert developerDir (Xcode pin)
+
+    /// **fmConcurrency と同じ素通し** —— upsert 自身は「省略したら既存を保つ」をしない
+    /// (呼び出し側が持つ: RemoteCommands.Add の --clear-developer-dir、
+    /// ApiRemoteHostsCommand.mergingDeveloperDir)。ここでは保存されることだけを確かめる
+    func testUpsertStoresExplicitDeveloperDir() {
+        let result = RemoteHostRegistry.upsert(
+            RemoteHostEntry(machine: "M1Ultra", host: "a@host",
+                            developerDir: "/Applications/Xcode_27.app/Contents/Developer"),
+            into: [])
+        XCTAssertEqual(result.first?.developerDir, "/Applications/Xcode_27.app/Contents/Developer")
+    }
+
+    /// nil を渡すと(呼び出し側で既に「消したい」と決めた値として)そのまま素通しで nil になる ——
+    /// 既存の pin を upsert が勝手に復元しない(color/enabled と違う規律)
+    func testUpsertPassesThroughNilDeveloperDirRatherThanKeepingExisting() {
+        let existing = [RemoteHostEntry(machine: "M1Ultra", host: "old@host",
+                                        developerDir: "/Applications/Xcode_27.app/Contents/Developer")]
+        let result = RemoteHostRegistry.upsert(
+            RemoteHostEntry(machine: "M1Ultra", host: "new@host"), into: existing)
+        XCTAssertNil(result.first?.developerDir)
+    }
+
     // MARK: - remove
 
     func testRemoveDeletesByName() {
@@ -217,11 +240,28 @@ final class RemoteHostRegistryTests: XCTestCase {
 
         var config = LocalConfig()
         config.remoteHosts = [RemoteHostEntry(machine: "M1Ultra", host: "wave1008@192.168.20.95",
-                                              dir: "~/fleetest-runner")]
+                                              dir: "~/fleetest-runner",
+                                              developerDir: "/Applications/Xcode_27.app/Contents/Developer")]
         try config.save(to: url)
 
         let loaded = LocalConfig.load(from: url)
         XCTAssertEqual(loaded.remoteHosts, config.remoteHosts)
+        XCTAssertEqual(loaded.remoteHosts?.first?.developerDir, "/Applications/Xcode_27.app/Contents/Developer")
+    }
+
+    /// 手書き設定の "" は未設定へ倒す(dir/color と同じ方針。壊れた pin として読まない)
+    func testDeveloperDirBlankStringDecodesAsNil() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RemoteHostRegistryTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("config.json")
+        try Data("""
+            {"remoteHosts":[{"machine":"M1Ultra","host":"a@host","developerDir":"  "}]}
+            """.utf8).write(to: url)
+
+        let loaded = LocalConfig.load(from: url)
+        XCTAssertNil(loaded.remoteHosts?.first?.developerDir)
     }
 
     /// 既存の config.json を読んでも壊れない。**machineName のような未知キーは黙って無視される**

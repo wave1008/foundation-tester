@@ -277,6 +277,20 @@
   run でだけ。**text 経路はシナリオの下書き・命名だけが使う** = text の死で run が失う機能は無い)/
   run.json の `fmDead`・`fmDeadReason` / `ft_status`・`ft_doctor`・`fleetest doctor --fm-only`
   (**doctor は text と vision を両方 実呼び出しで確かめ、どちらが死んでも exit 1**)
+- **ランナーの Xcode は発行側に合わせて自動選択する**(`FTRemote.XcodeSelection`。選択は
+  `DEVELOPER_DIR` の export = **プロセス単位・sudo 不要**で、**`xcode-select -s` は使わない** ——
+  機械全体に効くので共有ランナーでは他人の run を壊す)。守る規律4つ:
+  **①照合(toolchain probe)と run は同じ解決を1回だけ通す**(別々に解決すると、照合した Xcode と
+  実際に走る Xcode が食い違い、**緑のまま別の Xcode で走る**。`RemoteDeveloperDirWiringTests` が
+  走査で固定)/ **②ちょうど1件一致のときだけ採る**(登録簿の pin > build 一致 > 製品版一致。
+  0個・複数は候補を並べて拒否し、手近な Xcode へ黙って倒さない)/ **③候補を列挙できなければ
+  ambient**(見えないだけで運用を止めない)/ **④モニターには効かせない**
+  (`remoteExecCommand` の既定は nil。観測は dispatch.lock の**外**で常時 simctl を撃つので、
+  版の違う simctl を同じ CoreSimulatorService に当てない)。**拒否の文言は原因で分ける** ——
+  一致0個は「その Xcode を入れる」・複数は「pin する」で**対処が逆**。
+  **toolchain 不一致そのものの仕分けは `RemoteCompat.verdict` の1箇所**(製品版が同じで build だけ
+  違う = ベータ seed はディスパッチを止めない advisory・製品版違いと読めない指紋は blocking)
+  → maintainer-notes §3.7・§3.8
 - リモート実行(`run --runner` の SSH ディスパッチ):
   - **ssh 越しに何かを起動する経路を新設したら非対話 PATH の補正
     (`/opt/homebrew:/usr/local/bin`)を必ず写す**(既存は `RemoteShell.remoteRunCommand`)

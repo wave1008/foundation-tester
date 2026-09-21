@@ -17,6 +17,11 @@ export interface RemoteCompatMachine {
   /** 非 null なら「止めないが混在している」(例: Xcode 製品版は同じでベータ seed だけ違う)。
    * 非 null のときは toolchainCompatible は true(止めない側) */
   readonly toolchainAdvisory?: string | null;
+  /** 非 null なら「そのランナーで使う Xcode を決められなかった」(候補一覧つきの英語1文)。
+   * **toolchainCompatible は既に false**(CLI 側 `HostReport.toolchainCompatible` の不変条件)だが、
+   * このゲート単体でも blocking 側へ倒す(呼び手が CLI の不変条件に依存しなくて済むように)。
+   * align では直らない(Xcode の選定はランナー機側の作業) */
+  readonly xcodeSelectionError?: string | null;
   readonly error?: string | null;
 }
 
@@ -60,6 +65,11 @@ function collectAdvisoryMachines(machines: RemoteCompatMachine[]): RemoteCompatA
   return result;
 }
 
+/** xcodeSelectionError が非空文字列か(runHandler.ts の文言優先判定とも共有)。 */
+export function hasXcodeSelectionError(machine: RemoteCompatMachine): boolean {
+  return typeof machine.xcodeSelectionError === "string" && machine.xcodeSelectionError.length > 0;
+}
+
 /**
  * report を判定する。hosts が空(プロファイルにリモート機なし)・全ホスト互換なら proceed。
  * それ以外は ask を返す。canUpdate は「align で直せる不一致だけか」の判定
@@ -81,7 +91,8 @@ export function decideRemoteCompat(report: RemoteCompatReport | null | undefined
     (machine) =>
       !machine || typeof machine !== "object"
         ? false
-        : machine.reachable === false || machine.revisionCompatible === false || machine.toolchainCompatible === false,
+        : machine.reachable === false || machine.revisionCompatible === false || machine.toolchainCompatible === false
+          || hasXcodeSelectionError(machine),
   );
   if (incompatible.length === 0) {
     return { kind: "proceed", advisoryMachines };
@@ -94,6 +105,7 @@ export function decideRemoteCompat(report: RemoteCompatReport | null | undefined
       (machine) =>
         machine.reachable === true
         && machine.toolchainCompatible !== false
+        && !hasXcodeSelectionError(machine)
         && (machine.revisionRelation === "remoteBehind"
           || machine.revisionRelation === undefined
           || machine.revisionRelation === null),

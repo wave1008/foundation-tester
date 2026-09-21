@@ -27,13 +27,20 @@ In the examples below, the runner is `<user@192.168.xxx.xxx>` and its machine na
 | Requirement | Check (run on the runner) |
 |---|---|
 | Apple silicon Mac | `sysctl -n hw.optional.arm64` is `1` |
-| Same Xcode product version as your Mac (e.g. both 26.x; beta build numbers don't need to match, and the macOS version may differ, as long as it runs that Xcode) | `xcodebuild -version` |
+| A matching Xcode product version somewhere on the runner (beta build numbers don't need to match, and the macOS version may differ, as long as it runs that Xcode) | `xcodebuild -version` |
 | Someone stays logged in at the console | `stat -f%Su /dev/console` matches the runner's user |
 | System sleep disabled (display sleep and screen lock are fine) | `pmset -g \| grep " sleep"` |
 | Remote Login on | checked in Step 1 |
 | The firewall is off; if it is on, its "Block all incoming connections" is off | see item 2 of Step 0 |
 | Homebrew is installed, in a version that supports that macOS | `brew --version` runs |
 | Android SDK and AVDs (only when running Android) | `fleetest doctor` |
+
+If the runner has several Xcode versions installed side by side under `/Applications`, fleetest
+automatically picks the one that matches your Mac's Xcode product version — you don't need to
+uninstall the others, and you don't need `sudo`. If you keep an Xcode somewhere else, register its
+path when you register the machine (Step 2), with `--developer-dir <path to the .app>`; otherwise
+fleetest won't find it. If no matching Xcode can be found, or more than one equally matches, the
+run is stopped with a message that lists the candidates.
 
 If your Mac and the runner run different macOS versions (for example 26 and 27), text visual
 verification (OCR and FM) uses the features bundled with each Mac's macOS, so its results can
@@ -128,6 +135,10 @@ fleetest remote machines        # check the registration
 - Running `add` again with the same name updates the registration.
 - A destination that is already registered under another machine name is rejected.
 - To remove it, run `fleetest remote machines remove M1Max`.
+- If you keep the Xcode you want this runner to use somewhere other than `/Applications`, add
+  `--developer-dir <path to the .app>` (for example `--developer-dir /Applications/Xcode_27.app`)
+  to pin it. Omit it when the runner's `/Applications` has at most one Xcode matching each
+  product version you dispatch to it.
 
 ### Register in the VS Code extension
 
@@ -252,7 +263,7 @@ user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 2
 |---|---|---|
 | `LOGIN` is `no` | The runner is sitting at the login window | Log in, for example over Screen Sharing |
 | ⚠️ in `REV` | The tool version differs from your Mac (runs are stopped) | Run `fleetest remote setup M1Max` again |
-| ❌ in `TOOLCHAIN` | Xcode product version differs (runs are stopped) | Install the same Xcode product version on both Macs |
+| ❌ in `TOOLCHAIN` | No Xcode on the runner matches your product version, or more than one equally matches (runs are stopped) | Install the matching Xcode product version on the runner (you can keep other versions installed), or pin one with `--developer-dir` if several match |
 | ⚠️ in `TOOLCHAIN` | Same Xcode product version but a different beta build number (runs are **not** stopped) | Optional — install the same build on both Macs if you want them to match |
 | ⚠️ in `RUNTIME` | The runner's iOS simulator runtime differs from your Mac's | Run `xcodebuild -downloadPlatform iOS` on the runner (this is only a warning; runs are not stopped) |
 | `BINARY` is `no` | fleetest is not built on the runner | Run Step 3 again |
@@ -333,7 +344,9 @@ until the versions match.
 | `neither xcodegen nor Homebrew is available` | Homebrew is not installed on the runner | Install Homebrew (item 7 of Step 0), then run `fleetest remote setup` again |
 | `is sitting at the login window` | The runner is at the login window | Log in, for example over Screen Sharing |
 | `git revision mismatch` | Your Mac and the runner are on different versions | Run `fleetest remote setup M1Max` again |
-| `toolchain mismatch` | Xcode product versions differ (the macOS version is not compared; a beta build number difference alone does not trigger this message) | Install the same Xcode product version on both Macs |
+| `toolchain mismatch` | No Xcode on the runner matches your Xcode product version (the macOS version is not compared; a beta build number difference alone does not trigger this message) | Install the matching Xcode product version on the runner, under `/Applications` (you don't need to remove the one already there) |
+| `could not tell which installed Xcode to dispatch with: … match this Mac's product version` | More than one Xcode on the runner matches your product version | Pin the one to use: `fleetest remote machines add M1Max --host <user@host> --developer-dir <path to the .app>` |
+| `could not tell which installed Xcode to dispatch with: none of the …` | No Xcode on the runner matches your Mac (the message lists every Xcode it found) | Install that product version of Xcode on the runner (you can keep the others). Pinning does not help here |
 | `no runner workspace at …` | Your work area does not exist on the runner yet | Run `fleetest remote setup M1Max` once |
 | `no running emulator for AVD …` | The Android emulator is not running | Run the `devices up` command from Step 6 |
 | `app package not found at …` | There is no app at `appPath` on your Mac | Build the app on your Mac, or fix `appPath` |

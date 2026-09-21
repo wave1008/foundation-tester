@@ -892,7 +892,8 @@ function isRemoteHostEntryLike(value: unknown): value is RemoteHostEntry {
     typeof value.host === "string" &&
     typeof value.dir === "string" &&
     (value.color === undefined || typeof value.color === "string") &&
-    (value.enabled === undefined || typeof value.enabled === "boolean")
+    (value.enabled === undefined || typeof value.enabled === "boolean") &&
+    (value.developerDir === undefined || typeof value.developerDir === "string")
   );
 }
 

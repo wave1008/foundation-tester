@@ -52,8 +52,10 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
                 _ = try RemoteHostSpec.parse(entry.host)
                 if let dir = entry.dir { try RemoteLayout.validateBase(dir) }
                 try RemoteHostRegistry.validateUniqueHost(entry, in: config.remoteHosts ?? [])
-                let merged = Self.mergingFMConcurrency(entry, sentKey: raw.fmConcurrency != nil,
+                var merged = Self.mergingFMConcurrency(entry, sentKey: raw.fmConcurrency != nil,
                                                        from: config.remoteHosts ?? [])
+                merged = Self.mergingDeveloperDir(merged, sentKey: raw.developerDir != nil,
+                                                  from: config.remoteHosts ?? [])
                 config.remoteHosts = RemoteHostRegistry.upsert(merged, into: config.remoteHosts ?? [])
             }
             try config.save()
@@ -79,7 +81,20 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
         let kept = existing.first { $0.machine == entry.machine }?.fmConcurrency
         return RemoteHostEntry(machine: entry.machine, host: entry.host,
                                dir: entry.dir, fmConcurrency: kept, color: entry.color,
-                               enabled: entry.enabled)
+                               enabled: entry.enabled, developerDir: entry.developerDir)
+    }
+
+    /// developerDir(Xcode の pin)の合流。**mergingFMConcurrency と同じ規律**: `sentKey` は
+    /// クライアントが JSON にこのキー自体を送ってきたか(値が "" でも key はある = 明示的に消したい)。
+    /// 送ってこなければ(旧い/別のクライアント)既存の pin を保つ ―― upsert 自身は素通しなので、
+    /// ここで保たないと developerDir を知らないクライアントの import のたびに pin が消える
+    static func mergingDeveloperDir(_ entry: RemoteHostEntry, sentKey: Bool,
+                                    from existing: [RemoteHostEntry]) -> RemoteHostEntry {
+        guard !sentKey else { return entry }
+        let kept = existing.first { $0.machine == entry.machine }?.developerDir
+        return RemoteHostEntry(machine: entry.machine, host: entry.host,
+                               dir: entry.dir, fmConcurrency: entry.fmConcurrency, color: entry.color,
+                               enabled: entry.enabled, developerDir: kept)
     }
 
     /// 非空で未知の色は `--import` 全体を拒否する(既知の鍵一覧をメッセージに出す)。
@@ -146,6 +161,11 @@ struct ApiRemoteHostImportEntry: Decodable {
     let color: String?
     /// 「マシン有効」。欠落 = 既存を保つ(upsert が決める)。設定タブは常に送る
     let enabled: Bool?
+    /// Xcode の pin。**キーの有無を区別する**(mergingDeveloperDir が読む) ——
+    /// キーが無ければ(developerDir を知らないクライアント)既存の pin を保つ。
+    /// "" は「明示的に pin を外したい」(dir/color と違い、こちらは常に消去の意味に倒す ——
+    /// 「空文字は既存を保つ」にすると、この API からは pin を一度外すと二度と消せなくなる)
+    let developerDir: String?
 
     var entry: RemoteHostEntry {
         let given = (machine ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -154,7 +174,8 @@ struct ApiRemoteHostImportEntry: Decodable {
                                dir: dir.flatMap { $0.isEmpty ? nil : $0 },
                                fmConcurrency: fmConcurrency.flatMap { $0 > 0 ? $0 : nil },
                                color: color.flatMap { $0.isEmpty ? nil : $0 },
-                               enabled: enabled)
+                               enabled: enabled,
+                               developerDir: developerDir.flatMap { $0.isEmpty ? nil : $0 })
     }
 }
 
@@ -171,6 +192,8 @@ private struct ApiRemoteHostEntry: Encodable {
     let color: String
     /// 「マシン有効」。常にキーを出す(未設定 = true)
     let enabled: Bool
+    /// Xcode の pin。dir と同じ流儀で常にキーを出す。未設定は ""
+    let developerDir: String
 
     init(_ entry: RemoteHostEntry) {
         machine = entry.machine
@@ -179,6 +202,7 @@ private struct ApiRemoteHostEntry: Encodable {
         fmConcurrency = entry.fmConcurrency ?? 0
         color = entry.color ?? ""
         enabled = entry.isEnabled
+        developerDir = entry.developerDir ?? ""
     }
 }
 

@@ -907,9 +907,19 @@ public enum RemoteStatusProbe {
     /// `simulatorRuntime` = RUNTIME 欄の2ブロックを足すか。**`remote status` だけが true** ——
     /// `api remote-compat`(拡張がリモート実行の前に毎回待つ)は値を読まないので、simctl の往復
     /// (0.4〜1 秒・サービスが刺されば期限まで)を実行開始の前に払わせない。既定値を置かない
-    /// (新しい呼び出し元にどちらかを選ばせる)
-    public static func command(layout: RemoteLayout, simulatorRuntime: Bool) -> String {
+    /// (新しい呼び出し元にどちらかを選ばせる)。
+    ///
+    /// `developerDir` はディスパッチが選ぶ Xcode(呼び出し側が `XcodeSelection.resolve` で
+    /// 事前に解決する。docs/remote-runner.md §7)。**ブロックを増やさず既存の joined 文字列の
+    /// 先頭に export を1つ足すだけ** —— `parse` は固定インデックスでブロックを読むため、
+    /// 新しいブロックを足すと後続の全ブロックがずれる。export はここから先の全ステップに
+    /// 効く(`;` 区切りは同じシェルセッションなので環境変数は持ち越される)。nil ならこれまでどおり
+    /// ambient のまま(実際に選ばれるものと表示が食い違わないよう、呼び出し側は必ず
+    /// この関数の直前に同じ解決を通す)
+    public static func command(layout: RemoteLayout, simulatorRuntime: Bool,
+                               developerDir: String? = nil) -> String {
         let sep = "echo '\(separator)'"
+        let devDirPrefix = developerDir.map { "export DEVELOPER_DIR=\(RemoteShell.quote($0)); " } ?? ""
         var steps = [
             "echo $HOME; \(RemoteProbe.consoleUserCommand); id -un",
             "git -C \(dquote(layout.toolRoot)) rev-parse HEAD 2>/dev/null || echo -",
@@ -940,7 +950,7 @@ public enum RemoteStatusProbe {
                 "\(SimulatorRuntimeFingerprint.remoteRuntimeListCommand) 2>/dev/null || true",
             ]
         }
-        return steps.joined(separator: "; \(sep); ")
+        return devDirPrefix + steps.joined(separator: "; \(sep); ")
     }
 
     /// 壊れていてもできる範囲を埋める(全体 nil にしない)。ブロック数が足りない・
@@ -1138,9 +1148,16 @@ public enum RemoteShell {
     /// `fmConcurrency` は登録簿の欄(`RemoteHostEntry`)。**機械によっては FM を 2 並列以上で
     /// 呼ぶと壊れる**(実測と経緯は docs/remote-runner.md)ので、枠を機械ごとに絞れるようにする。
     /// nil のときは**1バイトも足さない** —— ランナー側の既定(`FMLock.defaultConcurrency`)に任せる
+    /// `developerDir` はディスパッチが選んだ Xcode(`FTRemote.XcodeSelection`。
+    /// docs/remote-runner.md §7)。非 nil のときだけ `export DEVELOPER_DIR=` を足す
+    /// (nil = ambient のまま、`xcode-select` の機械既定に従う)。**呼び出し側
+    /// (RemoteRunDispatcher.checkCompatibility)がこの run とその直前の toolchain probe に
+    /// 必ず同じ値を渡す** —— 別々に解決すると、照合した Xcode と実際に走る Xcode が食い違う
+    /// (緑のまま別の Xcode で走る沈黙の退行)
     public static func remoteRunCommand(layout: RemoteLayout, fleetestArgs: [String],
                                         issuer: String? = nil,
                                         fmConcurrency: Int? = nil,
+                                        developerDir: String? = nil,
                                         streamOwner: String? = StreamOwner.current()) -> String {
         let binary = quote(layout.binary)
         let guardCmd = "test -x \(binary) || { echo \"fleetest binary not found on remote"
@@ -1157,17 +1174,23 @@ public enum RemoteShell {
         // 読む契約)。ランナー機側で解決させると全員が共有アカウントの同じ値になる
         let issuerCmd = issuer.map { "export FT_ISSUER=\(quote($0)) && " } ?? ""
         let fmCmd = fmConcurrency.map { "export FT_FM_CONCURRENCY=\(quote(String($0))) && " } ?? ""
+        let devDirCmd = developerDir.map { "export DEVELOPER_DIR=\(quote($0)) && " } ?? ""
         return "cd \(quote(layout.workDir)) 2>/dev/null && test -f Package.swift || "
             + "{ echo \"no runner workspace at \(layout.workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
             + "\(pathCmd) && \(runnerBaseCmd(layout: layout))\(issuerCmd)\(streamOwnerCmd(streamOwner))"
-            + "\(fmCmd)\(guardCmd) && \(syncCmd) && \(launch)"
+            + "\(devDirCmd)\(fmCmd)\(guardCmd) && \(syncCmd) && \(launch)"
     }
 
     /// `fleetest remote exec`(docs/remote-runner.md §14「単発コマンドの転送は汎用化する」)。
     /// remoteRunCommand と同じ PATH 補正・バイナリ不在 exit 90・workspace 不在 exit 91 の規律を
-    /// 踏襲するが、**project sync は撃たない** — 照会・単発操作が目的で、同期は run 専用の前処理だから
+    /// 踏襲するが、**project sync は撃たない** — 照会・単発操作が目的で、同期は run 専用の前処理だから。
+    /// **`developerDir` の既定は nil**(常に ambient)。呼び出し側(`RemoteSetupCommand.Exec`)は
+    /// 今のところこれを渡さない —— モニターの fan-out / device-stream は observe が
+    /// dispatch.lock の外で常時走るため、版の違う simctl を同じ CoreSimulatorService に当てる
+    /// 危険を増やさない(Xcode の選択が要るのは実行を伴う経路だけに絞る)
     public static func remoteExecCommand(layout: RemoteLayout, args: [String],
+                                         developerDir: String? = nil,
                                          streamOwner: String? = StreamOwner.current()) -> String {
         let binary = quote(layout.binary)
         let guardCmd = "test -x \(binary) || { echo \"fleetest binary not found on remote"
@@ -1179,11 +1202,12 @@ public enum RemoteShell {
         // なので、そのネームスペースの持ち主がそのまま帰属になる。fan-out の子(api monitor /
         // api device-stream)はこの値で「ロックを握っているのは自分か」を判定する(HostOccupancy)
         let issuerCmd = "export FT_ISSUER=\(quote(layout.issuer)) && "
+        let devDirCmd = developerDir.map { "export DEVELOPER_DIR=\(quote($0)) && " } ?? ""
         return "cd \(quote(layout.workDir)) 2>/dev/null && test -f Package.swift || "
             + "{ echo \"no runner workspace at \(layout.workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
             + "\(pathCmd) && \(runnerBaseCmd(layout: layout))\(issuerCmd)\(streamOwnerCmd(streamOwner))"
-            + "\(guardCmd) && \(launch)"
+            + "\(devDirCmd)\(guardCmd) && \(launch)"
     }
 
     /// 配信の所有者の印(FTCore.StreamOwner)を ssh 越しへ運ぶ。**`FT_PARENT_PID` は運ばない**

@@ -83,4 +83,21 @@ final class ToolchainFingerprintTests: XCTestCase {
     func testProductVersionHandlesBareVersionWithNoTrailingText() {
         XCTAssertEqual(ToolchainFingerprint.productVersion(of: "Xcode 27.0"), "27.0")
     }
+
+    // MARK: - buildVersion(of:)
+
+    func testBuildVersionExtractsFromComposedFingerprint() {
+        XCTAssertEqual(ToolchainFingerprint.buildVersion(
+            of: "Xcode 27.0 Build version 27A5228h / iphonesimulator 24A434"), "27A5228h")
+    }
+
+    func testBuildVersionRejectsFormWithoutBuildMarker() {
+        XCTAssertNil(ToolchainFingerprint.buildVersion(of: "Xcode 27.0"))
+        XCTAssertNil(ToolchainFingerprint.buildVersion(of: ""))
+    }
+
+    /// "Build version " の直後がすぐ空白(build が空)なら nil
+    func testBuildVersionRejectsEmptyBuild() {
+        XCTAssertNil(ToolchainFingerprint.buildVersion(of: "Xcode 27.0 Build version "))
+    }
 }

@@ -97,8 +97,13 @@ public enum RemoteHostRegistry {
         // enabled も同じ規律(nil = 既存を保つ)。**true は nil へ畳む**(保存するのは false だけ)
         let enabled = (entry.enabled ?? entries.first(where: { $0.machine == entry.machine })?.enabled) == false
             ? false : nil
+        // developerDir は fmConcurrency/dir と同じ素通し(nil = 既存を保つ、ではなく呼び出し側の値を
+        // そのまま置く)。「省略したら既存を保つ」は呼び出し側(RemoteCommands.Add / mergingDeveloperDir)
+        // が持つ ―― ここで nil を「既存を保て」に読み替えると、CLI の --clear-developer-dir が
+        // 効かなくなる(消したくて nil を渡しても upsert が古い値を復元してしまう)
         let resolved = RemoteHostEntry(machine: entry.machine, host: entry.host, dir: entry.dir,
-                                       fmConcurrency: entry.fmConcurrency, color: color, enabled: enabled)
+                                       fmConcurrency: entry.fmConcurrency, color: color, enabled: enabled,
+                                       developerDir: entry.developerDir)
         var result = others
         result.append(resolved)
         return result.sorted { $0.machine < $1.machine }

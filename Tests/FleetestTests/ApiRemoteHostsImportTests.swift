@@ -124,4 +124,59 @@ final class ApiRemoteHostsImportTests: XCTestCase {
             #"[{"machine":"M1Ultra","host":"user@h"}]"#).first)
         XCTAssertNil(absent.entry.enabled)
     }
+
+    // MARK: - developerDir (Xcode pin)
+
+    func testDecodeReadsDeveloperDirKey() throws {
+        let entries = try ApiRemoteHostsCommand.decodeImportEntries(
+            #"[{"machine":"M1Max","host":"user@h","developerDir":"/Applications/Xcode_27.app/Contents/Developer"}]"#)
+        XCTAssertEqual(entries.first?.entry.developerDir, "/Applications/Xcode_27.app/Contents/Developer")
+    }
+
+    /// "" と欠落は entry レベルでは同じ(nil)だが、**mergingDeveloperDir はキーの有無だけで
+    /// 区別する**(--import の往復で pin が消えないこと の核心)。この2つを区別できないと、
+    /// developerDir を知らないクライアントが import するたびに他機の pin が消える
+    func testImportKeepsExistingDeveloperDirWhenKeyIsAbsent() throws {
+        let existing = [RemoteHostEntry(machine: "M1Ultra", host: "user@h",
+                                        developerDir: "/Applications/Xcode_27.app/Contents/Developer")]
+        // developerDir を知らない旧いクライアントの import(キー自体が無い)
+        let incoming = try XCTUnwrap(ApiRemoteHostsCommand.decodeImportEntries(
+            #"[{"machine":"M1Ultra","host":"user@h"}]"#).first)
+        XCTAssertNil(incoming.developerDir, "キーを送っていない")
+        let merged = ApiRemoteHostsCommand.mergingDeveloperDir(
+            incoming.entry, sentKey: incoming.developerDir != nil, from: existing)
+        XCTAssertEqual(merged.developerDir, "/Applications/Xcode_27.app/Contents/Developer",
+                       "pin が消えないこと")
+    }
+
+    /// 新しいクライアントが明示的に "" を送れば消える(pin を外す唯一の JSON 経路)。
+    /// 実値を送れば上書きされる。どちらも sentKey=true として届く(fmConcurrency の 0 と同じ形)
+    func testImportHonoursExplicitDeveloperDir() throws {
+        let existing = [RemoteHostEntry(machine: "M1Ultra", host: "user@h",
+                                        developerDir: "/Applications/Xcode_27.app/Contents/Developer")]
+
+        let cleared = try XCTUnwrap(ApiRemoteHostsCommand.decodeImportEntries(
+            #"[{"machine":"M1Ultra","host":"user@h","developerDir":""}]"#).first)
+        XCTAssertEqual(cleared.developerDir, "", "キーとしては届く(nil ではない)")
+        XCTAssertNil(ApiRemoteHostsCommand.mergingDeveloperDir(
+            cleared.entry, sentKey: cleared.developerDir != nil, from: existing).developerDir)
+
+        let set = try XCTUnwrap(ApiRemoteHostsCommand.decodeImportEntries(
+            #"[{"machine":"M1Ultra","host":"user@h","developerDir":"/Applications/Xcode_26.2.app/Contents/Developer"}]"#)
+            .first)
+        XCTAssertEqual(ApiRemoteHostsCommand.mergingDeveloperDir(
+            set.entry, sentKey: set.developerDir != nil, from: existing).developerDir,
+            "/Applications/Xcode_26.2.app/Contents/Developer")
+    }
+
+    /// mergingFMConcurrency は developerDir を作り直しで落とさない(2つの merge を続けて
+    /// 適用する ApiRemoteHostsCommand.run() の実際の順序と同じ前提)
+    func testMergingFMConcurrencyKeepsDeveloperDir() throws {
+        let incoming = try XCTUnwrap(ApiRemoteHostsCommand.decodeImportEntries(
+            #"[{"machine":"M1Ultra","host":"user@h","developerDir":"/Applications/Xcode_27.app/Contents/Developer"}]"#)
+            .first)
+        let merged = ApiRemoteHostsCommand.mergingFMConcurrency(
+            incoming.entry, sentKey: false, from: [])
+        XCTAssertEqual(merged.developerDir, "/Applications/Xcode_27.app/Contents/Developer")
+    }
 }

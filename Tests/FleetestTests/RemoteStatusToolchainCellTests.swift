@@ -83,4 +83,41 @@ final class RemoteStatusToolchainCellTests: XCTestCase {
         XCTAssertNil(r.revisionCompatible)
         XCTAssertFalse(r.compatible)
     }
+
+    // MARK: - Xcode 選択の拒否(docs/remote-runner.md §7)
+
+    /// XcodeSelection が refused(候補が複数/0個)のときは、**toolchain の文字列が一致していても**
+    /// TOOLCHAIN が ❌ になる ―― これが無いと「ambient がたまたま一致した」ときだけ緑になる
+    /// 運任せの判定になる(候補一覧を出して拒否したのに表は緑、という食い違いを防ぐ)
+    func testXcodeSelectionRefusalForcesToolchainRedEvenIfStringsMatch() {
+        let status = RemoteHostStatus(
+            session: nil, revision: "abc",
+            toolchain: "Xcode 27.0 Build version 27A1 / iphonesimulator 27A1",
+            binaryPresent: true, freeKB: nil)
+        let row = HostRow(sshTarget: "host", reachable: true, detail: nil, status: status, fmOK: nil,
+                          xcodeSelectionRefusalReason: "could not tell which installed Xcode to dispatch with"
+                              + " (candidates: Xcode 27.0 (build 27A1) at /Applications/Xcode_27.app,"
+                              + " Xcode 27.0 (build 27A2) at /Applications/Xcode_27_beta.app)")
+        let r = HostReport(row: row, localRevision: "abc",
+                           localToolchain: "Xcode 27.0 Build version 27A1 / iphonesimulator 27A1")
+        XCTAssertEqual(r.toolchainCompatible, false)
+        XCTAssertFalse(r.compatible)
+        XCTAssertEqual(RemoteCommand.Status.toolchainCell(r, value: r.status?.toolchain),
+                       "❌ Xcode 27.0 Build version 27A1 / iphonesimulator 27A1")
+        XCTAssertEqual(r.xcodeSelectionRefusalReason, row.xcodeSelectionRefusalReason)
+    }
+
+    /// nil(pin 済み・自動選択できた・候補ゼロで ambient)なら、従来どおり文字列比較だけで決まる
+    func testNoXcodeSelectionRefusalLeavesToolchainVerdictUnaffected() {
+        let status = RemoteHostStatus(
+            session: nil, revision: "abc",
+            toolchain: "Xcode 27.0 Build version 27A1 / iphonesimulator 27A1",
+            binaryPresent: true, freeKB: nil)
+        let row = HostRow(sshTarget: "host", reachable: true, detail: nil, status: status, fmOK: nil)
+        XCTAssertNil(row.xcodeSelectionRefusalReason)
+        let r = HostReport(row: row, localRevision: "abc",
+                           localToolchain: "Xcode 27.0 Build version 27A1 / iphonesimulator 27A1")
+        XCTAssertEqual(r.toolchainCompatible, true)
+        XCTAssertNil(r.xcodeSelectionRefusalReason)
+    }
 }

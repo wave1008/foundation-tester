@@ -894,6 +894,26 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertFalse(without.contains("FT_FM_CONCURRENCY"), without)
     }
 
+    /// Xcode の選択(docs/remote-runner.md §7)。**非 nil のときだけ** export する ——
+    /// nil(ambient)のときに1バイトも足さないことと、非 nil のときは launch(binary 実行)の
+    /// 前に export が来ることの両方を固定する
+    func testRemoteRunCommandExportsDeveloperDirOnlyWhenGiven() {
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let pinned = RemoteShell.remoteRunCommand(
+            layout: layout, fleetestArgs: ["run"],
+            developerDir: "/Applications/Xcode_27.app/Contents/Developer")
+        XCTAssertTrue(
+            pinned.contains("export DEVELOPER_DIR='/Applications/Xcode_27.app/Contents/Developer' && "), pinned)
+        guard let devDirRange = pinned.range(of: "DEVELOPER_DIR"),
+              let guardRange = pinned.range(of: "test -x") else {
+            return XCTFail("expected markers missing: \(pinned)")
+        }
+        XCTAssertTrue(devDirRange.lowerBound < guardRange.lowerBound, pinned)
+
+        let ambient = RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: ["run"])
+        XCTAssertFalse(ambient.contains("DEVELOPER_DIR"), ambient)
+    }
+
     /// 未 setup の発行者(work が無い)は exit 91 の専用ガードで fail fast する(§18.2)。
     /// バイナリ不在(exit 90)より手前に置く —— workspace 自体が無ければバイナリの有無を
     /// 問うても意味が無い
@@ -1457,6 +1477,28 @@ final class RemoteDispatchTests: XCTestCase {
             + "perl -e 'alarm shift; exec @ARGV' 10 xcrun simctl list runtimes 2>/dev/null || true")
     }
 
+    /// `developerDir` はブロックを増やさず、既存の joined 文字列の先頭に export を1つ足すだけ
+    /// (`parse` は固定インデックスでブロックを読むので、新しいブロックを足すと後続がずれる)。
+    /// export 以降は developerDir なしの版とバイト同一であること・ブロック数(separator の出現数)が
+    /// 変わらないことの両方を固定する
+    func testStatusProbeCommandPrefixesDeveloperDirExportWithoutShiftingBlocks() {
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let ambient = RemoteStatusProbe.command(layout: layout, simulatorRuntime: true)
+        let pinned = RemoteStatusProbe.command(
+            layout: layout, simulatorRuntime: true,
+            developerDir: "/Applications/Xcode_27.app/Contents/Developer")
+        XCTAssertEqual(pinned, "export DEVELOPER_DIR='/Applications/Xcode_27.app/Contents/Developer'; " + ambient)
+        XCTAssertEqual(
+            pinned.components(separatedBy: "echo '---FT---'").count,
+            ambient.components(separatedBy: "echo '---FT---'").count)
+    }
+
+    /// nil(既定)は1バイトも足さない(呼び出し元を1つずつ opt-in させる。ambient のまま = 従来どおり)
+    func testStatusProbeCommandOmitsDeveloperDirExportWhenNil() {
+        let layout = RemoteLayout(base: "/b", issuer: "alice")
+        XCTAssertFalse(RemoteStatusProbe.command(layout: layout, simulatorRuntime: true).contains("DEVELOPER_DIR"))
+    }
+
     /// `api remote-compat`(拡張がリモート実行の前に毎回待つ)は RUNTIME を読まない ——
     /// simctl の往復を実行開始の前に払わせない。落とすのは FM の台帳までの8ブロック
     func testStatusProbeWithoutRuntimeOmitsSimctl() {
@@ -1731,6 +1773,26 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     // MARK: - RemoteShell.remoteExecCommand
+
+    /// **既定は nil = ambient**。モニターの fan-out / device-stream(`remote exec <runner> --
+    /// api monitor|api device-stream`)はこれを渡さない ―― 版の違う simctl を同じ
+    /// CoreSimulatorService に当てる危険を実行以外の経路にまで広げないため
+    func testRemoteExecCommandOmitsDeveloperDirByDefault() {
+        let layout = RemoteLayout(base: "/b", issuer: "alice")
+        XCTAssertFalse(
+            RemoteShell.remoteExecCommand(layout: layout, args: ["api", "monitor"]).contains("DEVELOPER_DIR"))
+    }
+
+    /// 明示すれば export する(remoteRunCommand と同じ形)。呼び出し元は今のところ無いが、
+    /// 将来 exec 経由で Xcode 依存のコマンド(bridge down 等)を撃つ口を足すときのための配線
+    func testRemoteExecCommandExportsDeveloperDirWhenGiven() {
+        let layout = RemoteLayout(base: "/b", issuer: "alice")
+        let command = RemoteShell.remoteExecCommand(
+            layout: layout, args: ["doctor"],
+            developerDir: "/Applications/Xcode_27.app/Contents/Developer")
+        XCTAssertTrue(
+            command.contains("export DEVELOPER_DIR='/Applications/Xcode_27.app/Contents/Developer' && "), command)
+    }
 
     // MARK: - RemoteReportLink
 

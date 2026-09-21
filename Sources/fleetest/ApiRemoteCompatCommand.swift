@@ -48,7 +48,7 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
                 machines[index] = RemoteCompatMachineJSON(
                     machine: name, sshTarget: name, reachable: false, revision: nil,
                     revisionCompatible: nil, revisionRelation: nil, toolchain: nil, toolchainCompatible: nil,
-                    toolchainAdvisory: nil, error: error.localizedDescription)
+                    toolchainAdvisory: nil, xcodeSelectionError: nil, error: error.localizedDescription)
             }
         }
 
@@ -78,6 +78,7 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
                 toolchain: report.status?.toolchain,
                 toolchainCompatible: report.toolchainCompatible,
                 toolchainAdvisory: report.toolchainAdvisory,
+                xcodeSelectionError: report.xcodeSelectionRefusalReason,
                 error: report.detail)
         }
 
@@ -159,11 +160,14 @@ private struct RemoteCompatMachineJSON: Encodable {
     let toolchainCompatible: Bool?
     /// toolchainCompatible が true でも advisory があれば1文。無ければ null
     let toolchainAdvisory: String?
+    /// ランナーで使う Xcode を決められなかったときの理由(候補一覧つき)。**非 null なら実行は止まる**
+    /// (`toolchainCompatible` も false になる)。`remote status --json` と同じ鍵
+    let xcodeSelectionError: String?
     let error: String?
 
     private enum CodingKeys: String, CodingKey {
         case machine, sshTarget, reachable, revision, revisionCompatible, revisionRelation,
-             toolchain, toolchainCompatible, toolchainAdvisory, error
+             toolchain, toolchainCompatible, toolchainAdvisory, xcodeSelectionError, error
     }
 
     func encode(to encoder: Encoder) throws {
@@ -177,6 +181,7 @@ private struct RemoteCompatMachineJSON: Encodable {
         try container.encode(toolchain, forKey: .toolchain)
         try container.encode(toolchainCompatible, forKey: .toolchainCompatible)
         try container.encode(toolchainAdvisory, forKey: .toolchainAdvisory)
+        try container.encode(xcodeSelectionError, forKey: .xcodeSelectionError)
         try container.encode(error, forKey: .error)
     }
 }

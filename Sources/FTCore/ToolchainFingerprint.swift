@@ -45,6 +45,15 @@ public enum ToolchainFingerprint {
         return version.isEmpty ? nil : String(version)
     }
 
+    /// `compose` の出力("Xcode 27.0 Build version 27A5228h / iphonesimulator 24A434")から
+    /// Xcode の build 番号("27A5228h")だけを切り出す。"Build version " が無ければ nil
+    /// (remote dispatch の `XcodeSelection.resolve` が build 番号までの一致を優先するのに使う)
+    public static func buildVersion(of fingerprint: String) -> String? {
+        guard let range = fingerprint.range(of: "Build version ") else { return nil }
+        let build = fingerprint[range.upperBound...].prefix(while: { $0 != " " })
+        return build.isEmpty ? nil : String(build)
+    }
+
     private static func run(_ command: [String]) -> String? {
         guard let result = try? Shell.run(command), result.status == 0 else { return nil }
         let output = result.output.trimmingCharacters(in: .whitespacesAndNewlines)

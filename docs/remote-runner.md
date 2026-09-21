@@ -275,6 +275,26 @@ Android は `no running emulator for AVD ...` で失敗する)。`fleetest devic
   入る1点だけ)。仕分けは `fleetest api remote-compat` / `fleetest remote status --json` の
   `toolchainAdvisory: String?` が持ち、`toolchainCompatible` は「blocking で止まるか」の意味になる
   (advisory のときも true)
+- **ランナーに複数の Xcode が入っているときは、発行側の Xcode に一致するものへディスパッチが
+  自動で選ぶ**(ユーザー決定)。選ぶのは **`DEVELOPER_DIR`**(プロセス単位・sudo 不要)——
+  **`xcode-select -s` は使わない**: 機械全体に効き sudo が要るので、共有ランナーでは自分の選択が
+  他の利用者の run を壊す。候補はランナーの **`/Applications` 直下**の `Xcode*.app` だけ
+  (`CFBundleShortVersionString` / `ProductBuildVersion` を読む)。**別の場所に置いた Xcode は
+  見つからないので登録簿の pin(`RemoteHostEntry.developerDir`)で指定する**。選択規則
+  (この順): ①pin があればそれ ②build 番号まで一致する候補がちょうど1つならそれ ③製品版
+  (`Xcode X.Y`)が一致する候補がちょうど1つならそれ ④候補が空(列挙できない・Xcode が無い)なら
+  何もしない(従来どおり ambient = `xcode-select -p` の結果)⑤一致0個・複数なら**候補一覧を出して
+  ディスパッチを拒否**する(手近な Xcode へ黙って倒さない)。**適合チェック(probe)と実行(run)は
+  必ず同じ `DEVELOPER_DIR` の解決を通る** —— 食い違うと「照合した Xcode と違う Xcode で走る」
+  沈黙した退行になる。**モニター(デバイスの状態・ライブ映像)には効かせない** —— 観測は
+  dispatch.lock の外で常時走るので、版の違う simctl を同じ CoreSimulatorService に当てる危険を
+  増やさない。効果として、**Xcode の製品版が違うランナーも、その製品版の Xcode さえ入っていれば
+  フリートに混ぜられる**(この選択が無ければ製品版違い = 常にディスパッチが止まる)。
+  **iOS シミュレータのランタイムは Xcode に付いてこない**(CoreSimulator のランタイムは機械共有)
+  ので、選んだ Xcode の製品版に対応するランタイムが無ければ起動できない —— `remote status` の
+  RUNTIME 欄が既にこれを警告する。**製品版をまたいでフリートを混ぜると、OCR・FM は OS 付属**
+  なので結果が機械で変わりうる(既存の macOS 混在の注意と同じ)。赤の帰属は run.json の
+  `toolchain` 欄(docs/results-json.md)で追える
 - **照会そのものが失敗したときは理由まで出す**(2026-09-09)。`RemoteCompat.ProbeOutcome` が
   「値が無い」と「なぜ取れなかったか」を別に持ち、ssh の exit status とリモートの出力を
   reasons へ載せる。**照会系は1回だけ引き直す**(待ち時間は置かない) —— ssh の単発失敗は
@@ -1413,10 +1433,15 @@ FM 可否・**ログイン状態**(16.3)・空き容量・**占有**(LOCK。§18
 
 ### 16.6 ツールチェーン更新の運用手順
 
-**止まるのは Xcode の製品版(X.Y)をまたぐ更新だけ**(§7)。同じ製品版のベータ間(build 番号
-だけの違い)は advisory になり、ディスパッチは止まらない。製品版をまたぐ更新では、フリートでは
-**カナリア更新**(1台だけ更新 → 検証ディスパッチ1本 → 通ってから残りへ展開)を手順とする。
-将来 `remote update --canary` として自動化する価値がある(Phase 3 以降)。
+**止まるのは、発行側の製品版に一致する Xcode がランナーに1つも無いときだけ**(§7)。同じ
+製品版のベータ間(build 番号だけの違い)は advisory になり、ディスパッチは止まらない。
+**製品版をまたぐ更新は「新しい Xcode を `/Applications` に並べて入れる」だけで済む** ——
+旧 Xcode を消さなければディスパッチは発行側に合う方を自動で選ぶので、両機を同時に上げる
+必要が無い。**旧 Xcode を消して置き換える運用にする場合だけ**、フリートでは**カナリア更新**
+(1台だけ更新 → 検証ディスパッチ1本 → 通ってから残りへ展開)を手順とする(置き換えの間、
+その製品版に一致する Xcode が無い機械へのディスパッチは止まる)。別の場所に置いた Xcode・
+同じ製品版の複数ビルドを使い分けたい場合は登録簿の `developerDir` pin で固定する。将来
+`remote update --canary` として自動化する価値がある(Phase 3 以降)。
 
 ### 16.7 その他の運用契約
 
