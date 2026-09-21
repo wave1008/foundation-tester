@@ -129,8 +129,25 @@ public final class ProvisionLock {
 /// **実測 2026-09-05**: 誰も LISTEN していない .inapp と、対になる .pid が無い .endpoint/.device が
 /// 手元に残っていた。前者は assignPort に「使用中」と誤認されてポートが飛ばされ、後者は
 /// DriverOptions.makeDriver(Sources/fleetest/Fleetest.swift)が古い宛先へ接続しに行く原因になる。
+extension BridgeProvisioner {
+    /// 控えが無い(この変更を入れた直後・別経路が起こしたブリッジ)と、版が違うのは別の事実
+    static func toolchainMismatchReason(stateDir: URL, port: UInt16) -> String {
+        FileManager.default.fileExists(atPath: BridgeToolchainLedger.url(stateDir: stateDir, port: port).path)
+            ? "was built with a different Xcode toolchain"
+            : "has no record of which Xcode toolchain built it"
+    }
+}
+
 enum StaleLedgerSweep {
     enum Ledger: Hashable, Sendable { case pid, inapp, endpoint, device }
+
+    /// `.toolchain`(BridgeToolchainLedger)を消すか。**Ledger には入れない** —— あれは
+    /// 「対の台帳が揃っているか」の判定で、こちらの基準は**そのポートのブリッジが生きているか**の
+    /// 1点だけ。**残すのは生きているときだけ**(reuse 判定がこれを読むので、消し忘れると死んだ
+    /// ブリッジの指紋がいつまでも一致し続け、版の違うブリッジを再利用してしまう)
+    static func toolchainIsOrphan(hasToolchain: Bool, hasPid: Bool, inappListening: Bool) -> Bool {
+        hasToolchain && !(hasPid || inappListening)
+    }
 
     struct Inputs {
         let hasPid: Bool
@@ -500,10 +517,10 @@ public struct BridgeProvisioner {
 
     /// .pid はこれまでどおり BridgeLauncher.sweepStalePidFiles(TTL 自主終了の ps 照合)に委ねる。
     /// ここではそれに加えて、対応する実体が消えた .inapp(LISTEN 実体なし)・.endpoint/.device
-    /// (対になる .pid が無い = 実機ランナー不在)・iproxy-<port>.pid(死んだ実機トンネル)を
-    /// 掃除する。.pid の掃除を先に済ませてから残った台帳を見るので、StaleLedgerSweep.decide への
-    /// pidAlive は「.pid が今も存在するか」で代用できる(死んだ分は直前の sweepStalePidFiles で
-    /// 既に消えている)
+    /// (対になる .pid が無い = 実機ランナー不在)・.toolchain(BridgeToolchainLedger。ポートが
+    /// 死んでいれば一緒に消す)・iproxy-<port>.pid(死んだ実機トンネル)を掃除する。.pid の掃除を
+    /// 先に済ませてから残った台帳を見るので、StaleLedgerSweep.decide への pidAlive は
+    /// 「.pid が今も存在するか」で代用できる(死んだ分は直前の sweepStalePidFiles で既に消えている)
     static func sweepStaleLedgers(repoRoot: URL) {
         let stateDir = repoRoot.appendingPathComponent(".fleetest")
         BridgeLauncher.sweepStalePidFiles(repoRoot: repoRoot)
@@ -514,7 +531,8 @@ public struct BridgeProvisioner {
             at: stateDir, includingPropertiesForKeys: nil) else { return }
         var ports: Set<UInt16> = []
         for entry in entries where entry.lastPathComponent.hasPrefix("bridge-") {
-            guard ["pid", "inapp", "endpoint", "device"].contains(entry.pathExtension) else { continue }
+            guard ["pid", "inapp", "endpoint", "device", "toolchain"].contains(entry.pathExtension)
+            else { continue }
             let portStr = entry.deletingPathExtension().lastPathComponent
                 .replacingOccurrences(of: "bridge-", with: "")
             if let port = UInt16(portStr) { ports.insert(port) }
@@ -524,21 +542,28 @@ public struct BridgeProvisioner {
             let inappPath = InAppBridgeState.url(stateDir: stateDir, port: port)
             let endpointPath = stateDir.appendingPathComponent("bridge-\(port).endpoint")
             let devicePath = stateDir.appendingPathComponent("bridge-\(port).device")
+            let toolchainPath = BridgeToolchainLedger.url(stateDir: stateDir, port: port)
             let hasPid = FileManager.default.fileExists(atPath: pidPath.path)
             let hasInApp = FileManager.default.fileExists(atPath: inappPath.path)
             let hasEndpoint = FileManager.default.fileExists(atPath: endpointPath.path)
             let hasDevice = FileManager.default.fileExists(atPath: devicePath.path)
+            let hasToolchain = FileManager.default.fileExists(atPath: toolchainPath.path)
             // .pid だけのポートは sweepStalePidFiles が既に判定済み(何もすることが無い)
-            guard hasInApp || hasEndpoint || hasDevice else { continue }
+            guard hasInApp || hasEndpoint || hasDevice || hasToolchain else { continue }
 
+            let inappListening = hasInApp && PortHolder.describe(port: port) != nil
             let stale = StaleLedgerSweep.decide(.init(
                 hasPid: hasPid, pidAlive: hasPid,
-                hasInApp: hasInApp, inappListening: hasInApp && PortHolder.describe(port: port) != nil,
+                hasInApp: hasInApp, inappListening: inappListening,
                 hasEndpoint: hasEndpoint, hasDevice: hasDevice))
             if stale.contains(.pid) { try? FileManager.default.removeItem(at: pidPath) }
             if stale.contains(.inapp) { try? FileManager.default.removeItem(at: inappPath) }
             if stale.contains(.endpoint) { try? FileManager.default.removeItem(at: endpointPath) }
             if stale.contains(.device) { try? FileManager.default.removeItem(at: devicePath) }
+            if StaleLedgerSweep.toolchainIsOrphan(hasToolchain: hasToolchain, hasPid: hasPid,
+                                                  inappListening: inappListening) {
+                try? FileManager.default.removeItem(at: toolchainPath)
+            }
         }
     }
 
@@ -1027,6 +1052,31 @@ public struct BridgeProvisioner {
                         preinstallAppPath: preinstallAppPath, claimed: claimed, log: log)
                 } catch {}
             }
+            // **ツールチェーンが変わっていれば再利用しない**(BridgeToolchainLedger。起動時点の
+            // 指紋と比べる。成果物の指紋と比べてはいけない理由は同ファイルの doc)
+            // 仕分けは BridgeToolchainLedger.decide の1箇所(リースのある台に触らない理由も同 doc)
+            switch BridgeToolchainLedger.decide(
+                toolchainMatches: BridgeToolchainLedger.matchesCurrent(
+                    stateDir: fleetestStateDir, port: port),
+                hasForeignLease: RunnerAccessibilityHealth.hasForeignLease(
+                    udid: sim.udid, stateDir: fleetestStateDir)) {
+            case .reuse:
+                break
+            case .warnAndReuse:
+                log("⚠️ \(name): the running \(engine) bridge"
+                    + " \(Self.toolchainMismatchReason(stateDir: fleetestStateDir, port: port)),"
+                    + " but another process holds this device — reusing it as is"
+                    + " (restarting it would break that run)")
+            case .restart:
+                log("→ \(name): the running \(engine) bridge"
+                    + " \(Self.toolchainMismatchReason(stateDir: fleetestStateDir, port: port))"
+                    + " — restarting it")
+                return try await executeBridge(
+                    engine: engine,
+                    plan: .launch(port: port, needsInstall: false, stopStalePort: port, reclaimInApp: false),
+                    name: name, sim: sim, bundleID: bundleID,
+                    preinstallAppPath: preinstallAppPath, claimed: claimed, log: log)
+            }
             await claimed()
             log("✅ \(name): reusing the running \(engine) bridge (port \(port), \(sim.name))")
             return port
@@ -1109,6 +1159,14 @@ public struct BridgeProvisioner {
                 log("⚠️ \(name): the bridge that was starting on port \(port) is from an older build"
                     + " (v\(status.protocolVersion.map(String.init) ?? "?"), this tool expects"
                     + " v\(BridgeAPI.bridgeProtocolVersion)) — stopping and restarting it")
+                return try await stopAndRelaunch()
+            }
+            // **同じ機械でも発行者ごとに Xcode が違いうる**(共有ランナー)ので、この判定も通す。
+            // 起動した側の record() 書き込み前にここへ来ると「控え無し」で不一致扱いになるが、
+            // それは他の劣化判定(版不一致・無応答・起動タイムアウト)と同じ「疑わしくば作り直す」側
+            if !BridgeToolchainLedger.matchesCurrent(stateDir: fleetestStateDir, port: port) {
+                log("⚠️ \(name): the bridge that was starting on port \(port) has no confirmed record of"
+                    + " being built with this tool's Xcode toolchain — stopping and restarting it")
                 return try await stopAndRelaunch()
             }
             log("✅ \(name): took over the \(engine) bridge that was starting (port \(port))")
@@ -1318,6 +1376,8 @@ public struct BridgeProvisioner {
                     throw BridgeProvisionerError.notReady(port: port, underlying: error)
                 }
             }
+            // **両エンジンの唯一の ready 合流点**。起動した時点の指紋を控える(BridgeToolchainLedger の doc)
+            BridgeToolchainLedger.record(stateDir: stateDir, port: port)
             log("✅ \(name): \(engine) bridge ready (port \(port))")
             return port
         }

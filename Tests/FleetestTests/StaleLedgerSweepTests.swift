@@ -109,4 +109,60 @@ final class StaleLedgerSweepTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: bridgePid.path),
                       "bridge-<port>.pid はこのスイープの対象外")
     }
+
+    // MARK: - BridgeProvisioner.sweepStaleLedgers(repoRoot:) の .toolchain 対応
+    //
+    // .toolchain は StaleLedgerSweep.Ledger に無い独立ファイル(BridgeProvisioner の該当箇所参照)。
+    // decide() の等号テストでは拾えないので、実際のディレクトリ走査を通して確かめる。
+
+    private func makeRepoRoot() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ft-sweep-toolchain-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent(".fleetest"), withIntermediateDirectories: true)
+        return root
+    }
+
+    /// .pid も .inapp も無い(実機ランナー不在と同じ形)ポートの .toolchain は
+    /// .endpoint/.device と一緒に消える
+    func testSweepRemovesOrphanToolchainWithoutPidOrInApp() throws {
+        let root = try makeRepoRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let stateDir = root.appendingPathComponent(".fleetest")
+        let port: UInt16 = 8199
+        try "127.0.0.1".write(to: stateDir.appendingPathComponent("bridge-\(port).endpoint"),
+                              atomically: true, encoding: .utf8)
+        try "udid".write(to: stateDir.appendingPathComponent("bridge-\(port).device"),
+                         atomically: true, encoding: .utf8)
+        BridgeToolchainLedger.record(stateDir: stateDir, port: port, toolchain: "Xcode 27.0")
+
+        BridgeProvisioner.sweepStaleLedgers(repoRoot: root)
+
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: BridgeToolchainLedger.url(stateDir: stateDir, port: port).path),
+            "対応する .pid/.inapp が無い .toolchain は消えること(死んだブリッジの指紋を残さない)")
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: stateDir.appendingPathComponent("bridge-\(port).endpoint").path))
+    }
+
+    /// 実際に LISTEN している in-app ブリッジの .toolchain は残る(生きている限り消さない ——
+    /// 消すと reuse 判定が毎回「控え無し」で建て直しになる)
+    /// 生きているポートの `.toolchain` は残すこと。**実ポートを掴まない** —— 並列テストで
+    /// ホストの共有資源(ポート)を取り合うと、判定と無関係な理由で赤くなる。生死の入力は
+    /// 呼び出し側が測るので、ここは規則そのものを全組み合わせで固める
+    func testToolchainIsOrphanOnlyWhenTheBridgeIsGone() {
+        // 生きている(xcuitest は .pid / in-app は LISTEN)なら残す
+        XCTAssertFalse(StaleLedgerSweep.toolchainIsOrphan(
+            hasToolchain: true, hasPid: true, inappListening: false))
+        XCTAssertFalse(StaleLedgerSweep.toolchainIsOrphan(
+            hasToolchain: true, hasPid: false, inappListening: true))
+        XCTAssertFalse(StaleLedgerSweep.toolchainIsOrphan(
+            hasToolchain: true, hasPid: true, inappListening: true))
+        // どちらの生存の印も無ければ消す(残すと死んだブリッジの指紋が一致し続ける)
+        XCTAssertTrue(StaleLedgerSweep.toolchainIsOrphan(
+            hasToolchain: true, hasPid: false, inappListening: false))
+        // 控えが無ければ何もしない
+        XCTAssertFalse(StaleLedgerSweep.toolchainIsOrphan(
+            hasToolchain: false, hasPid: false, inappListening: false))
+    }
 }
