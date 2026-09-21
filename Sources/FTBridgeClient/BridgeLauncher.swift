@@ -1159,8 +1159,10 @@ public enum LauncherError: Error, LocalizedError {
         case .xctestrunNotFound(let path):
             return "xctestrun not found (build-for-testing must run first): \(path)"
         case .notRunning(let port):
-            let file = port.map { ".fleetest/bridge-\($0).pid" } ?? ".fleetest/bridge-<port>.pid"
-            return "the bridge is not running (no \(file))"
+            // **両方の台帳を名指す** —— in-app ブリッジ(dylib 注入)は `.pid` を持たず `.inapp` なので、
+            // `.pid` だけ挙げると「inapp と表示されたポートなのに pid が無いと言われた」になる
+            let stem = port.map { ".fleetest/bridge-\($0)" } ?? ".fleetest/bridge-<port>"
+            return "the bridge is not running (no \(stem).pid and no \(stem).inapp)"
         case .notOwnedByThisRepo(let port, let device, let version):
             // 「起動していません」と言うと事実と食い違う(実際は応答している)。実害: 別クローンの
             // 旧版ブリッジがポートとシミュレータを 7 時間握り、原因の切り分けに時間を要した

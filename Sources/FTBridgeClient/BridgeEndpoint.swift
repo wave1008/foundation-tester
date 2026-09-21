@@ -66,7 +66,10 @@ public struct BridgeEndpoint: Sendable, Hashable, Codable {
         (try? RepoRoot.find()).map { load(port: port, repoRoot: $0) } ?? BridgeEndpoint(port: port)
     }
 
-    /// 記録が無ければループバック(= シミュレータ・Android の既定)
+    /// 記録が無ければループバック(= シミュレータ・Android の既定)。**host が使えない台帳は
+    /// 「記録が無かった」と同じ扱い**にする(壊れた1行を信用すると `BridgeClient.init` の
+    /// `URL(string:)!` が強制開封でクラッシュし、そのポートを開く全プロセスが道連れになった実績があるため)。
+    /// token は host が妥当なときだけ読む —— 1行目が壊れているファイルは2行目も含めて信用しない
     public static func load(port: UInt16, repoRoot: URL) -> BridgeEndpoint {
         guard let raw = try? String(contentsOf: fileURL(port: port, repoRoot: repoRoot),
                                     encoding: .utf8) else {
@@ -74,9 +77,18 @@ public struct BridgeEndpoint: Sendable, Hashable, Codable {
         }
         let lines = raw.components(separatedBy: "\n")
         let host = lines[0].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isUsableHost(host) else { return BridgeEndpoint(port: port) }
         let token = lines.count > 1 ? lines[1].trimmingCharacters(in: .whitespacesAndNewlines) : nil
-        return BridgeEndpoint(host: host.isEmpty ? loopbackHost : host, port: port,
+        return BridgeEndpoint(host: host, port: port,
                               token: (token?.isEmpty ?? true) ? nil : token)
+    }
+
+    /// 「この文字列で `http://<host>:<port>` の URL が作れるか」。空/空白のみ・制御文字や
+    /// 空白を含む文字列(JSON の破片等)は `URL(string:)` が nil を返すので、それを弾く基準に使う
+    static func isUsableHost(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        return URL(string: "http://\(trimmed):1") != nil
     }
 
     public static func forget(port: UInt16, repoRoot: URL) {

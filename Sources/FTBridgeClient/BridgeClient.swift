@@ -134,7 +134,10 @@ public final class BridgeClient: AppDriver {
         token: String? = nil,
         physicalUDID: String? = nil,
         simulatorUDID: String? = nil) {
-        self.baseURL = URL(string: "http://\(host):\(port)")!
+        // host は BridgeEndpoint.load が検証済みのはずだが、二重の備えとして loopback へ倒す
+        // (loopbackHost は固定の妥当な値なのでこの URL 生成自体は失敗しない)
+        self.baseURL = URL(string: "http://\(host):\(port)")
+            ?? URL(string: "http://\(BridgeEndpoint.loopbackHost):\(port)")!
         self.port = port
         self.physicalUDID = physicalUDID
         self.simulatorUDID = simulatorUDID
