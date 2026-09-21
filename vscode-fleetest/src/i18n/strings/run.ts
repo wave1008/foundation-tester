@@ -206,4 +206,12 @@ export const runStrings = {
     ja: "toolchain 不一致 ({toolchain})",
     en: "toolchain mismatch ({toolchain})",
   },
+  "run.remoteCompat.advisoryNotice": {
+    ja: "リモート機の toolchain が混在しています(実行は続行します): {detail}",
+    en: "Toolchain differs across remote runners (the run continues): {detail}",
+  },
+  "run.remoteCompat.advisoryDialogHeader": {
+    ja: "以下は実行を止めません:",
+    en: "The following does not block the run:",
+  },
 } satisfies MessageDict;

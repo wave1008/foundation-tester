@@ -187,6 +187,29 @@ final class RunRecordTests: XCTestCase {
         XCTAssertNil(meta.runGroup)
     }
 
+    /// ツールチェーン指紋は **begin と finish の両方**で同じ値を書く(リモートで toolchain の
+    /// 混在を許すぶん、赤がどの機械の Xcode で出たかを追う事実。docs/results-json.md の toolchain)。
+    /// **期待値を production の呼び出しで作らない** —— 形(`Xcode ` 始まり)と begin/finish の
+    /// 一致だけを見る(`swift test` は Xcode のある機械でしか走らない)
+    func testRecorderWritesTheToolchainFingerprintAtBeginAndFinish() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fleetest-runrecord-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let recorder = RunRecorder.begin(project: TestProject(name: "P", rootURL: root),
+                                         profile: nil, trigger: "cli", captureHostMetrics: false)
+        let metaURL = recorder.runDir.appendingPathComponent("run.json")
+        func read() throws -> RunMetaRecord {
+            try JSONDecoder().decode(RunMetaRecord.self, from: Data(contentsOf: metaURL))
+        }
+        let begun = try XCTUnwrap(try read().toolchain, "begin で toolchain が書かれていない")
+        XCTAssertTrue(begun.hasPrefix("Xcode "), begun)
+
+        recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false,
+                        fmSettings: testFMSettings, setOverrides: nil)
+        XCTAssertEqual(try read().toolchain, begun, "finish で欄が落ちてはいけない")
+    }
+
     // MARK: - fmSettings(実効 FM 設定)
 
     /// **4つとも常に明示的に書く**(true/false のどちらも省略しない)。JSONSerialization で

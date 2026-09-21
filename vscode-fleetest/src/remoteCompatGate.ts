@@ -14,6 +14,9 @@ export interface RemoteCompatMachine {
   readonly revisionRelation?: string | null;
   readonly toolchain?: string | null;
   readonly toolchainCompatible?: boolean | null;
+  /** 非 null なら「止めないが混在している」(例: Xcode 製品版は同じでベータ seed だけ違う)。
+   * 非 null のときは toolchainCompatible は true(止めない側) */
+  readonly toolchainAdvisory?: string | null;
   readonly error?: string | null;
 }
 
@@ -24,11 +27,17 @@ export interface RemoteCompatReport {
   readonly revisionPublished?: boolean;
 }
 
+export interface RemoteCompatAdvisory {
+  readonly machine: string;
+  readonly advisory: string;
+}
+
 export type RemoteCompatDecision =
-  | { readonly kind: "proceed" }
+  | { readonly kind: "proceed"; readonly advisoryMachines: RemoteCompatAdvisory[] }
   | {
       readonly kind: "ask";
       readonly incompatible: RemoteCompatMachine[];
+      readonly advisoryMachines: RemoteCompatAdvisory[];
       readonly canUpdate: boolean;
       readonly updatableMachines: string[];
       readonly localDirty: boolean;
@@ -37,6 +46,19 @@ export type RemoteCompatDecision =
       readonly divergedMachines: string[];
       readonly unknownRelationMachines: string[];
     };
+
+function collectAdvisoryMachines(machines: RemoteCompatMachine[]): RemoteCompatAdvisory[] {
+  const result: RemoteCompatAdvisory[] = [];
+  for (const machine of machines) {
+    if (!machine || typeof machine !== "object") {
+      continue;
+    }
+    if (typeof machine.toolchainAdvisory === "string" && machine.toolchainAdvisory.length > 0) {
+      result.push({ machine: machine.machine, advisory: machine.toolchainAdvisory });
+    }
+  }
+  return result;
+}
 
 /**
  * report を判定する。hosts が空(プロファイルにリモート機なし)・全ホスト互換なら proceed。
@@ -47,11 +69,14 @@ export type RemoteCompatDecision =
  * unknown(判定不能。多くの場合この機械が古い)—— が1機でも居たら align では直らない)。
  * パース不能・想定外の形は proceed(最終ゲートは checkCompatibility 側に残っており、
  * ここでの判定失敗が run を止める理由にはならない)。
+ * advisory(toolchainAdvisory 非 null。ベータ seed 違いなど)は止めない —— incompatible には
+ * 入れず、proceed/ask どちらの variant でも advisoryMachines として並べて返すだけ。
  */
 export function decideRemoteCompat(report: RemoteCompatReport | null | undefined): RemoteCompatDecision {
   if (!report || !Array.isArray(report.machines)) {
-    return { kind: "proceed" };
+    return { kind: "proceed", advisoryMachines: [] };
   }
+  const advisoryMachines = collectAdvisoryMachines(report.machines);
   const incompatible = report.machines.filter(
     (machine) =>
       !machine || typeof machine !== "object"
@@ -59,7 +84,7 @@ export function decideRemoteCompat(report: RemoteCompatReport | null | undefined
         : machine.reachable === false || machine.revisionCompatible === false || machine.toolchainCompatible === false,
   );
   if (incompatible.length === 0) {
-    return { kind: "proceed" };
+    return { kind: "proceed", advisoryMachines };
   }
 
   const revisionUnpublished = report.revisionPublished === false;
@@ -78,6 +103,7 @@ export function decideRemoteCompat(report: RemoteCompatReport | null | undefined
   return {
     kind: "ask",
     incompatible,
+    advisoryMachines,
     canUpdate,
     updatableMachines,
     localDirty: report.localDirty === true,

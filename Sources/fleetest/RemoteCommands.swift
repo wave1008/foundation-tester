@@ -137,7 +137,7 @@ struct RemoteCommand: AsyncParsableCommand {
             let free = r.status?.freeKB.map(formatFreeSpace) ?? "-"
             return [r.sshTarget, "yes", login,
                     mark(r, label: "git revision", value: r.status?.revision),
-                    mark(r, label: "toolchain", value: r.status?.toolchain),
+                    Self.toolchainCell(r, value: r.status?.toolchain),
                     Self.runtimeCell(local: localRuntime, remote: r.status?.simulatorRuntime),
                     fm, binary, free, Self.lockCell(r.status?.lock)]
         }
@@ -193,8 +193,15 @@ struct RemoteCommand: AsyncParsableCommand {
         }
 
         private func mark(_ r: HostReport, label: String, value: String?) -> String {
-            let icon = r.mismatchReasons.contains(where: { $0.hasPrefix(label) }) ? "⚠️" : "✅"
+            let icon = r.verdict.blocking.contains(where: { $0.hasPrefix(label) }) ? "⚠️" : "✅"
             return "\(icon) \(value ?? "?")"
+        }
+
+        /// TOOLCHAIN セルの3値: 一致 ✅ / ベータ seed 差(advisory)⚠️ / 版違い等(blocking)❌
+        static func toolchainCell(_ r: HostReport, value: String?) -> String {
+            if r.toolchainCompatible == false { return "❌ \(value ?? "?")" }
+            if r.toolchainAdvisory != nil { return "⚠️ \(value ?? "?")" }
+            return "✅ \(value ?? "?")"
         }
 
         private func emitJSON(_ reports: [HostReport], localRuntime: String?) {
@@ -205,11 +212,10 @@ struct RemoteCommand: AsyncParsableCommand {
                     loggedIn: r.status?.session?.isLoggedIn,
                     consoleUser: r.status?.session?.consoleUser,
                     revision: r.status?.revision,
-                    revisionCompatible: r.reachable
-                        ? !r.mismatchReasons.contains(where: { $0.hasPrefix("git revision") }) : nil,
+                    revisionCompatible: r.revisionCompatible,
                     toolchain: r.status?.toolchain,
-                    toolchainCompatible: r.reachable
-                        ? !r.mismatchReasons.contains(where: { $0.hasPrefix("toolchain") }) : nil,
+                    toolchainCompatible: r.toolchainCompatible,
+                    toolchainAdvisory: r.toolchainAdvisory,
                     runtime: r.status?.simulatorRuntime,
                     runtimeMatches: Self.runtimeMatches(local: localRuntime, remote: r.status?.simulatorRuntime),
                     fm: r.fmOK,
@@ -951,14 +957,14 @@ struct HostRow: Sendable {
 
 /// HostRow にローカル値との適合判定を添えたもの(表示直前に1回だけ計算する。
 /// タスクグループはローカル値を必要としないため HostRow には含めない)。
-/// `api remote-compat` も同じ mismatchReasons を使って revisionCompatible/toolchainCompatible を出す
+/// `api remote-compat` も同じ verdict を使って revisionCompatible/toolchainCompatible を出す
 struct HostReport {
     let sshTarget: String
     let reachable: Bool
     let detail: String?
     let status: RemoteHostStatus?
     let fmOK: Bool?
-    let mismatchReasons: [String]
+    let verdict: RemoteCompat.CompatVerdict
 
     init(row: HostRow, localRevision: String?, localToolchain: String?) {
         sshTarget = row.sshTarget
@@ -966,13 +972,27 @@ struct HostReport {
         detail = row.detail
         status = row.status
         fmOK = row.fmOK
-        mismatchReasons = row.status.map {
-            RemoteCompat.mismatches(localRevision: localRevision, remoteRevision: $0.revision,
-                                    localToolchain: localToolchain, remoteToolchain: $0.toolchain)
-        } ?? []
+        verdict = row.status.map {
+            RemoteCompat.verdict(localRevision: localRevision, remoteRevision: $0.revision,
+                                 localToolchain: localToolchain, remoteToolchain: $0.toolchain)
+        } ?? RemoteCompat.CompatVerdict()
     }
 
-    var compatible: Bool { reachable && status != nil && mismatchReasons.isEmpty }
+    /// blocking が空か(advisory だけならディスパッチは止まらない)
+    var compatible: Bool { reachable && status != nil && verdict.blocking.isEmpty }
+
+    /// blocking で止まるか(advisory は互換扱い = true)。reachable でなければ判定不能(nil)。
+    /// `remote status --json` と `api remote-compat` が共有する(判定を2箇所に持たない)
+    var revisionCompatible: Bool? {
+        reachable ? !verdict.blocking.contains(where: { $0.hasPrefix("git revision") }) : nil
+    }
+    var toolchainCompatible: Bool? {
+        reachable ? !verdict.blocking.contains(where: { $0.hasPrefix("toolchain") }) : nil
+    }
+    /// toolchainCompatible が true でも advisory があれば1文(ベータ seed 差の説明)
+    var toolchainAdvisory: String? {
+        verdict.advisory.first(where: { $0.hasPrefix("toolchain") })
+    }
 }
 
 private struct StatusHostJSON: Encodable {
@@ -983,7 +1003,10 @@ private struct StatusHostJSON: Encodable {
     let revision: String?
     let revisionCompatible: Bool?
     let toolchain: String?
+    /// blocking で止まるか(advisory = ベータ seed だけの差は true のまま)
     let toolchainCompatible: Bool?
+    /// toolchainCompatible が true でも advisory があれば1文(ベータ seed 差の説明)。無ければ null
+    let toolchainAdvisory: String?
     /// iOS シミュレータのランタイムの指紋。`runtimeMatches` は手元との一致(null = どちらかが不明)。
     /// **警告だけ** —— ここが false でも exit code は変えない
     let runtime: String?

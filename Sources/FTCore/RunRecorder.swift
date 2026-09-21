@@ -31,6 +31,9 @@ public final class RunRecorder: @unchecked Sendable {
     /// 自己申告のディスパッチ発行者(LocalConfig.resolveIssuerId)。begin() で1回だけ解決し、
     /// begin/finish 両方の RunMetaRecord へ同じ値を焼き込む
     private let issuer: String?
+    /// この run を実行している機械のツールチェーン指紋(ToolchainFingerprint.current()。
+    /// プロセス内キャッシュなので begin() で1回だけ読み、issuer と同じく begin/finish 両方へ焼き込む
+    private let toolchain: String?
     /// 同じ実行から分かれた run を束ねる鍵(RunMetaRecord.runGroup の宣言参照)。issuer と同じく
     /// begin/finish 両方へ同じ値を焼き込む —— finish で落とすと、途中で落ちた run だけが
     /// 束から外れて「マシンが1台足りない実行」に見える。
@@ -60,7 +63,8 @@ public final class RunRecorder: @unchecked Sendable {
 
     private init(runID: String, projectName: String, profile: String?, machine: String,
                 trigger: String, startedAt: String, runDir: URL,
-                hostMetrics: HostMetricsRecorder?, issuer: String?, runGroup: String?) {
+                hostMetrics: HostMetricsRecorder?, issuer: String?, toolchain: String?,
+                runGroup: String?) {
         self.runID = runID
         self.projectName = projectName
         self.profile = profile
@@ -70,6 +74,7 @@ public final class RunRecorder: @unchecked Sendable {
         self.runDir = runDir
         self.hostMetrics = hostMetrics
         self.issuer = issuer
+        self.toolchain = toolchain
         self.runGroup = runGroup
     }
 
@@ -90,13 +95,15 @@ public final class RunRecorder: @unchecked Sendable {
             : nil
 
         let issuer = LocalConfig.resolveIssuerId()
+        let toolchain = ToolchainFingerprint.current()
         let recorder = RunRecorder(
             runID: runID, projectName: project.name, profile: profile, machine: machine,
             trigger: trigger, startedAt: startedAt, runDir: runDir, hostMetrics: hostMetrics,
-            issuer: issuer, runGroup: runGroup)
+            issuer: issuer, toolchain: toolchain, runGroup: runGroup)
 
         let meta = RunMetaRecord(
             runID: runID, project: project.name, profile: profile, host: machine,
+            toolchain: toolchain,
             trigger: trigger, startedAt: startedAt,
             // 未完了の run を「実行中」と「クラッシュ」に読み分けるための pid(RunMetaRecord.pid)
             pid: Int(ProcessInfo.processInfo.processIdentifier),
@@ -245,6 +252,7 @@ public final class RunRecorder: @unchecked Sendable {
         let slowWorkerSummaries = slowFindings.map(\.summary)
         let meta = RunMetaRecord(
             runID: runID, project: projectName, profile: profile, host: machine,
+            toolchain: toolchain,
             trigger: trigger, startedAt: startedAt,
             finishedAt: ISO8601DateFormatter().string(from: Date()),
             total: total, passed: passed, failed: failed,

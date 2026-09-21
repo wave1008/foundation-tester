@@ -664,6 +664,12 @@ async function executeRun(
     const decision = decideRemoteCompat(report ?? null);
     if (decision.kind === "ask") {
       const detailLines = decision.incompatible.map((machine) => `${machine.machine}: ${formatMachineDetailValue(machine)}`);
+      if (decision.advisoryMachines.length > 0) {
+        detailLines.push(t("run.remoteCompat.advisoryDialogHeader"));
+        for (const advisory of decision.advisoryMachines) {
+          detailLines.push(`${advisory.machine}: ${advisory.advisory}`);
+        }
+      }
       if (decision.revisionUnpublished) {
         detailLines.push(t("run.remoteCompat.revisionUnpublishedNote"));
       }
@@ -740,6 +746,13 @@ async function executeRun(
           return;
         }
       }
+    } else if (decision.advisoryMachines.length > 0) {
+      // advisory(ベータ seed 違い等)はブロックしない —— 非モーダルで知らせるだけで実行は続ける。
+      // 毎 run 確認を挟まない(ユーザー決定)。
+      const detail = decision.advisoryMachines.map((a) => `${a.machine}: ${a.advisory}`).join("; ");
+      const message = t("run.remoteCompat.advisoryNotice", { detail });
+      void vscode.window.showWarningMessage(message);
+      outputChannel.appendLine(`[fleetest] ${message}`);
     }
   }
 

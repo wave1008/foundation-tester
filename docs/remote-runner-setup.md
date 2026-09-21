@@ -44,7 +44,7 @@ fleetest run --runner mac2 …             ~/fleetest-runner/               ← 
 | 区分 | 前提 | 確認 |
 |---|---|---|
 | ハード | Apple silicon の Mac | `sysctl -n hw.optional.arm64` が 1 |
-| Xcode | **発行側と同じ Xcode(版とビルド番号)と同じ iOS Simulator SDK**(不一致はディスパッチが止まる)。**macOS の版は照合しない**(26 と 27 の混在も可。ただしその Xcode が両方の macOS で動くこと) | `xcodebuild -version` |
+| Xcode | **発行側と同じ Xcode の製品版**(例 26.x 同士・27.x 同士。**ベータの build 番号だけの違いは警告のみで止まらない**、26 vs 27 のような製品版違いはディスパッチが止まる)と同じ iOS Simulator SDK。**macOS の版は照合しない**(26 と 27 の混在も可。ただしその Xcode が両方の macOS で動くこと) | `xcodebuild -version` |
 | ログイン | **コンソールにログイン済み**(いわゆる Aqua セッションが立っている) | `stat -f%Su /dev/console` がランナーのユーザー名 |
 | 電源 | システムスリープ無効(ディスプレイスリープと画面ロックは可) | `pmset -g \| grep " sleep"` |
 | ネットワーク | リモートログイン ON・鍵で入れる。画面共有 ON を推奨。**開けるのは発行側 → ランナー機の SSH 1本だけ**(手元の Mac に着信は要らない。転送も成果物回収もライブ映像もこの接続の中を通る) | 下のステップ1 |
@@ -71,7 +71,8 @@ sudo や GUI が要るものはインストーラでは行わない(無人機に
 2. **画面共有を ON**(強く推奨。再起動後のログインを手元からやるため)
 3. **システムスリープを無効化**: `sudo pmset -a sleep 0`
 4. **Xcode を導入**し、1回起動してライセンスに同意(`sudo xcodebuild -license accept` /
-   `sudo xcodebuild -runFirstLaunch`)。**版は発行側と揃える**。
+   `sudo xcodebuild -runFirstLaunch`)。**製品版は発行側と揃える**(ベータの build 番号までは
+   揃えなくてよい)。
    ダウンロードは <https://developer.apple.com/jp/download/>
 5. **Homebrew** — `xcodegen` を入れるのに要る。**一度も入れていなければ**
    `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`
@@ -190,8 +191,13 @@ fleetest remote setup <ユーザー>@<ホスト> --project <プロジェクト�
 ## ステップ3: 版を揃える
 
 ディスパッチは **git のコミット**と **Xcode の指紋**(`xcodebuild -version` と iOS Simulator SDK の
-ビルド番号。**macOS の版は含まない**)の2つを照合し、どちらかが違えば
-**何も実行せずに止まる**(黙って古い版で走らせないため)。
+ビルド番号。**macOS の版は含まない**)の2つを照合する。**git のコミット不一致は何も実行せずに
+止まる**(黙って古い版で走らせないため)。**Xcode の指紋は仕分けが1段深い**: 製品版(26.x /
+27.x)が違えば同じく止まる。**製品版が同じで build 番号だけ違う(ベータの seed 違い)は警告
+(advisory)で、ディスパッチは止まらない** —— リモートへ渡るのは TestProjects のソースだけで、
+fleetest 本体・XCUITest ランナー・in-app dylib はランナー機が自分の Xcode でビルドするため。
+run.json の `toolchain` 欄(docs/results-json.md)に実行機械の指紋が残るので、赤がどの機械の
+Xcode で出たかは後から追える。
 
 **`remote setup` の align ステップが毎回これを行う**ので、手元でコミットを進めたら
 `fleetest remote setup <ランナー>` をもう一度流せば揃う。手で合わせるなら:
@@ -205,14 +211,19 @@ ssh <ホスト> 'cd ~/fleetest-runner/foundation-tester && git fetch origin && g
   「ランナーの挙動は変わらないから」と飛ばすと `remote status` が ⚠️ になり、ディスパッチは止まる
 - **手元の未コミットの変更は届かない**(警告が出る)。ツール本体の変更を試すなら、
   コミットして push し、ランナー機をそのコミットに合わせる
-- Xcode を更新したら**両方**を更新する。片方だけだと全ディスパッチが止まる
-- **macOS は照合しない**ので、Xcode が変わらない限り片方だけ上げてもディスパッチは止まらない
-  (26 と 27 の混在も可)。ただし**テキストの視覚検証(OCR・FM)は OS 付属の Vision とモデルを使う**ので、
-  機械によって読み取りや判定が変わりうる(ツールはこの差を検出しない)。赤が特定の機械に偏ったら OS の差を疑う
+- Xcode の**製品版**をまたいで更新したら両方を更新する。片方だけだと全ディスパッチが止まる。
+  **同じ製品版のベータを更新しただけなら片方が遅れていてもディスパッチは止まらない**(advisory
+  警告が出るだけ)
+- **macOS は照合しない**ので、Xcode の製品版が変わらない限り片方だけ上げてもディスパッチは
+  止まらない(26 と 27 の混在も可)。ただし**テキストの視覚検証(OCR・FM)は OS 付属の Vision と
+  モデルを使う**ので、機械によって読み取りや判定が変わりうる(ツールはこの差を検出しない)。
+  **赤が特定の機械に偏ったら OS の差だけでなく Xcode のベータ seed の差も疑う**(run.json の
+  `toolchain` 欄で機械ごとの指紋を突き合わせられる)
 - `fleetest remote align <ランナー>` だけでも揃う(`remote setup` の align ステップ単体。
   preflight/install は通さない軽量版)。VSCode 拡張は実行開始時に版ズレを自動検出し、
   「更新して実行 / キャンセル」のダイアログから更新できる(ズレたまま実行する選択肢は無い。
-  更新で直せないズレ = 未 push・到達不能・toolchain 不一致は実行を止めて理由を出す)
+  更新で直せないズレ = 未 push・到達不能・製品版の違う toolchain 不一致は実行を止めて理由を出す。
+  ベータ seed 違いの toolchain advisory は止めない)
 
 ## ステップ4: マシン名とデバイス
 
@@ -313,8 +324,15 @@ HOST          REACHABLE  LOGIN  REV          TOOLCHAIN     RUNTIME             F
 user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 24A434  -   yes     412 GB
 ```
 
+`TOOLCHAIN` は3値: **✅** = 一致 / **⚠️(advisory)** = 製品版は同じで build 番号だけ違う
+(ベータの seed 違い。ディスパッチは止まらない)/ **❌** = 製品版が違う、または指紋が読めない
+(Xcode が無い・照会が失敗した。fail-closed で止める)。**`REV` は ✅ / ⚠️ の2値**で、
+ここがズレているとディスパッチは止まる
+
 - `LOGIN` が `no (console: …)` → ランナー機がログイン画面で待っている。解錠してログインする
-- `REV` / `TOOLCHAIN` に ⚠️ → ステップ3
+- `REV` に ⚠️、または `TOOLCHAIN` に ❌ → ステップ3(ディスパッチは止まる)
+- `TOOLCHAIN` に ⚠️ → ベータの seed 違い。ディスパッチは止まらないが、赤が偏ったら疑う対象として
+  覚えておく(揃えたいなら §3 の手順で片方の Xcode を更新)
 - `RUNTIME` に ⚠️ → その機械の iOS シミュレータのランタイムが手元と違う。とくに `(beta)` は
   **正式版の Xcode ではシミュレータが起動できないことがある**(一覧には使える形で出るので気づけない)。
   その機械で `xcodebuild -downloadPlatform iOS` を打つ。**警告だけ**で exit code は変えない。
@@ -655,7 +673,7 @@ fleetest remote status --runner M1Max --runner M1Ultra   # 右端の LOCK 欄(fr
 | 案内 | 意味 | やること |
 |---|---|---|
 | この機械が古い(update…) | 自分が pull していない | 手元で `Scripts/update.sh`(ランナーは触らない) |
-| ランナーが古い(remote align…) | フリートの版上げが必要 | 当番が **1台だけ** align → 検証ディスパッチ1本 → 通ってから残りへ(カナリア。Xcode/macOS 更新も同じ手順) |
+| ランナーが古い(remote align…) | フリートの版上げが必要 | 当番が **1台だけ** align → 検証ディスパッチ1本 → 通ってから残りへ(カナリア。**Xcode の製品版をまたぐ更新も同じ手順**。同じ製品版のベータ更新はディスパッチを止めないのでカナリア不要) |
 | 分岐している(diverged) | ブランチ作業 | 共有ランナーでは実行しない。専用機か手元で検証する |
 
 VSCode 拡張の「更新して実行」も、自分が古いケースではランナー更新を提案しない。
@@ -697,7 +715,7 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | `setup script exited with status 1` で**シナリオが0本**。手でランナーの画面から同じスクリプトを流すと通る | **ssh 越しに起こしたプロセスはローカルネットワーク権限を取れない**(許可を与える相手がシステム設定の一覧に現れない)。依存サービスが同じ機械の別アドレス(コンテナの 192.168.64.x 等)へ出ようとして `EHOSTUNREACH` | 依存サービスへの接続先を **`127.0.0.1` にする**(コンテナ実行基盤は loopback へ publish していることが多い)。LAN 越しが要るなら、そのサービスをランナーの GUI セッションで常駐させる |
 | `git revision mismatch` | 版がズレている | メッセージの向き付き案内に従う(「複数人でフリートを共有する」の表。単独利用ならステップ3) |
 | `another dispatch is already running on this remote host` | 別のディスパッチ(他の人・別ターミナル)が実行中、または自分のディスパッチが死んでロックが残った | 待つ(`--wait-lock <秒>`)。保持者が自分で死んでいるなら `fleetest remote unlock --runner <ランナー>`。他の人のもので確認できたときだけ `--force-lock` |
-| `toolchain mismatch` | Xcode の版(ビルド番号)か iOS Simulator SDK が違う(macOS の版は照合しない) | 両機に同じ Xcode を入れる |
+| `toolchain mismatch` | Xcode の**製品版**か iOS Simulator SDK が違う(macOS の版は照合しない。**ベータの build 番号だけの違いはこのエラーにならない** —— `remote status` の TOOLCHAIN 欄に ⚠️(advisory)が出るだけで、ディスパッチは止まらない) | 両機に同じ Xcode 製品版を入れる |
 | `fleetest binary not found on remote` | ビルドされていない | ランナー機で `swift build --product fleetest` |
 | `Cannot code-sign the bridge runner for a physical device on this Mac` / `the login keychain is locked in this session` | **実機 iOS をランナー機で回すとき**。ssh セッションはログインキーチェーンがロックされたまま始まるので、XCUITest ランナーの codesign が署名鍵を使えない。fleetest は空パスワードでの unlock を試みるが、キーチェーンにパスワードがあると効かない | ランナー機のログインキーチェーンをその ssh セッションで使える状態にする: 最も簡単なのは**ランナー機のログインパスワードとログインキーチェーンのパスワードを揃え、`security set-keychain-settings`(引数なし)で自動ロックを切る**こと。それが許されない運用なら、実機 iOS の run はランナー機の GUI セッション(画面共有)から起こす。シミュレータだけのランナーには無関係(署名しない) |
 | `unknown package` | クローンのディレクトリ名を変えた | `~/fleetest-runner/foundation-tester` に戻す |

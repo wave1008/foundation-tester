@@ -320,9 +320,12 @@ struct RemoteRunDispatcher {
         let localToolchain = ToolchainFingerprint.current()
         let toolchainProbe = probeRemote("toolchain") { try remoteToolchainFingerprint() }
         let remoteRevision = revisionProbe.capturedValue
-        var reasons = RemoteCompat.mismatches(
+        let verdict = RemoteCompat.verdict(
             localRevision: localRevision, remoteRevision: revisionProbe,
             localToolchain: localToolchain, remoteToolchain: toolchainProbe)
+        // advisory(toolchain のベータ seed 差)はディスパッチを止めない —— 1行ずつ警告して続行する
+        for advisory in verdict.advisory { log("warning: \(advisory)") }
+        var reasons = verdict.blocking
         // rev 不一致の**いちばん多い原因は「まだ push していない」**。ランナーは origin から
         // fetch するので、押していないコミットへは remote setup でも合わせられない
         // (そのままだと checkout が exit 128 で落ちるだけ。2026-08-16 に実際に踏んだ)

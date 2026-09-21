@@ -126,54 +126,108 @@ public enum RemoteCompat {
         }
     }
 
-    /// 照会の失敗理由まで載せる形。**判定は mismatches(remoteRevision:) と同じ fail-closed**
-    /// (失敗は値が無いのと同じ扱いで非互換に倒す)で、足すのは説明だけ。
-    ///
-    /// 失敗行を**末尾に足す**のは呼び出し側のため —— 向きの案内(relationAdvice /
-    /// unpublishedRevisionMessage)は reasons の接頭辞 "git revision" で分岐するので、
-    /// 照会の失敗行がそこへ食い込まないよう別の接頭辞にしてある
-    public static func mismatches(
-        localRevision: String?, remoteRevision: ProbeOutcome,
-        localToolchain: String?, remoteToolchain: ProbeOutcome
-    ) -> [String] {
-        var reasons = mismatches(
-            localRevision: localRevision, remoteRevision: remoteRevision.capturedValue,
-            localToolchain: localToolchain, remoteToolchain: remoteToolchain.capturedValue)
-        for (label, probe) in [("git revision", remoteRevision), ("toolchain", remoteToolchain)] {
-            guard let detail = probe.failureDetail else { continue }
-            reasons.append("could not query the remote \(label): \(detail)")
+    /// `verdict(...)` の判定結果。**blocking が空でなければディスパッチを止める**(fail-closed)。
+    /// advisory は止めない警告(現状は toolchain のベータ seed 差だけがここに入る)
+    public struct CompatVerdict: Equatable, Sendable {
+        public let blocking: [String]
+        public let advisory: [String]
+
+        public init(blocking: [String] = [], advisory: [String] = []) {
+            self.blocking = blocking
+            self.advisory = advisory
         }
-        return reasons
+
+        public var isCompatible: Bool { blocking.isEmpty }
     }
 
-    /// fail-closed: 片方でも取得できなければ(nil)不一致に含める(古い/未検証の組で
+    /// 照会の失敗理由まで載せる形。**判定は verdict(remoteRevision:) と同じ fail-closed**
+    /// (失敗は値が無いのと同じ扱いで blocking に倒す)で、足すのは説明だけ。
+    ///
+    /// 失敗行を**末尾に足す**のは呼び出し側のため —— 向きの案内(relationAdvice /
+    /// unpublishedRevisionMessage)は blocking の接頭辞 "git revision" で分岐するので、
+    /// 照会の失敗行がそこへ食い込まないよう別の接頭辞にしてある
+    public static func verdict(
+        localRevision: String?, remoteRevision: ProbeOutcome,
+        localToolchain: String?, remoteToolchain: ProbeOutcome
+    ) -> CompatVerdict {
+        let base = verdict(
+            localRevision: localRevision, remoteRevision: remoteRevision.capturedValue,
+            localToolchain: localToolchain, remoteToolchain: remoteToolchain.capturedValue)
+        var blocking = base.blocking
+        for (label, probe) in [("git revision", remoteRevision), ("toolchain", remoteToolchain)] {
+            guard let detail = probe.failureDetail else { continue }
+            blocking.append("could not query the remote \(label): \(detail)")
+        }
+        return CompatVerdict(blocking: blocking, advisory: base.advisory)
+    }
+
+    /// fail-closed: 片方でも取得できなければ(nil)blocking に含める(古い/未検証の組で
     /// 黙って走らせない。CLAUDE.md「片方だけ変えない」規律をマシン間に広げる)。
     ///
     /// **照合するのは rev と toolchain の2つだけ**。「送り先が想定の機械か」は ssh の宛先
-    /// (とホスト鍵)が保証するので、リモートの登録名は見ない
-    public static func mismatches(
+    /// (とホスト鍵)が保証するので、リモートの登録名は見ない。
+    ///
+    /// **toolchain だけ blocking/advisory が割れる**: リモートへ渡るのは TestProjects のソースだけで、
+    /// fleetest 本体・XCUITest ランナー・in-app dylib はランナー機が自分の Xcode でビルドするため
+    /// 機械的な依存が無く、止める根拠は結果の比較可能性だけ。Xcode の製品版(`productVersion`)が
+    /// 一致していれば build 番号の差は正式版とベータ seed の違いでしかない(正式版のビルドは
+    /// 製品版ごとに1つしか無いため、製品版が同じで build が違えばどちらかが必ずベータ)ので advisory
+    /// に落とす。製品版が違う(26 vs 27 等)・切り出せない・片方 nil は従来どおり blocking
+    public static func verdict(
         localRevision: String?, remoteRevision: String?,
         localToolchain: String?, remoteToolchain: String?
-    ) -> [String] {
-        var reasons: [String] = []
-        append(&reasons, label: "git revision", local: localRevision, remote: remoteRevision)
-        append(&reasons, label: "toolchain", local: localToolchain, remote: remoteToolchain)
-        return reasons
+    ) -> CompatVerdict {
+        var blocking: [String] = []
+        var advisory: [String] = []
+        appendRevision(&blocking, local: localRevision, remote: remoteRevision)
+        appendToolchain(&blocking, &advisory, local: localToolchain, remote: remoteToolchain)
+        return CompatVerdict(blocking: blocking, advisory: advisory)
     }
 
-    private static func append(_ reasons: inout [String], label: String,
-                               local: String?, remote: String?) {
+    private static func appendRevision(_ blocking: inout [String], local: String?, remote: String?) {
         switch (local, remote) {
         case let (local?, remote?) where local == remote:
             return
         case let (local?, remote?):
-            reasons.append("\(label) mismatch: local=\(local) remote=\(remote)")
+            blocking.append("git revision mismatch: local=\(local) remote=\(remote)")
+        default:
+            appendMissingValueReason(&blocking, label: "git revision", local: local, remote: remote)
+        }
+    }
+
+    private static func appendToolchain(
+        _ blocking: inout [String], _ advisory: inout [String], local: String?, remote: String?
+    ) {
+        switch (local, remote) {
+        case let (local?, remote?) where local == remote:
+            return
+        case let (local?, remote?):
+            if let localVersion = ToolchainFingerprint.productVersion(of: local),
+               let remoteVersion = ToolchainFingerprint.productVersion(of: remote),
+               localVersion == remoteVersion {
+                advisory.append("toolchain differs only in the Xcode build (beta seed):"
+                    + " local=\(local) remote=\(remote)")
+            } else {
+                blocking.append("toolchain mismatch: local=\(local) remote=\(remote)")
+            }
+        default:
+            appendMissingValueReason(&blocking, label: "toolchain", local: local, remote: remote)
+        }
+    }
+
+    /// 片方(または両方)が nil のときの blocking 行。両方 non-nil のケースはここへ来ない
+    /// (呼び出し側の switch が先に振り分ける)
+    private static func appendMissingValueReason(_ blocking: inout [String], label: String,
+                                                  local: String?, remote: String?) {
+        switch (local, remote) {
         case (nil, let remote?):
-            reasons.append("\(label): could not determine the local value (remote=\(remote))")
+            blocking.append("\(label): could not determine the local value (remote=\(remote))")
         case (let local?, nil):
-            reasons.append("\(label): could not determine the remote value (local=\(local))")
+            blocking.append("\(label): could not determine the remote value (local=\(local))")
         case (nil, nil):
-            reasons.append("\(label): could not determine the local or remote value")
+            blocking.append("\(label): could not determine the local or remote value")
+        case (_?, _?):
+            break   // unreachable: 呼び出し側で処理済み
         }
     }
 }

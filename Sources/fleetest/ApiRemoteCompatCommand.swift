@@ -48,7 +48,7 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
                 machines[index] = RemoteCompatMachineJSON(
                     machine: name, sshTarget: name, reachable: false, revision: nil,
                     revisionCompatible: nil, revisionRelation: nil, toolchain: nil, toolchainCompatible: nil,
-                    error: error.localizedDescription)
+                    toolchainAdvisory: nil, error: error.localizedDescription)
             }
         }
 
@@ -62,8 +62,7 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
         }
         for (index, row) in probed {
             let report = HostReport(row: row, localRevision: localRevision, localToolchain: localToolchain)
-            let revisionCompatible = report.reachable
-                ? !report.mismatchReasons.contains(where: { $0.hasPrefix("git revision") }) : nil
+            let revisionCompatible = report.revisionCompatible
             let remoteRevision = report.status?.revision
             // published のときだけ向きを出す(未 push は align 案内が誤誘導になる。checkCompatibility と同じ規律)
             let relation: RevisionRelation? = {
@@ -77,8 +76,8 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
                 revisionCompatible: revisionCompatible,
                 revisionRelation: relation?.rawValue,
                 toolchain: report.status?.toolchain,
-                toolchainCompatible: report.reachable
-                    ? !report.mismatchReasons.contains(where: { $0.hasPrefix("toolchain") }) : nil,
+                toolchainCompatible: report.toolchainCompatible,
+                toolchainAdvisory: report.toolchainAdvisory,
                 error: report.detail)
         }
 
@@ -156,12 +155,15 @@ private struct RemoteCompatMachineJSON: Encodable {
     /// ProtocolVersion は上げない
     let revisionRelation: String?
     let toolchain: String?
+    /// blocking で止まるか(advisory = ベータ seed だけの差は true のまま)
     let toolchainCompatible: Bool?
+    /// toolchainCompatible が true でも advisory があれば1文。無ければ null
+    let toolchainAdvisory: String?
     let error: String?
 
     private enum CodingKeys: String, CodingKey {
         case machine, sshTarget, reachable, revision, revisionCompatible, revisionRelation,
-             toolchain, toolchainCompatible, error
+             toolchain, toolchainCompatible, toolchainAdvisory, error
     }
 
     func encode(to encoder: Encoder) throws {
@@ -174,6 +176,7 @@ private struct RemoteCompatMachineJSON: Encodable {
         try container.encode(revisionRelation, forKey: .revisionRelation)
         try container.encode(toolchain, forKey: .toolchain)
         try container.encode(toolchainCompatible, forKey: .toolchainCompatible)
+        try container.encode(toolchainAdvisory, forKey: .toolchainAdvisory)
         try container.encode(error, forKey: .error)
     }
 }

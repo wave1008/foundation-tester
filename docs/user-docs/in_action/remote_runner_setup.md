@@ -27,7 +27,7 @@ In the examples below, the runner is `<user@192.168.xxx.xxx>` and its machine na
 | Requirement | Check (run on the runner) |
 |---|---|
 | Apple silicon Mac | `sysctl -n hw.optional.arm64` is `1` |
-| Same Xcode version as your Mac (the macOS version may differ, as long as it runs that Xcode) | `xcodebuild -version` |
+| Same Xcode product version as your Mac (e.g. both 26.x; beta build numbers don't need to match, and the macOS version may differ, as long as it runs that Xcode) | `xcodebuild -version` |
 | Someone stays logged in at the console | `stat -f%Su /dev/console` matches the runner's user |
 | System sleep disabled (display sleep and screen lock are fine) | `pmset -g \| grep " sleep"` |
 | Remote Login on | checked in Step 1 |
@@ -59,8 +59,9 @@ do them for you.
    ```bash
    sudo pmset -a sleep 0
    ```
-5. **Install Xcode and accept its license**. Use the same version as your Mac. You can
-   download Xcode from <https://developer.apple.com/download/>.
+5. **Install Xcode and accept its license**. Use the same product version as your Mac (beta
+   build numbers don't need to match). You can download Xcode from
+   <https://developer.apple.com/download/>.
    ```bash
    sudo xcodebuild -license accept
    sudo xcodebuild -runFirstLaunch
@@ -250,7 +251,9 @@ user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 2
 | What you see | Meaning | What to do |
 |---|---|---|
 | `LOGIN` is `no` | The runner is sitting at the login window | Log in, for example over Screen Sharing |
-| ⚠️ in `REV` or `TOOLCHAIN` | The version differs from your Mac | Run `fleetest remote setup M1Max` again. For an Xcode difference, install the same Xcode version on both Macs |
+| ⚠️ in `REV` | The tool version differs from your Mac (runs are stopped) | Run `fleetest remote setup M1Max` again |
+| ❌ in `TOOLCHAIN` | Xcode product version differs (runs are stopped) | Install the same Xcode product version on both Macs |
+| ⚠️ in `TOOLCHAIN` | Same Xcode product version but a different beta build number (runs are **not** stopped) | Optional — install the same build on both Macs if you want them to match |
 | ⚠️ in `RUNTIME` | The runner's iOS simulator runtime differs from your Mac's | Run `xcodebuild -downloadPlatform iOS` on the runner (this is only a warning; runs are not stopped) |
 | `BINARY` is `no` | fleetest is not built on the runner | Run Step 3 again |
 
@@ -297,8 +300,9 @@ your Mac.
 - If it differs, you see "The remote runners' fleetest version differs from this machine's."
   Pressing "Update and run" brings the runner to your version and then runs.
 - If it cannot be brought in line (your changes are not pushed, the runner cannot be reached,
-  the Xcode versions differ, and so on), you see "Cannot run: the remote runners' fleetest cannot be
-  updated from here." with the reason, and the run does not start.
+  the Xcode product versions differ, and so on), you see "Cannot run: the remote runners' fleetest
+  cannot be updated from here." with the reason, and the run does not start. **A difference in
+  Xcode beta build number alone does not stop the run** — it is only a warning.
 
 ## After you update fleetest
 
@@ -329,7 +333,7 @@ until the versions match.
 | `neither xcodegen nor Homebrew is available` | Homebrew is not installed on the runner | Install Homebrew (item 7 of Step 0), then run `fleetest remote setup` again |
 | `is sitting at the login window` | The runner is at the login window | Log in, for example over Screen Sharing |
 | `git revision mismatch` | Your Mac and the runner are on different versions | Run `fleetest remote setup M1Max` again |
-| `toolchain mismatch` | Xcode versions differ (the macOS version is not compared) | Install the same Xcode version on both Macs |
+| `toolchain mismatch` | Xcode product versions differ (the macOS version is not compared; a beta build number difference alone does not trigger this message) | Install the same Xcode product version on both Macs |
 | `no runner workspace at …` | Your work area does not exist on the runner yet | Run `fleetest remote setup M1Max` once |
 | `no running emulator for AVD …` | The Android emulator is not running | Run the `devices up` command from Step 6 |
 | `app package not found at …` | There is no app at `appPath` on your Mac | Build the app on your Mac, or fix `appPath` |

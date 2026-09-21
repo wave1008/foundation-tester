@@ -238,18 +238,18 @@ final class RemoteHostRegistryTests: XCTestCase {
         XCTAssertNil(loaded.remoteHosts)
     }
 
-    // MARK: - RemoteCompat.mismatches
+    // MARK: - RemoteCompat.verdict
 
     /// 照合は rev と toolchain の2つだけ。機械の身元は ssh の宛先が保証するので、
     /// 「リモートの登録名」は見ない
-    func testMismatchesChecksRevisionAndToolchainOnly() {
+    func testVerdictChecksRevisionAndToolchainOnly() {
         XCTAssertEqual(
-            RemoteCompat.mismatches(localRevision: "abc", remoteRevision: "abc",
-                                    localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.0"),
-            [])
+            RemoteCompat.verdict(localRevision: "abc", remoteRevision: "abc",
+                                 localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.0"),
+            RemoteCompat.CompatVerdict())
         XCTAssertEqual(
-            RemoteCompat.mismatches(localRevision: "abc", remoteRevision: "def",
-                                    localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.0").count,
+            RemoteCompat.verdict(localRevision: "abc", remoteRevision: "def",
+                                 localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.0").blocking.count,
             1)
     }
 

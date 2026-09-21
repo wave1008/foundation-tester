@@ -18,7 +18,7 @@
 | 外部からの接続をすべてブロックが OFF であること | システム設定 → ネットワーク → ファイアウォール → オプション |
 | Homebrew がインストールされていること | `brew --version` |
 | Xcode をインストールしてライセンスに同意していること |  |
-| Xcode のバージョンが手元の Mac と同じバージョンであること | `xcodebuild -version` |
+| Xcode の製品版(例: 26.x)が手元の Mac と同じであること(ベータのビルド番号までは揃えなくてよい) | `xcodebuild -version` |
 | Xcode でテストで使用するiOSシミュレーターをダウンロードしていること |  |
 | Android Studio をインストールしていること。SDK の場所は既定(`~/Library/Android/sdk`)であること |  |
 
@@ -150,7 +150,9 @@ user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 2
 | 表示 | 意味 | 対処 |
 |---|---|---|
 | `LOGIN` が `no` | ランナー機がログイン画面で止まっている | 画面共有などでログインします |
-| `REV` か `TOOLCHAIN` に ⚠️ | 手元と版がずれている | `fleetest remote setup M1Max` をもう一度実行します。Xcode や macOS の違いは、両方の Mac を同じ版にします |
+| `REV` に ⚠️ | 手元とツール本体の版がずれている(実行は止まります) | `fleetest remote setup M1Max` をもう一度実行します |
+| `TOOLCHAIN` に ❌ | Xcode の製品版が違う(実行は止まります) | 両方の Mac を同じ Xcode 製品版に揃えます |
+| `TOOLCHAIN` に ⚠️ | Xcode は同じ製品版だがベータのビルド番号が違う(実行は止まりません) | 揃えなくても実行できます。揃えたい場合は両方の Mac を同じビルドにします |
 | `RUNTIME` に ⚠️ | ランナー機の iOS シミュレータのランタイムが手元と違う | ランナー機で `xcodebuild -downloadPlatform iOS` を実行します(警告だけで、実行は止まりません) |
 | `BINARY` が `no` | ランナー機に fleetest がビルドされていない | ステップ3をもう一度実行します |
 
@@ -194,8 +196,9 @@ fleetest remote exec M1Max -- devices up --profile <実行プロファイル>
 
 - ずれているときは「リモートのfleetestのバージョンが本機と異なります」と出ます。
   「更新して実行」を押すと、ランナー機を手元と同じ版に揃えてから実行します。
-- 揃えられないとき(手元の変更を push していない、ランナー機に接続できない、Xcode や macOS が
+- 揃えられないとき(手元の変更を push していない、ランナー機に接続できない、Xcode の製品版が
   違う、など)は「リモートのfleetestを更新できないため実行できません」と理由が出て、実行は止まります。
+  **Xcode がベータのビルド番号だけ違うときは実行は止まりません**(警告だけ)。
 
 ## fleetest を更新したとき
 
@@ -224,7 +227,7 @@ fleetest remote exec M1Max -- devices up --profile <実行プロファイル>
 | `neither xcodegen nor Homebrew is available` | ランナー機に Homebrew が入っていない | ステップ0の7で Homebrew を入れてから、`fleetest remote setup` をもう一度実行します |
 | `is sitting at the login window` | ランナー機がログイン画面で止まっている | 画面共有などでログインします |
 | `git revision mismatch` | 手元とランナー機の版がずれている | `fleetest remote setup M1Max` をもう一度実行します |
-| `toolchain mismatch` | Xcode か macOS の版が違う | 両方の Mac を同じ版にします |
+| `toolchain mismatch` | Xcode の製品版が違う(macOS の版は関係ありません。ベータのビルド番号だけの違いではこのメッセージは出ません) | 両方の Mac を同じ Xcode 製品版にします |
 | `no runner workspace at …` | ランナー機にあなたの作業場所がまだ無い | `fleetest remote setup M1Max` を1回実行します |
 | `no running emulator for AVD …` | Android のエミュレータが起動していない | ステップ6の `devices up` を実行します |
 | `app package not found at …` | 手元の `appPath` にアプリが無い | 手元でアプリをビルドするか、`appPath` を直します |

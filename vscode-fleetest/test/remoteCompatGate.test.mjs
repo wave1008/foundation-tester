@@ -18,7 +18,7 @@ const okMachine = (machine) => ({
 
 test("machines が空: proceed(プロファイルにリモート機なし)", () => {
   const decision = decideRemoteCompat({ machines: [] });
-  assert.deepEqual(decision, { kind: "proceed" });
+  assert.deepEqual(decision, { kind: "proceed", advisoryMachines: [] });
 });
 
 test("全マシン compatible: proceed", () => {
@@ -26,7 +26,36 @@ test("全マシン compatible: proceed", () => {
     machines: [okMachine("M1Max"), okMachine("M1Ultra")],
     localRevision: "abc1234",
   });
-  assert.deepEqual(decision, { kind: "proceed" });
+  assert.deepEqual(decision, { kind: "proceed", advisoryMachines: [] });
+});
+
+test("advisory のみ(ベータ seed 違い): proceed かつ advisoryMachines に載る・incompatible には入らない", () => {
+  const machine = {
+    ...okMachine("M1Max"),
+    toolchain: "Xcode 16.0 beta 3",
+    toolchainCompatible: true,
+    toolchainAdvisory: "Xcode 16.0 beta 3 vs beta 2 on M1Ultra",
+  };
+  const decision = decideRemoteCompat({ machines: [machine, okMachine("M1Ultra")] });
+  assert.deepEqual(decision, {
+    kind: "proceed",
+    advisoryMachines: [{ machine: "M1Max", advisory: "Xcode 16.0 beta 3 vs beta 2 on M1Ultra" }],
+  });
+});
+
+test("blocking な不一致と advisory が混在: ask かつ advisoryMachines も載る", () => {
+  const staleRev = { ...okMachine("M1Max"), revisionCompatible: false };
+  const advisory = {
+    ...okMachine("M1Ultra"),
+    toolchainCompatible: true,
+    toolchainAdvisory: "Xcode 16.0 beta 3 vs beta 2 on M1Max",
+  };
+  const decision = decideRemoteCompat({ machines: [staleRev, advisory], revisionPublished: true });
+  assert.equal(decision.kind, "ask");
+  assert.deepEqual(decision.incompatible.map((m) => m.machine), ["M1Max"]);
+  assert.deepEqual(decision.advisoryMachines, [
+    { machine: "M1Ultra", advisory: "Xcode 16.0 beta 3 vs beta 2 on M1Max" },
+  ]);
 });
 
 test("rev ズレのみ: ask かつ canUpdate=true・updatableMachines に名前が入る", () => {
@@ -142,8 +171,8 @@ test("localBehind と remoteBehind が混在: canUpdate=false(1機でも align �
 });
 
 test("壊れた入力(machines が配列でない/report が null): proceed", () => {
-  assert.deepEqual(decideRemoteCompat(null), { kind: "proceed" });
-  assert.deepEqual(decideRemoteCompat(undefined), { kind: "proceed" });
-  assert.deepEqual(decideRemoteCompat({ machines: "not-an-array" }), { kind: "proceed" });
-  assert.deepEqual(decideRemoteCompat({}), { kind: "proceed" });
+  assert.deepEqual(decideRemoteCompat(null), { kind: "proceed", advisoryMachines: [] });
+  assert.deepEqual(decideRemoteCompat(undefined), { kind: "proceed", advisoryMachines: [] });
+  assert.deepEqual(decideRemoteCompat({ machines: "not-an-array" }), { kind: "proceed", advisoryMachines: [] });
+  assert.deepEqual(decideRemoteCompat({}), { kind: "proceed", advisoryMachines: [] });
 });

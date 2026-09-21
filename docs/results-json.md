@@ -213,6 +213,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | project | String | プロジェクト名 |
 | profile | String? | 実行プロファイル名 |
 | host | String | **実行マシンのホスト名**(`FT_MACHINE` > hostname を sanitize したもの)。**LPT の同一マシン判定はこれ**。**マシン名(設定タブで付けたローカルエイリアス)は記録しない** —— エイリアスは頻繁に変わりうるので記録の鍵にしない(2026-08-26 ユーザー決定。用語は docs/remote-runner.md §0)。**旧キー `machine` の記録も読める** |
+| toolchain | String? | **この run を実行した機械のツールチェーン指紋**(`xcodebuild -version` + iOS Simulator SDK のビルド。`FTCore.ToolchainFingerprint.current()`)。Xcode の無い機械(Android 専用のランナー等)では欠落。リモート実行でツールチェーンの混在(ベータ seed 違いは advisory で止めない。docs/remote-runner.md §7)を許すぶん、**その赤がどの機械の Xcode で出たかを run 横断で追うための事実** |
 | trigger | String | `"api"`(拡張)/ `"cli"` |
 | pid | Int? | run を書いたプロセスの pid(`fleetest run` / `api run` 自身)。**同じ `host` でだけ意味を持つ**。insights の `unfinishedRuns` は、finishedAt の無い run のうち **同じ機械で pid がまだ生きているものを「実行中」として数えない**(2026-09-14 より前の記録には無く、その run は従来どおり未完了として数える) |
 | startedAt / finishedAt | String / String? | ISO8601。**finishedAt が無い = 未完了**(クラッシュ検出。`interrupted`/`abortReason` が付いた run は finishedAt を持つので、この判定には掛からない) |

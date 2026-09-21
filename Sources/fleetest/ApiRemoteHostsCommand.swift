@@ -68,8 +68,7 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
     /// **空文字は未設定として扱う**: この API の出力自体が dir/machine を "" で埋める契約
     /// (キー省略を書かせない)なので、`--import` にその出力をそのまま渡す移行元(拡張)を
     /// 想定すると "" が「未設定」として往復する必要がある。`RemoteHostEntry` の `dir`/`machine`
-    /// を素の Optional のまま "" で埋めると、RemoteCompat.mismatches の machineName 照合が
-    /// 空文字を「マシン名 "" を期待している」と読んで誤って fail-closed になる
+    /// を素の Optional のまま "" で埋めると、読み手が空文字を「その名前が指定されている」と読む
     /// FM 枠の合流。**キーを送ってきたクライアントの指定が勝ち、送ってこなければ既存値を保つ**。
     /// 設定タブは常に送る(空欄 = 0 = 解除)ので指定が効き、キーを持たない古い/別のクライアントが
     /// upsert しても**機械ごとの枠が黙って消えない**(upsert は丸ごと置き換えるため)。

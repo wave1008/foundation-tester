@@ -90,7 +90,7 @@ public struct FMSettingsRecord: Codable, Sendable, Equatable {
 public struct RunMetaRecord: Codable, Sendable {
     /// 旧キー "machine"(2026-08-26 以前の記録)も読む。書きは "host" だけ
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, runID, project, profile, host, machine, trigger, startedAt, finishedAt, pid
+        case schemaVersion, runID, project, profile, host, machine, toolchain, trigger, startedAt, finishedAt, pid
         case total, passed, failed, degradedWorkers, freezeRetries, blankRepairs, blankExclusions
         case measurementInvalid, measurementInvalidReasons, workerAnomalies, issuer, runGroup
         case performanceMode, fmDead, fmDeadReason
@@ -106,6 +106,8 @@ public struct RunMetaRecord: Codable, Sendable {
         profile = try c.decodeIfPresent(String.self, forKey: .profile)
         host = try c.decodeIfPresent(String.self, forKey: .host)
             ?? c.decodeIfPresent(String.self, forKey: .machine) ?? ""
+        // 旧レコードにキーが無いので Optional のまま decode する(schemaVersion は上げない。issuer と同じ形)
+        toolchain = try c.decodeIfPresent(String.self, forKey: .toolchain)
         trigger = try c.decode(String.self, forKey: .trigger)
         startedAt = try c.decode(String.self, forKey: .startedAt)
         finishedAt = try c.decodeIfPresent(String.self, forKey: .finishedAt)
@@ -142,6 +144,7 @@ public struct RunMetaRecord: Codable, Sendable {
         try c.encode(project, forKey: .project)
         try c.encodeIfPresent(profile, forKey: .profile)
         try c.encode(host, forKey: .host)
+        try c.encodeIfPresent(toolchain, forKey: .toolchain)
         try c.encode(trigger, forKey: .trigger)
         try c.encode(startedAt, forKey: .startedAt)
         try c.encodeIfPresent(finishedAt, forKey: .finishedAt)
@@ -180,6 +183,10 @@ public struct RunMetaRecord: Codable, Sendable {
     /// **エイリアスは頻繁に変わりうるので記録の鍵にしない** —— LPT の「同じ機械の実績を優先」も
     /// この欄で照合する。**JSON キーは "host"**(旧キー "machine" も読む)
     public var host: String
+    /// **この run を実行した機械のツールチェーン指紋**(`FTCore.ToolchainFingerprint.current()` =
+    /// `xcodebuild -version` + iOS Simulator SDK のビルド)。Xcode の無い機械(Android のみ等)では
+    /// nil。リモート混在時に赤がどの Xcode の機械で出たかを追うための事実(旧レコードにキーは無い)
+    public var toolchain: String?
     /// "api" | "cli"
     public var trigger: String
     public var startedAt: String
@@ -270,7 +277,7 @@ public struct RunMetaRecord: Codable, Sendable {
     public var slowWorkers: [String]?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
-                profile: String?, host: String, trigger: String, startedAt: String,
+                profile: String?, host: String, toolchain: String? = nil, trigger: String, startedAt: String,
                 finishedAt: String? = nil, pid: Int? = nil, total: Int? = nil, passed: Int? = nil,
                 failed: Int? = nil, degradedWorkers: [String]? = nil,
                 freezeRetries: [String]? = nil,
@@ -290,6 +297,7 @@ public struct RunMetaRecord: Codable, Sendable {
         self.project = project
         self.profile = profile
         self.host = host
+        self.toolchain = toolchain
         self.trigger = trigger
         self.startedAt = startedAt
         self.finishedAt = finishedAt

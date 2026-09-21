@@ -58,84 +58,126 @@ final class RemoteDispatchTests: XCTestCase {
         }
     }
 
-    // MARK: - RemoteCompat.mismatches
+    // MARK: - RemoteCompat.verdict
 
-    func testMismatchesEmptyWhenAllMatch() {
-        XCTAssertEqual(RemoteCompat.mismatches(
+    func testVerdictEmptyWhenAllMatch() {
+        let v = RemoteCompat.verdict(
             localRevision: "abc", remoteRevision: "abc",
-            localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.0"), [])
+            localToolchain: "Xcode 27.0 Build version 27A1 / iphonesimulator 27A1",
+            remoteToolchain: "Xcode 27.0 Build version 27A1 / iphonesimulator 27A1")
+        XCTAssertEqual(v.blocking, [])
+        XCTAssertEqual(v.advisory, [])
+        XCTAssertTrue(v.isCompatible)
     }
 
-    func testMismatchesRevisionOnly() {
-        let reasons = RemoteCompat.mismatches(
+    func testVerdictRevisionMismatchIsAlwaysBlocking() {
+        let v = RemoteCompat.verdict(
             localRevision: "abc", remoteRevision: "def",
-            localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.0")
-        XCTAssertEqual(reasons.count, 1)
-        XCTAssertTrue(reasons[0].contains("git revision"), reasons[0])
-        XCTAssertTrue(reasons[0].contains("local=abc") && reasons[0].contains("remote=def"), reasons[0])
+            localToolchain: "Xcode 27.0 Build A", remoteToolchain: "Xcode 27.0 Build A")
+        XCTAssertEqual(v.blocking.count, 1)
+        XCTAssertTrue(v.blocking[0].contains("git revision"), v.blocking[0])
+        XCTAssertTrue(v.blocking[0].contains("local=abc") && v.blocking[0].contains("remote=def"), v.blocking[0])
+        XCTAssertEqual(v.advisory, [])
     }
 
-    func testMismatchesToolchainOnly() {
-        let reasons = RemoteCompat.mismatches(
+    /// 製品版(27.0)が同じで build だけ違う = ベータ seed の差 → advisory(止めない)
+    func testVerdictSameProductVersionDifferentBuildIsAdvisory() {
+        let v = RemoteCompat.verdict(
             localRevision: "abc", remoteRevision: "abc",
-            localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.1")
-        XCTAssertEqual(reasons.count, 1)
-        XCTAssertTrue(reasons[0].contains("toolchain"), reasons[0])
-        XCTAssertTrue(reasons[0].contains("local=Xcode 27.0") && reasons[0].contains("remote=Xcode 27.1"),
-                     reasons[0])
+            localToolchain: "Xcode 27.0 Build version 27A5228h / iphonesimulator 24A434",
+            remoteToolchain: "Xcode 27.0 Build version 27A5231e / iphonesimulator 24A5423a")
+        XCTAssertEqual(v.blocking, [])
+        XCTAssertEqual(v.advisory.count, 1, "\(v.advisory)")
+        XCTAssertTrue(v.advisory[0].hasPrefix("toolchain"), v.advisory[0])
+        XCTAssertTrue(v.advisory[0].contains("beta seed"), v.advisory[0])
+        XCTAssertTrue(v.isCompatible, "advisory はディスパッチを止めない")
     }
 
-    /// fail-closed: リモート値が取れない(nil)場合も不一致に含める
-    func testMismatchesNilRemoteIsMismatch() {
-        let reasons = RemoteCompat.mismatches(
+    /// 製品版そのものが違う(26 vs 27)ときは build が違っても blocking のまま
+    func testVerdictDifferentProductVersionIsBlocking() {
+        let v = RemoteCompat.verdict(
+            localRevision: "abc", remoteRevision: "abc",
+            localToolchain: "Xcode 26.3 Build version 26C1 / iphonesimulator 26C1",
+            remoteToolchain: "Xcode 27.0 Build version 27A1 / iphonesimulator 27A1")
+        XCTAssertEqual(v.blocking.count, 1, "\(v.blocking)")
+        XCTAssertTrue(v.blocking[0].hasPrefix("toolchain mismatch"), v.blocking[0])
+        XCTAssertEqual(v.advisory, [])
+    }
+
+    /// fail-closed: リモート値が取れない(nil)場合も blocking
+    func testVerdictNilRemoteIsBlocking() {
+        let v = RemoteCompat.verdict(
             localRevision: "abc", remoteRevision: nil,
             localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.0")
-        XCTAssertEqual(reasons.count, 1)
-        XCTAssertTrue(reasons[0].contains("could not determine the remote value"), reasons[0])
-        XCTAssertTrue(reasons[0].contains("local=abc"), reasons[0])
+        XCTAssertEqual(v.blocking.count, 1)
+        XCTAssertTrue(v.blocking[0].contains("could not determine the remote value"), v.blocking[0])
+        XCTAssertTrue(v.blocking[0].contains("local=abc"), v.blocking[0])
     }
 
-    /// fail-closed: ローカル値が取れない場合も不一致に含める
-    func testMismatchesNilLocalIsMismatch() {
-        let reasons = RemoteCompat.mismatches(
+    /// fail-closed: ローカル値が取れない場合も blocking
+    func testVerdictNilLocalIsBlocking() {
+        let v = RemoteCompat.verdict(
             localRevision: nil, remoteRevision: "abc",
             localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.0")
-        XCTAssertEqual(reasons.count, 1)
-        XCTAssertTrue(reasons[0].contains("could not determine the local value"), reasons[0])
-        XCTAssertTrue(reasons[0].contains("remote=abc"), reasons[0])
+        XCTAssertEqual(v.blocking.count, 1)
+        XCTAssertTrue(v.blocking[0].contains("could not determine the local value"), v.blocking[0])
+        XCTAssertTrue(v.blocking[0].contains("remote=abc"), v.blocking[0])
     }
 
-    // MARK: - RemoteCompat.mismatches(ProbeOutcome)
+    /// fail-closed: toolchain の片方が nil でも blocking(製品版が切り出せても advisory へは倒さない)
+    func testVerdictNilToolchainIsBlockingNotAdvisory() {
+        let v = RemoteCompat.verdict(
+            localRevision: "abc", remoteRevision: "abc",
+            localToolchain: "Xcode 27.0 Build A", remoteToolchain: nil)
+        XCTAssertEqual(v.blocking.count, 1)
+        XCTAssertTrue(v.blocking[0].hasPrefix("toolchain"), v.blocking[0])
+        XCTAssertEqual(v.advisory, [])
+    }
+
+    // MARK: - RemoteCompat.verdict(ProbeOutcome)
 
     /// 照会が失敗したら**判定は fail-closed のまま**で、理由の行が1本増える
     /// (レーンが丸ごと落ちたときに「なぜ取れなかったか」が残る)
     func testProbeFailureKeepsFailClosedAndCarriesTheReason() {
-        let reasons = RemoteCompat.mismatches(
+        let v = RemoteCompat.verdict(
             localRevision: "abc",
             remoteRevision: .failed(detail: "ssh command failed (status 128): git -C /x rev-parse HEAD"),
             localToolchain: "Xcode 27.0", remoteToolchain: .value("Xcode 27.0"))
-        XCTAssertEqual(reasons.count, 2, "\(reasons)")
-        XCTAssertTrue(reasons[0].contains("could not determine the remote value"), reasons[0])
-        XCTAssertTrue(reasons[1].contains("status 128"), reasons[1])
-        XCTAssertTrue(reasons[1].contains("git revision"), reasons[1])
+        XCTAssertEqual(v.blocking.count, 2, "\(v.blocking)")
+        XCTAssertTrue(v.blocking[0].contains("could not determine the remote value"), v.blocking[0])
+        XCTAssertTrue(v.blocking[1].contains("status 128"), v.blocking[1])
+        XCTAssertTrue(v.blocking[1].contains("git revision"), v.blocking[1])
+        XCTAssertEqual(v.advisory, [])
     }
 
     /// 失敗行は "git revision" で**始まらない** —— 呼び出し側は接頭辞で向きの案内を
     /// 分岐するので、照会の失敗がそこへ食い込むと「push していない」等の誤誘導になる
     func testProbeFailureDoesNotCollideWithTheAdvicePrefix() {
-        let reasons = RemoteCompat.mismatches(
+        let v = RemoteCompat.verdict(
             localRevision: "abc", remoteRevision: .failed(detail: "timed out"),
             localToolchain: "Xcode 27.0", remoteToolchain: .failed(detail: "timed out"))
-        XCTAssertEqual(reasons.filter { $0.hasPrefix("git revision") }.count, 1, "\(reasons)")
-        XCTAssertEqual(reasons.filter { $0.hasPrefix("toolchain") }.count, 1, "\(reasons)")
-        XCTAssertEqual(reasons.count, 4, "\(reasons)")
+        XCTAssertEqual(v.blocking.filter { $0.hasPrefix("git revision") }.count, 1, "\(v.blocking)")
+        XCTAssertEqual(v.blocking.filter { $0.hasPrefix("toolchain") }.count, 1, "\(v.blocking)")
+        XCTAssertEqual(v.blocking.count, 4, "\(v.blocking)")
     }
 
     /// 値が揃っていれば失敗行は出ない(照会が成功した回に余計な行を足さない)
     func testProbeValuesMatchingYieldNoReasons() {
-        XCTAssertEqual(RemoteCompat.mismatches(
+        let v = RemoteCompat.verdict(
             localRevision: "abc", remoteRevision: .value("abc"),
-            localToolchain: "Xcode 27.0", remoteToolchain: .value("Xcode 27.0")), [])
+            localToolchain: "Xcode 27.0", remoteToolchain: .value("Xcode 27.0"))
+        XCTAssertEqual(v.blocking, [])
+        XCTAssertEqual(v.advisory, [])
+    }
+
+    /// 照会が成功して製品版が同じ・build だけ違うなら ProbeOutcome 経由でも advisory になる
+    func testProbeSameProductVersionDifferentBuildIsAdvisory() {
+        let v = RemoteCompat.verdict(
+            localRevision: "abc", remoteRevision: .value("abc"),
+            localToolchain: "Xcode 27.0 Build version 27A5228h / iphonesimulator 24A434",
+            remoteToolchain: .value("Xcode 27.0 Build version 27A5231e / iphonesimulator 24A5423a"))
+        XCTAssertEqual(v.blocking, [])
+        XCTAssertEqual(v.advisory.count, 1, "\(v.advisory)")
     }
 
     // MARK: - RemoteCompat.classifyRelation

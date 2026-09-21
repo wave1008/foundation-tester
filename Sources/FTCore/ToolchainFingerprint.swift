@@ -34,6 +34,17 @@ public enum ToolchainFingerprint {
         return "\(xcodeLine.trimmingCharacters(in: .whitespaces)) / iphonesimulator \(sdkBuild)"
     }
 
+    /// `compose` の出力("Xcode 27.0 Build version 27A5228h / iphonesimulator 24A434")から
+    /// Xcode の製品版("27.0")だけを切り出す。`compose` の形とここだけが対 —— 先頭が "Xcode "
+    /// でない、または版が空なら nil(remote dispatch の advisory 判定 = RemoteCompat.verdict が
+    /// 「製品版が同じで build だけ違う」を見分けるのに使う)
+    public static func productVersion(of fingerprint: String) -> String? {
+        guard fingerprint.hasPrefix("Xcode ") else { return nil }
+        let rest = fingerprint.dropFirst("Xcode ".count)
+        let version = rest.prefix(while: { $0 != " " })
+        return version.isEmpty ? nil : String(version)
+    }
+
     private static func run(_ command: [String]) -> String? {
         guard let result = try? Shell.run(command), result.status == 0 else { return nil }
         let output = result.output.trimmingCharacters(in: .whitespacesAndNewlines)

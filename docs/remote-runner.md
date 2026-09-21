@@ -260,10 +260,21 @@ Android は `no running emulator for AVD ...` で失敗する)。`fleetest devic
 
 - リモート側も clone + ソースビルド(配布方針どおり)。更新は `Scripts/update.sh` の
   仕組みにそのまま乗せる
-- ディスパッチ前の適合チェックは**3項目**: **git revision・ToolchainFingerprint
-  (Xcode の版 + iOS Simulator SDK のビルド。**macOS の版は含まない**)・machineName**。不一致は**黙って走らせず fail fast**(このリポジトリの
+- ディスパッチ前の適合チェックは**2項目**: **git revision・ToolchainFingerprint
+  (Xcode の版 + iOS Simulator SDK のビルド。**macOS の版は含まない**)**。
+  **machineName は照合しない** —— 「送り先が想定の機械か」は ssh の宛先(とホスト鍵)が
+  保証するので、リモートの登録名は見ない(`RemoteCompat.verdict`)。
+  git revision の不一致は**黙って走らせず fail fast**(このリポジトリの
   「片方だけ変えない」規律をマシン間に広げると、スキューは恒常的なバグ族になるため
-  入口で遮断する)
+  入口で遮断する)。**ToolchainFingerprint だけは仕分けが1段深い**(ユーザー決定): 製品版
+  (`Xcode X.Y`)が同じで build 番号だけ違う = ベータの seed 違いはディスパッチを**止めない
+  advisory**、製品版が違う(26 vs 27 等)は従来どおり fail-closed。根拠は、リモートへ渡るのが
+  TestProjects のソースだけで、fleetest 本体・XCUITest ランナー・in-app dylib は**ランナー機が
+  自分の Xcode でビルドする**ため機械的な依存が無く、止める理由が「結果の比較可能性」だけに
+  縮むこと(実質的な結合は `appPath` のアプリが手元ビルドのままワークスペース経由でランナーへ
+  入る1点だけ)。仕分けは `fleetest api remote-compat` / `fleetest remote status --json` の
+  `toolchainAdvisory: String?` が持ち、`toolchainCompatible` は「blocking で止まるか」の意味になる
+  (advisory のときも true)
 - **照会そのものが失敗したときは理由まで出す**(2026-09-09)。`RemoteCompat.ProbeOutcome` が
   「値が無い」と「なぜ取れなかったか」を別に持ち、ssh の exit status とリモートの出力を
   reasons へ載せる。**照会系は1回だけ引き直す**(待ち時間は置かない) —— ssh の単発失敗は
@@ -283,7 +294,8 @@ Android は `no running emulator for AVD ...` で失敗する)。`fleetest devic
   全部の rev/toolchain 適合を見て、ズレていれば「更新して実行 / キャンセル」をダイアログで聞く
   (**「そのまま実行」は置かない** —— ズレたまま走らせるとリモート担当分は必ず
   checkCompatibility に弾かれ、部分失敗の run にしかならない。align で直せないズレ
-  = 未 push・到達不能・toolchain 不一致は実行を止めて理由を出す。チェック自体を外すのは
+  = 未 push・到達不能・製品版の違う toolchain 不一致は実行を止めて理由を出す(ベータ seed 違いの
+  toolchain advisory は止めない)。チェック自体を外すのは
   設定 `fleetest.remoteCompatCheck`)。ズレの解消(揃えるだけ)は `fleetest remote align <runner>` —
   `remote setup` の align ステップだけを単独で実行する軽量版(preflight/install は通さない)
 
@@ -1022,7 +1034,7 @@ machine 名付きで並ぶ)。「マージの実装」は要らなかった。
 | 区分 | 前提 | 必須? | 機械検証 |
 |---|---|---|---|
 | ハード | Apple silicon の実機 Mac(VM は FM 不可の公算大) | 必須 | `sysctl hw.optional.arm64` |
-| ツールチェーン | 発行側と同じ Xcode + iOS Simulator SDK(ToolchainFingerprint 一致)。**macOS の版は照合しない**(混在可。ただし OCR・FM は OS 付属なので結果が機械で変わりうる) | 必須 | 既存適合チェック流用 |
+| ツールチェーン | 発行側と同じ Xcode 製品版 + iOS Simulator SDK(ToolchainFingerprint の製品版一致。**build 番号だけの違い=ベータ seed 違いは advisory で止めない**、製品版違いは blocking)。**macOS の版は照合しない**(混在可。ただし OCR・FM は OS 付属なので結果が機械で変わりうる) | 必須(製品版のみ) | 既存適合チェック流用 |
 | **運用モード** | **A: FileVault 有効(既定)/ B: FileVault 無効+自動ログイン**(§5。どちらも正式構成) | 必須(いずれか) | `fdesetup status` + `defaults read com.apple.loginwindow autoLoginUser` |
 | セッション | **Aqua セッションが立っている**(= コンソールにランナーユーザーがログイン済み)。画面ロックは可 | 必須 | `stat -f%Su /dev/console` がランナーユーザーと一致(**両モード共通**) |
 | 電源 | **システムスリープ無効**(ディスプレイスリープは可) | 必須 | `pmset -g` |
@@ -1399,11 +1411,12 @@ FM 可否・**ログイン状態**(16.3)・空き容量・**占有**(LOCK。§18
 60 秒間隔で取り直す)なので、監視を開いていればたいてい埋まる。
 **`--fm` は残す** —— こちらは実呼び出しで「今この瞬間」を確かめる別口で、付いていれば台帳より優先する。
 
-### 16.6 ツールチェーン更新のデッドロック(運用手順)
+### 16.6 ツールチェーン更新の運用手順
 
-Xcode/macOS を更新すると ToolchainFingerprint が不一致になり**全ディスパッチが止まる**。
-フリートでは**カナリア更新**(1台だけ更新 → 検証ディスパッチ1本 → 通ってから残りへ展開)を
-手順とする。将来 `remote update --canary` として自動化する価値がある(Phase 3 以降)。
+**止まるのは Xcode の製品版(X.Y)をまたぐ更新だけ**(§7)。同じ製品版のベータ間(build 番号
+だけの違い)は advisory になり、ディスパッチは止まらない。製品版をまたぐ更新では、フリートでは
+**カナリア更新**(1台だけ更新 → 検証ディスパッチ1本 → 通ってから残りへ展開)を手順とする。
+将来 `remote update --canary` として自動化する価値がある(Phase 3 以降)。
 
 ### 16.7 その他の運用契約
 
