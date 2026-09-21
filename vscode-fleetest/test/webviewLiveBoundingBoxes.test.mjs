@@ -138,15 +138,15 @@ function boxes(document) {
   return [...document.getElementById("live-boxes-overlay").querySelectorAll("rect:not(.hot)")];
 }
 
-test("トグルが『要素一覧を更新』の左にある", (t) => {
+test("トグルが『アプリを起動』の右にある", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
   const toggle = document.getElementById("live-boxes-toggle");
   assert.ok(toggle, "トグルが存在すること");
   assert.equal(
-    toggle.nextElementSibling.id, "live-btn-refresh-snapshot",
-    "「要素一覧を更新」のすぐ左に並ぶこと",
+    toggle.previousElementSibling.id, "live-btn-launch",
+    "「アプリを起動」のすぐ右に並ぶこと",
   );
   assert.equal(document.getElementById("live-show-boxes").checked, false, "既定は OFF");
 });

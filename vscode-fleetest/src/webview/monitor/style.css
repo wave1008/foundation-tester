@@ -2471,14 +2471,13 @@ input[type="search"]::placeholder {
   opacity: 0.8;
 }
 #live-action-error-close:hover { opacity: 1; }
-/* 見出しのトグル。見出しラベルのすぐ右へ左寄せで置く(右端は「要素一覧を更新」ボタン)。
-   ラベルと箱を1行に収め、幅が足りないときは見出しラベル側(> span)が縮む。 */
+/* 「アプリを起動」の右に並ぶトグル。ラベルと箱を1行に収める(ツールバーの gap で間が空く)。 */
 #panel-live .elements-header-toggle {
   display: flex;
   align-items: center;
   gap: 4px;
   flex: 0 0 auto;
-  margin-left: 16px; /* 見出しラベルとの間(ヘッダの gap 6px に足す) */
+  margin-left: 8px; /* 左隣のボタンとの間(ツールバーの gap に足す) */
   white-space: nowrap;
   cursor: pointer;
 }
@@ -2490,9 +2489,9 @@ input[type="search"]::placeholder {
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
-/* 「要素一覧を更新」だけを右端へ(トグルは見出しの隣に左寄せで残す)。 */
-#panel-live .elements-header > button { margin-left: auto; }
-/* 見出しラベルは幅が足りなければ省略し、右のボタン(要素一覧を更新)を押し出さない。 */
+/* 「更新」は見出しのすぐ右へ左寄せで置く(右端へ飛ばさない)。 */
+#panel-live .elements-header > button { margin-left: 16px; }
+/* 見出しラベルは幅が足りなければ省略し、右のボタン(更新)を押し出さない。 */
 #panel-live .elements-header > span {
   min-width: 0;
   overflow: hidden;
@@ -2571,10 +2570,12 @@ input[type="search"]::placeholder {
 #panel-live .oplog-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
+/* 「クリア」は見出しのすぐ右へ左寄せで置く(右端へ飛ばさない。要素一覧の「更新」と同じ) */
+#panel-live .oplog-header > button { margin-left: 16px; }
 #panel-live .oplog-header button,
 #panel-live .elements-header button {
   flex: 0 0 auto;

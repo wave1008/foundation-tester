@@ -358,6 +358,7 @@ function renderLivePanel(): string {
     <div class="toolbar live-record-actions">
       <button id="live-btn-record">${t("panels.live.startRecording")}</button>
       <button id="live-btn-launch" class="secondary" title="${t("panels.live.launchButtonTitle")}" disabled>${t("panels.live.launchButton")}</button>
+      <label id="live-boxes-toggle" class="elements-header-toggle"><input id="live-show-boxes" type="checkbox">${t("panels.live.showBoxes")}</label>
       <span id="live-record-status" class="live-record-status"></span>
     </div>
     <div id="live-banner" class="banner"></div>
@@ -403,7 +404,6 @@ function renderLivePanel(): string {
           <div class="live-elements-section" id="live-elements-section">
             <div class="elements-header">
               <span>${t("panels.live.elementsHeader")}</span>
-              <label id="live-boxes-toggle" class="elements-header-toggle"><input id="live-show-boxes" type="checkbox">${t("panels.live.showBoxes")}</label>
               <button id="live-btn-refresh-snapshot" class="secondary" title="${t("panels.live.refreshSnapshotTitle")}">${t("panels.live.refreshSnapshot")}</button>
             </div>
             <div id="live-elements-list" class="elements-list"></div>

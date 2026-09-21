@@ -139,8 +139,8 @@ export const liveStrings = {
     en: "Failed to generate test code.",
   },
   "live.refreshFirst": {
-    ja: "先に「要素一覧を更新」で画面を取得してください。",
-    en: 'Fetch the screen with "Refresh Elements" first.',
+    ja: "先に要素一覧の「更新」で画面を取得してください。",
+    en: 'Fetch the screen with "Refresh" first.',
   },
   "live.typeTextEmpty": {
     ja: "入力するテキストを入力してください。",
