@@ -62,3 +62,18 @@ test("控えを捨てる経路は webview にも捨てさせる", () => {
   assert.match(clear, /this\.lastElements = \[\]/);
   assert.match(clear, /type: "clearSnapshot"/, "webview 側の控えも捨てさせること");
 });
+
+// エラーバナーは利用者が消せなければならない。自動で消えるのは接続系の3文言だけ
+// (isConnectionClassMessage)で、ブリッジ接続拒否のように serve が返す文言は次の失敗で
+// 上書きされるまで残る = 「消す手段がない」状態だった(2026-09-21)。
+// 口は2つ: webview の × ボタン(webviewLiveActionErrorDismiss.test.mjs)と、
+// 利用者の操作が通ったときの自動クリア(ここ)。
+test("利用者の操作が成功したらエラーバナーを消す", () => {
+  const source = controllerSource();
+  const run = body(source, "private async runAction(");
+  assert.match(
+    run,
+    /type: "actionError", message: ""/,
+    "成功経路でバナーを空にすること(自動フレームは runAction を通らない)",
+  );
+});

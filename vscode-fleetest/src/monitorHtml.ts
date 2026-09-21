@@ -361,7 +361,7 @@ function renderLivePanel(): string {
       <span id="live-record-status" class="live-record-status"></span>
     </div>
     <div id="live-banner" class="banner"></div>
-    <div id="live-action-error"></div>
+    <div id="live-action-error"><span id="live-action-error-text"></span><button id="live-action-error-close" type="button" title="${t("panels.live.dismissError")}" aria-label="${t("panels.live.dismissError")}">×</button></div>
 
     <div class="content">
       <div class="screenshot-pane" id="live-screenshot-pane">

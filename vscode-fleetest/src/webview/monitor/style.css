@@ -2423,8 +2423,24 @@ input[type="search"]::placeholder {
   font-size: 12px;
   color: var(--vscode-errorForeground, #f14c4c);
   white-space: pre-wrap;
+  gap: 8px;
+  align-items: flex-start;
 }
-#live-action-error.visible { display: block; }
+#live-action-error.visible { display: flex; }
+#live-action-error-text { flex: 1 1 auto; min-width: 0; }
+/* 消す口。文言は長く折り返すので上端に置く(align-items: flex-start) */
+#live-action-error-close {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1.2;
+  cursor: pointer;
+  opacity: 0.8;
+}
+#live-action-error-close:hover { opacity: 1; }
 #panel-live .elements-header {
   display: flex;
   align-items: center;

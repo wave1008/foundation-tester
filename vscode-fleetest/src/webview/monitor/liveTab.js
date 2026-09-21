@@ -7,6 +7,7 @@ import { t } from '../i18n.js';
 import { vscode, persistedState } from './vscodeApi.js';
 import { clampMenuPosition } from './menu.js';
 import { createH264Renderer } from './h264Decoder.js';
+import { displayAspect, fitScreenSize } from './liveScreenFit.js';
 
 function post(message) {
   vscode.postMessage({ type: 'live', message });
@@ -39,6 +40,8 @@ const busyMessage = document.getElementById('live-busy-message');
 
 const typeTextInput = document.getElementById('live-type-text');
 const actionError = document.getElementById('live-action-error');
+const actionErrorText = document.getElementById('live-action-error-text');
+const actionErrorClose = document.getElementById('live-action-error-close');
 const elementsList = document.getElementById('live-elements-list');
 const oplogList = document.getElementById('live-oplog-list');
 const oplogClearBtn = document.getElementById('live-btn-oplog-clear');
@@ -97,6 +100,17 @@ let liveH264ErrorSent = false;
 // キーフレーム未受信のまま届いたデルタチャンク数と streamStall 送信済みフラグ(タイル側 deviceTiles.js と同型)
 let liveDeltasBeforeKey = 0;
 let liveStallSent = false;
+// 操作直後の一枚絵は**遷移の途中**を捉えていることがある(アプリスイッチャー → ホーム等で、
+// クロスフェード中の絵が残る)。配信が次のフレームを描けば自動で最新になるが、遷移が終わると
+// 画面は静止して配信も止まるため、来なければ一度だけ撮り直す。
+// **遷移の完了は待たない** —— 操作の応答はそのまま返し、あとから絵だけ差し替える。
+// 値: iOS のシステム遷移(ホーム/アプリスイッチャー)のアニメーションを跨ぐ長さ。配信のフレームが
+// 描けた時点でキャンセルするので、実際に払うのは配信が止まっている静止画面のときだけ。
+// 尽きたとき: これより長い遷移では古い絵が残る(次の操作で更新される。現状と同じ)。
+const SETTLE_REFRESH_MS = 700;
+let settleRefreshTimer = null;
+// 撮り直しとして要求した snapshot か(その結果でまた仕掛けると静止画面で撮り続ける)。
+let settleRefreshRequested = false;
 
 const busyButtons = [
   'live-btn-refresh-devices', 'live-btn-refresh-snapshot',
@@ -147,10 +161,13 @@ function showBanner(text) {
 }
 
 function showActionError(text) {
-  if (!text) { actionError.classList.remove('visible'); actionError.textContent = ''; return; }
-  actionError.textContent = text;
+  if (!text) { actionError.classList.remove('visible'); actionErrorText.textContent = ''; return; }
+  actionErrorText.textContent = text;
   actionError.classList.add('visible');
 }
+// **利用者が消せる口** —— 自動で消えるのは host が復帰を検知した接続系の文言だけで、
+// ブリッジ接続拒否のように serve が返す文言は次の失敗で上書きされるまで残る。
+actionErrorClose.addEventListener('click', () => showActionError(''));
 
 // ---- デバイス選択 ---------------------------------------------------------------
 
@@ -314,15 +331,35 @@ function activeScreenEl() {
 
 // 前面に出すのはどちらか一方だけ。**デコーダには触らない**(捨てると次のキーフレームまで
 // 1枚も描けず、タップのたびに映像が数秒止まる)。
+// **新しい絵が前面に出たら撮り直しの予約は落とす** —— 仕掛け直すのは applySnapshot だけ
+// (あちらは showStill のあとに仕掛けるので打ち消されない)。
 function showStill() {
+  cancelSettleRefresh();
   liveCanvas.classList.remove('visible');
   screenshot.classList.add('visible');
   screenshotPlaceholder.style.display = 'none';
 }
 function showCanvas() {
+  cancelSettleRefresh();
   screenshot.classList.remove('visible');
   liveCanvas.classList.add('visible');
   screenshotPlaceholder.style.display = 'none';
+}
+
+function cancelSettleRefresh() {
+  if (settleRefreshTimer !== null) {
+    clearTimeout(settleRefreshTimer);
+    settleRefreshTimer = null;
+  }
+}
+function scheduleSettleRefresh() {
+  cancelSettleRefresh();
+  settleRefreshTimer = setTimeout(() => {
+    settleRefreshTimer = null;
+    if (busy || !lastScreen) { return; } // 別の操作が走っているならその結果が絵を持ってくる
+    settleRefreshRequested = true;
+    post({ type: 'refreshSnapshot' });
+  }, SETTLE_REFRESH_MS);
 }
 // img は naturalWidth/Height、canvas はビットマップ実寸(h264Decoder が frame.displayWidth/Height に
 // 合わせて設定済み)で自然サイズを取る。
@@ -335,29 +372,29 @@ function fitScreenshot() {
   if (paneH === 0) { return; } // タブ非表示中(display:none)は測れないので触らない
   const avail = paneH - screenshotActions.offsetHeight - SCREENSHOT_PANE_GAP - SCREENSHOT_WRAP_BORDER;
   const maxH = Math.max(40, avail);
-  screenshot.style.maxHeight = maxH + 'px';
-  liveCanvas.style.maxHeight = maxH + 'px';
-  // スプリッターで手動幅が設定されているときは pane を固定幅にし、画像はその幅(max-width:100%)と
-  // 高さ(maxHeight)の小さい方に自動フィットさせる(自動ハグの maxWidth 計算はしない)。
+  // **表示サイズは絵の解像度で決めない**(理由は liveScreenFit.js)。画面比は lastScreen から採り、
+  // 幅と高さの両方を明示して入れる —— 片方だけ入れて max-width に任せると、幅で制限された回だけ
+  // 縦横比が崩れる。
+  const aspect = displayAspect(lastScreen, naturalSize(activeScreenEl()));
+  const widthCap = screenPaneWidth != null ? screenPaneWidth - SCREENSHOT_WRAP_BORDER : undefined;
+  const size = fitScreenSize(aspect, maxH, widthCap);
+  for (const el of [screenshot, liveCanvas]) {
+    el.style.maxHeight = size ? '' : maxH + 'px'; // 比が分かるまでは従来どおり絵に任せる
+    el.style.width = size ? size.width + 'px' : '';
+    el.style.height = size ? size.height + 'px' : '';
+  }
+  // スプリッターで手動幅が設定されているときは pane を固定幅にする(自動ハグの maxWidth 計算はしない)。
   if (screenPaneWidth != null) {
     screenshotPane.style.flex = '0 0 ' + screenPaneWidth + 'px';
     screenshotPane.style.maxWidth = screenPaneWidth + 'px';
     return;
   }
   screenshotPane.style.flex = '';
-  // pane 幅をフィット後の画像表示幅に合わせて縮める → 右隣の control-pane(要素一覧)が画像直後へ
-  // 左寄せで並ぶ(伸ばすと右端へ押しやられる)。flex-basis:auto の max-content が画像の自然幅になる
-  // 実装差(Chromium)を避けるため確定値を JS で入れる。naturalWidth は load 後のみ有効なので
-  // screenshot の 'load' でも再実行する(canvas は onFirstFrame 側で明示的に呼ぶ)。
-  // 未ロード時は cap を外し placeholder 幅(min-width)に委ねる。
-  const { w, h } = naturalSize(activeScreenEl());
-  if (w > 0 && h > 0) {
-    const dispH = Math.min(maxH, h); // 等倍を上限に(拡大しない)
-    const dispW = dispH * w / h;
-    screenshotPane.style.maxWidth = Math.ceil(dispW + SCREENSHOT_WRAP_BORDER) + 'px';
-  } else {
-    screenshotPane.style.maxWidth = '';
-  }
+  // pane 幅を画像の表示幅に合わせて縮める → 右隣の control-pane(要素一覧)が画像直後へ左寄せで
+  // 並ぶ(伸ばすと右端へ押しやられる)。flex-basis:auto の max-content が画像の自然幅になる
+  // 実装差(Chromium)を避けるため確定値を JS で入れる。比が分かるまでは cap を外し
+  // placeholder 幅(min-width)に委ねる。
+  screenshotPane.style.maxWidth = size ? Math.ceil(size.width + SCREENSHOT_WRAP_BORDER) + 'px' : '';
 }
 // pane の高さは flex で決まり画像内容に依存しない(=maxHeight/maxWidth 変更で再発火しない)ため無限ループ無し。
 if (typeof ResizeObserver !== 'undefined') {
@@ -398,6 +435,8 @@ function frameToDisplayRect(frame, screen, display) {
 // タップ座標を換算したり ref を叩いたりしないよう捨てる。lastScreen が null の間は
 // ポインタ操作が無反応になり、次のフレームで requestSnapshotIfNeeded が撮り直しを要求する。
 function clearSnapshot() {
+  cancelSettleRefresh();
+  settleRefreshRequested = false;
   lastScreen = null;
   lastElements = [];
   autoSnapshotRequested = false;
@@ -421,6 +460,12 @@ function applySnapshot(message) {
   hoverBox.style.display = 'none';
   renderElements();
   fitScreenshot();
+  // 撮り直しの結果として届いた回は仕掛け直さない(静止画面で撮り続けることになる)
+  if (settleRefreshRequested) {
+    settleRefreshRequested = false;
+  } else {
+    scheduleSettleRefresh();
+  }
 }
 
 // 押下→ほぼ動かさず離す=タップ、動かして離す=ドラッグ(スワイプ)。click は使わない

@@ -1273,6 +1273,12 @@ export class MonitorLiveController implements vscode.Disposable {
         }
         return false;
       }
+      // **利用者の操作が通ったら前のエラーは消す** —— 自動で消えるのは接続系の3文言だけ
+      // (isConnectionClassMessage)なので、ブリッジ接続拒否のように serve が返した文言は
+      // 状況が直っても残り続けていた。ここは利用者が起こした操作の成功経路だけを通るので、
+      // 常時回っている自動フレーム(frameTick)が読む前に消してしまうことはない。
+      this.post({ type: "actionError", message: "" });
+      this.connectionBannerShown = false;
       // 記録するのは対象アプリの上での操作だけ(operationBelongsToApp の doc)
       if (this.recording && recordStep && operationBelongsToApp(action?.app, this.recordApp?.bundle)) {
         this.recordedSteps.push(recordStep);
