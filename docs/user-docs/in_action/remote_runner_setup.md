@@ -266,6 +266,7 @@ user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 2
 | ❌ in `TOOLCHAIN` | No Xcode on the runner matches your product version, or more than one equally matches (runs are stopped) | Install the matching Xcode product version on the runner (you can keep other versions installed), or pin one with `--developer-dir` if several match |
 | ⚠️ in `TOOLCHAIN` | Same Xcode product version but a different beta build number (runs are **not** stopped) | Optional — install the same build on both Macs if you want them to match |
 | ⚠️ in `RUNTIME` | The runner's iOS simulator runtime differs from your Mac's | Run `xcodebuild -downloadPlatform iOS` on the runner (this is only a warning; runs are not stopped) |
+| ⚠️ `iOS <version>: none` in `RUNTIME` | That runner has no simulator runtime for the Xcode in use there, so devices on that iOS version cannot be created (simulator runtimes do not come with Xcode) | Run `xcodebuild -downloadPlatform iOS` on that runner |
 | `BINARY` is `no` | fleetest is not built on the runner | Run Step 3 again |
 
 ### Check in the VS Code extension

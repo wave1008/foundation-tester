@@ -24,6 +24,23 @@ final class RemoteStatusRuntimeCellTests: XCTestCase {
                        "✅ iOS 27.0: 24A434")
     }
 
+    /// **`none`(その SDK のランタイムが1本も無い)は一致していても ⚠️** —— 全機が等しく「無い」ときに
+    /// ✅ を出すと、その iOS の台を要求した run が供給で落ちるまで誰も気づかない。
+    /// 自動選択が入って到達しやすくなった状態(2026-09-21 に Xcode 27.2 beta の実機で観測)
+    func testNoMatchingRuntimeWarnsEvenWhenBothSidesAgree() {
+        XCTAssertEqual(RemoteCommand.Status.runtimeMatches(local: "iOS 27.2: none",
+                                                           remote: "iOS 27.2: none"), true,
+                       "一致の判定そのものは変えない(手元と同じかを答える別の問い)")
+        XCTAssertEqual(RemoteCommand.Status.runtimeCell(local: "iOS 27.2: none", remote: "iOS 27.2: none"),
+                       "⚠️ iOS 27.2: none")
+        // 手元が不明でも鳴る(手元の simctl が期限切れでも、向こうに無い事実は変わらない)
+        XCTAssertEqual(RemoteCommand.Status.runtimeCell(local: nil, remote: "iOS 27.2: none"),
+                       "⚠️ iOS 27.2: none")
+        // 持っている側は従来どおり緑(誤検知を増やさない)
+        XCTAssertEqual(RemoteCommand.Status.runtimeCell(local: "iOS 27.0: 24A434", remote: "iOS 27.0: 24A434"),
+                       "✅ iOS 27.0: 24A434")
+    }
+
     /// 不明は「違う」に倒さない(倒すと Xcode の無い機械で毎回鳴る)
     func testUnknownOnEitherSideIsNotAMismatch() {
         XCTAssertNil(RemoteCommand.Status.runtimeMatches(local: nil, remote: "iOS 27.0: 24A434"))

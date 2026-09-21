@@ -57,9 +57,20 @@ public enum SimulatorRuntimeFingerprint {
         } else if !betas.isEmpty {
             shown = betas.joined(separator: ", ") + " (beta)"
         } else {
-            shown = "none"
+            shown = noneMarker
         }
         return "iOS \(version): \(shown)"
+    }
+
+    /// SDK と同じ版のランタイムが1本も無いときに `compose` が出す語
+    static let noneMarker = "none"
+
+    /// 選んだ Xcode の SDK に対応するランタイムが1本も無い指紋か。
+    /// **手元と一致していても警告する** —— 全機が等しく「無い」と一致 = ✅ になり、その SDK の台を
+    /// 要求した run が供給で落ちるまで誰も気づかない(2026-09-21 に Xcode 27.2 beta を
+    /// 自動選択した実機で観測。ランタイムは Xcode に付いてこないので、この状態は普通に起きる)
+    public static func hasNoMatchingRuntime(_ fingerprint: String) -> Bool {
+        fingerprint.hasSuffix(": \(noneMarker)")
     }
 
     /// 手元の指紋(`remote status` 1回につき1度だけ呼ばれる)

@@ -164,6 +164,7 @@ user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 2
 | `TOOLCHAIN` に ❌ | 手元の Mac の製品版に一致する Xcode がランナー機に無い、または複数が同じくらい一致する(実行は止まります) | 一致する製品版の Xcode をランナー機へ追加で入れます(他の版を消す必要はありません)。複数あって絞れないときは `--developer-dir` で固定します |
 | `TOOLCHAIN` に ⚠️ | Xcode は同じ製品版だがベータのビルド番号が違う(実行は止まりません) | 揃えなくても実行できます。揃えたい場合は両方の Mac を同じビルドにします |
 | `RUNTIME` に ⚠️ | ランナー機の iOS シミュレータのランタイムが手元と違う | ランナー機で `xcodebuild -downloadPlatform iOS` を実行します(警告だけで、実行は止まりません) |
+| `RUNTIME` に ⚠️ `iOS <版>: none` | そのランナー機に、使われている Xcode に対応するシミュレータのランタイムが無い(ランタイムは Xcode に付いてきません)。その iOS の台を作れません | そのランナー機で `xcodebuild -downloadPlatform iOS` を実行します |
 | `BINARY` が `no` | ランナー機に fleetest がビルドされていない | ステップ3をもう一度実行します |
 
 ### VSCode 拡張で確認する

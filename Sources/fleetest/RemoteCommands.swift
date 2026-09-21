@@ -110,6 +110,14 @@ struct RemoteCommand: AsyncParsableCommand {
                         + " (here: \(localRuntime ?? "?"), there: \(r.status?.simulatorRuntime ?? "?"))."
                         + " Simulators may fail to start there; on that machine run: xcodebuild -downloadPlatform iOS")
                 }
+                // **一致していても言う**(上の行とは別の事実 = その SDK の台はどこでも作れない)
+                for r in reports {
+                    guard let runtime = r.status?.simulatorRuntime,
+                          SimulatorRuntimeFingerprint.hasNoMatchingRuntime(runtime) else { continue }
+                    ConsoleOut.out("⚠️ \(r.sshTarget): no iOS simulator runtime matches the Xcode in use"
+                        + " there (\(runtime)). Devices on that iOS version cannot be created;"
+                        + " on that machine run: xcodebuild -downloadPlatform iOS")
+                }
             }
             if reports.contains(where: { !$0.reachable || !$0.compatible }) {
                 throw ExitCode(1)
@@ -159,6 +167,8 @@ struct RemoteCommand: AsyncParsableCommand {
         /// RUNTIME の1セル(`✅ iOS 27.0: 24A434` / `⚠️ iOS 27.0: 24A5423a (beta)` / `-` = 不明)
         static func runtimeCell(local: String?, remote: String?) -> String {
             guard let remote else { return "-" }
+            // **一致より先に見る** —— 全機が等しく「無い」ときに ✅ を出さない
+            if SimulatorRuntimeFingerprint.hasNoMatchingRuntime(remote) { return "⚠️ \(remote)" }
             switch runtimeMatches(local: local, remote: remote) {
             case true?: return "✅ \(remote)"
             case false?: return "⚠️ \(remote)"

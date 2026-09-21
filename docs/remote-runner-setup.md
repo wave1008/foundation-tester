@@ -361,7 +361,11 @@ user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 2
 - `RUNTIME` に ⚠️ → その機械の iOS シミュレータのランタイムが手元と違う。とくに `(beta)` は
   **正式版の Xcode ではシミュレータが起動できないことがある**(一覧には使える形で出るので気づけない)。
   その機械で `xcodebuild -downloadPlatform iOS` を打つ。**警告だけ**で exit code は変えない。
-  `-` は不明(Xcode が無い・`simctl` が 10 秒以内に答えない = CoreSimulatorService の詰まり)で、警告は鳴らない
+  `-` は不明(Xcode が無い・`simctl` が 10 秒以内に答えない = CoreSimulatorService の詰まり)で、警告は鳴らない。
+  **`iOS <版>: none` は手元と一致していても ⚠️**(選ばれた Xcode の SDK に対応するランタイムが
+  その機械に1本も無い = その iOS の台を作れない)。**ランタイムは Xcode に付いてこない**ので、
+  新しい Xcode を自動選択した直後はこの形になりやすい —— 一致を見るだけでは、全機が等しく
+  「無い」ときに緑になってしまうため、ここだけは一致より先に判定する
 - `BINARY` が `no` → ステップ2(または `swift build --product fleetest`)
 - `FM` を見たいときは `--fm` を付ける(1ホストにつき数秒かかるので既定では見ない)
 - 複数ホストは `--runner a --runner b`。`--json` で機械可読の1行
