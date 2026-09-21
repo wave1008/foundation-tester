@@ -1123,6 +1123,13 @@ public enum ProfileFileKind: String, CaseIterable, Sendable {
 
 // MARK: - エラー
 
+/// 重複デバイス名エラーの文言の共有部分(ProfileError.duplicateDeviceName と
+/// ProfileResolver.validate の2箇所で同じ言い回しにする)。判定は無効化された行
+/// (`"enabled": false`)も重複に数える(DeviceMachineGrouping.entries(enabledOnly: false))ので、
+/// 文言もそれを言う —— 編集画面には見えない無効行がエラーの原因になりうるため
+private let duplicateDeviceNameRule =
+    "names must be unique per machine, across ios and android — entries with \"enabled\": false count too"
+
 public enum ProfileError: Error, LocalizedError {
     case runProfileNotFound(name: String, available: [String])
     case appProfileNotFound(name: String, available: [String])
@@ -1160,7 +1167,7 @@ public enum ProfileError: Error, LocalizedError {
         case .duplicateDeviceName(let name, let deviceMachine, let run):
             return "duplicate device name in run profile \(run): \(name)"
                 + " on machine \(DeviceMachineGrouping.display(deviceMachine))"
-                + " (names must be unique per machine, across ios and android)"
+                + " (\(duplicateDeviceNameRule))"
         case .missingBundleID(let platform, let appProfile):
             // common の app は廃止(merging 参照)のため、案内は platform セクション限定
             return "app profile \(appProfile) has no \"app\" (bundle ID / package name) for \(platform)"
@@ -1633,7 +1640,7 @@ public enum ProfileResolver {
                     in: DeviceMachineGrouping.entries(runDevices: devices, enabledOnly: false)) {
                     errors.append("duplicate device name: \(duplicate.name)"
                                   + " on machine \(DeviceMachineGrouping.display(duplicate.machine))"
-                                  + " (names must be unique per machine, across ios and android)")
+                                  + " (\(duplicateDeviceNameRule))")
                 }
                 for entry in devices where entry.isEnabled {
                     errors += physicalDeviceErrors(entry.spec, platform: entry.platform)

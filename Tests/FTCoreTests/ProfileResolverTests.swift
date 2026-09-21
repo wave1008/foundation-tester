@@ -468,6 +468,26 @@ final class ProfileResolverTests: XCTestCase {
         }
     }
 
+    /// 無効化された行(enabled: false)だけが同名でも重複として断る(T7)。編集画面には見えない
+    /// 無効行が原因になりうるので、文言にもそれを言う
+    func testDuplicateDeviceNameCountsDisabledEntry() throws {
+        try writeStandardFixture()
+        try write("""
+        { "app": "sampleapp", "devices": [
+          { "platform": "android", "machine": "local", "name": "Pixel 3a", "avd": "Pixel_3a", "enabled": false },
+          { "platform": "android", "machine": "local", "name": "Pixel 3a", "avd": "Pixel_3a" } ] }
+        """, to: project.runsDir, name: "r")
+
+        XCTAssertThrowsError(try ProfileResolver.resolve(
+            project: project, runName: "r")) { error in
+            guard case ProfileError.duplicateDeviceName = error else {
+                return XCTFail("duplicateDeviceName のはず: \(error)")
+            }
+            let message = (error as? LocalizedError)?.errorDescription ?? ""
+            XCTAssertTrue(message.contains("enabled"), message)
+        }
+    }
+
     /// 同名でも機械が違えば重複ではない
     func testSameNameOnAnotherMachineIsNotADuplicate() throws {
         try writeStandardFixture()
