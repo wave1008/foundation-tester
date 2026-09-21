@@ -12,20 +12,20 @@ final class LiveSessionFollowerTests: XCTestCase {
     func testPointsAtSpringboardWhenTheAppIsNotInFront() {
         XCTAssertEqual(
             LiveSessionTarget.retarget(sessionTarget: "com.example.app", preferred: "com.example.app",
-                                       preferredIsForeground: false),
+                                       preferredIsForeground: false, systemAlertPresent: false),
             springboard)
     }
 
     func testStaysOnTheAppWhileItIsInFront() {
         XCTAssertNil(
             LiveSessionTarget.retarget(sessionTarget: "com.example.app", preferred: "com.example.app",
-                                       preferredIsForeground: true))
+                                       preferredIsForeground: true, systemAlertPresent: false))
     }
 
     func testComesBackToTheAppOnceItIsInFrontAgain() {
         XCTAssertEqual(
             LiveSessionTarget.retarget(sessionTarget: springboard, preferred: "com.example.app",
-                                       preferredIsForeground: true),
+                                       preferredIsForeground: true, systemAlertPresent: false),
             "com.example.app")
     }
 
@@ -34,17 +34,43 @@ final class LiveSessionFollowerTests: XCTestCase {
     func testDoesNotRetargetWhenAlreadyPointedAtSpringboard() {
         XCTAssertNil(
             LiveSessionTarget.retarget(sessionTarget: springboard, preferred: "com.example.app",
-                                       preferredIsForeground: false))
+                                       preferredIsForeground: false, systemAlertPresent: false))
         XCTAssertNil(
             LiveSessionTarget.retarget(sessionTarget: springboard, preferred: nil,
-                                       preferredIsForeground: false))
+                                       preferredIsForeground: false, systemAlertPresent: false))
+    }
+
+    /// **システムアラートが出ている間は springboard へ倒す**。アラートは別プロセスの窓なので
+    /// アプリの state は runningForeground のままで、前面判定だけでは切り替わらない ——
+    /// アプリを向いたままだとアラートは木に1要素も載らず、要素一覧に出ないし ref でも叩けない
+    /// (2026-09-21: 「システムダイアログのとき要素一覧に出ない」の実害)。
+    func testPointsAtSpringboardWhileASystemAlertIsUp() {
+        XCTAssertEqual(
+            LiveSessionTarget.retarget(sessionTarget: "com.example.app", preferred: "com.example.app",
+                                       preferredIsForeground: true, systemAlertPresent: true),
+            springboard)
+    }
+
+    /// アラートが閉じたら戻る(出ている間だけの倒し込み)
+    func testComesBackToTheAppOnceTheAlertIsGone() {
+        XCTAssertEqual(
+            LiveSessionTarget.retarget(sessionTarget: springboard, preferred: "com.example.app",
+                                       preferredIsForeground: true, systemAlertPresent: false),
+            "com.example.app")
+    }
+
+    /// 既に springboard を向いていれば撃たない(向け直しは refFrames を消す)
+    func testDoesNotRetargetWhenAlreadyOnSpringboardDuringAnAlert() {
+        XCTAssertNil(
+            LiveSessionTarget.retarget(sessionTarget: springboard, preferred: "com.example.app",
+                                       preferredIsForeground: true, systemAlertPresent: true))
     }
 
     /// アプリを選んでいない(起動直後・終了後)は画面にあるものを触るだけ。
     /// **前面判定が true でも** preferred が無ければ springboard へ倒す
     func testPointsAtSpringboardWithoutAPreferredApp() {
         XCTAssertEqual(
-            LiveSessionTarget.retarget(sessionTarget: nil, preferred: nil, preferredIsForeground: true),
+            LiveSessionTarget.retarget(sessionTarget: nil, preferred: nil, preferredIsForeground: true, systemAlertPresent: false),
             springboard)
     }
 
@@ -55,6 +81,31 @@ final class LiveSessionFollowerTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/fleetest/ApiLiveCommand.swift")
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func followerSource() throws -> String {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/fleetest/LiveSessionFollower.swift")
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    /// 判定へ渡す `systemAlertPresent` は**ドライバに聞いた事実**でなければならない。
+    /// リテラルに落としても表示は成立してしまう: 常に false ならアラート中にアプリのツリーしか
+    /// 返らず(要素一覧に出ない・ref で叩けない)、常に true なら操作のたびに springboard へ
+    /// 向け直して直前の ref を捨てることになる。
+    func testFollowAsksTheDriverWhetherASystemAlertIsUp() throws {
+        let source = try followerSource()
+        XCTAssertTrue(source.contains("driver.systemAlert()"),
+                      "アラートの有無はドライバに聞くこと")
+        let ask = try XCTUnwrap(source.range(of: "driver.systemAlert()"))
+        let guardRange = try XCTUnwrap(source.range(of: "guard let target = LiveSessionTarget.retarget"))
+        XCTAssertTrue(ask.lowerBound < guardRange.lowerBound,
+                      "判定より前に聞くこと")
+        // 前面と答えた回だけ聞く(常時の監視にしない)
+        let foregroundGate = try XCTUnwrap(source.range(of: "if foreground {"))
+        XCTAssertTrue(foregroundGate.lowerBound < ask.lowerBound,
+                      "前面と答えた回だけ聞くこと(前面でなければどのみち springboard を向く)")
     }
 
     private func caseBody(_ source: String, cmd: String, until next: String) throws -> String {

@@ -23,9 +23,14 @@ enum LiveSessionTarget {
     /// 次に向け直すべき bundle ID。**nil = 変更不要**(向け直しは refFrames を消すので、
     /// 同じ向き先なら撃たない = 直前のスナップショットの ref を生かしたままにする)。
     /// - preferred: パネルが駆動しているアプリ(未選択・終了後は nil)
+    /// **システムアラートが出ている間は springboard へ倒す** —— アラートは別プロセスの窓なので
+    /// アプリの `.state` は `.runningForeground` のまま(BridgeRouter.handleAppState)で、前面判定
+    /// だけでは向き先が変わらない。アプリを向いたままだとアラートは木に1要素も載らず、
+    /// 要素一覧に出ないし ref でも叩けない。
     static func retarget(sessionTarget: String?, preferred: String?,
-                         preferredIsForeground: Bool) -> String? {
-        let desired = (preferredIsForeground ? preferred : nil) ?? springboard
+                         preferredIsForeground: Bool, systemAlertPresent: Bool) -> String? {
+        let onTheApp = preferredIsForeground && !systemAlertPresent
+        let desired = (onTheApp ? preferred : nil) ?? springboard
         return desired == sessionTarget ? nil : desired
     }
 }
@@ -57,8 +62,15 @@ final class LiveSessionFollower {
             // 嘘は「戻り遅れ」にしかならない(springboard を向いたままでも座標では届く)ので安全側
             foreground = (try? await driver.isAppForeground(bundleID: preferred)) ?? false
         }
+        // **聞くのは前面と答えた回だけ** —— 前面でなければどのみち springboard を向くので、
+        // アラートの有無は答えを変えない(常時の監視にしない)。
+        var systemAlertPresent = false
+        if foreground {
+            systemAlertPresent = ((try? await driver.systemAlert()) ?? nil)?.present ?? false
+        }
         guard let target = LiveSessionTarget.retarget(
-            sessionTarget: sessionTarget, preferred: preferred, preferredIsForeground: foreground) else { return }
+            sessionTarget: sessionTarget, preferred: preferred, preferredIsForeground: foreground,
+            systemAlertPresent: systemAlertPresent) else { return }
         do {
             if target == LiveSessionTarget.springboard {
                 // springboard は**起動せず参照だけ**(BridgeRouter.handleLaunch)。
