@@ -324,7 +324,12 @@
   `--ignore-lock` で押し切る。**読めないときは通す** = 掃除が永久にできなくなるほうが害が大きい)。
   **台を止める操作も同じ**(`DeviceBooter.shutdownOne` / `shutdownAll` が実際に止める前に
   `deviceInUseRefusal` = run-lease と **MCP の印(`mcp-<鍵>.lease`)** の保持者を読む。文言は run と MCP で分ける。`api stop-device` / `stop-all-devices` / `restart-devices` /
-  `wipe-device` / `devices down --profile` の全部がここを通る。押し切るのは CLI の `--force` だけ)。
+  `wipe-device` / `devices down --profile` / **`bridge down`(`--port` / `--all` / `--platform android` の3経路とも)**
+  の全部がここを通る。押し切るのは CLI の `--force` だけ)。**門は CLI の口にだけ置く** ——
+  `BridgeLauncher.stop()` / `stopAll()` は供給と古いブリッジの掃除からも呼ばれるので、
+  あちらに足すと run が建てられなくなる。**宛先が引けないときは通す**(無応答のブリッジを
+  止められないと回復手段が無くなる)。`bridge down --all` の判定は `BridgeDownRefusal.decide`
+  (純粋関数。文言は `DeviceBooter` の既存関数から組み立て、新しい文言を作らない)
   **プロファイル無しの全掃討 `devices down` は台を選べないので、生きた run-lease か MCP の印が1本でもあれば
   掃討ごと断る**(`DeviceBooter.sweepRefusal`。判定はリモートへ分散する前。`--force` は子へ、
   `remote clean --ignore-lock` は `--force` として運ぶ)→ maintainer-notes §25。
@@ -827,7 +832,13 @@
   セレクタとして貼れる保証はしない** —— 貼れる形が要るなら `SelectorNaming` を通す
 - **MCP(`ft_*`)は DSL と別経路なので、鮮度・防御を DSL 側に入れただけでは届かない**
   → maintainer-notes §5。**ただし同じ判定をそのまま強い挙動へ流用しない**。探索ロジックは
-  **MCP に2つ目の実装を書かず `StepExecutor` へ委ねる**(`ft_scroll_to`)
+  **MCP に2つ目の実装を書かず `StepExecutor` へ委ねる**(`ft_scroll_to`)。
+  **逆に、同じ門が両側にあるなら倒す向きも揃える** —— 未インストールのまま
+  `XCUIApplication.launch()` を撃つとハンドラが 60 秒で自壊してブリッジごと消えるので、
+  `ft_launch` の門(`MCPServer.launchGuardDecision`)は DSL の `LaunchPreflightDriver` と同じく
+  **「確かめられないなら撃たない」**側に倒す(在否は udid で引く =
+  `InstalledAppCheck.simulatorInstallVerdict(udid:)`。**素通しでよいのは Android と in-app
+  エンジンだけ** = ランナーが死なない経路。`com.apple.springboard` は launch しないので門の外)
 - **木だけから決まる注記は `Sources/fleetest-mcp/NoteCatalog.swift` が唯一の定義元**
   (`NoteCoverageTests` のソース走査が検出)。目録にすると3つ手に入る: **発火の全数計測** /
   **鍵ごとの黙らせ**(`FT_MCP_NOTES_OFF=<鍵,…|all>`)/ **出力バイトの回帰ゲート**。
@@ -1014,7 +1025,11 @@
   (2026-09-16 の負荷テストで実測。9/05 以来ずっとこの形だった)。**この経路のテストは子の出力を
   パイプ/FIFO にする** —— ファイルへリダイレクトすると write が失敗せず、砦が1度も踏まない
   → maintainer-notes §24)
-  ③**台帳(`.fleetest/bridge-<port>.pid/.inapp/.endpoint/.device`)はプロセスの実体で掃除する**
+  ③**台帳(`.fleetest/bridge-<port>.pid/.inapp/.endpoint/.device`)はプロセスの実体で掃除し、
+  中身は読む側が検証する**(`.endpoint` の1行目 = host が URL に使えなければ「記録が無い」へ倒す
+  = `BridgeEndpoint.isUsableHost`。**台帳由来の文字列を強制開封しない** —— 壊れた1行が
+  `URL(string:)!` でプロセスごと落とし、そのポートを開く `bridge status` も fleetest-mcp も
+  道連れになった)
   (`StaleLedgerSweep` = provision の入口。`.inapp` は LISTEN 実体の有無、`.endpoint/.device` は
   対の `.pid` の生死。**`/status` 応答で生死を決めない**)。採番は `ProvisionLock` の内側でだけ行う
   (`provision` / `XCUIBridgeResolver` / `LiveBridgeAutoStarter` の3経路。
