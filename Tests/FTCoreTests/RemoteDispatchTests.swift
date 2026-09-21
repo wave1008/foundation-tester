@@ -239,36 +239,37 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteLayout
 
     func testRemoteLayoutStripsTrailingSlashFromBase() {
-        let layout = RemoteLayout(base: "/Users/x/fleetest-runner/", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/x/fleetest-runner/", issuer: "alice", home: "/Users/x")
         XCTAssertEqual(layout.base, "/Users/x/fleetest-runner")
     }
 
     func testRemoteLayoutToolRootWorkDirBinary() {
-        let layout = RemoteLayout(base: "/Users/x/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/x/fleetest-runner", issuer: "alice", home: "/Users/x")
         XCTAssertEqual(layout.toolRoot, "/Users/x/fleetest-runner/foundation-tester")
         XCTAssertEqual(layout.workDir, "/Users/x/fleetest-runner/users/alice/work")
         XCTAssertEqual(layout.binary, "/Users/x/fleetest-runner/foundation-tester/.build/debug/fleetest")
     }
 
-    /// ツールクローンと dispatch.lock はホスト共有のまま(base 基準)。work だけが発行者ごとに分かれる
+    /// ツールクローンはホスト共有のまま(base 基準)。work だけが発行者ごとに分かれる
+    /// (dispatch.lock は base の外 = 機械グローバルな `<home>/.fleetest/`)
     func testRemoteLayoutUsersDir() {
-        let layout = RemoteLayout(base: "/Users/x/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/x/fleetest-runner", issuer: "alice", home: "/Users/x")
         XCTAssertEqual(layout.usersDir, "/Users/x/fleetest-runner/users")
     }
 
     func testRemoteLayoutProjectDir() {
-        let layout = RemoteLayout(base: "/Users/x/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/x/fleetest-runner", issuer: "alice", home: "/Users/x")
         XCTAssertEqual(layout.projectDir("E2E"), "/Users/x/fleetest-runner/users/alice/work/TestProjects/E2E")
     }
 
     /// remoteControl.workspace のミラー先はプロジェクトごとに分ける(複数プロジェクトの衝突を防ぐ)
     func testRemoteLayoutWorkspaceDir() {
-        let layout = RemoteLayout(base: "/Users/x/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/x/fleetest-runner", issuer: "alice", home: "/Users/x")
         XCTAssertEqual(layout.workspaceDir("E2E"), "/Users/x/fleetest-runner/users/alice/work/workspace/E2E")
     }
 
     func testRemoteLayoutDispatchReportDir() {
-        let layout = RemoteLayout(base: "/Users/x/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/x/fleetest-runner", issuer: "alice", home: "/Users/x")
         XCTAssertEqual(layout.dispatchReportDir(stamp: "20260801-120000-42"),
                        "/Users/x/fleetest-runner/users/alice/work/.fleetest/dispatch/20260801-120000-42/reports")
     }
@@ -343,7 +344,7 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteTransferPlan.rsyncArgs
 
     func testRsyncArgs() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         XCTAssertEqual(
             RemoteTransferPlan.rsyncArgs(project: "E2E", localProjectsDir: "/local/Projects",
                                         layout: layout, sshTarget: "user@host", ignore: .none),
@@ -357,7 +358,7 @@ final class RemoteDispatchTests: XCTestCase {
 
     /// `.fleetest-transfer-ignore` の翻訳結果は固定除外の**後・送り元/宛先パスの前**に並ぶ
     func testRsyncArgsAppendsTransferIgnorePatternsAfterFixedExcludes() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let ignore = TransferIgnore.Scan(files: ["workspace/.fleetest-transfer-ignore"],
                                          excludePatterns: ["/workspace/*.log", "/workspace/**/*.log"])
         XCTAssertEqual(
@@ -389,7 +390,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// project の rsyncArgs(--exclude /reports 等)と別の除外集合(.git/.DS_Store/node_modules を
     /// 階層を問わず除外)・別の宛先(workspaceDir)であることを固定する
     func testWorkspaceRsyncArgs() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         XCTAssertEqual(
             RemoteTransferPlan.workspaceRsyncArgs(
                 localWorkspaceDir: "/local/sut-ec-mobile-workspace", project: "E2E",
@@ -406,7 +407,7 @@ final class RemoteDispatchTests: XCTestCase {
     // プロジェクトルート配下なら専用ミラーを組み立てない側の分岐を固定する)
 
     func testPlacementDefaultWorkspaceIsWithinProject() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/repo/TestProjects/E2E/workspace",
             projectRoot: "/repo/TestProjects/E2E",
@@ -417,7 +418,7 @@ final class RemoteDispatchTests: XCTestCase {
 
     /// プロジェクトルートそのものを指したとき(相対パスが空文字列)は projectDir 自身を返す
     func testPlacementWorkspaceEqualToProjectRootItself() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/repo/TestProjects/E2E",
             projectRoot: "/repo/TestProjects/E2E",
@@ -427,7 +428,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testPlacementNestedCustomWorkspaceIsWithinProject() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/repo/TestProjects/E2E/custom/ws",
             projectRoot: "/repo/TestProjects/E2E",
@@ -437,7 +438,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testPlacementExplicitOutsideProjectIsNotWithinProject() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/shared/sut-workspace",
             projectRoot: "/repo/TestProjects/E2E",
@@ -448,7 +449,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// 似た名前の兄弟ディレクトリを配下と誤判定しない(文字列前方一致だと
     /// "…/E2E-Android-x" が "…/E2E-Android" の配下に見えてしまう)
     func testPlacementDoesNotMatchSiblingDirectoryWithSimilarName() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/repo/TestProjects/E2E-Android-x/workspace",
             projectRoot: "/repo/TestProjects/E2E-Android",
@@ -458,7 +459,7 @@ final class RemoteDispatchTests: XCTestCase {
 
     /// 逆方向(projectRoot が子を含む長いパス)も配下と誤判定しない
     func testPlacementDoesNotMatchWhenProjectRootIsLongerThanWorkspaceRoot() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/repo/TestProjects",
             projectRoot: "/repo/TestProjects/E2E",
@@ -469,7 +470,7 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteArtifactCollection.resultsRsyncArgs
 
     func testResultsRsyncArgs() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         XCTAssertEqual(
             RemoteArtifactCollection.resultsRsyncArgs(
                 project: "E2E", layout: layout, sshTarget: "user@host",
@@ -484,7 +485,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// `--out-format=%n` が付いていること(転送済みファイル一覧を rsync の stdout から
     /// 読み取るための唯一の口。無いと回収後の relink・facts・`--failed` の記録が1件も読めない)
     func testResultsRsyncArgsRequestsOutFormatForTransferredFileList() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         XCTAssertTrue(RemoteArtifactCollection.resultsRsyncArgs(
             project: "E2E", layout: layout, sshTarget: "user@host",
             localProjectsDir: "/local/Projects").contains("--out-format=%n"))
@@ -506,7 +507,7 @@ final class RemoteDispatchTests: XCTestCase {
                                                 withIntermediateDirectories: true)
         try Data("{}".utf8).write(to: scenarios.appendingPathComponent(name))
 
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         var args = RemoteArtifactCollection.resultsRsyncArgs(
             project: "E2E", layout: layout, sshTarget: "user@host", localProjectsDir: "/unused")
         args.removeLast(2)
@@ -548,7 +549,7 @@ final class RemoteDispatchTests: XCTestCase {
         try FileManager.default.setAttributes([.posixPermissions: 0o000],
                                               ofItemAtPath: scenarios.appendingPathComponent("B.s1.json").path)
 
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         var args = RemoteArtifactCollection.resultsRsyncArgs(
             project: "E2E", layout: layout, sshTarget: "user@host", localProjectsDir: "/unused")
         args.removeLast(2)
@@ -571,7 +572,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// 保つこと(rsync のディレクトリ中身コピー契約)を確認。**位置ではなく末尾2要素で見る** ——
     /// オプションを足したときに添字がずれてこの検証が別の物を見るのを避ける
     func testResultsRsyncArgsOmitsDeleteAndKeepsTrailingSlashes() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let args = RemoteArtifactCollection.resultsRsyncArgs(
             project: "E2E", layout: layout, sshTarget: "user@host",
             localProjectsDir: "/local/Projects")
@@ -584,7 +585,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// 回収は「信頼するランナー」ではなく共有ディレクトリからの入力(§15.3 は同一 UNIX ユーザー)。
     /// 宛先の外を指すシンボリックリンクを受けないことを固定する
     func testCollectionRsyncArgsRefuseUnsafeSymlinks() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         XCTAssertTrue(RemoteArtifactCollection.resultsRsyncArgs(
             project: "E2E", layout: layout, sshTarget: "user@host",
             localProjectsDir: "/local/Projects").contains("--safe-links"))
@@ -592,7 +593,7 @@ final class RemoteDispatchTests: XCTestCase {
 
     /// 送信(手元 → リモート)には付けない —— 受け手側の正当なシンボリックリンクを落とすため
     func testTransferRsyncArgsDoNotUseSafeLinks() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         XCTAssertFalse(RemoteTransferPlan.rsyncArgs(
             project: "E2E", localProjectsDir: "/local/Projects", layout: layout,
             sshTarget: "user@host", ignore: .none).contains("--safe-links"))
@@ -864,7 +865,7 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteShell.remoteRunCommand
 
     func testRemoteRunCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let command = RemoteShell.remoteRunCommand(
             layout: layout,
             fleetestArgs: ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet"])
@@ -875,17 +876,34 @@ final class RemoteDispatchTests: XCTestCase {
             + "{ echo \"no runner workspace at \(workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
             + "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && "
-            + "export FT_RUNNER_BASE='/Users/ci/fleetest-runner' && test -x '\(binary)' || "
+            + "export FT_RUNNER_BASE='/Users/ci/fleetest-runner' && "
+            + "export FT_DISPATCH_LOCK_HELD='local' && test -x '\(binary)' || "
             + "{ echo \"fleetest binary not found on remote — run: swift build --product fleetest\" >&2; exit 90; } && "
             + "'\(binary)' project sync >/dev/null 2>&1 || true && "
             + "'\(binary)' 'run' '--project' 'E2E' '--profile' 'ios-inapp' '--quiet'")
+    }
+
+    /// **run は「このロックは親が握っている」印を運び、exec は運ばない**。
+    /// ランナー機の上で走るのは `fleetest run --runner local` = その機械から見れば手元の run なので、
+    /// 印が無いと発行側(自分の親)が握っているロックを自分で取りに行って詰む。
+    /// exec はロックを取らない経路なので、握っていない印を名乗らせない。両方向を固定する
+    func testOnlyTheRunCommandCarriesTheDispatchLockHandoffMarker() {
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
+        let run = RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: ["run"])
+        XCTAssertTrue(run.contains("export FT_DISPATCH_LOCK_HELD='local' && "), run)
+        XCTAssertTrue(DispatchLockHandoff.isHeldByParent(
+            environment: [DispatchLockHandoff.environmentKey: DispatchLockHandoff.localTarget],
+            sshTarget: DispatchLockHandoff.localTarget))
+
+        let exec = RemoteShell.remoteExecCommand(layout: layout, args: ["api", "monitor"])
+        XCTAssertFalse(exec.contains("FT_DISPATCH_LOCK_HELD"), exec)
     }
 
     /// 登録簿に枠が設定されている機械へは `FT_FM_CONCURRENCY` を運ぶ。
     /// **設定が無ければ1バイトも足さない**(ランナー側の既定に任せる)—— 両方向を固定するのは、
     /// 「常に出す」変異も「常に出さない」変異も、片方だけのテストでは素通りするため
     func testRemoteRunCommandCarriesFMConcurrencyOnlyWhenSet() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let withSlots = RemoteShell.remoteRunCommand(
             layout: layout, fleetestArgs: ["run"], fmConcurrency: 1)
         XCTAssertTrue(withSlots.contains("export FT_FM_CONCURRENCY='1' && "), withSlots)
@@ -898,7 +916,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// nil(ambient)のときに1バイトも足さないことと、非 nil のときは launch(binary 実行)の
     /// 前に export が来ることの両方を固定する
     func testRemoteRunCommandExportsDeveloperDirOnlyWhenGiven() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let pinned = RemoteShell.remoteRunCommand(
             layout: layout, fleetestArgs: ["run"],
             developerDir: "/Applications/Xcode_27.app/Contents/Developer")
@@ -918,7 +936,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// バイナリ不在(exit 90)より手前に置く —— workspace 自体が無ければバイナリの有無を
     /// 問うても意味が無い
     func testRemoteRunCommandGuardsMissingIssuerWorkspaceBeforeBinaryGuard() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let command = RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: ["run"])
         guard let workspaceGuardRange = command.range(of: "exit 91"),
               let binaryGuardRange = command.range(of: "exit 90") else {
@@ -931,7 +949,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// 発行者はディスパッチ側から FT_ISSUER で運ぶ(LocalConfig.resolveIssuerId が最優先で読む
     /// 契約)。ランナー機側で解決させると全員が共有アカウントの同じ値になり帰属が消える
     func testRemoteRunCommandExportsIssuerWhenGiven() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let command = RemoteShell.remoteRunCommand(
             layout: layout, fleetestArgs: ["run", "--quiet"], issuer: "tanaka@dev-mbp")
         XCTAssertTrue(command.contains("export FT_ISSUER='tanaka@dev-mbp' && "), command)
@@ -950,7 +968,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// ランナー機の base を子へ渡す(FTCore.RunnerBase)。**run と exec の両方**に無いと、
     /// その経路の子だけ dispatch.lock を読めず、占有中でも配信を張り続ける(§18.2 M2)
     func testBothRemoteCommandsExportTheRunnerBase() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         for command in [RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: ["run"]),
                         RemoteShell.remoteExecCommand(layout: layout, args: ["api", "monitor"])] {
             XCTAssertTrue(command.contains("export FT_RUNNER_BASE='/Users/ci/fleetest-runner' && "), command)
@@ -966,7 +984,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// その経路の子(`api monitor` か `api device-stream`)だけ印を持たず、自分の配信を別人と読んで畳む。
     /// **`FT_PARENT_PID` は運ばない**(向こうで実在しない pid の死を検知して子が終わる)
     func testBothRemoteCommandsExportTheStreamOwnerButNeverTheParentPid() {
-        let layout = RemoteLayout(base: "/b", issuer: "alice")
+        let layout = RemoteLayout(base: "/b", issuer: "alice", home: "/h")
         for command in [RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: ["run"], streamOwner: "mac:42"),
                         RemoteShell.remoteExecCommand(layout: layout, args: ["api", "monitor"], streamOwner: "mac:42")] {
             XCTAssertTrue(command.contains("export FT_STREAM_OWNER='mac:42' && "), command)
@@ -989,13 +1007,13 @@ final class RemoteDispatchTests: XCTestCase {
     /// `remote exec` の子も発行者を知る必要がある(ロックの保持者が自分かを判定する = HostOccupancy)。
     /// exec が入るのは `users/<issuer>/work` なので、そのネームスペースの持ち主を渡す
     func testRemoteExecCommandExportsTheNamespaceIssuer() {
-        let layout = RemoteLayout(base: "/b", issuer: "a'; rm -rf /; '")
+        let layout = RemoteLayout(base: "/b", issuer: "a'; rm -rf /; '", home: "/h")
         let command = RemoteShell.remoteExecCommand(layout: layout, args: ["api", "monitor"])
         XCTAssertTrue(command.contains("export FT_ISSUER='a'\\''; rm -rf /; '\\'''"), command)
     }
 
     func testRemoteRunCommandQuotesIssuerAgainstShellInjection() {
-        let layout = RemoteLayout(base: "/b", issuer: "alice")
+        let layout = RemoteLayout(base: "/b", issuer: "alice", home: "/h")
         let command = RemoteShell.remoteRunCommand(
             layout: layout, fleetestArgs: ["run"], issuer: "a'; rm -rf /; '")
         XCTAssertTrue(command.contains("export FT_ISSUER='a'\\''; rm -rf /; '\\'''"), command)
@@ -1006,7 +1024,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// 孤児 hooks が掴んでいるのは**ポート = ホスト全体の資源**なので、片付けは発行者を跨ぐ。
     /// **1 ssh に収める**(発行者の数だけ往復を増やさない)
     func testHooksReapSweepsEveryIssuerAndTheLegacyWorkDirInOneCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let command = RemoteHooksReap.commandAcrossIssuers(layout: layout, quiet: true)
         XCTAssertTrue(command.contains("find '/Users/ci/fleetest-runner/users'"), command)
         XCTAssertTrue(command.contains("'/Users/ci/fleetest-runner/work'"), command)
@@ -1040,7 +1058,7 @@ final class RemoteDispatchTests: XCTestCase {
 
     /// 回収した録画はランナーに残さない(docs/remote-runner.md §15.4)。**消すのは録画だけ**
     func testDeleteRecordingsCommandTargetsOnlyRecordings() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let command = RemoteArtifactCollection.deleteRecordingsCommand(project: "E2E", layout: layout)
         // 置き場は `results/runs/<YYYY-MM>/<runID>/recordings`(RunResultsStore.runDir)。
         // **月の階層を数え間違えると1件も消えない**(黙って効かない = 気付けない失敗)
@@ -1251,22 +1269,11 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertTrue(message?.contains("--force-lock") == true, message ?? "")
     }
 
-    // MARK: - RemoteDispatchFlagPolicy.waitLockRejection(forceLockRejection と同じ判定)
-
-    func testWaitLockIsAcceptedWithAnExplicitHostOrFleetOrProfileAlone() {
-        XCTAssertNil(RemoteDispatchFlagPolicy.waitLockRejection(host: "M1Max", fleet: nil, profile: nil))
-        XCTAssertNil(RemoteDispatchFlagPolicy.waitLockRejection(host: nil, fleet: "nightly", profile: nil))
-        XCTAssertNil(RemoteDispatchFlagPolicy.waitLockRejection(
-            host: nil, fleet: nil, profile: "android_local+remote"))
-    }
-
-    func testWaitLockIsRejectedWhenNothingCanDispatchRemotely() {
-        let message = RemoteDispatchFlagPolicy.waitLockRejection(host: nil, fleet: nil, profile: nil)
-        XCTAssertNotNil(message)
-        XCTAssertTrue(message?.contains("--wait-lock") == true, message ?? "")
-    }
-
     // MARK: - RemoteDispatchFlagPolicy.waitLockConflictsWithForceLock(待つと奪うは矛盾)
+    //
+    // `waitLockRejection`(純粋にローカルだけの run で --wait-lock を弾く規則)は 2026-09-21 に
+    // 消した —— 手元の run も dispatch.lock を取るので待つ相手が居る。受理されることの witness は
+    // `RunRejectionParityTests` の "wait-lock alone"(run / api run の両方で通ること)。
 
     func testWaitLockAndForceLockDoNotConflictWhenOnlyOneIsSet() {
         XCTAssertNil(RemoteDispatchFlagPolicy.waitLockConflictsWithForceLock(forceLock: false, waitLock: 30))
@@ -1420,16 +1427,101 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertNil(info?.coreCount)
     }
 
-    /// 行数が3でも5でもなければ従来どおり nil(4行・6行等)
+    /// 行数が3でも5でも6でもなければ従来どおり nil(4行・7行等)
     func testParseSessionInfoFourLinesReturnsNil() {
         XCTAssertNil(RemoteProbe.parseSessionInfo("/Users/ci\nalice\nalice\nApple M1 Max"))
     }
 
-    /// 3行形は5行形の追加ロジックの影響を受けない(hardware は nil のまま)
+    func testParseSessionInfoSevenLinesReturnsNil() {
+        XCTAssertNil(RemoteProbe.parseSessionInfo(
+            "/Users/ci\nalice\nalice\nApple M1 Max\n10\n\"IOPlatformUUID\" = \"x\"\nextra"))
+    }
+
+    /// 3行形は5行形・6行形の追加ロジックの影響を受けない(hardware は nil のまま)
     func testParseSessionInfoThreeLinesHasNilHardware() {
         let info = RemoteProbe.parseSessionInfo("/Users/ci\nalice\nalice")
         XCTAssertNil(info?.processorModel)
         XCTAssertNil(info?.coreCount)
+        XCTAssertNil(info?.hardwareUUID)
+    }
+
+    /// 5行形(ハードウェア UUID の行が無い形)でも $HOME と
+    /// コンソールユーザーを返す —— 行が1つ増えても既存の判定は変わらない
+    func testParseSessionInfoFiveLinesStillHasNilHardwareUUID() {
+        let info = RemoteProbe.parseSessionInfo("/Users/ci\nalice\nalice\nApple M1 Max\n10")
+        XCTAssertEqual(info?.home, "/Users/ci")
+        XCTAssertEqual(info?.consoleUser, "alice")
+        XCTAssertNil(info?.hardwareUUID)
+    }
+
+    // MARK: - 6行形(ハードウェア UUID)
+
+    func testParseSessionInfoSixLinesIncludesHardwareUUID() {
+        let info = RemoteProbe.parseSessionInfo(
+            "/Users/ci\nalice\nalice\nApple M1 Max\n10\n"
+            + "      \"IOPlatformUUID\" = \"0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9\"")
+        XCTAssertEqual(info, RemoteSessionInfo(home: "/Users/ci", consoleUser: "alice", sshUser: "alice",
+                                               processorModel: "Apple M1 Max", coreCount: 10,
+                                               hardwareUUID: "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9"))
+    }
+
+    func testParseSessionInfoSixLinesAcceptsTrailingNewline() {
+        let info = RemoteProbe.parseSessionInfo(
+            "/Users/ci\nalice\nalice\nApple M1 Max\n10\n"
+            + "      \"IOPlatformUUID\" = \"0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9\"\n")
+        XCTAssertEqual(info?.hardwareUUID, "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9")
+    }
+
+    /// UUID の行が空(ioreg が読めなかった = `echo "$(…)"` が空行を返す)でも、
+    /// **セッション情報とハードウェア情報は従来どおり生きる**(hardwareUUID だけ nil)
+    func testParseSessionInfoSixLinesEmptyUUIDLineKeepsTheRest() {
+        // 末尾の改行1個は許容規則で落ちるので、6行目が空であることを表すには "\n\n" が要る
+        let info = RemoteProbe.parseSessionInfo("/Users/ci\nalice\nalice\nApple M1 Max\n10\n\n")
+        XCTAssertEqual(info?.home, "/Users/ci")
+        XCTAssertEqual(info?.consoleUser, "alice")
+        XCTAssertEqual(info?.processorModel, "Apple M1 Max")
+        XCTAssertEqual(info?.coreCount, 10)
+        XCTAssertNil(info?.hardwareUUID)
+    }
+
+    // MARK: - RemoteProbe.parseHardwareUUID
+
+    func testParseHardwareUUIDNormalLine() {
+        XCTAssertEqual(
+            RemoteProbe.parseHardwareUUID("      \"IOPlatformUUID\" = \"0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9\""),
+            "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9")
+    }
+
+    /// 前後の空白・末尾の改行が付いていても同じ値
+    func testParseHardwareUUIDToleratesSurroundingWhitespace() {
+        XCTAssertEqual(
+            RemoteProbe.parseHardwareUUID("  \t \"IOPlatformUUID\" =   \"0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9\"  \n"),
+            "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9")
+    }
+
+    /// 表記が揺れても正準形(大文字)へ畳む —— 「同じ機械なら誰が見ても同じ文字列」が要件
+    func testParseHardwareUUIDCanonicalisesToUppercase() {
+        XCTAssertEqual(
+            RemoteProbe.parseHardwareUUID("\"IOPlatformUUID\" = \"0a1b2c3d-4e5f-6071-8293-a4b5c6d7e8f9\""),
+            "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9")
+    }
+
+    func testParseHardwareUUIDEmptyLineIsNil() {
+        XCTAssertNil(RemoteProbe.parseHardwareUUID(""))
+        XCTAssertNil(RemoteProbe.parseHardwareUUID("   \n"))
+    }
+
+    /// キーを含まない出力(ioreg が別の形を返した・grep が何も拾わなかった)は nil = 不明
+    func testParseHardwareUUIDWithoutTheKeyIsNil() {
+        XCTAssertNil(RemoteProbe.parseHardwareUUID("      \"IOPlatformSerialNumber\" = \"C02ABC\""))
+        XCTAssertNil(RemoteProbe.parseHardwareUUID("ioreg: not found"))
+    }
+
+    /// UUID として読めない値は nil(既定値で埋めない)。`=` が無い形も同じ
+    func testParseHardwareUUIDMalformedValueIsNil() {
+        XCTAssertNil(RemoteProbe.parseHardwareUUID("\"IOPlatformUUID\" = \"not-a-uuid\""))
+        XCTAssertNil(RemoteProbe.parseHardwareUUID("\"IOPlatformUUID\" = \"\""))
+        XCTAssertNil(RemoteProbe.parseHardwareUUID("\"IOPlatformUUID\""))
     }
 
     // MARK: - StreamLineSplitter (CR handling)
@@ -1452,7 +1544,7 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteStatusProbe.command
 
     func testStatusProbeCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let tool = "\"/Users/ci/fleetest-runner/foundation-tester\""
         let binary = "\"/Users/ci/fleetest-runner/foundation-tester/.build/debug/fleetest\""
         let base = "\"/Users/ci/fleetest-runner\""
@@ -1465,8 +1557,10 @@ final class RemoteDispatchTests: XCTestCase {
             + "xcrun --sdk iphonesimulator --show-sdk-build-version; echo '---FT---'; "
             + "test -x \(binary) && echo yes || echo no; echo '---FT---'; "
             + "df -k \(base) | tail -1; echo '---FT---'; "
-            + "if [ -d \"/Users/ci/fleetest-runner/.fleetest/dispatch.lock\" ]; then echo held;"
-            + " cat \"/Users/ci/fleetest-runner/.fleetest/dispatch.lock/info.json\" 2>/dev/null || true; echo;"
+            // **dispatch.lock は `<base>` の外**(機械グローバルな `<home>/.fleetest/`)——
+            // 同じ Mac に base を2つ作っても1本にするため
+            + "if [ -d \"/Users/ci/.fleetest/dispatch.lock\" ]; then echo held;"
+            + " cat \"/Users/ci/.fleetest/dispatch.lock/info.json\" 2>/dev/null || true; echo;"
             + " else echo absent; fi; echo '---FT---'; "
             // FM の死活台帳。**レイアウトの外**(~/.fleetest)を読む —— FM はホストの資源で、
             // プロジェクトにも発行者にも属さない。**実呼び出しは混ぜない**(status がホストの
@@ -1482,7 +1576,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// export 以降は developerDir なしの版とバイト同一であること・ブロック数(separator の出現数)が
     /// 変わらないことの両方を固定する
     func testStatusProbeCommandPrefixesDeveloperDirExportWithoutShiftingBlocks() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let ambient = RemoteStatusProbe.command(layout: layout, simulatorRuntime: true)
         let pinned = RemoteStatusProbe.command(
             layout: layout, simulatorRuntime: true,
@@ -1495,14 +1589,14 @@ final class RemoteDispatchTests: XCTestCase {
 
     /// nil(既定)は1バイトも足さない(呼び出し元を1つずつ opt-in させる。ambient のまま = 従来どおり)
     func testStatusProbeCommandOmitsDeveloperDirExportWhenNil() {
-        let layout = RemoteLayout(base: "/b", issuer: "alice")
+        let layout = RemoteLayout(base: "/b", issuer: "alice", home: "/h")
         XCTAssertFalse(RemoteStatusProbe.command(layout: layout, simulatorRuntime: true).contains("DEVELOPER_DIR"))
     }
 
     /// `api remote-compat`(拡張がリモート実行の前に毎回待つ)は RUNTIME を読まない ——
     /// simctl の往復を実行開始の前に払わせない。落とすのは FM の台帳までの8ブロック
     func testStatusProbeWithoutRuntimeOmitsSimctl() {
-        let layout = RemoteLayout(base: "/b", issuer: "alice")
+        let layout = RemoteLayout(base: "/b", issuer: "alice", home: "/h")
         let command = RemoteStatusProbe.command(layout: layout, simulatorRuntime: false)
         XCTAssertFalse(command.contains("simctl"), command)
         XCTAssertFalse(command.contains("--show-sdk-version"), command)
@@ -1515,7 +1609,8 @@ final class RemoteDispatchTests: XCTestCase {
     /// 区切りとして読まれず後ろのブロックが全部ずれる(2026-09-10 実データで RUNTIME が両機とも
     /// 読めなかった。単体テストの出力は区切りを自前で改行付きに組むので出ない)
     func testEveryCatInTheStatusProbeIsFollowedByANewline() {
-        let command = RemoteStatusProbe.command(layout: RemoteLayout(base: "/b", issuer: "alice"), simulatorRuntime: true)
+        let command = RemoteStatusProbe.command(
+            layout: RemoteLayout(base: "/b", issuer: "alice", home: "/h"), simulatorRuntime: true)
         let cats = command.components(separatedBy: " cat ").dropFirst()
         XCTAssertEqual(cats.count, 2, "cat の本数が変わった(ロックの info.json と FM の台帳)—— 検査を見直すこと")
         for rest in cats {
@@ -1568,9 +1663,13 @@ final class RemoteDispatchTests: XCTestCase {
     /// $HOME を未解決のまま埋め込んだ layout(remote status の実運用形)でも
     /// 二重引用符で包むだけで壊れない(単一引用符と違い変数展開を妨げない)ことを確認
     func testStatusProbeCommandQuotesDoNotSuppressHomeExpansion() {
-        let layout = RemoteLayout(base: RemoteLayout.resolveBase("~/fleetest-runner", home: "$HOME"), issuer: "alice")
-        XCTAssertTrue(RemoteStatusProbe.command(layout: layout, simulatorRuntime: true)
-            .contains("\"$HOME/fleetest-runner/foundation-tester\""))
+        let layout = RemoteLayout(base: RemoteLayout.resolveBase("~/fleetest-runner", home: "$HOME"),
+                                  issuer: "alice", home: "$HOME")
+        let command = RemoteStatusProbe.command(layout: layout, simulatorRuntime: true)
+        XCTAssertTrue(command.contains("\"$HOME/fleetest-runner/foundation-tester\""), command)
+        // **遅延展開してよいのはこの読み取り専用の1往復だけ**(1 ssh に収める設計)。
+        // 取得・解放は手元で確定した絶対パスを使う(RemoteLayout.home の注記)
+        XCTAssertTrue(command.contains("if [ -d \"$HOME/.fleetest/dispatch.lock\" ]"), command)
     }
 
     // MARK: - RemoteStatusProbe.dquote
@@ -1654,7 +1753,7 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteCleanPlan.commands
 
     func testCleanPlanDryRunUsesPrint() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
         XCTAssertEqual(commands.count, 2)
         for command in commands {
@@ -1664,7 +1763,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testCleanPlanNonDryRunUsesExecRm() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: false)
         for command in commands {
             XCTAssertTrue(command.contains("-exec rm -rf {} +"), command)
@@ -1673,7 +1772,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testCleanPlanKeepDaysReflected() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 30, dryRun: true)
         for command in commands {
             XCTAssertTrue(command.contains("-mtime +30"), command)
@@ -1685,7 +1784,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// 資源なので保持ポリシーは全員分に掛ける。**一覧はグロブでなく find で作る**(相手は zsh。
     /// マッチしないグロブはそのコマンドごと落ち、旧 work の無い普通のランナーで毎回警告が出ていた)
     func testCleanPlanCoversAllIssuersAndTheLegacyLayoutWithoutGlobs() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
         let base = "'/Users/ci/fleetest-runner'"
         // 配信の控えはホスト共有の1箇所(発行者ネームスペースの外)。**死んだ pid の控えが
@@ -1707,7 +1806,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// `results` 直下を見ると `runs/` ディレクトリ自身が対象になり、その mtime は月ディレクトリを
     /// 作った時にしか動かないので、月初 + keepDays 日で当月ぶんを含む全 run 記録が消えていた
     func testCleanPlanJudgesResultsAtTheRunDirectoryDepth() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: false)
         let perWork = commands[1]
         XCTAssertTrue(perWork.contains("\"$p/results/runs\" -mindepth 2 -maxdepth 2 -mtime +7"), perWork)
@@ -1726,7 +1825,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testCleanPlanQuotesTheBasePortion() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest runner", issuer: "alice", home: "/Users/ci")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
         // 添字ではなく「どのコマンドか」で選ぶ(先頭に別のターゲットが増えても意味が変わらない)
         guard let usersCommand = commands.first(where: { $0.contains("/users'") }) else {
@@ -1778,7 +1877,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// api monitor|api device-stream`)はこれを渡さない ―― 版の違う simctl を同じ
     /// CoreSimulatorService に当てる危険を実行以外の経路にまで広げないため
     func testRemoteExecCommandOmitsDeveloperDirByDefault() {
-        let layout = RemoteLayout(base: "/b", issuer: "alice")
+        let layout = RemoteLayout(base: "/b", issuer: "alice", home: "/h")
         XCTAssertFalse(
             RemoteShell.remoteExecCommand(layout: layout, args: ["api", "monitor"]).contains("DEVELOPER_DIR"))
     }
@@ -1786,7 +1885,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// 明示すれば export する(remoteRunCommand と同じ形)。呼び出し元は今のところ無いが、
     /// 将来 exec 経由で Xcode 依存のコマンド(bridge down 等)を撃つ口を足すときのための配線
     func testRemoteExecCommandExportsDeveloperDirWhenGiven() {
-        let layout = RemoteLayout(base: "/b", issuer: "alice")
+        let layout = RemoteLayout(base: "/b", issuer: "alice", home: "/h")
         let command = RemoteShell.remoteExecCommand(
             layout: layout, args: ["doctor"],
             developerDir: "/Applications/Xcode_27.app/Contents/Developer")
@@ -1925,7 +2024,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testRemoteExecCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let command = RemoteShell.remoteExecCommand(layout: layout, args: ["doctor", "--fm-only"])
         let workDir = "/Users/ci/fleetest-runner/users/alice/work"
         let binary = "/Users/ci/fleetest-runner/foundation-tester/.build/debug/fleetest"
@@ -1942,20 +2041,20 @@ final class RemoteDispatchTests: XCTestCase {
     /// 照会・単発操作が目的で、run 専用の `project sync` を混ぜてはいけない
     /// (remoteRunCommand との唯一の差分。壊すと remote exec のたびに無駄な sync が走る)
     func testRemoteExecCommandDoesNotSyncProject() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let command = RemoteShell.remoteExecCommand(layout: layout, args: ["devices", "down"])
         XCTAssertFalse(command.contains("project sync"), command)
     }
 
     func testRemoteExecCommandQuotesEachArgumentIndependently() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let command = RemoteShell.remoteExecCommand(layout: layout, args: ["api", "device-catalog"])
         XCTAssertTrue(command.hasSuffix("'api' 'device-catalog'"), command)
     }
 
     /// exec も未 setup の発行者を exit 91 で fail fast する(remoteRunCommand と同じガード)
     func testRemoteExecCommandGuardsMissingIssuerWorkspace() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let command = RemoteShell.remoteExecCommand(layout: layout, args: ["doctor"])
         XCTAssertTrue(command.contains("exit 91"), command)
         XCTAssertTrue(command.contains("fleetest remote setup"), command)
@@ -1969,7 +2068,7 @@ extension RemoteDispatchTests {
     /// 手元に存在しないパスが画面と記録に出る(2026-08-26 の実害。§18.2 の発行者
     /// ネームスペースを足したときに追随し損ねていた)
     func testRelayRewriteMapsTheRunnerWorkDirOntoTheLocalRepoRoot() {
-        let layout = RemoteLayout(base: "/Users/u/fleetest-runner", issuer: "u")
+        let layout = RemoteLayout(base: "/Users/u/fleetest-runner", issuer: "u", home: "/Users/u")
         let localRoot = "/Users/u/github/foundation-tester"
         let line = #"{"reportPath":"/Users/u/fleetest-runner/users/u/work/TestProjects/P/reports/x.md"}"#
 

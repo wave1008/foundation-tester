@@ -253,31 +253,49 @@ struct RemoteCommand: AsyncParsableCommand {
 
     // MARK: - unlock
 
-    /// 自分の死んだディスパッチが残した dispatch.lock だけを外す(判定は FTRemote.RemoteDispatchUnlock)。
-    /// `--force-lock` と違い他人の(走っているかもしれない)ロックは絶対に触らない
+    /// 死んだディスパッチが残した dispatch.lock だけを外す(判定は FTRemote.RemoteDispatchUnlock)。
+    /// `--force-lock` と違い走っているかもしれないロックは絶対に触らない。**奪う口はここに置かない**
+    /// (「死んだロックを外す」と「奪う」を分けてあるのが既存の設計)。
+    /// **`--runner local` は手元の `~/.fleetest/dispatch.lock`**(他コマンドの `--runner local` /
+    /// `--device-machine local` と同じ語彙。判定は `RemoteDispatchUnlock.decideThisMachine`)
     struct Unlock: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "unlock",
-            abstract: "Release the dispatch lock a dispatch of yours left behind on a remote host"
-                + " (never touches another issuer's lock; docs/remote-runner.md §5)")
+            abstract: "Release a dispatch lock that a dead dispatch left behind on a remote runner,"
+                + " or (--runner local) the one left on this Mac"
+                + " (never releases a lock whose run is still alive; docs/remote-runner.md §5)")
 
         @Option(name: .customLong("runner"), parsing: .upToNextOption,
-                help: "Remote runner: a registered machine (fleetest remote machines) or a raw user@host/host. Repeatable, required")
+                help: "Remote runner: a registered machine (fleetest remote machines), a raw user@host/host, or `local` for this Mac. Repeatable, required")
         var hosts: [String] = []
 
         @Option(name: .customLong("remote-dir"),
                 help: "Runner-only base directory on the remote host (default: the machine registry's entry, or ~/fleetest-runner)")
         var remoteDir: String?
 
+        /// **指定したのに黙って効かない形を作らない** —— `--runner local` に base は無い
+        /// (ロックは `~/.fleetest` 固定・生存の確認は base を絞らない pgrep)
+        func validate() throws {
+            guard remoteDir != nil,
+                  hosts.contains(where: { MachineDispatch.isExplicitLocal($0) }) else { return }
+            throw ValidationError("--remote-dir does not apply to --runner local: this Mac's dispatch lock"
+                + " lives in ~/.fleetest/dispatch.lock and the live-run check scans every base."
+                + " Run `fleetest remote unlock --runner local` on its own")
+        }
+
         func run() async throws {
             guard !hosts.isEmpty else {
-                throw ValidationError("no runners specified (pass --runner <machine-or-user@host>)")
+                throw ValidationError("no runners specified (pass --runner <machine-or-user@host>, or --runner local for this Mac)")
             }
             var failures = 0
             for raw in hosts {
                 ConsoleOut.out("== \(raw) ==")
                 do {
-                    try unlockOne(raw)
+                    if MachineDispatch.isExplicitLocal(raw) {
+                        try Self.unlockThisMachine()
+                    } else {
+                        try unlockOne(raw)
+                    }
                 } catch {
                     ConsoleOut.out("error: \(error.localizedDescription)")
                     failures += 1
@@ -286,12 +304,58 @@ struct RemoteCommand: AsyncParsableCommand {
             if failures > 0 { throw ExitCode(1) }
         }
 
+        /// 手元のロック。**リモートと同じ綴りのコマンドを ssh ではなく `/bin/sh -c` で撃つ**
+        /// (`LocalDispatchLock` と同じ規律 —— 取得・解放・読み取りの定義元を増やさない)。
+        /// 文言はすべて手元の話として言う(`remote unlock` の "remote host" を流用しない)
+        static func unlockThisMachine() throws {
+            let home = NSHomeDirectory()
+            ConsoleOut.out("this Mac → \(RemoteDispatchLock.lockDirPath(home: home))")
+            let probeResult = try localShell(RemoteDispatchLock.probeCommand(home: home))
+            guard probeResult.status == 0, let probe = RemoteDispatchLock.parseProbe(probeResult.output) else {
+                throw LocalDispatchLockError(message: "could not read the dispatch lock on this Mac"
+                    + " (status \(probeResult.status))\n\(probeResult.tail)")
+            }
+            let decision = RemoteDispatchUnlock.decideThisMachine(
+                probe: probe, myIssuer: LocalConfig.resolveIssuerId(),
+                myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive,
+                livePIDs: { liveDispatchedRunPIDsOnThisMachine() })
+            switch decision {
+            case .nothingToDo:
+                ConsoleOut.out("→ no dispatch lock on this Mac; nothing to do")
+            case .refuse(let reason):
+                throw UnlockRefused(reason: reason)
+            case .release(let reason):
+                let release = try localShell(RemoteDispatchLock.releaseCommand(home: home))
+                guard release.status == 0 else {
+                    throw LocalDispatchLockError(message: "failed to remove the dispatch lock on this Mac"
+                        + " (status \(release.status))\n\(release.tail)")
+                }
+                ConsoleOut.out("→ released the dispatch lock on this Mac (\(reason))")
+            }
+        }
+
+        /// **この Mac に他人が置いたロックが守っている run が、まだこの機械に居るか**。
+        /// 控えの pid は発行側の Mac のものなので使えないが、run 自体はここで走っている。
+        /// **base は絞らない**(`liveDispatchedRunsAnyBaseCommand` の宣言に理由)。
+        /// 撃てなかったら nil = `guardingLiveRemoteRun` が外さない側へ倒す
+        private static func liveDispatchedRunPIDsOnThisMachine() -> [Int32]? {
+            guard let probe = try? Shell.run(
+                ["/bin/sh", "-c", RemoteDispatchLock.liveDispatchedRunsAnyBaseCommand()],
+                timeout: LocalDispatchLock.commandTimeoutSeconds),
+                  probe.status == 0 else { return nil }
+            return RemoteDispatchLock.parseLivePIDs(probe.output)
+        }
+
+        private static func localShell(_ command: String) throws -> Shell.Result {
+            try Shell.run(["/bin/sh", "-c", command], timeout: LocalDispatchLock.commandTimeoutSeconds)
+        }
+
         private func unlockOne(_ raw: String) throws {
             let resolved = try RemoteHostResolver.resolve(rawHost: raw, remoteDirOverride: remoteDir)
             resolved.announce()
             let target = resolved.hostSpec.sshTarget
             let layout = try Clean.resolveLayout(target: target, remoteDirRaw: resolved.remoteDirRaw)
-            let probeResult = try Shell.run(remoteSSHBase + [target, RemoteDispatchLock.probeCommand(base: layout.base)])
+            let probeResult = try Shell.run(remoteSSHBase + [target, RemoteDispatchLock.probeCommand(home: layout.home)])
             guard probeResult.status == 0, let probe = RemoteDispatchLock.parseProbe(probeResult.output) else {
                 throw RemoteDispatchError.remoteSetupFailed(
                     "could not read the dispatch lock on \(target) (status \(probeResult.status))\n\(probeResult.tail)")
@@ -309,7 +373,7 @@ struct RemoteCommand: AsyncParsableCommand {
             case .refuse(let reason):
                 throw UnlockRefused(reason: reason)
             case .release(let reason):
-                let release = try Shell.run(remoteSSHBase + [target, RemoteDispatchLock.releaseCommand(base: layout.base)])
+                let release = try Shell.run(remoteSSHBase + [target, RemoteDispatchLock.releaseCommand(home: layout.home)])
                 guard release.status == 0 else {
                     throw RemoteDispatchError.remoteSetupFailed(
                         "failed to remove the lock (status \(release.status))\n\(release.tail)")
@@ -349,7 +413,7 @@ struct RemoteCommand: AsyncParsableCommand {
                     let target = resolved.hostSpec.sshTarget
                     let layout = try Clean.resolveLayout(target: target, remoteDirRaw: resolved.remoteDirRaw)
                     let probeResult = try Shell.run(
-                        remoteSSHBase + [target, RemoteDispatchLock.probeCommand(base: layout.base)])
+                        remoteSSHBase + [target, RemoteDispatchLock.probeCommand(home: layout.home)])
                     guard probeResult.status == 0,
                           let probe = RemoteDispatchLock.parseProbe(probeResult.output) else { continue }
                     let decision = RemoteDispatchUnlock.decideAutomaticSweep(
@@ -365,7 +429,7 @@ struct RemoteCommand: AsyncParsableCommand {
                         continue
                     }
                     let release = try Shell.run(
-                        remoteSSHBase + [target, RemoteDispatchLock.releaseCommand(base: layout.base)])
+                        remoteSSHBase + [target, RemoteDispatchLock.releaseCommand(home: layout.home)])
                     if release.status == 0 {
                         log("[monitor] released a stale dispatch lock on \(machine) (\(reason))")
                     } else {
@@ -526,7 +590,7 @@ struct RemoteCommand: AsyncParsableCommand {
         /// 永久に止めない = RemoteDestructiveGuard は nil を proceed として扱う)
         private func probeLock(target: String, layout: RemoteLayout) -> RemoteDispatchLock.Probe? {
             guard let result = try? Shell.run(
-                    remoteSSHBase + [target, RemoteDispatchLock.probeCommand(base: layout.base)]),
+                    remoteSSHBase + [target, RemoteDispatchLock.probeCommand(home: layout.home)]),
                   result.status == 0 else { return nil }
             return RemoteDispatchLock.parseProbe(result.output)
         }
@@ -562,7 +626,7 @@ struct RemoteCommand: AsyncParsableCommand {
                 throw RemoteDispatchError.remoteSetupFailed("could not determine $HOME on \(target)")
             }
             return RemoteLayout(base: RemoteLayout.resolveBase(remoteDirRaw, home: home),
-                               issuer: try resolveLayoutIssuer())
+                               issuer: try resolveLayoutIssuer(), home: home)
         }
 
         /// 死んだ run が残した終了スクリプトを**全発行者ぶん**代行実行する(FTRemote.RemoteHooksReap が
@@ -950,8 +1014,12 @@ enum RemoteStatusProbing {
     static func probe(_ resolved: ResolvedRemoteHost, wantFM: Bool, wantRuntime: Bool) async -> HostRow {
         let target = resolved.hostSpec.sshTarget
         do {
+            // **ロックに触れる経路で `home: "$HOME"`(遅延展開)を使うのはここだけ**
+            // (1 ssh に収める設計なので $HOME 解決の往復を別に持たない。base と同じく
+            // リモートシェルが実行時に展開する)。**読むだけで取らない**ので成立する ——
+            // 取得・解放は手元で確定した絶対パスを使う(RemoteLayout.home の注記)
             let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: "$HOME"),
-                                      issuer: try resolveLayoutIssuer())
+                                      issuer: try resolveLayoutIssuer(), home: "$HOME")
             // **ディスパッチが実際に使う Xcode と同じ解決を通す**(RemoteRunDispatcher.checkCompatibility
             // と同じ規律。docs/remote-runner.md §7)—— ここで ambient のまま toolchain を読むと、
             // 表と実際の run が食い違う

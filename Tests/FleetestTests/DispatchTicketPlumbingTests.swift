@@ -46,6 +46,21 @@ final class DispatchTicketPlumbingTests: XCTestCase {
         XCTAssertEqual(env[DispatchTicket.environmentKey], ticket.environmentValue)
         XCTAssertEqual(DispatchTicket.fromEnvironment(env), ticket)
         XCTAssertEqual(env[ParentDeathWatch.environmentKey], String(getpid()))
+        XCTAssertNil(env[DispatchLockHandoff.environmentKey],
+                     "親がロックを取っていないのに印が載っている")
+    }
+
+    /// 親がその機械のロックを取れたときだけ印が載る(`DispatchPrelock`)
+    func testTheHandoffMarkerIsAddedOnlyForMachinesTheParentLocked() {
+        let ticket = DispatchTicketIssuer.issue(runGroup: "G1", environment: environment, pid: 4242,
+                                                now: Date(timeIntervalSince1970: 1_700_000_000))
+        let locked = DispatchTicketIssuer.childEnvironment(
+            ticket: ticket, lockHeldTarget: "tester@max.local", base: [:])
+        XCTAssertTrue(DispatchLockHandoff.isHeldByParent(environment: locked,
+                                                        sshTarget: "tester@max.local"))
+        let notLocked = DispatchTicketIssuer.childEnvironment(ticket: ticket, base: [:])
+        XCTAssertFalse(DispatchLockHandoff.isHeldByParent(environment: notLocked,
+                                                         sshTarget: "tester@max.local"))
     }
 
     /// **同じ run の全ての子が同じ値を受け取る**(この変更の目的)。
@@ -99,8 +114,8 @@ final class DispatchTicketPlumbingTests: XCTestCase {
                 resolvers.append(name)
             }
         }
-        XCTAssertEqual(resolvers, ["DispatchTicketIssuer.swift", "RemoteRunDispatcher.swift"],
-                       "チケットを採る場所が増減した(採る場所は発行の1箇所と待機列に並ぶ1箇所だけ)")
+        XCTAssertEqual(resolvers, ["DispatchTicketIssuer.swift", "LocalDispatchLock.swift", "RemoteRunDispatcher.swift"],
+                       "チケットを採る場所が増減した(発行の1箇所 + 待機列に並ぶ2箇所 = リモート/手元)")
     }
 
     /// 親は **`withTaskGroup` の外で1回だけ** チケットを採る。子ごとの closure の中で採ると、
@@ -123,7 +138,7 @@ final class DispatchTicketPlumbingTests: XCTestCase {
         for path in ["Sources/fleetest/ApiRunMachineFanout.swift", "Sources/fleetest/FleetRunner.swift"] {
             let text = try source(path)
             XCTAssertTrue(
-                text.contains("process.environment = DispatchTicketIssuer.childEnvironment(ticket: ticket)"),
+                text.contains("process.environment = DispatchTicketIssuer.childEnvironment(ticket: ticket,"),
                 "\(path): 子の環境にチケットが入っていない")
         }
     }

@@ -298,7 +298,7 @@
     **async 文脈でパイプを行読みするときは `FTRemote.PipeLinePump`**(semaphore の `wait` を
     async 文脈に書かない = Swift 6 でエラー。同期関数の既存2箇所は据え置き)。
     **SIGKILL へのエスカレートは ssh にだけ**。**シグナルソースは1プロセスに1組**
-    → maintainer-notes §3.2。`fleetest remote unlock` は自分の死んだディスパッチのロックだけを外す(`RemoteDispatchUnlock`)。**ロックの自動回収・unlock はランナー上でその run が生きていないことを確かめてから外す**(手元の pid が死んでもリモートの run は生きている)。**`-tt` の ssh は `ParentBoundCommand` で包む**(`kill -9` で親が死ぬと孤児の ssh がリモートの run を出力の write で止めたままにする)
+    → maintainer-notes §3.2。`fleetest remote unlock` は自分の死んだディスパッチのロックだけを外す(`RemoteDispatchUnlock`)。**`--runner local` で手元のロックも外せる**(判定の軸は issuer ではなく **issuerHost** —— この機械が置いたロックは pid で確定・他人がここへディスパッチしたロックは**その run がこの機械に残っていないか**を pgrep で確かめる。**base を仮定して pgrep しない** = 別 base の生きた run を「居ない」と答えて守っているロックを外す)。**ロックの自動回収・unlock はランナー上でその run が生きていないことを確かめてから外す**(手元の pid が死んでもリモートの run は生きている)。**`-tt` の ssh は `ParentBoundCommand` で包む**(`kill -9` で親が死ぬと孤児の ssh がリモートの run を出力の write で止めたままにする)
   - **機械分担の run は手元の台の二重使用を、どの機械へも配る前に断る**
     (`ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch`。run / api run の2経路。子の中の拒否だけだと
     リモート分が走り続けて同時刻の別 run を弾く)→ maintainer-notes §32
@@ -350,8 +350,24 @@
   **奪う口(`--force-lock` / `--force`)を GUI に出さない**。
   **ssh 越しのコマンドにグロブを書かない**(相手は zsh。`for w in <マッチ無し>` は**シェルごと
   落ちて後続の文が全部消える**)—— 一覧は `find … 2>/dev/null` で作る → maintainer-notes §3.5
+- **1マシンで同時に走る run は1本**(ユーザー決定 2026-09-21「高負荷になりすぎてテストが不安定に
+  なる」= 避けたい副作用ではなく**守りたい不変条件**)。`dispatch.lock` は **`~/.fleetest/`**
+  (機械グローバル)に1本で、**リモートのディスパッチもローカル run も同じロックを取る**
+  (`Sources/fleetest/LocalDispatchLock.swift`。docs/remote-runner.md §13)。守る規律6つ:
+  **①置き場を `<base>` の下に戻さない**(守るのはマシンの資源 = デバイス・ポート。base が2つあると
+  ロックが割れるのに取り合う相手は同じ)/ **②ローカルの取得もコマンド文字列を書かない**
+  (`RemoteDispatchQueue` が作る同じシェル片を `/bin/sh -c` で撃つ)/ **③取るのは run の入口**
+  (ビルドにもデバイスにも触る前。`swift build` も重い負荷なので直列化する。**dry-run は取らない**)/
+  **④ローカルのロックの回収は pid だけ**(リモートの pgrep はローカル run を見つけられず、掛けると
+  死んだロックが永久に残る。同じ機械の pid は確定できるので**リモートより強い**判定)/
+  **⑤ランナー機で自壊させない** —— ディスパッチ先の `run --runner local` は向こうから見れば手元の
+  run なので、`RemoteShell.remoteRunCommand` が `FT_DISPATCH_LOCK_HELD='local'` を export して
+  二重取得を止める(**`remoteExecCommand` には置かない** = exec はロックを取らない)/
+  **⑥run-lease(台ごと)は残す** —— MCP の印と `start-device` 等は dispatch.lock を取らないので、
+  台ごとの調停はあちらでしか成立しない。順序は「マシンの門 → 台の門」だが、**fan-out の
+  `rejectIfLocalDevicesLeasedBeforeDispatch` だけは手前**(読み取りの先読み = どのロックも取る前に断る)
 - **順番待ちは FIFO の待機列**(docs/remote-runner.md §18.9。`FTRemote.RemoteDispatchQueue`):
-  `dispatch.lock` の**手前**に `<base>/.fleetest/dispatch.queue/<13桁epoch>~<issuer>~<group>` を置き、
+  `dispatch.lock` の**手前**に `~/.fleetest/dispatch.queue/<13桁epoch>~<issuer>~<group>` を置き、
   **先頭のチケットの持ち主だけが `mkdir` を撃つ**(ロックの原子性は mkdir のまま)。
   守る規律4つ: **①待たない取得も列を通す**(通さないと並んでいる人を追い越せて FIFO が壊れる。
   列を通らないのは `--force-lock` だけ)/ **②チケットの鍵は発行側が1回だけ採り
@@ -363,6 +379,20 @@
   ロックは空いていることがある = §18.7「不明と空きを混ぜない」の同型)。
   待機は `dispatchWaiting`(NDJSON)で拡張の実行ログビューへ出し、**ログとイベントは同じ刻みの
   式を1つ通す**(数字が2箇所で食い違わない)
+- **複数機械 run のロックは親が1台ずつ取る**(資源順序付け。docs/remote-runner.md §18.10。
+  `FTRemote.DispatchOrder` / `Sources/fleetest/DispatchPrelock.swift`): **全員が同じ順序でしか
+  取らない**ので循環待ちを作れない(検出も自己解消も要らない)。守る規律5つ:
+  **①順序の鍵はランナーのハードウェア UUID**(`IOPlatformUUID`。**IP は1台に複数付き・
+  ホスト名は重複と mDNS で変わる・`<base>` 配下の ID は同じ Mac に base を2つ作ると割れる**。
+  採取は接続の1往復に相乗り = ssh を足さない)/ **②並べ替えは `DispatchOrder.sorted` の1箇所**
+  (不明は最後尾・tie-break まで下ろして全順序にする = 非安定ソートで並びが揺れない)/
+  **③印(`FT_DISPATCH_LOCK_HELD`)は真偽値でなく ssh 宛先**(環境変数は子孫へ継がれるので、
+  真偽値だと別の宛先の子まで取得を飛ばして誰もロックを持たない)/ **④子は取得と解放の両方を
+  スキップする**(取得だけ飛ばすと子の defer が親のロックを消し、解放だけ飛ばすと子が親を待って詰む)/
+  **⑤子へ `--wait-lock` を渡さない**(待つのは親。渡すと親が待ち切った上限を子がもう一度払う)。
+  **取れなかった機械は飛ばす**(部分列でも順序の一貫性は保たれる)・**印が無ければ子が自分で取る**
+  ので単発 run は無改造。**緑の run では1度も実行されない**ので、差し替え口に偽のランナー群を
+  注入した単体と、**順序付けが無い形で確定的にデッドロックする陽性対照**を対で置く
 - **リモート制御(実行プロファイルの `remoteControl`)**: ワークスペース(資材の置き場)+
   **run 前後のスクリプト**(docs/remote-runner.md §17)。**スクリプトに宣言は無い** ——
   `<workspace>/scripts/setup.sh` / `teardown.sh` が**あれば実行、無ければ何もしない**

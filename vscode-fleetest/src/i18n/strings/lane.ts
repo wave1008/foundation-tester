@@ -34,6 +34,11 @@ export const laneStrings = {
     ja: "  ⏳ {machine} の順番待ち: {position}/{total}（実行中: {holder}）",
     en: "  ⏳ Queued on {machine}: {position} of {total} (running: {holder})",
   },
+  // 手元の run が待っているとき、CLI は machine に "local"(--device-machine・タイルと同じ
+  // 語彙)を入れてくる。**呼び名は deviceOps.machineLocalLabel と同じ1つ** —— lane.ts は
+  // vscode 非依存の別ランタイム(自前 dict のみに依存する契約)なので、あちらの辞書は
+  // import せず同じ訳を置く。片方だけ変えない。
+  "lane.machineLocal": { ja: "ローカル", en: "the local machine" },
   "lane.detailFallback": { ja: "     フォールバック: {detail}", en: "     Fallback: {detail}" },
   "lane.detailHealed": { ja: "     自己修復: {detail}", en: "     Heal: {detail}" },
   "lane.detailSkipped": { ja: "     スキップ理由: {detail}", en: "     Skip reason: {detail}" },
@@ -64,10 +69,14 @@ export function tLane(key: string, params?: Record<string, string | number>): st
   return formatMessage(entry[locale], params);
 }
 
+/** CLI がこの機械を指すときの machine の値(Sources/FTCore/DeviceMachineGrouping.swift)。 */
+const LOCAL_MACHINE = "local";
+
 /**
  * dispatch.lock の順番待ちの1行。**保持者が読めたときだけ「実行中」を名乗る** —— 欠けているのは
  * 「不明」であって「占有」でも「空き」でもない。runReducer.ts(Test Explorer の出力)と
  * runLaneModel.ts(モニターの実行ログビュー)が同じ1行を出すため、判断はここ1箇所に置く。
+ * 手元("local")の訳もここで当てる(呼び手に三項演算子を散らさない)。
  */
 export function dispatchWaitingLine(event: {
   machine: string;
@@ -75,7 +84,8 @@ export function dispatchWaitingLine(event: {
   total: number;
   holder?: string;
 }): string {
-  const common = { machine: event.machine, position: event.position, total: event.total };
+  const machine = event.machine === LOCAL_MACHINE ? tLane("lane.machineLocal") : event.machine;
+  const common = { machine, position: event.position, total: event.total };
   return event.holder == null
     ? tLane("lane.dispatchWaiting", common)
     : tLane("lane.dispatchWaitingHolder", { ...common, holder: event.holder });

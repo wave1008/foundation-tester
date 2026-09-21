@@ -47,7 +47,9 @@ public enum StreamLease {
 
     /// 控えの置き場は**ホスト共有**(`<base>/.fleetest/streams/`)。発行者ネームスペースの中に
     /// 置くと、他人の配信が見えず二重配信を防げない ―― デバイスはホストの資源(dispatch.lock が
-    /// ホストに1本なのと同じ理由)
+    /// 機械に1本なのと同じ理由)。
+    /// **ただし dispatch.lock と違い `<base>` 基準のまま** = 同じ Mac に base が2つあると
+    /// 控えも2つに分かれる(`MachineStateDirectory` へは移していない)
     public static func directory(base: String) -> String {
         base + "/.fleetest/streams"
     }

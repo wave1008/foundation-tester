@@ -16,7 +16,7 @@ final class DeviceMachineRunnerChildArgsTests: XCTestCase {
             deviceNames: ["iPhone-01"], deviceMachine: host,
             scenarios: ["Warm.up"], folders: [],
             noLPT: false, lptHistoryRuns: nil, performanceMode: false,
-            forceLock: false, waitLock: nil, remoteDir: nil, remoteTimeout: nil,
+            forceLock: false, remoteDir: nil, remoteTimeout: nil,
             quiet: true, junitPath: nil, reportDir: reportDir)
     }
 

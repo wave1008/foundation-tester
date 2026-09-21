@@ -5,9 +5,10 @@
 // **子プロセス方式にする理由**: ローカル実行の出力は ProfileRunner 等の深い階層から直接
 // stdout へ書かれており、プロセス内蔵の hook では行ごとに `[<host>] ` を前置できない
 // (リモート側も RemoteRunDispatcher が stdout へ直接書く。同じ理由)。プロセス境界で捕まえれば
-// local/remote を同じ仕組みで prefix できる。同一ホストへの二重ディスパッチ防止(dispatch.lock)は
-// 子プロセスが `--runner` 経由でいつも通る RemoteRunDispatcher.dispatch が担うので、ここでは
-// 何もしなくてよい ―― フリート専用のロック処理を重複して持たない。
+// local/remote を同じ仕組みで prefix できる。同一ホストへの二重ディスパッチ防止(dispatch.lock)の
+// 取得そのものは子が通る RemoteRunDispatcher.acquireDispatchLock のまま ―― フリート専用の
+// ロック処理を重複して持たない。**取る順序だけ**を親が決める(DispatchPrelock。子が並列に
+// 取りに行くと、2つの run が互いに相手の機械を待つ循環を作れる)。
 
 import ArgumentParser
 import FTCore
@@ -77,6 +78,15 @@ enum FleetRunner {
         log("==> fleet \"\(fleetName)\": launching \(fleet.runs.count) entr"
             + "\(fleet.runs.count == 1 ? "y" : "ies") in parallel")
 
+        // **親が機械の全順序どおりに1台ずつ取り切ってから子を起こす**(DispatchPrelock)
+        let prelock = DispatchPrelock(actions: DispatchPrelock.live(
+            project: project, remoteDir: remoteDir, forceLock: forceLock, waitLock: waitLock,
+            runGroup: nil, mode: .cliRun, log: { FleetRunner.log($0) }))
+        defer { prelock.releaseAll() }
+        prelock.acquireInOrder(machines: DispatchPrelock.machinesToLock(fleet.runs.map(\.host)))
+        // 子タスクへ渡すのは値のコピー(prelock 自身を @Sendable な closure へ持ち込まない)
+        let lockMarkers = prelock.markers
+
         let outcomes = await withTaskGroup(of: (Int, FleetEntryOutcome).self) { group in
             for (index, entry) in fleet.runs.enumerated() {
                 group.addTask {
@@ -84,13 +94,14 @@ enum FleetRunner {
                         project: project.name, host: entry.host, profile: entry.profile,
                         scenarios: scenarios, folders: folders,
                         setOverrides: setOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
-                        performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
+                        performanceMode: performanceMode, forceLock: forceLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                         quiet: quiet,
                         junitPath: entryJUnitPath(tempDir: junitTempDir, index: index))
                     let start = Date()
                     let exitCode = await runEntry(binary: binary, args: args,
-                                                  hostLabel: entry.host, ticket: ticket)
+                                                  hostLabel: entry.host, ticket: ticket,
+                                                  lockMarker: lockMarkers[entry.host])
                     return (index, FleetEntryOutcome(
                         host: entry.host, profile: entry.profile, exitCode: exitCode,
                         duration: Date().timeIntervalSince(start)))
@@ -209,6 +220,15 @@ enum FleetRunner {
         log("==> fleet \"\(fleetName)\" --split: dispatching \(active.count) of \(fleet.runs.count) entr"
             + "\(fleet.runs.count == 1 ? "y" : "ies") in parallel")
 
+        // ロックを取るのは**実際にディスパッチするエントリだけ**(0本割当のエントリの機械を
+        // 握ると、走らせもしない run が他人のディスパッチを止める)
+        let prelock = DispatchPrelock(actions: DispatchPrelock.live(
+            project: project, remoteDir: remoteDir, forceLock: forceLock, waitLock: waitLock,
+            runGroup: nil, mode: .cliRun, log: { FleetRunner.log($0) }))
+        defer { prelock.releaseAll() }
+        prelock.acquireInOrder(machines: DispatchPrelock.machinesToLock(active.map { $0.1.host }))
+        let lockMarkers = prelock.markers
+
         let outcomes = await withTaskGroup(of: (Int, FleetEntryOutcome).self) { group in
             for (index, entry, ids) in active {
                 group.addTask {
@@ -216,13 +236,14 @@ enum FleetRunner {
                         project: project.name, host: entry.host, profile: entry.profile,
                         scenarios: ids, folders: [],
                         setOverrides: setOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
-                        performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
+                        performanceMode: performanceMode, forceLock: forceLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                         quiet: quiet,
                         junitPath: entryJUnitPath(tempDir: junitTempDir, index: index))
                     let start = Date()
                     let exitCode = await runEntry(binary: binary, args: args,
-                                                  hostLabel: entry.host, ticket: ticket)
+                                                  hostLabel: entry.host, ticket: ticket,
+                                                  lockMarker: lockMarkers[entry.host])
                     return (index, FleetEntryOutcome(
                         host: entry.host, profile: entry.profile, exitCode: exitCode,
                         duration: Date().timeIntervalSince(start)))
@@ -423,7 +444,7 @@ enum FleetRunner {
         scenarios: [String], folders: [String],
         setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
         performanceMode: Bool,
-        forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?,
+        forceLock: Bool, remoteDir: String?, remoteTimeout: Int?,
         quiet: Bool, junitPath: String?, broadcast: Bool = false, runGroup: String? = nil
     ) -> [String] {
         var args = ["run", "--project", project, "--profile", profile]
@@ -431,12 +452,14 @@ enum FleetRunner {
         // MachineDispatch を再適用するため、--runner を省略すると「未指定」と区別が付かず、
         // entry.profile の台が全部リモートにあると子がそこへ自動ディスパッチしてしまい、
         // {"host":"local"} と書いた意味が失われる(重複ホスト拒否も無意味になる)。"local" を明示すれば MachineDispatch.resolve がそこで止める
-        // (RunProfile.swift 参照)。--force-lock/--wait-lock 等のリモート専用フラグは引き続きリモートのみ
-        // (ロックは発行側の関心。"local" 子には転送しない)
+        // (RunProfile.swift 参照)。--force-lock は引き続きリモート子だけ —— "local" 子も
+        // dispatch.lock を取るようになった(LocalDispatchLock)が、**親が先に取って印を渡す**
+        // ので子は取りに行かない。親が取れなかったときだけ子が自分で取り、そこでは奪わない
+        // (奪う判断は発行側の関心で、子に肩代わりさせない)。**`--wait-lock` は渡さない** ——
+        // 待つのは親(DispatchPrelock)で、渡すと親が待ち切った上限を子がもう一度払う
         if host != "local" {
             args += ["--runner", host]
             if forceLock { args += ["--force-lock"] }
-            if let waitLock { args += ["--wait-lock", String(waitLock)] }
             if let remoteDir { args += ["--remote-dir", remoteDir] }
             if let remoteTimeout { args += ["--remote-timeout", String(remoteTimeout)] }
         } else {
@@ -519,12 +542,15 @@ enum FleetRunner {
     /// 子の stdout+stderr を1本のパイプへ合流させ、行単位で `[<host>] ` を前置して中継する。
     /// 読み取りは PipeLinePump(専用スレッドでブロッキング読み取り、完了は AsyncStream で待つ)
     /// `ticket` は dispatch.lock の待機列の鍵。**親が1回だけ採ったものを受け取るだけ**で、
-    /// ここで採り直さない(DispatchTicketIssuer の宣言)
+    /// ここで採り直さない(DispatchTicketIssuer の宣言)。`lockMarker` は親がこの機械の
+    /// ロックを取れたときだけ非 nil(DispatchPrelock)。**既定値を置かない** ——
+    /// 呼び忘れた経路の子だけが自分で取りに行き、親の握っているロックを待って詰む
     static func runEntry(binary: String, args: [String], hostLabel: String,
-                         ticket: DispatchTicket) async -> Int32 {
+                         ticket: DispatchTicket, lockMarker: String?) async -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
-        process.environment = DispatchTicketIssuer.childEnvironment(ticket: ticket)
+        process.environment = DispatchTicketIssuer.childEnvironment(ticket: ticket,
+                                                                     lockHeldTarget: lockMarker)
         process.arguments = args
         process.standardInput = FileHandle.nullDevice
         let pipe = Pipe()

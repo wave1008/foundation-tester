@@ -20,7 +20,7 @@ final class RunGroupPlumbingTests: XCTestCase {
                 deviceNames: ["Pixel 3a"], deviceMachine: host,
                 scenarios: ["A.S0010"], folders: [],
                 noLPT: false, lptHistoryRuns: nil, performanceMode: false,
-                forceLock: false, waitLock: nil, remoteDir: nil, remoteTimeout: nil,
+                forceLock: false, remoteDir: nil, remoteTimeout: nil,
                 quiet: false, junitPath: nil, runGroup: key)
             guard let index = args.firstIndex(of: "--run-group") else {
                 XCTFail("host=\(host) に束ね鍵が付いていない: \(args)")
@@ -36,7 +36,7 @@ final class RunGroupPlumbingTests: XCTestCase {
             project: "E2E-Android", host: "local", profile: "android",
             scenarios: [], folders: [],
             noLPT: false, lptHistoryRuns: nil, performanceMode: false,
-            forceLock: false, waitLock: nil, remoteDir: nil, remoteTimeout: nil,
+            forceLock: false, remoteDir: nil, remoteTimeout: nil,
             quiet: false, junitPath: nil)
         XCTAssertFalse(args.contains("--run-group"), "\(args)")
     }
@@ -73,10 +73,11 @@ final class RunGroupPlumbingTests: XCTestCase {
                         "runID と同じ形でない: \(a)")
     }
 
-    /// `--wait-lock` は**リモートの子にだけ**渡す(手元の子にディスパッチのロックは無い)。
-    /// ここが抜けると、拡張の設定が**複数機械にまたがるプロファイルでだけ黙って効かない**
-    /// (共有フリートで一番待ちたい形。docs/remote-runner.md §18.7)
-    func testApiRunMachineFanoutRelaysWaitLockToRemoteChildrenOnly() {
+    /// **`--wait-lock` は子へ渡さない** —— 待つのは親(`DispatchPrelock`)の役目になった
+    /// (docs/remote-runner.md §18.10)。親が取れた機械では子はロックを取りに行かず、
+    /// 取れなかった機械では親が既に上限まで待ったあとなので、渡すと**同じ上限をもう一度払う**
+    /// (最悪で待ちが2倍)。手元の子はそもそもディスパッチのロックを持たない
+    func testApiRunMachineFanoutDoesNotRelayWaitLockBecauseTheParentWaits() {
         func args(machine: String?) -> [String] {
             ApiRunMachineFanout.buildArgs(
                 project: "E2E-Android", profileName: "android",
@@ -89,11 +90,8 @@ final class RunGroupPlumbingTests: XCTestCase {
                     remoteTimeout: nil, waitLock: 600),
                 runGroup: "g")
         }
-        let remote = args(machine: "M1Ultra")
-        guard let index = remote.firstIndex(of: "--wait-lock") else {
-            return XCTFail("リモートの子に --wait-lock が付いていない: \(remote)")
-        }
-        XCTAssertEqual(remote[remote.index(after: index)], "600")
+        XCTAssertFalse(args(machine: "M1Ultra").contains("--wait-lock"),
+                       "リモートの子にも渡さない(親が待つ)")
         XCTAssertFalse(args(machine: nil).contains("--wait-lock"), "手元の子には渡さない")
     }
 }

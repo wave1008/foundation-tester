@@ -106,6 +106,22 @@ test("dispatchWaiting は全体レーンに出る(保持者が読めたときだ
   assert.ok(lines[1].text.includes("issuer=taro pid=1234"));
 });
 
+test("手元のロックの順番待ち(machine: local)も全体レーンに既存の呼び方で出る", () => {
+  const state = createRunLaneState();
+  const actions = feed(state, [
+    {
+      kind: "dispatchWaiting", machine: "local", position: 1, total: 2,
+      holder: "issuer=taro pid=1234", elapsedSeconds: 0, limitSeconds: 900,
+    },
+  ]);
+
+  const lines = actions.filter((a) => a.type === "line");
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].laneId, OVERALL_LANE_ID);
+  // 生の "local" を文言に出さない(呼び名は deviceOps.machineLocalLabel と同じ)
+  assert.equal(lines[0].text, "  ⏳ ローカル の順番待ち: 1/2（実行中: issuer=taro pid=1234）");
+});
+
 test("worker フィールドが無いイベント(逐次実行)は全体レーン(OVERALL_LANE_ID)に集約される", () => {
   const state = createRunLaneState();
   const actions = feed(state, [

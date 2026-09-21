@@ -22,8 +22,10 @@ enum RemoteProjectSync {
         else {
             return "\(machine): cannot resolve the machine, the project directory, or the issuer"
         }
+        // 転送しか組み立てないのでロックには触らない(`home` は使われない。base と同じく
+        // リモートシェルが実行時に展開する形のまま)
         let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: "$HOME"),
-                                  issuer: issuer)
+                                  issuer: issuer, home: "$HOME")
         let args = RemoteTransferPlan.rsyncArgs(
             project: project, localProjectsDir: localProjectsDir,
             layout: layout, sshTarget: resolved.hostSpec.sshTarget,

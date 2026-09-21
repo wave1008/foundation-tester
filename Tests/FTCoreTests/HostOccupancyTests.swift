@@ -57,27 +57,40 @@ final class HostOccupancyTests: XCTestCase {
         XCTAssertFalse(state.mine)
     }
 
-    /// 手元実行(FT_RUNNER_BASE 未設定)には占有の概念が無い ―― nil を返して呼び出し側を黙らせる
-    func testReadWithoutRunnerBaseIsNil() {
-        XCTAssertNil(HostOccupancy.read(base: nil, myIssuer: "alice"))
+    /// 手元実行(FT_RUNNER_BASE 未設定)には占有の概念が無い ―― nil を返して呼び出し側を黙らせる。
+    /// **ロックが実在しても黙る**(判定に使うのは runnerBase の有無だけ)
+    func testReadWithoutRunnerBaseIsNil() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ft-occupancy-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        try FileManager.default.createDirectory(
+            at: URL(fileURLWithPath: RemoteDispatchLock.lockDirPath(home: home.path)),
+            withIntermediateDirectories: true)
+        XCTAssertNil(HostOccupancy.read(runnerBase: nil, myIssuer: "alice", home: home))
     }
 
+    /// **読む場所は `<home>/.fleetest/`** —— `runnerBase` が何であれ同じ1本を読む
+    /// (同じ Mac に base を2つ作ってもロックは1本、の読み手側)
     func testReadFromDiskSeesTheLockDirectory() throws {
-        let base = FileManager.default.temporaryDirectory
+        let home = FileManager.default.temporaryDirectory
             .appendingPathComponent("ft-occupancy-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: base) }
-        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
 
-        XCTAssertEqual(HostOccupancy.read(base: base.path, myIssuer: "alice"), .free)
+        XCTAssertEqual(
+            HostOccupancy.read(runnerBase: "/Users/ci/fleetest-runner", myIssuer: "alice", home: home),
+            .free)
 
-        let lockDir = URL(fileURLWithPath: RemoteDispatchLock.lockDirPath(base: base.path))
+        let lockDir = URL(fileURLWithPath: RemoteDispatchLock.lockDirPath(home: home.path))
         try FileManager.default.createDirectory(at: lockDir, withIntermediateDirectories: true)
         try info(issuer: "bob").write(
-            toFile: RemoteDispatchLock.infoFilePath(base: base.path), atomically: true, encoding: .utf8)
+            toFile: RemoteDispatchLock.infoFilePath(home: home.path), atomically: true, encoding: .utf8)
 
-        let state = HostOccupancy.read(base: base.path, myIssuer: "alice")
-        XCTAssertEqual(state?.held, true)
-        XCTAssertEqual(state?.issuer, "bob")
+        for runnerBase in ["/Users/ci/fleetest-runner", "/Volumes/ssd/other-runner"] {
+            let state = HostOccupancy.read(runnerBase: runnerBase, myIssuer: "alice", home: home)
+            XCTAssertEqual(state?.held, true, runnerBase)
+            XCTAssertEqual(state?.issuer, "bob", runnerBase)
+        }
     }
 
     // MARK: - RemoteDestructiveGuard(占有中のホストでデバイスを止めない)
@@ -117,6 +130,8 @@ final class HostOccupancyTests: XCTestCase {
         XCTAssertTrue(message.contains("bob"), message)
     }
 
+    /// **役割は「ランナー機の文脈か」の判定と StreamLease の置き場だけ**
+    /// (dispatch.lock / dispatch.queue の場所はここから導かない)
     func testRunnerBaseReadsTheEnvironmentKey() {
         XCTAssertEqual(RunnerBase.fromEnvironment(["FT_RUNNER_BASE": "/Users/ci/fleetest-runner"]),
                        "/Users/ci/fleetest-runner")

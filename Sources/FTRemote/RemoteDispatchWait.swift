@@ -40,15 +40,20 @@ public struct DispatchWaitStatus: Equatable, Sendable {
     public let elapsedSeconds: Int
     /// `--wait-lock <秒>`。フラグが無ければ nil
     public let limitSeconds: Int?
+    /// 文言だけを分ける(既定はリモート = 従来の出力と1バイトも変わらない)。
+    /// 判定・数え方・刻みは scope で変えない
+    public let scope: DispatchLockScope
 
     public init(target: String, position: Int, total: Int, holder: RemoteDispatchLockInfo?,
-                elapsedSeconds: Int, limitSeconds: Int?) {
+                elapsedSeconds: Int, limitSeconds: Int?,
+                scope: DispatchLockScope = .remoteHost) {
         self.target = target
         self.position = position
         self.total = total
         self.holder = holder
         self.elapsedSeconds = elapsedSeconds
         self.limitSeconds = limitSeconds
+        self.scope = scope
     }
 
     /// 自分より前に並んでいる人数
@@ -74,7 +79,7 @@ public struct DispatchWaitStatus: Equatable, Sendable {
     /// 自分の前へ並んでいる人が居るだけなら、走っているとは限らない(その人もまだ待っている)
     public var refusalMessage: String {
         guard holder == nil, aheadCount > 0 else {
-            return RemoteDispatchLock.heldMessage(holder) + refusalSuffix
+            return RemoteDispatchLock.heldMessage(holder, scope: scope) + refusalSuffix
         }
         var line = "\(aheadCount) earlier request(s) are queued ahead of yours for the dispatch lock"
             + " on \(target) — wait for them to finish"

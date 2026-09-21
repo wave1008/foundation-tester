@@ -432,6 +432,15 @@ test("dispatchWaiting は worker 無しの出力(全体レーン)になり、保
   assert.ok(r.actions[0].text.includes("issuer=taro pid=1234"));
 });
 
+test("手元の dispatchWaiting(machine: local)は既存の呼び方で出る", () => {
+  const state = createRunReducerState();
+  const r = reduceRunEvent(state, {
+    kind: "dispatchWaiting", machine: "local", position: 2, total: 2, elapsedSeconds: 0,
+  }, 0);
+  // 呼び名は deviceOps.machineLocalLabel と同じ(生の "local" を文言に出さない)
+  assert.equal(r.actions[0].text, "  ⏳ ローカル の順番待ち: 2/2");
+});
+
 test("dispatchWaiting は保持者が読めなかったら「実行中」と断定しない", () => {
   const state = createRunReducerState();
   const r = reduceRunEvent(state, {

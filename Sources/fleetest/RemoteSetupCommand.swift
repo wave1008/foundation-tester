@@ -83,14 +83,14 @@ private func acquireRemoteDispatchLock(hostSpec: RemoteHostSpec, layout: RemoteL
         issuerHost: ProcessInfo.processInfo.hostName, pid: ProcessInfo.processInfo.processIdentifier,
         issuer: LocalConfig.resolveIssuerId())
     guard let result = try? Shell.run(setupSSHBase + [hostSpec.sshTarget,
-        RemoteDispatchLock.acquireCommand(base: layout.base, info: info)]) else {
+        RemoteDispatchLock.acquireCommand(home: layout.home, info: info)]) else {
         return "ssh failed to run"
     }
     guard result.status == 0 else {
         guard result.status != 255 else {
             return "cannot reach \(hostSpec.sshTarget) over ssh (status 255)\n\(result.tail)"
         }
-        let existing = try? Shell.run(setupSSHBase + [hostSpec.sshTarget, RemoteDispatchLock.readCommand(base: layout.base)])
+        let existing = try? Shell.run(setupSSHBase + [hostSpec.sshTarget, RemoteDispatchLock.readCommand(home: layout.home)])
         let existingInfo = existing.flatMap { RemoteDispatchLock.decode($0.output.trimmingCharacters(in: .whitespacesAndNewlines)) }
         return RemoteDispatchLock.alignHeldMessage(existingInfo)
     }
@@ -99,7 +99,7 @@ private func acquireRemoteDispatchLock(hostSpec: RemoteHostSpec, layout: RemoteL
 
 /// 解放。失敗しても警告1行(run の成否を変えない。RemoteRunDispatcher.releaseDispatchLock と同じ規律)
 private func releaseRemoteDispatchLock(hostSpec: RemoteHostSpec, layout: RemoteLayout) {
-    let result = try? Shell.run(setupSSHBase + [hostSpec.sshTarget, RemoteDispatchLock.releaseCommand(base: layout.base)])
+    let result = try? Shell.run(setupSSHBase + [hostSpec.sshTarget, RemoteDispatchLock.releaseCommand(home: layout.home)])
     if result?.status != 0 {
         say("warning: failed to release the dispatch lock on \(hostSpec.sshTarget)"
             + " — clear it manually if the next align/setup is refused")
@@ -209,7 +209,7 @@ extension RemoteCommand {
                 try summarizeAndExit()
             }
             let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home),
-                                      issuer: issuer)
+                                      issuer: issuer, home: home)
 
             let stamp = "\(Int(Date().timeIntervalSince1970))-\(ProcessInfo.processInfo.processIdentifier)"
 
@@ -393,7 +393,7 @@ extension RemoteCommand {
             let layout: RemoteLayout
             do {
                 layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home),
-                                      issuer: try resolveLayoutIssuer())
+                                      issuer: try resolveLayoutIssuer(), home: home)
             } catch {
                 say(error.localizedDescription)
                 throw ExitCode(1)
@@ -486,7 +486,7 @@ extension RemoteCommand {
             let layout: RemoteLayout
             do {
                 layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home),
-                                      issuer: try resolveLayoutIssuer())
+                                      issuer: try resolveLayoutIssuer(), home: home)
             } catch {
                 say(error.localizedDescription)
                 throw ExitCode(1)
@@ -560,7 +560,7 @@ extension RemoteCommand {
                 throw RemoteDispatchError.remoteSetupFailed("could not determine $HOME on \(hostSpec.sshTarget)")
             }
             let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home),
-                                      issuer: try resolveLayoutIssuer())
+                                      issuer: try resolveLayoutIssuer(), home: home)
             let command = RemoteShell.remoteExecCommand(layout: layout, args: relayed)
             let status = try runInheritedSSH(setupSSHBase + [hostSpec.sshTarget, command])
             if status == 90 {

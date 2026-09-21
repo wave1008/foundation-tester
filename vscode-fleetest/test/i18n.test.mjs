@@ -233,6 +233,12 @@ test("lane: tLane('...') のキーが lane 辞書に存在する", () => {
   assert.equal(missing.length, 0, missing.join("\n"));
 });
 
+// lane.ts は vscode 非依存の別ランタイム(自前 dict のみに依存する契約)なので deviceOps の
+// 辞書を import できず、手元の呼び名だけを同じ訳で持っている。**片方だけ変えない**。
+test("lane: 手元の機械の呼び名は deviceOps.machineLocalLabel と同じ1つ", () => {
+  assert.deepEqual(laneStrings["lane.machineLocal"], deviceOpsStrings["deviceOps.machineLocalLabel"]);
+});
+
 test("package.nls: %参照% が両 nls に存在しキー集合が一致・contributes に日本語なし", () => {
   const pkgRaw = readFileSync(path.join(ROOT, "package.json"), "utf8");
   const pkg = JSON.parse(pkgRaw);

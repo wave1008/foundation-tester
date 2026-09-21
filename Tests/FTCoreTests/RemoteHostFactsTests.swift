@@ -53,6 +53,7 @@ final class RemoteHostFactsTests: XCTestCase {
         XCTAssertNil(loaded?.processorModel)
         XCTAssertNil(loaded?.coreCount)
         XCTAssertNil(loaded?.concurrentDevices)
+        XCTAssertNil(loaded?.hardwareUUID)
     }
 
     // MARK: - ハードウェア・同時起動デバイス数フィールド
@@ -86,6 +87,85 @@ final class RemoteHostFactsTests: XCTestCase {
         XCTAssertNil(loaded?.processorModel)
         XCTAssertNil(loaded?.coreCount)
         XCTAssertNil(loaded?.concurrentDevices)
+        XCTAssertNil(loaded?.hardwareUUID)
+    }
+
+    // MARK: - hardwareUUID(機械を一意に識別する値)
+
+    func testHardwareUUIDRoundTrips() {
+        let facts = RemoteHostFacts(host: "M1Max", machineAlias: "M1Max",
+                                    hardwareUUID: "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9",
+                                    dispatchOverheadSeconds: 4.2,
+                                    updatedAt: "2026-09-21T00:00:00Z")
+        RemoteHostFactsStore.save(facts, dir: dir, host: "runner-3")
+        let loaded = RemoteHostFactsStore.load(dir: dir, host: "runner-3")
+        XCTAssertEqual(loaded, facts)
+        XCTAssertEqual(loaded?.hardwareUUID, "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9")
+    }
+
+    /// **片方だけ取れなかった回に既存値を消さない**: UUID を書いた後、UUID を採れなかった
+    /// ディスパッチ(= resolve が既存値を stored に返す)が他の欄だけ更新しても UUID は残る
+    func testSavingWithoutTheUUIDKeepsTheCachedOneWhenTheWriterCarriesItForward() {
+        RemoteHostFactsStore.save(
+            RemoteHostFacts(host: "M1Max", hardwareUUID: "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9",
+                            coreCount: 10, updatedAt: "2026-09-21T00:00:00Z"),
+            dir: dir, host: "runner-4")
+        let existing = RemoteHostFactsStore.load(dir: dir, host: "runner-4")
+        let carried = RemoteHardwareUUIDChange.resolve(
+            cached: existing?.hardwareUUID, observed: nil, host: "runner-4")
+        RemoteHostFactsStore.save(
+            RemoteHostFacts(host: "M1Max", hardwareUUID: carried.stored, coreCount: 12,
+                            updatedAt: "2026-09-21T01:00:00Z"),
+            dir: dir, host: "runner-4")
+        let loaded = RemoteHostFactsStore.load(dir: dir, host: "runner-4")
+        XCTAssertEqual(loaded?.hardwareUUID, "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9")
+        XCTAssertEqual(loaded?.coreCount, 12)
+    }
+
+    // MARK: - RemoteHardwareUUIDChange(変化の検出。文言まで固定する)
+
+    /// キャッシュ無し = 初回。黙って保存する
+    func testChangeIsSilentWhenNothingWasCached() {
+        let outcome = RemoteHardwareUUIDChange.resolve(
+            cached: nil, observed: "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9", host: "ci@runner-1")
+        XCTAssertEqual(outcome, RemoteHardwareUUIDChange.Outcome(
+            warning: nil, stored: "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9"))
+    }
+
+    func testChangeIsSilentWhenTheUUIDIsUnchanged() {
+        let outcome = RemoteHardwareUUIDChange.resolve(
+            cached: "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9",
+            observed: "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9", host: "ci@runner-1")
+        XCTAssertEqual(outcome, RemoteHardwareUUIDChange.Outcome(
+            warning: nil, stored: "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9"))
+    }
+
+    /// **不明(今回読めなかった)を「変化した」と言わない**・既存値も消さない
+    func testChangeIsSilentWhenTheProbeCouldNotReadTheUUID() {
+        let outcome = RemoteHardwareUUIDChange.resolve(
+            cached: "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9", observed: nil, host: "ci@runner-1")
+        XCTAssertEqual(outcome, RemoteHardwareUUIDChange.Outcome(
+            warning: nil, stored: "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9"))
+    }
+
+    /// キャッシュも観測も無いときは黙って nil のまま
+    func testChangeIsSilentWhenBothSidesAreUnknown() {
+        XCTAssertEqual(RemoteHardwareUUIDChange.resolve(cached: nil, observed: nil, host: "ci@runner-1"),
+                       RemoteHardwareUUIDChange.Outcome(warning: nil, stored: nil))
+    }
+
+    /// 違う値 = 別のマシン。**1行の警告を出し、キャッシュは新しい値で更新する**(run は止めない)
+    func testChangeWarnsAndUpdatesTheCacheWhenTheUUIDDiffers() {
+        let outcome = RemoteHardwareUUIDChange.resolve(
+            cached: "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9",
+            observed: "11111111-2222-3333-4444-555555555555", host: "ci@runner-1")
+        XCTAssertEqual(outcome.stored, "11111111-2222-3333-4444-555555555555")
+        XCTAssertEqual(outcome.warning,
+            "warning: ci@runner-1 reports a different hardware UUID than the last dispatch"
+            + " (was 0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9,"
+            + " now 11111111-2222-3333-4444-555555555555)"
+            + " — this host now resolves to a different Mac")
+        XCTAssertEqual(outcome.warning?.components(separatedBy: "\n").count, 1, "警告は1行")
     }
 
     // MARK: - fileKey(鍵はホスト。ユーザー名は落とす)

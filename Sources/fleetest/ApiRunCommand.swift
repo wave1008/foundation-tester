@@ -229,13 +229,10 @@ struct ApiRunCommand: AsyncParsableCommand {
             throw ValidationError("--default-timeout must be a non-negative, finite number of seconds"
                 + " (0 = the first snapshot only, no waiting)")
         }
-        // 純粋にローカルだけの実行で --wait-lock は打ち間違い(待つ相手が居ない)。
-        // 判定は run と同じ FTRemote.RemoteDispatchFlagPolicy(2つ目の規則を作らない。--fleet は
-        // api run に無いので常に nil)
-        if waitLock != nil, let message = RemoteDispatchFlagPolicy.waitLockRejection(
-            host: runner, fleet: nil, profile: profile) {
-            throw ValidationError(message)
-        }
+        // `--wait-lock` に前提条件は無い —— 手元の run も dispatch.lock を取るので待つ相手が居る
+        // (理由と経緯は FTRemote.RemoteDispatchFlagPolicy の `--wait-lock` の節。`run` と同じ =
+        // 検査を片方だけに置かない)
+
         // 明示 --runner("local" を除く)は --profile が無いと dispatchToRemoteHost の
         // 冒頭で必ず落ちる。resolveEffectiveDispatchTarget は明示 target をそのまま返す
         // = ファイル I/O なしで引数だけから決まる
@@ -334,6 +331,24 @@ struct ApiRunCommand: AsyncParsableCommand {
             try await dispatchToRemoteHost(dispatch, project: testProject)
             return
         }
+
+        // **この Mac のロックを、デバイスにもビルドにも触る前に取る**(`fleetest run` と同じ位置・
+        // 同じ理由。ユーザー決定 2026-09-21「1つのマシンで同時に複数の run は走らせない」)。
+        // ここはワークスペースのステージング・run フック・供給の**すべてより前**で、NDJSON を
+        // 1行も出していない地点でもある(取れなければ runStarted 無しで stderr + 非0 = 単機の
+        // 事前検証の失敗と同じ形)。`--dry-run` はデバイスに触らないので取らない。
+        // **run-lease(台ごと)との上下**は `fleetest run` の同じ箇所のコメント参照
+        var dispatchLock: LocalDispatchLock.Holder?
+        if !dryRun {
+            // **待っていることは NDJSON にも出す**(`emitWaiting`。`fleetest run` は渡さない) ——
+            // 進行ログは stderr なので、これが無いと「テストを実行」を押した人には実行ログビューが
+            // 無言のまま止まって見える(`dispatchWaiting` を入れて潰したかった状態そのもの)
+            dispatchLock = try LocalDispatchLock(
+                runGroup: runGroup, waitLock: waitLock,
+                log: { ConsoleOut.err($0) },
+                emitWaiting: LocalDispatchLock.apiRunWaitingEmitter()).acquire()
+        }
+        defer { dispatchLock?.release() }
 
         // --debug: stdin を専用スレッドで読み行をそのままランナーへ渡す。ScenarioHost.run が
         // 起動直後に onControl で渡す ScenarioRunControl を待つ必要があるため小箱経由で受け渡す
@@ -1693,15 +1708,24 @@ private struct ApiWipeStatusEvent: Encodable {
     let phase: String
 }
 
-/// リモートの dispatch.lock の待機列に並んでいる間の進行通知(`--runner` 指定時のみ)。
-/// 出すのは `RemoteRunDispatcher.acquireDispatchLock` の1箇所で、**既存の進行ログと同じ刻み**
-/// (初回 + `WaitLockPolling.shouldLogProgress`)。取得できた/諦めたときの終了イベントは無い
-/// (runStarted か失敗で終わりが分かる)。internal: RemoteRunDispatcher が emit する。
+/// dispatch.lock の待機列に並んでいる間の進行通知。出すのは**リモートへのディスパッチ**
+/// (`RemoteRunDispatcher.acquireDispatchLock`)と**手元の run**(`LocalDispatchLock.acquire`)の
+/// 2箇所で、どちらも**既存の進行ログと同じ刻み**(初回 + `WaitLockPolling.shouldLogProgress`)。
+/// 取得できた/諦めたときの終了イベントは無い(runStarted か失敗で終わりが分かる)。
+/// internal: RemoteRunDispatcher / LocalDispatchLock が emit する。
 /// 契約の同期相手: vscode-fleetest/src/model.ts の DispatchWaitingEvent
 struct ApiDispatchWaitingEvent: Encodable {
     let kind = "dispatchWaiting"
     /// 待っている相手の **machine**(モニタータイル・run レーンと同じ名前空間)。
-    /// `--runner` の生値(登録簿のエイリアス)があればそれ、無ければ ssh 宛先そのもの
+    /// `--runner` の生値(登録簿のエイリアス)があればそれ、無ければ ssh 宛先そのもの。
+    /// **手元のロックを待っているときは `local`**(`DeviceMachineGrouping.localDisplayName` =
+    /// `--device-machine` / タイルと同じ語彙。新しい綴りを作らない)。
+    ///
+    /// **`ProtocolVersion` は上げない**(2026-09-21): 欄の集合も型も必須/省略も1つも変わらず、
+    /// 既存の欄に取りうる値が1つ増えるだけで、拡張の**読み方**(decode・レーンの振り分け =
+    /// `laneIdOf` は worker しか見ない)は変わらない。版で守っているのは decode の互換で、
+    /// ここは表示の文言だけ —— 古い拡張は `local` を機械名としてそのまま出す(名前を持たない
+    /// 機械と同じ縮退)ので、沈黙する縮退にはならない
     let machine: String
     /// 待機列での自分の位置(1始まり)
     let position: Int
@@ -1713,6 +1737,28 @@ struct ApiDispatchWaitingEvent: Encodable {
     let elapsedSeconds: Int
     /// `--wait-lock <秒>`。フラグが無ければキーごと省く
     let limitSeconds: Int?
+}
+
+extension ApiDispatchWaitingEvent {
+    /// 待機の事実を NDJSON の1行として出す。**リモートと手元が共有する唯一の組み立て口** ——
+    /// 2つ持つと、欄を足したときに片方だけ古い形を出す(拡張からは片方の機械だけが黙って見えなくなる)。
+    /// 数字・保持者は進行ログと同じ1つの値(`DispatchWaitStatus`)から採る。
+    /// エンコード失敗は黙って捨てる(待機の通知が出ないだけで run は続く)。
+    /// `out` はテストが受け口を差し替えるためだけの引数(本番は NDJSON の stdout)
+    static func emit(machine: String, status: DispatchWaitStatus,
+                     out: (String) -> Void = { ConsoleOut.out($0) }) {
+        let event = ApiDispatchWaitingEvent(
+            machine: machine,
+            position: status.position, total: status.total,
+            // **読めたときだけ**(nil は Encodable の合成が encodeIfPresent でキーごと省く)
+            holder: status.holder.map { RemoteDispatchLock.holderSummary($0) },
+            elapsedSeconds: status.elapsedSeconds, limitSeconds: status.limitSeconds)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(event),
+              let line = String(data: data, encoding: .utf8) else { return }
+        out(line)
+    }
 }
 
 /// 振り直し通知(RunEvent.flowRequeued)。契約の同期相手: vscode-fleetest/src/model.ts ScenarioRequeuedEvent

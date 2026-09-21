@@ -73,7 +73,7 @@ final class RemoteStatusFMCellTests: XCTestCase {
 final class RemoteStatusFMProbeTests: XCTestCase {
 
     private var layout: RemoteLayout {
-        RemoteLayout(base: "$HOME/fleetest-runner", issuer: "u")
+        RemoteLayout(base: "$HOME/fleetest-runner", issuer: "u", home: "$HOME")
     }
 
     /// 読むのは**レイアウトの外**の ~/.fleetest(FM はホストの資源で、プロジェクトにも

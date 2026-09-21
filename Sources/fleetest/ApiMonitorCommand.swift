@@ -192,7 +192,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // (monitorLock の lastOccupancy が Optional なのと同じ理由)
         var lastRunRecords: [RunProgressRecord]?
         while !stop.isSet {
-            if let occupancy = HostOccupancy.read(base: runnerBase, myIssuer: myIssuer),
+            if let occupancy = HostOccupancy.read(runnerBase: runnerBase, myIssuer: myIssuer),
                occupancy != lastOccupancy {
                 lastOccupancy = occupancy
                 emitLine(ApiMonitorLockEvent(occupancy: occupancy))

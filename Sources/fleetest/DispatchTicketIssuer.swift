@@ -40,20 +40,27 @@ enum DispatchTicketIssuer {
 
     /// 子1体ぶんの環境(純粋関数)。**引数で受けたチケットをそのまま入れる** —— ここで採り直さない。
     ///
-    /// **手元(`--runner local`)の子にも同じものを渡す**: 手元の子はディスパッチのロックを取らない
-    /// (`MachineDispatch.resolve` が明示の "local" で止まり `RemoteRunDispatcher` へ入らない)ので
-    /// `resolveTicket` の結果は使われず、渡しても害が無い。**害が無いほうへ倒す理由**は、
-    /// 仕分けを足すと「どの子に渡すか」の判定が待機列の外に2つ目の規則として増え、
-    /// リモートへ出る子を1体でも取りこぼすと**その子だけが別の順番を見る**から
-    /// (取りこぼしは緑のまま起きる)。仮に将来 local の子が再ディスパッチするようになっても、
-    /// 共有チケットは「正しい値」であって古い値ではない。
+    /// **手元(`--runner local`)の子にも同じものを渡す**: 手元の子も同じ dispatch.lock を
+    /// 取る(`LocalDispatchLock`)ので、待機列の鍵は全員で同じ1つでなければ
+    /// 前後関係が機械によって食い違う。仕分けを足さないほうへ倒す理由も同じ —— 「どの子に
+    /// 渡すか」の判定は待機列の外に2つ目の規則として増え、取りこぼした子だけが別の順番を見る
+    /// (取りこぼしは緑のまま起きる)。
     ///
     /// `ParentDeathWatch.childEnvironment` を土台にする(孤児対策の `FT_PARENT_PID` は
     /// 子を起こす全経路の契約。`ParentDeathWatchWiringTests`)
-    static func childEnvironment(ticket: DispatchTicket,
+    ///
+    /// `lockHeldTarget` = 親が**この子の宛先の** dispatch.lock を先に取れたときの ssh 宛先
+    /// (`DispatchPrelock`)。**取れなかった機械には渡さない** —— その子は従来どおり自分で
+    /// 取りに行き、同じ失敗を同じ文言で出す。継承した印を消さないのは、値が宛先を名乗っており
+    /// (`DispatchLockHandoff`)、別の宛先へ向かう子には効かないから
+    static func childEnvironment(ticket: DispatchTicket, lockHeldTarget: String? = nil,
                                  base: [String: String]? = nil) -> [String: String] {
         var env = ParentDeathWatch.childEnvironment(base: base)
         env[DispatchTicket.environmentKey] = ticket.environmentValue
+        if let lockHeldTarget {
+            env[DispatchLockHandoff.environmentKey] =
+                DispatchLockHandoff.environmentValue(sshTarget: lockHeldTarget)
+        }
         return env
     }
 }

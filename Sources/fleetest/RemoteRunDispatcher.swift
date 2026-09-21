@@ -80,6 +80,7 @@ struct RemoteRunDispatcher {
                   remoteTimeoutSeconds: Int?, runGroup: String? = nil) async throws -> Int32 {
         let setupStart = Date()
         let (layout, session) = try resolveLayout()
+        cacheHardwareUUID(project: project, session: session)
         let developerDir = try checkCompatibility(layout: layout)
 
         // **ロック取得の前から観測を張る**(中断があっても、これから登録する
@@ -172,6 +173,7 @@ struct RemoteRunDispatcher {
                      remoteTimeoutSeconds: Int?, runGroup: String? = nil) async throws -> Int32 {
         let setupStart = Date()
         let (layout, session) = try resolveLayout()
+        cacheHardwareUUID(project: project, session: session)
         let developerDir = try checkCompatibility(layout: layout)
 
         // 中断があっても解放の defer を必ず走らせる(理由・順序は dispatch() のコメント参照)。
@@ -232,8 +234,9 @@ struct RemoteRunDispatcher {
 
     /// remoteDirRaw を絶対パスへ解決する。到達性プローブ兼用の1往復
     /// (`echo $HOME; <RemoteProbe.consoleUserCommand>; id -un; sysctl -n machdep.cpu.brand_string 2>/dev/null;
-    /// sysctl -n hw.ncpu 2>/dev/null`)に相乗りさせて、コンソールユーザー(§16.3)と CPU 情報
-    /// (RemoteHostFacts の processorModel/coreCount。§8 の事前係数)を同時に取る —— 別の ssh を
+    /// sysctl -n hw.ncpu 2>/dev/null; <RemoteProbe.hardwareUUIDCommand>`)に相乗りさせて、
+    /// コンソールユーザー(§16.3)と CPU 情報(RemoteHostFacts の processorModel/coreCount。
+    /// §8 の事前係数)とハードウェア UUID(同 hardwareUUID)を同時に取る —— 別の ssh を
     /// 足すと往復が増える。戻り値の session は 3行形(古い macOS 等・parseSessionInfo が判定不能で
     /// ログインチェックだけスキップした経路)では nil になり、saveHostFacts は既存値を保持する
     private func resolveLayout() throws -> (layout: RemoteLayout, session: RemoteSessionInfo?) {
@@ -241,7 +244,8 @@ struct RemoteRunDispatcher {
         // 期限なしだと刺さった ssh で永久に待つ(sshCapture と同じ 120 秒)
         let result = try Shell.run(
             sshBase + [host.sshTarget, "echo $HOME; \(RemoteProbe.consoleUserCommand); id -un; "
-                + "sysctl -n machdep.cpu.brand_string 2>/dev/null; sysctl -n hw.ncpu 2>/dev/null"],
+                + "sysctl -n machdep.cpu.brand_string 2>/dev/null; sysctl -n hw.ncpu 2>/dev/null; "
+                + RemoteProbe.hardwareUUIDCommand],
             timeout: Self.sshCaptureTimeoutSeconds)
         guard result.status == 0 else {
             throw RemoteDispatchError.remoteSetupFailed(
@@ -259,7 +263,7 @@ struct RemoteRunDispatcher {
             }
             log("warning: could not determine the remote console login state — skipping the login check")
             return (RemoteLayout(base: RemoteLayout.resolveBase(remoteDirRaw, home: firstLine),
-                                 issuer: try resolveLayoutIssuer()), nil)
+                                 issuer: try resolveLayoutIssuer(), home: firstLine), nil)
         }
         guard session.isLoggedIn else {
             throw RemoteDispatchError.remoteSetupFailed(
@@ -268,7 +272,7 @@ struct RemoteRunDispatcher {
                 + " (docs/remote-runner.md §5)")
         }
         return (RemoteLayout(base: RemoteLayout.resolveBase(remoteDirRaw, home: session.home),
-                             issuer: try resolveLayoutIssuer()), session)
+                             issuer: try resolveLayoutIssuer(), home: session.home), session)
     }
 
     /// ディスパッチ単位の一意ディレクトリ名(reports/junit の隔離・回収後の削除に使う)
@@ -391,6 +395,46 @@ struct RemoteRunDispatcher {
 
     // MARK: - 2. 同一ホストへの二重ディスパッチ防止(docs/remote-runner.md §5)
 
+    /// **この宛先の**ロックを親(fan-out)が先に取っているか(`FT_DISPATCH_LOCK_HELD`)。
+    /// 印が無ければ従来どおり自分で取る —— 単発 `run --runner`(親が居ない)はこの縮退で
+    /// そのまま動くので、モードの分岐を持たない
+    private var parentHoldsThisLock: Bool {
+        DispatchLockHandoff.isHeldByParent(
+            environment: ProcessInfo.processInfo.environment, sshTarget: host.sshTarget)
+    }
+
+    /// **親(fan-out)が子より先にこのホストのロックを取る口**(`DispatchPrelock` が唯一の呼び手)。
+    /// 取得は子とまったく同じ `acquireDispatchLock`(待機列 FIFO 経由)を通す ——
+    /// 2つ目の取得実装を作らない。ついでに接続で採れたハードウェア UUID を控える
+    /// (**順序の鍵**。キャッシュに無い機械はこれより前に `probeHardwareUUIDAsParent` が採る)。
+    ///
+    /// **info.json に載る pid はこの親の pid** になる —— 親が死んでロックが残った場合の
+    /// 自動回収(`autoReleaseOurStaleLock` → `RemoteDispatchUnlock.decideAutomaticSweep`)は
+    /// 「自分の発行者・この機械・死んだ pid」で判定するので、**子が取っていたときと同じに効く**
+    func acquireDispatchLockAsParent(project: TestProject, runGroup: String?) throws -> RemoteLayout {
+        let (layout, session) = try resolveLayout()
+        cacheHardwareUUID(project: project, session: session)
+        try acquireDispatchLock(layout: layout, runGroup: runGroup)
+        return layout
+    }
+
+    /// 上で取ったロックを外す(親の defer から。成功・失敗・中断のいずれでも1回)
+    func releaseDispatchLockAsParent(layout: RemoteLayout) {
+        releaseDispatchLock(layout: layout)
+    }
+
+    /// **親が順序を決める前に、ハードウェア UUID だけを先に採る口**(`DispatchPrelock` が唯一の呼び手)。
+    /// ロックには触らない —— 順序は取得より前に決まっている必要があるので、この1往復だけが先に走る。
+    ///
+    /// 採取は接続の1往復(`resolveLayout`)に相乗りし、控えるのも既存の `cacheHardwareUUID` ——
+    /// **2つ目の採取実装(ssh コマンドの組み立て・facts への書き込み)を作らない**。
+    /// **呼ぶのはキャッシュに無い機械だけ**(呼び手の責任。ここは無条件に1往復する)。
+    /// 戻り値 nil = 接続はできたが読めなかった(不明のまま最後尾)
+    func probeHardwareUUIDAsParent(project: TestProject) throws -> String? {
+        let (_, session) = try resolveLayout()
+        return cacheHardwareUUID(project: project, session: session)
+    }
+
     /// フリート内の重複は FleetProfile.validate で防げるが、別フリート・別人・CLI/GUI 併走に
     /// よる同一ホストへの二重実行はここでしか防げない。**単発の `run --runner` でも常に取得する**
     /// (フリート専用の仕組みにしない ―― 競合はフリートかどうかと無関係にホスト単位で起きる)。
@@ -401,6 +445,12 @@ struct RemoteRunDispatcher {
     /// `RemoteDispatchQueue.staleSeconds`(30秒)で失効する**ので defer で消しに行かない
     /// (中断時に ssh を1本増やさない)
     private func acquireDispatchLock(layout: RemoteLayout, runGroup: String?) throws {
+        if parentHoldsThisLock {
+            // 親(fan-out)が全機械ぶんを順序どおりに取り切ってから起こした子。ここで取りに行くと
+            // **自分の親が握っているロックを待って**進まない
+            log("==> the dispatch lock on \(host.sshTarget) is already held by this run's parent")
+            return
+        }
         log("==> acquiring dispatch lock on \(host.sshTarget)")
         let info = RemoteDispatchLockInfo.now(
             issuerHost: ProcessInfo.processInfo.hostName, pid: ProcessInfo.processInfo.processIdentifier,
@@ -413,7 +463,7 @@ struct RemoteRunDispatcher {
                 + " (any dispatch it was protecting may still be running)")
             // 奪う側が列に残り続けないよう、先に自分のチケットを消す
             dequeueTicket(layout: layout, ticket: ticket)
-            _ = try sshCapture(RemoteDispatchLock.forceAcquireCommand(base: layout.base, info: info))
+            _ = try sshCapture(RemoteDispatchLock.forceAcquireCommand(home: layout.home, info: info))
             return
         }
         var elapsed = 0
@@ -421,7 +471,7 @@ struct RemoteRunDispatcher {
         while true {
             let result = try Shell.run(sshBase + [host.sshTarget,
                                                   RemoteDispatchQueue.enqueueAndTryAcquireCommand(
-                                                    base: layout.base, ticket: ticket, info: info)])
+                                                    home: layout.home, ticket: ticket, info: info)])
             // 到達不能は待って直る種類の失敗ではない。**チケットを消しに行かない**(向こうへ届かない)
             guard result.status != 255 else {
                 throw RemoteDispatchError.remoteSetupFailed(
@@ -430,7 +480,7 @@ struct RemoteRunDispatcher {
             guard let outcome = RemoteDispatchQueue.parseOutcome(result.output, ticket: ticket) else {
                 // 並べなかった/シェルのエラーで判定語が読めない ―― 従来のエラー経路へ倒す
                 dequeueTicket(layout: layout, ticket: ticket)
-                let existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
+                let existing = try? sshCapture(RemoteDispatchLock.readCommand(home: layout.home))
                 throw RemoteDispatchError.remoteSetupFailed(Self.dispatchLockFailureMessage(
                     status: result.status, lockRead: existing, tail: result.tail,
                     sshTarget: host.sshTarget))
@@ -501,26 +551,16 @@ struct RemoteRunDispatcher {
     /// **machine は拡張のモニタータイル・run レーンと同じ名前空間**にする ―― `hostLabel`
     /// (`--runner` の生値 = 登録簿の machine 名)があればそれ、無ければ ssh 宛先
     /// (エイリアスが無い経路。host をそのまま名乗るほうが、拡張に空欄を出すより読める)。
-    /// エンコード失敗は黙って捨てる(待機の通知が出ないだけで run は続く)
+    /// 1行の組み立ては `ApiDispatchWaitingEvent.emit`(手元のロックと共有する1箇所)
     private func emitDispatchWaiting(_ status: DispatchWaitStatus) {
         guard mode == .apiRun else { return }
-        let event = ApiDispatchWaitingEvent(
-            machine: hostLabel ?? host.sshTarget,
-            position: status.position, total: status.total,
-            // **読めたときだけ**(nil は Encodable の合成が encodeIfPresent でキーごと省く)
-            holder: status.holder.map { RemoteDispatchLock.holderSummary($0) },
-            elapsedSeconds: status.elapsedSeconds, limitSeconds: status.limitSeconds)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        guard let data = try? encoder.encode(event),
-              let line = String(data: data, encoding: .utf8) else { return }
-        ConsoleOut.out(line)
+        ApiDispatchWaitingEvent.emit(machine: hostLabel ?? host.sshTarget, status: status)
     }
 
     /// 待つのをやめた/失敗したときに**自分のチケットだけ**消す(他人の待機には触らない)。
     /// 失敗は無視する ―― 消せなくても staleSeconds で失効するので、ここで run を落とす価値は無い
     private func dequeueTicket(layout: RemoteLayout, ticket: DispatchTicket) {
-        _ = try? sshCapture(RemoteDispatchQueue.dequeueCommand(base: layout.base, ticket: ticket))
+        _ = try? sshCapture(RemoteDispatchQueue.dequeueCommand(home: layout.home, ticket: ticket))
     }
 
     private enum StaleLockDecision {
@@ -535,7 +575,7 @@ struct RemoteRunDispatcher {
     /// モニター起動時の自動掃除(StaleLockSweep)と同じ `RemoteDispatchUnlock.decideAutomaticSweep`
     /// を共有する(同じ規則を2箇所に持たない)。他人・他機のロックは release を返さない(refuse)
     private func autoReleaseOurStaleLock(layout: RemoteLayout) -> StaleLockDecision {
-        let existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
+        let existing = try? sshCapture(RemoteDispatchLock.readCommand(home: layout.home))
         let sweep = Self.staleLockAutoRelease(
             lockRead: existing, myIssuer: LocalConfig.resolveIssuerId(),
             myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive)
@@ -545,7 +585,7 @@ struct RemoteRunDispatcher {
         case .release(let reason):
             log("==> auto-releasing a stale dispatch lock on \(host.sshTarget) left by a dead process"
                 + " of ours (\(reason))")
-            _ = try? sshCapture(RemoteDispatchLock.releaseCommand(base: layout.base))
+            _ = try? sshCapture(RemoteDispatchLock.releaseCommand(home: layout.home))
             return .released
         case .refuse(let reason):
             return .keptBecauseRunIsAlive(reason)
@@ -579,16 +619,20 @@ struct RemoteRunDispatcher {
     /// 取得失敗(status ≠ 0・≠ 255)の文言。読めた控えが**空**(readCommand は不在でも exit 0 で
     /// 空を返す)なら誰も掴んでいない = mkdir 自体が失敗した(権限・ディスク・base の誤り)ので
     /// 「held by …」ではなく stderr をそのまま出す。控えが読めない(nil)・壊れている(decode 不能)
-    /// ときは従来どおり holder unknown の held 文言
+    /// ときは従来どおり holder unknown の held 文言。
+    /// **`scope` は文言だけ**を分ける(手元のロック = `LocalDispatchLock` もこの仕分けを共有する
+    /// = 2つ目の実装を作らない)。既定はリモート = 従来と1バイトも変わらない
     static func dispatchLockFailureMessage(status: Int32, lockRead: String?, tail: String,
-                                           sshTarget: String) -> String {
+                                           sshTarget: String,
+                                           scope: DispatchLockScope = .remoteHost) -> String {
         if let lockRead, lockRead.isEmpty {
             let detail = tail.isEmpty
                 ? " — no error output; if another dispatch finished just now, retry"
                 : ":\n\(tail)"
-            return "could not create the dispatch lock on \(sshTarget) (ssh status \(status))\(detail)"
+            let statusLabel = scope == .remoteHost ? "ssh status" : "shell status"
+            return "could not create the dispatch lock on \(sshTarget) (\(statusLabel) \(status))\(detail)"
         }
-        return RemoteDispatchLock.heldMessage(lockRead.flatMap(RemoteDispatchLock.decode))
+        return RemoteDispatchLock.heldMessage(lockRead.flatMap(RemoteDispatchLock.decode), scope: scope)
     }
 
     /// **ロックを取った直後に、全発行者ぶんの孤児 hooks を代行実行する**(§18.1 #6)。
@@ -611,8 +655,10 @@ struct RemoteRunDispatcher {
     /// 居ないと確かめられたときだけ(`releaseIfRunEndedCommand`)。回収は日時付きの dispatch
     /// ディレクトリと results/ しか読まないのでロックは要らない。外せなかったら従来どおり末尾の defer
     private func releaseLockIfRunEnded(layout: RemoteLayout, reportDir: String) -> Bool {
+        // 親が握っているロックは子の中断では外さない(解放の持ち主は親の1箇所だけ)
+        guard !parentHoldsThisLock else { return false }
         guard let output = try? sshCapture(RemoteDispatchLock.releaseIfRunEndedCommand(
-            base: layout.base, reportDir: reportDir)) else { return false }
+            home: layout.home, reportDir: reportDir)) else { return false }
         let released = RemoteDispatchLock.releasedEarly(output)
         if released { log("==> released the dispatch lock before collecting (the run was interrupted)") }
         return released
@@ -641,8 +687,10 @@ struct RemoteRunDispatcher {
     /// 成功・失敗・タイムアウト・例外いずれでも defer から呼ばれる。解放の失敗は run の成否を
     /// 変えない(warn のみ。他の回収処理と同じ規律)が、ロックが残るのは事故なので隠さず言う
     private func releaseDispatchLock(layout: RemoteLayout) {
+        // 取っていないロックは外さない(外すと親のロックが消え、後続の run が割り込む)
+        guard !parentHoldsThisLock else { return }
         do {
-            _ = try sshCapture(RemoteDispatchLock.releaseCommand(base: layout.base))
+            _ = try sshCapture(RemoteDispatchLock.releaseCommand(home: layout.home))
         } catch {
             log("warning: failed to release the dispatch lock on \(host.sshTarget)"
                 + " (\(error.localizedDescription)) — clear it manually if the next dispatch is refused")
@@ -928,6 +976,30 @@ struct RemoteRunDispatcher {
     /// concurrentDevices はレコードの "worker" の相異なる値の個数(この stamp のぶんだけ)。
     /// hostLabel が無い構築箇所(旧経路)では何もしない。失敗は黙って握る(advisory キャッシュ。
     /// run の成否・ログを汚さない)
+    /// **接続のたび**にハードウェア UUID を採ってキャッシュへ書く(ユーザー決定 2026-09-21)。
+    /// ここが唯一の書き手で、**run の最後(saveHostFacts)ではなく接続直後**に置く ——
+    /// ロックも取れずに落ちた run でも控えが残り、「この host は前回と別の Mac を指している」を
+    /// run の頭で言える。触るのは UUID 欄だけ(他の欄は既存値のまま)。
+    /// 判定は `RemoteHardwareUUIDChange` の1箇所・**run は止めない**
+    /// 戻り値は控えた値(= 順序の鍵。読めなければ nil)
+    @discardableResult
+    private func cacheHardwareUUID(project: TestProject, session: RemoteSessionInfo?) -> String? {
+        let dir = RemoteHostFactsStore.dir(project: project)
+        let key = host.sshTarget
+        let existing = RemoteHostFactsStore.load(dir: dir, host: key)
+        let outcome = RemoteHardwareUUIDChange.resolve(
+            cached: existing?.hardwareUUID, observed: session?.hardwareUUID, host: key)
+        if let warning = outcome.warning { log(warning) }
+        // 値が動いていなければ書かない(毎ディスパッチ updatedAt だけを書き換えない)
+        guard outcome.stored != existing?.hardwareUUID else { return outcome.stored }
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        var facts = existing ?? RemoteHostFacts(updatedAt: stamp)
+        facts.hardwareUUID = outcome.stored
+        facts.updatedAt = stamp
+        RemoteHostFactsStore.save(facts, dir: dir, host: key)
+        return outcome.stored
+    }
+
     private func saveHostFacts(project: TestProject, overheadSeconds: Double,
                                session: RemoteSessionInfo?, texts: [(url: URL, text: String)]) {
         let dir = RemoteHostFactsStore.dir(project: project)
@@ -939,6 +1011,8 @@ struct RemoteRunDispatcher {
             host: recorded,
             // 表示用のエイリアス(鍵ではない。RemoteHostFacts.machineAlias の宣言参照)
             machineAlias: hostLabel ?? existing?.machineAlias,
+            // 書き手は接続直後の cacheHardwareUUID だけ(ここは読み直した値を持ち越す)
+            hardwareUUID: existing?.hardwareUUID,
             dispatchOverheadSeconds: overheadSeconds,
             processorModel: session?.processorModel ?? existing?.processorModel,
             coreCount: session?.coreCount ?? existing?.coreCount,

@@ -2,7 +2,8 @@
 // 「今このランナー機で誰かのディスパッチが走っているか」を、**その機械の上のローカルなファイル
 // 読みだけで**判定する(docs/remote-runner.md §18.2 の M2「占有表示・配信の自動退避」)。
 //
-// dispatch.lock はホストに1本(RemoteDispatchLock)で、その info.json はランナーのディスクにある。
+// dispatch.lock は機械に1本(RemoteDispatchLock。ランナーの `~/.fleetest/`)で、その info.json は
+// ランナーのディスクにある。
 // ランナーで動いている子プロセス(fan-out の `api monitor` / `api device-stream`)は **ssh を
 // 1本も足さずに**読めるので、手元から監視間隔ごとに覗きに行く形にはしない(ssh の churn を
 // 作らない = docs/remote-runner.md §13 の規律)。
@@ -18,7 +19,7 @@
 import Foundation
 import FTCore
 
-/// ランナー機の占有状態(dispatch.lock 1本の要約)。NDJSON へそのまま載せるので Codable。
+/// ランナー機の占有状態(その機械の dispatch.lock 1本の要約)。NDJSON へそのまま載せるので Codable。
 public struct HostOccupancy: Equatable, Sendable, Codable {
     public let held: Bool
     /// 保持者の自己申告 issuerId。旧 info.json(issuer キーが無い)や読めなかったときは nil
@@ -56,15 +57,21 @@ public struct HostOccupancy: Equatable, Sendable, Codable {
     }
 
     /// ランナー機のディスクから読む(I/O はここだけ。判定は interpret)。
-    /// base が nil(= 手元で走っている。FT_RUNNER_BASE 未設定)なら nil を返し、
-    /// 呼び出し側は「占有の概念が無い」として何も出さない
-    public static func read(base: String?, myIssuer: String,
+    /// `runnerBase` が nil(= 手元で走っている。FT_RUNNER_BASE 未設定)なら nil を返し、
+    /// 呼び出し側は「占有の概念が無い」として何も出さない。
+    ///
+    /// **`runnerBase` は「ランナー機の文脈か」の判定にだけ使う**(ロックの置き場ではない ——
+    /// ロックは機械グローバルな `~/.fleetest` に1本。`RemoteDispatchLock.lockDirPath`)。
+    /// ここは**そのロックが守る機械の上で**走っている子なので、読むのは自分の `$HOME`。
+    /// `home` はテスト用の差し替え口
+    public static func read(runnerBase: String?, myIssuer: String,
+                            home: URL = FileManager.default.homeDirectoryForCurrentUser,
                             fileManager: FileManager = .default) -> HostOccupancy? {
-        guard let base else { return nil }
-        let dir = RemoteDispatchLock.lockDirPath(base: base)
+        guard runnerBase != nil else { return nil }
+        let dir = RemoteDispatchLock.lockDirPath(home: home.path)
         var isDirectory: ObjCBool = false
         let exists = fileManager.fileExists(atPath: dir, isDirectory: &isDirectory) && isDirectory.boolValue
-        let json = exists ? try? String(contentsOfFile: RemoteDispatchLock.infoFilePath(base: base),
+        let json = exists ? try? String(contentsOfFile: RemoteDispatchLock.infoFilePath(home: home.path),
                                         encoding: .utf8) : nil
         return interpret(lockDirExists: exists, infoJSON: json, myIssuer: myIssuer)
     }
@@ -111,6 +118,10 @@ public enum RemoteDestructiveGuard {
 /// リモートで走る子プロセスへ、発行側が渡すランナー機の base ディレクトリ。
 /// **手元実行では未設定**なので、この値の有無がそのまま「ランナー機の文脈か」の判定になる。
 /// 発行側の export は RemoteShell.remoteRunCommand / remoteExecCommand の1箇所。
+///
+/// **役割は2つに減った**: ①ランナー機の文脈かの判定(`HostOccupancy.read` —— 手元には占有の
+/// 概念が無い)②配信の控えの置き場(`FTCore.StreamLease`)。dispatch.lock / dispatch.queue は
+/// ロックは機械グローバルな `~/.fleetest` にあるので、**この値から場所を導く読み手は居ない**
 public enum RunnerBase {
     public static let environmentKey = "FT_RUNNER_BASE"
 

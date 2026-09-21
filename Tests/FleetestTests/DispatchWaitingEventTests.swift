@@ -42,14 +42,16 @@ final class DispatchWaitingEventTests: XCTestCase {
 
     // MARK: - 配線(型では守れない: 出す刻みと出す経路)
 
-    private static func dispatcherSource() throws -> String {
+    private static func source(_ relative: String) throws -> String {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // FleetestTests
             .deletingLastPathComponent()  // Tests
             .deletingLastPathComponent()  // リポジトリルート
-        return try String(
-            contentsOf: root.appendingPathComponent("Sources/fleetest/RemoteRunDispatcher.swift"),
-            encoding: .utf8)
+        return try String(contentsOf: root.appendingPathComponent(relative), encoding: .utf8)
+    }
+
+    private static func dispatcherSource() throws -> String {
+        try source("Sources/fleetest/RemoteRunDispatcher.swift")
     }
 
     /// **ログを出す条件とイベントを出す条件は同じ式**(判断を2つ持たない)。別々の if に割ると、
@@ -78,5 +80,48 @@ final class DispatchWaitingEventTests: XCTestCase {
         let body = String(source[bodyStart.upperBound...].prefix(400))
         XCTAssertTrue(body.contains("guard mode == .apiRun else { return }"),
                       "apiRun のときだけ出すこと: \(body)")
+    }
+
+    // MARK: - 手元のロック(同じイベントを同じ刻みで出す)
+
+    /// リモートと同じ規律を `LocalDispatchLock` にも掛ける —— **ログとイベントは同じ if**。
+    /// 別々の if に割ると、手元の待機だけ端末と拡張で見える回数が食い違う
+    func testTheLocalLockEmitsTheEventFromTheSameConditionAsItsProgressLog() throws {
+        let source = try Self.source("Sources/fleetest/LocalDispatchLock.swift")
+        let calls = source.components(separatedBy: "emitDispatchWaiting(status)").count - 1
+        XCTAssertEqual(calls, 1, "呼び出しは待機ループの1箇所だけ")
+        let guardRange = try XCTUnwrap(
+            source.range(of: "if WaitLockPolling.shouldLogProgress(elapsedSeconds: elapsed) {"),
+            "進行ログの条件が見つからない")
+        let callRange = try XCTUnwrap(source.range(of: "emitDispatchWaiting(status)"))
+        XCTAssertLessThan(guardRange.lowerBound, callRange.lowerBound)
+        let between = String(source[guardRange.upperBound..<callRange.lowerBound])
+        XCTAssertFalse(between.contains("}"),
+                       "log とイベントの間にブロックが閉じている = 条件を2つ持っている")
+        XCTAssertTrue(between.contains("log("), "同じブロックで進行ログも出すこと")
+    }
+
+    /// **出すのは `fleetest api run` の経路だけ** —— `fleetest run` の stdout は人間向けなので
+    /// 機械可読行を混ぜない。両方向を見る(片方に渡し忘れ / 両方に渡す のどちらも落とす)
+    func testOnlyTheApiRunEntryPointInjectsTheEmitter() throws {
+        let api = try Self.source("Sources/fleetest/ApiRunCommand.swift")
+        XCTAssertTrue(api.contains("emitWaiting: LocalDispatchLock.apiRunWaitingEmitter()"),
+                      "api run が NDJSON の出し口を渡していない(拡張には無言で止まって見える)")
+        let cli = try Self.source("Sources/fleetest/Fleetest.swift")
+        XCTAssertFalse(cli.contains("emitWaiting:"),
+                       "fleetest run の人間向け stdout に NDJSON を混ぜている")
+    }
+
+    /// 組み立ては**1箇所だけ** —— リモートと手元で別々にエンコードすると、欄を足したときに
+    /// 片方だけ古い形を出す(拡張からは片方の機械の待機が黙って見えなくなる)
+    func testBothCallersGoThroughTheOneEncoder() throws {
+        for path in ["Sources/fleetest/RemoteRunDispatcher.swift",
+                     "Sources/fleetest/LocalDispatchLock.swift"] {
+            let text = try Self.source(path)
+            XCTAssertTrue(text.contains("ApiDispatchWaitingEvent.emit("),
+                          "\(path): 共有の組み立て口を通っていない")
+            XCTAssertFalse(text.contains("ApiDispatchWaitingEvent("),
+                           "\(path): イベントを自分で組み立てている(2つ目の実装)")
+        }
     }
 }

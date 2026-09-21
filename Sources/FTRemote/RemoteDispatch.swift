@@ -242,10 +242,23 @@ public struct RemoteLayout: Equatable, Sendable {
     /// 発行者ネームスペースの鍵(§18.2)。resolveLayoutIssuer が検証済みの値を渡す契約
     /// (validateIssuerKey を通していない値をここへ入れない)
     public let issuer: String
+    /// **そのランナー機の `$HOME`**。呼び出し側が `echo $HOME` の1往復で確定した絶対パスを
+    /// そのまま入れる(`resolveBase` に渡すのと同じ値)。
+    ///
+    /// **ここに居る理由**: dispatch.lock / dispatch.queue は `<base>` ではなく機械グローバルな
+    /// `<home>/.fleetest` に置く(`RemoteDispatchLock.lockDirPath`)。base は `--remote-dir` で
+    /// 変わるので、同じ Mac に base を2つ作るとロックが2本になり排他が成立しない。
+    /// **既定値を置かない** —— 新しい経路が渡し忘れたらコンパイルで止める。
+    ///
+    /// **例外は `remote status` / `remote-compat` の1往復**だけで、そこは `"$HOME"` を入れて
+    /// リモートシェルに展開させる(`RemoteStatusProbe`。ロックを**読むだけ**で取らない)。
+    /// **取得・解放の経路へこの形を持ち込まない**(遅延展開はロックの同一性を壊しうる)
+    public let home: String
 
-    public init(base: String, issuer: String) {
+    public init(base: String, issuer: String, home: String) {
         self.base = Self.stripTrailingSlash(base)
         self.issuer = issuer
+        self.home = Self.stripTrailingSlash(home)
     }
 
     /// **ディレクトリ名は "foundation-tester" 固定**(短くしない)。SPM はパス依存の
@@ -603,14 +616,11 @@ public enum RemoteDispatchFlagPolicy {
             + " (it releases the dispatch lock on a remote host)"
     }
 
-    /// `--wait-lock`(dispatch.lock の解放をポーリングして待つ)を受け付けてよいか。
-    /// forceLockRejection と同じ理由・同じ判定(リモートへ行きうる指定が1つでもあれば受ける)
-    public static func waitLockRejection(host: String?, fleet: String?, profile: String?) -> String? {
-        let hasRemoteRoute = host != nil || fleet != nil || profile != nil
-        guard !hasRemoteRoute else { return nil }
-        return "--wait-lock requires a run profile, --runner or --fleet"
-            + " (it waits for the dispatch lock on a remote host)"
-    }
+    // **`--wait-lock` に前提条件は置かない** —— 手元の run も同じ dispatch.lock を取る
+    // (Sources/fleetest/LocalDispatchLock.swift)ので、どの run にも待つ相手が居る。
+    // `run` / `api run` で揃っていることは `RunRejectionParityTests` の "wait-lock alone" が固定する。
+    // **`--force-lock`(forceLockRejection)には前提条件がある** —— あちらは「奪う」口で、
+    // 判断を誤ると走っている run を壊す。広げるならユーザー決定が要る。
 
     /// --wait-lock(待つ)と --force-lock(奪う)は同時指定できない(意味が矛盾する)
     public static func waitLockConflictsWithForceLock(forceLock: Bool, waitLock: Int?) -> String? {
@@ -797,15 +807,23 @@ public struct RemoteSessionInfo: Equatable, Sendable {
     /// 3行形の出力からは取れないので nil
     public let processorModel: String?
     public let coreCount: Int?
+    /// その機械を**一意に識別する**ハードウェア UUID(`IOPlatformUUID`。6行形のみ)。
+    /// 「同じ機械なら誰が見ても同じ値・違う機械なら必ず違う値」が要る場面(機械の順序で
+    /// ロックを取る等)の鍵はこれだけ —— IP は1台に複数付き経路で変わる / ホスト名は重複しうる
+    /// うえ mDNS・DHCP で変わる / `<base>` 配下に置いた ID は同じ機械に base を2つ作ると割れる。
+    /// **読めなければ nil = 不明**(既定値で埋めない。呼び手が安全側へ倒す)
+    public let hardwareUUID: String?
 
     /// 新フィールドは既定値 nil ―― 既存の3引数呼び出し(セッション情報だけの構築)を壊さない
     public init(home: String, consoleUser: String, sshUser: String,
-               processorModel: String? = nil, coreCount: Int? = nil) {
+               processorModel: String? = nil, coreCount: Int? = nil,
+               hardwareUUID: String? = nil) {
         self.home = home
         self.consoleUser = consoleUser
         self.sshUser = sshUser
         self.processorModel = processorModel
         self.coreCount = coreCount
+        self.hardwareUUID = hardwareUUID
     }
 
     /// 大文字小文字は区別する(macOS のユーザー名はケースセンシティブではないが、
@@ -831,29 +849,58 @@ public enum RemoteProbe {
     public static let consoleUserCommand =
         "if launchctl print gui/$(id -u) >/dev/null 2>&1; then id -un; else stat -f%Su /dev/console; fi"
 
-    /// "echo $HOME; <consoleUserCommand>; id -un" の3行出力(hardware なし)、または
+    /// ハードウェア UUID の1行を持ち帰るシェル片(`RemoteRunDispatcher.resolveLayout` の
+    /// 6行形の最終行)。**出力はちょうど1行** —— `echo "$(…)"` で包むのは、読めなかったときも
+    /// 空行を1行返させるため(行が欠けると parseSessionInfo の行数判定が崩れ、$HOME も
+    /// コンソールユーザーも道連れで判定不能に落ちる)。**値の取り出しは Swift 側**
+    /// (`parseHardwareUUID`)—— 相手は zsh で、awk/sed に引用符を書くほど ssh 越しの引用が
+    /// 壊れやすい(グロブを書かないのと同じ理由)。`head -1` は機械に IOPlatformExpertDevice が
+    /// 複数見えた場合の保険
+    public static let hardwareUUIDCommand =
+        "echo \"$(ioreg -rd1 -c IOPlatformExpertDevice 2>/dev/null | grep IOPlatformUUID | head -1)\""
+
+    /// `ioreg -rd1 -c IOPlatformExpertDevice | grep IOPlatformUUID` の生の1行
+    /// (`    "IOPlatformUUID" = "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9"`)から UUID を取り出す。
+    /// **UUID として読めない値は nil = 不明**(古い macOS・権限・ioreg の形式変更で読めないことが
+    /// ある。既定値で埋めない)。返すのは UUID の正準形(大文字)—— 「同じ機械なら誰が見ても
+    /// 同じ文字列」になることがこの値の唯一の存在理由なので、表記の揺れをここで畳む
+    public static func parseHardwareUUID(_ line: String) -> String? {
+        guard let key = line.range(of: "IOPlatformUUID") else { return nil }
+        let rest = line[key.upperBound...]
+        guard let equals = rest.firstIndex(of: "=") else { return nil }
+        let value = rest[rest.index(after: equals)...]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+        return UUID(uuidString: value)?.uuidString
+    }
+
+    /// "echo $HOME; <consoleUserCommand>; id -un" の3行出力(hardware なし)、
     /// これに "sysctl -n machdep.cpu.brand_string; sysctl -n hw.ncpu" を足した5行出力
-    /// (4行目 = CPU モデル・5行目 = コア数)を解析する。末尾の改行1個は許容する。
+    /// (4行目 = CPU モデル・5行目 = コア数)、さらに <hardwareUUIDCommand> を足した6行出力
+    /// (6行目 = ioreg の生の1行)を解析する。末尾の改行1個は許容する。
     /// **先頭3行の妥当性判定は行数によらず同一**(3本ぴったり・いずれも空でない、が前提)。
-    /// 行数が3でも5でもなければ nil(古い macOS 等でセッション行が想定外を返す場合を想定。
+    /// 行数が3でも5でも6でもなければ nil(古い macOS 等でセッション行が想定外を返す場合を想定。
     /// 呼び出し側は nil を「判定不能」として扱い、ログインチェックだけスキップする)。
-    /// 5行形では、4行目が空(トリム後)なら processorModel は nil、5行目が Int にパース
-    /// できなければ coreCount は nil(hardware だけ判定不能でもセッション情報は活かす)
+    /// 5行形以降では、4行目が空(トリム後)なら processorModel は nil、5行目が Int にパース
+    /// できなければ coreCount は nil(hardware だけ判定不能でもセッション情報は活かす)。
+    /// 6行目も同様に、読めなければ hardwareUUID だけが nil になる
     public static func parseSessionInfo(_ output: String) -> RemoteSessionInfo? {
 
         var lines = output.components(separatedBy: "\n")
         if lines.last == "" { lines.removeLast() }
-        guard lines.count == 3 || lines.count == 5 else { return nil }
+        guard lines.count == 3 || lines.count == 5 || lines.count == 6 else { return nil }
         let trimmed = lines.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         guard trimmed[0...2].allSatisfy({ !$0.isEmpty }) else { return nil }
         var processorModel: String?
         var coreCount: Int?
-        if trimmed.count == 5 {
+        if trimmed.count >= 5 {
             processorModel = trimmed[3].isEmpty ? nil : trimmed[3]
             coreCount = Int(trimmed[4])
         }
+        let hardwareUUID = trimmed.count >= 6 ? parseHardwareUUID(trimmed[5]) : nil
         return RemoteSessionInfo(home: trimmed[0], consoleUser: trimmed[1], sshUser: trimmed[2],
-                                 processorModel: processorModel, coreCount: coreCount)
+                                 processorModel: processorModel, coreCount: coreCount,
+                                 hardwareUUID: hardwareUUID)
     }
 }
 
@@ -927,13 +974,15 @@ public enum RemoteStatusProbe {
             "xcrun --sdk iphonesimulator --show-sdk-build-version",
             "test -x \(dquote(layout.binary)) && echo yes || echo no",
             "df -k \(dquote(layout.base)) | tail -1",
-            // **dispatch.lock はホストに1本**(発行者ネームスペースの外側)。RemoteDispatchLock の
-            // probeCommand と同じ形だが、こちらは $HOME 未解決の base を扱うため dquote で包む
-            // (単一引用符だと展開されない。ファイル冒頭の注記と同じ理由)。
+            // **dispatch.lock は機械に1本**(`<base>` の外側・`~/.fleetest`)。RemoteDispatchLock の
+            // probeCommand と同じ形だが、こちらは `layout.home` が未解決の `$HOME` であり得るため
+            // dquote で包む(単一引用符だと展開されない。ファイル冒頭の注記・下の fm-liveness と同じ)。
+            // **遅延展開してよいのはこの読み取り専用の1往復だけ** —— 取得・解放は手元で確定した
+            // 絶対パスを使う(RemoteLayout.home)。
             // info.json は `printf '%s'` で書かれ改行で終わらない —— **cat の後の echo を外さない**
             // (無いと次の区切りが同じ行に付き、握られている間だけ後ろのブロックが全部ずれる)
-            "if [ -d \(dquote(RemoteDispatchLock.lockDirPath(base: layout.base))) ]; then echo held;"
-                + " cat \(dquote(RemoteDispatchLock.infoFilePath(base: layout.base))) 2>/dev/null || true; echo;"
+            "if [ -d \(dquote(RemoteDispatchLock.lockDirPath(home: layout.home))) ]; then echo held;"
+                + " cat \(dquote(RemoteDispatchLock.infoFilePath(home: layout.home))) 2>/dev/null || true; echo;"
                 + " else echo absent; fi",
             // FM の死活台帳。**レイアウトの外**(~/.fleetest。FM はホストの資源でプロジェクトにも
             // 発行者にも属さない)。**実呼び出しはしない** —— ここで doctor を撃つと status が
@@ -1179,7 +1228,19 @@ public enum RemoteShell {
             + "{ echo \"no runner workspace at \(layout.workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
             + "\(pathCmd) && \(runnerBaseCmd(layout: layout))\(issuerCmd)\(streamOwnerCmd(streamOwner))"
-            + "\(devDirCmd)\(fmCmd)\(guardCmd) && \(syncCmd) && \(launch)"
+            + "\(devDirCmd)\(fmCmd)\(lockHeldCmd)\(guardCmd) && \(syncCmd) && \(launch)"
+    }
+
+    /// **ディスパッチが向こうで起こす run に「このロックは親が握っている」印を運ぶ**。
+    /// 向こうで走るのは `fleetest run --runner local`(`RemoteRunArgs.build`)= その機械から見れば
+    /// 手元の run なので、印が無いと `LocalDispatchLock` がランナー機のロックを自分で取りに行き、
+    /// **発行側(自分の親)が握っているロックを待って詰む**。
+    /// 値は手元を指す宛先(`DispatchLockHandoff.localTarget`)—— 子が自分の宛先と突き合わせるため。
+    /// **`remoteExecCommand` には置かない**(exec はロックを取らない経路で、`remote exec -- run` を
+    /// 足したときに発行側が握っていないロックを「握っている」と名乗らせないため)
+    private static var lockHeldCmd: String {
+        "export \(DispatchLockHandoff.environmentKey)="
+            + "\(quote(DispatchLockHandoff.localTarget)) && "
     }
 
     /// `fleetest remote exec`(docs/remote-runner.md §14「単発コマンドの転送は汎用化する」)。
@@ -1220,9 +1281,10 @@ public enum RemoteShell {
     }
 
     /// ランナー機の base を子へ渡す(FTCore.RunnerBase)。**手元実行では存在しない値**なので、
-    /// 子はこの有無で「ランナー機の上に居るか」を判定でき、dispatch.lock を ssh 無しで読める
-    /// (docs/remote-runner.md §18.2)。run/exec の両方に置く —— 片方だけだと、その経路の子だけ
-    /// 占有が見えないまま配信を張り続ける
+    /// 子はこの有無で「ランナー機の上に居るか」を判定でき、その機械の dispatch.lock
+    /// (`~/.fleetest/`)を ssh 無しで読める(docs/remote-runner.md §18.2)。**場所はこの値から
+    /// 導かない** —— 渡しているのは文脈の印と配信の控えの置き場(StreamLease)。run/exec の
+    /// 両方に置く —— 片方だけだと、その経路の子だけ占有が見えないまま配信を張り続ける
     private static func runnerBaseCmd(layout: RemoteLayout) -> String {
         "export \(RunnerBase.environmentKey)=\(quote(layout.base)) && "
     }

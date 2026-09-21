@@ -67,7 +67,7 @@ final class RemoteSetupTests: XCTestCase {
     // MARK: - RemoteSetupPlan.ensureWorkDirCommand
 
     func testEnsureWorkDirCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         XCTAssertEqual(RemoteSetupPlan.ensureWorkDirCommand(layout: layout),
                        "mkdir -p '/Users/ci/fleetest-runner/users/alice/work'")
     }
@@ -166,7 +166,7 @@ final class RemoteSetupTests: XCTestCase {
     /// 変異が production と期待値の両方に同時に効いて素通しする)。ヘルパーを増やしたら
     /// ここも手で足す —— それがこのテストの仕事
     func testAlignRevisionCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         XCTAssertEqual(
             RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: "9655a21"),
             "cd '/Users/ci/fleetest-runner/foundation-tester' && git fetch origin && "

@@ -32,6 +32,12 @@ final class RunRejectionParityTests: XCTestCase {
 
         // ディスパッチ先
         .init(label: "runner without profile", arguments: ["--runner", "m1"], rejected: true),
+        // `--wait-lock` は**どの run でも受ける**(2026-09-21)—— 手元の run も同じ
+        // dispatch.lock を取るようになったので、純粋にローカルだけの run にも待つ相手が居る。
+        // 片方だけ検査を戻すとここで割れる
+        .init(label: "wait-lock alone", arguments: ["--wait-lock", "30"], rejected: false),
+        .init(label: "wait-lock with profile",
+              arguments: ["--profile", "p", "--wait-lock", "30"], rejected: false),
         .init(label: "runner local without profile", arguments: ["--runner", "local"], rejected: false),
         .init(label: "runner with profile", arguments: ["--profile", "p", "--runner", "m1"], rejected: false),
 

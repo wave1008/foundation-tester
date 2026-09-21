@@ -18,7 +18,7 @@ final class SetOverrideRelayTests: XCTestCase {
             scenarios: ["A.S0010"], folders: [],
             setOverrides: ["heal": true, "enableAnimations": false],
             noLPT: false, lptHistoryRuns: nil, performanceMode: false,
-            forceLock: false, waitLock: nil, remoteDir: nil, remoteTimeout: nil,
+            forceLock: false, remoteDir: nil, remoteTimeout: nil,
             quiet: false, junitPath: nil)
         guard let index = args.firstIndex(of: "--set") else {
             return XCTFail("--set が中継されていない: \(args)")
@@ -32,7 +32,7 @@ final class SetOverrideRelayTests: XCTestCase {
             project: "E2E-Android", host: "local", profile: "android",
             scenarios: [], folders: [],
             noLPT: false, lptHistoryRuns: nil, performanceMode: false,
-            forceLock: false, waitLock: nil, remoteDir: nil, remoteTimeout: nil,
+            forceLock: false, remoteDir: nil, remoteTimeout: nil,
             quiet: false, junitPath: nil)
         XCTAssertFalse(args.contains("--set"), "\(args)")
     }

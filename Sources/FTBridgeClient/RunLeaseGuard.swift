@@ -1,6 +1,19 @@
 // run が台を使い始める前(供給フェーズが自分の run-lease を書き始める前)に、その台の
 // run-lease を既に握っている生きた別プロセスがいないか確かめる(ユーザー決定「拒否して
-// 止める」)。リモートの dispatch.lock と同じ fail-fast をローカルの同時実行にも適用する。
+// 止める」)。
+//
+// **dispatch.lock との上下関係**(2026-09-21):
+// - **dispatch.lock は「マシン全体」**(その Mac で同時に走る run は1本。手元の run も取る =
+//   Sources/fleetest/LocalDispatchLock.swift)。
+// - **run-lease は「台ごと」**で、dispatch.lock の**内側**。2つの run の直列化だけなら
+//   dispatch.lock で足りるが、**MCP のセッション(`mcp-<鍵>.lease`)と `start-device` 等の
+//   単発操作は dispatch.lock を取らない** —— 台ごとの調停はこちらでしか成立しないので残す。
+// - **順序は「マシンの門 → 台の門」**。run の入口(`RunScenarios.run` / `ApiRunCommand.run`)が
+//   先に dispatch.lock を取り、その後で供給段がこの判定を通る。逆順にすると、断られる側の run が
+//   先に台を掴みに行く(供給は Wipe Data・再起動など取り返しのつかない準備を含む)。
+//   **例外は fan-out の事前判定**(`ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch`)——
+//   あれは読み取りだけの先読みで、**どのロックも取る前に**断るためにわざと手前に置いてある
+//   (取ってから断ると、他人を待たせた挙句に自分が降りることになる)。
 //
 // 判定は conflicts(pure function)に切り出し、鮮度判定(RunLease.holderPID)だけを呼び出し側が
 // 注入する。呼び出し側(ProfileRunner.run / ApiRunCommand)は、workers を構築し終えて

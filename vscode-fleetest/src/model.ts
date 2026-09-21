@@ -277,7 +277,9 @@ export interface ScenarioRequeuedEvent {
  * リモート(`--runner`)の dispatch.lock の待機列に並んでいる(まだ1台も動いていない)。
  * `--wait-lock <秒>` を渡したときだけ届き、待っている間は進行と同じ刻みで繰り返し届く。
  * 取得できた/諦めたときの終了イベントは無い(runStarted か失敗で終わりが分かる)。
- * machine はモニタータイル・run レーンと同じ名前空間。
+ * machine はモニタータイル・run レーンと同じ名前空間。**手元のロックを待っているときは "local"**
+ * (`--runner` を渡さない run も同じ dispatch.lock を取る)。表示名への読み替えは
+ * i18n/strings/lane.ts の dispatchWaitingLine の1箇所。
  * holder は**読めたときだけ**入る —— 欠けているのは「不明」であって「空き」でも「占有」でもないので、
  * 欠けているときに「実行中」と断定してはいけない。
  * 契約の同期相手: Sources/fleetest/ApiRunCommand.swift ApiDispatchWaitingEvent

@@ -1322,10 +1322,8 @@ struct RunScenarios: AsyncParsableCommand {
             forceLock: forceLock, waitLock: waitLock) {
             throw ValidationError(message)
         }
-        if waitLock != nil, let message = RemoteDispatchFlagPolicy.waitLockRejection(
-            host: runner, fleet: fleet, profile: profile) {
-            throw ValidationError(message)
-        }
+        // `--wait-lock` に前提条件は無い —— 手元の run も dispatch.lock を取るので待つ相手が居る
+        // (理由と経緯は FTRemote.RemoteDispatchFlagPolicy の `--wait-lock` の節。`api run` と同じ)
     }
 
     func run() async throws {
@@ -1374,6 +1372,21 @@ struct RunScenarios: AsyncParsableCommand {
             return
         }
         PhaseLog.mark("start")
+        // **この Mac のロックを、デバイスにもビルドにも触る前に取る**(ユーザー決定 2026-09-21
+        // 「1つのマシンで同時に複数の run は走らせない」)。リモートへのディスパッチが
+        // dispatch.lock で守っていた不変条件を、手元で直接打った run にも同じロックで掛ける。
+        // **ビルドより前**に置くのは `swift build` 自体が重い負荷だから(CLAUDE.md
+        // 「E2E 実行中に swift build を打たない」)。`--dry-run` はデバイスに触らないので取らない。
+        // **run-lease(台ごと)との上下**: ここが**マシン全体**の門で、台ごとの二重使用は
+        // この後の `ProfileRunner` / `RunLeaseGuard` が見る —— MCP のセッション
+        // (`mcp-<鍵>.lease`)は dispatch.lock を取らないので、台ごとの調停はこのロックでは代替できない
+        var dispatchLock: LocalDispatchLock.Holder?
+        if !dryRun {
+            dispatchLock = try LocalDispatchLock(
+                runGroup: runGroup, waitLock: waitLock, forceLock: forceLock,
+                log: { ConsoleOut.out($0) }).acquire()
+        }
+        defer { dispatchLock?.release() }
         let testProject = try ScenarioHost.project(named: project)
         PhaseLog.mark("project-resolved")
 

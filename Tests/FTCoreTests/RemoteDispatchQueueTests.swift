@@ -126,20 +126,31 @@ final class DispatchTicketTests: XCTestCase {
 
 final class RemoteDispatchQueueTests: XCTestCase {
 
-    private let base = "/Users/tester/fleetest-runner"
+    /// **置き場はホームの `.fleetest/`**(`<base>` ではない。RemoteDispatchLock と同じ理由)
+    private let home = "/Users/tester"
     private let ticket = DispatchTicket(requestedAtMillis: 1_755_000_000_000, issuer: "ci", group: "7")
     private let info = RemoteDispatchLockInfo(issuerHost: "h", pid: 1, acquiredAt: "2025-08-12T13:20:00Z")
 
     // MARK: - 置き場
 
     func testDirectoryIsSharedAcrossIssuers() {
-        XCTAssertEqual(RemoteDispatchQueue.directory(base: base),
-                       "/Users/tester/fleetest-runner/.fleetest/dispatch.queue")
+        XCTAssertEqual(RemoteDispatchQueue.directory(home: home),
+                       "/Users/tester/.fleetest/dispatch.queue")
     }
 
     func testTicketFilePathIsDirectoryPlusFileName() {
-        XCTAssertEqual(RemoteDispatchQueue.ticketFilePath(base: base, ticket: ticket),
-                       "/Users/tester/fleetest-runner/.fleetest/dispatch.queue/1755000000000~ci~7")
+        XCTAssertEqual(RemoteDispatchQueue.ticketFilePath(home: home, ticket: ticket),
+                       "/Users/tester/.fleetest/dispatch.queue/1755000000000~ci~7")
+    }
+
+    /// **同じ Mac に `<base>` を2つ作っても待機列は1本**(ロック本体と同じ規律 ——
+    /// 列が分かれると「先頭のチケットの持ち主だけが mkdir を撃つ」が両方で成立し FIFO が壊れる)
+    func testTwoBasesOnTheSameMachineShareOneQueue() {
+        XCTAssertEqual(
+            RemoteDispatchQueue.ticketFilePath(home: home, ticket: ticket),
+            RemoteDispatchQueue.ticketFilePath(
+                home: RemoteLayout(base: "/Volumes/ssd/other-runner", issuer: "bob", home: home).home,
+                ticket: ticket))
     }
 
     func testStaleSecondsIsPinned() {
@@ -155,34 +166,34 @@ final class RemoteDispatchQueueTests: XCTestCase {
     // MARK: - ssh コマンド文字列(完全一致で固定)
 
     private var expectedEnqueueCommand: String {
-        let dir = "'/Users/tester/fleetest-runner/.fleetest/dispatch.queue'"
-        let ticketPath = "'/Users/tester/fleetest-runner/.fleetest/dispatch.queue/1755000000000~ci~7'"
+        let dir = "'/Users/tester/.fleetest/dispatch.queue'"
+        let ticketPath = "'/Users/tester/.fleetest/dispatch.queue/1755000000000~ci~7'"
         return "mkdir -p \(dir) && printf '%s' 'queued' > \(ticketPath) || exit 1; "
             + "find \(dir) -type f ! -newermt '-30 seconds' -delete 2>/dev/null; "
             + "q=$(find \(dir) -type f 2>/dev/null | sed 's|.*/||' | sort); "
             + "printf '%s\\n' 'QUEUE'; printf '%s\\n' \"$q\"; printf '%s\\n' '---'; "
             + "if [ \"$(printf '%s\\n' \"$q\" | head -n 1)\" = '1755000000000~ci~7' ]; then"
-            + " if mkdir -p '/Users/tester/fleetest-runner/.fleetest'"
-            + " && mkdir '/Users/tester/fleetest-runner/.fleetest/dispatch.lock' 2>/dev/null"
+            + " if mkdir -p '/Users/tester/.fleetest'"
+            + " && mkdir '/Users/tester/.fleetest/dispatch.lock' 2>/dev/null"
             + " && printf '%s' '{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuerHost\":\"h\",\"pid\":1}'"
-            + " > '/Users/tester/fleetest-runner/.fleetest/dispatch.lock/info.json'; then"
+            + " > '/Users/tester/.fleetest/dispatch.lock/info.json'; then"
             + " rm -f \(ticketPath); printf '%s\\n' 'ACQUIRED';"
             + " else printf '%s\\n' 'HELD'; fi;"
             + " else printf '%s\\n' 'WAITING'; fi; "
             + "printf '%s\\n' '---'; "
-            + "cat '/Users/tester/fleetest-runner/.fleetest/dispatch.lock/info.json' 2>/dev/null || true"
+            + "cat '/Users/tester/.fleetest/dispatch.lock/info.json' 2>/dev/null || true"
     }
 
     func testEnqueueAndTryAcquireCommandExactText() {
         XCTAssertEqual(
-            RemoteDispatchQueue.enqueueAndTryAcquireCommand(base: base, ticket: ticket, info: info),
+            RemoteDispatchQueue.enqueueAndTryAcquireCommand(home: home, ticket: ticket, info: info),
             expectedEnqueueCommand)
     }
 
     /// 一覧は必ず `find` で作る(相手は zsh。マッチしないグロブは `for` の語リストならシェルごと落ちる)
     func testEnqueueCommandListsWithFindAndHasNoUnquotedGlob() {
-        let command = RemoteDispatchQueue.enqueueAndTryAcquireCommand(base: base, ticket: ticket, info: info)
-        XCTAssertTrue(command.contains("find '/Users/tester/fleetest-runner/.fleetest/dispatch.queue' -type f"),
+        let command = RemoteDispatchQueue.enqueueAndTryAcquireCommand(home: home, ticket: ticket, info: info)
+        XCTAssertTrue(command.contains("find '/Users/tester/.fleetest/dispatch.queue' -type f"),
                       command)
         XCTAssertFalse(command.contains("for "), command)
         // `*` / `?` はシングルクォートの内側(sed の式・printf の書式)にしか無いこと
@@ -198,18 +209,18 @@ final class RemoteDispatchQueueTests: XCTestCase {
     /// ロックの実体は leaf の `mkdir` の原子性 —— そこに `-p`(既存でも成功)が付くと
     /// 全員が同時に取れてしまう
     func testEnqueueCommandKeepsTheLockLeafMkdirNonRecursive() {
-        let command = RemoteDispatchQueue.enqueueAndTryAcquireCommand(base: base, ticket: ticket, info: info)
+        let command = RemoteDispatchQueue.enqueueAndTryAcquireCommand(home: home, ticket: ticket, info: info)
         XCTAssertTrue(
-            command.contains("&& mkdir '/Users/tester/fleetest-runner/.fleetest/dispatch.lock' 2>/dev/null"),
+            command.contains("&& mkdir '/Users/tester/.fleetest/dispatch.lock' 2>/dev/null"),
             command)
         XCTAssertFalse(
-            command.contains("mkdir -p '/Users/tester/fleetest-runner/.fleetest/dispatch.lock'"), command)
+            command.contains("mkdir -p '/Users/tester/.fleetest/dispatch.lock'"), command)
     }
 
     /// `$` とバッククォートはシングルクォートの内側では展開されない(RemoteShell.quote の契約)
-    func testEnqueueCommandNeutralizesDollarAndBacktickInBase() {
+    func testEnqueueCommandNeutralizesDollarAndBacktickInHome() {
         let command = RemoteDispatchQueue.enqueueAndTryAcquireCommand(
-            base: "/tmp/$(whoami)/`id`", ticket: ticket, info: info)
+            home: "/tmp/$(whoami)/`id`", ticket: ticket, info: info)
         XCTAssertTrue(command.contains("mkdir -p '/tmp/$(whoami)/`id`/.fleetest/dispatch.queue'"), command)
         XCTAssertTrue(command.contains("find '/tmp/$(whoami)/`id`/.fleetest/dispatch.queue' -type f"), command)
         XCTAssertTrue(
@@ -218,8 +229,8 @@ final class RemoteDispatchQueueTests: XCTestCase {
     }
 
     func testDequeueCommandRemovesOnlyMyTicket() {
-        XCTAssertEqual(RemoteDispatchQueue.dequeueCommand(base: base, ticket: ticket),
-            "rm -f '/Users/tester/fleetest-runner/.fleetest/dispatch.queue/1755000000000~ci~7'")
+        XCTAssertEqual(RemoteDispatchQueue.dequeueCommand(home: home, ticket: ticket),
+            "rm -f '/Users/tester/.fleetest/dispatch.queue/1755000000000~ci~7'")
     }
 
     // MARK: - 出力の解析

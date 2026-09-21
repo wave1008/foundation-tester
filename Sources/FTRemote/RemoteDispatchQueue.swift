@@ -9,6 +9,7 @@
 // ssh 実行・プロセス起動・sleep はここに置かない(呼び出し側 = Sources/fleetest/RemoteRunDispatcher.swift)。
 
 import Foundation
+import FTCore
 
 /// 待機列の1件。ファイル名そのものが全情報を持ち、**辞書順がそのまま待ち順**になる
 public struct DispatchTicket: Equatable, Sendable {
@@ -109,14 +110,15 @@ public struct DispatchTicket: Equatable, Sendable {
 /// 待機列の置き場・コマンド・出力解析(純粋関数)
 public enum RemoteDispatchQueue {
 
-    /// **ホスト共有**(発行者ネームスペースの中に置かない = 他人の待機が見えないと順番が
-    /// 成立しない。`StreamLease.directory` / dispatch.lock がホストに1本なのと同じ理由)
-    public static func directory(base: String) -> String {
-        base + "/.fleetest/dispatch.queue"
+    /// **機械に1本**(発行者ネームスペースの中にも `<base>` の中にも置かない = 他人の待機が
+    /// 見えないと順番が成立しない。置き場が `$HOME`(`FTCore.MachineStateDirectory`)である
+    /// 理由はロック本体と同じ —— `RemoteDispatchLock.lockDirPath`)
+    public static func directory(home: String) -> String {
+        MachineStateDirectory.path(home: home) + "/dispatch.queue"
     }
 
-    public static func ticketFilePath(base: String, ticket: DispatchTicket) -> String {
-        directory(base: base) + "/" + ticket.fileName
+    public static func ticketFilePath(home: String, ticket: DispatchTicket) -> String {
+        directory(home: home) + "/" + ticket.fileName
     }
 
     /// 待機チケットの失効(秒)。**待っている側は `WaitLockPolling.pollIntervalSeconds`(10秒)ごとに
@@ -146,10 +148,10 @@ public enum RemoteDispatchQueue {
     /// シェルは触らない。
     /// ロックの取得(`mkdir` の原子性・info.json の書き方)は `RemoteDispatchLock.acquireCommand`
     /// をそのまま使う —— **同じ綴りを2箇所に持たない**(leaf の `mkdir` に `-p` が無いのがロックの実体)
-    public static func enqueueAndTryAcquireCommand(base: String, ticket: DispatchTicket,
+    public static func enqueueAndTryAcquireCommand(home: String, ticket: DispatchTicket,
                                                    info: RemoteDispatchLockInfo) -> String {
-        let dir = RemoteShell.quote(directory(base: base))
-        let ticketPath = RemoteShell.quote(ticketFilePath(base: base, ticket: ticket))
+        let dir = RemoteShell.quote(directory(home: home))
+        let ticketPath = RemoteShell.quote(ticketFilePath(home: home, ticket: ticket))
         // `mkdir -p` は `.fleetest` ごと作る(親だけ別に作らない)
         let enqueue = "mkdir -p \(dir) && printf '%s' 'queued' > \(ticketPath) || exit 1"
         // 失効した控えを掃く。自分のは今書いたので残る
@@ -162,16 +164,16 @@ public enum RemoteDispatchQueue {
         return enqueue + "; " + sweepStale + "; " + list + "; "
             + emit(queueHeader) + "; printf '%s\\n' \"$q\"; " + emit(sectionSeparator) + "; "
             + "if \(iAmFirst); then"
-            + " if \(RemoteDispatchLock.acquireCommand(base: base, info: info)); then"
+            + " if \(RemoteDispatchLock.acquireCommand(home: home, info: info)); then"
             + " rm -f \(ticketPath); \(emit(acquiredWord));"
             + " else \(emit(heldWord)); fi;"
             + " else \(emit(waitingWord)); fi; "
-            + emit(sectionSeparator) + "; " + RemoteDispatchLock.readCommand(base: base)
+            + emit(sectionSeparator) + "; " + RemoteDispatchLock.readCommand(home: home)
     }
 
     /// 待つのをやめた/失敗したときに**自分のチケットだけ**を消す(他人の待機には触らない)
-    public static func dequeueCommand(base: String, ticket: DispatchTicket) -> String {
-        "rm -f \(RemoteShell.quote(ticketFilePath(base: base, ticket: ticket)))"
+    public static func dequeueCommand(home: String, ticket: DispatchTicket) -> String {
+        "rm -f \(RemoteShell.quote(ticketFilePath(home: home, ticket: ticket)))"
     }
 
     /// 印の1行。`echo` を使わない(`---` は zsh の echo ではオプション扱いになりうる)

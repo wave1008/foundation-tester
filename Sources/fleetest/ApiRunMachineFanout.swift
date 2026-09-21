@@ -92,7 +92,11 @@ enum ApiRunMachineFanout {
         }
 
         // 手元の台の二重使用は runStarted と子の起動より前に断る(単機の api run の拒否と同じ形 =
-        // NDJSON を1行も出さず stderr + 非0。ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch)
+        // NDJSON を1行も出さず stderr + 非0。ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch)。
+        // **dispatch.lock より手前なのは意図** —— これは読み取りだけの先読みで、どのロックも
+        // 取る前に断るためにここに置く(取ってから降りると他人を待たせた挙句に何も走らない)。
+        // 取得そのものの上下は「マシンの門(dispatch.lock)→ 台の門(run-lease)」
+        // = FTBridgeClient/RunLeaseGuard.swift の冒頭
         if let local = active.first(where: { $0.group.machine == nil }) {
             let ids = Set(local.ids)
             try ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch(
@@ -111,6 +115,16 @@ enum ApiRunMachineFanout {
         // (DispatchTicketIssuer の宣言。機械ごとに採り直すと前後関係が機械によって食い違い、
         // 2つの run が互いに相手の機械を待つ)
         let ticket = DispatchTicketIssuer.issue(runGroup: runGroup)
+        // **親が機械の全順序どおりに1台ずつ取り切ってから子を起こす**(DispatchPrelock)。
+        // 並列に取りに行くと、2つの run が互いに相手の機械を待つ形を作れる
+        let prelock = DispatchPrelock(actions: DispatchPrelock.live(
+            project: project, remoteDir: options.remoteDir, forceLock: false,
+            waitLock: options.waitLock, runGroup: runGroup, mode: .apiRun, log: { logStderr($0) }))
+        defer { prelock.releaseAll() }
+        prelock.acquireInOrder(machines: DispatchPrelock.machinesToLock(
+            active.map { $0.group.machineLabel }))
+        // 子タスクへ渡すのは値のコピー(prelock 自身を @Sendable な closure へ持ち込まない)
+        let lockMarkers = prelock.markers
         let (stream, continuation) = AsyncStream<ChildEvent>.makeStream()
         let groupMachines = active.map { $0.group.machine }
 
@@ -142,7 +156,8 @@ enum ApiRunMachineFanout {
                     let start = Date()
                     let exitCode = await runChild(
                         index: position, binary: binary, args: args, machineLabel: group.machineLabel,
-                        ticket: ticket, continuation: continuation, registry: registry)
+                        ticket: ticket, lockMarker: lockMarkers[group.machineLabel],
+                        continuation: continuation, registry: registry)
                     return (position, FleetEntryOutcome(
                         host: group.machineLabel, profile: profileName, exitCode: exitCode,
                         duration: Date().timeIntervalSince(start)))
@@ -193,7 +208,9 @@ enum ApiRunMachineFanout {
         } else {
             if let remoteDir = options.remoteDir { args += ["--remote-dir", remoteDir] }
             if let remoteTimeout = options.remoteTimeout { args += ["--remote-timeout", String(remoteTimeout)] }
-            if let waitLock = options.waitLock { args += ["--wait-lock", String(waitLock)] }
+            // **`--wait-lock` は子へ渡さない** —— 待つのは親(DispatchPrelock)の役目。
+            // 親が取れた機械では子はロックを取りに行かず、取れなかった機械では親が既に
+            // 上限まで待ったあとなので、渡すと同じ上限をもう一度払う(最悪で待ちが2倍)
         }
         // **ホストも渡す**(一意なのは (host, name)。ApiRunCommand.deviceMachine の宣言参照)
         args += ["--device"] + group.deviceNames
@@ -222,14 +239,17 @@ enum ApiRunMachineFanout {
     /// 子1体ぶん。stdout(NDJSON)は行単位で continuation へ、stderr(診断)はホスト名を前置して
     /// そのまま親の stderr へ流す(stdout は NDJSON 専用の契約なので混ぜない)
     /// `ticket` は dispatch.lock の待機列の鍵。**親が1回だけ採ったものを受け取るだけ**で、
-    /// ここで採り直さない(DispatchTicketIssuer の宣言)
+    /// ここで採り直さない(DispatchTicketIssuer の宣言)。`lockMarker` は親がこの機械の
+    /// ロックを取れたときだけ非 nil(DispatchPrelock)
     private static func runChild(
         index: Int, binary: String, args: [String], machineLabel: String, ticket: DispatchTicket,
+        lockMarker: String?,
         continuation: AsyncStream<ChildEvent>.Continuation, registry: ChildProcessRegistry
     ) async -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
-        process.environment = DispatchTicketIssuer.childEnvironment(ticket: ticket)
+        process.environment = DispatchTicketIssuer.childEnvironment(ticket: ticket,
+                                                                    lockHeldTarget: lockMarker)
         process.arguments = args
         process.standardInput = FileHandle.nullDevice
         let stdoutPipe = Pipe()

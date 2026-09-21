@@ -18,6 +18,13 @@ public struct RemoteHostFacts: Codable, Equatable, Sendable {
     /// 用途は記録(ホスト名)の読み替え1つだけ: 結果 JSON は host で残るので、画面に登録名を出すには
     /// ホスト名 → エイリアスの対応が要る。ディスパッチのたびに書き直すので改名にも追随する
     public var machineAlias: String?
+    /// **その機械を一意に識別する**ハードウェア UUID(`IOPlatformUUID`。採取は
+    /// `RemoteProbe.hardwareUUIDCommand`、解釈は `RemoteProbe.parseHardwareUUID`)。
+    /// 鍵(ファイル名)はホストのままで、これは欄 —— ホストは同じ Mac を指し続ける保証が無く、
+    /// 「同じ機械か」を言えるのはこの値だけ(RemoteSessionInfo.hardwareUUID の宣言参照)。
+    /// **nil = 不明**(読めなかった)。接続のたびに採り直し、違えば警告して更新する
+    /// (判定は `RemoteHardwareUUIDChange`)
+    public var hardwareUUID: String?
     /// 直近ディスパッチのセットアップ固定費(プローブ〜リモート run 開始前)の実測秒
     public var dispatchOverheadSeconds: Double?
     /// プローブの実測(sysctl machdep.cpu.brand_string)
@@ -29,7 +36,7 @@ public struct RemoteHostFacts: Codable, Equatable, Sendable {
     public var updatedAt: String
 
     private enum CodingKeys: String, CodingKey {
-        case host, machine, machineAlias
+        case host, machine, machineAlias, hardwareUUID
         case dispatchOverheadSeconds, processorModel, coreCount, concurrentDevices, updatedAt
     }
 
@@ -39,6 +46,7 @@ public struct RemoteHostFacts: Codable, Equatable, Sendable {
         host = try c.decodeIfPresent(String.self, forKey: .host)
             ?? c.decodeIfPresent(String.self, forKey: .machine)
         machineAlias = try c.decodeIfPresent(String.self, forKey: .machineAlias)
+        hardwareUUID = try c.decodeIfPresent(String.self, forKey: .hardwareUUID)
         dispatchOverheadSeconds = try c.decodeIfPresent(Double.self, forKey: .dispatchOverheadSeconds)
         processorModel = try c.decodeIfPresent(String.self, forKey: .processorModel)
         coreCount = try c.decodeIfPresent(Int.self, forKey: .coreCount)
@@ -50,6 +58,7 @@ public struct RemoteHostFacts: Codable, Equatable, Sendable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encodeIfPresent(host, forKey: .host)
         try c.encodeIfPresent(machineAlias, forKey: .machineAlias)
+        try c.encodeIfPresent(hardwareUUID, forKey: .hardwareUUID)
         try c.encodeIfPresent(dispatchOverheadSeconds, forKey: .dispatchOverheadSeconds)
         try c.encodeIfPresent(processorModel, forKey: .processorModel)
         try c.encodeIfPresent(coreCount, forKey: .coreCount)
@@ -57,17 +66,49 @@ public struct RemoteHostFacts: Codable, Equatable, Sendable {
         try c.encode(updatedAt, forKey: .updatedAt)
     }
 
-    public init(host: String? = nil, machineAlias: String? = nil,
+    public init(host: String? = nil, machineAlias: String? = nil, hardwareUUID: String? = nil,
                dispatchOverheadSeconds: Double? = nil,
                processorModel: String? = nil, coreCount: Int? = nil, concurrentDevices: Int? = nil,
                updatedAt: String) {
         self.host = host
         self.machineAlias = machineAlias
+        self.hardwareUUID = hardwareUUID
         self.dispatchOverheadSeconds = dispatchOverheadSeconds
         self.processorModel = processorModel
         self.coreCount = coreCount
         self.concurrentDevices = concurrentDevices
         self.updatedAt = updatedAt
+    }
+}
+
+/// キャッシュ済みのハードウェア UUID と今回観測した値を突き合わせる**唯一の判定元**
+/// (純粋関数。書き手 = RemoteRunDispatcher.saveHostFacts)。
+/// **run は止めない** —— 別のマシンで走ること自体は正当で、止める根拠が無い(新しい検知は警告から)
+public enum RemoteHardwareUUIDChange {
+
+    public struct Outcome: Equatable, Sendable {
+        /// 出す警告の1行(nil = 黙る)
+        public let warning: String?
+        /// キャッシュへ書く値。**今回読めなければ既存値を残す** —— 片方だけ取れなかった回に
+        /// 他の書き手の値を上書きで消さない、という RemoteHostFacts の既存の規律と同じ
+        public let stored: String?
+
+        public init(warning: String?, stored: String?) {
+            self.warning = warning
+            self.stored = stored
+        }
+    }
+
+    /// 黙るのは3つ: 同じ値 / キャッシュが無い(初回 = 黙って保存)/ 今回読めなかった
+    /// (**不明を「変化した」と言わない**。読めない理由は古い macOS・権限・ioreg の形式変更で
+    /// ありうる)。`host` は登録簿のこのエントリの宛先(ssh ターゲット)
+    public static func resolve(cached: String?, observed: String?, host: String) -> Outcome {
+        guard let observed else { return Outcome(warning: nil, stored: cached) }
+        guard let cached, cached != observed else { return Outcome(warning: nil, stored: observed) }
+        return Outcome(
+            warning: "warning: \(host) reports a different hardware UUID than the last dispatch"
+                + " (was \(cached), now \(observed)) — this host now resolves to a different Mac",
+            stored: observed)
     }
 }
 

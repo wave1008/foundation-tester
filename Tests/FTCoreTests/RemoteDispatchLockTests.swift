@@ -72,14 +72,35 @@ final class RemoteDispatchLockTests: XCTestCase {
 
     // MARK: - paths
 
-    func testLockDirPathIsUnderDotFleetest() {
-        XCTAssertEqual(RemoteDispatchLock.lockDirPath(base: "/Users/tester/fleetest-runner"),
-                       "/Users/tester/fleetest-runner/.fleetest/dispatch.lock")
+    /// **置き場はホームの `.fleetest/`**(`<base>` ではない)。完全一致で固定する
+    func testLockDirPathIsUnderTheMachineGlobalDotFleetest() {
+        XCTAssertEqual(RemoteDispatchLock.lockDirPath(home: "/Users/tester"),
+                       "/Users/tester/.fleetest/dispatch.lock")
     }
 
     func testInfoFilePathIsInsideLockDir() {
-        XCTAssertEqual(RemoteDispatchLock.infoFilePath(base: "/Users/tester/fleetest-runner"),
-                       "/Users/tester/fleetest-runner/.fleetest/dispatch.lock/info.json")
+        XCTAssertEqual(RemoteDispatchLock.infoFilePath(home: "/Users/tester"),
+                       "/Users/tester/.fleetest/dispatch.lock/info.json")
+    }
+
+    /// **この変更の目的そのもの**: 同じ Mac に `<base>` を2つ作ってもロックは1本。
+    /// 2つの run が取り合うのは同じ CoreSimulatorService と同じ loopback のポートなので、
+    /// base ごとにロックが分かれると排他が成立せず黙って壊れる
+    func testTwoBasesOnTheSameMachineShareOneLock() {
+        let first = RemoteLayout(base: "/Users/tester/fleetest-runner", issuer: "alice",
+                                 home: "/Users/tester")
+        let second = RemoteLayout(base: "/Volumes/ssd/other-runner", issuer: "bob",
+                                  home: "/Users/tester")
+        XCTAssertEqual(RemoteDispatchLock.lockDirPath(home: first.home),
+                       RemoteDispatchLock.lockDirPath(home: second.home))
+        XCTAssertEqual(RemoteDispatchQueue.directory(home: first.home),
+                       RemoteDispatchQueue.directory(home: second.home))
+    }
+
+    /// 逆向き: **ホームが違えば別のロック**(同じ base を別の Mac で使っても混ざらない)
+    func testDifferentHomesAreDifferentLocks() {
+        XCTAssertNotEqual(RemoteDispatchLock.lockDirPath(home: "/Users/tester"),
+                          RemoteDispatchLock.lockDirPath(home: "/Users/other"))
     }
 
     // MARK: - heldMessage
@@ -121,6 +142,19 @@ final class RemoteDispatchLockTests: XCTestCase {
             + " (docs/remote-runner.md §5)")
     }
 
+    /// **手元のロックは別の文言**(逃げ道が違う)。`remote unlock --runner` は案内しない ——
+    /// 手元の死んだロックは次の run が pid の生死で自分で回収するので、あの案内は誤りを教える
+    func testHeldMessageForThisMachineDoesNotSuggestRemoteUnlock() {
+        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242,
+                                          acquiredAt: "2025-08-12T13:20:00Z", issuer: "alice")
+        let message = RemoteDispatchLock.heldMessage(info, scope: .thisMachine)
+        XCTAssertTrue(message.contains("another fleetest run is already running on this Mac"), message)
+        XCTAssertTrue(message.contains("started by alice (from wave1008-mbp, pid 4242)"), message)
+        XCTAssertTrue(message.contains("--wait-lock"), message)
+        XCTAssertFalse(message.contains("remote unlock"), message)
+        XCTAssertFalse(message.contains("on this remote host"), message)
+    }
+
     // MARK: - alignHeldMessage
 
     func testAlignHeldMessageIncludesIssuerPidAndTimestamp() {
@@ -155,37 +189,37 @@ final class RemoteDispatchLockTests: XCTestCase {
     private let sampleInfo = RemoteDispatchLockInfo(issuerHost: "h", pid: 1, acquiredAt: "2025-08-12T13:20:00Z")
 
     func testAcquireCommandExactText() {
-        let command = RemoteDispatchLock.acquireCommand(base: "/Users/tester/fleetest-runner", info: sampleInfo)
+        let command = RemoteDispatchLock.acquireCommand(home: "/Users/tester", info: sampleInfo)
         XCTAssertEqual(command,
-            "mkdir -p '/Users/tester/fleetest-runner/.fleetest'"
-            + " && mkdir '/Users/tester/fleetest-runner/.fleetest/dispatch.lock' 2>/dev/null"
+            "mkdir -p '/Users/tester/.fleetest'"
+            + " && mkdir '/Users/tester/.fleetest/dispatch.lock' 2>/dev/null"
             + " && printf '%s' '{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuerHost\":\"h\",\"pid\":1}'"
-            + " > '/Users/tester/fleetest-runner/.fleetest/dispatch.lock/info.json'")
+            + " > '/Users/tester/.fleetest/dispatch.lock/info.json'")
     }
 
     func testForceAcquireCommandRemovesLockDirFirst() {
-        let command = RemoteDispatchLock.forceAcquireCommand(base: "/Users/tester/fleetest-runner", info: sampleInfo)
+        let command = RemoteDispatchLock.forceAcquireCommand(home: "/Users/tester", info: sampleInfo)
         XCTAssertEqual(command,
-            "rm -rf '/Users/tester/fleetest-runner/.fleetest/dispatch.lock'"
-            + " && \(RemoteDispatchLock.acquireCommand(base: "/Users/tester/fleetest-runner", info: sampleInfo))")
+            "rm -rf '/Users/tester/.fleetest/dispatch.lock'"
+            + " && \(RemoteDispatchLock.acquireCommand(home: "/Users/tester", info: sampleInfo))")
     }
 
     func testReadCommandExactText() {
-        XCTAssertEqual(RemoteDispatchLock.readCommand(base: "/Users/tester/fleetest-runner"),
-            "cat '/Users/tester/fleetest-runner/.fleetest/dispatch.lock/info.json' 2>/dev/null || true")
+        XCTAssertEqual(RemoteDispatchLock.readCommand(home: "/Users/tester"),
+            "cat '/Users/tester/.fleetest/dispatch.lock/info.json' 2>/dev/null || true")
     }
 
     func testReleaseCommandExactText() {
-        XCTAssertEqual(RemoteDispatchLock.releaseCommand(base: "/Users/tester/fleetest-runner"),
-            "rm -rf '/Users/tester/fleetest-runner/.fleetest/dispatch.lock'")
+        XCTAssertEqual(RemoteDispatchLock.releaseCommand(home: "/Users/tester"),
+            "rm -rf '/Users/tester/.fleetest/dispatch.lock'")
     }
 
     /// `$` とバッククォートはシングルクォート内では展開されない(RemoteShell.quote の契約 ——
     /// POSIX sh はシングルクォート内を完全に literal として扱う)。base に紛れ込んでも
-    /// (RemoteLayout.validateBase は本来弾くが、ロック側は防御的にも壊れないことを確認する)
+    /// (home がそういう値になることは無いが、ロック側は防御的にも壊れないことを確認する)
     /// コマンド置換を起こす形にならない = 生成結果全体がシングルクォートで包まれたままである
-    func testAcquireCommandNeutralizesDollarAndBacktickInBase() {
-        let command = RemoteDispatchLock.acquireCommand(base: "/tmp/$(whoami)/`id`", info: sampleInfo)
+    func testAcquireCommandNeutralizesDollarAndBacktickInHome() {
+        let command = RemoteDispatchLock.acquireCommand(home: "/tmp/$(whoami)/`id`", info: sampleInfo)
         XCTAssertEqual(command,
             "mkdir -p '/tmp/$(whoami)/`id`/.fleetest'"
             + " && mkdir '/tmp/$(whoami)/`id`/.fleetest/dispatch.lock' 2>/dev/null"
@@ -197,7 +231,7 @@ final class RemoteDispatchLockTests: XCTestCase {
     func testAcquireCommandEscapesSingleQuoteInIssuerHost() throws {
         let info = RemoteDispatchLockInfo(issuerHost: "o'brien-mbp", pid: 1, acquiredAt: "2025-08-12T13:20:00Z")
         let payload = try XCTUnwrap(RemoteDispatchLock.encode(info))
-        let command = RemoteDispatchLock.acquireCommand(base: "/Users/tester/fleetest-runner", info: info)
+        let command = RemoteDispatchLock.acquireCommand(home: "/Users/tester", info: info)
         XCTAssertTrue(command.contains(RemoteShell.quote(payload)), command)
     }
 }
@@ -281,6 +315,28 @@ final class RemoteDispatchUnlockTests: XCTestCase {
         else { return XCTFail("a live dispatch must never be swept") }
     }
 
+    // MARK: - decideLocalSweep(手元のロック。pid だけで確定する)
+
+    /// 手元のロックは**同じ機械の pid** なので生死で確定できる —— 死んでいれば回収する。
+    /// 規則は `decideAutomaticSweep` と同じ1つを通す(2つ目の回収規則を作らない)
+    func testLocalSweepReleasesMyDeadRunsLock() {
+        guard case .release = RemoteDispatchUnlock.decideLocalSweep(
+            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false })
+        else { return XCTFail("my dead local run's lock must be released") }
+    }
+
+    /// **陰性対照2つ**: 生きている自分の run と、他人がこの Mac へディスパッチして置いたロック
+    /// (別の機械から発行 = pid の生死を確かめられない)は外さない
+    func testLocalSweepRefusesLiveRunsAndLocksDispatchedFromAnotherMac() {
+        guard case .refuse = RemoteDispatchUnlock.decideLocalSweep(
+            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { $0 == 4242 })
+        else { return XCTFail("a live local run must never be swept") }
+        guard case .refuse = RemoteDispatchUnlock.decideLocalSweep(
+            probe: .held(mine), myIssuer: "wave1008", myHost: "someone-else-mbp",
+            pidAlive: { _ in false })
+        else { return XCTFail("a lock dispatched from another Mac must never be swept locally") }
+    }
+
     func testMyDispatchFromAnotherMachineIsReleasedWithoutPidCheck() {
         var pidChecked = false
         guard case .release = RemoteDispatchUnlock.decide(
@@ -298,9 +354,9 @@ final class RemoteDispatchUnlockTests: XCTestCase {
                        .held(info))
         XCTAssertNil(RemoteDispatchLock.parseProbe(""))
         XCTAssertEqual(
-            RemoteDispatchLock.probeCommand(base: "/Users/ci/fleetest-runner"),
-            "if [ -d '/Users/ci/fleetest-runner/.fleetest/dispatch.lock' ]; then echo held;"
-            + " cat '/Users/ci/fleetest-runner/.fleetest/dispatch.lock/info.json' 2>/dev/null || true;"
+            RemoteDispatchLock.probeCommand(home: "/Users/ci"),
+            "if [ -d '/Users/ci/.fleetest/dispatch.lock' ]; then echo held;"
+            + " cat '/Users/ci/.fleetest/dispatch.lock/info.json' 2>/dev/null || true;"
             + " else echo absent; fi")
     }
 }

@@ -152,7 +152,9 @@ enum DeviceMachineRunner {
             }
         }
 
-        // 手元の台の二重使用は**どの機械へも配る前に**断る(ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch)
+        // 手元の台の二重使用は**どの機械へも配る前に**断る(ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch)。
+        // **dispatch.lock より手前なのは意図**(読み取りだけの先読み。理由と上下関係は
+        // FTBridgeClient/RunLeaseGuard.swift の冒頭)
         if let local = active.first(where: { $0.1.machine == nil }) {
             let ids = Set(local.2)
             try ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch(
@@ -168,6 +170,15 @@ enum DeviceMachineRunner {
         // dispatch.lock の待機チケットも**ここで1回だけ**採って全ての子へ同じ値を配る
         // (DispatchTicketIssuer の宣言。機械ごとに採り直すと前後関係が機械によって食い違う)
         let ticket = DispatchTicketIssuer.issue(runGroup: runGroup)
+        // **親が機械の全順序どおりに1台ずつ取り切ってから子を起こす**(DispatchPrelock)
+        let prelock = DispatchPrelock(actions: DispatchPrelock.live(
+            project: project, remoteDir: remoteDir, forceLock: forceLock, waitLock: waitLock,
+            runGroup: runGroup, mode: .cliRun, log: { FleetRunner.log($0) }))
+        defer { prelock.releaseAll() }
+        prelock.acquireInOrder(machines: DispatchPrelock.machinesToLock(
+            active.map { $0.1.machineLabel }))
+        // 子タスクへ渡すのは値のコピー(prelock 自身を @Sendable な closure へ持ち込まない)
+        let lockMarkers = prelock.markers
         // サブ実行のクラッシュ検出(reportMissingResults)が「この run で書かれた記録」を
         // 走査の窓で絞るための開始時刻。子の起動より前に捕まえる(子の書き込みは必ずこの後)
         let dispatchStart = Date()
@@ -179,14 +190,15 @@ enum DeviceMachineRunner {
                         deviceNames: group.deviceNames, deviceMachine: group.machineLabel,
                         scenarios: ids, folders: [],
                         setOverrides: setOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
-                        performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
+                        performanceMode: performanceMode, forceLock: forceLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                         quiet: quiet,
                         junitPath: FleetRunner.entryJUnitPath(tempDir: junitTempDir, index: index),
                         broadcast: broadcast, runGroup: runGroup, reportDir: reportDir)
                     let start = Date()
                     let exitCode = await FleetRunner.runEntry(
-                        binary: binary, args: args, hostLabel: group.machineLabel, ticket: ticket)
+                        binary: binary, args: args, hostLabel: group.machineLabel, ticket: ticket,
+                        lockMarker: lockMarkers[group.machineLabel])
                     return (index, FleetEntryOutcome(
                         host: group.machineLabel, profile: profileName, exitCode: exitCode,
                         duration: Date().timeIntervalSince(start)))
@@ -229,7 +241,7 @@ enum DeviceMachineRunner {
         scenarios: [String], folders: [String],
         setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
         performanceMode: Bool,
-        forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?,
+        forceLock: Bool, remoteDir: String?, remoteTimeout: Int?,
         quiet: Bool, junitPath: String?, broadcast: Bool = false, runGroup: String? = nil,
         reportDir: String? = nil
     ) -> [String] {
@@ -238,7 +250,7 @@ enum DeviceMachineRunner {
             deviceNames: deviceNames, deviceMachine: deviceMachine,
             scenarios: scenarios, folders: folders,
             setOverrides: setOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
-            performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
+            performanceMode: performanceMode, forceLock: forceLock,
             remoteDir: remoteDir, remoteTimeout: remoteTimeout,
             quiet: quiet, junitPath: junitPath, broadcast: broadcast, runGroup: runGroup)
         if host == "local" {
