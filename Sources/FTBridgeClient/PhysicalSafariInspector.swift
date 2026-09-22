@@ -50,8 +50,8 @@ enum PhysicalSafariInspector {
 
         if LockdownProtocol.isInvalidService(serviceResponse) {
             ConsoleOut.err(
-                "fleetest: com.apple.webinspector が実機の lockdown サービス一覧に無い"
-                 + "(Apple が別サービスへ移した可能性。ブラウザ DOM 読み取りは a11y のまま続行)")
+                "fleetest: com.apple.webinspector is not in this physical device's lockdown service"
+                 + " list (Apple may have moved it) — continuing to read the browser DOM from a11y")
             return nil
         }
         guard let service = LockdownProtocol.serviceStart(serviceResponse) else { return nil }

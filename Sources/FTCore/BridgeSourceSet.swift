@@ -134,9 +134,9 @@ public enum BridgeSourceSetError: Error, CustomStringConvertible {
     public var description: String {
         switch self {
         case .directoryUnreadable(let path, let reason):
-            return "\(path) を列挙できません(\(reason))"
+            return "cannot list \(path) (\(reason))"
         case .fileUnreadable(let path):
-            return "\(path) を読めません(BridgeSourceSet の一覧が実態とズレている可能性)"
+            return "cannot read \(path) (the BridgeSourceSet list may no longer match the tree)"
         }
     }
 }

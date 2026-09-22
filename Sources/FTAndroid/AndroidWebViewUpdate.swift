@@ -139,21 +139,21 @@ public extension AndroidWebViewUpdate {
         let local: URL
         switch plan.source {
         case .cachedAPK(let path):
-            log("==> WebView を \(plan.sourceVersion) へ揃えます(供給元 キャッシュ・対象 \(plan.targets.count)台)")
+            log("==> aligning WebView to \(plan.sourceVersion) (source: cache, \(plan.targets.count) target device(s))")
             local = URL(fileURLWithPath: path)
         case .device(let source):
-            log("==> WebView を \(plan.sourceVersion) へ揃えます(供給元 \(source)・対象 \(plan.targets.count)台)")
+            log("==> aligning WebView to \(plan.sourceVersion) (source: \(source), \(plan.targets.count) target device(s))")
             guard let path = adb(["-s", source, "shell", "pm", "path", "com.google.android.webview"])?
                 .split(separator: "\n").first.map({ $0.replacingOccurrences(of: "package:", with: "")
                     .trimmingCharacters(in: .whitespacesAndNewlines) }), !path.isEmpty else {
-                log("⚠️ WebView の APK パスを取れませんでした(揃えずに続行します)")
+                log("⚠️ could not read the WebView APK path — continuing without aligning")
                 return
             }
             try? FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
             local = cachedAPK(version: plan.sourceVersion, in: cache)
             if !FileManager.default.fileExists(atPath: local.path) {
                 guard adb(["-s", source, "pull", path, local.path]) != nil else {
-                    log("⚠️ WebView の APK を取り出せませんでした(揃えずに続行します)")
+                    log("⚠️ could not pull the WebView APK — continuing without aligning")
                     return
                 }
             }
@@ -166,7 +166,7 @@ public extension AndroidWebViewUpdate {
                 return (out == nil ? 1 : 0, out ?? "")
             }) { adb(["-s", target, "install", "-r", local.path]) ?? "" }
             if result.contains("Success") { log("✅ \(target): WebView \(plan.sourceVersion)") }
-            else { log("⚠️ \(target): WebView を更新できませんでした(揃えずに続行します)") }
+            else { log("⚠️ \(target): could not update WebView — continuing without aligning") }
         }
         // **古い版は消す**(版ごとに 265MB 積み上がる)
         for name in (try? FileManager.default.contentsOfDirectory(atPath: cache.path)) ?? []
