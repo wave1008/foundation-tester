@@ -511,11 +511,12 @@ test("style.css: run ボードは箱ではみ出しを止め、行は自前で�
   assert.match(children[1], /flex:\s*0 0 auto/, "行は縮ませない");
 });
 
-// 畳んでいる間は伸ばす中身が無いので掴めない(掴めそうに見えて何も起きない形を作らない)。
-test("style.css: run ボードを畳んでいる間はセパレーターを掴めない", () => {
+// 畳んでいる間は伸ばす中身が無いので、掴めないだけでなく見せない(掴めそうに見えて何も
+// 起きない形を作らない)。#splitter / #splitter-log と同じ書き方。
+test("style.css: run ボードを畳んでいる間はセパレーターを出さない", () => {
   assert.match(
     stripCssComments(styleCssSource),
-    /\.run-board\[data-collapsed="true"\] ~ #devices-separator \{[\s\S]*?pointer-events:\s*none/,
+    /\.run-board\[data-collapsed="true"\] ~ #devices-separator \{[\s\S]*?display:\s*none/,
   );
 });
 
@@ -545,4 +546,20 @@ test("setRunBoardHeight は host 側の検証を通り、0 以下は弾く", asy
   assert.equal(isMonitorFromWebviewMessage({ type: "setRunBoardHeight", value: 240 }), true);
   assert.equal(isMonitorFromWebviewMessage({ type: "setRunBoardHeight", value: 0 }), false);
   assert.equal(isMonitorFromWebviewMessage({ type: "setRunBoardHeight", value: "240" }), false);
+});
+
+// ---- 3つの見出し行(デバイス一覧・選択したデバイス・実行ログ)の高さ(ユーザー決定 2026-09-22) ----
+// jsdom は高さを測れないので**値の出どころが1つであること**を見る。片方だけ変えると
+// 「選択したデバイス」「実行ログ」だけが低い(元の 20px)形に静かに戻る。
+test("style.css: 3つの見出し行の高さは1つのトークンで揃える", () => {
+  const css = stripCssComments(styleCssSource);
+  assert.match(css, /--ft-pane-header-height:\s*22px/, "値は :root に1つだけ持つ");
+  const lineView = /#line-view-header \{([\s\S]*?)\}/.exec(css);
+  assert.ok(lineView, "#line-view-header の規則がある");
+  assert.match(lineView[1], /min-height:\s*var\(--ft-pane-header-height\)/);
+  assert.match(lineView[1], /padding-top:\s*2px/, "縦位置も揃える(上 2px / 下 4px)");
+  const paneHeader = /\n\.pane-header \{([\s\S]*?)\}/.exec(css);
+  assert.ok(paneHeader, ".pane-header の規則がある");
+  assert.match(paneHeader[1], /min-height:\s*var\(--ft-pane-header-height\)/);
+  assert.match(paneHeader[1], /padding:\s*2px 8px 4px/, "#line-view-header と同じ上 2px / 下 4px");
 });
