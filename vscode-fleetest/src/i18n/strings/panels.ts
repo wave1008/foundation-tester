@@ -93,6 +93,7 @@ export const panelsStrings = {
   "panels.devices.selectDevices": { ja: "デバイスを選択して下さい", en: "Select a device" },
   "panels.devices.selectAllLabel": { ja: "すべて選択", en: "Select all" },
   "panels.runBoard.platformFilterAll": { ja: "すべて", en: "All" },
+  "panels.runBoard.splitAriaLabel": { ja: "デバイスとステータスの分割境界線", en: "Divider between devices and status" },
   "panels.runBoard.platformFilterTitle": {
     ja: "実行中・デバイス一覧・選択したデバイス・実行ログに出すデバイスをプラットフォームで絞ります",
     en: "Limits which devices appear in Running, Device list, Selected devices and Run log",

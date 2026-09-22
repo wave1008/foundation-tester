@@ -50,14 +50,15 @@ function createWebview() {
   const dom = new JSDOM(panelHtml, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://localhost/" });
   const { window } = dom;
   const sent = [];
+  let state;
   window.acquireVsCodeApi = () => ({
     postMessage: (message) => sent.push(message),
-    setState: () => {},
-    getState: () => undefined,
+    setState: (next) => { state = next; },
+    getState: () => state,
   });
   window.HTMLElement.prototype.scrollIntoView = () => {};
   window.eval(webviewBundle);
-  return { window, document: window.document, sent };
+  return { window, document: window.document, sent, getState: () => state };
 }
 
 function post(window, data) {
@@ -466,3 +467,108 @@ test("無効にした機械は行を出さない(有効に戻すとその場で�
                  hosts: [{ machine: "M1Max", enabled: true }, { machine: "M1mini", enabled: true }] });
   assert.deepEqual(machineRows(document), ["local空き", "M1Max—", "M1mini—"], "有効に戻すとその場で戻る");
 });
+
+// ---- 2カラム(ユーザー決定 2026-09-22: 左 = ツリー・右 = ステータス) ----
+// jsdom は寸法を持たないので、境目の幅の計算は clientWidth を差し替えて見る。
+
+/** 行の幅を与える(content = 416 - 左右 padding 8×2 = 400)。 */
+function giveWidth(document, width = 416) {
+  Object.defineProperty(document.getElementById("run-board-rows"), "clientWidth",
+    { value: width, configurable: true });
+}
+const leftWidth = (document) => document.getElementById("run-board").style.getPropertyValue("--rb-left");
+const colText = (el, side) => el.querySelector(`.run-board-col-${side}`).textContent;
+
+test("ステータスは右カラム・名前は左カラムに入る", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendLocalDevice(window);
+  post(window, monitorRunsMessage());
+  const summary = document.querySelector(".run-board-row:not(.run-board-row-machine) .run-board-row-summary");
+  assert.match(colText(summary, "left"), /ec-mobile \/ ios-smoke/, "左 = 機械とスコープ");
+  assert.match(colText(summary, "right"), /7\/12/, "右 = 進捗");
+  assert.match(colText(summary, "right"), /4:21/, "右 = 経過");
+  const lane = document.querySelector(".run-board-lane");
+  assert.equal(colText(lane, "left"), "iPhone 17-01", "左 = 台の名前だけ");
+  assert.match(colText(lane, "right"), /05_検索/, "右 = 実行中のシナリオ");
+});
+
+test("機械の行も同じ2カラム(状態は右)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, { type: "monitorRuns", observed: true, runs: [] });
+  const summary = document.querySelector(".run-board-row-machine .run-board-row-summary");
+  assert.equal(colText(summary, "left").includes("local"), true);
+  // **textContent では見ない** —— run 行と DOM を共有しているので、隠してある経過("/")も混ざる
+  const status = summary.querySelector(".run-board-idle-machine-status");
+  assert.equal(status.textContent, "空き");
+  assert.ok(status.closest(".run-board-col-right"), "状態は右カラムに居る");
+});
+
+/** 左カラムの中身なりの幅(jsdom は寸法を持たないので、字数 × perChar を返す)。
+ *  **小数を返す** —— 整数へ丸めた値で測ると 1px 未満だけ足りずに "…" が出る(実地 2026-09-22)。 */
+function giveLabelWidth(window, perChar) {
+  Object.defineProperty(window.HTMLElement.prototype, "getBoundingClientRect", {
+    configurable: true,
+    value() {
+      const width = this.classList.contains("run-board-col-left")
+        ? this.textContent.length * perChar + 0.4
+        : 0;
+      return { width, height: 0, left: 0, top: 0, right: width, bottom: 0, x: 0, y: 0 };
+    },
+  });
+}
+
+// 既定は**いちばん長いラベルがちょうど収まる幅**(ユーザー決定)。比率ではないので、
+// 台が増えて名前が伸びたら追従する(ドラッグするまでの間)。
+test("境目の既定はいちばん長いラベルに合わせ、ドラッグで幅が変わる", (t) => {
+  const { window, document, sent, getState } = createWebview();
+  t.after(() => window.close());
+  giveWidth(document);
+  giveLabelWidth(window, 10);
+  post(window, { type: "monitorRuns", observed: true, runs: [] });
+  // 機械の行の左カラムは "▶local"(6字)。**いちばん長い行に合わせる**ので、台が出ると
+  // そちら("iPhone 17 Pro-01" = 16字)に広がる
+  assert.equal(leftWidth(document), "80px", "6字 × 10 = 60 は下限 80 まで");
+  sendDevices(window, [{ name: "iPhone 17 Pro-01", udid: "U-1" }]);
+  // 16字 × 10 + 端数 0.4 → **切り上げる**(切り捨てるとその行だけ "…" になる)
+  assert.equal(leftWidth(document), "161px", "短い行ではなく長い行に合わせ、端数は切り上げる");
+
+  const split = document.getElementById("run-board-split");
+  assert.equal(split.getAttribute("role"), "separator");
+  assert.equal(split.getAttribute("aria-orientation"), "vertical");
+  split.setPointerCapture = () => {};
+  split.releasePointerCapture = () => {};
+  const drag = (type, clientX) => split.dispatchEvent(
+    new window.MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX }));
+
+  drag("pointerdown", 208);
+  drag("pointermove", 158);   // 行の左端(0)+ padding 8 を引いて 150
+  assert.equal(leftWidth(document), "150px");
+  drag("pointerup", 158);
+  assert.equal(leftWidth(document), "150px", "離しても保つ(このパネルが生きている間)");
+  // **どこにも保存しない**(ユーザー決定 2026-09-22)—— 寿命はこのパネルそのもの。タブを閉じたら
+  // 解放して既定へ戻すので、host へ送るのも getState へ書くのも「閉じても残る」形になる
+  assert.deepEqual(sent.filter((m) => m?.type === "setRunBoardSplit"), [], "host へ送らない");
+  assert.equal(Object.prototype.hasOwnProperty.call(getState() ?? {}, "runBoardSplit"), false,
+    "getState にも入れない");
+});
+
+test("境目は端まで引き切れない(左右どちらも 80px は残す)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  giveWidth(document);
+  post(window, { type: "monitorRuns", observed: true, runs: [] });
+  const split = document.getElementById("run-board-split");
+  split.setPointerCapture = () => {};
+  split.releasePointerCapture = () => {};
+  const drag = (type, clientX) => split.dispatchEvent(
+    new window.MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX }));
+
+  drag("pointerdown", 208);
+  drag("pointermove", -500);
+  assert.equal(leftWidth(document), "80px");
+  drag("pointermove", 5000);
+  assert.equal(leftWidth(document), "320px", "400 - 80");
+});
+

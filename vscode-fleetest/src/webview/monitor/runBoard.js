@@ -7,7 +7,9 @@
 // 数字だけ書き換える**(DOM は作り直さない。CLAUDE.md の規律)。
 
 import { t } from '../i18n.js';
-import { runBoard, runBoardHeader, runBoardToggle, runBoardTitle, runBoardExpandAll, runBoardRows } from './domRefs.js';
+import {
+  runBoard, runBoardHeader, runBoardToggle, runBoardTitle, runBoardExpandAll, runBoardRows, runBoardSplit,
+} from './domRefs.js';
 import { vscode, persistedState } from './vscodeApi.js';
 import { paintMachineBadge, isMachineDisabled, onMachineEnablementChanged } from './machineColors.js';
 import { setHoverTip } from './hoverTip.js';
@@ -126,6 +128,98 @@ export function setRunBoardCollapsed(value) {
 // 表示フィルタの切り替えでもツリーを描き直す(deviceTiles.js が入口で落とした一覧を読むので、
 // 呼ばないと隠したはずの台が次の監視サイクルまで残る)
 onPlatformFilterChanged(() => render());
+
+// ---- 2カラムの境目(ユーザー決定 2026-09-22) ----
+// **px で持つ**(比率ではない) —— ドラッグは px で来るので、比率にすると丸めのたびに境目が滑る。
+// null = まだドラッグされていない = 既定(いちばん長いラベルの幅)を毎回引き直す。
+// **どこにも保存しない**(ユーザー決定 2026-09-22)—— 寿命はこのパネルそのもの。タブを閉じたら
+// 解放し、開き直したら既定へ戻す。**この変数だけが持ち主**なので、host へ送る・getState へ書く
+// のどちらも足さない(どちらも閉じても残り、リセットされなくなる)。
+// 隠す/再表示は retainContextWhenHidden で webview が生き続けるため、幅も保たれる。
+let desiredSplit = null;
+
+// 左右それぞれに最低これだけは残す(境目を端まで引き切って片方を潰さない)。
+const MIN_COLUMN_WIDTH = 80;
+// 既定は**いちばん長いラベルがちょうど収まる幅**(ユーザー決定 2026-09-22)。
+// 比率ではないので、機械名・台名の長さで決まる。ドラッグするまでは毎回引き直す
+// (台が増えて名前が伸びたら追従する)。
+function naturalLeftWidth() {
+  // 測る間だけ左カラムを中身なりの幅にする(flex-basis が効いたままだと今の幅しか返らない)
+  runBoardRows.classList.add('run-board-measuring');
+  let width = 0;
+  for (const el of runBoardRows.querySelectorAll('.run-board-col-left')) {
+    // **offsetWidth ではなく矩形の実寸で測る** —— offsetWidth は整数へ丸めた値なので、
+    // 中身が 422.4px のときに 422 を返し、0.4px 足りずにその行だけ "…" になる
+    // (2026-09-22 に実地で踏んだ: 同じ長さの行が1つだけ切れた)。ceil は最後に1回だけ
+    width = Math.max(width, el.getBoundingClientRect().width);
+  }
+  runBoardRows.classList.remove('run-board-measuring');
+  return Math.ceil(width);
+}
+// 行の左右の padding(style.css の .run-board-row-summary / .run-board-lane と同じ値)。
+// **片方だけ変えない** —— 境目の x は 8px + --rb-left で描くので、ここがずれると線と列が割れる。
+const ROW_PADDING_X = 8;
+
+function splitContentWidth() {
+  return runBoardRows.clientWidth - ROW_PADDING_X * 2;
+}
+
+function clampSplit(width, content) {
+  return Math.min(Math.max(width, MIN_COLUMN_WIDTH), Math.max(MIN_COLUMN_WIDTH, content - MIN_COLUMN_WIDTH));
+}
+
+function renderSplit() {
+  const content = splitContentWidth();
+  if (content <= 0) {
+    return;   // 「デバイスモニター」タブが非表示の間は測れない(splitter.js の panelHidden と同じ規律)
+  }
+  const left = clampSplit(desiredSplit ?? naturalLeftWidth(), content);
+  runBoard.style.setProperty('--rb-left', left + 'px');
+  // 境目は見出し行には掛けない(掴む相手ではないうえ、チェックボックスに重なる)
+  runBoard.style.setProperty('--rb-head', runBoardHeader.offsetHeight + 'px');
+}
+
+let splitPointerId = null;
+
+runBoardSplit.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0) {
+    return;
+  }
+  splitPointerId = event.pointerId;
+  runBoardSplit.setPointerCapture(event.pointerId);
+  runBoardSplit.classList.add('dragging');
+  event.preventDefault();
+  event.stopPropagation();
+});
+runBoardSplit.addEventListener('pointermove', (event) => {
+  if (splitPointerId !== event.pointerId) {
+    return;
+  }
+  const content = splitContentWidth();
+  if (content <= 0) {
+    return;
+  }
+  // 掴んだ位置ではなく**ポインタの x そのもの**で決める(境目は 7px の当たりに対し線は1px なので、
+  // 差分で動かすと掴んだ場所ぶんずれたまま追従する)
+  desiredSplit = clampSplit(
+    Math.round(event.clientX - runBoardRows.getBoundingClientRect().left - ROW_PADDING_X),
+    content,
+  );
+  renderSplit();
+});
+const endSplitDrag = (event) => {
+  if (splitPointerId !== event.pointerId) {
+    return;
+  }
+  splitPointerId = null;
+  runBoardSplit.classList.remove('dragging');
+  runBoardSplit.releasePointerCapture(event.pointerId);
+};
+runBoardSplit.addEventListener('pointerup', endSplitDrag);
+runBoardSplit.addEventListener('pointercancel', endSplitDrag);
+// **見出し行の開閉へ波及させない**(境目は run ボードの中に居る)
+runBoardSplit.addEventListener('click', (event) => event.stopPropagation());
+window.addEventListener('resize', () => renderSplit());
 
 /** 台の一覧・モニターの範囲(project/profile)が変わったら main.js から呼ぶ。
  * **run ボードは monitorRuns でしか描き直さない**ので、これが無いとツリーの台が古いまま残る。 */
@@ -336,7 +430,15 @@ function ensureRow(groupKey) {
   remainingEl.className = 'run-board-remaining';
   timeEl.append(elapsedEl, document.createTextNode(' / '), remainingEl);
 
-  summaryEl.append(chevronEl, machineBadgeEl, scopeEl, progressEl, countsEl, statusEl, notesEl, timeEl);
+  // 2カラム(ユーザー決定 2026-09-22): 左 = ツリー・右 = ステータス。**箱の幅は全行で同じ**
+  // ので、境目(--rb-left)が行の種類によらず1本に見える
+  const leftEl = document.createElement('span');
+  leftEl.className = 'run-board-col-left';
+  leftEl.append(chevronEl, machineBadgeEl, scopeEl);
+  const rightEl = document.createElement('span');
+  rightEl.className = 'run-board-col-right';
+  rightEl.append(progressEl, countsEl, statusEl, notesEl, timeEl);
+  summaryEl.append(leftEl, rightEl);
 
   const issuerEl = document.createElement('div');
   issuerEl.className = 'run-board-issuer';
@@ -463,7 +565,13 @@ function appendDeviceLane(row, machine, name, lane, receivedAtMs, deviceId) {
   // 待機中は経過も無い(「—」は run 側の見積もり無し表示と同じ、i18n を通さない記号)。
   elapsedEl.textContent = idle ? '—' : '';
 
-  laneEl.append(nameEl, scenarioEl, elapsedEl);
+  const leftEl = document.createElement('span');
+  leftEl.className = 'run-board-col-left';
+  leftEl.appendChild(nameEl);
+  const rightEl = document.createElement('span');
+  rightEl.className = 'run-board-col-right';
+  rightEl.append(scenarioEl, elapsedEl);
+  laneEl.append(leftEl, rightEl);
   laneEl.addEventListener('click', (event) => {
     event.stopPropagation();
     const id = deviceId ?? (lane === undefined ? undefined : deviceIdForLane(machine, lane.key));
@@ -598,6 +706,10 @@ function render() {
       rows.delete(groupKey);
     }
   }
+
+  // **行を作り終えてから測る** —— 既定の幅はいちばん長いラベルから決めるので、
+  // 行が揃っていないと短い側に決まってしまう
+  renderSplit();
 }
 
 /** main.js の 'monitorRuns' ケースから渡す(1件 = 1機械ぶん。契約は monitorDeviceModel.ts)。 */

@@ -272,6 +272,9 @@ button.bulk-cancel:hover:not(:disabled) {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
+  /* グラフと run ボードの間を空ける(ユーザー決定 2026-09-22)。**ツールバーの
+     padding-bottom は 0 のまま** —— あちらを触ると1行目(「テストを実行」の行)にも効く */
+  margin-bottom: 2px;
 }
 .hm-row {
   display: flex;
@@ -389,6 +392,8 @@ button.bulk-cancel:hover:not(:disabled) {
    **例外は「実行中」と「デバイス」の間の1本だけ**(ユーザー決定 2026-09-22)——
    仕切りは #devices-separator が持つので、ここは下辺の罫線を持たない */
 .run-board {
+  /* 2カラムの境目(.run-board-split)を絶対位置で置くための基準 */
+  position: relative;
   /* #devices-separator のドラッグで高さが決まるペイン(splitter.js)。高さを超えた行は
      #run-board-rows が自前でスクロールする —— ボードが伸びると3ペインの取り分が変わるので、
      はみ出しはここで止める。**保存値が無い間は高さを書かない**(中身なりに伸び縮みする) */
@@ -549,10 +554,12 @@ html[lang="en"] .header-count {
 .run-board-row-summary {
   display: flex;
   align-items: center;
-  gap: 8px;
-  /* 階層のインデント: ヘッダ 8px → run 行 24px → レーン 48px(.run-board-lanes)。
-     **走っていない機械の行は run 行と同じ 24px** —— run の子ではないので同列に置く */
-  padding: 3px 8px 3px 24px;
+  /* 2カラムなので行そのものの gap は持たない(列の中の gap が間隔を持つ) */
+  gap: 0;
+  /* **左右の padding は全行で同じ 8px** —— 階層のインデントは左カラムの padding が表す
+     (ヘッダ 8px → run 行 24px → レーン 64px)。箱の幅を行ごとに変えると、2カラムの境目が
+     行ごとにずれる */
+  padding: 3px 8px;
   /* run 行も高さを固定(進捗バー・注記の有無で変わらない) */
   line-height: 20px;
   min-height: 20px;
@@ -594,7 +601,77 @@ html[lang="en"] .header-count {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 80px;
+  /* 左カラムはドラッグで狭くできるので**下限を持たない**(持つと境目より右へはみ出す) */
+  min-width: 0;
+}
+
+/* 2カラム(ユーザー決定 2026-09-22): 左 = ツリー(機械・台の名前)、右 = ステータス。
+   **境目を全行で1本に見せる**ための約束が3つ: ①行の左右 padding は 8px で揃える
+   ②階層のインデントは左カラムの padding で表す ③レーンのガイド線は背景で引く
+   (border/margin は箱の幅を変えるので境目が行ごとにずれる)。
+   幅は --rb-left(px。runBoard.js がドラッグで書く。既定はいちばん長いラベルが収まる幅) */
+.run-board-col-left {
+  flex: 0 0 var(--rb-left, 25%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  /* 境目に文字が触れないぶん(右カラムの padding-left と対)。**箱に入れる**ので、
+     既定の幅を測るときにもこのぶんが含まれる = ラベルは必ず余白つきで収まる */
+  padding-right: 8px;
+}
+.run-board-col-right {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  /* **左寄せ**(ユーザー決定 2026-09-22)。境目に文字が触れないぶんだけ空ける */
+  padding-left: 8px;
+}
+.run-board-row-summary > .run-board-col-left {
+  padding-left: 16px;   /* 行の 8px と合わせて 24px */
+}
+/* 既定の幅を測る一瞬だけ中身なりの幅にする(runBoard.js の naturalLeftWidth)。
+   **flex-basis が効いたままだと今の幅しか返らない** */
+.run-board-measuring .run-board-col-left {
+  flex: 0 0 auto;
+  width: max-content;
+  overflow: visible;
+}
+.run-board-lane > .run-board-col-left {
+  padding-left: 56px;   /* 行の 8px と合わせて 64px(ガイド線 48px の内側) */
+}
+
+/* 境目。**見出し行には掛けない**(掴む相手ではないうえ、表示フィルタに重なる)ので
+   top は runBoard.js が測ったヘッダの高さ。線は1px・当たりは 7px(細い線は掴めない) */
+.run-board-split {
+  position: absolute;
+  top: var(--rb-head, 28px);
+  bottom: 0;
+  left: calc(8px + var(--rb-left, 25%));
+  width: 7px;
+  margin-left: -3px;
+  cursor: col-resize;
+  z-index: 1;
+}
+.run-board-split::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: var(--vscode-widget-border, rgba(127, 127, 127, 0.35));
+}
+.run-board-split:hover::before,
+.run-board-split.dragging::before {
+  background-color: var(--vscode-focusBorder, #007acc);
+}
+/* 畳んでいる間は列が見えないので掴む相手も無い */
+.run-board[data-collapsed="true"] .run-board-split {
+  display: none;
 }
 .run-board-progress {
   flex: 0 0 auto;
@@ -642,8 +719,15 @@ html[lang="en"] .header-count {
 /* レーンは run の子。**縦のガイド線**で親子を示す(インデントだけだと、下に続く
    「走っていない機械」の行と見分けが付かない) */
 .run-board-lanes {
-  margin-left: 48px;   /* レーンは run の子 —— 機械の一覧(48px)よりさらに内側に置く */
-  border-left: 1px solid var(--vscode-tree-indentGuidesStroke, rgba(127, 127, 127, 0.35));
+  /* **ガイド線は背景で引く**(border/margin だと箱の幅が変わり、2カラムの境目が行ごとにずれる)。
+     48px = レーンは run の子。機械の一覧(24px)よりさらに内側 */
+  background-image: linear-gradient(
+    var(--vscode-tree-indentGuidesStroke, rgba(127, 127, 127, 0.35)),
+    var(--vscode-tree-indentGuidesStroke, rgba(127, 127, 127, 0.35))
+  );
+  background-position: 48px 0;
+  background-size: 1px 100%;
+  background-repeat: no-repeat;
   display: flex;
   flex-direction: column;
   padding-bottom: 2px;
@@ -660,8 +744,8 @@ html[lang="en"] .header-count {
 .run-board-lane {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 8px 2px 16px;
+  gap: 0;              /* 2カラム(.run-board-row-summary と同じ規律) */
+  padding: 2px 8px;
   /* **行の高さを固定する**(ユーザー指摘 2026-09-20)—— 中身(「0:08」/「0:08(中央 0:08)」)で
      高さが変わると、レーンが増減したように見えて目が滑る */
   line-height: 18px;
@@ -672,10 +756,13 @@ html[lang="en"] .header-count {
   background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.2));
 }
 .run-board-lane-name {
-  /* **省略しない**(ユーザー決定 2026-09-20)—— デバイス名は末尾で見分けるので、
-     途中で切ると "iPhone 17 Pro(iO…" が並んで区別が付かない */
-  flex: 0 0 auto;
+  /* 既定では**省略しない**(ユーザー決定 2026-09-20)—— デバイス名は末尾で見分けるので、
+     途中で切ると "iPhone 17 Pro(iO…" が並んで区別が付かない。
+     **左カラムを手で狭めたときだけ**省略する(境目より右へはみ出させない。広げれば戻る) */
+  flex: 0 1 auto;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .run-board-lane-scenario {
   flex: 1 1 auto;

@@ -23,6 +23,8 @@ export const runBoardToggle = document.getElementById('run-board-toggle');
 export const runBoardTitle = document.getElementById('run-board-title');
 export const runBoardExpandAll = document.getElementById('run-board-expand-all');
 export const runBoardRows = document.getElementById('run-board-rows');
+// 2カラムの境目(ドラッグで幅を変える。runBoard.js)。
+export const runBoardSplit = document.getElementById('run-board-split');
 // プラットフォームの表示フィルタ(3択・既定は「すべて」。状態と配線は deviceTiles.js)。
 export const platformFilterRadios = [
   document.getElementById('rad-platform-ios'),

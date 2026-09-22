@@ -36,7 +36,10 @@ import { applyShowStreamDuringRun } from './streamToggle.js';
 import { applyLaneAction, applyLaneHydrate, updateLaneVisibility } from './laneLog.js';
 import { applyProjectInfo } from './projectsTab.js';
 import { applyHostMetrics, setHostMetricMachines, setMachineLock } from './hostCharts.js';
-import { applyMonitorRuns, resetRunBoard, setRunBoardCollapsed, setRunBoardExpandAll, setRunBoardMachines, refreshRunBoardDevices } from './runBoard.js';
+import {
+  applyMonitorRuns, resetRunBoard, setRunBoardCollapsed, setRunBoardExpandAll, setRunBoardMachines,
+  refreshRunBoardDevices,
+} from './runBoard.js';
 import { applyProjectDeviceCatalog } from './runProfileDevicesTab.js';
 import {
   applyAppProfileInfo,

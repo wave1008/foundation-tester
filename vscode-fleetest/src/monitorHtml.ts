@@ -280,6 +280,10 @@ function renderDevicesPanel(): string {
         <label class="profile-label header-toggle" title="${t("panels.runBoard.platformFilterTitle")}"><input type="radio" name="platform-filter" id="rad-platform-all" value="all" checked>${t("panels.runBoard.platformFilterAll")}</label>
       </div>
       <div id="run-board-rows" class="run-board-rows"></div>
+      <!-- 2カラムの境目(ユーザー決定 2026-09-22)。マウスで幅を変える。**見出し行には掛けない**
+           ので top は runBoard.js が測ったヘッダの高さ(--rb-head)。飾りではなく掴む相手なので
+           role="separator"(向きは縦) -->
+      <div id="run-board-split" class="run-board-split" role="separator" aria-orientation="vertical" aria-label="${t("panels.runBoard.splitAriaLabel")}"></div>
     </div>
 
     <div id="banner" class="banner"></div>
