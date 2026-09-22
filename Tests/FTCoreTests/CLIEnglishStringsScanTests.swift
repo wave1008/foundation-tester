@@ -38,6 +38,8 @@ final class CLIEnglishStringsScanTests: XCTestCase {
          "受け手の Package.swift へ書き込むマーカー(既存のファイルに実在するので変えられない)"),
         ("Sources/FTCore/BridgeSourceSet.swift",
          "versionConstantHint の読み手は BridgeContractTests の失敗文言(保守者向け)"),
+        ("Sources/FTCore/WebViewDOMSnapshot.swift",
+         "ブリッジへ渡す JS の本文(中の日本語はそのコードのコメント。表示文字列ではない)"),
     ]
 
     private static var repoRoot: URL {
@@ -91,9 +93,20 @@ final class CLIEnglishStringsScanTests: XCTestCase {
             let relative = String(url.path.dropFirst(root.path.count + 1))
             if exempt.contains(where: { relative.hasPrefix($0.prefix) }) { continue }
             guard let contents = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            // **複数行リテラル(`"""`)の中も見る** —— 行ごとの引用符の対応では拾えず、
+            // 実際に `locateBridgeAPK` の日本語の案内文がこの形で残っていた
+            var inMultiline = false
             for (index, line) in contents.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if inMultiline {
+                    if trimmed.hasPrefix("\"\"\"") { inMultiline = false; continue }
+                    if containsCJK(String(line)) {
+                        hits.append(Hit(file: relative, line: index + 1, text: trimmed))
+                    }
+                    continue
+                }
                 if trimmed.hasPrefix("//") || trimmed.hasPrefix("*") { continue }
+                if line.contains("\"\"\"") { inMultiline = true; continue }
                 for literal in quotedText(inCodeOf: String(line)) where containsCJK(literal) {
                     hits.append(Hit(file: relative, line: index + 1, text: literal))
                 }

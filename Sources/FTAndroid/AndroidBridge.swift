@@ -15,7 +15,7 @@ extension AndroidDriver {
     /// デバイス側の listen ポート(全デバイス共通。デバイス毎に独立 loopback なので衝突しない)
     static let bridgeDevicePort: UInt16 = 8123
     /// AndroidRunner/build.sh の VERSION_CODE と同期(不一致なら自動で再インストール)
-    public static let expectedBridgeVersionCode = 69
+    public static let expectedBridgeVersionCode = 70
 
     enum BridgeState {
         case active(BridgeClient)
@@ -584,9 +584,9 @@ extension AndroidDriver {
         throw DriverError.bridgeUnreachable(
             context: DriverErrorContext(engine: .android, physicalDevice: false),
             detail: """
-            ブリッジ APK(ftbridge.apk)が見つかりません。
-            リポジトリの AndroidRunner/prebuilt/ftbridge.apk か、
-            FT_ANDROID_BRIDGE_APK=<APKパス> を設定してください(再生成: AndroidRunner/build.sh)
+            the bridge APK (ftbridge.apk) was not found.
+            Use the repository's AndroidRunner/prebuilt/ftbridge.apk, or set
+            FT_ANDROID_BRIDGE_APK=<path to the APK> (rebuild it with AndroidRunner/build.sh)
             """)
     }
 }
