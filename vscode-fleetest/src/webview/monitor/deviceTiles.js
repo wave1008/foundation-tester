@@ -14,7 +14,9 @@ import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
 import { setHoverTip, flashTip } from './hoverTip.js';
 import { isDragDistance, marqueeRect, idsInMarquee, mergeMarqueeSelection, rectContains, autoScrollVelocity, autoScrollStep } from './marqueeModel.js';
-import { isMachineDisabled, onMachineEnablementChanged, paintMachineBadge } from './machineColors.js';
+import {
+  isMachineDisabled, onMachineEnablementChanged, paintMachineBadge, LOCAL_MACHINE_LABEL,
+} from './machineColors.js';
 
 // bridgeWatch(拡張ホストの自動修復ウォッチドッグ、契約は main.js の 'bridgeWatch' ケース参照)の
 // phase→footer表示。'ok'はここに含めず通常表示へフォールバックさせる。
@@ -165,12 +167,10 @@ const MIN_TILE_IMAGE_HEIGHT = 120;
 // タイル内の「画像以外」の高さの合計(px)。CSS の固定高と一致させること:
 // padding 上下 8+8 + header 20 + footer 18 + gap 6×2 = 66
 const TILE_CHROME_HEIGHT = 66;
-// マシン名バッジの段(.tile-machine-row)。**リモートのデバイスが1台でも居るときだけ**全タイルに
-// 確保する —— タイルの画像高さ(--tile-image-h)はグリッド共通の1値で、段の有無が混ざると
-// 高さが揃わない。手元だけの構成では従来と1px も変わらない。CSS の .tile-machine-row と一致必須
+// マシン名バッジの段(.tile-machine-row)。**全タイルに常にある**(手元にも機械名を出す。
+// ユーザー決定 2026-09-22)—— タイルの画像高さ(--tile-image-h)はグリッド共通の1値なので、
+// 段の有無が混ざると高さが揃わない。CSS の .tile-machine-row と一致必須
 const TILE_MACHINE_ROW_HEIGHT = 16;
-// 直近の applyDevices が「リモート込み」だったか(chrome 高さの算出に使う)
-let machineRowReserved = false;
 
 // タイル幅は「--tile-image-h × --tile-aspect」で決まる(style.css の .frame-wrap)。
 // **実際にデコードできた画像の実寸からしか設定しない**: ストリームのヘッダ由来の寸法を信じると、
@@ -223,7 +223,7 @@ function measureTileImageHeight() {
   if (!probe || probe.clientHeight === 0) {
     return null;
   }
-  const chrome = TILE_CHROME_HEIGHT + (machineRowReserved ? TILE_MACHINE_ROW_HEIGHT + 6 : 0);  // +6 = gap
+  const chrome = TILE_CHROME_HEIGHT + TILE_MACHINE_ROW_HEIGHT + 6;  // +6 = gap
   return probe.clientHeight - chrome;
 }
 
@@ -283,7 +283,6 @@ function createTile(device) {
   // 「どの機械の台か」を出さないと、未起動表示の理由が分からない
   const remoteBadge = document.createElement('span');
   remoteBadge.className = 'badge badge-remote';
-  remoteBadge.style.display = 'none';
   const kindBadge = document.createElement('span');
   kindBadge.className = 'badge badge-kind';
   kindBadge.textContent = t('wvMonitor.tile.physicalBadge');
@@ -321,8 +320,8 @@ function createTile(device) {
   unregisteredBadge.style.display = 'none';
   // 実機バッジはデバイス名の左(ピッカー・一覧・編集フォームと同じ並び)
   header.append(kindBadge, name, unregisteredBadge);
-  // ホスト名は**名前の下の段**(2026-08-17 指示)。段の有無はグリッド単位で揃える(上記
-  // machineRowReserved)ので、手元のデバイスでも段自体は作る(中身が空になるだけ)
+  // 機械名は**名前の上の段**(ユーザー決定 2026-09-22。2026-08-17 は下だった)。
+  // 手元も含めて全タイルに出すので、段は常にある(高さも常に勘定する)
   const machineRow = document.createElement('div');
   machineRow.className = 'tile-machine-row';
   machineRow.appendChild(remoteBadge);
@@ -360,7 +359,7 @@ function createTile(device) {
   // 実行中/キュー待ち/録画中のバッジはタイル左下(フッター先頭)。録画は実行中の右(ユーザー指定)。
   footer.append(runningBadge, recordingBadge, frozenBadge, queuedBadge, stateBadge, error, renderBadge);
 
-  tile.append(header, machineRow, frameWrap, footer);
+  tile.append(machineRow, header, frameWrap, footer);
   grid.appendChild(tile);
 
   const entry = {
@@ -583,15 +582,10 @@ function renderMirror(entry) {
 // 手元の台には**見えないダミーのバッジ**を入れて高さだけ合わせる(中身が空の段は高さ 0)。
 function renderMirrorHeader(entry, mirror) {
   mirror.headerEl.textContent = '';
+  // **タイルと同じ順**(機械名の段が上)。手元にも実体のあるバッジが出るので、段の高さを
+  // 作るためのダミーは要らない
+  mirror.headerEl.appendChild(entry.machineRowEl.cloneNode(true));
   mirror.headerEl.appendChild(entry.headerEl.cloneNode(true));
-  const machineRow = entry.machineRowEl.cloneNode(true);
-  const badge = machineRow.querySelector('.badge-remote');
-  if (badge && entry.remoteBadgeEl.style.display === 'none') {
-    badge.textContent = '\u00a0';
-    badge.style.display = 'inline-block';
-    badge.style.visibility = 'hidden';
-  }
-  mirror.headerEl.appendChild(machineRow);
 }
 
 // h264 は1フレーム描画するたびに呼ぶ(タイルの canvas → 拡大表示の canvas への転写)。
@@ -692,15 +686,11 @@ function renderMeta(entry) {
     entry.device.frozen && entry.device.state === 'connected' ? 'inline-block' : 'none';
   // 実機は署名・接続の前提がシミュレータ/エミュレータと違うので取り違えないよう明示する
   entry.kindBadgeEl.style.display = entry.device.kind === 'physical' ? 'inline-block' : 'none';
-  // リモートのデバイスはホスト名を出す(手元は出さない = 既存の見た目のまま)
-  if (entry.device.machine) {
-    entry.remoteBadgeEl.textContent = entry.device.machine;
-    entry.remoteBadgeEl.style.display = 'inline-block';
-    paintMachineBadge(entry.remoteBadgeEl, entry.device.machine);
-  } else {
-    entry.remoteBadgeEl.style.display = 'none';
-    paintMachineBadge(entry.remoteBadgeEl, undefined);
-  }
+  // **手元も含めて必ず出す**(ユーザー決定 2026-09-22)—— どの機械の台かは全タイルで同じ形で
+  // 読めるほうがよい。色は machineColors が機械ごとに持つ(手元は 'local' の鍵)
+  entry.remoteBadgeEl.textContent = entry.device.machine || LOCAL_MACHINE_LABEL;
+  entry.remoteBadgeEl.style.display = 'inline-block';
+  paintMachineBadge(entry.remoteBadgeEl, entry.device.machine);
   renderUnregisteredBadge(entry);
   renderRenderBadge(entry);
   // 通常時は空(接続済みは画面表示自体が、接続待ちはプレースホルダの「接続中」が伝えるため
@@ -1376,13 +1366,6 @@ export function applyDevices(devices) {
 }
 
 function applyVisibleDevices(devices) {
-  // リモートのデバイスが混ざる構成でだけホスト名の段を出す(全タイルで高さを揃えるため
-  // グリッド単位のクラスで制御する。判定は machine の有無)
-  const nextMachineRow = devices.some((device) => !!device.machine);
-  if (nextMachineRow !== machineRowReserved) {
-    machineRowReserved = nextMachineRow;
-    grid.classList.toggle('with-machine-row', nextMachineRow);
-  }
   // 全選択が ON(= 今の全タイルが選択済み)の間は、**後から現れたデバイスも選択に足す**
   // = フリートが増えても「全部選択」のままにする(ユーザー要求 2026-09-09)。判定は
   // タイルを増やす前に採る —— 1台でも足すと等号が崩れて ON が読めなくなる。

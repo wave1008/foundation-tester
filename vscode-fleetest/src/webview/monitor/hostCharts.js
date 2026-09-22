@@ -26,7 +26,7 @@
 import { t } from '../i18n.js';
 import { HM_FM_MAX_RATE, HM_VISION_MAX_RATE, hmSharedCountScale } from './hostChartScale.js';
 import { setHoverTip } from './hoverTip.js';
-import { isMachineDisabled, onMachineEnablementChanged } from './machineColors.js';
+import { isMachineDisabled, onMachineEnablementChanged, LOCAL_MACHINE_LABEL } from './machineColors.js';
 
 const HM_MAX_SAMPLES = 60;
 // 手元の tick が途絶えたとみなすまでの猶予(ms)。手元の host-metrics 子が落ちてから自動再起動
@@ -52,7 +52,7 @@ const HM_COLORS = {
 };
 
 /** 手元の行の表示名(左端のラベル)。CLI 側の DeviceMachineGrouping.localDisplayName と同じ語。 */
-const HM_LOCAL_LABEL = 'local';
+const HM_LOCAL_LABEL = LOCAL_MACHINE_LABEL;
 
 /** 死んでいる経路に付ける印。値のセル(hmRenderFmLabel)には付けない —— あちらは '–' で、
  *  「どの経路が」を言えるのはこのバッジだけ。 */

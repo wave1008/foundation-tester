@@ -11,7 +11,9 @@ import {
   runBoard, runBoardHeader, runBoardToggle, runBoardTitle, runBoardExpandAll, runBoardRows, runBoardSplit,
 } from './domRefs.js';
 import { vscode, persistedState } from './vscodeApi.js';
-import { paintMachineBadge, isMachineDisabled, onMachineEnablementChanged } from './machineColors.js';
+import {
+  paintMachineBadge, isMachineDisabled, onMachineEnablementChanged, LOCAL_MACHINE_LABEL,
+} from './machineColors.js';
 import { setHoverTip } from './hoverTip.js';
 import {
   deviceIdForLane, selectOnlyDevices, devicesOnMachine, currentMonitorScope,
@@ -26,9 +28,6 @@ import {
   liveElapsedSeconds,
   liveRemaining,
 } from '../../runBoardModel';
-
-// 手元の表示名。hostCharts.js の HM_LOCAL_LABEL と同じ規律(機械名なので翻訳しない)。
-const LOCAL_LABEL = 'local';
 
 let runsByMachine = new Map();
 // ヘッダの機械要約に出すリモート機の一覧(手元は含まない)。'hostMetricsMachines' に相乗りする
@@ -67,7 +66,7 @@ function formatMinSec(seconds) {
 }
 
 function machineLabel(machine) {
-  return machine === LOCAL_MACHINE_KEY || machine === undefined ? LOCAL_LABEL : machine;
+  return machine === LOCAL_MACHINE_KEY || machine === undefined ? LOCAL_MACHINE_LABEL : machine;
 }
 
 // machineList() の鍵('' = 手元)を MonitorDevice / monitorRuns の規約(undefined = 手元)へ。

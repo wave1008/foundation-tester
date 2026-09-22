@@ -338,8 +338,9 @@ test("実機・未登録・マシン名のタグもラインビューと同じ�
 });
 
 // 段数が台で変わると、その台だけ絵の上端が下がる(手元とリモートを並べると揃わない。
-// 2026-08-24 のユーザー指摘)。段は常に2つで、手元にはダミーのバッジを入れて高さを合わせる。
-test("タグの段数は手元でもリモートでも同じ(絵の上端を揃える)", (t) => {
+// 2026-08-24 のユーザー指摘)。段は常に2つ —— **手元にも実体のある "local" のバッジが出る**
+// ので(ユーザー決定 2026-09-22)、高さを作るためのダミーはもう要らない。
+test("タグの段数は手元でもリモートでも同じで、手元は local のバッジ(絵の上端を揃える)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const devices = [
@@ -361,11 +362,14 @@ test("タグの段数は手元でもリモートでも同じ(絵の上端を揃�
   // リモートはホスト名がそのまま見える
   assert.equal(machineBadgeOf(headers[1]).textContent, "m1max");
   assert.equal(machineBadgeOf(headers[1]).style.visibility, "");
-  // 手元は見えないダミー(段の高さだけを作る)。空文字だと高さが 0 になるので中身を入れる
-  const dummy = machineBadgeOf(headers[0]);
-  assert.equal(dummy.style.visibility, "hidden");
-  assert.equal(dummy.style.display, "inline-block");
-  assert.notEqual(dummy.textContent, "");
+  // 手元も実体のあるバッジ(隠しダミーではない)
+  const local = machineBadgeOf(headers[0]);
+  assert.equal(local.textContent, "local");
+  assert.equal(local.style.visibility, "");
+  // **機械名の段はデバイス名の上**(ユーザー決定 2026-09-22)
+  for (const header of headers) {
+    assert.equal(header.firstElementChild.className, "tile-machine-row", "段が先(= 上)");
+  }
 });
 
 test("mjpeg のフレームはタイルと同じ絵が拡大表示にも出る", (t) => {

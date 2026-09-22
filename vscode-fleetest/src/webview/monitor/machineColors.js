@@ -63,6 +63,10 @@ export function applyMachineColors(message) {
   }
 }
 
+/** 手元の機械の表示名。**機械名なので翻訳しない**。色の鍵(disabledMachines / パレット)と
+ *  同じ綴りで、呼び手(タイル・run ボード・ホストグラフ)はこれを使う。 */
+export const LOCAL_MACHINE_LABEL = 'local';
+
 /** 「マシン有効」が off か。machine が空 = 手元("local") */
 export function isMachineDisabled(machine) {
   return disabledMachines.has(machine || 'local');

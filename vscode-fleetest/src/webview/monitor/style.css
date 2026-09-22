@@ -992,13 +992,11 @@ html.select-all-guard * {
   flex: 0 0 20px;
   height: 20px;
 }
-/* マシン名バッジの段(デバイス名の下)。**グリッドに .with-machine-row が付いたときだけ**出す ——
-   段の有無がタイルごとに混ざると、共通の --tile-image-h では高さが揃わない。
+/* マシン名バッジの段(デバイス名の**上**。ユーザー決定 2026-09-22)。**常に出す** ——
+   手元にも機械名を出すので段は全タイルにあり、段の有無がタイルごとに混ざることは無い
+   (混ざると共通の --tile-image-h では高さが揃わない)。
    高さは deviceTiles.js の TILE_MACHINE_ROW_HEIGHT と一致させること */
 .tile-machine-row {
-  display: none;
-}
-.grid.with-machine-row .tile-machine-row {
   display: flex;
   align-items: center;
   flex: 0 0 16px;
