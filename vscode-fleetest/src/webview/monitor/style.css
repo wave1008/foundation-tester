@@ -413,6 +413,8 @@ button.bulk-cancel:hover:not(:disabled) {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
+  /* プラットフォームのバッジを見出し行の**中央**へ絶対位置で置くための基準(ユーザー決定 2026-09-22) */
+  position: relative;
   gap: 6px;
   padding: 4px 8px;
   /* 4つの見出し行(実行中・ラインビュー・グリッドビュー・実行ログ)は同じ地色
@@ -512,12 +514,56 @@ html[lang="en"] .header-count {
 /* プラットフォームの表示フィルタは「全て展開」から**5文字ぶん**空ける(ユーザー決定 2026-09-22)。
    ch = 見出しの文字(12px)の "0" の幅なので、字の大きさを変えれば間隔も一緒に動く。
    **位置が桁で動かない**のは #run-board-title の min-width が効いているため(片方だけ変えない) */
+/* プラットフォームの表示フィルタ(3択)。**見た目はバッジ**(ユーザー決定 2026-09-22)——
+   選んでいるものだけ色付き、選んでいないものは灰色。押せる面なので cursor は pointer */
 .run-board-platform-filter {
-  margin-left: 5ch;
+  /* **見出し行の中央**(ユーザー決定 2026-09-22)。左の項目(三角・件数・全て展開)の幅に
+     依存しないよう、flex の流れから外して絶対位置で真ん中に置く —— auto マージンだと
+     「左の項目を除いた残りの中央」になり、左の項目が伸び縮みすると位置が動く */
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
-/* 走っていない機械の行も run 行と同じ作り(.run-board-row)。**見出しの1行だけ控えめに** ——
-   run の行が主役だが、下に並ぶ台のツリーまで薄くすると読みにくい */
-.run-board-row-machine > .run-board-row-summary {
+.platform-badge {
+  border: none;
+  font-family: inherit;
+  line-height: 16px;
+  cursor: pointer;
+  /* **3つとも同じ幅**(ユーザー決定 2026-09-22)—— 文字数(iOS / Android / すべて)で幅が
+     変わると、並びが不揃いで押し分けにくい。いちばん長い "Android" が収まる下限にして中央寄せ */
+  min-width: 8ch;
+  text-align: center;
+  /* 非選択は灰色(選択色と同じく固定値。テーマ変数だと選択色との対比が崩れる) */
+  background-color: #8a8a8a;
+  color: #ffffff;
+  opacity: 0.8;
+}
+.platform-badge:hover {
+  opacity: 1;
+}
+/* 選択時の色。**iOS / Android はタイルのデバイス名ピルと同じ値**(.tile-name-ios / -android。
+   変更時は揃えること)。「すべて」は白なので、文字だけ暗い色にする */
+.platform-badge.selected {
+  opacity: 1;
+}
+.platform-badge-ios.selected {
+  background-color: #29b6f6;
+  color: #ffffff;
+}
+.platform-badge-android.selected {
+  background-color: #3ddc84;
+  color: #ffffff;
+}
+.platform-badge-all.selected {
+  background-color: #ffffff;
+  color: #1e1e1e;
+}
+/* 走っていない機械をまとめる根も run 行と同じ作り(.run-board-row)。**見出しの1行だけ控えめに**
+   —— run の行が主役だが、下に並ぶ機械と台のツリーまで薄くすると読みにくい */
+.run-board-row-scope > .run-board-row-summary {
   opacity: 0.75;
 }
 .run-board-idle-machine-status {
@@ -641,7 +687,19 @@ html[lang="en"] .header-count {
   overflow: visible;
 }
 .run-board-lane > .run-board-col-left {
-  padding-left: 56px;   /* 行の 8px と合わせて 64px(ガイド線 48px の内側) */
+  padding-left: 72px;   /* 行の 8px と合わせて 80px(機械の名前 64px のさらに内側) */
+  gap: 6px;             /* アイコンと名前の間だけは詰める(既定の 8px は離れすぎる) */
+}
+/* 台のアイコン。**色はプラットフォームのバッジと同じ値**(.platform-badge-ios / -android。
+   変更時は揃えること)。platform が無い台は色を付けない = 既定の文字色のまま */
+.run-board-lane-icon {
+  flex: 0 0 auto;
+}
+.run-board-lane-icon-ios {
+  color: #29b6f6;
+}
+.run-board-lane-icon-android {
+  color: #3ddc84;
 }
 
 /* 境目。**見出し行には掛けない**(掴む相手ではないうえ、表示フィルタに重なる)ので
@@ -720,12 +778,12 @@ html[lang="en"] .header-count {
    「走っていない機械」の行と見分けが付かない) */
 .run-board-lanes {
   /* **ガイド線は背景で引く**(border/margin だと箱の幅が変わり、2カラムの境目が行ごとにずれる)。
-     48px = レーンは run の子。機械の一覧(24px)よりさらに内側 */
+     32px = この中身(機械の枝)は根の子。根の三角(24px)と機械の三角(40px)の間に引く */
   background-image: linear-gradient(
     var(--vscode-tree-indentGuidesStroke, rgba(127, 127, 127, 0.35)),
     var(--vscode-tree-indentGuidesStroke, rgba(127, 127, 127, 0.35))
   );
-  background-position: 48px 0;
+  background-position: 32px 0;
   background-size: 1px 100%;
   background-repeat: no-repeat;
   display: flex;
@@ -736,10 +794,29 @@ html[lang="en"] .header-count {
 .run-board-row:not(.run-board-row-expanded) .run-board-issuer {
   display: none;
 }
-/* 中身は run 行と同じバッジ1つなので、見出し自体は位置だけ持つ(色・太さはバッジ側) */
+/* 機械の枝の見出し。**構成も2カラムも他の行と同じ**(「(マシン名)プロジェクト / 実行プロファイル」
+   を左カラムへ)。行の左右 padding は 8px で揃え、階層のインデントは左カラムの padding で表す
+   (docs/design.md §18.5 の規律②)。**run の行の中でも空きの根の中でも同じ作り** */
 .run-board-lane-machine-header {
-  padding: 4px 8px 2px 16px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 2px 8px;
   line-height: 18px;
+  min-height: 18px;
+  cursor: pointer;
+}
+.run-board-lane-machine-header:hover {
+  background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.2));
+}
+.run-board-lane-machine-header:hover .run-board-chevron {
+  background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+  color: var(--vscode-foreground);
+}
+.run-board-lane-machine-header > .run-board-col-left {
+  /* 行の 8px と合わせて三角が 40px、バッジが 64px。**3段が 16px 刻みで並ぶ**:
+     根(三角 24px・名前 48px)→ 機械(三角 40px・名前 64px)→ 台(名前 80px) */
+  padding-left: 32px;
 }
 .run-board-lane {
   display: flex;
@@ -750,10 +827,8 @@ html[lang="en"] .header-count {
      高さが変わると、レーンが増減したように見えて目が滑る */
   line-height: 18px;
   min-height: 18px;
-  cursor: pointer;
-}
-.run-board-lane:hover {
-  background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.2));
+  /* **押せる面にしない**(ユーザー決定 2026-09-22)—— 台の行はクリックで何も起きないので、
+     cursor も hover の地色も付けない(付けると押せるように見える) */
 }
 .run-board-lane-name {
   /* 既定では**省略しない**(ユーザー決定 2026-09-20)—— デバイス名は末尾で見分けるので、
@@ -779,6 +854,10 @@ html[lang="en"] .header-count {
   text-align: right;
   font-variant-numeric: tabular-nums;
   color: var(--vscode-descriptionForeground);
+}
+/* 畳んだ枝は台だけを隠す(見出しは残る = その機械が居ることは消さない) */
+.run-board-lane-group-collapsed > .run-board-lane {
+  display: none;
 }
 .toolbar-icon-group {
   align-self: flex-end;

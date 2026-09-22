@@ -49,7 +49,15 @@ export function isPlatformFilter(value: unknown): value is PlatformFilter {
 }
 
 export type MonitorToWebviewMessage =
-  | { readonly type: "devices"; readonly devices: readonly MonitorDevice[] }
+  // **一覧は表示フィルタ前の全台**(`filter` は「起動中のデバイス」の現在値)。落とすのは
+  // webview の入口1箇所(deviceTiles.js の applyDevices)で、**run ボードのツリーはこの
+  // フィルタを通さない** —— ビルド中・停止中でもフリートに何が居るかを消さないため
+  // (docs/design.md §18.5)。
+  | {
+      readonly type: "devices";
+      readonly devices: readonly MonitorDevice[];
+      readonly filter: MonitorDeviceFilter;
+    }
   // run ボード(docs/design.md §18)。**1件 = 1機械ぶん**(monitorLock と同じ相乗り。machine 欠落 =
   // 手元)。observed:false は「その機械をもう観測できていない」で runs は常に空 —— 「run が無い」
   // ではない(受け手は runBoardModel.ts の applyMonitorRunsEvent を通す。src/webview/monitor/runBoard.js)。
@@ -523,18 +531,30 @@ export type MonitorToWebviewMessage =
   // 判定を webview 側 main.js が両方の AND で行う。対向: src/webview/monitor/liveTab.js の setLiveVisible)。
   | { readonly type: "panelVisible"; readonly visible: boolean };
 
+/** 台の一覧は表示フィルタを**畳まずに**送る(`filter` を添えて webview に判断させる) ——
+ * run ボードのツリーは「起動中のデバイス」で消してはいけないため。toWebviewMessage は
+ * monitorDevices を受け取らない形にしてあるので、この口を通し忘れたらコンパイルで止まる。 */
+export function devicesToWebviewMessage(
+  devices: readonly MonitorDevice[],
+  filter: MonitorDeviceFilter,
+): MonitorToWebviewMessage {
+  return { type: "devices", devices, filter };
+}
+
 /** 検証済みの MonitorEvent を、webview へそのまま postMessage できる形に変換する。 */
 // monitorHold は webview へ送らない(monitorProcessManager.ts が OUTPUT ログで処理して return する)
 // ため、ここでは型から除外して switch の網羅性を保つ
 export function toWebviewMessage(
-  // monitorHold / monitorLock は webview へ素通ししない(前者は OUTPUT だけ、後者は
-  // monitorProcessManager が machineLock メッセージへ畳む)。**Exclude で受け取らない形にする**
+  // monitorHold / monitorLock / monitorDevices は webview へ素通ししない(順に OUTPUT だけ・
+  // monitorProcessManager が machineLock メッセージへ畳む・表示フィルタを添える
+  // devicesToWebviewMessage を通す)。**Exclude で受け取らない形にする**
   // = 呼び出し側が畳み忘れたらコンパイルで止まる
-  event: Exclude<MonitorEvent, { kind: "monitorHold" } | { kind: "monitorLock" }>,
+  event: Exclude<
+    MonitorEvent,
+    { kind: "monitorHold" } | { kind: "monitorLock" } | { kind: "monitorDevices" }
+  >,
 ): MonitorToWebviewMessage {
   switch (event.kind) {
-    case "monitorDevices":
-      return { type: "devices", devices: event.devices };
     case "monitorFrame":
       return {
         type: "frame",

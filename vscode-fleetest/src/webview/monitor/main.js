@@ -93,7 +93,9 @@ window.addEventListener('message', (event) => {
       // エラーが読む前に消える(実害 2026-08-29)。バナーはすべて失敗の通知なので、
       // 消えてよいのは利用者が閉じたとき・次のバナーで置き換わったとき・
       // 「モニター再起動」を押したときだけ(deviceTiles.js の showBanner)
-      applyDevices(message.devices);
+      // **一覧は表示フィルタ前の全台**(絞り込みは deviceTiles.js の入口。
+      // 契約: monitorWebviewMessages.ts の devicesToWebviewMessage)
+      applyDevices(message.devices, message.filter);
       // run ボードのツリーは台の一覧から作る(runBoard.js)—— 呼ばないと古い台が残る
       refreshRunBoardDevices();
       break;

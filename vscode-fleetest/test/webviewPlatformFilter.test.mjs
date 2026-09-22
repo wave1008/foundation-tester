@@ -86,19 +86,20 @@ const logNames = (document) => [...document.querySelectorAll("#lanes-grid .lane"
   .filter((el) => el.style.display !== "none").map((el) => el.querySelector(".lane-header").textContent);
 const previewCount = (document) => [...document.querySelectorAll("#preview-grid .lane-preview")]
   .filter((el) => el.style.display !== "none").length;
-const radio = (document, value) => document.getElementById(`rad-platform-${value}`);
+// 3択は**バッジ**(ユーザー決定 2026-09-22)。選んでいるものだけ .selected が付く
+const badge = (document, value) => document.getElementById(`rad-platform-${value}`);
 const pick = (window, document, value) => {
-  const el = radio(document, value);
-  el.checked = true;
-  el.dispatchEvent(new window.Event("change", { bubbles: true }));
+  badge(document, value).dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
 };
+const selectedBadges = (document) => ["ios", "android", "all"]
+  .filter((value) => badge(document, value).classList.contains("selected"));
 
 test("既定は「すべて」(フィルタを持たない状態と同じ見え方)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  assert.equal(radio(document, "all").checked, true);
-  assert.equal(radio(document, "ios").checked, false);
-  assert.equal(radio(document, "android").checked, false);
+  assert.deepEqual(selectedBadges(document), ["all"], "既定は「すべて」だけが色付き");
+  assert.equal(badge(document, "all").getAttribute("aria-checked"), "true");
+  assert.equal(badge(document, "ios").getAttribute("aria-checked"), "false");
   sendDevices(window);
   assert.deepEqual(tileNames(document), ["iPhone-01", "iPhone-02", "Pixel-01"]);
 });
@@ -137,13 +138,12 @@ test("選んだプラットフォームだけが4つのセクションに残り�
     ["ios", "android", "all"]);
 });
 
-test("host の復元値はラジオに入り、投げ返さない", (t) => {
+test("host の復元値はバッジに入り、投げ返さない", (t) => {
   const { window, document, posted } = createWebview();
   t.after(() => window.close());
   sendDevices(window);
   post(window, { type: "platformFilter", value: "android" });
-  assert.equal(radio(document, "android").checked, true);
-  assert.equal(radio(document, "all").checked, false);
+  assert.deepEqual(selectedBadges(document), ["android"]);
   assert.deepEqual(tileNames(document), ["Pixel-01"]);
   assert.deepEqual(posted.filter((m) => m?.type === "setPlatformFilter"), [], "復元は送り返さない");
 });
@@ -154,8 +154,31 @@ test("知らない復元値は「すべて」へ倒す", (t) => {
   t.after(() => window.close());
   sendDevices(window);
   post(window, { type: "platformFilter", value: "windows" });
-  assert.equal(radio(document, "all").checked, true);
+  assert.deepEqual(selectedBadges(document), ["all"]);
   assert.deepEqual(tileNames(document), ["iPhone-01", "iPhone-02", "Pixel-01"]);
+});
+
+// 3つとも同じ幅・選択中の文字は白(ユーザー決定 2026-09-22)。**jsdom は CSS を読まない**ので
+// 宣言そのものをテキストで押さえる(run ボードの CSS テストと同じ方式)
+test("バッジは3つとも同じ幅で、iOS / Android の選択中は白フォント", async () => {
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync(new URL("../src/webview/monitor/style.css", import.meta.url), "utf8");
+  const base = css.slice(css.indexOf(".platform-badge {"));
+  const decl = base.slice(0, base.indexOf("}"));
+  assert.match(decl, /min-width:\s*8ch/, "文字数で幅が変わらないよう下限を揃える");
+  assert.match(decl, /text-align:\s*center/);
+  // 見出し行の中央に置く(ユーザー決定 2026-09-22)。左の項目の幅に依存しない形で
+  const group = css.slice(css.indexOf(".run-board-platform-filter {"));
+  const groupDecl = group.slice(0, group.indexOf("}"));
+  assert.match(groupDecl, /position:\s*absolute/);
+  assert.match(groupDecl, /left:\s*50%/);
+  assert.match(groupDecl, /transform:\s*translateX\(-50%\)/);
+  for (const platform of ["ios", "android"]) {
+    const rule = css.slice(css.indexOf(`.platform-badge-${platform}.selected {`));
+    assert.match(rule.slice(0, rule.indexOf("}")), /color:\s*#ffffff/, platform);
+  }
+  const all = css.slice(css.indexOf(".platform-badge-all.selected {"));
+  assert.match(all.slice(0, all.indexOf("}")), /color:\s*#1e1e1e/, "白地なので文字だけ暗色");
 });
 
 test("setPlatformFilter は host 側の検証を通り、知らない値は弾く", async () => {

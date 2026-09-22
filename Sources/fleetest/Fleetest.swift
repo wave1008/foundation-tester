@@ -1411,22 +1411,32 @@ struct RunScenarios: AsyncParsableCommand {
         let testProject = try ScenarioHost.project(named: project)
         PhaseLog.mark("project-resolved")
 
-        // run 進捗の記帳(docs/design.md §18.1)。**ビルドより前に書く** —— 実測でシナリオの
-        // swift build から phase: "preparing" が出るまで ~15秒あり、書かないとその間ボードに
-        // 1本も出ない。総本数・レーンはまだ未確定(total: 0・lanes: [])。`ProfileRunner.run` が
-        // 同じ pid ファイルを phase: "preparing" で上書きする。**この build 呼び出しは
-        // ProfileRunner.swift の外(ここ)にある**ので、"preparing" と違い「building」の書き手は
-        // ここに置く。**後始末**: ProfileRunner.run へ到達できずに関数を抜けたら控えを消す
+        // run 進捗の記帳(docs/design.md §18.1)。**ビルドより前に1本書く** —— 実測でシナリオの
+        // swift build から供給の記帳が出るまで ~15秒あり、書かないとその間ボードに1本も出ない。
+        // 総本数・レーンはまだ未確定(total: 0・lanes: [])。`ProfileRunner.run` が同じ pid
+        // ファイルを上書きする。**この build 呼び出しは ProfileRunner.swift の外(ここ)にある**
+        // ので、「building」の書き手はここに置く。**後始末**: ProfileRunner.run へ到達できずに
+        // 関数を抜けたら控えを消す
         let progressPid = ProcessInfo.processInfo.processIdentifier
         var progressHandedToProfileRunner = false
-        if profile != nil, !dryRun {
-            RunProgressLedger.sweep(directory: RunProgressLedger.directory())
+        let recordsProgress = profile != nil && !dryRun
+        // 書き直しても**入口の時刻のまま**(経過が巻き戻らない)
+        let progressStartedAt = ISO8601DateFormatter().string(from: Date())
+        /// **段階は実際にやっていることだけを言う**(ユーザー決定 2026-09-22)—— 入口ではまだ
+        /// ビルドしていない(`--skip-build` = 機械分担のローカル子なら最後までしない)ので
+        /// "preparing" で始め、"building" は `ScenarioHost.build` を挟む間だけ立てて直後に戻す。
+        func writeProgress(phase: String) {
+            guard recordsProgress else { return }
             RunProgressLedger.write(RunProgressRecord(
                 pid: progressPid, runID: nil, runGroup: nil, issuer: LocalConfig.resolveIssuerId(),
                 project: testProject.name, profile: profile,
-                startedAt: ISO8601DateFormatter().string(from: Date()), total: 0, done: 0, failed: 0,
-                requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: "building"),
+                startedAt: progressStartedAt, total: 0, done: 0, failed: 0,
+                requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: phase),
                 directory: RunProgressLedger.directory())
+        }
+        if recordsProgress {
+            RunProgressLedger.sweep(directory: RunProgressLedger.directory())
+            writeProgress(phase: "preparing")
         }
         defer {
             if profile != nil, !dryRun, !progressHandedToProfileRunner {
@@ -1436,8 +1446,10 @@ struct RunScenarios: AsyncParsableCommand {
 
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
         if !skipBuild {
+            writeProgress(phase: "building")
             ConsoleOut.out("→ Building scenarios (\(testProject.name))...")
             try ScenarioHost.build(project: testProject)
+            writeProgress(phase: "preparing")
         } else {
             // 食い違っていても止めない(警告のみ。)
             ScenarioHost.warnIfSkipBuildStale(project: testProject) { ConsoleOut.out($0) }

@@ -8,7 +8,7 @@
 import { t } from '../i18n.js';
 import { setDevicesWaiting } from './waitingNote.js';
 import { vscode } from './vscodeApi.js';
-import { grid, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuSelectOnlyBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRestart, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee, lineViewSelection, platformFilterRadios } from './domRefs.js';
+import { grid, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuSelectOnlyBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRestart, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee, lineViewSelection, platformFilterBadges } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers, relayoutPreviewsForResize } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
@@ -17,6 +17,10 @@ import { isDragDistance, marqueeRect, idsInMarquee, mergeMarqueeSelection, rectC
 import {
   isMachineDisabled, onMachineEnablementChanged, paintMachineBadge, LOCAL_MACHINE_LABEL,
 } from './machineColors.js';
+// 「起動中のデバイス」の判定はホストと**同じ1つの定義**を通す(複製すると、どの state を
+// 起動中と見るかが2箇所で食い違う)。この .ts は拡張と webview の両バンドルに入るので
+// vscode を引き込む import を足さないこと(runBoardModel.ts と同じ制約)。
+import { filterMonitorDevices } from '../../monitorDeviceModel';
 
 // bridgeWatch(拡張ホストの自動修復ウォッチドッグ、契約は main.js の 'bridgeWatch' ケース参照)の
 // phase→footer表示。'ok'はここに含めず通常表示へフォールバックさせる。
@@ -1090,11 +1094,18 @@ export function deviceIdForLane(machine, laneKey) {
 // MonitorRunLane.key と突き合わせる鍵(iOS は udid・Android は serial)。
 export function devicesOnMachine(machine) {
   const out = [];
-  for (const [id, entry] of tiles) {
-    if (entry.device.machine !== machine) {
+  // **タイルではなく生の一覧から採る** —— タイルは「起動中のデバイス」で絞られているので、
+  // ビルド中(台がまだ起動していない)の run の下から台が消える。ツリーからは消さない
+  // (ユーザー決定 2026-09-22)。プラットフォームの表示フィルタだけは通す
+  // (選んでいない側を4つのセクションから同時に隠すのが、あちらの決定事項)。
+  for (const device of lastDevices) {
+    if (device.machine !== machine || !isPlatformVisible(device.platform)) {
       continue;
     }
-    out.push({ id, name: entry.device.name, laneKey: entry.device.udid ?? entry.device.serial });
+    out.push({
+      id: device.id, name: device.name, platform: device.platform,
+      laneKey: device.udid ?? device.serial,
+    });
   }
   return out;
 }
@@ -1317,6 +1328,11 @@ export function clearTilesForRestart() {
 const PLATFORM_FILTER_ALL = 'all';
 let platformFilter = PLATFORM_FILTER_ALL;
 let lastDevices = [];
+// 「起動中のデバイス」(設定 fleetest.monitorDeviceFilter)。**ここで落とすのはタイル側だけ** ——
+// run ボードのツリー(devicesOnMachine)はこの値を見ない。停止中・観測できない台を消すと、
+// ビルド中の run の下から台が丸ごと消えてフリートに何が居るのか分からなくなる
+// (ユーザー決定 2026-09-22。docs/design.md §18.5)。**知らない値は 'all' へ倒す**
+let deviceStateFilter = 'all';
 const platformFilterListeners = [];
 
 export function isPlatformVisible(platform) {
@@ -1328,12 +1344,20 @@ export function onPlatformFilterChanged(listener) {
   platformFilterListeners.push(listener);
 }
 
+/** 選んでいるものだけ色付き(iOS / Android は台のピルと同じ色・「すべて」は白)、
+ *  選んでいないものは灰色(ユーザー決定 2026-09-22)。色は CSS が `.selected` で持つ。 */
+function paintPlatformBadges() {
+  for (const badge of platformFilterBadges) {
+    const on = badge.dataset.value === platformFilter;
+    badge.classList.toggle('selected', on);
+    badge.setAttribute('aria-checked', on ? 'true' : 'false');
+  }
+}
+
 function applyPlatformFilterState(next, persist) {
   platformFilter = next;
-  for (const radio of platformFilterRadios) {
-    radio.checked = radio.value === platformFilter;
-  }
-  applyVisibleDevices(lastDevices.filter((device) => isPlatformVisible(device.platform)));
+  paintPlatformBadges();
+  applyVisibleDevices(tileDevices());
   for (const listener of platformFilterListeners) {
     listener();
   }
@@ -1345,24 +1369,35 @@ function applyPlatformFilterState(next, persist) {
 /** host からの復元値(sendInitialState)。**投げ返さない**(applySelectAllDevices と同じ規律)。
  *  **知らない値は「すべて」へ倒す** —— 台が黙って消えるより出しすぎるほうが安全。 */
 export function applyPlatformFilter(message) {
-  const known = platformFilterRadios.some((radio) => radio.value === message.value);
+  const known = platformFilterBadges.some((badge) => badge.dataset.value === message.value);
   applyPlatformFilterState(known ? message.value : PLATFORM_FILTER_ALL, false);
 }
 
-for (const radio of platformFilterRadios) {
-  // 見出し行(run ボードのヘッダ)のクリックはボードごと畳むので、ラベル全体で止める
-  // (streamToggle.js と同じ)
-  radio.closest('label').addEventListener('click', (event) => event.stopPropagation());
-  radio.addEventListener('change', () => {
-    if (radio.checked) {
-      applyPlatformFilterState(radio.value, true);
-    }
+for (const badge of platformFilterBadges) {
+  badge.addEventListener('click', (event) => {
+    // 見出し行(run ボードのヘッダ)のクリックはボードごと畳むので、ここで止める
+    // (streamToggle.js と同じ)
+    event.stopPropagation();
+    applyPlatformFilterState(badge.dataset.value, true);
   });
 }
 
-export function applyDevices(devices) {
+// 既定(「すべて」)の見た目を初期化する —— host の復元値(applyPlatformFilter)が来るまでの間も
+// バッジの色が状態と食い違わないようにする(**台の一覧には触らない**ので描き直しは走らせない)
+paintPlatformBadges();
+
+export function applyDevices(devices, filter) {
   lastDevices = devices;
-  applyVisibleDevices(devices.filter((device) => isPlatformVisible(device.platform)));
+  deviceStateFilter = filter === 'running' ? 'running' : 'all';
+  applyVisibleDevices(tileDevices());
+}
+
+/** タイルに出す台(= 表示フィルタを両方通したもの)。run ボードのツリーは通さない。 */
+function tileDevices() {
+  return filterMonitorDevices(
+    lastDevices.filter((device) => isPlatformVisible(device.platform)),
+    deviceStateFilter,
+  );
 }
 
 function applyVisibleDevices(devices) {

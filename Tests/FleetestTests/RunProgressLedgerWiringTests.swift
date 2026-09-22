@@ -52,21 +52,22 @@ final class RunProgressLedgerWiringTests: XCTestCase {
         }
     }
 
-    /// **段階「building」**(docs/design.md §18.1)は run の入口・シナリオの swift build より
-    /// 前に書く(実測: build から phase: "preparing" が出るまで ~15秒。書かないとその間ボードに
-    /// 1本も出ない)。**build 呼び出しは ProfileRunner.swift の外に居る** ——
+    /// **段階「building」は本当にビルドしている間だけ**(ユーザー決定 2026-09-22)——
+    /// 以前は run の入口で "building" を書いていたので、`--skip-build`(機械分担のローカル子は
+    /// 常にこれ)では**1バイトもビルドしないまま「ビルド中」**が出て、ビルドが終わってからも
+    /// 供給が始まるまで「ビルド中」のままだった。入口は "preparing" で書き(書かないと
+    /// その間ボードに1本も出ない)、`ScenarioHost.build` を挟む間だけ "building" にして
+    /// **直後に戻す**。**build 呼び出しは ProfileRunner.swift の外に居る** ——
     /// `fleetest run --profile` は Sources/fleetest/Fleetest.swift(RunScenarios.run)、
     /// `fleetest api run` は Sources/fleetest/ApiRunCommand.swift(run)がビルドを呼ぶ
-    /// (ProfileRunner.run/runWithProfileParallel はどちらもビルド完了後にしか呼ばれない)ので、
-    /// "building" の書き手はビルド呼び出し元のファイルで確かめる
-    func testBuildingPhaseIsWrittenBeforeTheScenarioBuildCall() throws {
+    func testBuildingPhaseIsWrittenOnlyAroundTheScenarioBuildCall() throws {
         for path in ["Sources/fleetest/Fleetest.swift", "Sources/fleetest/ApiRunCommand.swift"] {
             let text = try Self.code(path)
             guard let buildRange = text.range(of: "→ Building scenarios") else {
                 XCTFail("\(path): build のログ行が見つからない(この走査の前提が崩れている)")
                 continue
             }
-            guard let phaseRange = text.range(of: "phase: \"building\"") else {
+            guard let phaseRange = text.range(of: "writeProgress(phase: \"building\")") else {
                 XCTFail("\(path): phase: \"building\" を書いていない" +
                         " (ビルド中の run がボードに1本も出ない)")
                 continue
@@ -74,6 +75,25 @@ final class RunProgressLedgerWiringTests: XCTestCase {
             XCTAssertTrue(phaseRange.lowerBound < buildRange.lowerBound,
                           "\(path): phase: \"building\" がビルド呼び出しより後ろにある" +
                           " (ビルド中はボードに1本も出ない)")
+            // **入口ではない** —— ビルド呼び出しの直前でだけ立てる(間に入口の記帳や defer が
+            // 挟まっていないこと。以前は 20 行以上離れた run の入口に居た)
+            let gap = text.distance(from: phaseRange.upperBound, to: buildRange.lowerBound)
+            XCTAssertLessThan(gap, 200,
+                              "\(path): phase: \"building\" がビルド呼び出しから離れている" +
+                              " (--skip-build でも「ビルド中」が出る形に戻っている)")
+            // 入口は "preparing"(ビルドの前に1本書いておく = その間ボードから消えない)
+            let entry = text.range(of: "writeProgress(phase: \"preparing\")")
+            XCTAssertNotNil(entry, "\(path): 入口で phase: \"preparing\" を書いていない")
+            if let entry {
+                XCTAssertTrue(entry.lowerBound < phaseRange.lowerBound,
+                              "\(path): 入口の記帳がビルドの段より後ろにある")
+            }
+            // ビルドが終わったら戻す(終わっているのに「ビルド中」のままにしない)
+            let after = text.range(of: "writeProgress(phase: \"preparing\")",
+                                   range: buildRange.upperBound..<text.endIndex)
+            XCTAssertNotNil(after,
+                            "\(path): ビルドの後に phase: \"preparing\" へ戻していない" +
+                            " (供給が始まるまで「ビルド中」のまま出る)")
         }
     }
 

@@ -13,7 +13,7 @@ import { t } from "./i18n";
 import {
   type MonitorControlCommand,
   type MonitorDevice,
-  filterMonitorDevices,
+  devicesToWebviewMessage,
   isMonitorEvent,
   monitorControlLine,
   sortMonitorDevices,
@@ -399,10 +399,12 @@ export class MonitorProcessManager {
           this.deps.notifyMonitorDevices(this.latestDevices);
           // リモート機の host-metrics(行が増える)。表示フィルタ前の一覧で判定する
           this.syncHostMetricsMachines(this.latestDevices);
-          value = {
-            kind: "monitorDevices",
-            devices: filterMonitorDevices(this.latestDevices, this.deps.getConfig().monitorDeviceFilter),
-          };
+          // **表示フィルタは畳まずに送る** —— run ボードのツリーはこのフィルタを通さない
+          // (ビルド中・停止中の台も出す。docs/design.md §18.5)。落とすのは webview の入口。
+          this.deps.post(
+            devicesToWebviewMessage(this.latestDevices, this.deps.getConfig().monitorDeviceFilter),
+          );
+          return;
         }
         // monitorFrame は state==connected のデバイスにしか来ない(ApiMonitorCommand.swift)ため、
         // "running" フィルタで消える対象(offline / unknown)とは重ならない。フレーム側の絞り込みは不要。
@@ -547,8 +549,9 @@ export class MonitorProcessManager {
       return;
     }
     // webview への再送のみ(notifyMonitorDevices は呼ばない — ホスト側の状態は何も変わっていない)。
-    const visible = filterMonitorDevices(this.latestDevices, this.deps.getConfig().monitorDeviceFilter);
-    this.deps.post(toWebviewMessage({ kind: "monitorDevices", devices: visible }));
+    this.deps.post(
+      devicesToWebviewMessage(this.latestDevices, this.deps.getConfig().monitorDeviceFilter),
+    );
   }
 
   /**

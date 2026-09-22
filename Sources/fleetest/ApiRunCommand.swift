@@ -607,22 +607,31 @@ struct ApiRunCommand: AsyncParsableCommand {
             androidWorkersTask = nil
         }
 
-        // run 進捗の記帳(docs/design.md §18.1)。**ビルドより前に書く** —— 実測でシナリオの
-        // swift build から phase: "preparing" が出るまで ~15秒あり、書かないとその間ボードに
-        // 1本も出ない。総本数・レーンはまだ未確定(total: 0・lanes: [])。
-        // `runWithProfileParallel` が同じ pid ファイルを phase: "preparing" で上書きする。
+        // run 進捗の記帳(docs/design.md §18.1)。**ビルドより前に1本書く** —— 実測でシナリオの
+        // swift build から供給の記帳が出るまで ~15秒あり、書かないとその間ボードに1本も出ない。
+        // 総本数・レーンはまだ未確定(total: 0・lanes: [])。
+        // `runWithProfileParallel` が同じ pid ファイルを上書きする。
         // 条件は androidWorkersTask/iosWorkersTask を起こす条件(上)と同じ = runWithProfileParallel
         // が実際に呼ばれる経路だけに書く。**後始末**: そこへ到達できずに関数を抜けたら控えを消す
         let progressPid = ProcessInfo.processInfo.processIdentifier
         var progressHandedToRunWithProfileParallel = false
-        if let resolvedProfile, !dryRun, debugOptions == nil {
-            RunProgressLedger.sweep(directory: RunProgressLedger.directory())
+        // 書き直しても**入口の時刻のまま**(経過が巻き戻らない)
+        let progressStartedAt = ISO8601DateFormatter().string(from: Date())
+        /// **段階は実際にやっていることだけを言う**(ユーザー決定 2026-09-22)—— 入口ではまだ
+        /// ビルドしていない(`--skip-build` = 機械分担のローカル子なら最後までしない)ので
+        /// "preparing" で始め、"building" は `ScenarioHost.build` を挟む間だけ立てて直後に戻す。
+        func writeProgress(phase: String) {
+            guard let resolvedProfile, !dryRun, debugOptions == nil else { return }
             RunProgressLedger.write(RunProgressRecord(
                 pid: progressPid, runID: nil, runGroup: nil, issuer: LocalConfig.resolveIssuerId(),
                 project: testProject.name, profile: resolvedProfile.runName,
-                startedAt: ISO8601DateFormatter().string(from: Date()), total: 0, done: 0, failed: 0,
-                requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: "building"),
+                startedAt: progressStartedAt, total: 0, done: 0, failed: 0,
+                requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: phase),
                 directory: RunProgressLedger.directory())
+        }
+        if resolvedProfile != nil, !dryRun, debugOptions == nil {
+            RunProgressLedger.sweep(directory: RunProgressLedger.directory())
+            writeProgress(phase: "preparing")
         }
         defer {
             if resolvedProfile != nil, !dryRun, debugOptions == nil,
@@ -633,8 +642,10 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
         if !skipBuild {
+            writeProgress(phase: "building")
             logStderr("→ Building scenarios (\(testProject.name))...")
             try ScenarioHost.build(project: testProject) { logStderr($0) }
+            writeProgress(phase: "preparing")
         } else {
             // 食い違っていても止めない(警告のみ。)
             ScenarioHost.warnIfSkipBuildStale(project: testProject) { logStderr($0) }

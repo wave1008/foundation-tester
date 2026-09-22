@@ -274,10 +274,15 @@ function renderDevicesPanel(): string {
              4つのセクション(実行中・デバイス一覧・選択したデバイス・実行ログ)から同時に消える
              —— deviceTiles.js が applyDevices の入口で落とすため。**ヘッダ行のクリック
              (ボード全体の開閉)へ波及させない**ので deviceTiles.js が stopPropagation する。
+             **見た目はバッジ**(ユーザー決定 2026-09-22): 選んでいるものだけ色付き
+             (iOS / Android はタイルのデバイス名ピルと同じ色・「すべて」は白)で、
+             選んでいないものは灰色。3択なので role は radiogroup/radio のまま持つ。
              iOS / Android は製品名なので翻訳しない(「すべて」と説明だけ t() を通す) -->
-        <label class="profile-label header-toggle run-board-platform-filter" title="${t("panels.runBoard.platformFilterTitle")}"><input type="radio" name="platform-filter" id="rad-platform-ios" value="ios">iOS</label>
-        <label class="profile-label header-toggle" title="${t("panels.runBoard.platformFilterTitle")}"><input type="radio" name="platform-filter" id="rad-platform-android" value="android">Android</label>
-        <label class="profile-label header-toggle" title="${t("panels.runBoard.platformFilterTitle")}"><input type="radio" name="platform-filter" id="rad-platform-all" value="all" checked>${t("panels.runBoard.platformFilterAll")}</label>
+        <span class="run-board-platform-filter" role="radiogroup" aria-label="${t("panels.runBoard.platformFilterTitle")}" title="${t("panels.runBoard.platformFilterTitle")}">
+          <button type="button" class="badge platform-badge platform-badge-ios" id="rad-platform-ios" data-value="ios" role="radio" aria-checked="false">iOS</button>
+          <button type="button" class="badge platform-badge platform-badge-android" id="rad-platform-android" data-value="android" role="radio" aria-checked="false">Android</button>
+          <button type="button" class="badge platform-badge platform-badge-all" id="rad-platform-all" data-value="all" role="radio" aria-checked="true">${t("panels.runBoard.platformFilterAll")}</button>
+        </span>
       </div>
       <div id="run-board-rows" class="run-board-rows"></div>
       <!-- 2カラムの境目(ユーザー決定 2026-09-22)。マウスで幅を変える。**見出し行には掛けない**

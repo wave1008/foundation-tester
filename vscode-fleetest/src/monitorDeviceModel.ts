@@ -2,6 +2,9 @@
 // モニターが扱うデバイスの型と `fleetest api monitor` の NDJSON イベント(vscode に依存しない
 // 純粋関数群。monitorPanel.ts と test/monitorModel.test.mjs の両方から同じロジックを使うため。
 // ndjson.ts/stepsModel.ts と同じ方針)。
+// **拡張と webview の両バンドルに入る**(src/webview/monitor/deviceTiles.js が
+// filterMonitorDevices を import する。runBoardModel.ts と同じ立場)ので、vscode を引き込む
+// import を足さない —— 型だけの import(MonitorDeviceFilter)はビルドで消えるので可。
 //
 // 契約: `fleetest api monitor --project <P> [--interval <秒>] [--max-width <px>] [--profile <run>]`
 // の stdout NDJSON:

@@ -49,6 +49,7 @@ import {
   removeQueuedDeviceUpJob,
   RUNNING_DEVICES_PROFILE_VALUE,
   runProfileDeviceRefKey,
+  devicesToWebviewMessage,
   toWebviewMessage,
   updateAppProfileInObject,
   updateRunProfileInObject,
@@ -308,13 +309,17 @@ test("isMonitorEvent: monitorError は message が欠落/非文字列なら fals
 
 // ---- toWebviewMessage: 変換 ----
 
-test("toWebviewMessage: monitorDevices → { type: 'devices', devices }", () => {
+// 台の一覧だけは toWebviewMessage を通さない —— 表示フィルタ(「起動中のデバイス」)を
+// **畳まずに** filter を添えて送り、落とすのは webview の入口(run ボードのツリーは通さない。
+// docs/design.md §18.5)。toWebviewMessage 側は Exclude してあるので通し忘れはコンパイルで止まる。
+test("devicesToWebviewMessage: 一覧は絞らず filter を添える", () => {
   const devices = [
-    { id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "connected", detail: "接続済み" },
+    { id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "offline", detail: "未起動" },
   ];
-  assert.deepEqual(toWebviewMessage({ kind: "monitorDevices", devices }), {
+  assert.deepEqual(devicesToWebviewMessage(devices, "running"), {
     type: "devices",
     devices,
+    filter: "running",
   });
 });
 
@@ -3226,7 +3231,9 @@ function runMockMonitorThroughPipeline(mockArgs, expectedCount) {
         if (!isMonitorEvent(value)) {
           return;
         }
-        messages.push(toWebviewMessage(value));
+        messages.push(value.kind === "monitorDevices"
+          ? devicesToWebviewMessage(value.devices, "all")
+          : toWebviewMessage(value));
         if (messages.length >= expectedCount) {
           proc.stdin.end();
         }

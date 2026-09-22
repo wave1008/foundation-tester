@@ -77,8 +77,8 @@ public struct RunProgressRecord: Codable, Equatable, Sendable {
     /// 段5(残り見積もり)。実績が1件も無い run は nil。推測値は出さない
     public let etaSeconds: Int?
     public let lanes: [RunProgressLane]
-    /// "building"(シナリオの swift build 中。run の入口で書く)/
-    /// "preparing"(デバイスの供給中)/ "running"
+    /// "building"(シナリオの swift build を**実際に呼んでいる間だけ**。`--skip-build` では
+    /// 一度も立たない)/ "preparing"(入口・ビルド後・デバイスの供給中)/ "running"
     public let phase: String
 
     public init(pid: Int32, runID: String?, runGroup: String?, issuer: String?, project: String,
