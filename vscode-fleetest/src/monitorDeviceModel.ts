@@ -395,21 +395,21 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
 }
 
 /**
- * デバイス一覧をプロファイルタブの表示順に整列する:
- * **ios→android → 手元が先 → ホスト名順 → name 順**。
- * プラットフォームが外側なのは、プロファイルタブが ios/android の別セクションを持ち、
- * ホストでのまとまりはその中にあるため。タイルは1列なので、外側=左右のかたまりになる。
+ * デバイス一覧を整列する: **手元が先 → 機械名順 → ios→android → name 順**
+ * (ユーザー決定 2026-09-22。それまではプラットフォームが外側だった)。
+ * **機械が外側**なのは、台は機械ごとに起動・停止し、run も機械ごとに配られるため ——
+ * タイルは1列なので、外側 = 左右のかたまりになる。
  * monitorProcessManager.ts が monitorDevices 受信時に適用し、以降の全消費側
- * (「デバイスモニター」タブのタイル)はこの順で受け取る。
+ * (タイル・拡大表示・実行ログ・run ボードのツリー)はこの順で受け取る。
  */
 export function sortMonitorDevices(devices: readonly MonitorDevice[]): MonitorDevice[] {
   return [...devices].sort((a, b) => {
-    if (a.platform !== b.platform) {
-      return a.platform === "ios" ? -1 : 1;
-    }
     const [ha, hb] = [a.machine ?? "", b.machine ?? ""];
     if (ha !== hb) {
       return ha === "" ? -1 : hb === "" ? 1 : ha.localeCompare(hb);  // 手元が先
+    }
+    if (a.platform !== b.platform) {
+      return a.platform === "ios" ? -1 : 1;
     }
     return a.name.localeCompare(b.name);
   });

@@ -23,9 +23,12 @@ export const runBoardToggle = document.getElementById('run-board-toggle');
 export const runBoardTitle = document.getElementById('run-board-title');
 export const runBoardExpandAll = document.getElementById('run-board-expand-all');
 export const runBoardRows = document.getElementById('run-board-rows');
-// プラットフォームの表示フィルタ(既定 ON。状態と配線は deviceTiles.js)。
-export const chkPlatformIOS = document.getElementById('chk-platform-ios');
-export const chkPlatformAndroid = document.getElementById('chk-platform-android');
+// プラットフォームの表示フィルタ(3択・既定は「すべて」。状態と配線は deviceTiles.js)。
+export const platformFilterRadios = [
+  document.getElementById('rad-platform-ios'),
+  document.getElementById('rad-platform-android'),
+  document.getElementById('rad-platform-all'),
+];
 // 「実行中」と「デバイス」の間のセパレーター(run ボードの高さを変える。splitter.js)。
 export const devicesSeparator = document.getElementById('devices-separator');
 

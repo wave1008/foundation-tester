@@ -61,9 +61,9 @@ is unavailable.
   in the Run Log View). With exactly one device selected, the Grid View shows the enlarged screen and
   that device's run log side by side, and the Run Log View below folds itself so the same log is not
   shown twice.
-- Clearing the **iOS** / **Android** checkboxes in the run board header hides that platform's
-  devices from all four sections (Running, Device list, Selected devices and Run log). The
-  devices themselves keep running; only the display changes.
+- The **iOS** / **Android** / **All** radio in the run board header (**All** by default) limits
+  which devices appear in all four sections (Running, Device list, Selected devices and Run log).
+  The devices themselves keep running; only the display changes.
 - Turning **Live Updates** (in the Line View header) off stops streaming and capturing every
   device's screen to reduce the Mac's load. Tiles keep their last frame, dimmed (status keeps updating).
 - The **Test Sessions** tab opens runs that were recorded (run profile `record: true`) and shows each

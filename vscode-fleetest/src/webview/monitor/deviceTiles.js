@@ -8,7 +8,7 @@
 import { t } from '../i18n.js';
 import { setDevicesWaiting } from './waitingNote.js';
 import { vscode } from './vscodeApi.js';
-import { grid, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuSelectOnlyBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRestart, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee, lineViewSelection, chkPlatformIOS, chkPlatformAndroid } from './domRefs.js';
+import { grid, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuSelectOnlyBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRestart, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee, lineViewSelection, platformFilterRadios } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers, relayoutPreviewsForResize } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
@@ -1320,16 +1320,17 @@ export function clearTilesForRestart() {
   updateLaneVisibility();
 }
 
-// ---- プラットフォームの表示フィルタ(run ボードのヘッダのチェックボックス。既定は両方 ON) ----
+// ---- プラットフォームの表示フィルタ(run ボードのヘッダのラジオ。'all' | 'ios' | 'android') ----
 // **入口で落とす** —— タイル・レーン・拡大表示・run ボードのツリーはすべてこの一覧から作るので、
 // ここで落とせば4つのセクション(実行中・デバイス一覧・選択したデバイス・実行ログ)から同時に消える。
 // **生の一覧を控える** —— 切り替えたその場で描き直すため(次の監視サイクルを待たない)。
-let platformFilter = { ios: true, android: true };
+const PLATFORM_FILTER_ALL = 'all';
+let platformFilter = PLATFORM_FILTER_ALL;
 let lastDevices = [];
 const platformFilterListeners = [];
 
 export function isPlatformVisible(platform) {
-  return platformFilter[platform] !== false;
+  return platformFilter === PLATFORM_FILTER_ALL || platformFilter === platform;
 }
 
 /** 表示フィルタが変わったら呼ぶ(runBoard.js が自分のツリーを描き直す)。 */
@@ -1339,28 +1340,33 @@ export function onPlatformFilterChanged(listener) {
 
 function applyPlatformFilterState(next, persist) {
   platformFilter = next;
-  chkPlatformIOS.checked = platformFilter.ios;
-  chkPlatformAndroid.checked = platformFilter.android;
+  for (const radio of platformFilterRadios) {
+    radio.checked = radio.value === platformFilter;
+  }
   applyVisibleDevices(lastDevices.filter((device) => isPlatformVisible(device.platform)));
   for (const listener of platformFilterListeners) {
     listener();
   }
   if (persist) {
-    vscode.postMessage({ type: 'setPlatformFilter', ios: platformFilter.ios, android: platformFilter.android });
+    vscode.postMessage({ type: 'setPlatformFilter', value: platformFilter });
   }
 }
 
-/** host からの復元値(sendInitialState)。**投げ返さない**(applySelectAllDevices と同じ規律)。 */
+/** host からの復元値(sendInitialState)。**投げ返さない**(applySelectAllDevices と同じ規律)。
+ *  **知らない値は「すべて」へ倒す** —— 台が黙って消えるより出しすぎるほうが安全。 */
 export function applyPlatformFilter(message) {
-  applyPlatformFilterState({ ios: message.ios !== false, android: message.android !== false }, false);
+  const known = platformFilterRadios.some((radio) => radio.value === message.value);
+  applyPlatformFilterState(known ? message.value : PLATFORM_FILTER_ALL, false);
 }
 
-for (const [checkbox, key] of [[chkPlatformIOS, 'ios'], [chkPlatformAndroid, 'android']]) {
+for (const radio of platformFilterRadios) {
   // 見出し行(run ボードのヘッダ)のクリックはボードごと畳むので、ラベル全体で止める
   // (streamToggle.js と同じ)
-  checkbox.closest('label').addEventListener('click', (event) => event.stopPropagation());
-  checkbox.addEventListener('change', () => {
-    applyPlatformFilterState(Object.assign({}, platformFilter, { [key]: checkbox.checked }), true);
+  radio.closest('label').addEventListener('click', (event) => event.stopPropagation());
+  radio.addEventListener('change', () => {
+    if (radio.checked) {
+      applyPlatformFilterState(radio.value, true);
+    }
   });
 }
 

@@ -40,6 +40,14 @@ import type {
 } from "./monitorProfileForms";
 
 /** extension → webview へ送るメッセージ(型付き)。 */
+/** プラットフォームの表示フィルタ(run ボードのヘッダのラジオ)。**"all" が既定**。
+ * 受け手は webview 側 deviceTiles.js。 */
+export type PlatformFilter = "all" | "ios" | "android";
+
+export function isPlatformFilter(value: unknown): value is PlatformFilter {
+  return value === "all" || value === "ios" || value === "android";
+}
+
 export type MonitorToWebviewMessage =
   | { readonly type: "devices"; readonly devices: readonly MonitorDevice[] }
   // run ボード(docs/design.md §18)。**1件 = 1機械ぶん**(monitorLock と同じ相乗り。machine 欠落 =
@@ -401,9 +409,10 @@ export type MonitorToWebviewMessage =
   // run ボードの「全て展開」トグル(true = 新しく現れた run も自動で展開する)。永続化の経路は
   // tilePaneHeight と同じ(setRunBoardExpandAll と対の契約。受け手は runBoard.js)。
   | { readonly type: "runBoardExpandAll"; readonly value: boolean }
-  // プラットフォームの表示フィルタ(false = その側のデバイスを4つのセクションから隠す)。
-  // 永続化の経路は tilePaneHeight と同じ(setPlatformFilter と対の契約。受け手は deviceTiles.js)。
-  | { readonly type: "platformFilter"; readonly ios: boolean; readonly android: boolean }
+  // プラットフォームの表示フィルタ("all" | "ios" | "android"。all 以外はその側だけを
+  // 4つのセクションに出す)。永続化の経路は tilePaneHeight と同じ
+  // (setPlatformFilter と対の契約。受け手は deviceTiles.js)。
+  | { readonly type: "platformFilter"; readonly value: string }
   // 「デバイスモニター」タブの全選択トグルの状態(true = 全デバイス選択)。永続化の理由と経路は
   // tilePaneHeight と同じ(setSelectAllDevices と対の契約)。**0枚でも復元する** ——
   // ready 直後はモニターがまだ台を出しておらず、出てきた台を webview 側が選び直す。
@@ -831,7 +840,7 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "setRunBoardExpandAll"; readonly value: boolean }
   // プラットフォームの表示フィルタの切替。monitorPanel.ts が workspaceState へ永続化し、
   // パネル再作成時に "platformFilter" メッセージで復元する。
-  | { readonly type: "setPlatformFilter"; readonly ios: boolean; readonly android: boolean }
+  | { readonly type: "setPlatformFilter"; readonly value: PlatformFilter }
   // 全選択トグルの状態が変わったとき(ボタン・Cmd/Ctrl+A・右クリックメニュー、および
   // 個別選択で全台が揃った/崩れたとき)。monitorPanel.ts が workspaceState へ永続化し、
   // パネル再作成時に "selectAllDevices" メッセージで復元する。
@@ -1210,7 +1219,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "setRunBoardHeight":
       return typeof value.value === "number" && value.value > 0;
     case "setPlatformFilter":
-      return typeof value.ios === "boolean" && typeof value.android === "boolean";
+      return isPlatformFilter(value.value);
     case "setFleetVisible":
     case "setLogViewVisible":
     case "setGridViewVisible":

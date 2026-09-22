@@ -3460,3 +3460,30 @@ test("removeQueuedDeviceUpJob: (machine, name) が一致する待機中の up �
   assert.equal(result.state.jobs.length, 2);
   assert.equal(removeQueuedDeviceUpJob(state, "B", undefined).removed, undefined);
 });
+
+// デバイスの並び順は **手元が先 → 機械名順 → ios→android → name 順**
+// (ユーザー決定 2026-09-22。それまではプラットフォームが外側だった)。ここを変えると
+// タイル・拡大表示・実行ログ・run ボードのツリーの並びが**全部**変わる(整列はここ1箇所)。
+test("デバイスの並びは機械が外側・OS が内側", async () => {
+  const { sortMonitorDevices } = await import("../src/monitorDeviceModel");
+  const device = (machine, platform, name) => ({
+    id: `${machine}:${name}`, name, platform, state: "connected", detail: "", kind: "virtual",
+    ...(machine ? { machine } : {}),
+  });
+  const sorted = sortMonitorDevices([
+    device("M1Max", "ios", "iPhone-01"),
+    device(undefined, "android", "Pixel-01"),
+    device("M1Max", "android", "Pixel-02"),
+    device(undefined, "ios", "iPhone-02"),
+    device("M1Max", "ios", "iPhone-00"),
+  ]);
+  assert.deepEqual(sorted.map((d) => d.id), [
+    // 手元(machine 無し)が先。その中で ios → android
+    "undefined:iPhone-02",
+    "undefined:Pixel-01",
+    // 続いて機械名順。その中で ios → android、同じ OS では name 順
+    "M1Max:iPhone-00",
+    "M1Max:iPhone-01",
+    "M1Max:Pixel-02",
+  ]);
+});

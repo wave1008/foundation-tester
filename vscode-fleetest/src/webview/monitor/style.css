@@ -248,6 +248,22 @@ button.bulk-cancel:hover:not(:disabled) {
 .header-toggle input {
   cursor: pointer;
 }
+/* 見出し行のラジオは**外側の丸だけ縮める**(ユーザー決定 2026-09-22)—— 行の高さが 20px なので
+   18px の丸は大きすぎる。**内側の点は 8px のまま**で、中央に置く位置だけ計算し直す:
+   絶対位置は枠の内側(14 - 枠線 2 = 12)基準なので (12 - 8) / 2 = 2。
+   **モーダルのラジオは 18px のまま** —— あちらは同じ行にチェックボックス(18px)が並ぶので、
+   揃っていないほうが目立つ */
+.header-toggle input[type="radio"] {
+  width: 14px;
+  height: 14px;
+}
+.header-toggle input[type="radio"]:checked::after {
+  left: 2px;
+  top: 2px;
+  /* 点の色は**「ライブ更新」のトグルの ON と同じ青**(ユーザー決定 2026-09-22)。
+     同じ見出し行で「選ばれている」を表す色なので片方だけ変えない(.toggle-switch:checked) */
+  background-color: var(--vscode-button-background, #0078d4);
+}
 /* 「すべて選択」の右に続く(ユーザー決定 2026-09-22)。2つのトグルは1つの group なので、
    間は行の gap(6px)だけ —— 台数から離すぶんは先頭の .line-view-select-all が持つ */
 /* 通常は1行(手元だけ)。リモート機の行が増えると縦に積む(hostCharts.js が hm-multi を付ける) */
@@ -488,17 +504,11 @@ html[lang="en"] .header-count {
 #run-board-title {
   min-width: 56px;
 }
-/* プラットフォームの表示フィルタの**チェックボックスの左端を、ツールバーの MEM チャート
-   (canvas)の左端に合わせる**(ユーザー決定 2026-09-22)。
-   こちら: 見出しの padding 8 + 三角 16 + gap 6 + 見出し文字 56 + 全て展開(margin 10 + 20)
-     + gap 6 = 122 → ラベルの padding-left 6 を**打ち消して**チェックボックスを 122 に置く。
-   MEM 側: toolbar の padding 12 + 機械名の列 72 + gap 10 + ラベル "MEM"(11px で約 25)
-     + gap 4 = 約 123。
-   **どちらも固定幅の積み上げ**なので、片方の寸法(#run-board-title の min-width・.hm-machine
-   の width・ラベルの字)を変えたらここも見る。機械が1台だけのときは .hm-machine が
-   出ないので揃わない(複数機械のときに合わせている) */
+/* プラットフォームの表示フィルタは「全て展開」から**5文字ぶん**空ける(ユーザー決定 2026-09-22)。
+   ch = 見出しの文字(12px)の "0" の幅なので、字の大きさを変えれば間隔も一緒に動く。
+   **位置が桁で動かない**のは #run-board-title の min-width が効いているため(片方だけ変えない) */
 .run-board-platform-filter {
-  margin-left: -6px;
+  margin-left: 5ch;
 }
 /* 走っていない機械の行も run 行と同じ作り(.run-board-row)。**見出しの1行だけ控えめに** ——
    run の行が主役だが、下に並ぶ台のツリーまで薄くすると読みにくい */
@@ -2020,8 +2030,10 @@ input[type="search"]::placeholder {
 }
 /* appearance:none はチェックボックスと同じ理由に加え、VSCode既定の input:focus outline が
    クリックだけで円形ラジオに四角い枠を出す問題を避けるため。outline: none(詳細度21)は
-   既定の input:focus(11)に確実に勝つ。 */
-.modal-radio input[type="radio"] {
+   既定の input:focus(11)に確実に勝つ。
+   **モーダル限定にしない** —— ラジオはモーダルの外(run ボードの表示フィルタ)にも居り、
+   素の描画のままだと OS ごとに見た目が割れる(チェックボックスを全体に掛けているのと同じ理由) */
+input[type="radio"] {
   -webkit-appearance: none;
   appearance: none;
   width: 18px;
@@ -2036,7 +2048,7 @@ input[type="search"]::placeholder {
   outline: none;
 }
 /* 18px 箱の内側16pxの中央に8pxの円を置く手計算値。 */
-.modal-radio input[type="radio"]:checked::after {
+input[type="radio"]:checked::after {
   content: '';
   position: absolute;
   left: 4px;
@@ -2046,7 +2058,7 @@ input[type="search"]::placeholder {
   border-radius: 50%;
   background-color: var(--vscode-settings-checkboxForeground, var(--vscode-foreground));
 }
-.modal-radio input[type="radio"]:focus-visible {
+input[type="radio"]:focus-visible {
   outline: 1px solid var(--vscode-focusBorder, #007acc);
   outline-offset: 1px;
 }

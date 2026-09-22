@@ -92,9 +92,10 @@ export const panelsStrings = {
   "panels.devices.emptyMessage": { ja: "デバイスを待機しています", en: "Waiting for devices" },
   "panels.devices.selectDevices": { ja: "デバイスを選択して下さい", en: "Select a device" },
   "panels.devices.selectAllLabel": { ja: "すべて選択", en: "Select all" },
+  "panels.runBoard.platformFilterAll": { ja: "すべて", en: "All" },
   "panels.runBoard.platformFilterTitle": {
-    ja: "OFF にすると、このプラットフォームのデバイスを実行中・デバイス一覧・選択したデバイス・実行ログから隠します",
-    en: "Turn off to hide this platform's devices from Running, Device list, Selected devices and Run log",
+    ja: "実行中・デバイス一覧・選択したデバイス・実行ログに出すデバイスをプラットフォームで絞ります",
+    en: "Limits which devices appear in Running, Device list, Selected devices and Run log",
   },
   "panels.devices.splitterAriaLabel": { ja: "タイルと出力の分割境界線", en: "Divider between tiles and output" },
   "panels.devices.logSplitterAriaLabel": { ja: "実行ログとグリッドの分割境界線", en: "Divider between run log and grid" },
