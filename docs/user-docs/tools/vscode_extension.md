@@ -61,7 +61,7 @@ is unavailable.
   in the Run Log View). With exactly one device selected, the Grid View shows the enlarged screen and
   that device's run log side by side, and the Run Log View below folds itself so the same log is not
   shown twice.
-- Turning **Live Updates** (right end of the Grid View header) off stops streaming and capturing every
+- Turning **Live Updates** (in the Line View header) off stops streaming and capturing every
   device's screen to reduce the Mac's load. Tiles keep their last frame, dimmed (status keeps updating).
 - The **Test Sessions** tab opens runs that were recorded (run profile `record: true`) and shows each
   scenario's video, a step tree, and the error list. **If the Device Monitor tab is showing when a run

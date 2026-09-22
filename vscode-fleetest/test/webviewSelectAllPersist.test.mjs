@@ -87,8 +87,7 @@ function restore(window, value) {
 }
 
 function isOn(document) {
-  const button = document.getElementById("btn-select-all");
-  return button.classList.contains("toggled") && button.getAttribute("aria-pressed") === "true";
+  return document.getElementById("chk-select-all").checked;
 }
 
 function selectedTileCount(document) {
@@ -127,17 +126,17 @@ test("ボタンを押すと ON/OFF が host へ送られる", (t) => {
   sendDevices(window, 3);
   posted.length = 0;
 
-  click(window, document.getElementById("btn-select-all"));
+  click(window, document.getElementById("chk-select-all"));
   assert.deepEqual(persistedValues(posted), [true]);
 
-  click(window, document.getElementById("btn-select-all"));
+  click(window, document.getElementById("chk-select-all"));
   assert.deepEqual(persistedValues(posted), [true, false]);
 });
 
 test("値が変わらない操作では送らない(devices サイクルのたびに書かない)", (t) => {
   const { window, document, posted } = createWebview();
   t.after(() => window.close());
-  click(window, document.getElementById("btn-select-all"));
+  click(window, document.getElementById("chk-select-all"));
   posted.length = 0;
 
   sendDevices(window, 3);

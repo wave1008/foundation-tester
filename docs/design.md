@@ -4464,16 +4464,28 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
 
 ### 12.6 「デバイスモニター」タブの3ペイン(ラインビュー / グリッドビュー / 実行ログビュー。2026-09-21)
 
-縦の並びは **ツールバー → run ボード(§18)→ ラインビューの見出し → `#tile-pane`(ラインビュー)→
-`#splitter` → `#output-pane`(グリッドビュー。`flex:1 1 auto` で残りを占める)→ `#splitter-log` →
-`#log-pane`(実行ログビュー。高さは `splitter.js` が inline で入れる)**。3つとも常設で、
-**見出し行はどこを押しても開閉**(run ボードのヘッダと同じ規律。三角は状態の表示で文字は常に ▶)。
+縦の並びは **ツールバー → run ボード(§18)→ `#devices-separator` → ラインビューの見出し →
+`#tile-pane`(ラインビュー)→ `#splitter` → `#output-pane`(グリッドビュー。`flex:1 1 auto` で
+残りを占める)→ `#splitter-log` → `#log-pane`(実行ログビュー。高さは `splitter.js` が inline で
+入れる)**。3つとも常設で、**見出し行はどこを押しても開閉**(run ボードのヘッダと同じ規律。
+三角は状態の表示で文字は常に ▶)。
 
+- **「実行中」と「デバイス」の間にもセパレーター**(`#devices-separator`。ユーザー決定 2026-09-22)。
+  **見た目も挙動も `#splitter-log` と同じ**(`.splitter`)で、下げると run ボードが伸びる。
+  見出し行どうしの区切りを地色だけで付ける規律(2026-09-21)の**唯一の例外**。守る規律4つ:
+  **①保存値が無い間は高さを書かない**(中身なりに伸び縮みする = 従来の見え方。既定比を作らない)/
+  **②はみ出しは箱で止め、行は `#run-board-rows` が自前でスクロールする**(`min-height: 0` が無いと
+  flex の既定で中身の高さまで伸びて `overflow` が効かない)/ **③畳んでいる間は掴めない**
+  (伸ばす中身が無い。CSS が `pointer-events` を殺す)/ **④畳みの反映は `runBoard.js` が
+  `reapplyPaneHeights` を呼んで伝える** —— 高さを書いてあると箱の大きさが変わらず ResizeObserver が
+  鳴かない(畳んだのに行の無い高い帯が残る)
 - **どこまで引いても見出し行は消さない**(ユーザー決定 2026-09-21)。可動域の判定は純粋関数
-  `webview/monitor/paneLayoutModel.js`(`tilePaneLimits` / `logPaneLimits`)に置き、見出し行と
-  ペインの padding は**実測して渡す**(定数を置かない = style.css を変えたとき片方だけ古くならない)
+  `webview/monitor/paneLayoutModel.js`(`runBoardLimits` / `tilePaneLimits` / `logPaneLimits`)に置き、
+  見出し行とペインの padding は**実測して渡す**(定数を置かない = style.css を変えたとき片方だけ
+  古くならない)
 - **再クランプの入口は `reapplyPaneHeights` の1つ**(resize / run ボードの伸縮を見る ResizeObserver /
-  タブ復帰(`tabs.js`)/ 初期描画)。**tile 側(`reapplyTilePaneHeight`)だけを呼ぶ経路を作らない**
+  run ボードの畳み / タブ復帰(`tabs.js`)/ 初期描画)。**run ボードを先に描く** —— 3ペインの
+  取り分はボードの高さを引いた残りなので、順序を入れ替えると1周ぶん古い取り分でクランプする。**tile 側(`reapplyTilePaneHeight`)だけを呼ぶ経路を作らない**
   —— ラインビューを畳んでいる間 tile 側は `splitAreaHidden()` で素通りするので、実行ログビューだけが
   古い高さのまま取り残される(`webviewLogGridSplit.test.mjs` がソース走査で固定)
 - **両ペインに出すのはラインビューで選択した台だけ**(ユーザー決定 2026-09-21)。**全体レーン
@@ -4492,13 +4504,26 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   出さない**(供給の進行と重なる)。**出し入れはクラス(CSS)で行い inline の `display` を書かない**
   —— inline は畳みの規則に勝つので、畳んでも消えない形が静かにできる(例外は `waitingNote.js` が
   inline で出し入れする `#lanes-waiting` だけで、畳みの反映も同じ1箇所で解く)
-- **永続化は `tilePaneHeight` と同じ契約**(webview → `setLogPaneHeight` / `setLogViewVisible` /
-  `setGridViewVisible`、host → `logPaneHeight` / `logViewVisible` / `gridViewVisible`。既定は
-  どちらも「表示」で、webview の `!== false` と host の既定 `true` を**片方だけ変えない**)
+- **永続化は `tilePaneHeight` と同じ契約**(webview → `setRunBoardHeight` / `setLogPaneHeight` /
+  `setLogViewVisible` / `setGridViewVisible`、host → `runBoardHeight` / `logPaneHeight` /
+  `logViewVisible` / `gridViewVisible`。既定はどちらも「表示」で、webview の `!== false` と host の
+  既定 `true` を**片方だけ変えない**)。**`runBoardHeight` だけは既定値を作らない** ——
+  届かなければ中身なりの高さ
 - **タイルはどこを押しても選択トグル**(ユーザー決定 2026-09-21)。当たり矩形は**タイルそのもの**で、
   範囲選択(marquee)と同じものを使う(規則を2つ持たない)。解除はタイルの高さの外を押したときだけ
-- 「ライブ更新」はグリッドビューの見出し行の右端(ユーザー決定 2026-09-21)。**見出し行の開閉へ
-  波及させない** —— `streamToggle.js` がラベルごと `stopPropagation` する
+- 見出しの文言は **「デバイス一覧」/「選択したデバイス」/「実行ログ」**(ユーザー決定 2026-09-22)。
+  「すべて選択」と「ライブ更新」は**どちらも同じトグル**(ユーザー決定 2026-09-22。
+  `.header-toggle` のラベル + `.toggle-switch` のつまみ。ON は青い地)で、
+  **ラインビューの見出し行にこの順で並べる** —— どちらもタイルの見え方を操るので隣り合わせる
+  (「ライブ更新」が効く相手は全台 = タイルも拡大表示も)。台数(`.header-count`)から 10px
+  離し(行の gap 6px に足して 16px。run ボードの「全て展開」と同じ)、**2つの間は行の gap だけ**。
+  台数は**幅を固定**する(桁が変わるたびに右のトグルが動かないよう、等幅数字 + 言語ごとの
+  `min-width`)。守る規律3つ:
+  **①実体は `input[type="checkbox"]` のまま**(キーボード操作と `change` をそのまま使う。
+  `role="switch"`)/ **②見える文字は状態で入れ替えない** —— 次に何が起きるか(選択 / 解除)は
+  ツールチップが出し、**`aria-label` は付けない**(見える文字が名前・ON/OFF は checked が伝える)/
+  **③見出し行の開閉へ波及させない**(`streamToggle.js` / `deviceTiles.js` がラベルごと
+  `stopPropagation` し、切り替えは `change` で受ける = label 経由の入力を二重に数えない)
 
 ## 13. 実行の相乗りガードと launch 事前検査(2026-07-16)
 

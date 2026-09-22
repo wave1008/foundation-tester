@@ -908,17 +908,29 @@ function selectAllIsDeselect() {
   return selectAllOn;
 }
 
+// ツールチップと当たり判定はラベル全体(文字の上でも効かせる)。
+const selectAllLabel = btnSelectAll.closest('label');
+
+// **0 台でも「0台」を出す**(ユーザー決定 2026-09-22)—— 欄が消えるとトグルの位置が動く。
+// **台が1枚も来ていない時点でも出す**ので初期化でも1回呼ぶ(updateSelectionUi は最初の
+// devices まで走らない)
+function renderSelectionCount() {
+  lineViewSelection.textContent = t('wvMonitor.lineView.selected', {
+    count: String(selectedDeviceIds.size),
+  });
+}
+renderSelectionCount();
+
 // **0枚でも押せる**(disabled にしない) —— 台を待っている間に入れておけば、出てきた台が
 // 選択された状態で並ぶ。押せなくすると「待機しています」の間だけ切り替えられない。
 function renderSelectAllButton() {
   const deselect = selectAllIsDeselect();
-  const label = t(deselect ? 'wvMonitor.toolbar.deselectAll' : 'wvMonitor.toolbar.selectAll');
-  btnSelectAll.classList.toggle('toggled', deselect);
-  btnSelectAll.setAttribute('aria-pressed', deselect ? 'true' : 'false');
+  btnSelectAll.checked = deselect;
   // ネイティブ title ではなく自前ツールチップ(0.2秒)。setHoverTip が title を空にするので
-  // 二重には出ない。aria-label は読み上げ用に別途持つ。
-  setHoverTip(btnSelectAll, label);
-  btnSelectAll.setAttribute('aria-label', label);
+  // 二重には出ない。**掛けるのはラベル全体**(文字の上でも出す)。
+  // **aria-label は付けない** —— 見える文字「すべて選択」が名前で、ON/OFF は role="switch" と
+  // checked が伝える。次に何が起きるかの説明だけをツールチップに置く。
+  setHoverTip(selectAllLabel, t(deselect ? 'wvMonitor.toolbar.deselectAll' : 'wvMonitor.toolbar.selectAll'));
 }
 
 // 全選択の ON/OFF を切り替える口はこの2つだけ(ツールバー・Cmd/Ctrl+A・右クリックメニューが
@@ -955,12 +967,15 @@ function toggleSelectAll() {
   }
 }
 
-btnSelectAll.addEventListener('click', (event) => {
-  // **見出し行の開閉へ波及させない** —— ボタンはラインビューの見出し行の中に居り、
-  // 親(#line-view-header)は click でラインビューを開閉する(splitter.js)
-  event.stopPropagation();
-  toggleSelectAll();
-});
+// **見出し行の開閉へ波及させない** —— トグルはラインビューの見出し行の中に居り、
+// 親(#line-view-header)は click でラインビューを開閉する(splitter.js)。
+// ラベル全体(トグル込み)で止める(streamToggle.js と同じ)
+selectAllLabel.addEventListener('click', (event) => event.stopPropagation());
+
+// 切り替えは change で受ける —— click だと label 経由の入力を二重に数える。
+// **checked は既に反転している**が、toggleSelectAll が見るのは旗のほうなので結果は同じで、
+// 直後の renderSelectAllButton が旗から checked を書き直す
+btnSelectAll.addEventListener('change', () => toggleSelectAll());
 
 // ---- ラインビューを触っている間の Cmd/Ctrl+A ----------------------------------------------
 // 「ラインビューを触っている」= **最後に押した場所がラインビューの領域の中**、またはフォーカスが
@@ -1946,11 +1961,8 @@ function updateSelectionUi() {
     entry.tile.classList.toggle('selected', selectedDeviceIds.has(id));
   }
   renderSelectAllButton();
-  // ラインビューの見出しに選択中の台数を出す(**選択の変更はここを必ず通る**)。
-  // 0 台のときは空にする —— 「0台を選択」は情報が無く、見出しが常に何か言っている状態になる
-  lineViewSelection.textContent = selectedDeviceIds.size > 0
-    ? t('wvMonitor.lineView.selected', { count: String(selectedDeviceIds.size) })
-    : '';
+  // ラインビューの見出しに選択中の台数を出す(**選択の変更はここを必ず通る**)
+  renderSelectionCount();
   updateLaneVisibility();
 }
 

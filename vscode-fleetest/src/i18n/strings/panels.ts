@@ -91,8 +91,10 @@ export const panelsStrings = {
 
   "panels.devices.emptyMessage": { ja: "デバイスを待機しています", en: "Waiting for devices" },
   "panels.devices.selectDevices": { ja: "デバイスを選択して下さい", en: "Select a device" },
+  "panels.devices.selectAllLabel": { ja: "すべて選択", en: "Select all" },
   "panels.devices.splitterAriaLabel": { ja: "タイルと出力の分割境界線", en: "Divider between tiles and output" },
   "panels.devices.logSplitterAriaLabel": { ja: "実行ログとグリッドの分割境界線", en: "Divider between run log and grid" },
+  "panels.devices.runBoardSplitterAriaLabel": { ja: "実行中とデバイスの分割境界線", en: "Divider between running and devices" },
 
   "panels.project.directoryLabel": { ja: "プロジェクトディレクトリ", en: "Project directory" },
   "panels.project.addTitle": { ja: "テストプロジェクトの追加", en: "Add test project" },

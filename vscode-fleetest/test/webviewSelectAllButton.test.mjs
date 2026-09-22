@@ -1,4 +1,4 @@
-// ツールバーの全選択トグル(#btn-select-all)の DOM テスト。
+// ラインビューの見出し行の全選択トグル(#chk-select-all)の DOM テスト。
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewTileRelayout.test.mjs と同じ。
 //
 // 選択状態は webview 内部の Set にしか無いので、外から見える .tile.selected で判定する
@@ -6,6 +6,7 @@
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { before, test } from "node:test";
 import * as esbuild from "esbuild";
@@ -68,7 +69,9 @@ function sendDevices(window, count) {
   window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices } }));
 }
 
-const button = (document) => document.getElementById("btn-select-all");
+const button = (document) => document.getElementById("chk-select-all");
+/** ツールチップ・当たり判定・位置はラベル全体が持つ(文字の上でも効かせる)。 */
+const labelOf = (document) => button(document).closest("label");
 /** 自前ツールチップ(hoverTip.js)が読む属性。ネイティブ title は使わない。 */
 const tip = (_document, el) => el.getAttribute("data-hover-tip") || "";
 const selectedCount = (document) => document.querySelectorAll("#grid .tile.selected").length;
@@ -88,18 +91,22 @@ function pressSelectAllKey(document, target, { meta = true, ctrl = false, shift 
   return event.defaultPrevented;
 }
 
-// **ラインビューの見出し行の右端**へ置く(ユーザー決定 2026-09-21)—— 操作の対象(タイル)の
-// すぐ上にあるほうが結び付きが分かる。ツールバーの右端グループ(#toolbar-tail)は空になったので消した
-test("ラインビューの見出し行の右端に置く", (t) => {
+// **ラインビューの見出し行**へ置く(ユーザー決定 2026-09-21)—— 操作の対象(タイル)の
+// すぐ上にあるほうが結び付きが分かる。ツールバーの右端グループ(#toolbar-tail)は空になったので消した。
+// 見た目は「ライブ更新」と同じトグル(ユーザー決定 2026-09-22)
+test("ラインビューの見出し行に「すべて選択」のトグルとして置く", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  const el = button(document);
+  const label = labelOf(document);
   const header = document.getElementById("line-view-header");
-  assert.equal(el.parentElement, header);
-  assert.equal(header.lastElementChild, el, "行の最後 = 右端(margin-left:auto で寄せる)");
+  assert.equal(label.parentElement, header);
   assert.equal(document.getElementById("toolbar-tail"), null, "空になったグループは残さない");
-  assert.equal(el.textContent.trim(), "", "テキストではなくアイコン(インライン SVG)");
-  assert.equal(el.querySelectorAll("svg").length, 1);
+  assert.equal(label.textContent.trim(), "すべて選択", "アイコンではなく文字のラベル");
+  assert.equal(label.querySelectorAll("svg").length, 0, "アイコンは残していない");
+  // 「ライブ更新」と同じ見た目(.header-toggle = ラベル / .toggle-switch = つまみ)
+  assert.ok(label.classList.contains("header-toggle"));
+  assert.ok(button(document).classList.contains("toggle-switch"));
+  assert.equal(button(document).getAttribute("role"), "switch");
 });
 
 // 台を待っている間(「デバイスを待機しています」)も切り替えられる —— ここで入れておけば
@@ -109,10 +116,10 @@ test("台数が0でも押せる(待機中に入れておける)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   assert.equal(button(document).disabled, false);
-  assert.equal(button(document).getAttribute("aria-pressed"), "false");
+  assert.equal(button(document).checked, false);
 
   click(document, button(document));
-  assert.equal(button(document).getAttribute("aria-pressed"), "true", "0枚でも ON にできる");
+  assert.equal(button(document).checked, true, "0枚でも ON にできる");
 
   sendDevices(window, 3);
   assert.equal(selectedCount(document), 3, "出てきた台は選択された状態で並ぶ");
@@ -124,10 +131,10 @@ test("待機中に ON を解除できる(再起動で持ち越した ON を捨�
   sendDevices(window, 2);
   click(document, button(document));
   restartMonitor(window, document);
-  assert.equal(button(document).getAttribute("aria-pressed"), "true", "前提: 待機中も ON のまま");
+  assert.equal(button(document).checked, true, "前提: 待機中も ON のまま");
 
   click(document, button(document));
-  assert.equal(button(document).getAttribute("aria-pressed"), "false");
+  assert.equal(button(document).checked, false);
   sendDevices(window, 2);
   assert.equal(selectedCount(document), 0, "解除したので選ばれない");
 });
@@ -141,33 +148,34 @@ test("押すと全デバイスが選択され、もう一度押すと全解除�
 
   click(document, button(document));
   assert.equal(selectedCount(document), 4, "全選択");
-  assert.equal(button(document).getAttribute("aria-pressed"), "true");
+  assert.equal(button(document).checked, true);
 
   click(document, button(document));
   assert.equal(selectedCount(document), 0, "もう一度押すと全解除");
-  assert.equal(button(document).getAttribute("aria-pressed"), "false");
+  assert.equal(button(document).checked, false);
 });
 
+// 見える文字(「すべて選択」)は状態で入れ替えない —— 次に何が起きるかはツールチップが出す。
+// **aria-label は付けない**(見える文字が名前・ON/OFF は role="switch" と checked が伝える)
 test("説明は次に何が起きるかを示す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, 2);
-  const before = tip(document, button(document));
+  const before = tip(document, labelOf(document));
   assert.ok(before.length > 0, "初期表示から説明が入っている");
   click(document, button(document));
-  assert.notEqual(tip(document, button(document)), before, "全選択後は解除側の説明になる");
-  assert.equal(button(document).getAttribute("aria-label"), tip(document, button(document)));
+  assert.notEqual(tip(document, labelOf(document)), before, "全選択後は解除側の説明になる");
+  assert.equal(labelOf(document).textContent.trim(), "すべて選択", "見える文字は変わらない");
+  assert.equal(button(document).getAttribute("aria-label"), null, "見える文字を aria-label で上書きしない");
 });
 
-test("右端のボタンはネイティブ title ではなく自前ツールチップで説明を出す", (t) => {
+test("ネイティブ title ではなく自前ツールチップで説明を出す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  for (const id of ["btn-select-all"]) {
-    const el = document.getElementById(id);
-    assert.ok(tip(document, el).length > 0, `${id}: 説明が入っている`);
-    // title が残っていると 0.2 秒でこちらが出た約1秒後にネイティブも出て二重に見える
-    assert.equal(el.title, "", `${id}: ネイティブ title は残さない`);
-  }
+  const el = labelOf(document);
+  assert.ok(tip(document, el).length > 0, "説明が入っている");
+  // title が残っていると 0.2 秒でこちらが出た約1秒後にネイティブも出て二重に見える
+  assert.equal(el.title, "", "ネイティブ title は残さない");
 });
 
 // 全選択が ON の間にフリートが増えたときの契約(ユーザー要求 2026-09-09)。
@@ -178,11 +186,11 @@ test("全選択が ON の間に増えたデバイスも選択に加わる", (t) 
   t.after(() => window.close());
   sendDevices(window, 2);
   click(document, button(document));
-  assert.equal(button(document).getAttribute("aria-pressed"), "true");
+  assert.equal(button(document).checked, true);
 
   sendDevices(window, 3); // 3台目が起動
   assert.equal(selectedCount(document), 3, "後から現れた台も選択される");
-  assert.equal(button(document).getAttribute("aria-pressed"), "true", "ON のまま");
+  assert.equal(button(document).checked, true, "ON のまま");
   assert.equal(document.querySelectorAll("#grid .tile").length, 3);
 });
 
@@ -235,7 +243,7 @@ test("全選択のまま台が減っても ON のまま(残りは全部選択)",
   click(document, button(document));
   sendDevices(window, 2);
   assert.equal(selectedCount(document), 2);
-  assert.equal(button(document).getAttribute("aria-pressed"), "true");
+  assert.equal(button(document).checked, true);
 
   // 減ってから増えた場合も続く
   sendDevices(window, 3);
@@ -256,11 +264,11 @@ test("モニター再起動を挟んでも ON は続く(戻ってきた台を選
 
   restartMonitor(window, document);
   assert.equal(document.querySelectorAll("#grid .tile").length, 0, "タイルは作り直す");
-  assert.equal(button(document).getAttribute("aria-pressed"), "true", "待機中も ON を保つ");
+  assert.equal(button(document).checked, true, "待機中も ON を保つ");
 
   sendDevices(window, 3);
   assert.equal(selectedCount(document), 3, "戻ってきた台は選択された状態で出る");
-  assert.equal(button(document).getAttribute("aria-pressed"), "true");
+  assert.equal(button(document).checked, true);
 });
 
 test("再起動後に別のデバイスが返ってきても選択と台数がずれない(古い id を持ち越さない)", (t) => {
@@ -279,7 +287,7 @@ test("再起動後に別のデバイスが返ってきても選択と台数が�
   window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices } }));
 
   assert.equal(selectedCount(document), 3);
-  assert.equal(button(document).getAttribute("aria-pressed"), "true");
+  assert.equal(button(document).checked, true);
 });
 
 test("OFF のまま再起動したら ON にはならない", (t) => {
@@ -331,7 +339,7 @@ test("全部消えても押せる状態のまま(ON は据え置く)", (t) => {
   click(document, button(document));
   sendDevices(window, 0);
   assert.equal(button(document).disabled, false);
-  assert.equal(button(document).getAttribute("aria-pressed"), "true");
+  assert.equal(button(document).checked, true);
 });
 
 // ---- Cmd/Ctrl+A(ラインビューを触っている間だけ) ----
@@ -356,7 +364,7 @@ test("タイルを押したあと Cmd+A で全選択、もう一度で全解除"
 
   assert.equal(pressSelectAllKey(document, tile), true, "既定の「テキスト全選択」は止める");
   assert.equal(selectedCount(document), 3);
-  assert.equal(button(document).getAttribute("aria-pressed"), "true", "ボタンの表示も解除側になる");
+  assert.equal(button(document).checked, true, "ボタンの表示も解除側になる");
 
   pressSelectAllKey(document, tile);
   assert.equal(selectedCount(document), 0);
@@ -541,4 +549,37 @@ test("メニューの「すべて解除」も同じ", (t) => {
 
   assert.equal(selectedCount(document), 0);
   assert.equal(cleared, 1);
+});
+
+// 見出しの台数は**0台でも出す**(ユーザー決定 2026-09-22)—— 欄が消えるとトグルの位置が動く。
+// グリッドビュー側の同じラベルは webviewLanePreview.test.mjs が見る
+test("見出しの台数は選択0でも「0台」を出す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const count = () => document.getElementById("line-view-selection").textContent;
+  assert.equal(count(), "0台", "台がまだ出ていないとき");
+  sendDevices(window, 3);
+  assert.equal(count(), "0台", "台が出ただけでは選ばれない");
+  click(document, button(document));
+  assert.equal(count(), "3台");
+});
+
+// 台数の桁が変わるたびに右隣のトグルが動かないこと(ユーザー決定 2026-09-22)。
+// jsdom は CSS を読まないので、両方の見出しが同じ class を持つことと、その class が
+// 言語ごとに幅を固定していることを別々に見る。
+test("両方の見出しの台数は幅を固定した同じ class を使う", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  for (const id of ["line-view-selection", "lanes-selection-status"]) {
+    assert.ok(document.getElementById(id).classList.contains("header-count"), id);
+  }
+  const css = readFileSync(path.resolve("src/webview/monitor/style.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const base = /\.header-count \{([\s\S]*?)\}/.exec(css);
+  assert.ok(base, ".header-count の規則がある");
+  assert.match(base[1], /font-variant-numeric:\s*tabular-nums/, "数字は等幅(桁ごとに幅が変わらない)");
+  for (const lang of ["ja", "en"]) {
+    const rule = new RegExp(`html\\[lang="${lang}"\\] \\.header-count \\{([\\s\\S]*?)\\}`).exec(css);
+    assert.ok(rule, `${lang}: 幅の規則がある`);
+    assert.match(rule[1], /min-width:\s*\d+(\.\d+)?ch/, `${lang}: 桁が増えても箱の幅を保つ`);
+  }
 });

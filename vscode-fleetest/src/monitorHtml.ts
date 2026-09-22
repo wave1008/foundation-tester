@@ -276,16 +276,28 @@ function renderDevicesPanel(): string {
 
     <div id="banner" class="banner"></div>
 
+    <!-- 「実行中」と「デバイス」を分ける仕切り(ユーザー決定 2026-09-22)。見た目も挙動も実行ログ
+         ビューの上の #splitter-log と同じ(.splitter)—— 下げると run ボードが伸びる(splitter.js)。
+         run ボードを畳んでいる間だけ CSS が掴めなくする -->
+    <div id="devices-separator" class="splitter" role="separator" aria-orientation="horizontal" aria-label="${t("panels.devices.runBoardSplitterAriaLabel")}"></div>
+
     <!-- ラインビューの見出し(run ボードのヘッダと同じ作り: 行のどこを押しても開閉・
          三角は状態を回転で示す)。開閉は既存の fleetVisible に載せる(splitter.js) -->
     <div id="line-view-header" class="run-board-header">
       <button id="line-view-toggle" class="run-board-toggle" type="button" aria-expanded="true" data-expanded="true">▶</button>
       <span id="line-view-title" class="run-board-title"></span>
-      <!-- 選択中の台数(deviceTiles.js の updateSelectionUi が書く。0台のときは空) -->
-      <span id="line-view-selection" class="line-view-selection"></span>
-      <!-- 全選択。**見出し行のクリック(開閉)へ波及させない**ので deviceTiles.js が
-           stopPropagation する。アイコンは枠に囲まれたタイル3枚 -->
-      <button id="btn-select-all" class="icon-button line-view-select-all" type="button" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 1h14v14H1V1zm1 1v12h12V2H2z"/><rect x="4" y="4" width="2" height="8" rx="0.5"/><rect x="7" y="4" width="2" height="8" rx="0.5"/><rect x="10" y="4" width="2" height="8" rx="0.5"/></svg></button>
+      <!-- 選択中の台数(deviceTiles.js の renderSelectionCount が書く。**0台でも出す**) -->
+      <span id="line-view-selection" class="header-count"></span>
+      <!-- 全選択。見た目は「ライブ更新」と同じトグル(.header-toggle + .toggle-switch)。
+           **見出し行のクリック(開閉)へ波及させない**ので deviceTiles.js が stopPropagation する。
+           次に何が起きるか(選択/解除)は自前ツールチップが出す(deviceTiles.js の
+           renderSelectAllButton)—— 見える文字は状態で入れ替えない -->
+      <label class="profile-label header-toggle line-view-select-all"><input type="checkbox" class="toggle-switch" role="switch" id="chk-select-all">${t("panels.devices.selectAllLabel")}</label>
+      <!-- 「ライブ更新」。**「すべて選択」の右**(ユーザー決定 2026-09-22)—— どちらもタイルの
+           見え方を操るので隣り合わせる。効く相手は全台(タイルも拡大表示も)。
+           状態の保存と復元は streamToggle.js ⇄ monitorPanel.ts
+           (setShowStreamDuringRun / showStreamDuringRun) -->
+      <label class="profile-label header-toggle run-stream-toggle" title="${t("panels.toolbar.showStreamDuringRunTitle")}"><input type="checkbox" class="toggle-switch" role="switch" id="chk-show-stream-during-run" checked>${t("panels.toolbar.showStreamDuringRun")}</label>
     </div>
 
     <div id="tile-pane" class="tile-pane">
@@ -304,11 +316,8 @@ function renderDevicesPanel(): string {
         <button id="grid-view-toggle" class="run-board-toggle" type="button" aria-expanded="true" data-expanded="true">▶</button>
         <!-- 文言は常に固定(laneLog.js が wvMonitor2.laneLog.titleDevices を入れる) -->
         <span id="grid-view-title" class="lanes-title"></span>
-        <span id="lanes-selection-status"></span>
-        <!-- 「ライブ更新」。**見出し行の右端**(ユーザー決定 2026-09-21)。
-             状態の保存と復元は streamToggle.js ⇄ monitorPanel.ts
-             (setShowStreamDuringRun / showStreamDuringRun) -->
-        <label class="profile-label run-stream-toggle" title="${t("panels.toolbar.showStreamDuringRunTitle")}"><input type="checkbox" id="chk-show-stream-during-run" checked>${t("panels.toolbar.showStreamDuringRun")}</label>
+        <!-- 選択中の台数(laneLog.js が書く。ラインビュー側と同じ規律で 0台でも出す) -->
+        <span id="lanes-selection-status" class="header-count"></span>
       </div>
       <!-- グリッドビュー非表示中の「デバイスを待機しています」(出し入れは waitingNote.js) -->
       <div id="lanes-waiting" class="lanes-waiting" style="display: none;">${t("panels.devices.emptyMessage")}</div>

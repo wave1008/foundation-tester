@@ -102,8 +102,9 @@ export const webviewMonitorAStrings = {
   // ツールバー右端の全選択トグル(deviceTiles.js が押すたびに title/aria-label を入れ替える)。
   "wvMonitor.toolbar.selectAll": { ja: "デバイスをすべて選択", en: "Select All Devices" },
   "wvMonitor.toolbar.deselectAll": { ja: "デバイスの選択をすべて解除", en: "Deselect All Devices" },
-  "wvMonitor.lineView.title": { ja: "デバイス", en: "Devices" },
-  "wvMonitor.lineView.selected": { ja: "{count}台を選択", en: "{count} selected" },
+  "wvMonitor.lineView.title": { ja: "デバイス一覧", en: "Device list" },
+  // グリッドビューの同じ意味のラベル(wvMonitor2.laneLog.selectedCount)と同じ形。片方だけ変えない
+  "wvMonitor.lineView.selected": { ja: "{count}台", en: "{count} devices" },
   "wvMonitor.lineView.show": { ja: "ラインビューを開く", en: "Show Line View" },
   "wvMonitor.lineView.hide": { ja: "ラインビューを閉じる", en: "Hide Line View" },
   "wvMonitor.logView.show": { ja: "実行ログビューを開く", en: "Show Run Log View" },

@@ -3,6 +3,7 @@
 // 個々のレーンの選択絞り込み・段組みは webviewLanePreview.test.mjs が持つ。ここは
 // ①開閉(見出し行クリック)②スプリッターの出し入れ③1台選択時のログの複製(ミラー)④host との
 // 契約(setLogPaneHeight/setLogViewVisible/setGridViewVisible)を見る。
+// 末尾に「実行中」と「デバイス」の間のセパレーター(#devices-separator = run ボードの高さ)も持つ。
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -464,4 +465,84 @@ test("setLogPaneHeight/setLogViewVisible/setGridViewVisible は host 側の検�
   assert.equal(isMonitorFromWebviewMessage({ type: "setLogViewVisible", value: "yes" }), false);
   assert.equal(isMonitorFromWebviewMessage({ type: "setGridViewVisible", value: false }), true);
   assert.equal(isMonitorFromWebviewMessage({ type: "setGridViewVisible", value: "no" }), false);
+});
+
+// ---- 「実行中」と「デバイス」の間のセパレーター(run ボードの高さ) ----
+// jsdom は高さを測れない(offsetHeight が全部 0 = panelHidden で素通り)ので、ドラッグの結果では
+// なく**配線と CSS の契約**を見る。可動域の算術は paneLayoutModel.test.mjs が持つ。
+
+/** CSS の宣言を見る照合はコメントを剥いでから当てる(同じ文字列がコメントにも居る)。 */
+function stripCssComments(css) {
+  return css.replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+test("セパレーターは run ボードとラインビューの見出しの間に居て、掴める(role=separator)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const separator = document.getElementById("devices-separator");
+  assert.ok(separator, "#devices-separator が居る");
+  assert.equal(separator.classList.contains("splitter"), true, "見た目は #splitter-log と同じ .splitter");
+  assert.equal(separator.getAttribute("role"), "separator");
+  assert.equal(separator.getAttribute("aria-orientation"), "horizontal");
+  assert.equal(separator.nextElementSibling?.id, "line-view-header", "すぐ下が「デバイス」の見出し");
+  assert.equal(
+    separator.compareDocumentPosition(document.getElementById("run-board")) &
+      window.Node.DOCUMENT_POSITION_PRECEDING,
+    window.Node.DOCUMENT_POSITION_PRECEDING,
+    "run ボードより後ろに居る",
+  );
+});
+
+// 高さを縮めたときに行がはみ出さず、ボードの中でスクロールすること。**min-height: 0 が無いと
+// flex の既定(auto)で中身の高さまで伸びて overflow が効かない**(jsdom には見えない食い違い)。
+test("style.css: run ボードは箱ではみ出しを止め、行は自前でスクロールする", () => {
+  // **コメントを剥いでから見る** —— 規則の理由を書いたコメントに同じ文字列が入っており、
+  // 素のまま照合すると宣言を消してもテストが通る(実際に変異が生き残った)
+  const css = stripCssComments(styleCssSource);
+  assert.match(css, /\.run-board \{[\s\S]*?overflow:\s*hidden/, ".run-board ではみ出しを止める");
+  const rows = /\.run-board-rows \{([\s\S]*?)\}/.exec(css);
+  assert.ok(rows, ".run-board-rows の規則がある");
+  assert.match(rows[1], /min-height:\s*0/, "min-height: 0 が無いと overflow が効かない");
+  assert.match(rows[1], /overflow-y:\s*auto/, "行はボードの中でスクロールする");
+  // 縦の flex コンテナなので、子が既定(flex-shrink: 1)のままだと行そのものが潰れて
+  // スクロールに回らない(セパレーターを上げると「実行中」の行の余白が詰まる)
+  const children = /\.run-board-rows > \* \{([\s\S]*?)\}/.exec(css);
+  assert.ok(children, ".run-board-rows > * の規則がある");
+  assert.match(children[1], /flex:\s*0 0 auto/, "行は縮ませない");
+});
+
+// 畳んでいる間は伸ばす中身が無いので掴めない(掴めそうに見えて何も起きない形を作らない)。
+test("style.css: run ボードを畳んでいる間はセパレーターを掴めない", () => {
+  assert.match(
+    stripCssComments(styleCssSource),
+    /\.run-board\[data-collapsed="true"\] ~ #devices-separator \{[\s\S]*?pointer-events:\s*none/,
+  );
+});
+
+// 畳みは箱の大きさを変えないことがある(ドラッグで高さを書いてあると ResizeObserver が鳴らない)。
+test("runBoard.js は畳みの反映で reapplyPaneHeights を呼ぶ", () => {
+  const source = readFileSync(path.resolve("src/webview/monitor/runBoard.js"), "utf8");
+  const applyCollapsedUi = /function applyCollapsedUi\(\)[\s\S]*?\n\}/.exec(source);
+  assert.ok(applyCollapsedUi, "applyCollapsedUi がある");
+  assert.match(applyCollapsedUi[0], /reapplyPaneHeights\(\);/);
+});
+
+test("splitter.js: セパレーターのドラッグが run ボードの高さへ配線されている", () => {
+  const source = readFileSync(path.resolve("src/webview/monitor/splitter.js"), "utf8");
+  assert.match(source, /devicesSeparator\.addEventListener\('pointerdown'/);
+  assert.match(source, /applyRunBoardHeight\(devicesSeparatorStartHeight \+ event\.clientY - devicesSeparatorStartY\)/);
+  // 実測から始める —— まだドラッグされていないボードは高さを書いていない(中身なり)
+  assert.match(source, /devicesSeparatorStartHeight = runBoard\.offsetHeight;/);
+});
+
+test("main.js: host からの runBoardHeight を splitter.js へ渡す", () => {
+  const source = readFileSync(path.resolve("src/webview/monitor/main.js"), "utf8");
+  assert.match(source, /case 'runBoardHeight':\s*\n\s*setRunBoardHeight\(message\.value\);/);
+});
+
+test("setRunBoardHeight は host 側の検証を通り、0 以下は弾く", async () => {
+  const { isMonitorFromWebviewMessage } = await import("../src/monitorWebviewMessages");
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRunBoardHeight", value: 240 }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRunBoardHeight", value: 0 }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRunBoardHeight", value: "240" }), false);
 });

@@ -230,10 +230,9 @@ button.bulk-cancel:hover:not(:disabled) {
   gap: 8px;
   min-width: 0;
 }
-/* 「画面更新」はグリッドビューの見出し行の右端へ寄せる(margin-left: auto)。
-   この行の他の要素(タイトル・選択数・run の状況)は左から詰める */
-.run-stream-toggle {
-  margin-left: auto;
+/* 見出し行に置くトグル(ラインビューの「すべて選択」・グリッドビューの「ライブ更新」)。
+   **見た目はここ1箇所**で、位置だけ .line-view-select-all / .run-stream-toggle が持つ */
+.header-toggle {
   align-self: center;
   gap: 4px;
   white-space: nowrap;
@@ -242,13 +241,15 @@ button.bulk-cancel:hover:not(:disabled) {
   padding: 1px 6px;
   border-radius: 3px;
 }
-.run-stream-toggle:hover {
+.header-toggle:hover {
   background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
   color: var(--vscode-foreground);
 }
-.run-stream-toggle input {
+.header-toggle input {
   cursor: pointer;
 }
+/* 「すべて選択」の右に続く(ユーザー決定 2026-09-22)。2つのトグルは1つの group なので、
+   間は行の gap(6px)だけ —— 台数から離すぶんは先頭の .line-view-select-all が持つ */
 /* 通常は1行(手元だけ)。リモート機の行が増えると縦に積む(hostCharts.js が hm-multi を付ける) */
 .host-metrics {
   display: flex;
@@ -359,13 +360,27 @@ button.bulk-cancel:hover:not(:disabled) {
 
 /* run ボード(フリート横断の実行状況。docs/design.md §18)。ツールバー直下・ラインビューの上に
    常設(run 0本でもヘッダは残す。runBoard.js)。 */
-/* 見出し行どうしの間に**線を見せない**(ユーザー決定 2026-09-21)ので下辺の罫線は持たない。
-   区切りは地色(見出し行と同じ)だけで付ける */
+/* 見出し行どうしの区切りは地色(見出し行と同じ)だけで付け、線を見せない。
+   **例外は「実行中」と「デバイス」の間の1本だけ**(ユーザー決定 2026-09-22)——
+   仕切りは #devices-separator が持つので、ここは下辺の罫線を持たない */
 .run-board {
+  /* #devices-separator のドラッグで高さが決まるペイン(splitter.js)。高さを超えた行は
+     #run-board-rows が自前でスクロールする —— ボードが伸びると3ペインの取り分が変わるので、
+     はみ出しはここで止める。**保存値が無い間は高さを書かない**(中身なりに伸び縮みする) */
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background-color: var(--vscode-editorGroupHeader-tabsBackground, transparent);
   font-size: 12px;
 }
+/* 高さを明示した(ドラッグされた)ボードは末尾が箱の縁になり、最後の行の padding-bottom が
+   仕切りの手前に出ない。同じ 3px を箱が持ち、仕切りまでの間隔を状態で変えない */
+.run-board.run-board-sized {
+  padding-bottom: 3px;
+}
 .run-board-header {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -381,14 +396,19 @@ button.bulk-cancel:hover:not(:disabled) {
 .run-board-header:hover {
   background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.2));
 }
-/* 「実行中」の末尾から「デバイス」までも他の見出し行どうしと同じ 4px(罫線 1px は別)にする。
-   run ボードの末尾は状態で変わる —— 開いていれば最後の行の padding-bottom 2px、畳んでいれば
-   見出しの padding-bottom 4px。足りないぶんをこちら側で持つ(4 - 2 / 4 - 4) */
+/* 「実行中」と「デバイス」を分ける仕切り(ユーザー決定 2026-09-22)。**見た目も挙動も実行ログ
+   ビューの上の #splitter-log と同じ**(.splitter の 6px バー)—— 下げると run ボードが伸びる。
+   上下の余白も #splitter-log と同じ 2px + 2px。下は見出し側が持ち、上は run ボードの末尾が
+   持つ —— 末尾は状態で変わる(開いていれば最後の行の padding-bottom、畳んでいれば見出しの
+   padding-bottom 4px)ので、畳んだときだけ 2px 引く。
+   **畳んでいる間は掴めない**(伸ばす中身が無い)ので当たり判定とカーソルを殺す */
+.run-board[data-collapsed="true"] ~ #devices-separator {
+  margin-top: -2px;
+  pointer-events: none;
+  cursor: default;
+}
 #line-view-header {
   padding-top: 2px;
-}
-.run-board[data-collapsed="true"] ~ #line-view-header {
-  padding-top: 0;
 }
 
 /* ヘッダの開閉も行の chevron と同じ規律(文字は常に ▶・向きは回転・ホバーで押せる面) */
@@ -425,14 +445,29 @@ button.bulk-cancel:hover:not(:disabled) {
   /* 見出し(「実行中 N」)から離す。行の gap(6px)に足して 16px */
   margin-left: 10px;
 }
-/* 見出し行の右端へ(間は .line-view-selection との余白で埋める) */
+/* 台数(.header-count)から離す。行の gap(6px)に足して 16px —— run ボードの
+   「全て展開」と同じ離し方。**右に続く「ライブ更新」との間は行の gap だけ** */
 .line-view-select-all {
-  margin-left: auto;
+  margin-left: 10px;
 }
-.line-view-selection {
+/* 見出しの台数(ラインビュー・グリッドビューの「N台」)。**幅を固定する**
+   (ユーザー決定 2026-09-22)—— 桁が変わるたびに右隣のトグルが動くため。数字は等幅にし、
+   箱は 3 桁(999台)まで入る幅を持つ。**文言の長さが言語で違うので幅も言語ごと** ——
+   文言(wvMonitor.lineView.selected / wvMonitor2.laneLog.selectedCount)を変えたら幅も見る。
+   min-width なので 4 桁になれば伸びる(そこでは動くが、設計の範囲外) */
+.header-count {
   flex: 0 0 auto;
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
+  font-variant-numeric: tabular-nums;
+}
+html[lang="ja"] .header-count {
+  /* 「999台」= 数字 3ch + 全角 1 文字(約 2ch) */
+  min-width: 5ch;
+}
+html[lang="en"] .header-count {
+  /* 「999 devices」 */
+  min-width: 12ch;
 }
 .run-board-title {
   flex: 0 0 auto;
@@ -470,6 +505,18 @@ button.bulk-cancel:hover:not(:disabled) {
 .run-board-rows {
   display: flex;
   flex-direction: column;
+  /* 高さを明示されたときだけスクロールする。min-height: 0 が無いと flex の既定(auto)で
+     中身の高さまで伸びて overflow が効かない */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* **行は縮ませない** —— ここは縦の flex コンテナなので、既定(flex-shrink: 1)のままだと
+   セパレーターを上げたときに行そのものが潰れ(文字と余白が詰まる)、スクロールに回らない。
+   run 行(.run-board-row)と走っていない機械の行(.run-board-idle-machine)の両方が対象なので
+   子全部に掛ける */
+.run-board-rows > * {
+  flex: 0 0 auto;
 }
 .run-board[data-collapsed="true"] .run-board-rows {
   display: none;
@@ -1096,9 +1143,8 @@ html.select-all-guard * {
   padding: 2px 8px;
   /* 地色は run ボードの見出しと同じ(.run-board-header と片方だけ変えない) */
   background-color: var(--vscode-editorGroupHeader-tabsBackground, transparent);
-  /* **2つの見出し行の高さを揃える**。高いのはグリッドビュー側で、中身は「ライブ更新」の
-     ラベル = チェックボックス 18px + .run-stream-toggle の上下 padding 1px = 20px
-     (実行ログ側は三角 16px と文字だけ)。チェックボックスの寸法を変えたらここも変える */
+  /* **2つの見出し行の高さを揃える**。中身(三角 16px・文字)はどちらもこれより低いので、
+     行の高さはこの min-height だけが決める */
   min-height: 20px;
   cursor: pointer;
 }
@@ -1128,11 +1174,6 @@ html.select-all-guard * {
 .lanes-title {
   font-weight: 600;
   color: var(--vscode-foreground);
-}
-/* 「N台を表示」。ラインビューの同じ意味のラベル(.line-view-selection)と同じ 11px
-   —— 親の .lanes-header は 12px なので、継承のままだと片方だけ大きくなる */
-#lanes-selection-status {
-  font-size: 11px;
 }
 /* ペイン全体の上下左右中央に重ねる(ラインビューの .empty と同じ出し方)。下のログ操作を邪魔しない */
 .lanes-waiting {
@@ -1794,6 +1835,40 @@ input[type="checkbox"]:checked::after {
   border: solid var(--vscode-settings-checkboxForeground, var(--vscode-foreground));
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
+}
+/* トグルスイッチ(実体は checkbox のまま = キーボード操作と change はそのまま)。
+   **上の四角いチェックの描画を打ち消すので、必ずその後ろに置く**(同じ詳細度の勝負は順序で決まる。
+   セレクタから input[type="checkbox"] を外すと詳細度が下がって素の 18px 角に戻る)。
+   ON は青い地 —— `--vscode-button-background` はどのテーマでも主操作の色で、既定テーマでは青 */
+input[type="checkbox"].toggle-switch {
+  width: 26px;
+  height: 14px;
+  border-radius: 7px;
+  transition: background-color 90ms ease, border-color 90ms ease;
+}
+input[type="checkbox"].toggle-switch:checked {
+  background-color: var(--vscode-button-background, #0078d4);
+  border-color: var(--vscode-button-background, #0078d4);
+}
+/* つまみ。**四角いチェック(4x8 の回転ボーダー)を全部打ち消す**ので border/transform も書く */
+input[type="checkbox"].toggle-switch::after,
+input[type="checkbox"].toggle-switch:checked::after {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: 1px;
+  width: 10px;
+  height: 10px;
+  border: none;
+  border-radius: 50%;
+  transform: none;
+  background-color: var(--vscode-descriptionForeground, #9d9d9d);
+  transition: left 90ms ease, background-color 90ms ease;
+}
+input[type="checkbox"].toggle-switch:checked::after {
+  /* 絶対位置は枠の内側(24px = 26 - 枠線 2px)基準。24 - つまみ 10 - 余白 1 = 13 */
+  left: 13px;
+  background-color: var(--vscode-button-foreground, #ffffff);
 }
 input[type="checkbox"]:focus-visible {
   outline: 1px solid var(--vscode-focusBorder, #007acc);

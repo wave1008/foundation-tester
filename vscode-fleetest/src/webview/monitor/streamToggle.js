@@ -1,4 +1,5 @@
-// 「デバイスモニター」タブの「ライブ更新」チェックボックス。
+// 「デバイスモニター」タブの「ライブ更新」トグル(見た目は style.css の .toggle-switch。
+// 実体は checkbox なのでキーボード操作と change イベントはそのまま)。
 // 対向: src/monitorWebviewMessages.ts の setShowStreamDuringRun / showStreamDuringRun(monitorPanel.ts が永続化)。
 // 初期値 ON(HTML の checked)は monitorPanel.ts の既定と揃える(片方だけ変えない)。
 

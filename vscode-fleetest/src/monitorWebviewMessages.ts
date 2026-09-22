@@ -385,6 +385,10 @@ export type MonitorToWebviewMessage =
   // 「デバイスモニター」タブの実行ログビュー(#log-pane)の高さ(px)。永続化の経路は
   // tilePaneHeight と同じ(setLogPaneHeight と対の契約。受け手は splitter.js)。
   | { readonly type: "logPaneHeight"; readonly value: number }
+  // run ボード(#run-board)の高さ(px)。永続化の経路は tilePaneHeight と同じ
+  // (setRunBoardHeight と対の契約。受け手は splitter.js)。**届かなければ中身なりの高さ** ——
+  // ドラッグされるまでは値を持たないので、既定値を作らない。
+  | { readonly type: "runBoardHeight"; readonly value: number }
   // 実行ログビューの表示トグル(false = 非表示)。永続化の経路は tilePaneHeight と同じ
   // (setLogViewVisible と対の契約。受け手は splitter.js)。
   | { readonly type: "logViewVisible"; readonly value: boolean }
@@ -807,6 +811,9 @@ export type MonitorFromWebviewMessage =
   // 実行ログビューとグリッドビューの間のスプリッターをドラッグ終了した時の実行ログビュー高さ(px)。
   // monitorPanel.ts が workspaceState へ永続化し、パネル再作成時に "logPaneHeight" メッセージで復元する。
   | { readonly type: "setLogPaneHeight"; readonly value: number }
+  // 「実行中」と「デバイス」の間のセパレーターをドラッグ終了した時の run ボード高さ(px)。
+  // monitorPanel.ts が workspaceState へ永続化し、パネル再作成時に "runBoardHeight" メッセージで復元する。
+  | { readonly type: "setRunBoardHeight"; readonly value: number }
   // 実行ログビューの表示トグルの切替。monitorPanel.ts が workspaceState へ永続化し、
   // パネル再作成時に "logViewVisible" メッセージで復元する。
   | { readonly type: "setLogViewVisible"; readonly value: boolean }
@@ -1194,6 +1201,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return true;
     case "setTilePaneHeight":
     case "setLogPaneHeight":
+    case "setRunBoardHeight":
       return typeof value.value === "number" && value.value > 0;
     case "setFleetVisible":
     case "setLogViewVisible":

@@ -12,6 +12,7 @@ import { vscode, persistedState } from './vscodeApi.js';
 import { paintMachineBadge } from './machineColors.js';
 import { setHoverTip } from './hoverTip.js';
 import { deviceIdForLane, selectOnlyDevices } from './deviceTiles.js';
+import { reapplyPaneHeights } from './splitter.js';
 import {
   LOCAL_MACHINE_KEY,
   applyMonitorRunsEvent,
@@ -77,6 +78,9 @@ function applyCollapsedUi() {
   const label = t(collapsed ? 'runBoard.expand' : 'runBoard.collapse');
   runBoardToggle.title = label;
   runBoardToggle.setAttribute('aria-label', label);
+  // **畳みは自分で伝える** —— ドラッグで高さを書いてあると箱の大きさが変わらず、splitter.js の
+  // ResizeObserver が鳴かない(畳んだのに行の無い高い帯が残る)
+  reapplyPaneHeights();
 }
 
 // **ヘッダ行のどこを押しても開閉する**(三角だけが当たり判定だと小さすぎる。ユーザー指摘)。

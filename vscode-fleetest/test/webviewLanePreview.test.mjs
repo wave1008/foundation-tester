@@ -137,12 +137,14 @@ const logHeaderName = (laneEl) => laneEl.querySelector(".lane-header").textConte
 test("選択が無い間はグリッドビューも実行ログビューも空にする", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
+  // 台が1枚も来ていない時点から出す(欄が後から現れると見出しの並びが動く)
+  assert.equal(document.getElementById("lanes-selection-status").textContent, "0台", "初期表示");
   sendDevices(window, [{}, {}, {}]);
   assert.equal(visibleLogs(document).length, 0, "選択した台だけを出すこと(0台なら1本も出さない)");
   assert.equal(visiblePreviews(document).length, 0, "選択していないのに動画枠を出さないこと");
   assert.equal(document.getElementById("lanes-title").textContent, "実行ログ");
-  assert.equal(document.getElementById("grid-view-title").textContent, "デバイス");
-  assert.equal(document.getElementById("lanes-selection-status").textContent, "");
+  assert.equal(document.getElementById("grid-view-title").textContent, "選択したデバイス");
+  assert.equal(document.getElementById("lanes-selection-status").textContent, "0台", "0台でも出す");
 });
 
 test("1台選択で実行ログビューはその台だけに絞り、グリッドビューは拡大表示+ログの複製を並べる", (t) => {
@@ -163,7 +165,7 @@ test("1台選択で実行ログビューはその台だけに絞り、グリッ�
   assert.equal(pair.children[0].className, "lane-preview", "左が動画");
   assert.equal(pair.children[1].className, "lane lane-log-mirror", "右がログの複製");
   assert.equal(pair.children[1].querySelector(".lane-log-title").textContent, "実行ログ");
-  assert.equal(document.getElementById("grid-view-title").textContent, "デバイス");
+  assert.equal(document.getElementById("grid-view-title").textContent, "選択したデバイス");
 });
 
 test("1台選択の動画の幅は絵に合わせ、2台に増やすとログの複製を解いて幅の指定も外す", (t) => {
@@ -229,20 +231,20 @@ test("全選択からこのデバイスのみ選択した後のダブルクリ�
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [{}, {}, {}]);
-  document.getElementById("btn-select-all").click();
+  document.getElementById("chk-select-all").click();
   assert.equal(selectedTileCount(document), 3, "前提: 全選択");
   dblclick(window, visiblePreviews(document)[1]);
   assert.equal(selectedTileCount(document), 1);
   dblclick(window, visiblePreviews(document)[0]);
   assert.equal(selectedTileCount(document), 3, "全台の選択に戻る");
-  assert.equal(document.getElementById("btn-select-all").getAttribute("aria-pressed"), "true", "全選択の旗も戻る");
+  assert.equal(document.getElementById("chk-select-all").checked, true, "全選択の旗も戻る");
 });
 
 test("全選択に戻すときは、1台表示の間に現れた台も選ぶ(全選択の意味のまま)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [{}, {}, {}]);
-  document.getElementById("btn-select-all").click();
+  document.getElementById("chk-select-all").click();
   dblclick(window, visiblePreviews(document)[0]);
   assert.equal(selectedTileCount(document), 1);
   sendDevices(window, [{}, {}, {}, {}]);  // 4台目が現れる

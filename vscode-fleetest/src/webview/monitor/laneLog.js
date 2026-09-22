@@ -28,6 +28,15 @@ let deviceOrder = [];
 // グリッドビューの見出しは固定文言(実行ログビュー側は静的 HTML が持つ)。
 gridViewTitle.textContent = t('wvMonitor2.laneLog.titleDevices');
 
+// 台数は 0 でも出す(ラインビューの台数と同じ規律。deviceTiles.js の renderSelectionCount)。
+// **初期表示は main.js が init で呼ぶ updateLaneVisibility() 経由**。ここで直接呼ばないのは、
+// selectedDeviceIds が deviceTiles.js の束縛で、相互 import の評価順によっては TDZ になるため
+function renderSelectionCount() {
+  lanesSelectionStatus.textContent = t('wvMonitor2.laneLog.selectedCount', {
+    count: selectedDeviceIds.size,
+  });
+}
+
 // lanesGrid(実行ログ)の子要素をdeviceOrder順に並べ直す(appendChildは既存ノードの移動)。
 // previewGrid側は「直接の子」(ミラー中でない previewEl)だけ並べ直す —— ミラー中の1枚は
 // .lane-pair に包まれて previewGrid の子になっており、動かすとミラーの組が壊れる。
@@ -320,9 +329,7 @@ export function updateLaneVisibility() {
   previewGrid.classList.toggle('single-device', mirrorId !== null);
   relayoutPreviewGrid(previewIds);
 
-  lanesSelectionStatus.textContent = selectedDeviceIds.size > 0
-    ? t('wvMonitor2.laneLog.selectedCount', { count: selectedDeviceIds.size })
-    : '';
+  renderSelectionCount();
   devicesPanel.classList.toggle('no-selection', selectedDeviceIds.size === 0);
   syncOverallLinesClass();
 }

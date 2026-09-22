@@ -265,6 +265,9 @@ export class MonitorPanelController implements vscode.Disposable {
   private fleetVisible: boolean;
   /** 実行ログビュー(#log-pane)の高さ(px)。tilePaneHeight と同じ契約(splitter.js と対)。 */
   private logPaneHeight: number | undefined;
+  /** run ボード(#run-board)の高さ(px)。tilePaneHeight と同じ契約(splitter.js と対)。
+   * 未設定(セパレーター未ドラッグ)は undefined = 中身なりの高さ。 */
+  private runBoardHeight: number | undefined;
   /** 実行ログビュー・グリッドビューの開閉。fleetVisible と同じ契約(splitter.js と対)。 */
   private logViewVisible: boolean;
   private gridViewVisible: boolean;
@@ -324,6 +327,7 @@ export class MonitorPanelController implements vscode.Disposable {
     // 既定 true(webview 側 splitter.js の「!== false」と揃える。片方だけ変えない)。
     this.fleetVisible = workspaceState.get<boolean>("monitor.fleetVisible", true);
     this.logPaneHeight = workspaceState.get<number>("monitor.logPaneHeight");
+    this.runBoardHeight = workspaceState.get<number>("monitor.runBoardHeight");
     // 既定 true(webview 側 splitter.js の「!== false」と揃える。片方だけ変えない)。
     this.logViewVisible = workspaceState.get<boolean>("monitor.logViewVisible", true);
     this.gridViewVisible = workspaceState.get<boolean>("monitor.gridViewVisible", true);
@@ -1157,6 +1161,10 @@ export class MonitorPanelController implements vscode.Disposable {
         this.fleetVisible = message.value;
         void this.workspaceState.update("monitor.fleetVisible", message.value);
         break;
+      case "setRunBoardHeight":
+        this.runBoardHeight = message.value;
+        void this.workspaceState.update("monitor.runBoardHeight", message.value);
+        break;
       case "setLogPaneHeight":
         this.logPaneHeight = message.value;
         void this.workspaceState.update("monitor.logPaneHeight", message.value);
@@ -1352,6 +1360,9 @@ export class MonitorPanelController implements vscode.Disposable {
     this.post({ type: "fleetVisible", value: this.fleetVisible });
     if (this.logPaneHeight !== undefined) {
       this.post({ type: "logPaneHeight", value: this.logPaneHeight });
+    }
+    if (this.runBoardHeight !== undefined) {
+      this.post({ type: "runBoardHeight", value: this.runBoardHeight });
     }
     this.post({ type: "logViewVisible", value: this.logViewVisible });
     this.post({ type: "gridViewVisible", value: this.gridViewVisible });

@@ -1,9 +1,10 @@
-// 「デバイスモニター」タブの「画面更新」チェックボックスの配線テスト。
+// 「デバイスモニター」タブの「ライブ更新」トグルの配線テスト。
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewSelectAllPersist.test.mjs と同じ。
 // 契約は monitorWebviewMessages.ts の setShowStreamDuringRun(webview→host)/ showStreamDuringRun(host→webview)。
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { before, test } from "node:test";
 import * as esbuild from "esbuild";
@@ -63,20 +64,25 @@ function createWebview() {
 
 const sentValues = (posted) => posted.filter((m) => m?.type === "setShowStreamDuringRun").map((m) => m.value);
 
-test("チェックボックスはグリッドビューの見出し行の右端に既定 ON で置かれる", (t) => {
+test("トグルは「すべて選択」の右に既定 ON で置かれる", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const checkbox = document.getElementById("chk-show-stream-during-run");
   assert.ok(checkbox);
   assert.equal(checkbox.checked, true);
+  assert.ok(checkbox.classList.contains("toggle-switch"), "見た目はトグル(style.css の .toggle-switch)");
+  assert.equal(checkbox.getAttribute("role"), "switch");
   const label = checkbox.closest("label");
-  // **グリッドビューの見出し行の右端**(ユーザー決定 2026-09-21)—— 効く相手(画面の絵)と
-  // 同じ場所に置く。ツールバーからは外した。実行ログビューの見出し行(#log-view-header)も
-  // 同じ .lanes-header クラスを持つので、id で名指しする
-  const header = document.getElementById("grid-view-header");
-  assert.equal(label.parentElement, header);
-  assert.equal(header.lastElementChild, label, "行の最後 = 右端(margin-left:auto で寄せる)");
-  assert.ok(label.classList.contains("run-stream-toggle"), "右寄せ(margin-left:auto)の class");
+  // **ラインビューの見出し行の「すべて選択」の右**(ユーザー決定 2026-09-22)—— どちらも
+  // タイルの見え方を操るので隣り合わせる。ツールバーからもグリッドビューからも外した
+  assert.equal(label.parentElement, document.getElementById("line-view-header"));
+  assert.equal(
+    label.previousElementSibling,
+    document.getElementById("chk-select-all").closest("label"),
+    "すぐ左が「すべて選択」",
+  );
+  assert.ok(label.classList.contains("run-stream-toggle"), "位置と離し方を持つ class");
+  assert.equal(document.querySelectorAll("#grid-view-header .run-stream-toggle").length, 0, "グリッドビューには残さない");
 });
 
 test("切り替えるたびに host へ送り、host の復元値は投げ返さない", (t) => {
@@ -95,4 +101,23 @@ test("切り替えるたびに host へ送り、host の復元値は投げ返さ
     assert.equal(isMonitorFromWebviewMessage(message), true, "host 側の検証を通る形で送る");
   }
   assert.equal(isMonitorFromWebviewMessage({ type: "setShowStreamDuringRun", value: "yes" }), false);
+});
+
+// トグルの描画は**素の input[type="checkbox"](18px の四角 + 回転ボーダーのチェック)の
+// 上書き**で成り立っている。詳細度が同じなので順序が逆転すると黙って四角に戻る ——
+// jsdom は CSS を読まないので、スタイルシートのテキストで固める。
+test("style.css: トグルは素のチェックボックス描画の後ろに置き、ON は青い地になる", () => {
+  const css = readFileSync(path.resolve("src/webview/monitor/style.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const plain = css.indexOf('input[type="checkbox"]:checked::after');
+  const toggle = css.indexOf('input[type="checkbox"].toggle-switch {');
+  assert.ok(plain >= 0, "素のチェックボックスの描画がある");
+  assert.ok(toggle >= 0, "トグルの規則がある");
+  assert.ok(toggle > plain, "トグルは素の描画より後ろ(同じ詳細度は順序で決まる)");
+
+  const track = /input\[type="checkbox"\]\.toggle-switch \{([\s\S]*?)\}/.exec(css)[1];
+  assert.match(track, /border-radius:\s*7px/, "丸い帯(四角に戻っていない)");
+
+  const on = /input\[type="checkbox"\]\.toggle-switch:checked \{([\s\S]*?)\}/.exec(css);
+  assert.ok(on, "ON の規則がある");
+  assert.match(on[1], /background-color:\s*var\(--vscode-button-background/, "ON は青い地");
 });

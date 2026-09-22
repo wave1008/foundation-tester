@@ -9,7 +9,7 @@ export const btnUp = document.getElementById('btn-devices-up');
 export const btnDown = document.getElementById('btn-devices-down');
 export const btnRestart = document.getElementById('btn-restart');
 export const btnRunTests = document.getElementById('btn-run-tests');
-export const btnSelectAll = document.getElementById('btn-select-all');
+export const btnSelectAll = document.getElementById('chk-select-all');
 export const projectSelect = document.getElementById('project-select');
 export const profileSelect = document.getElementById('profile-select');
 
@@ -23,6 +23,8 @@ export const runBoardToggle = document.getElementById('run-board-toggle');
 export const runBoardTitle = document.getElementById('run-board-title');
 export const runBoardExpandAll = document.getElementById('run-board-expand-all');
 export const runBoardRows = document.getElementById('run-board-rows');
+// 「実行中」と「デバイス」の間のセパレーター(run ボードの高さを変える。splitter.js)。
+export const devicesSeparator = document.getElementById('devices-separator');
 
 export const devicesPanel = document.getElementById('panel-devices');
 export const tilePane = document.getElementById('tile-pane');

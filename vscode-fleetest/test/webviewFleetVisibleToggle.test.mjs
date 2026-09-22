@@ -152,7 +152,7 @@ test("ラインビュー非表示のまま台が現れたら下のペインの�
 });
 
 // ラインビューが非表示だとタイルを押して選べないので、初期状態は「すべて選択」
-const selectAllOn = (document) => document.getElementById("btn-select-all").getAttribute("aria-pressed") === "true";
+const selectAllOn = (document) => document.getElementById("chk-select-all").checked;
 const restore = (window, type, value) => window.dispatchEvent(new window.MessageEvent("message", { data: { type, value } }));
 
 test("ラインビュー非表示で開くと、全選択の保存値が OFF でも「すべて選択」から始める(保存値は書き換えない)", (t) => {
@@ -185,7 +185,7 @@ test("ツールバーの右端にアイコン群は無い(開閉も全選択も�
   assert.equal(document.getElementById("btn-fleet-visible"), null);
   assert.equal(document.getElementById("btn-auto-fit"), null, "自動フィットのボタンは無い");
   const header = document.getElementById("line-view-header");
-  assert.equal(document.getElementById("btn-select-all").parentElement, header);
+  assert.equal(document.getElementById("chk-select-all").closest("label").parentElement, header);
 });
 
 /** レイアウトのある webview を作る(jsdom は寸法が 0 なので、パネルの高さと offsetParent を与える) */
@@ -245,7 +245,7 @@ test("ラインビューの見出し行はどこを押しても開閉する", (t
   const toggle = document.getElementById("line-view-toggle");
   assert.equal(toggle.textContent, "▶");
   assert.equal(toggle.dataset.expanded, "true", "既定は表示");
-  assert.equal(document.getElementById("line-view-title").textContent, "デバイス");
+  assert.equal(document.getElementById("line-view-title").textContent, "デバイス一覧");
 
   document.getElementById("line-view-title").click();   // 三角ではなくタイトルを押す
   assert.equal(toggle.dataset.expanded, "false");

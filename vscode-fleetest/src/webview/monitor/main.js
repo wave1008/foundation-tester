@@ -71,7 +71,7 @@ import { applyResidentMessage } from './processesTab.js';
 import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
 import { activateTab, currentTab, HIDDEN_AT_STARTUP, TAB_IDS, switchTab } from './tabs.js';
 import { applyLiveH264Chunk, applyLiveMessage, initLive, openLiveDevice, refreshLiveDevices, setLiveVisible } from './liveTab.js';
-import { setTilePaneHeight, setFleetVisible, isFleetVisible, setLogPaneHeight, setLogViewVisible, setGridViewVisible } from './splitter.js';
+import { setTilePaneHeight, setFleetVisible, isFleetVisible, setLogPaneHeight, setRunBoardHeight, setLogViewVisible, setGridViewVisible } from './splitter.js';
 import { adoptTitleHoverTips } from './hoverTip.js';
 import { setDevicesWaiting } from './waitingNote.js';
 import { handleDashboardMessage } from './dashboardTab.js';
@@ -285,6 +285,9 @@ window.addEventListener('message', (event) => {
         break;
       }
       applyRecordingsSession(message);
+      break;
+    case 'runBoardHeight':
+      setRunBoardHeight(message.value);
       break;
     case 'tilePaneHeight':
       setTilePaneHeight(message.value);

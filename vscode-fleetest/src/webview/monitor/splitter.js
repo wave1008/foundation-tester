@@ -3,16 +3,19 @@
 // レイアウトで resize が走った際にユーザー意図まで最小値へ潰される(実害: エディタ開閉で
 // セパレーターが最小位置にリセット)。tabs.js からは reapplyPaneHeights を呼ぶ。
 //
-// 縦の並びは toolbar/banner/line-view-header → tile-pane(ラインビュー) → splitter →
-// output-pane(グリッドビュー。flex:1 1 auto で残りを占有) → splitter-log → log-pane(実行ログビュー)。
-// tile-pane と log-pane は明示高さ(このモジュールが計算)・output-pane は残りを自動で占める。
+// 縦の並びは toolbar → run ボード → devices-separator → banner/line-view-header →
+// tile-pane(ラインビュー) → splitter → output-pane(グリッドビュー。flex:1 1 auto で残りを占有) →
+// splitter-log → log-pane(実行ログビュー)。run ボード・tile-pane・log-pane は明示高さ
+// (このモジュールが計算)・output-pane は残りを自動で占める。
+// **run ボードだけは保存値が無ければ高さを書かない**(中身なりの高さ = 従来の見え方)。
 
 import { vscode, persistedState } from './vscodeApi.js';
 import {
   toolbar, banner, devicesPanel, tilePane, splitter, lineViewHeader, lineViewToggle, lineViewTitle,
-  logPane, logViewHeader, logViewToggle, splitterLog, outputPane, gridViewHeader, gridViewToggle, runBoard,
+  logPane, logViewHeader, logViewToggle, splitterLog, outputPane, gridViewHeader, gridViewToggle,
+  runBoard, runBoardHeader, devicesSeparator,
 } from './domRefs.js';
-import { clampHeight, tilePaneLimits, logPaneLimits } from './paneLayoutModel.js';
+import { clampHeight, tilePaneLimits, logPaneLimits, runBoardLimits } from './paneLayoutModel.js';
 import { t } from '../i18n.js';
 import { setLineViewHiddenForWaiting, setGridViewHiddenForWaiting } from './waitingNote.js';
 import { relayoutTiles } from './deviceTiles.js';
@@ -51,6 +54,13 @@ function logViewShown() {
   return logViewVisible && !autoFoldActive();
 }
 
+// null = 保存値が無い。**run ボードだけは既定比を持たない** —— ドラッグされるまでは高さを書かず、
+// 中身なりに伸び縮みする(従来の見え方)。
+let desiredRunBoardHeight =
+  typeof persistedState.runBoardHeight === 'number' && persistedState.runBoardHeight > 0
+    ? persistedState.runBoardHeight
+    : null;
+
 // null = 保存値が無い(最初の描画で既定比から決める)
 let desiredTilePaneHeight =
   typeof persistedState.tilePaneHeight === 'number' && persistedState.tilePaneHeight > 0
@@ -65,14 +75,21 @@ let desiredLogPaneHeight =
 let logPaneHeight = desiredLogPaneHeight ?? 0;
 
 // document.body.clientHeight だとタブバー分ずれるため、「デバイスモニター」タブパネル自身の
-// clientHeight を基準にする。3つのペイン(tile-pane / log-pane / output-pane)が分け合う高さなので、
-// **その外に居るもの全部**(ツールバー・run ボード・バナー・ラインビューの見出し・スプリッター2本)を引く。
-// 畳んで消えているもの(スプリッター)は offsetHeight が 0 なので自動で勘定から外れる。
-function availableSplitHeight() {
+// clientHeight を基準にする。run ボードと3つのペイン(tile-pane / log-pane / output-pane)が
+// 分け合う高さなので、**その外に居るもの全部**(ツールバー・バナー・ラインビューの見出し・
+// セパレーター3本)を引く。畳んで消えているもの(スプリッター)は offsetHeight が 0 なので
+// 自動で勘定から外れる。
+function runBoardAvailableHeight() {
   const bannerHeight = banner.classList.contains('visible') ? banner.offsetHeight : 0;
   return devicesPanel.clientHeight
-    - toolbar.offsetHeight - runBoard.offsetHeight - bannerHeight - lineViewHeader.offsetHeight
-    - splitter.offsetHeight - splitterLog.offsetHeight;
+    - toolbar.offsetHeight - bannerHeight - lineViewHeader.offsetHeight
+    - devicesSeparator.offsetHeight - splitter.offsetHeight - splitterLog.offsetHeight;
+}
+
+// 3つのペインの取り分。run ボードは実測で引く —— 高さを書いていない(保存値が無い)間は
+// 中身なりの高さなので、変数では言い当てられない。
+function availableSplitHeight() {
+  return runBoardAvailableHeight() - runBoard.offsetHeight;
 }
 
 // ペインが見出し行だけになったときの高さ(見出し + ペインの上下パディング)。**定数を置かず実測する**
@@ -118,6 +135,77 @@ function panelHidden() {
 // ラインビュー非表示の間も測れないため抜ける。
 function splitAreaHidden() {
   return !fleetVisible || panelHidden();
+}
+
+// ---- run ボード(#run-board)の高さ ----
+// **ドラッグされるまでは高さを書かない**(desired が null)。畳んでいる間も書かない ——
+// 行が CSS で消えるので、見出し行だけの高さへ戻すのが正しい。
+
+function runBoardCollapsed() {
+  // 書き手は runBoard.js の applyCollapsedUi(data-collapsed)。畳みの反映はあちらが
+  // reapplyPaneHeights を呼ぶ —— 高さを書いたままだと箱の大きさが変わらず ResizeObserver が鳴らない。
+  return runBoard.dataset.collapsed === 'true';
+}
+
+// 3ペインが譲れない最小の合計。ラインビューを畳んでいる間は tile-pane も #splitter も消えるので 0。
+function panesMinHeight() {
+  return (fleetVisible ? MIN_PANE_HEIGHT : 0)
+    + paneChromeHeight(logPane, logViewHeader) + paneChromeHeight(outputPane, gridViewHeader);
+}
+
+function clampRunBoardHeight(height) {
+  const { min, max } = runBoardLimits({
+    available: runBoardAvailableHeight(),
+    headerHeight: paneChromeHeight(runBoard, runBoardHeader),
+    panesMin: panesMinHeight(),
+  });
+  return clampHeight(height, min, max);
+}
+
+// .run-board-sized = 高さを明示した印(CSS が末尾の余白を箱に持たせる)。
+function renderRunBoardHeight() {
+  if (desiredRunBoardHeight === null || runBoardCollapsed()) {
+    runBoard.style.height = '';
+    runBoard.classList.remove('run-board-sized');
+    return;
+  }
+  runBoard.style.height = clampRunBoardHeight(desiredRunBoardHeight) + 'px';
+  runBoard.classList.add('run-board-sized');
+}
+
+// 明示操作(ドラッグ)用。run ボードが伸びれば3ペインの取り分が減るので続けて再クランプする。
+export function applyRunBoardHeight(height) {
+  if (panelHidden()) {
+    return;
+  }
+  desiredRunBoardHeight = clampRunBoardHeight(height);
+  renderRunBoardHeight();
+  reapplyTilePaneHeight();
+  reapplyLogPaneHeight();
+}
+
+function persistRunBoardHeight() {
+  // 押しただけで動かさなかったドラッグでは desired が null のまま(高さを書いていない状態は
+  // 保存する値を持たない)
+  if (desiredRunBoardHeight === null) {
+    return;
+  }
+  // 二重保存の理由は persistTilePaneHeight と同じ(契約: monitorWebviewMessages.ts の
+  // setRunBoardHeight / runBoardHeight)。
+  vscode.setState(Object.assign({}, vscode.getState(), { runBoardHeight: desiredRunBoardHeight }));
+  vscode.postMessage({ type: 'setRunBoardHeight', value: desiredRunBoardHeight });
+}
+
+// host からの復元値(sendInitialState)。
+export function setRunBoardHeight(height) {
+  if (typeof height !== 'number' || !(height > 0)) {
+    return;
+  }
+  desiredRunBoardHeight = height;
+  if (panelHidden()) {
+    return;
+  }
+  renderRunBoardHeight();
 }
 
 function renderTilePaneHeight() {
@@ -360,8 +448,9 @@ export function setGridViewVisible(visible) {
   applyGridViewVisible(visible);
 }
 
-// run ボードは開閉で高さが変わる = 3ペインが分け合う残りも変わる。自分が高さを書き換えない
-// 相手なので観測しても再入しない(jsdom には ResizeObserver が無いので存在するときだけ)。
+// run ボードは中身と開閉で高さが変わる = 3ペインが分け合う残りも変わる。**ここは自分でも高さを
+// 書く相手になった**が、書くのはクランプ済みの同じ値なので箱の大きさが変わらず、観測は1周で収まる
+// (jsdom には ResizeObserver が無いので存在するときだけ)。
 if (typeof ResizeObserver !== 'undefined') {
   new ResizeObserver(() => reapplyPaneHeights()).observe(runBoard);
 }
@@ -372,6 +461,11 @@ if (typeof ResizeObserver !== 'undefined') {
 // **再クランプの入口はこれ1つ**(resize・run ボードの伸縮・タブ復帰(tabs.js)・初期描画)——
 // tile 側だけを呼ぶ経路を作ると、ラインビューを畳んでいる間そこだけ実行ログビューが取り残される。
 export function reapplyPaneHeights() {
+  // **run ボードが先** —— 3ペインの取り分はボードの高さを引いた残りなので、順序を入れ替えると
+  // 1周ぶん古い取り分でクランプする
+  if (!panelHidden()) {
+    renderRunBoardHeight();
+  }
   reapplyTilePaneHeight();
   reapplyLogPaneHeight();
 }
@@ -449,3 +543,39 @@ const endSplitterLogDrag = (event) => {
 };
 splitterLog.addEventListener('pointerup', endSplitterLogDrag);
 splitterLog.addEventListener('pointercancel', endSplitterLogDrag);
+
+// 「実行中」と「デバイス」の間のセパレーター。run ボードは**上**のペインなので、
+// 下げると伸びる(#splitter と同じ向き)。畳んでいる間は CSS が pointer-events を殺す。
+let devicesSeparatorPointerId = null;
+let devicesSeparatorStartY = 0;
+let devicesSeparatorStartHeight = 0;
+
+devicesSeparator.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0) {
+    return;
+  }
+  devicesSeparatorPointerId = event.pointerId;
+  devicesSeparatorStartY = event.clientY;
+  // **実測から始める** —— まだドラッグされていない run ボードは高さを書いていない(中身なり)
+  devicesSeparatorStartHeight = runBoard.offsetHeight;
+  devicesSeparator.setPointerCapture(event.pointerId);
+  devicesSeparator.classList.add('dragging');
+  event.preventDefault();
+});
+devicesSeparator.addEventListener('pointermove', (event) => {
+  if (devicesSeparatorPointerId !== event.pointerId) {
+    return;
+  }
+  applyRunBoardHeight(devicesSeparatorStartHeight + event.clientY - devicesSeparatorStartY);
+});
+const endDevicesSeparatorDrag = (event) => {
+  if (devicesSeparatorPointerId !== event.pointerId) {
+    return;
+  }
+  devicesSeparatorPointerId = null;
+  devicesSeparator.classList.remove('dragging');
+  devicesSeparator.releasePointerCapture(event.pointerId);
+  persistRunBoardHeight();
+};
+devicesSeparator.addEventListener('pointerup', endDevicesSeparatorDrag);
+devicesSeparator.addEventListener('pointercancel', endDevicesSeparatorDrag);
