@@ -551,17 +551,22 @@ test("メニューの「すべて解除」も同じ", (t) => {
   assert.equal(cleared, 1);
 });
 
-// 見出しの台数は**0台でも出す**(ユーザー決定 2026-09-22)—— 欄が消えるとトグルの位置が動く。
-// グリッドビュー側の同じラベルは webviewLanePreview.test.mjs が見る
-test("見出しの台数は選択0でも「0台」を出す", (t) => {
+// ラインビューの見出しの台数は**選択に関係なく全台**(ユーザー決定 2026-09-22)。
+// **0台でも出す** —— 欄が消えるとトグルの位置が動く。
+// グリッドビュー側の台数(こちらは選択した台数)は webviewLanePreview.test.mjs が見る
+test("見出しの台数は選択に関係なく全台を数える(0台でも出す)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const count = () => document.getElementById("line-view-selection").textContent;
   assert.equal(count(), "0台", "台がまだ出ていないとき");
   sendDevices(window, 3);
-  assert.equal(count(), "0台", "台が出ただけでは選ばれない");
+  assert.equal(count(), "3台", "選んでいなくても出ている台を数える");
   click(document, button(document));
-  assert.equal(count(), "3台");
+  assert.equal(count(), "3台", "全選択しても変わらない");
+  click(document, button(document));
+  assert.equal(count(), "3台", "全解除しても変わらない");
+  sendDevices(window, 2);
+  assert.equal(count(), "2台", "台が減れば減る(選択の経路を通らない)");
 });
 
 // 台数の桁が変わるたびに右隣のトグルが動かないこと(ユーザー決定 2026-09-22)。

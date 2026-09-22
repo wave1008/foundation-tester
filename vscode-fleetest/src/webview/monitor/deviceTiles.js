@@ -911,15 +911,16 @@ function selectAllIsDeselect() {
 // ツールチップと当たり判定はラベル全体(文字の上でも効かせる)。
 const selectAllLabel = btnSelectAll.closest('label');
 
-// **0 台でも「0台」を出す**(ユーザー決定 2026-09-22)—— 欄が消えるとトグルの位置が動く。
-// **台が1枚も来ていない時点でも出す**ので初期化でも1回呼ぶ(updateSelectionUi は最初の
-// devices まで走らない)
-function renderSelectionCount() {
-  lineViewSelection.textContent = t('wvMonitor.lineView.selected', {
-    count: String(selectedDeviceIds.size),
+// ラインビューの見出しの台数は**選択に関係なく全台**(ユーザー決定 2026-09-22)。
+// **0 台でも「0台」を出す** —— 欄が消えるとトグルの位置が動く。
+// **台が1枚も来ていない時点でも出す**ので初期化でも1回呼ぶ(applyDevices は最初の devices
+// まで走らない)
+function renderDeviceCount() {
+  lineViewSelection.textContent = t('wvMonitor.lineView.deviceCount', {
+    count: String(tiles.size),
   });
 }
-renderSelectionCount();
+renderDeviceCount();
 
 // **0枚でも押せる**(disabled にしない) —— 台を待っている間に入れておけば、出てきた台が
 // 選択された状態で並ぶ。押せなくすると「待機しています」の間だけ切り替えられない。
@@ -1392,6 +1393,9 @@ export function applyDevices(devices) {
   } else {
     renderSelectAllButton();
   }
+  // 台数は選択と無関係なので、**選択の経路(updateSelectionUi)ではなくここで**書く ——
+  // 台が減っただけのときは updateSelectionUi を通らない
+  renderDeviceCount();
   relayoutTiles();
   syncLanesToDevices(devices);
   updateLaneVisibility();
@@ -1961,8 +1965,6 @@ function updateSelectionUi() {
     entry.tile.classList.toggle('selected', selectedDeviceIds.has(id));
   }
   renderSelectAllButton();
-  // ラインビューの見出しに選択中の台数を出す(**選択の変更はここを必ず通る**)
-  renderSelectionCount();
   updateLaneVisibility();
 }
 

@@ -28,7 +28,7 @@ let deviceOrder = [];
 // グリッドビューの見出しは固定文言(実行ログビュー側は静的 HTML が持つ)。
 gridViewTitle.textContent = t('wvMonitor2.laneLog.titleDevices');
 
-// 台数は 0 でも出す(ラインビューの台数と同じ規律。deviceTiles.js の renderSelectionCount)。
+// **選択した台数**(ラインビュー側は全台 = deviceTiles.js の renderDeviceCount)。0 でも出す。
 // **初期表示は main.js が init で呼ぶ updateLaneVisibility() 経由**。ここで直接呼ばないのは、
 // selectedDeviceIds が deviceTiles.js の束縛で、相互 import の評価順によっては TDZ になるため
 function renderSelectionCount() {

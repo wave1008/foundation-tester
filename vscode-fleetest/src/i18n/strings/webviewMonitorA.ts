@@ -103,8 +103,9 @@ export const webviewMonitorAStrings = {
   "wvMonitor.toolbar.selectAll": { ja: "デバイスをすべて選択", en: "Select All Devices" },
   "wvMonitor.toolbar.deselectAll": { ja: "デバイスの選択をすべて解除", en: "Deselect All Devices" },
   "wvMonitor.lineView.title": { ja: "デバイス一覧", en: "Device list" },
-  // グリッドビューの同じ意味のラベル(wvMonitor2.laneLog.selectedCount)と同じ形。片方だけ変えない
-  "wvMonitor.lineView.selected": { ja: "{count}台", en: "{count} devices" },
+  // ラインビューの見出しの台数。**選択に関係なく全台**(グリッドビュー側の
+  // wvMonitor2.laneLog.selectedCount は選択した台数)。数える対象は違うが形は揃える
+  "wvMonitor.lineView.deviceCount": { ja: "{count}台", en: "{count} devices" },
   "wvMonitor.lineView.show": { ja: "ラインビューを開く", en: "Show Line View" },
   "wvMonitor.lineView.hide": { ja: "ラインビューを閉じる", en: "Hide Line View" },
   "wvMonitor.logView.show": { ja: "実行ログビューを開く", en: "Show Run Log View" },

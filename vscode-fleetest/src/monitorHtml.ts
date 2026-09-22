@@ -286,7 +286,7 @@ function renderDevicesPanel(): string {
     <div id="line-view-header" class="run-board-header">
       <button id="line-view-toggle" class="run-board-toggle" type="button" aria-expanded="true" data-expanded="true">▶</button>
       <span id="line-view-title" class="run-board-title"></span>
-      <!-- 選択中の台数(deviceTiles.js の renderSelectionCount が書く。**0台でも出す**) -->
+      <!-- 台数。**選択に関係なく全台**(deviceTiles.js の renderDeviceCount が書く。0台でも出す) -->
       <span id="line-view-selection" class="header-count"></span>
       <!-- 全選択。見た目は「ライブ更新」と同じトグル(.header-toggle + .toggle-switch)。
            **見出し行のクリック(開閉)へ波及させない**ので deviceTiles.js が stopPropagation する。

@@ -87,7 +87,8 @@ export const webviewMonitorBStrings = {
   // グリッドビューの見出しは常に titleDevices。1台選択時のミラー(実行ログの複製)の見出しにも titleRunLog を使う。
   "wvMonitor2.laneLog.titleRunLog": { ja: "実行ログ", en: "Run Log" },
   "wvMonitor2.laneLog.titleDevices": { ja: "選択したデバイス", en: "Selected devices" },
-  // ラインビューの同じ意味のラベル(wvMonitor.lineView.selected)と同じ形。片方だけ変えない
+  // グリッドビューの見出しの台数 = **選択した台数**(ラインビュー側の
+  // wvMonitor.lineView.deviceCount は全台)。数える対象は違うが形は揃える
   "wvMonitor2.laneLog.selectedCount": { ja: "{count}台", en: "{count} devices" },
 
   // hostCharts.js
