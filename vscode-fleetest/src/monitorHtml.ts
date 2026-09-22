@@ -270,6 +270,13 @@ function renderDevicesPanel(): string {
         <!-- ツリーを開いた形のアイコン(下向きの三角 + インデントした行。ユーザー決定 2026-09-21)。名前は tooltip と aria-label が持つ
              (runBoard.js)。クリックはヘッダ行の開閉へ波及させない(stopPropagation) -->
         <button id="run-board-expand-all" class="icon-button run-board-expand-all" type="button" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1.6 2.9h4.2L3.7 6.6z"/><rect x="7" y="2.9" width="7.4" height="1.5" rx="0.7"/><rect x="9" y="7.2" width="5.4" height="1.5" rx="0.7"/><rect x="9" y="11.5" width="5.4" height="1.5" rx="0.7"/></svg></button>
+        <!-- プラットフォームの表示フィルタ(既定は両方 ON)。OFF にした側のデバイスは
+             4つのセクション(実行中・デバイス一覧・選択したデバイス・実行ログ)から同時に消える
+             —— deviceTiles.js が applyDevices の入口で落とすため。**ヘッダ行のクリック
+             (ボード全体の開閉)へ波及させない**ので deviceTiles.js が stopPropagation する。
+             ラベルは製品名なので翻訳しない(説明だけ t() を通す) -->
+        <label class="profile-label header-toggle run-board-platform-filter" title="${t("panels.runBoard.platformFilterTitle")}"><input type="checkbox" id="chk-platform-ios" checked>iOS</label>
+        <label class="profile-label header-toggle" title="${t("panels.runBoard.platformFilterTitle")}"><input type="checkbox" id="chk-platform-android" checked>Android</label>
       </div>
       <div id="run-board-rows" class="run-board-rows"></div>
     </div>

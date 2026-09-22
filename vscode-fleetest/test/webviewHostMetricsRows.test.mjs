@@ -13,6 +13,7 @@
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { before, test } from "node:test";
 import * as esbuild from "esbuild";
@@ -213,6 +214,9 @@ test("マシン有効が off の機械の行にだけ無効の印が点く(行�
   t.after(() => window.close());
 
   const isOn = (machine) => rowFor(document, machine).querySelector(".hm-off").classList.contains("hm-off-on");
+  // 印だけでなく**行ごと明度を下げる**(ユーザー決定 2026-09-22)。jsdom は CSS を読まないので
+  // クラスの付け外しを見て、薄くする宣言そのものは下のテキスト走査で押さえる
+  const dimmed = (machine) => rowFor(document, machine).classList.contains("hm-row-disabled");
   send(window, { type: "remoteConfig", hosts: [
     { machine: "mac2", host: "u@mac2", dir: "", enabled: false },
     { machine: "mac3", host: "u@mac3", dir: "", enabled: true },
@@ -222,6 +226,7 @@ test("マシン有効が off の機械の行にだけ無効の印が点く(行�
   assert.equal(isOn("mac2"), true, "行の生成時に貼る");
   assert.equal(isOn("mac3"), false, "複製元(手元の行)の印を引き継がない");
   assert.equal(isOn(""), true, "手元は local.enabled で決まる");
+  assert.deepEqual([dimmed("mac2"), dimmed("mac3"), dimmed("")], [true, false, true], "無効の行だけ薄く");
   assert.match(rowFor(document, "mac2").querySelector(".hm-off").getAttribute("data-hover-tip"), /mac2/);
   assert.deepEqual(rows(document).map((row) => row.querySelectorAll(".hm-off").length), [1, 1, 1],
     "枠は全行に1つ(列をずらさない)");
@@ -230,6 +235,7 @@ test("マシン有効が off の機械の行にだけ無効の印が点く(行�
     local: { machine: "local", host: "me@localhost", fmConcurrency: 0, enabled: true } });
   assert.equal(isOn("mac2"), false, "enabled 欠落は有効 = 後着の config で外れる");
   assert.equal(isOn(""), false);
+  assert.deepEqual([dimmed("mac2"), dimmed("")], [false, false], "有効に戻れば明度も戻る");
   assert.equal(rowFor(document, "mac2").querySelector(".hm-off").getAttribute("data-hover-tip"), null);
 });
 
@@ -778,4 +784,54 @@ test("FM が死んでいても VN の系列は死の扱いを受けない", (t) 
   assert.equal(entry.classList.contains("hm-fm-dead"), false, "VN のセルに hm-fm-dead は付かない");
   assert.equal(entry.classList.contains("hm-fm-warn"), false, "VN のセルに hm-fm-warn も付かない");
   assert.equal(entry.querySelector(".hm-value").textContent, "3", "VN の回数はそのまま出る");
+});
+
+// jsdom は CSS を読まないので、薄くする宣言そのものをテキストで押さえる(進捗バーと同じ理由)。
+// **opacity で地へ寄せる** —— 文字色を直に薄くすると、ライトテーマでは背景から浮いて逆に目立つ。
+// **⊘無効 の印は対象外**(読ませたいので)。opacity は親に掛けると子では戻せないため、
+// 行ではなく子へ掛ける形でないと成立しない。
+test("style.css: 無効の行は opacity で明度を下げ、⊘無効 の印は外す", () => {
+  const css = readFileSync(new URL("../src/webview/monitor/style.css", import.meta.url), "utf8");
+  const selector = ".host-metrics .hm-row.hm-row-disabled > *:not(.hm-off) {";
+  const start = css.indexOf(selector);
+  assert.notEqual(start, -1, "行ではなく子へ掛ける(印を除外できるのはこの形だけ)");
+  assert.match(css.slice(start, css.indexOf("}", start)), /opacity:\s*0?\.\d+/);
+});
+
+// スパークラインの色。**無効な機械は系列そのものが無効**なので色を抜く(ユーザー決定 2026-09-22。
+// FM の死と同じ扱い)—— 行を薄くするだけだと色は残り、系列の色で機械を見分ける目には
+// 「動いているが暗い」に見える。jsdom にキャンバスは無いので 2D コンテキストを差し替えて拾う。
+test("無効な機械のスパークラインは全系列とも同じ1色(色を抜く)で描く", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const strokes = [];
+  window.HTMLCanvasElement.prototype.getContext = function () {
+    const canvas = this;
+    return {
+      setTransform() {}, clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {},
+      stroke() { strokes.push({ canvas, color: this.strokeStyle }); },
+    };
+  };
+
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  // 線を引くには 2 点要る(1点しか無いと flushSegment が何も描かない)
+  send(window, hostMetricsSample("mac2", 0.9));
+  send(window, hostMetricsSample(undefined, 0.5));
+  send(window, hostMetricsSample("mac2", 0.8));
+  send(window, hostMetricsSample(undefined, 0.4));
+
+  strokes.length = 0;
+  send(window, { type: "remoteConfig", hosts: [{ machine: "mac2", host: "u@mac2", dir: "", enabled: false }],
+                 local: { machine: "local", host: "me@localhost", fmConcurrency: 0, enabled: true } });
+  assert.ok(strokes.length > 0, "有効/無効が変わったらその場で描き直す(次の tick を待たない)");
+
+  const colorsIn = (machine) => {
+    const row = rowFor(document, machine);
+    return [...new Set(strokes.filter((s) => row.contains(s.canvas)).map((s) => s.color))];
+  };
+  const off = colorsIn("mac2");
+  const on = colorsIn("");
+  assert.equal(off.length, 1, "無効な機械は全系列とも同じ1色");
+  assert.ok(on.length > 1, "前提: 有効な機械は系列ごとに色が違う");
+  assert.equal(on.includes(off[0]), false, "無効の色は系列の色のどれとも違う");
 });

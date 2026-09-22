@@ -401,6 +401,9 @@ export type MonitorToWebviewMessage =
   // run ボードの「全て展開」トグル(true = 新しく現れた run も自動で展開する)。永続化の経路は
   // tilePaneHeight と同じ(setRunBoardExpandAll と対の契約。受け手は runBoard.js)。
   | { readonly type: "runBoardExpandAll"; readonly value: boolean }
+  // プラットフォームの表示フィルタ(false = その側のデバイスを4つのセクションから隠す)。
+  // 永続化の経路は tilePaneHeight と同じ(setPlatformFilter と対の契約。受け手は deviceTiles.js)。
+  | { readonly type: "platformFilter"; readonly ios: boolean; readonly android: boolean }
   // 「デバイスモニター」タブの全選択トグルの状態(true = 全デバイス選択)。永続化の理由と経路は
   // tilePaneHeight と同じ(setSelectAllDevices と対の契約)。**0枚でも復元する** ——
   // ready 直後はモニターがまだ台を出しておらず、出てきた台を webview 側が選び直す。
@@ -826,6 +829,9 @@ export type MonitorFromWebviewMessage =
   // 「全て展開」トグルの切替。monitorPanel.ts が workspaceState へ永続化し、パネル再作成時に
   // "runBoardExpandAll" メッセージで復元する。
   | { readonly type: "setRunBoardExpandAll"; readonly value: boolean }
+  // プラットフォームの表示フィルタの切替。monitorPanel.ts が workspaceState へ永続化し、
+  // パネル再作成時に "platformFilter" メッセージで復元する。
+  | { readonly type: "setPlatformFilter"; readonly ios: boolean; readonly android: boolean }
   // 全選択トグルの状態が変わったとき(ボタン・Cmd/Ctrl+A・右クリックメニュー、および
   // 個別選択で全台が揃った/崩れたとき)。monitorPanel.ts が workspaceState へ永続化し、
   // パネル再作成時に "selectAllDevices" メッセージで復元する。
@@ -1203,6 +1209,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "setLogPaneHeight":
     case "setRunBoardHeight":
       return typeof value.value === "number" && value.value > 0;
+    case "setPlatformFilter":
+      return typeof value.ios === "boolean" && typeof value.android === "boolean";
     case "setFleetVisible":
     case "setLogViewVisible":
     case "setGridViewVisible":

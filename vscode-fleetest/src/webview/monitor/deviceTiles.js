@@ -8,7 +8,7 @@
 import { t } from '../i18n.js';
 import { setDevicesWaiting } from './waitingNote.js';
 import { vscode } from './vscodeApi.js';
-import { grid, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuSelectOnlyBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRestart, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee, lineViewSelection } from './domRefs.js';
+import { grid, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuSelectOnlyBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRestart, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee, lineViewSelection, chkPlatformIOS, chkPlatformAndroid } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers, relayoutPreviewsForResize } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
@@ -1095,6 +1095,31 @@ export function deviceIdForLane(machine, laneKey) {
   return undefined;
 }
 
+// run ボード(runBoard.js)のツリー用: その機械が持つ台を**ラインビューと同じ並び**で返す。
+// machine は MonitorDevice の規約そのまま(undefined = 手元)。laneKey は monitorRuns の
+// MonitorRunLane.key と突き合わせる鍵(iOS は udid・Android は serial)。
+export function devicesOnMachine(machine) {
+  const out = [];
+  for (const [id, entry] of tiles) {
+    if (entry.device.machine !== machine) {
+      continue;
+    }
+    out.push({ id, name: entry.device.name, laneKey: entry.device.udid ?? entry.device.serial });
+  }
+  return out;
+}
+
+// run ボード(runBoard.js)のツリー用: run が走っていない機械の行に出す「何を見ているか」。
+// モニターが台を並べる範囲そのもの(`api monitor --project <P> [--profile <run>]`)なので、
+// ツールバーの選択をそのまま返す。**予約値(@running)と未選択は profile 無し**として扱う。
+export function currentMonitorScope() {
+  const profile = profileSelect.value;
+  return {
+    project: projectSelect.value,
+    profile: profile === '' || profile === PROFILE_RUNNING_VALUE ? undefined : profile,
+  };
+}
+
 // run ボード(runBoard.js)の行クリック用: 複数台を一括で選び直す(selectOnlyDevice の複数版。
 // 「このデバイスのみ選択」の直前選択に戻す仕組みは1台前提なので流用しない = restore は捨てる)。
 // 一致するタイルが1枚も無ければ何もしない(消えた台の run 行を押しても選択を崩さない)。
@@ -1284,6 +1309,7 @@ export function clearTilesForRestart() {
     entry.tile.remove();
   }
   tiles.clear();
+  lastDevices = [];
   selectedDeviceIds.clear();
   setDevicesWaiting(true);
   renderSelectAllButton();
@@ -1294,7 +1320,56 @@ export function clearTilesForRestart() {
   updateLaneVisibility();
 }
 
+// ---- プラットフォームの表示フィルタ(run ボードのヘッダのチェックボックス。既定は両方 ON) ----
+// **入口で落とす** —— タイル・レーン・拡大表示・run ボードのツリーはすべてこの一覧から作るので、
+// ここで落とせば4つのセクション(実行中・デバイス一覧・選択したデバイス・実行ログ)から同時に消える。
+// **生の一覧を控える** —— 切り替えたその場で描き直すため(次の監視サイクルを待たない)。
+let platformFilter = { ios: true, android: true };
+let lastDevices = [];
+const platformFilterListeners = [];
+
+export function isPlatformVisible(platform) {
+  return platformFilter[platform] !== false;
+}
+
+/** 表示フィルタが変わったら呼ぶ(runBoard.js が自分のツリーを描き直す)。 */
+export function onPlatformFilterChanged(listener) {
+  platformFilterListeners.push(listener);
+}
+
+function applyPlatformFilterState(next, persist) {
+  platformFilter = next;
+  chkPlatformIOS.checked = platformFilter.ios;
+  chkPlatformAndroid.checked = platformFilter.android;
+  applyVisibleDevices(lastDevices.filter((device) => isPlatformVisible(device.platform)));
+  for (const listener of platformFilterListeners) {
+    listener();
+  }
+  if (persist) {
+    vscode.postMessage({ type: 'setPlatformFilter', ios: platformFilter.ios, android: platformFilter.android });
+  }
+}
+
+/** host からの復元値(sendInitialState)。**投げ返さない**(applySelectAllDevices と同じ規律)。 */
+export function applyPlatformFilter(message) {
+  applyPlatformFilterState({ ios: message.ios !== false, android: message.android !== false }, false);
+}
+
+for (const [checkbox, key] of [[chkPlatformIOS, 'ios'], [chkPlatformAndroid, 'android']]) {
+  // 見出し行(run ボードのヘッダ)のクリックはボードごと畳むので、ラベル全体で止める
+  // (streamToggle.js と同じ)
+  checkbox.closest('label').addEventListener('click', (event) => event.stopPropagation());
+  checkbox.addEventListener('change', () => {
+    applyPlatformFilterState(Object.assign({}, platformFilter, { [key]: checkbox.checked }), true);
+  });
+}
+
 export function applyDevices(devices) {
+  lastDevices = devices;
+  applyVisibleDevices(devices.filter((device) => isPlatformVisible(device.platform)));
+}
+
+function applyVisibleDevices(devices) {
   // リモートのデバイスが混ざる構成でだけホスト名の段を出す(全タイルで高さを揃えるため
   // グリッド単位のクラスで制御する。判定は machine の有無)
   const nextMachineRow = devices.some((device) => !!device.machine);

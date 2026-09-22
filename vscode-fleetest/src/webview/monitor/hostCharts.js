@@ -192,6 +192,9 @@ function hmApplyDisabled(row, machine) {
   }
   const off = isMachineDisabled(machine);
   chip.classList.toggle('hm-off-on', off);
+  // 行ごと明度を下げる(ユーザー決定 2026-09-22)—— 使えない機械のグラフが同じ明るさで
+  // 並んでいると、動いている機械と見分けが付かない
+  row.el.classList.toggle('hm-row-disabled', off);
   setHoverTip(chip, off
     ? t('wvMonitor2.hostCharts.machineDisabled', { machine: machine === '' ? HM_LOCAL_LABEL : machine })
     : '');
@@ -202,6 +205,8 @@ onMachineEnablementChanged(() => {
   for (const [machine, row] of hmRows) {
     hmApplyDisabled(row, machine);
   }
+  // 線の色も無効かどうかで変わるので描き直す(次の tick まで待つと1秒ほど古い色が残る)
+  hmDrawAllRows();
 });
 
 /** 手元が先・以降は機械名順に並べ直す(appendChild は既存ノードでは移動として働く)。 */
@@ -417,6 +422,12 @@ function hmSetupCanvas(canvas) {
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);
   const ctx = canvas.getContext('2d');
+  // 2D コンテキストが取れないことはある(コンテキスト喪失・キャンバスを持たない実行環境)。
+  // **ここで throw させない** —— 描画は呼び手(remoteConfig のハンドラ等)の途中で走るので、
+  // 落ちるとその後の処理が丸ごと消える
+  if (!ctx) {
+    return null;
+  }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   return ctx;
 }
@@ -427,6 +438,9 @@ function hmDraw(row, entry, scale) {
   const width = 72;
   const height = 22;
   const ctx = hmSetupCanvas(entry.canvas);
+  if (!ctx) {
+    return;
+  }
   ctx.clearRect(0, 0, width, height);
   const samples = entry.samples;
   if (samples.length < 2) {
@@ -437,7 +451,11 @@ function hmDraw(row, entry, scale) {
   // **文字(FM ラベル・値)の色は変えない** —— 行のどこかが赤くなると、隣の CPU/GPU/MEM と
   // 同じ「高い値が出ている」の合図に見える。死は値ではなく系列そのものが無効という話なので、
   // 色を抜くことで表す
-  const color = entry === row.entries.fm && fmIsDead(row) ? palette.dead : palette[entry.colorKey];
+  // **「マシン有効」が off の機械も同じグレー**(ユーザー決定 2026-09-22)—— 行を薄くするだけだと
+  // 色は残るので、系列の色で機械を見分ける目には「動いているが暗い」に見える。無効は値ではなく
+  // 系列そのものが無効という話なので、FM の死と同じく色を抜いて表す
+  const grey = isMachineDisabled(row.machine) || (entry === row.entries.fm && fmIsDead(row));
+  const color = grey ? palette.dead : palette[entry.colorKey];
   const stepX = width / (HM_MAX_SAMPLES - 1);
   // samplesは「直近N件」なので、60件溜まるまでは右詰めで配置する(新サンプルは常に右端)。
   const startIndex = HM_MAX_SAMPLES - samples.length;

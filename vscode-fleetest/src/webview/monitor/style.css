@@ -325,6 +325,15 @@ button.bulk-cancel:hover:not(:disabled) {
   display: inline-block;
   visibility: visible;
 }
+/* 「マシン有効」が off の行は明度を下げる(ユーザー決定 2026-09-22)。
+   **opacity で地へ寄せる** —— 明暗どちらのテーマでも背景に近づく方向へ薄くなる
+   (文字色を直に薄くすると、ライトテーマでは逆に目立つ)。
+   **⊘無効 の印だけは薄くしない**(ユーザー決定 2026-09-22)—— なぜこの行が引っ込んで
+   いるのかを読む相手。opacity は**親に掛けると子では戻せない**(グループ単位で効く)ので、
+   行ではなく**子へ掛けて印だけ外す** */
+.host-metrics .hm-row.hm-row-disabled > *:not(.hm-off) {
+  opacity: 0.45;
+}
 /* 「モニター再起動」と「テストを実行」の間だけ広げる(ツールバーの gap 8px + ここの 8px)。
    左のモニター操作群(実行プロファイル・一括起動/停止・再起動)と、テスト実行を切り分ける。 */
 #btn-restart {
@@ -474,24 +483,27 @@ html[lang="en"] .header-count {
   font-weight: 600;
   white-space: nowrap;
 }
-/* 走っていない機械の1行。**run 行と混ぜて機械の順に並べる**ので grid の列は使えず、
-   名前の幅を min-width で揃える(機械名は短い。長い名前はその行だけ押し出す) */
-.run-board-idle-machine {
-  display: flex;
-  align-items: center;
-  gap: 8px;            /* run 行と同じ = 三角のあとの文字の頭が揃う */
-  /* **run 行と同じ 24px**。三角は機械行にも置くので(押せないだけ)、文字の頭は
-     run 行の名前と同じ 48px に揃う */
-  padding: 2px 8px 2px 24px;
-  /* **語("空き")と記号("—")で行の高さが変わらないよう固定する**(ユーザー指摘 2026-09-20)——
-     和文とダッシュでは既定の行高が違い、行ごとに上下が揺れる */
-  line-height: 18px;
-  min-height: 18px;
-  opacity: 0.75;               /* 走っていない機械は控えめに(run の行が主役) */
+/* 「実行中 N」の桁数で右の並び(全て展開・表示フィルタ)が動かないよう最小幅を固定する。
+   **#run-board-title だけ** —— .run-board-title はラインビューの見出しにも付いている */
+#run-board-title {
+  min-width: 56px;
 }
-.run-board-idle-machine-name {
-  flex: 0 0 auto;
-  min-width: 88px;   /* 状態の列を揃える(M1Ultra で約 60px。余裕を持たせる) */
+/* プラットフォームの表示フィルタの**チェックボックスの左端を、ツールバーの MEM チャート
+   (canvas)の左端に合わせる**(ユーザー決定 2026-09-22)。
+   こちら: 見出しの padding 8 + 三角 16 + gap 6 + 見出し文字 56 + 全て展開(margin 10 + 20)
+     + gap 6 = 122 → ラベルの padding-left 6 を**打ち消して**チェックボックスを 122 に置く。
+   MEM 側: toolbar の padding 12 + 機械名の列 72 + gap 10 + ラベル "MEM"(11px で約 25)
+     + gap 4 = 約 123。
+   **どちらも固定幅の積み上げ**なので、片方の寸法(#run-board-title の min-width・.hm-machine
+   の width・ラベルの字)を変えたらここも見る。機械が1台だけのときは .hm-machine が
+   出ないので揃わない(複数機械のときに合わせている) */
+.run-board-platform-filter {
+  margin-left: -6px;
+}
+/* 走っていない機械の行も run 行と同じ作り(.run-board-row)。**見出しの1行だけ控えめに** ——
+   run の行が主役だが、下に並ぶ台のツリーまで薄くすると読みにくい */
+.run-board-row-machine > .run-board-row-summary {
+  opacity: 0.75;
 }
 .run-board-idle-machine-status {
   flex: 1 1 auto;

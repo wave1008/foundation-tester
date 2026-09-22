@@ -27,6 +27,7 @@ import {
   tiles,
   applyProfileInfo,
   applySelectAllDevices,
+  applyPlatformFilter,
   applyBridgeWatch,
   applyHealthWatch,
   applyWipeStatus,
@@ -35,7 +36,7 @@ import { applyShowStreamDuringRun } from './streamToggle.js';
 import { applyLaneAction, applyLaneHydrate, updateLaneVisibility } from './laneLog.js';
 import { applyProjectInfo } from './projectsTab.js';
 import { applyHostMetrics, setHostMetricMachines, setMachineLock } from './hostCharts.js';
-import { applyMonitorRuns, resetRunBoard, setRunBoardCollapsed, setRunBoardExpandAll, setRunBoardMachines } from './runBoard.js';
+import { applyMonitorRuns, resetRunBoard, setRunBoardCollapsed, setRunBoardExpandAll, setRunBoardMachines, refreshRunBoardDevices } from './runBoard.js';
 import { applyProjectDeviceCatalog } from './runProfileDevicesTab.js';
 import {
   applyAppProfileInfo,
@@ -90,6 +91,8 @@ window.addEventListener('message', (event) => {
       // 消えてよいのは利用者が閉じたとき・次のバナーで置き換わったとき・
       // 「モニター再起動」を押したときだけ(deviceTiles.js の showBanner)
       applyDevices(message.devices);
+      // run ボードのツリーは台の一覧から作る(runBoard.js)—— 呼ばないと古い台が残る
+      refreshRunBoardDevices();
       break;
     case 'frame':
       applyFrame(message);
@@ -183,6 +186,8 @@ window.addEventListener('message', (event) => {
       // renderRunProfileEditor が devices 一覧を組み立てるときに最新のカタログを読む必要がある。
       applyProjectDeviceCatalog(message);
       applyRunProfileInfo(message);
+      // run が無い機械の行は「何を見ている台か」にツールバーの選択を出す(runBoard.js)
+      refreshRunBoardDevices();
       break;
     case 'deviceCatalog':
       applyDeviceCatalog(message);
@@ -285,6 +290,9 @@ window.addEventListener('message', (event) => {
         break;
       }
       applyRecordingsSession(message);
+      break;
+    case 'platformFilter':
+      applyPlatformFilter(message);
       break;
     case 'runBoardHeight':
       setRunBoardHeight(message.value);
