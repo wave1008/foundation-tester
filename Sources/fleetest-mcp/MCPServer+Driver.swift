@@ -362,8 +362,8 @@ extension MCPServer {
     /// (`udidBridgeDiagnosis`)が集め、ここへは値として渡す** —— reconcilePort 自体は
     /// 走査を伴わない純粋関数のまま保つ(2026-08-09 の変異テストが踏んだ理由と同じ)
     struct UDIDBridgeDiagnosis: Equatable, Sendable {
-        /// `/status` には答えなかったが LISTEN している(= 生きているが busy の根拠)。
-        /// 空なら「本当に居ない」
+        /// LISTEN しているが `/status` がタイムアウト上限まで無応答(= 本当に busy の根拠。
+        /// `BridgeDiscovery.StatusProbe.timedOut`)。空なら「本当に居ない」
         let listeningButUnresponsive: [UInt16]
         /// その udid を今使っている run の pid(`RunLease.holderPID`。`markDeviceInUse` と
         /// 同じ台帳・同じ鍵)。分かれば文面に添える
@@ -373,6 +373,13 @@ extension MCPServer {
         /// `.unreadable`(一覧そのものが読めなかった)を混同しない** —— 混同すると、
         /// 負荷下で simctl がタイムアウトしただけの回を「そのデバイスは存在しない」と断定する
         let lookup: SimulatorCatalog.UDIDLookup
+        /// LISTEN しているが `/status` への接続がタイムアウトよりはるかに早く応答無しで切れた
+        /// (= ブリッジが消えて転送役(実機なら iproxy)だけ残っている根拠。
+        /// `BridgeDiscovery.StatusProbe.transportFailed`)。**既定 `[]`**(既存呼び出し元・
+        /// 既存テストの3引数の形をそのまま通すため末尾に置く。デフォルト値付きプロパティは
+        /// 合成 memberwise init で省略可能なパラメータになるのは **`var` のときだけ** ——
+        /// 既定値つきの `let` は memberwise init から丸ごと外れて渡せなくなる)
+        var wedgedPorts: [UInt16] = []
 
         /// 診断そのものを取れなかった(予算超過)ときの既定。**理由を捏造しない** ——
         /// 「載っていない」でも「シミュレータ/実機と判定できた」でもなく、診断が間に合わなかった事実だけ運ぶ
@@ -391,51 +398,108 @@ extension MCPServer {
     /// (`BridgeDiscovery.isBound` 1回 300ms 上限 × この件数で worst case を秒単位に収める)
     static let maxUDIDBridgeCandidatePorts = 4
 
-    /// `udidBridgeDiagnosis` の全体(`ps` / `simctl` / 必要なら `devicectl` / `isBound`)に掛ける
-    /// 上限。根拠: `candidatePorts` 内の `ps` は数十 ms、`isBound` は候補上限
-    /// (`maxUDIDBridgeCandidatePorts`)× 300ms で worst case 1.2 秒、`SimulatorCatalog.lookupUDID`
-    /// は通常 `xcrun simctl list` の数百 ms で終わるが、udid がシミュレータ一覧に無いと
+    /// `udidBridgeDiagnosis` の全体(`ps` / `simctl` / 必要なら `devicectl` / probe)に掛ける
+    /// 上限。根拠: `candidatePorts` 内の `ps` は数十 ms、`SimulatorCatalog.lookupUDID` は通常
+    /// `xcrun simctl list` の数百 ms で終わるが、udid がシミュレータ一覧に無いと
     /// `IOSPhysicalDeviceCatalog.devices()` = `xcrun devicectl list devices`(timeout 30 秒)まで
-    /// 引く。**この 30 秒をそのまま `ft_status`(対話的な口)へ持ち込まない** —— 尽きたら
+    /// 引く。probe(`BridgeDiscovery.probeStatus`。isBound 300ms 上限 + `udidProbeTimeoutSeconds`)は
+    /// 候補上限本まで**並列**に撃つので、直列合算ではなく1回ぶんだけ足で乗る。
+    /// **この 30 秒をそのまま `ft_status`(対話的な口)へ持ち込まない** —— 尽きたら
     /// `UDIDBridgeDiagnosis.unknown`(既定 = 判定できない)へ落とす。診断自体は打ち切らず
-    /// 専用スレッドの上で走り続ける(`TaskBudget.run` と同じ立場: 諦めるのは待つことだけ)
+    /// 走り続ける(`TaskBudget.run` と同じ立場: 諦めるのは待つことだけ)
     static let udidBridgeDiagnosisBudget: Duration = .seconds(3)
+
+    /// probe 1回(`BridgeDiscovery.probeStatus`)の窓。**scan の既定(2秒)より短くする** ——
+    /// 候補上限本まで並列に撃つとはいえ、`ps`/`simctl`/`devicectl` の残り予算
+    /// (`udidBridgeDiagnosisBudget`)を圧迫しないため。判別に使う実測(~2.5ms。
+    /// `BridgeDiscovery.transportFailureFraction` のコメント参照)との比では 1 秒でも
+    /// busy/wedged の判別に十分な余裕がある
+    static let udidProbeTimeoutSeconds: Double = 1
 
     /// `udidPorts` が空だったときの追加調査(IO)。**lsof は一切起こさない**(上の doc 参照)。
     /// 候補ポートは台帳から絞り(`candidatePorts`。プロセスを起こすのは中の `ps` 1回だけ)、
-    /// LISTEN の確認は `BridgeDiscovery.isBound`(lsof ではなく生ソケットの connect+poll。
-    /// `iosConnectionLostHint` の busy 判定と同じ部品で 300ms 上限)だけで行う。
+    /// LISTEN と `/status` の両方の判定は `BridgeDiscovery.probeStatus`(生ソケットの connect+poll +
+    /// 非ブロッキングな `/status` の await。`iosConnectionLostHint` の busy/wedged 判定と同じ部品)を
+    /// 候補上限本まで**並列**に撃って行う。
     /// run の使用中は `RunLease.holderPID`(`markDeviceInUse` と同じ台帳)、
     /// 実体判定は `SimulatorCatalog.lookupUDID(udid:)`(ft_list_devices と同じ経路。読み取り失敗も
     /// `.unreadable` として運び、「載っていない」と混同しない)をそのまま使う。
     ///
-    /// **`udidBridgeDiagnosisBlocking` は丸ごと同期**(`await` を1つも持たない) ——
+    /// **台帳走査(ps/simctl/devicectl)だけを専用 Thread(`runOffCooperativePool`)へ逃がし
+    /// (`udidBridgeDiagnosisBlocking`)、probe は通常の async 文脈で `withTaskGroup` により
+    /// 並列に撃つ**(`probedUDIDBridgeDiagnosis`)—— `BridgeDiscovery.probeStatus` 内の `isBound` は
+    /// 300ms 止まりの短い同期呼び出しで、候補上限(`maxUDIDBridgeCandidatePorts`)本までなら
+    /// 協調スレッドプールを塞いでも許容範囲(`iosConnectionLostHint` も同じ部品を1回だけ直接
+    /// 呼んでいる)。**`udidBridgeDiagnosisBlocking` は丸ごと同期**(`await` を1つも持たない) ——
     /// これを async 関数の本体に直に書くと、`Shell.run` の完了待ち(`DispatchSemaphore.wait`。
     /// 真のスレッドブロッキング)が Swift の協調スレッドプールのワーカーをそのまま占有する
-    /// (`withTaskGroup` で並列に起こしていなくても、直列でも同じ型の事故 —— 2026-09-16 に
-    /// 一度この関数で lsof の並列版を踏んでいる。同じ関数がもう一度、本数が減っただけで
-    /// 同じ性質を持っていた)。`runOffCooperativePool` が専用 Thread(協調プールの外)へ実体を
-    /// 逃がし、`budgeted` が `udidBridgeDiagnosisBudget` で上限を掛ける
+    /// (2026-09-16 に一度この関数で lsof の並列版を踏んでいる。同じ関数がもう一度、本数が減った
+    /// だけで同じ性質を持っていた)。`TaskBudget.run` が `udidBridgeDiagnosisBudget` で
+    /// 両段(台帳走査 + probe)の合計へ上限を掛ける
     /// (CLAUDE.md「協調スレッドプールにブロッキングを載せない」)
     static func udidBridgeDiagnosis(udid: String) async -> UDIDBridgeDiagnosis {
-        await Self.budgeted(Self.udidBridgeDiagnosisBudget, fallback: .unknown) {
-            Self.udidBridgeDiagnosisBlocking(udid: udid)
+        let outcome = await TaskBudget.run(Self.udidBridgeDiagnosisBudget) {
+            await Self.probedUDIDBridgeDiagnosis(udid: udid)
         }
+        guard case .value(let value) = outcome else { return .unknown }
+        return value
     }
 
-    /// `udidBridgeDiagnosis` の同期本体。**`await` を書かない** —— 1つでも足すと、
-    /// `runOffCooperativePool` が用意した専用 Thread の上で async ランタイムを再び挟むことになり、
-    /// 「協調プールの外で動く」という前提が壊れる
-    private static func udidBridgeDiagnosisBlocking(udid: String) -> UDIDBridgeDiagnosis {
+    /// `udidBridgeDiagnosis` の本体(2段)。①台帳走査(同期・専用 Thread)②候補ポートへの
+    /// probe(async・並列)。呼び手(`udidBridgeDiagnosis`)の `TaskBudget.run` が両段の合計を
+    /// 上限で打ち切る
+    private static func probedUDIDBridgeDiagnosis(udid: String) async -> UDIDBridgeDiagnosis {
         let repoRoot = try? RepoRoot.find()
+        // 台帳走査は `budgeted`(= TaskBudget + 専用 Thread)を通す。**呼び手の
+        // `TaskBudget.run` と二重に見えるが、こちらを外すと `budgeted` が production から
+        // 1度も呼ばれなくなり、その予算のテストが自分自身しか確かめなくなる**
+        let candidates = await Self.budgeted(
+            Self.udidBridgeDiagnosisBudget,
+            fallback: UDIDDiagnosisCandidates(ports: [], heldByRunPID: nil,
+                                              lookup: .unreadable("diagnosis timed out"))) {
+            Self.udidBridgeDiagnosisBlocking(udid: udid, repoRoot: repoRoot)
+        }
+        guard !candidates.ports.isEmpty else {
+            return UDIDBridgeDiagnosis(listeningButUnresponsive: [],
+                                       heldByRunPID: candidates.heldByRunPID, lookup: candidates.lookup)
+        }
+        let probes = await withTaskGroup(of: (UInt16, BridgeDiscovery.StatusProbe).self) { group in
+            for port in candidates.ports {
+                group.addTask {
+                    (port, await BridgeDiscovery.probeStatus(
+                        port: port, repoRoot: repoRoot, timeoutSeconds: Self.udidProbeTimeoutSeconds))
+                }
+            }
+            var result: [UInt16: BridgeDiscovery.StatusProbe] = [:]
+            for await (port, probe) in group { result[port] = probe }
+            return result
+        }
+        return UDIDBridgeDiagnosis(
+            listeningButUnresponsive: candidates.ports.filter { probes[$0] == .timedOut },
+            heldByRunPID: candidates.heldByRunPID, lookup: candidates.lookup,
+            wedgedPorts: candidates.ports.filter { probes[$0] == .transportFailed })
+    }
+
+    /// `probedUDIDBridgeDiagnosis` が専用 Thread で集める材料(候補ポート・run 保持者・実体判定)
+    private struct UDIDDiagnosisCandidates: Sendable {
+        let ports: [UInt16]
+        let heldByRunPID: Int32?
+        let lookup: SimulatorCatalog.UDIDLookup
+    }
+
+    /// `udidBridgeDiagnosis` の同期本体。**`await` を書かない**(上の doc 参照)。
+    /// LISTEN と `/status` の判定は行わない —— それは probe(async)へ一本化し、
+    /// ここは候補ポートを集めるだけにする
+    private static func udidBridgeDiagnosisBlocking(
+        udid: String, repoRoot: URL?
+    ) -> UDIDDiagnosisCandidates {
         let candidates = Self.cappedCandidatePorts(
             Array(Self.candidatePorts(forUDID: udid, repoRoot: repoRoot)))
-        let listening = candidates.filter { BridgeDiscovery.isBound(port: $0, repoRoot: repoRoot) }
         let heldByRunPID = repoRoot.flatMap {
             RunLease.holderPID(stateDir: $0.appendingPathComponent(".fleetest"), key: udid)
         }
-        return UDIDBridgeDiagnosis(listeningButUnresponsive: listening, heldByRunPID: heldByRunPID,
-                                   lookup: SimulatorCatalog.lookupUDID(udid: udid))
+        return UDIDDiagnosisCandidates(ports: candidates, heldByRunPID: heldByRunPID,
+                                       lookup: SimulatorCatalog.lookupUDID(udid: udid))
     }
 
     /// 同期の仕事(`work`)を専用 Thread で実行し、`budget` 以内に返らなければ `fallback` を返す。
@@ -529,10 +593,17 @@ extension MCPServer {
         return port
     }
 
-    /// `reconcilePort` が応答ポート0本のときに組む文面(純粋関数・3形固定):
+    /// `reconcilePort` が応答ポート0本のときに組む文面(純粋関数・4形固定):
     /// ①LISTEN もしていない(本当に居ない・実体を名前引きできた) ②同①だが実体を判定できない
-    /// ③LISTEN しているが `/status` 無応答(= busy。「居ない」とは言わない)
+    /// ③LISTEN しているが `/status` がタイムアウト上限まで無応答(= busy。「居ない」とは言わない)
+    /// ④LISTEN しているが `/status` への接続が早期に切れる(= wedged。ブリッジが消えて転送役
+    /// だけ残っている。③と事実が違うので文面も分ける)。**④を③より先に見る** ——
+    /// 両方が非空になる実測は無いが、wedged は「待っても戻らない」という強い事実なので
+    /// busy 側の「Retry in a moment」より優先する
     static func noResponsiveBridgeMessage(udid: String, diagnosis: UDIDBridgeDiagnosis) -> String {
+        guard diagnosis.wedgedPorts.isEmpty else {
+            return Self.bridgeWedgedOnUDIDMessage(udid: udid, diagnosis: diagnosis)
+        }
         guard diagnosis.listeningButUnresponsive.isEmpty else {
             return Self.bridgeBusyOnUDIDMessage(udid: udid, diagnosis: diagnosis)
         }
@@ -586,6 +657,27 @@ extension MCPServer {
         }
         message += " Retry in a moment; `fleetest bridge up` is for a device with no bridge at all"
             + " and would start a second one on this device."
+        return message
+    }
+
+    /// LISTEN しているが `/status` への接続が早期に(タイムアウトよりはるかに早く)切れたときの
+    /// 文面(純粋関数)。`bridgeBusyOnUDIDMessage` とは事実が違う —— busy はタイムアウト上限まで
+    /// 応答を保持するが、こちらは接続が即座に失敗する(実測は
+    /// `BridgeDiscovery.transportFailureFraction` のコメント参照)。**「busy」とは言わない**
+    /// —— 待っても戻らない。**`bridge up` は勧めてよい** —— `bridgeBusyOnUDIDMessage` が
+    /// 勧めない理由(「生きているブリッジに2本目を起動させる」)はここでは成り立たない:
+    /// 転送(実機なら iproxy)は生きていてもブリッジ本体は既に消えている
+    static func bridgeWedgedOnUDIDMessage(udid: String, diagnosis: UDIDBridgeDiagnosis) -> String {
+        let ports = diagnosis.wedgedPorts.map { "port \($0)" }.joined(separator: ", ")
+        var message = "a bridge for udid \(udid) is listening on \(ports), but the connection to"
+            + " /status fails almost immediately instead of timing out — the bridge process is gone;"
+            + " only its transport (on a physical device, iproxy) is still holding the port."
+            + " This will not recover on its own. On a physical device, this typically follows the"
+            + " screen locking, or the device leaving USB/network range."
+        if let heldByRunPID = diagnosis.heldByRunPID {
+            message += " A fleetest run (pid \(heldByRunPID)) is using this device right now."
+        }
+        message += " \(Self.bridgeUpSuggestion(udid: udid, lookup: diagnosis.lookup))"
         return message
     }
 

@@ -65,8 +65,20 @@ extension MCPServer {
                 bound: bound, ownerAlive: ownerAlive,
                 vanished: Self.bridgeVanished(port: port, running: running)) {
             case .busy:
-                return Self.bridgeBusyHint(connection: connection,
-                    engine: Self.resolvedEngine(known: engines[key], port: port, repoRoot: repoRoot))
+                // trustBound(bound: bound, ownerAlive: ownerAlive) は「消えていない」ところまで
+                // しか見ていない —— busy(タイムアウト上限まで無応答)と wedged(応答が来ないまま
+                // 早期に切れる。実機なら iproxy だけ残った形)はここでもう一段 probe して分ける
+                // (BridgeDiscovery.transportFailureFraction のコメント参照)。生きた xcodebuild の
+                // pid が残っていても wedged は起こる(2026-09-22 実機実測。ownerAlive では捕まらない)
+                let engine = Self.resolvedEngine(known: engines[key], port: port, repoRoot: repoRoot)
+                let probe = await BridgeDiscovery.probeStatus(port: port, repoRoot: repoRoot)
+                // **in-app/hybrid には wedged の文言を出さない** —— あちらは `bridge up` で
+                // 建て直す物ではなく(注入は launch で起きる)、前面から外れただけのことが多い。
+                // その分岐は `bridgeBusyHint` が engine で持っている
+                if probe == .transportFailed, engine != "inapp", engine != "hybrid" {
+                    return Self.bridgeWedgedHint(connection: connection)
+                }
+                return Self.bridgeBusyHint(connection: connection, engine: engine)
             case .stillUnclear:
                 return ""
             case .vanished:
@@ -179,6 +191,20 @@ extension MCPServer {
         return "\nThe in-app bridge behind \(connection) is not answering — it only answers while"
             + " the app it is injected into is in the foreground. Bring it back with ft_launch,"
             + " or use this device's xcuitest bridge port instead."
+    }
+
+    /// LISTEN しているが `/status` への接続が早期に(タイムアウトよりはるかに早く)切れたときの
+    /// 文言(純粋関数)。`bridgeBusyHint` とは事実が違う(タイムアウト上限まで無応答を保持して
+    /// いない)ので「busy」とは言わず、消えたブリッジと転送だけが残っている事実 + 出口
+    /// (bridge up)を言う。**engine を問わない** —— in-app/hybrid の応答無し(前面から外れた
+    /// suspend)とは判定軸が別(`BridgeDiscovery.StatusProbe.transportFailed` は経過時間だけで決まる)
+    static func bridgeWedgedHint(connection: String) -> String {
+        "\nThe bridge behind \(connection) is not answering, and the connection failed almost"
+            + " immediately rather than timing out — the bridge process is gone; only its transport"
+            + " (on a physical device, iproxy) is still holding the port. This will not recover on"
+            + " its own (a physical device typically loses its bridge this way when the screen locks,"
+            + " or the device leaves USB/network range). Rebuild it with `fleetest bridge up`, then"
+            + " ft_launch your app again."
     }
 
     /// 死んだ接続の udid を、**手元にある scan 結果**から端末名へ引き直す(best-effort)。

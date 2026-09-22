@@ -104,6 +104,62 @@ public enum BridgeDiscovery {
         return soError == 0
     }
 
+    /// `probeStatus` の失敗の仕方。**HTTP のステータスコードは問わない** —— 実機ブリッジは token
+    /// 不一致で 401 を返すことがあり、これも「ブリッジは生きている」証拠(200 限定にすると
+    /// 健全な実機を死と誤判定する)
+    public enum StatusProbe: Equatable, Sendable {
+        /// HTTP 応答が返った(ステータスコードは問わない)
+        case answered
+        /// タイムアウト上限まで無応答 = 本当に busy
+        case timedOut
+        /// TCP connect は通ったが、上限よりはるかに早く応答無しで転送が切れた ——
+        /// ブリッジが消えて転送役(実機なら iproxy)だけ残っている
+        case transportFailed
+        /// 誰も listen していない
+        case notBound
+    }
+
+    /// `timedOut` と `transportFailed` を分ける境界(タイムアウト上限に対する割合)。
+    /// 実測(2026-09-22, 実機 iPhone SE3・固まった iproxy 越し): 転送だけが残った切断は
+    /// connect 後 ~2.5ms で終わる・本当に busy な XCUITest は上限まで応答を保持する。
+    /// 上限の半分を境にしても両実測に大きな余裕がある
+    static let transportFailureFraction = 0.5
+
+    /// 1ポートの `/status` を撃ち、**失敗の仕方まで**返す(isBound/scan は「応答したか」しか
+    /// 見ない)。ホットパスの isBound/scan のシグネチャ・挙動は変えない。
+    /// **時間の計測は壁時計を使わない**(`ContinuousClock`)
+    public static func probeStatus(
+        port: UInt16, repoRoot: URL?, timeoutSeconds: Double = 2
+    ) async -> StatusProbe {
+        guard isBound(port: port, repoRoot: repoRoot) else { return .notBound }
+        let endpoint = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0) }
+            ?? BridgeEndpoint(port: port)
+        let clock = ContinuousClock()
+        let start = clock.now
+        do {
+            _ = try await BridgeClient(endpoint: endpoint, timeoutSeconds: timeoutSeconds)
+                .status(timeout: timeoutSeconds)
+            return .answered
+        } catch {
+            switch error {
+            case DriverError.bridgeUnreachable, DriverError.bridgeConnectionRefused:
+                return classifyNoResponse(
+                    elapsedMs: continuousClockMs(clock.now - start), timeoutSeconds: timeoutSeconds)
+            default:
+                // badResponse(401 の token 不一致等)・decode 失敗はどちらも HTTP 応答を
+                // 受け取れた証拠 —— ステータスコードを問わず「生きている」側へ倒す
+                return .answered
+            }
+        }
+    }
+
+    /// 所要時間から busy / 消失を分ける(純粋関数・テスト用)。実ソケットを使わずに境界の
+    /// 両側を表明できるよう、経過時間を入力に取る形で切り出してある
+    static func classifyNoResponse(elapsedMs: Int, timeoutSeconds: Double) -> StatusProbe {
+        Double(elapsedMs) < timeoutSeconds * 1000 * transportFailureFraction
+            ? .transportFailed : .timedOut
+    }
+
     /// 範囲を並列に走査して応答した全ポートを返す
     public static func scan(excluding preferred: UInt16, repoRoot: URL?) async -> [Found] {
         await withTaskGroup(of: Found?.self) { group in
