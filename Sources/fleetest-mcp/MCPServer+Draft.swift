@@ -28,11 +28,9 @@ extension MCPServer {
         // **刈り込みは下書きの質そのもの**: 記録は「やったこと」であって
         // 「意図」ではないので、行き止まりのタップや試し打ちがそのまま載る。自動では
         // 本筋と回り道を見分けられない(どちらも成功した操作)ので、**番号を見せて選ばせる**
-        // **範囲も見る**(型だけ見て 0 や負を通すと、黙って「全部」か「空」になる)
+        // **範囲は intArgument が見る**(ArgumentBounds.numeric["lastN"] = 1以上。型だけ見て
+        // 0 や負を通すと、黙って「全部」か「空」になる)
         let lastN = try Self.intArgument(args, "lastN")
-        if let lastN, lastN < 1 {
-            throw MCPError("lastN must be 1 or more (got \(lastN)) — it keeps the last N steps")
-        }
         let (scope, droppedCount, ignoredNumbers) = InteractionLog.prune(
             recorded, lastN: lastN,
             drop: try Self.intArrayArgument(args, "drop") ?? [])

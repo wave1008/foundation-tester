@@ -380,6 +380,10 @@ extension MCPServer {
         } catch let error as BatchStepResolver.ResolveError {
             throw MCPError(error.message)
         }
+        // **値域は resolve の戻り値をここ1箇所で舐める**(22個の BatchStepBuilder それぞれに
+        // 足さない)—— DSL 行は MCPServer.intArgument/doubleArgument を経由しないので、
+        // 型が合っていても 0/負のような無意味な値(`holdSeconds: -1` 等)がそのまま通っていた
+        try Self.checkBatchArgumentBounds(raw, command: command)
         if let ref = raw["ref"] as? Int {
             var withoutRef = raw
             withoutRef["ref"] = nil
@@ -388,6 +392,24 @@ extension MCPServer {
         }
         let (step, summary) = try builder.build(raw)
         return BatchPlannedStep(step: step, summary: summary, pendingRef: nil)
+    }
+
+    /// `BatchStepResolver.resolve` が返した `raw` の Int/Double 値を `ArgumentBounds` に掛ける。
+    /// **ここが唯一の呼び口**(各 BatchStepBuilder には足さない)—— `BatchStepResolver.intKeys`/
+    /// `doubleKeys` の鍵名はどのコマンドでも共通なので、戻り値を1回舐めれば全コマンドに効く。
+    /// 座標・ref のような `.unbounded` 登録の鍵は `ArgumentBounds.violation` が常に nil を返すので
+    /// 素通しされる
+    private static func checkBatchArgumentBounds(_ raw: [String: Any], command: String) throws {
+        for (key, value) in raw {
+            let numeric: Double?
+            switch value {
+            case let intValue as Int: numeric = Double(intValue)
+            case let doubleValue as Double: numeric = doubleValue
+            default: numeric = nil
+            }
+            guard let numeric, let violation = ArgumentBounds.violation(key, numeric) else { continue }
+            throw MCPError("\(command): \(violation)")
+        }
     }
 
     /// 1手目の ref をセレクタへ解決する。**ft_tap と同じ経路を通す**(2つ目の実装を作らない):

@@ -774,28 +774,52 @@ struct ApiLiveServeCommand {
         decodeError = error
     }
 
-    /// 型違いの1件目だけを残す(複数同時に違っても最初の1つで足りる)。
-    /// 文言は MCP(MCPServer.intArgument/doubleArgument)と揃える(2026-09-22 L3)
+    /// 型違い・値域違反とも1件目のエラー文だけを残す(複数同時に違っても最初の1つで足りる)。
+    /// **値がおかしいときは常に nil を返す**(error が既に埋まっていても)—— 「1件目の文言」と
+    /// 「この値をなだれ込ませるか」は別の軸。文言は MCP(MCPServer.intArgument/doubleArgument)と
+    /// 揃える(2026-09-22 L3)。**型が合っていても値域(`ArgumentBounds`)を外れれば同じく断る**
+    /// (MCP と同じ表を引く — 2箇所に値を持たない)
     private static func intField(_ raw: [String: Any], _ key: String, error: inout String?) -> Int? {
         guard let value = raw[key] else { return nil }
-        if let number = value as? Int { return number }
-        if error == nil { error = typeError(key: key, value: value, expected: "an integer", numeric: true) }
-        return nil
+        guard let number = value as? Int else {
+            if error == nil { error = typeError(key: key, value: value, expected: "an integer", numeric: true) }
+            return nil
+        }
+        if let violation = ArgumentBounds.violation(key, Double(number)) {
+            if error == nil { error = violation }
+            return nil
+        }
+        return number
     }
 
     private static func doubleField(_ raw: [String: Any], _ key: String, error: inout String?) -> Double? {
         guard let value = raw[key] else { return nil }
-        if let number = value as? Double { return number }
-        if let number = value as? Int { return Double(number) }  // {"scale":2} のような整数値も通す
-        if error == nil { error = typeError(key: key, value: value, expected: "a number", numeric: true) }
-        return nil
+        // {"scale":2} のような整数値も通す
+        guard let number = (value as? Double) ?? (value as? Int).map(Double.init) else {
+            if error == nil { error = typeError(key: key, value: value, expected: "a number", numeric: true) }
+            return nil
+        }
+        if let violation = ArgumentBounds.violation(key, number) {
+            if error == nil { error = violation }
+            return nil
+        }
+        return number
     }
 
+    /// 型が合っていても `ArgumentBounds.mustNotBeEmpty` に載っている鍵(bundle/path)は
+    /// 明示された空文字・空白のみを断る。**cmd を問わず一律**(decode 段は cmd を見ない)——
+    /// clearAppData の bundle / install の path はここで初めて空文字が断られる(従来は無検査だった)
     private static func stringField(_ raw: [String: Any], _ key: String, error: inout String?) -> String? {
         guard let value = raw[key] else { return nil }
-        if let string = value as? String { return string }
-        if error == nil { error = typeError(key: key, value: value, expected: "a string", numeric: false) }
-        return nil
+        guard let string = value as? String else {
+            if error == nil { error = typeError(key: key, value: value, expected: "a string", numeric: false) }
+            return nil
+        }
+        if let violation = ArgumentBounds.emptyViolation(key, string) {
+            if error == nil { error = violation }
+            return nil
+        }
+        return string
     }
 
     private static func typeError(key: String, value: Any, expected: String, numeric: Bool) -> String {

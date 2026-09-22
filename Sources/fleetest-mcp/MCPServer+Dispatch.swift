@@ -230,6 +230,22 @@ extension MCPServer {
 
     static func canonicalToolName(_ tool: String) -> String { toolAliases[tool] ?? tool }
 
+    /// ツール引数の数値を丸ごと `ArgumentBounds` に掛ける(`call` の入口の1箇所)。
+    /// 表に無い鍵・`.unbounded` の鍵は素通し。**型違いはここでは断らない** ——
+    /// 型の文言は `intArgument`/`doubleArgument` が値を読むときに出す(2つの文言を作らない)
+    static func checkArgumentBounds(_ args: [String: Any]) throws {
+        for (key, value) in args {
+            let numeric: Double?
+            switch value {
+            case let intValue as Int: numeric = Double(intValue)
+            case let doubleValue as Double: numeric = doubleValue
+            default: numeric = nil
+            }
+            guard let numeric, let violation = ArgumentBounds.violation(key, numeric) else { continue }
+            throw MCPError(violation)
+        }
+    }
+
     func call(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
         let tool = Self.canonicalToolName(tool)
         // **未知のツール名はここで断る**(デバイスを触るより前)。この後の
@@ -242,6 +258,10 @@ extension MCPServer {
         }
         // JSON null の欄は「省略」に畳む(droppingNullArguments 参照)。foldingUDIDIntoPort より前
         let args = Self.droppingNullArguments(args)
+        // **値域は入口で1回だけ全数見る**(`intArgument`/`doubleArgument` の門だけでは足りない)
+        // —— 条件付きでしか読まれない欄(`timeout` は snapshotAfter のときだけ等)は、
+        // 読まれない回に 0/負がそのまま通り、呼び手は「効いた」と誤解する
+        try Self.checkArgumentBounds(args)
         // profile と udid/port/serial の併用は**畳む前に**断る(udid の畳み込みはブリッジ走査を撃つ)
         if Self.toolAcceptsDeviceTarget(tool), let refusal = Self.profileWithExplicitTargetRefusal(args) {
             throw MCPError(refusal)
@@ -558,7 +578,8 @@ extension MCPServer {
                                                  includeSystem: includeSystem, filter: appsFilter))
 
         case "ft_logs":
-            let logBundleID = args["bundleId"] as? String ?? lastLaunchedBundleID(args)
+            let logBundleID = try Self.stringArgument(args, "bundleId", emptyHint: Self.attachedAppEmptyHint)
+                ?? lastLaunchedBundleID(args)
             // **ブリッジには一切問い合わせない**(CrashLogs の存在理由はまさにブリッジごと
             // 落ちた直後に使うこと)。唯一のブリッジ非依存な実機の手掛かりは
             // `.fleetest/bridge-<port>.device`(BridgeDeviceRecord。実機のときだけ書かれる)で、
@@ -581,9 +602,7 @@ extension MCPServer {
                 physicalUDID: logsPhysicalUDID))
 
         case "ft_install":
-            guard let packagePath = args["packagePath"] as? String else {
-                throw MCPError("packagePath is required")
-            }
+            let packagePath = try Self.requiredStringArgument(args, "packagePath")
             let installKey = Self.engineKey(args)
             try await driver(args).install(packagePath: packagePath)
             // ft_clear_app_data が実機で uninstall+install に化けるときの再インストール元
@@ -600,7 +619,7 @@ extension MCPServer {
             return text("Installed: \(packagePath)")
 
         case "ft_launch":
-            guard let bundleID = args["bundleId"] as? String else { throw MCPError("bundleId is required") }
+            let bundleID = try Self.requiredStringArgument(args, "bundleId")
             let launchKey = Self.engineKey(args)
             let launchDriver = try await driver(args)
             let resumes = args["resume"] as? Bool == true
@@ -655,9 +674,10 @@ extension MCPServer {
                                  : "Launched: \(bundleID)")
 
         case "ft_open_url":
-            guard let url = args["url"] as? String else { throw MCPError("url is required") }
+            let url = try Self.requiredStringArgument(args, "url")
             let openURLDriver = try await driver(args)
-            let explicitBundleID = args["bundleId"] as? String
+            let explicitBundleID = try Self.stringArgument(
+                args, "bundleId", emptyHint: Self.attachedAppEmptyHint)
             let openURLBundleID = explicitBundleID ?? launchedBundleIDs[Self.engineKey(args)]
             // installedVerdict は撃たない: simctl openurl/devicectl openURL・am start は OS の URL
             // ルーティングで、installedVerdict/launchGuardDecision が守っている
@@ -1263,7 +1283,7 @@ extension MCPServer {
                 + waitForWithoutSnapshotAfterNote(args) + afterBody)
 
         case "ft_clear_app_data":
-            guard let bundleID = args["bundleId"] as? String else { throw MCPError("bundleId is required") }
+            let bundleID = try Self.requiredStringArgument(args, "bundleId")
             let clearAppDataDriver = try await driver(args)
             let clearAppDataKey = Self.engineKey(args)
             do {
@@ -1634,9 +1654,8 @@ extension MCPServer {
 
         case "ft_capture_element":
             // 中核(ラベル検査・保存と重複時の巻き戻し・点検)は VisionSample を CLI と共有する
-            guard let classifier = args["classifier"] as? String, let label = args["label"] as? String else {
-                throw MCPError("classifier and label are required")
-            }
+            let classifier = try Self.requiredStringArgument(args, "classifier")
+            let label = try Self.requiredStringArgument(args, "label")
             if let issue = VisionSample.labelIssue(classifier: classifier, label: label) { throw MCPError(issue) }
             let project = try ScenarioHost.project(named: args["project"] as? String)
             let d = try await driver(args)
@@ -1669,10 +1688,11 @@ extension MCPServer {
             guard let image = VisionClassifier.crop(png: png, frame: element.frame, screen: screen) else {
                 throw MCPError("could not crop the element from the screenshot (is it inside the screen?)")
             }
+            let captureName = try Self.stringArgument(args, "name")
             let file: URL
             do {
                 file = try VisionSample.save(image, projectRoot: project.rootURL, classifier: classifier,
-                                             label: label, name: args["name"] as? String)
+                                             label: label, name: captureName)
             } catch {
                 throw MCPError(ErrorText.user(error))
             }
@@ -1689,7 +1709,7 @@ extension MCPServer {
             // bundleId が起動中のアプリと違えば断り、起動していない台への明示指定は「送った」まで
             // しか言わない(Android は currentPackage が無ければ何も撃たない)
             let terminateKey = Self.engineKey(args)
-            let explicitBundleID = args["bundleId"] as? String
+            let explicitBundleID = try Self.stringArgument(args, "bundleId", emptyHint: Self.attachedAppEmptyHint)
             guard let terminateBundleID = explicitBundleID ?? launchedBundleIDs[terminateKey]
             else {
                 throw MCPError("no known target to terminate — nothing was launched in this"

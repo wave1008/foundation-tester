@@ -1218,7 +1218,16 @@ extension MCPServer {
     static let sheetRescueMemoryCap = 10
 
     func scrollTo(_ args: [String: Any]) async throws -> [[String: Any]] {
-        guard let selectorText = args["selector"] as? String, !selectorText.isEmpty else {
+        // **型違いだけ共有の門と同じ文言**にする(stringArgument は使わない —— あちらは
+        // selector が ArgumentBounds.mustNotBeEmpty に載っているため空文字を自前の文言より先に
+        // 断ってしまう)。必須+空文字の文言は DSL 構文の案内込みで従来どおり残す
+        if let raw = args["selector"], !(raw is String) {
+            throw MCPError("selector must be a string (got \(Self.describeArgumentValue(raw)))"
+                + " — pass a JSON string, not a number")
+        }
+        // 空白だけも空として断る(ArgumentBounds.emptyViolation と同じ扱い)
+        guard let selectorText = args["selector"] as? String,
+              !selectorText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw MCPError("selector is required (same syntax as the DSL: #id, a label, .type, a||b)")
         }
         guard let direction = FTScrollDirection(rawValue: args["direction"] as? String ?? "down") else {

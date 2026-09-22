@@ -378,11 +378,14 @@ final class MCPServer {
 
 extension MCPServer {
     /// `port` 引数を UInt16 に畳む。無指定は nil。**範囲外・非整数は MCPError** ——
-    /// `UInt16.init` は 65535 超・負数で trap し、エージェントの typo 1 回でサーバごと落ちる
+    /// `UInt16.init` は 65535 超・負数で trap し、エージェントの typo 1 回でサーバごと落ちる。
+    /// 値域は `ArgumentBounds.numeric["port"]` を引く(1〜65535 を2箇所に持たない)
     static func portArgument(_ args: [String: Any]) throws -> UInt16? {
         guard let value = try intArgument(args, "port") else { return nil }
-        guard let port = UInt16(exactly: value), port > 0 else {
-            throw MCPError("port must be an integer between 1 and 65535 (got \(value))")
+        let bound = ArgumentBounds.numeric["port"] ?? .unbounded
+        let low = Int(bound.min ?? 1), high = Int(bound.max ?? 65535)
+        guard let port = UInt16(exactly: value), value >= low, value <= high else {
+            throw MCPError("port must be an integer between \(low) and \(high) (got \(value))")
         }
         return port
     }
@@ -393,23 +396,62 @@ extension MCPServer {
     /// JSON Schema が integer/number でも実際に文字列で送ることがあり(実測)、黙って
     /// `as?` を失敗させると呼び手は「値が無い」と区別できないまま、tap の ref なら x/y
     /// 座標フォールバックのような**より危険な**経路へ落ちる。"8" と "8.5" のような境界を
-    /// 解釈で割ることもしない(文字列から数値への変換規則を1つ選ぶこと自体が寛容化)
+    /// 解釈で割ることもしない(文字列から数値への変換規則を1つ選ぶこと自体が寛容化)。
+    /// **型が合っていても値域(`ArgumentBounds`)を外れれば同じく断る** —— 0/負・上限超えは
+    /// 従来ここを黙って通り抜けていた(実地: `maxElements:0`・`maxSwipes:-3` 等)
     static func intArgument(_ args: [String: Any], _ key: String) throws -> Int? {
         guard let raw = args[key] else { return nil }
         guard let value = raw as? Int else {
             throw MCPError(numericArgumentTypeError(key: key, raw: raw, expected: "an integer"))
         }
+        if let violation = ArgumentBounds.violation(key, Double(value)) { throw MCPError(violation) }
         return value
     }
 
-    /// Double 版(同じ規律)
+    /// Double 版(同じ規律。値域も同じく効く)
     static func doubleArgument(_ args: [String: Any], _ key: String) throws -> Double? {
         guard let raw = args[key] else { return nil }
         guard let value = raw as? Double else {
             throw MCPError(numericArgumentTypeError(key: key, raw: raw, expected: "a number"))
         }
+        if let violation = ArgumentBounds.violation(key, value) { throw MCPError(violation) }
         return value
     }
+
+    /// **文字列引数の唯一の取り出し口(省略可)**。型が違えば断る(intArgument と同じ規律)。
+    /// `ArgumentBounds.mustNotBeEmpty` に載っている鍵は、明示された空文字・空白のみも断る ——
+    /// 省略(キー自体が無い)はここを通らない(呼び手ごとの既定に委ねる)。
+    /// `emptyHint` は空文字を断るときだけ末尾に付け足す呼び手向けの補足
+    /// (例: 「省略すればこのセッションが繋がっているアプリを使う」)
+    static func stringArgument(_ args: [String: Any], _ key: String,
+                               emptyHint: String? = nil) throws -> String? {
+        guard let raw = args[key] else { return nil }
+        guard let value = raw as? String else {
+            throw MCPError(stringArgumentTypeError(key: key, raw: raw))
+        }
+        if let violation = ArgumentBounds.emptyViolation(key, value) {
+            throw MCPError(emptyHint.map { "\(violation) — \($0)" } ?? violation)
+        }
+        return value
+    }
+
+    /// 必須版: 欠落は `"\(key) is required"`。型違い・空文字は `stringArgument` と同じ文言
+    static func requiredStringArgument(_ args: [String: Any], _ key: String) throws -> String {
+        guard let raw = args[key] else { throw MCPError("\(key) is required") }
+        guard let value = raw as? String else {
+            throw MCPError(stringArgumentTypeError(key: key, raw: raw))
+        }
+        if let violation = ArgumentBounds.emptyViolation(key, value) { throw MCPError(violation) }
+        return value
+    }
+
+    private static func stringArgumentTypeError(key: String, raw: Any) -> String {
+        "\(key) must be a string (got \(describeArgumentValue(raw))) — pass a JSON string, not a number"
+    }
+
+    /// ft_terminate/ft_logs の bundleId のように「省略すればこのセッションが繋がっている
+    /// アプリを使う」引数が空文字を断るときの補足文言(1箇所に集約 — 3箇所で複製しない)
+    static let attachedAppEmptyHint = "omit it to use the app this session is attached to"
 
     private static func numericArgumentTypeError(key: String, raw: Any, expected: String) -> String {
         "\(key) must be \(expected) (got \(describeArgumentValue(raw))) — pass a JSON number, not a quoted string"
@@ -436,7 +478,9 @@ extension MCPServer {
         }
     }
 
-    private static func describeArgumentValue(_ raw: Any) -> String {
+    /// **`private` ではない** —— MCPServer+Snapshot.swift の `scrollTo` が selector の型エラー文に
+    /// 同じ書式を使う(既存の必須+空文字の文言はそちらに残したまま、型検査だけ揃える)
+    static func describeArgumentValue(_ raw: Any) -> String {
         switch raw {
         case let value as String: return "the string \"\(value)\""
         case let value as Bool: return "the boolean \(value)"

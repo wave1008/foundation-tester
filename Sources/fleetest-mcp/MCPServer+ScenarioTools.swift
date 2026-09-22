@@ -52,7 +52,7 @@ extension MCPServer {
     /// クラス名なら CLI(`fleetest run`)と同じく非削除・非ドラフトの全シナリオを順に流す
     /// (`FTCore.ScenarioSelection.resolve` が唯一の定義元。`fleetest run` と共有する)
     func dryRun(_ args: [String: Any]) async throws -> [[String: Any]] {
-        guard let id = args["id"] as? String else { throw MCPError("id is required") }
+        let id = try Self.requiredStringArgument(args, "id")
         let project = try ScenarioHost.project(named: args["project"] as? String)
         if !(args["skipBuild"] as? Bool ?? false) {
             try ScenarioHost.build(project: project)
@@ -123,7 +123,7 @@ extension MCPServer {
     /// スクリプト・home()・results/ への記録は無い。アプリを入れるのは profile 付き iOS の
     /// ブリッジ準備(autoInstall)だけ = resolveProfileTarget)
     func runScenario(_ args: [String: Any]) async throws -> [[String: Any]] {
-        guard let id = args["id"] as? String else { throw MCPError("id is required") }
+        let id = try Self.requiredStringArgument(args, "id")
         if let conflict = Self.profileConflict(args) { throw MCPError(conflict) }
         let project = try ScenarioHost.project(named: args["project"] as? String)
         if !(args["skipBuild"] as? Bool ?? false) {
