@@ -1,11 +1,15 @@
-// MCP(fleetest-mcp)が操作している台の印。RunLease の姉妹型(置き場所 `.fleetest/`・鍵 = iOS はシミュレータ UDID /
-// Android は adb serial も同じ)。書き手: MCPServer.call(台を指すツールが通るたびに上書き)・MCP の終了で自分の印を消す。
+// 対話セッション(MCP / ライブ操作)が操作している台の印。RunLease の姉妹型(置き場所 `.fleetest/`・
+// 鍵 = iOS はシミュレータ UDID / Android は adb serial も同じ)。書き手: MCPServer.call(台を指す
+// ツールが通るたびに上書き)・ApiLiveServe(コマンドが通るたびに上書き)。どちらも終了時に自分の印を消す。
 // 読み手: run の台の絞り込み(ProfileRunner.limitingDevicesAvoidingMCP)・台を止める操作の門(DeviceBooter.deviceInUseRefusal /
-// sweepRefusal)・別の MCP セッション(writeAndWarnIfInUse)。死んだ印の掃除は BridgeProvisioner.sweepStaleLeases。
+// sweepRefusal)・別の対話セッション(writeAndWarnIfInUse)。死んだ印の掃除は BridgeProvisioner.sweepStaleLeases。
+// **ファイル名接頭辞は `mcp-` のまま・書き手を区別しない**(読み手を増やさないため——ライブ操作が
+// 保持者でも警告文は「another MCP session」のまま。保持者の pid から実プロセス名を引き分ける
+// 実装コストに見合わないので、ライブ操作も同じ「対話セッション」の一種として扱う簡易化であって誤りではない)。
 // **生死は「pid + そのプロセスの開始時刻」で見る(時間の閾値を置かない)** —— run はこの印を「避ける」だけで断らない
-// (ユーザー決定「避けて、足りなければ警告して使う」)ので、使い終わった後も MCP が生きている間は残る印の損は
+// (ユーザー決定「避けて、足りなければ警告して使う」)ので、使い終わった後も対話セッションが生きている間は残る印の損は
 // 「その台を避ける」に収まる。閾値を置くと考え中のエージェントの台を run が奪う形が戻る。
-// 開始時刻まで見るのは、MCP が消えた後に同じ pid が別のプロセスへ再利用されると、印が生き返って台を避け続けるため
+// 開始時刻まで見るのは、保持者が消えた後に同じ pid が別のプロセスへ再利用されると、印が生き返って台を避け続けるため
 
 import FTCore
 import Foundation
@@ -57,8 +61,9 @@ public enum MCPDeviceLease {
         return holders
     }
 
-    /// 印を書き、その台を run か**別の MCP セッション**(pid 別)が今使用中なら警告文を返す
-    /// (`MCPServer.markDeviceInUse` と ft_run_scenario の共通口。断らない = run の衝突と同じ扱い)。
+    /// 印を書き、その台を run か**別の対話セッション**(pid 別。MCP でもライブ操作でも区別しない)が
+    /// 今使用中なら警告文を返す(`MCPServer.markDeviceInUse` / `ApiLiveServe` / ft_run_scenario の
+    /// 共通口。断らない = run の衝突と同じ扱い)。
     /// **別セッションの印は書く前に読む**(書くと上書きして相手が見えなくなる。相手が次に同じ台を
     /// 触ると書き戻し、その時点でこちらの存在を警告として受け取る = 交互に触る限り双方が気付く)。
     /// **deviceKey は呼び手が解決済みの UDID/serial をそのまま渡す**
@@ -71,12 +76,13 @@ public enum MCPDeviceLease {
                 + " Wait for the run to finish, or drive another device."
         }
         guard let otherSession else { return nil }
+        // 相手がライブ操作でも文言は変えない(ファイル冒頭の注記参照——「MCP session」のまま)
         return "⚠️ another MCP session (fleetest-mcp pid \(otherSession)) is driving this device too — the two"
             + " sessions move each other's screens, so refs and snapshots go stale under you."
             + " Drive another device, or finish one of the sessions."
     }
 
-    /// その pid が持つ印を全部消す(MCP の終了時)
+    /// その pid が持つ印を全部消す(MCP / ライブ操作の終了時)
     public static func removeAll(stateDir: URL, pid: Int32) {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: stateDir.path) else { return }
         for name in names where isLeaseFile(name) {

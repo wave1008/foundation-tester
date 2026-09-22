@@ -129,6 +129,12 @@ struct ApiLiveServe: AsyncParsableCommand {
         if let starter {
             Task { await starter.checkAndRestartIfStale() }
         }
+        // **台の印(LiveDeviceLease)を起動直後から立てる**(実地 B5)。何も撃たないまま
+        // 他プロセスがこの台を止められる隙を作らないため、最初のコマンドを待たずに書く
+        let deviceLease = LiveDeviceLease.make(
+            platform: driverOptions.resolvedPlatform, udid: udid,
+            explicitAndroidSerial: driverOptions.serial, log: { logStderr($0) })
+        deviceLease?.refresh()
 
         let (lines, continuation) = AsyncStream<String>.makeStream(of: String.self)
         let reader = Thread {
@@ -178,9 +184,12 @@ struct ApiLiveServe: AsyncParsableCommand {
                 logStderr("switched the driver to \(endpoint.host):\(port) (announced by the runner)")
             }
             await handle(command: command, driver: driver, starter: starter, follower: follower,
-                        ownAppBundleID: ownAppBundleID)
+                        ownAppBundleID: ownAppBundleID, deviceLease: deviceLease)
             ResidentProcessGuard.noteCommandEnd()
         }
+        // stdin EOF / シグナルでループを抜けた。自分の印を残すと、使っていない台を他プロセスが
+        // 「対話セッションが使用中」として避け続ける(MCPServer.run の後始末と同じ理由)
+        deviceLease?.release()
     }
 
     /// live のドライバ構成。**自アプリだけ in-app を主にする**(ユーザー決定 2026-09-22) ——
@@ -353,8 +362,11 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// 続けて(操作の成否を問わず)観測イベントを出す。refresh は観測イベントのみ
     private func handle(
         command: ApiLiveServeCommand, driver: AppDriver, starter: LiveBridgeAutoStarter?,
-        follower: LiveSessionFollower?, ownAppBundleID: String?
+        follower: LiveSessionFollower?, ownAppBundleID: String?, deviceLease: LiveDeviceLease?
     ) async {
+        // **コマンドが通るたびに台の印を上書きする**(MCPServer.call の markDeviceInUse と同じ粒度。
+        // 型違い・未知の cmd で終わる回も含めて全コマンドで更新する——駆動している事実に変わりはない)
+        deviceLease?.refresh()
         if let decodeError = command.decodeError {
             // cmd は読めたが他の引数の型が違う行。JSON でない/cmd が無い(黙殺)とは分け、
             // actionResult だけで答えて終える(frame/refresh も含め全コマンド共通の応答経路)

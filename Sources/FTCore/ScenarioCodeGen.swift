@@ -22,6 +22,19 @@ public enum ScenarioCodeGen {
     /// シーン境界は「そのシーンで何を証明するか」という意図で、記録からは導けないので、
     /// 番号付き一覧を読んだ作者が指定する(`drop` と同じ流儀)。
     /// scene 2 以降は `condition` を出さない(launchApp は最初の1回だけ)
+    /// 生成するクラス名が Swift の識別子として通るか(**判定だけ。文言は呼び手が持つ**)。
+    /// **日本語のクラス名は正当** —— この repo のシナリオがそれなので、弾くのは
+    /// 「空・数字始まり・空白や記号を含む」の3つだけ。生成の口はここ1つなので、
+    /// 通さないと**コンパイルできない .swift をツールが書き出す**(実地 2026-09-22:
+    /// `className: "9 bad name"` がそのまま `class 9 bad name {` になった)
+    public static func isWritableClassName(_ name: String) -> Bool {
+        guard let first = name.unicodeScalars.first else { return false }
+        guard CharacterSet.letters.contains(first) || first == "_" else { return false }
+        return name.unicodeScalars.allSatisfy {
+            CharacterSet.alphanumerics.contains($0) || $0 == "_"
+        }
+    }
+
     public static func render(flow: Flow, className: String, generatedBy: String,
                               emptyExpectation: Bool = false,
                               notesBeforeStep: [Int: [String]] = [:],

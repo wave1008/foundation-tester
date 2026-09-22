@@ -1843,3 +1843,70 @@ run ボードも供給フェーズの run を `phase: "preparing"` で正しく�
 
 **常駐 CLI を叩くときは stdin を開いたまま起こす**。「出ない」を見たら、まず実験系を疑う
 (docs/verification.md「差が出ないときは仮説より先に実験系を疑う」の同型)。
+
+## 43. 画像を作る常駐ヘルパーに autorelease pool が無く、3 時間で 170 GB を食った(2026-09-22)
+
+2 回目の負荷テスト(3 時間)の最中に **VSCode がメモリ不足のダイアログを出した**(物理 192 GB)。
+利用者の見立ては「VSCode 単独」「直近の修正が怪しい」「非公開 API と **C を使うプロセス**を見ろ」。
+
+**測って外した仮説**(順に潰した記録):
+
+| 仮説 | 測ったこと | 結果 |
+|---|---|---|
+| webview のログ・レーンが溜まる | `laneLog.js` の上限 | `MAX_LANE_LINES`(500)で削っている・レーンも devices に同期して消える |
+| H.264 デコーダが積み上がる | `deviceTiles.js` / `liveTab.js` | 作る前に `if (!renderer)`・破棄は `dispose()` = 正しい |
+| GPU プロセス(C++)が食う | `--type=gpu-process` の RSS | **0.25 GB**(無関係) |
+| run が溜める | run の前後で 20 分ずつ計測 | run 中 +1.7 GB/時・**run が終わると止まり微減** = 一時的 |
+| ライブ操作パネル | パネルを開いたまま 30 分 | **横ばい**(単独では増えない) |
+
+**当たりは `ps` の全プロセス集計**だった —— `fleetest-devicepoll` **1 プロセスで 68.8 GB**、
+**経過 1 時間 15 分**。1.5 分あけて測り直すと 70.18 GB = **約 55 GB/時**で、3 時間 ≒ 165 GB。
+数字が合った。
+
+**原因**: `Sources/fleetest-devicepoll/main.swift` の取り込みループ(`while true`)に
+`autoreleasepool` が無い。毎秒 2 回、`URLSession`(または `adb`)が返す **PNG の `Data`** と、
+`ImageDownscale` が内部で作る **CGImage / CGImageSource**(Core Graphics = C の API)を作るが、
+**Swift の `main.swift` のトップレベルには pool が1つも無い**ので 1 枚も解放されない。
+
+**同型の掃討**: `Sources/fleetest-*` は4本。`fleetest-simstream` / `fleetest-androidstream` は
+**ObjC の `main.m`** で `@autoreleasepool` が main 全体を囲む(ObjC の慣例)、`fleetest-mcp` は
+1 リクエスト = 1 応答で抜けない取り込みループを持たない。**欠けていたのは Swift の devicepoll だけ**。
+
+**検証**: 修正後のバイナリを同じ条件で 4 分動かして **2.6 MB から 1 バイトも動かない**
+(修正前は同じ時間で数 GB)。変異 2/2 検出。
+
+### 43.2 同じ負荷テストで出た残り(B1 / B5 / B3・B4)
+
+- **B1**: MCP が駆動する xcuitest ブリッジは run よりずっと長く生きるのに、**a11y 劣化の検知
+  (`RunnerAccessibilityHealth`)が run の経路にしか無かった**。10 分でランナーが自壊し、以後その
+  セッションは `connectionLostHint` を返すだけで**誰も `bridge up` を打たないので戻らない**。
+  ①接続拒否を受けたら `BridgeProvisioner.provision` で**1回だけ**建て直して撃ち直す
+  (失敗した engineKey はセッション中に再挑戦しない)②呼び出しの所要が
+  `RunnerAccessibilityHealth.shouldRecheck` の閾値を跨いだときだけ run と同じ `recheckRunner` で
+  測り直す(空振りは既存の `RunnerRestartFutility` が止める)。
+  **建て直したことは結果本文の先頭に載せる** —— stderr だけだと JSON-RPC しか読まない呼び手に
+  届かない(2026-09-21 T1 の「唯一の警告が stderr」と同じ型)。アプリが再起動して**ref が全部
+  無効になる**ことも、本文でしか伝わらない
+- **B5**: ライブ操作(`api live serve`)が**台の印を1つも書いていなかった** —— 調停は
+  `run-<鍵>.lease` と `mcp-<鍵>.lease` の2種類だけで成り立っているので、ライブ操作で 20 分駆動中の
+  台へ `api stop-device` が**無言で通った**(実地で確認)。`MCPDeviceLease` と**同じファイル・同じ鍵・
+  同じ接頭辞**に委譲する(`LiveDeviceLease`)。**読む側を増やさない**のが要点 ——
+  印を2種類にすると、読み手(`deviceInUseRefusal` / `limitingDevicesAvoidingMCP`)のどちらかが
+  必ず読み忘れる。文言が「another MCP session」のままなのは承知の上の簡易化で、doc に理由を残した
+- **B3 / B4**: `ft_draft_scenario` が `className: "9 bad name"` を**そのまま `class 9 bad name {` に
+  生成**していた(コンパイルできない .swift をツールが書き出す)。判定は `ScenarioCodeGen.
+  isWritableClassName` の1箇所・文言は MCP 側。**日本語のクラス名は正当**(この repo のシナリオが
+  それ)なので、弾くのは「空・数字始まり・英数字と `_` 以外を含む」の3つだけ。`lastN` の範囲
+  (1 以上)も見るようにした
+
+### 43.1 この調査から残す3つ
+
+1. **「VSCode が食っている」は `ps` の全プロセス集計で裏を取る** —— 拡張が起こす子プロセスは
+   利用者からは VSCode の一部に見える。`Code Helper` だけを見ていた間は 4.7 GB しか見えず、
+   **真犯人は一覧の外**にいた。`ps -axo rss,comm | awk` で**全部を合計してから**上位を見る
+2. **同型の規律は「同じ言語」で探さない** —— `autoreleasepool` の規律は既に CLAUDE.md にあったが、
+   ObjC の 2 本は `@autoreleasepool`、Swift の 1 本は `autoreleasepool` と綴りが違い、
+   **`grep` の一発では揃わない**。走査テストは `.swift` と `.m` の両方を見る形にした
+3. **利用者の直感を実験の順序に使う** —— 「C を使うプロセス」「直近の修正」という2つの助言が、
+   webview(JS)を掘り続けていた向きを**プロセス単位の計測**へ変えた。仮説を外した回数より、
+   **測る対象を変えた回数**が効いた

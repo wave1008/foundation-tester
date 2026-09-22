@@ -149,17 +149,25 @@ let maxConsecutiveFailures = 10
 
 while true {
     let started = Date()
-    let png = options.platform == "ios" ? captureIOS(options, token: bridgeToken) : captureAndroid(options)
-    if let png, let (jpeg, width, height) = ImageDownscale.jpeg(
-        png: png, maxWidth: options.maxWidth, quality: options.quality) {
-        consecutiveFailures = 0
-        if !emit(jpeg: jpeg, width: width, height: height) { exit(0) }
-    } else {
-        consecutiveFailures += 1
-        if consecutiveFailures >= maxConsecutiveFailures {
-            FileHandle.standardError.write(Data(
-                "error: failed to capture a screenshot \(maxConsecutiveFailures) times in a row\n".utf8))
-            exit(4)
+    // **1 周ごとに解放する** —— 取得(`URLSession` / `adb` の `Data`)も縮小(Core Graphics の
+    // CGImage・CGImageSource)も autoreleased なオブジェクトを返すので、**トップレベルの
+    // 抜けないループには pool が1つも無く**、囲まないと1枚も解放されないまま回り続ける
+    // (実測 2026-09-22: 実機 1 台の配信が 1 時間 15 分で 71 GB ≒ **55 GB/時**。
+    // `api monitor` の `availableData` と同型で、あちらは 630 MB/時だった = ここは画像なので桁が違う)。
+    // **sleep は pool の外**(待っている間ずっと1周ぶんを抱えない)
+    autoreleasepool {
+        let png = options.platform == "ios" ? captureIOS(options, token: bridgeToken) : captureAndroid(options)
+        if let png, let (jpeg, width, height) = ImageDownscale.jpeg(
+            png: png, maxWidth: options.maxWidth, quality: options.quality) {
+            consecutiveFailures = 0
+            if !emit(jpeg: jpeg, width: width, height: height) { exit(0) }
+        } else {
+            consecutiveFailures += 1
+            if consecutiveFailures >= maxConsecutiveFailures {
+                FileHandle.standardError.write(Data(
+                    "error: failed to capture a screenshot \(maxConsecutiveFailures) times in a row\n".utf8))
+                exit(4)
+            }
         }
     }
     let elapsed = Date().timeIntervalSince(started)

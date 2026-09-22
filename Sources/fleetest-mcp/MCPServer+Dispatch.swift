@@ -283,7 +283,9 @@ extension MCPServer {
             throw MCPError(message)
         }
         do {
-            var content = try await dispatch(tool: tool, args: resolved)
+            // **失敗したら1回だけブリッジを建て直して撃ち直す**(MCPServer+BridgeRecovery.swift)。
+            // 建て直せなければ元のエラーがそのまま catch へ落ち、connectionLostHint 等は従来どおり
+            var content = try await dispatchRetryingAfterBridgeRecovery(tool: tool, args: resolved)
             if !rememberedNote.isEmpty {
                 content = [["type": "text", "text": rememberedNote]] + content
             }
@@ -292,6 +294,10 @@ extension MCPServer {
             }
             if let note = takeUIFrameworkUnknownNote(args: resolved) {
                 content = [["type": "text", "text": note]] + content
+            }
+            let elapsedMs = Int(((clock.now - start) / .milliseconds(1)).rounded())
+            if Self.toolAcceptsDeviceTarget(tool) {
+                await recheckXCUITestRunnerIfSlow(args: resolved, elapsedMs: elapsedMs)
             }
             return Self.withElapsed(content, since: start, clock: clock)
         } catch {

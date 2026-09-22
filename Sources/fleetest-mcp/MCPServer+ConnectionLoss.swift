@@ -267,6 +267,7 @@ extension MCPServer {
         sheetRescueFutile[key] = nil
         pendingWarnings[key] = nil
         preparedPhysicalAndroid.remove(key)
+        bridgeRecoveryFailed.remove(key)
     }
 
     /// 名指しする上限本数(2026-08-12): 実測で17本が1行に並び、読み手が要るのは

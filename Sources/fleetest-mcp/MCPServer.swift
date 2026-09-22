@@ -334,6 +334,11 @@ final class MCPServer {
     /// 開始前に1回だけ呼ぶので、MCP もそれと同じ粒度(このセッションでその機へ初めて触れたとき
     /// 1回)にする —— 毎ツール呼び出しに払うと adb 往復が積み上がる。`driver(_:)` が管理する
     var preparedPhysicalAndroid: Set<String> = []
+    /// **このセッションで xcuitest ブリッジの自動建て直し(bridgeConnectionRefused からの復帰)を
+    /// 一度試して失敗した engineKey**。建て直しの成否に関わらず次にまた死んだら再挑戦してよいので、
+    /// 成功時は insert しない(失敗のときだけ = 環境そのものが壊れている台へ分単位のビルドを
+    /// 撃ち続けない。MCPServer+BridgeRecovery.swift 参照)
+    var bridgeRecoveryFailed: Set<String> = []
 
     /// 版ズレの内容(engineKey ごと)。ft_status が「失敗するが理由を返す」ために覚えておく
     var versionSkew: [String: String] = [:]

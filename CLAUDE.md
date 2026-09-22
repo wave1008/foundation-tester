@@ -1134,6 +1134,15 @@
   **`availableData` を読むループは1回ごとに `autoreleasepool` で区切る**(返る NSData は自動解放で、
   抜けないループ・`Thread`・長く生きる readabilityHandler の中では1つも解放されない。拡張が1日じゅう
   生かす `api monitor` が 1 時間に約 630 MB 溜めた。`AvailableDataAutoreleaseScanTests` が Sources 全体で落とす)。
+  **同じ規律は「1周ごとに画像を作る常駐ヘルパー」にも要る** ——
+  `fleetest-devicepoll` の取り込みループは `URLSession` / `adb` の `Data` と Core Graphics の
+  中間物(CGImage / CGImageSource)を毎周作るのに pool が無く、**1 時間 15 分で 71 GB(≒ 55 GB/時)**
+  溜めて物理 192 GB の Mac をメモリ不足にした(2026-09-22。`api monitor` の 630 MB/時 と同型だが
+  **画像なので桁が2つ違う**)。**`sleep` は pool の外に置く**(待っている間 1 周ぶんを抱えない)。
+  ObjC のヘルパー(`fleetest-simstream` / `fleetest-androidstream` = `main.m`)は `@autoreleasepool` で
+  main 全体を囲む慣例で守られており、**欠けていたのは Swift の `main.swift` だけ**だった ——
+  Swift のトップレベルには pool が1つも無い。`StreamingHelperAutoreleaseScanTests` が
+  取り込みヘルパーの集合と「画像を作る行が pool の内側にあること」を固定する → maintainer-notes §43。
   **グループの残存は直接の子の終了と独立に見る**(Codex 指摘 2026-09-06: 子が SIGTERM で素直に
   終わっても `trap '' TERM` の孫は残る。猶予が尽きたら `killpg(pgid, 0)` で残りを確かめ SIGKILL)。
   witness は `ShellTimeoutTests` の孫3本
