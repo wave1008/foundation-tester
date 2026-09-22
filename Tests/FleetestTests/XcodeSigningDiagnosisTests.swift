@@ -170,6 +170,82 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
         XCTAssertEqual(args.last, path, "\(args)")
     }
 
+    /// **実際の `security list-keychains -d user` の出力の形**(前置の空白 + 引用符)。
+    /// ここが崩れると解錠対象が1つも取れず、黙ってログインキーチェーンだけの縮退に戻る
+    func testTheUserSearchListIsParsedFromTheRealSecurityOutput() {
+        let output = """
+                "/Users/x/Library/Keychains/login.keychain-db"
+                "/Users/x/Library/Keychains/fleetest-signing.keychain-db"
+                "/Library/Keychains/System.keychain"
+        """
+        XCTAssertEqual(
+            XcodeSigningDiagnosis.userKeychainPaths(listKeychainsOutput: output),
+            ["/Users/x/Library/Keychains/login.keychain-db",
+             "/Users/x/Library/Keychains/fleetest-signing.keychain-db"],
+            "システムキーチェーンは root でないと解錠できないので落とす")
+    }
+
+    /// 重複は畳み、順序は出力順(= security が鍵を探す順)のまま
+    func testDuplicateEntriesAreFoldedKeepingTheSearchOrder() {
+        let output = """
+                "/Users/x/Library/Keychains/fleetest-signing.keychain-db"
+                "/Users/x/Library/Keychains/login.keychain-db"
+                "/Users/x/Library/Keychains/fleetest-signing.keychain-db"
+        """
+        XCTAssertEqual(
+            XcodeSigningDiagnosis.userKeychainPaths(listKeychainsOutput: output),
+            ["/Users/x/Library/Keychains/fleetest-signing.keychain-db",
+             "/Users/x/Library/Keychains/login.keychain-db"])
+    }
+
+    /// **一覧に無くても・取れなくてもログインキーチェーンは必ず試す**(従来の挙動への縮退)。
+    /// 一覧に居るときは二重に試さない
+    func testTheLoginKeychainIsAlwaysAttempted() {
+        let login = "/Users/x/Library/Keychains/login.keychain-db"
+        XCTAssertEqual(
+            XcodeSigningDiagnosis.keychainsToUnlock(listKeychainsOutput: nil, homeDirectory: "/Users/x"),
+            [login], "問い合わせが失敗してもログインキーチェーンだけは試す")
+        XCTAssertEqual(
+            XcodeSigningDiagnosis.keychainsToUnlock(listKeychainsOutput: "", homeDirectory: "/Users/x"),
+            [login])
+        XCTAssertEqual(
+            XcodeSigningDiagnosis.keychainsToUnlock(
+                listKeychainsOutput: "    \"/Library/Keychains/System.keychain\"",
+                homeDirectory: "/Users/x"),
+            [login], "システムキーチェーンしか載っていなくてもログインは試す")
+        XCTAssertEqual(
+            XcodeSigningDiagnosis.keychainsToUnlock(
+                listKeychainsOutput: """
+                        "/Users/x/Library/Keychains/fleetest-signing.keychain-db"
+                        "/Users/x/Library/Keychains/login.keychain-db"
+                """,
+                homeDirectory: "/Users/x"),
+            ["/Users/x/Library/Keychains/fleetest-signing.keychain-db", login],
+            "一覧に居るログインキーチェーンを二度並べない")
+    }
+
+    /// **ユーザーの検索リストを問う**(`-d system` は root でないと解錠できない)。
+    /// 呼び手にコマンド文字列を書かせない
+    func testListKeychainsArgumentsAsksTheUserSearchList() {
+        XCTAssertEqual(XcodeSigningDiagnosis.listKeychainsArguments(),
+                       ["security", "list-keychains", "-d", "user"])
+    }
+
+    /// **出口を事実として1つ示す** —— 解錠がそのセッションの中で要ること、ツールが検索リストの
+    /// 各キーチェーンを空パスワードで試していること、空パスワードのキーチェーンに署名鍵を置けば
+    /// この経路で通ること。どれか1つでも落ちると読み手は次にやることが分からない
+    func testTheKeychainGuidanceNamesTheWayOut() throws {
+        let guidance = try XCTUnwrap(XcodeSigningDiagnosis.guidance(
+            problems: [.keychainLocked], fullLogPath: nil, overSSH: true))
+        for expected in ["unlocked inside the session the build runs in",
+                        "empty password",
+                        "user search list",
+                        "login keychain"] {
+            XCTAssertTrue(guidance.contains(expected), expected + " / " + guidance)
+        }
+        XCTAssertFalse(guidance.contains("zprofile"), guidance)
+    }
+
     func testLoginKeychainPath() {
         XCTAssertEqual(XcodeSigningDiagnosis.loginKeychainPath(homeDirectory: "/Users/x"),
                        "/Users/x/Library/Keychains/login.keychain-db")
@@ -283,11 +359,13 @@ final class XcodeSigningKeychainScopeGuidanceTests: XCTestCase {
         XCTAssertFalse(text?.contains("login shell profile is the usual place") == true, text ?? "nil")
     }
 
-    /// ここまで診断が来た理由(自動解錠を既に試み、通らなかった)を言う
+    /// ここまで診断が来た理由(検索リストの各キーチェーンを空パスワードで既に試み、通らなかった)を言う
     func testMentionsTheAutomaticUnlockAlreadyAttempted() {
         let text = XcodeSigningDiagnosis.guidance(
             problems: [.keychainLocked], fullLogPath: nil, overSSH: true)
-        XCTAssertTrue(text?.contains("already tries to unlock it automatically") == true, text ?? "nil")
+        XCTAssertTrue(
+            text?.contains("already tries an empty password on every keychain in the user search list")
+                == true, text ?? "nil")
     }
 
     /// **GUI セッションでは出さない** —— ssh の接続ごとという制約はそこには無く、

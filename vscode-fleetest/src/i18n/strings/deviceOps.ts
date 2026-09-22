@@ -199,9 +199,9 @@ export const deviceOpsStrings = {
     en: "the provisioning profile does not include this device",
   },
   "deviceOps.signing.fact.keychainLocked": {
-    ja: "このセッションではログインキーチェーンがロックされており、codesign が署名鍵を使えません。"
+    ja: "このセッションでは署名鍵を持つキーチェーンがロックされており、codesign が鍵を使えません。"
       + "ssh は接続ごとにロック状態から始まるため、画面や別のシェルで解錠しても引き継がれません",
-    en: "the login keychain is locked in this session, so codesign cannot use the signing key."
+    en: "the keychain holding the signing key is locked in this session, so codesign cannot use it."
       + " Each ssh connection starts locked — unlocking it in a GUI session or another shell"
       + " does not carry over",
   },
@@ -222,22 +222,23 @@ export const deviceOpsStrings = {
   },
   // **手順を書かない規律の例外**(portalNeedsGui と同じ理由)—— remote exec が毎回新しい ssh 接続を
   // 張るという実行経路の制約で、知らないと手で解錠しては同じ失敗を繰り返す。
-  // どこで解錠するかまで言い、鍵の置き場所や具体的な設定は言わない。
-  // fleetest はビルド直前に空パスワードでの自動解錠を既に試みている(BridgeLauncher)ので、
-  // この文言まで来るのは実パスワード付きキーチェーンだけ
+  // **文言は FTCore ではなく呼び手が持つ**(共有するのは判定)。Swift 側の対の文は
+  // Sources/FTBridgeClient/XcodeSigningDiagnosis.swift の guidance —— 片方だけ変えない
   "deviceOps.signing.keychainUnlockScope": {
     ja: "ssh は接続のたびにロック状態から始まるため、ビルドが走るセッションの中で解錠されている"
-      + "必要があります(手で別の場所で解錠しても引き継がれません)。fleetest はビルド前に空"
-      + "パスワードでの自動解錠を既に試みていますが、ここまで来たということはそれが通らなかった"
-      + "ということ、つまりこのキーチェーンには実パスワードが設定されています —— 解錠する仕組みは"
-      + "その同じ種類の非対話 ssh セッションの中で動く必要があり、ログインシェルのプロファイル"
-      + "(~/.zprofile 等)はこれらのセッションでは実行されないため対象になりません。",
-    en: "Each ssh connection starts with the keychain locked, so it has to be unlocked in the session"
-      + " the build runs in — unlocking it by hand elsewhere does not carry over."
-      + " fleetest already tries to unlock it automatically with an empty password before the build;"
-      + " that did not get through here, so this keychain has a real password — whatever unlocks it"
-      + " must work inside that same kind of non-interactive ssh session, which a login shell profile"
-      + " (e.g. ~/.zprofile) does not, since these sessions never run one.",
+      + "必要があります(手で別の場所で解錠しても引き継がれません)。fleetest はビルド前に、"
+      + "ユーザーの検索リスト(security list-keychains -d user)に載っている各キーチェーンを"
+      + "空パスワードで解錠しようとします —— ここまで来たということは、署名鍵を持つキーチェーンに"
+      + "実パスワードが設定されているということです。署名鍵を空パスワードのキーチェーンに置いて"
+      + "その検索リストに載せれば、この経路で解錠できます(ログインキーチェーンのパスワードは"
+      + "変えずに済みます)。",
+    en: "Each ssh connection starts with the keychain locked, so it has to be unlocked inside the"
+      + " session the build runs in — unlocking it by hand elsewhere does not carry over."
+      + " Before the build fleetest already tries an empty password on every keychain in the user"
+      + " search list (security list-keychains -d user); reaching this message means the keychain"
+      + " holding the signing key has a real password. A signing key kept in a keychain that has an"
+      + " empty password and is on that search list unlocks through this path, leaving the login"
+      + " keychain's password unchanged.",
   },
   "deviceOps.signing.fullLog": {
     ja: "xcodebuild の全出力: {path}",

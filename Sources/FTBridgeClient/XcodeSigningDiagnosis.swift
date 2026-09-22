@@ -38,8 +38,10 @@ import Foundation
 ///     **鍵の ACL の問題ではない**(`security set-key-partition-list` は不要だった。2026-09-08 に
 ///     M1Ultra で実測)。ロックそのものが原因で、**解錠は接続ごとに閉じる** —— その Mac の画面や
 ///     別のシェルで解錠しても remote exec の新しい接続には届かない。**ツールは実機 ssh ビルドの
-///     直前に空パスワードでの自動解錠を試みる**(BridgeLauncher.buildForTesting)。この診断まで
-///     来るのはその解錠が通らなかったとき、つまりキーチェーンに実パスワードが設定されているときだけ
+///     直前に、ユーザーの検索リストに載っている各キーチェーンの空パスワード解錠を試みる**
+///     (BridgeLauncher.buildForTesting)。この診断まで
+///     来るのはその解錠が通らなかったとき、つまり署名鍵を持つキーチェーンに実パスワードが
+///     設定されているときだけ
 public enum XcodeSigningProblem: String, Sendable, CaseIterable {
     /// Xcode に Apple ID が1つも無い
     case noAccount
@@ -56,9 +58,9 @@ public enum XcodeSigningProblem: String, Sendable, CaseIterable {
     case certificateNotInProfile
     /// その端末が provisioning profile に入っていない
     case deviceNotInProfile
-    /// キーチェーンがロックされていて署名鍵に触れない。**ssh 越しのビルドで出る**
-    /// (remote exec 経由の実機ビルド)。ログの現れ方は2通りで、どちらも同じ原因:
-    /// `User interaction is not allowed` と `errSecInternalComponent`(codesign が鍵を使えない)。
+    /// 署名鍵を持つキーチェーンがロックされていて codesign が鍵に触れない。
+    /// **ssh 越しのビルドで出る**(remote exec 経由の実機ビルド)。ログの現れ方は2通りで、
+    /// どちらも同じ原因: `User interaction is not allowed` と `errSecInternalComponent`。
     /// **解錠は ssh 接続ごと** —— GUI セッションや別のシェルで解錠しても、remote exec が
     /// 毎回張る新しい接続には届かない(2026-09-08 に M1Ultra で実測。同一接続内で
     /// unlock → codesign は成功、別接続では再びロック)
@@ -76,8 +78,8 @@ public enum XcodeSigningProblem: String, Sendable, CaseIterable {
             return "the provisioning profile does not include the signing certificate"
         case .deviceNotInProfile: return "the provisioning profile does not include this device"
         case .keychainLocked:
-            return "the login keychain is locked in this session, so codesign cannot use the"
-                + " signing key. Each ssh connection starts locked — unlocking it in a GUI"
+            return "the keychain holding the signing key is locked in this session, so codesign"
+                + " cannot use it. Each ssh connection starts locked — unlocking it in a GUI"
                 + " session or another shell does not carry over"
         }
     }
@@ -143,6 +145,45 @@ public enum XcodeSigningDiagnosis {
         homeDirectory + "/Library/Keychains/login.keychain-db"
     }
 
+    /// 解錠対象の検索リストを問い合わせる引数。**`-d user` に固定** —— システムの検索リスト
+    /// (`-d system`)は root でないと解錠できず、空パスワードで叩いても意味が無い。
+    /// 呼び手にコマンド文字列を書かせない(`unlockKeychainArguments` と同じ流儀)。
+    public static func listKeychainsArguments() -> [String] {
+        ["security", "list-keychains", "-d", "user"]
+    }
+
+    /// `security list-keychains -d user` の出力を解く(1行1パス・前後に空白・値は引用符つき)。
+    /// **システムキーチェーンは落とす**(root でないと解錠できない)。重複は畳み、順序は出力順のまま
+    /// (検索リストの順 = security が鍵を探す順)。
+    public static func userKeychainPaths(listKeychainsOutput: String) -> [String] {
+        var seen: Set<String> = []
+        return listKeychainsOutput.split(separator: "\n").compactMap { line -> String? in
+            var path = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if path.hasPrefix("\""), path.hasSuffix("\""), path.count >= 2 {
+                path = String(path.dropFirst().dropLast())
+            }
+            path = path.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !path.isEmpty, !isSystemKeychain(path: path) else { return nil }
+            return path
+        }.filter { seen.insert($0).inserted }
+    }
+
+    /// 空パスワードでの解錠を試す集合。検索リストに**ログインキーチェーンを必ず足す** ——
+    /// 一覧が空・取得できなかったときでもそこだけは試す(従来の挙動への縮退)。重複は畳む。
+    public static func keychainsToUnlock(listKeychainsOutput: String?,
+                                         homeDirectory: String) -> [String] {
+        var paths = listKeychainsOutput.map(userKeychainPaths(listKeychainsOutput:)) ?? []
+        paths.append(loginKeychainPath(homeDirectory: homeDirectory))
+        var seen: Set<String> = []
+        return paths.filter { seen.insert($0).inserted }
+    }
+
+    /// root でないと解錠できないキーチェーン(システムの置き場。空パスワードで叩いても
+    /// 通らないので対象から外す)。**利用者が別の場所に置いた専用キーチェーンは通す**。
+    private static func isSystemKeychain(path: String) -> Bool {
+        path.hasPrefix("/Library/Keychains/") || path.hasPrefix("/System/Library/Keychains/")
+    }
+
     /// 見出し + 事実(どれが欠けているか)+ 生ログの在り処。problems が空なら nil
     /// (呼び手は生の出力をそのまま出す)。
     ///
@@ -181,12 +222,13 @@ public enum XcodeSigningDiagnosis {
         // 言い、鍵の置き場所や具体的な設定は言わない(運用は機械ごとに違い、書けば古くなる)
         if overSSH, problems.contains(.keychainLocked) {
             lines.append("Each ssh connection starts with the keychain locked, so it has to be"
-                + " unlocked in the session the build runs in — unlocking it by hand elsewhere"
-                + " does not carry over. fleetest already tries to unlock it automatically with an"
-                + " empty password before the build; that did not get through here, so this keychain"
-                + " has a real password — whatever unlocks it must work inside that same kind of"
-                + " non-interactive ssh session, which a login shell profile (e.g. ~/.zprofile) does"
-                + " not, since these sessions never run one.")
+                + " unlocked inside the session the build runs in — unlocking it by hand elsewhere"
+                + " does not carry over. Before the build fleetest already tries an empty password"
+                + " on every keychain in the user search list (security list-keychains -d user);"
+                + " reaching this message means the keychain holding the signing key has a real"
+                + " password. A signing key kept in a keychain that has an empty password and is on"
+                + " that search list unlocks through this path, leaving the login keychain's"
+                + " password unchanged.")
         }
         if let fullLogPath {
             lines.append("Full xcodebuild output: \(fullLogPath)")

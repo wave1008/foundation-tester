@@ -194,7 +194,7 @@ fleetest run --project <プロジェクト> --profile <実行プロファイル>
 | `could not tell which installed Xcode to dispatch with: … match this Mac's product version` | ランナーの `/Applications` に同じ製品版の Xcode が複数ある | 登録簿に pin する: `fleetest remote machines add <名前> --host <宛先> --developer-dir <使わせたい Xcode.app のパス>` |
 | `could not tell which installed Xcode to dispatch with: none of the …` | ランナーに手元と一致する Xcode が1つも無い | 🧑 にその製品版の Xcode の導入を依頼する(既存の Xcode は消さなくてよい)。**pin では直らない** |
 | `is sitting at the login window` | ランナー機がログイン画面 | 🧑 に解錠+ログインを依頼(画面共有で可) |
-| `Cannot code-sign the bridge runner for a physical device` / `the login keychain is locked in this session` | 実機 iPhone をランナー機で使うとき、ssh セッションのログインキーチェーンがロックされている(空パスワードの自動 unlock が効かない) | 🧑 に依頼: ランナー機のログインキーチェーンのパスワードをログインパスワードと揃えて自動ロックを切る(`security set-keychain-settings`)か、実機の run は GUI セッションから起こす。シミュレータだけなら無関係 |
+| `Cannot code-sign the bridge runner for a physical device` / `the keychain holding the signing key is locked in this session` | 実機 iPhone をランナー機で使うとき、署名鍵を持つキーチェーンが ssh セッションでロックされている(検索リスト全部に対する空パスワードの自動 unlock が効かない = 実パスワードが設定されている) | 🧑 に依頼: 署名鍵を**空パスワードの専用キーチェーン**へ移して検索リスト(`security list-keychains -d user`)に載せる(手順は docs/remote-runner-setup.md「うまくいかないとき」の同じ行)か、実機の run は GUI セッションから起こす。シミュレータだけなら無関係 |
 | `Couldn't fetch updates from remote repositories` / `Recv failure: Operation timed out` | 回線が細く SPM の依存取得が落ちた | **再実行する**(取得済みは残るので数回で通る)。ランナー機で `cd ~/fleetest-runner/users/<issuerId>/work && swift package resolve` を先に通しても良い |
 
 これ以外は docs/remote-runner-setup.md の「うまくいかないとき」を読む。

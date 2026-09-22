@@ -157,24 +157,32 @@ public struct BridgeLauncher {
 
     /// 空パスワードだけを試す(実パスワードはどこにも保持しない)。**失敗を握りつぶす** ——
     /// パスワード付きキーチェーンでは失敗して当然で、その先は既存の署名診断(keychainLocked)に
-    /// 委ねる。timeout(タイムアウトも含め)を buildForTesting へ伝播させない
+    /// 委ねる。timeout(タイムアウトも含め)を buildForTesting へ伝播させない。
+    ///
+    /// **対象はユーザーの検索リスト全部**(署名鍵は空パスワードの専用キーチェーンに置ける ——
+    /// ログインキーチェーンは実パスワードのまま守られる)。問い合わせが通らなければ
+    /// ログインキーチェーンだけの縮退。**締切は1本あたり**(検索リストの問い合わせも同じ)。
+    /// **stderr は1行にまとめる** —— 対象ごとに出すとログが荒れる
     private func attemptKeychainUnlock() {
-        let path = XcodeSigningDiagnosis.loginKeychainPath(homeDirectory: NSHomeDirectory())
-        let args = XcodeSigningDiagnosis.unlockKeychainArguments(path: path)
-        do {
-            let result = try Shell.run(args, timeout: Self.keychainUnlockTimeoutSeconds)
-            if result.status == 0 {
-                ConsoleOut.err(
-                    "[bridge] Unlocked the login keychain for this ssh session (needed for code-signing)")
-            } else {
-                ConsoleOut.err(
-                    "[bridge] Could not unlock the login keychain with an empty password —"
-                        + " it likely has one; continuing (codesign may fail below)")
-            }
-        } catch {
+        let listed = try? Shell.run(XcodeSigningDiagnosis.listKeychainsArguments(),
+                                    timeout: Self.keychainUnlockTimeoutSeconds)
+        let paths = XcodeSigningDiagnosis.keychainsToUnlock(
+            listKeychainsOutput: listed?.status == 0 ? listed?.output : nil,
+            homeDirectory: NSHomeDirectory())
+        let unlocked = paths.filter { path in
+            let args = XcodeSigningDiagnosis.unlockKeychainArguments(path: path)
+            let result = try? Shell.run(args, timeout: Self.keychainUnlockTimeoutSeconds)
+            return result?.status == 0
+        }.count
+        if unlocked > 0 {
             ConsoleOut.err(
-                "[bridge] Could not unlock the login keychain with an empty password —"
-                    + " it likely has one; continuing (codesign may fail below)")
+                "[bridge] Unlocked \(unlocked) of \(paths.count) keychain(s) in the user search"
+                    + " list for this ssh session (needed for code-signing)")
+        } else {
+            ConsoleOut.err(
+                "[bridge] Could not unlock any of the \(paths.count) keychain(s) in the user search"
+                    + " list with an empty password — they likely have one; continuing"
+                    + " (codesign may fail below)")
         }
     }
 

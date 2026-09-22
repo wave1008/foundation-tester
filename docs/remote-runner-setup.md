@@ -151,8 +151,9 @@ fleetest remote setup mac2 --project <プロジェクト名>
   この間は配信を畳んだまま観測だけ続く
 
 **実機をランナー機に繋ぐ場合**、端末と手元の経路は無関係(ランナー機の LAN の話)。
-**iPhone を繋ぐなら、ランナー機のログインキーチェーンが ssh セッションで使えること**も前提になる
-(XCUITest ランナーの codesign が要る。詳細は「うまくいかないとき」の `the login keychain is locked` の行)。
+**iPhone を繋ぐなら、ランナー機の署名鍵が ssh セッションで使えること**も前提になる
+(XCUITest ランナーの codesign が要る。詳細は「うまくいかないとき」の
+`the keychain holding the signing key is locked` の行)。
 USB なら何も要らない。LAN 経由の iPhone は**端末が listen し Mac が繋ぎに行く**ので Mac 側の
 ファイアウォール設定は不要だが、**ランナー機と端末が同じサブネットに居ること**と、
 **AP のクライアント隔離(プライバシーセパレータ)が切ってあること**が要る。
@@ -749,7 +750,7 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | `could not tell which installed Xcode to dispatch with: … match this Mac's product version` | ランナーの `/Applications` に**同じ製品版の Xcode が複数**ある(どれを使うかはツールには決められない) | 登録簿に `fleetest remote machines add <名前> --host <宛先> --developer-dir <使わせたい Xcode.app のパス>` で pin する |
 | `could not tell which installed Xcode to dispatch with: none of the …` | ランナーに**手元と一致する Xcode が1つも無い**(メッセージが入っている Xcode を全部並べる) | その製品版の Xcode をランナーの `/Applications` に(既存を消さず)追加で入れる。**pin しても直らない** —— pin した Xcode の指紋が手元と違えば toolchain 照合で止まる |
 | `fleetest binary not found on remote` | ビルドされていない | ランナー機で `swift build --product fleetest` |
-| `Cannot code-sign the bridge runner for a physical device on this Mac` / `the login keychain is locked in this session` | **実機 iOS をランナー機で回すとき**。ssh セッションはログインキーチェーンがロックされたまま始まるので、XCUITest ランナーの codesign が署名鍵を使えない。fleetest は空パスワードでの unlock を試みるが、キーチェーンにパスワードがあると効かない | ランナー機のログインキーチェーンをその ssh セッションで使える状態にする: 最も簡単なのは**ランナー機のログインパスワードとログインキーチェーンのパスワードを揃え、`security set-keychain-settings`(引数なし)で自動ロックを切る**こと。それが許されない運用なら、実機 iOS の run はランナー機の GUI セッション(画面共有)から起こす。シミュレータだけのランナーには無関係(署名しない) |
+| `Cannot code-sign the bridge runner for a physical device on this Mac` / `the keychain holding the signing key is locked in this session` | **実機 iOS をランナー機で回すとき**。ssh セッションはキーチェーンがロックされたまま始まるので、XCUITest ランナーの codesign が署名鍵を使えない。fleetest はビルド前に**検索リスト(`security list-keychains -d user`)の各キーチェーン**を空パスワードで解錠しようとするが、署名鍵を持つキーチェーンにパスワードがあると効かない | **署名鍵を空パスワードの専用キーチェーンへ移し、検索リストに載せる**(ログインキーチェーンのパスワードは変えずに済む): ランナー機で `security create-keychain -p "" ~/Library/Keychains/fleetest-signing.keychain-db` → ログインキーチェーンから署名 ID を `security export`/`import` で移す → `security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" <新キーチェーン>` → `security set-keychain-settings <新キーチェーン>`(引数なし = 自動ロックなし)→ `security list-keychains -d user -s <新キーチェーン> ~/Library/Keychains/login.keychain-db`。それが許されない運用なら、実機 iOS の run はランナー機の GUI セッション(画面共有)から起こす。シミュレータだけのランナーには無関係(署名しない) |
 | `unknown package` | クローンのディレクトリ名を変えた | `~/fleetest-runner/foundation-tester` に戻す |
 | `no running emulator for AVD …` | Android のエミュレータが未起動 | ステップ6 の `devices up` |
 | `no runner workspace at …`(exit 91) | あなたの issuerId の作業場所がまだ無い(未 setup / issuerId が変わった) | `fleetest remote setup <ランナー>` を1回。issuerId は明示設定にする(「複数人でフリートを共有する」) |
