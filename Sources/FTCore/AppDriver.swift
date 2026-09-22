@@ -304,6 +304,15 @@ public enum DriverErrorMessage {
     }
 }
 
+/// Android の `/snapshot` が「アクティブウィンドウの a11y 根が無い」で断るときの本文接頭辞(422)。
+/// 同期相手は `AndroidRunner/src/com/example/ftbridge/BridgeRouter.java` の
+/// `NO_ACTIVE_WINDOW_ROOT`(片方だけ変えない。`AndroidNoReadableWindowSyncTests` が固定)。
+/// **`BridgeDTO.swift` へ置かない** —— あちらはブリッジのソース集合に入っており、ホストしか
+/// 読まない定数を足すと dylib/ランナーの指紋が無意味に動く(`WebViewDOMSnapshot.swift` と同じ規律)
+public enum AndroidBridgeErrorPrefix {
+    public static let noActiveWindowRoot = "no-active-window-root:"
+}
+
 public enum DriverError: Error, LocalizedError {
     case bridgeUnreachable(context: DriverErrorContext, detail: String)
     /// URLSession レベルで「リクエストがサーバに届いていないことが確実」なエラー
@@ -339,6 +348,17 @@ public enum DriverError: Error, LocalizedError {
         guard let driverError = error as? DriverError,
               case .badResponse(let status, let body) = driverError else { return false }
         return status == 501 || (status == 404 && body.hasPrefix("not found:"))
+    }
+
+    /// ブリッジが「アクティブウィンドウの a11y 根が無い」と申告した応答か。
+    /// **status と宣言した本文接頭辞で見る**(自由文の一致ではない。接頭辞は
+    /// AndroidRunner/src/com/example/ftbridge/BridgeRouter.java の NO_ACTIVE_WINDOW_ROOT と同期
+    /// = AndroidBridgeErrorPrefix.noActiveWindowRoot)。**`isEngineIncapable` の「404 は
+    /// "not found:" 前置でだけ拾う」と同じ立場** —— 422 は他の一時的競合にも使われるため
+    public static func isNoReadableWindow(_ error: Error) -> Bool {
+        guard let driverError = error as? DriverError,
+              case .badResponse(let status, let body) = driverError else { return false }
+        return status == 422 && body.hasPrefix(AndroidBridgeErrorPrefix.noActiveWindowRoot)
     }
 
     /// URLError のうち、接続そのものが成立しなかったことが確実なものだけを true とする

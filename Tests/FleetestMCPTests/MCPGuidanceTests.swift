@@ -104,6 +104,29 @@ final class MCPGuidanceTests: XCTestCase {
             DriverError.badResponse(status: 500, body: "something else"), engine: "xcuitest"), "")
     }
 
+    // MARK: - Android の a11y 根が読めない(422)
+
+    /// Pixel 3a/Android 12 実測(13〜37 秒 null が続いて自然回復)向けの対処。一時的な状態であって
+    /// 撃ち直しても同じ答えになることを言い、前面へ戻す手を添える
+    func testNoReadableWindowHintExplainsAndSuggestsRecovery() {
+        let hint = MCPServer.noReadableWindowHint(DriverError.badResponse(
+            status: 422, body: "no-active-window-root:"
+                + " the device reports no accessibility root for the active window"))
+        XCTAssertTrue(hint.contains("transient"), hint)
+        XCTAssertTrue(hint.contains("ft_navigate") || hint.contains("ft_launch"), hint)
+    }
+
+    /// 同じ 422 でも別のブリッジ判断(マスク欄への追記拒否等)には出さない
+    func testNoReadableWindowHintIgnoresOtherStatus422Bodies() {
+        XCTAssertEqual(MCPServer.noReadableWindowHint(DriverError.badResponse(
+            status: 422, body: "cannot append to a password field")), "")
+    }
+
+    func testNoReadableWindowHintIgnoresUnrelatedErrors() {
+        XCTAssertEqual(MCPServer.noReadableWindowHint(DriverError.badResponse(
+            status: 500, body: "no-active-window-root:" + " …")), "")
+    }
+
     /// home した直後に「この後 snapshot は読めない」と先に言う(踏んでから調べさせない)
     func testNavigateHomeAnnouncesTheReadPath() {
         let note = MCPServer.backgroundingNavigationNote(target: "home", engine: "xcuitest")

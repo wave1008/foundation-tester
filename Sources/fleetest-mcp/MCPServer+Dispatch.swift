@@ -326,6 +326,7 @@ extension MCPServer {
             let hint = await connectionLostHint(error, args: resolved)
                 + Self.setTextRefusedHint(tool: tool, args: resolved,
                                           message: error.localizedDescription)
+                + Self.noReadableWindowHint(error)
                 + (runNote.map { " " + $0 } ?? "")
             guard !hint.isEmpty else { throw error }
             throw MCPError(error.localizedDescription + hint)
@@ -403,6 +404,19 @@ extension MCPServer {
     /// 上のガードが二度と当たらなくなる。`SetTextRefusedHintJavaSyncTests` がこの定数の値が
     /// Java 側のソースに実在するかを機械確認する(Java 側は編集しない)
     static let setTextRefusalMarker = "cannot type into the field that was tapped"
+
+    /// Android の a11y 根が一時的に読めない(422・DriverError.isNoReadableWindow)ときの対処。
+    /// **判定(status + 本文接頭辞)は FTCore が持つ・文言はここだけ**(共有するのは判定であって
+    /// 文言ではない)。実測 Pixel 3a/Android 12: 13〜37 秒で自然回復。同じ ft_snapshot を
+    /// 即座に撃ち直しても同じ答えなので、それを捨てないよう明言する
+    static func noReadableWindowHint(_ error: Error) -> String {
+        guard DriverError.isNoReadableWindow(error) else { return "" }
+        return " This is a transient device-side condition, not an app or tool bug — it clears on"
+            + " its own (observed 13-37s). Retrying the exact same call again immediately will"
+            + " most likely return this same error, so wait a few seconds first. Bringing the app"
+            + " back to the foreground tends to clear it faster: ft_navigate target: \"home\", or"
+            + " ft_launch."
+    }
 
     /// セレクタ引数の両端の引用符を入口で剥がす(2026-08-12 の実アプリ監査)。
     /// DSL は Swift の文字列リテラルが引用符を剥がすが、MCP は生文字列で受けるので、

@@ -58,6 +58,17 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         }
     }
 
+    /**
+     * handleSnapshot が「a11y 根が無い」で断るときの本文接頭辞(422)。
+     * 同期相手: Sources/FTCore/BridgeDTO.swift の BridgeAPI.androidNoActiveWindowRootPrefix
+     * (片方だけ変えない。AndroidNoReadableWindowSyncTests が固定)。
+     * status は 422 —— 400/404/409/500 は既に別の意味で使用中(表は docs/design.md §4.3)。
+     * 409 は Android では「対象なし/SET_TEXT 拒否 = ホストの typeDriver フォールバックの合図」
+     * なので使えない。422 は InputInjector.rejectMaskedAppend が /type で使っているが、
+     * エンドポイントが違うので衝突しない。
+     */
+    static final String NO_ACTIVE_WINDOW_ROOT = "no-active-window-root:";
+
     private final Instrumentation instrumentation;
     /** UI 整定検知(操作後の固定 sleep の代替)。構築時に UiAutomation へ1回だけ登録する。
      *  既定 IME の読み出しに context が要るのでコンストラクタで作る(フィールド初期化子では
@@ -259,12 +270,24 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         SnapshotBuilder.Result result;
         try {
             result = SnapshotBuilder.build(ua(), instrumentation.getContext(), forceRefresh, maxElements);
-        } catch (IllegalStateException e) {
+        } catch (IllegalStateException first) {
             // root=null が waitForRoot の 2s を超えて続く一時ストール(高負荷時の画面消灯/描画停止で
             // 実測。黒スクショと対の症状)。WAKEUP 注入で display を起こしてから1回だけ再試行する
             shell("input keyevent KEYCODE_WAKEUP");
             SystemClock.sleep(500);
-            result = SnapshotBuilder.build(ua(), instrumentation.getContext(), forceRefresh, maxElements);
+            try {
+                result = SnapshotBuilder.build(ua(), instrumentation.getContext(), forceRefresh, maxElements);
+            } catch (IllegalStateException second) {
+                // 再試行も root=null のまま。実測 Pixel 3a/Android 12: 13〜37 秒 null が続き
+                // 自然に回復した(全 4 ラウンド中 1 回再現)。生の Java 例外(BridgeRouter.handle の
+                // 総括 catch → 500)ではなく、事実だけを 422 で申告する(SnapshotBuilder.java の
+                // IllegalStateException 自体は内部合図として変えない)
+                throw new BridgeException(422, NO_ACTIVE_WINDOW_ROOT
+                        + " the device reports no accessibility root for the active window, so the UI"
+                        + " tree cannot be read right now (the app switcher, a screen that is turning"
+                        + " off, and a window transition all do this). It clears on its own once an"
+                        + " app is in the foreground again.");
+            }
         }
         refCenters = result.refCenters;
         refIds = result.refIds;

@@ -1973,11 +1973,17 @@ notBound` の4値を返し、`MCPServer.bridgeWedgedOnUDIDMessage` と `bridgeWe
 
 ### 44.4 直さなかったもの
 
-- **Android の木が読めないとき生の Java 例外が出る**: `ft_navigate appSwitcher` の直後に
-  `getRootInActiveWindow()` が null になり(Pixel 3a / Android 12 で 13〜37 秒)、
-  `java.lang.IllegalStateException: cannot read the UI tree of the active window` が対処無しで返る。
-  **直すならブリッジ側に専用の status/コード**が要る(ホストで文言一致に頼ると書式を変えた瞬間に
-  静かに壊れる = CLAUDE.md の禁じ手)ので、Android ブリッジの版上げとセットで行う。
+- **(直した)Android の木が読めないとき生の Java 例外が出ていた**: `ft_navigate appSwitcher` の直後に
+  `getRootInActiveWindow()` が null になり(Pixel 3a / Android 12 で 13〜37 秒。4 ラウンド中 1 回再現)、
+  `java.lang.IllegalStateException: cannot read the UI tree of the active window` が対処無しで返っていた。
+  `BridgeRouter.handleSnapshot` の再試行(WAKEUP 注入込み)も root=null のままなら、
+  `IllegalStateException` を包んで **422 + 本文接頭辞 `no-active-window-root:`** で申告するように分けた
+  (`SnapshotBuilder.java` の例外自体は内部合図のまま変えていない)。ホスト側は
+  `DriverError.isNoReadableWindow`(status + 接頭辞。`BridgeAPI.androidNoActiveWindowRootPrefix` と同期)
+  が判定だけを持ち、MCP(`MCPServer.noReadableWindowHint`)が「一時的な状態で撃ち直しても同じ・
+  前面復帰で早く戻る」という文言を添える(判定は共有・文言は呼び手が持つ)。
+  Android ブリッジの版を 70 へ上げた(`AndroidRunner/build.sh` の `VERSION_CODE` /
+  `AndroidDriver.expectedBridgeVersionCode`)。
 - **`ft_scroll_to` の失敗文の先頭行が注記**(`Error: note: search took 14.7s (3 swipe(s)).`)で、
   何が失敗したかが2行目。注記の順序は `sheetNote` について意図的に決めてあるので、
   足し引きは `Scripts/mcp-bench.sh` の手数で決める(印象で動かさない)。
